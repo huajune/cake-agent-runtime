@@ -55,10 +55,33 @@ deepMerge×置信度守卫在对象值字段（delayed_intent/schedule_constrain
 依赖上游恒非空未追证；群聊路径是否走 onTurnStart 未验证；reasoning 是否被仓库外
 SQL 消费未知；safeParse 归空路径生产触发率未知。
 
-## 4. 处置建议
+## 4. 处置结果（2026-08-19 执行，只记事实处置，不新增设计裁定）
 
-- S1-S7 并入 BookingCollectionForm 实施批（蓝图 §7 退役清单扩容）；
-- S8-S10 可单独派工（小、独立、零行为风险——按残留清理同款纪律执行）;
-- 风险点 8 的 safeParse 归空告警接线建议提为独立小修（观测不落库=没发生纪律）；
-- person 键（跨会话按手机号认人）问题记录在案，随 D1 candidateRef 落地后再评估
-  是否升级为跨会话候选人档案（不在本批）。
+### 已执行
+
+| 项 | 处置 | 要点 |
+|---|---|---|
+| **S8** reasoning 持久化 | **已删** | 删前逐面核验：`buildLlmFactEvidence` 收下它却返回常量；`unwrapSessionFacts` 的四个下游（settlement / tool-context.builder / memory-block.formatter / context.service）零读点；**仓库外亦无消费**——`memory_snapshot.sessionFacts` 由 `flattenSessionFacts` 生成，只 collect interview_info 与 preferences 两组，reasoning 从没进过库，`extraction_accuracy_report_fn` 只读 `interview.name/phone/age/gender`；web/ 的 reasoning 命中全是 agent_invocation 的模型思考段；scripts/ 无消费。连带删掉「规则模式匹配参考线索」拼接（只喂 reasoning）。模型叙事仍留在 `EntityExtractionResult.reasoning`（提取提示词的反臆造装置），只是不进 Redis。 |
+| **S9** preferences.brands 样板 | **已删**（含 LLM schema 与提示词） | 消费面 grep 全库：除 test-suite 夹具外全是注释与测试数据，零业务读点。⚠️ 含**提取提示词改动**：模型不再被要求填 brands（填了当场被折 null，纯 token 浪费且与 brand_intents 打架），提示词两处品牌名约束改挂 brand_intents.brand。 |
+| **S9** legacySessionFactValue | **通用分支已拆，city 分支保留** | 拆除前置条件（saveFacts 入参收成 SessionFacts 单形态）本批一并完成：夹具改经 `toSessionFacts` 显式署名，**签名沿用原效果（unknown/archive），行为零变更**，只把 evidence 写成实话。P4 无守卫路径随之关闭。**city 的 CityFact / 裸字符串两条分支保留**——它们服务旧 Redis 记录，存量计数尚未复扫归零，删早了会让一条陈年记录的 pref.city 被逐字段校验静默丢掉，收益只有十行，不划算。 |
+| **S10** 健康证类型死分支 | **已删** | `buildKnownFieldMap` 那一行两侧恒 undefined（Session/UserProfile 都没这个键），从写下那天起只产出 null。`buildEnumHintsForMissing` 的同名分支**不是**死码（该字段可由岗位补充项要求进 missingFields），保留。最后一个消费者随之消失的 `normalizeArrayText` 一并删除。 |
+| **S10** procedural 三个只写字段 | **已删** | fromStage / advancedAt / reason：写它们、读回结构体，然后全库零消费（web/ 零命中、supabase/migrations 零命中、src/ 除夹具透传外零读点）。注释里"用于审计"没有兑现物——真实审计链在 advance_stage 的 logger 行、agent_execution_events、message_processing_records，以及工具**返回给模型**的 fromStage（那是返回值不是持久状态，保留）。旧 Redis 记录的三个键不再读出，存量随会话 TTL 自然过期。 |
+| **风险点 8** 前半段「整份归空」 | **已失效，无需处置** | 描述已过时：PR #1000（303eff0d，2026-08-18）把整份 safeParse 改成了**逐字段校验**，整份归空这个形态现在不存在。 |
+| **风险点 8** 后半段「只有一条 warn」 | **已接线** | 新事件类型 `session_state_field_dropped`（与 `extraction_field_dropped` 刻意分开：那条是模型抽的值没过准入门，这条是存量数据与 schema 对不上）+ 进 PersistingObserver 必落库白名单 + 飞书告警（自带节流）。事件只带 zod 字段路径与原因，**不带值本体**（PII 不进观测）。 |
+| **风险点 8** 后半段「意向清不掉」 | **已钉死，未修**（用户裁定） | 三层闸门层层拒绝空覆盖：① long-term.service 双空早退 ② supabase.store 的 `length > 0` 判据 ③ RPC 的 `p_preference_facts != '{}'::jsonb`（20260707150000 迁移，已逐行核对）。已写 characterization test 描述缺陷现状；修复形态（三态墓碑 vs 放行空覆盖）待裁定。 |
+
+### 未执行（原样保留）
+
+- **S1-S7** 并入 BookingCollectionForm 接线批（蓝图 §7 退役清单扩容），本批不动；
+- **person 键**（跨会话按手机号认人）记录在案，随 D1 candidateRef 落地后再评估是否
+  升级为跨会话候选人档案，不在本批。
+
+### 生产触发率核验（只读，限速）
+
+`session_state_field_dropped` 在 `agent_execution_events` 30 天窗**零行**——事件此前不
+存在，该指标**无法回溯测量**，这正是接线要消灭的盲区（同窗 extraction_field_dropped
+5264 行可作量级参照）。直接查生产 Redis 未能完成：Upstash MCP 的管理密钥只够到测试库
+（键面全是 `bull:local:*`、`bull:agent-test`，`factsv2:*` 零命中）。现有最近的证据是
+残留清理 §4.3 的 0817 全量复扫（443 份生产 factsv2、13733 个字段槽位，全是信封或 null）
+——与 facts 字段丢弃率极低相符，但不构成 terminal / brand_state 两个字段的结论。
+发版后按本事件实测。
