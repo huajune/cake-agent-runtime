@@ -21,6 +21,10 @@ const ALWAYS_PERSISTED_EVENT_TYPES = new Set<AgentEvent['type']>([
   'brand_resolution_ambiguous',
   // 抽取臆造字段拦截：量级应接近零，出现即弱模型劣化信号，必须可查（不能只打日志）
   'extraction_field_dropped',
+  // 落盘态字段被逐字段校验丢弃：Redis 是 facts/terminal/brand_state 的唯一事实源，
+  // 丢一个字段就是丢一段事实（terminal 丢了复聊会去骚扰已约面的人）。量级应恒为零，
+  // 非零即存储完整性事故——只打日志等于没发生（记忆审计风险点 8）。
+  'session_state_field_dropped',
   // 同轮多字段丢弃时采样的模型原始响应（8KB 封顶），用于区分幻觉与供应商串请求。
   'extraction_raw_output_sampled',
   // 候选人事实裁决档案：claim 接受率/拒绝原因分布是证据化 Phase 1/2 的核心观测

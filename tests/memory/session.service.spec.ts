@@ -47,6 +47,10 @@ const mockSystemConfig = {
   getExtractModelOverride: jest.fn().mockResolvedValue(undefined),
 };
 
+const mockAlertNotifier = {
+  sendSimpleAlert: jest.fn().mockResolvedValue(true),
+};
+
 describe('SessionService', () => {
   const mockRedisStore = {
     get: jest.fn(),
@@ -127,6 +131,8 @@ describe('SessionService', () => {
       mockSponge as never,
       mockSystemConfig as never,
       mockTracer as never,
+      undefined,
+      mockAlertNotifier as never,
     );
   });
 
@@ -255,6 +261,62 @@ describe('SessionService', () => {
       expect(state.presentedJobs).toEqual([]);
       expect(state.lastCandidateMessageAt).toBe('2026-08-18T10:00:00.000Z');
       expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('facts.interview_info.name'));
+      warnSpy.mockRestore();
+    });
+
+    // 记忆审计风险点 8 接线：丢字段此前只有一条 logger.warn——日志不进库、无人巡检，
+    // 「观测不落库=没发生」。丢 facts 是候选人档案缺一块，丢 terminal 会让复聊去骚扰
+    // 已约面/已转人工的候选人，必须能被发现。
+    it('落盘态字段被丢弃时同时落执行事件与飞书告警，不只打日志', async () => {
+      const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      mockRedisStore.getHash.mockResolvedValueOnce({
+        facts: {
+          ...FALLBACK_EXTRACTION,
+          interview_info: {
+            ...FALLBACK_EXTRACTION.interview_info,
+            name: { value: '张三', confidence: 'high', source: 'ai_guess', evidence: '我叫张三' },
+          },
+        },
+        terminal: 'handed_off',
+      });
+
+      await service.getSessionState('corp1', 'user1', 'session1');
+
+      expect(mockTracer.emit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'session_state_field_dropped',
+          userId: 'user1',
+          field: 'facts',
+          issues: [expect.stringContaining('facts.interview_info.name')],
+        }),
+      );
+      expect(mockAlertNotifier.sendSimpleAlert).toHaveBeenCalledWith(
+        expect.stringContaining('会话状态字段被丢弃'),
+        expect.stringContaining('facts'),
+        'error',
+      );
+      warnSpy.mockRestore();
+    });
+
+    it('观测事件不带值本体（PII 不进观测）', async () => {
+      const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      mockRedisStore.getHash.mockResolvedValueOnce({
+        facts: {
+          ...FALLBACK_EXTRACTION,
+          interview_info: {
+            ...FALLBACK_EXTRACTION.interview_info,
+            phone: { value: '18271421690', confidence: 'high', source: 'ai_guess', evidence: 'x' },
+          },
+        },
+      });
+
+      await service.getSessionState('corp1', 'user1', 'session1');
+
+      const emitted = mockTracer.emit.mock.calls
+        .map(([event]: [Record<string, unknown>]) => event)
+        .filter((event) => event.type === 'session_state_field_dropped');
+      expect(emitted).toHaveLength(1);
+      expect(JSON.stringify(emitted[0])).not.toContain('18271421690');
       warnSpy.mockRestore();
     });
 

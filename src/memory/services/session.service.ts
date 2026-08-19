@@ -2,6 +2,7 @@ import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import type { CityAttestation, TurnExtractionToolFacts } from '@shared-types/turn.types';
 import { AgentTracerService } from '@observability/agent-tracer.service';
+import { AlertNotifierService } from '@notification/services/alert-notifier.service';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
 import { ModelRole } from '@/llm/llm.types';
 import { SpongeService } from '@/sponge/sponge.service';
@@ -148,6 +149,8 @@ export class SessionService {
     private readonly tracer?: AgentTracerService,
     @Optional()
     private readonly chatSession?: ChatSessionService,
+    @Optional()
+    private readonly alertNotifier?: AlertNotifierService,
   ) {}
 
   // ==================== store ====================
@@ -191,7 +194,7 @@ export class SessionService {
     if (!hashFields && !legacyContent) return { ...EMPTY_SESSION_STATE };
 
     const combined = hashFields ?? legacyContent ?? {};
-    const content = this.parseSessionStateFields(combined);
+    const content = this.parseSessionStateFields(combined, { corpId, userId, sessionId });
 
     return {
       ...EMPTY_SESSION_STATE,
@@ -203,17 +206,27 @@ export class SessionService {
   }
 
   /**
-   * 逐字段校验读出：坏字段丢弃并 warn，其余字段照常返回。
+   * 逐字段校验读出：坏字段丢弃并告警，其余字段照常返回。
    *
    * 为什么不是整份 safeParse：Redis 是 facts / terminal / brand_state 的唯一事实源，
    * 整份校验会把任一字段的 schema 漂移（跨版本词表不一致、脏写）放大成「整份会话状态
    * 归空」——终态一并丢失后，复聊会继续触达已约面/已转人工的候选人。降级粒度必须是字段。
    * 存储形态本就是按字段的 Redis hash（旧 blob 的 top-level 键同名），逐字段校验与之同构。
+   *
+   * **丢弃必须能被发现**（2026-08-19，记忆审计风险点 8 接线）：此前只有一条
+   * logger.warn，日志不进库、无人巡检——「观测不落库=没发生」。丢字段是丢事实：
+   * 丢 facts 是候选人档案缺一块，丢 terminal 是复聊去骚扰已约面的人。现在同时
+   * 落 `agent_execution_events`（同 traceId 可与回合流水 join）与飞书告警
+   * （AlertNotifierService 自带节流，坏数据反复读到不会刷屏）。
    */
-  private parseSessionStateFields(combined: Record<string, unknown>): Partial<WeworkSessionState> {
+  private parseSessionStateFields(
+    combined: Record<string, unknown>,
+    scope: { corpId: string; userId: string; sessionId: string },
+  ): Partial<WeworkSessionState> {
     const fieldSchemas = SessionFactsRedisContentSchema.shape as Record<string, z.ZodType>;
     const content: Record<string, unknown> = {};
     const invalidIssues: string[] = [];
+    const droppedFields: string[] = [];
 
     for (const [field, rawValue] of Object.entries(combined)) {
       const fieldSchema = fieldSchemas[field];
@@ -222,6 +235,7 @@ export class SessionService {
 
       const parsed = fieldSchema.safeParse(rawValue);
       if (!parsed.success) {
+        droppedFields.push(field);
         invalidIssues.push(
           ...parsed.error.issues.map(
             (issue) =>
@@ -234,12 +248,51 @@ export class SessionService {
     }
 
     if (invalidIssues.length > 0) {
-      this.logger.warn(
-        `[getSessionState] Invalid session facts field(s) dropped: ${invalidIssues.join('; ')}`,
-      );
+      this.reportDroppedStateFields(scope, droppedFields, invalidIssues);
     }
 
     return content as Partial<WeworkSessionState>;
+  }
+
+  /**
+   * 落盘态字段被丢弃的观测出口：日志 + 执行事件 + 飞书告警，一条都不省。
+   *
+   * 告警是 fire-and-forget：读会话状态在消息处理主链路上，告警通道抖动不得拖慢或
+   * 打断它——但失败要留痕，否则"告警自己坏了"又成了没人知道的事。
+   */
+  private reportDroppedStateFields(
+    scope: { corpId: string; userId: string; sessionId: string },
+    droppedFields: string[],
+    invalidIssues: string[],
+  ): void {
+    const detail = invalidIssues.join('; ');
+    this.logger.warn(`[getSessionState] Invalid session facts field(s) dropped: ${detail}`);
+
+    for (const field of droppedFields) {
+      this.tracer?.emit({
+        type: 'session_state_field_dropped',
+        userId: scope.userId,
+        field,
+        // 只带 zod 的字段路径与原因，不带值本体——观测事件不进 PII。
+        issues: invalidIssues.filter((issue) => issue.startsWith(`${field}.`)),
+      });
+    }
+
+    void this.alertNotifier
+      ?.sendSimpleAlert(
+        '会话状态字段被丢弃（Redis 落盘态与 schema 失配）',
+        [
+          `会话：${scope.corpId}/${scope.userId}/${scope.sessionId}`,
+          `丢弃字段：${droppedFields.join('、')}`,
+          `明细：${detail}`,
+          'Redis 是 facts / terminal / brand_state 的唯一事实源，丢字段即丢事实：',
+          'facts 丢是档案缺块，terminal 丢会让复聊去骚扰已约面/已转人工的候选人。',
+        ].join('\n'),
+        'error',
+      )
+      .catch((error: unknown) => {
+        this.logger.warn(`[getSessionState] 字段丢弃告警发送失败: ${toErrorMessage(error)}`);
+      });
   }
 
   /**
