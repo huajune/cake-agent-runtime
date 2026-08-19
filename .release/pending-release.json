@@ -1,7 +1,7 @@
 {
   "baseVersion": "10.43.0",
   "nextVersion": "10.44.0",
-  "updatedAt": "2026-08-18",
+  "updatedAt": "2026-08-19",
   "sourceBranch": "develop",
   "entries": [
     {
@@ -369,6 +369,31 @@
         "其他说明：按要求仅做本地验证；未连接生产链路、未执行发版。",
         "既有策展回归 / 复测结论的案卷基线是 `cb8ee452`，该提交早于最终 HEAD **110 个提交**。",
         "因此那批结论**不覆盖**最终 HEAD 上的改动（含上表 6 笔审计修复）。合并前应对最终 HEAD 重跑回归集，勿以旧案卷结论作为最终验收依据。"
+      ]
+    },
+    {
+      "number": "1008",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1008",
+      "title": "岗位查询显式 location.range 在本地距离过滤生效",
+      "author": "huajune",
+      "mergedAt": "2026-08-19",
+      "businessUpdates": [
+        "岗位查询显式 location.range 在本地距离过滤生效"
+      ],
+      "summary": [
+        "岗位查询显式 location.range 在本地距离过滤生效"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "岗位查询显式 location.range 在本地距离过滤生效"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "新增 4 个单测：range=20000 保留 15km 门店 / 超出 20km 仍过滤且话术按 20km / range=50000 截断到 30km 并披露 / 未传 range 走阈值兜底不变",
+        "`duliday-job-list.tool.spec.ts` 92/92 通过；`tsc --noEmit`、changed-files ESLint（--max-warnings=0）、prettier check 均绿"
       ]
     }
   ],
