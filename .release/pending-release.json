@@ -422,6 +422,28 @@
         "spec 补 4 组用例；`promise-reconciliation` 18/18、`hard-rules.service` 393/393、`turn-outcome-promise-reconciliation` 2/2",
         "本地 `ci:check` 全绿（455 套件 / 7286 测试）"
       ]
+    },
+    {
+      "number": "1012",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1012",
+      "title": "新增 v10.44.0 发版底账",
+      "author": "huajune",
+      "mergedAt": "2026-08-19",
+      "businessUpdates": [
+        "新增 v10.44.0 发版底账"
+      ],
+      "summary": [
+        "新增 v10.44.0 发版底账"
+      ],
+      "features": [
+        "新增 v10.44.0 发版底账"
+      ],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": []
     }
   ],
   "lastRelease": {
