@@ -113,6 +113,15 @@ const GEOCODE_ANCHOR_COORD_TOLERANCE = 0.005;
  * 5 公里搜索圈整体画错位置（4.5km 门店被算成 1.2km）。
  */
 const MODEL_SUPPLIED_COORD_DEVIATION_KM = 1;
+/**
+ * 模型显式传入 location.range 时，本地距离后置过滤的硬上限（km）。
+ * 候选人主动要求更大范围、或点名品牌 0 条放宽复查时，模型可显式传更大 range
+ * 放宽过滤（与 DESCRIPTION「点名品牌 0 条时放大到 30000」口径一致）；
+ * 上限截断防止把全城岗位都算作"附近"。
+ * badcase batch_6a850deece406a6aee24c149：此前本地过滤只读业务阈值，模型传
+ * range=20000 实际仍按 10km 过滤，模型据此对候选人谎称"扩到 20 公里查了没有"。
+ */
+const EXPLICIT_RANGE_CAP_KM = 30;
 
 /**
  * 模型品牌入参全部被拒（未命中品牌库/冲突别名）时的结构化结果（§8.2.5）。
@@ -249,7 +258,8 @@ const inputSchema = z.object({
         .describe(
           '位置筛选范围，单位米。' +
             '若不传，工具会按业务阈值 max_recommend_distance_km 自动兜底（×1000 转米）；' +
-            '需要更小或更大的查询半径时显式传值',
+            '需要更小或更大的查询半径（如候选人明说"远点也行 / 20 公里内都能接受"）时显式传值，' +
+            '距离过滤按传入值生效；硬上限 30000（30km），超出按 30km 截断并在结果中披露',
         ),
     })
     .optional()
@@ -596,7 +606,7 @@ const DESCRIPTION = `查询在招岗位列表。支持渐进式数据返回，�
 
 | 候选人当前在问什么                   | 开启的开关                                                                    |
 | ------------------------------------ | ----------------------------------------------------------------------------- |
-| 哪些门店、哪里近、位置方便吗         | 先 geocode，再把城市/区域/品牌连同 location.longitude / location.latitude 一起传；需要 10km / 5km 内筛选时补 location.range |
+| 哪些门店、哪里近、位置方便吗         | 先 geocode，再把城市/区域/品牌连同 location.longitude / location.latitude 一起传；需要非默认查询半径时补 location.range（米）：可缩小（如 5000），候选人明说接受更远时也可放大（上限 30000，超出按 30km 截断） |
 | 工资多少、薪资怎么样                 | includeJobSalary                                                              |
 | 怎么排班、上班时间、能不能兼职       | includeWorkTime                                                               |
 | 有什么要求、我符不符合、要不要健康证 | includeHiringRequirement                                                      |
@@ -628,7 +638,7 @@ const DESCRIPTION = `查询在招岗位列表。支持渐进式数据返回，�
 - **区级定位下距离必须按估算口径转述**：候选人只报了区/市名（geocode 返回 areaLevelQuery=true，或本工具自动做了区级兜底）时，本轮结果头部会声明"定位精度：区级代表点"，所有距离数字都是按行政区代表点的估算值，且已渲染成"约 X.Xkm（按 XX 估算）"。转述给候选人时**必须保留"约 / 按 XX 估算"口径**（或先追问具体位置/商圈/请候选人发定位后重查再给精确距离）；**严禁**去掉"约"和估算说明把它包装成精确距离——区级锚点与候选人真实位置可能差数公里，说成精确距离会被守卫拦截并引发投诉
 - **同品牌按距离最近优先**：候选人有 brand intent 时（明确说出品牌名 / 反复指代某品牌），先看 queryMeta.brandNearestStores 同品牌最近门店列表；同品牌返回多家时，必须按 brandNearestStores 的距离升序展示，不得跳过更近的同品牌门店转推更远的同品牌门店
 - **明确品牌意向时不静默换品牌**：候选人明确说出"找成都你六姐 / 我想去肯德基"时，brand 必须进 brandIdList；**不得**主动反问"看看其他品牌吗"，更不得默默换成其他品牌推荐。本工具会在 brandAliasList 非空时硬过滤结果到该品牌；如果你想跨品牌推就别把 brandAliasList 填上去——但候选人明确品牌意向时禁止省略该字段
-- **点名品牌豁免距离上限——0 条时先放宽距离复查再下结论**：候选人主动点名的品牌不受 max_recommend_distance_km（约 10km）约束（该阈值只约束 Agent 主动推荐）。按候选人位置在距离上限内查该品牌得 **0 条**时，**禁止**直接说"暂时没有 X 品牌的岗位"或拉群收口，必须**对该品牌放宽距离再查一次**（去掉 location.range 或放大到 30000，仅保留 brand 过滤 + 城市/坐标）：
+- **点名品牌豁免距离上限——0 条时先放宽距离复查再下结论**：候选人主动点名的品牌不受 max_recommend_distance_km（约 10km）约束（该阈值只约束 Agent 主动推荐）。按候选人位置在距离上限内查该品牌得 **0 条**时，**禁止**直接说"暂时没有 X 品牌的岗位"或拉群收口，必须**对该品牌放宽距离再查一次**（把 location.range 放大到 30000，保留 brand 过滤 + 城市/坐标；**不要只去掉 range**——保留坐标而缺省 range 会被业务阈值兜底拉回约 10km。若要全城查，去掉整个 location 只按城市 + 品牌查）：
   - 放宽后查到较远门店 → 如实告知最近门店大致距离让候选人决定（"X 最近的门店离你大概 Y 公里，稍远，能接受吗"），**严禁**把"超距离"说成"没有/暂无在招"——候选人常在 BOSS 等平台已看到该品牌，谎称没有会直接流失
   - 只有放宽后该品牌在**整个城市**仍 0 条，才告知"X 品牌目前你所在城市暂无在招"，再按"无岗时的动作链"收口
 - **缺位置不要直接返回 0 条**：调本工具前必须确认候选人位置（cityNameList 或 location 坐标）。**禁止**在候选人没明示位置时直接把工具结果当"无岗"收口拉群——候选人的真实意图可能是"还没说位置"而不是"没岗"。无位置上下文时先回复一句中性询问"请问您方便面试的城市/区域是哪里？"再决定下一步，不要把"工具 0 条"等同于"候选人无意向"
@@ -1211,7 +1221,19 @@ export function buildJobListTool(
           const distanceThreshold = context.runtime.thresholds?.find(
             (t) => t.flag === 'max_recommend_distance_km',
           );
-          const maxKm = distanceThreshold?.max;
+          // 模型显式传入 location.range 时，本地距离过滤以 range 为准（schema 契约：
+          // 候选人要求更广/更窄半径时的放宽出口），超过 EXPLICIT_RANGE_CAP_KM 截断；
+          // 未传时按业务阈值兜底（badcase batch_6a850deece406a6aee24c149：此前只读
+          // 阈值，range=20000 实际仍按 10km 过滤，模型据"附近 10km 内"的结果口径
+          // 谎称"扩到 20 公里查了没有"）。
+          const requestedRangeKm =
+            location?.range != null && location.range > 0 ? location.range / 1000 : null;
+          const rangeClampedByCap =
+            requestedRangeKm != null && requestedRangeKm > EXPLICIT_RANGE_CAP_KM;
+          const maxKm =
+            requestedRangeKm != null
+              ? Math.min(requestedRangeKm, EXPLICIT_RANGE_CAP_KM)
+              : distanceThreshold?.max;
 
           // 关键优化：在距离过滤前补抓后续页，避免“第一页只有1条近距离岗位”
           if (hasUserCoords && maxKm != null && total > jobs.length) {
@@ -1690,6 +1712,11 @@ export function buildJobListTool(
               ? brandPlan.disclosure
               : null;
 
+          // 传入 range 超硬上限时知情披露：防止模型按传入值向候选人转述"已查 Xkm"
+          const rangeClampNotice = rangeClampedByCap
+            ? `ℹ️ 本次距离过滤按硬上限 ${EXPLICIT_RANGE_CAP_KM}km 生效（传入 range≈${Math.round(requestedRangeKm!)}km 超出上限）。向候选人转述查询范围时以 ${EXPLICIT_RANGE_CAP_KM}km 为准。`
+            : null;
+
           if (formatSet.has('markdown')) {
             const jobsMarkdown = formatJobsToMarkdown(
               jobs,
@@ -1706,6 +1733,7 @@ export function buildJobListTool(
                 : null,
               isRepeatQuery ? REPEAT_QUERY_NOTICE : null,
               brandFilterNotice ? `ℹ️ ${brandFilterNotice}` : null,
+              rangeClampNotice,
               summerWorkerStrictNotice,
               laborFormRelaxNotice,
               studentFilterNotice,
@@ -1793,6 +1821,11 @@ export function buildJobListTool(
               { knownCity: knownCityForConflict },
             ),
             distanceThresholdKm: maxKm ?? null,
+            // 距离上限来源：model_range=模型显式传 location.range（候选人要求的半径），
+            // threshold=业务阈值兜底；distanceRangeClamped=true 表示传入值被硬上限截断
+            distanceCapSource:
+              requestedRangeKm != null ? 'model_range' : maxKm != null ? 'threshold' : null,
+            distanceRangeClamped: rangeClampedByCap,
             distanceScanPages,
             distanceScanTruncated,
             scheduleFilter: candidateScheduleConstraint

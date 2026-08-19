@@ -879,6 +879,109 @@ describe('buildJobListTool', () => {
     );
   });
 
+  describe('显式 location.range 在本地距离过滤生效（badcase batch_6a850deece406a6aee24c149）', () => {
+    // 用户坐标 (121.0, 31.0)，门店纬度 +0.135° ≈ 15km
+    const userCoords = { longitude: 121.0, latitude: 31.0 };
+    const storeAtKm15 = () =>
+      makeJobData({
+        basicInfo: {
+          jobId: 7001,
+          storeInfo: {
+            storeName: '十五公里店',
+            storeAddress: '上海市奉贤区xx路',
+            storeCityName: '上海',
+            storeRegionName: '奉贤区',
+            longitude: 121.0,
+            latitude: 31.135,
+          },
+        },
+      });
+    const thresholdCtx = (): JobListTestContext => ({
+      ...mockContext,
+      thresholds: [
+        {
+          flag: 'max_recommend_distance_km',
+          label: '推荐距离上限',
+          rule: '仅推荐距离范围内门店',
+          max: 10,
+          unit: 'km',
+        },
+      ],
+    });
+
+    it('传 range=20000 时 15km 门店不被业务阈值 10km 截掉', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [storeAtKm15()], total: 1 });
+
+      const result = await executeTool(thresholdCtx(), {
+        ...defaultInput,
+        cityNameList: ['上海'],
+        location: { ...userCoords, range: 20000 },
+      });
+
+      expect(result.errorType).toBeUndefined();
+      expect(result.resultCount).toBe(1);
+      expect(result.queryMeta.distanceThresholdKm).toBe(20);
+      expect(result.queryMeta.distanceCapSource).toBe('model_range');
+      expect(result.queryMeta.distanceRangeClamped).toBe(false);
+    });
+
+    it('传 range=20000 时超出 20km 的门店仍被过滤，无结果话术按 20km 口径', async () => {
+      // 门店纬度 +0.23° ≈ 25.5km
+      const storeAtKm25 = makeJobData({
+        basicInfo: {
+          jobId: 7002,
+          storeInfo: {
+            storeName: '廿五公里店',
+            storeAddress: '上海市金山区xx路',
+            storeCityName: '上海',
+            storeRegionName: '金山区',
+            longitude: 121.0,
+            latitude: 31.23,
+          },
+        },
+      });
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [storeAtKm25], total: 1 });
+
+      const result = await executeTool(thresholdCtx(), {
+        ...defaultInput,
+        cityNameList: ['上海'],
+        location: { ...userCoords, range: 20000 },
+      });
+
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_NO_RESULTS);
+      expect(result._outcome).toContain('20km');
+      expect(result.noMatchScript.querySummary).toContain('20km');
+    });
+
+    it('range 超硬上限（50000）按 30km 截断，并在结果中披露截断', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [storeAtKm15()], total: 1 });
+
+      const result = await executeTool(thresholdCtx(), {
+        ...defaultInput,
+        cityNameList: ['上海'],
+        location: { ...userCoords, range: 50000 },
+      });
+
+      expect(result.resultCount).toBe(1);
+      expect(result.queryMeta.distanceThresholdKm).toBe(30);
+      expect(result.queryMeta.distanceRangeClamped).toBe(true);
+      expect(result.markdown).toContain('硬上限 30km');
+    });
+
+    it('未传 range 时仍按业务阈值过滤（15km 门店被 10km 阈值截掉）', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [storeAtKm15()], total: 1 });
+
+      const result = await executeTool(thresholdCtx(), {
+        ...defaultInput,
+        cityNameList: ['上海'],
+        location: { ...userCoords },
+      });
+
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_NO_RESULTS);
+      expect(result._outcome).toContain('10km');
+    });
+  });
+
   it('normalizes Yanji to Sponge prefecture city and region even without coordinates', async () => {
     const yanjiJob = makeJobData({
       basicInfo: {
