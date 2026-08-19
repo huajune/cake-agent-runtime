@@ -63,4 +63,30 @@ describe('resolveLocalHealthCertificateEligibility', () => {
     expect(empty.status).toBe('unknown');
     expect(empty.explicitNoCertificate).toBeUndefined();
   });
+
+  describe('否定答法不得判成持证（2026-08-19 修复）', () => {
+    // 「没有健康证」逐字包含「有健康证」，肯定判据缺否定前瞻时被判 local_valid/spongeValue=1。
+    // 同义的「无健康证」「我没健康证」当时却正确落 unknown——只有最常见的这一种写法翻车，
+    // 且健康证是有证约岗位的准入门，判反会让候选人一路走到真实建单才暴露。
+    it.each([
+      '没有健康证',
+      '没有健康证，可以办',
+      '没有本地健康证',
+      '我没有本地有效健康证',
+      '暂时没有健康证',
+    ])('%s 不得落 local_valid', (latestAnswer) => {
+      const result = resolveLocalHealthCertificateEligibility({ latestAnswer });
+      expect(result.status).not.toBe('local_valid');
+      expect(result.spongeValue).not.toBe(1);
+    });
+
+    it('肯定答法照常判持证（修复不得误伤召回）', () => {
+      expect(resolveLocalHealthCertificateEligibility({ latestAnswer: '有健康证' }).status).toBe(
+        'local_valid',
+      );
+      expect(
+        resolveLocalHealthCertificateEligibility({ latestAnswer: '我有上海本地健康证' }).status,
+      ).toBe('local_valid');
+    });
+  });
 });

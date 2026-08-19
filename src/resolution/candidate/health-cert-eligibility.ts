@@ -55,8 +55,18 @@ function isNonLocalCertificate(text: string): boolean {
   return /非本地|不是本地|外地|异地/.test(text) && /健康证/.test(text);
 }
 
+/**
+ * 「有本地健康证」的肯定判据。
+ *
+ * ⚠️ 否定前瞻不可省（2026-08-19 修复）：裸 `/本地.{0,4}健康证/` 会把「**没有**本地
+ * 健康证」判成持证——否定词与"本地健康证"之间隔着字，`(?<![没无不未非])` 这种紧邻
+ * 前瞻够不着，必须显式排除句中出现的否定式。判反的代价是最高的那一档：健康证是
+ * 有证约岗位的准入门，判成"有证"会让候选人一路走到真实建单才暴露。
+ */
 function isExplicitLocalCertificate(text: string): boolean {
-  return !isNonLocalCertificate(text) && /本地.{0,4}健康证|健康证.{0,4}本地/.test(text);
+  if (isNonLocalCertificate(text)) return false;
+  if (/(?:没有|没|无|不|未|非)[^，。;；]{0,6}本地.{0,4}健康证/.test(text)) return false;
+  return /本地.{0,4}健康证|健康证.{0,4}本地/.test(text);
 }
 
 function isAcceptance(text: string): boolean {
@@ -125,7 +135,13 @@ export function resolveLocalHealthCertificateEligibility(params: {
       reason: '候选人接受办理本地健康证',
     };
   }
-  if (isExplicitLocalCertificate(effective) || /^\s*有\s*$|有健康证/.test(effective)) {
+  // `(?<![没无不未非])`：「**没**有健康证」逐字包含「有健康证」，无否定前瞻则最常见的
+  // 否定答法会被判成持证（2026-08-19 实测：'没有健康证' → local_valid/spongeValue=1，
+  // 而同义的 '无健康证' / '我没健康证' 却正确落 unknown——只有这一种写法翻车）。
+  if (
+    isExplicitLocalCertificate(effective) ||
+    /^\s*有\s*$|(?<![没无不未非])有健康证/.test(effective)
+  ) {
     return {
       status: 'local_valid',
       spongeValue: 1,
