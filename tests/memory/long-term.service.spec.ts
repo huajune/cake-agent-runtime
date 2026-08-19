@@ -156,6 +156,71 @@ describe('LongTermService', () => {
     });
   });
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // ⚠️ 缺陷钉死（characterization test，记忆审计风险点 8 后半段）
+  //
+  //   long-term preference_facts 是**快照式整列覆盖**，但空快照不覆盖——候选人清空
+  //   意向后，长期意向永远清不掉，并继续以 [历史求职意向] 段注入每一轮提示词。
+  //
+  //   三层闸门层层都拒绝清空，任何一层单独修都不够：
+  //   ① long-term.service：profileFacts 与 preferenceFacts 双空 → 早退，一个字都不写；
+  //   ② supabase.store：`Object.keys(preferenceFacts).length > 0` 才传值，否则传 null；
+  //   ③ RPC upsert_long_term_profile_facts：`preference_written` 要求
+  //      `p_preference_facts != '{}'::jsonb`（见 20260707150000 迁移）。
+  //
+  //   **下面的断言描述的是缺陷现状，不是期望行为**。修复形态（三态墓碑 vs 放行空覆盖）
+  //   等用户裁定；届时这些断言应当被改写，而不是被删除——它们的作用正是让"顺手修一下"
+  //   不可能悄悄发生。
+  // ══════════════════════════════════════════════════════════════════════════
+  describe('缺陷钉死：清空意向后长期 preference_facts 清不掉', () => {
+    /** 候选人把意向全撤了：sessionFacts 的 preferences 全 null。 */
+    const clearedPreferences = () =>
+      toSessionFacts(
+        { ...FALLBACK_EXTRACTION, reasoning: '候选人撤回了全部求职意向' },
+        { confidence: 'medium', source: 'model', evidence: '会话沉淀' },
+      );
+
+    it('【现状·缺陷】意向全空且无 profile 事实时整个写入被跳过——旧意向原样留在库里', async () => {
+      await service.writeFromSettlement('corp1', 'user1', clearedPreferences());
+
+      // 一次 upsert 都没发，DB 里的旧 preference_facts 分毫未动。
+      expect(mockSupabaseStore.upsertProfileFacts).not.toHaveBeenCalled();
+    });
+
+    it('【现状·缺陷】即使有 profile 事实同行写入，空意向也不作为第五参传下去', async () => {
+      const facts = clearedPreferences();
+      facts.interview_info.name = sessionFactValue('张三', {
+        confidence: 'high',
+        source: 'rule',
+        evidence: '结构化姓名识别：张三',
+      });
+
+      await service.writeFromSettlement('corp1', 'user1', facts);
+
+      expect(mockSupabaseStore.upsertProfileFacts).toHaveBeenCalledTimes(1);
+      const preferenceArg = mockSupabaseStore.upsertProfileFacts.mock.calls[0][4];
+      // 空对象传下去，store 层会把它折成 null（`hasPreferences` 判据），
+      // RPC 再以 `!= '{}'` 二次拒绝——三层里任意一层都足以让清空落空。
+      expect(preferenceArg).toEqual({});
+      expect(Object.keys(preferenceArg)).toHaveLength(0);
+    });
+
+    it('【对照】非空意向照常整列覆盖——说明缺陷只在"空"这一路', async () => {
+      const facts = clearedPreferences();
+      facts.preferences.city = sessionFactValue('上海', {
+        confidence: 'high',
+        source: 'rule',
+        evidence: '城市识别：上海',
+      });
+
+      await service.writeFromSettlement('corp1', 'user1', facts);
+
+      expect(mockSupabaseStore.upsertProfileFacts.mock.calls[0][4]).toEqual(
+        expect.objectContaining({ city: expect.objectContaining({ value: '上海' }) }),
+      );
+    });
+  });
+
   describe('writeFromSettlement', () => {
     it('should preserve the session producer chapter and evidence when settling profile facts', async () => {
       const sessionFacts = toSessionFacts(
