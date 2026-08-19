@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { ScenarioType } from '@enums/agent.enum';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
@@ -147,7 +148,7 @@ export class AcceptInboundMessageService {
     const saved = await this.recordUserMessageToHistory(messageData, content).then(
       (inserted) => inserted,
       (error) => {
-        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorMessage = toErrorMessage(error);
         this.logger.warn(
           `[过滤归档] 写入失败 [${messageData.messageId}], reason=${filterResult.reason}: ${errorMessage}`,
         );
@@ -204,7 +205,7 @@ export class AcceptInboundMessageService {
     void this.recordUserMessageToHistory(messageData, filterResult.content)
       .then(() => this.wecomObservability.markHistoryStored(messageData.messageId))
       .catch((error) => {
-        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorMessage = toErrorMessage(error);
         this.logger.warn(`[异步历史记录] 写入失败 [${messageData.messageId}]: ${errorMessage}`);
       });
 
@@ -230,7 +231,7 @@ export class AcceptInboundMessageService {
     void this.session
       .recordCandidateActivity(corpId, userId, messageData.chatId, new Date(timestamp))
       .catch((error: unknown) => {
-        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorMessage = toErrorMessage(error);
         this.logger.warn(
           `[reengagement] lastCandidateMessageAt 写入失败 [${messageData.messageId}]: ${errorMessage}`,
         );
@@ -293,7 +294,7 @@ export class AcceptInboundMessageService {
           await this.ensureLongTermProfile(messageData, corpId, userId);
         }
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorMessage = toErrorMessage(error);
         this.logger.warn(
           `[漏斗] 候选人入站事件记录失败 [${messageData.messageId}]: ${errorMessage}`,
         );
@@ -343,7 +344,7 @@ export class AcceptInboundMessageService {
         `[新好友] 已开户长期记忆元数据: userId=${userId}, chatId=${messageData.chatId}`,
       );
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = toErrorMessage(error);
       this.logger.warn(
         `[新好友] 长期记忆元数据开户失败 [${messageData.messageId}]: ${errorMessage}`,
       );
@@ -488,7 +489,7 @@ export class AcceptInboundMessageService {
         `[真人介入] 已自动暂停候选人托管 [${messageData.messageId}], chatId=${chatId}, source=${messageData.source}(${getMessageSourceDescription(messageData.source)})`,
       );
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = toErrorMessage(error);
       this.logger.error(
         `[真人介入] 自动暂停候选人托管失败 [${messageData.messageId}], chatId=${chatId}: ${errorMessage}`,
       );
@@ -576,7 +577,7 @@ export class AcceptInboundMessageService {
         },
       });
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = toErrorMessage(error);
       this.logger.error(
         `[真人介入] 飞书通知发送失败 [${messageData.messageId}], chatId=${chatId}: ${errorMessage}`,
       );
@@ -682,7 +683,7 @@ export class AcceptInboundMessageService {
       );
       return userMessage?.candidateName;
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = toErrorMessage(error);
       this.logger.debug(`获取候选人昵称失败 [${chatId}]: ${errorMessage}`);
       return undefined;
     }

@@ -1,14 +1,7 @@
-import { normalizeCity } from '@biz/group-task/utils/city-normalize.util';
-import {
-  resolveCityFromDistrict,
-  resolveCityFromLocation,
-  scanGeoSignalsFromText,
-} from '@resolution/geo';
-import {
-  fieldValues,
-  isVisualDescriptionText,
-  type FinalizedVisualFactSheet,
-} from '@resolution/visual';
+import { normalizeCityName as normalizeCity } from '@resolution/geo';
+import { scanGeoSignalsFromText } from '@resolution/geo';
+import type { FinalizedVisualFactSheet } from '@resolution/signal/visual';
+import { mapLocationCityCandidates } from '@resolution/evidence/admission';
 
 /**
  * invite_to_group 城市 provenance gate（tool guardrail，纯函数）。
@@ -29,7 +22,7 @@ import {
  *   字面匹配漏掉区级地名 → 城市的确定性推断，新增 district_inference 档
  *   （静态映射曾落 tools 层私表 district-city-map.ts）。
  * - 2026-07-27 证据化穿线（badcase 6a671722 沈阳 / 6a618a6e 上海浦东 GPS 连拒 3 次）：
- *   geocode unique 确权与定位分享逆解析现已按 source='tool' 写入 sessionFacts.pref.city
+ *   geocode unique 确权与定位分享逆解析现已按 source='system' 写入 sessionFacts.pref.city
  *   （memory-lifecycle save_attested_city / extractFacts 定位注入），跨轮场景由
  *   session_fact 档（①）命中——工具确权是外生证据，不属于"模型自证"。
  * - 2026-07-28 #765：turn_geocode 档补同轮时序空档（④）。
@@ -72,8 +65,10 @@ export interface InviteCityGateInput {
   sessionCity: string | null;
   /** 本会话候选人侧原文（user role 文本）。 */
   userTexts: readonly string[];
+  /** prep 时刻一次性扫描出的区名/地标城市集合。 */
+  geoSignalCities: ReadonlySet<string>;
   /**
-   * 本轮 geocode unique 解析确权的城市（context.geocodeResolvedAnchors）。
+   * 本轮 geocode unique 解析确权的城市（context.ledger.geo.anchors）。
    *
    * 同轮时序空档（v10.31.0 发版后残留 2 例实证，chat 6a680c63"高明万悦天地"/
    * 6a66d0f8"莘庄"）：城市确权走回合收尾写档、下轮才进 sessionCity，而
@@ -83,42 +78,23 @@ export interface InviteCityGateInput {
    */
   turnResolvedCities?: readonly (string | null | undefined)[];
   /**
-   * 本轮视觉事实 sheet（context.turnVisualFactSheets，visual-fact-structuring R3）。
+   * 本轮视觉事实 sheet（context.ledger.visual.factSheets，visual-fact-structuring R3）。
    * map_location 截图的城市字段是候选人位置证据，作第五档出处；job_posting 的
    * 门店城市不算（badcase x3pdj7qh：截图门店城市被当候选人城市拉错群）。
    */
   turnVisualSheets?: ReadonlyArray<{ messageId: string; sheet: FinalizedVisualFactSheet }>;
 }
 
-/**
- * 候选人原文经 geo 白名单扫描可推导的城市集合（归一化裸名）。
- * 覆盖区名唯一映射（顺义→北京、黄埔→广州）与高置信地标（陆家嘴→上海）；
- * 出处判定不做意图判定：提到他人城市/否定语境仍会被计入（与 user_text 档同限制）。
- */
-function inferCitiesFromGeoSignals(userTexts: readonly string[]): Set<string> {
-  const cities = new Set<string>();
-  for (const text of userTexts) {
-    if (!text) continue;
-    // R3 负向面（badcase x3pdj7qh）：视觉描述里的城市（岗位截图门店地、第三方
-    // 聊天截图）不算候选人位置出处。地图截图的城市走 turnVisualSheets/sessionCity
-    //（source=tool）两条正向通道，不再从描述全文里捞。
-    if (isVisualDescriptionText(text.trim())) continue;
-    const scan = scanGeoSignalsFromText(text);
-    for (const hit of scan.districtHits) {
-      const city = resolveCityFromDistrict(hit.key);
-      if (city) cities.add(normalizeCity(city));
-    }
-    for (const location of scan.locations) {
-      const city = resolveCityFromLocation(location);
-      if (city) cities.add(normalizeCity(city));
-    }
-  }
-  return cities;
-}
-
 export function evaluateInviteCityGate(input: InviteCityGateInput): InviteCityGateVerdict {
   const requested = normalizeCity(input.requestedCity);
   const session = normalizeCity(input.sessionCity);
+
+  // normalizeCityName 对空/纯后缀输入返回 null（PR #1000 评审 P2-1）：不判空则下方
+  // `requested.length` NPE，被外层 catch 误分类成 INVITE_API_FAILED 且 replyInstruction
+  // 错路由。city 入参解析不出即无出处，走 city_unverified 收集语义。
+  if (!requested) {
+    return { decision: 'reject', reason: 'city_unverified' };
+  }
 
   if (session && session === requested) {
     return { decision: 'allow', matchedBy: 'session_fact' };
@@ -135,7 +111,7 @@ export function evaluateInviteCityGate(input: InviteCityGateInput): InviteCityGa
   // 地名白名单确定性推断：候选人报了唯一区名（"顺义区马坡镇"→北京）或高置信
   // 地标（"陆家嘴"→上海），视同报了所属城市。与 user_text 同级，优先于 session
   // 冲突判定（候选人本轮报的区代表当前位置，允许覆盖旧会话事实）。
-  if (inferCitiesFromGeoSignals(input.userTexts).has(requested)) {
+  if (input.geoSignalCities.has(requested)) {
     return { decision: 'allow', matchedBy: 'district_inference' };
   }
 
@@ -154,13 +130,7 @@ export function evaluateInviteCityGate(input: InviteCityGateInput): InviteCityGa
   // 出处。job_posting / 聊天截图的城市不进本档（那是门店/他人的位置）。
   const sheetCities = new Set<string>();
   for (const entry of input.turnVisualSheets ?? []) {
-    if (entry.sheet.kind !== 'map_location') continue;
-    const candidates = [
-      ...fieldValues(entry.sheet, 'city'),
-      ...fieldValues(entry.sheet, 'address'),
-      ...fieldValues(entry.sheet, 'candidate_address'),
-    ];
-    for (const candidate of candidates) {
+    for (const candidate of mapLocationCityCandidates(entry.sheet)) {
       const scan = scanGeoSignalsFromText(candidate);
       const city = scan.city?.value ? normalizeCity(scan.city.value) : null;
       if (city) sheetCities.add(city);

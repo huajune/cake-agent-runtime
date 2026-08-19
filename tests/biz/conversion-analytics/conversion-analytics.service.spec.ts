@@ -114,7 +114,7 @@ function fakeSystemConfig(value: unknown = null): SystemConfigService {
 }
 
 describe('ConversionAnalyticsService — conversion analysis', () => {
-  const filter: ConversionFilter = { range: 'month', groups: [], channels: [] };
+  const filter: ConversionFilter = { range: 'month', groups: [] };
 
   // 当前周期 cohort（友好 = friend.added）：U1..U7（U6 无 friend.added 不入 cohort）
   const currentEvents: TestEvent[] = [
@@ -464,7 +464,7 @@ describe('ConversionAnalyticsService — conversion analysis', () => {
       fakeSystemConfig(),
     );
 
-    const kpis = await service.getKpis({ range: 'month', groups: [], channels: [] }, 'cohort');
+    const kpis = await service.getKpis({ range: 'month', groups: [] }, 'cohort');
     expect(kpis.breakIceRate).toMatchObject({ numerator: 1, denominator: 1 });
   });
 
@@ -484,7 +484,7 @@ describe('ConversionAnalyticsService — conversion analysis', () => {
       fakeSystemConfig(),
     );
 
-    const handoff = await service.getHandoff({ range: 'month', groups: [], channels: [] });
+    const handoff = await service.getHandoff({ range: 'month', groups: [] });
     expect(handoff.total).toBe(3);
     expect(handoff.reasons[0]).toMatchObject({ reasonCode: 'no_reception', count: 2 });
     expect(handoff.reasons.find((r) => r.reasonCode === 'booking_conflict')?.count).toBe(1);

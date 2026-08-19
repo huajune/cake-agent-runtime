@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { CallerKind } from '@/enums/agent.enum';
 import { GeneratorAgent } from '../generator/generator.agent';
@@ -23,7 +24,6 @@ import type {
 } from '@biz/message/types/guardrail-review.types';
 import { classifyReviewedOutcome } from './turn-outcome';
 import { isDanglingCheckReply } from './dangling-reply';
-import { isHandoffPromiseOnlyReply } from '../guardrail/output/rules/handoff-promises.rule';
 import {
   detectOutputLeak,
   hasTechnicalDocumentationShape,
@@ -205,9 +205,9 @@ export class AgentRunnerService {
    *   REPLAN、语义档裁决在 normalizeDecision 归一为 revise，本方法不再存在重进
    *   generator 的修复路径；历史语义见评估文档 §2.4。）
    *
-   * turn-end 语义：内部生成强制 `deferTurnEnd`（repair 产物复用首版的 runTurnEnd），确保被丢弃的首版不写记忆；最终采纳版的
-   * `runTurnEnd` 按调用方意图处理——调用方原本要自动收尾（未显式 defer）时，pass 即 fire-and-forget
-   * 触发、block 则丢弃（不写「对用户说过」记忆，呼应 HC-4）。
+   * turn-end 语义：生成结果上的 `runTurnEnd` 一律原样透传给调用方（repair 产物复用首版的
+   * 闭包），由调用方在投递结局已知后触发一次——被丢弃的首版因此不会写记忆。
+   * 「生成完就 fire-and-forget」的旧默认分支已随 deferTurnEnd 开关删除（议题 5-1）。
    *
    * **flag 关闭时**（默认）：守卫只跑 rule 档；可恢复 veto 会先进一次受控 repair。
    */
@@ -215,19 +215,33 @@ export class AgentRunnerService {
     params: GeneratorInvokeParams,
     ctx: ReviewContext,
   ): Promise<ReviewedRunResult> {
-    const wantDefer = params.deferTurnEnd === true;
-    const first = await this.generator.invoke({ ...params, deferTurnEnd: true });
+    const first = await this.generator.invoke(params);
 
     // 审查前先剥模型模仿输出的 `[消息发送时间：…]` 标记（占全部回合 ~11%，2026-07-24 审计）：
     // 避免噪声进入 LLM 审查上下文与守卫档案。只剥时间标记，不跑完整 sanitize——后者会剥
     // 反引号，破坏 internal_output_leak 的围栏检测。投递文本另由 turn-outcome 统一清洗。
-    const firstText = OutboundReplySanitizer.stripTimeMarkers((first.text ?? '').trim());
+    let firstText = OutboundReplySanitizer.stripTimeMarkers((first.text ?? '').trim());
     const firstSkipped = (first.toolCalls ?? []).some(isShortCircuitedToolCall);
     if (!firstText || firstSkipped) {
-      return this.finalizeReviewed(first, PASS_DECISION, false, wantDefer);
+      return this.finalizeReviewed(first, PASS_DECISION, false);
     }
 
     const decision = await this.outputGuard.check(this.buildGuardInput(first, ctx));
+    if (decision.deterministicReply !== undefined) {
+      first.text = decision.deterministicReply;
+      firstText = OutboundReplySanitizer.stripTimeMarkers(decision.deterministicReply.trim());
+      const originalRunTurnEnd = first.runTurnEnd;
+      if (originalRunTurnEnd) {
+        first.runTurnEnd = (options) =>
+          originalRunTurnEnd({
+            ...options,
+            assistantTextOverride:
+              options && 'assistantTextOverride' in options
+                ? options.assistantTextOverride
+                : decision.deterministicReply,
+          });
+      }
+    }
     const firstStep = this.toGuardrailStep('first', decision);
 
     // 直达静默：这两类首版重写只会产出"另一条不该发的文本"，与悬空承接句同理
@@ -255,7 +269,6 @@ export class AgentRunnerService {
         first,
         silencedDecision,
         false,
-        wantDefer,
         this.buildGuardrailTrace([firstStep], false, silencedDecision),
       );
     }
@@ -272,7 +285,6 @@ export class AgentRunnerService {
         first,
         decision,
         false,
-        wantDefer,
         this.buildGuardrailTrace([firstStep], false, decision),
       );
     }
@@ -371,7 +383,6 @@ export class AgentRunnerService {
           first,
           failOpenDecision,
           false,
-          wantDefer,
           this.buildGuardrailTrace(
             [firstStep, this.toGuardrailStep('revised', danglingStepDecision)],
             true,
@@ -394,7 +405,6 @@ export class AgentRunnerService {
         revised,
         emptyDecision,
         true,
-        wantDefer,
         this.buildGuardrailTrace(
           danglingRepair
             ? [firstStep, this.toGuardrailStep('revised', danglingStepDecision)]
@@ -433,7 +443,6 @@ export class AgentRunnerService {
         first,
         failOpenDecision,
         false,
-        wantDefer,
         this.buildGuardrailTrace(
           [firstStep, this.toGuardrailStep('revised', decision2)],
           true,
@@ -469,12 +478,10 @@ export class AgentRunnerService {
         ? detectRepairRegression(firstText, revisedText, {
             committedSideEffects: committed || undefined,
             jobEvidenceAvailable: this.resolveJobEvidenceAvailability(reviewedToolCalls),
-            // 首审规则 id：本轮根本没调查岗工具时 jobEvidenceAvailable 是 undefined，
-            // 逃生口够不着，只能靠"零证据类规则触发"这条判据识别"删幻觉 ≠ 结构塌缩"。
             triggeredRuleIds: decision.ruleIds,
           })
         : null;
-    // 检出回归后的收敛对齐 guardrail-chain-assessment-and-rebuild.md §2.3 ④：
+    // 检出回归后的收敛对齐 guardrail-quality-system.md §2.3 ④：
     // 首版可 fail-open（P1/P2 全部可恢复且非高风险）→ 回退首版；
     // 首版不可 fail-open（P0/泄漏类/高风险）→ 两版都不投，静默 block 并留档——
     // 修复版已证明退化，首版又是守卫明确否决的泄漏/红线内容，谁都不能进投递链。
@@ -534,7 +541,6 @@ export class AgentRunnerService {
       finalResult,
       finalDecision,
       finalRevised,
-      wantDefer,
       this.buildGuardrailTrace(
         [firstStep, this.toGuardrailStep('revised', decision2)],
         true,
@@ -550,7 +556,7 @@ export class AgentRunnerService {
    *
    * - 仅在带 traceId 时写。注意 debug-chat（`sessionId:时间戳`）与 test-suite（synthetic id）
    *   也会构造 traceId，档案并非纯生产数据，按 traceId 形态区分；
-   * - 仅守卫有信号时写（非 pass 或有 rule 观测命中），放行回合不产生行；
+   * - 仅守卫有信号时写（非 pass、有 rule 观测命中或有 runtime override 命中），放行回合不产生行；
    * - fire-and-forget：三态写入结果只用于观测告警，绝不阻塞/拖垮回复链路。
    */
   private persistReviewRecord(
@@ -566,8 +572,16 @@ export class AgentRunnerService {
     },
   ): void {
     if (!ctx.traceId) return;
+    const overrideMarkers = Array.from(
+      new Set([
+        ...(data.firstDecision.overrideMarkers ?? []),
+        ...(data.revisedDecision?.overrideMarkers ?? []),
+      ]),
+    );
     const hasSignal =
-      data.firstDecision.decision !== 'pass' || data.firstDecision.ruleIds.length > 0;
+      data.firstDecision.decision !== 'pass' ||
+      data.firstDecision.ruleIds.length > 0 ||
+      overrideMarkers.length > 0;
     if (!hasSignal) return;
     if (data.repaired && (data.revisedReply === undefined || !data.revisedDecision)) {
       this.logger.warn(`[invokeReviewed] 审查档案缺少修复后内容，跳过落库: traceId=${ctx.traceId}`);
@@ -584,6 +598,9 @@ export class AgentRunnerService {
         `[invokeReviewed] block 档案缺少 reasonCode，已兜底为 unattributed_block: ` +
           `traceId=${ctx.traceId}, rules=${data.finalDecision.blockedRuleIds.join(',') || '-'}`,
       );
+    }
+    if (overrideMarkers.length > 0) {
+      reasonCode = [reasonCode, ...overrideMarkers].filter(Boolean).join('|');
     }
     const baseRecord = {
       traceId: ctx.traceId,
@@ -623,7 +640,7 @@ export class AgentRunnerService {
       .catch((error: unknown) => {
         this.logger.warn(
           `[invokeReviewed] 审查档案落库失败: traceId=${ctx.traceId}, ` +
-            `err=${error instanceof Error ? error.message : String(error)}`,
+            `err=${toErrorMessage(error)}`,
         );
       });
   }
@@ -677,17 +694,20 @@ export class AgentRunnerService {
   }
 
   /**
-   * 返回本轮查岗证据三态：
+   * 返回本轮查岗证据两态：
    * - true：至少一次 duliday_job_list 有正向成功信号/非空结果；
-   * - false：调用过查岗，但没有一次返回可用岗位；
-   * - undefined：本轮未调用查岗。
+   * - false：本轮没有可用岗位证据（查了全空，或根本没查）。
    *
    * 中间一次成功、随后复核为空时仍返回 true，和 review packet “优先取最后一次可用
    * 结果”的证据语义保持一致。
    */
-  private resolveJobEvidenceAvailability(toolCalls: AgentToolCall[]): boolean | undefined {
+  private resolveJobEvidenceAvailability(toolCalls: AgentToolCall[]): boolean {
     const jobListCalls = toolCalls.filter((call) => call.toolName === 'duliday_job_list');
-    if (jobListCalls.length === 0) return undefined;
+    // 零查岗轮视同无岗位证据（PR #1000 评审 P0-9）：本轮一次查岗都没调时，首版的
+    // 岗位事实必然无本轮工具支撑——repair 诚实删除编造岗位的改写不能被判
+    // structure_collapsed 回退成编造原文投递（2026-07-29 事故形态；随规则下线删掉的
+    // ZERO_EVIDENCE_RULE_IDS 逃生舱即为此缺口而设）。
+    if (jobListCalls.length === 0) return false;
     return jobListCalls.some(
       (call) =>
         (typeof call.resultCount === 'number' && call.resultCount > 0) ||
@@ -758,11 +778,6 @@ export class AgentRunnerService {
    *   2026-07-28 15:05–15:11 模型降级窗口）。泄漏反馈要求"其余内容逐字保留"，而残文
    *   剥完无一字可留，rewrite 只能凭空创作——当时 4/4 例编出薪资/门店/伪造报名链接
    *   并全部投递。没有事实可依时，沉默是唯一安全的结局。
-   * - `handoff_promise_only_reply_silenced`：整条首版剥掉"让同事确认"承诺句后无实质
-   *   内容（2026-08-04 审计 P0-1）。"删除承诺、其余逐字保留"在这种形态下保留的是
-   *   空集，rewrite 被逼成自由创作——生产 4 例编出着装要求/"已拉你进群"/约面时间，
-   *   2 例投递。同理收敛为沉默。
-   *
    * 混合命中其它规则时都不走捷径，仍按常规 repair 流程保守处理。
    */
   private resolveDirectSilenceReason(
@@ -775,14 +790,6 @@ export class AgentRunnerService {
         return 'tool_call_artifact_silenced';
       }
       return null;
-    }
-    if (
-      decision.decision === 'revise' &&
-      decision.violations.length > 0 &&
-      decision.violations.every((v) => v.type === 'handoff_promise_without_handoff') &&
-      isHandoffPromiseOnlyReply(firstText)
-    ) {
-      return 'handoff_promise_only_reply_silenced';
     }
     return null;
   }
@@ -852,6 +859,7 @@ export class AgentRunnerService {
       reply: OutboundReplySanitizer.stripTimeMarkers((result.text ?? '').trim()),
       toolCalls,
       memorySnapshot: result.memorySnapshot,
+      turnLedger: result.turnLedger,
       redLines: ctx.redLines ?? [],
       userMessage: ctx.userMessage,
       chatId: ctx.chatId,
@@ -878,17 +886,21 @@ export class AgentRunnerService {
     } catch (error) {
       this.logger.warn(
         `[invokeReviewed] reply repair 上下文读取失败: sessionId=${ctx.sessionRef.sessionId}, ` +
-          `err=${error instanceof Error ? error.message : String(error)}`,
+          `err=${toErrorMessage(error)}`,
       );
       return undefined;
     }
   }
 
   private buildRepairedResult(result: GeneratorRunResult, text: string): GeneratorRunResult {
+    const previousRunTurnEnd = result.runTurnEnd;
     return {
       ...result,
       text,
       responseMessages: this.repairAssistantResponseMessages(result.responseMessages, text),
+      runTurnEnd: previousRunTurnEnd
+        ? (options) => previousRunTurnEnd({ ...options, assistantTextOverride: text })
+        : undefined,
     };
   }
 
@@ -932,22 +944,10 @@ export class AgentRunnerService {
     result: GeneratorRunResult,
     decision: OutputGuardDecision,
     revised: boolean,
-    wantDefer: boolean,
     guardrailTrace?: GuardrailTurnTrace,
   ): ReviewedRunResult {
-    const blocked = decision.decision === 'block';
-    if (!wantDefer) {
-      // 调用方原本要自动收尾：pass→fire-and-forget 触发；block→只记用户侧
-      // （不投影助手轮次，不写"对用户说过"记忆，但保留本轮用户事实提取）。
-      void result.runTurnEnd?.(blocked ? { includeAssistantText: false } : undefined);
-      return {
-        ...result,
-        runTurnEnd: undefined,
-        outputDecision: decision,
-        revised,
-        guardrailTrace,
-      };
-    }
+    // runTurnEnd 一律透传：触发时机（含 block 时的 includeAssistantText=false）由
+    // TurnFinalizer 在投递结局已知后统一决定，runner 不再代为触发（议题 5-1）。
     return { ...result, outputDecision: decision, revised, guardrailTrace };
   }
 
@@ -962,8 +962,8 @@ export class AgentRunnerService {
   /**
    * 编排一个回合（渠道无关，不投递）。被动/主动复用同一接缝。
    *
-   * 主动回合默认 `toolMode:'readonly'`（物理禁副作用工具）+ `deferTurnEnd`（投递成功后
-   * 由调用方触发记忆收尾）。generator 抛错（含 memory 空历史）时：**主动**回合按 `skipped`
+   * 主动回合默认 `toolMode:'readonly'`（物理禁副作用工具）；记忆收尾统一由调用方在
+   * 投递成功后经 TurnFinalizer 触发。generator 抛错（含 memory 空历史）时：**主动**回合按 `skipped`
    * 收敛（不让 reengagement 调度因单个会话失败而崩），**被动 inbound** 则抛回渠道由
    * fallback 接管（不静默吞掉候选人正在等待的回复）。
    */
@@ -1002,7 +1002,7 @@ export class AgentRunnerService {
     } catch (error) {
       this.tracer?.emit({
         type: 'agent_error',
-        error: error instanceof Error ? error.message : String(error),
+        error: toErrorMessage(error),
       });
       throw error;
     }
@@ -1047,7 +1047,6 @@ export class AgentRunnerService {
           : [{ role: 'user', content: PROACTIVE_TRIGGER_PLACEHOLDER }],
       toolMode: req.toolMode ?? (isProactive ? 'readonly' : 'scenario'),
       proactiveDirective: isProactive ? trigger.directive : undefined,
-      deferTurnEnd: true,
       scenario: context?.scenario,
       imageUrls: trigger.kind === 'inbound' ? trigger.images : undefined,
       imageMessageIds: context?.imageMessageIds,
@@ -1087,12 +1086,12 @@ export class AgentRunnerService {
       // 用户悬空且无人接手，必须把异常抛回渠道，由渠道 fallback/失败流水接管。
       this.logger.warn(
         `[runTurn] generation 失败: sessionId=${sessionRef.sessionId}, trigger=${trigger.kind}, ` +
-          `err=${err instanceof Error ? err.message : String(err)}`,
+          `err=${toErrorMessage(err)}`,
       );
       if (isProactive) {
         this.tracer?.emit({
           type: 'agent_error',
-          error: err instanceof Error ? err.message : String(err),
+          error: toErrorMessage(err),
         });
         return { kind: 'skipped', toolCalls: [], scenarioCode };
       }

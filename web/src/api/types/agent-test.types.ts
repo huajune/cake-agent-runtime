@@ -1,3 +1,4 @@
+// 同源：src/biz/test-suite/dto/conversation-test.dto.ts —— 改动必须同步。
 export interface SimpleMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;

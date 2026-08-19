@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Logger } from '@nestjs/common';
 import type { RoomService } from '@channels/wecom/room/room.service';
 import type { GroupContext } from '@biz/group-task/group-task.types';
@@ -55,7 +56,7 @@ export async function refreshMemberCountsFromEnterpriseList(params: {
         }
         return { botId, accepted };
       } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : String(error);
+        const message = toErrorMessage(error);
         logger.warn(`syncRoom 失败 (imBotId=${botId})，继续使用原始人数: ${message}`);
         return { botId, accepted: false };
       }
@@ -108,7 +109,7 @@ export async function refreshMemberCountsFromEnterpriseList(params: {
       current++;
     }
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = toErrorMessage(error);
     logger.warn(`刷新企业级群人数失败，使用缓存人数继续: ${message}`);
     return params.groups;
   }

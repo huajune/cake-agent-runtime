@@ -9,6 +9,7 @@ import {
   DailyTrendData,
   HourlyTrendData,
   DailyProjectionStats,
+  HourlyStats,
 } from './analytics.types';
 
 // Re-export analytics types used by repositories
@@ -23,35 +24,8 @@ export type { ErrorLogDbRecord } from '../entities/error-log.entity';
 // 应用层映射格式（camelCase）
 // ========================================
 
-/**
- * 小时统计应用层格式
- */
-export interface HourlyStatsRecord {
-  hour: string;
-  messageCount: number;
-  successCount: number;
-  failureCount: number;
-  timeoutCount: number;
-  successRate: number;
-  avgDuration: number;
-  minDuration: number;
-  maxDuration: number;
-  p50Duration: number;
-  p95Duration: number;
-  p99Duration: number;
-  avgQueueDuration: number;
-  avgPrepDuration: number;
-  avgAiDuration: number;
-  avgSendDuration: number;
-  activeUsers: number;
-  activeChats: number;
-  totalTokenUsage: number;
-  fallbackCount: number;
-  fallbackSuccessCount: number;
-  errorTypeStats: Record<string, number>;
-  scenarioStats: Record<string, { count: number; successCount: number; avgDuration: number }>;
-  toolStats: Record<string, number>;
-}
+/** 小时统计应用层格式与 Dashboard 聚合模型同源。 */
+export type HourlyStatsRecord = HourlyStats;
 
 /**
  * 日统计应用层格式

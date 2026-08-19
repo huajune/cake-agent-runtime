@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { BotGroupResolverService } from '@biz/ops-events/services/bot-group-resolver.service';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
@@ -181,24 +182,7 @@ export class ConversionAnalyticsService {
       this.computePeriodCounts(filter, period, 'previous'),
     ]);
 
-    return {
-      breakIceRate: this.toMetric(cur.breakIce, cur.friendAdded, prev.breakIce, prev.friendAdded),
-      bookingRate: this.toMetric(cur.booking, cur.breakIce, prev.booking, prev.breakIce),
-      groupInviteRate: this.toMetric(
-        cur.groupInvite,
-        cur.breakIce,
-        prev.groupInvite,
-        prev.breakIce,
-      ),
-      passRate: this.toMetric(cur.interviewPass, cur.booking, prev.interviewPass, prev.booking),
-      // 收口到面试通过：整体转化率 = 面试通过 / 新增好友（不再统计入职）。
-      overallRate: this.toMetric(
-        cur.interviewPass,
-        cur.friendAdded,
-        prev.interviewPass,
-        prev.friendAdded,
-      ),
-    };
+    return this.buildKpisResponse(cur, prev);
   }
 
   private async getCohortKpis(
@@ -211,21 +195,44 @@ export class ConversionAnalyticsService {
       this.computeFriendAddedCohortCounts(filter, period, 'previous'),
     ]);
 
+    return this.buildKpisResponse(cur, prev);
+  }
+
+  private buildKpisResponse(
+    current: ConversionTrendCounts,
+    previous: ConversionTrendCounts,
+  ): ConversionKpisResponse {
     return {
-      breakIceRate: this.toMetric(cur.breakIce, cur.friendAdded, prev.breakIce, prev.friendAdded),
-      bookingRate: this.toMetric(cur.booking, cur.breakIce, prev.booking, prev.breakIce),
-      groupInviteRate: this.toMetric(
-        cur.groupInvite,
-        cur.breakIce,
-        prev.groupInvite,
-        prev.breakIce,
+      breakIceRate: this.toMetric(
+        current.breakIce,
+        current.friendAdded,
+        previous.breakIce,
+        previous.friendAdded,
       ),
-      passRate: this.toMetric(cur.interviewPass, cur.booking, prev.interviewPass, prev.booking),
+      bookingRate: this.toMetric(
+        current.booking,
+        current.breakIce,
+        previous.booking,
+        previous.breakIce,
+      ),
+      groupInviteRate: this.toMetric(
+        current.groupInvite,
+        current.breakIce,
+        previous.groupInvite,
+        previous.breakIce,
+      ),
+      passRate: this.toMetric(
+        current.interviewPass,
+        current.booking,
+        previous.interviewPass,
+        previous.booking,
+      ),
+      // 收口到面试通过：整体转化率 = 面试通过 / 新增好友（不再统计入职）。
       overallRate: this.toMetric(
-        cur.interviewPass,
-        cur.friendAdded,
-        prev.interviewPass,
-        prev.friendAdded,
+        current.interviewPass,
+        current.friendAdded,
+        previous.interviewPass,
+        previous.friendAdded,
       ),
     };
   }
@@ -790,9 +797,7 @@ export class ConversionAnalyticsService {
       };
       return value;
     } catch (error) {
-      this.logger.warn(
-        `读取 bot 身份别名配置失败，跳过合并: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      this.logger.warn(`读取 bot 身份别名配置失败，跳过合并: ${toErrorMessage(error)}`);
       return {};
     }
   }
@@ -988,7 +993,6 @@ export class ConversionAnalyticsService {
       endDate,
       eventNames: this.normalizeListForCache(eventNames),
       corpId: filter.corpId,
-      channels: this.normalizeListForCache(filter.channels),
       groups: options.applyGroupFilter ? this.normalizeListForCache(filter.groups) : [],
       applyGroupFilter: options.applyGroupFilter,
     });
@@ -1002,11 +1006,6 @@ export class ConversionAnalyticsService {
             .lte('report_date', endDate)
             .in('event_name', eventNames);
           if (filter.corpId) query = query.eq('corp_id', filter.corpId);
-          // source_channel 写入侧目前恒为 'unknown'（暂无渠道埋点），channels 始终为空，
-          // 此过滤当前为空操作；保留以便将来接入真实渠道维度（§7）。
-          if (filter.channels.length > 0) {
-            query = query.in('source_channel', filter.channels);
-          }
           return query.order('occurred_at', { ascending: true });
         },
       );
@@ -1033,9 +1032,7 @@ export class ConversionAnalyticsService {
       if (current?.promise === promise) {
         this.rowCache.delete(cacheKey);
       }
-      this.logger.warn(
-        `转化分析行缓存加载失败 cacheKey=${cacheKey}: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      this.logger.warn(`转化分析行缓存加载失败 cacheKey=${cacheKey}: ${toErrorMessage(error)}`);
       throw error;
     });
     this.rowCache.set(cacheKey, { expiresAt: now + ROW_CACHE_TTL_MS, promise });

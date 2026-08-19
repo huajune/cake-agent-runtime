@@ -9,7 +9,7 @@ export interface GeneralHandoffNotificationMessage {
 /**
  * 通用人工介入告警 payload。
  *
- * recruitment_cases 废弃后 handoff 不再区分 onboard/general（见 intervention.service），
+ * handoff 不区分 onboard/general（见 intervention.service），
  * 本 payload 是人工介入告警的唯一形状，不依赖任何 case 状态机。
  * 适用场景：候选人需要人工介入（无群可拉、流程异常等），事件要交给招募经理跟进，
  * 不能只暂停托管。

@@ -1,17 +1,15 @@
 import { buildRecallHistoryTool } from '@tools/recall-history.tool';
 import { ToolBuildContext } from '@shared-types/tool.types';
+import { createToolContext } from '../../helpers/tool-context.fixture';
 
 describe('buildRecallHistoryTool', () => {
   const mockMemoryService = {
     getSummaryData: jest.fn(),
   };
 
-  const mockContext: ToolBuildContext = {
-    userId: 'user-123',
-    corpId: 'corp-456',
-    sessionId: 'sess-789',
-    messages: [],
-  };
+  const mockContext: ToolBuildContext = createToolContext({
+    session: { userId: 'user-123', corpId: 'corp-456', sessionId: 'sess-789' },
+  });
 
   beforeEach(() => jest.clearAllMocks());
 

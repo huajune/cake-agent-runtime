@@ -1,11 +1,11 @@
 /**
- * 品牌匹配主体 + 解析管线（迁移自 memory/facts/high-confidence-facts.ts 的
+ * 品牌匹配主体 + 解析管线（迁移自旧规则轨的
  * detectBrandAliasHints 匹配主体，新增置信度档位 / 极性 / 歧义 / 品牌ID 契约解析）。
  *
  * 核心导出为纯函数 resolveBrands(text, source, catalog)：单测直接注入目录，
- * 不需要 NestJS 容器；BrandResolutionService 只是薄封装（§6.5）。
+ * 不需要 NestJS 容器；BrandResolutionService 只是薄封装（§3.4）。
  *
- * 匹配规则（§7.2/§7.3）：
+ * 匹配规则（§4.2/§4.3）：
  * - 品牌 ID（"品牌ID：10239" 格式契约）> 标准名精确 > 唯一别名精确 > 安全长别名包含
  * - 短中文别名只做全等 token 匹配；短英数别名（2-3 字符）允许 token 边界包含（"kfc松江"）
  * - 冲突别名标记歧义（ambiguous），不直接选择其中一个
@@ -13,6 +13,7 @@
  */
 
 import type { BrandItem } from '@/sponge/sponge.types';
+import { stripLocationShareMarkup } from '@resolution/signal/markers';
 import { listUniqueDistrictCityEntries } from '@resolution/geo';
 import {
   BRAND_CONFIDENCE,
@@ -38,7 +39,7 @@ import {
   stripPolarityControlWords,
 } from './polarity-rules';
 
-/** 匹配方式的优先级（越小越优先，§7.2）。 */
+/** 匹配方式的优先级（越小越优先，§4.2）。 */
 const MATCH_TYPE_PRIORITY: Record<BrandMatchType, number> = {
   brand_id: 0,
   canonical_exact: 1,
@@ -67,7 +68,7 @@ const DISTRICT_SUFFIXES_BY_CITY = listUniqueDistrictCityEntries().reduce(
   new Map<string, string[]>(),
 );
 
-/** "品牌ID：10239" 行的格式契约（两侧 prompt 已约定，§10.4）。 */
+/** "品牌ID：10239" 行的格式契约（两侧 prompt 已约定，§8.1）。 */
 const BRAND_ID_CONTRACT_REGEX = /品牌\s*ID\s*[：:]\s*(\d{1,10})/gi;
 
 interface ClauseMatch {
@@ -88,21 +89,19 @@ interface ClauseMatch {
  * （徐汇区田林路103-4号） [经纬度:…]」，"沃尔玛"命中品牌库后把已确立的主品牌
  * 成都你六姐顶下台。段内文本一律不参与品牌解析；地理语义由 geo 域承接。
  */
-const LOCATION_SHARE_SEGMENT_REGEX = /\[位置分享\][^[]*(?:\[经纬度[^\]]*\]?)?/g;
-
 function stripLocationShareSegments(text: string): string {
-  return text.replace(LOCATION_SHARE_SEGMENT_REGEX, ' ');
+  return stripLocationShareMarkup(text, ' ');
 }
 
 /**
  * 解析一段文本中的品牌信号（无状态纯函数）。
  *
- * 返回带来源标签的候选品牌信号列表；跨来源合并与状态写入由调用方负责（§7.5）。
+ * 返回带来源标签的候选品牌信号列表；跨来源合并与状态写入由调用方负责（§2）。
  */
 export function resolveBrands(
   text: string | null | undefined,
   source: BrandResolutionSource,
-  catalog: BrandItem[],
+  catalog: ReadonlyArray<BrandItem>,
 ): BrandResolution[] {
   const trimmed = text?.trim();
   if (!trimmed || catalog.length === 0) return [];
@@ -169,7 +168,7 @@ export function resolveBrands(
   }
 
   // 品牌去重：同一品牌命中标准名与别名时只返回一个结果（取最高档位）；
-  // 同一品牌同轮又要又不要时，显式否定优先（§6.3.1 规则 3）。
+  // 同一品牌同轮又要又不要时，显式否定优先（§5.2 规则 3）。
   const byBrand = new Map<string, { brand: BrandCandidate; match: ClauseMatch }>();
   for (const match of uniqueMatches) {
     const key = match.brand.canonicalName;
@@ -197,7 +196,7 @@ export function resolveBrands(
     idResolutions.map((r) => r.canonicalName).filter((name): name is string => Boolean(name)),
   );
   for (const { brand, match } of byBrand.values()) {
-    if (idMatchedBrands.has(brand.canonicalName)) continue; // brand_id 档已覆盖（§7.2 只返回一条）
+    if (idMatchedBrands.has(brand.canonicalName)) continue; // brand_id 档已覆盖（§4.2 只返回一条）
     results.push({
       canonicalName: brand.canonicalName,
       brandId: brand.brandId,
@@ -213,7 +212,7 @@ export function resolveBrands(
     });
   }
 
-  // 4. 品类展开：命中品类词且未命中任何具体品牌时触发；昵称不做品类展开（§6.2）。
+  // 4. 品类展开：命中品类词且未命中任何具体品牌时触发；昵称不做品类展开（§3.2）。
   const matchedSpecificBrand =
     idResolutions.length > 0 || uniqueMatches.length > 0 || results.some((r) => r.ambiguous);
   if (!matchedSpecificBrand && source !== 'contact_name') {
@@ -228,7 +227,7 @@ export function resolveBrands(
       if (isBrandSpanNegated(normalizedText, matchedIndex, matchedKeyword.length)) {
         continue;
       }
-      // 品类命中一律展开为全部成员品牌（§6.2）——不设默认品牌，理由见
+      // 品类命中一律展开为全部成员品牌（§3.2）——不设默认品牌，理由见
       // category-expansion.ts 的 BRAND_CATEGORIES 注释。
       for (const brandName of category.brands) {
         results.push({
@@ -294,7 +293,12 @@ function isLowInformationShortLatinMatch(params: {
 }): boolean {
   if (params.source === 'contact_name') {
     return (
-      /^[a-z0-9]{2,3}$/.test(params.normalizedAlias) &&
+      params.normalizedAlias.length >= 1 &&
+      params.normalizedAlias.length <= 3 &&
+      [...params.normalizedAlias].every((character) => {
+        const code = character.charCodeAt(0);
+        return (code >= 48 && code <= 57) || (code >= 97 && code <= 122);
+      }) &&
       params.normalizedClause === params.normalizedAlias
     );
   }
@@ -507,7 +511,7 @@ function matchClause(
       !negated &&
       spanStart >= 0 &&
       isBrandSpanHistoryContext(normalizedClause, spanStart, candidate.normalized.length);
-    // 档位按证据形态定（§6.2）：全等 token 才是 exact 档；包含/边界包含一律 containment 档，
+    // 档位按证据形态定（§3.2）：全等 token 才是 exact 档；包含/边界包含一律 containment 档，
     // 即使命中的是标准名（"肯德基还招吗" 里的 肯德基 是子串证据，不是完全相等证据）。
     matches.push({
       entries,
@@ -545,10 +549,10 @@ function findLatinBoundarySpan(normalizedText: string, alias: string): number {
   }
 }
 
-// ==================== 工具入口别名标准化（§8.2 消费方复用） ====================
+// ==================== 工具入口别名标准化（§6.2 消费方复用） ====================
 
 export interface ResolvedAliasBrand extends BrandCandidate {
-  /** 是否经品类词展开而来（品类查询列表须先减去会话 excludedBrands，§6.2）。 */
+  /** 是否经品类词展开而来（品类查询列表须先减去会话 excludedBrands，§3.2）。 */
   viaCategoryExpansion: boolean;
 }
 
@@ -563,14 +567,14 @@ export interface AliasResolutionOutcome {
 }
 
 /**
- * 把工具入参的品牌别名列表解析成唯一标准品牌（§8.2）。
+ * 把工具入参的品牌别名列表解析成唯一标准品牌（§6.2）。
  *
  * 入参是名称参数而非句子：跑同一套匹配管线但不做极性判定；
  * 品类词（"咖啡"）展开为品类品牌，保持已上线的品类召回不回归。
  */
 export function resolveBrandAliasInputs(
   inputs: string[],
-  catalog: BrandItem[],
+  catalog: ReadonlyArray<BrandItem>,
 ): AliasResolutionOutcome {
   const applied = new Map<string, ResolvedAliasBrand>();
   const rejected: AliasResolutionOutcome['rejected'] = [];

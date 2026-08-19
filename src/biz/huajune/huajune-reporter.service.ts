@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { fetchWithTimeout } from '@infra/utils/fetch-timeout.util';
@@ -142,9 +143,7 @@ export class HuajuneReporterService {
         );
       }
     } catch (error) {
-      this.logger.warn(
-        `花卷上报异常 eventType=${event.eventType}: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      this.logger.warn(`花卷上报异常 eventType=${event.eventType}: ${toErrorMessage(error)}`);
     }
   }
 }

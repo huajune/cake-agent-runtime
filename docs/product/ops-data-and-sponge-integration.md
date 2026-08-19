@@ -1257,5 +1257,5 @@ web/src/components/Sidebar/         新增"转化分析"菜单项
 - huajune Open API：`POST https://huajune.duliday.com/api/v1/recruitment-events`
 - ~~新增客户回调 `POST /wecom/customer/callback`~~（已废弃：生产无此回调，加好友走普通消息管道握手语）
 - 加好友握手语识别：`src/channels/wecom/message/utils/friend-add-greeting.util.ts`（`isPureFriendAddGreeting`）
-- 已有 long-term memory 架构：`docs/architecture/memory-and-hints-data-flow.md`
+- 已有 long-term memory 架构：`docs/architecture/memory-architecture.md`
 - recruitment_cases 相关旧 TODO 已随整表和对应业务模块删除，不再维护。

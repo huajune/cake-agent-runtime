@@ -1,5 +1,12 @@
 import { ContextService } from '@agent/generator/context/context.service';
 import { StrategyConfigRecord } from '@biz/strategy/entities/strategy-config.entity';
+import { CORPUS_DOMAINS } from '@shared-types/corpus.types';
+import {
+  buildPromptSectionBlocks,
+  type PromptSection,
+} from '@agent/generator/context/sections/section.interface';
+import { SCENARIO_SECTIONS } from '@agent/generator/context/scenarios/scenario.registry';
+import { cityFixture, sessionFactsOf } from '../../../helpers/session-facts.fixture';
 
 describe('ContextService', () => {
   const makeConfig = (): StrategyConfigRecord =>
@@ -90,6 +97,49 @@ describe('ContextService', () => {
     await service.onModuleInit();
   });
 
+  it('registers a corpus domain for every production leaf section and composes every scenario', async () => {
+    const productionLeafDomains = {
+      identity: 'teaching',
+      'base-manual': 'teaching',
+      'final-check': 'teaching',
+      'red-lines': 'teaching',
+      thresholds: 'teaching',
+      'stage-strategy': 'teaching',
+      channel: 'teaching',
+      memory: 'evidence',
+      'turn-hints': 'evidence',
+      'hard-constraints': 'evidence',
+      datetime: 'tool_result',
+      'group-inventory': 'tool_result',
+    } as const;
+    const productionShapedText = [
+      '[引用 候选人：上一轮资料]',
+      '[图片消息]',
+      '连续消息一',
+      '连续消息二',
+      '[消息发送时间：2026-08-13 10:24:31]',
+    ].join('\n');
+
+    for (const [name, domain] of Object.entries(productionLeafDomains)) {
+      const section: PromptSection = { name, build: () => productionShapedText };
+      await expect(
+        buildPromptSectionBlocks(section, { scenario: 'candidate-consultation' } as never),
+      ).resolves.toEqual([{ id: name, domain, role: 'system', content: productionShapedText }]);
+    }
+
+    for (const scenario of Object.keys(SCENARIO_SECTIONS)) {
+      const result = await service.compose({
+        scenario,
+        currentStage: 'trust_building',
+        memoryBlock: productionShapedText,
+        strategySource: 'testing',
+      });
+      expect(result.promptBlocks.every((block) => CORPUS_DOMAINS.includes(block.domain))).toBe(
+        true,
+      );
+    }
+  });
+
   it('should compose candidate consultation prompt in 5 top-level blocks', async () => {
     const result = await service.compose({
       scenario: 'candidate-consultation',
@@ -99,6 +149,18 @@ describe('ContextService', () => {
     });
 
     const prompt = result.systemPrompt;
+
+    expect(result.promptBlocks.map((block) => block.content).join('\n\n')).toBe(prompt);
+    expect(result.promptBlocks.every((block) => CORPUS_DOMAINS.includes(block.domain))).toBe(true);
+    expect(result.promptBlocks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'base-manual', domain: 'teaching' }),
+        expect.objectContaining({ id: 'memory', domain: 'evidence' }),
+        expect.objectContaining({ id: 'datetime', domain: 'tool_result' }),
+      ]),
+    );
+    // 复合 section 必须展开，不能把 evidence/tool_result 混回一个 runtime-context 大串。
+    expect(result.promptBlocks.some((block) => block.id === 'runtime-context')).toBe(false);
 
     expect(prompt.indexOf('# 角色')).toBeGreaterThanOrEqual(0);
     expect(prompt.indexOf('# 全局工作原则')).toBeGreaterThan(prompt.indexOf('# 人格设定'));
@@ -238,40 +300,10 @@ describe('ContextService', () => {
       },
     ]);
 
-    const { systemPrompt } = await service.compose({
+    const { systemPrompt, promptBlocks } = await service.compose({
       scenario: 'candidate-consultation',
       strategySource: 'testing',
-      sessionFacts: {
-        interview_info: {
-          name: null,
-          phone: null,
-          gender: null,
-          age: null,
-          applied_store: null,
-          applied_position: null,
-          interview_time: null,
-          is_student: null,
-          education: null,
-          has_health_certificate: null,
-        },
-        preferences: {
-          brands: null,
-          salary: null,
-          position: null,
-          schedule: null,
-          city: { value: '上海', confidence: 'high', evidence: 'explicit_city' },
-          district: null,
-          location: null,
-          labor_form: null,
-          delayed_intent: null,
-          short_term: null,
-          open_position: null,
-          time_windows: null,
-          schedule_constraint: null,
-          available_after: null,
-        },
-        reasoning: '',
-      },
+      sessionFacts: sessionFactsOf({ preferences: { city: cityFixture('上海') } }),
     });
 
     expect(systemPrompt).toContain('## 兼职群资源（上海）');
@@ -281,12 +313,31 @@ describe('ContextService', () => {
     // （hard-constraints 段会把"禁止凭通识补北京/重庆等城市"作为反例文案列出）
     expect(systemPrompt).not.toContain('北京餐饮兼职群');
     expect(systemPrompt).toContain('必须传对应 industry 参数');
+    expect(promptBlocks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'group-inventory', domain: 'tool_result' }),
+      ]),
+    );
   });
 
   it('should skip group inventory block when no city is known', async () => {
     const { systemPrompt } = await service.compose({
       scenario: 'candidate-consultation',
       strategySource: 'testing',
+    });
+
+    expect(systemPrompt).not.toContain('## 兼职群资源');
+    expect(mockGroupResolver.resolveGroups).not.toHaveBeenCalled();
+  });
+
+  // 议题 1-2：兼职群资源块会输出「本城市群库为空 → 禁止承诺拉群」这类有行为后果的指令，
+  // 取值必须与硬约束段同门（high）。此前直读 .value 绕过置信度门，导致 prompt 里出现
+  // 硬约束段根本没有的城市。
+  it('should skip group inventory block when the city confidence is below the hard-constraint gate', async () => {
+    const { systemPrompt } = await service.compose({
+      scenario: 'candidate-consultation',
+      strategySource: 'testing',
+      sessionFacts: sessionFactsOf({ preferences: { city: cityFixture('上海', 'medium') } }),
     });
 
     expect(systemPrompt).not.toContain('## 兼职群资源');

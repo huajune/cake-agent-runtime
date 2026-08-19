@@ -17,6 +17,7 @@ import {
 import heroArt from '@/assets/images/conversion-growth-hero.png';
 import { useCountUp } from '@/hooks/useCountUp';
 import { isWeekendDate } from '@/utils/date-range';
+import { formatPercent } from '@/utils/format';
 import MetricModeTabs from '../MetricModeTabs';
 import { KPI_DEFS } from '../../types';
 import styles from '../../styles/index.module.scss';
@@ -219,7 +220,7 @@ function TrendTooltip({
     <div className={styles.trendTooltip} style={{ '--trend-tone': color } as CSSProperties}>
       <strong>{datum.date}</strong>
       <span>
-        {label} <em>{rate == null ? '无数据' : formatPercent(rate)}</em>
+        {label} <em>{formatPercent(rate, '无数据')}</em>
       </span>
       <small>
         {datum[numeratorKey]} / {datum[denominatorKey]} 人
@@ -251,12 +252,7 @@ function trendDescription(mode: ConversionMetricMode, maturityDays: number) {
 // 卡片右上的大数：从 0 滚动到目标值，与 KPI 名片的计数动画一致。
 function TrendStatValue({ rate, color }: { rate: number | null; color: string }) {
   const animated = useCountUp(rate ?? 0);
-  return <em style={{ color }}>{rate == null ? '—' : formatPercent(animated)}</em>;
-}
-
-function formatPercent(value?: number | null) {
-  if (value == null) return '—';
-  return `${(value * 100).toFixed(1)}%`;
+  return <em style={{ color }}>{formatPercent(rate == null ? null : animated, '—')}</em>;
 }
 
 function roundRate(value: number) {

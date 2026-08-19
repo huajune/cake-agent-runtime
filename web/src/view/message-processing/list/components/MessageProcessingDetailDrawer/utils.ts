@@ -1,5 +1,6 @@
 import type { UIMessage } from 'ai';
 import type { MessageRecord, MessageRecordMemorySnapshot } from '@/api/types/chat.types';
+import { asRecord } from '@/utils/object';
 import { buildAgentResponseTimeline, type AgentTimelinePart } from './agent-response-timeline';
 
 type AnyRecord = Record<string, unknown>;
@@ -30,12 +31,6 @@ export interface RawPayloadPanel {
   label: string;
   description: string;
   data: unknown;
-}
-
-function asRecord(value: unknown): AnyRecord | undefined {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as AnyRecord)
-    : undefined;
 }
 
 function asArray<T = unknown>(value: unknown): T[] {

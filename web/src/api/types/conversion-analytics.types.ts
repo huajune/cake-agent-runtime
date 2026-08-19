@@ -1,3 +1,4 @@
+// 同源：src/biz/conversion-analytics/types/conversion-analytics.types.ts —— 改动必须同步。
 export type ConversionRange =
   | 'today'
   | 'week'

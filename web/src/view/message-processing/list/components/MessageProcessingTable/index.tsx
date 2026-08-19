@@ -1,4 +1,4 @@
-import { formatDateTime, formatDuration } from '@/utils/format';
+import { formatDateTime, formatDuration, formatLocaleNumber } from '@/utils/format';
 import { guardrailReasonLabel, guardrailRuleListLabel } from '@/components/GuardrailTrace/labels';
 import type { MessageRecord } from '@/api/types/chat.types';
 import styles from './index.module.scss';
@@ -215,17 +215,16 @@ export default function MessageProcessingTable({
                   <td className={styles.cellTruncate}>{record.messagePreview || '-'}</td>
                   <td className={styles.cellTruncateLarge}>{record.replyPreview || '-'}</td>
                   <td className={styles.cellCenter}>{record.replySegments ?? '-'}</td>
-                  <td className={styles.cellMono}>{record.tokenUsage?.toLocaleString() || '-'}</td>
+                  <td className={styles.cellMono}>
+                    {record.tokenUsage == null ? '-' : formatLocaleNumber(record.tokenUsage)}
+                  </td>
                   <td className={styles.cellMono}>
                     {record.ttftMs !== undefined ? formatDuration(record.ttftMs) : '-'}
                   </td>
                   <td>{formatDuration(record.totalDuration)}</td>
                   <td>
                     <div className={styles.statusCell}>
-                      <span
-                        className={`status-badge ${statusTone}`}
-                        title={statusTitle}
-                      >
+                      <span className={`status-badge ${statusTone}`} title={statusTitle}>
                         {getStatusLabel(record)}
                       </span>
                       {record.isFallback && (

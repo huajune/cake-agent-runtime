@@ -17,13 +17,7 @@
  *  - 仅做派生不做校验——booking-guards 是另一层
  */
 
-type UnknownRecord = Record<string, unknown>;
-
-/** raw 值是对象时按 Record 读取，否则 null（等价于原先的 `typeof x === 'object'` 守卫）。 */
-function asRecord(value: unknown): UnknownRecord | null {
-  return value && typeof value === 'object' ? (value as UnknownRecord) : null;
-}
-
+import { asRecord } from '@infra/utils/object.util';
 import type { HealthCertGate } from '@tools/utils/job-policy-parser';
 
 export type GenderRequirement = 'male' | 'female' | 'any' | 'unspecified';
@@ -144,8 +138,8 @@ const HOUSEHOLD_INCLUDE_TYPES = new Set(['限', '只要', '只接受', '白名�
  * 仅当 type 明确为 include/exclude 且 places 非空时返回结构化结果，否则 null。
  */
 function normalizeHousehold(hometown: unknown): HouseholdRequirement | null {
-  if (!hometown || typeof hometown !== 'object') return null;
-  const h = hometown as UnknownRecord;
+  const h = asRecord(hometown);
+  if (!h) return null;
   const typeRaw =
     typeof h.nativePlaceRequirementType === 'string' ? h.nativePlaceRequirementType.trim() : '';
   const placesRaw = Array.isArray(h.nativePlaces) ? h.nativePlaces : [];

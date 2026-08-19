@@ -100,7 +100,7 @@ export class RoomController {
    * @example POST /room/joined
    */
   @Post('joined')
-  async handleJoinedCallback(@Body() body: any) {
+  async handleJoinedCallback(@Body() body: unknown) {
     return await this.roomService.handleJoinedCallback(body);
   }
 
@@ -110,7 +110,7 @@ export class RoomController {
    * @example POST /room/left
    */
   @Post('left')
-  async handleLeftCallback(@Body() body: any) {
+  async handleLeftCallback(@Body() body: unknown) {
     return await this.roomService.handleLeftCallback(body);
   }
 }

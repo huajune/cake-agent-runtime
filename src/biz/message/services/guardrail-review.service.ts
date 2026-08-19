@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { AlertLevel } from '@enums/alert.enum';
 import { AlertNotifierService } from '@notification/services/alert-notifier.service';
@@ -97,9 +98,7 @@ export class GuardrailReviewService {
         dedupe: { key: `guardrail_review_persist_failed:${reason}` },
       })
       .catch((error: unknown) => {
-        this.logger.warn(
-          `[guardrailReview] 落库失败告警发送异常: ${error instanceof Error ? error.message : String(error)}`,
-        );
+        this.logger.warn(`[guardrailReview] 落库失败告警发送异常: ${toErrorMessage(error)}`);
       });
   }
 
@@ -141,7 +140,7 @@ export class GuardrailReviewService {
       })
       .catch((error: unknown) => {
         this.logger.warn(
-          `[guardrailReview] 语义判例落库失败告警发送异常: ${error instanceof Error ? error.message : String(error)}`,
+          `[guardrailReview] 语义判例落库失败告警发送异常: ${toErrorMessage(error)}`,
         );
       });
   }

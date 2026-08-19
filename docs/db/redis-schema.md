@@ -464,10 +464,8 @@ bull:{env}:test-suite:{waiting|active|completed|failed|delayed|{jobId}}
 | Bull Queue 任务队列 | TCP（`ioredis`） | `UPSTASH_REDIS_TCP_URL` |
 | 备选：通用 Redis | TCP | `REDIS_URL`（或 `REDIS_HOST`/`REDIS_PORT`/`REDIS_PASSWORD`） |
 
-```bash
-# 禁用 Bull Queue（本地开发无 Redis）
-ENABLE_BULL_QUEUE=false
-```
+本地运行同样必须提供可用 Redis：Service 缓存使用 REST 连接，Bull Queue 使用 TCP 连接（或表中的
+通用 Redis TCP 兜底）。当前没有禁用 Bull Queue 的环境变量；无 Redis 时应用无法启动。
 
 ---
 

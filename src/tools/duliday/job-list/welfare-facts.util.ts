@@ -21,8 +21,8 @@
  * 参与 Redis 落盘校验，两边漂移时 getSessionState 的 safeParse 失败会**整份会话
  * 状态归空**（见 session.service.ts 的 EMPTY_SESSION_STATE 分支），只留一条 warn。
  */
-export const WELFARE_KINDS = ['company', 'allowance', 'self_or_none', 'unspecified'] as const;
-export type WelfareKind = (typeof WELFARE_KINDS)[number];
+import { type WelfareKind } from '@shared-types/welfare.types';
+export { WELFARE_KINDS, type WelfareKind } from '@shared-types/welfare.types';
 
 export interface WelfareFacts {
   /** 员工餐：公司直接提供 / 仅给餐补 / 员工自理或明确无 / 未明确 */

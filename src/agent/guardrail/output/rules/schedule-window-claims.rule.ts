@@ -1,5 +1,6 @@
 import type { AgentToolCall } from '@shared-types/agent-telemetry.types';
 import { GUARDRAIL_ACTION } from '@shared-types/guardrail.contract';
+import { CHINESE_CARDINAL } from '@infra/utils/chinese-numeral.util';
 import type { RuleContradiction } from '../output-rule.types';
 
 const SCHEDULE_ASSURANCE_PATTERN =
@@ -7,17 +8,6 @@ const SCHEDULE_ASSURANCE_PATTERN =
 
 const TIME_RANGE_PATTERN =
   /(?<!\d)(\d{1,2})(?::([0-5]\d)|点(?:半)?|时)?\s*(?:-|到|至|~|—|–)\s*(?:次日\s*)?(\d{1,2})(?::([0-5]\d)|点(?:半)?|时)?(?!\d)/gu;
-
-const CHINESE_DAY_NUMBER: Record<string, number> = {
-  一: 1,
-  二: 2,
-  两: 2,
-  三: 3,
-  四: 4,
-  五: 5,
-  六: 6,
-  七: 7,
-};
 
 const WEEKLY_CAP_PATTERNS = [
   /(?:每周|一周|每星期|一星期)[^，。！？；;\n]{0,12}?(?:最多|至多|只能|不超过|只|就)[^，。！？；;\n]{0,8}?([一二两三四五六七1-7])\s*天/gu,
@@ -38,7 +28,7 @@ const NEGATED_CYCLE_SUFFIX_PATTERN =
   /^[^，,；;。！？\n]{0,16}(?:不(?:适合|符合|匹配|满足|可行|建议|推荐)|不能|不行|冲突|对不上|超过|高于|多于)/u;
 
 function parseDayNumber(token: string): number | null {
-  const parsed = CHINESE_DAY_NUMBER[token] ?? Number(token);
+  const parsed = CHINESE_CARDINAL[token] ?? Number(token);
   return Number.isInteger(parsed) && parsed >= 1 && parsed <= 7 ? parsed : null;
 }
 

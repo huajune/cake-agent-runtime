@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import {
   RecordReengagementTouchInput,
@@ -64,9 +65,7 @@ export class ReengagementTrackingService {
       return await this.repository.getLatestChatChannelIdentity(sessionId);
     } catch (error) {
       this.logger.warn(
-        `[二次触发追溯] 渠道身份兜底查询失败 sessionId=${sessionId}: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
+        `[二次触发追溯] 渠道身份兜底查询失败 sessionId=${sessionId}: ${toErrorMessage(error)}`,
       );
       return null;
     }
@@ -348,9 +347,9 @@ export class ReengagementTrackingService {
   private persist(input: RecordReengagementTouchInput): void {
     void this.repository.record(input).catch((error) => {
       this.logger.warn(
-        `[二次触发追溯] 落库失败 touchKey=${input.touchKey} event=${input.event?.event}: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
+        `[二次触发追溯] 落库失败 touchKey=${input.touchKey} event=${input.event?.event}: ${toErrorMessage(
+          error,
+        )}`,
       );
     });
   }

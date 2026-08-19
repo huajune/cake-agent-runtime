@@ -1,15 +1,15 @@
 import { MessageParser } from '@wecom/message/utils/message-parser.util';
 import { EnterpriseMessageCallbackDto } from '@wecom/message/ingress/message-callback.dto';
 import { ContactType, MessageSource, MessageType } from '@enums/message-callback.enum';
-import {
-  extractHighConfidenceFacts,
-  unwrapHighConfidenceValue,
-} from '@memory/facts/high-confidence-facts';
+import { produceRuleFactClaims } from '@resolution/evidence/producers/rule-track';
+import { getRuleFactValue } from '@resolution/evidence/merge';
 import { FALLBACK_EXTRACTION } from '@memory/types/session-facts.types';
 import { buildInterviewPrecheckTool } from '@tools/duliday-interview-precheck.tool';
 import { buildInterviewBookingTool } from '@tools/duliday-interview-booking.tool';
 import { TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 import type { ToolBuildContext } from '@shared-types/tool.types';
+import type { TurnLedger } from '@shared-types/turn.types';
+import { createToolContext } from '../helpers/tool-context.fixture';
 
 describe('resume booking flow', () => {
   const resumeFileUrl = 'https://wecom.example.com/files/renbowen-resume.pdf';
@@ -32,7 +32,7 @@ describe('resume booking flow', () => {
   const mockLongTermService = {
     writeFromBooking: jest.fn().mockResolvedValue(undefined),
     setActiveBooking: jest.fn().mockResolvedValue(undefined),
-    getActiveBooking: jest.fn().mockResolvedValue(null),
+    
     getActiveBookings: jest.fn().mockResolvedValue([]),
   };
 
@@ -70,12 +70,10 @@ describe('resume booking flow', () => {
     );
     expect(parsed.content).toContain(`简历附件：${resumeFileUrl}`);
 
-    const highConfidenceFacts = extractHighConfidenceFacts([parsed.content], []);
-    expect(unwrapHighConfidenceValue(highConfidenceFacts?.interview_info.upload_resume)).toBe(
-      resumeFileUrl,
-    );
+    const ruleFacts = produceRuleFactClaims([parsed.content], []);
+    expect(getRuleFactValue(ruleFacts, 'interview_info.upload_resume')).toBe(resumeFileUrl);
 
-    const context = buildToolContext(parsed.content, highConfidenceFacts);
+    const context = buildToolContext(parsed.content, ruleFacts);
     const precheckResult = await executePrecheck(
       {
         jobId: 528121,
@@ -152,10 +150,10 @@ describe('resume booking flow', () => {
     );
     expect(parsed.content).not.toContain('简历附件：');
 
-    const highConfidenceFacts = extractHighConfidenceFacts([parsed.content], []);
-    expect(unwrapHighConfidenceValue(highConfidenceFacts?.interview_info.upload_resume)).toBeNull();
+    const ruleFacts = produceRuleFactClaims([parsed.content], []);
+    expect(getRuleFactValue(ruleFacts, 'interview_info.upload_resume')).toBeNull();
 
-    const context = buildToolContext(parsed.content, highConfidenceFacts);
+    const context = buildToolContext(parsed.content, ruleFacts);
     const precheckResult = await executePrecheck(
       {
         jobId: 528121,
@@ -207,35 +205,44 @@ describe('resume booking flow', () => {
 
   function buildToolContext(
     messageContent: string,
-    highConfidenceFacts: ToolBuildContext['highConfidenceFacts'],
+    ruleFacts: TurnLedger['facts']['ruleFacts'],
   ): ToolBuildContext {
-    return {
-      userId: 'user-1',
-      corpId: 'corp-1',
-      sessionId: '6a1ced34536c9654027defbd',
-      chatId: '6a1ced34536c9654027defbd',
-      contactName: '候选人微信名',
-      botUserId: 'manager-1',
-      // B4 手机号溯源闸门要求提交的 phone 在候选人原文有出处，预置报号消息
-      messages: [{ role: 'user', content: '电话15305186866' }, { role: 'user', content: messageContent }],
-      highConfidenceFacts,
-      sessionFacts: {
-        interview_info: {
-          ...FALLBACK_EXTRACTION.interview_info,
-          name: '任博文',
-          phone: '15305186866',
-          gender: '男',
-          age: '22',
-          education: '大专',
-          has_health_certificate: '无但接受办理健康证',
-          is_student: false,
-          interview_time: null,
-          upload_resume: null,
-        },
-        preferences: FALLBACK_EXTRACTION.preferences,
-        reasoning: 'integration test',
+    return createToolContext({
+      session: {
+        userId: 'user-1',
+        corpId: 'corp-1',
+        sessionId: '6a1ced34536c9654027defbd',
+        chatId: '6a1ced34536c9654027defbd',
+        contactName: '候选人微信名',
+        botUserId: 'manager-1',
       },
-    } as ToolBuildContext;
+      // B4 手机号溯源闸门要求提交的 phone 在候选人原文有出处，预置报号消息
+      turnInput: {
+        messages: [
+          { role: 'user', content: '电话15305186866' },
+          { role: 'user', content: messageContent },
+        ],
+      },
+      ledger: { facts: { ruleFacts } },
+      archive: {
+        sessionFacts: {
+          interview_info: {
+            ...FALLBACK_EXTRACTION.interview_info,
+            name: '任博文',
+            phone: '15305186866',
+            gender: '男',
+            age: '22',
+            education: '大专',
+            has_health_certificate: '无但接受办理健康证',
+            is_student: false,
+            interview_time: null,
+            upload_resume: null,
+          },
+          preferences: FALLBACK_EXTRACTION.preferences,
+          reasoning: 'integration test',
+        },
+      },
+    });
   }
 
   async function executePrecheck(input: Record<string, unknown>, context: ToolBuildContext) {
@@ -330,6 +337,8 @@ function makeResumeRequiredJob() {
         periodicInterviewTimes: [],
       },
       interviewSupplement: [{ interviewSupplementId: 49, interviewSupplement: '上传简历' }],
+      processDesc:
+        '按标准简历模板，填写完整，上传简历，简历通过客户审核后，通知具体面试时间&地点',
       remark: '按标准简历模板，填写完整，上传简历，简历通过客户审核后，通知具体面试时间&地点',
     },
   };

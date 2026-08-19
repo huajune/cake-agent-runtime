@@ -6,15 +6,15 @@ import {
 } from '@tools/duliday/booking/interview-booking-customer-label.builder';
 import type { SpongeInterviewSupplementDefinition } from '@sponge/sponge-job.util';
 import type { JobDetail } from '@sponge/sponge.types';
-import type { ToolBuildContext } from '@shared-types/tool.types';
 import { TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
+import { createToolContext } from '../helpers/tool-context.fixture';
 
 function makeParams(
   override: Partial<BuildCustomerLabelListParams> = {},
 ): BuildCustomerLabelListParams {
   return {
     supplementDefinitions: [],
-    context: {} as ToolBuildContext,
+    context: createToolContext(),
     name: '王玉凯',
     phone: '18271421690',
     age: 32,

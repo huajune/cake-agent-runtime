@@ -6,11 +6,12 @@
  * 自助优先：字典/接口失败或无工单号时，回退 request_handoff(modify_appointment) 转人工。
  */
 
+import { toErrorMessage, toErrorStack } from '@infra/utils/error.util';
 import { Logger } from '@nestjs/common';
 import { tool } from 'ai';
 import { z } from 'zod';
 import { SpongeService } from '@sponge/sponge.service';
-import type { FailureReasonItem } from '@sponge/sponge.types';
+import { SELF_CANCEL_BLOCKED_STATUSES, type FailureReasonItem } from '@sponge/sponge.types';
 import { buildSpongeTokenContext } from '@tools/utils/sponge-token-context.util';
 import { isTestPiiPhoneAllowed, maskPhoneForDetails } from '@tools/shared/test-pii-gate';
 import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
@@ -130,11 +131,11 @@ export function buildCancelWorkOrderTool(
         jobName,
         interviewTime,
       }) => {
-        const chatId = context.chatId ?? context.sessionId;
+        const chatId = context.session.chatId ?? context.session.sessionId;
 
         // 测试链路 PII 白名单闸门：cancel 真调海绵生产网关，测试重放只允许
         // 假身份工单（与 booking 同源防线，2026-07-27 误建工单事故后固化）。
-        if (context.strategySource === 'testing' && !isTestPiiPhoneAllowed(phone)) {
+        if (context.runtime.strategySource === 'testing' && !isTestPiiPhoneAllowed(phone)) {
           return buildToolError({
             errorType: TOOL_ERROR_TYPES.TEST_LINK_REAL_PII_BLOCKED,
             outcome: '测试链路拦截：手机号不在测试白名单，未执行真实取消',
@@ -161,8 +162,8 @@ export function buildCancelWorkOrderTool(
         // Agent 声称取消一个臆造的上海预约），取消是不可逆动作，必须锚定真实工单证据。
         try {
           const activeBookings = await longTermService.getActiveBookings(
-            context.corpId,
-            context.userId,
+            context.session.corpId,
+            context.session.userId,
           );
           const ownedWorkOrderIds = activeBookings.map((b) => b.work_order_id);
           if (!ownedWorkOrderIds.includes(workOrderId)) {
@@ -182,9 +183,9 @@ export function buildCancelWorkOrderTool(
         } catch (err) {
           // 归属核验依赖本地 long-term 存储，读失败时降级放行（保持原有可取消能力），只记警告。
           logger.warn(
-            `取消前归属核验读取失败（降级放行）: chatId=${chatId}, workOrderId=${workOrderId}, error=${
-              err instanceof Error ? err.message : String(err)
-            }`,
+            `取消前归属核验读取失败（降级放行）: chatId=${chatId}, workOrderId=${workOrderId}, error=${toErrorMessage(
+              err,
+            )}`,
           );
         }
 
@@ -195,9 +196,7 @@ export function buildCancelWorkOrderTool(
           const workOrder = await spongeService.getWorkOrderById(workOrderId, tokenContext);
           const currentStatus = workOrder?.currentStatus ?? '';
           const interviewPassed = Boolean(workOrder?.interviewPassTime);
-          const statusBlocked = ['面试成功', '上岗失败', '上岗成功', '已离职'].includes(
-            currentStatus,
-          );
+          const statusBlocked = SELF_CANCEL_BLOCKED_STATUSES.has(currentStatus);
           if (interviewPassed || statusBlocked) {
             logger.warn(
               `取消拦截（工单状态不可自助取消）: chatId=${chatId}, workOrderId=${workOrderId}, status=${currentStatus}, interviewPassTime=${workOrder?.interviewPassTime ?? '-'}`,
@@ -219,9 +218,9 @@ export function buildCancelWorkOrderTool(
           }
         } catch (err) {
           logger.warn(
-            `取消前状态核验查询失败（降级放行）: chatId=${chatId}, workOrderId=${workOrderId}, error=${
-              err instanceof Error ? err.message : String(err)
-            }`,
+            `取消前状态核验查询失败（降级放行）: chatId=${chatId}, workOrderId=${workOrderId}, error=${toErrorMessage(
+              err,
+            )}`,
           );
         }
 
@@ -235,14 +234,14 @@ export function buildCancelWorkOrderTool(
         } catch (err) {
           logger.error(
             `取消原因字典拉取异常: chatId=${chatId}, workOrderId=${workOrderId}`,
-            err instanceof Error ? (err.stack ?? err.message) : String(err),
+            toErrorStack(err),
           );
           return buildToolError({
             errorType: TOOL_ERROR_TYPES.CANCEL_REASON_FETCH_FAILED,
             outcome: '取消原因字典拉取失败',
             replyInstruction:
               '暂时取不到取消原因，无法自助取消。请以真人招募者口吻一句话安抚衔接，并按 request_handoff（reasonCode=modify_appointment）转人工；不要透露接口细节，不要谎称已取消。',
-            details: { workOrderId, reason: err instanceof Error ? err.message : '未知错误' },
+            details: { workOrderId, reason: toErrorMessage(err) || '未知错误' },
           });
         }
 
@@ -305,13 +304,13 @@ export function buildCancelWorkOrderTool(
 
           // 运营事件底账：booking.canceled。幂等键用 workOrderId（一张工单仅取消一次，Bull 重试去重）。
           void opsEventsRecorder.recordEvent({
-            corpId: context.corpId,
+            corpId: context.session.corpId,
             eventName: 'booking.canceled',
             idempotencyKey: `${workOrderId}:canceled`,
-            botImId: context.botImId,
-            managerName: context.botUserId,
-            userId: context.userId,
-            chatId: context.sessionId,
+            botImId: context.session.botImId,
+            managerName: context.session.botUserId,
+            userId: context.session.userId,
+            chatId: context.session.sessionId,
             payload: {
               work_order_id: workOrderId,
               cancel_reason_id: matched.id,
@@ -326,7 +325,11 @@ export function buildCancelWorkOrderTool(
             },
           });
 
-          await longTermService.clearActiveBooking(context.corpId, context.userId, workOrderId);
+          await longTermService.clearActiveBooking(
+            context.session.corpId,
+            context.session.userId,
+            workOrderId,
+          );
 
           void sendCancelWorkOrderNotification({
             privateChatNotifier,
@@ -355,7 +358,7 @@ export function buildCancelWorkOrderTool(
         } catch (err) {
           logger.error(
             `取消工单异常: chatId=${chatId}, workOrderId=${workOrderId}`,
-            err instanceof Error ? (err.stack ?? err.message) : String(err),
+            toErrorStack(err),
           );
           return buildToolError({
             errorType: TOOL_ERROR_TYPES.CANCEL_REQUEST_FAILED,
@@ -364,7 +367,7 @@ export function buildCancelWorkOrderTool(
               '取消未成功。请以真人招募者口吻一句话安抚衔接，并按 request_handoff（reasonCode=modify_appointment）转人工；不要透露接口报错/技术细节，不要谎称已取消。',
             details: {
               workOrderId,
-              reason: err instanceof Error ? err.message : '未知错误',
+              reason: toErrorMessage(err) || '未知错误',
             },
           });
         }
@@ -407,11 +410,11 @@ async function sendCancelWorkOrderNotification(params: {
   const { privateChatNotifier, context } = params;
   try {
     await privateChatNotifier.notifyInterviewCancellation({
-      botImId: context.botImId,
-      contactName: normalizeOptionalText(context.contactName) ?? undefined,
+      botImId: context.session.botImId,
+      contactName: normalizeOptionalText(context.session.contactName) ?? undefined,
       candidateName: normalizeOptionalText(params.candidateName) ?? undefined,
       phone: normalizeOptionalText(params.phone) ?? undefined,
-      botUserName: normalizeOptionalText(context.botUserId) ?? undefined,
+      botUserName: normalizeOptionalText(context.session.botUserId) ?? undefined,
       brandName: normalizeOptionalText(params.brandName) ?? undefined,
       storeName: normalizeOptionalText(params.storeName) ?? undefined,
       jobName: normalizeOptionalText(params.jobName) ?? undefined,
@@ -419,13 +422,12 @@ async function sendCancelWorkOrderNotification(params: {
       workOrderId: params.workOrderId,
       cancelReason: normalizeOptionalText(params.cancelReason) ?? undefined,
       cancelReasonDesc: normalizeOptionalText(params.cancelReasonDesc) ?? undefined,
-      userMessage: normalizeOptionalText(extractLatestUserMessage(context.messages)) ?? undefined,
+      userMessage:
+        normalizeOptionalText(extractLatestUserMessage(context.turnInput.messages)) ?? undefined,
     });
   } catch (error) {
     logger.error(
-      `取消工单通知发送异常: workOrderId=${params.workOrderId}, error=${
-        error instanceof Error ? error.message : String(error)
-      }`,
+      `取消工单通知发送异常: workOrderId=${params.workOrderId}, error=${toErrorMessage(error)}`,
     );
   }
 }

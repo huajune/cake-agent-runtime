@@ -1,7 +1,7 @@
 /**
- * 品牌文本归一化原语 —— 全库唯一实现（§5.1 单一居所）。
+ * 品牌文本归一化原语 —— 全库唯一实现（§1 单一居所）。
  *
- * 迁移自 memory/facts/high-confidence-facts.ts（行为一致）：
+ * 迁移自旧规则轨（行为一致）：
  * - normalizeForBrandMatch：大小写/全半角/分隔符清洗（只为对比用，展示仍保留原文）
  * - BRAND_NOISE_PATTERNS + stripBrandNoisePatterns：剥离求职意图词与语气词
  * - buildExactMatchTokens：短别名全等匹配用的 token 集
@@ -83,7 +83,7 @@ export const DIGIT_TO_CJK_NUMERAL: Record<string, string> = {
 /**
  * 归一化：全半角折叠（NFKC）→ 小写 → 去掉非中英数字符。
  *
- * NFKC 折叠是 §7.1「全半角统一」的实现——不做折叠时全角字符（"６姐"的"６"、
+ * NFKC 折叠是 §4.1「全半角统一」的实现——不做折叠时全角字符（"６姐"的"６"、
  * "７-１１"）会被白名单过滤直接删除，别名塌缩成超短词形：生产事故 2026-07-16
  * "６姐"塌缩成单字"姐"，候选人喊"姐，…"被批量误判成品牌意向（42+ 会话状态污染）。
  *

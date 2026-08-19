@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { AgentToolCall } from '@agent/generator/generator.types';
+import type { TurnLedger } from '@shared-types/turn.types';
 import type {
   BookingEvidence,
   GeocodeEvidence,
@@ -13,6 +14,7 @@ import type {
 export interface BuildReviewPacketInput {
   reply: string;
   toolCalls: AgentToolCall[];
+  turnLedger?: Pick<TurnLedger, 'visual'>;
   userMessage?: string;
   /** 短期记忆里的往轮助手文本（正序）。缺省为空——repair 等旁路调用方无需提供。 */
   recentAssistantTexts?: string[];
@@ -43,7 +45,10 @@ export class GuardrailReviewPacketBuilder {
         geocode: this.buildGeocodeEvidence(input.toolCalls),
         sentLocation: this.buildSentLocationEvidence(input.toolCalls),
         groupInvite: this.buildGroupInviteEvidence(input.toolCalls),
-        visualFacts: this.buildVisualFactsEvidence(input.toolCalls),
+        visualFacts: this.buildVisualFactsEvidence(
+          input.turnLedger?.visual.factSheets ?? [],
+          input.toolCalls,
+        ),
       },
       policies: {
         redLines: input.redLines ?? [],
@@ -256,34 +261,43 @@ export class GuardrailReviewPacketBuilder {
   }
 
   /**
-   * 视觉事实证据：save_image_description 的**入参**才是内容载体（result 只有 success），
-   * 这与其余工具相反，故读 args 而非 result。一轮可能多张图，全部保留。
+   * 视觉事实证据以回合账本为准；账本没有的（降级 sheet 不进 ledger）从
+   * save_image_description 入参回退重建（PR #1000 评审 P2-9）——否则语义评审的证据
+   * 包里看不到降级图片的描述，凭图回复会被误判无据。
    */
   private buildVisualFactsEvidence(
+    visualFactSheets: TurnLedger['visual']['factSheets'],
     toolCalls: AgentToolCall[],
   ): GuardrailReviewPacket['evidence']['visualFacts'] {
-    const sheets = toolCalls
-      .filter((item) => item.toolName === 'save_image_description')
-      .slice(0, VISUAL_SHEETS_LIMIT)
-      .map((call) => {
-        const args = readRecord(call.args) ?? {};
-        const description = readString(args.description);
-        return {
-          kind: readString(args.kind),
-          description:
-            description && description.length > VISUAL_DESCRIPTION_MAX_CHARS
-              ? `${description.slice(0, VISUAL_DESCRIPTION_MAX_CHARS)}…`
-              : description,
-          fields: readArray(args.fields).flatMap((raw) => {
-            const field = readRecord(raw);
-            const key = readString(field?.key);
-            const value = readString(field?.value);
-            if (!key || !value) return [];
-            return [{ key, value, ownership: readString(field?.ownership) }];
-          }),
-        };
-      })
-      .filter((sheet) => sheet.fields.length > 0 || sheet.description);
+    const truncate = (description: string | undefined): string | undefined =>
+      description && description.length > VISUAL_DESCRIPTION_MAX_CHARS
+        ? `${description.slice(0, VISUAL_DESCRIPTION_MAX_CHARS)}…`
+        : description || undefined;
+    const ledgerMessageIds = new Set(visualFactSheets.map((entry) => entry.messageId));
+    const degradedFallback = toolCalls
+      .filter(
+        (call) =>
+          call.toolName === 'save_image_description' &&
+          typeof call.args.messageId === 'string' &&
+          !ledgerMessageIds.has(call.args.messageId),
+      )
+      .map((call) => ({
+        kind: 'other' as const,
+        description: truncate(
+          typeof call.args.description === 'string' ? call.args.description : undefined,
+        ),
+        fields: [],
+      }));
+    const sheets = [
+      ...visualFactSheets.map(({ sheet }) => ({
+        kind: sheet.kind,
+        description: truncate(sheet.rawDescription),
+        fields: sheet.fields,
+      })),
+      ...degradedFallback,
+    ]
+      .filter((sheet) => sheet.fields.length > 0 || sheet.description)
+      .slice(0, VISUAL_SHEETS_LIMIT);
     return sheets.length > 0 ? { sheets } : undefined;
   }
 

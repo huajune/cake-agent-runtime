@@ -60,17 +60,6 @@ export class RedisService implements OnModuleInit {
     return keys.map((key) => this.withPrefix(key));
   }
 
-  /**
-   * 获取 Redis 原始客户端
-   *
-   * @deprecated 直接使用原始客户端会绕过环境前缀（RUNTIME_ENV），可能导致跨环境数据污染。
-   *   新代码请使用本服务暴露的方法（get/set/setNx/eval/incrby 等）。当前 src/ 内无调用方——
-   *   队列走独立的 ioredis 连接（见 infra/queue/bull.module.ts），与本方法无关。
-   */
-  getClient(): Redis {
-    return this.redisClient;
-  }
-
   /** 当前环境标识，用于诊断 */
   getEnvironment(): string {
     return this.env;

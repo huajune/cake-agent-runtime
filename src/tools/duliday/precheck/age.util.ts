@@ -62,9 +62,6 @@ export interface AgeScreeningSignal {
   reason: string;
 }
 
-/** @deprecated 使用 AgeScreeningSignal */
-export type AgeBoundarySignal = AgeScreeningSignal;
-
 /**
  * 候选人年龄 vs 岗位要求筛选检测。始终返回具体信号，不返回 null。
  */

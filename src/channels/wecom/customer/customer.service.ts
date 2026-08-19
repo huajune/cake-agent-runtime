@@ -50,7 +50,7 @@ export class CustomerService {
     try {
       const apiUrl = this.apiConfig.endpoints.customer.list();
 
-      const params: any = { token };
+      const params: Record<string, unknown> = { token };
 
       if (wecomUserId) params.wecomUserId = wecomUserId;
       if (imBotId) params.imBotId = imBotId;

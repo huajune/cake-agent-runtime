@@ -1,5 +1,6 @@
 /** Agent 执行编排：prepare -> model -> turn end lifecycle。 */
 
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { hasToolCall, stepCountIs, type generateText } from 'ai';
@@ -8,6 +9,7 @@ import { ModelRole } from '@/llm/llm.types';
 import { MemoryService } from '@memory/memory.service';
 import { PreparationService, type PreparedAgentContext } from './preparation.service';
 import type { AgentError } from '@shared-types/agent-error.types';
+import type { TurnLedger } from '@shared-types/turn.types';
 import {
   buildSideEffectBlockNotice,
   buildToolCallLimitNotice,
@@ -54,6 +56,11 @@ import type {
   GeneratorStreamResult,
   AgentToolCall,
 } from './generator.types';
+
+type TurnEndLifecycleContext = Pick<
+  Parameters<MemoryService['onTurnEnd']>[0],
+  'corpId' | 'userId' | 'sessionId' | 'messageId' | 'botImId' | 'normalizedMessages' | 'contactName'
+> & { ledger: TurnLedger };
 export type {
   GeneratorInputMessage,
   GeneratorInvokeParams,
@@ -108,20 +115,7 @@ export class GeneratorAgent {
       const stepStartMs = Date.now();
       const stepEndWallclocks: number[] = [];
       const r = await this.llm.generate({
-        role: ModelRole.Chat,
-        modelId: params.modelId,
-        disableFallbacks: params.disableFallbacks,
-        thinking: this.resolveThinkingConfig(params.thinking),
-        instructions: ctx.finalPrompt,
-        messages: ctx.normalizedMessages,
-        tools: ctx.tools,
-        maxOutputTokens: this.maxOutputTokens,
-        stopWhen: [
-          stepCountIs(ctx.maxSteps),
-          hasToolCall(SKIP_REPLY_TOOL_NAME), // skip_reply 无条件短路
-          shortCircuitByAnyToolResult, // 任意工具 shortCircuited=true 即短路
-        ],
-        prepareStep: this.buildPrepareStep(ctx),
+        ...this.buildLlmExecutionOptions(params, ctx),
         onStepFinish: () => {
           stepEndWallclocks.push(Date.now());
         },
@@ -150,6 +144,7 @@ export class GeneratorAgent {
         },
         agentRequest,
         memorySnapshot: ctx.memorySnapshot,
+        turnLedger: ctx.ledger,
         stepStartMs,
         stepEndWallclocks,
         toolExecutionTimings: ctx.toolExecutionTimings,
@@ -157,7 +152,7 @@ export class GeneratorAgent {
 
       result = await this.recoverEmptyTextResult(result, ctx, params);
 
-      this.attachTurnEnd(result, ctx, params.messageId, result.text, params.deferTurnEnd);
+      this.attachTurnEnd(result, ctx, params.messageId, result.text);
 
       return result;
     } catch (err) {
@@ -189,20 +184,7 @@ export class GeneratorAgent {
       const stepStartMs = Date.now();
       const stepEndWallclocks: number[] = [];
       const streamResult = await this.llm.stream({
-        role: ModelRole.Chat,
-        modelId: params.modelId,
-        disableFallbacks: params.disableFallbacks,
-        thinking: this.resolveThinkingConfig(params.thinking),
-        instructions: ctx.finalPrompt,
-        messages: ctx.normalizedMessages,
-        tools: ctx.tools,
-        maxOutputTokens: this.maxOutputTokens,
-        stopWhen: [
-          stepCountIs(ctx.maxSteps),
-          hasToolCall(SKIP_REPLY_TOOL_NAME), // skip_reply 无条件短路
-          shortCircuitByAnyToolResult, // 任意工具 shortCircuited=true 即短路
-        ],
-        prepareStep: this.buildPrepareStep(ctx),
+        ...this.buildLlmExecutionOptions(params, ctx),
         onStepFinish: () => {
           stepEndWallclocks.push(Date.now());
         },
@@ -225,11 +207,18 @@ export class GeneratorAgent {
             },
             agentRequest,
             memorySnapshot: ctx.memorySnapshot,
+            turnLedger: ctx.ledger,
             stepStartMs,
             stepEndWallclocks,
             toolExecutionTimings: ctx.toolExecutionTimings,
           });
-          this.attachTurnEnd(result, ctx, params.messageId, result.text, params.deferTurnEnd);
+          this.attachTurnEnd(result, ctx, params.messageId, result.text);
+          // stream 路径专项（议题 5-1 第 6 条）：SSE 交互测试链此前依赖 fire-and-forget
+          // 默认分支自动收尾。开关删除后由 stream 自己在挂上闭包后立即触发，
+          // 保持既有收尾行为不变（runTurnEnd 幂等，调用方再触发一次是空操作）。
+          void result
+            .runTurnEnd?.()
+            .catch((err) => this.logger.warn('流式回合记忆生命周期执行失败', err));
           if (params.onFinish) {
             Promise.resolve(params.onFinish(result)).catch((err) =>
               this.logger.warn('流式完成回调执行失败', err),
@@ -252,6 +241,25 @@ export class GeneratorAgent {
     return {
       type: 'enabled' as const,
       budgetTokens: this.thinkingBudgetTokens,
+    };
+  }
+
+  private buildLlmExecutionOptions(params: GeneratorInvokeParams, ctx: PreparedAgentContext) {
+    return {
+      role: ModelRole.Chat,
+      modelId: params.modelId,
+      disableFallbacks: params.disableFallbacks,
+      thinking: this.resolveThinkingConfig(params.thinking),
+      instructions: ctx.finalPrompt,
+      messages: ctx.normalizedMessages,
+      tools: ctx.tools,
+      maxOutputTokens: this.maxOutputTokens,
+      stopWhen: [
+        stepCountIs(ctx.maxSteps),
+        hasToolCall(SKIP_REPLY_TOOL_NAME), // skip_reply 无条件短路
+        shortCircuitByAnyToolResult, // 任意工具 shortCircuited=true 即短路
+      ],
+      prepareStep: this.buildPrepareStep(ctx),
     };
   }
 
@@ -341,26 +349,10 @@ export class GeneratorAgent {
    * 记忆收尾不阻塞主响应；失败只记日志，避免把模型成功回复拖慢或放大成整轮失败。
    */
   private async runTurnEndLifecycle(
-    ctx: Pick<
-      Parameters<MemoryService['onTurnEnd']>[0],
-      | 'corpId'
-      | 'userId'
-      | 'sessionId'
-      | 'messageId'
-      | 'botImId'
-      | 'normalizedMessages'
-      | 'contactName'
-    > & {
-      turnState: {
-        candidatePool: Parameters<MemoryService['onTurnEnd']>[0]['candidatePool'];
-        imageBrandResolutions: Parameters<MemoryService['onTurnEnd']>[0]['imageBrandResolutions'];
-        jobListQuerySignature: Parameters<MemoryService['onTurnEnd']>[0]['jobListQuerySignature'];
-        cityAttestation: Parameters<MemoryService['onTurnEnd']>[0]['cityAttestation'];
-        invalidatedJobIds: Parameters<MemoryService['onTurnEnd']>[0]['invalidatedJobIds'];
-      };
-    },
+    ctx: TurnEndLifecycleContext,
     assistantText?: string,
   ): Promise<void> {
+    const ledger = ctx.ledger.drain();
     await this.memoryService.onTurnEnd(
       {
         corpId: ctx.corpId,
@@ -369,84 +361,60 @@ export class GeneratorAgent {
         messageId: ctx.messageId,
         botImId: ctx.botImId,
         normalizedMessages: ctx.normalizedMessages,
-        candidatePool: ctx.turnState.candidatePool,
+        candidatePool: ledger.jobs.fetchedJobs.length > 0 ? [...ledger.jobs.fetchedJobs] : null,
         contactName: ctx.contactName,
-        imageBrandResolutions: ctx.turnState.imageBrandResolutions,
-        jobListQuerySignature: ctx.turnState.jobListQuerySignature,
-        cityAttestation: ctx.turnState.cityAttestation,
-        invalidatedJobIds: ctx.turnState.invalidatedJobIds,
+        imageBrandResolutions: ledger.visual.brandResolutions.flatMap((entry) => entry.resolutions),
+        jobListQuerySignature: ledger.jobs.querySignature ?? null,
+        cityAttestation: ledger.geo.cityAttestation ?? null,
+        invalidatedJobIds: [...ledger.jobs.invalidatedJobIds],
+        ruleFacts: ledger.facts.ruleFacts,
+        laborFormIntent: ledger.facts.laborFormIntent,
+        extractionToolFacts: {
+          jobs: {
+            fetchedJobs: ledger.jobs.fetchedJobs,
+            currentFocusJob: ledger.jobs.currentFocusJob,
+          },
+          visual: { factSheets: ledger.visual.factSheets },
+        },
       },
       assistantText,
     );
   }
 
-  private dispatchTurnEndLifecycle(
-    ctx: Pick<
-      Parameters<MemoryService['onTurnEnd']>[0],
-      | 'corpId'
-      | 'userId'
-      | 'sessionId'
-      | 'messageId'
-      | 'botImId'
-      | 'normalizedMessages'
-      | 'contactName'
-    > & {
-      turnState: {
-        candidatePool: Parameters<MemoryService['onTurnEnd']>[0]['candidatePool'];
-        imageBrandResolutions: Parameters<MemoryService['onTurnEnd']>[0]['imageBrandResolutions'];
-        jobListQuerySignature: Parameters<MemoryService['onTurnEnd']>[0]['jobListQuerySignature'];
-        cityAttestation: Parameters<MemoryService['onTurnEnd']>[0]['cityAttestation'];
-        invalidatedJobIds: Parameters<MemoryService['onTurnEnd']>[0]['invalidatedJobIds'];
-      };
-    },
-    assistantText?: string,
-  ): void {
-    void this.runTurnEndLifecycle(ctx, assistantText).catch((err) =>
-      this.logger.warn('记忆生命周期执行失败', err),
-    );
-  }
-
   /**
-   * 根据 deferTurnEnd 决定是 fire-and-forget 立即触发，还是把触发器暴露给调用方。
+   * 把 turn-end 触发器挂到结果上，交给调用方在本轮结局定局时触发。
    *
-   * 延迟模式用于 replay：首次生成结果可能被后续合并消息丢弃，若立即触发
-   * projectAssistantTurn/extractFacts 会把「本应丢弃」的首次回复写进 session 记忆，
-   * 污染下一轮 recall。
+   * 延迟触发是**唯一语义**（`deferTurnEnd` 开关已删除，core-flow-review 议题 5-1）：
+   * 首次生成结果可能被后续合并消息丢弃（replay），也可能被出站守卫拦下或投递失败；
+   * 生成结束就 fire-and-forget 会把「本应丢弃 / 用户根本没看到」的回复写进 session 记忆，
+   * 污染下一轮 recall 与复聊判定。生产全路径本就 defer（invokeReviewed 恒强制、
+   * test-suite 两处显式传 true），保留的默认分支只是 PR #415 重构前的世界观残留。
+   *
+   * ⚠️ 代价：没有兜底了。新调用方忘记触发 runTurnEnd = 本轮记忆写入静默丢失。
+   * 契约写在 GeneratorRunResult.runTurnEnd 的注释里。
    */
   private attachTurnEnd(
     result: GeneratorRunResult,
-    ctx: Pick<
-      Parameters<MemoryService['onTurnEnd']>[0],
-      'corpId' | 'userId' | 'sessionId' | 'botImId' | 'normalizedMessages' | 'contactName'
-    > & {
-      turnState: {
-        candidatePool: Parameters<MemoryService['onTurnEnd']>[0]['candidatePool'];
-        imageBrandResolutions: Parameters<MemoryService['onTurnEnd']>[0]['imageBrandResolutions'];
-        jobListQuerySignature: Parameters<MemoryService['onTurnEnd']>[0]['jobListQuerySignature'];
-        cityAttestation: Parameters<MemoryService['onTurnEnd']>[0]['cityAttestation'];
-        invalidatedJobIds: Parameters<MemoryService['onTurnEnd']>[0]['invalidatedJobIds'];
-      };
-    },
+    ctx: Omit<TurnEndLifecycleContext, 'messageId'>,
     messageId: string | undefined,
     assistantText: string,
-    deferTurnEnd: boolean | undefined,
   ): void {
     const lifecycleCtx = { ...ctx, messageId };
-    if (!deferTurnEnd) {
-      this.dispatchTurnEndLifecycle(lifecycleCtx, assistantText);
-      return;
-    }
-
     let consumed = false;
-    result.runTurnEnd = async (opts?: { includeAssistantText?: boolean }) => {
+    result.runTurnEnd = async (opts?: {
+      includeAssistantText?: boolean;
+      assistantTextOverride?: string;
+    }) => {
       if (consumed) return;
       consumed = true;
       // includeAssistantText=false：回复未真实送达（守卫拦截/沉默/投递失败），
       // 只跑用户侧收尾（事实提取等），不把未送达文本投影成助手轮次。
       const includeAssistantText = opts?.includeAssistantText !== false;
+      const projectedAssistantText =
+        opts && 'assistantTextOverride' in opts ? opts.assistantTextOverride : assistantText;
       await this.runTurnEndLifecycle(
         lifecycleCtx,
-        includeAssistantText ? assistantText : undefined,
+        includeAssistantText ? projectedAssistantText : undefined,
       );
     };
   }
@@ -471,6 +439,7 @@ export class GeneratorAgent {
     usage: GeneratorRunResult['usage'];
     agentRequest?: Record<string, unknown>;
     memorySnapshot?: GeneratorRunResult['memorySnapshot'];
+    turnLedger?: TurnLedger;
     /**
      * 本轮 generate/stream 开始的 wallclock 时间（`Date.now()`）。
      * 作为第 0 步的"上一步结束时间"锚点。
@@ -565,6 +534,7 @@ export class GeneratorAgent {
       usage: params.usage,
       agentRequest: params.agentRequest,
       memorySnapshot: params.memorySnapshot,
+      turnLedger: params.turnLedger,
     };
   }
 
@@ -654,11 +624,12 @@ export class GeneratorAgent {
         },
       };
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.logger.warn(
-        `空文本恢复失败: sessionId=${ctx.sessionId}; ${message}`,
-        error instanceof Error ? error.stack : undefined,
-      );
+      const message = toErrorMessage(error);
+      let stack: string | undefined;
+      if (error instanceof Error) {
+        stack = error.stack;
+      }
+      this.logger.warn(`空文本恢复失败: sessionId=${ctx.sessionId}; ${message}`, stack);
       return result;
     }
   }
@@ -776,8 +747,12 @@ export class GeneratorAgent {
       'sessionId' | 'userId' | 'normalizedMessages' | 'memoryLoadWarning'
     >,
   ): AgentError {
-    const error =
-      err instanceof Error ? (err as AgentError) : (new Error(String(err)) as AgentError);
+    let error: AgentError;
+    if (err instanceof Error) {
+      error = err as AgentError;
+    } else {
+      error = new Error(String(err)) as AgentError;
+    }
 
     error.isAgentError = true;
     error.agentMeta = {

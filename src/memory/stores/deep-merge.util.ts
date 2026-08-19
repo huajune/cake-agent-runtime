@@ -1,6 +1,4 @@
-function isPlainObject(val: unknown): val is Record<string, unknown> {
-  return typeof val === 'object' && val !== null && !Array.isArray(val);
-}
+import { isRecord as isPlainObject } from '@infra/utils/object.util';
 
 /**
  * 深度合并

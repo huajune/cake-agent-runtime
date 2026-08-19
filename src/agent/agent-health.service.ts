@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { RedisService } from '@infra/redis/redis.service';
 import { SupabaseService } from '@infra/supabase/supabase.service';
@@ -109,7 +110,7 @@ export class AgentHealthService {
       const result = await this.redisService.ping();
       return { ok: result === 'PONG' };
     } catch (error) {
-      return { ok: false, error: error instanceof Error ? error.message : 'Redis 连接失败' };
+      return { ok: false, error: toErrorMessage(error) || 'Redis 连接失败' };
     }
   }
 
@@ -125,7 +126,7 @@ export class AgentHealthService {
       if (error) return { ok: false, error: error.message };
       return { ok: true };
     } catch (error) {
-      return { ok: false, error: error instanceof Error ? error.message : 'Supabase 连接失败' };
+      return { ok: false, error: toErrorMessage(error) || 'Supabase 连接失败' };
     }
   }
 }

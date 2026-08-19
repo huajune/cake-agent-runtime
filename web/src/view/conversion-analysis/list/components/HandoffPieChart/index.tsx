@@ -1,4 +1,5 @@
 import type { ConversionHandoffResponse } from '@/api/types/conversion-analytics.types';
+import { formatPercent } from '@/utils/format';
 import { CHART_COLORS } from '../../types';
 import styles from '../../styles/index.module.scss';
 
@@ -40,7 +41,11 @@ export default function HandoffPieChart({
           <div className={styles.handoffLayout}>
             <div className={styles.handoffChartCard}>
               <div className={styles.handoffDonutWrap}>
-                <svg className={styles.handoffDonut} viewBox="0 0 240 240" aria-label="转人工原因占比图">
+                <svg
+                  className={styles.handoffDonut}
+                  viewBox="0 0 240 240"
+                  aria-label="转人工原因占比图"
+                >
                   <circle className={styles.handoffDonutTrack} cx="120" cy="120" r="84" />
                   {donutSegments.map((segment) => (
                     <path
@@ -75,7 +80,9 @@ export default function HandoffPieChart({
                   <div key={item.reasonCode} className={styles.reasonRow}>
                     <span
                       className={styles.reasonRank}
-                      style={{ background: `linear-gradient(135deg, ${color}, ${CHART_COLORS[(index + 1) % CHART_COLORS.length]})` }}
+                      style={{
+                        background: `linear-gradient(135deg, ${color}, ${CHART_COLORS[(index + 1) % CHART_COLORS.length]})`,
+                      }}
                     >
                       {index + 1}
                     </span>
@@ -107,10 +114,6 @@ export default function HandoffPieChart({
       )}
     </section>
   );
-}
-
-function formatPercent(value?: number) {
-  return `${((value ?? 0) * 100).toFixed(1)}%`;
 }
 
 function buildDonutSegments(reasons: ConversionHandoffResponse['reasons']) {

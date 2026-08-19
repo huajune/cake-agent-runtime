@@ -1,21 +1,18 @@
 import {
   type EntityExtractionResult,
-  type HighConfidenceFacts,
   type Preferences,
   type SessionFacts,
   unwrapSessionFacts,
 } from '@memory/types/session-facts.types';
-import {
-  filterHighConfidenceFacts,
-  unwrapHighConfidenceFacts,
-} from '@memory/facts/high-confidence-facts';
-import { isHardFilteredLaborForm, isValidLaborForm } from '@memory/facts/labor-form';
+import { projectRuleFactClaims } from '@resolution/evidence/merge';
+import type { RuleFactClaims } from '@resolution/evidence/claim.types';
+import { isHardFilteredLaborForm, isValidLaborForm } from '@resolution/labor-form';
 import { PromptContext, PromptSection } from './section.interface';
 
 /**
  * 本轮查询约束段落（硬约束 + 软提示）
  *
- * 把 [会话记忆] / [本轮高置信线索] 中已经明确的字段分两层渲染：
+ * 把 [会话记忆] / [本轮解析线索] 中可供查询的字段分两层渲染：
  *
  * **硬约束**（6 个）：city / district / location / age / schedule / salary
  * 这些字段如果模型"忘了"，搜索结果要么完全无效（跨城/跨区），要么严重不匹配
@@ -34,7 +31,7 @@ export class HardConstraintsSection implements PromptSection {
   build(ctx: PromptContext): string {
     const merged = this.mergeFacts(
       ctx.sessionFacts ?? null,
-      ctx.highConfidenceFacts ?? null,
+      ctx.ruleFacts ?? null,
       ctx.currentLaborFormIntent,
     );
     const hardLines = this.collectHardConstraintLines(merged);
@@ -47,7 +44,7 @@ export class HardConstraintsSection implements PromptSection {
       sections.push(
         '[本轮查询硬约束]',
         '',
-        '以下硬约束来自 [会话记忆] 与 [本轮高置信线索]，是候选人已经明确表达过的核心筛选条件。',
+        '以下硬约束来自 [会话记忆] 与 [本轮解析线索] 中满足查询阈值的字段。',
         '调用 duliday_job_list 时**必须**把这些约束体现到 filter 参数；缺少任一硬约束的查询结果',
         '不得用于"该候选人场景下无空缺"的结论。',
         '',
@@ -60,7 +57,7 @@ export class HardConstraintsSection implements PromptSection {
         '',
         '[本轮查询参考信息]',
         '',
-        '以下信息来自 [会话记忆] 与 [本轮高置信线索]，供查询和推荐时参考。',
+        '以下信息来自 [会话记忆] 与 [本轮解析线索]，供查询和推荐时参考。',
         '这些是建议性过滤条件——优先用于结果筛选，但如果你判断提取可能有误（如从引用消息中误提取），',
         '可以根据上下文自行决定是否采纳。',
         '',
@@ -72,40 +69,37 @@ export class HardConstraintsSection implements PromptSection {
   }
 
   /**
-   * 合并 sessionFacts（已确认）与 highConfidenceFacts（本轮新增）。
+   * 合并 sessionFacts（已确认）与 ruleFacts（本轮新增）。
    *
    * 取并集，**本轮高置信值优先覆盖旧 session 值**（候选人资料证据化 Phase 0 第 2 条）：
-   * 工具层 tool-context.builder 的 mergeSessionFactsWithHighConfidence 一直是"本轮非 null
+   * 工具层 tool-context.builder 的 mergeSessionFactsWithRuleClaims 一直是"本轮非 null
    * 高置信覆盖旧值"，本段若取"旧值优先、本轮仅补缺"——prompt 与工具就会对同一字段
    * 展示不同值（候选人刚改口的年龄/城市，硬约束段仍念旧值）。此处与工具层统一口径。
    * labor_form 走独立分支：除覆盖外还承担 clear（明确不要某形式）语义。
+   *
+   * 入参只接受 SessionFacts（带信封的存储态）：裸 EntityExtractionResult 会绕过
+   * unwrapSessionFacts 的 minConfidence 比较，下面这道 high 门对它形同虚设（议题 1-1）。
    */
   private mergeFacts(
-    sessionFacts: EntityExtractionResult | SessionFacts | null,
-    highConfidenceFacts: HighConfidenceFacts | null,
+    sessionFacts: SessionFacts | null,
+    ruleFacts: RuleFactClaims | null,
     currentLaborFormIntent: PromptContext['currentLaborFormIntent'],
   ): { interview: EntityExtractionResult['interview_info']; pref: Preferences } | null {
-    const highConfidenceSessionFacts = unwrapSessionFacts(sessionFacts, { minConfidence: 'high' });
-    const highConfidenceValues = unwrapHighConfidenceFacts(
-      filterHighConfidenceFacts(highConfidenceFacts),
-    );
-    if (
-      !highConfidenceSessionFacts &&
-      !highConfidenceValues &&
-      currentLaborFormIntent?.kind !== 'set'
-    ) {
+    const trustedSessionFacts = unwrapSessionFacts(sessionFacts, { minConfidence: 'high' });
+    const currentRuleValues = projectRuleFactClaims(ruleFacts, { minConfidence: 'high' });
+    if (!trustedSessionFacts && !currentRuleValues && currentLaborFormIntent?.kind !== 'set') {
       return null;
     }
 
     const interview = {
       ...this.emptyInterviewInfo(),
-      ...this.dropNulls(highConfidenceSessionFacts?.interview_info),
-      ...this.dropNulls(highConfidenceValues?.interview_info),
+      ...this.dropNulls(trustedSessionFacts?.interview_info),
+      ...this.dropNulls(currentRuleValues?.interview_info),
     };
 
-    const highConfidenceLaborForm = highConfidenceValues?.preferences.labor_form ?? null;
-    const sessionLaborForm = highConfidenceSessionFacts?.preferences.labor_form ?? null;
-    const previousLaborForm = highConfidenceLaborForm ?? sessionLaborForm;
+    const currentRuleLaborForm = currentRuleValues?.preferences.labor_form ?? null;
+    const sessionLaborForm = trustedSessionFacts?.preferences.labor_form ?? null;
+    const previousLaborForm = currentRuleLaborForm ?? sessionLaborForm;
     const activeLaborForm =
       currentLaborFormIntent?.kind === 'set'
         ? currentLaborFormIntent.value
@@ -119,57 +113,52 @@ export class HardConstraintsSection implements PromptSection {
       // 品牌不再读 preferences.brands（字段已退役，§19.6）；软提示行直读 sessionBrandState。
       brands: null,
       brand_ids:
-        highConfidenceValues?.preferences.brand_ids ??
-        highConfidenceSessionFacts?.preferences.brand_ids ??
+        currentRuleValues?.preferences.brand_ids ??
+        trustedSessionFacts?.preferences.brand_ids ??
         null,
       salary:
-        highConfidenceValues?.preferences.salary ??
-        highConfidenceSessionFacts?.preferences.salary ??
-        null,
+        currentRuleValues?.preferences.salary ?? trustedSessionFacts?.preferences.salary ?? null,
       position:
-        highConfidenceValues?.preferences.position ??
-        highConfidenceSessionFacts?.preferences.position ??
+        currentRuleValues?.preferences.position ??
+        trustedSessionFacts?.preferences.position ??
         null,
       schedule:
-        highConfidenceValues?.preferences.schedule ??
-        highConfidenceSessionFacts?.preferences.schedule ??
+        currentRuleValues?.preferences.schedule ??
+        trustedSessionFacts?.preferences.schedule ??
         null,
-      city:
-        highConfidenceValues?.preferences.city ??
-        highConfidenceSessionFacts?.preferences.city ??
-        null,
+      city: currentRuleValues?.preferences.city ?? trustedSessionFacts?.preferences.city ?? null,
       district:
-        highConfidenceValues?.preferences.district ??
-        highConfidenceSessionFacts?.preferences.district ??
+        currentRuleValues?.preferences.district ??
+        trustedSessionFacts?.preferences.district ??
         null,
       location:
-        highConfidenceValues?.preferences.location ??
-        highConfidenceSessionFacts?.preferences.location ??
+        currentRuleValues?.preferences.location ??
+        trustedSessionFacts?.preferences.location ??
         null,
       labor_form: activeLaborForm,
       delayed_intent:
-        highConfidenceValues?.preferences.delayed_intent ??
-        highConfidenceSessionFacts?.preferences.delayed_intent ??
+        currentRuleValues?.preferences.delayed_intent ??
+        trustedSessionFacts?.preferences.delayed_intent ??
         null,
       short_term:
-        highConfidenceValues?.preferences.short_term ??
-        highConfidenceSessionFacts?.preferences.short_term ??
+        currentRuleValues?.preferences.short_term ??
+        trustedSessionFacts?.preferences.short_term ??
         null,
       open_position:
-        highConfidenceValues?.preferences.open_position ??
-        highConfidenceSessionFacts?.preferences.open_position ??
+        currentRuleValues?.preferences.open_position ??
+        trustedSessionFacts?.preferences.open_position ??
         null,
       time_windows:
-        highConfidenceValues?.preferences.time_windows ??
-        highConfidenceSessionFacts?.preferences.time_windows ??
+        currentRuleValues?.preferences.time_windows ??
+        trustedSessionFacts?.preferences.time_windows ??
         null,
       schedule_constraint:
-        highConfidenceValues?.preferences.schedule_constraint ??
-        highConfidenceSessionFacts?.preferences.schedule_constraint ??
+        currentRuleValues?.preferences.schedule_constraint ??
+        trustedSessionFacts?.preferences.schedule_constraint ??
         null,
       available_after:
-        highConfidenceValues?.preferences.available_after ??
-        highConfidenceSessionFacts?.preferences.available_after ??
+        currentRuleValues?.preferences.available_after ??
+        trustedSessionFacts?.preferences.available_after ??
         null,
     };
 
@@ -273,7 +262,7 @@ export class HardConstraintsSection implements PromptSection {
     }
     if (pref.position?.length) {
       lines.push(
-        `- 意向岗位: ${pref.position.join('、')}（仅当候选人**明确点名某个具体工种**时才填 jobCategoryList，且只接受具体工种如"服务员"、"收银员"，严禁填入用工形式词；这是强过滤会大幅收窄结果，宁可不填靠品牌+区域召回；若搜索结果全部不匹配候选人的时间/年龄等硬约束，应清空 jobCategoryList 放宽重查一次）`,
+        `- 意向岗位: ${pref.position.join('、')}（候选人明确点名的具体工种可填 jobCategoryList——它**只影响排序不过滤**，匹配岗位会排在结果最前；只接受具体工种如"服务员"、"收银员"，不要填用工形式词。结果里没有明确匹配工种时，按每个岗位真实的岗位名称/工作内容判断相近岗位并如实介绍，不得把其他工种包装成候选人要的工种）`,
       );
     }
     if (pref.labor_form && isValidLaborForm(pref.labor_form)) {

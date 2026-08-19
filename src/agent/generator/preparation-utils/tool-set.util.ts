@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Logger } from '@nestjs/common';
 import { ToolSet } from 'ai';
 import { AgentTracerService } from '@observability/agent-tracer.service';
@@ -68,7 +69,7 @@ export function wrapToolsWithTiming(
             type: 'tool_error',
             toolName: name,
             durationMs,
-            error: error instanceof Error ? error.message : String(error),
+            error: toErrorMessage(error),
           });
           throw error;
         }

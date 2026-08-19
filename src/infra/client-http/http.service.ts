@@ -33,7 +33,7 @@ export class HttpService {
   /**
    * 调用第三方 API - GET 请求
    */
-  async get(url: string, params?: any) {
+  async get(url: string, params?: unknown) {
     try {
       const response = await this.httpClient.get(url, { params });
       // 只记录响应成功，不打印完整数据（可能包含敏感/大量内容）
@@ -49,7 +49,7 @@ export class HttpService {
   /**
    * 调用第三方 API - POST 请求
    */
-  async post(url: string, data?: any) {
+  async post(url: string, data?: unknown) {
     try {
       const response = await this.httpClient.post(url, data);
       // 只记录响应成功，不打印完整数据（可能包含敏感/大量内容）

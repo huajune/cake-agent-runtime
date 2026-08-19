@@ -1,5 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
+import { exponentialBackoffMs, sleep } from '@infra/utils/async.util';
 import { SupabaseService } from './supabase.service';
 import { supabaseCircuitBreaker } from './supabase-circuit-breaker';
 
@@ -109,13 +110,9 @@ export abstract class BaseRepository {
   /** 指数退避（含抖动）：150ms、300ms…，上限 1s，用于瞬时网关错误的重试间隔 */
   private getBackoffMs(attempt: number): number {
     const base = 150;
-    const exp = base * Math.pow(2, attempt - 1);
+    const exp = exponentialBackoffMs(attempt, base, 1000);
     const jitter = Math.floor(Math.random() * 100);
     return Math.min(exp + jitter, 1000);
-  }
-
-  private sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   // ==================== 通用 CRUD 操作 ====================
@@ -157,7 +154,7 @@ export abstract class BaseRepository {
         const { data, error } = await query;
         if (error) {
           if (this.shouldRetryReadError(`SELECT:${table}`, error, attempt)) {
-            await this.sleep(this.getBackoffMs(attempt));
+            await sleep(this.getBackoffMs(attempt));
             continue;
           }
           this.noteOutcome(error);
@@ -169,7 +166,7 @@ export abstract class BaseRepository {
         return (data as T[]) ?? [];
       } catch (error) {
         if (this.shouldRetryReadError(`SELECT:${table}`, error, attempt)) {
-          await this.sleep(this.getBackoffMs(attempt));
+          await sleep(this.getBackoffMs(attempt));
           continue;
         }
         this.noteOutcome(error);
@@ -537,7 +534,7 @@ export abstract class BaseRepository {
             return null;
           }
           if (this.shouldRetryReadError(`RPC:${functionName}`, error, attempt)) {
-            await this.sleep(this.getBackoffMs(attempt));
+            await sleep(this.getBackoffMs(attempt));
             continue;
           }
           this.noteOutcome(error);
@@ -549,7 +546,7 @@ export abstract class BaseRepository {
         return data as T;
       } catch (error) {
         if (this.shouldRetryReadError(`RPC:${functionName}`, error, attempt)) {
-          await this.sleep(this.getBackoffMs(attempt));
+          await sleep(this.getBackoffMs(attempt));
           continue;
         }
         this.noteOutcome(error);
@@ -583,7 +580,7 @@ export abstract class BaseRepository {
         const { count, error } = await query;
         if (error) {
           if (this.shouldRetryReadError('COUNT', error, attempt)) {
-            await this.sleep(this.getBackoffMs(attempt));
+            await sleep(this.getBackoffMs(attempt));
             continue;
           }
           this.noteOutcome(error);
@@ -595,7 +592,7 @@ export abstract class BaseRepository {
         return count ?? 0;
       } catch (error) {
         if (this.shouldRetryReadError('COUNT', error, attempt)) {
-          await this.sleep(this.getBackoffMs(attempt));
+          await sleep(this.getBackoffMs(attempt));
           continue;
         }
         this.noteOutcome(error);

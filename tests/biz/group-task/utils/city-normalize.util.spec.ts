@@ -1,4 +1,4 @@
-import { normalizeCity } from '@biz/group-task/utils/city-normalize.util';
+import { normalizeCityName as normalizeCity } from '@resolution/geo';
 
 describe('normalizeCity', () => {
   it('strips trailing 市 / 省', () => {
@@ -20,9 +20,9 @@ describe('normalizeCity', () => {
   });
 
   it('handles empty / null / undefined safely', () => {
-    expect(normalizeCity('')).toBe('');
-    expect(normalizeCity(null)).toBe('');
-    expect(normalizeCity(undefined)).toBe('');
+    expect(normalizeCity('')).toBeNull();
+    expect(normalizeCity(null)).toBeNull();
+    expect(normalizeCity(undefined)).toBeNull();
   });
 
   it('removes multi-suffix combinations defensively', () => {

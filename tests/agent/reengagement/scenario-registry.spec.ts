@@ -1,4 +1,4 @@
-import type { AuthoritativeSessionState } from '@memory/types/authoritative-session-state.types';
+import type { ReengagementSessionState } from '@memory/types/reengagement-session-state.types';
 import {
   bookingFollowUpAnchorId,
   computeFireAt,
@@ -8,7 +8,7 @@ import {
   shouldStop,
 } from '@agent/reengagement/scenario-registry';
 
-const baseState = (over: Partial<AuthoritativeSessionState> = {}): AuthoritativeSessionState => ({
+const baseState = (over: Partial<ReengagementSessionState> = {}): ReengagementSessionState => ({
   collectedFields: {},
   recalledJobIds: new Set<number>(),
   hardConstraints: [],
@@ -334,10 +334,10 @@ describe('scenario-registry', () => {
       const s = getScenario('booking_incomplete')!;
       const complete = baseState({
         collectedFields: {
-          name: { value: '王建国', provenance: 'user_text', at: 1 },
-          phone: { value: '13800000000', provenance: 'user_text', at: 1 },
-          age: { value: '28', provenance: 'user_text', at: 1 },
-          gender: { value: '男', provenance: 'user_text', at: 1 },
+          name: { value: '王建国', producer: 'candidate_quote', at: 1 },
+          phone: { value: '13800000000', producer: 'candidate_quote', at: 1 },
+          age: { value: '28', producer: 'candidate_quote', at: 1 },
+          gender: { value: '男', producer: 'candidate_quote', at: 1 },
         },
       });
       expect(shouldStop(s, complete, anchorAt).stop).toBe(false);

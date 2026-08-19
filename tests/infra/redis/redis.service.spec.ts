@@ -69,12 +69,6 @@ describe('RedisService', () => {
     });
   });
 
-  describe('getClient', () => {
-    it('should return the Redis client instance', () => {
-      expect(service.getClient()).toBe(mockRedisClient);
-    });
-  });
-
   describe('getEnvironment', () => {
     it('should expose configured RUNTIME_ENV', () => {
       expect(service.getEnvironment()).toBe(ENV);

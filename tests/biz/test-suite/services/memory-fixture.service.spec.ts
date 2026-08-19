@@ -66,7 +66,7 @@ describe('MemoryFixtureService', () => {
       expect.objectContaining({
         interview_info: expect.objectContaining({ name: '张三' }),
         preferences: expect.objectContaining({
-          city: { value: '上海', confidence: 'high', evidence: 'explicit_city' },
+          city: { value: '上海', confidence: 'medium', evidence: 'explicit_city' },
         }),
         reasoning: 'badcase-context-backfill: 想找静安附近的兼职',
       }),
@@ -143,7 +143,7 @@ describe('MemoryFixtureService', () => {
           phone: '13800000000',
         }),
         preferences: expect.objectContaining({
-          city: { value: '北京', confidence: 'high', evidence: 'explicit_city' },
+          city: { value: '北京', confidence: 'medium', evidence: 'explicit_city' },
           brands: null,
         }),
         reasoning: 'curated fixture',

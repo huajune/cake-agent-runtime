@@ -11,7 +11,7 @@ import {
 import type { GeocodeCandidate } from '@infra/geocoding/geocoding.types';
 
 /**
- * Phase 0 行为基线（geo-domain-refactor-plan v3.1 §13）：
+ * 地理域迁移前锁定的行为基线（docs/architecture/geo-resolution.md）：
  * geocoding-candidate-ranker 此前无 spec，本文件按现状行为断言，为迁移锁基线。
  *
  * 工作流 B-3（方案 11.5，badcase 0m4zs1h6 / chat 6a4dcef8ce406a6aeec56fd8）排查结论：

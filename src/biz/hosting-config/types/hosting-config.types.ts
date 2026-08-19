@@ -21,6 +21,14 @@ export type AgentThinkingMode = (typeof AGENT_THINKING_MODES)[number];
 export type AgentThinkingEffort = LlmThinkingEffort;
 export const AGENT_THINKING_EFFORTS = LLM_THINKING_EFFORTS;
 
+/**
+ * 硬规则运行时 override 只允许收权：off=停用，observe=只观测。
+ * 升档仍须修改 catalog 并走发牌制与代码发版，配置层不存在 revise/block。
+ */
+export const HARD_RULE_OVERRIDE_MODES = ['off', 'observe'] as const;
+export type HardRuleOverrideMode = (typeof HARD_RULE_OVERRIDE_MODES)[number];
+export type HardRuleOverrides = Record<string, HardRuleOverrideMode>;
+
 export interface AgentReplyConfig {
   // 模型配置
   wecomCallbackModelId: string; // 企微消息回调使用的聊天模型 ID；空字符串表示走默认角色路由
@@ -65,6 +73,7 @@ export interface AgentReplyConfig {
   // 出站守卫 llm 档（语义审查）灰度开关：即时生效，用于灰度上量与紧急熔断
   outputGuardrailLlmEnabled: boolean; // enforce：语义审查结论参与出站裁决（revise/replan/block 真实拦截）
   outputGuardrailSemanticShadowEnabled: boolean; // shadow：未 enforce 时跟随真实流量试跑，结论只观测不拦截
+  hardRuleOverrides: HardRuleOverrides; // 硬规则运行时降档/关停；只能 off/observe，默认空对象
 
   // 主动复聊（reengagement）开关：即时生效（scheduler 排程 + processor 到点都读最新值）
   reengagementEnabled: boolean; // 总开关：关闭后不再排程新跟进，在途任务到点也直接丢弃
@@ -147,6 +156,7 @@ export const DEFAULT_AGENT_REPLY_CONFIG: AgentReplyConfig = {
   // 出站守卫 llm 档默认全关：先 shadow 观测评估，达标后再开 enforce
   outputGuardrailLlmEnabled: false,
   outputGuardrailSemanticShadowEnabled: false,
+  hardRuleOverrides: {},
   // 主动复聊默认关排程、开 shadow：放量顺序是 先开排程看"本应发" → 达标后再关 shadow 真发
   reengagementEnabled: false,
   reengagementShadow: true,

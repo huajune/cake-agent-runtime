@@ -1,11 +1,11 @@
 import { ReengagementAgent } from '@agent/reengagement/reengagement.agent';
 import { getScenario } from '@agent/reengagement/scenario-registry';
 import type { FollowUpJob } from '@agent/reengagement/follow-up-scheduler.service';
-import type { AuthoritativeSessionState } from '@memory/types/authoritative-session-state.types';
+import type { ReengagementSessionState } from '@memory/types/reengagement-session-state.types';
 
 const sessionRef = { corpId: 'corp-1', userId: 'user-1', sessionId: 'sess-1' };
 
-const baseState = (over: Partial<AuthoritativeSessionState> = {}): AuthoritativeSessionState => ({
+const baseState = (over: Partial<ReengagementSessionState> = {}): ReengagementSessionState => ({
   collectedFields: {},
   recalledJobIds: new Set<number>(),
   hardConstraints: [],
@@ -245,7 +245,7 @@ describe('ReengagementAgent', () => {
       state: baseState({
         terminal: 'booked',
         interviewAt: Date.UTC(2026, 5, 24, 6, 0, 0),
-      } as Partial<AuthoritativeSessionState>),
+      } as Partial<ReengagementSessionState>),
       bookingContext: liveBookingContext({ interviewAt: Date.UTC(2026, 5, 24, 6, 0, 0) }),
     });
 
@@ -276,7 +276,7 @@ describe('ReengagementAgent', () => {
       sessionRef,
       scenario: getScenario('interview_reminder')!,
       jobData: job('interview_reminder', { workOrderId: 111 }),
-      state: baseState({ terminal: 'booked', interviewAt } as Partial<AuthoritativeSessionState>),
+      state: baseState({ terminal: 'booked', interviewAt } as Partial<ReengagementSessionState>),
       bookingContext: liveBookingContext({ workOrderId: 111, interviewAt }),
     });
 
@@ -617,7 +617,7 @@ describe('ReengagementAgent', () => {
       jobData: job('booking_incomplete'),
       state: baseState({
         collectedFields: {
-          name: { value: '张三', provenance: 'user_text', at: Date.now() },
+          name: { value: '张三', producer: 'candidate_quote', at: Date.now() },
         },
       }),
     });
@@ -775,7 +775,7 @@ describe('ReengagementAgent', () => {
           presentedStores: [{ jobId: 1 }],
           terminal: 'booked',
           interviewAt: Date.UTC(2026, 5, 25, 2, 0, 0),
-        } as Partial<AuthoritativeSessionState>),
+        } as Partial<ReengagementSessionState>),
         ...(scenarioCode === 'interview_reminder' || scenarioCode === 'post_interview_followup'
           ? {
               bookingContext: liveBookingContext({
@@ -836,8 +836,8 @@ describe('ReengagementAgent', () => {
       }),
       state: baseState({
         collectedFields: {
-          name: { value: '张三', provenance: 'user_text', at: Date.now() },
-          phone: { value: '13800000000', provenance: 'user_text', at: Date.now() },
+          name: { value: '张三', producer: 'candidate_quote', at: Date.now() },
+          phone: { value: '13800000000', producer: 'candidate_quote', at: Date.now() },
         },
       }),
     });
@@ -878,7 +878,7 @@ describe('ReengagementAgent', () => {
       jobData: job('booking_incomplete'),
       state: baseState({
         collectedFields: {
-          name: { value: '张三', provenance: 'user_text', at: Date.now() },
+          name: { value: '张三', producer: 'candidate_quote', at: Date.now() },
         },
       }),
     });

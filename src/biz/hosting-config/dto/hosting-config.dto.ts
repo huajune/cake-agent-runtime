@@ -9,7 +9,11 @@ import {
   Min,
   Max,
 } from 'class-validator';
-import { AGENT_THINKING_EFFORTS, AGENT_THINKING_MODES } from '../types/hosting-config.types';
+import {
+  AGENT_THINKING_EFFORTS,
+  AGENT_THINKING_MODES,
+  type HardRuleOverrides,
+} from '../types/hosting-config.types';
 
 // ==================== 运行时开关 ====================
 
@@ -140,6 +144,11 @@ export class UpdateAgentReplyConfigDto {
   @IsOptional()
   @IsBoolean()
   outputGuardrailSemanticShadowEnabled?: boolean;
+
+  /** 硬规则只降权 override；值域在类型和服务层共同收口为 off/observe。 */
+  @IsOptional()
+  @IsObject()
+  hardRuleOverrides?: HardRuleOverrides;
 
   @IsOptional()
   @IsBoolean()

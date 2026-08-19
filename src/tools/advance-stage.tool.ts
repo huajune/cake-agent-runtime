@@ -75,17 +75,17 @@ export function buildAdvanceStageTool(memoryService: MemoryService): ToolBuilder
       description: DESCRIPTION,
       inputSchema,
       execute: async ({ nextStage, reason }) => {
-        const stageGoals = context.stageGoals ?? {};
+        const stageGoals = context.archive.stageGoals ?? {};
         const availableStages =
-          context.availableStages && context.availableStages.length > 0
-            ? context.availableStages
+          context.archive.availableStages && context.archive.availableStages.length > 0
+            ? context.archive.availableStages
             : Object.keys(stageGoals);
-        const currentStage = context.currentStage ?? null;
+        const currentStage = context.archive.currentStage ?? null;
 
         // 只允许提交当前策略里真实存在的阶段，避免模型写入脏状态。
         if (availableStages.length > 0 && !availableStages.includes(nextStage)) {
           logger.warn(
-            `非法阶段推进: ${nextStage} (user=${context.userId}, allowed=${availableStages.join(',')})`,
+            `非法阶段推进: ${nextStage} (user=${context.session.userId}, allowed=${availableStages.join(',')})`,
           );
           return buildToolError({
             errorType: TOOL_ERROR_TYPES.STAGE_INVALID_TARGET,
@@ -102,7 +102,7 @@ export function buildAdvanceStageTool(memoryService: MemoryService): ToolBuilder
 
         // 如果模型把 nextStage 写成当前阶段，说明这不是"推进"，而是重复提交。
         if (currentStage && nextStage === currentStage) {
-          logger.warn(`重复阶段推进: ${nextStage} (user=${context.userId})`);
+          logger.warn(`重复阶段推进: ${nextStage} (user=${context.session.userId})`);
           return buildToolError({
             errorType: TOOL_ERROR_TYPES.STAGE_ALREADY_AT_TARGET,
             outcome: '阶段推进失败（已处于目标阶段）',
@@ -116,15 +116,20 @@ export function buildAdvanceStageTool(memoryService: MemoryService): ToolBuilder
 
         // fromStage / currentStage / advancedAt / reason 一起落库，
         // 这样后面排查“为什么跳阶段”时，能看到完整的审计链。
-        await memoryService.setStage(context.corpId, context.userId, context.sessionId, {
-          currentStage: nextStage,
-          fromStage: currentStage,
-          advancedAt: new Date().toISOString(),
-          reason,
-        });
+        await memoryService.setStage(
+          context.session.corpId,
+          context.session.userId,
+          context.session.sessionId,
+          {
+            currentStage: nextStage,
+            fromStage: currentStage,
+            advancedAt: new Date().toISOString(),
+            reason,
+          },
+        );
 
         logger.log(
-          `阶段推进: ${currentStage ?? 'null'} -> ${nextStage} (user=${context.userId}, reason=${reason})`,
+          `阶段推进: ${currentStage ?? 'null'} -> ${nextStage} (user=${context.session.userId}, reason=${reason})`,
         );
 
         return {

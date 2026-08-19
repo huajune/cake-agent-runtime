@@ -5,6 +5,7 @@ import { AnalyticsAlertService } from '@biz/monitoring/services/alerts/analytics
 import { AnalyticsDashboardService } from '@biz/monitoring/services/dashboard/analytics-dashboard.service';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 import { AlertNotifierService } from '@notification/services/alert-notifier.service';
+import { AgentExecutionEventRepository } from '@biz/monitoring/repositories/agent-execution-event.repository';
 
 const buildMockDashboard = (
   overrides: {
@@ -58,6 +59,10 @@ describe('AnalyticsAlertService', () => {
     sendSimpleAlert: jest.fn(),
   };
 
+  const mockAgentEventRepository = {
+    countEventsByTypeBetween: jest.fn(),
+  };
+
   let configChangeCallback: ((config: typeof mockConfig) => void) | undefined;
 
   const mockSystemConfigService = {
@@ -78,6 +83,7 @@ describe('AnalyticsAlertService', () => {
         { provide: AnalyticsDashboardService, useValue: mockAnalyticsDashboardService },
         { provide: AlertNotifierService, useValue: mockAlertService },
         { provide: SystemConfigService, useValue: mockSystemConfigService },
+        { provide: AgentExecutionEventRepository, useValue: mockAgentEventRepository },
       ],
     }).compile();
 
@@ -89,6 +95,7 @@ describe('AnalyticsAlertService', () => {
     });
     mockAlertService.sendSimpleAlert.mockResolvedValue(undefined);
     mockAnalyticsDashboardService.getDashboardDataAsync.mockResolvedValue(buildMockDashboard());
+    mockAgentEventRepository.countEventsByTypeBetween.mockResolvedValue(0);
   });
 
   it('should be defined', () => {
@@ -160,5 +167,30 @@ describe('AnalyticsAlertService', () => {
       expect.stringContaining('阈值: 90%'),
       'critical',
     );
+  });
+
+  it('dry-runs the daily extraction drop alert without sending Feishu', async () => {
+    mockAgentEventRepository.countEventsByTypeBetween
+      .mockResolvedValueOnce(900)
+      .mockResolvedValueOnce(400);
+
+    const result = await service.checkExtractionDropRate({
+      dryRun: true,
+      now: new Date('2026-08-11T02:00:00.000Z'),
+    });
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        currentDate: '2026-08-10',
+        currentCount: 900,
+        previousDate: '2026-08-09',
+        previousCount: 400,
+        doubled: true,
+        absoluteExceeded: true,
+        wouldAlert: true,
+        dryRun: true,
+      }),
+    );
+    expect(mockAlertService.sendSimpleAlert).not.toHaveBeenCalled();
   });
 });

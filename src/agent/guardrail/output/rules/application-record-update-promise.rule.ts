@@ -1,5 +1,5 @@
 import { GUARDRAIL_ACTION } from '@shared-types/guardrail.contract';
-import { stripMessageDecorations } from '@tools/shared/identity-statement.util';
+import { stripMessageDecorations } from '@resolution/signal/markers';
 import type { RuleContradiction } from '../output-rule.types';
 
 /**

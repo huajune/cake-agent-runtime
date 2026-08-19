@@ -1,7 +1,7 @@
 import { CandidateSnapshotService } from '@memory/services/candidate-snapshot.service';
 import type { RedisStore } from '@memory/stores/redis.store';
-import type { PrecheckSnapshot } from '@memory/facts/candidate/precheck-snapshot.types';
-import { PRECHECK_SNAPSHOT_TTL_SECONDS } from '@memory/facts/candidate/precheck-snapshot.types';
+import type { PrecheckSnapshot } from '@resolution/evidence/snapshot';
+import { PRECHECK_SNAPSHOT_TTL_SECONDS } from '@resolution/evidence/snapshot';
 
 function buildSnapshot(): PrecheckSnapshot {
   return {
@@ -12,6 +12,7 @@ function buildSnapshot(): PrecheckSnapshot {
     effectiveProfile: { factsVersion: 7, messageWatermark: '2:5:我叫王玥', fields: {} },
     acceptedClaimIds: ['rule_name_1'],
     missingFields: [],
+    confirmedFields: [],
     createdAt: '2026-08-05T10:00:00+08:00',
     expiresAt: '2026-08-05T12:00:00+08:00',
   };

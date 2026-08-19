@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 
@@ -67,7 +68,7 @@ export class MessageService implements OnModuleInit {
     messageData._receivedAtMs = messageData._receivedAtMs ?? Date.now();
 
     void this.processMessageAsync(messageData).catch((error) => {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = toErrorMessage(error);
       this.logger.error(`[异步消息处理] messageId=${messageData.messageId} 失败: ${errorMessage}`);
     });
 
@@ -123,7 +124,7 @@ export class MessageService implements OnModuleInit {
 
     // 步骤 6: 分派（聚合 or 直发）
     await this.dispatchMessage(messageData).catch((error) => {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = toErrorMessage(error);
       this.logger.error(`[分派异常] 消息 [${messageData.messageId}] 分派失败: ${errorMessage}`);
     });
   }
@@ -137,7 +138,7 @@ export class MessageService implements OnModuleInit {
         await this.simpleMergeService.addMessage(messageData);
       } catch (error) {
         const parsed = MessageParser.parse(messageData);
-        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorMessage = toErrorMessage(error);
 
         this.logger.error(`[聚合调度] 处理消息 [${messageData.messageId}] 失败: ${errorMessage}`);
         await this.ensureRequestTrace(messageData, parsed.content);
@@ -165,7 +166,7 @@ export class MessageService implements OnModuleInit {
     this.pipelineService
       .processSingleMessage(messageData)
       .catch((error) => {
-        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorMessage = toErrorMessage(error);
         this.logger.error(`异步处理消息失败 [${messageData.messageId}]:`, errorMessage);
       })
       .finally(() => {

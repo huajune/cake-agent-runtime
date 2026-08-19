@@ -68,6 +68,15 @@ describe('scanGeoSignalsFromText（三轮扫描编排）', () => {
     expect(scan.districts).toEqual(['延吉市']);
   });
 
+  it('自我介绍中的姓名不作为地理证据，后续真实位置仍可抽取', () => {
+    const scan = scanGeoSignalsFromText(
+      '[图片消息]\n[引用 招聘经理：怎么称呼]\n我是黄梅\n我现在在青浦区\n[消息发送时间：2026-08-13 10:24:32]',
+    );
+    expect(scan.city).toEqual({ value: '上海', evidence: 'unique_district_alias' });
+    expect(scan.districts).toContain('青浦');
+    expect(scan.districts).not.toContain('黄梅');
+  });
+
   it('golden：余姚市 → 区县白名单"余姚"先命中推导宁波（方案 9.2 双轨现状）', () => {
     const scan = scanGeoSignalsFromText('我在余姚市这边');
     expect(scan.city).toEqual({ value: '宁波', evidence: 'unique_district_alias' });
@@ -157,11 +166,23 @@ describe('scanGeoSignalsFromText（三轮扫描编排）', () => {
       });
     });
 
-    it('地标轮不开拒绝：陆家嘴/五道口后接通名仍应命中', () => {
+    it('地标轮不开拒绝：陆家嘴/望京后接通名仍应命中', () => {
       expect(scanGeoSignalsFromText('陆家嘴广场').city).toEqual({
         value: '上海',
         evidence: 'hotspot_alias',
       });
+      expect(scanGeoSignalsFromText('望京站').city).toEqual({
+        value: '北京',
+        evidence: 'hotspot_alias',
+      });
+    });
+
+    it('地标表收紧批（2026-08-14）：通名/连锁品牌不再解析出城市', () => {
+      // 三周 shadow 实证的四个泛名 + 同类不变式违反项，一律移入 DIRTY_ALIAS_EXCLUSIONS。
+      // 期望是"解析不出城市"（交上游澄清），而不是"解析成别的城市"。
+      for (const text of ['国贸', '五道口', '王家湾', '瑶湖', '世纪公园', '临港', '九方']) {
+        expect(scanGeoSignalsFromText(text).city).toBeNull();
+      }
     });
   });
 });

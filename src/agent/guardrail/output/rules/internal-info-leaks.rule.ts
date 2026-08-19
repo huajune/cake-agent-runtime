@@ -294,15 +294,11 @@ const HUMAN_SERVICE_PHRASE_PATTERN =
 // precheck wait_notice 话术用"先进入审核"避免主动引导该词形）。
 
 /**
- * 反馈按"本轮是否有真实人工升级动作"分叉（2026-08-04 审计 P1-5，trace …_1785743845189）：
- * 目录反馈的处方"改成'我帮你问下同事'"逐字就是 handoff_promise_without_handoff 的
- * 违规构成要件——repair 照做后被二审 P0 打死，任何"说了人工 + 本轮无升级动作"的
- * 轮次注定沉默。无升级动作时反馈必须要求删除露馅措辞**且不得替换成任何跟进承诺**。
+ * 2026-08-04 曾按“本轮是否有真实人工升级动作”分叉反馈，以规避已于 8-11 下线的
+ * handoff_promise_without_handoff 规则与本规则互锁。该规则退役后，本规则只负责修正
+ * 人设露馅措辞，不再推断承诺是否有外部动作支撑。
  */
-export function detectHumanServicePhraseLeak(
-  content: string,
-  hasCommittedEscalation = false,
-): RuleContradiction | null {
+export function detectHumanServicePhraseLeak(content: string): RuleContradiction | null {
   if (!content) return null;
   if (!HUMAN_SERVICE_PHRASE_PATTERN.test(content)) return null;
   return {
@@ -310,12 +306,9 @@ export function detectHumanServicePhraseLeak(
     label:
       '回复出现"转人工/人工客服/真人经理/专人联系"等表述，把自己与"人工/真人"割裂、与账号本人人设冲突（badcase recvjXBkmV6idz / recvnV3iYGZnBJ / chat 6a5dedb2ce406a6aeee1ea62），应改为"帮你问下同事"类口径',
     action: GUARDRAIL_ACTION.REVISE,
-    feedbackToGenerator: hasCommittedEscalation
-      ? '上一版回复出现"转人工/人工客服/真人经理/专人联系"类表述，与"候选人看到的这个账号就是你本人"的身份设定冲突，当前文本不可发送。' +
-        '只把露馅措辞改成人设内口径（如"我帮你问下同事""让负责的同事联系你"），其余内容原样保留，不要改变承诺的事实和后续动作。'
-      : '上一版回复出现"转人工/人工客服/真人经理/专人联系"类表述，与"候选人看到的这个账号就是你本人"的身份设定冲突，当前文本不可发送。' +
-        '删除露馅措辞，且**不得**把它替换成"我帮你问下同事/让同事联系你"等任何跟进承诺——本轮没有真实的人工升级动作，替换成承诺会构成新的空头承诺违规。' +
-        '只保留已确认的事实与候选人可自行进行的下一步；若删除后没有其他实质内容，就只输出一句不含承诺、不含新事实的自然收束。',
+    feedbackToGenerator:
+      '上一版回复出现"转人工/人工客服/真人经理/专人联系"类表述，与"候选人看到的这个账号就是你本人"的身份设定冲突，当前文本不可发送。' +
+      '只把露馅措辞改成人设内口径（如"我帮你问下同事""让负责的同事联系你"），其余内容原样保留，不要改变承诺的事实和后续动作。',
   };
 }
 

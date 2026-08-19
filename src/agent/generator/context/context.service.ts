@@ -13,17 +13,22 @@ import { join } from 'path';
 import { StrategyConfigService as BizStrategyConfigService } from '@biz/strategy/services/strategy-config.service';
 import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
 import { GroupContext } from '@biz/group-task/group-task.types';
-import { normalizeCity } from '@biz/group-task/utils/city-normalize.util';
-import type {
-  EntityExtractionResult,
-  HighConfidenceFacts,
-  SessionFacts,
-} from '@memory/types/session-facts.types';
-import type { LaborFormIntentDecision } from '@memory/facts/labor-form';
+import { normalizeCityName as normalizeCity } from '@resolution/geo';
+import { unwrapSessionFacts, type SessionFacts } from '@memory/types/session-facts.types';
+import type { RuleFactClaims } from '@resolution/evidence/claim.types';
+import type { LaborFormIntentDecision } from '@resolution/labor-form';
 import type { SessionBrandState } from '@resolution/brand/brand-resolution.types';
 import { StrategyConfigRecord } from '@biz/strategy/entities/strategy-config.entity';
 import { StageGoalConfig, Threshold } from '@biz/strategy/types/strategy.types';
-import { PromptSection, PromptContext, AccountIdentity } from './sections/section.interface';
+import { formatCurrentTime } from '@infra/utils/date.util';
+import {
+  buildPromptSectionBlocks,
+  PromptSection,
+  PromptContext,
+  AccountIdentity,
+  renderPromptBlocks,
+} from './sections/section.interface';
+import type { PromptCorpusBlock } from '@shared-types/corpus.types';
 import { IdentitySection } from './sections/identity.section';
 import { RedLinesSection } from './sections/red-lines.section';
 import { DateTimeSection } from './sections/datetime.section';
@@ -44,10 +49,12 @@ export interface ComposeParams {
   channelType?: 'private' | 'group';
   currentStage?: string;
   memoryBlock?: string;
-  /** 会话记忆中的已确认提取结果；供 TurnHintsSection 做冲突比对。 */
-  sessionFacts?: EntityExtractionResult | SessionFacts | null;
+  /** 会话记忆中的已确认提取结果（带信封的存储态）；供 TurnHintsSection 做冲突比对。 */
+  sessionFacts?: SessionFacts | null;
   /** 本轮前置识别得到的高置信结果；由 TurnHintsSection 拆分/渲染。 */
-  highConfidenceFacts?: HighConfidenceFacts | null;
+  ruleFacts?: RuleFactClaims | null;
+  /** 本轮候选人消息原文（逐条，与规则轨输入同源）；turn-hints 的原话渲染判据。 */
+  currentTurnTexts?: readonly string[];
   /** 当前消息对用工形式的确定性 set/clear/ignore 决策。 */
   currentLaborFormIntent?: LaborFormIntentDecision;
   /** 本轮生效的会话品牌状态；turn-hints / hard-constraints 的品牌口径数据源。 */
@@ -60,6 +67,8 @@ export interface ComposeParams {
 
 export interface ComposeResult {
   systemPrompt: string;
+  /** StruQ scaffold：降为 systemPrompt 前仍保留 teaching/evidence/tool_result 标签。 */
+  promptBlocks: PromptCorpusBlock[];
   stageGoals: Record<string, StageGoalConfig>;
   thresholds: Threshold[];
 }
@@ -104,7 +113,8 @@ export class ContextService implements OnModuleInit {
       currentStage,
       memoryBlock,
       sessionFacts,
-      highConfidenceFacts,
+      ruleFacts,
+      currentTurnTexts,
       currentLaborFormIntent,
       sessionBrandState,
       accountIdentity,
@@ -113,7 +123,7 @@ export class ContextService implements OnModuleInit {
 
     const config = await this.strategyConfigService.getActiveConfig(strategySource);
 
-    const now = this.formatCurrentTime();
+    const now = formatCurrentTime();
 
     const groupInventoryBlock = await this.renderGroupInventoryBlock(sessionFacts);
 
@@ -124,7 +134,8 @@ export class ContextService implements OnModuleInit {
       currentStage,
       memoryBlock,
       sessionFacts,
-      highConfidenceFacts,
+      ruleFacts,
+      currentTurnTexts,
       currentLaborFormIntent,
       sessionBrandState,
       accountIdentity,
@@ -138,18 +149,22 @@ export class ContextService implements OnModuleInit {
       return this.compose({ ...params, scenario: DEFAULT_SCENARIO });
     }
 
-    const parts: string[] = [];
+    const rawBlocks: PromptCorpusBlock[] = [];
     for (const name of sectionNames) {
       const section = this.sections.get(name);
       if (!section) continue;
-      const text = await section.build(ctx);
-      if (text.trim()) parts.push(text.trim());
+      rawBlocks.push(...(await buildPromptSectionBlocks(section, ctx)));
     }
 
-    const systemPrompt = parts.join('\n\n').replace(/\{\{CURRENT_TIME\}\}/g, now);
+    const promptBlocks = rawBlocks.map((block) => ({
+      ...block,
+      content: block.content.replace(/\{\{CURRENT_TIME\}\}/g, now),
+    }));
+    const systemPrompt = renderPromptBlocks(promptBlocks);
 
     return {
       systemPrompt,
+      promptBlocks,
       stageGoals: this.buildStageGoalsMap(config),
       thresholds: config.red_lines.thresholds ?? [],
     };
@@ -192,11 +207,17 @@ export class ContextService implements OnModuleInit {
    *
    * - 目的：让 Agent 在调用 invite_to_group 前对该城市群库有"上帝视角"
    * - 行为：无城市/无群数据/查询失败时返回空串，不影响 prompt 组装
+   *
+   * 城市取值必须与硬约束段同门（minConfidence='high'，议题 1-2）：本块不只是"参考信息"，
+   * 群库为空时会输出「禁止承诺拉群」这类有行为后果的指令，城市取错两个方向都会错。
+   * 此前直读 `.value` 绕过置信度门——Redis 旧档归一化出的 confidence='unknown' 城市
+   * 会让 prompt 里出现「兼职群资源（南京）… 禁止承诺拉群」而硬约束段根本没有该城市。
+   * 放宽的风险由 invite_to_group 自己的 invite-city-gate 兜底。
    */
-  private async renderGroupInventoryBlock(
-    sessionFacts?: EntityExtractionResult | SessionFacts | null,
-  ): Promise<string> {
-    const city = sessionFacts?.preferences?.city?.value?.trim();
+  private async renderGroupInventoryBlock(sessionFacts?: SessionFacts | null): Promise<string> {
+    const city = unwrapSessionFacts(sessionFacts, {
+      minConfidence: 'high',
+    })?.preferences.city?.value?.trim();
     if (!city) return '';
 
     let cityGroups: GroupContext[];
@@ -291,17 +312,5 @@ export class ContextService implements OnModuleInit {
       this.logger.error(`读取文本文件失败: ${filePath}`, error);
       return undefined;
     }
-  }
-
-  private formatCurrentTime(): string {
-    return new Date().toLocaleString('zh-CN', {
-      timeZone: 'Asia/Shanghai',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      weekday: 'long',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
   }
 }

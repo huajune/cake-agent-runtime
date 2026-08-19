@@ -19,6 +19,7 @@ import {
 } from '@/hooks/chat/useChatSessions';
 import { useRealtimeChatRecords } from '@/hooks/chat/useRealtimeChatRecords';
 import { THEME_COLORS } from '@/constants';
+import { formatLocaleDate } from '@/utils/format';
 
 // 组件导入
 import HeaderBar from './components/HeaderBar';
@@ -168,7 +169,7 @@ export default function ChatRecords() {
     // 格式化日期为 "月/日" 格式
     const formattedData = dailyStats.map((stat) => {
       const date = new Date(stat.date);
-      const dateKey = date.toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' });
+      const dateKey = formatLocaleDate(date, { month: 'numeric', day: 'numeric' });
       return {
         date: dateKey,
         messages: stat.messageCount,

@@ -7,6 +7,7 @@
 
 import type { AgentToolCallStatus } from '@shared-types/agent-telemetry.types';
 import type { ToolErrorType } from '@tools/types/tool-error-types';
+import { asRecord } from '@infra/utils/object.util';
 import type { AgentToolCall } from './generator.types';
 
 /**
@@ -43,11 +44,6 @@ const SUCCESS_FLAG_KEYS = ['success', 'accepted', 'dispatched', 'found'] as cons
  * 也让 tool_empty_result 异常旗标失去本职信号。
  */
 const EMPTY_RESULT_ERROR_TYPES = new Set(['job_list.no_results', 'job_list.schedule_filter_empty']);
-
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
-  return value as Record<string, unknown>;
-}
 
 /**
  * 从工具返回值推断"结果条数"，判不出返回 undefined。

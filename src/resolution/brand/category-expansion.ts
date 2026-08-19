@@ -1,11 +1,11 @@
 /**
- * 品类（行业）展开 —— 迁移自 memory/facts/high-confidence-facts.ts 的品类兜底段。
+ * 品类（行业）展开 —— 迁移自旧规则轨的品类兜底段。
  *
  * 真实场景中候选人说"咖啡"等品类词，指的是**该品类的相关品牌**（想去咖啡店），
  * 而不是"咖啡师"这个工种。因此命中品类词时，应展开为该品类下的全部品牌走品牌召回，
  * 不能窄化成 jobCategoryList=["咖啡师"]。
  *
- * 展开结果仅当轮查询扩展（多品牌 enforce 召回），不写入会话主品牌、不解除排斥（§6.2/§9.3）；
+ * 展开结果仅当轮查询扩展（多品牌 enforce 召回），不写入会话主品牌、不解除排斥（§3.2/§7.3）；
  * 品类查询列表须先减去会话 excludedBrands（由消费方执行，本模块无状态）。
  */
 
@@ -41,7 +41,7 @@ export interface BrandCategory {
  *
  * 历史教训：v10.15.0（2026-07-16）曾引入 `defaultBrand: 'M Stand'`，令"咖啡"只出
  * M Stand、其余 9 个咖啡品牌需候选人主动说"还有别的吗"才展开。该方案是规格外的，
- * 规格 §17 注记明写"尚未合入 develop，评审时一并裁定"，实际却搭一个标题无关的 PR
+ * 规格 §11 注记明写"尚未合入 develop，评审时一并裁定"，实际却搭一个标题无关的 PR
  * 合入并随热修上线，裁定从未发生。2026-07-20 产品裁定：撤除，回到全展开。
  * 若日后要重开默认品牌，必须先过评审并同步规格，不要只改这里一行。
  */
@@ -74,7 +74,10 @@ export interface ResolvedBrandCategory {
 }
 
 /** 按品牌库解析每个品类的成员品牌（数据驱动 + 手工补录/排除）。 */
-export function resolveCategoryBrands(category: BrandCategory, brandData: BrandItem[]): string[] {
+export function resolveCategoryBrands(
+  category: BrandCategory,
+  brandData: ReadonlyArray<BrandItem>,
+): string[] {
   const keywords = category.keywords.map((k) => normalizeForBrandMatch(k)).filter(Boolean);
   const brands = new Set<string>();
 
@@ -94,7 +97,9 @@ export function resolveCategoryBrands(category: BrandCategory, brandData: BrandI
   return Array.from(brands);
 }
 
-export function buildResolvedCategories(brandData: BrandItem[]): ResolvedBrandCategory[] {
+export function buildResolvedCategories(
+  brandData: ReadonlyArray<BrandItem>,
+): ResolvedBrandCategory[] {
   return BRAND_CATEGORIES.map((category) => ({
     label: category.label,
     keywords: category.keywords.map((k) => normalizeForBrandMatch(k)).filter(Boolean),

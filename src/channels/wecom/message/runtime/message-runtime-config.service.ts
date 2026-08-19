@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
@@ -77,7 +78,7 @@ export class MessageRuntimeConfigService implements OnModuleInit {
     try {
       await this.syncSnapshot(true);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = toErrorMessage(error);
       this.logger.warn(`加载消息运行时配置失败，继续使用环境变量默认值: ${errorMessage}`);
     }
 

@@ -1,3 +1,5 @@
+import { toErrorMessage } from '@infra/utils/error.util';
+import { sleep } from '@infra/utils/async.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { fetchWithTimeout } from '@infra/utils/fetch-timeout.util';
@@ -83,7 +85,7 @@ export class SpongeBiService {
 
       return allOrders;
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = toErrorMessage(error);
       this.logger.error(`获取 BI 订单失败: ${message}`);
       throw new Error(`BI 数据获取失败: ${message}`);
     }
@@ -119,7 +121,7 @@ export class SpongeBiService {
       this.logger.log(`BI 数据源刷新已触发，任务ID: ${data.response?.taskId || '未返回'}`);
       return true;
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = toErrorMessage(error);
       this.logger.error(`BI 数据源刷新异常: ${message}`);
       return false;
     }
@@ -132,7 +134,7 @@ export class SpongeBiService {
     const refreshed = await this.refreshBIDataSource();
     if (!refreshed) return false;
 
-    await this.delay(this.biRefreshWaitMs);
+    await sleep(this.biRefreshWaitMs);
     return true;
   }
 
@@ -228,7 +230,7 @@ export class SpongeBiService {
       offset += orders.length;
 
       if (page < BI_MAX_PAGES - 1) {
-        await this.delay(BI_PAGE_DELAY_MS);
+        await sleep(BI_PAGE_DELAY_MS);
       }
     }
 
@@ -331,9 +333,5 @@ export class SpongeBiService {
       }
       return order;
     });
-  }
-
-  private delay(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }

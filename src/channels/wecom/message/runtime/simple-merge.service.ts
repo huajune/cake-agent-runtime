@@ -1,3 +1,5 @@
+import { toErrorMessage } from '@infra/utils/error.util';
+import { sleep } from '@infra/utils/async.util';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
@@ -116,7 +118,7 @@ export class SimpleMergeService implements OnModuleInit {
         return;
       } catch (error) {
         lastError = error;
-        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorMessage = toErrorMessage(error);
         this.logger.warn(
           `[${chatId}] 创建延迟任务失败（第 ${attempt}/${this.QUEUE_ADD_MAX_ATTEMPTS} 次）: ${errorMessage}`,
         );
@@ -126,15 +128,18 @@ export class SimpleMergeService implements OnModuleInit {
       }
     }
 
-    const finalMessage = lastError instanceof Error ? lastError.message : String(lastError);
+    const finalMessage = toErrorMessage(lastError);
     this.logger.error(
       `[${chatId}] 创建延迟任务最终失败（已重试 ${this.QUEUE_ADD_MAX_ATTEMPTS} 次），上抛交由上游记录失败: ${finalMessage}`,
     );
-    throw lastError instanceof Error ? lastError : new Error(String(lastError));
+    if (lastError instanceof Error) {
+      throw lastError;
+    }
+    throw new Error(String(lastError));
   }
 
   private delay(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+    return sleep(ms);
   }
 
   /**
@@ -171,7 +176,7 @@ export class SimpleMergeService implements OnModuleInit {
         const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
         messages.push(parsed as EnterpriseMessageCallbackDto);
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorMessage = toErrorMessage(error);
         this.logger.error(`[${chatId}] 解析消息失败: ${errorMessage}`);
       }
     }
@@ -209,7 +214,7 @@ export class SimpleMergeService implements OnModuleInit {
         return;
       } catch (error) {
         lastError = error;
-        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorMessage = toErrorMessage(error);
         this.logger.warn(
           `[${chatId}] ack pending 失败（第 ${attempt}/${this.ACK_MAX_ATTEMPTS} 次，count=${count}）: ${errorMessage}`,
         );
@@ -218,7 +223,10 @@ export class SimpleMergeService implements OnModuleInit {
         }
       }
     }
-    throw lastError instanceof Error ? lastError : new Error(String(lastError));
+    if (lastError instanceof Error) {
+      throw lastError;
+    }
+    throw new Error(String(lastError));
   }
 
   async acquireProcessingLock(chatId: string, ownerToken: string): Promise<boolean> {
@@ -275,7 +283,7 @@ export class SimpleMergeService implements OnModuleInit {
         `[${chatId}] 锁冲突，已补建重检任务（delay=${this.LOCK_RETRY_DELAY_MS}ms, pending=${queueLength}）`,
       );
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = toErrorMessage(error);
       this.logger.error(`[${chatId}] 创建锁冲突重检任务失败: ${errorMessage}`);
     }
   }
@@ -301,7 +309,7 @@ export class SimpleMergeService implements OnModuleInit {
           }
         })
         .catch((error: unknown) => {
-          const errorMessage = error instanceof Error ? error.message : String(error);
+          const errorMessage = toErrorMessage(error);
           this.logger.warn(`[${chatId}] 处理锁心跳续期异常: ${errorMessage}`);
         });
     }, this.LOCK_HEARTBEAT_INTERVAL_MS);
@@ -376,7 +384,7 @@ export class SimpleMergeService implements OnModuleInit {
       );
       return true;
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = toErrorMessage(error);
       this.logger.error(`[${chatId}] 创建重试任务失败: ${errorMessage}`);
       return false;
     }

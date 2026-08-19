@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
@@ -131,11 +132,7 @@ export class DataCleanupService implements OnModuleInit {
     // 若 Supabase 此刻不可达（如平台故障），Supabase SDK 的 fetch 默认 120s 超时
     // 会把 onModuleInit 卡到 deploy 健康检查窗口结束，触发误回滚。
     void this.timeoutStuckProcessingRecords().catch((error) => {
-      this.logger.warn(
-        `启动时清理卡住记录失败（不影响后续 cron 清理）: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
+      this.logger.warn(`启动时清理卡住记录失败（不影响后续 cron 清理）: ${toErrorMessage(error)}`);
     });
   }
 
@@ -213,7 +210,7 @@ export class DataCleanupService implements OnModuleInit {
         );
       }
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = toErrorMessage(error);
       this.logger.error(`[数据清理] 清理 agent_invocation 失败: ${message}`);
       this.notifyCleanupFailure('null-agent-invocations', '清理 agent_invocation 失败', error);
     }
@@ -233,7 +230,7 @@ export class DataCleanupService implements OnModuleInit {
         );
       }
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = toErrorMessage(error);
       this.logger.error(`[数据清理] 清理聊天消息失败: ${message}`);
       this.notifyCleanupFailure('cleanup-chat-messages', '清理聊天消息失败', error);
     }
@@ -253,7 +250,7 @@ export class DataCleanupService implements OnModuleInit {
         );
       }
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = toErrorMessage(error);
       this.logger.error(`[数据清理] 清理守卫审查档案失败: ${message}`);
       this.notifyCleanupFailure('cleanup-guardrail-review-records', '清理守卫审查档案失败', error);
     }
@@ -273,7 +270,7 @@ export class DataCleanupService implements OnModuleInit {
         );
       }
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = toErrorMessage(error);
       this.logger.error(`[数据清理] 清理 Agent 执行事件失败: ${message}`);
       this.notifyCleanupFailure('cleanup-agent-execution-events', '清理 Agent 执行事件失败', error);
     }
@@ -293,7 +290,7 @@ export class DataCleanupService implements OnModuleInit {
         );
       }
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = toErrorMessage(error);
       this.logger.error(`[数据清理] 清理消息处理记录失败: ${message}`);
       this.notifyCleanupFailure(
         'cleanup-message-processing-records',
@@ -317,7 +314,7 @@ export class DataCleanupService implements OnModuleInit {
         );
       }
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = toErrorMessage(error);
       this.logger.error(`[数据清理] 清理错误日志失败: ${message}`);
       this.notifyCleanupFailure('cleanup-error-logs', '清理错误日志失败', error);
     }
@@ -337,7 +334,7 @@ export class DataCleanupService implements OnModuleInit {
         );
       }
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = toErrorMessage(error);
       this.logger.error(`[数据清理] 清理用户活跃记录失败: ${message}`);
       this.notifyCleanupFailure('cleanup-user-activity', '清理用户活跃记录失败', error);
     }
@@ -366,7 +363,7 @@ export class DataCleanupService implements OnModuleInit {
         );
       }
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = toErrorMessage(error);
       this.logger.error(`[数据清理] NULL 化触达记录 generated_text 失败: ${message}`);
       this.notifyCleanupFailure(
         'null-reengagement-touch-texts',
@@ -385,7 +382,7 @@ export class DataCleanupService implements OnModuleInit {
         );
       }
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = toErrorMessage(error);
       this.logger.error(`[数据清理] 清理触达记录失败: ${message}`);
       this.notifyCleanupFailure('cleanup-reengagement-touch-records', '清理触达记录失败', error);
     }
@@ -419,7 +416,7 @@ export class DataCleanupService implements OnModuleInit {
         });
       }
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = toErrorMessage(error);
       this.logger.error(`[数据清理] 标记超时记录失败: ${message}`);
       this.notifyCleanupFailure('timeout-stuck-processing-records', '标记超时记录失败', error);
     }
@@ -439,7 +436,7 @@ export class DataCleanupService implements OnModuleInit {
         );
       }
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = toErrorMessage(error);
       this.logger.error(`[数据清理] 标记 interrupted 失败: ${message}`);
       this.notifyCleanupFailure('interrupt-stale-post-processing', '标记收尾丢失记录失败', error);
     }

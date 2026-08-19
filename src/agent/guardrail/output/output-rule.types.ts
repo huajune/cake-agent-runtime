@@ -42,7 +42,7 @@ export function deriveRulePolicy(action: GuardrailRuleAction): {
  *
  * REPLAN 不在本联合类型内（2026-07-27 发牌切换收尾退役，硬规则目录零雇主）：
  * "重新规划整段回复"不是任何规则可声明的修复方式——三期审计证明该机制是全部
- * 已投递伤害的宿主（docs/architecture/guardrail-chain-assessment-and-rebuild.md §2）。
+ * 已投递伤害的宿主（docs/architecture/guardrail-quality-system.md §2）。
  * 未来需要"补取事实"式修复的规则，走 §2.4 条件项两步拆解（取数归 generator、
  * 写字归 ReplyRepairAgent），必须先修订该文档再扩本类型。
  *
@@ -108,8 +108,6 @@ export interface FactRule {
 /**
  * 安全地把 unknown 工具结果转成普通对象。
  * 工具返回历史格式较杂，规则里统一用它读取字段，避免 null/数组/primitive 误访问。
+ * 实现已收拢至 `@infra/utils/object.util`，此处保留规则侧的既有导入路径。
  */
-export function asRecord(value: unknown): Record<string, unknown> | null {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
-  return value as Record<string, unknown>;
-}
+export { asRecord } from '@infra/utils/object.util';

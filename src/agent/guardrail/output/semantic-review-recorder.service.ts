@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { GuardrailReviewService } from '@biz/message/services/guardrail-review.service';
 import type {
@@ -48,9 +49,7 @@ export class SemanticReviewRecorderService {
         draftReply: params.draftReply,
       });
     } catch (error: unknown) {
-      this.logger.error(
-        `[SemanticReview] 守卫判例落库异常: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      this.logger.error(`[SemanticReview] 守卫判例落库异常: ${toErrorMessage(error)}`);
       return false;
     }
   }

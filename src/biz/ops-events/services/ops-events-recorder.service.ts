@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { BotGroupResolverService } from './bot-group-resolver.service';
 import { OpsEventsRepository } from '../repositories/ops-events.repository';
@@ -97,6 +98,6 @@ export class OpsEventsRecorderService {
   }
 
   private errorMessage(error: unknown): string {
-    return error instanceof Error ? error.message : String(error);
+    return toErrorMessage(error);
   }
 }

@@ -1,3 +1,5 @@
+import { toErrorMessage } from '@infra/utils/error.util';
+import { sleep } from '@infra/utils/async.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
@@ -5,16 +7,21 @@ import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { ModelRole } from '@/llm/llm.types';
 import { AlertNotifierService } from '@notification/services/alert-notifier.service';
 import { MessageType } from '@enums/message-callback.enum';
-import { isResumeImageDescription, stripResumeAttachmentLines } from '../utils/message-parser.util';
 import {
-  FIELD_OWNERSHIPS,
   VISUAL_FACT_FIELD_KEY_PROMPT,
   VISUAL_FACT_KIND_PROMPT,
   VISUAL_FACT_KINDS,
   finalizeVisualFactSheet,
+  isResumeImageDescription,
   sanitizeVisualDescription,
   type FinalizedVisualFactSheet,
-} from '@resolution/visual';
+} from '@resolution/signal/visual';
+import { FIELD_OWNERSHIPS } from '@resolution/signal/types';
+import {
+  appendResumeAttachmentLine,
+  EMOTION_MESSAGE_PREFIX,
+  IMAGE_MESSAGE_PREFIX,
+} from '@resolution/signal/markers';
 import { z } from 'zod';
 
 /** 视觉消息种类：图片 / 表情（都走同一条 vision 识别管线，仅前缀不同）。 */
@@ -49,7 +56,7 @@ const VISION_SHEET_SCHEMA = z.object({
 });
 
 function formatDescription(kind: VisualMessageKind, description: string): string {
-  const prefix = kind === MessageType.EMOTION ? '[表情消息]' : '[图片消息]';
+  const prefix = kind === MessageType.EMOTION ? EMOTION_MESSAGE_PREFIX : IMAGE_MESSAGE_PREFIX;
   return `${prefix} ${description}`;
 }
 
@@ -141,7 +148,12 @@ export class ImageDescriptionService {
       .then(() => undefined)
       .catch((error) => {
         this.consecutiveFailures++;
-        const err = error instanceof Error ? error : new Error(String(error));
+        let err: Error;
+        if (error instanceof Error) {
+          err = error;
+        } else {
+          err = new Error(String(error));
+        }
         this.logger.error(
           `${label}描述失败 [${messageId}] (连续第${this.consecutiveFailures}次): ${err.message}`,
           err.stack,
@@ -186,9 +198,7 @@ export class ImageDescriptionService {
       this.consecutiveFailures = 0;
       return description;
     } catch (error) {
-      this.logger.warn(
-        `图片描述补写失败 [${messageId}]: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      this.logger.warn(`图片描述补写失败 [${messageId}]: ${toErrorMessage(error)}`);
       return null;
     } finally {
       this.inFlight.delete(messageId);
@@ -289,11 +299,7 @@ export class ImageDescriptionService {
         }
         usageTokens = structured.usage?.totalTokens;
       } catch (error) {
-        this.logger.warn(
-          `图片结构化描述失败，回退纯文本 [${messageId}]: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        );
+        this.logger.warn(`图片结构化描述失败，回退纯文本 [${messageId}]: ${toErrorMessage(error)}`);
       }
     }
     if (!description) {
@@ -330,6 +336,8 @@ export class ImageDescriptionService {
     // 先剥离视觉描述里可能已带的"简历附件：…"行，再以本服务解析到的权威 URL 追加唯一
     // 一行，避免重复行（badcase chat 6a2fac72…：单条简历消息出现两条相同"简历附件"）。
     // 简历判定双保险（并跑对照）：sheet resume kind 与旧文本标记任一命中即走简历链路。
+    // A1（2026-08-11）仅覆盖当前容器连续 92h23m，分歧为 0；尚未达到完整 7 天
+    // 删除门槛，故继续保留 legacy 判据。连续 7 天复扫仍为 0 后删除本并跑与 OR 路径。
     const legacyResume = kind === MessageType.IMAGE && isResumeImageDescription(description);
     const sheetResume = sheet?.kind === 'resume';
     if (sheet && legacyResume !== sheetResume) {
@@ -339,7 +347,7 @@ export class ImageDescriptionService {
     }
     const isResumeImage = legacyResume || (kind === MessageType.IMAGE && sheetResume);
     const content = isResumeImage
-      ? `${formatDescription(kind, stripResumeAttachmentLines(description))}\n简历附件：${imageUrl}`
+      ? appendResumeAttachmentLine(formatDescription(kind, description), imageUrl)
       : formatDescription(kind, description);
 
     await this.writeBackDescription(messageId, content, kind, sheet ?? undefined);
@@ -380,7 +388,9 @@ export class ImageDescriptionService {
           sinceTimestamp: Date.now() - 7 * 24 * 60 * 60 * 1000,
           limit: 6,
         });
-        const images = bare.filter((row) => row.content.trim() === '[图片消息]').slice(0, 3);
+        const images = bare
+          .filter((row) => row.content.trim() === IMAGE_MESSAGE_PREFIX)
+          .slice(0, 3);
         for (const row of images) {
           const payload = row.payload ?? {};
           const url = [payload.artworkUrl, payload.fileUrl, payload.url, payload.imageUrl].find(
@@ -391,9 +401,7 @@ export class ImageDescriptionService {
           this.describeAndUpdateAsync(row.messageId, url, MessageType.IMAGE);
         }
       } catch (error) {
-        this.logger.warn(
-          `[懒补写] 裸图片扫描失败 [${chatId}]: ${error instanceof Error ? error.message : String(error)}`,
-        );
+        this.logger.warn(`[懒补写] 裸图片扫描失败 [${chatId}]: ${toErrorMessage(error)}`);
       }
     })();
   }
@@ -418,7 +426,7 @@ export class ImageDescriptionService {
           sheet as unknown as Record<string, unknown> | undefined,
         );
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorMessage = toErrorMessage(error);
         this.logger.warn(
           `${this.kindLabel(kind)}描述回写异常（第 ${attempt}/${this.WRITEBACK_MAX_ATTEMPTS} 次）[${messageId}]: ${errorMessage}`,
         );
@@ -426,17 +434,13 @@ export class ImageDescriptionService {
       if (updated) return;
 
       if (attempt < this.WRITEBACK_MAX_ATTEMPTS) {
-        await this.delay(this.WRITEBACK_RETRY_BASE_DELAY_MS * attempt);
+        await sleep(this.WRITEBACK_RETRY_BASE_DELAY_MS * attempt);
       }
     }
 
     this.logger.error(
       `${this.kindLabel(kind)}描述回写失败：chat_messages 无匹配行或更新异常（已重试 ${this.WRITEBACK_MAX_ATTEMPTS} 次，历史可能始终未落库）[${messageId}]`,
     );
-  }
-
-  private delay(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   /**
@@ -469,9 +473,7 @@ export class ImageDescriptionService {
       }
       this.logger.warn(`[原图] API 返回 errcode=${data.errcode} [${messageId}]: ${data.errmsg}`);
     } catch (err) {
-      this.logger.warn(
-        `[原图] 获取失败 [${messageId}]: ${err instanceof Error ? err.message : String(err)}`,
-      );
+      this.logger.warn(`[原图] 获取失败 [${messageId}]: ${toErrorMessage(err)}`);
     }
     return compressedUrl;
   }

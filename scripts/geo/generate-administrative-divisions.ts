@@ -1,5 +1,5 @@
 /**
- * 全国县级市 → 地级行政区映射生成器（geo-domain-refactor-plan §9.3 / Phase 4）。
+ * 全国县级市 → 地级行政区映射生成器（docs/architecture/geo-resolution.md §5.2）。
  *
  * 输入：scripts/geo/data/{cities,areas}.json（china-division 数据集 vendored 快照，
  *       来源与版本见同目录 README.md）。

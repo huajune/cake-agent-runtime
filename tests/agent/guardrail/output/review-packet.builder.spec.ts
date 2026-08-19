@@ -1,4 +1,14 @@
 import { GuardrailReviewPacketBuilder } from '@agent/guardrail/output/llm/review-packet.builder';
+import { createTurnLedger } from '@agent/generator/preparation-utils/turn-ledger';
+import { finalizeVisualFactSheet } from '@resolution/signal/visual';
+
+function visualLedger(raw: { description?: string } & Record<string, unknown>) {
+  const ledger = createTurnLedger();
+  ledger.recordVisualFacts(finalizeVisualFactSheet(raw, raw.description ?? ''), {
+    messageId: 'image-1',
+  });
+  return ledger;
+}
 
 describe('GuardrailReviewPacketBuilder', () => {
   const builder = new GuardrailReviewPacketBuilder();
@@ -411,8 +421,8 @@ describe('GuardrailReviewPacketBuilder', () => {
         description:
           '后台工单截图：候选人颜端樟，岗位大米先生-丁香国际-前厅服务-小时工，预约面试时间2026/08/06 15:00',
         fields: [
-          { key: 'name', value: '颜端樟', ownership: 'candidate' },
           { key: 'brand', value: '大米先生', ownership: 'publisher' },
+          { key: 'store', value: '丁香国际', ownership: 'publisher' },
           { key: 'other', value: '预约面试时间 2026/08/06 15:00', ownership: 'publisher' },
         ],
       },
@@ -421,21 +431,29 @@ describe('GuardrailReviewPacketBuilder', () => {
     };
 
     it('把截图结构化字段带进 evidence，并保留 ownership', () => {
-      const packet = builder.build({ reply: '看到了', toolCalls: [screenshotCall] });
+      const packet = builder.build({
+        reply: '看到了',
+        toolCalls: [screenshotCall],
+        turnLedger: visualLedger(screenshotCall.args),
+      });
 
       expect(packet.evidence.visualFacts?.sheets).toHaveLength(1);
       expect(packet.evidence.visualFacts?.sheets[0]).toMatchObject({
         kind: 'chat_screenshot',
         fields: [
-          { key: 'name', value: '颜端樟', ownership: 'candidate' },
           { key: 'brand', value: '大米先生', ownership: 'publisher' },
+          { key: 'store', value: '丁香国际', ownership: 'publisher' },
           { key: 'other', value: '预约面试时间 2026/08/06 15:00', ownership: 'publisher' },
         ],
       });
     });
 
-    it('内容载体是 args 而非 result——result 只有 success 也必须产出证据', () => {
-      const packet = builder.build({ reply: '看到了', toolCalls: [screenshotCall] });
+    it('内容载体是账本而非 result——result 只有 success 也必须产出证据', () => {
+      const packet = builder.build({
+        reply: '看到了',
+        toolCalls: [screenshotCall],
+        turnLedger: visualLedger(screenshotCall.args),
+      });
       expect(packet.evidence.visualFacts).toBeDefined();
     });
 
@@ -450,13 +468,69 @@ describe('GuardrailReviewPacketBuilder', () => {
         toolCalls: [
           {
             toolName: 'save_image_description',
-            args: { fields: [{ key: 'name' }, { value: '孤值' }] },
+            args: { fields: [{ key: 'phone' }, { value: '孤值' }] },
             result: { success: true },
             status: 'ok',
           },
         ],
       });
       expect(packet.evidence.visualFacts).toBeUndefined();
+    });
+
+    it('降级 sheet 不进账本时从工具入参回退重建描述证据（PR #1000 评审 P2-9）', () => {
+      const packet = builder.build({
+        reply: '看到了，这是门店排班表',
+        toolCalls: [
+          {
+            toolName: 'save_image_description',
+            args: {
+              messageId: 'msg-degraded-1',
+              description: '一张门店排班表照片，写着早班 07:00-11:00',
+            },
+            result: { success: true },
+            status: 'ok' as const,
+          },
+        ],
+      });
+
+      expect(packet.evidence.visualFacts?.sheets).toEqual([
+        {
+          kind: 'other',
+          description: '一张门店排班表照片，写着早班 07:00-11:00',
+          fields: [],
+        },
+      ]);
+    });
+
+    it('消费工具已 finalize 的账本 sheet：过滤非法 key/证件号、补 ownership并脱敏', () => {
+      const idNumber = '310101199001011234';
+      const rawSheet = {
+        kind: 'resume',
+        description: `简历：王建国，身份证号 ${idNumber}`,
+        fields: [
+          { key: 'phone', value: '13800138000' },
+          { key: 'invented_key', value: '不得进入 reviewer' },
+          { key: 'other', value: idNumber },
+        ],
+      };
+      const packet = builder.build({
+        reply: '看到了',
+        turnLedger: visualLedger(rawSheet),
+        toolCalls: [
+          {
+            toolName: 'save_image_description',
+            args: rawSheet,
+            result: { success: true },
+            status: 'ok',
+          },
+        ],
+      });
+
+      expect(packet.evidence.visualFacts?.sheets[0]).toEqual({
+        kind: 'resume',
+        description: '简历：王建国，身份证号 [身份证号已脱敏]',
+        fields: [{ key: 'phone', value: '13800138000', ownership: 'candidate' }],
+      });
     });
   });
 

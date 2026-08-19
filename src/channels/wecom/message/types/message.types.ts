@@ -65,7 +65,7 @@ export interface AgentInvokeResult {
    */
   outcome?: TurnOutcome;
   /**
-   * 回合记忆收尾句柄（agent 层封装 deferTurnEnd 的编排不变式）。渠道只需在已知投递结局后调
+   * 回合记忆收尾句柄（agent 层封装 turn-end 触发的编排不变式）。渠道只需在已知投递结局后调
    * `settle({ delivered })`、replay 丢弃时调 `discard()`、处理锁释放前 `await whenSettled()`，
    * 不再直接持有/编排 runTurnEnd 闭包。
    */

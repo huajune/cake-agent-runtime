@@ -1,7 +1,11 @@
 import { z } from 'zod';
 import { BRAND_INTENT_POLARITIES } from '@resolution/brand/brand-resolution.types';
-import { WELFARE_KINDS } from '@tools/duliday/job-list/welfare-facts.util';
 import type { PersistedBrandState } from '@resolution/brand/brand-resolution.types';
+import {
+  CANDIDATE_FACT_PRODUCERS,
+  type CandidateFactProducer,
+} from '@resolution/evidence/claim.types';
+import { RecommendedJobSummarySchema, type RecommendedJobSummary } from '@resolution/job/types';
 import { FACT_CONFIDENCE_LEVELS_DESC, factConfidenceRank } from './confidence-rank';
 
 // ==================== 1. 提取 schema（LLM 输出结构） ====================
@@ -51,7 +55,7 @@ export const CityFactEvidenceSchema = z.enum([
 
 export const CityFactSchema = z.object({
   value: z.string(),
-  confidence: z.enum(['high', 'low']),
+  confidence: z.enum(['high', 'medium', 'low']),
   evidence: CityFactEvidenceSchema,
 });
 
@@ -60,9 +64,12 @@ export type CityFactEvidence = z.infer<typeof CityFactEvidenceSchema>;
 
 /**
  * 兼容旧数据的 city 字段解析：
- * - 字符串（旧 Redis 数据、LLM 原始输出）→ 归一化为 `{ value, confidence: 'high', evidence: 'explicit_city' }`
+ * - 字符串（旧 Redis 数据、LLM 原始输出）→ 归一化为 `{ value, confidence: 'medium', evidence: 'explicit_city' }`
  * - 对象 → 直接校验为 CityFact
  * - null/空串 → null
+ *
+ * 拆除判据：A1 及后续复扫中旧 city 字符串/旧 CityFact 形态存量计数均归零后，
+ * 删除字符串分支与旧对象兼容；factsv2 无短 TTL，不能以自然过期代替数据侧确认。
  */
 const NullableCityFactSchema = z
   .union([CityFactSchema, z.string(), z.null()])
@@ -70,7 +77,7 @@ const NullableCityFactSchema = z
     if (value === null) return null;
     if (typeof value === 'string') {
       const trimmed = value.trim().replace(/市$/, '');
-      return trimmed ? { value: trimmed, confidence: 'high', evidence: 'explicit_city' } : null;
+      return trimmed ? { value: trimmed, confidence: 'medium', evidence: 'explicit_city' } : null;
     }
     return value;
   });
@@ -242,10 +249,12 @@ export const EntityExtractionResultSchema = z.object({
   preferences: PreferencesSchema,
   reasoning: z
     .string()
-    .describe('提取与推理说明：列出每个字段的来源（直接提取/推理得出），推理字段需说明推理链'),
+    .describe(
+      '提取与推理说明：列出每个字段的来源（直接提取/白名单推断），推断字段说明推理链。本轮无新信息时固定写「本轮无新信息」。禁止叙述对话中不存在的来源——本轮没有简历/文件/图片材料时，严禁写"从简历/文件/材料中提取"类表述。',
+    ),
 });
 
-/** LLM 声明的"候选人明确提供"字段及其原文证据。 */
+/** LLM 声明的字段级依据摘录：直接陈述可升档，白名单推断只提供证据。 */
 export const ExplicitProvenanceEntrySchema = z.object({
   field: z
     .string()
@@ -253,6 +262,10 @@ export const ExplicitProvenanceEntrySchema = z.object({
   quote: z
     .string()
     .describe('候选人原话中的逐字片段（必须能在候选人消息里原样找到，否则该声明无效）'),
+  basis: z
+    .enum(['stated', 'inferred'])
+    .default('stated')
+    .describe('stated=候选人直接陈述；inferred=仅按提示词白名单推断（只作证据，不升档）'),
 });
 
 export type ExplicitProvenanceEntry = z.infer<typeof ExplicitProvenanceEntrySchema>;
@@ -277,6 +290,24 @@ export const BrandIntentEntrySchema = z.object({
 
 export type BrandIntentEntry = z.infer<typeof BrandIntentEntrySchema>;
 
+/**
+ * labor-form 语义轨 shadow 标签：只描述本轮候选人的偏好变更意向，不直接驱动业务。
+ * set/clear/ignore 口径与 resolution/labor-form 的 LaborFormIntentDecision 同构；
+ * quote 必须是候选人消息中的逐字连续片段，解释性推理不得混入。
+ */
+export const LaborFormIntentExtractionSchema = z.object({
+  intent: z
+    .enum(['set', 'clear', 'ignore'])
+    .describe('set=明确选择；clear=明确排除/撤销；ignore=未表达偏好或仅核对岗位事实'),
+  labor_form: z
+    .enum(['全职', '兼职', '小时工', '寒假工', '暑假工'])
+    .optional()
+    .describe('set 时为选中的标准用工形式；clear 时可填被排除的标准用工形式'),
+  quote: z.string().describe('支持该意向的候选人原话逐字连续片段；禁止改写、翻译、概括或拼接'),
+});
+
+export type LaborFormIntentExtraction = z.infer<typeof LaborFormIntentExtractionSchema>;
+
 /** LLM 结构化输出 schema — city 字段为字符串 */
 export const LLMEntityExtractionResultSchema = z.object({
   interview_info: InterviewInfoSchema,
@@ -286,9 +317,10 @@ export const LLMEntityExtractionResultSchema = z.object({
     .nullable()
     .optional()
     .describe(
-      '候选人明确提供的 interview_info 字段清单：仅当字段值来自结构化表单回填（「年龄：37」）' +
-        '或候选人直接自陈（"我有健康证""我今年37"）时列入，并附逐字原文片段；' +
-        '由上下文推断、或助手提及后候选人仅附和的字段一律不列',
+      'interview_info 字段的依据摘录清单：凡候选人原话直接支持或可按白名单推断的字段都应列入；' +
+        'quote 必须是候选人消息中的逐字连续片段，禁止改写、翻译、概括或拼接；' +
+        'basis=stated 表示直接陈述，basis=inferred 表示白名单推断；' +
+        '助手提及后候选人仅附和、或转发文案中的字段一律不列，解释只写 reasoning',
     ),
   brand_intents: z
     .array(BrandIntentEntrySchema)
@@ -299,9 +331,17 @@ export const LLMEntityExtractionResultSchema = z.object({
         '候选人用"这个/那个/第一个/你说的那家"等指代品牌时，必须链接到图片或此前推荐的实际品牌名再输出；' +
         '排斥表达（"X就算了""X干过了不去了""这个不考虑"）输出 negative；明确不限品牌输出 browse_all',
     ),
+  labor_form_intent: LaborFormIntentExtractionSchema.nullable()
+    .optional()
+    .describe(
+      '本轮候选人的用工形式偏好变更标签，仅作 shadow 对照：set=明确选择，clear=明确排除/撤销，' +
+        'ignore=未表达偏好或只在核对岗位事实；quote 必须是候选人消息中的逐字连续片段',
+    ),
   reasoning: z
     .string()
-    .describe('提取与推理说明：列出每个字段的来源（直接提取/推理得出），推理字段需说明推理链'),
+    .describe(
+      '提取与推理说明：列出每个字段的来源（直接提取/白名单推断），推断字段说明推理链。本轮无新信息时固定写「本轮无新信息」。禁止叙述对话中不存在的来源——本轮没有简历/文件/图片材料时，严禁写"从简历/文件/材料中提取"类表述。',
+    ),
 });
 
 /** 实体提取结果类型 */
@@ -363,21 +403,28 @@ export const PREFERENCE_FIELD_KEYS = [
 export type InterviewInfoFieldKey = (typeof INTERVIEW_INFO_FIELD_KEYS)[number];
 export type PreferenceFieldKey = (typeof PREFERENCE_FIELD_KEYS)[number];
 
-// 降序元组来自 confidence-rank（唯一权威）；顺序沿用历史 high-first，
-// 保证发给抽取模型的 JSON schema 逐字节不变。
+// 降序元组来自 confidence-rank（唯一权威），顺序沿用历史 high-first。
+// 2026-08-11 起 explicit_provenance 的逐字摘录契约已收紧，发给抽取模型的 JSON schema
+// 不再承诺跨版本逐字节不变；test-suite 旧批抽取结果跨此版本作废，必须重新执行。
 export const SessionFactConfidenceSchema = z.enum(FACT_CONFIDENCE_LEVELS_DESC);
-export const SessionFactSourceSchema = z.enum([
-  'candidate',
-  'llm',
-  'rule',
-  'system',
-  'memory',
-  'derived',
-  'tool',
-]);
+
+const LEGACY_SESSION_FACT_PRODUCERS: Readonly<Record<string, CandidateFactProducer>> = {
+  candidate: 'candidate_quote',
+  llm: 'model',
+  rule: 'rule',
+  system: 'system',
+  memory: 'archive',
+  derived: 'rule',
+  tool: 'system',
+};
+
+/** 存储读边界兼容旧 source；域内只允许六章根词汇，不回写旧行。 */
+const StoredCandidateFactProducerSchema = z.preprocess(
+  (value) => (typeof value === 'string' ? (LEGACY_SESSION_FACT_PRODUCERS[value] ?? value) : value),
+  z.enum(CANDIDATE_FACT_PRODUCERS),
+);
 
 export type SessionFactConfidence = z.infer<typeof SessionFactConfidenceSchema>;
-export type SessionFactSource = z.infer<typeof SessionFactSourceSchema>;
 
 /** sessionFacts 置信度语义。工具消费默认只信 high；prompt 会展示所有置信度。 */
 export const SESSION_FACT_CONFIDENCE_DESCRIPTIONS: Record<SessionFactConfidence, string> = {
@@ -387,22 +434,21 @@ export const SESSION_FACT_CONFIDENCE_DESCRIPTIONS: Record<SessionFactConfidence,
   unknown: '旧数据或缺少元数据的兼容值。只能作为背景信息，工具默认不消费。',
 };
 
-/** sessionFacts 来源语义。source 说明字段如何产生，不等同于字段真假。 */
-export const SESSION_FACT_SOURCE_DESCRIPTIONS: Record<SessionFactSource, string> = {
-  candidate: '候选人直接明示的结构化输入，且写入链路保留了候选人来源。',
-  llm: 'LLM 根据对话做的结构化提取。',
+/** sessionFacts 来源语义。source 说明事实出身，不等同于字段真假。 */
+export const SESSION_FACT_SOURCE_DESCRIPTIONS: Record<CandidateFactProducer, string> = {
+  candidate_quote: '候选人直接明示且经原话复算或答问绑定确认。',
   rule: '确定性规则、正则、白名单或别名表匹配得到。',
+  model: 'LLM 根据对话做的结构化提取或模型工具入参。',
   system: '外部系统或平台接口补充得到。',
-  memory: '历史记忆或旧结构兼容迁移得到。',
-  derived: '由其他字段推导得到，例如由区/地标白名单反推出城市。',
-  tool: '本会话工具执行结果确权得到（如 geocode 唯一解析、定位分享逆解析），外生出处非模型自报。',
+  manual: '真人经理带外裁决。',
+  archive: '历史记忆或跨会话档案回放得到。',
 };
 
 /** 持久化 sessionFacts 字段值：字段自身携带置信度、来源和证据。 */
 export interface SessionFactValue<T> {
   value: T;
   confidence: SessionFactConfidence;
-  source: SessionFactSource;
+  source: CandidateFactProducer;
   evidence: string;
   /** 该值被提取/写入的时刻（ISO8601）。时间敏感字段（如面试时间）渲染时据此标注陈旧度。 */
   extractedAt?: string;
@@ -425,63 +471,6 @@ export function truncateEvidence(evidence: string, maxChars = MAX_FACT_EVIDENCE_
 }
 
 export type SessionFactMaybeValue<T> = SessionFactValue<T> | null;
-
-/**
- * 本轮前置线索字段值：字段自身携带 value/confidence/source/evidence。
- *
- * highConfidenceFacts 不持久化；它是给本轮模型和工具的 runtime hint。
- * 未知置信度不进入这里，不确定就不产出字段。
- */
-export interface HighConfidenceValue<T> {
-  value: T;
-  confidence: 'high' | 'medium' | 'low';
-  source: 'rule' | 'system';
-  evidence: string;
-}
-
-export type HighConfidenceMaybeValue<T> = HighConfidenceValue<T> | null;
-
-export interface HighConfidenceInterviewInfo {
-  name: HighConfidenceMaybeValue<string>;
-  phone: HighConfidenceMaybeValue<string>;
-  gender: HighConfidenceMaybeValue<string>;
-  gender_source: HighConfidenceMaybeValue<'candidate' | 'system'>;
-  age: HighConfidenceMaybeValue<string>;
-  applied_store: HighConfidenceMaybeValue<string>;
-  applied_position: HighConfidenceMaybeValue<string>;
-  interview_time: HighConfidenceMaybeValue<string>;
-  is_student: HighConfidenceMaybeValue<boolean>;
-  education: HighConfidenceMaybeValue<string>;
-  has_health_certificate: HighConfidenceMaybeValue<string>;
-  experience?: HighConfidenceMaybeValue<string>;
-  upload_resume?: HighConfidenceMaybeValue<string>;
-  height?: HighConfidenceMaybeValue<string>;
-  weight?: HighConfidenceMaybeValue<string>;
-  household_register_province?: HighConfidenceMaybeValue<string>;
-}
-
-export interface HighConfidencePreferences {
-  brands: HighConfidenceMaybeValue<string[]>;
-  brand_ids?: HighConfidenceMaybeValue<number[]>;
-  salary: HighConfidenceMaybeValue<string>;
-  position: HighConfidenceMaybeValue<string[]>;
-  schedule: HighConfidenceMaybeValue<string>;
-  city: HighConfidenceMaybeValue<string>;
-  district: HighConfidenceMaybeValue<string[]>;
-  location: HighConfidenceMaybeValue<string[]>;
-  labor_form: HighConfidenceMaybeValue<string>;
-  delayed_intent: HighConfidenceMaybeValue<DelayedIntent>;
-  short_term: HighConfidenceMaybeValue<boolean>;
-  open_position: HighConfidenceMaybeValue<boolean>;
-  time_windows: HighConfidenceMaybeValue<string[]>;
-  schedule_constraint: HighConfidenceMaybeValue<ScheduleConstraintFact>;
-  available_after: HighConfidenceMaybeValue<AvailableAfterFact>;
-}
-
-export type HighConfidenceFacts = Omit<EntityExtractionResult, 'interview_info' | 'preferences'> & {
-  interview_info: HighConfidenceInterviewInfo;
-  preferences: HighConfidencePreferences;
-};
 
 export interface SessionInterviewInfo {
   name: SessionFactMaybeValue<string>;
@@ -529,16 +518,31 @@ const SessionFactValueSchema = <T extends z.ZodTypeAny>(valueSchema: T) =>
   z.object({
     value: valueSchema,
     confidence: SessionFactConfidenceSchema,
-    source: SessionFactSourceSchema,
+    source: StoredCandidateFactProducerSchema,
     evidence: z.string(),
     extractedAt: z.string().optional(),
   });
 
+/**
+ * 裸值兼容信封。
+ *
+ * ⚠️ 拆除判据已失效，勿再按原判据删（2026-08-17 复扫结论）：
+ * 原判据是「unknown/memory 旧档计数归零后删除」。数据侧确实归零——全量复扫 443 份生产
+ * factsv2、13733 个字段槽位，全部是信封或 null，裸标量与 unknown/archive 旧档均为 0。
+ * 但本信封已不只是旧数据兼容层：`saveFacts(facts: EntityExtractionResult | SessionFacts)`
+ * 经 `ensureSessionFacts` 走同一个 SessionFactsSchema，而 `EntityExtractionResult` 的字段
+ * 就是裸标量——`MemoryFixtureService.seed()`（test-suite 用例种子，生产 Dashboard 在跑）
+ * 正是这么调的。删掉裸值分支后该调用会直接 Zod 抛错（已实测）。
+ *
+ * 真正的拆除前置条件：先把 saveFacts 的入参收成 SessionFacts 单一形态
+ *（调用方显式经 toSessionFacts 带上 confidence/source/evidence），届时本信封才成为纯死码。
+ * 那是 saveFacts 契约变更，不属于残留清理范围。
+ */
 function legacySessionFactValue<T>(value: T, evidence?: string): SessionFactValue<T> {
   return {
     value,
     confidence: 'unknown',
-    source: 'memory',
+    source: 'archive',
     evidence: evidence ?? '旧 sessionFacts 兼容迁移：字段缺少置信度元数据',
   };
 }
@@ -557,6 +561,9 @@ function cityEvidenceToString(evidence: CityFactEvidence): string {
   return evidence;
 }
 
+// CityFact 分支不是兼容层：extractFacts 的白名单回填产出的就是 CityFact（无 source），
+// 落盘时经这里升成信封。字符串分支同上——EntityExtractionResult 侧 city 可为裸串，
+// 与 legacySessionFactValue 同一个存活理由，勿单独拆。
 const NullableSessionCityFactSchema = z
   .union([SessionFactValueSchema(z.string()), CityFactSchema, z.string(), z.null()])
   .transform((value): SessionFactValue<string> | null => {
@@ -566,11 +573,12 @@ const NullableSessionCityFactSchema = z
       return city ? legacySessionFactValue(city, '旧 sessionFacts city 字符串兼容迁移') : null;
     }
     if (isSessionFactValue(value)) return value as SessionFactValue<string>;
+    const cityFact = value as CityFact;
     return {
-      value: value.value,
-      confidence: value.confidence,
+      value: cityFact.value,
+      confidence: cityFact.confidence,
       source: 'rule',
-      evidence: cityEvidenceToString(value.evidence),
+      evidence: cityEvidenceToString(cityFact.evidence),
     };
   });
 
@@ -644,7 +652,7 @@ export const FALLBACK_EXTRACTION: EntityExtractionResult = {
  * 任一 schema 多出或缺少字段、或清单漏字段，都会在模块加载（任意测试运行 / 启动）时抛错，
  * 把"新增字段漏改某处"从运行期静默丢字段提前到加载期失败。
  *
- * 参考 high-confidence-facts.ts 的 assertRegistryFieldsMirrored 模式。
+ * 参考 rule-track claim 注册表的完备性自检模式。
  */
 function assertFieldKeysMirrorSchemas(): void {
   const sameKeySet = (expected: readonly string[], actual: readonly string[]): string[] => {
@@ -718,7 +726,7 @@ export function sessionFactValue<T>(
   value: T,
   meta: {
     confidence: SessionFactConfidence;
-    source: SessionFactSource;
+    source: CandidateFactProducer;
     evidence: string;
     extractedAt?: string;
   },
@@ -794,7 +802,7 @@ export function toSessionFacts(
   facts: EntityExtractionResult,
   meta: {
     confidence: SessionFactConfidence;
-    source: SessionFactSource;
+    source: CandidateFactProducer;
     evidence: string;
     extractedAt?: string;
   },
@@ -803,7 +811,7 @@ export function toSessionFacts(
     value === null || value === undefined ? null : sessionFactValue(value, meta);
 
   // 字段清单驱动：interview_info 全字段 + preferences 非 city 字段统一 wrap；
-  // city 需要带上 CityFact 的 confidence/evidence 与 llm→derived 来源改写，保留显式分支。
+  // city 需要带上 CityFact 的 confidence/evidence 与 model→rule 来源改写，保留显式分支。
   const interviewInfoSource = facts.interview_info as Record<string, unknown>;
   const preferencesSource = facts.preferences as Record<string, unknown>;
   const interview_info = Object.fromEntries(
@@ -824,7 +832,7 @@ export function toSessionFacts(
         ? sessionFactValue(facts.preferences.city.value, {
             ...meta,
             confidence: facts.preferences.city.confidence,
-            source: meta.source === 'llm' ? 'derived' : meta.source,
+            source: meta.source === 'model' ? 'rule' : meta.source,
             evidence: cityEvidenceToString(facts.preferences.city.evidence),
           })
         : null,
@@ -834,86 +842,6 @@ export function toSessionFacts(
 }
 
 // ==================== 2. 业务状态（当前会话的结构化短期记忆） ====================
-
-/** 候选岗位池摘要 — 复用 jobId 和补充查询 */
-// 词表权威在 tools/duliday/job-list/welfare-facts.util（WelfareKind 的居所）。
-// 本 schema 参与 Redis 落盘校验，漂移即整份会话状态归空——故不留手抄口。
-export const RecommendedJobWelfareKindSchema = z.enum(WELFARE_KINDS);
-
-export type RecommendedJobWelfareKind = z.infer<typeof RecommendedJobWelfareKindSchema>;
-
-/**
- * 精简岗位记忆中的福利事实。
- *
- * 不保存保险：保险/社保属于敏感口径，避免它进入每轮 prompt 后被模型主动包装成普通福利。
- * meals/accommodation 保留明确的“无/未明确”，用于阻止模型在后续追问中把缺失事实脑补成有。
- */
-export interface RecommendedJobWelfareFacts {
-  meals: RecommendedJobWelfareKind;
-  accommodation: RecommendedJobWelfareKind;
-  hasTrafficAllowance: boolean;
-  hasPromotionWelfare: boolean;
-  otherWelfareItems: string[];
-}
-
-export const RecommendedJobWelfareFactsSchema = z.object({
-  meals: RecommendedJobWelfareKindSchema,
-  accommodation: RecommendedJobWelfareKindSchema,
-  hasTrafficAllowance: z.boolean(),
-  hasPromotionWelfare: z.boolean(),
-  otherWelfareItems: z.array(z.string()),
-});
-
-export interface RecommendedJobSummary {
-  jobId: number;
-  brandName: string | null;
-  jobName: string | null;
-  storeName: string | null;
-  storeAddress?: string | null;
-  cityName: string | null;
-  regionName: string | null;
-  laborForm: string | null;
-  /** 兼职类型（laborForm=兼职 时的细分：寒假工/暑假工/小时工）。可选：历史存量记录无此字段。 */
-  partTimeJobType?: string | null;
-  salaryDesc: string | null;
-  /**
-   * 结算摘要（正式/培训等多方案分别保留）。可选：历史存量记录无此字段。
-   * 不能用综合薪资的“元/月”替代结算周期。
-   */
-  settlementSummary?: string | null;
-  /** 班次摘要（由 composeShiftTimeText 生成）。null 表示工具调用时未获取到班次数据。 */
-  shiftSummary?: string | null;
-  jobCategoryName: string | null;
-  ageRequirement?: string | null;
-  educationRequirement?: string | null;
-  healthCertificateRequirement?: string | null;
-  studentRequirement?: string | null;
-  distanceKm?: number | null;
-  /** 工具查询时已获取的福利事实。可选：历史存量记录或未请求福利时无此字段。 */
-  welfareFacts?: RecommendedJobWelfareFacts | null;
-}
-
-export const RecommendedJobSummarySchema = z.object({
-  jobId: z.number().int(),
-  brandName: z.string().nullable(),
-  jobName: z.string().nullable(),
-  storeName: z.string().nullable(),
-  storeAddress: z.string().nullable().optional(),
-  cityName: z.string().nullable(),
-  regionName: z.string().nullable(),
-  laborForm: z.string().nullable(),
-  partTimeJobType: z.string().nullable().optional(),
-  salaryDesc: z.string().nullable(),
-  settlementSummary: z.string().nullable().optional(),
-  shiftSummary: z.string().nullable().optional(),
-  jobCategoryName: z.string().nullable(),
-  ageRequirement: z.string().nullable().optional(),
-  educationRequirement: z.string().nullable().optional(),
-  healthCertificateRequirement: z.string().nullable().optional(),
-  studentRequirement: z.string().nullable().optional(),
-  distanceKm: z.number().nullable().optional(),
-  welfareFacts: RecommendedJobWelfareFactsSchema.nullable().optional(),
-});
 
 /** 已邀入的群记录 */
 export interface InvitedGroupRecord {
@@ -976,7 +904,8 @@ export interface WeworkSessionState {
   /**
    * 会话品牌状态（currentBrand + excludedBrands，§9）：品牌真相的唯一存储。
    * 写入只经 brand_state reducer（回合收尾 apply_brand_state + 图片描述晚到补写
-   * applyLateImageResolutions 两个时机）；preferences.brands 已退役（§19.6），读边界恒 null。
+   * applyLateImageResolutions 两个时机）；preferences.brands 已退役（§19.6）——写入侧在
+   * saveSessionFacts 恒折成 null，禁止任何读写复活（存量 2026-08-17 复扫已归零，读边界墓碑已拆）。
    * 可选：旧数据无此键（懒迁移，见 §9.4）。
    */
   brand_state?: PersistedBrandState | null;

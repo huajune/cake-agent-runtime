@@ -1,4 +1,5 @@
 import { NestFactory, Reflector } from '@nestjs/core';
+import { Logger } from '@nestjs/common';
 import { AppModule } from './app.module';
 import { ConfigService } from '@nestjs/config';
 import { ResponseInterceptor } from '@infra/server/response/interceptors/response.interceptor';
@@ -9,6 +10,10 @@ import { networkInterfaces } from 'os';
 import { execSync } from 'child_process';
 import * as net from 'net';
 import { createGlobalValidationPipe } from '@infra/server/validation/global-validation-pipe';
+import { sleep } from '@infra/utils/async.util';
+
+/** 应用创建前即可用（Nest Logger 未接管时回落 ConsoleLogger），端口清理阶段共用。 */
+const bootstrapLogger = new Logger('Bootstrap');
 
 /**
  * 获取本机局域网 IP 地址
@@ -62,7 +67,7 @@ function killProcessOnPort(port: number): boolean {
       for (const pid of pids) {
         if (pid) {
           execSync(`kill -9 ${pid}`);
-          console.log(`⚠️  已终止占用端口 ${port} 的进程 (PID: ${pid})`);
+          bootstrapLogger.warn(`已终止占用端口 ${port} 的进程 (PID: ${pid})`);
         }
       }
       return true;
@@ -79,16 +84,16 @@ function killProcessOnPort(port: number): boolean {
 async function ensurePortAvailable(port: number): Promise<void> {
   const inUse = await isPortInUse(port);
   if (inUse) {
-    console.log(`⚠️  端口 ${port} 被占用，正在清理...`);
+    bootstrapLogger.warn(`端口 ${port} 被占用，正在清理...`);
     const killed = killProcessOnPort(port);
     if (killed) {
       // 等待端口释放
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await sleep(1000);
       const stillInUse = await isPortInUse(port);
       if (stillInUse) {
         throw new Error(`无法释放端口 ${port}，请手动检查`);
       }
-      console.log(`✅ 端口 ${port} 已释放`);
+      bootstrapLogger.log(`端口 ${port} 已释放`);
     } else {
       throw new Error(`端口 ${port} 被占用，无法自动清理`);
     }
@@ -139,14 +144,20 @@ async function bootstrap() {
 
   const localIp = getLocalIpAddress();
 
-  console.log('========================================');
-  console.log(`🚀 服务已启动`);
-  console.log(`📍 监听端口: ${port}`);
-  console.log(`🌍 运行环境: ${nodeEnv}`);
-  console.log(`🔗 本地访问: http://localhost:${port}`);
-  console.log(`🌐 局域网访问: http://${localIp}:${port}`);
-  console.log(`📊 监控仪表盘: http://${localIp}:${port}/web/`);
-  console.log(`📦 API 响应格式: 统一包装（全局生效）`);
-  console.log('========================================');
+  // 启动播报合并成单条多行日志：横幅观感保留，同时只带一个时间戳/上下文前缀，
+  // 便于在部署日志里按 [Bootstrap] 一次性捞出「服务起没起、起在哪个端口/环境」。
+  bootstrapLogger.log(
+    [
+      '========================================',
+      '🚀 服务已启动',
+      `📍 监听端口: ${port}`,
+      `🌍 运行环境: ${nodeEnv}`,
+      `🔗 本地访问: http://localhost:${port}`,
+      `🌐 局域网访问: http://${localIp}:${port}`,
+      `📊 监控仪表盘: http://${localIp}:${port}/web/`,
+      `📦 API 响应格式: 统一包装（全局生效）`,
+      '========================================',
+    ].join('\n'),
+  );
 }
 bootstrap();

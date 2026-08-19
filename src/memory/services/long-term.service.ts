@@ -1,15 +1,15 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { SupabaseStore } from '../stores/supabase.store';
+import type { CandidateFactProducer } from '@resolution/evidence/claim.types';
 import type {
   UserProfile,
   UserProfileFieldKey,
   UserProfileFacts,
   ProfileFactConfidence,
-  ProfileFactSource,
   SummaryData,
   SummaryEntry,
   MessageMetadata,
-  ActiveBooking,
+  ActiveBookingEntry,
   LongTermPreferenceFacts,
 } from '../types/long-term.types';
 import type { PersistedBrandState } from '@resolution/brand/brand-resolution.types';
@@ -84,7 +84,7 @@ export class LongTermService {
       if (Object.keys(nonNull).length === 0) return;
 
       const profileFacts = this.buildProfileFacts(nonNull, {
-        source: 'enrichment',
+        source: 'system',
         confidence: 'medium',
         evidence: '外部补充字段写入长期档案',
       });
@@ -125,7 +125,7 @@ export class LongTermService {
       };
 
       const profileFacts = this.buildProfileFacts(profile, {
-        source: 'booking',
+        source: 'system',
         confidence: 'high',
         evidence: '报名成功后写入',
       });
@@ -143,8 +143,8 @@ export class LongTermService {
    * 沉淀时写入 Profile — Path B（中等置信度兜底）
    *
    * 当会话沉淀触发时，从 sessionFacts 中抽取身份字段写入 Profile。
-   * 长期画像的 source='extraction' 表示“通过沉淀写入长期表”；
-   * evidence 会保留原 sessionFact 的 source/confidence/evidence，避免丢失一跳来源。
+   * 长期画像保留原 sessionFact 的 producer 章；沉淀只是运输，不改写事实出身。
+   * evidence 保留原 sessionFact 的置信度与机制细节，避免丢失一跳证据。
    * confidence 固定为 medium，避免沉淀数据覆盖 booking/high。
    */
   async writeFromSettlement(
@@ -261,20 +261,10 @@ export class LongTermService {
   // ==================== active_booking ====================
 
   /**
-   * 读取候选人当前有效/待处理预约工单指针。
+   * 读取候选人当前有效/待处理预约工单列表（按 linked_at 倒序，[0] 即最近一笔）。
    * Agent 上下文渲染 / request_handoff(modify_appointment) 守卫使用。
    */
-  async getActiveBooking(corpId: string, userId: string): Promise<ActiveBooking | null> {
-    try {
-      return await this.supabaseStore.getActiveBooking(corpId, userId);
-    } catch (error) {
-      this.logger.warn('获取 active_booking 失败', error);
-      return null;
-    }
-  }
-
-  /** 读取候选人当前有效/待处理预约工单列表。 */
-  async getActiveBookings(corpId: string, userId: string): Promise<ActiveBooking[]> {
+  async getActiveBookings(corpId: string, userId: string): Promise<ActiveBookingEntry[]> {
     try {
       return await this.supabaseStore.getActiveBookings(corpId, userId);
     } catch (error) {
@@ -290,7 +280,7 @@ export class LongTermService {
     corpId: string,
     userId: string,
     workOrderId: number,
-    metadata?: Pick<ActiveBooking, 'job_id'>,
+    metadata?: Pick<ActiveBookingEntry, 'job_id'>,
   ): Promise<void> {
     try {
       await this.supabaseStore.setActiveBooking(corpId, userId, workOrderId, metadata);
@@ -329,7 +319,7 @@ export class LongTermService {
   private buildProfileFacts(
     profile: Partial<UserProfile>,
     defaults: {
-      source: ProfileFactSource;
+      source: CandidateFactProducer;
       confidence: ProfileFactConfidence;
       evidence: string;
     },
@@ -366,7 +356,7 @@ export class LongTermService {
       if (!this.hasProfileValue(value)) continue;
 
       (profileFacts as Record<string, unknown>)[key] = userProfileFactValue(value, {
-        source: 'extraction',
+        source: isSessionFactValue(rawValue) ? rawValue.source : 'archive',
         confidence: 'medium',
         evidence: this.buildSettlementEvidence(rawValue),
         updatedAt,
@@ -402,7 +392,7 @@ export class LongTermService {
       if (!this.hasPreferenceValue(value)) continue;
 
       preferenceFacts[key] = userProfileFactValue(value, {
-        source: 'extraction',
+        source: isSessionFactValue(rawValue) ? rawValue.source : 'archive',
         confidence: 'medium',
         evidence: this.buildSettlementEvidence(rawValue),
         updatedAt,
@@ -414,7 +404,7 @@ export class LongTermService {
     const currentBrand = origin?.brandState?.currentBrand;
     if (currentBrand) {
       preferenceFacts.brands = userProfileFactValue([currentBrand.canonicalName], {
-        source: 'extraction',
+        source: 'rule',
         confidence: 'medium',
         evidence: '会话品牌状态快照（brand_state.currentBrand）',
         updatedAt,
@@ -445,7 +435,6 @@ export class LongTermService {
     if (!isSessionFactValue(rawValue)) return prefix;
 
     const parts = [
-      `原字段来源=${rawValue.source}`,
       `原字段置信度=${rawValue.confidence}`,
       rawValue.evidence?.trim() ? `原证据=${rawValue.evidence.trim()}` : null,
     ].filter(Boolean);

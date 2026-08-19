@@ -21,7 +21,7 @@
  */
 import type { JobDetail } from '@sponge/sponge.types';
 import { getSpongeProvinceNameById } from '@sponge/sponge.enums';
-import { isStrictRealChineseName } from '@memory/facts/name-guard';
+import { isStrictRealChineseName } from '@resolution/candidate/name';
 import { buildJobPolicyAnalysis, InterviewWindow } from '@tools/utils/job-policy-parser';
 import {
   compareTime,

@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
@@ -92,9 +93,7 @@ export class SemanticReviewCoverageWatchdog {
         AlertLevel.ERROR,
       );
     } catch (error) {
-      this.logger.error(
-        `[语义评审看门狗] 检查失败: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      this.logger.error(`[语义评审看门狗] 检查失败: ${toErrorMessage(error)}`);
     }
   }
 

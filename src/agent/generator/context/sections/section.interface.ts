@@ -1,11 +1,9 @@
-import type {
-  EntityExtractionResult,
-  HighConfidenceFacts,
-  SessionFacts,
-} from '@memory/types/session-facts.types';
+import type { SessionFacts } from '@memory/types/session-facts.types';
+import type { RuleFactClaims } from '@resolution/evidence/claim.types';
 import type { SessionBrandState } from '@resolution/brand/brand-resolution.types';
 import { StrategyConfigRecord } from '@biz/strategy/entities/strategy-config.entity';
-import type { LaborFormIntentDecision } from '@memory/facts/labor-form';
+import type { LaborFormIntentDecision } from '@resolution/labor-form';
+import type { CorpusDomain, PromptCorpusBlock } from '@shared-types/corpus.types';
 
 /**
  * 提示词组装上下文 — 所有 section 共享
@@ -25,10 +23,25 @@ export interface PromptContext {
   currentTimeText?: string;
   /** 候选人意向城市的兼职群资源块；由 ContextService 预渲染。 */
   groupInventoryBlock?: string;
-  /** 会话记忆中的已确认提取结果；供 TurnHintsSection 做冲突比对。 */
-  sessionFacts?: EntityExtractionResult | SessionFacts | null;
+  /**
+   * 会话记忆中的已确认提取结果（**带信封的存储态**）；供 TurnHintsSection 做冲突比对、
+   * HardConstraintsSection 做置信度门取值。
+   *
+   * 只接受 SessionFacts：裸 EntityExtractionResult 在 unwrapSessionFacts 里会在置信度
+   * 比较**之前**原样返回，minConfidence 对它完全不生效——历史上联合类型让测试全走裸态
+   * 分支，置信度门从未被执行过（core-flow-review 议题 1-1）。生产链路本就只有
+   * `memory.sessionMemory?.facts`（SessionFacts）一条来源；测试用
+   * `tests/helpers/session-facts.fixture.ts` 的 sessionFactsOf() 构造。
+   */
+  sessionFacts?: SessionFacts | null;
   /** 本轮前置识别得到的高置信结果；由 TurnHintsSection 拆分为普通/待确认线索后渲染。 */
-  highConfidenceFacts?: HighConfidenceFacts | null;
+  ruleFacts?: RuleFactClaims | null;
+  /**
+   * 本轮候选人消息原文（逐条，与规则轨输入同源）。
+   * TurnHintsSection 用它判定 claim 的 quote 是否"就是整条当轮消息"——是且本轮只有一条
+   * 消息时省略渲染，避免逐字段把同一条消息重复注入（议题 2-1）。
+   */
+  currentTurnTexts?: readonly string[];
   /** 当前消息对用工形式的 set/clear/ignore 决策；用于区分撤销旧偏好与岗位事实问句。 */
   currentLaborFormIntent?: LaborFormIntentDecision;
   /** 本轮生效的会话品牌状态（currentBrand + excludedBrands，§9）；品牌提示的唯一数据源。 */
@@ -61,6 +74,47 @@ export interface AccountIdentity {
 export interface PromptSection {
   /** 段落名称（用于日志和调试） */
   readonly name: string;
+  /** 测试/扩展 section 可显式覆盖；生产 section 统一由下方封闭注册表发牌。 */
+  readonly domain?: CorpusDomain;
   /** 构建该段落的文本 */
   build(ctx: PromptContext): Promise<string> | string;
+  /** 复合 section 展开子块，避免混合域在 join 后丢失标签。 */
+  buildBlocks?(ctx: PromptContext): Promise<PromptCorpusBlock[]> | PromptCorpusBlock[];
+}
+
+/** 生产 prompt 叶子 section → 语料域的唯一封闭注册表。 */
+const PROMPT_SECTION_DOMAIN_REGISTRY: Readonly<Record<string, CorpusDomain>> = {
+  identity: 'teaching',
+  'base-manual': 'teaching',
+  'final-check': 'teaching',
+  'red-lines': 'teaching',
+  thresholds: 'teaching',
+  'stage-strategy': 'teaching',
+  channel: 'teaching',
+  memory: 'evidence',
+  'turn-hints': 'evidence',
+  'hard-constraints': 'evidence',
+  datetime: 'tool_result',
+  'group-inventory': 'tool_result',
+};
+
+/** 展开一个 section；叶子 section 由固定 domain 直接包装。 */
+export async function buildPromptSectionBlocks(
+  section: PromptSection,
+  ctx: PromptContext,
+): Promise<PromptCorpusBlock[]> {
+  if (section.buildBlocks) return section.buildBlocks(ctx);
+  const content = (await section.build(ctx)).trim();
+  if (!content) return [];
+  const domain = section.domain ?? PROMPT_SECTION_DOMAIN_REGISTRY[section.name];
+  if (!domain) throw new Error(`Prompt section 未登记语料域: ${section.name}`);
+  return [{ id: section.name, domain, role: 'system', content }];
+}
+
+/** Prompt block 的唯一降维点；标签在此之前一直保留。 */
+export function renderPromptBlocks(blocks: readonly PromptCorpusBlock[]): string {
+  return blocks
+    .map((block) => block.content.trim())
+    .filter(Boolean)
+    .join('\n\n');
 }

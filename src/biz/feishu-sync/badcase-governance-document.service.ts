@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { createHash } from 'crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -140,7 +141,7 @@ export class BadcaseGovernanceDocumentService {
       const summary = await this.refreshSummary(update);
       return { success: true, skipped: false, dryRun: false, eventId, summary };
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = toErrorMessage(error);
       this.logger.error(`[BadcaseGovernanceDoc] 更新失败 event=${eventId}: ${message}`);
       return { success: false, skipped: false, dryRun: !writeEnabled, eventId, error: message };
     }
@@ -192,7 +193,7 @@ export class BadcaseGovernanceDocumentService {
       );
       return { attempted: true, updatedBlocks: rewrites.length, total };
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = toErrorMessage(error);
       this.logger.error(`[BadcaseGovernanceDoc] 统计刷新失败: ${message}`);
       return { attempted: true, updatedBlocks: 0, total, error: message };
     }

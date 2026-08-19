@@ -4,7 +4,7 @@
  * 从 duliday-job-list.tool.ts 拆出（Phase 1.A 机械搬运，0 逻辑变更）：
  * - haversineDistance：经纬度球面距离
  * - scoreJobAgainstRequestedCategories：候选人意向类目与岗位的相似度评分
- * - filterJobsByRequestedCategories：按类目评分过滤
+ * - rankJobsByRequestedCategories：按类目评分软排序（仅排序不过滤）
  * - formatScheduleConstraintLabel：班次硬约束文本化
  * - applyScheduleConstraint：按候选人班次硬约束过滤岗位并标记 _scheduleSemantic
  */
@@ -25,7 +25,7 @@ import {
   isPartTimeJobType,
   matchesLaborForm,
   sanitizeLaborFormForDisplay,
-} from '@memory/facts/labor-form';
+} from '@resolution/labor-form';
 import type { JobDetail } from '@sponge/sponge.types';
 
 const EARTH_RADIUS_KM = 6371;
@@ -354,28 +354,51 @@ export function collectLaborFormAnomalies(jobs: JobDetail[]): LaborFormAnomaly[]
   return anomalies;
 }
 
-export function filterJobsByRequestedCategories(
+/** {@link rankJobsByRequestedCategories} 判定「明确匹配」的最低分：等值命中(10)或子串包含(6)，字符重叠兜底(2)单独够不到。 */
+const JOB_CATEGORY_MATCH_MIN_SCORE = 6;
+
+export interface JobCategoryRankResult {
+  /** 是否传入了意向工种关键词（关键词为空或召回为空时 false） */
+  applied: boolean;
+  /** 明确匹配（score ≥ 阈值）的岗位数 */
+  matchedCount: number;
+  jobs: JobDetail[];
+}
+
+/**
+ * 意向工种本地软排序（不做过滤）：jobCategoryList 不再下传 sponge API（模型猜的工种词与
+ * 海绵类目字典对不上，精确匹配基本落空），改为召回后按 岗位类型名/岗位名称/岗位昵称/工作内容
+ * 打分，把明确匹配的岗位稳定分区排到前面——组内保持原有顺序（如距离序），不剔除任何岗位。
+ * 匹配与否由调用方经结果头部 notice 知情披露，最终由模型按岗位名称/内容自行判断。
+ */
+export function rankJobsByRequestedCategories(
   jobs: JobDetail[],
   jobCategoryList: string[],
-): JobDetail[] {
-  return jobs
-    .map((job) => ({ job, score: scoreJobAgainstRequestedCategories(job, jobCategoryList) }))
-    .filter(({ score }) => score >= 6)
-    .sort((a, b) => b.score - a.score)
+): JobCategoryRankResult {
+  if (jobCategoryList.length === 0 || jobs.length === 0) {
+    return { applied: false, matchedCount: 0, jobs };
+  }
+  const scored = jobs.map((job) => scoreJobAgainstRequestedCategories(job, jobCategoryList));
+  const matchedCount = scored.filter((score) => score >= JOB_CATEGORY_MATCH_MIN_SCORE).length;
+  if (matchedCount === 0 || matchedCount === jobs.length) {
+    return { applied: true, matchedCount, jobs };
+  }
+  const ranked = jobs
+    .map((job, index) => ({ job, matched: scored[index] >= JOB_CATEGORY_MATCH_MIN_SCORE }))
+    .sort((a, b) => Number(b.matched) - Number(a.matched))
     .map(({ job }) => job);
+  return { applied: true, matchedCount, jobs: ranked };
 }
 
 /**
  * 泛化统称类岗位工种词——候选人口语里的「店员/员工/工作人员」并不是 sponge 岗位分类轴上的
- * 具体工种，而是「门店里干活的人」的笼统称呼。把它们塞进 jobCategoryList 会做 API 精确类目
- * 过滤，几乎必然 0 命中（商超/连锁的真实工种是收银员/理货员/促销员/保洁员…，没有叫「店员」
- * 的类目），且本地关键词兜底（{@link filterJobsByRequestedCategories}）也匹配不上——「店员」
- * 不是任何真实工种名的子串，两字词又够不到字符重叠兜底。结果是明明有同品牌同商圈在招岗位，
- * 却因这一个泛化词被误判「查无」。
+ * 具体工种，而是「门店里干活的人」的笼统称呼。jobCategoryList 已不再下传 API（只做本地软排序，
+ * 见 {@link rankJobsByRequestedCategories}），但这类词作为排序关键词同样有害：「店员」不是任何
+ * 真实工种名的子串（真实工种是收银员/理货员/促销员/保洁员…），两字词又够不到字符重叠兜底，
+ * 必然 0 命中——会触发「无明确匹配工种」的头部披露，误导模型对候选人说"没有店员岗"。
  *
- * 生产 badcase 实证（chat 6a66d888，果蔬好·天津）：候选人「我想应聘店员」→ jobCategoryList=
- * ["店员"] → 果蔬好乐提港店 6 个真实岗位（收银员/理货员/促销员/保洁员）被过滤为空，坐标放宽
- * 到 30km 仍空。剥离「店员」后由品牌 + 城市/坐标继续召回，即可正常返回这些岗位。
+ * 历史 badcase 实证（chat 6a66d888，果蔬好·天津，API 直传时代）：候选人「我想应聘店员」→
+ * jobCategoryList=["店员"] → 果蔬好乐提港店 6 个真实岗位被 API 精确类目过滤为空。
  *
  * 只剥离「纯泛化统称」——它们语义上等价于「员工」，任何品牌都不会把岗位分类命名成这些词；
  * 「收银员/分拣员/骑手」等具体工种一律不动。

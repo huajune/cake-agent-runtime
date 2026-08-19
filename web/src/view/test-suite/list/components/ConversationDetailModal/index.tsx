@@ -11,16 +11,14 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import MessagePartsAdapter from '@/view/agent-test/list/components/MessagePartsAdapter';
+import { formatLocaleDateTime } from '@/utils/format';
 import type {
   ConversationSnapshot,
   ConversationTurnExecution,
   ToolCall,
   ParsedMessage,
 } from '../../types';
-import {
-  formatReviewStatusLabel,
-  resolveReviewerSourceLabel,
-} from '../../utils/reviewLabel';
+import { formatReviewStatusLabel, resolveReviewerSourceLabel } from '../../utils/reviewLabel';
 import { buildAgentRenderableMessage } from '../../utils/agentRenderableMessage';
 import { CompactMetrics } from './CompactMetrics';
 import { LoadingSkeleton } from './LoadingSkeleton';
@@ -89,9 +87,7 @@ export function ConversationDetailModal({
   const hasPrev = currentTurnIndex > 0;
   const hasNext = currentTurnIndex < turns.length - 1;
   const displayTotalTurns = Math.max(conversation.totalTurns || 0, turns.length || 0);
-  const displayTurnNumber = currentTurn
-    ? (currentTurn.turnNumber || currentTurnIndex + 1)
-    : 0;
+  const displayTurnNumber = currentTurn ? currentTurn.turnNumber || currentTurnIndex + 1 : 0;
 
   // 获取当前轮次的真人对话历史（候选人 + 招募经理）
   const realHistory = Array.isArray(currentTurn?.history) ? currentTurn.history : [];
@@ -206,10 +202,7 @@ export function ConversationDetailModal({
                         <MessageSquare size={14} />
                         历史上下文 ({realHistory.length})
                         <span className={styles.toggleIcon}>
-                          <ChevronDown
-                            size={14}
-                            className={!showHistory ? styles.rotated : ''}
-                          />
+                          <ChevronDown size={14} className={!showHistory ? styles.rotated : ''} />
                         </span>
                       </div>
                       {showHistory && (
@@ -239,13 +232,11 @@ export function ConversationDetailModal({
                         </span>
                       )}
                       {reviewerLabel && (
-                        <span className={styles.reviewPill}>
-                          评审来源: {reviewerLabel}
-                        </span>
+                        <span className={styles.reviewPill}>评审来源: {reviewerLabel}</span>
                       )}
                       {currentTurn.reviewedAt && (
                         <span className={styles.reviewPill}>
-                          评审时间: {new Date(currentTurn.reviewedAt).toLocaleString('zh-CN')}
+                          评审时间: {formatLocaleDateTime(currentTurn.reviewedAt)}
                         </span>
                       )}
                       {conversation.conversationId && (
@@ -309,7 +300,6 @@ export function ConversationDetailModal({
             </div>
           ) : null}
         </div>
-
       </div>
     </div>
   );

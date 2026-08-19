@@ -1,8 +1,10 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue, Job } from 'bull';
 import { ConfigService } from '@nestjs/config';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
+import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { EnterpriseMessageCallbackDto } from '../ingress/message-callback.dto';
 
 // 导入子服务
@@ -31,6 +33,7 @@ export class MessageProcessor implements OnModuleInit, OnModuleDestroy {
     private readonly workerManager: MessageWorkerManagerService,
     private readonly userHostingService: UserHostingService,
     private readonly deduplicationService: MessageDeduplicationService,
+    private readonly messageTracking: MessageTrackingService,
     private readonly configService: ConfigService,
   ) {
     this.drainTimeoutMs = parseInt(
@@ -85,7 +88,7 @@ export class MessageProcessor implements OnModuleInit, OnModuleDestroy {
         );
       }
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = toErrorMessage(error);
       this.logger.warn(`[Shutdown] 排空队列失败: ${errorMessage}`);
     } finally {
       if (timer) {
@@ -248,14 +251,14 @@ export class MessageProcessor implements OnModuleInit, OnModuleDestroy {
       // 处理完后若又收到了新消息，则按“最后一条消息后的静默窗口”补建下一轮检查任务
       await this.simpleMergeService.checkAndProcessNewMessages(chatId);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = toErrorMessage(error);
       this.logger.error(`[Bull] 任务 ${job.id} 处理失败: ${errorMessage}`);
       throw error;
     } finally {
       stopLockHeartbeat?.();
       if (lockAcquired) {
         await this.simpleMergeService.releaseProcessingLock(chatId, lockOwner).catch((error) => {
-          const errorMessage = error instanceof Error ? error.message : String(error);
+          const errorMessage = toErrorMessage(error);
           this.logger.warn(`[Bull] 释放 chatId=${chatId} 处理锁失败: ${errorMessage}`);
         });
       }
@@ -282,6 +285,12 @@ export class MessageProcessor implements OnModuleInit, OnModuleDestroy {
    *
    * 同时把每条 messageId 标记为已处理（与 historyOnly 路径对齐），避免回调
    * 重试时再次进入 debounce 队列。
+   *
+   * 并回收这批消息在 intake 时写下的 processing 流水（core-flow-review 议题 8-4）：
+   * 本批不会再进入 Agent，也就永远不会有终态回写，行会一直停在 processing 直到
+   * 03:00 UTC cron 标 timeout。这不影响候选人（本就该由真人接），但污染观测口径
+   * ——processing 被当作"真在处理"计数。复用聚合路径既有的回收语义（删除源行 +
+   * 扣减 activeRequests），不新增状态机。
    */
   private async dropIfHostingPaused(
     chatId: string,
@@ -305,7 +314,7 @@ export class MessageProcessor implements OnModuleInit, OnModuleDestroy {
         this.deduplicationService
           .markMessageAsProcessedAsync(message.messageId)
           .catch((error: unknown) => {
-            const errorMessage = error instanceof Error ? error.message : String(error);
+            const errorMessage = toErrorMessage(error);
             this.logger.warn(
               `[Bull][已暂停托管] 去重标记失败 [${message.messageId}]: ${errorMessage}`,
             );
@@ -313,6 +322,15 @@ export class MessageProcessor implements OnModuleInit, OnModuleDestroy {
           }),
       ),
     );
+
+    await this.messageTracking
+      .dropMergedSourceRecords(
+        messages.map((message) => message.messageId),
+        String(jobId),
+      )
+      .catch((error: unknown) => {
+        this.logger.warn(`[Bull][已暂停托管] 回收 processing 流水失败: ${toErrorMessage(error)}`);
+      });
     return true;
   }
 
@@ -398,7 +416,7 @@ export class MessageProcessor implements OnModuleInit, OnModuleDestroy {
         message: totalCleaned > 0 ? `已清理 ${totalCleaned} 个任务` : '没有需要清理的任务',
       };
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = toErrorMessage(error);
       return {
         success: false,
         cleaned,

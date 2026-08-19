@@ -11,6 +11,7 @@
  * 或不合法一律降级 kind=other——行为逐字等同结构化之前。
  */
 
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Logger } from '@nestjs/common';
 import { tool } from 'ai';
 import { z } from 'zod';
@@ -20,7 +21,6 @@ import { MessageType } from '@enums/message-callback.enum';
 import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 import { BrandResolutionService } from '@resolution/brand/brand-resolution.service';
 import {
-  FIELD_OWNERSHIPS,
   VISUAL_FACT_FIELD_KEY_PROMPT,
   VISUAL_FACT_KIND_PROMPT,
   VISUAL_FACT_KINDS,
@@ -28,8 +28,13 @@ import {
   finalizeVisualFactSheet,
   sanitizeVisualDescription,
   isResumeImageDescription,
-  stripResumeAttachmentLines,
-} from '@resolution/visual';
+} from '@resolution/signal/visual';
+import { FIELD_OWNERSHIPS } from '@resolution/signal/types';
+import {
+  appendResumeAttachmentLine,
+  EMOTION_MESSAGE_PREFIX,
+  IMAGE_MESSAGE_PREFIX,
+} from '@resolution/signal/markers';
 
 const logger = new Logger('save_image_description');
 
@@ -82,7 +87,9 @@ const inputSchema = z.object({
 type VisualKind = MessageType.IMAGE | MessageType.EMOTION;
 
 function resolvePrefix(messageId: string, visualMessageTypes?: Record<string, VisualKind>): string {
-  return visualMessageTypes?.[messageId] === MessageType.EMOTION ? '[表情消息]' : '[图片消息]';
+  return visualMessageTypes?.[messageId] === MessageType.EMOTION
+    ? EMOTION_MESSAGE_PREFIX
+    : IMAGE_MESSAGE_PREFIX;
 }
 
 export function buildSaveImageDescriptionTool(
@@ -115,6 +122,10 @@ export function buildSaveImageDescriptionTool(
         const safeDescription = sanitizeVisualDescription(description);
         // 简历判定双保险（并跑对照）：sheet 的 resume kind 与旧文本标记任一命中即走
         // 简历链路；两者不一致记 warn 供并跑对照统计，删旧判据前需一致率达标。
+        // A1（2026-08-11）仅覆盖当前容器连续 92h23m，分歧为 0；尚未达到完整 7 天
+        // 删除门槛，故继续保留 legacy 判据。连续 7 天复扫仍为 0 后删除本并跑与 OR 路径。
+        // A2（2026-08-17）复扫：生产容器日志本地不可得，取不到完整 7 天窗口，判据无法证实，
+        // 维持并跑不删。下次复扫须先拿到生产日志或把该 warn 接进告警通道再判。
         const legacyResume = isResumeImageDescription(description);
         const sheetResume = !sheet.degraded && sheet.kind === 'resume';
         if (!sheet.degraded && legacyResume !== sheetResume) {
@@ -123,11 +134,11 @@ export function buildSaveImageDescriptionTool(
           );
         }
         const resumeUrl =
-          prefix === '[图片消息]' && (legacyResume || sheetResume)
+          prefix === IMAGE_MESSAGE_PREFIX && (legacyResume || sheetResume)
             ? imageUrlsByMessageId?.[messageId]
             : undefined;
         const content = resumeUrl
-          ? `${prefix} ${stripResumeAttachmentLines(safeDescription)}\n简历附件：${resumeUrl}`
+          ? appendResumeAttachmentLine(`${prefix} ${safeDescription}`, resumeUrl)
           : `${prefix} ${safeDescription}`;
         await chatSession.updateMessageContent(
           messageId,
@@ -137,8 +148,8 @@ export function buildSaveImageDescriptionTool(
 
         // 视觉事实旁路（镜像品牌域 §10.2）：sheet 挂回合上下文，供同轮工具
         //（invite 城市门等）与 turn-finalizer 消费。
-        if (!sheet.degraded && context.onVisualFactsResolved) {
-          context.onVisualFactsResolved(sheet, { messageId });
+        if (!sheet.degraded) {
+          context.ledger.recordVisualFacts(sheet, { messageId });
         }
 
         // 图片品牌解析执行点（§10.2）：描述落库即同步经 resolve() 目录验证，结果挂
@@ -146,7 +157,7 @@ export function buildSaveImageDescriptionTool(
         // 表情消息不是品牌来源；解析失败按无品牌降级，不影响描述保存。
         // R2 发布方剔除（badcase 发布方品牌劫持）：sheet 可用且带 brand 字段时只解析
         // 候选人看中的岗位品牌值；publisher 字段（跃橙云服等发布主体）不进品牌解析。
-        if (prefix === '[图片消息]' && brandResolution && context.onImageBrandResolved) {
+        if (prefix === IMAGE_MESSAGE_PREFIX && brandResolution) {
           try {
             const brandInputs =
               !sheet.degraded && sheet.kind === 'job_posting'
@@ -159,14 +170,10 @@ export function buildSaveImageDescriptionTool(
               )
             ).flat();
             if (resolutions.length > 0) {
-              context.onImageBrandResolved(resolutions, { messageId });
+              context.ledger.recordImageBrands(resolutions, { messageId });
             }
           } catch (error) {
-            logger.warn(
-              `图片品牌解析失败（按无品牌降级）[${messageId}]: ${
-                error instanceof Error ? error.message : String(error)
-              }`,
-            );
+            logger.warn(`图片品牌解析失败（按无品牌降级）[${messageId}]: ${toErrorMessage(error)}`);
           }
         }
 

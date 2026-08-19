@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger, type OnApplicationBootstrap } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { AgentEvent, Observer } from './observer.interface';
@@ -20,8 +21,13 @@ const ALWAYS_PERSISTED_EVENT_TYPES = new Set<AgentEvent['type']>([
   'brand_resolution_ambiguous',
   // 抽取臆造字段拦截：量级应接近零，出现即弱模型劣化信号，必须可查（不能只打日志）
   'extraction_field_dropped',
+  // 同轮多字段丢弃时采样的模型原始响应（8KB 封顶），用于区分幻觉与供应商串请求。
+  'extraction_raw_output_sampled',
   // 候选人事实裁决档案：claim 接受率/拒绝原因分布是证据化 Phase 1/2 的核心观测
   'fact_adjudication',
+  // labor-form 双轨分歧档案：冻结令（2026-08-11，labor-form/index.ts）要求新 badcase
+  // 先查本事件再动正则——只进日志等于档案不存在（PR #1000 评审 P1-15）
+  'semantic_track_diff',
 ]);
 
 const SLOW_TOOL_THRESHOLD_MS = 3000;
@@ -47,9 +53,7 @@ export class PersistingObserver implements Observer, OnApplicationBootstrap {
     if (!this.persister || !this.shouldPersist(event)) return;
 
     void this.persister.persist(event).catch((error: unknown) => {
-      this.logger.warn(
-        `[agent-events] 持久化失败: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      this.logger.warn(`[agent-events] 持久化失败: ${toErrorMessage(error)}`);
     });
   }
 

@@ -1,6 +1,6 @@
 # 企微消息服务架构
 
-**最后更新**：2026-04-23
+**最后更新**：2026-08-12（全文对代码核实：服务名 / 路径 / 过滤规则数 / 锁与 TTL 参数）
 
 ---
 
@@ -70,8 +70,8 @@ Agent 内部运行时（Recall / Compose / Execute / Store）详见 [agent-runti
 | 关注点 | 现状 | 背景 |
 | --- | --- | --- |
 | **同步 ACK** | HTTP 立即返回 200，所有处理推到微任务 | 托管平台回调超时会按"超时补发"规则重发（曾出现同一消息被补发 3 次） |
-| **聚合策略** | **Debounce**：每条消息注册 `delay=静默窗口` 的 Bull job，Worker 触发时校验是否静默够久 | 旧实现是 `IDLE → WAITING → PROCESSING` 状态机，复杂度高、竞态难控 |
-| **去重存储** | Redis `SET NX EX`（TTL 5 min） | 旧实现基于内存 Map，多实例部署会漏去重 |
+| **聚合策略** | **Debounce**：每条消息注册 `delay=静默窗口` 的 Bull job，Worker 触发时校验是否静默够久 | 相比状态机式聚合（`IDLE → WAITING → PROCESSING`）竞态面小得多 |
+| **去重存储** | Redis `SET NX EX`（TTL 5 min） | 必须跨实例共享——进程内 Map 在多实例部署下会漏去重 |
 | **阻塞保护** | `advance_stage` / `invite_to_group` / `duliday_interview_booking` 命中后跳过 replay，直接投递首次回复 | 这三类工具会产生不可逆外部副作用（DB 写、群邀请、外部预约） |
 | **per-chat 串行** | Redis 处理锁（`wecom:message:lock:{chatId}`）+ per-chat jobId 幂等 | Bull 并发 Worker 之间可能撞同一个会话，锁保证同一会话同时只有一个 Agent 生成 |
 
@@ -94,7 +94,7 @@ src/channels/wecom/message/
 │   ├── accept-inbound-message.service.ts # 过滤 → 去重 → 写历史 → 图片预处理
 │   ├── reply-workflow.service.ts         # Agent 调用 + Replay 重跑（650 行，核心）
 │   ├── filter.service.ts                 # 过滤规则聚合入口
-│   ├── filter-rules/message-filter.rules.ts # 8 条规则实现
+│   ├── filter-rules/message-filter.rules.ts # 9 条规则实现（Self/Source/ContactType/PausedUser/CandidateBlacklist/GroupBlacklist/Room/SupportedType/EmptyContent）
 │   ├── image-description.service.ts      # 非视觉模型下图片同步描述回写
 │   └── message-processing-failure.service.ts # 失败告警 + 降级回复
 ├── runtime/
@@ -134,14 +134,14 @@ src/channels/wecom/message/
 | [`SimpleMergeService`](../../src/channels/wecom/message/runtime/simple-merge.service.ts) | 把消息写入 Redis List + 每条消息注册一个 debounce job | `addMessage`, `getAndClearPendingMessages`, `checkAndProcessNewMessages` |
 | [`MessageProcessor`](../../src/channels/wecom/message/runtime/message.processor.ts) | Bull Worker，校验静默窗口 → 取消息 → 调 pipeline → 检查新消息 | `handleProcessJob` |
 | [`MessageDeduplicationService`](../../src/channels/wecom/message/runtime/deduplication.service.ts) | Redis `SET NX EX`（默认 TTL 300s）原子标记，支持多实例 | `isMessageProcessedAsync`, `markMessageAsProcessedAsync` |
-| [`MessageFilterService`](../../src/channels/wecom/message/application/filter.service.ts) | 按顺序执行 8 条过滤规则，返回第一条命中的结果 | `validate` |
+| [`MessageFilterService`](../../src/channels/wecom/message/application/filter.service.ts) | 按顺序执行 9 条过滤规则，返回第一条命中的结果 | `validate` |
 | [`MessageDeliveryService`](../../src/channels/wecom/message/delivery/delivery.service.ts) | 单条 or 分段发送；为每段计算打字延迟；失败抛 `DeliveryFailureError` | `deliverReply` |
 | [`RiskInterceptService`](../../src/agent/guardrail/input/risk-intercept.service.ts) | 高置信度风险关键词预检 → input guardrail 静默拦截 + 统一出口暂停托管/告警 | `evaluate` |
 | [`MessageRuntimeConfigService`](../../src/channels/wecom/message/runtime/message-runtime-config.service.ts) | `hosting_config` 30s 拉取一次快照；暴露 aiReply/merge/typing/模型选择 | `syncSnapshot`, `getMergeDelayMs`, `resolveWecomChatModelSelection` |
 | [`MessageWorkerManagerService`](../../src/channels/wecom/message/runtime/message-worker-manager.service.ts) | `currentConcurrency` semaphore（默认 4，上限 20） | `acquireExecutionSlot`, `setConcurrency` |
 | [`WecomMessageObservabilityService`](../../src/channels/wecom/message/telemetry/wecom-message-observability.service.ts) | 请求 trace 从回调入口贯穿到投递完成的阶段打点 | `startRequestTrace`, `markWorkerStart`, `markAiStart`, `markDeliveryEnd` |
 
-### 2.2 过滤规则（8 条，按顺序评估）
+### 2.2 过滤规则（9 条，按顺序评估）
 
 位置：[src/channels/wecom/message/application/filter-rules/message-filter.rules.ts](../../src/channels/wecom/message/application/filter-rules/message-filter.rules.ts)
 
@@ -151,10 +151,11 @@ src/channels/wecom/message/
 | 2 | `SourceMessageFilterRule` | 非手机推送来源 |
 | 3 | `ContactTypeFilterRule` | 非用户联系人（客服、系统账号等） |
 | 4 | `PausedUserFilterRule` | 托管已暂停该用户 |
-| 5 | `GroupBlacklistFilterRule` | 群聊黑名单 |
-| 6 | `RoomMessageFilterRule` | 群聊消息策略（仅白名单/@触发） |
-| 7 | `SupportedMessageTypeFilterRule` | 不支持的消息类型 |
-| 8 | `EmptyContentFilterRule` | 空内容（仅有提示、引用等） |
+| 5 | `CandidateBlacklistFilterRule` | 候选人黑名单 |
+| 6 | `GroupBlacklistFilterRule` | 群聊黑名单 |
+| 7 | `RoomMessageFilterRule` | 群聊消息策略（仅白名单/@触发） |
+| 8 | `SupportedMessageTypeFilterRule` | 不支持的消息类型 |
+| 9 | `EmptyContentFilterRule` | 空内容（仅有提示、引用等） |
 
 命中规则可能返回三种终态：`pass=false`（直接忽略）、`historyOnly=true`（只写历史不触发 AI）、或通过进入后续流程。
 
@@ -295,11 +296,12 @@ t=8 Agent 生成完毕
 | --- | --- | --- | --- |
 | **静默窗口** `mergeDelayMs` | Supabase `hosting_config.initialMergeWindowMs` | 2000 ms（fallback 2s） | 由 Dashboard 动态调整；每次 `syncSnapshot` 读取 |
 | **Pending List TTL** | `SimpleMergeService.PENDING_TTL_SECONDS` | 300 s | 兜底防止 job 丢失时消息永远滞留 |
-| **处理锁 TTL** | `SimpleMergeService.PROCESSING_LOCK_TTL_SECONDS` | 300 s | 长于单轮 Agent 最坏耗时，防止锁提前过期导致并发生成 |
+| **处理锁租约** | `SimpleMergeService.PROCESSING_LOCK_TTL_SECONDS` | **90 s** | 单次租约，**不是**「长于最坏耗时」——持锁期间由心跳续期，进程崩溃后孤悬锁最长只活一个租约（远小于 Pending TTL），消息不会等锁等到过期 |
+| **锁心跳间隔** | `SimpleMergeService.LOCK_HEARTBEAT_INTERVAL_MS` | 30 s | 必须 < TTL/2，正常处理中每租约至少 2 次续期机会（Agent 调用 + replay 可达数分钟，全靠心跳维持） |
 | **Follow-up 最小延迟** | `QUIET_WINDOW_FOLLOWUP_DELAY_MS` | 200 ms | 静默窗口已满时，避免 0ms job 打满队列 |
 | **去重 TTL** | `MESSAGE_DEDUP_TTL_SECONDS` | 300 s | Redis `SET NX EX`，多实例共享 |
 
-> 旧实现中「首次等待窗口 + 最大聚合数」的参数（`INITIAL_MERGE_WINDOW_MS` / `MAX_MERGED_MESSAGES`）已全部废弃。
+> 聚合不设「最大聚合数」上限——静默窗口是唯一的切分判据。
 
 ### 4.4 Worker 并发控制
 

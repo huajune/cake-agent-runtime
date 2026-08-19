@@ -12,6 +12,7 @@ import {
   Rocket,
 } from 'lucide-react';
 import { useCountUp } from '@/hooks/useCountUp';
+import { formatPercent } from '@/utils/format';
 import { KPI_DEFS } from '../../types';
 import MetricModeTabs from '../MetricModeTabs';
 import styles from '../../styles/index.module.scss';
@@ -106,10 +107,6 @@ function KpiCell({
       <span className={styles.kpiBeam} />
     </article>
   );
-}
-
-function formatPercent(value?: number) {
-  return `${((value ?? 0) * 100).toFixed(1)}%`;
 }
 
 function formatPp(value?: number) {

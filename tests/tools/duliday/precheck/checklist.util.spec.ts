@@ -217,6 +217,19 @@ describe('checklist.util', () => {
       expect(result.templateText).toContain('联系方式：');
       expect(result.templateText).toContain('身份（学生/社会人士）：');
     });
+
+    it('renders a weak prefill as inline confirmation without marking it missing or mutating the value', () => {
+      const knownFieldMap = { 性别: '男' };
+      const result = buildChecklistTemplate({
+        requiredFields: ['性别'],
+        knownFieldMap,
+        confirmationSuffixByField: { 性别: '（如有误请改）' },
+      });
+
+      expect(result.templateText).toContain('性别：男（如有误请改）');
+      expect(result.missingFields).not.toContain('性别');
+      expect(knownFieldMap['性别']).toBe('男');
+    });
   });
 
   describe('buildEnumHintsForMissing', () => {

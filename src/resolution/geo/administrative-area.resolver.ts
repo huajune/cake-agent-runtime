@@ -132,8 +132,10 @@ export function resolveCityFromGeoSignals(
  * 与 resolveCityFromGeoSignals 的先命中先赢不同，本函数扫描**全部**信号并
  * 收集去重后的城市候选；≥2 个不同城市即"本应 ambiguous"（现网实证：
  * badcase xnp1u820 "成都的 + 静安区"、i2vljy1u）。仅供观测落 GeoQueryMeta，
- * 不参与任何行为决策；enforce 首轮决策已于 2026-07-29 判 no-go（唯一冲突样本系
- * 长阳同形地名误报，见 overrides），重启 enforce 须先补同形地名消解（§17.4.1）。
+ * 不参与任何行为决策；**enforce 已于 2026-08-14 终审 no-go，不再是待办**——3 周生产
+ * shadow（约 22,800 回合）累计 25 起样本，逐条分类后真冲突 0 起，噪音全部是地标别名
+ * 与跨层级同形地名（长阳、宝山中街），详见 docs/architecture/geo-resolution.md §9.3。
+ * 本函数保留为排障线索（判断城市判错是否源于别名误命中），不要再按"待决策"推动。
  */
 export function detectGeoSignalConflict(
   districts: readonly string[] | null | undefined,

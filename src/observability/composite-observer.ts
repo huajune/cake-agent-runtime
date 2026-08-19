@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { AgentEvent, Observer } from './observer.interface';
 import { LoggerObserver } from './logger-observer';
@@ -18,9 +19,7 @@ export class CompositeObserver implements Observer {
         observer.emit(event);
       } catch (error) {
         this.logger.warn(
-          `[observer] ${observer.constructor.name} failed: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
+          `[observer] ${observer.constructor.name} failed: ${toErrorMessage(error)}`,
         );
       }
     }

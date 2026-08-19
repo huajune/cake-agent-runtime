@@ -4,7 +4,13 @@ import { HardConstraintsSection } from './hard-constraints.section';
 import { MemorySection } from './memory.section';
 import { StageStrategySection } from './stage-strategy.section';
 import { TurnHintsSection } from './turn-hints.section';
-import { PromptContext, PromptSection } from './section.interface';
+import {
+  buildPromptSectionBlocks,
+  PromptContext,
+  PromptSection,
+  renderPromptBlocks,
+} from './section.interface';
+import type { PromptCorpusBlock } from '@shared-types/corpus.types';
 
 /**
  * 运行时上下文段落
@@ -26,8 +32,11 @@ export class RuntimeContextSection implements PromptSection {
   ) {}
 
   async build(ctx: PromptContext): Promise<string> {
-    const parts: string[] = [];
+    return renderPromptBlocks(await this.buildBlocks(ctx));
+  }
 
+  async buildBlocks(ctx: PromptContext): Promise<PromptCorpusBlock[]> {
+    const blocks: PromptCorpusBlock[] = [];
     for (const section of [
       this.stageStrategySection,
       this.memorySection,
@@ -36,10 +45,8 @@ export class RuntimeContextSection implements PromptSection {
       this.dateTimeSection,
       this.channelSection,
     ]) {
-      const text = await section.build(ctx);
-      if (text.trim()) parts.push(text.trim());
+      blocks.push(...(await buildPromptSectionBlocks(section, ctx)));
     }
-
-    return parts.join('\n\n');
+    return blocks;
   }
 }

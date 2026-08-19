@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import {
   BadcaseEvidenceEntry,
@@ -100,7 +101,7 @@ export class BadcaseEvidenceResolverService {
         }
       }
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = toErrorMessage(error);
       this.logger.error(`[BadcaseEvidence] 反查证据失败，本次不提供台账: ${message}`);
       return new Map();
     }

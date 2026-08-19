@@ -27,7 +27,7 @@ export class RoomService {
     try {
       const apiUrl = this.apiConfig.endpoints.room.simpleList();
 
-      const params: any = {
+      const params: Record<string, unknown> = {
         token,
         current,
         pageSize,
@@ -59,7 +59,7 @@ export class RoomService {
     try {
       const apiUrl = this.apiConfig.endpoints.room.list();
 
-      const params: any = { token };
+      const params: Record<string, unknown> = { token };
 
       if (wxid) {
         params.wxid = wxid;
@@ -97,7 +97,7 @@ export class RoomService {
     try {
       const apiUrl = this.apiConfig.endpoints.groupChat.list();
 
-      const params: any = { token };
+      const params: Record<string, unknown> = { token };
 
       if (current !== undefined) {
         params.current = current;
@@ -225,7 +225,7 @@ export class RoomService {
    * @param data - 回调数据
    * @returns 处理结果
    */
-  async handleJoinedCallback(data: any) {
+  async handleJoinedCallback(data: unknown) {
     try {
       this.logger.log('收到加入群聊事件回调');
       this.logger.log('Object:', data);
@@ -242,7 +242,7 @@ export class RoomService {
    * @param data - 回调数据
    * @returns 处理结果
    */
-  async handleLeftCallback(data: any) {
+  async handleLeftCallback(data: unknown) {
     try {
       this.logger.log('收到退出群聊事件回调');
       this.logger.log('Object:', data);

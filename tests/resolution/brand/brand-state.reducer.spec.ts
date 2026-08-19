@@ -5,11 +5,11 @@
 import type { BrandItem } from '@/sponge/sponge.types';
 import { resolveBrands } from '@resolution/brand/brand-matcher';
 import {
+  adjudicateBrandState as reduceBrandState,
   brandStateChanged,
   initBrandState,
-  reduceBrandState,
   shouldDropLateResolutions,
-} from '@resolution/brand/brand-state.reducer';
+} from '@resolution/evidence/brand-policy';
 import type { BrandResolution, SessionBrandState } from '@resolution/brand/brand-resolution.types';
 
 const catalog: BrandItem[] = [

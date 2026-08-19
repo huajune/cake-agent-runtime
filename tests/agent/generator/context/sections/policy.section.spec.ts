@@ -11,10 +11,12 @@ describe('PolicySection', () => {
   it('should concatenate non-empty child sections', async () => {
     const redLinesSection: PromptSection = {
       name: 'red',
+      domain: 'teaching',
       build: () => '# 红线\n- 禁止编造',
     };
     const thresholdsSection: PromptSection = {
       name: 'thresholds',
+      domain: 'teaching',
       build: () => '# 阈值\n- 最大 10km',
     };
 
@@ -24,8 +26,12 @@ describe('PolicySection', () => {
 
   it('should skip empty child sections', async () => {
     const section = new PolicySection(
-      { name: 'red', build: () => '   ' },
-      { name: 'thresholds', build: () => '# 阈值\n- 最大 10km' },
+      { name: 'red', domain: 'teaching', build: () => '   ' },
+      {
+        name: 'thresholds',
+        domain: 'teaching',
+        build: () => '# 阈值\n- 最大 10km',
+      },
     );
 
     await expect(section.build(baseCtx)).resolves.toBe('# 阈值\n- 最大 10km');

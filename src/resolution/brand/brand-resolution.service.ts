@@ -1,5 +1,5 @@
 /**
- * BrandResolution DI 门面（§6.5）：取目录 → 调纯函数 → 返回，无业务逻辑。
+ * BrandResolution DI 门面（§3.4）：取目录 → 调纯函数 → 返回，无业务逻辑。
  *
  * 品牌目录经 SpongeService.fetchBrandList() 获取（自带 30 分钟缓存），调用方不必各自拉目录。
  * 核心解析逻辑在 brand-matcher.ts 的纯函数 resolveBrands，单测直接注入目录即可。
@@ -27,7 +27,7 @@ export class BrandResolutionService {
     return resolveBrands(text, source, catalog);
   }
 
-  /** 工具入口的品牌别名标准化（§8.2）：解析成唯一标准品牌，冲突/未命中进 rejected。 */
+  /** 工具入口的品牌别名标准化（§6.2）：解析成唯一标准品牌，冲突/未命中进 rejected。 */
   async resolveAliases(inputs: string[]): Promise<AliasResolutionOutcome> {
     const catalog = await this.fetchCatalog();
     return resolveBrandAliasInputs(inputs, catalog);

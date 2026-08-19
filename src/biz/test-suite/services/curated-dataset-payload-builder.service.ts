@@ -88,6 +88,8 @@ const conversationFieldAliases = {
 
 export type ScenarioFieldKey = keyof typeof scenarioFieldAliases;
 export type ConversationFieldKey = keyof typeof conversationFieldAliases;
+type CuratedDatasetCase = CuratedScenarioCaseDto | CuratedConversationCaseDto;
+type SharedPayloadFieldKey = Extract<ScenarioFieldKey, ConversationFieldKey>;
 
 @Injectable()
 export class CuratedDatasetPayloadBuilderService {
@@ -127,71 +129,12 @@ export class CuratedDatasetPayloadBuilderService {
     importNote?: string,
   ): Record<string, unknown> {
     const fields: Record<string, unknown> = {};
-    const sourceTrace = normalizeSourceTrace(currentCase);
-    const remark = composeRemark([
-      importNote ? `导入说明: ${importNote}` : undefined,
-      currentCase.remark ? `策展备注: ${currentCase.remark.trim()}` : undefined,
-      currentCase.sourceGoodCaseIds?.length
-        ? `来源GoodCaseID: ${joinIds(currentCase.sourceGoodCaseIds)}`
-        : undefined,
-      sourceTrace?.badcaseRecordIds?.length
-        ? `来源BadCaseRecordID: ${joinIds(sourceTrace.badcaseRecordIds)}`
-        : undefined,
-      sourceTrace?.chatIds?.length ? `来源ChatID: ${joinIds(sourceTrace.chatIds)}` : undefined,
-      sourceTrace?.anchorMessageIds?.length
-        ? `触发MessageID: ${joinIds(sourceTrace.anchorMessageIds)}`
-        : undefined,
-      sourceTrace?.messageProcessingIds?.length
-        ? `处理流水ID: ${joinIds(sourceTrace.messageProcessingIds)}`
-        : undefined,
-      sourceTrace?.traceIds?.length ? `TraceID: ${joinIds(sourceTrace.traceIds)}` : undefined,
-    ]);
+    const { sourceTrace, remark } = this.buildPayloadContext(currentCase, importNote);
 
     setField(fields, resolved.primaryText, currentCase.caseId.trim());
     setField(fields, resolved.stableId, currentCase.caseId.trim());
     setField(fields, resolved.title, this.truncate(currentCase.caseName.trim(), 500));
-    setField(fields, resolved.sourceBadCaseIds, joinIds(currentCase.sourceBadCaseIds), {
-      clearWithNull: true,
-    });
-    setField(fields, resolved.sourceChatIds, joinIds(sourceTrace?.chatIds), {
-      clearWithNull: true,
-    });
-    setField(fields, resolved.sourceRecordIds, joinIds(sourceTrace?.badcaseRecordIds), {
-      clearWithNull: true,
-    });
-    setField(fields, resolved.sourceAnchorMessageIds, joinIds(sourceTrace?.anchorMessageIds), {
-      clearWithNull: true,
-    });
-    setField(fields, resolved.sourceRelatedMessageIds, joinIds(sourceTrace?.relatedMessageIds), {
-      clearWithNull: true,
-    });
-    setField(
-      fields,
-      resolved.sourceMessageProcessingIds,
-      joinIds(sourceTrace?.messageProcessingIds),
-      { clearWithNull: true },
-    );
-    setField(fields, resolved.sourceTraceIds, joinIds(sourceTrace?.traceIds), {
-      clearWithNull: true,
-    });
-    setField(
-      fields,
-      resolved.sourceTraceJson,
-      this.truncate(stringifyTraceJson(sourceTrace), 12000),
-      { clearWithNull: true },
-    );
-    setField(
-      fields,
-      resolved.memorySetupJson,
-      this.truncate(stringifyTraceJson(currentCase.memorySetup), 12000),
-      { clearWithNull: true },
-    );
-    setField(
-      fields,
-      resolved.memoryAssertionsJson,
-      this.truncate(stringifyTraceJson(currentCase.memoryAssertions), 12000),
-      { clearWithNull: true },
-    );
+    this.setTraceFields(fields, resolved, currentCase, sourceTrace);
     setField(
       fields,
       resolved.sourceType,
@@ -222,24 +165,7 @@ export class CuratedDatasetPayloadBuilderService {
         clearWithNull: true,
       },
     );
-    setField(
-      fields,
-      resolved.participantName,
-      this.truncate(emptyToNull(currentCase.participantName), 200),
-      { clearWithNull: true },
-    );
-    setField(
-      fields,
-      resolved.managerName,
-      this.truncate(emptyToNull(currentCase.managerName), 200),
-      { clearWithNull: true },
-    );
-    setField(
-      fields,
-      resolved.consultTime,
-      typeof currentCase.consultTime === 'number' ? currentCase.consultTime : null,
-      { clearWithNull: true },
-    );
+    this.setProfileFields(fields, resolved, currentCase);
     setField(fields, resolved.remark, this.truncate(remark, 8000), { clearWithNull: true });
 
     return fields;
@@ -252,71 +178,12 @@ export class CuratedDatasetPayloadBuilderService {
   ): Record<string, unknown> {
     const fields: Record<string, unknown> = {};
     const primaryChatId = emptyToNull(currentCase.chatId) || firstId(currentCase.sourceChatIds);
-    const sourceTrace = normalizeSourceTrace(currentCase);
-    const remark = composeRemark([
-      importNote ? `导入说明: ${importNote}` : undefined,
-      currentCase.remark ? `策展备注: ${currentCase.remark.trim()}` : undefined,
-      currentCase.sourceGoodCaseIds?.length
-        ? `来源GoodCaseID: ${joinIds(currentCase.sourceGoodCaseIds)}`
-        : undefined,
-      sourceTrace?.badcaseRecordIds?.length
-        ? `来源BadCaseRecordID: ${joinIds(sourceTrace.badcaseRecordIds)}`
-        : undefined,
-      sourceTrace?.chatIds?.length ? `来源ChatID: ${joinIds(sourceTrace.chatIds)}` : undefined,
-      sourceTrace?.anchorMessageIds?.length
-        ? `触发MessageID: ${joinIds(sourceTrace.anchorMessageIds)}`
-        : undefined,
-      sourceTrace?.messageProcessingIds?.length
-        ? `处理流水ID: ${joinIds(sourceTrace.messageProcessingIds)}`
-        : undefined,
-      sourceTrace?.traceIds?.length ? `TraceID: ${joinIds(sourceTrace.traceIds)}` : undefined,
-    ]);
+    const { sourceTrace, remark } = this.buildPayloadContext(currentCase, importNote);
 
     setField(fields, resolved.primaryText, currentCase.validationId.trim());
     setField(fields, resolved.stableId, currentCase.validationId.trim());
     setField(fields, resolved.title, this.truncate(currentCase.validationTitle.trim(), 500));
-    setField(fields, resolved.sourceBadCaseIds, joinIds(currentCase.sourceBadCaseIds), {
-      clearWithNull: true,
-    });
-    setField(fields, resolved.sourceChatIds, joinIds(sourceTrace?.chatIds), {
-      clearWithNull: true,
-    });
-    setField(fields, resolved.sourceRecordIds, joinIds(sourceTrace?.badcaseRecordIds), {
-      clearWithNull: true,
-    });
-    setField(fields, resolved.sourceAnchorMessageIds, joinIds(sourceTrace?.anchorMessageIds), {
-      clearWithNull: true,
-    });
-    setField(fields, resolved.sourceRelatedMessageIds, joinIds(sourceTrace?.relatedMessageIds), {
-      clearWithNull: true,
-    });
-    setField(
-      fields,
-      resolved.sourceMessageProcessingIds,
-      joinIds(sourceTrace?.messageProcessingIds),
-      { clearWithNull: true },
-    );
-    setField(fields, resolved.sourceTraceIds, joinIds(sourceTrace?.traceIds), {
-      clearWithNull: true,
-    });
-    setField(
-      fields,
-      resolved.sourceTraceJson,
-      this.truncate(stringifyTraceJson(sourceTrace), 12000),
-      { clearWithNull: true },
-    );
-    setField(
-      fields,
-      resolved.memorySetupJson,
-      this.truncate(stringifyTraceJson(currentCase.memorySetup), 12000),
-      { clearWithNull: true },
-    );
-    setField(
-      fields,
-      resolved.memoryAssertionsJson,
-      this.truncate(stringifyTraceJson(currentCase.memoryAssertions), 12000),
-      { clearWithNull: true },
-    );
+    this.setTraceFields(fields, resolved, currentCase, sourceTrace);
     setField(
       fields,
       resolved.sourceType,
@@ -324,24 +191,7 @@ export class CuratedDatasetPayloadBuilderService {
     );
     setField(fields, resolved.enabled, currentCase.enabled ?? true);
     setField(fields, resolved.chatId, primaryChatId, { clearWithNull: true });
-    setField(
-      fields,
-      resolved.participantName,
-      this.truncate(emptyToNull(currentCase.participantName), 200),
-      { clearWithNull: true },
-    );
-    setField(
-      fields,
-      resolved.managerName,
-      this.truncate(emptyToNull(currentCase.managerName), 200),
-      { clearWithNull: true },
-    );
-    setField(
-      fields,
-      resolved.consultTime,
-      typeof currentCase.consultTime === 'number' ? currentCase.consultTime : null,
-      { clearWithNull: true },
-    );
+    this.setProfileFields(fields, resolved, currentCase);
     setField(fields, resolved.conversation, this.truncate(currentCase.conversation.trim(), 20000));
     setField(fields, resolved.remark, this.truncate(remark, 8000), { clearWithNull: true });
 
@@ -412,6 +262,105 @@ export class CuratedDatasetPayloadBuilderService {
     }
 
     return fields;
+  }
+
+  private buildPayloadContext(currentCase: CuratedDatasetCase, importNote?: string) {
+    const sourceTrace = normalizeSourceTrace(currentCase);
+    const remark = composeRemark([
+      importNote ? `导入说明: ${importNote}` : undefined,
+      currentCase.remark ? `策展备注: ${currentCase.remark.trim()}` : undefined,
+      currentCase.sourceGoodCaseIds?.length
+        ? `来源GoodCaseID: ${joinIds(currentCase.sourceGoodCaseIds)}`
+        : undefined,
+      sourceTrace?.badcaseRecordIds?.length
+        ? `来源BadCaseRecordID: ${joinIds(sourceTrace.badcaseRecordIds)}`
+        : undefined,
+      sourceTrace?.chatIds?.length ? `来源ChatID: ${joinIds(sourceTrace.chatIds)}` : undefined,
+      sourceTrace?.anchorMessageIds?.length
+        ? `触发MessageID: ${joinIds(sourceTrace.anchorMessageIds)}`
+        : undefined,
+      sourceTrace?.messageProcessingIds?.length
+        ? `处理流水ID: ${joinIds(sourceTrace.messageProcessingIds)}`
+        : undefined,
+      sourceTrace?.traceIds?.length ? `TraceID: ${joinIds(sourceTrace.traceIds)}` : undefined,
+    ]);
+
+    return { sourceTrace, remark };
+  }
+
+  private setTraceFields(
+    fields: Record<string, unknown>,
+    resolved: ResolvedFieldNames<SharedPayloadFieldKey>,
+    currentCase: CuratedDatasetCase,
+    sourceTrace: ReturnType<typeof normalizeSourceTrace>,
+  ): void {
+    setField(fields, resolved.sourceBadCaseIds, joinIds(currentCase.sourceBadCaseIds), {
+      clearWithNull: true,
+    });
+    setField(fields, resolved.sourceChatIds, joinIds(sourceTrace?.chatIds), {
+      clearWithNull: true,
+    });
+    setField(fields, resolved.sourceRecordIds, joinIds(sourceTrace?.badcaseRecordIds), {
+      clearWithNull: true,
+    });
+    setField(fields, resolved.sourceAnchorMessageIds, joinIds(sourceTrace?.anchorMessageIds), {
+      clearWithNull: true,
+    });
+    setField(fields, resolved.sourceRelatedMessageIds, joinIds(sourceTrace?.relatedMessageIds), {
+      clearWithNull: true,
+    });
+    setField(
+      fields,
+      resolved.sourceMessageProcessingIds,
+      joinIds(sourceTrace?.messageProcessingIds),
+      { clearWithNull: true },
+    );
+    setField(fields, resolved.sourceTraceIds, joinIds(sourceTrace?.traceIds), {
+      clearWithNull: true,
+    });
+    setField(
+      fields,
+      resolved.sourceTraceJson,
+      this.truncate(stringifyTraceJson(sourceTrace), 12000),
+      { clearWithNull: true },
+    );
+    setField(
+      fields,
+      resolved.memorySetupJson,
+      this.truncate(stringifyTraceJson(currentCase.memorySetup), 12000),
+      { clearWithNull: true },
+    );
+    setField(
+      fields,
+      resolved.memoryAssertionsJson,
+      this.truncate(stringifyTraceJson(currentCase.memoryAssertions), 12000),
+      { clearWithNull: true },
+    );
+  }
+
+  private setProfileFields(
+    fields: Record<string, unknown>,
+    resolved: ResolvedFieldNames<SharedPayloadFieldKey>,
+    currentCase: CuratedDatasetCase,
+  ): void {
+    setField(
+      fields,
+      resolved.participantName,
+      this.truncate(emptyToNull(currentCase.participantName), 200),
+      { clearWithNull: true },
+    );
+    setField(
+      fields,
+      resolved.managerName,
+      this.truncate(emptyToNull(currentCase.managerName), 200),
+      { clearWithNull: true },
+    );
+    setField(
+      fields,
+      resolved.consultTime,
+      typeof currentCase.consultTime === 'number' ? currentCase.consultTime : null,
+      { clearWithNull: true },
+    );
   }
 
   private truncate(value: string | null | undefined, maxLength: number): string | null {

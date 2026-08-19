@@ -1,6 +1,6 @@
 /**
- * 品牌目录索引 —— 迁移自 memory/facts/high-confidence-facts.ts 的 getBrandMatchAssets
- * （改名归位，非新概念），在旧候选表基础上补充解析管线需要的检索结构（§7.1）：
+ * 品牌目录索引 —— 迁移自旧规则轨的 getBrandMatchAssets
+ * （改名归位，非新概念），在旧候选表基础上补充解析管线需要的检索结构（§4.1）：
  *
  * - brandId → 品牌
  * - 标准名/别名归一化值 → 一个或多个品牌（冲突别名可检出）
@@ -112,7 +112,7 @@ export function isBrandContainEligible(normalized: string): boolean {
 }
 
 /**
- * 短英文/数字别名是否可做 token 边界包含匹配（§7.3）：
+ * 短英文/数字别名是否可做 token 边界包含匹配（§4.3）：
  * 匹配片段前后必须不是英数字符（即处于 CJK/边界处），"kfc松江" 命中而 "mcm" 不命中 "mc"。
  * 短中文别名不参与任何包含匹配（只走全等 token）。
  * 纯数字别名要求 ≥3 位（"711" 可边界包含；"71" 在 "玫瑰街71号" 这类门牌/时间串场景
@@ -154,10 +154,10 @@ export interface BrandCatalogIndex {
   categories: ResolvedBrandCategory[];
 }
 
-let indexCache: { source: BrandItem[]; index: BrandCatalogIndex } | null = null;
+let indexCache: { source: ReadonlyArray<BrandItem>; index: BrandCatalogIndex } | null = null;
 
 /** 构建（或复用缓存的）品牌目录索引。 */
-export function buildBrandCatalogIndex(brandData: BrandItem[]): BrandCatalogIndex {
+export function buildBrandCatalogIndex(brandData: ReadonlyArray<BrandItem>): BrandCatalogIndex {
   if (indexCache && indexCache.source === brandData) {
     return indexCache.index;
   }

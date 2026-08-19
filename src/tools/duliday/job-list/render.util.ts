@@ -16,7 +16,8 @@
  * - format-shift-time：班次时间组合
  */
 
-import { sanitizeJobDisplayText, sanitizeLaborFormForDisplay } from '@memory/facts/labor-form';
+import { sanitizeJobDisplayText, sanitizeLaborFormForDisplay } from '@resolution/labor-form';
+import { asRecord, asRecordArray } from '@infra/utils/object.util';
 import type { JobDetail } from '@sponge/sponge.types';
 import { classifyArrangementType, composeShiftTimeText } from '@tools/utils/format-shift-time.util';
 import {
@@ -206,20 +207,6 @@ function renderHardRequirementsBanner(hr: HardRequirements): string {
     '',
     '',
   ].join('\n');
-}
-
-type UnknownRecord = Record<string, unknown>;
-
-function asRecord(value: unknown): UnknownRecord | null {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as UnknownRecord)
-    : null;
-}
-
-function asRecordArray(value: unknown): UnknownRecord[] {
-  return Array.isArray(value)
-    ? value.map(asRecord).filter((item): item is UnknownRecord => !!item)
-    : [];
 }
 
 function asString(value: unknown): string | null {

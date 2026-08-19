@@ -1,3 +1,4 @@
+// 同源：src/channels/wecom/bot/bot.service.ts —— 改动必须同步。
 export interface BotAccount {
   id?: string;
   wxid?: string;

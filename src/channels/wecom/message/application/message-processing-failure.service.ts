@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger, HttpException, HttpStatus } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
@@ -80,7 +81,13 @@ export class MessageProcessingFailureService {
     const errorType: AlertErrorType = options?.errorType || 'message';
     const traceId = options?.traceId ?? messageId;
     const processedMessageIds = options?.processedMessageIds ?? [messageId];
-    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorMessage = toErrorMessage(error);
+    let diagnosticError: Error;
+    if (error instanceof Error) {
+      diagnosticError = error;
+    } else {
+      diagnosticError = new Error(errorMessage);
+    }
     const deliveryError = this.isDeliveryError(error) ? error : null;
     const alertCode = errorType === 'agent' ? 'agent.invoke_failed' : 'message.processing_failed';
 
@@ -129,7 +136,7 @@ export class MessageProcessingFailureService {
               requiresHumanIntervention: true,
             },
             diagnostics: {
-              error: error instanceof Error ? error : new Error(errorMessage),
+              error: diagnosticError,
               category: agentMeta?.lastCategory,
               modelChain: agentMeta?.modelsAttempted,
               totalAttempts: agentMeta?.totalAttempts,
@@ -147,8 +154,7 @@ export class MessageProcessingFailureService {
           { persist: false },
         )
         .catch((alertError) => {
-          const alertErrorMessage =
-            alertError instanceof Error ? alertError.message : String(alertError);
+          const alertErrorMessage = toErrorMessage(alertError);
           this.logger.error(`告警发送失败: ${alertErrorMessage}`);
         });
     }
@@ -206,7 +212,13 @@ export class MessageProcessingFailureService {
       });
       this.monitoringService.recordFailure(traceId, errorMessage, failureMetadata);
     } catch (sendError) {
-      const sendErrorMessage = sendError instanceof Error ? sendError.message : String(sendError);
+      const sendErrorMessage = toErrorMessage(sendError);
+      let diagnosticSendError: Error;
+      if (sendError instanceof Error) {
+        diagnosticSendError = sendError;
+      } else {
+        diagnosticSendError = new Error(sendErrorMessage);
+      }
       const deliveryFailure = this.isDeliveryError(sendError) ? sendError.result : undefined;
       await this.wecomObservability.markFallbackEnd(traceId, {
         success: false,
@@ -247,7 +259,7 @@ export class MessageProcessingFailureService {
               requiresHumanIntervention: true,
             },
             diagnostics: {
-              error: sendError instanceof Error ? sendError : new Error(sendErrorMessage),
+              error: diagnosticSendError,
               payload: {
                 originalError: errorMessage,
               },
@@ -260,8 +272,7 @@ export class MessageProcessingFailureService {
           { persist: false },
         )
         .catch((alertError) => {
-          const alertErrorMessage =
-            alertError instanceof Error ? alertError.message : String(alertError);
+          const alertErrorMessage = toErrorMessage(alertError);
           this.logger.error(`CRITICAL 告警发送失败: ${alertErrorMessage}`);
         });
 
@@ -339,8 +350,7 @@ export class MessageProcessingFailureService {
         },
       })
       .catch((alertError) => {
-        const alertErrorMessage =
-          alertError instanceof Error ? alertError.message : String(alertError);
+        const alertErrorMessage = toErrorMessage(alertError);
         this.logger.error(`降级告警发送失败: ${alertErrorMessage}`);
       });
   }
@@ -361,7 +371,7 @@ export class MessageProcessingFailureService {
     await Promise.all(
       messageIds.map(async (messageId) => {
         await this.deduplicationService.markMessageAsProcessedAsync(messageId).catch((err) => {
-          const errorMessage = err instanceof Error ? err.message : String(err);
+          const errorMessage = toErrorMessage(err);
           this.logger.warn(`[请求流水] 去重标记失败 [${messageId}]: ${errorMessage}`);
         });
       }),

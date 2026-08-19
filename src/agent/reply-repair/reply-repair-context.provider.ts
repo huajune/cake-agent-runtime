@@ -2,14 +2,12 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
 import type { GroupContext } from '@biz/group-task/group-task.types';
-import { normalizeCity } from '@biz/group-task/utils/city-normalize.util';
+import { normalizeCityName as normalizeCity } from '@resolution/geo';
 import { formatExtractionFactLines } from '@memory/formatters/fact-lines.formatter';
 import { MemoryService } from '@memory/memory.service';
-import type {
-  InvitedGroupRecord,
-  RecommendedJobSummary,
-  SessionFacts,
-} from '@memory/types/session-facts.types';
+import { stripTimeContext } from '@resolution/signal/markers';
+import type { InvitedGroupRecord, SessionFacts } from '@memory/types/session-facts.types';
+import type { RecommendedJobSummary } from '@resolution/job/types';
 import type {
   UserProfileFacts,
   UserProfileFactValue,
@@ -333,9 +331,6 @@ export class ReplyRepairContextProvider {
   }
 
   private stripInjectedTimeContext(content: string): string {
-    return content
-      .replace(/\s*(?:\[|【)消息发送时间[:：][\s\S]*?(?:\]|】|$)/g, '')
-      .replace(/\s*(?:\[|【)当前时间[:：][\s\S]*?(?:\]|】|$)/g, '')
-      .trim();
+    return stripTimeContext(content).trim();
   }
 }

@@ -23,21 +23,13 @@ describe('ConversionAnalyticsController', () => {
     const { controller, service } = buildController();
 
     await expect(
-      controller.getKpis(
-        'last30',
-        ['北区, 南区', '东区'],
-        'wecom, private',
-        ' corp-1 ',
-        'cohort',
-        '14',
-      ),
+      controller.getKpis('last30', ['北区, 南区', '东区'], ' corp-1 ', 'cohort', '14'),
     ).resolves.toEqual({ endpoint: 'kpis' });
 
     expect(service.getKpis).toHaveBeenCalledWith(
       {
         range: 'month',
         groups: ['北区', '南区', '东区'],
-        channels: ['wecom', 'private'],
         corpId: 'corp-1',
         maturityDays: 14,
       },
@@ -49,7 +41,7 @@ describe('ConversionAnalyticsController', () => {
     const { controller, service } = buildController();
 
     await expect(
-      controller.getFunnel('unknown', 'future', '', '', '   ', 'invalid'),
+      controller.getFunnel('unknown', 'future', '', '   ', 'invalid'),
     ).resolves.toEqual({
       endpoint: 'funnel',
     });
@@ -59,7 +51,6 @@ describe('ConversionAnalyticsController', () => {
       {
         range: 'week',
         groups: [],
-        channels: [],
         corpId: undefined,
         maturityDays: 7,
       },
@@ -71,11 +62,11 @@ describe('ConversionAnalyticsController', () => {
     const { controller, service } = buildController();
 
     await expect(
-      controller.getTrends('60d', 'A,B', ['x', 'y'], 'corp-2', 'period'),
+      controller.getTrends('60d', 'A,B', 'corp-2', 'period'),
     ).resolves.toEqual({
       endpoint: 'trends',
     });
-    await expect(controller.getBots('90d', 'A', 'x,y', 'corp-3', 'cohort')).resolves.toEqual({
+    await expect(controller.getBots('90d', 'A', 'corp-3', 'cohort')).resolves.toEqual({
       endpoint: 'bots',
     });
     await expect(controller.getHandoff('180d', ['A,B'], 'corp-4')).resolves.toEqual({
@@ -83,14 +74,13 @@ describe('ConversionAnalyticsController', () => {
     });
 
     expect(service.getTrends).toHaveBeenCalledWith(
-      { range: 'twoMonths', groups: ['A', 'B'], channels: ['x', 'y'], corpId: 'corp-2' },
+      { range: 'twoMonths', groups: ['A', 'B'], corpId: 'corp-2' },
       'period',
     );
     expect(service.getBots).toHaveBeenCalledWith(
       {
         range: 'threeMonths',
         groups: ['A'],
-        channels: ['x', 'y'],
         corpId: 'corp-3',
         maturityDays: 7,
       },
@@ -99,7 +89,6 @@ describe('ConversionAnalyticsController', () => {
     expect(service.getHandoff).toHaveBeenCalledWith({
       range: 'sixMonths',
       groups: ['A', 'B'],
-      channels: [],
       corpId: 'corp-4',
     });
   });

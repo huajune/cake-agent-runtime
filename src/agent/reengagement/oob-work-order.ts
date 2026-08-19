@@ -1,4 +1,7 @@
-import type { SignupWorkOrderItem } from '@sponge/sponge.types';
+import {
+  ACTIVE_INTERVIEW_WORK_ORDER_STATUSES,
+  type SignupWorkOrderItem,
+} from '@sponge/sponge.types';
 import { parseInterviewTimestamp } from './scenario-registry';
 
 /**
@@ -31,7 +34,8 @@ const STALE_ACTIVE_ORDER_MS = 3 * 24 * 60 * 60 * 1000;
 /** 面试通过后的静默窗口：窗口内不做 pre_booking 维护性触达。 */
 const RECENT_PASS_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 
-const ACTIVE_STATUSES = new Set(['约面待确认', '约面成功']);
+/** 状态词表单点在 sponge（海绵领域语言）；本文件的 trim 比较预处理原样保留。 */
+const ACTIVE_STATUSES = ACTIVE_INTERVIEW_WORK_ORDER_STATUSES;
 
 export interface OutOfBandWorkOrderVerdict {
   stop: true;

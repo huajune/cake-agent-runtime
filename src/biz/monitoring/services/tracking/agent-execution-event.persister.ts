@@ -1,3 +1,4 @@
+import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { AlertLevel } from '@enums/alert.enum';
 import { AlertNotifierService } from '@notification/services/alert-notifier.service';
@@ -20,9 +21,7 @@ export class AgentExecutionEventPersisterService implements AgentEventPersister 
     try {
       await this.repository.saveEvent(event);
     } catch (error) {
-      this.logger.warn(
-        `[agent-events] 写入失败: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      this.logger.warn(`[agent-events] 写入失败: ${toErrorMessage(error)}`);
       this.alertPersistFailure(event, error);
     }
   }
@@ -54,11 +53,7 @@ export class AgentExecutionEventPersisterService implements AgentEventPersister 
         dedupe: { key: `agent_execution_event_persist_failed:${event.type}` },
       })
       .catch((alertError: unknown) => {
-        this.logger.warn(
-          `[agent-events] 落库失败告警发送异常: ${
-            alertError instanceof Error ? alertError.message : String(alertError)
-          }`,
-        );
+        this.logger.warn(`[agent-events] 落库失败告警发送异常: ${toErrorMessage(alertError)}`);
       });
   }
 }
