@@ -1,0 +1,63 @@
+/**
+ * 不合格原因的**披露分级**（总纲 §2.8 构造性质④补充，2026-08-17 裁定）。
+ *
+ * 铁律：**判定入账永远如实**（账本落 labelId + 命中项 + 证据），委婉只在渲染层。
+ * 本文件只回答一个问题：这条不合格原因能不能对候选人明说。
+ *
+ * 三档：
+ * - `open` 可明说族：年龄/性别/学历/健康证/身高体重等岗位硬性条件。PR #421 运营裁决
+ *   口径——性别与年龄要求属岗位公开信息（岗位卡本来就写「18-40岁，仅限男」），
+ *   直说要求 + 转岗是合规的；
+ * - `restricted` 禁明说族：户籍/籍贯/民族/专业/婚育等出站守卫红线，**以及未知新标签**。
+ *   绝不披露真实原因，渲染为换岗/拉群承接（noMatchScript 家族），且禁止在敏感答案
+ *   紧邻回合触发拒绝（因果隔离）；
+ * - 默认档 = `restricted`。新标签天天有，默认可说 = 每个新配置都是一次外露赌博。
+ *
+ * **禁说词表禁止另立副本**（蓝图 §11）：敏感判据唯一引用
+ * `./sensitive-screening` 的 `containsSensitiveScreeningText`——出站守卫
+ * discrimination-leaks 与岗位渲染读的是同一份常量。本文件一个敏感词都不自己写。
+ */
+
+import { containsSensitiveScreeningText } from './sensitive-screening';
+import type { ContractFieldDef } from './form.types';
+
+export type DisclosureLevel = 'open' | 'restricted';
+
+/**
+ * 可明说属性族的**标题**判据（词面判定，不认 labelId——D4）。
+ *
+ * 收录门槛：该属性是否已经印在岗位卡上给候选人看。印了的（年龄/性别/学历/健康证/
+ * 身高体重/在岗时长）说出来不增加任何信息暴露；没印的一律不进这张表。
+ * 加词前先回答「候选人自己在岗位卡上看得到吗」，答不上来就别加。
+ */
+const OPEN_TITLE_FAMILIES =
+  /年龄|性别|学历|文化程度|健康证|身高|体重|在岗多久|预计在岗|工作时长|排班|上班时间/u;
+
+/**
+ * 判定某个契约字段的不合格原因披露级别。
+ *
+ * 判据顺序刻意如此：**敏感判据先于可明说白名单**。白名单是人维护的，敏感词表是红线；
+ * 万一有人把「专业（非新媒、食品）」这类标题塞进白名单，红线也必须压过它。
+ */
+export function disclosureLevelOf(field: ContractFieldDef): DisclosureLevel {
+  if (containsSensitiveScreeningText(field.labelTitle)) return 'restricted';
+  if (containsSensitiveScreeningText(field.labelInstructions ?? '')) return 'restricted';
+  if (OPEN_TITLE_FAMILIES.test(field.labelTitle)) return 'open';
+  return 'restricted';
+}
+
+/** 该字段的拒绝理由是否可以对候选人明说。 */
+export function canDiscloseRejection(field: ContractFieldDef): boolean {
+  return disclosureLevelOf(field) === 'open';
+}
+
+/**
+ * 因果隔离（2026-08-17 裁定）：禁止在候选人刚回答敏感字段的那一轮触发拒绝——
+ * 哪怕话术再委婉，紧邻时序本身就把因果说出去了（"我刚说完籍贯它就说没岗位了"）。
+ *
+ * 调用方在渲染拒绝话术前问一句：本轮是否有 restricted 档字段刚落值？是则本轮不拒，
+ * 拒绝顺延到下一轮（表单状态已是 disqualified，不会丢）。
+ */
+export function shouldDeferRejection(fieldsAnsweredThisTurn: readonly ContractFieldDef[]): boolean {
+  return fieldsAnsweredThisTurn.some((field) => disclosureLevelOf(field) === 'restricted');
+}
