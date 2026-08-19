@@ -122,7 +122,9 @@ function verdictOf(form: BookingCollectionForm): Verdict {
 
 ```ts
 // 值写入（公证内联，一次同轮完成）：
-//   ①sourceText 逐字回查本轮全文 ②值可由 sourceText 经既有解析器推导 ③归属/形态门
+//   ①sourceText 逐字回查本轮全文 ②解析器复算仅路由置信（可复算=high，否则 medium），
+//     不否决——公证零语义判断（P11：公证器是代价路由器不是真值裁判；实现已如此，
+//     与 §11「词表禁判语义」红线同源） ③归属/形态门
 //   ④置信按证据形态查表授予 ⑤命中 rejectedOptions → 该槽 disqualified（先筛后收在此发生）
 //   身份槽位（按契约 systemField 识别）额外挂真名闸/手机号出处闸/年龄边界（判据读契约 min/max）
 proposeValue(form, contract: ContractFieldDef, proposal: RawProposal): BookingCollectionForm
@@ -137,8 +139,14 @@ markSubmitted(form, workOrderId: number): BookingCollectionForm
 ```
 
 全部纯函数，单测直测；持久化由 service 包一层。不变量（写成断言测试）：
-filled 槽位只能被 applyRecapResult 的 corrections 或 applyErrorList 重开——**任何路径
-不得对 filled 槽位重复发问**（反复问病根的类型级根治）。
+**棘轮对系统单向、对本人双向**（0819 裁定，对齐总纲 §2.8「显式失效事件才可重开」）——
+filled 槽位的合法重开路径只有三条：applyRecapResult 的 corrections / applyErrorList /
+**候选人显式改口**（本人明确针对该字段的新自陈，走同一套公证，通过即替换并落审计事件；
+askCount 不清零防"改一次刷新一次配额"绕过熔断；含糊提及不算改口——履历/排除语境
+不覆盖既有值的既有判例继续适用，判不动归 judge）。系统/模型的重推**任何时候**触碰不到
+filled 槽位，**任何路径不得对 filled 槽位重复发问**（反复问病根的类型级根治）。
+⚠️ 实现缺口：当前 form-writes 对 filled 槽位提案一律拒收（slotAlreadyFilled），
+显式改口分支随契约批补上（步骤 6 接线时一并做，归属+明确性判据复用公证闸）。
 
 ## 4. 存储与观测
 
