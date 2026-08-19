@@ -31,9 +31,7 @@ describe('evaluateInviteTimingGate', () => {
 
     it('预约成功后拉群（场景 1）豁免本档', () => {
       expect(
-        evaluateInviteTimingGate(
-          base({ jobListExecuted: false, bookingSucceeded: true }),
-        ),
+        evaluateInviteTimingGate(base({ jobListExecuted: false, bookingSucceeded: true })),
       ).toEqual({ decision: 'allow' });
     });
   });
@@ -93,17 +91,14 @@ describe('evaluateInviteTimingGate', () => {
       });
     });
 
-    it.each([
-      '好的谢谢',
-      '算了不考虑了',
-      '没有别的岗位了吗',
-      '这个太远了',
-      '我不想报名了',
-    ])('非推进信号「%s」放行（拉群本就是无岗承接场景）', (currentUserMessage) => {
-      expect(evaluateInviteTimingGate(base({ currentUserMessage }))).toEqual({
-        decision: 'allow',
-      });
-    });
+    it.each(['好的谢谢', '算了不考虑了', '没有别的岗位了吗', '这个太远了', '我不想报名了'])(
+      '非推进信号「%s」放行（拉群本就是无岗承接场景）',
+      (currentUserMessage) => {
+        expect(evaluateInviteTimingGate(base({ currentUserMessage }))).toEqual({
+          decision: 'allow',
+        });
+      },
+    );
 
     it('预约成功后候选人问"几点面试"属正常收尾，不判打断', () => {
       expect(

@@ -194,15 +194,9 @@ export class MemoryFixtureService {
       return null;
     }
 
-    const fromStage = procedural.fromStage;
-    const advancedAt = procedural.advancedAt;
-    const reason = procedural.reason;
-    const state: ProceduralState = {
-      currentStage: this.readNullableString(currentStage),
-      fromStage: this.readNullableString(fromStage),
-      advancedAt: this.readNullableString(advancedAt) ?? new Date().toISOString(),
-      reason: this.readNullableString(reason) ?? 'test-suite-memory-fixture',
-    };
+    // 程序记忆只有 currentStage 一个字段（S10）；用例仍可传 procedural.fromStage 等
+    // 旧键，它们只作"这个用例确实要种阶段"的存在性信号，不再落档。
+    const state: ProceduralState = { currentStage: this.readNullableString(currentStage) };
 
     this.logger.debug(`Seed memory stage=${state.currentStage ?? '<null>'}`);
     return state;

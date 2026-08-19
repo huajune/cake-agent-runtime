@@ -32,7 +32,7 @@ describe('resume booking flow', () => {
   const mockLongTermService = {
     writeFromBooking: jest.fn().mockResolvedValue(undefined),
     setActiveBooking: jest.fn().mockResolvedValue(undefined),
-    
+
     getActiveBookings: jest.fn().mockResolvedValue([]),
   };
 
@@ -337,8 +337,7 @@ function makeResumeRequiredJob() {
         periodicInterviewTimes: [],
       },
       interviewSupplement: [{ interviewSupplementId: 49, interviewSupplement: '上传简历' }],
-      processDesc:
-        '按标准简历模板，填写完整，上传简历，简历通过客户审核后，通知具体面试时间&地点',
+      processDesc: '按标准简历模板，填写完整，上传简历，简历通过客户审核后，通知具体面试时间&地点',
       remark: '按标准简历模板，填写完整，上传简历，简历通过客户审核后，通知具体面试时间&地点',
     },
   };

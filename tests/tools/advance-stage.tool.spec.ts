@@ -14,33 +14,33 @@ describe('buildAdvanceStageTool', () => {
       currentStage: 'trust_building',
       availableStages: ['trust_building', 'job_consultation', 'interview_scheduling'],
       stageGoals: {
-      trust_building: {
-        stage: 'trust_building',
-        label: '建联',
-        description: '初次接触并建立基本信任',
-        primaryGoal: '建立信任',
-        successCriteria: ['已明确用户求职方向'],
-        ctaStrategy: ['了解求职方向'],
-        disallowedActions: ['不要直接约面'],
-      },
-      job_consultation: {
-        stage: 'job_consultation',
-        label: '岗位咨询',
-        description: '围绕岗位信息答疑并推进意向确认',
-        primaryGoal: '回答岗位问题并推动意向',
-        successCriteria: ['已回答核心岗位问题'],
-        ctaStrategy: ['引导确认意向岗位'],
-        disallowedActions: ['不要编造岗位信息'],
-      },
-      interview_scheduling: {
-        stage: 'interview_scheduling',
-        label: '约面',
-        description: '确认岗位后推进面试预约',
-        primaryGoal: '完成预约',
-        successCriteria: ['已确认预约信息'],
-        ctaStrategy: ['收集预约资料'],
-        disallowedActions: ['不要未预约先确认成功'],
-      },
+        trust_building: {
+          stage: 'trust_building',
+          label: '建联',
+          description: '初次接触并建立基本信任',
+          primaryGoal: '建立信任',
+          successCriteria: ['已明确用户求职方向'],
+          ctaStrategy: ['了解求职方向'],
+          disallowedActions: ['不要直接约面'],
+        },
+        job_consultation: {
+          stage: 'job_consultation',
+          label: '岗位咨询',
+          description: '围绕岗位信息答疑并推进意向确认',
+          primaryGoal: '回答岗位问题并推动意向',
+          successCriteria: ['已回答核心岗位问题'],
+          ctaStrategy: ['引导确认意向岗位'],
+          disallowedActions: ['不要编造岗位信息'],
+        },
+        interview_scheduling: {
+          stage: 'interview_scheduling',
+          label: '约面',
+          description: '确认岗位后推进面试预约',
+          primaryGoal: '完成预约',
+          successCriteria: ['已确认预约信息'],
+          ctaStrategy: ['收集预约资料'],
+          disallowedActions: ['不要未预约先确认成功'],
+        },
       },
     },
   });
@@ -77,17 +77,12 @@ describe('buildAdvanceStageTool', () => {
         disallowedActions: ['不要编造岗位信息'],
       },
     });
-    expect(mockMemoryService.setStage).toHaveBeenCalledWith(
-      'corp-456',
-      'user-123',
-      'sess-789',
-      expect.objectContaining({
-        currentStage: 'job_consultation',
-        fromStage: 'trust_building',
-        reason: '候选人开始询问岗位信息',
-        advancedAt: expect.any(String),
-      }),
-    );
+    // 程序记忆只落 currentStage（记忆审计 S10）：from/at/reason 曾一起落库号称审计，
+    // 但全库无人读回。变迁的审计链在 logger 行、agent_execution_events，以及本工具
+    // 返回给模型的 fromStage（上方 result 断言已覆盖）。
+    expect(mockMemoryService.setStage).toHaveBeenCalledWith('corp-456', 'user-123', 'sess-789', {
+      currentStage: 'job_consultation',
+    });
   });
 
   it('should use correct context params', async () => {

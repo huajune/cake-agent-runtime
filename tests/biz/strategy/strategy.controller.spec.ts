@@ -67,9 +67,7 @@ describe('StrategyController', () => {
     });
 
     it('should propagate validation errors from strategyConfigService', async () => {
-      mockStrategyConfigService.getConfigForStatus.mockRejectedValue(
-        new Error('无效的 status 值'),
-      );
+      mockStrategyConfigService.getConfigForStatus.mockRejectedValue(new Error('无效的 status 值'));
 
       await expect(controller.getActiveConfig('foo')).rejects.toThrow('无效的 status 值');
     });

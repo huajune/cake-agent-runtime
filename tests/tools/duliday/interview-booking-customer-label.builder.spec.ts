@@ -309,8 +309,9 @@ describe('buildCustomerLabelList', () => {
       );
 
       expectSuccess(result);
-      expect(Object.fromEntries(result.customerLabelList.map((entry) => [entry.labelName, entry.value])))
-        .toEqual({ 出生日期: '2000-01-01', 学信网学籍状态: '我已经工作了' });
+      expect(
+        Object.fromEntries(result.customerLabelList.map((entry) => [entry.labelName, entry.value])),
+      ).toEqual({ 出生日期: '2000-01-01', 学信网学籍状态: '我已经工作了' });
     });
 
     it('does not semantically convert a stored identity boolean into a 学信网 status answer', () => {
@@ -442,9 +443,7 @@ describe('buildCustomerLabelList', () => {
       baseContext({
         turnInput: {
           messages: [{ role: 'user', content }],
-          corpusBlocks: [
-            { id: 'evidence-1', domain: 'evidence', role: 'user', content },
-          ],
+          corpusBlocks: [{ id: 'evidence-1', domain: 'evidence', role: 'user', content }],
         },
       });
 
@@ -492,9 +491,7 @@ describe('buildCustomerLabelList', () => {
           context: baseContext({
             turnInput: {
               messages: [{ role: 'assistant', content }],
-              corpusBlocks: [
-                { id: 'evidence-1', domain: 'evidence', role: 'assistant', content },
-              ],
+              corpusBlocks: [{ id: 'evidence-1', domain: 'evidence', role: 'assistant', content }],
             },
           }),
         }),

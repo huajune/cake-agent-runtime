@@ -1,10 +1,4 @@
-import {
-  asArray,
-  asRecord,
-  asRecordArray,
-  isRecord,
-  stripNullish,
-} from '@infra/utils/object.util';
+import { asArray, asRecord, asRecordArray, isRecord, stripNullish } from '@infra/utils/object.util';
 
 describe('stripNullish', () => {
   it('should remove null and undefined fields', () => {

@@ -43,7 +43,9 @@ describe('TurnHintsSection', () => {
     });
 
     expect(output).toContain('[本轮解析线索]');
-    expect(output).toContain('意向城市: 上海（置信度: high，来源: rule，证据: unique_district_alias）');
+    expect(output).toContain(
+      '意向城市: 上海（置信度: high，来源: rule，证据: unique_district_alias）',
+    );
   });
 
   // 议题 2-2：城市行的「证据」是全库唯一渲染机器码的字段，文案必须是词典而非分档教学
@@ -67,7 +69,9 @@ describe('TurnHintsSection', () => {
     const output = section.build({
       ...baseCtx,
       sessionFacts: null,
-      ruleFacts: testRuleFacts(testRuleFact('preferences.district', ['杨浦区'], '区域识别：杨浦区')),
+      ruleFacts: testRuleFacts(
+        testRuleFact('preferences.district', ['杨浦区'], '区域识别：杨浦区'),
+      ),
     });
 
     expect(output).toContain('口径见 [本轮查询硬约束]');

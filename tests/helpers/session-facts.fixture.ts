@@ -57,7 +57,9 @@ export function sessionFactsOf(
 export function cityFixture(
   value: string,
   confidence: NonNullable<EntityExtractionResult['preferences']['city']>['confidence'] = 'high',
-  evidence: NonNullable<EntityExtractionResult['preferences']['city']>['evidence'] = 'explicit_city',
+  evidence: NonNullable<
+    EntityExtractionResult['preferences']['city']
+  >['evidence'] = 'explicit_city',
 ): NonNullable<EntityExtractionResult['preferences']['city']> {
   return { value, confidence, evidence };
 }

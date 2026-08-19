@@ -3,7 +3,6 @@ import {
   formatConstraintText,
   inferIdentityFromAge,
   isUnrestrictedGenderRequirement,
-  normalizeArrayText,
   normalizeEducationValue,
   normalizeGenderValue,
   normalizeHealthCertificateValue,
@@ -152,12 +151,6 @@ describe('field-normalize.util', () => {
       expect(normalizeNumberText('')).toBeNull();
       expect(normalizeNumberText(Number.NaN)).toBeNull();
       expect(normalizeNumberText(null)).toBeNull();
-    });
-
-    it('normalizeArrayText joins with、and filters falsy', () => {
-      expect(normalizeArrayText(['食品类', '公共场所'])).toBe('食品类、公共场所');
-      expect(normalizeArrayText([])).toBeNull();
-      expect(normalizeArrayText('not array')).toBeNull();
     });
   });
 });

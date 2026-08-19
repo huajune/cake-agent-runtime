@@ -144,7 +144,10 @@ describe('buildNoMatchScript', () => {
       ).toBe(true);
       expect(
         hasPriorNoMatchReply([
-          { role: 'assistant', content: '必胜客在你附近 10 公里内暂时没找到合适的岗位，我先帮你进餐饮兼职群' },
+          {
+            role: 'assistant',
+            content: '必胜客在你附近 10 公里内暂时没找到合适的岗位，我先帮你进餐饮兼职群',
+          },
         ]),
       ).toBe(true);
     });

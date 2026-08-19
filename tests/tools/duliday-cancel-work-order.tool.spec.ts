@@ -15,8 +15,13 @@ describe('buildCancelWorkOrderTool', () => {
 
   const mockContext: ToolBuildContext = createToolContext({
     session: {
-      userId: 'user-1', corpId: 'corp-1', sessionId: 'sess-1', chatId: 'chat-1',
-      botImId: 'bot-im-1', botUserId: 'mgr-bob', contactName: '候选人微信名',
+      userId: 'user-1',
+      corpId: 'corp-1',
+      sessionId: 'sess-1',
+      chatId: 'chat-1',
+      botImId: 'bot-im-1',
+      botUserId: 'mgr-bob',
+      contactName: '候选人微信名',
     },
     turnInput: { messages: [{ role: 'user', content: '那个面试我不去了，帮我取消吧' }] },
   });

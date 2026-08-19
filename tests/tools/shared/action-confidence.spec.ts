@@ -1,7 +1,4 @@
-import {
-  ACTION_MIN_CONFIDENCE,
-  canUseFactForAction,
-} from '@tools/shared/action-confidence';
+import { ACTION_MIN_CONFIDENCE, canUseFactForAction } from '@tools/shared/action-confidence';
 
 describe('action confidence permissions', () => {
   it('covers every confidence-gated action in one explicit table', () => {

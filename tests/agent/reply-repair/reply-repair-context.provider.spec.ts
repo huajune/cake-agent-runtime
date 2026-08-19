@@ -76,10 +76,16 @@ describe('ReplyRepairContextProvider', () => {
       shortTermEndTimeInclusive: 123,
     });
 
-    expect(memory.onTurnStart).toHaveBeenCalledWith('corp-1', 'user-1', 'sess-1', '上海有餐饮兼职吗', {
-      includeShortTerm: true,
-      shortTermEndTimeInclusive: 123,
-    });
+    expect(memory.onTurnStart).toHaveBeenCalledWith(
+      'corp-1',
+      'user-1',
+      'sess-1',
+      '上海有餐饮兼职吗',
+      {
+        includeShortTerm: true,
+        shortTermEndTimeInclusive: 123,
+      },
+    );
     expect(result.recentMessages[0]).toEqual({ role: 'user', content: '上海有餐饮兼职吗' });
     expect(result.factLines).toContain('- 意向城市: 上海（置信度: high）');
     expect(result.jobLines[0]).toContain('静安店');

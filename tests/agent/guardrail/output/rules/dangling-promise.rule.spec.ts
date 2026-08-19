@@ -24,9 +24,7 @@ describe('detectDanglingReplyPromise', () => {
 
   describe('不误杀（判据刻意保守，与 runner 侧同一谓词）', () => {
     it('已经给出结果的回复不算悬空', () => {
-      expect(
-        detectDanglingReplyPromise('帮你查了下，附近有 3 家在招，时薪 22 元'),
-      ).toBeNull();
+      expect(detectDanglingReplyPromise('帮你查了下，附近有 3 家在招，时薪 22 元')).toBeNull();
     });
 
     it('如实说没查到的不算悬空', () => {

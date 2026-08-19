@@ -17,9 +17,7 @@ describe('OutboundReplySanitizer', () => {
     });
 
     it('无时间标记时原样返回', () => {
-      expect(OutboundReplySanitizer.stripTimeMarkers('你好，岗位还在招')).toBe(
-        '你好，岗位还在招',
-      );
+      expect(OutboundReplySanitizer.stripTimeMarkers('你好，岗位还在招')).toBe('你好，岗位还在招');
     });
   });
 

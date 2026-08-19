@@ -44,6 +44,7 @@ SELECT count(*) AS turns, count(DISTINCT chat_id) AS chats,
 ```
 
 同样两段式再取：
+
 - `guardrail_review_records`：`count(*)` 审查数、`final_decision='block'` 拦截数、`repaired` 改写数（用 `created_at`）
 - `reengagement_touch_records`：`count(*)` 计划数、`status='sent'` 实发数（用 `created_at`）
 

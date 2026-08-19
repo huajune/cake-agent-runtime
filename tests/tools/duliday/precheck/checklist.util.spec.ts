@@ -157,12 +157,12 @@ describe('checklist.util', () => {
       expect(map['年龄']).toBeUndefined();
     });
 
-    it('joins health_certificate_types array via 、', () => {
+    it('never backfills 健康证类型 —— 会话档案与画像都没有这个键（S10 删死分支）', () => {
       const map = buildKnownFieldMap({
-        sessionInterviewInfo: { health_certificate_types: ['食品类', '公共场所'] },
+        sessionInterviewInfo: { has_health_certificate: '有' },
         contextProfile: null,
       });
-      expect(map['健康证类型']).toBe('食品类、公共场所');
+      expect(map['健康证类型']).toBeUndefined();
     });
 
     it('coerces number height/weight to string', () => {

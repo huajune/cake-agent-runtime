@@ -30,10 +30,7 @@ describe('repeated reply deterministic segment pruning', () => {
   });
 
   it('近似重复阈值只 observe，不触发 repair', () => {
-    const hit = detectRepeatedReply(
-      '你可以把方便上班的区域发我，我按区域继续找哦',
-      delivered,
-    );
+    const hit = detectRepeatedReply('你可以把方便上班的区域发我，我按区域继续找哦', delivered);
     expect(hit?.action).toBe('observe');
   });
 });

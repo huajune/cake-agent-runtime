@@ -18,6 +18,8 @@ describe('buildSpongeTokenContext', () => {
   });
 
   it('returns undefined when no token routing identifier is present', () => {
-    expect(buildSpongeTokenContext(createToolContext({ session: { userId: 'user-1' } }))).toBeUndefined();
+    expect(
+      buildSpongeTokenContext(createToolContext({ session: { userId: 'user-1' } })),
+    ).toBeUndefined();
   });
 });

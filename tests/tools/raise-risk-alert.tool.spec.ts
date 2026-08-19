@@ -6,8 +6,13 @@ import { createToolContext, mergeToolContext } from '../helpers/tool-context.fix
 describe('buildRaiseRiskAlertTool', () => {
   const mockContext: ToolBuildContext = createToolContext({
     session: {
-      userId: 'user-1', corpId: 'corp-1', sessionId: 'sess-1', chatId: 'chat-1',
-      botUserId: 'mgr-bob', botImId: 'bot-im-1', contactName: 'Alice',
+      userId: 'user-1',
+      corpId: 'corp-1',
+      sessionId: 'sess-1',
+      chatId: 'chat-1',
+      botUserId: 'mgr-bob',
+      botImId: 'bot-im-1',
+      contactName: 'Alice',
     },
     turnInput: { messages: [{ role: 'user', content: '你说啥呢' }] },
   });
@@ -15,7 +20,9 @@ describe('buildRaiseRiskAlertTool', () => {
   const buildTool = (ctx: ToolBuildContext = mockContext) => buildRaiseRiskAlertTool()(ctx);
 
   it('returns missing_chat_id when chatId and sessionId are both absent', async () => {
-    const tool = buildTool(mergeToolContext(mockContext, { session: { chatId: undefined, sessionId: '' } }));
+    const tool = buildTool(
+      mergeToolContext(mockContext, { session: { chatId: undefined, sessionId: '' } }),
+    );
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = await (tool as any).execute({
       riskType: 'abuse',
@@ -72,13 +79,17 @@ describe('buildRaiseRiskAlertTool', () => {
   });
 
   it('keeps the latest user message from the current model-visible context', async () => {
-    const tool = buildTool(mergeToolContext(mockContext, {
-      turnInput: { messages: [
-        { role: 'user', content: '在吗' },
-        { role: 'assistant', content: '我在的' },
-        { role: 'user', content: '怎么还不回' },
-      ] },
-    }));
+    const tool = buildTool(
+      mergeToolContext(mockContext, {
+        turnInput: {
+          messages: [
+            { role: 'user', content: '在吗' },
+            { role: 'assistant', content: '我在的' },
+            { role: 'user', content: '怎么还不回' },
+          ],
+        },
+      }),
+    );
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = await (tool as any).execute({

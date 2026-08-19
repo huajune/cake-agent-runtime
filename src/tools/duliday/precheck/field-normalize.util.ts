@@ -111,9 +111,3 @@ export function normalizeNumberText(value: unknown): string | null {
   if (typeof value === 'string') return normalizePolicyText(value) || null;
   return null;
 }
-
-export function normalizeArrayText(value: unknown): string | null {
-  if (!Array.isArray(value)) return null;
-  const items = value.map((item) => normalizeTextValue(item)).filter(Boolean);
-  return items.length > 0 ? items.join('、') : null;
-}

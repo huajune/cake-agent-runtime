@@ -342,19 +342,31 @@ describe('runBookingGuards · 窗口内时分校验 (badcase chat 6a5f3080 窗�
 
   it('allows candidate-agreed time inside the window (15:00 in 09:00-18:00)', () => {
     expect(
-      runBookingGuards({ job: makeWindowJob(), name: realName, interviewTime: '2099-12-31 15:00:00' }),
+      runBookingGuards({
+        job: makeWindowJob(),
+        name: realName,
+        interviewTime: '2099-12-31 15:00:00',
+      }),
     ).toBeNull();
   });
 
   it('allows the window start time (default slot interviewTime)', () => {
     expect(
-      runBookingGuards({ job: makeWindowJob(), name: realName, interviewTime: '2099-12-31 09:00:00' }),
+      runBookingGuards({
+        job: makeWindowJob(),
+        name: realName,
+        interviewTime: '2099-12-31 09:00:00',
+      }),
     ).toBeNull();
   });
 
   it('allows the window end boundary', () => {
     expect(
-      runBookingGuards({ job: makeWindowJob(), name: realName, interviewTime: '2099-12-31 18:00:00' }),
+      runBookingGuards({
+        job: makeWindowJob(),
+        name: realName,
+        interviewTime: '2099-12-31 18:00:00',
+      }),
     ).toBeNull();
   });
 

@@ -12,12 +12,12 @@ MessageSenderService.sendMessage(data)
 
 ## 两套 Stride API 对比
 
-| | 小组级 API | 企业级 API |
-|---|---|---|
-| **URL** | `POST /stream-api/message/send` | `POST /enterprise-v2/message/send?token=xxx` |
-| **认证** | token 在 body 里 | token 在 URL 参数里 |
-| **寻址** | `chatId`（会话 ID） | `imBotId` + `imContactId`（私聊）/ `imRoomId`（群聊） |
-| **文本 messageType** | `0` | `7`（SendMessageType.TEXT） |
+|                      | 小组级 API                      | 企业级 API                                            |
+| -------------------- | ------------------------------- | ----------------------------------------------------- |
+| **URL**              | `POST /stream-api/message/send` | `POST /enterprise-v2/message/send?token=xxx`          |
+| **认证**             | token 在 body 里                | token 在 URL 参数里                                   |
+| **寻址**             | `chatId`（会话 ID）             | `imBotId` + `imContactId`（私聊）/ `imRoomId`（群聊） |
+| **文本 messageType** | `0`                             | `7`（SendMessageType.TEXT）                           |
 
 > `MessageSenderService` 内部自动做 messageType 转换（企业级 → 小组级），调用方统一用企业级类型编号。
 

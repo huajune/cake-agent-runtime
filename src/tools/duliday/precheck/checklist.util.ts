@@ -20,7 +20,6 @@ import { API_BOOKING_USER_OPTIONAL_FIELDS } from '@tools/duliday/booking/job-boo
 import {
   dedupeStrings,
   inferIdentityFromAge,
-  normalizeArrayText,
   normalizeEducationValue,
   normalizeGenderValue,
   normalizeHealthCertificateValue,
@@ -186,7 +185,6 @@ export function buildKnownFieldMap(params: {
     height?: string | number | null;
     weight?: string | number | null;
     upload_resume?: string | null;
-    health_certificate_types?: string[] | null;
     experience?: string | null;
   } | null;
   sessionInterviewInfo?: {
@@ -204,7 +202,6 @@ export function buildKnownFieldMap(params: {
     height?: string | number | null;
     weight?: string | number | null;
     upload_resume?: string | null;
-    health_certificate_types?: string[] | null;
     experience?: string | null;
   } | null;
   storeName?: string | null;
@@ -232,9 +229,10 @@ export function buildKnownFieldMap(params: {
     健康证情况:
       normalizeHealthCertificateValue(info?.has_health_certificate) ||
       normalizeHealthCertificateValue(profile?.has_health_certificate),
-    健康证类型:
-      normalizeArrayText(info?.health_certificate_types) ||
-      normalizeArrayText(profile?.health_certificate_types),
+    // 「健康证类型」不在这里回填（2026-08-19 记忆审计 S10 删死分支）：
+    // SessionInterviewInfo 与 UserProfile 都没有 health_certificate_types 这个键，
+    // 两侧恒 undefined，这一行从写下那天起就只会产出 null。该字段若被岗位补充项
+    // 要求，会照常出现在 missingFields 里由 Agent 现场收，不受影响。
     身份: identityLabel,
     户籍省份: householdRegisterProvince,
     身高: normalizeNumberText(info?.height) || normalizeNumberText(profile?.height),
