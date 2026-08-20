@@ -28,6 +28,9 @@ describe('scenario-registry', () => {
     expect(bookingFollowUpAnchorId(451713, 1784599200000, 'interview_reminder', 'AI面试')).toBe(
       'wo451713:iv1784599200000:interview_reminder',
     );
+    expect(
+      bookingFollowUpAnchorId(451713, 1784599200000, 'interview_reminder', 'AI面试', 'd2_confirm'),
+    ).toBe('wo451713:iv1784599200000:interview_reminder:d2');
   });
 
   it('allows grounded context carry-over for store follow-ups', () => {
@@ -157,6 +160,21 @@ describe('scenario-registry', () => {
           60,
         ),
       ).toBe(at(7));
+    });
+
+    it('defaults the d2 confirmation variant to 2880 minutes before interview', () => {
+      const anchorAt = Date.UTC(2026, 5, 20, 2, 0, 0);
+      const interviewAt = Date.UTC(2026, 5, 25, 6, 0, 0);
+      const state = baseState({ terminal: 'booked', interviewAt } as never);
+
+      expect(
+        computeFireAt(
+          getScenario('interview_reminder')!,
+          { anchorAt, state },
+          undefined,
+          'd2_confirm',
+        ),
+      ).toBe(interviewAt - 2 * 24 * 60 * 60_000);
     });
   });
 
@@ -385,6 +403,34 @@ describe('scenario-registry', () => {
 
     it('missing post-booking switch is treated as open', () => {
       expect(resolveRolloutEnabled(getScenario('interview_reminder')!, {})).toBe(true);
+    });
+
+    it('keeps d2 rollout off when its child key is missing instead of falling back to reminder', () => {
+      const scenario = getScenario('interview_reminder')!;
+      expect(
+        resolveRolloutEnabled(
+          scenario,
+          { reengagementScenarioRollout: { interview_reminder: true } },
+          'd2_confirm',
+        ),
+      ).toBe(false);
+      expect(
+        resolveRolloutEnabled(
+          scenario,
+          { reengagementScenarioRollout: { 'interview_reminder:d2': true } },
+          'd2_confirm',
+        ),
+      ).toBe(true);
+      expect(
+        resolveRolloutEnabled(
+          scenario,
+          {
+            reengagementPostBookingEnabled: false,
+            reengagementScenarioRollout: { 'interview_reminder:d2': true },
+          },
+          'd2_confirm',
+        ),
+      ).toBe(false);
     });
   });
 });

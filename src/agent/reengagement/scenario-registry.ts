@@ -29,6 +29,8 @@ export interface ScenarioRolloutConfig {
   reengagementScenarioDelayMinutes?: Record<string, number>;
 }
 
+export type FollowUpTouchVariant = 'd2_confirm';
+
 export type FollowUpDelayMode = 'after_anchor' | 'before_interview' | 'after_interview';
 
 /** 结构化场景配置（非 prompt 常量）。 */
@@ -308,11 +310,16 @@ export function bookingFollowUpAnchorId(
   interviewAtMs: number,
   scenarioCode: string,
   interviewType?: string,
+  variant?: FollowUpTouchVariant,
 ): string {
   // AI 17:00 是独立排程版本。版本后缀既避免新任务与旧“面试后 +2h”任务撞 Bull
   // jobId，也让存量旧任务到点校准时能成功补排 17:00 的替代任务。
   const scheduleVersion =
-    scenarioCode === 'post_interview_followup' && isAiInterview(interviewType) ? ':ai17' : '';
+    scenarioCode === 'interview_reminder' && variant === 'd2_confirm'
+      ? ':d2'
+      : scenarioCode === 'post_interview_followup' && isAiInterview(interviewType)
+        ? ':ai17'
+        : '';
   return `wo${workOrderId}:iv${interviewAtMs}:${scenarioCode}${scheduleVersion}`;
 }
 
@@ -339,9 +346,12 @@ export function parseInterviewTimestamp(raw: unknown): number | undefined {
 export function resolveRolloutEnabled(
   scenario: FollowUpScenario,
   config: ScenarioRolloutConfig,
+  variant?: FollowUpTouchVariant,
 ): boolean {
-  const scenarioEnabled =
-    config.reengagementScenarioRollout?.[scenario.code] ?? scenario.defaultRolloutEnabled;
+  const variantKey = resolveVariantConfigKey(scenario.code, variant);
+  const scenarioEnabled = variantKey
+    ? (config.reengagementScenarioRollout?.[variantKey] ?? false)
+    : (config.reengagementScenarioRollout?.[scenario.code] ?? scenario.defaultRolloutEnabled);
   if (!scenarioEnabled) return false;
   // 大开关缺失视为开（不收紧），只有显式 false 才拦报名后场景
   if (scenario.phase === 'post_booking' && config.reengagementPostBookingEnabled === false) {
@@ -354,9 +364,13 @@ export function resolveDelayMs(
   scenario: FollowUpScenario,
   ctx: FollowUpScenarioContext,
   configuredDelayMinutes?: number,
+  variant?: FollowUpTouchVariant,
 ): number {
-  if (configuredDelayMinutes != null) {
-    const offsetMs = configuredDelayMinutes * MINUTE;
+  const effectiveDelayMinutes =
+    configuredDelayMinutes ??
+    (scenario.code === 'interview_reminder' && variant === 'd2_confirm' ? 2 * 24 * 60 : undefined);
+  if (effectiveDelayMinutes != null) {
+    const offsetMs = effectiveDelayMinutes * MINUTE;
     if (scenario.delayMode === 'after_anchor') return offsetMs;
     const interviewAt = resolveInterviewAt(ctx.state);
     if (interviewAt == null) return 0;
@@ -373,8 +387,18 @@ export function computeFireAt(
   scenario: FollowUpScenario,
   ctx: FollowUpScenarioContext,
   configuredDelayMinutes?: number,
+  variant?: FollowUpTouchVariant,
 ): number {
-  return ctx.anchorAt + resolveDelayMs(scenario, ctx, configuredDelayMinutes);
+  return ctx.anchorAt + resolveDelayMs(scenario, ctx, configuredDelayMinutes, variant);
+}
+
+export function resolveVariantConfigKey(
+  scenarioCode: FollowUpScenarioCode,
+  variant?: FollowUpTouchVariant,
+): string | undefined {
+  return scenarioCode === 'interview_reminder' && variant === 'd2_confirm'
+    ? 'interview_reminder:d2'
+    : undefined;
 }
 
 /**

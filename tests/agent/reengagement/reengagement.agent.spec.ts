@@ -225,6 +225,90 @@ describe('ReengagementAgent', () => {
     expect(result.outcome.reply?.text).toContain('身份证');
   });
 
+  it('builds the d2 confirmation prompt with weekday and adjustment or abandonment exits', async () => {
+    llm.generateStructured.mockResolvedValueOnce({
+      output: {
+        decision: 'send',
+        blockReason: 'none',
+        message: '还在找工作吗？周四14:00约了面试，时间不合适可以提前跟我说调整。',
+        reason: '报名后尚未另行确认求职意向',
+      },
+      usage: { inputTokens: 12, outputTokens: 9, totalTokens: 21 },
+    });
+
+    const result = await reengagementAgent.compose({
+      sessionRef,
+      scenario: getScenario('interview_reminder')!,
+      jobData: job('interview_reminder', {
+        workOrderId: 555,
+        touchVariant: 'd2_confirm',
+      }),
+      state: baseState({ terminal: 'booked' }),
+      bookingContext: liveBookingContext({
+        interviewType: '线下面试',
+        interviewAddress: '测试地址',
+      }),
+    });
+
+    const system = llm.generateStructured.mock.calls[0][0].system as string;
+    expect(system).toContain('面试日期（含星期）：2026-06-25 星期四');
+    expect(system).toContain('时间不合适可以提前调整');
+    expect(system).toContain('已经找到合适工作可以告知放弃');
+    expect(system).toContain('blockReason=confirmation_already_sent');
+    expect(result.outcome.kind).toBe('reply');
+  });
+
+  it('does not treat an earlier d2 intent confirmation as an arrival reminder already sent', async () => {
+    memoryRecall.recentMessages = [
+      { role: 'assistant', content: '还在找工作吗？周四的面试时间可以吧？' },
+    ];
+    llm.generateStructured.mockResolvedValueOnce({
+      output: {
+        decision: 'send',
+        blockReason: 'none',
+        message: '提醒一下，今天14:00记得按面试通知参加。',
+        reason: '此前只有提前意向确认，没有到场提醒',
+      },
+      usage: { inputTokens: 12, outputTokens: 8, totalTokens: 20 },
+    });
+
+    const result = await reengagementAgent.compose({
+      sessionRef,
+      scenario: getScenario('interview_reminder')!,
+      jobData: job('interview_reminder', { workOrderId: 555 }),
+      state: baseState({ terminal: 'booked' }),
+      bookingContext: liveBookingContext(),
+    });
+
+    expect(llm.generateStructured.mock.calls[0][0].system).toContain(
+      '面试前 1–3 天发出的求职意向确认消息不构成已提醒',
+    );
+    expect(result.outcome.kind).toBe('reply');
+  });
+
+  it('accepts confirmation_already_sent as a d2 semantic stop reason', async () => {
+    llm.generateStructured.mockResolvedValueOnce({
+      output: {
+        decision: 'skip',
+        blockReason: 'confirmation_already_sent',
+        message: '',
+        reason: '招募经理已在报名后另行确认过本次面试意向',
+      },
+      usage: { inputTokens: 12, outputTokens: 5, totalTokens: 17 },
+    });
+
+    const result = await reengagementAgent.compose({
+      sessionRef,
+      scenario: getScenario('interview_reminder')!,
+      jobData: job('interview_reminder', { workOrderId: 555, touchVariant: 'd2_confirm' }),
+      state: baseState({ terminal: 'booked' }),
+      bookingContext: liveBookingContext(),
+    });
+
+    expect(result.outcome.kind).toBe('skipped');
+    expect(result.validationReason).toBe('confirmation_already_sent');
+  });
+
   it('corrects “tomorrow” to “today” when an interview reminder fires on the interview date', async () => {
     llm.generateStructured.mockResolvedValueOnce({
       output: {

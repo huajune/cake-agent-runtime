@@ -39,12 +39,17 @@ FollowUpTaskProcessor
 **不轮询全量会话**，而是在锚点事件发生时排一个 Bull delayed job：
 
 ```ts
-const fireAt = computeFireAt(scenario, anchorAt);   // 绝对时间戳，已对齐 9–21 窗口
-await reengagementQueue.add('follow-up', { sessionRef, scenarioCode, anchorEventId, anchorAt }, {
-  jobId: `${sessionRef.sessionId}:${scenarioCode}:${anchorEventId}`,  // 同锚点不重复排程
-  delay: Math.max(0, fireAt - Date.now()),   // ⚠️ Bull delay = 相对 ms，不是绝对 fireAt
-  attempts: 2, backoff: { type: 'fixed', delay: 30_000 },
-});
+const fireAt = computeFireAt(scenario, anchorAt); // 绝对时间戳，已对齐 9–21 窗口
+await reengagementQueue.add(
+  'follow-up',
+  { sessionRef, scenarioCode, anchorEventId, anchorAt },
+  {
+    jobId: `${sessionRef.sessionId}:${scenarioCode}:${anchorEventId}`, // 同锚点不重复排程
+    delay: Math.max(0, fireAt - Date.now()), // ⚠️ Bull delay = 相对 ms，不是绝对 fireAt
+    attempts: 2,
+    backoff: { type: 'fixed', delay: 30_000 },
+  },
+);
 ```
 
 **窗口对齐**：先算 `anchorAt + resolveDelay(...)`，落在 <9:00 推到当日 9:00、>21:00 推到次日 9:00（时区 `Asia/Shanghai`，与 group-task cron 一致）。fire 时再 `inWindow(now)` 二次确认。
@@ -53,17 +58,19 @@ await reengagementQueue.add('follow-up', { sessionRef, scenarioCode, anchorEvent
 
 ## 3. 场景注册表
 
-| code | 锚点事件 | 延迟 | 目标 |
-|---|---|---|---|
-| `opening_no_reply` | `agent.opening_sent` | +15min | 轻量确认是否还在看机会，并继续询问所在位置 |
-| `address_missing` | 最终回复已投递且请求位置/地址 | +30min | 提醒发定位以便就近推荐 |
-| `store_presented_no_reply` | 最终回复已投递且展示岗位 | +30min | 承接该岗位询问考虑得如何 |
-| `booking_incomplete` | 最终采纳回合 precheck `collect_fields` | +30min | 提醒补齐剩余资料 |
-| `interview_reminder` | `booking.succeeded` | 依 `interviewTime` 计算 | 按面试形式提醒；**AI 面试提醒在线完成，线下面试才提醒到店** |
-| `post_interview_followup` | `booking.succeeded` | 依 `interviewTime` 计算 | 面试后回访 |
-| `new_job_for_waiting` | 岗位上线事件（**外部**） | 事件驱动 | 暂无岗位的候选人有新岗位时主动告知 |
+| code                       | 锚点事件                               | 延迟                    | 目标                                                        |
+| -------------------------- | -------------------------------------- | ----------------------- | ----------------------------------------------------------- |
+| `opening_no_reply`         | `agent.opening_sent`                   | +15min                  | 轻量确认是否还在看机会，并继续询问所在位置                  |
+| `address_missing`          | 最终回复已投递且请求位置/地址          | +30min                  | 提醒发定位以便就近推荐                                      |
+| `store_presented_no_reply` | 最终回复已投递且展示岗位               | +30min                  | 承接该岗位询问考虑得如何                                    |
+| `booking_incomplete`       | 最终采纳回合 precheck `collect_fields` | +30min                  | 提醒补齐剩余资料                                            |
+| `interview_reminder`       | `booking.succeeded`                    | 依 `interviewTime` 计算 | 按面试形式提醒；**AI 面试提醒在线完成，线下面试才提醒到店** |
+| `post_interview_followup`  | `booking.succeeded`                    | 依 `interviewTime` 计算 | 面试后回访                                                  |
+| `new_job_for_waiting`      | 岗位上线事件（**外部**）               | 事件驱动                | 暂无岗位的候选人有新岗位时主动告知                          |
 
 ⚠️ `new_job_for_waiting` 的外部事件源尚未接入——该场景保留在 registry 中，事件源就绪后只需调用 scheduler。
+
+`interview_reminder` 在二期拥有两个同 code 档位：默认到场档仍使用原任务身份；报名日至面试日相差至少 3 个上海日历天时，额外排面试前 2 天确认档，任务锚点追加 `:d2` 后缀并在 payload 标记 `touchVariant=d2_confirm`。变体的延迟与灰度分别读取既有 map 的 `interview_reminder:d2` 子键，缺省延迟 2880 分钟、缺省灰度关闭，且不回退 `interview_reminder` 主场景开关。改期时两个档位按实时工单独立重排，确认档重新核验报名间隔。
 
 ---
 
@@ -111,12 +118,12 @@ await reengagementQueue.add('follow-up', { sessionRef, scenarioCode, anchorEvent
 reserved → delivery_attempted → sent / failed / unknown
 ```
 
-| 状态 | 语义与处置 |
-|---|---|
-| `reserved` | 已占位，可重试 |
+| 状态                 | 语义与处置                                                                                                  |
+| -------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `reserved`           | 已占位，可重试                                                                                              |
 | `delivery_attempted` | **「外部平台可能已经发出」区间——不得盲目重投**；必须依赖渠道侧幂等（`idempotencyKey`）或走补偿查询/人工核对 |
-| `sent` | 投递成功；`reserve()` 命中 `sent` 直接跳过 |
-| `unknown` | `markSent` 落库失败时置此状态并**告警**，不可简单置 `failed` 重投 |
+| `sent`               | 投递成功；`reserve()` 命中 `sent` 直接跳过                                                                  |
+| `unknown`            | `markSent` 落库失败时置此状态并**告警**，不可简单置 `failed` 重投                                           |
 
 这样同时杜绝「写了底账却没发出」和「发出了但落库失败导致重复发」。
 

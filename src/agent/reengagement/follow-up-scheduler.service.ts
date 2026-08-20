@@ -13,9 +13,11 @@ import {
   computeFireAt,
   getScenario,
   hasInterviewAt,
+  resolveVariantConfigKey,
   shouldStop,
   type FollowUpScenario,
   type FollowUpScenarioCode,
+  type FollowUpTouchVariant,
 } from './scenario-registry';
 
 export const REENGAGEMENT_QUEUE = 'reengagement';
@@ -55,6 +57,8 @@ export interface FollowUpJob {
   interviewType?: string;
   /** 仅携带稳定工单引用、等待海绵同步后解析正式触达时间的重试任务。 */
   resolveBookingAtFire?: boolean;
+  /** 同场景内的触达档位；通过 anchorEventId 后缀保留追溯身份。 */
+  touchVariant?: FollowUpTouchVariant;
 }
 
 /** 触达底账 outbox 状态机。 */
@@ -82,6 +86,8 @@ export interface ScheduleFollowUpInput {
   interviewType?: string;
   /** 渠道身份快照（候选人昵称/接管 bot），随触达记录落库供追溯页直读。 */
   channelIdentity?: ReengagementChannelIdentity;
+  /** 同场景内的触达档位。 */
+  touchVariant?: FollowUpTouchVariant;
 }
 
 function createEmptyState(): ReengagementSessionState {
@@ -176,6 +182,7 @@ export class FollowUpSchedulerService {
       }
     }
 
+    const variantConfigKey = resolveVariantConfigKey(scenario.code, input.touchVariant);
     const fireAt = computeFireAt(
       scenario,
       {
@@ -183,7 +190,8 @@ export class FollowUpSchedulerService {
         state,
         interviewType: input.interviewType,
       },
-      runtime.reengagementScenarioDelayMinutes?.[scenario.code],
+      runtime.reengagementScenarioDelayMinutes?.[variantConfigKey ?? scenario.code],
+      input.touchVariant,
     );
     const delay = Math.max(0, fireAt - Date.now());
     const jobId = this.buildJobId(
@@ -231,6 +239,7 @@ export class FollowUpSchedulerService {
           anchorAt: input.anchorAt,
           ...(input.workOrderId != null ? { workOrderId: input.workOrderId } : {}),
           ...(input.channelIdentity ? { channelIdentity: input.channelIdentity } : {}),
+          ...(input.touchVariant ? { touchVariant: input.touchVariant } : {}),
         },
         {
           jobId,

@@ -103,6 +103,7 @@ describe('FollowUpProcessor', () => {
     tracking = {
       resolveChannelIdentity: jest.fn().mockResolvedValue(null),
       trackDisabledAtFire: jest.fn(),
+      trackScheduleSkipped: jest.fn(),
       trackStopped: jest.fn(),
       trackFrequencyBlocked: jest.fn(),
       trackRescheduled: jest.fn(),
@@ -1160,6 +1161,177 @@ describe('FollowUpProcessor', () => {
         }),
       );
       expect(reengagementAgent.compose).not.toHaveBeenCalled();
+    });
+
+    it('schedules both arrival reminder and d2 confirmation when signup gap is at least 3 Shanghai days', async () => {
+      sponge.getWorkOrderById.mockResolvedValue({
+        workOrderId: 555,
+        currentStatus: '约面成功',
+        signUpTime: '2026-06-24 09:00',
+        interviewTime: '2026-06-27 14:00',
+      });
+
+      await buildProcessor().process(
+        bookingJob({ resolveBookingAtFire: true, expectedInterviewAt: undefined }),
+      );
+
+      expect(scheduler.scheduleFollowUp).toHaveBeenCalledTimes(2);
+      expect(scheduler.scheduleFollowUp).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+          anchorEventId: `wo555:iv${Date.UTC(2026, 5, 27, 6)}:interview_reminder:d2`,
+          touchVariant: 'd2_confirm',
+        }),
+      );
+    });
+
+    it('schedules only arrival reminder when signup gap is under 3 Shanghai days', async () => {
+      sponge.getWorkOrderById.mockResolvedValue({
+        workOrderId: 555,
+        currentStatus: '约面成功',
+        signUpTime: '2026-06-25 09:00',
+        interviewTime: '2026-06-27 14:00',
+      });
+
+      await buildProcessor().process(
+        bookingJob({ resolveBookingAtFire: true, expectedInterviewAt: undefined }),
+      );
+
+      expect(scheduler.scheduleFollowUp).toHaveBeenCalledTimes(1);
+      expect(tracking.trackScheduleSkipped).toHaveBeenCalledWith(
+        expect.objectContaining({ anchorEventId: expect.stringMatching(/:d2$/) }),
+        'signup_interview_gap_lt_3d',
+      );
+    });
+
+    it('fails closed and skips d2 confirmation when signUpTime is missing', async () => {
+      sponge.getWorkOrderById.mockResolvedValue({
+        workOrderId: 555,
+        currentStatus: '约面成功',
+        interviewTime: '2026-06-27 14:00',
+      });
+
+      await buildProcessor().process(
+        bookingJob({ resolveBookingAtFire: true, expectedInterviewAt: undefined }),
+      );
+
+      expect(scheduler.scheduleFollowUp).toHaveBeenCalledTimes(1);
+      expect(tracking.trackScheduleSkipped).toHaveBeenCalledWith(
+        expect.anything(),
+        'signup_interview_gap_lt_3d',
+      );
+    });
+
+    it('uses the d2 delay child key during fire-time calibration', async () => {
+      (Date.now as jest.Mock).mockReturnValue(Date.UTC(2026, 5, 25, 6));
+      systemConfig.getAgentReplyConfig.mockResolvedValue({
+        reengagementEnabled: true,
+        reengagementShadow: true,
+        reengagementScenarioDelayMinutes: {
+          interview_reminder: 60,
+          'interview_reminder:d2': 2880,
+        },
+      });
+      sponge.getWorkOrderById.mockResolvedValue({
+        workOrderId: 555,
+        currentStatus: '约面成功',
+        signUpTime: '2026-06-23 09:00',
+        interviewTime: '2026-06-27 14:00',
+      });
+
+      await buildProcessor().process(
+        bookingJob({
+          anchorEventId: `wo555:iv${Date.UTC(2026, 5, 27, 6)}:interview_reminder:d2`,
+          touchVariant: 'd2_confirm',
+        }),
+      );
+
+      expect(tracking.trackStopped).not.toHaveBeenCalledWith(
+        expect.anything(),
+        'interview_time_changed',
+      );
+      expect(scheduler.scheduleFollowUp).not.toHaveBeenCalled();
+      expect(reengagementAgent.compose).toHaveBeenCalled();
+    });
+
+    it('stops d2 confirmation when the interview is less than 24 hours away', async () => {
+      (Date.now as jest.Mock).mockReturnValue(Date.UTC(2026, 5, 26, 7));
+      sponge.getWorkOrderById.mockResolvedValue({
+        workOrderId: 555,
+        currentStatus: '约面成功',
+        signUpTime: '2026-06-23 09:00',
+        interviewTime: '2026-06-27 14:00',
+      });
+
+      await buildProcessor().process(bookingJob({ touchVariant: 'd2_confirm' }));
+
+      expect(tracking.trackStopped).toHaveBeenCalledWith(expect.anything(), 'interview_too_close');
+      expect(reengagementAgent.compose).not.toHaveBeenCalled();
+    });
+
+    it('rechecks the signup gap for a d2 task at fire time', async () => {
+      (Date.now as jest.Mock).mockReturnValue(Date.UTC(2026, 5, 25, 6));
+      sponge.getWorkOrderById.mockResolvedValue({
+        workOrderId: 555,
+        currentStatus: '约面成功',
+        signUpTime: '2026-06-25 09:00',
+        interviewTime: '2026-06-27 14:00',
+      });
+
+      await buildProcessor().process(bookingJob({ touchVariant: 'd2_confirm' }));
+
+      expect(tracking.trackStopped).toHaveBeenCalledWith(
+        expect.anything(),
+        'signup_interview_gap_lt_3d',
+      );
+      expect(reengagementAgent.compose).not.toHaveBeenCalled();
+    });
+
+    it('does not create a d2 replacement when rescheduling makes the signup gap ineligible', async () => {
+      (Date.now as jest.Mock).mockReturnValue(Date.UTC(2026, 5, 25, 6));
+      sponge.getWorkOrderById.mockResolvedValue({
+        workOrderId: 555,
+        currentStatus: '约面成功',
+        signUpTime: '2026-06-29 09:00',
+        interviewTime: '2026-07-01 14:00',
+      });
+
+      await buildProcessor().process(bookingJob({ touchVariant: 'd2_confirm' }));
+
+      expect(tracking.trackStopped).toHaveBeenCalledWith(
+        expect.anything(),
+        'signup_interview_gap_lt_3d',
+      );
+      expect(scheduler.scheduleFollowUp).not.toHaveBeenCalled();
+    });
+
+    it('keeps d2 in shadow when its child key is off without affecting arrival reminder rollout', async () => {
+      systemConfig.getAgentReplyConfig.mockResolvedValue({
+        reengagementEnabled: true,
+        reengagementShadow: false,
+        reengagementScenarioRollout: { interview_reminder: true },
+        reengagementScenarioDelayMinutes: { 'interview_reminder:d2': 2880 },
+      });
+      sponge.getWorkOrderById.mockResolvedValue({
+        workOrderId: 555,
+        currentStatus: '约面成功',
+        signUpTime: '2026-06-23 09:00',
+        interviewTime: '2026-06-27 14:00',
+      });
+      (Date.now as jest.Mock).mockReturnValue(Date.UTC(2026, 5, 25, 6));
+
+      await buildProcessor().process(bookingJob({ touchVariant: 'd2_confirm' }));
+
+      expect(tracking.trackShadow).toHaveBeenCalled();
+      expect(delivery.deliver).not.toHaveBeenCalled();
+
+      tracking.trackShadow.mockClear();
+      reengagementAgent.compose.mockClear();
+      (Date.now as jest.Mock).mockReturnValue(Date.UTC(2026, 5, 27, 5));
+      await buildProcessor().process(bookingJob());
+
+      expect(tracking.trackShadow).not.toHaveBeenCalled();
+      expect(delivery.deliver).toHaveBeenCalledTimes(1);
     });
 
     it('does not create formal delayed jobs for a non-active resolved work order', async () => {

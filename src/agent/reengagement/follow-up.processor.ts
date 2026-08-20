@@ -31,7 +31,9 @@ import {
   bookingFollowUpAnchorId,
   computeFireAt,
   getScenario,
+  parseInterviewTimestamp,
   resolveRolloutEnabled,
+  resolveVariantConfigKey,
   shouldStop,
 } from './scenario-registry';
 import { TouchLedgerService } from './touch-ledger.service';
@@ -43,6 +45,7 @@ import {
   type ReengagementBookingContext,
 } from './booking-context';
 import { BotService } from '@wecom/bot/bot.service';
+import { shanghaiDayNumber } from './reengagement-datetime.util';
 
 export const REENGAGEMENT_DELIVERY_PORT = Symbol('REENGAGEMENT_DELIVERY_PORT');
 
@@ -112,6 +115,7 @@ export class ReengagementDeliveryService
 }
 
 const BOOKING_SCHEDULE_TOLERANCE_MS = 60_000;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 type ProactiveTurnExecution = ReengagementAgentExecution;
 
@@ -228,6 +232,11 @@ export class FollowUpProcessor implements OnModuleInit {
         if (!bookingContext.interviewAt) {
           throw new Error(`reengagement_booking_time_unavailable:${job.data.workOrderId}`);
         }
+        const resolvedState = {
+          ...loadedState,
+          terminal: 'booked',
+          interviewAt: bookingContext.interviewAt,
+        } as ReengagementSessionState;
         await this.scheduler.scheduleFollowUp({
           sessionRef,
           scenarioCode,
@@ -238,16 +247,40 @@ export class FollowUpProcessor implements OnModuleInit {
             bookingContext.interviewType,
           ),
           anchorAt: now,
-          state: {
-            ...loadedState,
-            terminal: 'booked',
-            interviewAt: bookingContext.interviewAt,
-          } as ReengagementSessionState,
+          state: resolvedState,
           workOrderId: bookingContext.workOrderId,
           expectedInterviewAt: bookingContext.interviewAt,
           interviewType: bookingContext.interviewType,
           channelIdentity,
         });
+        if (scenarioCode === 'interview_reminder') {
+          const d2AnchorEventId = bookingFollowUpAnchorId(
+            bookingContext.workOrderId,
+            bookingContext.interviewAt,
+            scenarioCode,
+            bookingContext.interviewType,
+            'd2_confirm',
+          );
+          if (!this.isD2ConfirmEligible(bookingContext)) {
+            this.tracking.trackScheduleSkipped(
+              { ...identity, anchorEventId: d2AnchorEventId, anchorAt: now },
+              'signup_interview_gap_lt_3d',
+            );
+          } else {
+            await this.scheduler.scheduleFollowUp({
+              sessionRef,
+              scenarioCode,
+              anchorEventId: d2AnchorEventId,
+              anchorAt: now,
+              state: resolvedState,
+              workOrderId: bookingContext.workOrderId,
+              expectedInterviewAt: bookingContext.interviewAt,
+              interviewType: bookingContext.interviewType,
+              channelIdentity,
+              touchVariant: 'd2_confirm',
+            });
+          }
+        }
         return;
       }
 
@@ -338,6 +371,18 @@ export class FollowUpProcessor implements OnModuleInit {
         return;
       }
 
+      if (job.data.touchVariant === 'd2_confirm') {
+        if (!this.isD2ConfirmEligible(bookingContext)) {
+          this.tracking.trackStopped(identity, 'signup_interview_gap_lt_3d');
+          return;
+        }
+        if (bookingContext.interviewAt! - now < DAY_MS) {
+          this.tracking.trackStopped(identity, 'interview_too_close');
+          return;
+        }
+      }
+
+      const variantConfigKey = resolveVariantConfigKey(scenario.code, job.data.touchVariant);
       const expectedFireAt = computeFireAt(
         scenario,
         {
@@ -345,7 +390,8 @@ export class FollowUpProcessor implements OnModuleInit {
           state,
           interviewType: bookingContext.interviewType,
         },
-        runtime.reengagementScenarioDelayMinutes?.[scenario.code],
+        runtime.reengagementScenarioDelayMinutes?.[variantConfigKey ?? scenario.code],
+        job.data.touchVariant,
       );
       if (expectedFireAt - now > BOOKING_SCHEDULE_TOLERANCE_MS) {
         await this.scheduleTimeChangedReplacement(
@@ -410,7 +456,7 @@ export class FollowUpProcessor implements OnModuleInit {
     // 所有未投递分支都不把生成文本写进记忆（复聊链路不走 runner，本 processor 全程不投影助手轮次）：
     // 候选人没收到这条文本，若被投影成助手轮次，下一轮真实对话会引用一段候选人从未见过的"跟进"（HC-4 幽灵回复）。
     // 场景级灰度（Dashboard 可配）：场景开关 × 报名后大开关叠加
-    const rolloutEnabled = resolveRolloutEnabled(scenario, runtime);
+    const rolloutEnabled = resolveRolloutEnabled(scenario, runtime, job.data.touchVariant);
     const shadow = !this.delivery || runtime.reengagementShadow;
     if (shadow || !rolloutEnabled || !this.delivery) {
       const batchId = `batch_${sessionRef.sessionId}_${now}`;
@@ -704,6 +750,7 @@ export class FollowUpProcessor implements OnModuleInit {
     const { sessionRef, scenarioCode, workOrderId } = jobData;
     if (workOrderId == null) return;
     if (scenarioCode === 'interview_reminder' && newInterviewAt <= Date.now()) return;
+    if (jobData.touchVariant === 'd2_confirm' && !this.isD2ConfirmEligible(bookingContext)) return;
     try {
       await this.scheduler.scheduleFollowUp({
         sessionRef,
@@ -713,6 +760,7 @@ export class FollowUpProcessor implements OnModuleInit {
           newInterviewAt,
           scenarioCode,
           bookingContext.interviewType,
+          jobData.touchVariant,
         ),
         // 保留原报名锚点。替代任务仅因工单面试时间变化而重排；若改成当前时间，
         // Agent 状态摘要会把重排时间误标为“报名完成时间”，也会改变候选人回复停止边界。
@@ -726,12 +774,20 @@ export class FollowUpProcessor implements OnModuleInit {
         expectedInterviewAt: newInterviewAt,
         interviewType: bookingContext.interviewType,
         channelIdentity: jobData.channelIdentity,
+        touchVariant: jobData.touchVariant,
       });
     } catch (error) {
       this.logger.warn(
         `[reengagement] 改期替代任务排程失败 workOrderId=${workOrderId} scenario=${scenarioCode}: ${this.errorMessage(error)}`,
       );
     }
+  }
+
+  private isD2ConfirmEligible(bookingContext: ReengagementBookingContext): boolean {
+    const signUpAt = parseInterviewTimestamp(bookingContext.signUpTime);
+    const interviewAt = bookingContext.interviewAt;
+    if (signUpAt == null || interviewAt == null) return false;
+    return shanghaiDayNumber(interviewAt) - shanghaiDayNumber(signUpAt) >= 3;
   }
 
   private async runProactiveTurn(
