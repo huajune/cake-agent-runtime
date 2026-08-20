@@ -124,7 +124,13 @@ describe('报名将来时承诺（议题 9-4）', () => {
   it('flags a future-tense booking promise with no booking call', () => {
     const hit = detectBookingPromiseWithoutBooking('资料已经齐了，我帮你提交报名哈', []);
 
-    expect(hit).toMatchObject({ ruleId: 'booking_promise_without_booking', action: 'observe' });
+    expect(hit).toMatchObject({ ruleId: 'booking_promise_without_booking', action: 'revise' });
+  });
+
+  it('标记“让同事后台直接提交”这类代提交承诺', () => {
+    expect(
+      detectBookingPromiseWithoutBooking('这边有点卡，我让同事帮你后台直接提交下资料。', []),
+    ).toMatchObject({ ruleId: 'booking_promise_without_booking', action: 'revise' });
   });
 
   it('does not flag when booking actually succeeded', () => {
@@ -143,6 +149,14 @@ describe('报名将来时承诺（议题 9-4）', () => {
 
   it('leaves完成时态 to B-5（不重复覆盖，避免同一投递物两处记账）', () => {
     expect(detectBookingPromiseWithoutBooking('已经帮你报好了哈', [])).toBeNull();
+  });
+
+  it.each([
+    '资料收到了，帮你约今天下午这个时段可以吗？',
+    '你先把资料填好发我，我帮你约。',
+    '好的，这轮先不帮你报名。',
+  ])('不标记征询、带前置条件或明确否定的报名表达: %s', (text) => {
+    expect(detectBookingPromiseWithoutBooking(text, [])).toBeNull();
   });
 
   it('does not flag ordinary replies', () => {

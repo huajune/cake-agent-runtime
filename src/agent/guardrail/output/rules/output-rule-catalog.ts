@@ -319,16 +319,16 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'booking_promise_without_booking',
-    action: GUARDRAIL_ACTION.OBSERVE,
-    priority: GUARDRAIL_PRIORITY.P2,
-    description: '观察"我帮你提交报名"类将来时承诺后本轮并无成功 booking 的投递物。',
+    action: GUARDRAIL_ACTION.REVISE,
+    priority: GUARDRAIL_PRIORITY.P1,
+    description: '拦截"我帮你提交报名"类将来时承诺：本轮无成功 booking 时改写为未提交的诚实口径。',
     riskGoal:
       '收资死循环把模型逼到谎称已提交（badcase chat 6a7e7846：四轮后说"资料已经齐了，我帮你提交报名"，booking 从未调用）。' +
       'B-5 只拦完成时态、dangling_reply_promise 只管查询承诺，报名承诺两头都不管。',
     exogenousSignal: '本轮 toolCalls 中的 duliday_interview_booking 结果与 precheck nextAction。',
     residualRisk:
-      '报名动作无法自动补（precheck 未通过时不能替报），故出口不是补动作而是观测；' +
-      '完成时态归 B-5 不重复覆盖。9-2 断路器落地后此形态应趋零，指标用于验证 9-2 有效性。',
+      '报名动作无法自动补（precheck 未通过时不能替报），故只修正对候选人的口径；' +
+      '完成时态归 B-5 不重复覆盖。词形只覆盖第一人称明确提交承诺，不拦普通的可预约说明。',
     verification: 'tests/agent/guardrail/output/rules/promise-reconciliation.rule.spec.ts',
     feedbackToGenerator: '',
   },
