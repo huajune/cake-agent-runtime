@@ -69,6 +69,12 @@ Agent 在对话中判断以下两种情况时，调用 `invite_to_group` 工具�
 
 > **触发由 LLM 判断**：通过工具描述和 system prompt 中的策略指引，LLM 自主决定何时调用。不做硬编码触发。
 
+### 复聊触发来源
+
+推店未回的第 2 轮及以后可由复聊 processor 确定性触发拉群。这条来源不经过 `invite_to_group` 工具，也不把工具开放给 `ReengagementAgent`：Agent 只生成“稍后邀请进群”的预告文案，processor 仅在该文案真实投递且 `markSent` 成功后调用 `GroupInviteService`。
+
+该来源使用独立灰度子键 `store_presented_no_reply:invite`，缺省关闭且不继承 `store_presented_no_reply` 主场景开关。缺城市时记录 `invite_skipped:no_city`；服务失败记录 `invite_failed:*` 且不重试；成功或核验已在群后清理本会话其余报名前复聊任务。Shadow、非回复、投递失败和状态不明分支均不会触发拉群。
+
 ---
 
 ## 群匹配规则

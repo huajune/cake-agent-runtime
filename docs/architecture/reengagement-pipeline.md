@@ -26,7 +26,8 @@ FollowUpTaskProcessor
     ├─ ② 频控：24h 内 sent 状态 ≤ 2
     ├─ ③ 9–21 窗口二次确认（防 delay 漂移）→ 越界则 reschedule
     ├─ ④ ReengagementAgent.compose()  ← 不开放工具
-    └─ ⑤ 投递 + 触达底账 outbox 状态机
+    ├─ ⑤ 投递 + 触达底账 outbox 状态机
+    └─ ⑥ 推店升档：仅 markSent 成功后确定性调用 GroupInviteService
               │
               ▼
         reengagement_touch_records（全生命周期落库）
@@ -72,6 +73,8 @@ await reengagementQueue.add(
 
 `interview_reminder` 在二期拥有两个同 code 档位：默认到场档仍使用原任务身份；报名日至面试日相差至少 3 个上海日历天时，额外排面试前 2 天确认档，任务锚点追加 `:d2` 后缀并在 payload 标记 `touchVariant=d2_confirm`。变体的延迟与灰度分别读取既有 map 的 `interview_reminder:d2` 子键，缺省延迟 2880 分钟、缺省灰度关闭，且不回退 `interview_reminder` 主场景开关。改期时两个档位按实时工单独立重排，确认档重新核验报名间隔。
 
+`store_presented_no_reply` 不新增场景 code。会话状态用 `storePresentationRounds` 单独累计推店轮次；第 2 轮起任务 payload 标记 `escalateToGroupInvite=true`。独立灰度子键 `store_presented_no_reply:invite` 缺省关闭且不回退主场景开关，关闭时在生成前移除有效升档标记，退化为普通推店未回文案。
+
 ---
 
 ## 4. 停止条件
@@ -110,7 +113,7 @@ await reengagementQueue.add(
 
 ### 5.1 主动回合禁用副作用工具
 
-复聊只提醒 / 答疑，**不替候选人报名或拉群**。现行 `ReengagementAgent` 不开放任何工具——这是物理约束，不靠 prompt。
+复聊 Agent 只负责提醒 / 答疑，**不替候选人报名或自主拉群**。现行 `ReengagementAgent` 不开放任何工具——这是物理约束，不靠 prompt。推店未回升档的拉群属于 processor 投递后的确定性编排，不改变 Agent 的工具边界。
 
 ### 5.2 outbox 状态机
 
@@ -140,6 +143,8 @@ reserved → delivery_attempted → sent / failed / unknown
 `GroupInviteService` 统一封装选群、成员实时预检、容量刷新、企微邀请及补拉 bot 重试、`invitedGroups` 记忆和 `group.invited` 运营底账。主链 `invite_to_group` 工具仍自己持有 `bookingSucceeded` / city / timing 回合意图闸，只把通过闸门的请求交给该 service。
 
 这是 processor / cron 可以调用的业务服务，**不是给 `ReengagementAgent` 开放的工具**；复聊 Agent 仍保持物理无工具。
+
+推店升档的调用点固定在 outbox `markSent` 成功之后：processor 读取会话事实中的意向城市，以主动回合 `batchId` 作为 `turnKey` 调用 service。成功（含 `alreadyInGroup`）追加 `group_invite_result` 触达事件并清理本会话其余 `pre_booking` 在途任务；失败记录 `invite_failed:{reason}`，缺城市记录 `invite_skipped:no_city`，两者均不重试、不回滚已发送文案。由于调用语句位于投递成功分支内部，shadow、非 reply、明确投递失败和 unknown 分支物理不可达。
 
 ---
 

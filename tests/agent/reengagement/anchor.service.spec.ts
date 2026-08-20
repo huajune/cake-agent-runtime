@@ -357,6 +357,38 @@ describe('ReengagementAnchorService', () => {
         }),
       }),
     );
+    expect(scheduler.scheduleFollowUp.mock.calls[0][0]).not.toHaveProperty('escalateToGroupInvite');
+  });
+
+  it('marks a second direct store presentation for deterministic group invite escalation', async () => {
+    session.getReengagementState.mockResolvedValue(
+      baseState({ presentedStores: [], storePresentationRounds: 1 }),
+    );
+
+    buildService().handleDeliveredReplyAnchors(
+      {
+        text: '奥乐齐（1044 凯德晶萃广场）- 分拣打包，8.1km',
+        toolCalls: [
+          {
+            toolName: 'duliday_job_list',
+            args: {},
+            result: {
+              resultCount: 1,
+              jobs: [{ jobId: 516221, storeName: '1044 凯德晶萃广场' }],
+            },
+          },
+        ],
+      },
+      context,
+    );
+    await flush();
+
+    expect(scheduler.scheduleFollowUp).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scenarioCode: 'store_presented_no_reply',
+        escalateToGroupInvite: true,
+      }),
+    );
   });
 
   it('schedules store-presented follow-up when the reply reuses the recalled candidate pool', async () => {
@@ -398,6 +430,47 @@ describe('ReengagementAnchorService', () => {
         state: expect.objectContaining({
           presentedStores: [{ jobId: 523107 }],
         }),
+      }),
+    );
+  });
+
+  it('marks a second recalled-pool presentation for deterministic group invite escalation', async () => {
+    session.getReengagementState.mockResolvedValue(
+      baseState({ presentedStores: [], storePresentationRounds: 1 }),
+    );
+    session.getSessionState.mockResolvedValue({
+      lastCandidatePool: [
+        {
+          jobId: 523107,
+          brandName: '奥乐齐',
+          jobName: '分拣打包',
+          storeName: '万源坊店',
+          cityName: '上海',
+          regionName: '闵行区',
+          laborForm: '全职',
+          salaryDesc: '6200-9800 元/月',
+          jobCategoryName: '分拣打包',
+        },
+      ],
+    });
+
+    buildService().handleDeliveredReplyAnchors(
+      {
+        text: [
+          '奥乐齐（万源坊店）分拣打包，离你 3.6 公里',
+          '班次：07:00-22:00 排班',
+          '薪资：6200-9800 元/月',
+        ].join('\n'),
+        toolCalls: [],
+      },
+      context,
+    );
+    await flush();
+
+    expect(scheduler.scheduleFollowUp).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scenarioCode: 'store_presented_no_reply',
+        escalateToGroupInvite: true,
       }),
     );
   });

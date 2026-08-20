@@ -384,6 +384,12 @@ export class ReengagementAgent {
       // 由下方统一分支安全跳过，不为纠正格式而冒险发送。
       if (blockReason !== 'none') return null;
       if (!hasMessage) return 'send_without_message';
+      if (
+        ctx.jobData.escalateToGroupInvite === true &&
+        this.hasCompletedGroupInviteClaim(output.message)
+      ) {
+        return 'group_invite_completed_claim';
+      }
       return null;
     }
 
@@ -409,7 +415,7 @@ export class ReengagementAgent {
       '- 只使用下方证据。未回复不等于已读，不得声称候选人“已读未回”；也不得猜测候选人在忙、已完成面试、已接受岗位或有其它未提供状态。',
       '- 不催促、不责备、不命令，不使用“怎么没回”“现在就”“赶紧”“别迟到”等表达。',
       '- 不编造岗位事实、名额、录用结果、回电安排或任何已完成动作。',
-      '- 不能报名、不能拉群、不能发消息、不能创建或修改工单；本 Agent 不开放任何工具。',
+      '- 不能报名、不能自主执行拉群、不能另发消息、不能创建或修改工单；本 Agent 不开放任何工具。只有本次任务明确要求预告拉群时，才可使用将来时态说明稍后会邀请进群，绝不能声称拉群已经完成。',
       '- 不要提及系统、模型、工具、JSON、任务代码、灰度发布、内部观测或隐私占位符。',
       '',
       '# 本次需要完成的任务',
@@ -492,14 +498,26 @@ export class ReengagementAgent {
   }
 
   private resolveObjective(ctx: ReengagementComposeContext): string {
+    if (ctx.jobData.escalateToGroupInvite === true) {
+      return '承接本轮新推荐岗位，确认候选人是否对这些机会不感兴趣，并预告稍后邀请进入兼职岗位信息群继续扩面';
+    }
     return ctx.jobData.touchVariant === 'd2_confirm'
       ? '面试前提前确认候选人是否仍在找工作，并顺带提醒已约面试及可调整时间'
       : ctx.scenario.objective;
   }
 
   private resolveGenerationPolicy(ctx: ReengagementComposeContext): string {
+    if (ctx.jobData.escalateToGroupInvite === true) {
+      return '先简短承接本轮新推荐的岗位或门店，询问候选人是否对这些机会不感兴趣，再预告稍后会邀请进入兼职岗位信息群，方便继续查看更多机会。拉群只能用将来或待执行时态，禁止使用“已拉”“已经进群”“已加入”等完成时态，也不得承诺具体群名或入群结果';
+    }
     if (ctx.jobData.touchVariant !== 'd2_confirm') return ctx.scenario.generationPolicy;
     return '先轻量确认候选人是否还在找工作、求职意向是否仍在，再顺带提醒已约的面试时间；明确给出时间不合适可以提前调整、已经找到合适工作可以告知放弃的出口。线下面试且工单有地址时才提地址；AI 或其他线上面试沿用已核验的面试形式口径；工单未提供的信息只做中性提醒。不施压，不声称已读';
+  }
+
+  private hasCompletedGroupInviteClaim(message: string): boolean {
+    return /(?:已|已经|刚刚|刚才).{0,12}(?:拉(?:你|进)|邀请.{0,6}(?:进|加入)|加入|进了).{0,8}群|(?:拉进|加入|进了).{0,8}群(?:了|啦|哈)/u.test(
+      message,
+    );
   }
 
   /**
@@ -542,6 +560,9 @@ export class ReengagementAgent {
     const lines: string[] = [];
     if (ctx.scenario.code === 'store_presented_no_reply') {
       lines.push('- 已推荐过岗位或门店：是');
+      if (ctx.jobData.escalateToGroupInvite === true) {
+        lines.push('- 本次是第二轮及以后扩面收口：文案投递成功后才会尝试拉群，目前尚未执行');
+      }
     }
     if (ctx.scenario.code === 'booking_incomplete') {
       const collected = Object.keys(ctx.state.collectedFields)

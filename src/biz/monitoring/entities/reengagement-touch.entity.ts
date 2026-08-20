@@ -49,6 +49,7 @@ export enum ReengagementTouchEventName {
   OutcomeNotReply = 'outcome_not_reply',
   DeliveryAttempted = 'delivery_attempted',
   Sent = 'sent',
+  GroupInviteResult = 'group_invite_result',
   DeliveryUnknown = 'delivery_unknown',
 }
 

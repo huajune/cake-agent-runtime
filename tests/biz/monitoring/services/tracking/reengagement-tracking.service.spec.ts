@@ -111,6 +111,21 @@ describe('ReengagementTrackingService', () => {
     expect(input.generatedText).toBe('明天见！');
   });
 
+  it.each([
+    [{ success: false, reason: 'group_full' }, 'invite_failed:group_full'],
+    [{ success: false, skipped: true, reason: 'no_city' }, 'invite_skipped:no_city'],
+  ])('appends deterministic group invite result %j', (result, expectedReason) => {
+    service.trackGroupInviteResult(identity, result);
+
+    const input = lastInput();
+    expect(input.status).toBeUndefined();
+    expect(input.decisionReason).toBe(expectedReason);
+    expect(input.event?.event).toBe('group_invite_result');
+    expect(input.event?.detail).toEqual(
+      expect.objectContaining({ success: false, reason: expectedReason }),
+    );
+  });
+
   it('records delivery unknown with error', () => {
     service.trackDeliveryUnknown(identity, 'gateway timeout');
 

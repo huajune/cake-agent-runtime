@@ -164,11 +164,10 @@ export class ReengagementAnchorService {
         ? []
         : toolCalls.filter((call) => this.presentedStore(call, reply));
     if (presentedStoreCalls.length > 0) {
-      void this.schedule(
-        'store_presented_no_reply',
+      void this.scheduleStorePresentation(
         `${context.traceId}:store_presented`,
         context,
-        { presentedStores: this.extractPresentedStores(presentedStoreCalls) },
+        this.extractPresentedStores(presentedStoreCalls),
       );
     } else if (
       !collectionContinued &&
@@ -226,6 +225,33 @@ export class ReengagementAnchorService {
       });
     } catch (error) {
       this.logFailure(`schedule ${scenarioCode}`, context, error);
+    }
+  }
+
+  private async scheduleStorePresentation(
+    anchorEventId: string,
+    context: AnchorContext,
+    presentedStores: ReengagementSessionState['presentedStores'],
+  ): Promise<void> {
+    try {
+      const state = await this.loadState(context);
+      await this.scheduler.scheduleFollowUp({
+        sessionRef: {
+          corpId: context.corpId,
+          userId: context.userId,
+          sessionId: context.chatId,
+        },
+        scenarioCode: 'store_presented_no_reply',
+        anchorEventId,
+        anchorAt: Date.now(),
+        state: { ...state, presentedStores },
+        channelIdentity: context.channelIdentity,
+        ...(state.storePresentationRounds != null && state.storePresentationRounds >= 1
+          ? { escalateToGroupInvite: true }
+          : {}),
+      });
+    } catch (error) {
+      this.logFailure('schedule store_presented_no_reply', context, error);
     }
   }
 
@@ -326,11 +352,10 @@ export class ReengagementAnchorService {
       const presentedJobs = extractPresentedJobs(reply, state.lastCandidatePool ?? []);
       if (presentedJobs.length === 0) return;
 
-      await this.schedule(
-        'store_presented_no_reply',
+      await this.scheduleStorePresentation(
         `${context.traceId}:store_presented`,
         context,
-        { presentedStores: presentedJobs.map((job) => ({ jobId: job.jobId })) },
+        presentedJobs.map((job) => ({ jobId: job.jobId })),
       );
     } catch (error) {
       this.logFailure('match recalled pool presentation', context, error);

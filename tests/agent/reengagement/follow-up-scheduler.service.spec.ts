@@ -68,6 +68,26 @@ describe('FollowUpSchedulerService', () => {
     expect(queue.add).not.toHaveBeenCalled();
   });
 
+  it('passes the store invite escalation marker through the Bull payload', async () => {
+    await service.scheduleFollowUp({
+      sessionRef,
+      scenarioCode: 'store_presented_no_reply',
+      anchorEventId: 'evt-store-2',
+      anchorAt: Date.UTC(2026, 5, 24, 2, 0, 0),
+      state: baseState({ presentedStores: [{ jobId: 519709 }] }),
+      escalateToGroupInvite: true,
+    });
+
+    expect(queue.add).toHaveBeenCalledWith(
+      REENGAGEMENT_JOB_NAME,
+      expect.objectContaining({
+        scenarioCode: 'store_presented_no_reply',
+        escalateToGroupInvite: true,
+      }),
+      expect.any(Object),
+    );
+  });
+
   it('removes all pending store follow-ups for the session and tracks them as stopped', async () => {
     const removeMatching = jest.fn().mockResolvedValue(undefined);
     const removeOtherScenario = jest.fn().mockResolvedValue(undefined);

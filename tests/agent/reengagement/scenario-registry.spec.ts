@@ -432,5 +432,28 @@ describe('scenario-registry', () => {
         ),
       ).toBe(false);
     });
+
+    it('keeps store invite escalation off when its child key is missing without changing the main scenario', () => {
+      const scenario = getScenario('store_presented_no_reply')!;
+      const config = {
+        reengagementScenarioRollout: { store_presented_no_reply: true },
+      };
+
+      expect(resolveRolloutEnabled(scenario, config)).toBe(true);
+      expect(resolveRolloutEnabled(scenario, config, undefined, 'invite')).toBe(false);
+      expect(
+        resolveRolloutEnabled(
+          scenario,
+          {
+            reengagementScenarioRollout: {
+              store_presented_no_reply: true,
+              'store_presented_no_reply:invite': true,
+            },
+          },
+          undefined,
+          'invite',
+        ),
+      ).toBe(true);
+    });
   });
 });

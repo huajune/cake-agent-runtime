@@ -35,7 +35,7 @@ const asExecution = (outcome: Record<string, unknown>, over: Record<string, unkn
 
 describe('FollowUpProcessor', () => {
   let queue: { process: jest.Mock; add: jest.Mock };
-  let session: { getReengagementState: jest.Mock };
+  let session: { getReengagementState: jest.Mock; getSessionState: jest.Mock };
   let reengagementAgent: { compose: jest.Mock };
   let touchLedger: {
     isOverFrequencyLimit: jest.Mock;
@@ -55,14 +55,18 @@ describe('FollowUpProcessor', () => {
     fetchJobs: jest.Mock;
   };
   let longTerm: { getActiveBookings: jest.Mock };
-  let scheduler: { scheduleFollowUp: jest.Mock };
+  let scheduler: { scheduleFollowUp: jest.Mock; stopPendingJobsForSessionScenario: jest.Mock };
+  let groupInvite: { invite: jest.Mock };
   let configService: { get: jest.Mock };
   let delivery: { deliver: jest.Mock };
 
   beforeEach(() => {
     jest.useRealTimers();
     queue = { process: jest.fn(), add: jest.fn().mockResolvedValue(undefined) };
-    session = { getReengagementState: jest.fn().mockResolvedValue(baseState()) };
+    session = {
+      getReengagementState: jest.fn().mockResolvedValue(baseState()),
+      getSessionState: jest.fn().mockResolvedValue({ facts: null }),
+    };
     reengagementAgent = {
       compose: jest.fn().mockResolvedValue(
         asExecution({
@@ -94,7 +98,13 @@ describe('FollowUpProcessor', () => {
       fetchJobs: jest.fn().mockResolvedValue({ jobs: [], total: 0 }),
     };
     longTerm = { getActiveBookings: jest.fn().mockResolvedValue([]) };
-    scheduler = { scheduleFollowUp: jest.fn().mockResolvedValue({ scheduled: true }) };
+    scheduler = {
+      scheduleFollowUp: jest.fn().mockResolvedValue({ scheduled: true }),
+      stopPendingJobsForSessionScenario: jest.fn().mockResolvedValue(0),
+    };
+    groupInvite = {
+      invite: jest.fn().mockResolvedValue({ success: true, groupName: '上海兼职群' }),
+    };
     configService = {
       get: jest.fn((key: string) =>
         key === 'STRIDE_ENTERPRISE_TOKEN' ? 'stride-enterprise-token' : undefined,
@@ -113,6 +123,7 @@ describe('FollowUpProcessor', () => {
       trackOutcomeNotReply: jest.fn(),
       trackDeliveryAttempted: jest.fn(),
       trackSent: jest.fn(),
+      trackGroupInviteResult: jest.fn(),
       trackDeliveryUnknown: jest.fn(),
     };
     messageTracking = { recordProactiveTurn: jest.fn() };
@@ -150,6 +161,7 @@ describe('FollowUpProcessor', () => {
       sponge as never,
       longTerm as never,
       scheduler as never,
+      groupInvite as never,
       configService as never,
       withDelivery ? (delivery as never) : undefined,
     );
@@ -770,6 +782,235 @@ describe('FollowUpProcessor', () => {
     expect(reengagementAgent.compose).toHaveBeenCalledTimes(1);
     expect(queue.add).not.toHaveBeenCalled();
     expect(tracking.trackRescheduled).not.toHaveBeenCalled();
+  });
+
+  describe('store presentation group invite escalation', () => {
+    const escalatedJob = () =>
+      makeJob({
+        data: {
+          sessionRef,
+          scenarioCode: 'store_presented_no_reply',
+          anchorEventId: 'evt-store-2',
+          anchorAt: Date.UTC(2026, 5, 24, 2, 0, 0),
+          escalateToGroupInvite: true,
+          channelIdentity: {
+            candidateName: '候选人',
+            managerName: 'bot-user-1',
+            botImId: 'bot-im-1',
+            imContactId: 'contact-1',
+          },
+        },
+      });
+
+    const enableEscalation = (shadow = false) => {
+      systemConfig.getAgentReplyConfig.mockResolvedValue({
+        reengagementEnabled: true,
+        reengagementShadow: shadow,
+        reengagementScenarioRollout: {
+          store_presented_no_reply: true,
+          'store_presented_no_reply:invite': true,
+        },
+      });
+      session.getReengagementState.mockResolvedValue(
+        baseState({ presentedStores: [{ jobId: 519709 }], storePresentationRounds: 2 }),
+      );
+      session.getSessionState.mockResolvedValue({
+        facts: {
+          preferences: {
+            city: {
+              value: '上海',
+              confidence: 'high',
+              source: 'candidate_quote',
+              evidence: '我在上海找工作',
+            },
+          },
+        },
+      });
+      reengagementAgent.compose.mockResolvedValue(
+        asExecution({
+          kind: 'reply',
+          reply: { text: '这批岗位也不感兴趣吗？稍后邀请你进兼职岗位群继续看看。' },
+          generatedText: '这批岗位也不感兴趣吗？稍后邀请你进兼职岗位群继续看看。',
+          toolCalls: [],
+          scenarioCode: 'store_presented_no_reply',
+          agentSteps: [],
+        }),
+      );
+    };
+
+    it('invites only after markSent succeeds, records success, and closes pending pre-booking jobs', async () => {
+      const now = Date.UTC(2026, 5, 24, 2, 0, 0);
+      jest.spyOn(Date, 'now').mockReturnValue(now);
+      enableEscalation();
+
+      await buildProcessor().process(escalatedJob());
+
+      expect(groupInvite.invite).toHaveBeenCalledWith(
+        expect.objectContaining({
+          corpId: 'corp-1',
+          userId: 'user-1',
+          sessionId: 'sess-1',
+          botImId: 'bot-im-1',
+          botUserId: 'bot-user-1',
+          contactWxid: 'user-1',
+          city: '上海',
+          turnKey: 'batch_sess-1_1782266400000',
+        }),
+      );
+      expect(touchLedger.markSent.mock.invocationCallOrder[0]).toBeLessThan(
+        groupInvite.invite.mock.invocationCallOrder[0],
+      );
+      expect(tracking.trackGroupInviteResult).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ success: true, groupName: '上海兼职群' }),
+      );
+      expect(scheduler.stopPendingJobsForSessionScenario).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sessionRef,
+          reason: 'candidate_invited_to_group',
+        }),
+      );
+    });
+
+    it('records a failed invite without retrying or rolling back the delivered copy', async () => {
+      enableEscalation();
+      groupInvite.invite.mockResolvedValue({ success: false, reason: 'group_full' });
+
+      await buildProcessor().process(escalatedJob());
+
+      expect(delivery.deliver).toHaveBeenCalledTimes(1);
+      expect(touchLedger.markSent).toHaveBeenCalledTimes(1);
+      expect(groupInvite.invite).toHaveBeenCalledTimes(1);
+      expect(tracking.trackGroupInviteResult).toHaveBeenCalledWith(expect.anything(), {
+        success: false,
+        reason: 'group_full',
+      });
+      expect(scheduler.stopPendingJobsForSessionScenario).not.toHaveBeenCalled();
+      expect(touchLedger.markFailedOrUnknown).not.toHaveBeenCalled();
+    });
+
+    it('skips the invite with a ledger reason when session facts have no intent city', async () => {
+      enableEscalation();
+      session.getSessionState.mockResolvedValue({ facts: null });
+
+      await buildProcessor().process(escalatedJob());
+
+      expect(groupInvite.invite).not.toHaveBeenCalled();
+      expect(tracking.trackGroupInviteResult).toHaveBeenCalledWith(expect.anything(), {
+        success: false,
+        skipped: true,
+        reason: 'no_city',
+      });
+      expect(touchLedger.markSent).toHaveBeenCalled();
+    });
+
+    it('treats alreadyInGroup as a successful closeout without another escalation task', async () => {
+      enableEscalation();
+      groupInvite.invite.mockResolvedValue({
+        success: true,
+        alreadyInGroup: true,
+        groupName: '上海兼职群',
+      });
+
+      await buildProcessor().process(escalatedJob());
+
+      expect(groupInvite.invite).toHaveBeenCalledTimes(1);
+      expect(tracking.trackGroupInviteResult).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ success: true, alreadyInGroup: true }),
+      );
+      expect(scheduler.stopPendingJobsForSessionScenario).toHaveBeenCalledWith(
+        expect.objectContaining({ reason: 'candidate_already_in_group' }),
+      );
+    });
+
+    it('never calls invite in shadow mode', async () => {
+      enableEscalation(true);
+
+      await buildProcessor().process(escalatedJob());
+
+      expect(reengagementAgent.compose).toHaveBeenCalledWith(
+        expect.objectContaining({
+          jobData: expect.objectContaining({ escalateToGroupInvite: true }),
+        }),
+      );
+      expect(delivery.deliver).not.toHaveBeenCalled();
+      expect(touchLedger.markSent).not.toHaveBeenCalled();
+      expect(groupInvite.invite).not.toHaveBeenCalled();
+    });
+
+    it('degrades to ordinary store copy when the invite child key is off', async () => {
+      enableEscalation();
+      systemConfig.getAgentReplyConfig.mockResolvedValue({
+        reengagementEnabled: true,
+        reengagementShadow: false,
+        reengagementScenarioRollout: { store_presented_no_reply: true },
+      });
+
+      await buildProcessor().process(escalatedJob());
+
+      expect(reengagementAgent.compose).toHaveBeenCalledWith(
+        expect.objectContaining({
+          jobData: expect.objectContaining({ escalateToGroupInvite: false }),
+        }),
+      );
+      expect(delivery.deliver).toHaveBeenCalledTimes(1);
+      expect(groupInvite.invite).not.toHaveBeenCalled();
+    });
+
+    it('keeps non-reply outcomes physically unable to reach invite', async () => {
+      enableEscalation();
+      reengagementAgent.compose.mockResolvedValue(
+        asExecution({
+          kind: 'skipped',
+          toolCalls: [],
+          scenarioCode: 'store_presented_no_reply',
+          agentSteps: [],
+        }),
+      );
+
+      await buildProcessor().process(escalatedJob());
+
+      expect(delivery.deliver).not.toHaveBeenCalled();
+      expect(touchLedger.markSent).not.toHaveBeenCalled();
+      expect(groupInvite.invite).not.toHaveBeenCalled();
+    });
+
+    it('keeps failed or unknown delivery physically unable to reach invite', async () => {
+      enableEscalation();
+      delivery.deliver.mockRejectedValue(new Error('gateway timeout'));
+
+      await expect(buildProcessor().process(escalatedJob())).rejects.toThrow('gateway timeout');
+
+      expect(touchLedger.markSent).not.toHaveBeenCalled();
+      expect(groupInvite.invite).not.toHaveBeenCalled();
+      expect(touchLedger.markFailedOrUnknown).toHaveBeenCalledWith(
+        'sess-1:store_presented_no_reply:evt-store-2',
+        'unknown',
+      );
+    });
+
+    it('keeps an explicitly skipped delivery physically unable to reach invite', async () => {
+      enableEscalation();
+      delivery.deliver.mockResolvedValue({
+        success: true,
+        segmentCount: 0,
+        failedSegments: 0,
+        deliveredSegments: 0,
+        totalTime: 0,
+        skipped: true,
+        skipReason: 'hosting_paused',
+      });
+
+      await buildProcessor().process(escalatedJob());
+
+      expect(touchLedger.markSent).not.toHaveBeenCalled();
+      expect(groupInvite.invite).not.toHaveBeenCalled();
+      expect(touchLedger.markFailedOrUnknown).toHaveBeenCalledWith(
+        'sess-1:store_presented_no_reply:evt-store-2',
+        'failed',
+      );
+    });
   });
 
   describe('二次触发追溯落库埋点', () => {

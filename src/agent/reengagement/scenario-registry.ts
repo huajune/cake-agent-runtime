@@ -347,8 +347,12 @@ export function resolveRolloutEnabled(
   scenario: FollowUpScenario,
   config: ScenarioRolloutConfig,
   variant?: FollowUpTouchVariant,
+  childVariant?: 'invite',
 ): boolean {
-  const variantKey = resolveVariantConfigKey(scenario.code, variant);
+  const variantKey =
+    childVariant === 'invite' && scenario.code === 'store_presented_no_reply'
+      ? 'store_presented_no_reply:invite'
+      : resolveVariantConfigKey(scenario.code, variant);
   const scenarioEnabled = variantKey
     ? (config.reengagementScenarioRollout?.[variantKey] ?? false)
     : (config.reengagementScenarioRollout?.[scenario.code] ?? scenario.defaultRolloutEnabled);

@@ -887,6 +887,8 @@ export interface WeworkSessionState {
   lastCandidatePool: RecommendedJobSummary[] | null;
   /** 最近几轮真正发给候选人的岗位 */
   presentedJobs: RecommendedJobSummary[] | null;
+  /** 本次求职会话累计发生过的推店轮次；与 presentedJobs 的岗位去重集合职责分离。 */
+  storePresentationRounds?: number;
   /** 候选人当前明确在聊或准备报名的岗位 */
   currentFocusJob: RecommendedJobSummary | null;
   /** 本会话中已邀入的兼职群 */
@@ -942,6 +944,7 @@ export const WeworkSessionStateSchema = z.object({
   facts: SessionFactsSchema.nullable(),
   lastCandidatePool: z.array(RecommendedJobSummarySchema).nullable(),
   presentedJobs: z.array(RecommendedJobSummarySchema).nullable(),
+  storePresentationRounds: z.number().int().nonnegative().optional(),
   currentFocusJob: RecommendedJobSummarySchema.nullable(),
   invitedGroups: z.array(InvitedGroupRecordSchema).nullable(),
   terminal: z.enum(SESSION_TERMINAL_STATES).nullable().optional(),

@@ -1109,4 +1109,70 @@ describe('ReengagementAgent', () => {
     expect(result.outcome.kind).toBe('reply');
     expect(result.validationReason).toBeUndefined();
   });
+
+  it('generates escalated store copy with a future-tense group invite preview', async () => {
+    llm.generateStructured.mockResolvedValueOnce({
+      output: {
+        decision: 'send',
+        blockReason: 'none',
+        message: '这批新岗位也不太感兴趣吗？稍后邀请你进兼职岗位群，可以继续看看其他机会。',
+        reason: '已经是第二轮扩面后的沉默，需要确认兴趣并预告后续拉群',
+      },
+      usage: { inputTokens: 10, outputTokens: 8, totalTokens: 18 },
+    });
+
+    const result = await reengagementAgent.compose({
+      sessionRef,
+      scenario: getScenario('store_presented_no_reply')!,
+      jobData: job('store_presented_no_reply', { escalateToGroupInvite: true }),
+      state: baseState({
+        presentedStores: [{ jobId: 519709 }],
+        storePresentationRounds: 2,
+      }),
+    });
+
+    const system = llm.generateStructured.mock.calls[0][0].system as string;
+    expect(system).toContain('询问候选人是否对这些机会不感兴趣');
+    expect(system).toContain('拉群只能用将来或待执行时态');
+    expect(system).toContain('目前尚未执行');
+    expect(result.outcome.kind).toBe('reply');
+    expect(result.outcome.reply?.text).toContain('稍后邀请你进兼职岗位群');
+    expect(result.outcome.reply?.text).not.toMatch(/已拉|已经进群|已加入/u);
+  });
+
+  it('rejects only a false completed group-invite claim and accepts the corrected preview', async () => {
+    llm.generateStructured
+      .mockResolvedValueOnce({
+        output: {
+          decision: 'send',
+          blockReason: 'none',
+          message: '这些岗位不感兴趣吗？已经拉你进兼职岗位群了。',
+          reason: '第二轮扩面收口',
+        },
+        usage: { inputTokens: 10, outputTokens: 8, totalTokens: 18 },
+      })
+      .mockResolvedValueOnce({
+        output: {
+          decision: 'send',
+          blockReason: 'none',
+          message: '这些岗位不感兴趣吗？稍后邀请你进兼职岗位群继续看看。',
+          reason: '第二轮扩面收口',
+        },
+        usage: { inputTokens: 10, outputTokens: 8, totalTokens: 18 },
+      });
+
+    const result = await reengagementAgent.compose({
+      sessionRef,
+      scenario: getScenario('store_presented_no_reply')!,
+      jobData: job('store_presented_no_reply', { escalateToGroupInvite: true }),
+      state: baseState({ presentedStores: [{ jobId: 519709 }] }),
+    });
+
+    expect(llm.generateStructured).toHaveBeenCalledTimes(2);
+    expect(llm.generateStructured.mock.calls[1][0].system).toContain(
+      'group_invite_completed_claim',
+    );
+    expect(result.outcome.kind).toBe('reply');
+    expect(result.outcome.reply?.text).toBe('这些岗位不感兴趣吗？稍后邀请你进兼职岗位群继续看看。');
+  });
 });

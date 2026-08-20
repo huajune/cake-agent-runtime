@@ -59,6 +59,8 @@ export interface FollowUpJob {
   resolveBookingAtFire?: boolean;
   /** 同场景内的触达档位；通过 anchorEventId 后缀保留追溯身份。 */
   touchVariant?: FollowUpTouchVariant;
+  /** 推店未回的第二轮起升级标记；是否生效仍由独立 invite 子开关到点裁决。 */
+  escalateToGroupInvite?: boolean;
 }
 
 /** 触达底账 outbox 状态机。 */
@@ -88,6 +90,8 @@ export interface ScheduleFollowUpInput {
   channelIdentity?: ReengagementChannelIdentity;
   /** 同场景内的触达档位。 */
   touchVariant?: FollowUpTouchVariant;
+  /** 推店未回的第二轮起升级标记。 */
+  escalateToGroupInvite?: boolean;
 }
 
 function createEmptyState(): ReengagementSessionState {
@@ -240,6 +244,7 @@ export class FollowUpSchedulerService {
           ...(input.workOrderId != null ? { workOrderId: input.workOrderId } : {}),
           ...(input.channelIdentity ? { channelIdentity: input.channelIdentity } : {}),
           ...(input.touchVariant ? { touchVariant: input.touchVariant } : {}),
+          ...(input.escalateToGroupInvite ? { escalateToGroupInvite: true } : {}),
         },
         {
           jobId,

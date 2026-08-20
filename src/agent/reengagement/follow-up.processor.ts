@@ -13,7 +13,12 @@ import type { MessageProcessingRecordInput } from '@biz/message/types/message.ty
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { MessageProcessingService } from '@biz/message/services/message-processing.service';
 import { isHumanAgentTextMessage } from '@biz/message/utils/message-provenance.util';
+import {
+  GroupInviteService,
+  type GroupInviteResult,
+} from '@biz/group-task/services/group-invite.service';
 import { SessionService } from '@memory/services/session.service';
+import { unwrapSessionFactValue } from '@memory/types/session-facts.types';
 import { LongTermService } from '@memory/services/long-term.service';
 import { SpongeService } from '@sponge/sponge.service';
 import { ACTIVE_INTERVIEW_WORK_ORDER_STATUSES } from '@sponge/sponge.types';
@@ -30,6 +35,7 @@ import {
 import {
   bookingFollowUpAnchorId,
   computeFireAt,
+  FOLLOW_UP_SCENARIOS,
   getScenario,
   parseInterviewTimestamp,
   resolveRolloutEnabled,
@@ -155,6 +161,7 @@ export class FollowUpProcessor implements OnModuleInit {
     private readonly sponge: SpongeService,
     private readonly longTerm: LongTermService,
     private readonly scheduler: FollowUpSchedulerService,
+    private readonly groupInvite: GroupInviteService,
     private readonly configService: ConfigService,
     @Optional()
     @Inject(REENGAGEMENT_DELIVERY_PORT)
@@ -457,11 +464,17 @@ export class FollowUpProcessor implements OnModuleInit {
     // 候选人没收到这条文本，若被投影成助手轮次，下一轮真实对话会引用一段候选人从未见过的"跟进"（HC-4 幽灵回复）。
     // 场景级灰度（Dashboard 可配）：场景开关 × 报名后大开关叠加
     const rolloutEnabled = resolveRolloutEnabled(scenario, runtime, job.data.touchVariant);
+    const inviteRolloutEnabled =
+      job.data.escalateToGroupInvite === true &&
+      resolveRolloutEnabled(scenario, runtime, undefined, 'invite');
+    const effectiveJobData: FollowUpJob = inviteRolloutEnabled
+      ? job.data
+      : { ...job.data, escalateToGroupInvite: false };
     const shadow = !this.delivery || runtime.reengagementShadow;
     if (shadow || !rolloutEnabled || !this.delivery) {
       const batchId = `batch_${sessionRef.sessionId}_${now}`;
       const execution = await this.runProactiveTurn(
-        job.data,
+        effectiveJobData,
         state,
         scenario,
         batchId,
@@ -533,7 +546,7 @@ export class FollowUpProcessor implements OnModuleInit {
     // 追溯页凭触达记录上的 batch_id 直接跳到该回合的完整生成轨迹。
     const batchId = `batch_${sessionRef.sessionId}_${now}`;
     const execution = await this.runProactiveTurn(
-      job.data,
+      effectiveJobData,
       state,
       scenario,
       batchId,
@@ -575,7 +588,15 @@ export class FollowUpProcessor implements OnModuleInit {
       await this.touchLedger.markFailedOrUnknown(key, 'failed');
       return;
     }
-    await this.outboxDeliverReserved(execution, key, sessionRef.sessionId, now, identity, batchId);
+    await this.outboxDeliverReserved(
+      execution,
+      key,
+      sessionRef.sessionId,
+      now,
+      identity,
+      batchId,
+      effectiveJobData,
+    );
   }
 
   /**
@@ -960,6 +981,7 @@ export class FollowUpProcessor implements OnModuleInit {
     now: number,
     identity: ReengagementTouchIdentity,
     batchId: string,
+    jobData: FollowUpJob,
   ): Promise<void> {
     const { outcome } = execution;
     const sessionRef = { sessionId, userId: identity.userId ?? '', corpId: identity.corpId ?? '' };
@@ -1009,6 +1031,9 @@ export class FollowUpProcessor implements OnModuleInit {
       }
       await this.touchLedger.markSent(key, sessionId, now);
       this.tracking.trackSent(identity, outcome.reply?.text, batchId);
+      if (jobData.escalateToGroupInvite === true) {
+        await this.handleEscalatedGroupInvite(jobData, identity, batchId);
+      }
       if (scenario) {
         this.messageTracking.recordProactiveTurn(
           this.buildProactiveTurnRecord({
@@ -1064,6 +1089,68 @@ export class FollowUpProcessor implements OnModuleInit {
       throw error;
     }
     this.logger.log(`[reengagement] 已投递 key=${key}`);
+  }
+
+  private async handleEscalatedGroupInvite(
+    jobData: FollowUpJob,
+    identity: ReengagementTouchIdentity,
+    batchId: string,
+  ): Promise<void> {
+    try {
+      const state = await this.session.getSessionState(
+        jobData.sessionRef.corpId,
+        jobData.sessionRef.userId,
+        jobData.sessionRef.sessionId,
+      );
+      const cityValue = unwrapSessionFactValue(state.facts?.preferences.city);
+      const city = typeof cityValue === 'string' ? cityValue.trim() : '';
+      if (!city) {
+        this.tracking.trackGroupInviteResult(identity, {
+          success: false,
+          skipped: true,
+          reason: 'no_city',
+        });
+        return;
+      }
+
+      const result = await this.groupInvite.invite({
+        corpId: jobData.sessionRef.corpId,
+        userId: jobData.sessionRef.userId,
+        sessionId: jobData.sessionRef.sessionId,
+        botImId: identity.botImId ?? '',
+        botUserId: identity.managerName ?? '',
+        contactWxid: jobData.sessionRef.userId,
+        city,
+        turnKey: batchId,
+        messageId: batchId,
+        contactName: identity.candidateName,
+        chatId: jobData.sessionRef.sessionId,
+      });
+      this.tracking.trackGroupInviteResult(identity, result);
+      if (!result.success) return;
+
+      for (const pendingScenario of FOLLOW_UP_SCENARIOS.filter(
+        (candidate) => candidate.phase === 'pre_booking',
+      )) {
+        await this.scheduler.stopPendingJobsForSessionScenario({
+          sessionRef: jobData.sessionRef,
+          scenarioCode: pendingScenario.code,
+          reason: result.alreadyInGroup
+            ? 'candidate_already_in_group'
+            : 'candidate_invited_to_group',
+        });
+      }
+    } catch (error) {
+      const result: GroupInviteResult = {
+        success: false,
+        reason: 'api_failed',
+        rejectionReason: this.errorMessage(error),
+      };
+      this.tracking.trackGroupInviteResult(identity, result);
+      this.logger.warn(
+        `[reengagement] 升档拉群失败且不重试 sessionId=${jobData.sessionRef.sessionId}: ${this.errorMessage(error)}`,
+      );
+    }
   }
 
   private buildDeliveryContext(
