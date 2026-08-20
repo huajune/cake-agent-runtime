@@ -231,3 +231,58 @@ describe('全通道产物一律过公证', () => {
     expect(result.outcome).toBe('rejected');
   });
 });
+
+describe('R1 确认作证恢复（裸字段通道）', () => {
+  const messages = [
+    { role: 'user', content: '姓名：兮兮' },
+    { role: 'assistant', content: '核对一下：姓名 兮兮，年龄 25，对吗？' },
+    { role: 'user', content: '对' },
+  ];
+
+  it('值只在我方复述里、候选人回"对" → 带问句作证提案', () => {
+    const proposals = collectProposals(
+      base({
+        legacyArgs: { age: '25' },
+        candidateTexts: ['姓名：兮兮', '对'],
+        messages,
+      }),
+    );
+    const age = proposals.find((p) => p.labelId === 687);
+    expect(age).toBeDefined();
+    expect(age?.sourceText).toBe('对');
+    expect(age?.agentQuestionQuote).toContain('年龄 25');
+  });
+
+  it('候选人没肯定应答就不恢复（宁漏不错）', () => {
+    const proposals = collectProposals(
+      base({
+        legacyArgs: { age: '25' },
+        candidateTexts: ['姓名：兮兮', '等一下'],
+        messages: [...messages.slice(0, 2), { role: 'user', content: '等一下' }],
+      }),
+    );
+    expect(proposals.find((p) => p.labelId === 687)).toBeUndefined();
+  });
+
+  it('词表外的说法不进确定性档（§11：口语长尾归模型作证）', () => {
+    // "确定"/"好的" 目前不在肯定词表内——不在这里扩词，交主聊模型发 confirm claim。
+    for (const answer of ['确定', '好的', '没问题']) {
+      const proposals = collectProposals(
+        base({
+          legacyArgs: { age: '25' },
+          candidateTexts: ['姓名：兮兮', answer],
+          messages: [...messages.slice(0, 2), { role: 'user', content: answer }],
+        }),
+      );
+      expect(proposals.find((p) => p.labelId === 687)).toBeUndefined();
+    }
+  });
+
+  it('原文里查得到就走回查，不用确认恢复（回查优先）', () => {
+    const proposals = collectProposals(
+      base({ legacyArgs: { age: '26' }, candidateTexts: ['我今年26岁'], messages: [] }),
+    );
+    expect(proposals[0].channel).toBe('legacy_arg');
+    expect(proposals[0].agentQuestionQuote).toBeUndefined();
+  });
+});

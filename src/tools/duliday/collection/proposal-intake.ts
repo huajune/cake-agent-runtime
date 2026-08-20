@@ -20,6 +20,11 @@
 
 import { adapterFor, type ContractFieldDef, type ValueProposal } from '@resolution/collection';
 import type { CandidateClaimField } from '@resolution/evidence/claim.types';
+import {
+  extractDialogueTurns,
+  isAffirmativeAnswer,
+  normalizeShortAnswer,
+} from '@resolution/signal/dialogue';
 
 /** 主通道 claim 的最小形状（与 precheck 入参 candidateClaims 同构）。 */
 export interface IntakeClaim {
@@ -229,16 +234,32 @@ function fromLegacyArgs(input: IntakeInput): IntakeProposal[] {
     if (!field) continue;
 
     const recovered = adapterFor(field)({ field, candidateText: corpus });
-    if (!recovered || !valuesLooselyEqual(recovered.value, value)) continue;
+    if (recovered && valuesLooselyEqual(recovered.value, value)) {
+      proposals.push({
+        labelId: field.labelId,
+        value: recovered.value,
+        optionCodes: recovered.optionCodes,
+        sourceText: recovered.sourceText,
+        producer: recovered.producer,
+        candidateTexts: input.candidateTexts,
+        messages: input.messages,
+        channel: 'legacy_arg',
+      });
+      continue;
+    }
 
+    // 原文里回查不到，再试**确认作证**（R1）：值可能在我方复述里，候选人只回了"对"。
+    // 这是 0819 死循环的另一半——模型只传裸字段、不发 claim 时的同一处病灶。
+    const confirmed = recoverByConfirmation(value, input.messages);
+    if (!confirmed) continue;
     proposals.push({
       labelId: field.labelId,
-      value: recovered.value,
-      optionCodes: recovered.optionCodes,
-      sourceText: recovered.sourceText,
-      producer: recovered.producer,
+      value,
+      sourceText: confirmed.answer,
+      producer: 'model',
       candidateTexts: input.candidateTexts,
       messages: input.messages,
+      agentQuestionQuote: confirmed.question,
       channel: 'legacy_arg',
     });
   }
@@ -295,6 +316,39 @@ function fromAdapterSweep(input: IntakeInput): IntakeProposal[] {
     });
   }
   return proposals;
+}
+
+/**
+ * 确认作证恢复：我方消息里出现过该值 → 紧随其后的第一条候选人消息是肯定应答。
+ *
+ * 与 `identity-gates.isPhoneConfirmedInDialogue` 同一判据形态（三条同时满足，宁漏不错）：
+ * 值出现在我方消息 + 该消息带疑问/求证标记 + **紧随其后**的第一条候选人消息是肯定应答。
+ * 只认紧随其后的第一条，避免远处无关的"嗯/对"被错误归因到这次求证。
+ *
+ * ⚠️ 肯定词表**只用现有的那一份**（`@resolution/signal/dialogue` 唯一居所），
+ * 不在这里扩词：§11 红线明令确定性第一档只做教科书短答精确匹配，口语长尾
+ * （"确定"/"好的"/"没问题"等目前不在词表内的说法）一律流二档由主聊模型作证。
+ * 想让某个说法进确定性档，改的是那份词表，不是这里。
+ */
+function recoverByConfirmation(
+  value: string,
+  messages: readonly unknown[],
+): { question: string; answer: string } | null {
+  const target = value.trim();
+  if (!target) return null;
+  const turns = extractDialogueTurns(messages);
+  for (let i = 0; i < turns.length; i += 1) {
+    if (turns[i].role !== 'assistant') continue;
+    const question = turns[i].text;
+    if (!question.includes(target)) continue;
+    for (let j = i + 1; j < turns.length; j += 1) {
+      if (turns[j].role !== 'user') continue;
+      const answer = turns[j].text;
+      if (isAffirmativeAnswer(normalizeShortAnswer(answer))) return { question, answer };
+      break;
+    }
+  }
+  return null;
 }
 
 function normalizeTitle(title: string): string {
