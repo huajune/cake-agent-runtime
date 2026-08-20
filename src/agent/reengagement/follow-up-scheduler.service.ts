@@ -556,10 +556,13 @@ export class FollowUpSchedulerService {
     if (candidateScenario.phase === 'pre_booking') return true;
     // 报名后任务以工单为隔离边界：同一候选人可以同时存在多个有效面试，跨工单
     // 绝不能互相覆盖。同工单的不同场景（提醒/回访）也应并存；只有同工单同场景的
-    // 旧任务才是改约前的过期任务，需要由新时间对应的任务替换。
+    // 同触达档位的旧任务才是改约前的过期任务，需要由新时间对应的任务替换。
     if (input.workOrderId != null && candidate.workOrderId != null) {
       if (candidate.workOrderId !== input.workOrderId) return false;
-      return candidate.scenarioCode === input.scenarioCode;
+      return (
+        candidate.scenarioCode === input.scenarioCode &&
+        (candidate.touchVariant ?? null) === (input.touchVariant ?? null)
+      );
     }
 
     // 缺少工单身份的存量任务无法安全区分面试，沿用旧行为，由新任务收敛。
