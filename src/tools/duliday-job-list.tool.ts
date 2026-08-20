@@ -47,6 +47,7 @@ import {
   buildJobListQuerySignature,
   REPEAT_QUERY_NOTICE,
 } from '@tools/shared/job-list-query-signature';
+import { correctSwappedLatLng } from '@tools/shared/latlng-swap';
 import {
   applyLaborFormConstraint,
   applyScheduleConstraint,
@@ -712,6 +713,24 @@ export function buildJobListTool(
         includeInterviewProcess = false,
         candidateScheduleConstraint,
       }) => {
+        // 经纬度对调确定性纠偏（badcase 6a86a508：模型 reasoning 绑定正确、发射的
+        // JSON 值却对调，圆心落到纬度 121° → 必然 0 条假"无岗"）。args 落库仍是模型
+        // 原始入参，簇收敛继续用 lat 越界探针观测；此处只修查询行为并记 queryMeta。
+        let coordSwapOriginal: { latitude: number; longitude: number } | null = null;
+        if (location?.latitude != null && location?.longitude != null) {
+          const corrected = correctSwappedLatLng(location.latitude, location.longitude);
+          if (corrected.swapped) {
+            coordSwapOriginal = { latitude: location.latitude, longitude: location.longitude };
+            location = {
+              ...location,
+              latitude: corrected.latitude,
+              longitude: corrected.longitude,
+            };
+            logger.warn(
+              `location 经纬度对调已自动纠偏：入参 (lat=${coordSwapOriginal.latitude}, lng=${coordSwapOriginal.longitude}) → (lat=${corrected.latitude}, lng=${corrected.longitude})`,
+            );
+          }
+        }
         const normalizedCityNameList = cityNameList.map((city) => city.trim()).filter(Boolean);
         const normalizedRegionNameList = regionNameList
           .map((region) => region.trim())
@@ -1806,6 +1825,9 @@ export function buildJobListTool(
             // 区级锚点查询占比的观测口径。⚠️ 原设计的对账对象是守卫规则，但那条规则
             // 早已下线，不存在"拦截量趋零"这个验收项——距离渲染层（distance-render.util）
             // 是这条链路的唯一防线，验收看渲染覆盖率（详见 §7 第 4 条）。
+            // 经纬度对调纠偏记录：非 null 表示模型入参被确定性交换过（原始值），
+            // 用于对账"纠偏后查询是否恢复正常"；模型原始 args 另存于 tool_calls.args
+            coordSwapCorrected: coordSwapOriginal,
             anchor: {
               source:
                 regionRelaxedToLocation || matchedGeocodeAnchor
