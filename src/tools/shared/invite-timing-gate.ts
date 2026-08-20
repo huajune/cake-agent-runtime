@@ -24,6 +24,51 @@ import { stripTimeContextSuffix } from '@resolution/candidate/name';
  * 该路径既不需要本轮查岗，候选人问"几点面试"也属正常收尾而非被打断。
  */
 
+const GROUP_OFFER_PATTERN = /(?:邀请|拉|进)[^\n]{0,16}(?:兼职|岗位信息)?群/;
+const GROUP_CONSENT_PATTERN =
+  /^(?:好|好的|可以|可以的|行|行的|嗯|恩|愿意|没问题|可以拉我|拉我吧)[呀啊哈～~！!。.\s]*$/;
+
+function messageText(message: unknown): { role: string; text: string } | null {
+  if (!message || typeof message !== 'object') return null;
+  const value = message as { role?: unknown; content?: unknown };
+  if (typeof value.role !== 'string') return null;
+  const text =
+    typeof value.content === 'string'
+      ? value.content
+      : Array.isArray(value.content)
+        ? value.content
+            .map((part) =>
+              part &&
+              typeof part === 'object' &&
+              typeof (part as { text?: unknown }).text === 'string'
+                ? (part as { text: string }).text
+                : '',
+            )
+            .join(' ')
+        : '';
+  return { role: value.role, text: stripTimeContextSuffix(text).trim() };
+}
+
+/** 两轮协议的第二轮证据：上一条 assistant 征询入群，本轮 user 明确同意。 */
+export function hasAcceptedGroupOffer(messages: readonly unknown[]): boolean {
+  let pendingOffer = false;
+  let accepted = false;
+  for (const message of messages) {
+    const parsed = messageText(message);
+    if (!parsed) continue;
+    if (parsed.role === 'assistant') {
+      pendingOffer = GROUP_OFFER_PATTERN.test(parsed.text);
+      accepted = false;
+      continue;
+    }
+    if (parsed.role === 'user' && pendingOffer) {
+      accepted = GROUP_CONSENT_PATTERN.test(parsed.text);
+      pendingOffer = false;
+    }
+  }
+  return accepted;
+}
+
 /** 报名/约面推进信号：候选人正在往成单方向走，此时拉群即打断。 */
 const BOOKING_PROGRESS_SIGNAL_RE =
   /(怎么报名|咋报名|如何报名|怎样报名|报名流程|在哪报名|哪里报名|能报名吗|可以报名吗|报名要什么|几点面试|什么时候面试|面试时间|面试地址|去哪面试|面试在哪|怎么面试|面试怎么|能面试吗|可以面试吗|直接去(?:门店|店里|店)?面试|明天(?:能|可以)?(?:去)?面)/u;
@@ -44,6 +89,8 @@ export interface InviteTimingGateInput {
   jobListExecuted: boolean;
   /** 本轮 booking 是否成功；true 即工具描述的场景 1，豁免后两档。 */
   bookingSucceeded?: boolean;
+  /** 上一轮已征询入群且候选人本轮明确同意；两轮协议第二轮可豁免“本轮查岗”。 */
+  groupOfferAccepted?: boolean;
   /** 会话记忆里已拉过的群（城市 + 群名）。 */
   invitedGroups?: readonly { groupName?: string | null; city?: string | null }[];
   /** 本轮候选人原话（含 debounce 合并的多条）。 */
@@ -66,6 +113,9 @@ export function evaluateInviteTimingGate(input: InviteTimingGateInput): InviteTi
 
   // 预约成功后拉群：查岗结论与推进信号两档不适用。
   if (input.bookingSucceeded === true) return { decision: 'allow' };
+
+  // 两轮协议第二轮：查岗结论在上一轮已经给出，本轮只有候选人同意，不应强迫重复查岗。
+  if (input.groupOfferAccepted === true) return { decision: 'allow' };
 
   if (!input.jobListExecuted) {
     return { decision: 'reject', reason: 'no_job_result_this_turn' };

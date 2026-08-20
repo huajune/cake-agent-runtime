@@ -185,6 +185,31 @@ describe('buildInviteToGroupTool', () => {
       expect(mockRoomService.addMemberEnterprise).not.toHaveBeenCalled();
     });
 
+    it('两轮协议第二轮：上一轮已征询且本轮同意时无需重复查岗即可实调邀请', async () => {
+      mockGroupResolver.resolveGroups.mockResolvedValue([makeGroup({ memberCount: 10 })]);
+      mockRoomService.addMemberEnterprise.mockResolvedValue({ errcode: 0 });
+
+      const result = await executeTool(
+        { city: '上海' },
+        {
+          jobListExecuted: false,
+          currentUserMessage: '可以',
+          messages: [
+            { role: 'user', content: '我在上海找兼职' },
+            {
+              role: 'assistant',
+              content: '可以邀请你进上海兼职岗位信息群，你愿意的话回复我“可以”',
+            },
+            { role: 'user', content: '可以' },
+          ],
+        },
+      );
+      await flushAsyncEvents();
+
+      expect(result.success).toBe(true);
+      expect(mockRoomService.addMemberEnterprise).toHaveBeenCalledTimes(1);
+    });
+
     it('候选人正在追问报名/面试怎么走：拒绝拉群，指令回到约面收尾', async () => {
       const result = await executeTool(
         { city: '上海' },

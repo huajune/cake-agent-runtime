@@ -1,5 +1,6 @@
 import {
   evaluateInviteTimingGate,
+  hasAcceptedGroupOffer,
   type InviteTimingGateInput,
 } from '@tools/shared/invite-timing-gate';
 
@@ -32,6 +33,12 @@ describe('evaluateInviteTimingGate', () => {
     it('预约成功后拉群（场景 1）豁免本档', () => {
       expect(
         evaluateInviteTimingGate(base({ jobListExecuted: false, bookingSucceeded: true })),
+      ).toEqual({ decision: 'allow' });
+    });
+
+    it('两轮协议第二轮：上一轮征询且本轮明确同意时豁免重复查岗', () => {
+      expect(
+        evaluateInviteTimingGate(base({ jobListExecuted: false, groupOfferAccepted: true })),
       ).toEqual({ decision: 'allow' });
     });
   });
@@ -121,5 +128,26 @@ describe('evaluateInviteTimingGate', () => {
         decision: 'allow',
       });
     });
+  });
+});
+
+describe('hasAcceptedGroupOffer', () => {
+  it('requires an assistant group offer immediately followed by explicit user consent', () => {
+    expect(
+      hasAcceptedGroupOffer([
+        { role: 'assistant', content: '可以邀请你进上海兼职岗位信息群，你愿意的话回复我“可以”' },
+        { role: 'user', content: '可以' },
+      ]),
+    ).toBe(true);
+  });
+
+  it('does not treat a bare consent or a rejection as group consent', () => {
+    expect(hasAcceptedGroupOffer([{ role: 'user', content: '可以' }])).toBe(false);
+    expect(
+      hasAcceptedGroupOffer([
+        { role: 'assistant', content: '要不我邀请你进兼职群？' },
+        { role: 'user', content: '不用了' },
+      ]),
+    ).toBe(false);
   });
 });

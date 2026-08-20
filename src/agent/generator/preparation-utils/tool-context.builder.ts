@@ -114,6 +114,7 @@ export function buildToolContext(input: {
       currentFocusJob: memory.sessionMemory?.currentFocusJob ?? null,
       recentBrandPool,
       bookingCandidateFacts: sessionFacts?.interview_info ?? null,
+      invitedGroups: memory.sessionMemory?.invitedGroups ?? [],
       isRecalledJobId: (jobId: number) =>
         turnStartRecalledJobIds.has(jobId) ||
         ledger.jobs.fetchedJobs.some((job) => job.jobId === jobId),

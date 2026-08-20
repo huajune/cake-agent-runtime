@@ -254,7 +254,7 @@ describe('HardRulesService', () => {
         queryMeta: { brand: { appliedCanonicalNames: ['M Stand'] } },
         noMatchScript: {
           candidateMessage: 'M Stand在上海这边暂时没找到合适的岗位',
-          nextToolCall: 'invite_to_group',
+          nextAction: 'wait_for_inventory',
         },
       },
       status: 'ok' as const,
