@@ -194,6 +194,46 @@ policy/肯定词表唯一居所——挪位为写入守卫与迁移判据，代�
   全部进 batch-query 契约——收资/筛选判决唯一判据源=标签接口，岗位详情接口回归展示域
   （介绍岗位话术）；契约没带的判据=该岗没有这道筛，不读岗位数据补筛、不走文本解析兜底。
 
+## 2.9 生产实证追加（2026-08-19）：铁证 D —— 9-1 归一层发版后 R12 族仍复发
+
+> case 坐标：chat `6a7ecef3ce406a6aee6e5830`，trace `batch_6a7ecef3ce406a6aee6e5830_1787126726984`，
+> 岗位 528966（必胜客-印象城PH，佛山），v10.44.0（9-1 归一层已上线）。
+> 处理裁定（0819）：**不打旧架构补丁**（沿用「不要过渡期」裁定），本案固化为状态机批的
+> 回归 fixture 与实施期核对点，见 collection-form-machine-implementation.md §10.5。
+
+**事故形态**（R12 定义式复发，铁证 B/C 同族）：候选人对 Agent 针对性确认问句
+（"本地健康证暂时没有但入职前可以办对吧？社会身份是宝妈属于社会人士对吧"）答
+「可以办，社会人士」，旧通道补充标签「有无本地健康证(labelId 13)/社会身份(labelId 1)」
+仍 missing → `collectionFieldGuard` askCount=2 断路器 → `system_blocked` 转人工。
+**资料实际全齐**：当轮 precheck 已算出 `healthCertificateEligibility=accepts_local_application
+(spongeValue=2)`，is_student 已被身份轨采信（`identity_isStudent_1` accepted）——
+"系统已持有答案、标签格子填不进"，缺的正是互填通道（R12 修法裁定描述的形态，该裁定已随
+标签制撤销止血、由本改造根治）。
+
+**9-1 归一层三条取值路径逐层 miss 实录**（与铁证 C 重放结论互补，证明补丁式路径修不完）：
+(a) 模型漏传 candidateSupplementAnswers；(b) 自然语言应答无字段名，表单抽取按设计不认；
+(c) 上一轮表单被候选人粘成一行「具体住址：万达广场附近有无本地健康证（暂无）社会身份：宝妈」——
+逐行解析整串被「具体住址」吞成值、一行流解析无顿逗号切不开、「（暂无）」被括号注记归一剥掉。
+另：身份重叠桥 labelPatterns 只认学信网/学籍/在籍形态，「社会身份」不命中。
+
+**附带发现①（解析器冻结令下带进新世界的残余，实施时需防）**：health-cert 解析器
+`/本地.{0,4}健康证/` 分支把候选人抄写的**字段名文本**「有无本地健康证（暂无）」误读成
+「有」入档（sessionFacts `has_health_certificate=有`，evidence 即该行）——"「有」分支
+裸关键词"家族新变体：连模板字段名本身都成了误提取源。状态机下危害面塌缩
+（收资字段进货换表单回写、规则轨降 hint），但 health-certificate.adapter 的输入路径
+若仍喂整条粘连文本给该解析器，会产生错误预填（可被提交前复述终审纠正，非死锁）。
+
+**附带发现②（R7/R9 实况又一例）**：模型走裸字段入参 → legacy claim 空 quote →
+rejectedClaims `quote_not_found`（gender/healthCertificate），被模型原样转述进
+handoff reason（"引文无法通过出处公证"）——shadow 噪音污染了人工工单文案。
+
+**新世界逐层归宿核验**（对照 0818 基线实测）：labelId 13 为 SINGLE_OPTION、选项码 1/2/3
+与健康证状态机 spongeValue 同构（适配器直填本案的 optionCode 2）；「社会身份」在新标签
+宇宙 109 个 labelId 中**不存在**（身份族是 703 学信网是否在籍等），按判决单源约定该题
+直接消失；死锁结构由槽位状态机+errorList+内建熔断拆除；legacy 空 quote 随旧收资核
+拆除消失。**基线缺口**：528966 不在 0818 的 468 岗基线内（基线抓取后上架）——
+实施期覆盖度复测（蓝图 §8 步骤 4）必须包含新上架岗。
+
 ## 3. cake 侧目标架构
 
 ```
