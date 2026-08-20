@@ -38,7 +38,7 @@ export class OnboardingSweepCronService {
   }
 
   async runOnce(now = new Date()): Promise<{ scanned: number; scheduled: number }> {
-    const events = await this.opsEventsRepository.findRecentInterviewPassed(
+    const { events, skipped } = await this.opsEventsRepository.findRecentInterviewPassed(
       new Date(now.getTime() - LOOKBACK_MS),
       now,
     );
@@ -58,7 +58,9 @@ export class OnboardingSweepCronService {
       });
       if (result.scheduled) scheduled += 1;
     }
-    this.logger.log(`入职跟进 sweep 完成: 扫描=${events.length}, 新排程=${scheduled}`);
+    this.logger.log(
+      `入职跟进 sweep 完成: 扫描=${events.length}, 跳过=${skipped}, 新排程=${scheduled}`,
+    );
     return { scanned: events.length, scheduled };
   }
 

@@ -152,8 +152,11 @@ export class OpsEventsRepository extends BaseRepository {
   }
 
   /** 查时间窗内的面试通过事件，供复聊侧 D+3 入职跟进 sweep 排程。 */
-  async findRecentInterviewPassed(since: Date, until: Date): Promise<RecentInterviewPassedEvent[]> {
-    if (!this.isAvailable()) return [];
+  async findRecentInterviewPassed(
+    since: Date,
+    until: Date,
+  ): Promise<{ events: RecentInterviewPassedEvent[]; skipped: number }> {
+    if (!this.isAvailable()) return { events: [], skipped: 0 };
 
     const rows = await this.selectAllPaged<{
       corp_id?: string | null;
@@ -171,7 +174,9 @@ export class OpsEventsRepository extends BaseRepository {
         .order('id', { ascending: true }),
     );
 
-    return rows.flatMap((row) => {
+    const events: RecentInterviewPassedEvent[] = [];
+    let skipped = 0;
+    for (const row of rows) {
       const workOrderId = Number(row.payload?.work_order_id);
       if (
         !row.corp_id ||
@@ -181,18 +186,18 @@ export class OpsEventsRepository extends BaseRepository {
         !Number.isInteger(workOrderId) ||
         workOrderId <= 0
       ) {
-        return [];
+        skipped += 1;
+        continue;
       }
-      return [
-        {
-          corpId: row.corp_id,
-          userId: row.user_id,
-          chatId: row.chat_id,
-          botImId: row.bot_im_id ?? null,
-          workOrderId,
-          occurredAt: row.occurred_at,
-        },
-      ];
-    });
+      events.push({
+        corpId: row.corp_id,
+        userId: row.user_id,
+        chatId: row.chat_id,
+        botImId: row.bot_im_id ?? null,
+        workOrderId,
+        occurredAt: row.occurred_at,
+      });
+    }
+    return { events, skipped };
   }
 }

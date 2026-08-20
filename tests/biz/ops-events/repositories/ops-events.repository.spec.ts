@@ -92,15 +92,18 @@ describe('OpsEventsRepository', () => {
       new Date('2026-08-20T10:00:00.000Z'),
     );
 
-    expect(result).toEqual([
-      {
-        corpId: 'corp-1',
-        userId: 'user-1',
-        chatId: 'chat-1',
-        botImId: 'bot-1',
-        workOrderId: 901,
-        occurredAt: '2026-08-18T10:00:00.000Z',
-      },
-    ]);
+    expect(result).toEqual({
+      events: [
+        {
+          corpId: 'corp-1',
+          userId: 'user-1',
+          chatId: 'chat-1',
+          botImId: 'bot-1',
+          workOrderId: 901,
+          occurredAt: '2026-08-18T10:00:00.000Z',
+        },
+      ],
+      skipped: 1,
+    });
   });
 });
