@@ -35,10 +35,12 @@ import {
   type FollowUpJob,
 } from './follow-up-scheduler.service';
 import {
+  alignToDeliveryWindow,
   bookingFollowUpAnchorId,
   computeFireAt,
   FOLLOW_UP_SCENARIOS,
   getScenario,
+  inDeliveryWindow,
   parseInterviewTimestamp,
   resolveRolloutEnabled,
   resolveVariantConfigKey,
@@ -489,7 +491,13 @@ export class FollowUpProcessor implements OnModuleInit {
       return;
     }
 
-    // 3) 投递 + 触达底账（shadow 只记不发）。真实发送前由统一投递层再次检查
+    // 3) Bull delay 可能因 worker 阻塞漂移；到点再确认主动触达窗口，越界重排且不消费 attempts。
+    if (!inDeliveryWindow(now)) {
+      await this.rescheduleToDeliveryWindow(job, identity);
+      return;
+    }
+
+    // 4) 投递 + 触达底账（shadow 只记不发）。真实发送前由统一投递层再次检查
     // 当前会话是否仍处于托管状态；已暂停/取消托管则整条跳过。
     // 无投递端口绑定时强制 shadow；否则读运行时配置（与开头的总开关同一次读取）。
     // 所有未投递分支都不把生成文本写进记忆（复聊链路不走 runner，本 processor 全程不投影助手轮次）：
@@ -1341,6 +1349,32 @@ export class FollowUpProcessor implements OnModuleInit {
       );
     }
     return enterpriseToken;
+  }
+
+  private async rescheduleToDeliveryWindow(
+    job: Job<FollowUpJob>,
+    identity: ReengagementTouchIdentity,
+  ): Promise<void> {
+    const now = Date.now();
+    const fireAt = alignToDeliveryWindow(now);
+    const jobId = `${job.id}:rw:${fireAt}`;
+    await this.queue.add(
+      REENGAGEMENT_JOB_NAME,
+      { ...job.data },
+      {
+        jobId,
+        delay: Math.max(0, fireAt - now),
+        attempts: 2,
+        backoff: { type: 'fixed', delay: 30_000 },
+        removeOnComplete: { age: 7 * 24 * 60 * 60, count: 500 },
+        removeOnFail: { age: 7 * 24 * 60 * 60, count: 500 },
+      },
+    );
+    this.logger.log(
+      `[reengagement] 非主动触达窗口，推迟到 ${new Date(fireAt).toISOString()} 重判 ` +
+        `jobId=${job.id} rescheduledJobId=${jobId}`,
+    );
+    this.tracking.trackRescheduled(identity, fireAt, jobId);
   }
 
   private errorMessage(error: unknown): string {

@@ -57,7 +57,7 @@ await reengagementQueue.add(
 
 唯一的短窗 sweep 是入职跟进：`OnboardingSweepCronService` 每 15 分钟查询近 48 小时的 `ops_events(interview.passed)`，按事件的 `occurred_at` 排 `post_interview_onboarding` D+3 任务。稳定锚点 `wo{workOrderId}:pass` 使同一事件跨轮扫描只产生一个 Bull job；`READ_ONLY_PREVIEW=true` 时不扫描、不排程。该 sweep 只消费已存在的业务事件，不轮询全量会话。
 
-**窗口对齐**：先算 `anchorAt + resolveDelay(...)`，落在 <9:00 推到当日 9:00、>21:00 推到次日 9:00（时区 `Asia/Shanghai`，与 group-task cron 一致）。fire 时再 `inWindow(now)` 二次确认。
+**窗口对齐**：先算 `anchorAt + resolveDelay(...)`，落在 <09:00 推到当日 09:00、>=21:00 推到次日 09:00（时区 `Asia/Shanghai`，窗口前闭后开）。fire 时再用 `inDeliveryWindow(now)` 二次确认；越界任务以派生 jobId 重排，不消费当前任务的重试次数，也不会提前生成文案。该窗口只约束候选人主动消息，入职 +48h 复核是内部工单检查与告警，在专属分支提前结束，不受窗口限制。
 
 ---
 
@@ -171,8 +171,9 @@ reserved → delivery_attempted → sent / failed / unknown
 src/agent/reengagement/
 ├── scenario-registry.ts        # FollowUpScenario[] 配置 + computeFireAt + 水位判据
 ├── anchor.service.ts           # 锚点事件识别 → 调 scheduler
-├── follow-up-scheduler.service.ts  # queue.add(delay)；可选 @Cron sweep
+├── follow-up-scheduler.service.ts  # queue.add(delay) + 入职复核排程
 ├── follow-up.processor.ts      # @Processor：到点 → 停止条件 → compose → deliver
+├── onboarding-sweep.cron.ts    # 近 48h interview.passed 扫描 → 入职跟进排程
 ├── reengagement.agent.ts       # 专用生成器（LlmExecutor + zod schema，不复用主 generator）
 ├── touch-ledger.service.ts     # 触达底账（频控 + outbox 幂等状态机，Redis）
 ├── oob-work-order.ts           # pre_booking 带外工单核验

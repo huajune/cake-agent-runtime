@@ -80,6 +80,8 @@ export interface ShouldStopResult {
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const SHANGHAI_UTC_OFFSET_MS = 8 * HOUR;
+const DELIVERY_WINDOW_START_HOUR = 9;
+const DELIVERY_WINDOW_END_HOUR = 21;
 
 function isAiInterview(interviewType?: string): boolean {
   return typeof interviewType === 'string' && /ai\s*面试/i.test(interviewType);
@@ -406,14 +408,41 @@ export function resolveDelayMs(
   return typeof d === 'function' ? d(ctx) : d;
 }
 
-/** 计算绝对触发时间戳；发送资格由到点时的托管状态决定，不再限制发送时段。 */
+/** ts 是否落在上海时间 09:00（含）到 21:00（不含）的主动触达窗口。 */
+export function inDeliveryWindow(ts: number): boolean {
+  const hour = new Date(ts + SHANGHAI_UTC_OFFSET_MS).getUTCHours();
+  return hour >= DELIVERY_WINDOW_START_HOUR && hour < DELIVERY_WINDOW_END_HOUR;
+}
+
+/** 将任意时间戳对齐到当前或下一个主动触达窗口，不重新计算场景延迟。 */
+export function alignToDeliveryWindow(ts: number): number {
+  if (inDeliveryWindow(ts)) return ts;
+
+  const shanghaiDate = new Date(ts + SHANGHAI_UTC_OFFSET_MS);
+  const todayWindowStart =
+    Date.UTC(
+      shanghaiDate.getUTCFullYear(),
+      shanghaiDate.getUTCMonth(),
+      shanghaiDate.getUTCDate(),
+      DELIVERY_WINDOW_START_HOUR,
+    ) - SHANGHAI_UTC_OFFSET_MS;
+  return shanghaiDate.getUTCHours() >= DELIVERY_WINDOW_END_HOUR
+    ? todayWindowStart + 24 * HOUR
+    : todayWindowStart;
+}
+
+/**
+ * 计算绝对触发时间戳，并对齐上海时间 09:00–21:00 主动触达窗口。
+ * Bull delay 是相对时长，调用方必须用返回值减当前时间。
+ */
 export function computeFireAt(
   scenario: FollowUpScenario,
   ctx: FollowUpScenarioContext,
   configuredDelayMinutes?: number,
   variant?: FollowUpTouchVariant,
 ): number {
-  return ctx.anchorAt + resolveDelayMs(scenario, ctx, configuredDelayMinutes, variant);
+  const base = ctx.anchorAt + resolveDelayMs(scenario, ctx, configuredDelayMinutes, variant);
+  return alignToDeliveryWindow(base);
 }
 
 export function resolveVariantConfigKey(

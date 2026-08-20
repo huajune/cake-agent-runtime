@@ -784,15 +784,27 @@ describe('FollowUpProcessor', () => {
     );
   });
 
-  it('processes immediately when fired outside the former delivery window', async () => {
+  it('reschedules directly to the next delivery window when Bull fires outside the window', async () => {
     const now = Date.UTC(2026, 5, 24, 14, 0, 0); // 22:00 Shanghai
     jest.spyOn(Date, 'now').mockReturnValue(now);
 
     await buildProcessor().process(makeJob({ id: 'late-job' }));
 
-    expect(reengagementAgent.compose).toHaveBeenCalledTimes(1);
-    expect(queue.add).not.toHaveBeenCalled();
-    expect(tracking.trackRescheduled).not.toHaveBeenCalled();
+    const expectedFireAt = Date.UTC(2026, 5, 25, 1, 0, 0); // next day 09:00 Shanghai
+    expect(reengagementAgent.compose).not.toHaveBeenCalled();
+    expect(queue.add).toHaveBeenCalledWith(
+      REENGAGEMENT_JOB_NAME,
+      expect.objectContaining({ anchorAt: Date.UTC(2026, 5, 24, 2, 0, 0) }),
+      expect.objectContaining({
+        jobId: `late-job:rw:${expectedFireAt}`,
+        delay: expectedFireAt - now,
+      }),
+    );
+    expect(tracking.trackRescheduled).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: 'sess-1', scenarioCode: 'opening_no_reply' }),
+      expectedFireAt,
+      `late-job:rw:${expectedFireAt}`,
+    );
   });
 
   describe('store presentation group invite escalation', () => {
@@ -1989,13 +2001,10 @@ describe('FollowUpProcessor', () => {
       const candidateAt = Date.now() - 30 * 60_000;
       sponge.getWorkOrderById.mockResolvedValue({ workOrderId: 901, currentStatus: '面试成功' });
       session.getReengagementState.mockResolvedValue(baseState({ terminal: 'booked' }));
-      chatSession.getChatHistory.mockImplementation(
-        (_chatId: string, limit: number) =>
-          Promise.resolve(
-            limit === 200
-              ? []
-              : [{ role: 'user', content: '我还有个问题', timestamp: candidateAt }],
-          ),
+      chatSession.getChatHistory.mockImplementation((_chatId: string, limit: number) =>
+        Promise.resolve(
+          limit === 200 ? [] : [{ role: 'user', content: '我还有个问题', timestamp: candidateAt }],
+        ),
       );
       messageProcessing.getLatestReceivedAtByChatId.mockResolvedValue(candidateAt - 10 * 60_000);
 
@@ -2034,6 +2043,7 @@ describe('FollowUpProcessor', () => {
     });
 
     it('ends the +48h check silently after the work order reaches onboarding success', async () => {
+      jest.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 7, 20, 14, 0, 0));
       sponge.getWorkOrderById.mockResolvedValue({ workOrderId: 901, currentStatus: '上岗成功' });
 
       await buildProcessor().process(onboardingJob({ onboardingCheck: true }));
@@ -2042,6 +2052,27 @@ describe('FollowUpProcessor', () => {
       expect(handoffRecorder.record).not.toHaveBeenCalled();
       expect(handoffNotifier.notify).not.toHaveBeenCalled();
       expect(session.getReengagementState).not.toHaveBeenCalled();
+      expect(reengagementAgent.compose).not.toHaveBeenCalled();
+      expect(queue.add).not.toHaveBeenCalled();
+    });
+
+    it('reschedules a candidate onboarding touch to the next morning without adding another 3 days', async () => {
+      const now = Date.UTC(2026, 7, 20, 14, 0, 0); // 22:00 Shanghai
+      const expectedFireAt = Date.UTC(2026, 7, 21, 1, 0, 0); // next day 09:00 Shanghai
+      jest.spyOn(Date, 'now').mockReturnValue(now);
+      sponge.getWorkOrderById.mockResolvedValue({ workOrderId: 901, currentStatus: '面试成功' });
+      session.getReengagementState.mockResolvedValue(baseState({ terminal: 'booked' }));
+
+      await buildProcessor().process(onboardingJob());
+
+      expect(queue.add).toHaveBeenCalledWith(
+        REENGAGEMENT_JOB_NAME,
+        expect.objectContaining({ scenarioCode: 'post_interview_onboarding' }),
+        expect.objectContaining({
+          jobId: `job-1:rw:${expectedFireAt}`,
+          delay: expectedFireAt - now,
+        }),
+      );
       expect(reengagementAgent.compose).not.toHaveBeenCalled();
     });
 
@@ -2054,8 +2085,7 @@ describe('FollowUpProcessor', () => {
         expect.objectContaining({
           reasonCode: 'onboarding_follow_up_required',
           workOrderId: 901,
-          idempotencyKey:
-            'sess-1:post_interview_onboarding:wo901:onboarding_follow_up_required',
+          idempotencyKey: 'sess-1:post_interview_onboarding:wo901:onboarding_follow_up_required',
         }),
       );
       expect(handoffNotifier.notify).toHaveBeenCalledWith(

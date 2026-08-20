@@ -1,9 +1,11 @@
 import type { ReengagementSessionState } from '@memory/types/reengagement-session-state.types';
 import {
+  alignToDeliveryWindow,
   bookingFollowUpAnchorId,
   computeFireAt,
   FOLLOW_UP_SCENARIOS,
   getScenario,
+  inDeliveryWindow,
   resolveRolloutEnabled,
   shouldStop,
 } from '@agent/reengagement/scenario-registry';
@@ -64,22 +66,33 @@ describe('scenario-registry', () => {
   describe('computeFireAt', () => {
     const scenario = getScenario('opening_no_reply')!;
 
+    it('treats 09:00 as inclusive and 21:00 as exclusive in Shanghai', () => {
+      expect(inDeliveryWindow(Date.UTC(2026, 5, 24, 1, 0, 0))).toBe(true);
+      expect(inDeliveryWindow(Date.UTC(2026, 5, 24, 12, 59, 59))).toBe(true);
+      expect(inDeliveryWindow(Date.UTC(2026, 5, 24, 13, 0, 0))).toBe(false);
+    });
+
+    it('aligns a fired task without applying its scenario delay a second time', () => {
+      const outsideWindow = Date.UTC(2026, 5, 24, 14, 0, 0); // 22:00 Shanghai
+      expect(alignToDeliveryWindow(outsideWindow)).toBe(Date.UTC(2026, 5, 25, 1, 0, 0));
+    });
+
     it('uses the scenario delay directly', () => {
       const anchorAt = at(2); // 10:00 Shanghai
       const fireAt = computeFireAt(scenario, { anchorAt, state: baseState() });
       expect(fireAt).toBe(anchorAt + 15 * 60_000);
     });
 
-    it('does not defer a trigger before the former 09:00 boundary', () => {
+    it('aligns a trigger before 09:00 to the same day 09:00 Shanghai', () => {
       const anchorAt = Date.UTC(2026, 5, 24, 0, 0, 0); // 08:00 Shanghai
       const fireAt = computeFireAt(scenario, { anchorAt, state: baseState() });
-      expect(fireAt).toBe(anchorAt + 15 * 60_000);
+      expect(fireAt).toBe(Date.UTC(2026, 5, 24, 1, 0, 0));
     });
 
-    it('does not defer a trigger after the former 21:00 boundary', () => {
+    it('aligns a trigger at or after 21:00 to the next day 09:00 Shanghai', () => {
       const anchorAt = Date.UTC(2026, 5, 24, 14, 0, 0); // 22:00 Shanghai
       const fireAt = computeFireAt(scenario, { anchorAt, state: baseState() });
-      expect(fireAt).toBe(anchorAt + 15 * 60_000);
+      expect(fireAt).toBe(Date.UTC(2026, 5, 25, 1, 0, 0));
     });
 
     it('follows up two hours after the work-order interview time', () => {
@@ -338,9 +351,9 @@ describe('scenario-registry', () => {
           interviewAt: anchorAt + 3_600_000,
         } as never);
 
-        expect(
-          shouldStop(postBooking, state, anchorAt, { externallyVerifiable: true }),
-        ).toEqual({ stop: false });
+        expect(shouldStop(postBooking, state, anchorAt, { externallyVerifiable: true })).toEqual({
+          stop: false,
+        });
         expect(shouldStop(postBooking, state, anchorAt)).toEqual({
           stop: true,
           reason: 'candidate_replied_after_anchor',
@@ -355,9 +368,9 @@ describe('scenario-registry', () => {
         lastCandidateMessageAt: anchorAt + 1,
       });
 
-      expect(
-        shouldStop(onboarding, state, anchorAt, { externallyVerifiable: true }),
-      ).toEqual({ stop: false });
+      expect(shouldStop(onboarding, state, anchorAt, { externallyVerifiable: true })).toEqual({
+        stop: false,
+      });
       expect(shouldStop(onboarding, state, anchorAt)).toEqual({
         stop: true,
         reason: 'candidate_replied_after_anchor',
