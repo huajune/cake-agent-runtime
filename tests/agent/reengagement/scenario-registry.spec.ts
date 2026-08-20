@@ -21,6 +21,16 @@ const baseState = (over: Partial<ReengagementSessionState> = {}): ReengagementSe
 const at = (utcHour: number, minute = 0): number => Date.UTC(2026, 5, 24, utcHour, minute, 0);
 
 describe('scenario-registry', () => {
+  it('registers the onboarding follow-up as a default-off post-booking family member', () => {
+    expect(getScenario('post_interview_onboarding')).toMatchObject({
+      phase: 'post_booking',
+      displayName: '面试后回访 · 入职跟进',
+      anchorEvent: 'interview.passed',
+      defaultDelayMinutes: 4320,
+      defaultRolloutEnabled: false,
+    });
+  });
+
   it('versions AI 17:00 follow-up anchors without changing other booking anchors', () => {
     expect(
       bookingFollowUpAnchorId(451713, 1784599200000, 'post_interview_followup', 'AI面试'),
@@ -316,6 +326,42 @@ describe('scenario-registry', () => {
         interviewAt: anchorAt + 3_600_000,
       } as never);
       expect(shouldStop(s, state, anchorAt, { externallyVerifiable: true }).stop).toBe(false);
+    });
+
+    it.each(['interview_reminder', 'post_interview_followup'] as const)(
+      'keeps terminal and replied exemptions unchanged for %s',
+      (scenarioCode) => {
+        const postBooking = getScenario(scenarioCode)!;
+        const state = baseState({
+          terminal: 'booked',
+          lastCandidateMessageAt: anchorAt + 1,
+          interviewAt: anchorAt + 3_600_000,
+        } as never);
+
+        expect(
+          shouldStop(postBooking, state, anchorAt, { externallyVerifiable: true }),
+        ).toEqual({ stop: false });
+        expect(shouldStop(postBooking, state, anchorAt)).toEqual({
+          stop: true,
+          reason: 'candidate_replied_after_anchor',
+        });
+      },
+    );
+
+    it('applies the generalized post-booking exemptions to onboarding', () => {
+      const onboarding = getScenario('post_interview_onboarding')!;
+      const state = baseState({
+        terminal: 'handed_off',
+        lastCandidateMessageAt: anchorAt + 1,
+      });
+
+      expect(
+        shouldStop(onboarding, state, anchorAt, { externallyVerifiable: true }),
+      ).toEqual({ stop: false });
+      expect(shouldStop(onboarding, state, anchorAt)).toEqual({
+        stop: true,
+        reason: 'candidate_replied_after_anchor',
+      });
     });
 
     it('keeps the replied rule for booking follow-ups without verification capability', () => {

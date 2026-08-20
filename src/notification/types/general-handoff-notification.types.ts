@@ -52,6 +52,8 @@ export interface GeneralHandoffNotificationPayload {
   currentMessageContent: string;
   recentMessages: GeneralHandoffNotificationMessage[];
   sessionState: WeworkSessionState | null;
+  /** 显式 false 表示本次只告警未暂停托管，卡片不得提示人工恢复托管。 */
+  hostingPaused?: boolean;
   /**
    * 可选：诊断载荷。以 JSON 代码块渲染在卡片末尾，便于排查命中链路
    * （botId / imBotId / imContactId / externalUserId / source / messageType 等原始字段）。

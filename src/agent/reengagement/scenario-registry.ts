@@ -7,6 +7,7 @@ export type FollowUpScenarioCode =
   | 'booking_incomplete'
   | 'interview_reminder'
   | 'post_interview_followup'
+  | 'post_interview_onboarding'
   | 'new_job_for_waiting';
 
 export interface FollowUpScenarioContext {
@@ -248,6 +249,25 @@ export const FOLLOW_UP_SCENARIOS: readonly FollowUpScenario[] = [
     defaultRolloutEnabled: false,
   },
   {
+    code: 'post_interview_onboarding',
+    phase: 'post_booking',
+    displayName: '面试后回访 · 入职跟进',
+    anchorEvent: 'interview.passed',
+    anchorLabel: '面试通过',
+    triggerDelayMs: 3 * 24 * HOUR,
+    delayLabel: '面试通过后 3 天',
+    delayMode: 'after_anchor',
+    defaultDelayMinutes: 4320,
+    objective: '面试通过后跟进入职进展，确认是否顺利以及是否需要协助',
+    requiredEvidence: ['workOrderId', 'interview.passed'],
+    stopUnless: () => true,
+    // 正式话术待运营提供（规格 §7 blocker）。
+    generationPolicy:
+      '确认候选人是否已顺利入职、有没有遇到问题，需要协助可以直接说；不得断言候选人已入职或未入职，不施压、不催报到',
+    relevantFactLabels: [],
+    defaultRolloutEnabled: false,
+  },
+  {
     code: 'new_job_for_waiting',
     phase: 'pre_booking',
     displayName: '新岗上线',
@@ -450,10 +470,10 @@ export function shouldStop(
   anchorAt: number,
   opts?: { externallyVerifiable?: boolean; now?: number },
 ): ShouldStopResult {
-  const bookingSucceededFollowUp =
-    scenario.anchorEvent === 'booking.succeeded' &&
+  const postBookingFollowUp =
+    scenario.phase === 'post_booking' &&
     (state.terminal === 'booked' || state.terminal === 'handed_off');
-  if (state.terminal && !bookingSucceededFollowUp) {
+  if (state.terminal && !postBookingFollowUp) {
     return { stop: true, reason: `terminal:${state.terminal}` };
   }
   if (
@@ -464,7 +484,7 @@ export function shouldStop(
     return { stop: true, reason: 'candidate_invited_to_group' };
   }
   const repliedRuleExempt =
-    scenario.anchorEvent === 'booking.succeeded' && opts?.externallyVerifiable === true;
+    scenario.phase === 'post_booking' && opts?.externallyVerifiable === true;
   if (
     !repliedRuleExempt &&
     state.lastCandidateMessageAt != null &&

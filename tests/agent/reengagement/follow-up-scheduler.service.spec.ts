@@ -179,6 +179,40 @@ describe('FollowUpSchedulerService', () => {
     );
   });
 
+  it('schedules the onboarding check exactly 48 hours after a sent touch', async () => {
+    const now = Date.UTC(2026, 7, 20, 10, 0, 0);
+    jest.spyOn(Date, 'now').mockReturnValue(now);
+
+    const result = await service.scheduleOnboardingCheck({
+      sessionRef,
+      workOrderId: 901,
+      anchorAt: now,
+      channelIdentity: { botImId: 'bot-1' },
+    });
+
+    expect(result).toEqual({
+      scheduled: true,
+      fireAt: now + 48 * 60 * 60_000,
+      jobId: 'sess-1:post_interview_onboarding:wo901:onboarding_check',
+    });
+    expect(queue.add).toHaveBeenCalledWith(
+      REENGAGEMENT_JOB_NAME,
+      {
+        sessionRef,
+        scenarioCode: 'post_interview_onboarding',
+        anchorEventId: 'wo901:onboarding_check',
+        anchorAt: now,
+        workOrderId: 901,
+        onboardingCheck: true,
+        channelIdentity: { botImId: 'bot-1' },
+      },
+      expect.objectContaining({
+        jobId: 'sess-1:post_interview_onboarding:wo901:onboarding_check',
+        delay: 48 * 60 * 60_000,
+      }),
+    );
+  });
+
   it('enqueues a delayed follow-up with deterministic job id', async () => {
     const now = Date.UTC(2026, 5, 24, 2, 0, 0);
     jest.spyOn(Date, 'now').mockReturnValue(now);

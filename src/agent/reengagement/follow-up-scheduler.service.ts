@@ -61,6 +61,8 @@ export interface FollowUpJob {
   touchVariant?: FollowUpTouchVariant;
   /** 推店未回的第二轮起升级标记；是否生效仍由独立 invite 子开关到点裁决。 */
   escalateToGroupInvite?: boolean;
+  /** 入职跟进触达后 +48h 的纯复核任务；只查工单并按需告警，不生成或投递消息。 */
+  onboardingCheck?: boolean;
 }
 
 /** 触达底账 outbox 状态机。 */
@@ -122,6 +124,13 @@ export interface ScheduleBookingResolutionInput {
   channelIdentity?: ReengagementChannelIdentity;
 }
 
+export interface ScheduleOnboardingCheckInput {
+  sessionRef: SessionRef;
+  workOrderId: number;
+  anchorAt: number;
+  channelIdentity?: ReengagementChannelIdentity;
+}
+
 /**
  * 复聊排程：锚点事件发生时排一个 Bull delayed job（不轮询全量会话）。
  *
@@ -169,7 +178,7 @@ export class FollowUpSchedulerService {
 
     // 报名后触达必须绑定明确面试时间。等通知/无面试时间岗位没有可提醒或回访的时间点，
     // 不生成主动触达任务，避免按报名成功锚点兜底骚扰候选人。
-    if (scenario.phase === 'post_booking' && !hasInterviewAt(state)) {
+    if (scenario.anchorEvent === 'booking.succeeded' && !hasInterviewAt(state)) {
       this.tracking.trackScheduleSkipped(identity, 'missing_interview_time');
       return { scheduled: false, reason: 'missing_interview_time' };
     }
@@ -264,6 +273,50 @@ export class FollowUpSchedulerService {
       this.logger.error(`[reengagement] 排程失败 jobId=${jobId}: ${toErrorMessage(error)}`);
       this.tracking.trackScheduleError(identity, toErrorMessage(error));
       return { scheduled: false, reason: 'enqueue_error' };
+    }
+  }
+
+  /** 入职跟进消息送达后排 +48h 复核；稳定 jobId 让重复回调天然幂等。 */
+  async scheduleOnboardingCheck(
+    input: ScheduleOnboardingCheckInput,
+  ): Promise<ScheduleFollowUpResult> {
+    if (!(await this.isEnabled())) return { scheduled: false, reason: 'disabled' };
+
+    const scenarioCode: FollowUpScenarioCode = 'post_interview_onboarding';
+    const anchorEventId = `wo${input.workOrderId}:onboarding_check`;
+    const jobId = this.buildJobId(input.sessionRef.sessionId, scenarioCode, anchorEventId);
+    try {
+      const existingJob = await this.queue.getJob(jobId).catch(() => null);
+      if (existingJob) return { scheduled: false, reason: 'duplicate_job', jobId };
+
+      const fireAt = input.anchorAt + 48 * 60 * 60_000;
+      await this.queue.add(
+        REENGAGEMENT_JOB_NAME,
+        {
+          sessionRef: input.sessionRef,
+          scenarioCode,
+          anchorEventId,
+          anchorAt: input.anchorAt,
+          workOrderId: input.workOrderId,
+          onboardingCheck: true,
+          ...(input.channelIdentity ? { channelIdentity: input.channelIdentity } : {}),
+        },
+        {
+          jobId,
+          delay: Math.max(0, fireAt - Date.now()),
+          attempts: 2,
+          backoff: { type: 'fixed', delay: 30_000 },
+          removeOnComplete: { age: 7 * 24 * 60 * 60, count: 500 },
+          removeOnFail: { age: 7 * 24 * 60 * 60, count: 500 },
+        },
+      );
+      this.logger.log(
+        `[reengagement] 已排入职复核 jobId=${jobId} fireAt=${new Date(fireAt).toISOString()}`,
+      );
+      return { scheduled: true, fireAt, jobId };
+    } catch (error) {
+      this.logger.error(`[reengagement] 入职复核排程失败 jobId=${jobId}: ${toErrorMessage(error)}`);
+      return { scheduled: false, reason: 'enqueue_error', jobId };
     }
   }
 

@@ -5,6 +5,7 @@ import type {
   CandidateMessageResult,
   OpsEventWriteResult,
   PendingHireWorkOrder,
+  RecentInterviewPassedEvent,
   RecordCandidateMessageInput,
   RecordOpsEventInput,
 } from '../types/ops-events.types';
@@ -148,5 +149,50 @@ export class OpsEventsRepository extends BaseRepository {
       });
     }
     return pending;
+  }
+
+  /** 查时间窗内的面试通过事件，供复聊侧 D+3 入职跟进 sweep 排程。 */
+  async findRecentInterviewPassed(since: Date, until: Date): Promise<RecentInterviewPassedEvent[]> {
+    if (!this.isAvailable()) return [];
+
+    const rows = await this.selectAllPaged<{
+      corp_id?: string | null;
+      user_id?: string | null;
+      chat_id?: string | null;
+      bot_im_id?: string | null;
+      occurred_at?: string | null;
+      payload?: { work_order_id?: unknown } | null;
+    }>(this.tableName, 'corp_id, user_id, chat_id, bot_im_id, occurred_at, payload', (q) =>
+      q
+        .eq('event_name', 'interview.passed')
+        .gte('occurred_at', since.toISOString())
+        .lte('occurred_at', until.toISOString())
+        .order('occurred_at', { ascending: true })
+        .order('id', { ascending: true }),
+    );
+
+    return rows.flatMap((row) => {
+      const workOrderId = Number(row.payload?.work_order_id);
+      if (
+        !row.corp_id ||
+        !row.user_id ||
+        !row.chat_id ||
+        !row.occurred_at ||
+        !Number.isInteger(workOrderId) ||
+        workOrderId <= 0
+      ) {
+        return [];
+      }
+      return [
+        {
+          corpId: row.corp_id,
+          userId: row.user_id,
+          chatId: row.chat_id,
+          botImId: row.bot_im_id ?? null,
+          workOrderId,
+          occurredAt: row.occurred_at,
+        },
+      ];
+    });
   }
 }

@@ -20,6 +20,7 @@ describe('OpsEventsRepository', () => {
             return builder;
           }),
           gte: jest.fn(() => builder),
+          lte: jest.fn(() => builder),
           range: jest.fn((from: number) => {
             const pageIndex = Math.floor(from / 1000);
             return Promise.resolve({
@@ -61,5 +62,45 @@ describe('OpsEventsRepository', () => {
     expect(result.some((row) => row.workOrderId === 1000)).toBe(false);
     expect(result.some((row) => row.workOrderId === 1001)).toBe(true);
     expect(client.from).toHaveBeenCalledTimes(3);
+  });
+
+  it('returns only schedulable interview.passed events from the inclusive time window', async () => {
+    const client = makeClient({
+      'interview.passed': [
+        [
+          {
+            corp_id: 'corp-1',
+            user_id: 'user-1',
+            chat_id: 'chat-1',
+            bot_im_id: 'bot-1',
+            occurred_at: '2026-08-18T10:00:00.000Z',
+            payload: { work_order_id: 901 },
+          },
+          {
+            corp_id: 'corp-1',
+            user_id: null,
+            chat_id: 'chat-invalid',
+            occurred_at: '2026-08-18T10:00:00.000Z',
+            payload: { work_order_id: 902 },
+          },
+        ],
+      ],
+    });
+
+    const result = await makeRepository(client).findRecentInterviewPassed(
+      new Date('2026-08-18T10:00:00.000Z'),
+      new Date('2026-08-20T10:00:00.000Z'),
+    );
+
+    expect(result).toEqual([
+      {
+        corpId: 'corp-1',
+        userId: 'user-1',
+        chatId: 'chat-1',
+        botImId: 'bot-1',
+        workOrderId: 901,
+        occurredAt: '2026-08-18T10:00:00.000Z',
+      },
+    ]);
   });
 });

@@ -1,6 +1,6 @@
 # 二次主动回复流水线（reengagement / 复聊）
 
-**最后更新**：2026-08-12
+**最后更新**：2026-08-20
 **代码居所**：`src/agent/reengagement/`
 
 > 复聊是**独立链路**：系统决定何时主动找候选人，话术由 LLM 实时生成。
@@ -17,6 +17,8 @@
 ```
 锚点事件（turn-end / ops-events 写入点）
     │  computeFireAt(scenario, anchorAt) → 绝对时间戳
+    │
+    ├─ OnboardingSweepCron（每 15 分钟扫近 48h interview.passed）
     ▼
 Bull delayed job（jobId 幂等：sessionId:scenarioCode:anchorEventId）
     │
@@ -53,6 +55,8 @@ await reengagementQueue.add(
 );
 ```
 
+唯一的短窗 sweep 是入职跟进：`OnboardingSweepCronService` 每 15 分钟查询近 48 小时的 `ops_events(interview.passed)`，按事件的 `occurred_at` 排 `post_interview_onboarding` D+3 任务。稳定锚点 `wo{workOrderId}:pass` 使同一事件跨轮扫描只产生一个 Bull job；`READ_ONLY_PREVIEW=true` 时不扫描、不排程。该 sweep 只消费已存在的业务事件，不轮询全量会话。
+
 **窗口对齐**：先算 `anchorAt + resolveDelay(...)`，落在 <9:00 推到当日 9:00、>21:00 推到次日 9:00（时区 `Asia/Shanghai`，与 group-task cron 一致）。fire 时再 `inWindow(now)` 二次确认。
 
 ---
@@ -67,6 +71,7 @@ await reengagementQueue.add(
 | `booking_incomplete`       | 最终采纳回合 precheck `collect_fields` | +30min                  | 提醒补齐剩余资料                                            |
 | `interview_reminder`       | `booking.succeeded`                    | 依 `interviewTime` 计算 | 按面试形式提醒；**AI 面试提醒在线完成，线下面试才提醒到店** |
 | `post_interview_followup`  | `booking.succeeded`                    | 依 `interviewTime` 计算 | 面试后回访                                                  |
+| `post_interview_onboarding` | `interview.passed`                    | +3d                     | 面试后回访家族的入职跟进；未入职时确定性转人工              |
 | `new_job_for_waiting`      | 岗位上线事件（**外部**）               | 事件驱动                | 暂无岗位的候选人有新岗位时主动告知                          |
 
 ⚠️ `new_job_for_waiting` 的外部事件源尚未接入——该场景保留在 registry 中，事件源就绪后只需调用 scheduler。
@@ -74,6 +79,8 @@ await reengagementQueue.add(
 `interview_reminder` 在二期拥有两个同 code 档位：默认到场档仍使用原任务身份；报名日至面试日相差至少 3 个上海日历天时，额外排面试前 2 天确认档，任务锚点追加 `:d2` 后缀并在 payload 标记 `touchVariant=d2_confirm`。变体的延迟与灰度分别读取既有 map 的 `interview_reminder:d2` 子键，缺省延迟 2880 分钟、缺省灰度关闭，且不回退 `interview_reminder` 主场景开关。改期时两个档位按实时工单独立重排，确认档重新核验报名间隔。
 
 `store_presented_no_reply` 不新增场景 code。会话状态用 `storePresentationRounds` 单独累计推店轮次；第 2 轮起任务 payload 标记 `escalateToGroupInvite=true`。独立灰度子键 `store_presented_no_reply:invite` 缺省关闭且不回退主场景开关，关闭时在生成前移除有效升档标记，退化为普通推店未回文案。
+
+`post_interview_onboarding` 归入面试后回访家族，但因锚点不同使用独立 registry code。processor 对 `interview.passed` 走专属状态分派，不进入预约有效性检查或面试时间校准：`面试成功` 才生成触达，`上岗成功` 静默停止，`上岗失败/已离职` 直接落人工介入底账并告警，其余状态按工单回退停止。真实消息 `markSent` 后才排 +48h `wo{id}:onboarding_check` 复核；复核任务只查工单并告警，不经过触达闸、不发送消息。人工介入调用 `HandoffRecorderService + GeneralHandoffNotifierService`，不调用会暂停托管的 `InterventionService`。
 
 ---
 

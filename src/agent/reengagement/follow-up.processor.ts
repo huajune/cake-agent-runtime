@@ -17,6 +17,8 @@ import {
   GroupInviteService,
   type GroupInviteResult,
 } from '@biz/group-task/services/group-invite.service';
+import { HandoffRecorderService } from '@biz/handoff-events/handoff-recorder.service';
+import { GeneralHandoffNotifierService } from '@notification/services/general-handoff-notifier.service';
 import { SessionService } from '@memory/services/session.service';
 import { unwrapSessionFactValue } from '@memory/types/session-facts.types';
 import { LongTermService } from '@memory/services/long-term.service';
@@ -162,6 +164,8 @@ export class FollowUpProcessor implements OnModuleInit {
     private readonly longTerm: LongTermService,
     private readonly scheduler: FollowUpSchedulerService,
     private readonly groupInvite: GroupInviteService,
+    private readonly handoffRecorder: HandoffRecorderService,
+    private readonly handoffNotifier: GeneralHandoffNotifierService,
     private readonly configService: ConfigService,
     @Optional()
     @Inject(REENGAGEMENT_DELIVERY_PORT)
@@ -204,12 +208,40 @@ export class FollowUpProcessor implements OnModuleInit {
     }
 
     const now = Date.now();
+    let bookingContext: ReengagementBookingContext | undefined;
+    if (scenario.anchorEvent === 'interview.passed') {
+      if (job.data.workOrderId == null) {
+        this.tracking.trackStopped(identity, 'missing_authoritative_work_order_id');
+        return;
+      }
+      bookingContext =
+        (await resolveReengagementBookingContext(this.longTerm, this.sponge, {
+          corpId: sessionRef.corpId,
+          userId: sessionRef.userId,
+          preferredWorkOrderId: job.data.workOrderId,
+          botImId: channelIdentity?.botImId,
+        })) ?? undefined;
+      if (!bookingContext) {
+        throw new Error(`reengagement_booking_context_unavailable:${job.data.workOrderId}`);
+      }
+
+      if (job.data.onboardingCheck) {
+        await this.handleOnboardingCheck(job.data, identity, bookingContext);
+        return;
+      }
+
+      const onboardingVerdict = await this.handleOnboardingAtFire(job.data, bookingContext);
+      if (onboardingVerdict) {
+        this.tracking.trackStopped(identity, onboardingVerdict);
+        return;
+      }
+    }
+
     const loadedState = await this.session.getReengagementState(
       sessionRef.corpId,
       sessionRef.userId,
       sessionRef.sessionId,
     );
-    let bookingContext: ReengagementBookingContext | undefined;
     if (scenario.anchorEvent === 'booking.succeeded') {
       if (job.data.workOrderId == null) {
         this.tracking.trackStopped(identity, 'missing_authoritative_work_order_id');
@@ -609,8 +641,13 @@ export class FollowUpProcessor implements OnModuleInit {
     jobData: FollowUpJob,
   ): Promise<FollowUpJob['channelIdentity']> {
     const fromJob = jobData.channelIdentity;
+    const needsOnboardingIdentityCompletion =
+      jobData.scenarioCode === 'post_interview_onboarding' &&
+      !fromJob?.imContactId &&
+      !fromJob?.externalUserId;
     if (
       fromJob &&
+      !needsOnboardingIdentityCompletion &&
       (fromJob.candidateName ||
         fromJob.managerName ||
         fromJob.botImId ||
@@ -621,7 +658,7 @@ export class FollowUpProcessor implements OnModuleInit {
     }
     try {
       const resolved = await this.tracking.resolveChannelIdentity(jobData.sessionRef.sessionId);
-      if (resolved) return resolved;
+      if (resolved) return { ...resolved, ...fromJob };
     } catch (error) {
       this.logger.warn(
         `[reengagement] 渠道身份兜底查询失败，按空身份落库 sessionId=${jobData.sessionRef.sessionId}: ${this.errorMessage(error)}`,
@@ -1031,6 +1068,14 @@ export class FollowUpProcessor implements OnModuleInit {
       }
       await this.touchLedger.markSent(key, sessionId, now);
       this.tracking.trackSent(identity, outcome.reply?.text, batchId);
+      if (scenario?.code === 'post_interview_onboarding' && jobData.workOrderId != null) {
+        await this.scheduler.scheduleOnboardingCheck({
+          sessionRef: jobData.sessionRef,
+          workOrderId: jobData.workOrderId,
+          anchorAt: Date.now(),
+          channelIdentity: jobData.channelIdentity,
+        });
+      }
       if (jobData.escalateToGroupInvite === true) {
         await this.handleEscalatedGroupInvite(jobData, identity, batchId);
       }
@@ -1149,6 +1194,118 @@ export class FollowUpProcessor implements OnModuleInit {
       this.tracking.trackGroupInviteResult(identity, result);
       this.logger.warn(
         `[reengagement] 升档拉群失败且不重试 sessionId=${jobData.sessionRef.sessionId}: ${this.errorMessage(error)}`,
+      );
+    }
+  }
+
+  /** D+3 工单状态分派；返回非空即停止本次候选人触达。 */
+  private async handleOnboardingAtFire(
+    jobData: FollowUpJob,
+    bookingContext: ReengagementBookingContext,
+  ): Promise<string | null> {
+    switch (bookingContext.currentStatus) {
+      case '面试成功':
+        return null;
+      case '上岗成功':
+        return 'already_onboarded';
+      case '上岗失败':
+      case '已离职':
+        await this.dispatchOnboardingHandoff(jobData, bookingContext, 'onboarding_failed');
+        return 'onboarding_intervention_dispatched';
+      default:
+        return 'work_order_regressed';
+    }
+  }
+
+  /** +48h 复核不经过触达闸；已上岗静默，其余状态统一交人工判断。 */
+  private async handleOnboardingCheck(
+    jobData: FollowUpJob,
+    identity: ReengagementTouchIdentity,
+    bookingContext: ReengagementBookingContext,
+  ): Promise<void> {
+    if (bookingContext.currentStatus === '上岗成功') {
+      this.tracking.trackStopped(identity, 'already_onboarded');
+      return;
+    }
+    await this.dispatchOnboardingHandoff(jobData, bookingContext, 'onboarding_follow_up_required');
+    this.tracking.trackStopped(identity, 'onboarding_intervention_dispatched');
+  }
+
+  /** 入职异常统一出口：幂等底账 + 告警，不调用 InterventionService，保持托管可应答。 */
+  private async dispatchOnboardingHandoff(
+    jobData: FollowUpJob,
+    bookingContext: ReengagementBookingContext,
+    reasonCode: 'onboarding_failed' | 'onboarding_follow_up_required',
+  ): Promise<void> {
+    const { sessionRef, workOrderId } = jobData;
+    if (workOrderId == null) return;
+    const reason =
+      reasonCode === 'onboarding_failed'
+        ? `面试通过后工单已变为${bookingContext.currentStatus ?? '上岗失败'}，需要人工确认候选人后续安排`
+        : `入职跟进触达 48 小时后工单仍未到上岗成功，需要人工确认入职进展`;
+    const idempotencyKey = `${sessionRef.sessionId}:post_interview_onboarding:wo${workOrderId}:${reasonCode}`;
+    const writeOutcome = await this.handoffRecorder.record({
+      corpId: sessionRef.corpId,
+      chatId: sessionRef.sessionId,
+      userId: sessionRef.userId,
+      reasonCode,
+      reason,
+      actionAdvice: '请核实候选人是否已入职及遇到的问题；本告警不会暂停 AI 托管',
+      stage: 'post_interview_onboarding',
+      botImId: jobData.channelIdentity?.botImId,
+      workOrderId,
+      jobId: bookingContext.jobId ?? null,
+      idempotencyKey,
+    });
+    if (writeOutcome === 'duplicate') {
+      this.logger.warn(`[reengagement] 入职人工介入已处理，跳过重复告警 key=${idempotencyKey}`);
+      return;
+    }
+    if (writeOutcome === 'failed') {
+      this.logger.error(
+        `[reengagement] 入职人工介入底账失败，继续 fail-safe 告警 key=${idempotencyKey}`,
+      );
+    }
+
+    const [recentMessages, sessionState] = await Promise.all([
+      this.chatSession.getChatHistory(sessionRef.sessionId, 10).catch(() => []),
+      this.session
+        .getSessionState(sessionRef.corpId, sessionRef.userId, sessionRef.sessionId)
+        .catch(() => null),
+    ]);
+    try {
+      const notified = await this.handoffNotifier.notify({
+        alertLabel: '面试后回访 · 入职跟进',
+        reasonCode,
+        reason,
+        actionAdvice: '请核实候选人是否已入职及遇到的问题；本告警不会暂停 AI 托管',
+        workOrderId,
+        corpId: sessionRef.corpId,
+        botImId: jobData.channelIdentity?.botImId,
+        botUserName: jobData.channelIdentity?.managerName,
+        contactName: jobData.channelIdentity?.candidateName,
+        chatId: sessionRef.sessionId,
+        pausedUserId: sessionRef.sessionId,
+        currentMessageContent: `入职跟进巡检：工单 ${workOrderId} 当前状态 ${bookingContext.currentStatus ?? '未知'}`,
+        recentMessages: recentMessages.map((message) => ({
+          role: message.role,
+          content: message.content,
+          timestamp: message.timestamp,
+        })),
+        sessionState,
+        hostingPaused: false,
+        diagnostics: {
+          workOrderId,
+          currentStatus: bookingContext.currentStatus ?? null,
+          hostingPaused: false,
+        },
+      });
+      if (!notified) {
+        this.logger.error(`[reengagement] 入职人工介入告警发送失败 key=${idempotencyKey}`);
+      }
+    } catch (error) {
+      this.logger.error(
+        `[reengagement] 入职人工介入告警异常 key=${idempotencyKey}: ${this.errorMessage(error)}`,
       );
     }
   }
