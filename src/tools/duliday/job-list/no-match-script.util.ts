@@ -117,7 +117,9 @@ export function countDissatisfiedRecommendationRounds(messages: readonly unknown
     const parsed = extractMessageText(message);
     if (!parsed) continue;
     if (parsed.role === 'assistant') {
-      recommendationPending = RECOMMENDATION_SIGNAL.test(parsed.text);
+      // 岗位卡片经常拆成多条，末尾再发“你看哪家方便”。末尾 CTA 本身没有薪资/班次，
+      // 不能把前面已经建立的“本轮推荐待反馈”状态清掉。
+      if (RECOMMENDATION_SIGNAL.test(parsed.text)) recommendationPending = true;
       continue;
     }
     if (

@@ -150,12 +150,14 @@ describe('buildNoMatchScript', () => {
             content:
               '成都你六姐（凌空SOHO店）- 洗碗工 2.3km\n班次：12:00-14:30\n薪资：24元/时',
           },
+          { role: 'assistant', content: '你看哪家方便' },
           { role: 'user', content: '我上不了那么长时间' },
           {
             role: 'assistant',
             content:
               '成都你六姐（金光汇店）- 后厨 8.2km\n班次：18:00-22:00\n薪资：24元/时',
           },
+          { role: 'assistant', content: '这几家都是晚高峰短班，你看哪家方便' },
           { role: 'user', content: '没有近的，都有点远' },
         ]),
       ).toBe(2);
