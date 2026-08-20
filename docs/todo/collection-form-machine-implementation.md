@@ -211,6 +211,15 @@ customerLabel 拼装主体；快照水位（snapshot-gate）；确认识别器�
 3. recap/rejection renderer（纯文案层，快照测试）；
 4. ——**0819 契约检查点**：spec 对照诉求单核对 → collection-contract.types 定稿 →
    覆盖度探针复测——
+   **✅ 0820 已过（生产实测 9 岗，探针存档 scratchpad contract-v2-probe*.json）**：
+   #1 required ✅（默认 true）；#5 valueSpec ✅ 含 genderRanges 分性别实测（528995）；
+   #6 disclosure ✅（籍贯[3] RESTRICTED 实测）；#8 部分落地——**专业[659] 仍 PLAIN，
+   披露兜底注册表必须随批交付**+回敬海绵补标；#8.5 无 optionUniverse 但
+   rejectedOptions 实测被填（籍贯岗 rejected=并集法发现的 5 省）；**#3 systemField
+   未进契约**→身份识别走既定兜底（环境级配置+labelTitle 每轮核验，核验不过告警降
+   通用道）；#2 errorList labelId 随 S3 验。0819 案三字段全结构化（本地健康证[13]
+   三态/社会身份[1]/具体住址[756]）。529020 返回 0 标签疑似下架——覆盖度全量复测
+   列开工首项。步骤 5-7 解除阻塞。——
 5. sponge 契约客户端（零缓存）+ memory store/service（Redis 快照读写）；
 6. precheck/booking 接线重写（最大面）+ booking-card 配置债段；
 7. §7 退役删除批 + 全量回归。
