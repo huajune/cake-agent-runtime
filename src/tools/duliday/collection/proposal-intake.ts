@@ -57,7 +57,9 @@ const CLAIM_FIELD_TITLE_PATTERNS: Partial<Record<CandidateClaimField, RegExp>> =
   height: /身高/u,
   weight: /体重/u,
   householdProvince: /籍贯|户籍/u,
-  isStudent: /社会身份|是否学生|学生/u,
+  // 「身份」也要认：契约没带身份标签时 precheck 会合成一个标题为「身份」的槽位
+  //（判决单源的唯一记录在案例外，见 precheck 的 SYNTHETIC_IDENTITY_LABEL_ID）。
+  isStudent: /社会身份|是否学生|学生|学信网|在籍|身份/u,
 };
 
 const CLAIM_FIELD_TO_IDENTITY: Partial<Record<CandidateClaimField, string>> = {
@@ -105,15 +107,24 @@ export function findFieldByTitle(
   const exact = contract.find((field) => normalizeTitle(field.labelTitle) === target);
   if (exact) return exact;
 
-  const byTrunk = contract.filter((field) => stripParenthetical(field.labelTitle) === target);
+  // 括号要**两边都剥**：契约标题可能自带括号补充（"是否学生（不要学生及暑假工）"），
+  // 而候选人回填时带的括号往往是**我们模板加上去的**枚举提示（"身份（学生/社会人士）："）。
+  // 只剥一边就会出现「模板发的标签认不回自己的字段」这种荒唐失配。
+  const targetTrunk = stripParenthetical(title);
+  const byTrunk = contract.filter(
+    (field) =>
+      stripParenthetical(field.labelTitle) === target ||
+      normalizeTitle(field.labelTitle) === targetTrunk ||
+      stripParenthetical(field.labelTitle) === targetTrunk,
+  );
+  // 撞车即放弃：定位错会把答案静默写进别的槽位（不可恢复），定位不到只是多问一句。
   return byTrunk.length === 1 ? byTrunk[0] : null;
 }
 
 export interface IntakeProposal extends ValueProposal {
-  /** 见 ValueProposal.agentQuestionQuote（R1 确认作证通道）。 */
   labelId: number;
   /** 供审计事件区分"这条值从哪条通道来的"。 */
-  channel: 'claim' | 'legacy_arg' | 'supplement_answer' | 'adapter_sweep';
+  channel: 'claim' | 'form_line' | 'legacy_arg' | 'supplement_answer' | 'adapter_sweep';
 }
 
 /**
@@ -127,6 +138,7 @@ export function collectProposals(input: IntakeInput): IntakeProposal[] {
   };
 
   for (const proposal of fromClaims(input)) put(proposal);
+  for (const proposal of fromFormLines(input)) put(proposal);
   for (const proposal of fromLegacyArgs(input)) put(proposal);
   for (const proposal of fromSupplementAnswers(input)) put(proposal);
   for (const proposal of fromAdapterSweep(input)) put(proposal);
@@ -156,6 +168,48 @@ function fromClaims(input: IntakeInput): IntakeProposal[] {
       ...(claim.operation === 'correct' ? { restatement: true } : {}),
       channel: 'claim',
     });
+  }
+  return proposals;
+}
+
+/**
+ * 通道 1.5：**表单回捞**——候选人按我们发的模板逐行回填。
+ *
+ * 这条通道是必需品不是兼容层：收资模板就是 `标签：值` 行，候选人的回复自然也是
+ * `标签：值` 行。不拆行就等于把整行喂给字段识别器，两种错法都实测过：
+ * - `身份（学生/社会人士）：社会` → 识别器拿到整行（含选项模板）判不出，返回 null；
+ * - `是否是学信网在籍学生：否` → 识别器在整行里看到"学生"二字，判成"学生"，
+ *   而正确答案是"否"＝社会人士。**判反**。
+ * 拆行后只把**值**交给适配器，两种都对。
+ *
+ * 标签→字段用 `findFieldByTitle`（全等优先、主干撞车即放弃），与 errorList 映射同一口径。
+ */
+function fromFormLines(input: IntakeInput): IntakeProposal[] {
+  const proposals: IntakeProposal[] = [];
+  for (const text of input.candidateTexts) {
+    for (const rawLine of text.split(/\r?\n/u)) {
+      const matched = /^\s*([^：:\n]{1,48})\s*[：:]\s*(.+?)\s*$/u.exec(rawLine);
+      if (!matched) continue;
+      const [, label, value] = matched;
+      const field = findFieldByTitle(input.contract, label);
+      if (!field) continue;
+
+      // 只把值交给适配器；适配器认不出时，TEXT 型直接收原值，选项型交模型作证。
+      const adapted = adapterFor(field)({ field, candidateText: value });
+      if (!adapted && field.fieldType !== 'TEXT') continue;
+
+      proposals.push({
+        labelId: field.labelId,
+        value: adapted?.value ?? value,
+        optionCodes: adapted?.optionCodes,
+        // sourceText 取**整行**：整行才是候选人原文里逐字存在的东西，公证回查按它对。
+        sourceText: rawLine.trim(),
+        producer: 'candidate_quote',
+        candidateTexts: input.candidateTexts,
+        messages: input.messages,
+        channel: 'form_line',
+      });
+    }
   }
   return proposals;
 }

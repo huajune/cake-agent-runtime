@@ -8,6 +8,7 @@ import { CollectionFormService } from '@memory/services/collection-form.service'
 import {
   escalate,
   mapContractFields,
+  recordConfigDebt,
   parseIdentityAnchors,
   type BookingCollectionForm,
   type ContractFieldDef,
@@ -707,6 +708,19 @@ export interface PrecheckAdjudicationDeps {
   identityAnchors?: string;
 }
 
+/**
+ * 合成身份槽位的 labelId。
+ *
+ * 负数是刻意的：它**不是海绵的 labelId**，不能进 booking 的 labelList（进了会报错）。
+ * D4 禁止硬编码外系统 ID——这个值恰恰相反，它是"本地合成、绝不外发"的标记。
+ */
+const SYNTHETIC_IDENTITY_LABEL_ID = -1;
+
+/** 该槽位是否本地合成（不进 booking payload）。 */
+export function isSyntheticSlot(labelId: number): boolean {
+  return labelId < 0;
+}
+
 /** 收资表单接管后的一轮产物（供响应组装与审计落库）。 */
 interface FormCollectionOutcome {
   form: BookingCollectionForm;
@@ -979,6 +993,11 @@ async function runFormCollection(params: {
   legacyArgs?: Partial<Record<CandidateClaimField, string>>;
   supplementAnswers?: Record<string, string> | null;
   archiveFacts?: readonly ArchiveFact[];
+  /**
+   * 岗位侧要求显式身份（学生/社会人士）但契约没带身份标签时的合成槽位标题。
+   * 传空表示岗位不需要显式身份。
+   */
+  identityFallbackTitle?: string | null;
   candidateTexts: readonly string[];
   messages: readonly unknown[];
   candidatePhone?: string | null;
@@ -1008,6 +1027,33 @@ async function runFormCollection(params: {
     });
   }
 
+  // ── 判决单源的**唯一记录在案的例外**：身份槽位合成 ──
+  // 判决单源要求收资判据只来自契约。但 0820 覆盖度复测实测：契约只有 60% 的岗位带
+  // 身份语义族标签，而岗位侧的学生硬筛是运营最在意的筛之一——纯按契约收，
+  // 那 40% 的岗位会静默停止问身份、进而停止筛学生（不报错、不告警）。
+  // 故：契约带身份标签时契约说了算（单源）；契约没带而岗位侧要求显式身份时，
+  // 合成一个槽位**并记一条配置债**——报名成功卡片会把这条债显示给运营，
+  // 让"契约该带没带"这件事有人看得见，而不是变成代码里一条永久的第二判据源。
+  const hasIdentityLabel = mapped.fields.some((field) =>
+    /社会身份|学生|学信网|暑假工|身份/u.test(field.labelTitle),
+  );
+  const syntheticIdentity =
+    !hasIdentityLabel && params.identityFallbackTitle
+      ? {
+          labelId: SYNTHETIC_IDENTITY_LABEL_ID,
+          labelTitle: params.identityFallbackTitle,
+          fieldType: 'SINGLE_OPTION' as const,
+          required: true,
+          // 顺序照生产既有话术「学生/社会人士」——候选人读到的枚举提示按这个次序。
+          acceptedOptions: [
+            { optionCode: 'student', optionLabel: '学生' },
+            { optionCode: 'social', optionLabel: '社会人士' },
+          ],
+          rejectedOptions: [],
+        }
+      : null;
+  if (syntheticIdentity) mapped.fields.push(syntheticIdentity);
+
   const scope = {
     corpId: params.context.session.corpId,
     userId: params.context.session.userId,
@@ -1023,6 +1069,15 @@ async function runFormCollection(params: {
       userId: params.context.session.userId,
       jobId: params.jobId,
     });
+  }
+
+  if (syntheticIdentity) {
+    form = recordConfigDebt(
+      form,
+      syntheticIdentity.labelId,
+      `契约未带身份标签，按岗位侧学生筛要求合成「${syntheticIdentity.labelTitle}」槽位；` +
+        `请在标签后台为本岗补配身份标签（0820 覆盖度复测：契约身份族覆盖率 60%）`,
+    );
   }
 
   const result = runCollectionCore({
@@ -1754,6 +1809,7 @@ export function buildInterviewPrecheckTool(
                 candidateTexts: extractCandidateTexts(evidenceMessages),
                 messages: evidenceMessages,
                 candidatePhone: normalizeCandidatePhoneInput(candidatePhone),
+                identityFallbackTitle: studentIdentityMustBeExplicit ? '身份' : null,
               });
             } catch (error) {
               // 契约拉不到 = 没有判据。**不静默降级到旧路径**——那等于按"该岗无筛"

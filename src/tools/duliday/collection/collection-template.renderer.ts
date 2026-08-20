@@ -61,7 +61,7 @@ export function renderCollectionTemplate(
 
   // 模板一次性列全部字段（已知的预填、缺的留空）：分批发清单是明令禁止的漏斗式收资。
   const lines = ordered.map(
-    (field) => `${formLabel(field.labelTitle)}：${knownFieldMap[field.labelTitle] ?? ''}`,
+    (field) => `${formLabel(field.labelTitle, field)}：${knownFieldMap[field.labelTitle] ?? ''}`,
   );
 
   return {
@@ -82,11 +82,39 @@ export function renderCollectionTemplate(
  * 原子性、被按句拆散刷屏。生产实测脏配置不少（「是否学生（不要学生及暑假工）」），
  * 且括号里往往就是**筛选指令**——原样发给候选人等于泄露筛选条件。
  */
-export function formLabel(title: string): string {
+export function formLabel(title: string, field?: ContractFieldDef): string {
   const stripped = title
     .replace(/[（(][^）)]*[）)]/gu, '')
     .replace(/[，,。！？!?；;]/gu, ' ')
     .trim();
-  const label = stripped || title.trim();
-  return label.length > 48 ? label.slice(0, 48) : label;
+  const label = (stripped || title.trim()).slice(0, 48);
+  const hint = field ? optionHint(field) : null;
+  if (!hint) return label;
+  const withHint = `${label}（${hint}）`;
+  // 加了提示仍要过分段器的表单行判据（≤48 字），超了就退回裸标签。
+  return withHint.length <= 48 ? withHint : label;
+}
+
+/**
+ * 选项型字段的枚举提示：`身份（学生/社会人士）`。候选人知道该填什么，
+ * 比裸「身份：」少一轮来回。
+ *
+ * ⚠️ **必须列全部选项，不能只列 accepted**——只列可接受项等于用省略泄露筛选条件：
+ * 「籍贯（北京/河北/…）」里没有天津，候选人一眼就看出天津被排除了，
+ * 那正是 disclosure=RESTRICTED 要防的事。候选人如实填、筛在写入时判，
+ * 拒绝话术再按披露分级决定说什么。
+ *
+ * 三种情况不加提示：
+ * - 选项标签自带逗号/句号（如「无本地有效健康证，接受办理」）——会让分段器不认这一行
+ *   表单行，整块失去原子性被按句拆散（Spike S5 结论）；
+ * - 选项太多（如籍贯 34 个省）——塞进一行没法读；
+ * - 非选项型字段。
+ */
+function optionHint(field: ContractFieldDef): string | null {
+  if (field.fieldType !== 'SINGLE_OPTION' && field.fieldType !== 'MULTIPLE_OPTION') return null;
+  const options = [...field.acceptedOptions, ...field.rejectedOptions];
+  // 少于 2 项不是选择题（提示"（社会人士）"只会让人困惑）；多于 4 项塞进一行没法读。
+  if (options.length < 2 || options.length > 4) return null;
+  if (options.some((option) => /[，,。！？!?；;（）()]/u.test(option.optionLabel))) return null;
+  return options.map((option) => option.optionLabel).join('/');
 }

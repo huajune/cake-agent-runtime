@@ -7,6 +7,7 @@ import {
 import { proposeEducation } from '@resolution/collection/adapters/education.adapter';
 import { proposeHealthCertificate } from '@resolution/collection/adapters/health-certificate.adapter';
 import { proposeIdentityCore } from '@resolution/collection/adapters/identity-core.adapter';
+import { proposeIdentityStatus } from '@resolution/collection/adapters/identity-status.adapter';
 import { createForm, type ContractFieldDef } from '@resolution/collection/form.types';
 import { proposeValue } from '@resolution/collection/form-writes';
 import {
@@ -157,12 +158,14 @@ describe('adapter.registry', () => {
     expect(routeOf(NAME_FIELD)).toBe('identity_core');
     expect(routeOf(HEALTH_CERT_FIELD)).toBe('title_family');
     expect(routeOf(EDUCATION_FIELD)).toBe('title_family');
-    expect(routeOf(STUDENT_TEXT_FIELD)).toBe('generic');
+    // 学生族脏配置（12 个 labelId 语义分裂）现在由身份适配器接管——标题语义族兜得住，
+    // 正是 adapter.registry 注释里说的"按 ID 精确表必漏"的那一族。
+    expect(routeOf(STUDENT_TEXT_FIELD)).toBe('title_family');
 
     expect(adapterFor(NAME_FIELD)).toBe(proposeIdentityCore);
     expect(adapterFor(HEALTH_CERT_FIELD)).toBe(proposeHealthCertificate);
     expect(adapterFor(EDUCATION_FIELD)).toBe(proposeEducation);
-    expect(adapterFor(STUDENT_TEXT_FIELD)).toBe(genericAdapter);
+    expect(adapterFor(STUDENT_TEXT_FIELD)).toBe(proposeIdentityStatus);
   });
 
   it('标题语义族按词面判定，兜得住 12 个分裂的健康证/学历 labelId', () => {

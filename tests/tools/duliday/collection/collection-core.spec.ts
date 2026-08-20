@@ -197,6 +197,7 @@ describe('模板字段名与契约同源', () => {
       messages: [],
     });
     expect(result.template.missingFields).toEqual(['是否学生（不要学生及暑假工）']);
+    // 单选项不出枚举提示（不是选择题）；标题的括号补充照剥。
     expect(result.template.templateText).toContain('是否学生：');
     expect(result.template.templateText).not.toContain('不要学生及暑假工');
   });
@@ -373,7 +374,8 @@ describe('必填全收 + 筛选项优先（0820 用户确认口径）', () => {
     const lines = runBig()
       .template.templateText.split('\n')
       .slice(1)
-      .map((line) => line.split('：')[0]);
+      // 剥掉枚举提示只留标签本体（选项型会渲染成「能做多久（半年以上/3个月内）：」）。
+      .map((line) => line.split('：')[0].replace(/（[^）]*）$/u, ''));
     expect(lines).toEqual([
       '姓名',
       '手机号',
