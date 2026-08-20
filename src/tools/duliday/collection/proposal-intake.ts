@@ -80,19 +80,33 @@ export function findFieldForClaim(
   return pattern ? (contract.find((field) => pattern.test(field.labelTitle)) ?? null) : null;
 }
 
-/** 按标签标题定位契约字段（补充标签答案 / errorList 展示名共用同一口径）。 */
+/**
+ * 按标签标题定位契约字段（补充标签答案 / errorList 展示名共用同一口径）。
+ *
+ * 两级匹配，**歧义即放弃**：
+ * 1. labelTitle 全等——0818 全量实测 468 岗 × 109 标签**零标题冲突**，
+ *    labelTitle → labelId 是干净的 1:1，这是"名字即键、无需翻译表"的依据；
+ * 2. 剥括号后的主干相等——模板行会剥括号（既为分段兼容，也因为括号里往往是筛选指令，
+ *    原样发给候选人等于泄露），所以候选人/模型回填时给的是主干。
+ *
+ * ⚠️ 主干**不唯一**：实测 `体重 → {20, 50}`、`专业 → {544, 659}`。当前之所以安全，
+ * 只是因为匹配限定在单岗契约内、且实测同岗位内主干撞车数为 0——那是**数据碰巧安全，
+ * 不是结构安全**，运营配一个同时挂两个「体重」的岗位就会翻车。
+ * 故主干命中多于一个时**返回 null 而不是取第一个**：定位不到会走追问/转人工（可恢复），
+ * 定位错了会把答案静默写进别的槽位（不可恢复，且正是旧翻译表那类失配事故的形态）。
+ */
 export function findFieldByTitle(
   contract: readonly ContractFieldDef[],
   title: string,
 ): ContractFieldDef | null {
   const target = normalizeTitle(title);
   if (!target) return null;
-  return (
-    contract.find((field) => normalizeTitle(field.labelTitle) === target) ??
-    // 标题带括号补充时按主干再试一次（"是否学生（不要学生及暑假工）" ←→ "是否学生"）。
-    contract.find((field) => stripParenthetical(field.labelTitle) === target) ??
-    null
-  );
+
+  const exact = contract.find((field) => normalizeTitle(field.labelTitle) === target);
+  if (exact) return exact;
+
+  const byTrunk = contract.filter((field) => stripParenthetical(field.labelTitle) === target);
+  return byTrunk.length === 1 ? byTrunk[0] : null;
 }
 
 export interface IntakeProposal extends ValueProposal {

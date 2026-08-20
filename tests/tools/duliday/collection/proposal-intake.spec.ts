@@ -69,6 +69,18 @@ describe('字段定位', () => {
     expect(findFieldByTitle(CONTRACT, '是否学生')?.labelId).toBe(605);
     expect(findFieldByTitle(CONTRACT, '不存在的标签')).toBeNull();
   });
+
+  it('主干撞车时不猜——定位错比定位不到危险得多', () => {
+    // 生产实测的两对撞车主干：体重 → {20,50}、专业 → {544,659}。
+    // 当前同岗位内撞车数为 0，但那是数据碰巧安全；配到一起就必须放弃匹配。
+    const collided: ContractFieldDef[] = [
+      { ...STUDENT_DIRTY, labelId: 20, labelTitle: '体重（净重）' },
+      { ...STUDENT_DIRTY, labelId: 50, labelTitle: '体重（kg）' },
+    ];
+    expect(findFieldByTitle(collided, '体重')).toBeNull();
+    // 全等仍然命中——歧义只发生在剥括号那一级。
+    expect(findFieldByTitle(collided, '体重（kg）')?.labelId).toBe(50);
+  });
 });
 
 describe('通道 1 · 主聊模型 claims（主通道）', () => {
