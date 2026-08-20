@@ -48,7 +48,7 @@ describe('MemoryFixtureService', () => {
   it('should normalize rough badcase context into session facts and job summaries', async () => {
     await service.seed(scope, {
       facts: {
-        candidateName: '张三',
+        candidateName: '兮兮',
       },
       sessionFacts: {
         source: 'badcase-context-backfill',
@@ -65,12 +65,12 @@ describe('MemoryFixtureService', () => {
       'session-1',
       // 夹具落档已显式署名（记忆审计 S9 关闭 P4 无守卫路径）：saveFacts 只收
       // SessionFacts 单形态，每个值带 confidence/source/evidence，不再靠裸值信封
-      // 默默折成 unknown/archive。evidence 写实话——夹具是测试用例回放的档案。
+      // 默默折成未署名档案。evidence 写实话——夹具是测试用例回放的档案。
       expect.objectContaining({
         interview_info: expect.objectContaining({
           name: {
-            value: '张三',
-            confidence: 'unknown',
+            value: '兮兮',
+            confidence: 'medium',
             source: 'archive',
             evidence: 'test-suite 记忆夹具预置',
           },
@@ -142,7 +142,7 @@ describe('MemoryFixtureService', () => {
   it('should complete partial structured facts before saving them', async () => {
     await service.seed(scope, {
       sessionFacts: {
-        interview_info: { phone: '13800000000' },
+        interview_info: { phone: '18271421690' },
         preferences: { city: '北京' },
         reasoning: 'curated fixture',
       },
@@ -156,8 +156,8 @@ describe('MemoryFixtureService', () => {
         interview_info: expect.objectContaining({
           name: null,
           phone: {
-            value: '13800000000',
-            confidence: 'unknown',
+            value: '18271421690',
+            confidence: 'medium',
             source: 'archive',
             evidence: 'test-suite 记忆夹具预置',
           },

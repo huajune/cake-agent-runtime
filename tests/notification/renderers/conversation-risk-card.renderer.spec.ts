@@ -13,7 +13,7 @@ import {
  */
 function storedFacts(raw: Record<string, unknown>) {
   return toSessionFacts(EntityExtractionResultSchema.parse({ reasoning: 'spec fixture', ...raw }), {
-    confidence: 'unknown',
+    confidence: 'medium',
     source: 'archive',
     evidence: 'spec fixture',
   });

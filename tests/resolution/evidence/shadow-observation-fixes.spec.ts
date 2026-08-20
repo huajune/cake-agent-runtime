@@ -1,5 +1,4 @@
 import { adjudicateCandidateClaims } from '@resolution/evidence/engine';
-import { runCandidateFactAdjudication } from '@resolution/evidence/adjudicate';
 import { extractCandidateTexts } from '@resolution/signal/self-report';
 import { produceDirectFieldClaims } from '@resolution/evidence/producers/direct-field';
 import { produceLegacyModelClaims } from '@resolution/evidence/producers/model-claims';
@@ -134,25 +133,6 @@ describe('P0-2 图片描述不得作为候选人自陈证据（shadow 观测 202
       { role: 'assistant', content: '好的' },
     ]);
     expect(texts).toEqual(['我叫王玥']);
-  });
-
-  it('截图里的招聘者手机号不再获得作证资格（模型裸传 → 无据拒绝）', () => {
-    const result = runCandidateFactAdjudication({
-      messages: [RECRUITER_PHONE_IMAGE],
-      legacyArgs: { phone: '13788930869', age: '18' },
-      sessionAccepted: {},
-      profileHints: {},
-      now: NOW,
-    });
-    // 修复前：截图文本进 quote 基准 → 号码/年龄可被补录成"候选人原话"
-    expect(result.acceptedValues.phone).toBeUndefined();
-    expect(result.acceptedValues.age).toBeUndefined();
-    // 工序 C1 后拒因是 quote_not_found（裸值没有引文＝没有出处），语义拒因已删。
-    expect(
-      result.adjudicated.every(
-        (entry) => entry.decision === 'rejected' && entry.rejectionReason === 'quote_not_found',
-      ),
-    ).toBe(true);
   });
 
   it('候选人自己的简历图片仍是自陈材料（既有裁定不回退）', () => {

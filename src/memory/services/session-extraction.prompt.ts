@@ -20,6 +20,7 @@ export const SESSION_EXTRACTION_SYSTEM_PROMPT = `你是求职偏好提取引擎�
   delayed_intent、short_term、open_position、time_windows、schedule_constraint、available_after
 - brand_intents：本轮品牌偏好的 positive / negative / browse_all 极性
 - labor_form_intent：set / clear / ignore 三态
+- labor_form 仅允许以下合法值之一："全职"、"兼职"、"寒假工"、"暑假工"、"小时工"
 - reasoning：简短说明；无新信息固定写“本轮无新信息”
 
 硬规则：
