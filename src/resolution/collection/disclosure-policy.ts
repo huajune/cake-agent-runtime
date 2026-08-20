@@ -30,6 +30,22 @@ export type DisclosureLevel = 'open' | 'restricted';
  * 身高体重/在岗时长）说出来不增加任何信息暴露；没印的一律不进这张表。
  * 加词前先回答「候选人自己在岗位卡上看得到吗」，答不上来就别加。
  */
+/**
+ * 敏感属性的**标题面**判据——与 `containsSensitiveScreeningText` 的散文面判据互补，
+ * 不是它的副本。
+ *
+ * 为什么需要第二个判据面：共用词表是给**岗位自由文本**调的，那里裸「专业」满地都是
+ * 形容词用法（"专业培训""我们很专业"），所以它刻意只认「专业（…」「相关/类/所学专业」
+ * 「专业要求/限制/背景」这些组合形态，**裸标题「专业」认不出来**。而契约字段**标题**
+ * 是另一种文本：一个叫「专业」的字段不可能是形容词，它就是学科筛选。
+ *
+ * 生产实测这正是缺口所在——专业族(659/544) 后端 0820 承诺补 RESTRICTED 但**尚未落地**，
+ * 契约仍返 PLAIN；没有这条标题判据，专业不符就会被当面告诉候选人。
+ * 收词纪律与共用词表一致：只收**属性名本身**，不收组合形态（组合形态归共用词表）。
+ */
+const SENSITIVE_TITLE_FAMILIES =
+  /^(?:专业|所学专业|专业背景|婚育|婚姻|婚姻状况|生育|生育情况|民族|籍贯|户籍|户口|户籍省份|政治面貌|宗教信仰)/u;
+
 const OPEN_TITLE_FAMILIES =
   /年龄|性别|学历|文化程度|健康证|身高|体重|在岗多久|预计在岗|工作时长|排班|上班时间/u;
 
@@ -46,6 +62,7 @@ export function disclosureLevelOf(field: ContractFieldDef): DisclosureLevel {
   // ② 红线词表：**压过契约的 PLAIN**。契约的 PLAIN 不是"确认可说"，只是"没标"——
   //    实测专业族(659/544)仍返 PLAIN（后端 0820 承诺补标未落地），只信契约就会把
   //    专业不符当面告诉候选人。红线是唯一不降级的那条（蓝图 v3-lean 头注）。
+  if (SENSITIVE_TITLE_FAMILIES.test(field.labelTitle)) return 'restricted';
   if (containsSensitiveScreeningText(field.labelTitle)) return 'restricted';
   if (containsSensitiveScreeningText(field.labelInstructions ?? '')) return 'restricted';
   // ③ 可明说白名单：岗位卡本来就印着的硬性条件。
@@ -60,12 +77,30 @@ export function canDiscloseRejection(field: ContractFieldDef): boolean {
 }
 
 /**
+ * 该字段是否**确凿敏感**——有明确的敏感信号，而不只是"没被标成可明说"。
+ *
+ * ⚠️ 与 `disclosureLevelOf(field)==='restricted'` 不是一回事，别混用：
+ * 那个判的是"这个字段的**拒绝理由**能不能说"，未知字段一律保守归 restricted
+ * （包括姓名、手机号这种根本不会成为拒绝理由的字段）。因果隔离要问的是另一个问题
+ * ——"候选人刚才答的是不是一个敏感属性"。拿 restricted 当敏感判据会让候选人
+ * **每报一次姓名就顺延一轮拒绝**，把因果隔离变成无差别拖延。
+ */
+export function isSensitiveAttribute(field: ContractFieldDef): boolean {
+  return (
+    field.disclosure === 'RESTRICTED' ||
+    SENSITIVE_TITLE_FAMILIES.test(field.labelTitle) ||
+    containsSensitiveScreeningText(field.labelTitle) ||
+    containsSensitiveScreeningText(field.labelInstructions ?? '')
+  );
+}
+
+/**
  * 因果隔离（2026-08-17 裁定）：禁止在候选人刚回答敏感字段的那一轮触发拒绝——
  * 哪怕话术再委婉，紧邻时序本身就把因果说出去了（"我刚说完籍贯它就说没岗位了"）。
  *
- * 调用方在渲染拒绝话术前问一句：本轮是否有 restricted 档字段刚落值？是则本轮不拒，
+ * 调用方在渲染拒绝话术前问一句：本轮是否有**确凿敏感**字段刚落值？是则本轮不拒，
  * 拒绝顺延到下一轮（表单状态已是 disqualified，不会丢）。
  */
 export function shouldDeferRejection(fieldsAnsweredThisTurn: readonly ContractFieldDef[]): boolean {
-  return fieldsAnsweredThisTurn.some((field) => disclosureLevelOf(field) === 'restricted');
+  return fieldsAnsweredThisTurn.some(isSensitiveAttribute);
 }

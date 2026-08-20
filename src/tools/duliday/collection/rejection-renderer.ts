@@ -16,6 +16,7 @@
 import { normalizeGenderValue } from '@resolution/candidate/gender';
 import {
   disclosureLevelOf,
+  isSensitiveAttribute,
   resolveValueRange,
   verdictOf,
   type BookingCollectionForm,
@@ -69,11 +70,10 @@ export function renderRejection(params: {
   const internalReason = `labelId=${field.labelId}「${field.labelTitle}」命中筛选条件，候选人答「${slotValue}」`;
 
   // 因果隔离只对禁明说档生效：可明说族本来就允许当面讲要求，紧邻回合说反而更自然。
+  // 因果隔离判据用 isSensitiveAttribute 而非 disclosureLevelOf：后者把"未标记"也算
+  // restricted（姓名手机号都在内），拿它当敏感判据会让候选人每报一次姓名就顺延一轮拒绝。
   const deferred =
-    level === 'restricted' &&
-    (params.fieldsAnsweredThisTurn ?? []).some(
-      (answered) => disclosureLevelOf(answered) === 'restricted',
-    );
+    level === 'restricted' && (params.fieldsAnsweredThisTurn ?? []).some(isSensitiveAttribute);
 
   if (level === 'restricted') {
     return {

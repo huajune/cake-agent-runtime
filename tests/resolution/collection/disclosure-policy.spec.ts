@@ -1,6 +1,7 @@
 import {
   canDiscloseRejection,
   disclosureLevelOf,
+  isSensitiveAttribute,
   shouldDeferRejection,
 } from '@resolution/collection/disclosure-policy';
 import type { ContractFieldDef } from '@resolution/collection/form.types';
@@ -55,6 +56,28 @@ describe('disclosureLevelOf', () => {
   });
 });
 
+describe('isSensitiveAttribute vs disclosureLevelOf（别混用）', () => {
+  it('姓名/手机号：拒绝理由不可说（默认档），但**不是敏感属性**', () => {
+    for (const title of ['姓名', '手机号', '具体住址']) {
+      expect(disclosureLevelOf(field(title))).toBe('restricted');
+      expect(isSensitiveAttribute(field(title))).toBe(false);
+    }
+  });
+
+  it('籍贯/民族/专业：两者都判敏感', () => {
+    for (const title of ['籍贯', '民族', '专业']) {
+      expect(disclosureLevelOf(field(title))).toBe('restricted');
+      expect(isSensitiveAttribute(field(title))).toBe(true);
+    }
+  });
+
+  it('契约标 RESTRICTED 即敏感，不看词表', () => {
+    expect(isSensitiveAttribute({ ...field('每周可出勤天数'), disclosure: 'RESTRICTED' })).toBe(
+      true,
+    );
+  });
+});
+
 describe('shouldDeferRejection · 因果隔离', () => {
   it('本轮刚答过 restricted 档字段 → 拒绝顺延，不在紧邻回合触发', () => {
     expect(shouldDeferRejection([field('籍贯')])).toBe(true);
@@ -64,5 +87,9 @@ describe('shouldDeferRejection · 因果隔离', () => {
   it('本轮只答了可明说族 → 当轮即可拒绝', () => {
     expect(shouldDeferRejection([AGE_FIELD, GENDER_MALE_ONLY_FIELD])).toBe(false);
     expect(shouldDeferRejection([])).toBe(false);
+  });
+
+  it('报个姓名不该顺延拒绝——因果隔离不是无差别拖延', () => {
+    expect(shouldDeferRejection([field('姓名'), field('手机号')])).toBe(false);
   });
 });
