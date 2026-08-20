@@ -44,6 +44,7 @@ import { InterventionService } from '@biz/intervention/intervention.service';
 import { MessageSenderService } from '@channels/wecom/message-sender/message-sender.service';
 import { SessionService } from '@memory/services/session.service';
 import { LongTermService } from '@memory/services/long-term.service';
+import { CollectionFormService } from '@memory/services/collection-form.service';
 import { CandidateSnapshotService } from '@memory/services/candidate-snapshot.service';
 import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
 import { HandoffRecorderService } from '@biz/handoff-events/handoff-recorder.service';
@@ -97,6 +98,7 @@ export class ToolRegistryService {
     private readonly brandResolutionService: BrandResolutionService,
     candidateSnapshotService: CandidateSnapshotService,
     agentTracer: AgentTracerService,
+    collectionFormService: CollectionFormService,
   ) {
     const memberLimit = parseInt(configService.get('GROUP_MEMBER_LIMIT', '200'), 10);
     const enterpriseToken = configService.get<string>('STRIDE_ENTERPRISE_TOKEN')?.trim();
@@ -154,6 +156,9 @@ export class ToolRegistryService {
           mode: adjudicationMode,
           snapshots: candidateSnapshotService,
           observer: agentTracer,
+          // 收资表单接管（蓝图 §5）：注入即换轨，生产恒走表单路径。
+          collectionForms: collectionFormService,
+          identityAnchors: process.env.COLLECTION_IDENTITY_LABEL_IDS,
         }),
       }),
 

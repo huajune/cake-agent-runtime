@@ -3,6 +3,21 @@ import { Logger } from '@nestjs/common';
 import { tool } from 'ai';
 import { z } from 'zod';
 import { SpongeService } from '@sponge/sponge.service';
+import { EMPTY_CONTRACT_ESCALATION_REASON } from '@sponge/collection-contract.types';
+import { CollectionFormService } from '@memory/services/collection-form.service';
+import {
+  escalate,
+  mapContractFields,
+  parseIdentityAnchors,
+  type BookingCollectionForm,
+  type ContractFieldDef,
+} from '@resolution/collection';
+import {
+  runCollectionCore,
+  type CollectionCoreResult,
+} from '@tools/duliday/collection/collection-core';
+import type { IntakeClaim } from '@tools/duliday/collection/proposal-intake';
+import { extractCandidateTexts } from '@resolution/signal/self-report';
 import { extractInterviewSupplementDefinitions } from '@sponge/sponge-job.util';
 import {
   isCollectionStalled,
@@ -679,6 +694,22 @@ export interface PrecheckAdjudicationDeps {
   mode: 'shadow' | 'enforce';
   snapshots?: Pick<CandidateSnapshotService, 'save'>;
   observer?: { emit: (event: AgentEvent) => void };
+  /**
+   * 收资表单状态机（蓝图 §5 接线）。注入即由表单接管收资核——
+   * 契约实时拉 → 表单 loadOrCreate → 本轮提案过公证 → verdictOf 派生 nextAction。
+   */
+  collectionForms?: CollectionFormService;
+  /** 身份锚点环境配置（`COLLECTION_IDENTITY_LABEL_IDS`，systemField 落地前的兜底）。 */
+  identityAnchors?: string;
+}
+
+/** 收资表单接管后的一轮产物（供响应组装与审计落库）。 */
+interface FormCollectionOutcome {
+  form: BookingCollectionForm;
+  contract: ContractFieldDef[];
+  result: CollectionCoreResult;
+  /** 空标签数据异常（0820 裁定：转人工 + 告警，禁按「无筛」裸放行）。 */
+  emptyContractAnomaly: boolean;
 }
 
 /**
@@ -920,6 +951,123 @@ function emitFactAdjudicationEvent(
       claimId: entry.claim.claimId,
     })),
   });
+}
+
+/**
+ * 收资表单接管的一轮：契约实时拉 → 表单 loadOrCreate → 提案过公证 → 落盘。
+ *
+ * 三处口径值得点名：
+ * 1. **契约拉不到即抛**（sponge 客户端已抛），本函数不吞——静默返回空契约会被上层
+ *    误读成"该岗无筛"裸放行，那正是空标签口径要防的事；
+ * 2. **空标签岗 = 数据异常**（0820 用户裁定 + 后端确认正常在招岗必有标签）：
+ *    直接 escalatedReason 转人工 + 落告警，**禁按「无筛」裸放行、也不做兜底续收**。
+ *    判决单源的"没带=无此筛"只适用字段级缺失，不适用整岗空标签；
+ * 3. **跨账号隔离**（§11 红线，源 badcase dxymwoqb）：表单按 corpId 分域存取，
+ *    换托管账号即换 key，跨账号接触天然视为首次接触——不会出现"之前登记的信息
+ *    帮你带出来了"式跨账号披露。
+ */
+async function runFormCollection(params: {
+  deps: PrecheckAdjudicationDeps;
+  spongeService: SpongeService;
+  context: Parameters<ToolBuilder>[0];
+  jobId: number;
+  claims?: readonly IntakeClaim[];
+  legacyArgs?: Partial<Record<CandidateClaimField, string>>;
+  supplementAnswers?: Record<string, string> | null;
+  candidateTexts: readonly string[];
+  messages: readonly unknown[];
+  candidatePhone?: string | null;
+}): Promise<FormCollectionOutcome | null> {
+  const service = params.deps.collectionForms;
+  if (!service) return null;
+
+  const rawContract = await params.spongeService.fetchJobCollectionContract(
+    params.jobId,
+    buildSpongeTokenContext(params.context),
+  );
+  const mapped = mapContractFields(rawContract, parseIdentityAnchors(params.deps.identityAnchors));
+
+  for (const mismatch of mapped.anchorMismatches) {
+    // 锚点与标题对不上＝标签表重建后的静默断链（D4 点名要防的事故）。
+    // 告警但不阻断：该槽已降通用道，身份闸门不挂、人键回退 session，漏斗优先不卡报名。
+    logger.warn(
+      `[precheck] 身份锚点核验不过，降通用道: labelId=${mismatch.labelId} ` +
+        `期望=${mismatch.expected} 实际标题="${mismatch.labelTitle}" jobId=${params.jobId}`,
+    );
+    params.deps.observer?.emit({
+      type: 'collection_identity_anchor_mismatch',
+      userId: params.context.session.userId,
+      labelId: mismatch.labelId,
+      expected: mismatch.expected,
+      labelTitle: mismatch.labelTitle,
+    });
+  }
+
+  const scope = {
+    corpId: params.context.session.corpId,
+    userId: params.context.session.userId,
+    jobId: params.jobId,
+  };
+  let form = await service.loadOrCreate(scope, mapped.fields, params.candidatePhone);
+
+  if (mapped.fields.length === 0) {
+    form = escalate(form, EMPTY_CONTRACT_ESCALATION_REASON);
+    logger.warn(`[precheck] 岗位返回空标签契约，按数据异常转人工: jobId=${params.jobId}`);
+    params.deps.observer?.emit({
+      type: 'collection_empty_contract',
+      userId: params.context.session.userId,
+      jobId: params.jobId,
+    });
+  }
+
+  const result = runCollectionCore({
+    form,
+    contract: mapped.fields,
+    candidateTexts: params.candidateTexts,
+    messages: params.messages,
+    claims: params.claims,
+    legacyArgs: params.legacyArgs,
+    supplementAnswers: params.supplementAnswers,
+  });
+
+  // 手机号到达即 rebind 人键（D1）：搬家不重开，前面答过的槽位原样带走。
+  const phoneField = mapped.fields.find((field) => field.systemField === 'phone');
+  const phoneValue = phoneField ? result.form.slots[phoneField.labelId]?.value?.value : null;
+  const persisted = phoneValue
+    ? await service.rebindToPhone(scope, result.form, phoneValue)
+    : result.form;
+
+  await service.persist(scope, persisted);
+  emitCollectionAudits(params.deps, params.context, params.jobId, result);
+
+  return {
+    form: persisted,
+    contract: mapped.fields,
+    result: { ...result, form: persisted },
+    emptyContractAnomaly: mapped.fields.length === 0,
+  };
+}
+
+/** 收资审计逐条落 agent_execution_events（蓝图 §4：不落库=没做）。 */
+function emitCollectionAudits(
+  deps: PrecheckAdjudicationDeps,
+  context: Parameters<ToolBuilder>[0],
+  jobId: number,
+  result: CollectionCoreResult,
+): void {
+  for (const audit of result.audits) {
+    deps.observer?.emit({
+      type: 'collection_form_audit',
+      userId: context.session.userId,
+      jobId,
+      kind: audit.kind,
+      labelId: audit.labelId,
+      reason: audit.reason,
+      channel: audit.channel,
+      // detail 可能含候选人原话片段，观测侧按既有脱敏口径处理。
+      detail: audit.detail,
+    });
+  }
 }
 
 export function buildInterviewPrecheckTool(
@@ -1563,6 +1711,72 @@ export function buildInterviewPrecheckTool(
             });
           let checklist = buildChecklistWith(knownFieldMap);
 
+          // ══ 收资表单接管（蓝图 §5 接线）══
+          // 注入 collectionForms 即由表单持有收资状态：契约实时拉 → 提案过公证 →
+          // verdictOf 派生 nextAction。旧 checklist 路径在 §7 退役批随测试改写一并删除，
+          // 在此之前它仍是未注入场景（单测）的路径。
+          let formOutcome: FormCollectionOutcome | null = null;
+          if (adjudicationDeps?.collectionForms) {
+            try {
+              formOutcome = await runFormCollection({
+                deps: adjudicationDeps,
+                spongeService,
+                context,
+                jobId,
+                claims: candidateClaims as readonly IntakeClaim[] | undefined,
+                legacyArgs: stripNullish({
+                  name: normalizeCandidateNameInput(candidateName),
+                  phone: normalizeCandidatePhoneInput(candidatePhone),
+                  age: normalizeCandidateAgeInput(candidateAge),
+                  gender: normalizeCandidateGenderInput(candidateGender),
+                  education: normalizeCandidateEducationInput(candidateEducation),
+                  healthCertificate: normalizedCandidateHealthCertificate,
+                  isStudent: normalizedIsStudentInput,
+                  height: normalizeCandidateNumberInput(candidateHeight),
+                  weight: normalizeCandidateNumberInput(candidateWeight),
+                  householdProvince: normalizeCandidateHouseholdProvinceInput(
+                    candidateHouseholdProvince,
+                  ),
+                }) as Partial<Record<CandidateClaimField, string>>,
+                supplementAnswers: effectiveCandidateSupplementAnswers,
+                candidateTexts: extractCandidateTexts(evidenceMessages),
+                messages: evidenceMessages,
+                candidatePhone: normalizeCandidatePhoneInput(candidatePhone),
+              });
+            } catch (error) {
+              // 契约拉不到 = 没有判据。**不静默降级到旧路径**——那等于按"该岗无筛"
+              // 裸放行，正是判决单源要防的事；如实转人工由人工兜底。
+              logger.error(
+                `[precheck] 收资契约拉取失败，转人工: jobId=${jobId} ${toErrorMessage(error)}`,
+              );
+              return buildToolError({
+                errorType: TOOL_ERROR_TYPES.PRECHECK_FAILED,
+                outcome: '收资标签契约不可用',
+                replyInstruction:
+                  '收资判据接口暂时不可用，**不要**凭记忆或岗位描述自行判断该岗要收哪些资料。' +
+                  '用招募者口吻安抚"这边稍等下"，并调用 request_handoff 转人工。',
+                details: { jobId, reason: toErrorMessage(error) },
+              });
+            }
+          }
+          if (formOutcome) {
+            // 收资事实源换轨：missingFields/templateText/knownFieldMap 全部由表单派生。
+            checklist = {
+              requiredFields: formOutcome.result.template.requiredFields,
+              displayOrder: formOutcome.result.template.displayOrder,
+              // 熔断后 askableFields 为空——不再发问，清单只作内部可见。
+              missingFields:
+                formOutcome.result.askableFields.length > 0
+                  ? formOutcome.result.askableFields
+                  : formOutcome.result.template.missingFields,
+              templateText: formOutcome.result.template.templateText,
+            };
+            // knownFieldMap 是 const 且被上文多处消费；就地换内容而非重绑，
+            // 保证下游（booking payload 预填、话术渲染）读到的是表单事实。
+            for (const key of Object.keys(knownFieldMap)) delete knownFieldMap[key];
+            Object.assign(knownFieldMap, formOutcome.result.template.knownFieldMap);
+          }
+
           // collect_fields 断路器出口 A（议题 9-2）：模型已经把答案传进来了，只是键名
           // 与 checklist 判定名对不上（"有无中餐厅服务员经验" vs "需要中餐厅服务员经验"）。
           // 归一化命中即按"模型转写、低置信"如实采纳——booking 侧透传 supplementAnswers、
@@ -1715,17 +1929,29 @@ export function buildInterviewPrecheckTool(
                           ? 'collect_fields'
                           : requestedDateCheck?.status === 'unavailable'
                             ? 'date_unavailable'
-                            : checklist.missingFields.length > 0 ||
-                                genderNeedsInlineConfirmation ||
-                                unattestedPrefilledIdentityFields.length > 0
-                              ? 'collect_fields'
-                              : interviewTimeWaitNotice
-                                ? // 等通知岗位没有日期可对齐：字段收齐即可直接 booking（不传 interviewTime）
-                                  'ready_to_book'
-                                : !requestedDateCheck ||
-                                    requestedDateCheck.status === 'needs_confirmation'
-                                  ? 'confirm_date'
-                                  : 'ready_to_book';
+                            : // 收资维度由 verdictOf 唯一派生（蓝图 §5）：表单接管后
+                              // 「还缺不缺」不再靠字面过滤重推，而是读槽位状态。
+                              // 非收资维度（日期对齐/岗位级健康证闸门/暑假工守卫）在上方，
+                              // 它们的优先级高于收资——先筛掉不能约的，再谈收什么。
+                              formOutcome
+                              ? formOutcome.result.verdict === 'ready'
+                                ? interviewTimeWaitNotice ||
+                                  (requestedDateCheck &&
+                                    requestedDateCheck.status !== 'needs_confirmation')
+                                  ? 'ready_to_book'
+                                  : 'confirm_date'
+                                : 'collect_fields'
+                              : checklist.missingFields.length > 0 ||
+                                  genderNeedsInlineConfirmation ||
+                                  unattestedPrefilledIdentityFields.length > 0
+                                ? 'collect_fields'
+                                : interviewTimeWaitNotice
+                                  ? // 等通知岗位没有日期可对齐：字段收齐即可直接 booking（不传 interviewTime）
+                                    'ready_to_book'
+                                  : !requestedDateCheck ||
+                                      requestedDateCheck.status === 'needs_confirmation'
+                                    ? 'confirm_date'
+                                    : 'ready_to_book';
 
           // 身份追问升级：仅剩"身份"一个字段、已追问 ≥2 次且候选人已作答仍无法核验时，
           // 判定为识别死锁（badcase 6a448d09：同一问题被追问 4 遍后模型才自行转人工）。

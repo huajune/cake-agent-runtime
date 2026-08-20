@@ -173,6 +173,41 @@ export type AgentEvent = AgentEventContext &
         /** zod 失败明细（字段路径 + 原因），不含值本体，避免 PII 进观测。 */
         issues: string[];
       }
+    /**
+     * 收资表单一轮的审计条目（蓝图 §4）：公证拒收 / 判不合格 / 显式改口 / 配置债 /
+     * 熔断各一条。拒收事件是**臆造防线的观测面**——只打日志等于这道防线没有验收数据。
+     */
+    | {
+        type: 'collection_form_audit';
+        userId?: string;
+        jobId: number;
+        kind: string;
+        labelId?: number;
+        reason?: string;
+        channel?: string;
+        detail?: string;
+      }
+    /**
+     * 身份锚点核验不过：环境配置说某 labelId 是身份槽，契约里该 id 的标题却对不上
+     * ——标签表重建后的静默断链（D4 撤回"把 ID 写进文档"诉求时点名要防的事故）。
+     * 该槽已降通用道，不阻断收资；量级应恒为零，非零即配置漂了。
+     */
+    | {
+        type: 'collection_identity_anchor_mismatch';
+        userId?: string;
+        labelId: number;
+        expected: string;
+        labelTitle: string;
+      }
+    /**
+     * 岗位契约返回空标签 = 数据异常（0820 后端确认正常在招岗必有标签）。
+     * 已按裁定转人工；本事件是"到底有多少岗在返空"的唯一量化来源。
+     */
+    | {
+        type: 'collection_empty_contract';
+        userId?: string;
+        jobId: number;
+      }
     | {
         type: 'extraction_raw_output_sampled';
         userId?: string;
