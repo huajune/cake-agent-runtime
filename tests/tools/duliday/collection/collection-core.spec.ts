@@ -4,6 +4,7 @@ import {
   runCollectionCore,
 } from '@tools/duliday/collection/collection-core';
 import { createForm, verdictOf, type ContractFieldDef } from '@resolution/collection';
+import { selectArchiveFacts } from '@tools/duliday/collection/proposal-intake';
 
 const NAME: ContractFieldDef = {
   labelId: 769,
@@ -198,5 +199,89 @@ describe('模板字段名与契约同源', () => {
     expect(result.template.missingFields).toEqual(['是否学生（不要学生及暑假工）']);
     expect(result.template.templateText).toContain('是否学生：');
     expect(result.template.templateText).not.toContain('不要学生及暑假工');
+  });
+});
+
+describe('记忆→表单预填（跨岗不重复盘问）', () => {
+  const archived = [{ claimField: 'age' as const, value: '26', evidence: '我今年26岁' }];
+
+  it('空槽用档案兜底，署名如实（archive/medium，sourceText 带「档案：」前缀）', () => {
+    const result = runCollectionCore({
+      form: createForm({ jobId: 528962, contract: CONTRACT }),
+      contract: CONTRACT,
+      candidateTexts: [''],
+      messages: [],
+      archiveFacts: archived,
+    });
+    const slot = result.form.slots[687];
+    expect(slot.state).toBe('filled');
+    expect(slot.value?.producer).toBe('archive');
+    expect(slot.value?.confidence).toBe('medium');
+    expect(slot.value?.sourceText).toBe('档案：我今年26岁');
+    expect(result.template.missingFields).not.toContain('年龄');
+  });
+
+  it('**本轮亲口说的优先于档案**——预填在写入之后，不把最好的证据挡在门外', () => {
+    const text = '我今年30岁';
+    const result = runCollectionCore({
+      form: createForm({ jobId: 528962, contract: CONTRACT }),
+      contract: CONTRACT,
+      candidateTexts: [text],
+      messages: [{ role: 'user', content: text }],
+      archiveFacts: archived,
+    });
+    const slot = result.form.slots[687];
+    expect(slot.value?.value).toBe('30');
+    expect(slot.value?.producer).toBe('candidate_quote');
+  });
+
+  it('不覆盖已判不合格的槽位', () => {
+    const text = '没有健康证，我不愿意办';
+    const disqualified = runCollectionCore({
+      form: createForm({ jobId: 528962, contract: CONTRACT }),
+      contract: CONTRACT,
+      candidateTexts: [text],
+      messages: [{ role: 'user', content: text }],
+    });
+    const seeded = runCollectionCore({
+      form: disqualified.form,
+      contract: CONTRACT,
+      candidateTexts: [''],
+      messages: [],
+      archiveFacts: [{ claimField: 'healthCertificate' as const, value: '有本地有效健康证' }],
+    });
+    expect(seeded.form.slots[13].state).toBe('disqualified');
+  });
+
+  it('契约没这一项就不预填（该岗不收就是不收）', () => {
+    const result = runCollectionCore({
+      form: createForm({ jobId: 528962, contract: CONTRACT }),
+      contract: CONTRACT,
+      candidateTexts: [''],
+      messages: [],
+      archiveFacts: [{ claimField: 'householdProvince' as const, value: '安徽' }],
+    });
+    expect(Object.values(result.form.slots).every((s) => s.value?.value !== '安徽')).toBe(true);
+  });
+});
+
+describe('selectArchiveFacts · 预填来源白名单', () => {
+  it('只收 candidate_quote / system 且置信度 ≥ medium', () => {
+    const facts = selectArchiveFacts({
+      name: { value: '兮兮', source: 'candidate_quote', confidence: 'high' },
+      age: { value: '26', source: 'system', confidence: 'medium' },
+      // 模型自报：badcase 6e9ar9gd 族「臆造档案经沿用洗白」的入口，掐死。
+      phone: { value: '13800138000', source: 'model', confidence: 'high' },
+      // unknown 档：没人为它的置信度负责过。
+      education: { value: '大专', source: 'archive', confidence: 'unknown' },
+      // 白名单内但置信度不够。
+      gender: { value: '男', source: 'candidate_quote', confidence: 'low' },
+    });
+    expect(facts.map((f) => f.claimField).sort()).toEqual(['age', 'name']);
+  });
+
+  it('空档案返回空', () => {
+    expect(selectArchiveFacts(null)).toEqual([]);
+    expect(selectArchiveFacts({})).toEqual([]);
   });
 });

@@ -16,7 +16,11 @@ import {
   runCollectionCore,
   type CollectionCoreResult,
 } from '@tools/duliday/collection/collection-core';
-import type { IntakeClaim } from '@tools/duliday/collection/proposal-intake';
+import {
+  selectArchiveFacts,
+  type ArchiveFact,
+  type IntakeClaim,
+} from '@tools/duliday/collection/proposal-intake';
 import { extractCandidateTexts } from '@resolution/signal/self-report';
 import { extractInterviewSupplementDefinitions } from '@sponge/sponge-job.util';
 import {
@@ -974,6 +978,7 @@ async function runFormCollection(params: {
   claims?: readonly IntakeClaim[];
   legacyArgs?: Partial<Record<CandidateClaimField, string>>;
   supplementAnswers?: Record<string, string> | null;
+  archiveFacts?: readonly ArchiveFact[];
   candidateTexts: readonly string[];
   messages: readonly unknown[];
   candidatePhone?: string | null;
@@ -1028,6 +1033,7 @@ async function runFormCollection(params: {
     claims: params.claims,
     legacyArgs: params.legacyArgs,
     supplementAnswers: params.supplementAnswers,
+    archiveFacts: params.archiveFacts,
   });
 
   // 手机号到达即 rebind 人键（D1）：搬家不重开，前面答过的槽位原样带走。
@@ -1739,6 +1745,12 @@ export function buildInterviewPrecheckTool(
                   ),
                 }) as Partial<Record<CandidateClaimField, string>>,
                 supplementAnswers: effectiveCandidateSupplementAnswers,
+                // 记忆→表单预填（跨岗不重复盘问）。作用域＝同一托管账号：
+                // sessionFacts 按 corpId+userId 存、表单 key 也含 corpId，
+                // 跨账号是另一张表另一份档案，天然视为首次接触（§11 红线）。
+                archiveFacts: selectArchiveFacts(
+                  context.archive.sessionFacts?.interview_info as Record<string, unknown> | null,
+                ),
                 candidateTexts: extractCandidateTexts(evidenceMessages),
                 messages: evidenceMessages,
                 candidatePhone: normalizeCandidatePhoneInput(candidatePhone),

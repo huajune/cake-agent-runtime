@@ -13,12 +13,18 @@ import type { BookingCollectionForm, ContractFieldDef, Verdict } from '@resoluti
 import {
   isSensitiveAttribute,
   markAsked,
+  seedArchiveValue,
   proposeValue,
   recordConfigDebt,
   routeOf,
   verdictOf,
 } from '@resolution/collection';
-import { collectProposals, type IntakeClaim } from './proposal-intake';
+import {
+  collectProposals,
+  findFieldForClaim,
+  type ArchiveFact,
+  type IntakeClaim,
+} from './proposal-intake';
 import { renderCollectionTemplate, type CollectionTemplate } from './collection-template.renderer';
 import type { CandidateClaimField } from '@resolution/evidence/claim.types';
 
@@ -65,6 +71,11 @@ export interface CollectionCoreInput {
   supplementAnswers?: Record<string, string> | null;
   /** 本轮是否要向候选人发问（发问才计熔断次数；只读探查不计）。 */
   askThisTurn?: boolean;
+  /**
+   * 档案预填（蓝图「记忆→表单预填」：跨岗不重复盘问）。
+   * 只填空槽、只在**本表首次见到该槽**时有意义；作用域同账号（表单 key 含 corpId）。
+   */
+  archiveFacts?: readonly ArchiveFact[];
 }
 
 export interface CollectionCoreResult {
@@ -150,6 +161,17 @@ export function runCollectionCore(input: CollectionCoreInput): CollectionCoreRes
       case 'ignored':
         break;
     }
+  }
+
+  // ── 预填：本轮写完之后才轮到档案兜底 ──
+  // 顺序**必须在写入之后**：`seedArchiveValue` 会把槽位填成 filled，而棘轮规定
+  // filled 槽位不接受普通提案。先预填就等于让上周的档案值占住槽位、把候选人本轮
+  // 亲口说的那句话当"已填"忽略掉——把最好的证据挡在门外。
+  // 先写后填之下：本轮说了的走公证正常入账，没说的才用档案补，跨岗不重复盘问。
+  for (const archived of input.archiveFacts ?? []) {
+    const field = findFieldForClaim(contract, archived.claimField);
+    if (!field) continue;
+    form = seedArchiveValue(form, field, { value: archived.value, evidence: archived.evidence });
   }
 
   // ── 配置债：走通用道的槽位记一行账，报名卡片直读 ──

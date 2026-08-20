@@ -250,3 +250,64 @@ function valuesLooselyEqual(left: string, right: string): boolean {
   if (!a || !b) return false;
   return a === b || a.includes(b) || b.includes(a);
 }
+
+/** 一条可用于预填的档案值（调用方已按 producer 白名单过滤）。 */
+export interface ArchiveFact {
+  claimField: CandidateClaimField;
+  value: string;
+  evidence?: string;
+}
+
+/**
+ * 从会话档案 / 长期画像里挑**可预填**的事实。
+ *
+ * 过滤纪律（对应 seedArchiveValue 的安全边界 1）：只收 producer 在可持久化白名单里、
+ * 且置信度不低于 medium 的值。模型自报（`model`）与 unknown 档一律不进——
+ * badcase 6e9ar9gd 族正是"抽取示例回声臆造的档案经沿用洗白后进真实工单"，
+ * 预填是那条洗白链最想要的入口，必须在这里掐死。
+ */
+export function selectArchiveFacts(
+  interviewInfo: Record<string, unknown> | null | undefined,
+): ArchiveFact[] {
+  if (!interviewInfo) return [];
+  const facts: ArchiveFact[] = [];
+  for (const [sessionKey, claimField] of Object.entries(SESSION_KEY_TO_CLAIM_FIELD)) {
+    const raw = interviewInfo[sessionKey];
+    if (!raw || typeof raw !== 'object') continue;
+    const envelope = raw as {
+      value?: unknown;
+      producer?: unknown;
+      source?: unknown;
+      confidence?: unknown;
+    };
+    const producer = String(envelope.source ?? envelope.producer ?? '');
+    if (!PREFILLABLE_PRODUCERS.has(producer)) continue;
+    const confidence = String(envelope.confidence ?? '');
+    if (confidence !== 'high' && confidence !== 'medium') continue;
+    const value =
+      envelope.value === null || envelope.value === undefined ? '' : String(envelope.value);
+    if (!value.trim()) continue;
+    facts.push({ claimField: claimField as CandidateClaimField, value: value.trim() });
+  }
+  return facts;
+}
+
+/**
+ * 可预填的产者白名单——与 `PERSISTABLE_CANDIDATE_FIELD_PRODUCERS` 同源口径：
+ * 候选人原话来的、外部系统查来的可以带；模型提出来的、档案搬来的不再二次搬运。
+ */
+const PREFILLABLE_PRODUCERS: ReadonlySet<string> = new Set(['candidate_quote', 'system']);
+
+/** sessionFacts.interview_info 的键 → claim 字段名。 */
+const SESSION_KEY_TO_CLAIM_FIELD: Readonly<Record<string, string>> = {
+  name: 'name',
+  phone: 'phone',
+  gender: 'gender',
+  age: 'age',
+  education: 'education',
+  has_health_certificate: 'healthCertificate',
+  height: 'height',
+  weight: 'weight',
+  household_register_province: 'householdProvince',
+  is_student: 'isStudent',
+};

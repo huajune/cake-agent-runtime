@@ -454,6 +454,54 @@ export function markAsked(
   };
 }
 
+/**
+ * 档案预填（蓝图「记忆→表单预填」：跨岗不重复盘问）。
+ *
+ * 为什么不走 `proposeValue` 的公证：公证第一问验的是**本轮**证据窗里有没有这段原话，
+ * 而档案值是**之前某一轮**收的——它当时已经过一次公证才进的记忆。拿本轮语料去验
+ * 一句上周说的话，结论必然是"查无此话"，于是每开一张新表就把人重问一遍。
+ *
+ * 安全边界（缺一不可）：
+ * 1. **只收已公证过的档案值**——调用方按 producer 白名单过滤（模型自报的、
+ *    unknown 档的一律不进，防 badcase 6e9ar9gd 族"臆造档案经沿用洗白"）；
+ * 2. **署名如实**：producer 记 `archive`、confidence 记 `medium`——它不是本人本轮
+ *    说的，永远拿不到 high；sourceText 记原始出处并加 `档案：` 前缀，回查时一眼
+ *    看出这不是本轮原话；
+ * 3. **必经复述求证**：预填值落 filled，而提交前复述覆盖全部 filled 槽位——
+ *    候选人一定会看到它并有机会说"不对"（这就是"带值求证"的兑现处）；
+ * 4. **不覆盖任何已有值**：只填空槽。本轮亲口说的、已判不合格的都不动。
+ * 5. **同账号内**（§11 红线）：作用域由表单 key 的 corpId 保证，跨托管账号是另一张表，
+ *    档案带不过去——跨账号接触天然视为首次接触。
+ */
+export function seedArchiveValue(
+  form: BookingCollectionForm,
+  field: ContractFieldDef,
+  archived: { value: string; optionCodes?: string[]; evidence?: string },
+): BookingCollectionForm {
+  const slot = form.slots[field.labelId];
+  if (!slot || slot.state !== 'empty') return form;
+  const value = archived.value.trim();
+  if (!value) return form;
+
+  return withSlot(form, {
+    labelId: field.labelId,
+    state: 'filled',
+    value: {
+      value,
+      ...(archived.optionCodes?.length ? { optionCodes: [...archived.optionCodes] } : {}),
+      sourceText: `档案：${archived.evidence?.trim() || value}`,
+      producer: 'archive',
+      confidence: 'medium',
+    },
+    askCount: slot.askCount,
+  });
+}
+
+/** 该槽位的值是否来自档案预填（复述话术可据此加「如有误请改」语气）。 */
+export function isArchiveSeeded(form: BookingCollectionForm, labelId: number): boolean {
+  return form.slots[labelId]?.value?.producer === 'archive';
+}
+
 /** 提交前复述落账——「不对」才能定位改哪格。 */
 export function markRecapSent(
   form: BookingCollectionForm,
