@@ -39,10 +39,10 @@ Agent 在对话中判断以下两种情况时，调用 `invite_to_group` 工具�
 
 > **严格边界**：不是"搜了一次没结果就拉群"，而是 Agent 已尽力为候选人寻找岗位、多次调整推荐策略后仍然无法匹配，才触发拉群。这是最后兜底手段，不是快捷通道。
 
-| 条件 | 说明 |
-|------|------|
-| 前提 | Agent 已调用 `duliday_job_list` 查询岗位，且经过合理的推荐尝试 |
-| 必要条件 | 满足以下**全部**条件才可触发：|
+| 条件     | 说明                                                           |
+| -------- | -------------------------------------------------------------- |
+| 前提     | Agent 已调用 `duliday_job_list` 查询岗位，且经过合理的推荐尝试 |
+| 必要条件 | 满足以下**全部**条件才可触发：                                 |
 
 **必须同时满足的条件：**
 
@@ -61,10 +61,10 @@ Agent 在对话中判断以下两种情况时，调用 `invite_to_group` 工具�
 
 ### 策略 2：登记完成
 
-| 条件 | 说明 |
-|------|------|
-| 前提 | Agent 已完成面试预约 / 候选人信息收集 |
-| 触发 | `advance_stage` 推进到后续阶段 |
+| 条件 | 说明                                               |
+| ---- | -------------------------------------------------- |
+| 前提 | Agent 已完成面试预约 / 候选人信息收集              |
+| 触发 | `advance_stage` 推进到后续阶段                     |
 | 话术 | "登记成功！我拉你进 XX 群，里面经常有同城的好岗位" |
 
 > **触发由 LLM 判断**：通过工具描述和 system prompt 中的策略指引，LLM 自主决定何时调用。不做硬编码触发。
@@ -147,13 +147,20 @@ Agent 在对话中判断以下两种情况时，调用 `invite_to_group` 工具�
 
 ## 核心流程
 
+### 工具判定与执行编排边界
+
+`invite_to_group` 工具只保留依赖对话回合的意图闸：预约成功短路、城市出处核验与拉群时机核验。选群、成员实时预检、容量刷新、企微邀请、接客 bot 入群补偿、记忆与 `group.invited` 底账统一由 `GroupInviteService` 执行。这个拆分不改变工具给 LLM 的返回字段和话术指令。
+
 ```
 Agent 对话中 LLM 决定拉人进群
   │
   ├─ 输入：city（必填）, industry（可选）
   │
   ▼
-invite_to_group 工具执行
+invite_to_group 工具执行回合意图闸
+  │
+  ▼
+GroupInviteService 执行确定性编排
   │
   ├─ 1. 获取兼职群列表
   │     GroupResolverService.resolveGroups('兼职群')
@@ -171,7 +178,7 @@ invite_to_group 工具执行
   │     全部满 → 飞书告警 + 返回 group_full 状态
   │
   ├─ 5. 检查用户是否已在群中
-  │     GroupMembershipService.isUserInRoom(roomWxid, userImContactId)
+  │     GroupMembershipService.listUserRooms(userImContactId, roomWxids)
   │     数据源：企业级 /api/v2/groupChat/list（memberList 字段）
   │     Redis Set 缓存：room:members:{roomWxid}，TTL 10 分钟
   │     已在群中 → 返回 already_in_group（静默）
@@ -184,9 +191,9 @@ invite_to_group 工具执行
   │       1) 用目标群 botInfo 对应的 imBotId/botUserId，把聊天 bot 拉进该群
   │       2) 再用聊天 bot 重试拉候选人入群
   │
-  ├─ 7. 更新成员缓存 + 写入会话记忆
-  │     GroupMembershipService.markUserInRoom(roomWxid, userImContactId)
+  ├─ 7. 写入会话记忆 + 运营底账
   │     MemoryService.saveInvitedGroup() → 会话事实记录
+  │     OpsEventsRecorderService.recordEvent('group.invited')
   │
   └─ 8. 返回结果
         成功 → { success, groupName, city, industry, inviteMode }
@@ -198,13 +205,13 @@ invite_to_group 工具执行
 
 ## 异常处理
 
-| 场景 | 处理方式 | 返回给 LLM |
-|------|---------|-----------|
-| 无兼职群数据 | 缓存为空 + token 未配置 | `{ success: false, error: "暂无可用群" }` |
-| 城市无匹配 | 静默跳过，不告警不通知 | `{ success: false, reason: "no_group_in_city" }` |
-| 全部群满 | 飞书告警，对候选人静默跳过 | `{ success: false, reason: "group_full" }` |
-| 候选人已在群中 | 查企业级 memberList 判定，静默跳过 | `{ success: false, reason: "already_in_group", groupName }` |
-| addMember API 失败 | 记录日志 | `{ success: false, error: "拉人失败: ..." }` |
+| 场景               | 处理方式                           | 返回给 LLM                                                  |
+| ------------------ | ---------------------------------- | ----------------------------------------------------------- |
+| 无兼职群数据       | 缓存为空 + token 未配置            | `{ success: false, error: "暂无可用群" }`                   |
+| 城市无匹配         | 静默跳过，不告警不通知             | `{ success: false, reason: "no_group_in_city" }`            |
+| 全部群满           | 飞书告警，对候选人静默跳过         | `{ success: false, reason: "group_full" }`                  |
+| 候选人已在群中     | 查企业级 memberList 判定，静默跳过 | `{ success: false, reason: "already_in_group", groupName }` |
+| addMember API 失败 | 记录日志                           | `{ success: false, error: "拉人失败: ..." }`                |
 
 ---
 
@@ -246,21 +253,21 @@ invite_to_group 工具执行
 
 ### 环境变量
 
-| 变量 | 说明 | 必填 |
-|------|------|------|
-| `GROUP_TASK_TOKENS` | 小组级 token（群列表查询用） | 是（复用） |
-| `STRIDE_ENTERPRISE_TOKEN` | 企业级 token（拉人进群用） | 是 |
-| `GROUP_MEMBER_LIMIT` | 群人数上限阈值 | 否，默认 200 |
+| 变量                      | 说明                         | 必填         |
+| ------------------------- | ---------------------------- | ------------ |
+| `GROUP_TASK_TOKENS`       | 小组级 token（群列表查询用） | 是（复用）   |
+| `STRIDE_ENTERPRISE_TOKEN` | 企业级 token（拉人进群用）   | 是           |
+| `GROUP_MEMBER_LIMIT`      | 群人数上限阈值               | 否，默认 200 |
 
 ### 服务依赖
 
-| 服务 | 用途 |
-|------|------|
-| `GroupResolverService` | 获取 & 筛选兼职群列表 |
+| 服务                     | 用途                                        |
+| ------------------------ | ------------------------------------------- |
+| `GroupResolverService`   | 获取 & 筛选兼职群列表                       |
 | `GroupMembershipService` | 判断候选人是否已在目标群（memberList 缓存） |
-| `RoomService` | 执行 addMemberEnterprise 拉人（企业级接口） |
-| `FeishuAlertService` | 群满告警 |
-| `MemoryService` | 拉群后写入会话事实记录 |
+| `RoomService`            | 执行 addMemberEnterprise 拉人（企业级接口） |
+| `FeishuAlertService`     | 群满告警                                    |
+| `MemoryService`          | 拉群后写入会话事实记录                      |
 
 ### 数据流
 
@@ -309,10 +316,10 @@ Redis room:members:{roomWxid}       MemoryService.saveInvitedGroup()
 
 ## 后续迭代
 
-| 优先级 | 功能 | 说明 |
-|--------|------|------|
-| P1 | 群内欢迎语 | 用户进群后自动发送欢迎消息 |
-| P2 | 建群 API | 托管平台支持后，实现自动建群 |
-| P2 | 多群类型支持 | 扩展到抢单群、店长群等场景 |
-| P3 | 群活跃度路由 | 优先分配到活跃度高的群 |
-| P3 | 退群回调维护 | 收到退群事件时 `srem room:members:{roomWxid}`，减少缓存漂移 |
+| 优先级 | 功能         | 说明                                                        |
+| ------ | ------------ | ----------------------------------------------------------- |
+| P1     | 群内欢迎语   | 用户进群后自动发送欢迎消息                                  |
+| P2     | 建群 API     | 托管平台支持后，实现自动建群                                |
+| P2     | 多群类型支持 | 扩展到抢单群、店长群等场景                                  |
+| P3     | 群活跃度路由 | 优先分配到活跃度高的群                                      |
+| P3     | 退群回调维护 | 收到退群事件时 `srem room:members:{roomWxid}`，减少缓存漂移 |

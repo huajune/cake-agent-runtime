@@ -1,6 +1,15 @@
 import { buildInviteToGroupTool } from '@tools/invite-to-group.tool';
+import { Test } from '@nestjs/testing';
+import { ConfigService } from '@nestjs/config';
 import { ToolBuildContext } from '@shared-types/tool.types';
 import { GroupContext } from '@biz/group-task/group-task.types';
+import { GroupInviteService } from '@biz/group-task/services/group-invite.service';
+import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
+import { GroupMembershipService } from '@biz/group-task/services/group-membership.service';
+import { RoomService } from '@channels/wecom/room/room.service';
+import { MemoryService } from '@memory/memory.service';
+import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
+import { OpsNotifierService } from '@notification/services/ops-notifier.service';
 import { TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 import { createToolContext, mergeToolContext } from '../../helpers/tool-context.fixture';
 
@@ -86,6 +95,41 @@ describe('buildInviteToGroupTool', () => {
   const mockOpsEventsRecorder = { recordEvent: jest.fn().mockResolvedValue(true) };
   const MEMBER_LIMIT = 200;
 
+  const createGroupInviteService = async (options?: {
+    groupMembership?: unknown;
+    enterpriseToken?: string | null;
+  }): Promise<GroupInviteService> => {
+    const groupMembership = options?.groupMembership ?? {
+      listUserRooms: jest.fn().mockResolvedValue([]),
+    };
+    const enterpriseToken =
+      options && Object.prototype.hasOwnProperty.call(options, 'enterpriseToken')
+        ? options.enterpriseToken
+        : 'enterprise-token-test';
+    const moduleRef = await Test.createTestingModule({
+      providers: [
+        GroupInviteService,
+        { provide: GroupResolverService, useValue: mockGroupResolver },
+        { provide: GroupMembershipService, useValue: groupMembership },
+        { provide: RoomService, useValue: mockRoomService },
+        { provide: MemoryService, useValue: mockMemoryService },
+        { provide: OpsEventsRecorderService, useValue: mockOpsEventsRecorder },
+        { provide: OpsNotifierService, useValue: mockOpsNotifier },
+        {
+          provide: ConfigService,
+          useValue: {
+            get: (key: string, fallback?: string) => {
+              if (key === 'GROUP_MEMBER_LIMIT') return String(MEMBER_LIMIT);
+              if (key === 'STRIDE_ENTERPRISE_TOKEN') return enterpriseToken;
+              return fallback;
+            },
+          },
+        },
+      ],
+    }).compile();
+    return moduleRef.get(GroupInviteService);
+  };
+
   beforeEach(() => {
     jest.clearAllMocks();
     mockOpsNotifier.sendGroupFullAlert.mockResolvedValue(true);
@@ -104,17 +148,16 @@ describe('buildInviteToGroupTool', () => {
     overrideContext?: InviteContextOverrides,
     deps?: { groupMembership?: unknown; sessionService?: unknown },
   ) => {
-    const builder = buildInviteToGroupTool(
-      mockGroupResolver as any,
-      mockRoomService as any,
-      mockOpsNotifier as any,
-      mockMemoryService as any,
-      mockOpsEventsRecorder as any,
-      MEMBER_LIMIT,
-      'enterprise-token-test',
-      deps?.groupMembership as any,
-      deps?.sessionService as any,
-    );
+    const service = await createGroupInviteService({
+      groupMembership: deps?.groupMembership,
+    });
+    const groupInviteService = deps?.groupMembership
+      ? service
+      : ({
+          invite: service.invite.bind(service),
+          preflightExistingMembership: jest.fn().mockResolvedValue(null),
+        } as unknown as GroupInviteService);
+    const builder = buildInviteToGroupTool(groupInviteService, deps?.sessionService as any);
     const builtTool = builder(buildContext(overrideContext));
     return builtTool.execute(input as any, {
       toolCallId: 'test',
@@ -244,15 +287,10 @@ describe('buildInviteToGroupTool', () => {
   });
 
   it('documents that invite_to_group.city must not receive district or region names', () => {
-    const builder = buildInviteToGroupTool(
-      mockGroupResolver as any,
-      mockRoomService as any,
-      mockOpsNotifier as any,
-      mockMemoryService as any,
-      { recordEvent: jest.fn() } as any,
-      MEMBER_LIMIT,
-      'enterprise-token-test',
-    );
+    const builder = buildInviteToGroupTool({
+      invite: jest.fn(),
+      preflightExistingMembership: jest.fn(),
+    } as any);
     const builtTool = builder(mockContext);
 
     expect(builtTool.description).toContain('候选人所在**城市级**名称');
@@ -957,15 +995,13 @@ describe('buildInviteToGroupTool', () => {
   });
 
   it('should fail clearly when enterprise token is missing', async () => {
-    const builder = buildInviteToGroupTool(
-      mockGroupResolver as any,
-      mockRoomService as any,
-      mockOpsNotifier as any,
-      mockMemoryService as any,
-      { recordEvent: jest.fn() } as any,
-      MEMBER_LIMIT,
-      undefined,
-    );
+    const builder = buildInviteToGroupTool({
+      preflightExistingMembership: jest.fn().mockResolvedValue(null),
+      invite: jest.fn().mockResolvedValue({
+        success: false,
+        reason: 'enterprise_token_missing',
+      }),
+    } as unknown as GroupInviteService);
     const builtTool = builder(mockContext);
 
     const result = await builtTool.execute({ city: '上海' } as any, {
@@ -1006,17 +1042,12 @@ describe('buildInviteToGroupTool', () => {
       sessionService: unknown,
       overrideContext?: InviteContextOverrides,
     ) => {
-      const builder = buildInviteToGroupTool(
-        mockGroupResolver as any,
-        mockRoomService as any,
-        mockOpsNotifier as any,
-        mockMemoryService as any,
-        mockOpsEventsRecorder as any,
-        MEMBER_LIMIT,
-        'enterprise-token-test',
-        undefined,
-        sessionService as any,
-      );
+      const service = await createGroupInviteService();
+      const groupInviteService = {
+        invite: service.invite.bind(service),
+        preflightExistingMembership: jest.fn().mockResolvedValue(null),
+      } as unknown as GroupInviteService;
+      const builder = buildInviteToGroupTool(groupInviteService, sessionService as any);
       const builtTool = builder(buildContext(overrideContext));
       return builtTool.execute(input as any, {
         toolCallId: 'test',

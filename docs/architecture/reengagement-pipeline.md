@@ -135,6 +135,12 @@ reserved → delivery_attempted → sent / failed / unknown
 
 ⚠️ 「不 deliver」≠「无副作用」：主动回合已物理禁用工具，shadow 只是再叠加「不投递」。**两者缺一不可**。
 
+### 5.4 可复用的确定性拉群边界
+
+`GroupInviteService` 统一封装选群、成员实时预检、容量刷新、企微邀请及补拉 bot 重试、`invitedGroups` 记忆和 `group.invited` 运营底账。主链 `invite_to_group` 工具仍自己持有 `bookingSucceeded` / city / timing 回合意图闸，只把通过闸门的请求交给该 service。
+
+这是 processor / cron 可以调用的业务服务，**不是给 `ReengagementAgent` 开放的工具**；复聊 Agent 仍保持物理无工具。
+
 ---
 
 ## 6. 可观测性

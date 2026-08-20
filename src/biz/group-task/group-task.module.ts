@@ -3,10 +3,15 @@ import { BullModule } from '@nestjs/bull';
 import { SpongeModule } from '@sponge/sponge.module';
 import { LlmModule } from '@/llm/llm.module';
 import { HostingConfigModule } from '@biz/hosting-config/hosting-config.module';
+import { MemoryModule } from '@memory/memory.module';
+import { RoomModule } from '@channels/wecom/room/room.module';
+import { OpsEventsModule } from '@biz/ops-events/ops-events.module';
+import { NotificationModule } from '@notification/notification.module';
 import { GroupTaskAdminService } from './services/group-task-admin.service';
 import { GroupTaskSchedulerService } from './services/group-task-scheduler.service';
 import { GroupResolverService } from './services/group-resolver.service';
 import { GroupMembershipService } from './services/group-membership.service';
+import { GroupInviteService } from './services/group-invite.service';
 import { NotificationSenderService } from './services/notification-sender.service';
 import { BrandRotationService } from './services/brand-rotation.service';
 import { OrderGrabStrategy } from './strategies/order-grab.strategy';
@@ -28,6 +33,10 @@ import { GROUP_TASK_QUEUE_NAME } from './queue/group-task-queue.constants';
     SpongeModule,
     LlmModule,
     HostingConfigModule,
+    MemoryModule,
+    RoomModule,
+    OpsEventsModule,
+    NotificationModule,
     BullModule.registerQueue({
       name: GROUP_TASK_QUEUE_NAME,
       defaultJobOptions: {
@@ -44,6 +53,7 @@ import { GROUP_TASK_QUEUE_NAME } from './queue/group-task-queue.constants';
     GroupTaskProcessor,
     GroupResolverService,
     GroupMembershipService,
+    GroupInviteService,
     NotificationSenderService,
     BrandRotationService,
     OrderGrabStrategy,
@@ -56,6 +66,7 @@ import { GROUP_TASK_QUEUE_NAME } from './queue/group-task-queue.constants';
     GroupTaskAdminService,
     GroupResolverService,
     GroupMembershipService,
+    GroupInviteService,
   ],
 })
 export class GroupTaskModule {}
