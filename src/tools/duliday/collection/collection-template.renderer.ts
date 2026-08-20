@@ -113,8 +113,17 @@ export function formLabel(title: string, field?: ContractFieldDef): string {
 function optionHint(field: ContractFieldDef): string | null {
   if (field.fieldType !== 'SINGLE_OPTION' && field.fieldType !== 'MULTIPLE_OPTION') return null;
   const options = [...field.acceptedOptions, ...field.rejectedOptions];
-  // 少于 2 项不是选择题（提示"（社会人士）"只会让人困惑）；多于 4 项塞进一行没法读。
-  if (options.length < 2 || options.length > 4) return null;
+
+  // 少于 2 项不是选择题（"（社会人士）"只会让人困惑）。
+  if (options.length < 2) return null;
+  // 多于 4 项塞进一行没法读。生产实测：籍贯 29 项——列出来是灾难，留空让候选人自己写。
+  if (options.length > 4) return null;
+  // **常识型字段留空**（0820 用户裁定）：选项全是短词（男/女、是/否、本科/大专）时，
+  // 候选人自己就知道该怎么答，提示纯属噪音。提示只该出现在**系统特有措辞**上——
+  // 那种候选人猜不到该怎么写的（"无本地有效健康证，接受办理"、"3个月内"）。
+  if (options.every((option) => option.optionLabel.trim().length <= 3)) return null;
+  // 选项含逗号句号会让分段器不认这一行表单行，整块失去原子性被按句拆散（Spike S5）。
   if (options.some((option) => /[，,。！？!?；;（）()]/u.test(option.optionLabel))) return null;
+
   return options.map((option) => option.optionLabel).join('/');
 }

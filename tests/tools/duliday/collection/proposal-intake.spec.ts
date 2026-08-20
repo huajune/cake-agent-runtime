@@ -264,9 +264,24 @@ describe('R1 确认作证恢复（裸字段通道）', () => {
     expect(proposals.find((p) => p.labelId === 687)).toBeUndefined();
   });
 
-  it('词表外的说法不进确定性档（§11：口语长尾归模型作证）', () => {
-    // "确定"/"好的" 目前不在肯定词表内——不在这里扩词，交主聊模型发 confirm claim。
+  it('0820 收进词表的三个教科书短答照常作证（确定/好的/没问题）', () => {
+    // 生产 0819 死循环语料里候选人回的正是「确定」，而词表当时只有「确认」，
+    // 一字之差让 85% 走裸字段的调用在复述确认这一步整个退化。
     for (const answer of ['确定', '好的', '没问题']) {
+      const proposals = collectProposals(
+        base({
+          legacyArgs: { age: '25' },
+          candidateTexts: ['姓名：兮兮', answer],
+          messages: [...messages.slice(0, 2), { role: 'user', content: answer }],
+        }),
+      );
+      expect(proposals.find((p) => p.labelId === 687)?.sourceText).toBe(answer);
+    }
+  });
+
+  it('真正的口语长尾仍不进确定性档（§11：归模型作证）', () => {
+    // 这些要理解语境才知道在肯定什么，不是教科书短答——词表不收，交主聊模型发 claim。
+    for (const answer of ['行吧我看看', '应该可以', '刚拿到手']) {
       const proposals = collectProposals(
         base({
           legacyArgs: { age: '25' },
@@ -276,6 +291,24 @@ describe('R1 确认作证恢复（裸字段通道）', () => {
       );
       expect(proposals.find((p) => p.labelId === 687)).toBeUndefined();
     }
+  });
+
+  it('我方只是**播报**过这个值时，一句"好的"不构成确认（求证语境是硬判据）', () => {
+    // 词表收了「好的」之后这条尤其要紧：没有求证语境判据，一次泛泛的"好的"
+    // 就能把我方说过的任何值洗成候选人亲证。
+    const proposals = collectProposals(
+      base({
+        legacyArgs: { age: '25' },
+        candidateTexts: ['姓名：兮兮', '好的'],
+        messages: [
+          { role: 'user', content: '姓名：兮兮' },
+          // 播报，不是求证：没有 对吧/吗/核对 这类标记。
+          { role: 'assistant', content: '这个岗位年龄 25 起，我先帮你查查附近的' },
+          { role: 'user', content: '好的' },
+        ],
+      }),
+    );
+    expect(proposals.find((p) => p.labelId === 687)).toBeUndefined();
   });
 
   it('原文里查得到就走回查，不用确认恢复（回查优先）', () => {

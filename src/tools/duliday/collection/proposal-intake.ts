@@ -318,17 +318,19 @@ function fromAdapterSweep(input: IntakeInput): IntakeProposal[] {
   return proposals;
 }
 
+/** 我方消息带求证语境的标记（在问、在核对，而不只是在播报）。 */
+const CONFIRMATION_MARKER_RE = /对吧|对吗|对么|对不对|是吗|是么|是吧|核对|确认|[吗么？?]/u;
+
 /**
- * 确认作证恢复：我方消息里出现过该值 → 紧随其后的第一条候选人消息是肯定应答。
+ * 确认作证恢复：我方**求证**消息里出现过该值 → 紧随其后的第一条候选人消息是肯定应答。
  *
  * 与 `identity-gates.isPhoneConfirmedInDialogue` 同一判据形态（三条同时满足，宁漏不错）：
- * 值出现在我方消息 + 该消息带疑问/求证标记 + **紧随其后**的第一条候选人消息是肯定应答。
+ * 值出现在我方消息 + 该消息带求证标记 + **紧随其后**的第一条候选人消息是肯定应答。
  * 只认紧随其后的第一条，避免远处无关的"嗯/对"被错误归因到这次求证。
  *
  * ⚠️ 肯定词表**只用现有的那一份**（`@resolution/signal/dialogue` 唯一居所），
- * 不在这里扩词：§11 红线明令确定性第一档只做教科书短答精确匹配，口语长尾
- * （"确定"/"好的"/"没问题"等目前不在词表内的说法）一律流二档由主聊模型作证。
- * 想让某个说法进确定性档，改的是那份词表，不是这里。
+ * 永远不在这里扩词：想让某个说法进确定性档，改的是那份词表（那里有收词纪律），
+ * 不是这里。§11 红线仍在：口语长尾一律流二档由主聊模型作证。
  */
 function recoverByConfirmation(
   value: string,
@@ -341,6 +343,11 @@ function recoverByConfirmation(
     if (turns[i].role !== 'assistant') continue;
     const question = turns[i].text;
     if (!question.includes(target)) continue;
+    // 求证语境是硬判据（与 isPhoneConfirmedInDialogue 同口径）：我方只是**播报**了
+    // 这个值（岗位卡、话术里顺带提到），候选人一句"好的"不构成对它的确认。
+    // 0820 词表收了「好的/没问题」之后这条尤其要紧——没有它，一次泛泛的"好的"
+    // 就能把我方说过的任何值洗成候选人亲证。
+    if (!CONFIRMATION_MARKER_RE.test(question)) continue;
     for (let j = i + 1; j < turns.length; j += 1) {
       if (turns[j].role !== 'user') continue;
       const answer = turns[j].text;
