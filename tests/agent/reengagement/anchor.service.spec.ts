@@ -360,6 +360,45 @@ describe('ReengagementAnchorService', () => {
     expect(scheduler.scheduleFollowUp.mock.calls[0][0]).not.toHaveProperty('escalateToGroupInvite');
   });
 
+  it('resolves delivered anchors only after reading the pre-settle store round count', async () => {
+    let resolveState: (state: ReengagementSessionState) => void = () => undefined;
+    session.getReengagementState.mockReturnValue(
+      new Promise<ReengagementSessionState>((resolve) => {
+        resolveState = resolve;
+      }),
+    );
+
+    const handling = buildService().handleDeliveredReplyAnchors(
+      {
+        text: '奥乐齐（1044 凯德晶萃广场）- 分拣打包，8.1km',
+        toolCalls: [
+          {
+            toolName: 'duliday_job_list',
+            args: {},
+            result: {
+              resultCount: 1,
+              jobs: [{ jobId: 516221, storeName: '1044 凯德晶萃广场' }],
+            },
+          },
+        ],
+      },
+      context,
+    );
+
+    expect(scheduler.scheduleFollowUp).not.toHaveBeenCalled();
+    resolveState(baseState({ storePresentationRounds: 0 }));
+    await handling;
+
+    expect(scheduler.scheduleFollowUp).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scenarioCode: 'store_presented_no_reply',
+      }),
+    );
+    expect(scheduler.scheduleFollowUp.mock.calls[0][0]).not.toHaveProperty(
+      'escalateToGroupInvite',
+    );
+  });
+
   it('marks a second direct store presentation for deterministic group invite escalation', async () => {
     session.getReengagementState.mockResolvedValue(
       baseState({ presentedStores: [], storePresentationRounds: 1 }),
