@@ -71,6 +71,23 @@ describe('OutboundReplySanitizer', () => {
     });
   });
 
+  describe('推理独白机械剥离（2026-08-20 BadCase 新簇）', () => {
+    it('剥掉 antThinking 残标并保留候选人正文', () => {
+      expect(OutboundReplySanitizer.sanitize('</antThinking>\n附近暂时没有合适岗位')).toBe(
+        '附近暂时没有合适岗位',
+      );
+    });
+
+    it.each([
+      'Now confirmed 0 results twice. Proceeding with the script and group invite',
+      '我应该简洁地回答这两个问题',
+      '根据工具查询结果，接下来应该先告诉候选人暂无岗位',
+    ])('独白整行无正文时清空：%s', (input) => {
+      expect(OutboundReplySanitizer.sanitize(input)).toBe('');
+      expect(OutboundReplySanitizer.needsSanitization(input)).toBe(true);
+    });
+  });
+
   describe('needsSanitization', () => {
     it('仅含单换行无需规范化', () => {
       const input = `第一行

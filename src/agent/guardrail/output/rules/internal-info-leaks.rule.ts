@@ -69,7 +69,18 @@ const TOOL_NAMES = [
  * 两处共用同一份来源，杜绝再次单边扩展。
  */
 const TOOL_CALL_XML_TAG_SOURCE =
-  '<\\/?(?:tool_call|tool_use|invoke|parameter|function(?:_calls?)?|thinking)\\b[^>]*>';
+  '<\\/?(?:tool_call|tool_use|invoke|parameter|function(?:_calls?)?|thinking|antthinking)\\b[^>]*>';
+
+/**
+ * 2026-08-20 新簇（nkyiuvdx / z3toosp6 / dnjmwffe / lrerr7zx）：Provider 降级时把
+ * 推理独白混进了候选人可见文本。每条模式都锚定本簇已发生形态，不扩成通用语义判断。
+ */
+const INTERNAL_REASONING_PATTERNS: readonly RegExp[] = [
+  /^(?:Now\s+)?confirmed\s+\d+\s+results?\s+(?:twice|\d+\s+times?)[.!]?\s*Proceed(?:ing)?\s+with\s+(?:the\s+)?(?:script|group invite)\b[^\n]*$/im,
+  /^(?:I\s+(?:should|need to|will)|Let's)\b[^\n]{0,160}\b(?:reply|respond|answer|ask|tell|proceed|invite)\b[^\n]*$/im,
+  /^(?:我(?:现在)?(?:应该|需要)|接下来(?:应该|需要))(?:简洁地|直接|先)?(?:回答|回复|询问|说明|告诉|确认|处理)[^\n]*$/m,
+  /^根据(?:本轮)?工具查询结果[，,:：]?[^\n]*(?:应该|需要|接下来|先|回答|回复|推荐|询问|告诉候选人)[^\n]*$/m,
+];
 
 const PATTERNS: RegExp[] = [
   // 模型把阶段术语 / 内部状态字段直接说出来
@@ -94,6 +105,8 @@ const PATTERNS: RegExp[] = [
   new RegExp(`\\b(?:${TOOL_NAMES.map(escapeRegex).join('|')})\\b`),
   // 工具调用 JSON 骨架（未注册工具名/MCP 动态工具也能兜住）
   new RegExp(TOOL_CALL_XML_TAG_SOURCE, 'i'),
+  // 推理/自我指令自然语言泄漏（仅收录 2026-08 新簇已发生形态）
+  ...INTERNAL_REASONING_PATTERNS,
   /["']name["']\s*:\s*["'][\w-]+["']\s*,\s*["']arguments["']\s*:/,
   /["']arguments["']\s*:\s*\{/,
   // 整条回复以 JSON 开头（`{"`、`[{`、`["`）——自然语言回复不存在这种开头
@@ -119,6 +132,29 @@ export function detectOutputLeak(content: string): RegExp | null {
     if (pattern.test(content)) return pattern;
   }
   return null;
+}
+
+const INTERNAL_REASONING_BLOCK_PATTERN =
+  /<(antthinking|analysis|reasoning)\b[^>]*>[\s\S]*?<\/\1\s*>/gi;
+const INTERNAL_REASONING_TAG_PATTERN = /<\/?(?:antthinking|analysis|reasoning)\b[^>]*>/gi;
+
+/** 只做机械删除：剥推理标签块、残标签和本簇实证独白整行，不生成或改写候选人正文。 */
+export function stripInternalReasoningArtifacts(content: string): string {
+  const withoutTags = content
+    .replace(INTERNAL_REASONING_BLOCK_PATTERN, '')
+    .replace(INTERNAL_REASONING_TAG_PATTERN, '');
+  return withoutTags
+    .split(/\r?\n/)
+    .filter((line) => !INTERNAL_REASONING_PATTERNS.some((pattern) => pattern.test(line.trim())))
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+export function isInternalReasoningArtifactOnly(content: string): boolean {
+  const text = content?.trim() ?? '';
+  if (!text || !detectOutputLeak(text)) return false;
+  return stripInternalReasoningArtifacts(text) === '';
 }
 
 /**

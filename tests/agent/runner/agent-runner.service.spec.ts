@@ -495,6 +495,84 @@ describe('AgentRunnerService.runTurn', () => {
     );
   });
 
+  it('mixed reasoning leak is stripped deterministically and archived', async () => {
+    const draft = [
+      '我应该简洁地回答这两个问题',
+      '附近暂时没有合适岗位，有新岗位我及时告诉你。',
+    ].join('\n');
+    generator.invoke.mockResolvedValueOnce(makeResult({ text: draft }));
+    outputGuard.check
+      .mockResolvedValueOnce({
+        decision: 'block',
+        riskLevel: 'high',
+        violations: [
+          {
+            type: 'internal_output_leak',
+            evidence: '回复疑似泄漏推理独白',
+            suggestion: '删除泄漏内容',
+            recoverability: 'non_recoverable',
+            repairMode: 'rewrite',
+          },
+        ],
+        ruleIds: ['internal_output_leak'],
+        blockedRuleIds: ['internal_output_leak'],
+        repairMode: 'rewrite',
+      })
+      .mockResolvedValueOnce(passDecision);
+
+    const outcome = await service.runTurn({
+      sessionRef,
+      trigger: { kind: 'inbound', userMessage: '附近有岗位吗' },
+      context: { messageId: 'trace-reasoning-strip-1' },
+    });
+
+    expect(replyRepairAgent.repair).not.toHaveBeenCalled();
+    expect(outcome.reply?.text).toBe('附近暂时没有合适岗位，有新岗位我及时告诉你。');
+    expect(guardrailReviews.recordReview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        finalDecision: 'pass',
+        reasonCode: 'internal_reasoning_stripped',
+        repaired: true,
+      }),
+    );
+  });
+
+  it('reasoning-only leak converges to logged silence without repair', async () => {
+    generator.invoke.mockResolvedValueOnce(makeResult({ text: '</antThinking>' }));
+    outputGuard.check.mockResolvedValueOnce({
+      decision: 'block',
+      riskLevel: 'high',
+      violations: [
+        {
+          type: 'internal_output_leak',
+          evidence: '回复疑似泄漏推理残标',
+          suggestion: '删除泄漏内容',
+          recoverability: 'non_recoverable',
+          repairMode: 'rewrite',
+        },
+      ],
+      ruleIds: ['internal_output_leak'],
+      blockedRuleIds: ['internal_output_leak'],
+      repairMode: 'rewrite',
+    });
+
+    const outcome = await service.runTurn({
+      sessionRef,
+      trigger: { kind: 'inbound', userMessage: '在吗' },
+      context: { messageId: 'trace-reasoning-silence-1' },
+    });
+
+    expect(outcome.kind).toBe('guardrail_blocked');
+    expect(replyRepairAgent.repair).not.toHaveBeenCalled();
+    expect(guardrailReviews.recordReview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        finalDecision: 'block',
+        reasonCode: 'internal_reasoning_artifact_silenced',
+        repaired: false,
+      }),
+    );
+  });
+
   // 2026-08-04 审计 P0-1（trace …_1785489639414）：首版整条只有"让同事确认"承诺，
   // 删承诺后无内容可保留，rewrite 曾编出"衣服方面店里没有特殊要求"投递。该形态
   // 直接收敛静默，不进 rewrite。

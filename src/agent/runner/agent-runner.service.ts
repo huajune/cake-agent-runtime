@@ -27,7 +27,9 @@ import { isDanglingCheckReply } from './dangling-reply';
 import {
   detectOutputLeak,
   hasTechnicalDocumentationShape,
+  isInternalReasoningArtifactOnly,
   isToolCallArtifactOnly,
+  stripInternalReasoningArtifacts,
   stripMarkdownCodeFences,
   tryUnwrapEnvelopeReply,
 } from '../guardrail/output/rules/internal-info-leaks.rule';
@@ -293,19 +295,26 @@ export class AgentRunnerService {
     // 泄漏形态时，剥离本身就是完整修复——围栏内正文（报名表模板等结构化内容）逐字保留，
     // 跳过 LLM 重写（2026-07-21 badcase：rewrite 把围栏里的报名表模板压成一句话流水账）。
     // 剥离产物仍走下方二审，二审才是放行依据。
-    const fenceStrippedText = this.tryStripFenceOnlyLeak(decision, firstText);
+    const reasoningStrippedText = this.tryStripInternalReasoningLeak(decision, firstText);
+    const fenceStrippedText =
+      reasoningStrippedText === null ? this.tryStripFenceOnlyLeak(decision, firstText) : null;
     // 第二条确定性快通道（2026-08-04 审计 P0-2）：JSON 信封拆封。模型把完整正文包进
     // `{"agent_response":"…"}` 类信封，旧链路误判纯残文整轮静默（好回复被吞）。拆封
     // 产物与剥围栏同样走二审 + 悬空检测。
     const envelopeUnwrappedText =
-      fenceStrippedText === null ? this.tryUnwrapEnvelopeLeak(decision, firstText) : null;
-    const deterministicRepairText = fenceStrippedText ?? envelopeUnwrappedText;
+      reasoningStrippedText === null && fenceStrippedText === null
+        ? this.tryUnwrapEnvelopeLeak(decision, firstText)
+        : null;
+    const deterministicRepairText =
+      reasoningStrippedText ?? fenceStrippedText ?? envelopeUnwrappedText;
     const deterministicReasonCode =
-      fenceStrippedText !== null
-        ? 'fence_stripped'
-        : envelopeUnwrappedText !== null
-          ? 'envelope_unwrapped'
-          : null;
+      reasoningStrippedText !== null
+        ? 'internal_reasoning_stripped'
+        : fenceStrippedText !== null
+          ? 'fence_stripped'
+          : envelopeUnwrappedText !== null
+            ? 'envelope_unwrapped'
+            : null;
 
     // repair（hard cap 1）：统一走独立 ReplyRepairAgent 受约束重写——replan（重进
     // generator 重取数+重写全文）已于 2026-07-27 发牌切换整体退役（评估文档 §2.4），
@@ -315,6 +324,7 @@ export class AgentRunnerService {
       `[invokeReviewed] output=${decision.decision}，触发一次受控修复: rules=${decision.ruleIds.join(',') || '-'}, ` +
         `violations=${decision.violations.map((v) => v.type).join(',') || '-'}` +
         (fenceStrippedText !== null ? '，fence-only 命中走确定性剥围栏，跳过 LLM 重写' : '') +
+        (reasoningStrippedText !== null ? '，推理独白命中走确定性剥离，跳过 LLM 重写' : '') +
         (envelopeUnwrappedText !== null ? '，JSON 信封命中走确定性拆封，跳过 LLM 重写' : ''),
     );
     const revised =
@@ -749,6 +759,18 @@ export class AgentRunnerService {
     return stripped;
   }
 
+  /** 推理独白混入正常正文时只机械删掉实证形态；剥完为空的情况由直达静默分支处理。 */
+  private tryStripInternalReasoningLeak(
+    decision: OutputGuardDecision,
+    text: string,
+  ): string | null {
+    if (!this.isOnlyInternalOutputLeakBlock(decision)) return null;
+    const stripped = stripInternalReasoningArtifacts(text);
+    if (!stripped || stripped === text) return null;
+    if (detectOutputLeak(stripped)) return null;
+    return stripped;
+  }
+
   /**
    * JSON 信封的确定性最小修复（2026-08-04 审计 P0-2）：不可发送命中仅为
    * internal_output_leak，且整条首版是"正文被包进 JSON 信封"的形态
@@ -786,6 +808,12 @@ export class AgentRunnerService {
   ): string | null {
     if (decision.decision === 'block') {
       if (this.isOnlyMetaNarrationBlock(decision)) return 'meta_narration_silenced';
+      if (
+        this.isOnlyInternalOutputLeakBlock(decision) &&
+        isInternalReasoningArtifactOnly(firstText)
+      ) {
+        return 'internal_reasoning_artifact_silenced';
+      }
       if (this.isOnlyInternalOutputLeakBlock(decision) && isToolCallArtifactOnly(firstText)) {
         return 'tool_call_artifact_silenced';
       }

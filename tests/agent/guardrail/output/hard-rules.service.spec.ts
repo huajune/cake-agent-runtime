@@ -1345,6 +1345,27 @@ describe('HardRulesService', () => {
       expect(result.contradictions.map((c) => c.ruleId)).toContain('internal_output_leak');
     });
 
+    it.each([
+      ['XML 残标 nkyiuvdx', '</antThinking>'],
+      [
+        '英文独白 z3toosp6',
+        'Now confirmed 0 results twice. Proceeding with the script and group invite',
+      ],
+      ['中文自我指令 dnjmwffe', '我应该简洁地回答这两个问题'],
+      ['中文工具元叙述 lrerr7zx', '根据工具查询结果，接下来应该先告诉候选人暂无岗位'],
+    ])('零工具轮也阻断推理产物泄漏：%s', (_name, reply) => {
+      const result = service.check({ replyText: reply, toolCalls: [] });
+
+      expect(result.contradictions).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            ruleId: 'internal_output_leak',
+            action: GUARDRAIL_ACTION.BLOCK,
+          }),
+        ]),
+      );
+    });
+
     // 上线首日（2026-07-03）：repair 以 toolMode:'none' 重写时模型把工具调用写成文本，
     // 以下三种形态穿透旧词库真实发给了候选人，必须全部拦住。
     it.each([
