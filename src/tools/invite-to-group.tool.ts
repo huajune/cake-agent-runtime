@@ -19,7 +19,11 @@ import { OpsNotifierService } from '@notification/services/ops-notifier.service'
 import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
 import { refreshMemberCountsFromEnterpriseList } from '@tools/utils/enterprise-room-count.util';
 import { resolveCityFromDistrict } from '@resolution/geo';
-import { hasPriorNoMatchReply } from '@tools/duliday/job-list/no-match-script.util';
+import {
+  buildRecommendationLimitScript,
+  countDissatisfiedRecommendationRounds,
+  hasPriorNoMatchReply,
+} from '@tools/duliday/job-list/no-match-script.util';
 import { canUseFactForAction } from '@tools/shared/action-confidence';
 
 const logger = new Logger('invite_to_group');
@@ -424,14 +428,28 @@ export function buildInviteToGroupTool(
               });
             }
             if (timingVerdict.reason === 'group_consent_required') {
+              const dissatisfiedRecommendationRounds = countDissatisfiedRecommendationRounds(
+                context.turnInput.messages ?? [],
+              );
+              const noMatchScript =
+                dissatisfiedRecommendationRounds >= 2
+                  ? buildRecommendationLimitScript({ cityLabels: [city] })
+                  : null;
               return buildToolError({
                 errorType: TOOL_ERROR_TYPES.INVITE_GROUP_CONSENT_REQUIRED,
                 outcome: '本轮没有合法的入群授权，禁止用查岗完成替代候选人同意',
-                replyInstruction:
-                  '本轮虽然已经查过岗位，但拉群只允许两种入口：预约成功后的首次承接，或连续两轮推荐均不满意、' +
-                  '上一轮已征询入群且候选人本轮明确同意。真实无岗请按 noMatchScript 如实收口并等待库存，' +
-                  '查到岗位则继续正常推荐/推进；本轮不要提群相关内容，也不要调用 request_handoff。',
-                details: { city, industry: industry ?? undefined },
+                replyInstruction: noMatchScript
+                  ? '**候选人已连续否定两轮具体岗位，但本轮尚未同意入群。严格按 noMatchScript.candidateMessage 征询入群意愿，' +
+                    '不得重查或继续推荐，不得再次调用 invite_to_group；候选人下一轮明确同意后才实调。'
+                  : '本轮虽然已经查过岗位，但拉群只允许两种入口：预约成功后的首次承接，或连续两轮推荐均不满意、' +
+                    '上一轮已征询入群且候选人本轮明确同意。真实无岗请按 noMatchScript 如实收口并等待库存，' +
+                    '查到岗位则继续正常推荐/推进；本轮不要提群相关内容，也不要调用 request_handoff。',
+                details: {
+                  city,
+                  industry: industry ?? undefined,
+                  dissatisfiedRecommendationRounds,
+                  noMatchScript,
+                },
               });
             }
             return buildToolError({

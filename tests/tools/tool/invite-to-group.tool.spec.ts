@@ -200,6 +200,39 @@ describe('buildInviteToGroupTool', () => {
       expect(mockRoomService.addMemberEnterprise).not.toHaveBeenCalled();
     });
 
+    it('两轮具体推荐已被否定但尚未同意：拒绝实调并返回征询话术', async () => {
+      const result = await executeTool(
+        { city: '上海' },
+        {
+          jobListExecuted: true,
+          bookingSucceeded: undefined,
+          currentUserMessage: '没有近的，都有点远',
+          messages: [
+            { role: 'user', content: '我在上海找兼职' },
+            {
+              role: 'assistant',
+              content: '必胜客（A店）2km，班次09:00-18:00，薪资22元/时',
+            },
+            { role: 'assistant', content: '你看这家方便吗' },
+            { role: 'user', content: '时间太长了，不合适' },
+            {
+              role: 'assistant',
+              content: '成都你六姐（B店）8km，班次18:00-22:00，薪资24元/时',
+            },
+            { role: 'assistant', content: '你看这家方便吗' },
+            { role: 'user', content: '没有近的，都有点远' },
+          ],
+        },
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.INVITE_GROUP_CONSENT_REQUIRED);
+      expect(result.noMatchScript?.nextAction).toBe('offer_group_invite');
+      expect(result.noMatchScript?.candidateMessage).toContain('回复我“可以”');
+      expect(result._replyInstruction).toContain('不得再次调用 invite_to_group');
+      expect(mockRoomService.addMemberEnterprise).not.toHaveBeenCalled();
+    });
+
     it('两轮协议第二轮：上一轮已征询且本轮同意时无需重复查岗即可实调邀请', async () => {
       mockGroupResolver.resolveGroups.mockResolvedValue([makeGroup({ memberCount: 10 })]);
       mockRoomService.addMemberEnterprise.mockResolvedValue({ errcode: 0 });
