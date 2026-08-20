@@ -144,6 +144,8 @@ export interface SlotValue {
 
 export interface FormSlot {
   labelId: number;
+  /** 契约映射后的身份语义标记；随表单封存，供无契约参数的纯写函数精确定位。 */
+  systemField?: IdentitySlotKey;
   state: SlotState;
   /** `filled` 必有值；`disqualified` 带触发不合格的那个值；`empty` 无值。 */
   value?: SlotValue;
@@ -215,7 +217,12 @@ export function createForm(params: {
 }): BookingCollectionForm {
   const slots: Record<number, FormSlot> = {};
   for (const field of params.contract) {
-    slots[field.labelId] = { labelId: field.labelId, state: 'empty', askCount: 0 };
+    slots[field.labelId] = {
+      labelId: field.labelId,
+      ...(field.systemField ? { systemField: field.systemField } : {}),
+      state: 'empty',
+      askCount: 0,
+    };
   }
   return {
     candidateRef: params.candidateRef ?? SESSION_CANDIDATE_REF,

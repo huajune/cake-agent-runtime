@@ -102,6 +102,20 @@ describe('CollectionFormService', () => {
       expect(form.slots[756]).toBeUndefined();
     });
 
+    it('存量表单随实时契约补齐或清理 systemField 语义标记', async () => {
+      const stored = createForm({ jobId: 528962, contract: [ADDRESS_FIELD] });
+      store.read.mockResolvedValue(stored);
+
+      const marked = await service.loadOrCreate(SCOPE, [
+        { ...ADDRESS_FIELD, systemField: 'gender' },
+      ]);
+      expect(marked.slots[756].systemField).toBe('gender');
+
+      store.read.mockResolvedValue(marked);
+      const cleared = await service.loadOrCreate(SCOPE, [ADDRESS_FIELD]);
+      expect(cleared.slots[756].systemField).toBeUndefined();
+    });
+
     it('调用方不再传手机号时，经当前指针读回 rebind 后的人键表', async () => {
       const stored = createForm({
         candidateRef: TEST_PHONE,

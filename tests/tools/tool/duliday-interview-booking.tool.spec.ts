@@ -83,6 +83,7 @@ function readyForm(contract: readonly ContractFieldDef[] = CONTRACT): BookingCol
     const value = values[field.labelId] ?? { value: '已填写' };
     form.slots[field.labelId] = {
       labelId: field.labelId,
+      ...(field.systemField ? { systemField: field.systemField } : {}),
       state: 'filled',
       askCount: 1,
       value: {
@@ -178,6 +179,25 @@ describe('duliday_interview_booking（form → labelList）', () => {
     expect(sponge.fetchJobCollectionContract).not.toHaveBeenCalled();
   });
 
+  it('jobId 无召回出处时恢复防伪短路与专用错误码', async () => {
+    context.ledger.jobs.collectionReadyJobId = undefined;
+    context.archive.recalledJobIds = [99];
+    context.archive.isRecalledJobId = () => false;
+
+    const result = await execute({ jobId: 100 });
+
+    expect(result).toMatchObject({
+      errorType: TOOL_ERROR_TYPES.BOOKING_JOB_NOT_PROVIDED,
+      shortCircuited: true,
+      gateRejected: true,
+      reasonCode: 'job_id_not_recalled',
+      jobId: 100,
+      recalledJobIds: [99],
+    });
+    expect(context.ledger.jobs.bookingSucceeded).toBe(false);
+    expect(sponge.fetchJobCollectionContract).not.toHaveBeenCalled();
+  });
+
   it('只向 entryUser 发送 jobId + labelList，wait_notice 不带 interviewTime', async () => {
     const result = await execute({ jobId: 100 });
     expect(result.success).toBe(true);
@@ -223,6 +243,42 @@ describe('duliday_interview_booking（form → labelList）', () => {
       },
       { sessionId: 'session-1', botImId: 'bot-A' },
     );
+  });
+
+  it('外部工单成功后的表单/记忆写入失败不反向改口为预约失败', async () => {
+    longTerm.setActiveBooking.mockRejectedValueOnce(new Error('active booking write failed'));
+    collectionForms.persist.mockRejectedValueOnce(new Error('form persist failed'));
+    sessionFacts.saveCompletedCollectionFacts.mockRejectedValueOnce(
+      new Error('session fact write failed'),
+    );
+    longTerm.writeFromBooking.mockRejectedValueOnce(new Error('profile write failed'));
+
+    const result = await execute({ jobId: 100 });
+
+    expect(result.success).toBe(true);
+    expect(result.errorType).toBeUndefined();
+    expect(context.ledger.jobs.bookingSucceeded).toBe(true);
+    expect(hosting.pauseUser).not.toHaveBeenCalled();
+    expect(ops.recordEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ eventName: 'booking.succeeded' }),
+    );
+    expect(ops.recordEvent).not.toHaveBeenCalledWith(
+      expect.objectContaining({ eventName: 'booking.failed' }),
+    );
+  });
+
+  it('外部 success=true 是不可回滚提交点，未知回执后处理异常也保持成功口径', async () => {
+    ops.recordEvent.mockImplementationOnce(() => {
+      throw new Error('unexpected event recorder failure');
+    });
+
+    const result = await execute({ jobId: 100 });
+
+    expect(result.success).toBe(true);
+    expect(result.errorType).toBeUndefined();
+    expect(result._replyInstruction).toContain('预约已真实成功');
+    expect(context.ledger.jobs.bookingSucceeded).toBe(true);
+    expect(hosting.pauseUser).not.toHaveBeenCalled();
   });
 
   it('applyErrorList 带 labelId 时只重开对应槽位', async () => {

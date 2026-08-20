@@ -118,7 +118,7 @@ function describeRequirement(field: ContractFieldDef, gender: 'MALE' | 'FEMALE' 
 /** 表单在案性别——分性别值域的话术要按候选人性别取那一档，说错档等于报错要求。 */
 function genderOf(form: BookingCollectionForm): 'MALE' | 'FEMALE' | null {
   for (const slot of Object.values(form.slots)) {
-    if (slot.state !== 'filled' || !slot.value) continue;
+    if (slot.systemField !== 'gender' || slot.state !== 'filled' || !slot.value) continue;
     const normalized = normalizeGenderValue(slot.value.value);
     if (normalized === '男') return 'MALE';
     if (normalized === '女') return 'FEMALE';

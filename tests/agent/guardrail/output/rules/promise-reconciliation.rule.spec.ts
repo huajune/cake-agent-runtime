@@ -154,9 +154,22 @@ describe('报名将来时承诺（议题 9-4）', () => {
   it.each([
     '资料收到了，帮你约今天下午这个时段可以吗？',
     '你先把资料填好发我，我帮你约。',
+    '资料还没填好，你先补齐发我，我帮你约。',
     '好的，这轮先不帮你报名。',
   ])('不标记征询、带前置条件或明确否定的报名表达: %s', (text) => {
     expect(detectBookingPromiseWithoutBooking(text, [])).toBeNull();
+  });
+
+  it.each([
+    '这轮先不预约。资料齐了，我马上帮你报名。',
+    '要我帮你约吗？资料我收到了，我这就帮你提交报名。',
+    '已经帮你报好上一家了。这一家我马上帮你预约。',
+    '资料之前已经填好发我。你先别急，我马上帮你报名。',
+  ])('前文的否定/征询/完成时不压掉后文真承诺: %s', (text) => {
+    expect(detectBookingPromiseWithoutBooking(text, [])).toMatchObject({
+      ruleId: 'booking_promise_without_booking',
+      action: 'revise',
+    });
   });
 
   it('does not flag ordinary replies', () => {

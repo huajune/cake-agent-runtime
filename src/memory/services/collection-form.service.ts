@@ -98,14 +98,27 @@ export class CollectionFormService {
     const previousIds = Object.keys(form.slots).map(Number);
     const added = contract.filter((field) => !form.slots[field.labelId]);
     const removed = previousIds.filter((labelId) => !currentIds.has(labelId));
-    if (added.length === 0 && removed.length === 0) return form;
+    const semanticMarkerChanged = contract.some(
+      (field) => form.slots[field.labelId]?.systemField !== field.systemField,
+    );
+    if (added.length === 0 && removed.length === 0 && !semanticMarkerChanged) return form;
 
     const slots: BookingCollectionForm['slots'] = {};
     for (const field of contract) {
-      slots[field.labelId] = form.slots[field.labelId] ?? {
-        labelId: field.labelId,
-        state: 'empty',
-        askCount: 0,
+      const existing = form.slots[field.labelId];
+      if (!existing) {
+        slots[field.labelId] = {
+          labelId: field.labelId,
+          ...(field.systemField ? { systemField: field.systemField } : {}),
+          state: 'empty',
+          askCount: 0,
+        };
+        continue;
+      }
+      const { systemField: _previousSystemField, ...rest } = existing;
+      slots[field.labelId] = {
+        ...rest,
+        ...(field.systemField ? { systemField: field.systemField } : {}),
       };
     }
     this.logger.log(

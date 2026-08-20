@@ -329,7 +329,7 @@ export function proposeValue(
  */
 function genderOf(form: BookingCollectionForm): 'MALE' | 'FEMALE' | null {
   for (const slot of Object.values(form.slots)) {
-    if (slot.state !== 'filled' || !slot.value) continue;
+    if (slot.systemField !== 'gender' || slot.state !== 'filled' || !slot.value) continue;
     const normalized = normalizeGenderValue(slot.value.value);
     if (normalized === '男') return 'MALE';
     if (normalized === '女') return 'FEMALE';
@@ -365,7 +365,13 @@ export function applyRecapResult(
 
   const slots = { ...form.slots };
   for (const labelId of targets) {
-    slots[labelId] = { labelId, state: 'empty', askCount: slots[labelId].askCount };
+    const { systemField } = slots[labelId];
+    slots[labelId] = {
+      labelId,
+      ...(systemField ? { systemField } : {}),
+      state: 'empty',
+      askCount: slots[labelId].askCount,
+    };
   }
   return { ...form, slots };
 }
@@ -404,7 +410,13 @@ export function applyErrorList(
       unmapped.push(error.field ?? `labelId=${error.labelId ?? 'unknown'}`);
       continue;
     }
-    slots[labelId] = { labelId, state: 'empty', askCount: slots[labelId].askCount };
+    const { systemField } = slots[labelId];
+    slots[labelId] = {
+      labelId,
+      ...(systemField ? { systemField } : {}),
+      state: 'empty',
+      askCount: slots[labelId].askCount,
+    };
     reopened += 1;
   }
 
@@ -592,7 +604,10 @@ function reject(
 }
 
 function withSlot(form: BookingCollectionForm, slot: FormSlot): BookingCollectionForm {
-  return { ...form, slots: { ...form.slots, [slot.labelId]: slot } };
+  return {
+    ...form,
+    slots: { ...form.slots, [slot.labelId]: { ...form.slots[slot.labelId], ...slot } },
+  };
 }
 
 /** 身份槽位的值本体是否逐字落在原话内（手机号忽略非数字字符）。 */

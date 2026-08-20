@@ -293,6 +293,42 @@ describe('分性别值域筛（实测 528995 身高/体重）', () => {
     expect(proposeHeight(base, '155').outcome).toBe('accepted');
   });
 
+  it('只读 systemField=gender 的槽位，其他值里的“男/女/1/2”不得污染分档', () => {
+    const experienceField: ContractFieldDef = {
+      labelId: 1,
+      labelTitle: '相关经验',
+      fieldType: 'TEXT',
+      required: true,
+      acceptedOptions: [],
+      rejectedOptions: [],
+    };
+    const neutralGender: ContractFieldDef = {
+      ...GENDER_MALE_ONLY_FIELD,
+      acceptedOptions: [
+        { optionCode: '1', optionLabel: '男' },
+        { optionCode: '2', optionLabel: '女' },
+      ],
+      rejectedOptions: [],
+    };
+    const localContract = [experienceField, neutralGender, HEIGHT_FIELD_GENDERED];
+    let current = createForm({ jobId: 1, contract: localContract });
+    current = proposeValue(current, experienceField, {
+      value: '男装导购经验',
+      sourceText: '我有男装导购经验',
+      producer: 'candidate_quote',
+      candidateTexts: ['我有男装导购经验'],
+    }).form;
+    current = proposeValue(current, neutralGender, {
+      value: '女',
+      optionCodes: ['2'],
+      sourceText: '我是女的',
+      producer: 'candidate_quote',
+      candidateTexts: ['我是女的'],
+    }).form;
+
+    expect(proposeHeight(current, '155').outcome).toBe('accepted');
+  });
+
   it('性别未知 → 分性别值域整体不参与判决（漏斗优先，下游 errorList 截）', () => {
     const base = createForm({ jobId: 1, contract });
     expect(proposeHeight(base, '155').outcome).toBe('accepted');
@@ -311,6 +347,7 @@ describe('防线 2 · 复述落账：「不对，电话错了」精确重开一�
 
     expect(corrected.slots[PHONE_FIELD.labelId].state).toBe('empty');
     expect(corrected.slots[PHONE_FIELD.labelId].value).toBeUndefined();
+    expect(corrected.slots[PHONE_FIELD.labelId].systemField).toBe('phone');
     expect(corrected.slots[NAME_FIELD.labelId].state).toBe('filled');
     expect(corrected.slots[NAME_FIELD.labelId].value?.value).toBe(TEST_CANDIDATE_NAME);
   });

@@ -145,14 +145,39 @@ export function detectHandoffPromiseWithoutAction(text: string, toolCalls: Agent
 
 export const HANDOFF_PROMISE_RECONCILIATION_RULE_ID = 'handoff_promise_reconciliation';
 
+/**
+ * 报名承诺的排除词只影响所在分句。唯一需要跨分句判定的是“先补资料，再帮你报名”，
+ * 因而额外保留同一句内至多前两个分句作为 prerequisite 上下文。这样既不把条件句误当当轮承诺，
+ * 也不会让前文无关的否定/征询压掉后文真正的预约承诺。
+ */
+function hasActionableBookingPromise(text: string): boolean {
+  const sentences = text
+    .split(/[。！？!?\n]+/u)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean);
+
+  return sentences.some((sentence) => {
+    const clauses = sentence
+      .split(/[，,；;]+/u)
+      .map((clause) => clause.trim())
+      .filter(Boolean);
+
+    return clauses.some((clause, index) => {
+      if (!BOOKING_PROMISE_PATTERN.test(clause)) return false;
+      if (BOOKING_COMPLETED_TENSE_PATTERN.test(clause)) return false;
+      if (BOOKING_PROMISE_QUESTION_PATTERN.test(clause)) return false;
+      if (NEGATED_BOOKING_PROMISE_PATTERN.test(clause)) return false;
+
+      const prerequisiteContext = clauses.slice(Math.max(0, index - 2), index + 1).join('，');
+      return !BOOKING_PROMISE_PREREQUISITE_PATTERN.test(prerequisiteContext);
+    });
+  });
+}
+
 /** 报名类将来时承诺 + 无 booking 动作（9-4）：改写诚实口径，不自动补动作。 */
 export function detectBookingPromiseWithoutBooking(text: string, toolCalls: AgentToolCall[] = []) {
   if (!text.trim()) return null;
-  if (BOOKING_COMPLETED_TENSE_PATTERN.test(text)) return null;
-  if (BOOKING_PROMISE_QUESTION_PATTERN.test(text.trim())) return null;
-  if (BOOKING_PROMISE_PREREQUISITE_PATTERN.test(text)) return null;
-  if (NEGATED_BOOKING_PROMISE_PATTERN.test(text)) return null;
-  if (!BOOKING_PROMISE_PATTERN.test(text)) return null;
+  if (!hasActionableBookingPromise(text)) return null;
   if (hasSuccessfulCall(toolCalls, BOOKING_TOOL_NAMES)) return null;
   // precheck 已放行时"我这就帮你提交"只是下一步动作的自然预告，不算空头。
   if (isPrecheckReadyToBook(toolCalls)) return null;
