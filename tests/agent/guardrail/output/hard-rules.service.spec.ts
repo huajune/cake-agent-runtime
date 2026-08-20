@@ -619,6 +619,75 @@ describe('HardRulesService', () => {
       );
     });
 
+    // trace batch_6a86626bce406a6aee0e0aa0：rewrite 修复版诚实拒绝候选人的 7-3/8-4 诉求，
+    // 却因"能排"在别句 + 复述诉求时段被二审再拦，靠 repair_exhausted_fail_open 才没静默。
+    describe('honest refusal echoing the candidate window (badcase 6a86626b)', () => {
+      const midShiftLookup = {
+        toolName: 'duliday_job_list',
+        args: { jobIdList: [528551], includeWorkTime: true },
+        status: 'ok' as const,
+        result: {
+          markdown: '班次：10:30-15:00、11:00-14:00、11:00-15:00、11:30-15:30、17:00-22:30',
+        },
+      };
+
+      it('allows the repaired reply that denies the requested windows', () => {
+        const result = service.check({
+          replyText:
+            '成都你六姐的兼职主要是饭点高峰班次，目前没有早7到晚3或早8到晚4这样完整的班次。\n\n' +
+            '现在能排的白班主要是10:30-15:00、11:00-14:00、11:00-15:00、11:30-15:30这些午高峰时段，晚班则是17:00以后的时段。\n\n' +
+            '如果您只能做7-3或8-4的班次，那成都你六姐目前的岗位可能不太匹配，我可以帮您看看其他品牌的岗位。',
+          toolCalls: [midShiftLookup],
+          userMessage: '兼职 7-3 8-4 这个时间有没有',
+          memorySnapshot,
+          chatId: '6a86626bce406a6aee0e0aa0',
+        });
+
+        expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
+          'unsupported_schedule_window_claim',
+        );
+      });
+
+      it('still rejects the first reply that affirms the unlisted windows', () => {
+        const result = service.check({
+          replyText:
+            '有的～成都你六姐兼职主要是饭点高峰班次，你说的7-3、8-4这两个时间段都有能排的班。',
+          toolCalls: [midShiftLookup],
+          userMessage: '兼职 7-3 8-4 这个时间有没有',
+          memorySnapshot,
+          chatId: '6a86626bce406a6aee0e0aa0',
+        });
+
+        expect(result.contradictions.map((item) => item.ruleId)).toContain(
+          'unsupported_schedule_window_claim',
+        );
+      });
+
+      it('binds negation to the window clause instead of the whole sentence', () => {
+        const safe = service.check({
+          replyText: '7:00-15:00排不上，但可以给你排11:00-15:00。',
+          toolCalls: [midShiftLookup],
+          userMessage: '能不能排7-3',
+          memorySnapshot,
+          chatId: 'chat-window-mixed-polarity',
+        });
+        expect(safe.contradictions.map((item) => item.ruleId)).not.toContain(
+          'unsupported_schedule_window_claim',
+        );
+
+        const unsafe = service.check({
+          replyText: '7:00-15:00排不上，但可以给你排8:00-12:00。',
+          toolCalls: [midShiftLookup],
+          userMessage: '能不能排7-3',
+          memorySnapshot,
+          chatId: 'chat-window-mixed-polarity-unsafe',
+        });
+        expect(unsafe.contradictions.map((item) => item.ruleId)).toContain(
+          'unsupported_schedule_window_claim',
+        );
+      });
+    });
+
     it('allows faithfully repeating the complete tool-provided window', () => {
       const result = service.check({
         replyText: '这家目前可以排 16:00-次日 00:00。',
