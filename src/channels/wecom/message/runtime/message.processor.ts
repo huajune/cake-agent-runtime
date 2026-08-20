@@ -220,7 +220,13 @@ export class MessageProcessor implements OnModuleInit, OnModuleDestroy {
 
       const quietWindowElapsed = await this.simpleMergeService.isQuietWindowElapsed(chatId);
       if (!quietWindowElapsed) {
-        this.logger.debug(`[Bull] chatId=${chatId} 静默窗口未结束，跳过当前检查任务 ${job.id}`);
+        // Bull delayed job 可能被提前唤醒，或对应最后一条消息的检查任务已丢失。旧逻辑
+        // 直接 return，假设“后面总有另一条 job”，当用户不再发消息时 pending 会静默过期。
+        // 现在显式补建剩余窗口后的检查；补建失败上抛，让 Bull failed/retry 可观测。
+        await this.simpleMergeService.scheduleQuietWindowRetryCheck(chatId);
+        this.logger.debug(
+          `[Bull] chatId=${chatId} 静默窗口未结束，已补建剩余窗口检查任务 ${job.id}`,
+        );
         return;
       }
 

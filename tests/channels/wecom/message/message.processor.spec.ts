@@ -32,11 +32,13 @@ describe('MessageProcessor', () => {
   const mockSimpleMergeService = {
     acquireProcessingLock: jest.fn().mockResolvedValue(true),
     releaseProcessingLock: jest.fn().mockResolvedValue(undefined),
+    startLockHeartbeat: jest.fn().mockReturnValue(jest.fn()),
     isQuietWindowElapsed: jest.fn().mockResolvedValue(true),
     claimPendingSnapshot: jest.fn(),
     ackPendingMessages: jest.fn().mockResolvedValue(undefined),
     checkAndProcessNewMessages: jest.fn().mockResolvedValue(false),
     scheduleLockRetryCheck: jest.fn().mockResolvedValue(undefined),
+    scheduleQuietWindowRetryCheck: jest.fn().mockResolvedValue(true),
   };
 
   const mockConfigService = {
@@ -171,6 +173,47 @@ describe('MessageProcessor', () => {
       expect(mockSimpleMergeService.claimPendingSnapshot).not.toHaveBeenCalled();
       // 没拿到锁就不该去释放别人的锁
       expect(mockSimpleMergeService.releaseProcessingLock).not.toHaveBeenCalled();
+    });
+
+    it('重检任务创建失败时让当前 Bull job 失败而不是静默完成', async () => {
+      mockSimpleMergeService.acquireProcessingLock.mockResolvedValueOnce(false);
+      mockSimpleMergeService.scheduleLockRetryCheck.mockRejectedValueOnce(
+        new Error('queue unavailable'),
+      );
+
+      await expect(
+        (processor as any).handleProcessJob({ id: 'job-lock-fail', data: { chatId: 'chat-123' } }),
+      ).rejects.toThrow('queue unavailable');
+    });
+  });
+
+  describe('handleProcessJob 静默窗口提前唤醒', () => {
+    it('补建剩余窗口检查，避免当前 job return 后 pending 永久无人接手', async () => {
+      mockSimpleMergeService.isQuietWindowElapsed.mockResolvedValueOnce(false);
+
+      await (processor as any).handleProcessJob({
+        id: 'job-quiet-early',
+        data: { chatId: 'chat-quiet' },
+      });
+
+      expect(mockSimpleMergeService.scheduleQuietWindowRetryCheck).toHaveBeenCalledWith(
+        'chat-quiet',
+      );
+      expect(mockSimpleMergeService.claimPendingSnapshot).not.toHaveBeenCalled();
+    });
+
+    it('补建失败时上抛，由 Bull failed/retry 暴露并重试', async () => {
+      mockSimpleMergeService.isQuietWindowElapsed.mockResolvedValueOnce(false);
+      mockSimpleMergeService.scheduleQuietWindowRetryCheck.mockRejectedValueOnce(
+        new Error('quiet retry failed'),
+      );
+
+      await expect(
+        (processor as any).handleProcessJob({
+          id: 'job-quiet-fail',
+          data: { chatId: 'chat-quiet' },
+        }),
+      ).rejects.toThrow('quiet retry failed');
     });
   });
 

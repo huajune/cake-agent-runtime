@@ -238,6 +238,30 @@ export class SimpleMergeService implements OnModuleInit {
   }
 
   /**
+   * delayed job 在静默窗口结束前被唤醒时，按剩余窗口显式补建下一次检查。
+   * 创建失败必须抛出：当前 job 会由 Bull 标失败并按 attempts 重试，不能留下只有 TTL 的 pending。
+   */
+  async scheduleQuietWindowRetryCheck(chatId: string): Promise<boolean> {
+    const pendingKey = RedisKeyBuilder.pending(chatId);
+    const queueLength = await this.redisService.llen(pendingKey);
+    if (queueLength === 0) return false;
+
+    const remainingDelayMs = await this.getRemainingQuietWindowMs(chatId);
+    const scheduledDelayMs = Math.max(remainingDelayMs, this.QUIET_WINDOW_FOLLOWUP_DELAY_MS);
+    await this.refreshPendingLease(chatId);
+    await this.addRetryCheckJob({
+      chatId,
+      jobId: `${chatId}:quietretry:${Date.now()}`,
+      delayMs: scheduledDelayMs,
+      reason: '静默窗口重检',
+    });
+    this.logger.debug(
+      `[${chatId}] 静默窗口未结束，已补建重检任务（delay=${scheduledDelayMs}ms, pending=${queueLength}）`,
+    );
+    return true;
+  }
+
+  /**
    * 锁冲突时的兜底重检。
    *
    * 正常情况下锁由同 chat 的另一个存活 worker 持有，它处理完会自查新消息，
@@ -250,42 +274,65 @@ export class SimpleMergeService implements OnModuleInit {
    * 2. 补建一个延迟重检任务（按时间桶去重，同窗口内只建一个），锁过期后接手处理。
    */
   async scheduleLockRetryCheck(chatId: string): Promise<void> {
-    try {
-      const pendingKey = RedisKeyBuilder.pending(chatId);
-      const queueLength = await this.redisService.llen(pendingKey);
-      if (queueLength === 0) {
-        return;
-      }
+    const pendingKey = RedisKeyBuilder.pending(chatId);
+    const queueLength = await this.redisService.llen(pendingKey);
+    if (queueLength === 0) return;
 
-      await this.redisService.expire(pendingKey, this.PENDING_TTL_SECONDS);
-      await this.redisService.expire(
-        RedisKeyBuilder.lastMessageAt(chatId),
-        this.PENDING_TTL_SECONDS,
-      );
+    await this.refreshPendingLease(chatId);
+    const bucket = Math.floor(Date.now() / this.LOCK_RETRY_DELAY_MS);
+    await this.addRetryCheckJob({
+      chatId,
+      jobId: `${chatId}:lockretry:${bucket}`,
+      delayMs: this.LOCK_RETRY_DELAY_MS,
+      reason: '锁冲突重检',
+    });
+    this.logger.debug(
+      `[${chatId}] 锁冲突，已补建重检任务（delay=${this.LOCK_RETRY_DELAY_MS}ms, pending=${queueLength}）`,
+    );
+  }
 
-      const bucket = Math.floor(Date.now() / this.LOCK_RETRY_DELAY_MS);
-      await this.messageQueue.add(
-        'process',
-        { chatId },
-        {
-          jobId: `${chatId}:lockretry:${bucket}`,
-          delay: this.LOCK_RETRY_DELAY_MS,
-          removeOnComplete: true,
-          removeOnFail: false,
-          attempts: 3,
-          backoff: {
-            type: 'exponential',
-            delay: 2000,
+  private async refreshPendingLease(chatId: string): Promise<void> {
+    await this.redisService.expire(RedisKeyBuilder.pending(chatId), this.PENDING_TTL_SECONDS);
+    await this.redisService.expire(RedisKeyBuilder.lastMessageAt(chatId), this.PENDING_TTL_SECONDS);
+  }
+
+  private async addRetryCheckJob(params: {
+    chatId: string;
+    jobId: string;
+    delayMs: number;
+    reason: string;
+  }): Promise<void> {
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= this.QUEUE_ADD_MAX_ATTEMPTS; attempt++) {
+      try {
+        await this.messageQueue.add(
+          'process',
+          { chatId: params.chatId },
+          {
+            jobId: params.jobId,
+            delay: params.delayMs,
+            removeOnComplete: true,
+            removeOnFail: false,
+            attempts: 3,
+            backoff: { type: 'exponential', delay: 2000 },
           },
-        },
-      );
-      this.logger.debug(
-        `[${chatId}] 锁冲突，已补建重检任务（delay=${this.LOCK_RETRY_DELAY_MS}ms, pending=${queueLength}）`,
-      );
-    } catch (error) {
-      const errorMessage = toErrorMessage(error);
-      this.logger.error(`[${chatId}] 创建锁冲突重检任务失败: ${errorMessage}`);
+        );
+        return;
+      } catch (error) {
+        lastError = error;
+        this.logger.warn(
+          `[${params.chatId}] 创建${params.reason}任务失败（第 ${attempt}/${this.QUEUE_ADD_MAX_ATTEMPTS} 次）: ${toErrorMessage(error)}`,
+        );
+        if (attempt < this.QUEUE_ADD_MAX_ATTEMPTS) {
+          await this.delay(this.QUEUE_ADD_RETRY_DELAY_MS * attempt);
+        }
+      }
     }
+    this.logger.error(
+      `[${params.chatId}] 创建${params.reason}任务最终失败，上抛交由 Bull 记录 failed/retry: ${toErrorMessage(lastError)}`,
+    );
+    if (lastError instanceof Error) throw lastError;
+    throw new Error(String(lastError));
   }
 
   /**
