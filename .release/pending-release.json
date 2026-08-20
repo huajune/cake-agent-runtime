@@ -3,7 +3,52 @@
   "nextVersion": "10.45.0",
   "updatedAt": "2026-08-19",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "1016",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1016",
+      "title": "回填 v10.44.0 发布结果",
+      "author": "huajune",
+      "mergedAt": "2026-08-19",
+      "businessUpdates": [
+        "回填 v10.44.0 发布结果"
+      ],
+      "summary": [
+        "回填 v10.44.0 发布结果"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "回填 v10.44.0 发布结果"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": []
+    },
+    {
+      "number": "1019",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1019",
+      "title": "修正 v10.44.0 底账「无前端改动」的事实错误",
+      "author": "huajune",
+      "mergedAt": "2026-08-19",
+      "businessUpdates": [
+        "修正 v10.44.0 底账「无前端改动」的事实错误"
+      ],
+      "summary": [
+        "修正 v10.44.0 底账「无前端改动」的事实错误"
+      ],
+      "features": [],
+      "fixes": [
+        "修正 v10.44.0 底账「无前端改动」的事实错误"
+      ],
+      "optimizations": [],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": []
+    }
+  ],
   "lastRelease": {
     "version": "10.44.0",
     "date": "2026-08-19",
