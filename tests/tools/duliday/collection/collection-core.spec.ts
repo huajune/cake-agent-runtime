@@ -285,3 +285,103 @@ describe('selectArchiveFacts · 预填来源白名单', () => {
     expect(selectArchiveFacts({})).toEqual([]);
   });
 });
+
+describe('必填全收 + 筛选项优先（0820 用户确认口径）', () => {
+  /** 12 项岗位的形态：身份四槽 + 两个带筛的 + 一堆纯登记项。 */
+  const REGISTRATION_A: ContractFieldDef = {
+    labelId: 756,
+    labelTitle: '具体住址',
+    fieldType: 'TEXT',
+    required: true,
+    acceptedOptions: [],
+    rejectedOptions: [],
+  };
+  const REGISTRATION_B: ContractFieldDef = {
+    ...REGISTRATION_A,
+    labelId: 749,
+    labelTitle: '预计在岗多久',
+  };
+  const TENURE_SCREEN: ContractFieldDef = {
+    labelId: 750,
+    labelTitle: '能做多久',
+    fieldType: 'SINGLE_OPTION',
+    required: true,
+    acceptedOptions: [{ optionCode: 'a', optionLabel: '半年以上' }],
+    rejectedOptions: [{ optionCode: 'c', optionLabel: '3个月内' }],
+  };
+  const PHONE: ContractFieldDef = {
+    labelId: 770,
+    labelTitle: '手机号',
+    fieldType: 'TEXT',
+    required: true,
+    acceptedOptions: [],
+    rejectedOptions: [],
+    systemField: 'phone',
+  };
+  // 契约原序刻意把登记项排在筛选项前面，用来验证重排真的生效。
+  const BIG_CONTRACT = [REGISTRATION_A, TENURE_SCREEN, NAME, REGISTRATION_B, HEALTH, PHONE, AGE];
+
+  const runBig = () =>
+    runCollectionCore({
+      form: createForm({ jobId: 528962, contract: BIG_CONTRACT }),
+      contract: BIG_CONTRACT,
+      candidateTexts: [''],
+      messages: [],
+    });
+
+  it('必填全收：契约返回几项就问几项，一个不少', () => {
+    const result = runBig();
+    expect(result.template.missingFields).toHaveLength(BIG_CONTRACT.length);
+    expect(result.template.requiredFields).toHaveLength(BIG_CONTRACT.length);
+  });
+
+  it('顺序：身份核 → 带筛选条件的 → 纯登记项', () => {
+    const result = runBig();
+    expect(result.template.displayOrder).toEqual([
+      // 身份核（契约原序内稳定）
+      '姓名',
+      '手机号',
+      '年龄',
+      // 带筛的
+      '能做多久',
+      '有无本地健康证',
+      // 纯登记项
+      '具体住址',
+      '预计在岗多久',
+    ]);
+  });
+
+  it('筛选项识别按契约本身判，不猜', () => {
+    const result = runBig();
+    // 年龄带 valueSpec 区间 → 带筛；具体住址无 rejected 无 valueSpec → 纯登记。
+    expect(result.template.screeningFields).toEqual(['年龄', '能做多久', '有无本地健康证']);
+  });
+
+  it('降级起手字段 = 身份核 + 带筛的，绝不是随机几个登记项', () => {
+    const result = runBig();
+    expect(result.template.starterFields).toEqual([
+      '姓名',
+      '手机号',
+      '年龄',
+      '能做多久',
+      '有无本地健康证',
+    ]);
+    expect(result.template.starterFields).not.toContain('具体住址');
+  });
+
+  it('模板行顺序与 displayOrder 一致（候选人看到的就是这个次序）', () => {
+    const lines = runBig()
+      .template.templateText.split('\n')
+      .slice(1)
+      .map((line) => line.split('：')[0]);
+    expect(lines).toEqual([
+      '姓名',
+      '手机号',
+      '年龄',
+      '能做多久',
+      '有无本地健康证',
+      '具体住址',
+      '预计在岗多久',
+    ]);
+  });
+});

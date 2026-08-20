@@ -11,19 +11,31 @@
  */
 
 import type { BookingCollectionForm, ContractFieldDef } from '@resolution/collection';
-import { emptySlotIds, filledSlotIds } from '@resolution/collection';
+import {
+  carriesScreening,
+  filledSlotIds,
+  orderForAsking,
+  starterFields,
+} from '@resolution/collection';
 
 const INTRO_LINE = '面试要求：先将以下资料补充下发给我，我来帮你约面试';
 
 export interface CollectionTemplate {
-  /** 契约要求收的全部字段（labelTitle）。 */
+  /** 契约要求收的全部字段（labelTitle）。required 实测恒 true，即"契约返回什么就全收"。 */
   requiredFields: string[];
-  /** 展示顺序（契约顺序）。 */
+  /** 展示顺序：身份核 → 带筛选条件的 → 纯登记项（见 orderForAsking）。 */
   displayOrder: string[];
-  /** 还缺哪些字段——**空槽位的 labelTitle**，是本轮唯一收资事实源。 */
+  /** 还缺哪些字段——**空槽位的 labelTitle**，是本轮唯一收资事实源。同样按发问顺序。 */
   missingFields: string[];
   /** 已知字段值（filled 槽位），模板里预填。 */
   knownFieldMap: Record<string, string>;
+  /**
+   * 降级为渐进收资时的起手字段（身份核 + 带筛选条件的）。
+   * 只在蓝图允许的两种降级下使用：collectionStrategy=progressive、候选人已抗拒。
+   */
+  starterFields: string[];
+  /** 带筛选条件的字段——答错会筛掉候选人，不只是登记一笔。 */
+  screeningFields: string[];
   templateText: string;
 }
 
@@ -31,9 +43,10 @@ export function renderCollectionTemplate(
   form: BookingCollectionForm,
   contract: readonly ContractFieldDef[],
 ): CollectionTemplate {
+  // 发问顺序而非契约原序：会筛人的字段要排在登记项前面，否则候选人填到第 9 格
+  // 才被筛掉，前 8 格白填。身份核仍排头——那是收资最自然的开场。
+  const ordered = orderForAsking(contract);
   const titleById = new Map(contract.map((field) => [field.labelId, field.labelTitle]));
-  const displayOrder = contract.map((field) => field.labelTitle);
-  const missingFields = emptySlotIds(form, contract).map((id) => titleById.get(id) ?? String(id));
 
   const knownFieldMap: Record<string, string> = {};
   for (const labelId of filledSlotIds(form, contract)) {
@@ -42,17 +55,23 @@ export function renderCollectionTemplate(
     if (title && value) knownFieldMap[title] = value;
   }
 
+  const missingFields = ordered
+    .filter((field) => form.slots[field.labelId]?.state === 'empty')
+    .map((field) => field.labelTitle);
+
   // 模板一次性列全部字段（已知的预填、缺的留空）：分批发清单是明令禁止的漏斗式收资。
-  const lines = contract.map((field) => {
-    const value = knownFieldMap[field.labelTitle] ?? '';
-    return `${formLabel(field.labelTitle)}：${value}`;
-  });
+  const lines = ordered.map(
+    (field) => `${formLabel(field.labelTitle)}：${knownFieldMap[field.labelTitle] ?? ''}`,
+  );
 
   return {
-    requiredFields: contract.filter((field) => field.required).map((field) => field.labelTitle),
-    displayOrder,
+    // required 恒 true：契约返回什么就全收（0820 用户确认）。
+    requiredFields: ordered.filter((field) => field.required).map((field) => field.labelTitle),
+    displayOrder: ordered.map((field) => field.labelTitle),
     missingFields,
     knownFieldMap,
+    starterFields: starterFields(ordered).map((field) => field.labelTitle),
+    screeningFields: ordered.filter(carriesScreening).map((field) => field.labelTitle),
     templateText: [INTRO_LINE, ...lines].join('\n'),
   };
 }

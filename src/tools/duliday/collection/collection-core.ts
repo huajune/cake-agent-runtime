@@ -13,6 +13,7 @@ import type { BookingCollectionForm, ContractFieldDef, Verdict } from '@resoluti
 import {
   isSensitiveAttribute,
   markAsked,
+  orderForAsking,
   seedArchiveValue,
   proposeValue,
   recordConfigDebt,
@@ -191,7 +192,8 @@ export function runCollectionCore(input: CollectionCoreInput): CollectionCoreRes
   // ── 发问：先写后问，熔断在此生效 ──
   let askableFields: string[] = [];
   if (input.askThisTurn !== false && verdictOf(form) === 'collecting') {
-    const emptyIds = contract
+    // 按发问顺序取空槽：熔断计数与可问清单都跟着"筛选项优先"的次序走。
+    const emptyIds = orderForAsking(contract)
       .filter((field) => form.slots[field.labelId]?.state === 'empty')
       .map((field) => field.labelId);
     const asked = markAsked(form, emptyIds);

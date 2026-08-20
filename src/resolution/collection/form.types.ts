@@ -224,6 +224,49 @@ export function createForm(params: {
   };
 }
 
+/**
+ * 该字段是否**带筛选条件**——答错会把候选人筛掉，而不只是登记一笔。
+ *
+ * 判据来自契约本身，不猜：有 `rejectedOptions`（选项筛）或有生效的 `valueSpec`
+ * （值域筛）就是带筛的；两者都没有就是纯登记项。
+ *
+ * ⚠️ 这**不影响收不收**——`required` 实测恒 true，契约返回什么就全收（0820 用户确认：
+ * "就是真的必填，只是这些必填有的是收集项，有的有筛选条件"）。它影响的是**顺序**：
+ * 一次要填 8-12 格时，会筛人的那几格必须排在登记项前面。否则候选人填到第 9 格才被
+ * 健康证筛掉，前 8 格白填、我们也白问——先筛后收在**发问顺序**上的兑现。
+ */
+export function carriesScreening(field: ContractFieldDef): boolean {
+  if (field.rejectedOptions.length > 0) return true;
+  const spec = field.valueSpec;
+  if (!spec) return false;
+  return spec.min != null || spec.max != null || spec.genderRanges.length > 0;
+}
+
+/**
+ * 发问顺序：身份四槽 → 带筛选条件的 → 纯登记项。
+ *
+ * 身份核排头不是为了筛（它们通常不筛），是因为"你叫什么、电话多少"是收资最自然的
+ * 开场；把「有无本地健康证」顶到姓名前面读起来像盘问。身份之后紧跟筛选项，
+ * 让会否决的判据尽早拿到答案。
+ */
+export function orderForAsking(contract: readonly ContractFieldDef[]): ContractFieldDef[] {
+  const rank = (field: ContractFieldDef): number => {
+    if (field.systemField) return 0;
+    return carriesScreening(field) ? 1 : 2;
+  };
+  // 稳定排序：同档内保持契约原序，不引入额外的顺序意见。
+  return [...contract].sort((left, right) => rank(left) - rank(right));
+}
+
+/**
+ * 降级为渐进收资时的起手字段（蓝图允许的两种降级：collectionStrategy=progressive、
+ * 候选人已表现抗拒）。取身份核 + 带筛选条件的——降负担不能降成"问了一堆登记项、
+ * 筛人的那几个还没问"，那样候选人填完两轮才被拒，比一次问完更糟。
+ */
+export function starterFields(contract: readonly ContractFieldDef[]): ContractFieldDef[] {
+  return contract.filter((field) => field.systemField || carriesScreening(field));
+}
+
 /** 仍需发问的槽位（按契约顺序，调用方决定本轮问几个）。 */
 export function emptySlotIds(
   form: BookingCollectionForm,
