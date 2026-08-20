@@ -12,6 +12,7 @@ function field(labelTitle: string, labelInstructions?: string): ContractFieldDef
     labelTitle,
     labelInstructions,
     fieldType: 'TEXT',
+    required: true,
     acceptedOptions: [],
     rejectedOptions: [],
   };

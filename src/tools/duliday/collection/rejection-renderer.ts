@@ -13,8 +13,10 @@
  * （给模型的禁令，不让它自由发挥）。internalReason 只进内部/审计，绝不出站。
  */
 
+import { normalizeGenderValue } from '@resolution/candidate/gender';
 import {
   disclosureLevelOf,
+  resolveValueRange,
   verdictOf,
   type BookingCollectionForm,
   type ContractFieldDef,
@@ -85,7 +87,7 @@ export function renderRejection(params: {
 
   return {
     disclosureLevel: level,
-    candidateMessage: `这个岗位${describeRequirement(field)}，你这边暂时对不上，我再帮你看看其他岗位`,
+    candidateMessage: `这个岗位${describeRequirement(field, genderOf(form))}，你这边暂时对不上，我再帮你看看其他岗位`,
     internalReason,
     forbiddenActions: ['只说岗位要求本身，不得复述或评价候选人的个人情况', ...COMMON_FORBIDDEN],
     deferred: false,
@@ -96,18 +98,32 @@ export function renderRejection(params: {
  * 可明说族的要求描述。只用契约给的东西造句——`acceptedOptions` 的标签、
  * 年龄的 min/max，一个字都不外推（岗位卡上有的才说得出口）。
  */
-function describeRequirement(field: ContractFieldDef): string {
-  if (field.systemField === 'age' && (field.minAge != null || field.maxAge != null)) {
-    if (field.minAge != null && field.maxAge != null) {
-      return `年龄要求 ${field.minAge}-${field.maxAge} 岁`;
+function describeRequirement(field: ContractFieldDef, gender: 'MALE' | 'FEMALE' | null): string {
+  const range = resolveValueRange(field.valueSpec, gender);
+  if (range) {
+    const unit = field.valueSpec?.unit ?? '';
+    const label = field.labelTitle.replace(/[（(][^）)]*[）)]/gu, '').trim() || field.labelTitle;
+    if (range.min != null && range.max != null) {
+      return `${label}要求 ${range.min}-${range.max}${unit}`;
     }
-    return field.minAge != null
-      ? `年龄要求 ${field.minAge} 岁以上`
-      : `年龄要求 ${field.maxAge} 岁以内`;
+    return range.min != null
+      ? `${label}要求 ${range.min}${unit} 以上`
+      : `${label}要求 ${range.max}${unit} 以内`;
   }
   const accepted = field.acceptedOptions.map((option) => option.optionLabel).filter(Boolean);
   if (accepted.length > 0) return `「${field.labelTitle}」要求是${accepted.join('、')}`;
   return `对「${field.labelTitle}」有要求`;
+}
+
+/** 表单在案性别——分性别值域的话术要按候选人性别取那一档，说错档等于报错要求。 */
+function genderOf(form: BookingCollectionForm): 'MALE' | 'FEMALE' | null {
+  for (const slot of Object.values(form.slots)) {
+    if (slot.state !== 'filled' || !slot.value) continue;
+    const normalized = normalizeGenderValue(slot.value.value);
+    if (normalized === '男') return 'MALE';
+    if (normalized === '女') return 'FEMALE';
+  }
+  return null;
 }
 
 function firstDisqualifiedField(

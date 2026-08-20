@@ -36,13 +36,21 @@ const OPEN_TITLE_FAMILIES =
 /**
  * 判定某个契约字段的不合格原因披露级别。
  *
- * 判据顺序刻意如此：**敏感判据先于可明说白名单**。白名单是人维护的，敏感词表是红线；
- * 万一有人把「专业（非新媒、食品）」这类标题塞进白名单，红线也必须压过它。
+ * 判据顺序刻意如此：契约 RESTRICTED → 红线词表 → 可明说白名单 → 默认禁明说。
+ * **红线排在白名单之前**：白名单是人维护的，红线不能被人维护的表压过；
+ * **红线也排在"契约说 PLAIN"之前**：PLAIN 只表示"后端没标"，不表示"确认可说"。
  */
 export function disclosureLevelOf(field: ContractFieldDef): DisclosureLevel {
+  // ① 契约标记（0820 落地，实测籍贯[3]=RESTRICTED）：后端明说禁明说就是禁明说。
+  if (field.disclosure === 'RESTRICTED') return 'restricted';
+  // ② 红线词表：**压过契约的 PLAIN**。契约的 PLAIN 不是"确认可说"，只是"没标"——
+  //    实测专业族(659/544)仍返 PLAIN（后端 0820 承诺补标未落地），只信契约就会把
+  //    专业不符当面告诉候选人。红线是唯一不降级的那条（蓝图 v3-lean 头注）。
   if (containsSensitiveScreeningText(field.labelTitle)) return 'restricted';
   if (containsSensitiveScreeningText(field.labelInstructions ?? '')) return 'restricted';
+  // ③ 可明说白名单：岗位卡本来就印着的硬性条件。
   if (OPEN_TITLE_FAMILIES.test(field.labelTitle)) return 'open';
+  // ④ 默认禁明说。
   return 'restricted';
 }
 

@@ -25,6 +25,7 @@ import {
 import {
   AGE_FIELD,
   AGE_FIELD_18_40,
+  HEIGHT_FIELD_GENDERED,
   assistantMessage,
   GENDER_MALE_ONLY_FIELD,
   HEALTH_CERT_FIELD,
@@ -157,6 +158,152 @@ describe('防线 1 · 反复问根治：filled 槽位零重问', () => {
   });
 });
 
+describe('棘轮：对系统单向、对本人双向（§3 0819 裁定）', () => {
+  it('候选人显式改口 → 公证通过即替换，outcome=restated', () => {
+    const filled = fillName();
+    const text = '姓名：李四';
+    const result = proposeValue(filled, NAME_FIELD, {
+      value: '李四',
+      sourceText: text,
+      producer: 'candidate_quote',
+      candidateTexts: [text],
+      messages: [userMessage(text)],
+      restatement: true,
+    });
+    expect(result.outcome).toBe('restated');
+    expect(result.form.slots[NAME_FIELD.labelId].value?.value).toBe('李四');
+    expect(result.detail).toContain('显式改口');
+  });
+
+  it('改口 askCount 不清零——防"改一次刷新一次配额"绕过熔断', () => {
+    let current = markAsked(form(), [NAME_FIELD.labelId]).form;
+    current = fillName(current);
+    const text = '姓名：李四';
+    const restated = proposeValue(current, NAME_FIELD, {
+      value: '李四',
+      sourceText: text,
+      producer: 'candidate_quote',
+      candidateTexts: [text],
+      messages: [userMessage(text)],
+      restatement: true,
+    });
+    expect(restated.form.slots[NAME_FIELD.labelId].askCount).toBe(1);
+  });
+
+  it('改口同样过公证——出处站不住的改口照拒', () => {
+    const filled = fillName();
+    const result = proposeValue(filled, NAME_FIELD, {
+      value: '李四',
+      sourceText: '姓名：李四',
+      producer: 'model',
+      candidateTexts: ['随便聊点别的'],
+      messages: [userMessage('随便聊点别的')],
+      restatement: true,
+    });
+    expect(result.outcome).toBe('rejected');
+    expect(result.form.slots[NAME_FIELD.labelId].value?.value).toBe(TEST_CANDIDATE_NAME);
+  });
+
+  it('不带 restatement 的重推一律挡死——系统/模型永远推不动 filled 槽位', () => {
+    const filled = fillName();
+    const text = '姓名：李四';
+    const result = proposeValue(filled, NAME_FIELD, {
+      value: '李四',
+      sourceText: text,
+      producer: 'model',
+      candidateTexts: [text],
+      messages: [userMessage(text)],
+    });
+    expect(result.outcome).toBe('ignored');
+    expect(result.reason).toBe(PROPOSAL_IGNORE_REASONS.slotAlreadyFilled);
+  });
+
+  it('改口命中筛选条件照样当轮判不合格', () => {
+    const contract = [GENDER_MALE_ONLY_FIELD];
+    let current = createForm({ jobId: 1, contract });
+    current = proposeValue(current, GENDER_MALE_ONLY_FIELD, {
+      value: '男',
+      optionCodes: ['1'],
+      sourceText: '我是男的',
+      producer: 'candidate_quote',
+      candidateTexts: ['我是男的'],
+    }).form;
+    const restated = proposeValue(current, GENDER_MALE_ONLY_FIELD, {
+      value: '女',
+      optionCodes: ['2'],
+      sourceText: '写错了我是女的',
+      producer: 'candidate_quote',
+      candidateTexts: ['写错了我是女的'],
+      restatement: true,
+    });
+    expect(restated.outcome).toBe('disqualified');
+  });
+});
+
+describe('分性别值域筛（实测 528995 身高/体重）', () => {
+  const contract = [GENDER_MALE_ONLY_FIELD, HEIGHT_FIELD_GENDERED];
+
+  function withGender(value: '男' | '女'): BookingCollectionForm {
+    const optionCodes = value === '男' ? ['1'] : ['2'];
+    const source = `我是${value}的`;
+    return proposeValue(createForm({ jobId: 1, contract }), GENDER_MALE_ONLY_FIELD, {
+      value,
+      optionCodes,
+      sourceText: source,
+      producer: 'candidate_quote',
+      candidateTexts: [source],
+    }).form;
+  }
+
+  function proposeHeight(base: BookingCollectionForm, cm: string) {
+    const source = `我身高${cm}`;
+    return proposeValue(base, HEIGHT_FIELD_GENDERED, {
+      value: cm,
+      sourceText: source,
+      producer: 'candidate_quote',
+      candidateTexts: [source],
+    });
+  }
+
+  it('按在案性别取对应档：男 160-190，155 判不合格', () => {
+    const result = proposeHeight(withGender('男'), '155');
+    expect(result.outcome).toBe('disqualified');
+    expect(result.detail).toContain('值域越界');
+  });
+
+  it('同一个值换性别档就合格——分档不能取错', () => {
+    // 女档 150-180：155 合格。（性别槽位本岗 rejected 女，故单独造一份不筛性别的契约）
+    const neutralGender = {
+      ...GENDER_MALE_ONLY_FIELD,
+      acceptedOptions: [
+        { optionCode: '1', optionLabel: '男' },
+        { optionCode: '2', optionLabel: '女' },
+      ],
+      rejectedOptions: [],
+    };
+    const neutral = [neutralGender, HEIGHT_FIELD_GENDERED];
+    const source = '我是女的';
+    const base = proposeValue(createForm({ jobId: 1, contract: neutral }), neutralGender, {
+      value: '女',
+      optionCodes: ['2'],
+      sourceText: source,
+      producer: 'candidate_quote',
+      candidateTexts: [source],
+    }).form;
+    expect(proposeHeight(base, '155').outcome).toBe('accepted');
+  });
+
+  it('性别未知 → 分性别值域整体不参与判决（漏斗优先，下游 errorList 截）', () => {
+    const base = createForm({ jobId: 1, contract });
+    expect(proposeHeight(base, '155').outcome).toBe('accepted');
+  });
+
+  it('带单位的值也能取数（"170cm"）', () => {
+    const result = proposeHeight(withGender('男'), '170cm');
+    expect(result.outcome).toBe('accepted');
+  });
+});
+
 describe('防线 2 · 复述落账：「不对，电话错了」精确重开一格', () => {
   it('corrections 只重开被点名且在案的那一格，其余格不动', () => {
     const filled = markRecapSent(fillPhone(fillName()), [NAME_FIELD.labelId, PHONE_FIELD.labelId]);
@@ -248,7 +395,7 @@ describe('防线 3 · 先筛后收：命中 rejectedOptions 当轮即 disqualifi
       proposal({ value: '55', sourceText: '我今年55岁了' }),
     );
     expect(result.outcome).toBe('disqualified');
-    expect(result.detail).toContain('年龄越界');
+    expect(result.detail).toContain('值域越界');
   });
 
   it('契约没带 min/max = 该岗没有这道筛（不读岗位数据补筛）', () => {

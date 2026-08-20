@@ -21,6 +21,7 @@
  */
 
 import { detectAgeBoundary } from '@resolution/candidate/age';
+import { normalizeGenderValue } from '@resolution/candidate/gender';
 import {
   evaluateBookingNameGate,
   evaluateBookingPhoneGate,
@@ -33,6 +34,7 @@ import {
 } from '@resolution/evidence/normalize';
 import type { CandidateClaimField, CandidateFactProducer } from '@resolution/evidence/claim.types';
 import {
+  resolveValueRange,
   type BookingCollectionForm,
   type ContractFieldDef,
   type FormSlot,
@@ -82,11 +84,28 @@ export interface ValueProposal {
    * 身份槽位缺此项即拒收（fail-closed）：闸门看不见语料时"放行"等于没有闸门。
    */
   messages?: readonly unknown[];
+  /**
+   * 本提案是候选人**显式改口**（§3 0819 裁定的第三条重开路径）。
+   *
+   * ⚠️ 只能由**作证者显式声明**（主聊模型 claim 的 `operation='correct'`），
+   * 代码不得自行推断——"这句话像不像在改口"是开放语言裁决，属模型
+   * （§11 词表禁判语义）。含糊提及不算改口：履历/排除语境不覆盖既有值的既有判例继续适用。
+   *
+   * 棘轮语义：**对系统单向、对本人双向**。系统/模型的重推任何时候触碰不到 filled 槽位；
+   * 本人明确改口可以，但走同一套公证，且 askCount 不清零——防"改一次刷新一次配额"绕过熔断。
+   */
+  restatement?: boolean;
 }
 
 export type ProposalOutcome =
   /** 值已入账（槽位 filled）。 */
   | 'accepted'
+  /**
+   * 候选人显式改口，已公证并替换在案值（槽位仍 filled，askCount 不变）。
+   * 与 accepted 分开是审计要求（§3）：覆盖一个已公证的值是棘轮的例外口，
+   * 每一次都必须能单独查出来"谁在什么时候把什么改成了什么"。
+   */
+  | 'restated'
   /** 值合法但命中筛选条件，本岗不合格（先筛后收）。 */
   | 'disqualified'
   /** 公证不过，零入账。 */
@@ -156,13 +175,15 @@ export function proposeValue(
       detail: `labelId ${field.labelId} 不在本表单的契约字段集内`,
     };
   }
-  // 不变量：filled 只能被 applyRecapResult / applyErrorList 重开。
-  if (slot.state === 'filled') {
+  // 棘轮：对系统单向、对本人双向。filled 槽位只有三条合法重开路径——复述改格、
+  // errorList 重开、候选人**显式改口**（下方走同一套公证，通过即替换）。
+  // 模型/系统的重推在这里被挡死，这是"反复问"的类型级根治。
+  if (slot.state === 'filled' && !proposal.restatement) {
     return {
       form,
       outcome: 'ignored',
       reason: PROPOSAL_IGNORE_REASONS.slotAlreadyFilled,
-      detail: `labelId ${field.labelId} 已办结，重写须走复述改格或 errorList 重开`,
+      detail: `labelId ${field.labelId} 已办结，重写须走复述改格 / errorList 重开 / 候选人显式改口`,
     };
   }
   if (slot.state === 'disqualified') {
@@ -242,7 +263,7 @@ export function proposeValue(
   };
 
   // ── ⑤ 先筛后收 ──
-  const screening = screenValue(field, proposal.value, proposal.optionCodes);
+  const screening = screenValue(field, proposal.value, proposal.optionCodes, genderOf(form));
   if (screening) {
     return {
       form: withSlot(form, {
@@ -256,15 +277,36 @@ export function proposeValue(
     };
   }
 
+  const wasFilled = slot.state === 'filled';
   return {
     form: withSlot(form, {
       labelId: field.labelId,
       state: 'filled',
       value,
+      // askCount 不清零：改口不是"系统没问到"，重开后仍受同槽熔断约束。
       askCount: slot.askCount,
     }),
-    outcome: 'accepted',
+    outcome: wasFilled ? 'restated' : 'accepted',
+    detail: wasFilled
+      ? `labelId ${field.labelId} 候选人显式改口：「${slot.value?.value ?? ''}」→「${proposal.value}」`
+      : undefined,
   };
+}
+
+/**
+ * 表单在案的候选人性别（分性别值域筛的判据输入）。
+ *
+ * 只认已 filled 的性别槽位——正在收的、被筛掉的都不作数。取不到返回 null，
+ * 此时分性别值域整体不参与判决（`resolveValueRange` 的漏斗优先取舍）。
+ */
+function genderOf(form: BookingCollectionForm): 'MALE' | 'FEMALE' | null {
+  for (const slot of Object.values(form.slots)) {
+    if (slot.state !== 'filled' || !slot.value) continue;
+    const normalized = normalizeGenderValue(slot.value.value);
+    if (normalized === '男') return 'MALE';
+    if (normalized === '女') return 'FEMALE';
+  }
+  return null;
 }
 
 // ==================== 写路径 2：提交前复述的结果回写 ====================
@@ -517,15 +559,18 @@ function grantConfidence(
 }
 
 /**
- * 先筛后收：命中 rejectedOptions（选项筛）或越出契约年龄硬区间（值域筛）即不合格。
+ * 先筛后收：命中 rejectedOptions（选项筛）或越出契约值域（值域筛）即不合格。
  * 返回不合格原因（账本用真实原因，委婉只在渲染层），合格返回 null。
  *
  * 判决零第二源：契约没带的判据 = 该岗没有这道筛，不读岗位数据补筛（0818 约定）。
+ * 值域筛口径统一走 `detectAgeBoundary` 的弹性档——它判的是"数值 vs 区间"，与字段
+ * 是年龄还是身高无关；弹性带（差一点点）不判不合格，交人来推进（漏斗优先）。
  */
 function screenValue(
   field: ContractFieldDef,
   value: string,
   optionCodes: readonly string[] | undefined,
+  gender: 'MALE' | 'FEMALE' | null,
 ): string | null {
   const rejected = field.rejectedOptions.find((option) =>
     optionCodes?.length
@@ -536,16 +581,23 @@ function screenValue(
     return `labelId ${field.labelId} 命中 rejectedOption「${rejected.optionLabel}」`;
   }
 
-  if (field.systemField === 'age' && (field.minAge != null || field.maxAge != null)) {
-    const signal = detectAgeBoundary({
-      candidateAge: Number(value.replace(/[^\d]/gu, '')) || null,
-      range: { min: field.minAge ?? null, max: field.maxAge ?? null },
-    });
+  const range = resolveValueRange(field.valueSpec, gender);
+  if (range) {
+    const numeric = parseLeadingNumber(value);
+    const signal = detectAgeBoundary({ candidateAge: numeric, range });
     if (signal.severity === 'hard_reject') {
-      return `labelId ${field.labelId} 年龄越界：${signal.reason}`;
+      return `labelId ${field.labelId}「${field.labelTitle}」值域越界：${signal.reason}`;
     }
   }
   return null;
+}
+
+/** 从"26岁""170cm""60 kg"这类带单位的值里取数值；取不出返回 null（= 不判值域）。 */
+function parseLeadingNumber(value: string): number | null {
+  const matched = /-?\d+(?:\.\d+)?/u.exec(value.normalize('NFKC'));
+  if (!matched) return null;
+  const numeric = Number(matched[0]);
+  return Number.isFinite(numeric) ? Math.round(numeric) : null;
 }
 
 /** errorList 单条错误 → 槽位 labelId；定位不到返回 null（D2：失配转人工，不静默）。 */

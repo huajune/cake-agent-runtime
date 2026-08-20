@@ -25,6 +25,7 @@ const EDUCATION_FIELD: ContractFieldDef = {
   labelId: 2,
   labelTitle: '学历',
   fieldType: 'SINGLE_OPTION',
+  required: true,
   acceptedOptions: [
     { optionCode: '3', optionLabel: '大专' },
     { optionCode: '2', optionLabel: '本科' },
@@ -37,6 +38,7 @@ const STUDENT_TEXT_FIELD: ContractFieldDef = {
   labelId: 605,
   labelTitle: '是否学生（不要学生及暑假工）',
   fieldType: 'TEXT',
+  required: true,
   acceptedOptions: [],
   rejectedOptions: [],
 };
@@ -177,6 +179,7 @@ describe('adapter.registry', () => {
       labelId: 749,
       labelTitle: '预计在岗多久',
       fieldType: 'SINGLE_OPTION',
+      required: true,
       acceptedOptions: [{ optionCode: 'a', optionLabel: '半年以上' }],
       rejectedOptions: [{ optionCode: 'c', optionLabel: '3个月内' }],
     };

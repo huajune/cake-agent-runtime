@@ -17,6 +17,7 @@ export const NAME_FIELD: ContractFieldDef = {
   labelId: 769,
   labelTitle: '姓名',
   fieldType: 'TEXT',
+  required: true,
   acceptedOptions: [],
   rejectedOptions: [],
   systemField: 'name',
@@ -26,6 +27,7 @@ export const PHONE_FIELD: ContractFieldDef = {
   labelId: 770,
   labelTitle: '手机号',
   fieldType: 'TEXT',
+  required: true,
   acceptedOptions: [],
   rejectedOptions: [],
   systemField: 'phone',
@@ -35,6 +37,7 @@ export const AGE_FIELD: ContractFieldDef = {
   labelId: 687,
   labelTitle: '年龄',
   fieldType: 'TEXT',
+  required: true,
   acceptedOptions: [],
   rejectedOptions: [],
   systemField: 'age',
@@ -45,6 +48,7 @@ export const GENDER_MALE_ONLY_FIELD: ContractFieldDef = {
   labelId: 771,
   labelTitle: '性别',
   fieldType: 'SINGLE_OPTION',
+  required: true,
   acceptedOptions: [{ optionCode: '1', optionLabel: '男' }],
   rejectedOptions: [{ optionCode: '2', optionLabel: '女' }],
   systemField: 'gender',
@@ -55,6 +59,7 @@ export const HEALTH_CERT_FIELD: ContractFieldDef = {
   labelId: 13,
   labelTitle: '有无本地健康证',
   fieldType: 'SINGLE_OPTION',
+  required: true,
   acceptedOptions: [
     { optionCode: '1', optionLabel: '有本地有效健康证' },
     { optionCode: '2', optionLabel: '无本地有效健康证，接受办理' },
@@ -62,8 +67,42 @@ export const HEALTH_CERT_FIELD: ContractFieldDef = {
   rejectedOptions: [{ optionCode: '3', optionLabel: '无本地有效健康证，不接受办理' }],
 };
 
-/** 年龄带契约值域（0818 约定 minAge/maxAge 进契约）。 */
-export const AGE_FIELD_18_40: ContractFieldDef = { ...AGE_FIELD, minAge: 18, maxAge: 40 };
+/** 年龄带契约值域（0820 实测：valueSpec.min/max + unit）。 */
+export const AGE_FIELD_18_40: ContractFieldDef = {
+  ...AGE_FIELD,
+  valueSpec: { kind: 'number', min: 18, max: 40, unit: '岁', genderRanges: [] },
+};
+
+/** 分性别值域（实测 528995 身高/体重形态）：顶层 min/max 为 null，区间全在 genderRanges。 */
+export const HEIGHT_FIELD_GENDERED: ContractFieldDef = {
+  labelId: 4,
+  labelTitle: '身高(cm)',
+  fieldType: 'TEXT',
+  required: true,
+  acceptedOptions: [],
+  rejectedOptions: [],
+  valueSpec: {
+    kind: 'number',
+    min: null,
+    max: null,
+    unit: 'cm',
+    genderRanges: [
+      { gender: 'MALE', min: 160, max: 190 },
+      { gender: 'FEMALE', min: 150, max: 180 },
+    ],
+  },
+};
+
+/** 契约标 RESTRICTED 的敏感字段（实测籍贯[3]）。 */
+export const HOMETOWN_RESTRICTED_FIELD: ContractFieldDef = {
+  labelId: 3,
+  labelTitle: '籍贯',
+  fieldType: 'SINGLE_OPTION',
+  required: true,
+  disclosure: 'RESTRICTED',
+  acceptedOptions: [{ optionCode: '310000', optionLabel: '上海市' }],
+  rejectedOptions: [{ optionCode: '120000', optionLabel: '天津市' }],
+};
 
 export function userMessage(text: string): { role: 'user'; content: string } {
   return { role: 'user', content: text };

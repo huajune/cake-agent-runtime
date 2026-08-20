@@ -37,6 +37,10 @@ import { fetchWithTimeout } from '@infra/utils/fetch-timeout.util';
 import { stripNullish } from '@infra/utils/object.util';
 import { HostingMemberConfigService } from '@biz/hosting-config/services/hosting-member-config.service';
 import { SpongeTokenResolveContext } from './sponge-token.config';
+import {
+  CollectionContractResponseSchema,
+  type JobCollectionContract,
+} from './collection-contract.types';
 
 // 报名/上传仍走旧的 supplier 域（a/supplier/*，非 海绵2.0 ai接口，未随网关迁移）。
 const INTERVIEW_BOOKING_API = 'https://k8s.duliday.com/persistence/a/supplier/entryUser';
@@ -90,6 +94,7 @@ export class SpongeService {
   private readonly cancelWorkOrderApi: string;
   private readonly modifyInterviewTimeApi: string;
   private readonly failureReasonsApi: string;
+  private readonly collectionContractApi: string;
   private brandListCache: { data: BrandItem[]; fetchedAt: number } | null = null;
   private brandListFetchPromise: Promise<BrandItem[]> | null = null;
   /** 失败原因字典缓存（key=排序后的 pidList），字典稳定，缓存避免每次取消都打接口。 */
@@ -117,6 +122,60 @@ export class SpongeService {
     this.cancelWorkOrderApi = `${spongeBaseUrl}/ai/api/workorder/cancel`;
     this.modifyInterviewTimeApi = `${spongeBaseUrl}/ai/api/workorder/interviewTime/modify`;
     this.failureReasonsApi = `${spongeBaseUrl}/ai/api/workorder/failureReasons/byPids`;
+    this.collectionContractApi = `${spongeBaseUrl}/ai/api/jobs/interview-labels/batch-query`;
+  }
+
+  /**
+   * 拉取岗位的报名筛选标签契约——**收资判决的唯一判据源**。
+   *
+   * **零缓存实时查询**（0818 裁定）：运营随时改配置，缓存一分钟就可能按旧筛判掉一个
+   * 合格候选人；每轮实拉的代价是一次网关调用，比判错便宜。也因此不需要配置版本号
+   * （诉求 #4 已撤回）。
+   *
+   * 失败即抛：契约拉不到就没有判据，静默返回空会被上层误读成"该岗无筛"而裸放行——
+   * 那正是空标签口径要防的事。上层按 escalatedReason 转人工处理。
+   */
+  async fetchCollectionContract(
+    jobIds: readonly number[],
+    tokenContext?: SpongeTokenResolveContext,
+  ): Promise<JobCollectionContract[]> {
+    if (jobIds.length === 0) return [];
+    const token = await this.resolveDulidayToken(tokenContext);
+
+    const response = await fetchWithTimeout(this.collectionContractApi, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Duliday-Token': token },
+      body: JSON.stringify({ jobIds: [...jobIds] }),
+    });
+    if (!response.ok) {
+      throw new Error(`收资标签契约请求失败: ${response.status} ${response.statusText}`);
+    }
+
+    const parsed = CollectionContractResponseSchema.safeParse(await response.json());
+    if (!parsed.success) {
+      throw new Error(
+        `收资标签契约返回结构异常: ${parsed.error.issues
+          .map((issue) => `${issue.path.join('.') || '<root>'}: ${issue.message}`)
+          .join('; ')}`,
+      );
+    }
+    if (parsed.data.code !== 0) {
+      throw new Error(`收资标签契约返回非零: ${parsed.data.message ?? parsed.data.code}`);
+    }
+
+    return (parsed.data.data ?? []).map((job) => ({
+      jobId: job.jobId,
+      fields: job.labels ?? [],
+    }));
+  }
+
+  /** 单岗便捷入口；岗位不在返回里视作空契约（由调用方按空标签异常口径处理）。 */
+  async fetchJobCollectionContract(
+    jobId: number,
+    tokenContext?: SpongeTokenResolveContext,
+  ): Promise<JobCollectionContract> {
+    const contracts = await this.fetchCollectionContract([jobId], tokenContext);
+    return contracts.find((item) => item.jobId === jobId) ?? { jobId, fields: [] };
   }
 
   /** 查询在招岗位列表 */

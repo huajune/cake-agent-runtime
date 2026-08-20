@@ -13,50 +13,95 @@
 
 import type { CandidateFactProducer } from '@resolution/evidence/claim.types';
 
-// ==================== 契约字段定义（内部临时型） ====================
+// ==================== 契约字段定义（收资域内部型） ====================
 
 /**
- * 报名筛选标签契约的字段定义。
+ * 报名筛选标签契约的字段定义——**收资域内部型**。
  *
- * ⚠️ **本型是内部临时型**：形状照 `docs/todo/label-baseline-20260818.json.gz` 的生产
- * 实测基线（468/468 岗位全量拉取）抄写，加上 0818 与后端约定要补的三个判决要素
- * （`systemField` / `minAge` / `maxAge`）。**0819 契约 v2 spec 到货后，由
- * `sponge/collection-contract.types.ts` 的 DTO 映射到本型，本型不动**——收资域的判决
- * 逻辑不应随外部 DTO 字段重命名而返工。
+ * 与 `@sponge/collection-contract.types` 的关系：那边是**线上 DTO**（字段名随后端走），
+ * 这边是**判决用的域内型**，由 `fromContractField()` 单向映射。判决逻辑只认这一型——
+ * 外部 DTO 改字段名不该让整个收资域返工。
  *
- * 基线实测形状：labelId / labelTitle / labelInstructions / fieldType /
- * acceptedOptions / rejectedOptions。
+ * 形状依据：2026-08-20 生产实测 9 岗 27 标签，九项字段恒定齐全。
  */
 export interface ContractFieldDef {
   /** 海绵侧标签主键。⚠️ D4：字面量只可出现在测试与文档，禁止进 src/ 代码作语义锚点。 */
   labelId: number;
   /** 标签展示名（如「姓名」「有无本地健康证」）。errorList 只带展示名时的匹配基准（D2）。 */
   labelTitle: string;
-  /** 后台配的填写说明；基线实测 109 个标签里仅 22 处有值。 */
+  /** 后台配的填写说明；实测多数为 null。 */
   labelInstructions?: string | null;
   fieldType: ContractFieldType;
+  /**
+   * 契约给的披露级别（0820 落地）。`RESTRICTED` = 不合格原因绝不能告诉候选人。
+   * ⚠️ 它是披露判决的**输入之一而非全部**：专业族后端承诺补标但尚未落地（实测仍 PLAIN），
+   * 故 `disclosure-policy` 的红线词表兜底与它并行，且红线压过契约的 PLAIN。
+   */
+  disclosure?: ContractDisclosureLevel;
+  /** 是否必填（实测恒 true）。契约没带按「返回即须收」。 */
+  required: boolean;
   /** 选项型字段的可选值；命中即合格。TEXT 型为空数组。 */
   acceptedOptions: ContractOption[];
-  /** 命中即**当轮不合格**（先筛后收）。基线实测 94 处在用。 */
+  /** 命中即**当轮不合格**（先筛后收）。 */
   rejectedOptions: ContractOption[];
   /**
+   * 值域筛（年龄/身高/体重）。判决零第二源：契约没带 = 该岗没有这道筛。
+   * 实测两种承载：顶层 min/max（年龄），或 genderRanges 分性别（身高体重）。
+   */
+  valueSpec?: ContractValueRange | null;
+  /**
    * 契约的**语义标记**：身份核槽位（姓名/手机号/年龄/性别）由它识别，不由 labelId 识别。
-   * 0818 用户裁定 D4：labelId/optionCode 是海绵数据库主键，不是语义，测试与生产环境
-   * 可能不同号。契约标记缺席期的兜底见 `adapters/adapter.registry.ts`。
+   * ⚠️ 0820 实测**尚未进契约**（后端承诺改）——落地前由适配器按环境级配置 +
+   * labelTitle 每轮核验补齐，核验不过告警并降通用道。
+   * 代码任何地方都不得硬编码 769/770/687/771（D4）。
    */
   systemField?: IdentitySlotKey;
-  /** 年龄值域下限（0818 约定进契约）。判决零第二源：契约没带 = 该岗没有这道筛。 */
-  minAge?: number | null;
-  /** 年龄值域上限。 */
-  maxAge?: number | null;
 }
 
-/** 基线实测四种：TEXT 2820 / SINGLE_OPTION 1023 / MULTIPLE_OPTION 5 / FILE 9。 */
+/** 实测四种：TEXT / SINGLE_OPTION / MULTIPLE_OPTION / FILE。 */
 export type ContractFieldType = 'TEXT' | 'SINGLE_OPTION' | 'MULTIPLE_OPTION' | 'FILE';
+
+export type ContractDisclosureLevel = 'PLAIN' | 'RESTRICTED';
 
 export interface ContractOption {
   optionCode: string;
   optionLabel: string;
+}
+
+/** 分性别值域项（实测 528995 身高/体重）。 */
+export interface ContractGenderRangeDef {
+  gender: 'MALE' | 'FEMALE';
+  min?: number | null;
+  max?: number | null;
+}
+
+export interface ContractValueRange {
+  kind: string;
+  min?: number | null;
+  max?: number | null;
+  unit?: string | null;
+  /** 非空时按性别取区间；性别未知则该值域**不参与判决**（见 resolveValueRange）。 */
+  genderRanges: ContractGenderRangeDef[];
+}
+
+/**
+ * 取该字段对某性别生效的数值区间；不适用则返回 null（= 本字段这一轮不判值域）。
+ *
+ * genderRanges 非空且性别未知 → 不判。这是刻意的漏斗优先取舍：拿不准就放过，
+ * 下游 entryUser 会用 errorList 截回来；反过来"猜个性别再判"会把人筛错，代价不对称。
+ */
+export function resolveValueRange(
+  spec: ContractValueRange | null | undefined,
+  gender: 'MALE' | 'FEMALE' | null,
+): { min: number | null; max: number | null } | null {
+  if (!spec) return null;
+  if (spec.genderRanges.length > 0) {
+    if (!gender) return null;
+    const matched = spec.genderRanges.find((range) => range.gender === gender);
+    return matched ? { min: matched.min ?? null, max: matched.max ?? null } : null;
+  }
+  if (spec.min == null && spec.max == null) return null;
+  return { min: spec.min ?? null, max: spec.max ?? null };
 }
 
 /**

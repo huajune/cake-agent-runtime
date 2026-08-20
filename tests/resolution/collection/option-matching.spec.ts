@@ -7,6 +7,7 @@ const TENURE_FIELD: ContractFieldDef = {
   labelId: 749,
   labelTitle: '预计在岗多久',
   fieldType: 'SINGLE_OPTION',
+  required: true,
   acceptedOptions: [
     { optionCode: 'a', optionLabel: '半年以上' },
     { optionCode: 'b', optionLabel: '3个月以上' },
@@ -19,6 +20,7 @@ const EDUCATION_FIELD: ContractFieldDef = {
   labelId: 2,
   labelTitle: '学历',
   fieldType: 'SINGLE_OPTION',
+  required: true,
   acceptedOptions: [
     { optionCode: '3', optionLabel: '大专' },
     { optionCode: '8', optionLabel: '中专\\技校\\职高' },
@@ -73,6 +75,7 @@ describe('matchOptionInText', () => {
       labelId: 769,
       labelTitle: '姓名',
       fieldType: 'TEXT',
+      required: true,
       acceptedOptions: [],
       rejectedOptions: [],
     };
