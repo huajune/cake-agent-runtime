@@ -25,6 +25,7 @@ import { normalizeGenderValue } from '@resolution/candidate/gender';
 import {
   evaluateBookingNameGate,
   evaluateBookingPhoneGate,
+  isAgentQuestionConfirmedInDialogue,
 } from '@resolution/evidence/identity-gates';
 import {
   candidateValuesEquivalent,
@@ -252,7 +253,7 @@ export function proposeValue(
   }
 
   // ── ③ 归属门（身份槽位专属） ──
-  if ((identityKey === 'name' || identityKey === 'phone') && !proposal.agentQuestionQuote) {
+  if (identityKey === 'name' || identityKey === 'phone') {
     if (!proposal.messages) {
       return reject(
         form,
@@ -260,12 +261,23 @@ export function proposeValue(
         `身份槽位 ${identityKey} 缺归属取证语料，闸门无法判定`,
       );
     }
-    const gate =
-      identityKey === 'name'
-        ? evaluateBookingNameGate(proposal.value, proposal.messages)
-        : evaluateBookingPhoneGate(proposal.value, proposal.messages);
-    if (gate.decision !== 'allow') {
-      return reject(form, PROPOSAL_REJECTION_REASONS.identityGateRejected, gate.reason);
+    const agentQuestionQuote = proposal.agentQuestionQuote?.trim();
+    if (agentQuestionQuote) {
+      if (!isAgentQuestionConfirmedInDialogue(agentQuestionQuote, sourceText, proposal.messages)) {
+        return reject(
+          form,
+          PROPOSAL_REJECTION_REASONS.identityGateRejected,
+          `身份槽位 ${identityKey} 的确认问句/肯定应答未在真实相邻对话中找到`,
+        );
+      }
+    } else {
+      const gate =
+        identityKey === 'name'
+          ? evaluateBookingNameGate(proposal.value, proposal.messages)
+          : evaluateBookingPhoneGate(proposal.value, proposal.messages);
+      if (gate.decision !== 'allow') {
+        return reject(form, PROPOSAL_REJECTION_REASONS.identityGateRejected, gate.reason);
+      }
     }
   }
 

@@ -85,6 +85,10 @@ function user(text: string) {
   return { role: 'user' as const, content: text };
 }
 
+function assistant(text: string) {
+  return { role: 'assistant' as const, content: text };
+}
+
 function fill(
   form: BookingCollectionForm,
   field: ContractFieldDef,
@@ -206,7 +210,7 @@ describe('§10.1 · 0819 确认死循环实案回归', () => {
         sourceText: '确认',
         producer: 'model',
         candidateTexts: ['确认'],
-        messages: [user('确认')],
+        messages: [assistant(question), user('确认')],
         agentQuestionQuote: question,
       });
       expect(result.outcome).toBe('accepted');

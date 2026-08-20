@@ -484,6 +484,32 @@ describe('防线 4 · 臆造防线：sourceText 回查失败的提案零入账',
     expect(result.reason).toBe(PROPOSAL_REJECTION_REASONS.missingAttributionCorpus);
   });
 
+  it('确认式身份提案的问句只由模型自报、真实历史不存在 → fail-closed 拒收', () => {
+    const result = proposeValue(form(), PHONE_FIELD, {
+      value: TEST_CANDIDATE_PHONE,
+      sourceText: '确认',
+      producer: 'model',
+      candidateTexts: ['确认'],
+      messages: [userMessage('确认')],
+      agentQuestionQuote: `手机号是${TEST_CANDIDATE_PHONE}，对吗？`,
+    });
+    expect(result.outcome).toBe('rejected');
+    expect(result.reason).toBe(PROPOSAL_REJECTION_REASONS.identityGateRejected);
+  });
+
+  it('确认式身份提案绑定真实相邻问答对 → 允许入账', () => {
+    const question = `手机号是${TEST_CANDIDATE_PHONE}，对吗？`;
+    const result = proposeValue(form(), PHONE_FIELD, {
+      value: TEST_CANDIDATE_PHONE,
+      sourceText: '确认',
+      producer: 'model',
+      candidateTexts: ['确认'],
+      messages: [assistantMessage(question), userMessage('确认')],
+      agentQuestionQuote: question,
+    });
+    expect(result.outcome).toBe('accepted');
+  });
+
   it('姓名仅以「我是X」打招呼语昵称出现 → 归属门拒收', () => {
     const text = '你好，我是小晴';
     const result = proposeValue(

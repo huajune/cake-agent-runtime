@@ -1,6 +1,7 @@
 import {
   evaluateBookingNameGate,
   evaluateBookingPhoneGate,
+  isAgentQuestionConfirmedInDialogue,
   isNameAuthoritative,
   isNameOnlyQuotedSpeaker,
   isPhoneAuthoritative,
@@ -37,5 +38,29 @@ describe('identity-gates（直接出处，不含 legacy 确认识别）', () => 
   it('跨轮“对/确认”不再由本闸门正则解锁', () => {
     const messages = [message('assistant', '手机号是18271421690，对吗？'), message('user', '对')];
     expect(evaluateBookingPhoneGate('18271421690', messages).decision).toBe('reject_collect');
+  });
+
+  describe('确认式 claim 的真实问答对绑定', () => {
+    const question = '姓名是兮兮，手机号是18271421690，对吗？';
+
+    it('真实 assistant 问句 + 紧邻候选人肯定短答才成立', () => {
+      const messages = [message('assistant', question), message('user', '确认')];
+      expect(isAgentQuestionConfirmedInDialogue(question, '确认', messages)).toBe(true);
+    });
+
+    it('模型自报的问句未出现在 assistant 历史时拒绝', () => {
+      expect(isAgentQuestionConfirmedInDialogue(question, '确认', [message('user', '确认')])).toBe(
+        false,
+      );
+    });
+
+    it('只认问句后的第一条 user，应答被其他消息隔开时拒绝', () => {
+      const messages = [
+        message('assistant', question),
+        message('user', '我先看看'),
+        message('user', '确认'),
+      ];
+      expect(isAgentQuestionConfirmedInDialogue(question, '确认', messages)).toBe(false);
+    });
   });
 });
