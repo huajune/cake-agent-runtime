@@ -85,6 +85,18 @@ export interface ValueProposal {
    */
   messages?: readonly unknown[];
   /**
+   * 绑定的 Agent 问句原文（R1 作证通道，§10.1「确认可作证」）。
+   *
+   * 候选人对复述清单 / 针对性提问的肯定应答（"确认""对"）是**本人终审**，但值本体
+   * 在**问句**里而不在应答里。带上问句后，身份槽位的"值须逐字落在原话内"改以问句
+   * 为基准——这正是 0819 确认死循环的病根：候选人已经确认过了，闸门却因为
+   * "对"字里没有住址而判臆造，于是整发清单再问一遍、直到熔断。
+   *
+   * ⚠️ 出处门第一问不豁免：问句是我方发的，应答必须仍是候选人原话逐字命中，
+   * 否则"模型自己编个问句再自己确认"就能绕过公证。
+   */
+  agentQuestionQuote?: string;
+  /**
    * 本提案是候选人**显式改口**（§3 0819 裁定的第三条重开路径）。
    *
    * ⚠️ 只能由**作证者显式声明**（主聊模型 claim 的 `operation='correct'`），
@@ -209,11 +221,15 @@ export function proposeValue(
       'sourceText 未出现在候选人原文',
     );
   }
-  if (identityKey && !valueContainedInSource(identityKey, proposal.value, sourceText)) {
+  // 值本体的基准文本：带 R1 问句时以问句为准（确认式作证），否则以候选人原话为准。
+  const valueBearingText = proposal.agentQuestionQuote?.trim() || sourceText;
+  if (identityKey && !valueContainedInSource(identityKey, proposal.value, valueBearingText)) {
     return reject(
       form,
       PROPOSAL_REJECTION_REASONS.valueNotInSourceText,
-      `身份槽位 ${identityKey} 的原话未逐字含该值`,
+      proposal.agentQuestionQuote
+        ? `身份槽位 ${identityKey} 的确认问句未逐字含该值`
+        : `身份槽位 ${identityKey} 的原话未逐字含该值`,
     );
   }
 
@@ -259,7 +275,7 @@ export function proposeValue(
     ...(proposal.optionCodes?.length ? { optionCodes: [...proposal.optionCodes] } : {}),
     sourceText,
     producer: proposal.producer,
-    confidence: grantConfidence(claimField, proposal.value, sourceText),
+    confidence: grantConfidence(claimField, proposal.value, valueBearingText),
   };
 
   // ── ⑤ 先筛后收 ──
