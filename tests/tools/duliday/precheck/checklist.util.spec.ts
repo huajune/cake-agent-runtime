@@ -188,6 +188,47 @@ describe('checklist.util', () => {
       expect(result.templateText).toContain('姓名：');
     });
 
+    // 生产 badcase（08-17 6a82783d / 08-17 6a82caaa / 08-18 6a83c933 等 6 条，
+    // 全部 revised_reply IS NULL 即原样投递给候选人）：岗位 requiredFields 带
+    // 户籍省份，模板就渲染出「籍贯/户籍：\n身高：\n体重：」整张表单发出去。
+    // 户籍是既有歧视红线字段，剔除必须发生在生成侧且不依赖调用方传 excludeFields。
+    it('never renders 户籍 into the template, even when the job requires it', () => {
+      const result = buildChecklistTemplate({
+        requiredFields: ['姓名', '联系电话', '户籍省份', '身高', '体重'],
+        knownFieldMap: {},
+      });
+      expect(result.templateText).not.toContain('籍贯');
+      expect(result.templateText).not.toContain('户籍');
+      expect(result.displayOrder).not.toContain('户籍省份');
+      expect(result.requiredFields).not.toContain('户籍省份');
+      // 剔除后不得留在 missingFields，否则 nextAction 永远卡在 collect_fields
+      expect(result.missingFields).not.toContain('户籍省份');
+      // 同表其余字段不受影响
+      expect(result.templateText).toContain('身高：');
+    });
+
+    it('strips 户籍 aliases from requiredFields too', () => {
+      for (const alias of ['籍贯', '户籍']) {
+        const result = buildChecklistTemplate({
+          requiredFields: ['姓名', alias],
+          knownFieldMap: {},
+        });
+        expect(result.templateText).not.toContain(alias);
+        expect(result.displayOrder).not.toContain('户籍省份');
+      }
+    });
+
+    // 候选人主动自报过户籍时也不回显：回显同样是把敏感字段摆到候选人面前。
+    // 值本身仍留在 knownFieldMap 供 booking 透传，这里只断言不外显。
+    it('does not echo 户籍 back even when the value is already known', () => {
+      const result = buildChecklistTemplate({
+        requiredFields: ['姓名', '户籍省份'],
+        knownFieldMap: { 姓名: '兮兮', 户籍省份: '安徽省' },
+      });
+      expect(result.templateText).not.toContain('安徽省');
+      expect(result.templateText).not.toContain('户籍');
+    });
+
     it('marks fields without known values as missingFields', () => {
       const result = buildChecklistTemplate({
         requiredFields: ['姓名', '联系电话', '面试时间'],
@@ -239,9 +280,12 @@ describe('checklist.util', () => {
       expect(hints).not.toHaveProperty('education');
     });
 
-    it('treats 籍贯 / 户籍 / 户籍省份 as a single province hint', () => {
-      const hints = buildEnumHintsForMissing(['籍贯']);
-      expect(hints.householdRegisterProvince?.length).toBeGreaterThan(0);
+    // 红线：户籍已随 TEMPLATE_FORBIDDEN_FIELDS 从收资侧整体下线，省份枚举提示
+    // 不得再返回——否则等于给模型一个"去问这个"的信号。
+    it('never emits province hints, whichever 户籍 alias is passed', () => {
+      for (const alias of ['籍贯', '户籍', '户籍省份']) {
+        expect(buildEnumHintsForMissing([alias])).not.toHaveProperty('householdRegisterProvince');
+      }
     });
 
     it('emits both healthCertificate and healthCertificateTypes when both are missing', () => {

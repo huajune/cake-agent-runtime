@@ -11,7 +11,6 @@
 
 import {
   getAvailableSpongeEducations,
-  getAvailableSpongeProvinces,
   SPONGE_GENDER_MAPPING,
   SPONGE_HEALTH_CERTIFICATE_TYPE_MAPPING,
 } from '@sponge/sponge.enums';
@@ -67,6 +66,25 @@ export const TEMPLATE_CORE_FIELDS = [
   '面试时间',
   '应聘门店',
 ] as const satisfies readonly ChecklistField[];
+
+/**
+ * 永不进入收资模板的红线字段。
+ *
+ * 户籍/籍贯是既有歧视红线字段（性别/年龄可对候选人明说，户籍/民族/专业不可）。
+ * PR #1001 已禁止模型用话术口头索取户籍，但把"候选人回填 templateText 中的
+ * 「籍贯/户籍」表单行"留成了合法来源——于是索取只是从话术挪到了表单行：
+ * 08-17~08-18 两天投递物里 6 条「户籍省份：\n身高：\n体重：」表单原样发给候选人，
+ * `discriminatory_screening_leak` 守卫同期命中 0 次（召回完全落空）。
+ *
+ * 这里在**生成侧**做无条件剔除而不是交给调用方的 excludeFields：红线不该依赖每个
+ * 调用点都记得传参。守卫正则是第二道防线，不是第一道。
+ *
+ * 剔除只影响"向候选人索取"这一侧：`screeningCriteria.householdRegisterProvince`
+ * 仍返回给模型作内部判断，候选人主动自报的值仍留在 knownFieldMap 并可透传给
+ * booking 的 `householdRegisterProvinceId`（该字段在 booking 契约里是 optional，
+ * 不收集不会阻塞下单）。
+ */
+export const TEMPLATE_FORBIDDEN_FIELDS = ['户籍省份'] as const satisfies readonly ChecklistField[];
 
 /**
  * 字段名 → 对候选人展示的标签。**刻意部分覆盖**（大多数字段无需改名，走 `?? field`
@@ -287,7 +305,11 @@ export function buildChecklistTemplate(params: {
   missingFields: string[];
   templateText: string;
 } {
-  const excludedFields = new Set((params.excludeFields ?? []).map(normalizeChecklistField));
+  const excludedFields = new Set([
+    ...(params.excludeFields ?? []).map(normalizeChecklistField),
+    // 红线字段无条件剔除，不看调用方传了什么。
+    ...TEMPLATE_FORBIDDEN_FIELDS,
+  ]);
   const requiredFields = canonicalizeChecklistFields(params.requiredFields).filter(
     (field) => !excludedFields.has(field),
   );
@@ -299,11 +321,15 @@ export function buildChecklistTemplate(params: {
   // TEMPLATE_CORE_FIELDS 是收资模板必要骨架（姓名/电话/性别/年龄/面试时间/应聘门店）。
   // 即使岗位 API 没把这些字段写进 requiredFields，也必须强制纳入展示——
   // badcase #2：API 漏了"姓名"，模板就把姓名整行删掉了，候选人按模板填一堆资料没填名字。
+  // 剔除放在合流之后统一做一次：三个来源（核心骨架 / requiredFields /
+  // knownOptionalFields）里任何一个漏筛都会让红线字段重新渲染出来——
+  // 已知值走的正是 knownOptionalFields 这条旁路（户籍省份在 booking 契约里
+  // 属 optional 字段，候选人自报过就会被当"可选已知项"补回模板）。
   const orderedFields = orderFields([
-    ...TEMPLATE_CORE_FIELDS.filter((field) => !excludedFields.has(field)),
+    ...TEMPLATE_CORE_FIELDS,
     ...requiredFields,
     ...knownOptionalFields,
-  ]);
+  ]).filter((field) => !excludedFields.has(field));
   const coreFields = TEMPLATE_CORE_FIELDS.filter((field) => orderedFields.includes(field));
   const dynamicFields = orderedFields.filter(
     (field) => !(TEMPLATE_CORE_FIELDS as readonly string[]).includes(field),
@@ -337,9 +363,8 @@ export function buildEnumHintsForMissing(missingFields: string[]): Record<string
     hints.healthCertificateTypes = [...HEALTH_CERT_TYPE_ENUM_HINTS];
   }
   if (missingFields.includes('学历')) hints.education = getAvailableSpongeEducations();
-  if (missingFields.some((field) => ['籍贯', '户籍', '户籍省份'].includes(field))) {
-    hints.householdRegisterProvince = getAvailableSpongeProvinces();
-  }
+  // 户籍省份枚举提示随 TEMPLATE_FORBIDDEN_FIELDS 一并下线：该字段已不会出现在
+  // missingFields，继续返回全省份候选值只会给模型一个"去问这个"的信号。
   if (missingFields.includes('身份')) {
     hints.identity = ['学生', '社会人士'];
   }

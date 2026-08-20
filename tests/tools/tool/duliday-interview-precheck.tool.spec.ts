@@ -1269,7 +1269,9 @@ describe('buildInterviewPrecheckTool', () => {
     expect(result.bookingChecklist.templateText).toContain('姓名：赵堤');
     expect(result.bookingChecklist.templateText).toContain('联系方式：18963221030');
     expect(result.bookingChecklist.templateText).toContain('学历：中专');
-    expect(result.bookingChecklist.templateText).toContain('籍贯/户籍：安徽');
+    // 覆盖语义由上面几个字段验证即可；户籍是红线字段，无论来源多可信都不进模板。
+    expect(result.bookingChecklist.templateText).not.toContain('籍贯/户籍');
+    expect(result.bookingChecklist.templateText).not.toContain('安徽');
     expect(result.bookingChecklist.templateText).not.toContain('姓名：王玥');
     expect(result.bookingChecklist.templateText).not.toContain('联系方式：19290703760');
     expect(result.bookingChecklist.templateText).not.toContain('学历：大专');
@@ -3342,15 +3344,12 @@ describe('buildInterviewPrecheckTool', () => {
     );
     expect(result.screeningCriteria.experience).toBeUndefined();
     expect(result.bookingChecklist.missingFields).toEqual(
-      expect.arrayContaining([
-        '健康证类型',
-        '户籍省份',
-        '身高',
-        '体重',
-        '简历附件',
-        '过往公司+岗位+年限',
-      ]),
+      expect.arrayContaining(['健康证类型', '身高', '体重', '简历附件', '过往公司+岗位+年限']),
     );
+    // 岗位 remark 里的"上海户籍"仍要解析进 screeningCriteria 供内部筛选（上面已断言），
+    // 但不得转成向候选人索取的收资项——红线字段在模板生成侧无条件剔除。
+    expect(result.bookingChecklist.missingFields).not.toContain('户籍省份');
+    expect(result.bookingChecklist.templateText).not.toContain('籍贯/户籍');
     expect(result.bookingChecklist.requiredFields).toContain('简历附件');
     expect(result.bookingChecklist.requiredFields).not.toContain('上传简历');
     expect(result.bookingChecklist.templateText).toContain('简历附件：');
@@ -3389,8 +3388,7 @@ describe('buildInterviewPrecheckTool', () => {
           { role: 'user', content: '[图片消息]' },
           {
             role: 'user',
-            content:
-              '[引用 招聘经理：资料发我]\n简历也给你了\n[消息发送时间：2026-08-13 10:24:32]',
+            content: '[引用 招聘经理：资料发我]\n简历也给你了\n[消息发送时间：2026-08-13 10:24:32]',
           },
         ],
       },
@@ -3506,16 +3504,18 @@ describe('buildInterviewPrecheckTool', () => {
     expect(result.screeningCriteria.householdRegisterProvince).toBeUndefined();
 
     expect(result.bookingChecklist.requiredFields).toEqual(
-      expect.arrayContaining(['联系电话', '健康证情况', '户籍省份', '身高', '体重']),
+      expect.arrayContaining(['联系电话', '健康证情况', '身高', '体重']),
     );
     expect(result.bookingChecklist.requiredFields).not.toContain('联系方式');
     expect(result.bookingChecklist.requiredFields).not.toContain('有无健康证');
+    // 籍贯 先被归一成 户籍省份（别名归一仍在），再被红线剔除——两个名字都不该留下。
     expect(result.bookingChecklist.requiredFields).not.toContain('籍贯');
+    expect(result.bookingChecklist.requiredFields).not.toContain('户籍省份');
     expect(
       result.bookingChecklist.missingFields.filter((field: string) => field === '健康证情况'),
     ).toHaveLength(1);
     expect(result.bookingChecklist.templateText).toContain('联系方式：');
-    expect(result.bookingChecklist.templateText).toContain('籍贯/户籍：');
+    expect(result.bookingChecklist.templateText).not.toContain('籍贯/户籍：');
 
     expect(result.bookingChecklist.apiPayloadGuide.candidateCollectFields).toBeUndefined();
   });
