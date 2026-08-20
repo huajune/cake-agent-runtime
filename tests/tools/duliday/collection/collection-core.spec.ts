@@ -267,7 +267,22 @@ describe('记忆→表单预填（跨岗不重复盘问）', () => {
 });
 
 describe('selectArchiveFacts · 预填来源白名单', () => {
-  it('只收 candidate_quote / system 且置信度 ≥ medium', () => {
+  it('**裸值形态是生产主路径**：context.archive.sessionFacts 已被上游拆信封+高置信过滤', () => {
+    // tool-context.builder 传给工具的是 unwrapSessionFacts(facts,{minConfidence:'high'})
+    // 的产物——裸值。此前本函数只认信封，在生产里永远返回空，预填是死代码。
+    const facts = selectArchiveFacts({
+      name: '兮兮',
+      age: '26',
+      phone: '',
+      education: null,
+    });
+    expect(facts).toEqual([
+      { claimField: 'name', value: '兮兮' },
+      { claimField: 'age', value: '26' },
+    ]);
+  });
+
+  it('信封形态仍按产者白名单与置信度过滤（兼容直接传 SessionFacts 的调用方）', () => {
     const facts = selectArchiveFacts({
       name: { value: '兮兮', source: 'candidate_quote', confidence: 'high' },
       age: { value: '26', source: 'system', confidence: 'medium' },

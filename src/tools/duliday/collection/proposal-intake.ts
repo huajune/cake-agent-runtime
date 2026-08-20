@@ -388,12 +388,18 @@ export interface ArchiveFact {
 }
 
 /**
- * 从会话档案 / 长期画像里挑**可预填**的事实。
+ * 从会话档案里挑**可预填**的事实。
  *
- * 过滤纪律（对应 seedArchiveValue 的安全边界 1）：只收 producer 在可持久化白名单里、
- * 且置信度不低于 medium 的值。模型自报（`model`）与 unknown 档一律不进——
- * badcase 6e9ar9gd 族正是"抽取示例回声臆造的档案经沿用洗白后进真实工单"，
- * 预填是那条洗白链最想要的入口，必须在这里掐死。
+ * ⚠️ **入参是裸值不是信封**（2026-08-20 修）：`context.archive.sessionFacts` 是
+ * `unwrapSessionFacts(facts, { minConfidence: 'high' })` 的产物——工具上下文在
+ * `tool-context.builder` 里已经拆过信封并按高置信过滤。此前本函数按信封形态读
+ * `.value/.source/.confidence`，在生产里**永远匹配不到任何字段**，
+ * 记忆→表单预填因此是死代码（联调 precheck 接线时才发现）。
+ *
+ * 过滤纪律仍在，只是**执行点在上游**：`minConfidence: 'high'` 已经把模型自报与
+ * unknown 档挡在门外——高置信会话事实正是过了准入门的那批。badcase 6e9ar9gd 族
+ *（"臆造档案经沿用洗白后进真实工单"）的入口由那道门守。
+ * 为兼容直接传信封的调用方（单测/未来改动），两种形态都收。
  */
 export function selectArchiveFacts(
   interviewInfo: Record<string, unknown> | null | undefined,
@@ -402,19 +408,27 @@ export function selectArchiveFacts(
   const facts: ArchiveFact[] = [];
   for (const [sessionKey, claimField] of Object.entries(SESSION_KEY_TO_CLAIM_FIELD)) {
     const raw = interviewInfo[sessionKey];
-    if (!raw || typeof raw !== 'object') continue;
-    const envelope = raw as {
-      value?: unknown;
-      producer?: unknown;
-      source?: unknown;
-      confidence?: unknown;
-    };
-    const producer = String(envelope.source ?? envelope.producer ?? '');
-    if (!PREFILLABLE_PRODUCERS.has(producer)) continue;
-    const confidence = String(envelope.confidence ?? '');
-    if (confidence !== 'high' && confidence !== 'medium') continue;
-    const value =
-      envelope.value === null || envelope.value === undefined ? '' : String(envelope.value);
+    if (raw === null || raw === undefined) continue;
+
+    let value: string;
+    if (typeof raw === 'object') {
+      // 信封形态（调用方直接传 SessionFacts）：仍按产者白名单与置信度过滤。
+      const envelope = raw as {
+        value?: unknown;
+        producer?: unknown;
+        source?: unknown;
+        confidence?: unknown;
+      };
+      const producer = String(envelope.source ?? envelope.producer ?? '');
+      if (!PREFILLABLE_PRODUCERS.has(producer)) continue;
+      const confidence = String(envelope.confidence ?? '');
+      if (confidence !== 'high' && confidence !== 'medium') continue;
+      value = envelope.value === null || envelope.value === undefined ? '' : String(envelope.value);
+    } else {
+      // 裸值形态（**生产主路径**）：信任由上游 unwrapSessionFacts 的高置信门给出。
+      value = String(raw);
+    }
+
     if (!value.trim()) continue;
     facts.push({ claimField: claimField as CandidateClaimField, value: value.trim() });
   }
