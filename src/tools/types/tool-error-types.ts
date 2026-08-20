@@ -169,6 +169,11 @@ export const TOOL_ERROR_TYPES = {
    */
   INVITE_NO_JOB_RESULT: 'invite.no_job_result',
   /**
+   * 时机 gate：本轮虽已查岗，但既非预约成功，也没有“两轮不满意→征询→明确同意”的授权。
+   * 真无岗不得拉群；有岗时也不得跳过候选人同意直接拉群。
+   */
+  INVITE_GROUP_CONSENT_REQUIRED: 'invite.group_consent_required',
+  /**
    * 时机 gate：候选人本轮正在推进某岗位的报名/约面（问怎么报名、几点面试…）。
    * 拉群是"无岗维护"场景，此时拉群等于打断成单。
    */

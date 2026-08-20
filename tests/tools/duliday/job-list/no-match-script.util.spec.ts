@@ -142,6 +142,25 @@ describe('buildNoMatchScript', () => {
       ).toBe(2);
     });
 
+    it('counts production job cards that use store names instead of the words 岗位/门店', () => {
+      expect(
+        countDissatisfiedRecommendationRounds([
+          {
+            role: 'assistant',
+            content:
+              '成都你六姐（凌空SOHO店）- 洗碗工 2.3km\n班次：12:00-14:30\n薪资：24元/时',
+          },
+          { role: 'user', content: '我上不了那么长时间' },
+          {
+            role: 'assistant',
+            content:
+              '成都你六姐（金光汇店）- 后厨 8.2km\n班次：18:00-22:00\n薪资：24元/时',
+          },
+          { role: 'user', content: '没有近的，都有点远' },
+        ]),
+      ).toBe(2);
+    });
+
     it('offers group consent after two rounds without claiming or executing an invite', () => {
       const script = buildRecommendationLimitScript({ cityLabels: ['上海'] });
       expect(script.nextAction).toBe('offer_group_invite');

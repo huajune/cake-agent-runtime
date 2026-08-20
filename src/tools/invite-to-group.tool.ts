@@ -423,6 +423,17 @@ export function buildInviteToGroupTool(
                 details: { city, industry: industry ?? undefined },
               });
             }
+            if (timingVerdict.reason === 'group_consent_required') {
+              return buildToolError({
+                errorType: TOOL_ERROR_TYPES.INVITE_GROUP_CONSENT_REQUIRED,
+                outcome: '本轮没有合法的入群授权，禁止用查岗完成替代候选人同意',
+                replyInstruction:
+                  '本轮虽然已经查过岗位，但拉群只允许两种入口：预约成功后的首次承接，或连续两轮推荐均不满意、' +
+                  '上一轮已征询入群且候选人本轮明确同意。真实无岗请按 noMatchScript 如实收口并等待库存，' +
+                  '查到岗位则继续正常推荐/推进；本轮不要提群相关内容，也不要调用 request_handoff。',
+                details: { city, industry: industry ?? undefined },
+              });
+            }
             return buildToolError({
               errorType: TOOL_ERROR_TYPES.INVITE_BOOKING_IN_PROGRESS,
               outcome: '候选人正在推进报名/约面，拉群会打断成单',

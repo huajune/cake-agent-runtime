@@ -77,7 +77,11 @@ export type InviteTimingGateVerdict =
   | { decision: 'allow' }
   | {
       decision: 'reject';
-      reason: 'already_invited_city' | 'no_job_result_this_turn' | 'booking_progress_signal';
+      reason:
+        | 'already_invited_city'
+        | 'no_job_result_this_turn'
+        | 'group_consent_required'
+        | 'booking_progress_signal';
       /** already_invited_city 时给出已拉过的群名，供模型据实回应候选人。 */
       invitedGroupName?: string;
     };
@@ -126,5 +130,8 @@ export function evaluateInviteTimingGate(input: InviteTimingGateInput): InviteTi
     return { decision: 'reject', reason: 'booking_progress_signal' };
   }
 
-  return { decision: 'allow' };
+  // 正常查岗完成不等于获得拉群授权。新协议只有两条合法入口：
+  // 预约成功后的首次群承接，或上一轮已征询且候选人本轮明确同意（两档均已在上方放行）。
+  // 真无岗、暑假工无库存、查到岗位但不匹配，都不能用“本轮跑过 job_list”偷渡拉群。
+  return { decision: 'reject', reason: 'group_consent_required' };
 }
