@@ -6,6 +6,8 @@ import { SpongeModule } from '@sponge/sponge.module';
 import { MemoryConfig } from './memory.config';
 import { MemoryService } from './memory.service';
 import { RedisStore } from './stores/redis.store';
+import { CollectionFormStore } from './stores/collection-form.store';
+import { CollectionFormService } from './services/collection-form.service';
 import { SupabaseStore } from './stores/supabase.store';
 import { BrandStateService } from './services/brand-state.service';
 import { ShortTermService } from './services/short-term.service';
@@ -39,6 +41,8 @@ import { GeocodingModule } from '@infra/geocoding/geocoding.module';
   providers: [
     MemoryConfig,
     RedisStore,
+    CollectionFormStore,
+    CollectionFormService,
     SupabaseStore,
     BrandStateService,
     ShortTermService,
@@ -54,6 +58,7 @@ import { GeocodingModule } from '@infra/geocoding/geocoding.module';
   exports: [
     MemoryConfig,
     MemoryService,
+    CollectionFormService,
     SessionService,
     LongTermService,
     ShortTermService,
