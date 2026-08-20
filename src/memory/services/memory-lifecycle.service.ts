@@ -131,8 +131,8 @@ export class MemoryLifecycleService {
       rawShortTermMessages,
       sessionState,
       proceduralState,
-      profile,
-      longTermPreferences,
+      rawProfile,
+      rawLongTermPreferences,
       summaryData,
     ] = await Promise.all([
       includeShortTerm
@@ -142,8 +142,12 @@ export class MemoryLifecycleService {
       this.procedural.get(corpId, userId, sessionId),
       this.longTerm.getProfile(corpId, userId),
       this.longTerm.getPreferences(corpId, userId),
-      this.longTerm.getSummaryData(corpId, userId),
+      this.longTerm.getSummaryData(corpId, userId, options?.enrichmentIdentity?.imBotId),
     ]);
+
+    const currentBotId = options?.enrichmentIdentity?.imBotId;
+    const profile = this.filterFactsForBot(rawProfile, currentBotId);
+    const longTermPreferences = this.filterFactsForBot(rawLongTermPreferences, currentBotId);
 
     const shortTermMessages = this.applyShortTermFallback(
       rawShortTermMessages,
@@ -405,6 +409,24 @@ export class MemoryLifecycleService {
   private hasAnyFact(facts: Record<string, unknown> | null | undefined): boolean {
     if (!facts) return false;
     return Object.values(facts).some((value) => value !== null && value !== undefined);
+  }
+
+  /**
+   * 长期事实按托管账号严格隔离。存量无 originBotId 无法证明归属，生产有 bot 上下文时
+   * fail-closed；离线测试/治理读取不传 bot 时保留原始视图。
+   */
+  private filterFactsForBot<T extends Record<string, unknown>>(
+    facts: T | null,
+    botImId?: string,
+  ): T | null {
+    if (!facts || !botImId) return facts;
+    const filtered = Object.fromEntries(
+      Object.entries(facts).map(([field, value]) => [
+        field,
+        isUserProfileFactValue(value) && value.originBotId === botImId ? value : null,
+      ]),
+    ) as T;
+    return this.hasAnyFact(filtered) ? filtered : null;
   }
 
   private hasFactFromOtherSession(

@@ -244,6 +244,7 @@ export class SettlementService {
       const summaryEntry: SummaryEntry = {
         summary: result.text || '（摘要生成失败）',
         sessionId,
+        ...(botImId ? { originBotId: botImId } : {}),
         startTime: firstMsgTime,
         endTime: sessionEndAt,
       };
@@ -255,8 +256,7 @@ export class SettlementService {
           this.compressArchive(overflow, existingArchive),
       });
 
-      // 沉淀时将已校验/清洗过的 sessionFacts 身份信息写入 Profile。
-      // 带上 sessionId/botImId 数据血缘，供跨 bot 追溯与跨会话口径使用。
+      // settlement 只沉淀 summary + preferences；身份 Profile 仅由报名办结写入。
       if (facts) {
         await this.longTerm.writeFromSettlement(corpId, userId, facts, {
           sessionId,

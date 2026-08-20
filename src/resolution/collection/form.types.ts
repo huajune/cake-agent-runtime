@@ -27,7 +27,7 @@ import type { CandidateFactProducer } from '@resolution/evidence/claim.types';
 export interface ContractFieldDef {
   /** 海绵侧标签主键。⚠️ D4：字面量只可出现在测试与文档，禁止进 src/ 代码作语义锚点。 */
   labelId: number;
-  /** 标签展示名（如「姓名」「有无本地健康证」）。errorList 只带展示名时的匹配基准（D2）。 */
+  /** 标签展示名（如「姓名」「有无本地健康证」）。applyErrorList 只带展示名时的匹配基准（D2）。 */
   labelTitle: string;
   /** 后台配的填写说明；实测多数为 null。 */
   labelInstructions?: string | null;
@@ -88,7 +88,7 @@ export interface ContractValueRange {
  * 取该字段对某性别生效的数值区间；不适用则返回 null（= 本字段这一轮不判值域）。
  *
  * genderRanges 非空且性别未知 → 不判。这是刻意的漏斗优先取舍：拿不准就放过，
- * 下游 entryUser 会用 errorList 截回来；反过来"猜个性别再判"会把人筛错，代价不对称。
+ * 下游 entryUser 会用 applyErrorList 截回来；反过来"猜个性别再判"会把人筛错，代价不对称。
  */
 export function resolveValueRange(
   spec: ContractValueRange | null | undefined,
@@ -175,7 +175,7 @@ export interface BookingCollectionForm {
   slots: Record<number, FormSlot>;
   /** 提交成功的外部事实（不可由槽位推导，故落盘）。 */
   workOrderId?: number;
-  /** 转人工触发原因（同槽 2 问不中 / 疑似多人 / errorList 失配）。不可推导，故落盘。 */
+  /** 转人工触发原因（同槽 2 问不中 / 疑似多人 / applyErrorList 失配）。不可推导，故落盘。 */
   escalatedReason?: string;
   lastRecap?: RecapRecord;
   /** 配置债台账，报名成功卡片的「收资配置备注」段直读。 */

@@ -41,8 +41,11 @@ function enumValues(schema: { options: readonly string[] }): string[] {
 describe('词表单一居所 · 期 0', () => {
   describe('发给模型的 schema 取值与顺序不得漂移', () => {
     it('SessionFactConfidence 保持 high-first（历史顺序，非权威表的升序）', () => {
-      expect(enumValues(SessionFactConfidenceSchema)).toEqual(['high', 'medium', 'low', 'unknown']);
-      expect([...FACT_CONFIDENCE_LEVELS_DESC]).toEqual(['high', 'medium', 'low', 'unknown']);
+      expect([...FACT_CONFIDENCE_LEVELS_DESC]).toEqual(['high', 'medium']);
+      expect(SessionFactConfidenceSchema.parse('high')).toBe('high');
+      expect(SessionFactConfidenceSchema.parse('medium')).toBe('medium');
+      expect(SessionFactConfidenceSchema.parse('low')).toBe('medium');
+      expect(SessionFactConfidenceSchema.parse('unknown')).toBe('medium');
     });
 
     it('降序元组与权威表成员集合恒等（只是顺序相反）', () => {

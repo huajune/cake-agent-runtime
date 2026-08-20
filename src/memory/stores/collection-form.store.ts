@@ -25,6 +25,20 @@ export function buildCollectionFormKey(params: {
   return `collection-form:${params.corpId}:${params.userId}:${params.candidateRef}:${params.jobId}`;
 }
 
+/**
+ * 当前会话/岗位正在办理的人键指针。
+ *
+ * 手机号写进表单后实体会从 `session` 搬到手机号 key；后续 booking 工具不再接收
+ * candidatePhone，因此必须有一个同会话、同岗位的稳定定位入口，不能靠调用方重复传 PII。
+ */
+export function buildCollectionFormLocatorKey(params: {
+  corpId: string;
+  userId: string;
+  jobId: number;
+}): string {
+  return `collection-form-current:${params.corpId}:${params.userId}:${params.jobId}`;
+}
+
 @Injectable()
 export class CollectionFormStore {
   private readonly logger = new Logger(CollectionFormStore.name);
@@ -46,6 +60,18 @@ export class CollectionFormStore {
     return content as unknown as BookingCollectionForm;
   }
 
+  async readCurrentCandidateRef(params: {
+    corpId: string;
+    userId: string;
+    jobId: number;
+  }): Promise<string | null> {
+    const entry = await this.redisStore.get(buildCollectionFormLocatorKey(params));
+    const content = entry?.content;
+    if (!content || typeof content !== 'object') return null;
+    const candidateRef = (content as { candidateRef?: unknown }).candidateRef;
+    return typeof candidateRef === 'string' && candidateRef.length > 0 ? candidateRef : null;
+  }
+
   /** 整实体覆盖写（merge=false）：表单的写路径纯函数已产出完整新实体，deepMerge 只会把删掉的槽位又粘回来。 */
   async write(
     params: { corpId: string; userId: string },
@@ -62,6 +88,16 @@ export class CollectionFormStore {
       this.config.sessionTtl,
       false,
     );
+    await this.redisStore.set(
+      buildCollectionFormLocatorKey({
+        corpId: params.corpId,
+        userId: params.userId,
+        jobId: form.jobId,
+      }),
+      { candidateRef: form.candidateRef },
+      this.config.sessionTtl,
+      false,
+    );
   }
 
   async remove(params: {
@@ -71,5 +107,9 @@ export class CollectionFormStore {
     jobId: number;
   }): Promise<void> {
     await this.redisStore.del(buildCollectionFormKey(params));
+    const currentRef = await this.readCurrentCandidateRef(params);
+    if (currentRef === params.candidateRef) {
+      await this.redisStore.del(buildCollectionFormLocatorKey(params));
+    }
   }
 }

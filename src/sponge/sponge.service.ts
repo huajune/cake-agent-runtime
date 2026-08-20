@@ -264,26 +264,12 @@ export class SpongeService {
   ): Promise<InterviewBookingResult> {
     const token = await this.resolveDulidayToken(tokenContext);
 
-    this.logger.log(`预约面试: ${params.name}, jobId=${params.jobId}`);
+    this.logger.log(`预约面试: jobId=${params.jobId}`);
 
     const payload = stripNullish({
       jobId: params.jobId,
       interviewTime: params.interviewTime,
-      name: params.name,
-      phone: params.phone,
-      age: params.age,
-      genderId: params.genderId,
-      avatar: params.avatar,
-      householdRegisterProvinceId: params.householdRegisterProvinceId,
-      height: params.height,
-      weight: params.weight,
-      hasHealthCertificate: params.hasHealthCertificate,
-      healthCertificateTypes: params.healthCertificateTypes,
-      educationId: params.educationId,
-      uploadResume: params.uploadResume,
-      customerLabelList: params.customerLabelList ?? [],
-      logId: params.logId,
-      operateType: params.operateType,
+      labelList: params.labelList,
     });
 
     const response = await fetchWithTimeout(INTERVIEW_BOOKING_API, {
@@ -315,7 +301,7 @@ export class SpongeService {
         code: -1,
         message: '预约接口返回结构异常',
         notice: null,
-        errorList: null,
+        applyErrorList: null,
         traceId,
       };
     }
@@ -339,7 +325,7 @@ export class SpongeService {
       code: parsed.data.code,
       message: parsed.data.message,
       notice: parsed.data.data?.notice ?? null,
-      errorList: parsed.data.data?.errorList ?? null,
+      applyErrorList: parsed.data.data?.applyErrorList ?? null,
       workOrderId,
       traceId,
     };

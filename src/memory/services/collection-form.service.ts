@@ -31,13 +31,12 @@ export class CollectionFormService {
   /**
    * 取当前表单；没有就按契约开一张空表。
    *
-   * 读取顺序是人键优先：手机号已知就读人键表，读不到再回落 'session' 默认表——
-   * 这样"先聊了半天才给手机号"的会话不会在 rebind 前后各丢一次进度。
+   * 读取顺序是显式人键 → 当前指针 → 'session' 默认表。booking 不再接收手机号裸字段，
+   * 因而必须能仅凭会话与岗位定位到 rebind 后的人键表。
    *
    * **契约漂移的处理**：读回来的表单可能是按旧契约开的（运营中途改了配置）。
-   * 契约里新增的槽位补进来（不然新字段永远收不到），契约里已消失的槽位原样留着
-   * ——留着的槽位不进 booking payload、不参与 verdictOf 的 empty 判定，
-   * 但它承载着候选人已经答过的话，删掉等于把人家说过的话扔了。
+   * 契约里新增的槽位补进来；已消失的槽位从办理态移除。否则 `verdictOf` 会被一个
+   * 已不属于当前契约的 empty 槽位永久卡住，或把已删除标签误带进提交 payload。
    */
   async loadOrCreate(
     scope: CollectionFormScope,
@@ -46,10 +45,14 @@ export class CollectionFormService {
   ): Promise<BookingCollectionForm> {
     const candidateRef = normalizeCandidateRef(candidatePhone);
 
+    const currentRef = await this.store.readCurrentCandidateRef(scope);
+
     const existing =
       (candidateRef !== SESSION_CANDIDATE_REF
         ? await this.store.read({ ...scope, candidateRef })
-        : null) ?? (await this.store.read({ ...scope, candidateRef: SESSION_CANDIDATE_REF }));
+        : null) ??
+      (currentRef ? await this.store.read({ ...scope, candidateRef: currentRef }) : null) ??
+      (await this.store.read({ ...scope, candidateRef: SESSION_CANDIDATE_REF }));
 
     if (!existing) {
       return createForm({ candidateRef, jobId: scope.jobId, contract });
@@ -86,22 +89,40 @@ export class CollectionFormService {
     return rebound;
   }
 
-  /** 按最新契约补齐槽位；已有槽位一格不动（含它承载的候选人原话）。 */
+  /** 按最新契约对齐办理槽位；仍在契约内的已有槽位一格不动。 */
   private syncContractSlots(
     form: BookingCollectionForm,
     contract: readonly ContractFieldDef[],
   ): BookingCollectionForm {
+    const currentIds = new Set(contract.map((field) => field.labelId));
+    const previousIds = Object.keys(form.slots).map(Number);
     const added = contract.filter((field) => !form.slots[field.labelId]);
-    if (added.length === 0) return form;
+    const removed = previousIds.filter((labelId) => !currentIds.has(labelId));
+    if (added.length === 0 && removed.length === 0) return form;
 
-    const slots = { ...form.slots };
-    for (const field of added) {
-      slots[field.labelId] = { labelId: field.labelId, state: 'empty', askCount: 0 };
+    const slots: BookingCollectionForm['slots'] = {};
+    for (const field of contract) {
+      slots[field.labelId] = form.slots[field.labelId] ?? {
+        labelId: field.labelId,
+        state: 'empty',
+        askCount: 0,
+      };
     }
     this.logger.log(
-      `[collection-form] 契约新增槽位补入: ${added.map((field) => field.labelId).join(',')}`,
+      `[collection-form] 契约槽位对齐: added=[${added
+        .map((field) => field.labelId)
+        .join(',')}], removed=[${removed.join(',')}]`,
     );
-    return { ...form, slots };
+    return {
+      ...form,
+      slots,
+      ...(form.lastRecap
+        ? { lastRecap: { labelIds: form.lastRecap.labelIds.filter((id) => currentIds.has(id)) } }
+        : {}),
+      ...(form.configDebts
+        ? { configDebts: form.configDebts.filter((debt) => currentIds.has(debt.labelId)) }
+        : {}),
+    };
   }
 }
 

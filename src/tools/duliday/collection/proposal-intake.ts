@@ -4,14 +4,9 @@
  * 通道优先级（§11 0819 追加裁定：**作证主通道＝主聊模型随工具调用提交 claims**）：
  *  1. `candidateClaims` —— 主通道。主模型是全系统最好的语义读者，其证词即语义判决、
  *     零额外调用。claim 自带 quote，直接作 sourceText。
- *  2. 九个 `candidateXxx` 裸字段 —— 存量运输通道。**不是死码**：2026-08-20 生产
- *     14 天实测 1305 次 precheck 调用里，claims 只占 15%，而 candidateAge 67%、
- *     candidateName 61%、healthCert 61%——拆除判据（claims 覆盖率 100% 且裸字段 0 次）
- *     远未满足。裸值没有 quote，由适配器在本轮候选人语料里**回查出处**再提案：
- *     模型臆造的值回查不到即落不了地，候选人真说过的照常入账。
- *  3. `candidateSupplementAnswers` —— 补充标签答案（实测 29% 在用），按标签标题定位
+ *  2. `formAnswers` —— 动态契约字段答案，按标签标题定位
  *     labelId。0819 死循环案里"补充标签在 claim 运输里无座位"正是缺这条。
- *  4. 适配器轮末扫描 —— 安全网。主模型漏作证时兜底（§11：小模型/确定性扫描只做
+ *  3. 适配器轮末扫描 —— 安全网。主模型漏作证时兜底（§11：小模型/确定性扫描只做
  *     轮末空槽收网，不设常驻第二语义读者）。只补**空槽**，不碰已填。
  *
  * 四条通道的产物一律过 `proposeValue` 公证，本文件不做任何判定——它只负责
@@ -20,11 +15,6 @@
 
 import { adapterFor, type ContractFieldDef, type ValueProposal } from '@resolution/collection';
 import type { CandidateClaimField } from '@resolution/evidence/claim.types';
-import {
-  extractDialogueTurns,
-  isAffirmativeAnswer,
-  normalizeShortAnswer,
-} from '@resolution/signal/dialogue';
 
 /** 主通道 claim 的最小形状（与 precheck 入参 candidateClaims 同构）。 */
 export interface IntakeClaim {
@@ -47,10 +37,8 @@ export interface IntakeInput {
   /** 完整消息序列，身份槽位归属门取证用。 */
   messages: readonly unknown[];
   claims?: readonly IntakeClaim[];
-  /** 九个裸字段（值已 normalize，键为 claim 字段名）。 */
-  legacyArgs?: Partial<Record<CandidateClaimField, string>>;
-  /** 补充标签答案：键为标签标题原文，值为候选人答案。 */
-  supplementAnswers?: Record<string, string> | null;
+  /** 动态契约字段答案：键为实时契约标签标题原文，值为候选人答案。 */
+  formAnswers?: Record<string, string> | null;
   /** 已 filled 的槽位（安全网只扫空槽，不碰已填）。 */
   filledLabelIds: ReadonlySet<number>;
 }
@@ -88,7 +76,7 @@ export function findFieldForClaim(
 }
 
 /**
- * 按标签标题定位契约字段（补充标签答案 / errorList 展示名共用同一口径）。
+ * 按标签标题定位契约字段（补充标签答案 / applyErrorList 展示名共用同一口径）。
  *
  * 两级匹配，**歧义即放弃**：
  * 1. labelTitle 全等——0818 全量实测 468 岗 × 109 标签**零标题冲突**，
@@ -129,7 +117,7 @@ export function findFieldByTitle(
 export interface IntakeProposal extends ValueProposal {
   labelId: number;
   /** 供审计事件区分"这条值从哪条通道来的"。 */
-  channel: 'claim' | 'form_line' | 'legacy_arg' | 'supplement_answer' | 'adapter_sweep';
+  channel: 'claim' | 'form_line' | 'form_answer' | 'adapter_sweep';
 }
 
 /**
@@ -144,8 +132,7 @@ export function collectProposals(input: IntakeInput): IntakeProposal[] {
 
   for (const proposal of fromClaims(input)) put(proposal);
   for (const proposal of fromFormLines(input)) put(proposal);
-  for (const proposal of fromLegacyArgs(input)) put(proposal);
-  for (const proposal of fromSupplementAnswers(input)) put(proposal);
+  for (const proposal of fromFormAnswers(input)) put(proposal);
   for (const proposal of fromAdapterSweep(input)) put(proposal);
 
   return [...byLabel.values()];
@@ -160,10 +147,18 @@ function fromClaims(input: IntakeInput): IntakeProposal[] {
     if (!value.trim()) continue;
     const field = findFieldForClaim(input.contract, claim.field as CandidateClaimField);
     if (!field) continue;
+    const adapted = adapterFor(field)({ field, candidateText: value });
+    if (
+      !adapted &&
+      (field.fieldType === 'SINGLE_OPTION' || field.fieldType === 'MULTIPLE_OPTION')
+    ) {
+      continue;
+    }
 
     proposals.push({
       labelId: field.labelId,
-      value,
+      value: adapted?.value ?? value,
+      optionCodes: adapted?.optionCodes,
       sourceText: (claim.quote ?? '').trim(),
       producer: 'model',
       candidateTexts: input.candidateTexts,
@@ -187,7 +182,7 @@ function fromClaims(input: IntakeInput): IntakeProposal[] {
  *   而正确答案是"否"＝社会人士。**判反**。
  * 拆行后只把**值**交给适配器，两种都对。
  *
- * 标签→字段用 `findFieldByTitle`（全等优先、主干撞车即放弃），与 errorList 映射同一口径。
+ * 标签→字段用 `findFieldByTitle`（全等优先、主干撞车即放弃），与 applyErrorList 映射同一口径。
  */
 function fromFormLines(input: IntakeInput): IntakeProposal[] {
   const proposals: IntakeProposal[] = [];
@@ -220,60 +215,13 @@ function fromFormLines(input: IntakeInput): IntakeProposal[] {
 }
 
 /**
- * 通道 2：九个裸字段。**出处回查**——用适配器在本轮语料里重新解析，
- * 解析结果与裸值等价才提案（此时 sourceText 是适配器给的真实原话片段）。
- * 对不上就丢：那要么是模型臆造，要么是它把岗位要求当候选人自陈了。
- */
-function fromLegacyArgs(input: IntakeInput): IntakeProposal[] {
-  const proposals: IntakeProposal[] = [];
-  const corpus = input.candidateTexts.join('\n');
-  for (const [rawField, rawValue] of Object.entries(input.legacyArgs ?? {})) {
-    const value = String(rawValue ?? '').trim();
-    if (!value) continue;
-    const field = findFieldForClaim(input.contract, rawField as CandidateClaimField);
-    if (!field) continue;
-
-    const recovered = adapterFor(field)({ field, candidateText: corpus });
-    if (recovered && valuesLooselyEqual(recovered.value, value)) {
-      proposals.push({
-        labelId: field.labelId,
-        value: recovered.value,
-        optionCodes: recovered.optionCodes,
-        sourceText: recovered.sourceText,
-        producer: recovered.producer,
-        candidateTexts: input.candidateTexts,
-        messages: input.messages,
-        channel: 'legacy_arg',
-      });
-      continue;
-    }
-
-    // 原文里回查不到，再试**确认作证**（R1）：值可能在我方复述里，候选人只回了"对"。
-    // 这是 0819 死循环的另一半——模型只传裸字段、不发 claim 时的同一处病灶。
-    const confirmed = recoverByConfirmation(value, input.messages);
-    if (!confirmed) continue;
-    proposals.push({
-      labelId: field.labelId,
-      value,
-      sourceText: confirmed.answer,
-      producer: 'model',
-      candidateTexts: input.candidateTexts,
-      messages: input.messages,
-      agentQuestionQuote: confirmed.question,
-      channel: 'legacy_arg',
-    });
-  }
-  return proposals;
-}
-
-/**
- * 通道 3：补充标签答案。键是标签标题原文，值是候选人答案。
+ * 通道 2：补充标签答案。键是标签标题原文，值是候选人答案。
  * 答案本身就是候选人说的话，故 sourceText 取答案在语料里的原样片段——
  * 回查不到（模型改写过）就交给公证拒收，这里不替它圆场。
  */
-function fromSupplementAnswers(input: IntakeInput): IntakeProposal[] {
+function fromFormAnswers(input: IntakeInput): IntakeProposal[] {
   const proposals: IntakeProposal[] = [];
-  for (const [title, answer] of Object.entries(input.supplementAnswers ?? {})) {
+  for (const [title, answer] of Object.entries(input.formAnswers ?? {})) {
     const value = String(answer ?? '').trim();
     if (!value) continue;
     const field = findFieldByTitle(input.contract, title);
@@ -288,13 +236,13 @@ function fromSupplementAnswers(input: IntakeInput): IntakeProposal[] {
       producer: 'model',
       candidateTexts: input.candidateTexts,
       messages: input.messages,
-      channel: 'supplement_answer',
+      channel: 'form_answer',
     });
   }
   return proposals;
 }
 
-/** 通道 4：安全网。只扫**空槽**，且只用确定性适配器（不引入第二语义读者）。 */
+/** 通道 3：安全网。只扫**空槽**，且只用确定性适配器（不引入第二语义读者）。 */
 function fromAdapterSweep(input: IntakeInput): IntakeProposal[] {
   const corpus = input.candidateTexts.join('\n');
   if (!corpus.trim()) return [];
@@ -318,66 +266,12 @@ function fromAdapterSweep(input: IntakeInput): IntakeProposal[] {
   return proposals;
 }
 
-/** 我方消息带求证语境的标记（在问、在核对，而不只是在播报）。 */
-const CONFIRMATION_MARKER_RE = /对吧|对吗|对么|对不对|是吗|是么|是吧|核对|确认|[吗么？?]/u;
-
-/**
- * 确认作证恢复：我方**求证**消息里出现过该值 → 紧随其后的第一条候选人消息是肯定应答。
- *
- * 与 `identity-gates.isPhoneConfirmedInDialogue` 同一判据形态（三条同时满足，宁漏不错）：
- * 值出现在我方消息 + 该消息带求证标记 + **紧随其后**的第一条候选人消息是肯定应答。
- * 只认紧随其后的第一条，避免远处无关的"嗯/对"被错误归因到这次求证。
- *
- * ⚠️ 肯定词表**只用现有的那一份**（`@resolution/signal/dialogue` 唯一居所），
- * 永远不在这里扩词：想让某个说法进确定性档，改的是那份词表（那里有收词纪律），
- * 不是这里。§11 红线仍在：口语长尾一律流二档由主聊模型作证。
- */
-function recoverByConfirmation(
-  value: string,
-  messages: readonly unknown[],
-): { question: string; answer: string } | null {
-  const target = value.trim();
-  if (!target) return null;
-  const turns = extractDialogueTurns(messages);
-  for (let i = 0; i < turns.length; i += 1) {
-    if (turns[i].role !== 'assistant') continue;
-    const question = turns[i].text;
-    if (!question.includes(target)) continue;
-    // 求证语境是硬判据（与 isPhoneConfirmedInDialogue 同口径）：我方只是**播报**了
-    // 这个值（岗位卡、话术里顺带提到），候选人一句"好的"不构成对它的确认。
-    // 0820 词表收了「好的/没问题」之后这条尤其要紧——没有它，一次泛泛的"好的"
-    // 就能把我方说过的任何值洗成候选人亲证。
-    if (!CONFIRMATION_MARKER_RE.test(question)) continue;
-    for (let j = i + 1; j < turns.length; j += 1) {
-      if (turns[j].role !== 'user') continue;
-      const answer = turns[j].text;
-      if (isAffirmativeAnswer(normalizeShortAnswer(answer))) return { question, answer };
-      break;
-    }
-  }
-  return null;
-}
-
 function normalizeTitle(title: string): string {
   return title.normalize('NFKC').replace(/\s+/gu, '').trim();
 }
 
 function stripParenthetical(title: string): string {
   return normalizeTitle(title.replace(/[（(][^）)]*[）)]/gu, ''));
-}
-
-/** 裸值与回查值的宽松等价：折全半角/空白/单位后比较，或一方包含另一方。 */
-function valuesLooselyEqual(left: string, right: string): boolean {
-  const fold = (text: string): string =>
-    text
-      .normalize('NFKC')
-      .replace(/\s+/gu, '')
-      .replace(/(?:岁|cm|厘米|kg|公斤|千克|省|市)$/u, '')
-      .toLowerCase();
-  const a = fold(left);
-  const b = fold(right);
-  if (!a || !b) return false;
-  return a === b || a.includes(b) || b.includes(a);
 }
 
 /** 一条可用于预填的档案值（调用方已按 producer 白名单过滤）。 */

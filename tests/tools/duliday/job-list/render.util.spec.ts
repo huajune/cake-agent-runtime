@@ -535,11 +535,6 @@ function makePolicy(input: {
   return {
     interviewWindows: [],
     fieldGuidance: {
-      screeningFields: [],
-      bookingSubmissionFields: [],
-      bookingSubmissionSource: 'api_submission_contract',
-      deferredSubmissionFields: [],
-      recommendedAskNowFields: [],
       fieldSignals: input.fieldSignalEvidence
         ? [
             {

@@ -27,7 +27,6 @@ import {
   type IntakeClaim,
 } from './proposal-intake';
 import { renderCollectionTemplate, type CollectionTemplate } from './collection-template.renderer';
-import type { CandidateClaimField } from '@resolution/evidence/claim.types';
 
 /** 收资维度的 nextAction 取值——与既有 Agent 契约同名，语义不变。 */
 export type CollectionAction =
@@ -68,8 +67,7 @@ export interface CollectionCoreInput {
   candidateTexts: readonly string[];
   messages: readonly unknown[];
   claims?: readonly IntakeClaim[];
-  legacyArgs?: Partial<Record<CandidateClaimField, string>>;
-  supplementAnswers?: Record<string, string> | null;
+  formAnswers?: Record<string, string> | null;
   /** 本轮是否要向候选人发问（发问才计熔断次数；只读探查不计）。 */
   askThisTurn?: boolean;
   /**
@@ -115,8 +113,7 @@ export function runCollectionCore(input: CollectionCoreInput): CollectionCoreRes
     candidateTexts: input.candidateTexts,
     messages: input.messages,
     claims: input.claims,
-    legacyArgs: input.legacyArgs,
-    supplementAnswers: input.supplementAnswers,
+    formAnswers: input.formAnswers,
     filledLabelIds,
   });
 

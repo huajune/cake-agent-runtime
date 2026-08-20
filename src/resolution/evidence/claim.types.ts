@@ -237,6 +237,12 @@ export const CandidateClaimInputSchema = z.object({
     .min(1)
     .max(200)
     .describe('候选人原话逐字片段——必须能在候选人消息里原样找到，否则该声明无效'),
+  agentQuestionQuote: z
+    .string()
+    .min(1)
+    .max(300)
+    .optional()
+    .describe('operation=confirm 时绑定的 Agent 求证问句逐字片段；值本体必须出现在该问句中'),
   reasoning: z.string().max(300).optional().describe('该值如何从原话得出（归一化/纠错说明）'),
 });
 

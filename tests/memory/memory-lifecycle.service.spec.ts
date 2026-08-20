@@ -235,6 +235,47 @@ describe('MemoryLifecycleService', () => {
 
       expect(ctx.longTerm.origin).toBeUndefined();
     });
+
+    it('有 bot 上下文时只召回同账号血缘事实，存量无血缘也 fail-closed', async () => {
+      mockLongTerm.getProfile.mockResolvedValue({
+        name: {
+          value: '兮兮',
+          confidence: 'high',
+          source: 'system',
+          evidence: 'booking A',
+          updatedAt: '2026-08-20T10:00:00.000Z',
+          originSessionId: 'session-A',
+          originBotId: 'bot-A',
+        },
+        phone: {
+          value: '18271421690',
+          confidence: 'high',
+          source: 'system',
+          evidence: 'booking B',
+          updatedAt: '2026-08-20T10:00:00.000Z',
+          originSessionId: 'session-B',
+          originBotId: 'bot-B',
+        },
+        age: {
+          value: '25',
+          confidence: 'high',
+          source: 'system',
+          evidence: 'legacy without bot lineage',
+          updatedAt: '2026-08-20T10:00:00.000Z',
+        },
+      });
+
+      const ctx = await service.onTurnStart('corp-1', 'user-1', 'session-B', '继续', {
+        enrichmentIdentity: { imBotId: 'bot-B' },
+      });
+
+      expect(ctx.longTerm.profile?.name).toBeNull();
+      expect(ctx.longTerm.profile?.age).toBeNull();
+      expect(ctx.longTerm.profile?.phone).toEqual(
+        expect.objectContaining({ value: '18271421690', originBotId: 'bot-B' }),
+      );
+      expect(mockLongTerm.getSummaryData).toHaveBeenCalledWith('corp-1', 'user-1', 'bot-B');
+    });
   });
 
   it('should forward short-term cutoff on turn start', async () => {

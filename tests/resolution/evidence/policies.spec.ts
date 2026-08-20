@@ -1,10 +1,4 @@
-import {
-  CANDIDATE_FIELD_RISK,
-  EXPLICIT_EXTRACTION_UPGRADE_FIELDS,
-  extractionQuoteSupportsCurrentValue,
-  IDENTITY_FIRST_WRITE_FIELDS,
-  MIN_QUOTE_CONTEXT_CHARS,
-} from '@resolution/evidence/policies';
+import { CANDIDATE_FIELD_RISK, MIN_QUOTE_CONTEXT_CHARS } from '@resolution/evidence/policies';
 import {
   detectAgentEcho,
   notarizeCandidateClaim,
@@ -53,38 +47,6 @@ describe('字段风险分级与短引文门参数', () => {
     // 自解释 token 裸答合法：抬高会把「性别？」→「男」这类正常应答判死。
     expect(MIN_QUOTE_CONTEXT_CHARS.gender).toBe(0);
     expect(MIN_QUOTE_CONTEXT_CHARS.age).toBe(0);
-  });
-});
-
-describe('session 首写出处策略归位', () => {
-  it('身份首写与显式升级字段由 evidence 策略表唯一声明', () => {
-    expect([...IDENTITY_FIRST_WRITE_FIELDS]).toEqual([
-      'age',
-      'gender',
-      'education',
-      'height',
-      'weight',
-      'experience',
-    ]);
-    expect(EXPLICIT_EXTRACTION_UPGRADE_FIELDS.has('phone')).toBe(true);
-    expect(EXPLICIT_EXTRACTION_UPGRADE_FIELDS.has('applied_store')).toBe(false);
-  });
-
-  it('首写字段走确定性复算，合成 experience 走 token 覆盖', () => {
-    expect(extractionQuoteSupportsCurrentValue('age', '我今年21', '21')).toBe(true);
-    expect(extractionQuoteSupportsCurrentValue('age', '想找晚班', '21')).toBe(false);
-    expect(
-      extractionQuoteSupportsCurrentValue('experience', '肯德基后厨做了一年', '肯德基后厨1年'),
-    ).toBe(true);
-    expect(
-      extractionQuoteSupportsCurrentValue('experience', '肯德基后厨做了一年', '星巴克咖啡师3年'),
-    ).toBe(false);
-  });
-
-  it('非首写升级字段保留既有单向包含兜底', () => {
-    expect(extractionQuoteSupportsCurrentValue('has_health_certificate', '健康证：有', '有')).toBe(
-      true,
-    );
   });
 });
 

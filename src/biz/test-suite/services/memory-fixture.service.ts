@@ -58,14 +58,14 @@ export class MemoryFixtureService {
       // 夹具值经 toSessionFacts 显式带上置信度签名后再落档（P4 无守卫路径关闭，
       // 记忆审计 S9）：此前夹具直接把裸 EntityExtractionResult 交给 saveFacts，
       // 靠 schema 的裸值兼容信封悄悄折成 unknown/archive——那条信封已随本批删除。
-      // 签名沿用原效果（unknown/archive，行为零变更），只是把 evidence 写成实话：
+      // 夹具属于软事实回放，统一以 medium/archive 签名：
       // 夹具不是"旧数据兼容迁移"，它是测试用例回放的档案。
       await this.sessionService.saveFacts(
         scope.corpId,
         scope.userId,
         scope.sessionId,
         toSessionFacts(extraction, {
-          confidence: 'unknown',
+          confidence: 'medium',
           source: 'archive',
           evidence: FIXTURE_FACT_EVIDENCE,
         }),
@@ -147,7 +147,7 @@ export class MemoryFixtureService {
     }
 
     if (setup.profile) {
-      await this.memoryService.saveProfile(
+      await this.longTermService.seedProfileFixture(
         scope.corpId,
         scope.userId,
         setup.profile as Partial<UserProfile>,
@@ -252,13 +252,6 @@ export class MemoryFixtureService {
         phone: this.readStringFromKeys(raw, ['phone', 'mobile', 'contactPhone']),
         gender: this.readString(raw, 'gender'),
         age: this.readString(raw, 'age'),
-        applied_store: this.readStringFromKeys(raw, ['applied_store', 'appliedStore', 'storeName']),
-        applied_position: this.readStringFromKeys(raw, [
-          'applied_position',
-          'appliedPosition',
-          'positionName',
-        ]),
-        interview_time: this.readStringFromKeys(raw, ['interview_time', 'interviewTime']),
         is_student: this.readBooleanFromKeys(raw, ['is_student', 'isStudent']),
         education: this.readString(raw, 'education'),
         has_health_certificate: this.readStringFromKeys(raw, [

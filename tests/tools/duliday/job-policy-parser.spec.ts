@@ -43,7 +43,9 @@ describe('job-policy-parser', () => {
     } as never);
 
     expect(analysis.normalizedRequirements.healthCertGate).toBe('unknown');
-    expect(analysis.fieldGuidance.screeningFields).not.toContain('健康证情况');
+    expect(analysis.fieldGuidance.fieldSignals.map((signal) => signal.field)).not.toContain(
+      '健康证情况',
+    );
   });
 
   it('allows an explicit no-health-certificate exception', () => {
@@ -54,7 +56,9 @@ describe('job-policy-parser', () => {
     } as never);
 
     expect(analysis.normalizedRequirements.healthCertGate).toBe('not_required');
-    expect(analysis.fieldGuidance.screeningFields).not.toContain('健康证情况');
+    expect(analysis.fieldGuidance.fieldSignals.map((signal) => signal.field)).not.toContain(
+      '健康证情况',
+    );
   });
 
   it.each(['面试前需食品健康证', '面试时携带健康证原件', '健康证原件面试时必须出示'])(
@@ -217,7 +221,7 @@ describe('job-policy-parser', () => {
       },
     });
 
-    expect(guidance.screeningFields).toEqual(
+    expect(guidance.fieldSignals.map((signal) => signal.field)).toEqual(
       expect.arrayContaining([
         '年龄',
         '性别',
@@ -230,10 +234,6 @@ describe('job-policy-parser', () => {
         '过往公司+岗位+年限',
         '是否学生',
       ]),
-    );
-    expect(guidance.bookingSubmissionFields).toContain('面试时间');
-    expect(guidance.recommendedAskNowFields).toEqual(
-      expect.arrayContaining(['姓名', '联系电话', '面试时间']),
     );
     expect(guidance.fieldSignals).toEqual(
       expect.arrayContaining([
@@ -270,8 +270,9 @@ describe('job-policy-parser', () => {
       },
     });
 
-    expect(guidance.screeningFields).toEqual(expect.arrayContaining(['年龄', '健康证情况']));
-    expect(guidance.screeningFields).not.toContain('过往公司+岗位+年限');
+    const fields = guidance.fieldSignals.map((signal) => signal.field);
+    expect(fields).toEqual(expect.arrayContaining(['年龄', '健康证情况']));
+    expect(fields).not.toContain('过往公司+岗位+年限');
     expect(guidance.fieldSignals).not.toEqual(
       expect.arrayContaining([
         expect.objectContaining({

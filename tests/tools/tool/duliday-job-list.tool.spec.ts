@@ -4,7 +4,6 @@ import { TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 import type { TurnLedger } from '@shared-types/turn.types';
 import { createToolContext, mergeToolContext } from '../../helpers/tool-context.fixture';
 import { testRuleFact, testRuleFacts } from '../../helpers/rule-fact-claims.fixture';
-import { COLLECTION_FLOW_DEDUP_6A75AAB3 } from '../../biz/test-suite/fixtures/collection-flow-dedup.curated';
 
 type JobListTestContext = ToolBuildContext & {
   turnId?: string;
@@ -196,43 +195,6 @@ describe('buildJobListTool', () => {
     expect(builtTool.description).toContain('记忆只用于定位 jobId，禁止直接据记忆回答');
     expect(builtTool.description).toContain('岗位详情缺字段必须按 jobId 补查');
     expect(builtTool.description).toContain('综合薪资的“元/月”');
-  });
-
-  it('should answer a post-form job-detail follow-up and expose only a missing-field reminder', async () => {
-    mockSpongeService.fetchJobs.mockResolvedValue({
-      jobs: [
-        makeJobData({
-          welfare: { mealInfo: '提供员工餐' },
-          workTime: { workDuration: '8小时，休息1小时' },
-        }),
-      ],
-      total: 1,
-    });
-    const context: JobListTestContext = {
-      ...mockContext,
-      messages: [
-        ...COLLECTION_FLOW_DEDUP_6A75AAB3.history,
-        { role: 'user', content: COLLECTION_FLOW_DEDUP_6A75AAB3.userMessage },
-      ],
-      currentUserMessage: COLLECTION_FLOW_DEDUP_6A75AAB3.userMessage,
-    };
-
-    const result = await executeTool(context, {
-      ...defaultInput,
-      jobIdList: [1],
-      includeWelfare: true,
-      includeWorkTime: true,
-    });
-
-    expect(result.collectionFollowup).toEqual(
-      expect.objectContaining({
-        mode: 'missing_only',
-        missingFields: ['姓名', '联系电话', '学历', '健康证情况', '学信网学籍状态'],
-      }),
-    );
-    expect(result._replyInstruction).toContain('先按本轮岗位结果回答问题');
-    expect(result._replyInstruction).toContain('禁止逐字或改写重发整张资料表');
-    expect(result.markdown).toContain('答完只能简短催缺口');
   });
 
   it('writes formal and supplemental settlement facts into compact job memory', async () => {

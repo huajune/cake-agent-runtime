@@ -89,7 +89,7 @@ describe('BookingCardRenderer', () => {
       toolOutput: {
         success: false,
         error: '名额已满',
-        errorList: ['门店无可约时间', { code: 'CAPACITY_FULL' }],
+        applyErrorList: ['门店无可约时间', { code: 'CAPACITY_FULL' }],
         notice: '请人工跟进',
         traceId: 'trace-xyz-789',
       },

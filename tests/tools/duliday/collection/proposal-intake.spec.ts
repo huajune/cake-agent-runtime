@@ -1,10 +1,9 @@
+import { createForm, proposeValue, type ContractFieldDef } from '@resolution/collection';
 import {
   collectProposals,
   findFieldByTitle,
   findFieldForClaim,
 } from '@tools/duliday/collection/proposal-intake';
-import { proposeValue, type ContractFieldDef } from '@resolution/collection';
-import { createForm } from '@resolution/collection';
 
 const NAME: ContractFieldDef = {
   labelId: 769,
@@ -35,7 +34,7 @@ const HEALTH: ContractFieldDef = {
   ],
   rejectedOptions: [],
 };
-const STUDENT_DIRTY: ContractFieldDef = {
+const STUDENT: ContractFieldDef = {
   labelId: 605,
   labelTitle: '是否学生（不要学生及暑假工）',
   fieldType: 'SINGLE_OPTION',
@@ -43,8 +42,7 @@ const STUDENT_DIRTY: ContractFieldDef = {
   acceptedOptions: [{ optionCode: 's2', optionLabel: '社会人士' }],
   rejectedOptions: [{ optionCode: 's1', optionLabel: '学生' }],
 };
-
-const CONTRACT = [NAME, AGE, HEALTH, STUDENT_DIRTY];
+const CONTRACT = [NAME, AGE, HEALTH, STUDENT];
 
 function base(overrides: Partial<Parameters<typeof collectProposals>[0]> = {}) {
   return {
@@ -56,35 +54,22 @@ function base(overrides: Partial<Parameters<typeof collectProposals>[0]> = {}) {
   };
 }
 
-describe('字段定位', () => {
-  it('身份四槽走 systemField，其余按标题语义族', () => {
+describe('proposal intake（表单终态运输）', () => {
+  it('身份字段只按 systemField 映射，契约没带就不臆造槽位', () => {
     expect(findFieldForClaim(CONTRACT, 'name')?.labelId).toBe(769);
-    expect(findFieldForClaim(CONTRACT, 'age')?.labelId).toBe(687);
-    expect(findFieldForClaim(CONTRACT, 'healthCertificate')?.labelId).toBe(13);
     expect(findFieldForClaim(CONTRACT, 'phone')).toBeNull();
   });
 
-  it('补充标签按标题定位，脏标题剥括号后仍能对上', () => {
-    expect(findFieldByTitle(CONTRACT, '有无本地健康证')?.labelId).toBe(13);
+  it('动态字段按实时标题映射，括号主干撞车时不猜', () => {
     expect(findFieldByTitle(CONTRACT, '是否学生')?.labelId).toBe(605);
-    expect(findFieldByTitle(CONTRACT, '不存在的标签')).toBeNull();
-  });
-
-  it('主干撞车时不猜——定位错比定位不到危险得多', () => {
-    // 生产实测的两对撞车主干：体重 → {20,50}、专业 → {544,659}。
-    // 当前同岗位内撞车数为 0，但那是数据碰巧安全；配到一起就必须放弃匹配。
-    const collided: ContractFieldDef[] = [
-      { ...STUDENT_DIRTY, labelId: 20, labelTitle: '体重（净重）' },
-      { ...STUDENT_DIRTY, labelId: 50, labelTitle: '体重（kg）' },
+    const collided = [
+      { ...STUDENT, labelId: 20, labelTitle: '体重（净重）' },
+      { ...STUDENT, labelId: 50, labelTitle: '体重（kg）' },
     ];
     expect(findFieldByTitle(collided, '体重')).toBeNull();
-    // 全等仍然命中——歧义只发生在剥括号那一级。
-    expect(findFieldByTitle(collided, '体重（kg）')?.labelId).toBe(50);
   });
-});
 
-describe('通道 1 · 主聊模型 claims（主通道）', () => {
-  it('quote 直接作 sourceText，operation=correct 折成显式改口', () => {
+  it('candidateClaims 直接携带逐字 quote，correct 标为本人改口', () => {
     const proposals = collectProposals(
       base({
         claims: [
@@ -95,131 +80,87 @@ describe('通道 1 · 主聊模型 claims（主通道）', () => {
       }),
     );
     expect(proposals).toHaveLength(2);
-    expect(proposals[0]).toMatchObject({ labelId: 769, sourceText: '我叫兮兮', channel: 'claim' });
-    expect(proposals[1].restatement).toBe(true);
+    expect(proposals[0]).toMatchObject({ labelId: 769, channel: 'claim' });
+    expect(proposals[1]).toMatchObject({ labelId: 687, restatement: true });
   });
 
-  it('clear 操作与空值不产提案', () => {
-    const proposals = collectProposals(
+  it('clear 与空值不生成写入提案', () => {
+    expect(
+      collectProposals(
+        base({
+          claims: [
+            { field: 'name', value: null, quote: '别用之前的名字', operation: 'clear' },
+            { field: 'age', value: ' ', quote: '年龄先不填' },
+          ],
+        }),
+      ),
+    ).toEqual([]);
+  });
+
+  it('选项 claim 经契约适配器生成 optionCodes', () => {
+    const [proposal] = collectProposals(
       base({
         claims: [
-          { field: 'name', value: null, operation: 'clear', quote: 'x' },
-          { field: 'age', value: '  ', quote: 'y' },
+          { field: 'healthCertificate', value: '有本地有效健康证', quote: '我有本地有效健康证' },
         ],
+        candidateTexts: ['我有本地有效健康证'],
       }),
     );
-    expect(proposals).toHaveLength(0);
+    expect(proposal).toMatchObject({ labelId: 13, optionCodes: ['1'], channel: 'claim' });
   });
 
-  it('该岗不收的字段不产提案（契约没这项就是没这项）', () => {
-    const proposals = collectProposals(
-      base({ claims: [{ field: 'phone', value: '18271421690', quote: '我电话18271421690' }] }),
-    );
-    expect(proposals).toHaveLength(0);
-  });
-});
-
-describe('通道 2 · 九个裸字段（出处回查）', () => {
-  it('裸值能在本轮语料里回查到出处 → 带真实原话片段提案', () => {
-    const text = '我今年26岁';
-    const proposals = collectProposals(
-      base({ legacyArgs: { age: '26' }, candidateTexts: [text], messages: [] }),
-    );
-    expect(proposals).toHaveLength(1);
-    expect(proposals[0]).toMatchObject({ labelId: 687, value: '26', channel: 'legacy_arg' });
-    expect(text).toContain(proposals[0].sourceText);
-  });
-
-  it('裸值回查不到 → 不提案（模型臆造落不了地）', () => {
-    const proposals = collectProposals(
-      base({ legacyArgs: { age: '35' }, candidateTexts: ['你好还招人吗'] }),
-    );
-    expect(proposals).toHaveLength(0);
-  });
-
-  it('裸值与回查值对不上 → 裸值丢弃，安全网捞回候选人真说的那个值', () => {
-    // 模型传 45（把岗位要求当自陈了），候选人原话是 26。
-    // 裸字段通道因回查不等价而不提案；轮末扫描按原话提出 26——错值落不了地，真值不丢。
-    const proposals = collectProposals(
-      base({ legacyArgs: { age: '45' }, candidateTexts: ['我今年26岁'] }),
-    );
-    expect(proposals).toHaveLength(1);
-    expect(proposals[0]).toMatchObject({ labelId: 687, value: '26', channel: 'adapter_sweep' });
-  });
-
-  it('带单位的宽松等价（"26" ←→ "26岁"）照常命中', () => {
-    const proposals = collectProposals(
-      base({ legacyArgs: { age: '26岁' }, candidateTexts: ['我今年26岁'] }),
-    );
-    expect(proposals).toHaveLength(1);
-  });
-});
-
-describe('通道 3 · 补充标签答案', () => {
-  it('按标题定位并经适配器归一到 optionCode', () => {
+  it('formAnswers 为动态字段生成 labelId + optionCodes，不再走 supplement family', () => {
     const proposals = collectProposals(
       base({
-        supplementAnswers: { 有无本地健康证: '有本地有效健康证' },
-        candidateTexts: ['有本地有效健康证'],
+        formAnswers: {
+          有无本地健康证: '有本地有效健康证',
+          是否学生: '社会人士',
+        },
+        candidateTexts: ['我有本地有效健康证，身份是社会人士'],
       }),
     );
-    expect(proposals).toHaveLength(1);
-    expect(proposals[0]).toMatchObject({ labelId: 13, channel: 'supplement_answer' });
-    expect(proposals[0].optionCodes).toEqual(['1']);
-  });
-
-  it('0819 病根回归：补充标签在运输里有座位', () => {
-    const proposals = collectProposals(
-      base({ supplementAnswers: { 是否学生: '社会人士' }, candidateTexts: ['社会人士'] }),
+    expect(proposals).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ labelId: 13, optionCodes: ['1'], channel: 'form_answer' }),
+        expect.objectContaining({ labelId: 605, optionCodes: ['s2'], channel: 'form_answer' }),
+      ]),
     );
-    expect(proposals.map((p) => p.labelId)).toContain(605);
   });
-});
 
-describe('通道 4 · 适配器轮末扫描（安全网）', () => {
-  it('只扫空槽，已 filled 的不碰', () => {
-    const proposals = collectProposals(
-      base({ candidateTexts: ['我今年26岁'], filledLabelIds: new Set([687]) }),
+  it('候选人逐行回填表单时只把冒号右侧交给适配器', () => {
+    const [proposal] = collectProposals(
+      base({ candidateTexts: ['是否学生（不要学生及暑假工）：社会人士'] }),
     );
-    expect(proposals.map((p) => p.labelId)).not.toContain(687);
+    expect(proposal).toMatchObject({
+      labelId: 605,
+      value: '社会人士',
+      optionCodes: ['s2'],
+      channel: 'form_line',
+    });
   });
 
-  it('主模型漏作证时兜底补上', () => {
+  it('主模型漏作证时确定性扫描只补 empty 槽', () => {
     const proposals = collectProposals(base({ candidateTexts: ['我今年26岁'] }));
-    expect(proposals).toHaveLength(1);
-    expect(proposals[0]).toMatchObject({ labelId: 687, channel: 'adapter_sweep' });
+    expect(proposals).toEqual([
+      expect.objectContaining({ labelId: 687, value: '26', channel: 'adapter_sweep' }),
+    ]);
+    expect(
+      collectProposals(base({ candidateTexts: ['我今年26岁'], filledLabelIds: new Set([687]) })),
+    ).toEqual([]);
   });
-});
 
-describe('通道去重：主通道胜出', () => {
-  it('同槽被 claim 与扫描同时命中 → 取 claim（主模型证词优先）', () => {
+  it('同槽多通道命中时 claims 胜出', () => {
     const proposals = collectProposals(
       base({
         claims: [{ field: 'age', value: '26', quote: '我今年26岁' }],
-        legacyArgs: { age: '26' },
         candidateTexts: ['我今年26岁'],
       }),
     );
     expect(proposals).toHaveLength(1);
     expect(proposals[0].channel).toBe('claim');
   });
-});
 
-describe('全通道产物一律过公证', () => {
-  it('回查出处的裸字段提案能过公证入账', () => {
-    const text = '我今年26岁';
-    const [proposal] = collectProposals(
-      base({
-        legacyArgs: { age: '26' },
-        candidateTexts: [text],
-        messages: [{ role: 'user', content: text }],
-      }),
-    );
-    const result = proposeValue(createForm({ jobId: 1, contract: CONTRACT }), AGE, proposal);
-    expect(result.outcome).toBe('accepted');
-  });
-
-  it('无出处的 claim 照样被公证拒（运输不豁免公证）', () => {
+  it('运输通道不豁免公证：quote 不在候选人原文时拒收', () => {
     const [proposal] = collectProposals(
       base({
         claims: [{ field: 'age', value: '35', quote: '我35岁' }],
@@ -230,92 +171,24 @@ describe('全通道产物一律过公证', () => {
     const result = proposeValue(createForm({ jobId: 1, contract: CONTRACT }), AGE, proposal);
     expect(result.outcome).toBe('rejected');
   });
-});
 
-describe('R1 确认作证恢复（裸字段通道）', () => {
-  const messages = [
-    { role: 'user', content: '姓名：兮兮' },
-    { role: 'assistant', content: '核对一下：姓名 兮兮，年龄 25，对吗？' },
-    { role: 'user', content: '对' },
-  ];
-
-  it('值只在我方复述里、候选人回"对" → 带问句作证提案', () => {
-    const proposals = collectProposals(
+  it('确认式 claim 显式携带 agentQuestionQuote', () => {
+    const [proposal] = collectProposals(
       base({
-        legacyArgs: { age: '25' },
-        candidateTexts: ['姓名：兮兮', '对'],
-        messages,
-      }),
-    );
-    const age = proposals.find((p) => p.labelId === 687);
-    expect(age).toBeDefined();
-    expect(age?.sourceText).toBe('对');
-    expect(age?.agentQuestionQuote).toContain('年龄 25');
-  });
-
-  it('候选人没肯定应答就不恢复（宁漏不错）', () => {
-    const proposals = collectProposals(
-      base({
-        legacyArgs: { age: '25' },
-        candidateTexts: ['姓名：兮兮', '等一下'],
-        messages: [...messages.slice(0, 2), { role: 'user', content: '等一下' }],
-      }),
-    );
-    expect(proposals.find((p) => p.labelId === 687)).toBeUndefined();
-  });
-
-  it('0820 收进词表的三个教科书短答照常作证（确定/好的/没问题）', () => {
-    // 生产 0819 死循环语料里候选人回的正是「确定」，而词表当时只有「确认」，
-    // 一字之差让 85% 走裸字段的调用在复述确认这一步整个退化。
-    for (const answer of ['确定', '好的', '没问题']) {
-      const proposals = collectProposals(
-        base({
-          legacyArgs: { age: '25' },
-          candidateTexts: ['姓名：兮兮', answer],
-          messages: [...messages.slice(0, 2), { role: 'user', content: answer }],
-        }),
-      );
-      expect(proposals.find((p) => p.labelId === 687)?.sourceText).toBe(answer);
-    }
-  });
-
-  it('真正的口语长尾仍不进确定性档（§11：归模型作证）', () => {
-    // 这些要理解语境才知道在肯定什么，不是教科书短答——词表不收，交主聊模型发 claim。
-    for (const answer of ['行吧我看看', '应该可以', '刚拿到手']) {
-      const proposals = collectProposals(
-        base({
-          legacyArgs: { age: '25' },
-          candidateTexts: ['姓名：兮兮', answer],
-          messages: [...messages.slice(0, 2), { role: 'user', content: answer }],
-        }),
-      );
-      expect(proposals.find((p) => p.labelId === 687)).toBeUndefined();
-    }
-  });
-
-  it('我方只是**播报**过这个值时，一句"好的"不构成确认（求证语境是硬判据）', () => {
-    // 词表收了「好的」之后这条尤其要紧：没有求证语境判据，一次泛泛的"好的"
-    // 就能把我方说过的任何值洗成候选人亲证。
-    const proposals = collectProposals(
-      base({
-        legacyArgs: { age: '25' },
-        candidateTexts: ['姓名：兮兮', '好的'],
-        messages: [
-          { role: 'user', content: '姓名：兮兮' },
-          // 播报，不是求证：没有 对吧/吗/核对 这类标记。
-          { role: 'assistant', content: '这个岗位年龄 25 起，我先帮你查查附近的' },
-          { role: 'user', content: '好的' },
+        claims: [
+          {
+            field: 'age',
+            value: '25',
+            quote: '对',
+            operation: 'confirm',
+            agentQuestionQuote: '年龄是25，对吗？',
+          },
         ],
+        candidateTexts: ['对'],
       }),
     );
-    expect(proposals.find((p) => p.labelId === 687)).toBeUndefined();
-  });
-
-  it('原文里查得到就走回查，不用确认恢复（回查优先）', () => {
-    const proposals = collectProposals(
-      base({ legacyArgs: { age: '26' }, candidateTexts: ['我今年26岁'], messages: [] }),
-    );
-    expect(proposals[0].channel).toBe('legacy_arg');
-    expect(proposals[0].agentQuestionQuote).toBeUndefined();
+    expect(proposal.agentQuestionQuote).toBe('年龄是25，对吗？');
+    const result = proposeValue(createForm({ jobId: 1, contract: CONTRACT }), AGE, proposal);
+    expect(result.outcome).toBe('accepted');
   });
 });

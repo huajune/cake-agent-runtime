@@ -1,7 +1,6 @@
 import { formatLocalDate } from '@infra/utils/date.util';
 import { asArray, asRecord, type UnknownRecord } from '@infra/utils/object.util';
 import { JobDetail } from '@sponge/sponge.types';
-import { API_BOOKING_SUBMISSION_FIELDS } from '@tools/duliday/booking/job-booking.contract';
 
 export interface InterviewWindow {
   weekday?: string;
@@ -20,8 +19,7 @@ export type PolicySourceField =
   | 'certificate'
   | 'hiring_remark'
   | 'figure'
-  | 'interview_supplement'
-  | 'api_submission_contract';
+  | 'interview_supplement';
 
 export interface PolicyFieldSignal {
   field: string;
@@ -31,11 +29,6 @@ export interface PolicyFieldSignal {
 }
 
 export interface FieldGuidance {
-  screeningFields: string[];
-  bookingSubmissionFields: string[];
-  bookingSubmissionSource: 'api_submission_contract';
-  deferredSubmissionFields: string[];
-  recommendedAskNowFields: string[];
   fieldSignals: PolicyFieldSignal[];
 }
 
@@ -491,22 +484,7 @@ function buildFieldSignals(job: JobDetail): PolicyFieldSignal[] {
 
 export function buildFieldGuidance(job: JobDetail): FieldGuidance {
   const fieldSignals = buildFieldSignals(job);
-  const screeningFields = dedupeStrings(fieldSignals.map((signal) => signal.field));
-  const bookingSubmissionFields = [...API_BOOKING_SUBMISSION_FIELDS];
-  const deferredSubmissionFields = bookingSubmissionFields.filter(
-    (field) =>
-      !screeningFields.includes(field) &&
-      !['姓名', '联系电话', '性别', '年龄', '面试时间'].includes(field),
-  );
-
-  return {
-    screeningFields,
-    bookingSubmissionFields,
-    bookingSubmissionSource: 'api_submission_contract',
-    deferredSubmissionFields,
-    recommendedAskNowFields: dedupeStrings([...screeningFields, '姓名', '联系电话', '面试时间']),
-    fieldSignals,
-  };
+  return { fieldSignals };
 }
 
 function extractInterviewTimeHint(job: JobDetail): string | null {

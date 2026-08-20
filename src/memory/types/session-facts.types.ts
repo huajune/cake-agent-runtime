@@ -21,9 +21,6 @@ export const InterviewInfoSchema = z.object({
     .optional()
     .describe('性别来源：candidate=候选人自陈，system=企微系统兜底标签'),
   age: z.string().nullable().describe('年龄'),
-  applied_store: z.string().nullable().describe('应聘门店'),
-  applied_position: z.string().nullable().describe('应聘岗位'),
-  interview_time: z.string().nullable().describe('面试时间'),
   is_student: z.boolean().nullable().describe('是否学生'),
   education: z.string().nullable().describe('学历'),
   has_health_certificate: z.string().nullable().describe('健康证'),
@@ -55,7 +52,10 @@ export const CityFactEvidenceSchema = z.enum([
 
 export const CityFactSchema = z.object({
   value: z.string(),
-  confidence: z.enum(['high', 'medium', 'low']),
+  confidence: z.preprocess(
+    (value) => (value === 'low' || value === 'unknown' ? 'medium' : value),
+    z.enum(['high', 'medium']),
+  ),
   evidence: CityFactEvidenceSchema,
 });
 
@@ -256,22 +256,6 @@ export const EntityExtractionResultSchema = z.object({
     ),
 });
 
-/** LLM 声明的字段级依据摘录：直接陈述可升档，白名单推断只提供证据。 */
-export const ExplicitProvenanceEntrySchema = z.object({
-  field: z
-    .string()
-    .describe('interview_info 下的字段名，如 "phone"、"age"、"has_health_certificate"'),
-  quote: z
-    .string()
-    .describe('候选人原话中的逐字片段（必须能在候选人消息里原样找到，否则该声明无效）'),
-  basis: z
-    .enum(['stated', 'inferred'])
-    .default('stated')
-    .describe('stated=候选人直接陈述；inferred=仅按提示词白名单推断（只作证据，不升档）'),
-});
-
-export type ExplicitProvenanceEntry = z.infer<typeof ExplicitProvenanceEntrySchema>;
-
 /**
  * LLM 极性轨输出（§6.3.1）：品牌意图极性 + 指代链接结果。
  * brand 为 null 表示品牌为空的表达（"换个品牌"类 negative / "品牌不限"类 browse_all）。
@@ -310,20 +294,9 @@ export const LaborFormIntentExtractionSchema = z.object({
 
 export type LaborFormIntentExtraction = z.infer<typeof LaborFormIntentExtractionSchema>;
 
-/** LLM 结构化输出 schema — city 字段为字符串 */
+/** LLM 结构化输出只允许表单外软事实；身份字段由收资表单办结写入。 */
 export const LLMEntityExtractionResultSchema = z.object({
-  interview_info: InterviewInfoSchema,
   preferences: LLMPreferencesSchema,
-  explicit_provenance: z
-    .array(ExplicitProvenanceEntrySchema)
-    .nullable()
-    .optional()
-    .describe(
-      'interview_info 字段的依据摘录清单：凡候选人原话直接支持或可按白名单推断的字段都应列入；' +
-        'quote 必须是候选人消息中的逐字连续片段，禁止改写、翻译、概括或拼接；' +
-        'basis=stated 表示直接陈述，basis=inferred 表示白名单推断；' +
-        '助手提及后候选人仅附和、或转发文案中的字段一律不列，解释只写 reasoning',
-    ),
   brand_intents: z
     .array(BrandIntentEntrySchema)
     .nullable()
@@ -371,9 +344,6 @@ export const INTERVIEW_INFO_FIELD_KEYS = [
   'gender',
   'gender_source',
   'age',
-  'applied_store',
-  'applied_position',
-  'interview_time',
   'is_student',
   'education',
   'has_health_certificate',
@@ -407,7 +377,10 @@ export type PreferenceFieldKey = (typeof PREFERENCE_FIELD_KEYS)[number];
 // 降序元组来自 confidence-rank（唯一权威），顺序沿用历史 high-first。
 // 2026-08-11 起 explicit_provenance 的逐字摘录契约已收紧，发给抽取模型的 JSON schema
 // 不再承诺跨版本逐字节不变；test-suite 旧批抽取结果跨此版本作废，必须重新执行。
-export const SessionFactConfidenceSchema = z.enum(FACT_CONFIDENCE_LEVELS_DESC);
+export const SessionFactConfidenceSchema = z.preprocess(
+  (value) => (value === 'low' || value === 'unknown' ? 'medium' : value),
+  z.enum(FACT_CONFIDENCE_LEVELS_DESC),
+);
 
 const LEGACY_SESSION_FACT_PRODUCERS: Readonly<Record<string, CandidateFactProducer>> = {
   candidate: 'candidate_quote',
@@ -429,10 +402,8 @@ export type SessionFactConfidence = z.infer<typeof SessionFactConfidenceSchema>;
 
 /** sessionFacts 置信度语义。工具消费默认只信 high；prompt 会展示所有置信度。 */
 export const SESSION_FACT_CONFIDENCE_DESCRIPTIONS: Record<SessionFactConfidence, string> = {
-  high: '可程序化采用。来自确定性规则、明确结构化输入，或经过强校验的事实。',
-  medium: '可给模型参考。通常来自 LLM 结构化提取或会话沉淀，可能需要结合上下文判断。',
-  low: '弱参考。来自系统兜底、弱规则或补充接口，不应直接用于筛人、约面等硬判断。',
-  unknown: '旧数据或缺少元数据的兼容值。只能作为背景信息，工具默认不消费。',
+  high: '可程序化采用。仅来自收资表单办结或同等级业务确权。',
+  medium: '表单外软事实，供推荐与模型参考；不得用于硬报名判断。',
 };
 
 /** sessionFacts 来源语义。source 说明事实出身，不等同于字段真假。 */
@@ -471,7 +442,7 @@ export function truncateEvidence(evidence: string, maxChars = MAX_FACT_EVIDENCE_
   return `${trimmed.slice(0, maxChars)}…`;
 }
 
-export type SessionFactMaybeValue<T> = SessionFactValue<T> | null;
+export type SessionFactMaybeValue<T> = SessionFactValue<T | null> | null;
 
 export interface SessionInterviewInfo {
   name: SessionFactMaybeValue<string>;
@@ -479,9 +450,6 @@ export interface SessionInterviewInfo {
   gender: SessionFactMaybeValue<string>;
   gender_source: SessionFactMaybeValue<'candidate' | 'system'>;
   age: SessionFactMaybeValue<string>;
-  applied_store: SessionFactMaybeValue<string>;
-  applied_position: SessionFactMaybeValue<string>;
-  interview_time: SessionFactMaybeValue<string>;
   is_student: SessionFactMaybeValue<boolean>;
   education: SessionFactMaybeValue<string>;
   has_health_certificate: SessionFactMaybeValue<string>;
@@ -538,7 +506,7 @@ const SessionFactValueSchema = <T extends z.ZodTypeAny>(valueSchema: T) =>
  * 的拆除判据），不是活跃写入方——保留是为了不让一条陈年记录的 pref.city 被逐字段校验静默丢掉。
  */
 function legacyCityFactValue<T>(value: T, evidence: string): SessionFactValue<T> {
-  return { value, confidence: 'unknown', source: 'archive', evidence };
+  return { value, confidence: 'medium', source: 'archive', evidence };
 }
 
 /**
@@ -554,6 +522,14 @@ const NullableSessionFactSchema = <T extends z.ZodTypeAny>(valueSchema: T) =>
       value === null ? null : (value as SessionFactValue<z.infer<T>>),
     );
 
+/** preferences 的信封允许 value=null，作为显式清空墓碑；外层 null 仍表示本轮缺席。 */
+const NullableSessionPreferenceFactSchema = <T extends z.ZodTypeAny>(valueSchema: T) =>
+  z
+    .union([SessionFactValueSchema(valueSchema.nullable()), z.null()])
+    .transform((value): SessionFactValue<z.infer<T> | null> | null =>
+      value === null ? null : (value as SessionFactValue<z.infer<T> | null>),
+    );
+
 function cityEvidenceToString(evidence: CityFactEvidence): string {
   return evidence;
 }
@@ -563,14 +539,14 @@ function cityEvidenceToString(evidence: CityFactEvidence): string {
 // 尚未复扫归零（拆除判据见上方 NullableCityFactSchema）。删早了的代价是逐字段校验
 // 把一条陈年记录的 pref.city 静默丢掉，收益只是少十行——不划算，留着。
 const NullableSessionCityFactSchema = z
-  .union([SessionFactValueSchema(z.string()), CityFactSchema, z.string(), z.null()])
-  .transform((value): SessionFactValue<string> | null => {
+  .union([SessionFactValueSchema(z.string().nullable()), CityFactSchema, z.string(), z.null()])
+  .transform((value): SessionFactValue<string | null> | null => {
     if (value === null) return null;
     if (typeof value === 'string') {
       const city = value.trim().replace(/市$/, '');
       return city ? legacyCityFactValue(city, '旧 sessionFacts city 字符串兼容迁移') : null;
     }
-    if (isSessionFactValue(value)) return value as SessionFactValue<string>;
+    if (isSessionFactValue(value)) return value as SessionFactValue<string | null>;
     const cityFact = value as CityFact;
     return {
       value: cityFact.value,
@@ -586,9 +562,6 @@ export const SessionInterviewInfoSchema = z.object({
   gender: NullableSessionFactSchema(z.string()),
   gender_source: NullableSessionFactSchema(z.enum(['candidate', 'system'])),
   age: NullableSessionFactSchema(z.string()),
-  applied_store: NullableSessionFactSchema(z.string()),
-  applied_position: NullableSessionFactSchema(z.string()),
-  interview_time: NullableSessionFactSchema(z.string()),
   is_student: NullableSessionFactSchema(z.boolean()),
   education: NullableSessionFactSchema(z.string()),
   has_health_certificate: NullableSessionFactSchema(z.string()),
@@ -600,20 +573,20 @@ export const SessionInterviewInfoSchema = z.object({
 });
 
 export const SessionPreferencesSchema = z.object({
-  brand_ids: NullableSessionFactSchema(z.array(z.number().int())).optional(),
-  salary: NullableSessionFactSchema(z.string()),
-  position: NullableSessionFactSchema(z.array(z.string())),
-  schedule: NullableSessionFactSchema(z.string()),
+  brand_ids: NullableSessionPreferenceFactSchema(z.array(z.number().int())).optional(),
+  salary: NullableSessionPreferenceFactSchema(z.string()),
+  position: NullableSessionPreferenceFactSchema(z.array(z.string())),
+  schedule: NullableSessionPreferenceFactSchema(z.string()),
   city: NullableSessionCityFactSchema,
-  district: NullableSessionFactSchema(z.array(z.string())),
-  location: NullableSessionFactSchema(z.array(z.string())),
-  labor_form: NullableSessionFactSchema(z.string()),
-  delayed_intent: NullableSessionFactSchema(DelayedIntentSchema),
-  short_term: NullableSessionFactSchema(z.boolean()),
-  open_position: NullableSessionFactSchema(z.boolean()),
-  time_windows: NullableSessionFactSchema(z.array(z.string())),
-  schedule_constraint: NullableSessionFactSchema(ScheduleConstraintFactSchema),
-  available_after: NullableSessionFactSchema(AvailableAfterFactSchema),
+  district: NullableSessionPreferenceFactSchema(z.array(z.string())),
+  location: NullableSessionPreferenceFactSchema(z.array(z.string())),
+  labor_form: NullableSessionPreferenceFactSchema(z.string()),
+  delayed_intent: NullableSessionPreferenceFactSchema(DelayedIntentSchema),
+  short_term: NullableSessionPreferenceFactSchema(z.boolean()),
+  open_position: NullableSessionPreferenceFactSchema(z.boolean()),
+  time_windows: NullableSessionPreferenceFactSchema(z.array(z.string())),
+  schedule_constraint: NullableSessionPreferenceFactSchema(ScheduleConstraintFactSchema),
+  available_after: NullableSessionPreferenceFactSchema(AvailableAfterFactSchema),
 });
 
 /**
@@ -759,7 +732,7 @@ function cityFactFromSessionValue(value: SessionFactValue<string>): CityFact | n
   if (!value.value.trim()) return null;
   return {
     value: value.value.trim().replace(/市$/, ''),
-    confidence: value.confidence === 'low' ? 'low' : 'high',
+    confidence: value.confidence,
     evidence: 'explicit_city',
   };
 }

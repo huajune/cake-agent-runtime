@@ -26,6 +26,7 @@ const TEST_PHONE = '18271421690';
 describe('CollectionFormService', () => {
   const store = {
     read: jest.fn(),
+    readCurrentCandidateRef: jest.fn(),
     write: jest.fn().mockResolvedValue(undefined),
     remove: jest.fn().mockResolvedValue(undefined),
   };
@@ -34,6 +35,7 @@ describe('CollectionFormService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     store.read.mockResolvedValue(null);
+    store.readCurrentCandidateRef.mockResolvedValue(null);
     service = new CollectionFormService(store as never);
   });
 
@@ -93,11 +95,26 @@ describe('CollectionFormService', () => {
       expect(form.slots[769].value?.value).toBe('兮兮');
     });
 
-    it('契约里消失的槽位原样留着——删掉等于把候选人说过的话扔了', async () => {
+    it('契约里消失的槽位退出办理态，不再卡 verdict 或误进 payload', async () => {
       const stored = createForm({ jobId: 528962, contract: [NAME_FIELD, ADDRESS_FIELD] });
       store.read.mockResolvedValue(stored);
       const form = await service.loadOrCreate(SCOPE, [NAME_FIELD]);
-      expect(form.slots[756]).toBeDefined();
+      expect(form.slots[756]).toBeUndefined();
+    });
+
+    it('调用方不再传手机号时，经当前指针读回 rebind 后的人键表', async () => {
+      const stored = createForm({
+        candidateRef: TEST_PHONE,
+        jobId: 528962,
+        contract: [NAME_FIELD],
+      });
+      store.readCurrentCandidateRef.mockResolvedValue(TEST_PHONE);
+      store.read.mockImplementation(async ({ candidateRef }: { candidateRef: string }) =>
+        candidateRef === TEST_PHONE ? stored : null,
+      );
+
+      const form = await service.loadOrCreate(SCOPE, [NAME_FIELD]);
+      expect(form.candidateRef).toBe(TEST_PHONE);
     });
   });
 

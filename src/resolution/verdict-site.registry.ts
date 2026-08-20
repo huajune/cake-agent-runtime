@@ -81,13 +81,6 @@ export const VERDICT_SITE_REGISTRY = [
     rationale: '仅消费已公证 clear 操作，把对应结构化字段物化为 missing。',
   },
   {
-    id: 'booking_candidate_snapshot_match',
-    authority: 'structural_gate',
-    effect: 'reject',
-    source: 'src/resolution/evidence/snapshot-gate.ts#evaluateSnapshotGate',
-    rationale: 'booking payload 与 precheck 快照按 jobId、水位和封闭字段值对账。',
-  },
-  {
     id: 'booking_candidate_name_provenance',
     authority: 'notary',
     effect: 'reject',
@@ -128,13 +121,6 @@ export const VERDICT_SITE_REGISTRY = [
     effect: 'mark_missing',
     source: 'src/tools/duliday-interview-precheck.tool.ts#buildChecklistTemplate',
     rationale: '判缺是必填字段集合减去 accepted / needs_confirmation 账本字段的集合运算。',
-  },
-  {
-    id: 'precheck_gender_inline_confirmation',
-    authority: 'closed_form',
-    effect: 'supersede',
-    source: 'src/resolution/evidence/producers/gender-confirmation.ts#isGenderConfirmedInline',
-    rationale: 'PR #1000 P0-4 表内确认死锁修复；D5 退役批成员，模型 confirm claim 稳定后随批拆除。',
   },
   {
     id: 'candidate_rule_fact_prompt_hint',

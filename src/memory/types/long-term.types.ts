@@ -36,10 +36,8 @@ export type ProfileFactConfidence = FactConfidence;
 
 /** 长期 profile_facts 置信度语义。工具消费默认只 unwrap high。 */
 export const PROFILE_FACT_CONFIDENCE_DESCRIPTIONS: Record<ProfileFactConfidence, string> = {
-  high: '可跨会话自动采用。通常来自报名成功、候选人明确提交且经过业务校验的字段。',
-  medium: '可给模型参考。通常来自会话沉淀、LLM 提取或外部补全，使用前需结合上下文。',
-  low: '弱参考。仅用于提示模型可能存在该信息，不应进入程序化硬判断。',
-  unknown: '旧数据或缺少元数据的兼容值。只能作为背景信息，工具默认不消费。',
+  high: '可跨会话自动采用。仅来自收资表单办结后的报名事实。',
+  medium: '表单外软事实或兼容存量，使用前需结合当前账号与上下文。',
 };
 
 /** 长期 profile_facts 来源语义。source 说明事实出身，不等同于置信度或运输路径。 */
@@ -91,7 +89,10 @@ const StoredProfileFactProducerSchema = z.preprocess(
 /** 长期档案读边界 schema：兼容旧 source，输出只含六章根词汇。 */
 export const UserProfileFactValueSchema = z.object({
   value: z.unknown(),
-  confidence: z.enum(FACT_CONFIDENCE_LEVELS_DESC),
+  confidence: z.preprocess(
+    (value) => (value === 'low' || value === 'unknown' ? 'medium' : value),
+    z.enum(FACT_CONFIDENCE_LEVELS_DESC),
+  ),
   source: StoredProfileFactProducerSchema,
   evidence: z.string(),
   updatedAt: z.string(),
@@ -239,6 +240,8 @@ export interface MessageMetadata {
 export interface SummaryEntry {
   summary: string;
   sessionId: string;
+  /** 摘要所属托管账号；召回时严格按账号过滤。 */
+  originBotId?: string;
   startTime: string;
   endTime: string;
 }

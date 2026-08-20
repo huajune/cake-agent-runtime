@@ -12,9 +12,6 @@ export const ACTION_MIN_CONFIDENCE = {
 export type ConfidenceGatedAction = keyof typeof ACTION_MIN_CONFIDENCE;
 
 /** 当前事实是否达到指定动作的最低置信档。 */
-export function canUseFactForAction(
-  action: ConfidenceGatedAction,
-  confidence: SessionFactConfidence,
-): boolean {
+export function canUseFactForAction(action: ConfidenceGatedAction, confidence: string): boolean {
   return factConfidenceRank(confidence) >= factConfidenceRank(ACTION_MIN_CONFIDENCE[action]);
 }

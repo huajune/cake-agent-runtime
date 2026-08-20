@@ -63,6 +63,7 @@ export function buildRecallHistoryTool(memoryService: MemoryService): ToolBuilde
         const summaryData = await memoryService.getSummaryData(
           context.session.corpId,
           context.session.userId,
+          context.session.botImId,
         );
 
         if (!summaryData || (summaryData.recent.length === 0 && !summaryData.archive)) {

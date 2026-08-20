@@ -1,5 +1,4 @@
 import type { GeoTextScanCity } from '@resolution/geo';
-import type { RuleFactConfidence } from './claim.types';
 
 /**
  * rule claim 裁决后的消费视图。
@@ -10,7 +9,7 @@ import type { RuleFactConfidence } from './claim.types';
  * memory 的 Zod schema 与存储实例。
  */
 export interface RuleFactCity extends GeoTextScanCity {
-  confidence: RuleFactConfidence;
+  confidence: 'high' | 'medium';
 }
 
 export interface RuleFactScheduleConstraint {
@@ -27,9 +26,6 @@ export interface RuleFactProjection {
     gender: string | null;
     gender_source: 'candidate' | 'system' | null;
     age: string | null;
-    applied_store: string | null;
-    applied_position: string | null;
-    interview_time: string | null;
     is_student: boolean | null;
     education: string | null;
     has_health_certificate: string | null;

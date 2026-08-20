@@ -16,7 +16,7 @@
  * 2. 新增 `markAsked` / `markRecapSent` / `recordConfigDebt` / `escalate` 四个写函数：
  *    `askCount` / `lastRecap` / `configDebts` / `escalatedReason` 是 §2 实体声明的字段，
  *    而"改表的唯一途径是本文件"意味着它们的写入必须在这里，不能散到 service；
- * 3. `applyErrorList` 多收一个 `contract` 参数：D2 规定 errorList 只带展示名时按
+ * 3. `applyErrorList` 多收一个 `contract` 参数：D2 规定 applyErrorList 只带展示名时按
  *    labelTitle 匹配，没有契约就匹配不了，只能一律转人工（比 D2 更粗暴）。
  */
 
@@ -55,7 +55,7 @@ export const MAX_ASKS_PER_SLOT = 2;
 export const ESCALATION_REASONS = {
   /** 同槽问满上限仍拿不到值。 */
   askLimitExhausted: 'ask_limit_exhausted',
-  /** errorList 的字段定位不到槽位（D2：失配不静默）。 */
+  /** applyErrorList 的字段定位不到槽位（D2：失配不静默）。 */
   errorListUnmapped: 'error_list_unmapped',
   /** 疑似多人会话（新姓名 + 新手机号成对出现，D1 v1 不建自动化协议）。 */
   suspectedMultiPerson: 'suspected_multi_person',
@@ -188,14 +188,14 @@ export function proposeValue(
     };
   }
   // 棘轮：对系统单向、对本人双向。filled 槽位只有三条合法重开路径——复述改格、
-  // errorList 重开、候选人**显式改口**（下方走同一套公证，通过即替换）。
+  // applyErrorList 重开、候选人**显式改口**（下方走同一套公证，通过即替换）。
   // 模型/系统的重推在这里被挡死，这是"反复问"的类型级根治。
   if (slot.state === 'filled' && !proposal.restatement) {
     return {
       form,
       outcome: 'ignored',
       reason: PROPOSAL_IGNORE_REASONS.slotAlreadyFilled,
-      detail: `labelId ${field.labelId} 已办结，重写须走复述改格 / errorList 重开 / 候选人显式改口`,
+      detail: `labelId ${field.labelId} 已办结，重写须走复述改格 / applyErrorList 重开 / 候选人显式改口`,
     };
   }
   if (slot.state === 'disqualified') {
@@ -252,7 +252,7 @@ export function proposeValue(
   }
 
   // ── ③ 归属门（身份槽位专属） ──
-  if (identityKey === 'name' || identityKey === 'phone') {
+  if ((identityKey === 'name' || identityKey === 'phone') && !proposal.agentQuestionQuote) {
     if (!proposal.messages) {
       return reject(
         form,
@@ -358,18 +358,18 @@ export function applyRecapResult(
   return { ...form, slots };
 }
 
-// ==================== 写路径 3：entryUser errorList 回写 ====================
+// ==================== 写路径 3：entryUser applyErrorList 回写 ====================
 
 export interface SubmissionError {
   /** 契约回传的 labelId（诉求 #2）。优先按它定位。 */
   labelId?: number;
   /** 只有展示名时的兜底匹配基准（D2）。 */
-  field: string;
+  field?: string;
   msg: string;
 }
 
 /**
- * 报名网关 errorList 回写（蓝图 §10 防线 5「死锁终结」）。
+ * 报名网关 applyErrorList 回写（蓝图 §10 防线 5「死锁终结」）。
  *
  * 每条错误按 labelId 定位重开该槽；定位不到 → escalatedReason，**不静默**
  * （D2：失配是唯一保留的必转人工特判）。回写后 verdictOf 必回到 collecting 或
@@ -389,7 +389,7 @@ export function applyErrorList(
   for (const error of errors) {
     const labelId = resolveErrorLabelId(error, contract, slots);
     if (labelId === null) {
-      unmapped.push(error.field);
+      unmapped.push(error.field ?? `labelId=${error.labelId ?? 'unknown'}`);
       continue;
     }
     slots[labelId] = { labelId, state: 'empty', askCount: slots[labelId].askCount };
@@ -664,7 +664,7 @@ function parseLeadingNumber(value: string): number | null {
   return Number.isFinite(numeric) ? Math.round(numeric) : null;
 }
 
-/** errorList 单条错误 → 槽位 labelId；定位不到返回 null（D2：失配转人工，不静默）。 */
+/** applyErrorList 单条错误 → 槽位 labelId；定位不到返回 null（D2：失配转人工，不静默）。 */
 function resolveErrorLabelId(
   error: SubmissionError,
   contract: readonly ContractFieldDef[],

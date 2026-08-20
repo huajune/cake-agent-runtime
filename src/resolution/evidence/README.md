@@ -39,4 +39,3 @@
 **动作授权（tools 执行前的闸，判过即弃、不产事实）**
 
 - `identity-gates.ts` — booking 姓名 / 手机号闸
-- `snapshot.ts` / `snapshot-gate.ts` — precheck→booking 事务快照语义与对账闸

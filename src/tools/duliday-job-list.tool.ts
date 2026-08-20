@@ -31,7 +31,6 @@ import {
 } from '@tools/duliday/job-list/no-match-script.util';
 import { formatSettlementSummary } from '@tools/duliday/job-list/salary-settlement.util';
 import { buildJobPolicyAnalysis } from '@tools/utils/job-policy-parser';
-import { buildScreeningCriteria } from '@tools/duliday/precheck/screening-criteria.util';
 import { sanitizeBrandName } from '@resolution/brand/sanitize-brand-name';
 import { BRAND_FILTER_MODES } from '@resolution/brand/brand-resolution.types';
 import { buildSpongeTokenContext } from '@tools/utils/sponge-token-context.util';
@@ -88,10 +87,6 @@ import {
   detectAgeBoundary,
   type AgeScreeningSignal,
 } from '@resolution/candidate/age';
-import {
-  buildProvidedFieldLabels,
-  detectPendingCollectionJobDetailFollowup,
-} from '@tools/duliday/precheck/collection-strategy.util';
 
 // ==================== 常量 ====================
 
@@ -361,7 +356,9 @@ function mapJobsToSummaries(jobs: JobDetail[]): RecommendedJobSummary[] {
           ? healthCertificateRequirement
           : null,
       studentRequirement: inferStudentRequirement(policy),
-      resumeRequired: Boolean(buildScreeningCriteria(policy).resume),
+      resumeRequired: policy.fieldGuidance.fieldSignals.some(
+        (signal) => signal.field === '简历附件',
+      ),
       distanceKm: distanceKm != null ? Math.round(distanceKm * 10) / 10 : null,
       welfareFacts: welfare
         ? {
@@ -1684,16 +1681,6 @@ export function buildJobListTool(
 
           const formatSet = new Set(responseFormat);
           const result: Record<string, unknown> = {};
-          const collectionFollowup = detectPendingCollectionJobDetailFollowup(
-            context.turnInput.messages,
-            buildProvidedFieldLabels({
-              collectedFields: context.ledger.facts.collectedFields,
-              sessionInterviewInfo: context.archive.sessionFacts?.interview_info as
-                | Record<string, unknown>
-                | null
-                | undefined,
-            }),
-          );
           const ageScreeningSummary = includeHiringRequirement
             ? buildJobAgeScreeningSummary(jobs, resolveCandidateAge(context))
             : null;
@@ -1727,9 +1714,6 @@ export function buildJobListTool(
               distanceAnchor,
             );
             const markdownSections = [
-              collectionFollowup
-                ? `⚠️ 候选人正在上一张收资表之后追问岗位细节。先回答本轮问题；答完只能简短催缺口：“${collectionFollowup.reminder}”。禁止重发整张资料表。`
-                : null,
               isRepeatQuery ? REPEAT_QUERY_NOTICE : null,
               brandFilterNotice ? `ℹ️ ${brandFilterNotice}` : null,
               rangeClampNotice,
@@ -1747,16 +1731,6 @@ export function buildJobListTool(
           }
           if (brandFilterNotice) {
             result.brandFilterNotice = brandFilterNotice;
-          }
-          if (collectionFollowup) {
-            result.collectionFollowup = {
-              mode: 'missing_only',
-              missingFields: collectionFollowup.missingFields,
-              reminder: collectionFollowup.reminder,
-            };
-            result._replyInstruction =
-              `候选人是在刚发的收资表后追问岗位细节。先按本轮岗位结果回答问题；` +
-              `答完只用“${collectionFollowup.reminder}”催填缺口，禁止逐字或改写重发整张资料表。`;
           }
           // 观测自报口径：tool-call-analysis 优先读该字段推断 empty/narrow/ok
           result.resultCount = total;
