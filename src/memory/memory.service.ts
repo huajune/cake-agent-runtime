@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ProceduralService } from './services/procedural.service';
+import { StageStateService } from './services/stage-state.service';
 import { LongTermService } from './services/long-term.service';
 import { SessionService } from './services/session.service';
 import {
@@ -11,7 +11,7 @@ import type { AgentMemoryContext } from './types/memory-runtime.types';
 import type { SummaryData } from './types/long-term.types';
 import type { InvitedGroupRecord } from './types/session-facts.types';
 import type { RuleFactClaims } from '@resolution/evidence/claim.types';
-import type { ProceduralState } from './types/procedural.types';
+import type { StageState } from './types/stage-state.types';
 import { formatExtractionFactLines } from './formatters/fact-lines.formatter';
 
 export interface ProactiveMemoryRecall {
@@ -31,7 +31,7 @@ export class MemoryService {
   private readonly logger = new Logger(MemoryService.name);
 
   constructor(
-    private readonly procedural: ProceduralService,
+    private readonly stageState: StageStateService,
     private readonly longTerm: LongTermService,
     private readonly session: SessionService,
     private readonly lifecycle: MemoryLifecycleService,
@@ -115,14 +115,14 @@ export class MemoryService {
     return await this.longTerm.clearUserMemory(corpId, userId);
   }
 
-  async getStage(corpId: string, userId: string, sessionId: string): Promise<ProceduralState> {
-    return await this.procedural.get(corpId, userId, sessionId);
+  async getStage(corpId: string, userId: string, sessionId: string): Promise<StageState> {
+    return await this.stageState.get(corpId, userId, sessionId);
   }
 
   async clearSessionMemory(corpId: string, userId: string, sessionId: string): Promise<boolean> {
     const [sessionCleared, stageCleared] = await Promise.all([
       this.session.clearSessionState(corpId, userId, sessionId),
-      this.procedural.clear(corpId, userId, sessionId),
+      this.stageState.clear(corpId, userId, sessionId),
     ]);
     return sessionCleared || stageCleared;
   }
@@ -142,8 +142,8 @@ export class MemoryService {
     corpId: string,
     userId: string,
     sessionId: string,
-    state: ProceduralState,
+    state: StageState,
   ): Promise<void> {
-    await this.procedural.set(corpId, userId, sessionId, state);
+    await this.stageState.set(corpId, userId, sessionId, state);
   }
 }

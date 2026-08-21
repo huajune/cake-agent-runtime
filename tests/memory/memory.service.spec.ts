@@ -33,7 +33,7 @@ describe('MemoryService', () => {
         shortTerm: { messageWindow: [{ role: 'user', content: 'hello' }] },
         sessionMemory: null,
         ruleFacts: null,
-        procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
+        stageState: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
         longTerm: { profile: null },
       });
 
@@ -77,7 +77,7 @@ describe('MemoryService', () => {
         },
         sessionMemory: null,
         ruleFacts: null,
-        procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
+        stageState: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
         longTerm: { profile: null },
       });
 
@@ -104,7 +104,7 @@ describe('MemoryService', () => {
         },
         sessionMemory: null,
         ruleFacts: null,
-        procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
+        stageState: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
         longTerm: { profile: null },
       });
 

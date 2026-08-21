@@ -9,7 +9,7 @@ import type { BrandResolution } from '@resolution/brand/brand-resolution.types';
 import { BrandStateService } from './brand-state.service';
 import { LongTermService } from './long-term.service';
 import { MemoryEnrichmentService, type CandidateIdentityHint } from './memory-enrichment.service';
-import { ProceduralService } from './procedural.service';
+import { StageStateService } from './stage-state.service';
 import { SettlementService } from './settlement.service';
 import { SessionService } from './session.service';
 import { ShortTermService } from './short-term.service';
@@ -89,7 +89,7 @@ export class MemoryLifecycleService {
 
   constructor(
     private readonly shortTerm: ShortTermService,
-    private readonly procedural: ProceduralService,
+    private readonly stageState: StageStateService,
     private readonly longTerm: LongTermService,
     private readonly settlement: SettlementService,
     private readonly session: SessionService,
@@ -130,7 +130,7 @@ export class MemoryLifecycleService {
     const [
       rawShortTermMessages,
       sessionState,
-      proceduralState,
+      stageState,
       rawProfile,
       rawLongTermPreferences,
       summaryData,
@@ -139,7 +139,7 @@ export class MemoryLifecycleService {
         ? this.loadShortTermMessages(sessionId, options?.shortTermEndTimeInclusive)
         : Promise.resolve([]),
       this.session.getSessionState(corpId, userId, sessionId),
-      this.procedural.get(corpId, userId, sessionId),
+      this.stageState.get(corpId, userId, sessionId),
       this.longTerm.getProfile(corpId, userId),
       this.longTerm.getPreferences(corpId, userId),
       this.longTerm.getSummaryData(corpId, userId, options?.enrichmentIdentity?.imBotId),
@@ -177,7 +177,7 @@ export class MemoryLifecycleService {
       ...(warnings.length > 0 ? { _warnings: warnings } : {}),
       sessionMemory: hasOwnSessionMemory ? sessionState : null,
       ruleFacts,
-      procedural: proceduralState,
+      stageState: stageState,
       longTerm: {
         profile,
         preferences: longTermPreferences,

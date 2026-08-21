@@ -40,7 +40,7 @@ describe('ReplyRepairContextProvider', () => {
           ],
         },
         ruleFacts: null,
-        procedural: { currentStage: 'job_consultation' },
+        stageState: { currentStage: 'job_consultation' },
         longTerm: {
           profile: { name: '候选人A' },
           preferences: null,

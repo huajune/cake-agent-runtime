@@ -1,6 +1,6 @@
-import { ProceduralService } from '@memory/services/procedural.service';
+import { StageStateService } from '@memory/services/stage-state.service';
 
-describe('ProceduralService', () => {
+describe('StageStateService', () => {
   const mockRedisStore = {
     get: jest.fn(),
     set: jest.fn().mockResolvedValue(undefined),
@@ -8,11 +8,11 @@ describe('ProceduralService', () => {
 
   const mockConfig = { sessionTtl: 86400 };
 
-  let service: ProceduralService;
+  let service: StageStateService;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    service = new ProceduralService(mockRedisStore as never, mockConfig as never);
+    service = new StageStateService(mockRedisStore as never, mockConfig as never);
   });
 
   describe('get', () => {

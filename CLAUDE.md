@@ -64,7 +64,7 @@ src/
 ├── resolution/geo/     # 地理解析域（唯一真相源）：行政区层级/县级市映射/白名单三轮扫描/地标别名/歧义策略/冲突检测
 │                       #   纯确定性零 LLM 零出向依赖；高德集成留 infra/geocoding，海绵行政区适配留 tools 层
 ├── tools/              # Agent 工具（duliday 岗位/约面/改约/取消、拉群、handoff、召回历史等）+ tool-registry
-├── memory/             # 四层记忆：short-term(对话窗口) / session(会话事实) / procedural(阶段) / long-term(画像)
+├── memory/             # 四层记忆：short-term(对话窗口) / session(会话事实) / stage-state(阶段) / long-term(画像)
 │                       #   + settlement(空闲沉淀) / stores(Redis+Supabase 适配)；只持有事实，不实现字段判断
 ├── agent/              # Agent 编排
 │   ├── runner/         #   回合入口 agent-runner + turn-finalizer(统一副作用出口) + reply-rewrite

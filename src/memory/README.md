@@ -10,7 +10,7 @@
 
 - 短期记忆：最近消息窗口（Redis 优先，DB 兜底）
 - 会话记忆：当前 session 的结构化状态
-- 程序记忆：当前业务阶段
+- 阶段状态：当前业务阶段
 - 长期记忆：跨 session 的 profile_facts / summary
 
 另外还有一个旁路能力：
@@ -52,7 +52,7 @@ memory 模块的职责不是“帮模型记住一切”，而是把记忆相关�
 
 - `onTurnStart` / `onTurnEnd` 是 Agent 主链路入口
 - `getSummaryData` 供 `recall_history` 等按需读取长期摘要
-- `setStage` 供 `advance_stage` 写程序记忆
+- `setStage` 供 `advance_stage` 写阶段状态
 
 ## 记忆分层
 
@@ -128,11 +128,13 @@ memory 模块的职责不是“帮模型记住一切”，而是把记忆相关�
 
 每个 fact 字段额外带 `extractedAt` 时间锚（提取时间），时间敏感字段注入时带记录日期、超 24h 失效告警。
 
-### 3. 程序记忆
+### 3. 阶段状态（stage state）
 
-实现服务：[procedural.service.ts](/Users/jiezhu/workSpace/DuLiDay/cake-agent-runtime/src/memory/services/procedural.service.ts)
+> 曾名"程序记忆"，2026-08-21 更名——与行业 procedural memory（"怎么做事"的知识，本库对应手册/工具描述）语义错位，见 glossary「CoALA 记忆四分法」词条。
 
-类型定义：[procedural.types.ts](/Users/jiezhu/workSpace/DuLiDay/cake-agent-runtime/src/memory/types/procedural.types.ts)
+实现服务：[stage-state.service.ts](/Users/jiezhu/workSpace/DuLiDay/cake-agent-runtime/src/memory/services/stage-state.service.ts)
+
+类型定义：[stage-state.types.ts](/Users/jiezhu/workSpace/DuLiDay/cake-agent-runtime/src/memory/types/stage-state.types.ts)
 
 含义：
 
@@ -231,7 +233,7 @@ memory 模块的职责不是“帮模型记住一切”，而是把记忆相关�
 
 1. 读取短期记忆（Redis 优先，DB 兜底）
 2. 读取会话记忆
-3. 读取程序记忆
+3. 读取阶段状态
 4. 读取长期 `profile_facts` / `preference_facts` / `summary_data`
 5. 如提供了 `currentMessages`，对“当前轮新消息”做一次前置高置信识别
 6. 跨会话来源研判：全新 chat 首聊且长期记忆来自别的会话时，置 `longTerm.origin.fromOtherConversation`
@@ -425,7 +427,7 @@ memory 模块的职责不是“帮模型记住一切”，而是把记忆相关�
   - 岗位投影
   - 后置事实提取
 
-- `services/procedural.service.ts`
+- `services/stage-state.service.ts`
   - 阶段状态读写
 
 - `services/long-term.service.ts`
@@ -451,7 +453,7 @@ memory 模块的职责不是“帮模型记住一切”，而是把记忆相关�
 - Agent orchestration 不直接操作 Redis / Supabase
 - prompt 格式化放在 agent 模块，不放在 memory facade
 - memory store 不做业务判断
-- `advance_stage` 仍是程序记忆的唯一显式写入口
+- `advance_stage` 仍是阶段状态的唯一显式写入口
 - `recall_history` 仍是长期摘要的按需读入口
 
 ## 一句话总结

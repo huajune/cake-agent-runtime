@@ -1,5 +1,5 @@
 import type { LongTermPreferenceFacts, UserProfileFacts } from './long-term.types';
-import type { ProceduralState } from './procedural.types';
+import type { StageState } from './stage-state.types';
 import type { ShortTermMessage } from './short-term.types';
 import type { WeworkSessionState } from './session-facts.types';
 import type { RuleFactClaims } from '@resolution/evidence/claim.types';
@@ -10,7 +10,7 @@ import type { RuleFactClaims } from '@resolution/evidence/claim.types';
  * 对外概念上仍然按四类记忆理解：
  * - 短期记忆
  * - 会话记忆
- * - 程序记忆
+ * - 阶段状态
  * - 长期记忆
  *
  * 这是编排层/提示词层使用的运行时拼装结果，
@@ -27,7 +27,7 @@ export interface MemoryRecallContext {
   sessionMemory: WeworkSessionState | null;
   /** 仅对当前轮生效的前置高置信识别结果，不属于持久化会话记忆。 */
   ruleFacts: RuleFactClaims | null;
-  procedural: ProceduralState;
+  stageState: StageState;
   longTerm: {
     profile: UserProfileFacts | null;
     /** 跨会话沉淀的求职意向快照（settlement 写入，仅供模型参考，不进工具预填）。 */

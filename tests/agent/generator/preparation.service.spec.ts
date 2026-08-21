@@ -109,7 +109,7 @@ describe('PreparationService', () => {
           },
         } as never,
       },
-      procedural: {
+      stageState: {
         currentStage: 'job_consultation',
         fromStage: null,
         advancedAt: null,
@@ -281,7 +281,7 @@ describe('PreparationService', () => {
         },
         ruleFacts: null,
         longTerm: { profile: null },
-        procedural: {
+        stageState: {
           currentStage: 'job_consultation',
           fromStage: null,
           advancedAt: null,
@@ -540,12 +540,12 @@ describe('PreparationService', () => {
     expect(result.finalPrompt).not.toContain('[候选人当前所在兼职群]');
   });
 
-  it('falls back returning user (with long-term identity) to job_consultation when procedural stage expired', async () => {
+  it('falls back returning user (with long-term identity) to job_consultation when stageState stage expired', async () => {
     // 张漪 case：程序性阶段 TTL 过期后老用户回访被兜底到 trust_building 重走信任建立。
     const base = await mockMemoryService.onTurnStart();
     mockMemoryService.onTurnStart.mockResolvedValue({
       ...base,
-      procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
+      stageState: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
 
     const result = await service.prepare(
@@ -612,7 +612,7 @@ describe('PreparationService', () => {
     mockMemoryService.onTurnStart.mockResolvedValue({
       ...base,
       longTerm: { profile: null },
-      procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
+      stageState: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
 
     const result = await service.prepare(
@@ -684,7 +684,7 @@ describe('PreparationService', () => {
           },
         } as never,
       },
-      procedural: {
+      stageState: {
         currentStage: 'job_consultation',
         fromStage: null,
         advancedAt: null,
@@ -762,7 +762,7 @@ describe('PreparationService', () => {
       },
       ruleFacts,
       longTerm: { profile: null },
-      procedural: {
+      stageState: {
         currentStage: 'job_consultation',
         fromStage: null,
         advancedAt: null,
@@ -825,7 +825,7 @@ describe('PreparationService', () => {
       },
       ruleFacts: null,
       longTerm: { profile: null },
-      procedural: {
+      stageState: {
         currentStage: 'job_consultation',
         fromStage: null,
         advancedAt: null,
@@ -875,7 +875,7 @@ describe('PreparationService', () => {
       },
       ruleFacts: null,
       longTerm: { profile: null },
-      procedural: {
+      stageState: {
         currentStage: 'job_consultation',
         fromStage: null,
         advancedAt: null,
@@ -941,7 +941,7 @@ describe('PreparationService', () => {
       },
       ruleFacts: null,
       longTerm: { profile: null },
-      procedural: {
+      stageState: {
         currentStage: 'job_consultation',
         fromStage: null,
         advancedAt: null,
@@ -989,14 +989,14 @@ describe('PreparationService', () => {
     expect(result.finalPrompt).not.toContain('[当前预约信息]');
   });
 
-  it('uses procedural stage + renders [当前预约信息] from active_booking + sponge', async () => {
+  it('uses stageState stage + renders [当前预约信息] from active_booking + sponge', async () => {
     // 阶段直接取程序性记忆（onboard_followup 不再由 recruitment_cases 推导）。
     mockMemoryService.onTurnStart.mockResolvedValue({
       shortTerm: { messageWindow: [{ role: 'user', content: '我到店了' }] },
       sessionMemory: null,
       ruleFacts: null,
       longTerm: { profile: null },
-      procedural: {
+      stageState: {
         currentStage: 'onboard_followup',
         fromStage: null,
         advancedAt: null,
@@ -1060,7 +1060,7 @@ describe('PreparationService', () => {
       sessionMemory: null,
       ruleFacts: null,
       longTerm: { profile: null },
-      procedural: {
+      stageState: {
         currentStage: 'onboard_followup',
         fromStage: null,
         advancedAt: null,
@@ -1116,7 +1116,7 @@ describe('PreparationService', () => {
       sessionMemory: null,
       ruleFacts: null,
       longTerm: { profile: null },
-      procedural: {
+      stageState: {
         currentStage: 'onboard_followup',
         fromStage: null,
         advancedAt: null,
@@ -1158,7 +1158,7 @@ describe('PreparationService', () => {
       sessionMemory: null,
       ruleFacts: null,
       longTerm: { profile: null },
-      procedural: {
+      stageState: {
         currentStage: 'onboard_followup',
         fromStage: null,
         advancedAt: null,
@@ -1268,7 +1268,7 @@ describe('PreparationService', () => {
       sessionMemory: null,
       ruleFacts: null,
       longTerm: { profile: null },
-      procedural: {
+      stageState: {
         currentStage: 'onboard_followup',
         fromStage: null,
         advancedAt: null,
@@ -1321,7 +1321,7 @@ describe('PreparationService', () => {
       sessionMemory: null,
       ruleFacts: null,
       longTerm: { profile: null },
-      procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
+      stageState: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
     mockActiveBooking({
       work_order_id: 88001,
@@ -1362,7 +1362,7 @@ describe('PreparationService', () => {
       sessionMemory: null,
       ruleFacts: null,
       longTerm: { profile: null },
-      procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
+      stageState: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
     mockActiveBooking({
       work_order_id: 88002,
@@ -1398,7 +1398,7 @@ describe('PreparationService', () => {
       sessionMemory: null,
       ruleFacts: null,
       longTerm: { profile: null },
-      procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
+      stageState: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
     mockActiveBooking({
       work_order_id: 88003,
@@ -1586,7 +1586,7 @@ describe('PreparationService', () => {
       sessionMemory: null,
       ruleFacts: null,
       longTerm: { profile: null },
-      procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
+      stageState: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
 
     await service.prepare(
@@ -1623,7 +1623,7 @@ describe('PreparationService', () => {
       sessionMemory: null,
       ruleFacts: null,
       longTerm: { profile: null },
-      procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
+      stageState: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
 
     await service.prepare(
@@ -1656,7 +1656,7 @@ describe('PreparationService', () => {
       sessionMemory: null,
       ruleFacts: null,
       longTerm: { profile: null },
-      procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
+      stageState: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
 
     await service.prepare(
@@ -1704,7 +1704,7 @@ describe('PreparationService', () => {
       },
       ruleFacts: testRuleFacts(testRuleFact('preferences.city', '北京', 'explicit_city')),
       longTerm: { profile: null },
-      procedural: {
+      stageState: {
         currentStage: 'trust_building',
         fromStage: null,
         advancedAt: null,
@@ -1836,7 +1836,7 @@ describe('PreparationService', () => {
       sessionMemory: null,
       ruleFacts: null,
       longTerm: { profile: null },
-      procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
+      stageState: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
 
     const result = await service.prepare(
@@ -1877,7 +1877,7 @@ describe('PreparationService', () => {
       sessionMemory: null,
       ruleFacts: null,
       longTerm: { profile: null },
-      procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
+      stageState: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
 
     const result = await service.prepare(
@@ -1918,7 +1918,7 @@ describe('PreparationService', () => {
       sessionMemory: null,
       ruleFacts: null,
       longTerm: { profile: null },
-      procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
+      stageState: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
 
     const result = await service.prepare(
@@ -2035,7 +2035,7 @@ describe('PreparationService', () => {
       sessionMemory: null,
       ruleFacts: null,
       longTerm: { profile: null },
-      procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
+      stageState: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
 
     const result = await service.prepare(
@@ -2125,7 +2125,7 @@ describe('PreparationService', () => {
         sessionMemory: null,
         ruleFacts: null,
         longTerm: { profile: null },
-        procedural: {
+        stageState: {
           currentStage: 'job_consultation',
           fromStage: null,
           advancedAt: null,

@@ -112,7 +112,7 @@ export class ReplyRepairContextProvider {
       longTermPreferenceLines: this.formatLongTermPreferenceLines(
         memory.longTerm.preferences ?? null,
       ),
-      currentStage: memory.procedural.currentStage ?? null,
+      currentStage: memory.stageState.currentStage ?? null,
       jobLines,
       invitedGroupLines: (session?.invitedGroups ?? []).map((group) =>
         this.formatInvitedGroup(group),

@@ -18,7 +18,7 @@ export class MemoryConfig {
   /**
    * Redis 会话状态的生命周期（秒）。
    *
-   * 控制 `session.service` 和 `procedural.service` 写进 Redis 的会话级数据的过期时间，
+   * 控制 `session.service` 和 `stage-state.service` 写进 Redis 的会话级数据的过期时间，
    * 包括：候选人事实、候选岗位池、已展示岗位、当前焦点岗位、当前阶段等临时状态。
    *
    * ⚠️ 此 TTL 只控制 Redis key 的存活时长，不影响：

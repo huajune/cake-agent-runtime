@@ -54,7 +54,7 @@ export interface AgentStepDetail {
 
 /** 本轮触发时的记忆上下文快照：用于判定"模型是否正确继承了上轮上下文"。 */
 export interface AgentMemorySnapshot {
-  /** 本轮入口阶段（来自 procedural.currentStage + recruitmentCase 解析） */
+  /** 本轮入口阶段（来自 stageState.currentStage + recruitmentCase 解析） */
   currentStage: string | null;
   /** 本会话近几轮已展示给候选人的岗位 id 列表 */
   presentedJobIds: number[] | null;

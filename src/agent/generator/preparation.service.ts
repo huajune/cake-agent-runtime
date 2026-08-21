@@ -69,7 +69,7 @@ export interface PreparedAgentContext {
   /** 当前与候选人聊天的托管账号 wxid（imBotId）；沉淀时作为长期事实的 bot 血缘。 */
   botImId?: string;
   maxSteps: number;
-  /** 本轮入口阶段：procedural currentStage 优先，过期时按长期画像做老用户回访兜底，否则回落策略首阶段。 */
+  /** 本轮入口阶段：stageState currentStage 优先，过期时按长期画像做老用户回访兜底，否则回落策略首阶段。 */
   entryStage: string | null;
   /** 本轮唯一回合账本；回合结束时 drain 快照统一交给 memory lifecycle。 */
   ledger: TurnLedger;
@@ -243,7 +243,7 @@ export class PreparationService {
       contactBrandAliases,
       currentLaborFormIntent,
     );
-    const persistedStage = memory.procedural.currentStage ?? undefined;
+    const persistedStage = memory.stageState.currentStage ?? undefined;
     // 程序性阶段存 Redis（TTL 2 天），过期后若隐式兜底到策略第一个阶段——
     // 已服务过的老候选人回访会被当新客从 trust_building 重走（张漪 case：6-03 已
     // 约面，6-08/6-10 回访都从信任建立重来）。长期画像已有身份字段即视为老用户，

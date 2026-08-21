@@ -12,7 +12,7 @@ import { SupabaseStore } from './stores/supabase.store';
 import { BrandStateService } from './services/brand-state.service';
 import { ShortTermService } from './services/short-term.service';
 import { SessionService } from './services/session.service';
-import { ProceduralService } from './services/procedural.service';
+import { StageStateService } from './services/stage-state.service';
 import { LongTermService } from './services/long-term.service';
 import { SettlementService } from './services/settlement.service';
 import { MemoryEnrichmentService } from './services/memory-enrichment.service';
@@ -25,7 +25,7 @@ import { GeocodingModule } from '@infra/geocoding/geocoding.module';
  *
  * 分为三层：
  * - facade: MemoryService
- * - domain services: services/ 下的 short-term / long-term / procedural / settlement / session / enrichment / lifecycle / brand-state
+ * - domain services: services/ 下的 short-term / long-term / stageState / settlement / session / enrichment / lifecycle / brand-state
  * - stores: Redis / Supabase 基础设施
  */
 @Module({
@@ -46,7 +46,7 @@ import { GeocodingModule } from '@infra/geocoding/geocoding.module';
     BrandStateService,
     ShortTermService,
     SessionService,
-    ProceduralService,
+    StageStateService,
     LongTermService,
     SettlementService,
     MemoryEnrichmentService,
