@@ -32,7 +32,7 @@
 │  短期记忆   chat_messages（Supabase 永久）+ Redis 窗口热缓存           │
 │  会话记忆   facts / lastCandidatePool / presentedJobs /               │
 │             currentFocusJob / invitedGroups → Redis                   │
-│  程序记忆   STAGE 阶段 + 推进来源/时间/原因 → Redis                    │
+│  阶段状态   STAGE 阶段 + 推进来源/时间/原因 → Redis                    │
 │  长期记忆   profile_facts / preference_facts / summary                │
 │             → Supabase agent_long_term_memories + Redis 2h 缓存        │
 ├──────────── 旁路（非持久化）──────────────────────────────────────────┤
@@ -75,12 +75,12 @@ interface WeworkSessionState {
 
 **新旧结构兼容**：旧裸值读取时被包装成 `confidence='unknown'` / `source='archive'`。
 
-### 2.3 程序记忆（Procedural Memory）
+### 2.3 阶段状态（Stage State）
 
 Redis，key `stage:{corpId}:{userId}:{sessionId}`，TTL = `sessionTtl`。
 
 ```typescript
-interface ProceduralState {
+interface StageState {
   currentStage: string | null;  fromStage: string | null;
   advancedAt: string | null;    reason: string | null;   // 审计用
 }
@@ -217,7 +217,7 @@ time_windows  schedule_constraint  available_after
 
 ```
 用户消息到达
-  ├── 并行读取：short-term messages（Redis→DB fallback）/ session state / procedural state
+  ├── 并行读取：short-term messages（Redis→DB fallback）/ session state / stage state
   │             / profile_facts / preference_facts / summary_data
   ├── 短期窗口空兜底
   ├── 前置规则轨识别：currentUserMessage + brandList → ruleFacts
@@ -422,7 +422,7 @@ flowchart TD
 
 | 工具 | 记忆类型 | 操作 | 保留原因 |
 |---|---|---|---|
-| `advance_stage` | 程序记忆 | 写入 | 只有 LLM 能判断阶段推进时机 |
+| `advance_stage` | 阶段状态 | 写入 | 只有 LLM 能判断阶段推进时机 |
 | `recall_history` | 长期（summary） | 读取 | 历史摘要按需检索，避免 token 浪费 |
 | `invite_to_group` | 会话（invitedGroups） | 写入 | 群邀请是 LLM 决策触发的副作用，发卡后需回写 |
 
