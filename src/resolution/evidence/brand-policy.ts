@@ -150,6 +150,14 @@ export function adjudicateBrandState(
     excludedBrands = [];
   }
 
+  // 单调增长安全阀（治理方案 P1-3）：排斥表会全量渲染进 prompt 硬约束段且只随
+  // browse_all 清空。cap 保最近（新排斥 push 在尾部）——正常会话远够不到，
+  // 够到时最旧的排斥最可能已过时。
+  const MAX_EXCLUDED_BRANDS = 30;
+  if (excludedBrands.length > MAX_EXCLUDED_BRANDS) {
+    excludedBrands = excludedBrands.slice(-MAX_EXCLUDED_BRANDS);
+  }
+
   return { currentBrand, excludedBrands };
 }
 

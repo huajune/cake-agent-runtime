@@ -25,12 +25,16 @@ import { isUserProfileFactValue, type UserProfileFacts } from '@memory/types/lon
 import type { TurnLedger } from '@shared-types/turn.types';
 import type { WeworkSessionState } from '@memory/types/session-facts.types';
 import type { RecommendedJobSummary } from '@resolution/job/types';
+import { AlertLevel } from '@enums/alert.enum';
+import { toErrorMessage } from '@infra/utils/error.util';
+import { AlertNotifierService } from '@notification/services/alert-notifier.service';
 import { ContextService } from './context/context.service';
 import { PromptInjectionService } from '../guardrail/input/prompt-injection.service';
 import { type GeneratorInvokeParams, type AgentMemorySnapshot } from '../generator/generator.types';
 import { AgentTracerService } from '@observability/agent-tracer.service';
 import { CRITICAL_TURN_GUARD_RULES } from './preparation-utils/critical-turn-guard.rules';
 import {
+  BOOKING_CONTEXT_SHARED_RULES,
   buildMemoryBlock,
   formatBookingContext,
   type RealtimeGroupStatus,
@@ -111,6 +115,8 @@ export class PreparationService {
     private readonly tracer?: AgentTracerService,
     @Optional()
     private readonly geocoding?: GeocodingService,
+    @Optional()
+    private readonly alertNotifier?: AlertNotifierService,
   ) {}
 
   /**
@@ -337,8 +343,11 @@ export class PreparationService {
       ].filter((block) => block.content.length > 0),
     ];
 
+    const finalPrompt = renderPromptBlocks(promptBlocks);
+    this.checkFinalPromptBloat(finalPrompt, { sessionId, userId, scenario });
+
     return {
-      finalPrompt: renderPromptBlocks(promptBlocks),
+      finalPrompt,
       promptBlocks,
       normalizedMessages,
       conversationCorpusBlocks,
@@ -359,6 +368,37 @@ export class PreparationService {
 
   private createTeachingPromptBlock(id: string, content: string): PromptCorpusBlock {
     return { id, domain: 'teaching', role: 'system', content: content.trim() };
+  }
+
+  /**
+   * finalPrompt 膨胀哨兵（治理方案 P0-2 / 防腐机制 F4）：出口测长，超阈值飞书告警。
+   *
+   * 历史上"张漪 case"的 27K evidence 膨胀靠 badcase 反查才发现——组装出口此前
+   * 无测长、无告警，任何一处渲染失控都只能等对话质量劣化后倒查。阈值取实测
+   * p-max（~43K 字符）上浮：超过 60K 即说明某个 section/记忆块渲染跑飞。
+   * 告警自带节流（AlertNotifier throttle + dedupe），不会刷屏；发送失败不影响主链路。
+   */
+  private checkFinalPromptBloat(
+    finalPrompt: string,
+    scope: { sessionId: string; userId: string; scenario: string },
+  ): void {
+    const FINAL_PROMPT_BLOAT_THRESHOLD_CHARS = 60_000;
+    if (finalPrompt.length <= FINAL_PROMPT_BLOAT_THRESHOLD_CHARS) return;
+    this.logger.warn(
+      `[prepare] finalPrompt 膨胀: length=${finalPrompt.length} > ${FINAL_PROMPT_BLOAT_THRESHOLD_CHARS}, sessionId=${scope.sessionId}`,
+    );
+    void this.alertNotifier
+      ?.sendAlert({
+        code: 'agent.prompt_bloat',
+        severity: AlertLevel.WARNING,
+        summary: `finalPrompt 长度 ${finalPrompt.length} 字符，超过 ${FINAL_PROMPT_BLOAT_THRESHOLD_CHARS} 阈值（正常 p-max ~43K）`,
+        source: { subsystem: 'agent', component: 'preparation', action: 'prepare' },
+        scope: { sessionId: scope.sessionId, userId: scope.userId, scenario: scope.scenario },
+        dedupe: { key: 'agent.prompt_bloat' },
+      })
+      .catch((error) => {
+        this.logger.warn(`[prepare] finalPrompt 膨胀告警发送失败: ${toErrorMessage(error)}`);
+      });
   }
 
   /** 当前轮规则 producer（prep 运行点）：产物随 ledger 穿过工具与轮末收编。 */
@@ -652,8 +692,11 @@ export class PreparationService {
               '候选人询问该预约、要求改约或取消时，只能自然说明“我正在确认最新预约信息，稍等一下”；不得提及工单、海绵、缓存或系统同步。',
             ].join('\n')
           : '';
+      // 通用处理规则只渲染一次（P1-2）：有 ≥1 个预约块时才附加；仅剩同步中提示
+      // （contexts 为空）时规则引用的「岗位ID」「面试时间」都不存在，维持原先不渲染的行为。
       const renderedContexts = [
         ...contexts.map((context) => context.block),
+        ...(contexts.length > 0 ? [BOOKING_CONTEXT_SHARED_RULES] : []),
         ...(syncingBlock ? [syncingBlock] : []),
       ];
       const block =

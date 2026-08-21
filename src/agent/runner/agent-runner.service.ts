@@ -1024,6 +1024,7 @@ export class AgentRunnerService {
         type: 'agent_end',
         steps: outcome.agentSteps?.length,
         totalTokens: outcome.usage?.totalTokens,
+        cachedTokens: outcome.usage?.cachedInputTokens,
         durationMs: Date.now() - startedAt,
       });
       return outcome;

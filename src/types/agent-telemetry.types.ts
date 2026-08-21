@@ -41,6 +41,12 @@ export interface AgentStepDetail {
     inputTokens: number;
     outputTokens: number;
     totalTokens: number;
+    /**
+     * provider 前缀缓存命中的输入 token 数（OpenAI 兼容口径 prompt_tokens_details.cached_tokens）。
+     * 缓存命中率 = cachedInputTokens / inputTokens，是生产 agent 第一健康度指标；
+     * undefined 表示 provider 未上报（≠ 0 命中）。
+     */
+    cachedInputTokens?: number;
   };
   durationMs?: number;
   finishReason?: string;

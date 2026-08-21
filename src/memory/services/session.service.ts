@@ -481,15 +481,22 @@ export class SessionService {
     return collectedFields;
   }
 
+  /**
+   * 写入端上限（治理方案 P1-3）：本轮 fetchedJobs 可累积到同工具限次 3 × 单页 20 = 60 条，
+   * 全量落 Redis 但只有前 10 条会被渲染（memory-block.formatter MAX_POOL_LINES），
+   * 其余仅充当 jobId provenance/品牌回指匹配。截尾保序（渲染取 slice(0,10)，
+   * cap 对渲染结果零影响），只裁掉极端多查询轮次里几乎不可能被回指的尾部。
+   */
   async saveLastCandidatePool(
     corpId: string,
     userId: string,
     sessionId: string,
     jobs: RecommendedJobSummary[],
   ): Promise<void> {
-    const validatedJobs = jobs.map(
-      (job) => RecommendedJobSummarySchema.parse(job) as RecommendedJobSummary,
-    );
+    const MAX_CANDIDATE_POOL_SIZE = 30;
+    const validatedJobs = jobs
+      .slice(0, MAX_CANDIDATE_POOL_SIZE)
+      .map((job) => RecommendedJobSummarySchema.parse(job) as RecommendedJobSummary);
     await this.patchSessionState(corpId, userId, sessionId, { lastCandidatePool: validatedJobs });
   }
 
@@ -596,10 +603,12 @@ export class SessionService {
     const state = await this.getSessionState(corpId, userId, sessionId);
     const validated = InvitedGroupRecordSchema.parse(record) as InvitedGroupRecord;
     const existing = state.invitedGroups ?? [];
-    // 按群名去重
-    const merged = [validated, ...existing].filter(
-      (g, i, arr) => arr.findIndex((item) => item.groupName === g.groupName) === i,
-    );
+    // 按群名去重；新记录在前，超上限裁最旧（P1-3：该数组会全量渲染进 prompt 的
+    // "已邀入群"段，正常会话个位数，cap 只是防单调增长的安全阀）。
+    const MAX_INVITED_GROUPS = 20;
+    const merged = [validated, ...existing]
+      .filter((g, i, arr) => arr.findIndex((item) => item.groupName === g.groupName) === i)
+      .slice(0, MAX_INVITED_GROUPS);
 
     await this.patchSessionState(corpId, userId, sessionId, { invitedGroups: merged });
   }

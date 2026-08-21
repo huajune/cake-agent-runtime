@@ -130,7 +130,9 @@ export class GeneratorAgent {
       if (r.reasoningText) {
         this.logger.debug(`Thinking: ${r.reasoningText.substring(0, 200)}...`);
       }
-      this.logger.log(`Loop 完成: steps=${r.steps.length}, tokens=${r.usage.totalTokens}`);
+      this.logger.log(
+        `Loop 完成: steps=${r.steps.length}, tokens=${r.usage.totalTokens}, cached=${r.usage.inputTokenDetails?.cacheReadTokens ?? 'n/a'}`,
+      );
 
       let result = this.buildRunResult({
         text: r.text,
@@ -141,6 +143,7 @@ export class GeneratorAgent {
           inputTokens: r.usage.inputTokens ?? 0,
           outputTokens: r.usage.outputTokens ?? 0,
           totalTokens: r.usage.totalTokens,
+          cachedInputTokens: r.usage.inputTokenDetails?.cacheReadTokens,
         },
         agentRequest,
         memorySnapshot: ctx.memorySnapshot,
@@ -204,6 +207,7 @@ export class GeneratorAgent {
               inputTokens: usage.inputTokens ?? 0,
               outputTokens: usage.outputTokens ?? 0,
               totalTokens: usage.totalTokens,
+              cachedInputTokens: usage.inputTokenDetails?.cacheReadTokens,
             },
             agentRequest,
             memorySnapshot: ctx.memorySnapshot,
@@ -431,6 +435,7 @@ export class GeneratorAgent {
         inputTokens?: number;
         outputTokens?: number;
         totalTokens?: number;
+        inputTokenDetails?: { cacheReadTokens?: number };
       };
       response?: { timestamp?: Date | string | number };
       toolCalls?: Array<{ toolCallId: string; toolName: string; input?: unknown }>;
@@ -515,6 +520,7 @@ export class GeneratorAgent {
                 inputTokens: step.usage.inputTokens ?? 0,
                 outputTokens: step.usage.outputTokens ?? 0,
                 totalTokens: step.usage.totalTokens,
+                cachedInputTokens: step.usage.inputTokenDetails?.cacheReadTokens,
               }
             : undefined,
         durationMs: stepDurationMs,
@@ -569,10 +575,11 @@ export class GeneratorAgent {
     );
 
     try {
-      const recoveryUsage = {
+      const recoveryUsage: GeneratorRunResult['usage'] = {
         inputTokens: 0,
         outputTokens: 0,
         totalTokens: 0,
+        cachedInputTokens: 0,
       };
       const recovery = await this.llm.generate({
         role: ModelRole.Chat,
@@ -588,6 +595,7 @@ export class GeneratorAgent {
       recoveryUsage.inputTokens = recovery.usage.inputTokens ?? 0;
       recoveryUsage.outputTokens = recovery.usage.outputTokens ?? 0;
       recoveryUsage.totalTokens = recovery.usage.totalTokens ?? 0;
+      recoveryUsage.cachedInputTokens = recovery.usage.inputTokenDetails?.cacheReadTokens ?? 0;
 
       if (!text) {
         this.logger.warn(`空文本恢复仍未产出回复: sessionId=${ctx.sessionId}`);
@@ -621,6 +629,8 @@ export class GeneratorAgent {
           inputTokens: result.usage.inputTokens + recoveryUsage.inputTokens,
           outputTokens: result.usage.outputTokens + recoveryUsage.outputTokens,
           totalTokens: result.usage.totalTokens + recoveryUsage.totalTokens,
+          cachedInputTokens:
+            (result.usage.cachedInputTokens ?? 0) + (recoveryUsage.cachedInputTokens ?? 0),
         },
       };
     } catch (error) {
