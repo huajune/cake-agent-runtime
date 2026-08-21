@@ -6,6 +6,7 @@
 > 参考：[Anthropic - The New Rules of Context Engineering for Claude 5 Generation Models](https://claude.com/blog/the-new-rules-of-context-engineering-for-claude-5-generation-models)
 > 本文档是本轮上下文治理的权威状态表；各期完成后回填状态与实测数字。
 > 原则沉淀：调研结论与八条裁定已蒸馏为 [principles/context-engineering-principles.md](../principles/context-engineering-principles.md)（C1~C8）——原则查那里，执行进度查这里。
+> **二期意向（2026-08-21 用户登记，未立项）**：一期完成后立即启动"记忆体系 CoALA 对齐"二期——给 procedural 记忆层上户口（常驻核心 vs 按需 playbook、命名对齐搭车、会话记忆事实/工作台分家）。方案讨论成熟后另立 todo 文档。
 
 ---
 
