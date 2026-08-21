@@ -1,6 +1,6 @@
 # 上下文工程治理方案（Context Engineering Governance）
 
-> 状态：**P0 + P1 + P3-1 + F1~F4 已执行（2026-08-21）**；P2-3/P2-4 待 P0-1b 生产数据、P3-2/P3-3/P3-4 待证据门控批次、F5 待议（审计结论已备）
+> 状态：**P0 + P1 + P3-1 + F1~F5 已执行（2026-08-21，F5 含 5 处 DB 删改落地）**；剩余：P2-3/P2-4 待 P0-1b 生产数据、P3-2/P3-3/P3-4 待证据门控批次
 > 建立日期：2026-08-20
 > 复核记录：2026-08-21 基于 `refactor/tools-layer-reorg`（cdd173a2 工具层终态重排后）全量复核锚点与数字；工具 description 总量由估算 ~40K 修正为实测 31,729 字符，precheck 描述已由收资状态机改造瘦身（13.5K→729）
 > 参考：[Anthropic - The New Rules of Context Engineering for Claude 5 Generation Models](https://claude.com/blog/the-new-rules-of-context-engineering-for-claude-5-generation-models)
@@ -248,7 +248,7 @@ settlement 摘要 ≈ Anthropic compaction；recall_history ≈ structured note-
 | F2 | 职责迁移回收纪律 | **✅ 落地（2026-08-21）**：CLAUDE.md「Prompt 内容防腐纪律」节 + `.claude/agents/documentation-standards.md`「Prompt Content Anti-Rot Discipline」节 | ✅ |
 | F3 | 临时规则 TTL 标注 | **✅ 落地（2026-08-21）**：同上两处入规范；台账已标注现存 TTL 条目（暑假工 F20/F20a ≈2026-09 复查、B1 随品类配置、R8 随开城） | ✅ |
 | F4 | 膨胀哨兵 | **✅ 上线（2026-08-21，即 P0-2）**：`agent.prompt_bloat` 告警长期在位 | ✅ |
-| F5 | Dashboard 策略改动约束 | ⏸ 待议——**P1-1 审计结论已备**：DB 策略文本实测存在 4 处双居所违例 + 1 处旧口径冲突（台账第四/五节），佐证"第三居所零 review 最危险"判断；可议方向：① 删改提案批准后执行归并；② Dashboard 改动强制走台账登记；③ strategy_config 变更接入 changelog 告警 | ⏸ 待议（材料已备） |
+| F5 | Dashboard 策略改动约束 | **✅ 裁定并执行（2026-08-21）**：① 5 处删改（R1/R2/R13/渠道否认/时间硬冲突末条）全部执行——released+testing 双行同步、`strategy_config_changelog` 补录；② 长效机制裁定**不加**：策略文本编辑主体只有我们（用户+AI 会话），F1 台账纪律已覆盖 AI 侧，无第三方改动风险；③ 剩余小提案（interview_scheduling ①③、R8 TTL、R10/R11 收敛）挂台账随批 | ✅ |
 
 ---
 
