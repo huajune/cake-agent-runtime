@@ -214,7 +214,7 @@ settlement 摘要 ≈ Anthropic compaction；recall_history ≈ structured note-
 | # | 事项 | 说明 | 状态 |
 |---|---|---|---|
 | P3-1 | 手册绝对化规则清点 → **建常设规则台账** | **✅ 完成（2026-08-21）**：[docs/prompt-rule-ledger.md](../prompt-rule-ledger.md) 建成——手册 ~90 条规则（36 处 badcase 锚点全部入账）+ booking 共享规则 + final-check 17 项 + DB red-lines 15 条/阈值 2 条 + stage-strategy 5 阶段 + 工具 description 章节级 + 守卫 29 ruleId 拦侧配对；判定树为分类轴；F1~F3 维护纪律入文末。加入日期缺失的条目标"—"（可 git blame 补） | ✅ |
-| P3-2 | 分批删减 + 回归闸 | **首批已执行（2026-08-21，用户裁定"不用观测直接改"）**：✅ FC2 整条 + FC5 完成时态半段下线（守卫确定性拦侧在产、手册 F10 教侧仍在，三居所去其一）；tests/tools+tests/agent 全量 2,461 测试全绿 + typecheck 通过，两处 spec 断言按"已下沉"惯例翻转。后续批：暑假工 TTL 到期批（≈2026-09）、手册规则证据批 | 🔄 首批完成 |
+| P3-2 | 分批删减 + 回归闸 | **两批已执行（2026-08-21，用户裁定"不用观测直接改"，test-suite 离线闸放行）**：✅ 首批 final-check FC2 整条 + FC5 半段下线（守卫拦侧在产、手册 F10 教侧仍在）；✅ **手册批**：注入口径 28,357→27,366 字符——品牌豁免/重查机制/regionNameList 细则归并 job_list 描述唯一居所（**修复 B2 双居所口径冲突**：手册"不传 range"落后于描述正确口径），结构件四组重复消除（"阶段不压当前问题"4→2、advance_stage 纪律 2→1、"不暴露内部"3→2、线索双定义→1），详见台账手册批记录。回归：2,461 全绿×2 轮。剩余：暑假工 TTL 批（≈2026-09 到期触发）、后续按生产 badcase 节奏 | 🔄 两批完成 |
 | P3-3 | 工具 description 接口化重构 | **两批已执行（2026-08-21）**：`duliday_job_list` 13,144→**10,126**（累计 -23.0%）——首批六处去重；二批**数据开关章节坍缩**（开关早已 schema default(true) 代码接管，提示词仍教手动开关=烂源四标本，删表+4 处无效"必须开"指令）+ 班次/阶梯/学生三组两条合一。`request_handoff` 4,388→**4,026**（两轮协议副本删归 invite、同文档例外去重、T10 重复压缩）。`invite_to_group` **裁定不动**（拉群协议唯一居所+已接口化）。13 工具合计 31,729→**28,349**（-10.7%）。回归：2,461 测试全绿+typecheck | 🔄 两批完成 |
 | P3-4 | 手册低频规程 Skill 化实验 | P1-1 审计已标记候选"低频可拉取"段落：**平台来源识别（P1-P5，仅截图/渠道场景触发）、造假引导 C8、结伴分流 R4、面试方式细则 C7 后半（AI 面试时段语义）**——共性是触发率低但篇幅长。P3 做拉取工具原型（类 recall_history 的 playbook 版）+ 回归验证。内容进 messages 后缀不破坏前缀缓存（裁定 8）。⚠️ 新增常挂工具本身占 description 预算，原型需净收益核算 | ☐ 就绪待批 |
 
@@ -256,7 +256,7 @@ settlement 摘要 ≈ Anthropic compaction；recall_history ≈ structured note-
 
 - 组装编排：`src/agent/generator/preparation.service.ts`（`prepare()`）；出口测长告警 `checkFinalPromptBloat`（P0-2，2026-08-21 起）
 - Section 注册表：`src/agent/generator/context/scenarios/scenario.registry.ts:8`；12 叶子段
-- 手册：`src/agent/generator/context/prompts/candidate-consultation.md`（76,327B）+ `-final-check.md`（6,505B）
+- 手册：`candidate-consultation.md` 文件 74,519B，**注入口径 27,366 字符**（手册批前 28,357；⚠️ 文件字节≠注入量——约 25KB 是 HTML 注释锚点，加载时 `stripMaintainerComments` 剥离，原"76KB 手册"表述实为文件口径）+ `-final-check.md` 5,865B
 - 历史窗口：60 条（`MAX_HISTORY_PER_CHAT`）/ 12,000 字符（`AGENT_MAX_INPUT_CHARS`，`memory.config.ts:78-83`）；双重裁剪（memory 层 + `preparation.service.ts:173`）
 - 工具注册：`src/tools/tool-registry.service.ts:218`（13 常挂清单）、`:306` / `:321`（save_image_description / read_resume_attachment 动态注入）
 - 工具 description 实测（字符）：job_list **10,126**（治理前 13,144，两批 -23%）/ handoff **4,026**（原 4,388）/ invite 3,804（裁定不动）/ geocode 2,221 / cancel 2,000 / modify 1,810 / skip_reply 974 / store_location 829 / precheck 729 / risk_alert 620 / advance_stage 619 / recall 242；13 常挂合计 **28,349**（治理前 31,729，-10.7%）；final-check 5,865B（原 6,505）
