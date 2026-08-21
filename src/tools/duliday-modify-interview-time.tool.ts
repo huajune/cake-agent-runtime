@@ -12,7 +12,7 @@ import { z } from 'zod';
 import { SpongeService } from '@sponge/sponge.service';
 import { buildSpongeTokenContext } from '@tools/shared/sponge-token-context.util';
 import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
-import { LongTermService } from '@memory/services/long-term.service';
+import { LongTermService } from '@memory/long-term/long-term.service';
 import { ToolBuilder } from '@shared-types/tool.types';
 import { buildToolError, TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
 import { isInterviewSlotAvailabilityInquiryOnly } from '@tools/booking/interview-time-intent.util';

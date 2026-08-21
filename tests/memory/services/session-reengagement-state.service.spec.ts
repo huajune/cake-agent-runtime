@@ -1,5 +1,5 @@
 import { Test } from '@nestjs/testing';
-import { SessionService } from '@memory/services/session.service';
+import { SessionService } from '@memory/session/session.service';
 import { RedisStore } from '@memory/stores/redis.store';
 import { MemoryConfig } from '@memory/memory.config';
 import { LlmExecutorService } from '@/llm/llm-executor.service';

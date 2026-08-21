@@ -1,9 +1,9 @@
-import { LongTermService } from '@memory/services/long-term.service';
+import { LongTermService } from '@memory/long-term/long-term.service';
 import {
   FALLBACK_EXTRACTION,
   sessionFactValue,
   toSessionFacts,
-} from '@memory/types/session-facts.types';
+} from '@memory/session/session-facts.types';
 
 describe('LongTermService（S7 单一 Profile 上游 + preference 三态）', () => {
   const store = {

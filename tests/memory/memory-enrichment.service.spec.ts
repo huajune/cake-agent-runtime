@@ -1,5 +1,5 @@
 import { MemoryEnrichmentService } from '@memory/services/memory-enrichment.service';
-import { FALLBACK_EXTRACTION } from '@memory/types/session-facts.types';
+import { FALLBACK_EXTRACTION } from '@memory/session/session-facts.types';
 import type { AgentMemoryContext } from '@memory/types/memory-runtime.types';
 import { getRuleFact } from '@resolution/evidence/merge';
 import { testRuleFact, testRuleFacts } from '../helpers/rule-fact-claims.fixture';

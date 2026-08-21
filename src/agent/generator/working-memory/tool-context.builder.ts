@@ -6,14 +6,14 @@ import { type LaborFormIntentDecision } from '@resolution/labor-form';
 import type { CandidatePrefillField, CandidatePrefillHints } from '@resolution/candidate/types';
 import { projectRuleFactClaims } from '@resolution/evidence/merge';
 import type { RuleFactClaims } from '@resolution/evidence/claim.types';
-import { unwrapUserProfileFacts } from '@memory/types/long-term.types';
+import { unwrapUserProfileFacts } from '@memory/long-term/long-term.types';
 import {
   type EntityExtractionResult,
   type SessionFacts,
   isSessionFactValue,
   unwrapSessionFactValue,
   unwrapSessionFacts,
-} from '@memory/types/session-facts.types';
+} from '@memory/session/session-facts.types';
 import { ContextService } from '../context/context.service';
 import { type GeneratorInvokeParams } from '../generator.types';
 import { resolveGeocodeLocationAnchor } from './geocode-location-anchor.util';

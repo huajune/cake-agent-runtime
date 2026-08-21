@@ -3,7 +3,7 @@ import type {
   GeneralHandoffInterventionPayload,
   RiskInterventionPayload,
 } from '@biz/intervention/intervention.service';
-import type { WeworkSessionState } from '@memory/types/session-facts.types';
+import type { WeworkSessionState } from '@memory/session/session-facts.types';
 
 type ConversationRiskSource = RiskInterventionPayload['source'];
 type GeneralHandoffSource = GeneralHandoffInterventionPayload['source'];

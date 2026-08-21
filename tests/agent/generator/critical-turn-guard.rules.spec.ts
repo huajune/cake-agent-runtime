@@ -1,4 +1,4 @@
-import { CRITICAL_TURN_GUARD_RULES } from '@agent/generator/preparation-utils/critical-turn-guard.rules';
+import { CRITICAL_TURN_GUARD_RULES } from '@agent/generator/working-memory/critical-turn-guard.rules';
 
 /** 复刻 PreparationService.buildCriticalTurnGuard 的匹配语义：patterns 全部命中 target 文本。 */
 const matches = (ruleId: string, text: string): boolean => {

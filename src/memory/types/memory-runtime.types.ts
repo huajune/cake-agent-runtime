@@ -1,7 +1,7 @@
-import type { LongTermPreferenceFacts, UserProfileFacts } from './long-term.types';
+import type { LongTermPreferenceFacts, UserProfileFacts } from '../long-term/long-term.types';
 import type { StageState } from './stage-state.types';
 import type { ShortTermMessage } from './short-term.types';
-import type { WeworkSessionState } from './session-facts.types';
+import type { WeworkSessionState } from '../session/session-facts.types';
 import type { RuleFactClaims } from '@resolution/evidence/claim.types';
 
 /**

@@ -1,4 +1,4 @@
-import type { ReengagementSessionState } from '@memory/types/reengagement-session-state.types';
+import type { ReengagementSessionState } from '@memory/session/reengagement-session-state.types';
 import {
   bookingFollowUpAnchorId,
   computeFireAt,

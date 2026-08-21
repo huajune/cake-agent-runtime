@@ -6,14 +6,14 @@ import { normalizeCityName as normalizeCity } from '@resolution/geo';
 import { formatExtractionFactLines } from '@memory/formatters/fact-lines.formatter';
 import { MemoryService } from '@memory/memory.service';
 import { stripTimeContext } from '@resolution/signal/markers';
-import type { InvitedGroupRecord, SessionFacts } from '@memory/types/session-facts.types';
+import type { InvitedGroupRecord, SessionFacts } from '@memory/session/session-facts.types';
 import type { RecommendedJobSummary } from '@resolution/job/types';
 import type {
   UserProfileFacts,
   UserProfileFactValue,
   LongTermPreferenceFacts,
   LongTermPreferenceFieldKey,
-} from '@memory/types/long-term.types';
+} from '@memory/long-term/long-term.types';
 
 const MAX_RECENT_MESSAGES = 8;
 const MAX_FACT_LINES = 40;

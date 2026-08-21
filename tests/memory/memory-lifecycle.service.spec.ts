@@ -1,7 +1,7 @@
 import { MemoryLifecycleService } from '@memory/services/memory-lifecycle.service';
 import { produceRuleFactClaims } from '@resolution/evidence/producers/rule-track';
 import { getRuleFact } from '@resolution/evidence/merge';
-import { FALLBACK_EXTRACTION } from '@memory/types/session-facts.types';
+import { FALLBACK_EXTRACTION } from '@memory/session/session-facts.types';
 import { testRuleFact, testRuleFacts } from '../helpers/rule-fact-claims.fixture';
 
 describe('MemoryLifecycleService', () => {

@@ -7,7 +7,7 @@ import {
   FACT_CONFIDENCE_LEVELS_DESC,
   FACT_CONFIDENCE_RANK,
   type FactConfidence,
-} from './confidence-rank';
+} from '../types/confidence-rank';
 /** 用户身份信息 — 长期记忆 Profile，跨会话复用 */
 export interface UserProfile {
   name: string | null;

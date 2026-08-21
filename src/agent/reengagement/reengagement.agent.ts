@@ -9,7 +9,7 @@ import { z } from 'zod';
 import type {
   ReengagementSessionState,
   CandidateFieldKey,
-} from '@memory/types/reengagement-session-state.types';
+} from '@memory/session/reengagement-session-state.types';
 import type { TurnOutcome } from '../runner/agent-runner.types';
 import type { AgentStepDetail } from '@shared-types/agent-telemetry.types';
 import type { FollowUpJob } from './follow-up-scheduler.service';

@@ -33,7 +33,7 @@ import type {
 import { BRAND_EXECUTABLE_CONFIDENCE } from '@resolution/brand/brand-resolution.types';
 import { RedisStore } from '../stores/redis.store';
 import { MemoryConfig } from '../memory.config';
-import { PersistedBrandStateSchema } from '../types/session-facts.types';
+import { PersistedBrandStateSchema } from './session-facts.types';
 import { buildSessionFactsHashKey } from './session-key';
 
 export interface TurnBrandContext {

@@ -6,7 +6,7 @@ import {
   type CandidateFactProducer,
 } from '@resolution/evidence/claim.types';
 import { RecommendedJobSummarySchema, type RecommendedJobSummary } from '@resolution/job/types';
-import { FACT_CONFIDENCE_LEVELS_DESC, factConfidenceRank } from './confidence-rank';
+import { FACT_CONFIDENCE_LEVELS_DESC, factConfidenceRank } from '../types/confidence-rank';
 
 // ==================== 1. 提取 schema（LLM 输出结构） ====================
 

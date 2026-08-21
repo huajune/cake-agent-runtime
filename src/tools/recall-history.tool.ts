@@ -2,7 +2,7 @@ import { Logger } from '@nestjs/common';
 import { tool } from 'ai';
 import { z } from 'zod';
 import { MemoryService } from '@memory/memory.service';
-import type { SummaryData } from '@memory/types/long-term.types';
+import type { SummaryData } from '@memory/long-term/long-term.types';
 import { ToolBuilder } from '@shared-types/tool.types';
 
 const logger = new Logger('recall_history');

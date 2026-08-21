@@ -1,10 +1,10 @@
-import { SessionService } from '@memory/services/session.service';
+import { SessionService } from '@memory/session/session.service';
 import {
   FALLBACK_EXTRACTION,
   SessionFactsSchema,
   sessionFactValue,
   toSessionFacts,
-} from '@memory/types/session-facts.types';
+} from '@memory/session/session-facts.types';
 
 const preferences = (overrides: Record<string, unknown> = {}) => ({
   brand_ids: null,

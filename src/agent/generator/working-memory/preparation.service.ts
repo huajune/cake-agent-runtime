@@ -11,8 +11,8 @@ import { parseCandidateFieldsFromText } from '@resolution/candidate';
 import { GeocodingService } from '@infra/geocoding/geocoding.service';
 import { MemoryService, type CandidateIdentityHint } from '@memory/memory.service';
 import { MemoryConfig } from '@memory/memory.config';
-import { BrandStateService, type TurnBrandContext } from '@memory/services/brand-state.service';
-import { LongTermService } from '@memory/services/long-term.service';
+import { BrandStateService, type TurnBrandContext } from '@memory/session/brand-state.service';
+import { LongTermService } from '@memory/long-term/long-term.service';
 import { GroupMembershipService } from '@biz/group-task/services/group-membership.service';
 import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
 import { HostingMemberConfigService } from '@biz/hosting-config/services/hosting-member-config.service';
@@ -21,37 +21,37 @@ import {
   buildJobPolicyAnalysis,
   isOfflineInterviewMethod,
 } from '@tools/job-list/job-policy-parser';
-import { isUserProfileFactValue, type UserProfileFacts } from '@memory/types/long-term.types';
+import { isUserProfileFactValue, type UserProfileFacts } from '@memory/long-term/long-term.types';
 import type { TurnLedger } from '@shared-types/turn.types';
-import type { WeworkSessionState } from '@memory/types/session-facts.types';
+import type { WeworkSessionState } from '@memory/session/session-facts.types';
 import type { RecommendedJobSummary } from '@resolution/job/types';
 import { AlertLevel } from '@enums/alert.enum';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { AlertNotifierService } from '@notification/services/alert-notifier.service';
-import { ContextService } from './context/context.service';
-import { PromptInjectionService } from '../guardrail/input/prompt-injection.service';
-import { type GeneratorInvokeParams, type AgentMemorySnapshot } from '../generator/generator.types';
+import { ContextService } from '../context/context.service';
+import { PromptInjectionService } from '../../guardrail/input/prompt-injection.service';
+import { type GeneratorInvokeParams, type AgentMemorySnapshot } from '../generator.types';
 import { AgentTracerService } from '@observability/agent-tracer.service';
-import { CRITICAL_TURN_GUARD_RULES } from './preparation-utils/critical-turn-guard.rules';
+import { CRITICAL_TURN_GUARD_RULES } from './critical-turn-guard.rules';
 import {
   BOOKING_CONTEXT_SHARED_RULES,
   buildMemoryBlock,
   formatBookingContext,
   type RealtimeGroupStatus,
   type TurnStartMemory,
-} from './preparation-utils/memory-block.formatter';
+} from './memory-block.formatter';
 import {
   extractTextFromContent,
   normalizeConversationWithCorpus,
   trailingUserContent,
   trailingUserMessages,
   truncateToCharBudget,
-} from './preparation-utils/conversation-normalizer';
-import { buildProactiveDirective } from './preparation-utils/revise-directives';
-import { resolveToolsForMode, wrapToolsWithTiming } from './preparation-utils/tool-set.util';
-import { buildToolContext } from './preparation-utils/tool-context.builder';
-import { createTurnLedger } from './preparation-utils/turn-ledger';
-import { renderPromptBlocks } from './context/sections/section.interface';
+} from './conversation-normalizer';
+import { buildProactiveDirective } from './revise-directives';
+import { resolveToolsForMode, wrapToolsWithTiming } from './tool-set.util';
+import { buildToolContext } from './tool-context.builder';
+import { createTurnLedger } from './turn-ledger';
+import { renderPromptBlocks } from '../context/sections/section.interface';
 import type { CorpusBlock, PromptCorpusBlock } from '@shared-types/corpus.types';
 
 export interface PreparedAgentContext {

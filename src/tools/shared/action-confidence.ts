@@ -1,5 +1,5 @@
 import { factConfidenceRank } from '@memory/types/confidence-rank';
-import type { SessionFactConfidence } from '@memory/types/session-facts.types';
+import type { SessionFactConfidence } from '@memory/session/session-facts.types';
 
 /** ④使用层唯一的置信消费权限表：哪个动作要求档案值至少什么档。加动作必须在此表态。 */
 export const ACTION_MIN_CONFIDENCE = {

@@ -1,4 +1,4 @@
-import type { SessionFacts } from '@memory/types/session-facts.types';
+import type { SessionFacts } from '@memory/session/session-facts.types';
 import type { RuleFactClaims } from '@resolution/evidence/claim.types';
 import type { SessionBrandState } from '@resolution/brand/brand-resolution.types';
 import { StrategyConfigRecord } from '@biz/strategy/entities/strategy-config.entity';

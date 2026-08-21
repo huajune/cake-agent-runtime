@@ -3,7 +3,7 @@ import {
   formatRuleFactClaimLines,
   RULE_CLAIM_QUOTE_RENDER_MAX_CHARS,
 } from '@memory/formatters/fact-lines.formatter';
-import { FALLBACK_EXTRACTION } from '@memory/types/session-facts.types';
+import { FALLBACK_EXTRACTION } from '@memory/session/session-facts.types';
 import { testRuleFact, testRuleFacts } from '../../helpers/rule-fact-claims.fixture';
 
 describe('formatExtractionFactLines', () => {

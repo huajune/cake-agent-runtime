@@ -1,4 +1,4 @@
-import { CollectionFormService } from '@memory/services/collection-form.service';
+import { CollectionFormService } from '@memory/session/collection-form.service';
 import { buildCollectionFormKey } from '@memory/stores/collection-form.store';
 import { createForm, proposeValue, type ContractFieldDef } from '@resolution/collection';
 

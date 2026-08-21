@@ -4,13 +4,13 @@ import { ModelRole } from '@/llm/llm.types';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { MemoryConfig } from '../memory.config';
 import { LongTermService } from './long-term.service';
-import type { SummaryEntry } from '../types/long-term.types';
+import type { SummaryEntry } from './long-term.types';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 import {
   type EntityExtractionResult,
   type SessionFacts,
   unwrapSessionFacts,
-} from '../types/session-facts.types';
+} from '../session/session-facts.types';
 import type { PersistedBrandState } from '@resolution/brand/brand-resolution.types';
 
 const SUMMARY_SYSTEM_PROMPT = `你是对话摘要生成器。将招募经理与候选人的对话和提取的事实信息压缩为一段简洁的摘要。

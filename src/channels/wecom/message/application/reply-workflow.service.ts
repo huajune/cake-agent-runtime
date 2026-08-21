@@ -27,7 +27,7 @@ import { MessageProcessingFailureService } from './message-processing-failure.se
 import { ImageDescriptionService } from './image-description.service';
 import { ImageBrandBackfillService } from './image-brand-backfill.service';
 import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
-import { SessionService } from '@memory/services/session.service';
+import { SessionService } from '@memory/session/session.service';
 import { AlertNotifierService } from '@notification/services/alert-notifier.service';
 import type { GeneratorThinkingConfig } from '@agent/generator/generator.types';
 import { TurnOutcomeInterventionService } from '@agent/runner/turn-outcome-intervention.service';

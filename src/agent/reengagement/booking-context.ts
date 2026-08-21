@@ -1,4 +1,4 @@
-import type { LongTermService } from '@memory/services/long-term.service';
+import type { LongTermService } from '@memory/long-term/long-term.service';
 import type { SpongeService } from '@sponge/sponge.service';
 import type { JobDetail, SignupWorkOrderItem } from '@sponge/sponge.types';
 import { buildJobPolicyAnalysis } from '@tools/job-list/job-policy-parser';

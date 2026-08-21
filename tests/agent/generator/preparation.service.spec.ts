@@ -1,8 +1,8 @@
-import { PreparationService } from '@agent/generator/preparation.service';
+import { PreparationService } from '@agent/generator/working-memory/preparation.service';
 import { PromptInjectionService } from '@agent/guardrail/input/prompt-injection.service';
 import { CallerKind } from '@enums/agent.enum';
 import { StorageMessageSource, StorageMessageType } from '@enums/storage-message.enum';
-import { FALLBACK_EXTRACTION } from '@memory/types/session-facts.types';
+import { FALLBACK_EXTRACTION } from '@memory/session/session-facts.types';
 import { getRuleFact } from '@resolution/evidence/merge';
 import { extractCandidateTextsFromCorpus } from '@resolution/signal/self-report';
 import { testRuleFact, testRuleFacts } from '../../helpers/rule-fact-claims.fixture';

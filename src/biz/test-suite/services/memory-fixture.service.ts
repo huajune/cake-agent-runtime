@@ -1,18 +1,18 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { MemoryService } from '@memory/memory.service';
-import { SessionService } from '@memory/services/session.service';
-import { BrandStateService } from '@memory/services/brand-state.service';
-import { LongTermService } from '@memory/services/long-term.service';
+import { SessionService } from '@memory/session/session.service';
+import { BrandStateService } from '@memory/session/brand-state.service';
+import { LongTermService } from '@memory/long-term/long-term.service';
 import {
   EntityExtractionResultSchema,
   FALLBACK_EXTRACTION,
   toSessionFacts,
   type EntityExtractionResult,
   type InvitedGroupRecord,
-} from '@memory/types/session-facts.types';
+} from '@memory/session/session-facts.types';
 import type { RecommendedJobSummary } from '@resolution/job/types';
 import type { StageState } from '@memory/types/stage-state.types';
-import type { UserProfile } from '@memory/types/long-term.types';
+import type { UserProfile } from '@memory/long-term/long-term.types';
 import { buildJobListQuerySignature } from '@tools/shared/job-list-query-signature';
 import type { MemoryFixtureSetup, TestRuntimeScope } from '../types/test-debug-trace.types';
 

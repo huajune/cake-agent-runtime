@@ -4,7 +4,7 @@ import { projectRuleFactClaims } from '@resolution/evidence/merge';
 import type { RuleFactClaims } from '@resolution/evidence/claim.types';
 import { resolveCityFromDistrict } from '@resolution/geo';
 import type { ShortTermMessage } from '@memory/types/short-term.types';
-import type { CityFact, EntityExtractionResult } from '@memory/types/session-facts.types';
+import type { CityFact, EntityExtractionResult } from '@memory/session/session-facts.types';
 import type { GeocodeLocationAnchor } from '@shared-types/turn.types';
 import { stripTimeContext } from '@resolution/signal/markers';
 

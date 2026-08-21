@@ -33,12 +33,12 @@ import {
   toSessionFacts,
   truncateEvidence,
   unwrapSessionFactValue,
-} from '../types/session-facts.types';
+} from './session-facts.types';
 import { RecommendedJobSummarySchema, type RecommendedJobSummary } from '@resolution/job/types';
 import type {
   ReengagementSessionState,
   CollectedField,
-} from '../types/reengagement-session-state.types';
+} from './reengagement-session-state.types';
 import { parseCandidateFieldsFromText } from '@resolution/candidate';
 import {
   buildSessionExtractionPrompt,

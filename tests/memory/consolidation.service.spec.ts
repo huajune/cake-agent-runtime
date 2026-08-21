@@ -1,5 +1,5 @@
-import { ConsolidationService } from '@memory/services/consolidation.service';
-import { FALLBACK_EXTRACTION } from '@memory/types/session-facts.types';
+import { ConsolidationService } from '@memory/long-term/consolidation.service';
+import { FALLBACK_EXTRACTION } from '@memory/session/session-facts.types';
 
 const mockSystemConfig = {
   getExtractModelOverride: jest.fn().mockResolvedValue(undefined),

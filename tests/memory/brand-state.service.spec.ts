@@ -2,7 +2,7 @@
  * BrandStateService 测试（spec §14.2 会话测试的存取/seed/补写部分）。
  */
 
-import { BrandStateService } from '@memory/services/brand-state.service';
+import { BrandStateService } from '@memory/session/brand-state.service';
 import type { BrandResolution } from '@resolution/brand/brand-resolution.types';
 
 const catalog = [

@@ -17,9 +17,9 @@ import {
   getMessageSourceDescription,
 } from '@enums/message-callback.enum';
 import { FilterReason } from '@enums/message-filter.enum';
-import { LongTermService } from '@memory/services/long-term.service';
-import { SessionService } from '@memory/services/session.service';
-import type { MessageMetadata } from '@memory/types/long-term.types';
+import { LongTermService } from '@memory/long-term/long-term.service';
+import { SessionService } from '@memory/session/session.service';
+import type { MessageMetadata } from '@memory/long-term/long-term.types';
 import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { GeneralHandoffNotifierService } from '@notification/services/general-handoff-notifier.service';

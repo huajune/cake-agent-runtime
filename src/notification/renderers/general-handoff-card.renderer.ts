@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { FeishuReceiver } from '@infra/feishu/constants/receivers';
 import { FeishuCardBuilderService } from '@infra/feishu/services/card-builder.service';
-import { unwrapSessionFactValue } from '@memory/types/session-facts.types';
+import { unwrapSessionFactValue } from '@memory/session/session-facts.types';
 import { GeneralHandoffNotificationPayload } from '../types/general-handoff-notification.types';
 
 /**

@@ -10,13 +10,13 @@ import type {
   MessageMetadata,
   ActiveBookingEntry,
   LongTermPreferenceFacts,
-} from '../types/long-term.types';
+} from './long-term.types';
 import type { PersistedBrandState } from '@resolution/brand/brand-resolution.types';
 import {
   LONG_TERM_PREFERENCE_FIELD_KEYS,
   userProfileFactValue,
   USER_PROFILE_FIELD_KEYS,
-} from '../types/long-term.types';
+} from './long-term.types';
 import {
   type EntityExtractionResult,
   type SessionFacts,
@@ -24,7 +24,7 @@ import {
   isSessionFactValue,
   truncateEvidence,
   unwrapSessionFactValue,
-} from '../types/session-facts.types';
+} from '../session/session-facts.types';
 
 /**
  * 沉淀写入长期记忆时的数据血缘来源。

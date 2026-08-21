@@ -9,7 +9,7 @@ import {
   toSessionFacts,
   type SessionFacts,
   type WeworkSessionState,
-} from '@memory/types/session-facts.types';
+} from '@memory/session/session-facts.types';
 
 type RendererInput = Parameters<GeneralHandoffCardRenderer['buildCard']>[0];
 

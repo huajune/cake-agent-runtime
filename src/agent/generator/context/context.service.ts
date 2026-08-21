@@ -14,7 +14,7 @@ import { StrategyConfigService as BizStrategyConfigService } from '@biz/strategy
 import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
 import { GroupContext } from '@biz/group-task/group-task.types';
 import { normalizeCityName as normalizeCity } from '@resolution/geo';
-import { unwrapSessionFacts, type SessionFacts } from '@memory/types/session-facts.types';
+import { unwrapSessionFacts, type SessionFacts } from '@memory/session/session-facts.types';
 import type { RuleFactClaims } from '@resolution/evidence/claim.types';
 import type { LaborFormIntentDecision } from '@resolution/labor-form';
 import type { SessionBrandState } from '@resolution/brand/brand-resolution.types';
@@ -86,8 +86,8 @@ export class ContextService implements OnModuleInit {
     private readonly groupResolver: GroupResolverService,
     private readonly configService: ConfigService,
   ) {
-    const devPath = join(__dirname, 'prompts');
-    const prodPath = join(__dirname, '..', '..', 'agent', 'context', 'prompts');
+    const devPath = join(__dirname, 'procedural');
+    const prodPath = join(__dirname, '..', '..', 'agent', 'context', 'procedural');
     this.promptsBasePath = existsSync(devPath) ? devPath : prodPath;
     this.groupMemberLimit = parseInt(
       this.configService.get<string>('GROUP_MEMBER_LIMIT', '200'),

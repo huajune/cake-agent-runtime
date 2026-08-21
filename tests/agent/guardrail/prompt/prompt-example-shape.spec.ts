@@ -24,11 +24,11 @@ interface ExampleShapeViolation {
 const PROMPT_ASSETS: readonly PromptSurface[] = [
   {
     id: 'candidate-consultation',
-    source: 'src/agent/generator/context/prompts/candidate-consultation.md',
+    source: 'src/agent/generator/context/procedural/candidate-consultation.md',
   },
   {
     id: 'candidate-consultation-final-check',
-    source: 'src/agent/generator/context/prompts/candidate-consultation-final-check.md',
+    source: 'src/agent/generator/context/procedural/candidate-consultation-final-check.md',
   },
 ];
 
@@ -97,7 +97,7 @@ function listToolSourceFiles(directory: string): string[] {
 }
 
 const EXTRACTION_PROMPTS: readonly PromptSurface[] = [
-  { id: 'session-extraction', source: 'src/memory/services/session-extraction.prompt.ts' },
+  { id: 'session-extraction', source: 'src/memory/session/session-extraction.prompt.ts' },
 ];
 
 const ALL_SURFACES = [

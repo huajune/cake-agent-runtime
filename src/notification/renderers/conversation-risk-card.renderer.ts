@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { FeishuCardBuilderService } from '@infra/feishu/services/card-builder.service';
 import { FeishuReceiver } from '@infra/feishu/constants/receivers';
-import { unwrapSessionFactValue } from '@memory/types/session-facts.types';
+import { unwrapSessionFactValue } from '@memory/session/session-facts.types';
 import { ConversationRiskNotificationPayload } from '../types/conversation-risk-notification.types';
 
 @Injectable()

@@ -134,7 +134,7 @@ export const VERDICT_SITE_REGISTRY = [
     authority: 'hint',
     effect: 'advisory',
     source:
-      'src/agent/generator/preparation-utils/tool-context.builder.ts#buildCandidatePrefillHints',
+      'src/agent/generator/working-memory/tool-context.builder.ts#buildCandidatePrefillHints',
     rationale: 'medium/system 值只投影为带值求证，不得据此拒绝、提交或升级来源。',
   },
 ] as const satisfies readonly VerdictSiteRegistration[];

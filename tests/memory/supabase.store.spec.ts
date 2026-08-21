@@ -1,5 +1,5 @@
 import { SupabaseStore } from '@memory/stores/supabase.store';
-import { UserProfileFactValueSchema } from '@memory/types/long-term.types';
+import { UserProfileFactValueSchema } from '@memory/long-term/long-term.types';
 import type { CandidateFactProducer } from '@resolution/evidence/claim.types';
 
 describe('SupabaseStore', () => {

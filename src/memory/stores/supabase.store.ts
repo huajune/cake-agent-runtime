@@ -15,7 +15,7 @@ import type {
   ActiveBookingEntry,
   ActiveBookingState,
   LongTermPreferenceFacts,
-} from '../types/long-term.types';
+} from '../long-term/long-term.types';
 import {
   createEmptyUserProfileFacts,
   isUserProfileFactValue,
@@ -24,7 +24,7 @@ import {
   UserProfileFactValueSchema,
   userProfileFactValue,
   USER_PROFILE_FIELD_KEYS,
-} from '../types/long-term.types';
+} from '../long-term/long-term.types';
 import type { MemoryEntry, MemoryStore } from './store.types';
 
 const TABLE = 'agent_long_term_memories';

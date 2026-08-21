@@ -1,4 +1,4 @@
-import type { WeworkSessionState } from '@memory/types/session-facts.types';
+import type { WeworkSessionState } from '@memory/session/session-facts.types';
 
 export interface ConversationRiskNotificationMessage {
   role: 'user' | 'assistant';

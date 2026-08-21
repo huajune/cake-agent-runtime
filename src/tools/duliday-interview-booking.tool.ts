@@ -8,11 +8,11 @@
 import type { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
 import type { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { toErrorMessage } from '@infra/utils/error.util';
-import type { CollectionFormService } from '@memory/services/collection-form.service';
-import type { LongTermService } from '@memory/services/long-term.service';
-import type { SessionService } from '@memory/services/session.service';
-import { sessionFactValue } from '@memory/types/session-facts.types';
-import type { ActiveBookingEntry } from '@memory/types/long-term.types';
+import type { CollectionFormService } from '@memory/session/collection-form.service';
+import type { LongTermService } from '@memory/long-term/long-term.service';
+import type { SessionService } from '@memory/session/session.service';
+import { sessionFactValue } from '@memory/session/session-facts.types';
+import type { ActiveBookingEntry } from '@memory/long-term/long-term.types';
 import { Logger } from '@nestjs/common';
 import type { PrivateChatMonitorNotifierService } from '@notification/services/private-chat-monitor-notifier.service';
 import {

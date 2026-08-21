@@ -1,5 +1,5 @@
 import { GuardrailReviewPacketBuilder } from '@agent/guardrail/output/llm/review-packet.builder';
-import { createTurnLedger } from '@agent/generator/preparation-utils/turn-ledger';
+import { createTurnLedger } from '@agent/generator/working-memory/turn-ledger';
 import { finalizeVisualFactSheet } from '@resolution/signal/visual';
 
 function visualLedger(raw: { description?: string } & Record<string, unknown>) {

@@ -1,4 +1,4 @@
-import { createTurnLedger } from '@agent/generator/preparation-utils/turn-ledger';
+import { createTurnLedger } from '@agent/generator/working-memory/turn-ledger';
 import type {
   ToolArchiveContext,
   ToolBuildContext,
