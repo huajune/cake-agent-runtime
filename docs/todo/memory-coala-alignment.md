@@ -80,12 +80,16 @@ interface LongTermMemory {
 
 - 四层各立目录：`short-term/`、`session/`（brand-state/candidate-snapshot/session-key 辅件归位，为 M3 分家后两服务预备）、`stage-state/`、`long-term/`（**consolidation 归位**——沉淀是长期层的写入管道）；类型跟层走（session-facts/stage-state/long-term 各随其层）。
 - 留根部/共享位：facade（memory.service）、lifecycle（跨层编排）、stores/、formatters/、memory-runtime.types（跨层）。
-- 性质：纯 git mv + import 路径更新，零行为变更；先例=工具层目录终态重排（cdd173a2，"散件跟主人走"）；全库测试 + typecheck 闸。
+- **图上三悬空元素的组织落点（2026-08-21 追加设计）**：
+  ① **Working Memory 立目录**：`src/agent/generator/working-memory/` = preparation.service + working-memory.types（原 PreparedAgentContext）+ 原 preparation-utils/* 全部迁入——装配车间整体归位；
+  ② **procedural 的 prompt 侧物理仓**：`context/prompts/` → `context/procedural/`（该目录本就只装手册+final-check，即 prompt 侧程序记忆；工具描述/DB 策略仍就近散布由 M1-B 互链覆盖）；
+  ③ **两舱落到文件级**（M3 范围升级）：session.service 拆 `session/facts.service.ts`（事实舱）+ `session/workbench.service.ts`（工作台舱）；brand-state 归事实舱域、candidate-snapshot 归工作台域。
+- 性质：纯 git mv + import 路径更新，零行为变更（M3 拆分除外——拆分是结构改造走 M3 批）；先例=工具层目录终态重排（cdd173a2，"散件跟主人走"）；全库测试 + typecheck 闸。
 
 ### M3 会话记忆"事实/工作台"分家
 
 - **边界裁定（2026-08-21 用户拍板）**：工作台 = `lastCandidatePool` / `presentedJobs` / `currentFocusJob` / `lastJobListQuery`（注意力/查询状态，覆盖写+cap）；**`invitedGroups` 归事实侧**（episodic 性质的已发生事件，复聊停发判定消费它）。
-- **语义事实**（facts：置信度合并、extractedAt 时间锚）与工作台状态在类型与命名上分离，治理策略各归其位。
+- **语义事实**（facts：置信度合并、extractedAt 时间锚）与工作台状态**在文件级分离**（见 M2-C 追加设计：facts.service / workbench.service 两文件两舱），治理策略各归其位。
 - 随 M2-B 登记项：jobIntent 软/硬/时间三分、consolidation 水位簿记挪位（见 M2-B 节）。
 - ⚠️ 约束：`active_booking` 行为冻结裁定在先——涉及处仅零行为整洁化。
 
