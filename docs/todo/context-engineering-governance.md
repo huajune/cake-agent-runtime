@@ -1,6 +1,6 @@
 # 上下文工程治理方案（Context Engineering Governance）
 
-> 状态：**P0 + P1 + P3-1 + F1~F5 已执行（2026-08-21，F5 含 5 处 DB 删改落地）**；剩余：P2-3/P2-4 待 P0-1b 生产数据、P3-2/P3-3/P3-4 待证据门控批次
+> 状态：**一期收官（2026-08-21）**——全部项目"已执行"或"已裁决"：P0/P1/P3-1/F1~F5 执行完毕；P3-2 三批 + P3-3 三批 + DB 挂账批执行完毕；P2-3/P2-4 裁决关闭；P3-4 并入二期 M1；暑假工规则用户裁定冻结不动。常设延续：badcase 率硬约束观察 + 膨胀哨兵 + 台账纪律
 > 建立日期：2026-08-20
 > 复核记录：2026-08-21 基于 `refactor/tools-layer-reorg`（cdd173a2 工具层终态重排后）全量复核锚点与数字；工具 description 总量由估算 ~40K 修正为实测 31,729 字符，precheck 描述已由收资状态机改造瘦身（13.5K→729）
 > 参考：[Anthropic - The New Rules of Context Engineering for Claude 5 Generation Models](https://claude.com/blog/the-new-rules-of-context-engineering-for-claude-5-generation-models)
@@ -204,8 +204,8 @@ settlement 摘要 ≈ Anthropic compaction；recall_history ≈ structured note-
 |---|---|---|---|
 | P2-1 | 工具按阶段动态挂载 | **裁定暂不做（2026-08-20 用户拍板）**。阶段跳跃兜底成本高于收益；13 工具常挂维持现状。推论：31.7K 工具 description 静态成本只能靠 P3-3 瘦身削减，P3-3 权重上调 | ✋ 暂不做 |
 | P2-2 | 76KB 手册分片 | **降级为"最后考虑"（2026-08-21 用户拍板）**：分片打碎缓存前缀，与主目标对冲；手册治理走 P1 去重 → P3 删规则的就地路径 | ⬇ 降级 |
-| P2-3 | 组装顺序重排 | 现结构前三段已静态、缓存较友好，重排增量待 P0-1 实测数据定夺；final-check 位于末尾不碍前缀 | ☐ 待实测定 |
-| P2-4 | 工具结果回合内控量 | 大工具结果（job_list 20 条页）在后续 step 中降摘要；或降低 DEFAULT_PAGE_SIZE。以 P0 的 p95 归因数据定方案 | ☐ |
+| P2-3 | 组装顺序重排 | **✋ 裁决关闭（2026-08-21，用户裁定不等数据）**：静态前缀已最大化（identity/手册/policy 静态、runtime-context 起必然动态、final-check 末尾是 recitation 设计锚定），无重排空间 | ✋ 关闭 |
+| P2-4 | 工具结果回合内控量 | **✋ 裁决关闭（2026-08-21，用现有生产数据当场归因）**：top15 大回合全为 4-5 步满步回合——大头是"步数×前缀重发"且隐式缓存已按 2 折计费；工具结果是小头，砍它动召回面得不偿失 | ✋ 关闭 |
 
 **P2 验收**：p50 token/回合显著下降（目标见第五节）；badcase 率无回升。
 
@@ -214,9 +214,9 @@ settlement 摘要 ≈ Anthropic compaction；recall_history ≈ structured note-
 | # | 事项 | 说明 | 状态 |
 |---|---|---|---|
 | P3-1 | 手册绝对化规则清点 → **建常设规则台账** | **✅ 完成（2026-08-21）**：[docs/prompt-rule-ledger.md](../prompt-rule-ledger.md) 建成——手册 ~90 条规则（36 处 badcase 锚点全部入账）+ booking 共享规则 + final-check 17 项 + DB red-lines 15 条/阈值 2 条 + stage-strategy 5 阶段 + 工具 description 章节级 + 守卫 29 ruleId 拦侧配对；判定树为分类轴；F1~F3 维护纪律入文末。加入日期缺失的条目标"—"（可 git blame 补） | ✅ |
-| P3-2 | 分批删减 + 回归闸 | **两批已执行（2026-08-21，用户裁定"不用观测直接改"，test-suite 离线闸放行）**：✅ 首批 final-check FC2 整条 + FC5 半段下线（守卫拦侧在产、手册 F10 教侧仍在）；✅ **手册批**：注入口径 28,357→27,366 字符——品牌豁免/重查机制/regionNameList 细则归并 job_list 描述唯一居所（**修复 B2 双居所口径冲突**：手册"不传 range"落后于描述正确口径），结构件四组重复消除（"阶段不压当前问题"4→2、advance_stage 纪律 2→1、"不暴露内部"3→2、线索双定义→1），详见台账手册批记录。回归：2,461 全绿×2 轮。剩余：暑假工 TTL 批（≈2026-09 到期触发）、后续按生产 badcase 节奏 | 🔄 两批完成 |
-| P3-3 | 工具 description 接口化重构 | **两批已执行（2026-08-21）**：`duliday_job_list` 13,144→**10,126**（累计 -23.0%）——首批六处去重；二批**数据开关章节坍缩**（开关早已 schema default(true) 代码接管，提示词仍教手动开关=烂源四标本，删表+4 处无效"必须开"指令）+ 班次/阶梯/学生三组两条合一。`request_handoff` 4,388→**4,026**（两轮协议副本删归 invite、同文档例外去重、T10 重复压缩）。`invite_to_group` **裁定不动**（拉群协议唯一居所+已接口化）。13 工具合计 31,729→**28,349**（-10.7%）。回归：2,461 测试全绿+typecheck | 🔄 两批完成 |
-| P3-4 | 手册低频规程 Skill 化实验 | P1-1 审计已标记候选"低频可拉取"段落：**平台来源识别（P1-P5，仅截图/渠道场景触发）、造假引导 C8、结伴分流 R4、面试方式细则 C7 后半（AI 面试时段语义）**——共性是触发率低但篇幅长。P3 做拉取工具原型（类 recall_history 的 playbook 版）+ 回归验证。内容进 messages 后缀不破坏前缀缓存（裁定 8）。⚠️ 新增常挂工具本身占 description 预算，原型需净收益核算 | ☐ 就绪待批 |
+| P3-2 | 分批删减 + 回归闸 | **两批已执行（2026-08-21，用户裁定"不用观测直接改"，test-suite 离线闸放行）**：✅ 首批 final-check FC2 整条 + FC5 半段下线（守卫拦侧在产、手册 F10 教侧仍在）；✅ **手册批**：注入口径 28,357→27,366 字符——品牌豁免/重查机制/regionNameList 细则归并 job_list 描述唯一居所（**修复 B2 双居所口径冲突**：手册"不传 range"落后于描述正确口径），结构件四组重复消除（"阶段不压当前问题"4→2、advance_stage 纪律 2→1、"不暴露内部"3→2、线索双定义→1），详见台账手册批记录。回归：2,461 全绿×2 轮。**DB 挂账批（2026-08-21）**：R10/R11 删除归手册唯一居所、R8 加开城 TTL 标注、interview_scheduling 字段范围对齐+段内自重复清理（red_lines 现 10 条，changelog 已录）。暑假工规则**用户裁定冻结不动**（覆盖原 ≈2026-09 复查计划）；后续删减按生产 badcase 节奏 | ✅ 收官 |
+| P3-3 | 工具 description 接口化重构 | **两批已执行（2026-08-21）**：`duliday_job_list` 13,144→**8,515**（三批累计 -35.2%，第三批深度压缩 16 处硬规则/空头承诺散文）——首批六处去重；二批**数据开关章节坍缩**（开关早已 schema default(true) 代码接管，提示词仍教手动开关=烂源四标本，删表+4 处无效"必须开"指令）+ 班次/阶梯/学生三组两条合一。`request_handoff` 4,388→**4,026**（两轮协议副本删归 invite、同文档例外去重、T10 重复压缩）。`invite_to_group` **裁定不动**（拉群协议唯一居所+已接口化）。13 工具合计 31,729→**26,738**（-15.7%）。回归：2,461 测试全绿+typecheck | 🔄 两批完成 |
+| P3-4 | 手册低频规程 Skill 化实验 | **✋ 并入二期 M1（2026-08-21 裁决）**：孤立原型无净收益（新工具占描述预算、无注册表/加载统计/退役机制），其正确形态就是二期 M1 的 playbook 库——候选段落清单（平台来源识别/造假引导 C8/结伴分流/C7 后半）随 M1 一体实施 | ✋ 并入二期 |
 
 **P3 验收**：每批删减有前后对比数据；总规则量下降且 badcase 率持平。
 
@@ -259,7 +259,7 @@ settlement 摘要 ≈ Anthropic compaction；recall_history ≈ structured note-
 - 手册：`candidate-consultation.md` 文件 74,519B，**注入口径 27,366 字符**（手册批前 28,357；⚠️ 文件字节≠注入量——约 25KB 是 HTML 注释锚点，加载时 `stripMaintainerComments` 剥离，原"76KB 手册"表述实为文件口径）+ `-final-check.md` 5,865B
 - 历史窗口：60 条（`MAX_HISTORY_PER_CHAT`）/ 12,000 字符（`AGENT_MAX_INPUT_CHARS`，`memory.config.ts:78-83`）；双重裁剪（memory 层 + `preparation.service.ts:173`）
 - 工具注册：`src/tools/tool-registry.service.ts:218`（13 常挂清单）、`:306` / `:321`（save_image_description / read_resume_attachment 动态注入）
-- 工具 description 实测（字符）：job_list **10,126**（治理前 13,144，两批 -23%）/ handoff **4,026**（原 4,388）/ invite 3,804（裁定不动）/ geocode 2,221 / cancel 2,000 / modify 1,810 / skip_reply 974 / store_location 829 / precheck 729 / risk_alert 620 / advance_stage 619 / recall 242；13 常挂合计 **28,349**（治理前 31,729，-10.7%）；final-check 5,865B（原 6,505）
+- 工具 description 实测（字符）：job_list **8,515**（治理前 13,144，三批 -35.2%）/ handoff **4,026**（原 4,388）/ invite 3,804（裁定不动）/ geocode 2,221 / cancel 2,000 / modify 1,810 / skip_reply 974 / store_location 829 / precheck 729 / risk_alert 620 / advance_stage 619 / recall 242；13 常挂合计 **26,738**（治理前 31,729，-15.7%）；final-check 5,865B（原 6,505）
 - 工具结果渐进披露：`src/tools/job-list/render.util.ts:1049`（`FULL_DETAIL_CAP=6` 家全文）、`:1200`（其余降摘要行）
 - 多步：`generator.agent.ts`（prepareStep 挂载，maxSteps=5、工具结果全累积）；拦截说明为每步从 base 重建的替换语义、末尾追加不碍前缀（P1-4 复核）
 - 同工具限次：`tool-call-analysis.ts:20`（同工具≤3）、`:26`（precheck≤2）
