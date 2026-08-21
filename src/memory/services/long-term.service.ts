@@ -37,7 +37,7 @@ export interface FactOrigin {
   botImId?: string;
 }
 
-/** settlement 专用：血缘之外附带品牌快照源（preferences.brands 已退役，§19.6）。 */
+/** consolidation 专用：血缘之外附带品牌快照源（preferences.brands 已退役，§19.6）。 */
 export interface SettlementFactOrigin extends FactOrigin {
   brandState?: PersistedBrandState | null;
 }
@@ -153,7 +153,7 @@ export class LongTermService {
    * evidence 保留原 sessionFact 的置信度与机制细节，避免丢失一跳证据。
    * confidence 固定为 medium，避免沉淀数据覆盖 booking/high。
    */
-  async writeFromSettlement(
+  async writeFromConsolidation(
     corpId: string,
     userId: string,
     facts: EntityExtractionResult | SessionFacts,
@@ -167,15 +167,15 @@ export class LongTermService {
       // 造成的"profile 落库而意向丢失"半写状态。
       await this.supabaseStore.upsertProfileFacts(corpId, userId, {}, undefined, preferenceFacts);
       this.logger.log(
-        `[writeFromSettlement] Preference 快照写入: userId=${userId}, ` +
+        `[writeFromConsolidation] Preference 快照写入: userId=${userId}, ` +
           `fields=${Object.keys(preferenceFacts).join(',')}`,
       );
     } catch (error) {
-      this.logger.warn('[writeFromSettlement] 写入 Preference 失败', error);
+      this.logger.warn('[writeFromConsolidation] 写入 Preference 失败', error);
     }
   }
 
-  /** 读取长期求职意向（settlement 沉淀的跨会话偏好快照）。 */
+  /** 读取长期求职意向（consolidation 沉淀的跨会话偏好快照）。 */
   async getPreferences(corpId: string, userId: string): Promise<LongTermPreferenceFacts | null> {
     try {
       return await this.supabaseStore.getPreferenceFacts(corpId, userId);

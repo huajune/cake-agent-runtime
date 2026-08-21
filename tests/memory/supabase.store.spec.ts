@@ -324,7 +324,7 @@ describe('SupabaseStore', () => {
     });
 
     it('should delegate confidence guard to atomic DB RPC, not app-level read-then-write', async () => {
-      // 回归场景：settlement 先读（无 high）→ booking 写 high → settlement 后写 medium
+      // 回归场景：consolidation 先读（无 high）→ booking 写 high → consolidation 后写 medium
       // 应用层 read-then-write 无法防止此交错。验证走 RPC 而非 from().upsert()。
       mockRpc.mockResolvedValue({
         data: { written_fields: ['education'], skipped_fields: ['name', 'phone', 'age', 'gender'] },

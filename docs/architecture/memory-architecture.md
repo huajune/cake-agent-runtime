@@ -112,7 +112,7 @@ interface UserProfileFactValue<T> {
 
 - **读取**：每回合 `onTurnStart` 固定注入 `[用户档案]`，只带字段值 / 置信度 / 来源 / 更新日期——**不带 evidence 全文**（evidence 是排障字段）；
 - **工具消费**：统一 unwrap，**只传 high**，低/中/未知交给模型判断是否追问；
-- **写入**：`SettlementService` 沉淀时抽身份字段并打血缘；报名成功经 `writeFromBooking()`；外部补充经 `MemoryService.saveProfile()`。
+- **写入**：`ConsolidationService` 沉淀时抽身份字段并打血缘；报名成功经 `writeFromBooking()`；外部补充经 `MemoryService.saveProfile()`。
 
 #### Preference Facts（跨会话稳定意向）
 
@@ -124,7 +124,7 @@ const LONG_TERM_PREFERENCE_FIELD_KEYS = [
 ```
 
 - **覆盖语义是快照式整组覆盖**（最新一段会话的意向赢）——与 session facts 的 deepMerge 累积**刻意不同**：累积会让错值 / 错字变体永远清不掉；
-- 唯一写方 `SettlementService`；渲染为 `[历史求职意向]`，带更新日期与「本次优先」指引，过期的 `available_after` 不渲染；
+- 唯一写方 `ConsolidationService`；渲染为 `[历史求职意向]`，带更新日期与「本次优先」指引，过期的 `available_after` 不渲染；
 - **不进工具预填**，仅供模型参考。
 
 #### Summary（分层压缩的对话摘要）
@@ -230,8 +230,8 @@ time_windows  schedule_constraint  available_after
 ### 4.2 onTurnEnd
 
 ```
-1. load_previous_state                  ← 先读旧 state，给 settlement 用
-2. 分支 A：settlement（可选）            ← gap ≥ settlementGapSeconds 时触发
+1. load_previous_state                  ← 先读旧 state，给 consolidation 用
+2. 分支 A：consolidation（可选）            ← gap ≥ consolidationGapSeconds 时触发
 3. 分支 B：session_turn_end_updates（串行，避免 Redis 状态互覆盖）
    ├── save_candidate_pool
    ├── project_assistant_turn           岗位投影 → presentedJobs / currentFocusJob
@@ -242,7 +242,7 @@ time_windows  schedule_constraint  available_after
 4. 每步 success/skipped/failure 写入 message_processing_records.post_processing_status
 ```
 
-⚠️ **settlement 刻意使用回合开始前的旧 `sessionFacts`**，不用本轮刚提取的新 facts——沉淀的是「上一段已闭合会话」，用新 facts 会让本轮消息污染上一段摘要边界。
+⚠️ **consolidation 刻意使用回合开始前的旧 `sessionFacts`**，不用本轮刚提取的新 facts——沉淀的是「上一段已闭合会话」，用新 facts 会让本轮消息污染上一段摘要边界。
 
 ⚠️ **回合收尾必须纳入处理锁**：WeCom 链路用 `deferTurnEnd=true` 让收尾延迟到投递阶段，但**必须在释放 chat 处理锁前 `await` 完成**（`reply-workflow` 的 finally）。否则收尾仍在异步写 session state 时会与下一个 job 并发，整份覆盖写互相丢更新。首次调用若被 replay 丢弃，记忆投影与事实提取一同丢弃——避免「未发出的回复」污染记忆。
 
@@ -270,7 +270,7 @@ extract_facts
 ### 4.4 会话沉淀（Settlement）
 
 ```
-detectAndSettle(): chat_messages 中出现 gap ≥ settlementGapSeconds
+detectAndSettle(): chat_messages 中出现 gap ≥ consolidationGapSeconds
   ├── 边界判定：lastSettledBySession[sessionId] → 缺失回退全局 lastSettledMessageAt
   │             分页扫描边界后消息（每页 500，最多 10 页）
   ├── 身份字段 → profile_facts    从 Redis sessionFacts 抽（已校验/清洗过的结构化事实）
@@ -434,12 +434,12 @@ flowchart TD
 
 ## 9. 服务周期与时间常量
 
-多个时间参数围绕同一业务概念——**单次求职服务周期**（候选人打招呼到上岗，典型 1~7 天）。**空闲超时判定**：连续两条消息时间差达 `settlementGapSeconds` 即认为前一段会话已结束。
+多个时间参数围绕同一业务概念——**单次求职服务周期**（候选人打招呼到上岗，典型 1~7 天）。**空闲超时判定**：连续两条消息时间差达 `consolidationGapSeconds` 即认为前一段会话已结束。
 
 | 常量 | 默认值 | 环境变量 | 说明 |
 |---|---|---|---|
 | `sessionTtl` | 2 天 | `MEMORY_SESSION_TTL_DAYS` | Redis 会话级数据 TTL；常见环境配 3 天 |
-| `settlementGapSeconds` | 1 天 | `MEMORY_SETTLEMENT_GAP_DAYS` | 消息间隔达此值触发旧会话沉淀 |
+| `consolidationGapSeconds` | 1 天 | `MEMORY_SETTLEMENT_GAP_DAYS` | 消息间隔达此值触发旧会话沉淀 |
 | `historyWindowSeconds` | 7 天 | `MEMORY_HISTORY_WINDOW_DAYS` | 短期窗口 DB fallback 回查边界 |
 | `sessionWindowMaxMessages` | 60 | `MAX_HISTORY_PER_CHAT` | 短期记忆最大消息条数 |
 | `sessionWindowMaxChars` | 12000 | `AGENT_MAX_INPUT_CHARS` | 超限从最早消息开始裁剪 |
@@ -447,7 +447,7 @@ flowchart TD
 | `longTermCacheTtl` | 2h | — | 长期记忆整行 Redis 缓存（硬编码） |
 | `MAX_RECENT_SUMMARIES` | 5 | — | `summary.recent` 上限（溢出压缩进 archive） |
 
-**核心约束**：`sessionTtl` / `settlementGapSeconds` / `historyWindowSeconds` 已分离——Redis 存活、沉淀判定、DB 回查窗口分别调优。
+**核心约束**：`sessionTtl` / `consolidationGapSeconds` / `historyWindowSeconds` 已分离——Redis 存活、沉淀判定、DB 回查窗口分别调优。
 
 ---
 
@@ -503,7 +503,7 @@ flowchart TD
 | 对外 facade | `src/memory/memory.service.ts` |
 | 回合生命周期编排 | `src/memory/services/memory-lifecycle.service.ts` |
 | sessionFacts 写回与抽取编排 | `src/memory/services/session.service.ts` |
-| 会话沉淀 | `src/memory/services/settlement.service.ts` |
+| 会话沉淀 | `src/memory/services/consolidation.service.ts` |
 | 长期画像写入 | `src/memory/services/long-term.service.ts` |
 | 抽取提示词 | `src/memory/services/session-extraction.prompt.ts` |
 | fact wrapper 类型与 unwrap | `src/memory/types/session-facts.types.ts` / `long-term.types.ts` |

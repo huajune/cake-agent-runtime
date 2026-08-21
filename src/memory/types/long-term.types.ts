@@ -355,7 +355,7 @@ export type LongTermPreferenceFieldKey = (typeof LONG_TERM_PREFERENCE_FIELD_KEYS
  *
  * 覆盖语义是**快照式整组覆盖**（最新一段会话的意向赢），与 session facts 的
  * deepMerge 累积不同——累积语义会让错值/错字变体永远清不掉（张漪 case 的
- * pref.location 教训）。settlement 是唯一写方。
+ * pref.location 教训）。consolidation 是唯一写方。
  */
 export type LongTermPreferenceFacts = Partial<
   Record<LongTermPreferenceFieldKey, UserProfileFactValue<unknown>>

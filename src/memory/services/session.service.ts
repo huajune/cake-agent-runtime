@@ -958,14 +958,14 @@ export class SessionService {
   }
 
   /**
-   * 把对话裁剪到"当前会话段"：从最后一条消息往回扫，相邻消息时间差 ≥ settlementGap
-   * 即视为旧会话边界并截断（与 SettlementService 的断层语义一致）。
+   * 把对话裁剪到"当前会话段"：从最后一条消息往回扫，相邻消息时间差 ≥ consolidationGap
+   * 即视为旧会话边界并截断（与 ConsolidationService 的断层语义一致）。
    *
    * 时间戳从消息内容的 `[消息发送时间：…]` 后缀解析（短期记忆注入，见
    * MessageParser.injectTimeContext）；无法解析的消息保守视为同一会话。
    */
   private trimToCurrentSessionSegment<T extends { content: string }>(messages: T[]): T[] {
-    const gapMs = this.config.settlementGapSeconds * 1000;
+    const gapMs = this.config.consolidationGapSeconds * 1000;
     let laterTs: number | null = null;
     for (let i = messages.length - 1; i >= 0; i--) {
       const ts = this.parseMessageSentAt(messages[i].content);

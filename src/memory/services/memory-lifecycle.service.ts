@@ -10,7 +10,7 @@ import { BrandStateService } from './brand-state.service';
 import { LongTermService } from './long-term.service';
 import { MemoryEnrichmentService, type CandidateIdentityHint } from './memory-enrichment.service';
 import { StageStateService } from './stage-state.service';
-import { SettlementService } from './settlement.service';
+import { ConsolidationService } from './consolidation.service';
 import { SessionService } from './session.service';
 import { ShortTermService } from './short-term.service';
 import { stripQuotedBlocks, stripTimeContext } from '@resolution/signal/markers';
@@ -81,7 +81,7 @@ interface TimedTask<T = void> {
  *
  * 它不直接承担具体的领域判断：
  * - 会话记忆投影交给 SessionService
- * - 长期记忆沉淀交给 SettlementService
+ * - 长期记忆沉淀交给 ConsolidationService
  */
 @Injectable()
 export class MemoryLifecycleService {
@@ -91,7 +91,7 @@ export class MemoryLifecycleService {
     private readonly shortTerm: ShortTermService,
     private readonly stageState: StageStateService,
     private readonly longTerm: LongTermService,
-    private readonly settlement: SettlementService,
+    private readonly consolidation: ConsolidationService,
     private readonly session: SessionService,
     private readonly sponge: SpongeService,
     private readonly enrichment: MemoryEnrichmentService,
@@ -268,11 +268,11 @@ export class MemoryLifecycleService {
       // 读取失败时降级跳过，不中断主流程。
       if (previousStateResult.step.status === 'failure') {
         steps.push(
-          this.buildSkippedStep('settlement', '上一轮 session state 读取失败，跳过 settlement'),
+          this.buildSkippedStep('consolidation', '上一轮 session state 读取失败，跳过 consolidation'),
         );
       } else {
-        const settlementTask = this.createTimedTask('settlement', async () => {
-          await this.settlement.detectAndSettle(
+        const consolidationTask = this.createTimedTask('consolidation', async () => {
+          await this.consolidation.detectAndSettle(
             ctx.corpId,
             ctx.userId,
             ctx.sessionId,
@@ -282,21 +282,21 @@ export class MemoryLifecycleService {
             previousState?.brand_state ?? null,
           );
         });
-        branchNames.push(settlementTask.name);
+        branchNames.push(consolidationTask.name);
         branchPromises.push(
-          settlementTask.promise
+          consolidationTask.promise
             .then(() => [
               this.buildSuccessStep(
-                settlementTask.name,
-                settlementTask.timings.startedAt,
-                settlementTask.timings.endedAt,
+                consolidationTask.name,
+                consolidationTask.timings.startedAt,
+                consolidationTask.timings.endedAt,
               ),
             ])
             .catch((error) =>
               Promise.reject({
                 error,
                 durationMs: Math.max(
-                  settlementTask.timings.endedAt - settlementTask.timings.startedAt,
+                  consolidationTask.timings.endedAt - consolidationTask.timings.startedAt,
                   0,
                 ),
               }),

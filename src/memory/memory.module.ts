@@ -14,7 +14,7 @@ import { ShortTermService } from './services/short-term.service';
 import { SessionService } from './services/session.service';
 import { StageStateService } from './services/stage-state.service';
 import { LongTermService } from './services/long-term.service';
-import { SettlementService } from './services/settlement.service';
+import { ConsolidationService } from './services/consolidation.service';
 import { MemoryEnrichmentService } from './services/memory-enrichment.service';
 import { MemoryLifecycleService } from './services/memory-lifecycle.service';
 import { HostingConfigModule } from '@biz/hosting-config/hosting-config.module';
@@ -25,7 +25,7 @@ import { GeocodingModule } from '@infra/geocoding/geocoding.module';
  *
  * 分为三层：
  * - facade: MemoryService
- * - domain services: services/ 下的 short-term / long-term / stageState / settlement / session / enrichment / lifecycle / brand-state
+ * - domain services: services/ 下的 short-term / long-term / stageState / consolidation / session / enrichment / lifecycle / brand-state
  * - stores: Redis / Supabase 基础设施
  */
 @Module({
@@ -48,7 +48,7 @@ import { GeocodingModule } from '@infra/geocoding/geocoding.module';
     SessionService,
     StageStateService,
     LongTermService,
-    SettlementService,
+    ConsolidationService,
     MemoryEnrichmentService,
     MemoryLifecycleService,
     MemoryService,

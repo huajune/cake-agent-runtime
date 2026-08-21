@@ -70,7 +70,7 @@ export interface AgentMemorySnapshot {
 
 export type AgentJobDetailField =
   | 'salary'
-  | 'settlement'
+  | 'consolidation'
   | 'shift'
   | 'welfare'
   | 'age_requirement'

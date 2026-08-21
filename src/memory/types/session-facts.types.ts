@@ -594,7 +594,7 @@ export const SessionPreferencesSchema = z.object({
  *
  * ⚠️ 刻意**不含 `reasoning`**（2026-08-19 记忆审计 S8 拆除）：它曾随每次 saveFacts
  * 落盘，但全库零读消费者——`buildLlmFactEvidence` 收下它却返回常量，
- * `unwrapSessionFacts` 的下游（settlement / tool-context / memory-block / context）
+ * `unwrapSessionFacts` 的下游（consolidation / tool-context / memory-block / context）
  * 一个都不读它。仓库外亦无消费：`memory_snapshot.sessionFacts` 由
  * `flattenSessionFacts` 生成，只收 interview_info 与 preferences 两组；
  * `extraction_accuracy_report_fn` 只读 `interview.name/phone/age/gender`。

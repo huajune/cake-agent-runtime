@@ -69,7 +69,7 @@ describe('LongTermService（S7 单一 Profile 上游 + preference 三态）', ()
     expect(facts.name.evidence).toContain('workOrderId=9001');
   });
 
-  it('settlement 不再沉淀身份 Profile，只写稳定偏好', async () => {
+  it('consolidation 不再沉淀身份 Profile，只写稳定偏好', async () => {
     const facts = toSessionFacts(
       {
         ...FALLBACK_EXTRACTION,
@@ -80,7 +80,7 @@ describe('LongTermService（S7 单一 Profile 上游 + preference 三态）', ()
       { confidence: 'medium', source: 'model', evidence: '软事实提取' },
     );
 
-    await service.writeFromSettlement('corp-1', 'user-1', facts, {
+    await service.writeFromConsolidation('corp-1', 'user-1', facts, {
       sessionId: 'session-A',
       botImId: 'bot-A',
     });
@@ -103,7 +103,7 @@ describe('LongTermService（S7 单一 Profile 上游 + preference 三态）', ()
       evidence: '无新软事实',
     });
 
-    await service.writeFromSettlement('corp-1', 'user-1', facts);
+    await service.writeFromConsolidation('corp-1', 'user-1', facts);
     expect(store.upsertProfileFacts).not.toHaveBeenCalled();
   });
 
@@ -119,7 +119,7 @@ describe('LongTermService（S7 单一 Profile 上游 + preference 三态）', ()
       evidence: '候选人明确表示地点不限',
     });
 
-    await service.writeFromSettlement('corp-1', 'user-1', facts, {
+    await service.writeFromConsolidation('corp-1', 'user-1', facts, {
       sessionId: 'session-A',
       botImId: 'bot-A',
     });
@@ -152,7 +152,7 @@ describe('LongTermService（S7 单一 Profile 上游 + preference 三态）', ()
       { confidence: 'medium', source: 'model', evidence: '软事实提取' },
     );
 
-    await service.writeFromSettlement('corp-1', 'user-1', facts);
+    await service.writeFromConsolidation('corp-1', 'user-1', facts);
     const saved = store.upsertProfileFacts.mock.calls[0][4];
     expect(saved.city.value).toBe('上海');
     expect(saved.district.value).toEqual(['浦东新区']);
@@ -160,13 +160,13 @@ describe('LongTermService（S7 单一 Profile 上游 + preference 三态）', ()
     expect(saved.time_windows).toBeUndefined();
   });
 
-  it('品牌快照仍是 settlement preference，不写 Profile', async () => {
+  it('品牌快照仍是 consolidation preference，不写 Profile', async () => {
     const facts = toSessionFacts(FALLBACK_EXTRACTION, {
       confidence: 'medium',
       source: 'model',
       evidence: '无新软事实',
     });
-    await service.writeFromSettlement('corp-1', 'user-1', facts, {
+    await service.writeFromConsolidation('corp-1', 'user-1', facts, {
       sessionId: 'session-A',
       botImId: 'bot-A',
       brandState: {

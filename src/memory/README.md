@@ -174,7 +174,7 @@ memory 模块的职责不是“帮模型记住一切”，而是把记忆相关�
 - `preference_facts`（长期求职意向，列 `preference_facts`）
   - `LONG_TERM_PREFERENCE_FIELD_KEYS`：城市/区域/地点/品牌/岗位/班次/薪资/用工形式/排班硬约束/推迟意向/最早可面日期
   - 排除单次 episode 的临时态（`short_term` / `time_windows` / `open_position`）
-  - 由 settlement 唯一写入，语义是**快照式整组覆盖**（最新一段会话的意向赢），不像 session facts 那样累积
+  - 由 consolidation 唯一写入，语义是**快照式整组覆盖**（最新一段会话的意向赢），不像 session facts 那样累积
 - `summary`
   - `recent[]`
   - `archive`
@@ -297,7 +297,7 @@ memory 模块的职责不是“帮模型记住一切”，而是把记忆相关�
 流程分两条并行分支（`Promise.allSettled`），分支内顺序很重要：
 
 1. 取最后一条 user 消息、读取旧的 `sessionState`
-2. settlement 分支：用旧 `sessionState.facts` 启动沉淀检测（`ctx.botImId` 作为沉淀字段的 bot 血缘）
+2. consolidation 分支：用旧 `sessionState.facts` 启动沉淀检测（`ctx.botImId` 作为沉淀字段的 bot 血缘）
 3. 会话收尾分支（串行）：落 `lastCandidatePool` → 落 `lastJobListQuery` → 岗位投影 →
    剔除失效岗位 → 落工具确权城市 → 后置结构化事实提取 → `brand_state` reducer 收尾
    （品牌归并不因提取失败跳过）
@@ -329,7 +329,7 @@ memory 模块的职责不是“帮模型记住一切”，而是把记忆相关�
 1. 把本轮消息拆成：
    - `conversationHistory`
    - `currentMessage`
-2. 用 `trimToCurrentSessionSegment()` 按消息间隙（≥`settlementGapSeconds`）截到最近连续会话段，避免跨会话串味
+2. 用 `trimToCurrentSessionSegment()` 按消息间隙（≥`consolidationGapSeconds`）截到最近连续会话段，避免跨会话串味
 3. 读取旧的 `facts`
 4. 如果已有 `facts`，只重看最近 `sessionExtractionIncrementalMessages` 条历史
 5. 纯应答闸门：若 `isPureAcknowledgment()` 命中且当前消息规则零命中，跳过 LLM 提取直接复用旧 facts
@@ -348,18 +348,18 @@ memory 模块的职责不是“帮模型记住一切”，而是把记忆相关�
 - `onTurnEnd` 会重新跑同类规则抽取，并把可保存的结果写入 `sessionFacts`
 - 每个字段写入时打 `extractedAt` 时间锚；evidence 入库经 `truncateEvidence()` 截断 `MAX_FACT_EVIDENCE_CHARS=200` 字
 
-## 沉淀：Settlement
+## 沉淀：Consolidation
 
-实现服务：[settlement.service.ts](/Users/jiezhu/workSpace/DuLiDay/cake-agent-runtime/src/memory/services/settlement.service.ts)
+实现服务：[consolidation.service.ts](/Users/jiezhu/workSpace/DuLiDay/cake-agent-runtime/src/memory/services/consolidation.service.ts)
 
 触发条件：
 
-- `chat_messages` 中连续两条消息的时间差达到 `settlementGapSeconds`
+- `chat_messages` 中连续两条消息的时间差达到 `consolidationGapSeconds`
 
 执行内容：
 
 1. 判断这段旧会话是否已经沉淀过（边界取 `summary_data.lastSettledBySession[sessionId]`，缺失再回退 `lastSettledMessageAt`）
-2. 分页扫描边界之后到旧会话断点之间的消息片段（每页 `SETTLEMENT_FETCH_LIMIT=500`，最多 `MAX_PAGES=10` 页）
+2. 分页扫描边界之后到旧会话断点之间的消息片段（每页 `CONSOLIDATION_FETCH_LIMIT=500`，最多 `MAX_PAGES=10` 页）
 3. 使用当前 Redis `sessionFacts` 作为已校验/清洗过的结构化事实参考
 4. 摘要输入截尾最近 `SUMMARY_MAX_MESSAGES=120` 条
 5. 调 LLM 生成一条摘要
@@ -398,7 +398,7 @@ memory 模块的职责不是“帮模型记住一切”，而是把记忆相关�
 定义在 [memory.config.ts](/Users/jiezhu/workSpace/DuLiDay/cake-agent-runtime/src/memory/memory.config.ts)：
 
 - `sessionTtl`
-- `settlementGapSeconds`
+- `consolidationGapSeconds`
 - `historyWindowSeconds`
 - `sessionWindowMaxMessages`
 - `sessionWindowMaxChars`
@@ -408,7 +408,7 @@ memory 模块的职责不是“帮模型记住一切”，而是把记忆相关�
 其中：
 
 - `sessionTtl` 决定 Redis 会话态的过期时间
-- `settlementGapSeconds` 决定多长消息间隔算一段旧会话结束
+- `consolidationGapSeconds` 决定多长消息间隔算一段旧会话结束
 - `historyWindowSeconds` 决定短期窗口 Redis miss 后从 DB 回看多远
 
 ## 当前真实的文件职责
@@ -433,7 +433,7 @@ memory 模块的职责不是“帮模型记住一切”，而是把记忆相关�
 - `services/long-term.service.ts`
   - profile_facts / preference_facts / summary 持久化
 
-- `services/settlement.service.ts`
+- `services/consolidation.service.ts`
   - 会话结束后的长期沉淀
 
 - `services/candidate-snapshot.service.ts`

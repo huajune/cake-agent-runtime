@@ -41,7 +41,7 @@ describe('SessionService（S1-S6）', () => {
   const config = {
     sessionTtl: 86400,
     sessionExtractionIncrementalMessages: 8,
-    settlementGapSeconds: 86400,
+    consolidationGapSeconds: 86400,
   };
   let service: SessionService;
 

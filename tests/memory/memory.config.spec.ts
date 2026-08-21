@@ -10,7 +10,7 @@ describe('MemoryConfig', () => {
     const config = createConfig();
 
     expect(config.sessionTtl).toBe(2 * 24 * 60 * 60); // 2d = 172800s
-    expect(config.settlementGapSeconds).toBe(1 * 24 * 60 * 60); // 1d
+    expect(config.consolidationGapSeconds).toBe(1 * 24 * 60 * 60); // 1d
     expect(config.historyWindowSeconds).toBe(7 * 24 * 60 * 60); // 7d
     expect(config.sessionWindowMaxMessages).toBe(60);
     expect(config.sessionWindowMaxChars).toBe(12000);

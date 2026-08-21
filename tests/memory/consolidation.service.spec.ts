@@ -1,19 +1,19 @@
-import { SettlementService } from '@memory/services/settlement.service';
+import { ConsolidationService } from '@memory/services/consolidation.service';
 import { FALLBACK_EXTRACTION } from '@memory/types/session-facts.types';
 
 const mockSystemConfig = {
   getExtractModelOverride: jest.fn().mockResolvedValue(undefined),
 };
 
-describe('SettlementService', () => {
+describe('ConsolidationService', () => {
   const SETTLEMENT_GAP = 86400; // 1 day in seconds
-  const mockConfig = { settlementGapSeconds: SETTLEMENT_GAP };
+  const mockConfig = { consolidationGapSeconds: SETTLEMENT_GAP };
 
   const mockLongTermService = {
     getSummaryData: jest.fn(),
     appendSummary: jest.fn().mockResolvedValue(undefined),
     markLastSettledMessageAt: jest.fn().mockResolvedValue(undefined),
-    writeFromSettlement: jest.fn().mockResolvedValue(undefined),
+    writeFromConsolidation: jest.fn().mockResolvedValue(undefined),
   };
 
   const mockChatSession = {
@@ -24,11 +24,11 @@ describe('SettlementService', () => {
     generate: jest.fn().mockResolvedValue({ text: '本次会话摘要' }),
   };
 
-  let service: SettlementService;
+  let service: ConsolidationService;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    service = new SettlementService(
+    service = new ConsolidationService(
       mockConfig as never,
       mockLongTermService as never,
       mockChatSession as never,
@@ -40,7 +40,7 @@ describe('SettlementService', () => {
   describe('detectAndSettle', () => {
     // ==================== 冷启动场景 ====================
 
-    it('should initialize boundary to latest message on cold start (no full-history settlement)', async () => {
+    it('should initialize boundary to latest message on cold start (no full-history consolidation)', async () => {
       const now = Date.now();
       mockLongTermService.getSummaryData.mockResolvedValue({
         recent: [],
@@ -78,7 +78,7 @@ describe('SettlementService', () => {
       expect(mockLongTermService.markLastSettledMessageAt).not.toHaveBeenCalled();
     });
 
-    it('should only initialize boundary on cold start even when gap exists (settlement on next turn)', async () => {
+    it('should only initialize boundary on cold start even when gap exists (consolidation on next turn)', async () => {
       const now = Date.now();
       mockLongTermService.getSummaryData.mockResolvedValue({
         recent: [],
@@ -124,7 +124,7 @@ describe('SettlementService', () => {
 
     // ==================== 快速跳过 ====================
 
-    it('should skip DB query when lastSettledAt is within settlementGapSeconds (fast path)', async () => {
+    it('should skip DB query when lastSettledAt is within consolidationGapSeconds (fast path)', async () => {
       mockLongTermService.getSummaryData.mockResolvedValue({
         recent: [],
         archive: null,
@@ -347,7 +347,7 @@ describe('SettlementService', () => {
 
     // ==================== Profile 沉淀写入 ====================
 
-    it('should call writeFromSettlement with sessionFacts when facts are provided and settlement triggers', async () => {
+    it('should call writeFromConsolidation with sessionFacts when facts are provided and consolidation triggers', async () => {
       const now = Date.now();
       const lastSettled = new Date(now - 3 * SETTLEMENT_GAP * 1000).toISOString();
       mockLongTermService.getSummaryData.mockResolvedValue({
@@ -389,7 +389,7 @@ describe('SettlementService', () => {
 
       expect(result).toBe(true);
       // brand_state 随血缘一起下传（§19.6 长期意向品牌快照源）
-      expect(mockLongTermService.writeFromSettlement).toHaveBeenCalledWith(
+      expect(mockLongTermService.writeFromConsolidation).toHaveBeenCalledWith(
         'corp1',
         'user1',
         fakeFacts,
@@ -405,7 +405,7 @@ describe('SettlementService', () => {
       );
     });
 
-    it('should NOT call writeFromSettlement when facts are null', async () => {
+    it('should NOT call writeFromConsolidation when facts are null', async () => {
       const now = Date.now();
       const lastSettled = new Date(now - 3 * SETTLEMENT_GAP * 1000).toISOString();
       mockLongTermService.getSummaryData.mockResolvedValue({
@@ -420,7 +420,7 @@ describe('SettlementService', () => {
 
       await service.detectAndSettle('corp1', 'user1', 'sess1', null);
 
-      expect(mockLongTermService.writeFromSettlement).not.toHaveBeenCalled();
+      expect(mockLongTermService.writeFromConsolidation).not.toHaveBeenCalled();
     });
 
     // ==================== 边界维度隔离（双 bot） ====================

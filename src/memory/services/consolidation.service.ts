@@ -21,7 +21,7 @@ const SUMMARY_SYSTEM_PROMPT = `你是对话摘要生成器。将招募经理与�
 - 不超过 100 字
 - 使用第三人称`;
 
-const SETTLEMENT_FETCH_LIMIT = 500;
+const CONSOLIDATION_FETCH_LIMIT = 500;
 
 /** 摘要 LLM 输入的消息条数上限：分页扫描后旧会话段可能远超单页。 */
 const SUMMARY_MAX_MESSAGES = 120;
@@ -54,7 +54,7 @@ const ARCHIVE_COMPRESS_PROMPT = `你是记忆压缩器。将多条历史求职�
  *    `lastSettledMessageAt` 回退；为 null 时冷启动——把边界初始化到最新消息后返回，
  *    跳过历史全量沉淀
  * 2. 查询 `lastSettledMessageAt` 之后的所有消息，找最近一段会话的开始时间
- * 3. 若（当前会话第一条消息时间 - 上一段会话最后一条消息时间）>= settlementGapSeconds，
+ * 3. 若（当前会话第一条消息时间 - 上一段会话最后一条消息时间）>= consolidationGapSeconds，
  *    认为上一段会话已闲置结束，对其执行沉淀
  * 4. 用当前 sessionFacts 作为已校验事实参考，生成摘要
  * 5. 写入 `summary_data`，更新会话级沉淀边界（RPC 带 p_session_id）
@@ -62,8 +62,8 @@ const ARCHIVE_COMPRESS_PROMPT = `你是记忆压缩器。将多条历史求职�
  *    preference_facts，品牌快照随沉淀一并写入
  */
 @Injectable()
-export class SettlementService {
-  private readonly logger = new Logger(SettlementService.name);
+export class ConsolidationService {
+  private readonly logger = new Logger(ConsolidationService.name);
 
   constructor(
     private readonly config: MemoryConfig,
@@ -97,10 +97,10 @@ export class SettlementService {
       const lastSettledAt =
         summaryData?.lastSettledBySession?.[sessionId] ?? summaryData?.lastSettledMessageAt ?? null;
 
-      // 快速跳过：若上次沉淀边界距今 < settlementGapSeconds，不可能存在闭合断层
+      // 快速跳过：若上次沉淀边界距今 < consolidationGapSeconds，不可能存在闭合断层
       if (lastSettledAt) {
         const msSinceLastSettled = Date.now() - new Date(lastSettledAt).getTime();
-        if (msSinceLastSettled < this.config.settlementGapSeconds * 1000) {
+        if (msSinceLastSettled < this.config.consolidationGapSeconds * 1000) {
           return false;
         }
       }
@@ -153,7 +153,7 @@ export class SettlementService {
   // ==================== 内部方法 ====================
 
   /**
-   * 从沉淀边界开始分页扫描消息，寻找首个会话断层（相邻消息间隔 ≥ settlementGap）。
+   * 从沉淀边界开始分页扫描消息，寻找首个会话断层（相邻消息间隔 ≥ consolidationGap）。
    *
    * 必须分页扫下去：若只取边界后最旧的 500 条，长会话（边界后 >500 条且断层在更后面）
    * 永远扫不到断层，`lastSettledMessageAt` 不再前进，该用户从此永不沉淀，
@@ -166,7 +166,7 @@ export class SettlementService {
     messages: Array<{ role: 'user' | 'assistant'; content: string; timestamp: number }>;
     gapBeforeIndex: number;
   }> {
-    const SESSION_GAP_MS = this.config.settlementGapSeconds * 1000;
+    const SESSION_GAP_MS = this.config.consolidationGapSeconds * 1000;
     const MAX_PAGES = 10;
 
     const scanned: Array<{ role: 'user' | 'assistant'; content: string; timestamp: number }> = [];
@@ -175,7 +175,7 @@ export class SettlementService {
     for (let page = 0; page < MAX_PAGES; page++) {
       const batch = await this.chatSession.getChatHistoryInRange(sessionId, {
         startTimeExclusive: cursor,
-        limit: SETTLEMENT_FETCH_LIMIT,
+        limit: CONSOLIDATION_FETCH_LIMIT,
       });
       if (batch.length === 0) break;
 
@@ -190,7 +190,7 @@ export class SettlementService {
         }
       }
 
-      if (batch.length < SETTLEMENT_FETCH_LIMIT) break;
+      if (batch.length < CONSOLIDATION_FETCH_LIMIT) break;
       cursor = sortedBatch.at(-1)!.timestamp;
     }
 
@@ -215,7 +215,7 @@ export class SettlementService {
 
       if (messages.length === 0) {
         await this.longTerm.markLastSettledMessageAt(corpId, userId, sessionEndAt, sessionId);
-        this.logger.debug('[settlement] 无对话记录，仅更新沉淀边界');
+        this.logger.debug('[consolidation] 无对话记录，仅更新沉淀边界');
         return;
       }
 
@@ -256,9 +256,9 @@ export class SettlementService {
           this.compressArchive(overflow, existingArchive),
       });
 
-      // settlement 只沉淀 summary + preferences；身份 Profile 仅由报名办结写入。
+      // consolidation 只沉淀 summary + preferences；身份 Profile 仅由报名办结写入。
       if (facts) {
-        await this.longTerm.writeFromSettlement(corpId, userId, facts, {
+        await this.longTerm.writeFromConsolidation(corpId, userId, facts, {
           sessionId,
           botImId,
           brandState: brandState ?? null,
@@ -266,10 +266,10 @@ export class SettlementService {
       }
 
       this.logger.log(
-        `[settlement] 摘要已写入: userId=${userId}, sessionId=${sessionId}, endAt=${sessionEndAt}`,
+        `[consolidation] 摘要已写入: userId=${userId}, sessionId=${sessionId}, endAt=${sessionEndAt}`,
       );
     } catch (error) {
-      this.logger.warn('[settlement] 摘要生成/保存失败', error);
+      this.logger.warn('[consolidation] 摘要生成/保存失败', error);
     }
   }
 

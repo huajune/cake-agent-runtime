@@ -242,14 +242,14 @@ onTurnStart → Compose → Execute (LLM + Tools) → onTurnEnd
 
 1. **编排层固定读写**：LLM 不持有记忆读写权，由 `MemoryService.onTurnStart/onTurnEnd` 统一调度。
 2. **工具仅保留两个触达**：`advance_stage`（写阶段状态）、`recall_history`（读长期摘要）。
-3. **会话沉淀单向搬运**：`SessionService → SettlementService → LongTerm`，消息间隔达到 `settlementGapSeconds` 触发，Redis key 自然过期。
+3. **会话沉淀单向搬运**：`SessionService → ConsolidationService → LongTerm`，消息间隔达到 `consolidationGapSeconds` 触发，Redis key 自然过期。
 
 ### 6.2 时间常量
 
 记忆系统现在拆成三个时间参数：
 
 - `sessionTtl`：Redis 会话态 TTL，默认 2 天，常见环境配置 3 天
-- `settlementGapSeconds`：沉淀间隔阈值，默认 1 天
+- `consolidationGapSeconds`：沉淀间隔阈值，默认 1 天
 - `historyWindowSeconds`：短期窗口 DB fallback 回查范围，默认 7 天
 
 > **延伸阅读**：[memory-architecture.md](./architecture/memory-architecture.md)
@@ -591,7 +591,7 @@ Cron 触发 → GroupTaskScheduler.executeTask()
    │
    └─ MemoryLifecycleService.onTurnEnd()
        ├─ load_previous_state
-       ├─ 分支 A：settlement（未超阈值 → skipped）
+       ├─ 分支 A：consolidation（未超阈值 → skipped）
        └─ 分支 B（串行）：
            ├─ save_candidate_pool（3 个岗位 → session）
            ├─ project_assistant_turn（投影 presentedJobs）

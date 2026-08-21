@@ -47,7 +47,7 @@ describe('SessionService reengagement store presentation state', () => {
           useValue: {
             sessionTtl: 86400,
             sessionExtractionIncrementalMessages: 10,
-            settlementGapSeconds: 86400,
+            consolidationGapSeconds: 86400,
           },
         },
         { provide: LlmExecutorService, useValue: { generateStructured: jest.fn() } },

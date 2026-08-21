@@ -215,7 +215,7 @@ export class SupabaseStore implements MemoryStore {
 
   // ==================== Preference 操作 ====================
 
-  /** 读取长期求职意向（settlement 沉淀的跨会话偏好快照）。 */
+  /** 读取长期求职意向（consolidation 沉淀的跨会话偏好快照）。 */
   async getPreferenceFacts(
     corpId: string,
     userId: string,

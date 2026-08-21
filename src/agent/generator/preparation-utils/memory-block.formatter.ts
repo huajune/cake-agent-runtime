@@ -237,7 +237,7 @@ function formatProfileFactMeta(value: {
 /**
  * 把长期求职意向渲染成 prompt 片段。
  *
- * 这是 settlement 沉淀的上一段求职会话的意向快照——历史参考，不是当前事实：
+ * 这是 consolidation 沉淀的上一段求职会话的意向快照——历史参考，不是当前事实：
  * 标注记录日期并明确"以本次会话为准"，避免重蹈旧会话事实复活的覆辙。
  * available_after 已过期（日期早于今天）的直接不渲染。
  */

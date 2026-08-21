@@ -23,21 +23,21 @@ export class MemoryConfig {
    *
    * ⚠️ 此 TTL 只控制 Redis key 的存活时长，不影响：
    *    - Supabase 历史消息的回查窗口（由 `historyWindowSeconds` 控制）
-   *    - 会话沉淀的间隙判定阈值（由 `settlementGapSeconds` 控制）
+   *    - 会话沉淀的间隙判定阈值（由 `consolidationGapSeconds` 控制）
    */
   readonly sessionTtl: number;
 
   /**
    * 沉淀间隙阈值（秒）。
    *
-   * 连续两条消息的时间差 ≥ 此阈值时，SettlementService 认为上一段会话已结束，
+   * 连续两条消息的时间差 ≥ 此阈值时，ConsolidationService 认为上一段会话已结束，
    * 触发摘要沉淀到长期记忆。
    *
    * 与 `sessionTtl` 分离的原因：Redis facts 的存活时长（sessionTtl）是"数据还在不在"，
    * 沉淀阈值是"对话是否已断"——两者可以独立调优。例如 sessionTtl=2天让隔天回来的用户
-   * 仍有 facts 可用，而 settlementGap=1天让超过一天的间隙及时沉淀。
+   * 仍有 facts 可用，而 consolidationGap=1天让超过一天的间隙及时沉淀。
    */
-  readonly settlementGapSeconds: number;
+  readonly consolidationGapSeconds: number;
 
   /**
    * 从 Supabase 回查历史消息的时间窗口（秒）。
@@ -66,11 +66,11 @@ export class MemoryConfig {
     const days = parseInt(this.configService.get('MEMORY_SESSION_TTL_DAYS', '2'), 10);
     this.sessionTtl = days * 24 * 60 * 60;
 
-    const settlementGapDays = parseInt(
+    const consolidationGapDays = parseInt(
       this.configService.get('MEMORY_SETTLEMENT_GAP_DAYS', '1'),
       10,
     );
-    this.settlementGapSeconds = settlementGapDays * 24 * 60 * 60;
+    this.consolidationGapSeconds = consolidationGapDays * 24 * 60 * 60;
 
     const historyDays = parseInt(this.configService.get('MEMORY_HISTORY_WINDOW_DAYS', '7'), 10);
     this.historyWindowSeconds = historyDays * 24 * 60 * 60;
@@ -90,7 +90,7 @@ export class MemoryConfig {
     this.longTermCacheTtl = 2 * 60 * 60; // 2h
 
     this.logger.log(
-      `MemoryConfig: sessionTtl=${days}d, settlementGap=${settlementGapDays}d, historyWindow=${historyDays}d, windowMessages=${this.sessionWindowMaxMessages}, windowChars=${this.sessionWindowMaxChars}, extractionIncremental=${this.sessionExtractionIncrementalMessages}`,
+      `MemoryConfig: sessionTtl=${days}d, consolidationGap=${consolidationGapDays}d, historyWindow=${historyDays}d, windowMessages=${this.sessionWindowMaxMessages}, windowChars=${this.sessionWindowMaxChars}, extractionIncremental=${this.sessionExtractionIncrementalMessages}`,
     );
   }
 

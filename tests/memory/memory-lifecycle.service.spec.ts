@@ -206,7 +206,7 @@ describe('MemoryLifecycleService', () => {
       expect(ctx.longTerm.origin).toBeUndefined();
     });
 
-    it('falls back to settlement boundaries when facts lack origin lineage (legacy data)', async () => {
+    it('falls back to consolidation boundaries when facts lack origin lineage (legacy data)', async () => {
       mockLongTerm.getProfile.mockResolvedValue({
         name: {
           value: '张三',
@@ -655,7 +655,7 @@ describe('MemoryLifecycleService', () => {
         }),
         steps: expect.arrayContaining([
           expect.objectContaining({ name: 'load_previous_state', status: 'success' }),
-          expect.objectContaining({ name: 'settlement', status: 'success' }),
+          expect.objectContaining({ name: 'consolidation', status: 'success' }),
           expect.objectContaining({ name: 'save_candidate_pool', status: 'success' }),
           expect.objectContaining({ name: 'project_assistant_turn', status: 'success' }),
           expect.objectContaining({ name: 'extract_facts', status: 'success' }),

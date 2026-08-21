@@ -30,7 +30,7 @@ export interface MemoryRecallContext {
   stageState: StageState;
   longTerm: {
     profile: UserProfileFacts | null;
-    /** 跨会话沉淀的求职意向快照（settlement 写入，仅供模型参考，不进工具预填）。 */
+    /** 跨会话沉淀的求职意向快照（consolidation 写入，仅供模型参考，不进工具预填）。 */
     preferences?: LongTermPreferenceFacts | null;
     /**
      * 长期记忆来源研判。双 bot 服务同一候选人时，本轮注入的长期画像/意向

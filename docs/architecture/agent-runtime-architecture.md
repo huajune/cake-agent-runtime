@@ -242,7 +242,7 @@ flowchart LR
     U["User Turn"] --> R["AgentRunnerService"]
     R --> M["MemoryService.onTurnStart / onTurnEnd"]
     M --> S["SessionService.extract facts"]
-    M --> T["SettlementService.summarize archive"]
+    M --> T["ConsolidationService.summarize archive"]
     S --> X["LlmExecutorService"]
     T --> X
     R --> X
@@ -501,7 +501,7 @@ await memoryService.onTurnEnd({
 load_previous_state (串行)
   ↓
 ┌─ 分支 A (可能 skip):
-│    settlement  ─ 消息间隔达到 settlementGapSeconds → 沉淀到 profile_facts + summary
+│    consolidation  ─ 消息间隔达到 consolidationGapSeconds → 沉淀到 profile_facts + summary
 │
 └─ 分支 B (串行，因为共享 session state):
      save_candidate_pool     ─ 写入 lastCandidatePool
@@ -741,7 +741,7 @@ AppModule
 │   ├── SessionService       会话记忆（store + projection + extraction）
 │   ├── StageStateService    程序阶段
 │   ├── LongTermService      用户档案 facts + 摘要
-│   ├── SettlementService    Session → profile_facts 沉淀
+│   ├── ConsolidationService    Session → profile_facts 沉淀
 │   ├── MemoryEnrichmentService  外部画像补全
 │   ├── RedisStore / SupabaseStore
 │   └── MemoryConfig
@@ -868,7 +868,7 @@ AppModule
        │
        └─ MemoryLifecycleService.onTurnEnd()
            ├─ load_previous_state
-           ├─ 分支 A: settlement（未超阈值 → skipped）
+           ├─ 分支 A: consolidation（未超阈值 → skipped）
            └─ 分支 B（串行）：
                ├─ save_candidate_pool（3 个岗位写入 session）
                ├─ project_assistant_turn（从回复投影 presentedJobs）
