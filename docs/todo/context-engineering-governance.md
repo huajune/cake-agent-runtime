@@ -1,6 +1,6 @@
 # 上下文工程治理方案（Context Engineering Governance）
 
-> 状态：方案定稿（2026-08-21，三元目标版：注意力质量 + 抗腐烂 + 设计合理性），P0-P3 执行未启动
+> 状态：**P0 + P1 + P3-1 + F1~F4 已执行（2026-08-21）**；P2-3/P2-4 待 P0-1b 生产数据、P3-2/P3-3/P3-4 待证据门控批次、F5 待议（审计结论已备）
 > 建立日期：2026-08-20
 > 复核记录：2026-08-21 基于 `refactor/tools-layer-reorg`（cdd173a2 工具层终态重排后）全量复核锚点与数字；工具 description 总量由估算 ~40K 修正为实测 31,729 字符，precheck 描述已由收资状态机改造瘦身（13.5K→729）
 > 参考：[Anthropic - The New Rules of Context Engineering for Claude 5 Generation Models](https://claude.com/blog/the-new-rules-of-context-engineering-for-claude-5-generation-models)
@@ -44,11 +44,11 @@
 ### 现状机制盘点（详细出处见附录 A）
 
 - 全链路无 token 级预算；仅条数/字符数闸门，且只覆盖对话历史。
-- `finalPrompt` 出口无测长、无落库、无告警（历史上"张漪 case"27K 膨胀靠 badcase 反查发现）。
+- ~~`finalPrompt` 出口无测长、无落库、无告警~~ **已修（P0-2，2026-08-21）**：出口测长 >60K 飞书告警。
 - 手册 `candidate-consultation.md` 76,327 字节；工具 description 大头是 `duliday_job_list` 13,144 字符（占 13 工具合计 31,729 的 41%），其次 `request_handoff` 4,388、`invite_to_group` 3,804。`duliday_interview_precheck` 已由收资状态机改造（#1023）瘦身至 729 字符（原 ~13.5K）——"状态机接管职责后描述自然变薄"是重要先例。
-- session `preferences` 数组、`lastCandidatePool` 写入端、`invitedGroups`/`excludedBrands` 单调增长无 cap。
-- booking 上下文每条带 ~1.5-2KB 固定说明文字，多条 booking 重复渲染。
-- 工具屏蔽机制触发时把拦截说明**追加**进 instructions（只增不减）。
+- ~~session `preferences` 数组、`lastCandidatePool` 写入端、`invitedGroups`/`excludedBrands` 单调增长无 cap~~ **已修（P1-3，2026-08-21）**：pool cap 30 / groups cap 20 / excludedBrands cap 30；preferences 复核为字段级替换无需 cap。
+- ~~booking 上下文每条带 ~1.5-2KB 固定说明文字，多条 booking 重复渲染~~ **已修（P1-2，2026-08-21）**：共享规则单次渲染。
+- ~~工具屏蔽机制触发时把拦截说明**追加**进 instructions（只增不减）~~ **复核纠正（P1-4，2026-08-21）**：实为每步从 base 重建的替换语义，无腐烂。
 - 长期摘要已是按需拉取（`recall_history`），跨轮工具结果不落历史——这两处设计健康，保持。
 
 ---
@@ -168,8 +168,8 @@ settlement 摘要 ≈ Anthropic compaction；recall_history ≈ structured note-
 | # | 事项 | 说明 | 状态 |
 |---|---|---|---|
 | P0-1a | 缓存文档核实 | **✅ 完成（2026-08-21，官方文档 help.aliyun.com/zh/model-studio/context-cache）**，结论见下方 | ✅ |
-| P0-1b | 埋点采集 cached_tokens（**升格：常设第一健康度指标**） | 在 usage 采集链路加 `prompt_tokens_details.cached_tokens`，随现有 telemetry 落库。按 Manus 主张，缓存命中率是生产 agent 第一指标——不是一次性调研而是长期在位。附带排查：JSON 序列化确定性（键序不稳会静默打断前缀缓存） | ☐ |
-| P0-2 | finalPrompt 膨胀告警 | `prepare()` 出口一行长度检查，超阈值（建议 60K 字符）飞书告警，防张漪 case 式静默膨胀复发（约 10 行代码） | ☐ |
+| P0-1b | 埋点采集 cached_tokens（**升格：常设第一健康度指标**） | **✅ 完成（2026-08-21）**：generator invoke/stream/recovery 三路径 + 逐 step 投影带出 `usage.inputTokenDetails.cacheReadTokens`（即 OpenAI 兼容口径 `prompt_tokens_details.cached_tokens`），落 `GeneratorRunResult.usage.cachedInputTokens` 与 `AgentStepDetail.usage.cachedInputTokens`（随 mpr `agent_steps` JSONB 落库），`agent_end` 事件加 `cachedTokens`。命中率 SQL：`jsonb_array_elements(agent_steps)->'usage'->>'cachedInputTokens'`。**附带排查结论：无键序不稳风险**——prompt 组装全走字符串模板（sections 无 JSON.stringify）、Postgres jsonb 键序规范化是确定性的、tools 按注册表固定序序列化；打断前缀缓存的只有设计内的动态段（runtime-context 起）。⚠️ 生产数据待发版后产生 | ✅ |
+| P0-2 | finalPrompt 膨胀告警 | **✅ 完成（2026-08-21）**：`preparation.checkFinalPromptBloat`，出口 >60K 字符（实测 p-max ~43K 上浮）打 `agent.prompt_bloat` 飞书告警（AlertNotifier 自带节流+落 monitoring_error_logs），即防腐机制 F4 | ✅ |
 
 **P0-1a 文档核实结论（2026-08-21，来源：阿里云百炼官方文档 context-cache 页）**：
 
@@ -188,14 +188,15 @@ settlement 摘要 ≈ Anthropic compaction；recall_history ≈ structured note-
 
 | # | 事项 | 预期收益 | 状态 |
 |---|---|---|---|
-| P1-1 | 手册 vs 工具 description vs 收资状态机 vs **DB 阶段策略文本** 去重审计 | 按既有裁定（工具强绑定进 description）删手册重复段。**最肥靶子**：手册「回合 SOP」与 DB 收资阶段策略文本中已被收资状态机接管的"怎么收资"教学段——删之有状态机兜底，风险最低。DB 策略文本按裁定 6 一并拉出审计（Dashboard 可改零 review，从未被审过） | ☐ |
-| P1-2 | booking 块固定说明提取 | N 条 booking 只渲染一次说明文字（每条省 ~1.5-2KB） | ☐ |
-| P1-3 | 单调增长加 cap | `lastCandidatePool` 写入 cap、`preferences` 数组上限、`invitedGroups`/`excludedBrands` cap | ☐ |
-| P1-4 | 拦截说明追加改替换 | `generator.agent.ts` buildPrepareStep 内去重 | ☐ |
+| P1-1 | 手册 vs 工具 description vs 收资状态机 vs **DB 阶段策略文本** 去重审计 | **✅ 审计完成（2026-08-21）**，全量结论按判定树归档进 [规则台账](../prompt-rule-ledger.md)。要点：① 手册 T1（分批收资）已对齐状态机契约（字段范围 `missingFields`→`requiredFieldsToCollectNow`，progressive 例外移交状态机裁决）；② 发现 **4 处铁律违例**（同一约束住两处）：R1↔B1 咖啡默认品牌、R13↔F19/F21 用工形式、stage_goals↔T14② 时间硬冲突、trust_building↔P1 渠道否认，另有 R2（发薪"帮你确认下"旧口径）与 T10/T11 **口径冲突**；③ 手册 G11/G12 等指针条目、precheck 729 字符均为健康形态；④ 违例均涉 DB 侧删改，**修改提案已列台账第四/五节，统一待 F5 裁定后执行**（Dashboard 可改零 review，不宜本批静默改生产配置）；⑤ 收资教学的进一步收缩（S3 性别表内确认等）**明确等收资契约 v2 落地**，不抢跑 | ✅ |
+| P1-2 | booking 块固定说明提取 | **✅ 完成（2026-08-21）**：6 段共享规则提取为 `BOOKING_CONTEXT_SHARED_RULES` 只渲染一次（文案逐字保留）；仅"同步中"提示时维持原先不渲染行为 | ✅ |
+| P1-3 | 单调增长加 cap | **✅ 完成（2026-08-21）**：`lastCandidatePool` 写入 cap 30（截尾保序，渲染 slice(0,10) 零影响）、`invitedGroups` cap 20（保最新）、`excludedBrands` reducer cap 30（保最近）。**`preferences` 数组复核结论：无需 cap**——收资改造后 `mergePreferences` 是字段级整体替换（session.service:357），数组不再并集累积；deepMerge 的数组并集路径已无调用方 | ✅ |
+| P1-4 | 拦截说明追加改替换 | **✅ 复核为现状已是替换语义（2026-08-21，非代码改动）**：buildPrepareStep 每步从 `baseInstructions` 重建、每类拦截说明恰出现一次、追加在末尾不碍前缀缓存；盘点条目所述"只增不减"实为屏蔽集合随 steps 单调（正确行为），无腐烂 | ✅ |
 | P1-5 | memory-system-audit S8-S10 | 零消费字段清理。**已随收资批执行完毕**（抽查核实：`preferences.brands` 已删，S9 锚点注释 2026-08-19；审计原文进 git 历史） | ✅ 已完成 |
-| P1-6 | 手册维护者内容转注释 | `stripMaintainerComments` 已有剥离机制，把面向维护者的段落改成 HTML 注释 | ☐ |
+| P1-6 | 手册维护者内容转注释 | **✅ 完成（2026-08-21）**：全文扫描仅 1 处正文维护者内容（L129"2026-08-04 用户裁定"），已转 HTML 注释；其余 36 处 badcase/裁定锚点先前已全部注释化，`stripMaintainerComments` 剥离机制在位 | ✅ |
 
 **P1 验收**：p50 单步输入字符数下降可测量；test-suite 回归全绿。
+**执行记录（2026-08-21）**：代码批 150 个相关单测全绿 + typecheck 通过；字符数下降的生产测量待发版后重跑第一节基线 SQL（注意同批带 P0-1b，重跑时可同步取缓存命中率首个真实值）。
 
 ### P2 — 渐进式披露（结构改造）
 
@@ -212,10 +213,10 @@ settlement 摘要 ≈ Anthropic compaction；recall_history ≈ structured note-
 
 | # | 事项 | 说明 | 状态 |
 |---|---|---|---|
-| P3-1 | 手册绝对化规则清点 → **建常设规则台账** | 逐条与 badcase 修复记忆对账（删前必须知道它当年拦的是什么）；产出物按裁定 4 升级为常设台账（docs/ 下 markdown）：每条规则登记内容摘要/来源链接/加入日期/时效性。台账建成后成为加规则的必经登记处 | ☐ |
-| P3-2 | 分批删减 + 回归闸 | 每批过 test-suite 回归 + 语义 shadow 评审对比，不达标即回滚 | ☐ |
-| P3-3 | 工具 description 接口化重构 | 主攻 `duliday_job_list`（13,144 字符，占描述总量 41%），次攻 `request_handoff`/`invite_to_group`；示例 → 参数语义/枚举表达（规则 2），A/B 验证 qwen 遵循度。precheck 已随收资状态机完成（13.5K→729），无需再动 | ☐ |
-| P3-4 | 手册低频规程 Skill 化实验 | P1-1 审计时标记"低频可拉取"段落（特殊 handoff 流程、罕见异常处理等）；P3 做拉取工具原型（类 recall_history 的 playbook 版）+ 回归验证。内容进 messages 后缀不破坏前缀缓存（裁定 8） | ☐ |
+| P3-1 | 手册绝对化规则清点 → **建常设规则台账** | **✅ 完成（2026-08-21）**：[docs/prompt-rule-ledger.md](../prompt-rule-ledger.md) 建成——手册 ~90 条规则（36 处 badcase 锚点全部入账）+ booking 共享规则 + final-check 17 项 + DB red-lines 15 条/阈值 2 条 + stage-strategy 5 阶段 + 工具 description 章节级 + 守卫 29 ruleId 拦侧配对；判定树为分类轴；F1~F3 维护纪律入文末。加入日期缺失的条目标"—"（可 git blame 补） | ✅ |
+| P3-2 | 分批删减 + 回归闸 | 每批过 test-suite 回归 + 语义 shadow 评审对比，不达标即回滚。**就绪**：台账已给出首批候选——4 处铁律违例的归并（待 F5）、final-check 与守卫同构条目（FC5/FC2）、暑假工 TTL 到期批（≈2026-09）。⚠️ 需生产回归数据，禁止离线一次性删 | ☐ 就绪待批 |
+| P3-3 | 工具 description 接口化重构 | 主攻 `duliday_job_list`（13,144 字符，占描述总量 41%），次攻 `request_handoff`/`invite_to_group`；示例 → 参数语义/枚举表达（规则 2），A/B 验证 qwen 遵循度。precheck 已随收资状态机完成（13.5K→729），无需再动。⚠️ 需 A/B 与生产遵循度数据，不宜与无损批同车 | ☐ 就绪待批 |
+| P3-4 | 手册低频规程 Skill 化实验 | P1-1 审计已标记候选"低频可拉取"段落：**平台来源识别（P1-P5，仅截图/渠道场景触发）、造假引导 C8、结伴分流 R4、面试方式细则 C7 后半（AI 面试时段语义）**——共性是触发率低但篇幅长。P3 做拉取工具原型（类 recall_history 的 playbook 版）+ 回归验证。内容进 messages 后缀不破坏前缀缓存（裁定 8）。⚠️ 新增常挂工具本身占 description 预算，原型需净收益核算 | ☐ 就绪待批 |
 
 **P3 验收**：每批删减有前后对比数据；总规则量下降且 badcase 率持平。
 
@@ -233,7 +234,7 @@ settlement 摘要 ≈ Anthropic compaction；recall_history ≈ structured note-
 
 不设 p50/字符数的量化 KPI。验收口径：
 
-1. **每期收尾重跑第一节的基线 SQL**，记录前后对比数字回填本文档——只要求"有下降、可解释"，不卡具体幅度。
+1. **每期收尾重跑第一节的基线 SQL**，记录前后对比数字回填本文档——只要求"有下降、可解释"，不卡具体幅度。（P0/P1 批的生产对比须等本批代码发版后再跑；届时一并读 `agent_steps` 里的 `cachedInputTokens` 取缓存命中率首个真实值与实付口径。）
 2. **badcase 率不回升是唯一硬约束**：任何一批改动若回归不过（test-suite / badcase 抽查），回滚该批，与省了多少 token 无关。
 3. finalPrompt 膨胀告警上线后长期在位，作为治理成果不倒退的哨兵。
 
@@ -243,26 +244,26 @@ settlement 摘要 ≈ Anthropic compaction；recall_history ≈ structured note-
 
 | # | 机制 | 落点 | 状态 |
 |---|---|---|---|
-| F1 | 规则台账 | 随 P3-1 一次性建成后常设（docs/ 下 markdown）；加规则必登记来源/日期/时效 | ☐ 随 P3-1 |
-| F2 | 职责迁移回收纪律 | 写进 CLAUDE.md + `.claude/agents` 规范："代码/状态机接管某行为时，同批 PR 必须回收 prompt 侧对应教学" | ☐ 可立即做 |
-| F3 | 临时规则 TTL 标注 | 同上写进规范：带时效的口径必须标注过期日期，过期即删（标本：暑假工 2026 暑期临时规则） | ☐ 可立即做 |
-| F4 | 膨胀哨兵 | 即 P0-2 finalPrompt 告警，长期在位 | ☐ 随 P0-2 |
-| F5 | Dashboard 策略改动约束 | 待 P1-1 审完 DB 策略文本现状后再议（裁定 6） | ⏸ 待议 |
+| F1 | 规则台账 | **✅ 建成（2026-08-21，随 P3-1）**：[docs/prompt-rule-ledger.md](../prompt-rule-ledger.md)；加规则必登记来源/日期/时效 | ✅ |
+| F2 | 职责迁移回收纪律 | **✅ 落地（2026-08-21）**：CLAUDE.md「Prompt 内容防腐纪律」节 + `.claude/agents/documentation-standards.md`「Prompt Content Anti-Rot Discipline」节 | ✅ |
+| F3 | 临时规则 TTL 标注 | **✅ 落地（2026-08-21）**：同上两处入规范；台账已标注现存 TTL 条目（暑假工 F20/F20a ≈2026-09 复查、B1 随品类配置、R8 随开城） | ✅ |
+| F4 | 膨胀哨兵 | **✅ 上线（2026-08-21，即 P0-2）**：`agent.prompt_bloat` 告警长期在位 | ✅ |
+| F5 | Dashboard 策略改动约束 | ⏸ 待议——**P1-1 审计结论已备**：DB 策略文本实测存在 4 处双居所违例 + 1 处旧口径冲突（台账第四/五节），佐证"第三居所零 review 最危险"判断；可议方向：① 删改提案批准后执行归并；② Dashboard 改动强制走台账登记；③ strategy_config 变更接入 changelog 告警 | ⏸ 待议（材料已备） |
 
 ---
 
 ## 附录 A：现状机制出处速查（2026-08-21 复核，基于 refactor/tools-layer-reorg@cdd173a2）
 
-- 组装编排：`src/agent/generator/preparation.service.ts:152`（`prepare()`）；入参裁剪 `:173`；出口 `finalPrompt :341` 无测长
+- 组装编排：`src/agent/generator/preparation.service.ts`（`prepare()`）；出口测长告警 `checkFinalPromptBloat`（P0-2，2026-08-21 起）
 - Section 注册表：`src/agent/generator/context/scenarios/scenario.registry.ts:8`；12 叶子段
 - 手册：`src/agent/generator/context/prompts/candidate-consultation.md`（76,327B）+ `-final-check.md`（6,505B）
 - 历史窗口：60 条（`MAX_HISTORY_PER_CHAT`）/ 12,000 字符（`AGENT_MAX_INPUT_CHARS`，`memory.config.ts:78-83`）；双重裁剪（memory 层 + `preparation.service.ts:173`）
 - 工具注册：`src/tools/tool-registry.service.ts:218`（13 常挂清单）、`:306` / `:321`（save_image_description / read_resume_attachment 动态注入）
 - 工具 description 实测（字符）：job_list 13,144 / handoff 4,388 / invite 3,804 / geocode 2,221 / cancel 2,000 / modify 1,810 / skip_reply 974 / store_location 829 / precheck 729 / risk_alert 620 / advance_stage 619 / recall 242；13 常挂合计 31,729
 - 工具结果渐进披露：`src/tools/job-list/render.util.ts:1049`（`FULL_DETAIL_CAP=6` 家全文）、`:1200`（其余降摘要行）
-- 多步：`generator.agent.ts:262`（prepareStep 挂载，maxSteps=5、工具结果全累积）；拦截说明拼接 `:325-341`（activeTools 移除 + instructions 末尾追加）
+- 多步：`generator.agent.ts`（prepareStep 挂载，maxSteps=5、工具结果全累积）；拦截说明为每步从 base 重建的替换语义、末尾追加不碍前缀（P1-4 复核）
 - 同工具限次：`tool-call-analysis.ts:20`（同工具≤3）、`:26`（precheck≤2）
-- 单调增长：`deep-merge.util.ts:12`（数组 Set 并集）、`session.service.ts:493`（candidatePool 写入零 cap；`:562` 有 prune 剔失效岗位但无数量上限）、presentedJobs 写入 cap 10（`:524`）
+- 单调增长（2026-08-21 起已全部有 cap）：candidatePool 写入 cap 30（`session.service.saveLastCandidatePool`）、invitedGroups cap 20、excludedBrands cap 30（`brand-policy.adjudicateBrandState`）、presentedJobs cap 10；deepMerge 数组并集路径已无调用方
 - 渲染 cap：候选池 10 行（`memory-block.formatter.ts:387`）、evidence 不注入（`:230-231`，张漪 case）
 - settlement：`settlement.service.ts:24`（页大小 500）、`:27`（摘要输入 120 条封顶）、`:170`（最多 10 页）
 - 相关文档：`docs/knowledge-base/05-Prompt-Section动态组装体系.md`（分层裁定）、`docs/architecture/collection-form-machine.md`（S8-S10 已随收资批执行完毕，审计原文见 git 历史 docs/todo/memory-system-audit.md）

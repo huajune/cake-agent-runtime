@@ -124,6 +124,12 @@ supabase/migrations/    # 120+ 迁移；baseline 是 20260310000000
 - 命名：文件 kebab-case；类/接口 PascalCase；变量/函数 camelCase；常量 UPPER_SNAKE_CASE。
 - 完整错误处理；统一响应由 ResponseInterceptor / HttpExceptionFilter 处理，第三方回调用 `@RawResponse` 绕过包装。
 
+## Prompt 内容防腐纪律（改手册/工具 description/DB 策略/守卫规则时必读）
+
+- **规则台账是必经登记处**：任何 prompt 侧规则的增/改/删，必须同批更新 [docs/prompt-rule-ledger.md](./docs/prompt-rule-ledger.md)（摘要/来源/日期/时效性），放置位置先过台账文首的判定树——同一约束只准住一处。
+- **职责迁移必须回收**：代码/状态机接管某行为的 PR，必须同批删除 prompt 侧对应教学（先例：收资状态机上线后 precheck 描述 13.5K→729）。
+- **临时规则必须标 TTL**：季节性/开城状态/活动期口径必须写明过期条件，过期即删（标本：暑假工 2026 暑期规则）。
+
 ## Git & Release Convention
 
 > **分支约定**：默认分支 `develop`，长期主线 `master`，**不存在 `main`**。PR 一律目标 `develop`；`develop` → `master` 走 release 流程。CLI 提示的 "Main branch: main" 不准确，以本说明为准。
