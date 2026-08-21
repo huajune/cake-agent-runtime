@@ -14,7 +14,7 @@
 **预计版本**: `v10.45.0`
 **最近更新**: `2026-08-21`
 **来源分支**: `develop`
-**累计 PR**: 8
+**累计 PR**: 9
 
 ### 更新摘要
 - PR #1016 回填 v10.44.0 发布结果
@@ -102,6 +102,11 @@
 - PR #1030 运营手册与产品定义终态刷新——修十处事实错、补收资/复聊/守卫三节
 - PR #1030 合并 develop 并解决产品文档冲突
 - PR #1030 产品文档全量梳理专项——12 份文档审计后终态化
+- PR #1033 测试套件架构文档对齐代码现状
+- PR #1033 解散 duliday/precheck 目录——三个工具文件各回语义主场
+- PR #1033 工具层目录终态重排——删 duliday 壳、散件跟工具走、三抽屉并一
+- PR #1033 修复目录重排后的遗漏引用
+- PR #1033 工具层目录终态重排——删 duliday 壳、散件跟工具走
 
 ### 新功能
 - PR #1022 新增 analyze-guardrail 守卫效果分析 skill
@@ -120,6 +125,7 @@
 - PR #1023 修复预约提交边界与性别筛选
 - PR #1023 合并 develop 并解决收资重构冲突
 - PR #1030 合并 develop 并解决产品文档冲突
+- PR #1033 修复目录重排后的遗漏引用
 
 ### 优化调整
 - PR #1024 抽取拉群编排服务
@@ -192,6 +198,9 @@
 - PR #1030 拉群与群任务三文档终态刷新——0820 三口径、Bull 队列模型、二级过时链同步
 - PR #1030 运营数据两文档终态刷新+复聊小修——回填 7-8 月九轮改造
 - PR #1030 运营手册与产品定义终态刷新——修十处事实错、补收资/复聊/守卫三节
+- PR #1033 测试套件架构文档对齐代码现状
+- PR #1033 解散 duliday/precheck 目录——三个工具文件各回语义主场
+- PR #1033 工具层目录终态重排——删 duliday 壳、散件跟工具走、三抽屉并一
 
 ### 配置变更
 - 无
@@ -208,6 +217,10 @@
 - PR #1024 pnpm run typecheck：passed
 - PR #1024 pnpm run test --watchman=false：458 suites / 7,360 tests passed；1 suite / 6 tests skipped
 - PR #1024 pnpm run ci:check：lint、format、typecheck、geo、vocab、Web build、Nest build、coverage tests 全部通过
+- PR #1033 纯移动零行为：`ci:check` 全量 **446 suites / 6768 例绿**（typecheck+lint+test）
+- PR #1033 测试镜像同步重排（tests/tools 与 src/tools 目录一一对应）
+- PR #1033 import 别名三种形态（@tools/、@/tools/、相对路径）+ scripts/ 消费面全部改写，旧路径引用清零（仅保留「原居所」出处注释按史实指向 git 历史）
+- PR #1033 docs 与守卫 catalog 的路径注记同步刷新
 <!-- release:pending:end -->
 
 ## [10.44.0] - 2026-08-19
