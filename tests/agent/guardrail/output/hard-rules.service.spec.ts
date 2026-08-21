@@ -718,6 +718,34 @@ describe('HardRulesService', () => {
           'unsupported_schedule_window_claim',
         );
       });
+
+      it('rejects an echoed window affirmed elliptically in another clause', () => {
+        const result = service.check({
+          replyText: '你说的8-4，我们可以给你排。',
+          toolCalls: [midShiftLookup],
+          userMessage: '8-4可以吗',
+          memorySnapshot,
+          chatId: 'chat-window-cross-clause-assurance',
+        });
+
+        expect(result.contradictions.map((item) => item.ruleId)).toContain(
+          'unsupported_schedule_window_claim',
+        );
+      });
+
+      it('allows an echoed window when another clause names its supported alternative', () => {
+        const result = service.check({
+          replyText: '你说的8-4，目前能排的是11:00-15:00。',
+          toolCalls: [midShiftLookup],
+          userMessage: '8-4可以吗',
+          memorySnapshot,
+          chatId: 'chat-window-cross-clause-supported-alternative',
+        });
+
+        expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
+          'unsupported_schedule_window_claim',
+        );
+      });
     });
 
     it('allows faithfully repeating the complete tool-provided window', () => {
