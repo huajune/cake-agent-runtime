@@ -3,8 +3,10 @@
 **最后更新**：2026-08-20（随 PR #1023 上线）
 **代码居所**：`src/resolution/collection/`（纯逻辑，零 LLM 零 IO）+ `src/tools/duliday/collection/`（编排与渲染）+ `src/memory/stores|services/collection-form.*`（持久化）
 
-> 本文描述已实现的系统。设计史（蓝图 v3-lean、总纲、逐日裁定过程）见 git 历史：
-> `docs/todo/collection-form-machine-implementation.md`、`docs/todo/label-driven-collection-refactor.md`。
+> 本文描述已实现的系统。设计史（一期方案、蓝图 v3-lean、总纲、逐日裁定过程）见 git 历史：
+> `docs/architecture/collection-field-resolution-plan.md`（一期：三层匹配+claim 化，随 PR #1000
+> 发版、已被本域 §7 退役批取代）、`docs/todo/collection-form-machine-implementation.md`、
+> `docs/todo/label-driven-collection-refactor.md`。
 
 ---
 
