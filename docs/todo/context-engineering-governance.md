@@ -145,4 +145,4 @@
 - 单调增长：`deep-merge.util.ts:11`（Set 并集）、`session.service.ts:553`（candidatePool 写入零 cap）
 - 渲染 cap：候选池 10 行（`memory-block.formatter.ts:387`）、evidence 不注入（`:231`，张漪 case）
 - settlement：`settlement.service.ts:84`；摘要输入 120 条封顶
-- 相关文档：`docs/knowledge-base/05-Prompt-Section动态组装体系.md`（分层裁定）、`docs/todo/memory-system-audit.md`（S8-S10 残留清理）
+- 相关文档：`docs/knowledge-base/05-Prompt-Section动态组装体系.md`（分层裁定）、`docs/architecture/collection-form-machine.md`（S8-S10 已随收资批执行完毕，审计原文见 git 历史 docs/todo/memory-system-audit.md）

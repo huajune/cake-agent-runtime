@@ -1,5 +1,5 @@
 /**
- * 收资表单状态机的类型全集（`docs/todo/collection-form-machine-implementation.md` §2）。
+ * 收资表单状态机的类型全集（`docs/architecture/collection-form-machine.md` §2）。
  *
  * 定位：**事务底稿**——per（候选人 × jobId）的持久实体，有终点、办结封存。它与记忆
  * 的分界（总纲「表单与记忆系统的边界」）是「岗位要什么归表单，人是什么样归记忆」。

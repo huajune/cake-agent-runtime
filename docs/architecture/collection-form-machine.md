@@ -1,4 +1,8 @@
-# BookingCollectionForm · 实施蓝图（v3-lean）
+# BookingCollectionForm · 收资表单状态机（v3-lean）
+
+> **状态（2026-08-20）**：已随 PR #1023 全量实施（precheck/booking 接线、S1-S7 记忆收编、
+> §7 退役批），本文从实施蓝图转为**域架构文档**。§11 红线与 §10 验收断言长期有效；
+> §8 实现顺序与契约检查点为历史实施记录。原路径 docs/todo/collection-form-machine-implementation.md（git 历史）。
 
 > **v3-lean（2026-08-18）**：用户裁定"设计太重"成立，v2 瘦身重写。**砍掉的每一项都回查过
 > 它当初防的 badcase——防线一条没少，少的是仪式、副本和没有数据支撑的子系统。**
@@ -145,8 +149,8 @@ filled 槽位的合法重开路径只有三条：applyRecapResult 的 correction
 askCount 不清零防"改一次刷新一次配额"绕过熔断；含糊提及不算改口——履历/排除语境
 不覆盖既有值的既有判例继续适用，判不动归 judge）。系统/模型的重推**任何时候**触碰不到
 filled 槽位，**任何路径不得对 filled 槽位重复发问**（反复问病根的类型级根治）。
-⚠️ 实现缺口：当前 form-writes 对 filled 槽位提案一律拒收（slotAlreadyFilled），
-显式改口分支随契约批补上（步骤 6 接线时一并做，归属+明确性判据复用公证闸）。
+改口分支已实现（proposeValue 的 `proposal.restatement` 通道，outcome=`restated` 落
+slot_restated 审计事件）；非改口的 filled 提案一律拒收（slotAlreadyFilled）。
 
 ## 4. 存储与观测
 

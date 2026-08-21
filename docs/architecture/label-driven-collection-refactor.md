@@ -1,10 +1,14 @@
 # 收资域总纲：标签制 × 收资表单状态机（label-driven collection）
 
+> **状态（2026-08-20）**：设计已随 PR #1023 全量实施，本文转为**设计档案**（含生产实测、
+> 采信专项复盘、裁定过程）。实施形态与红线以 [collection-form-machine.md](./collection-form-machine.md)
+> 为准，冲突处后者胜。原路径 docs/todo/label-driven-collection-refactor.md。
+
 > **⚡ 2026-08-18 挂起解除**：统一契约已在生产兑现——全量 468 个在招岗位实测
 > （§2.5-v2），**身份核已标签化且 468/468 全覆盖**（姓名769/手机号770/年龄687/性别771），
 > 零标签岗位归零；entryUser 新版 required 只剩 jobId、身份一并走 labelList。
 > 实体定名 **BookingCollectionForm**。状态机批可开工，实施蓝图为
-> collection-form-machine-implementation.md（v2 修订随实测同步）。
+> collection-form-machine.md（本仓 architecture）（v2 修订随实测同步）。
 
 > **本文档是收资域唯一权威文档**（2026-08-17 整合）。原三份独立文档已全文收编为附录，
 > 旧文件名引用一律指向对应附录：
@@ -94,7 +98,7 @@ labelTitle/optionLabel 可不传（仅辅助排查，服务端按 id/code 回读
 > 复述只在提交前一次）；verdict 现算不落盘；事件溯源/新审计表砍除（复用
 > agent_execution_events）；乐观锁砍除（回合租约已单写者）；多人协议 v1 收缩为
 > 疑似多人即转人工。核心原则不变：持久实体、写入公证、先筛后收、filled 不重问、
-> 办结即终审。冲突处一律以 `collection-form-machine-implementation.md` 为准。
+> 办结即终审。冲突处一律以 `collection-form-machine.md（本仓 architecture）` 为准。
 
 ### 实体定义
 
@@ -199,7 +203,7 @@ policy/肯定词表唯一居所——挪位为写入守卫与迁移判据，代�
 > case 坐标：chat `6a7ecef3ce406a6aee6e5830`，trace `batch_6a7ecef3ce406a6aee6e5830_1787126726984`，
 > 岗位 528966（必胜客-印象城PH，佛山），v10.44.0（9-1 归一层已上线）。
 > 处理裁定（0819）：**不打旧架构补丁**（沿用「不要过渡期」裁定），本案固化为状态机批的
-> 回归 fixture 与实施期核对点，见 collection-form-machine-implementation.md §10.5。
+> 回归 fixture 与实施期核对点，见 collection-form-machine.md（本仓 architecture） §10.5。
 
 **事故形态**（R12 定义式复发，铁证 B/C 同族）：候选人对 Agent 针对性确认问句
 （"本地健康证暂时没有但入职前可以办对吧？社会身份是宝妈属于社会人士对吧"）答
@@ -308,7 +312,7 @@ resolveLocalHealthCertificateEligibility 不删——它从"改写 knownFieldMap
 ## 6.5 实施蓝图
 
 代码架构级执行计划（代码树/类型/签名/存储/接线/实现顺序/退役批/验收）：
-**collection-form-machine-implementation.md**——1-4 步（纯状态机+适配器+披露策略+渲染器）
+**collection-form-machine.md（本仓 architecture）**——1-4 步（纯状态机+适配器+披露策略+渲染器）
 不等契约可先行，5 步起以契约落地为检查点。
 
 ## 7. 与在途工作的关系
@@ -766,7 +770,7 @@ chat_messages 侧如需用 "timestamp" 列。
 > 背景与完整设计见三份权威文档：
 > `docs/todo/resume-tool-overhaul.md`（简历工具 v4，已实施）、
 > `docs/todo/confidence-admission-review.md`（采信专项诊断档案）、
-> `docs/todo/label-driven-collection-refactor.md`（**主蓝图**：标签制+表单状态机）。
+> 本文（**主蓝图**，原 docs/todo 路径：标签制+表单状态机）。
 
 ### 0. 全局纪律（动手前必读）
 
