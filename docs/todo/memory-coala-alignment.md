@@ -78,7 +78,7 @@ interface LongTermMemory {
 
 用户观察：services/ 平铺，目录结构未体现四层结构图。目标：代码树 = 结构图。
 
-- 四层各立目录：`short-term/`、`session/`（brand-state/candidate-snapshot/session-key 辅件归位，为 M3 分家后两服务预备）、`stage-state/`、`long-term/`（**consolidation 归位**——沉淀是长期层的写入管道）；类型跟层走（session-facts/stage-state/long-term 各随其层）。
+- **混合形态（2026-08-21 修正：防过碎，沿工具层终态"单件平铺、成簇立目录"惯例）**：只为成簇的层立目录——`session/`（6 文件：facts/workbench/brand-state/candidate-snapshot/session-key/types，M3 还会增长）、`long-term/`（3 文件：long-term/consolidation/types，**consolidation 归位**）；`short-term.service`（1 文件）与 `stage-state.service`（2 文件）留 services/ 平铺——**文件名即层名**，结构图对应不损失；import 改动面减半。
 - 留根部/共享位：facade（memory.service）、lifecycle（跨层编排）、stores/、formatters/、memory-runtime.types（跨层）。
 - **图上三悬空元素的组织落点（2026-08-21 追加设计）**：
   ① **Working Memory 立目录**：`src/agent/generator/working-memory/` = preparation.service + working-memory.types（原 PreparedAgentContext）+ 原 preparation-utils/* 全部迁入——装配车间整体归位；
@@ -106,9 +106,10 @@ interface LongTermMemory {
 src/memory/                                  ═══ 记忆四层（生命周期轴做目录）═══
 ├── memory.service.ts                        # Facade：onTurnStart/onTurnEnd 唯一入口（不动）
 ├── memory.module.ts / memory.config.ts      # 窗口 120 条/24K ✅
-├── services/memory-lifecycle.service.ts     # 跨层编排：读四层/写回/触发沉淀（留根部）
-├── short-term/                              # ① 短期窗口 Ⓒ
-│   └── short-term.service.ts                #    Redis 热缓存 + chat_messages 真相源
+├── services/
+│   ├── memory-lifecycle.service.ts          # 跨层编排（读四层/写回/触发沉淀）
+│   ├── short-term.service.ts                # ① 短期窗口——单文件平铺，文件名即层名
+│   └── stage-state.service.ts               # ③ 阶段状态（原"程序记忆"）✅名——同上
 ├── session/                                 # ② 会话记忆 Ⓒ（目录）+ Ⓜ（分舱）
 │   ├── facts.service.ts                     #    事实舱（semantic 性质）：置信度合并/extractedAt/公证准入 Ⓜ
 │   ├── workbench.service.ts                 #    工作台舱（working state）：candidatePool/presentedJobs/
@@ -116,9 +117,6 @@ src/memory/                                  ═══ 记忆四层（生命周�
 │   ├── brand-state.service.ts               #    品牌真相=事实，归事实舱域 Ⓒ
 │   ├── candidate-snapshot.service.ts        #    precheck→booking 事务快照，归工作台域 Ⓒ
 │   ├── session-key.ts / session-facts.types.ts  # 类型跟层走 Ⓒ
-├── stage-state/                             # ③ 阶段状态（原"程序记忆"）✅名 Ⓒ目录
-│   ├── stage-state.service.ts               #    Redis stage:{...}；advance_stage 唯一写入口
-│   └── stage-state.types.ts
 ├── long-term/                               # ④ 长期记忆 Ⓒ
 │   ├── long-term.service.ts                 #    semantic{ profile, jobIntent } Ⓐ
 │   │                                        #    episodic{ sessionSummaries } Ⓐ
@@ -126,7 +124,7 @@ src/memory/                                  ═══ 记忆四层（生命周�
 │   └── long-term.types.ts                   #    LongTermMemory A3 结构 Ⓐ
 ├── stores/                                  # 跨层基础设施（redis/supabase/deep-merge，留共享位）
 ├── formatters/                              # fact-lines 等（留共享位）
-└── types/memory-runtime.types.ts            # 跨层运行时类型 MemoryRecallContext（留根部）
+└── types/                                   # memory-runtime（跨层）+ stage-state.types 留此
 
 src/agent/generator/                         ═══ Working Memory 装配 + procedural prompt 仓 ═══
 ├── working-memory/                          # Working Memory 装配车间 Ⓒ
