@@ -17,6 +17,8 @@
 | [千问模型的 Context Cache 功能（阿里云百炼）](https://help.aliyun.com/zh/model-studio/context-cache) | 官方文档 | P0-1a 全部结论：隐式缓存自动开启/命中 2 折/tools 参与前缀/显式缓存 5 分钟 TTL（裁定不做显式） |
 | [Virtual context management with MemGPT and Letta](https://www.leoniemonigatti.com/blog/memgpt.html) | 技术博客（论文解读） | 四层记忆 ≈ OS 式分层（core/recall/archival）的骨架健康对照；"代码 pipeline 沉淀比模型自管更可控"的比较基准 |
 | [Cognitive Architectures for Language Agents（CoALA，arXiv 2309.02427）](https://arxiv.org/pdf/2309.02427) | 论文 | 〔补引〕记忆四分法（working/episodic/semantic/procedural）的学理源头——四层记忆复盘（2026-08-21）的对照基准："程序记忆"命名错位诊断、"procedural 层从未进记忆治理框架"洞察、settlement ≈ consolidation gate 的对应 |
+| [Memory overview（LangChain/LangGraph 官方文档）](https://docs.langchain.com/oss/python/concepts/memory) | 官方文档 | 〔补引〕**命名轴裁定的行业查证**：主流复合轴形态——顶层 short-term(thread-scoped)/long-term(namespace)、长期内分 semantic/episodic/procedural；本库"顶层生命周期轴不改名"裁定的同构依据 |
+| [LangMem SDK for agent long-term memory（LangChain）](https://www.langchain.com/blog/langmem-sdk-launch) | 官方博客 | 〔补引〕procedural memory="可随反馈精炼的系统指令"——追认"手册=程序记忆"发现与台账批次删减循环（procedural refinement）；二期 M1 playbook 库的行业对应物 |
 | [Context Engineering: A Practical Guide（Sourcegraph）](https://sourcegraph.com/blog/context-engineering) | 技术博客 | "selection before compression"——与注意力优先裁定同构 |
 | [Context Engineering AI Agents Guide（mem0）](https://mem0.ai/blog/context-engineering-ai-agents-guide) | 技术博客 | 四类挑战框架（poisoning/overload/token/performance）佐证三元目标划分 |
 
