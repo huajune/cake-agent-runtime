@@ -1,6 +1,6 @@
 # 拉人进群 — 产品设计文档
 
-Agent 在对话中根据候选人情况，自动将其拉入匹配的企微兼职岗位信息群（`invite_to_group` 工具）。本文描述已实现系统的现行口径；实现在 `src/tools/invite-to-group.tool.ts` 与 `src/tools/shared/invite-timing-gate.ts` / `invite-city-gate.ts`。
+Agent 在对话中根据候选人情况，自动将其拉入匹配的企微兼职岗位信息群（`invite_to_group` 工具）。本文描述已实现系统的现行口径；实现在 `src/tools/invite-to-group.tool.ts` 与 `src/tools/invite/invite-timing-gate.ts` / `invite-city-gate.ts`。
 
 ---
 

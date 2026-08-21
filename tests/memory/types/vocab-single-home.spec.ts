@@ -15,7 +15,7 @@ import {
 } from '@/memory/types/session-facts.types';
 import { RecommendedJobWelfareKindSchema } from '@resolution/job/types';
 import { LONG_TERM_PREFERENCE_FIELD_KEYS } from '@/memory/types/long-term.types';
-import { WELFARE_KINDS } from '@/tools/duliday/job-list/welfare-facts.util';
+import { WELFARE_KINDS } from '@/tools/job-list/welfare-facts.util';
 import {
   BRAND_FILTER_MODES,
   BRAND_INTENT_POLARITIES,

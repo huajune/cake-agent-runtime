@@ -711,5 +711,5 @@ CREATE INDEX idx_conversation_snapshots_batch_id ON test_conversation_snapshots(
 
 其他：
 
-- [Bull Queue 使用指南](../technical/bull-queue-guide.md)
+- [Bull Queue 使用指南](../infrastructure/bull-queue-guide.md)
 - [NestJS 最佳实践](../../.claude/agents/code-standards.md)

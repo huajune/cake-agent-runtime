@@ -79,6 +79,7 @@
 
 - **[飞书通知系统](infrastructure/feishu-alert-system.md)** — 飞书 Webhook 机器人集成
 - **[人工告警触发场景清单](infrastructure/human-alert-triggers.md)** — 需要人工介入的告警触发场景
+- **[Bull Queue 使用指南](infrastructure/bull-queue-guide.md)** — 消息聚合队列的使用与排障
 
 ---
 
@@ -119,12 +120,6 @@
 - **[构建与部署指南](workflows/deploy-guide.md)** — tag 触发构建部署、健康检查、回滚
 - **[分支保护规则配置](workflows/branch-protection-guide.md)** — 分支保护、环境隔离、CI 必需检查
 - **[AI Code Review 配置指南](workflows/ai-code-review-guide.md)** — 基于 Claude Code CLI 的 PR 自动审查
-
----
-
-## 🛠️ 技术专题 (technical/)
-
-- **[Bull Queue 使用指南](technical/bull-queue-guide.md)** — 消息聚合队列的使用与排障
 
 ---
 

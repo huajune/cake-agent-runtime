@@ -111,12 +111,12 @@ export const TOOL_GUARDRAIL_CATALOG = [
     description:
       '拉群城市必须有据：city 入参要么与会话记忆中的高置信城市一致，要么出现在候选人原文里，不能由模型凭空指定。',
     riskGoal: '防止模型凭空或错误指定城市，把候选人拉进错误城市的兼职群（不可逆副作用）。',
-    source: 'tools/shared/invite-city-gate.ts + tools/invite-to-group.tool.ts',
+    source: 'tools/invite/invite-city-gate.ts + tools/invite-to-group.tool.ts',
     exogenousSignal: '会话记忆高置信 city 事实 + 候选人本会话原文城市提及（出处判定）',
     residualRisk:
       '候选人原文提及他人城市/曾居城市时仍会放行；跨会话回访客户城市只在长期画像时会被要求重新确认。',
     verification:
-      'tests/tools/shared/invite-city-gate.spec.ts + tests/tools/tool/invite-to-group.tool.spec.ts',
+      'tests/tools/invite/invite-city-gate.spec.ts + tests/tools/tool/invite-to-group.tool.spec.ts',
     owner: 'tools-runtime',
     status: 'active',
   },
@@ -130,12 +130,12 @@ export const TOOL_GUARDRAIL_CATALOG = [
       '拉群时机三档确定性闸门：本会话已给同城市拉过群 / 本轮还没跑过 duliday_job_list（突兀拉群）/ 候选人本轮正在推进报名约面（打断成单）→ 拒绝调用。预约成功后拉群（场景 1）豁免后两档。',
     riskGoal:
       '工具描述里的三条前置条件与禁止项只靠提示词约束，模型不遵循时会重复骚扰候选人、在查岗结论前突兀拉群、或在成单临门时打断（badcase 63eefu6c 同会话连犯两条）。',
-    source: 'tools/shared/invite-timing-gate.ts + tools/invite-to-group.tool.ts',
+    source: 'tools/invite/invite-timing-gate.ts + tools/invite-to-group.tool.ts',
     exogenousSignal:
       '会话记忆 invitedGroups（已拉群事实）+ 回合账本 jobListExecuted 标记 + 候选人本轮原话',
     residualRisk:
       '推进信号靠词表识别，口语变体（"那我明天过去吧"）仍会漏；候选人换城市时按放行处理，不拦跨城重复拉群。',
-    verification: 'tests/tools/shared/invite-timing-gate.spec.ts',
+    verification: 'tests/tools/invite/invite-timing-gate.spec.ts',
     owner: 'tools-runtime',
     status: 'active',
   },
