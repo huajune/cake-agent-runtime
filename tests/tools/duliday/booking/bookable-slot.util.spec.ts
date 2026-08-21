@@ -3,7 +3,7 @@ import {
   buildScheduleRule,
   buildUpcomingTimeOptions,
   evaluateRequestedDate,
-} from '@tools/duliday/precheck/bookable-slot.util';
+} from '@tools/duliday/booking/bookable-slot.util';
 import type { InterviewWindow } from '@tools/utils/job-policy-parser';
 
 /** Shanghai 2026-05-19 周二 09:00（早于绝大多数面试窗口，保证 slot 不被报名截止过滤掉）。 */

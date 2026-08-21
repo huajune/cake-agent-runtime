@@ -83,7 +83,7 @@ import {
 import { type DistanceAnchorPrecision } from '@tools/duliday/job-list/distance-render.util';
 import { composeShiftTimeText } from '@tools/utils/format-shift-time.util';
 import { extractWelfareFacts } from '@tools/duliday/job-list/welfare-facts.util';
-import { parseAgeRange, parseCandidateAge } from '@tools/duliday/precheck/age.util';
+import { parseAgeRange, parseCandidateAge } from '@tools/duliday/job-list/age.util';
 import {
   AGE_BOUNDARY_HANDOFF_FLOOR,
   AGE_BOUNDARY_LOWER_TOLERANCE_YEARS,

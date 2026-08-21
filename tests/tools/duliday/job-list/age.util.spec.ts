@@ -1,4 +1,4 @@
-import { parseAgeRange, parseCandidateAge } from '@tools/duliday/precheck/age.util';
+import { parseAgeRange, parseCandidateAge } from '@tools/duliday/job-list/age.util';
 
 describe('age.util', () => {
   describe('parseCandidateAge', () => {

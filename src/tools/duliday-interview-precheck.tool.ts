@@ -41,8 +41,8 @@ import {
   buildScheduleRule,
   buildUpcomingTimeOptions,
   evaluateRequestedDate,
-} from '@tools/duliday/precheck/bookable-slot.util';
-import { normalizeRequestedDate } from '@tools/duliday/precheck/date.util';
+} from '@tools/duliday/booking/bookable-slot.util';
+import { normalizeRequestedDate } from '@tools/duliday/booking/date.util';
 import {
   buildJobPolicyAnalysis,
   isWaitNoticeInterview,
@@ -55,7 +55,7 @@ import { tool } from 'ai';
 import { z } from 'zod';
 
 // 保留 age util 的符号 re-export，兼容独立边界单测；年龄是否筛退只读实时收资契约。
-export { parseAgeRange, parseCandidateAge } from '@tools/duliday/precheck/age.util';
+export { parseAgeRange, parseCandidateAge } from '@tools/duliday/job-list/age.util';
 export {
   AGE_BOUNDARY_HANDOFF_FLOOR,
   AGE_BOUNDARY_LOWER_TOLERANCE_YEARS,

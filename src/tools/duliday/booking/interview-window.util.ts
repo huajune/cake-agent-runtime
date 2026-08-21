@@ -1,5 +1,5 @@
 import type { InterviewWindow } from '@tools/utils/job-policy-parser';
-import { formatShanghaiDate, formatShanghaiTime } from '@tools/duliday/precheck/date.util';
+import { formatShanghaiDate, formatShanghaiTime } from '@tools/duliday/booking/date.util';
 
 export function normalizeHm(value?: string): string | null {
   if (!value) return null;

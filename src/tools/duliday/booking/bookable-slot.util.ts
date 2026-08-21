@@ -18,7 +18,7 @@ import {
   resolveBookingDeadlineDateTime,
   shiftDate,
 } from '@tools/duliday/booking/interview-window.util';
-import { formatShanghaiDate, formatShanghaiTime } from '@tools/duliday/precheck/date.util';
+import { formatShanghaiDate, formatShanghaiTime } from '@tools/duliday/booking/date.util';
 
 const SHORT_WEEKDAYS = ['一', '二', '三', '四', '五', '六', '日'];
 

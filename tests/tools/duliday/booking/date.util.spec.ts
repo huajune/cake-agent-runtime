@@ -6,7 +6,7 @@ import {
   resolveMonthDayToNearestFutureDate,
   resolveWeeklyDateExpression,
   toDateString,
-} from '@tools/duliday/precheck/date.util';
+} from '@tools/duliday/booking/date.util';
 
 /**
  * 锚定 Shanghai 当地 2026-05-19（周二）10:00。
