@@ -261,7 +261,7 @@ export const FOLLOW_UP_SCENARIOS: readonly FollowUpScenario[] = [
     objective: '面试通过后跟进入职进展，确认是否顺利以及是否需要协助',
     requiredEvidence: ['workOrderId', 'interview.passed'],
     stopUnless: () => true,
-    // 正式话术待运营提供（规格 §7 blocker）。
+    // 0820 裁定：无需运营固定话术，本 generationPolicy 即最终口径（复聊文案一律模型生成）。
     generationPolicy:
       '确认候选人是否已顺利入职、有没有遇到问题，需要协助可以直接说；不得断言候选人已入职或未入职，不施压、不催报到',
     relevantFactLabels: [],
