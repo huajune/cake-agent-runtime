@@ -79,7 +79,10 @@ const REENGAGEMENT_OUTPUT_SCHEMA = z.object({
       'interview_done_reported',
       'result_inquiry_already_sent',
       'interview_reminder_already_sent',
+      'confirmation_already_sent',
       'interview_not_started_per_chat',
+      'candidate_abandoned_onboarding',
+      'candidate_reported_onboarded',
     ])
     .default('none')
     .describe('根据判定依据得出的发送前语义停止原因；未命中为 none'),
@@ -383,6 +386,12 @@ export class ReengagementAgent {
       // 由下方统一分支安全跳过，不为纠正格式而冒险发送。
       if (blockReason !== 'none') return null;
       if (!hasMessage) return 'send_without_message';
+      if (
+        ctx.jobData.escalateToGroupInvite === true &&
+        this.hasCompletedGroupInviteClaim(output.message)
+      ) {
+        return 'group_invite_completed_claim';
+      }
       return null;
     }
 
@@ -408,13 +417,13 @@ export class ReengagementAgent {
       '- 只使用下方证据。未回复不等于已读，不得声称候选人“已读未回”；也不得猜测候选人在忙、已完成面试、已接受岗位或有其它未提供状态。',
       '- 不催促、不责备、不命令，不使用“怎么没回”“现在就”“赶紧”“别迟到”等表达。',
       '- 不编造岗位事实、名额、录用结果、回电安排或任何已完成动作。',
-      '- 不能报名、不能拉群、不能发消息、不能创建或修改工单；本 Agent 不开放任何工具。',
+      '- 不能报名、不能自主执行拉群、不能另发消息、不能创建或修改工单；本 Agent 不开放任何工具。只有本次任务明确要求预告拉群时，才可使用将来时态说明稍后会邀请进群，绝不能声称拉群已经完成。',
       '- 不要提及系统、模型、工具、JSON、任务代码、灰度发布、内部观测或隐私占位符。',
       '',
       '# 本次需要完成的任务',
       `任务名称：${ctx.scenario.displayName}`,
-      `任务目标：${ctx.scenario.objective}`,
-      `本场景生成规范：${ctx.scenario.generationPolicy}`,
+      `任务目标：${this.resolveObjective(ctx)}`,
+      `本场景生成规范：${this.resolveGenerationPolicy(ctx)}`,
       '本场景生成规范决定“这次具体说什么”，但不能覆盖上面的红线。',
       '',
       '# 已核验的最小上下文',
@@ -443,26 +452,52 @@ export class ReengagementAgent {
             '## 发送前语义停止条件',
             '- 判定步骤：先定位候选人（user）关于本次面试的最新有效表态，再检查招募经理（assistant）是否已取消面试、已询问结果或已另行提醒，最后才得出结论；关键证据写入 reason。',
             '- 下列角色约定必须严格遵守：user 是候选人，assistant 是招募经理。只判断与当前工单、本次面试相关的表达，不要用其他岗位或更早一次面试的历史误判。',
-            '- 时间口径（聊天优先）：状态摘要里的面试时间来自工单登记，可能只是当天面试窗口的起点而非实际面试时刻；若近期对话中候选人、招募经理或助手已明确约定、确认或更正了本次面试（同一岗位、同一工单）的实际时间，一律以对话中最新的明确约定为准；对话中没有明确时间约定时，才以工单时间为准。拿不准对话里的时间是否指本工单本次面试（例如候选人同时聊着多个岗位）时，一律回退按工单时间处理，不得据此 skip 或改写提醒钟点。',
-            '- 候选人（user）最新明确表示取消面试、去不了/不去了、无法参加，或不再考虑这个岗位：blockReason=candidate_declined_interview。',
-            '- 候选人得知岗位要求或条件后表示接受不了，例如“干不了”“做不了”“那算了”，即使语气委婉、没有出现“取消”字样，也属于放弃本岗位；若招募经理随后已转为邀请进群、改推其他岗位，候选人未再重新确认参加本次面试的，同样判 candidate_declined_interview。注意区分：招募经理为本次面试拉群（如群内接龙面试）不属于放弃信号。',
-            '- 招募经理（assistant）明确表示不用参加本次面试，理由包括面试取消、已经招满、不合适等：blockReason=manager_cancelled_interview。**婉拒也算取消**：招募经理在了解候选人条件后给出否定性结论（如"那不太合适""这个做不了""条件不符合"），且此后没有重新确认面试继续的，同样命中本条——不要求出现"取消""不用来"等字样，候选人回应"行/好吧"更是接受拒绝的信号。不得以"没有明确说取消"或"工单仍显示约面成功"为由放行发送。',
-            '- 对话已经给出面试通过、未通过、录用或淘汰等结果，或者“和店长吵架了”“店长让我走了”等语境已经能合理判断面试流程结束：blockReason=interview_result_known。不要把“等通知”“还不知道结果”误判成已有结果。',
-            '- 招募经理（assistant）已经发出询问本次面试结果、是否完成或面试是否顺利的语句：blockReason=result_inquiry_already_sent。候选人自己询问结果不属于此项。',
-            ...(ctx.scenario.code === 'interview_reminder'
+            ...(ctx.scenario.code === 'post_interview_onboarding'
               ? [
-                  '- 本场景是面试提醒；若招募经理（assistant）已经发出提醒候选人参加本次面试的语句：blockReason=interview_reminder_already_sent。判断口径：预约成功当轮的告知与收尾叮嘱都不算已提醒，包括时间地点确认、“准时到哈”“记得提前到”“记得带证件”、发送面试码或二维码；只有预约回合之后另行发出的提醒参加消息（如“记得今天的面试哈”“明天来吗，面试可以来吗”）才算已提醒。可用状态摘要里的“报名完成时间”区分：与其紧邻的消息属于预约当轮。',
-                  '- 本次面试的具体钟点按上面的时间口径（聊天优先）确定。候选人可能同时有多个面试；近期对话中出现的其它岗位、其它工单的面试时间，禁止用来生成本次提醒。',
+                  '- 本场景是面试通过后的入职跟进；下方取消面试、面试结果、结果询问、面试提醒与面试开始时间等停止条件只适用于面试提醒/面试后即时回访，不得用来跳过本档。',
+                  '- 候选人（user）已明确表示不入职、不去报到、放弃这份工作或已决定不去：blockReason=candidate_abandoned_onboarding。模糊的担心、询问手续或尚未确定不算放弃。',
+                  '- 候选人（user）已明确表示已经入职、已经上岗或正在该岗位工作：blockReason=candidate_reported_onboarded。不得把“准备去”“明天报到”等将来安排误判成已经入职。',
+                ]
+              : []),
+            ...(ctx.scenario.code === 'post_interview_onboarding'
+              ? []
+              : [
+                  '- 时间口径（聊天优先）：状态摘要里的面试时间来自工单登记，可能只是当天面试窗口的起点而非实际面试时刻；若近期对话中候选人、招募经理或助手已明确约定、确认或更正了本次面试（同一岗位、同一工单）的实际时间，一律以对话中最新的明确约定为准；对话中没有明确时间约定时，才以工单时间为准。拿不准对话里的时间是否指本工单本次面试（例如候选人同时聊着多个岗位）时，一律回退按工单时间处理，不得据此 skip 或改写提醒钟点。',
+                  '- 候选人（user）最新明确表示取消面试、去不了/不去了、无法参加，或不再考虑这个岗位：blockReason=candidate_declined_interview。',
+                  '- 候选人得知岗位要求或条件后表示接受不了，例如“干不了”“做不了”“那算了”，即使语气委婉、没有出现“取消”字样，也属于放弃本岗位；若招募经理随后已转为邀请进群、改推其他岗位，候选人未再重新确认参加本次面试的，同样判 candidate_declined_interview。注意区分：招募经理为本次面试拉群（如群内接龙面试）不属于放弃信号。',
+                  '- 招募经理（assistant）明确表示不用参加本次面试，理由包括面试取消、已经招满、不合适等：blockReason=manager_cancelled_interview。**婉拒也算取消**：招募经理在了解候选人条件后给出否定性结论（如"那不太合适""这个做不了""条件不符合"），且此后没有重新确认面试继续的，同样命中本条——不要求出现"取消""不用来"等字样，候选人回应"行/好吧"更是接受拒绝的信号。不得以"没有明确说取消"或"工单仍显示约面成功"为由放行发送。',
+                  '- 对话已经给出面试通过、未通过、录用或淘汰等结果，或者“和店长吵架了”“店长让我走了”等语境已经能合理判断面试流程结束：blockReason=interview_result_known。不要把“等通知”“还不知道结果”误判成已有结果。',
+                  '- 招募经理（assistant）已经发出询问本次面试结果、是否完成或面试是否顺利的语句：blockReason=result_inquiry_already_sent。候选人自己询问结果不属于此项。',
+                ]),
+            ...(ctx.scenario.code === 'interview_reminder'
+              ? ctx.jobData.touchVariant === 'd2_confirm'
+                ? [
+                    '- 本场景是面试前 2 天的意向确认；若报名成功当轮之后，招募经理（assistant）已经另行发出过确认候选人是否还在找工作、是否仍会参加本次面试的同类消息：blockReason=confirmation_already_sent。预约成功当轮的时间地点告知与收尾叮嘱不算另行确认。',
+                    '- 本次面试的具体钟点按上面的时间口径（聊天优先）确定。候选人可能同时有多个面试；近期对话中出现的其它岗位、其它工单的面试时间，禁止用来生成本次确认。',
+                  ]
+                : [
+                    '- 本场景是面试提醒；若招募经理（assistant）已经发出提醒候选人参加本次面试的语句：blockReason=interview_reminder_already_sent。判断口径：预约成功当轮的告知与收尾叮嘱都不算已提醒，包括时间地点确认、“准时到哈”“记得提前到”“记得带证件”、发送面试码或二维码；只有预约回合之后另行发出的提醒参加消息（如“记得今天的面试哈”“明天来吗，面试可以来吗”）才算已提醒。面试前 1–3 天发出的求职意向确认消息不构成已提醒。可用状态摘要里的“报名完成时间”区分：与其紧邻的消息属于预约当轮。',
+                    '- 本次面试的具体钟点按上面的时间口径（聊天优先）确定。候选人可能同时有多个面试；近期对话中出现的其它岗位、其它工单的面试时间，禁止用来生成本次提醒。',
+                  ]
+              : ctx.scenario.code === 'post_interview_onboarding'
+                ? []
+                : [
+                    '- 本场景是面试后回访；招募经理此前只发送过面试提醒不构成停止条件，仍可正常回访。',
+                    '- 按上面的时间口径（聊天优先）判断，本次面试的实际时间尚未到、面试还没开始的：blockReason=interview_not_started_per_chat。不要仅因为工单登记时间已过就断定面试已经进行；候选人明确说“还没开始”“还没面”也属于此项。',
+                    '- 候选人已经主动告知本次面试已参加/已完成并在等结果（如“已面试，等您通知”“面完了，等消息”），且招募经理（assistant）已对该消息作出过回应：blockReason=interview_done_reported。此时再问“面试结束了吧/还顺利吗”是重复打扰；面试是否顺利的结果跟进由招募经理按通知节奏处理。注意与 interview_result_known 的区别：本条不要求已知结果，只要求候选人已报告面试完成且经理已回应过。',
+                  ]),
+            ...(ctx.scenario.code === 'post_interview_onboarding'
+              ? [
+                  '- 命中放弃入职或已明确入职任一条件时 decision 必须为 skip 且 message 留空；即使实时工单仍显示“面试成功”也不能发送。未命中时 blockReason=none。',
+                  '- 未命中任何停止条件时必须 decision=send：不得以“感觉没必要再发”或候选人只回复过“好的/OK”等模糊理由跳过。',
+                  '- 候选人仅询问报到时间、入职材料、手续或表达担心，不构成已经放弃或已经入职。',
                 ]
               : [
-                  '- 本场景是面试后回访；招募经理此前只发送过面试提醒不构成停止条件，仍可正常回访。',
-                  '- 按上面的时间口径（聊天优先）判断，本次面试的实际时间尚未到、面试还没开始的：blockReason=interview_not_started_per_chat。不要仅因为工单登记时间已过就断定面试已经进行；候选人明确说“还没开始”“还没面”也属于此项。',
-                  '- 候选人已经主动告知本次面试已参加/已完成并在等结果（如“已面试，等您通知”“面完了，等消息”），且招募经理（assistant）已对该消息作出过回应：blockReason=interview_done_reported。此时再问“面试结束了吧/还顺利吗”是重复打扰；面试是否顺利的结果跟进由招募经理按通知节奏处理。注意与 interview_result_known 的区别：本条不要求已知结果，只要求候选人已报告面试完成且经理已回应过。',
+                  '- 命中任一条件时 decision 必须为 skip 且 message 留空；即使实时工单仍显示预约有效也不能发送。未命中时 blockReason=none。',
+                  '- 未命中任何停止条件时必须 decision=send：不得以“对话流程正常”“候选人已确认过”“感觉没必要再发”等模糊理由跳过；候选人回复“好的/OK”只是确认收到，不构成停止条件。',
+                  '- 同一意图有前后变化时以最新有效表达为准：取消后又明确重新约好可以恢复；改约后的新面试不被旧时间对应的提醒阻止。',
+                  '- 仅仅询问面试时间地点、表达紧张或尚未确认结果，不构成以上停止条件。',
                 ]),
-            '- 命中任一条件时 decision 必须为 skip 且 message 留空；即使实时工单仍显示预约有效也不能发送。未命中时 blockReason=none。',
-            '- 未命中任何停止条件时必须 decision=send：不得以“对话流程正常”“候选人已确认过”“感觉没必要再发”等模糊理由跳过；候选人回复“好的/OK”只是确认收到，不构成停止条件。',
-            '- 同一意图有前后变化时以最新有效表达为准：取消后又明确重新约好可以恢复；改约后的新面试不被旧时间对应的提醒阻止。',
-            '- 仅仅询问面试时间地点、表达紧张或尚未确认结果，不构成以上停止条件。',
             '',
           ]
         : [
@@ -482,8 +517,29 @@ export class ReengagementAgent {
   }
 
   private isPostBookingScenario(ctx: ReengagementComposeContext): boolean {
-    return (
-      ctx.scenario.code === 'interview_reminder' || ctx.scenario.code === 'post_interview_followup'
+    return ctx.scenario.phase === 'post_booking';
+  }
+
+  private resolveObjective(ctx: ReengagementComposeContext): string {
+    if (ctx.jobData.escalateToGroupInvite === true) {
+      return '承接本轮新推荐岗位，确认候选人是否对这些机会不感兴趣，并预告稍后邀请进入兼职岗位信息群继续扩面';
+    }
+    return ctx.jobData.touchVariant === 'd2_confirm'
+      ? '面试前提前确认候选人是否仍在找工作，并顺带提醒已约面试及可调整时间'
+      : ctx.scenario.objective;
+  }
+
+  private resolveGenerationPolicy(ctx: ReengagementComposeContext): string {
+    if (ctx.jobData.escalateToGroupInvite === true) {
+      return '先简短承接本轮新推荐的岗位或门店，询问候选人是否对这些机会不感兴趣，再预告稍后会邀请进入兼职岗位信息群，方便继续查看更多机会。拉群只能用将来或待执行时态，禁止使用“已拉”“已经进群”“已加入”等完成时态，也不得承诺具体群名或入群结果';
+    }
+    if (ctx.jobData.touchVariant !== 'd2_confirm') return ctx.scenario.generationPolicy;
+    return '先轻量确认候选人是否还在找工作、求职意向是否仍在，再顺带提醒已约的面试时间；明确给出时间不合适可以提前调整、已经找到合适工作可以告知放弃的出口。线下面试且工单有地址时才提地址；AI 或其他线上面试沿用已核验的面试形式口径；工单未提供的信息只做中性提醒。不施压，不声称已读';
+  }
+
+  private hasCompletedGroupInviteClaim(message: string): boolean {
+    return /(?:已|已经|刚刚|刚才).{0,12}(?:拉(?:你|进)|邀请.{0,6}(?:进|加入)|加入|进了).{0,8}群|(?:拉进|加入|进了).{0,8}群(?:了|啦|哈)/u.test(
+      message,
     );
   }
 
@@ -503,7 +559,10 @@ export class ReengagementAgent {
       | 'interview_done_reported'
       | 'result_inquiry_already_sent'
       | 'interview_reminder_already_sent'
-      | 'interview_not_started_per_chat',
+      | 'confirmation_already_sent'
+      | 'interview_not_started_per_chat'
+      | 'candidate_abandoned_onboarding'
+      | 'candidate_reported_onboarded',
   ): string {
     if (!this.isPostBookingScenario(ctx)) return 'reengagement_agent_skipped';
     if (blockReason && blockReason !== 'none') return blockReason;
@@ -526,6 +585,9 @@ export class ReengagementAgent {
     const lines: string[] = [];
     if (ctx.scenario.code === 'store_presented_no_reply') {
       lines.push('- 已推荐过岗位或门店：是');
+      if (ctx.jobData.escalateToGroupInvite === true) {
+        lines.push('- 本次是第二轮及以后扩面收口：文案投递成功后才会尝试拉群，目前尚未执行');
+      }
     }
     if (ctx.scenario.code === 'booking_incomplete') {
       const collected = Object.keys(ctx.state.collectedFields)
@@ -535,28 +597,43 @@ export class ReengagementAgent {
       lines.push(`- 已收集资料项：${collected.length > 0 ? collected.join('、') : '暂无'}`);
       lines.push('- 提醒原则：只提醒继续补充，不猜测具体缺少哪些字段');
     }
-    if (
-      ctx.scenario.code === 'interview_reminder' ||
-      ctx.scenario.code === 'post_interview_followup'
-    ) {
+    if (ctx.scenario.phase === 'post_booking') {
       const booking = ctx.bookingContext;
-      lines.push('- 当前预约：已在本次触达前查询海绵实时工单并通过状态核验');
+      const isOnboarding = ctx.scenario.code === 'post_interview_onboarding';
+      lines.push(
+        isOnboarding
+          ? '- 当前工单：已在本次触达前查询海绵实时工单，面试通过且仍待确认入职进展'
+          : '- 当前预约：已在本次触达前查询海绵实时工单并通过状态核验',
+      );
       // 报名完成时间是区分“预约当轮告知”与“另行发出的提醒”的客观锚点，
       // 供 interview_reminder_already_sent 口径判定使用。
-      if (Number.isFinite(ctx.jobData.anchorAt)) {
+      if (isOnboarding && Number.isFinite(ctx.jobData.anchorAt)) {
+        lines.push(`- 面试通过时间：${formatShanghaiTime(ctx.jobData.anchorAt)}`);
+      } else if (Number.isFinite(ctx.jobData.anchorAt)) {
         lines.push(`- 报名完成时间：${formatShanghaiTime(ctx.jobData.anchorAt)}`);
       }
-      lines.push(`- 面试形式：${booking?.interviewType ?? '工单未提供，不得猜测'}`);
+      if (!isOnboarding) {
+        lines.push(`- 面试形式：${booking?.interviewType ?? '工单未提供，不得猜测'}`);
+      }
       if (booking?.brandName) lines.push(`- 品牌：${booking.brandName}`);
       if (booking?.companyName) lines.push(`- 企业：${booking.companyName}`);
       if (booking?.projectName) lines.push(`- 项目/门店：${booking.projectName}`);
       else if (booking?.storeName) lines.push(`- 门店：${booking.storeName}`);
       if (booking?.jobName) lines.push(`- 岗位：${booking.jobName}`);
       if (booking?.currentStatus) lines.push(`- 工单当前状态：${booking.currentStatus}`);
-      if (booking?.interviewAddress) lines.push(`- 面试地址：${booking.interviewAddress}`);
-      if (booking?.interviewRequirement) lines.push(`- 面试要求：${booking.interviewRequirement}`);
-      if (booking?.interviewAt != null && Number.isFinite(booking.interviewAt)) {
+      if (!isOnboarding && booking?.interviewAddress) {
+        lines.push(`- 面试地址：${booking.interviewAddress}`);
+      }
+      if (!isOnboarding && booking?.interviewRequirement) {
+        lines.push(`- 面试要求：${booking.interviewRequirement}`);
+      }
+      if (!isOnboarding && booking?.interviewAt != null && Number.isFinite(booking.interviewAt)) {
         lines.push(`- 面试时间：${formatShanghaiTime(booking.interviewAt)}`);
+        if (ctx.jobData.touchVariant === 'd2_confirm') {
+          lines.push(
+            `- 面试日期（含星期）：${formatShanghaiDateWithWeekday(booking.interviewAt, 0)}`,
+          );
+        }
         lines.push(`- 面试日期相对当前：${formatRelativeShanghaiDate(booking.interviewAt, now)}`);
         // 窗口制岗位的工单时间只是面试窗口起点（badcase：工单 10:00、聊天约定 13:00，
         // 12:00 回访问"面试顺利吗"）。产品裁定：有明确聊天约定以聊天为准，无则以工单为准。
@@ -670,7 +747,9 @@ export class ReengagementAgent {
     message: string,
     now: number,
   ): { text: string; reason?: string } {
-    if (ctx.scenario.code !== 'interview_reminder') return { text: message };
+    if (ctx.scenario.phase !== 'post_booking' || ctx.scenario.code !== 'interview_reminder') {
+      return { text: message };
+    }
     const interviewAt = ctx.bookingContext?.interviewAt;
     if (interviewAt == null || !Number.isFinite(interviewAt)) return { text: message };
 

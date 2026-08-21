@@ -446,6 +446,7 @@ export class SessionService {
       recalledJobIds,
       hardConstraints: [],
       presentedStores: (state.presentedJobs ?? []).map((job) => ({ jobId: job.jobId })),
+      storePresentationRounds: state.storePresentationRounds ?? 0,
       invitedGroups: state.invitedGroups ?? [],
       stage: null,
       terminal: state.terminal ?? undefined,
@@ -521,6 +522,7 @@ export class SessionService {
 
     await this.patchSessionState(corpId, userId, sessionId, {
       presentedJobs: merged.slice(0, 10),
+      storePresentationRounds: (state.storePresentationRounds ?? 0) + 1,
     });
   }
 

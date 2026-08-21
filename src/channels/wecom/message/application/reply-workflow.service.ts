@@ -464,7 +464,7 @@ export class ReplyWorkflowService {
       );
       await this.commitReplyOutcomeSideEffects(agentResult.outcome, sideEffectContext);
 
-      // Agent 回复真实投递 → agent.replied（仅个人单聊；fire-and-forget）。
+      // Agent 回复真实投递 → agent.replied（仅个人单聊；锚点读取必须先于回合 settle）。
       // deliverReply 可能因托管暂停/内部泄漏保护返回 skipped=true，此时不能生成
       // delivered-reply 锚点，否则会排出候选人没收到上一条时的幽灵复聊。
       const replyDelivered = this.wasReplyActuallyDelivered(deliveryResult);
@@ -479,11 +479,12 @@ export class ReplyWorkflowService {
         };
         // 先确认这是不是本会话首条开场回复。开场本身即使询问了位置，也只排
         // opening_no_reply；不能同时排 address_missing，否则候选人持续沉默时会被连追两次。
-        void this.recordAgentReplied(params.primaryMessage, parsed, traceId).then((replyKind) => {
-          this.reengagementAnchors.handleDeliveredReplyAnchors(agentResult, {
-            ...reengagementAnchorContext,
-            suppressAddressMissing: replyKind !== 'reply',
-          });
+        const replyKind = await this.recordAgentReplied(params.primaryMessage, parsed, traceId);
+        // 必须先于 settle 等待：推店锚点要读本轮计数 +1 前的
+        // storePresentationRounds，否则第一轮可能被误判为升档。
+        await this.reengagementAnchors.handleDeliveredReplyAnchors(agentResult, {
+          ...reengagementAnchorContext,
+          suppressAddressMissing: replyKind !== 'reply',
         });
       }
 
@@ -978,7 +979,7 @@ export class ReplyWorkflowService {
    * 线上未配平台 SOP，开场白就是 Agent 回候选人首条消息（多为微信加好友握手语「我是xx」）。
    * 用「首条」判定开场白：以 `chatId:opening` 幂等插入的返回值为准——首次插入成功即开场白，
    * 之后插入冲突即普通回复。agent.replied 幂等键用 traceId（每轮一次，Bull retry 不重复计数）。
-   * 全程 fire-and-forget。
+   * 调用方等待分类完成；内部开场复聊排程保持 fire-and-forget。
    */
   private async recordAgentReplied(
     primaryMessage: EnterpriseMessageCallbackDto,

@@ -466,7 +466,8 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     exogenousSignal:
       '当前 jobId 的 duliday_job_list 工作时间结果 + 回复中的明确时间段和协调承诺；或候选人明确的每周最多 N 天 + 回复正向推荐的做X休Y循环。',
     residualRisk:
-      '没有数字时间段的含蓄承诺交语义审查；做X休Y仅按 7×工作天/(工作天+休息天) 的平均周频判定，' +
+      '没有数字时间段的含蓄承诺交语义审查；承诺词与时段须同句，被否定或复述候选人诉求的时段豁免，' +
+      '故承诺词不在场的编造班次清单交语义审查兜接；做X休Y仅按 7×工作天/(工作天+休息天) 的平均周频判定，' +
       '不推断节假日、调班或其它复杂排班；本轮没有岗位补查时由 job_detail_lookup_required 兜接。',
     verification: 'tests/agent/guardrail/output/hard-rules.service.spec.ts',
     feedbackToGenerator:

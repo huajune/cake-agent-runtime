@@ -1,5 +1,4 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { MemoryService } from '@memory/memory.service';
 import { SpongeService } from '@sponge/sponge.service';
 import { BrandResolutionService } from '@resolution/brand/brand-resolution.service';
@@ -34,11 +33,8 @@ import {
 import { StorageMessageType } from '@enums/storage-message.enum';
 import { GeocodingService } from '@infra/geocoding/geocoding.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
-import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
-import { GroupMembershipService } from '@biz/group-task/services/group-membership.service';
-import { RoomService } from '@channels/wecom/room/room.service';
+import { GroupInviteService } from '@biz/group-task/services/group-invite.service';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
-import { OpsNotifierService } from '@notification/services/ops-notifier.service';
 import { PrivateChatMonitorNotifierService } from '@notification/services/private-chat-monitor-notifier.service';
 import { InterventionService } from '@biz/intervention/intervention.service';
 import { MessageSenderService } from '@channels/wecom/message-sender/message-sender.service';
@@ -79,16 +75,12 @@ export class ToolRegistryService {
     memoryService: MemoryService,
     spongeService: SpongeService,
     geocodingService: GeocodingService,
-    groupResolverService: GroupResolverService,
-    groupMembershipService: GroupMembershipService,
-    roomService: RoomService,
+    groupInviteService: GroupInviteService,
     messageSenderService: MessageSenderService,
-    opsNotifier: OpsNotifierService,
     privateChatMonitorNotifier: PrivateChatMonitorNotifierService,
     private readonly chatSessionService: ChatSessionService,
     private readonly llm: LlmExecutorService,
     userHostingService: UserHostingService,
-    configService: ConfigService,
     interventionService: InterventionService,
     sessionService: SessionService,
     longTermService: LongTermService,
@@ -98,8 +90,6 @@ export class ToolRegistryService {
     agentTracer: AgentTracerService,
     collectionFormService: CollectionFormService,
   ) {
-    const memberLimit = parseInt(configService.get('GROUP_MEMBER_LIMIT', '200'), 10);
-    const enterpriseToken = configService.get<string>('STRIDE_ENTERPRISE_TOKEN')?.trim();
     this.registry = {
       // ===== 阶段工具 =====
       advance_stage: createToolDefinition({
@@ -186,17 +176,7 @@ export class ToolRegistryService {
       invite_to_group: createToolDefinition({
         name: 'invite_to_group',
         description: '邀请候选人加入企微兼职群（穷尽推荐无匹配/登记完成后触发）',
-        create: buildInviteToGroupTool(
-          groupResolverService,
-          roomService,
-          opsNotifier,
-          memoryService,
-          opsEventsRecorder,
-          memberLimit,
-          enterpriseToken,
-          groupMembershipService,
-          sessionService,
-        ),
+        create: buildInviteToGroupTool(groupInviteService, sessionService),
       }),
 
       // ===== 人工介入工具 =====
