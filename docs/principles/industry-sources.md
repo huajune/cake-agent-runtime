@@ -4,6 +4,8 @@
 > 价值不在链接本身，在**每条 source → 本库落点**的映射：它支撑了哪条裁定、哪个原则、哪个机制。
 > 维护纪律：**每次行业调研（检索/精读后形成结论）都必须把真正支撑了结论的 source 入库**——搜到但没用上的不入；
 > 各文档的"业界资料"附录保留就地引用，本库是唯一汇总索引。条目带检索日期，链接失效划线保留（体例同 rules-vs-semantics 修订）。
+> 两类特殊标注：**〔补引〕**=结论先于引用——裁定当时未记出处，事后按结论定向检索行业对应理论补挂；
+> **〔git 回收〕**=当年确实引用过、随文档删除而佚失，从 git 历史挖回。
 
 ## 一、上下文工程与缓存（2026-08-20/21 检索）
 
@@ -54,7 +56,29 @@
 | [Task Contamination: LMs May Not Be Few-Shot Anymore（arXiv 2312.16337）](https://arxiv.org/pdf/2312.16337) | 论文（⚑ 示例回声的最近行业近亲） |
 | [Multi-Layered Framework for LLM Hallucination Mitigation（MDPI）](https://www.mdpi.com/2073-431X/14/8/332) | 论文 |
 
-## 五、基础库与工程规范（长期有效）
+## 五、裁决权与模型自纠的边界（2026-08-21 补引检索——L3/L5/P11 的学理支撑）
+
+| 来源 | 类型 | 本库落点 |
+|---|---|---|
+| [Large Language Models Cannot Self-Correct Reasoning Yet（Huang et al., ICLR'24）](https://arxiv.org/abs/2310.01798) | 论文 | 〔补引〕**L3 repair 破产的学理**：无外部反馈的自我纠正不改善输出、甚至更糟——repair 链"再叫一次模型"注定失败的独立实证；M1 二次模型链天花板 |
+| [LLMs Can Self-Correct with Key Condition Verification（EMNLP'24）](https://aclanthology.org/2024.emnlp-main.714/) | 论文 | 〔补引〕**P11 代码公证的学理反面印证**：引入外部确定性校验后自纠才有效——"模型作证、代码公证"分工的文献支撑 |
+| [Self-Preference Bias in LLM-as-a-Judge（arXiv 2410.21819）](https://arxiv.org/pdf/2410.21819) | 论文 | 〔补引〕**L5/P11**：LLM 裁判的自偏好偏差——模型仲裁 72.3% 假阳的行业同类观测 |
+| [BabelJudge: Measuring LLM-as-a-Judge Reliability（arXiv 2606.22329）](https://arxiv.org/pdf/2606.22329) | 论文 | 〔补引〕L5/L2：位置/冗长/自增强偏差的系统性测量——语义审查 enforce 从未够格的学理背景 |
+
+## 六、编排、多代理与守卫形态（〔git 回收〕自已删调研文档 + 补引）
+
+| 来源 | 类型 | 本库落点 |
+|---|---|---|
+| [Building effective agents（Anthropic）](https://www.anthropic.com/research/building-effective-agents) | 官方研究博客 | 〔git 回收〕**workflows vs agents、最简编排优先**——收资状态机（L6）、复聊确定性模板链（L8）的方向依据 |
+| [Cognition vs Anthropic：Don't Build Multi-Agents 之争（smol.ai 综述）](https://news.smol.ai/issues/25-06-13-cognition-vs-anthropic) | 行业论辩综述 | 〔git 回收〕单主链上下文完整性 vs 多代理并行——本库单 generator 主链 + 独立轻链（复聊）的站位参照 |
+| [How and when to build multi-agent systems（LangChain）](https://www.langchain.com/blog/how-and-when-to-build-multi-agent-systems) | 技术博客 | 〔git 回收〕论辩另一方：多代理的适用边界 |
+| [Multi-agent orchestration patterns in production（Beam.ai）](https://beam.ai/agentic-insights/multi-agent-orchestration-patterns-production) | 技术博客 | 〔git 回收〕生产级编排模式清单 |
+| [Multi-Agent in Production in 2026: What Actually Survived（M. Lanham）](https://medium.com/@Micheal-Lanham/multi-agent-in-production-in-2026-what-actually-survived-f86de8bb1cd1) | 技术博客 | 〔git 回收〕多代理模式的生产存活率复盘 |
+| [OpenAI Agents SDK — Guardrails](https://openai.github.io/openai-agents-python/guardrails/) | 官方文档 | 〔git 回收〕输入/输出守卫的业界标准形态——出站三档结构的同类物 |
+| [NVIDIA NeMo Guardrails](https://github.com/NVIDIA/NeMo-Guardrails) | 开源项目 | 〔补引〕确定性 rails 的开源代表——P8 发牌制"确定性规则拦确定性形态"的业界对应 |
+| [2026 Agentic Coding Trends Report（Anthropic）](https://resources.anthropic.com/hubfs/2026%20Agentic%20Coding%20Trends%20Report.pdf) | 行业报告 | 〔git 回收〕agentic 趋势背景材料 |
+
+## 七、基础库与工程规范（长期有效）
 
 | 来源 | 类型 | 本库落点 |
 |---|---|---|
