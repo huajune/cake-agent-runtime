@@ -58,7 +58,7 @@ import type { FinalizedVisualFactSheet } from '@resolution/signal/visual';
  *
  * 记忆工具策略：
  * - memory_store / memory_recall 已删除（编排层固定读写，不由 LLM 自主决定）
- * - advance_stage 保留（程序记忆，只有 LLM 能判断推进时机）
+ * - advance_stage 保留（阶段状态，只有 LLM 能判断推进时机）
  */
 @Injectable()
 export class ToolRegistryService {

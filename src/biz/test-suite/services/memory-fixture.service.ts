@@ -11,7 +11,7 @@ import {
   type InvitedGroupRecord,
 } from '@memory/types/session-facts.types';
 import type { RecommendedJobSummary } from '@resolution/job/types';
-import type { ProceduralState } from '@memory/types/procedural.types';
+import type { StageState } from '@memory/types/stage-state.types';
 import type { UserProfile } from '@memory/types/long-term.types';
 import { buildJobListQuerySignature } from '@tools/shared/job-list-query-signature';
 import type { MemoryFixtureSetup, TestRuntimeScope } from '../types/test-debug-trace.types';
@@ -19,7 +19,7 @@ import type { MemoryFixtureSetup, TestRuntimeScope } from '../types/test-debug-t
 export interface MemoryFixtureSnapshot {
   readAt: string;
   sessionState: unknown;
-  proceduralState: unknown;
+  stageState: unknown;
 }
 
 /** 夹具落档的 evidence 署名——署名如实：这不是旧数据迁移，是测试用例回放的档案。 */
@@ -155,13 +155,13 @@ export class MemoryFixtureService {
       );
     }
 
-    const proceduralState = this.resolveProceduralState(setup);
-    if (proceduralState) {
+    const stageState = this.resolveStageState(setup);
+    if (stageState) {
       await this.memoryService.setStage(
         scope.corpId,
         scope.userId,
         scope.sessionId,
-        proceduralState,
+        stageState,
       );
     }
   }
@@ -169,7 +169,7 @@ export class MemoryFixtureService {
   async read(
     scope: Pick<TestRuntimeScope, 'corpId' | 'userId' | 'sessionId'>,
   ): Promise<MemoryFixtureSnapshot> {
-    const [sessionState, proceduralState] = await Promise.all([
+    const [sessionState, stageState] = await Promise.all([
       this.sessionService.getSessionState(scope.corpId, scope.userId, scope.sessionId),
       this.memoryService.getStage(scope.corpId, scope.userId, scope.sessionId),
     ]);
@@ -177,11 +177,11 @@ export class MemoryFixtureService {
     return {
       readAt: new Date().toISOString(),
       sessionState,
-      proceduralState,
+      stageState,
     };
   }
 
-  private resolveProceduralState(setup: MemoryFixtureSetup): ProceduralState | null {
+  private resolveStageState(setup: MemoryFixtureSetup): StageState | null {
     const procedural = setup.procedural ?? {};
     const currentStage =
       setup.currentStage !== undefined
@@ -194,9 +194,9 @@ export class MemoryFixtureService {
       return null;
     }
 
-    // 程序记忆只有 currentStage 一个字段（S10）；用例仍可传 procedural.fromStage 等
+    // 阶段状态只有 currentStage 一个字段（S10）；用例仍可传 procedural.fromStage 等
     // 旧键，它们只作"这个用例确实要种阶段"的存在性信号，不再落档。
-    const state: ProceduralState = { currentStage: this.readNullableString(currentStage) };
+    const state: StageState = { currentStage: this.readNullableString(currentStage) };
 
     this.logger.debug(`Seed memory stage=${state.currentStage ?? '<null>'}`);
     return state;
