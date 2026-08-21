@@ -746,6 +746,20 @@ describe('HardRulesService', () => {
           'unsupported_schedule_window_claim',
         );
       });
+
+      it('does not bind an unrelated arrangement in another clause to the echoed window', () => {
+        const result = service.check({
+          replyText: '你说的8-4，可以安排入职。',
+          toolCalls: [midShiftLookup],
+          userMessage: '8-4可以吗',
+          memorySnapshot,
+          chatId: 'chat-window-cross-clause-unrelated-arrangement',
+        });
+
+        expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
+          'unsupported_schedule_window_claim',
+        );
+      });
     });
 
     it('allows faithfully repeating the complete tool-provided window', () => {
