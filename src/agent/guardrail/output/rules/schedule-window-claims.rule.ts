@@ -21,6 +21,8 @@ const LOCAL_ASSURANCE_NEGATION_PREFIX_PATTERN = /(?:不|不太|没有|暂无|不
 // （"你说的7-3都有能排的班"仍是违规）。
 const CANDIDATE_WINDOW_ECHO_PREFIX_PATTERN =
   /(?:您|你)?(?:说的|提的|想要的|要求的|只能(?:做|上|排|干)?|只(?:做|上|排|干)|想(?:做|上|排)|希望(?:做|上|排))[^，,；;。！？\n]{0,8}$/u;
+const ELLIPTICAL_SCHEDULE_ASSURANCE_PATTERN =
+  /(?:(?:协调|可以|能|可)(?:给你|跟店里|和门店)?(?:排|安排)|一般没问题|不会强制|不用上到|不用做到)(?:这个|该)?(?:班|班次)?(?:的)?(?:哦|哈|呀|呢|～|~)?\s*$/u;
 
 const WEEKLY_CAP_PATTERNS = [
   /(?:每周|一周|每星期|一星期)[^，。！？；;\n]{0,12}?(?:最多|至多|只能|不超过|只|就)[^，。！？；;\n]{0,8}?([一二两三四五六七1-7])\s*天/gu,
@@ -203,7 +205,7 @@ function hasEllipticalScheduleAssuranceOutsideClause(
   const outsideParts = [sentence.slice(0, clauseStart), sentence.slice(clauseEnd)];
   return outsideParts.some((part) =>
     part.split(CLAUSE_BOUNDARY_PATTERN).some((clause) => {
-      if (!SCHEDULE_ASSURANCE_PATTERN.test(clause)) return false;
+      if (!ELLIPTICAL_SCHEDULE_ASSURANCE_PATTERN.test(clause)) return false;
       return extractTimeRanges(clause).size === 0;
     }),
   );
