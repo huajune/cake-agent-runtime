@@ -29,6 +29,8 @@ CoALA 对照复盘（2026-08-21，结论已录治理方案行业对照第 5 条�
 ### M2 命名对齐（搭车批）
 
 - `procedural.service.ts` / `procedural.types.ts` → stage-state 族命名；**Redis key 与存量数据零迁移**（只改代码层命名）；`src/memory/README.md`、architecture 文档同步；glossary 词条为唯一命名权威。
+- **改名范围裁定（2026-08-21）：只改"程序记忆"这一处，不做 CoALA 全量改名**。依据双轴框架：短期/会话/长期是**生命周期轴**命名，语义准确且 short-term/long-term 本身就是行业标准词（会话记忆混含事实+工作台，改成 semantic 反而不准确）；唯独"程序记忆"是**冒用知识类型轴行业术语**装生命周期内容的真错位。全量改名 = 把准确的生命周期名换成不准确的类型名，且违反"搭车改名不专车改名"规约。
+- 顺带：settlement（沉淀）行业学名 memory consolidation，已登记 glossary B 层（代码保名不改）。
 
 ### M3 会话记忆"事实/工作台"分家
 

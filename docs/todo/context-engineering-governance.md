@@ -147,7 +147,7 @@ settlement 摘要 ≈ Anthropic compaction；recall_history ≈ structured note-
 2. **两种 rot 并列**：context rot（上下文越长性能越衰减，行业实证，支撑"注意力质量"目标）≠ 内容腐烂（规则老化，本方案"抗腐烂"目标），治法不同
 3. Skill/工具/MCP 分工共识："Skills hold the procedure, Tools take the actions, MCP provides the access"——MCP 的"接入即全量载入"正是行业公认的上下文痛点
 4. 选择先于压缩（selection before compression）——与"注意力优先"裁定同构
-5. **CoALA 记忆四分法对照**（2026-08-21 复盘）：四层记忆功能完备（settlement ≈ consolidation gate + 便宜模型摘要；无向量 RAG 是裁定不是缺口——封闭 schema + 单人小数据量下确定性召回更优）。真发现：真 procedural memory（手册/description/状态机规则）从未进入记忆治理框架、没有容量与沉淀机制——**本方案 P1/P3/防腐层本质是在补建 procedural 层的治理**；"程序记忆"命名错位（实为 stage state）已登记 glossary，代码改名搭车下次记忆域重构
+5. **CoALA 记忆四分法对照**（2026-08-21 复盘）：四层记忆功能完备（settlement ≈ consolidation gate + 便宜模型摘要；无向量 RAG 是裁定不是缺口——封闭 schema + 单人小数据量下确定性召回更优）。真发现：真 procedural memory（手册/description/状态机规则）从未进入记忆治理框架、没有容量与沉淀机制——**本方案 P1/P3/防腐层本质是在补建 procedural 层的治理**；"程序记忆"命名错位（实为 stage state）已登记 glossary，代码改名搭车下次记忆域重构。**命名范围裁定（2026-08-21 补）：不做 CoALA 全量改名**——短期/会话/长期属生命周期轴、语义准确保留；唯"程序记忆"是冒用类型轴术语的真错位，M2 只改这一处（详见二期方案 M2）
 
 **范围裁定（修正版）**：治理范围 = 主 generator 链路全部内容居所（手册 + 工具 description + **DB 阶段策略文本**）。extract、复聊、守卫语义审查仍不进本方案。
 

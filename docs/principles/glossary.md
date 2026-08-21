@@ -39,6 +39,7 @@
 | 示教纪律 / example hygiene | few-shot **example selection**（研究领域）；prompt hygiene（业界非正式用语） | 文档名不改，检索走 example selection |
 | 带值求证（`CandidatePrefillHint`） | prefill + HITL confirmation 的组合，无精确标准名 | 代码原生命名，保留 |
 | 「模型作证、代码公证、本人终审」（P11） | attributed generation + deterministic verification + HITL confirmation | 句式是我们的，三个组件各有行业名 |
+| settlement / 沉淀（`settlement.service.ts`） | **memory consolidation**（记忆巩固：短期经验蒸馏进长期存储） | 借喻准确（空闲期把会话经验固化为长期画像/摘要），文件名保留；学习和检索用 consolidation |
 | 苦涩教训台账 / bitter-lessons.md | Sutton **"The Bitter Lesson"**（人工结构终被通用方法+算力溶解） | 借其"人工结构会折旧"内核；本库语义更宽=一切交过学费的方向性证伪（含非算力原因），是复盘台账不是预言 |
 
 ## C 层：⚑ 自造词（业界空白区，我们先到了）
