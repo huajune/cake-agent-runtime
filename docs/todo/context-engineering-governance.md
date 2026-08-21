@@ -5,6 +5,7 @@
 > 复核记录：2026-08-21 基于 `refactor/tools-layer-reorg`（cdd173a2 工具层终态重排后）全量复核锚点与数字；工具 description 总量由估算 ~40K 修正为实测 31,729 字符，precheck 描述已由收资状态机改造瘦身（13.5K→729）
 > 参考：[Anthropic - The New Rules of Context Engineering for Claude 5 Generation Models](https://claude.com/blog/the-new-rules-of-context-engineering-for-claude-5-generation-models)
 > 本文档是本轮上下文治理的权威状态表；各期完成后回填状态与实测数字。
+> 原则沉淀：调研结论与八条裁定已蒸馏为 [principles/context-engineering-principles.md](../principles/context-engineering-principles.md)（C1~C8）——原则查那里，执行进度查这里。
 
 ---
 
