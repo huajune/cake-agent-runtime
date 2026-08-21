@@ -7,7 +7,7 @@
  * `.eslintrc.js` 禁止 resolution 依赖 @tools/*——判据留在 tools 层则适配器无法复用，
  * 只能另抄一份词表，那是「一处识别器多处消费」纪律明令禁止的。
  *
- * 判决逻辑一字未改，仅去掉对 `@tools/utils/job-policy-parser` 的 `normalizePolicyText`
+ * 判决逻辑一字未改，仅去掉对 `@tools/job-list/job-policy-parser` 的 `normalizePolicyText`
  * 依赖（其实现就是 `value.trim()`，见原文件）。
  */
 

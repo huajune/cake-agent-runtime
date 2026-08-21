@@ -12,13 +12,13 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { SpongeService } from '@sponge/sponge.service';
 import { SELF_CANCEL_BLOCKED_STATUSES, type FailureReasonItem } from '@sponge/sponge.types';
-import { buildSpongeTokenContext } from '@tools/utils/sponge-token-context.util';
+import { buildSpongeTokenContext } from '@tools/shared/sponge-token-context.util';
 import { isTestPiiPhoneAllowed, maskPhoneForDetails } from '@tools/shared/test-pii-gate';
 import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
 import { LongTermService } from '@memory/services/long-term.service';
 import { PrivateChatMonitorNotifierService } from '@notification/services/private-chat-monitor-notifier.service';
 import { ToolBuilder } from '@shared-types/tool.types';
-import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
+import { buildToolError, TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
 
 const logger = new Logger('duliday_cancel_work_order');
 

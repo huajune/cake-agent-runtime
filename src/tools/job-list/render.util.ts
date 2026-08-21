@@ -1,0 +1,1244 @@
+/**
+ * duliday_job_list 工具的 markdown 渲染层（render-sections + 编排）。
+ *
+ * 从 duliday-job-list.tool.ts 拆出（Phase 1.A 机械搬运，0 逻辑变更）：
+ * - addSummaryLine + formatInterviewDecisionSummary：约面重点 section
+ * - renderBasicInfoSection / renderSalarySection / renderWelfareSection /
+ *   renderHiringRequirementSection / renderWorkTimeSection / renderInterviewProcessSection：
+ *   各业务 section 的 markdown 投影
+ * - formatJobToOneLine / formatJobToMarkdown / formatJobsToMarkdown：单/多岗位编排
+ * - inferStudentRequirement：商业语义推断（学生身份要求）
+ *
+ * 依赖：
+ * - helpers (job-list-helpers.util)：单字段格式化 + 空值判断
+ * - job-policy-parser：policy 分析 + 文本清洗
+ * - labor-form：用工形式/岗位名词的 display sanitize
+ * - format-shift-time：班次时间组合
+ */
+
+import { sanitizeJobDisplayText, sanitizeLaborFormForDisplay } from '@resolution/labor-form';
+import { asRecord, asRecordArray } from '@infra/utils/object.util';
+import type { JobDetail } from '@sponge/sponge.types';
+import {
+  classifyArrangementType,
+  composeShiftTimeText,
+} from '@tools/job-list/format-shift-time.util';
+import {
+  buildJobPolicyAnalysis,
+  cleanPolicyText,
+  sanitizeConstraintText,
+  type JobPolicyAnalysis,
+} from '@tools/job-list/job-policy-parser';
+import {
+  containsSensitiveScreeningText,
+  SENSITIVE_SCREENING_RENDER_NOTICE,
+} from '@resolution/collection/sensitive-screening';
+import {
+  cleanNumber,
+  cleanSingleLineText,
+  formatNameWithId,
+  formatRange,
+  formatValueWithUnit,
+  hasFullWeekOrRigidSchedule,
+  hasValue,
+  isNonEmpty,
+  pushField,
+  pushLongText,
+} from '@tools/job-list/helpers.util';
+import {
+  renderMultiStoreBrandWarning,
+  formatSalarySummary,
+  type BrandNearestStoresGroup,
+} from '@tools/job-list/brand-stores.util';
+import { normalizeStoreNameForAgent } from '@tools/job-list/sanitize.util';
+import {
+  buildDistancePrecisionNotice,
+  formatDistanceKm,
+  type DistanceAnchorPrecision,
+} from '@tools/job-list/distance-render.util';
+import {
+  extractHardRequirements,
+  type HardRequirements,
+} from '@tools/job-list/hard-requirements.util';
+import { extractSalaryFacts, renderSalaryFactsBanner } from '@tools/job-list/salary-facts.util';
+import { extractWelfareFacts, renderWelfareFactsBanner } from '@tools/job-list/welfare-facts.util';
+import { renderCandidateCardsBanner } from '@tools/job-list/candidate-card.util';
+
+/**
+ * 渐进式数据返回开关——控制 markdown 输出包含哪些 section。
+ * 由 duliday-job-list 工具入参 schema 解析后传入 render 层。
+ */
+export interface ProgressiveDisclosureFlags {
+  includeBasicInfo: boolean;
+  includeJobSalary: boolean;
+  includeWelfare: boolean;
+  includeHiringRequirement: boolean;
+  includeWorkTime: boolean;
+  includeInterviewProcess: boolean;
+}
+
+function addSummaryLine(lines: string[], label: string, value: string | null | undefined): void {
+  if (hasValue(value) && typeof value === 'string') {
+    const cleaned = cleanPolicyText(value);
+    if (cleaned) lines.push(`- **${label}**: ${cleaned}`);
+  } else if (hasValue(value)) {
+    lines.push(`- **${label}**: ${value}`);
+  }
+}
+
+function formatInterviewDecisionSummary(
+  policy: JobPolicyAnalysis,
+  shiftTimeText?: string | null,
+): string {
+  const lines: string[] = [];
+
+  if (shiftTimeText) {
+    // 单/多档班次都按 normalize 后的描述展示在最显眼位置；含义（早班/午高峰短班/选其一/必须全做/星期约束/工时长度）已被组装好。
+    addSummaryLine(lines, '工作班次', shiftTimeText);
+  }
+
+  if (policy.normalizedRequirements.ageRequirement !== '不限') {
+    addSummaryLine(lines, '年龄要求', policy.normalizedRequirements.ageRequirement);
+  }
+
+  if (policy.normalizedRequirements.healthCertificateRequirement !== '未明确要求') {
+    addSummaryLine(lines, '健康证', policy.normalizedRequirements.healthCertificateRequirement);
+  }
+
+  const studentRequirement = inferStudentRequirement(policy);
+  // 该行是给模型的纯事实；先筛后推的行为口径（已知学生查询侧已过滤/身份未知
+  // 收资前单问/身份信息不上卡片）在 candidate-consultation.md，不在数据行里复述。
+  addSummaryLine(
+    lines,
+    '学生身份要求',
+    studentRequirement ?? '未标注学生限制（按无额外学生硬限制处理）',
+  );
+
+  if (policy.highlights.requirementHighlights.length > 0) {
+    addSummaryLine(lines, '关键要求', policy.highlights.requirementHighlights.join('；'));
+  }
+
+  if (policy.interviewMeta.method) {
+    addSummaryLine(lines, '面试形式', policy.interviewMeta.method);
+  }
+
+  if (policy.interviewMeta.demand) {
+    addSummaryLine(lines, '报名要求', policy.interviewMeta.demand);
+  }
+
+  if (policy.interviewMeta.timeHint) {
+    addSummaryLine(lines, '面试时间', policy.interviewMeta.timeHint);
+  }
+
+  if (policy.interviewMeta.registrationDeadlineHint) {
+    addSummaryLine(lines, '报名截止', policy.interviewMeta.registrationDeadlineHint);
+  }
+
+  if (policy.highlights.timingHighlights.length > 0) {
+    addSummaryLine(lines, '时效限制', policy.highlights.timingHighlights.join('；'));
+  }
+
+  return lines.length > 0 ? '### 约面重点\n' + lines.join('\n') + '\n\n' : '';
+}
+
+const GENDER_LABEL: Record<HardRequirements['gender'], string | null> = {
+  male: '仅限男',
+  female: '仅限女',
+  any: null,
+  unspecified: null,
+};
+
+const HEALTH_CERT_LABEL: Record<HardRequirements['healthCert'], string | null> = {
+  required_before_interview: '面试前必须持有健康证（无证不可到店）',
+  required_before_onboard: '入职前必须办妥健康证（面试时可没有）',
+  not_required: '岗位不需要健康证',
+  unspecified: null,
+};
+
+/**
+ * 顶部硬性约束 banner：把派生 enum（gender / household / healthCert）渲染成
+ * 醒目的"先看这里"段，紧跟在岗位标题之后。
+ *
+ * 设计要点：
+ * - 只有任一字段非 unspecified/any 时才输出；岗位真没要求时不污染上下文。
+ * - 用 "> ⚠️ 候选人硬性约束" 引用块包裹，让 LLM 容易识别这是不可妥协的硬规则。
+ * - 文案直接告诉 LLM 该如何处理，避免它把硬约束当软建议处理。
+ *
+ * ⚠️ 户籍这类敏感门槛的文案**只准写禁令，不准派采集动作**——banner 与岗位数据同在
+ * 当轮上下文里、比系统提示词更贴近决策，一旦写"不掌握时先确认/委婉了解"，模型就会
+ * 真的去问候选人籍贯，把内部筛选条件捅到台面上。2026-08-06 badcase
+ * （chat 6a744a86，记录 249939）：banner 写着"不掌握候选人户籍时按敏感门槛话术委婉
+ * 了解后内部判断"，模型据此发出「这家对户籍有要求，方便问一下你老家是哪里的吗」，
+ * 候选人当场质问"为什么找工作还要问我户籍"。30 天内同族探问 6 条。
+ * 该门槛真正的执行点在 booking-guards 的 isHouseholdRequirementViolated 硬闸，
+ * 数据来自收资 checklist 的「籍贯/户籍」字段（表单场景合规），不需要口头打听。
+ */
+function renderHardRequirementsBanner(hr: HardRequirements): string {
+  const lines: string[] = [];
+
+  const genderLabel = GENDER_LABEL[hr.gender];
+  if (genderLabel) {
+    lines.push(`- **性别**：${genderLabel}（与候选人性别冲突则不得 booking）`);
+  }
+
+  if (hr.household) {
+    const verb = hr.household.mode === 'include' ? '仅接受' : '不接受';
+    lines.push(
+      `- **户籍**：${verb} ${hr.household.regions.join('/')}（🔒 仅供内部筛选，**严禁外显**：不得写进岗位介绍/要求，不得当拒绝理由，` +
+        `**也不得为核对该门槛向候选人打听籍贯/老家/是不是本地人**——涉地域歧视极易起纠纷。` +
+        `候选人未主动透露户籍时**不要追问**，按其余条件正常推进即可：该门槛由收资 checklist 的「籍贯/户籍」字段与 booking 前的硬闸兜底；` +
+        `已知不符则以排班/距离等中性理由转推其他岗位）`,
+    );
+  }
+
+  const healthCertLabel = HEALTH_CERT_LABEL[hr.healthCert];
+  if (healthCertLabel) {
+    lines.push(`- **健康证**：${healthCertLabel}`);
+  }
+
+  if (lines.length === 0) return '';
+
+  return [
+    '> ⚠️ **候选人硬性约束**（不可妥协；与候选人 fact 冲突时不得 booking）',
+    ...lines.map((l) => `> ${l}`),
+    '',
+    '',
+  ].join('\n');
+}
+
+function asString(value: unknown): string | null {
+  return typeof value === 'string' ? value : null;
+}
+
+function asNumber(value: unknown): number | null {
+  return typeof value === 'number' && !Number.isNaN(value) ? value : null;
+}
+
+// ==================== 模块 1：基本信息 ====================
+
+/**
+ * 合作模式（basicInfo.cooperationMode，海绵 2026-08-06 新增）→ 发薪/签约主体口径。
+ *
+ * 候选人高频追问"工资是你们发还是门店发""签的是谁的合同"，答案完全由合作模式决定，
+ * 而 BPO/RPO 是商业内部术语，直接把裸值丢给模型有两个风险：一是它可能原样说给候选人，
+ * 二是它得自己记住映射关系。所以这里**只输出结论**，裸值仅作 🔒 内部标注保留。
+ *
+ * 口径来源：2026-08-06 运营确认。注意两条规则的 RPO 分支**不一样**——
+ * 发薪在 RPO 下两种都可能（必须转人工），签约在 RPO 下主体确定是客户（只是形式不定）。
+ */
+function renderCooperationModeLines(rawMode: string | null): string[] {
+  const mode = rawMode?.trim().toUpperCase();
+  if (mode !== 'BPO' && mode !== 'RPO') return [];
+
+  const lines = [
+    `- **合作模式**: ${mode}（🔒 商业内部术语，**严禁对候选人提及 "BPO/RPO/合作模式" 字样**，只用它推出下面两条结论）`,
+  ];
+  if (mode === 'BPO') {
+    lines.push(
+      '  - **发薪主体**: 由独立客发薪（结论确定，候选人问"工资是你们发还是门店发"时可直接答，不必转人工）',
+      '  - **签约主体**: 与独立客签约，形式是**灵活用工协议**（不签劳动合同）；候选人问"签的是谁的合同"时按此答，但不要把协议说成劳动合同',
+    );
+  } else {
+    lines.push(
+      '  - **发薪主体**: ⚠️ 本模式下发薪方两种都有可能，**无法自答**——候选人问发薪主体时必须当轮 `request_handoff(reasonCode="salary_admin_inquiry")`，严禁猜"是我们发/是门店发"',
+      '  - **签约主体**: 与**客户（品牌方）**签约，可如实告知签约对象是品牌方；但**是协议还是合同取决于客户**，不得断言具体形式，候选人追问形式时转人工',
+    );
+  }
+  return lines;
+}
+
+function renderBasicInfoSection(
+  basicInfo: unknown,
+  distanceKm: number | null | undefined,
+  distanceAnchor: DistanceAnchorPrecision | null,
+): string {
+  const bi = asRecord(basicInfo);
+  if (!bi) return '';
+  const lines: string[] = [];
+
+  // jobName / jobNickName / jobCategoryName 在渲染前剔除 "正式工/临时工" 噪音词
+  // （它们与全职/兼职不同轴、不在招聘范围）。全职/兼职 现在是合法用工形式，保留不剥。
+  pushField(lines, '岗位名称', sanitizeJobDisplayText(asString(bi.jobName)));
+  pushField(lines, '岗位简称', sanitizeJobDisplayText(asString(bi.jobNickName)));
+  pushField(lines, '岗位类型', sanitizeJobDisplayText(asString(bi.jobCategoryName)));
+  // 渲染前 sanitize：全职/兼职（及历史数据里的细分值）如实展示；"正式工/临时工" 收敛为 null。
+  pushField(lines, '用工形式', sanitizeLaborFormForDisplay(asString(bi.laborForm)));
+  // 兼职细分轴：laborForm=兼职 时的 寒假工/暑假工/小时工
+  pushField(lines, '兼职类型', sanitizeLaborFormForDisplay(asString(bi.partTimeJobType)));
+  // 合作模式 → 发薪/签约主体结论。字段为空（海绵发布前的老数据）时不输出任何行，
+  // 此时 candidate-consultation.md 的兜底规则仍要求这两类问题转人工。
+  lines.push(...renderCooperationModeLines(asString(bi.cooperationMode)));
+  pushLongText(lines, '工作内容', bi.jobContent);
+
+  const brand = formatNameWithId(bi.brandName, bi.brandId);
+  if (brand) lines.push(`- **品牌**: ${brand}`);
+  const project = formatNameWithId(bi.projectName, bi.projectId);
+  if (project) lines.push(`- **项目**: ${project}`);
+
+  const store = asRecord(bi.storeInfo) ?? {};
+  const displayStoreName = normalizeStoreNameForAgent(
+    asString(store.storeName),
+    asString(store.storeCityName),
+  );
+  const storeLine = formatNameWithId(displayStoreName, store.storeId);
+  if (storeLine) lines.push(`- **门店**: ${storeLine}`);
+  pushField(lines, '城市', store.storeCityName);
+  pushField(lines, '区域', store.storeRegionName);
+  pushField(lines, '地址', store.storeAddress);
+  if (hasValue(store.longitude) && hasValue(store.latitude)) {
+    lines.push(`- **坐标**: ${store.longitude}, ${store.latitude}`);
+  }
+
+  if (distanceKm != null && !Number.isNaN(distanceKm)) {
+    lines.push(`- **距离**: ${formatDistanceKm(distanceKm, distanceAnchor)}`);
+  }
+
+  pushField(lines, '创建时间', bi.createTime);
+  pushField(lines, '是否需要试工', bi.needProbationWork);
+  pushField(lines, '是否需要培训', bi.needTraining);
+  pushField(lines, '是否有试用期', bi.haveProbation);
+
+  return lines.length ? '### 基本信息\n' + lines.join('\n') + '\n\n' : '';
+}
+
+// ==================== 模块 2：薪资信息 ====================
+
+function renderHolidayOrOvertimeLine(
+  salaryInput: unknown,
+  prefix: '节假日' | '加班',
+): string | null {
+  const salaryObj = asRecord(salaryInput);
+  if (!salaryObj || !isNonEmpty(salaryObj)) return null;
+  const typeField = prefix === '节假日' ? 'holidaySalaryType' : 'overtimeSalaryType';
+  const fixedField = prefix === '节假日' ? 'holidayFixedSalary' : 'overtimeFixedSalary';
+  const fixedUnitField = prefix === '节假日' ? 'holidayFixedSalaryUnit' : 'overtimeFixedSalaryUnit';
+  const multipleField = prefix === '节假日' ? 'holidaySalaryMultiple' : 'overtimeSalaryMultiple';
+  const descField = prefix === '节假日' ? 'holidaySalaryDesc' : 'overtimeSalaryDesc';
+
+  const type = salaryObj[typeField];
+  let valueStr = '';
+  if (type === '无薪资') {
+    valueStr = '无薪资';
+  } else if (type === '固定薪资') {
+    const s = formatValueWithUnit(salaryObj[fixedField], salaryObj[fixedUnitField]);
+    valueStr = s || '固定薪资';
+  } else if (type === '多倍薪资') {
+    const m = cleanNumber(salaryObj[multipleField]);
+    valueStr = m !== null ? `${m} 倍` : '多倍薪资';
+  } else if (hasValue(type)) {
+    valueStr = String(type);
+  }
+
+  const desc = hasValue(salaryObj[descField])
+    ? `（${cleanSingleLineText(String(salaryObj[descField]))}）`
+    : '';
+
+  if (!valueStr && !desc) return null;
+  return `- **${prefix}薪资**: ${valueStr}${desc}`;
+}
+
+function renderSalaryScenario(scenarioInput: unknown, index: number): string {
+  const scenario = asRecord(scenarioInput);
+  if (!scenario || !isNonEmpty(scenario)) return '';
+  const title = hasValue(scenario.salaryType) ? String(scenario.salaryType) : `方案 ${index}`;
+  const lines: string[] = [];
+
+  const periodParts: string[] = [];
+  if (hasValue(scenario.salaryPeriod)) periodParts.push(String(scenario.salaryPeriod));
+  if (hasValue(scenario.payday)) {
+    // 月结的发薪日平台全局口径是"次月发上月"，没有当月发当月的情况（2026-08-06 运营确认）。
+    // 候选人高频追问"X 号上班当月 X 号能不能发薪"，裸"15号发薪"会被理解成当月 →
+    // 月结 + 具体几号时显式标注归属月份，模型照读即可；周结/日结不适用不标。
+    const isMonthly =
+      hasValue(scenario.salaryPeriod) && String(scenario.salaryPeriod).includes('月');
+    const paydayText =
+      isMonthly && /^\d+\s*号$/.test(String(scenario.payday).trim())
+        ? `${scenario.payday}发薪（次月${scenario.payday}发上月工资，无当月发当月）`
+        : `${scenario.payday}发薪`;
+    periodParts.push(paydayText);
+  }
+  if (periodParts.length) lines.push(`- **结算周期**: ${periodParts.join(', ')}`);
+
+  const basic = asRecord(scenario.basicSalary);
+  if (basic && hasValue(basic.basicSalary)) {
+    const s = formatValueWithUnit(basic.basicSalary, basic.basicSalaryUnit);
+    if (s) lines.push(`- **基础薪资**: ${s}`);
+  }
+
+  const comp = asRecord(scenario.comprehensiveSalary);
+  if (comp && (hasValue(comp.minComprehensiveSalary) || hasValue(comp.maxComprehensiveSalary))) {
+    const r = formatRange(
+      comp.minComprehensiveSalary,
+      comp.maxComprehensiveSalary,
+      comp.comprehensiveSalaryUnit,
+    );
+    if (r) lines.push(`- **综合薪资**: ${r}`);
+  }
+
+  // hasStairSalary 取值是 "有阶梯薪资"/"无阶梯薪资"，仅在"有"时提示（下方会列明细），
+  // 避免把"无阶梯薪资"渲染成一条看似有内容的字段误导 LLM。
+  if (typeof scenario.hasStairSalary === 'string' && scenario.hasStairSalary.includes('有阶梯')) {
+    lines.push(`- **是否阶梯薪资**: 有阶梯薪资`);
+  }
+  const stairSalaries = asRecordArray(scenario.stairSalaries);
+  if (stairSalaries.length > 0) {
+    const stairLines: string[] = [];
+    stairSalaries.forEach((stair) => {
+      if (!isNonEmpty(stair)) return;
+      const salaryStr = formatValueWithUnit(stair.salary, stair.salaryUnit);
+      if (!salaryStr) return;
+      const periodPrefix = hasValue(stair.perTimeUnit) ? String(stair.perTimeUnit) : '';
+      const thresholdStr = hasValue(stair.fullWorkTime)
+        ? `${periodPrefix}超过 ${cleanNumber(stair.fullWorkTime)}${stair.fullWorkTimeUnit || ''}`
+        : '';
+      const desc = hasValue(stair.description)
+        ? `（${cleanSingleLineText(String(stair.description))}）`
+        : '';
+      const prefix = thresholdStr ? `${thresholdStr}: ` : '';
+      stairLines.push(`  - ${prefix}${salaryStr}${desc}`);
+    });
+    if (stairLines.length) {
+      lines.push(`- **阶梯薪资**:`);
+      lines.push(...stairLines);
+    }
+  }
+
+  const holidayLine = renderHolidayOrOvertimeLine(scenario.holidaySalary, '节假日');
+  if (holidayLine) lines.push(holidayLine);
+
+  const overtimeLine = renderHolidayOrOvertimeLine(scenario.overtimeSalary, '加班');
+  if (overtimeLine) lines.push(overtimeLine);
+
+  const other = asRecord(scenario.otherSalary);
+  if (other) {
+    if (hasValue(other.commission)) pushField(lines, '提成', other.commission);
+    if (hasValue(other.attendanceSalary)) {
+      const s = formatValueWithUnit(other.attendanceSalary, other.attendanceSalaryUnit);
+      if (s) lines.push(`- **全勤奖**: ${s}`);
+    }
+    if (hasValue(other.performance)) pushField(lines, '绩效', other.performance);
+  }
+
+  // 特殊时段薪资（夜班津贴等）：真实字段是 jobSpecialSalaryList（旧的 customSalaries 现网不返回）。
+  const specialSalaries = asRecordArray(scenario.jobSpecialSalaryList);
+  if (specialSalaries.length > 0) {
+    const specialLines: string[] = [];
+    specialSalaries.forEach((special) => {
+      if (!isNonEmpty(special)) return;
+      const salaryPart = hasValue(special.specialSalary)
+        ? formatValueWithUnit(special.specialSalary, special.specialSalaryUnit)
+        : null;
+      const timeRange =
+        hasValue(special.startTime) && hasValue(special.endTime)
+          ? `${special.startTime}-${special.endTime}`
+          : '';
+      const remark = hasValue(special.specialSalaryRemark)
+        ? cleanSingleLineText(String(special.specialSalaryRemark))
+        : '';
+      const parts = [
+        salaryPart ? `+${salaryPart}` : null,
+        timeRange ? `（${timeRange}）` : null,
+        remark || null,
+      ].filter(Boolean);
+      if (parts.length) specialLines.push(`  - ${parts.join(' ')}`);
+    });
+    if (specialLines.length) {
+      lines.push(`- **特殊时段薪资**:`);
+      lines.push(...specialLines);
+    }
+  }
+
+  if (lines.length === 0) return '';
+  return `#### 薪资方案 ${index}（${title}）\n${lines.join('\n')}\n`;
+}
+
+function renderProbationSalary(probationInput: unknown): string {
+  const probation = asRecord(probationInput);
+  if (!probation || !isNonEmpty(probation)) return '';
+  const lines: string[] = [];
+  if (hasValue(probation.salary)) {
+    const s = formatValueWithUnit(probation.salary, probation.salaryUnit);
+    if (s) lines.push(`- **薪资**: ${s}`);
+  }
+  if (hasValue(probation.salaryDescription)) {
+    pushLongText(lines, '说明', probation.salaryDescription);
+  }
+  if (lines.length === 0) return '';
+  return `#### 试工薪资\n${lines.join('\n')}\n`;
+}
+
+function renderSalarySection(salaryInput: unknown): string {
+  const salary = asRecord(salaryInput);
+  if (!salary) return '';
+  const blocks: string[] = [];
+
+  const scenarios = Array.isArray(salary.salaryScenarioList) ? salary.salaryScenarioList : [];
+  scenarios.forEach((scenario, idx: number) => {
+    const block = renderSalaryScenario(scenario, idx + 1);
+    if (block) blocks.push(block);
+  });
+
+  const probation = renderProbationSalary(salary.probationSalary);
+  if (probation) blocks.push(probation);
+
+  if (blocks.length === 0) return '';
+  const facts = extractSalaryFacts(salary);
+  const factsBanner = renderSalaryFactsBanner(facts);
+  return '### 薪资信息\n' + factsBanner + blocks.join('') + '\n';
+}
+
+// ==================== 模块 3：福利信息 ====================
+
+function renderWelfareSection(welfareInput: unknown): string {
+  const welfare = asRecord(welfareInput);
+  if (!welfare) return '';
+  const lines: string[] = [];
+
+  if (hasValue(welfare.haveInsurance)) {
+    const insuranceText = cleanSingleLineText(String(welfare.haveInsurance));
+    if (insuranceText) {
+      lines.push(
+        `- **保险（敏感，仅候选人主动问时可答；主动推荐/福利介绍严禁提）**: ${insuranceText}`,
+      );
+    }
+  }
+
+  if (hasValue(welfare.accommodation)) {
+    let text = String(welfare.accommodation).trim();
+    if (hasValue(welfare.accommodationAllowance)) {
+      const allowance = formatValueWithUnit(
+        welfare.accommodationAllowance,
+        welfare.accommodationAllowanceUnit,
+      );
+      if (allowance) text += ` ${allowance}`;
+    }
+    if (hasValue(welfare.probationAccommodationAllowanceReceive)) {
+      text += `（试工期: ${welfare.probationAccommodationAllowanceReceive}）`;
+    }
+    lines.push(`- **住宿**: ${text}`);
+  }
+
+  if (hasValue(welfare.catering)) {
+    let text = String(welfare.catering).trim();
+    if (hasValue(welfare.cateringSalary)) {
+      const val = formatValueWithUnit(welfare.cateringSalary, welfare.cateringSalaryUnit);
+      if (val) text += `（餐补 ${val}）`;
+    }
+    lines.push(`- **餐饮**: ${text}`);
+  }
+
+  if (hasValue(welfare.trafficAllowanceSalary)) {
+    const s = formatValueWithUnit(
+      welfare.trafficAllowanceSalary,
+      welfare.trafficAllowanceSalaryUnit,
+    );
+    if (s) lines.push(`- **交通补贴**: ${s}`);
+  }
+
+  pushLongText(lines, '晋升福利', welfare.promotionWelfare);
+
+  if (Array.isArray(welfare.otherWelfare)) {
+    const items = welfare.otherWelfare
+      .filter((w: unknown) => hasValue(w))
+      .map((w: unknown) => cleanSingleLineText(String(w)))
+      .filter(Boolean);
+    if (items.length) lines.push(`- **其他福利**: ${items.join('；')}`);
+  }
+
+  pushLongText(lines, '备注', welfare.memo);
+
+  // 福利速览 banner 放在 section 头部：把"员工自理/不购买"这类易被压缩成"有"的
+  // 字面值显式标 ❌ 无；保险是敏感政策，只给内部判断，不能作为普通福利主动引用。
+  // banner 非空时即使 raw 明细为空也要输出（welfare 对象存在但吃/住未配置 →
+  // banner 按运营口径默认标 ❌ 无，这条信息本身就是给模型的答案，不能因明细空而吞掉）。
+  const factsBanner = renderWelfareFactsBanner(extractWelfareFacts(welfare));
+  if (lines.length === 0 && !factsBanner) return '';
+  return '### 福利信息\n' + factsBanner + lines.join('\n') + '\n\n';
+}
+
+// ==================== 模块 4：招聘要求 ====================
+
+function renderHiringRequirementSection(reqInput: unknown, policy: JobPolicyAnalysis): string {
+  const req = asRecord(reqInput);
+  if (!req) return '';
+  const lines: string[] = [];
+
+  pushField(lines, 'figure', req.figure);
+
+  const basic = asRecord(req.basicPersonalRequirements) ?? {};
+  pushField(lines, '性别', basic.genderRequirement);
+  if (hasValue(basic.minAge) || hasValue(basic.maxAge)) {
+    const range = formatRange(basic.minAge, basic.maxAge, '岁');
+    if (range) lines.push(`- **年龄**: ${range}`);
+  }
+  if (hasValue(basic.manMinHeight) || hasValue(basic.manMaxHeight)) {
+    const r = formatRange(basic.manMinHeight, basic.manMaxHeight, 'cm');
+    if (r) lines.push(`- **男性身高**: ${r}`);
+  }
+  if (hasValue(basic.womanMinHeight) || hasValue(basic.womanMaxHeight)) {
+    const r = formatRange(basic.womanMinHeight, basic.womanMaxHeight, 'cm');
+    if (r) lines.push(`- **女性身高**: ${r}`);
+  }
+
+  const hometown = asRecord(req.requirementsForHometown) ?? {};
+  pushField(lines, '国籍要求', hometown.countryRequirementType);
+  pushField(lines, '民族要求', hometown.nationRequirementType);
+  if (Array.isArray(hometown.nations) && hometown.nations.length > 0) {
+    lines.push(`- **民族**: ${hometown.nations.join(', ')}`);
+  }
+  pushField(lines, '籍贯要求', hometown.nativePlaceRequirementType);
+  if (Array.isArray(hometown.nativePlaces) && hometown.nativePlaces.length > 0) {
+    lines.push(`- **籍贯**: ${hometown.nativePlaces.join(', ')}`);
+  }
+  const hasSensitiveHometownConstraint =
+    (Array.isArray(hometown.nativePlaces) && hometown.nativePlaces.length > 0) ||
+    (Array.isArray(hometown.nations) && hometown.nations.length > 0);
+  if (hasSensitiveHometownConstraint) {
+    lines.push(
+      '- ⚠️ 上述民族/籍贯条件🔒仅供内部筛选，**严禁向候选人展示或转述**（涉地域/民族歧视，易起纠纷）',
+    );
+  }
+
+  const mb = asRecord(req.marriageBearingAndSocialSecurity) ?? {};
+  pushField(lines, '婚育要求', mb.marriageBearingType);
+  pushField(lines, '婚育状态', mb.marriageBearing);
+  const hasSensitiveMarriageConstraint =
+    hasValue(mb.marriageBearingType) || hasValue(mb.marriageBearing);
+  // hometown 已经输出自己的结构化警示时，后面的通用 section 检测会为避免
+  // 重复而跳过；因此同时存在婚育条件时必须单独标明，避免婚育数据失去禁止外露提示。
+  if (hasSensitiveHometownConstraint && hasSensitiveMarriageConstraint) {
+    lines.push(
+      '- ⚠️ 上述婚育条件🔒仅供内部筛选，**严禁询问候选人或向候选人展示、复述、确认**（涉婚育歧视与个人隐私风险，易起纠纷）',
+    );
+  }
+  // socialSecurityList 现网是字符串（如"公司缴纳本地社保"/"无公司在缴社保流水"），
+  // 旧代码按数组读会整段丢失；这里兼容字符串与历史数组两种形态。
+  // socialSecurityRequirementType 现网不返回，已移除。
+  if (Array.isArray(mb.socialSecurityList) && mb.socialSecurityList.length > 0) {
+    lines.push(`- **社保**: ${mb.socialSecurityList.join(', ')}`);
+  } else {
+    pushField(lines, '社保', mb.socialSecurityList);
+  }
+
+  const comp = asRecord(req.competencyRequirements) ?? {};
+  if (hasValue(comp.minWorkTime)) {
+    // minWorkTimeUnit 现网下发的是数字枚举 id（非文本单位），直接拼接会渲染成
+    // "最低工作经验: 3 1" 这种读不懂的串，模型索性忽略该条件，对候选人答"接受无经验"
+    // （badcase umkgixpq：实际要求咖啡师 3 个月经验）。枚举字典本仓库没有，
+    // 不猜映射——单位不可读时只给数值并显式标注待确认，保证"有经验门槛"这个事实不丢。
+    const unitIsReadable =
+      hasValue(comp.minWorkTimeUnit) && Number.isNaN(Number(String(comp.minWorkTimeUnit).trim()));
+    const s = unitIsReadable
+      ? formatValueWithUnit(comp.minWorkTime, comp.minWorkTimeUnit)
+      : formatValueWithUnit(comp.minWorkTime, null);
+    if (s) {
+      lines.push(
+        unitIsReadable
+          ? `- **最低工作经验**: ${s}`
+          : `- **最低工作经验**: ${s}（单位未下发，勿臆断为月/年；该岗位有经验门槛，不得对候选人称"无经验也可以"，需按门店口径确认）`,
+      );
+    }
+  }
+  pushField(lines, '经验岗位类型', comp.workExperienceJobType);
+
+  const lang = asRecord(req.language) ?? {};
+  if (Array.isArray(lang.languages)) {
+    if (lang.languages.length > 0) {
+      lines.push(`- **语言**: ${lang.languages.join(', ')}`);
+    }
+  } else if (hasValue(lang.languages)) {
+    pushField(lines, '语言', lang.languages);
+  }
+  pushField(lines, '语言备注', lang.languageRemark);
+
+  const cert = asRecord(req.certificate) ?? {};
+  pushField(lines, '学历', cert.education);
+  if (Array.isArray(cert.certificates) && cert.certificates.length > 0) {
+    lines.push(`- **证件**: ${cert.certificates.join(', ')}`);
+  } else if (hasValue(cert.certificates)) {
+    pushField(lines, '证件', cert.certificates);
+  }
+  pushField(lines, '健康证', cert.healthCertificate);
+  pushField(lines, '驾照类型', cert.driverLicenseType);
+
+  // 其他要求：优先使用 policy 清洗后的 remark（已剔除过期时效约束）
+  const sanitizedRemark =
+    policy.normalizedRequirements.remark ?? sanitizeConstraintText(asString(req.remark));
+  if (sanitizedRemark) pushLongText(lines, '其他要求', sanitizedRemark);
+
+  // 自由文本（其他要求等）可能内嵌"不要 X 籍 / 限本地户口 / 婚育要求"类敏感筛选条件，
+  // 结构化字段之外的这条路径同样需要 🔒 勿透露标注兜底。
+  // 结构化 hometown 警示已输出时不再重复标注。
+  if (
+    !hasSensitiveHometownConstraint &&
+    lines.length &&
+    containsSensitiveScreeningText(lines.join('\n'))
+  ) {
+    lines.push(SENSITIVE_SCREENING_RENDER_NOTICE);
+  }
+
+  return lines.length ? '### 招聘要求\n' + lines.join('\n') + '\n\n' : '';
+}
+
+// ==================== 模块 5：工作时间 ====================
+
+const CN_NUM = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九', '十'];
+function toCnNum(value: unknown): string {
+  const n = cleanNumber(value);
+  return typeof n === 'number' && Number.isInteger(n) && n >= 0 && n <= 10
+    ? CN_NUM[n]
+    : String(value);
+}
+
+function renderWorkTimeSection(workTimeInput: unknown): string {
+  const wt = asRecord(workTimeInput);
+  if (!wt) return '';
+  const lines: string[] = [];
+
+  pushField(lines, '就业形式', wt.employmentForm);
+  if (hasValue(wt.minWorkMonths)) {
+    lines.push(`- **最少工作月数**: ${wt.minWorkMonths} 个月`);
+  }
+
+  // 阶段用工时间窗
+  const tempEmp = asRecord(wt.temporaryEmployment) ?? {};
+  if (
+    hasValue(tempEmp.temporaryEmploymentStartTime) ||
+    hasValue(tempEmp.temporaryEmploymentEndTime)
+  ) {
+    const s = hasValue(tempEmp.temporaryEmploymentStartTime)
+      ? String(tempEmp.temporaryEmploymentStartTime)
+      : '?';
+    const e = hasValue(tempEmp.temporaryEmploymentEndTime)
+      ? String(tempEmp.temporaryEmploymentEndTime)
+      : '?';
+    lines.push(`- **阶段用工**: ${s} 至 ${e}`);
+  }
+
+  // 每周/每月排班（海绵2.0 weekAndMonthWorkTime）
+  const wm = asRecord(wt.weekAndMonthWorkTime) ?? {};
+  const cycleLabel = hasValue(wm.arrangementCycleType) ? String(wm.arrangementCycleType) : '';
+  const wmParts: string[] = [];
+  // 做X休Y（用中文数字以触发"做六休一"等全周强排班识别）
+  if (hasValue(wm.perWeekWorkDays) && hasValue(wm.perWeekRestDays)) {
+    wmParts.push(`做${toCnNum(wm.perWeekWorkDays)}休${toCnNum(wm.perWeekRestDays)}`);
+  } else if (hasValue(wm.perWeekWorkDays)) {
+    wmParts.push(`每周出勤 ${wm.perWeekWorkDays} 天`);
+  } else if (hasValue(wm.perWeekRestDays)) {
+    wmParts.push(`每周休 ${wm.perWeekRestDays} 天`);
+  }
+  // 至少/至多上岗 N 天/小时
+  if (hasValue(wm.onWorkTime) && hasValue(wm.onWorkTimeUnit)) {
+    const limit = hasValue(wm.onWorkLimitType) ? String(wm.onWorkLimitType) : '上岗';
+    wmParts.push(`${limit} ${wm.onWorkTime} ${wm.onWorkTimeUnit}`);
+  }
+  // 休息模式（周中休/周末休）
+  if (hasValue(wm.weekMonthRestMode)) wmParts.push(String(wm.weekMonthRestMode));
+  // 单双号
+  if (hasValue(wm.workSingleDouble)) wmParts.push(`仅${wm.workSingleDouble}`);
+  if (wmParts.length) {
+    const cyclePrefix = cycleLabel ? `${cycleLabel}: ` : '';
+    lines.push(`- **排班周期**: ${cyclePrefix}${wmParts.join('，')}`);
+  }
+
+  // 每日排班（海绵2.0 dayWorkTime）
+  const day = asRecord(wt.dayWorkTime) ?? {};
+  const arrangementType = hasValue(day.arrangementType) ? String(day.arrangementType) : '';
+  if (arrangementType) {
+    pushField(lines, '排班类型', arrangementType);
+    // 语义判据统一走 classifyArrangementType（短标签与整句形态都认）；本地正则曾只匹配
+    // 整句，现网短标签下两个分支双双恒不命中，见该函数注释里的 badcase 4dif1onb。
+    const arrangementKind = classifyArrangementType(arrangementType);
+    if (arrangementKind === 'all_required') {
+      // 组合排班制：下列时段全部都要出勤，不能只挑一段。
+      lines.push(
+        '- **班次硬约束提示**: 该岗位为组合排班制，下面列出的「可排时段」**全部都要出勤**，候选人不能只挑其中一段；不得说成"任选其一/几选一"',
+      );
+    } else if (arrangementKind === 'pick_one') {
+      // 固定排班制：候选人只能从已开时段里选，不能自定义时段。
+      // historical badcase jj2zct43：固定排班制被答成"面试时沟通你想排哪些时段"，让候选人误以为可自选。
+      lines.push(
+        '- **班次自选边界**: 该岗位为固定排班制，候选人**只能在下面列出的「可排时段」里选**，不能自由挑选未列出的时段；门店按候选人可上班时间在已开时段里排班',
+      );
+    }
+  }
+
+  // 每日最少工时 + 班次名 + 上下班区间（灵活排班 fixedTime）
+  const ft = asRecord(day.fixedTime) ?? {};
+  if (hasValue(ft.perDayMinWorkHours)) {
+    const n = cleanNumber(ft.perDayMinWorkHours);
+    if (n !== null) lines.push(`- **每日工时**: 最少 ${n} 小时`);
+  }
+  if (Array.isArray(ft.shiftCodes)) {
+    const codes = ft.shiftCodes.filter((c: unknown) => hasValue(c)).map((c: unknown) => String(c));
+    if (codes.length) lines.push(`- **班次**: ${codes.join('、')}`);
+  }
+  if (hasValue(ft.goToWorkStartTime) || hasValue(ft.goOffWorkEndTime)) {
+    const s = hasValue(ft.goToWorkStartTime) ? String(ft.goToWorkStartTime) : '?';
+    const e = hasValue(ft.goOffWorkEndTime) ? String(ft.goOffWorkEndTime) : '?';
+    const nextDay = /次日/.test(String(ft.goOffWorkTimeType ?? '')) ? '次日 ' : '';
+    lines.push(`- **上下班时间**: ${s} - ${nextDay}${e}`);
+  }
+
+  // 固定/组合排班的可排时段（dayWorkTime.combinedArrangement，新结构不带星期）
+  const combinedArrangement = asRecordArray(day.combinedArrangement);
+  if (combinedArrangement.length > 0) {
+    const caLines: string[] = [];
+    combinedArrangement.forEach((ca, idx: number) => {
+      if (!isNonEmpty(ca)) return;
+      const s = hasValue(ca.combinedArrangementStartTime)
+        ? String(ca.combinedArrangementStartTime)
+        : '?';
+      const e = hasValue(ca.combinedArrangementEndTime)
+        ? String(ca.combinedArrangementEndTime)
+        : '?';
+      caLines.push(`  - 时段 ${idx + 1}: ${s} - ${e}`);
+    });
+    if (caLines.length) {
+      lines.push(`- **可排时段**:`);
+      lines.push(...caLines);
+    }
+  }
+
+  // 自由文本（休息说明/工时备注）——新结构未必下发，存在则保留（自由文本优先于结构化字段）。
+  pushLongText(lines, '休息说明', wt.restTimeDesc);
+  pushLongText(lines, '工时备注', sanitizeConstraintText(asString(wt.workTimeRemark)));
+
+  // 全周强排班提示：文本命中（每天/做六休一...）或结构化每周出勤≥5 天。
+  // 「固定排班」标签不触发（时段固定≠每周全勤，badcase id4zx7q9）。
+  const weeklyWorkDays = cleanNumber(wm.perWeekWorkDays);
+  const structuralRigid = typeof weeklyWorkDays === 'number' && weeklyWorkDays >= 5;
+  if (structuralRigid || hasFullWeekOrRigidSchedule(lines)) {
+    lines.push(
+      '- **排班硬约束提示**: "每天/做六休一/周一至周日"表示工作日也要配合；候选人只做周末、每周最多几天、做一休一、下班后或只做晚班时，不能把该岗位说成"周末能排"或"晚班能排"。',
+    );
+  }
+
+  return lines.length ? '### 工作时间\n' + lines.join('\n') + '\n\n' : '';
+}
+
+// ==================== 模块 6：面试流程 ====================
+
+/**
+ * 格式化面试时段，过滤海绵的 00:00 占位值。
+ *
+ * 现网大量岗位的 interviewStartTime/EndTime 是占位 "00:00"（表示"当天任意时段/以沟通为准"），
+ * 直接渲染会得到 "00:00-00:00" 这类误导信息。起止均为占位（空/00:00）时返回空串，由调用方决定不渲染时段。
+ */
+function formatInterviewTimeRange(start: unknown, end: unknown): string {
+  const s = hasValue(start) ? String(start).trim() : '';
+  const e = hasValue(end) ? String(end).trim() : '';
+  const isPlaceholder = (v: string) => v === '' || v === '00:00';
+  if (isPlaceholder(s) && isPlaceholder(e)) return '';
+  if (s && e) return `${s}-${e}`;
+  return s || e;
+}
+
+function renderInterviewRound(
+  roundInput: unknown,
+  roundLabel: string,
+  wayField: string,
+  addressField: string,
+  demandField: string,
+  descField?: string,
+): string[] {
+  const round = asRecord(roundInput);
+  if (!round || !isNonEmpty(round)) return [];
+  const sub: string[] = [];
+  pushField(sub, '面试方式', round[wayField]);
+  pushField(sub, '面试地址', round[addressField]);
+  // demand 可能含过期时效约束，统一清洗
+  pushField(sub, '面试要求', sanitizeConstraintText(asString(round[demandField])));
+  if (descField) pushLongText(sub, '说明', round[descField]);
+
+  // 一面独有：时间模式 + 固定/周期面试时间
+  if (roundLabel === '一轮面试') {
+    pushField(sub, '时间模式', round.interviewTimeMode);
+
+    const fixedInterviewTimes = asRecordArray(round.fixedInterviewTimes);
+    if (fixedInterviewTimes.length > 0) {
+      const fixedLines: string[] = [];
+      fixedInterviewTimes.forEach((ft) => {
+        if (!isNonEmpty(ft)) return;
+        const date = hasValue(ft.interviewDate) ? String(ft.interviewDate) : '';
+        const interviewTimes = asRecordArray(ft.interviewTimes);
+        if (interviewTimes.length > 0) {
+          interviewTimes.forEach((t) => {
+            if (!isNonEmpty(t)) return;
+            const range = formatInterviewTimeRange(t.interviewStartTime, t.interviewEndTime);
+            // fixedDeadline 真实位置在每个 interviewTimes 项内（旧代码错读 round 顶层，恒空）。
+            const deadline = hasValue(t.fixedDeadline) ? String(t.fixedDeadline) : '';
+            let line = [date, range].filter(Boolean).join(' ').trim();
+            if (deadline) line += `（报名截止: ${deadline}）`;
+            if (line) fixedLines.push(`    - ${line}`);
+          });
+        } else if (date) {
+          fixedLines.push(`    - ${date}`);
+        }
+      });
+      if (fixedLines.length) {
+        sub.push(`- **固定面试时间**:`);
+        sub.push(...fixedLines);
+      }
+    }
+
+    const periodicInterviewTimes = asRecordArray(round.periodicInterviewTimes);
+    if (periodicInterviewTimes.length > 0) {
+      const periodicLines: string[] = [];
+      periodicInterviewTimes.forEach((pt) => {
+        if (!isNonEmpty(pt)) return;
+        const weekday = hasValue(pt.interviewWeekday) ? String(pt.interviewWeekday) : '';
+        const interviewTimes = asRecordArray(pt.interviewTimes);
+        if (interviewTimes.length > 0) {
+          interviewTimes.forEach((t) => {
+            if (!isNonEmpty(t)) return;
+            const range = formatInterviewTimeRange(t.interviewStartTime, t.interviewEndTime);
+            let line = [weekday, range].filter(Boolean).join(' ').trim();
+            if (hasValue(t.cycleDeadlineDay) || hasValue(t.cycleDeadlineEnd)) {
+              const dd = hasValue(t.cycleDeadlineDay) ? String(t.cycleDeadlineDay) : '';
+              const de = hasValue(t.cycleDeadlineEnd) ? String(t.cycleDeadlineEnd) : '';
+              const deadline = `${dd} ${de}`.trim();
+              if (deadline) line += `（报名截止: ${deadline}）`;
+            }
+            if (line) periodicLines.push(`    - ${line}`);
+          });
+        }
+      });
+      if (periodicLines.length) {
+        sub.push(`- **周期面试时间**:`);
+        sub.push(...periodicLines);
+      }
+    }
+  }
+
+  if (sub.length === 0) return [];
+  const header = `- **${roundLabel}**:`;
+  return [header, ...sub.map((l) => `  ${l}`)];
+}
+
+function renderInterviewProcessSection(
+  interviewProcessInput: unknown,
+  policy: JobPolicyAnalysis,
+): string {
+  const ip = asRecord(interviewProcessInput);
+  if (!ip) return '';
+  const lines: string[] = [];
+
+  if (hasValue(ip.interviewTotal)) {
+    lines.push(`- **面试轮数**: ${ip.interviewTotal} 轮`);
+  }
+
+  const firstLines = renderInterviewRound(
+    ip.firstInterview,
+    '一轮面试',
+    'firstInterviewWay',
+    'interviewAddress',
+    'interviewDemand',
+    'firstInterviewDesc',
+  );
+  lines.push(...firstLines);
+
+  const secondLines = renderInterviewRound(
+    ip.secondInterview,
+    '二轮面试',
+    'secondInterviewWay',
+    'secondInterviewAddress',
+    'secondInterviewDemand',
+  );
+  lines.push(...secondLines);
+
+  const thirdLines = renderInterviewRound(
+    ip.thirdInterview,
+    '三轮面试',
+    'thirdInterviewWay',
+    'thirdInterviewAddress',
+    'thirdInterviewDemand',
+  );
+  lines.push(...thirdLines);
+
+  if (Array.isArray(ip.interviewSupplement) && ip.interviewSupplement.length > 0) {
+    const items = ip.interviewSupplement
+      .map((item) => asRecord(item)?.interviewSupplement)
+      .filter((s: unknown) => hasValue(s));
+    if (items.length) lines.push(`- **面试补充项**: ${items.join('；')}`);
+  }
+
+  const probation = asRecord(ip.probationWork);
+  if (probation && isNonEmpty(probation)) {
+    const sub: string[] = [];
+    if (hasValue(probation.probationWorkPeriod)) {
+      const s = formatValueWithUnit(
+        probation.probationWorkPeriod,
+        probation.probationWorkPeriodUnit,
+      );
+      if (s) sub.push(`- **试工周期**: ${s}`);
+    }
+    pushField(sub, '试工地址', probation.probationWorkAddress);
+    pushField(sub, '试工考核方式', probation.probationWorkAssessment);
+    pushLongText(sub, '试工考核说明', probation.probationWorkAssessmentText);
+    if (sub.length) {
+      lines.push(`- **试工信息**:`);
+      lines.push(...sub.map((l) => `  ${l}`));
+    }
+  }
+
+  const training = asRecord(ip.training);
+  if (training && isNonEmpty(training)) {
+    const sub: string[] = [];
+    pushField(sub, '培训地址', training.trainingAddress);
+    if (hasValue(training.trainingPeriod)) {
+      const s = formatValueWithUnit(training.trainingPeriod, training.trainingPeriodUnit);
+      if (s) sub.push(`- **培训周期**: ${s}`);
+    }
+    pushLongText(sub, '培训说明', training.trainingDesc);
+    if (sub.length) {
+      lines.push(`- **培训信息**:`);
+      lines.push(...sub.map((l) => `  ${l}`));
+    }
+  }
+
+  pushLongText(lines, '流程说明', ip.processDesc);
+
+  // 面试备注：使用 policy 清洗过的 interviewRemark（已剔除过期时效等噪音）
+  if (policy.normalizedRequirements.interviewRemark) {
+    pushLongText(lines, '面试备注', policy.normalizedRequirements.interviewRemark);
+  }
+
+  // 面试补充项/面试描述/面试备注等自由文本可能内嵌"户籍（不要新疆西藏）"类
+  // 敏感筛选条件，命中时追加 🔒 勿透露标注兜底。
+  if (lines.length && containsSensitiveScreeningText(lines.join('\n'))) {
+    lines.push(SENSITIVE_SCREENING_RENDER_NOTICE);
+  }
+
+  return lines.length ? '### 面试流程\n' + lines.join('\n') + '\n\n' : '';
+}
+
+// ==================== 岗位格式化 ====================
+
+function formatJobToOneLine(
+  jobInput: unknown,
+  index: number,
+  distanceAnchor: DistanceAnchorPrecision | null,
+): string {
+  const job = asRecord(jobInput) ?? {};
+  const bi = asRecord(job.basicInfo) ?? {};
+  const store = asRecord(bi.storeInfo) ?? {};
+  const brandName = hasValue(bi.brandName) ? String(bi.brandName) : '';
+  const jobName = hasValue(bi.jobName) ? String(bi.jobName) : '未命名';
+  const parts = [`${index + 1}. **${brandName} - ${jobName}**`];
+  const displayStoreName = normalizeStoreNameForAgent(
+    asString(store.storeName),
+    asString(store.storeCityName),
+  );
+  if (displayStoreName) parts.push(displayStoreName);
+  if (hasValue(store.storeAddress)) parts.push(String(store.storeAddress));
+  const distanceKm = asNumber(job._distanceKm);
+  if (distanceKm != null) parts.push(`距离 ${formatDistanceKm(distanceKm, distanceAnchor)}`);
+  return parts.join(' | ');
+}
+
+/**
+ * 渐进式披露：单页内只对最近 N 个岗位渲染全文详情，其余降为摘要行。
+ *
+ * 岗位列表在有位置时已按距离升序，候选人当下只会考虑最近的一两家；
+ * 把第 N+1 家之后的薪资阶梯/招聘要求/工作时间整段全文回灌纯属浪费
+ * （生产 p90 markdown 4.3 万字符、最大 17 万，且多步工具调用每步重复计费）。
+ * 摘要行保留店名/距离/薪资/年龄 + jobId，候选人后续问到更远的店，
+ * Agent 用该 jobId 走 jobIdList 重查拿全文（既有路径）。
+ */
+export const FULL_DETAIL_CAP = 6;
+
+/**
+ * 摘要行：比 minimal 模式的 formatJobToOneLine 多带薪资 + 年龄 + jobId，
+ * 让 Agent 能直接转述"还有 X 家更远的（店名/距离/薪资）"并按 jobId 取详情。
+ * 班次文本常多行，摘要行不含，需详情时由 jobIdList 全文给出。
+ */
+function formatJobToSummaryLine(
+  jobInput: unknown,
+  index: number,
+  distanceAnchor: DistanceAnchorPrecision | null,
+): string {
+  const job = asRecord(jobInput) ?? {};
+  const bi = asRecord(job.basicInfo) ?? {};
+  const store = asRecord(bi.storeInfo) ?? {};
+  const policy = buildJobPolicyAnalysis(job as JobDetail);
+  const brandName = hasValue(bi.brandName) ? String(bi.brandName) : '';
+  const jobName = hasValue(bi.jobName) ? String(bi.jobName) : '未命名';
+  const parts = [`${index + 1}. **${brandName} - ${jobName}**`];
+  const displayStoreName = normalizeStoreNameForAgent(
+    asString(store.storeName),
+    asString(store.storeCityName),
+  );
+  if (displayStoreName) parts.push(displayStoreName);
+  const distanceKm = asNumber(job._distanceKm);
+  if (distanceKm != null) parts.push(formatDistanceKm(distanceKm, distanceAnchor));
+  const salary = formatSalarySummary(job);
+  if (salary) parts.push(salary);
+  const age = policy.normalizedRequirements.ageRequirement;
+  if (age && age !== '不限') parts.push(age);
+  parts.push(`jobId:${hasValue(bi.jobId) ? bi.jobId : '未知'}`);
+  return parts.join(' | ');
+}
+
+function isMinimalMode(flags: ProgressiveDisclosureFlags): boolean {
+  return (
+    flags.includeBasicInfo &&
+    !flags.includeJobSalary &&
+    !flags.includeWelfare &&
+    !flags.includeHiringRequirement &&
+    !flags.includeWorkTime &&
+    !flags.includeInterviewProcess
+  );
+}
+
+function formatJobToMarkdown(
+  jobInput: unknown,
+  index: number,
+  flags: ProgressiveDisclosureFlags,
+  distanceAnchor: DistanceAnchorPrecision | null,
+): string {
+  const job = asRecord(jobInput) ?? {};
+  const bi = asRecord(job.basicInfo) ?? {};
+  const policy = buildJobPolicyAnalysis(job as JobDetail);
+  const jobName = hasValue(bi.jobName) ? String(bi.jobName) : '未命名岗位';
+  const titleParts = [jobName];
+  if (hasValue(bi.jobNickName) && bi.jobNickName !== bi.jobName) {
+    titleParts.push(`(${bi.jobNickName})`);
+  }
+  let md = `## ${index + 1}. ${titleParts.join(' ')}\n\n`;
+
+  // 硬性约束 banner 紧跟标题：性别 / 户籍 / 健康证 三类高频硬约束，
+  // 任一非 unspecified/any 时才输出。让 LLM 一眼看到不可妥协的硬规则。
+  md += renderHardRequirementsBanner(extractHardRequirements(job, policy));
+
+  // 候选人需要 workTime 时（默认开）才注入归一化班次（含早/中/晚班/午高峰/星期约束等含义）；
+  // 模型显式关 includeWorkTime 表示本轮在做不涉及班次的追问，无需归一化班次。
+  // 数据缺失时为 null，约面重点 section 不显示该行。
+  const shiftTimeText = flags.includeWorkTime ? composeShiftTimeText(job.workTime) : null;
+
+  if (flags.includeHiringRequirement || flags.includeInterviewProcess) {
+    md += formatInterviewDecisionSummary(policy, shiftTimeText);
+  }
+  if (flags.includeBasicInfo) {
+    md += renderBasicInfoSection(job.basicInfo, asNumber(job._distanceKm), distanceAnchor);
+  }
+  if (flags.includeJobSalary) {
+    md += renderSalarySection(job.jobSalary);
+  }
+  if (flags.includeWelfare) {
+    md += renderWelfareSection(job.welfare);
+  }
+  if (flags.includeHiringRequirement) {
+    md += renderHiringRequirementSection(job.hiringRequirement, policy);
+  }
+  if (flags.includeWorkTime) {
+    md += renderWorkTimeSection(job.workTime);
+  }
+  if (flags.includeInterviewProcess) {
+    md += renderInterviewProcessSection(job.interviewProcess, policy);
+  }
+
+  md += '### 岗位标识\n';
+  md += `- **jobId**: ${hasValue(bi.jobId) ? bi.jobId : '未知'}\n\n`;
+  return md;
+}
+
+export function formatJobsToMarkdown(
+  jobs: unknown[],
+  total: number,
+  pageNum: number,
+  pageSize: number,
+  flags: ProgressiveDisclosureFlags,
+  brandGroups: BrandNearestStoresGroup[] | null = null,
+  distanceAnchor: DistanceAnchorPrecision | null = null,
+): string {
+  const start = (pageNum - 1) * pageSize + 1;
+  const end = Math.min(start + jobs.length - 1, total);
+
+  let md = `# 在招岗位（共 ${total} 个）\n\n`;
+
+  // 区级锚点（方案 11.3）：距离全部是按行政区代表点的估算值，头部先声明定位精度，
+  // 让模型在看到任何距离数字之前先建立"估算"口径。
+  const precisionNotice = buildDistancePrecisionNotice(distanceAnchor);
+  if (precisionNotice) {
+    md += precisionNotice;
+  }
+
+  md +=
+    '> ⚠️ **数据使用原则**：各 section 中的备注、remark 等自由文本字段可能包含结构化字段未覆盖或与之矛盾的补充信息，回复时须结合全部内容；除下方单独说明的用工形式外，**自由文本与结构化字段冲突时以自由文本为准**\n\n';
+
+  md +=
+    '> ⚠️ **预约动作边界**：本工具只查询岗位，**没有提交预约**。只调用本工具后不得说“已提交 / 正在提交 / 这就提交 / 稍后提交预约”；约面必须继续调用 `duliday_interview_precheck`，且只有 `duliday_interview_booking` 返回 success=true 才能说预约已提交。\n\n';
+
+  md +=
+    '> ⚠️ **用工类型口径**：岗位的用工形式**一律以结构化 `用工形式` + `兼职类型` 字段为准**' +
+    '（`用工形式` 只有「兼职」「全职」；兼职岗的细分看 `兼职类型`：寒假工/暑假工/小时工）。' +
+    '仅当 `兼职类型`（或历史数据的 `用工形式`）字段为「寒假工」「暑假工」时，才能说岗位是寒/暑假工；' +
+    '若仅福利备注里出现"暑假工/寒假工薪资 X 元/时"，但结构化字段不是寒假工/暑假工，' +
+    '只能说明这是一档薪资条件，**不得把岗位用工类型改写成寒假工/暑假工**。\n\n';
+
+  // 本函数入参声明为 unknown[]（渲染层对 raw 结构全程逐字段兜底），
+  // 而卡片层已收拢到领域契约 JobDetail；此处按同一 raw 契约断言，运行时值不变。
+  md += renderCandidateCardsBanner(jobs as JobDetail[], distanceAnchor);
+
+  // 同品牌多门店强约束置顶（同品牌两家被压缩成"有肯德基、肯德基"）
+  const multiStoreSection = renderMultiStoreBrandWarning(brandGroups);
+  if (multiStoreSection) {
+    md += multiStoreSection;
+  }
+
+  if (isMinimalMode(flags)) {
+    jobs.forEach((job, index) => {
+      md += formatJobToOneLine(job, start + index - 1, distanceAnchor) + '\n';
+    });
+    if (total > end) md += `\n_还有 ${total - end} 个岗位未显示，可通过筛选条件缩小范围_\n`;
+    return md;
+  }
+
+  md += `当前显示第 ${start}-${end} 条\n\n---\n\n`;
+
+  // 渐进式披露：最近 FULL_DETAIL_CAP 家全文，其余降摘要行（详情走 jobIdList 重查）。
+  const fullCount = Math.min(jobs.length, FULL_DETAIL_CAP);
+  jobs.slice(0, fullCount).forEach((job, index) => {
+    md += formatJobToMarkdown(job, index, flags, distanceAnchor);
+    md += '---\n\n';
+  });
+
+  const tail = jobs.slice(fullCount);
+  if (tail.length > 0) {
+    md += `### 更远的 ${tail.length} 家（仅摘要，候选人问到具体某家详情时用其 jobId 走 jobIdList 重查）\n`;
+    tail.forEach((job, i) => {
+      md += formatJobToSummaryLine(job, fullCount + i, distanceAnchor) + '\n';
+    });
+    md += '\n';
+  }
+  return md;
+}
+
+export function inferStudentRequirement(policy: JobPolicyAnalysis): string | null {
+  const text = [
+    policy.normalizedRequirements.remark,
+    policy.normalizedRequirements.interviewRemark,
+    policy.interviewMeta.demand,
+    ...policy.highlights.requirementHighlights,
+    ...policy.fieldGuidance.fieldSignals
+      .filter((signal) => signal.field === '是否学生')
+      .map((signal) => signal.evidence),
+  ]
+    .filter((item): item is string => Boolean(item && item.trim()))
+    .join('；');
+  if (!text) return null;
+
+  const normalized = text.replace(/\s+/g, '');
+  if (/(不招学生|学生勿扰|学生不考虑|仅限非学生|非学生优先|需要已毕业|社会人士)/.test(normalized)) {
+    return '不接受学生';
+  }
+  if (/(学生优先|在校生优先)/.test(normalized)) {
+    return '学生优先';
+  }
+  if (/(接受学生|可接受学生|在校生可|学生可报名|学生也可)/.test(normalized)) {
+    return '可接受学生';
+  }
+
+  return null;
+}

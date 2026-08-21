@@ -9,7 +9,7 @@ import {
   buildInterviewBookingTool,
   resolveInterviewType,
 } from '@tools/duliday-interview-booking.tool';
-import { TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
+import { TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
 import { createToolContext } from '../../helpers/tool-context.fixture';
 
 const CONTRACT: ContractFieldDef[] = [

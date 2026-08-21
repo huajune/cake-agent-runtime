@@ -5,7 +5,7 @@ import type {
   BrandResolutionSource,
   SessionBrandState,
 } from '@resolution/brand/brand-resolution.types';
-import type { ToolErrorType } from '@tools/types/tool-error-types';
+import type { ToolErrorType } from '@tools/shared/tool-error-types';
 import type {
   CandidateClaimDecision,
   CandidateClaimField,

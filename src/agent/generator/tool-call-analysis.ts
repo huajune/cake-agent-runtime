@@ -6,7 +6,7 @@
  */
 
 import type { AgentToolCallStatus } from '@shared-types/agent-telemetry.types';
-import type { ToolErrorType } from '@tools/types/tool-error-types';
+import type { ToolErrorType } from '@tools/shared/tool-error-types';
 import { asRecord } from '@infra/utils/object.util';
 import type { AgentToolCall } from './generator.types';
 
@@ -32,7 +32,7 @@ export const MAX_PRECHECK_CALLS_PER_TURN = 2;
 const NARROW_SEMANTIC_TOOLS = new Set(['duliday_job_list']);
 
 /**
- * buildToolError 的成功标记键（见 tools/types/tool-error-types.ts）：
+ * buildToolError 的成功标记键（见 tools/shared/tool-error-types.ts）：
  * 各工具用其中一个键表达成功/失败（success/accepted/dispatched/found）。
  */
 const SUCCESS_FLAG_KEYS = ['success', 'accepted', 'dispatched', 'found'] as const;

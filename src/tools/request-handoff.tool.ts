@@ -7,8 +7,8 @@ import { LongTermService } from '@memory/services/long-term.service';
 import { InterventionService } from '@biz/intervention/intervention.service';
 import { HandoffRecorderService } from '@biz/handoff-events/handoff-recorder.service';
 import { ToolBuilder } from '@shared-types/tool.types';
-import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
-import { extractLatestUserMessage } from './utils/chat-history.util';
+import { buildToolError, TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
+import { extractLatestUserMessage } from './shared/chat-history.util';
 
 const logger = new Logger('request_handoff');
 

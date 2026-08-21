@@ -7,7 +7,7 @@ import { ResumeReadError } from '@tools/resume/resume-format.util';
 import { extractPdfText } from '@tools/resume/pdf-text.util';
 import { extractResumeFieldsViaModel } from '@tools/resume/resume-extract.util';
 import { transcribeResumeImage, transcribeScannedPdf } from '@tools/resume/resume-transcribe.util';
-import { TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
+import { TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
 import { strToU8, zipSync } from 'fflate';
 import { createToolContext } from '../helpers/tool-context.fixture';
 
