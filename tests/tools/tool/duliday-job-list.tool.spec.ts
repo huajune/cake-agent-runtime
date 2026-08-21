@@ -189,14 +189,16 @@ describe('buildJobListTool', () => {
     expect(builtTool.description).toContain('只周末');
     expect(builtTool.description).toContain('早开晚结全天时段/05:00-23:00');
     expect(builtTool.description).toContain('不得回复"周末能排"');
-    expect(builtTool.description).toContain('推荐 2 个及以上岗位时');
+    // 2026-08-21 P3-2 首批：展示要求围绕四行卡片铁律收敛，"推荐 2 个及以上岗位时"
+    // 旧措辞并入"卡片正文是展示的唯一底盘"条目，多岗分隔约束保留
+    expect(builtTool.description).toContain('卡片正文是展示的唯一底盘');
     expect(builtTool.description).toContain('禁止把多个岗位压缩在同一句');
     expect(builtTool.description).toContain('年龄判断必须沿用 precheck 弹性口径');
     expect(builtTool.description).toContain('候选人 52 岁遇到 20-50 岁 / 40-50 岁岗位');
-    expect(builtTool.description).toContain('福利追问必须用 jobId 实时重查');
-    expect(builtTool.description).toContain('记忆只用于定位 jobId，禁止直接据记忆回答');
-    expect(builtTool.description).toContain('岗位详情缺字段必须按 jobId 补查');
-    expect(builtTool.description).toContain('综合薪资的“元/月”');
+    // 2026-08-21 P3-2 首批：福利追问条目并入"岗位详情缺字段必须按 jobId 补查（通用规则，含福利追问）"
+    expect(builtTool.description).toContain('岗位详情缺字段必须按 jobId 补查（通用规则，含福利追问）');
+    expect(builtTool.description).toContain('记忆只用于定位 jobId');
+    expect(builtTool.description).toContain('综合薪资的"元/月"');
   });
 
   it('writes formal and supplemental settlement facts into compact job memory', async () => {

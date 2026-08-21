@@ -214,8 +214,8 @@ settlement 摘要 ≈ Anthropic compaction；recall_history ≈ structured note-
 | # | 事项 | 说明 | 状态 |
 |---|---|---|---|
 | P3-1 | 手册绝对化规则清点 → **建常设规则台账** | **✅ 完成（2026-08-21）**：[docs/prompt-rule-ledger.md](../prompt-rule-ledger.md) 建成——手册 ~90 条规则（36 处 badcase 锚点全部入账）+ booking 共享规则 + final-check 17 项 + DB red-lines 15 条/阈值 2 条 + stage-strategy 5 阶段 + 工具 description 章节级 + 守卫 29 ruleId 拦侧配对；判定树为分类轴；F1~F3 维护纪律入文末。加入日期缺失的条目标"—"（可 git blame 补） | ✅ |
-| P3-2 | 分批删减 + 回归闸 | 每批过 test-suite 回归 + 语义 shadow 评审对比，不达标即回滚。**就绪**：台账已给出首批候选——4 处铁律违例的归并（待 F5）、final-check 与守卫同构条目（FC5/FC2）、暑假工 TTL 到期批（≈2026-09）。⚠️ 需生产回归数据，禁止离线一次性删 | ☐ 就绪待批 |
-| P3-3 | 工具 description 接口化重构 | 主攻 `duliday_job_list`（13,144 字符，占描述总量 41%），次攻 `request_handoff`/`invite_to_group`；示例 → 参数语义/枚举表达（规则 2），A/B 验证 qwen 遵循度。precheck 已随收资状态机完成（13.5K→729），无需再动。⚠️ 需 A/B 与生产遵循度数据，不宜与无损批同车 | ☐ 就绪待批 |
+| P3-2 | 分批删减 + 回归闸 | **首批已执行（2026-08-21，用户裁定"不用观测直接改"）**：✅ FC2 整条 + FC5 完成时态半段下线（守卫确定性拦侧在产、手册 F10 教侧仍在，三居所去其一）；tests/tools+tests/agent 全量 2,461 测试全绿 + typecheck 通过，两处 spec 断言按"已下沉"惯例翻转。后续批：暑假工 TTL 到期批（≈2026-09）、手册规则证据批 | 🔄 首批完成 |
+| P3-3 | 工具 description 接口化重构 | **首批去重已执行（2026-08-21，与 P3-2 同车）**：`duliday_job_list` 13,144→**11,481**（-12.7%，纯去重零规则损失）——regionNameList 三遍合一/展示要求围绕卡片铁律收敛/福利追问并入通用补查/阶梯原文唯一居所/保险社保、同岗不重复回归全局居所/badcase 叙事压缩为锚点。**示例→枚举的接口化重构仍为后续批**；次攻 `request_handoff`/`invite_to_group` 未动 | 🔄 首批完成 |
 | P3-4 | 手册低频规程 Skill 化实验 | P1-1 审计已标记候选"低频可拉取"段落：**平台来源识别（P1-P5，仅截图/渠道场景触发）、造假引导 C8、结伴分流 R4、面试方式细则 C7 后半（AI 面试时段语义）**——共性是触发率低但篇幅长。P3 做拉取工具原型（类 recall_history 的 playbook 版）+ 回归验证。内容进 messages 后缀不破坏前缀缓存（裁定 8）。⚠️ 新增常挂工具本身占 description 预算，原型需净收益核算 | ☐ 就绪待批 |
 
 **P3 验收**：每批删减有前后对比数据；总规则量下降且 badcase 率持平。
@@ -259,7 +259,7 @@ settlement 摘要 ≈ Anthropic compaction；recall_history ≈ structured note-
 - 手册：`src/agent/generator/context/prompts/candidate-consultation.md`（76,327B）+ `-final-check.md`（6,505B）
 - 历史窗口：60 条（`MAX_HISTORY_PER_CHAT`）/ 12,000 字符（`AGENT_MAX_INPUT_CHARS`，`memory.config.ts:78-83`）；双重裁剪（memory 层 + `preparation.service.ts:173`）
 - 工具注册：`src/tools/tool-registry.service.ts:218`（13 常挂清单）、`:306` / `:321`（save_image_description / read_resume_attachment 动态注入）
-- 工具 description 实测（字符）：job_list 13,144 / handoff 4,388 / invite 3,804 / geocode 2,221 / cancel 2,000 / modify 1,810 / skip_reply 974 / store_location 829 / precheck 729 / risk_alert 620 / advance_stage 619 / recall 242；13 常挂合计 31,729
+- 工具 description 实测（字符）：job_list **11,481**（2026-08-21 首批去重前 13,144）/ handoff 4,388 / invite 3,804 / geocode 2,221 / cancel 2,000 / modify 1,810 / skip_reply 974 / store_location 829 / precheck 729 / risk_alert 620 / advance_stage 619 / recall 242；13 常挂合计 **30,066**（原 31,729）；final-check 5,865B（原 6,505）
 - 工具结果渐进披露：`src/tools/job-list/render.util.ts:1049`（`FULL_DETAIL_CAP=6` 家全文）、`:1200`（其余降摘要行）
 - 多步：`generator.agent.ts`（prepareStep 挂载，maxSteps=5、工具结果全累积）；拦截说明为每步从 base 重建的替换语义、末尾追加不碍前缀（P1-4 复核）
 - 同工具限次：`tool-call-analysis.ts:20`（同工具≤3）、`:26`（precheck≤2）

@@ -189,8 +189,10 @@ describe('ContextService', () => {
     // 工作班次 vs 面试时间澄清（P2-029 修复）
     expect(prompt).toContain('当前**工作班次**不合适');
     expect(prompt).toContain('提议的**面试时间**不合适');
-    expect(prompt).toContain('这就帮你登记');
-    expect(prompt).toContain('nextAction 不是 ready_to_book');
+    // final-check FC2（报名完成时态自检）已删——守卫 booking_promise/booking_receipt 确定性拦侧在产 +
+    // 手册 F10 教侧仍在（2026-08-21 P3-2 首批：删与守卫完全同构的复核条目）
+    expect(prompt).not.toContain('这就帮你登记');
+    expect(prompt).not.toContain('nextAction 不是 ready_to_book');
     expect(prompt).toContain('booking 成功前不说已登记');
     // 11 班次硬约束 — 已下沉到 strategy_config.red_lines（运营可配），主 prompt 不再固化
     expect(prompt).not.toContain('候选人已明确表达时段/班次硬约束');
