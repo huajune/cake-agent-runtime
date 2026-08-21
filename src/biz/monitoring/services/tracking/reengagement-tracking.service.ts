@@ -29,6 +29,14 @@ export interface ReengagementTouchIdentity {
   externalUserId?: string;
 }
 
+export interface ReengagementGroupInviteResult {
+  success: boolean;
+  groupName?: string;
+  alreadyInGroup?: boolean;
+  reason?: string;
+  skipped?: boolean;
+}
+
 /**
  * 二次触发全生命周期落库（纯观测，不参与运行时决策）
  *
@@ -298,6 +306,33 @@ export class ReengagementTrackingService {
       batchId,
       sentAt: Date.now(),
       event: { event: ReengagementTouchEventName.Sent, detail: batchId ? { batchId } : undefined },
+    });
+  }
+
+  /** 文案成功投递后的确定性拉群结果；只追加事件与原因，不改写已发送终态。 */
+  trackGroupInviteResult(
+    identity: ReengagementTouchIdentity,
+    result: ReengagementGroupInviteResult,
+  ): void {
+    const reason = result.skipped
+      ? `invite_skipped:${result.reason ?? 'unknown'}`
+      : result.success
+        ? result.alreadyInGroup
+          ? 'invite_succeeded:already_in_group'
+          : 'invite_succeeded'
+        : `invite_failed:${result.reason ?? 'unknown'}`;
+    this.persist({
+      ...this.base(identity),
+      decisionReason: reason,
+      event: {
+        event: ReengagementTouchEventName.GroupInviteResult,
+        detail: {
+          success: result.success,
+          reason,
+          ...(result.groupName ? { groupName: result.groupName } : {}),
+          ...(result.alreadyInGroup ? { alreadyInGroup: true } : {}),
+        },
+      },
     });
   }
 

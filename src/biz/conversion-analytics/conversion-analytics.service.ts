@@ -137,6 +137,8 @@ const HANDOFF_REASON_LABELS: Record<string, string> = {
   no_reception: '到店无人接待',
   booking_conflict: '预约时间冲突',
   onboarding_paperwork: '入职材料或办理问题',
+  onboarding_failed: '面试通过后上岗失败或离职',
+  onboarding_follow_up_required: '入职进展待人工确认',
   interview_result_inquiry: '候选人追问面试结果',
   modify_appointment: '改期或取消预约',
   self_recruited_or_completed: '已自招或已入职',

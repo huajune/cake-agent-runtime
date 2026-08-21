@@ -37,7 +37,9 @@ export class GeneralHandoffCardRenderer {
       `**当前消息**：${payload.currentMessageContent || '-'}`,
       `**聊天上下文（最近10条）**\n${this.formatRecentMessages(payload)}`,
       `**候选人信息**\n${this.formatCandidateInfo(payload)}`,
-      '处理完请到 Web 托管后台手动恢复托管。',
+      payload.hostingPaused === false
+        ? '本次仅告警，未暂停 AI 托管；真人明确接管时再按现行流程暂停。'
+        : '处理完请到 Web 托管后台手动恢复托管。',
       this.formatDiagnostics(payload.diagnostics),
     ].filter((line): line is string => Boolean(line));
 

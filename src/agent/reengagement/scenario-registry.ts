@@ -7,6 +7,7 @@ export type FollowUpScenarioCode =
   | 'booking_incomplete'
   | 'interview_reminder'
   | 'post_interview_followup'
+  | 'post_interview_onboarding'
   | 'new_job_for_waiting';
 
 export interface FollowUpScenarioContext {
@@ -28,6 +29,8 @@ export interface ScenarioRolloutConfig {
   /** 场景触发偏移分钟数（key=场景 code），缺失时回退代码默认值。 */
   reengagementScenarioDelayMinutes?: Record<string, number>;
 }
+
+export type FollowUpTouchVariant = 'd2_confirm';
 
 export type FollowUpDelayMode = 'after_anchor' | 'before_interview' | 'after_interview';
 
@@ -246,6 +249,26 @@ export const FOLLOW_UP_SCENARIOS: readonly FollowUpScenario[] = [
     defaultRolloutEnabled: false,
   },
   {
+    code: 'post_interview_onboarding',
+    phase: 'post_booking',
+    displayName: '面试后回访 · 入职跟进',
+    anchorEvent: 'interview.passed',
+    anchorLabel: '面试通过',
+    triggerDelayMs: 3 * 24 * HOUR,
+    delayLabel: '面试通过后 3 天',
+    delayMode: 'after_anchor',
+    defaultDelayMinutes: 4320,
+    objective: '面试通过后跟进入职进展，确认是否顺利以及是否需要协助',
+    requiredEvidence: ['workOrderId', 'interview.passed'],
+    stopUnless: () => true,
+    // 0820 裁定：无需运营固定话术，本 generationPolicy 即最终口径（复聊文案一律模型生成）。
+    generationPolicy:
+      '确认候选人是否已顺利入职、有没有遇到问题，需要协助可以直接说；不得断言候选人已入职或未入职，不施压、不催报到',
+    relevantFactLabels: [],
+    // 0820 裁定：三档发版即开，不设 shadow 期（D+3 延迟天然缓坡，首周盯告警误报）。
+    defaultRolloutEnabled: true,
+  },
+  {
     code: 'new_job_for_waiting',
     phase: 'pre_booking',
     displayName: '新岗上线',
@@ -308,11 +331,16 @@ export function bookingFollowUpAnchorId(
   interviewAtMs: number,
   scenarioCode: string,
   interviewType?: string,
+  variant?: FollowUpTouchVariant,
 ): string {
   // AI 17:00 是独立排程版本。版本后缀既避免新任务与旧“面试后 +2h”任务撞 Bull
   // jobId，也让存量旧任务到点校准时能成功补排 17:00 的替代任务。
   const scheduleVersion =
-    scenarioCode === 'post_interview_followup' && isAiInterview(interviewType) ? ':ai17' : '';
+    scenarioCode === 'interview_reminder' && variant === 'd2_confirm'
+      ? ':d2'
+      : scenarioCode === 'post_interview_followup' && isAiInterview(interviewType)
+        ? ':ai17'
+        : '';
   return `wo${workOrderId}:iv${interviewAtMs}:${scenarioCode}${scheduleVersion}`;
 }
 
@@ -333,12 +361,19 @@ export function parseInterviewTimestamp(raw: unknown): number | undefined {
  *
  * - 场景开关：托管配置 reengagementScenarioRollout[code]，未配置回退 defaultRolloutEnabled
  * - 报名后场景（post_booking）还要求 reengagementPostBookingEnabled=true
+ * - 变体档位（d2 确认 / 拉群升档）**从属于场景开关**：场景关则变体必关——配置页
+ *   目前没有子键控件，Dashboard 的场景行就是变体的急停出口，不能让变体越过它。
+ *   子键（`interview_reminder:d2` / `store_presented_no_reply:invite`）是变体级
+ *   细粒度覆盖：缺省开（0820 裁定三档发版即开，不设 shadow 期），显式 false 可
+ *   单独关变体而不影响场景本档。
  *
  * 返回 false 时到点任务照常走判断与生成，但只 shadow 记录不投递。
  */
 export function resolveRolloutEnabled(
   scenario: FollowUpScenario,
   config: ScenarioRolloutConfig,
+  variant?: FollowUpTouchVariant,
+  childVariant?: 'invite',
 ): boolean {
   const scenarioEnabled =
     config.reengagementScenarioRollout?.[scenario.code] ?? scenario.defaultRolloutEnabled;
@@ -347,6 +382,13 @@ export function resolveRolloutEnabled(
   if (scenario.phase === 'post_booking' && config.reengagementPostBookingEnabled === false) {
     return false;
   }
+  const variantKey =
+    childVariant === 'invite' && scenario.code === 'store_presented_no_reply'
+      ? 'store_presented_no_reply:invite'
+      : resolveVariantConfigKey(scenario.code, variant);
+  if (variantKey) {
+    return config.reengagementScenarioRollout?.[variantKey] ?? true;
+  }
   return true;
 }
 
@@ -354,9 +396,13 @@ export function resolveDelayMs(
   scenario: FollowUpScenario,
   ctx: FollowUpScenarioContext,
   configuredDelayMinutes?: number,
+  variant?: FollowUpTouchVariant,
 ): number {
-  if (configuredDelayMinutes != null) {
-    const offsetMs = configuredDelayMinutes * MINUTE;
+  const effectiveDelayMinutes =
+    configuredDelayMinutes ??
+    (scenario.code === 'interview_reminder' && variant === 'd2_confirm' ? 2 * 24 * 60 : undefined);
+  if (effectiveDelayMinutes != null) {
+    const offsetMs = effectiveDelayMinutes * MINUTE;
     if (scenario.delayMode === 'after_anchor') return offsetMs;
     const interviewAt = resolveInterviewAt(ctx.state);
     if (interviewAt == null) return 0;
@@ -373,8 +419,18 @@ export function computeFireAt(
   scenario: FollowUpScenario,
   ctx: FollowUpScenarioContext,
   configuredDelayMinutes?: number,
+  variant?: FollowUpTouchVariant,
 ): number {
-  return ctx.anchorAt + resolveDelayMs(scenario, ctx, configuredDelayMinutes);
+  return ctx.anchorAt + resolveDelayMs(scenario, ctx, configuredDelayMinutes, variant);
+}
+
+export function resolveVariantConfigKey(
+  scenarioCode: FollowUpScenarioCode,
+  variant?: FollowUpTouchVariant,
+): string | undefined {
+  return scenarioCode === 'interview_reminder' && variant === 'd2_confirm'
+    ? 'interview_reminder:d2'
+    : undefined;
 }
 
 /**
@@ -422,10 +478,10 @@ export function shouldStop(
   anchorAt: number,
   opts?: { externallyVerifiable?: boolean; now?: number },
 ): ShouldStopResult {
-  const bookingSucceededFollowUp =
-    scenario.anchorEvent === 'booking.succeeded' &&
+  const postBookingFollowUp =
+    scenario.phase === 'post_booking' &&
     (state.terminal === 'booked' || state.terminal === 'handed_off');
-  if (state.terminal && !bookingSucceededFollowUp) {
+  if (state.terminal && !postBookingFollowUp) {
     return { stop: true, reason: `terminal:${state.terminal}` };
   }
   if (
@@ -436,7 +492,7 @@ export function shouldStop(
     return { stop: true, reason: 'candidate_invited_to_group' };
   }
   const repliedRuleExempt =
-    scenario.anchorEvent === 'booking.succeeded' && opts?.externallyVerifiable === true;
+    scenario.phase === 'post_booking' && opts?.externallyVerifiable === true;
   if (
     !repliedRuleExempt &&
     state.lastCandidateMessageAt != null &&

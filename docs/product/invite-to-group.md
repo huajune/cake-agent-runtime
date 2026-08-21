@@ -42,11 +42,11 @@ Agent 在对话中根据候选人情况，自动将其拉入匹配的企微兼�
 
 ### 场景 1：首次面试预约成功后，同轮首拉
 
-| 条件 | 说明 |
-|------|------|
+| 条件 | 说明                                                                                         |
+| ---- | -------------------------------------------------------------------------------------------- |
 | 前提 | `duliday_interview_booking` 返回 `success: true`，且必须检查 `_outcome` 字段确认预约真的成功 |
-| 时机 | 已知候选人城市时，**同轮**调用 |
-| 限制 | 仅限本会话**首次**预约成功时触发；后续再预约不再重复拉群 |
+| 时机 | 已知候选人城市时，**同轮**调用                                                               |
+| 限制 | 仅限本会话**首次**预约成功时触发；后续再预约不再重复拉群                                     |
 
 > 旧口径的"登记完成后由 `advance_stage` 推进触发"已废弃——现行判据是 booking 工具本轮成功（回合账本 `bookingSucceeded`），与阶段推进无关。
 
@@ -108,13 +108,13 @@ Agent 在对话中根据候选人情况，自动将其拉入匹配的企微兼�
 
 拉群是不可逆副作用，`city` 入参必须能追溯到外生出处，模型自报不构成依据。五档出处（任一命中即放行）：
 
-| 档位 | 出处 |
-|------|------|
-| `session_fact` | 会话记忆高置信城市事实（含 geocode 确权/定位分享按 source='system' 写入） |
-| `user_text` | 候选人本会话原文出现过该城市 |
-| `district_inference` | 候选人原文命中 geo 地名白名单（唯一区名/高置信地标 → 城市），走 `@resolution/geo` 统一扫描 |
-| `turn_geocode` | 本轮 geocode unique 确权城市（`ledger.geo.anchors` 穿线，补"轮末写档、下轮生效"的同轮时序空档） |
-| `turn_map_screenshot` | 本轮视觉事实 sheet 中 map_location 截图的城市（岗位截图的门店城市不算） |
+| 档位                  | 出处                                                                                            |
+| --------------------- | ----------------------------------------------------------------------------------------------- |
+| `session_fact`        | 会话记忆高置信城市事实（含 geocode 确权/定位分享按 source='system' 写入）                       |
+| `user_text`           | 候选人本会话原文出现过该城市                                                                    |
+| `district_inference`  | 候选人原文命中 geo 地名白名单（唯一区名/高置信地标 → 城市），走 `@resolution/geo` 统一扫描      |
+| `turn_geocode`        | 本轮 geocode unique 确权城市（`ledger.geo.anchors` 穿线，补"轮末写档、下轮生效"的同轮时序空档） |
+| `turn_map_screenshot` | 本轮视觉事实 sheet 中 map_location 截图的城市（岗位截图的门店城市不算）                         |
 
 拒绝两分支：`invite.city_conflict`（与会话城市事实不一致，返回 `expectedCity`）/ `invite.city_unverified`（任何出处都找不到，先向候选人确认城市）。
 
@@ -122,14 +122,20 @@ Agent 在对话中根据候选人情况，自动将其拉入匹配的企微兼�
 
 四档判定（顺序即优先级）：
 
-| 拒绝原因 | 判据 | errorType |
-|---------|------|-----------|
-| `already_invited_city` | 会话记忆 `invitedGroups` 已有同城市记录（换城市放行） | `invite.already_invited` |
-| `no_job_result_this_turn` | 本轮没跑过 `duliday_job_list`（突兀拉群） | `invite.no_job_result` |
-| `group_consent_required` | 本轮查过岗但没有合法入群授权——既非预约成功首拉、亦非两轮协议第二轮 | `invite.group_consent_required` |
-| `booking_progress_signal` | 候选人本轮原话命中报名/约面推进词表（打断成单） | `invite.booking_in_progress` |
+| 拒绝原因                  | 判据                                                               | errorType                       |
+| ------------------------- | ------------------------------------------------------------------ | ------------------------------- |
+| `already_invited_city`    | 会话记忆 `invitedGroups` 已有同城市记录（换城市放行）              | `invite.already_invited`        |
+| `no_job_result_this_turn` | 本轮没跑过 `duliday_job_list`（突兀拉群）                          | `invite.no_job_result`          |
+| `group_consent_required`  | 本轮查过岗但没有合法入群授权——既非预约成功首拉、亦非两轮协议第二轮 | `invite.group_consent_required` |
+| `booking_progress_signal` | 候选人本轮原话命中报名/约面推进词表（打断成单）                    | `invite.booking_in_progress`    |
 
 豁免：`bookingSucceeded === true`（场景 1）与 `groupOfferAccepted === true`（两轮协议第二轮，由"上一轮 assistant 征询 + 本轮 user 同意词"消息序列确定性识别）豁免后三档。`group_consent_required` 拒绝时，若已累计两轮推荐不满意，返回值内嵌 noMatchScript 指导模型本轮征询入群（进入两轮协议第一轮）。
+
+### 复聊触发来源
+
+推店未回的第 2 轮及以后可由复聊 processor 确定性触发拉群。这条来源不经过 `invite_to_group` 工具，也不把工具开放给 `ReengagementAgent`：Agent 只生成“稍后邀请进群”的预告文案，processor 仅在该文案真实投递且 `markSent` 成功后调用 `GroupInviteService`。
+
+该来源使用独立灰度子键 `store_presented_no_reply:invite`，缺省关闭且不继承 `store_presented_no_reply` 主场景开关。缺城市时记录 `invite_skipped:no_city`；服务失败记录 `invite_failed:*` 且不重试；成功或核验已在群后清理本会话其余报名前复聊任务。Shadow、非回复、投递失败和状态不明分支均不会触发拉群。
 
 ---
 
@@ -211,9 +217,9 @@ LLM 决定拉群（city 必填, industry 强烈建议）
 
 ### inviteDelivery 两档
 
-| 值 | 判定 | 候选人体验 | 话术口径 |
-|----|------|-----------|---------|
-| `direct_add` | 群人数 **< 40** 且非 -12 降卡 | 直接被拉入群 | "已帮你加入了「XX群」" |
+| 值            | 判定                                                                | 候选人体验                       | 话术口径                           |
+| ------------- | ------------------------------------------------------------------- | -------------------------------- | ---------------------------------- |
+| `direct_add`  | 群人数 **< 40** 且非 -12 降卡                                       | 直接被拉入群                     | "已帮你加入了「XX群」"             |
 | `invite_card` | 群人数 ≥ 40，或接口返回 **errcode=-12**（企微对外部联系人强制发卡） | 收到入群邀请卡片，点击同意后入群 | "邀请已经发你了，点一下卡片就能进" |
 
 errcode=-12 表示平台已实际下发邀请卡片，**按投递成功处理**——若当失败继续换群重试，候选人会连收该城市全部候选群的卡片（badcase：上海零售 5 群连发 5 张卡）。`invite_card` 场景严禁模型输出/编造任何群链接 URL。
@@ -226,6 +232,10 @@ errcode=-12 表示平台已实际下发邀请卡片，**按投递成功处理**�
 
 `groupName` / `groupPurpose`（固定 `"job_pool"`）/ `city` / `industry` / `inviteDelivery` / `matchedIndustry`（实际命中行业）/ `fallbackUsed`（行业回退标记）/ `selectionReason` / `citySnapshot`（该城市群分布概览，候选人质疑选群时作解释依据）/ `_outcome` / `_replyInstruction`（必须严格遵守的话术指令，含"这是兼职群不是面试群"边界与中间步骤文字未送达提醒）。
 
+### 工具判定与执行编排边界
+
+`invite_to_group` 工具只保留依赖对话回合的意图闸：预约成功短路、城市出处核验与拉群时机核验。选群、成员实时预检、容量刷新、企微邀请、接客 bot 入群补偿、记忆与 `group.invited` 底账统一由 `GroupInviteService` 执行。这个拆分不改变工具给 LLM 的返回字段和话术指令。
+
 ---
 
 ## 失败分档
@@ -234,18 +244,18 @@ errcode=-12 表示平台已实际下发邀请卡片，**按投递成功处理**�
 
 ### 不转人工（自然收口，继续托管）
 
-| errorType | 场景 | 处理 |
-|-----------|------|------|
-| `invite.no_group_in_city` / `invite.no_group_available` | 该城市/平台本就没有兼职群（区别于群满） | `NO_GROUP_CONTINUE_INSTRUCTION`：不提群、不转人工，礼貌告知暂无合适岗位、后续有匹配主动联系，正常收口保持托管。会话已告知过无岗时追加防复读升级指令（禁止逐字重复、只回应本轮问题） |
-| `invite.candidate_not_friend` | 全部候选群返回 errcode=**-8** "is not a friend"（候选人已删除/拉黑接客账号） | 候选人侧真实状态、人工无可作为：不发运维告警、不转人工、不提群，自然收口 |
+| errorType                                               | 场景                                                                         | 处理                                                                                                                                                                                |
+| ------------------------------------------------------- | ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `invite.no_group_in_city` / `invite.no_group_available` | 该城市/平台本就没有兼职群（区别于群满）                                      | `NO_GROUP_CONTINUE_INSTRUCTION`：不提群、不转人工，礼貌告知暂无合适岗位、后续有匹配主动联系，正常收口保持托管。会话已告知过无岗时追加防复读升级指令（禁止逐字重复、只回应本轮问题） |
+| `invite.candidate_not_friend`                           | 全部候选群返回 errcode=**-8** "is not a friend"（候选人已删除/拉黑接客账号） | 候选人侧真实状态、人工无可作为：不发运维告警、不转人工、不提群，自然收口                                                                                                            |
 
 ### 转人工（request_handoff，reasonCode="other"）
 
-| errorType | 场景 | 附加动作 |
-|-----------|------|---------|
-| `invite.group_full` | 候选群均满（预检或接口 -10） | 飞书群满告警（扩群） |
-| `invite.api_rejected` | 候选群均被接口拒绝（含接客 bot 补偿入群后仍失败的结构性问题） | 飞书拒绝告警（修 bot 群关系，与群满告警分通道） |
-| `invite.enterprise_token_missing` / `invite.missing_bot_identity` / `invite.api_failed` | 配置缺失 / 上下文缺失 / 接口异常 | — |
+| errorType                                                                               | 场景                                                          | 附加动作                                        |
+| --------------------------------------------------------------------------------------- | ------------------------------------------------------------- | ----------------------------------------------- |
+| `invite.group_full`                                                                     | 候选群均满（预检或接口 -10）                                  | 飞书群满告警（扩群）                            |
+| `invite.api_rejected`                                                                   | 候选群均被接口拒绝（含接客 bot 补偿入群后仍失败的结构性问题） | 飞书拒绝告警（修 bot 群关系，与群满告警分通道） |
+| `invite.enterprise_token_missing` / `invite.missing_bot_identity` / `invite.api_failed` | 配置缺失 / 上下文缺失 / 接口异常                              | —                                               |
 
 转人工的适用前提：候选人本轮是在同意入群/后续通知，或当前意向已无匹配需要群维护——不能自然语言收尾把候选人晾住。
 
@@ -306,22 +316,23 @@ errcode=-12 表示平台已实际下发邀请卡片，**按投递成功处理**�
 
 ### 环境变量
 
-| 变量 | 说明 | 必填 |
-|------|------|------|
-| `GROUP_TASK_TOKENS` | 小组级 token（群列表查询用，与群任务共用） | 是 |
-| `STRIDE_ENTERPRISE_TOKEN` | 企业级 token（拉人/群成员/实时人数） | 是 |
-| `GROUP_MEMBER_LIMIT` | 群人数上限阈值 | 否，默认 200 |
+| 变量                      | 说明                                       | 必填         |
+| ------------------------- | ------------------------------------------ | ------------ |
+| `GROUP_TASK_TOKENS`       | 小组级 token（群列表查询用，与群任务共用） | 是           |
+| `STRIDE_ENTERPRISE_TOKEN` | 企业级 token（拉人/群成员/实时人数）       | 是           |
+| `GROUP_MEMBER_LIMIT`      | 群人数上限阈值                             | 否，默认 200 |
 
 ### 服务依赖
 
-| 服务 | 用途 |
-|------|------|
-| `GroupResolverService` | 兼职群列表获取 & 标签解析（10 分钟缓存） |
-| `GroupMembershipService` | 实时群成员关系（Redis Set `room:members:{roomWxid}`，TTL 10 分钟，与群列表缓存对齐） |
-| `RoomService` | `addMemberEnterprise` 拉人 + `syncRoom` 群数据同步 |
-| `SessionService` / `MemoryService` | 城市事实读取（gate）+ `invitedGroups` 会话记忆（会话层 TTL 2 天） |
-| `OpsNotifierService` | 群满告警 / 接口拒绝告警 |
-| `OpsEventsRecorderService` | `group.invited` 运营事件（幂等键按 turn+群，供日报统计） |
+| 服务                               | 用途                                                                                 |
+| ---------------------------------- | ------------------------------------------------------------------------------------ |
+| `GroupInviteService`               | 选群、实时成员预检、容量刷新、企微邀请、补拉 bot、记忆与运营底账的统一编排           |
+| `GroupResolverService`             | 兼职群列表获取 & 标签解析（10 分钟缓存）                                             |
+| `GroupMembershipService`           | 实时群成员关系（Redis Set `room:members:{roomWxid}`，TTL 10 分钟，与群列表缓存对齐） |
+| `RoomService`                      | `addMemberEnterprise` 拉人 + `syncRoom` 群数据同步                                   |
+| `SessionService` / `MemoryService` | 城市事实读取（gate）+ `invitedGroups` 会话记忆（会话层 TTL 2 天）                    |
+| `OpsNotifierService`               | 群满告警 / 接口拒绝告警                                                              |
+| `OpsEventsRecorderService`         | `group.invited` 运营事件（幂等键按 turn+群，供日报统计）                             |
 
 ---
 
@@ -334,10 +345,10 @@ errcode=-12 表示平台已实际下发邀请卡片，**按投递成功处理**�
 
 ### 告警处置
 
-| 告警 | 含义 | 动作 |
-|------|------|------|
-| 群满告警 | 某城市/行业候选群全满 | 创建新群（如"XX群②"）+ 打相同标签，系统自动开始分配 |
-| 接口拒绝告警 | 候选群全部被企业接口拒绝（含 bot 群关系补偿失败明细） | 修 bot 群关系/排查托管平台，与扩群是两种不同动作 |
+| 告警         | 含义                                                  | 动作                                                |
+| ------------ | ----------------------------------------------------- | --------------------------------------------------- |
+| 群满告警     | 某城市/行业候选群全满                                 | 创建新群（如"XX群②"）+ 打相同标签，系统自动开始分配 |
+| 接口拒绝告警 | 候选群全部被企业接口拒绝（含 bot 群关系补偿失败明细） | 修 bot 群关系/排查托管平台，与扩群是两种不同动作    |
 
 -8 非好友不告警（人工无可作为）；无群城市不告警（静默自然收口）。
 
@@ -351,11 +362,11 @@ errcode=-12 表示平台已实际下发邀请卡片，**按投递成功处理**�
 
 ## 后续迭代
 
-| 优先级 | 功能 | 说明 |
-|--------|------|------|
-| P1 | 群内欢迎语 | 用户进群后自动发送欢迎消息 |
-| P2 | 建群 API | 托管平台支持后，实现自动建群 |
-| P2 | 多群类型支持 | 扩展到抢单群、店长群等场景 |
-| P3 | 群活跃度路由 | 优先分配到活跃度高的群 |
+| 优先级 | 功能         | 说明                         |
+| ------ | ------------ | ---------------------------- |
+| P1     | 群内欢迎语   | 用户进群后自动发送欢迎消息   |
+| P2     | 建群 API     | 托管平台支持后，实现自动建群 |
+| P2     | 多群类型支持 | 扩展到抢单群、店长群等场景   |
+| P3     | 群活跃度路由 | 优先分配到活跃度高的群       |
 
 > 旧条目"退群回调维护成员缓存"已删除：现行 10 分钟 TTL 实时成员缓存过期自愈，候选人退群后自然恢复可邀请状态，无需回调维护。

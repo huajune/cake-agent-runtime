@@ -9,6 +9,19 @@ const SCHEDULE_ASSURANCE_PATTERN =
 const TIME_RANGE_PATTERN =
   /(?<!\d)(\d{1,2})(?::([0-5]\d)|点(?:半)?|时)?\s*(?:-|到|至|~|—|–)\s*(?:次日\s*)?(\d{1,2})(?::([0-5]\d)|点(?:半)?|时)?(?!\d)/gu;
 
+const SENTENCE_BOUNDARY_PATTERN = /[。！？!?\n]+/u;
+// 否定语境豁免：修复版如实说"没有 X 班次 / X 排不上"时，X 不算承诺时段
+// （trace batch_6a86626bce406a6aee0e0aa0：诚实拒绝复述候选人诉求被二审再拦，fail-open 兜底才没静默）。
+const NEGATED_WINDOW_PREFIX_PATTERN =
+  /(?:(?:不(?:太)?(?:可以|能(?:够)?)|不可|没法|无法)(?:给你|跟店里|和门店)?(?:排|安排)|没有|暂无|不存在|排不了|排不上|排不开|做不到|给不了|不提供|不开)[^，,；;。！？\n]{0,16}$/u;
+const NEGATED_WINDOW_SUFFIX_PATTERN =
+  /^[^，,；;。！？\n]{0,20}(?:(?:不(?:太)?(?:可以|能(?:够)?)|不可|没法|无法)(?:给你|跟店里|和门店)?(?:排|安排)|排不了|排不上|排不开|做不了|上不了|没有|不存在|不太匹配|不匹配|对不上|不合适|不行)/u;
+const LOCAL_ASSURANCE_NEGATION_PREFIX_PATTERN = /(?:不|不太|没有|暂无|不存在|没法|无法)$/u;
+// 复述候选人诉求豁免："如果您只能做7-3"是转述而非承诺；但从句自身带承诺词时不豁免
+// （"你说的7-3都有能排的班"仍是违规）。
+const CANDIDATE_WINDOW_ECHO_PREFIX_PATTERN =
+  /(?:您|你)?(?:说的|提的|想要的|要求的|只能(?:做|上|排|干)?|只(?:做|上|排|干)|想(?:做|上|排)|希望(?:做|上|排))[^，,；;。！？\n]{0,8}$/u;
+
 const WEEKLY_CAP_PATTERNS = [
   /(?:每周|一周|每星期|一星期)[^，。！？；;\n]{0,12}?(?:最多|至多|只能|不超过|只|就)[^，。！？；;\n]{0,8}?([一二两三四五六七1-7])\s*天/gu,
   /(?:每周|一周|每星期|一星期)[^，。！？；;\n]{0,8}?(?:可以|能|可)(?:上|做|出勤|工作)?\s*([一二两三四五六七1-7])\s*天(?:了|左右|以内)?/gu,
@@ -17,7 +30,7 @@ const WEEKLY_CAP_CLAUSE_BOUNDARY_PATTERN = /[，,。！？；;\n]/u;
 const HISTORICAL_CAP_MARKERS = ['以前', '之前', '原来', '过去'] as const;
 const CURRENT_CAP_MARKERS = ['现在', '目前', '如今', '当前'] as const;
 const WORK_REST_CYCLE_PATTERN = /做\s*([一二两三四五六七1-7])\s*休\s*([一二两三四五六七1-7])/gu;
-const CYCLE_CLAUSE_BOUNDARY_PATTERN = /[，,；;]/u;
+const CLAUSE_BOUNDARY_PATTERN = /[，,；;]/u;
 const POSITIVE_CYCLE_PREFIX_PATTERN =
   /(?:需要|建议|推荐|可以|可|不妨)(?:再|去|优先)?(?:考虑|选择|选|找|看看|采用)?[^，,；;。！？\n]{0,40}$/u;
 const POSITIVE_CYCLE_SUFFIX_PATTERN =
@@ -87,14 +100,14 @@ function resolveActiveWeeklyCap(
 function findClauseBounds(sentence: string, start: number, end: number): [number, number] {
   let clauseStart = 0;
   for (let index = start - 1; index >= 0; index -= 1) {
-    if (!CYCLE_CLAUSE_BOUNDARY_PATTERN.test(sentence[index])) continue;
+    if (!CLAUSE_BOUNDARY_PATTERN.test(sentence[index])) continue;
     clauseStart = index + 1;
     break;
   }
 
   let clauseEnd = sentence.length;
   for (let index = end; index < sentence.length; index += 1) {
-    if (!CYCLE_CLAUSE_BOUNDARY_PATTERN.test(sentence[index])) continue;
+    if (!CLAUSE_BOUNDARY_PATTERN.test(sentence[index])) continue;
     clauseEnd = index;
     break;
   }
@@ -169,6 +182,72 @@ function extractTimeRanges(text: string): Set<string> {
   return ranges;
 }
 
+function hasAffirmativeScheduleAssurance(text: string): boolean {
+  let searchFrom = 0;
+  while (searchFrom < text.length) {
+    const match = SCHEDULE_ASSURANCE_PATTERN.exec(text.slice(searchFrom));
+    if (!match) return false;
+
+    const start = searchFrom + (match.index ?? 0);
+    if (!LOCAL_ASSURANCE_NEGATION_PREFIX_PATTERN.test(text.slice(0, start))) return true;
+    searchFrom = start + match[0].length;
+  }
+  return false;
+}
+
+function hasEllipticalScheduleAssuranceOutsideClause(
+  sentence: string,
+  clauseStart: number,
+  clauseEnd: number,
+): boolean {
+  const outsideParts = [sentence.slice(0, clauseStart), sentence.slice(clauseEnd)];
+  return outsideParts.some((part) =>
+    part.split(CLAUSE_BOUNDARY_PATTERN).some((clause) => {
+      if (!SCHEDULE_ASSURANCE_PATTERN.test(clause)) return false;
+      return extractTimeRanges(clause).size === 0;
+    }),
+  );
+}
+
+function isExemptWindowMention(sentence: string, start: number, end: number): boolean {
+  const [clauseStart, clauseEnd] = findClauseBounds(sentence, start, end);
+  const prefix = sentence.slice(clauseStart, start);
+  const suffix = sentence.slice(end, clauseEnd);
+  const prefixNegation = NEGATED_WINDOW_PREFIX_PATTERN.exec(prefix);
+  const suffixNegation = NEGATED_WINDOW_SUFFIX_PATTERN.exec(suffix);
+  if (
+    (prefixNegation && !hasAffirmativeScheduleAssurance(prefixNegation[0])) ||
+    (suffixNegation && !hasAffirmativeScheduleAssurance(suffixNegation[0]))
+  ) {
+    return true;
+  }
+  const clause = sentence.slice(clauseStart, clauseEnd);
+  return (
+    CANDIDATE_WINDOW_ECHO_PREFIX_PATTERN.test(prefix) &&
+    !SCHEDULE_ASSURANCE_PATTERN.test(clause) &&
+    !hasEllipticalScheduleAssuranceOutsideClause(sentence, clauseStart, clauseEnd)
+  );
+}
+
+// 承诺判定收窄到句子级：gate 词与时段必须同句，且时段所在从句未被否定、
+// 也不是对候选人诉求的单纯复述——否则"能排"出现在合法转述句时，
+// 其它句子里复述候选人要的时段会被误判成承诺。
+function extractClaimedRanges(replyText: string): Set<string> {
+  const ranges = new Set<string>();
+  for (const sentence of replyText.split(SENTENCE_BOUNDARY_PATTERN)) {
+    if (!SCHEDULE_ASSURANCE_PATTERN.test(sentence)) continue;
+    for (const match of sentence.matchAll(TIME_RANGE_PATTERN)) {
+      const start = match.index ?? 0;
+      if (isExemptWindowMention(sentence, start, start + match[0].length)) continue;
+      const startMinutes = toMinutes(match[1], match[2]);
+      const endMinutes = toMinutes(match[3], match[4]);
+      if (startMinutes === null || endMinutes === null) continue;
+      ranges.add(`${startMinutes}-${endMinutes}`);
+    }
+  }
+  return ranges;
+}
+
 function stringifyResult(result: unknown): string {
   if (typeof result === 'string') return result;
   try {
@@ -182,7 +261,8 @@ function stringifyResult(result: unknown): string {
  * 岗位工具列出明确班次后，禁止承诺一个工具未列出的自定义时段。
  *
  * 规则刻意收窄到“时间段 + 可协调/没问题”承诺，不拦普通的候选人时间复述，
- * 也不试图恢复已经下线的宽泛 schedule fact 规则。
+ * 也不试图恢复已经下线的宽泛 schedule fact 规则。承诺词与时段须同句，
+ * 被否定或单纯复述候选人诉求的时段不计——诚实拒绝不匹配班次必须能通过本规则。
  */
 export function detectUnsupportedScheduleWindowClaim(
   replyText: string,
@@ -198,8 +278,7 @@ export function detectUnsupportedScheduleWindowClaim(
   );
   if (workRestCycleMismatch) return workRestCycleMismatch;
 
-  if (!SCHEDULE_ASSURANCE_PATTERN.test(replyText)) return null;
-  const claimedRanges = extractTimeRanges(replyText);
+  const claimedRanges = extractClaimedRanges(replyText);
   if (claimedRanges.size === 0) return null;
 
   const relevantCalls = toolCalls.filter((call) => {
