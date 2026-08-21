@@ -106,6 +106,40 @@
 5. **防腐纪律写进 CLAUDE.md + .claude/agents 规范**——职责迁移回收纪律与临时规则 TTL 标注要求，约束所有 AI 会话。
 6. **DB 阶段策略文本纳入治理范围**——修正原范围裁定；stage-strategy 每回合渲染进 prompt，属主链。P1-1 一并审计；审完再议是否给 Dashboard 改动加约束。
 
+**第三轮（2026-08-21，约束居所与行业对照专题）**：
+7. **约束放置判定树入方案**（用户拍板）——P1-1 审计验收标准 + 台账分类轴：
+
+   ```
+   新约束 →
+   ├─ 出站结果形态可确定性判定（假宣称/泄漏词等）→ 守卫 hard-rule（只拦完成时态，沿用既有裁定）
+   └─ 生成时行为约束：
+      ├─ 与单一工具强绑定 → 该工具 description（既有裁定）
+      ├─ 与单一阶段强绑定 → stage-strategy（DB，待 F5 加约束）
+      ├─ 跨工具跨阶段的人格/红线 → red-lines（DB）
+      └─ 跨工具的操作规程 → 手册
+   铁律：同一约束只准住一处；"教"（prompt）与"拦"（守卫）允许成对存在，但台账必须互链。
+   ```
+
+   现状实测：约束共有六个居所、三种变更纪律（手册 PR+review / description 代码无尺寸压力 /
+   red-lines·thresholds·stage-strategy 走 DB 零 review / hard-constraints·turn-hints·拦截说明代码动态 /
+   final-check / 守卫 rules），P1-1 按树归位、多处存在的归并到唯一居所。
+8. **手册低频规程 Skill 化，加为 P3-4 实验项**（用户拍板）——模型按需拉取 playbook（进 messages 后缀，
+   不碰前缀缓存），是被降级的 P2-2 分片的缓存友好替代路径。
+
+### 行业对照结论（2026-08-21 调研）
+
+**已与前沿一致的设计（增强"骨架健康"清单）**：prepareStep activeTools 屏蔽 + 13 工具常挂 ≈ Manus "mask,
+don't remove"（P2-1 暂不做的裁定获行业佐证）；final-check 置末尾 ≈ Manus recitation（精简它须按此视角，
+勿并入前缀）；四层记忆 ≈ Letta/MemGPT OS 式分层（且我们代码 pipeline 沉淀比模型自管更可控）；
+settlement 摘要 ≈ Anthropic compaction；recall_history ≈ structured note-taking 读取侧；
+收资状态机 ≈ "接口设计取代行为教学"方向。
+
+**借鉴增量**：
+1. **KV-cache 命中率 = 生产 agent 第一健康度指标**（Manus）→ P0-1b 升格为常设指标，且排查 JSON 序列化确定性（键序不稳静默打断缓存）
+2. **两种 rot 并列**：context rot（上下文越长性能越衰减，行业实证，支撑"注意力质量"目标）≠ 内容腐烂（规则老化，本方案"抗腐烂"目标），治法不同
+3. Skill/工具/MCP 分工共识："Skills hold the procedure, Tools take the actions, MCP provides the access"——MCP 的"接入即全量载入"正是行业公认的上下文痛点
+4. 选择先于压缩（selection before compression）——与"注意力优先"裁定同构
+
 **范围裁定（修正版）**：治理范围 = 主 generator 链路全部内容居所（手册 + 工具 description + **DB 阶段策略文本**）。extract、复聊、守卫语义审查仍不进本方案。
 
 **前缀稳定性现状**（讨论中查明）：组装顺序前三段（identity/base-manual/policy）静态，
@@ -125,7 +159,7 @@
 | # | 事项 | 说明 | 状态 |
 |---|---|---|---|
 | P0-1a | 缓存文档核实 | **✅ 完成（2026-08-21，官方文档 help.aliyun.com/zh/model-studio/context-cache）**，结论见下方 | ✅ |
-| P0-1b | 埋点采集 cached_tokens | 在 usage 采集链路加 `prompt_tokens_details.cached_tokens`，随现有 telemetry 落库，跑真实流量看命中率（文档核实后裁定值得测：字段在我们端点上原生可用） | ☐ |
+| P0-1b | 埋点采集 cached_tokens（**升格：常设第一健康度指标**） | 在 usage 采集链路加 `prompt_tokens_details.cached_tokens`，随现有 telemetry 落库。按 Manus 主张，缓存命中率是生产 agent 第一指标——不是一次性调研而是长期在位。附带排查：JSON 序列化确定性（键序不稳会静默打断前缀缓存） | ☐ |
 | P0-2 | finalPrompt 膨胀告警 | `prepare()` 出口一行长度检查，超阈值（建议 60K 字符）飞书告警，防张漪 case 式静默膨胀复发（约 10 行代码） | ☐ |
 
 **P0-1a 文档核实结论（2026-08-21，来源：阿里云百炼官方文档 context-cache 页）**：
@@ -172,6 +206,7 @@
 | P3-1 | 手册绝对化规则清点 → **建常设规则台账** | 逐条与 badcase 修复记忆对账（删前必须知道它当年拦的是什么）；产出物按裁定 4 升级为常设台账（docs/ 下 markdown）：每条规则登记内容摘要/来源链接/加入日期/时效性。台账建成后成为加规则的必经登记处 | ☐ |
 | P3-2 | 分批删减 + 回归闸 | 每批过 test-suite 回归 + 语义 shadow 评审对比，不达标即回滚 | ☐ |
 | P3-3 | 工具 description 接口化重构 | 主攻 `duliday_job_list`（13,144 字符，占描述总量 41%），次攻 `request_handoff`/`invite_to_group`；示例 → 参数语义/枚举表达（规则 2），A/B 验证 qwen 遵循度。precheck 已随收资状态机完成（13.5K→729），无需再动 | ☐ |
+| P3-4 | 手册低频规程 Skill 化实验 | P1-1 审计时标记"低频可拉取"段落（特殊 handoff 流程、罕见异常处理等）；P3 做拉取工具原型（类 recall_history 的 playbook 版）+ 回归验证。内容进 messages 后缀不破坏前缀缓存（裁定 8） | ☐ |
 
 **P3 验收**：每批删减有前后对比数据；总规则量下降且 badcase 率持平。
 
@@ -222,3 +257,12 @@
 - 渲染 cap：候选池 10 行（`memory-block.formatter.ts:387`）、evidence 不注入（`:230-231`，张漪 case）
 - settlement：`settlement.service.ts:24`（页大小 500）、`:27`（摘要输入 120 条封顶）、`:170`（最多 10 页）
 - 相关文档：`docs/knowledge-base/05-Prompt-Section动态组装体系.md`（分层裁定）、`docs/architecture/collection-form-machine.md`（S8-S10 已随收资批执行完毕，审计原文见 git 历史 docs/todo/memory-system-audit.md）
+
+## 附录 B：行业参考（2026-08-21 调研）
+
+- Anthropic: [The New Rules of Context Engineering for Claude 5 Generation Models](https://claude.com/blog/the-new-rules-of-context-engineering-for-claude-5-generation-models)（六规则，本方案第二节）
+- Anthropic: [Effective context engineering for AI agents](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents)（attention budget / compaction / note-taking / sub-agents / context rot）
+- Manus: [Context Engineering for AI Agents: Lessons from Building Manus](https://manus.im/blog/Context-Engineering-for-AI-Agents-Lessons-from-Building-Manus)（KV-cache 第一指标 / mask-don't-remove / recitation / 确定性序列化）
+- 阿里云百炼: [Context Cache 官方文档](https://help.aliyun.com/zh/model-studio/context-cache)（P0-1a 结论来源）
+- Letta/MemGPT 记忆分层对照: [Virtual context management with MemGPT and Letta](https://www.leoniemonigatti.com/blog/memgpt.html)
+- Skills/Tools/MCP 分工: [Skills vs MCP Explained](https://duet.so/guides/agent-skills-101-tools-vs-mcp-vs-skills)、[MCPs vs Agent Skills](https://www.damiangalarza.com/posts/2026-02-05-mcps-vs-agent-skills/)
