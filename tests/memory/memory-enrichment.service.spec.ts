@@ -1,4 +1,4 @@
-import { MemoryEnrichmentService } from '@memory/services/memory-enrichment.service';
+import { MemoryEnrichmentService } from '@memory/memory-enrichment.service';
 import { FALLBACK_EXTRACTION } from '@memory/session/session-facts.types';
 import type { AgentMemoryContext } from '@memory/types/memory-runtime.types';
 import { getRuleFact } from '@resolution/evidence/merge';

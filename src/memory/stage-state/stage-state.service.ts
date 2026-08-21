@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { RedisStore } from '../stores/redis.store';
 import { MemoryConfig } from '../memory.config';
-import type { StageState } from '../types/stage-state.types';
+import type { StageState } from './stage-state.types';
 
 /**
  * 阶段状态服务 — 招聘流程阶段管理

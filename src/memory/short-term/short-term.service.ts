@@ -5,7 +5,7 @@ import { RedisService } from '@infra/redis/redis.service';
 import { appendTimeContext } from '@resolution/signal/markers';
 import { formatCurrentTime } from '@infra/utils/date.util';
 import { MemoryConfig } from '../memory.config';
-import type { ShortTermMessage } from '../types/short-term.types';
+import type { ShortTermMessage } from './short-term.types';
 import {
   buildChatHistoryCacheKey,
   parseCachedChatHistoryMessages,

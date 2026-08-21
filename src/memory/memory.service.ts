@@ -1,17 +1,17 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { StageStateService } from './services/stage-state.service';
+import { StageStateService } from './stage-state/stage-state.service';
 import { LongTermService } from './long-term/long-term.service';
 import { SessionService } from './session/session.service';
 import {
   MemoryLifecycleService,
   type MemoryLifecycleTurnContext,
-} from './services/memory-lifecycle.service';
-import type { CandidateIdentityHint } from './services/memory-enrichment.service';
+} from './memory-lifecycle.service';
+import type { CandidateIdentityHint } from './memory-enrichment.service';
 import type { AgentMemoryContext } from './types/memory-runtime.types';
 import type { SessionSummaries } from './long-term/long-term.types';
 import type { InvitedGroupRecord } from './session/session-facts.types';
 import type { RuleFactClaims } from '@resolution/evidence/claim.types';
-import type { StageState } from './types/stage-state.types';
+import type { StageState } from './stage-state/stage-state.types';
 import { formatExtractionFactLines } from './formatters/fact-lines.formatter';
 
 export interface ProactiveMemoryRecall {
@@ -23,7 +23,7 @@ export interface ProactiveMemoryRecall {
   warnings?: string[];
 }
 
-export type { CandidateIdentityHint } from './services/memory-enrichment.service';
+export type { CandidateIdentityHint } from './memory-enrichment.service';
 
 /** memory 模块对外 facade，只保留真实外部入口。 */
 @Injectable()

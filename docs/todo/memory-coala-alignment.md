@@ -80,7 +80,7 @@ interface LongTermMemory {
 
 用户观察：services/ 平铺，目录结构未体现四层结构图。目标：代码树 = 结构图。
 
-- **混合形态（2026-08-21 修正：防过碎，沿工具层终态"单件平铺、成簇立目录"惯例）**：只为成簇的层立目录——`session/`（6 文件：facts/workbench/brand-state/candidate-snapshot/session-key/types，M3 还会增长）、`long-term/`（3 文件：long-term/consolidation/types，**consolidation 归位**）；`short-term.service`（1 文件）与 `stage-state.service`（2 文件）留 services/ 平铺——**文件名即层名**，结构图对应不损失；import 改动面减半。
+- ~~混合形态（防过碎：单件层留 services/ 平铺）~~ **二次修正（2026-08-21 用户审树后裁定：一致性 > 防碎）**：混合形态执行时走了样——"平铺"被放进 services/ 子目录而非模块根，使 services/ 沦为语义空洞的第五分类（两个层 + 两个跨层服务混住，与 session/、long-term/ 层目录不同深不同义）。终态改为**四层全对称目录**（short-term/、session/、stage-state/、long-term/，各带自己的 types），跨层服务（lifecycle/enrichment）平铺模块根，services/ 目录取消；types/ 仅留跨层的 memory-runtime 与 confidence-rank。
 - 留根部/共享位：facade（memory.service）、lifecycle（跨层编排）、stores/、formatters/、memory-runtime.types（跨层）。
 - **图上三悬空元素的组织落点（2026-08-21 追加设计）**：
   ① **Working Memory 立目录**：`src/agent/generator/working-memory/` = preparation.service + working-memory.types（原 PreparedAgentContext）+ 原 preparation-utils/* 全部迁入——装配车间整体归位；
@@ -107,10 +107,10 @@ interface LongTermMemory {
 src/memory/                                  ═══ 记忆四层（生命周期轴做目录）═══
 ├── memory.service.ts                        # Facade：onTurnStart/onTurnEnd 唯一入口（不动）
 ├── memory.module.ts / memory.config.ts      # 窗口 120 条/24K ✅
-├── services/
-│   ├── memory-lifecycle.service.ts          # 跨层编排（读四层/写回/触发沉淀）
-│   ├── short-term.service.ts                # ① 短期窗口——单文件平铺，文件名即层名
-│   └── stage-state.service.ts               # ③ 阶段状态（原"程序记忆"）✅名——同上
+├── memory-lifecycle.service.ts              # 跨层编排（读四层/写回/触发沉淀）——不属任何层，平铺根
+├── memory-enrichment.service.ts             # 跨层丰富——同上
+├── short-term/                              # ① 短期窗口 ✅（service + types 同居）
+├── stage-state/                             # ③ 阶段状态（原"程序记忆"）✅（service + types 同居）
 ├── session/                                 # ② 会话记忆 ✅Ⓒ（目录）+ ✅Ⓜ（分舱）
 │   ├── session.service.ts                   #    薄 facade：1:1 委托两舱，26 注入点零波及 ✅
 │   ├── facts.service.ts                     #    事实舱（semantic）：状态所有者/事实读写/提取/已发生事件 ✅

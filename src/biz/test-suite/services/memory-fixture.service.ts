@@ -11,7 +11,7 @@ import {
   type InvitedGroupRecord,
 } from '@memory/session/session-facts.types';
 import type { RecommendedJobSummary } from '@resolution/job/types';
-import type { StageState } from '@memory/types/stage-state.types';
+import type { StageState } from '@memory/stage-state/stage-state.types';
 import type { UserProfile } from '@memory/long-term/long-term.types';
 import { buildJobListQuerySignature } from '@tools/shared/job-list-query-signature';
 import type { MemoryFixtureSetup, TestRuntimeScope } from '../types/test-debug-trace.types';

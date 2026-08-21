@@ -6,9 +6,9 @@ import {
   normalizeGenderValue,
 } from '@resolution/evidence/producers/rule-track';
 import { getRuleFactValue } from '@resolution/evidence/merge';
-import { unwrapUserProfileFactValue } from '../long-term/long-term.types';
-import { unwrapSessionFactValue } from '../session/session-facts.types';
-import type { AgentMemoryContext } from '../types/memory-runtime.types';
+import { unwrapUserProfileFactValue } from './long-term/long-term.types';
+import { unwrapSessionFactValue } from './session/session-facts.types';
+import type { AgentMemoryContext } from './types/memory-runtime.types';
 
 /**
  * 记忆加载链路中，"用外部数据源补全快照缺失字段" 的协调者。

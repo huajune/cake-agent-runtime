@@ -1,4 +1,4 @@
-import { ShortTermService } from '@memory/services/short-term.service';
+import { ShortTermService } from '@memory/short-term/short-term.service';
 import { buildChatHistoryCacheKey } from '@biz/message/utils/chat-history-cache.util';
 import { StorageMessageSource, StorageMessageType } from '@enums/storage-message.enum';
 

@@ -1,4 +1,4 @@
-import { StageStateService } from '@memory/services/stage-state.service';
+import { StageStateService } from '@memory/stage-state/stage-state.service';
 
 describe('StageStateService', () => {
   const mockRedisStore = {
