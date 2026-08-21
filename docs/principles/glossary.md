@@ -1,6 +1,6 @@
 # 术语宪章（Glossary）——行业名做主名，自造词打旗
 
-**最后更新**：2026-08-12（成文）
+**最后更新**：2026-08-21（新增 CoALA 记忆四分法与"程序记忆"错位登记、苦涩教训台账借喻）
 
 > 用途有二：**学习地图**（每个概念给出行业标准名与检索线索，顺藤能摸到文献）与
 > **命名权威源**（新概念命名、后续代码对齐改名，以本表为锚）。
@@ -29,6 +29,7 @@
 | **LLM-as-a-judge**（模型评审） | 用 LLM 对质量/语义做裁决，通常离线或旁路 | 语义审查器、复聊 judge、`evaluation/` | LLM-as-a-judge |
 | **Few-shot / in-context examples**（上下文示例） | 用示例示教模型；示例选择是独立研究领域 | 示教四原则所辖的全部示例面 | in-context learning、example selection |
 | **Structured outputs**（结构化输出） | 用 schema 约束模型输出形态 | 全部工具的 zod `inputSchema` | structured outputs、function calling |
+| **Memory taxonomy: working / episodic / semantic / procedural**（CoALA 记忆四分法） | 按**知识类型**切分 agent 记忆：工作（本轮拼装）/ 事件 / 事实 / 程序性知识（"怎么做事"，可活在代码、提示词或模型参数里） | 本库按**生命周期轴**切（短期/会话/程序/长期），两轴映射：working ≈ `prepare()` 组装；episodic ≈ chat_messages+短期窗口+summary；semantic ≈ sessionFacts+长期 profile/preferences；真 procedural = 手册/工具 description/收资状态机（此前未按记忆层治理，由上下文治理方案补建）。⚠️ 本库"程序记忆"（`procedural.service.ts`，存 currentStage）实为 **process/stage state**，与行业 procedural memory 语义错位——2026-08-21 裁定：登记于此，代码改名搭车下次记忆域重构 | CoALA（arXiv 2309.02427）、Tulving 记忆分类、MemGPT/Letta |
 
 ## B 层：概念是行业的，名字是我们借喻的
 

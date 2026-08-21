@@ -16,6 +16,7 @@
 | [Context Engineering Lessons from Building Manus](https://manus.im/blog/Context-Engineering-for-AI-Agents-Lessons-from-Building-Manus) | 技术博客（一线产品复盘） | C2 全条：KV-cache 命中率第一指标（P0-1b 升格依据）、mask-don't-remove（追认 P2-1 裁定）、确定性序列化；C6 recitation（final-check 的存在依据） |
 | [千问模型的 Context Cache 功能（阿里云百炼）](https://help.aliyun.com/zh/model-studio/context-cache) | 官方文档 | P0-1a 全部结论：隐式缓存自动开启/命中 2 折/tools 参与前缀/显式缓存 5 分钟 TTL（裁定不做显式） |
 | [Virtual context management with MemGPT and Letta](https://www.leoniemonigatti.com/blog/memgpt.html) | 技术博客（论文解读） | 四层记忆 ≈ OS 式分层（core/recall/archival）的骨架健康对照；"代码 pipeline 沉淀比模型自管更可控"的比较基准 |
+| [Cognitive Architectures for Language Agents（CoALA，arXiv 2309.02427）](https://arxiv.org/pdf/2309.02427) | 论文 | 〔补引〕记忆四分法（working/episodic/semantic/procedural）的学理源头——四层记忆复盘（2026-08-21）的对照基准："程序记忆"命名错位诊断、"procedural 层从未进记忆治理框架"洞察、settlement ≈ consolidation gate 的对应 |
 | [Context Engineering: A Practical Guide（Sourcegraph）](https://sourcegraph.com/blog/context-engineering) | 技术博客 | "selection before compression"——与注意力优先裁定同构 |
 | [Context Engineering AI Agents Guide（mem0）](https://mem0.ai/blog/context-engineering-ai-agents-guide) | 技术博客 | 四类挑战框架（poisoning/overload/token/performance）佐证三元目标划分 |
 
