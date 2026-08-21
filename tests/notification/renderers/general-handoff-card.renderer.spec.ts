@@ -127,6 +127,14 @@ describe('GeneralHandoffCardRenderer', () => {
       expect(card.content as string).not.toContain('**建议动作**');
     });
 
+    it('does not ask operators to restore hosting for alert-only onboarding handoffs', () => {
+      const card = renderer.buildCard(buildPayload({ hostingPaused: false }));
+      const content = card.content as string;
+
+      expect(content).toContain('本次仅告警，未暂停 AI 托管');
+      expect(content).not.toContain('手动恢复托管');
+    });
+
     it('renders dash placeholder when currentMessageContent is empty', () => {
       const card = renderer.buildCard(buildPayload({ currentMessageContent: '' }));
       expect(card.content as string).toContain('**当前消息**：-');

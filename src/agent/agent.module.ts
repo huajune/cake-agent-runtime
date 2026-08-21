@@ -31,6 +31,7 @@ import { FollowUpProcessor } from './reengagement/follow-up.processor';
 import { TouchLedgerService } from './reengagement/touch-ledger.service';
 import { ReengagementAnchorService } from './reengagement/anchor.service';
 import { ReengagementAgent } from './reengagement/reengagement.agent';
+import { OnboardingSweepCronService } from './reengagement/onboarding-sweep.cron';
 import {
   REENGAGEMENT_DELIVERY_PORT,
   ReengagementDeliveryService,
@@ -78,6 +79,7 @@ import {
     TouchLedgerService,
     ReengagementAnchorService,
     ReengagementAgent,
+    OnboardingSweepCronService,
     ReengagementDeliveryService,
     { provide: REENGAGEMENT_DELIVERY_PORT, useExisting: ReengagementDeliveryService },
   ],

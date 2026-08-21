@@ -21,6 +21,8 @@ export interface ReengagementSessionState {
     source: 'candidate' | 'precheck';
   }>;
   presentedStores: PresentedStore[];
+  /** 本次求职会话累计推店轮次；用于同场景第二轮起升级收口。 */
+  storePresentationRounds?: number;
   /** 本会话已成功邀请/核验在群的记录；复聊到点核验据此停止推店未回。 */
   invitedGroups?: Array<{
     groupName: string;

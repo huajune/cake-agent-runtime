@@ -35,7 +35,7 @@ const asExecution = (outcome: Record<string, unknown>, over: Record<string, unkn
 
 describe('FollowUpProcessor', () => {
   let queue: { process: jest.Mock; add: jest.Mock };
-  let session: { getReengagementState: jest.Mock };
+  let session: { getReengagementState: jest.Mock; getSessionState: jest.Mock };
   let reengagementAgent: { compose: jest.Mock };
   let touchLedger: {
     isOverFrequencyLimit: jest.Mock;
@@ -55,14 +55,24 @@ describe('FollowUpProcessor', () => {
     fetchJobs: jest.Mock;
   };
   let longTerm: { getActiveBookings: jest.Mock };
-  let scheduler: { scheduleFollowUp: jest.Mock };
+  let scheduler: {
+    scheduleFollowUp: jest.Mock;
+    scheduleOnboardingCheck: jest.Mock;
+    stopPendingJobsForSessionScenario: jest.Mock;
+  };
+  let groupInvite: { invite: jest.Mock };
+  let handoffRecorder: { record: jest.Mock };
+  let handoffNotifier: { notify: jest.Mock };
   let configService: { get: jest.Mock };
   let delivery: { deliver: jest.Mock };
 
   beforeEach(() => {
     jest.useRealTimers();
     queue = { process: jest.fn(), add: jest.fn().mockResolvedValue(undefined) };
-    session = { getReengagementState: jest.fn().mockResolvedValue(baseState()) };
+    session = {
+      getReengagementState: jest.fn().mockResolvedValue(baseState()),
+      getSessionState: jest.fn().mockResolvedValue({ facts: null }),
+    };
     reengagementAgent = {
       compose: jest.fn().mockResolvedValue(
         asExecution({
@@ -94,7 +104,16 @@ describe('FollowUpProcessor', () => {
       fetchJobs: jest.fn().mockResolvedValue({ jobs: [], total: 0 }),
     };
     longTerm = { getActiveBookings: jest.fn().mockResolvedValue([]) };
-    scheduler = { scheduleFollowUp: jest.fn().mockResolvedValue({ scheduled: true }) };
+    scheduler = {
+      scheduleFollowUp: jest.fn().mockResolvedValue({ scheduled: true }),
+      scheduleOnboardingCheck: jest.fn().mockResolvedValue({ scheduled: true }),
+      stopPendingJobsForSessionScenario: jest.fn().mockResolvedValue(0),
+    };
+    groupInvite = {
+      invite: jest.fn().mockResolvedValue({ success: true, groupName: '上海兼职群' }),
+    };
+    handoffRecorder = { record: jest.fn().mockResolvedValue('inserted') };
+    handoffNotifier = { notify: jest.fn().mockResolvedValue(true) };
     configService = {
       get: jest.fn((key: string) =>
         key === 'STRIDE_ENTERPRISE_TOKEN' ? 'stride-enterprise-token' : undefined,
@@ -103,6 +122,7 @@ describe('FollowUpProcessor', () => {
     tracking = {
       resolveChannelIdentity: jest.fn().mockResolvedValue(null),
       trackDisabledAtFire: jest.fn(),
+      trackScheduleSkipped: jest.fn(),
       trackStopped: jest.fn(),
       trackFrequencyBlocked: jest.fn(),
       trackRescheduled: jest.fn(),
@@ -112,6 +132,7 @@ describe('FollowUpProcessor', () => {
       trackOutcomeNotReply: jest.fn(),
       trackDeliveryAttempted: jest.fn(),
       trackSent: jest.fn(),
+      trackGroupInviteResult: jest.fn(),
       trackDeliveryUnknown: jest.fn(),
     };
     messageTracking = { recordProactiveTurn: jest.fn() };
@@ -149,6 +170,9 @@ describe('FollowUpProcessor', () => {
       sponge as never,
       longTerm as never,
       scheduler as never,
+      groupInvite as never,
+      handoffRecorder as never,
+      handoffNotifier as never,
       configService as never,
       withDelivery ? (delivery as never) : undefined,
     );
@@ -771,6 +795,239 @@ describe('FollowUpProcessor', () => {
     expect(tracking.trackRescheduled).not.toHaveBeenCalled();
   });
 
+  describe('store presentation group invite escalation', () => {
+    const escalatedJob = () =>
+      makeJob({
+        data: {
+          sessionRef,
+          scenarioCode: 'store_presented_no_reply',
+          anchorEventId: 'evt-store-2',
+          anchorAt: Date.UTC(2026, 5, 24, 2, 0, 0),
+          escalateToGroupInvite: true,
+          channelIdentity: {
+            candidateName: '候选人',
+            managerName: 'bot-user-1',
+            botImId: 'bot-im-1',
+            imContactId: 'contact-1',
+          },
+        },
+      });
+
+    const enableEscalation = (shadow = false) => {
+      systemConfig.getAgentReplyConfig.mockResolvedValue({
+        reengagementEnabled: true,
+        reengagementShadow: shadow,
+        reengagementScenarioRollout: {
+          store_presented_no_reply: true,
+          'store_presented_no_reply:invite': true,
+        },
+      });
+      session.getReengagementState.mockResolvedValue(
+        baseState({ presentedStores: [{ jobId: 519709 }], storePresentationRounds: 2 }),
+      );
+      session.getSessionState.mockResolvedValue({
+        facts: {
+          preferences: {
+            city: {
+              value: '上海',
+              confidence: 'high',
+              source: 'candidate_quote',
+              evidence: '我在上海找工作',
+            },
+          },
+        },
+      });
+      reengagementAgent.compose.mockResolvedValue(
+        asExecution({
+          kind: 'reply',
+          reply: { text: '这批岗位也不感兴趣吗？稍后邀请你进兼职岗位群继续看看。' },
+          generatedText: '这批岗位也不感兴趣吗？稍后邀请你进兼职岗位群继续看看。',
+          toolCalls: [],
+          scenarioCode: 'store_presented_no_reply',
+          agentSteps: [],
+        }),
+      );
+    };
+
+    it('invites only after markSent succeeds, records success, and closes pending pre-booking jobs', async () => {
+      const now = Date.UTC(2026, 5, 24, 2, 0, 0);
+      jest.spyOn(Date, 'now').mockReturnValue(now);
+      enableEscalation();
+
+      await buildProcessor().process(escalatedJob());
+
+      expect(groupInvite.invite).toHaveBeenCalledWith(
+        expect.objectContaining({
+          corpId: 'corp-1',
+          userId: 'user-1',
+          sessionId: 'sess-1',
+          botImId: 'bot-im-1',
+          botUserId: 'bot-user-1',
+          contactWxid: 'user-1',
+          city: '上海',
+          turnKey: 'batch_sess-1_1782266400000',
+        }),
+      );
+      expect(touchLedger.markSent.mock.invocationCallOrder[0]).toBeLessThan(
+        groupInvite.invite.mock.invocationCallOrder[0],
+      );
+      expect(tracking.trackGroupInviteResult).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ success: true, groupName: '上海兼职群' }),
+      );
+      expect(scheduler.stopPendingJobsForSessionScenario).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sessionRef,
+          reason: 'candidate_invited_to_group',
+        }),
+      );
+    });
+
+    it('records a failed invite without retrying or rolling back the delivered copy', async () => {
+      enableEscalation();
+      groupInvite.invite.mockResolvedValue({ success: false, reason: 'group_full' });
+
+      await buildProcessor().process(escalatedJob());
+
+      expect(delivery.deliver).toHaveBeenCalledTimes(1);
+      expect(touchLedger.markSent).toHaveBeenCalledTimes(1);
+      expect(groupInvite.invite).toHaveBeenCalledTimes(1);
+      expect(tracking.trackGroupInviteResult).toHaveBeenCalledWith(expect.anything(), {
+        success: false,
+        reason: 'group_full',
+      });
+      expect(scheduler.stopPendingJobsForSessionScenario).not.toHaveBeenCalled();
+      expect(touchLedger.markFailedOrUnknown).not.toHaveBeenCalled();
+    });
+
+    it('skips the invite with a ledger reason when session facts have no intent city', async () => {
+      enableEscalation();
+      session.getSessionState.mockResolvedValue({ facts: null });
+
+      await buildProcessor().process(escalatedJob());
+
+      expect(groupInvite.invite).not.toHaveBeenCalled();
+      expect(tracking.trackGroupInviteResult).toHaveBeenCalledWith(expect.anything(), {
+        success: false,
+        skipped: true,
+        reason: 'no_city',
+      });
+      expect(touchLedger.markSent).toHaveBeenCalled();
+    });
+
+    it('treats alreadyInGroup as a successful closeout without another escalation task', async () => {
+      enableEscalation();
+      groupInvite.invite.mockResolvedValue({
+        success: true,
+        alreadyInGroup: true,
+        groupName: '上海兼职群',
+      });
+
+      await buildProcessor().process(escalatedJob());
+
+      expect(groupInvite.invite).toHaveBeenCalledTimes(1);
+      expect(tracking.trackGroupInviteResult).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ success: true, alreadyInGroup: true }),
+      );
+      expect(scheduler.stopPendingJobsForSessionScenario).toHaveBeenCalledWith(
+        expect.objectContaining({ reason: 'candidate_already_in_group' }),
+      );
+    });
+
+    it('never calls invite in shadow mode', async () => {
+      enableEscalation(true);
+
+      await buildProcessor().process(escalatedJob());
+
+      expect(reengagementAgent.compose).toHaveBeenCalledWith(
+        expect.objectContaining({
+          jobData: expect.objectContaining({ escalateToGroupInvite: true }),
+        }),
+      );
+      expect(delivery.deliver).not.toHaveBeenCalled();
+      expect(touchLedger.markSent).not.toHaveBeenCalled();
+      expect(groupInvite.invite).not.toHaveBeenCalled();
+    });
+
+    it('degrades to ordinary store copy when the invite child key is explicitly off', async () => {
+      enableEscalation();
+      // 0820 裁定后子键缺省开：验证降级路径必须显式关子键
+      systemConfig.getAgentReplyConfig.mockResolvedValue({
+        reengagementEnabled: true,
+        reengagementShadow: false,
+        reengagementScenarioRollout: {
+          store_presented_no_reply: true,
+          'store_presented_no_reply:invite': false,
+        },
+      });
+
+      await buildProcessor().process(escalatedJob());
+
+      expect(reengagementAgent.compose).toHaveBeenCalledWith(
+        expect.objectContaining({
+          jobData: expect.objectContaining({ escalateToGroupInvite: false }),
+        }),
+      );
+      expect(delivery.deliver).toHaveBeenCalledTimes(1);
+      expect(groupInvite.invite).not.toHaveBeenCalled();
+    });
+
+    it('keeps non-reply outcomes physically unable to reach invite', async () => {
+      enableEscalation();
+      reengagementAgent.compose.mockResolvedValue(
+        asExecution({
+          kind: 'skipped',
+          toolCalls: [],
+          scenarioCode: 'store_presented_no_reply',
+          agentSteps: [],
+        }),
+      );
+
+      await buildProcessor().process(escalatedJob());
+
+      expect(delivery.deliver).not.toHaveBeenCalled();
+      expect(touchLedger.markSent).not.toHaveBeenCalled();
+      expect(groupInvite.invite).not.toHaveBeenCalled();
+    });
+
+    it('keeps failed or unknown delivery physically unable to reach invite', async () => {
+      enableEscalation();
+      delivery.deliver.mockRejectedValue(new Error('gateway timeout'));
+
+      await expect(buildProcessor().process(escalatedJob())).rejects.toThrow('gateway timeout');
+
+      expect(touchLedger.markSent).not.toHaveBeenCalled();
+      expect(groupInvite.invite).not.toHaveBeenCalled();
+      expect(touchLedger.markFailedOrUnknown).toHaveBeenCalledWith(
+        'sess-1:store_presented_no_reply:evt-store-2',
+        'unknown',
+      );
+    });
+
+    it('keeps an explicitly skipped delivery physically unable to reach invite', async () => {
+      enableEscalation();
+      delivery.deliver.mockResolvedValue({
+        success: true,
+        segmentCount: 0,
+        failedSegments: 0,
+        deliveredSegments: 0,
+        totalTime: 0,
+        skipped: true,
+        skipReason: 'hosting_paused',
+      });
+
+      await buildProcessor().process(escalatedJob());
+
+      expect(touchLedger.markSent).not.toHaveBeenCalled();
+      expect(groupInvite.invite).not.toHaveBeenCalled();
+      expect(touchLedger.markFailedOrUnknown).toHaveBeenCalledWith(
+        'sess-1:store_presented_no_reply:evt-store-2',
+        'failed',
+      );
+    });
+  });
+
   describe('二次触发追溯落库埋点', () => {
     const expectedIdentity = expect.objectContaining({
       sessionId: 'sess-1',
@@ -1060,6 +1317,41 @@ describe('FollowUpProcessor', () => {
       );
     });
 
+    it('completes a sweep-provided onboarding bot identity with the delivery recipient', async () => {
+      tracking.resolveChannelIdentity.mockResolvedValue({
+        candidateName: '张三',
+        managerName: '经理A',
+        botImId: 'stale-bot',
+        imContactId: 'contact-1',
+      });
+      sponge.getWorkOrderById.mockResolvedValue({ workOrderId: 901, currentStatus: '面试成功' });
+      session.getReengagementState.mockResolvedValue(baseState({ terminal: 'booked' }));
+
+      await buildProcessor().process(
+        makeJob({
+          data: {
+            sessionRef,
+            scenarioCode: 'post_interview_onboarding',
+            anchorEventId: 'wo901:pass',
+            anchorAt: Date.UTC(2026, 5, 21, 2, 0, 0),
+            workOrderId: 901,
+            channelIdentity: { botImId: 'event-bot' },
+          },
+        }),
+      );
+
+      expect(tracking.resolveChannelIdentity).toHaveBeenCalledWith('sess-1');
+      expect(reengagementAgent.compose).toHaveBeenCalledWith(
+        expect.objectContaining({
+          jobData: expect.objectContaining({ channelIdentity: { botImId: 'event-bot' } }),
+        }),
+      );
+      expect(tracking.trackShadow).toHaveBeenCalledWith(
+        expect.objectContaining({ botImId: 'event-bot', imContactId: 'contact-1' }),
+        expect.anything(),
+      );
+    });
+
     it('still records the touch with null identity when the fallback lookup fails', async () => {
       tracking.resolveChannelIdentity.mockRejectedValue(new Error('db down'));
 
@@ -1160,6 +1452,181 @@ describe('FollowUpProcessor', () => {
         }),
       );
       expect(reengagementAgent.compose).not.toHaveBeenCalled();
+    });
+
+    it('schedules both arrival reminder and d2 confirmation when signup gap is at least 3 Shanghai days', async () => {
+      sponge.getWorkOrderById.mockResolvedValue({
+        workOrderId: 555,
+        currentStatus: '约面成功',
+        signUpTime: '2026-06-24 09:00',
+        interviewTime: '2026-06-27 14:00',
+      });
+
+      await buildProcessor().process(
+        bookingJob({ resolveBookingAtFire: true, expectedInterviewAt: undefined }),
+      );
+
+      expect(scheduler.scheduleFollowUp).toHaveBeenCalledTimes(2);
+      expect(scheduler.scheduleFollowUp).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+          anchorEventId: `wo555:iv${Date.UTC(2026, 5, 27, 6)}:interview_reminder:d2`,
+          touchVariant: 'd2_confirm',
+        }),
+      );
+    });
+
+    it('schedules only arrival reminder when signup gap is under 3 Shanghai days', async () => {
+      sponge.getWorkOrderById.mockResolvedValue({
+        workOrderId: 555,
+        currentStatus: '约面成功',
+        signUpTime: '2026-06-25 09:00',
+        interviewTime: '2026-06-27 14:00',
+      });
+
+      await buildProcessor().process(
+        bookingJob({ resolveBookingAtFire: true, expectedInterviewAt: undefined }),
+      );
+
+      expect(scheduler.scheduleFollowUp).toHaveBeenCalledTimes(1);
+      expect(tracking.trackScheduleSkipped).toHaveBeenCalledWith(
+        expect.objectContaining({ anchorEventId: expect.stringMatching(/:d2$/) }),
+        'signup_interview_gap_lt_3d',
+      );
+    });
+
+    it('fails closed and skips d2 confirmation when signUpTime is missing', async () => {
+      sponge.getWorkOrderById.mockResolvedValue({
+        workOrderId: 555,
+        currentStatus: '约面成功',
+        interviewTime: '2026-06-27 14:00',
+      });
+
+      await buildProcessor().process(
+        bookingJob({ resolveBookingAtFire: true, expectedInterviewAt: undefined }),
+      );
+
+      expect(scheduler.scheduleFollowUp).toHaveBeenCalledTimes(1);
+      expect(tracking.trackScheduleSkipped).toHaveBeenCalledWith(
+        expect.anything(),
+        'signup_interview_gap_lt_3d',
+      );
+    });
+
+    it('uses the d2 delay child key during fire-time calibration', async () => {
+      (Date.now as jest.Mock).mockReturnValue(Date.UTC(2026, 5, 25, 6));
+      systemConfig.getAgentReplyConfig.mockResolvedValue({
+        reengagementEnabled: true,
+        reengagementShadow: true,
+        reengagementScenarioDelayMinutes: {
+          interview_reminder: 60,
+          'interview_reminder:d2': 2880,
+        },
+      });
+      sponge.getWorkOrderById.mockResolvedValue({
+        workOrderId: 555,
+        currentStatus: '约面成功',
+        signUpTime: '2026-06-23 09:00',
+        interviewTime: '2026-06-27 14:00',
+      });
+
+      await buildProcessor().process(
+        bookingJob({
+          anchorEventId: `wo555:iv${Date.UTC(2026, 5, 27, 6)}:interview_reminder:d2`,
+          touchVariant: 'd2_confirm',
+        }),
+      );
+
+      expect(tracking.trackStopped).not.toHaveBeenCalledWith(
+        expect.anything(),
+        'interview_time_changed',
+      );
+      expect(scheduler.scheduleFollowUp).not.toHaveBeenCalled();
+      expect(reengagementAgent.compose).toHaveBeenCalled();
+    });
+
+    it('stops d2 confirmation when the interview is less than 24 hours away', async () => {
+      (Date.now as jest.Mock).mockReturnValue(Date.UTC(2026, 5, 26, 7));
+      sponge.getWorkOrderById.mockResolvedValue({
+        workOrderId: 555,
+        currentStatus: '约面成功',
+        signUpTime: '2026-06-23 09:00',
+        interviewTime: '2026-06-27 14:00',
+      });
+
+      await buildProcessor().process(bookingJob({ touchVariant: 'd2_confirm' }));
+
+      expect(tracking.trackStopped).toHaveBeenCalledWith(expect.anything(), 'interview_too_close');
+      expect(reengagementAgent.compose).not.toHaveBeenCalled();
+    });
+
+    it('rechecks the signup gap for a d2 task at fire time', async () => {
+      (Date.now as jest.Mock).mockReturnValue(Date.UTC(2026, 5, 25, 6));
+      sponge.getWorkOrderById.mockResolvedValue({
+        workOrderId: 555,
+        currentStatus: '约面成功',
+        signUpTime: '2026-06-25 09:00',
+        interviewTime: '2026-06-27 14:00',
+      });
+
+      await buildProcessor().process(bookingJob({ touchVariant: 'd2_confirm' }));
+
+      expect(tracking.trackStopped).toHaveBeenCalledWith(
+        expect.anything(),
+        'signup_interview_gap_lt_3d',
+      );
+      expect(reengagementAgent.compose).not.toHaveBeenCalled();
+    });
+
+    it('does not create a d2 replacement when rescheduling makes the signup gap ineligible', async () => {
+      (Date.now as jest.Mock).mockReturnValue(Date.UTC(2026, 5, 25, 6));
+      sponge.getWorkOrderById.mockResolvedValue({
+        workOrderId: 555,
+        currentStatus: '约面成功',
+        signUpTime: '2026-06-29 09:00',
+        interviewTime: '2026-07-01 14:00',
+      });
+
+      await buildProcessor().process(bookingJob({ touchVariant: 'd2_confirm' }));
+
+      expect(tracking.trackStopped).toHaveBeenCalledWith(
+        expect.anything(),
+        'signup_interview_gap_lt_3d',
+      );
+      expect(scheduler.scheduleFollowUp).not.toHaveBeenCalled();
+    });
+
+    it('keeps d2 in shadow when its child key is explicitly off without affecting arrival reminder rollout', async () => {
+      // 0820 裁定后子键缺省开：验证单独关 d2 必须显式 false
+      systemConfig.getAgentReplyConfig.mockResolvedValue({
+        reengagementEnabled: true,
+        reengagementShadow: false,
+        reengagementScenarioRollout: {
+          interview_reminder: true,
+          'interview_reminder:d2': false,
+        },
+        reengagementScenarioDelayMinutes: { 'interview_reminder:d2': 2880 },
+      });
+      sponge.getWorkOrderById.mockResolvedValue({
+        workOrderId: 555,
+        currentStatus: '约面成功',
+        signUpTime: '2026-06-23 09:00',
+        interviewTime: '2026-06-27 14:00',
+      });
+      (Date.now as jest.Mock).mockReturnValue(Date.UTC(2026, 5, 25, 6));
+
+      await buildProcessor().process(bookingJob({ touchVariant: 'd2_confirm' }));
+
+      expect(tracking.trackShadow).toHaveBeenCalled();
+      expect(delivery.deliver).not.toHaveBeenCalled();
+
+      tracking.trackShadow.mockClear();
+      reengagementAgent.compose.mockClear();
+      (Date.now as jest.Mock).mockReturnValue(Date.UTC(2026, 5, 27, 5));
+      await buildProcessor().process(bookingJob());
+
+      expect(tracking.trackShadow).not.toHaveBeenCalled();
+      expect(delivery.deliver).toHaveBeenCalledTimes(1);
     });
 
     it('does not create formal delayed jobs for a non-active resolved work order', async () => {
@@ -1428,6 +1895,205 @@ describe('FollowUpProcessor', () => {
         'missing_authoritative_work_order_id',
       );
       expect(reengagementAgent.compose).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('post-interview onboarding', () => {
+    const passedAt = Date.UTC(2026, 7, 17, 2, 0, 0);
+    const onboardingJob = (over: Record<string, unknown> = {}) =>
+      makeJob({
+        data: {
+          sessionRef,
+          scenarioCode: 'post_interview_onboarding',
+          anchorEventId: 'wo901:pass',
+          anchorAt: passedAt,
+          workOrderId: 901,
+          channelIdentity: {
+            botImId: 'bot-1',
+            imContactId: 'contact-1',
+            candidateName: '候选人A',
+            managerName: '经理A',
+          },
+          ...over,
+        },
+      });
+
+    it.each([
+      ['面试成功', null, false, true],
+      ['上岗成功', 'already_onboarded', false, false],
+      ['上岗失败', 'onboarding_intervention_dispatched', true, false],
+      ['已离职', 'onboarding_intervention_dispatched', true, false],
+      ['约面成功', 'work_order_regressed', false, false],
+    ] as const)(
+      'dispatches current status %s deterministically',
+      async (currentStatus, stoppedReason, expectsHandoff, expectsCompose) => {
+        sponge.getWorkOrderById.mockResolvedValue({ workOrderId: 901, currentStatus });
+        session.getReengagementState.mockResolvedValue(baseState({ terminal: 'booked' }));
+
+        await buildProcessor().process(onboardingJob());
+
+        if (stoppedReason) {
+          expect(tracking.trackStopped).toHaveBeenCalledWith(expect.anything(), stoppedReason);
+        } else {
+          expect(tracking.trackStopped).not.toHaveBeenCalled();
+        }
+        expect(handoffRecorder.record).toHaveBeenCalledTimes(expectsHandoff ? 1 : 0);
+        expect(handoffNotifier.notify).toHaveBeenCalledTimes(expectsHandoff ? 1 : 0);
+        expect(reengagementAgent.compose).toHaveBeenCalledTimes(expectsCompose ? 1 : 0);
+      },
+    );
+
+    it('does not enter booking validity or 1.5 time calibration for interview.passed', async () => {
+      sponge.getWorkOrderById.mockResolvedValue({
+        workOrderId: 901,
+        currentStatus: '面试成功',
+        interviewTime: '2026-09-30 18:00',
+      });
+      session.getReengagementState.mockResolvedValue(baseState({ terminal: 'booked' }));
+
+      await buildProcessor().process(onboardingJob());
+
+      expect(tracking.trackStopped).not.toHaveBeenCalledWith(
+        expect.anything(),
+        'interview_time_changed',
+      );
+      expect(scheduler.scheduleFollowUp).not.toHaveBeenCalled();
+      expect(reengagementAgent.compose).toHaveBeenCalled();
+    });
+
+    it('keeps the human-intervention gate for the onboarding touch', async () => {
+      const candidateAt = passedAt + 60_000;
+      sponge.getWorkOrderById.mockResolvedValue({ workOrderId: 901, currentStatus: '面试成功' });
+      session.getReengagementState.mockResolvedValue(baseState({ terminal: 'booked' }));
+      chatSession.getChatHistory.mockResolvedValue([
+        {
+          role: 'user',
+          content: '入职材料怎么交',
+          timestamp: candidateAt,
+          source: 'MOBILE_PUSH',
+          messageType: 'TEXT',
+          isSelf: false,
+        },
+        {
+          role: 'assistant',
+          content: '我来帮你处理',
+          timestamp: candidateAt + 1_000,
+          source: 'MOBILE_PUSH',
+          messageType: 'TEXT',
+          isSelf: true,
+        },
+      ]);
+
+      await buildProcessor().process(onboardingJob());
+
+      expect(tracking.trackStopped).toHaveBeenCalledWith(
+        expect.anything(),
+        'human_intervention_after_candidate',
+      );
+      expect(reengagementAgent.compose).not.toHaveBeenCalled();
+    });
+
+    it('keeps the pending-candidate-message gate for the onboarding touch', async () => {
+      const candidateAt = Date.now() - 30 * 60_000;
+      sponge.getWorkOrderById.mockResolvedValue({ workOrderId: 901, currentStatus: '面试成功' });
+      session.getReengagementState.mockResolvedValue(baseState({ terminal: 'booked' }));
+      chatSession.getChatHistory.mockImplementation(
+        (_chatId: string, limit: number) =>
+          Promise.resolve(
+            limit === 200
+              ? []
+              : [{ role: 'user', content: '我还有个问题', timestamp: candidateAt }],
+          ),
+      );
+      messageProcessing.getLatestReceivedAtByChatId.mockResolvedValue(candidateAt - 10 * 60_000);
+
+      await buildProcessor().process(onboardingJob());
+
+      expect(tracking.trackStopped).toHaveBeenCalledWith(
+        expect.anything(),
+        'pending_candidate_message',
+      );
+      expect(reengagementAgent.compose).not.toHaveBeenCalled();
+    });
+
+    it('schedules the +48h check only after markSent succeeds', async () => {
+      const sentAt = Date.UTC(2026, 7, 20, 2, 0, 0);
+      jest.spyOn(Date, 'now').mockReturnValue(sentAt);
+      sponge.getWorkOrderById.mockResolvedValue({ workOrderId: 901, currentStatus: '面试成功' });
+      session.getReengagementState.mockResolvedValue(baseState({ terminal: 'booked' }));
+      systemConfig.getAgentReplyConfig.mockResolvedValue({
+        reengagementEnabled: true,
+        reengagementShadow: false,
+        reengagementScenarioRollout: { post_interview_onboarding: true },
+      });
+
+      await buildProcessor().process(onboardingJob());
+
+      expect(touchLedger.markSent).toHaveBeenCalled();
+      expect(scheduler.scheduleOnboardingCheck).toHaveBeenCalledWith({
+        sessionRef,
+        workOrderId: 901,
+        anchorAt: sentAt,
+        channelIdentity: expect.objectContaining({ botImId: 'bot-1' }),
+      });
+      expect(touchLedger.markSent.mock.invocationCallOrder[0]).toBeLessThan(
+        scheduler.scheduleOnboardingCheck.mock.invocationCallOrder[0],
+      );
+    });
+
+    it('ends the +48h check silently after the work order reaches onboarding success', async () => {
+      sponge.getWorkOrderById.mockResolvedValue({ workOrderId: 901, currentStatus: '上岗成功' });
+
+      await buildProcessor().process(onboardingJob({ onboardingCheck: true }));
+
+      expect(tracking.trackStopped).toHaveBeenCalledWith(expect.anything(), 'already_onboarded');
+      expect(handoffRecorder.record).not.toHaveBeenCalled();
+      expect(handoffNotifier.notify).not.toHaveBeenCalled();
+      expect(session.getReengagementState).not.toHaveBeenCalled();
+      expect(reengagementAgent.compose).not.toHaveBeenCalled();
+    });
+
+    it('dispatches a non-pausing handoff when the +48h check is still not onboarded', async () => {
+      sponge.getWorkOrderById.mockResolvedValue({ workOrderId: 901, currentStatus: '面试成功' });
+
+      await buildProcessor().process(onboardingJob({ onboardingCheck: true }));
+
+      expect(handoffRecorder.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          reasonCode: 'onboarding_follow_up_required',
+          workOrderId: 901,
+          idempotencyKey:
+            'sess-1:post_interview_onboarding:wo901:onboarding_follow_up_required',
+        }),
+      );
+      expect(handoffNotifier.notify).toHaveBeenCalledWith(
+        expect.objectContaining({
+          reasonCode: 'onboarding_follow_up_required',
+          diagnostics: expect.objectContaining({ hostingPaused: false }),
+        }),
+      );
+      expect(tracking.trackStopped).toHaveBeenCalledWith(
+        expect.anything(),
+        'onboarding_intervention_dispatched',
+      );
+      expect(reengagementAgent.compose).not.toHaveBeenCalled();
+    });
+
+    it('uses the handoff write outcome to suppress duplicate notifications for one work order', async () => {
+      sponge.getWorkOrderById.mockResolvedValue({ workOrderId: 901, currentStatus: '上岗失败' });
+      handoffRecorder.record.mockResolvedValueOnce('inserted').mockResolvedValueOnce('duplicate');
+
+      await buildProcessor().process(onboardingJob());
+      await buildProcessor().process(onboardingJob());
+
+      expect(handoffRecorder.record).toHaveBeenCalledTimes(2);
+      expect(handoffNotifier.notify).toHaveBeenCalledTimes(1);
+      expect(handoffRecorder.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          reasonCode: 'onboarding_failed',
+          idempotencyKey: 'sess-1:post_interview_onboarding:wo901:onboarding_failed',
+        }),
+      );
     });
   });
 });

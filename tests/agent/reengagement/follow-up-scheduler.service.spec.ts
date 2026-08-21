@@ -14,6 +14,13 @@ const baseState = (over: Partial<ReengagementSessionState> = {}): ReengagementSe
 });
 
 describe('FollowUpSchedulerService', () => {
+  interface FakePendingJob {
+    id: string;
+    data: unknown;
+    getState: () => Promise<string>;
+    remove: jest.Mock;
+  }
+
   let queue: { add: jest.Mock; getJob: jest.Mock; getJobs: jest.Mock };
   let systemConfig: { getAgentReplyConfig: jest.Mock };
   let tracking: Record<string, jest.Mock>;
@@ -42,6 +49,25 @@ describe('FollowUpSchedulerService', () => {
     );
   });
 
+  const installRealPendingQueueSemantics = (): FakePendingJob[] => {
+    const pending: FakePendingJob[] = [];
+    queue.add.mockImplementation((_name: string, data: unknown, opts: { jobId: string }) => {
+      pending.push({
+        id: opts.jobId,
+        data,
+        getState: () => Promise.resolve('delayed'),
+        remove: jest.fn().mockImplementation(() => {
+          const index = pending.findIndex((job) => job.id === opts.jobId);
+          if (index >= 0) pending.splice(index, 1);
+          return Promise.resolve();
+        }),
+      });
+      return Promise.resolve();
+    });
+    queue.getJobs.mockImplementation(() => Promise.resolve([...pending]));
+    return pending;
+  };
+
   it('does not schedule when reengagement is disabled', async () => {
     systemConfig.getAgentReplyConfig.mockResolvedValue({ reengagementEnabled: false });
 
@@ -66,6 +92,26 @@ describe('FollowUpSchedulerService', () => {
 
     expect(result).toEqual({ scheduled: false, reason: 'unknown_scenario' });
     expect(queue.add).not.toHaveBeenCalled();
+  });
+
+  it('passes the store invite escalation marker through the Bull payload', async () => {
+    await service.scheduleFollowUp({
+      sessionRef,
+      scenarioCode: 'store_presented_no_reply',
+      anchorEventId: 'evt-store-2',
+      anchorAt: Date.UTC(2026, 5, 24, 2, 0, 0),
+      state: baseState({ presentedStores: [{ jobId: 519709 }] }),
+      escalateToGroupInvite: true,
+    });
+
+    expect(queue.add).toHaveBeenCalledWith(
+      REENGAGEMENT_JOB_NAME,
+      expect.objectContaining({
+        scenarioCode: 'store_presented_no_reply',
+        escalateToGroupInvite: true,
+      }),
+      expect.any(Object),
+    );
   });
 
   it('removes all pending store follow-ups for the session and tracks them as stopped', async () => {
@@ -156,6 +202,40 @@ describe('FollowUpSchedulerService', () => {
     expect(tracking.trackScheduleSkipped).toHaveBeenCalledWith(
       expect.objectContaining({ scenarioCode: 'interview_reminder' }),
       'missing_interview_time',
+    );
+  });
+
+  it('schedules the onboarding check exactly 48 hours after a sent touch', async () => {
+    const now = Date.UTC(2026, 7, 20, 10, 0, 0);
+    jest.spyOn(Date, 'now').mockReturnValue(now);
+
+    const result = await service.scheduleOnboardingCheck({
+      sessionRef,
+      workOrderId: 901,
+      anchorAt: now,
+      channelIdentity: { botImId: 'bot-1' },
+    });
+
+    expect(result).toEqual({
+      scheduled: true,
+      fireAt: now + 48 * 60 * 60_000,
+      jobId: 'sess-1:post_interview_onboarding:wo901:onboarding_check',
+    });
+    expect(queue.add).toHaveBeenCalledWith(
+      REENGAGEMENT_JOB_NAME,
+      {
+        sessionRef,
+        scenarioCode: 'post_interview_onboarding',
+        anchorEventId: 'wo901:onboarding_check',
+        anchorAt: now,
+        workOrderId: 901,
+        onboardingCheck: true,
+        channelIdentity: { botImId: 'bot-1' },
+      },
+      expect.objectContaining({
+        jobId: 'sess-1:post_interview_onboarding:wo901:onboarding_check',
+        delay: 48 * 60 * 60_000,
+      }),
     );
   });
 
@@ -492,6 +572,92 @@ describe('FollowUpSchedulerService', () => {
       }),
     );
     expect(queue.add).toHaveBeenCalled();
+  });
+
+  it('d2 确认档排程不移除同工单到场档（真实队列语义）', async () => {
+    const pending = installRealPendingQueueSemantics();
+    const anchorAt = Date.now();
+    const interviewAt = anchorAt + 5 * 24 * 60 * 60_000;
+    const state = baseState({ terminal: 'booked', interviewAt } as never);
+
+    await service.scheduleFollowUp({
+      sessionRef,
+      scenarioCode: 'interview_reminder',
+      anchorEventId: `wo901:iv${interviewAt}:interview_reminder`,
+      anchorAt,
+      state,
+      workOrderId: 901,
+    });
+    await service.scheduleFollowUp({
+      sessionRef,
+      scenarioCode: 'interview_reminder',
+      anchorEventId: `wo901:iv${interviewAt}:interview_reminder:d2`,
+      anchorAt,
+      state,
+      workOrderId: 901,
+      touchVariant: 'd2_confirm',
+    });
+
+    expect(pending.map((job) => job.id)).toHaveLength(2);
+    expect(tracking.trackSuperseded).not.toHaveBeenCalled();
+  });
+
+  it('同工单同场景同变体的新任务仍替换旧任务', async () => {
+    const pending = installRealPendingQueueSemantics();
+    const anchorAt = Date.now();
+    const interviewAt = anchorAt + 5 * 24 * 60 * 60_000;
+    const state = baseState({ terminal: 'booked', interviewAt } as never);
+
+    await service.scheduleFollowUp({
+      sessionRef,
+      scenarioCode: 'interview_reminder',
+      anchorEventId: `wo901:iv${interviewAt}:interview_reminder:old:d2`,
+      anchorAt,
+      state,
+      workOrderId: 901,
+      touchVariant: 'd2_confirm',
+    });
+    await service.scheduleFollowUp({
+      sessionRef,
+      scenarioCode: 'interview_reminder',
+      anchorEventId: `wo901:iv${interviewAt}:interview_reminder:new:d2`,
+      anchorAt,
+      state,
+      workOrderId: 901,
+      touchVariant: 'd2_confirm',
+    });
+
+    expect(pending.map((job) => job.id)).toEqual([
+      `sess-1:interview_reminder:wo901:iv${interviewAt}:interview_reminder:new:d2`,
+    ]);
+    expect(tracking.trackSuperseded).toHaveBeenCalledTimes(1);
+  });
+
+  it('同工单不同报名后场景保持并存', async () => {
+    const pending = installRealPendingQueueSemantics();
+    const anchorAt = Date.now();
+    const interviewAt = anchorAt + 5 * 24 * 60 * 60_000;
+    const state = baseState({ terminal: 'booked', interviewAt } as never);
+
+    await service.scheduleFollowUp({
+      sessionRef,
+      scenarioCode: 'interview_reminder',
+      anchorEventId: `wo901:iv${interviewAt}:interview_reminder`,
+      anchorAt,
+      state,
+      workOrderId: 901,
+    });
+    await service.scheduleFollowUp({
+      sessionRef,
+      scenarioCode: 'post_interview_followup',
+      anchorEventId: `wo901:iv${interviewAt}:post_interview_followup`,
+      anchorAt,
+      state,
+      workOrderId: 901,
+    });
+
+    expect(pending.map((job) => job.id)).toHaveLength(2);
+    expect(tracking.trackSuperseded).not.toHaveBeenCalled();
   });
 
   it('removes a pending job by id for scenario mutual exclusion', async () => {

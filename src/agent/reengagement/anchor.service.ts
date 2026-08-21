@@ -144,7 +144,10 @@ export class ReengagementAnchorService {
     }
   }
 
-  handleDeliveredReplyAnchors(result: AnchorAgentResult, context: AnchorContext): void {
+  async handleDeliveredReplyAnchors(
+    result: AnchorAgentResult,
+    context: AnchorContext,
+  ): Promise<void> {
     if (context.isGroupChat) return;
     const reply = (result.reply?.content ?? result.text ?? '').trim();
     const toolCalls = result.toolCalls ?? [];
@@ -164,11 +167,10 @@ export class ReengagementAnchorService {
         ? []
         : toolCalls.filter((call) => this.presentedStore(call, reply));
     if (presentedStoreCalls.length > 0) {
-      void this.schedule(
-        'store_presented_no_reply',
+      await this.scheduleStorePresentation(
         `${context.traceId}:store_presented`,
         context,
-        { presentedStores: this.extractPresentedStores(presentedStoreCalls) },
+        this.extractPresentedStores(presentedStoreCalls),
       );
     } else if (
       !collectionContinued &&
@@ -178,7 +180,7 @@ export class ReengagementAnchorService {
       // 候选人追问“还有别的吗”时，Agent 可以直接复用上轮候选岗位池，不必重复查岗。
       // 这类回合没有 duliday_job_list toolCall，但仍真实展示了新岗位；从持久化候选池
       // 映射回复中的门店/岗位，给本次投递建立新的推店未回锚点。
-      void this.scheduleRecalledPoolPresentation(reply, context);
+      await this.scheduleRecalledPoolPresentation(reply, context);
     }
     if (!context.suppressAddressMissing && this.asksForLocation(reply)) {
       void this.scheduler.removeSupersededPendingJobs({
@@ -226,6 +228,33 @@ export class ReengagementAnchorService {
       });
     } catch (error) {
       this.logFailure(`schedule ${scenarioCode}`, context, error);
+    }
+  }
+
+  private async scheduleStorePresentation(
+    anchorEventId: string,
+    context: AnchorContext,
+    presentedStores: ReengagementSessionState['presentedStores'],
+  ): Promise<void> {
+    try {
+      const state = await this.loadState(context);
+      await this.scheduler.scheduleFollowUp({
+        sessionRef: {
+          corpId: context.corpId,
+          userId: context.userId,
+          sessionId: context.chatId,
+        },
+        scenarioCode: 'store_presented_no_reply',
+        anchorEventId,
+        anchorAt: Date.now(),
+        state: { ...state, presentedStores },
+        channelIdentity: context.channelIdentity,
+        ...(state.storePresentationRounds != null && state.storePresentationRounds >= 1
+          ? { escalateToGroupInvite: true }
+          : {}),
+      });
+    } catch (error) {
+      this.logFailure('schedule store_presented_no_reply', context, error);
     }
   }
 
@@ -326,11 +355,10 @@ export class ReengagementAnchorService {
       const presentedJobs = extractPresentedJobs(reply, state.lastCandidatePool ?? []);
       if (presentedJobs.length === 0) return;
 
-      await this.schedule(
-        'store_presented_no_reply',
+      await this.scheduleStorePresentation(
         `${context.traceId}:store_presented`,
         context,
-        { presentedStores: presentedJobs.map((job) => ({ jobId: job.jobId })) },
+        presentedJobs.map((job) => ({ jobId: job.jobId })),
       );
     } catch (error) {
       this.logFailure('match recalled pool presentation', context, error);
