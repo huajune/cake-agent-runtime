@@ -72,6 +72,35 @@
       "config": [],
       "envFiles": [],
       "verification": []
+    },
+    {
+      "number": "1021",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1021",
+      "title": "班次时段承诺判定收窄到同句并豁免否定/复述语境",
+      "author": "huajune",
+      "mergedAt": "2026-08-21",
+      "businessUpdates": [
+        "班次时段承诺判定收窄到同句并豁免否定/复述语境",
+        "补齐班次否定语境边界"
+      ],
+      "summary": [
+        "班次时段承诺判定收窄到同句并豁免否定/复述语境",
+        "补齐班次否定语境边界"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "班次时段承诺判定收窄到同句并豁免否定/复述语境",
+        "补齐班次否定语境边界"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "新增 4 个回归用例：本 badcase 首版仍拦 / 修复版放行 / 否定从句级绑定（正反两例）；",
+        "老 badcase 6a573349（单句内承诺+时段）用例不受影响；",
+        "全量 Jest 7293 passed、typecheck / lint:check / prettier 干净。"
+      ]
     }
   ],
   "lastRelease": {
