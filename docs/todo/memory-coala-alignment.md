@@ -61,6 +61,9 @@ interface LongTermMemory {
 4. 范围：限长期层内部；顶层四层名（短期/会话/长期/阶段状态）维持不动（业界复合轴同构，见 M2 查证）；
 5. 执行纪律：全库测试 + typecheck 一步不省（settlement 批的教训：域内测试不够，误改薪资域枚举靠全库回归才兜住）。
 
+**M2-B 追加项：Working Memory 类型命名（2026-08-21 设计，待批准与主体同批执行）**：
+`PreparedAgentContext` → `WorkingMemory`——prepare() 的产物（finalPrompt + promptBlocks + normalizedMessages + tools）正是 CoALA 语义的本轮工作记忆本体，泛名换精确分类名；**不改** `preparation.service`/`prepare()`（流程阶段名，且职责超出装配——booking 上下文/群资源/账号身份/阶段解析均在内，服务改名会让部件独占概念）；**不改** `finalPrompt`（内容名准确，是成分非全体）。类型注释标注边界：覆盖初始装配，回合内经 prepareStep 的工具结果增长在 generator 侧。
+
 **M3 登记项（随本设计新增）**：① jobIntent 内部软/硬/时间三分（preferences/constraints/availability）——软硬分离在结构上根治"硬约束被当偏好淡化"的暗示，与 M3 分家同性质合并做；② `lastSettledBySession`/`lastSettledMessageAt` 是 consolidation 水位簿记，混在摘要数据里名实有瑕，M3 一并考虑挪位。
 
 ### M3 会话记忆"事实/工作台"分家
