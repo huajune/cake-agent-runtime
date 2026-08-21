@@ -550,6 +550,7 @@ function buildJobAgeScreeningSummary(
 
 const logger = new Logger('duliday_job_list');
 
+// 程序记忆层（procedural memory）工具绑定规则；总目录：docs/prompt-rule-ledger.md
 const DESCRIPTION = `查询在招岗位列表。支持渐进式数据返回，按需获取岗位信息。
 
 ## 适用场景

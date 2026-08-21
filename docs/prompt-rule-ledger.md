@@ -1,5 +1,9 @@
-# Prompt 规则台账（Rule Ledger）
+# 程序记忆索引 · Prompt 规则台账（Procedural Memory Index）
 
+> **本文件是程序记忆层（procedural memory）的唯一总目录**——手册、工具 description、DB 策略文本、
+> booking 共享规则、final-check、守卫 hard-rules 六居所的规则全量登记处，也是该记忆层三项治理的挂载点：
+> **容量**（台账+膨胀哨兵）、**沉淀**（批次删减循环，即 procedural refinement）、**放置**（判定树）。
+> 物理居所按判定树就近散布（规则贴消费者，反口径漂移）；逻辑收拢于此，各居所头部有锚注指回本索引（M1-B）。
 > 建立：2026-08-21（治理方案 P3-1 / 防腐机制 F1，裁定 4：markdown 轻量版，不建系统不建表）
 > 范围：主 generator 链路全部内容居所——手册、工具 description、DB 策略文本（red-lines / thresholds / stage-strategy）、booking 上下文、final-check、出站守卫 hard-rules。
 > 维护纪律见文末；**新增/修改/删除任何 prompt 侧规则的 PR，必须同批更新本台账对应行**。

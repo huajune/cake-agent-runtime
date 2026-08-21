@@ -51,6 +51,7 @@ const UNDELIVERED_PRELUDE_REMINDER =
 const NOT_FRIEND_CONTINUE_INSTRUCTION =
   '候选人当前无法被拉进群（候选人侧关系问题，多为已删除/拉黑接客账号）。这种情况不要调用 request_handoff 转人工，也不要向候选人提及群相关内容、不要承诺拉群。请自然收口：礼貌告知候选人当前暂时没有合适岗位、后续有匹配会主动联系，然后正常结束本轮、保持托管。';
 
+// 程序记忆层（procedural memory）工具绑定规则；总目录：docs/prompt-rule-ledger.md
 const DESCRIPTION = `邀请候选人加入企微兼职岗位信息群。
 
 ## 群用途边界（硬规则）

@@ -46,6 +46,7 @@ const logger = new Logger('duliday_interview_booking');
 const INTERVIEW_TIME_REGEX = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/u;
 const BOOKING_DEDUP_WINDOW_MS = 30 * 60 * 1000;
 
+// 程序记忆层（procedural memory）工具绑定规则；总目录：docs/prompt-rule-ledger.md
 const DESCRIPTION = `提交面试报名。候选人资料全部来自已确认的收资表单，本工具只接收 jobId 与可选 interviewTime。
 
 调用前必须在**本轮**调用 duliday_interview_precheck 并得到 nextAction=ready_to_book；其它 action 一律禁止 booking。

@@ -12,6 +12,7 @@ import { extractLatestUserMessage } from './shared/chat-history.util';
 
 const logger = new Logger('request_handoff');
 
+// 程序记忆层（procedural memory）工具绑定规则；总目录：docs/prompt-rule-ledger.md
 const DESCRIPTION = `候选人遇到你无法自助推进、需要真人介入的阻塞时调用——**不限会话阶段**：岗位咨询、收资、约面、面试后、入职跟进期间都可能触发（具体见下方 15 类场景，其中 6/7/9/10 等场景在约面及之后阶段最常见）。**调用即短路本轮——runtime 会自动结束本轮，候选人本次不会收到任何回复**，副作用（暂停托管 / 飞书告警 / case 状态变更）全部异步执行。
 
 ## 前置条件

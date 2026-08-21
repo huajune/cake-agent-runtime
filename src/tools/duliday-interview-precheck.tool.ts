@@ -65,6 +65,7 @@ export {
 
 const logger = new Logger('duliday_interview_precheck');
 
+// 程序记忆层（procedural memory）工具绑定规则；总目录：docs/prompt-rule-ledger.md
 const DESCRIPTION = `面试前置校验。实时读取岗位收资契约，推进候选人 × 岗位的持久表单，并返回可约时段。
 
 参数纪律：

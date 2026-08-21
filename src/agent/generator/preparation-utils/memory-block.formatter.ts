@@ -467,6 +467,7 @@ export function formatBookingContext(
  * （由 preparation.loadBookingContext 在全部预约块之后拼接）。
  * 文案与原逐条渲染版本逐字一致——P1-2 是无损瘦身，只改渲染次数不改语义。
  */
+// 程序记忆层·booking 共享规则（代码动态注入居所）；总目录：docs/prompt-rule-ledger.md
 export const BOOKING_CONTEXT_SHARED_RULES = [
   '以上预约统一按下列规则处理：',
   '候选人可同时报名多个不同岗位；已预约 A 岗不代表不能继续报名 B 岗。但同一工单/同一岗位不要重复提交报名。',

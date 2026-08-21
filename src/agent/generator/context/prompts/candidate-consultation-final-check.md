@@ -1,3 +1,4 @@
+<!-- 程序记忆层 prompt 侧物理仓·recitation 收口段；总目录：docs/prompt-rule-ledger.md -->
 # 发送前自检（全部需通过）
 
 发出回复前按以下顺序自检；任一项未通过都需先修改再发。
