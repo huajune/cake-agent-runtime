@@ -1,4 +1,4 @@
-import { buildSessionFactsHashKey } from '@memory/session/session-key';
+import { buildSessionFactsHashKey } from '@memory/session-state/session-key';
 
 describe('buildSessionFactsHashKey', () => {
   // 这是 Redis 唯一事实源（facts / terminal / brand_state）的寻址口径：

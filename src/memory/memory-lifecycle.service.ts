@@ -6,12 +6,12 @@ import type { PostProcessingStatus, PostProcessingStepStatus } from '@shared-typ
 import type { CityAttestation, TurnExtractionToolFacts } from '@shared-types/turn.types';
 import { resolveBrands } from '@resolution/brand/brand-matcher';
 import type { BrandResolution } from '@resolution/brand/brand-resolution.types';
-import { BrandStateService } from './session/brand-state.service';
+import { BrandStateService } from './session-state/brand-state.service';
 import { LongTermService } from './long-term/long-term.service';
 import { MemoryEnrichmentService, type CandidateIdentityHint } from './memory-enrichment.service';
 import { StageStateService } from './stage-state/stage-state.service';
 import { ConsolidationService } from './long-term/consolidation.service';
-import { SessionService } from './session/session.service';
+import { SessionService } from './session-state/session.service';
 import { ShortTermService } from './short-term/short-term.service';
 import { stripQuotedBlocks, stripTimeContext } from '@resolution/signal/markers';
 import type { AgentMemoryContext } from './types/memory-runtime.types';
@@ -22,7 +22,7 @@ import type {
 } from './long-term/long-term.types';
 import { isUserProfileFactValue } from './long-term/long-term.types';
 import type { ShortTermMessage } from './short-term/short-term.types';
-import type { WeworkSessionState } from './session/session-facts.types';
+import type { WeworkSessionState } from './session-state/session-facts.types';
 import type { RecommendedJobSummary } from '@resolution/job/types';
 import type { RuleFactClaims } from '@resolution/evidence/claim.types';
 import type { LaborFormIntentDecision } from '@resolution/labor-form';

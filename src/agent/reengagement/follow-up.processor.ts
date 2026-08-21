@@ -19,12 +19,12 @@ import {
 } from '@biz/group-task/services/group-invite.service';
 import { HandoffRecorderService } from '@biz/handoff-events/handoff-recorder.service';
 import { GeneralHandoffNotifierService } from '@notification/services/general-handoff-notifier.service';
-import { SessionService } from '@memory/session/session.service';
-import { unwrapSessionFactValue } from '@memory/session/session-facts.types';
+import { SessionService } from '@memory/session-state/session.service';
+import { unwrapSessionFactValue } from '@memory/session-state/session-facts.types';
 import { LongTermService } from '@memory/long-term/long-term.service';
 import { SpongeService } from '@sponge/sponge.service';
 import { ACTIVE_INTERVIEW_WORK_ORDER_STATUSES } from '@sponge/sponge.types';
-import type { ReengagementSessionState } from '@memory/session/reengagement-session-state.types';
+import type { ReengagementSessionState } from '@memory/session-state/reengagement-session-state.types';
 import { MessageDeliveryService } from '@wecom/message/delivery/delivery.service';
 import type { DeliveryContext, DeliveryResult } from '@wecom/message/types';
 import type { TurnOutcome } from '../runner/agent-runner.types';

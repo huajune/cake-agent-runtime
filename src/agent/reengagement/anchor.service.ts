@@ -2,8 +2,8 @@ import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import type { AgentToolCall } from '@agent/generator/generator.types';
 import { extractPresentedJobs } from '@resolution/job';
-import type { ReengagementSessionState } from '@memory/session/reengagement-session-state.types';
-import { SessionService } from '@memory/session/session.service';
+import type { ReengagementSessionState } from '@memory/session-state/reengagement-session-state.types';
+import { SessionService } from '@memory/session-state/session.service';
 import {
   FollowUpSchedulerService,
   type ReengagementChannelIdentity,

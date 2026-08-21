@@ -1,5 +1,5 @@
 import { ReengagementAnchorService } from '@agent/reengagement/anchor.service';
-import type { ReengagementSessionState } from '@memory/session/reengagement-session-state.types';
+import type { ReengagementSessionState } from '@memory/session-state/reengagement-session-state.types';
 
 const context = {
   traceId: 'trace-1',

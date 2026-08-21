@@ -111,7 +111,7 @@ src/memory/                                  ═══ 记忆四层（生命周�
 ├── memory-enrichment.service.ts             # 跨层丰富——同上
 ├── short-term/                              # ① 短期窗口 ✅（service + types 同居）
 ├── stage-state/                             # ③ 阶段状态（原"程序记忆"）✅（service + types 同居）
-├── session/                                 # ② 会话记忆 ✅Ⓒ（目录）+ ✅Ⓜ（分舱）
+├── session-state/                           # ② 会话状态（原 session/，2026-08-21 三次修正：scope 名两头不靠，与 stage-state 平行）✅
 │   ├── session.service.ts                   #    薄 facade：1:1 委托两舱，26 注入点零波及 ✅
 │   ├── facts.service.ts                     #    事实舱（semantic）：状态所有者/事实读写/提取/已发生事件 ✅
 │   ├── workbench.service.ts                 #    工作台舱（working state）：candidatePool/presentedJobs/

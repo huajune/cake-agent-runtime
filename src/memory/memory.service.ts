@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { StageStateService } from './stage-state/stage-state.service';
 import { LongTermService } from './long-term/long-term.service';
-import { SessionService } from './session/session.service';
+import { SessionService } from './session-state/session.service';
 import {
   MemoryLifecycleService,
   type MemoryLifecycleTurnContext,
@@ -9,7 +9,7 @@ import {
 import type { CandidateIdentityHint } from './memory-enrichment.service';
 import type { AgentMemoryContext } from './types/memory-runtime.types';
 import type { SessionSummaries } from './long-term/long-term.types';
-import type { InvitedGroupRecord } from './session/session-facts.types';
+import type { InvitedGroupRecord } from './session-state/session-facts.types';
 import type { RuleFactClaims } from '@resolution/evidence/claim.types';
 import type { StageState } from './stage-state/stage-state.types';
 import { formatExtractionFactLines } from './formatters/fact-lines.formatter';

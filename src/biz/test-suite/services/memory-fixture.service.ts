@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { MemoryService } from '@memory/memory.service';
-import { SessionService } from '@memory/session/session.service';
-import { BrandStateService } from '@memory/session/brand-state.service';
+import { SessionService } from '@memory/session-state/session.service';
+import { BrandStateService } from '@memory/session-state/brand-state.service';
 import { LongTermService } from '@memory/long-term/long-term.service';
 import {
   EntityExtractionResultSchema,
@@ -9,7 +9,7 @@ import {
   toSessionFacts,
   type EntityExtractionResult,
   type InvitedGroupRecord,
-} from '@memory/session/session-facts.types';
+} from '@memory/session-state/session-facts.types';
 import type { RecommendedJobSummary } from '@resolution/job/types';
 import type { StageState } from '@memory/stage-state/stage-state.types';
 import type { UserProfile } from '@memory/long-term/long-term.types';

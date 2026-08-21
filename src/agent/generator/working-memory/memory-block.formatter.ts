@@ -17,7 +17,7 @@ import {
   type EntityExtractionResult,
   type WeworkSessionState,
   unwrapSessionFacts,
-} from '@memory/session/session-facts.types';
+} from '@memory/session-state/session-facts.types';
 import type { RecommendedJobSummary } from '@resolution/job/types';
 import type { SignupWorkOrderItem } from '@sponge/sponge.types';
 import { isArchivedProfileFactSuperseded } from '@resolution/evidence/profile';

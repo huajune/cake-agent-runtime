@@ -8,7 +8,7 @@ import type {
   EntityExtractionResult,
   SessionFacts,
   SessionFactValue,
-} from '../session/session-facts.types';
+} from '../session-state/session-facts.types';
 
 export interface FactLineFormatOptions {
   /**

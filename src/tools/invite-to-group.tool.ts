@@ -9,7 +9,7 @@ import {
   type GroupInviteInput,
   type GroupInviteResult,
 } from '@biz/group-task/services/group-invite.service';
-import { SessionService } from '@memory/session/session.service';
+import { SessionService } from '@memory/session-state/session.service';
 import { evaluateInviteCityGate } from '@tools/invite/invite-city-gate';
 import { evaluateInviteTimingGate, hasAcceptedGroupOffer } from '@tools/invite/invite-timing-gate';
 import { extractUserTexts } from '@resolution/signal/dialogue';

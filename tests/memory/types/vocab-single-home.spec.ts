@@ -12,7 +12,7 @@ import {
   SESSION_TERMINAL_STATES,
   SessionFactConfidenceSchema,
   WeworkSessionStateSchema,
-} from '@/memory/session/session-facts.types';
+} from '@/memory/session-state/session-facts.types';
 import { RecommendedJobWelfareKindSchema } from '@resolution/job/types';
 import { LONG_TERM_JOB_INTENT_FIELD_KEYS } from '@/memory/long-term/long-term.types';
 import { WELFARE_KINDS } from '@/tools/job-list/welfare-facts.util';

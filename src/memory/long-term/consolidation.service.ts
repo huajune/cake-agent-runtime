@@ -10,7 +10,7 @@ import {
   type EntityExtractionResult,
   type SessionFacts,
   unwrapSessionFacts,
-} from '../session/session-facts.types';
+} from '../session-state/session-facts.types';
 import type { PersistedBrandState } from '@resolution/brand/brand-resolution.types';
 
 const SUMMARY_SYSTEM_PROMPT = `你是对话摘要生成器。将招募经理与候选人的对话和提取的事实信息压缩为一段简洁的摘要。

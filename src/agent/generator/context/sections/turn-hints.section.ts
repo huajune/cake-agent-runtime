@@ -4,7 +4,7 @@ import {
   type EntityExtractionResult,
   type SessionFacts,
   unwrapSessionFacts,
-} from '@memory/session/session-facts.types';
+} from '@memory/session-state/session-facts.types';
 import type { RuleFactClaims, RuleFactFieldPath } from '@resolution/evidence/claim.types';
 import {
   isSameFactValue,

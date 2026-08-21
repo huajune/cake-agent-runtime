@@ -2,12 +2,12 @@ import {
   SESSION_EXTRACTION_SYSTEM_PROMPT,
   buildExtractionIdentityProvenanceCorpus,
   buildSessionExtractionPrompt,
-} from '@memory/session/session-extraction.prompt';
+} from '@memory/session-state/session-extraction.prompt';
 import {
   FALLBACK_EXTRACTION,
   LLMEntityExtractionResultSchema,
   toSessionFacts,
-} from '@memory/session/session-facts.types';
+} from '@memory/session-state/session-facts.types';
 
 const emptyPreferences = () => ({
   brand_ids: null,

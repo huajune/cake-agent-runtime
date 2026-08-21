@@ -7,7 +7,7 @@ import {
 } from '@resolution/evidence/producers/rule-track';
 import { getRuleFactValue } from '@resolution/evidence/merge';
 import { unwrapUserProfileFactValue } from './long-term/long-term.types';
-import { unwrapSessionFactValue } from './session/session-facts.types';
+import { unwrapSessionFactValue } from './session-state/session-facts.types';
 import type { AgentMemoryContext } from './types/memory-runtime.types';
 
 /**

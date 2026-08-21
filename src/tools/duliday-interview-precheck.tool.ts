@@ -1,5 +1,5 @@
 import { toErrorMessage } from '@infra/utils/error.util';
-import type { CollectionFormService } from '@memory/session/collection-form.service';
+import type { CollectionFormService } from '@memory/session-state/collection-form.service';
 import { Logger } from '@nestjs/common';
 import {
   applyRecapResult,

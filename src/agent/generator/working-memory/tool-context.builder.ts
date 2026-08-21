@@ -13,7 +13,7 @@ import {
   isSessionFactValue,
   unwrapSessionFactValue,
   unwrapSessionFacts,
-} from '@memory/session/session-facts.types';
+} from '@memory/session-state/session-facts.types';
 import { ContextService } from '../context/context.service';
 import { type GeneratorInvokeParams } from '../generator.types';
 import { resolveGeocodeLocationAnchor } from './geocode-location-anchor.util';

@@ -3,7 +3,7 @@ import {
   type Preferences,
   type SessionFacts,
   unwrapSessionFacts,
-} from '@memory/session/session-facts.types';
+} from '@memory/session-state/session-facts.types';
 import { projectRuleFactClaims } from '@resolution/evidence/merge';
 import type { RuleFactClaims } from '@resolution/evidence/claim.types';
 import { isHardFilteredLaborForm, isValidLaborForm } from '@resolution/labor-form';

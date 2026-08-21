@@ -1,12 +1,12 @@
-import { SessionFactsService } from '@memory/session/facts.service';
-import { SessionWorkbenchService } from '@memory/session/workbench.service';
-import { SessionService } from '@memory/session/session.service';
+import { SessionFactsService } from '@memory/session-state/facts.service';
+import { SessionWorkbenchService } from '@memory/session-state/workbench.service';
+import { SessionService } from '@memory/session-state/session.service';
 import {
   FALLBACK_EXTRACTION,
   SessionFactsSchema,
   sessionFactValue,
   toSessionFacts,
-} from '@memory/session/session-facts.types';
+} from '@memory/session-state/session-facts.types';
 
 const preferences = (overrides: Record<string, unknown> = {}) => ({
   brand_ids: null,
