@@ -38,31 +38,16 @@ describe('formatExtractionFactLines', () => {
     ]);
   });
 
-  it('should render brand from currentBrandName option, never from retired preferences.brands (§19.6)', () => {
+  it('should render brand from currentBrandName option only (§19.6)', () => {
     // 品牌唯一真相是 brand_state，由调用方经 options 显式注入；
-    // facts 里即使残留旧存储值（收口前写入）也不得渲染。
-    const lines = formatExtractionFactLines(
-      {
-        ...FALLBACK_EXTRACTION,
-        preferences: {
-          ...FALLBACK_EXTRACTION.preferences,
-          brands: ['旧存储残留品牌'],
-        },
-      },
-      { currentBrandName: '来伊份' },
-    );
+    // facts 侧已无 brands 字段可读（记忆审计 S9 删除）。
+    const lines = formatExtractionFactLines(FALLBACK_EXTRACTION, { currentBrandName: '来伊份' });
 
     expect(lines).toEqual(['- 意向品牌: 来伊份（来源: 会话品牌状态）']);
   });
 
   it('should render no brand line when currentBrandName is absent', () => {
-    const lines = formatExtractionFactLines({
-      ...FALLBACK_EXTRACTION,
-      preferences: {
-        ...FALLBACK_EXTRACTION.preferences,
-        brands: ['旧存储残留品牌'],
-      },
-    });
+    const lines = formatExtractionFactLines(FALLBACK_EXTRACTION);
 
     expect(lines).toEqual([]);
   });
@@ -153,59 +138,12 @@ describe('formatExtractionFactLines', () => {
     it('truncates long quotes instead of re-injecting the whole message per field', () => {
       const long = '我'.repeat(200);
       const [line] = formatRuleFactClaimLines(
-        testRuleFacts(
-          testRuleFact('interview_info.age', '24', '年龄识别：24', { quote: long }),
-        ),
+        testRuleFacts(testRuleFact('interview_info.age', '24', '年龄识别：24', { quote: long })),
         { includeEvidence: true, includeQuote: true, currentTurnTexts: ['另一条消息', '再一条'] },
       );
 
       expect(line).toContain(`原话: ${'我'.repeat(RULE_CLAIM_QUOTE_RENDER_MAX_CHARS)}…`);
       expect(line.length).toBeLessThan(120);
     });
-  });
-
-  it('should warn when a time-sensitive fact is stale (extractedAt > 24h ago)', () => {
-    jest.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-07-13T10:00:00+08:00'));
-    const staleAt = '2026-07-06T14:35:00+08:00';
-    const lines = formatExtractionFactLines({
-      ...FALLBACK_EXTRACTION,
-      interview_info: {
-        ...FALLBACK_EXTRACTION.interview_info,
-        interview_time: {
-          value: '明天下午2点',
-          confidence: 'medium',
-          source: 'model',
-          evidence: 'LLM 结构化提取',
-          extractedAt: staleAt,
-        },
-      },
-    } as unknown as Parameters<typeof formatExtractionFactLines>[0]);
-
-    expect(lines).toHaveLength(1);
-    expect(lines[0]).toContain('- 面试时间: 明天下午2点');
-    expect(lines[0]).toContain(
-      '⚠️记录时间：2026-07-06 14:35；其中的相对时间表述以该记录时间为基准，可能已失效',
-    );
-  });
-
-  it('should render a complete Beijing timestamp for a fresh time-sensitive fact', () => {
-    jest.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-07-13T15:00:00+08:00'));
-    const lines = formatExtractionFactLines({
-      ...FALLBACK_EXTRACTION,
-      interview_info: {
-        ...FALLBACK_EXTRACTION.interview_info,
-        applied_store: {
-          value: '顺德欢乐海岸PH',
-          confidence: 'high',
-          source: 'model',
-          evidence: '候选人确认应聘门店',
-          extractedAt: '2026-07-13T14:35:00+08:00',
-        },
-      },
-    } as unknown as Parameters<typeof formatExtractionFactLines>[0]);
-
-    expect(lines).toContain(
-      '- 应聘门店: 顺德欢乐海岸PH（置信度: high，来源: model）（记录时间：2026-07-13 14:35）',
-    );
   });
 });

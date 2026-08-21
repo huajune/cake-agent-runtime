@@ -21,10 +21,7 @@ describe('ProceduralService', () => {
 
       const state = await service.get('corp1', 'user1', 'session1');
 
-      expect(state.currentStage).toBeNull();
-      expect(state.fromStage).toBeNull();
-      expect(state.advancedAt).toBeNull();
-      expect(state.reason).toBeNull();
+      expect(state).toEqual({ currentStage: null });
     });
 
     it('should return stored stage state', async () => {
@@ -39,20 +36,15 @@ describe('ProceduralService', () => {
 
       const state = await service.get('corp1', 'user1', 'session1');
 
-      expect(state.currentStage).toBe('needs_collection');
-      expect(state.fromStage).toBe('trust_building');
-      expect(state.reason).toBe('信任建立完成');
+      // 旧记录里的 fromStage/advancedAt/reason 不再读出（记忆审计 S10 删只写字段）：
+      // 它们只写不读，存量随会话 TTL 自然过期。
+      expect(state).toEqual({ currentStage: 'needs_collection' });
     });
   });
 
   describe('set', () => {
     it('should write stage to Redis with SESSION_TTL', async () => {
-      await service.set('corp1', 'user1', 'session1', {
-        currentStage: 'job_recommendation',
-        fromStage: 'needs_collection',
-        advancedAt: '2026-03-20T10:00:00Z',
-        reason: '需求收集完成',
-      });
+      await service.set('corp1', 'user1', 'session1', { currentStage: 'job_recommendation' });
 
       expect(mockRedisStore.set).toHaveBeenCalledWith(
         'stage:corp1:user1:session1',

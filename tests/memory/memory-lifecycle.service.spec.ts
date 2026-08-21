@@ -235,6 +235,47 @@ describe('MemoryLifecycleService', () => {
 
       expect(ctx.longTerm.origin).toBeUndefined();
     });
+
+    it('有 bot 上下文时只召回同账号血缘事实，存量无血缘也 fail-closed', async () => {
+      mockLongTerm.getProfile.mockResolvedValue({
+        name: {
+          value: '兮兮',
+          confidence: 'high',
+          source: 'system',
+          evidence: 'booking A',
+          updatedAt: '2026-08-20T10:00:00.000Z',
+          originSessionId: 'session-A',
+          originBotId: 'bot-A',
+        },
+        phone: {
+          value: '18271421690',
+          confidence: 'high',
+          source: 'system',
+          evidence: 'booking B',
+          updatedAt: '2026-08-20T10:00:00.000Z',
+          originSessionId: 'session-B',
+          originBotId: 'bot-B',
+        },
+        age: {
+          value: '25',
+          confidence: 'high',
+          source: 'system',
+          evidence: 'legacy without bot lineage',
+          updatedAt: '2026-08-20T10:00:00.000Z',
+        },
+      });
+
+      const ctx = await service.onTurnStart('corp-1', 'user-1', 'session-B', '继续', {
+        enrichmentIdentity: { imBotId: 'bot-B' },
+      });
+
+      expect(ctx.longTerm.profile?.name).toBeNull();
+      expect(ctx.longTerm.profile?.age).toBeNull();
+      expect(ctx.longTerm.profile?.phone).toEqual(
+        expect.objectContaining({ value: '18271421690', originBotId: 'bot-B' }),
+      );
+      expect(mockLongTerm.getSummaryData).toHaveBeenCalledWith('corp-1', 'user-1', 'bot-B');
+    });
   });
 
   it('should forward short-term cutoff on turn start', async () => {
@@ -310,13 +351,7 @@ describe('MemoryLifecycleService', () => {
       { role: 'user', content: '上海杨浦，我是男生，25岁，有健康证，想找兼职服务员，周末有空' },
     ]);
     mockSessionService.getSessionState.mockResolvedValue({
-      facts: {
-        ...FALLBACK_EXTRACTION,
-        preferences: {
-          ...FALLBACK_EXTRACTION.preferences,
-          brands: ['来伊份'],
-        },
-      },
+      facts: FALLBACK_EXTRACTION,
       lastCandidatePool: null,
       presentedJobs: null,
       currentFocusJob: null,
@@ -330,22 +365,19 @@ describe('MemoryLifecycleService', () => {
     mockLongTerm.getProfile.mockResolvedValue(null);
 
     const text = '上海杨浦，我是男生，25岁，有健康证，想找兼职服务员，周末有空';
-    const ctx = await service.onTurnStart(
-      'corp-1',
-      'user-1',
-      'sess-1',
-      text,
-      { ruleFacts: await prepRuleFacts(text) },
-    );
+    const ctx = await service.onTurnStart('corp-1', 'user-1', 'sess-1', text, {
+      ruleFacts: await prepRuleFacts(text),
+    });
 
-    expect(ctx.sessionMemory?.facts?.preferences.brands).toEqual(['来伊份']);
+    // preferences.brands 字段已删（记忆审计 S9）：品牌唯一真相是 brand_state。
+    expect(ctx.sessionMemory?.facts?.preferences).not.toHaveProperty('brands');
     expect(ctx.sessionMemory?.facts?.preferences.city).toBeNull();
     expect(getRuleFact(ctx.ruleFacts, 'preferences.city')).toEqual(
       expect.objectContaining({
-      value: '上海',
-      confidence: 'high',
-      producer: 'rule',
-      evidence: expect.objectContaining({ code: 'municipality_compact' }),
+        value: '上海',
+        confidence: 'high',
+        producer: 'rule',
+        evidence: expect.objectContaining({ code: 'municipality_compact' }),
       }),
     );
     expect(getRuleFact(ctx.ruleFacts, 'preferences.district')?.value).toEqual(['杨浦']);
@@ -375,13 +407,9 @@ describe('MemoryLifecycleService', () => {
     mockLongTerm.getProfile.mockResolvedValue(null);
 
     const text = '姓名：张琰\n电话：19986247174\n年龄24\n明天吧\n有';
-    const ctx = await service.onTurnStart(
-      'corp-1',
-      'user-1',
-      'sess-1',
-      text,
-      { ruleFacts: await prepRuleFacts(text) },
-    );
+    const ctx = await service.onTurnStart('corp-1', 'user-1', 'sess-1', text, {
+      ruleFacts: await prepRuleFacts(text),
+    });
 
     expect(getRuleFact(ctx.ruleFacts, 'interview_info.name')?.value).toBe('张琰');
     expect(getRuleFact(ctx.ruleFacts, 'interview_info.phone')?.value).toBe('19986247174');

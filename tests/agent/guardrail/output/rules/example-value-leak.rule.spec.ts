@@ -15,7 +15,9 @@ describe('example_value_leak', () => {
     ].join('\n');
 
   it('observes a registered canary without vetoing the reply', () => {
-    const hit = detectExampleValueLeak(productionShapedText('可以去测试门店了解，电话 13800138000。'));
+    const hit = detectExampleValueLeak(
+      productionShapedText('可以去测试门店了解，电话 13800138000。'),
+    );
 
     expect(hit).toEqual(
       expect.objectContaining({

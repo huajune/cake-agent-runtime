@@ -1,5 +1,8 @@
 import {
   buildNoMatchScript,
+  buildPostInviteClosureScript,
+  buildRecommendationLimitScript,
+  countDissatisfiedRecommendationRounds,
   hasPriorNoMatchReply,
 } from '@tools/duliday/job-list/no-match-script.util';
 
@@ -40,7 +43,8 @@ describe('buildNoMatchScript', () => {
       const s = buildNoMatchScript({ brandLabels: ['汉堡王'], regionLabels: ['徐汇'] });
       expect(s.candidateMessage).toContain('汉堡王在徐汇这片');
       expect(s.candidateMessage).toContain('暂时没找到合适的岗位');
-      expect(s.candidateMessage).toContain('餐饮兼职群');
+      expect(s.candidateMessage).toContain('第一时间联系你');
+      expect(s.candidateMessage).not.toContain('兼职群');
     });
 
     it('store-anchored intro takes precedence over brand', () => {
@@ -85,24 +89,25 @@ describe('buildNoMatchScript', () => {
       expect(s.candidateMessage).toContain('必胜客在北京这边');
     });
 
-    it('always includes 拉群 follow-up action', () => {
+    it('true no-match waits for inventory instead of offering a group', () => {
       const s = buildNoMatchScript({});
-      expect(s.candidateMessage).toContain('餐饮兼职群');
-      expect(s.candidateMessage).toContain('@你');
+      expect(s.candidateMessage).toContain('新岗位');
+      expect(s.candidateMessage).not.toContain('兼职群');
+      expect(s.nextAction).toBe('wait_for_inventory');
     });
   });
 
   describe('structured fields', () => {
-    it('nextToolCall is invite_to_group', () => {
-      expect(buildNoMatchScript({}).nextToolCall).toBe('invite_to_group');
+    it('nextAction is a closed wait state', () => {
+      expect(buildNoMatchScript({}).nextAction).toBe('wait_for_inventory');
     });
 
-    it('forbiddenActions lists cross-brand + 城市扩张 + 编造门店状态 + 静默拉群 禁止项', () => {
+    it('forbiddenActions lists cross-brand + 城市扩张 + 编造门店状态 + 真无岗不拉群 禁止项', () => {
       const f = buildNoMatchScript({}).forbiddenActions;
       expect(f.some((x) => x.includes('换品牌'))).toBe(true);
       expect(f.some((x) => x.includes('跨品牌'))).toBe(true);
       expect(f.some((x) => x.includes('关了') || x.includes('搬了'))).toBe(true);
-      expect(f.some((x) => x.includes('静默'))).toBe(true);
+      expect(f.some((x) => x.includes('不得调用 invite_to_group'))).toBe(true);
     });
 
     it('adds a whole-city overclaim ban only for radius-capped queries', () => {
@@ -110,6 +115,71 @@ describe('buildNoMatchScript', () => {
       expect(capped.some((x) => x.includes('整个城市'))).toBe(true);
       const uncapped = buildNoMatchScript({ cityLabels: ['北京'] }).forbiddenActions;
       expect(uncapped.some((x) => x.includes('整个城市'))).toBe(false);
+    });
+  });
+
+  describe('推荐两轮上限与拉群后收口', () => {
+    const twoRejectedRounds = [
+      {
+        role: 'assistant',
+        content: '推荐肯德基 A 店岗位，薪资 22 元/小时，班次 09:00-18:00',
+      },
+      { role: 'user', content: '这个太远了，不合适' },
+      {
+        role: 'assistant',
+        content: '再看瑞幸 B 店岗位，薪资 21 元/小时，班次 12:00-20:00',
+      },
+      { role: 'user', content: '时间也不行，换别的吧' },
+    ];
+
+    it('counts one round per concrete recommendation followed by dissatisfaction', () => {
+      expect(countDissatisfiedRecommendationRounds(twoRejectedRounds)).toBe(2);
+      expect(
+        countDissatisfiedRecommendationRounds([
+          ...twoRejectedRounds,
+          { role: 'user', content: '还有吗' },
+        ]),
+      ).toBe(2);
+    });
+
+    it('counts production job cards that use store names instead of the words 岗位/门店', () => {
+      expect(
+        countDissatisfiedRecommendationRounds([
+          {
+            role: 'assistant',
+            content:
+              '成都你六姐（凌空SOHO店）- 洗碗工 2.3km\n班次：12:00-14:30\n薪资：24元/时',
+          },
+          { role: 'assistant', content: '你看哪家方便' },
+          { role: 'user', content: '我上不了那么长时间' },
+          {
+            role: 'assistant',
+            content:
+              '成都你六姐（金光汇店）- 后厨 8.2km\n班次：18:00-22:00\n薪资：24元/时',
+          },
+          { role: 'assistant', content: '这几家都是晚高峰短班，你看哪家方便' },
+          { role: 'user', content: '没有近的，都有点远' },
+        ]),
+      ).toBe(2);
+    });
+
+    it('offers group consent after two rounds without claiming or executing an invite', () => {
+      const script = buildRecommendationLimitScript({ cityLabels: ['上海'] });
+      expect(script.nextAction).toBe('offer_group_invite');
+      expect(script.candidateMessage).toContain('前面两轮');
+      expect(script.candidateMessage).toContain('回复我“可以”');
+      expect(script.candidateMessage).not.toMatch(/已拉|邀请已经发/);
+      expect(script.forbiddenActions.some((x) => x.includes('不得调用 invite_to_group'))).toBe(
+        true,
+      );
+    });
+
+    it('closes recommendation wording after a successful prior invite', () => {
+      const script = buildPostInviteClosureScript({ groupName: '上海兼职群', city: '上海' });
+      expect(script.nextAction).toBe('group_handoff_complete');
+      expect(script.candidateMessage).toContain('上海兼职群');
+      expect(script.forbiddenActions.join('\n')).toContain('禁止继续调用 duliday_job_list');
+      expect(script.forbiddenActions.join('\n')).toContain('其他区域');
     });
   });
 
@@ -144,7 +214,10 @@ describe('buildNoMatchScript', () => {
       ).toBe(true);
       expect(
         hasPriorNoMatchReply([
-          { role: 'assistant', content: '必胜客在你附近 10 公里内暂时没找到合适的岗位，我先帮你进餐饮兼职群' },
+          {
+            role: 'assistant',
+            content: '必胜客在你附近 10 公里内暂时没找到合适的岗位，我先帮你进餐饮兼职群',
+          },
         ]),
       ).toBe(true);
     });

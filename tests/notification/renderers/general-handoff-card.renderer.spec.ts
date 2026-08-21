@@ -5,7 +5,8 @@ import type {
   GeneralHandoffNotificationPayload,
 } from '@notification/types/general-handoff-notification.types';
 import {
-  SessionFactsSchema,
+  EntityExtractionResultSchema,
+  toSessionFacts,
   type SessionFacts,
   type WeworkSessionState,
 } from '@memory/types/session-facts.types';
@@ -16,7 +17,7 @@ function buildSessionState(
   override: Partial<WeworkSessionState['facts']['interview_info']> = {},
 ): WeworkSessionState {
   return {
-    facts: SessionFactsSchema.parse({
+    facts: storedFacts({
       interview_info: {
         name: '张三',
         phone: '13800000000',
@@ -32,7 +33,6 @@ function buildSessionState(
         ...override,
       },
       preferences: {
-        brands: null,
         salary: null,
         position: null,
         schedule: null,
@@ -71,6 +71,18 @@ function buildPayload(override: Partial<RendererInput> = {}): RendererInput {
     sessionState: buildSessionState(),
   };
   return { ...base, ...override } as RendererInput;
+}
+
+/**
+ * 用例里的事实字面量是裸值形态，而落盘态只收信封或 null（记忆审计 S9 拆掉了裸值
+ * 兼容信封）。这里统一经 toSessionFacts 署名，与生产写入方同口径。
+ */
+function storedFacts(raw: Record<string, unknown>) {
+  return toSessionFacts(EntityExtractionResultSchema.parse({ reasoning: 'spec fixture', ...raw }), {
+    confidence: 'medium',
+    source: 'archive',
+    evidence: 'spec fixture',
+  });
 }
 
 describe('GeneralHandoffCardRenderer', () => {

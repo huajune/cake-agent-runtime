@@ -16,9 +16,8 @@ import { GUARDRAIL_ACTION } from '@shared-types/guardrail.contract';
  *   文本原样放行，承诺由真人接续兑现。**直接 enforce，不设 shadow 期**（用户 8-14 裁定）：
  *   补动作形态下假阳代价 = 一次不必要的暂停 + 真人被 ping，候选人无感知、无错误投递物，
  *   风险本质不同于原 block 形态，无需观测期背书。
- * - `booking_promise_without_booking` → 纯观测。报名动作**无法**自动补
- *   （precheck 未通过时不能替报），出口不是补动作；9-2 断路器落地后此形态应趋零，
- *   指标用于验证 9-2 有效性。
+ * - `booking_promise_without_booking` → 改写为诚实的未提交口径。报名动作**无法**自动补
+ *   （precheck 未通过时不能替报），但也不能把“马上提交/同事后台直接提交”放行给候选人。
  *
  * 词形刻意取最窄子集（第一人称明确升级承诺），并沿用原规则「不拦『具体以门店确认为准』
  * 类边界声明」的排除设计。
@@ -67,13 +66,21 @@ const BOOKING_TOOL_NAMES: ReadonlySet<string> = new Set(['duliday_interview_book
 
 /** 报名类将来时承诺（9-4）：完成时态由 B-5 治理，这里只管将来时。 */
 const BOOKING_PROMISE_PATTERN =
-  /(?:我(?:们)?(?:这边)?)?(?:马上|这就|现在|稍后|等下|等会儿?)?(?:帮你|给你|替你)(?:提交|submit)?(?:报名|预约|登记|约(?:面试|一下)?|提交报名|提交预约)|(?:我)?这就(?:去)?(?:帮你)?(?:提交|报名|登记)/u;
+  /(?:我(?:们)?(?:这边)?)?(?:马上|这就|现在|稍后|等下|等会儿?)?(?:帮你|给你|替你)(?:提交|submit)?(?:报名|预约|登记|约(?:面试|一下)?|提交报名|提交预约)|(?:我)?这就(?:去)?(?:帮你)?(?:提交|报名|登记)|我(?:们)?(?:这边)?(?:让|请|找)(?:同事|负责人|招聘经理)[^。！？\n]{0,16}(?:直接)?(?:提交|报名|预约|登记)/u;
 
 /**
  * 完成时态的报名口径（"已帮你报好"）归 B-5 报名空头宣称治理，本规则不重复覆盖，
  * 否则同一条投递物会被两套机制各记一笔，档案口径失真。
  */
 const BOOKING_COMPLETED_TENSE_PATTERN = /已(?:经)?(?:帮你|给你)?(?:报好|报名成功|登记好|提交)/u;
+
+/** 征询、候选人尚需先补资料、或明确否定动作，都不是“本轮就会提交”的承诺。 */
+const BOOKING_PROMISE_QUESTION_PATTERN =
+  /(?:帮你|给你|替你)[^。！？\n]{0,12}(?:报名|预约|登记|约)[^。！？\n]{0,12}(?:可以吗|行吗|要吗|好吗|吗)？?$/u;
+const BOOKING_PROMISE_PREREQUISITE_PATTERN =
+  /(?:资料|信息)[^。！？\n]{0,16}(?:填好|补齐|补全|发我)[^。！？\n]{0,20}(?:我(?:们)?(?:这边)?)?(?:帮你|给你|替你)(?:提交|报名|预约|登记|约)/u;
+const NEGATED_BOOKING_PROMISE_PATTERN =
+  /(?:先不|暂不|不用|不再|不)(?:会)?(?:帮你|给你|替你)?(?:提交|报名|预约|登记|约)/u;
 
 function hasSuccessfulCall(
   toolCalls: readonly AgentToolCall[],
@@ -138,11 +145,39 @@ export function detectHandoffPromiseWithoutAction(text: string, toolCalls: Agent
 
 export const HANDOFF_PROMISE_RECONCILIATION_RULE_ID = 'handoff_promise_reconciliation';
 
-/** 报名类将来时承诺 + 无 booking 动作（9-4）：纯观测，无自动补动作。 */
+/**
+ * 报名承诺的排除词只影响所在分句。唯一需要跨分句判定的是“先补资料，再帮你报名”，
+ * 因而额外保留同一句内至多前两个分句作为 prerequisite 上下文。这样既不把条件句误当当轮承诺，
+ * 也不会让前文无关的否定/征询压掉后文真正的预约承诺。
+ */
+function hasActionableBookingPromise(text: string): boolean {
+  const sentences = text
+    .split(/[。！？!?\n]+/u)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean);
+
+  return sentences.some((sentence) => {
+    const clauses = sentence
+      .split(/[，,；;]+/u)
+      .map((clause) => clause.trim())
+      .filter(Boolean);
+
+    return clauses.some((clause, index) => {
+      if (!BOOKING_PROMISE_PATTERN.test(clause)) return false;
+      if (BOOKING_COMPLETED_TENSE_PATTERN.test(clause)) return false;
+      if (BOOKING_PROMISE_QUESTION_PATTERN.test(clause)) return false;
+      if (NEGATED_BOOKING_PROMISE_PATTERN.test(clause)) return false;
+
+      const prerequisiteContext = clauses.slice(Math.max(0, index - 2), index + 1).join('，');
+      return !BOOKING_PROMISE_PREREQUISITE_PATTERN.test(prerequisiteContext);
+    });
+  });
+}
+
+/** 报名类将来时承诺 + 无 booking 动作（9-4）：改写诚实口径，不自动补动作。 */
 export function detectBookingPromiseWithoutBooking(text: string, toolCalls: AgentToolCall[] = []) {
   if (!text.trim()) return null;
-  if (BOOKING_COMPLETED_TENSE_PATTERN.test(text)) return null;
-  if (!BOOKING_PROMISE_PATTERN.test(text)) return null;
+  if (!hasActionableBookingPromise(text)) return null;
   if (hasSuccessfulCall(toolCalls, BOOKING_TOOL_NAMES)) return null;
   // precheck 已放行时"我这就帮你提交"只是下一步动作的自然预告，不算空头。
   if (isPrecheckReadyToBook(toolCalls)) return null;
@@ -152,6 +187,6 @@ export function detectBookingPromiseWithoutBooking(text: string, toolCalls: Agen
     label:
       '回复用将来时承诺了报名/预约（"我帮你提交报名"），但本轮没有成功的 ' +
       'duliday_interview_booking，precheck 也未判定 ready_to_book——报名并未提交。',
-    action: GUARDRAIL_ACTION.OBSERVE,
+    action: GUARDRAIL_ACTION.REVISE,
   };
 }

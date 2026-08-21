@@ -15,7 +15,7 @@ describe('MemoryEnrichmentService', () => {
     shortTerm: { messageWindow: [] },
     sessionMemory: null,
     ruleFacts: null,
-    procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
+    procedural: { currentStage: null },
     longTerm: { profile: null },
   });
 

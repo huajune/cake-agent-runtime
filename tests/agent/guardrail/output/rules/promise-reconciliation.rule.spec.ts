@@ -72,7 +72,10 @@ describe('handoff 承诺-动作对账（议题 7-1）', () => {
   // 退役后须由本规则接住——"跟/同 + 升级对象连写"与副词槽"需要/得/要"。
   it('flags 跟门店确认 word form from production (batch_6a842ee0)', () => {
     expect(
-      detectHandoffPromiseWithoutAction('不过试岗期具体多久，我这边需要跟门店确认下，稍后回复你', []),
+      detectHandoffPromiseWithoutAction(
+        '不过试岗期具体多久，我这边需要跟门店确认下，稍后回复你',
+        [],
+      ),
     ).toMatchObject({ ruleId: 'handoff_promise_reconciliation' });
     expect(detectHandoffPromiseWithoutAction('这个我会跟店长确认下再回复你', [])).toMatchObject({
       ruleId: 'handoff_promise_reconciliation',
@@ -93,16 +96,10 @@ describe('handoff 承诺-动作对账（议题 7-1）', () => {
     expect(
       detectHandoffPromiseWithoutAction('我同意你说的，这家门店确实安排得不好', []),
     ).toBeNull();
-    expect(
-      detectHandoffPromiseWithoutAction('我跟你说，这家门店安排的班次挺好的', []),
-    ).toBeNull();
-    expect(
-      detectHandoffPromiseWithoutAction('我建议你直接跟店长确认下时间安排', []),
-    ).toBeNull();
+    expect(detectHandoffPromiseWithoutAction('我跟你说，这家门店安排的班次挺好的', [])).toBeNull();
+    expect(detectHandoffPromiseWithoutAction('我建议你直接跟店长确认下时间安排', [])).toBeNull();
     // 报名后正常衔接话术：门店/店长类对象在从句分隔式里不收，避免误伤。
-    expect(
-      detectHandoffPromiseWithoutAction('我帮你约好了，让门店安排面试时间', []),
-    ).toBeNull();
+    expect(detectHandoffPromiseWithoutAction('我帮你约好了，让门店安排面试时间', [])).toBeNull();
   });
 
   it('does not flag a boundary statement about who has the final say', () => {
@@ -127,7 +124,13 @@ describe('报名将来时承诺（议题 9-4）', () => {
   it('flags a future-tense booking promise with no booking call', () => {
     const hit = detectBookingPromiseWithoutBooking('资料已经齐了，我帮你提交报名哈', []);
 
-    expect(hit).toMatchObject({ ruleId: 'booking_promise_without_booking', action: 'observe' });
+    expect(hit).toMatchObject({ ruleId: 'booking_promise_without_booking', action: 'revise' });
+  });
+
+  it('标记“让同事后台直接提交”这类代提交承诺', () => {
+    expect(
+      detectBookingPromiseWithoutBooking('这边有点卡，我让同事帮你后台直接提交下资料。', []),
+    ).toMatchObject({ ruleId: 'booking_promise_without_booking', action: 'revise' });
   });
 
   it('does not flag when booking actually succeeded', () => {
@@ -146,6 +149,27 @@ describe('报名将来时承诺（议题 9-4）', () => {
 
   it('leaves完成时态 to B-5（不重复覆盖，避免同一投递物两处记账）', () => {
     expect(detectBookingPromiseWithoutBooking('已经帮你报好了哈', [])).toBeNull();
+  });
+
+  it.each([
+    '资料收到了，帮你约今天下午这个时段可以吗？',
+    '你先把资料填好发我，我帮你约。',
+    '资料还没填好，你先补齐发我，我帮你约。',
+    '好的，这轮先不帮你报名。',
+  ])('不标记征询、带前置条件或明确否定的报名表达: %s', (text) => {
+    expect(detectBookingPromiseWithoutBooking(text, [])).toBeNull();
+  });
+
+  it.each([
+    '这轮先不预约。资料齐了，我马上帮你报名。',
+    '要我帮你约吗？资料我收到了，我这就帮你提交报名。',
+    '已经帮你报好上一家了。这一家我马上帮你预约。',
+    '资料之前已经填好发我。你先别急，我马上帮你报名。',
+  ])('前文的否定/征询/完成时不压掉后文真承诺: %s', (text) => {
+    expect(detectBookingPromiseWithoutBooking(text, [])).toMatchObject({
+      ruleId: 'booking_promise_without_booking',
+      action: 'revise',
+    });
   });
 
   it('does not flag ordinary replies', () => {

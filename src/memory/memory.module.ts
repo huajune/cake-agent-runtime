@@ -6,6 +6,8 @@ import { SpongeModule } from '@sponge/sponge.module';
 import { MemoryConfig } from './memory.config';
 import { MemoryService } from './memory.service';
 import { RedisStore } from './stores/redis.store';
+import { CollectionFormStore } from './stores/collection-form.store';
+import { CollectionFormService } from './services/collection-form.service';
 import { SupabaseStore } from './stores/supabase.store';
 import { BrandStateService } from './services/brand-state.service';
 import { ShortTermService } from './services/short-term.service';
@@ -15,7 +17,6 @@ import { LongTermService } from './services/long-term.service';
 import { SettlementService } from './services/settlement.service';
 import { MemoryEnrichmentService } from './services/memory-enrichment.service';
 import { MemoryLifecycleService } from './services/memory-lifecycle.service';
-import { CandidateSnapshotService } from './services/candidate-snapshot.service';
 import { HostingConfigModule } from '@biz/hosting-config/hosting-config.module';
 import { GeocodingModule } from '@infra/geocoding/geocoding.module';
 
@@ -24,7 +25,7 @@ import { GeocodingModule } from '@infra/geocoding/geocoding.module';
  *
  * 分为三层：
  * - facade: MemoryService
- * - domain services: services/ 下的 short-term / long-term / procedural / settlement / session / enrichment / lifecycle / brand-state / candidate-snapshot
+ * - domain services: services/ 下的 short-term / long-term / procedural / settlement / session / enrichment / lifecycle / brand-state
  * - stores: Redis / Supabase 基础设施
  */
 @Module({
@@ -39,6 +40,8 @@ import { GeocodingModule } from '@infra/geocoding/geocoding.module';
   providers: [
     MemoryConfig,
     RedisStore,
+    CollectionFormStore,
+    CollectionFormService,
     SupabaseStore,
     BrandStateService,
     ShortTermService,
@@ -48,17 +51,16 @@ import { GeocodingModule } from '@infra/geocoding/geocoding.module';
     SettlementService,
     MemoryEnrichmentService,
     MemoryLifecycleService,
-    CandidateSnapshotService,
     MemoryService,
   ],
   exports: [
     MemoryConfig,
     MemoryService,
+    CollectionFormService,
     SessionService,
     LongTermService,
     ShortTermService,
     BrandStateService,
-    CandidateSnapshotService,
   ],
 })
 export class MemoryModule {}

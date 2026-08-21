@@ -6,6 +6,7 @@ import { LongTermService } from '@memory/services/long-term.service';
 import {
   EntityExtractionResultSchema,
   FALLBACK_EXTRACTION,
+  toSessionFacts,
   type EntityExtractionResult,
   type InvitedGroupRecord,
 } from '@memory/types/session-facts.types';
@@ -20,6 +21,9 @@ export interface MemoryFixtureSnapshot {
   sessionState: unknown;
   proceduralState: unknown;
 }
+
+/** 夹具落档的 evidence 署名——署名如实：这不是旧数据迁移，是测试用例回放的档案。 */
+const FIXTURE_FACT_EVIDENCE = 'test-suite 记忆夹具预置';
 
 @Injectable()
 export class MemoryFixtureService {
@@ -49,28 +53,39 @@ export class MemoryFixtureService {
   ): Promise<void> {
     if (!setup) return;
 
-    const facts = this.resolveSessionFacts(setup);
-    if (facts) {
-      await this.sessionService.saveFacts(scope.corpId, scope.userId, scope.sessionId, facts);
-
-      // preferences.brands 已退役（§19.6），存进 facts 的品牌对链路不可见；
-      // 用例预设的品牌意向按「末位≈最近」种成 brand_state（懒迁移同款口径）。
-      const fixtureBrands = (facts.preferences.brands ?? []).filter(
-        (brand): brand is string => typeof brand === 'string' && brand.trim().length > 0,
+    const extraction = this.resolveSessionFacts(setup);
+    if (extraction) {
+      // 夹具值经 toSessionFacts 显式带上置信度签名后再落档（P4 无守卫路径关闭，
+      // 记忆审计 S9）：此前夹具直接把裸 EntityExtractionResult 交给 saveFacts，
+      // 靠 schema 的裸值兼容信封悄悄折成 unknown/archive——那条信封已随本批删除。
+      // 夹具属于软事实回放，统一以 medium/archive 签名：
+      // 夹具不是"旧数据兼容迁移"，它是测试用例回放的档案。
+      await this.sessionService.saveFacts(
+        scope.corpId,
+        scope.userId,
+        scope.sessionId,
+        toSessionFacts(extraction, {
+          confidence: 'medium',
+          source: 'archive',
+          evidence: FIXTURE_FACT_EVIDENCE,
+        }),
       );
-      const lastBrand = fixtureBrands.at(-1);
-      if (lastBrand) {
-        await this.brandStateService.seedFixtureBrandState(
-          scope.corpId,
-          scope.userId,
-          scope.sessionId,
-          {
-            currentBrand: { canonicalName: lastBrand, brandId: null },
-            excludedBrands: [],
-            updatedAtMs: Date.now(),
-          },
-        );
-      }
+    }
+
+    // 用例预设的品牌意向按「末位≈最近」种成 brand_state：品牌唯一真相是 brand_state，
+    // sessionFacts 侧的 brands 字段已随 S9 删除，故直接读夹具原始入参，不再绕道 facts。
+    const lastBrand = this.resolveFixtureBrands(setup).at(-1);
+    if (lastBrand) {
+      await this.brandStateService.seedFixtureBrandState(
+        scope.corpId,
+        scope.userId,
+        scope.sessionId,
+        {
+          currentBrand: { canonicalName: lastBrand, brandId: null },
+          excludedBrands: [],
+          updatedAtMs: Date.now(),
+        },
+      );
     }
 
     const lastCandidatePool = this.normalizeJobSummaries(setup.lastCandidatePool);
@@ -132,7 +147,7 @@ export class MemoryFixtureService {
     }
 
     if (setup.profile) {
-      await this.memoryService.saveProfile(
+      await this.longTermService.seedProfileFixture(
         scope.corpId,
         scope.userId,
         setup.profile as Partial<UserProfile>,
@@ -179,18 +194,28 @@ export class MemoryFixtureService {
       return null;
     }
 
-    const fromStage = procedural.fromStage;
-    const advancedAt = procedural.advancedAt;
-    const reason = procedural.reason;
-    const state: ProceduralState = {
-      currentStage: this.readNullableString(currentStage),
-      fromStage: this.readNullableString(fromStage),
-      advancedAt: this.readNullableString(advancedAt) ?? new Date().toISOString(),
-      reason: this.readNullableString(reason) ?? 'test-suite-memory-fixture',
-    };
+    // 程序记忆只有 currentStage 一个字段（S10）；用例仍可传 procedural.fromStage 等
+    // 旧键，它们只作"这个用例确实要种阶段"的存在性信号，不再落档。
+    const state: ProceduralState = { currentStage: this.readNullableString(currentStage) };
 
     this.logger.debug(`Seed memory stage=${state.currentStage ?? '<null>'}`);
     return state;
+  }
+
+  /**
+   * 夹具原始入参里的品牌清单。
+   *
+   * 结构化写法（`facts.preferences.brands`）与扁平写法（`brands` / `brandNames` /
+   * `brandName`）都收——存量用例两种都有，读侧口径与 normalizeFlatFacts 一致。
+   */
+  private resolveFixtureBrands(setup: MemoryFixtureSetup): string[] {
+    const raw = this.mergeRecords(setup.facts, setup.sessionFacts);
+    if (!raw) return [];
+    const structured = this.isRecord(raw.preferences)
+      ? this.readStringArray(raw.preferences.brands)
+      : null;
+    const flat = this.readStringArrayFromKeys(raw, ['brands', 'brandNames', 'brandName']);
+    return (structured ?? flat ?? []).filter((brand) => brand.trim().length > 0);
   }
 
   private resolveSessionFacts(setup: MemoryFixtureSetup): EntityExtractionResult | null {
@@ -227,13 +252,6 @@ export class MemoryFixtureService {
         phone: this.readStringFromKeys(raw, ['phone', 'mobile', 'contactPhone']),
         gender: this.readString(raw, 'gender'),
         age: this.readString(raw, 'age'),
-        applied_store: this.readStringFromKeys(raw, ['applied_store', 'appliedStore', 'storeName']),
-        applied_position: this.readStringFromKeys(raw, [
-          'applied_position',
-          'appliedPosition',
-          'positionName',
-        ]),
-        interview_time: this.readStringFromKeys(raw, ['interview_time', 'interviewTime']),
         is_student: this.readBooleanFromKeys(raw, ['is_student', 'isStudent']),
         education: this.readString(raw, 'education'),
         has_health_certificate: this.readStringFromKeys(raw, [
@@ -243,7 +261,7 @@ export class MemoryFixtureService {
       },
       preferences: {
         ...FALLBACK_EXTRACTION.preferences,
-        brands: this.readStringArrayFromKeys(raw, ['brands', 'brandNames', 'brandName']),
+        // brands 不进 facts（S9 已删该字段）：品牌走 resolveFixtureBrands → brand_state。
         salary: this.readStringFromKeys(raw, ['salary', 'salaryDesc']),
         position: this.readStringArrayFromKeys(raw, ['position', 'positions']),
         schedule: this.readString(raw, 'schedule'),

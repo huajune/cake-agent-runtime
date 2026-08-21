@@ -21,9 +21,6 @@ export const InterviewInfoSchema = z.object({
     .optional()
     .describe('性别来源：candidate=候选人自陈，system=企微系统兜底标签'),
   age: z.string().nullable().describe('年龄'),
-  applied_store: z.string().nullable().describe('应聘门店'),
-  applied_position: z.string().nullable().describe('应聘岗位'),
-  interview_time: z.string().nullable().describe('面试时间'),
   is_student: z.boolean().nullable().describe('是否学生'),
   education: z.string().nullable().describe('学历'),
   has_health_certificate: z.string().nullable().describe('健康证'),
@@ -55,7 +52,10 @@ export const CityFactEvidenceSchema = z.enum([
 
 export const CityFactSchema = z.object({
   value: z.string(),
-  confidence: z.enum(['high', 'medium', 'low']),
+  confidence: z.preprocess(
+    (value) => (value === 'low' || value === 'unknown' ? 'medium' : value),
+    z.enum(['high', 'medium']),
+  ),
   evidence: CityFactEvidenceSchema,
 });
 
@@ -160,7 +160,8 @@ const NullableAvailableAfterSchema = AvailableAfterFactSchema.nullable().default
  * 兼容性：所有新字段均 nullable + default(null)，旧 Redis 数据缺字段时解析为 null。
  */
 export const PreferencesSchema = z.object({
-  brands: z.array(z.string()).nullable().describe('意向品牌'),
+  // brands 字段已删（2026-08-19 记忆审计 S9）：品牌唯一真相是 brand_state，
+  // 写入只经 reducer；本字段的存储值在收口后恒 null，模型填了也当场丢弃。
   brand_ids: z
     .array(z.number().int())
     .nullable()
@@ -205,7 +206,8 @@ export const PreferencesSchema = z.object({
  * LLM 返回后，service 层再通过 EntityExtractionResultSchema.parse 归一化为 CityFact。
  */
 export const LLMPreferencesSchema = z.object({
-  brands: z.array(z.string()).nullable().describe('意向品牌'),
+  // brands 已删（S9）：本轮品牌意图统一走 brand_intents（带极性与指代链接），
+  // 再让模型填一个当场被丢弃的 brands 只是多一条会打架的通道。
   brand_ids: z
     .array(z.number().int())
     .nullable()
@@ -254,22 +256,6 @@ export const EntityExtractionResultSchema = z.object({
     ),
 });
 
-/** LLM 声明的字段级依据摘录：直接陈述可升档，白名单推断只提供证据。 */
-export const ExplicitProvenanceEntrySchema = z.object({
-  field: z
-    .string()
-    .describe('interview_info 下的字段名，如 "phone"、"age"、"has_health_certificate"'),
-  quote: z
-    .string()
-    .describe('候选人原话中的逐字片段（必须能在候选人消息里原样找到，否则该声明无效）'),
-  basis: z
-    .enum(['stated', 'inferred'])
-    .default('stated')
-    .describe('stated=候选人直接陈述；inferred=仅按提示词白名单推断（只作证据，不升档）'),
-});
-
-export type ExplicitProvenanceEntry = z.infer<typeof ExplicitProvenanceEntrySchema>;
-
 /**
  * LLM 极性轨输出（§6.3.1）：品牌意图极性 + 指代链接结果。
  * brand 为 null 表示品牌为空的表达（"换个品牌"类 negative / "品牌不限"类 browse_all）。
@@ -308,20 +294,9 @@ export const LaborFormIntentExtractionSchema = z.object({
 
 export type LaborFormIntentExtraction = z.infer<typeof LaborFormIntentExtractionSchema>;
 
-/** LLM 结构化输出 schema — city 字段为字符串 */
+/** LLM 结构化输出只允许表单外软事实；身份字段由收资表单办结写入。 */
 export const LLMEntityExtractionResultSchema = z.object({
-  interview_info: InterviewInfoSchema,
   preferences: LLMPreferencesSchema,
-  explicit_provenance: z
-    .array(ExplicitProvenanceEntrySchema)
-    .nullable()
-    .optional()
-    .describe(
-      'interview_info 字段的依据摘录清单：凡候选人原话直接支持或可按白名单推断的字段都应列入；' +
-        'quote 必须是候选人消息中的逐字连续片段，禁止改写、翻译、概括或拼接；' +
-        'basis=stated 表示直接陈述，basis=inferred 表示白名单推断；' +
-        '助手提及后候选人仅附和、或转发文案中的字段一律不列，解释只写 reasoning',
-    ),
   brand_intents: z
     .array(BrandIntentEntrySchema)
     .nullable()
@@ -369,9 +344,6 @@ export const INTERVIEW_INFO_FIELD_KEYS = [
   'gender',
   'gender_source',
   'age',
-  'applied_store',
-  'applied_position',
-  'interview_time',
   'is_student',
   'education',
   'has_health_certificate',
@@ -383,7 +355,6 @@ export const INTERVIEW_INFO_FIELD_KEYS = [
 ] as const satisfies readonly (keyof InterviewInfo)[];
 
 export const PREFERENCE_FIELD_KEYS = [
-  'brands',
   'brand_ids',
   'salary',
   'position',
@@ -406,7 +377,10 @@ export type PreferenceFieldKey = (typeof PREFERENCE_FIELD_KEYS)[number];
 // 降序元组来自 confidence-rank（唯一权威），顺序沿用历史 high-first。
 // 2026-08-11 起 explicit_provenance 的逐字摘录契约已收紧，发给抽取模型的 JSON schema
 // 不再承诺跨版本逐字节不变；test-suite 旧批抽取结果跨此版本作废，必须重新执行。
-export const SessionFactConfidenceSchema = z.enum(FACT_CONFIDENCE_LEVELS_DESC);
+export const SessionFactConfidenceSchema = z.preprocess(
+  (value) => (value === 'low' || value === 'unknown' ? 'medium' : value),
+  z.enum(FACT_CONFIDENCE_LEVELS_DESC),
+);
 
 const LEGACY_SESSION_FACT_PRODUCERS: Readonly<Record<string, CandidateFactProducer>> = {
   candidate: 'candidate_quote',
@@ -428,10 +402,8 @@ export type SessionFactConfidence = z.infer<typeof SessionFactConfidenceSchema>;
 
 /** sessionFacts 置信度语义。工具消费默认只信 high；prompt 会展示所有置信度。 */
 export const SESSION_FACT_CONFIDENCE_DESCRIPTIONS: Record<SessionFactConfidence, string> = {
-  high: '可程序化采用。来自确定性规则、明确结构化输入，或经过强校验的事实。',
-  medium: '可给模型参考。通常来自 LLM 结构化提取或会话沉淀，可能需要结合上下文判断。',
-  low: '弱参考。来自系统兜底、弱规则或补充接口，不应直接用于筛人、约面等硬判断。',
-  unknown: '旧数据或缺少元数据的兼容值。只能作为背景信息，工具默认不消费。',
+  high: '可程序化采用。仅来自收资表单办结或同等级业务确权。',
+  medium: '表单外软事实，供推荐与模型参考；不得用于硬报名判断。',
 };
 
 /** sessionFacts 来源语义。source 说明事实出身，不等同于字段真假。 */
@@ -470,7 +442,7 @@ export function truncateEvidence(evidence: string, maxChars = MAX_FACT_EVIDENCE_
   return `${trimmed.slice(0, maxChars)}…`;
 }
 
-export type SessionFactMaybeValue<T> = SessionFactValue<T> | null;
+export type SessionFactMaybeValue<T> = SessionFactValue<T | null> | null;
 
 export interface SessionInterviewInfo {
   name: SessionFactMaybeValue<string>;
@@ -478,9 +450,6 @@ export interface SessionInterviewInfo {
   gender: SessionFactMaybeValue<string>;
   gender_source: SessionFactMaybeValue<'candidate' | 'system'>;
   age: SessionFactMaybeValue<string>;
-  applied_store: SessionFactMaybeValue<string>;
-  applied_position: SessionFactMaybeValue<string>;
-  interview_time: SessionFactMaybeValue<string>;
   is_student: SessionFactMaybeValue<boolean>;
   education: SessionFactMaybeValue<string>;
   has_health_certificate: SessionFactMaybeValue<string>;
@@ -492,7 +461,6 @@ export interface SessionInterviewInfo {
 }
 
 export interface SessionPreferences {
-  brands: SessionFactMaybeValue<string[]>;
   brand_ids?: SessionFactMaybeValue<number[]>;
   salary: SessionFactMaybeValue<string>;
   position: SessionFactMaybeValue<string[]>;
@@ -524,55 +492,61 @@ const SessionFactValueSchema = <T extends z.ZodTypeAny>(valueSchema: T) =>
   });
 
 /**
- * 裸值兼容信封。
+ * 旧 city 字符串的兼容信封。
  *
- * ⚠️ 拆除判据已失效，勿再按原判据删（2026-08-17 复扫结论）：
- * 原判据是「unknown/memory 旧档计数归零后删除」。数据侧确实归零——全量复扫 443 份生产
- * factsv2、13733 个字段槽位，全部是信封或 null，裸标量与 unknown/archive 旧档均为 0。
- * 但本信封已不只是旧数据兼容层：`saveFacts(facts: EntityExtractionResult | SessionFacts)`
- * 经 `ensureSessionFacts` 走同一个 SessionFactsSchema，而 `EntityExtractionResult` 的字段
- * 就是裸标量——`MemoryFixtureService.seed()`（test-suite 用例种子，生产 Dashboard 在跑）
- * 正是这么调的。删掉裸值分支后该调用会直接 Zod 抛错（已实测）。
+ * 沿革（2026-08-19 记忆审计 S9）：这里原是**通用**裸值信封，任何字段的裸标量都能经它
+ * 悄悄落成 unknown/archive。0817 复扫时数据侧已归零（443 份生产 factsv2、13733 个字段
+ * 槽位，全是信封或 null），但当时删不掉——`saveFacts` 还收裸 `EntityExtractionResult`，
+ * `MemoryFixtureService.seed()`（生产 Dashboard 在跑的 test-suite 种子）正是这么调的，
+ * 那条路径就是靠本信封默默生成置信度签名的「无守卫写入」。
  *
- * 真正的拆除前置条件：先把 saveFacts 的入参收成 SessionFacts 单一形态
- *（调用方显式经 toSessionFacts 带上 confidence/source/evidence），届时本信封才成为纯死码。
- * 那是 saveFacts 契约变更，不属于残留清理范围。
+ * S9 把 saveFacts 入参收成 `SessionFacts` 单形态、夹具改经 `toSessionFacts` 显式署名后，
+ * 通用裸值分支随之删除。**只剩 city 一路**：`NullableSessionCityFactSchema` 的
+ * 字符串/CityFact 分支服务的是旧 Redis 记录（其存量计数尚未复扫归零，见 NullableCityFactSchema
+ * 的拆除判据），不是活跃写入方——保留是为了不让一条陈年记录的 pref.city 被逐字段校验静默丢掉。
  */
-function legacySessionFactValue<T>(value: T, evidence?: string): SessionFactValue<T> {
-  return {
-    value,
-    confidence: 'unknown',
-    source: 'archive',
-    evidence: evidence ?? '旧 sessionFacts 兼容迁移：字段缺少置信度元数据',
-  };
+function legacyCityFactValue<T>(value: T, evidence: string): SessionFactValue<T> {
+  return { value, confidence: 'medium', source: 'archive', evidence };
 }
 
+/**
+ * 落盘字段的信封 schema。
+ *
+ * **只收信封或 null**（S9）：裸标量不再被接受——它意味着一个没人为其置信度签名负责的值。
+ * 写入方必须显式经 `toSessionFacts` 或自己构造 `SessionFactValue`。
+ */
 const NullableSessionFactSchema = <T extends z.ZodTypeAny>(valueSchema: T) =>
   z
-    .union([SessionFactValueSchema(valueSchema), valueSchema, z.null()])
-    .transform((value): SessionFactValue<z.infer<T>> | null => {
-      if (value === null) return null;
-      return isSessionFactValue(value)
-        ? (value as SessionFactValue<z.infer<T>>)
-        : legacySessionFactValue(value as z.infer<T>);
-    });
+    .union([SessionFactValueSchema(valueSchema), z.null()])
+    .transform((value): SessionFactValue<z.infer<T>> | null =>
+      value === null ? null : (value as SessionFactValue<z.infer<T>>),
+    );
+
+/** preferences 的信封允许 value=null，作为显式清空墓碑；外层 null 仍表示本轮缺席。 */
+const NullableSessionPreferenceFactSchema = <T extends z.ZodTypeAny>(valueSchema: T) =>
+  z
+    .union([SessionFactValueSchema(valueSchema.nullable()), z.null()])
+    .transform((value): SessionFactValue<z.infer<T> | null> | null =>
+      value === null ? null : (value as SessionFactValue<z.infer<T> | null>),
+    );
 
 function cityEvidenceToString(evidence: CityFactEvidence): string {
   return evidence;
 }
 
-// CityFact 分支不是兼容层：extractFacts 的白名单回填产出的就是 CityFact（无 source），
-// 落盘时经这里升成信封。字符串分支同上——EntityExtractionResult 侧 city 可为裸串，
-// 与 legacySessionFactValue 同一个存活理由，勿单独拆。
+// city 的两条非信封分支（CityFact / 裸字符串）保留为**旧 Redis 记录**兼容层：
+// 活跃写入方都已显式带信封（toSessionFacts 对 city 有专门分支），但旧记录的存量计数
+// 尚未复扫归零（拆除判据见上方 NullableCityFactSchema）。删早了的代价是逐字段校验
+// 把一条陈年记录的 pref.city 静默丢掉，收益只是少十行——不划算，留着。
 const NullableSessionCityFactSchema = z
-  .union([SessionFactValueSchema(z.string()), CityFactSchema, z.string(), z.null()])
-  .transform((value): SessionFactValue<string> | null => {
+  .union([SessionFactValueSchema(z.string().nullable()), CityFactSchema, z.string(), z.null()])
+  .transform((value): SessionFactValue<string | null> | null => {
     if (value === null) return null;
     if (typeof value === 'string') {
       const city = value.trim().replace(/市$/, '');
-      return city ? legacySessionFactValue(city, '旧 sessionFacts city 字符串兼容迁移') : null;
+      return city ? legacyCityFactValue(city, '旧 sessionFacts city 字符串兼容迁移') : null;
     }
-    if (isSessionFactValue(value)) return value as SessionFactValue<string>;
+    if (isSessionFactValue(value)) return value as SessionFactValue<string | null>;
     const cityFact = value as CityFact;
     return {
       value: cityFact.value,
@@ -588,9 +562,6 @@ export const SessionInterviewInfoSchema = z.object({
   gender: NullableSessionFactSchema(z.string()),
   gender_source: NullableSessionFactSchema(z.enum(['candidate', 'system'])),
   age: NullableSessionFactSchema(z.string()),
-  applied_store: NullableSessionFactSchema(z.string()),
-  applied_position: NullableSessionFactSchema(z.string()),
-  interview_time: NullableSessionFactSchema(z.string()),
   is_student: NullableSessionFactSchema(z.boolean()),
   education: NullableSessionFactSchema(z.string()),
   has_health_certificate: NullableSessionFactSchema(z.string()),
@@ -602,27 +573,37 @@ export const SessionInterviewInfoSchema = z.object({
 });
 
 export const SessionPreferencesSchema = z.object({
-  brands: NullableSessionFactSchema(z.array(z.string())),
-  brand_ids: NullableSessionFactSchema(z.array(z.number().int())).optional(),
-  salary: NullableSessionFactSchema(z.string()),
-  position: NullableSessionFactSchema(z.array(z.string())),
-  schedule: NullableSessionFactSchema(z.string()),
+  brand_ids: NullableSessionPreferenceFactSchema(z.array(z.number().int())).optional(),
+  salary: NullableSessionPreferenceFactSchema(z.string()),
+  position: NullableSessionPreferenceFactSchema(z.array(z.string())),
+  schedule: NullableSessionPreferenceFactSchema(z.string()),
   city: NullableSessionCityFactSchema,
-  district: NullableSessionFactSchema(z.array(z.string())),
-  location: NullableSessionFactSchema(z.array(z.string())),
-  labor_form: NullableSessionFactSchema(z.string()),
-  delayed_intent: NullableSessionFactSchema(DelayedIntentSchema),
-  short_term: NullableSessionFactSchema(z.boolean()),
-  open_position: NullableSessionFactSchema(z.boolean()),
-  time_windows: NullableSessionFactSchema(z.array(z.string())),
-  schedule_constraint: NullableSessionFactSchema(ScheduleConstraintFactSchema),
-  available_after: NullableSessionFactSchema(AvailableAfterFactSchema),
+  district: NullableSessionPreferenceFactSchema(z.array(z.string())),
+  location: NullableSessionPreferenceFactSchema(z.array(z.string())),
+  labor_form: NullableSessionPreferenceFactSchema(z.string()),
+  delayed_intent: NullableSessionPreferenceFactSchema(DelayedIntentSchema),
+  short_term: NullableSessionPreferenceFactSchema(z.boolean()),
+  open_position: NullableSessionPreferenceFactSchema(z.boolean()),
+  time_windows: NullableSessionPreferenceFactSchema(z.array(z.string())),
+  schedule_constraint: NullableSessionPreferenceFactSchema(ScheduleConstraintFactSchema),
+  available_after: NullableSessionPreferenceFactSchema(AvailableAfterFactSchema),
 });
 
+/**
+ * Redis 落盘的会话事实形态。
+ *
+ * ⚠️ 刻意**不含 `reasoning`**（2026-08-19 记忆审计 S8 拆除）：它曾随每次 saveFacts
+ * 落盘，但全库零读消费者——`buildLlmFactEvidence` 收下它却返回常量，
+ * `unwrapSessionFacts` 的下游（settlement / tool-context / memory-block / context）
+ * 一个都不读它。仓库外亦无消费：`memory_snapshot.sessionFacts` 由
+ * `flattenSessionFacts` 生成，只收 interview_info 与 preferences 两组；
+ * `extraction_accuracy_report_fn` 只读 `interview.name/phone/age/gender`。
+ * 模型叙事仍留在 `EntityExtractionResult.reasoning`（提取提示词要求模型交代来源，
+ * 是本轮 LLM 调用内部的反臆造装置），只是不再进 Redis。
+ */
 export const SessionFactsSchema = z.object({
   interview_info: SessionInterviewInfoSchema,
   preferences: SessionPreferencesSchema,
-  reasoning: z.string(),
 });
 
 /** 由字段清单生成"逐字段 null"对象（所有字段 schema 均 nullable，null 是合法降级值）。 */
@@ -751,7 +732,7 @@ function cityFactFromSessionValue(value: SessionFactValue<string>): CityFact | n
   if (!value.value.trim()) return null;
   return {
     value: value.value.trim().replace(/市$/, ''),
-    confidence: value.confidence === 'low' ? 'low' : 'high',
+    confidence: value.confidence,
     evidence: 'explicit_city',
   };
 }
@@ -794,7 +775,8 @@ export function unwrapSessionFacts(
           : null
         : city,
     },
-    reasoning: facts.reasoning,
+    // 落盘态不再持有 reasoning（S8）；回程只为满足 EntityExtractionResult 的形状。
+    reasoning: '',
   });
 }
 
@@ -837,7 +819,6 @@ export function toSessionFacts(
           })
         : null,
     },
-    reasoning: facts.reasoning,
   }) as SessionFacts;
 }
 
@@ -906,8 +887,8 @@ export interface WeworkSessionState {
   /**
    * 会话品牌状态（currentBrand + excludedBrands，§9）：品牌真相的唯一存储。
    * 写入只经 brand_state reducer（回合收尾 apply_brand_state + 图片描述晚到补写
-   * applyLateImageResolutions 两个时机）；preferences.brands 已退役（§19.6）——写入侧在
-   * saveSessionFacts 恒折成 null，禁止任何读写复活（存量 2026-08-17 复扫已归零，读边界墓碑已拆）。
+   * applyLateImageResolutions 两个时机）；preferences.brands 字段已于 2026-08-19（S9）
+   * 从 schema 整体删除——它此前恒折成 null，是纯样板（存量 2026-08-17 复扫已归零）。
    * 可选：旧数据无此键（懒迁移，见 §9.4）。
    */
   brand_state?: PersistedBrandState | null;

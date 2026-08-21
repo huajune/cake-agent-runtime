@@ -44,7 +44,7 @@ describe('SupabaseStore', () => {
   const profileFact = <T>(
     value: T,
     overrides: Partial<{
-      confidence: 'high' | 'medium' | 'low' | 'unknown';
+      confidence: 'high' | 'medium';
       source: CandidateFactProducer;
       evidence: string;
       updatedAt: string;
@@ -245,6 +245,24 @@ describe('SupabaseStore', () => {
       await store.upsertProfileFacts('corp1', 'user1', {});
 
       expect(mockRpc).not.toHaveBeenCalled();
+    });
+
+    it('preference 墓碑对象作为非空第五参传入 RPC', async () => {
+      mockRpc.mockResolvedValue({ data: { written_fields: [], skipped_fields: [] }, error: null });
+      const tombstone = profileFact(null, {
+        confidence: 'medium',
+        source: 'candidate_quote',
+        evidence: '候选人明确清空地点偏好',
+      });
+
+      await store.upsertProfileFacts('corp1', 'user1', {}, undefined, {
+        location: tombstone,
+      });
+
+      expect(mockRpc).toHaveBeenCalledWith(
+        'upsert_long_term_profile_facts',
+        expect.objectContaining({ p_preference_facts: { location: tombstone } }),
+      );
     });
 
     it('should filter null facts before calling RPC', async () => {

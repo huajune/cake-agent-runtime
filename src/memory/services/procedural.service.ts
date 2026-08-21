@@ -6,9 +6,8 @@ import type { ProceduralState } from '../types/procedural.types';
 /**
  * 程序记忆服务 — 招聘流程阶段管理
  *
- * 管理 STAGE（Redis，SESSION_TTL）：
- * - 当前持久化阶段（下一轮会作为 entry stage 读出）
- * - 最近一次显式推进的 from/to、时间和原因（审计用）
+ * 管理 STAGE（Redis，SESSION_TTL）：只持有当前阶段（下一轮会作为 entry stage 读出）。
+ * 阶段变迁的审计链不在这里，见 procedural.types 的说明。
  *
  * 写入策略：覆盖写（由 advance_stage 工具调用）
  *
@@ -29,22 +28,19 @@ export class ProceduralService {
   async get(corpId: string, userId: string, sessionId: string): Promise<ProceduralState> {
     const key = this.buildKey(corpId, userId, sessionId);
     const entry = await this.redisStore.get(key);
-    if (!entry) return { currentStage: null, fromStage: null, advancedAt: null, reason: null };
+    if (!entry) return { currentStage: null };
 
     const content = entry.content as Record<string, unknown>;
-    return {
-      currentStage: (content.currentStage as string) ?? null,
-      fromStage: (content.fromStage as string) ?? null,
-      advancedAt: (content.advancedAt as string) ?? null,
-      reason: (content.reason as string) ?? null,
-    };
+    // 旧记录里的 fromStage/advancedAt/reason 不再读出（S10）：它们只写不读，
+    // 存量随会话 TTL 自然过期，无需迁移。
+    return { currentStage: (content.currentStage as string) ?? null };
   }
 
   /**
    * 设置阶段状态（覆盖写）。
    *
    * 程序记忆只有一份最新状态，不保留 Redis 内部版本链；
-   * 若需要追溯，依赖 fromStage / currentStage / advancedAt / reason。
+   * 若需要追溯阶段变迁，看 advance_stage 的日志与 agent_execution_events。
    */
   async set(
     corpId: string,

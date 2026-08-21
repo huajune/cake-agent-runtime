@@ -1,3 +1,5 @@
+import { stripInternalReasoningArtifacts } from './rules/internal-info-leaks.rule';
+
 /**
  * 确定性出站回复清洗。
  *
@@ -49,7 +51,11 @@ export class OutboundReplySanitizer {
 
     const cleaned = this.removeMarkdownDecoration(
       this.removeInternalJobCardBanner(
-        this.removeTimeMarkers(this.removeVisualPlaceholders(this.removeThinkTags(text))),
+        this.removeTimeMarkers(
+          this.removeVisualPlaceholders(
+            this.removeThinkTags(stripInternalReasoningArtifacts(text)),
+          ),
+        ),
       ),
     );
 
@@ -106,6 +112,7 @@ export class OutboundReplySanitizer {
 
   static needsSanitization(text: string): boolean {
     if (!text) return false;
+    if (stripInternalReasoningArtifacts(text) !== text.trim()) return true;
     if (/<\/?think\s*>/i.test(text)) return true;
     if (/\[(?:图片|表情)消息\]/.test(text)) return true;
     if (this.TIME_MARKER_TEST_PATTERN.test(text)) return true;

@@ -5,8 +5,8 @@ import {
   toSessionFacts,
 } from '@memory/types/session-facts.types';
 
-describe('LongTermService', () => {
-  const mockSupabaseStore = {
+describe('LongTermService（S7 单一 Profile 上游 + preference 三态）', () => {
+  const store = {
     getProfile: jest.fn(),
     upsertProfileFacts: jest.fn().mockResolvedValue(undefined),
     getPreferenceFacts: jest.fn(),
@@ -17,348 +17,192 @@ describe('LongTermService', () => {
     getActiveBookings: jest.fn(),
     setActiveBooking: jest.fn().mockResolvedValue(undefined),
   };
-
   let service: LongTermService;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    service = new LongTermService(mockSupabaseStore as never);
+    store.upsertProfileFacts.mockResolvedValue(undefined);
+    service = new LongTermService(store as never);
   });
 
-  describe('getProfile', () => {
-    it('should return null when no profile exists', async () => {
-      mockSupabaseStore.getProfile.mockResolvedValue(null);
+  it('测试夹具 Profile 只写 medium/archive，空夹具不写', async () => {
+    await service.seedProfileFixture('corp-1', 'user-1', { name: null });
+    expect(store.upsertProfileFacts).not.toHaveBeenCalled();
 
-      const profile = await service.getProfile('corp1', 'user1');
-
-      expect(profile).toBeNull();
-    });
-
-    it('should return profile from store', async () => {
-      mockSupabaseStore.getProfile.mockResolvedValue({
-        name: {
-          value: '张三',
-          confidence: 'high',
-          source: 'system',
-          evidence: '报名成功后写入',
-          updatedAt: '2026-05-22T10:00:00.000Z',
-        },
-        phone: null,
-        gender: null,
-        age: null,
-        is_student: {
-          value: true,
-          confidence: 'medium',
-          source: 'archive',
-          evidence: '会话沉淀提取',
-          updatedAt: '2026-05-22T10:00:00.000Z',
-        },
-        education: null,
-        has_health_certificate: null,
-      });
-
-      const profile = await service.getProfile('corp1', 'user1');
-
-      expect(profile?.name?.value).toBe('张三');
-      expect(profile?.is_student?.value).toBe(true);
-    });
+    await service.seedProfileFixture('corp-1', 'user-1', { name: '兮兮' });
+    expect(store.upsertProfileFacts).toHaveBeenCalledWith(
+      'corp-1',
+      'user-1',
+      { name: expect.objectContaining({ value: '兮兮', confidence: 'medium', source: 'archive' }) },
+      undefined,
+    );
   });
 
-  describe('saveProfile', () => {
-    it('should skip saving when all fields are null', async () => {
-      await service.saveProfile('corp1', 'user1', { name: null, phone: null });
-
-      expect(mockSupabaseStore.upsertProfileFacts).not.toHaveBeenCalled();
-    });
-
-    it('should save only non-null fields with system medium facts', async () => {
-      await service.saveProfile('corp1', 'user1', { name: '张三', phone: null, gender: '男' });
-
-      expect(mockSupabaseStore.upsertProfileFacts).toHaveBeenCalledWith(
-        'corp1',
-        'user1',
-        {
-          name: expect.objectContaining({
-            value: '张三',
-            source: 'system',
-            confidence: 'medium',
-          }),
-          gender: expect.objectContaining({
-            value: '男',
-            source: 'system',
-            confidence: 'medium',
-          }),
-        },
-        undefined,
-      );
-    });
-  });
-
-  describe('writeFromBooking', () => {
-    it('should call upsertProfileFacts with system source and booking-level high confidence', async () => {
-      await service.writeFromBooking('corp1', 'user1', {
-        name: '张三',
-        phone: '13800138000',
-        age: 22,
-        gender: '男',
-      });
-
-      expect(mockSupabaseStore.upsertProfileFacts).toHaveBeenCalledWith('corp1', 'user1', {
-        name: expect.objectContaining({ value: '张三', source: 'system', confidence: 'high' }),
-        phone: expect.objectContaining({
-          value: '13800138000',
-          source: 'system',
-          confidence: 'high',
-        }),
-        age: expect.objectContaining({ value: '22', source: 'system', confidence: 'high' }),
-        gender: expect.objectContaining({ value: '男', source: 'system', confidence: 'high' }),
-      });
-    });
-
-    it('should convert age from number to string', async () => {
-      await service.writeFromBooking('corp1', 'user1', {
-        name: '李四',
-        phone: '13900139000',
-        age: 18,
+  it('报名办结是唯一 high Profile 上游，并携带 booking/session/bot 血缘', async () => {
+    await service.writeFromBooking(
+      'corp-1',
+      'user-1',
+      {
+        name: '兮兮',
+        phone: '18271421690',
+        age: 25,
         gender: '女',
-      });
+        jobId: 100,
+        workOrderId: 9001,
+      },
+      { sessionId: 'session-A', botImId: 'bot-A' },
+    );
 
-      const call = mockSupabaseStore.upsertProfileFacts.mock.calls[0];
-      expect(call[2].age.value).toBe('18');
-    });
-
-    it('should include updatedAt ISO timestamp in each profile fact', async () => {
-      const before = new Date().toISOString();
-      await service.writeFromBooking('corp1', 'user1', {
-        name: '王五',
-        phone: '13700137000',
-        age: 30,
-        gender: '男',
-      });
-      const after = new Date().toISOString();
-
-      const facts = mockSupabaseStore.upsertProfileFacts.mock.calls[0][2];
-      expect(facts.name.updatedAt >= before).toBe(true);
-      expect(facts.name.updatedAt <= after).toBe(true);
-    });
-
-    it('should swallow errors from upsertProfileFacts silently', async () => {
-      mockSupabaseStore.upsertProfileFacts.mockRejectedValueOnce(new Error('DB error'));
-
-      await expect(
-        service.writeFromBooking('corp1', 'user1', {
-          name: '张三',
-          phone: '13800138000',
-          age: 22,
-          gender: '男',
-        }),
-      ).resolves.toBeUndefined();
-    });
-  });
-
-  describe('writeFromSettlement', () => {
-    it('should preserve the session producer chapter and evidence when settling profile facts', async () => {
-      const sessionFacts = toSessionFacts(
-        {
-          ...FALLBACK_EXTRACTION,
-          interview_info: {
-            ...FALLBACK_EXTRACTION.interview_info,
-            name: '张三',
-            age: '24',
-          },
-          reasoning: '候选人提供了姓名和年龄',
-        },
-        {
-          confidence: 'medium',
-          source: 'model',
-          evidence: 'LLM 结构化提取：候选人提供了姓名和年龄',
-        },
-      );
-      sessionFacts.interview_info.name = sessionFactValue('张三', {
+    const facts = store.upsertProfileFacts.mock.calls[0][2];
+    expect(facts.name).toEqual(
+      expect.objectContaining({
+        value: '兮兮',
         confidence: 'high',
-        source: 'rule',
-        evidence: '结构化姓名识别：张三',
-      });
-
-      await service.writeFromSettlement('corp1', 'user1', sessionFacts);
-
-      const savedFacts = mockSupabaseStore.upsertProfileFacts.mock.calls[0][2];
-      expect(savedFacts.name).toEqual(
-        expect.objectContaining({
-          value: '张三',
-          source: 'rule',
-          confidence: 'medium',
-        }),
-      );
-      expect(savedFacts.name.evidence).not.toContain('原字段来源');
-      expect(savedFacts.name.evidence).toContain('原字段置信度=high');
-      expect(savedFacts.name.evidence).toContain('原证据=结构化姓名识别：张三');
-      expect(savedFacts.age).toEqual(
-        expect.objectContaining({
-          value: '24',
-          source: 'model',
-          confidence: 'medium',
-        }),
-      );
-    });
-
-    it('should stamp origin session/bot lineage onto settled profile and preference facts', async () => {
-      const sessionFacts = toSessionFacts(
-        {
-          ...FALLBACK_EXTRACTION,
-          interview_info: {
-            ...FALLBACK_EXTRACTION.interview_info,
-            name: '张三',
-          },
-          reasoning: '候选人提供了姓名与品牌意向',
-        },
-        { confidence: 'medium', source: 'model', evidence: 'LLM 结构化提取' },
-      );
-
-      // 品牌快照源已迁 brand_state（§19.6）：经 origin.brandState 传入，不再读 preferences.brands
-      await service.writeFromSettlement('corp1', 'user1', sessionFacts, {
-        sessionId: 'chat-A',
-        botImId: 'bot-wxid-A',
-        brandState: {
-          currentBrand: { canonicalName: '肯德基', brandId: 101 },
-          excludedBrands: [],
-          updatedAtMs: 1753100000000,
-        },
-      });
-
-      const savedProfile = mockSupabaseStore.upsertProfileFacts.mock.calls[0][2];
-      expect(savedProfile.name).toEqual(
-        expect.objectContaining({ originSessionId: 'chat-A', originBotId: 'bot-wxid-A' }),
-      );
-      const savedPrefs = mockSupabaseStore.upsertProfileFacts.mock.calls[0][4];
-      expect(savedPrefs.brands).toEqual(
-        expect.objectContaining({ originSessionId: 'chat-A', originBotId: 'bot-wxid-A' }),
-      );
-    });
-
-    it('should omit origin lineage fields when origin is not provided', async () => {
-      const sessionFacts = toSessionFacts(
-        {
-          ...FALLBACK_EXTRACTION,
-          interview_info: { ...FALLBACK_EXTRACTION.interview_info, name: '张三' },
-          reasoning: 'x',
-        },
-        { confidence: 'medium', source: 'model', evidence: 'LLM 结构化提取' },
-      );
-
-      await service.writeFromSettlement('corp1', 'user1', sessionFacts);
-
-      const savedProfile = mockSupabaseStore.upsertProfileFacts.mock.calls[0][2];
-      expect(savedProfile.name.originSessionId).toBeUndefined();
-      expect(savedProfile.name.originBotId).toBeUndefined();
-    });
-
-    it('should settle stable preferences into long-term preference facts', async () => {
-      const sessionFacts = toSessionFacts(
-        {
-          ...FALLBACK_EXTRACTION,
-          preferences: {
-            ...FALLBACK_EXTRACTION.preferences,
-            // 收口前的旧存储残留：不得再被沉淀（§19.6）
-            brands: ['肯德基', '必胜客'],
-            position: ['后厨'],
-            schedule: '下午',
-            city: { value: '上海', confidence: 'high', evidence: 'explicit_city' },
-            district: ['浦东新区'],
-            // 单次求职 episode 的临时态：不应沉淀
-            short_term: true,
-            time_windows: ['17点后'],
-            open_position: false,
-          },
-          reasoning: '候选人意向提取',
-        },
-        { confidence: 'medium', source: 'model', evidence: 'LLM 结构化提取' },
-      );
-
-      await service.writeFromSettlement('corp1', 'user1', sessionFacts, {
-        brandState: {
-          currentBrand: { canonicalName: '必胜客', brandId: null },
-          excludedBrands: [],
-          updatedAtMs: 1753100000000,
-        },
-      });
-
-      expect(mockSupabaseStore.upsertProfileFacts).toHaveBeenCalledTimes(1);
-      const saved = mockSupabaseStore.upsertProfileFacts.mock.calls[0][4];
-      // brands 快照 = brand_state.currentBrand 单元素；旧 preferences.brands 存储值不参与
-      expect(saved.brands).toEqual(
-        expect.objectContaining({
-          value: ['必胜客'],
-          source: 'rule',
-          confidence: 'medium',
-          evidence: '会话品牌状态快照（brand_state.currentBrand）',
-        }),
-      );
-      expect(saved.city).toEqual(expect.objectContaining({ value: '上海' }));
-      expect(saved.position).toEqual(expect.objectContaining({ value: ['后厨'] }));
-      expect(saved.schedule).toEqual(expect.objectContaining({ value: '下午' }));
-      expect(saved.district).toEqual(expect.objectContaining({ value: ['浦东新区'] }));
-      // 临时态字段不沉淀
-      expect(saved.short_term).toBeUndefined();
-      expect(saved.time_windows).toBeUndefined();
-      expect(saved.open_position).toBeUndefined();
-    });
-
-    it('should skip preference write when no stable preferences exist', async () => {
-      const sessionFacts = toSessionFacts(
-        {
-          ...FALLBACK_EXTRACTION,
-          interview_info: { ...FALLBACK_EXTRACTION.interview_info, name: '张三' },
-          reasoning: '仅身份信息',
-        },
-        { confidence: 'medium', source: 'model', evidence: 'LLM 结构化提取' },
-      );
-
-      await service.writeFromSettlement('corp1', 'user1', sessionFacts);
-
-      // preferences 走 upsertProfileFacts 第 5 参；无稳定意向时传空对象（store 层判空不发 RPC 字段）
-      expect(mockSupabaseStore.upsertProfileFacts.mock.calls[0][4]).toEqual({});
-    });
+        source: 'system',
+        originSessionId: 'session-A',
+        originBotId: 'bot-A',
+      }),
+    );
+    expect(facts.phone.value).toBe('18271421690');
+    expect(facts.age.value).toBe('25');
+    expect(facts.name.evidence).toContain('jobId=100');
+    expect(facts.name.evidence).toContain('workOrderId=9001');
   });
 
-  describe('getSummaryData', () => {
-    it('should return null when no data', async () => {
-      mockSupabaseStore.getSummaryData.mockResolvedValue(null);
+  it('settlement 不再沉淀身份 Profile，只写稳定偏好', async () => {
+    const facts = toSessionFacts(
+      {
+        ...FALLBACK_EXTRACTION,
+        interview_info: { ...FALLBACK_EXTRACTION.interview_info, name: '兮兮' },
+        preferences: { ...FALLBACK_EXTRACTION.preferences, position: ['服务员'] },
+        reasoning: 'soft preferences',
+      },
+      { confidence: 'medium', source: 'model', evidence: '软事实提取' },
+    );
 
-      const result = await service.getSummaryData('corp1', 'user1');
-
-      expect(result).toBeNull();
+    await service.writeFromSettlement('corp-1', 'user-1', facts, {
+      sessionId: 'session-A',
+      botImId: 'bot-A',
     });
 
-    it('should return summary data', async () => {
-      const data = {
-        recent: [
-          { summary: 'test', sessionId: 's1', startTime: '2026-03-15', endTime: '2026-03-15' },
-        ],
-        archive: 'old stuff',
-        lastSettledMessageAt: '2026-03-15T10:00:00.000Z',
-      };
-      mockSupabaseStore.getSummaryData.mockResolvedValue(data);
-
-      const result = await service.getSummaryData('corp1', 'user1');
-
-      expect(result?.recent).toHaveLength(1);
-      expect(result?.archive).toBe('old stuff');
-      expect(result?.lastSettledMessageAt).toBe('2026-03-15T10:00:00.000Z');
-    });
+    expect(store.upsertProfileFacts.mock.calls[0][2]).toEqual({});
+    expect(store.upsertProfileFacts.mock.calls[0][4].position).toEqual(
+      expect.objectContaining({
+        value: ['服务员'],
+        confidence: 'medium',
+        originSessionId: 'session-A',
+        originBotId: 'bot-A',
+      }),
+    );
   });
 
-  describe('updateMessageMetadata', () => {
-    it('should delegate metadata updates to store', async () => {
-      await service.updateMessageMetadata('corp1', 'user1', {
-        imBotId: 'im-bot-1',
-        imContactId: 'im-contact-1',
-      });
-
-      expect(mockSupabaseStore.upsertMessageMetadata).toHaveBeenCalledWith('corp1', 'user1', {
-        imBotId: 'im-bot-1',
-        imContactId: 'im-contact-1',
-      });
+  it('偏好缺席表示不动，不发空写', async () => {
+    const facts = toSessionFacts(FALLBACK_EXTRACTION, {
+      confidence: 'medium',
+      source: 'model',
+      evidence: '无新软事实',
     });
+
+    await service.writeFromSettlement('corp-1', 'user-1', facts);
+    expect(store.upsertProfileFacts).not.toHaveBeenCalled();
+  });
+
+  it('显式清空以 value=null 墓碑写入，能穿过非空对象闸门', async () => {
+    const facts = toSessionFacts(FALLBACK_EXTRACTION, {
+      confidence: 'medium',
+      source: 'model',
+      evidence: '无新软事实',
+    });
+    facts.preferences.location = sessionFactValue(null, {
+      confidence: 'medium',
+      source: 'candidate_quote',
+      evidence: '候选人明确表示地点不限',
+    });
+
+    await service.writeFromSettlement('corp-1', 'user-1', facts, {
+      sessionId: 'session-A',
+      botImId: 'bot-A',
+    });
+
+    const preferenceArg = store.upsertProfileFacts.mock.calls[0][4];
+    expect(preferenceArg.location).toEqual(
+      expect.objectContaining({
+        value: null,
+        confidence: 'medium',
+        originSessionId: 'session-A',
+        originBotId: 'bot-A',
+      }),
+    );
+    expect(Object.keys(preferenceArg)).toEqual(['location']);
+  });
+
+  it('有值偏好按字段替换写入，临时 episode 字段不沉淀', async () => {
+    const facts = toSessionFacts(
+      {
+        ...FALLBACK_EXTRACTION,
+        preferences: {
+          ...FALLBACK_EXTRACTION.preferences,
+          city: { value: '上海', confidence: 'medium', evidence: 'explicit_city' },
+          district: ['浦东新区'],
+          short_term: true,
+          time_windows: ['17点后'],
+        },
+        reasoning: 'soft preferences',
+      },
+      { confidence: 'medium', source: 'model', evidence: '软事实提取' },
+    );
+
+    await service.writeFromSettlement('corp-1', 'user-1', facts);
+    const saved = store.upsertProfileFacts.mock.calls[0][4];
+    expect(saved.city.value).toBe('上海');
+    expect(saved.district.value).toEqual(['浦东新区']);
+    expect(saved.short_term).toBeUndefined();
+    expect(saved.time_windows).toBeUndefined();
+  });
+
+  it('品牌快照仍是 settlement preference，不写 Profile', async () => {
+    const facts = toSessionFacts(FALLBACK_EXTRACTION, {
+      confidence: 'medium',
+      source: 'model',
+      evidence: '无新软事实',
+    });
+    await service.writeFromSettlement('corp-1', 'user-1', facts, {
+      sessionId: 'session-A',
+      botImId: 'bot-A',
+      brandState: {
+        currentBrand: { canonicalName: '肯德基', brandId: 101 },
+        excludedBrands: [],
+        updatedAtMs: 1,
+      },
+    });
+    expect(store.upsertProfileFacts.mock.calls[0][2]).toEqual({});
+    expect(store.upsertProfileFacts.mock.calls[0][4].brands.value).toEqual(['肯德基']);
+  });
+
+  it('按 bot 召回摘要时只返回同账号 recent，并 fail-closed 丢弃混合 archive', async () => {
+    store.getSummaryData.mockResolvedValue({
+      recent: [
+        {
+          summary: 'A',
+          sessionId: 's-A',
+          originBotId: 'bot-A',
+          startTime: '2026-08-20',
+          endTime: '2026-08-20',
+        },
+        {
+          summary: 'B',
+          sessionId: 's-B',
+          originBotId: 'bot-B',
+          startTime: '2026-08-20',
+          endTime: '2026-08-20',
+        },
+      ],
+      archive: 'mixed',
+      lastSettledMessageAt: null,
+    });
+
+    const result = await service.getSummaryData('corp-1', 'user-1', 'bot-A');
+    expect(result?.recent.map((entry) => entry.summary)).toEqual(['A']);
+    expect(result?.archive).toBeNull();
   });
 });

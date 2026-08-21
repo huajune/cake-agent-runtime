@@ -1,1821 +1,397 @@
-import { buildInterviewBookingTool } from '@tools/duliday-interview-booking.tool';
-import { ToolBuildContext } from '@shared-types/tool.types';
+import {
+  createForm,
+  verdictOf,
+  type BookingCollectionForm,
+  type ContractFieldDef,
+} from '@resolution/collection';
+import type { ToolBuildContext } from '@shared-types/tool.types';
+import {
+  buildInterviewBookingTool,
+  resolveInterviewType,
+} from '@tools/duliday-interview-booking.tool';
 import { TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
-import { FALLBACK_EXTRACTION } from '@memory/types/session-facts.types';
-import type { TurnLedger } from '@shared-types/turn.types';
-import { createToolContext, mergeToolContext } from '../../helpers/tool-context.fixture';
-import { testRuleFact, testRuleFacts } from '../../helpers/rule-fact-claims.fixture';
+import { createToolContext } from '../../helpers/tool-context.fixture';
 
-interface BookingContextOverrides {
-  messages?: unknown[];
-  currentUserMessage?: string;
-  sessionFacts?: ToolBuildContext['archive']['sessionFacts'];
-  bookingCandidateFacts?: ToolBuildContext['archive']['bookingCandidateFacts'];
-  isRecalledJobId?: ToolBuildContext['archive']['isRecalledJobId'];
-  ruleFacts?: TurnLedger['facts']['ruleFacts'];
-  hasNewerUserInput?: ToolBuildContext['runtime']['hasNewerUserInput'];
+const CONTRACT: ContractFieldDef[] = [
+  {
+    labelId: 101,
+    labelTitle: '姓名',
+    fieldType: 'TEXT',
+    required: true,
+    acceptedOptions: [],
+    rejectedOptions: [],
+    systemField: 'name',
+  },
+  {
+    labelId: 102,
+    labelTitle: '联系电话',
+    fieldType: 'TEXT',
+    required: true,
+    acceptedOptions: [],
+    rejectedOptions: [],
+    systemField: 'phone',
+  },
+  {
+    labelId: 103,
+    labelTitle: '年龄',
+    fieldType: 'TEXT',
+    required: true,
+    acceptedOptions: [],
+    rejectedOptions: [],
+    systemField: 'age',
+  },
+  {
+    labelId: 104,
+    labelTitle: '性别',
+    fieldType: 'SINGLE_OPTION',
+    required: true,
+    acceptedOptions: [
+      { optionCode: 'MALE', optionLabel: '男' },
+      { optionCode: 'FEMALE', optionLabel: '女' },
+    ],
+    rejectedOptions: [],
+    systemField: 'gender',
+  },
+];
+
+const JOB = {
+  basicInfo: {
+    jobId: 100,
+    brandName: '测试品牌',
+    jobName: '服务员',
+    storeInfo: { storeName: '测试门店' },
+  },
+  interviewProcess: {
+    firstInterview: {
+      firstInterviewWay: '电话面试',
+      periodicInterviewTimes: [],
+      fixedInterviewTimes: [],
+    },
+  },
+};
+
+function readyForm(contract: readonly ContractFieldDef[] = CONTRACT): BookingCollectionForm {
+  const form = createForm({ jobId: 100, contract });
+  const values: Record<number, { value: string; optionCodes?: string[] }> = {
+    101: { value: '兮兮' },
+    102: { value: '18271421690' },
+    103: { value: '25' },
+    104: { value: '女', optionCodes: ['FEMALE'] },
+    105: { value: 'https://wecom.example.test/resume.pdf' },
+  };
+  for (const field of contract) {
+    const value = values[field.labelId] ?? { value: '已填写' };
+    form.slots[field.labelId] = {
+      labelId: field.labelId,
+      ...(field.systemField ? { systemField: field.systemField } : {}),
+      state: 'filled',
+      askCount: 1,
+      value: {
+        ...value,
+        sourceText: value.value,
+        producer: 'candidate_quote',
+        confidence: 'high',
+      },
+    };
+  }
+  form.lastRecap = { labelIds: contract.map((field) => field.labelId) };
+  return form;
 }
 
-describe('buildInterviewBookingTool', () => {
-  const mockSpongeService = {
+describe('duliday_interview_booking（form → labelList）', () => {
+  let currentForm: BookingCollectionForm;
+  let context: ToolBuildContext;
+  const sponge = {
+    fetchJobCollectionContract: jest.fn(),
     fetchJobs: jest.fn(),
     bookInterview: jest.fn(),
     uploadAttachmentFromUrl: jest.fn(),
-    getCachedWorkOrderById: jest.fn(),
   };
-
-  const mockPrivateChatNotifier = {
-    notifyInterviewBookingResult: jest.fn().mockResolvedValue(true),
+  const collectionForms = {
+    loadOrCreate: jest.fn(async () => currentForm),
+    persist: jest.fn(async (_scope, form) => {
+      currentForm = form;
+    }),
   };
-
-  const mockUserHostingService = {
-    pauseUser: jest.fn().mockResolvedValue(undefined),
+  const notifier = { notifyInterviewBookingResult: jest.fn().mockResolvedValue(true) };
+  const hosting = { pauseUser: jest.fn().mockResolvedValue(undefined) };
+  const longTerm = {
+    getActiveBookings: jest.fn().mockResolvedValue([]),
+    setActiveBooking: jest.fn().mockResolvedValue(undefined),
+    writeFromBooking: jest.fn().mockResolvedValue(undefined),
   };
-
-  const mockContext: ToolBuildContext = createToolContext({
-    session: {
-      userId: 'user-1',
-      corpId: 'corp-1',
-      sessionId: 'sess-1',
-      contactName: '候选人微信名',
-      botUserId: 'manager-1',
-    },
-    // B4 手机号溯源闸门要求提交的 phone 在候选人原文中有出处；共享上下文里
-    // 预置一条候选人报号消息，让存量用例聚焦各自原本要测的环节。
-    turnInput: { messages: [{ role: 'user', content: '电话13812345678' }] },
-  });
-
-  const buildContext = (overrides: BookingContextOverrides = {}): ToolBuildContext =>
-    mergeToolContext(mockContext, {
-      archive: {
-        ...(overrides.sessionFacts === undefined ? {} : { sessionFacts: overrides.sessionFacts }),
-        ...(overrides.bookingCandidateFacts === undefined
-          ? {}
-          : { bookingCandidateFacts: overrides.bookingCandidateFacts }),
-        ...(overrides.isRecalledJobId === undefined
-          ? {}
-          : { isRecalledJobId: overrides.isRecalledJobId }),
-      },
-      turnInput: {
-        ...(overrides.messages === undefined ? {} : { messages: overrides.messages }),
-        ...(overrides.currentUserMessage === undefined
-          ? {}
-          : { currentUserMessage: overrides.currentUserMessage }),
-      },
-      ledger:
-        overrides.ruleFacts === undefined ? {} : { facts: { ruleFacts: overrides.ruleFacts } },
-      runtime:
-        overrides.hasNewerUserInput === undefined
-          ? {}
-          : { hasNewerUserInput: overrides.hasNewerUserInput },
-    });
-
-  const validInput = {
-    name: '张三',
-    phone: '13812345678',
-    age: 25,
-    genderId: 1,
-    jobId: 100,
-    interviewTime: '2026-03-20 14:00:00',
-    operateType: 6,
-    hasHealthCertificate: 1,
-    prechecked: { nextAction: 'ready_to_book' as const, missingFieldsCount: 0 },
+  const sessionFacts = {
+    saveCompletedCollectionFacts: jest.fn().mockResolvedValue(undefined),
   };
-
-  const makeJob = (overrides: Record<string, unknown> = {}) => {
-    const {
-      basicInfo: basicInfoOverrides = {},
-      interviewProcess: interviewProcessOverrides = {},
-      ...restOverrides
-    } = overrides;
-
-    return {
-      basicInfo: {
-        jobId: 100,
-        brandName: '成都你六姐',
-        jobName: '后厨-小时工',
-        jobNickName: '后厨',
-        storeInfo: {
-          storeName: '上海浦江城市生活广场店',
-        },
-        ...(basicInfoOverrides as Record<string, unknown>),
-      },
-      interviewProcess: {
-        interviewSupplement: [
-          { interviewSupplementId: 2, interviewSupplement: '学历' },
-          { interviewSupplementId: 3, interviewSupplement: '籍贯' },
-          { interviewSupplementId: 4, interviewSupplement: '身高' },
-        ],
-        ...(interviewProcessOverrides as Record<string, unknown>),
-      },
-      ...restOverrides,
-    };
-  };
+  const ops = { recordEvent: jest.fn().mockResolvedValue(true) };
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockSpongeService.uploadAttachmentFromUrl.mockResolvedValue({
-      fileName: '张三简历.pdf',
+    currentForm = readyForm();
+    context = createToolContext({
+      session: {
+        corpId: 'corp-1',
+        userId: 'user-1',
+        sessionId: 'session-1',
+        botImId: 'bot-A',
+        contactName: '测试联系人',
+      },
+      turnInput: { messages: [{ role: 'user', content: '确认' }] },
+    });
+    context.ledger.jobs.collectionReadyJobId = 100;
+    sponge.fetchJobCollectionContract.mockResolvedValue({ jobId: 100, fields: CONTRACT });
+    sponge.fetchJobs.mockResolvedValue({ jobs: [JOB] });
+    sponge.bookInterview.mockResolvedValue({
+      success: true,
+      code: 0,
+      message: '预约成功',
+      applyErrorList: null,
+      workOrderId: 9001,
+    });
+    sponge.uploadAttachmentFromUrl.mockResolvedValue({
+      fileName: 'resume.pdf',
       cloudStorageKey: 'resume/cloud/key.pdf',
     });
-    // 软查重反查工单默认查不到手机号 → 保守按重复拦截（与海绵不可用时的兜底行为一致）
-    mockSpongeService.getCachedWorkOrderById.mockResolvedValue(null);
+    longTerm.getActiveBookings.mockResolvedValue([]);
   });
 
-  const flushAsyncEvents = async () => {
-    await new Promise((resolve) => setImmediate(resolve));
-  };
-
-  /* eslint-disable @typescript-eslint/no-explicit-any */
-  const executeToolWithContext = async (
-    input: Record<string, any>,
-    contextOverride: BookingContextOverrides = {},
-    options: { activeBooking?: Record<string, unknown> | null } = {},
-  ) => {
-    const mockLongTermService = {
-      writeFromBooking: jest.fn().mockResolvedValue(undefined),
-      setActiveBooking: jest.fn().mockResolvedValue(undefined),
-      getActiveBookings: jest
-        .fn()
-        .mockResolvedValue(options.activeBooking ? [options.activeBooking] : []),
-    };
-    const mockOpsEventsRecorder = {
-      recordEvent: jest.fn().mockResolvedValue(undefined),
-    };
-    const builder = buildInterviewBookingTool(
-      mockSpongeService as never,
-      mockPrivateChatNotifier as never,
-      mockUserHostingService as never,
-      mockLongTermService as never,
-      mockOpsEventsRecorder as never,
-    );
-    const toolContext = buildContext(contextOverride);
-    const builtTool = builder(toolContext);
-    const result = (await builtTool.execute(input as any, {
-      toolCallId: 'test',
+  async function execute(input: Record<string, unknown>) {
+    const built = buildInterviewBookingTool(
+      sponge as never,
+      notifier as never,
+      hosting as never,
+      longTerm as never,
+      ops as never,
+      { collectionForms: collectionForms as never, sessionFacts: sessionFacts as never },
+    )(context);
+    return built.execute!(input as never, {
+      toolCallId: 'booking-test',
       context: {},
       messages: [],
-      abortSignal: undefined as any,
-    })) as any;
-    return {
-      result,
-      context: toolContext,
-      mocks: {
-        mockLongTermService,
-        mockOpsEventsRecorder,
-      },
-    };
-  };
+      abortSignal: undefined as never,
+    }) as Promise<Record<string, any>>;
+  }
 
-  const executeTool = async (
-    input: Record<string, any>,
-    contextOverride: BookingContextOverrides = {},
-    options: { activeBooking?: Record<string, unknown> | null } = {},
-  ) => {
-    const { result } = await executeToolWithContext(input, contextOverride, options);
-    return result;
-  };
-  /* eslint-enable @typescript-eslint/no-explicit-any */
-
-  it('should return error for missing required payload fields', async () => {
-    const { result, context } = await executeToolWithContext({
-      ...validInput,
-      operateType: undefined,
-    });
-
-    expect(result.success).toBe(false);
-    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_MISSING_FIELDS);
-    expect(result.missingFields).toContain('operateType');
-    expect(context.ledger.jobs.bookingSucceeded).toBe(false);
-    expect(result.requiredPayloadFields).toEqual([
-      'jobId',
-      'interviewTime',
-      'name',
-      'phone',
-      'age',
-      'genderId',
-      'operateType',
-    ]);
-    expect(mockPrivateChatNotifier.notifyInterviewBookingResult).not.toHaveBeenCalled();
-  });
-
-  describe('Phase 2-lite.1 prechecked contract', () => {
-    it('rejects when prechecked.nextAction === "collect_fields"', async () => {
-      const result = await executeTool({
-        ...validInput,
-        prechecked: { nextAction: 'collect_fields', missingFieldsCount: 3 },
-      });
-      expect(result.success).toBe(false);
-      expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_REJECTED);
-      expect(result._outcome).toContain('collect_fields');
-      expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
-    });
-
-    it('rejects when prechecked.nextAction === "confirm_date"', async () => {
-      const result = await executeTool({
-        ...validInput,
-        prechecked: { nextAction: 'confirm_date', missingFieldsCount: 0 },
-      });
-      expect(result.success).toBe(false);
-      expect(result._outcome).toContain('confirm_date');
-    });
-
-    it('rejects when prechecked.nextAction === "date_unavailable"', async () => {
-      const result = await executeTool({
-        ...validInput,
-        prechecked: { nextAction: 'date_unavailable', missingFieldsCount: 0 },
-      });
-      expect(result.success).toBe(false);
-      expect(result._outcome).toContain('date_unavailable');
-    });
-
-    it('rejects when prechecked.nextAction === "student_rejected"', async () => {
-      const result = await executeTool({
-        ...validInput,
-        prechecked: { nextAction: 'student_rejected', missingFieldsCount: 0 },
-      });
-      expect(result.success).toBe(false);
-      expect(result._outcome).toContain('student_rejected');
-      expect(result._replyInstruction).toContain('学生身份');
-      expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
-    });
-
-    it('rejects when missingFieldsCount > 0 even with ready_to_book', async () => {
-      const result = await executeTool({
-        ...validInput,
-        prechecked: { nextAction: 'ready_to_book', missingFieldsCount: 2 },
-      });
-      expect(result.success).toBe(false);
-      expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_MISSING_FIELDS);
-      expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
-    });
-
-    it('rejects with friendly error when prechecked is omitted entirely', async () => {
-      // 模拟 LLM 漏调 precheck 直接 booking 的场景：prechecked 字段缺失。
-      // schema 已松绑为 optional，不应被 Vercel AI SDK 卡在 schema validation，
-      // 应该走 buildToolError → replyInstruction 让 LLM 先去调 precheck。
-      const { prechecked, ...inputWithoutPrechecked } = validInput;
-      void prechecked;
-      const result = await executeTool(inputWithoutPrechecked);
-      expect(result.success).toBe(false);
-      expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_REJECTED);
-      expect(result._outcome).toContain('未先调');
-      expect(result._replyInstruction).toContain('duliday_interview_precheck');
-      expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('jobId provenance 闸门', () => {
-    it('jobId 无召回出处时拦截，不打 Sponge、不下预约', async () => {
-      // 模型伪造 prechecked 直接进 booking、且 jobId 本会话从未召回（凭空/串改命中真岗位）
-      const { result, context } = await executeToolWithContext(validInput, {
-        isRecalledJobId: () => false,
-      });
-
-      expect(result.success).toBe(false);
-      expect(result).toMatchObject({
-        shortCircuited: true,
-        gateRejected: true,
-        reasonCode: 'job_id_not_recalled',
-      });
-      expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_JOB_NOT_PROVIDED);
-      expect(result._replyInstruction).toContain('runtime 已短路本轮');
-      expect(context.ledger.jobs.bookingSucceeded).toBe(false);
-      expect(mockSpongeService.fetchJobs).not.toHaveBeenCalled();
-      expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
-    });
-
-    it('jobId 有召回出处时放行闸门（继续走后续校验/下单）', async () => {
-      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
-      mockSpongeService.bookInterview.mockResolvedValue({ success: true, data: { id: 1 } });
-
-      await executeTool(validInput, { isRecalledJobId: () => true });
-
-      // 放行闸门后落到既有 fetchJobs 路径（不再被 job_not_provided 短路）
-      expect(mockSpongeService.fetchJobs).toHaveBeenCalled();
-    });
-
-    it('未注入 isRecalledJobId（test/debug 链路）时跳过闸门，向后兼容', async () => {
-      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
-      mockSpongeService.bookInterview.mockResolvedValue({ success: true, data: { id: 1 } });
-
-      const result = await executeTool(validInput);
-
-      expect(result.errorType).not.toBe(TOOL_ERROR_TYPES.BOOKING_JOB_NOT_PROVIDED);
-      expect(mockSpongeService.fetchJobs).toHaveBeenCalled();
-    });
-  });
-
-  it('should return error for invalid time format', async () => {
-    const result = await executeTool({ ...validInput, interviewTime: '2026/03/20 14:00' });
-
-    expect(result.success).toBe(false);
-    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_INVALID_INTERVIEW_TIME);
-    expect(result.detailedReason ?? result._replyInstruction).toContain('YYYY-MM-DD HH:mm:ss');
-  });
-
-  it('should return error for invalid age', async () => {
-    const result = await executeTool({ ...validInput, age: 101 });
-
-    expect(result.success).toBe(false);
-    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_INVALID_AGE);
-  });
-
-  it('should return error for invalid genderId', async () => {
-    const result = await executeTool({ ...validInput, genderId: 3 });
-
-    expect(result.success).toBe(false);
-    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_INVALID_GENDER_ID);
-  });
-
-  it('should return error for invalid operateType', async () => {
-    const result = await executeTool({ ...validInput, operateType: 9 });
-
-    expect(result.success).toBe(false);
-    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_INVALID_OPERATE_TYPE);
-  });
-
-  it('should return error for invalid educationId', async () => {
-    const result = await executeTool({ ...validInput, educationId: 99 });
-
-    expect(result.success).toBe(false);
-    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_INVALID_EDUCATION_ID);
-    expect(result.availableEducationIds).toEqual(
-      expect.objectContaining({
-        2: '本科',
-        3: '大专',
-      }),
-    );
-  });
-
-  it('should return error for invalid health certificate status', async () => {
-    const result = await executeTool({ ...validInput, hasHealthCertificate: 4 });
-
-    expect(result.success).toBe(false);
-    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_INVALID_HEALTH_CERTIFICATE);
-  });
-
-  it('should return error for invalid health certificate types', async () => {
-    const result = await executeTool({ ...validInput, healthCertificateTypes: [1, 7] });
-
-    expect(result.success).toBe(false);
-    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_INVALID_HEALTH_CERTIFICATE_TYPES);
-  });
-
-  it('should return error when job lookup cannot find the job', async () => {
-    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [] });
-
-    const result = await executeTool(validInput);
-
-    expect(result.success).toBe(false);
-    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_JOB_NOT_FOUND);
-    expect(result.detailedReason).toContain('jobId=100');
-    expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
-  });
-
-  // Defense-in-depth: 三个 booking guard 在 LLM 跳过 precheck / 无视 precheck 警告时兜底。
-  // 同源函数（isLikelyRealChineseName / findSameDayCutoffViolation / findScreeningFailure）
-  // 已在 precheck 跑过一次，booking 这里是兜底再跑一次，避免 server-side 安全网被删后裸奔。
-  it('booking guard: should reject when name fails isLikelyRealChineseName', async () => {
-    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
-
-    const result = await executeTool({ ...validInput, name: 'Mike' });
-
-    expect(result.success).toBe(false);
-    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_MISSING_FIELDS);
-    expect(result._replyInstruction).toContain('真实姓名');
-    expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
-  });
-
-  it('HC-2 name gate: rejects a format-valid name that only appears as an auto-greeting nickname', async () => {
-    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
-
-    // "小王" 形态合法（checkRealName 放行），但原文里只是"我是小王"打招呼昵称
-    const result = await executeTool(
-      { ...validInput, name: '小王' },
-      { messages: [{ role: 'user', content: '我是小王' }] },
-    );
-
-    expect(result.success).toBe(false);
-    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_MISSING_FIELDS);
-    expect(result._replyInstruction).toContain('真实姓名');
-    expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
-  });
-
-  it('HC-2 name gate: does NOT fire for a name with a structured user_text source', async () => {
-    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
-
-    // 有结构化出处 → name gate 放行；即便后续别的环节失败，也不应是 name gate 的拒绝理由
-    const result = await executeTool(
-      { ...validInput, name: '小王' },
-      { messages: [{ role: 'user', content: '姓名：小王' }] },
-    );
-
-    expect(result._replyInstruction ?? '').not.toContain('打招呼语昵称');
-  });
-
-  it('HC-2 name gate: unlocks after explicit confirmation (badcase g4ytra23 死锁修复)', async () => {
-    mockSpongeService.fetchJobs.mockResolvedValue({
-      jobs: [makeJob({ interviewProcess: { interviewSupplement: [] } })],
-    });
-    mockSpongeService.bookInterview.mockResolvedValue({
-      success: true,
-      code: 0,
-      message: '预约成功',
-    });
-
-    // 打招呼昵称=真名，但候选人已明确确认"就是陈佩珊" → 解锁放行
-    const result = await executeTool(
-      { ...validInput, name: '陈佩珊' },
-      {
-        messages: [
-          { role: 'user', content: '我是陈佩珊' },
-          { role: 'user', content: '电话13812345678' },
-          { role: 'assistant', content: '麻烦发一下身份证上的真实姓名' },
-          { role: 'user', content: '就是陈佩珊' },
-        ],
-      },
-    );
-
-    expect(result._replyInstruction ?? '').not.toContain('打招呼语昵称');
-    expect(result.success).toBe(true);
-  });
-
-  it('HC-2 name gate: escalates to request_handoff after 2+ real-name asks (同题限问)', async () => {
-    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
-
-    const result = await executeTool(
-      { ...validInput, name: '小王' },
-      {
-        messages: [
-          { role: 'user', content: '我是小王' },
-          { role: 'user', content: '电话13812345678' },
-          { role: 'assistant', content: '麻烦发一下身份证上的真实姓名，我帮你登记' },
-          { role: 'user', content: '发了呀' },
-          { role: 'assistant', content: '门店登记需要用身份证上的真实姓名哈' },
-          { role: 'user', content: '就这个' },
-        ],
-      },
-    );
-
-    expect(result.success).toBe(false);
-    expect(result._replyInstruction).toContain('request_handoff');
-    expect(result._replyInstruction).toContain('禁止再重复索要');
-    expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
-  });
-
-  it('B4 phone gate: rejects a phone with no user-text provenance (示例回声编造号)', async () => {
-    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
-
-    const result = await executeTool(
-      { ...validInput, name: '张三', phone: '15921708092' },
-      {
-        messages: [
-          { role: 'user', content: '姓名：张三' },
-          { role: 'user', content: '周四下午' },
-        ],
-      },
-    );
-
-    expect(result.success).toBe(false);
-    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_MISSING_FIELDS);
-    expect(result._replyInstruction).toContain('手机号');
-    expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
-  });
-
-  it('booking guard: should reject when interviewTime falls outside the job windows', async () => {
-    mockSpongeService.fetchJobs.mockResolvedValue({
-      jobs: [
-        makeJob({
-          interviewProcess: {
-            interviewSupplement: [],
-            firstInterview: {
-              periodicInterviewTimes: [
-                {
-                  interviewWeekday: '每周五',
-                  interviewTimes: [
-                    {
-                      interviewStartTime: '13:30',
-                      interviewEndTime: '16:30',
-                      cycleDeadlineDay: '当天',
-                      cycleDeadlineEnd: '12:00',
-                    },
-                  ],
-                },
-              ],
-              fixedInterviewTimes: [],
-            },
-          },
-        }),
-      ],
-    });
-
-    // 2026-03-19 是星期四，岗位只在每周五开窗——guard 应拦下
-    const result = await executeTool({ ...validInput, interviewTime: '2026-03-19 14:00:00' });
-
-    expect(result.success).toBe(false);
-    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_INVALID_INTERVIEW_TIME);
-    expect(result.detailedReason).toContain('2026-03-19');
-    expect(Array.isArray(result.availableSlots)).toBe(true);
-    expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
-  });
-
-  it('booking guard: should reject when supplementAnswers hit a screening failure', async () => {
-    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
-
-    // 食品相关专业的"在读/学过" 命中筛选 failSignal（label 带括号黑名单 "不要..." 触发
-    // BLACKLIST_PAREN_REGEX 分类为 screening；answer 含 "食品" 命中 failSignal）
-    const result = await executeTool({
-      ...validInput,
-      supplementAnswers: { '专业（不要食品/食安/卫检等专业）': '我是食品专业的' },
-    });
-
-    expect(result.success).toBe(false);
+  it('本轮没有 ready_to_book 凭据时，在任何外部请求前拒绝', async () => {
+    context.ledger.jobs.collectionReadyJobId = undefined;
+    const result = await execute({ jobId: 100 });
     expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_REJECTED);
-    expect(result._replyInstruction).toContain('筛选');
-    expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
+    expect(sponge.fetchJobCollectionContract).not.toHaveBeenCalled();
   });
 
-  it('booking guard: forged ready_to_book still rejects explicit student form for social-only job', async () => {
-    mockSpongeService.fetchJobs.mockResolvedValue({
-      jobs: [makeJob({ hiringRequirement: { figure: '社会人士' } })],
-    });
+  it('jobId 无召回出处时恢复防伪短路与专用错误码', async () => {
+    context.ledger.jobs.collectionReadyJobId = undefined;
+    context.archive.recalledJobIds = [99];
+    context.archive.isRecalledJobId = () => false;
 
-    const result = await executeTool(validInput, {
-      currentUserMessage: '姓名：罗瑞雪\n年龄：19\n身份（学生/社会人士）：学生',
-    });
+    const result = await execute({ jobId: 100 });
 
-    expect(result.success).toBe(false);
-    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_REJECTED);
-    expect(result._outcome).toContain('学生身份');
-    expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
-  });
-
-  it('booking guard: 二选一问句后的“社会”与 precheck 使用同一身份口径', async () => {
-    mockSpongeService.fetchJobs.mockResolvedValue({
-      jobs: [
-        makeJob({
-          hiringRequirement: { figure: '社会人士' },
-          interviewProcess: { interviewSupplement: [] },
-        }),
-      ],
-    });
-    mockSpongeService.bookInterview.mockResolvedValue({
-      success: true,
-      code: 0,
-      message: '预约成功',
-    });
-
-    const result = await executeTool(validInput, {
-      messages: [
-        { role: 'user', content: '电话13812345678' },
-        { role: 'assistant', content: '目前是学生还是社会人士？' },
-        { role: 'user', content: '社会' },
-      ],
-    });
-
-    expect(result.success).toBe(true);
-    expect(mockSpongeService.bookInterview).toHaveBeenCalled();
-  });
-
-  it('booking guard: forged ready_to_book still blocks an excluded household before side effect', async () => {
-    mockSpongeService.fetchJobs.mockResolvedValue({
-      jobs: [
-        makeJob({
-          hiringRequirement: {
-            requirementsForHometown: {
-              nativePlaceRequirementType: '不要',
-              nativePlaces: ['天津市', '江西省'],
-            },
-          },
-        }),
-      ],
-    });
-
-    const result = await executeTool({
-      ...validInput,
-      householdRegisterProvinceId: 120000,
-    });
-
-    expect(result.success).toBe(false);
-    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_REJECTED);
-    expect(result._outcome).toContain('内部硬性条件');
-    expect(result._replyInstruction).not.toContain('天津');
-    expect(result._replyInstruction).not.toContain('江西');
-    expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
-  });
-
-  // 时段窗口/报名截止/dateOnly 等时段硬规则的二次校验已经从 booking 移除——
-  // 由 duliday_interview_precheck 前置拦截，booking 信任 precheck 的结论。
-  // 仍保留一条"合法时段提交成功"的正路径，作为 booking 端的烟雾测试。
-  it('should submit the booking when interviewTime is supplied (precheck is trusted to have validated it)', async () => {
-    mockSpongeService.fetchJobs.mockResolvedValue({
-      jobs: [
-        makeJob({
-          interviewProcess: {
-            interviewSupplement: [],
-            firstInterview: {
-              periodicInterviewTimes: [
-                {
-                  interviewWeekday: '每周五',
-                  interviewTimes: [
-                    {
-                      interviewStartTime: '13:30',
-                      interviewEndTime: '16:30',
-                      cycleDeadlineDay: '当天',
-                      cycleDeadlineEnd: '12:00',
-                    },
-                  ],
-                },
-              ],
-              fixedInterviewTimes: [],
-            },
-          },
-        }),
-      ],
-    });
-    mockSpongeService.bookInterview.mockResolvedValue({
-      success: true,
-      code: 0,
-      message: '预约成功',
-      notice: null,
-      errorList: null,
-    });
-
-    const result = await executeTool({
-      ...validInput,
-      interviewTime: '2026-03-20 14:00:00',
-    });
-
-    expect(result.success).toBe(true);
-    expect(mockSpongeService.bookInterview).toHaveBeenCalledWith(
-      expect.objectContaining({
-        interviewTime: '2026-03-20 14:00:00',
-      }),
-      expect.objectContaining({ botUserId: 'manager-1' }),
-    );
-  });
-
-  it('提交前发现更新消息时拒绝旧资料下单，并返回可 replay 的短路信号', async () => {
-    mockSpongeService.fetchJobs.mockResolvedValue({
-      jobs: [
-        makeJob({
-          interviewProcess: {
-            interviewSupplement: [],
-            firstInterview: {
-              periodicInterviewTimes: [],
-              fixedInterviewTimes: [],
-            },
-          },
-        }),
-      ],
-    });
-    const hasNewerUserInput = jest.fn().mockResolvedValue(true);
-
-    const { result, context } = await executeToolWithContext(validInput, {
-      hasNewerUserInput,
-    });
-
-    expect(hasNewerUserInput).toHaveBeenCalledTimes(1);
     expect(result).toMatchObject({
-      success: false,
+      errorType: TOOL_ERROR_TYPES.BOOKING_JOB_NOT_PROVIDED,
       shortCircuited: true,
-      staleInput: true,
-      reasonCode: 'newer_user_input_pending',
+      gateRejected: true,
+      reasonCode: 'job_id_not_recalled',
+      jobId: 100,
+      recalledJobIds: [99],
     });
     expect(context.ledger.jobs.bookingSucceeded).toBe(false);
-    expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
+    expect(sponge.fetchJobCollectionContract).not.toHaveBeenCalled();
   });
 
-  it('最终报名 payload 的姓名电话与预检事实冲突时拒绝提交', async () => {
-    const result = await executeTool(validInput, {
-      bookingCandidateFacts: {
-        ...FALLBACK_EXTRACTION.interview_info,
-        name: '王玥',
-        phone: '19290703760',
-        age: '36',
-        gender: '女',
-        gender_source: 'candidate',
-      },
-    });
-
-    expect(result.success).toBe(false);
-    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_REJECTED);
-    expect(result.conflictingFields).toEqual(['姓名', '联系电话']);
-    expect(mockSpongeService.fetchJobs).not.toHaveBeenCalled();
-    expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
-  });
-
-  it('只有历史参数、没有权威候选人事实时拒绝提交', async () => {
-    const result = await executeTool(validInput, { bookingCandidateFacts: null });
-
-    expect(result.success).toBe(false);
-    expect(result.missingEvidenceFields).toEqual(['姓名', '联系电话']);
-    expect(mockSpongeService.fetchJobs).not.toHaveBeenCalled();
-    expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
-  });
-
-  it('年龄性别及可选报名字段与预检快照不一致时不再硬拒', async () => {
-    const result = await executeTool(validInput, {
-      bookingCandidateFacts: {
-        ...FALLBACK_EXTRACTION.interview_info,
-        name: validInput.name,
-        phone: validInput.phone,
-        age: '99',
-        gender: '女',
-        gender_source: 'candidate',
-        education: '博士',
-        has_health_certificate: '无',
-      },
-    });
-
+  it('只向 entryUser 发送 jobId + labelList，wait_notice 不带 interviewTime', async () => {
+    const result = await execute({ jobId: 100 });
     expect(result.success).toBe(true);
-    expect(mockSpongeService.bookInterview).toHaveBeenCalledTimes(1);
+    const [payload] = sponge.bookInterview.mock.calls[0];
+    expect(Object.keys(payload).sort()).toEqual(['interviewTime', 'jobId', 'labelList']);
+    expect(payload.interviewTime).toBeUndefined();
+    expect(payload.labelList).toEqual([
+      { labelId: 101, value: '兮兮' },
+      { labelId: 102, value: '18271421690' },
+      { labelId: 103, value: '25' },
+      { labelId: 104, optionCodes: ['FEMALE'] },
+    ]);
+    expect(payload).not.toEqual(expect.objectContaining({ name: expect.anything() }));
+    expect(payload).not.toEqual(expect.objectContaining({ customerLabelList: expect.anything() }));
   });
 
-  it('returns online completion guidance instead of an on-site script for AI interviews', async () => {
-    mockSpongeService.fetchJobs.mockResolvedValue({
-      jobs: [
-        makeJob({
-          interviewProcess: {
-            interviewSupplement: [],
-            firstInterview: {
-              firstInterviewWay: '线上面试',
-              firstInterviewDesc: '线上 AI 面试',
-            },
-          },
-        }),
-      ],
+  it('成功后 markSubmitted，active booking 与高置信 booking lineage 同步写入', async () => {
+    await execute({ jobId: 100 });
+    expect(verdictOf(currentForm)).toBe('submitted');
+    expect(currentForm.workOrderId).toBe(9001);
+    expect(longTerm.setActiveBooking).toHaveBeenCalledWith('corp-1', 'user-1', 9001, {
+      job_id: 100,
     });
-    mockSpongeService.bookInterview.mockResolvedValue({
-      success: true,
-      code: 0,
-      message: '预约成功',
-      workOrderId: 555,
-    });
-
-    const result = await executeTool(validInput);
-
-    expect(result.success).toBe(true);
-    expect(result.requestInfo.interviewType).toBe('AI面试');
-    expect(result._aiInterviewGuide).toContain('无需到店');
-    expect(result._aiInterviewGuide).toContain('在线完成');
-    expect(result._onSiteScript).toBeUndefined();
-  });
-
-  it('预约备注要求面试群时声明人工补发 sideEffect，并保留兼职群自动邀请指引', async () => {
-    mockSpongeService.fetchJobs.mockResolvedValue({
-      jobs: [
-        makeJob({
-          interviewProcess: {
-            interviewSupplement: [],
-            firstInterview: {
-              firstInterviewWay: '视频面试',
-              firstInterviewDesc:
-                '让人选添加佛山面试群，备注好名字＋手机号码，在群里发腾讯会议链接，请在规定时间入会',
-            },
-          },
-        }),
-      ],
-    });
-    mockSpongeService.bookInterview.mockResolvedValue({
-      success: true,
-      code: 0,
-      message: '预约成功',
-      workOrderId: 453619,
-    });
-
-    const result = await executeTool(validInput);
-
-    expect(result.success).toBe(true);
-    expect(result.interviewGroupHandling).toEqual(
-      expect.objectContaining({
-        required: true,
-        delivery: 'manual',
-        groupNameHint: '佛山面试群',
-      }),
-    );
-    expect(result._manualInterviewGroupGuide).toContain('我这边接着发你邀请');
-    expect(result._manualInterviewGroupGuide).not.toMatch(/工作人员|运营|人工|机器人/);
-    expect(result._replyInstruction).toContain('invite_to_group');
-    expect(result._replyInstruction).toContain('兼职岗位信息群');
-    expect(result.sideEffect).toEqual(
-      expect.objectContaining({
-        kind: 'general_handoff',
-        reasonCode: 'interview_group_invite_required',
-        workOrderId: 453619,
-        idempotencyKey: 'sess-1:interview_group_invite:453619',
-      }),
-    );
-    expect(result.sideEffect.actionAdvice).toContain('补发佛山面试群邀请');
-    expect(result.sideEffect.actionAdvice).toContain('兼职岗位信息群由Agent自动发送');
-    // 面试群 handoff 会在候选人回执真实投递后统一暂停+告警，不重复发普通预约成功卡。
-    expect(mockPrivateChatNotifier.notifyInterviewBookingResult).not.toHaveBeenCalled();
-  });
-
-  describe('wait_notice（岗位未配置面试时段，等通知）', () => {
-    it('should book without interviewTime for jobs without interview windows', async () => {
-      // 默认 makeJob 无任何面试窗口（等通知岗位）；带"面试时间"标签验证回填"等待通知"
-      mockSpongeService.fetchJobs.mockResolvedValue({
-        jobs: [
-          makeJob({
-            interviewProcess: {
-              interviewSupplement: [{ interviewSupplementId: 5, interviewSupplement: '面试时间' }],
-            },
-          }),
-        ],
-      });
-      mockSpongeService.bookInterview.mockResolvedValue({
-        success: true,
-        code: 0,
-        message: '预约成功',
-        notice: null,
-        errorList: null,
-      });
-
-      const { interviewTime, ...inputWithoutTime } = validInput;
-      void interviewTime;
-      const result = await executeTool(inputWithoutTime);
-      await flushAsyncEvents();
-
-      expect(result.success).toBe(true);
-      const bookingPayload = mockSpongeService.bookInterview.mock.calls[0][0];
-      expect(bookingPayload.interviewTime).toBeUndefined();
-      // "面试时间"补充标签按平台口径回填"等待通知"
-      expect(bookingPayload.customerLabelList).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ labelName: '面试时间', value: '等待通知' }),
-        ]),
-      );
-      // 回复指引切换为"面试官电话联系"，没有时间点和到店脚本可复述
-      expect(result._confirmedInterviewTimeHuman).toContain('电话');
-      expect(result._waitNoticeReplyGuide).toContain('保持电话畅通');
-      expect(result._onSiteScript).toBeUndefined();
-      expect(mockPrivateChatNotifier.notifyInterviewBookingResult).toHaveBeenCalledWith(
-        expect.objectContaining({
-          interviewTime: '等待通知（面试官电话联系）',
-        }),
-      );
-    });
-
-    it('should still require interviewTime for jobs that have interview windows', async () => {
-      mockSpongeService.fetchJobs.mockResolvedValue({
-        jobs: [
-          makeJob({
-            interviewProcess: {
-              interviewSupplement: [],
-              firstInterview: {
-                periodicInterviewTimes: [
-                  {
-                    interviewWeekday: '每周五',
-                    interviewTimes: [
-                      {
-                        interviewStartTime: '13:30',
-                        interviewEndTime: '16:30',
-                        cycleDeadlineDay: '当天',
-                        cycleDeadlineEnd: '12:00',
-                      },
-                    ],
-                  },
-                ],
-                fixedInterviewTimes: [],
-              },
-            },
-          }),
-        ],
-      });
-
-      const { interviewTime, ...inputWithoutTime } = validInput;
-      void interviewTime;
-      const result = await executeTool(inputWithoutTime);
-
-      expect(result.success).toBe(false);
-      expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_MISSING_FIELDS);
-      expect(result.missingFields).toEqual(['interviewTime']);
-      expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
-    });
-
-    it('should book without interviewTime for 审简历优先 jobs even when windows exist', async () => {
-      // badcase chat 6a2fac72…：岗位配了面试时段窗口，但 interviewAddress 是"先审核简历，
-      // 待简历审核通过后，告知面试地点&时间"。precheck 已按 wait_notice 放行 ready_to_book，
-      // booking 必须用同一口径（isWaitNoticeInterview）放行不带 interviewTime 的提交，
-      // 否则会因"该岗位配置了面试时段"把预约打回 → 候选人简历石沉大海。
-      mockSpongeService.fetchJobs.mockResolvedValue({
-        jobs: [
-          makeJob({
-            interviewProcess: {
-              interviewSupplement: [],
-              firstInterview: {
-                interviewAddress: '先审核简历，待简历审核通过后，告知面试地点&时间',
-                periodicInterviewTimes: [
-                  {
-                    interviewWeekday: '每周五',
-                    interviewTimes: [
-                      {
-                        interviewStartTime: '13:30',
-                        interviewEndTime: '16:30',
-                        cycleDeadlineDay: '当天',
-                        cycleDeadlineEnd: '12:00',
-                      },
-                    ],
-                  },
-                ],
-                fixedInterviewTimes: [],
-              },
-            },
-          }),
-        ],
-      });
-      mockSpongeService.bookInterview.mockResolvedValue({
-        success: true,
-        code: 0,
-        message: '预约成功',
-        notice: null,
-        errorList: null,
-      });
-
-      // 审简历岗策略文本含"简历审核"→ 必须带简历附件（这本身是正确约束），故提供 uploadResume
-      const { interviewTime, ...rest } = validInput;
-      void interviewTime;
-      const inputWithoutTime = { ...rest, uploadResume: 'https://oss.example.com/resume.jpg' };
-      const result = await executeTool(inputWithoutTime);
-      await flushAsyncEvents();
-
-      expect(result.success).toBe(true);
-      expect(mockSpongeService.bookInterview).toHaveBeenCalled();
-      expect(mockSpongeService.bookInterview.mock.calls[0][0].interviewTime).toBeUndefined();
-      expect(result._waitNoticeReplyGuide).toContain('保持电话畅通');
-    });
-  });
-
-  it('should build customerLabelList from real job supplements and candidate info', async () => {
-    mockSpongeService.fetchJobs.mockResolvedValue({
-      jobs: [
-        makeJob({
-          interviewProcess: {
-            interviewSupplement: [
-              { interviewSupplementId: 2, interviewSupplement: '学历' },
-              { interviewSupplementId: 3, interviewSupplement: '籍贯' },
-              { interviewSupplementId: 4, interviewSupplement: '身高' },
-              { interviewSupplementId: 190, interviewSupplement: '爱好' },
-            ],
-          },
-        }),
-      ],
-    });
-    mockSpongeService.bookInterview.mockResolvedValue({
-      success: true,
-      code: 0,
-      message: '预约成功',
-      notice: '请准时到达',
-      errorList: null,
-    });
-
-    const { result, mocks } = await executeToolWithContext({
-      ...validInput,
-      educationId: 2,
-      householdRegisterProvinceId: 310000,
-      height: 172,
-      supplementAnswers: {
-        爱好: '打篮球',
-      },
-    });
-    await flushAsyncEvents();
-
-    expect(result.success).toBe(true);
-    expect(result.notice).toBe('请准时到达');
-    expect(mockSpongeService.fetchJobs).toHaveBeenCalledWith(
-      {
-        jobIdList: [100],
-        pageNum: 1,
-        pageSize: 1,
-        options: {
-          includeBasicInfo: true,
-          includeHiringRequirement: true,
-          includeInterviewProcess: true,
-        },
-      },
-      expect.objectContaining({ botUserId: 'manager-1' }),
-    );
-    expect(mockSpongeService.bookInterview).toHaveBeenCalledWith(
-      {
-        jobId: 100,
-        interviewTime: '2026-03-20 14:00:00',
-        name: '张三',
-        phone: '13812345678',
-        age: 25,
-        genderId: 1,
-        operateType: 6,
-        avatar: undefined,
-        householdRegisterProvinceId: 310000,
-        height: 172,
-        weight: undefined,
-        hasHealthCertificate: 1,
-        healthCertificateTypes: undefined,
-        educationId: 2,
-        uploadResume: undefined,
-        customerLabelList: [
-          {
-            labelId: 2,
-            labelName: '学历',
-            name: '学历',
-            value: '本科',
-          },
-          {
-            labelId: 3,
-            labelName: '籍贯',
-            name: '籍贯',
-            value: '上海市',
-          },
-          {
-            labelId: 4,
-            labelName: '身高',
-            name: '身高',
-            value: '172',
-          },
-          {
-            labelId: 190,
-            labelName: '爱好',
-            name: '爱好',
-            value: '打篮球',
-          },
-        ],
-        logId: undefined,
-      },
-      expect.objectContaining({ botUserId: 'manager-1' }),
-    );
-    expect(mockPrivateChatNotifier.notifyInterviewBookingResult).toHaveBeenCalledWith(
-      expect.objectContaining({
-        candidateName: '张三',
-        phone: '13812345678',
-        genderLabel: '男',
-        ageText: '25岁',
-        brandName: '成都你六姐',
-        storeName: '上海浦江城市生活广场店',
-        jobName: '后厨-小时工',
-        jobId: 100,
-        interviewTime: '2026-03-20 14:00:00',
-        toolOutput: expect.objectContaining({
-          success: true,
-          notice: '请准时到达',
-          requestInfo: expect.objectContaining({
-            operateType: 6,
-            educationId: 2,
-            supplementAnswers: {
-              爱好: '打篮球',
-            },
-            customerLabelList: expect.arrayContaining([
-              expect.objectContaining({
-                labelId: 190,
-                labelName: '爱好',
-                value: '打篮球',
-              }),
-            ]),
-          }),
-        }),
-      }),
-    );
-    expect(mockUserHostingService.pauseUser).not.toHaveBeenCalled();
-    expect(mocks.mockOpsEventsRecorder.recordEvent).toHaveBeenCalledWith(
-      expect.objectContaining({
-        eventName: 'booking.succeeded',
-        payload: expect.objectContaining({
-          brand_name: '成都你六姐',
-          store_name: '上海浦江城市生活广场店',
-        }),
-      }),
-    );
-  });
-
-  it('should recover a labeled birth date from candidate messages when supplementAnswers is omitted', async () => {
-    mockSpongeService.fetchJobs.mockResolvedValue({
-      jobs: [
-        makeJob({
-          interviewProcess: {
-            interviewSupplement: [{ interviewSupplementId: 103, interviewSupplement: '出生日期' }],
-          },
-        }),
-      ],
-    });
-    mockSpongeService.bookInterview.mockResolvedValue({
-      success: true,
-      code: 0,
-      message: '预约成功',
-      notice: '请准时到达',
-      errorList: null,
-    });
-
-    const { result } = await executeToolWithContext(validInput, {
-      messages: [
-        {
-          role: 'user',
-          content: '姓名：曹旭天\n联系电话：13812345678\n出生日期：2000-10-15',
-        },
-      ],
-    });
-
-    expect(result.success).toBe(true);
-    expect(mockSpongeService.bookInterview).toHaveBeenCalledWith(
-      expect.objectContaining({
-        customerLabelList: [
-          {
-            labelId: 103,
-            labelName: '出生日期',
-            name: '出生日期',
-            value: '2000-10-15',
-          },
-        ],
-      }),
-      expect.anything(),
-    );
-  });
-
-  it('should upload resume URL first and pass cloudStorageKey to entryUser', async () => {
-    mockSpongeService.fetchJobs.mockResolvedValue({
-      jobs: [
-        makeJob({
-          interviewProcess: {
-            interviewSupplement: [{ interviewSupplementId: 9, interviewSupplement: '简历' }],
-          },
-        }),
-      ],
-    });
-    mockSpongeService.bookInterview.mockResolvedValue({
-      success: true,
-      code: 0,
-      message: '预约成功',
-      notice: null,
-      errorList: null,
-    });
-
-    const result = await executeTool(
-      {
-        ...validInput,
-        uploadResume: 'https://wecom.example.com/file/resume.pdf',
-      },
-      {
-        messages: [
-          { role: 'user', content: '电话13812345678' },
-          {
-            role: 'user',
-            content:
-              '[文件消息] 文件名：张三简历.pdf；文件地址：https://wecom.example.com/file/resume.pdf；文件大小：2KB\n简历附件：https://wecom.example.com/file/resume.pdf',
-          },
-        ],
-      },
-    );
-
-    expect(result.success).toBe(true);
-    expect(mockSpongeService.uploadAttachmentFromUrl).toHaveBeenCalledWith(
-      {
-        fileUrl: 'https://wecom.example.com/file/resume.pdf',
-        fileName: '张三简历.pdf',
-      },
-      expect.objectContaining({ botUserId: 'manager-1' }),
-    );
-    expect(mockSpongeService.bookInterview).toHaveBeenCalledWith(
-      expect.objectContaining({
-        uploadResume: 'resume/cloud/key.pdf',
-        customerLabelList: [
-          {
-            labelId: 9,
-            labelName: '简历',
-            name: '简历',
-            value: 'resume/cloud/key.pdf',
-          },
-        ],
-      }),
-      expect.objectContaining({ botUserId: 'manager-1' }),
-    );
-    expect(result.requestInfo).toEqual(
-      expect.objectContaining({
-        uploadResume: 'resume/cloud/key.pdf',
-        customerLabelList: [
-          {
-            labelId: 9,
-            labelName: '简历',
-            name: '简历',
-            value: 'resume/cloud/key.pdf',
-          },
-        ],
-      }),
-    );
-  });
-
-  it('rejects resume-required jobs when only text experience is provided as 上传简历', async () => {
-    mockSpongeService.fetchJobs.mockResolvedValue({
-      jobs: [
-        makeJob({
-          interviewProcess: {
-            interviewSupplement: [{ interviewSupplementId: 49, interviewSupplement: '上传简历' }],
-          },
-        }),
-      ],
-    });
-
-    const result = await executeTool({
-      ...validInput,
-      supplementAnswers: {
-        上传简历: '南京城市职业学院毕业。高铁检票员1年，蜜雪冰城饮品师8个月',
-      },
-    });
-
-    expect(result.success).toBe(false);
-    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_MISSING_CUSTOMER_LABEL_VALUES);
-    expect(result.missingFields).toEqual(['简历附件']);
-    expect(result.missingSupplementLabels).toEqual(['上传简历']);
-    expect(result._replyInstruction).toContain('PDF 简历文件');
-    expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
-    expect(mockSpongeService.uploadAttachmentFromUrl).not.toHaveBeenCalled();
-  });
-
-  it('rejects free-text uploadResume on resume-required jobs (工单 438358 badcase)', async () => {
-    // 自由文字既不是 URL 也不是云存储 key，不得被当作简历附件提交，
-    // 否则海绵侧工单的"上传简历"会存一段文字、附件打不开。
-    mockSpongeService.fetchJobs.mockResolvedValue({
-      jobs: [
-        makeJob({
-          interviewProcess: {
-            interviewSupplement: [{ interviewSupplementId: 49, interviewSupplement: '上传简历' }],
-          },
-        }),
-      ],
-    });
-
-    const result = await executeTool({
-      ...validInput,
-      uploadResume: '过往公司+岗位+年限：通州一建建设集团有限公司+管理+5年',
-    });
-
-    expect(result.success).toBe(false);
-    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_MISSING_CUSTOMER_LABEL_VALUES);
-    expect(result.missingFields).toEqual(['简历附件']);
-    expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
-    expect(mockSpongeService.uploadAttachmentFromUrl).not.toHaveBeenCalled();
-  });
-
-  it('rejects free-text resume polluted into session facts (工单 438358 badcase)', async () => {
-    // 438358 实际链路：booking 入参没传 uploadResume，文字经会话事实兜底流入。
-    mockSpongeService.fetchJobs.mockResolvedValue({
-      jobs: [
-        makeJob({
-          interviewProcess: {
-            interviewSupplement: [{ interviewSupplementId: 49, interviewSupplement: '上传简历' }],
-          },
-        }),
-      ],
-    });
-
-    const result = await executeTool(validInput, {
-      sessionFacts: {
-        interview_info: {
-          upload_resume: '过往公司+岗位+年限：通州一建建设集团有限公司+管理+5年',
-        },
-      } as never,
-    });
-
-    expect(result.success).toBe(false);
-    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_MISSING_CUSTOMER_LABEL_VALUES);
-    expect(result.missingFields).toEqual(['简历附件']);
-    expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
-  });
-
-  it('passes through cloudStorageKey-shaped uploadResume without re-uploading', async () => {
-    mockSpongeService.fetchJobs.mockResolvedValue({
-      jobs: [
-        makeJob({
-          interviewProcess: {
-            interviewSupplement: [{ interviewSupplementId: 49, interviewSupplement: '上传简历' }],
-          },
-        }),
-      ],
-    });
-    mockSpongeService.bookInterview.mockResolvedValue({
-      success: true,
-      code: 0,
-      message: '预约成功',
-      notice: null,
-      errorList: null,
-    });
-
-    const result = await executeTool({
-      ...validInput,
-      uploadResume: '刘渔林_20260609135452_20260610095630.docx',
-    });
-
-    expect(result.success).toBe(true);
-    expect(mockSpongeService.uploadAttachmentFromUrl).not.toHaveBeenCalled();
-    expect(mockSpongeService.bookInterview).toHaveBeenCalledWith(
-      expect.objectContaining({
-        uploadResume: '刘渔林_20260609135452_20260610095630.docx',
-      }),
-      expect.objectContaining({ botUserId: 'manager-1' }),
-    );
-  });
-
-  it('instructs handoff when a fresh resume arrives after the candidate is already booked', async () => {
-    // 438358 第二段：预约成功 23 秒后候选人补发真简历，命中 already_booked 短路，
-    // 真简历被静默丢弃且 Agent 回复"已提交"。现在应指示转人工补传。
-    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
-    // 议题 8-2 后"查不到工单手机号"改为放行，本例要验的是同一个人重复提交，显式给同号
-    mockSpongeService.getCachedWorkOrderById.mockResolvedValue({
-      workOrderId: 438358,
-      phone: '13812345678',
-    });
-
-    const result = await executeTool(
-      {
-        ...validInput,
-        educationId: 2,
-        householdRegisterProvinceId: 310000,
-        height: 172,
-        uploadResume: 'https://wecom.example.com/file/resume.pdf',
-      },
-      {
-        ruleFacts: testRuleFacts(
-          testRuleFact(
-            'interview_info.upload_resume',
-            'https://wecom.example.com/file/resume.pdf',
-            '候选人发送了简历附件',
-          ),
-        ),
-      },
-      {
-        activeBooking: {
-          work_order_id: 438358,
-          linked_at: new Date().toISOString(),
-        },
-      },
-    );
-
-    expect(result.success).toBe(false);
-    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_ALREADY_BOOKED);
-    expect(result.existingWorkOrderId).toBe(438358);
-    expect(result._replyInstruction).toContain('system_blocked');
-    expect(result._replyInstruction).toContain('补传');
-    expect(result._replyInstruction).toContain('438358');
-    expect(result.pendingUploadResume).toBe('resume/cloud/key.pdf');
-    expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
-  });
-
-  it('keeps the plain already-booked instruction when no fresh resume arrived this turn', async () => {
-    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
-    mockSpongeService.getCachedWorkOrderById.mockResolvedValue({
-      workOrderId: 438358,
-      phone: '13812345678',
-    });
-
-    const result = await executeTool(
-      {
-        ...validInput,
-        educationId: 2,
-        householdRegisterProvinceId: 310000,
-        height: 172,
-      },
-      {},
-      {
-        activeBooking: {
-          work_order_id: 438358,
-          linked_at: new Date().toISOString(),
-        },
-      },
-    );
-
-    expect(result.success).toBe(false);
-    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_ALREADY_BOOKED);
-    expect(result._replyInstruction).toContain('modify_appointment');
-    expect(result.pendingUploadResume).toBeUndefined();
-    expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
-  });
-
-  it('allows booking a different job when another recent active booking exists', async () => {
-    mockSpongeService.fetchJobs.mockResolvedValue({
-      jobs: [
-        makeJob({
-          basicInfo: {
-            jobId: 200,
-            brandName: '必胜客',
-            jobName: '内场',
-            jobNickName: '内场',
-          },
-        }),
-      ],
-    });
-    mockSpongeService.bookInterview.mockResolvedValue({
-      success: true,
-      code: 0,
-      message: '预约成功',
-      workOrderId: 445999,
-    });
-
-    const { result, mocks } = await executeToolWithContext(
-      {
-        ...validInput,
-        jobId: 200,
-        educationId: 3,
-        householdRegisterProvinceId: 310000,
-        height: 170,
-      },
-      {},
-      {
-        activeBooking: {
-          work_order_id: 445383,
-          job_id: 100,
-          linked_at: new Date().toISOString(),
-        },
-      },
-    );
-
-    expect(result.success).toBe(true);
-    expect(mockSpongeService.bookInterview).toHaveBeenCalledWith(
-      expect.objectContaining({ jobId: 200 }),
-      expect.anything(),
-    );
-    expect(mocks.mockLongTermService.setActiveBooking).toHaveBeenCalledWith(
+    expect(sessionFacts.saveCompletedCollectionFacts).toHaveBeenCalledWith(
       'corp-1',
       'user-1',
-      445999,
-      { job_id: 200 },
-    );
-  });
-
-  describe('软查重手机号交叉核验（工单 448367→448402 badcase）', () => {
-    // 同一个企微联系人先后给两个不同的人报同一岗位：第一人约成功后 30 分钟内，
-    // 同会话给第二人（另一手机号）报同岗位被误判 already_booked。命中指针后应
-    // 反查工单手机号：不同手机号 = 不同候选人，放行。
-    const recentActiveBooking = {
-      work_order_id: 448367,
-      job_id: 100,
-      linked_at: new Date().toISOString(),
-    };
-
-    it('工单手机号与本次不同（不同候选人）时应放行，正常提交预约', async () => {
-      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
-      mockSpongeService.getCachedWorkOrderById.mockResolvedValue({
-        workOrderId: 448367,
-        phone: '13554730335',
-      });
-      mockSpongeService.bookInterview.mockResolvedValue({
-        success: true,
-        code: 0,
-        message: '预约成功',
-        workOrderId: 448402,
-      });
-
-      const result = await executeTool(
-        {
-          ...validInput,
-          phone: '13750091607',
-          educationId: 2,
-          householdRegisterProvinceId: 310000,
-          height: 170,
-        },
-        { messages: [{ role: 'user', content: '电话13750091607' }] },
-        { activeBooking: recentActiveBooking },
-      );
-
-      expect(mockSpongeService.getCachedWorkOrderById).toHaveBeenCalledWith(
-        448367,
-        expect.anything(),
-      );
-      expect(result.success).toBe(true);
-      expect(mockSpongeService.bookInterview).toHaveBeenCalledWith(
-        expect.objectContaining({ phone: '13750091607' }),
-        expect.anything(),
-      );
-    });
-
-    it('工单手机号与本次相同（真·重复提交）时仍应拦截', async () => {
-      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
-      mockSpongeService.getCachedWorkOrderById.mockResolvedValue({
-        workOrderId: 448367,
-        phone: '13812345678',
-      });
-
-      const result = await executeTool(
-        { ...validInput, educationId: 2, householdRegisterProvinceId: 310000, height: 170 },
-        {},
-        { activeBooking: recentActiveBooking },
-      );
-
-      expect(result.success).toBe(false);
-      expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_ALREADY_BOOKED);
-      expect(result.existingWorkOrderId).toBe(448367);
-      expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
-    });
-
-    it('手机号比对应忽略空格/连字符等格式差异', async () => {
-      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
-      mockSpongeService.getCachedWorkOrderById.mockResolvedValue({
-        workOrderId: 448367,
-        phone: '138-1234-5678',
-      });
-
-      const result = await executeTool(
-        {
-          ...validInput,
-          phone: '138 1234 5678',
-          educationId: 2,
-          householdRegisterProvinceId: 310000,
-          height: 170,
-        },
-        {},
-        { activeBooking: recentActiveBooking },
-      );
-
-      expect(result.success).toBe(false);
-      expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_ALREADY_BOOKED);
-      expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
-    });
-
-    // 议题 8-2（用户 8-14 裁定）：查不到既有工单手机号时**放行交海绵仲裁**。
-    // 原"保守判重"分支在 badcase chat 6a4229f2 里击穿了本修复本身——刚创建 8 分钟的
-    // 工单海绵侧查不到手机号，手机号明确不同的兮兮被误拦。真重复由海绵服务端
-    // 同手机号同岗位约束兜底（Bull 重试必然同 phone）。
-    it('反查工单失败（海绵异常）时放行交海绵仲裁', async () => {
-      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
-      mockSpongeService.getCachedWorkOrderById.mockRejectedValue(new Error('sponge down'));
-
-      const result = await executeTool(
-        { ...validInput, educationId: 2, householdRegisterProvinceId: 310000, height: 170 },
-        {},
-        { activeBooking: recentActiveBooking },
-      );
-
-      expect(result.success).toBe(true);
-      expect(mockSpongeService.bookInterview).toHaveBeenCalled();
-    });
-
-    it('工单缺手机号时放行交海绵仲裁（兮兮案回归：新单 8 分钟内查不到手机号）', async () => {
-      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
-      mockSpongeService.getCachedWorkOrderById.mockResolvedValue({
-        workOrderId: 448367,
-        phone: null,
-      });
-
-      const result = await executeTool(
-        {
-          ...validInput,
-          name: '兮兮',
-          phone: '18271421690',
-          educationId: 2,
-          householdRegisterProvinceId: 310000,
-          height: 170,
-        },
-        { messages: [{ role: 'user', content: '兮兮 18271421690' }] },
-        { activeBooking: recentActiveBooking },
-      );
-
-      expect(result.success).toBe(true);
-      expect(mockSpongeService.bookInterview).toHaveBeenCalledWith(
-        expect.objectContaining({ phone: '18271421690' }),
-        expect.anything(),
-      );
-    });
-  });
-
-  it('should return missing_customer_label_values when supplements require unknown answers', async () => {
-    mockSpongeService.fetchJobs.mockResolvedValue({
-      jobs: [
-        makeJob({
-          interviewProcess: {
-            interviewSupplement: [{ interviewSupplementId: 190, interviewSupplement: '爱好' }],
-          },
-        }),
-      ],
-    });
-
-    const result = await executeTool(validInput);
-
-    expect(result.success).toBe(false);
-    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_MISSING_CUSTOMER_LABEL_VALUES);
-    expect(result.missingSupplementLabels).toEqual(['爱好']);
-    expect(result.customerLabelDefinitions).toEqual([
-      {
-        labelId: 190,
-        labelName: '爱好',
-        name: '爱好',
-      },
-    ]);
-    expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
-  });
-
-  it('should handle SpongeService booking errors after resolving supplements', async () => {
-    mockSpongeService.fetchJobs.mockResolvedValue({
-      jobs: [makeJob()],
-    });
-    mockSpongeService.bookInterview.mockRejectedValue(new Error('Network error'));
-
-    const result = await executeTool({
-      ...validInput,
-      educationId: 2,
-      householdRegisterProvinceId: 310000,
-      height: 172,
-    });
-    await flushAsyncEvents();
-
-    expect(result.success).toBe(false);
-    expect(result.reason).toBe('Network error');
-    expect(mockPrivateChatNotifier.notifyInterviewBookingResult).toHaveBeenCalledWith(
+      'session-1',
       expect.objectContaining({
-        candidateName: '张三',
-        phone: '13812345678',
-        genderLabel: '男',
-        ageText: '25岁',
-        interviewTime: '2026-03-20 14:00:00',
-        toolOutput: expect.objectContaining({
-          success: false,
-          errorType: TOOL_ERROR_TYPES.BOOKING_REQUEST_FAILED,
-          requestInfo: expect.objectContaining({
-            operateType: 6,
-            customerLabelList: [
-              {
-                labelId: 2,
-                labelName: '学历',
-                name: '学历',
-                value: '本科',
-              },
-              {
-                labelId: 3,
-                labelName: '籍贯',
-                name: '籍贯',
-                value: '上海市',
-              },
-              {
-                labelId: 4,
-                labelName: '身高',
-                name: '身高',
-                value: '172',
-              },
-            ],
-          }),
-        }),
+        name: expect.objectContaining({ value: '兮兮', confidence: 'high' }),
+        phone: expect.objectContaining({ value: '18271421690', confidence: 'high' }),
       }),
     );
-    expect(mockUserHostingService.pauseUser).toHaveBeenCalledWith('sess-1', expect.any(Object));
+    expect(longTerm.writeFromBooking).toHaveBeenCalledWith(
+      'corp-1',
+      'user-1',
+      {
+        name: '兮兮',
+        phone: '18271421690',
+        age: 25,
+        gender: '女',
+        jobId: 100,
+        workOrderId: 9001,
+      },
+      { sessionId: 'session-1', botImId: 'bot-A' },
+    );
   });
 
-  it('should not fail the booking result when async pauseUser rejects', async () => {
-    mockSpongeService.fetchJobs.mockResolvedValue({
-      jobs: [makeJob()],
+  it('外部工单成功后的表单/记忆写入失败不反向改口为预约失败', async () => {
+    longTerm.setActiveBooking.mockRejectedValueOnce(new Error('active booking write failed'));
+    collectionForms.persist.mockRejectedValueOnce(new Error('form persist failed'));
+    sessionFacts.saveCompletedCollectionFacts.mockRejectedValueOnce(
+      new Error('session fact write failed'),
+    );
+    longTerm.writeFromBooking.mockRejectedValueOnce(new Error('profile write failed'));
+
+    const result = await execute({ jobId: 100 });
+
+    expect(result.success).toBe(true);
+    expect(result.errorType).toBeUndefined();
+    expect(context.ledger.jobs.bookingSucceeded).toBe(true);
+    expect(hosting.pauseUser).not.toHaveBeenCalled();
+    expect(ops.recordEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ eventName: 'booking.succeeded' }),
+    );
+    expect(ops.recordEvent).not.toHaveBeenCalledWith(
+      expect.objectContaining({ eventName: 'booking.failed' }),
+    );
+  });
+
+  it('外部 success=true 是不可回滚提交点，未知回执后处理异常也保持成功口径', async () => {
+    ops.recordEvent.mockImplementationOnce(() => {
+      throw new Error('unexpected event recorder failure');
     });
-    mockSpongeService.bookInterview.mockResolvedValue({
+
+    const result = await execute({ jobId: 100 });
+
+    expect(result.success).toBe(true);
+    expect(result.errorType).toBeUndefined();
+    expect(result._replyInstruction).toContain('预约已真实成功');
+    expect(context.ledger.jobs.bookingSucceeded).toBe(true);
+    expect(hosting.pauseUser).not.toHaveBeenCalled();
+  });
+
+  it('applyErrorList 带 labelId 时只重开对应槽位', async () => {
+    sponge.bookInterview.mockResolvedValue({
       success: false,
-      code: 500,
-      message: '预约失败',
-      errorList: ['门店不可约'],
+      code: 400,
+      message: '年龄校验失败',
+      applyErrorList: [{ labelId: 103, field: '年龄', msg: '请重新填写' }],
     });
-    mockUserHostingService.pauseUser.mockRejectedValueOnce(new Error('Pause failed'));
-
-    const result = await executeTool({
-      ...validInput,
-      educationId: 2,
-      householdRegisterProvinceId: 310000,
-      height: 172,
-    });
-    await flushAsyncEvents();
-
+    const result = await execute({ jobId: 100 });
     expect(result.success).toBe(false);
+    expect(currentForm.slots[103].state).toBe('empty');
+    expect(currentForm.slots[101].state).toBe('filled');
+    expect(verdictOf(currentForm)).toBe('collecting');
+  });
+
+  it('applyErrorList 无法映射时不静默，表单转 escalated', async () => {
+    sponge.bookInterview.mockResolvedValue({
+      success: false,
+      code: 400,
+      message: '未知字段失败',
+      applyErrorList: [{ field: '不存在的字段', msg: '失败' }],
+    });
+    await execute({ jobId: 100 });
+    expect(verdictOf(currentForm)).toBe('escalated');
+    expect(currentForm.escalatedReason).toContain('error_list_unmapped');
+  });
+
+  it('FILE 槽先上传，labelList.value 使用 cloudStorageKey', async () => {
+    const fileField: ContractFieldDef = {
+      labelId: 105,
+      labelTitle: '上传简历',
+      fieldType: 'FILE',
+      required: true,
+      acceptedOptions: [],
+      rejectedOptions: [],
+    };
+    const contract = [...CONTRACT, fileField];
+    currentForm = readyForm(contract);
+    sponge.fetchJobCollectionContract.mockResolvedValue({ jobId: 100, fields: contract });
+    await execute({ jobId: 100 });
+    expect(sponge.uploadAttachmentFromUrl).toHaveBeenCalledWith(
+      { fileUrl: 'https://wecom.example.test/resume.pdf' },
+      { botImId: 'bot-A', botUserId: undefined, groupId: undefined },
+    );
+    expect(sponge.bookInterview.mock.calls[0][0].labelList).toContainEqual({
+      labelId: 105,
+      value: 'resume/cloud/key.pdf',
+    });
+  });
+
+  it('选项槽没有 optionCodes 时精确重开，不退回旧枚举映射', async () => {
+    currentForm.slots[104].value = {
+      value: '女',
+      sourceText: '女',
+      producer: 'candidate_quote',
+      confidence: 'high',
+    };
+    const result = await execute({ jobId: 100 });
     expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_REJECTED);
-    expect(mockUserHostingService.pauseUser).toHaveBeenCalledWith('sess-1', expect.any(Object));
+    expect(currentForm.slots[104].state).toBe('empty');
+    expect(sponge.bookInterview).not.toHaveBeenCalled();
   });
 
-  // 海绵业务码透传（2026-08-06 周报：43 次 booking.rejected 因缺 apiCode 无法细分
-  // 名额满/归属冲突/年龄拦截）。apiCode 的有无同时充当「海绵拒绝」与「本地闸门拦下」
-  // 的判别位，故正反两条一起锁死。
-  describe('海绵拒绝的 apiCode 透传', () => {
-    it('走完 bookInterview 后被海绵拒绝时，透传 apiCode/apiMessage 供观测落库', async () => {
-      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
-      mockSpongeService.bookInterview.mockResolvedValue({
-        success: false,
-        code: 30003,
-        message: '用户已报名该品牌',
-        errorList: null,
-      });
-
-      const result = await executeTool({
-        ...validInput,
-        educationId: 2,
-        householdRegisterProvinceId: 310000,
-        height: 172,
-      });
-      await flushAsyncEvents();
-
-      expect(result).toMatchObject({
-        success: false,
-        errorType: TOOL_ERROR_TYPES.BOOKING_REJECTED,
-        apiCode: 30003,
-        apiMessage: '用户已报名该品牌',
-      });
-    });
-
-    it('海绵未给 message 时 apiMessage 落 null，不落 undefined', async () => {
-      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
-      mockSpongeService.bookInterview.mockResolvedValue({ success: false, code: 500 });
-
-      const result = await executeTool({
-        ...validInput,
-        educationId: 2,
-        householdRegisterProvinceId: 310000,
-        height: 172,
-      });
-      await flushAsyncEvents();
-
-      expect(result).toMatchObject({ apiCode: 500, apiMessage: null });
-    });
-
-    it('本地闸门拦下的 BOOKING_REJECTED 不带 apiCode（没请求过海绵）', async () => {
-      const { prechecked, ...inputWithoutPrechecked } = validInput;
-      void prechecked;
-      const result = await executeTool(inputWithoutPrechecked);
-
-      expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_REJECTED);
-      expect(result.apiCode).toBeUndefined();
-      expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
-    });
+  it('测试链路只允许统一假身份，真实 PII 不触发生产写', async () => {
+    currentForm.slots[102].value = {
+      value: '13912345678',
+      sourceText: '13912345678',
+      producer: 'candidate_quote',
+      confidence: 'high',
+    };
+    context.runtime.strategySource = 'testing';
+    const result = await execute({ jobId: 100 });
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.TEST_LINK_REAL_PII_BLOCKED);
+    expect(sponge.fetchJobs).not.toHaveBeenCalled();
   });
 
-  // 议题 8-1（badcase chat 6a4229f2）：中介一轮给两个人报同一岗位。会话档案只装得下
-  // 一个人，第二人被姓名/电话一致性闸门误杀。防臆造保护不降级，只是把验证源从
-  // "会话档案单一身份"换成"候选人消息文本逐字锚定"——对粘贴表单场景比档案匹配更强。
-  describe('多人代报豁免轨（议题 8-1）', () => {
-    const brokerMessage = '王五 13800138000\n兮兮 18271421690\n两个人都报这个岗';
-
-    it('第二人的姓名与手机号都在候选人文本里逐字出现时放行', async () => {
-      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
-      mockSpongeService.bookInterview.mockResolvedValue({
-        success: true,
-        code: 0,
-        message: '预约成功',
-        workOrderId: 457340,
-      });
-
-      const result = await executeTool(
-        {
-          ...validInput,
-          name: '兮兮',
-          phone: '18271421690',
-          educationId: 2,
-          householdRegisterProvinceId: 310000,
-          height: 170,
-        },
-        {
-          messages: [{ role: 'user', content: brokerMessage }],
-          // 会话档案锁在第一个人身上——正是本案闸门误杀的成因
-          bookingCandidateFacts: {
-            ...FALLBACK_EXTRACTION.interview_info,
-            name: '王五',
-            phone: '13800138000',
-          },
-        },
-      );
-
-      expect(result).toMatchObject({ success: true });
-      expect(mockSpongeService.bookInterview).toHaveBeenCalledWith(
-        expect.objectContaining({ name: '兮兮', phone: '18271421690' }),
-        expect.anything(),
-      );
-    });
-
-    it('只有手机号在原文、姓名对不上时仍走会话档案一致性闸（张冠李戴防线不降级）', async () => {
-      const result = await executeTool(
-        { ...validInput, name: '李四', phone: '18271421690' },
-        {
-          messages: [{ role: 'user', content: brokerMessage }],
-          bookingCandidateFacts: {
-            ...FALLBACK_EXTRACTION.interview_info,
-            name: '王五',
-            phone: '13800138000',
-          },
-        },
-      );
-
-      expect(result.success).toBe(false);
-      expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_REJECTED);
-      expect(result.conflictingFields).toEqual(['姓名', '联系电话']);
-      expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
-    });
-
-    it('姓名只出现在引用前缀里（经理名）不构成逐字锚定', async () => {
-      const result = await executeTool(
-        { ...validInput, name: '兮兮', phone: '18271421690' },
-        {
-          messages: [
-            { role: 'user', content: '[引用 兮兮：帮我报名]\n我手机号18271421690' },
-          ],
-          bookingCandidateFacts: {
-            ...FALLBACK_EXTRACTION.interview_info,
-            name: '王五',
-            phone: '13800138000',
-          },
-        },
-      );
-
-      // 引用前缀里的名字是被引用方（通常是招募经理），既有 isNameOnlyQuotedSpeaker
-      // 负向证据闸门会把"姓名"打回 missingFields——豁免轨不得绕过它。
-      expect(result.success).toBe(false);
-      expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
-    });
+  it('提交前发现新消息时短路，不创建工单', async () => {
+    context.runtime.hasNewerUserInput = jest.fn().mockResolvedValue(true);
+    const result = await execute({ jobId: 100 });
+    expect(result.staleInput).toBe(true);
+    expect(sponge.bookInterview).not.toHaveBeenCalled();
   });
 
+  it('近期同岗位 active booking 命中软查重', async () => {
+    longTerm.getActiveBookings.mockResolvedValue([
+      { work_order_id: 8001, job_id: 100, linked_at: new Date().toISOString() },
+    ]);
+    const result = await execute({ jobId: 100 });
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_ALREADY_BOOKED);
+    expect(sponge.bookInterview).not.toHaveBeenCalled();
+  });
+
+  it('成功但缺 workOrderId 时表单转人工，阻止重复提交', async () => {
+    sponge.bookInterview.mockResolvedValue({ success: true, code: 0, message: '成功' });
+    const result = await execute({ jobId: 100 });
+    expect(result.success).toBe(true);
+    expect(verdictOf(currentForm)).toBe('escalated');
+    expect(currentForm.escalatedReason).toBe('booking_success_missing_work_order_id');
+  });
+
+  it('resolveInterviewType 只作展示：AI 描述优先，否则取方式', () => {
+    expect(
+      resolveInterviewType({
+        interviewProcess: {
+          firstInterview: { firstInterviewWay: '线上面试', firstInterviewDesc: 'AI 视频面试' },
+        },
+      }),
+    ).toBe('AI面试');
+    expect(
+      resolveInterviewType({
+        interviewProcess: { firstInterview: { firstInterviewWay: '线下面试' } },
+      }),
+    ).toBe('线下面试');
+  });
 });

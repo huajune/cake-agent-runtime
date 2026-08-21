@@ -11,10 +11,14 @@ import {
 } from '@biz/group-task/services/group-invite.service';
 import { SessionService } from '@memory/services/session.service';
 import { evaluateInviteCityGate } from '@tools/shared/invite-city-gate';
-import { evaluateInviteTimingGate } from '@tools/shared/invite-timing-gate';
+import { evaluateInviteTimingGate, hasAcceptedGroupOffer } from '@tools/shared/invite-timing-gate';
 import { extractUserTexts } from '@resolution/signal/dialogue';
 import { resolveCityFromDistrict } from '@resolution/geo';
-import { hasPriorNoMatchReply } from '@tools/duliday/job-list/no-match-script.util';
+import {
+  buildRecommendationLimitScript,
+  countDissatisfiedRecommendationRounds,
+  hasPriorNoMatchReply,
+} from '@tools/duliday/job-list/no-match-script.util';
 import { canUseFactForAction } from '@tools/shared/action-confidence';
 
 const logger = new Logger('invite_to_group');
@@ -59,7 +63,7 @@ const DESCRIPTION = `邀请候选人加入企微兼职岗位信息群。
 
 ## 触发场景（满足任一即可）
 1. **首次面试预约成功后** — duliday_interview_booking 返回 success: true（必须检查 _outcome 字段确认预约成功），且已知候选人城市时，在同轮调用。仅限本会话首次预约成功时触发，后续再预约不再重复拉群
-2. **判断当前意向下已无匹配可能** — 候选人明确的意向（品牌、岗位类型、城市、区域、班次、薪资等）已超出当前可推范围，或继续检索已无新进展。必须先做过实际检索（至少一次 duliday_job_list）、已告知候选人当前没有合适岗位，再调用本工具。不设固定轮数门槛，由你根据对话把握时机；严禁为了凑推荐继续硬推不符合候选人意向的替代岗位。**拉群前必须先引导候选人调整条件**：搜索无结果时，不能直接拉群收尾，必须先反问候选人是否愿意放宽条件（如换区域、换品牌、换岗位类型、调整班次/薪资预期等），只有候选人明确表示不愿调整（如"不考虑""算了""就要这个"）、或对话已自然结束（如"好的谢谢""没事了"）时，才可触发拉群。**拉群不能替代取消工单**：若候选人在**面试开始之前**放弃的岗位在 [当前预约信息] 里有进行中的工单（说"干不了""不去了"等明确放弃已约面试），必须同时走 duliday_cancel_work_order 取消该工单再拉群收尾——工单不会自动失效，只拉群不取消会让门店空等、候选人留爽约记录。**例外**：面试时间已到/已过之后候选人才说没去，属爽约，不要取消工单，直接按承接流程处理
+2. **连续两轮推荐均不满意后的群承接** — 候选人已明确否定两轮具体岗位推荐，上一轮已停止第三轮推荐并征询入群，候选人本轮明确回复同意后调用本工具。真实搜索 0 条/暑假工无库存不属于本场景，不得因此直接拉群。**拉群不能替代取消工单**：若候选人在**面试开始之前**放弃的岗位在 [当前预约信息] 里有进行中的工单，必须同时走 duliday_cancel_work_order 取消该工单再拉群收尾。面试时间已到/已过之后才说没去属爽约，不要取消工单
 3. **候选人同意入群/后续通知** — 如果上一轮你曾提出"拉群/进群/有岗位通知"，候选人本轮回复"好/可以/嗯/谢谢"等同意词，必须调用本工具确认是否真的能拉群；只有 success: true 才能说已拉群或已发邀请
 
 ## 调用前置条件（必须满足）
@@ -109,7 +113,7 @@ const DESCRIPTION = `邀请候选人加入企微兼职岗位信息群。
 - 只有 success: true 时才能说"已拉群/已发入群邀请"；无群、群满、接口拒绝、未调用工具时，都不要用**完成口径**声称群相关动作已发生
 
 ## 拉群口径（两轮动作链，与场景 2/3 一致）
-- **征询/承诺式**（"要不我拉你进群？""我先帮你进兼职群，后续有岗通知你"）是合法的前置轮话术：先承接候选人意向，**不要求**本轮已调本工具
+- **征询式**（"要不我邀请你进群？"）只在连续两轮推荐均不满意后使用：先承接候选人意向，**本轮不调本工具**；真实搜索 0 条不得提群
 - 候选人对拉群提议回复"好/可以/嗯"等同意词后，**下一轮必须实调本工具**（场景 3）；提了拉群却一直不调 = 空头承诺，候选人看到没动静会立刻流失
 - **完成口径**（"已拉你进群 / 群邀请已经发你了 / 发了群邀请"）**必须**本轮实调本工具且返回 success: true，否则严禁使用
 - 拉群成功后，本轮必须停止继续推荐其他岗位；后续轮也不要再向候选人推岗位，转为群内运营`;
@@ -289,6 +293,7 @@ export function buildInviteToGroupTool(
             requestedCity: city,
             jobListExecuted: context.ledger.jobs.jobListExecuted === true,
             bookingSucceeded: context.ledger.jobs.bookingSucceeded,
+            groupOfferAccepted: hasAcceptedGroupOffer(context.turnInput.messages ?? []),
             invitedGroups,
             currentUserMessage: context.turnInput.currentUserMessage,
           });
@@ -314,9 +319,35 @@ export function buildInviteToGroupTool(
                 outcome: '本轮尚未给出查岗结论，不能直接拉群',
                 replyInstruction:
                   '本轮还没有查岗结论，候选人不知道是有岗还是没岗就收到群邀请会困惑。' +
-                  '请先调用 duliday_job_list 查岗：有合适岗位就推荐岗位，确认没有再按拉群流程收口' +
-                  '（拉群前仍需先问候选人是否愿意放宽条件）。本轮不要提群相关内容，也不要调用 request_handoff。',
+                  '请先调用 duliday_job_list 查岗：有合适岗位就推荐；真实无岗则如实收口且不拉群。' +
+                  '只有连续两轮推荐均不满意、上一轮已征询入群且本轮候选人明确同意时，才可在无本轮查岗的情况下调用本工具。' +
+                  '本轮不要提群相关内容，也不要调用 request_handoff。',
                 details: { city, industry: industry ?? undefined },
+              });
+            }
+            if (timingVerdict.reason === 'group_consent_required') {
+              const dissatisfiedRecommendationRounds = countDissatisfiedRecommendationRounds(
+                context.turnInput.messages ?? [],
+              );
+              const noMatchScript =
+                dissatisfiedRecommendationRounds >= 2
+                  ? buildRecommendationLimitScript({ cityLabels: [city] })
+                  : null;
+              return buildToolError({
+                errorType: TOOL_ERROR_TYPES.INVITE_GROUP_CONSENT_REQUIRED,
+                outcome: '本轮没有合法的入群授权，禁止用查岗完成替代候选人同意',
+                replyInstruction: noMatchScript
+                  ? '**候选人已连续否定两轮具体岗位，但本轮尚未同意入群。严格按 noMatchScript.candidateMessage 征询入群意愿，' +
+                    '不得重查或继续推荐，不得再次调用 invite_to_group；候选人下一轮明确同意后才实调。'
+                  : '本轮虽然已经查过岗位，但拉群只允许两种入口：预约成功后的首次承接，或连续两轮推荐均不满意、' +
+                    '上一轮已征询入群且候选人本轮明确同意。真实无岗请按 noMatchScript 如实收口并等待库存，' +
+                    '查到岗位则继续正常推荐/推进；本轮不要提群相关内容，也不要调用 request_handoff。',
+                details: {
+                  city,
+                  industry: industry ?? undefined,
+                  dissatisfiedRecommendationRounds,
+                  noMatchScript,
+                },
               });
             }
             return buildToolError({

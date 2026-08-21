@@ -23,18 +23,16 @@ function buildRegistry(
     (options.chatSessionService ?? {}) as never,
     (options.llm ?? {}) as never,
     {} as never,
-    {
-      get: jest.fn((_key: string, defaultValue?: string) => defaultValue),
-    } as never,
     {} as never,
     {} as never,
     {} as never,
     {} as never,
     {} as never,
     {} as never,
-    // candidateSnapshotService / agentTracer（证据化裁决依赖）
-    { save: jest.fn(), load: jest.fn() } as never,
+    // agentTracer（证据化裁决依赖）
     { emit: jest.fn() } as never,
+    // collectionFormService（收资表单接管，蓝图 §5）
+    {} as never,
   );
 }
 

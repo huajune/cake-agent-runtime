@@ -32,7 +32,10 @@ describe('reengagement datetime（上海时区展示口径）', () => {
 
   describe('formatRelativeShanghaiDate', () => {
     it('says 今天 for the same Shanghai day', () => {
-      const text = formatRelativeShanghaiDate(AUG_13_1430_SH, Date.parse('2026-08-13T09:00:00+08:00'));
+      const text = formatRelativeShanghaiDate(
+        AUG_13_1430_SH,
+        Date.parse('2026-08-13T09:00:00+08:00'),
+      );
       expect(text).toContain('今天');
       expect(text).toContain('不得说“明天”');
     });

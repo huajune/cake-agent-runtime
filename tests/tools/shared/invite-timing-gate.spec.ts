@@ -1,5 +1,6 @@
 import {
   evaluateInviteTimingGate,
+  hasAcceptedGroupOffer,
   type InviteTimingGateInput,
 } from '@tools/shared/invite-timing-gate';
 
@@ -25,15 +26,22 @@ describe('evaluateInviteTimingGate', () => {
       });
     });
 
-    it('本轮已跑过 job_list 时放行', () => {
-      expect(evaluateInviteTimingGate(base())).toEqual({ decision: 'allow' });
+    it('本轮仅跑过 job_list 仍拒绝：真无岗与有岗都不能替代候选人同意', () => {
+      expect(evaluateInviteTimingGate(base())).toEqual({
+        decision: 'reject',
+        reason: 'group_consent_required',
+      });
     });
 
     it('预约成功后拉群（场景 1）豁免本档', () => {
       expect(
-        evaluateInviteTimingGate(
-          base({ jobListExecuted: false, bookingSucceeded: true }),
-        ),
+        evaluateInviteTimingGate(base({ jobListExecuted: false, bookingSucceeded: true })),
+      ).toEqual({ decision: 'allow' });
+    });
+
+    it('两轮协议第二轮：上一轮征询且本轮明确同意时豁免重复查岗', () => {
+      expect(
+        evaluateInviteTimingGate(base({ jobListExecuted: false, groupOfferAccepted: true })),
       ).toEqual({ decision: 'allow' });
     });
   });
@@ -64,7 +72,11 @@ describe('evaluateInviteTimingGate', () => {
     it('换城市（候选人真搬了）放行，不拦跨城拉群', () => {
       expect(
         evaluateInviteTimingGate(
-          base({ requestedCity: '杭州', invitedGroups: [{ groupName: 'G', city: '深圳' }] }),
+          base({
+            requestedCity: '杭州',
+            invitedGroups: [{ groupName: 'G', city: '深圳' }],
+            groupOfferAccepted: true,
+          }),
         ),
       ).toEqual({ decision: 'allow' });
     });
@@ -93,17 +105,15 @@ describe('evaluateInviteTimingGate', () => {
       });
     });
 
-    it.each([
-      '好的谢谢',
-      '算了不考虑了',
-      '没有别的岗位了吗',
-      '这个太远了',
-      '我不想报名了',
-    ])('非推进信号「%s」放行（拉群本就是无岗承接场景）', (currentUserMessage) => {
-      expect(evaluateInviteTimingGate(base({ currentUserMessage }))).toEqual({
-        decision: 'allow',
-      });
-    });
+    it.each(['好的谢谢', '算了不考虑了', '没有别的岗位了吗', '这个太远了', '我不想报名了'])(
+      '非推进信号「%s」也不等于入群授权',
+      (currentUserMessage) => {
+        expect(evaluateInviteTimingGate(base({ currentUserMessage }))).toEqual({
+          decision: 'reject',
+          reason: 'group_consent_required',
+        });
+      },
+    );
 
     it('预约成功后候选人问"几点面试"属正常收尾，不判打断', () => {
       expect(
@@ -123,8 +133,30 @@ describe('evaluateInviteTimingGate', () => {
 
     it('本轮无候选人原话时不误判', () => {
       expect(evaluateInviteTimingGate(base({ currentUserMessage: null }))).toEqual({
-        decision: 'allow',
+        decision: 'reject',
+        reason: 'group_consent_required',
       });
     });
+  });
+});
+
+describe('hasAcceptedGroupOffer', () => {
+  it('requires an assistant group offer immediately followed by explicit user consent', () => {
+    expect(
+      hasAcceptedGroupOffer([
+        { role: 'assistant', content: '可以邀请你进上海兼职岗位信息群，你愿意的话回复我“可以”' },
+        { role: 'user', content: '可以' },
+      ]),
+    ).toBe(true);
+  });
+
+  it('does not treat a bare consent or a rejection as group consent', () => {
+    expect(hasAcceptedGroupOffer([{ role: 'user', content: '可以' }])).toBe(false);
+    expect(
+      hasAcceptedGroupOffer([
+        { role: 'assistant', content: '要不我邀请你进兼职群？' },
+        { role: 'user', content: '不用了' },
+      ]),
+    ).toBe(false);
   });
 });

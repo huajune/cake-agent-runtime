@@ -40,9 +40,7 @@ describe('ConversionAnalyticsController', () => {
   it('uses safe defaults for invalid funnel cohort, range, and mode', async () => {
     const { controller, service } = buildController();
 
-    await expect(
-      controller.getFunnel('unknown', 'future', '', '   ', 'invalid'),
-    ).resolves.toEqual({
+    await expect(controller.getFunnel('unknown', 'future', '', '   ', 'invalid')).resolves.toEqual({
       endpoint: 'funnel',
     });
 
@@ -61,9 +59,7 @@ describe('ConversionAnalyticsController', () => {
   it('normalizes all reporting endpoints consistently', async () => {
     const { controller, service } = buildController();
 
-    await expect(
-      controller.getTrends('60d', 'A,B', 'corp-2', 'period'),
-    ).resolves.toEqual({
+    await expect(controller.getTrends('60d', 'A,B', 'corp-2', 'period')).resolves.toEqual({
       endpoint: 'trends',
     });
     await expect(controller.getBots('90d', 'A', 'corp-3', 'cohort')).resolves.toEqual({

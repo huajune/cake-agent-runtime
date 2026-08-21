@@ -157,6 +157,57 @@ export type AgentEvent = AgentEventContext &
         /** 本次抽取经 fallback 后真正成功的模型。 */
         modelId: string;
       }
+    /**
+     * 会话状态字段落盘态与 schema 失配、被逐字段校验丢弃。
+     *
+     * 与 `extraction_field_dropped` 刻意分开：那条是**模型抽的值**没过准入门（业务判定），
+     * 这条是**存量数据**与代码 schema 对不上（存储完整性）——跨版本词表漂移、脏写、
+     * 回滚到旧代码读新数据都会命中。Redis 是 facts / terminal / brand_state 的唯一
+     * 事实源，丢一个字段就是丢一段事实，正常量级应恒为零。
+     */
+    | {
+        type: 'session_state_field_dropped';
+        userId?: string;
+        /** 被丢弃的顶层字段（facts / terminal / brand_state …）。 */
+        field: string;
+        /** zod 失败明细（字段路径 + 原因），不含值本体，避免 PII 进观测。 */
+        issues: string[];
+      }
+    /**
+     * 收资表单一轮的审计条目（蓝图 §4）：公证拒收 / 判不合格 / 显式改口 / 配置债 /
+     * 熔断各一条。拒收事件是**臆造防线的观测面**——只打日志等于这道防线没有验收数据。
+     */
+    | {
+        type: 'collection_form_audit';
+        userId?: string;
+        jobId: number;
+        kind: string;
+        labelId?: number;
+        reason?: string;
+        channel?: string;
+        detail?: string;
+      }
+    /**
+     * 身份锚点核验不过：环境配置说某 labelId 是身份槽，契约里该 id 的标题却对不上
+     * ——标签表重建后的静默断链（D4 撤回"把 ID 写进文档"诉求时点名要防的事故）。
+     * 该槽已降通用道，不阻断收资；量级应恒为零，非零即配置漂了。
+     */
+    | {
+        type: 'collection_identity_anchor_mismatch';
+        userId?: string;
+        labelId: number;
+        expected: string;
+        labelTitle: string;
+      }
+    /**
+     * 岗位契约返回空标签 = 数据异常（0820 后端确认正常在招岗必有标签）。
+     * 已按裁定转人工；本事件是"到底有多少岗在返空"的唯一量化来源。
+     */
+    | {
+        type: 'collection_empty_contract';
+        userId?: string;
+        jobId: number;
+      }
     | {
         type: 'extraction_raw_output_sampled';
         userId?: string;

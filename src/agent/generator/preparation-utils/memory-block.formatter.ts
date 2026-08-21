@@ -354,7 +354,7 @@ function formatSessionFacts(
   if (state.facts) {
     // 用工形式是可变意向，当前消息的高置信值必须覆盖旧记忆的展示值；否则同一份
     // system prompt 会同时出现“旧兼职”和“当前暑假工”，诱导模型复用旧岗位。
-    const persistedLaborForm = unwrapSessionFacts(state.facts, { minConfidence: 'low' })
+    const persistedLaborForm = unwrapSessionFacts(state.facts, { minConfidence: 'medium' })
       ?.preferences.labor_form;
     const shouldClearPersistedLaborForm =
       currentIntent.kind === 'clear' &&

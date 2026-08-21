@@ -10,6 +10,8 @@ describe('buildSessionFactsHashKey', () => {
   });
 
   it('keeps segments positional and distinct（三段不可互换）', () => {
-    expect(buildSessionFactsHashKey('a', 'b', 'c')).not.toBe(buildSessionFactsHashKey('b', 'a', 'c'));
+    expect(buildSessionFactsHashKey('a', 'b', 'c')).not.toBe(
+      buildSessionFactsHashKey('b', 'a', 'c'),
+    );
   });
 });

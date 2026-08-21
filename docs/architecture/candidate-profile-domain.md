@@ -3,9 +3,11 @@
 **最后更新**：2026-08-12
 **代码居所**：`src/resolution/{candidate,evidence,signal,brand,geo,labor-form,visual,job}/` + `src/memory/`
 
-> ⚠️ **发版状态**：本文描述的架构在 `codex/candidate-profile-domain-refactor` 分支已全量落码并通过验收，
-> 但**尚未合入 `develop`**（分支 ahead 36 commits）。「已实现」= 已落码，**不等于已上生产**——
-> 排查生产行为时请先确认所查版本是否已包含这批改动。
+> **发版状态**：已随 PR #1000 / v10.44.0 上生产（2026-08-19）。其后收资表单批（PR #1023）
+> 把收资场景的消费侧整体切到 [collection-form-machine.md](./collection-form-machine.md)
+> 描述的表单状态机，并退役了本域的部分防线（三个 confirmation producer、adjudicate、
+> 快照闸——写入公证接管后失去对象）；本文的裁决三分法（模型作证/代码公证/本人终审）、
+> claim 通货与身份闸门仍是全系统底盘。涉及被退役部件的小节以代码为准，待下轮刷新。
 
 > 本文是候选人事实链路的**域宪法与现状架构**。品牌、地理两个解析子域的细节各有专文：
 > [brand-resolution.md](./brand-resolution.md)、[geo-resolution.md](./geo-resolution.md)；

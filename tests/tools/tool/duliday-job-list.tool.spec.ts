@@ -4,7 +4,6 @@ import { TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 import type { TurnLedger } from '@shared-types/turn.types';
 import { createToolContext, mergeToolContext } from '../../helpers/tool-context.fixture';
 import { testRuleFact, testRuleFacts } from '../../helpers/rule-fact-claims.fixture';
-import { COLLECTION_FLOW_DEDUP_6A75AAB3 } from '../../biz/test-suite/fixtures/collection-flow-dedup.curated';
 
 type JobListTestContext = ToolBuildContext & {
   turnId?: string;
@@ -15,6 +14,7 @@ type JobListTestContext = ToolBuildContext & {
   isRecalledJobId?: (jobId: number) => boolean;
   lastJobListQuery?: ToolBuildContext['archive']['lastJobListQuery'];
   recentBrandPool?: string[];
+  invitedGroups?: ToolBuildContext['archive']['invitedGroups'];
   messages?: unknown[];
   currentUserMessage?: string;
   currentLaborFormIntent?: ToolBuildContext['turnInput']['currentLaborFormIntent'];
@@ -68,6 +68,7 @@ describe('buildJobListTool', () => {
         ...(context.recentBrandPool === undefined
           ? {}
           : { recentBrandPool: context.recentBrandPool }),
+        ...(context.invitedGroups === undefined ? {} : { invitedGroups: context.invitedGroups }),
       },
       turnInput: {
         ...(context.messages === undefined ? {} : { messages: context.messages }),
@@ -196,43 +197,6 @@ describe('buildJobListTool', () => {
     expect(builtTool.description).toContain('记忆只用于定位 jobId，禁止直接据记忆回答');
     expect(builtTool.description).toContain('岗位详情缺字段必须按 jobId 补查');
     expect(builtTool.description).toContain('综合薪资的“元/月”');
-  });
-
-  it('should answer a post-form job-detail follow-up and expose only a missing-field reminder', async () => {
-    mockSpongeService.fetchJobs.mockResolvedValue({
-      jobs: [
-        makeJobData({
-          welfare: { mealInfo: '提供员工餐' },
-          workTime: { workDuration: '8小时，休息1小时' },
-        }),
-      ],
-      total: 1,
-    });
-    const context: JobListTestContext = {
-      ...mockContext,
-      messages: [
-        ...COLLECTION_FLOW_DEDUP_6A75AAB3.history,
-        { role: 'user', content: COLLECTION_FLOW_DEDUP_6A75AAB3.userMessage },
-      ],
-      currentUserMessage: COLLECTION_FLOW_DEDUP_6A75AAB3.userMessage,
-    };
-
-    const result = await executeTool(context, {
-      ...defaultInput,
-      jobIdList: [1],
-      includeWelfare: true,
-      includeWorkTime: true,
-    });
-
-    expect(result.collectionFollowup).toEqual(
-      expect.objectContaining({
-        mode: 'missing_only',
-        missingFields: ['姓名', '联系电话', '学历', '健康证情况', '学信网学籍状态'],
-      }),
-    );
-    expect(result._replyInstruction).toContain('先按本轮岗位结果回答问题');
-    expect(result._replyInstruction).toContain('禁止逐字或改写重发整张资料表');
-    expect(result.markdown).toContain('答完只能简短催缺口');
   });
 
   it('writes formal and supplemental settlement facts into compact job memory', async () => {
@@ -407,7 +371,8 @@ describe('buildJobListTool', () => {
       };
       const second = await executeTool(secondCtx, { ...defaultInput, cityNameList: ['北京'] });
       expect(second.markdown).toContain('重复查询提醒');
-      expect(second.markdown).toContain('request_handoff');
+      expect(second.markdown).toContain('真实无岗');
+      expect(second.markdown).toContain('不调用 invite_to_group');
       expect(second.queryMeta.repeatQuery).toEqual({ repeated: true, previousTurnId: 'turn-1' });
     });
 
@@ -782,7 +747,51 @@ describe('buildJobListTool', () => {
     const result = await executeTool();
 
     expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_NO_RESULTS);
-    expect(result._replyInstruction).toContain('invite_to_group');
+    expect(result.noMatchScript.nextAction).toBe('wait_for_inventory');
+    expect(result._replyInstruction).toContain('不得调用 invite_to_group');
+  });
+
+  it('stops before a third recommendation query after two dissatisfied rounds', async () => {
+    const messages = [
+      {
+        role: 'assistant',
+        content: '推荐肯德基 A 店岗位，薪资 22 元/小时，班次 09:00-18:00',
+      },
+      { role: 'user', content: '这家太远了，不合适' },
+      {
+        role: 'assistant',
+        content: '再看瑞幸 B 店岗位，薪资 21 元/小时，班次 12:00-20:00',
+      },
+      { role: 'user', content: '时间也不行，换别的吧' },
+    ];
+
+    const result = await executeTool({ ...mockContext, messages });
+
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_RECOMMENDATION_LIMIT_REACHED);
+    expect(result.noMatchScript.nextAction).toBe('offer_group_invite');
+    expect(result._replyInstruction).toContain('本轮不得继续查询或推荐');
+    expect(result._replyInstruction).toContain('不得调用 invite_to_group');
+    expect(mockSpongeService.fetchJobs).not.toHaveBeenCalled();
+  });
+
+  it('closes job queries after the candidate was already invited to a group', async () => {
+    const result = await executeTool({
+      ...mockContext,
+      invitedGroups: [
+        {
+          groupName: '上海餐饮兼职群',
+          city: '上海',
+          industry: '餐饮',
+          invitedAt: '2026-08-20T09:00:00.000Z',
+        },
+      ],
+    });
+
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_GROUP_HANDOFF_COMPLETE);
+    expect(result.noMatchScript.nextAction).toBe('group_handoff_complete');
+    expect(result.noMatchScript.candidateMessage).toContain('上海餐饮兼职群');
+    expect(result._replyInstruction).toContain('不得继续查询、推荐岗位或询问其他区域');
+    expect(mockSpongeService.fetchJobs).not.toHaveBeenCalled();
   });
 
   it('should block region-only queries when city is missing', async () => {
@@ -1377,7 +1386,7 @@ describe('buildJobListTool', () => {
       const result = await executeTool(studentContext, { ...defaultInput });
 
       expect(result.errorType).toBe('job_list.student_filter_empty');
-      expect(result.noMatchScript?.nextToolCall).toBe('invite_to_group');
+      expect(result.noMatchScript?.nextAction).toBe('wait_for_inventory');
       expect(result._replyInstruction).toContain('严禁');
       expect(result.queryMeta.studentIdentityFilter.excludedCount).toBe(2);
     });
@@ -2070,7 +2079,7 @@ describe('buildJobListTool', () => {
 
       expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_NO_RESULTS);
       expect(result.aliasFuzzyMatch).toBeNull();
-      expect(result._replyInstruction).toContain('invite_to_group');
+      expect(result._replyInstruction).toContain('不得调用 invite_to_group');
     });
 
     it('no recentBrandPool：未传品牌池时不触发模糊匹配，照旧走 noMatchScript', async () => {
@@ -2083,7 +2092,7 @@ describe('buildJobListTool', () => {
       });
 
       expect(result.aliasFuzzyMatch).toBeNull();
-      expect(result._replyInstruction).toContain('invite_to_group');
+      expect(result._replyInstruction).toContain('不得调用 invite_to_group');
     });
   });
 
@@ -2126,7 +2135,7 @@ describe('buildJobListTool', () => {
       });
 
       expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_NO_RESULTS);
-      expect(result._replyInstruction).toContain('invite_to_group');
+      expect(result._replyInstruction).toContain('不得调用 invite_to_group');
     });
 
     it('乡镇级 region + 已有坐标时不触发 geocode 引导（坐标已足够定位）', async () => {

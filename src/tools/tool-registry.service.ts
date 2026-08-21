@@ -1,5 +1,4 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { MemoryService } from '@memory/memory.service';
 import { SpongeService } from '@sponge/sponge.service';
 import { BrandResolutionService } from '@resolution/brand/brand-resolution.service';
@@ -41,7 +40,7 @@ import { InterventionService } from '@biz/intervention/intervention.service';
 import { MessageSenderService } from '@channels/wecom/message-sender/message-sender.service';
 import { SessionService } from '@memory/services/session.service';
 import { LongTermService } from '@memory/services/long-term.service';
-import { CandidateSnapshotService } from '@memory/services/candidate-snapshot.service';
+import { CollectionFormService } from '@memory/services/collection-form.service';
 import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
 import { HandoffRecorderService } from '@biz/handoff-events/handoff-recorder.service';
 import { AgentTracerService } from '@/observability/agent-tracer.service';
@@ -82,22 +81,15 @@ export class ToolRegistryService {
     private readonly chatSessionService: ChatSessionService,
     private readonly llm: LlmExecutorService,
     userHostingService: UserHostingService,
-    configService: ConfigService,
     interventionService: InterventionService,
     sessionService: SessionService,
     longTermService: LongTermService,
     opsEventsRecorder: OpsEventsRecorderService,
     handoffRecorder: HandoffRecorderService,
     private readonly brandResolutionService: BrandResolutionService,
-    candidateSnapshotService: CandidateSnapshotService,
     agentTracer: AgentTracerService,
+    collectionFormService: CollectionFormService,
   ) {
-    // 候选人事实裁决模式（证据化 §10 灰度）：shadow=只观测不改行为（默认），
-    // enforce=无据模型裸值剔出 checklist + booking 快照差异硬拒。差异率稳定前勿切。
-    const adjudicationMode =
-      configService.get<string>('CANDIDATE_FACT_ADJUDICATION_MODE', 'shadow') === 'enforce'
-        ? ('enforce' as const)
-        : ('shadow' as const);
     this.registry = {
       // ===== 阶段工具 =====
       advance_stage: createToolDefinition({
@@ -131,9 +123,9 @@ export class ToolRegistryService {
           longTermService,
           opsEventsRecorder,
           {
-            mode: adjudicationMode,
-            snapshots: candidateSnapshotService,
-            observer: agentTracer,
+            collectionForms: collectionFormService,
+            sessionFacts: sessionService,
+            identityAnchors: process.env.COLLECTION_IDENTITY_LABEL_IDS,
           },
         ),
       }),
@@ -143,9 +135,10 @@ export class ToolRegistryService {
         description:
           '面试前置校验（按岗位返回可约日期/时段、备注解析后的字段建议、报名补充信息；不真正提交预约）',
         create: buildInterviewPrecheckTool(spongeService, opsEventsRecorder, {
-          mode: adjudicationMode,
-          snapshots: candidateSnapshotService,
           observer: agentTracer,
+          // 收资表单接管（蓝图 §5）：注入即换轨，生产恒走表单路径。
+          collectionForms: collectionFormService,
+          identityAnchors: process.env.COLLECTION_IDENTITY_LABEL_IDS,
         }),
       }),
 

@@ -2,7 +2,7 @@
 
 > 本文档描述 Cake Agent Runtime 测试套件的整体架构、设计原则和技术实现
 >
-> 最后更新：2026-08-12（全文对代码核实：服务清单 / 路径 / 表名 / 代码规模）
+> 最后更新：2026-08-21（对代码复核：路由清单 / 模块文件树 / 反馈防重 / 评估模型角色路由）
 
 ## 目录
 
@@ -125,7 +125,8 @@ src/biz/test-suite/
 │   └── test.enum.ts                   # 执行/评审/批次/相似度等枚举
 │
 ├── types/
-│   └── test-suite.types.ts            # Service 层的 Create/Update 入参类型
+│   ├── test-suite.types.ts            # Service 层的 Create/Update 入参类型
+│   └── test-debug-trace.types.ts      # BadCase trace / 记忆夹具与断言的字段契约
 │
 ├── repositories/                      # Supabase 数据访问
 │   ├── test-batch.repository.ts
@@ -152,14 +153,17 @@ src/biz/test-suite/
 │   ├── test-suite-queue.service.ts           # 批次进度 / 取消 / 队列状态 / 清失败 job
 │   ├── memory-fixture.service.ts             # 记忆夹具：reset / seed / read / cleanup
 │   ├── badcase-evidence-resolver.service.ts  # 按 recordId 批量解析 BadCase 证据账本
-│   └── test-feedback.service.ts              # 人工反馈提交（含截图，回写飞书）
+│   ├── test-trace.helpers.ts                 # sourceTrace 归一化（ID 列表清洗 / 别名收拢）
+│   └── test-feedback.service.ts              # 人工反馈提交（Redis 幂等防重，回写飞书）
 │
 ├── test-suite.module.ts               # 模块定义
 ├── test-suite.controller.ts           # HTTP / SSE 控制器
 ├── test-suite.processor.ts            # Bull Queue 处理器（execute-test）
 │
 └── utils/
-    └── sse-stream-handler.ts          # 非 Vercel AI 风格 SSE 流包装
+    ├── badcase-evidence-filter.util.ts # BadCase recordId → PostgREST 过滤串（白名单字符集 + 扫描上限 500）
+    ├── scenario-turn-count.util.ts     # 从场景用例对话历史统计用户轮数
+    └── sse-stream-handler.ts           # 非 Vercel AI 风格 SSE 流包装
 ```
 
 **代码规模**：约 13,400 行 TypeScript（含 entities / types / repositories / services / 支撑文件）。

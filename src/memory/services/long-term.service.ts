@@ -3,7 +3,6 @@ import { SupabaseStore } from '../stores/supabase.store';
 import type { CandidateFactProducer } from '@resolution/evidence/claim.types';
 import type {
   UserProfile,
-  UserProfileFieldKey,
   UserProfileFacts,
   ProfileFactConfidence,
   SummaryData,
@@ -67,7 +66,7 @@ export class LongTermService {
     }
   }
 
-  async saveProfile(
+  async seedProfileFixture(
     corpId: string,
     userId: string,
     profile: Partial<UserProfile>,
@@ -84,9 +83,9 @@ export class LongTermService {
       if (Object.keys(nonNull).length === 0) return;
 
       const profileFacts = this.buildProfileFacts(nonNull, {
-        source: 'system',
+        source: 'archive',
         confidence: 'medium',
-        evidence: '外部补充字段写入长期档案',
+        evidence: '测试夹具写入长期档案',
       });
       await this.supabaseStore.upsertProfileFacts(corpId, userId, profileFacts, metadata);
     } catch (error) {
@@ -114,7 +113,12 @@ export class LongTermService {
       age: number;
       /** 性别展示标签，如 "男" / "女" */
       gender: string;
+      /** 报名岗位血缘。 */
+      jobId: number;
+      /** 报名成功返回的工单号。 */
+      workOrderId: number;
     },
+    origin: Required<FactOrigin>,
   ): Promise<void> {
     try {
       const profile: Partial<UserProfile> = {
@@ -127,7 +131,9 @@ export class LongTermService {
       const profileFacts = this.buildProfileFacts(profile, {
         source: 'system',
         confidence: 'high',
-        evidence: '报名成功后写入',
+        evidence: `收资表单办结并报名成功（jobId=${data.jobId}, workOrderId=${data.workOrderId}）`,
+        originSessionId: origin.sessionId,
+        originBotId: origin.botImId,
       });
 
       await this.supabaseStore.upsertProfileFacts(corpId, userId, profileFacts);
@@ -154,30 +160,18 @@ export class LongTermService {
     origin?: SettlementFactOrigin,
   ): Promise<void> {
     try {
-      const profileFacts = this.buildProfileFactsFromSettlement(facts, origin);
-      // 求职意向同样跨会话有价值（城市/品牌/岗位/班次等），若只活在 Redis
-      // session facts（TTL 2 天）里，候选人隔几天回来意向会全部丢失、只剩摘要叙述。
       const preferenceFacts = this.buildPreferenceFactsFromSettlement(facts, origin);
-      if (Object.keys(profileFacts).length === 0 && Object.keys(preferenceFacts).length === 0) {
-        return;
-      }
+      if (Object.keys(preferenceFacts).length === 0) return;
 
       // profile + preference 单 RPC 事务写入（同一行锁），杜绝两步写之间失败
       // 造成的"profile 落库而意向丢失"半写状态。
-      await this.supabaseStore.upsertProfileFacts(
-        corpId,
-        userId,
-        profileFacts,
-        undefined,
-        preferenceFacts,
-      );
+      await this.supabaseStore.upsertProfileFacts(corpId, userId, {}, undefined, preferenceFacts);
       this.logger.log(
-        `[writeFromSettlement] Profile+Preference 原子写入: userId=${userId}, ` +
-          `profileFields=${Object.keys(profileFacts).join(',') || '-'}, ` +
-          `preferenceFields=${Object.keys(preferenceFacts).join(',') || '-'}`,
+        `[writeFromSettlement] Preference 快照写入: userId=${userId}, ` +
+          `fields=${Object.keys(preferenceFacts).join(',')}`,
       );
     } catch (error) {
-      this.logger.warn('[writeFromSettlement] 写入 Profile 失败', error);
+      this.logger.warn('[writeFromSettlement] 写入 Preference 失败', error);
     }
   }
 
@@ -193,9 +187,20 @@ export class LongTermService {
 
   // ==================== Summary ====================
 
-  async getSummaryData(corpId: string, userId: string): Promise<SummaryData | null> {
+  async getSummaryData(
+    corpId: string,
+    userId: string,
+    botImId?: string,
+  ): Promise<SummaryData | null> {
     try {
-      return await this.supabaseStore.getSummaryData(corpId, userId);
+      const data = await this.supabaseStore.getSummaryData(corpId, userId);
+      if (!data || !botImId) return data;
+      return {
+        ...data,
+        recent: data.recent.filter((entry) => entry.originBotId === botImId),
+        // archive 是历史混合压缩文本，无法证明账号归属；有账号上下文时 fail-closed。
+        archive: null,
+      };
     } catch (error) {
       this.logger.warn('获取 Summary 失败', error);
       return null;
@@ -322,6 +327,8 @@ export class LongTermService {
       source: CandidateFactProducer;
       confidence: ProfileFactConfidence;
       evidence: string;
+      originSessionId?: string;
+      originBotId?: string;
     },
   ): Partial<UserProfileFacts> {
     const updatedAt = new Date().toISOString();
@@ -338,34 +345,6 @@ export class LongTermService {
     }
 
     return facts;
-  }
-
-  private buildProfileFactsFromSettlement(
-    facts: EntityExtractionResult | SessionFacts,
-    origin?: FactOrigin,
-  ): Partial<UserProfileFacts> {
-    const updatedAt = new Date().toISOString();
-    const profileFacts: Partial<UserProfileFacts> = {};
-    const info = facts.interview_info as Record<UserProfileFieldKey, unknown>;
-
-    for (const key of USER_PROFILE_FIELD_KEYS) {
-      const rawValue = info[key];
-      const value = unwrapSessionFactValue(
-        rawValue as SessionFactValue<string | boolean> | string | boolean | null | undefined,
-      );
-      if (!this.hasProfileValue(value)) continue;
-
-      (profileFacts as Record<string, unknown>)[key] = userProfileFactValue(value, {
-        source: isSessionFactValue(rawValue) ? rawValue.source : 'archive',
-        confidence: 'medium',
-        evidence: this.buildSettlementEvidence(rawValue),
-        updatedAt,
-        originSessionId: origin?.sessionId,
-        originBotId: origin?.botImId,
-      });
-    }
-
-    return profileFacts;
   }
 
   /**
@@ -388,10 +367,17 @@ export class LongTermService {
       // 由下方 brand_state.currentBrand 显式提供。
       if (key === 'brands') continue;
       const rawValue = prefs[key];
+      // 外层 null / 缺键 = 本轮缺席，不改变长期值；只有信封内 null/空值才是墓碑。
+      if (rawValue === null || rawValue === undefined) continue;
       const value = unwrapSessionFactValue(rawValue as SessionFactValue<unknown> | null);
-      if (!this.hasPreferenceValue(value)) continue;
+      const explicitClear =
+        isSessionFactValue(rawValue) &&
+        (value === null ||
+          (typeof value === 'string' && value.trim().length === 0) ||
+          (Array.isArray(value) && value.length === 0));
+      if (!explicitClear && !this.hasPreferenceValue(value)) continue;
 
-      preferenceFacts[key] = userProfileFactValue(value, {
+      preferenceFacts[key] = userProfileFactValue(explicitClear ? null : value, {
         source: isSessionFactValue(rawValue) ? rawValue.source : 'archive',
         confidence: 'medium',
         evidence: this.buildSettlementEvidence(rawValue),
@@ -421,13 +407,6 @@ export class LongTermService {
     if (typeof value === 'string') return value.trim().length > 0;
     if (Array.isArray(value)) return value.length > 0;
     return true;
-  }
-
-  private hasProfileValue(value: unknown): value is string | boolean {
-    if (value === null || value === undefined) return false;
-    if (typeof value === 'boolean') return true;
-    if (typeof value === 'string') return value.trim().length > 0;
-    return false;
   }
 
   private buildSettlementEvidence(rawValue: unknown): string {

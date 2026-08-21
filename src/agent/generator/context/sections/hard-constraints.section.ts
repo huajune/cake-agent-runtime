@@ -110,8 +110,8 @@ export class HardConstraintsSection implements PromptSection {
           : previousLaborForm;
 
     const pref: Preferences = {
-      // 品牌不再读 preferences.brands（字段已退役，§19.6）；软提示行直读 sessionBrandState。
-      brands: null,
+      // 品牌不进 Preferences（brands 字段已于 2026-08-19 记忆审计 S9 整体删除）；
+      // 软提示行直读 sessionBrandState，品牌唯一真相是 brand_state。
       brand_ids:
         currentRuleValues?.preferences.brand_ids ??
         trustedSessionFacts?.preferences.brand_ids ??
@@ -349,9 +349,6 @@ export class HardConstraintsSection implements PromptSection {
       phone: null,
       gender: null,
       age: null,
-      applied_store: null,
-      applied_position: null,
-      interview_time: null,
       is_student: null,
       education: null,
       has_health_certificate: null,

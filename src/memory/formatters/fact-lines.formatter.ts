@@ -70,24 +70,6 @@ export function formatExtractionFactLines(
   const age = readFactValue(info.age);
   if (age) lines.push(`- 年龄: ${age}${meta(info.age)}`);
 
-  const appliedStore = readFactValue(info.applied_store);
-  if (appliedStore)
-    lines.push(
-      `- 应聘门店: ${appliedStore}${meta(info.applied_store)}${formatStaleness(info.applied_store)}`,
-    );
-
-  const appliedPosition = readFactValue(info.applied_position);
-  if (appliedPosition)
-    lines.push(
-      `- 应聘岗位: ${appliedPosition}${meta(info.applied_position)}${formatStaleness(info.applied_position)}`,
-    );
-
-  const interviewTime = readFactValue(info.interview_time);
-  if (interviewTime)
-    lines.push(
-      `- 面试时间: ${interviewTime}${meta(info.interview_time)}${formatStaleness(info.interview_time)}`,
-    );
-
   const isStudent = readFactValue(info.is_student);
   if (isStudent != null)
     lines.push(`- 是否学生: ${isStudent ? '是' : '否'}${meta(info.is_student)}`);

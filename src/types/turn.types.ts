@@ -81,6 +81,8 @@ export interface TurnJobsSnapshot {
   readonly invalidatedJobIds: readonly number[];
   /** undefined 表示本轮尚未尝试预约；false 仅表示预约工具明确失败。 */
   bookingSucceeded: boolean | undefined;
+  /** 本轮 precheck 已收到提交前复述确认的岗位；booking 只消费这一回合凭据。 */
+  collectionReadyJobId?: number;
   jobListExecuted: boolean;
   resolvedWorkOrderId?: number;
 }

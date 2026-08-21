@@ -1,5 +1,5 @@
 import { GUARDRAIL_ACTION } from '@shared-types/guardrail.contract';
-import { PROFESSIONAL_ADJECTIVE_SUFFIXES } from '@tools/utils/sensitive-screening.util';
+import { PROFESSIONAL_ADJECTIVE_SUFFIXES } from '@resolution/collection/sensitive-screening';
 import type { FactRule } from '../output-rule.types';
 
 /**
@@ -36,7 +36,7 @@ const DISCRIMINATORY_LEAK_PATTERN = new RegExp(
     // “仅限/只招”类正向限制同样会暴露筛选条件；排除“籍贯”里的“籍”误命中。
     `(?<!不)(?:仅限|只限|只招|只收|限)[^。！？?\\n]{0,8}?(?:户籍|户口|本地人|籍(?!贯)|${ETHNIC_TERM})`,
     // 拒收/圈定某类专业背景。间隔禁跨逗号（避免“不要紧，我们有专业带教”误伤），
-    // 并排除“专业培训/带教”等形容词用法（后缀清单与 sensitive-screening.util 共用，
+    // 并排除“专业培训/带教”等形容词用法（后缀清单与 @resolution/collection/sensitive-screening 共用，
     // 不得各自维护——2026-07-06 review：本地另立清单曾漏 人员/人士/师傅）。
     // “不要”后排除“求”（“不要求专业对口”是安抚不是拒收）；动词与“专业”之间要求
     // 至少隔一个字——排除型必然点名具体专业（“不招食品专业”），紧贴的“不考虑专业

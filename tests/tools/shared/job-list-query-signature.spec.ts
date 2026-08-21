@@ -122,18 +122,18 @@ describe('buildJobListQuerySignature', () => {
     );
   });
 
-  it('重复查询提醒的出口阶梯与既有兜底裁定一致（拉群优先，群满才转人工，无群不转人工）', () => {
+  it('重复查询提醒遵守两轮征询协议，真无岗不拉群，拉群后停止推荐', () => {
     expect(REPEAT_QUERY_NOTICE).toContain('重复查询提醒');
     expect(REPEAT_QUERY_NOTICE).toContain('扩大到全市');
-    // 阶梯顺序：改查询 → 拉群维护 → 群满才 no_match_or_group_full
+    // 阶梯顺序：改查询 → 真无岗收口 → 两轮不满意后征询入群；不再混入转人工旧分支。
     const inviteIndex = REPEAT_QUERY_NOTICE.indexOf('invite_to_group');
-    const handoffIndex = REPEAT_QUERY_NOTICE.indexOf('request_handoff');
     expect(inviteIndex).toBeGreaterThan(-1);
-    expect(handoffIndex).toBeGreaterThan(inviteIndex);
-    expect(REPEAT_QUERY_NOTICE).toContain('no_match_or_group_full');
-    // 无群城市不转人工的既有裁定必须保留
-    expect(REPEAT_QUERY_NOTICE).toContain('no_group_in_city');
-    expect(REPEAT_QUERY_NOTICE).toContain('不转人工');
+    expect(REPEAT_QUERY_NOTICE).toContain('真实无岗');
+    expect(REPEAT_QUERY_NOTICE).toContain('不调用 invite_to_group');
+    expect(REPEAT_QUERY_NOTICE).toContain('连续两轮否定具体推荐');
+    expect(REPEAT_QUERY_NOTICE).toContain('下一轮明确同意后才调用 invite_to_group');
+    expect(REPEAT_QUERY_NOTICE).toContain('已经成功拉群时，禁止继续查询、推荐');
+    expect(REPEAT_QUERY_NOTICE).not.toContain('request_handoff');
     expect(REPEAT_QUERY_NOTICE).toContain('严禁声称已扩大范围却原样重查');
   });
 });

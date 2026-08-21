@@ -28,8 +28,11 @@ export function produceModelClaims(
     value: input.operation === 'clear' ? null : input.value,
     operation: input.operation ?? 'set',
     producer: 'model',
-    interpretation: 'direct',
-    evidence: { quote: input.quote.trim() },
+    interpretation: input.operation === 'confirm' ? 'context_confirmation' : 'direct',
+    evidence: {
+      quote: input.quote.trim(),
+      ...(input.agentQuestionQuote ? { agentQuestionQuote: input.agentQuestionQuote.trim() } : {}),
+    },
     reasoning: input.reasoning,
     assertedAt,
   }));

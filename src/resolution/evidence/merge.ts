@@ -35,9 +35,6 @@ export const FIELD_MERGE_POLICIES = {
   gender: 'custom',
   gender_source: 'custom',
   age: 'scalar-first',
-  applied_store: 'scalar-first',
-  applied_position: 'scalar-first',
-  interview_time: 'scalar-first',
   is_student: 'scalar-first',
   education: 'scalar-first',
   has_health_certificate: 'rule-overrides',
@@ -73,9 +70,6 @@ export function fieldsWithMergePolicy(
     'gender',
     'gender_source',
     'age',
-    'applied_store',
-    'applied_position',
-    'interview_time',
     'is_student',
     'education',
     'has_health_certificate',
@@ -290,9 +284,6 @@ function createEmptyRuleFactProjection(reasoning: string): RuleFactProjection {
       gender: null,
       gender_source: null,
       age: null,
-      applied_store: null,
-      applied_position: null,
-      interview_time: null,
       is_student: null,
       education: null,
       has_health_certificate: null,
@@ -337,7 +328,7 @@ export function projectRuleFactClaims(
       fact.field === 'preferences.city'
         ? {
             value: String(fact.value),
-            confidence: fact.confidence,
+            confidence: fact.confidence === 'high' ? 'high' : 'medium',
             evidence: normalizeCityEvidence(fact.evidence.code),
           }
         : fact.value;

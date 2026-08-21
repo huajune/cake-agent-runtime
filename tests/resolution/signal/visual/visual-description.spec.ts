@@ -125,20 +125,14 @@ describe('visual-description（第三方图片内容不得当候选人自陈）'
     });
 
     it('岗位截图里的"仅限男"不再被提成候选人性别', () => {
-      const facts = extractRuleFacts(
-        ['[图片消息] 岗位截图：招夜班理货，要求仅限男，22-50岁'],
-        [],
-      );
+      const facts = extractRuleFacts(['[图片消息] 岗位截图：招夜班理货，要求仅限男，22-50岁'], []);
       expect(facts?.interview_info.gender ?? null).toBeNull();
     });
 
     // 收窄只针对身份字段。候选人发地图/门店截图指位置是被期待的能力
     // （badcase oaz6inzf 的诉求正是"图上已经看到是北京了还问城市"），不能被这次收窄打掉。
     it('图片描述里的城市仍然可用于定位（收窄不外溢到 preferences/地理）', () => {
-      const facts = extractRuleFacts(
-        ['[图片消息] 地图截图：北京市顺义区富林路卫星店'],
-        [],
-      );
+      const facts = extractRuleFacts(['[图片消息] 地图截图：北京市顺义区富林路卫星店'], []);
       expect(facts?.preferences.city?.value).toBe('北京');
     });
   });

@@ -27,11 +27,13 @@ import { isRecord } from '@infra/utils/object.util';
 import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 import {
   buildNoMatchScript,
+  buildPostInviteClosureScript,
+  buildRecommendationLimitScript,
+  countDissatisfiedRecommendationRounds,
   hasPriorNoMatchReply,
 } from '@tools/duliday/job-list/no-match-script.util';
 import { formatSettlementSummary } from '@tools/duliday/job-list/salary-settlement.util';
 import { buildJobPolicyAnalysis } from '@tools/utils/job-policy-parser';
-import { buildScreeningCriteria } from '@tools/duliday/precheck/screening-criteria.util';
 import { sanitizeBrandName } from '@resolution/brand/sanitize-brand-name';
 import { BRAND_FILTER_MODES } from '@resolution/brand/brand-resolution.types';
 import { buildSpongeTokenContext } from '@tools/utils/sponge-token-context.util';
@@ -45,6 +47,7 @@ import {
   buildJobListQuerySignature,
   REPEAT_QUERY_NOTICE,
 } from '@tools/shared/job-list-query-signature';
+import { correctSwappedLatLng } from '@tools/shared/latlng-swap';
 import {
   applyLaborFormConstraint,
   applyScheduleConstraint,
@@ -80,19 +83,14 @@ import {
 import { type DistanceAnchorPrecision } from '@tools/duliday/job-list/distance-render.util';
 import { composeShiftTimeText } from '@tools/utils/format-shift-time.util';
 import { extractWelfareFacts } from '@tools/duliday/job-list/welfare-facts.util';
+import { parseAgeRange, parseCandidateAge } from '@tools/duliday/precheck/age.util';
 import {
   AGE_BOUNDARY_HANDOFF_FLOOR,
   AGE_BOUNDARY_LOWER_TOLERANCE_YEARS,
   AGE_BOUNDARY_UPPER_TOLERANCE_YEARS,
   detectAgeBoundary,
-  parseAgeRange,
-  parseCandidateAge,
   type AgeScreeningSignal,
-} from '@tools/duliday/precheck/age.util';
-import {
-  buildProvidedFieldLabels,
-  detectPendingCollectionJobDetailFollowup,
-} from '@tools/duliday/precheck/collection-strategy.util';
+} from '@resolution/candidate/age';
 
 // ==================== 常量 ====================
 
@@ -160,7 +158,8 @@ function buildBrandRejectedResult(params: {
     replyInstruction =
       `品牌入参 ${JSON.stringify(rejectedInputs)} 经品牌库校验全部未命中（见 queryMeta.brand.rejected：` +
       'unmatched=库中无此品牌，ambiguous=别名对应多个品牌需澄清）。未按该品牌执行查询。' +
-      '若这是候选人点名的品牌，**严格按 noMatchScript.candidateMessage 原文照念，再调 invite_to_group 拉群**，' +
+      '若这是候选人点名的品牌，**严格按 noMatchScript.candidateMessage 原文照念并结束本轮**，' +
+      '真实无岗不得调用 invite_to_group；' +
       '不得跨品牌推荐；若怀疑是你自己拼错了品牌名，换标准品牌名或 brandIdList 重查一次。';
   }
 
@@ -362,7 +361,9 @@ function mapJobsToSummaries(jobs: JobDetail[]): RecommendedJobSummary[] {
           ? healthCertificateRequirement
           : null,
       studentRequirement: inferStudentRequirement(policy),
-      resumeRequired: Boolean(buildScreeningCriteria(policy).resume),
+      resumeRequired: policy.fieldGuidance.fieldSignals.some(
+        (signal) => signal.field === '简历附件',
+      ),
       distanceKm: distanceKm != null ? Math.round(distanceKm * 10) / 10 : null,
       welfareFacts: welfare
         ? {
@@ -642,22 +643,22 @@ const DESCRIPTION = `查询在招岗位列表。支持渐进式数据返回，�
   - 放宽后查到较远门店 → 如实告知最近门店大致距离让候选人决定（"X 最近的门店离你大概 Y 公里，稍远，能接受吗"），**严禁**把"超距离"说成"没有/暂无在招"——候选人常在 BOSS 等平台已看到该品牌，谎称没有会直接流失
   - 只有放宽后该品牌在**整个城市**仍 0 条，才告知"X 品牌目前你所在城市暂无在招"，再按"无岗时的动作链"收口
 - **缺位置不要直接返回 0 条**：调本工具前必须确认候选人位置（cityNameList 或 location 坐标）。**禁止**在候选人没明示位置时直接把工具结果当"无岗"收口拉群——候选人的真实意图可能是"还没说位置"而不是"没岗"。无位置上下文时先回复一句中性询问"请问您方便面试的城市/区域是哪里？"再决定下一步，不要把"工具 0 条"等同于"候选人无意向"
-- **跨城市无岗禁反问扩张**：当候选人所在城市的结果为 0 条时，按 noMatchScript 原文照念给候选人，**严禁**反问"那看看其他城市吗 / 北京没有看看上海吗"等扩张式追问；候选人未来主动提其他城市才重查，否则一律走拉群兜底
+- **跨城市无岗禁反问扩张**：当候选人所在城市的结果为 0 条时，按 noMatchScript 原文照念给候选人，**严禁**反问"那看看其他城市吗 / 北京没有看看上海吗"等扩张式追问；候选人未来主动提其他城市才重查，否则结束本轮并等待新库存，不拉群
 - **禁止推断品牌地理分布**：工具返回 0 条不代表该品牌只在其他城市运营。**严禁**用"这个品牌目前主要在 XX 开店 / XX 才有"等措辞——本工具只能确认当前查询范围内有无在招岗位，不掌握品牌全国门店分布。0 条时只能说"暂时没查到 XX 品牌的在招岗位"
 - **Agent 自推岗位不适用品牌锁死**：如果候选人并未主动指定品牌，而是你上一轮先推荐了某品牌/门店，候选人只是说"可以"或补收资资料，则该品牌不是硬性 brand intent。后续发现该岗位年龄/性别/班次/学历等条件不匹配时，必须先去掉 jobIdList / brandIdList / brandAliasList，保留候选人的位置、年龄、身份、时间窗等硬约束重查，并基于新结果推荐可匹配岗位；不要直接 request_handoff，也不要用"明确品牌意向"规则阻止换岗自救
 - **工时长度反查**：候选人说"时间长一点的 / 工时长 / 全天班 / 想做半天以上"等工时偏好时，必须开 includeWorkTime=true 并基于工作时间字段重新筛选；若结果集仍以短班为主，先告知"附近主要是短班"再问是否扩大区域，不要继续把短班包装成"差不多"
 - **首次推荐必须开 includeHiringRequirement + includeWorkTime**，把关键要求 + 工作班次时间随岗位信息一起告知让候选人自行判断；严禁推完岗位再逐个追问个人条件去做比对，更严禁反问"班次能不能接受"自己却没说班次时间
 - **推荐文案只输出工具结果顶部的实际岗位卡正文，严禁自行添加“模板/示例/内部说明”等元标题**：每个岗位四行（标题 = 品牌（门店）- 岗位，距离；班次行；薪资行；要求行），**不得删除或合并任一行**。每行的具体取值须结合该岗位下方详情和备注组织完整信息——例如薪资行须包含备注中的阶梯/节假日等补充薪资，而非只写结构化字段的基础时薪。漏掉班次行、薪资行或门店行都属于不合格推荐
 - **班次行必须列全工具返回的所有档位，不得只报候选人偏好的那一档**：含多档时连同排班关系（可选其一 / 全部需出勤等）原样转述，排班方式以工具为准、不自行假定；只挑一档会让候选人误以为是纯某班岗，报名后被排到没告知的班次
-- **无岗时的动作链**：候选人范围内 0 条结果时，按以下顺序收口：
+- **无岗与推荐不满意分流**：按以下互斥顺序收口：
    1. 第一次 0 条 → 在合理范围内放宽一次（同城邻区 / 同品牌邻店 / 放宽距离阈值），且本轮直接执行放宽查询，不向候选人多问一句
-   2. 放宽后仍 0 条 = "无替代"，必须直接告知候选人"暂时没有合适岗位"并调用 invite_to_group 拉群维护
-   3. 严禁继续反问候选人"那别的区域 / 别的品牌 / 别的城市看看吗"；候选人主动表达扩张意愿前不再继续扩查，否则会陷入"反复问位置→反复无岗"的空转
-   4. **候选人主动追问"别的地区有吗 / 别的品牌呢 / 还有其他吗"时本规则同样适用**——必须基于本轮工具结果直接告知"该品牌/城市暂时无岗 + 拉群维护"，不得借候选人的追问继续展开"其他品牌可以吗 / 看看长沙吗 / 上海杭州看看"等扩张推荐
+   2. 放宽后仍 0 条 = **真实无岗**，必须直接告知候选人"暂时没有合适岗位"并结束本轮；不调用 invite_to_group，不用拉群替代岗位供给
+   3. 候选人已连续否定两轮具体岗位推荐 → 停止第三轮查询/推荐，只征询是否愿意进入兼职岗位信息群；本轮不调用 invite_to_group，下一轮候选人明确同意后才实调
+   4. 本会话已成功拉群 → 后续永久停止查岗、推荐及"要不要看其他区域"类追问，只提示候选人留意既有群消息
    5. **历史轨迹打破**：即使 [会话记忆] 或对话历史里 Agent 自己上一轮提议过"换品牌/换地区/看看其他城市"，本轮一旦工具结果证实无岗，也必须打破这条轨迹直接收口，不得顺承延续旧的反问思路
-   6. **结果非空但全部不匹配**：返回的岗位全部与候选人当前硬约束冲突（如候选人要白天班但结果全是夜班、候选人年龄对所有结果都是 ageBoundary.severity="hard_reject"），视同"0 条有效结果"，必须至少放宽一个维度（如放宽距离范围、清空 regionNameList、需要放宽品牌时显式传 brandFilterMode='clear'）重查一次；仅在放宽后仍无有效匹配时，才走上面的兜底路径。年龄判断必须沿用 precheck 弹性口径：超岗位上限 ≤3 岁、或低于下限 ≤2 岁且候选人 ≥23 岁，属于 boundary，可继续推进；例如候选人 52 岁遇到 20-50 岁 / 40-50 岁岗位，不得说"没有一个接受 52 岁"、不得按无岗拉群，后续用 duliday_interview_precheck 复核
-   7. **回看候选岗位池**：新搜索无有效匹配时，必须回看 [会话记忆] 的「上轮候选岗位池」，检查是否有之前未推荐但可能匹配候选人新约束的岗位（如岗位名含"早班/晚班/开档"等班次关键词、年龄范围更宽的岗位）；候选池中有潜在匹配时，用 jobIdList 精确查询这些岗位的详情再推荐，不得仅凭本轮搜索结果就判定"附近无合适岗位"
-- **包餐/工作餐/餐补硬偏好**：候选人说"没饭吃不去了 / 拉倒了 / 不考虑 / 必须包饭"等，视为硬性拒绝或强偏好；不要安慰成"附近吃饭方便"，也不要继续收面试资料。若要继续推荐，必须本轮调用本工具且带 includeWelfare=true 查包餐/餐补/福利信息；没有匹配就说明暂时没有合适的包餐岗位，并调用 invite_to_group 维护
+   6. **结果非空但全部不匹配**：返回的岗位全部与候选人当前硬约束冲突，视同"0 条有效结果"，必须至少放宽一个维度重查一次；仅在放宽后仍无有效匹配时，才按真实无岗收口。年龄判断必须沿用 precheck 弹性口径：候选人 52 岁遇到 20-50 岁 / 40-50 岁岗位属于上限边界，后续用 duliday_interview_precheck 复核，不得直接判无岗
+   7. **回看候选岗位池**：新搜索无有效匹配时，必须回看 [会话记忆] 的「上轮候选岗位池」；有潜在匹配时用 jobIdList 精确查询后再推荐
+- **包餐/工作餐/餐补硬偏好**：候选人说"没饭吃不去了 / 拉倒了 / 不考虑 / 必须包饭"等，视为硬性拒绝或强偏好；不要安慰成"附近吃饭方便"，也不要继续收面试资料。若要继续推荐，必须本轮调用本工具且带 includeWelfare=true 查包餐/餐补/福利信息；没有匹配就说明暂时没有合适的包餐岗位并结束本轮，不因真实无岗直接拉群
 - **面试相关字段**：推进面试时优先读工具结果中的「约面重点」；工具没明确时间不得编造；相对当前时间已过期的日期限制视为历史备注，不得当作当前规则输出
 
 ## 空头承诺禁忌
@@ -712,6 +713,24 @@ export function buildJobListTool(
         includeInterviewProcess = false,
         candidateScheduleConstraint,
       }) => {
+        // 经纬度对调确定性纠偏（badcase 6a86a508：模型 reasoning 绑定正确、发射的
+        // JSON 值却对调，圆心落到纬度 121° → 必然 0 条假"无岗"）。args 落库仍是模型
+        // 原始入参，簇收敛继续用 lat 越界探针观测；此处只修查询行为并记 queryMeta。
+        let coordSwapOriginal: { latitude: number; longitude: number } | null = null;
+        if (location?.latitude != null && location?.longitude != null) {
+          const corrected = correctSwappedLatLng(location.latitude, location.longitude);
+          if (corrected.swapped) {
+            coordSwapOriginal = { latitude: location.latitude, longitude: location.longitude };
+            location = {
+              ...location,
+              latitude: corrected.latitude,
+              longitude: corrected.longitude,
+            };
+            logger.warn(
+              `location 经纬度对调已自动纠偏：入参 (lat=${coordSwapOriginal.latitude}, lng=${coordSwapOriginal.longitude}) → (lat=${corrected.latitude}, lng=${corrected.longitude})`,
+            );
+          }
+        }
         const normalizedCityNameList = cityNameList.map((city) => city.trim()).filter(Boolean);
         const normalizedRegionNameList = regionNameList
           .map((region) => region.trim())
@@ -719,6 +738,39 @@ export function buildJobListTool(
         // B7 二次无岗升级（badcase 6a5df7e7）：本会话已发过无岗话术时，noMatchScript 出二档
         // 文案并禁止逐字复读，四个无岗出口共用同一判定。
         const priorNoMatchReplySent = hasPriorNoMatchReply(context.turnInput.messages ?? []);
+        const invitedGroup = context.archive.invitedGroups?.[0];
+        if (invitedGroup) {
+          const noMatchScript = buildPostInviteClosureScript({
+            groupName: invitedGroup.groupName,
+            city: invitedGroup.city,
+          });
+          return buildToolError({
+            errorType: TOOL_ERROR_TYPES.JOB_LIST_GROUP_HANDOFF_COMPLETE,
+            outcome: '本会话已经完成群承接，岗位查询链路已收口',
+            replyInstruction:
+              '**严格按 noMatchScript.candidateMessage 收口**。不得继续查询、推荐岗位或询问其他区域/品牌，' +
+              '也不得重复调用 invite_to_group。',
+            details: { noMatchScript },
+          });
+        }
+
+        const dissatisfiedRecommendationRounds = countDissatisfiedRecommendationRounds(
+          context.turnInput.messages ?? [],
+        );
+        if (dissatisfiedRecommendationRounds >= 2) {
+          const noMatchScript = buildRecommendationLimitScript({
+            cityLabels: normalizedCityNameList,
+            regionLabels: normalizedRegionNameList,
+          });
+          return buildToolError({
+            errorType: TOOL_ERROR_TYPES.JOB_LIST_RECOMMENDATION_LIMIT_REACHED,
+            outcome: '候选人已连续两轮对具体岗位推荐不满意，停止第三轮推荐',
+            replyInstruction:
+              '**严格按 noMatchScript.candidateMessage 征询入群意愿**，本轮不得继续查询或推荐，' +
+              '也不得调用 invite_to_group；候选人下一轮明确同意后才实调邀请工具。',
+            details: { dissatisfiedRecommendationRounds, noMatchScript },
+          });
+        }
 
         // jobIdList provenance 闸门（badcase 6a6c4c13：候选人全程只聊东莞长安晚班兼职，
         // 模型却在收尾轮凭空查 jobIdList=[53035]+新白鹿+上海——预训练知识幻觉成查询参数，
@@ -1300,7 +1352,8 @@ export function buildJobListTool(
                   replyInstruction:
                     '附近半径内已过滤为空。先尝试一次合理范围内的扩面（同城邻区 / 放宽距离 / 同品牌邻店），' +
                     '本轮直接执行，不要向候选人多问。' +
-                    '若扩面后仍无结果，**严格按 noMatchScript.candidateMessage 原文照念给候选人，再调 invite_to_group 拉群**——' +
+                    '若扩面后仍无结果，**严格按 noMatchScript.candidateMessage 原文照念给候选人并结束本轮**——' +
+                    '真实无岗不得调用 invite_to_group；' +
                     '不要自己改写承接句，不要跨品牌推荐。',
                   details: {
                     maxKm,
@@ -1446,7 +1499,8 @@ export function buildJobListTool(
                 '本次查询无匹配岗位。先核对是否用了 storeNameList 等低稳定字段；' +
                 '是则换 regionNameList / brandIdList 重试一次；需要放宽品牌条件重查时显式传 ' +
                 "brandFilterMode='clear'（只省略品牌参数会被会话品牌兜底拉回）。" +
-                '若已是高稳定字段仍为 0，**严格按 noMatchScript.candidateMessage 原文照念给候选人，再调 invite_to_group 拉群**——' +
+                '若已是高稳定字段仍为 0，**严格按 noMatchScript.candidateMessage 原文照念给候选人并结束本轮**——' +
+                '真实无岗不得调用 invite_to_group；' +
                 '不得自行改写承接句、不得跨品牌推荐、不得反问"换品牌 / 换城市 / 别的区域"；' +
                 '候选人主动追问扩张时同样按此动作链处理。';
             }
@@ -1508,7 +1562,7 @@ export function buildJobListTool(
               outcome: '班次约束过滤后无匹配岗位',
               replyInstruction:
                 '本轮工具结果经候选人班次硬约束过滤后为空。' +
-                '**严格按 noMatchScript.candidateMessage 原文照念给候选人**，然后直接调用 invite_to_group 拉群维护。' +
+                '**严格按 noMatchScript.candidateMessage 原文照念给候选人并结束本轮**，不得调用 invite_to_group。' +
                 '候选人的可上班时段是刚性需求：**禁止劝候选人放宽时段/调整自己的时间迁就班次**' +
                 '（不得问"要不要放宽一下时段/全天班周末班也可以考虑吗"）；只有候选人后续主动改口放宽，才按新时段重新查岗。' +
                 '禁止把被剔除的岗位再以"差不多"包装回去。',
@@ -1628,7 +1682,7 @@ export function buildJobListTool(
                 replyInstruction:
                   '候选人已明确是学生，本轮召回的岗位经「学生身份要求」核对后全部只招社会人士，已被剔除。' +
                   '**按 noMatchScript.candidateMessage 如实告知附近岗位暂不接受学生**（学生门槛是可公开条件，可以明说），' +
-                  '然后调用 invite_to_group 拉群维护，后续有接受学生的岗位再通知。' +
+                  '然后结束本轮，后续有接受学生的岗位再通知；真实无岗不得调用 invite_to_group。' +
                   '**严禁**建议候选人按社会人士登记、隐瞒学生身份或"先报上再说"（诚信红线），' +
                   '也不得把被剔除的岗位包装回去。',
                 details: {
@@ -1685,16 +1739,6 @@ export function buildJobListTool(
 
           const formatSet = new Set(responseFormat);
           const result: Record<string, unknown> = {};
-          const collectionFollowup = detectPendingCollectionJobDetailFollowup(
-            context.turnInput.messages,
-            buildProvidedFieldLabels({
-              collectedFields: context.ledger.facts.collectedFields,
-              sessionInterviewInfo: context.archive.sessionFacts?.interview_info as
-                | Record<string, unknown>
-                | null
-                | undefined,
-            }),
-          );
           const ageScreeningSummary = includeHiringRequirement
             ? buildJobAgeScreeningSummary(jobs, resolveCandidateAge(context))
             : null;
@@ -1728,9 +1772,6 @@ export function buildJobListTool(
               distanceAnchor,
             );
             const markdownSections = [
-              collectionFollowup
-                ? `⚠️ 候选人正在上一张收资表之后追问岗位细节。先回答本轮问题；答完只能简短催缺口：“${collectionFollowup.reminder}”。禁止重发整张资料表。`
-                : null,
               isRepeatQuery ? REPEAT_QUERY_NOTICE : null,
               brandFilterNotice ? `ℹ️ ${brandFilterNotice}` : null,
               rangeClampNotice,
@@ -1748,16 +1789,6 @@ export function buildJobListTool(
           }
           if (brandFilterNotice) {
             result.brandFilterNotice = brandFilterNotice;
-          }
-          if (collectionFollowup) {
-            result.collectionFollowup = {
-              mode: 'missing_only',
-              missingFields: collectionFollowup.missingFields,
-              reminder: collectionFollowup.reminder,
-            };
-            result._replyInstruction =
-              `候选人是在刚发的收资表后追问岗位细节。先按本轮岗位结果回答问题；` +
-              `答完只用“${collectionFollowup.reminder}”催填缺口，禁止逐字或改写重发整张资料表。`;
           }
           // 观测自报口径：tool-call-analysis 优先读该字段推断 empty/narrow/ok
           result.resultCount = total;
@@ -1794,6 +1825,9 @@ export function buildJobListTool(
             // 区级锚点查询占比的观测口径。⚠️ 原设计的对账对象是守卫规则，但那条规则
             // 早已下线，不存在"拦截量趋零"这个验收项——距离渲染层（distance-render.util）
             // 是这条链路的唯一防线，验收看渲染覆盖率（详见 §7 第 4 条）。
+            // 经纬度对调纠偏记录：非 null 表示模型入参被确定性交换过（原始值），
+            // 用于对账"纠偏后查询是否恢复正常"；模型原始 args 另存于 tool_calls.args
+            coordSwapCorrected: coordSwapOriginal,
             anchor: {
               source:
                 regionRelaxedToLocation || matchedGeocodeAnchor

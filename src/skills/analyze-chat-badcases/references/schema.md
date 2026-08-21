@@ -6,41 +6,41 @@
 
 每行代表候选人或 Agent 的一条消息。
 
-| 字段 | 说明 |
-|------|------|
-| `chat_id` | 会话 ID，对应一个候选人 |
-| `message_id` | 消息唯一 ID，可和 `message_processing_records.message_id` join |
-| `role` | `user`（候选人）/ `assistant`（Agent） |
-| `content` | 本条消息文本 |
-| `timestamp` | 消息时间（毫秒时间戳） |
-| `candidate_name` | 候选人昵称 |
-| `manager_name` | 招募经理姓名 |
+| 字段             | 说明                                                           |
+| ---------------- | -------------------------------------------------------------- |
+| `chat_id`        | 会话 ID，对应一个候选人                                        |
+| `message_id`     | 消息唯一 ID，可和 `message_processing_records.message_id` join |
+| `role`           | `user`（候选人）/ `assistant`（Agent）                         |
+| `content`        | 本条消息文本                                                   |
+| `timestamp`      | 消息时间（毫秒时间戳）                                         |
+| `candidate_name` | 候选人昵称                                                     |
+| `manager_name`   | 招募经理姓名                                                   |
 
 ## `message_processing_records` — 每 turn 处理记录
 
 只对 assistant 轮次有行；user 轮 LEFT JOIN 后这些字段为 NULL。
 
-| 字段 | 说明 |
-|------|------|
-| `status` | `success` / `failure` / `timeout` / `processing` |
-| `error` | 失败时的错误描述 |
-| `is_fallback` | 是否走了降级模型 |
-| `fallback_success` | 降级模型是否成功 |
-| `anomaly_flags` | 已自动打标的异常信号（见下表） |
-| `tool_calls` | 本轮工具调用链（JSONB 数组，见下） |
-| `memory_snapshot` | 本轮入口时的记忆快照（JSONB，见下） |
-| `ai_duration` | LLM 处理耗时（毫秒） |
-| `total_duration` | 端到端总耗时（毫秒） |
+| 字段               | 说明                                             |
+| ------------------ | ------------------------------------------------ |
+| `status`           | `success` / `failure` / `timeout` / `processing` |
+| `error`            | 失败时的错误描述                                 |
+| `is_fallback`      | 是否走了降级模型                                 |
+| `fallback_success` | 降级模型是否成功                                 |
+| `anomaly_flags`    | 已自动打标的异常信号（见下表）                   |
+| `tool_calls`       | 本轮工具调用链（JSONB 数组，见下）               |
+| `memory_snapshot`  | 本轮入口时的记忆快照（JSONB，见下）              |
+| `ai_duration`      | LLM 处理耗时（毫秒）                             |
+| `total_duration`   | 端到端总耗时（毫秒）                             |
 
 ### `anomaly_flags` 取值
 
-| 值 | 触发条件 |
-|----|---------|
-| `tool_loop` | 同一工具被调用 ≥ 3 次 |
-| `tool_empty_result` | 某次工具调用返回 0 条结果 |
-| `tool_narrow_result` | 某次工具调用只返回 1 条（候选人没的选） |
-| `tool_chain_overlong` | 本轮工具调用链长度 ≥ 5 |
-| `no_tool_called` | 本轮未调用任何工具（留给业务规则使用，暂不自动打标） |
+| 值                    | 触发条件                                             |
+| --------------------- | ---------------------------------------------------- |
+| `tool_loop`           | 同一工具被调用 ≥ 3 次                                |
+| `tool_empty_result`   | 某次工具调用返回 0 条结果                            |
+| `tool_narrow_result`  | 某次工具调用只返回 1 条（候选人没的选）              |
+| `tool_chain_overlong` | 本轮工具调用链长度 ≥ 5                               |
+| `no_tool_called`      | 本轮未调用任何工具（留给业务规则使用，暂不自动打标） |
 
 ### `tool_calls` 数组结构
 

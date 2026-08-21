@@ -101,7 +101,10 @@ describe('HostingConfigFacadeService', () => {
         ...DEFAULT_AGENT_REPLY_CONFIG,
         reviewModelId: 'deepseek/deepseek-v4-pro',
       });
-      mockSystemConfigService.getGroupTaskConfig.mockResolvedValue({ enabled: false, dryRun: true });
+      mockSystemConfigService.getGroupTaskConfig.mockResolvedValue({
+        enabled: false,
+        dryRun: true,
+      });
 
       const result = await service.getAgentReplyConfig();
 

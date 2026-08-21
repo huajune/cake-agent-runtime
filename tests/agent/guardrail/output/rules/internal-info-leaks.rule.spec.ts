@@ -1,10 +1,40 @@
 import {
   detectOutputLeak,
   hasTechnicalDocumentationShape,
+  isInternalReasoningArtifactOnly,
   isToolCallArtifactOnly,
+  stripInternalReasoningArtifacts,
   stripMarkdownCodeFences,
   tryUnwrapEnvelopeReply,
 } from '@agent/guardrail/output/rules/internal-info-leaks.rule';
+
+describe('internal reasoning artifacts — 2026-08-20 production cluster', () => {
+  it.each([
+    '</antThinking>',
+    'Now confirmed 0 results twice. Proceeding with the script and group invite',
+    '我应该简洁地回答这两个问题',
+    '根据工具查询结果，接下来应该先告诉候选人暂无岗位',
+  ])('detects evidence-backed leak form: %s', (draft) => {
+    expect(detectOutputLeak(draft)).not.toBeNull();
+    expect(isInternalReasoningArtifactOnly(draft)).toBe(true);
+  });
+
+  it('strips only the leaked line and preserves candidate-facing content verbatim', () => {
+    const draft = [
+      'Now confirmed 0 results twice. Proceeding with the script and group invite',
+      '目前附近暂时没有合适岗位，有新岗位我再及时告诉你。',
+    ].join('\n');
+    expect(stripInternalReasoningArtifacts(draft)).toBe(
+      '目前附近暂时没有合适岗位，有新岗位我再及时告诉你。',
+    );
+  });
+
+  it('does not treat ordinary first-person recruiter wording as internal reasoning', () => {
+    const reply = '我先帮你看看附近的岗位，你比较想做餐饮还是零售呀？';
+    expect(detectOutputLeak(reply)).toBeNull();
+    expect(stripInternalReasoningArtifacts(reply)).toBe(reply);
+  });
+});
 
 describe('stripMarkdownCodeFences', () => {
   it('removes fence markers while preserving the wrapped form template verbatim', () => {

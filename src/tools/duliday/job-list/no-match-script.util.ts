@@ -33,6 +33,13 @@ export interface NoMatchQueryContext {
   priorNoMatchReplySent?: boolean;
 }
 
+export const NO_MATCH_NEXT_ACTIONS = [
+  'wait_for_inventory',
+  'offer_group_invite',
+  'group_handoff_complete',
+] as const;
+export type NoMatchNextAction = (typeof NO_MATCH_NEXT_ACTIONS)[number];
+
 /** 本会话已发送过的无岗类话术签名（一档 candidateMessage 与 invite 无群收口话术的共同特征）。 */
 const NO_MATCH_REPLY_SIGNATURE = /暂时没(有|找到).{0,12}岗位/;
 
@@ -70,10 +77,61 @@ export interface NoMatchScript {
   querySummary: string;
   /** 直接照念给候选人的话术（承接 + 婉拒 + 下一步） */
   candidateMessage: string;
-  /** 工具明确建议的下一步动作（机器可读，便于 Agent 不丢动作） */
-  nextToolCall: 'invite_to_group';
+  /** 机器可读的封闭动作：真无岗等待库存；两轮不满意征询入群；已拉群后收口。 */
+  nextAction: NoMatchNextAction;
   /** 显式列出被禁动作，避免 prose 指令漏几条 */
   forbiddenActions: string[];
+}
+
+const RECOMMENDATION_SIGNAL =
+  /(?:推荐|岗位|门店)[^\n]{0,80}(?:薪资|时薪|班次|上班|工作时间|元\/(?:时|小时)|公里)|(?:薪资|时薪|班次|工作时间)[^\n]{0,80}(?:岗位|门店)|(?:（[^）\n]{1,40}）|\([^\)\n]{1,40}\))[^\n]{0,80}(?:\d+(?:\.\d+)?\s*(?:km|公里)|班次|薪资|\d+(?:\.\d+)?\s*元\/(?:时|小时))/i;
+const DISSATISFACTION_SIGNAL =
+  /不合适|不考虑|不想(?:做|去|要)|不要(?:这个|这些|这家)|(?:这个|这家|这些|都)(?:不行|不合适|不要)|做不了|干不了|接受不了|太远|有点远|离得?远|没有近的|上不了.{0,12}(?:时间|班)|只能做.{0,8}小时|时间.{0,8}(?:不行|不合适)|换(?:一个|别的|其他)|还有(?:其他|别的)|没兴趣|不满意/;
+
+function extractMessageText(message: unknown): { role: string; text: string } | null {
+  if (!message || typeof message !== 'object') return null;
+  const value = message as { role?: unknown; content?: unknown };
+  if (typeof value.role !== 'string') return null;
+  const text =
+    typeof value.content === 'string'
+      ? value.content
+      : Array.isArray(value.content)
+        ? value.content
+            .map((part) =>
+              part &&
+              typeof part === 'object' &&
+              typeof (part as { text?: unknown }).text === 'string'
+                ? (part as { text: string }).text
+                : '',
+            )
+            .join(' ')
+        : '';
+  return { role: value.role, text };
+}
+
+/** 每次“已推荐具体岗位 → 候选人明确不满意”计一轮；同一推荐后的连发只计一次。 */
+export function countDissatisfiedRecommendationRounds(messages: readonly unknown[]): number {
+  let recommendationPending = false;
+  let count = 0;
+  for (const message of messages) {
+    const parsed = extractMessageText(message);
+    if (!parsed) continue;
+    if (parsed.role === 'assistant') {
+      // 岗位卡片经常拆成多条，末尾再发“你看哪家方便”。末尾 CTA 本身没有薪资/班次，
+      // 不能把前面已经建立的“本轮推荐待反馈”状态清掉。
+      if (RECOMMENDATION_SIGNAL.test(parsed.text)) recommendationPending = true;
+      continue;
+    }
+    if (
+      parsed.role === 'user' &&
+      recommendationPending &&
+      DISSATISFACTION_SIGNAL.test(parsed.text)
+    ) {
+      count += 1;
+      recommendationPending = false;
+    }
+  }
+  return count;
 }
 
 function joinWithCommaAndOr(labels: string[] | undefined): string {
@@ -104,9 +162,8 @@ function buildQuerySummary(ctx: NoMatchQueryContext): string {
  * 设计：把"承接候选人意向 + 婉拒 + 拉群兜底"压成一句口语化文案，
  * 用候选人本轮查询的品牌/门店/区域参数化。
  *
- * 例：
- *   brand=汉堡王, region=徐汇 → "汉堡王在徐汇这边暂时没找到合适的岗位，
- *   我先帮你进餐饮兼职群，有合适的会第一时间@你。"
+ * 例：brand=汉堡王, region=徐汇 → "汉堡王在徐汇这边暂时没找到合适的岗位，
+ * 后续有合适的新岗位上来，我会第一时间联系你。"
  */
 export function buildNoMatchScript(ctx: NoMatchQueryContext): NoMatchScript {
   const querySummary = buildQuerySummary(ctx);
@@ -131,8 +188,8 @@ export function buildNoMatchScript(ctx: NoMatchQueryContext): NoMatchScript {
           : '附近';
   const intro = `${subjectPhrase}${store ? '' : `在${placePhrase}`}暂时没找到合适的岗位`;
 
-  // 拉群兜底动作（统一一句，不让模型自由发挥）
-  const action = '我先帮你进餐饮兼职群，后续有合适的我会第一时间@你';
+  // 真无岗只做库存等待，不用拉群替代岗位供给。
+  const action = '后续有合适的新岗位上来，我会第一时间联系你';
 
   // 二档话术（本会话已告知过一次无岗）：不再逐字重复一档句式——候选人已经听过一遍，
   // 复读即"人机感"（badcase 6a5df7e7）。改为确认式收口 + 已记录意向 + 主动联系承诺。
@@ -143,7 +200,7 @@ export function buildNoMatchScript(ctx: NoMatchQueryContext): NoMatchScript {
   return {
     querySummary,
     candidateMessage,
-    nextToolCall: 'invite_to_group',
+    nextAction: 'wait_for_inventory',
     forbiddenActions: [
       ...(ctx.maxKm != null
         ? [
@@ -153,12 +210,50 @@ export function buildNoMatchScript(ctx: NoMatchQueryContext): NoMatchScript {
       '不得反问"换品牌 / 换城市 / 别的区域看看吗"',
       '不得跨品牌推荐（候选人提了 X 品牌，无岗就走拉群，不能默默推 Y 品牌）',
       '不得说"这家可能关了 / 应该是搬了 / 估计招满了"等门店运营状态推测',
-      '不得直接静默调 invite_to_group——必须先用 candidateMessage 承接候选人意向再拉群',
+      '本轮是真实无岗结论，不得调用 invite_to_group；拉群只用于连续两轮推荐均不满意后的承接',
       ...(ctx.priorNoMatchReplySent
         ? [
             '本会话已发送过一次无岗话术：本次严禁与已发送的消息逐字重复；若候选人本轮提了具体问题（点名的品牌、追问的范围等），先用一句话正面回应它，再用 candidateMessage 收口',
           ]
         : []),
+    ],
+  };
+}
+
+/** 连续两轮推荐均不满意：停止第三轮查询，只征询是否愿意入群；同轮不实调邀请。 */
+export function buildRecommendationLimitScript(ctx: NoMatchQueryContext): NoMatchScript {
+  const querySummary = buildQuerySummary(ctx);
+  const city = joinWithCommaAndOr(ctx.cityLabels);
+  const groupLabel = city ? `${city}兼职岗位信息群` : '兼职岗位信息群';
+  return {
+    querySummary,
+    candidateMessage:
+      `前面两轮推荐的岗位都不太合适，我先不继续重复推荐了。` +
+      `可以邀请你进${groupLabel}，群里有新岗位会更新；你愿意的话回复我“可以”就行。`,
+    nextAction: 'offer_group_invite',
+    forbiddenActions: [
+      '连续两轮推荐均不满意，本轮禁止第三次查询或继续推荐岗位',
+      '不得再问“要不要看其他区域/品牌/岗位”',
+      '本轮只征询入群意愿；候选人尚未同意，不得调用 invite_to_group',
+      '未收到 invite_to_group success=true 前不得声称已拉群或已发邀请',
+    ],
+  };
+}
+
+/** 已完成群承接：岗位查询链路永久收口，只提示查看既有群。 */
+export function buildPostInviteClosureScript(params: {
+  groupName?: string | null;
+  city?: string | null;
+}): NoMatchScript {
+  const groupLabel = params.groupName?.trim() || '之前邀请你的兼职岗位信息群';
+  return {
+    querySummary: params.city?.trim() ? `已完成${params.city.trim()}群承接` : '已完成群承接',
+    candidateMessage: `之前已经邀请你进「${groupLabel}」了，后续新岗位会在群里更新，可以留意群消息。`,
+    nextAction: 'group_handoff_complete',
+    forbiddenActions: [
+      '本会话已完成群承接，禁止继续调用 duliday_job_list 查询或推荐岗位',
+      '不得再问“要不要看其他区域/品牌/岗位”',
+      '不得再次调用 invite_to_group 或重复发送邀请',
     ],
   };
 }

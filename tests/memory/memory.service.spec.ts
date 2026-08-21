@@ -134,7 +134,7 @@ describe('MemoryService', () => {
       const summary = await service.getSummaryData('corp1', 'user1');
 
       expect(summary).toEqual({ recent: [], archive: null, lastSettledMessageAt: null });
-      expect(mockLongTerm.getSummaryData).toHaveBeenCalledWith('corp1', 'user1');
+      expect(mockLongTerm.getSummaryData).toHaveBeenCalledWith('corp1', 'user1', undefined);
     });
 
     it('should set stage via facade', async () => {

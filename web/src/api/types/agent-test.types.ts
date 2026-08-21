@@ -228,8 +228,11 @@ export interface SubmitFeedbackRequest {
 }
 
 export interface SubmitFeedbackResponse {
-  recordId: string;
+  /** 命中防重（duplicate=true）时后端不写飞书，没有新 recordId */
+  recordId?: string;
   type: FeedbackType;
+  /** 24h 内相同内容（同类型+同分类+同聊天记录）已提交过 */
+  duplicate?: boolean;
   message?: string;
 }
 

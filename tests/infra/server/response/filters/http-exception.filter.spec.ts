@@ -107,10 +107,7 @@ describe('HttpExceptionFilter', () => {
     const filter = new HttpExceptionFilter();
     const { host, json } = createHost();
 
-    filter.catch(
-      new HttpException({ message: 123, code: false }, HttpStatus.BAD_REQUEST),
-      host,
-    );
+    filter.catch(new HttpException({ message: 123, code: false }, HttpStatus.BAD_REQUEST), host);
 
     expect(json).toHaveBeenCalledWith(
       expect.objectContaining({
