@@ -14,7 +14,7 @@
 **预计版本**: `v10.45.0`
 **最近更新**: `2026-08-21`
 **来源分支**: `develop`
-**累计 PR**: 5
+**累计 PR**: 6
 
 ### 更新摘要
 - PR #1016 回填 v10.44.0 发布结果
@@ -24,15 +24,32 @@
 - PR #1021 班次时段承诺判定收窄到同句并豁免否定/复述语境
 - PR #1021 补齐班次否定语境边界
 - PR #1027 绑定跨分句班次承诺
+- PR #1024 复聊二期方案与执行清单
+- PR #1024 增加面试前两天确认档
+- PR #1024 抽取拉群编排服务
+- PR #1024 增加推店未回拉群收口档
+- PR #1024 增加面试后入职跟进档
+- PR #1024 隔离面试提醒触达档位
+- PR #1024 固化推店锚点结算顺序
+- PR #1024 观测入职跟进跳过事件
+- PR #1024 落 0820 话术裁定与分级放量口径
+- PR #1024 三档发版即开（0820 终版裁定）
+- PR #1024 无数据库迁移，无 .env 变更
+- PR #1024 未执行 Dashboard、Supabase、shadow 或真发配置操作
+- PR #1024 入职跟进正式话术仍待运营提供
+- PR #1024 完成复聊二期三项优化
 
 ### 新功能
 - PR #1022 新增 analyze-guardrail 守卫效果分析 skill
+- PR #1024 无数据库迁移，无 .env 变更
+- PR #1024 未执行 Dashboard、Supabase、shadow 或真发配置操作
+- PR #1024 入职跟进正式话术仍待运营提供
 
 ### 问题修复
 - PR #1019 修正 v10.44.0 底账「无前端改动」的事实错误
 
 ### 优化调整
-- 无
+- PR #1024 抽取拉群编排服务
 
 ### 运维与流程
 - PR #1016 回填 v10.44.0 发布结果
@@ -40,6 +57,15 @@
 - PR #1021 班次时段承诺判定收窄到同句并豁免否定/复述语境
 - PR #1021 补齐班次否定语境边界
 - PR #1027 绑定跨分句班次承诺
+- PR #1024 复聊二期方案与执行清单
+- PR #1024 增加面试前两天确认档
+- PR #1024 增加推店未回拉群收口档
+- PR #1024 增加面试后入职跟进档
+- PR #1024 隔离面试提醒触达档位
+- PR #1024 固化推店锚点结算顺序
+- PR #1024 观测入职跟进跳过事件
+- PR #1024 落 0820 话术裁定与分级放量口径
+- PR #1024 三档发版即开（0820 终版裁定）
 
 ### 配置变更
 - 无
@@ -51,6 +77,11 @@
 - PR #1021 新增 4 个回归用例：本 badcase 首版仍拦 / 修复版放行 / 否定从句级绑定（正反两例）；
 - PR #1021 老 badcase 6a573349（单句内承诺+时段）用例不受影响；
 - PR #1021 全量 Jest 7293 passed、typecheck / lint:check / prettier 干净。
+- PR #1024 pnpm run test tests/agent/reengagement tests/biz/group-task tests/tools/tool/invite-to-group.tool.spec.ts --watchman=false：29 suites / 548 tests passed
+- PR #1024 pnpm run lint:check：passed
+- PR #1024 pnpm run typecheck：passed
+- PR #1024 pnpm run test --watchman=false：458 suites / 7,360 tests passed；1 suite / 6 tests skipped
+- PR #1024 pnpm run ci:check：lint、format、typecheck、geo、vocab、Web build、Nest build、coverage tests 全部通过
 <!-- release:pending:end -->
 
 ## [10.44.0] - 2026-08-19
