@@ -356,6 +356,41 @@
       "config": [],
       "envFiles": [],
       "verification": []
+    },
+    {
+      "number": "1033",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1033",
+      "title": "工具层目录终态重排——删 duliday 壳、散件跟工具走",
+      "author": "huajune",
+      "mergedAt": "2026-08-21",
+      "businessUpdates": [
+        "修复目录重排后的遗漏引用"
+      ],
+      "summary": [
+        "测试套件架构文档对齐代码现状",
+        "解散 duliday/precheck 目录——三个工具文件各回语义主场",
+        "工具层目录终态重排——删 duliday 壳、散件跟工具走、三抽屉并一",
+        "修复目录重排后的遗漏引用",
+        "工具层目录终态重排——删 duliday 壳、散件跟工具走"
+      ],
+      "features": [],
+      "fixes": [
+        "修复目录重排后的遗漏引用"
+      ],
+      "optimizations": [],
+      "ops": [
+        "测试套件架构文档对齐代码现状",
+        "解散 duliday/precheck 目录——三个工具文件各回语义主场",
+        "工具层目录终态重排——删 duliday 壳、散件跟工具走、三抽屉并一"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "纯移动零行为：`ci:check` 全量 **446 suites / 6768 例绿**（typecheck+lint+test）",
+        "测试镜像同步重排（tests/tools 与 src/tools 目录一一对应）",
+        "import 别名三种形态（@tools/、@/tools/、相对路径）+ scripts/ 消费面全部改写，旧路径引用清零（仅保留「原居所」出处注释按史实指向 git 历史）",
+        "docs 与守卫 catalog 的路径注记同步刷新"
+      ]
     }
   ],
   "lastRelease": {
