@@ -26,7 +26,7 @@ import { join } from 'path';
 
 import { VALID_LABOR_FORMS } from '@resolution/labor-form';
 import { AGENT_TOOL_CALL_STATUSES } from '@shared-types/agent-telemetry.types';
-import { TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
+import { TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
 
 const REPO_ROOT = join(__dirname, '../..');
 

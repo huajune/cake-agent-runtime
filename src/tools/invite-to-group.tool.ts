@@ -3,22 +3,22 @@ import { Logger } from '@nestjs/common';
 import { tool } from 'ai';
 import { z } from 'zod';
 import { ToolBuilder } from '@shared-types/tool.types';
-import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
+import { buildToolError, TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
 import {
   GroupInviteService,
   type GroupInviteInput,
   type GroupInviteResult,
 } from '@biz/group-task/services/group-invite.service';
 import { SessionService } from '@memory/services/session.service';
-import { evaluateInviteCityGate } from '@tools/shared/invite-city-gate';
-import { evaluateInviteTimingGate, hasAcceptedGroupOffer } from '@tools/shared/invite-timing-gate';
+import { evaluateInviteCityGate } from '@tools/invite/invite-city-gate';
+import { evaluateInviteTimingGate, hasAcceptedGroupOffer } from '@tools/invite/invite-timing-gate';
 import { extractUserTexts } from '@resolution/signal/dialogue';
 import { resolveCityFromDistrict } from '@resolution/geo';
 import {
   buildRecommendationLimitScript,
   countDissatisfiedRecommendationRounds,
   hasPriorNoMatchReply,
-} from '@tools/duliday/job-list/no-match-script.util';
+} from '@tools/job-list/no-match-script.util';
 import { canUseFactForAction } from '@tools/shared/action-confidence';
 
 const logger = new Logger('invite_to_group');

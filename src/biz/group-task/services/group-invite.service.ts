@@ -7,7 +7,7 @@ import { OpsNotifierService } from '@notification/services/ops-notifier.service'
 import { normalizeCityName as normalizeCity } from '@resolution/geo';
 import { sleep } from '@infra/utils/async.util';
 import { toErrorMessage } from '@infra/utils/error.util';
-import { refreshMemberCountsFromEnterpriseList } from '@tools/utils/enterprise-room-count.util';
+import { refreshMemberCountsFromEnterpriseList } from '@tools/invite/enterprise-room-count.util';
 import { GroupContext } from '../group-task.types';
 import { GroupMembershipService } from './group-membership.service';
 import { GroupResolverService } from './group-resolver.service';

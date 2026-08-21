@@ -17,7 +17,7 @@ import {
 import { tool } from 'ai';
 import { z } from 'zod';
 import type { ToolBuilder } from '@shared-types/tool.types';
-import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
+import { buildToolError, TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
 import { extractDocxText } from './resume/docx-text.util';
 import { extractPdfText } from './resume/pdf-text.util';
 import { extractResumeFieldsViaModel } from './resume/resume-extract.util';

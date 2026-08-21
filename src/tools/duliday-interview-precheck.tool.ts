@@ -28,34 +28,34 @@ import {
   runCollectionCore,
   type CollectionAuditEvent,
   type CollectionCoreResult,
-} from '@tools/duliday/collection/collection-core';
+} from '@tools/collection/collection-core';
 import {
   findFieldForClaim,
   selectArchiveFacts,
   type IntakeClaim,
-} from '@tools/duliday/collection/proposal-intake';
-import { renderRecap } from '@tools/duliday/collection/recap-renderer';
-import { renderRejection } from '@tools/duliday/collection/rejection-renderer';
+} from '@tools/collection/proposal-intake';
+import { renderRecap } from '@tools/collection/recap-renderer';
+import { renderRejection } from '@tools/collection/rejection-renderer';
 import {
   buildBookableSlots,
   buildScheduleRule,
   buildUpcomingTimeOptions,
   evaluateRequestedDate,
-} from '@tools/duliday/booking/bookable-slot.util';
-import { normalizeRequestedDate } from '@tools/duliday/booking/date.util';
+} from '@tools/booking/bookable-slot.util';
+import { normalizeRequestedDate } from '@tools/booking/date.util';
 import {
   buildJobPolicyAnalysis,
   isWaitNoticeInterview,
   normalizePolicyText,
-} from '@tools/utils/job-policy-parser';
-import { buildSpongeTokenContext } from '@tools/utils/sponge-token-context.util';
-import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
+} from '@tools/job-list/job-policy-parser';
+import { buildSpongeTokenContext } from '@tools/shared/sponge-token-context.util';
+import { buildToolError, TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
 import { stripNullish } from '@infra/utils/object.util';
 import { tool } from 'ai';
 import { z } from 'zod';
 
 // 保留 age util 的符号 re-export，兼容独立边界单测；年龄是否筛退只读实时收资契约。
-export { parseAgeRange, parseCandidateAge } from '@tools/duliday/job-list/age.util';
+export { parseAgeRange, parseCandidateAge } from '@tools/job-list/age.util';
 export {
   AGE_BOUNDARY_HANDOFF_FLOOR,
   AGE_BOUNDARY_LOWER_TOLERANCE_YEARS,

@@ -7,11 +7,11 @@
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 require('dotenv').config({ path: require('path').resolve(__dirname, '../.env.local') });
 
-import { formatJobsToMarkdown } from '@tools/duliday/job-list/render.util';
+import { formatJobsToMarkdown } from '@tools/job-list/render.util';
 import {
   buildBrandNearestStoreSummary,
-} from '@tools/duliday/job-list/brand-stores.util';
-import { haversineDistance } from '@tools/duliday/job-list/search.util';
+} from '@tools/job-list/brand-stores.util';
+import { haversineDistance } from '@tools/job-list/search.util';
 
 const TOKEN = process.env.DULIDAY_API_TOKEN ?? '';
 const JOB_LIST_API = 'https://k8s.duliday.com/persistence/ai/api/job/list';

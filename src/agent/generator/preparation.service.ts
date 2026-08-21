@@ -17,7 +17,10 @@ import { GroupMembershipService } from '@biz/group-task/services/group-membershi
 import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
 import { HostingMemberConfigService } from '@biz/hosting-config/services/hosting-member-config.service';
 import { SpongeService } from '@sponge/sponge.service';
-import { buildJobPolicyAnalysis, isOfflineInterviewMethod } from '@tools/utils/job-policy-parser';
+import {
+  buildJobPolicyAnalysis,
+  isOfflineInterviewMethod,
+} from '@tools/job-list/job-policy-parser';
 import { isUserProfileFactValue, type UserProfileFacts } from '@memory/types/long-term.types';
 import type { TurnLedger } from '@shared-types/turn.types';
 import type { WeworkSessionState } from '@memory/types/session-facts.types';

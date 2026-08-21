@@ -29,8 +29,8 @@ import {
 } from '@resolution/geo';
 import type { ToolBuildContext, ToolBuilder } from '@shared-types/tool.types';
 import type { GeocodeLocationAnchor } from '@shared-types/turn.types';
-import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
-import { evaluateInviteCityGate } from '@tools/shared/invite-city-gate';
+import { buildToolError, TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
+import { evaluateInviteCityGate } from '@tools/invite/invite-city-gate';
 import { extractUserTexts } from '@resolution/signal/dialogue';
 
 const logger = new Logger('geocode');

@@ -18,7 +18,7 @@ import { z } from 'zod';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { ToolBuilder } from '@shared-types/tool.types';
 import { MessageType } from '@enums/message-callback.enum';
-import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
+import { buildToolError, TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
 import { BrandResolutionService } from '@resolution/brand/brand-resolution.service';
 import {
   VISUAL_FACT_FIELD_KEY_PROMPT,

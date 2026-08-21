@@ -33,12 +33,12 @@ import {
   formatInterviewTimeForReply,
   isOnlineInterview,
   resolveManualInterviewGroupHandling,
-} from '@tools/duliday/booking/booking-reply-format.util';
-import { runBookingScheduleAndNameGuards } from '@tools/duliday/booking/booking-guards.util';
+} from '@tools/booking/booking-reply-format.util';
+import { runBookingScheduleAndNameGuards } from '@tools/booking/booking-guards.util';
 import { isTestPiiPhoneAllowed, maskPhoneForDetails } from '@tools/shared/test-pii-gate';
-import { buildJobPolicyAnalysis, isWaitNoticeInterview } from '@tools/utils/job-policy-parser';
-import { buildSpongeTokenContext } from '@tools/utils/sponge-token-context.util';
-import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
+import { buildJobPolicyAnalysis, isWaitNoticeInterview } from '@tools/job-list/job-policy-parser';
+import { buildSpongeTokenContext } from '@tools/shared/sponge-token-context.util';
+import { buildToolError, TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
 import { tool } from 'ai';
 import { z } from 'zod';
 

@@ -24,23 +24,23 @@ import { ToolBuilder, ToolBuildContext } from '@shared-types/tool.types';
 import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
 import { GeocodingService } from '@infra/geocoding/geocoding.service';
 import { isRecord } from '@infra/utils/object.util';
-import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
+import { buildToolError, TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
 import {
   buildNoMatchScript,
   buildPostInviteClosureScript,
   buildRecommendationLimitScript,
   countDissatisfiedRecommendationRounds,
   hasPriorNoMatchReply,
-} from '@tools/duliday/job-list/no-match-script.util';
-import { formatSettlementSummary } from '@tools/duliday/job-list/salary-settlement.util';
-import { buildJobPolicyAnalysis } from '@tools/utils/job-policy-parser';
+} from '@tools/job-list/no-match-script.util';
+import { formatSettlementSummary } from '@tools/job-list/salary-settlement.util';
+import { buildJobPolicyAnalysis } from '@tools/job-list/job-policy-parser';
 import { sanitizeBrandName } from '@resolution/brand/sanitize-brand-name';
 import { BRAND_FILTER_MODES } from '@resolution/brand/brand-resolution.types';
-import { buildSpongeTokenContext } from '@tools/utils/sponge-token-context.util';
+import { buildSpongeTokenContext } from '@tools/shared/sponge-token-context.util';
 import {
   filterJobsToRequestedAdministrativeArea,
   normalizeSpongeCityFilters,
-} from '@tools/duliday/job-list/sponge-area-filter.util';
+} from '@tools/job-list/sponge-area-filter.util';
 import { detectGeoSignalConflict } from '@resolution/geo';
 import { getRuleFactValue } from '@resolution/evidence/merge';
 import {
@@ -59,12 +59,12 @@ import {
   haversineDistance,
   rankJobsByRequestedCategories,
   stripGenericPositionUmbrella,
-} from '@tools/duliday/job-list/search.util';
+} from '@tools/job-list/search.util';
 import {
   buildBrandQueryPlan,
   toBrandQueryMeta,
   type BrandQueryPlan,
-} from '@tools/duliday/job-list/brand-query.util';
+} from '@tools/job-list/brand-query.util';
 import {
   findBrandFuzzyMatches,
   resolveFuzzyConfidence,
@@ -74,16 +74,16 @@ import {
   buildBrandNearestStoreSummary,
   formatSalarySummary,
   getMultiStoreBrandGroups,
-} from '@tools/duliday/job-list/brand-stores.util';
+} from '@tools/job-list/brand-stores.util';
 import {
   formatJobsToMarkdown,
   inferStudentRequirement,
   type ProgressiveDisclosureFlags,
-} from '@tools/duliday/job-list/render.util';
-import { type DistanceAnchorPrecision } from '@tools/duliday/job-list/distance-render.util';
-import { composeShiftTimeText } from '@tools/utils/format-shift-time.util';
-import { extractWelfareFacts } from '@tools/duliday/job-list/welfare-facts.util';
-import { parseAgeRange, parseCandidateAge } from '@tools/duliday/job-list/age.util';
+} from '@tools/job-list/render.util';
+import { type DistanceAnchorPrecision } from '@tools/job-list/distance-render.util';
+import { composeShiftTimeText } from '@tools/job-list/format-shift-time.util';
+import { extractWelfareFacts } from '@tools/job-list/welfare-facts.util';
+import { parseAgeRange, parseCandidateAge } from '@tools/job-list/age.util';
 import {
   AGE_BOUNDARY_HANDOFF_FLOOR,
   AGE_BOUNDARY_LOWER_TOLERANCE_YEARS,

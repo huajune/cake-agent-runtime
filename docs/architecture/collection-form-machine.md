@@ -1,7 +1,7 @@
 # 收资表单域架构（collection form machine）
 
 **最后更新**：2026-08-20（随 PR #1023 上线）
-**代码居所**：`src/resolution/collection/`（纯逻辑，零 LLM 零 IO）+ `src/tools/duliday/collection/`（编排与渲染）+ `src/memory/stores|services/collection-form.*`（持久化）
+**代码居所**：`src/resolution/collection/`（纯逻辑，零 LLM 零 IO）+ `src/tools/collection/`（编排与渲染）+ `src/memory/stores|services/collection-form.*`（持久化）
 
 > 本文描述已实现的系统。裁决底盘（claim 通货/公证内核/身份闸门，P11 三分法）见
 > [candidate-profile-domain.md](./candidate-profile-domain.md)——本域的写入公证是其在收资

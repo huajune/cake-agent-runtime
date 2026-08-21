@@ -1,6 +1,6 @@
 import { buildCancelWorkOrderTool } from '@tools/duliday-cancel-work-order.tool';
 import { ToolBuildContext } from '@shared-types/tool.types';
-import { TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
+import { TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
 import { createToolContext } from '../helpers/tool-context.fixture';
 
 describe('buildCancelWorkOrderTool', () => {

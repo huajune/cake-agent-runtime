@@ -1,6 +1,6 @@
 import { buildModifyInterviewTimeTool } from '@tools/duliday-modify-interview-time.tool';
 import { ToolBuildContext } from '@shared-types/tool.types';
-import { TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
+import { TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
 import { createToolContext, mergeToolContext } from '../helpers/tool-context.fixture';
 
 describe('buildModifyInterviewTimeTool', () => {

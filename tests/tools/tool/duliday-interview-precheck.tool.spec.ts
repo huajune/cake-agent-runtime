@@ -1,7 +1,7 @@
 import { createForm, markSubmitted, type BookingCollectionForm } from '@resolution/collection';
 import type { ToolBuildContext } from '@shared-types/tool.types';
 import { buildInterviewPrecheckTool } from '@tools/duliday-interview-precheck.tool';
-import { TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
+import { TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
 import { createToolContext, mergeToolContext } from '../../helpers/tool-context.fixture';
 
 const CONTRACT = [

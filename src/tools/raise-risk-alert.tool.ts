@@ -3,7 +3,7 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import type { ConversationRiskSideEffectIntent } from '@agent/runner/turn-side-effect.types';
 import { ToolBuilder } from '@shared-types/tool.types';
-import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
+import { buildToolError, TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
 
 const logger = new Logger('raise_risk_alert');
 

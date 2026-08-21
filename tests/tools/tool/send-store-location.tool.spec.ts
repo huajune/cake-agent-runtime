@@ -1,7 +1,7 @@
 import { buildSendStoreLocationTool } from '@tools/send-store-location.tool';
 import { ToolBuildContext } from '@shared-types/tool.types';
 import { SendMessageType } from '@channels/wecom/message-sender/dto/send-message.dto';
-import { TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
+import { TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
 import { createToolContext, mergeToolContext } from '../../helpers/tool-context.fixture';
 
 interface LocationContextOverrides {

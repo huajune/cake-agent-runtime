@@ -6,7 +6,7 @@
  */
 
 import type { AgentToolCallStatus } from '@shared-types/agent-telemetry.types';
-import type { ToolErrorType } from '@tools/types/tool-error-types';
+import type { ToolErrorType } from '@tools/shared/tool-error-types';
 import { asRecord } from '@infra/utils/object.util';
 import type { AgentToolCall } from './generator.types';
 
