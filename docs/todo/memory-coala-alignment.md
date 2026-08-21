@@ -36,6 +36,34 @@ CoALA 对照复盘（2026-08-21，结论已录治理方案行业对照第 5 条�
 - **业界命名轴查证（2026-08-21，LangGraph/LangMem 分类法）**：主流是**复合轴**——顶层按生命周期/作用域（short-term thread-scoped / long-term namespace），长期层内部才按知识类型分 semantic/episodic/procedural；没有主流框架用类型轴做顶层目录（Letta 用 OS 存储层级轴、Mem0 用 scope 轴）。本库顶层命名与业界同构，"只修错位不全改"裁定获行业形态追认。LangMem 将 procedural 定义为"可随反馈精炼的系统指令"——从源头追认"手册=程序记忆"与台账批次删减循环（=procedural refinement）。
 - **M3/M1 命名指引（由此新增）**：分家与 playbook 落地后，**长期层内部采用类型词汇**——profile/preferences 归 semantic、summary 归 episodic、playbook 库归 procedural——达成"顶层生命周期、层内类型"的 LangGraph 完整形态。
 
+### M2-B 长期层 CoALA 结构分组（A3 方案，2026-08-21 设计定稿，**待用户批准执行**）
+
+用户裁定：命名对齐行业分类词本身就是目标（推翻此前"仅错误/误导才改"口径，原口径划线保留于 M2 节）。经三轮讨论定稿的目标形态：
+
+```ts
+interface LongTermMemory {
+  semantic: {
+    profile: UserProfileFacts;          // 字段短名（上下文已限定主体）+ 类型全名（全局命名空间需限定）
+    jobIntent: JobIntentFacts;          // 原 preference_facts——软偏好/硬约束/时间可用性混装，
+                                        // "preferences" 软语义曾与通融式推荐 badcase 同向误导，更名对齐域词"求职意向"
+  };
+  episodic: {
+    sessionSummaries: SessionSummaries; // 原 SummaryData——修正单复数失实（实为按会话分段的摘要集 recent[]+archive）
+  };
+  // procedural: { playbooks } —— M1 落地时加入，不预留空槽
+  origin?: { fromOtherConversation: true };
+}
+```
+
+**设计裁定记录**：
+1. A3 结构分组（用户选定）：分类词住结构层、内容词住叶子层，双轴都可见；episodic 单成员也包对象——对称性 + M4（relevantEpisodes）与 M1（procedural 分组）的可预见扩展位；
+2. 排除项：字段名不用 userProfile（口吃式冗余）、不用 candidateProfile（memory 模块 API 是 userId 口径，换词造成主体混用）、episodic 叶子不叫 episodes（原始 episode 在 chat_messages，此处是蒸馏摘要）；
+3. **B2 DB 列迁移随发版同批**：`profile_facts→semantic_profile`、`preference_facts→semantic_job_intent`、`summary_data→episodic_session_summaries`，含两个 RPC 函数 DROP+CREATE；migration 先推测试库验证，生产 push 与下周发版严格同批（仓库纪律：只推迁移不发代码=事故源）；
+4. 范围：限长期层内部；顶层四层名（短期/会话/长期/阶段状态）维持不动（业界复合轴同构，见 M2 查证）；
+5. 执行纪律：全库测试 + typecheck 一步不省（settlement 批的教训：域内测试不够，误改薪资域枚举靠全库回归才兜住）。
+
+**M3 登记项（随本设计新增）**：① jobIntent 内部软/硬/时间三分（preferences/constraints/availability）——软硬分离在结构上根治"硬约束被当偏好淡化"的暗示，与 M3 分家同性质合并做；② `lastSettledBySession`/`lastSettledMessageAt` 是 consolidation 水位簿记，混在摘要数据里名实有瑕，M3 一并考虑挪位。
+
 ### M3 会话记忆"事实/工作台"分家
 
 - **语义事实**（facts：置信度合并、extractedAt 时间锚）与**工作台状态**（lastCandidatePool / presentedJobs / currentFocusJob / lastJobListQuery / invitedGroups：覆盖写+cap，P1-3 已加 cap）在类型与命名上分离，治理策略各归其位。
