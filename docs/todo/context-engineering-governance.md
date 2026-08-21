@@ -37,7 +37,7 @@
 
 **核心结论**：
 
-1. 每步输入的 **~98% 是静态固定成本**（手册 + 工具描述），对话历史只占 ~1.6%。而现有的全部控量闸门（60 条 / 12000 字符）都作用在那 1.6% 上。
+1. 每步输入的 **~98% 是静态固定成本**（手册 + 工具描述），对话历史只占 ~1.6%。而当时的全部控量闸门（60 条 / 12,000 字符）都作用在那 1.6% 上（2026-08-21 数据裁定放大至 120 条 / 24,000：p99 触顶率 1.75%、截断伤及高意向深会话，且治理后放大代价≈0，见附录 A）。
 2. 回合平均 10.5 万 token 是多步累积（maxSteps=5，每步全量重发前缀）。多步放大了静态成本：静态部分每多一步就整体重付一次。
 3. p95 达 23 万 token 的回合，大概率是工具结果大 + 步数多的组合（工具结果回合内全量累积、无截断）。
 
@@ -257,7 +257,7 @@ settlement 摘要 ≈ Anthropic compaction；recall_history ≈ structured note-
 - 组装编排：`src/agent/generator/preparation.service.ts`（`prepare()`）；出口测长告警 `checkFinalPromptBloat`（P0-2，2026-08-21 起）
 - Section 注册表：`src/agent/generator/context/scenarios/scenario.registry.ts:8`；12 叶子段
 - 手册：`candidate-consultation.md` 文件 74,519B，**注入口径 27,366 字符**（手册批前 28,357；⚠️ 文件字节≠注入量——约 25KB 是 HTML 注释锚点，加载时 `stripMaintainerComments` 剥离，原"76KB 手册"表述实为文件口径）+ `-final-check.md` 5,865B
-- 历史窗口：60 条（`MAX_HISTORY_PER_CHAT`）/ 12,000 字符（`AGENT_MAX_INPUT_CHARS`，`memory.config.ts:78-83`）；双重裁剪（memory 层 + `preparation.service.ts:173`）
+- 历史窗口：**120 条 / 24,000 字符**（2026-08-21 数据裁定放大，原 60/12K——48h 400 样本实测 p50=11 条、p99 顶格 60、触顶率 1.75%、字符上限零触顶；messages 在缓存前缀之后，放大不碰缓存）；双重裁剪（memory 层 + `preparation.service.ts:173`）
 - 工具注册：`src/tools/tool-registry.service.ts:218`（13 常挂清单）、`:306` / `:321`（save_image_description / read_resume_attachment 动态注入）
 - 工具 description 实测（字符）：job_list **8,515**（治理前 13,144，三批 -35.2%）/ handoff **4,026**（原 4,388）/ invite 3,804（裁定不动）/ geocode 2,221 / cancel 2,000 / modify 1,810 / skip_reply 974 / store_location 829 / precheck 729 / risk_alert 620 / advance_stage 619 / recall 242；13 常挂合计 **26,738**（治理前 31,729，-15.7%）；final-check 5,865B（原 6,505）
 - 工具结果渐进披露：`src/tools/job-list/render.util.ts:1049`（`FULL_DETAIL_CAP=6` 家全文）、`:1200`（其余降摘要行）

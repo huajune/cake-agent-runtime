@@ -12,7 +12,7 @@ CoALA 对照复盘（2026-08-21，结论已录治理方案行业对照第 5 条�
 
 | 记忆类型 | 容量控制 | 压缩/沉淀 | 按需加载 |
 |---|---|---|---|
-| 情景（聊天窗口/摘要） | ✅ 60 条/12K 字符 | ✅ settlement | ✅ recall_history |
+| 情景（聊天窗口/摘要） | ✅ 120 条/24K 字符 | ✅ settlement | ✅ recall_history |
 | 语义（facts/档案） | ✅ schema+cap（P1-3 补齐） | ✅ 沉淀+整组覆盖 | 部分 |
 | **程序（手册/description/DB 策略）** | ✅ 一期补：台账+膨胀哨兵 | ✅ 台账批次删减（procedural refinement） | ✋ 裁定不做（M1 关闭，2026-08-21） |
 

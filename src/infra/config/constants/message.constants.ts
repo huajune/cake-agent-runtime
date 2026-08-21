@@ -36,7 +36,7 @@ export const TYPING_RANDOM_VARIATION = 0.2; // 随机波动比例 (±20%)
 // ==================== 消息历史配置 ====================
 
 // 每会话最大消息数（历史按条数封顶；短期 Redis 缓存另叠加 TTL，见 chat-session.service.ts）
-export const MAX_HISTORY_PER_CHAT = 60;
+export const MAX_HISTORY_PER_CHAT = 120;
 
 // ==================== HTTP 配置 ====================
 

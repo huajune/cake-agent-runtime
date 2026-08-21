@@ -12,8 +12,8 @@ describe('MemoryConfig', () => {
     expect(config.sessionTtl).toBe(2 * 24 * 60 * 60); // 2d = 172800s
     expect(config.consolidationGapSeconds).toBe(1 * 24 * 60 * 60); // 1d
     expect(config.historyWindowSeconds).toBe(7 * 24 * 60 * 60); // 7d
-    expect(config.sessionWindowMaxMessages).toBe(60);
-    expect(config.sessionWindowMaxChars).toBe(12000);
+    expect(config.sessionWindowMaxMessages).toBe(120);
+    expect(config.sessionWindowMaxChars).toBe(24000);
     expect(config.sessionExtractionIncrementalMessages).toBe(10);
     expect(config.longTermCacheTtl).toBe(2 * 60 * 60); // 2h
     expect(config.sessionTtlDays).toBe(2);

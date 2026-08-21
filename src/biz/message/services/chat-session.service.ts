@@ -287,7 +287,7 @@ export class ChatSessionService {
   }
 
   private get shortTermCacheMaxMessages(): number {
-    return parseInt(this.configService?.get('MAX_HISTORY_PER_CHAT', '60') ?? '60', 10);
+    return parseInt(this.configService?.get('MAX_HISTORY_PER_CHAT', '120') ?? '120', 10);
   }
 
   private get shortTermCacheTtlSeconds(): number {

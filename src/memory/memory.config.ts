@@ -76,11 +76,11 @@ export class MemoryConfig {
     this.historyWindowSeconds = historyDays * 24 * 60 * 60;
 
     this.sessionWindowMaxMessages = parseInt(
-      this.configService.get('MAX_HISTORY_PER_CHAT', '60'),
+      this.configService.get('MAX_HISTORY_PER_CHAT', '120'),
       10,
     );
     this.sessionWindowMaxChars = parseInt(
-      this.configService.get('AGENT_MAX_INPUT_CHARS', '12000'),
+      this.configService.get('AGENT_MAX_INPUT_CHARS', '24000'),
       10,
     );
     this.sessionExtractionIncrementalMessages = parseInt(
