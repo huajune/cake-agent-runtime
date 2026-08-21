@@ -1,0 +1,69 @@
+# 行业经验引用库（Industry Sources Ledger）
+
+> 定位：本库历次架构重构与原则立宪所引用的行业经验**总索引**——开源项目、官方文档、技术博客、论文、访谈。
+> 价值不在链接本身，在**每条 source → 本库落点**的映射：它支撑了哪条裁定、哪个原则、哪个机制。
+> 维护纪律：**每次行业调研（检索/精读后形成结论）都必须把真正支撑了结论的 source 入库**——搜到但没用上的不入；
+> 各文档的"业界资料"附录保留就地引用，本库是唯一汇总索引。条目带检索日期，链接失效划线保留（体例同 rules-vs-semantics 修订）。
+
+## 一、上下文工程与缓存（2026-08-20/21 检索）
+
+| 来源 | 类型 | 本库落点 |
+|---|---|---|
+| [The New Rules of Context Engineering for Claude 5 Generation Models（Anthropic）](https://claude.com/blog/the-new-rules-of-context-engineering-for-claude-5-generation-models) | 官方博客 | 治理方案的起点：六规则逐条研判（governance 第二节）；"删 80% 系统提示无性能损失"的松绑实证 |
+| [Effective context engineering for AI agents（Anthropic）](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents) | 官方工程博客 | C1 注意力预算概念来源；compaction/note-taking/sub-agents 三策略与本库 settlement/recall_history 的对照；context rot 概念 |
+| [Context Engineering Lessons from Building Manus](https://manus.im/blog/Context-Engineering-for-AI-Agents-Lessons-from-Building-Manus) | 技术博客（一线产品复盘） | C2 全条：KV-cache 命中率第一指标（P0-1b 升格依据）、mask-don't-remove（追认 P2-1 裁定）、确定性序列化；C6 recitation（final-check 的存在依据） |
+| [千问模型的 Context Cache 功能（阿里云百炼）](https://help.aliyun.com/zh/model-studio/context-cache) | 官方文档 | P0-1a 全部结论：隐式缓存自动开启/命中 2 折/tools 参与前缀/显式缓存 5 分钟 TTL（裁定不做显式） |
+| [Virtual context management with MemGPT and Letta](https://www.leoniemonigatti.com/blog/memgpt.html) | 技术博客（论文解读） | 四层记忆 ≈ OS 式分层（core/recall/archival）的骨架健康对照；"代码 pipeline 沉淀比模型自管更可控"的比较基准 |
+| [Context Engineering: A Practical Guide（Sourcegraph）](https://sourcegraph.com/blog/context-engineering) | 技术博客 | "selection before compression"——与注意力优先裁定同构 |
+| [Context Engineering AI Agents Guide（mem0）](https://mem0.ai/blog/context-engineering-ai-agents-guide) | 技术博客 | 四类挑战框架（poisoning/overload/token/performance）佐证三元目标划分 |
+
+## 二、Harness 与松绑（2026-08-21 检索）
+
+| 来源 | 类型 | 本库落点 |
+|---|---|---|
+| [AI Agent Harness & the Bitter Lesson Revisited（Hugo Bowne-Anderson）](https://hugobowne.substack.com/p/ai-agent-harness-3-principles-for) | 技术博客 | C9 折旧论核心："模型吸收 harness"的历史轨迹（CoT→推理模型、工具编排→工具训练、检索→长上下文）；"2026 年的 harness 是 2026 年的文物" |
+| [Hidden Technical Debt of AI Systems: Agent Harness（Hanchung Lee）](https://leehanchung.github.io/blogs/2026/05/08/hidden-technical-debt-agent-harness/) | 技术博客 | C9：harness 作为技术债的框架 |
+| [Scaffolding is coping, not scaling — Codex 团队访谈（LinearB Dev Interrupted）](https://linearb.io/dev-interrupted/podcast/openai-codex-thibault-sottiaux-agentic-autonomy) | **访谈** | C9：OpenAI 侧激进松绑立场的一手陈述 |
+| [Dive into Claude Code: The Design Space of AI Agent Systems](https://arxiviq.substack.com/p/dive-into-claude-code-the-design) | 论文解读 | C9 保留派立场："信任模型局部判断 + 确定性最小侵入执行 harness"——与 P11 同构的判定依据；"模型与 harness 共同后训练"前提（我们不具备，故证据门控） |
+| [What Is the Agent Harness?（MindStudio）](https://www.mindstudio.ai/blog/agent-harness-scaffolding-matters-more-than-model) | 技术博客 | Agent = Model + Harness 定义；TerminalBench"只换 harness 移动 20+ 名次"的今日重要性实证 |
+| [Agent Harness Engineering（Addy Osmani）](https://addyosmani.com/blog/agent-harness-engineering/) | 技术博客 | harness 工程全景概览 |
+| [awesome-harness-engineering](https://github.com/ai-boost/awesome-harness-engineering) | 开源清单 | harness 生态检索地图（工具/模式/评测/记忆/MCP/权限/观测） |
+
+## 三、Skill / 工具 / MCP（2026-08-21 检索）
+
+| 来源 | 类型 | 本库落点 |
+|---|---|---|
+| [Skills vs MCP Explained: AI Agent Tools Guide（duet.so）](https://duet.so/guides/agent-skills-101-tools-vs-mcp-vs-skills) | 技术博客 | 分工共识句"Skills hold the procedure, Tools take the actions, MCP provides the access"（C 系原则第 4 节） |
+| [MCPs vs Agent Skills: Understanding the Difference](https://www.damiangalarza.com/posts/2026-02-05-mcps-vs-agent-skills/) | 技术博客 | MCP"接入即全量载入"痛点——P3-4 拉取式披露的反面论证 |
+| [Progressive Disclosure Might Replace MCP（MCPJam）](https://www.mcpjam.com/blog/claude-agent-skills) | 技术博客 | skill 元数据先行、命中才读全文的机制细节（P3-4 原型参照） |
+| [Agent Skills for LLMs: Architecture, Acquisition, Security（arXiv 2602.12430）](https://arxiv.org/html/2602.12430v3) | 论文 | skill 生态的学术综述与安全面 |
+
+## 四、守卫、幻觉与引用验证（2026-08-12 检索；就地引用见 [prompt-example-hygiene.md](./prompt-example-hygiene.md)）
+
+支撑示教四原则与四层防线的一批；逐条与防线的对应见该文档正文。
+
+| 来源 | 类型 |
+|---|---|
+| [StruQ: Defending Against Prompt Injection with Structured Queries](https://sizhe-chen.github.io/StruQ-Website/) | 论文（结构化语料分域 BL2 的理论近亲） |
+| [Introducing Citations on the Anthropic API](https://www.anthropic.com/news/introducing-citations-api) | 官方文档（公证器/引文验证思路对照） |
+| [Cited but Not Verified（arXiv 2605.06635）](https://arxiv.org/pdf/2605.06635) | 论文 |
+| [CiteCheck: Retrieval-Grounded Detection of Citation Hallucinations（arXiv 2605.27700）](https://arxiv.org/pdf/2605.27700) | 论文 |
+| [langchain4j: Native "Canary Word" Guardrail（OWASP LLM07:2025）](https://github.com/langchain4j/langchain4j/issues/4587) | 开源 issue（出站 canary 扫描的业界对应） |
+| [LLM guardrails: Best practices（Datadog）](https://www.datadoghq.com/blog/llm-guardrails-best-practices/) | 技术博客 |
+| [Introducing LangExtract（Google）](https://developers.googleblog.com/introducing-langextract-a-gemini-powered-information-extraction-library/) | 官方博客（抽取链路对照） |
+| [Task Contamination: LMs May Not Be Few-Shot Anymore（arXiv 2312.16337）](https://arxiv.org/pdf/2312.16337) | 论文（⚑ 示例回声的最近行业近亲） |
+| [Multi-Layered Framework for LLM Hallucination Mitigation（MDPI）](https://www.mdpi.com/2073-431X/14/8/332) | 论文 |
+
+## 五、基础库与工程规范（长期有效）
+
+| 来源 | 类型 | 本库落点 |
+|---|---|---|
+| [Vercel AI SDK](https://ai-sdk.dev/) | 开源框架官方文档 | 全部 LLM 执行层（generateText/prepareStep/stopWhen）；v7 升级三坑随 PR #827 |
+| [Bull](https://github.com/OptimalBits/bull) / [NestJS Queues](https://docs.nestjs.com/techniques/queues) | 开源库/官方文档 | 消息 debounce 队列（bull-queue-guide） |
+| [Conventional Commits](https://www.conventionalcommits.org/) | 规范 | 提交与 semver 发版约定 |
+
+## 附：与相邻文档的关系
+
+- 各原则文档（[context-engineering-principles](./context-engineering-principles.md)、[prompt-example-hygiene](./prompt-example-hygiene.md)）的"业界资料"附录 = 就地引用；本库 = 汇总索引 + 落点映射，两者并存不冲突。
+- [glossary.md](./glossary.md) A 层管"行业**术语**的学习地图"；本库管"行业**文献**的引用台账"——查概念去 glossary，查出处来这里。
+- 新增流程：行业调研形成结论 → source 入本库（带日期与落点）→ 结论所在文档的附录保留就地引用。
