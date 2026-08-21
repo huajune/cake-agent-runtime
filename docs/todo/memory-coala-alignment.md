@@ -97,6 +97,59 @@ interface LongTermMemory {
 
 - 跨会话相关片段检索（episodic 的 relevance 取路，CoALA 图中 "RAG for relevance"）：单人数据量小、settlement 摘要已粗粒度覆盖，暂不做；记录于此防遗忘，若未来出现开放域知识（岗位知识库问答）再评估。
 
+## 二·五、终态代码组织架构图（全部批次完成后的验收基准）
+
+> 验收方式：拿本图走 `tree`，每个框指到一个真实路径；拿任何路径反查，图上有它的框。
+> 标注：✅=已落地；Ⓑ=M1-B、Ⓒ=M2-C、Ⓐ=M2-B（A3）、Ⓜ=M3 交付。
+
+```
+src/memory/                                  ═══ 记忆四层（生命周期轴做目录）═══
+├── memory.service.ts                        # Facade：onTurnStart/onTurnEnd 唯一入口（不动）
+├── memory.module.ts / memory.config.ts      # 窗口 120 条/24K ✅
+├── services/memory-lifecycle.service.ts     # 跨层编排：读四层/写回/触发沉淀（留根部）
+├── short-term/                              # ① 短期窗口 Ⓒ
+│   └── short-term.service.ts                #    Redis 热缓存 + chat_messages 真相源
+├── session/                                 # ② 会话记忆 Ⓒ（目录）+ Ⓜ（分舱）
+│   ├── facts.service.ts                     #    事实舱（semantic 性质）：置信度合并/extractedAt/公证准入 Ⓜ
+│   ├── workbench.service.ts                 #    工作台舱（working state）：candidatePool/presentedJobs/
+│   │                                        #    currentFocusJob/lastJobListQuery，覆盖写+cap Ⓜ
+│   ├── brand-state.service.ts               #    品牌真相=事实，归事实舱域 Ⓒ
+│   ├── candidate-snapshot.service.ts        #    precheck→booking 事务快照，归工作台域 Ⓒ
+│   ├── session-key.ts / session-facts.types.ts  # 类型跟层走 Ⓒ
+├── stage-state/                             # ③ 阶段状态（原"程序记忆"）✅名 Ⓒ目录
+│   ├── stage-state.service.ts               #    Redis stage:{...}；advance_stage 唯一写入口
+│   └── stage-state.types.ts
+├── long-term/                               # ④ 长期记忆 Ⓒ
+│   ├── long-term.service.ts                 #    semantic{ profile, jobIntent } Ⓐ
+│   │                                        #    episodic{ sessionSummaries } Ⓐ
+│   ├── consolidation.service.ts             #    沉淀管道（原 settlement）✅名 Ⓒ归位
+│   └── long-term.types.ts                   #    LongTermMemory A3 结构 Ⓐ
+├── stores/                                  # 跨层基础设施（redis/supabase/deep-merge，留共享位）
+├── formatters/                              # fact-lines 等（留共享位）
+└── types/memory-runtime.types.ts            # 跨层运行时类型 MemoryRecallContext（留根部）
+
+src/agent/generator/                         ═══ Working Memory 装配 + procedural prompt 仓 ═══
+├── working-memory/                          # Working Memory 装配车间 Ⓒ
+│   ├── preparation.service.ts               #    prepare() → WorkingMemory（服务名不改：流程名准确）
+│   ├── working-memory.types.ts              #    WorkingMemory 类型（原 PreparedAgentContext）Ⓒ
+│   └── （原 preparation-utils/* 全部迁入：conversation-normalizer、
+│         memory-block.formatter、tool-context.builder、turn-ledger 等）
+├── context/
+│   ├── procedural/                          # ⑤ procedural 的 prompt 侧物理仓（原 prompts/）Ⓒ
+│   │   ├── candidate-consultation.md        #    手册（互链锚注 → 程序记忆索引）Ⓑ
+│   │   └── candidate-consultation-final-check.md  # recitation 收口段 Ⓑ
+│   ├── sections/ + scenarios/               # 12 段组装体系（不动）
+│   └── context.service.ts
+└── generator.agent.ts                       # 回合内 WM 增长：prepareStep 工具结果累积（不动）
+
+═══ ⑤ procedural 散布侧（就近放置，判定树裁定；逻辑收拢靠索引）═══
+src/tools/*.tool.ts 的 DESCRIPTION            # 工具绑定规则（首行锚注 → 索引）Ⓑ
+src/tools/collection/                         # 收资状态机（代码化的 procedural）
+strategy_config（DB）                         # red-lines/stage_goals（Dashboard 编辑，台账登记纪律）
+docs/prompt-rule-ledger.md                    # ★ 程序记忆索引：该层唯一总目录 Ⓑ
+                                              #   （容量=台账+哨兵 / 沉淀=批次删减 / 放置=判定树）
+```
+
 ## 三、明确不做
 
 1. **向量库/RAG**：封闭 schema + 单人小数据量，确定性召回严格优于 top-k 模糊检索（P11 同源裁定）。
