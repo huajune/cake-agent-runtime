@@ -101,6 +101,28 @@
         "老 badcase 6a573349（单句内承诺+时段）用例不受影响；",
         "全量 Jest 7293 passed、typecheck / lint:check / prettier 干净。"
       ]
+    },
+    {
+      "number": "1027",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1027",
+      "title": "绑定跨分句班次承诺",
+      "author": "huajune",
+      "mergedAt": "2026-08-21",
+      "businessUpdates": [
+        "绑定跨分句班次承诺"
+      ],
+      "summary": [
+        "绑定跨分句班次承诺"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "绑定跨分句班次承诺"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": []
     }
   ],
   "lastRelease": {
