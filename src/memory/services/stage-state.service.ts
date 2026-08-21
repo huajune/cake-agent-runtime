@@ -42,12 +42,7 @@ export class StageStateService {
    * 阶段状态只有一份最新状态，不保留 Redis 内部版本链；
    * 若需要追溯阶段变迁，看 advance_stage 的日志与 agent_execution_events。
    */
-  async set(
-    corpId: string,
-    userId: string,
-    sessionId: string,
-    state: StageState,
-  ): Promise<void> {
+  async set(corpId: string, userId: string, sessionId: string, state: StageState): Promise<void> {
     const key = this.buildKey(corpId, userId, sessionId);
     await this.redisStore.set(
       key,

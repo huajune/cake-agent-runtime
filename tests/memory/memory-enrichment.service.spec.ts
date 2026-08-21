@@ -16,7 +16,7 @@ describe('MemoryEnrichmentService', () => {
     sessionMemory: null,
     ruleFacts: null,
     stageState: { currentStage: null },
-    longTerm: { profile: null },
+    longTerm: { semantic: { profile: null } },
   });
 
   beforeEach(() => {
@@ -37,15 +37,17 @@ describe('MemoryEnrichmentService', () => {
     const snapshot: AgentMemoryContext = {
       ...baseSnapshot(),
       longTerm: {
-        profile: {
-          gender: {
-            value: '女',
-            confidence: 'high',
-            source: 'system',
-            evidence: '测试写入',
-            updatedAt: '2026-05-22T10:00:00.000Z',
-          },
-        } as never,
+        semantic: {
+          profile: {
+            gender: {
+              value: '女',
+              confidence: 'high',
+              source: 'system',
+              evidence: '测试写入',
+              updatedAt: '2026-05-22T10:00:00.000Z',
+            },
+          } as never,
+        },
       },
     };
 

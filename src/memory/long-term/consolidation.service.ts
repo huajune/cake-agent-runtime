@@ -46,7 +46,7 @@ const ARCHIVE_COMPRESS_PROMPT = `你是记忆压缩器。将多条历史求职�
  * ## 实现
  *
  * 不依赖 Redis 中的活跃时间戳，用两个持久化数据源：
- * - `agent_long_term_memories.summary_data.lastSettledMessageAt`（Supabase 永久）：上次已沉淀到哪条消息
+ * - `agent_long_term_memories.episodic_session_summaries.lastSettledMessageAt`（Supabase 永久）：上次已沉淀到哪条消息
  * - `chat_messages` 表里的真实消息时间戳：用来找会话间隔
  *
  * 检测逻辑：
@@ -57,9 +57,9 @@ const ARCHIVE_COMPRESS_PROMPT = `你是记忆压缩器。将多条历史求职�
  * 3. 若（当前会话第一条消息时间 - 上一段会话最后一条消息时间）>= consolidationGapSeconds，
  *    认为上一段会话已闲置结束，对其执行沉淀
  * 4. 用当前 sessionFacts 作为已校验事实参考，生成摘要
- * 5. 写入 `summary_data`，更新会话级沉淀边界（RPC 带 p_session_id）
- * 6. 将 sessionFacts 沉淀进长期档案：身份字段写 profile_facts，偏好快照写
- *    preference_facts，品牌快照随沉淀一并写入
+ * 5. 写入 `episodic_session_summaries`，更新会话级沉淀边界（RPC 带 p_session_id）
+ * 6. 将 sessionFacts 沉淀进长期档案：身份字段写 semantic_profile，偏好快照写
+ *    semantic_job_intent，品牌快照随沉淀一并写入
  */
 @Injectable()
 export class ConsolidationService {
@@ -90,12 +90,12 @@ export class ConsolidationService {
     brandState?: PersistedBrandState | null,
   ): Promise<boolean> {
     try {
-      const summaryData = await this.longTerm.getSummaryData(corpId, userId);
+      const sessionSummaries = await this.longTerm.getSessionSummaries(corpId, userId);
       // 边界按会话（sessionId=chatId，bot 维度）隔离读取；旧的用户级边界仅作回退。
       // 否则双 bot 服务同一候选人时，bot A 推进用户级边界后，bot B 边界之前的
       // 会话消息会被快速跳过/查询起点裁掉，永不沉淀。
       const lastSettledAt =
-        summaryData?.lastSettledBySession?.[sessionId] ?? summaryData?.lastSettledMessageAt ?? null;
+        sessionSummaries?.lastSettledBySession?.[sessionId] ?? sessionSummaries?.lastSettledMessageAt ?? null;
 
       // 快速跳过：若上次沉淀边界距今 < consolidationGapSeconds，不可能存在闭合断层
       if (lastSettledAt) {

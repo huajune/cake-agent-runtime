@@ -11,8 +11,8 @@ import type { RecommendedJobSummary } from '@resolution/job/types';
 import type {
   UserProfileFacts,
   UserProfileFactValue,
-  LongTermPreferenceFacts,
-  LongTermPreferenceFieldKey,
+  JobIntentFacts,
+  JobIntentFieldKey,
 } from '@memory/long-term/long-term.types';
 
 const MAX_RECENT_MESSAGES = 8;
@@ -108,9 +108,9 @@ export class ReplyRepairContextProvider {
     return {
       recentMessages: this.buildRecentMessages(memory.shortTerm.messageWindow),
       factLines: factLines.slice(0, MAX_FACT_LINES),
-      profileLines: this.formatProfileLines(memory.longTerm.profile),
+      profileLines: this.formatProfileLines(memory.longTerm.semantic.profile),
       longTermPreferenceLines: this.formatLongTermPreferenceLines(
-        memory.longTerm.preferences ?? null,
+        memory.longTerm.semantic.jobIntent ?? null,
       ),
       currentStage: memory.stageState.currentStage ?? null,
       jobLines,
@@ -272,9 +272,9 @@ export class ReplyRepairContextProvider {
     return lines;
   }
 
-  private formatLongTermPreferenceLines(prefs: LongTermPreferenceFacts | null): string[] {
+  private formatLongTermPreferenceLines(prefs: JobIntentFacts | null): string[] {
     if (!prefs) return [];
-    const labels: Array<[LongTermPreferenceFieldKey, string]> = [
+    const labels: Array<[JobIntentFieldKey, string]> = [
       ['city', '意向城市'],
       ['district', '意向区域'],
       ['location', '意向地点'],
@@ -298,7 +298,7 @@ export class ReplyRepairContextProvider {
   }
 
   /** 渲染单个历史意向值；返回 null 表示不注入（如已过期的最早可面日期）。 */
-  private renderPreferenceValue(key: LongTermPreferenceFieldKey, value: unknown): string | null {
+  private renderPreferenceValue(key: JobIntentFieldKey, value: unknown): string | null {
     if (Array.isArray(value)) {
       return value.length > 0 ? value.map(String).join('、') : null;
     }

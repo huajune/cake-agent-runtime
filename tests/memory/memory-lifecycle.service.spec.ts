@@ -34,7 +34,7 @@ describe('MemoryLifecycleService', () => {
   const mockLongTerm = {
     getProfile: jest.fn(),
     getPreferences: jest.fn().mockResolvedValue(null),
-    getSummaryData: jest.fn().mockResolvedValue(null),
+    getSessionSummaries: jest.fn().mockResolvedValue(null),
   };
 
   const mockSponge = {
@@ -216,7 +216,7 @@ describe('MemoryLifecycleService', () => {
           updatedAt: '2026-06-05T10:00:00.000Z',
         },
       });
-      mockLongTerm.getSummaryData.mockResolvedValue({
+      mockLongTerm.getSessionSummaries.mockResolvedValue({
         recent: [],
         archive: null,
         lastSettledMessageAt: '2026-06-08T10:00:00.000Z',
@@ -269,12 +269,12 @@ describe('MemoryLifecycleService', () => {
         enrichmentIdentity: { imBotId: 'bot-B' },
       });
 
-      expect(ctx.longTerm.profile?.name).toBeNull();
-      expect(ctx.longTerm.profile?.age).toBeNull();
-      expect(ctx.longTerm.profile?.phone).toEqual(
+      expect(ctx.longTerm.semantic.profile?.name).toBeNull();
+      expect(ctx.longTerm.semantic.profile?.age).toBeNull();
+      expect(ctx.longTerm.semantic.profile?.phone).toEqual(
         expect.objectContaining({ value: '18271421690', originBotId: 'bot-B' }),
       );
-      expect(mockLongTerm.getSummaryData).toHaveBeenCalledWith('corp-1', 'user-1', 'bot-B');
+      expect(mockLongTerm.getSessionSummaries).toHaveBeenCalledWith('corp-1', 'user-1', 'bot-B');
     });
   });
 

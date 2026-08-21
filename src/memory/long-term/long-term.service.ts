@@ -5,15 +5,15 @@ import type {
   UserProfile,
   UserProfileFacts,
   ProfileFactConfidence,
-  SummaryData,
+  SessionSummaries,
   SummaryEntry,
   MessageMetadata,
   ActiveBookingEntry,
-  LongTermPreferenceFacts,
+  JobIntentFacts,
 } from './long-term.types';
 import type { PersistedBrandState } from '@resolution/brand/brand-resolution.types';
 import {
-  LONG_TERM_PREFERENCE_FIELD_KEYS,
+  LONG_TERM_JOB_INTENT_FIELD_KEYS,
   userProfileFactValue,
   USER_PROFILE_FIELD_KEYS,
 } from './long-term.types';
@@ -46,7 +46,7 @@ export interface SettlementFactOrigin extends FactOrigin {
  * 长期记忆服务 — Profile + Summary
  *
  * 管理跨会话持久化的记忆（Supabase 永久，每用户一行）：
- * - Profile（用户身份信息）：profile_facts jsonb，字段自身携带置信度/来源/证据
+ * - Profile（用户身份信息）：semantic_profile jsonb，字段自身携带置信度/来源/证据
  * - Summary（历次求职摘要）：jsonb，分层压缩（recent[] + archive）
  */
 @Injectable()
@@ -98,7 +98,7 @@ export class LongTermService {
    *
    * 与 saveProfile 的区别：
    * - 每个字段写成 { value, confidence, source, evidence, updatedAt }
-   * - 走 upsertProfileFacts 路径，元数据内聚在 profile_facts 字段值里
+   * - 走 upsertProfileFacts 路径，元数据内聚在 semantic_profile 字段值里
    *
    * 这是 Hassabis 原则在实践中最重要的体现：报名数据是候选人自主提供并经
    * precheck 校验的，置信度最高，同时必须留下可审计的来源记录。
@@ -160,15 +160,15 @@ export class LongTermService {
     origin?: SettlementFactOrigin,
   ): Promise<void> {
     try {
-      const preferenceFacts = this.buildPreferenceFactsFromSettlement(facts, origin);
-      if (Object.keys(preferenceFacts).length === 0) return;
+      const jobIntentFacts = this.buildPreferenceFactsFromSettlement(facts, origin);
+      if (Object.keys(jobIntentFacts).length === 0) return;
 
       // profile + preference 单 RPC 事务写入（同一行锁），杜绝两步写之间失败
       // 造成的"profile 落库而意向丢失"半写状态。
-      await this.supabaseStore.upsertProfileFacts(corpId, userId, {}, undefined, preferenceFacts);
+      await this.supabaseStore.upsertProfileFacts(corpId, userId, {}, undefined, jobIntentFacts);
       this.logger.log(
         `[writeFromConsolidation] Preference 快照写入: userId=${userId}, ` +
-          `fields=${Object.keys(preferenceFacts).join(',')}`,
+          `fields=${Object.keys(jobIntentFacts).join(',')}`,
       );
     } catch (error) {
       this.logger.warn('[writeFromConsolidation] 写入 Preference 失败', error);
@@ -176,7 +176,7 @@ export class LongTermService {
   }
 
   /** 读取长期求职意向（consolidation 沉淀的跨会话偏好快照）。 */
-  async getPreferences(corpId: string, userId: string): Promise<LongTermPreferenceFacts | null> {
+  async getPreferences(corpId: string, userId: string): Promise<JobIntentFacts | null> {
     try {
       return await this.supabaseStore.getPreferenceFacts(corpId, userId);
     } catch (error) {
@@ -187,13 +187,13 @@ export class LongTermService {
 
   // ==================== Summary ====================
 
-  async getSummaryData(
+  async getSessionSummaries(
     corpId: string,
     userId: string,
     botImId?: string,
-  ): Promise<SummaryData | null> {
+  ): Promise<SessionSummaries | null> {
     try {
-      const data = await this.supabaseStore.getSummaryData(corpId, userId);
+      const data = await this.supabaseStore.getSessionSummaries(corpId, userId);
       if (!data || !botImId) return data;
       return {
         ...data,
@@ -350,19 +350,19 @@ export class LongTermService {
   /**
    * 从 sessionFacts.preferences 构建长期求职意向快照。
    *
-   * - 只取 LONG_TERM_PREFERENCE_FIELD_KEYS 中的稳定意向字段
+   * - 只取 LONG_TERM_JOB_INTENT_FIELD_KEYS 中的稳定意向字段
    * - 快照式：不与既有长期意向 merge，由 store 整列覆盖（最新一段会话赢）
    * - confidence 固定 medium（与 Profile 沉淀路径一致），evidence 截断保留一跳来源
    */
   private buildPreferenceFactsFromSettlement(
     facts: EntityExtractionResult | SessionFacts,
     origin?: SettlementFactOrigin,
-  ): LongTermPreferenceFacts {
+  ): JobIntentFacts {
     const updatedAt = new Date().toISOString();
-    const preferenceFacts: LongTermPreferenceFacts = {};
+    const jobIntentFacts: JobIntentFacts = {};
     const prefs = facts.preferences as unknown as Record<string, unknown>;
 
-    for (const key of LONG_TERM_PREFERENCE_FIELD_KEYS) {
+    for (const key of LONG_TERM_JOB_INTENT_FIELD_KEYS) {
       // 品牌快照不再走 preferences.brands（字段已退役，读边界恒 null，§19.6），
       // 由下方 brand_state.currentBrand 显式提供。
       if (key === 'brands') continue;
@@ -377,7 +377,7 @@ export class LongTermService {
           (Array.isArray(value) && value.length === 0));
       if (!explicitClear && !this.hasPreferenceValue(value)) continue;
 
-      preferenceFacts[key] = userProfileFactValue(explicitClear ? null : value, {
+      jobIntentFacts[key] = userProfileFactValue(explicitClear ? null : value, {
         source: isSessionFactValue(rawValue) ? rawValue.source : 'archive',
         confidence: 'medium',
         evidence: this.buildSettlementEvidence(rawValue),
@@ -389,7 +389,7 @@ export class LongTermService {
 
     const currentBrand = origin?.brandState?.currentBrand;
     if (currentBrand) {
-      preferenceFacts.brands = userProfileFactValue([currentBrand.canonicalName], {
+      jobIntentFacts.brands = userProfileFactValue([currentBrand.canonicalName], {
         source: 'rule',
         confidence: 'medium',
         evidence: '会话品牌状态快照（brand_state.currentBrand）',
@@ -399,7 +399,7 @@ export class LongTermService {
       });
     }
 
-    return preferenceFacts;
+    return jobIntentFacts;
   }
 
   private hasPreferenceValue(value: unknown): boolean {

@@ -34,13 +34,13 @@ export type UserProfileFieldValue<K extends UserProfileFieldKey> = NonNullable<U
 
 export type ProfileFactConfidence = FactConfidence;
 
-/** 长期 profile_facts 置信度语义。工具消费默认只 unwrap high。 */
+/** 长期 semantic_profile 置信度语义。工具消费默认只 unwrap high。 */
 export const PROFILE_FACT_CONFIDENCE_DESCRIPTIONS: Record<ProfileFactConfidence, string> = {
   high: '可跨会话自动采用。仅来自收资表单办结后的报名事实。',
   medium: '表单外软事实或兼容存量，使用前需结合当前账号与上下文。',
 };
 
-/** 长期 profile_facts 来源语义。source 说明事实出身，不等同于置信度或运输路径。 */
+/** 长期 semantic_profile 来源语义。source 说明事实出身，不等同于置信度或运输路径。 */
 export const PROFILE_FACT_SOURCE_DESCRIPTIONS: Record<CandidateFactProducer, string> = {
   candidate_quote: '候选人直接明示且经原话复算或答问绑定确认。',
   rule: '确定性规则、正则、白名单或别名表匹配得到。',
@@ -247,7 +247,7 @@ export interface SummaryEntry {
 }
 
 /** 对话摘要数据 — 分层压缩结构 */
-export interface SummaryData {
+export interface SessionSummaries {
   /** 最近 N 条详细摘要 */
   recent: SummaryEntry[];
   /** 更早的摘要被 LLM 压缩合并成的总结 */
@@ -316,16 +316,16 @@ export interface AgentLongTermMemoryRow {
   id: string;
   corp_id: string;
   user_id: string;
-  profile_facts?: UserProfileFacts | null;
-  preference_facts?: LongTermPreferenceFacts | null;
-  summary_data?: SummaryData | null;
+  semantic_profile?: UserProfileFacts | null;
+  semantic_job_intent?: JobIntentFacts | null;
+  episodic_session_summaries?: SessionSummaries | null;
   message_metadata?: MessageMetadata | null;
   active_booking?: ActiveBookingState | null;
   created_at: string;
   updated_at: string;
 }
 
-// ==================== 长期求职意向（preference_facts） ====================
+// ==================== 长期求职意向（semantic_job_intent） ====================
 
 /**
  * 跨会话沉淀的求职意向字段。
@@ -334,7 +334,7 @@ export interface AgentLongTermMemoryRow {
  * 以及带日期锚的推迟意向与最早可面日期。
  * short_term / time_windows / open_position 是单次求职 episode 的临时态，不沉淀。
  */
-export const LONG_TERM_PREFERENCE_FIELD_KEYS = [
+export const LONG_TERM_JOB_INTENT_FIELD_KEYS = [
   'city',
   'district',
   'location',
@@ -348,7 +348,7 @@ export const LONG_TERM_PREFERENCE_FIELD_KEYS = [
   'available_after',
 ] as const;
 
-export type LongTermPreferenceFieldKey = (typeof LONG_TERM_PREFERENCE_FIELD_KEYS)[number];
+export type JobIntentFieldKey = (typeof LONG_TERM_JOB_INTENT_FIELD_KEYS)[number];
 
 /**
  * 长期求职意向集合。
@@ -357,8 +357,8 @@ export type LongTermPreferenceFieldKey = (typeof LONG_TERM_PREFERENCE_FIELD_KEYS
  * deepMerge 累积不同——累积语义会让错值/错字变体永远清不掉（张漪 case 的
  * pref.location 教训）。consolidation 是唯一写方。
  */
-export type LongTermPreferenceFacts = Partial<
-  Record<LongTermPreferenceFieldKey, UserProfileFactValue<unknown>>
+export type JobIntentFacts = Partial<
+  Record<JobIntentFieldKey, UserProfileFactValue<unknown>>
 >;
 
 /** 便于复用的长期记忆 upsert payload。 */
@@ -366,3 +366,26 @@ export type ProfileUpsertPayload = Partial<UserProfile>;
 
 /** 最大保留的详细摘要条数 */
 export const MAX_RECENT_SUMMARIES = 5;
+
+// ==================== CoALA A3 分组（2026-08-21，治理二期 M2-B） ====================
+
+/** 语义记忆分组：跨会话稳定事实（分类词住结构层、内容词住叶子层）。 */
+export interface SemanticMemory {
+  profile: UserProfileFacts | null;
+  /** 求职意向快照（原 preference_facts；consolidation 整组覆盖写入）。 */
+  jobIntent?: JobIntentFacts | null;
+}
+
+/** 情景记忆分组：按会话分段的历史摘要集（recall_history 按需拉取）。 */
+export interface EpisodicMemory {
+  sessionSummaries: SessionSummaries | null;
+}
+
+/**
+ * 长期记忆域视图（A3 终态）。procedural 分组仅当 playbook 观察项重启并落地时加入，
+ * 不预留空槽（见 docs/todo/memory-coala-alignment.md）。
+ */
+export interface LongTermMemory {
+  semantic: SemanticMemory;
+  episodic: EpisodicMemory;
+}

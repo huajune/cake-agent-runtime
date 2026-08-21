@@ -99,15 +99,17 @@ describe('PreparationService', () => {
       },
       ruleFacts: null,
       longTerm: {
-        profile: {
-          name: {
-            value: '张三',
-            confidence: 'high',
-            source: 'system',
-            evidence: '测试写入',
-            updatedAt: '2026-05-22T10:00:00.000Z',
-          },
-        } as never,
+        semantic: {
+          profile: {
+            name: {
+              value: '张三',
+              confidence: 'high',
+              source: 'system',
+              evidence: '测试写入',
+              updatedAt: '2026-05-22T10:00:00.000Z',
+            },
+          } as never,
+        },
       },
       stageState: {
         currentStage: 'job_consultation',
@@ -280,7 +282,7 @@ describe('PreparationService', () => {
           currentFocusJob: null,
         },
         ruleFacts: null,
-        longTerm: { profile: null },
+        longTerm: { semantic: { profile: null } },
         stageState: {
           currentStage: 'job_consultation',
           fromStage: null,
@@ -611,7 +613,7 @@ describe('PreparationService', () => {
     const base = await mockMemoryService.onTurnStart();
     mockMemoryService.onTurnStart.mockResolvedValue({
       ...base,
-      longTerm: { profile: null },
+      longTerm: { semantic: { profile: null } },
       stageState: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
 
@@ -674,15 +676,17 @@ describe('PreparationService', () => {
       },
       ruleFacts: null,
       longTerm: {
-        profile: {
-          name: {
-            value: '张三',
-            confidence: 'high',
-            source: 'system',
-            evidence: '测试写入',
-            updatedAt: '2026-05-22T10:00:00.000Z',
-          },
-        } as never,
+        semantic: {
+          profile: {
+            name: {
+              value: '张三',
+              confidence: 'high',
+              source: 'system',
+              evidence: '测试写入',
+              updatedAt: '2026-05-22T10:00:00.000Z',
+            },
+          } as never,
+        },
       },
       stageState: {
         currentStage: 'job_consultation',
@@ -761,7 +765,7 @@ describe('PreparationService', () => {
         },
       },
       ruleFacts,
-      longTerm: { profile: null },
+      longTerm: { semantic: { profile: null } },
       stageState: {
         currentStage: 'job_consultation',
         fromStage: null,
@@ -824,7 +828,7 @@ describe('PreparationService', () => {
         },
       },
       ruleFacts: null,
-      longTerm: { profile: null },
+      longTerm: { semantic: { profile: null } },
       stageState: {
         currentStage: 'job_consultation',
         fromStage: null,
@@ -874,7 +878,7 @@ describe('PreparationService', () => {
         ],
       },
       ruleFacts: null,
-      longTerm: { profile: null },
+      longTerm: { semantic: { profile: null } },
       stageState: {
         currentStage: 'job_consultation',
         fromStage: null,
@@ -940,7 +944,7 @@ describe('PreparationService', () => {
         currentFocusJob: null,
       },
       ruleFacts: null,
-      longTerm: { profile: null },
+      longTerm: { semantic: { profile: null } },
       stageState: {
         currentStage: 'job_consultation',
         fromStage: null,
@@ -995,7 +999,7 @@ describe('PreparationService', () => {
       shortTerm: { messageWindow: [{ role: 'user', content: '我到店了' }] },
       sessionMemory: null,
       ruleFacts: null,
-      longTerm: { profile: null },
+      longTerm: { semantic: { profile: null } },
       stageState: {
         currentStage: 'onboard_followup',
         fromStage: null,
@@ -1059,7 +1063,7 @@ describe('PreparationService', () => {
       shortTerm: { messageWindow: [{ role: 'user', content: '我是来米' }] },
       sessionMemory: null,
       ruleFacts: null,
-      longTerm: { profile: null },
+      longTerm: { semantic: { profile: null } },
       stageState: {
         currentStage: 'onboard_followup',
         fromStage: null,
@@ -1115,7 +1119,7 @@ describe('PreparationService', () => {
       shortTerm: { messageWindow: [{ role: 'user', content: '在吗' }] },
       sessionMemory: null,
       ruleFacts: null,
-      longTerm: { profile: null },
+      longTerm: { semantic: { profile: null } },
       stageState: {
         currentStage: 'onboard_followup',
         fromStage: null,
@@ -1157,7 +1161,7 @@ describe('PreparationService', () => {
       shortTerm: { messageWindow: [] },
       sessionMemory: null,
       ruleFacts: null,
-      longTerm: { profile: null },
+      longTerm: { semantic: { profile: null } },
       stageState: {
         currentStage: 'onboard_followup',
         fromStage: null,
@@ -1267,7 +1271,7 @@ describe('PreparationService', () => {
       shortTerm: { messageWindow: [{ role: 'user', content: '我想改面试时间' }] },
       sessionMemory: null,
       ruleFacts: null,
-      longTerm: { profile: null },
+      longTerm: { semantic: { profile: null } },
       stageState: {
         currentStage: 'onboard_followup',
         fromStage: null,
@@ -1320,7 +1324,7 @@ describe('PreparationService', () => {
       shortTerm: { messageWindow: [] },
       sessionMemory: null,
       ruleFacts: null,
-      longTerm: { profile: null },
+      longTerm: { semantic: { profile: null } },
       stageState: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
     mockActiveBooking({
@@ -1361,7 +1365,7 @@ describe('PreparationService', () => {
       shortTerm: { messageWindow: [] },
       sessionMemory: null,
       ruleFacts: null,
-      longTerm: { profile: null },
+      longTerm: { semantic: { profile: null } },
       stageState: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
     mockActiveBooking({
@@ -1397,7 +1401,7 @@ describe('PreparationService', () => {
       shortTerm: { messageWindow: [] },
       sessionMemory: null,
       ruleFacts: null,
-      longTerm: { profile: null },
+      longTerm: { semantic: { profile: null } },
       stageState: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
     mockActiveBooking({
@@ -1585,7 +1589,7 @@ describe('PreparationService', () => {
       },
       sessionMemory: null,
       ruleFacts: null,
-      longTerm: { profile: null },
+      longTerm: { semantic: { profile: null } },
       stageState: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
 
@@ -1622,7 +1626,7 @@ describe('PreparationService', () => {
       },
       sessionMemory: null,
       ruleFacts: null,
-      longTerm: { profile: null },
+      longTerm: { semantic: { profile: null } },
       stageState: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
 
@@ -1655,7 +1659,7 @@ describe('PreparationService', () => {
       shortTerm: { messageWindow: [] },
       sessionMemory: null,
       ruleFacts: null,
-      longTerm: { profile: null },
+      longTerm: { semantic: { profile: null } },
       stageState: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
 
@@ -1703,7 +1707,7 @@ describe('PreparationService', () => {
         currentFocusJob: null,
       },
       ruleFacts: testRuleFacts(testRuleFact('preferences.city', '北京', 'explicit_city')),
-      longTerm: { profile: null },
+      longTerm: { semantic: { profile: null } },
       stageState: {
         currentStage: 'trust_building',
         fromStage: null,
@@ -1835,7 +1839,7 @@ describe('PreparationService', () => {
       },
       sessionMemory: null,
       ruleFacts: null,
-      longTerm: { profile: null },
+      longTerm: { semantic: { profile: null } },
       stageState: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
 
@@ -1876,7 +1880,7 @@ describe('PreparationService', () => {
       },
       sessionMemory: null,
       ruleFacts: null,
-      longTerm: { profile: null },
+      longTerm: { semantic: { profile: null } },
       stageState: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
 
@@ -1917,7 +1921,7 @@ describe('PreparationService', () => {
       _warnings: ['shortTerm: Connection timeout'],
       sessionMemory: null,
       ruleFacts: null,
-      longTerm: { profile: null },
+      longTerm: { semantic: { profile: null } },
       stageState: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
 
@@ -2034,7 +2038,7 @@ describe('PreparationService', () => {
       },
       sessionMemory: null,
       ruleFacts: null,
-      longTerm: { profile: null },
+      longTerm: { semantic: { profile: null } },
       stageState: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
 
@@ -2124,7 +2128,7 @@ describe('PreparationService', () => {
         shortTerm: { messageWindow: window },
         sessionMemory: null,
         ruleFacts: null,
-        longTerm: { profile: null },
+        longTerm: { semantic: { profile: null } },
         stageState: {
           currentStage: 'job_consultation',
           fromStage: null,

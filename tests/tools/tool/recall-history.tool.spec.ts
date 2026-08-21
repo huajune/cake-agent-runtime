@@ -4,7 +4,7 @@ import { createToolContext } from '../../helpers/tool-context.fixture';
 
 describe('buildRecallHistoryTool', () => {
   const mockMemoryService = {
-    getSummaryData: jest.fn(),
+    getSessionSummaries: jest.fn(),
   };
 
   const mockContext: ToolBuildContext = createToolContext({
@@ -20,7 +20,7 @@ describe('buildRecallHistoryTool', () => {
   });
 
   it('should return not found when no summaries', async () => {
-    mockMemoryService.getSummaryData.mockResolvedValue(null);
+    mockMemoryService.getSessionSummaries.mockResolvedValue(null);
 
     const builder = buildRecallHistoryTool(mockMemoryService as never);
     const builtTool = builder(mockContext);
@@ -32,7 +32,7 @@ describe('buildRecallHistoryTool', () => {
   });
 
   it('should return formatted summaries when available', async () => {
-    mockMemoryService.getSummaryData.mockResolvedValue({
+    mockMemoryService.getSessionSummaries.mockResolvedValue({
       recent: [
         { summary: '找上海兼职', sessionId: 's1', startTime: '2026-03-15', endTime: '2026-03-15' },
       ],

@@ -7,7 +7,10 @@ import { hasToolCall, stepCountIs, type generateText } from 'ai';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
 import { ModelRole } from '@/llm/llm.types';
 import { MemoryService } from '@memory/memory.service';
-import { PreparationService, type PreparedAgentContext } from './working-memory/preparation.service';
+import {
+  PreparationService,
+  type WorkingMemory,
+} from './working-memory/preparation.service';
 import type { AgentError } from '@shared-types/agent-error.types';
 import type { TurnLedger } from '@shared-types/turn.types';
 import {
@@ -248,7 +251,7 @@ export class GeneratorAgent {
     };
   }
 
-  private buildLlmExecutionOptions(params: GeneratorInvokeParams, ctx: PreparedAgentContext) {
+  private buildLlmExecutionOptions(params: GeneratorInvokeParams, ctx: WorkingMemory) {
     return {
       role: ModelRole.Chat,
       modelId: params.modelId,
@@ -282,7 +285,7 @@ export class GeneratorAgent {
    * 会直接结束整轮，可能导致没有最终回复输出；prepareStep 让模型仍能用其他工具或
    * 文本完成本轮。
    */
-  private buildPrepareStep(ctx: PreparedAgentContext): PrepareStepFn | undefined {
+  private buildPrepareStep(ctx: WorkingMemory): PrepareStepFn | undefined {
     const baseTools = Object.keys(ctx.tools ?? {});
     if (baseTools.length === 0) return undefined;
     const baseInstructions = ctx.finalPrompt;
@@ -554,7 +557,7 @@ export class GeneratorAgent {
    */
   private async recoverEmptyTextResult(
     result: GeneratorRunResult,
-    ctx: PreparedAgentContext,
+    ctx: WorkingMemory,
     params: GeneratorInvokeParams,
   ): Promise<GeneratorRunResult> {
     if (result.text.trim().length > 0) return result;
@@ -646,7 +649,7 @@ export class GeneratorAgent {
 
   private buildEmptyTextRecoveryPrompt(
     result: GeneratorRunResult,
-    ctx: PreparedAgentContext,
+    ctx: WorkingMemory,
   ): string {
     const transcript = result.agentSteps.map((step) => ({
       stepIndex: step.stepIndex,
@@ -679,7 +682,7 @@ export class GeneratorAgent {
     ].join('\n');
   }
 
-  private formatMessagesForRecovery(messages: PreparedAgentContext['normalizedMessages']): string {
+  private formatMessagesForRecovery(messages: WorkingMemory['normalizedMessages']): string {
     return messages
       .map((message) => {
         const content = this.stringifyMessageContent(message.content);
@@ -737,7 +740,7 @@ export class GeneratorAgent {
 
   private createEmptyMessagesError(
     ctx: Pick<
-      PreparedAgentContext,
+      WorkingMemory,
       'sessionId' | 'userId' | 'normalizedMessages' | 'memoryLoadWarning'
     >,
   ): AgentError {
@@ -753,7 +756,7 @@ export class GeneratorAgent {
   private enrichAgentError(
     err: unknown,
     ctx: Pick<
-      PreparedAgentContext,
+      WorkingMemory,
       'sessionId' | 'userId' | 'normalizedMessages' | 'memoryLoadWarning'
     >,
   ): AgentError {

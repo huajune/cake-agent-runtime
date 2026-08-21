@@ -1,4 +1,5 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
+import type { WorkingMemory } from './working-memory.types';
 import { ModelMessage, ToolSet } from 'ai';
 import { CallerKind } from '@/enums/agent.enum';
 import { ToolRegistryService } from '@tools/tool-registry.service';
@@ -54,37 +55,7 @@ import { createTurnLedger } from './turn-ledger';
 import { renderPromptBlocks } from '../context/sections/section.interface';
 import type { CorpusBlock, PromptCorpusBlock } from '@shared-types/corpus.types';
 
-export interface PreparedAgentContext {
-  finalPrompt: string;
-  /** finalPrompt 降维前的结构化分域块，供审计确认教学/证据/工具结果边界。 */
-  promptBlocks: PromptCorpusBlock[];
-  normalizedMessages: ModelMessage[];
-  /** 对话语料的结构化旁路；transport role 不再决定事实出处资格。 */
-  conversationCorpusBlocks: CorpusBlock[];
-  memoryLoadWarning?: string;
-  tools: ToolSet;
-  corpId: string;
-  userId: string;
-  sessionId: string;
-  /** 当前与候选人聊天的托管账号 wxid（imBotId）；沉淀时作为长期事实的 bot 血缘。 */
-  botImId?: string;
-  maxSteps: number;
-  /** 本轮入口阶段：stageState currentStage 优先，过期时按长期画像做老用户回访兜底，否则回落策略首阶段。 */
-  entryStage: string | null;
-  /** 本轮唯一回合账本；回合结束时 drain 快照统一交给 memory lifecycle。 */
-  ledger: TurnLedger;
-  /** 候选人微信昵称；回合收尾 brand_state 首次初始化（seed）用。 */
-  contactName?: string;
-  /** 本轮触发时的记忆上下文快照（写入 message_processing_records.memory_snapshot 用于排障） */
-  memorySnapshot?: AgentMemorySnapshot;
-  /**
-   * toolCallId → 工具 execute 的真实执行耗时（毫秒）。
-   * 由 prepare 阶段的 timing wrapper 在每次工具执行时写入；
-   * GeneratorAgent.buildRunResult 按 toolCallId 合并进 AgentToolCall.durationMs，
-   * 与"步骤墙钟"（含 LLM 思考/输出时间）区分开。
-   */
-  toolExecutionTimings: Map<string, number>;
-}
+export type { WorkingMemory } from './working-memory.types';
 
 /**
  * 回合准备编排：记忆召回 → 消息归一化 → memoryBlock/system prompt 组装 →
@@ -159,7 +130,7 @@ export class PreparationService {
     params: GeneratorInvokeParams,
     mode: 'invoke' | 'stream',
     options?: { enableVision?: boolean },
-  ): Promise<PreparedAgentContext> {
+  ): Promise<WorkingMemory> {
     const {
       callerKind,
       userId,
@@ -250,7 +221,7 @@ export class PreparationService {
     // 回访直接进入岗位咨询阶段。
     const returningUserStage = persistedStage
       ? undefined
-      : this.resolveReturningUserStage(memory.longTerm.profile);
+      : this.resolveReturningUserStage(memory.longTerm.semantic.profile);
     const stageFromResolver = persistedStage ?? returningUserStage;
 
     // System prompt 组装（委托 ContextService.compose）
@@ -781,7 +752,7 @@ export class PreparationService {
 
     const sessionFacts = this.flattenSessionFacts(session?.facts ?? null);
 
-    const profile = memory.longTerm.profile;
+    const profile = memory.longTerm.semantic.profile;
     const profileKeys = profile
       ? Object.entries(profile)
           .filter(([, value]) => isUserProfileFactValue(value))

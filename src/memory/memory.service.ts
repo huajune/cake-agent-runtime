@@ -8,7 +8,7 @@ import {
 } from './services/memory-lifecycle.service';
 import type { CandidateIdentityHint } from './services/memory-enrichment.service';
 import type { AgentMemoryContext } from './types/memory-runtime.types';
-import type { SummaryData } from './long-term/long-term.types';
+import type { SessionSummaries } from './long-term/long-term.types';
 import type { InvitedGroupRecord } from './session/session-facts.types';
 import type { RuleFactClaims } from '@resolution/evidence/claim.types';
 import type { StageState } from './types/stage-state.types';
@@ -102,12 +102,12 @@ export class MemoryService {
   }
 
   /** 读取历史摘要（recent + archive），供 recall_history 或沉淀逻辑使用。 */
-  async getSummaryData(
+  async getSessionSummaries(
     corpId: string,
     userId: string,
     botImId?: string,
-  ): Promise<SummaryData | null> {
-    return await this.longTerm.getSummaryData(corpId, userId, botImId);
+  ): Promise<SessionSummaries | null> {
+    return await this.longTerm.getSessionSummaries(corpId, userId, botImId);
   }
 
   /** 清理指定用户的长期记忆（profile + summary） */

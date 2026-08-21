@@ -16,8 +16,8 @@ import { ShortTermService } from './short-term.service';
 import { stripQuotedBlocks, stripTimeContext } from '@resolution/signal/markers';
 import type { AgentMemoryContext } from '../types/memory-runtime.types';
 import type {
-  LongTermPreferenceFacts,
-  SummaryData,
+  JobIntentFacts,
+  SessionSummaries,
   UserProfileFacts,
 } from '../long-term/long-term.types';
 import { isUserProfileFactValue } from '../long-term/long-term.types';
@@ -133,7 +133,7 @@ export class MemoryLifecycleService {
       stageState,
       rawProfile,
       rawLongTermPreferences,
-      summaryData,
+      sessionSummaries,
     ] = await Promise.all([
       includeShortTerm
         ? this.loadShortTermMessages(sessionId, options?.shortTermEndTimeInclusive)
@@ -142,7 +142,7 @@ export class MemoryLifecycleService {
       this.stageState.get(corpId, userId, sessionId),
       this.longTerm.getProfile(corpId, userId),
       this.longTerm.getPreferences(corpId, userId),
-      this.longTerm.getSummaryData(corpId, userId, options?.enrichmentIdentity?.imBotId),
+      this.longTerm.getSessionSummaries(corpId, userId, options?.enrichmentIdentity?.imBotId),
     ]);
 
     const currentBotId = options?.enrichmentIdentity?.imBotId;
@@ -167,7 +167,7 @@ export class MemoryLifecycleService {
       hasOwnSessionMemory,
       profile,
       preferences: longTermPreferences,
-      summaryData,
+      sessionSummaries,
     });
 
     const snapshot: AgentMemoryContext = {
@@ -179,8 +179,7 @@ export class MemoryLifecycleService {
       ruleFacts,
       stageState: stageState,
       longTerm: {
-        profile,
-        preferences: longTermPreferences,
+        semantic: { profile, jobIntent: longTermPreferences },
         ...(fromOtherConversation ? { origin: { fromOtherConversation: true } } : {}),
       },
     };
@@ -268,7 +267,10 @@ export class MemoryLifecycleService {
       // 读取失败时降级跳过，不中断主流程。
       if (previousStateResult.step.status === 'failure') {
         steps.push(
-          this.buildSkippedStep('consolidation', '上一轮 session state 读取失败，跳过 consolidation'),
+          this.buildSkippedStep(
+            'consolidation',
+            '上一轮 session state 读取失败，跳过 consolidation',
+          ),
         );
       } else {
         const consolidationTask = this.createTimedTask('consolidation', async () => {
@@ -380,10 +382,10 @@ export class MemoryLifecycleService {
     sessionId: string;
     hasOwnSessionMemory: boolean;
     profile: UserProfileFacts | null;
-    preferences: LongTermPreferenceFacts | null;
-    summaryData: SummaryData | null;
+    preferences: JobIntentFacts | null;
+    sessionSummaries: SessionSummaries | null;
   }): boolean {
-    const { sessionId, hasOwnSessionMemory, profile, preferences, summaryData } = input;
+    const { sessionId, hasOwnSessionMemory, profile, preferences, sessionSummaries } = input;
     if (hasOwnSessionMemory) return false;
 
     const hasLongTerm = this.hasAnyFact(profile) || this.hasAnyFact(preferences);
@@ -399,8 +401,8 @@ export class MemoryLifecycleService {
 
     // 回退：存量事实无 origin 血缘时，看沉淀边界 / 历史摘要里是否出现过其它会话。
     const settledSessions = new Set<string>([
-      ...Object.keys(summaryData?.lastSettledBySession ?? {}),
-      ...(summaryData?.recent ?? []).map((entry) => entry.sessionId).filter(Boolean),
+      ...Object.keys(sessionSummaries?.lastSettledBySession ?? {}),
+      ...(sessionSummaries?.recent ?? []).map((entry) => entry.sessionId).filter(Boolean),
     ]);
     settledSessions.delete(sessionId);
     return settledSessions.size > 0;

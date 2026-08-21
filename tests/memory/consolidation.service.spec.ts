@@ -10,7 +10,7 @@ describe('ConsolidationService', () => {
   const mockConfig = { consolidationGapSeconds: SETTLEMENT_GAP };
 
   const mockLongTermService = {
-    getSummaryData: jest.fn(),
+    getSessionSummaries: jest.fn(),
     appendSummary: jest.fn().mockResolvedValue(undefined),
     markLastSettledMessageAt: jest.fn().mockResolvedValue(undefined),
     writeFromConsolidation: jest.fn().mockResolvedValue(undefined),
@@ -42,7 +42,7 @@ describe('ConsolidationService', () => {
 
     it('should initialize boundary to latest message on cold start (no full-history consolidation)', async () => {
       const now = Date.now();
-      mockLongTermService.getSummaryData.mockResolvedValue({
+      mockLongTermService.getSessionSummaries.mockResolvedValue({
         recent: [],
         archive: null,
         lastSettledMessageAt: null,
@@ -65,7 +65,7 @@ describe('ConsolidationService', () => {
     });
 
     it('should NOT advance boundary when no messages (cold start, prevents DB-outage skip)', async () => {
-      mockLongTermService.getSummaryData.mockResolvedValue({
+      mockLongTermService.getSessionSummaries.mockResolvedValue({
         recent: [],
         archive: null,
         lastSettledMessageAt: null,
@@ -80,7 +80,7 @@ describe('ConsolidationService', () => {
 
     it('should only initialize boundary on cold start even when gap exists (consolidation on next turn)', async () => {
       const now = Date.now();
-      mockLongTermService.getSummaryData.mockResolvedValue({
+      mockLongTermService.getSessionSummaries.mockResolvedValue({
         recent: [],
         archive: null,
         lastSettledMessageAt: null,
@@ -113,8 +113,8 @@ describe('ConsolidationService', () => {
       expect(mockLongTermService.appendSummary).not.toHaveBeenCalled();
     });
 
-    it('should handle getSummaryData returning null gracefully (cold start)', async () => {
-      mockLongTermService.getSummaryData.mockResolvedValue(null);
+    it('should handle getSessionSummaries returning null gracefully (cold start)', async () => {
+      mockLongTermService.getSessionSummaries.mockResolvedValue(null);
       mockChatSession.getChatHistoryInRange.mockResolvedValue([]);
 
       const result = await service.detectAndSettle('corp1', 'user1', 'sess1', null);
@@ -125,7 +125,7 @@ describe('ConsolidationService', () => {
     // ==================== 快速跳过 ====================
 
     it('should skip DB query when lastSettledAt is within consolidationGapSeconds (fast path)', async () => {
-      mockLongTermService.getSummaryData.mockResolvedValue({
+      mockLongTermService.getSessionSummaries.mockResolvedValue({
         recent: [],
         archive: null,
         lastSettledMessageAt: new Date(Date.now() - 3600 * 1000).toISOString(), // 1h ago, gap=1day
@@ -140,7 +140,7 @@ describe('ConsolidationService', () => {
     // ==================== 正常流程 ====================
 
     it('should return false when no messages since lastSettledMessageAt', async () => {
-      mockLongTermService.getSummaryData.mockResolvedValue({
+      mockLongTermService.getSessionSummaries.mockResolvedValue({
         recent: [],
         archive: null,
         lastSettledMessageAt: new Date(Date.now() - 2 * SETTLEMENT_GAP * 1000).toISOString(),
@@ -154,7 +154,7 @@ describe('ConsolidationService', () => {
 
     it('should return false when messages have no gap >= sessionTtl', async () => {
       const now = Date.now();
-      mockLongTermService.getSummaryData.mockResolvedValue({
+      mockLongTermService.getSessionSummaries.mockResolvedValue({
         recent: [],
         archive: null,
         lastSettledMessageAt: new Date(now - 2 * 3600 * 1000).toISOString(),
@@ -174,7 +174,7 @@ describe('ConsolidationService', () => {
     it('should detect session gap and trigger summary generation', async () => {
       const now = Date.now();
       const lastSettled = new Date(now - 3 * SETTLEMENT_GAP * 1000).toISOString();
-      mockLongTermService.getSummaryData.mockResolvedValue({
+      mockLongTermService.getSessionSummaries.mockResolvedValue({
         recent: [],
         archive: null,
         lastSettledMessageAt: lastSettled,
@@ -219,7 +219,7 @@ describe('ConsolidationService', () => {
     it('should use the FIRST gap when multiple gaps exist (settle one session per turn)', async () => {
       const now = Date.now();
       const lastSettled = new Date(now - 5 * 86400 * 1000).toISOString();
-      mockLongTermService.getSummaryData.mockResolvedValue({
+      mockLongTermService.getSessionSummaries.mockResolvedValue({
         recent: [],
         archive: null,
         lastSettledMessageAt: lastSettled,
@@ -262,7 +262,7 @@ describe('ConsolidationService', () => {
     it('should trigger when gap is exactly equal to sessionTtl (boundary inclusive)', async () => {
       const now = Date.now();
       const lastSettled = new Date(now - 2 * SETTLEMENT_GAP * 1000).toISOString();
-      mockLongTermService.getSummaryData.mockResolvedValue({
+      mockLongTermService.getSessionSummaries.mockResolvedValue({
         recent: [],
         archive: null,
         lastSettledMessageAt: lastSettled,
@@ -291,7 +291,7 @@ describe('ConsolidationService', () => {
     it('should NOT trigger when gap is one millisecond below sessionTtl', async () => {
       const now = Date.now();
       const lastSettled = new Date(now - 2 * SETTLEMENT_GAP * 1000).toISOString();
-      mockLongTermService.getSummaryData.mockResolvedValue({
+      mockLongTermService.getSessionSummaries.mockResolvedValue({
         recent: [],
         archive: null,
         lastSettledMessageAt: lastSettled,
@@ -315,7 +315,7 @@ describe('ConsolidationService', () => {
     it('should return false when all messages are in new session with no unsettled old messages', async () => {
       const now = Date.now();
       const lastSettled = new Date(now - 3 * SETTLEMENT_GAP * 1000).toISOString();
-      mockLongTermService.getSummaryData.mockResolvedValue({
+      mockLongTermService.getSessionSummaries.mockResolvedValue({
         recent: [],
         archive: null,
         lastSettledMessageAt: lastSettled,
@@ -333,7 +333,7 @@ describe('ConsolidationService', () => {
     });
 
     it('should return false and not throw if getChatHistoryInRange rejects', async () => {
-      mockLongTermService.getSummaryData.mockResolvedValue({
+      mockLongTermService.getSessionSummaries.mockResolvedValue({
         recent: [],
         archive: null,
         lastSettledMessageAt: new Date(Date.now() - 2 * SETTLEMENT_GAP * 1000).toISOString(),
@@ -350,7 +350,7 @@ describe('ConsolidationService', () => {
     it('should call writeFromConsolidation with sessionFacts when facts are provided and consolidation triggers', async () => {
       const now = Date.now();
       const lastSettled = new Date(now - 3 * SETTLEMENT_GAP * 1000).toISOString();
-      mockLongTermService.getSummaryData.mockResolvedValue({
+      mockLongTermService.getSessionSummaries.mockResolvedValue({
         recent: [],
         archive: null,
         lastSettledMessageAt: lastSettled,
@@ -408,7 +408,7 @@ describe('ConsolidationService', () => {
     it('should NOT call writeFromConsolidation when facts are null', async () => {
       const now = Date.now();
       const lastSettled = new Date(now - 3 * SETTLEMENT_GAP * 1000).toISOString();
-      mockLongTermService.getSummaryData.mockResolvedValue({
+      mockLongTermService.getSessionSummaries.mockResolvedValue({
         recent: [],
         archive: null,
         lastSettledMessageAt: lastSettled,
@@ -429,7 +429,7 @@ describe('ConsolidationService', () => {
       const now = Date.now();
       // 用户级边界被另一个 bot 推到很近（会触发快速跳过），
       // 但本会话自己的边界还很旧——必须按本会话边界继续检测。
-      mockLongTermService.getSummaryData.mockResolvedValue({
+      mockLongTermService.getSessionSummaries.mockResolvedValue({
         recent: [],
         archive: null,
         lastSettledMessageAt: new Date(now - 3600 * 1000).toISOString(),
@@ -459,7 +459,7 @@ describe('ConsolidationService', () => {
 
     it('should skip when user-level boundary is recent and no per-session boundary exists', async () => {
       const now = Date.now();
-      mockLongTermService.getSummaryData.mockResolvedValue({
+      mockLongTermService.getSessionSummaries.mockResolvedValue({
         recent: [],
         archive: null,
         lastSettledMessageAt: new Date(now - 3600 * 1000).toISOString(),
@@ -477,7 +477,7 @@ describe('ConsolidationService', () => {
     it('should find session gap beyond the first 500-message page', async () => {
       const now = Date.now();
       const lastSettled = new Date(now - 10 * 86400 * 1000).toISOString();
-      mockLongTermService.getSummaryData.mockResolvedValue({
+      mockLongTermService.getSessionSummaries.mockResolvedValue({
         recent: [],
         archive: null,
         lastSettledMessageAt: lastSettled,

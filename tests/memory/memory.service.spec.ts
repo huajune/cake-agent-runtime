@@ -7,7 +7,7 @@ describe('MemoryService', () => {
   };
 
   const mockLongTerm = {
-    getSummaryData: jest.fn(),
+    getSessionSummaries: jest.fn(),
   };
 
   const mockLifecycle = {
@@ -34,7 +34,7 @@ describe('MemoryService', () => {
         sessionMemory: null,
         ruleFacts: null,
         stageState: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
-        longTerm: { profile: null },
+        longTerm: { semantic: { profile: null } },
       });
 
       const ctx = await service.onTurnStart('corp1', 'user1', 'sess1');
@@ -78,7 +78,7 @@ describe('MemoryService', () => {
         sessionMemory: null,
         ruleFacts: null,
         stageState: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
-        longTerm: { profile: null },
+        longTerm: { semantic: { profile: null } },
       });
 
       const recall = await service.recallForProactiveFollowUp('corp1', 'user1', 'sess1');
@@ -105,7 +105,7 @@ describe('MemoryService', () => {
         sessionMemory: null,
         ruleFacts: null,
         stageState: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
-        longTerm: { profile: null },
+        longTerm: { semantic: { profile: null } },
       });
 
       const recall = await service.recallForProactiveFollowUp('corp1', 'user1', 'sess1');
@@ -125,16 +125,16 @@ describe('MemoryService', () => {
 
   describe('facade methods', () => {
     it('should get summary data via facade', async () => {
-      mockLongTerm.getSummaryData.mockResolvedValue({
+      mockLongTerm.getSessionSummaries.mockResolvedValue({
         recent: [],
         archive: null,
         lastSettledMessageAt: null,
       });
 
-      const summary = await service.getSummaryData('corp1', 'user1');
+      const summary = await service.getSessionSummaries('corp1', 'user1');
 
       expect(summary).toEqual({ recent: [], archive: null, lastSettledMessageAt: null });
-      expect(mockLongTerm.getSummaryData).toHaveBeenCalledWith('corp1', 'user1', undefined);
+      expect(mockLongTerm.getSessionSummaries).toHaveBeenCalledWith('corp1', 'user1', undefined);
     });
 
     it('should set stage via facade', async () => {

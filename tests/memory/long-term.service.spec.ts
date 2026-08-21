@@ -10,7 +10,7 @@ describe('LongTermService（S7 单一 Profile 上游 + preference 三态）', ()
     getProfile: jest.fn(),
     upsertProfileFacts: jest.fn().mockResolvedValue(undefined),
     getPreferenceFacts: jest.fn(),
-    getSummaryData: jest.fn(),
+    getSessionSummaries: jest.fn(),
     appendSummary: jest.fn().mockResolvedValue(undefined),
     markLastSettledMessageAt: jest.fn().mockResolvedValue(undefined),
     upsertMessageMetadata: jest.fn().mockResolvedValue(undefined),
@@ -180,7 +180,7 @@ describe('LongTermService（S7 单一 Profile 上游 + preference 三态）', ()
   });
 
   it('按 bot 召回摘要时只返回同账号 recent，并 fail-closed 丢弃混合 archive', async () => {
-    store.getSummaryData.mockResolvedValue({
+    store.getSessionSummaries.mockResolvedValue({
       recent: [
         {
           summary: 'A',
@@ -201,7 +201,7 @@ describe('LongTermService（S7 单一 Profile 上游 + preference 三态）', ()
       lastSettledMessageAt: null,
     });
 
-    const result = await service.getSummaryData('corp-1', 'user-1', 'bot-A');
+    const result = await service.getSessionSummaries('corp-1', 'user-1', 'bot-A');
     expect(result?.recent.map((entry) => entry.summary)).toEqual(['A']);
     expect(result?.archive).toBeNull();
   });

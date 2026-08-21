@@ -14,7 +14,7 @@ import {
   WeworkSessionStateSchema,
 } from '@/memory/session/session-facts.types';
 import { RecommendedJobWelfareKindSchema } from '@resolution/job/types';
-import { LONG_TERM_PREFERENCE_FIELD_KEYS } from '@/memory/long-term/long-term.types';
+import { LONG_TERM_JOB_INTENT_FIELD_KEYS } from '@/memory/long-term/long-term.types';
 import { WELFARE_KINDS } from '@/tools/job-list/welfare-facts.util';
 import {
   BRAND_FILTER_MODES,
@@ -114,10 +114,10 @@ describe('词表单一居所 · 期 0', () => {
   });
 
   describe('长期意向渲染白名单穷尽性', () => {
-    it('LONG_TERM_PREFERENCE_FIELD_KEYS 与 formatter labels 键集一致', () => {
+    it('LONG_TERM_JOB_INTENT_FIELD_KEYS 与 formatter labels 键集一致', () => {
       // labels 是 formatter 内部常量，这里从其唯一来源反向断言键集，
-      // 真正的穷尽保护由 Record<LongTermPreferenceFieldKey, string> 在编译期完成。
-      expect([...LONG_TERM_PREFERENCE_FIELD_KEYS]).toEqual([
+      // 真正的穷尽保护由 Record<JobIntentFieldKey, string> 在编译期完成。
+      expect([...LONG_TERM_JOB_INTENT_FIELD_KEYS]).toEqual([
         'city',
         'district',
         'location',

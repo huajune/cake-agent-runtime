@@ -76,7 +76,7 @@ export class MemoryEnrichmentService {
    */
   private resolveKnownGender(snapshot: AgentMemoryContext): '男' | '女' | null {
     return (
-      normalizeGenderValue(unwrapUserProfileFactValue(snapshot.longTerm.profile?.gender)) ??
+      normalizeGenderValue(unwrapUserProfileFactValue(snapshot.longTerm.semantic.profile?.gender)) ??
       normalizeGenderValue(
         unwrapSessionFactValue(snapshot.sessionMemory?.facts?.interview_info.gender),
       ) ??

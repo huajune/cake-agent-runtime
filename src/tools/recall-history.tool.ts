@@ -2,7 +2,7 @@ import { Logger } from '@nestjs/common';
 import { tool } from 'ai';
 import { z } from 'zod';
 import { MemoryService } from '@memory/memory.service';
-import type { SummaryData } from '@memory/long-term/long-term.types';
+import type { SessionSummaries } from '@memory/long-term/long-term.types';
 import { ToolBuilder } from '@shared-types/tool.types';
 
 const logger = new Logger('recall_history');
@@ -26,7 +26,7 @@ const DESCRIPTION = `查询用户的历史求职记录。追溯本次会话之�
 
 const inputSchema = z.object({});
 
-function formatSummaryForTool(data: SummaryData | null): string {
+function formatSummaryForTool(data: SessionSummaries | null): string {
   if (!data) return '';
 
   const parts: string[] = [];
@@ -60,26 +60,26 @@ export function buildRecallHistoryTool(memoryService: MemoryService): ToolBuilde
       description: DESCRIPTION,
       inputSchema,
       execute: async () => {
-        const summaryData = await memoryService.getSummaryData(
+        const sessionSummaries = await memoryService.getSessionSummaries(
           context.session.corpId,
           context.session.userId,
           context.session.botImId,
         );
 
-        if (!summaryData || (summaryData.recent.length === 0 && !summaryData.archive)) {
+        if (!sessionSummaries || (sessionSummaries.recent.length === 0 && !sessionSummaries.archive)) {
           logger.debug(`无历史摘要: userId=${context.session.userId}`);
           return { found: false, message: '该用户无历史求职记录' };
         }
 
-        const formatted = formatSummaryForTool(summaryData);
+        const formatted = formatSummaryForTool(sessionSummaries);
         logger.debug(
-          `返回历史摘要: userId=${context.session.userId}, recent=${summaryData.recent.length}`,
+          `返回历史摘要: userId=${context.session.userId}, recent=${sessionSummaries.recent.length}`,
         );
 
         return {
           found: true,
-          recentCount: summaryData.recent.length,
-          hasArchive: !!summaryData.archive,
+          recentCount: sessionSummaries.recent.length,
+          hasArchive: !!sessionSummaries.archive,
           content: formatted,
         };
       },

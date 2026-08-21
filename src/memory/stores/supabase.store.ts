@@ -8,18 +8,18 @@ import type {
   UserProfileFactValue,
   UserProfileFacts,
   ProfileFactConfidence,
-  SummaryData,
+  SessionSummaries,
   SummaryEntry,
   MessageMetadata,
   AgentLongTermMemoryRow,
   ActiveBookingEntry,
   ActiveBookingState,
-  LongTermPreferenceFacts,
+  JobIntentFacts,
 } from '../long-term/long-term.types';
 import {
   createEmptyUserProfileFacts,
   isUserProfileFactValue,
-  LONG_TERM_PREFERENCE_FIELD_KEYS,
+  LONG_TERM_JOB_INTENT_FIELD_KEYS,
   MAX_RECENT_SUMMARIES,
   UserProfileFactValueSchema,
   userProfileFactValue,
@@ -29,7 +29,7 @@ import type { MemoryEntry, MemoryStore } from './store.types';
 
 const TABLE = 'agent_long_term_memories';
 
-function normalizeSummaryData(data: SummaryData | null | undefined): SummaryData | null {
+function normalizeSessionSummaries(data: SessionSummaries | null | undefined): SessionSummaries | null {
   if (!data) return null;
   return {
     recent: data.recent ?? [],
@@ -57,13 +57,13 @@ function normalizeProfileFacts(data: UserProfileFacts | null | undefined): UserP
   return hasValue ? facts : null;
 }
 
-function normalizePreferenceFacts(
-  data: LongTermPreferenceFacts | null | undefined,
-): LongTermPreferenceFacts | null {
+function normalizeJobIntentFacts(
+  data: JobIntentFacts | null | undefined,
+): JobIntentFacts | null {
   if (!data || typeof data !== 'object') return null;
-  const facts: LongTermPreferenceFacts = {};
+  const facts: JobIntentFacts = {};
   const raw = data as Record<string, unknown>;
-  for (const key of LONG_TERM_PREFERENCE_FIELD_KEYS) {
+  for (const key of LONG_TERM_JOB_INTENT_FIELD_KEYS) {
     const parsed = UserProfileFactValueSchema.safeParse(raw[key]);
     if (parsed.success) facts[key] = parsed.data as UserProfileFactValue<unknown>;
   }
@@ -135,7 +135,7 @@ function buildActiveBookingState(bookings: ActiveBookingEntry[]): ActiveBookingS
 /**
  * Supabase 存储后端 — 长期记忆（每用户一行）
  *
- * 表结构：profile_facts / preference_facts / summary_data / message_metadata / active_booking（均 jsonb）
+ * 表结构：semantic_profile / semantic_job_intent / episodic_session_summaries / message_metadata / active_booking（均 jsonb）
  * 唯一约束 (corp_id, user_id)，每用户一行。
  * Redis 2h 缓存整行数据。
  * Supabase 不可用时 graceful 降级。
@@ -155,7 +155,7 @@ export class SupabaseStore implements MemoryStore {
   async getProfile(corpId: string, userId: string): Promise<UserProfileFacts | null> {
     const row = await this.getRow(corpId, userId);
     if (!row) return null;
-    return normalizeProfileFacts(row.profile_facts ?? null);
+    return normalizeProfileFacts(row.semantic_profile ?? null);
   }
 
   /**
@@ -164,7 +164,7 @@ export class SupabaseStore implements MemoryStore {
    * 置信度守卫由 DB 端 RPC `upsert_long_term_profile_facts` 原子保证：
    * 已有 high 时，incoming 非 high 不得覆盖。
    *
-   * 可选同时携带 preferenceFacts（沉淀路径）：两列在同一 RPC 事务/行锁内写入，
+   * 可选同时携带 jobIntentFacts（沉淀路径）：两列在同一 RPC 事务/行锁内写入，
    * 消除"profile 落库而意向丢失"的半写状态。preference 维持快照式整列覆盖语义。
    */
   async upsertProfileFacts(
@@ -172,7 +172,7 @@ export class SupabaseStore implements MemoryStore {
     userId: string,
     profileFacts: Partial<UserProfileFacts>,
     metadata?: MessageMetadata,
-    preferenceFacts?: LongTermPreferenceFacts,
+    jobIntentFacts?: JobIntentFacts,
   ): Promise<void> {
     const client = this.supabase.getSupabaseClient();
     if (!client) {
@@ -187,7 +187,7 @@ export class SupabaseStore implements MemoryStore {
         profileFactsJson[key] = fact;
       }
     }
-    const hasPreferences = Boolean(preferenceFacts && Object.keys(preferenceFacts).length > 0);
+    const hasPreferences = Boolean(jobIntentFacts && Object.keys(jobIntentFacts).length > 0);
     if (Object.keys(profileFactsJson).length === 0 && !metadata && !hasPreferences) return;
 
     const { data, error } = await client.rpc('upsert_long_term_profile_facts', {
@@ -195,7 +195,7 @@ export class SupabaseStore implements MemoryStore {
       p_user_id: userId,
       p_profile_facts: profileFactsJson,
       p_message_metadata: metadata ?? null,
-      p_preference_facts: hasPreferences ? preferenceFacts : null,
+      p_preference_facts: hasPreferences ? jobIntentFacts : null,
     });
 
     if (error) {
@@ -219,16 +219,16 @@ export class SupabaseStore implements MemoryStore {
   async getPreferenceFacts(
     corpId: string,
     userId: string,
-  ): Promise<LongTermPreferenceFacts | null> {
+  ): Promise<JobIntentFacts | null> {
     const row = await this.getRow(corpId, userId);
-    return normalizePreferenceFacts(row?.preference_facts ?? null);
+    return normalizeJobIntentFacts(row?.semantic_job_intent ?? null);
   }
 
   // ==================== Summary 操作 ====================
 
-  async getSummaryData(corpId: string, userId: string): Promise<SummaryData | null> {
+  async getSessionSummaries(corpId: string, userId: string): Promise<SessionSummaries | null> {
     const row = await this.getRow(corpId, userId);
-    return normalizeSummaryData((row?.summary_data as SummaryData | null) ?? null);
+    return normalizeSessionSummaries((row?.episodic_session_summaries as SessionSummaries | null) ?? null);
   }
 
   /**
@@ -278,14 +278,14 @@ export class SupabaseStore implements MemoryStore {
     const result = rpcResult as { overflow: SummaryEntry[]; recentCount: number } | null;
     if (result?.overflow?.length && options?.compressArchive) {
       try {
-        const summaryData = await this.getSummaryData(corpId, userId);
+        const sessionSummaries = await this.getSessionSummaries(corpId, userId);
         const archive = await options.compressArchive(
           result.overflow,
-          summaryData?.archive ?? null,
+          sessionSummaries?.archive ?? null,
         );
         await this.upsertRow(corpId, userId, {
-          summary_data: {
-            ...(summaryData ?? { recent: [], lastSettledMessageAt: null }),
+          episodic_session_summaries: {
+            ...(sessionSummaries ?? { recent: [], lastSettledMessageAt: null }),
             archive,
           },
         });
@@ -309,8 +309,8 @@ export class SupabaseStore implements MemoryStore {
       ) => Promise<string>;
     },
   ): Promise<void> {
-    const existing = await this.getSummaryData(corpId, userId);
-    const data: SummaryData = existing ?? {
+    const existing = await this.getSessionSummaries(corpId, userId);
+    const data: SessionSummaries = existing ?? {
       recent: [],
       archive: null,
       lastSettledMessageAt: null,
@@ -340,7 +340,7 @@ export class SupabaseStore implements MemoryStore {
       }
     }
 
-    await this.upsertRow(corpId, userId, { summary_data: data });
+    await this.upsertRow(corpId, userId, { episodic_session_summaries: data });
   }
 
   async markLastSettledMessageAt(
@@ -365,8 +365,8 @@ export class SupabaseStore implements MemoryStore {
       this.logger.warn('[markLastSettledMessageAt] RPC 失败，降级到应用层写入', error.message);
     }
 
-    const existing = await this.getSummaryData(corpId, userId);
-    const data: SummaryData = existing ?? {
+    const existing = await this.getSessionSummaries(corpId, userId);
+    const data: SessionSummaries = existing ?? {
       recent: [],
       archive: null,
       lastSettledMessageAt: null,
@@ -379,7 +379,7 @@ export class SupabaseStore implements MemoryStore {
         [sessionId]: lastSettledMessageAt,
       };
     }
-    await this.upsertRow(corpId, userId, { summary_data: data });
+    await this.upsertRow(corpId, userId, { episodic_session_summaries: data });
   }
 
   async upsertMessageMetadata(

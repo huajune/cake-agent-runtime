@@ -43,7 +43,9 @@ CoALA 对照复盘（2026-08-21，结论已录治理方案行业对照第 5 条�
 - **业界命名轴查证（2026-08-21，LangGraph/LangMem 分类法）**：主流是**复合轴**——顶层按生命周期/作用域（short-term thread-scoped / long-term namespace），长期层内部才按知识类型分 semantic/episodic/procedural；没有主流框架用类型轴做顶层目录（Letta 用 OS 存储层级轴、Mem0 用 scope 轴）。本库顶层命名与业界同构，"只修错位不全改"裁定获行业形态追认。LangMem 将 procedural 定义为"可随反馈精炼的系统指令"——从源头追认"手册=程序记忆"与台账批次删减循环（=procedural refinement）。
 - **M3/M1 命名指引（由此新增）**：分家与 playbook 落地后，**长期层内部采用类型词汇**——profile/preferences 归 semantic、summary 归 episodic、playbook 库归 procedural——达成"顶层生命周期、层内类型"的 LangGraph 完整形态。
 
-### M2-B 长期层 CoALA 结构分组（A3 方案，2026-08-21 设计定稿，**待用户批准执行**）
+### M2-B 长期层 CoALA 结构分组（A3）——✅ **已执行（2026-08-21，含 DB 迁移测试库验证）**
+
+> 执行记录：类型全量（JobIntentFacts/SessionSummaries/SemanticMemory/EpisodicMemory/LongTermMemory/WorkingMemory 抽独立文件）；运行时 `longTerm.semantic.{profile, jobIntent}` 分组；DB 三列迁移 `20260821210000` 已推**测试库**并通过**三 RPC 真实写入回读验证**（置信度守卫 written/skipped 语义完好、摘要追加 bySession 水位正确）；生产 push 随下周发版同批。
 
 用户裁定：命名对齐行业分类词本身就是目标（推翻此前"仅错误/误导才改"口径，原口径划线保留于 M2 节）。经三轮讨论定稿的目标形态：
 

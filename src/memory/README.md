@@ -11,7 +11,7 @@
 - 短期记忆：最近消息窗口（Redis 优先，DB 兜底）
 - 会话记忆：当前 session 的结构化状态
 - 阶段状态：当前业务阶段
-- 长期记忆：跨 session 的 profile_facts / summary
+- 长期记忆：跨 session 的 semantic_profile / summary
 
 另外还有一个旁路能力：
 
@@ -45,13 +45,13 @@ memory 模块的职责不是“帮模型记住一切”，而是把记忆相关�
 - 主链路：`onTurnStart(corpId, userId, sessionId, currentUserMessage?)` / `onTurnEnd(ctx, assistantText?)`
 - 复聊召回：`recallForProactiveFollowUp`
 - 工具/阶段：`saveInvitedGroup` / `setStage` / `getStage`
-- 长期档案：`getSummaryData` / `saveProfile`
+- 长期档案：`getSessionSummaries` / `saveProfile`
 - 清理（测试/运维）：`clearSessionMemory` / `clearLongTermMemory`
 
 其中：
 
 - `onTurnStart` / `onTurnEnd` 是 Agent 主链路入口
-- `getSummaryData` 供 `recall_history` 等按需读取长期摘要
+- `getSessionSummaries` 供 `recall_history` 等按需读取长期摘要
 - `setStage` 供 `advance_stage` 写阶段状态
 
 ## 记忆分层
@@ -167,12 +167,12 @@ memory 模块的职责不是“帮模型记住一切”，而是把记忆相关�
 
 拆成三部分：
 
-- `profile_facts`
+- `semantic_profile`
   - 姓名、电话、性别、年龄、学历、学生身份、健康证
   - 每个字段统一为 `{ value, confidence, source, evidence, updatedAt } | null`
   - 沉淀写入的字段额外带数据血缘 `originSessionId`（=chatId，bot 维度）、`originBotId`（imBotId）；booking/enrichment 路径与存量数据缺失即 undefined
-- `preference_facts`（长期求职意向，列 `preference_facts`）
-  - `LONG_TERM_PREFERENCE_FIELD_KEYS`：城市/区域/地点/品牌/岗位/班次/薪资/用工形式/排班硬约束/推迟意向/最早可面日期
+- `semantic_job_intent`（长期求职意向，列 `semantic_job_intent`）
+  - `LONG_TERM_JOB_INTENT_FIELD_KEYS`：城市/区域/地点/品牌/岗位/班次/薪资/用工形式/排班硬约束/推迟意向/最早可面日期
   - 排除单次 episode 的临时态（`short_term` / `time_windows` / `open_position`）
   - 由 consolidation 唯一写入，语义是**快照式整组覆盖**（最新一段会话的意向赢），不像 session facts 那样累积
 - `summary`
@@ -190,11 +190,11 @@ memory 模块的职责不是“帮模型记住一切”，而是把记忆相关�
 
 - 注入瘦身：给大模型的 `[用户档案]` 只带字段值、置信度、来源、更新日期，**不带 evidence 全文**（evidence 是排障字段）；`fact-lines.formatter.ts` 的 `includeEvidence` 仅供事实提取 prompt 的 `[规则模式匹配线索]` 用
 - 工具上下文只 unwrap 高置信字段，低/中/未知置信字段留给大模型自行判断和追问
-- `preference_facts` 注入为 prompt 的 `[历史求职意向]` 段（`formatLongTermPreferences`），带更新日期与“本次优先”指引，过期 `available_after` 不渲染；不进工具预填
+- `semantic_job_intent` 注入为 prompt 的 `[历史求职意向]` 段（`formatLongTermJobIntent`），带更新日期与“本次优先”指引，过期 `available_after` 不渲染；不进工具预填
 
 ## 字段置信度与来源
 
-`ruleFacts`、`sessionFacts`、长期 `profile_facts` 都使用字段级 fact wrapper。字段值本身必须解释“有多可信”和“从哪里来”。
+`ruleFacts`、`sessionFacts`、长期 `semantic_profile` 都使用字段级 fact wrapper。字段值本身必须解释“有多可信”和“从哪里来”。
 
 置信度：
 
@@ -220,7 +220,7 @@ memory 模块的职责不是“帮模型记住一切”，而是把记忆相关�
 
 - `source` 说明字段产生路径，不等同于置信度；最终能否进入工具判断看 `confidence`
 - `ruleFacts` 当前只会出现 `source=rule/system`，且不持久化
-- `sessionFacts` 与长期 `profile_facts` 共用上述六章；沉淀透传 session 事实的原章
+- `sessionFacts` 与长期 `semantic_profile` 共用上述六章；沉淀透传 session 事实的原章
 - booking 与 enrichment 都归 `system`，质量差别由 `confidence` 表达
 
 来源声明置信度升级：LLM 可输出 `explicit_provenance{field, quote}`，quote 经候选人原文验证（phone 还加格式校验）后，把 medium 升为 high/candidate_quote；仅限白名单 `EXPLICIT_UPGRADE_FIELDS`（排除 `name` 与 `applied_store`/`interview_time` 等事务字段）。
@@ -234,7 +234,7 @@ memory 模块的职责不是“帮模型记住一切”，而是把记忆相关�
 1. 读取短期记忆（Redis 优先，DB 兜底）
 2. 读取会话记忆
 3. 读取阶段状态
-4. 读取长期 `profile_facts` / `preference_facts` / `summary_data`
+4. 读取长期 `semantic_profile` / `semantic_job_intent` / `episodic_session_summaries`
 5. 如提供了 `currentMessages`，对“当前轮新消息”做一次前置高置信识别
 6. 跨会话来源研判：全新 chat 首聊且长期记忆来自别的会话时，置 `longTerm.origin.fromOtherConversation`
 7. 返回统一的 `MemoryRecallContext`
@@ -259,10 +259,10 @@ memory 模块的职责不是“帮模型记住一切”，而是把记忆相关�
 长期记忆按 `(corpId, userId)` 跨 bot 共享。同一候选人在同一 corp 下添加多位招募经理（多个 bot）时，每个 (候选人, bot) 是独立 chat（`sessionId=chatId`）。`detectCrossConversationOrigin()` 在 `onTurnStart` 研判本轮注入的长期记忆是否来自候选人此前在**另一段会话**的沉淀，满足下列全部条件时置 `longTerm.origin.fromOtherConversation=true`：
 
 1. 仅全新 chat 首聊：当前会话还没有自有会话记忆（`hasStructuredSessionMemoryState=false`）
-2. 长期 `profile_facts` / `preference_facts` 非空
-3. 长期记忆来自别的会话：优先看逐字段血缘 `originSessionId !== 当前 sessionId`；存量无血缘时回退 `summary_data.lastSettledBySession` / `recent[].sessionId` 去掉当前会话后仍有其它会话
+2. 长期 `semantic_profile` / `semantic_job_intent` 非空
+3. 长期记忆来自别的会话：优先看逐字段血缘 `originSessionId !== 当前 sessionId`；存量无血缘时回退 `episodic_session_summaries.lastSettledBySession` / `recent[].sessionId` 去掉当前会话后仍有其它会话
 
-渲染由 `generator/preparation-utils/memory-block.formatter.ts` 的 `formatCrossConversationNotice()` 处理，置真时在档案/意向前插一段泛指口径（不点名具体招募经理、不假装是本会话聊过）。粒度上：数据血缘逐字段精确记录，展示口径是会话级泛指。
+渲染由 `generator/working-memory/memory-block.formatter.ts` 的 `formatCrossConversationNotice()` 处理，置真时在档案/意向前插一段泛指口径（不点名具体招募经理、不假装是本会话聊过）。粒度上：数据血缘逐字段精确记录，展示口径是会话级泛指。
 
 ## Agent 如何消费 onTurnStart 的结果
 
@@ -286,7 +286,7 @@ memory 模块的职责不是“帮模型记住一切”，而是把记忆相关�
 - `[本轮解析线索]`
 - `[本轮待确认线索]`
 
-其中 `longTerm.profile` 在内存中是 `profile_facts` 结构。Prompt 会展示所有字段及其置信度；进入工具上下文时会统一 unwrap，只让高置信字段参与程序化判断。
+其中 `longTerm.profile` 在内存中是 `semantic_profile` 结构。Prompt 会展示所有字段及其置信度；进入工具上下文时会统一 unwrap，只让高置信字段参与程序化判断。
 
 老用户回访阶段兜底：`resolveReturningUserStage()` 在长期画像有姓名/电话、且程序性阶段已过期时，把 `entryStage` 兜底为 `job_consultation`。
 
@@ -358,14 +358,14 @@ memory 模块的职责不是“帮模型记住一切”，而是把记忆相关�
 
 执行内容：
 
-1. 判断这段旧会话是否已经沉淀过（边界取 `summary_data.lastSettledBySession[sessionId]`，缺失再回退 `lastSettledMessageAt`）
+1. 判断这段旧会话是否已经沉淀过（边界取 `episodic_session_summaries.lastSettledBySession[sessionId]`，缺失再回退 `lastSettledMessageAt`）
 2. 分页扫描边界之后到旧会话断点之间的消息片段（每页 `CONSOLIDATION_FETCH_LIMIT=500`，最多 `MAX_PAGES=10` 页）
 3. 使用当前 Redis `sessionFacts` 作为已校验/清洗过的结构化事实参考
 4. 摘要输入截尾最近 `SUMMARY_MAX_MESSAGES=120` 条
 5. 调 LLM 生成一条摘要
 6. 通过 RPC `append_long_term_summary_atomic`（行锁内）追加到长期 `summary.recent`，溢出压缩进 `archive`；新增 `p_session_id` 参数同步写 `lastSettledBySession[sessionId]`
-7. 从 `sessionFacts.interview_info` 抽身份字段写入长期 `profile_facts`，每条字段打 `originSessionId`(=sessionId/chatId) + `originBotId`(=botImId) 数据血缘
-8. 从 `LONG_TERM_PREFERENCE_FIELD_KEYS` 抽稳定意向，整组覆盖写入 `preference_facts`（同样打血缘）
+7. 从 `sessionFacts.interview_info` 抽身份字段写入长期 `semantic_profile`，每条字段打 `originSessionId`(=sessionId/chatId) + `originBotId`(=botImId) 数据血缘
+8. 从 `LONG_TERM_JOB_INTENT_FIELD_KEYS` 抽稳定意向，整组覆盖写入 `semantic_job_intent`（同样打血缘）
 9. 通过 RPC `mark_long_term_settled_boundary`（带 `p_session_id`）原子更新沉淀边界
 
 这层不会反写 Redis 会话态，只负责写长期记忆。
@@ -431,7 +431,7 @@ memory 模块的职责不是“帮模型记住一切”，而是把记忆相关�
   - 阶段状态读写
 
 - `services/long-term.service.ts`
-  - profile_facts / preference_facts / summary 持久化
+  - semantic_profile / semantic_job_intent / summary 持久化
 
 - `services/consolidation.service.ts`
   - 会话结束后的长期沉淀

@@ -133,8 +133,7 @@ export const VERDICT_SITE_REGISTRY = [
     id: 'candidate_profile_prefill_hint',
     authority: 'hint',
     effect: 'advisory',
-    source:
-      'src/agent/generator/working-memory/tool-context.builder.ts#buildCandidatePrefillHints',
+    source: 'src/agent/generator/working-memory/tool-context.builder.ts#buildCandidatePrefillHints',
     rationale: 'medium/system 值只投影为带值求证，不得据此拒绝、提交或升级来源。',
   },
 ] as const satisfies readonly VerdictSiteRegistration[];

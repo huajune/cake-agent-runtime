@@ -33,7 +33,7 @@
 │  会话记忆   facts / lastCandidatePool / presentedJobs /               │
 │             currentFocusJob / invitedGroups → Redis                   │
 │  阶段状态   STAGE 阶段 + 推进来源/时间/原因 → Redis                    │
-│  长期记忆   profile_facts / preference_facts / summary                │
+│  长期记忆   semantic_profile / semantic_job_intent / summary                │
 │             → Supabase agent_long_term_memories + Redis 2h 缓存        │
 ├──────────── 旁路（非持久化）──────────────────────────────────────────┤
 │  本轮解析线索      对「本轮 user 最新消息」跑一次规则轨                  │
@@ -117,7 +117,7 @@ interface UserProfileFactValue<T> {
 #### Preference Facts（跨会话稳定意向）
 
 ```typescript
-const LONG_TERM_PREFERENCE_FIELD_KEYS = [
+const LONG_TERM_JOB_INTENT_FIELD_KEYS = [
   'city', 'district', 'location', 'brands', 'position', 'schedule',
   'salary', 'labor_form', 'schedule_constraint', 'delayed_intent', 'available_after',
 ];  // 排除单次 episode 临时态：short_term / time_windows / open_position
@@ -130,7 +130,7 @@ const LONG_TERM_PREFERENCE_FIELD_KEYS = [
 #### Summary（分层压缩的对话摘要）
 
 ```typescript
-interface SummaryData {
+interface SessionSummaries {
   recent: SummaryEntry[];   // 最近 N 条详细摘要（MAX_RECENT_SUMMARIES = 5）
   archive: string | null;   // 更早的被 LLM 压缩合并成一段
   lastSettledMessageAt: string | null;              // 全局兜底的已沉淀边界
@@ -164,7 +164,7 @@ interface SummaryData {
 `detectCrossConversationOrigin` 在**三条同时满足**时置 `longTerm.origin.fromOtherConversation = true`：
 
 1. **仅全新 chat 首聊**（`hasStructuredSessionMemoryState=false`），延续会话不提示；
-2. 长期 `profile_facts` / `preference_facts` 非空；
+2. 长期 `semantic_profile` / `semantic_job_intent` 非空；
 3. 长期记忆来自别的会话——优先用逐字段血缘（`originSessionId !== 当前 sessionId`），存量无血缘时回退 `lastSettledBySession` / `recent[].sessionId`。
 
 **展示口径是会话级泛指**：插入 `[历史背景｜来自候选人此前在本平台的咨询]`，让模型泛指「此前与另一位招聘顾问沟通过」——**不假装本会话聊过、不点名具体招募经理**。血缘逐字段记录（可精确追溯），但展示不暴露 bot 名。
@@ -198,8 +198,8 @@ time_windows  schedule_constraint  available_after
 
 | 目标 | 字段 | 来源 |
 |---|---|---|
-| `profile_facts`（7 个） | `name` `phone` `gender` `age` `is_student` `education` `has_health_certificate` | `USER_PROFILE_FIELD_KEYS`，从 `interview_info` 抽 |
-| `preference_facts`（11 个） | 见 §2.4 的 `LONG_TERM_PREFERENCE_FIELD_KEYS` | 从 `preferences` 抽，整组覆盖 |
+| `semantic_profile`（7 个） | `name` `phone` `gender` `age` `is_student` `education` `has_health_certificate` | `USER_PROFILE_FIELD_KEYS`，从 `interview_info` 抽 |
+| `semantic_job_intent`（11 个） | 见 §2.4 的 `LONG_TERM_JOB_INTENT_FIELD_KEYS` | 从 `preferences` 抽，整组覆盖 |
 
 **不沉淀的会话级字段**：`applied_store` / `applied_position` / `interview_time`（每次不同）、`experience` / `upload_resume` / `height` / `weight` / `household_register_province`（未列入白名单）、以及 `short_term` / `time_windows` / `open_position`（单次 episode 临时态）。
 
@@ -218,7 +218,7 @@ time_windows  schedule_constraint  available_after
 ```
 用户消息到达
   ├── 并行读取：short-term messages（Redis→DB fallback）/ session state / stage state
-  │             / profile_facts / preference_facts / summary_data
+  │             / semantic_profile / semantic_job_intent / episodic_session_summaries
   ├── 短期窗口空兜底
   ├── 前置规则轨识别：currentUserMessage + brandList → ruleFacts
   ├── 可选 enrichment：options.enrichmentIdentity 提供时向外部系统补全缺失字段
@@ -273,10 +273,10 @@ extract_facts
 detectAndSettle(): chat_messages 中出现 gap ≥ consolidationGapSeconds
   ├── 边界判定：lastSettledBySession[sessionId] → 缺失回退全局 lastSettledMessageAt
   │             分页扫描边界后消息（每页 500，最多 10 页）
-  ├── 身份字段 → profile_facts    从 Redis sessionFacts 抽（已校验/清洗过的结构化事实）
+  ├── 身份字段 → semantic_profile    从 Redis sessionFacts 抽（已校验/清洗过的结构化事实）
   │                               每条打 originSessionId + originBotId 血缘
   │                               字段级合并，已有 high 不被非 high 覆盖
-  ├── 稳定意向 → preference_facts  整组覆盖写入，同样打血缘
+  ├── 稳定意向 → semantic_job_intent  整组覆盖写入，同样打血缘
   ├── 对话摘要 → Summary          边界后到旧会话断点的消息（截尾最近 120 条）+ facts 意向
   │                               → LLM 生成 ≤100 字摘要
   │                               → RPC append_long_term_summary_atomic（行锁内）
@@ -329,8 +329,8 @@ detectAndSettle(): chat_messages 中出现 gap ≥ consolidationGapSeconds
 | Prompt 段 | 来源 | 内容 |
 |---|---|---|
 | `[历史背景｜来自候选人此前在本平台的咨询]` | `longTerm.origin` | 仅全新 chat 首聊且长期记忆来自别的会话时渲染（§2.6） |
-| `[用户档案]` | 长期 `profile_facts` | 值 + 置信度 + 来源 + 更新日期（**不带 evidence 全文**）+ **展示出处门**：历史沉淀字段预填/复述必须披露来源并请候选人确认，否认即弃用 |
-| `[历史求职意向]` | 长期 `preference_facts` | 稳定意向 + 更新日期 + 「本次优先」指引 |
+| `[用户档案]` | 长期 `semantic_profile` | 值 + 置信度 + 来源 + 更新日期（**不带 evidence 全文**）+ **展示出处门**：历史沉淀字段预填/复述必须披露来源并请候选人确认，否认即弃用 |
+| `[历史求职意向]` | 长期 `semantic_job_intent` | 稳定意向 + 更新日期 + 「本次优先」指引 |
 | `[会话记忆]` | Redis `sessionMemory` | sessionFacts、岗位池、已展示岗位、当前焦点岗位、已邀群 |
 | `[本轮解析线索]` | 当前轮规则轨 | 与会话记忆**不冲突**的当前消息解析候选；不构成候选人事实 |
 | `[本轮待确认线索]` | 规则轨 + sessionFacts | 与中高置信会话事实**冲突**的线索 |
@@ -380,7 +380,7 @@ detectAndSettle(): chat_messages 中出现 gap ≥ consolidationGapSeconds
 
 ```mermaid
 flowchart TD
-  A["longTerm.profile_facts"] --> B["unwrapUserProfileFacts(minConfidence=high)"]
+  A["longTerm.semantic_profile"] --> B["unwrapUserProfileFacts(minConfidence=high)"]
   C["sessionFacts"] --> D["unwrapSessionFacts(minConfidence=high)"]
   E["本轮规则轨"] --> F["projectRuleFactClaims(minConfidence=high)"]
   D --> G["merge sessionFacts + 本轮规则解析值"]
@@ -392,7 +392,7 @@ flowchart TD
 
 | 字段 | 内容 | 置信度策略 |
 |---|---|---|
-| `profile` | 长期 `profile_facts` unwrap 后的裸值 | 只保留 `high` |
+| `profile` | 长期 `semantic_profile` unwrap 后的裸值 | 只保留 `high` |
 | `sessionFacts` | session facts unwrap 后再叠加本轮规则解析值 | 只保留 `high`；**当前轮覆盖旧值** |
 | `ledger.ruleFacts` | 当前轮原始 claim wrapper | 原结构保留，工具按用途自行判断；不得把 producer 当成事实权威 |
 | `currentFocusJob` | 当前焦点岗位 | 会话级状态 |
@@ -465,9 +465,9 @@ flowchart TD
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | `id` / `corp_id` / `user_id` | uuid / string / string | 主键与身份 |
-| `profile_facts` | jsonb | 7 个身份字段，每个为 fact wrapper 或 null |
-| `preference_facts` | jsonb? | 跨会话稳定意向，快照式整组覆盖 |
-| `summary_data` | jsonb? | `{ recent, archive, lastSettledMessageAt, lastSettledBySession }` |
+| `semantic_profile` | jsonb | 7 个身份字段，每个为 fact wrapper 或 null |
+| `semantic_job_intent` | jsonb? | 跨会话稳定意向，快照式整组覆盖 |
+| `episodic_session_summaries` | jsonb? | `{ recent, archive, lastSettledMessageAt, lastSettledBySession }` |
 | `message_metadata` | jsonb? | `{ botId, imBotId, imContactId, contactType, contactName, externalUserId, avatar }` |
 | `created_at` / `updated_at` | timestamptz | — |
 
@@ -483,8 +483,8 @@ flowchart TD
 4. 工具是否只读了显式入参、没读 context 兜底；
 5. precheck 场景：模型是否应显式传 `candidateAge` 等；
 6. Redis `sessionFacts` 中该字段是否存在但**置信度不是 high**，被 unwrap 过滤；
-7. 长期画像场景：`profile_facts` 是否为 high（非 high 不进工具 `profile`）；
-8. 沉淀场景：Redis `sessionFacts` 是否已过期——**过期后 summary 仍可写，但 profile_facts 无法从过期 facts 恢复**。
+7. 长期画像场景：`semantic_profile` 是否为 high（非 high 不进工具 `profile`）；
+8. 沉淀场景：Redis `sessionFacts` 是否已过期——**过期后 summary 仍可写，但 semantic_profile 无法从过期 facts 恢复**。
 
 **「模型用了不该用的字段」**：
 

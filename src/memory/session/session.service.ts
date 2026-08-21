@@ -35,10 +35,7 @@ import {
   unwrapSessionFactValue,
 } from './session-facts.types';
 import { RecommendedJobSummarySchema, type RecommendedJobSummary } from '@resolution/job/types';
-import type {
-  ReengagementSessionState,
-  CollectedField,
-} from './reengagement-session-state.types';
+import type { ReengagementSessionState, CollectedField } from './reengagement-session-state.types';
 import { parseCandidateFieldsFromText } from '@resolution/candidate';
 import {
   buildSessionExtractionPrompt,

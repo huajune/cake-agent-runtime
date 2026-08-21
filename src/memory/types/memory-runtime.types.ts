@@ -1,4 +1,4 @@
-import type { LongTermPreferenceFacts, UserProfileFacts } from '../long-term/long-term.types';
+import type { JobIntentFacts, SemanticMemory, UserProfileFacts } from '../long-term/long-term.types';
 import type { StageState } from './stage-state.types';
 import type { ShortTermMessage } from './short-term.types';
 import type { WeworkSessionState } from '../session/session-facts.types';
@@ -29,9 +29,8 @@ export interface MemoryRecallContext {
   ruleFacts: RuleFactClaims | null;
   stageState: StageState;
   longTerm: {
-    profile: UserProfileFacts | null;
-    /** 跨会话沉淀的求职意向快照（consolidation 写入，仅供模型参考，不进工具预填）。 */
-    preferences?: LongTermPreferenceFacts | null;
+    /** 语义记忆分组（CoALA A3）：跨会话稳定事实；类型定义见 long-term.types。 */
+    semantic: SemanticMemory;
     /**
      * 长期记忆来源研判。双 bot 服务同一候选人时，本轮注入的长期画像/意向
      * 可能来自候选人此前在另一个会话（另一位招募经理）的沉淀。

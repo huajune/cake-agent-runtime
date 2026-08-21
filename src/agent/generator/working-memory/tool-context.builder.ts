@@ -102,7 +102,7 @@ export function buildToolContext(input: {
       contactName: params.contactName,
     },
     archive: {
-      profile: unwrapUserProfileFacts(memory.longTerm.profile, { minConfidence: 'high' }),
+      profile: unwrapUserProfileFacts(memory.longTerm.semantic.profile, { minConfidence: 'high' }),
       sessionFacts,
       candidatePrefillHints,
       sessionBrandState,

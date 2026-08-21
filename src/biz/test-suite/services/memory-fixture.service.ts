@@ -157,12 +157,7 @@ export class MemoryFixtureService {
 
     const stageState = this.resolveStageState(setup);
     if (stageState) {
-      await this.memoryService.setStage(
-        scope.corpId,
-        scope.userId,
-        scope.sessionId,
-        stageState,
-      );
+      await this.memoryService.setStage(scope.corpId, scope.userId, scope.sessionId, stageState);
     }
   }
 

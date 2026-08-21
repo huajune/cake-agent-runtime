@@ -84,7 +84,7 @@ Options:
   --page-size <n>         Supabase page size, default 500
   --corp-id <id>          Restrict scan to one corp_id
   --user-id <id>          Restrict scan to one user_id
-  --overwrite-summary     Replace existing target summary_data when applying
+  --overwrite-summary     Replace existing target episodic_session_summaries when applying
 
 Notes:
   Profile fields are written through upsert_long_term_profile_facts, so an
@@ -180,24 +180,24 @@ function buildEvidence(field, meta) {
   return parts.join('; ');
 }
 
-function normalizeSummaryData(summaryData) {
-  if (!summaryData || typeof summaryData !== 'object' || Array.isArray(summaryData)) return null;
+function normalizeSessionSummaries(sessionSummaries) {
+  if (!sessionSummaries || typeof sessionSummaries !== 'object' || Array.isArray(sessionSummaries)) return null;
   return {
-    recent: Array.isArray(summaryData.recent) ? summaryData.recent : [],
-    archive: typeof summaryData.archive === 'string' ? summaryData.archive : null,
+    recent: Array.isArray(sessionSummaries.recent) ? sessionSummaries.recent : [],
+    archive: typeof sessionSummaries.archive === 'string' ? sessionSummaries.archive : null,
     lastSettledMessageAt:
-      typeof summaryData.lastSettledMessageAt === 'string'
-        ? summaryData.lastSettledMessageAt
+      typeof sessionSummaries.lastSettledMessageAt === 'string'
+        ? sessionSummaries.lastSettledMessageAt
         : null,
   };
 }
 
-function hasSummaryData(summaryData) {
-  if (!summaryData) return false;
+function hasSessionSummaries(sessionSummaries) {
+  if (!sessionSummaries) return false;
   return (
-    (Array.isArray(summaryData.recent) && summaryData.recent.length > 0) ||
-    Boolean(summaryData.archive) ||
-    Boolean(summaryData.lastSettledMessageAt)
+    (Array.isArray(sessionSummaries.recent) && sessionSummaries.recent.length > 0) ||
+    Boolean(sessionSummaries.archive) ||
+    Boolean(sessionSummaries.lastSettledMessageAt)
   );
 }
 
@@ -212,7 +212,7 @@ async function fetchOldRows(client, offset, pageSize, limit, filters) {
         'corp_id',
         'user_id',
         ...PROFILE_FIELDS,
-        'summary_data',
+        'episodic_session_summaries',
         'message_metadata',
         'profile_fields_meta',
         'updated_at',
@@ -232,7 +232,7 @@ async function fetchOldRows(client, offset, pageSize, limit, filters) {
 async function getTargetRow(client, corpId, userId) {
   const { data, error } = await client
     .from('agent_long_term_memories')
-    .select('profile_facts,summary_data,message_metadata')
+    .select('semantic_profile,episodic_session_summaries,message_metadata')
     .eq('corp_id', corpId)
     .eq('user_id', userId)
     .maybeSingle();
@@ -253,15 +253,15 @@ async function applyProfileFacts(client, row, profileFacts) {
   return data || { written_fields: [], skipped_fields: [] };
 }
 
-async function applySummaryData(client, row, summaryData, overwriteSummary) {
+async function applySessionSummaries(client, row, sessionSummaries, overwriteSummary) {
   const target = await getTargetRow(client, row.corp_id, row.user_id);
-  const targetHasSummary = hasSummaryData(normalizeSummaryData(target?.summary_data));
+  const targetHasSummary = hasSessionSummaries(normalizeSessionSummaries(target?.episodic_session_summaries));
   if (targetHasSummary && !overwriteSummary) return { written: false, skipped: true };
 
   const payload = {
     corp_id: row.corp_id,
     user_id: row.user_id,
-    summary_data: summaryData,
+    episodic_session_summaries: sessionSummaries,
     message_metadata: row.message_metadata || target?.message_metadata || null,
     updated_at: new Date().toISOString(),
   };
@@ -307,7 +307,7 @@ async function main() {
     mode: args.dryRun ? 'dry-run' : 'apply',
     scannedRows: 0,
     rowsWithProfileFacts: 0,
-    rowsWithSummaryData: 0,
+    rowsWithSessionSummaries: 0,
     rowsWithMetadataOnly: 0,
     profileFieldsPrepared: 0,
     profileFieldsWritten: 0,
@@ -328,13 +328,13 @@ async function main() {
     for (const row of rows) {
       stats.scannedRows += 1;
       const profileFacts = buildProfileFacts(row);
-      const summaryData = normalizeSummaryData(row.summary_data);
+      const sessionSummaries = normalizeSessionSummaries(row.episodic_session_summaries);
       const hasProfileFacts = Object.keys(profileFacts).length > 0;
-      const hasSummary = hasSummaryData(summaryData);
+      const hasSummary = hasSessionSummaries(sessionSummaries);
       const hasMetadataOnly = !hasProfileFacts && !hasSummary && Boolean(row.message_metadata);
 
       if (hasProfileFacts) stats.rowsWithProfileFacts += 1;
-      if (hasSummary) stats.rowsWithSummaryData += 1;
+      if (hasSummary) stats.rowsWithSessionSummaries += 1;
       if (hasMetadataOnly) stats.rowsWithMetadataOnly += 1;
       stats.profileFieldsPrepared += Object.keys(profileFacts).length;
 
@@ -352,7 +352,7 @@ async function main() {
         }
 
         if (hasSummary) {
-          const result = await applySummaryData(client, row, summaryData, args.overwriteSummary);
+          const result = await applySessionSummaries(client, row, sessionSummaries, args.overwriteSummary);
           if (result.written) stats.summariesWritten += 1;
           if (result.skipped) stats.summariesSkippedExisting += 1;
         } else if (hasMetadataOnly) {

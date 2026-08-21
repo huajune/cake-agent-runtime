@@ -42,8 +42,7 @@ describe('ReplyRepairContextProvider', () => {
         ruleFacts: null,
         stageState: { currentStage: 'job_consultation' },
         longTerm: {
-          profile: { name: '候选人A' },
-          preferences: null,
+          semantic: { profile: { name: '候选人A' }, jobIntent: null },
         },
       }),
     };

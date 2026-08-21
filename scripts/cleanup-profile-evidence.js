@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * 存量清洗：截断 agent_long_term_memories.profile_facts 中的超长 evidence。
+ * 存量清洗：截断 agent_long_term_memories.semantic_profile 中的超长 evidence。
  *
  * 背景：会话沉淀曾把 LLM 提取 reasoning 全文（600+ 字）作为 evidence 永久写入
  * 长期画像，并随每轮注入 system prompt（张漪 case，chat 69a13e919d6d3a463b0a37c6）。
@@ -109,8 +109,8 @@ async function main() {
   for (;;) {
     const { data, error } = await client
       .from('agent_long_term_memories')
-      .select('corp_id, user_id, profile_facts')
-      .not('profile_facts', 'is', null)
+      .select('corp_id, user_id, semantic_profile')
+      .not('semantic_profile', 'is', null)
       .order('corp_id', { ascending: true })
       .order('user_id', { ascending: true })
       .range(from, from + PAGE_SIZE - 1);
@@ -122,11 +122,11 @@ async function main() {
 
     for (const row of data) {
       scanned += 1;
-      const cleaned = cleanProfileFacts(row.profile_facts);
+      const cleaned = cleanProfileFacts(row.semantic_profile);
       if (!cleaned) continue;
       polluted += 1;
 
-      const longFields = Object.entries(row.profile_facts)
+      const longFields = Object.entries(row.semantic_profile)
         .filter(
           ([, v]) => v && typeof v === 'object' && (v.evidence?.length ?? 0) > MAX_EVIDENCE_CHARS,
         )
@@ -136,7 +136,7 @@ async function main() {
       if (args.dryRun) continue;
       const { error: updateError } = await client
         .from('agent_long_term_memories')
-        .update({ profile_facts: cleaned })
+        .update({ semantic_profile: cleaned })
         .eq('corp_id', row.corp_id)
         .eq('user_id', row.user_id);
       if (updateError) {

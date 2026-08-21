@@ -96,7 +96,7 @@ describe('SupabaseStore', () => {
   describe('getProfile', () => {
     it('should return from Redis cache if available', async () => {
       const cached = {
-        profile_facts: {
+        semantic_profile: {
           name: profileFact('张三'),
           phone: profileFact('138'),
           gender: null,
@@ -110,14 +110,14 @@ describe('SupabaseStore', () => {
 
       const result = await store.getProfile('corp1', 'user1');
 
-      expect(result).toEqual(cached.profile_facts);
+      expect(result).toEqual(cached.semantic_profile);
     });
 
     it('should fallback to Supabase on cache miss', async () => {
       mockRedis.get.mockResolvedValue(null);
       mockMaybeSingle.mockResolvedValue({
         data: {
-          profile_facts: {
+          semantic_profile: {
             name: profileFact('张三'),
             phone: profileFact('138'),
             gender: null,
@@ -147,18 +147,18 @@ describe('SupabaseStore', () => {
     });
   });
 
-  describe('getSummaryData', () => {
+  describe('getSessionSummaries', () => {
     it('should return null when no row exists', async () => {
       mockRedis.get.mockResolvedValue(null);
       mockMaybeSingle.mockResolvedValue({ data: null, error: null });
 
-      const result = await store.getSummaryData('corp1', 'user1');
+      const result = await store.getSessionSummaries('corp1', 'user1');
 
       expect(result).toBeNull();
     });
 
-    it('should return summary_data from row', async () => {
-      const summaryData = {
+    it('should return episodic_session_summaries from row', async () => {
+      const sessionSummaries = {
         recent: [
           { summary: 'test', sessionId: 's1', startTime: '2026-03-15', endTime: '2026-03-15' },
         ],
@@ -166,14 +166,14 @@ describe('SupabaseStore', () => {
       };
       mockRedis.get.mockResolvedValue(null);
       mockMaybeSingle.mockResolvedValue({
-        data: { summary_data: summaryData },
+        data: { episodic_session_summaries: sessionSummaries },
         error: null,
       });
 
-      const result = await store.getSummaryData('corp1', 'user1');
+      const result = await store.getSessionSummaries('corp1', 'user1');
 
       expect(result).toEqual({
-        ...summaryData,
+        ...sessionSummaries,
         lastSettledMessageAt: null,
         lastSettledBySession: null,
       });

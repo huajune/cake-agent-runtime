@@ -276,19 +276,19 @@ async function seedAgentMemoryBaseline(lastSettledMessageAt: string): Promise<vo
     .eq('user_id', TEST_USER)
     .maybeSingle();
 
-  const summaryData = { recent: [], archive: null, lastSettledMessageAt };
+  const sessionSummaries = { recent: [], archive: null, lastSettledMessageAt };
 
   if (existing.data) {
     const { error } = await supabase
       .from('agent_long_term_memories')
-      .update({ summary_data: summaryData, updated_at: new Date().toISOString() })
+      .update({ episodic_session_summaries: sessionSummaries, updated_at: new Date().toISOString() })
       .eq('id', existing.data.id);
     if (error) throw new Error(`更新 agent_long_term_memories 失败: ${error.message}`);
   } else {
     const { error } = await supabase.from('agent_long_term_memories').insert({
       corp_id: TEST_CORP,
       user_id: TEST_USER,
-      summary_data: summaryData,
+      episodic_session_summaries: sessionSummaries,
     });
     if (error) throw new Error(`插入 agent_long_term_memories 失败: ${error.message}`);
   }
@@ -343,8 +343,8 @@ async function scenario1_coldStart() {
   const state = await sessionService.getSessionState(TEST_CORP, TEST_USER, TEST_SESSION);
   check('getSessionState 返回空态', state.facts === null && state.presentedJobs === null);
 
-  const summaryData = await longTermService.getSummaryData(TEST_CORP, TEST_USER);
-  check('getSummaryData 返回 null（无摘要）', summaryData === null);
+  const sessionSummaries = await longTermService.getSessionSummaries(TEST_CORP, TEST_USER);
+  check('getSessionSummaries 返回 null（无摘要）', sessionSummaries === null);
 }
 
 // ============================================================
@@ -464,7 +464,7 @@ async function scenario4_bookingWrite() {
   // 读取 Supabase 验证
   const { data, error } = await supabase
     .from('agent_long_term_memories')
-    .select('profile_facts')
+    .select('semantic_profile')
     .eq('corp_id', TEST_CORP)
     .eq('user_id', TEST_USER)
     .maybeSingle();
@@ -475,8 +475,8 @@ async function scenario4_bookingWrite() {
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const profileFacts = data.profile_facts as any;
-  check('profile_facts 存在', profileFacts != null);
+  const profileFacts = data.semantic_profile as any;
+  check('semantic_profile 存在', profileFacts != null);
   check('name 写入正确', profileFacts?.name?.value === '李小花', `got ${profileFacts?.name?.value}`);
   check('phone 写入正确', profileFacts?.phone?.value === '13900139000', `got ${profileFacts?.phone?.value}`);
   check('age 写入正确（string）', profileFacts?.age?.value === '20', `got ${profileFacts?.age?.value}`);
@@ -541,38 +541,38 @@ async function scenario5_settlement() {
 
   check('detectAndSettle 返回 true（触发了沉淀）', result === true, `got ${result}`);
 
-  // 验证 Supabase agent_long_term_memories 的 summary_data 已更新
+  // 验证 Supabase agent_long_term_memories 的 episodic_session_summaries 已更新
   const { data } = await supabase
     .from('agent_long_term_memories')
-    .select('summary_data')
+    .select('episodic_session_summaries')
     .eq('corp_id', TEST_CORP)
     .eq('user_id', TEST_USER)
     .maybeSingle();
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const summaryData = data?.summary_data as any;
-  check('summary_data.recent 有新增摘要', (summaryData?.recent?.length ?? 0) >= 1);
+  const sessionSummaries = data?.episodic_session_summaries as any;
+  check('episodic_session_summaries.recent 有新增摘要', (sessionSummaries?.recent?.length ?? 0) >= 1);
   check(
     '摘要内容非空',
-    typeof summaryData?.recent?.[0]?.summary === 'string' && summaryData.recent[0].summary.length > 0,
-    `summary="${summaryData?.recent?.[0]?.summary?.slice(0, 30)}..."`,
+    typeof sessionSummaries?.recent?.[0]?.summary === 'string' && sessionSummaries.recent[0].summary.length > 0,
+    `summary="${sessionSummaries?.recent?.[0]?.summary?.slice(0, 30)}..."`,
   );
   check(
     'lastSettledMessageAt 已更新（比 baseline 更新）',
-    summaryData?.lastSettledMessageAt > baseline,
-    `old=${baseline.slice(0, 19)}, new=${summaryData?.lastSettledMessageAt?.slice(0, 19)}`,
+    sessionSummaries?.lastSettledMessageAt > baseline,
+    `old=${baseline.slice(0, 19)}, new=${sessionSummaries?.lastSettledMessageAt?.slice(0, 19)}`,
   );
 
   // 验证沉淀边界：endTime 应该是旧会话的最后一条消息
-  const endTime = summaryData?.recent?.[0]?.endTime;
+  const endTime = sessionSummaries?.recent?.[0]?.endTime;
   check(
     'endTime 指向旧会话末尾',
     endTime != null && new Date(endTime).getTime() <= oldT2 + 1000, // 允许 1s 误差
     `endTime=${endTime?.slice(0, 19)}`,
   );
 
-  console.log(`\n  📋 生成的摘要: "${summaryData?.recent?.[0]?.summary}"`);
-  console.log(`  📋 沉淀边界: ${summaryData?.lastSettledMessageAt?.slice(0, 19)}`);
+  console.log(`\n  📋 生成的摘要: "${sessionSummaries?.recent?.[0]?.summary}"`);
+  console.log(`  📋 沉淀边界: ${sessionSummaries?.lastSettledMessageAt?.slice(0, 19)}`);
 
   // 验证二次调用不触发（没有新的内部 gap）
   const secondResult = await settlementService.detectAndSettle(
@@ -603,18 +603,18 @@ async function scenario6_profileRetainedAfterSettlement() {
   check('booking 写入的 name 仍然存在', profile?.name?.value === '李小花', `got ${profile?.name?.value}`);
   check('booking 写入的 phone 仍然存在', profile?.phone?.value === '13900139000', `got ${profile?.phone?.value}`);
 
-  // 验证 profile_facts 元数据也保留
+  // 验证 semantic_profile 元数据也保留
   const { data } = await supabase
     .from('agent_long_term_memories')
-    .select('profile_facts')
+    .select('semantic_profile')
     .eq('corp_id', TEST_CORP)
     .eq('user_id', TEST_USER)
     .maybeSingle();
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const profileFacts = data?.profile_facts as any;
+  const profileFacts = data?.semantic_profile as any;
   check(
-    'profile_facts.name.source = booking（沉淀后未被清除）',
+    'semantic_profile.name.source = booking（沉淀后未被清除）',
     profileFacts?.name?.source === 'booking',
     `got ${profileFacts?.name?.source}`,
   );

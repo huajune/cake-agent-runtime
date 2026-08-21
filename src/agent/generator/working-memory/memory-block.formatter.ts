@@ -9,8 +9,8 @@ import {
 } from '@resolution/labor-form';
 import { projectRuleFactClaims } from '@resolution/evidence/merge';
 import {
-  type LongTermPreferenceFacts,
-  type LongTermPreferenceFieldKey,
+  type JobIntentFacts,
+  type JobIntentFieldKey,
   type UserProfileFacts,
 } from '@memory/long-term/long-term.types';
 import {
@@ -49,11 +49,11 @@ export function buildMemoryBlock(
     formatCrossConversationNotice(memory.longTerm.origin?.fromOtherConversation ?? false) +
     formatContactNamePreferenceHint(contactName, contactBrandAliases) +
     formatProfile(
-      memory.longTerm.profile,
+      memory.longTerm.semantic.profile,
       unwrapSessionFacts(memory.sessionMemory?.facts ?? null, { minConfidence: 'high' })
         ?.interview_info ?? null,
     ) +
-    formatLongTermPreferences(memory.longTerm.preferences ?? null) +
+    formatLongTermJobIntent(memory.longTerm.semantic.jobIntent ?? null) +
     (memory.sessionMemory
       ? formatSessionFacts(memory.sessionMemory, activeLaborForm, currentLaborFormIntent)
       : '') +
@@ -241,13 +241,13 @@ function formatProfileFactMeta(value: {
  * 标注记录日期并明确"以本次会话为准"，避免重蹈旧会话事实复活的覆辙。
  * available_after 已过期（日期早于今天）的直接不渲染。
  */
-function formatLongTermPreferences(preferences: LongTermPreferenceFacts | null): string {
+function formatLongTermJobIntent(preferences: JobIntentFacts | null): string {
   if (!preferences) return '';
 
   // 穷尽映射：本表就是 [历史求职意向] 区块的渲染白名单（下方按 Object.entries 遍历），
-  // 往 LONG_TERM_PREFERENCE_FIELD_KEYS 加字段而漏登记，该意向会沉淀入库却永不进
-  // prompt。收成 Record<LongTermPreferenceFieldKey, …> 让这种遗漏在编译期就失败。
-  const labels: Record<LongTermPreferenceFieldKey, string> = {
+  // 往 LONG_TERM_JOB_INTENT_FIELD_KEYS 加字段而漏登记，该意向会沉淀入库却永不进
+  // prompt。收成 Record<JobIntentFieldKey, …> 让这种遗漏在编译期就失败。
+  const labels: Record<JobIntentFieldKey, string> = {
     city: '意向城市',
     district: '意向区域',
     location: '意向地点',
@@ -264,7 +264,7 @@ function formatLongTermPreferences(preferences: LongTermPreferenceFacts | null):
   const lines: string[] = [];
   let latestUpdatedAt = '';
   for (const [key, label] of Object.entries(labels)) {
-    const fact = preferences[key as keyof LongTermPreferenceFacts];
+    const fact = preferences[key as keyof JobIntentFacts];
     if (!fact || fact.value === null || fact.value === undefined) continue;
 
     const rendered = renderPreferenceValue(key, fact.value);
