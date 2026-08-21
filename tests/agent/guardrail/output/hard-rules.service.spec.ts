@@ -686,6 +686,38 @@ describe('HardRulesService', () => {
           'unsupported_schedule_window_claim',
         );
       });
+
+      it.each([
+        '7:00-15:00不能排，但可以给你排11:00-15:00。',
+        '不能给你排7:00-15:00，但可以给你排11:00-15:00。',
+        '7:00-15:00不可以排，但可以给你排11:00-15:00。',
+      ])('allows modal-negated unsupported windows: %s', (replyText) => {
+        const result = service.check({
+          replyText,
+          toolCalls: [midShiftLookup],
+          userMessage: '能不能排7-3',
+          memorySnapshot,
+          chatId: 'chat-window-modal-negation',
+        });
+
+        expect(result.contradictions.map((item) => item.ruleId)).not.toContain(
+          'unsupported_schedule_window_claim',
+        );
+      });
+
+      it('does not mistake 没有问题 for a negated window', () => {
+        const result = service.check({
+          replyText: '没有问题可以给你排7:00-15:00。',
+          toolCalls: [midShiftLookup],
+          userMessage: '能不能排7-3',
+          memorySnapshot,
+          chatId: 'chat-window-positive-no-problem',
+        });
+
+        expect(result.contradictions.map((item) => item.ruleId)).toContain(
+          'unsupported_schedule_window_claim',
+        );
+      });
     });
 
     it('allows faithfully repeating the complete tool-provided window', () => {

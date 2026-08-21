@@ -13,9 +13,10 @@ const SENTENCE_BOUNDARY_PATTERN = /[。！？!?\n]+/u;
 // 否定语境豁免：修复版如实说"没有 X 班次 / X 排不上"时，X 不算承诺时段
 // （trace batch_6a86626bce406a6aee0e0aa0：诚实拒绝复述候选人诉求被二审再拦，fail-open 兜底才没静默）。
 const NEGATED_WINDOW_PREFIX_PATTERN =
-  /(?:没有|暂无|不存在|排不了|排不上|排不开|做不到|给不了|不提供|不开)[^，,；;。！？\n]{0,16}$/u;
+  /(?:(?:不(?:太)?(?:可以|能(?:够)?)|不可|没法|无法)(?:给你|跟店里|和门店)?(?:排|安排)|没有|暂无|不存在|排不了|排不上|排不开|做不到|给不了|不提供|不开)[^，,；;。！？\n]{0,16}$/u;
 const NEGATED_WINDOW_SUFFIX_PATTERN =
-  /^[^，,；;。！？\n]{0,20}(?:排不了|排不上|排不开|做不了|上不了|没有|不存在|不太匹配|不匹配|对不上|不合适|不行)/u;
+  /^[^，,；;。！？\n]{0,20}(?:(?:不(?:太)?(?:可以|能(?:够)?)|不可|没法|无法)(?:给你|跟店里|和门店)?(?:排|安排)|排不了|排不上|排不开|做不了|上不了|没有|不存在|不太匹配|不匹配|对不上|不合适|不行)/u;
+const LOCAL_ASSURANCE_NEGATION_PREFIX_PATTERN = /(?:不|不太|没有|暂无|不存在|没法|无法)$/u;
 // 复述候选人诉求豁免："如果您只能做7-3"是转述而非承诺；但从句自身带承诺词时不豁免
 // （"你说的7-3都有能排的班"仍是违规）。
 const CANDIDATE_WINDOW_ECHO_PREFIX_PATTERN =
@@ -181,11 +182,29 @@ function extractTimeRanges(text: string): Set<string> {
   return ranges;
 }
 
+function hasAffirmativeScheduleAssurance(text: string): boolean {
+  let searchFrom = 0;
+  while (searchFrom < text.length) {
+    const match = SCHEDULE_ASSURANCE_PATTERN.exec(text.slice(searchFrom));
+    if (!match) return false;
+
+    const start = searchFrom + (match.index ?? 0);
+    if (!LOCAL_ASSURANCE_NEGATION_PREFIX_PATTERN.test(text.slice(0, start))) return true;
+    searchFrom = start + match[0].length;
+  }
+  return false;
+}
+
 function isExemptWindowMention(sentence: string, start: number, end: number): boolean {
   const [clauseStart, clauseEnd] = findClauseBounds(sentence, start, end);
   const prefix = sentence.slice(clauseStart, start);
   const suffix = sentence.slice(end, clauseEnd);
-  if (NEGATED_WINDOW_PREFIX_PATTERN.test(prefix) || NEGATED_WINDOW_SUFFIX_PATTERN.test(suffix)) {
+  const prefixNegation = NEGATED_WINDOW_PREFIX_PATTERN.exec(prefix);
+  const suffixNegation = NEGATED_WINDOW_SUFFIX_PATTERN.exec(suffix);
+  if (
+    (prefixNegation && !hasAffirmativeScheduleAssurance(prefixNegation[0])) ||
+    (suffixNegation && !hasAffirmativeScheduleAssurance(suffixNegation[0]))
+  ) {
     return true;
   }
   const clause = sentence.slice(clauseStart, clauseEnd);
