@@ -21,6 +21,10 @@
 | [LangMem SDK for agent long-term memory（LangChain）](https://www.langchain.com/blog/langmem-sdk-launch) | 官方博客 | 〔补引〕procedural memory="可随反馈精炼的系统指令"——追认"手册=程序记忆"发现与台账批次删减循环（procedural refinement）；二期 M1 playbook 库的行业对应物 |
 | [Context Engineering: A Practical Guide（Sourcegraph）](https://sourcegraph.com/blog/context-engineering) | 技术博客 | "selection before compression"——与注意力优先裁定同构 |
 | [Context Engineering AI Agents Guide（mem0）](https://mem0.ai/blog/context-engineering-ai-agents-guide) | 技术博客 | 四类挑战框架（poisoning/overload/token/performance）佐证三元目标划分 |
+| [Agent Memory: An Anatomy（HN 讨论，2026-08）](https://news.ycombinator.com/item?id=48287808) | **社区论辩** | 认知科学分类法被质疑"低信号密度/过度拟人化/缺必要性论证"——佐证"类型轴当词汇表不当目录"裁定与兜底边界原则（机制入场须实证）；评论区 skills repo × 自动记忆层协同之问 = 二期 M1 议题的社区独立提出 |
+| [When Agent Memory Becomes a Platform Concern（HN 讨论，2026-08）](https://news.ycombinator.com/item?id=48021710) | **社区论辩** | harness 派（Harrison Chase/Sarah Wooders）vs 平台派（规模化需 provenance/RBAC/审计）之争——本库站位：memory 在 harness 内但自建了平台派要的治理能力（血缘/置信度合并/公证），跨 bot 共享长期记忆即微型 platform concern 的已解案例 |
+| [Filesystem-Based Memory for LLM Agents（arXiv 2607.26637）](https://arxiv.org/abs/2607.26637) | 论文 | 文件式记忆首个系统研究（管理/检索/执行三角色）；**关键警告："持续用 LLM 重写记忆库会退化到低于无记忆基线"**——L 系"模型自管记忆"裁定的新证 + 二期 M1 playbook 退役必须用确定性加载统计而非 LLM 重写的依据 |
+| [Your AI Agent's Memory Is Just a File? That's the Problem（mem0）](https://mem0.ai/blog/your-ai-agents-memory-is-just-a-file-thats-the-problem) | 技术博客（论辩反方） | 文件式记忆之争的结构化存储侧立场——本库生产记忆走 Redis+Supabase 结构化（多用户产品记忆），与 AGENTS.md 文件式（开发者工具记忆）是两种场景，争论双方各占一域 |
 
 ## 二、Harness 与松绑（2026-08-21 检索）
 
