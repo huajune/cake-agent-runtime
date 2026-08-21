@@ -950,12 +950,16 @@ describe('FollowUpProcessor', () => {
       expect(groupInvite.invite).not.toHaveBeenCalled();
     });
 
-    it('degrades to ordinary store copy when the invite child key is off', async () => {
+    it('degrades to ordinary store copy when the invite child key is explicitly off', async () => {
       enableEscalation();
+      // 0820 裁定后子键缺省开：验证降级路径必须显式关子键
       systemConfig.getAgentReplyConfig.mockResolvedValue({
         reengagementEnabled: true,
         reengagementShadow: false,
-        reengagementScenarioRollout: { store_presented_no_reply: true },
+        reengagementScenarioRollout: {
+          store_presented_no_reply: true,
+          'store_presented_no_reply:invite': false,
+        },
       });
 
       await buildProcessor().process(escalatedJob());
@@ -1592,11 +1596,15 @@ describe('FollowUpProcessor', () => {
       expect(scheduler.scheduleFollowUp).not.toHaveBeenCalled();
     });
 
-    it('keeps d2 in shadow when its child key is off without affecting arrival reminder rollout', async () => {
+    it('keeps d2 in shadow when its child key is explicitly off without affecting arrival reminder rollout', async () => {
+      // 0820 裁定后子键缺省开：验证单独关 d2 必须显式 false
       systemConfig.getAgentReplyConfig.mockResolvedValue({
         reengagementEnabled: true,
         reengagementShadow: false,
-        reengagementScenarioRollout: { interview_reminder: true },
+        reengagementScenarioRollout: {
+          interview_reminder: true,
+          'interview_reminder:d2': false,
+        },
         reengagementScenarioDelayMinutes: { 'interview_reminder:d2': 2880 },
       });
       sponge.getWorkOrderById.mockResolvedValue({

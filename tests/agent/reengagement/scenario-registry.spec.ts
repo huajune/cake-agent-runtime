@@ -21,13 +21,14 @@ const baseState = (over: Partial<ReengagementSessionState> = {}): ReengagementSe
 const at = (utcHour: number, minute = 0): number => Date.UTC(2026, 5, 24, utcHour, minute, 0);
 
 describe('scenario-registry', () => {
-  it('registers the onboarding follow-up as a default-off post-booking family member', () => {
+  it('registers the onboarding follow-up as a default-on post-booking family member', () => {
     expect(getScenario('post_interview_onboarding')).toMatchObject({
       phase: 'post_booking',
       displayName: '面试后回访 · 入职跟进',
       anchorEvent: 'interview.passed',
       defaultDelayMinutes: 4320,
-      defaultRolloutEnabled: false,
+      // 0820 裁定：三档发版即开
+      defaultRolloutEnabled: true,
     });
   });
 
@@ -451,7 +452,9 @@ describe('scenario-registry', () => {
       expect(resolveRolloutEnabled(getScenario('interview_reminder')!, {})).toBe(true);
     });
 
-    it('keeps d2 rollout off when its child key is missing instead of falling back to reminder', () => {
+    // 0820 裁定：变体子键缺省开（发版即开），但从属于场景开关——场景关（Dashboard
+    // 有行，急停出口）则变体必关；子键显式 false 可单独关变体不影响本档。
+    it('d2 defaults on but stays subordinate to the reminder scenario switch', () => {
       const scenario = getScenario('interview_reminder')!;
       expect(
         resolveRolloutEnabled(
@@ -459,14 +462,21 @@ describe('scenario-registry', () => {
           { reengagementScenarioRollout: { interview_reminder: true } },
           'd2_confirm',
         ),
+      ).toBe(true);
+      expect(
+        resolveRolloutEnabled(
+          scenario,
+          { reengagementScenarioRollout: { interview_reminder: false } },
+          'd2_confirm',
+        ),
       ).toBe(false);
       expect(
         resolveRolloutEnabled(
           scenario,
-          { reengagementScenarioRollout: { 'interview_reminder:d2': true } },
+          { reengagementScenarioRollout: { 'interview_reminder:d2': false } },
           'd2_confirm',
         ),
-      ).toBe(true);
+      ).toBe(false);
       expect(
         resolveRolloutEnabled(
           scenario,
@@ -479,27 +489,30 @@ describe('scenario-registry', () => {
       ).toBe(false);
     });
 
-    it('keeps store invite escalation off when its child key is missing without changing the main scenario', () => {
+    it('store invite escalation defaults on, is scenario-subordinate, and its child key only affects the escalation', () => {
       const scenario = getScenario('store_presented_no_reply')!;
       const config = {
         reengagementScenarioRollout: { store_presented_no_reply: true },
       };
 
       expect(resolveRolloutEnabled(scenario, config)).toBe(true);
-      expect(resolveRolloutEnabled(scenario, config, undefined, 'invite')).toBe(false);
+      expect(resolveRolloutEnabled(scenario, config, undefined, 'invite')).toBe(true);
       expect(
         resolveRolloutEnabled(
           scenario,
-          {
-            reengagementScenarioRollout: {
-              store_presented_no_reply: true,
-              'store_presented_no_reply:invite': true,
-            },
-          },
+          { reengagementScenarioRollout: { store_presented_no_reply: false } },
           undefined,
           'invite',
         ),
-      ).toBe(true);
+      ).toBe(false);
+      const inviteOff = {
+        reengagementScenarioRollout: {
+          store_presented_no_reply: true,
+          'store_presented_no_reply:invite': false,
+        },
+      };
+      expect(resolveRolloutEnabled(scenario, inviteOff, undefined, 'invite')).toBe(false);
+      expect(resolveRolloutEnabled(scenario, inviteOff)).toBe(true);
     });
   });
 });

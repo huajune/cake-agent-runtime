@@ -265,7 +265,8 @@ export const FOLLOW_UP_SCENARIOS: readonly FollowUpScenario[] = [
     generationPolicy:
       '确认候选人是否已顺利入职、有没有遇到问题，需要协助可以直接说；不得断言候选人已入职或未入职，不施压、不催报到',
     relevantFactLabels: [],
-    defaultRolloutEnabled: false,
+    // 0820 裁定：三档发版即开，不设 shadow 期（D+3 延迟天然缓坡，首周盯告警误报）。
+    defaultRolloutEnabled: true,
   },
   {
     code: 'new_job_for_waiting',
@@ -360,6 +361,11 @@ export function parseInterviewTimestamp(raw: unknown): number | undefined {
  *
  * - 场景开关：托管配置 reengagementScenarioRollout[code]，未配置回退 defaultRolloutEnabled
  * - 报名后场景（post_booking）还要求 reengagementPostBookingEnabled=true
+ * - 变体档位（d2 确认 / 拉群升档）**从属于场景开关**：场景关则变体必关——配置页
+ *   目前没有子键控件，Dashboard 的场景行就是变体的急停出口，不能让变体越过它。
+ *   子键（`interview_reminder:d2` / `store_presented_no_reply:invite`）是变体级
+ *   细粒度覆盖：缺省开（0820 裁定三档发版即开，不设 shadow 期），显式 false 可
+ *   单独关变体而不影响场景本档。
  *
  * 返回 false 时到点任务照常走判断与生成，但只 shadow 记录不投递。
  */
@@ -369,17 +375,19 @@ export function resolveRolloutEnabled(
   variant?: FollowUpTouchVariant,
   childVariant?: 'invite',
 ): boolean {
-  const variantKey =
-    childVariant === 'invite' && scenario.code === 'store_presented_no_reply'
-      ? 'store_presented_no_reply:invite'
-      : resolveVariantConfigKey(scenario.code, variant);
-  const scenarioEnabled = variantKey
-    ? (config.reengagementScenarioRollout?.[variantKey] ?? false)
-    : (config.reengagementScenarioRollout?.[scenario.code] ?? scenario.defaultRolloutEnabled);
+  const scenarioEnabled =
+    config.reengagementScenarioRollout?.[scenario.code] ?? scenario.defaultRolloutEnabled;
   if (!scenarioEnabled) return false;
   // 大开关缺失视为开（不收紧），只有显式 false 才拦报名后场景
   if (scenario.phase === 'post_booking' && config.reengagementPostBookingEnabled === false) {
     return false;
+  }
+  const variantKey =
+    childVariant === 'invite' && scenario.code === 'store_presented_no_reply'
+      ? 'store_presented_no_reply:invite'
+      : resolveVariantConfigKey(scenario.code, variant);
+  if (variantKey) {
+    return config.reengagementScenarioRollout?.[variantKey] ?? true;
   }
   return true;
 }

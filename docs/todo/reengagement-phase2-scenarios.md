@@ -96,7 +96,7 @@
 
 ### 2.5 灰度
 
-`resolveRolloutEnabled` 增加变体子键判定：确认档由 `reengagementScenarioRollout['interview_reminder:d2']` 独立控制（缺省 **false**，先 shadow），到场档维持既有开关不受影响。同一 `Record<string, boolean>` 放子键，零 schema 变更。
+`resolveRolloutEnabled` 增加变体子键判定（0820 终版口径）：变体**从属于场景开关**——`interview_reminder` 场景关则两档全关（Dashboard 场景行即急停出口）；子键 `reengagementScenarioRollout['interview_reminder:d2']` 是变体级细粒度覆盖，**缺省 true（发版即开，不设 shadow 期）**，显式 false 可单独关确认档不影响到场档。同一 `Record<string, boolean>` 放子键，零 schema 变更。
 
 ### 2.6 已知取舍
 
@@ -131,7 +131,7 @@
   triggerDelayMs: 3 * DAY,                  // anchorAt = interviewPassTime
   delayMode: 'after_anchor',
   defaultDelayMinutes: 4320,
-  defaultRolloutEnabled: false,
+  defaultRolloutEnabled: true,   // 0820 终版裁定：发版即开
 }
 ```
 
@@ -217,7 +217,7 @@ async invite(input: {
 - **不管候选人回不回答直接拉群** = 文案与邀请卡片同一次触达先后发出，不等待回复（需求原文口径）。
 - 文案策略：询问是否对新推岗位不感兴趣 + 预告拉群（"我拉你进兼职群，有新岗位第一时间能看到"）。守卫口径兼容：只拦"已拉群"完成时态假宣称，预告式不拦（拉群两轮协议裁定）；且卡片紧随其后，预告即刻兑现。若 invite 失败，预告落空构成轻微空头承诺——列 §7 裁定（备选：文案不提群，卡片自解释）。
 - shadow 语义：shadow 模式下**只生成文案、绝不 invite**（拉群是外部副作用，等价于"不投递"）。
-- 灰度：升档行为由 `reengagementScenarioRollout['store_presented_no_reply:invite']` 子键独立控制（缺省 false）；子键关闭时第 ≥2 轮推店未回退回普通推店未回触达，主场景开关行为不变。
+- 灰度（0820 终版口径）：升档从属于 `store_presented_no_reply` 场景开关（场景关则连普通档一起停，Dashboard 可急停）；子键 `reengagementScenarioRollout['store_presented_no_reply:invite']` **缺省 true（发版即开）**，显式 false 时第 ≥2 轮推店未回退回普通推店未回触达，主档不受影响。
 
 ### 4.4 前置条件与降级
 
@@ -238,7 +238,7 @@ async invite(input: {
 - **Dashboard**：场景清单以后端 registry 为单一来源；入职跟进档自动出现（显示名已带"面试后回访 ·"前缀标明家族），`web/src/view/reengagement/list/constants.ts` 兜底文案补 1 行；两个变体档在追溯页归并于既有场景名下，经由 anchor_event_id 后缀 / payload 变体标记区分明细。
 - **观测**：`reengagement_touch_records` 无 schema 变更；新增停止/跳过原因字面量：`signup_interview_gap_lt_3d` / `interview_too_close` / `already_onboarded` / `work_order_regressed` / `onboarding_intervention_dispatched` / `invite_failed:*` / `invite_skipped:no_city`。拉群结果必须落底账或 `ops_events`，不允许只打日志；人工介入落 `handoff_events`（新 reason_code）+ 飞书卡片。
 - **文档**：`docs/product/reengagement.md` §5 三个场景小节各补"二期优化"段 + §9.3/9.4 状态字典补新原因；`docs/architecture/reengagement-pipeline.md` §3 注册表与变体机制更新；`docs/product/invite-to-group.md` 补"复聊触发来源"一节。
-- **灰度**：三项优化全部缺省关闭（两个变体子键 + 入职跟进档 defaultRolloutEnabled=false），先 shadow，复用一期上线门槛（任务创建合理率 ≥95%、严格可用率 ≥85%、硬错误 0）与放量 SOP。推店拉群档的 shadow 评审要额外抽查"触发时机是否真的是扩面后的沉默"（资格判定质量），入职跟进档要额外抽查人工介入卡片的到达与处置。
+- **灰度（0820 终版裁定：三档发版即开，不设 shadow 期）**：两个变体子键缺省 true、入职跟进档 defaultRolloutEnabled=true；生产全局已是真实发送模式（enabled=true / shadow=false / 报名后大开关=true，2026-08-20 查证），`store_presented_no_reply` 场景运行时已开——发版即三档真发。急停出口：Dashboard 场景行（变体从属场景开关）、报名后大开关、全局运行状态。首日观察项见 §6.5。
 
 ---
 
@@ -345,7 +345,7 @@ async invite(input: {
 **C3 载荷与灰度**
 
 - [ ] `FollowUpJob.escalateToGroupInvite?: boolean`（scheduler 透传）。
-- [ ] `resolveRolloutEnabled` 子键 `store_presented_no_reply:invite`（缺省 false）；子键关闭 = 降级普通档（文案不预告拉群、不 invite），主场景开关行为不变。
+- [ ] `resolveRolloutEnabled` 子键 `store_presented_no_reply:invite`（0820 终版：缺省 true、从属场景开关）；子键显式关 = 降级普通档（文案不预告拉群、不 invite），主场景开关行为不变。
 
 **C4 到点编排 — `src/agent/reengagement/follow-up.processor.ts`**
 
@@ -426,27 +426,31 @@ async invite(input: {
 
 ### 6.5 上线顺序与放量节奏
 
-> 0820 用户裁定更新：按档位风险分级放量，低风险档不设 shadow 观察期。
+> 0820 终版裁定：**三档全部发版即开，不设 shadow 观察期**。默认值已翻在代码里（两个变体子键缺省 true、入职跟进档 defaultRolloutEnabled=true），无需任何配置操作。
+> 风险评级修订依据：①拉群对 ≥40 人群是**邀请卡片**（候选人点确认才进群），<40 人小群才直拉，误触发伤害 ≈ 一条可无视的消息；②生产查证（2026-08-20）`store_presented_no_reply` 场景运行时早已真发，"基础场景未验"论点不成立；③需求原文本就是无条件拉群，触发口径宽一点不构成错发。
 
-1. `interview_reminder:d2`（低风险：确定性骨架复用一期已真发的面试提醒，失败模式是"少发"而非"错发"）：合入发版后**直接开真发**，开关当天抽查触达底账与两档互认（到场档不因确认档被判重跳过）。
-2. PR-B 拉群编排重构合入即生效（零行为变更），主链拉群指标观察 1–2 天，异常即回滚。
-3. `post_interview_onboarding`（中风险：新链路+内向告警；话术 blocker 已裁定解除）：发版后**直接开真发**；D+3 延迟天然构成缓坡，首周盯 `reengagement_touch_records` 触达文案与 `handoff_events` 入职告警是否误报轰炸负责人。
-4. `store_presented_no_reply:invite`（高风险：不可逆外部动作 + 触发口径零数据验证 + 基础场景未真发过）：**保留 shadow 抽 1–2 天触发质量样本**（是否真扩面后沉默），过裁定 #4/#5 后再开。
-5. 异常按一期 SOP 切回 shadow 或总开关急停；硬错误率门槛与一期一致（0 容忍）。开 d2 / 入职跟进真发前需先解决配置页变体子键无控件问题（小 PR 或一次性写 `system_config`）。
+发版后首日观察项（运维动作，不是门槛）：
+
+1. 确认档：抽查 `anchor_event_id LIKE '%:d2'` 的触达文案与两档互认（到场档不因确认档被 LLM 判重跳过）。
+2. 拉群档：看升档触达量级与 `group_invite_result` 事件分布（`invite_succeeded` / `invite_failed:*` / `invite_skipped:no_city`）；量级异常大或失败率异常高再收。
+3. 入职跟进：D+3 延迟天然缓坡，首周盯 `handoff_events` 两个新 reason_code 是否误报轰炸负责人。
+4. PR-B 拉群编排重构零行为变更，观察主链 `ops_events(group.invited)` 日量与 errcode 分布不变。
+5. 急停出口：Dashboard 场景行开关（变体从属场景开关：关"面试提醒"= 两档全停，关"推店未回"= 普通档+拉群档全停）、报名后大开关、全局运行状态切 Shadow/关闭。变体子键（显式 false 单独关某档）暂只能写 `system_config`，配置页子键控件是后续小 PR。硬错误口径与一期一致（0 容忍）。
 
 ---
 
-## 7. 待裁定项（真发前逐条确认）
+## 7. 裁定项台账（0820 大部分已裁定）
 
-| # | 事项 | 建议 | 影响 |
-| - | ---- | ---- | ---- |
-| 1 | 入职跟进是否需要聊天轨（新增会话事实 + 回合收尾检测「面试通过」自陈） | 一阶段只做工单轨；shadow 数据出来后按漏检率裁定 | 二阶段范围 |
-| 2 | 入职跟进人工介入是否暂停托管 | 告警不暂停（保留 AI 应答；暂停留给真人明确接管） | PR-D 一行分支 |
-| 3 | 入职复核时点与口径（触达后 +48h？"候选人未回复且工单未推进"是否即算未入职） | +48h；工单未到「上岗成功」即转人工，由人判断 | PR-D |
-| 4 | 扩面口径：第 ≥2 轮推店未回是否即等于"已扩大范围"（对齐 0820 主链 2 轮上限） | 是，一阶段用轮次口径；查询签名变化留作收窄增强 | PR-C |
-| 5 | 拉群档文案是否预告拉群（invite 失败时预告落空）还是卡片自解释 | 预告 + 卡片紧随（守卫只拦完成时态，兼容）；失败率高再改 | 文案策略 |
-| 6 | 确认档触达钟点：`interviewAt - 48h`（随面试钟点）vs 固定 D-2 上午 10 点 | 随面试钟点（实现最简，落点基本在日间） | PR-A |
-| 7 | 一期遗留 9–21 点静默窗口是否随二期一并落地（确认档/入职跟进均为固定时点触达） | 建议随二期真发前统一实现，一次覆盖全场景 | 独立小 PR |
+| # | 事项 | 状态 |
+| - | ---- | ---- |
+| 1 | 入职跟进是否需要聊天轨（检测「面试通过」自陈） | **开放**：一阶段只做工单轨（已实现）；真发数据出来后按漏检率裁定是否做二阶段 |
+| 2 | 入职跟进人工介入是否暂停托管 | **已裁定（0820，随发版即开一并认可）**：告警不暂停，保留 AI 应答 |
+| 3 | 入职复核时点与口径 | **已裁定（同上）**：触达后 +48h；工单未到「上岗成功」即转人工，由人判断 |
+| 4 | 扩面口径：第 ≥2 轮推店未回 = "已扩大范围" | **已裁定（0820 发版即开）**：轮次口径生效；查询签名变化留作后续收窄增强 |
+| 5 | 拉群档文案预告拉群 vs 卡片自解释 | **已裁定（同上）**：预告 + 卡片紧随；invite 失败率异常再改 |
+| 6 | 确认档触达钟点：`interviewAt - 48h` vs 固定 D-2 上午 10 点 | **开放（按默认随面试钟点先跑）**：真发后不满意再改常量 |
+| 7 | 一期遗留 9–21 点静默窗口 | **开放**：实现已归档 `feat/reengagement-quiet-window`（指向 36f89547）；重启时必须补 before_interview 场景豁免 + 灰度开关，独立小 PR |
+| 8 | 复聊话术是否需要运营固定模板 | **已裁定（0820）**：不需要，模型按 generationPolicy 生成即最终口径 |
 
 ---
 
