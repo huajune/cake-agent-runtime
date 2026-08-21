@@ -20,7 +20,7 @@
 | precheck 描述 13,517 → 729 字符（2026-08，收资状态机 #1023 接管） | 40+ 条硬规则实为"用自然语言写的状态机转移表"，badcase 修复逐条垒成；状态机用代码接管行为后描述归零头 | 行为逻辑寄生提示词是最大膨胀源 |
 | 守卫硬规则 30 → 10 条（2026-07~10 大下线） | 同一单向棘轮病在守卫层的表现 | 只有加法算子的系统必然腐烂 |
 
-## 2. 八条原则
+## 2. 九条原则
 
 ### C1 注意力预算是第一稀缺资源，成本交给缓存
 
@@ -73,6 +73,27 @@ final-check 置于 prompt 末尾 ≈ Manus recitation——把收口要求拉进
 
 三种变更纪律分裂本身是设计缺陷；**零 review 的居所（DB 阶段策略文本，Dashboard 可改）是最危险居所**——它每回合渲染进 prompt 却从未被审计过。任何新增内容居所必须同时回答"谁审、怎么审、多大算超"。
 
+### C9 harness 两分法与松绑就绪（2026-08-21 裁定）
+
+Agent = Model + Harness，而 bitter lesson 正在 harness 上应验：模型持续吸收脚手架（思维链→推理模型、
+工具编排→工具训练、检索管道→长上下文），"为 2026 年模型能力打造的 harness 是一件 2026 年的文物"。
+但 harness 分两种，折旧规律**相反**：
+
+| | 判断替代型 | 不变量保障型 |
+|---|---|---|
+| 干什么 | 替模型思考：SOP、强制流程、二次审查模型输出的链路 | 维护业务事实与安全：校验、公证、事务、去重、管道 |
+| 折旧 | 随模型能力折旧，模型越强越碍事 | **不随模型折旧**（编码业务不变量，非模型弱点补丁） |
+| 处置 | 松绑对象，须自带退场机制 | 保留甚至加强 |
+| 本库 | 手册 SOP 规则群、守卫 LLM 语义审查（enforce 已关）、repair 链（已宣告破产待复盘）、turn-hints 教学块 | 收资状态机、P11 裁决权、booking guards、debounce 管道、记忆 pipeline、"完成时态假宣称"类确定性拦截 |
+
+三条纪律：
+
+1. **新增判断替代型 harness 必须自带退场机制**（shadow 档 / 开关 / 分批删+回归闸）——本库先例：守卫 enforce/shadow 双档、硬规则 30→10 批次下线、P3 删规则证据门控；
+2. **折旧率按实际在跑的模型计**：本库主模型 qwen3.7-plus 非前沿、且未与本 harness 共同后训练（业界敢激进松绑的两个前提均不具备），松绑一律证据门控，禁止跟风拆；
+3. **禁止反向松绑**：不得以"模型变强了"为由把业务真值维护交还模型。C3 与松绑同向（都让 prompt 变薄），反模式是两个极端——用 harness 替模型思考（过度绑）、让模型维护业务真值（过度松）。
+
+与 Claude Code 设计哲学同构："信任模型的局部判断，把执行关进高度确定性、最小侵入的操作 harness"——本库 P11（模型作证、代码公证、本人终审）即此形状。
+
 ## 3. 骨架健康清单（业界对照，2026-08-21 检索）
 
 本库已与业界前沿一致、**禁止倒退**的设计：
@@ -106,3 +127,7 @@ final-check 置于 prompt 末尾 ≈ Manus recitation——把收口要求拉进
 - [Skills vs MCP Explained: AI Agent Tools Guide](https://duet.so/guides/agent-skills-101-tools-vs-mcp-vs-skills)
 - [MCPs vs Agent Skills: Understanding the Difference](https://www.damiangalarza.com/posts/2026-02-05-mcps-vs-agent-skills/)
 - [Context Engineering: A Practical Guide for AI Agents（Sourcegraph）](https://sourcegraph.com/blog/context-engineering)
+- [AI Agent Harness, 3 Principles for Context Engineering, and the Bitter Lesson Revisited](https://hugobowne.substack.com/p/ai-agent-harness-3-principles-for)（C9：模型吸收 harness 的折旧论）
+- [Hidden Technical Debt of AI Systems: Agent Harness](https://leehanchung.github.io/blogs/2026/05/08/hidden-technical-debt-agent-harness/)
+- [Scaffolding is coping not scaling — lessons from Codex（LinearB 播客）](https://linearb.io/dev-interrupted/podcast/openai-codex-thibault-sottiaux-agentic-autonomy)
+- [Dive into Claude Code: The Design Space of AI Agent Systems](https://arxiviq.substack.com/p/dive-into-claude-code-the-design)（"信任局部判断+确定性执行 harness"的出处）

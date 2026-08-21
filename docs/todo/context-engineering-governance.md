@@ -127,6 +127,12 @@
 8. **手册低频规程 Skill 化，加为 P3-4 实验项**（用户拍板）——模型按需拉取 playbook（进 messages 后缀，
    不碰前缀缓存），是被降级的 P2-2 分片的缓存友好替代路径。
 
+**第四轮（2026-08-21，松绑 harness 专题）**：
+9. **harness 两分法与松绑就绪立为原则 C9**（用户拍板，全文见 principles/context-engineering-principles.md）——
+   判断替代型 harness（随模型折旧、新增须自带退场机制）vs 不变量保障型（不折旧、禁止交还模型）。
+   定性：P3 删规则即本库判断替代型 harness 的首个系统性松绑工作流；守卫 30→10、语义审查 enforce 关闭、
+   repair 链破产等既有裁定获行业趋势追认。松绑一律证据门控（qwen3.7-plus 非前沿、未与本 harness 共同后训练）。
+
 ### 行业对照结论（2026-08-21 调研）
 
 **已与前沿一致的设计（增强"骨架健康"清单）**：prepareStep activeTools 屏蔽 + 13 工具常挂 ≈ Manus "mask,
