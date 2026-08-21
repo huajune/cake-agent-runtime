@@ -11,7 +11,7 @@
 | 角色 / 目标         | 建议入口                                                                                                                                                          |
 | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 快速了解系统全貌    | [系统宣讲说明书](cake-agent-runtime-overview.md) → [Agent 运行时架构](architecture/agent-runtime-architecture.md)                                                 |
-| 产品 / 运营         | [产品定义](product/product-definition.md)、[Agent 运营手册](product/agent-for-operations.md)、[业务流程](product/business-flows.md)                               |
+| 产品 / 运营         | [产品定义](product/product-definition.md)、[Agent 运营手册](product/agent-for-operations.md)                               |
 | 新人研发入门        | [开发指南](guides/development-guide.md) → [Agent 运行时架构](architecture/agent-runtime-architecture.md) → [记忆系统](architecture/memory-architecture.md) |
 | 做可靠性 / 守卫改进 | [安全护栏说明](architecture/security-guardrails.md) + [Guardrail 质量体系](architecture/guardrail-quality-system.md)                        |
 | 改候选人事实链路    | [候选人档案域架构](architecture/candidate-profile-domain.md)（域宪法）→ [记忆系统](architecture/memory-architecture.md)                                    |
@@ -85,8 +85,6 @@
 ## 📋 产品 (product/)
 
 - **[产品定义](product/product-definition.md)** — 定位、用户角色、核心功能
-- **[业务流程详细说明](product/business-flows.md)** — 候选人招聘全流程 + 群聊管理
-- **[产品规划路线图](product/product-roadmap.md)** — 版本规划与功能优先级
 - **[复聊功能产品说明](product/reengagement.md)** — 主动跟进的场景、触发/停止规则、内容规范、灰度、指标与验收口径
 - **[Agent 运营手册（理解系统+日常操作）](product/agent-for-operations.md)** ⭐ — 运营向：消息旅程、记忆、工具清单、剧本、可调项、排查（原 product-view + agent-workflow 合并）
 - **[敏感信息与安全护栏全景（运营版）](product/sensitive-info-guardrails-for-operations.md)** — 公平性/诚信/隐私保护与运营处置指引（技术侧见 [security-guardrails.md](architecture/security-guardrails.md)）
@@ -94,7 +92,6 @@
 - **[群任务定时通知系统](product/group-task.md)** — 群任务产品设计（运行时见 [group-task-pipeline.md](architecture/group-task-pipeline.md)）
 - **[运营数据体系 + 海绵集成 产品设计](product/ops-data-and-sponge-integration.md)** — ops_events 数据模型设计（研发向；顶部含实现校准记录）
 - **[运营数据体系 · 产品说明](product/ops-data-spec-for-operations.md)** — 上文的运营使用说明（日报/Web/埋点三出口）
-- **[收资流字段去重与一次成型](product/collection-flow-dedup-requirement.md)** — 已知字段扣除、字段集去重与缺口式追问需求草案
 
 ---
 
