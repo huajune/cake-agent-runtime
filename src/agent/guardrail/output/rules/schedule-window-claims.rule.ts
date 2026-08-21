@@ -30,7 +30,7 @@ const WEEKLY_CAP_CLAUSE_BOUNDARY_PATTERN = /[，,。！？；;\n]/u;
 const HISTORICAL_CAP_MARKERS = ['以前', '之前', '原来', '过去'] as const;
 const CURRENT_CAP_MARKERS = ['现在', '目前', '如今', '当前'] as const;
 const WORK_REST_CYCLE_PATTERN = /做\s*([一二两三四五六七1-7])\s*休\s*([一二两三四五六七1-7])/gu;
-const CYCLE_CLAUSE_BOUNDARY_PATTERN = /[，,；;]/u;
+const CLAUSE_BOUNDARY_PATTERN = /[，,；;]/u;
 const POSITIVE_CYCLE_PREFIX_PATTERN =
   /(?:需要|建议|推荐|可以|可|不妨)(?:再|去|优先)?(?:考虑|选择|选|找|看看|采用)?[^，,；;。！？\n]{0,40}$/u;
 const POSITIVE_CYCLE_SUFFIX_PATTERN =
@@ -100,14 +100,14 @@ function resolveActiveWeeklyCap(
 function findClauseBounds(sentence: string, start: number, end: number): [number, number] {
   let clauseStart = 0;
   for (let index = start - 1; index >= 0; index -= 1) {
-    if (!CYCLE_CLAUSE_BOUNDARY_PATTERN.test(sentence[index])) continue;
+    if (!CLAUSE_BOUNDARY_PATTERN.test(sentence[index])) continue;
     clauseStart = index + 1;
     break;
   }
 
   let clauseEnd = sentence.length;
   for (let index = end; index < sentence.length; index += 1) {
-    if (!CYCLE_CLAUSE_BOUNDARY_PATTERN.test(sentence[index])) continue;
+    if (!CLAUSE_BOUNDARY_PATTERN.test(sentence[index])) continue;
     clauseEnd = index;
     break;
   }
@@ -195,6 +195,20 @@ function hasAffirmativeScheduleAssurance(text: string): boolean {
   return false;
 }
 
+function hasEllipticalScheduleAssuranceOutsideClause(
+  sentence: string,
+  clauseStart: number,
+  clauseEnd: number,
+): boolean {
+  const outsideParts = [sentence.slice(0, clauseStart), sentence.slice(clauseEnd)];
+  return outsideParts.some((part) =>
+    part.split(CLAUSE_BOUNDARY_PATTERN).some((clause) => {
+      if (!SCHEDULE_ASSURANCE_PATTERN.test(clause)) return false;
+      return extractTimeRanges(clause).size === 0;
+    }),
+  );
+}
+
 function isExemptWindowMention(sentence: string, start: number, end: number): boolean {
   const [clauseStart, clauseEnd] = findClauseBounds(sentence, start, end);
   const prefix = sentence.slice(clauseStart, start);
@@ -209,7 +223,9 @@ function isExemptWindowMention(sentence: string, start: number, end: number): bo
   }
   const clause = sentence.slice(clauseStart, clauseEnd);
   return (
-    CANDIDATE_WINDOW_ECHO_PREFIX_PATTERN.test(prefix) && !SCHEDULE_ASSURANCE_PATTERN.test(clause)
+    CANDIDATE_WINDOW_ECHO_PREFIX_PATTERN.test(prefix) &&
+    !SCHEDULE_ASSURANCE_PATTERN.test(clause) &&
+    !hasEllipticalScheduleAssuranceOutsideClause(sentence, clauseStart, clauseEnd)
   );
 }
 
