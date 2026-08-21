@@ -1,7 +1,7 @@
 {
   "baseVersion": "10.44.0",
   "nextVersion": "10.45.0",
-  "updatedAt": "2026-08-19",
+  "updatedAt": "2026-08-21",
   "sourceBranch": "develop",
   "entries": [
     {
@@ -44,6 +44,31 @@
       ],
       "optimizations": [],
       "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": []
+    },
+    {
+      "number": "1022",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1022",
+      "title": "新增 analyze-guardrail 守卫效果分析 skill",
+      "author": "huajune",
+      "mergedAt": "2026-08-21",
+      "businessUpdates": [
+        "新增 analyze-guardrail 守卫效果分析 skill"
+      ],
+      "summary": [
+        "新增 analyze-guardrail 守卫效果分析 skill",
+        "analyze-guardrail 补规则存续期核验步骤"
+      ],
+      "features": [
+        "新增 analyze-guardrail 守卫效果分析 skill"
+      ],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "analyze-guardrail 补规则存续期核验步骤"
+      ],
       "config": [],
       "envFiles": [],
       "verification": []
