@@ -74,6 +74,14 @@ interface LongTermMemory {
 
 **M3 登记项（随本设计新增）**：① jobIntent 内部软/硬/时间三分（preferences/constraints/availability）——软硬分离在结构上根治"硬约束被当偏好淡化"的暗示，与 M3 分家同性质合并做；② `lastSettledBySession`/`lastSettledMessageAt` 是 consolidation 水位簿记，混在摘要数据里名实有瑕，M3 一并考虑挪位。
 
+### M2-C memory 模块目录按生命周期轴重组（2026-08-21 设计，**待批准执行**）
+
+用户观察：services/ 平铺，目录结构未体现四层结构图。目标：代码树 = 结构图。
+
+- 四层各立目录：`short-term/`、`session/`（brand-state/candidate-snapshot/session-key 辅件归位，为 M3 分家后两服务预备）、`stage-state/`、`long-term/`（**consolidation 归位**——沉淀是长期层的写入管道）；类型跟层走（session-facts/stage-state/long-term 各随其层）。
+- 留根部/共享位：facade（memory.service）、lifecycle（跨层编排）、stores/、formatters/、memory-runtime.types（跨层）。
+- 性质：纯 git mv + import 路径更新，零行为变更；先例=工具层目录终态重排（cdd173a2，"散件跟主人走"）；全库测试 + typecheck 闸。
+
 ### M3 会话记忆"事实/工作台"分家
 
 - **边界裁定（2026-08-21 用户拍板）**：工作台 = `lastCandidatePool` / `presentedJobs` / `currentFocusJob` / `lastJobListQuery`（注意力/查询状态，覆盖写+cap）；**`invitedGroups` 归事实侧**（episodic 性质的已发生事件，复聊停发判定消费它）。
