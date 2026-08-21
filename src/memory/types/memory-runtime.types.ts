@@ -1,4 +1,4 @@
-import type { JobIntentFacts, SemanticMemory, UserProfileFacts } from '../long-term/long-term.types';
+import type { SemanticMemory } from '../long-term/long-term.types';
 import type { StageState } from './stage-state.types';
 import type { ShortTermMessage } from './short-term.types';
 import type { WeworkSessionState } from '../session/session-facts.types';

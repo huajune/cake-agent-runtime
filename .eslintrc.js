@@ -124,7 +124,7 @@ module.exports = {
     {
       // 并发避让：这两份文件由另一会话修改，本提交不得触碰；后续单独清扫后移除豁免。
       files: [
-        'src/agent/generator/preparation.service.ts',
+        'src/agent/generator/working-memory/preparation.service.ts',
         'src/tools/duliday-interview-booking.tool.ts',
       ],
       rules: {

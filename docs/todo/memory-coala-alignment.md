@@ -1,6 +1,6 @@
 # 记忆体系 CoALA 对齐（上下文治理二期）
 
-> 状态：**已立项，启动条件已满足**（2026-08-21 立项；同日[一期收官](./context-engineering-governance.md)——全部项目已执行或已裁决），待用户批准启动。
+> 状态：**二期收官（2026-08-21 用户"一口气执行到底"批准后当日完成）**——M1 关闭（观察项）、M1-B ✅、M2 ✅、M2-B ✅（DB 迁移测试库已验、生产随发版）、M2-C ✅、M3 ✅；M4 观察项。
 > 理论基础：[principles/context-engineering-principles.md](../principles/context-engineering-principles.md)（C1~C9）+ [glossary](../principles/glossary.md)「CoALA 记忆四分法」词条 + CoALA（arXiv 2309.02427，见 [industry-sources](../principles/industry-sources.md)）。
 > 一句话：**一期给程序记忆减肥，二期给程序记忆上户口**——让 procedural 层享受与情景/语义层同等的记忆治理待遇。
 
@@ -88,12 +88,11 @@ interface LongTermMemory {
   ③ **两舱落到文件级**（M3 范围升级）：session.service 拆 `session/facts.service.ts`（事实舱）+ `session/workbench.service.ts`（工作台舱）；brand-state 归事实舱域、candidate-snapshot 归工作台域。
 - 性质：纯 git mv + import 路径更新，零行为变更（M3 拆分除外——拆分是结构改造走 M3 批）；先例=工具层目录终态重排（cdd173a2，"散件跟主人走"）；全库测试 + typecheck 闸。
 
-### M3 会话记忆"事实/工作台"分家
+### M3 会话记忆"事实/工作台"分家——✅ **已执行（2026-08-21）**
 
-- **边界裁定（2026-08-21 用户拍板）**：工作台 = `lastCandidatePool` / `presentedJobs` / `currentFocusJob` / `lastJobListQuery`（注意力/查询状态，覆盖写+cap）；**`invitedGroups` 归事实侧**（episodic 性质的已发生事件，复聊停发判定消费它）。
-- **语义事实**（facts：置信度合并、extractedAt 时间锚）与工作台状态**在文件级分离**（见 M2-C 追加设计：facts.service / workbench.service 两文件两舱），治理策略各归其位。
-- 随 M2-B 登记项：jobIntent 软/硬/时间三分、consolidation 水位簿记挪位（见 M2-B 节）。
-- ⚠️ 约束：`active_booking` 行为冻结裁定在先——涉及处仅零行为整洁化。
+- 实现形态：`session/facts.service.ts`（事实舱=状态所有者：状态存取/事实读写/LLM 提取/已发生事件——**invitedGroups/terminal/活动水位按裁定归此舱**）+ `session/workbench.service.ts`（工作台舱：candidatePool/presentedJobs/**currentFocusJob**/lastJobListQuery，状态 IO 经事实舱）+ **SessionService 保留为薄 facade**（1:1 委托，公共 API 不变——26 个跨域注入点零波及，与 memory.service facade 惯例同构）。
+- 验证：全库 6,768 测试 + typecheck 0 + lint:check 全绿（含 eslintrc 豁免路径随文件搬家同步）。
+- 遗留登记（不在本批）：jobIntent 软/硬/时间三分、consolidation 水位簿记挪位——等收资契约 v2 或下次记忆域批次；`active_booking` 冻结区未触碰。
 
 ### M4 观察项（登记不承诺）
 
@@ -112,10 +111,11 @@ src/memory/                                  ═══ 记忆四层（生命周�
 │   ├── memory-lifecycle.service.ts          # 跨层编排（读四层/写回/触发沉淀）
 │   ├── short-term.service.ts                # ① 短期窗口——单文件平铺，文件名即层名
 │   └── stage-state.service.ts               # ③ 阶段状态（原"程序记忆"）✅名——同上
-├── session/                                 # ② 会话记忆 Ⓒ（目录）+ Ⓜ（分舱）
-│   ├── facts.service.ts                     #    事实舱（semantic 性质）：置信度合并/extractedAt/公证准入 Ⓜ
+├── session/                                 # ② 会话记忆 ✅Ⓒ（目录）+ ✅Ⓜ（分舱）
+│   ├── session.service.ts                   #    薄 facade：1:1 委托两舱，26 注入点零波及 ✅
+│   ├── facts.service.ts                     #    事实舱（semantic）：状态所有者/事实读写/提取/已发生事件 ✅
 │   ├── workbench.service.ts                 #    工作台舱（working state）：candidatePool/presentedJobs/
-│   │                                        #    currentFocusJob/lastJobListQuery，覆盖写+cap Ⓜ
+│   │                                        #    currentFocusJob/lastJobListQuery，覆盖写+cap ✅
 │   ├── brand-state.service.ts               #    品牌真相=事实，归事实舱域 Ⓒ
 │   ├── candidate-snapshot.service.ts        #    precheck→booking 事务快照，归工作台域 Ⓒ
 │   ├── session-key.ts / session-facts.types.ts  # 类型跟层走 Ⓒ

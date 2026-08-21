@@ -23,7 +23,6 @@ import {
   isOfflineInterviewMethod,
 } from '@tools/job-list/job-policy-parser';
 import { isUserProfileFactValue, type UserProfileFacts } from '@memory/long-term/long-term.types';
-import type { TurnLedger } from '@shared-types/turn.types';
 import type { WeworkSessionState } from '@memory/session/session-facts.types';
 import type { RecommendedJobSummary } from '@resolution/job/types';
 import { AlertLevel } from '@enums/alert.enum';
@@ -53,7 +52,7 @@ import { resolveToolsForMode, wrapToolsWithTiming } from './tool-set.util';
 import { buildToolContext } from './tool-context.builder';
 import { createTurnLedger } from './turn-ledger';
 import { renderPromptBlocks } from '../context/sections/section.interface';
-import type { CorpusBlock, PromptCorpusBlock } from '@shared-types/corpus.types';
+import type { PromptCorpusBlock } from '@shared-types/corpus.types';
 
 export type { WorkingMemory } from './working-memory.types';
 

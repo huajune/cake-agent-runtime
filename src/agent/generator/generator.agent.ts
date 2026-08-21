@@ -7,10 +7,7 @@ import { hasToolCall, stepCountIs, type generateText } from 'ai';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
 import { ModelRole } from '@/llm/llm.types';
 import { MemoryService } from '@memory/memory.service';
-import {
-  PreparationService,
-  type WorkingMemory,
-} from './working-memory/preparation.service';
+import { PreparationService, type WorkingMemory } from './working-memory/preparation.service';
 import type { AgentError } from '@shared-types/agent-error.types';
 import type { TurnLedger } from '@shared-types/turn.types';
 import {
@@ -647,10 +644,7 @@ export class GeneratorAgent {
     }
   }
 
-  private buildEmptyTextRecoveryPrompt(
-    result: GeneratorRunResult,
-    ctx: WorkingMemory,
-  ): string {
+  private buildEmptyTextRecoveryPrompt(result: GeneratorRunResult, ctx: WorkingMemory): string {
     const transcript = result.agentSteps.map((step) => ({
       stepIndex: step.stepIndex,
       finishReason: step.finishReason,
@@ -739,10 +733,7 @@ export class GeneratorAgent {
   }
 
   private createEmptyMessagesError(
-    ctx: Pick<
-      WorkingMemory,
-      'sessionId' | 'userId' | 'normalizedMessages' | 'memoryLoadWarning'
-    >,
+    ctx: Pick<WorkingMemory, 'sessionId' | 'userId' | 'normalizedMessages' | 'memoryLoadWarning'>,
   ): AgentError {
     return this.enrichAgentError(
       new Error(
@@ -755,10 +746,7 @@ export class GeneratorAgent {
 
   private enrichAgentError(
     err: unknown,
-    ctx: Pick<
-      WorkingMemory,
-      'sessionId' | 'userId' | 'normalizedMessages' | 'memoryLoadWarning'
-    >,
+    ctx: Pick<WorkingMemory, 'sessionId' | 'userId' | 'normalizedMessages' | 'memoryLoadWarning'>,
   ): AgentError {
     let error: AgentError;
     if (err instanceof Error) {

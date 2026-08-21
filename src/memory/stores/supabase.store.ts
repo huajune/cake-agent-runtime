@@ -29,7 +29,9 @@ import type { MemoryEntry, MemoryStore } from './store.types';
 
 const TABLE = 'agent_long_term_memories';
 
-function normalizeSessionSummaries(data: SessionSummaries | null | undefined): SessionSummaries | null {
+function normalizeSessionSummaries(
+  data: SessionSummaries | null | undefined,
+): SessionSummaries | null {
   if (!data) return null;
   return {
     recent: data.recent ?? [],
@@ -57,9 +59,7 @@ function normalizeProfileFacts(data: UserProfileFacts | null | undefined): UserP
   return hasValue ? facts : null;
 }
 
-function normalizeJobIntentFacts(
-  data: JobIntentFacts | null | undefined,
-): JobIntentFacts | null {
+function normalizeJobIntentFacts(data: JobIntentFacts | null | undefined): JobIntentFacts | null {
   if (!data || typeof data !== 'object') return null;
   const facts: JobIntentFacts = {};
   const raw = data as Record<string, unknown>;
@@ -216,10 +216,7 @@ export class SupabaseStore implements MemoryStore {
   // ==================== Preference 操作 ====================
 
   /** 读取长期求职意向（consolidation 沉淀的跨会话偏好快照）。 */
-  async getPreferenceFacts(
-    corpId: string,
-    userId: string,
-  ): Promise<JobIntentFacts | null> {
+  async getPreferenceFacts(corpId: string, userId: string): Promise<JobIntentFacts | null> {
     const row = await this.getRow(corpId, userId);
     return normalizeJobIntentFacts(row?.semantic_job_intent ?? null);
   }
@@ -228,7 +225,9 @@ export class SupabaseStore implements MemoryStore {
 
   async getSessionSummaries(corpId: string, userId: string): Promise<SessionSummaries | null> {
     const row = await this.getRow(corpId, userId);
-    return normalizeSessionSummaries((row?.episodic_session_summaries as SessionSummaries | null) ?? null);
+    return normalizeSessionSummaries(
+      (row?.episodic_session_summaries as SessionSummaries | null) ?? null,
+    );
   }
 
   /**

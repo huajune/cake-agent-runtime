@@ -66,7 +66,10 @@ export function buildRecallHistoryTool(memoryService: MemoryService): ToolBuilde
           context.session.botImId,
         );
 
-        if (!sessionSummaries || (sessionSummaries.recent.length === 0 && !sessionSummaries.archive)) {
+        if (
+          !sessionSummaries ||
+          (sessionSummaries.recent.length === 0 && !sessionSummaries.archive)
+        ) {
           logger.debug(`无历史摘要: userId=${context.session.userId}`);
           return { found: false, message: '该用户无历史求职记录' };
         }

@@ -12,6 +12,8 @@ import { SupabaseStore } from './stores/supabase.store';
 import { BrandStateService } from './session/brand-state.service';
 import { ShortTermService } from './services/short-term.service';
 import { SessionService } from './session/session.service';
+import { SessionFactsService } from './session/facts.service';
+import { SessionWorkbenchService } from './session/workbench.service';
 import { StageStateService } from './services/stage-state.service';
 import { LongTermService } from './long-term/long-term.service';
 import { ConsolidationService } from './long-term/consolidation.service';
@@ -46,6 +48,8 @@ import { GeocodingModule } from '@infra/geocoding/geocoding.module';
     BrandStateService,
     ShortTermService,
     SessionService,
+    SessionFactsService,
+    SessionWorkbenchService,
     StageStateService,
     LongTermService,
     ConsolidationService,
@@ -58,6 +62,8 @@ import { GeocodingModule } from '@infra/geocoding/geocoding.module';
     MemoryService,
     CollectionFormService,
     SessionService,
+    SessionFactsService,
+    SessionWorkbenchService,
     LongTermService,
     ShortTermService,
     BrandStateService,

@@ -1,3 +1,5 @@
+import { SessionFactsService } from '@memory/session/facts.service';
+import { SessionWorkbenchService } from '@memory/session/workbench.service';
 import { SessionService } from '@memory/session/session.service';
 import {
   FALLBACK_EXTRACTION,
@@ -64,13 +66,14 @@ describe('SessionService（S1-S6）', () => {
       },
       modelId: 'test/extract',
     });
-    service = new SessionService(
+    const facts = new SessionFactsService(
       redis as never,
       config as never,
       llm as never,
       sponge as never,
       systemConfig as never,
     );
+    service = new SessionService(facts, new SessionWorkbenchService(facts));
   });
 
   const softFacts = (overrides: Record<string, unknown> = {}) =>

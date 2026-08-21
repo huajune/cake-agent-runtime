@@ -357,9 +357,7 @@ export type JobIntentFieldKey = (typeof LONG_TERM_JOB_INTENT_FIELD_KEYS)[number]
  * deepMerge 累积不同——累积语义会让错值/错字变体永远清不掉（张漪 case 的
  * pref.location 教训）。consolidation 是唯一写方。
  */
-export type JobIntentFacts = Partial<
-  Record<JobIntentFieldKey, UserProfileFactValue<unknown>>
->;
+export type JobIntentFacts = Partial<Record<JobIntentFieldKey, UserProfileFactValue<unknown>>>;
 
 /** 便于复用的长期记忆 upsert payload。 */
 export type ProfileUpsertPayload = Partial<UserProfile>;

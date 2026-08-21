@@ -95,7 +95,9 @@ export class ConsolidationService {
       // 否则双 bot 服务同一候选人时，bot A 推进用户级边界后，bot B 边界之前的
       // 会话消息会被快速跳过/查询起点裁掉，永不沉淀。
       const lastSettledAt =
-        sessionSummaries?.lastSettledBySession?.[sessionId] ?? sessionSummaries?.lastSettledMessageAt ?? null;
+        sessionSummaries?.lastSettledBySession?.[sessionId] ??
+        sessionSummaries?.lastSettledMessageAt ??
+        null;
 
       // 快速跳过：若上次沉淀边界距今 < consolidationGapSeconds，不可能存在闭合断层
       if (lastSettledAt) {

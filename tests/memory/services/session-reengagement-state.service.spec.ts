@@ -1,5 +1,7 @@
 import { Test } from '@nestjs/testing';
 import { SessionService } from '@memory/session/session.service';
+import { SessionFactsService } from '@memory/session/facts.service';
+import { SessionWorkbenchService } from '@memory/session/workbench.service';
 import { RedisStore } from '@memory/stores/redis.store';
 import { MemoryConfig } from '@memory/memory.config';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
@@ -41,6 +43,8 @@ describe('SessionService reengagement store presentation state', () => {
     const moduleRef = await Test.createTestingModule({
       providers: [
         SessionService,
+        SessionFactsService,
+        SessionWorkbenchService,
         { provide: RedisStore, useValue: redisStore },
         {
           provide: MemoryConfig,
