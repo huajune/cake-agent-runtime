@@ -1,6 +1,6 @@
 # 记忆体系 CoALA 对齐（上下文治理二期）
 
-> 状态：**已立项，未启动**（2026-08-21 立项）。启动条件：一期收尾（[context-engineering-governance.md](./context-engineering-governance.md) 的 P3-2/P3-3/P3-4 证据批次完成），或用户明示提前。
+> 状态：**已立项，启动条件已满足**（2026-08-21 立项；同日[一期收官](./context-engineering-governance.md)——全部项目已执行或已裁决），待用户批准启动。
 > 理论基础：[principles/context-engineering-principles.md](../principles/context-engineering-principles.md)（C1~C9）+ [glossary](../principles/glossary.md)「CoALA 记忆四分法」词条 + CoALA（arXiv 2309.02427，见 [industry-sources](../principles/industry-sources.md)）。
 > 一句话：**一期给程序记忆减肥，二期给程序记忆上户口**——让 procedural 层享受与情景/语义层同等的记忆治理待遇。
 
@@ -24,7 +24,7 @@ CoALA 对照复盘（2026-08-21，结论已录治理方案行业对照第 5 条�
 
 - **常驻核心**：决策优先级栈、全局工作原则、红线——保持静态前缀地位（C2 前缀稳定性）。
 - **playbook 库**：低频规程按需拉取（承接一期 P3-4 实验结论），配**注册表 + 加载统计**——从未被拉取的 playbook 进退役候选。这是程序层第一次有自己的"settlement"（沉淀/退役机制）。
-- 依赖：P3-4 回归闸结论是本包的证据前置；拉取内容进 messages 后缀，不碰前缀缓存（C5）。
+- **原一期 P3-4 实验项已裁定并入本包**（2026-08-21）：M1 第一阶段即 playbook 拉取原型 + 回归验证。候选段落（一期 P1-1 审计标记）：平台来源识别截图簇（P2/P4/P5）、造假引导 C8、结伴分流、C7 后半（AI 面试时段语义）——逐段做净收益核算（新工具 description 占预算），P1/P3 等文本触发的常驻规则不迁移。拉取内容进 messages 后缀，不碰前缀缓存（C5）。
 - **社区警示（2026-08-21 检索，arXiv 2607.26637）**："持续用 LLM 重写记忆库会退化到低于无记忆基线"——playbook 库的整理与退役**必须用确定性信号**（加载统计、台账登记），禁止引入"LLM 定期重写 playbook"类机制；与 L 系"模型自管记忆"教训同源。
 
 ### M2 命名对齐（搭车批）
