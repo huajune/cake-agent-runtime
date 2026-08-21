@@ -237,7 +237,7 @@
 > 解析器口径假阳率 **72.3%**）；身份确认死锁家族 3 变体（陈佩珊/张杰/董泽民——模型对
 > "候选人是否确认了真名"的判断 **3/3 正确，正则 0/3**）；马楠七字段重问事故；
 > 苏海龙岗位卡回声连坐错杀。执行链路见
-> [收资域总纲·附录B](../architecture/label-driven-collection-refactor.md)。
+> [收资域总纲·附录B](../architecture/collection-form-machine.md)（附录原文见 git 历史 docs/todo/label-driven-collection-refactor.md）。
 
 **病理公式**（何时发病）：
 
