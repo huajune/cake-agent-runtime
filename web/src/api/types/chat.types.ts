@@ -135,6 +135,8 @@ export interface MessageRecordToolCall {
   resultCount?: number;
   status?: MessageRecordToolCallStatus;
   durationMs?: number;
+  errorType?: string;
+  apiCode?: string | number;
 }
 
 export interface MessageRecordAgentStep {
@@ -266,12 +268,12 @@ export interface MessageRecord {
   tokenUsage?: number;
   isFallback?: boolean;
   fallbackSuccess?: boolean;
-  agentInvocation?: AgentInvocationRecord;
+  agentInvocation?: AgentInvocationRecord | null;
   batchId?: string;
   /** 工具调用详情（取代旧的 tools string[]） */
-  toolCalls?: MessageRecordToolCall[];
+  toolCalls?: MessageRecordToolCall[] | null;
   /** 每步循环快照（text/reasoning/toolCalls/usage） */
-  agentSteps?: MessageRecordAgentStep[];
+  agentSteps?: MessageRecordAgentStep[] | null;
   /** 异常信号标签，用于周报/巡检过滤 */
   anomalyFlags?: MessageRecordAnomalyFlag[];
   /** 本轮触发时的记忆上下文快照 */

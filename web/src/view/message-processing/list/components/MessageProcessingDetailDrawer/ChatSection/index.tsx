@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { MessageRecord } from '@/api/types/chat.types';
 import MessagePartsAdapter from '@/view/agent-test/list/components/MessagePartsAdapter';
-import styles from './index.module.scss';
 import {
   getAssistantRenderableMessage,
   getFallbackSummary,
@@ -9,6 +8,8 @@ import {
   getRawPayloadPanels,
   getToolCalls,
 } from '../utils';
+import ToolExecutionPanel from '../ToolExecutionPanel';
+import styles from './index.module.scss';
 
 function formatSize(bytes: number): string {
   if (bytes < 1000) return `${bytes} 字符`;
@@ -63,12 +64,13 @@ function getPayloadSummary(data: unknown): string {
   }, '暂无法预览');
 }
 
-export default function ChatSection({
-  message,
-}: ChatSectionProps) {
+export default function ChatSection({ message }: ChatSectionProps) {
   const [activePayloadKey, setActivePayloadKey] = useState<string>('request');
   const toolCalls = useMemo(() => withFallback(() => getToolCalls(message), []), [message]);
-  const historyMessages = useMemo(() => withFallback(() => getHistoryMessages(message), []), [message]);
+  const historyMessages = useMemo(
+    () => withFallback(() => getHistoryMessages(message), []),
+    [message],
+  );
   const rawPayloadPanels = useMemo(
     () => withFallback(() => getRawPayloadPanels(message), []),
     [message],
@@ -106,7 +108,9 @@ export default function ChatSection({
                 <div
                   key={`${historyMessage.role}-${index}`}
                   className={`${styles.historyItem} ${
-                    historyMessage.role === 'assistant' ? styles.historyAssistant : styles.historyUser
+                    historyMessage.role === 'assistant'
+                      ? styles.historyAssistant
+                      : styles.historyUser
                   }`}
                 >
                   <span className={styles.historyRole}>
@@ -132,9 +136,7 @@ export default function ChatSection({
               <span className={styles.bubbleMeta}>{toolCalls.length} 个工具调用</span>
             )}
             {message.replySegments && (
-              <span className={styles.bubbleMeta}>
-                {message.replySegments} 个下发分段
-              </span>
+              <span className={styles.bubbleMeta}>{message.replySegments} 个下发分段</span>
             )}
           </div>
           <div className={`${styles.responseBody} ${styles.agentRenderer}`}>
@@ -151,6 +153,8 @@ export default function ChatSection({
             )}
           </div>
         </div>
+
+        <ToolExecutionPanel toolCalls={toolCalls} />
 
         {message.isFallback && (
           <div className={styles.fallbackBox}>
@@ -190,9 +194,7 @@ export default function ChatSection({
               <span>异常详情</span>
             </div>
             <div className={styles.errorContent}>
-              {typeof message.error === 'string'
-                ? message.error
-                : stringifyPayload(message.error)}
+              {typeof message.error === 'string' ? message.error : stringifyPayload(message.error)}
             </div>
           </div>
         )}
@@ -224,9 +226,7 @@ export default function ChatSection({
                     <div className={styles.payloadLabel}>{activePanel.label}</div>
                     <div className={styles.payloadDescription}>{activePanel.description}</div>
                   </div>
-                  <div className={styles.payloadMeta}>
-                    {getPayloadSummary(activePanel.data)}
-                  </div>
+                  <div className={styles.payloadMeta}>{getPayloadSummary(activePanel.data)}</div>
                 </div>
                 <div className={styles.codeShell}>
                   <pre className={styles.codeBlock}>{stringifyPayload(activePanel.data)}</pre>
