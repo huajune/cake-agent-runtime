@@ -160,6 +160,38 @@ export type MessageRecordAnomalyFlag =
   | 'tool_chain_overlong'
   | 'no_tool_called';
 
+export type MessageRecordAlertType =
+  | 'agent'
+  | 'message'
+  | 'delivery'
+  | 'system'
+  | 'merge'
+  | 'unknown';
+
+export interface MessageRecordPostProcessingStepStatus {
+  name: string;
+  status: 'success' | 'failure' | 'skipped';
+  success: boolean;
+  durationMs: number;
+  error?: string;
+  reason?: string;
+}
+
+export interface MessageRecordPostProcessingStatus {
+  status: 'running' | 'completed' | 'completed_with_errors' | 'skipped' | 'interrupted';
+  startedAt: string;
+  completedAt?: string;
+  interruptedAt?: string;
+  durationMs?: number;
+  counts: {
+    total: number;
+    succeeded: number;
+    failed: number;
+    skipped: number;
+  };
+  steps: MessageRecordPostProcessingStepStatus[];
+}
+
 export interface MessageRecordMemorySnapshot {
   currentStage: string | null;
   presentedJobIds: number[] | null;
@@ -269,6 +301,7 @@ export interface MessageRecord {
   userId?: string;
   userName?: string;
   managerName?: string;
+  botImId?: string;
   chatId: string;
   messagePreview?: string;
   replyPreview?: string;
@@ -281,6 +314,7 @@ export interface MessageRecord {
   replySegments?: number;
   status: 'success' | 'failed' | 'failure' | 'processing' | 'timeout';
   error?: string;
+  alertType?: MessageRecordAlertType;
   scenario?: string;
   tokenUsage?: number;
   isFallback?: boolean;
@@ -296,7 +330,7 @@ export interface MessageRecord {
   /** 本轮触发时的记忆上下文快照 */
   memorySnapshot?: MessageRecordMemorySnapshot;
   /** turn-end 后处理状态 */
-  postProcessingStatus?: Record<string, unknown>;
+  postProcessingStatus?: MessageRecordPostProcessingStatus;
   /** 入站守卫拦截摘要（仅拦截命中时非空） */
   guardrailInput?: GuardrailInputTrace;
   /** 出站守卫全程 trace（首审→repair→二审） */
