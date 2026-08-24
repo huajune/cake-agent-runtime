@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { formatDuration, formatLocaleNumber } from '@/utils/format';
 import { FeedbackButtons } from '@/view/agent-test/list/components/FeedbackButtons';
 import { FeedbackModal } from '@/view/agent-test/list/components/FeedbackModal';
@@ -54,6 +55,7 @@ export default function MessageProcessingDetailDrawer({
   messageId,
   onClose,
 }: MessageProcessingDetailDrawerProps) {
+  const navigate = useNavigate();
   const { data: message, isLoading } = useMessageProcessingRecordDetail(messageId);
   const leftColRef = useRef<HTMLDivElement | null>(null);
   const [traceCopied, setTraceCopied] = useState(false);
@@ -255,6 +257,13 @@ export default function MessageProcessingDetailDrawer({
         <div className={styles.header}>
           <div className={styles.headerTop}>
             <h3 className={styles.headerTitle}>处理记录详情</h3>
+            <button
+              type="button"
+              className={styles.conversationLink}
+              onClick={() => navigate(`/chat-records?chatId=${encodeURIComponent(message.chatId)}`)}
+            >
+              查看会话
+            </button>
             <span className={`status-badge ${statusTone}`} title={message.error}>
               {getRecordStatusLabel(message)}
             </span>

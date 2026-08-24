@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -89,11 +90,13 @@ function getDateRange(days: number): { startDate: string; endDate: string } {
 }
 
 export default function ChatRecords() {
+  const [searchParams] = useSearchParams();
+  const deepLinkChatId = searchParams.get('chatId');
   // 状态
   const [showAnalytics, setShowAnalytics] = useState(false);
-  const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
+  const [selectedChatId, setSelectedChatId] = useState<string | null>(deepLinkChatId);
   // 用户尚未手动选择会话时，右侧默认联动「最新产生消息」的候选人（列表已按消息时间倒序，取第一条）
-  const [autoFollowLatest, setAutoFollowLatest] = useState(true);
+  const [autoFollowLatest, setAutoFollowLatest] = useState(!deepLinkChatId);
   const [searchTerm, setSearchTerm] = useState('');
   const [timeRangeIndex, setTimeRangeIndex] = useState<number>(0);
   const [analyticsMonthIndex, setAnalyticsMonthIndex] = useState<number>(0);
@@ -139,6 +142,12 @@ export default function ChatRecords() {
 
   // 列表第一条即「最新产生消息」的候选人（后端按 timestamp DESC 排序）
   const latestChatId = sessions[0]?.chatId ?? null;
+
+  useEffect(() => {
+    if (!deepLinkChatId) return;
+    setAutoFollowLatest(false);
+    setSelectedChatId(deepLinkChatId);
+  }, [deepLinkChatId]);
 
   // 首次打开 / 切换时间范围且用户未手动选择时，自动选中最新消息的候选人
   useEffect(() => {
