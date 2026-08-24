@@ -224,6 +224,22 @@ export interface GuardrailReviewStepDetail {
   feedback?: string;
 }
 
+export interface GuardrailSemanticFinding {
+  code: string;
+  evidenceQuote: string;
+  userImpact: string;
+  feedbackToGenerator: string;
+}
+
+export interface GuardrailSemanticReview {
+  mode: 'shadow' | 'enforce' | 'confidence_downgraded';
+  decision: GuardrailDecision;
+  confidence: string;
+  findings: GuardrailSemanticFinding[];
+  draftReply: string;
+  reviewedAt?: string;
+}
+
 /**
  * 出站守卫审查全程档案（guardrail_review_records 表，按 trace_id 关联）。
  * 仅守卫命中的回合存在；含首版全文/重写版全文，支撑详情页还原完整过程。
@@ -243,6 +259,7 @@ export interface GuardrailReviewRecord {
   committedSideEffects?: string;
   finalDecision: GuardrailDecision;
   reasonCode?: string;
+  semanticReviews: GuardrailSemanticReview[];
   createdAt?: string;
 }
 
