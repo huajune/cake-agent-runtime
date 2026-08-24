@@ -6,6 +6,7 @@ import { useFeedback } from '@/view/agent-test/list/hooks/useFeedback';
 import { useMessageProcessingRecordDetail } from '@/hooks/chat/useMessageProcessingRecords';
 import type { FeedbackSourceTrace } from '@/api/types/agent-test.types';
 import ChatSection from './ChatSection';
+import ExecutionEventTimeline from './ExecutionEventTimeline';
 import GuardrailSection from './GuardrailSection';
 import {
   getRecordStatusLabel,
@@ -251,6 +252,7 @@ export default function MessageProcessingDetailDrawer({
         <div className={styles.body}>
           <div ref={leftColRef} className={styles.leftCol}>
             <ChatSection message={message} />
+            <ExecutionEventTimeline events={message.executionEvents ?? []} />
           </div>
 
           <div className={styles.rightCol}>

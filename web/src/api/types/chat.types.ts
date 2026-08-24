@@ -103,6 +103,19 @@ export interface AgentInvocationRecord {
   http?: RawHttpResponse;
 }
 
+export interface ExecutionEvent {
+  id: number;
+  type: string;
+  traceId: string;
+  userId?: string;
+  corpId?: string;
+  chatId?: string;
+  scenario?: string;
+  callerKind?: string;
+  payload: Record<string, unknown>;
+  createdAt: string;
+}
+
 // ==================== 消息处理记录 ====================
 
 /**
@@ -271,4 +284,6 @@ export interface MessageRecord {
   guardrailOutput?: GuardrailTurnTrace;
   /** 出站守卫审查全程档案（详情接口附带；仅守卫命中回合非空，历史数据无） */
   guardrailReview?: GuardrailReviewRecord;
+  /** Agent 执行过程事件（详情接口按 created_at 升序附带，最多 200 条） */
+  executionEvents?: ExecutionEvent[];
 }
