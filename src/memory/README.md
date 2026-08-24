@@ -26,6 +26,43 @@
 
 完整端到端数据流见：[记忆与线索数据流](../../docs/architecture/memory-architecture.md)。
 
+## 目录结构与命名规约（2026-08-21 治理二期终态，本节为唯一权威）
+
+```
+src/memory/                          ═ 目录 = 生命周期/作用域轴 ═
+├── memory.service.ts                对外唯一入口 Facade（onTurnStart/onTurnEnd）
+├── memory.module.ts / memory.config.ts
+├── memory-lifecycle.service.ts      跨层编排（不属任何层 → 平铺根）
+├── memory-enrichment.service.ts     跨层丰富（同上）
+├── short-term/                      ① 会话的消息窗口（120 条/24K/7 天）
+├── session-state/                   ② 会话的结构化状态
+│   ├── session.service.ts           薄 Facade → 委托两舱（跨域注入点稳定）
+│   ├── facts.service.ts             事实舱（semantic）：状态所有者/事实读写/提取/已发生事件
+│   ├── workbench.service.ts         工作台舱（working state）：候选池/已展示/焦点岗位/查询签名
+│   └── brand-state / collection-form / session-key / types×2
+├── stage-state/                     ③ 会话的流程指针（原"程序记忆"，2026-08-21 更名）
+├── long-term/                       ④ 跨会话：semantic{profile, jobIntent} + episodic{sessionSummaries}
+│   └── long-term / consolidation（沉淀，原 settlement）/ types
+├── stores/  formatters/             技术基础设施（跨层共享）
+└── types/                           仅跨层类型（memory-runtime / confidence-rank）
+
+模块外的两个概念本体：
+- src/agent/generator/working-memory/      每轮装配车间（prepare() → WorkingMemory）
+- src/agent/generator/context/procedural/  prompt 侧程序记忆物理仓（手册 + final-check）
+- docs/prompt-rule-ledger.md               程序记忆索引（procedural 层唯一总目录）
+```
+
+**命名规约六条**（裁定出处见 docs/todo/memory-coala-alignment.md，术语出处见 docs/principles/glossary.md）：
+
+1. **目录 = 生命周期/作用域轴**；类型词（semantic/episodic/procedural/working）不做分层目录，只用于概念本体自己的家（working-memory/、context/procedural/）。
+2. **类型词住结构层，内容词住叶子层**：`LongTermMemory.semantic.profile`；类型名带主体全称（`UserProfileFacts`），字段名靠上下文用短名（`profile`）。
+3. **改名双门槛**：名字错误/误导（错位、同库双义、双轴皆空）必改；对齐行业分类词按规约 2 落点——类别词做前缀不做替换（`semantic_profile` = 前缀+内容）。
+4. **持久化契约名不追新**：Redis key（`stage:`/`facts:`）、env 键（`MEMORY_SETTLEMENT_GAP_DAYS`）、DB RPC 名、test-suite fixture 键（`setup.procedural`）、模型可见 prompt 标签（`[会话记忆]`）一律保留兼容，代码层做映射；唯一例外 = DB 列名随发版同批迁移。
+5. **一致性 > 防碎**：同一逻辑层级的实体同深同构（四层全目录、各带自己的 types）；跨层服务平铺模块根；禁止语义空洞的通用抽屉（原 services/ 已取消）。
+6. **Facade 保稳定**：对外入口（memory.service、session-state/session.service）是薄 facade，内部重组不波及消费方。
+
+**词汇对照**（旧 → 新）：procedural→stage-state（冒用行业术语装流程书签）· settlement→consolidation（与薪资结算同库双义）· session/→session-state/（作用域不独特且内容零信息）· PreferenceFacts→JobIntentFacts（软词装硬约束）· SummaryData→SessionSummaries（单复数失实）· PreparedAgentContext→WorkingMemory（泛名换分类名）· DB 列 profile_facts/preference_facts/summary_data → semantic_profile/semantic_job_intent/episodic_session_summaries（随发版迁移）。
+
 ## 模块目标
 
 memory 模块的职责不是“帮模型记住一切”，而是把记忆相关工作拆成 3 个稳定动作：
