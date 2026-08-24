@@ -862,9 +862,7 @@ export function getToolCalls(message: MessageRecord): ToolCallInfo[] {
         status: inferToolStatus(toolCall),
         input: toolCall.input ?? toolCall.args ?? toolCall.arguments,
         output: toolCall.result ?? toolCall.output,
-        errorType:
-          asString(toolCall.errorType) ??
-          asString(result?.errorType),
+        errorType: asString(toolCall.errorType) ?? asString(result?.errorType),
         apiCode: typeof apiCode === 'string' || typeof apiCode === 'number' ? apiCode : undefined,
       });
       return acc;
@@ -972,27 +970,6 @@ export function getContextFacts(message: MessageRecord): Array<{
   return facts;
 }
 
-export function getDeliverySummary(message: MessageRecord): AnyRecord | undefined {
-  return asRecord(getInvocationResponse(message)?.delivery);
-}
-
 export function getFallbackSummary(message: MessageRecord): AnyRecord | undefined {
   return asRecord(getInvocationResponse(message)?.fallback);
-}
-
-export function getChunkSummary(message: MessageRecord): string | undefined {
-  const response = getInvocationResponse(message);
-  const chunkTypeCounts = asRecord(response?.chunkTypeCounts);
-  if (!chunkTypeCounts) return undefined;
-
-  const entries = Object.entries(chunkTypeCounts)
-    .filter(([, value]) => typeof value === 'number' && value > 0)
-    .sort((a, b) => Number(b[1]) - Number(a[1]));
-
-  if (entries.length === 0) return undefined;
-
-  return entries
-    .slice(0, 4)
-    .map(([key, value]) => `${key}: ${value}`)
-    .join(' · ');
 }
