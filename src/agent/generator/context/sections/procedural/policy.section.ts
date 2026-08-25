@@ -1,3 +1,4 @@
+// 知识归类：procedural —— 本段聚合策略红线与业务阈值行为指令。
 // prompt-rule-ledger: docs/prompt-rule-ledger.md（程序性政策聚合总账）
 import { RedLinesSection } from './red-lines.section';
 import { ThresholdsSection } from './thresholds.section';
@@ -6,7 +7,7 @@ import {
   PromptContext,
   PromptSection,
   renderPromptBlocks,
-} from './section.interface';
+} from '../section.interface';
 import type { PromptCorpusBlock } from '@shared-types/corpus.types';
 
 /**

@@ -1,5 +1,6 @@
+// 知识归类：procedural —— 本段把业务阈值转成模型行为约束。
 // prompt-rule-ledger: docs/prompt-rule-ledger.md（程序性业务阈值总账）
-import { PromptSection, PromptContext } from './section.interface';
+import { PromptSection, PromptContext } from '../section.interface';
 import { Threshold } from '@biz/strategy/types/strategy.types';
 
 /**

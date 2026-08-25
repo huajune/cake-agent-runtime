@@ -430,7 +430,7 @@ AI 写完的每条回复，投递前都要过三道审查（技术细节见 [gua
 
 | 调整对象 | 在哪改 | 是否发版 | 典型场景 |
 | --- | --- | --- | --- |
-| 业务手册（话术、SOP） | `prompts/candidate-consultation.md` | 改文件，需发版 | 调破冰话术、拒绝候选人怎么回应 |
+| 业务手册（话术、SOP） | `sections/procedural/candidate-consultation.md` | 改文件，需发版 | 调破冰话术、拒绝候选人怎么回应 |
 | 红线 / 阈值 | Supabase `strategy_config` + Dashboard | **不用发版** | 连续多少轮没回应转人工、承诺薪资范围 |
 | 阶段目标 | Supabase `strategy_config` + Dashboard | **不用发版** | 约面阶段必须收齐哪些字段 |
 | 测试套件（评估集） | Dashboard「测试套件」页 | **不用发版** | 加 badcase 进回归集、跑批量评估 |

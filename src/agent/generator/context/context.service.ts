@@ -27,18 +27,18 @@ import {
   PromptContext,
   AccountIdentity,
   renderPromptBlocks,
-} from './sections/procedural/section.interface';
+} from './sections/section.interface';
 import type { PromptCorpusBlock } from '@shared-types/corpus.types';
-import { IdentitySection } from './sections/semantic/identity.section';
+import { IdentitySection } from './sections/procedural/identity.section';
 import { RedLinesSection } from './sections/procedural/red-lines.section';
 import { DateTimeSection } from './sections/working/datetime.section';
 import { ChannelSection } from './sections/procedural/channel.section';
 import { StageStrategySection } from './sections/procedural/stage-strategy.section';
 import { ThresholdsSection } from './sections/procedural/thresholds.section';
-import { MemorySection } from './sections/episodic/memory.section';
+import { MemorySection } from './sections/semantic/memory.section';
 import { TurnHintsSection } from './sections/working/turn-hints.section';
-import { HardConstraintsSection } from './sections/procedural/hard-constraints.section';
-import { GroupInventorySection } from './sections/working/group-inventory.section';
+import { HardConstraintsSection } from './sections/working/hard-constraints.section';
+import { GroupInventorySection } from './sections/semantic/group-inventory.section';
 import { SCENARIO_SECTIONS, DEFAULT_SCENARIO } from './scenarios/scenario.registry';
 import { StaticSection } from './sections/procedural/static.section';
 import { PolicySection } from './sections/procedural/policy.section';
@@ -86,8 +86,8 @@ export class ContextService implements OnModuleInit {
     private readonly groupResolver: GroupResolverService,
     private readonly configService: ConfigService,
   ) {
-    const devPath = join(__dirname, 'procedural');
-    const prodPath = join(__dirname, '..', '..', 'agent', 'context', 'procedural');
+    const devPath = join(__dirname, 'sections', 'procedural');
+    const prodPath = join(__dirname, '..', '..', 'agent', 'context', 'sections', 'procedural');
     this.promptsBasePath = existsSync(devPath) ? devPath : prodPath;
     this.groupMemberLimit = parseInt(
       this.configService.get<string>('GROUP_MEMBER_LIMIT', '200'),

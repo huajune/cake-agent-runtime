@@ -1,5 +1,6 @@
+// 知识归类：working —— 本段呈现随当前回合变化的时间上下文。
 import { formatCurrentTime, formatLocalDateWithWeekday } from '@infra/utils/date.util';
-import { PromptContext, PromptSection } from '../procedural/section.interface';
+import { PromptContext, PromptSection } from '../section.interface';
 
 /**
  * 时间注入段落

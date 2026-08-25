@@ -1,5 +1,5 @@
-import { HardConstraintsSection } from '@agent/generator/context/sections/procedural/hard-constraints.section';
-import type { PromptContext } from '@agent/generator/context/sections/procedural/section.interface';
+import { HardConstraintsSection } from '@agent/generator/context/sections/working/hard-constraints.section';
+import type { PromptContext } from '@agent/generator/context/sections/section.interface';
 import { cityFixture, sessionFactsOf } from '../../../../helpers/session-facts.fixture';
 import { testTurnHint, testTurnHints } from '../../../../helpers/turn-hints.fixture';
 

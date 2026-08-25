@@ -1,5 +1,6 @@
+// 知识归类：procedural —— 本段定义各对话阶段的推进策略。
 // prompt-rule-ledger: docs/prompt-rule-ledger.md（程序性阶段策略总账）
-import { PromptSection, PromptContext } from './section.interface';
+import { PromptSection, PromptContext } from '../section.interface';
 import { StageGoalConfig } from '@biz/strategy/types/strategy.types';
 
 /**

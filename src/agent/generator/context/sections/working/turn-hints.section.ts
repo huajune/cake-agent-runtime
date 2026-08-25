@@ -1,3 +1,4 @@
+// 知识归类：working —— 本段呈现从候选人当前消息提取的临时线索。
 import { formatTurnHintLines } from '@memory/fact-lines.formatter';
 import {
   type CityFact,
@@ -7,7 +8,7 @@ import {
 } from '@memory/short-term/short-term.types';
 import type { TurnHints, TurnHintFieldPath } from '@resolution/evidence/claim.types';
 import { isSameFactValue, projectTurnHints, resolveTurnHints } from '@resolution/evidence/merge';
-import { PromptContext, PromptSection } from '../procedural/section.interface';
+import { PromptContext, PromptSection } from '../section.interface';
 
 /**
  * 本轮规则 claim 先由统一字段策略裁决，再按是否与会话记忆冲突拆成普通/待确认视图。

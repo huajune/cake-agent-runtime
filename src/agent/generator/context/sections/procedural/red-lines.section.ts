@@ -1,5 +1,6 @@
+// 知识归类：procedural —— 本段定义模型绝对禁止的行为。
 // prompt-rule-ledger: docs/prompt-rule-ledger.md（程序性红线规则总账）
-import { PromptSection, PromptContext } from './section.interface';
+import { PromptSection, PromptContext } from '../section.interface';
 import { StrategyRedLines } from '@biz/strategy/types/strategy.types';
 
 /**

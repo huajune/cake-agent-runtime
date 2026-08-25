@@ -125,9 +125,9 @@ finalPrompt =
   - `strategy_config.role_setting`
   - `strategy_config.persona`
 - `base-manual`
-  - `prompts/candidate-consultation.md`
+  - `sections/procedural/candidate-consultation.md`
 - `final-check`
-  - `prompts/candidate-consultation-final-check.md`
+  - `sections/procedural/candidate-consultation-final-check.md`
 - `policy`
   - `strategy_config.red_lines`
   - `strategy_config.red_lines.thresholds`

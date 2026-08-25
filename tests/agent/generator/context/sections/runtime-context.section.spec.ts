@@ -2,7 +2,7 @@ import { RuntimeContextSection } from '@agent/generator/context/sections/working
 import {
   PromptContext,
   PromptSection,
-} from '@agent/generator/context/sections/procedural/section.interface';
+} from '@agent/generator/context/sections/section.interface';
 
 describe('RuntimeContextSection', () => {
   const baseCtx: PromptContext = {

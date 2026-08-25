@@ -2,7 +2,7 @@ import { PolicySection } from '@agent/generator/context/sections/procedural/poli
 import {
   PromptContext,
   PromptSection,
-} from '@agent/generator/context/sections/procedural/section.interface';
+} from '@agent/generator/context/sections/section.interface';
 
 describe('PolicySection', () => {
   const baseCtx: PromptContext = {

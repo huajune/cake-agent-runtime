@@ -24,11 +24,12 @@ interface ExampleShapeViolation {
 const PROMPT_ASSETS: readonly PromptSurface[] = [
   {
     id: 'candidate-consultation',
-    source: 'src/agent/generator/context/procedural/candidate-consultation.md',
+    source: 'src/agent/generator/context/sections/procedural/candidate-consultation.md',
   },
   {
     id: 'candidate-consultation-final-check',
-    source: 'src/agent/generator/context/procedural/candidate-consultation-final-check.md',
+    source:
+      'src/agent/generator/context/sections/procedural/candidate-consultation-final-check.md',
   },
 ];
 
@@ -36,7 +37,7 @@ const PROMPT_ASSETS: readonly PromptSurface[] = [
 const PROMPT_SECTION_BUILDERS: readonly PromptSurface[] = [
   {
     id: 'identity',
-    source: 'src/agent/generator/context/sections/semantic/identity.section.ts',
+    source: 'src/agent/generator/context/sections/procedural/identity.section.ts',
   },
   {
     id: 'base-manual',
@@ -68,7 +69,7 @@ const PROMPT_SECTION_BUILDERS: readonly PromptSurface[] = [
   },
   {
     id: 'memory',
-    source: 'src/agent/generator/context/sections/episodic/memory.section.ts',
+    source: 'src/agent/generator/context/sections/semantic/memory.section.ts',
   },
   {
     id: 'turn-hints',
@@ -76,7 +77,7 @@ const PROMPT_SECTION_BUILDERS: readonly PromptSurface[] = [
   },
   {
     id: 'hard-constraints',
-    source: 'src/agent/generator/context/sections/procedural/hard-constraints.section.ts',
+    source: 'src/agent/generator/context/sections/working/hard-constraints.section.ts',
   },
   {
     id: 'datetime',
@@ -88,7 +89,7 @@ const PROMPT_SECTION_BUILDERS: readonly PromptSurface[] = [
   },
   {
     id: 'group-inventory',
-    source: 'src/agent/generator/context/sections/working/group-inventory.section.ts',
+    source: 'src/agent/generator/context/sections/semantic/group-inventory.section.ts',
   },
 ];
 

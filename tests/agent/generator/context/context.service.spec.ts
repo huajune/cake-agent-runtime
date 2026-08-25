@@ -4,7 +4,7 @@ import { CORPUS_DOMAINS } from '@shared-types/corpus.types';
 import {
   buildPromptSectionBlocks,
   type PromptSection,
-} from '@agent/generator/context/sections/procedural/section.interface';
+} from '@agent/generator/context/sections/section.interface';
 import { SCENARIO_SECTIONS } from '@agent/generator/context/scenarios/scenario.registry';
 import { cityFixture, sessionFactsOf } from '../../../helpers/session-facts.fixture';
 

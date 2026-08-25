@@ -25,7 +25,7 @@
 
 | 居所 | 载体 | 变更纪律 | 规模（2026-08-21 实测） |
 |---|---|---|---|
-| 手册 | `src/agent/generator/context/prompts/candidate-consultation.md` | PR + review | 76KB / ~90 条规则 |
+| 手册 | `src/agent/generator/context/sections/procedural/candidate-consultation.md` | PR + review | 76KB / ~90 条规则 |
 | final-check | `candidate-consultation-final-check.md`（组装置末尾，≈ recitation） | PR + review | 6.5KB / 17 条自检项 |
 | 工具 description | 各 tool 文件内 DESCRIPTION | 代码 PR（无尺寸压力） | 13 常挂合计 31,729 字符 |
 | DB red-lines/thresholds | `strategy_config.red_lines`（Dashboard 可改，零 review） | ⚠️ 零审计 | 15 规则 + 2 阈值（1,580 字符） |

@@ -110,7 +110,7 @@ function checkMembersPresent(check: string, relPath: string, members: readonly s
 //     那恰好是本项要防的风险（加档漏改）；删除方向检不出，如实标注。
 checkMembersPresent(
   'labor_form 词表 ↔ 咨询提示词（仅检出新增漏写）',
-  'src/agent/generator/context/procedural/candidate-consultation.md',
+  'src/agent/generator/context/sections/procedural/candidate-consultation.md',
   VALID_LABOR_FORMS,
 );
 
@@ -194,7 +194,7 @@ checkMembersPresent(
 {
   const check = 'errorType 提示词写法 ↔ 线上真值';
   const PROMPT_ASSETS = [
-    'src/agent/generator/context/procedural/candidate-consultation.md',
+    'src/agent/generator/context/sections/procedural/candidate-consultation.md',
     'src/tools/geocode.tool.ts',
     'src/tools/duliday-job-list.tool.ts',
     'src/tools/duliday-interview-precheck.tool.ts',

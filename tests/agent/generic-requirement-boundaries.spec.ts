@@ -5,7 +5,7 @@ describe('generic job-requirement boundaries', () => {
   const root = process.cwd();
 
   const readPrompt = (name: string) =>
-    readFileSync(join(root, 'src/agent/generator/context/procedural', name), 'utf8');
+    readFileSync(join(root, 'src/agent/generator/context/sections/procedural', name), 'utf8');
 
   it('keeps combination scheduling independent from weekly attendance frequency', () => {
     const candidatePrompt = readPrompt('candidate-consultation.md');

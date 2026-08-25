@@ -1,5 +1,5 @@
-import { IdentitySection } from '@agent/generator/context/sections/semantic/identity.section';
-import { PromptContext } from '@agent/generator/context/sections/procedural/section.interface';
+import { IdentitySection } from '@agent/generator/context/sections/procedural/identity.section';
+import { PromptContext } from '@agent/generator/context/sections/section.interface';
 
 describe('IdentitySection', () => {
   const buildCtx = (overrides: Partial<PromptContext> = {}): PromptContext => ({

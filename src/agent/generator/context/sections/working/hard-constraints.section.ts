@@ -1,4 +1,5 @@
-// prompt-rule-ledger: docs/prompt-rule-ledger.md（程序性查询约束总账）
+// 知识归类：working —— 本段呈现候选人本轮硬约束线索，属于 evidence 数据。
+// prompt-rule-ledger: docs/prompt-rule-ledger.md（本轮查询约束总账）
 import {
   type EntityExtractionResult,
   type Preferences,
@@ -8,7 +9,7 @@ import {
 import { projectTurnHints } from '@resolution/evidence/merge';
 import type { TurnHints } from '@resolution/evidence/claim.types';
 import { isHardFilteredLaborForm, isValidLaborForm } from '@resolution/labor-form';
-import { PromptContext, PromptSection } from './section.interface';
+import { PromptContext, PromptSection } from '../section.interface';
 
 /**
  * 本轮查询约束段落（硬约束 + 软提示）

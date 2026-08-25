@@ -6,21 +6,21 @@
  */
 export const SCENARIO_SECTIONS: Record<string, string[]> = {
   'candidate-consultation': [
-    // semantic · 配置档（策略角色 + 托管账号身份）
+    // procedural · 配置档（策略角色 + 托管账号身份）
     'identity',
     // procedural · 静态档（候选人咨询手册）
     'base-manual',
     // procedural · 配置档（策略红线 + 业务阈值）
     'policy',
-    // working 主导 · 动态档（混合编排 episodic/procedural 输入）
+    // working 主导 · 动态档（混合编排 semantic/procedural 输入）
     'runtime-context',
-    // working · 动态档（按本轮城市实时渲染）
+    // semantic · 动态档（按本轮城市渲染群库事实）
     'group-inventory',
     // procedural · 静态档（发送前自检）
     'final-check',
   ],
   'group-operations': [
-    // semantic · 配置档
+    // procedural · 配置档
     'identity',
     // working · 动态档
     'datetime',
@@ -28,7 +28,7 @@ export const SCENARIO_SECTIONS: Record<string, string[]> = {
     'channel',
   ],
   evaluation: [
-    // semantic · 配置档
+    // procedural · 配置档
     'identity',
   ],
 };

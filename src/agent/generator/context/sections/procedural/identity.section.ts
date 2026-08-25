@@ -1,9 +1,11 @@
-import { PromptSection, PromptContext, AccountIdentity } from '../procedural/section.interface';
+// 知识归类：procedural —— agent 人设与账号身份用于约束模型行为，不是候选人事实。
+// prompt-rule-ledger: docs/prompt-rule-ledger.md（身份与人格行为指令总账）
+import { PromptSection, PromptContext, AccountIdentity } from '../section.interface';
 import { StrategyPersona, StrategyRoleSetting } from '@biz/strategy/types/strategy.types';
 
 /**
  * 身份段落 — 角色设定 + 账号身份 + 人格设定
- * 知识类型：semantic 主导（账号/角色事实），混合承载 persona 行为规则。
+ * 知识类型：procedural（agent 人设与账号身份共同定义模型如何行动）。
  *
  * roleSetting 定义 Agent 的角色身份（注入为 # 角色 段落），
  * accountIdentity 把角色锚定到当前托管的企微账号本人（防人格分裂），
