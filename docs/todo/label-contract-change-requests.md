@@ -43,7 +43,14 @@
 
 **实际剩余范围**：原蓝图 §8 已无未执行步骤。仍待后端或后续裁定的契约事项只保留本文
 终态表中的 #3 `systemField`、#8 敏感补标、#2 `errorList.labelId`、#7
-`requirementNote`；收资表单 key 补维与 jobIntent 拆分是另案，均不回写为本蓝图步骤。
+`requirementNote`。
+
+**AI 侧另案登记（收资契约 v2 批执行）**：收资表单 key 补 bot 维（M5 裁定六，
+2026-08-25 用户拍板）——`collection-form:{corp}:{userId}:{candidateRef}:{jobId}` 增补
+`botUserId` 段（用稳定维，不用会轮换的 imBotId；前缀不动），堵跨 bot 并发裸写并与
+"记忆不跨 bot"全线一致；代价接受（换 bot 重新收资），存量旧 key 3 天 TTL 自然过期
+不迁移。（原另案之一 jobIntent 软/硬/时间三分已于 2026-08-25 裁定撤销——M5 裁定七，
+全部视为软偏好不分级。）
 
 **附：空标签口径（0820 后端确认）**——529020 返回空 labels 是**数据问题**（后端排查中），
 正常情况每个在招岗位都有标签。⚠️ 由此确立 AI 侧口径（0820 用户裁定）：**batch-query

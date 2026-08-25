@@ -50,6 +50,10 @@
 不能先删 sibling：当前 `source=system/candidate_quote` 与业务口径
 `gender_source=system/candidate` 并非严格一一对应，直接替换会改变工具预填安全守卫。
 
+**进度（2026-08-25）**：批 A 已执行（`98aa11f6`——来源语义入信封、消费方改判信封
+source+confidence、生产方停写 sibling）；批 B 待存量与兼容命中清零（≥3 天）后执行：
+删 schema 键、字段 key 与规则轨联动。
+
 ## 本批验证与决策
 
 - booking high 身份字段后执行一轮纯 preference 抽取，身份信封保持原样；无需 P0 修复，
@@ -59,3 +63,12 @@
 - archive 压缩 prompt 只包含本次 overflow，不读取、拼接或改写既有 archive 段。
 - 原子追加 RPC 先裁剪 recent/推进水位，因此应用层在调用前保留摘要快照；压缩或 archive
   回写失败时先恢复 RPC 前的 recent/archive/水位再抛错，Bull 重试不会被错误水位挡住。
+
+## 遗留与观察项（2026-08-25 自 memory-coala-alignment.md 收官移入）
+
+二期文档（memory-coala-alignment.md）已收官删除（全文见 git 历史），未随收官关闭的登记项收拢于此：
+
+- **M1 playbook 按需加载（观察项，裁定不做）**：重启条件 = 手册再度膨胀触发哨兵告警，或出现新的 >3K 字符低频规程。重启时的设计约束：注册表 + 确定性加载统计做退役、禁止 LLM 定期重写记忆库（arXiv 2607.26637 警示）、拉取内容进 messages 后缀不碰前缀缓存。
+- **M4 跨会话相关片段检索（观察项）**：单人数据量小、摘要已粗粒度覆盖，暂不做；未来出现开放域知识（岗位知识库问答）再评估。
+- **M5 裁定六——收资表单 key 补 bot 维**：归收资契约 v2 批执行，已登记在 [label-contract-change-requests.md](./label-contract-change-requests.md)。
+- **生产 DB 迁移待发版同批 push**：清单见 [context-assembly-compiler.md](./context-assembly-compiler.md) §七。

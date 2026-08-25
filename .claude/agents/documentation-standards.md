@@ -302,7 +302,7 @@ Before submitting documentation, check:
 
 ## 🧊 Prompt Content Anti-Rot Discipline（Prompt 内容防腐纪律）
 
-> 适用对象：手册（candidate-consultation.md / final-check）、工具 description、DB 策略文本（red-lines / stage-strategy，Dashboard 可改）、booking 上下文等代码注入段、守卫 hard-rules。这些内容每回合进入生产 prompt，是"上下文预算"的直接消耗方；治理背景见 docs/todo/context-engineering-governance.md 与 docs/principles/context-engineering-principles.md（C1~C9）。
+> 适用对象：手册（candidate-consultation.md / final-check）、工具 description、DB 策略文本（red-lines / stage-strategy，Dashboard 可改）、booking 上下文等代码注入段、守卫 hard-rules。这些内容每回合进入生产 prompt，是"上下文预算"的直接消耗方；治理背景见 docs/principles/context-engineering-principles.md（C1~C9；一期执行记录见 git 历史 docs/todo/context-engineering-governance.md）。
 
 ### 四条硬纪律
 

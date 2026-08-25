@@ -1,8 +1,8 @@
 # 上下文工程原则（Context Engineering Principles）
 
 > 实证基础：2026-08-20/21 生产基线实测 + 三个事故标本 + 2026-08-21 业界检索对照。
-> 裁定记录：2026-08-21 三轮共 8 条用户裁定（原始过程见 [context-engineering-governance.md](../todo/context-engineering-governance.md)）。
-> 配套现状：[knowledge-base/05-Prompt-Section动态组装体系](../knowledge-base/05-Prompt-Section动态组装体系.md)；执行清单：[todo/context-engineering-governance.md](../todo/context-engineering-governance.md)。
+> 裁定记录：2026-08-21 三轮共 8 条用户裁定（原始过程见 git 历史 docs/todo/context-engineering-governance.md，一期收官后删除）。
+> 配套现状：[knowledge-base/05-Prompt-Section动态组装体系](../knowledge-base/05-Prompt-Section动态组装体系.md)；后续执行：三期见 [todo/context-assembly-compiler.md](../todo/context-assembly-compiler.md)（一期执行清单已收官，见 git 历史）。
 
 ## 0. 一句话版本
 
@@ -115,7 +115,7 @@ Agent = Model + Harness，而 bitter lesson 正在 harness 上应验：模型持
 
 ## 附：行动清单去向
 
-一次性治理（P0-P3 共 14 项）与常设防腐机制（F1-F5）全部在 [todo/context-engineering-governance.md](../todo/context-engineering-governance.md)；台账建成后（F1）本文档 C7 的登记纪律以台账为执行载体。
+一次性治理（P0-P3 共 14 项）与常设防腐机制（F1-F5）已于 2026-08-21 全部执行或裁决收官（执行记录见 git 历史 docs/todo/context-engineering-governance.md）；台账建成后（F1）本文档 C7 的登记纪律以台账为执行载体。
 
 ## 附：业界资料（2026-08-21 检索）
 

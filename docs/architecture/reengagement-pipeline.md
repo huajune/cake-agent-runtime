@@ -76,7 +76,7 @@ await reengagementQueue.add(
 
 ⚠️ `new_job_for_waiting` 的外部事件源尚未接入——该场景保留在 registry 中，事件源就绪后只需调用 scheduler。
 
-`interview_reminder` 在二期拥有两个同 code 档位：默认到场档仍使用原任务身份；报名日至面试日相差至少 3 个上海日历天时，额外排面试前 2 天确认档，任务锚点追加 `:d2` 后缀并在 payload 标记 `touchVariant=d2_confirm`。变体的延迟与灰度分别读取既有 map 的 `interview_reminder:d2` 子键，缺省延迟 2880 分钟、缺省灰度关闭，且不回退 `interview_reminder` 主场景开关。改期时两个档位按实时工单独立重排，确认档重新核验报名间隔。
+`interview_reminder` 在二期拥有两个同 code 档位：默认到场档仍使用原任务身份；报名日至面试日相差至少 3 个上海日历天时，额外排面试前 2 天确认档，任务锚点追加 `:d2` 后缀并在 payload 标记 `touchVariant=d2_confirm`。变体的延迟与灰度分别读取既有 map 的 `interview_reminder:d2` 子键，缺省延迟 2880 分钟、缺省灰度开（显式 false 可单独关变体）；变体从属场景开关，场景关则变体必关。改期时两个档位按实时工单独立重排，确认档重新核验报名间隔。
 
 `store_presented_no_reply` 不新增场景 code。会话状态用 `storePresentationRounds` 单独累计推店轮次；第 2 轮起任务 payload 标记 `escalateToGroupInvite=true`。独立灰度子键 `store_presented_no_reply:invite` 缺省关闭且不回退主场景开关，关闭时在生成前移除有效升档标记，退化为普通推店未回文案。
 

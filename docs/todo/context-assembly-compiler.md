@@ -1,7 +1,7 @@
 # 上下文治理三期——装配层轻量化（终版）
 
 > 状态：**轻量化终裁定稿（2026-08-25）**。本文档是三期唯一权威；此前的"typed sources → 确定性编译器"设计已整体退役（历程见第二节，编号对照见第八节）。
-> 关系：二期管"记忆住哪、叫什么"（[memory-coala-alignment.md](./memory-coala-alignment.md)），三期管"记忆怎么进 prompt"（装配侧）。
+> 关系：二期管"记忆住哪、叫什么"（已收官，终态见 src/memory/README.md，过程见 git 历史 memory-coala-alignment.md），三期管"记忆怎么进 prompt"（装配侧）。
 > 一句话：**三期最终 = 三个轻量批**——归类（零行为）、冲突裁决（内容去重与标注）、system 内重排（缓存收益，记忆不出系统通道）。建议执行顺序：批一 → 批三 → 批二（让重排对拍的样本反映去重后的终态内容）。
 
 ## 一、有效方案（全部内容就这三件）
@@ -85,7 +85,9 @@
 
 ## 七、附：同分支相邻待办
 
-memory 侧全部裁定与执行记录见 [memory-coala-alignment.md](./memory-coala-alignment.md)（M5 + M5-深审，八条裁定 + 八项深审裁定）。
+1. **memory 侧（二期 + M5）已收官**：过程记录见 git 历史 `docs/todo/memory-coala-alignment.md`（2026-08-25 收官删除）；终态见 [src/memory/README.md](../../src/memory/README.md)；字段级遗留（gender_source 批 B、brand_ids 退役条件、观察项）见 [memory-intelligence-deep-review-audit.md](./memory-intelligence-deep-review-audit.md)。
+2. **⚠️ 生产 DB 迁移待随发版同批 push**：`20260821210000`（长期层列名 CoALA 改名）与 `20260825025701` / `20260825050239` / `20260825055058` / `20260825063752`（长期 bot 维 / 摘要拍平与水位列 / 身高体重键框 / 懒迁移修复）——测试库已完成真实写入回读验证，生产未 push。仓库纪律：只发代码不推迁移（或反之）是事故源。
+3. **一期基线复测**：一期（P0/P1/P3 批）发版后重跑基线 SQL（mpr `token_usage` 近 7 天 + `agent_invocation.request.agentRequest` 分字段测长），并取 `agent_steps` 里 `cachedInputTokens` 的缓存命中率首个真实值。一期文档已收官删除，SQL 口径见 git 历史 `docs/todo/context-engineering-governance.md` 第一节。
 
 ## 八、沿革与编号对照（供 industry-sources 第八节等旧引用解析）
 
