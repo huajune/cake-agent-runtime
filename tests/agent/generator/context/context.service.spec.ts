@@ -148,21 +148,21 @@ describe('ContextService', () => {
     }
   });
 
-  it('composes candidate consultation as static, config, then dynamic system blocks', async () => {
+  it('composes candidate consultation in the adjudicated semantic order', async () => {
     expect(SCENARIO_SECTIONS['candidate-consultation']).toEqual([
+      'identity',
       'base-manual',
-      'final-check',
       'channel',
       'stage-overview',
       'red-lines',
       'thresholds',
-      'identity',
       'memory',
       'turn-hints',
       'hard-constraints',
       'datetime',
       'group-inventory',
       'stage-strategy',
+      'final-check',
       'critical-turn-guard',
     ]);
     const result = await compose({
@@ -184,25 +184,25 @@ describe('ContextService', () => {
       ]),
     );
     expect(result.promptBlocks.map((block) => block.id)).toEqual([
+      'identity',
       'base-manual',
-      'final-check',
       'stage-overview',
       'red-lines',
       'thresholds',
-      'identity',
       'memory',
       'datetime',
       'stage-strategy',
+      'final-check',
     ]);
     expect(result.promptBlocks.every((block) => block.role === 'system')).toBe(true);
 
-    expect(prompt.indexOf('# 角色')).toBeGreaterThan(prompt.indexOf('# 业务阈值'));
-    expect(prompt.indexOf('# 全局工作原则')).toBeLessThan(prompt.indexOf('# 人格设定'));
+    expect(prompt.indexOf('# 角色')).toBeLessThan(prompt.indexOf('# 全局工作原则'));
+    expect(prompt.indexOf('# 人格设定')).toBeLessThan(prompt.indexOf('# 全局工作原则'));
     expect(prompt.indexOf('# 红线规则（以下行为绝对禁止）')).toBeGreaterThan(
       prompt.indexOf('[阶段推进提示]'),
     );
-    expect(prompt.indexOf('# 发送前自检（全部需通过）')).toBeLessThan(
-      prompt.indexOf('# 红线规则（以下行为绝对禁止）'),
+    expect(prompt.indexOf('# 发送前自检（全部需通过）')).toBeGreaterThan(
+      prompt.lastIndexOf('[当前阶段策略]'),
     );
     expect(prompt.lastIndexOf('[当前阶段策略]')).toBeGreaterThan(prompt.indexOf('当前时间：'));
 
@@ -272,13 +272,17 @@ describe('ContextService', () => {
       }),
     );
     expect(criticalBlock?.content).toContain('本轮候选人指定了面试日期');
+    expect(result.promptBlocks.at(-2)?.id).toBe('final-check');
     expect(result.systemPrompt.endsWith(criticalBlock?.content ?? '')).toBe(true);
-    expect(result.systemPrompt.indexOf('# 本轮动态硬禁令')).toBeGreaterThan(
+    expect(result.systemPrompt.indexOf('# 发送前自检（全部需通过）')).toBeGreaterThan(
       result.systemPrompt.lastIndexOf('[当前阶段策略]'),
+    );
+    expect(result.systemPrompt.indexOf('# 本轮动态硬禁令')).toBeGreaterThan(
+      result.systemPrompt.indexOf('# 发送前自检（全部需通过）'),
     );
   });
 
-  it('keeps the static prefix byte-identical across turn-varying inputs', async () => {
+  it('keeps stable leading blocks and the late static final-check byte-identical across turns', async () => {
     const first = await compose({
       scenario: 'candidate-consultation',
       currentStage: 'trust_building',
@@ -291,24 +295,44 @@ describe('ContextService', () => {
       memoryBlock: '[会话记忆]\n- 唯一动态值: 第二轮',
       strategySource: 'testing',
     });
-    const staticIds = new Set(['base-manual', 'final-check', 'channel', 'stage-overview']);
-    const staticPrefix = (blocks: typeof first.promptBlocks) =>
-      blocks.filter((block) => staticIds.has(block.id));
-
-    expect(staticPrefix(first.promptBlocks)).toEqual(staticPrefix(second.promptBlocks));
-    expect(staticPrefix(first.promptBlocks).map((block) => block.id)).toEqual([
+    const stableLeadingIds = new Set([
+      'identity',
       'base-manual',
-      'final-check',
+      'channel',
       'stage-overview',
+      'red-lines',
+      'thresholds',
     ]);
-    const renderedStatic = staticPrefix(first.promptBlocks)
+    const stableLeadingBlocks = (blocks: typeof first.promptBlocks) =>
+      blocks.filter((block) => stableLeadingIds.has(block.id));
+    const finalCheck = (blocks: typeof first.promptBlocks) =>
+      blocks.find((block) => block.id === 'final-check');
+
+    expect(stableLeadingBlocks(first.promptBlocks)).toEqual(
+      stableLeadingBlocks(second.promptBlocks),
+    );
+    expect(stableLeadingBlocks(first.promptBlocks).map((block) => block.id)).toEqual([
+      'identity',
+      'base-manual',
+      'stage-overview',
+      'red-lines',
+      'thresholds',
+    ]);
+    expect(finalCheck(first.promptBlocks)).toEqual(finalCheck(second.promptBlocks));
+    expect(first.promptBlocks.at(-1)?.id).toBe('final-check');
+    const renderedStable = [
+      ...stableLeadingBlocks(first.promptBlocks),
+      finalCheck(first.promptBlocks),
+    ]
+      .filter((block) => block !== undefined)
       .map((block) => block.content)
       .join('\n\n');
-    expect(renderedStatic).not.toContain('第一轮');
-    expect(renderedStatic).not.toContain('第二轮');
-    expect(renderedStatic).not.toMatch(/当前时间：\d/u);
+    expect(renderedStable).not.toContain('第一轮');
+    expect(renderedStable).not.toContain('第二轮');
+    expect(renderedStable).not.toMatch(/当前时间：\d/u);
     expect(
-      staticPrefix(first.promptBlocks).find((block) => block.id === 'stage-overview')?.content,
+      stableLeadingBlocks(first.promptBlocks).find((block) => block.id === 'stage-overview')
+        ?.content,
     ).not.toContain('→');
   });
 

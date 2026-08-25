@@ -6,10 +6,10 @@
  */
 export const SCENARIO_SECTIONS: Record<string, string[]> = {
   'candidate-consultation': [
+    // procedural · 配置档（开篇人设；低频配置档前置无缓存代价）
+    'identity',
     // procedural · 静态档（候选人咨询手册）
     'base-manual',
-    // procedural · 静态档（发送前自检手册）
-    'final-check',
     // procedural · 静态档（渠道规范；私聊为空）
     'channel',
     // procedural · 静态档（全阶段地图 + 阶段推进协议）
@@ -18,8 +18,6 @@ export const SCENARIO_SECTIONS: Record<string, string[]> = {
     'red-lines',
     // procedural · 配置档（业务阈值）
     'thresholds',
-    // procedural · 配置档（策略角色 + 托管账号身份）
-    'identity',
     // semantic · 动态档（跨轮档案 + 当前会话事实）
     'memory',
     // working · 动态档（本轮解析增量）
@@ -30,8 +28,10 @@ export const SCENARIO_SECTIONS: Record<string, string[]> = {
     'datetime',
     // working · 动态档（按本轮城市渲染平台群库数据）
     'group-inventory',
-    // procedural · 动态档（当前阶段策略，固定置于 system 尾部）
+    // procedural · 动态档（当前阶段策略）
     'stage-strategy',
+    // procedural · 静态档（发送前自检；recitation 收口，固定次末位）
+    'final-check',
     // procedural · 动态档（本轮命中硬禁令；与既有注入点等价的场景末位）
     'critical-turn-guard',
   ],

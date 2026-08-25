@@ -36,22 +36,22 @@ memory.onTurnStart()
 
 `SCENARIO_SECTIONS['candidate-consultation']` 当前包含 14 个模型可见叶子 section：
 
-| 段位     | 顺序 | Section               | 知识归类   | 语料域      | 稳定性 / 省略条件                     |
-| -------- | ---: | --------------------- | ---------- | ----------- | ------------------------------------- |
-| 静态前缀 |    1 | `base-manual`         | procedural | teaching    | 固定手册                              |
-| 静态前缀 |    2 | `final-check`         | procedural | teaching    | 固定发送前自检                        |
-| 静态前缀 |    3 | `channel`             | procedural | teaching    | 渠道固定；私聊为空                    |
-| 静态前缀 |    4 | `stage-overview`      | procedural | teaching    | 全阶段地图；不读取当前阶段            |
-| 配置段   |    5 | `red-lines`           | procedural | teaching    | 随策略配置版本变化                    |
-| 配置段   |    6 | `thresholds`          | procedural | teaching    | 随策略配置版本变化；无阈值时为空      |
-| 配置段   |    7 | `identity`            | procedural | teaching    | 策略角色、人格与托管账号身份          |
-| 动态尾部 |    8 | `memory`              | semantic   | evidence    | 档案、会话事实、岗位/工单等均空时省略 |
-| 动态尾部 |    9 | `turn-hints`          | working    | evidence    | 本轮共享裁决增量为空时省略            |
-| 动态尾部 |   10 | `hard-constraints`    | working    | evidence    | 本轮查询约束为空时省略                |
-| 动态尾部 |   11 | `datetime`            | working    | tool_result | 每轮当前时间                          |
-| 动态尾部 |   12 | `group-inventory`     | working    | tool_result | 无高置信城市或群库数据时省略          |
-| 动态尾部 |   13 | `stage-strategy`      | procedural | teaching    | 只渲染当前阶段策略                    |
-| 动态尾部 |   14 | `critical-turn-guard` | procedural | teaching    | 命中关键回合规则时才渲染              |
+| 段位             | 顺序 | Section               | 知识归类   | 语料域      | 稳定性 / 省略条件                     |
+| ---------------- | ---: | --------------------- | ---------- | ----------- | ------------------------------------- |
+| 稳定前缀 · 开篇  |    1 | `identity`            | procedural | teaching    | 开篇人设；配置变更极低频              |
+| 稳定前缀 · 静态  |    2 | `base-manual`         | procedural | teaching    | 固定手册                              |
+| 稳定前缀 · 静态  |    3 | `channel`             | procedural | teaching    | 渠道固定；私聊为空                    |
+| 稳定前缀 · 静态  |    4 | `stage-overview`      | procedural | teaching    | 全阶段地图；不读取当前阶段            |
+| 稳定前缀 · 配置  |    5 | `red-lines`           | procedural | teaching    | 随策略配置版本变化                    |
+| 稳定前缀 · 配置  |    6 | `thresholds`          | procedural | teaching    | 随策略配置版本变化；无阈值时为空      |
+| 动态尾部         |    7 | `memory`              | semantic   | evidence    | 档案、会话事实、岗位/工单等均空时省略 |
+| 动态尾部         |    8 | `turn-hints`          | working    | evidence    | 本轮共享裁决增量为空时省略            |
+| 动态尾部         |    9 | `hard-constraints`    | working    | evidence    | 本轮查询约束为空时省略                |
+| 动态尾部         |   10 | `datetime`            | working    | tool_result | 每轮当前时间                          |
+| 动态尾部         |   11 | `group-inventory`     | working    | tool_result | 无高置信城市或群库数据时省略          |
+| 动态尾部         |   12 | `stage-strategy`      | procedural | teaching    | 只渲染当前阶段策略                    |
+| recitation 收口  |   13 | `final-check`         | procedural | teaching    | 固定发送前自检；固定次末位            |
+| 关键回合动态末位 |   14 | `critical-turn-guard` | procedural | teaching    | 命中关键回合规则时才渲染              |
 
 这里有两根互不替代的轴：目录表达知识主类型；`PROMPT_SECTION_DOMAIN_REGISTRY` 表达
 teaching / evidence / tool_result 语料域。`static.section.ts` 和 `section.interface.ts` 是根目录
@@ -60,18 +60,18 @@ teaching / evidence / tool_result 语料域。`static.section.ts` 和 `section.i
 空 section 不生成 block，因此一个普通私聊示例常见的结构化顺序是：
 
 ```text
+identity
 base-manual
-final-check
 stage-overview
 red-lines
 thresholds
-identity
 memory                  （有内容时）
 turn-hints              （有本轮增量时）
 hard-constraints        （有本轮约束时）
 datetime
 group-inventory         （有城市群库数据时）
 stage-strategy
+final-check
 critical-turn-guard     （命中时）
 ```
 
@@ -89,7 +89,9 @@ finalPrompt = renderPromptBlocks(
 ```
 
 - `input-guard` 固定插在 `critical-turn-guard` 前，保持既有最终字节顺序。
-- `critical-turn-guard` 是场景清单末位；未命中时不产生 block。
+- `final-check` 在场景清单中固定次末位，以 recitation 在发送前收口；输入安全 guard 按需插在它与
+  `critical-turn-guard` 之间。
+- `critical-turn-guard` 是场景清单末位；未命中时不产生 block，此时 `final-check` 成为场景尾块。
 - `proactive-directive` 不属于场景 section，只在主动/复聊回合追加到最终 system 尾部。
 - 已退役的 generator 重写回路不再产生额外尾块；修复由独立 `ReplyRepairAgent` 承担。
 
@@ -99,13 +101,19 @@ finalPrompt = renderPromptBlocks(
 ## 模型可见的大致形态
 
 ```text
+# 角色
+...
+
+# 账号身份
+...
+
+# 人格设定
+...
+
 # 全局工作原则
 ...
 
 # 回合 SOP
-...
-
-# 发送前自检（全部需通过）
 ...
 
 [所有阶段概览]
@@ -118,15 +126,6 @@ finalPrompt = renderPromptBlocks(
 ...
 
 # 业务阈值
-...
-
-# 角色
-...
-
-# 账号身份
-...
-
-# 人格设定
 ...
 
 [用户档案] / [历史求职意向] / [记忆冲突裁决] / [会话记忆]
@@ -144,6 +143,9 @@ finalPrompt = renderPromptBlocks(
 ...
 
 [当前阶段策略]
+...
+
+# 发送前自检（全部需通过）
 ...
 
 ⚠️ 安全提示...（按需）
@@ -189,7 +191,10 @@ finalPrompt = renderPromptBlocks(
 
 当前实现不打显式缓存断点，也没有 provider 缓存适配层。收益来自 Qwen 自动的隐式前缀缓存：
 
-- 静态前缀在同一场景、渠道和配置版本下不含时间、记忆或当前阶段标记；字节级测试锁定纯净性。
+- 稳定前缀以低频变化的 `identity` 开篇，随后是静态手册/渠道/阶段总览与配置规则；同一账号和
+  配置版本下不含时间、记忆或当前阶段标记，字节级测试锁定纯净性。
+- `final-check` 虽是静态资产，但为发挥发送前 recitation 收口功能而固定在场景次末位，不计入
+  领先缓存前缀。
 - 普通文本回合的固定工具集合顺序、description 与 input schema 已验证逐字节稳定。
 - 图片回合会按需加入 `save_image_description`，简历回合会按需加入
   `read_resume_attachment`，MCP 工具会随注册/删除和注册顺序变化；这些是现存动态边界，
