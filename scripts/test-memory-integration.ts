@@ -20,7 +20,7 @@ import { RedisStore } from '@memory/stores/redis.store';
 import { LongTermService } from '@memory/long-term/long-term.service';
 import { ConsolidationService } from '@memory/long-term/consolidation.service';
 import { MessageWindowService } from '@memory/short-term/message-window.service';
-import { SessionSemanticService } from '@memory/short-term/session-semantic.service';
+import { SessionStateService } from '@memory/short-term/session-state.service';
 import { SessionFactsService } from '@memory/short-term/facts.service';
 import { SessionWorkbenchService } from '@memory/short-term/workbench.service';
 import { FALLBACK_EXTRACTION } from '@memory/short-term/short-term.types';
@@ -222,7 +222,7 @@ const sessionFactsService = new SessionFactsService(
   spongeShim as never,
   systemConfigShim as never,
 );
-const sessionService = new SessionSemanticService(
+const sessionService = new SessionStateService(
   sessionFactsService,
   new SessionWorkbenchService(sessionFactsService, redisStore, memoryConfigShim as never),
 );
