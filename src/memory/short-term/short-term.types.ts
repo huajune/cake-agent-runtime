@@ -9,7 +9,41 @@ import {
 } from '@resolution/evidence/claim.types';
 import { FACT_CONFIDENCE_LEVELS_DESC, factConfidenceRank } from '../confidence-rank';
 
-// ==================== 0. 消息窗口 ====================
+// ==================== 0. 结构总览（从这里读） ====================
+
+/**
+ * short-term 层的完整结构图。
+ *
+ * 这是类型级目录，不对应一个被整体读写的 DTO：消息窗口、session hash 与阶段指针
+ * 分别由不同存储入口读取。它只负责把本层三个部件及其嵌套关系集中展示出来。
+ */
+export interface ShortTermMemoryStructure {
+  /** 7 天原始消息窗口。 */
+  messageWindow: ShortTermMemoryState;
+  /** 3 天结构化会话状态；工作台字段因 Redis hash 契约保持平铺。 */
+  sessionState: WeworkSessionState;
+  /** 会话阶段指针；属于 short-term，但保留独立 `stage:` Redis key。 */
+  stage: StageState;
+}
+
+/** `factsv2:` hash 的完整结构化会话状态。 */
+export interface WeworkSessionState extends SessionWorkbenchState {
+  facts: SessionFacts | null;
+  /** 本会话中已邀入的兼职群 */
+  invitedGroups: InvitedGroupRecord[] | null;
+  /** 会话终态（已约面/已转人工/已拒绝/已入职）；复聊 shouldStop 据此停发。可选：旧数据无此键。 */
+  terminal?: SessionTerminalState | null;
+  /** 候选人最后一次入站消息时间（ISO）；复聊 shouldStop 用「锚点后已回话」停发。可选：旧数据无此键。 */
+  lastCandidateMessageAt?: string | null;
+  /**
+   * 已被系统成功处理（正常回复或有意沉默）的候选人消息时间水位（ISO）。
+   * 与 lastCandidateMessageAt 比对可识别被 timeout 静默丢弃的回话（复聊停止判定用）。
+   * 可选：旧数据无此键。
+   */
+  lastProcessedCandidateMessageAt?: string | null;
+}
+
+// ==================== 1. 消息窗口 ====================
 
 /** 短期记忆中的单条消息 */
 export interface ShortTermMessage {
@@ -26,7 +60,7 @@ export interface ShortTermMemoryState {
   messages: ShortTermMessage[];
 }
 
-// ==================== 0.1 工作台与阶段 ====================
+// ==================== 2. 工作台与阶段 ====================
 
 /**
  * 阶段状态 — 招聘流程阶段状态。
@@ -78,7 +112,7 @@ export const SessionWorkbenchStateSchema = z.object({
   lastJobListQuery: JobListQueryRecordSchema.nullable().optional(),
 });
 
-// ==================== 1. 提取 schema（LLM 输出结构） ====================
+// ==================== 3. 提取 schema（LLM 输出结构） ====================
 
 /** 面试信息 schema */
 export const InterviewInfoSchema = z.object({
@@ -910,7 +944,7 @@ export function toSessionFacts(
   }) as SessionFacts;
 }
 
-// ==================== 2. 业务状态（当前会话的结构化短期记忆） ====================
+// ==================== 4. 业务状态（当前会话的结构化短期记忆） ====================
 
 /** 已邀入的群记录 */
 export interface InvitedGroupRecord {
@@ -934,23 +968,6 @@ export interface InvitedGroupRecord {
  */
 export const SESSION_TERMINAL_STATES = ['booked', 'handed_off', 'rejected', 'onboarded'] as const;
 export type SessionTerminalState = (typeof SESSION_TERMINAL_STATES)[number];
-
-/** 会话事实层 — 当前这次求职会话的结构化状态 */
-export interface WeworkSessionState extends SessionWorkbenchState {
-  facts: SessionFacts | null;
-  /** 本会话中已邀入的兼职群 */
-  invitedGroups: InvitedGroupRecord[] | null;
-  /** 会话终态（已约面/已转人工/已拒绝/已入职）；复聊 shouldStop 据此停发。可选：旧数据无此键。 */
-  terminal?: SessionTerminalState | null;
-  /** 候选人最后一次入站消息时间（ISO）；复聊 shouldStop 用「锚点后已回话」停发。可选：旧数据无此键。 */
-  lastCandidateMessageAt?: string | null;
-  /**
-   * 已被系统成功处理（正常回复或有意沉默）的候选人消息时间水位（ISO）。
-   * 与 lastCandidateMessageAt 比对可识别被 timeout 静默丢弃的回话（复聊停止判定用）。
-   * 可选：旧数据无此键。
-   */
-  lastProcessedCandidateMessageAt?: string | null;
-}
 
 export const InvitedGroupRecordSchema = z.object({
   groupName: z.string(),
@@ -985,7 +1002,7 @@ export const EMPTY_SESSION_STATE: WeworkSessionState = {
   lastJobListQuery: null,
 };
 
-// ==================== 3. Redis 持久化结构 ====================
+// ==================== 5. Redis 持久化结构 ====================
 
 /** Redis 中 session-facts 层实际写入的 content 结构。 */
 export type SessionFactsRedisContent = Partial<WeworkSessionState>;

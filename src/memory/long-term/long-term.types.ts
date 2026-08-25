@@ -8,6 +8,33 @@ import {
   FACT_CONFIDENCE_RANK,
   type FactConfidence,
 } from '../confidence-rank';
+
+// ==================== 0. 结构总览（从这里读） ====================
+
+/**
+ * long-term 层的完整记忆结构。
+ *
+ * consolidation 水位和数据库行投影不属于记忆内容，因此刻意不出现在这里。
+ */
+export interface LongTermMemory {
+  semantic: SemanticMemory;
+  episodic: EpisodicMemory;
+}
+
+/** 语义记忆：跨咨询段复用的身份事实与最近一段求职意向快照。 */
+export interface SemanticMemory {
+  profile: UserProfileFacts | null;
+  /** 求职意向快照（原 preference_facts；consolidation 整组覆盖写入）。 */
+  jobIntent?: JobIntentFacts | null;
+}
+
+/** 情景记忆：按时间排列的咨询段摘要；仅由 recall_history 按需拉取。 */
+export interface EpisodicMemory {
+  sessionSummaries: SummaryEntry[] | null;
+}
+
+// ==================== 1. Semantic：身份档案 ====================
+
 /** 用户身份信息 — 长期记忆 Profile，跨会话复用 */
 export interface UserProfile {
   name: string | null;
@@ -307,7 +334,7 @@ export interface ActiveBookingState extends ActiveBookingEntry {
   bookings?: ActiveBookingEntry[];
 }
 
-// ==================== 长期求职意向（semantic_job_intent） ====================
+// ==================== 2. Semantic：长期求职意向 ====================
 
 /**
  * 跨会话沉淀的求职意向字段。
@@ -346,26 +373,3 @@ export type ProfileUpsertPayload = Partial<UserProfile>;
 
 /** 单个候选人 × bot 关系最多保留的咨询段摘要数；超限时淘汰最老段。 */
 export const MAX_SESSION_SUMMARIES = 20;
-
-// ==================== CoALA A3 分组（2026-08-21，治理二期 M2-B） ====================
-
-/** 语义记忆分组：跨会话稳定事实（分类词住结构层、内容词住叶子层）。 */
-export interface SemanticMemory {
-  profile: UserProfileFacts | null;
-  /** 求职意向快照（原 preference_facts；consolidation 整组覆盖写入）。 */
-  jobIntent?: JobIntentFacts | null;
-}
-
-/** 情景记忆分组：按会话分段的历史摘要集（recall_history 按需拉取）。 */
-export interface EpisodicMemory {
-  sessionSummaries: SummaryEntry[] | null;
-}
-
-/**
- * 长期记忆域视图（A3 终态）。procedural 分组仅当 playbook 观察项重启并落地时加入，
- * 不预留空槽（见 docs/todo/memory-coala-alignment.md）。
- */
-export interface LongTermMemory {
-  semantic: SemanticMemory;
-  episodic: EpisodicMemory;
-}

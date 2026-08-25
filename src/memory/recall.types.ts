@@ -1,9 +1,26 @@
-import type { SemanticMemory } from './long-term/long-term.types';
+import type { LongTermMemory, SemanticMemory } from './long-term/long-term.types';
 import type { StageState } from './short-term/short-term.types';
 import type { ShortTermMessage } from './short-term/short-term.types';
+import type { ShortTermMemoryStructure } from './short-term/short-term.types';
 import type { WeworkSessionState } from './short-term/short-term.types';
 import type { TurnHints } from '@resolution/evidence/claim.types';
 import type { CandidateCollectedField, CandidateFieldKey } from '@resolution/candidate/types';
+
+// ==================== 0. 记忆系统总览（从这里读） ====================
+
+/**
+ * memory 的完整两层结构图。
+ *
+ * 这是类型级目录，不是一次调用返回的 DTO：short-term 的三个部件来自不同存储入口，
+ * long-term 的 episodic 又只通过 recall_history 按需读取。实际每轮返回值见下方
+ * MemoryRecallContext，它是这张完整地图的默认召回投影。
+ */
+export interface MemoryStructure {
+  shortTerm: ShortTermMemoryStructure;
+  longTerm: LongTermMemory;
+}
+
+// ==================== 1. 默认召回投影 ====================
 
 /**
  * Agent 运行时记忆上下文 — memory.onTurnStart() 返回值
