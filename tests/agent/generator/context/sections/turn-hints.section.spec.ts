@@ -167,7 +167,7 @@ describe('TurnHintsSection', () => {
     expect(cityIndex).toBeGreaterThan(pendingIndex);
   });
 
-  it('should still render current-turn facts when they match session facts', () => {
+  it('deduplicates current-turn facts when they match session facts', () => {
     const output = section.build({
       ...baseCtx,
       sessionFacts: sessionFactsOf({ preferences: { city: cityFixture('上海') } }),
@@ -177,12 +177,10 @@ describe('TurnHintsSection', () => {
       ),
     });
 
-    expect(output).toContain('[本轮解析线索]');
-    expect(output).toContain('意向城市: 上海（置信度: high，来源: rule，证据: explicit_city）');
-    expect(output).not.toContain('[本轮待确认线索]');
+    expect(output).toBe('');
   });
 
-  it('treats a current labor-form change as the active intent instead of pending confirmation', () => {
+  it('marks a current labor-form change as pending confirmation instead of overwriting facts', () => {
     const output = section.build({
       ...baseCtx,
       sessionFacts: sessionFactsOf({ preferences: { labor_form: '兼职' } }),
@@ -191,8 +189,10 @@ describe('TurnHintsSection', () => {
       ),
     });
 
-    expect(output).toContain('[本轮解析线索]');
+    expect(output).toContain('[本轮待确认线索]');
+    expect(output).toContain('待确认更新');
+    expect(output).toContain('不得因存在冲突而留空或静默');
     expect(output).toContain('用工形式: 暑假工');
-    expect(output).not.toContain('[本轮待确认线索]');
+    expect(output).not.toContain('[本轮解析线索]');
   });
 });

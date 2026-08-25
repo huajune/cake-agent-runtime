@@ -1,4 +1,3 @@
-import { MemoryService } from '@memory/memory.service';
 import { formatExtractionFactLines } from '@memory/fact-lines.formatter';
 import {
   isValidLaborForm,
@@ -20,11 +19,13 @@ import {
 } from '@memory/short-term/short-term.types';
 import type { RecommendedJobSummary } from '@resolution/job/types';
 import type { SignupWorkOrderItem } from '@sponge/sponge.types';
-import { isArchivedProfileFactSuperseded } from '@resolution/evidence/profile';
-import type { CandidateClaimField } from '@resolution/evidence/claim.types';
+import type {
+  PromptMemoryAdjudication,
+  PromptMemoryConflict,
+  TurnStartMemory,
+} from './prompt-memory-adjudicator';
 
-/** 本轮 turn-start 记忆召回结果（PreparationService 及各渲染函数的公共输入形状）。 */
-export type TurnStartMemory = Awaited<ReturnType<MemoryService['onTurnStart']>>;
+export type { TurnStartMemory } from './prompt-memory-adjudicator';
 
 export interface RealtimeGroupStatus {
   groupName: string;
@@ -38,6 +39,7 @@ export interface RealtimeGroupStatus {
  */
 export function buildMemoryBlock(
   memory: TurnStartMemory,
+  adjudication: PromptMemoryAdjudication,
   bookingContext: string,
   realtimeGroups: RealtimeGroupStatus[] = [],
   contactName?: string,
@@ -47,18 +49,42 @@ export function buildMemoryBlock(
   const activeLaborForm = resolveActiveLaborForm(memory, currentLaborFormIntent);
   return (
     formatContactNamePreferenceHint(contactName, contactBrandAliases) +
-    formatProfile(
-      memory.longTerm.semantic.profile,
-      unwrapSessionFacts(memory.shortTerm.sessionState?.facts ?? null, { minConfidence: 'high' })
-        ?.interview_info ?? null,
-    ) +
-    formatLongTermJobIntent(memory.longTerm.semantic.jobIntent ?? null) +
-    (memory.shortTerm.sessionState
-      ? formatSessionFacts(memory.shortTerm.sessionState, activeLaborForm, currentLaborFormIntent)
+    formatProfile(adjudication.profile) +
+    formatLongTermJobIntent(adjudication.jobIntent) +
+    formatConflictAnnotations(adjudication.conflicts) +
+    (adjudication.sessionState
+      ? formatSessionFacts(adjudication.sessionState, activeLaborForm, currentLaborFormIntent)
       : '') +
     formatRealtimeGroups(realtimeGroups) +
     bookingContext
   );
+}
+
+function formatConflictAnnotations(conflicts: readonly PromptMemoryConflict[]): string {
+  if (conflicts.length === 0) return '';
+  const lines = conflicts.map((conflict) => {
+    return (
+      `- ${conflict.label}：档案记 ${renderConflictValue(conflict.archivedValue)}，` +
+      `本次称 ${renderConflictValue(conflict.sessionValue)}；按档案域权威链采用本次会话。`
+    );
+  });
+  return (
+    `\n\n[记忆冲突裁决]\n\n` +
+    `_以下字段存在跨层异值。保留双方原值用于解释冲突，但只有标明的胜者可作为当前事实。` +
+    `本段只裁决事实，不改变本轮应答义务；仍须正常回答候选人当前问题，不得因存在冲突而留空或静默。_\n` +
+    lines.join('\n')
+  );
+}
+
+function renderConflictValue(value: unknown): string {
+  if (Array.isArray(value)) return value.map(String).join('、');
+  if (typeof value === 'boolean') return value ? '是' : '否';
+  if (typeof value === 'object' && value !== null) {
+    const record = value as Record<string, unknown>;
+    if (typeof record.raw === 'string' && record.raw.trim()) return record.raw.trim();
+    return JSON.stringify(value);
+  }
+  return String(value);
 }
 
 /** 当前轮明确用工形式覆盖旧会话事实；无当前值时沿用高置信会话事实。 */
@@ -131,78 +157,46 @@ function formatRealtimeGroups(groups: RealtimeGroupStatus[]): string {
 /**
  * 把长期档案渲染成 prompt 片段。
  *
- * §7 Prompt 收口（证据化方案）：不把多个版本都描述成"已知信息"。
- * 本会话已有同字段高置信事实且值不同的历史字段，进"已失效"段——只声明失效、
- * 不渲染旧值（渲染出来模型仍可能抄走）；其余历史字段进"待确认线索"段。
+ * 跨层重复/冲突已经由 preparation 的共享裁决视图预处理；本函数只渲染留下的长期值。
  */
-function formatProfile(
-  profile: UserProfileFacts | null,
-  sessionInterviewInfo: Record<string, unknown> | null,
-): string {
+function formatProfile(profile: UserProfileFacts | null): string {
   if (!profile) return '';
 
   const fieldRows: Array<{
     label: string;
-    sessionKey: string;
-    evidenceField: CandidateClaimField;
     fact: UserProfileFacts[keyof UserProfileFacts];
   }> = [
-    { label: '姓名', sessionKey: 'name', evidenceField: 'name', fact: profile.name },
-    { label: '联系方式', sessionKey: 'phone', evidenceField: 'phone', fact: profile.phone },
-    { label: '性别', sessionKey: 'gender', evidenceField: 'gender', fact: profile.gender },
-    { label: '年龄', sessionKey: 'age', evidenceField: 'age', fact: profile.age },
-    {
-      label: '是否学生',
-      sessionKey: 'is_student',
-      evidenceField: 'isStudent',
-      fact: profile.is_student,
-    },
-    { label: '学历', sessionKey: 'education', evidenceField: 'education', fact: profile.education },
-    {
-      label: '健康证',
-      sessionKey: 'has_health_certificate',
-      evidenceField: 'healthCertificate',
-      fact: profile.has_health_certificate,
-    },
+    { label: '姓名', fact: profile.name },
+    { label: '联系方式', fact: profile.phone },
+    { label: '性别', fact: profile.gender },
+    { label: '年龄', fact: profile.age },
+    { label: '是否学生', fact: profile.is_student },
+    { label: '学历', fact: profile.education },
+    { label: '健康证', fact: profile.has_health_certificate },
+    { label: '身高', fact: profile.height },
+    { label: '体重', fact: profile.weight },
   ];
 
   const lines: string[] = [];
-  const invalidatedLabels: string[] = [];
-  for (const { label, sessionKey, evidenceField, fact } of fieldRows) {
+  for (const { label, fact } of fieldRows) {
     if (!fact) continue;
-    const sessionValue = sessionInterviewInfo?.[sessionKey];
-    const hasNewerSessionValue = isArchivedProfileFactSuperseded(
-      evidenceField,
-      fact.value,
-      sessionValue,
-    );
-    if (hasNewerSessionValue) {
-      invalidatedLabels.push(label);
-      continue;
-    }
     const rendered =
       typeof fact.value === 'boolean' ? (fact.value ? '是' : '否') : String(fact.value);
     lines.push(`- ${label}: ${rendered}${formatProfileFactMeta(fact)}`);
   }
 
-  if (lines.length === 0 && invalidatedLabels.length === 0) return '';
+  if (lines.length === 0) return '';
   // 展示出处门（badcase 6a4f520a 赵堤案：历史档案被整张预填进报名表甩给候选人；
   // badcase 6a61bb34："哪里看出来之前在上海的"——旧档案被当断言复述引发投诉）：
   // 历史沉淀字段对候选人只能以"披露 + 请确认"口径使用，不得当作本次已确认的事实。
-  const pendingSection =
-    lines.length > 0
-      ? `_以下字段来自**历史会话沉淀**，未经本次会话确认。使用规则：\n` +
-        `- 预填报名表/提交预约前，必须向候选人披露并逐项确认（口径如"帮你把之前登记过的信息带出来了，你看下对不对"），不得不加说明地当作候选人本次刚提供的信息直接使用；\n` +
-        `- 向候选人复述这些信息时用披露句式（"我记得你之前提过…现在还是吗"），不得说成候选人本次已确认；\n` +
-        `- 候选人表示某项不对/不认识时，立即弃用该历史值，按候选人本次说法重新收集。_\n\n` +
-        lines.join('\n')
-      : '';
-  const invalidatedSection =
-    invalidatedLabels.length > 0
-      ? `${lines.length > 0 ? '\n\n' : ''}_已失效历史资料：${invalidatedLabels.join('、')}——` +
-        `历史值已被本次会话的候选人最新信息取代，**严禁继续使用或复述历史值**，一律以会话记忆中的当前值为准。_`
-      : '';
-  return `\n\n[用户档案]\n\n` + pendingSection + invalidatedSection;
+  return (
+    `\n\n[用户档案]\n\n` +
+    `_以下字段来自**历史会话沉淀**，未经本次会话确认。使用规则：\n` +
+    `- 预填报名表/提交预约前，必须向候选人披露并逐项确认（口径如"帮你把之前登记过的信息带出来了，你看下对不对"），不得不加说明地当作候选人本次刚提供的信息直接使用；\n` +
+    `- 向候选人复述这些信息时用披露句式（"我记得你之前提过…现在还是吗"），不得说成候选人本次已确认；\n` +
+    `- 候选人表示某项不对/不认识时，立即弃用该历史值，按候选人本次说法重新收集。_\n\n` +
+    lines.join('\n')
+  );
 }
 
 function formatProfileFactMeta(value: {
@@ -336,8 +330,8 @@ function formatSessionFacts(
   };
 
   if (state.facts) {
-    // 用工形式是可变意向，当前消息的高置信值必须覆盖旧记忆的展示值；否则同一份
-    // system prompt 会同时出现“旧兼职”和“当前暑假工”，诱导模型复用旧岗位。
+    // set 型 turnHint 只在增量块展示：与既有 facts 同值时去重，异值时标「待确认更新」，
+    // 不再把尚未落盘的本轮值伪装成会话事实。clear 是显式撤销，仍从展示副本移除旧值。
     const persistedLaborForm = unwrapSessionFacts(state.facts, { minConfidence: 'medium' })
       ?.preferences.labor_form;
     const shouldClearPersistedLaborForm =
@@ -346,16 +340,15 @@ function formatSessionFacts(
         persistedLaborForm &&
           currentIntent.clearedValues.some((value) => value === persistedLaborForm),
       );
-    const factsForPrompt =
-      activeLaborForm || shouldClearPersistedLaborForm
-        ? ({
-            ...state.facts,
-            preferences: {
-              ...state.facts.preferences,
-              labor_form: activeLaborForm ?? null,
-            },
-          } as unknown as EntityExtractionResult)
-        : state.facts;
+    const factsForPrompt = shouldClearPersistedLaborForm
+      ? ({
+          ...state.facts,
+          preferences: {
+            ...state.facts.preferences,
+            labor_form: null,
+          },
+        } as unknown as EntityExtractionResult)
+      : state.facts;
     const factLines = formatExtractionFactLines(factsForPrompt);
 
     if (factLines.length > 0) {

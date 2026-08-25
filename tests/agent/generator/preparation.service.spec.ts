@@ -7,6 +7,7 @@ import { FALLBACK_EXTRACTION } from '@memory/short-term/short-term.types';
 import { getTurnHint } from '@resolution/evidence/merge';
 import { extractCandidateTextsFromCorpus } from '@resolution/signal/self-report';
 import { testTurnHint, testTurnHints } from '../../helpers/turn-hints.fixture';
+import { sessionFactsOf } from '../../helpers/session-facts.fixture';
 
 describe('PreparationService', () => {
   const mockToolRegistry = {
@@ -809,13 +810,7 @@ describe('PreparationService', () => {
     setRecall({
       shortTerm: { messageWindow: [{ role: 'user', content: '我只找暑期工' }] },
       sessionState: {
-        facts: {
-          ...FALLBACK_EXTRACTION,
-          preferences: {
-            ...FALLBACK_EXTRACTION.preferences,
-            labor_form: '兼职',
-          },
-        },
+        facts: sessionFactsOf({ preferences: { labor_form: '兼职' } }),
         lastCandidatePool: [
           {
             jobId: 101,
@@ -870,7 +865,13 @@ describe('PreparationService', () => {
       'invoke',
     );
 
-    expect(result.finalPrompt).toContain('用工形式: 暑假工');
+    expect(result.finalPrompt).toContain('用工形式: 兼职');
+    const composeArgs = mockContext.compose.mock.calls.at(-1)?.[0] as {
+      displayTurnHints?: unknown;
+      pendingTurnHintFields?: readonly string[];
+    };
+    expect(composeArgs.displayTurnHints).toEqual(turnHints);
+    expect(composeArgs.pendingTurnHintFields).toContain('preferences.labor_form');
     expect(result.finalPrompt).toContain('暑假工品牌');
     expect(result.finalPrompt).not.toContain('普通兼职品牌');
     expect(result.finalPrompt).not.toContain('历史小时工品牌');

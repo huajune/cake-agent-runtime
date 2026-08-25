@@ -38,8 +38,8 @@ import {
   buildMemoryBlock,
   formatBookingContext,
   type RealtimeGroupStatus,
-  type TurnStartMemory,
 } from './memory-block.formatter';
+import { adjudicatePromptMemory, type TurnStartMemory } from './prompt-memory-adjudicator';
 import {
   extractTextFromContent,
   normalizeConversationWithCorpus,
@@ -206,8 +206,10 @@ export class PreparationService {
 
     // Compose 的输入：memoryBlock 渲染 + 当前阶段（直接取程序性记忆 currentStage；
     // 不由任何本地 case 状态推导 onboard_followup）。
+    const promptMemoryView = adjudicatePromptMemory(memory);
     const memoryBlock = buildMemoryBlock(
       memory,
+      promptMemoryView,
       bookingContext.block,
       realtimeGroups,
       params.contactName,
@@ -236,6 +238,8 @@ export class PreparationService {
       memoryBlock,
       sessionFacts: memory.shortTerm.sessionState?.facts ?? null,
       turnHints: memory.turnHints,
+      displayTurnHints: promptMemoryView.displayTurnHints,
+      pendingTurnHintFields: promptMemoryView.pendingTurnHintFields,
       currentTurnTexts,
       currentLaborFormIntent,
       sessionBrandState: turnBrandContext.state,

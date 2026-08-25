@@ -1,7 +1,7 @@
 // 归位依据：section 基础设施契约，不是模型可见 section，不参与知识分类。
 // prompt-rule-ledger: docs/prompt-rule-ledger.md（Prompt section 契约与语料域执法点）
 import type { SessionFacts } from '@memory/short-term/short-term.types';
-import type { TurnHints } from '@resolution/evidence/claim.types';
+import type { TurnHintFieldPath, TurnHints } from '@resolution/evidence/claim.types';
 import type { SessionBrandState } from '@resolution/brand/brand-resolution.types';
 import { StrategyConfigRecord } from '@biz/strategy/entities/strategy-config.entity';
 import type { LaborFormIntentDecision } from '@resolution/labor-form';
@@ -38,6 +38,10 @@ export interface PromptContext {
   sessionFacts?: SessionFacts | null;
   /** 本轮前置识别得到的高置信结果；由 TurnHintsSection 拆分为普通/待确认线索后渲染。 */
   turnHints?: TurnHints | null;
+  /** 仅供 TurnHintsSection 渲染的裁决副本；undefined 表示未提供，回退到原 turnHints。 */
+  displayTurnHints?: TurnHints | null;
+  /** 与跨层权威 facts 异值、需强制进入「待确认更新」块的本轮字段。 */
+  pendingTurnHintFields?: readonly TurnHintFieldPath[];
   /**
    * 本轮候选人消息原文（逐条，与规则轨输入同源）。
    * TurnHintsSection 用它判定 claim 的 quote 是否"就是整条当轮消息"——是且本轮只有一条

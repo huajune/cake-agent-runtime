@@ -15,7 +15,7 @@ import { GroupResolverService } from '@biz/group-task/services/group-resolver.se
 import { GroupContext } from '@biz/group-task/group-task.types';
 import { normalizeCityName as normalizeCity } from '@resolution/geo';
 import { unwrapSessionFacts, type SessionFacts } from '@memory/short-term/short-term.types';
-import type { TurnHints } from '@resolution/evidence/claim.types';
+import type { TurnHintFieldPath, TurnHints } from '@resolution/evidence/claim.types';
 import type { LaborFormIntentDecision } from '@resolution/labor-form';
 import type { SessionBrandState } from '@resolution/brand/brand-resolution.types';
 import { StrategyConfigRecord } from '@biz/strategy/entities/strategy-config.entity';
@@ -53,6 +53,10 @@ export interface ComposeParams {
   sessionFacts?: SessionFacts | null;
   /** 本轮前置识别得到的高置信结果；由 TurnHintsSection 拆分/渲染。 */
   turnHints?: TurnHints | null;
+  /** 渲染层裁决后的本轮增量提示；不影响工具/台账消费的原 turnHints。 */
+  displayTurnHints?: TurnHints | null;
+  /** 与跨层权威 facts 异值、需进入待确认块的字段。 */
+  pendingTurnHintFields?: readonly TurnHintFieldPath[];
   /** 本轮候选人消息原文（逐条，与规则轨输入同源）；turn-hints 的原话渲染判据。 */
   currentTurnTexts?: readonly string[];
   /** 当前消息对用工形式的确定性 set/clear/ignore 决策。 */
@@ -114,6 +118,8 @@ export class ContextService implements OnModuleInit {
       memoryBlock,
       sessionFacts,
       turnHints,
+      displayTurnHints,
+      pendingTurnHintFields,
       currentTurnTexts,
       currentLaborFormIntent,
       sessionBrandState,
@@ -135,6 +141,8 @@ export class ContextService implements OnModuleInit {
       memoryBlock,
       sessionFacts,
       turnHints,
+      displayTurnHints,
+      pendingTurnHintFields,
       currentTurnTexts,
       currentLaborFormIntent,
       sessionBrandState,

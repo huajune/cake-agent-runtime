@@ -18,10 +18,12 @@ export class TurnHintsSection implements PromptSection {
   readonly name = 'turn-hints';
 
   build(ctx: PromptContext): string {
-    const { normalHints, pendingHints } = this.partition(
-      ctx.sessionFacts ?? null,
-      ctx.turnHints ?? null,
-    );
+    const sharedViewSupplied = ctx.displayTurnHints !== undefined;
+    const displayTurnHints = sharedViewSupplied ? ctx.displayTurnHints : (ctx.turnHints ?? null);
+    const forcedPendingFields = new Set(ctx.pendingTurnHintFields ?? []);
+    const { normalHints, pendingHints } = sharedViewSupplied
+      ? this.partitionSharedView(displayTurnHints ?? null, forcedPendingFields)
+      : this.partitionLegacyView(ctx.sessionFacts ?? null, displayTurnHints ?? null);
     const parts: string[] = [];
     const currentTurnTexts = ctx.currentTurnTexts;
     if (normalHints) parts.push(this.renderCurrentHints(normalHints, currentTurnTexts));
@@ -75,15 +77,34 @@ export class TurnHintsSection implements PromptSection {
       '[本轮待确认线索]',
       '',
       '以下内容由当前消息前置识别得到，但与[会话记忆]中的已知信息存在冲突。',
+      '这些异值已标记为「待确认更新」，不是已完成的事实覆盖。',
       '这些内容只用于帮助你判断是否需要澄清，不得直接覆盖已确认的会话记忆。',
       '若候选人本轮表达明确，可按当前表达继续；若表达仍有歧义，先做一次简短确认。',
+      '完成判断后仍须正常回答候选人当前问题，不得因存在冲突而留空或静默。',
       '',
       '## 当前消息待确认结果',
       lines.join('\n'),
     ].join('\n');
   }
 
-  private partition(
+  /** preparation 已完成同值去重；渲染层只按共享视图的待确认标记分流。 */
+  private partitionSharedView(
+    turnHints: TurnHints | null,
+    pendingFields: ReadonlySet<TurnHintFieldPath>,
+  ): { normalHints: TurnHints | null; pendingHints: TurnHints | null } {
+    if (!turnHints) return { normalHints: null, pendingHints: null };
+    const normalFields = new Set<TurnHintFieldPath>();
+    for (const fact of resolveTurnHints(turnHints)) {
+      if (!pendingFields.has(fact.field)) normalFields.add(fact.field);
+    }
+    return {
+      normalHints: this.selectClaims(turnHints, normalFields),
+      pendingHints: this.selectClaims(turnHints, pendingFields),
+    };
+  }
+
+  /** 兼容直接单测/扩展调用；生产 preparation 路径始终提供共享裁决视图。 */
+  private partitionLegacyView(
     sessionFacts: SessionFacts | null,
     turnHints: TurnHints | null,
   ): {
@@ -94,8 +115,6 @@ export class TurnHintsSection implements PromptSection {
     if (!projected) return { normalHints: null, pendingHints: null };
 
     const comparable = unwrapSessionFacts(sessionFacts, { minConfidence: 'medium' });
-    if (!comparable) return { normalHints: turnHints, pendingHints: null };
-
     const normalFields = new Set<TurnHintFieldPath>();
     const pendingFields = new Set<TurnHintFieldPath>();
     for (const fact of resolveTurnHints(turnHints)) {
@@ -103,13 +122,11 @@ export class TurnHintsSection implements PromptSection {
       const currentValue = this.readPath(projected, fact.field);
       if (!this.hasValue(currentValue)) continue;
 
-      const previousValue = this.readPath(comparable, fact.field);
-      const target =
-        fact.field === 'preferences.labor_form' ||
-        !this.hasValue(previousValue) ||
-        this.valuesEqual(fact.field, previousValue, currentValue)
-          ? normalFields
-          : pendingFields;
+      const previousValue = comparable ? this.readPath(comparable, fact.field) : undefined;
+      const isDuplicate =
+        this.hasValue(previousValue) && this.valuesEqual(fact.field, previousValue, currentValue);
+      if (isDuplicate) continue;
+      const target = this.hasValue(previousValue) ? pendingFields : normalFields;
       target.add(fact.field);
 
       if (fact.field === 'interview_info.gender') {
