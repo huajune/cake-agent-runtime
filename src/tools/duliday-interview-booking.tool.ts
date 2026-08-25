@@ -130,10 +130,24 @@ export function buildInterviewBookingTool(
           );
         }
 
+        const botUserId = context.session.botUserId?.trim();
+        if (!botUserId) {
+          return fail(
+            buildToolError({
+              errorType: TOOL_ERROR_TYPES.BOOKING_REJECTED,
+              outcome: '预约未提交（缺少稳定托管账号身份）',
+              replyInstruction:
+                '停止重试并调用 request_handoff，禁止在 bot 身份缺失时读写收资表单。',
+              details: { jobId },
+            }),
+          );
+        }
+
         const tokenContext = buildSpongeTokenContext(context);
         const scope = {
           corpId: context.session.corpId,
           userId: context.session.userId,
+          botUserId,
           sessionId: context.session.sessionId,
           jobId,
         };

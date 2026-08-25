@@ -217,6 +217,20 @@ describe('duliday_interview_booking（form → labelList）', () => {
 
   it('成功后 markSubmitted，active booking 与高置信 booking lineage 同步写入', async () => {
     await execute({ jobId: 100 });
+    expect(collectionForms.loadOrCreate).toHaveBeenCalledWith(
+      {
+        corpId: 'corp-1',
+        userId: 'user-1',
+        botUserId: 'wecom-user-A',
+        sessionId: 'session-1',
+        jobId: 100,
+      },
+      expect.any(Array),
+    );
+    expect(collectionForms.persist).toHaveBeenLastCalledWith(
+      expect.objectContaining({ botUserId: 'wecom-user-A', jobId: 100 }),
+      expect.objectContaining({ workOrderId: 9001 }),
+    );
     expect(verdictOf(currentForm)).toBe('submitted');
     expect(currentForm.workOrderId).toBe(9001);
     expect(longTerm.setActiveBooking).toHaveBeenCalledWith('corp-1', 'user-1', 9001, {

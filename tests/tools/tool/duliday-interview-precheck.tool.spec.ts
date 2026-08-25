@@ -115,7 +115,12 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
     jest.clearAllMocks();
     currentForm = null;
     context = createToolContext({
-      session: { corpId: 'corp-1', userId: 'user-1', sessionId: 'session-1' },
+      session: {
+        corpId: 'corp-1',
+        userId: 'user-1',
+        sessionId: 'session-1',
+        botUserId: 'wecom-user-A',
+      },
       turnInput: { messages: [] },
     });
     sponge.fetchJobs.mockResolvedValue({ jobs: [JOB] });
@@ -164,7 +169,13 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
     ]);
     expect(result.bookingChecklist.requiredFieldsToCollectNow).not.toContain('姓名');
     expect(collectionForms.saveFinalizedProgressFacts).toHaveBeenCalledWith(
-      { corpId: 'corp-1', userId: 'user-1', jobId: 100, sessionId: 'session-1' },
+      {
+        corpId: 'corp-1',
+        userId: 'user-1',
+        botUserId: 'wecom-user-A',
+        jobId: 100,
+        sessionId: 'session-1',
+      },
       expect.objectContaining({ slots: expect.any(Object) }),
       expect.any(Array),
       [expect.objectContaining({ labelId: 101 })],

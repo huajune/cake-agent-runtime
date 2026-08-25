@@ -366,6 +366,10 @@ async function runForm(params: {
   formAnswers?: Record<string, string>;
   messages: readonly unknown[];
 }): Promise<FormRun> {
+  const botUserId = params.context.session.botUserId?.trim();
+  if (!botUserId) {
+    throw new Error('缺少稳定 botUserId，无法定位收资表单');
+  }
   const rawContract = await params.spongeService.fetchJobCollectionContract(
     params.jobId,
     buildSpongeTokenContext(params.context),
@@ -376,6 +380,7 @@ async function runForm(params: {
   const scope = {
     corpId: params.context.session.corpId,
     userId: params.context.session.userId,
+    botUserId,
     jobId: params.jobId,
   };
   let form = await params.deps.collectionForms.loadOrCreate(scope, mapped.fields);

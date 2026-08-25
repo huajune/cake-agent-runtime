@@ -24,6 +24,8 @@ import { findFieldForClaim } from './proposal-intake';
 export interface CollectionFormScope {
   corpId: string;
   userId: string;
+  /** 当前托管账号的稳定企微身份（wecomUserId）；收资单据隔离维度。 */
+  botUserId: string;
   jobId: number;
 }
 

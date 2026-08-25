@@ -105,8 +105,9 @@ outcome=`restated` 落审计；askCount 不清零防刷熔断配额）。系统/
 
 ## 8. 存储与观测
 
-- Redis 快照 `collection-form:{corpId}:{userId}:{candidateRef}:{jobId}`，整实体读写，
-  回合租约（90s 心跳）单写者，无 CAS；列入「丢了算事故」key 清单；零新表零迁移。
+- Redis 快照 `collection-form:{corpId}:{userId}:{botUserId}:{candidateRef}:{jobId}`，
+  `botUserId` 取稳定企微 `wecomUserId`；整实体读写，回合租约（90s 心跳）单写者，无 CAS；
+  列入「丢了算事故」key 清单。旧 key 不迁移、不兜底读，随 3 天 TTL 自然过期。
 - 审计：公证拒收 / slot_restated / slot_disqualified / escalated / config_debt /
   submitted 各落一条 `agent_execution_events`（同 traceId 可 join）；配置债经
   booking-card「收资配置备注」段披露给运营。

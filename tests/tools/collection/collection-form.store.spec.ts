@@ -15,7 +15,7 @@ const FIELD: ContractFieldDef = {
   rejectedOptions: [],
   systemField: 'name',
 };
-const SCOPE = { corpId: 'corp1', userId: 'user1', jobId: 528962 };
+const SCOPE = { corpId: 'corp1', userId: 'user1', botUserId: 'wecom-user-A', jobId: 528962 };
 describe('CollectionFormStore', () => {
   const redis = {
     get: jest.fn(),
@@ -74,6 +74,55 @@ describe('CollectionFormStore', () => {
       COLLECTION_FORM_TTL_SECONDS,
       expect.objectContaining({ content: { candidateRef: form.candidateRef } }),
     );
+  });
+
+  it('同一候选人与岗位在不同 bot 下各自读写独立表单与 locator', async () => {
+    const shared = {
+      corpId: SCOPE.corpId,
+      userId: SCOPE.userId,
+      candidateRef: '18271421690',
+      jobId: SCOPE.jobId,
+    };
+    const snapshots = new Map<string, unknown>();
+    redis.setex.mockImplementation(async (key: string, _ttl: number, entry: unknown) => {
+      snapshots.set(key, entry);
+    });
+    redis.get.mockImplementation(async (key: string) => snapshots.get(key) ?? null);
+
+    const formA = createForm({ ...shared, contract: [FIELD] });
+    formA.slots[FIELD.labelId] = {
+      labelId: FIELD.labelId,
+      state: 'filled',
+      askCount: 0,
+      value: {
+        value: 'bot A 的答案',
+        sourceText: 'bot A 的答案',
+        producer: 'candidate_quote',
+        confidence: 'high',
+      },
+    };
+    const formB = createForm({ ...shared, contract: [FIELD] });
+    await store.write({ ...shared, botUserId: 'wecom-user-A' }, formA);
+    await store.write({ ...shared, botUserId: 'wecom-user-B' }, formB);
+
+    expect(buildCollectionFormKey({ ...shared, botUserId: 'wecom-user-A' })).not.toBe(
+      buildCollectionFormKey({ ...shared, botUserId: 'wecom-user-B' }),
+    );
+    expect(
+      buildCollectionFormLocatorKey({ ...SCOPE, botUserId: 'wecom-user-A' }),
+    ).not.toBe(buildCollectionFormLocatorKey({ ...SCOPE, botUserId: 'wecom-user-B' }));
+    await expect(
+      store.read({ ...shared, botUserId: 'wecom-user-A' }),
+    ).resolves.toEqual(formA);
+    await expect(
+      store.read({ ...shared, botUserId: 'wecom-user-B' }),
+    ).resolves.toEqual(formB);
+    await expect(
+      store.readCurrentCandidateRef({ ...SCOPE, botUserId: 'wecom-user-A' }),
+    ).resolves.toBe(shared.candidateRef);
+    await expect(
+      store.readCurrentCandidateRef({ ...SCOPE, botUserId: 'wecom-user-B' }),
+    ).resolves.toBe(shared.candidateRef);
   });
 
   it('删除当前实体时同步删除 locator', async () => {

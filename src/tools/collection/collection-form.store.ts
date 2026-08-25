@@ -23,14 +23,15 @@ interface CollectionFormStoreEntry {
   updatedAt: string;
 }
 
-/** key 形态：`collection-form:{corpId}:{userId}:{candidateRef}:{jobId}`（蓝图 §4 原样）。 */
+/** key 形态：`collection-form:{corpId}:{userId}:{botUserId}:{candidateRef}:{jobId}`。 */
 export function buildCollectionFormKey(params: {
   corpId: string;
   userId: string;
+  botUserId: string;
   candidateRef: string;
   jobId: number;
 }): string {
-  return `collection-form:${params.corpId}:${params.userId}:${params.candidateRef}:${params.jobId}`;
+  return `collection-form:${params.corpId}:${params.userId}:${params.botUserId}:${params.candidateRef}:${params.jobId}`;
 }
 
 /**
@@ -42,9 +43,10 @@ export function buildCollectionFormKey(params: {
 export function buildCollectionFormLocatorKey(params: {
   corpId: string;
   userId: string;
+  botUserId: string;
   jobId: number;
 }): string {
-  return `collection-form-current:${params.corpId}:${params.userId}:${params.jobId}`;
+  return `collection-form-current:${params.corpId}:${params.userId}:${params.botUserId}:${params.jobId}`;
 }
 
 @Injectable()
@@ -56,6 +58,7 @@ export class CollectionFormStore {
   async read(params: {
     corpId: string;
     userId: string;
+    botUserId: string;
     candidateRef: string;
     jobId: number;
   }): Promise<BookingCollectionForm | null> {
@@ -68,6 +71,7 @@ export class CollectionFormStore {
   async readCurrentCandidateRef(params: {
     corpId: string;
     userId: string;
+    botUserId: string;
     jobId: number;
   }): Promise<string | null> {
     const entry = await this.redis.get<CollectionFormStoreEntry>(
@@ -81,18 +85,20 @@ export class CollectionFormStore {
 
   /** 整实体覆盖写（merge=false）：表单的写路径纯函数已产出完整新实体，deepMerge 只会把删掉的槽位又粘回来。 */
   async write(
-    params: { corpId: string; userId: string },
+    params: { corpId: string; userId: string; botUserId: string },
     form: BookingCollectionForm,
   ): Promise<void> {
     const formKey = buildCollectionFormKey({
       corpId: params.corpId,
       userId: params.userId,
+      botUserId: params.botUserId,
       candidateRef: form.candidateRef,
       jobId: form.jobId,
     });
     const locatorKey = buildCollectionFormLocatorKey({
       corpId: params.corpId,
       userId: params.userId,
+      botUserId: params.botUserId,
       jobId: form.jobId,
     });
     await this.writeSnapshot(formKey, form as unknown as Record<string, unknown>);
@@ -102,6 +108,7 @@ export class CollectionFormStore {
   async remove(params: {
     corpId: string;
     userId: string;
+    botUserId: string;
     candidateRef: string;
     jobId: number;
   }): Promise<void> {

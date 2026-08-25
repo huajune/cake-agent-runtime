@@ -28,7 +28,7 @@ const HEALTH_CERT_FIELD: ContractFieldDef = {
   rejectedOptions: [],
 };
 
-const SCOPE = { corpId: 'corp1', userId: 'user1', jobId: 528962 };
+const SCOPE = { corpId: 'corp1', userId: 'user1', botUserId: 'wecom-user-A', jobId: 528962 };
 const TEST_PHONE = '18271421690';
 
 describe('CollectionFormService', () => {
@@ -51,10 +51,16 @@ describe('CollectionFormService', () => {
     service = new CollectionFormService(store as never, sessionState as never);
   });
 
-  it('key 形态按蓝图 §4 原样', () => {
+  it('key 形态包含稳定 botUserId 维度且保留前缀', () => {
     expect(
-      buildCollectionFormKey({ corpId: 'c', userId: 'u', candidateRef: TEST_PHONE, jobId: 1 }),
-    ).toBe(`collection-form:c:u:${TEST_PHONE}:1`);
+      buildCollectionFormKey({
+        corpId: 'c',
+        userId: 'u',
+        botUserId: 'bot-a',
+        candidateRef: TEST_PHONE,
+        jobId: 1,
+      }),
+    ).toBe(`collection-form:c:u:bot-a:${TEST_PHONE}:1`);
   });
 
   it('本轮落定的交集格逐格写 medium；岗位自定义格不回流', async () => {
