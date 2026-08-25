@@ -419,6 +419,13 @@ async function runForm(params: {
     askThisTurn: !recapAffirmed,
   });
 
+  await params.deps.collectionForms.saveFinalizedProgressFacts(
+    { ...scope, sessionId: params.context.session.sessionId },
+    result.form,
+    mapped.fields,
+    result.answeredThisTurn,
+  );
+
   const phoneField = mapped.fields.find((field) => field.systemField === 'phone');
   const phoneValue = phoneField ? result.form.slots[phoneField.labelId]?.value?.value : null;
   let persisted = phoneValue

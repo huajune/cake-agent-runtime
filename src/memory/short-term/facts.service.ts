@@ -23,6 +23,7 @@ import {
   SessionFactsSchema,
   SessionFactsRedisContentSchema,
   type SessionFacts,
+  type SessionInterviewInfo,
   type SessionFactValue,
   type WeworkSessionState,
   EMPTY_SESSION_STATE,
@@ -57,6 +58,7 @@ import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 import { buildSessionFactsHashKey } from './session-key';
 import { hasMeaningfulValue, resolveTurnHints } from '@resolution/evidence/merge';
+import { factConfidenceRank } from '../confidence-rank';
 
 /**
  * 会话记忆·事实舱（semantic 性质，M3 分家 2026-08-21）
@@ -332,7 +334,7 @@ export class SessionFactsService {
   /**
    * 夹具/显式写入口：身份组精确替换，偏好组使用三态合并。
    *
-   * 身份事实不再参与 deep merge；生产身份写入须走 saveCompletedCollectionFacts。
+   * 身份事实不再参与 deep merge；生产身份写入须走收资逐格或办结专用入口。
    */
   async saveFacts(
     corpId: string,
@@ -347,6 +349,45 @@ export class SessionFactsService {
       preferences: this.mergePreferences(state.facts?.preferences ?? null, incoming.preferences),
       // brand 只由 BrandStateService reducer 写；通用 facts 写入必须原样保留。
       brand: state.facts?.brand ?? null,
+    }) as SessionFacts;
+    await this.patchSessionState(corpId, userId, sessionId, { facts: merged });
+  }
+
+  /**
+   * 收资表单逐格落定的身份事实入口；只接受 medium 信封。
+   *
+   * source 保留槽位的真实作证者，collection 域血缘写在 evidence；这里负责守住
+   * 同值不刷新与低置信不得覆盖高置信，调用方不需要复制合并规则。
+   */
+  async saveCollectionProgressFact(
+    corpId: string,
+    userId: string,
+    sessionId: string,
+    field: keyof SessionInterviewInfo,
+    fact: SessionFactValue<string | boolean>,
+  ): Promise<void> {
+    if (!isSessionFactValue(fact) || fact.confidence !== 'medium') {
+      throw new Error(`collection progress fact must be medium: ${String(field)}`);
+    }
+    if (!fact.evidence.startsWith('收资表单第 ')) {
+      throw new Error(`collection progress fact evidence must identify the slot: ${String(field)}`);
+    }
+
+    const state = await this.getSessionState(corpId, userId, sessionId);
+    const base = state.facts ?? (SessionFactsSchema.parse(FALLBACK_EXTRACTION) as SessionFacts);
+    const current = base.interview_info[field];
+    if (
+      isSessionFactValue(current) &&
+      (isSameFactValue(current.value, fact.value) ||
+        factConfidenceRank(current.confidence) > factConfidenceRank(fact.confidence))
+    ) {
+      return;
+    }
+
+    const merged = SessionFactsSchema.parse({
+      interview_info: { ...base.interview_info, [field]: fact },
+      preferences: base.preferences,
+      brand: base.brand,
     }) as SessionFacts;
     await this.patchSessionState(corpId, userId, sessionId, { facts: merged });
   }

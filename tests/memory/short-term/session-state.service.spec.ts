@@ -1,4 +1,5 @@
 import { SessionFactsService } from '@memory/short-term/facts.service';
+import { LongTermService } from '@memory/long-term/long-term.service';
 import { SessionWorkbenchService } from '@memory/short-term/workbench.service';
 import { SessionStateService } from '@memory/short-term/session-state.service';
 import {
@@ -160,6 +161,120 @@ describe('SessionStateService（S1-S6）', () => {
       'factsv2:corp-1:user-1:session-1',
       expect.objectContaining({ facts: expect.objectContaining({ brand }) }),
       config.sessionFactsTtl,
+    );
+  });
+
+  it('收资逐格 medium 入档；同值不刷新，办结后升级 high', async () => {
+    await expect(
+      service.saveCollectionProgressFact(
+        'corp-1',
+        'user-1',
+        'session-1',
+        'name',
+        sessionFactValue('兮兮', {
+          confidence: 'high',
+          source: 'candidate_quote',
+          evidence: '收资表单第 1 格落定',
+        }),
+      ),
+    ).rejects.toThrow('must be medium');
+
+    const first = sessionFactValue('兮兮', {
+      confidence: 'medium',
+      source: 'candidate_quote',
+      evidence: '收资表单第 1 格落定',
+      extractedAt: '2026-08-25T10:00:00.000Z',
+    });
+    await service.saveCollectionProgressFact('corp-1', 'user-1', 'session-1', 'name', first);
+    await service.saveCollectionProgressFact(
+      'corp-1',
+      'user-1',
+      'session-1',
+      'name',
+      sessionFactValue('兮兮', {
+        confidence: 'medium',
+        source: 'model',
+        evidence: '收资表单第 1 格落定（同值重放不得刷新）',
+        extractedAt: '2026-08-25T11:00:00.000Z',
+      }),
+    );
+
+    expect((await service.getFacts('corp-1', 'user-1', 'session-1'))?.interview_info.name).toEqual(
+      first,
+    );
+
+    await service.saveCompletedCollectionFacts('corp-1', 'user-1', 'session-1', {
+      name: sessionFactValue('兮兮', {
+        confidence: 'high',
+        source: 'candidate_quote',
+        evidence: '收资表单办结',
+      }),
+    });
+    expect((await service.getFacts('corp-1', 'user-1', 'session-1'))?.interview_info.name).toEqual(
+      expect.objectContaining({ value: '兮兮', confidence: 'high' }),
+    );
+  });
+
+  it('既有 high 身份事实不被后到 medium 降级', async () => {
+    const high = sessionFactValue('兮兮', {
+      confidence: 'high',
+      source: 'candidate_quote',
+      evidence: '报名成功姓名',
+    });
+    await service.saveCompletedCollectionFacts('corp-1', 'user-1', 'session-1', { name: high });
+
+    await service.saveCollectionProgressFact(
+      'corp-1',
+      'user-1',
+      'session-1',
+      'name',
+      sessionFactValue('另一个名字', {
+        confidence: 'medium',
+        source: 'model',
+        evidence: '收资表单第 1 格落定',
+      }),
+    );
+
+    expect((await service.getFacts('corp-1', 'user-1', 'session-1'))?.interview_info.name).toEqual(
+      high,
+    );
+  });
+
+  it('半途弃单未走办结入口，逐格 medium 仍可由 consolidation 提拔进长期 Profile', async () => {
+    await service.saveCollectionProgressFact(
+      'corp-1',
+      'user-1',
+      'session-1',
+      'education',
+      sessionFactValue('本科', {
+        confidence: 'medium',
+        source: 'candidate_quote',
+        evidence: '收资表单第 2 格落定',
+      }),
+    );
+    const profileStore = { upsertProfileFacts: jest.fn().mockResolvedValue(undefined) };
+    const longTerm = new LongTermService(profileStore as never);
+    const facts = await service.getFacts('corp-1', 'user-1', 'session-1');
+
+    await longTerm.writeFromConsolidation('corp-1', 'user-1', 'wecom-user-1', facts!, {
+      sessionId: 'session-1',
+      botImId: 'bot-1',
+    });
+
+    expect(profileStore.upsertProfileFacts).toHaveBeenCalledWith(
+      'corp-1',
+      'user-1',
+      'wecom-user-1',
+      {
+        education: expect.objectContaining({
+          value: '本科',
+          confidence: 'medium',
+          source: 'candidate_quote',
+          originSessionId: 'session-1',
+        }),
+      },
+      undefined,
+      {},
     );
   });
 

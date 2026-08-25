@@ -364,7 +364,7 @@ export const LaborFormIntentExtractionSchema = z.object({
 
 export type LaborFormIntentExtraction = z.infer<typeof LaborFormIntentExtractionSchema>;
 
-/** LLM 结构化输出只允许表单外软事实；身份字段由收资表单办结写入。 */
+/** LLM 结构化输出只允许表单外软事实；身份字段由收资表单逐格/办结专用入口写入。 */
 export const LLMEntityExtractionResultSchema = z.object({
   preferences: LLMPreferencesSchema,
   brand_intents: z
@@ -473,7 +473,7 @@ export type SessionFactConfidence = z.infer<typeof SessionFactConfidenceSchema>;
 /** sessionFacts 置信度语义。工具消费默认只信 high；prompt 会展示所有置信度。 */
 export const SESSION_FACT_CONFIDENCE_DESCRIPTIONS: Record<SessionFactConfidence, string> = {
   high: '可程序化采用。仅来自收资表单办结或同等级业务确权。',
-  medium: '表单外软事实，供推荐与模型参考；不得用于硬报名判断。',
+  medium: '未办结收资或表单外软事实，供推荐与模型参考；不得用于硬报名判断。',
 };
 
 /** sessionFacts 来源语义。source 说明事实出身，不等同于字段真假。 */

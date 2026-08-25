@@ -19,6 +19,14 @@ const ADDRESS_FIELD: ContractFieldDef = {
   acceptedOptions: [],
   rejectedOptions: [],
 };
+const HEALTH_CERT_FIELD: ContractFieldDef = {
+  labelId: 802,
+  labelTitle: '健康证情况',
+  fieldType: 'TEXT',
+  required: true,
+  acceptedOptions: [],
+  rejectedOptions: [],
+};
 
 const SCOPE = { corpId: 'corp1', userId: 'user1', jobId: 528962 };
 const TEST_PHONE = '18271421690';
@@ -30,19 +38,77 @@ describe('CollectionFormService', () => {
     write: jest.fn().mockResolvedValue(undefined),
     remove: jest.fn().mockResolvedValue(undefined),
   };
+  const sessionState = {
+    saveCollectionProgressFact: jest.fn().mockResolvedValue(undefined),
+  };
   let service: CollectionFormService;
 
   beforeEach(() => {
     jest.clearAllMocks();
     store.read.mockResolvedValue(null);
     store.readCurrentCandidateRef.mockResolvedValue(null);
-    service = new CollectionFormService(store as never);
+    sessionState.saveCollectionProgressFact.mockResolvedValue(undefined);
+    service = new CollectionFormService(store as never, sessionState as never);
   });
 
   it('key 形态按蓝图 §4 原样', () => {
     expect(
       buildCollectionFormKey({ corpId: 'c', userId: 'u', candidateRef: TEST_PHONE, jobId: 1 }),
     ).toBe(`collection-form:c:u:${TEST_PHONE}:1`);
+  });
+
+  it('本轮落定的交集格逐格写 medium；岗位自定义格不回流', async () => {
+    const contract = [NAME_FIELD, HEALTH_CERT_FIELD, ADDRESS_FIELD];
+    const form = createForm({ jobId: SCOPE.jobId, contract });
+    for (const [field, value] of [
+      [NAME_FIELD, '兮兮'],
+      [HEALTH_CERT_FIELD, '有'],
+      [ADDRESS_FIELD, '人民路 1 号'],
+    ] as const) {
+      form.slots[field.labelId] = {
+        labelId: field.labelId,
+        state: 'filled',
+        askCount: 0,
+        value: {
+          value,
+          sourceText: value,
+          producer: 'candidate_quote',
+          confidence: 'high',
+        },
+      };
+    }
+
+    await service.saveFinalizedProgressFacts(
+      { ...SCOPE, sessionId: 'session-1' },
+      form,
+      contract,
+      contract,
+      '2026-08-25T10:00:00.000Z',
+    );
+
+    expect(sessionState.saveCollectionProgressFact).toHaveBeenNthCalledWith(
+      1,
+      'corp1',
+      'user1',
+      'session-1',
+      'name',
+      expect.objectContaining({
+        value: '兮兮',
+        confidence: 'medium',
+        source: 'candidate_quote',
+        evidence: '收资表单第 1 格落定（姓名，labelId=769）',
+        extractedAt: '2026-08-25T10:00:00.000Z',
+      }),
+    );
+    expect(sessionState.saveCollectionProgressFact).toHaveBeenNthCalledWith(
+      2,
+      'corp1',
+      'user1',
+      'session-1',
+      'has_health_certificate',
+      expect.objectContaining({ value: '有', confidence: 'medium' }),
+    );
+    expect(sessionState.saveCollectionProgressFact).toHaveBeenCalledTimes(2);
   });
 
   describe('loadOrCreate', () => {

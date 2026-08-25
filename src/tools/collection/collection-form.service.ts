@@ -1,12 +1,14 @@
 /**
  * 收资表单的持久化编排：loadOrCreate / persist / phone 到达 rebind。
  *
- * 职责边界：本服务**不做任何字段判断**——改表只经 `@resolution/collection` 的写路径
- * 纯函数（CLAUDE.md：memory 只持有事实，不实现字段判断）。这里只管从哪读、写到哪、
- * 人键变了怎么搬家。
+ * 职责边界：本服务**不重做任何字段判定**——改表只经 `@resolution/collection` 的写路径
+ * 纯函数（CLAUDE.md：memory 只持有事实，不实现字段判断）。这里只编排从哪读、写到哪、
+ * 人键变了怎么搬家，以及已落定交集字段如何回流 sessionFacts。
  */
 
 import { Injectable, Logger } from '@nestjs/common';
+import { SessionStateService } from '@memory/short-term/session-state.service';
+import { sessionFactValue, type SessionInterviewInfo } from '@memory/short-term/short-term.types';
 import {
   createForm,
   SESSION_CANDIDATE_REF,
@@ -14,7 +16,10 @@ import {
   type ContractFieldDef,
 } from '@resolution/collection';
 import { isStorableCandidatePhone } from '@resolution/candidate/phone';
+import type { CandidateFieldKey } from '@resolution/candidate/types';
+import type { CandidateClaimField } from '@resolution/evidence/claim.types';
 import { CollectionFormStore } from './collection-form.store';
+import { findFieldForClaim } from './proposal-intake';
 
 export interface CollectionFormScope {
   corpId: string;
@@ -22,11 +27,50 @@ export interface CollectionFormScope {
   jobId: number;
 }
 
+type ProgressCandidateField = Exclude<CandidateFieldKey, 'supplementAnswers'>;
+type ProgressInterviewField = Extract<
+  keyof SessionInterviewInfo,
+  | 'name'
+  | 'phone'
+  | 'age'
+  | 'gender'
+  | 'education'
+  | 'has_health_certificate'
+  | 'household_register_province'
+  | 'height'
+  | 'weight'
+>;
+
+/** CandidateFieldKey 与 interview_info 的语义交集；新增候选字段时必须显式裁定去向。 */
+const COLLECTION_PROGRESS_FACT_MAPPING = {
+  name: { claimField: 'name', interviewField: 'name' },
+  phone: { claimField: 'phone', interviewField: 'phone' },
+  age: { claimField: 'age', interviewField: 'age' },
+  gender: { claimField: 'gender', interviewField: 'gender' },
+  education: { claimField: 'education', interviewField: 'education' },
+  healthCert: {
+    claimField: 'healthCertificate',
+    interviewField: 'has_health_certificate',
+  },
+  householdProvince: {
+    claimField: 'householdProvince',
+    interviewField: 'household_register_province',
+  },
+  height: { claimField: 'height', interviewField: 'height' },
+  weight: { claimField: 'weight', interviewField: 'weight' },
+} as const satisfies Record<
+  ProgressCandidateField,
+  { claimField: CandidateClaimField; interviewField: ProgressInterviewField }
+>;
+
 @Injectable()
 export class CollectionFormService {
   private readonly logger = new Logger(CollectionFormService.name);
 
-  constructor(private readonly store: CollectionFormStore) {}
+  constructor(
+    private readonly store: CollectionFormStore,
+    private readonly sessionState: SessionStateService,
+  ) {}
 
   /**
    * 取当前表单；没有就按契约开一张空表。
@@ -62,6 +106,46 @@ export class CollectionFormService {
 
   async persist(scope: CollectionFormScope, form: BookingCollectionForm): Promise<void> {
     await this.store.write(scope, form);
+  }
+
+  /**
+   * 把本轮经公证落定的交集槽位逐格回流 sessionFacts。
+   *
+   * 必须在表单 rebind/persist 前 await：若 facts 写失败，本轮不落表，重试仍会重新
+   * 公证并回流；已成功的同值格由 facts 舱守卫保留旧信封，不会刷新 extractedAt。
+   */
+  async saveFinalizedProgressFacts(
+    scope: CollectionFormScope & { sessionId: string },
+    form: BookingCollectionForm,
+    contract: readonly ContractFieldDef[],
+    finalizedFields: readonly ContractFieldDef[],
+    extractedAt = new Date().toISOString(),
+  ): Promise<void> {
+    const finalizedIds = new Set(finalizedFields.map((field) => field.labelId));
+
+    for (const [index, field] of contract.entries()) {
+      if (!finalizedIds.has(field.labelId)) continue;
+      const slot = form.slots[field.labelId];
+      if (slot?.state !== 'filled' || !slot.value?.value) continue;
+
+      const mapping = Object.values(COLLECTION_PROGRESS_FACT_MAPPING).find(
+        ({ claimField }) => findFieldForClaim(contract, claimField)?.labelId === field.labelId,
+      );
+      if (!mapping) continue;
+
+      await this.sessionState.saveCollectionProgressFact(
+        scope.corpId,
+        scope.userId,
+        scope.sessionId,
+        mapping.interviewField,
+        sessionFactValue(slot.value.value, {
+          confidence: 'medium',
+          source: slot.value.producer,
+          evidence: `收资表单第 ${index + 1} 格落定（${field.labelTitle}，labelId=${field.labelId}）`,
+          extractedAt,
+        }),
+      );
+    }
   }
 
   /**

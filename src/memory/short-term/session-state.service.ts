@@ -36,6 +36,11 @@ export class SessionStateService {
   saveFacts(...args: Parameters<SessionFactsService['saveFacts']>) {
     return this.facts.saveFacts(...args);
   }
+  saveCollectionProgressFact(
+    ...args: Parameters<SessionFactsService['saveCollectionProgressFact']>
+  ) {
+    return this.facts.saveCollectionProgressFact(...args);
+  }
   saveCompletedCollectionFacts(
     ...args: Parameters<SessionFactsService['saveCompletedCollectionFacts']>
   ) {
