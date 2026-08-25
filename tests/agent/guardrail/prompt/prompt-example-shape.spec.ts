@@ -34,31 +34,61 @@ const PROMPT_ASSETS: readonly PromptSurface[] = [
 
 /** ContextService.registerSections 的 14 个模型可见 section 实例；StaticSection 有两个实例。 */
 const PROMPT_SECTION_BUILDERS: readonly PromptSurface[] = [
-  { id: 'identity', source: 'src/agent/generator/context/sections/identity.section.ts' },
-  { id: 'base-manual', source: 'src/agent/generator/context/sections/static.section.ts' },
-  { id: 'policy', source: 'src/agent/generator/context/sections/policy.section.ts' },
+  {
+    id: 'identity',
+    source: 'src/agent/generator/context/sections/semantic/identity.section.ts',
+  },
+  {
+    id: 'base-manual',
+    source: 'src/agent/generator/context/sections/procedural/static.section.ts',
+  },
+  {
+    id: 'policy',
+    source: 'src/agent/generator/context/sections/procedural/policy.section.ts',
+  },
   {
     id: 'runtime-context',
-    source: 'src/agent/generator/context/sections/runtime-context.section.ts',
+    source: 'src/agent/generator/context/sections/working/runtime-context.section.ts',
   },
-  { id: 'final-check', source: 'src/agent/generator/context/sections/static.section.ts' },
-  { id: 'red-lines', source: 'src/agent/generator/context/sections/red-lines.section.ts' },
-  { id: 'thresholds', source: 'src/agent/generator/context/sections/thresholds.section.ts' },
+  {
+    id: 'final-check',
+    source: 'src/agent/generator/context/sections/procedural/static.section.ts',
+  },
+  {
+    id: 'red-lines',
+    source: 'src/agent/generator/context/sections/procedural/red-lines.section.ts',
+  },
+  {
+    id: 'thresholds',
+    source: 'src/agent/generator/context/sections/procedural/thresholds.section.ts',
+  },
   {
     id: 'stage-strategy',
-    source: 'src/agent/generator/context/sections/stage-strategy.section.ts',
+    source: 'src/agent/generator/context/sections/procedural/stage-strategy.section.ts',
   },
-  { id: 'memory', source: 'src/agent/generator/context/sections/memory.section.ts' },
-  { id: 'turn-hints', source: 'src/agent/generator/context/sections/turn-hints.section.ts' },
+  {
+    id: 'memory',
+    source: 'src/agent/generator/context/sections/episodic/memory.section.ts',
+  },
+  {
+    id: 'turn-hints',
+    source: 'src/agent/generator/context/sections/working/turn-hints.section.ts',
+  },
   {
     id: 'hard-constraints',
-    source: 'src/agent/generator/context/sections/hard-constraints.section.ts',
+    source: 'src/agent/generator/context/sections/procedural/hard-constraints.section.ts',
   },
-  { id: 'datetime', source: 'src/agent/generator/context/sections/datetime.section.ts' },
-  { id: 'channel', source: 'src/agent/generator/context/sections/channel.section.ts' },
+  {
+    id: 'datetime',
+    source: 'src/agent/generator/context/sections/working/datetime.section.ts',
+  },
+  {
+    id: 'channel',
+    source: 'src/agent/generator/context/sections/procedural/channel.section.ts',
+  },
   {
     id: 'group-inventory',
-    source: 'src/agent/generator/context/sections/group-inventory.section.ts',
+    source: 'src/agent/generator/context/sections/working/group-inventory.section.ts',
   },
 ];
 

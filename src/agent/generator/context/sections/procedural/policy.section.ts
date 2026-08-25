@@ -1,3 +1,4 @@
+// prompt-rule-ledger: docs/prompt-rule-ledger.md（程序性政策聚合总账）
 import { RedLinesSection } from './red-lines.section';
 import { ThresholdsSection } from './thresholds.section';
 import {

@@ -1,3 +1,4 @@
+// prompt-rule-ledger: docs/prompt-rule-ledger.md（Prompt section 契约与语料域执法点）
 import type { SessionFacts } from '@memory/short-term/short-term.types';
 import type { TurnHints } from '@resolution/evidence/claim.types';
 import type { SessionBrandState } from '@resolution/brand/brand-resolution.types';

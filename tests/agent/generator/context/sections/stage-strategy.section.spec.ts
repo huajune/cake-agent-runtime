@@ -1,5 +1,5 @@
-import { StageStrategySection } from '@agent/generator/context/sections/stage-strategy.section';
-import { PromptContext } from '@agent/generator/context/sections/section.interface';
+import { StageStrategySection } from '@agent/generator/context/sections/procedural/stage-strategy.section';
+import { PromptContext } from '@agent/generator/context/sections/procedural/section.interface';
 import { StrategyConfigRecord } from '@biz/strategy/entities/strategy-config.entity';
 import { StageGoalConfig } from '@biz/strategy/types/strategy.types';
 

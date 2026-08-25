@@ -1,5 +1,5 @@
-import { PromptContext } from '@agent/generator/context/sections/section.interface';
-import { TurnHintsSection } from '@agent/generator/context/sections/turn-hints.section';
+import { PromptContext } from '@agent/generator/context/sections/procedural/section.interface';
+import { TurnHintsSection } from '@agent/generator/context/sections/working/turn-hints.section';
 import { testTurnHint, testTurnHints } from '../../../../helpers/turn-hints.fixture';
 import { cityFixture, sessionFactsOf } from '../../../../helpers/session-facts.fixture';
 

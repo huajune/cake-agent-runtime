@@ -1,19 +1,20 @@
-import { ChannelSection } from './channel.section';
+import { ChannelSection } from '../procedural/channel.section';
 import { DateTimeSection } from './datetime.section';
-import { HardConstraintsSection } from './hard-constraints.section';
-import { MemorySection } from './memory.section';
-import { StageStrategySection } from './stage-strategy.section';
+import { HardConstraintsSection } from '../procedural/hard-constraints.section';
+import { MemorySection } from '../episodic/memory.section';
+import { StageStrategySection } from '../procedural/stage-strategy.section';
 import { TurnHintsSection } from './turn-hints.section';
 import {
   buildPromptSectionBlocks,
   PromptContext,
   PromptSection,
   renderPromptBlocks,
-} from './section.interface';
+} from '../procedural/section.interface';
 import type { PromptCorpusBlock } from '@shared-types/corpus.types';
 
 /**
  * 运行时上下文段落
+ * 知识类型：working 主导（本轮聚合），混合编排 procedural/episodic 输入。
  *
  * 聚合本轮会变化的上下文：阶段策略、跨轮记忆、本轮线索、查询硬约束、时间、通道规范。
  * 顺序约定：memory → turn-hints → hard-constraints，让 LLM 先看到已确认的跨轮信息，

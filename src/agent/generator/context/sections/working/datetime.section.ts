@@ -1,5 +1,5 @@
 import { formatCurrentTime, formatLocalDateWithWeekday } from '@infra/utils/date.util';
-import { PromptContext, PromptSection } from './section.interface';
+import { PromptContext, PromptSection } from '../procedural/section.interface';
 
 /**
  * 时间注入段落

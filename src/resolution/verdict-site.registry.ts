@@ -126,7 +126,7 @@ export const VERDICT_SITE_REGISTRY = [
     id: 'candidate_rule_fact_prompt_hint',
     authority: 'hint',
     effect: 'advisory',
-    source: 'src/agent/generator/context/sections/turn-hints.section.ts#renderCurrentHints',
+    source: 'src/agent/generator/context/sections/working/turn-hints.section.ts#renderCurrentHints',
     rationale: '规则识别只进模型内部提示便签，模型与候选人保留决定权。',
   },
   {

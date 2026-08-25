@@ -1,3 +1,4 @@
+// prompt-rule-ledger: docs/prompt-rule-ledger.md（程序性业务阈值总账）
 import { PromptSection, PromptContext } from './section.interface';
 import { Threshold } from '@biz/strategy/types/strategy.types';
 

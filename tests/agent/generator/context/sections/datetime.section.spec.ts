@@ -1,7 +1,7 @@
 import {
   buildDateTimeGroundingLines,
   DateTimeSection,
-} from '@/agent/generator/context/sections/datetime.section';
+} from '@/agent/generator/context/sections/working/datetime.section';
 
 describe('DateTimeSection', () => {
   beforeEach(() => {

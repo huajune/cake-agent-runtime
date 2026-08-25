@@ -1,3 +1,4 @@
+// prompt-rule-ledger: docs/prompt-rule-ledger.md（程序性静态手册/自检总账）
 import { PromptSection, PromptContext } from './section.interface';
 
 /**

@@ -27,22 +27,22 @@ import {
   PromptContext,
   AccountIdentity,
   renderPromptBlocks,
-} from './sections/section.interface';
+} from './sections/procedural/section.interface';
 import type { PromptCorpusBlock } from '@shared-types/corpus.types';
-import { IdentitySection } from './sections/identity.section';
-import { RedLinesSection } from './sections/red-lines.section';
-import { DateTimeSection } from './sections/datetime.section';
-import { ChannelSection } from './sections/channel.section';
-import { StageStrategySection } from './sections/stage-strategy.section';
-import { ThresholdsSection } from './sections/thresholds.section';
-import { MemorySection } from './sections/memory.section';
-import { TurnHintsSection } from './sections/turn-hints.section';
-import { HardConstraintsSection } from './sections/hard-constraints.section';
-import { GroupInventorySection } from './sections/group-inventory.section';
+import { IdentitySection } from './sections/semantic/identity.section';
+import { RedLinesSection } from './sections/procedural/red-lines.section';
+import { DateTimeSection } from './sections/working/datetime.section';
+import { ChannelSection } from './sections/procedural/channel.section';
+import { StageStrategySection } from './sections/procedural/stage-strategy.section';
+import { ThresholdsSection } from './sections/procedural/thresholds.section';
+import { MemorySection } from './sections/episodic/memory.section';
+import { TurnHintsSection } from './sections/working/turn-hints.section';
+import { HardConstraintsSection } from './sections/procedural/hard-constraints.section';
+import { GroupInventorySection } from './sections/working/group-inventory.section';
 import { SCENARIO_SECTIONS, DEFAULT_SCENARIO } from './scenarios/scenario.registry';
-import { StaticSection } from './sections/static.section';
-import { PolicySection } from './sections/policy.section';
-import { RuntimeContextSection } from './sections/runtime-context.section';
+import { StaticSection } from './sections/procedural/static.section';
+import { PolicySection } from './sections/procedural/policy.section';
+import { RuntimeContextSection } from './sections/working/runtime-context.section';
 
 export interface ComposeParams {
   scenario?: string;

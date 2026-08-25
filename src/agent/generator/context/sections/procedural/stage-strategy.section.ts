@@ -1,3 +1,4 @@
+// prompt-rule-ledger: docs/prompt-rule-ledger.md（程序性阶段策略总账）
 import { PromptSection, PromptContext } from './section.interface';
 import { StageGoalConfig } from '@biz/strategy/types/strategy.types';
 

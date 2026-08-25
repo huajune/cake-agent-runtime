@@ -1,3 +1,4 @@
+// prompt-rule-ledger: docs/prompt-rule-ledger.md（程序性查询约束总账）
 import {
   type EntityExtractionResult,
   type Preferences,
@@ -11,6 +12,7 @@ import { PromptContext, PromptSection } from './section.interface';
 
 /**
  * 本轮查询约束段落（硬约束 + 软提示）
+ * 知识类型：procedural 主导（查询规则），混合读取 working/episodic 事实。
  *
  * 把 [会话记忆] / [本轮解析线索] 中可供查询的字段分两层渲染：
  *

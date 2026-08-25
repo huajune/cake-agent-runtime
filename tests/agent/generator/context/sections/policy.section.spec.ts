@@ -1,5 +1,8 @@
-import { PolicySection } from '@agent/generator/context/sections/policy.section';
-import { PromptContext, PromptSection } from '@agent/generator/context/sections/section.interface';
+import { PolicySection } from '@agent/generator/context/sections/procedural/policy.section';
+import {
+  PromptContext,
+  PromptSection,
+} from '@agent/generator/context/sections/procedural/section.interface';
 
 describe('PolicySection', () => {
   const baseCtx: PromptContext = {

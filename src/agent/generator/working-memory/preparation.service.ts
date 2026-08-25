@@ -51,7 +51,7 @@ import { buildProactiveDirective } from './revise-directives';
 import { resolveToolsForMode, wrapToolsWithTiming } from './tool-set.util';
 import { buildToolContext } from './tool-context.builder';
 import { createTurnLedger } from './turn-ledger';
-import { renderPromptBlocks } from '../context/sections/section.interface';
+import { renderPromptBlocks } from '../context/sections/procedural/section.interface';
 import type { PromptCorpusBlock } from '@shared-types/corpus.types';
 
 export type { WorkingMemory } from './working-memory.types';

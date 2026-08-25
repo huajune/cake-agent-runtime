@@ -1,7 +1,8 @@
-import { PromptSection, PromptContext } from './section.interface';
+import { PromptSection, PromptContext } from '../procedural/section.interface';
 
 /**
  * 兼职群资源段落
+ * 知识类型：working 主导（实时群资源快照），混合承载对应操作约束。
  *
  * 预渲染由 ContextService 完成，本 section 只负责把已格式化的块插入 systemPrompt。
  * 目的是让 Agent 在调用 invite_to_group 前具备该城市可用群的"上帝视角"，

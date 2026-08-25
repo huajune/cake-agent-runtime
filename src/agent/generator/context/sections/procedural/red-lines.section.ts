@@ -1,3 +1,4 @@
+// prompt-rule-ledger: docs/prompt-rule-ledger.md（程序性红线规则总账）
 import { PromptSection, PromptContext } from './section.interface';
 import { StrategyRedLines } from '@biz/strategy/types/strategy.types';
 
