@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { BullModule } from '@nestjs/bull';
 import { BizMessageModule } from '@biz/message/message.module';
 import { UserModule } from '@biz/user/user.module';
 import { LlmModule } from '@/llm/llm.module';
@@ -16,10 +17,16 @@ import { SessionFactsService } from './short-term/facts.service';
 import { SessionWorkbenchService } from './short-term/workbench.service';
 import { LongTermService } from './long-term/long-term.service';
 import { ConsolidationService } from './long-term/consolidation.service';
+import {
+  MEMORY_SETTLEMENT_QUEUE,
+  SettlementSchedulerService,
+} from './long-term/settlement-scheduler.service';
+import { SettlementProcessor } from './long-term/settlement.processor';
 import { MemoryEnrichmentService } from './enrichment.service';
 import { MemoryLifecycleService } from './lifecycle.service';
 import { HostingConfigModule } from '@biz/hosting-config/hosting-config.module';
 import { GeocodingModule } from '@infra/geocoding/geocoding.module';
+import { ObservabilityModule } from '@observability/observability.module';
 
 /**
  * Memory 模块
@@ -35,6 +42,10 @@ import { GeocodingModule } from '@infra/geocoding/geocoding.module';
     LlmModule,
     HostingConfigModule,
     GeocodingModule,
+    ObservabilityModule,
+    BullModule.registerQueue({
+      name: MEMORY_SETTLEMENT_QUEUE,
+    }),
   ],
   providers: [
     MemoryConfig,
@@ -49,6 +60,8 @@ import { GeocodingModule } from '@infra/geocoding/geocoding.module';
     SessionWorkbenchService,
     LongTermService,
     ConsolidationService,
+    SettlementSchedulerService,
+    SettlementProcessor,
     MemoryEnrichmentService,
     MemoryLifecycleService,
     MemoryService,

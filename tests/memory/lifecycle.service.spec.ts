@@ -23,8 +23,8 @@ describe('MemoryLifecycleService', () => {
     applyTurnResolutions: jest.fn().mockResolvedValue({ changed: false, initialized: false }),
   };
 
-  const mockSettlement = {
-    detectAndSettle: jest.fn().mockResolvedValue(false),
+  const mockSettlementScheduler = {
+    schedule: jest.fn().mockResolvedValue('memory-settlement:sess-1'),
   };
 
   const mockWorkbench = {
@@ -60,7 +60,7 @@ describe('MemoryLifecycleService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockShortTerm.lastLoadError = null;
-    mockSettlement.detectAndSettle.mockResolvedValue(false);
+    mockSettlementScheduler.schedule.mockResolvedValue('memory-settlement:sess-1');
     mockSessionService.getSessionState.mockResolvedValue({
       facts: null,
       lastCandidatePool: null,
@@ -77,7 +77,7 @@ describe('MemoryLifecycleService', () => {
       mockShortTerm as never,
       mockWorkbench as never,
       mockLongTerm as never,
-      mockSettlement as never,
+      mockSettlementScheduler as never,
       mockSessionService as never,
       mockSponge as never,
       mockEnrichment as never,
@@ -507,7 +507,7 @@ describe('MemoryLifecycleService', () => {
     expect(ctx.turnHints).toBeNull();
   });
 
-  it('should run detectAndSettle, project jobs, and trigger extraction on turn end', async () => {
+  it('should schedule consolidation, project jobs, and trigger extraction on turn end', async () => {
     mockSessionService.getSessionState.mockResolvedValue({
       facts: null,
       lastCandidatePool: null,
@@ -553,13 +553,14 @@ describe('MemoryLifecycleService', () => {
     );
 
     expect(mockSessionService.getSessionState).toHaveBeenCalledWith('corp-1', 'user-1', 'sess-1');
-    expect(mockSettlement.detectAndSettle).toHaveBeenCalledWith(
-      'corp-1',
-      'user-1',
-      'sess-1',
-      null, // facts is null
-      'bot-wxid-1', // botImId forwarded as fact lineage
-      null, // brand_state（长期意向品牌快照源，§19.6）；本用例会话无品牌状态
+    expect(mockSettlementScheduler.schedule).toHaveBeenCalledWith(
+      expect.objectContaining({
+        corpId: 'corp-1',
+        userId: 'user-1',
+        sessionId: 'sess-1',
+        botImId: 'bot-wxid-1',
+        activityAt: expect.any(Number),
+      }),
     );
     expect(mockSessionService.saveLastCandidatePool).toHaveBeenCalledWith(
       'corp-1',
@@ -655,7 +656,7 @@ describe('MemoryLifecycleService', () => {
         }),
         steps: expect.arrayContaining([
           expect.objectContaining({ name: 'load_previous_state', status: 'success' }),
-          expect.objectContaining({ name: 'consolidation', status: 'success' }),
+          expect.objectContaining({ name: 'schedule_consolidation', status: 'success' }),
           expect.objectContaining({ name: 'save_candidate_pool', status: 'success' }),
           expect.objectContaining({ name: 'project_assistant_turn', status: 'success' }),
           expect.objectContaining({ name: 'extract_facts', status: 'success' }),

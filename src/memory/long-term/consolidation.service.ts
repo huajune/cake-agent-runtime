@@ -22,6 +22,7 @@ const SUMMARY_SYSTEM_PROMPT = `你是对话摘要生成器。将招募经理与�
 - 使用第三人称`;
 
 const CONSOLIDATION_FETCH_LIMIT = 500;
+const CONSOLIDATION_MAX_PAGES = 10;
 
 /** 摘要 LLM 输入的消息条数上限：分页扫描后旧会话段可能远超单页。 */
 const SUMMARY_MAX_MESSAGES = 120;
@@ -35,31 +36,24 @@ const ARCHIVE_COMPRESS_PROMPT = `你是记忆压缩器。将多条历史求职�
 - 使用第三人称`;
 
 /**
- * 沉淀服务 — 基于 DB 时间戳的间隔检测，将闲置会话记忆沉淀到长期记忆
+ * 沉淀服务 — delayed job 到点后复核 DB 活跃时间，将闲置会话记忆沉淀到长期记忆
  *
  * ## 设计约束
  *
- * 不能用 Redis 中的 `lastSessionActiveAt` 判断是否超时：Redis key 与沉淀
- * 阈值共用同一个 TTL 时，"能检测到 activeAt 时，距离它写入还不足 sessionTtl；
- * 等到真正超时时，key 已经 expire，永远读不到"——形成死锁，沉淀永远不触发。
+ * 每回合结束由 SettlementSchedulerService 刷新约 3 天的 Bull delayed job；本服务
+ * 到点后用 chat_messages 最新时间复核闲置，避免旧任务与新消息竞态。facts key 比
+ * 沉淀阈值多 12 小时余量，使本服务在状态过期前完成读取。
  *
  * ## 实现
  *
- * 不依赖 Redis 中的活跃时间戳，用两个持久化数据源：
+ * 幂等与边界使用两个持久化数据源：
  * - `agent_long_term_memories.episodic_session_summaries.lastSettledMessageAt`（Supabase 永久）：上次已沉淀到哪条消息
  * - `chat_messages` 表里的真实消息时间戳：用来找会话间隔
  *
- * 检测逻辑：
- * 1. 读取沉淀边界：会话级 `lastSettledBySession[sessionId]` 优先，用户级
- *    `lastSettledMessageAt` 回退；为 null 时冷启动——把边界初始化到最新消息后返回，
- *    跳过历史全量沉淀
- * 2. 查询 `lastSettledMessageAt` 之后的所有消息，找最近一段会话的开始时间
- * 3. 若（当前会话第一条消息时间 - 上一段会话最后一条消息时间）>= consolidationGapSeconds，
- *    认为上一段会话已闲置结束，对其执行沉淀
- * 4. 用当前 sessionFacts 作为已校验事实参考，生成摘要
- * 5. 写入 `episodic_session_summaries`，更新会话级沉淀边界（RPC 带 p_session_id）
- * 6. 将 sessionFacts 沉淀进长期档案：身份字段写 semantic_profile，偏好快照写
- *    semantic_job_intent，品牌快照随沉淀一并写入
+ * 1. 查询 chat_messages 最新消息并复核闲置时长；不足阈值时返回剩余 delay
+ * 2. 读取 `lastSettledBySession[sessionId]`，边界已覆盖最新消息即幂等跳过
+ * 3. 分页读取水位后的当前咨询段，用当前 sessionFacts 作为已校验事实参考生成摘要
+ * 4. 写入长期事实与摘要，并由同名 RPC 原子推进会话级沉淀水位
  */
 @Injectable()
 export class ConsolidationService {
@@ -73,130 +67,104 @@ export class ConsolidationService {
     private readonly systemConfig: SystemConfigService,
   ) {}
 
-  /**
-   * 检测并执行会话沉淀（DB-timestamp 驱动）。
-   *
-   * 在每个回合结束后调用。若检测到用户是在一段闲置后重新回来，
-   * 就对闲置之前那段会话的消息异步生成摘要并写入长期记忆。
-   *
-   * @returns true = 触发了沉淀；false = 未达沉淀条件，跳过
-   */
-  async detectAndSettle(
+  async settleIdleSession(
     corpId: string,
     userId: string,
     sessionId: string,
     sessionFacts: EntityExtractionResult | SessionFacts | null,
     botImId?: string,
     brandState?: PersistedBrandState | null,
-  ): Promise<boolean> {
-    try {
-      const sessionSummaries = await this.longTerm.getSessionSummaries(corpId, userId);
-      // 边界按会话（sessionId=chatId，bot 维度）隔离读取；旧的用户级边界仅作回退。
-      // 否则双 bot 服务同一候选人时，bot A 推进用户级边界后，bot B 边界之前的
-      // 会话消息会被快速跳过/查询起点裁掉，永不沉淀。
-      const lastSettledAt =
-        sessionSummaries?.lastSettledBySession?.[sessionId] ??
-        sessionSummaries?.lastSettledMessageAt ??
-        null;
-
-      // 快速跳过：若上次沉淀边界距今 < consolidationGapSeconds，不可能存在闭合断层
-      if (lastSettledAt) {
-        const msSinceLastSettled = Date.now() - new Date(lastSettledAt).getTime();
-        if (msSinceLastSettled < this.config.consolidationGapSeconds * 1000) {
-          return false;
-        }
-      }
-
-      const effectiveSettledMs = lastSettledAt ? new Date(lastSettledAt).getTime() : 0;
-      const scan = await this.scanForSessionGap(sessionId, effectiveSettledMs);
-
-      if (scan.messages.length === 0) return false;
-
-      // 冷启动：首次无沉淀基准时，将边界初始化到最新消息，跳过历史全量沉淀
-      if (!lastSettledAt) {
-        const latestTs = new Date(scan.messages.at(-1)!.timestamp).toISOString();
-        await this.longTerm.markLastSettledMessageAt(corpId, userId, latestTs, sessionId);
-        this.logger.log(
-          `[detectAndSettle] 冷启动初始化边界: userId=${userId}, sessionId=${sessionId}, boundary=${latestTs}`,
-        );
-        return false;
-      }
-
-      if (scan.gapBeforeIndex === -1) return false;
-
-      // gapBeforeIndex 之前的消息属于待沉淀的旧会话
-      const prevSessionMessages = scan.messages.slice(0, scan.gapBeforeIndex);
-      const prevSessionEndMessage = prevSessionMessages.at(-1);
-      if (!prevSessionEndMessage) return false;
-
-      const sessionEndAt = new Date(prevSessionEndMessage.timestamp).toISOString();
-
-      this.logger.log(
-        `[detectAndSettle] 检测到会话断层: userId=${userId}, ` +
-          `旧会话末尾=${sessionEndAt}, 待沉淀消息 ${prevSessionMessages.length} 条`,
-      );
-
-      await this.generateAndSaveSummary(corpId, userId, sessionId, {
-        facts: sessionFacts,
-        lastSettledMessageAt: lastSettledAt,
-        sessionEndAt,
-        messages: prevSessionMessages,
-        botImId,
-        brandState: brandState ?? null,
-      });
-
-      return true;
-    } catch (error) {
-      this.logger.warn('[detectAndSettle] 沉淀检测失败', error);
-      return false;
+  ): Promise<
+    | { status: 'settled' | 'already_settled'; latestMessageAt: number }
+    | { status: 'not_idle'; latestMessageAt: number; retryDelayMs: number }
+  > {
+    const latest = (await this.chatSession.getChatHistory(sessionId, 1)).at(-1);
+    if (!latest || !Number.isFinite(latest.timestamp)) {
+      throw new Error(`memory_settlement_latest_message_missing:${sessionId}`);
     }
+
+    const latestMessageAt = latest.timestamp;
+    const requiredIdleMs = this.config.consolidationGapSeconds * 1000;
+    const idleMs = Date.now() - latestMessageAt;
+    if (idleMs < requiredIdleMs) {
+      return {
+        status: 'not_idle',
+        latestMessageAt,
+        retryDelayMs: requiredIdleMs - Math.max(0, idleMs),
+      };
+    }
+
+    const sessionSummaries = await this.longTerm.getSessionSummaries(corpId, userId);
+    const lastSettledAt =
+      sessionSummaries?.lastSettledBySession?.[sessionId] ??
+      sessionSummaries?.lastSettledMessageAt ??
+      null;
+    const lastSettledMs = lastSettledAt ? new Date(lastSettledAt).getTime() : 0;
+
+    if (Number.isFinite(lastSettledMs) && lastSettledMs >= latestMessageAt) {
+      return { status: 'already_settled', latestMessageAt };
+    }
+
+    const messages = await this.readUnsettledMessages(sessionId, lastSettledMs, latestMessageAt);
+    if (messages.length === 0) {
+      throw new Error(`memory_settlement_messages_missing:${sessionId}`);
+    }
+
+    // 首次接管存量 chat 时只沉淀最后一个连续咨询段，避免把多段历史合成一个 episode。
+    const currentEpisode = lastSettledAt ? messages : this.trimToLatestEpisode(messages);
+    const sessionEndAt = new Date(latestMessageAt).toISOString();
+    await this.generateAndSaveSummary(corpId, userId, sessionId, {
+      facts: sessionFacts,
+      lastSettledMessageAt: lastSettledAt,
+      sessionEndAt,
+      messages: currentEpisode,
+      botImId,
+      brandState: brandState ?? null,
+    });
+
+    return { status: 'settled', latestMessageAt };
   }
 
   // ==================== 内部方法 ====================
 
-  /**
-   * 从沉淀边界开始分页扫描消息，寻找首个会话断层（相邻消息间隔 ≥ consolidationGap）。
-   *
-   * 必须分页扫下去：若只取边界后最旧的 500 条，长会话（边界后 >500 条且断层在更后面）
-   * 永远扫不到断层，`lastSettledMessageAt` 不再前进，该用户从此永不沉淀，
-   * 且每轮重复拉同样 500 条做无效扫描。
-   */
-  private async scanForSessionGap(
+  private async readUnsettledMessages(
     sessionId: string,
     startTimeExclusive: number,
-  ): Promise<{
-    messages: Array<{ role: 'user' | 'assistant'; content: string; timestamp: number }>;
-    gapBeforeIndex: number;
-  }> {
-    const SESSION_GAP_MS = this.config.consolidationGapSeconds * 1000;
-    const MAX_PAGES = 10;
-
+    endTimeInclusive: number,
+  ): Promise<Array<{ role: 'user' | 'assistant'; content: string; timestamp: number }>> {
     const scanned: Array<{ role: 'user' | 'assistant'; content: string; timestamp: number }> = [];
     let cursor = startTimeExclusive;
 
-    for (let page = 0; page < MAX_PAGES; page++) {
+    for (let page = 0; page < CONSOLIDATION_MAX_PAGES; page++) {
       const batch = await this.chatSession.getChatHistoryInRange(sessionId, {
         startTimeExclusive: cursor,
+        endTimeInclusive,
         limit: CONSOLIDATION_FETCH_LIMIT,
       });
       if (batch.length === 0) break;
 
       const sortedBatch = [...batch].sort((a, b) => a.timestamp - b.timestamp);
-      const offset = scanned.length;
       scanned.push(...sortedBatch);
-
-      // 从上一页与本页的衔接处开始找断层（i 从 max(1, offset) 起，覆盖跨页间隔）
-      for (let i = Math.max(1, offset); i < scanned.length; i++) {
-        if (scanned[i].timestamp - scanned[i - 1].timestamp >= SESSION_GAP_MS) {
-          return { messages: scanned, gapBeforeIndex: i };
-        }
-      }
-
       if (batch.length < CONSOLIDATION_FETCH_LIMIT) break;
+      if (page === CONSOLIDATION_MAX_PAGES - 1) {
+        throw new Error(`memory_settlement_scan_limit_exceeded:${sessionId}`);
+      }
       cursor = sortedBatch.at(-1)!.timestamp;
     }
 
-    return { messages: scanned, gapBeforeIndex: -1 };
+    return scanned;
+  }
+
+  private trimToLatestEpisode(
+    messages: Array<{ role: 'user' | 'assistant'; content: string; timestamp: number }>,
+  ): Array<{ role: 'user' | 'assistant'; content: string; timestamp: number }> {
+    const gapMs = this.config.consolidationGapSeconds * 1000;
+    for (let index = messages.length - 1; index > 0; index--) {
+      if (messages[index].timestamp - messages[index - 1].timestamp >= gapMs) {
+        return messages.slice(index);
+      }
+    }
+    return messages;
   }
 
   private async generateAndSaveSummary(
@@ -212,67 +180,57 @@ export class ConsolidationService {
       botImId?: string;
     },
   ): Promise<void> {
-    try {
-      const { facts, lastSettledMessageAt, sessionEndAt, messages, botImId, brandState } = params;
+    const { facts, lastSettledMessageAt, sessionEndAt, messages, botImId, brandState } = params;
 
-      if (messages.length === 0) {
-        await this.longTerm.markLastSettledMessageAt(corpId, userId, sessionEndAt, sessionId);
-        this.logger.debug('[consolidation] 无对话记录，仅更新沉淀边界');
-        return;
-      }
+    // 分页扫描后咨询段可能很长，摘要只取末尾一段，避免 LLM prompt 失控。
+    const conversationText = messages
+      .slice(-SUMMARY_MAX_MESSAGES)
+      .map((m) => `${m.role === 'user' ? '用户' : '助手'}: ${m.content}`)
+      .join('\n');
 
-      // 分页扫描后旧会话段可能很长，摘要只取末尾一段，避免 LLM prompt 失控。
-      const conversationText = messages
-        .slice(-SUMMARY_MAX_MESSAGES)
-        .map((m) => `${m.role === 'user' ? '用户' : '助手'}: ${m.content}`)
-        .join('\n');
+    const factsForSummary = facts ? unwrapSessionFacts(facts) : null;
+    const factsText = factsForSummary
+      ? `已提取信息：${JSON.stringify(factsForSummary.interview_info)}，偏好：${JSON.stringify(factsForSummary.preferences)}`
+      : '无提取信息';
 
-      const factsForSummary = facts ? unwrapSessionFacts(facts) : null;
-      const factsText = factsForSummary
-        ? `已提取信息：${JSON.stringify(factsForSummary.interview_info)}，偏好：${JSON.stringify(factsForSummary.preferences)}`
-        : '无提取信息';
+    const result = await this.llm.generate({
+      role: ModelRole.Extract,
+      modelId: await this.systemConfig.getExtractModelOverride(),
+      system: SUMMARY_SYSTEM_PROMPT,
+      prompt: `[对话记录]\n${conversationText}\n\n[提取信息]\n${factsText}`,
+    });
 
-      const result = await this.llm.generate({
-        role: ModelRole.Extract,
-        modelId: await this.systemConfig.getExtractModelOverride(),
-        system: SUMMARY_SYSTEM_PROMPT,
-        prompt: `[对话记录]\n${conversationText}\n\n[提取信息]\n${factsText}`,
-      });
+    const firstMsgTime = messages[0]
+      ? new Date(messages[0].timestamp).toISOString()
+      : lastSettledMessageAt;
 
-      const firstMsgTime = messages[0]
-        ? new Date(messages[0].timestamp).toISOString()
-        : lastSettledMessageAt;
+    const summaryEntry: SummaryEntry = {
+      summary: result.text || '（摘要生成失败）',
+      sessionId,
+      ...(botImId ? { originBotId: botImId } : {}),
+      startTime: firstMsgTime,
+      endTime: sessionEndAt,
+    };
 
-      const summaryEntry: SummaryEntry = {
-        summary: result.text || '（摘要生成失败）',
+    // 长期事实先写、摘要水位后推：若摘要写失败，Bull 重试时事实覆盖写仍幂等。
+    if (facts) {
+      await this.longTerm.writeFromConsolidation(corpId, userId, facts, {
         sessionId,
-        ...(botImId ? { originBotId: botImId } : {}),
-        startTime: firstMsgTime,
-        endTime: sessionEndAt,
-      };
-
-      await this.longTerm.appendSummary(corpId, userId, summaryEntry, {
-        lastSettledMessageAt: sessionEndAt,
-        sessionId,
-        compressArchive: (overflow, existingArchive) =>
-          this.compressArchive(overflow, existingArchive),
+        botImId,
+        brandState: brandState ?? null,
       });
-
-      // consolidation 只沉淀 summary + preferences；身份 Profile 仅由报名办结写入。
-      if (facts) {
-        await this.longTerm.writeFromConsolidation(corpId, userId, facts, {
-          sessionId,
-          botImId,
-          brandState: brandState ?? null,
-        });
-      }
-
-      this.logger.log(
-        `[consolidation] 摘要已写入: userId=${userId}, sessionId=${sessionId}, endAt=${sessionEndAt}`,
-      );
-    } catch (error) {
-      this.logger.warn('[consolidation] 摘要生成/保存失败', error);
     }
+
+    await this.longTerm.appendSummary(corpId, userId, summaryEntry, {
+      lastSettledMessageAt: sessionEndAt,
+      sessionId,
+      compressArchive: (overflow, existingArchive) =>
+        this.compressArchive(overflow, existingArchive),
+    });
+
+    this.logger.log(
+      `[consolidation] 摘要已写入: userId=${userId}, sessionId=${sessionId}, endAt=${sessionEndAt}`,
+    );
   }
 
   private async compressArchive(

@@ -172,6 +172,7 @@ export class LongTermService {
       );
     } catch (error) {
       this.logger.warn('[writeFromConsolidation] 写入 Preference 失败', error);
+      throw error;
     }
   }
 
@@ -230,6 +231,7 @@ export class LongTermService {
       await this.supabaseStore.appendSummary(corpId, userId, entry, options);
     } catch (error) {
       this.logger.warn('追加 Summary 失败', error);
+      throw error;
     }
   }
 

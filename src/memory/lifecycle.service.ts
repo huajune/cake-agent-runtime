@@ -9,7 +9,7 @@ import type { BrandResolution } from '@resolution/brand/brand-resolution.types';
 import { BrandStateService } from './short-term/brand-state.service';
 import { LongTermService } from './long-term/long-term.service';
 import { MemoryEnrichmentService, type CandidateIdentityHint } from './enrichment.service';
-import { ConsolidationService } from './long-term/consolidation.service';
+import { SettlementSchedulerService } from './long-term/settlement-scheduler.service';
 import { SessionSemanticService } from './short-term/session-semantic.service';
 import { SessionWorkbenchService } from './short-term/workbench.service';
 import { MessageWindowService } from './short-term/message-window.service';
@@ -81,7 +81,7 @@ interface TimedTask<T = void> {
  *
  * 它不直接承担具体的领域判断：
  * - 会话记忆投影交给 SessionSemanticService
- * - 长期记忆沉淀交给 ConsolidationService
+ * - 长期记忆沉淀排程交给 SettlementSchedulerService
  */
 @Injectable()
 export class MemoryLifecycleService {
@@ -91,7 +91,7 @@ export class MemoryLifecycleService {
     private readonly shortTerm: MessageWindowService,
     private readonly workbench: SessionWorkbenchService,
     private readonly longTerm: LongTermService,
-    private readonly consolidation: ConsolidationService,
+    private readonly settlementScheduler: SettlementSchedulerService,
     private readonly session: SessionSemanticService,
     private readonly sponge: SpongeService,
     private readonly enrichment: MemoryEnrichmentService,
@@ -262,49 +262,36 @@ export class MemoryLifecycleService {
       const branchPromises: Array<Promise<PostProcessingStepStatus[]>> = [];
       const previousState = previousStateResult.value;
 
-      // 会话沉淀：不再依赖 Redis 中的 lastSessionActiveAt（已从 schema 中删除）。
-      // 改用 detectAndSettle：通过 chat_messages DB 时间戳检测断层，驱动沉淀触发。
-      // 读取失败时降级跳过，不中断主流程。
-      if (previousStateResult.step.status === 'failure') {
-        steps.push(
-          this.buildSkippedStep(
-            'consolidation',
-            '上一轮 session state 读取失败，跳过 consolidation',
-          ),
-        );
-      } else {
-        const consolidationTask = this.createTimedTask('consolidation', async () => {
-          await this.consolidation.detectAndSettle(
-            ctx.corpId,
-            ctx.userId,
-            ctx.sessionId,
-            previousState?.facts ?? null,
-            ctx.botImId,
-            // 长期意向的品牌快照直读 facts.brand（M5，preferences.brands 已退役）
-            previousState?.facts?.brand ?? null,
-          );
+      // 每回合结束刷新 3 天 delayed job；真正沉淀到点后重读 facts 与 DB 活跃时间。
+      const consolidationTask = this.createTimedTask('schedule_consolidation', async () => {
+        await this.settlementScheduler.schedule({
+          corpId: ctx.corpId,
+          userId: ctx.userId,
+          sessionId: ctx.sessionId,
+          botImId: ctx.botImId,
+          activityAt: Date.now(),
         });
-        branchNames.push(consolidationTask.name);
-        branchPromises.push(
-          consolidationTask.promise
-            .then(() => [
-              this.buildSuccessStep(
-                consolidationTask.name,
-                consolidationTask.timings.startedAt,
-                consolidationTask.timings.endedAt,
-              ),
-            ])
-            .catch((error) =>
-              Promise.reject({
-                error,
-                durationMs: Math.max(
-                  consolidationTask.timings.endedAt - consolidationTask.timings.startedAt,
-                  0,
-                ),
-              }),
+      });
+      branchNames.push(consolidationTask.name);
+      branchPromises.push(
+        consolidationTask.promise
+          .then(() => [
+            this.buildSuccessStep(
+              consolidationTask.name,
+              consolidationTask.timings.startedAt,
+              consolidationTask.timings.endedAt,
             ),
-        );
-      }
+          ])
+          .catch((error) =>
+            Promise.reject({
+              error,
+              durationMs: Math.max(
+                consolidationTask.timings.endedAt - consolidationTask.timings.startedAt,
+                0,
+              ),
+            }),
+          ),
+      );
 
       branchNames.push('session_turn_end_updates');
       branchPromises.push(
