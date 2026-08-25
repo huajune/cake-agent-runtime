@@ -28,7 +28,7 @@ export const SCENARIO_SECTIONS: Record<string, string[]> = {
     'hard-constraints',
     // working · 动态档（当前时间）
     'datetime',
-    // semantic · 动态档（按本轮城市渲染群库事实）
+    // working · 动态档（按本轮城市渲染平台群库数据）
     'group-inventory',
     // procedural · 动态档（当前阶段策略，固定置于 system 尾部）
     'stage-strategy',

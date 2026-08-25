@@ -3,6 +3,7 @@ import type { ToolBuildContext } from '@shared-types/tool.types';
 import { createToolContext, type ToolContextOverrides } from '../helpers/tool-context.fixture';
 import { testTurnHint, testTurnHints } from '../helpers/turn-hints.fixture';
 import type { ResumeAttachment } from '@tools/read-resume-attachment.tool';
+import { asSchema, type ToolSet } from 'ai';
 
 function buildRegistry(
   options: {
@@ -46,7 +47,60 @@ function baseContext(overrides: ToolContextOverrides = {}): ToolBuildContext {
   });
 }
 
+async function serializeProviderToolPrefix(tools: ToolSet): Promise<string> {
+  const providerTools = await Promise.all(
+    Object.entries(tools).map(async ([name, tool]) => ({
+      type: 'function',
+      name,
+      inputSchema: await asSchema(tool.inputSchema).jsonSchema,
+      ...(tool.description != null ? { description: tool.description } : {}),
+      ...(tool.inputExamples != null ? { inputExamples: tool.inputExamples } : {}),
+      ...(tool.providerOptions != null ? { providerOptions: tool.providerOptions } : {}),
+      ...(tool.strict != null ? { strict: tool.strict } : {}),
+    })),
+  );
+  return JSON.stringify(providerTools);
+}
+
 describe('ToolRegistryService', () => {
+  it('keeps normal text-turn provider tool serialization byte-identical', async () => {
+    const registry = buildRegistry();
+    const first = registry.buildForScenario(
+      'candidate-consultation',
+      baseContext({
+        session: { sessionId: 'chat-1', turnId: 'turn-1' },
+        turnInput: { currentUserMessage: '上海有兼职吗' },
+      }),
+    );
+    const second = registry.buildForScenario(
+      'candidate-consultation',
+      baseContext({
+        session: { sessionId: 'chat-2', turnId: 'turn-2' },
+        turnInput: { currentUserMessage: '北京有全职吗' },
+      }),
+    );
+
+    expect(Object.keys(first)).toEqual([
+      'advance_stage',
+      'recall_history',
+      'duliday_job_list',
+      'duliday_interview_precheck',
+      'duliday_interview_booking',
+      'duliday_cancel_work_order',
+      'duliday_modify_interview_time',
+      'geocode',
+      'send_store_location',
+      'invite_to_group',
+      'raise_risk_alert',
+      'request_handoff',
+      'skip_reply',
+    ]);
+    expect(Object.values(first).every((tool) => typeof tool.description === 'string')).toBe(true);
+    await expect(serializeProviderToolPrefix(first)).resolves.toBe(
+      await serializeProviderToolPrefix(second),
+    );
+  });
+
   it('injects read_resume_attachment when resume URL is present in turn hints', () => {
     const registry = buildRegistry();
 
