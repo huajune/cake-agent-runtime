@@ -62,18 +62,20 @@ export function buildToolContext(input: {
     currentLaborFormIntent,
     bookingWorkOrderJobIds,
   } = input;
-  const recentBrandPool = collectRecentBrandPool(memory.sessionMemory);
+  const recentBrandPool = collectRecentBrandPool(memory.shortTerm.sessionState);
   // jobId provenance 闸门数据源：turn-start 已召回岗位集 + 进行中预约工单 jobId（改约路径）
   // + 本轮 job_list 抓取的候选池（由工具实时写入 ledger），
   // 供 precheck/booking 判定 jobId 是否有出处。
-  const turnStartRecalledJobIds = collectRecentJobIds(memory.sessionMemory);
+  const turnStartRecalledJobIds = collectRecentJobIds(memory.shortTerm.sessionState);
   for (const bookingWorkOrderJobId of bookingWorkOrderJobIds) {
     turnStartRecalledJobIds.add(bookingWorkOrderJobId);
   }
-  const trustedSessionFacts = unwrapSessionFacts(memory.sessionMemory?.facts ?? null, {
+  const trustedSessionFacts = unwrapSessionFacts(memory.shortTerm.sessionState?.facts ?? null, {
     minConfidence: 'high',
   });
-  const candidatePrefillHints = buildCandidatePrefillHints(memory.sessionMemory?.facts ?? null);
+  const candidatePrefillHints = buildCandidatePrefillHints(
+    memory.shortTerm.sessionState?.facts ?? null,
+  );
   const sessionFacts = mergeSessionFactsWithRuleClaims(
     trustedSessionFacts,
     memory.turnHints,
@@ -109,12 +111,12 @@ export function buildToolContext(input: {
       currentStage: entryStage,
       availableStages: Object.keys(stageGoals),
       stageGoals,
-      lastJobListQuery: memory.sessionMemory?.lastJobListQuery ?? null,
+      lastJobListQuery: memory.shortTerm.sessionState?.lastJobListQuery ?? null,
       activeBookingJobIds: bookingWorkOrderJobIds,
-      currentFocusJob: memory.sessionMemory?.currentFocusJob ?? null,
+      currentFocusJob: memory.shortTerm.sessionState?.currentFocusJob ?? null,
       recentBrandPool,
       bookingCandidateFacts: sessionFacts?.interview_info ?? null,
-      invitedGroups: memory.sessionMemory?.invitedGroups ?? [],
+      invitedGroups: memory.shortTerm.sessionState?.invitedGroups ?? [],
       isRecalledJobId: (jobId: number) =>
         turnStartRecalledJobIds.has(jobId) ||
         ledger.jobs.fetchedJobs.some((job) => job.jobId === jobId),
@@ -258,7 +260,7 @@ function mergeSessionFactsWithRuleClaims(
  * 取 presentedJobs（真正发给候选人的岗位）+ lastCandidatePool（最近一次工具结果），
  * 并把 currentFocusJob 的品牌也带上。供 duliday_job_list 做品牌别名同音回指匹配。
  */
-function collectRecentBrandPool(session: TurnStartMemory['sessionMemory']): string[] {
+function collectRecentBrandPool(session: TurnStartMemory['shortTerm']['sessionState']): string[] {
   if (!session) return [];
   const ordered = [
     ...(session.presentedJobs ?? []),
@@ -282,7 +284,7 @@ function collectRecentBrandPool(session: TurnStartMemory['sessionMemory']): stri
  * currentFocusJob，去重）。供 precheck/booking 的 jobId provenance 闸门判定"模型传入的 jobId
  * 是否有合法来源"——集合为空即本会话从未召回任何岗位，此时任何 jobId 都属凭空生成。
  */
-function collectRecentJobIds(session: TurnStartMemory['sessionMemory']): Set<number> {
+function collectRecentJobIds(session: TurnStartMemory['shortTerm']['sessionState']): Set<number> {
   const ids = new Set<number>();
   if (!session) return ids;
   const ordered = [

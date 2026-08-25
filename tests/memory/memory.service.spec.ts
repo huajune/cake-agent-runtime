@@ -31,10 +31,12 @@ describe('MemoryService', () => {
   describe('turn lifecycle facade', () => {
     it('should delegate onTurnStart to lifecycle service', async () => {
       mockLifecycle.onTurnStart.mockResolvedValue({
-        shortTerm: { messageWindow: [{ role: 'user', content: 'hello' }] },
-        sessionMemory: null,
+        shortTerm: {
+          messageWindow: [{ role: 'user', content: 'hello' }],
+          sessionState: null,
+          stage: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
+        },
         turnHints: null,
-        stageState: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
         longTerm: { semantic: { profile: null } },
       });
 
@@ -75,10 +77,10 @@ describe('MemoryService', () => {
               content: `message-${index + 1}`,
             })),
           ],
+          sessionState: null,
+          stage: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
         },
-        sessionMemory: null,
         turnHints: null,
-        stageState: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
         longTerm: { semantic: { profile: null } },
       });
 
@@ -102,10 +104,10 @@ describe('MemoryService', () => {
               content: '好的\n[消息发送时间：2026-07-12 16:31 星期日]',
             },
           ],
+          sessionState: null,
+          stage: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
         },
-        sessionMemory: null,
         turnHints: null,
-        stageState: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
         longTerm: { semantic: { profile: null } },
       });
 

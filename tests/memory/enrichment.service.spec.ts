@@ -12,10 +12,12 @@ describe('MemoryEnrichmentService', () => {
   let service: MemoryEnrichmentService;
 
   const baseSnapshot = (): AgentMemoryContext => ({
-    shortTerm: { messageWindow: [] },
-    sessionMemory: null,
+    shortTerm: {
+      messageWindow: [],
+      sessionState: null,
+      stage: { currentStage: null },
+    },
     turnHints: null,
-    stageState: { currentStage: null },
     longTerm: { semantic: { profile: null } },
   });
 
@@ -56,18 +58,21 @@ describe('MemoryEnrichmentService', () => {
     expect(mockCandidate.lookupGenderFromCustomerDetail).not.toHaveBeenCalled();
   });
 
-  it('skips lookup when sessionMemory facts already has gender', async () => {
+  it('skips lookup when short-term session state facts already has gender', async () => {
     const snapshot: AgentMemoryContext = {
       ...baseSnapshot(),
-      sessionMemory: {
-        facts: {
-          ...FALLBACK_EXTRACTION,
-          interview_info: { ...FALLBACK_EXTRACTION.interview_info, gender: '男' },
-        },
-        lastCandidatePool: null,
-        presentedJobs: null,
-        currentFocusJob: null,
-      } as never,
+      shortTerm: {
+        ...baseSnapshot().shortTerm,
+        sessionState: {
+          facts: {
+            ...FALLBACK_EXTRACTION,
+            interview_info: { ...FALLBACK_EXTRACTION.interview_info, gender: '男' },
+          },
+          lastCandidatePool: null,
+          presentedJobs: null,
+          currentFocusJob: null,
+        } as never,
+      },
     };
 
     await service.enrich(snapshot, { token: 't', imBotId: 'b', imContactId: 'c' });
@@ -119,29 +124,32 @@ describe('MemoryEnrichmentService', () => {
     await service.enrich(baseSnapshot(), { token: 't', imBotId: 'b', imContactId: 'c' });
     const nextTurnSnapshot: AgentMemoryContext = {
       ...baseSnapshot(),
-      sessionMemory: {
-        facts: {
-          ...FALLBACK_EXTRACTION,
-          interview_info: {
-            ...FALLBACK_EXTRACTION.interview_info,
-            gender: {
-              value: '男',
-              confidence: 'low',
-              source: 'system',
-              evidence: '客户详情接口补充性别：男',
-            },
-            gender_source: {
-              value: 'system',
-              confidence: 'low',
-              source: 'system',
-              evidence: '客户详情接口补充性别来源：系统标签',
+      shortTerm: {
+        ...baseSnapshot().shortTerm,
+        sessionState: {
+          facts: {
+            ...FALLBACK_EXTRACTION,
+            interview_info: {
+              ...FALLBACK_EXTRACTION.interview_info,
+              gender: {
+                value: '男',
+                confidence: 'low',
+                source: 'system',
+                evidence: '客户详情接口补充性别：男',
+              },
+              gender_source: {
+                value: 'system',
+                confidence: 'low',
+                source: 'system',
+                evidence: '客户详情接口补充性别来源：系统标签',
+              },
             },
           },
-        },
-        lastCandidatePool: null,
-        presentedJobs: null,
-        currentFocusJob: null,
-      } as never,
+          lastCandidatePool: null,
+          presentedJobs: null,
+          currentFocusJob: null,
+        } as never,
+      },
     };
 
     await service.enrich(nextTurnSnapshot, { token: 't', imBotId: 'b', imContactId: 'c' });

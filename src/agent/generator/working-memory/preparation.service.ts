@@ -160,7 +160,7 @@ export class PreparationService {
     const currentTurnTexts = trailingUserMessages(truncatedMessages);
     const turnHintsPromise = this.detectTurnHints(currentTurnTexts);
 
-    // 并行拉取本轮依赖：四类记忆快照 + 当前预约工单上下文 + 实时群状态 + 账号身份配置。
+    // 并行拉取本轮依赖：两层记忆快照 + 当前预约工单上下文 + 实时群状态 + 账号身份配置。
     const [memory, bookingContext, realtimeGroups, accountIdentityConfig] = await Promise.all([
       turnHintsPromise.then((turnHints) =>
         this.memoryService.onTurnStart(corpId, userId, sessionId, currentUserMessage, {
@@ -214,7 +214,7 @@ export class PreparationService {
       contactBrandAliases,
       currentLaborFormIntent,
     );
-    const persistedStage = memory.stageState.currentStage ?? undefined;
+    const persistedStage = memory.shortTerm.stage.currentStage ?? undefined;
     // 程序性阶段存 Redis（TTL 2 天），过期后若隐式兜底到策略第一个阶段——
     // 已服务过的老候选人回访会被当新客从 trust_building 重走（张漪 case：6-03 已
     // 约面，6-08/6-10 回访都从信任建立重来）。长期画像已有身份字段即视为老用户，
@@ -234,7 +234,7 @@ export class PreparationService {
       scenario,
       currentStage: stageFromResolver ?? undefined,
       memoryBlock,
-      sessionFacts: memory.sessionMemory?.facts ?? null,
+      sessionFacts: memory.shortTerm.sessionState?.facts ?? null,
       turnHints: memory.turnHints,
       currentTurnTexts,
       currentLaborFormIntent,
@@ -270,7 +270,7 @@ export class PreparationService {
         Date.now(),
       ),
       geoSignalCities: inferCitiesFromGeoSignals(candidateTexts),
-      currentFocusJob: memory.sessionMemory?.currentFocusJob ?? null,
+      currentFocusJob: memory.shortTerm.sessionState?.currentFocusJob ?? null,
     });
     const toolContext = buildToolContext({
       params,
@@ -482,7 +482,7 @@ export class PreparationService {
   ): Promise<TurnBrandContext> {
     try {
       return await this.brandStateService.deriveTurnBrandContext({
-        persisted: memory.sessionMemory?.facts?.brand ?? null,
+        persisted: memory.shortTerm.sessionState?.facts?.brand ?? null,
         contactName,
       });
     } catch (error) {
@@ -744,7 +744,7 @@ export class PreparationService {
     memory: TurnStartMemory,
     entryStage: string | null,
   ): AgentMemorySnapshot {
-    const session = memory.sessionMemory;
+    const session = memory.shortTerm.sessionState;
     const presentedJobIds =
       session?.presentedJobs?.map((j) => j.jobId).filter((id): id is number => id != null) ?? null;
     const recommendedJobIds =

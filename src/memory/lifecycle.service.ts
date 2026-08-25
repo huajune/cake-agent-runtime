@@ -72,7 +72,7 @@ interface TimedTask<T = void> {
  * 统一处理回合开始读取、回合结束写回。
  *
  * 这个服务只负责 turn lifecycle：
- * - `onTurnStart` 读取运行时需要的四类记忆
+ * - `onTurnStart` 读取运行时需要的两层记忆与本轮 sidecar
  * - `onTurnEnd` 按固定顺序做收尾
  *
  * 它不直接承担具体的领域判断：
@@ -153,11 +153,11 @@ export class MemoryLifecycleService {
     const snapshot: AgentMemoryContext = {
       shortTerm: {
         messageWindow: shortTermMessages,
+        sessionState: hasOwnSessionMemory ? sessionState : null,
+        stage: stageState,
       },
       ...(warnings.length > 0 ? { _warnings: warnings } : {}),
-      sessionMemory: hasOwnSessionMemory ? sessionState : null,
       turnHints,
-      stageState: stageState,
       longTerm: {
         semantic: { profile, jobIntent: longTermPreferences },
       },

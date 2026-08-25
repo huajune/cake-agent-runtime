@@ -2,6 +2,7 @@ import { PreparationService } from '@agent/generator/working-memory/preparation.
 import { PromptInjectionService } from '@agent/guardrail/input/prompt-injection.service';
 import { CallerKind } from '@enums/agent.enum';
 import { StorageMessageSource, StorageMessageType } from '@enums/storage-message.enum';
+import type { MemoryRecallContext } from '@memory/recall.types';
 import { FALLBACK_EXTRACTION } from '@memory/short-term/short-term.types';
 import { getTurnHint } from '@resolution/evidence/merge';
 import { extractCandidateTextsFromCorpus } from '@resolution/signal/self-report';
@@ -15,6 +16,45 @@ describe('PreparationService', () => {
   const mockMemoryService = {
     onTurnStart: jest.fn(),
     saveProfile: jest.fn(),
+  };
+
+  type RecallFixture = {
+    shortTerm: {
+      messageWindow: unknown[];
+      sessionState?: unknown;
+      stage?: unknown;
+    };
+    sessionState?: unknown;
+    stage?: unknown;
+    turnHints: unknown;
+    longTerm: unknown;
+    _warnings?: string[];
+  };
+
+  const asRecallContext = (value: RecallFixture): MemoryRecallContext => {
+    const { shortTerm, sessionState, stage, ...rest } = value;
+    return {
+      ...rest,
+      shortTerm: {
+        ...shortTerm,
+        sessionState: sessionState ?? shortTerm.sessionState ?? null,
+        stage: stage ??
+          shortTerm.stage ?? {
+            currentStage: null,
+            fromStage: null,
+            advancedAt: null,
+            reason: null,
+          },
+      },
+    } as unknown as MemoryRecallContext;
+  };
+
+  const setRecall = (value: RecallFixture): void => {
+    mockMemoryService.onTurnStart.mockResolvedValue(asRecallContext(value));
+  };
+
+  const setRecallOnce = (value: RecallFixture): void => {
+    mockMemoryService.onTurnStart.mockResolvedValueOnce(asRecallContext(value));
   };
 
   const mockMemoryConfig = {
@@ -81,11 +121,11 @@ describe('PreparationService', () => {
       { id: 1, name: '肯德基', aliases: ['KFC'] },
       { id: 2, name: '奥乐齐', aliases: ['ALDI'] },
     ]);
-    mockMemoryService.onTurnStart.mockResolvedValue({
+    setRecall({
       shortTerm: {
         messageWindow: [{ role: 'user', content: '短期里的当前消息' }],
       },
-      sessionMemory: {
+      sessionState: {
         facts: {
           ...FALLBACK_EXTRACTION,
           preferences: {
@@ -111,7 +151,7 @@ describe('PreparationService', () => {
           } as never,
         },
       },
-      stageState: {
+      stage: {
         currentStage: 'job_consultation',
         fromStage: null,
         advancedAt: null,
@@ -266,9 +306,9 @@ describe('PreparationService', () => {
   ] as const)(
     'projects $reason gender into confirmation hints without admitting it to trusted session facts',
     async ({ confidence, source, genderSource, reason }) => {
-      mockMemoryService.onTurnStart.mockResolvedValueOnce({
+      setRecallOnce({
         shortTerm: { messageWindow: [{ role: 'user', content: '我想报名' }] },
-        sessionMemory: {
+        sessionState: {
           facts: {
             ...FALLBACK_EXTRACTION,
             interview_info: {
@@ -283,7 +323,7 @@ describe('PreparationService', () => {
         },
         turnHints: null,
         longTerm: { semantic: { profile: null } },
-        stageState: {
+        stage: {
           currentStage: 'job_consultation',
           fromStage: null,
           advancedAt: null,
@@ -542,12 +582,12 @@ describe('PreparationService', () => {
     expect(result.finalPrompt).not.toContain('[候选人当前所在兼职群]');
   });
 
-  it('falls back returning user (with long-term identity) to job_consultation when stageState stage expired', async () => {
+  it('falls back returning user (with long-term identity) to job_consultation when shortTerm.stage stage expired', async () => {
     // 张漪 case：程序性阶段 TTL 过期后老用户回访被兜底到 trust_building 重走信任建立。
     const base = await mockMemoryService.onTurnStart();
-    mockMemoryService.onTurnStart.mockResolvedValue({
+    setRecall({
       ...base,
-      stageState: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
+      stage: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
 
     const result = await service.prepare(
@@ -586,10 +626,10 @@ describe('PreparationService', () => {
 
   it('keeps first-stage fallback for brand-new user (no long-term identity) when stage expired', async () => {
     const base = await mockMemoryService.onTurnStart();
-    mockMemoryService.onTurnStart.mockResolvedValue({
+    setRecall({
       ...base,
       longTerm: { semantic: { profile: null } },
-      stageState: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
+      stage: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
 
     const result = await service.prepare(
@@ -608,11 +648,11 @@ describe('PreparationService', () => {
   });
 
   it('should include enriched job memory fields in prompt block', async () => {
-    mockMemoryService.onTurnStart.mockResolvedValue({
+    setRecall({
       shortTerm: {
         messageWindow: [{ role: 'user', content: '我想约面' }],
       },
-      sessionMemory: {
+      sessionState: {
         facts: {
           ...FALLBACK_EXTRACTION,
           preferences: {
@@ -663,7 +703,7 @@ describe('PreparationService', () => {
           } as never,
         },
       },
-      stageState: {
+      stage: {
         currentStage: 'job_consultation',
         fromStage: null,
         advancedAt: null,
@@ -696,9 +736,9 @@ describe('PreparationService', () => {
     const turnHints = testTurnHints(
       testTurnHint('preferences.labor_form', '暑假工', '用工形式识别：暑假工'),
     );
-    mockMemoryService.onTurnStart.mockResolvedValue({
+    setRecall({
       shortTerm: { messageWindow: [{ role: 'user', content: '我只找暑期工' }] },
-      sessionMemory: {
+      sessionState: {
         facts: {
           ...FALLBACK_EXTRACTION,
           preferences: {
@@ -741,7 +781,7 @@ describe('PreparationService', () => {
       },
       turnHints,
       longTerm: { semantic: { profile: null } },
-      stageState: {
+      stage: {
         currentStage: 'job_consultation',
         fromStage: null,
         advancedAt: null,
@@ -768,9 +808,9 @@ describe('PreparationService', () => {
   });
 
   it('clears stale summer memory and hides summer jobs when the candidate explicitly excludes summer work', async () => {
-    mockMemoryService.onTurnStart.mockResolvedValue({
+    setRecall({
       shortTerm: { messageWindow: [{ role: 'user', content: '除了暑假工都可以' }] },
-      sessionMemory: {
+      sessionState: {
         facts: {
           ...FALLBACK_EXTRACTION,
           preferences: {
@@ -804,7 +844,7 @@ describe('PreparationService', () => {
       },
       turnHints: null,
       longTerm: { semantic: { profile: null } },
-      stageState: {
+      stage: {
         currentStage: 'job_consultation',
         fromStage: null,
         advancedAt: null,
@@ -836,9 +876,9 @@ describe('PreparationService', () => {
   });
 
   it('renders invitedGroups in session memory to prevent duplicate invite (badcase 3g1ruov9 / 6vzw8oh3)', async () => {
-    mockMemoryService.onTurnStart.mockResolvedValue({
+    setRecall({
       shortTerm: { messageWindow: [{ role: 'user', content: '还有别的吗' }] },
-      sessionMemory: {
+      sessionState: {
         facts: FALLBACK_EXTRACTION,
         lastCandidatePool: null,
         presentedJobs: null,
@@ -854,7 +894,7 @@ describe('PreparationService', () => {
       },
       turnHints: null,
       longTerm: { semantic: { profile: null } },
-      stageState: {
+      stage: {
         currentStage: 'job_consultation',
         fromStage: null,
         advancedAt: null,
@@ -880,11 +920,11 @@ describe('PreparationService', () => {
   });
 
   it('should show full-time labor form in job memory prompt block (全职放开)', async () => {
-    mockMemoryService.onTurnStart.mockResolvedValue({
+    setRecall({
       shortTerm: {
         messageWindow: [{ role: 'user', content: '这个可以自己选择一个月上几天吗' }],
       },
-      sessionMemory: {
+      sessionState: {
         facts: {
           ...FALLBACK_EXTRACTION,
           preferences: {
@@ -920,7 +960,7 @@ describe('PreparationService', () => {
       },
       turnHints: null,
       longTerm: { semantic: { profile: null } },
-      stageState: {
+      stage: {
         currentStage: 'job_consultation',
         fromStage: null,
         advancedAt: null,
@@ -968,14 +1008,14 @@ describe('PreparationService', () => {
     expect(result.finalPrompt).not.toContain('[当前预约信息]');
   });
 
-  it('uses stageState stage + renders [当前预约信息] from active_booking + sponge', async () => {
+  it('uses shortTerm.stage stage + renders [当前预约信息] from active_booking + sponge', async () => {
     // 阶段直接取程序性记忆（onboard_followup 不再由 recruitment_cases 推导）。
-    mockMemoryService.onTurnStart.mockResolvedValue({
+    setRecall({
       shortTerm: { messageWindow: [{ role: 'user', content: '我到店了' }] },
-      sessionMemory: null,
+      sessionState: null,
       turnHints: null,
       longTerm: { semantic: { profile: null } },
-      stageState: {
+      stage: {
         currentStage: 'onboard_followup',
         fromStage: null,
         advancedAt: null,
@@ -1034,12 +1074,12 @@ describe('PreparationService', () => {
   // badcase pm2ivers：海绵已下发 interviewTime，但 formatBookingContext 没渲染，模型只看到
   // 「约面待确认」这个无日期状态词，把"已排期"补全成"还在等门店确认排期"。
   it('渲染 active_booking 的面试时间，并给出过期核实与跨顾问披露口径', async () => {
-    mockMemoryService.onTurnStart.mockResolvedValue({
+    setRecall({
       shortTerm: { messageWindow: [{ role: 'user', content: '我是来米' }] },
-      sessionMemory: null,
+      sessionState: null,
       turnHints: null,
       longTerm: { semantic: { profile: null } },
-      stageState: {
+      stage: {
         currentStage: 'onboard_followup',
         fromStage: null,
         advancedAt: null,
@@ -1090,12 +1130,12 @@ describe('PreparationService', () => {
   });
 
   it('工单无 interviewTime 时不渲染面试时间行（老版本海绵响应容缺）', async () => {
-    mockMemoryService.onTurnStart.mockResolvedValue({
+    setRecall({
       shortTerm: { messageWindow: [{ role: 'user', content: '在吗' }] },
-      sessionMemory: null,
+      sessionState: null,
       turnHints: null,
       longTerm: { semantic: { profile: null } },
-      stageState: {
+      stage: {
         currentStage: 'onboard_followup',
         fromStage: null,
         advancedAt: null,
@@ -1132,12 +1172,12 @@ describe('PreparationService', () => {
   });
 
   it('预约后询问定位时将面试地址与工作门店地址一起注入上下文', async () => {
-    mockMemoryService.onTurnStart.mockResolvedValue({
+    setRecall({
       shortTerm: { messageWindow: [] },
-      sessionMemory: null,
+      sessionState: null,
       turnHints: null,
       longTerm: { semantic: { profile: null } },
-      stageState: {
+      stage: {
         currentStage: 'onboard_followup',
         fromStage: null,
         advancedAt: null,
@@ -1242,12 +1282,12 @@ describe('PreparationService', () => {
   });
 
   it('keeps other active booking contexts when one sponge lookup fails', async () => {
-    mockMemoryService.onTurnStart.mockResolvedValue({
+    setRecall({
       shortTerm: { messageWindow: [{ role: 'user', content: '我想改面试时间' }] },
-      sessionMemory: null,
+      sessionState: null,
       turnHints: null,
       longTerm: { semantic: { profile: null } },
-      stageState: {
+      stage: {
         currentStage: 'onboard_followup',
         fromStage: null,
         advancedAt: null,
@@ -1295,12 +1335,12 @@ describe('PreparationService', () => {
     // 空会话召回（无 presentedJobs/lastCandidatePool/currentFocusJob），仅有一个进行中预约工单。
     // 改约路径 system prompt 把 workOrder.jobId 作为「岗位ID」让模型先 precheck，但改约不调
     // job_list——若不把它并入召回集，isRecalledJobId 恒 false 会把每次改约误拦成 job_not_provided。
-    mockMemoryService.onTurnStart.mockResolvedValue({
+    setRecall({
       shortTerm: { messageWindow: [] },
-      sessionMemory: null,
+      sessionState: null,
       turnHints: null,
       longTerm: { semantic: { profile: null } },
-      stageState: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
+      stage: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
     mockActiveBooking({
       work_order_id: 88001,
@@ -1336,12 +1376,12 @@ describe('PreparationService', () => {
   it('改约场景：工单展示字段全缺(block 为空)时不把 jobId 当 provenance', async () => {
     // formatBookingContext 在 6 个展示字段全缺时返回 ''，[当前预约信息] 不进 system prompt，
     // 模型根本看不到「岗位ID」。此时不得把该 jobId 放进召回集——否则留下静默绕过闸门的口子。
-    mockMemoryService.onTurnStart.mockResolvedValue({
+    setRecall({
       shortTerm: { messageWindow: [] },
-      sessionMemory: null,
+      sessionState: null,
       turnHints: null,
       longTerm: { semantic: { profile: null } },
-      stageState: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
+      stage: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
     mockActiveBooking({
       work_order_id: 88002,
@@ -1372,12 +1412,12 @@ describe('PreparationService', () => {
   it('改约场景：海绵把工单 jobId 给成数字串时仍归一放行（与 prompt 渲染口径一致）', async () => {
     // 海绵响应结构漂移可能把 jobId 给成字符串；formatBookingContext 用 != null 照样渲染
     // 「岗位ID: 527351」让模型用，故 provenance 必须归一数字串、与之同口径，否则改约被永久误拦。
-    mockMemoryService.onTurnStart.mockResolvedValue({
+    setRecall({
       shortTerm: { messageWindow: [] },
-      sessionMemory: null,
+      sessionState: null,
       turnHints: null,
       longTerm: { semantic: { profile: null } },
-      stageState: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
+      stage: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
     mockActiveBooking({
       work_order_id: 88003,
@@ -1558,14 +1598,14 @@ describe('PreparationService', () => {
   });
 
   it('should trim passed messages when they exceed max chars', async () => {
-    mockMemoryService.onTurnStart.mockResolvedValue({
+    setRecall({
       shortTerm: {
         messageWindow: [],
       },
-      sessionMemory: null,
+      sessionState: null,
       turnHints: null,
       longTerm: { semantic: { profile: null } },
-      stageState: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
+      stage: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
 
     await service.prepare(
@@ -1595,14 +1635,14 @@ describe('PreparationService', () => {
   });
 
   it('should pass only the latest user message for high-confidence detection on messages path', async () => {
-    mockMemoryService.onTurnStart.mockResolvedValue({
+    setRecall({
       shortTerm: {
         messageWindow: [],
       },
-      sessionMemory: null,
+      sessionState: null,
       turnHints: null,
       longTerm: { semantic: { profile: null } },
-      stageState: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
+      stage: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
 
     await service.prepare(
@@ -1630,12 +1670,12 @@ describe('PreparationService', () => {
   });
 
   it('should join trailing consecutive user messages (merge/replay scenario) for high-confidence detection', async () => {
-    mockMemoryService.onTurnStart.mockResolvedValue({
+    setRecall({
       shortTerm: { messageWindow: [] },
-      sessionMemory: null,
+      sessionState: null,
       turnHints: null,
       longTerm: { semantic: { profile: null } },
-      stageState: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
+      stage: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
 
     await service.prepare(
@@ -1665,11 +1705,11 @@ describe('PreparationService', () => {
   });
 
   it('should pass raw session and high-confidence facts to ContextService for TurnHintsSection', async () => {
-    mockMemoryService.onTurnStart.mockResolvedValue({
+    setRecall({
       shortTerm: {
         messageWindow: [{ role: 'user', content: '我在北京，来一份有吗' }],
       },
-      sessionMemory: {
+      sessionState: {
         facts: {
           ...FALLBACK_EXTRACTION,
           preferences: {
@@ -1683,7 +1723,7 @@ describe('PreparationService', () => {
       },
       turnHints: testTurnHints(testTurnHint('preferences.city', '北京', 'explicit_city')),
       longTerm: { semantic: { profile: null } },
-      stageState: {
+      stage: {
         currentStage: 'trust_building',
         fromStage: null,
         advancedAt: null,
@@ -1808,14 +1848,14 @@ describe('PreparationService', () => {
   });
 
   it('should inject top-level images into the last user message when model supports vision', async () => {
-    mockMemoryService.onTurnStart.mockResolvedValue({
+    setRecall({
       shortTerm: {
         messageWindow: [{ role: 'user', content: '帮我看看这张图' }],
       },
-      sessionMemory: null,
+      sessionState: null,
       turnHints: null,
       longTerm: { semantic: { profile: null } },
-      stageState: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
+      stage: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
 
     const result = await service.prepare(
@@ -1844,7 +1884,7 @@ describe('PreparationService', () => {
   });
 
   it('should inject images at visual placeholder position in the current user turn', async () => {
-    mockMemoryService.onTurnStart.mockResolvedValue({
+    setRecall({
       shortTerm: {
         messageWindow: [
           { role: 'assistant', content: '想找什么岗位' },
@@ -1853,10 +1893,10 @@ describe('PreparationService', () => {
           { role: 'user', content: '我是看信息来的' },
         ],
       },
-      sessionMemory: null,
+      sessionState: null,
       turnHints: null,
       longTerm: { semantic: { profile: null } },
-      stageState: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
+      stage: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
 
     const result = await service.prepare(
@@ -1889,15 +1929,15 @@ describe('PreparationService', () => {
   });
 
   it('should expose memory load warning from memory lifecycle', async () => {
-    mockMemoryService.onTurnStart.mockResolvedValue({
+    setRecall({
       shortTerm: {
         messageWindow: [{ role: 'user', content: '当前用户消息' }],
       },
       _warnings: ['shortTerm: Connection timeout'],
-      sessionMemory: null,
+      sessionState: null,
       turnHints: null,
       longTerm: { semantic: { profile: null } },
-      stageState: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
+      stage: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
 
     const result = await service.prepare(
@@ -1990,7 +2030,7 @@ describe('PreparationService', () => {
   });
 
   it('保留人工消息来源、标记给模型，并为“附近”查询生成嘉定 geocode 锚点', async () => {
-    mockMemoryService.onTurnStart.mockResolvedValue({
+    setRecall({
       shortTerm: {
         messageWindow: [
           { role: 'user', content: '同济店' },
@@ -2011,10 +2051,10 @@ describe('PreparationService', () => {
           { role: 'user', content: '附近的呢' },
         ],
       },
-      sessionMemory: null,
+      sessionState: null,
       turnHints: null,
       longTerm: { semantic: { profile: null } },
-      stageState: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
+      stage: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
 
     const result = await service.prepare(
@@ -2099,12 +2139,12 @@ describe('PreparationService', () => {
   // 4 条依赖历史的规则在生产全数漏过；test-suite/debug 传完整历史时反而按设计工作。
   describe('critical-turn-guard 的 combined 近邻窗口（议题 6-1）', () => {
     const withShortTermWindow = (window: { role: string; content: string }[]) => {
-      mockMemoryService.onTurnStart.mockResolvedValue({
+      setRecall({
         shortTerm: { messageWindow: window },
-        sessionMemory: null,
+        sessionState: null,
         turnHints: null,
         longTerm: { semantic: { profile: null } },
-        stageState: {
+        stage: {
           currentStage: 'job_consultation',
           fromStage: null,
           advancedAt: null,

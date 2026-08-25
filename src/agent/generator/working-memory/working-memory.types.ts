@@ -27,7 +27,7 @@ export interface WorkingMemory {
   /** 当前与候选人聊天的托管账号 wxid（imBotId）；沉淀时作为长期事实的 bot 血缘。 */
   botImId?: string;
   maxSteps: number;
-  /** 本轮入口阶段：stageState currentStage 优先，过期时按长期画像做老用户回访兜底，否则回落策略首阶段。 */
+  /** 本轮入口阶段：shortTerm.stage.currentStage 优先，过期时按长期画像做老用户回访兜底，否则回落策略首阶段。 */
   entryStage: string | null;
   /** 本轮唯一回合账本；回合结束时 drain 快照统一交给 memory lifecycle。 */
   ledger: TurnLedger;

@@ -14,7 +14,7 @@ import type { AgentMemoryContext } from './recall.types';
  * 记忆加载链路中，"用外部数据源补全快照缺失字段" 的协调者。
  *
  * 约定：
- * - onTurnStart 并发加载完四类记忆后调用本 service
+ * - onTurnStart 并发加载完两层记忆后调用本 service
  * - 每个 enricher 自行判断快照是否"已经够用"以决定是否出手
  * - enricher 失败不应阻塞 agent，就地 warn 并返回原快照
  * - 性别优先级固定为 candidate > system：系统标签只补空，候选人后续自陈可覆盖；
@@ -80,7 +80,7 @@ export class MemoryEnrichmentService {
         unwrapUserProfileFactValue(snapshot.longTerm.semantic.profile?.gender),
       ) ??
       normalizeGenderValue(
-        unwrapSessionFactValue(snapshot.sessionMemory?.facts?.interview_info.gender),
+        unwrapSessionFactValue(snapshot.shortTerm.sessionState?.facts?.interview_info.gender),
       ) ??
       normalizeGenderValue(getTurnHintValue(snapshot.turnHints, 'interview_info.gender'))
     );

@@ -8,34 +8,30 @@ import type { CandidateCollectedField, CandidateFieldKey } from '@resolution/can
 /**
  * Agent 运行时记忆上下文 — memory.onTurnStart() 返回值
  *
- * 对外概念上仍然按四类记忆理解：
- * - 短期记忆
- * - 会话记忆
- * - 阶段状态
- * - 长期记忆
- *
- * 这是编排层/提示词层使用的运行时拼装结果，
- * 不是数据库或 Redis 中的原始存储结构。
- *
- * 运行时直接按四类记忆返回，避免和存储层类型产生双重“总览”概念。
+ * 按两层记忆（short-term / long-term）组织，并在顶层携带本轮 sidecar。
+ * 这是编排层/提示词层使用的运行时拼装结果，不是数据库或 Redis
+ * 中的原始存储结构。
  */
 export interface MemoryRecallContext {
   shortTerm: {
     messageWindow: ShortTermMessage[];
+    /** chatId 维度的结构化会话状态（facts + workbench）。 */
+    sessionState: WeworkSessionState | null;
+    /** 阶段是会话状态部件；因保留独立 Redis key，在 shortTerm 中与 sessionState 并列注入。 */
+    stage: StageState;
   };
   /** 记忆子系统的诊断警告（非用户可见）。 */
   _warnings?: string[];
-  sessionMemory: WeworkSessionState | null;
-  /** 仅对当前轮生效的前置高置信识别结果，不属于持久化会话记忆。 */
+  /** 仅对当前轮生效的前置高置信识别结果；它是轮作用域 sidecar，不是记忆层。 */
   turnHints: TurnHints | null;
-  stageState: StageState;
   longTerm: {
     /** 语义记忆分组（CoALA A3）：跨会话稳定事实；类型定义见 long-term.types。 */
     semantic: SemanticMemory;
   };
+  // episodic 摘要不进入默认召回；需要时由显式 recall_history 路径按需读取。
 }
 
-/** 兼容旧命名，后续逐步收口到 MemoryRecallContext。 */
+/** TODO(M5-followup): 兼容旧命名，待调用方全部收口后移除。 */
 export type AgentMemoryContext = MemoryRecallContext;
 
 // ==================== 主动复聊召回投影 ====================

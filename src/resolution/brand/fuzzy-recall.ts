@@ -134,7 +134,7 @@ function matchOne(
  * 在候选品牌池里找出与候选人输入别名最接近的若干品牌。
  *
  * @param brandAliasList 候选人本轮 brandAliasList（通常来自 Agent 的工具调用参数）
- * @param brandPool 会话最近推荐过的品牌名集合（来自 sessionMemory.presentedJobs / lastCandidatePool）
+ * @param brandPool 会话最近推荐过的品牌名集合（来自 shortTerm.sessionState 的 presentedJobs / lastCandidatePool）
  * @returns 按 score 降序排列的匹配；未达阈值返回空数组
  */
 export function findBrandFuzzyMatches(

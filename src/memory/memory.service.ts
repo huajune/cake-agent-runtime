@@ -88,10 +88,11 @@ export class MemoryService {
           message.content.trim().length > 0,
       )
       .map((message) => ({ role: message.role, content: message.content }));
-    const factLines = memory.sessionMemory?.facts
-      ? formatExtractionFactLines(memory.sessionMemory.facts, {
+    const factLines = memory.shortTerm.sessionState?.facts
+      ? formatExtractionFactLines(memory.shortTerm.sessionState.facts, {
           // 品牌唯一真相是 facts.brand（M5）；facts.preferences.brands 已退役
-          currentBrandName: memory.sessionMemory.facts.brand?.currentBrand?.canonicalName ?? null,
+          currentBrandName:
+            memory.shortTerm.sessionState.facts.brand?.currentBrand?.canonicalName ?? null,
         })
       : [];
     return {

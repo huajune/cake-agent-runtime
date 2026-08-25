@@ -87,7 +87,7 @@ export class ReplyRepairContextProvider {
       },
     );
 
-    const session = memory.sessionMemory;
+    const session = memory.shortTerm.sessionState;
     const factLines = session?.facts
       ? formatExtractionFactLines(session.facts, {
           // 品牌唯一真相是 facts.brand（M5）；facts.preferences.brands 已退役
@@ -114,7 +114,7 @@ export class ReplyRepairContextProvider {
       longTermPreferenceLines: this.formatLongTermPreferenceLines(
         memory.longTerm.semantic.jobIntent ?? null,
       ),
-      currentStage: memory.stageState.currentStage ?? null,
+      currentStage: memory.shortTerm.stage.currentStage ?? null,
       jobLines,
       invitedGroupLines: (session?.invitedGroups ?? []).map((group) =>
         this.formatInvitedGroup(group),

@@ -49,12 +49,12 @@ export function buildMemoryBlock(
     formatContactNamePreferenceHint(contactName, contactBrandAliases) +
     formatProfile(
       memory.longTerm.semantic.profile,
-      unwrapSessionFacts(memory.sessionMemory?.facts ?? null, { minConfidence: 'high' })
+      unwrapSessionFacts(memory.shortTerm.sessionState?.facts ?? null, { minConfidence: 'high' })
         ?.interview_info ?? null,
     ) +
     formatLongTermJobIntent(memory.longTerm.semantic.jobIntent ?? null) +
-    (memory.sessionMemory
-      ? formatSessionFacts(memory.sessionMemory, activeLaborForm, currentLaborFormIntent)
+    (memory.shortTerm.sessionState
+      ? formatSessionFacts(memory.shortTerm.sessionState, activeLaborForm, currentLaborFormIntent)
       : '') +
     formatRealtimeGroups(realtimeGroups) +
     bookingContext
@@ -68,7 +68,7 @@ function resolveActiveLaborForm(
 ): string | null {
   const current = projectTurnHints(memory.turnHints, { minConfidence: 'high' })?.preferences
     .labor_form;
-  const persisted = unwrapSessionFacts(memory.sessionMemory?.facts ?? null, {
+  const persisted = unwrapSessionFacts(memory.shortTerm.sessionState?.facts ?? null, {
     minConfidence: 'high',
   })?.preferences.labor_form;
   const previous = current ?? persisted ?? null;

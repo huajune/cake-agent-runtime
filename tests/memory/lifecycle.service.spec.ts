@@ -127,7 +127,7 @@ describe('MemoryLifecycleService', () => {
     expect(mockSessionService.getSessionState).toHaveBeenCalledWith('corp-1', 'user-1', 'sess-1');
     expect(mockWorkbench.getStage).toHaveBeenCalledWith('corp-1', 'user-1', 'sess-1');
     expect(mockLongTerm.getProfile).toHaveBeenCalledWith('corp-1', 'user-1', 'bot-user-1');
-    expect(ctx.sessionMemory).not.toBeNull();
+    expect(ctx.shortTerm.sessionState).not.toBeNull();
     expect(ctx.turnHints).toBeNull();
     expect(ctx.shortTerm.messageWindow).toEqual([{ role: 'user', content: 'hello' }]);
   });
@@ -150,7 +150,7 @@ describe('MemoryLifecycleService', () => {
 
     const ctx = await service.onTurnStart('corp-1', 'user-1', 'sess-1');
 
-    expect(ctx.sessionMemory?.lastJobListQuery).toEqual(
+    expect(ctx.shortTerm.sessionState?.lastJobListQuery).toEqual(
       expect.objectContaining({ turnId: 'turn-1' }),
     );
   });
@@ -249,7 +249,7 @@ describe('MemoryLifecycleService', () => {
     });
 
     expect(mockSponge.fetchBrandList).toHaveBeenCalled();
-    expect(ctx.sessionMemory).toBeNull();
+    expect(ctx.shortTerm.sessionState).toBeNull();
     expect(ctx.turnHints?.claims.some((claim) => claim.field.includes('brands'))).toBe(false);
     expect(ctx.turnHints?.reasoning).toContain('来伊份');
     expect(getTurnHint(ctx.turnHints, 'interview_info.age')).toEqual(
@@ -281,8 +281,8 @@ describe('MemoryLifecycleService', () => {
     });
 
     // preferences.brands 字段已删（记忆审计 S9）：品牌唯一真相是 brand_state。
-    expect(ctx.sessionMemory?.facts?.preferences).not.toHaveProperty('brands');
-    expect(ctx.sessionMemory?.facts?.preferences.city).toBeNull();
+    expect(ctx.shortTerm.sessionState?.facts?.preferences).not.toHaveProperty('brands');
+    expect(ctx.shortTerm.sessionState?.facts?.preferences.city).toBeNull();
     expect(getTurnHint(ctx.turnHints, 'preferences.city')).toEqual(
       expect.objectContaining({
         value: '上海',
