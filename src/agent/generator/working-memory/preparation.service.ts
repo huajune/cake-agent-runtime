@@ -32,16 +32,18 @@ import { ContextService } from '../context/context.service';
 import { PromptInjectionService } from '../../guardrail/input/prompt-injection.service';
 import { type GeneratorInvokeParams, type AgentMemorySnapshot } from '../generator.types';
 import { AgentTracerService } from '@observability/agent-tracer.service';
-import { CRITICAL_TURN_GUARD_RULES } from './critical-turn-guard.rules';
 import {
   BOOKING_CONTEXT_SHARED_RULES,
   buildMemoryBlock,
   formatBookingContext,
   type RealtimeGroupStatus,
-} from './memory-block.formatter';
-import { adjudicatePromptMemory, type TurnStartMemory } from './prompt-memory-adjudicator';
+} from '../context/sections/semantic/memory.section';
 import {
-  extractTextFromContent,
+  adjudicatePromptMemory,
+  resolveActiveLaborForm,
+  type TurnStartMemory,
+} from './prompt-memory-adjudicator';
+import {
   normalizeConversationWithCorpus,
   trailingUserContent,
   trailingUserMessages,
@@ -60,10 +62,10 @@ export type { WorkingMemory } from './working-memory.types';
  * 回合准备编排：记忆召回 → 消息归一化 → memoryBlock/system prompt 组装 →
  * 工具集构建 → 观测快照。
  *
- * 纯函数辅助层按职责拆在 preparation-utils/ 子目录：memory-block.formatter（记忆渲染）、
+ * 纯函数辅助层按职责拆在 working-memory：prompt-memory-adjudicator（共享裁决视图）、
  * conversation-normalizer（消息归一化）、revise-directives（主动回合指令）、
- * tool-set.util（工具计时/过滤）、tool-context.builder（工具上下文组装）、
- * critical-turn-guard.rules（动态硬禁令规则表）。本类只保留需要 IO/DI 的编排逻辑。
+ * tool-set.util（工具计时/过滤）、tool-context.builder（工具上下文组装）。
+ * 模型可见渲染与排布统一由 context/sections 负责。
  */
 @Injectable()
 export class PreparationService {
@@ -207,14 +209,15 @@ export class PreparationService {
     // Compose 的输入：memoryBlock 渲染 + 当前阶段（直接取程序性记忆 currentStage；
     // 不由任何本地 case 状态推导 onboard_followup）。
     const promptMemoryView = adjudicatePromptMemory(memory);
+    const activeLaborForm = resolveActiveLaborForm(memory, currentLaborFormIntent);
     const memoryBlock = buildMemoryBlock(
-      memory,
       promptMemoryView,
       bookingContext.block,
       realtimeGroups,
       params.contactName,
       contactBrandAliases,
       currentLaborFormIntent,
+      activeLaborForm,
     );
     const persistedStage = memory.shortTerm.stage.currentStage ?? undefined;
     // 程序性阶段存 Redis（TTL 2 天），过期后若隐式兜底到策略第一个阶段——
@@ -241,6 +244,8 @@ export class PreparationService {
       displayTurnHints: promptMemoryView.displayTurnHints,
       pendingTurnHintFields: promptMemoryView.pendingTurnHintFields,
       currentTurnTexts,
+      currentUserMessage,
+      normalizedMessages,
       currentLaborFormIntent,
       sessionBrandState: turnBrandContext.state,
       accountIdentity: {
@@ -301,21 +306,52 @@ export class PreparationService {
     );
     const memorySnapshot = this.buildMemorySnapshot(memory, entryStage);
 
-    const criticalTurnGuard = this.buildCriticalTurnGuard(currentUserMessage, normalizedMessages);
     const proactiveDirective = buildProactiveDirective(params);
 
     // 测试替身/旧调用方可能只返回 systemPrompt；生产 ContextService 始终给出逐块标签。
     const basePromptBlocks =
       composedPromptBlocks?.length > 0
         ? composedPromptBlocks
-        : [this.createTeachingPromptBlock('system-prompt', systemPrompt)];
-    const promptBlocks = [
-      ...basePromptBlocks,
-      ...[
-        this.createTeachingPromptBlock('input-guard', guardSuffix),
-        this.createTeachingPromptBlock('critical-turn-guard', criticalTurnGuard),
-        this.createTeachingPromptBlock('proactive-directive', proactiveDirective),
-      ].filter((block) => block.content.length > 0),
+        : [
+            {
+              id: 'system-prompt',
+              domain: 'teaching' as const,
+              role: 'system' as const,
+              content: systemPrompt.trim(),
+            },
+          ];
+    // input-guard 既有位置在 critical-turn-guard 之前；critical 升格为场景末位 section 后，
+    // 仅把独立输入防护块插回该边界，保持二者同时命中时的最终 system 字节顺序不变。
+    const criticalBlockIndex = basePromptBlocks.findIndex(
+      (block) => block.id === 'critical-turn-guard',
+    );
+    const blocksBeforeInputGuard =
+      criticalBlockIndex >= 0 ? basePromptBlocks.slice(0, criticalBlockIndex) : basePromptBlocks;
+    const blocksAfterInputGuard =
+      criticalBlockIndex >= 0 ? basePromptBlocks.slice(criticalBlockIndex) : [];
+    const promptBlocks: PromptCorpusBlock[] = [
+      ...blocksBeforeInputGuard,
+      ...(guardSuffix
+        ? [
+            {
+              id: 'input-guard',
+              domain: 'teaching' as const,
+              role: 'system' as const,
+              content: guardSuffix.trim(),
+            },
+          ]
+        : []),
+      ...blocksAfterInputGuard,
+      ...(proactiveDirective
+        ? [
+            {
+              id: 'proactive-directive',
+              domain: 'teaching' as const,
+              role: 'system' as const,
+              content: proactiveDirective.trim(),
+            },
+          ]
+        : []),
     ];
 
     const finalPrompt = renderPromptBlocks(promptBlocks);
@@ -340,10 +376,6 @@ export class PreparationService {
       memorySnapshot,
       toolExecutionTimings,
     };
-  }
-
-  private createTeachingPromptBlock(id: string, content: string): PromptCorpusBlock {
-    return { id, domain: 'teaching', role: 'system', content: content.trim() };
   }
 
   /**
@@ -385,45 +417,6 @@ export class PreparationService {
     const facts = produceTurnHints(texts, brandData);
     if (facts) this.logger.debug(`前置规则识别命中: ${facts.reasoning}`);
     return facts;
-  }
-
-  /**
-   * 把本轮最容易复发的事故规则追加到 system prompt 最末尾。
-   *
-   * 这些规则不是替代主 prompt，而是把“当前消息已经命中”的禁令放到最后，
-   * 避免模型在长上下文里先承认规则、最后又被阶段策略带回收资或预约。
-   * 规则本体（badcase 驱动的正则 + 禁令文案）维护在 critical-turn-guard.rules.ts。
-   *
-   * `combined` 的近邻窗口取 **normalizedMessages**（含短期记忆窗口）而非 params.messages：
-   * WECOM 生产路径 runner 只构造一条当前 user 消息，完整历史由 memory 层加载进
-   * normalizedMessages——用 params.messages 时 combined ≡ current，4 条 target='combined'
-   * 的规则（health_cert_is_not_major / post_interview_no_rebook /
-   * salary_account_no_fabricated_policy / location_reference_needs_grounding）在生产只剩
-   * "候选人单轮消息内命中全部 patterns"一种触发方式，其文案自证依赖的跨轮场景
-   * （"即使历史助手说过专业不符"、"近邻上下文显示候选人已在面试"）全部漏过，
-   * 而 test-suite/debug 传完整历史时按设计工作——测试覆盖的语义 ≠ 生产语义
-   * （core-flow-review 议题 6-1）。test-suite/debug 行为不变：其 normalizedMessages
-   * 与 params.messages 同源。
-   */
-  private buildCriticalTurnGuard(
-    currentUserMessage: string | undefined,
-    messages: readonly ModelMessage[],
-  ): string {
-    const current = currentUserMessage ?? '';
-    const recent = messages
-      .slice(-12)
-      .map((message) => `${message.role}: ${extractTextFromContent(message.content)}`)
-      .join('\n');
-    const combined = `${recent}\n${current}`;
-
-    const guards = CRITICAL_TURN_GUARD_RULES.filter((rule) => {
-      const text = rule.target === 'current' ? current : combined;
-      return rule.patterns.every((pattern) => pattern.test(text));
-    }).map((rule) => rule.guard);
-
-    if (guards.length === 0) return '';
-
-    return `\n\n# 本轮动态硬禁令\n${guards.map((guard) => `- ${guard}`).join('\n')}`;
   }
 
   /**

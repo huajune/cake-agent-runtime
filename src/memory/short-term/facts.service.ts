@@ -569,7 +569,7 @@ export class SessionFactsService {
 
   /**
    * 写入端上限（治理方案 P1-3）：本轮 fetchedJobs 可累积到同工具限次 3 × 单页 20 = 60 条，
-   * 全量落 Redis 但只有前 10 条会被渲染（memory-block.formatter MAX_POOL_LINES），
+   * 全量落 Redis 但只有前 10 条会被渲染（memory.section MAX_POOL_LINES），
    * 其余仅充当 jobId provenance/品牌回指匹配。截尾保序（渲染取 slice(0,10)，
    * cap 对渲染结果零影响），只裁掉极端多查询轮次里几乎不可能被回指的尾部。
    */

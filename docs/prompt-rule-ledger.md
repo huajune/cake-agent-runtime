@@ -30,7 +30,7 @@
 | 工具 description | 各 tool 文件内 DESCRIPTION | 代码 PR（无尺寸压力） | 13 常挂合计 31,729 字符 |
 | DB red-lines/thresholds | `strategy_config.red_lines`（Dashboard 可改，零 review） | ⚠️ 零审计 | 15 规则 + 2 阈值（1,580 字符） |
 | DB stage-strategy | `strategy_config.stage_goals`（Dashboard 可改，零 review） | ⚠️ 零审计 | 5 阶段（6,282 字符） |
-| 代码动态注入 | booking 上下文共享规则 / hard-constraints / turn-hints / 拦截说明 | 代码 PR | booking 共享规则 ~2KB |
+| 代码动态注入 | booking 共享规则 / hard-constraints / turn-hints / critical-turn-guard / 拦截说明 | 代码 PR | booking 共享规则 ~2KB |
 | 守卫 hard-rules（拦侧） | `src/agent/guardrail/output/rules/` | 代码 PR | 23 文件 / 29 ruleId |
 
 ---
@@ -176,7 +176,7 @@
 
 ## 二、booking 上下文共享规则（代码动态注入）
 
-载体：`memory-block.formatter.ts` `BOOKING_CONTEXT_SHARED_RULES`（2026-08-21 P1-2 起 N 条 booking 只渲染一次）。
+载体：`context/sections/semantic/memory.section.ts` `BOOKING_CONTEXT_SHARED_RULES`（2026-08-21 P1-2 起 N 条 booking 只渲染一次）。
 
 | # | 规则摘要 | 备注 |
 |---|---|---|

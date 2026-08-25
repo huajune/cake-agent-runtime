@@ -6,6 +6,7 @@ import type { SessionBrandState } from '@resolution/brand/brand-resolution.types
 import { StrategyConfigRecord } from '@biz/strategy/entities/strategy-config.entity';
 import type { LaborFormIntentDecision } from '@resolution/labor-form';
 import type { CorpusDomain, PromptCorpusBlock } from '@shared-types/corpus.types';
+import type { ModelMessage } from 'ai';
 
 /**
  * 提示词组装上下文 — 所有 section 共享
@@ -38,10 +39,14 @@ export interface PromptContext {
   sessionFacts?: SessionFacts | null;
   /** 本轮前置识别得到的高置信结果；由 TurnHintsSection 拆分为普通/待确认线索后渲染。 */
   turnHints?: TurnHints | null;
-  /** 仅供 TurnHintsSection 渲染的裁决副本；undefined 表示未提供，回退到原 turnHints。 */
+  /** 仅供 TurnHintsSection 渲染的共享裁决副本；生产路径必须显式提供（可为 null）。 */
   displayTurnHints?: TurnHints | null;
-  /** 与跨层权威 facts 异值、需强制进入「待确认更新」块的本轮字段。 */
+  /** 与跨层权威 facts 异值、需强制进入「待确认更新」块的本轮字段；生产必须显式提供。 */
   pendingTurnHintFields?: readonly TurnHintFieldPath[];
+  /** 本轮合并后的候选人消息；CriticalTurnGuardSection 的 current 规则输入。 */
+  currentUserMessage?: string;
+  /** 含短期近邻窗口的归一化消息；CriticalTurnGuardSection 的 combined 规则输入。 */
+  normalizedMessages?: readonly ModelMessage[];
   /**
    * 本轮候选人消息原文（逐条，与规则轨输入同源）。
    * TurnHintsSection 用它判定 claim 的 quote 是否"就是整条当轮消息"——是且本轮只有一条
@@ -97,6 +102,7 @@ const PROMPT_SECTION_DOMAIN_REGISTRY: Readonly<Record<string, CorpusDomain>> = {
   thresholds: 'teaching',
   'stage-overview': 'teaching',
   'stage-strategy': 'teaching',
+  'critical-turn-guard': 'teaching',
   channel: 'teaching',
   memory: 'evidence',
   'turn-hints': 'evidence',

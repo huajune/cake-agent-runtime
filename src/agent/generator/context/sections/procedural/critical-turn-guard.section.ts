@@ -1,8 +1,10 @@
+// 知识归类：procedural —— 本段按当前回合命中结果注入模型行为禁令。
+// prompt-rule-ledger: docs/prompt-rule-ledger.md（本轮动态硬禁令总账）
 /**
  * 本轮动态硬禁令规则表。
  *
- * 每条规则来自一类反复复发的生产事故（badcase 驱动），由 PreparationService
- * 在组装 system prompt 时匹配注入到最末尾——不是替代主 prompt，而是把「当前
+ * 每条规则来自一类反复复发的生产事故（badcase 驱动），由本 section
+ * 在 ContextService 组装 system prompt 时匹配注入到场景末尾——不是替代主 prompt，而是把「当前
  * 消息已经命中」的禁令放到模型注意力最强的位置，避免模型在长上下文里先承认
  * 规则、最后又被阶段策略带回收资或预约。
  *
@@ -10,8 +12,11 @@
  * - target=current：只匹配本轮用户输入（末尾连续 user 块）；
  * - target=combined：匹配近 12 条对话 + 本轮输入的拼接文本。
  */
+import type { ModelMessage } from 'ai';
 import { LOCATION_SHARE_MARKER_RE } from '@resolution/signal/markers';
 import { CANDIDATE_PHONE_RE } from '@resolution/candidate/phone';
+import { extractTextFromContent } from '@agent/generator/working-memory/conversation-normalizer';
+import type { PromptContext, PromptSection } from '../section.interface';
 
 const LOCATION_CONTEXT_PATTERN = new RegExp(
   `${LOCATION_SHARE_MARKER_RE.source}|这是我住的地方|住处|地址|附近`,
@@ -112,3 +117,34 @@ export const CRITICAL_TURN_GUARD_RULES: CriticalTurnGuardRule[] = [
       '近邻上下文包含位置线索。若最终回复要引用“刚才那家/这家/那个奥乐齐/附近岗位”等具体推荐，必须写清门店名或地址，并且事实来自本轮 duliday_job_list、当前焦点岗位或当前预约信息。若历史推荐只有品牌/距离/薪资而缺门店/地址，不能继续用“这家”承接，必须重新查岗或先补清门店/地址。',
   },
 ];
+
+/** 条件触发的本轮动态硬禁令；匹配与呈现同属该 procedural section。 */
+export class CriticalTurnGuardSection implements PromptSection {
+  readonly name = 'critical-turn-guard';
+
+  build(ctx: PromptContext): string {
+    return buildCriticalTurnGuard(ctx.currentUserMessage, ctx.normalizedMessages ?? []);
+  }
+}
+
+/** 保留既有匹配与渲染字节；由 CriticalTurnGuardSection 单一调用。 */
+function buildCriticalTurnGuard(
+  currentUserMessage: string | undefined,
+  messages: readonly ModelMessage[],
+): string {
+  const current = currentUserMessage ?? '';
+  const recent = messages
+    .slice(-12)
+    .map((message) => `${message.role}: ${extractTextFromContent(message.content)}`)
+    .join('\n');
+  const combined = `${recent}\n${current}`;
+
+  const guards = CRITICAL_TURN_GUARD_RULES.filter((rule) => {
+    const text = rule.target === 'current' ? current : combined;
+    return rule.patterns.every((pattern) => pattern.test(text));
+  }).map((rule) => rule.guard);
+
+  if (guards.length === 0) return '';
+
+  return `\n\n# 本轮动态硬禁令\n${guards.map((guard) => `- ${guard}`).join('\n')}`;
+}

@@ -9,9 +9,16 @@ import {
   isSessionFactValue,
   type SessionFacts,
   type WeworkSessionState,
+  unwrapSessionFacts,
 } from '@memory/short-term/short-term.types';
 import type { TurnHintFieldPath, TurnHints } from '@resolution/evidence/claim.types';
-import { hasMeaningfulValue, isSameFactValue, resolveTurnHints } from '@resolution/evidence/merge';
+import {
+  hasMeaningfulValue,
+  isSameFactValue,
+  projectTurnHints,
+  resolveTurnHints,
+} from '@resolution/evidence/merge';
+import { isValidLaborForm, type LaborFormIntentDecision } from '@resolution/labor-form';
 
 /** 本轮 turn-start 记忆召回结果（preparation 与 prompt 渲染函数的公共输入形状）。 */
 export type TurnStartMemory = Awaited<ReturnType<MemoryService['onTurnStart']>>;
@@ -50,6 +57,28 @@ export type PromptFactScope = 'profile' | 'session';
 export interface PromptFactCandidate {
   scope: PromptFactScope;
   envelope: PromptFactEnvelope;
+}
+
+/** 当前轮明确用工形式覆盖旧会话事实；无当前值时沿用高置信会话事实。 */
+export function resolveActiveLaborForm(
+  memory: TurnStartMemory,
+  currentIntent: LaborFormIntentDecision,
+): string | null {
+  const current = projectTurnHints(memory.turnHints, { minConfidence: 'high' })?.preferences
+    .labor_form;
+  const persisted = unwrapSessionFacts(memory.shortTerm.sessionState?.facts ?? null, {
+    minConfidence: 'high',
+  })?.preferences.labor_form;
+  const previous = current ?? persisted ?? null;
+  const resolved =
+    currentIntent.kind === 'set'
+      ? currentIntent.value
+      : currentIntent.kind === 'clear' &&
+          previous &&
+          currentIntent.clearedValues.some((value) => value === previous)
+        ? null
+        : previous;
+  return isValidLaborForm(resolved) ? resolved : null;
 }
 
 interface CrossLayerField {

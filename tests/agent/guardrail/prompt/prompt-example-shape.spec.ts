@@ -28,12 +28,11 @@ const PROMPT_ASSETS: readonly PromptSurface[] = [
   },
   {
     id: 'candidate-consultation-final-check',
-    source:
-      'src/agent/generator/context/sections/procedural/candidate-consultation-final-check.md',
+    source: 'src/agent/generator/context/sections/procedural/candidate-consultation-final-check.md',
   },
 ];
 
-/** ContextService.registerSections 的 13 个模型可见叶子 section；StaticSection 有两个实例。 */
+/** ContextService.registerSections 的 14 个模型可见叶子 section；StaticSection 有两个实例。 */
 const PROMPT_SECTION_BUILDERS: readonly PromptSurface[] = [
   {
     id: 'identity',
@@ -62,6 +61,10 @@ const PROMPT_SECTION_BUILDERS: readonly PromptSurface[] = [
   {
     id: 'stage-strategy',
     source: 'src/agent/generator/context/sections/procedural/stage-strategy.section.ts',
+  },
+  {
+    id: 'critical-turn-guard',
+    source: 'src/agent/generator/context/sections/procedural/critical-turn-guard.section.ts',
   },
   {
     id: 'memory',
@@ -235,9 +238,9 @@ function scanSurface(surface: PromptSurface): ExampleShapeViolation[] {
 }
 
 describe('prompt example shape CI guard', () => {
-  it('keeps the census surface explicit: 2 assets, 13 sections, all tool descriptions, extraction prompt', () => {
+  it('keeps the census surface explicit: 2 assets, 14 sections, all tool descriptions, extraction prompt', () => {
     expect(PROMPT_ASSETS).toHaveLength(2);
-    expect(PROMPT_SECTION_BUILDERS).toHaveLength(13);
+    expect(PROMPT_SECTION_BUILDERS).toHaveLength(14);
     expect(TOOL_DESCRIPTION_BUILDERS.length).toBeGreaterThanOrEqual(13);
     expect(EXTRACTION_PROMPTS).toHaveLength(1);
     expect(new Set(ALL_SURFACES.map((surface) => surface.id)).size).toBe(ALL_SURFACES.length);

@@ -44,6 +44,8 @@ import { HardConstraintsSection } from './sections/working/hard-constraints.sect
 import { GroupInventorySection } from './sections/semantic/group-inventory.section';
 import { SCENARIO_SECTIONS, DEFAULT_SCENARIO } from './scenarios/scenario.registry';
 import { StaticSection } from './sections/procedural/static.section';
+import { CriticalTurnGuardSection } from './sections/procedural/critical-turn-guard.section';
+import type { ModelMessage } from 'ai';
 
 export interface ComposeParams {
   scenario?: string;
@@ -60,6 +62,10 @@ export interface ComposeParams {
   pendingTurnHintFields?: readonly TurnHintFieldPath[];
   /** 本轮候选人消息原文（逐条，与规则轨输入同源）；turn-hints 的原话渲染判据。 */
   currentTurnTexts?: readonly string[];
+  /** 本轮合并后的候选人消息；critical-turn-guard current 规则输入。 */
+  currentUserMessage?: string;
+  /** 含短期近邻窗口的归一化消息；critical-turn-guard combined 规则输入。 */
+  normalizedMessages?: readonly ModelMessage[];
   /** 当前消息对用工形式的确定性 set/clear/ignore 决策。 */
   currentLaborFormIntent?: LaborFormIntentDecision;
   /** 本轮生效的会话品牌状态；turn-hints / hard-constraints 的品牌口径数据源。 */
@@ -122,6 +128,8 @@ export class ContextService implements OnModuleInit {
       displayTurnHints,
       pendingTurnHintFields,
       currentTurnTexts,
+      currentUserMessage,
+      normalizedMessages,
       currentLaborFormIntent,
       sessionBrandState,
       accountIdentity,
@@ -145,6 +153,8 @@ export class ContextService implements OnModuleInit {
       displayTurnHints,
       pendingTurnHintFields,
       currentTurnTexts,
+      currentUserMessage,
+      normalizedMessages,
       currentLaborFormIntent,
       sessionBrandState,
       accountIdentity,
@@ -205,6 +215,7 @@ export class ContextService implements OnModuleInit {
     this.sections.set('datetime', new DateTimeSection());
     this.sections.set('channel', new ChannelSection());
     this.sections.set('group-inventory', new GroupInventorySection());
+    this.sections.set('critical-turn-guard', new CriticalTurnGuardSection());
   }
 
   /**

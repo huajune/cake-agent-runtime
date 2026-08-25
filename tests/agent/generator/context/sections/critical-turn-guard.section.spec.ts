@@ -1,13 +1,28 @@
-import { CRITICAL_TURN_GUARD_RULES } from '@agent/generator/working-memory/critical-turn-guard.rules';
+import {
+  CRITICAL_TURN_GUARD_RULES,
+  CriticalTurnGuardSection,
+} from '@agent/generator/context/sections/procedural/critical-turn-guard.section';
 
-/** 复刻 PreparationService.buildCriticalTurnGuard 的匹配语义：patterns 全部命中 target 文本。 */
+/** 锁定 section 规则表的匹配语义：patterns 全部命中 target 文本。 */
 const matches = (ruleId: string, text: string): boolean => {
   const rule = CRITICAL_TURN_GUARD_RULES.find((item) => item.id === ruleId);
   if (!rule) throw new Error(`rule not found: ${ruleId}`);
   return rule.patterns.every((pattern) => pattern.test(text));
 };
 
-describe('critical-turn-guard.rules', () => {
+describe('CriticalTurnGuardSection', () => {
+  it('keeps the legacy injected bytes unchanged for a matched current-turn rule', () => {
+    const rule = CRITICAL_TURN_GUARD_RULES.find(
+      (item) => item.id === 'interview_date_precheck_first',
+    );
+    const output = new CriticalTurnGuardSection().build({
+      currentUserMessage: '我5月1号回来面试可以吗',
+      normalizedMessages: [{ role: 'user', content: '我5月1号回来面试可以吗' }],
+    } as never);
+
+    expect(output).toBe(`\n\n# 本轮动态硬禁令\n- ${rule?.guard}`);
+  });
+
   describe('interview_time_only_precheck_first（CUTOFF 缺口：裸钟点动身不重新 precheck）', () => {
     it.each([
       '我三点过去',

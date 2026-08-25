@@ -393,7 +393,7 @@ SCENARIO_SECTIONS = {
 [final-check]
 ```
 
-`memoryBlock` 的三段由 ``preparation-utils/memory-block.formatter.ts` 的 `buildMemoryBlock()`` 组装，来源：长期档案 facts + `WeworkSessionState` + `RecruitmentCaseRecord`。
+`memoryBlock` 的模型可见呈现由 `context/sections/semantic/memory.section.ts` 的 `buildMemoryBlock()` 组装，来源：长期档案 facts + `WeworkSessionState` + 当前预约上下文。
 
 ---
 

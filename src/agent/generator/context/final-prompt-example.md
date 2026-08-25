@@ -5,23 +5,23 @@
 ## 拼接公式
 
 ```text
-finalPrompt =
-  systemPrompt
+finalPrompt = renderPromptBlocks(
+  candidate-consultation sections（critical-turn-guard 之前）
   + guardSuffix
-  + criticalTurnGuard
-  + reviseNotice
-  + proactiveDirective
+  + critical-turn-guard section
+  + reviseNotice / proactiveDirective
+)
 ```
 
 其中：
 
-- `systemPrompt`：`ContextService.compose()`
+- `systemPrompt`：`ContextService.compose()` 的场景 section 渲染结果
 - `guardSuffix`：仅在命中 prompt injection 风险时，由 `PromptInjectionService.GUARD_SUFFIX` 追加
-- `criticalTurnGuard`：本轮命中关键形态时追加的动态硬禁令
+- `critical-turn-guard`：本轮命中关键形态时由 procedural section 渲染；场景清单末位，若同时有 `guardSuffix`，最终装配保持既有的 guardSuffix → critical 顺序
 - `reviseNotice`：HC-1 修复回合的重写指令（正常回合为空）
 - `proactiveDirective`：主动/复聊回合的 directive（被动回合为空）
 
-正常被动回合下，后四段通常都为空。
+正常被动回合下，这些条件段通常都为空。
 
 ## systemPrompt 顶层结构
 
@@ -29,7 +29,7 @@ finalPrompt =
 
 1. 静态前缀：`base-manual` → `final-check` → `channel` → `stage-overview`
 2. 配置段：`red-lines` → `thresholds` → `identity`
-3. 动态尾部：`memory` → `turn-hints` → `hard-constraints` → `datetime` → `group-inventory` → `stage-strategy`
+3. 动态尾部：`memory` → `turn-hints` → `hard-constraints` → `datetime` → `group-inventory` → `stage-strategy` → `critical-turn-guard`（按需）
 
 空 section 会省略。工具目录由 AI SDK 的 `tools` 参数单独序列化，不进入候选人 `messages`；
 Qwen 会把稳定 system 前缀与 tools 一起纳入隐式前缀缓存。
@@ -80,12 +80,16 @@ Qwen 会把稳定 system 前缀与 tools 一起纳入隐式前缀缓存。
 
 [当前阶段策略]
 ...
+
+# 本轮动态硬禁令（按需）
+...
 ```
 
 说明：
 
 - `stage-overview` 不读取 `currentStage`，全阶段地图跨轮逐字节稳定；当前阶段不再用箭头写入地图。
-- `stage-strategy` 只渲染当前阶段，并固定为 system 最后一个 section。
+- `stage-strategy` 只渲染当前阶段，并固定在条件触发的 `critical-turn-guard` 之前。
+- `critical-turn-guard` 按当前消息与近邻消息确定性匹配，是场景清单末位 section；未命中时不产生 block。
 - `identity`、`red-lines`、`thresholds` 来自配置，位于静态前缀和动态尾部之间。
 - `memory`、本轮线索、硬约束、时间与群库事实都留在 system 动态尾部，一个字节不进入 messages。
 
@@ -120,6 +124,8 @@ Qwen 会把稳定 system 前缀与 tools 一起纳入隐式前缀缓存。
   - `strategy_config.red_lines.thresholds`
 - `stage-overview` / `stage-strategy`
   - `strategy_config.stage_goals`
+- `critical-turn-guard`
+  - 本轮合并消息与归一化近邻消息
 - `memory` / `turn-hints` / `hard-constraints` / `datetime` / `group-inventory`
   - `memoryBlock`
   - 本轮确定性解析线索
@@ -130,15 +136,16 @@ Qwen 会把稳定 system 前缀与 tools 一起纳入隐式前缀缓存。
 
 ## memoryBlock 结构
 
-`memoryBlock`（由 `memory-block.formatter` 渲染）按顺序组成：
+`memoryBlock`（由 `sections/semantic/memory.section.ts` 渲染）按顺序组成：
 
 1. 跨会话来源口径（长期记忆来自另一段会话时）
 2. 企微备注品牌
 3. `[用户档案]`
 4. `[历史求职意向]`
-5. `[会话记忆]`
-6. `[候选人当前所在兼职群]`
-7. `[当前预约信息]` / `[预约状态]`
+5. `[记忆冲突裁决]`（按需）
+6. `[会话记忆]`
+7. `[候选人当前所在兼职群]`
+8. `[当前预约信息]` / `[预约状态]`
 
 其中：
 

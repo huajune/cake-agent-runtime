@@ -32,6 +32,8 @@ export const SCENARIO_SECTIONS: Record<string, string[]> = {
     'group-inventory',
     // procedural · 动态档（当前阶段策略，固定置于 system 尾部）
     'stage-strategy',
+    // procedural · 动态档（本轮命中硬禁令；与既有注入点等价的场景末位）
+    'critical-turn-guard',
   ],
   'group-operations': [
     // procedural · 配置档

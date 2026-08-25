@@ -1,4 +1,4 @@
-import { buildMemoryBlock } from '@agent/generator/working-memory/memory-block.formatter';
+import { buildMemoryBlock } from '@agent/generator/context/sections/semantic/memory.section';
 import {
   adjudicatePromptMemory,
   normalizeFactTimeKey,
@@ -33,7 +33,7 @@ describe('memory block deterministic adjudication', () => {
     const memory = memoryOf({ profile, sessionFacts });
 
     const view = adjudicatePromptMemory(memory);
-    const memoryBlock = buildMemoryBlock(memory, view, '');
+    const memoryBlock = buildMemoryBlock(view, '');
 
     expect(memoryBlock.match(/姓名: 张三/g)).toHaveLength(1);
     expect(memoryBlock).not.toContain('[记忆冲突裁决]');
@@ -50,7 +50,7 @@ describe('memory block deterministic adjudication', () => {
     const memory = memoryOf({ profile, sessionFacts });
 
     const view = adjudicatePromptMemory(memory);
-    const memoryBlock = buildMemoryBlock(memory, view, '');
+    const memoryBlock = buildMemoryBlock(view, '');
 
     expect(memoryBlock).not.toContain('- 姓名: 档案名');
     expect(memoryBlock).toContain('- 姓名: 本次名');
@@ -105,11 +105,33 @@ describe('memory block deterministic adjudication', () => {
     const memory = memoryOf({
       profile: profileWithName('档案名', 'high', '2026-08-25T10:00:00.000Z'),
     });
-    const memoryBlock = buildMemoryBlock(memory, adjudicatePromptMemory(memory), '');
+    const memoryBlock = buildMemoryBlock(adjudicatePromptMemory(memory), '');
 
     expect(memoryBlock).toContain('[用户档案]');
     expect(memoryBlock).toContain('历史会话沉淀');
     expect(memoryBlock).toContain('未经本次会话确认');
+  });
+
+  it('keeps the merged memory section output byte-identical to the former formatter', () => {
+    const memory = memoryOf({
+      profile: profileWithName('档案名', 'high', '2026-08-25T10:00:00.000Z'),
+    });
+    const memoryBlock = buildMemoryBlock(adjudicatePromptMemory(memory), '');
+
+    expect(memoryBlock).toBe(
+      [
+        '',
+        '',
+        '[用户档案]',
+        '',
+        '_以下字段来自**历史会话沉淀**，未经本次会话确认。使用规则：',
+        '- 预填报名表/提交预约前，必须向候选人披露并逐项确认（口径如"帮你把之前登记过的信息带出来了，你看下对不对"），不得不加说明地当作候选人本次刚提供的信息直接使用；',
+        '- 向候选人复述这些信息时用披露句式（"我记得你之前提过…现在还是吗"），不得说成候选人本次已确认；',
+        '- 候选人表示某项不对/不认识时，立即弃用该历史值，按候选人本次说法重新收集。_',
+        '',
+        '- 姓名: 档案名（置信度: high，来源: archive，更新于: 2026-08-25）',
+      ].join('\n'),
+    );
   });
 
   it('deduplicates equal turn hints, marks differences pending, and keeps new hints normal', () => {

@@ -1,13 +1,7 @@
 // 知识归类：working —— 本段呈现从候选人当前消息提取的临时线索。
 import { formatTurnHintLines } from '@memory/fact-lines.formatter';
-import {
-  type CityFact,
-  type EntityExtractionResult,
-  type SessionFacts,
-  unwrapSessionFacts,
-} from '@memory/short-term/short-term.types';
 import type { TurnHints, TurnHintFieldPath } from '@resolution/evidence/claim.types';
-import { isSameFactValue, projectTurnHints, resolveTurnHints } from '@resolution/evidence/merge';
+import { resolveTurnHints } from '@resolution/evidence/merge';
 import { PromptContext, PromptSection } from '../section.interface';
 
 /**
@@ -18,12 +12,15 @@ export class TurnHintsSection implements PromptSection {
   readonly name = 'turn-hints';
 
   build(ctx: PromptContext): string {
-    const sharedViewSupplied = ctx.displayTurnHints !== undefined;
-    const displayTurnHints = sharedViewSupplied ? ctx.displayTurnHints : (ctx.turnHints ?? null);
-    const forcedPendingFields = new Set(ctx.pendingTurnHintFields ?? []);
-    const { normalHints, pendingHints } = sharedViewSupplied
-      ? this.partitionSharedView(displayTurnHints ?? null, forcedPendingFields)
-      : this.partitionLegacyView(ctx.sessionFacts ?? null, displayTurnHints ?? null);
+    if (ctx.displayTurnHints === undefined || ctx.pendingTurnHintFields === undefined) {
+      throw new Error(
+        'TurnHintsSection 缺少共享裁决视图：请先调用 adjudicatePromptMemory，并显式传入 displayTurnHints 与 pendingTurnHintFields。',
+      );
+    }
+    const { normalHints, pendingHints } = this.partitionSharedView(
+      ctx.displayTurnHints,
+      new Set(ctx.pendingTurnHintFields),
+    );
     const parts: string[] = [];
     const currentTurnTexts = ctx.currentTurnTexts;
     if (normalHints) parts.push(this.renderCurrentHints(normalHints, currentTurnTexts));
@@ -101,70 +98,6 @@ export class TurnHintsSection implements PromptSection {
       normalHints: this.selectClaims(turnHints, normalFields),
       pendingHints: this.selectClaims(turnHints, pendingFields),
     };
-  }
-
-  /** 兼容直接单测/扩展调用；生产 preparation 路径始终提供共享裁决视图。 */
-  private partitionLegacyView(
-    sessionFacts: SessionFacts | null,
-    turnHints: TurnHints | null,
-  ): {
-    normalHints: TurnHints | null;
-    pendingHints: TurnHints | null;
-  } {
-    const projected = projectTurnHints(turnHints);
-    if (!projected) return { normalHints: null, pendingHints: null };
-
-    const comparable = unwrapSessionFacts(sessionFacts, { minConfidence: 'medium' });
-    const normalFields = new Set<TurnHintFieldPath>();
-    const pendingFields = new Set<TurnHintFieldPath>();
-    for (const fact of resolveTurnHints(turnHints)) {
-      if (fact.field === 'interview_info.gender_source') continue;
-      const currentValue = this.readPath(projected, fact.field);
-      if (!this.hasValue(currentValue)) continue;
-
-      const previousValue = comparable ? this.readPath(comparable, fact.field) : undefined;
-      const isDuplicate =
-        this.hasValue(previousValue) && this.valuesEqual(fact.field, previousValue, currentValue);
-      if (isDuplicate) continue;
-      const target = this.hasValue(previousValue) ? pendingFields : normalFields;
-      target.add(fact.field);
-
-      if (fact.field === 'interview_info.gender') {
-        target.add('interview_info.gender_source');
-      }
-    }
-
-    return {
-      normalHints: this.selectClaims(turnHints, normalFields),
-      pendingHints: this.selectClaims(turnHints, pendingFields),
-    };
-  }
-
-  private readPath(facts: EntityExtractionResult, path: TurnHintFieldPath): unknown {
-    const [group, field] = path.split('.') as ['interview_info' | 'preferences', string];
-    return (facts[group] as unknown as Record<string, unknown>)[field];
-  }
-
-  private valuesEqual(path: TurnHintFieldPath, previous: unknown, current: unknown): boolean {
-    if (path === 'preferences.city') {
-      return this.cityValue(previous) === this.cityValue(current);
-    }
-    return isSameFactValue(previous, current);
-  }
-
-  private cityValue(value: unknown): string {
-    if (!value) return '';
-    return typeof value === 'string'
-      ? value.trim()
-      : String((value as CityFact).value ?? '').trim();
-  }
-
-  private hasValue(value: unknown): boolean {
-    if (value === null || value === undefined) return false;
-    if (typeof value === 'boolean') return true;
-    if (typeof value === 'string') return value.trim().length > 0;
-    if (Array.isArray(value)) return value.length > 0;
-    return true;
   }
 
   private selectClaims(facts: TurnHints, fields: ReadonlySet<TurnHintFieldPath>): TurnHints | null {

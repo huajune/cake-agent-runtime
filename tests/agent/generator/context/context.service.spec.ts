@@ -1,4 +1,4 @@
-import { ContextService } from '@agent/generator/context/context.service';
+import { ContextService, type ComposeParams } from '@agent/generator/context/context.service';
 import { StrategyConfigRecord } from '@biz/strategy/entities/strategy-config.entity';
 import { CORPUS_DOMAINS } from '@shared-types/corpus.types';
 import {
@@ -84,6 +84,12 @@ describe('ContextService', () => {
   };
 
   let service: ContextService;
+  const compose = (params: ComposeParams = {}) =>
+    service.compose({
+      displayTurnHints: null,
+      pendingTurnHintFields: [],
+      ...params,
+    });
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -106,6 +112,7 @@ describe('ContextService', () => {
       thresholds: 'teaching',
       'stage-overview': 'teaching',
       'stage-strategy': 'teaching',
+      'critical-turn-guard': 'teaching',
       channel: 'teaching',
       memory: 'evidence',
       'turn-hints': 'evidence',
@@ -129,7 +136,7 @@ describe('ContextService', () => {
     }
 
     for (const scenario of Object.keys(SCENARIO_SECTIONS)) {
-      const result = await service.compose({
+      const result = await compose({
         scenario,
         currentStage: 'trust_building',
         memoryBlock: productionShapedText,
@@ -156,8 +163,9 @@ describe('ContextService', () => {
       'datetime',
       'group-inventory',
       'stage-strategy',
+      'critical-turn-guard',
     ]);
-    const result = await service.compose({
+    const result = await compose({
       scenario: 'candidate-consultation',
       currentStage: 'trust_building',
       memoryBlock: '[用户档案]\n- 姓名: 张三',
@@ -245,14 +253,39 @@ describe('ContextService', () => {
     expect(prompt).not.toContain('bookingChecklist.collectionStrategy');
   });
 
+  it('keeps a matched critical-turn guard as the final scenario block and system suffix', async () => {
+    const currentUserMessage = '我5月1号回来面试可以吗';
+    const result = await compose({
+      scenario: 'candidate-consultation',
+      currentStage: 'job_consultation',
+      currentUserMessage,
+      normalizedMessages: [{ role: 'user', content: currentUserMessage }],
+      strategySource: 'testing',
+    });
+
+    const criticalBlock = result.promptBlocks.at(-1);
+    expect(criticalBlock).toEqual(
+      expect.objectContaining({
+        id: 'critical-turn-guard',
+        domain: 'teaching',
+        role: 'system',
+      }),
+    );
+    expect(criticalBlock?.content).toContain('本轮候选人指定了面试日期');
+    expect(result.systemPrompt.endsWith(criticalBlock?.content ?? '')).toBe(true);
+    expect(result.systemPrompt.indexOf('# 本轮动态硬禁令')).toBeGreaterThan(
+      result.systemPrompt.lastIndexOf('[当前阶段策略]'),
+    );
+  });
+
   it('keeps the static prefix byte-identical across turn-varying inputs', async () => {
-    const first = await service.compose({
+    const first = await compose({
       scenario: 'candidate-consultation',
       currentStage: 'trust_building',
       memoryBlock: '[会话记忆]\n- 唯一动态值: 第一轮',
       strategySource: 'testing',
     });
-    const second = await service.compose({
+    const second = await compose({
       scenario: 'candidate-consultation',
       currentStage: 'job_consultation',
       memoryBlock: '[会话记忆]\n- 唯一动态值: 第二轮',
@@ -280,7 +313,7 @@ describe('ContextService', () => {
   });
 
   it('should thread accountIdentity (nickname/gender/botUserId) into the identity anchor', async () => {
-    const { systemPrompt } = await service.compose({
+    const { systemPrompt } = await compose({
       scenario: 'candidate-consultation',
       strategySource: 'testing',
       accountIdentity: { botUserId: 'ZhuDongSheng', nickname: '东升', gender: '男' },
@@ -294,7 +327,7 @@ describe('ContextService', () => {
   });
 
   it('should still inject the account-identity anchor without accountIdentity', async () => {
-    const { systemPrompt } = await service.compose({
+    const { systemPrompt } = await compose({
       scenario: 'candidate-consultation',
       strategySource: 'testing',
     });
@@ -305,7 +338,7 @@ describe('ContextService', () => {
   });
 
   it('should keep runtime time injection to a single rendered current time line', async () => {
-    const { systemPrompt } = await service.compose({
+    const { systemPrompt } = await compose({
       scenario: 'candidate-consultation',
       strategySource: 'testing',
     });
@@ -317,7 +350,7 @@ describe('ContextService', () => {
   });
 
   it('should not leak markdown front matter or html comments into prompt', async () => {
-    const { systemPrompt } = await service.compose({
+    const { systemPrompt } = await compose({
       scenario: 'candidate-consultation',
       strategySource: 'testing',
     });
@@ -362,7 +395,7 @@ describe('ContextService', () => {
       },
     ]);
 
-    const { systemPrompt, promptBlocks } = await service.compose({
+    const { systemPrompt, promptBlocks } = await compose({
       scenario: 'candidate-consultation',
       strategySource: 'testing',
       sessionFacts: sessionFactsOf({ preferences: { city: cityFixture('上海') } }),
@@ -383,7 +416,7 @@ describe('ContextService', () => {
   });
 
   it('should skip group inventory block when no city is known', async () => {
-    const { systemPrompt } = await service.compose({
+    const { systemPrompt } = await compose({
       scenario: 'candidate-consultation',
       strategySource: 'testing',
     });
@@ -396,7 +429,7 @@ describe('ContextService', () => {
   // 取值必须与硬约束段同门（high）。此前直读 .value 绕过置信度门，导致 prompt 里出现
   // 硬约束段根本没有的城市。
   it('should skip group inventory block when the city confidence is below the hard-constraint gate', async () => {
-    const { systemPrompt } = await service.compose({
+    const { systemPrompt } = await compose({
       scenario: 'candidate-consultation',
       strategySource: 'testing',
       sessionFacts: sessionFactsOf({ preferences: { city: cityFixture('上海', 'medium') } }),
