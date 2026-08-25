@@ -72,7 +72,7 @@ export class MemoryFixtureService {
       );
     }
 
-    // 用例预设的品牌意向按「末位≈最近」种成 brand_state：品牌唯一真相是 brand_state，
+    // 用例预设的品牌意向按「末位≈最近」种成 facts.brand：品牌唯一真相是 facts.brand，
     // sessionFacts 侧的 brands 字段已随 S9 删除，故直接读夹具原始入参，不再绕道 facts。
     const lastBrand = this.resolveFixtureBrands(setup).at(-1);
     if (lastBrand) {
@@ -256,7 +256,7 @@ export class MemoryFixtureService {
       },
       preferences: {
         ...FALLBACK_EXTRACTION.preferences,
-        // brands 不进 facts（S9 已删该字段）：品牌走 resolveFixtureBrands → brand_state。
+        // brands 不进 preferences（S9 已删该字段）：品牌走 resolveFixtureBrands → facts.brand。
         salary: this.readStringFromKeys(raw, ['salary', 'salaryDesc']),
         position: this.readStringArrayFromKeys(raw, ['position', 'positions']),
         schedule: this.readString(raw, 'schedule'),

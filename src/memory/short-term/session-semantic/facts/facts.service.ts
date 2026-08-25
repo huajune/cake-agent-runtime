@@ -19,6 +19,7 @@ import {
   type EntityExtractionResult,
   type InvitedGroupRecord,
   InvitedGroupRecordSchema,
+  PersistedBrandStateSchema,
   SessionFactsSchema,
   SessionFactsRedisContentSchema,
   type SessionFacts,
@@ -40,7 +41,10 @@ import {
 } from './extraction.prompt';
 import { detectBrandAliasHints } from '@resolution/evidence/producers/rule-track';
 import type { TurnHints } from '@resolution/evidence/claim.types';
-import type { BrandResolution } from '@resolution/brand/brand-resolution.types';
+import type {
+  BrandResolution,
+  PersistedBrandState,
+} from '@resolution/brand/brand-resolution.types';
 import { produceValidatedBrandIntents } from '@resolution/evidence/producers/brand-intents';
 import { decideGeoPreferenceClear } from '@resolution/evidence/producers/geo-preference';
 import { normalizeCityName } from '@resolution/geo';
@@ -123,7 +127,11 @@ export class SessionFactsService {
 
     if (!hashFields && !legacyContent) return { ...EMPTY_SESSION_STATE };
 
-    const combined = hashFields ?? legacyContent ?? {};
+    const combined = this.projectLegacyBrandState(hashFields ?? legacyContent ?? {}, hashKey, {
+      corpId,
+      userId,
+      sessionId,
+    });
     const content = this.parseSessionStateFields(combined, { corpId, userId, sessionId });
 
     return {
@@ -138,7 +146,7 @@ export class SessionFactsService {
   /**
    * 逐字段校验读出：坏字段丢弃并告警，其余字段照常返回。
    *
-   * 为什么不是整份 safeParse：Redis 是 facts / terminal / brand_state 的唯一事实源，
+   * 为什么不是整份 safeParse：Redis 是 facts（含 brand）/ terminal 的唯一事实源，
    * 整份校验会把任一字段的 schema 漂移（跨版本词表不一致、脏写）放大成「整份会话状态
    * 归空」——终态一并丢失后，复聊会继续触达已约面/已转人工的候选人。降级粒度必须是字段。
    * 存储形态本就是按字段的 Redis hash（旧 blob 的 top-level 键同名），逐字段校验与之同构。
@@ -185,6 +193,44 @@ export class SessionFactsService {
   }
 
   /**
+   * M5 懒迁移：旧 hash 顶层 brand_state 读时投影为 facts.brand，并回写新形态。
+   *
+   * 旧字段不主动 HDEL：同一 factsv2 key 的 TTL 会让它自然过期；迁移窗口内嵌套新值
+   * 一旦存在即优先，绝不被旧顶层字段覆盖。
+   */
+  private projectLegacyBrandState(
+    combined: Record<string, unknown>,
+    hashKey: string,
+    scope: { corpId: string; userId: string; sessionId: string },
+  ): Record<string, unknown> {
+    const legacyBrand = PersistedBrandStateSchema.safeParse(combined.brand_state);
+    if (!legacyBrand.success) return combined;
+
+    const parsedFacts = SessionFactsSchema.safeParse(combined.facts ?? FALLBACK_EXTRACTION);
+    if (!parsedFacts.success || parsedFacts.data.brand) return combined;
+
+    const migratedFacts: SessionFacts = {
+      ...(parsedFacts.data as SessionFacts),
+      brand: legacyBrand.data as PersistedBrandState,
+    };
+    void this.redisStore
+      .patchHash(hashKey, { facts: migratedFacts }, this.config.sessionFactsTtl)
+      .then(() => {
+        this.logger.log(
+          `[getSessionState] 顶层 brand_state 已懒迁移到 facts.brand: ` +
+            `${scope.corpId}/${scope.userId}/${scope.sessionId}`,
+        );
+      })
+      .catch((error: unknown) => {
+        this.logger.warn(
+          `[getSessionState] brand_state 懒迁移失败（下次读取重试）: ${toErrorMessage(error)}`,
+        );
+      });
+
+    return { ...combined, facts: migratedFacts };
+  }
+
+  /**
    * 落盘态字段被丢弃的观测出口：日志 + 执行事件 + 飞书告警，一条都不省。
    *
    * 告警是 fire-and-forget：读会话状态在消息处理主链路上，告警通道抖动不得拖慢或
@@ -215,7 +261,7 @@ export class SessionFactsService {
           `会话：${scope.corpId}/${scope.userId}/${scope.sessionId}`,
           `丢弃字段：${droppedFields.join('、')}`,
           `明细：${detail}`,
-          'Redis 是 facts / terminal / brand_state 的唯一事实源，丢字段即丢事实：',
+          'Redis 是 facts（含 brand）/ terminal 的唯一事实源，丢字段即丢事实：',
           'facts 丢是档案缺块，terminal 丢会让复聊去骚扰已约面/已转人工的候选人。',
         ].join('\n'),
         'error',
@@ -298,6 +344,8 @@ export class SessionFactsService {
     const merged = SessionFactsSchema.parse({
       interview_info: incoming.interview_info,
       preferences: this.mergePreferences(state.facts?.preferences ?? null, incoming.preferences),
+      // brand 只由 BrandStateService reducer 写；通用 facts 写入必须原样保留。
+      brand: state.facts?.brand ?? null,
     }) as SessionFacts;
     await this.patchSessionState(corpId, userId, sessionId, { facts: merged });
   }
@@ -319,6 +367,7 @@ export class SessionFactsService {
     const merged = SessionFactsSchema.parse({
       interview_info: { ...base.interview_info, ...interviewInfo },
       preferences: base.preferences,
+      brand: base.brand,
     }) as SessionFacts;
     await this.patchSessionState(corpId, userId, sessionId, { facts: merged });
   }
@@ -335,6 +384,7 @@ export class SessionFactsService {
     const merged = SessionFactsSchema.parse({
       interview_info: base.interview_info,
       preferences: this.mergePreferences(base.preferences, preferences),
+      brand: base.brand,
     }) as SessionFacts;
     await this.patchSessionState(corpId, userId, sessionId, { facts: merged });
   }

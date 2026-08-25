@@ -26,9 +26,9 @@ export interface FactLineFormatOptions {
    */
   includeEvidence?: boolean;
   /**
-   * 会话当前意向品牌（brand_state.currentBrand.canonicalName）。
+   * 会话当前意向品牌（facts.brand.currentBrand.canonicalName）。
    *
-   * preferences.brands 字段已退役（§19.6）：品牌唯一真相是 brand_state，
+   * preferences.brands 字段已退役（§19.6）：品牌唯一真相是 facts.brand，
    * 由调用方显式传入而非从 facts 里读——防止存储里收口前的旧值复活。
    * 不传则不渲染意向品牌行（如事实提取 prompt 的规则线索注入，无需品牌上下文）。
    */

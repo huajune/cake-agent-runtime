@@ -22,7 +22,7 @@ export type MergePolicy = 'scalar-first' | 'rule-overrides' | 'array-union' | 'c
 
 /**
  * rule × LLM 合并策略的唯一字段表。新增 schema 字段不在这里表态会编译失败。
- * brand_state 已接管 brands；brand_ids 是独立数组，不能再被静默丢弃。
+ * facts.brand 已接管 brands；brand_ids 是独立数组，不能再被静默丢弃。
  */
 export const FIELD_MERGE_POLICIES = {
   name: 'scalar-first',

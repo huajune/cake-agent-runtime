@@ -163,7 +163,7 @@ const NullableAvailableAfterSchema = AvailableAfterFactSchema.nullable().default
  * 兼容性：所有新字段均 nullable + default(null)，旧 Redis 数据缺字段时解析为 null。
  */
 export const PreferencesSchema = z.object({
-  // brands 字段已删（2026-08-19 记忆审计 S9）：品牌唯一真相是 brand_state，
+  // brands 字段已删（2026-08-19 记忆审计 S9）：品牌唯一真相是 facts.brand，
   // 写入只经 reducer；本字段的存储值在收口后恒 null，模型填了也当场丢弃。
   brand_ids: z
     .array(z.number().int())
@@ -262,7 +262,7 @@ export const EntityExtractionResultSchema = z.object({
 /**
  * LLM 极性轨输出（§6.3.1）：品牌意图极性 + 指代链接结果。
  * brand 为 null 表示品牌为空的表达（"换个品牌"类 negative / "品牌不限"类 browse_all）。
- * 输出的品牌名必须经品牌库标准化验证后才进 brand_state reducer，未命中即整条丢弃。
+ * 输出的品牌名必须经品牌库标准化验证后才进 facts.brand reducer，未命中即整条丢弃。
  */
 export const BrandIntentEntrySchema = z.object({
   brand: z
@@ -480,9 +480,23 @@ export interface SessionPreferences {
   available_after: SessionFactMaybeValue<AvailableAfterFact>;
 }
 
+export const SessionBrandRefSchema = z.object({
+  canonicalName: z.string(),
+  brandId: z.number().int().nullable(),
+});
+
+/** facts.brand 的 Redis 落盘 schema；结构原样搬入，不套事实信封。 */
+export const PersistedBrandStateSchema = z.object({
+  currentBrand: SessionBrandRefSchema.nullable(),
+  excludedBrands: z.array(SessionBrandRefSchema),
+  updatedAtMs: z.number().nullable().optional(),
+});
+
 export type SessionFacts = Omit<EntityExtractionResult, 'interview_info' | 'preferences'> & {
   interview_info: SessionInterviewInfo;
   preferences: SessionPreferences;
+  /** reducer 独占写入的会话品牌状态；不属于实体提取字段，不套 SessionFactValue 信封。 */
+  brand: PersistedBrandState | null;
 };
 
 const SessionFactValueSchema = <T extends z.ZodTypeAny>(valueSchema: T) =>
@@ -607,6 +621,8 @@ export const SessionPreferencesSchema = z.object({
 export const SessionFactsSchema = z.object({
   interview_info: SessionInterviewInfoSchema,
   preferences: SessionPreferencesSchema,
+  // 兼容尚未携带 brand 的旧 facts；解析后统一补齐为 null。
+  brand: PersistedBrandStateSchema.nullable().default(null),
 });
 
 /** 由字段清单生成"逐字段 null"对象（所有字段 schema 均 nullable，null 是合法降级值）。 */
@@ -822,6 +838,8 @@ export function toSessionFacts(
           })
         : null,
     },
+    // brand 不来自实体提取；通用事实写入方须保留已有值，不能借此入口改写。
+    brand: null,
   }) as SessionFacts;
 }
 
@@ -844,7 +862,7 @@ export interface InvitedGroupRecord {
  *
  * ⚠️ 加档必须走本常量：Redis 落盘校验 SessionFactsRedisContentSchema 用的就是它。
  * 写侧 interface 放行而读侧 z.enum 不认时，getSessionState 的 safeParse 失败会
- * **整份会话状态归 EMPTY_SESSION_STATE**（facts/池/brand_state 全丢）且只留一条
+ * **整份会话状态归 EMPTY_SESSION_STATE**（facts/池全丢）且只留一条
  * warn，终态随之丢失、复聊继续触达已终态候选人。
  */
 export const SESSION_TERMINAL_STATES = ['booked', 'handed_off', 'rejected', 'onboarded'] as const;
@@ -865,14 +883,6 @@ export interface WeworkSessionState extends SessionWorkbenchState {
    * 可选：旧数据无此键。
    */
   lastProcessedCandidateMessageAt?: string | null;
-  /**
-   * 会话品牌状态（currentBrand + excludedBrands，§9）：品牌真相的唯一存储。
-   * 写入只经 brand_state reducer（回合收尾 apply_brand_state + 图片描述晚到补写
-   * applyLateImageResolutions 两个时机）；preferences.brands 字段已于 2026-08-19（S9）
-   * 从 schema 整体删除——它此前恒折成 null，是纯样板（存量 2026-08-17 复扫已归零）。
-   * 可选：旧数据无此键（懒迁移，见 §9.4）。
-   */
-  brand_state?: PersistedBrandState | null;
 }
 
 export const InvitedGroupRecordSchema = z.object({
@@ -880,18 +890,6 @@ export const InvitedGroupRecordSchema = z.object({
   city: z.string(),
   industry: z.string().optional(),
   invitedAt: z.string(),
-});
-
-export const SessionBrandRefSchema = z.object({
-  canonicalName: z.string(),
-  brandId: z.number().int().nullable(),
-});
-
-/** brand_state 的 Redis 落盘 schema（未注册进 SessionFactsRedisContentSchema 的字段会被丢弃）。 */
-export const PersistedBrandStateSchema = z.object({
-  currentBrand: SessionBrandRefSchema.nullable(),
-  excludedBrands: z.array(SessionBrandRefSchema),
-  updatedAtMs: z.number().nullable().optional(),
 });
 
 export const WeworkSessionStateSchema = z.object({
@@ -904,7 +902,6 @@ export const WeworkSessionStateSchema = z.object({
   terminal: z.enum(SESSION_TERMINAL_STATES).nullable().optional(),
   lastCandidateMessageAt: z.string().nullable().optional(),
   lastProcessedCandidateMessageAt: z.string().nullable().optional(),
-  brand_state: PersistedBrandStateSchema.nullable().optional(),
   lastJobListQuery: SessionWorkbenchStateSchema.shape.lastJobListQuery,
 });
 
@@ -918,7 +915,6 @@ export const EMPTY_SESSION_STATE: WeworkSessionState = {
   terminal: null,
   lastCandidateMessageAt: null,
   lastProcessedCandidateMessageAt: null,
-  brand_state: null,
   lastJobListQuery: null,
 };
 

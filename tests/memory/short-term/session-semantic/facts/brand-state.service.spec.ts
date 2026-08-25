@@ -3,7 +3,15 @@
  */
 
 import { BrandStateService } from '@memory/short-term/session-semantic/facts/brand-state.service';
-import type { BrandResolution } from '@resolution/brand/brand-resolution.types';
+import {
+  FALLBACK_EXTRACTION,
+  toSessionFacts,
+  type SessionFacts,
+} from '@memory/short-term/session-semantic/facts/facts.types';
+import type {
+  BrandResolution,
+  PersistedBrandState,
+} from '@resolution/brand/brand-resolution.types';
 
 const catalog = [
   { id: 1, name: '肯德基', aliases: ['KFC'] },
@@ -22,6 +30,15 @@ const positive = (name: string, brandId: number | null = null): BrandResolution 
   intentPolarity: 'positive',
   confidence: 0.95,
   ambiguous: false,
+});
+
+const factsWithBrand = (brand: PersistedBrandState | null): SessionFacts => ({
+  ...toSessionFacts(FALLBACK_EXTRACTION, {
+    confidence: 'medium',
+    source: 'archive',
+    evidence: 'brand state test fixture',
+  }),
+  brand,
 });
 
 /** 冲突别名歧义结果：canonicalName 为空、候选多品牌（如「小龙」→ 小龙坎/小龙翻大江）。 */
@@ -124,7 +141,7 @@ describe('BrandStateService', () => {
   });
 
   describe('applyTurnResolutions（收尾统一写入，§9.1）', () => {
-    it('首次初始化必落盘（seed 只此一次的锚点是字段存在），单字段原子替换', async () => {
+    it('首次初始化必落盘（seed 只此一次的锚点是字段存在），原子替换 facts 字段', async () => {
       const outcome = await service.applyTurnResolutions({
         corpId: 'c',
         userId: 'u',
@@ -137,10 +154,10 @@ describe('BrandStateService', () => {
       expect(mockRedisStore.patchHash).toHaveBeenCalledTimes(1);
       const [key, patch] = mockRedisStore.patchHash.mock.calls[0];
       expect(key).toBe('factsv2:c:u:s');
-      // 只写 brand_state 单字段（禁止拆成多个 hash 字段，§9.1）
-      expect(Object.keys(patch)).toEqual(['brand_state']);
-      expect(patch.brand_state.currentBrand.canonicalName).toBe('肯德基');
-      expect(typeof patch.brand_state.updatedAtMs).toBe('number');
+      // brand 结构原样嵌入 facts，不套事实信封；一次只替换 facts hash 字段。
+      expect(Object.keys(patch)).toEqual(['facts']);
+      expect(patch.facts.brand.currentBrand.canonicalName).toBe('肯德基');
+      expect(typeof patch.facts.brand.updatedAtMs).toBe('number');
       expect(mockRedisStore.patchHash.mock.calls[0][2]).toBe(46800);
       expect(mockTracer.emit).toHaveBeenCalledWith(
         expect.objectContaining({ type: 'brand_state_change', initialized: true }),
@@ -183,6 +200,48 @@ describe('BrandStateService', () => {
       expect(event.prev.currentBrand.canonicalName).toBe('肯德基');
       expect(event.next.currentBrand.canonicalName).toBe('麦当劳');
       expect(event.triggers[0]).toMatchObject({ canonicalName: '麦当劳', polarity: 'positive' });
+    });
+  });
+
+  describe('facts.brand 持久化与旧顶层懒迁移（M5）', () => {
+    it('读取旧顶层 brand_state 时回写 facts.brand，结构不套信封', async () => {
+      const legacy = {
+        currentBrand: { canonicalName: '肯德基', brandId: 1 },
+        excludedBrands: [],
+        updatedAtMs: 1000,
+      };
+      mockRedisStore.getHash.mockResolvedValue({ brand_state: legacy });
+
+      await expect(service.readBrandState('c', 'u', 's')).resolves.toEqual(legacy);
+      expect(mockRedisStore.patchHash).toHaveBeenCalledWith(
+        'factsv2:c:u:s',
+        expect.objectContaining({
+          facts: expect.objectContaining({ brand: legacy }),
+        }),
+        46800,
+      );
+      const migratedBrand = mockRedisStore.patchHash.mock.calls[0][1].facts.brand;
+      expect(migratedBrand).not.toHaveProperty('value');
+      expect(migratedBrand).not.toHaveProperty('confidence');
+    });
+
+    it('新嵌套值优先于仍未过期的旧顶层字段', async () => {
+      const nested = {
+        currentBrand: { canonicalName: '麦当劳', brandId: 2 },
+        excludedBrands: [],
+        updatedAtMs: 2000,
+      };
+      mockRedisStore.getHash.mockResolvedValue({
+        facts: factsWithBrand(nested),
+        brand_state: {
+          currentBrand: { canonicalName: '肯德基', brandId: 1 },
+          excludedBrands: [],
+          updatedAtMs: 1000,
+        },
+      });
+
+      await expect(service.readBrandState('c', 'u', 's')).resolves.toEqual(nested);
+      expect(mockRedisStore.patchHash).not.toHaveBeenCalled();
     });
   });
 
@@ -250,7 +309,7 @@ describe('BrandStateService', () => {
 
     it('图片补写路径即使 dropped_expired 也留歧义痕（late=true）', async () => {
       mockRedisStore.getHash.mockResolvedValue({
-        brand_state: { currentBrand: null, excludedBrands: [], updatedAtMs: 5000 },
+        facts: factsWithBrand({ currentBrand: null, excludedBrands: [], updatedAtMs: 5000 }),
       });
       const outcome = await service.applyLateImageResolutions({
         corpId: 'c',
@@ -271,11 +330,11 @@ describe('BrandStateService', () => {
   describe('applyLateImageResolutions（异步补写，§10.3）', () => {
     it('补写轮次早于状态最后变更 → dropped_expired，排斥不被赦免', async () => {
       mockRedisStore.getHash.mockResolvedValue({
-        brand_state: {
+        facts: factsWithBrand({
           currentBrand: null,
           excludedBrands: [{ canonicalName: 'M Stand', brandId: 5 }],
           updatedAtMs: 5000,
-        },
+        }),
       });
       const outcome = await service.applyLateImageResolutions({
         corpId: 'c',
@@ -290,7 +349,7 @@ describe('BrandStateService', () => {
 
     it('状态自补写轮次后未变更 → 应用并落状态（late 事件标记）', async () => {
       mockRedisStore.getHash.mockResolvedValue({
-        brand_state: { currentBrand: null, excludedBrands: [], updatedAtMs: 3000 },
+        facts: factsWithBrand({ currentBrand: null, excludedBrands: [], updatedAtMs: 3000 }),
       });
       const outcome = await service.applyLateImageResolutions({
         corpId: 'c',

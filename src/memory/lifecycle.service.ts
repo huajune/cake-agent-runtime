@@ -39,7 +39,7 @@ export interface MemoryLifecycleTurnContext {
   candidatePool?: RecommendedJobSummary[] | null;
   /** 本轮 duliday_job_list 查询签名；回合结束时写入会话记忆，供下一轮重复查询检测。 */
   jobListQuerySignature?: string | null;
-  /** 候选人微信昵称；brand_state 首次初始化（懒迁移 seed，§9.4）用。 */
+  /** 候选人微信昵称；facts.brand 首次初始化（seed，§9.4）用。 */
   contactName?: string;
   /** 本轮图片描述的品牌解析结果（save_image_description execute 内同步产出，§10.2）。 */
   imageBrandResolutions?: BrandResolution[] | null;
@@ -280,8 +280,8 @@ export class MemoryLifecycleService {
             ctx.sessionId,
             previousState?.facts ?? null,
             ctx.botImId,
-            // 长期意向的品牌快照直读 brand_state（§19.6，preferences.brands 已退役）
-            previousState?.brand_state ?? null,
+            // 长期意向的品牌快照直读 facts.brand（M5，preferences.brands 已退役）
+            previousState?.facts?.brand ?? null,
           );
         });
         branchNames.push(consolidationTask.name);
@@ -354,9 +354,9 @@ export class MemoryLifecycleService {
     lastCandidatePool: unknown[] | null;
     presentedJobs: unknown[] | null;
     currentFocusJob: unknown | null;
-    brand_state?: unknown;
     lastJobListQuery?: unknown;
   }): boolean {
+    // 品牌状态已归入 facts.brand；seed-only 会话同样会留下非空 facts。
     return Boolean(
       state.facts ||
         state.lastCandidatePool?.length ||
@@ -364,10 +364,7 @@ export class MemoryLifecycleService {
         state.currentFocusJob ||
         // 0 结果查询可能不会留下 candidatePool / presentedJobs，但查询指纹本身必须在
         // 下一轮继续注入，否则最需要防复读的“连续无结果”场景会被误判为空会话。
-        state.lastJobListQuery ||
-        // 品牌状态本身就是结构化会话记忆：seed-only 会话（首轮只落了 brand_state）
-        // 不能被判成空会话，否则准备阶段读不到已存在的状态、触发重复 seed
-        state.brand_state,
+        state.lastJobListQuery,
     );
   }
 
@@ -609,7 +606,7 @@ export class MemoryLifecycleService {
       resolutions,
       contactName: ctx.contactName,
       persistedBrandState: options.previousState
-        ? (options.previousState.brand_state ?? null)
+        ? (options.previousState.facts?.brand ?? null)
         : undefined,
     });
   }

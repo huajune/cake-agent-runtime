@@ -199,7 +199,7 @@ export class PreparationService {
     // 输入安全检查：扫 prompt injection → 异步告警 → 返回需要追加到 system prompt 的 guard suffix。
     const guardSuffix = this.applyInputGuard(normalizedMessages, currentUserMessage, userId);
 
-    // 品牌上下文（§5.3 锚点一）：读 SessionBrandState；brand_state 不存在时按
+    // 品牌上下文（§5.3 锚点一）：读 SessionBrandState；facts.brand 不存在时按
     // 「旧并集末位 > 已验证昵称品牌 seed > 空」构造本轮生效的初始状态（首轮推荐即按
     // 该品牌启动），持久化仍随收尾 reducer 统一落盘。昵称品牌必须先经品牌库确定性
     // 命中——未命中的昵称（如 Gattouzo）不产生任何品牌线索。
@@ -473,7 +473,7 @@ export class PreparationService {
    * 派生本轮品牌上下文（§5.3 锚点一）：SessionBrandState + 昵称品牌线索。
    *
    * 昵称品牌统一经 BrandResolutionService 的目录验证（resolve(contact_name)）：
-   * brand_state 不存在时唯一命中的昵称品牌 seed 为 currentBrand 初始值（仅此一次），
+   * facts.brand 不存在时唯一命中的昵称品牌 seed 为 currentBrand 初始值（仅此一次），
    * 首轮推荐即按该品牌启动；状态一旦存在永不重新 seed。
    * 失败一律降级为空状态（不阻断主流程）。
    */
@@ -483,7 +483,7 @@ export class PreparationService {
   ): Promise<TurnBrandContext> {
     try {
       return await this.brandStateService.deriveTurnBrandContext({
-        persisted: memory.sessionMemory?.brand_state ?? null,
+        persisted: memory.sessionMemory?.facts?.brand ?? null,
         contactName,
       });
     } catch (error) {

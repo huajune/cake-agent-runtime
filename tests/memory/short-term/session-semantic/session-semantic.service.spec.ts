@@ -131,6 +131,43 @@ describe('SessionSemanticService（S1-S6）', () => {
     );
   });
 
+  it('通用 facts 写入保留 reducer 独占的 brand 原值', async () => {
+    const brand = {
+      currentBrand: { canonicalName: '肯德基', brandId: 1 },
+      excludedBrands: [],
+      updatedAtMs: 1000,
+    };
+    hash = { facts: { ...softFacts(), brand } };
+
+    await service.saveFacts(
+      'corp-1',
+      'user-1',
+      'session-1',
+      softFacts({ schedule: '晚班' }),
+    );
+
+    expect((await service.getFacts('corp-1', 'user-1', 'session-1'))?.brand).toEqual(brand);
+  });
+
+  it('旧顶层 brand_state 读时懒迁移到 facts.brand，嵌套值立即生效', async () => {
+    const brand = {
+      currentBrand: { canonicalName: '肯德基', brandId: 1 },
+      excludedBrands: [],
+      updatedAtMs: 1000,
+    };
+    const { brand: _brand, ...legacyFacts } = softFacts();
+    hash = { facts: legacyFacts, brand_state: brand };
+
+    const state = await service.getSessionState('corp-1', 'user-1', 'session-1');
+
+    expect(state.facts?.brand).toEqual(brand);
+    expect(redis.patchHash).toHaveBeenCalledWith(
+      'factsv2:corp-1:user-1:session-1',
+      expect.objectContaining({ facts: expect.objectContaining({ brand }) }),
+      config.sessionFactsTtl,
+    );
+  });
+
   it('收资办结入口只接受 high，并保留既有软偏好', async () => {
     await service.saveFacts('corp-1', 'user-1', 'session-1', softFacts({ position: ['服务员'] }));
 

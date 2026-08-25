@@ -19,7 +19,7 @@ const ALWAYS_PERSISTED_EVENT_TYPES = new Set<AgentEvent['type']>([
   'semantic_review',
   // 歧义词形现场：不写状态故 brand_state_change 看不见，量级=冲突别名频率（每天个位数）
   'brand_resolution_ambiguous',
-  // 落盘态字段被逐字段校验丢弃：Redis 是 facts/terminal/brand_state 的唯一事实源，
+  // 落盘态字段被逐字段校验丢弃：Redis 是 facts（含 brand）/terminal 的唯一事实源，
   // 丢一个字段就是丢一段事实（terminal 丢了复聊会去骚扰已约面的人）。量级应恒为零，
   // 非零即存储完整性事故——只打日志等于没发生（记忆审计风险点 8）。
   'session_state_field_dropped',

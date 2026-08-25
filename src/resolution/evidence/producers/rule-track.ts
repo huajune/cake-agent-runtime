@@ -295,7 +295,7 @@ export function produceTurnHints(
     options?.visualSheetsByContent?.get(stripTimeContextSuffix(message).trim());
 
   // 品牌收口（§9.2）：本函数不内联直写 preferences.brands——品牌真相唯一存储是
-  // brand_state（写入只经 reducer），preferences.brands 已退役（§19.6）、读边界恒 null。
+  // facts.brand（写入只经 reducer），preferences.brands 已退役（§19.6）、读边界恒 null。
   // 品牌线索仍产出到 reasoning 供排障与提取 prompt 参考。
   // R2 发布方剔除：带 job_posting sheet 的消息，品牌线索只吃 key=brand 字段值
   // （发布方公司名在 key=publisher，不进品牌语料）；其余消息照旧全文。
@@ -475,7 +475,7 @@ export function produceTurnHints(
  *
  * 匹配主体已迁入 `resolution/brand`（§5.1 单一居所），本函数消费新解析结果、
  * 保持旧接口与输出形态兼容：提及级线索（不区分极性——"不要肯德基"仍产出肯德基的
- * 归一化线索，极性语义由 brand_state reducer 消费 resolveBrands 原始结果处理），
+ * 归一化线索，极性语义由 facts.brand reducer 消费 resolveBrands 原始结果处理），
  * 品类兜底行为不回归（已上线的咖啡品类召回）。
  *
  * 引用块在**本函数内**剥离，不依赖调用方：引用块里的品牌是招募经理/Agent 的话，

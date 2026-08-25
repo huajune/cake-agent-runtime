@@ -144,12 +144,12 @@ export type AgentEvent = AgentEventContext &
      *
      * 这是**存量数据**与代码 schema 对不上（存储完整性），不是模型提取值的业务准入
      * 判定。跨版本词表漂移、脏写、回滚到旧代码读新数据都会命中。Redis 是 facts /
-     * terminal / brand_state 的唯一事实源，丢一个字段就是丢一段事实，正常量级应恒为零。
+     * terminal / facts（含 brand）的唯一事实源，丢一个字段就是丢一段事实，正常量级应恒为零。
      */
     | {
         type: 'session_state_field_dropped';
         userId?: string;
-        /** 被丢弃的顶层字段（facts / terminal / brand_state …）。 */
+        /** 被丢弃的顶层字段（facts / terminal …）。 */
         field: string;
         /** zod 失败明细（字段路径 + 原因），不含值本体，避免 PII 进观测。 */
         issues: string[];

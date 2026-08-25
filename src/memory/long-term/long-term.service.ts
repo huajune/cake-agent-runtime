@@ -364,7 +364,7 @@ export class LongTermService {
 
     for (const key of LONG_TERM_JOB_INTENT_FIELD_KEYS) {
       // 品牌快照不再走 preferences.brands（字段已退役，读边界恒 null，§19.6），
-      // 由下方 brand_state.currentBrand 显式提供。
+      // 由下方 facts.brand.currentBrand 显式提供。
       if (key === 'brands') continue;
       const rawValue = prefs[key];
       // 外层 null / 缺键 = 本轮缺席，不改变长期值；只有信封内 null/空值才是墓碑。
@@ -392,7 +392,7 @@ export class LongTermService {
       jobIntentFacts.brands = userProfileFactValue([currentBrand.canonicalName], {
         source: 'rule',
         confidence: 'medium',
-        evidence: '会话品牌状态快照（brand_state.currentBrand）',
+        evidence: '会话品牌状态快照（facts.brand.currentBrand）',
         updatedAt,
         originSessionId: origin?.sessionId,
         originBotId: origin?.botImId,

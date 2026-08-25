@@ -29,7 +29,7 @@ export interface WorkingMemory {
   entryStage: string | null;
   /** 本轮唯一回合账本；回合结束时 drain 快照统一交给 memory lifecycle。 */
   ledger: TurnLedger;
-  /** 候选人微信昵称；回合收尾 brand_state 首次初始化（seed）用。 */
+  /** 候选人微信昵称；回合收尾 facts.brand 首次初始化（seed）用。 */
   contactName?: string;
   /** 本轮触发时的记忆上下文快照（写入 message_processing_records.memory_snapshot 用于排障） */
   memorySnapshot?: AgentMemorySnapshot;

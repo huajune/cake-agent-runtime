@@ -1,7 +1,7 @@
 /**
  * 会话品牌状态存取（§7.2）。
  *
- * memory 侧不含任何迁移规则，只做「读 brand_state → 调 reducer 纯函数 → 单字段写回」；
+ * memory 侧不含任何行为迁移规则，只做「读 facts.brand → 调 reducer 纯函数 → facts 字段写回」；
  * 迁移规则全部在 @resolution/evidence/brand-policy。写入时机：
  * - 常规轮：turn-finalizer 收尾序列（lifecycle 的 apply_brand_state 步骤，
  *   排在 extract_facts 之后且不因其失败跳过），全程在渠道层 90s 租约处理锁内；
@@ -33,13 +33,18 @@ import type {
 import { BRAND_EXECUTABLE_CONFIDENCE } from '@resolution/brand/brand-resolution.types';
 import { RedisStore } from '../../../stores/redis.store';
 import { MemoryConfig } from '../../../memory.config';
-import { PersistedBrandStateSchema } from './facts.types';
+import {
+  FALLBACK_EXTRACTION,
+  PersistedBrandStateSchema,
+  SessionFactsSchema,
+  type SessionFacts,
+} from './facts.types';
 import { buildSessionFactsHashKey } from '../session-key';
 
 export interface TurnBrandContext {
   /** 本轮生效的品牌状态：已持久化状态，或首轮 seed 出的初始状态（未落盘）。 */
   state: SessionBrandState;
-  /** brand_state 是否已在 Redis 存在（存在即 seed 已发生，旧昵称兜底档按此门控）。 */
+  /** facts.brand 是否已在 Redis 存在（存在即 seed 已发生，旧昵称兜底档按此门控）。 */
   persisted: boolean;
   /** 昵称经品牌库验证出的标准品牌名（提示词"备注品牌"线索兼容用）。 */
   nicknameBrands: string[];
@@ -63,7 +68,7 @@ export class BrandStateService {
   /**
    * 回合准备阶段派生本轮品牌上下文（§2 锚点一）。
    *
-   * brand_state 已存在（哪怕被 browse_all 清成空值）时永不重新 seed；
+   * facts.brand 已存在（哪怕被 browse_all 清成空值）时永不重新 seed；
    * 不存在时按「旧并集末位 > 昵称 seed > 空」构造初始状态供本轮使用。
    */
   async deriveTurnBrandContext(params: {
@@ -87,7 +92,7 @@ export class BrandStateService {
 
   /**
    * 回合收尾统一写入（§2 锚点二）：汇总本轮全部解析结果批量过 reducer，单字段原子替换。
-   * brand_state 不存在时先执行一次初始化（prevState = seed 状态）再应用本轮结果。
+   * facts.brand 不存在时先执行一次初始化（prevState = seed 状态）再应用本轮结果。
    */
   async applyTurnResolutions(params: {
     corpId: string;
@@ -144,7 +149,7 @@ export class BrandStateService {
 
   /**
    * 异步补写落状态（§8.3）：调用方必须已重新持有该会话的处理锁。
-   * 携带产生轮次时间戳，早于 brand_state 最后变更时间的晚到结果只弃不写（防时间倒流）。
+   * 携带产生轮次时间戳，早于 facts.brand 最后变更时间的晚到结果只弃不写（防时间倒流）。
    */
   async applyLateImageResolutions(params: {
     corpId: string;
@@ -191,27 +196,53 @@ export class BrandStateService {
     return 'applied';
   }
 
-  /** 读取 brand_state 单字段（经 zod 校验，坏数据按不存在处理）。 */
+  /** 读取 facts.brand；旧顶层 brand_state 命中时懒迁移到新位置。 */
   async readBrandState(
     corpId: string,
     userId: string,
     sessionId: string,
   ): Promise<PersistedBrandState | null> {
-    const hash = await this.redisStore.getHash(buildSessionFactsHashKey(corpId, userId, sessionId));
-    const raw = hash?.brand_state;
-    if (raw == null) return null;
-    const parsed = PersistedBrandStateSchema.safeParse(raw);
-    if (!parsed.success) {
-      this.logger.warn(`[brand-state] Redis 中的 brand_state 校验失败，按不存在处理`);
+    const hashKey = buildSessionFactsHashKey(corpId, userId, sessionId);
+    const hash = await this.redisStore.getHash(hashKey);
+    const parsedFacts = SessionFactsSchema.safeParse(hash?.facts ?? FALLBACK_EXTRACTION);
+    if (parsedFacts.success && parsedFacts.data.brand) {
+      return parsedFacts.data.brand as PersistedBrandState;
+    }
+    if (!parsedFacts.success && hash?.facts != null) {
+      this.logger.warn(`[brand-state] Redis 中的 facts 校验失败，无法读取嵌套品牌状态`);
+    }
+
+    const legacyBrand = PersistedBrandStateSchema.safeParse(hash?.brand_state);
+    if (!legacyBrand.success) {
+      if (hash?.brand_state != null) {
+        this.logger.warn(`[brand-state] Redis 中的旧顶层 brand_state 校验失败，按不存在处理`);
+      }
       return null;
     }
-    return parsed.data as PersistedBrandState;
+
+    // 旧顶层字段只作读兼容；新嵌套值缺失且 facts 有效时回写，旧字段随 key TTL 自然过期。
+    if (parsedFacts.success) {
+      const migratedFacts: SessionFacts = {
+        ...(parsedFacts.data as SessionFacts),
+        brand: legacyBrand.data as PersistedBrandState,
+      };
+      try {
+        await this.redisStore.patchHash(
+          hashKey,
+          { facts: migratedFacts },
+          this.config.sessionFactsTtl,
+        );
+      } catch (error) {
+        this.logger.warn(`[brand-state] 旧顶层 brand_state 懒迁移失败: ${toErrorMessage(error)}`);
+      }
+    }
+    return legacyBrand.data as PersistedBrandState;
   }
 
   /**
    * 测试夹具专用直写（test-suite memory-fixture）。
    *
-   * preferences.brands 已退役（§11），用例预设的品牌意向必须以 brand_state
+   * preferences.brands 已退役（§11），用例预设的品牌意向必须以 facts.brand
    * 形态种入才对链路可见。生产路径禁止调用——生产写入仍只经 reducer
    * （applyTurnResolutions / applyLateImageResolutions，§7.1 单一写入方）。
    */
@@ -230,11 +261,17 @@ export class BrandStateService {
     sessionId: string,
     state: PersistedBrandState,
   ): Promise<void> {
-    await this.redisStore.patchHash(
-      buildSessionFactsHashKey(corpId, userId, sessionId),
-      { brand_state: state },
-      this.config.sessionFactsTtl,
-    );
+    const hashKey = buildSessionFactsHashKey(corpId, userId, sessionId);
+    const hash = await this.redisStore.getHash(hashKey);
+    const parsedFacts = SessionFactsSchema.safeParse(hash?.facts ?? FALLBACK_EXTRACTION);
+    if (!parsedFacts.success) {
+      throw new Error('cannot persist facts.brand because existing facts failed validation');
+    }
+    const facts: SessionFacts = {
+      ...(parsedFacts.data as SessionFacts),
+      brand: state,
+    };
+    await this.redisStore.patchHash(hashKey, { facts }, this.config.sessionFactsTtl);
   }
 
   /** 昵称品牌 seed：品牌库唯一命中才作数（多命中/歧义/未命中一律不 seed）。 */

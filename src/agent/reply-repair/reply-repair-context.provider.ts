@@ -91,8 +91,8 @@ export class ReplyRepairContextProvider {
     const session = memory.sessionMemory;
     const factLines = session?.facts
       ? formatExtractionFactLines(session.facts, {
-          // 品牌唯一真相是 brand_state（§19.6）；facts.preferences.brands 已退役
-          currentBrandName: session.brand_state?.currentBrand?.canonicalName ?? null,
+          // 品牌唯一真相是 facts.brand（M5）；facts.preferences.brands 已退役
+          currentBrandName: session.facts.brand?.currentBrand?.canonicalName ?? null,
         })
       : [];
     const city = this.readCity(session?.facts ?? null);
