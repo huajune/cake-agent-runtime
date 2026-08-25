@@ -15,8 +15,9 @@ function listFiles(root: string): string[] {
 describe('context section knowledge classification', () => {
   it('keeps sections in the three populated knowledge directories and infrastructure at root', () => {
     const entries = readdirSync(SECTIONS_ROOT, { withFileTypes: true });
-    expect(entries.filter((entry) => entry.isFile()).map((entry) => entry.name)).toEqual([
+    expect(entries.filter((entry) => entry.isFile()).map((entry) => entry.name).sort()).toEqual([
       'section.interface.ts',
+      'static.section.ts',
     ]);
     expect(
       entries

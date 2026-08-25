@@ -3,7 +3,6 @@ import { LongTermService } from './long-term/long-term.service';
 import { SessionStateService } from './short-term/session-state.service';
 import { SessionWorkbenchService } from './short-term/workbench.service';
 import { MemoryLifecycleService, type MemoryLifecycleTurnContext } from './lifecycle.service';
-import type { CandidateIdentityHint } from './enrichment.service';
 import type { AgentMemoryContext } from './recall.types';
 import type { SummaryEntry } from './long-term/long-term.types';
 import type { InvitedGroupRecord } from './short-term/short-term.types';
@@ -19,8 +18,6 @@ export interface ProactiveMemoryRecall {
   factLines: string[];
   warnings?: string[];
 }
-
-export type { CandidateIdentityHint } from './enrichment.service';
 
 /** memory 模块对外 facade，只保留真实外部入口。 */
 @Injectable()
@@ -47,7 +44,6 @@ export class MemoryService {
     options?: {
       includeShortTerm?: boolean;
       shortTermEndTimeInclusive?: number;
-      enrichmentIdentity?: CandidateIdentityHint;
       /** prep 已运行的本轮规则轨；memory 只装配，不重复判定。 */
       turnHints?: TurnHints | null;
       /** 当前托管账号的稳定企微身份（wecomUserId）。 */

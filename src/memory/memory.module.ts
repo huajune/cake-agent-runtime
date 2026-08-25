@@ -1,7 +1,5 @@
 import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bull';
-import { BizMessageModule } from '@biz/message/message.module';
-import { UserModule } from '@biz/user/user.module';
 import { LlmModule } from '@/llm/llm.module';
 import { SpongeModule } from '@sponge/sponge.module';
 import { MemoryConfig } from './memory.config';
@@ -20,25 +18,22 @@ import {
   ConsolidationSchedulerService,
 } from './long-term/consolidation-scheduler.service';
 import { ConsolidationProcessor } from './long-term/consolidation.processor';
-import { MemoryEnrichmentService } from './enrichment.service';
 import { MemoryLifecycleService } from './lifecycle.service';
-import { HostingConfigModule } from '@biz/hosting-config/hosting-config.module';
 import { GeocodingModule } from '@infra/geocoding/geocoding.module';
 import { ObservabilityModule } from '@observability/observability.module';
+import { PreparationModule } from '@agent/generator/preparation/preparation.module';
 
 /**
  * Memory 模块
  *
  * 组织轴：short-term（message-window + session-state）/ long-term；
- * lifecycle 与 enrichment 是跨层服务，stores 保持独立基础设施层。
+ * lifecycle 是跨层服务，stores 保持独立基础设施层；biz 依赖由 preparation 端口适配。
  */
 @Module({
   imports: [
-    BizMessageModule,
+    PreparationModule,
     SpongeModule,
-    UserModule,
     LlmModule,
-    HostingConfigModule,
     GeocodingModule,
     ObservabilityModule,
     BullModule.registerQueue({
@@ -58,7 +53,6 @@ import { ObservabilityModule } from '@observability/observability.module';
     ConsolidationService,
     ConsolidationSchedulerService,
     ConsolidationProcessor,
-    MemoryEnrichmentService,
     MemoryLifecycleService,
     MemoryService,
   ],

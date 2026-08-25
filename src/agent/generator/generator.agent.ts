@@ -7,7 +7,7 @@ import { hasToolCall, stepCountIs, type generateText } from 'ai';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
 import { ModelRole } from '@/llm/llm.types';
 import { MemoryService } from '@memory/memory.service';
-import { PreparationService, type WorkingMemory } from './working-memory/preparation.service';
+import { PreparationService, type WorkingMemory } from './preparation/preparation.service';
 import type { AgentError } from '@shared-types/agent-error.types';
 import type { TurnLedger } from '@shared-types/turn.types';
 import {

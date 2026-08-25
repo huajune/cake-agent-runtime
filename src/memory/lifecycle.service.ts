@@ -1,5 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { MessageProcessingService } from '@biz/message/services/message-processing.service';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ModelMessage } from 'ai';
 import { SpongeService } from '@sponge/sponge.service';
 import type { PostProcessingStatus, PostProcessingStepStatus } from '@shared-types/tracking.types';
@@ -8,7 +7,6 @@ import { resolveBrands } from '@resolution/brand/brand-matcher';
 import type { BrandResolution } from '@resolution/brand/brand-resolution.types';
 import { BrandStateService } from './short-term/brand-state.service';
 import { LongTermService } from './long-term/long-term.service';
-import { MemoryEnrichmentService, type CandidateIdentityHint } from './enrichment.service';
 import { ConsolidationSchedulerService } from './long-term/consolidation-scheduler.service';
 import { SessionStateService } from './short-term/session-state.service';
 import { SessionWorkbenchService } from './short-term/workbench.service';
@@ -20,6 +18,7 @@ import type { WeworkSessionState } from './short-term/short-term.types';
 import type { RecommendedJobSummary } from '@resolution/job/types';
 import type { TurnHints } from '@resolution/evidence/claim.types';
 import type { LaborFormIntentDecision } from '@resolution/labor-form';
+import { MEMORY_MESSAGE_PROCESSING_PORT, type MemoryMessageProcessingPort } from './memory.ports';
 
 export interface MemoryLifecycleTurnContext {
   corpId: string;
@@ -88,8 +87,8 @@ export class MemoryLifecycleService {
     private readonly consolidationScheduler: ConsolidationSchedulerService,
     private readonly session: SessionStateService,
     private readonly sponge: SpongeService,
-    private readonly enrichment: MemoryEnrichmentService,
-    private readonly messageProcessing: MessageProcessingService,
+    @Inject(MEMORY_MESSAGE_PROCESSING_PORT)
+    private readonly messageProcessing: MemoryMessageProcessingPort,
     private readonly brandState: BrandStateService,
   ) {}
 
@@ -110,11 +109,6 @@ export class MemoryLifecycleService {
        * pending 入站消息因已写入 Redis/DB 历史而提前进入 Agent 上下文。
        */
       shortTermEndTimeInclusive?: number;
-      /**
-       * 外部身份定位，用于向外部系统补全快照中缺失的画像字段（如性别）。
-       * 提供时触发 MemoryEnrichmentService。
-       */
-      enrichmentIdentity?: CandidateIdentityHint;
       /** prep 已运行的本轮规则轨；memory 只装配，不重复判定。 */
       turnHints?: TurnHints | null;
       /** 当前托管账号的稳定企微身份（wecomUserId）；缺失时长期记忆 fail-closed。 */
@@ -160,10 +154,6 @@ export class MemoryLifecycleService {
         semantic: { profile, jobIntent: longTermPreferences },
       },
     };
-
-    if (options?.enrichmentIdentity) {
-      return await this.enrichment.enrich(snapshot, options.enrichmentIdentity);
-    }
 
     return snapshot;
   }

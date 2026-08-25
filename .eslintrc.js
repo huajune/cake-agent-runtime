@@ -76,6 +76,10 @@ module.exports = {
                 group: ['@tools/*', '@/tools/*'],
                 message: 'memory 禁止依赖 tools（候选人档案域宪法 P1）',
               },
+              {
+                group: ['@biz/*', '@/biz/*'],
+                message: 'memory 禁止依赖 biz；业务能力必须由装配侧通过窄端口注入',
+              },
             ],
           },
         ],
@@ -124,7 +128,7 @@ module.exports = {
     {
       // 并发避让：这两份文件由另一会话修改，本提交不得触碰；后续单独清扫后移除豁免。
       files: [
-        'src/agent/generator/working-memory/preparation.service.ts',
+        'src/agent/generator/preparation/preparation.service.ts',
         'src/tools/duliday-interview-booking.tool.ts',
       ],
       rules: {

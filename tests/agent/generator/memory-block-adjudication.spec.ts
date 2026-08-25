@@ -4,7 +4,7 @@ import {
   normalizeFactTimeKey,
   selectPromptFactWinner,
   type TurnStartMemory,
-} from '@agent/generator/working-memory/prompt-memory-adjudicator';
+} from '@agent/generator/preparation/prompt-memory-adjudicator';
 import { TurnHintsSection } from '@agent/generator/context/sections/working/turn-hints.section';
 import type { PromptContext } from '@agent/generator/context/sections/section.interface';
 import {

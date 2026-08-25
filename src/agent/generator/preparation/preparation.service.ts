@@ -1,5 +1,5 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
-import type { WorkingMemory } from './working-memory.types';
+import type { WorkingMemory } from './preparation.types';
 import { ModelMessage, ToolSet } from 'ai';
 import { CallerKind } from '@/enums/agent.enum';
 import { ToolRegistryService } from '@tools/tool-registry.service';
@@ -10,7 +10,7 @@ import { produceTurnHints } from '@resolution/evidence/producers/rule-track';
 import { extractCandidateTextsFromCorpus } from '@resolution/signal/self-report';
 import { parseCandidateFieldsFromText } from '@resolution/candidate';
 import { GeocodingService } from '@infra/geocoding/geocoding.service';
-import { MemoryService, type CandidateIdentityHint } from '@memory/memory.service';
+import { MemoryService } from '@memory/memory.service';
 import { MemoryConfig } from '@memory/memory.config';
 import { BrandStateService, type TurnBrandContext } from '@memory/short-term/brand-state.service';
 import { LongTermService } from '@memory/long-term/long-term.service';
@@ -55,14 +55,18 @@ import { buildToolContext } from './tool-context.builder';
 import { createTurnLedger } from './turn-ledger';
 import { renderPromptBlocks } from '../context/sections/section.interface';
 import type { PromptCorpusBlock } from '@shared-types/corpus.types';
+import {
+  SnapshotEnrichmentService,
+  type CandidateIdentityHint,
+} from './snapshot-enrichment.service';
 
-export type { WorkingMemory } from './working-memory.types';
+export type { WorkingMemory } from './preparation.types';
 
 /**
  * 回合准备编排：记忆召回 → 消息归一化 → memoryBlock/system prompt 组装 →
  * 工具集构建 → 观测快照。
  *
- * 纯函数辅助层按职责拆在 working-memory：prompt-memory-adjudicator（共享裁决视图）、
+ * 纯函数辅助层按职责拆在 preparation：prompt-memory-adjudicator（共享裁决视图）、
  * conversation-normalizer（消息归一化）、revise-directives（主动回合指令）、
  * tool-set.util（工具计时/过滤）、tool-context.builder（工具上下文组装）。
  * 模型可见渲染与排布统一由 context/sections 负责。
@@ -83,6 +87,7 @@ export class PreparationService {
     private readonly groupMembership: GroupMembershipService,
     private readonly brandStateService: BrandStateService,
     private readonly hostingMemberConfig: HostingMemberConfigService,
+    private readonly snapshotEnrichment: SnapshotEnrichmentService,
     @Optional()
     private readonly tracer?: AgentTracerService,
     @Optional()
@@ -163,16 +168,25 @@ export class PreparationService {
     const turnHintsPromise = this.detectTurnHints(currentTurnTexts);
 
     // 并行拉取本轮依赖：两层记忆快照 + 当前预约工单上下文 + 实时群状态 + 账号身份配置。
+    const enrichmentIdentity = this.buildEnrichmentIdentity(params);
     const [memory, bookingContext, realtimeGroups, accountIdentityConfig] = await Promise.all([
-      turnHintsPromise.then((turnHints) =>
-        this.memoryService.onTurnStart(corpId, userId, sessionId, currentUserMessage, {
-          includeShortTerm: callerKind === CallerKind.WECOM,
-          shortTermEndTimeInclusive: params.shortTermEndTimeInclusive,
-          enrichmentIdentity: this.buildEnrichmentIdentity(params),
-          turnHints,
-          botUserId: params.botUserId,
-        }),
-      ),
+      turnHintsPromise.then(async (turnHints) => {
+        const snapshot = await this.memoryService.onTurnStart(
+          corpId,
+          userId,
+          sessionId,
+          currentUserMessage,
+          {
+            includeShortTerm: callerKind === CallerKind.WECOM,
+            shortTermEndTimeInclusive: params.shortTermEndTimeInclusive,
+            turnHints,
+            botUserId: params.botUserId,
+          },
+        );
+        return enrichmentIdentity
+          ? this.snapshotEnrichment.enrich(snapshot, enrichmentIdentity)
+          : snapshot;
+      }),
       // [当前预约信息] 由 active_booking 指针 + 海绵工单实时状态渲染（理由见 loadBookingContext）。
       this.loadBookingContext(
         corpId,

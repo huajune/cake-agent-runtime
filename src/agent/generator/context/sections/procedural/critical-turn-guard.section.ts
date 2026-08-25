@@ -15,7 +15,7 @@
 import type { ModelMessage } from 'ai';
 import { LOCATION_SHARE_MARKER_RE } from '@resolution/signal/markers';
 import { CANDIDATE_PHONE_RE } from '@resolution/candidate/phone';
-import { extractTextFromContent } from '@agent/generator/working-memory/conversation-normalizer';
+import { extractTextFromContent } from '@agent/generator/preparation/conversation-normalizer';
 import type { PromptContext, PromptSection } from '../section.interface';
 
 const LOCATION_CONTEXT_PATTERN = new RegExp(

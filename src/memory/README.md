@@ -22,13 +22,14 @@ src/memory/
 ├── memory.service.ts
 ├── memory.module.ts
 ├── memory.config.ts
+├── memory.ports.ts
 ├── lifecycle.service.ts
-├── enrichment.service.ts
 ├── recall.types.ts
 ├── confidence-rank.ts
 ├── fact-lines.formatter.ts
 ├── short-term/
 │   ├── short-term.types.ts
+│   ├── chat-history-cache.util.ts
 │   ├── message-window.service.ts
 │   ├── session-state.service.ts
 │   ├── facts.service.ts
@@ -210,7 +211,9 @@ Redis hash 没有字段级 TTL，因此 `factsv2:` 内的 facts 与 workbench �
 3. 独立 `stage:` 阶段指针；
 4. 当前候选人 × bot 的长期 profile 与 job intent。
 
-随后可由 `MemoryEnrichmentService` 只补空字段，并把结果封装为两层召回契约。复聊使用同一召回入口的投影，不另造记忆层。
+返回两层召回契约后，`PreparationService` 才可调用
+`SnapshotEnrichmentService` 补齐当轮快照的缺失线索；这是 generator 备料步骤，
+不是 memory lifecycle，也不改写记忆存储。复聊使用同一召回入口的投影，不另造记忆层。
 
 ### `onTurnEnd`
 
@@ -250,7 +253,7 @@ DB RPC 若需要改参数，迁移必须 `DROP FUNCTION` 后以同名重新创�
 | ------------- | ---------------------------------------------------------------------------- |
 | episodic 原料 | message window + `chat_messages`                                             |
 | semantic      | short-term facts + `longTerm.semantic.{profile, jobIntent}`                  |
-| working       | short-term workbench（含阶段指针）+ `agent/generator/working-memory/`        |
+| working       | short-term workbench（含阶段指针）+ `agent/generator/preparation/`           |
 | episodic 蒸馏 | `episodic_session_summaries`                                                 |
 | procedural    | 不在 memory：手册、工具 description、`tools/collection` 状态机；台账只做索引 |
 

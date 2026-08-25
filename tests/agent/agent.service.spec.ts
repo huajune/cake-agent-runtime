@@ -1,11 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { GeneratorAgent } from '@agent/generator/generator.agent';
-import { PreparationService } from '@agent/generator/working-memory/preparation.service';
+import { PreparationService } from '@agent/generator/preparation/preparation.service';
 import { CallerKind } from '@enums/agent.enum';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
 import { MemoryService } from '@memory/memory.service';
-import { createTurnLedger } from '@agent/generator/working-memory/turn-ledger';
+import { createTurnLedger } from '@agent/generator/preparation/turn-ledger';
 
 jest.mock('ai', () => ({
   stepCountIs: jest.fn().mockReturnValue(() => false),

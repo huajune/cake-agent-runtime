@@ -21,7 +21,7 @@ import type { SignupWorkOrderItem } from '@sponge/sponge.types';
 import type {
   PromptMemoryAdjudication,
   PromptMemoryConflict,
-} from '@agent/generator/working-memory/prompt-memory-adjudicator';
+} from '@agent/generator/preparation/prompt-memory-adjudicator';
 import type { PromptContext, PromptSection } from '../section.interface';
 
 export interface RealtimeGroupStatus {

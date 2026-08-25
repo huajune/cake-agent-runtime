@@ -1,6 +1,5 @@
 import { toErrorMessage } from '@infra/utils/error.util';
-import { Injectable, Logger, Optional } from '@nestjs/common';
-import { ChatSessionService } from '@biz/message/services/chat-session.service';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { RedisService } from '@infra/redis/redis.service';
 import { appendTimeContext } from '@resolution/signal/markers';
 import { formatCurrentTime } from '@infra/utils/date.util';
@@ -10,7 +9,8 @@ import {
   buildChatHistoryCacheKey,
   parseCachedChatHistoryMessages,
   serializeCachedChatHistoryMessage,
-} from '@biz/message/utils/chat-history-cache.util';
+} from './chat-history-cache.util';
+import { MEMORY_CHAT_SESSION_PORT, type MemoryChatSessionPort } from '../memory.ports';
 
 /**
  * 短期记忆服务 — 对话窗口管理
@@ -24,7 +24,8 @@ export class MessageWindowService {
   public lastLoadError: string | null = null;
 
   constructor(
-    private readonly chatSession: ChatSessionService,
+    @Inject(MEMORY_CHAT_SESSION_PORT)
+    private readonly chatSession: MemoryChatSessionPort,
     private readonly config: MemoryConfig,
     @Optional() private readonly redisService?: RedisService,
   ) {}

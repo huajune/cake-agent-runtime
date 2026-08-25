@@ -41,9 +41,9 @@ import { ThresholdsSection } from './sections/procedural/thresholds.section';
 import { MemorySection } from './sections/semantic/memory.section';
 import { TurnHintsSection } from './sections/working/turn-hints.section';
 import { HardConstraintsSection } from './sections/working/hard-constraints.section';
-import { GroupInventorySection } from './sections/semantic/group-inventory.section';
+import { GroupInventorySection } from './sections/working/group-inventory.section';
 import { SCENARIO_SECTIONS, DEFAULT_SCENARIO } from './scenarios/scenario.registry';
-import { StaticSection } from './sections/procedural/static.section';
+import { StaticSection } from './sections/static.section';
 import { CriticalTurnGuardSection } from './sections/procedural/critical-turn-guard.section';
 import type { ModelMessage } from 'ai';
 
@@ -221,13 +221,13 @@ export class ContextService implements OnModuleInit {
   /**
    * 根据 sessionFacts 中候选人意向城市，预渲染该城市兼职群资源概览。
    *
-   * - 目的：让 Agent 在调用 invite_to_group 前对该城市群库有"上帝视角"
+   * - 只渲染该城市群库数据；操作约束由 invite_to_group description 承载
    * - 行为：无城市/无群数据/查询失败时返回空串，不影响 prompt 组装
    *
    * 城市取值必须与硬约束段同门（minConfidence='high'，议题 1-2）：本块不只是"参考信息"，
-   * 群库为空时会输出「禁止承诺拉群」这类有行为后果的指令，城市取错两个方向都会错。
+   * 群库数据会影响工具调用决策，城市取错两个方向都会错。
    * 此前直读 `.value` 绕过置信度门——Redis 旧档归一化出的 confidence='unknown' 城市
-   * 会让 prompt 里出现「兼职群资源（南京）… 禁止承诺拉群」而硬约束段根本没有该城市。
+   * 会让 prompt 里出现「兼职群资源（南京）」而硬约束段根本没有该城市。
    * 放宽的风险由 invite_to_group 自己的 invite-city-gate 兜底。
    */
   private async renderGroupInventoryBlock(sessionFacts?: SessionFacts | null): Promise<string> {
@@ -247,13 +247,7 @@ export class ContextService implements OnModuleInit {
     }
 
     if (cityGroups.length === 0) {
-      return [
-        `## 兼职群资源（${city}）`,
-        '- 该城市暂无可用兼职群',
-        '',
-        '本城市群库为空：禁止承诺"我先把你拉进群/进我们群/发群邀请/后面群里通知"等拉群相关动作；',
-        '本城市本就没有兼职群（区别于群满），属于"推荐无岗且没有兼职群"场景，不要转人工，继续托管即可：礼貌告知暂时没有合适岗位、后续有匹配会主动联系，引导候选人留意后续主动联系，不要调用 request_handoff。',
-      ].join('\n');
+      return [`## 兼职群资源（${city}）`, '- 该城市暂无可用兼职群'].join('\n');
     }
 
     const byIndustry = new Map<string, { groupCount: number; availableCount: number }>();
@@ -277,13 +271,7 @@ export class ContextService implements OnModuleInit {
         return `- ${industry}：${stats.groupCount} 个群（${capacity}）`;
       });
 
-    return [
-      `## 兼职群资源（${city}）`,
-      ...lines,
-      '',
-      '调用 invite_to_group 时，若候选人求职意向明确（如餐饮/零售），必须传对应 industry 参数。',
-      '否则工具会按"人数最少"兜底，可能选到不匹配行业的群引起候选人疑问。',
-    ].join('\n');
+    return [`## 兼职群资源（${city}）`, ...lines].join('\n');
   }
 
   private async loadPromptAssets(): Promise<void> {

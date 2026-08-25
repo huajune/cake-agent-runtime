@@ -30,7 +30,7 @@
 | 工具 description | 各 tool 文件内 DESCRIPTION | 代码 PR（无尺寸压力） | 13 常挂合计 31,729 字符 |
 | DB red-lines/thresholds | `strategy_config.red_lines`（Dashboard 可改，零 review） | ⚠️ 零审计 | 15 规则 + 2 阈值（1,580 字符） |
 | DB stage-strategy | `strategy_config.stage_goals`（Dashboard 可改，零 review） | ⚠️ 零审计 | 5 阶段（6,282 字符） |
-| 代码动态注入 | booking 共享规则 / hard-constraints / turn-hints / critical-turn-guard / 拦截说明 | 代码 PR | booking 共享规则 ~2KB |
+| 代码动态注入 | booking 共享规则 / hard-constraints / turn-hints / critical-turn-guard / 拦截说明；group-inventory 仅数据 | 代码 PR | booking 共享规则 ~2KB |
 | 守卫 hard-rules（拦侧） | `src/agent/guardrail/output/rules/` | 代码 PR | 23 文件 / 29 ruleId |
 
 ---
@@ -233,7 +233,7 @@
 |---|---|---|---|
 | duliday_job_list | ~~13,144~~ **8,515**（三批累计 -35.2%） | 召回策略/无岗动作链/展示纪律 | ✅ 首批去重（→11,481）：regionNameList 三遍合一、展示要求围绕卡片铁律收敛、福利追问并入通用补查、阶梯原文/保险社保/同岗不重复归唯一居所、badcase 叙事压缩。✅ 二批接口化（→10,126）：**数据开关章节坍缩**——开关早已 schema default(true)（代码接管），提示词仍教手动开关是烂源四标本，删除开关表 + 4 处"必须开 includeX"无效指令；班次语义两条合一、阶梯口径两条合一、学生两条合一 |
 | request_handoff | ~~4,388~~ **4,026**（2026-08-21 二批 -8.3%） | reasonCode 15 枚举语义/触发契约 | ✅ 二批：两轮拉群协议 bullet 删除（invite 场景 2+禁止触发为唯一居所；job_list 653 无岗链保留自身步骤）、no_group_in_city 例外同文档内去重（归场景 8）、空头承诺禁令压缩（手册 T10 为教侧主居所）、场景 7 示例精简。15 枚举判别语义为主体，已是接口化形态 |
-| invite_to_group | 3,804 | 拉群时机/两轮协议/城市门 | 拉群时机簇 0820 新口径已入。**裁定不动刀（2026-08-21 二批）**：拉群协议唯一居所（handoff 侧副本已删归此）+ errorType 逐枚举确定性处置，已是接口化形态 |
+| invite_to_group | 3,804+ | 拉群时机/两轮协议/城市门/群库操作约束 | 拉群时机簇 0820 新口径已入。**2026-08-26 收尾批**：group-inventory 的 4 条操作约束原文迁入本 description，动态 section 收窄为纯平台资源数据；拉群协议与 errorType 处置继续以此为唯一居所。 |
 | geocode | 2,221 | 三态返回/通用后缀黑名单 | 手册 G4 引用其黑名单（指针健康） |
 | duliday_cancel_work_order | 2,000 | 取消契约 | 与 BK2 成对 |
 | duliday_modify_interview_time | 1,810 | 改约契约 | 与 T14/BK2 成对 |

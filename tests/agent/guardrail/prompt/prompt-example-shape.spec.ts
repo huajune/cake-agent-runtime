@@ -40,11 +40,11 @@ const PROMPT_SECTION_BUILDERS: readonly PromptSurface[] = [
   },
   {
     id: 'base-manual',
-    source: 'src/agent/generator/context/sections/procedural/static.section.ts',
+    source: 'src/agent/generator/context/sections/static.section.ts',
   },
   {
     id: 'final-check',
-    source: 'src/agent/generator/context/sections/procedural/static.section.ts',
+    source: 'src/agent/generator/context/sections/static.section.ts',
   },
   {
     id: 'red-lines',
@@ -88,7 +88,7 @@ const PROMPT_SECTION_BUILDERS: readonly PromptSurface[] = [
   },
   {
     id: 'group-inventory',
-    source: 'src/agent/generator/context/sections/semantic/group-inventory.section.ts',
+    source: 'src/agent/generator/context/sections/working/group-inventory.section.ts',
   },
 ];
 

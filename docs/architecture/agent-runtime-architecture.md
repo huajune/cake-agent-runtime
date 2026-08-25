@@ -211,7 +211,7 @@ stream(options: LlmStreamOptions)
 supportsVisionInput(options): boolean
 ```
 
-消费方包括：`AgentRunnerService`、`SessionService.extractAndSave`（事实提取）、`MemoryEnrichmentService`（外部画像补全）、`LlmEvaluationService`、`InputGuardrailService`（注入分析）等。所有请求都经由 `RouterService → ReliableService → RegistryService` 三层处理。
+消费方包括：`AgentRunnerService`、`SessionFactsService`（事实提取）、`LlmEvaluationService`、`InputGuardrailService`（注入分析）等。所有请求都经由 `RouterService → ReliableService → RegistryService` 三层处理。
 
 #### 分层关系
 
@@ -475,15 +475,21 @@ SCENARIO_SECTIONS = {
 
 ### 6.2 统一生命周期：onTurnStart / onTurnEnd
 
-[src/memory/memory.service.ts](../../src/memory/memory.service.ts) 是唯一对外 facade，背后由 [MemoryLifecycleService](../../src/memory/services/memory-lifecycle.service.ts) 统一编排：
+[src/memory/memory.service.ts](../../src/memory/memory.service.ts) 是唯一对外 facade，背后由 [MemoryLifecycleService](../../src/memory/lifecycle.service.ts) 统一编排：
 
 ```typescript
-// 回合开始：并行读取四类记忆 + 前置高置信识别 + 可选外部画像补全
-await memoryService.onTurnStart(corpId, userId, sessionId, currentUserMessage, {
+// 回合开始：memory 只读取记忆与装配已算好的本轮线索
+const snapshot = await memoryService.onTurnStart(corpId, userId, sessionId, currentUserMessage, {
   includeShortTerm: callerKind === CallerKind.WECOM,
   shortTermEndTimeInclusive,
-  enrichmentIdentity,   // 触发 MemoryEnrichmentService 向外部系统补全
+  turnHints,
+  botUserId,
 });
+
+// generator preparation 紧接召回之后补齐当轮快照；不进入 memory lifecycle
+const enrichedSnapshot = enrichmentIdentity
+  ? await snapshotEnrichment.enrich(snapshot, enrichmentIdentity)
+  : snapshot;
 
 // 回合结束：按步骤写回 + 观测埋点
 await memoryService.onTurnEnd({
@@ -511,13 +517,13 @@ load_previous_state (串行)
 
 ### 6.4 解析线索（前置）
 
-规则轨在 `onTurnStart` 里对当前 user 文本做匹配（品牌别名、城市、年龄、labor_form 等），产出带置信度与证据的 `ruleFacts`，以 `[本轮解析线索]` 注入 Context 的 `turn-hints` section。它是当前轮解析 sidecar，不因 producer 或 confidence 自动成为候选人事实。解析器住 [src/resolution/candidate/](../../src/resolution/candidate/)（每字段唯一），claim 生产在 [src/resolution/evidence/producers/rule-track.ts](../../src/resolution/evidence/producers/rule-track.ts)——`src/memory/facts/` 已随候选人档案域改造解散。
+规则轨在 `PreparationService.prepare()` 里对当前 user 文本做一次匹配（品牌别名、城市、年龄、labor_form 等），产出带置信度与证据的 `turnHints`；memory 只把这个已裁定的 sidecar 装入召回快照，不重跑判定。共享裁决视图随后以 `[本轮解析线索]` 注入 Context 的 `turn-hints` section。它不因 producer 或 confidence 自动成为候选人事实。解析器住 [src/resolution/candidate/](../../src/resolution/candidate/)（每字段唯一），claim 生产在 [src/resolution/evidence/producers/rule-track.ts](../../src/resolution/evidence/producers/rule-track.ts)。
 
 [src/resolution/labor-form/](../../src/resolution/labor-form/)：用工形式领域模型——岗位轴为两级结构化字段（用工形式=全职/兼职 + 兼职类型=寒假工/暑假工/小时工），候选人偏好侧为扁平词汇，匹配层做层级翻译。
 
 ### 6.5 外部画像补全
 
-[MemoryEnrichmentService](../../src/memory/services/memory-enrichment.service.ts) 当 `onTurnStart` 传入 `enrichmentIdentity`（token + imBotId + externalUserId 等）时，向外部杜力岱系统补全缺失的 profile_facts 字段（如性别），并更新长期记忆快照。仅 `candidate-consultation` 场景 + 有 token 时触发。
+[SnapshotEnrichmentService](../../src/agent/generator/preparation/snapshot-enrichment.service.ts) 位于 generator 备料车间。`memory.onTurnStart` 返回快照后，它根据 token + imBotId + externalUserId 等身份按需查询外部杜力岱系统，当前只对缺失的性别线索做当轮 sidecar 补齐。它不修改 memory 存储；仅 `candidate-consultation` 场景 + 有 token 时触发。
 
 ### 6.6 设计原则
 
@@ -742,7 +748,6 @@ AppModule
 │   ├── StageStateService    程序阶段
 │   ├── LongTermService      用户档案 facts + 摘要
 │   ├── ConsolidationService    Session → profile_facts 沉淀
-│   ├── MemoryEnrichmentService  外部画像补全
 │   ├── RedisStore / SupabaseStore
 │   └── MemoryConfig
 │
@@ -751,7 +756,8 @@ AppModule
 │
 ├── AgentModule
 │   ├── AgentRunnerService         编排引擎
-│   ├── PreparationService    prepare 流程
+│   ├── PreparationService         prepare 流程
+│   ├── SnapshotEnrichmentService  当轮快照外部补全
 │   ├── ContextService             prompt 组装
 │   ├── AgentController / AgentHealthService
 │   └── guardrail/

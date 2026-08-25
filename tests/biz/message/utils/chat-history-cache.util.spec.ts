@@ -2,7 +2,7 @@ import {
   buildChatHistoryCacheKey,
   parseCachedChatHistoryMessages,
   serializeCachedChatHistoryMessage,
-} from '@biz/message/utils/chat-history-cache.util';
+} from '@memory/short-term/chat-history-cache.util';
 import { StorageMessageSource, StorageMessageType } from '@enums/storage-message.enum';
 
 describe('chat-history-cache.util', () => {

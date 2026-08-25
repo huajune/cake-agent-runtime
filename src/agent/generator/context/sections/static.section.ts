@@ -1,6 +1,6 @@
-// 知识归类：procedural —— 本渲染器承载静态手册与发送前自检指令。
+// 归位依据：内容无关的静态文本适配器，属于 section 基础设施，不参与知识分类。
 // prompt-rule-ledger: docs/prompt-rule-ledger.md（程序性静态手册/自检总账）
-import { PromptSection, PromptContext } from '../section.interface';
+import { PromptSection, PromptContext } from './section.interface';
 
 /**
  * 静态文本段落

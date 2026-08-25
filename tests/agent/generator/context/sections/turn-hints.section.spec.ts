@@ -3,7 +3,7 @@ import { TurnHintsSection } from '@agent/generator/context/sections/working/turn
 import {
   adjudicatePromptMemory,
   type TurnStartMemory,
-} from '@agent/generator/working-memory/prompt-memory-adjudicator';
+} from '@agent/generator/preparation/prompt-memory-adjudicator';
 import type { TurnHints } from '@resolution/evidence/claim.types';
 import type { SessionFacts } from '@memory/short-term/short-term.types';
 import { testTurnHint, testTurnHints } from '../../../../helpers/turn-hints.fixture';

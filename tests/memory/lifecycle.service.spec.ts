@@ -2,7 +2,6 @@ import { MemoryLifecycleService } from '@memory/lifecycle.service';
 import { produceTurnHints } from '@resolution/evidence/producers/rule-track';
 import { getTurnHint } from '@resolution/evidence/merge';
 import { FALLBACK_EXTRACTION } from '@memory/short-term/short-term.types';
-import { testTurnHint, testTurnHints } from '../helpers/turn-hints.fixture';
 
 describe('MemoryLifecycleService', () => {
   const mockShortTerm = {
@@ -44,10 +43,6 @@ describe('MemoryLifecycleService', () => {
     ]),
   };
 
-  const mockEnrichment = {
-    enrich: jest.fn(),
-  };
-
   const mockMessageProcessing = {
     updatePostProcessingStatus: jest.fn().mockResolvedValue(true),
   };
@@ -69,7 +64,6 @@ describe('MemoryLifecycleService', () => {
       presentedJobs: null,
       currentFocusJob: null,
     });
-    mockEnrichment.enrich.mockImplementation(async (snapshot) => snapshot);
     mockMessageProcessing.updatePostProcessingStatus.mockResolvedValue(true);
 
     mockSessionService.extractAndSave.mockResolvedValue({ llmDegraded: false, brandIntents: [] });
@@ -82,7 +76,6 @@ describe('MemoryLifecycleService', () => {
       mockConsolidationScheduler as never,
       mockSessionService as never,
       mockSponge as never,
-      mockEnrichment as never,
       mockMessageProcessing as never,
       mockBrandState as never,
     );
@@ -355,51 +348,6 @@ describe('MemoryLifecycleService', () => {
     const ctx = await service.onTurnStart('corp-1', 'user-1', 'sess-1', '救急消息');
 
     expect(ctx.shortTerm.messageWindow).toEqual([{ role: 'user', content: '历史消息' }]);
-  });
-
-  it('should invoke enrichment when identity is provided', async () => {
-    mockShortTerm.getMessages.mockResolvedValue([{ role: 'user', content: 'hi' }]);
-    mockWorkbench.getStage.mockResolvedValue({
-      currentStage: 'trust_building',
-      fromStage: null,
-      advancedAt: null,
-      reason: null,
-    });
-    mockLongTerm.getProfile.mockResolvedValue(null);
-    mockEnrichment.enrich.mockImplementation(async (snapshot) => ({
-      ...snapshot,
-      turnHints: testTurnHints(
-        testTurnHint('interview_info.gender', '男', '客户详情接口补充性别：男', {
-          confidence: 'low',
-          producer: 'system',
-        }),
-      ),
-    }));
-
-    const identity = { token: 't', imBotId: 'b', imContactId: 'c' };
-    const ctx = await service.onTurnStart('corp-1', 'user-1', 'sess-1', undefined, {
-      enrichmentIdentity: identity,
-    });
-
-    expect(mockEnrichment.enrich).toHaveBeenCalledWith(expect.any(Object), identity);
-    expect(getTurnHint(ctx.turnHints, 'interview_info.gender')).toEqual(
-      expect.objectContaining({ value: '男', producer: 'system' }),
-    );
-  });
-
-  it('should skip enrichment when identity is not provided', async () => {
-    mockShortTerm.getMessages.mockResolvedValue([{ role: 'user', content: 'hi' }]);
-    mockWorkbench.getStage.mockResolvedValue({
-      currentStage: 'trust_building',
-      fromStage: null,
-      advancedAt: null,
-      reason: null,
-    });
-    mockLongTerm.getProfile.mockResolvedValue(null);
-
-    await service.onTurnStart('corp-1', 'user-1', 'sess-1');
-
-    expect(mockEnrichment.enrich).not.toHaveBeenCalled();
   });
 
   it('should not fallback to short-term history when current turn messages are absent', async () => {

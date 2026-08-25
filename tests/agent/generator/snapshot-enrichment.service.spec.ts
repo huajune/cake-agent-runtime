@@ -1,15 +1,15 @@
-import { MemoryEnrichmentService } from '@memory/enrichment.service';
+import { SnapshotEnrichmentService } from '@agent/generator/preparation/snapshot-enrichment.service';
 import { FALLBACK_EXTRACTION } from '@memory/short-term/short-term.types';
 import type { AgentMemoryContext } from '@memory/recall.types';
 import { getTurnHint } from '@resolution/evidence/merge';
-import { testTurnHint, testTurnHints } from '../helpers/turn-hints.fixture';
+import { testTurnHint, testTurnHints } from '../../helpers/turn-hints.fixture';
 
-describe('MemoryEnrichmentService', () => {
+describe('SnapshotEnrichmentService', () => {
   const mockCandidate = {
     lookupGenderFromCustomerDetail: jest.fn(),
   };
 
-  let service: MemoryEnrichmentService;
+  let service: SnapshotEnrichmentService;
 
   const baseSnapshot = (): AgentMemoryContext => ({
     shortTerm: {
@@ -23,7 +23,7 @@ describe('MemoryEnrichmentService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    service = new MemoryEnrichmentService(mockCandidate as never);
+    service = new SnapshotEnrichmentService(mockCandidate as never);
   });
 
   it('returns the same snapshot reference when nothing to enrich', async () => {

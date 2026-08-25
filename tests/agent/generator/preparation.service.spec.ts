@@ -1,4 +1,4 @@
-import { PreparationService } from '@agent/generator/working-memory/preparation.service';
+import { PreparationService } from '@agent/generator/preparation/preparation.service';
 import { PromptInjectionService } from '@agent/guardrail/input/prompt-injection.service';
 import { CallerKind } from '@enums/agent.enum';
 import { StorageMessageSource, StorageMessageType } from '@enums/storage-message.enum';
@@ -136,10 +136,15 @@ describe('PreparationService', () => {
     resolveAgentAccountIdentity: jest.fn().mockResolvedValue({ nickname: null, gender: null }),
   };
 
+  const mockSnapshotEnrichment = {
+    enrich: jest.fn(async (snapshot) => snapshot),
+  };
+
   let service: PreparationService;
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockSnapshotEnrichment.enrich.mockImplementation(async (snapshot) => snapshot);
     mockToolRegistry.buildForScenario.mockReturnValue({ duliday_job_list: {} });
     mockLongTermService.getActiveBookings.mockResolvedValue([]);
     mockSpongeService.getCachedWorkOrderById.mockResolvedValue(null);
@@ -224,6 +229,7 @@ describe('PreparationService', () => {
       mockGroupMembership as never,
       mockBrandStateService as never,
       mockHostingMemberConfig as never,
+      mockSnapshotEnrichment as never,
     );
   });
 
@@ -2063,7 +2069,7 @@ describe('PreparationService', () => {
     expect(result.memoryLoadWarning).toBe('shortTerm: Connection timeout');
   });
 
-  it('should forward enrichmentIdentity to memory.onTurnStart for candidate-consultation scenario', async () => {
+  it('should enrich the recalled snapshot after memory.onTurnStart for candidate-consultation', async () => {
     await service.prepare(
       {
         callerKind: CallerKind.WECOM,
@@ -2085,16 +2091,15 @@ describe('PreparationService', () => {
       'user-1',
       'sess-1',
       '帮我看看兼职',
-      expect.objectContaining({
-        enrichmentIdentity: {
-          token: 'token-1',
-          imBotId: 'im-bot-1',
-          imContactId: 'im-contact-1',
-          wecomUserId: 'manager-1',
-          externalUserId: 'external-user-1',
-        },
-      }),
+      expect.not.objectContaining({ enrichmentIdentity: expect.anything() }),
     );
+    expect(mockSnapshotEnrichment.enrich).toHaveBeenCalledWith(expect.any(Object), {
+      token: 'token-1',
+      imBotId: 'im-bot-1',
+      imContactId: 'im-contact-1',
+      wecomUserId: 'manager-1',
+      externalUserId: 'external-user-1',
+    });
   });
 
   it('should forward short-term cutoff to memory.onTurnStart for wecom calls', async () => {
@@ -2122,7 +2127,7 @@ describe('PreparationService', () => {
     );
   });
 
-  it('should omit enrichmentIdentity when token is missing', async () => {
+  it('should skip snapshot enrichment when token is missing', async () => {
     await service.prepare(
       {
         callerKind: CallerKind.WECOM,
@@ -2136,6 +2141,7 @@ describe('PreparationService', () => {
 
     const options = mockMemoryService.onTurnStart.mock.calls[0][4];
     expect(options.enrichmentIdentity).toBeUndefined();
+    expect(mockSnapshotEnrichment.enrich).not.toHaveBeenCalled();
   });
 
   it('保留人工消息来源、标记给模型，并为“附近”查询生成嘉定 geocode 锚点', async () => {
@@ -2215,6 +2221,7 @@ describe('PreparationService', () => {
       mockGroupMembership as never,
       mockBrandStateService as never,
       mockHostingMemberConfig as never,
+      mockSnapshotEnrichment as never,
       undefined,
       geocoding as never,
     );

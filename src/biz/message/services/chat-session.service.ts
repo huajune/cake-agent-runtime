@@ -14,7 +14,7 @@ import {
   buildChatHistoryCacheKey,
   type CachedChatHistoryMessage,
   serializeCachedChatHistoryMessage,
-} from '../utils/chat-history-cache.util';
+} from '@memory/short-term/chat-history-cache.util';
 
 /**
  * 聊天会话服务

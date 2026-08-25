@@ -407,11 +407,29 @@ describe('ContextService', () => {
     // 检查"非候选人所在城市的群"未泄漏到 inventory 段，而非整个 prompt 不能含 "北京" 字样
     // （hard-constraints 段会把"禁止凭通识补北京/重庆等城市"作为反例文案列出）
     expect(systemPrompt).not.toContain('北京餐饮兼职群');
-    expect(systemPrompt).toContain('必须传对应 industry 参数');
-    expect(promptBlocks).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ id: 'group-inventory', domain: 'tool_result' }),
-      ]),
+    const groupInventoryBlock = promptBlocks.find((block) => block.id === 'group-inventory');
+    expect(groupInventoryBlock).toEqual(
+      expect.objectContaining({ id: 'group-inventory', domain: 'tool_result' }),
+    );
+    expect(groupInventoryBlock?.content).toBe(
+      ['## 兼职群资源（上海）', '- 餐饮：1 个群（均有空位）', '- 零售：1 个群（均有空位）'].join(
+        '\n',
+      ),
+    );
+    expect(systemPrompt).not.toContain('必须传对应 industry 参数');
+  });
+
+  it('keeps the empty-city inventory data bytes unchanged without embedding instructions', async () => {
+    mockGroupResolver.resolveGroups.mockResolvedValue([]);
+
+    const { promptBlocks } = await compose({
+      scenario: 'candidate-consultation',
+      strategySource: 'testing',
+      sessionFacts: sessionFactsOf({ preferences: { city: cityFixture('上海') } }),
+    });
+
+    expect(promptBlocks.find((block) => block.id === 'group-inventory')?.content).toBe(
+      ['## 兼职群资源（上海）', '- 该城市暂无可用兼职群'].join('\n'),
     );
   });
 
@@ -425,8 +443,8 @@ describe('ContextService', () => {
     expect(mockGroupResolver.resolveGroups).not.toHaveBeenCalled();
   });
 
-  // 议题 1-2：兼职群资源块会输出「本城市群库为空 → 禁止承诺拉群」这类有行为后果的指令，
-  // 取值必须与硬约束段同门（high）。此前直读 .value 绕过置信度门，导致 prompt 里出现
+  // 议题 1-2：兼职群资源会影响工具调用决策，取值必须与硬约束段同门（high）。
+  // 此前直读 .value 绕过置信度门，导致 prompt 里出现
   // 硬约束段根本没有的城市。
   it('should skip group inventory block when the city confidence is below the hard-constraint gate', async () => {
     const { systemPrompt } = await compose({

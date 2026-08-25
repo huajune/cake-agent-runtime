@@ -1,4 +1,4 @@
-import { StaticSection } from '@agent/generator/context/sections/procedural/static.section';
+import { StaticSection } from '@agent/generator/context/sections/static.section';
 import { PromptContext } from '@agent/generator/context/sections/section.interface';
 
 describe('StaticSection', () => {

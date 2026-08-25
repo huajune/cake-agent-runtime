@@ -1,5 +1,5 @@
 import { MessageWindowService } from '@memory/short-term/message-window.service';
-import { buildChatHistoryCacheKey } from '@biz/message/utils/chat-history-cache.util';
+import { buildChatHistoryCacheKey } from '@memory/short-term/chat-history-cache.util';
 import { StorageMessageSource, StorageMessageType } from '@enums/storage-message.enum';
 
 describe('MessageWindowService', () => {

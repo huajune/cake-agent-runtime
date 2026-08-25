@@ -1,6 +1,6 @@
 # 记忆系统架构与数据流
 
-**最后更新**：2026-08-12
+**最后更新**：2026-08-25
 **代码居所**：`src/memory/`（模块内详细职责见 [`src/memory/README.md`](../../src/memory/README.md)）
 
 > 本文是记忆链路的**唯一完整叙述**：四层结构、字段归属、读写时序、prompt/工具消费、沉淀与排障。
@@ -218,14 +218,15 @@ time_windows  schedule_constraint  available_after
 ```
 用户消息到达
   ├── 并行读取：short-term messages（Redis→DB fallback）/ session state / stage state
-  │             / semantic_profile / semantic_job_intent / episodic_session_summaries
+  │             / semantic_profile / semantic_job_intent
   ├── 短期窗口空兜底
-  ├── 前置规则轨识别：currentUserMessage + brandList → ruleFacts
-  ├── 可选 enrichment：options.enrichmentIdentity 提供时向外部系统补全缺失字段
+  ├── 装配 preparation 已算好的 turnHints（memory 不重跑判定）
   ├── 跨会话来源研判（§2.6）
-  └── 返回 MemoryRecallContext { shortTerm.messageWindow, sessionMemory,
-        ruleFacts, procedural, longTerm.{profile,preferences,origin?}, _warnings? }
+  └── 返回 AgentMemoryContext { shortTerm.{messageWindow,sessionState,stage},
+        turnHints, longTerm.semantic.{profile,jobIntent}, _warnings? }
 ```
+
+召回紧接完成后，generator 侧的 `SnapshotEnrichmentService` 可按身份信息补齐当轮快照线索；该步骤不属于 memory lifecycle，也不写 memory store。
 
 ### 4.2 onTurnEnd
 

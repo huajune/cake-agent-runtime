@@ -91,7 +91,7 @@ export interface SessionWorkbenchState {
   /** 最近几轮真正发给候选人的岗位。 */
   presentedJobs: RecommendedJobSummary[] | null;
   /** 本次求职会话累计发生过的推店轮次。 */
-  storePresentationRounds?: number;
+  storePresentationRounds?: number | null;
   /** 候选人当前明确在聊或准备报名的岗位。 */
   currentFocusJob: RecommendedJobSummary | null;
   /** 最近一次 duliday_job_list 查询签名（跨轮重复查询检测）。 */
@@ -107,7 +107,7 @@ export const JobListQueryRecordSchema = z.object({
 export const SessionWorkbenchStateSchema = z.object({
   lastCandidatePool: z.array(RecommendedJobSummarySchema).nullable(),
   presentedJobs: z.array(RecommendedJobSummarySchema).nullable(),
-  storePresentationRounds: z.number().int().nonnegative().optional(),
+  storePresentationRounds: z.number().int().nonnegative().nullable().optional(),
   currentFocusJob: RecommendedJobSummarySchema.nullable(),
   lastJobListQuery: JobListQueryRecordSchema.nullable().optional(),
 });
@@ -994,6 +994,7 @@ export const EMPTY_SESSION_STATE: WeworkSessionState = {
   facts: null,
   lastCandidatePool: null,
   presentedJobs: null,
+  storePresentationRounds: null,
   currentFocusJob: null,
   invitedGroups: null,
   terminal: null,

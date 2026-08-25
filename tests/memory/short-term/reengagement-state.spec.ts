@@ -2,11 +2,12 @@ import { Test } from '@nestjs/testing';
 import { SessionStateService } from '@memory/short-term/session-state.service';
 import { SessionFactsService } from '@memory/short-term/facts.service';
 import { SessionWorkbenchService } from '@memory/short-term/workbench.service';
+import { EMPTY_SESSION_STATE } from '@memory/short-term/short-term.types';
 import { RedisStore } from '@memory/stores/redis.store';
 import { MemoryConfig } from '@memory/memory.config';
+import { MEMORY_SYSTEM_CONFIG_PORT } from '@memory/memory.ports';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
 import { SpongeService } from '@sponge/sponge.service';
-import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 
 describe('SessionStateService reengagement store presentation state', () => {
   const job = {
@@ -24,6 +25,10 @@ describe('SessionStateService reengagement store presentation state', () => {
 
   let service: SessionStateService;
   let hashState: Record<string, unknown>;
+
+  it('keeps the empty-state presentation round explicitly null', () => {
+    expect(EMPTY_SESSION_STATE.storePresentationRounds).toBeNull();
+  });
 
   beforeEach(async () => {
     hashState = {
@@ -57,7 +62,10 @@ describe('SessionStateService reengagement store presentation state', () => {
         },
         { provide: LlmExecutorService, useValue: { generateStructured: jest.fn() } },
         { provide: SpongeService, useValue: { fetchBrandList: jest.fn() } },
-        { provide: SystemConfigService, useValue: { getExtractModelOverride: jest.fn() } },
+        {
+          provide: MEMORY_SYSTEM_CONFIG_PORT,
+          useValue: { getExtractModelOverride: jest.fn() },
+        },
       ],
     }).compile();
     service = moduleRef.get(SessionStateService);

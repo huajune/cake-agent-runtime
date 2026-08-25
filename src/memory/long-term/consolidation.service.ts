@@ -1,17 +1,21 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
 import { ModelRole } from '@/llm/llm.types';
-import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { MemoryConfig } from '../memory.config';
 import { LongTermService } from './long-term.service';
 import type { SummaryEntry } from './long-term.types';
-import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 import {
   type EntityExtractionResult,
   type SessionFacts,
   unwrapSessionFacts,
 } from '../short-term/short-term.types';
 import type { PersistedBrandState } from '@resolution/brand/brand-resolution.types';
+import {
+  MEMORY_CHAT_SESSION_PORT,
+  MEMORY_SYSTEM_CONFIG_PORT,
+  type MemoryChatSessionPort,
+  type MemorySystemConfigPort,
+} from '../memory.ports';
 
 const SUMMARY_SYSTEM_PROMPT = `你是对话摘要生成器。将招募经理与候选人的对话和提取事实压缩为结构化短摘要。
 
@@ -55,9 +59,11 @@ export class ConsolidationService {
   constructor(
     private readonly config: MemoryConfig,
     private readonly longTerm: LongTermService,
-    private readonly chatSession: ChatSessionService,
+    @Inject(MEMORY_CHAT_SESSION_PORT)
+    private readonly chatSession: MemoryChatSessionPort,
     private readonly llm: LlmExecutorService,
-    private readonly systemConfig: SystemConfigService,
+    @Inject(MEMORY_SYSTEM_CONFIG_PORT)
+    private readonly systemConfig: MemorySystemConfigPort,
   ) {}
 
   async consolidateIdleSession(

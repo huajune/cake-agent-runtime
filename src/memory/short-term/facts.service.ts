@@ -1,5 +1,5 @@
 import { toErrorMessage } from '@infra/utils/error.util';
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import type { CityAttestation } from '@shared-types/turn.types';
 import { AgentTracerService } from '@observability/agent-tracer.service';
 import { AlertNotifierService } from '@notification/services/alert-notifier.service';
@@ -54,11 +54,15 @@ import { adjudicateCityClaims, cityClaimFromFact } from '@resolution/evidence/pr
 import { decideLaborFormIntent, type LaborFormIntentDecision } from '@resolution/labor-form';
 import { parseTimeContextAt, stripTimeContext } from '@resolution/signal/markers';
 import { formatCurrentTime } from '@infra/utils/date.util';
-import { ChatSessionService } from '@biz/message/services/chat-session.service';
-import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 import { buildSessionFactsHashKey } from './session-key';
 import { hasMeaningfulValue, resolveTurnHints } from '@resolution/evidence/merge';
 import { factConfidenceRank } from '../confidence-rank';
+import {
+  MEMORY_CHAT_SESSION_PORT,
+  MEMORY_SYSTEM_CONFIG_PORT,
+  type MemoryChatSessionPort,
+  type MemorySystemConfigPort,
+} from '../memory.ports';
 
 /**
  * 会话记忆·事实舱（semantic 性质，M3 分家 2026-08-21）
@@ -81,11 +85,13 @@ export class SessionFactsService {
     private readonly config: MemoryConfig,
     private readonly llm: LlmExecutorService,
     private readonly sponge: SpongeService,
-    private readonly systemConfig: SystemConfigService,
+    @Inject(MEMORY_SYSTEM_CONFIG_PORT)
+    private readonly systemConfig: MemorySystemConfigPort,
     @Optional()
     private readonly tracer?: AgentTracerService,
     @Optional()
-    private readonly chatSession?: ChatSessionService,
+    @Inject(MEMORY_CHAT_SESSION_PORT)
+    private readonly chatSession?: MemoryChatSessionPort,
     @Optional()
     private readonly alertNotifier?: AlertNotifierService,
   ) {}
