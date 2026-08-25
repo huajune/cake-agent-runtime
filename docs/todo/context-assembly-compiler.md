@@ -13,8 +13,8 @@
    | 归属 | section | 依据 |
    |---|---|---|
    | procedural | static（手册）/ channel / policy / red-lines / thresholds / stage-strategy / **identity**（agent 人设=行为指令，非候选人事实） | 规程与指令 |
-   | semantic | **memory**（渲染档案+会话事实，落点表 semantic）/ **group-inventory**（群库事实数据） | 事实 |
-   | working | datetime / runtime-context / turn-hints / **hard-constraints**（候选人本轮硬约束线索，evidence 数据非规程） | 本轮 |
+   | semantic | **memory**（渲染档案+会话事实，落点表 semantic） | **候选人事实**（semantic 收窄定义，2026-08-26） |
+   | working | datetime / turn-hints / **hard-constraints**（候选人本轮硬约束线索）/ **group-inventory**（平台资源数据，按本轮城市选取——~~semantic~~ 2026-08-26 纠：非候选人事实，选取是轮作用域+工作台资源性质） | 本轮 |
    | sections/ 根 | section.interface.ts（基础设施非 section，不参与分类） | — |
 
    **不加任何 memoryType 字段或常量表**（字段方案裁定否决）。⚠️ 既有 `PROMPT_SECTION_DOMAIN_REGISTRY` 是另一根轴（语料域 teaching/evidence，指令-数据分离执法点）——不动、不混淆，两轴正交。与 memory 侧"类型词不当目录名"裁定不冲突（那条针对作用域轴实体；sections 的实体是知识内容块，类型即天然主轴）。
