@@ -1,5 +1,5 @@
-import { CollectionFormService } from '@memory/short-term/collection-form.service';
-import { buildCollectionFormKey } from '@memory/stores/collection-form.store';
+import { CollectionFormService } from '@tools/collection/collection-form.service';
+import { buildCollectionFormKey } from '@tools/collection/collection-form.store';
 import { createForm, proposeValue, type ContractFieldDef } from '@resolution/collection';
 
 const NAME_FIELD: ContractFieldDef = {

@@ -14,7 +14,7 @@ import {
   type ContractFieldDef,
 } from '@resolution/collection';
 import { isStorableCandidatePhone } from '@resolution/candidate/phone';
-import { CollectionFormStore } from '../stores/collection-form.store';
+import { CollectionFormStore } from './collection-form.store';
 
 export interface CollectionFormScope {
   corpId: string;

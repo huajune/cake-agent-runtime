@@ -1,8 +1,9 @@
 import {
   buildCollectionFormKey,
   buildCollectionFormLocatorKey,
+  COLLECTION_FORM_TTL_SECONDS,
   CollectionFormStore,
-} from '@memory/stores/collection-form.store';
+} from '@tools/collection/collection-form.store';
 import { createForm, type ContractFieldDef } from '@resolution/collection';
 
 const FIELD: ContractFieldDef = {
@@ -15,47 +16,45 @@ const FIELD: ContractFieldDef = {
   systemField: 'name',
 };
 const SCOPE = { corpId: 'corp1', userId: 'user1', jobId: 528962 };
-const TTL = 172800;
-
 describe('CollectionFormStore', () => {
-  const redisStore = {
+  const redis = {
     get: jest.fn(),
-    set: jest.fn().mockResolvedValue(undefined),
-    del: jest.fn().mockResolvedValue(true),
+    setex: jest.fn().mockResolvedValue(undefined),
+    del: jest.fn().mockResolvedValue(1),
   };
   let store: CollectionFormStore;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    redisStore.get.mockResolvedValue(null);
-    store = new CollectionFormStore(redisStore as never, { sessionTtl: TTL } as never);
+    redis.get.mockResolvedValue(null);
+    store = new CollectionFormStore(redis as never);
   });
 
   it('按实体 key 读取对象快照，缺失或非对象内容 fail-closed 返回 null', async () => {
     const form = createForm({ jobId: SCOPE.jobId, contract: [FIELD] });
-    redisStore.get.mockResolvedValueOnce({ content: form });
+    redis.get.mockResolvedValueOnce({ content: form });
     await expect(store.read({ ...SCOPE, candidateRef: 'session' })).resolves.toBe(form);
-    expect(redisStore.get).toHaveBeenLastCalledWith(
+    expect(redis.get).toHaveBeenLastCalledWith(
       buildCollectionFormKey({
         ...SCOPE,
         candidateRef: 'session',
       }),
     );
 
-    redisStore.get.mockResolvedValueOnce({ content: 'corrupted' });
+    redis.get.mockResolvedValueOnce({ content: 'corrupted' });
     await expect(store.read({ ...SCOPE, candidateRef: 'session' })).resolves.toBeNull();
   });
 
   it('当前人键指针只接受非空字符串', async () => {
-    redisStore.get.mockResolvedValueOnce({ content: { candidateRef: '18271421690' } });
+    redis.get.mockResolvedValueOnce({ content: { candidateRef: '18271421690' } });
     await expect(store.readCurrentCandidateRef(SCOPE)).resolves.toBe('18271421690');
-    expect(redisStore.get).toHaveBeenCalledWith(buildCollectionFormLocatorKey(SCOPE));
+    expect(redis.get).toHaveBeenCalledWith(buildCollectionFormLocatorKey(SCOPE));
 
-    redisStore.get.mockResolvedValueOnce({ content: { candidateRef: '' } });
+    redis.get.mockResolvedValueOnce({ content: { candidateRef: '' } });
     await expect(store.readCurrentCandidateRef(SCOPE)).resolves.toBeNull();
   });
 
-  it('整实体与当前人键指针均按 session TTL 覆盖写，禁用 deepMerge', async () => {
+  it('整实体与当前人键指针均按收资域 3 天 TTL 覆盖写', async () => {
     const form = createForm({
       candidateRef: '18271421690',
       jobId: SCOPE.jobId,
@@ -63,38 +62,36 @@ describe('CollectionFormStore', () => {
     });
     await store.write(SCOPE, form);
 
-    expect(redisStore.set).toHaveBeenNthCalledWith(
+    expect(redis.setex).toHaveBeenNthCalledWith(
       1,
       buildCollectionFormKey({ ...SCOPE, candidateRef: form.candidateRef }),
-      form,
-      TTL,
-      false,
+      COLLECTION_FORM_TTL_SECONDS,
+      expect.objectContaining({ content: form }),
     );
-    expect(redisStore.set).toHaveBeenNthCalledWith(
+    expect(redis.setex).toHaveBeenNthCalledWith(
       2,
       buildCollectionFormLocatorKey(SCOPE),
-      { candidateRef: form.candidateRef },
-      TTL,
-      false,
+      COLLECTION_FORM_TTL_SECONDS,
+      expect.objectContaining({ content: { candidateRef: form.candidateRef } }),
     );
   });
 
   it('删除当前实体时同步删除 locator', async () => {
-    redisStore.get.mockResolvedValueOnce({ content: { candidateRef: 'session' } });
+    redis.get.mockResolvedValueOnce({ content: { candidateRef: 'session' } });
     await store.remove({ ...SCOPE, candidateRef: 'session' });
 
-    expect(redisStore.del).toHaveBeenNthCalledWith(
+    expect(redis.del).toHaveBeenNthCalledWith(
       1,
       buildCollectionFormKey({ ...SCOPE, candidateRef: 'session' }),
     );
-    expect(redisStore.del).toHaveBeenNthCalledWith(2, buildCollectionFormLocatorKey(SCOPE));
+    expect(redis.del).toHaveBeenNthCalledWith(2, buildCollectionFormLocatorKey(SCOPE));
   });
 
   it('删除非当前实体时保留 locator，避免抹掉已 rebind 的人键指针', async () => {
-    redisStore.get.mockResolvedValueOnce({ content: { candidateRef: '18271421690' } });
+    redis.get.mockResolvedValueOnce({ content: { candidateRef: '18271421690' } });
     await store.remove({ ...SCOPE, candidateRef: 'session' });
 
-    expect(redisStore.del).toHaveBeenCalledTimes(1);
-    expect(redisStore.del).not.toHaveBeenCalledWith(buildCollectionFormLocatorKey(SCOPE));
+    expect(redis.del).toHaveBeenCalledTimes(1);
+    expect(redis.del).not.toHaveBeenCalledWith(buildCollectionFormLocatorKey(SCOPE));
   });
 });

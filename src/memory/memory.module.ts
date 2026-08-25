@@ -7,8 +7,6 @@ import { SpongeModule } from '@sponge/sponge.module';
 import { MemoryConfig } from './memory.config';
 import { MemoryService } from './memory.service';
 import { RedisStore } from './stores/redis.store';
-import { CollectionFormStore } from './stores/collection-form.store';
-import { CollectionFormService } from './short-term/collection-form.service';
 import { SupabaseStore } from './stores/supabase.store';
 import { BrandStateService } from './short-term/brand-state.service';
 import { MessageWindowService } from './short-term/message-window.service';
@@ -31,7 +29,7 @@ import { ObservabilityModule } from '@observability/observability.module';
 /**
  * Memory 模块
  *
- * 组织轴：short-term（message-window + session-semantic 两舱）/ long-term；
+ * 组织轴：short-term（message-window + session-state）/ long-term；
  * lifecycle 与 enrichment 是跨层服务，stores 保持独立基础设施层。
  */
 @Module({
@@ -50,8 +48,6 @@ import { ObservabilityModule } from '@observability/observability.module';
   providers: [
     MemoryConfig,
     RedisStore,
-    CollectionFormStore,
-    CollectionFormService,
     SupabaseStore,
     BrandStateService,
     MessageWindowService,
@@ -69,7 +65,6 @@ import { ObservabilityModule } from '@observability/observability.module';
   exports: [
     MemoryConfig,
     MemoryService,
-    CollectionFormService,
     SessionStateService,
     SessionFactsService,
     SessionWorkbenchService,

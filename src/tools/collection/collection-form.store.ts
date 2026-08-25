@@ -11,9 +11,17 @@
  */
 
 import { Injectable, Logger } from '@nestjs/common';
-import { RedisStore } from './redis.store';
-import { MemoryConfig } from '../memory.config';
+import { RedisService } from '@infra/redis/redis.service';
 import type { BookingCollectionForm } from '@resolution/collection';
+
+/** 收资单据自持 TTL：默认 3 天；与会话状态对齐是业务口径，不依赖 MemoryConfig。 */
+export const COLLECTION_FORM_TTL_SECONDS = 3 * 24 * 60 * 60;
+
+interface CollectionFormStoreEntry {
+  key: string;
+  content: Record<string, unknown>;
+  updatedAt: string;
+}
 
 /** key 形态：`collection-form:{corpId}:{userId}:{candidateRef}:{jobId}`（蓝图 §4 原样）。 */
 export function buildCollectionFormKey(params: {
@@ -43,10 +51,7 @@ export function buildCollectionFormLocatorKey(params: {
 export class CollectionFormStore {
   private readonly logger = new Logger(CollectionFormStore.name);
 
-  constructor(
-    private readonly redisStore: RedisStore,
-    private readonly config: MemoryConfig,
-  ) {}
+  constructor(private readonly redis: RedisService) {}
 
   async read(params: {
     corpId: string;
@@ -54,7 +59,7 @@ export class CollectionFormStore {
     candidateRef: string;
     jobId: number;
   }): Promise<BookingCollectionForm | null> {
-    const entry = await this.redisStore.get(buildCollectionFormKey(params));
+    const entry = await this.redis.get<CollectionFormStoreEntry>(buildCollectionFormKey(params));
     const content = entry?.content;
     if (!content || typeof content !== 'object') return null;
     return content as unknown as BookingCollectionForm;
@@ -65,7 +70,9 @@ export class CollectionFormStore {
     userId: string;
     jobId: number;
   }): Promise<string | null> {
-    const entry = await this.redisStore.get(buildCollectionFormLocatorKey(params));
+    const entry = await this.redis.get<CollectionFormStoreEntry>(
+      buildCollectionFormLocatorKey(params),
+    );
     const content = entry?.content;
     if (!content || typeof content !== 'object') return null;
     const candidateRef = (content as { candidateRef?: unknown }).candidateRef;
@@ -77,27 +84,19 @@ export class CollectionFormStore {
     params: { corpId: string; userId: string },
     form: BookingCollectionForm,
   ): Promise<void> {
-    await this.redisStore.set(
-      buildCollectionFormKey({
-        corpId: params.corpId,
-        userId: params.userId,
-        candidateRef: form.candidateRef,
-        jobId: form.jobId,
-      }),
-      form as unknown as Record<string, unknown>,
-      this.config.sessionTtl,
-      false,
-    );
-    await this.redisStore.set(
-      buildCollectionFormLocatorKey({
-        corpId: params.corpId,
-        userId: params.userId,
-        jobId: form.jobId,
-      }),
-      { candidateRef: form.candidateRef },
-      this.config.sessionTtl,
-      false,
-    );
+    const formKey = buildCollectionFormKey({
+      corpId: params.corpId,
+      userId: params.userId,
+      candidateRef: form.candidateRef,
+      jobId: form.jobId,
+    });
+    const locatorKey = buildCollectionFormLocatorKey({
+      corpId: params.corpId,
+      userId: params.userId,
+      jobId: form.jobId,
+    });
+    await this.writeSnapshot(formKey, form as unknown as Record<string, unknown>);
+    await this.writeSnapshot(locatorKey, { candidateRef: form.candidateRef });
   }
 
   async remove(params: {
@@ -106,10 +105,19 @@ export class CollectionFormStore {
     candidateRef: string;
     jobId: number;
   }): Promise<void> {
-    await this.redisStore.del(buildCollectionFormKey(params));
+    await this.redis.del(buildCollectionFormKey(params));
     const currentRef = await this.readCurrentCandidateRef(params);
     if (currentRef === params.candidateRef) {
-      await this.redisStore.del(buildCollectionFormLocatorKey(params));
+      await this.redis.del(buildCollectionFormLocatorKey(params));
     }
+  }
+
+  private async writeSnapshot(key: string, content: Record<string, unknown>): Promise<void> {
+    await this.redis.setex(key, COLLECTION_FORM_TTL_SECONDS, {
+      key,
+      content,
+      updatedAt: new Date().toISOString(),
+    } satisfies CollectionFormStoreEntry);
+    this.logger.debug(`收资单据已存储: ${key}`);
   }
 }

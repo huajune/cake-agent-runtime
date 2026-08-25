@@ -11,6 +11,8 @@ import { NotificationModule } from '@notification/notification.module';
 import { InterventionModule } from '@biz/intervention/intervention.module';
 import { ToolRegistryService } from './tool-registry.service';
 import { LlmModule } from '@/llm/llm.module';
+import { CollectionFormService } from './collection/collection-form.service';
+import { CollectionFormStore } from './collection/collection-form.store';
 
 @Module({
   imports: [
@@ -26,7 +28,7 @@ import { LlmModule } from '@/llm/llm.module';
     InterventionModule,
     LlmModule,
   ],
-  providers: [ToolRegistryService],
-  exports: [ToolRegistryService],
+  providers: [CollectionFormStore, CollectionFormService, ToolRegistryService],
+  exports: [CollectionFormService, ToolRegistryService],
 })
 export class ToolModule {}

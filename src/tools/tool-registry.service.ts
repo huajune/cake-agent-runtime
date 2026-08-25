@@ -40,7 +40,7 @@ import { InterventionService } from '@biz/intervention/intervention.service';
 import { MessageSenderService } from '@channels/wecom/message-sender/message-sender.service';
 import { SessionStateService } from '@memory/short-term/session-state.service';
 import { LongTermService } from '@memory/long-term/long-term.service';
-import { CollectionFormService } from '@memory/short-term/collection-form.service';
+import { CollectionFormService } from '@tools/collection/collection-form.service';
 import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
 import { HandoffRecorderService } from '@biz/handoff-events/handoff-recorder.service';
 import { AgentTracerService } from '@/observability/agent-tracer.service';
