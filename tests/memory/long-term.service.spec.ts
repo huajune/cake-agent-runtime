@@ -73,11 +73,16 @@ describe('LongTermService（S7 单一 Profile 上游 + preference 三态）', ()
     expect(facts.name.evidence).toContain('workOrderId=9001');
   });
 
-  it('consolidation 以 medium 透传身份 Profile，并同时写稳定偏好', async () => {
+  it('consolidation 以 medium 透传九键身份 Profile，并同时写稳定偏好', async () => {
     const facts = toSessionFacts(
       {
         ...FALLBACK_EXTRACTION,
-        interview_info: { ...FALLBACK_EXTRACTION.interview_info, name: '兮兮' },
+        interview_info: {
+          ...FALLBACK_EXTRACTION.interview_info,
+          name: '兮兮',
+          height: '163',
+          weight: '46',
+        },
         preferences: { ...FALLBACK_EXTRACTION.preferences, position: ['服务员'] },
         reasoning: 'soft preferences',
       },
@@ -97,6 +102,12 @@ describe('LongTermService（S7 单一 Profile 上游 + preference 三态）', ()
         originSessionId: 'session-A',
         originBotId: 'bot-A',
       }),
+    );
+    expect(store.upsertProfileFacts.mock.calls[0][3].height).toEqual(
+      expect.objectContaining({ value: '163', confidence: 'medium', source: 'model' }),
+    );
+    expect(store.upsertProfileFacts.mock.calls[0][3].weight).toEqual(
+      expect.objectContaining({ value: '46', confidence: 'medium', source: 'model' }),
     );
     expect(store.upsertProfileFacts.mock.calls[0][5].position).toEqual(
       expect.objectContaining({

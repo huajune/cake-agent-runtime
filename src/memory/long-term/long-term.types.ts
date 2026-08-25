@@ -44,6 +44,8 @@ export interface UserProfile {
   is_student: boolean | null;
   education: string | null;
   has_health_certificate: string | null;
+  height: string | null;
+  weight: string | null;
 }
 
 export const USER_PROFILE_FIELD_KEYS = [
@@ -54,6 +56,8 @@ export const USER_PROFILE_FIELD_KEYS = [
   'is_student',
   'education',
   'has_health_certificate',
+  'height',
+  'weight',
 ] as const satisfies readonly (keyof UserProfile)[];
 
 export type UserProfileFieldKey = (typeof USER_PROFILE_FIELD_KEYS)[number];
@@ -201,6 +205,8 @@ export function createEmptyUserProfileFacts(): UserProfileFacts {
     is_student: null,
     education: null,
     has_health_certificate: null,
+    height: null,
+    weight: null,
   };
 }
 
@@ -218,6 +224,8 @@ export function unwrapUserProfileFacts(
     is_student: null,
     education: null,
     has_health_certificate: null,
+    height: null,
+    weight: null,
   };
   let hasValue = false;
 

@@ -1,6 +1,7 @@
 import { SupabaseStore } from '@memory/stores/supabase.store';
 import {
   MAX_SESSION_SUMMARIES,
+  USER_PROFILE_FIELD_KEYS,
   UserProfileFactValueSchema,
 } from '@memory/long-term/long-term.types';
 import type { CandidateFactProducer } from '@resolution/evidence/claim.types';
@@ -107,6 +108,8 @@ describe('SupabaseStore', () => {
           is_student: null,
           education: null,
           has_health_certificate: null,
+          height: null,
+          weight: null,
         },
       };
       mockRedis.get.mockResolvedValue(cached);
@@ -129,6 +132,8 @@ describe('SupabaseStore', () => {
             is_student: null,
             education: null,
             has_health_certificate: null,
+            height: null,
+            weight: null,
           },
         },
         error: null,
@@ -346,6 +351,40 @@ describe('SupabaseStore', () => {
   });
 
   describe('upsertProfileFacts', () => {
+    it('should preserve all nine profile keys when building the RPC payload', async () => {
+      mockRpc.mockResolvedValue({
+        data: { written_fields: [...USER_PROFILE_FIELD_KEYS], skipped_fields: [] },
+        error: null,
+      });
+      const values = {
+        name: '兮兮',
+        phone: '18271421690',
+        gender: '女',
+        age: '25',
+        is_student: false,
+        education: '本科',
+        has_health_certificate: '有',
+        height: '163',
+        weight: '46',
+      } as const;
+      const facts = Object.fromEntries(
+        USER_PROFILE_FIELD_KEYS.map((key) => [key, profileFact(values[key])]),
+      );
+
+      await store.upsertProfileFacts('corp1', 'user1', BOT_USER_ID, facts);
+
+      const rpcPayload = mockRpc.mock.calls[0][1] as {
+        p_profile_facts: Record<string, unknown>;
+      };
+      expect(Object.keys(rpcPayload.p_profile_facts)).toEqual(USER_PROFILE_FIELD_KEYS);
+      expect(rpcPayload.p_profile_facts.height).toEqual(
+        expect.objectContaining({ value: '163' }),
+      );
+      expect(rpcPayload.p_profile_facts.weight).toEqual(
+        expect.objectContaining({ value: '46' }),
+      );
+    });
+
     it('should call RPC with profile facts and message_metadata', async () => {
       mockRpc.mockResolvedValue({
         data: { written_fields: ['name', 'phone'], skipped_fields: [] },
