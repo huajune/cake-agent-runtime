@@ -318,7 +318,7 @@ detectAndSettle(): chat_messages 中出现 gap ≥ consolidationGapSeconds
 > `tool` / `booking` / `extraction` / `enrichment` 八个值映射进上表——**只在读存量数据时出现，写入侧只用六章**。
 > 取名与待遇判据见 [候选人档案域 §5.1](./candidate-profile-domain.md)。
 
-⚠️ `gender_source` 是**独立字段**（枚举 `candidate | system`），不是上表的 source——`system` 值只能作系统标签参考，**不得用于直接排除候选人**。
+⚠️ `gender_source` 已进入两刀拆除批 A：活跃写入停止，当前仅保留为 3 天旧存量的兼容 sibling。消费方优先读取 `gender` 信封：`candidate_quote`=候选人自陈，`system+非 high`=系统标签（不得用于直接排除候选人），`system+high`=报名办结确权；仅当信封尚无新语义时回退该 sibling。批 B 待存量 TTL 清零后删除 schema 键与兼容读。
 
 ---
 

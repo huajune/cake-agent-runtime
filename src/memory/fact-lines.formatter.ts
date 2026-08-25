@@ -3,6 +3,7 @@ import { stripTimeContextSuffix } from '@resolution/candidate/name';
 import type { TurnHints, TurnHintFieldPath } from '@resolution/evidence/claim.types';
 import { projectTurnHints, resolveTurnHints } from '@resolution/evidence/merge';
 import { RULE_CLAIM_QUOTE_MAX_CHARS } from '@resolution/evidence/producers/direct-field';
+import { readGenderProvenance, type GenderProvenance } from '@resolution/candidate/gender';
 import { formatLocalMinute } from '@infra/utils/date.util';
 import type {
   EntityExtractionResult,
@@ -59,11 +60,8 @@ export function formatExtractionFactLines(
 
   const gender = readFactValue(info.gender);
   if (gender) {
-    const genderSource = readFactValue(info.gender_source);
-    const sourceTag =
-      genderSource === 'candidate'
-        ? '（候选人自陈）'
-        : '（系统标签，未经候选人自陈，不得用于直接排除候选人）';
+    const genderSource = readGenderProvenance(info);
+    const sourceTag = formatGenderSourceTag(info.gender, genderSource);
     lines.push(`- 性别: ${gender}${sourceTag}${meta(info.gender)}`);
   }
 
@@ -155,6 +153,19 @@ export function formatExtractionFactLines(
     );
 
   return lines;
+}
+
+function formatGenderSourceTag(gender: unknown, resolved: GenderProvenance): string {
+  if (resolved?.source === 'candidate') return '（候选人自陈）';
+  if (
+    resolved?.source === 'system' &&
+    !resolved.fromLegacySibling &&
+    isSessionFactValue(gender) &&
+    gender.confidence === 'high'
+  ) {
+    return '（系统记录，报名办结已确认）';
+  }
+  return '（系统标签，未经候选人自陈，不得用于直接排除候选人）';
 }
 
 function readFactValue<T>(value: SessionFactValue<T> | T | null | undefined): T | null {

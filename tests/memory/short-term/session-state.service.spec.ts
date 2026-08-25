@@ -317,13 +317,8 @@ describe('SessionStateService（S1-S6）', () => {
       }),
       gender: sessionFactValue('女', {
         confidence: 'high',
-        source: 'candidate_quote',
+        source: 'system',
         evidence: '报名成功性别',
-      }),
-      gender_source: sessionFactValue('candidate' as const, {
-        confidence: 'high',
-        source: 'candidate_quote',
-        evidence: '报名成功性别来源',
       }),
       age: sessionFactValue('25', {
         confidence: 'high',

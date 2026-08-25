@@ -120,18 +120,28 @@ describe('TurnHintsSection', () => {
           confidence: 'low',
           producer: 'system',
         }),
-        testTurnHint(
-          'interview_info.gender_source',
-          'system',
-          '客户详情接口补充性别来源：系统标签',
-          { confidence: 'low', producer: 'system' },
-        ),
       ),
     });
 
     expect(output).toContain('[本轮解析线索]');
     expect(output).toContain(
       '性别: 女（系统标签，未经候选人自陈，不得用于直接排除候选人）（置信度: low，来源: system，证据: 客户详情接口补充性别：女，原话: 客户详情接口补充性别：女）',
+    );
+  });
+
+  it('projects candidate_quote gender as candidate self-report without a sibling claim', () => {
+    const output = section.build({
+      ...baseCtx,
+      sessionFacts: null,
+      turnHints: testTurnHints(
+        testTurnHint('interview_info.gender', '男', '性别识别：男', {
+          producer: 'candidate_quote',
+        }),
+      ),
+    });
+
+    expect(output).toContain(
+      '性别: 男（候选人自陈）（置信度: high，来源: candidate_quote，证据: 性别识别：男',
     );
   });
 

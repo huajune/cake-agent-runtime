@@ -172,7 +172,7 @@ export type TurnHint<T = unknown> = Omit<
   FactClaim<
     T,
     TurnHintFieldPath,
-    Extract<CandidateFactProducer, 'rule' | 'system'>,
+    Extract<CandidateFactProducer, 'candidate_quote' | 'rule' | 'system'>,
     TurnHintEvidence
   >,
   'operation'

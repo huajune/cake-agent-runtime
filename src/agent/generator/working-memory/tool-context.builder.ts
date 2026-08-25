@@ -4,6 +4,7 @@ import type { TurnLedger } from '@shared-types/turn.types';
 import type { SessionBrandState } from '@resolution/brand/brand-resolution.types';
 import { type LaborFormIntentDecision } from '@resolution/labor-form';
 import type { CandidatePrefillField, CandidatePrefillHints } from '@resolution/candidate/types';
+import { readGenderProvenance } from '@resolution/candidate/gender';
 import { projectTurnHints } from '@resolution/evidence/merge';
 import type { TurnHints } from '@resolution/evidence/claim.types';
 import { unwrapUserProfileFacts } from '@memory/long-term/long-term.types';
@@ -11,7 +12,6 @@ import {
   type EntityExtractionResult,
   type SessionFacts,
   isSessionFactValue,
-  unwrapSessionFactValue,
   unwrapSessionFacts,
 } from '@memory/short-term/short-term.types';
 import { ContextService } from '../context/context.service';
@@ -162,8 +162,9 @@ const PREFILL_HINT_FIELDS: ReadonlyArray<[CandidatePrefillField, string]> = [
 ];
 
 /**
- * D5 的信任门继续生效：medium/system 事实不进入 trustedSessionFacts，只投影为
- * 表单「带值求证」提示。工具能减少重复盘问，却不会把弱来源升级成报名事实。
+ * D5 的信任门继续生效：medium 与 system+非 high 事实只投影为表单「带值求证」
+ * 提示；system+high 是报名办结确权，可进入 trustedSessionFacts。工具能减少重复盘问，
+ * 却不会把弱来源升级成报名事实。
  *
  * **2026-08-12 工序 A3**：覆盖面从性别一个字段推广到全部收资字段。三禁令
  * （不得据此拒绝 / 提交 / 升级来源）由 CandidatePrefillHint 类型注释承载，
@@ -182,10 +183,14 @@ function buildCandidatePrefillHints(
     const value = String(fact.value ?? '').trim();
     if (!value) continue;
 
-    // 性别另有 gender_source 旁路标记（系统标签回填），一并算 system 来源。
+    // 新语义：gender 自身的 source+confidence 足以判定；旧 sibling 只作 3 天兼容回退。
+    // booking 是 system+high，可程序化预填；企微标签是 system+非 high，仍被安全闸拦截。
+    const genderSource = hintField === 'gender' ? readGenderProvenance(info) : null;
     const isSystemSourced =
-      fact.source === 'system' ||
-      (hintField === 'gender' && unwrapSessionFactValue(info.gender_source) === 'system');
+      hintField === 'gender'
+        ? genderSource?.source === 'system' &&
+          (genderSource.fromLegacySibling || fact.confidence !== 'high')
+        : fact.source === 'system';
     const reason = isSystemSourced
       ? 'system_source'
       : fact.confidence === 'medium'

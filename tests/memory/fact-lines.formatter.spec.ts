@@ -3,7 +3,11 @@ import {
   formatTurnHintLines,
   RULE_CLAIM_QUOTE_RENDER_MAX_CHARS,
 } from '@memory/fact-lines.formatter';
-import { FALLBACK_EXTRACTION } from '@memory/short-term/short-term.types';
+import {
+  FALLBACK_EXTRACTION,
+  sessionFactValue,
+  toSessionFacts,
+} from '@memory/short-term/short-term.types';
 import { testTurnHint, testTurnHints } from '../helpers/turn-hints.fixture';
 
 describe('formatExtractionFactLines', () => {
@@ -54,6 +58,69 @@ describe('formatExtractionFactLines', () => {
 
   it('should skip empty fields', () => {
     expect(formatExtractionFactLines(FALLBACK_EXTRACTION)).toEqual([]);
+  });
+
+  it.each([
+    {
+      name: 'candidate self-report from the gender envelope',
+      gender: sessionFactValue('女', {
+        confidence: 'high',
+        source: 'candidate_quote',
+        evidence: '性别识别：女',
+      }),
+      genderSource: null,
+      tag: '（候选人自陈）',
+    },
+    {
+      name: 'untrusted system label from the gender envelope',
+      gender: sessionFactValue('女', {
+        confidence: 'medium',
+        source: 'system',
+        evidence: '企微客户详情',
+      }),
+      genderSource: null,
+      tag: '（系统标签，未经候选人自陈，不得用于直接排除候选人）',
+    },
+    {
+      name: 'booking-confirmed system value',
+      gender: sessionFactValue('女', {
+        confidence: 'high',
+        source: 'system',
+        evidence: '收资表单办结：性别',
+      }),
+      genderSource: null,
+      tag: '（系统记录，报名办结已确认）',
+    },
+    {
+      name: 'legacy candidate sibling fallback',
+      gender: sessionFactValue('女', {
+        confidence: 'high',
+        source: 'rule',
+        evidence: '旧规则轨',
+      }),
+      genderSource: sessionFactValue('candidate' as const, {
+        confidence: 'high',
+        source: 'rule',
+        evidence: '旧 gender_source',
+      }),
+      tag: '（候选人自陈）',
+    },
+  ])('renders gender provenance: $name', ({ gender, genderSource, tag }) => {
+    const base = toSessionFacts(FALLBACK_EXTRACTION, {
+      confidence: 'medium',
+      source: 'model',
+      evidence: '测试基线',
+    });
+    const lines = formatExtractionFactLines({
+      ...base,
+      interview_info: {
+        ...base.interview_info,
+        gender,
+        gender_source: genderSource,
+      },
+    });
+
+    expect(lines).toEqual([expect.stringContaining(`- 性别: 女${tag}`)]);
   });
 
   it('should render Boss title brand ids', () => {

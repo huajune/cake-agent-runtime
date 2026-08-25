@@ -341,8 +341,8 @@ export function produceTurnHints(
 
     // ── 以下为带字段间联动 / 自定义合并语义的特殊字段，保留在循环内手写 ──
 
-    // gender：一次识别发布 gender 与 gender_source 两条 claim。
-    // 同属身份字段：岗位截图里的"仅限男"不是候选人性别。
+    // gender：候选人原话经确定性规则复算后，来源章直接记 candidate_quote。
+    // 批 A 起不再发布 gender_source sibling；岗位截图里的"仅限男"仍不是候选人性别。
     const gender = isSelfReported ? extractGender(message) : null;
     if (gender) {
       appendRuleClaim(sink, {
@@ -351,13 +351,7 @@ export function produceTurnHints(
         message,
         quote: gender.excerpt,
         label: `性别识别：${gender.value}`,
-      });
-      appendRuleClaim(sink, {
-        field: 'interview_info.gender_source',
-        value: 'candidate',
-        message,
-        quote: gender.excerpt,
-        label: '性别来源：候选人自陈',
+        producer: 'candidate_quote',
       });
     }
 
@@ -525,14 +519,6 @@ export function mergeSupplementalGenderClaims(
     value: gender,
     message: sourceLabel,
     label: `${sourceLabel}补充性别：${gender}`,
-    confidence: 'low',
-    producer: 'system',
-  });
-  appendRuleClaim(sink, {
-    field: 'interview_info.gender_source',
-    value: 'system',
-    message: sourceLabel,
-    label: `${sourceLabel}补充性别来源：系统标签`,
     confidence: 'low',
     producer: 'system',
   });

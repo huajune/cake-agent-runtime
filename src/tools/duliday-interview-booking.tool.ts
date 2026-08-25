@@ -418,11 +418,10 @@ export function buildInterviewBookingTool(
                   name: formFact(identity.name, '收资表单办结：姓名'),
                   phone: formFact(identity.phone, '收资表单办结：手机号'),
                   age: formFact(identity.age, '收资表单办结：年龄'),
-                  gender: formFact(identity.gender, '收资表单办结：性别'),
-                  gender_source: sessionFactValue('candidate' as const, {
+                  gender: sessionFactValue(identity.gender, {
                     confidence: 'high',
-                    source: 'candidate_quote',
-                    evidence: '收资表单办结：性别来源',
+                    source: 'system',
+                    evidence: '收资表单办结：性别',
                     extractedAt: new Date().toISOString(),
                   }),
                 },

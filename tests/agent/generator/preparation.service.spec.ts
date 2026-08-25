@@ -289,11 +289,17 @@ describe('PreparationService', () => {
     {
       confidence: 'low',
       source: 'system',
+      genderSource: null,
+      reason: 'system_source',
+    },
+    {
+      confidence: 'medium',
+      source: 'rule',
       genderSource: {
         value: 'system',
         confidence: 'low',
         source: 'system',
-        evidence: '企微客户详情',
+        evidence: '旧 gender_source 系统标签',
       },
       reason: 'system_source',
     },
@@ -350,6 +356,70 @@ describe('PreparationService', () => {
       expect(toolContext.archive.sessionFacts?.interview_info?.gender).toBeNull();
     },
   );
+
+  it.each([
+    {
+      name: 'candidate self-report',
+      source: 'candidate_quote',
+      genderSource: null,
+    },
+    {
+      name: 'booking-confirmed system value',
+      source: 'system',
+      genderSource: null,
+    },
+    {
+      name: 'legacy candidate sibling',
+      source: 'rule',
+      genderSource: {
+        value: 'candidate',
+        confidence: 'high',
+        source: 'rule',
+        evidence: '旧 gender_source 候选人自陈',
+      },
+    },
+  ] as const)('admits high-confidence gender from $name', async ({ source, genderSource }) => {
+    setRecallOnce({
+      shortTerm: { messageWindow: [{ role: 'user', content: '我想报名' }] },
+      sessionState: {
+        facts: {
+          ...FALLBACK_EXTRACTION,
+          interview_info: {
+            ...FALLBACK_EXTRACTION.interview_info,
+            gender: { value: '男', confidence: 'high', source, evidence: '可信性别' },
+            gender_source: genderSource,
+          },
+        },
+        lastCandidatePool: null,
+        presentedJobs: null,
+        currentFocusJob: null,
+      },
+      turnHints: null,
+      longTerm: { semantic: { profile: null } },
+      stage: {
+        currentStage: 'job_consultation',
+        fromStage: null,
+        advancedAt: null,
+        reason: null,
+      },
+    });
+
+    await service.prepare(
+      {
+        callerKind: CallerKind.WECOM,
+        messages: [{ role: 'user', content: '我想报名' }],
+        userId: 'user-1',
+        corpId: 'corp-1',
+        sessionId: 'sess-1',
+        strategySource: 'testing',
+      },
+      'invoke',
+    );
+
+    const [, toolContext] = mockToolRegistry.buildForScenario.mock.calls[0];
+    expect(toolContext.archive.sessionFacts?.interview_info?.gender).toBe('男');
+    expect(toolContext.archive.candidatePrefillHints?.gender).toBeUndefined();
+  });
 
   it('threads hosting-member account identity into compose (badcase 6a5dedb2)', async () => {
     mockHostingMemberConfig.resolveAgentAccountIdentity.mockResolvedValueOnce({
