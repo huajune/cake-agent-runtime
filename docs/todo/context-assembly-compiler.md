@@ -21,6 +21,7 @@
 2. **顶层 `context/procedural/` 撤销**（2026-08-26 追裁）：两个手册 .md 迁入 `sections/procedural/`——同一类知识的内容资产与渲染器一个家（"散件跟主人走"先例），procedural 一词在 context/ 下只出现一次；加载路径与文档内链同步。
 3. 排序维持显式有序清单，逐项加类型/稳定档注释，顺序一字不动。
 4. grep 级测试收敛为单一路径：`sections/procedural/` 下每文件（.ts 与 .md）必含 prompt-rule-ledger 锚点注释。
+5. **拆除两个聚合壳（2026-08-26 追裁）**：`policy.section`（red-lines+thresholds 的括号）与 `runtime-context.section`（六个真 section 的括号，"混合编排"自白即分类失败证明）删除，子 section 按当前渲染顺序直接铺进 `SCENARIO_SECTIONS['candidate-consultation']`：identity → base-manual → red-lines → thresholds → stage-strategy → memory → turn-hints → hard-constraints → datetime → channel → group-inventory → final-check。子块渲染顺序逐字节不变（零行为）。三重收益：排序清单首次展示全部真实块（注释才标得准）；混合型难题随括号消失；**批二先决条件**（重排需单独挪动 memory/stage-strategy，括号内动不了）。薄壳三件（memory/group-inventory/static 适配器与复用加载器）非括号，保留。
 
 ### 批三：组装冲突裁决批（一个纯函数）
 
