@@ -6,13 +6,21 @@
 
 ## 一、三批（全部内容）
 
-### 批一：归类批（零行为）
+### 批一：归类批（零行为；2026-08-26 经首次执行纠偏后定稿）
 
-1. `context/sections/` 立四个子目录 procedural / semantic / episodic / working，section 文件按主类型 git mv 归位（混合型按主导类型 + 文件头注释一句）。**不加任何 memoryType 字段或常量表**（字段方案 2026-08-25 裁定否决："结构承载语义"用到底）。
-   ⚠️ 既有 `PROMPT_SECTION_DOMAIN_REGISTRY` 是另一根轴（语料域 teaching/evidence，指令-数据分离执法点，PR #1000 遗产）——不动、不合并、不混淆，两轴正交并存。
-   与 memory 侧"类型词不当目录名"裁定不冲突：那条针对作用域轴实体；sections 的实体是知识内容块，类型即其天然主分类轴。
-2. 排序维持显式有序清单，逐项加类型/稳定档注释，顺序一字不动。
-3. 一个 grep 级测试：`sections/procedural/` 与 `context/procedural/` 下每文件必含 prompt-rule-ledger 锚点注释（group-inventory 内嵌教学漏网先例的防线）。
+1. `context/sections/` 立**三个**子目录 procedural / semantic / working（~~episodic~~ 无住户不立——目录跟实存内容走，不为分类学完备性立空目录）。**归类按下表执行，以内容为准不按文件名词感**（首次执行的教训：identity/memory/hard-constraints 全被词感误分）：
+
+   | 归属 | section | 依据 |
+   |---|---|---|
+   | procedural | static（手册）/ channel / policy / red-lines / thresholds / stage-strategy / **identity**（agent 人设=行为指令，非候选人事实） | 规程与指令 |
+   | semantic | **memory**（渲染档案+会话事实，落点表 semantic）/ **group-inventory**（群库事实数据） | 事实 |
+   | working | datetime / runtime-context / turn-hints / **hard-constraints**（候选人本轮硬约束线索，evidence 数据非规程） | 本轮 |
+   | sections/ 根 | section.interface.ts（基础设施非 section，不参与分类） | — |
+
+   **不加任何 memoryType 字段或常量表**（字段方案裁定否决）。⚠️ 既有 `PROMPT_SECTION_DOMAIN_REGISTRY` 是另一根轴（语料域 teaching/evidence，指令-数据分离执法点）——不动、不混淆，两轴正交。与 memory 侧"类型词不当目录名"裁定不冲突（那条针对作用域轴实体；sections 的实体是知识内容块，类型即天然主轴）。
+2. **顶层 `context/procedural/` 撤销**（2026-08-26 追裁）：两个手册 .md 迁入 `sections/procedural/`——同一类知识的内容资产与渲染器一个家（"散件跟主人走"先例），procedural 一词在 context/ 下只出现一次；加载路径与文档内链同步。
+3. 排序维持显式有序清单，逐项加类型/稳定档注释，顺序一字不动。
+4. grep 级测试收敛为单一路径：`sections/procedural/` 下每文件（.ts 与 .md）必含 prompt-rule-ledger 锚点注释。
 
 ### 批三：组装冲突裁决批（一个纯函数）
 
