@@ -82,7 +82,7 @@ function checkMembersPresent(check: string, relPath: string, members: readonly s
   //     不能整文件 includes——这些词在同文件的规则条目里到处出现，
   //     删掉合法值列表里的某一项也检不出来（已实测会假通过）。
   const check = 'labor_form 词表 ↔ 抽取提示词合法值行';
-  const relPath = 'src/memory/short-term/session-semantic/facts/extraction.prompt.ts';
+  const relPath = 'src/memory/short-term/extraction.prompt.ts';
   const line = read(relPath)
     .split('\n')
     .find((l) => l.includes('仅允许以下合法值之一'));

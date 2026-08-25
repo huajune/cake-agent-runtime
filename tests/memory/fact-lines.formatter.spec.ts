@@ -3,7 +3,7 @@ import {
   formatTurnHintLines,
   RULE_CLAIM_QUOTE_RENDER_MAX_CHARS,
 } from '@memory/fact-lines.formatter';
-import { FALLBACK_EXTRACTION } from '@memory/short-term/session-semantic/facts/facts.types';
+import { FALLBACK_EXTRACTION } from '@memory/short-term/short-term.types';
 import { testTurnHint, testTurnHints } from '../helpers/turn-hints.fixture';
 
 describe('formatExtractionFactLines', () => {

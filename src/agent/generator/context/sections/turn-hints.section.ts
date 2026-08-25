@@ -4,7 +4,7 @@ import {
   type EntityExtractionResult,
   type SessionFacts,
   unwrapSessionFacts,
-} from '@memory/short-term/session-semantic/facts/facts.types';
+} from '@memory/short-term/short-term.types';
 import type { TurnHints, TurnHintFieldPath } from '@resolution/evidence/claim.types';
 import { isSameFactValue, projectTurnHints, resolveTurnHints } from '@resolution/evidence/merge';
 import { PromptContext, PromptSection } from './section.interface';

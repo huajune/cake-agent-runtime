@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { ConversationRiskNotifierService } from '@notification/services/conversation-risk-notifier.service';
 import { GeneralHandoffNotifierService } from '@notification/services/general-handoff-notifier.service';
-import type { WeworkSessionState } from '@memory/short-term/session-semantic/facts/facts.types';
+import type { WeworkSessionState } from '@memory/short-term/short-term.types';
 
 export interface InterventionMessageSnapshot {
   role: 'user' | 'assistant';

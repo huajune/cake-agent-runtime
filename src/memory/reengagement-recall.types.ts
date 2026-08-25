@@ -1,4 +1,4 @@
-import type { SessionTerminalState } from './short-term/session-semantic/facts/facts.types';
+import type { SessionTerminalState } from './short-term/short-term.types';
 import type { CandidateCollectedField, CandidateFieldKey } from '@resolution/candidate/types';
 
 // 信封唯一定义在 @resolution/candidate/types（§2.3 信封终态）；此处仅作存储侧别名转发，

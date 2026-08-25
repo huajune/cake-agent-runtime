@@ -2,12 +2,12 @@
  * BrandStateService 测试（spec §14.2 会话测试的存取/seed/补写部分）。
  */
 
-import { BrandStateService } from '@memory/short-term/session-semantic/facts/brand-state.service';
+import { BrandStateService } from '@memory/short-term/brand-state.service';
 import {
   FALLBACK_EXTRACTION,
   toSessionFacts,
   type SessionFacts,
-} from '@memory/short-term/session-semantic/facts/facts.types';
+} from '@memory/short-term/short-term.types';
 import type {
   BrandResolution,
   PersistedBrandState,

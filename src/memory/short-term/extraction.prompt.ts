@@ -2,8 +2,8 @@ import type { BrandItem } from '@/sponge/sponge.types';
 import type { BrandAliasHint } from '@resolution/evidence/producers/rule-track';
 import type { TurnHints } from '@resolution/evidence/claim.types';
 import type { TurnExtractionToolFacts } from '@shared-types/turn.types';
-import type { SessionFacts } from './facts.types';
-import { isSessionFactValue } from './facts.types';
+import type { SessionFacts } from './short-term.types';
+import { isSessionFactValue } from './short-term.types';
 
 export type SessionExtractionToolFacts = TurnExtractionToolFacts;
 

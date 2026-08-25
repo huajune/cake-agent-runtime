@@ -8,10 +8,10 @@
 import type { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
 import type { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { toErrorMessage } from '@infra/utils/error.util';
-import type { CollectionFormService } from '@memory/short-term/session-semantic/facts/collection-form.service';
+import type { CollectionFormService } from '@memory/short-term/collection-form.service';
 import type { LongTermService } from '@memory/long-term/long-term.service';
-import type { SessionSemanticService } from '@memory/short-term/session-semantic/session-semantic.service';
-import { sessionFactValue } from '@memory/short-term/session-semantic/facts/facts.types';
+import type { SessionSemanticService } from '@memory/short-term/session-semantic.service';
+import { sessionFactValue } from '@memory/short-term/short-term.types';
 import type { ActiveBookingEntry } from '@memory/long-term/long-term.types';
 import { Logger } from '@nestjs/common';
 import type { PrivateChatMonitorNotifierService } from '@notification/services/private-chat-monitor-notifier.service';

@@ -18,7 +18,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { MessageType } from '@enums/message-callback.enum';
 import { BrandResolutionService } from '@resolution/brand/brand-resolution.service';
-import { BrandStateService } from '@memory/short-term/session-semantic/facts/brand-state.service';
+import { BrandStateService } from '@memory/short-term/brand-state.service';
 import { AlertNotifierService } from '@notification/services/alert-notifier.service';
 import type { AgentToolCall } from '@agent/generator/generator.types';
 import { ImageDescriptionService } from './image-description.service';

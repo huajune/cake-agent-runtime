@@ -1,7 +1,7 @@
 import type { SemanticMemory } from './long-term/long-term.types';
-import type { StageState } from './short-term/session-semantic/workbench/workbench.types';
-import type { ShortTermMessage } from './short-term/message-window/message-window.types';
-import type { WeworkSessionState } from './short-term/session-semantic/facts/facts.types';
+import type { StageState } from './short-term/short-term.types';
+import type { ShortTermMessage } from './short-term/short-term.types';
+import type { WeworkSessionState } from './short-term/short-term.types';
 import type { TurnHints } from '@resolution/evidence/claim.types';
 
 /**

@@ -1,4 +1,4 @@
-import { SessionWorkbenchService } from '@memory/short-term/session-semantic/workbench/workbench.service';
+import { SessionWorkbenchService } from '@memory/short-term/workbench.service';
 
 describe('SessionWorkbenchService stage pointer', () => {
   const mockRedisStore = {

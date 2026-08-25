@@ -6,10 +6,7 @@ import { normalizeCityName as normalizeCity } from '@resolution/geo';
 import { formatExtractionFactLines } from '@memory/fact-lines.formatter';
 import { MemoryService } from '@memory/memory.service';
 import { stripTimeContext } from '@resolution/signal/markers';
-import type {
-  InvitedGroupRecord,
-  SessionFacts,
-} from '@memory/short-term/session-semantic/facts/facts.types';
+import type { InvitedGroupRecord, SessionFacts } from '@memory/short-term/short-term.types';
 import type { RecommendedJobSummary } from '@resolution/job/types';
 import type {
   UserProfileFacts,

@@ -2,7 +2,7 @@ import { Logger } from '@nestjs/common';
 import { tool } from 'ai';
 import { z } from 'zod';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
-import { SessionSemanticService } from '@memory/short-term/session-semantic/session-semantic.service';
+import { SessionSemanticService } from '@memory/short-term/session-semantic.service';
 import { LongTermService } from '@memory/long-term/long-term.service';
 import { InterventionService } from '@biz/intervention/intervention.service';
 import { HandoffRecorderService } from '@biz/handoff-events/handoff-recorder.service';

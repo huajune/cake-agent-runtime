@@ -2,7 +2,7 @@ import { PreparationService } from '@agent/generator/working-memory/preparation.
 import { PromptInjectionService } from '@agent/guardrail/input/prompt-injection.service';
 import { CallerKind } from '@enums/agent.enum';
 import { StorageMessageSource, StorageMessageType } from '@enums/storage-message.enum';
-import { FALLBACK_EXTRACTION } from '@memory/short-term/session-semantic/facts/facts.types';
+import { FALLBACK_EXTRACTION } from '@memory/short-term/short-term.types';
 import { getTurnHint } from '@resolution/evidence/merge';
 import { extractCandidateTextsFromCorpus } from '@resolution/signal/self-report';
 import { testTurnHint, testTurnHints } from '../../helpers/turn-hints.fixture';

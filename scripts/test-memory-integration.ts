@@ -19,11 +19,11 @@ import { SupabaseStore } from '@memory/stores/supabase.store';
 import { RedisStore } from '@memory/stores/redis.store';
 import { LongTermService } from '@memory/long-term/long-term.service';
 import { ConsolidationService } from '@memory/long-term/consolidation.service';
-import { MessageWindowService } from '@memory/short-term/message-window/message-window.service';
-import { SessionSemanticService } from '@memory/short-term/session-semantic/session-semantic.service';
-import { SessionFactsService } from '@memory/short-term/session-semantic/facts/facts.service';
-import { SessionWorkbenchService } from '@memory/short-term/session-semantic/workbench/workbench.service';
-import { FALLBACK_EXTRACTION } from '@memory/short-term/session-semantic/facts/facts.types';
+import { MessageWindowService } from '@memory/short-term/message-window.service';
+import { SessionSemanticService } from '@memory/short-term/session-semantic.service';
+import { SessionFactsService } from '@memory/short-term/facts.service';
+import { SessionWorkbenchService } from '@memory/short-term/workbench.service';
+import { FALLBACK_EXTRACTION } from '@memory/short-term/short-term.types';
 
 // ============================================================
 // 环境 & 客户端初始化

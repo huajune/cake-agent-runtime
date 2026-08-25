@@ -3,7 +3,7 @@ import {
   FALLBACK_EXTRACTION,
   sessionFactValue,
   toSessionFacts,
-} from '@memory/short-term/session-semantic/facts/facts.types';
+} from '@memory/short-term/short-term.types';
 
 describe('LongTermService（S7 单一 Profile 上游 + preference 三态）', () => {
   const store = {

@@ -5,14 +5,14 @@ import {
   resolveAssistantAnchoredFocusJob,
   resolveCurrentFocusJob,
 } from '@resolution/job';
-import { MemoryConfig } from '../../../memory.config';
-import { RedisStore } from '../../../stores/redis.store';
-import { SessionFactsService } from '../facts/facts.service';
+import { MemoryConfig } from '../memory.config';
+import { RedisStore } from '../stores/redis.store';
+import { SessionFactsService } from './facts.service';
 import {
   type JobListQueryRecord,
   JobListQueryRecordSchema,
   type StageState,
-} from './workbench.types';
+} from './short-term.types';
 
 /**
  * 会话记忆·工作台舱（working state，M3 分家 2026-08-21）

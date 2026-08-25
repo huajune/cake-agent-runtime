@@ -4,8 +4,8 @@ import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { RedisService } from '@infra/redis/redis.service';
 import { appendTimeContext } from '@resolution/signal/markers';
 import { formatCurrentTime } from '@infra/utils/date.util';
-import { MemoryConfig } from '../../memory.config';
-import type { ShortTermMessage } from './message-window.types';
+import { MemoryConfig } from '../memory.config';
+import type { ShortTermMessage } from './short-term.types';
 import {
   buildChatHistoryCacheKey,
   parseCachedChatHistoryMessages,

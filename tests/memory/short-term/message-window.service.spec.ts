@@ -1,4 +1,4 @@
-import { MessageWindowService } from '@memory/short-term/message-window/message-window.service';
+import { MessageWindowService } from '@memory/short-term/message-window.service';
 import { buildChatHistoryCacheKey } from '@biz/message/utils/chat-history-cache.util';
 import { StorageMessageSource, StorageMessageType } from '@enums/storage-message.enum';
 

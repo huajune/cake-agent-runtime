@@ -5,7 +5,7 @@ import { RouterService } from '@providers/router.service';
 import { ModelRole } from '@/llm/llm.types';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 import type { AgentReplyConfig } from '@biz/hosting-config/types/hosting-config.types';
-import { MessageWindowService } from '@memory/short-term/message-window/message-window.service';
+import { MessageWindowService } from '@memory/short-term/message-window.service';
 import { SemanticReviewNotifierService } from '@notification/services/semantic-review-notifier.service';
 import type { AgentMemorySnapshot, AgentToolCall } from '@agent/generator/generator.types';
 import { hasCommittedSideEffect } from '@agent/generator/tool-call-analysis';

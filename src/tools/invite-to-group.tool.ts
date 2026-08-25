@@ -9,7 +9,7 @@ import {
   type GroupInviteInput,
   type GroupInviteResult,
 } from '@biz/group-task/services/group-invite.service';
-import { SessionSemanticService } from '@memory/short-term/session-semantic/session-semantic.service';
+import { SessionSemanticService } from '@memory/short-term/session-semantic.service';
 import { evaluateInviteCityGate } from '@tools/invite/invite-city-gate';
 import { evaluateInviteTimingGate, hasAcceptedGroupOffer } from '@tools/invite/invite-timing-gate';
 import { extractUserTexts } from '@resolution/signal/dialogue';

@@ -17,7 +17,7 @@ import {
   type EntityExtractionResult,
   type WeworkSessionState,
   unwrapSessionFacts,
-} from '@memory/short-term/session-semantic/facts/facts.types';
+} from '@memory/short-term/short-term.types';
 import type { RecommendedJobSummary } from '@resolution/job/types';
 import type { SignupWorkOrderItem } from '@sponge/sponge.types';
 import { isArchivedProfileFactSuperseded } from '@resolution/evidence/profile';

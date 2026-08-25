@@ -1,4 +1,4 @@
-import type { SessionFacts } from '@memory/short-term/session-semantic/facts/facts.types';
+import type { SessionFacts } from '@memory/short-term/short-term.types';
 import type { TurnHints } from '@resolution/evidence/claim.types';
 import type { SessionBrandState } from '@resolution/brand/brand-resolution.types';
 import { StrategyConfigRecord } from '@biz/strategy/entities/strategy-config.entity';

@@ -1,7 +1,7 @@
 import { Test } from '@nestjs/testing';
-import { SessionSemanticService } from '@memory/short-term/session-semantic/session-semantic.service';
-import { SessionFactsService } from '@memory/short-term/session-semantic/facts/facts.service';
-import { SessionWorkbenchService } from '@memory/short-term/session-semantic/workbench/workbench.service';
+import { SessionSemanticService } from '@memory/short-term/session-semantic.service';
+import { SessionFactsService } from '@memory/short-term/facts.service';
+import { SessionWorkbenchService } from '@memory/short-term/workbench.service';
 import { RedisStore } from '@memory/stores/redis.store';
 import { MemoryConfig } from '@memory/memory.config';
 import { LlmExecutorService } from '@/llm/llm-executor.service';

@@ -28,7 +28,7 @@ import { FilterReason } from '@wecom/message/application/filter.service';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 import { HardRulesService } from '@agent/guardrail/output/hard-rules.service';
 import { LongTermService } from '@memory/long-term/long-term.service';
-import { SessionSemanticService } from '@memory/short-term/session-semantic/session-semantic.service';
+import { SessionSemanticService } from '@memory/short-term/session-semantic.service';
 import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
 import { HostingMemberConfigService } from '@biz/hosting-config/services/hosting-member-config.service';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';

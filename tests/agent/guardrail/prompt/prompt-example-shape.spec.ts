@@ -99,7 +99,7 @@ function listToolSourceFiles(directory: string): string[] {
 const EXTRACTION_PROMPTS: readonly PromptSurface[] = [
   {
     id: 'session-extraction',
-    source: 'src/memory/short-term/session-semantic/facts/extraction.prompt.ts',
+    source: 'src/memory/short-term/extraction.prompt.ts',
   },
 ];
 

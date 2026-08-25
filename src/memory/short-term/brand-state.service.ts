@@ -31,15 +31,15 @@ import type {
   SessionBrandState,
 } from '@resolution/brand/brand-resolution.types';
 import { BRAND_EXECUTABLE_CONFIDENCE } from '@resolution/brand/brand-resolution.types';
-import { RedisStore } from '../../../stores/redis.store';
-import { MemoryConfig } from '../../../memory.config';
+import { RedisStore } from '../stores/redis.store';
+import { MemoryConfig } from '../memory.config';
 import {
   FALLBACK_EXTRACTION,
   PersistedBrandStateSchema,
   SessionFactsSchema,
   type SessionFacts,
-} from './facts.types';
-import { buildSessionFactsHashKey } from '../session-key';
+} from './short-term.types';
+import { buildSessionFactsHashKey } from './session-key';
 
 export interface TurnBrandContext {
   /** 本轮生效的品牌状态：已持久化状态，或首轮 seed 出的初始状态（未落盘）。 */

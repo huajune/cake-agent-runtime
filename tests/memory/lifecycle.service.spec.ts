@@ -1,7 +1,7 @@
 import { MemoryLifecycleService } from '@memory/lifecycle.service';
 import { produceTurnHints } from '@resolution/evidence/producers/rule-track';
 import { getTurnHint } from '@resolution/evidence/merge';
-import { FALLBACK_EXTRACTION } from '@memory/short-term/session-semantic/facts/facts.types';
+import { FALLBACK_EXTRACTION } from '@memory/short-term/short-term.types';
 import { testTurnHint, testTurnHints } from '../helpers/turn-hints.fixture';
 
 describe('MemoryLifecycleService', () => {

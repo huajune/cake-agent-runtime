@@ -6,8 +6,8 @@ import { AlertNotifierService } from '@notification/services/alert-notifier.serv
 import { LlmExecutorService } from '@/llm/llm-executor.service';
 import { ModelRole } from '@/llm/llm.types';
 import { SpongeService } from '@/sponge/sponge.service';
-import { RedisStore } from '../../../stores/redis.store';
-import { MemoryConfig } from '../../../memory.config';
+import { RedisStore } from '../stores/redis.store';
+import { MemoryConfig } from '../memory.config';
 import { z } from 'zod';
 import {
   BrandIntentEntrySchema,
@@ -32,8 +32,8 @@ import {
   toSessionFacts,
   truncateEvidence,
   unwrapSessionFactValue,
-} from './facts.types';
-import type { ReengagementSessionState, CollectedField } from '../../../reengagement-recall.types';
+} from './short-term.types';
+import type { ReengagementSessionState, CollectedField } from '../reengagement-recall.types';
 import { parseCandidateFieldsFromText } from '@resolution/candidate';
 import {
   buildSessionExtractionPrompt,
@@ -54,7 +54,7 @@ import { parseTimeContextAt, stripTimeContext } from '@resolution/signal/markers
 import { formatCurrentTime } from '@infra/utils/date.util';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
-import { buildSessionFactsHashKey } from '../session-key';
+import { buildSessionFactsHashKey } from './session-key';
 import { hasMeaningfulValue, resolveTurnHints } from '@resolution/evidence/merge';
 
 /**

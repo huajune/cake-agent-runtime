@@ -1,5 +1,5 @@
 import { MemoryEnrichmentService } from '@memory/enrichment.service';
-import { FALLBACK_EXTRACTION } from '@memory/short-term/session-semantic/facts/facts.types';
+import { FALLBACK_EXTRACTION } from '@memory/short-term/short-term.types';
 import type { AgentMemoryContext } from '@memory/memory-runtime.types';
 import { getTurnHint } from '@resolution/evidence/merge';
 import { testTurnHint, testTurnHints } from '../helpers/turn-hints.fixture';

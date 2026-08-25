@@ -6,13 +6,13 @@ import type { PostProcessingStatus, PostProcessingStepStatus } from '@shared-typ
 import type { CityAttestation, TurnExtractionToolFacts } from '@shared-types/turn.types';
 import { resolveBrands } from '@resolution/brand/brand-matcher';
 import type { BrandResolution } from '@resolution/brand/brand-resolution.types';
-import { BrandStateService } from './short-term/session-semantic/facts/brand-state.service';
+import { BrandStateService } from './short-term/brand-state.service';
 import { LongTermService } from './long-term/long-term.service';
 import { MemoryEnrichmentService, type CandidateIdentityHint } from './enrichment.service';
 import { ConsolidationService } from './long-term/consolidation.service';
-import { SessionSemanticService } from './short-term/session-semantic/session-semantic.service';
-import { SessionWorkbenchService } from './short-term/session-semantic/workbench/workbench.service';
-import { MessageWindowService } from './short-term/message-window/message-window.service';
+import { SessionSemanticService } from './short-term/session-semantic.service';
+import { SessionWorkbenchService } from './short-term/workbench.service';
+import { MessageWindowService } from './short-term/message-window.service';
 import { stripQuotedBlocks, stripTimeContext } from '@resolution/signal/markers';
 import type { AgentMemoryContext } from './memory-runtime.types';
 import type {
@@ -21,8 +21,8 @@ import type {
   UserProfileFacts,
 } from './long-term/long-term.types';
 import { isUserProfileFactValue } from './long-term/long-term.types';
-import type { ShortTermMessage } from './short-term/message-window/message-window.types';
-import type { WeworkSessionState } from './short-term/session-semantic/facts/facts.types';
+import type { ShortTermMessage } from './short-term/short-term.types';
+import type { WeworkSessionState } from './short-term/short-term.types';
 import type { RecommendedJobSummary } from '@resolution/job/types';
 import type { TurnHints } from '@resolution/evidence/claim.types';
 import type { LaborFormIntentDecision } from '@resolution/labor-form';

@@ -19,8 +19,8 @@ import {
 } from '@biz/group-task/services/group-invite.service';
 import { HandoffRecorderService } from '@biz/handoff-events/handoff-recorder.service';
 import { GeneralHandoffNotifierService } from '@notification/services/general-handoff-notifier.service';
-import { SessionSemanticService } from '@memory/short-term/session-semantic/session-semantic.service';
-import { unwrapSessionFactValue } from '@memory/short-term/session-semantic/facts/facts.types';
+import { SessionSemanticService } from '@memory/short-term/session-semantic.service';
+import { unwrapSessionFactValue } from '@memory/short-term/short-term.types';
 import { LongTermService } from '@memory/long-term/long-term.service';
 import { SpongeService } from '@sponge/sponge.service';
 import { ACTIVE_INTERVIEW_WORK_ORDER_STATUSES } from '@sponge/sponge.types';
