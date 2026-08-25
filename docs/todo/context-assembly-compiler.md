@@ -161,9 +161,9 @@ B1–B3 输出逐字节不变（golden test 锁），纯结构落地；B4/B5 是
 
 - **D1（最大行为变更）**：B5 记忆召回移出 system 进消息侧——两家先例支持、缓存收益最大，但改模型可见位置，风险最高。批准与否、以及是否要求先跑 shadow 对比（同 prompt 两种排布离线对拍）。
 - **D2**：B4 横幅文案与 untrusted 包裹的覆盖范围（候选人自陈召回是否全包；与既有 instruction-data separation 机制的边界）。
-- **D3**：预算超支 fail-open（截断+告警）的兜底语义确认（3.4 已按 fail-open 设计）。
-- **D4**：tail-recitation 的内容归属——阶段目标/收资清单进尾部段后，手册内对应教学是否同批删减（防腐纪律：同一约束只准住一处）。
-- **D5**：B1 golden test 的样本来源——现有测试 fixtures 之外，是否加一批 mpr 真实 prompt 回放对拍。
+- **D3 ✅（2026-08-25 评审拍板）**：fail-open 确认——超支=截断尾部低稳定区+breadcrumb+保标识符+告警落观测（P4 同源）。
+- **D4 ✅（2026-08-25 评审拍板，议题经二期后重新框定）**：收资清单半边已被收资状态机吸收（清单=工具输出，议题消失）；手册删减半边不适用（手册通用规程与 stage_goals 租户配置本就分居，无新重复）；剩余议题裁定为**阶段策略段按段位轴搬家**——当前阶段策略从 system 中部迁尾部动态段（B5 一并执行）：①注意力（本轮最高优先指令离生成点最近，recitation 本义）②缓存双赢（它随 advance_stage 变化，坐 system 中部每次推进都炸后缀前缀；迁走后 system 更稳）。全阶段一览（静态地图）留 system 稳定区。
+- **D5 ✅（2026-08-25 评审拍板）**：fixtures + 抽 20 条 mpr 真实 prompt 回放对拍（promptBlocks 全量在 mpr，回放=同输入重组装逐字节比对；样本覆盖多品牌/有档案/复聊入口/图片轮等生产组合形态）。
 
 ## 七、风险与回归闸
 
@@ -185,4 +185,4 @@ B1–B3 输出逐字节不变（golden test 锁），纯结构落地；B4/B5 是
 ## 附：同分支相邻待办（不属本文档批次）
 
 - README/glossary 双轴地图补写（业界三轴 + memory vs state 之辨 + 双管线图；glossary CoALA 词条出处修正：四分法是 CoALA 对 Tulving 1972（episodic/semantic）+ Baddeley 1974（working）+ 内隐记忆/ACT-R（procedural）三条传统的工程化统一，非单一出处）。
-- memory/ 结构定格与五乱源清理已升格为**二期 M5**（[memory-coala-alignment.md](./memory-coala-alignment.md) 工作包 M5，2026-08-24 逐条裁定）：short-term 伞目录（message-window / session-semantic，阶段指针并入 workbench）、7d/3d/3d 时间对齐、定时沉淀、profile 双写入路径（沉淀 medium + 报名 high，08-25 复议定稿）、ruleFacts→turnHints——不再是本文档待办。
+- memory/ 结构定格与五乱源清理已升格为**二期 M5**（[memory-coala-alignment.md](./memory-coala-alignment.md) 工作包 M5，2026-08-24 逐条裁定）：short-term 内部平铺（单一 short-term.types + 5 服务，阶段指针并入 workbench）、collection-form 全套迁出至 tools/collection（存储宪法修正）、long-term 加 bot 维不跨 bot、brand 并入 facts.brand、7d/3d/3d 时间对齐、定时沉淀、profile 双写入路径（沉淀 medium + 报名 high，08-25 复议定稿）、ruleFacts→turnHints——不再是本文档待办。

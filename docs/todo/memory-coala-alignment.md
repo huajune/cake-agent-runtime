@@ -76,7 +76,7 @@ interface LongTermMemory {
 **M2-B 追加项：Working Memory 类型命名（2026-08-21 设计，待批准与主体同批执行）**：
 `PreparedAgentContext` → `WorkingMemory`——prepare() 的产物（finalPrompt + promptBlocks + normalizedMessages + tools）正是 CoALA 语义的本轮工作记忆本体，泛名换精确分类名；**不改** `preparation.service`/`prepare()`（流程阶段名，且职责超出装配——booking 上下文/群资源/账号身份/阶段解析均在内，服务改名会让部件独占概念）；**不改** `finalPrompt`（内容名准确，是成分非全体）。类型注释标注边界：覆盖初始装配，回合内经 prepareStep 的工具结果增长在 generator 侧。
 
-**M3 登记项（随本设计新增）**：① jobIntent 内部软/硬/时间三分（preferences/constraints/availability）——软硬分离在结构上根治"硬约束被当偏好淡化"的暗示，与 M3 分家同性质合并做；② `lastSettledBySession`/`lastSettledMessageAt` 是 consolidation 水位簿记，混在摘要数据里名实有瑕，M3 一并考虑挪位。
+**M3 登记项（随本设计新增）**：① ~~jobIntent 内部软/硬/时间三分~~（**2026-08-25 用户裁定撤销**，见 M5-深审裁定七：全部视为软偏好不分级）；② `lastSettledBySession`/`lastSettledMessageAt` 是 consolidation 水位簿记，混在摘要数据里名实有瑕，M3 一并考虑挪位。
 
 ### M2-C memory 模块目录按生命周期轴重组（2026-08-21 设计，**待批准执行**）
 
@@ -96,7 +96,7 @@ interface LongTermMemory {
 - 验证：全库 6,768 测试 + typecheck 0 + lint:check 全绿（含 eslintrc 豁免路径随文件搬家同步）。
 - 遗留登记（不在本批）：jobIntent 软/硬/时间三分、consolidation 水位簿记挪位——等收资契约 v2 或下次记忆域批次；`active_booking` 冻结区未触碰。
 
-### M5-深审：两个智能点（2026-08-25，框架完工后的细节专项）
+### M5-深审：两个智能点（2026-08-25，框架完工后的细节专项）——✅ **memory 侧已执行并验收（同日）**
 
 > 执行结果：实锤五条全落（含追加发现的 RPC 水位原子性修复）；archive 追加化曾作为过渡态落地，随后由裁定四整体裁撤；brand_ids 审计结论=**三通道各有实职维持现状**（多品牌 ID 工具参数通道，退役条件见审计文档）；gender_source 审计结论=**化石但承重**（预填安全闸，三步迁移路径登记，不可直删）。审计详情：[memory-intelligence-deep-review-audit.md](./memory-intelligence-deep-review-audit.md)。裁定一与裁定四均已于 2026-08-25 完成。
 
@@ -113,7 +113,7 @@ interface LongTermMemory {
 
 **裁定一（2026-08-25 用户拍板）——未成单保底走方案 a**：收资表单**逐格回流**——每落一格以 medium 信封写 sessionFacts（写入者仍是收资域），办结统一升 high；consolidation 提拔链路从此真实存在（此前"办结才回流"使半途弃单字段随表单消亡，即用户复议时指出的记忆丢失）。归收资契约 v2 批执行，与该域"勿抢跑"裁定对齐后动工。
 
-**裁定二（待拍，推荐追加化）**：archive 从"LLM 全量重写 blob"改**追加段列表**——每次只压新溢出为一个新段，已有段冻结（复印件代际退化归零，arXiv 2607.26637 警示；event-sourcing 同构；封顶用确定性淘汰最老段，不用 LLM 重写）。备选=限频重写（退化变慢不消失，不推荐）。
+**裁定二（2026-08-25 用户拍板）——archive 追加化**：archive 从"LLM 全量重写 blob"改**追加段列表**——每次只压新溢出为一个新段，已有段冻结（复印件代际退化归零，arXiv 2607.26637 警示；event-sourcing 同构）；封顶设段数上限、确定性淘汰最老段，不用 LLM 重写。存量兼容：旧 string blob 读取时视为首段（懒迁移，DB 列名不动）。备选"限频重写"否决。
 
 **裁定四（2026-08-25 经完整讨论后用户拍板）——SessionSummaries 单层化 + 水位搬家——✅ 已完成（2026-08-25）**：
 
@@ -124,6 +124,16 @@ interface LongTermMemory {
 - **水位搬家**：lastSettledMessageAt/lastSettledBySession 是 consolidation 的工作书签非记忆内容，迁出摘要结构 → 独立 jsonb 列 `consolidation_watermarks`（M2-B"名实有瑕"登记清账）；RPC 同名 DROP+CREATE，一条 UPDATE 原子写两列（追加 episode + 推水位），失败整体不动——昨日的"失败恢复现场"补偿逻辑随之删除。
 - **存量与契约**：旧 recent 反转并入裸数组、旧 archive 段转无标识符 entry 插入头部、旧水位迁新列，全部读边界懒迁移；`episodic_session_summaries` 列名不动（episodic 层仍在）；新迁移已推测试库并完成真实写入回读验证，生产与 M2-B 列名迁移同发版。
 - **类型边界（2026-08-25 追问定稿）**：三个类型三种命运——`LongTermMemory`（记忆聚合，召回面）**不含水位**、维持 A3 嵌套形态（运行时用结构表达双轴，DB 用前缀表达同一双轴，是一个设计的两种投影，不拍平）；`ConsolidationWatermarks` 独立类型，仅 consolidation 管线消费，永不召回注入；DB 行形状（四列俱全）只活在 supabase.store 存储适配层，行 ≠ 记忆。
+
+**裁定五（2026-08-25 用户拍板）——height/weight 入长期档案**：USER_PROFILE_FIELD_KEYS 7→9。依据三问判据：跨段稳定（身高恒定；体重为时效字段，同 health_cert 靠 updatedAt+带值求证刷新）；回访复用真实（有身高要求岗位的预填，衔接收资批"记忆→表单预填跨岗不重复盘问"）；无红线（红线=户籍/民族/专业；身高体重为行业合法筛选字段，歧视风险在披露侧由守卫管）。修正此前"契约驱动格子不入档"判词——**格子是岗位的，数字是人的**。维持排除：experience（篇幅+时效）、upload_resume（URL 过期）、household_register_province（红线）。~~实现零迁移~~ **勘误（2026-08-25 测试库真实写入实测）**：RPC `upsert_long_term_profile_facts` 内有固定 7 键框架，未列键会被**静默丢弃**（height/weight 实测被吞）——需一个 RPC 键框迁移（DROP+CREATE，键清单 7→9），先推测试库真实写入回读验证两键存活，生产随发版同批。
+
+**裁定八（2026-08-25 用户拍板）——gender_source 两刀拆除**：不可直删（预填安全闸承重 +"自陈与否"信息唯一载体），但字段只活在会话层（长期不存、TTL 3 天），三步法压两刀一个发版周期完成。**批 A**：信封升级让 source 足以区分自陈与系统标签（自陈经规则命中按 candidate_quote 章写入——符合该章"原话背书且已复算"定义；企微标签兜底仍 system+低置信），消费方（tool-context 预填闸/fact-lines 口径/turn-hints 投影）改判信封 source+confidence（如 system 且非 high 不预填），生产方停写 sibling；**批 B**（隔 ≥3 天存量自然清零后）：schema 键、字段联动、规则轨发布点全删。
+
+**裁定六（2026-08-25 用户拍板）——收资表单 key 补 bot 维**：`collection-form:{corp}:{userId}:{candidateRef}:{jobId}` → 增补 `botUserId` 段（与长期层同一稳定维，不用轮换的 imBotId；前缀不动，规约 4 护前缀不护段数）。动因：①堵跨 bot 并发裸写（表单并发安全靠回合租约，租约按 chat 计，双 bot 双锁对同表裸奔）；②与"记忆不跨 bot"（第 7 条）全线一致。代价接受：换 bot 重新收资。存量旧 key 3 天 TTL 自然过期不迁移。归收资契约 v2 批执行。
+
+**裁定七（2026-08-25 用户拍板）——jobIntent 软/硬/时间三分登记撤销**：M2-B 登记项①（08-21）作废——11 键**全部视为软偏好，不分级**：意向是候选人的表达、本就可变，结构分级是给参考信息强加权威等级。通融式推荐类 badcase 的防线留在装配层（轮级 hard-constraints 提示），不动长期结构。
+
+**裁定三（2026-08-25 用户拍板）——意向类"用完即弃"边界**：excludedBrands 与已推荐/已拒岗位**均不进长期**（不立程序化字段）。依据："意向会变"对排斥同样成立——排斥永久化制造"永不再推"的反向错误锁定，比重复推荐更伤；排斥与兴趣保质期同短，随会话死。兜底两层：3 天内回访由 session 内 brand_state/presentedStores 保护；3 天后由 episodic 摘要文字痕迹（骨架"关键约束/未决事项"节）供模型口头避开。**边界**：jobIntent 快照不在射程——"意向会变"已被快照式整组覆盖语义吸收，其价值=回访开场白（带"以本次为准"口径）。终态口径：**意向进长期的唯一形态 = 可被整组覆盖的上段快照；排斥与已拒清单一律不进**。字段深审其余三项（gender_source 并信封 / brand_ids 三通道审计 / jobIntent 三分登记）不受本裁定影响，照清单执行。
 
 ### M4 观察项（登记不承诺）
 
