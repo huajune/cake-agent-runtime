@@ -175,62 +175,78 @@ describe('SupabaseStore', () => {
         ],
         archive: null,
       };
+      const migratedSummaries = [...sessionSummaries.recent].reverse();
       mockRedis.get.mockResolvedValue(null);
       mockMaybeSingle.mockResolvedValue({
         data: { episodic_session_summaries: sessionSummaries },
+        error: null,
+      });
+      mockRpc.mockResolvedValue({
+        data: {
+          episodic_session_summaries: migratedSummaries,
+          consolidation_watermarks: { bySession: {}, lastSettledMessageAt: null },
+        },
         error: null,
       });
 
       const result = await store.getSessionSummaries('corp1', 'user1', BOT_USER_ID);
 
       expect(result?.map((entry) => entry.summary)).toEqual(['old', 'new']);
-      expect(mockUpsert).toHaveBeenCalledWith(
-        expect.objectContaining({
-          episodic_session_summaries: result,
-          consolidation_watermarks: { bySession: {}, lastSettledMessageAt: null },
-        }),
-        { onConflict: 'corp_id,user_id,bot_user_id' },
-      );
+      expect(mockRpc).toHaveBeenCalledWith('migrate_long_term_episodic_state_atomic', {
+        p_corp_id: 'corp1',
+        p_user_id: 'user1',
+        p_bot_user_id: BOT_USER_ID,
+        p_expected_session_summaries: sessionSummaries,
+        p_expected_consolidation_watermarks: null,
+        p_session_summaries: migratedSummaries,
+        p_consolidation_watermarks: { bySession: {}, lastSettledMessageAt: null },
+      });
+      expect(mockUpsert).not.toHaveBeenCalled();
     });
 
     it('旧 archive 转为无标识符 SummaryEntry 置于数组头部，旧水位写入新列', async () => {
-      mockRedis.get.mockResolvedValue({
-        episodic_session_summaries: {
-          recent: [
-            {
-              summary: '近期咨询',
-              sessionId: 'session-1',
-              startTime: '2026-08-20',
-              endTime: '2026-08-20',
-            },
-          ],
-          archive: '旧版合并摘要',
-          lastSettledMessageAt: '2026-08-19T00:00:00.000Z',
-          lastSettledBySession: { 'session-1': '2026-08-20T00:00:00.000Z' },
+      const legacyState = {
+        recent: [
+          {
+            summary: '近期咨询',
+            sessionId: 'session-1',
+            startTime: '2026-08-20',
+            endTime: '2026-08-20',
+          },
+        ],
+        archive: '旧版合并摘要',
+        lastSettledMessageAt: '2026-08-19T00:00:00.000Z',
+        lastSettledBySession: { 'session-1': '2026-08-20T00:00:00.000Z' },
+      };
+      const migratedSummaries = [
+        { summary: '旧版合并摘要', sessionId: '', startTime: '', endTime: '' },
+        legacyState.recent[0],
+      ];
+      const migratedWatermarks = {
+        bySession: { 'session-1': '2026-08-20T00:00:00.000Z' },
+        lastSettledMessageAt: '2026-08-19T00:00:00.000Z',
+      };
+      mockRedis.get.mockResolvedValue({ episodic_session_summaries: legacyState });
+      mockRpc.mockResolvedValue({
+        data: {
+          episodic_session_summaries: migratedSummaries,
+          consolidation_watermarks: migratedWatermarks,
         },
+        error: null,
       });
 
       const result = await store.getSessionSummaries('corp1', 'user1', BOT_USER_ID);
 
-      expect(result).toEqual([
-        { summary: '旧版合并摘要', sessionId: '', startTime: '', endTime: '' },
-        {
-          summary: '近期咨询',
-          sessionId: 'session-1',
-          startTime: '2026-08-20',
-          endTime: '2026-08-20',
-        },
-      ]);
-      expect(mockUpsert).toHaveBeenCalledWith(
+      expect(result).toEqual(migratedSummaries);
+      expect(mockRpc).toHaveBeenCalledWith(
+        'migrate_long_term_episodic_state_atomic',
         expect.objectContaining({
-          episodic_session_summaries: result,
-          consolidation_watermarks: {
-            bySession: { 'session-1': '2026-08-20T00:00:00.000Z' },
-            lastSettledMessageAt: '2026-08-19T00:00:00.000Z',
-          },
+          p_expected_session_summaries: legacyState,
+          p_session_summaries: migratedSummaries,
+          p_consolidation_watermarks: migratedWatermarks,
         }),
-        { onConflict: 'corp_id,user_id,bot_user_id' },
       );
+      expect(mockUpsert).not.toHaveBeenCalled();
     });
 
     it('canonical 裸数组与独立水位直接读取，不触发懒迁移写', async () => {
@@ -248,18 +264,28 @@ describe('SupabaseStore', () => {
         bySession: { 'session-1': '2026-08-20T00:00:00.000Z' },
         lastSettledMessageAt: null,
       });
+      expect(mockRpc).not.toHaveBeenCalled();
       expect(mockUpsert).not.toHaveBeenCalled();
     });
 
     it('裸数组超过 20 段时确定性淘汰最老段并懒写回', async () => {
+      const storedSummaries = Array.from({ length: 21 }, (_, index) => ({
+        summary: `摘要-${index}`,
+        sessionId: `session-${index}`,
+        startTime: `2026-08-${String(index + 1).padStart(2, '0')}`,
+        endTime: `2026-08-${String(index + 1).padStart(2, '0')}`,
+      }));
+      const migratedSummaries = storedSummaries.slice(-MAX_SESSION_SUMMARIES);
       mockRedis.get.mockResolvedValue({
-        episodic_session_summaries: Array.from({ length: 21 }, (_, index) => ({
-          summary: `摘要-${index}`,
-          sessionId: `session-${index}`,
-          startTime: `2026-08-${String(index + 1).padStart(2, '0')}`,
-          endTime: `2026-08-${String(index + 1).padStart(2, '0')}`,
-        })),
+        episodic_session_summaries: storedSummaries,
         consolidation_watermarks: { bySession: {}, lastSettledMessageAt: null },
+      });
+      mockRpc.mockResolvedValue({
+        data: {
+          episodic_session_summaries: migratedSummaries,
+          consolidation_watermarks: { bySession: {}, lastSettledMessageAt: null },
+        },
+        error: null,
       });
 
       const result = await store.getSessionSummaries('corp1', 'user1', BOT_USER_ID);
@@ -267,10 +293,54 @@ describe('SupabaseStore', () => {
       expect(result).toHaveLength(MAX_SESSION_SUMMARIES);
       expect(result?.[0].summary).toBe('摘要-1');
       expect(result?.at(-1)?.summary).toBe('摘要-20');
-      expect(mockUpsert).toHaveBeenCalledWith(
-        expect.objectContaining({ episodic_session_summaries: result }),
-        { onConflict: 'corp_id,user_id,bot_user_id' },
+      expect(mockRpc).toHaveBeenCalledWith(
+        'migrate_long_term_episodic_state_atomic',
+        expect.objectContaining({
+          p_expected_session_summaries: storedSummaries,
+          p_session_summaries: migratedSummaries,
+        }),
       );
+      expect(mockUpsert).not.toHaveBeenCalled();
+    });
+
+    it('CAS 未命中时采用并发 append 后的当前值，不用旧快照覆盖新摘要或水位', async () => {
+      const legacyState = {
+        recent: [
+          {
+            summary: '旧摘要',
+            sessionId: 'session-1',
+            startTime: '2026-08-20',
+            endTime: '2026-08-20',
+          },
+        ],
+        archive: null,
+        lastSettledBySession: { 'session-1': '2026-08-20T00:00:00.000Z' },
+      };
+      const concurrentSummary = {
+        summary: '并发新摘要',
+        sessionId: 'session-1',
+        startTime: '2026-08-21',
+        endTime: '2026-08-21',
+      };
+      const currentSummaries = [legacyState.recent[0], concurrentSummary];
+      const currentWatermarks = {
+        bySession: { 'session-1': '2026-08-21T00:00:00.000Z' },
+        lastSettledMessageAt: '2026-08-21T00:00:00.000Z',
+      };
+      mockRedis.get.mockResolvedValue({ episodic_session_summaries: legacyState });
+      mockRpc.mockResolvedValue({
+        data: {
+          episodic_session_summaries: currentSummaries,
+          consolidation_watermarks: currentWatermarks,
+        },
+        error: null,
+      });
+
+      await expect(store.getSessionSummaries('corp1', 'user1', BOT_USER_ID)).resolves.toEqual(
+        currentSummaries,
+      );
+      expect(mockRpc).toHaveBeenCalledTimes(1);
+      expect(mockUpsert).not.toHaveBeenCalled();
     });
   });
 

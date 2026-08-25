@@ -83,7 +83,7 @@ export class BotService {
     return this.botUserIdByWxid.get(wxid) ?? null;
   }
 
-  /** 构建/刷新 wxid→corpId 缓存；失败时保留旧缓存（不抛）。 */
+  /** 构建/刷新 wxid→corpId/wecomUserId 缓存；失败或部分响应时保留对应旧缓存（不抛）。 */
   private async ensureCorpMap(): Promise<void> {
     if (
       this.corpMapExpireAt > Date.now() &&
@@ -107,9 +107,15 @@ export class BotService {
           botUserIdMap.set(wxid, botUserId);
         }
       }
-      if (corpMap.size > 0 || botUserIdMap.size > 0) {
+      // 上游偶发只返回 corpId 或稳定账号字段中的一组；两张缓存独立替换，避免
+      // 半套响应把另一张仍健康的 map 清空并维持整个 TTL 窗口。
+      if (corpMap.size > 0) {
         this.corpIdByWxid = corpMap;
+      }
+      if (botUserIdMap.size > 0) {
         this.botUserIdByWxid = botUserIdMap;
+      }
+      if (corpMap.size > 0 || botUserIdMap.size > 0) {
         this.corpMapExpireAt = Date.now() + this.CORP_MAP_TTL_MS;
       }
     } catch (error) {

@@ -534,7 +534,7 @@ export class SupabaseStore implements MemoryStore {
 
   /**
    * episodic 读边界懒迁移：旧 recent/archive 合成裸 SummaryEntry[]，摘要内旧水位搬到独立列。
-   * 两列一起回写，随后所有运行时调用只看到新结构。
+   * 回写走 CAS RPC，避免较早的读快照覆盖并发 append/mark 已推进的摘要或水位。
    */
   private async getEpisodicState(
     corpId: string,
@@ -552,11 +552,54 @@ export class SupabaseStore implements MemoryStore {
 
     const normalized = normalizeEpisodicState(row);
     if (normalized.needsMigration && normalized.sessionSummaries) {
-      await this.upsertRow(corpId, userId, botUserId, {
-        episodic_session_summaries: normalized.sessionSummaries,
-        consolidation_watermarks: normalized.consolidationWatermarks,
-      });
+      return this.migrateEpisodicStateAtomic(corpId, userId, botUserId, row, normalized);
     }
+    return normalized;
+  }
+
+  /**
+   * compare-and-swap 懒迁移。RPC 未命中说明并发写已改变两列，此时以 RPC 返回的
+   * 数据库当前值重新规范化；最多再尝试一次仍为旧形状的极窄竞争窗口。
+   */
+  private async migrateEpisodicStateAtomic(
+    corpId: string,
+    userId: string,
+    botUserId: string,
+    initialRow: AgentLongTermMemoryRow,
+    initialNormalized: NormalizedEpisodicState,
+  ): Promise<NormalizedEpisodicState> {
+    const client = this.supabase.getSupabaseClient();
+    if (!client) {
+      this.logger.warn('Supabase 不可用，episodic 旧形状未持久化');
+      return initialNormalized;
+    }
+
+    let expectedRow = initialRow;
+    let normalized = initialNormalized;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const { data, error } = await client.rpc('migrate_long_term_episodic_state_atomic', {
+        p_corp_id: corpId,
+        p_user_id: userId,
+        p_bot_user_id: botUserId,
+        p_expected_session_summaries: expectedRow.episodic_session_summaries ?? null,
+        p_expected_consolidation_watermarks: expectedRow.consolidation_watermarks ?? null,
+        p_session_summaries: normalized.sessionSummaries,
+        p_consolidation_watermarks: normalized.consolidationWatermarks,
+      });
+
+      if (error) {
+        this.logger.warn('[migrateEpisodicStateAtomic] RPC 失败', error.message);
+        throw error;
+      }
+      if (!data) return normalized;
+
+      const currentRow = data as AgentLongTermMemoryRow;
+      normalized = normalizeEpisodicState(currentRow);
+      await this.invalidateCache(corpId, userId, botUserId);
+      if (!normalized.needsMigration || !normalized.sessionSummaries) return normalized;
+      expectedRow = currentRow;
+    }
+
     return normalized;
   }
 
