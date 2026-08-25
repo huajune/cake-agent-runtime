@@ -108,7 +108,7 @@ interface LongTermMemory {
 
 **裁定与终态**（用户 2026-08-24 逐条拍板）：
 
-1. **顶层保持 short-term / long-term**；short-term = **一个咨询生命周期**的伞目录。`session-` 前缀从此有实义：带前缀 = 随咨询生命周期（3 天）消亡；message-window 不带（7 天，故意比会话长——回访可召回原文）：
+1. **顶层保持 short-term / long-term**；short-term = **一个咨询生命周期**的伞目录。层内两档 TTL：message-window 7 天（故意比会话长——回访可召回原文），其余会话状态 3 天；TTL 归属写在 short-term.types 分节注释与 README，不靠文件名前缀表达（~~08-24"session- 前缀=3 天组"约定~~随扁平化裁定作废）：
 
 ```
 src/memory/
@@ -119,33 +119,25 @@ src/memory/
 │                                                         #   查证为 recallForProactiveFollowUp 的消费契约而非舱内所有物，2026-08-24 纠置归根；
 │                                                         #   类型名 ReengagementSessionState 不动。M3"terminal/水位归事实舱"说的是字段所有权，不受影响）
 ├── confidence-rank.ts / fact-lines.formatter.ts          # types/ formatters/ 萎缩抽屉撤销，跨层件平铺根（消费方查证：跨层+跨模块属实）
-├── short-term/                    # ═ 一个咨询生命周期 ═
-│   ├── message-window/            # 原始消息窗口，7 天（原 short-term.service 迁入；类 ShortTermService→MessageWindowService）
-│   └── session-semantic/          # 结构化状态，3 天（原 session-state/；内部按 M3 两舱升格为子目录，2026-08-24 追裁）
-│       ├── session-semantic.service.ts   # 薄门面（原 session.service；类 SessionService→SessionSemanticService，27 注入点机械改）
-│       ├── session-key.ts                # 本层 Redis hash key 唯一构造（两舱共用留根；session 是内容词非目录回声）
-│       ├── facts/                        # 事实舱域：候选人"说了什么、确认了什么"——一个 facts 结构、多种写入纪律
-│       │   │                             #   （提取守卫合并 / brand 域字段 reducer）+ 收资表单独立 key 整实体快照
-│       │   ├── facts.service.ts          #   状态所有者/事实读写/提取编排/已发生事件（M3 不动）
-│       │   ├── facts.types.ts            #   原 session-facts.types 属事实的部分（拆分：形状零改动纯声明搬迁，避开 active_booking 冻结区）；
-│       │   │                             #   hash 总契约 WeworkSessionState 留此（状态所有者持有），工作台字段类型在 workbench.types 定义、总契约引用
-│       │   ├── extraction.prompt.ts      #   原 session-extraction.prompt——事实生产线的 prompt 跟事实走
-│       │   ├── brand-state.service.ts    #   品牌写路径（reducer 唯一写者）——第 8 条追裁后 brand 并入 SessionFacts 结构，
-│       │   │                             #   本文件独立仅剩行数工程理由（facts.service 已 826 行），不再承载"brand 非 fact"语义
-│       │   └── collection-form.service.ts#   收资表单编排（2026-08-24 复核回迁：store TTL 与会话事实同档、注释明言"会话级/跨会话重开表是预期"、
-│       │                                 #   丢失事故清单与 facts 同列——会话级单据成立。key 无 sessionId = 跨 bot 共表 + candidateRef 人键设计；
-│       │                                 #   是否补 sessionId 维度（堵跨会话并发写 vs 换 bot 重收资）登记为收资契约 v2 议题，M5 勿抢跑）
-│       └── workbench/                    # 工作台舱域：流程簿记"聊到哪了、桌上摆着什么"
-│           ├── workbench.service.ts      #   候选池/已展示/焦点岗位/查询签名 + **阶段指针**（原 stage-state/ 并入，2026-08-24 追裁）
-│           │                             #   依据：阶段=流程指针，与候选池同为过程簿记；同 key 三元组/同 sessionTtl/同 Redis（查证属实）
-│           │                             #   advance_stage 单写入口纪律不变（仍经 memory.service.setStage）；
-│           │                             #   Redis key `stage:` 与 fixture 键 `setup.procedural` 按规约 4 保留；StageStateService 类退役
-│           └── workbench.types.ts        #   工作台类型（自 session-facts.types 拆出）+ 原 stage-state.types 并入
-├── long-term/                     # semantic{ profile, jobIntent } + episodic{ sessionSummaries }（A3 结构不动）+ consolidation
+├── short-term/                    # ═ 一个咨询生命周期 ═ 内部一律平铺（2026-08-25 扁平化裁定，见下）
+│   ├── short-term.types.ts        # 单一类型文件 = 结构的唯一表达处（原 session-facts/message-window/stage-state 三处类型合一，
+│   │                              #   分节：窗口 / SessionFacts 信封（含 brand 域字段）/ 工作台与阶段 / hash 总契约 WeworkSessionState）
+│   ├── message-window.service.ts  # 原始消息窗口，7 天（类 ShortTermService→MessageWindowService）
+│   ├── session-semantic.service.ts# 结构化状态薄门面，3 天（原 session.service；类→SessionSemanticService，27 注入点机械改）
+│   ├── facts.service.ts           # 事实舱：状态所有者/事实读写/提取编排/已发生事件（M3 职责不动）
+│   ├── workbench.service.ts       # 工作台舱：候选池/已展示/焦点岗位/查询签名 + 阶段指针（原 stage-state 并入，2026-08-24 追裁；
+│   │                              #   advance_stage 单写入口不变；Redis key `stage:` 与 fixture 键 `setup.procedural` 规约 4 保留；StageStateService 类退役）
+│   ├── brand-state.service.ts     # 品牌写路径（reducer 唯一写者；brand 并入 SessionFacts 见第 8 条，文件独立仅剩行数工程理由）
+│   ├── collection-form.service.ts # 收资表单编排（会话级单据：store TTL 与会话事实同档、"重开表是预期"；key 补维议题归收资契约 v2）
+│   ├── extraction.prompt.ts       # 事实生产线的 prompt
+│   └── session-key.ts             # 本层 Redis hash key 唯一构造
+├── long-term/                     # 与 short-term 同构（服务平铺 + 单 types）：long-term.service + consolidation.service + long-term.types
+│                                  #   semantic{ profile, jobIntent } + episodic{ sessionSummaries }（A3 结构不动）
 └── stores/                        # 不动（用户裁定：store 层不许动，supabase/collection-form 域店维持原位）
 ```
 
-   tests/ 按镜像原则同步搬迁：`tests/memory/short-term/{message-window, session-semantic/{facts, workbench}}/`。
+   **扁平化裁定（2026-08-25，推翻 08-24"两舱升格子目录"）**：层目录内一律平铺——**目录承载作用域，结构由类型文件承载**（short-term.types 内 WeworkSessionState→SessionFacts→… 的类型嵌套即结构图，比目录精确且免人肉维护）；两文件目录与舱子目录全部撤销；短期/长期两层同构（N 服务 + 1 同名 types），恢复"每层一个同名 types"韵律。舱概念不消失：降级为文件名前缀（facts.* / workbench.*）+ M3 服务职责拆分。原"类型拆分"工作取消（拆分改合并，active_booking 冻结区风险随之消失）。
+   tests/ 按镜像原则同步：`tests/memory/short-term/` 平铺。
 
 2. **时间对齐**：`MEMORY_SESSION_TTL_DAYS` 2→3、`MEMORY_SETTLEMENT_GAP_DAYS` 1→3——**episode 边界 = 状态生命周期**，层间重叠消除。7d/3d/3d 三个数写进 README 层定义；"短期 ≠ 单次咨询"（窗口跨段是设计意图）明示。
 3. **沉淀改定时触发**（"3 天自动沉淀"）：不等回访——每回合结束注册/刷新 delay≈3d 的沉淀 job（同 debounce 模式），触发时校验闲置确实达标；幂等靠 `lastSettledBySession` 水位。**防丢护栏（用户点名踩过的坑）**：facts TTL 加余量（3d+12h）保证沉淀读取先于过期；沉淀失败重试 + 告警落观测（不许静默）；README 警句"facts 过期则长期画像字段不会恢复"随本批改写为"定时沉淀保证读在过期前"。
