@@ -7,28 +7,25 @@ import { MemoryConfig } from './memory.config';
 import { MemoryService } from './memory.service';
 import { RedisStore } from './stores/redis.store';
 import { CollectionFormStore } from './stores/collection-form.store';
-import { CollectionFormService } from './session-state/collection-form.service';
+import { CollectionFormService } from './short-term/session-semantic/facts/collection-form.service';
 import { SupabaseStore } from './stores/supabase.store';
-import { BrandStateService } from './session-state/brand-state.service';
-import { ShortTermService } from './short-term/short-term.service';
-import { SessionService } from './session-state/session.service';
-import { SessionFactsService } from './session-state/facts.service';
-import { SessionWorkbenchService } from './session-state/workbench.service';
-import { StageStateService } from './stage-state/stage-state.service';
+import { BrandStateService } from './short-term/session-semantic/facts/brand-state.service';
+import { MessageWindowService } from './short-term/message-window/message-window.service';
+import { SessionSemanticService } from './short-term/session-semantic/session-semantic.service';
+import { SessionFactsService } from './short-term/session-semantic/facts/facts.service';
+import { SessionWorkbenchService } from './short-term/session-semantic/workbench/workbench.service';
 import { LongTermService } from './long-term/long-term.service';
 import { ConsolidationService } from './long-term/consolidation.service';
-import { MemoryEnrichmentService } from './memory-enrichment.service';
-import { MemoryLifecycleService } from './memory-lifecycle.service';
+import { MemoryEnrichmentService } from './enrichment.service';
+import { MemoryLifecycleService } from './lifecycle.service';
 import { HostingConfigModule } from '@biz/hosting-config/hosting-config.module';
 import { GeocodingModule } from '@infra/geocoding/geocoding.module';
 
 /**
  * Memory 模块
  *
- * 分为三层：
- * - facade: MemoryService
- * - domain services: services/ 下的 short-term / long-term / stageState / consolidation / session / enrichment / lifecycle / brand-state
- * - stores: Redis / Supabase 基础设施
+ * 组织轴：short-term（message-window + session-semantic 两舱）/ long-term；
+ * lifecycle 与 enrichment 是跨层服务，stores 保持独立基础设施层。
  */
 @Module({
   imports: [
@@ -46,11 +43,10 @@ import { GeocodingModule } from '@infra/geocoding/geocoding.module';
     CollectionFormService,
     SupabaseStore,
     BrandStateService,
-    ShortTermService,
-    SessionService,
+    MessageWindowService,
+    SessionSemanticService,
     SessionFactsService,
     SessionWorkbenchService,
-    StageStateService,
     LongTermService,
     ConsolidationService,
     MemoryEnrichmentService,
@@ -61,11 +57,11 @@ import { GeocodingModule } from '@infra/geocoding/geocoding.module';
     MemoryConfig,
     MemoryService,
     CollectionFormService,
-    SessionService,
+    SessionSemanticService,
     SessionFactsService,
     SessionWorkbenchService,
     LongTermService,
-    ShortTermService,
+    MessageWindowService,
     BrandStateService,
   ],
 })

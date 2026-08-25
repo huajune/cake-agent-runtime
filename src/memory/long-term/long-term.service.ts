@@ -24,7 +24,7 @@ import {
   isSessionFactValue,
   truncateEvidence,
   unwrapSessionFactValue,
-} from '../session-state/session-facts.types';
+} from '../short-term/session-semantic/facts/facts.types';
 
 /**
  * 沉淀写入长期记忆时的数据血缘来源。

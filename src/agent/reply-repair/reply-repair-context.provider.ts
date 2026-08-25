@@ -3,10 +3,13 @@ import { ConfigService } from '@nestjs/config';
 import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
 import type { GroupContext } from '@biz/group-task/group-task.types';
 import { normalizeCityName as normalizeCity } from '@resolution/geo';
-import { formatExtractionFactLines } from '@memory/formatters/fact-lines.formatter';
+import { formatExtractionFactLines } from '@memory/fact-lines.formatter';
 import { MemoryService } from '@memory/memory.service';
 import { stripTimeContext } from '@resolution/signal/markers';
-import type { InvitedGroupRecord, SessionFacts } from '@memory/session-state/session-facts.types';
+import type {
+  InvitedGroupRecord,
+  SessionFacts,
+} from '@memory/short-term/session-semantic/facts/facts.types';
 import type { RecommendedJobSummary } from '@resolution/job/types';
 import type {
   UserProfileFacts,

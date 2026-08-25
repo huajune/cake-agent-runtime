@@ -43,6 +43,12 @@ const config: JestConfigWithTsJest = {
             '@biz/*': ['src/biz/*'],
             '@providers/*': ['src/providers/*'],
             '@tools/*': ['src/tools/*'],
+            '@memory/session/session-facts.types': [
+              'src/memory/short-term/session-semantic/facts/facts.types',
+            ],
+            '@memory/session-state/session-facts.types': [
+              'src/memory/short-term/session-semantic/facts/facts.types',
+            ],
             '@memory/*': ['src/memory/*'],
             '@mcp/*': ['src/mcp/*'],
             '@sponge/*': ['src/sponge/*'],
@@ -74,6 +80,10 @@ const config: JestConfigWithTsJest = {
     '^@biz/(.*)$': '<rootDir>/src/biz/$1',
     '^@providers/(.*)$': '<rootDir>/src/providers/$1',
     '^@tools/(.*)$': '<rootDir>/src/tools/$1',
+    '^@memory/session/session-facts\.types$':
+      '<rootDir>/src/memory/short-term/session-semantic/facts/facts.types',
+    '^@memory/session-state/session-facts\.types$':
+      '<rootDir>/src/memory/short-term/session-semantic/facts/facts.types',
     '^@memory/(.*)$': '<rootDir>/src/memory/$1',
     '^@mcp/(.*)$': '<rootDir>/src/mcp/$1',
     '^@sponge/(.*)$': '<rootDir>/src/sponge/$1',

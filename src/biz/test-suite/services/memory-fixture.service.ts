@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { MemoryService } from '@memory/memory.service';
-import { SessionService } from '@memory/session-state/session.service';
-import { BrandStateService } from '@memory/session-state/brand-state.service';
+import { SessionSemanticService } from '@memory/short-term/session-semantic/session-semantic.service';
+import { BrandStateService } from '@memory/short-term/session-semantic/facts/brand-state.service';
 import { LongTermService } from '@memory/long-term/long-term.service';
 import {
   EntityExtractionResultSchema,
@@ -9,9 +9,9 @@ import {
   toSessionFacts,
   type EntityExtractionResult,
   type InvitedGroupRecord,
-} from '@memory/session-state/session-facts.types';
+} from '@memory/short-term/session-semantic/facts/facts.types';
 import type { RecommendedJobSummary } from '@resolution/job/types';
-import type { StageState } from '@memory/stage-state/stage-state.types';
+import type { StageState } from '@memory/short-term/session-semantic/workbench/workbench.types';
 import type { UserProfile } from '@memory/long-term/long-term.types';
 import { buildJobListQuerySignature } from '@tools/shared/job-list-query-signature';
 import type { MemoryFixtureSetup, TestRuntimeScope } from '../types/test-debug-trace.types';
@@ -31,7 +31,7 @@ export class MemoryFixtureService {
 
   constructor(
     private readonly memoryService: MemoryService,
-    private readonly sessionService: SessionService,
+    private readonly sessionService: SessionSemanticService,
     private readonly brandStateService: BrandStateService,
     private readonly longTermService: LongTermService,
   ) {}

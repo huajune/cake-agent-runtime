@@ -4,7 +4,7 @@ import {
   type EntityExtractionResult,
   type SessionFactConfidence,
   type SessionFacts,
-} from '@memory/session-state/session-facts.types';
+} from '@memory/short-term/session-semantic/facts/facts.types';
 import type { CandidateFactProducer } from '@resolution/evidence/claim.types';
 
 export interface SessionFactsFixtureInput {

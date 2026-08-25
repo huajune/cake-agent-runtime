@@ -3,8 +3,11 @@ import { produceRuleFactClaims } from '@resolution/evidence/producers/rule-track
 import { projectRuleFactClaims } from '@resolution/evidence/merge';
 import type { RuleFactClaims } from '@resolution/evidence/claim.types';
 import { resolveCityFromDistrict } from '@resolution/geo';
-import type { ShortTermMessage } from '@memory/short-term/short-term.types';
-import type { CityFact, EntityExtractionResult } from '@memory/session-state/session-facts.types';
+import type { ShortTermMessage } from '@memory/short-term/message-window/message-window.types';
+import type {
+  CityFact,
+  EntityExtractionResult,
+} from '@memory/short-term/session-semantic/facts/facts.types';
 import type { GeocodeLocationAnchor } from '@shared-types/turn.types';
 import { stripTimeContext } from '@resolution/signal/markers';
 

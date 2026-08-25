@@ -1,9 +1,10 @@
 import { MemoryService } from '@memory/memory.service';
 
 describe('MemoryService', () => {
-  const mockProcedural = {
-    get: jest.fn(),
-    set: jest.fn().mockResolvedValue(undefined),
+  const mockWorkbench = {
+    getStage: jest.fn(),
+    setStage: jest.fn().mockResolvedValue(undefined),
+    clearStage: jest.fn(),
   };
 
   const mockLongTerm = {
@@ -20,7 +21,7 @@ describe('MemoryService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     service = new MemoryService(
-      mockProcedural as never,
+      mockWorkbench as never,
       mockLongTerm as never,
       { saveInvitedGroup: jest.fn().mockResolvedValue(undefined) } as never,
       mockLifecycle as never,
@@ -147,7 +148,7 @@ describe('MemoryService', () => {
 
       await service.setStage('corp1', 'user1', 'sess1', nextStage);
 
-      expect(mockProcedural.set).toHaveBeenCalledWith('corp1', 'user1', 'sess1', nextStage);
+      expect(mockWorkbench.setStage).toHaveBeenCalledWith('corp1', 'user1', 'sess1', nextStage);
     });
   });
 });

@@ -14,7 +14,10 @@ import { StrategyConfigService as BizStrategyConfigService } from '@biz/strategy
 import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
 import { GroupContext } from '@biz/group-task/group-task.types';
 import { normalizeCityName as normalizeCity } from '@resolution/geo';
-import { unwrapSessionFacts, type SessionFacts } from '@memory/session-state/session-facts.types';
+import {
+  unwrapSessionFacts,
+  type SessionFacts,
+} from '@memory/short-term/session-semantic/facts/facts.types';
 import type { RuleFactClaims } from '@resolution/evidence/claim.types';
 import type { LaborFormIntentDecision } from '@resolution/labor-form';
 import type { SessionBrandState } from '@resolution/brand/brand-resolution.types';

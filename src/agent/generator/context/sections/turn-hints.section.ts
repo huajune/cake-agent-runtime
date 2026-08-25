@@ -1,10 +1,10 @@
-import { formatRuleFactClaimLines } from '@memory/formatters/fact-lines.formatter';
+import { formatRuleFactClaimLines } from '@memory/fact-lines.formatter';
 import {
   type CityFact,
   type EntityExtractionResult,
   type SessionFacts,
   unwrapSessionFacts,
-} from '@memory/session-state/session-facts.types';
+} from '@memory/short-term/session-semantic/facts/facts.types';
 import type { RuleFactClaims, RuleFactFieldPath } from '@resolution/evidence/claim.types';
 import {
   isSameFactValue,

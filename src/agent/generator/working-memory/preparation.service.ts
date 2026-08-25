@@ -15,7 +15,7 @@ import { MemoryConfig } from '@memory/memory.config';
 import {
   BrandStateService,
   type TurnBrandContext,
-} from '@memory/session-state/brand-state.service';
+} from '@memory/short-term/session-semantic/facts/brand-state.service';
 import { LongTermService } from '@memory/long-term/long-term.service';
 import { GroupMembershipService } from '@biz/group-task/services/group-membership.service';
 import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
@@ -26,7 +26,7 @@ import {
   isOfflineInterviewMethod,
 } from '@tools/job-list/job-policy-parser';
 import { isUserProfileFactValue, type UserProfileFacts } from '@memory/long-term/long-term.types';
-import type { WeworkSessionState } from '@memory/session-state/session-facts.types';
+import type { WeworkSessionState } from '@memory/short-term/session-semantic/facts/facts.types';
 import type { RecommendedJobSummary } from '@resolution/job/types';
 import { AlertLevel } from '@enums/alert.enum';
 import { toErrorMessage } from '@infra/utils/error.util';

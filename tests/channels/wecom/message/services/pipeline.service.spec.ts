@@ -28,7 +28,7 @@ import { FilterReason } from '@wecom/message/application/filter.service';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 import { HardRulesService } from '@agent/guardrail/output/hard-rules.service';
 import { LongTermService } from '@memory/long-term/long-term.service';
-import { SessionService } from '@memory/session-state/session.service';
+import { SessionSemanticService } from '@memory/short-term/session-semantic/session-semantic.service';
 import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
 import { HostingMemberConfigService } from '@biz/hosting-config/services/hosting-member-config.service';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
@@ -229,7 +229,7 @@ describe('MessagePipelineService', () => {
         { provide: WecomMessageObservabilityService, useValue: mockWecomObservabilityService },
         { provide: LongTermService, useValue: mockLongTermService },
         {
-          provide: SessionService,
+          provide: SessionSemanticService,
           useValue: {
             saveLastCandidateMessageAt: jest.fn().mockResolvedValue(undefined),
             saveTerminalState: jest.fn().mockResolvedValue(undefined),
@@ -266,7 +266,7 @@ describe('MessagePipelineService', () => {
           provide: FollowUpSchedulerService,
           useValue: { scheduleFollowUp: jest.fn().mockResolvedValue({ scheduled: true }) },
         },
-        // ReplyWorkflowService 第 14 个构造依赖；其自身依赖（FollowUpScheduler/SessionService）
+        // ReplyWorkflowService 第 14 个构造依赖；其自身依赖（FollowUpScheduler/SessionSemanticService）
         // 已在上面提供，直接注册真实类即可解析。
         ReengagementAnchorService,
         {

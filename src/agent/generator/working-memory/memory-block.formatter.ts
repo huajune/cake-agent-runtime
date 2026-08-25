@@ -1,5 +1,5 @@
 import { MemoryService } from '@memory/memory.service';
-import { formatExtractionFactLines } from '@memory/formatters/fact-lines.formatter';
+import { formatExtractionFactLines } from '@memory/fact-lines.formatter';
 import {
   isValidLaborForm,
   type LaborFormIntentDecision,
@@ -17,7 +17,7 @@ import {
   type EntityExtractionResult,
   type WeworkSessionState,
   unwrapSessionFacts,
-} from '@memory/session-state/session-facts.types';
+} from '@memory/short-term/session-semantic/facts/facts.types';
 import type { RecommendedJobSummary } from '@resolution/job/types';
 import type { SignupWorkOrderItem } from '@sponge/sponge.types';
 import { isArchivedProfileFactSuperseded } from '@resolution/evidence/profile';

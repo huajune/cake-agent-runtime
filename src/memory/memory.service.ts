@@ -1,18 +1,15 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { StageStateService } from './stage-state/stage-state.service';
 import { LongTermService } from './long-term/long-term.service';
-import { SessionService } from './session-state/session.service';
-import {
-  MemoryLifecycleService,
-  type MemoryLifecycleTurnContext,
-} from './memory-lifecycle.service';
-import type { CandidateIdentityHint } from './memory-enrichment.service';
-import type { AgentMemoryContext } from './types/memory-runtime.types';
+import { SessionSemanticService } from './short-term/session-semantic/session-semantic.service';
+import { SessionWorkbenchService } from './short-term/session-semantic/workbench/workbench.service';
+import { MemoryLifecycleService, type MemoryLifecycleTurnContext } from './lifecycle.service';
+import type { CandidateIdentityHint } from './enrichment.service';
+import type { AgentMemoryContext } from './memory-runtime.types';
 import type { SessionSummaries } from './long-term/long-term.types';
-import type { InvitedGroupRecord } from './session-state/session-facts.types';
+import type { InvitedGroupRecord } from './short-term/session-semantic/facts/facts.types';
 import type { RuleFactClaims } from '@resolution/evidence/claim.types';
-import type { StageState } from './stage-state/stage-state.types';
-import { formatExtractionFactLines } from './formatters/fact-lines.formatter';
+import type { StageState } from './short-term/session-semantic/workbench/workbench.types';
+import { formatExtractionFactLines } from './fact-lines.formatter';
 
 export interface ProactiveMemoryRecall {
   recentMessages: Array<{
@@ -23,7 +20,7 @@ export interface ProactiveMemoryRecall {
   warnings?: string[];
 }
 
-export type { CandidateIdentityHint } from './memory-enrichment.service';
+export type { CandidateIdentityHint } from './enrichment.service';
 
 /** memory 模块对外 facade，只保留真实外部入口。 */
 @Injectable()
@@ -31,9 +28,9 @@ export class MemoryService {
   private readonly logger = new Logger(MemoryService.name);
 
   constructor(
-    private readonly stageState: StageStateService,
+    private readonly workbench: SessionWorkbenchService,
     private readonly longTerm: LongTermService,
-    private readonly session: SessionService,
+    private readonly session: SessionSemanticService,
     private readonly lifecycle: MemoryLifecycleService,
   ) {}
 
@@ -79,7 +76,7 @@ export class MemoryService {
       includeShortTerm: true,
       shortTermEndTimeInclusive: options?.shortTermEndTimeInclusive,
     });
-    // messageWindow 已由 ShortTermService 按与 Generator 相同的条数、时间和字符预算裁剪，
+    // messageWindow 已由 MessageWindowService 按与 Generator 相同的条数、时间和字符预算裁剪，
     // 这里不再二次截断或改写其时间后缀，只丢弃空正文。
     const recentMessages = memory.shortTerm.messageWindow
       .filter(
@@ -116,13 +113,13 @@ export class MemoryService {
   }
 
   async getStage(corpId: string, userId: string, sessionId: string): Promise<StageState> {
-    return await this.stageState.get(corpId, userId, sessionId);
+    return await this.workbench.getStage(corpId, userId, sessionId);
   }
 
   async clearSessionMemory(corpId: string, userId: string, sessionId: string): Promise<boolean> {
     const [sessionCleared, stageCleared] = await Promise.all([
       this.session.clearSessionState(corpId, userId, sessionId),
-      this.stageState.clear(corpId, userId, sessionId),
+      this.workbench.clearStage(corpId, userId, sessionId),
     ]);
     return sessionCleared || stageCleared;
   }
@@ -144,6 +141,6 @@ export class MemoryService {
     sessionId: string,
     state: StageState,
   ): Promise<void> {
-    await this.stageState.set(corpId, userId, sessionId, state);
+    await this.workbench.setStage(corpId, userId, sessionId, state);
   }
 }

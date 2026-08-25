@@ -18,7 +18,7 @@ import {
 } from '@enums/message-callback.enum';
 import { FilterReason } from '@enums/message-filter.enum';
 import { LongTermService } from '@memory/long-term/long-term.service';
-import { SessionService } from '@memory/session-state/session.service';
+import { SessionSemanticService } from '@memory/short-term/session-semantic/session-semantic.service';
 import type { MessageMetadata } from '@memory/long-term/long-term.types';
 import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
@@ -78,7 +78,7 @@ export class AcceptInboundMessageService {
     private readonly wecomObservability: WecomMessageObservabilityService,
     private readonly monitoringService: MessageTrackingService,
     private readonly longTerm: LongTermService,
-    private readonly session: SessionService,
+    private readonly session: SessionSemanticService,
     private readonly opsEventsRecorder: OpsEventsRecorderService,
     private readonly userHostingService: UserHostingService,
     private readonly generalHandoffNotifier: GeneralHandoffNotifierService,

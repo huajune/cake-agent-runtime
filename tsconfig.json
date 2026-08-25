@@ -32,6 +32,12 @@
       "@biz/*": ["src/biz/*"],
       "@providers/*": ["src/providers/*"],
       "@tools/*": ["src/tools/*"],
+      "@memory/session/session-facts.types": [
+        "src/memory/short-term/session-semantic/facts/facts.types"
+      ],
+      "@memory/session-state/session-facts.types": [
+        "src/memory/short-term/session-semantic/facts/facts.types"
+      ],
       "@memory/*": ["src/memory/*"],
       "@mcp/*": ["src/mcp/*"],
       "@sponge/*": ["src/sponge/*"],

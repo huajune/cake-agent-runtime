@@ -17,11 +17,13 @@ import { Redis } from '@upstash/redis';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { SupabaseStore } from '@memory/stores/supabase.store';
 import { RedisStore } from '@memory/stores/redis.store';
-import { LongTermService } from '@memory/services/long-term.service';
-import { SettlementService } from '@memory/services/settlement.service';
-import { ShortTermService } from '@memory/services/short-term.service';
-import { SessionService } from '@memory/services/session.service';
-import { FALLBACK_EXTRACTION } from '@memory/types/session-facts.types';
+import { LongTermService } from '@memory/long-term/long-term.service';
+import { ConsolidationService } from '@memory/long-term/consolidation.service';
+import { MessageWindowService } from '@memory/short-term/message-window/message-window.service';
+import { SessionSemanticService } from '@memory/short-term/session-semantic/session-semantic.service';
+import { SessionFactsService } from '@memory/short-term/session-semantic/facts/facts.service';
+import { SessionWorkbenchService } from '@memory/short-term/session-semantic/workbench/workbench.service';
+import { FALLBACK_EXTRACTION } from '@memory/short-term/session-semantic/facts/facts.types';
 
 // ============================================================
 // 环境 & 客户端初始化
@@ -175,9 +177,14 @@ const llmShim = {
   },
 };
 
-/** 模拟 SpongeService（SessionService 用到） */
+/** 模拟 SpongeService（SessionFactsService 用到） */
 const spongeShim = {
   async fetchBrandList() { return []; },
+};
+
+const systemConfigShim = {
+  async getExtractModelOverride() { return undefined; },
+  async getConsolidationModelOverride() { return undefined; },
 };
 
 // ============================================================
@@ -194,24 +201,30 @@ const redisStore = new RedisStore(redisServiceShim as never);
 
 const longTermService = new LongTermService(supabaseStore);
 
-const settlementService = new SettlementService(
+const settlementService = new ConsolidationService(
   memoryConfigShim as never,
   longTermService,
   chatSessionShim as never,
   llmShim as never,
+  systemConfigShim as never,
 );
 
-const shortTermService = new ShortTermService(
+const shortTermService = new MessageWindowService(
   chatSessionShim as never,
   memoryConfigShim as never,
   redisServiceShim as never,
 );
 
-const sessionService = new SessionService(
+const sessionFactsService = new SessionFactsService(
   redisStore,
   memoryConfigShim as never,
   llmShim as never,
   spongeShim as never,
+  systemConfigShim as never,
+);
+const sessionService = new SessionSemanticService(
+  sessionFactsService,
+  new SessionWorkbenchService(sessionFactsService, redisStore, memoryConfigShim as never),
 );
 
 // ============================================================

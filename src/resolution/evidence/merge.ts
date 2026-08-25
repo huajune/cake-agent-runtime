@@ -1,11 +1,11 @@
 /**
  * 事实合并共享原语。
  *
- * 收敛原本散落在 SessionService 上、与跨轮置信度守卫重复的两类判断：
+ * 收敛原本散落在 SessionSemanticService 上、与跨轮置信度守卫重复的两类判断：
  * - 「值相等判断」（isSameFactValue）；
  * - 「值是否有意义」（hasMeaningfulValue）。
  *
- * 同轮 rule×LLM 的统一字段合并由 SessionService.mergeRuleAndLlmFacts 调用本文件的
+ * 同轮 rule×LLM 的统一字段合并由 SessionSemanticService.mergeRuleAndLlmFacts 调用本文件的
  * 原语单遍完成；跨轮置信度守卫（mergeFactsWithConfidenceGuard）也共用这些原语。
  */
 

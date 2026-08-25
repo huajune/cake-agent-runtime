@@ -23,7 +23,7 @@ import { mapLocationCityCandidates } from '@resolution/evidence/admission';
  *   （静态映射曾落 tools 层私表 district-city-map.ts）。
  * - 2026-07-27 证据化穿线（badcase 6a671722 沈阳 / 6a618a6e 上海浦东 GPS 连拒 3 次）：
  *   geocode unique 确权与定位分享逆解析现已按 source='system' 写入 sessionFacts.pref.city
- *   （memory-lifecycle save_attested_city / extractFacts 定位注入），跨轮场景由
+ *   （lifecycle save_attested_city / extractFacts 定位注入），跨轮场景由
  *   session_fact 档（①）命中——工具确权是外生证据，不属于"模型自证"。
  * - 2026-07-28 #765：turn_geocode 档补同轮时序空档（④）。
  * - 2026-07-28 收编：district-city-map.ts 私表删除——与 @resolution/geo 的
