@@ -42,18 +42,15 @@ describe('buildRecallHistoryTool', () => {
   });
 
   it('should return formatted summaries when available', async () => {
-    mockMemoryService.getSessionSummaries.mockResolvedValue({
-      recent: [
-        {
-          summary: '找上海兼职',
-          sessionId: 's1',
-          startTime: '2026-03-15',
-          endTime: '2026-03-15',
-          coverageNote: '仅覆盖末 120 条（共 121 条）',
-        },
-      ],
-      archive: [],
-    });
+    mockMemoryService.getSessionSummaries.mockResolvedValue([
+      {
+        summary: '找上海兼职',
+        sessionId: 's1',
+        startTime: '2026-03-15',
+        endTime: '2026-03-15',
+        coverageNote: '仅覆盖末 120 条（共 121 条）',
+      },
+    ]);
 
     const builder = buildRecallHistoryTool(mockMemoryService as never);
     const builtTool = builder(mockContext);
@@ -62,16 +59,27 @@ describe('buildRecallHistoryTool', () => {
     const result = await (builtTool as any).execute({});
 
     expect(result.found).toBe(true);
-    expect(result.recentCount).toBe(1);
+    expect(result.summaryCount).toBe(1);
     expect(result.content).toContain('[历史摘要]');
+    expect(result.content).toContain('### 历次求职记录');
     expect(result.content).toContain('仅覆盖末 120 条（共 121 条）');
   });
 
-  it('按追加顺序渲染 archive 段', async () => {
-    mockMemoryService.getSessionSummaries.mockResolvedValue({
-      recent: [],
-      archive: ['第一段历史', '第二段历史'],
-    });
+  it('按时间顺序全量渲染摘要数组，不再返回 archive 分区', async () => {
+    mockMemoryService.getSessionSummaries.mockResolvedValue([
+      {
+        summary: '第一段历史',
+        sessionId: '',
+        startTime: '',
+        endTime: '',
+      },
+      {
+        summary: '第二段历史',
+        sessionId: 's2',
+        startTime: '2026-08-20T00:00:00.000Z',
+        endTime: '2026-08-20T01:00:00.000Z',
+      },
+    ]);
 
     const builder = buildRecallHistoryTool(mockMemoryService as never);
     const builtTool = builder(mockContext);
@@ -79,8 +87,10 @@ describe('buildRecallHistoryTool', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = await (builtTool as any).execute({});
 
-    expect(result.hasArchive).toBe(true);
-    expect(result.content).toContain('[归档段 1] 第一段历史');
-    expect(result.content).toContain('[归档段 2] 第二段历史');
+    expect(result.summaryCount).toBe(2);
+    expect(result).not.toHaveProperty('hasArchive');
+    expect(result.content).toContain('[历史] 第一段历史');
+    expect(result.content).toContain('[2026-08-20] 第二段历史');
+    expect(result.content).not.toContain('归档段');
   });
 });

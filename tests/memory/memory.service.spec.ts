@@ -128,15 +128,11 @@ describe('MemoryService', () => {
 
   describe('facade methods', () => {
     it('should get summary data via facade', async () => {
-      mockLongTerm.getSessionSummaries.mockResolvedValue({
-        recent: [],
-        archive: [],
-        lastSettledMessageAt: null,
-      });
+      mockLongTerm.getSessionSummaries.mockResolvedValue([]);
 
       const summary = await service.getSessionSummaries('corp1', 'user1', 'wecom-user-1');
 
-      expect(summary).toEqual({ recent: [], archive: [], lastSettledMessageAt: null });
+      expect(summary).toEqual([]);
       expect(mockLongTerm.getSessionSummaries).toHaveBeenCalledWith(
         'corp1',
         'user1',

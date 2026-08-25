@@ -8,10 +8,9 @@ import type {
   UserProfileFactValue,
   UserProfileFacts,
   ProfileFactConfidence,
-  SessionSummaries,
   SummaryEntry,
+  ConsolidationWatermarks,
   MessageMetadata,
-  AgentLongTermMemoryRow,
   ActiveBookingEntry,
   ActiveBookingState,
   JobIntentFacts,
@@ -20,8 +19,7 @@ import {
   createEmptyUserProfileFacts,
   isUserProfileFactValue,
   LONG_TERM_JOB_INTENT_FIELD_KEYS,
-  MAX_ARCHIVE_SEGMENTS,
-  MAX_RECENT_SUMMARIES,
+  MAX_SESSION_SUMMARIES,
   UserProfileFactValueSchema,
   userProfileFactValue,
   USER_PROFILE_FIELD_KEYS,
@@ -30,35 +28,119 @@ import type { MemoryEntry, MemoryStore } from './store.types';
 
 const TABLE = 'agent_long_term_memories';
 
-function normalizeArchiveSegments(value: unknown): string[] {
-  if (typeof value === 'string') {
-    const segment = value.trim();
-    return segment ? [segment] : [];
-  }
+/** Supabase 存储适配层的行投影；数据库行不是 LongTermMemory 召回契约。 */
+interface AgentLongTermMemoryRow {
+  id: string;
+  corp_id: string;
+  user_id: string;
+  bot_user_id?: string | null;
+  semantic_profile?: UserProfileFacts | null;
+  semantic_job_intent?: JobIntentFacts | null;
+  episodic_session_summaries?: SummaryEntry[] | null;
+  consolidation_watermarks?: ConsolidationWatermarks | null;
+  message_metadata?: MessageMetadata | null;
+  active_booking?: ActiveBookingState | null;
+  created_at: string;
+  updated_at: string;
+}
+
+const EMPTY_CONSOLIDATION_WATERMARKS: ConsolidationWatermarks = {
+  bySession: {},
+  lastSettledMessageAt: null,
+};
+
+interface NormalizedEpisodicState {
+  sessionSummaries: SummaryEntry[] | null;
+  consolidationWatermarks: ConsolidationWatermarks;
+  needsMigration: boolean;
+}
+
+function toStringRecord(value: unknown): Record<string, string> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value).filter(
+      (entry): entry is [string, string] =>
+        typeof entry[1] === 'string' && entry[1].trim().length > 0,
+    ),
+  );
+}
+
+function toSummaryEntries(value: unknown): SummaryEntry[] {
   if (!Array.isArray(value)) return [];
-  return value
+  return value.filter(
+    (entry): entry is SummaryEntry =>
+      Boolean(entry) && typeof entry === 'object' && typeof entry.summary === 'string',
+  );
+}
+
+/** 旧 archive 没有逐段标识符；用空标识符补齐既有 SummaryEntry 形状。 */
+function legacyArchiveEntries(value: unknown): SummaryEntry[] {
+  const segments = (typeof value === 'string' ? [value] : Array.isArray(value) ? value : [])
     .filter((segment): segment is string => typeof segment === 'string')
     .map((segment) => segment.trim())
-    .filter(Boolean)
-    .slice(-MAX_ARCHIVE_SEGMENTS);
+    .filter(Boolean);
+  return segments.map((summary) => ({
+    summary,
+    sessionId: '',
+    startTime: '',
+    endTime: '',
+  }));
 }
 
-function appendArchiveSegment(existing: readonly string[], segment: string): string[] {
-  const normalized = segment.trim();
-  if (!normalized) throw new Error('memory_archive_segment_empty');
-  return [...existing, normalized].slice(-MAX_ARCHIVE_SEGMENTS);
+function isCanonicalWatermarks(value: unknown): value is ConsolidationWatermarks {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const raw = value as Record<string, unknown>;
+  return (
+    Object.keys(raw).every((key) => key === 'bySession' || key === 'lastSettledMessageAt') &&
+    Boolean(raw.bySession) &&
+    typeof raw.bySession === 'object' &&
+    !Array.isArray(raw.bySession) &&
+    Object.values(raw.bySession).every((timestamp) => typeof timestamp === 'string') &&
+    (raw.lastSettledMessageAt === null || typeof raw.lastSettledMessageAt === 'string')
+  );
 }
 
-function normalizeSessionSummaries(
-  data: SessionSummaries | null | undefined,
-): SessionSummaries | null {
-  if (!data) return null;
-  const raw = data as unknown as Record<string, unknown>;
+function normalizeEpisodicState(row: AgentLongTermMemoryRow): NormalizedEpisodicState {
+  const summaryValue = row.episodic_session_summaries;
+  const canonicalSummaries = Array.isArray(summaryValue);
+  const rawSummary =
+    summaryValue && typeof summaryValue === 'object' && !canonicalSummaries
+      ? (summaryValue as unknown as Record<string, unknown>)
+      : null;
+
+  let sessionSummaries: SummaryEntry[] | null = null;
+  let summaryNeedsMigration = false;
+  if (canonicalSummaries) {
+    sessionSummaries = toSummaryEntries(summaryValue).slice(-MAX_SESSION_SUMMARIES);
+    summaryNeedsMigration = sessionSummaries.length !== summaryValue.length;
+  } else if (rawSummary) {
+    // 旧 recent 以新到旧排列；裸数组统一为旧到新，archive 旧段置于头部。
+    const recent = toSummaryEntries(rawSummary.recent).reverse();
+    sessionSummaries = [...legacyArchiveEntries(rawSummary.archive), ...recent].slice(
+      -MAX_SESSION_SUMMARIES,
+    );
+    summaryNeedsMigration = true;
+  }
+
+  const rawWatermarks = row.consolidation_watermarks;
+  const canonicalWatermarks = isCanonicalWatermarks(rawWatermarks);
+  const currentWatermarks = canonicalWatermarks ? rawWatermarks : EMPTY_CONSOLIDATION_WATERMARKS;
+  const legacyBySession = toStringRecord(rawSummary?.lastSettledBySession);
+  const legacyFallback =
+    typeof rawSummary?.lastSettledMessageAt === 'string' ? rawSummary.lastSettledMessageAt : null;
+  const consolidationWatermarks: ConsolidationWatermarks = {
+    bySession: { ...legacyBySession, ...currentWatermarks.bySession },
+    lastSettledMessageAt: currentWatermarks.lastSettledMessageAt ?? legacyFallback,
+  };
+
   return {
-    recent: data.recent ?? [],
-    archive: normalizeArchiveSegments(raw.archive),
-    lastSettledMessageAt: data.lastSettledMessageAt ?? null,
-    lastSettledBySession: data.lastSettledBySession ?? null,
+    sessionSummaries,
+    consolidationWatermarks,
+    needsMigration:
+      summaryNeedsMigration ||
+      (!canonicalWatermarks && Boolean(rawSummary)) ||
+      Object.keys(legacyBySession).length > 0 ||
+      legacyFallback !== null,
   };
 }
 
@@ -156,7 +238,8 @@ function buildActiveBookingState(bookings: ActiveBookingEntry[]): ActiveBookingS
 /**
  * Supabase 存储后端 — 长期记忆（候选人 × 托管账号关系一行）
  *
- * 表结构：semantic_profile / semantic_job_intent / episodic_session_summaries / message_metadata / active_booking（均 jsonb）
+ * 表结构：semantic_profile / semantic_job_intent / episodic_session_summaries /
+ * consolidation_watermarks / message_metadata / active_booking（均 jsonb）
  * 长期记忆唯一约束 (corp_id, user_id, bot_user_id)。bot_user_id 使用稳定 wecomUserId；
  * bot_user_id IS NULL 的存量行只承载冻结旧记忆与 active_booking，不进入长期召回。
  * Redis 2h 缓存整行数据。
@@ -259,20 +342,19 @@ export class SupabaseStore implements MemoryStore {
     corpId: string,
     userId: string,
     botUserId: string,
-  ): Promise<SessionSummaries | null> {
-    const row = await this.getRow(corpId, userId, botUserId);
-    return normalizeSessionSummaries(
-      (row?.episodic_session_summaries as SessionSummaries | null) ?? null,
-    );
+  ): Promise<SummaryEntry[] | null> {
+    return (await this.getEpisodicState(corpId, userId, botUserId)).sessionSummaries;
   }
 
-  /**
-   * 原子追加一条摘要（DB 端 RPC 行锁），自动执行分层压缩。
-   *
-   * Phase 1: RPC `append_long_term_summary_atomic` 在行锁内追加 entry 到 recent 头部，
-   *          超限时返回溢出条目但不压缩（压缩需 LLM，不能在 DB 事务里做）。
-   * Phase 2: 若有溢出且提供了 compressArchive，在应用层压缩后回写 archive。
-   */
+  async getConsolidationWatermarks(
+    corpId: string,
+    userId: string,
+    botUserId: string,
+  ): Promise<ConsolidationWatermarks> {
+    return (await this.getEpisodicState(corpId, userId, botUserId)).consolidationWatermarks;
+  }
+
+  /** 原子追加一条 episode 并推进独立水位；DB 端同一 UPDATE 写两列。 */
   async appendSummary(
     corpId: string,
     userId: string,
@@ -280,118 +362,31 @@ export class SupabaseStore implements MemoryStore {
     entry: SummaryEntry,
     options?: {
       lastSettledMessageAt?: string | null;
-      /** 沉淀边界的会话维度 key；提供时同步写 lastSettledBySession[sessionId]。 */
+      /** 沉淀边界的会话维度 key；提供时同步写 consolidation_watermarks.bySession。 */
       sessionId?: string | null;
-      compressArchive?: (overflow: SummaryEntry[]) => Promise<string>;
     },
   ): Promise<void> {
     const client = this.supabase.getSupabaseClient();
     if (!client) {
-      this.logger.warn('Supabase 不可用，appendSummary 跳过');
-      return;
+      throw new Error('memory_summary_store_unavailable');
     }
 
-    // RPC 会在返回 overflow 前裁剪 recent 并推进沉淀水位。先留快照，确保后续 LLM
-    // 压缩或 archive 回写失败时能恢复到 RPC 前状态，让 Bull 重试不会被新水位挡住。
-    const beforeAppend = options?.compressArchive
-      ? await this.getSessionSummaries(corpId, userId, botUserId)
-      : null;
-
-    const { data: rpcResult, error } = await client.rpc('append_long_term_summary_atomic', {
+    const { error } = await client.rpc('append_long_term_summary_atomic', {
       p_corp_id: corpId,
       p_user_id: userId,
       p_bot_user_id: botUserId,
       p_entry: entry,
       p_last_settled_message_at: options?.lastSettledMessageAt ?? null,
-      p_max_recent: MAX_RECENT_SUMMARIES,
+      p_max_session_summaries: MAX_SESSION_SUMMARIES,
       p_session_id: options?.sessionId ?? null,
     });
 
     if (error) {
-      this.logger.warn('[appendSummary] RPC 失败，降级到应用层写入', error.message);
-      await this.appendSummaryFallback(corpId, userId, botUserId, entry, options);
-      return;
+      this.logger.warn('[appendSummary] RPC 失败', error.message);
+      throw error;
     }
 
     await this.invalidateCache(corpId, userId, botUserId);
-
-    const result = rpcResult as { overflow: SummaryEntry[]; recentCount: number } | null;
-    if (result?.overflow?.length && options?.compressArchive) {
-      try {
-        const sessionSummaries = await this.getSessionSummaries(corpId, userId, botUserId);
-        const segment = await options.compressArchive(result.overflow);
-        const archive = appendArchiveSegment(sessionSummaries?.archive ?? [], segment);
-        await this.upsertRow(corpId, userId, botUserId, {
-          episodic_session_summaries: {
-            ...(sessionSummaries ?? {
-              recent: [],
-              archive: [],
-              lastSettledMessageAt: null,
-            }),
-            archive,
-          },
-        });
-      } catch (archiveError) {
-        try {
-          await this.upsertRow(corpId, userId, botUserId, {
-            episodic_session_summaries: beforeAppend ?? {
-              recent: [],
-              archive: [],
-              lastSettledMessageAt: null,
-              lastSettledBySession: null,
-            },
-          });
-        } catch (rollbackError) {
-          throw new AggregateError(
-            [archiveError, rollbackError],
-            'memory_archive_failure_rollback_failed',
-          );
-        }
-        throw archiveError;
-      }
-    }
-  }
-
-  /** RPC 不可用时的降级路径（应用层 read-then-write，非原子）。 */
-  private async appendSummaryFallback(
-    corpId: string,
-    userId: string,
-    botUserId: string,
-    entry: SummaryEntry,
-    options?: {
-      lastSettledMessageAt?: string | null;
-      sessionId?: string | null;
-      compressArchive?: (overflow: SummaryEntry[]) => Promise<string>;
-    },
-  ): Promise<void> {
-    const existing = await this.getSessionSummaries(corpId, userId, botUserId);
-    const data: SessionSummaries = existing ?? {
-      recent: [],
-      archive: [],
-      lastSettledMessageAt: null,
-    };
-
-    data.recent.unshift(entry);
-
-    if (data.recent.length > MAX_RECENT_SUMMARIES && options?.compressArchive) {
-      const overflow = data.recent.splice(MAX_RECENT_SUMMARIES);
-      const segment = await options.compressArchive(overflow);
-      data.archive = appendArchiveSegment(data.archive, segment);
-    } else if (data.recent.length > MAX_RECENT_SUMMARIES) {
-      data.recent = data.recent.slice(0, MAX_RECENT_SUMMARIES);
-    }
-
-    if (options?.lastSettledMessageAt !== undefined) {
-      data.lastSettledMessageAt = options.lastSettledMessageAt;
-      if (options.sessionId && options.lastSettledMessageAt) {
-        data.lastSettledBySession = {
-          ...(data.lastSettledBySession ?? {}),
-          [options.sessionId]: options.lastSettledMessageAt,
-        };
-      }
-    }
-
-    await this.upsertRow(corpId, userId, botUserId, { episodic_session_summaries: data });
   }
 
   async markLastSettledMessageAt(
@@ -402,37 +397,20 @@ export class SupabaseStore implements MemoryStore {
     sessionId?: string | null,
   ): Promise<void> {
     const client = this.supabase.getSupabaseClient();
-    if (client) {
-      // 优先走行锁 RPC，避免应用层 read-then-write 与并发 appendSummary 互相覆盖。
-      const { error } = await client.rpc('mark_long_term_settled_boundary', {
-        p_corp_id: corpId,
-        p_user_id: userId,
-        p_bot_user_id: botUserId,
-        p_last_settled_message_at: lastSettledMessageAt,
-        p_session_id: sessionId ?? null,
-      });
-      if (!error) {
-        await this.invalidateCache(corpId, userId, botUserId);
-        return;
-      }
-      this.logger.warn('[markLastSettledMessageAt] RPC 失败，降级到应用层写入', error.message);
-    }
+    if (!client) throw new Error('memory_watermark_store_unavailable');
 
-    const existing = await this.getSessionSummaries(corpId, userId, botUserId);
-    const data: SessionSummaries = existing ?? {
-      recent: [],
-      archive: [],
-      lastSettledMessageAt: null,
-    };
-
-    data.lastSettledMessageAt = lastSettledMessageAt;
-    if (sessionId) {
-      data.lastSettledBySession = {
-        ...(data.lastSettledBySession ?? {}),
-        [sessionId]: lastSettledMessageAt,
-      };
+    const { error } = await client.rpc('mark_long_term_settled_boundary', {
+      p_corp_id: corpId,
+      p_user_id: userId,
+      p_bot_user_id: botUserId,
+      p_last_settled_message_at: lastSettledMessageAt,
+      p_session_id: sessionId ?? null,
+    });
+    if (error) {
+      this.logger.warn('[markLastSettledMessageAt] RPC 失败', error.message);
+      throw error;
     }
-    await this.upsertRow(corpId, userId, botUserId, { episodic_session_summaries: data });
+    await this.invalidateCache(corpId, userId, botUserId);
   }
 
   async upsertMessageMetadata(
@@ -553,6 +531,34 @@ export class SupabaseStore implements MemoryStore {
   }
 
   // ==================== 内部方法 ====================
+
+  /**
+   * episodic 读边界懒迁移：旧 recent/archive 合成裸 SummaryEntry[]，摘要内旧水位搬到独立列。
+   * 两列一起回写，随后所有运行时调用只看到新结构。
+   */
+  private async getEpisodicState(
+    corpId: string,
+    userId: string,
+    botUserId: string,
+  ): Promise<NormalizedEpisodicState> {
+    const row = await this.getRow(corpId, userId, botUserId);
+    if (!row) {
+      return {
+        sessionSummaries: null,
+        consolidationWatermarks: { ...EMPTY_CONSOLIDATION_WATERMARKS, bySession: {} },
+        needsMigration: false,
+      };
+    }
+
+    const normalized = normalizeEpisodicState(row);
+    if (normalized.needsMigration && normalized.sessionSummaries) {
+      await this.upsertRow(corpId, userId, botUserId, {
+        episodic_session_summaries: normalized.sessionSummaries,
+        consolidation_watermarks: normalized.consolidationWatermarks,
+      });
+    }
+    return normalized;
+  }
 
   private async getRow(
     corpId: string,

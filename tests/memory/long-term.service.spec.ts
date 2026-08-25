@@ -12,6 +12,7 @@ describe('LongTermService（S7 单一 Profile 上游 + preference 三态）', ()
     upsertProfileFacts: jest.fn().mockResolvedValue(undefined),
     getPreferenceFacts: jest.fn(),
     getSessionSummaries: jest.fn(),
+    getConsolidationWatermarks: jest.fn(),
     appendSummary: jest.fn().mockResolvedValue(undefined),
     markLastSettledMessageAt: jest.fn().mockResolvedValue(undefined),
     upsertMessageMetadata: jest.fn().mockResolvedValue(undefined),
@@ -221,30 +222,39 @@ describe('LongTermService（S7 单一 Profile 上游 + preference 三态）', ()
   });
 
   it('按稳定 bot 关系键读取摘要，不再做字段级 originBotId 过滤', async () => {
-    store.getSessionSummaries.mockResolvedValue({
-      recent: [
-        {
-          summary: 'A',
-          sessionId: 's-A',
-          originBotId: 'bot-A',
-          startTime: '2026-08-20',
-          endTime: '2026-08-20',
-        },
-        {
-          summary: 'B',
-          sessionId: 's-B',
-          originBotId: 'bot-B',
-          startTime: '2026-08-20',
-          endTime: '2026-08-20',
-        },
-      ],
-      archive: ['mixed'],
-      lastSettledMessageAt: null,
-    });
+    store.getSessionSummaries.mockResolvedValue([
+      {
+        summary: 'A',
+        sessionId: 's-A',
+        originBotId: 'bot-A',
+        startTime: '2026-08-20',
+        endTime: '2026-08-20',
+      },
+      {
+        summary: 'B',
+        sessionId: 's-B',
+        originBotId: 'bot-B',
+        startTime: '2026-08-20',
+        endTime: '2026-08-20',
+      },
+    ]);
 
     const result = await service.getSessionSummaries('corp-1', 'user-1', BOT_USER_ID);
     expect(store.getSessionSummaries).toHaveBeenCalledWith('corp-1', 'user-1', BOT_USER_ID);
-    expect(result?.recent.map((entry) => entry.summary)).toEqual(['A', 'B']);
-    expect(result?.archive).toEqual(['mixed']);
+    expect(result?.map((entry) => entry.summary)).toEqual(['A', 'B']);
+  });
+
+  it('从独立列读取 consolidation 水位', async () => {
+    store.getConsolidationWatermarks.mockResolvedValue({
+      bySession: { 'session-1': '2026-08-25T00:00:00.000Z' },
+      lastSettledMessageAt: '2026-08-25T00:00:00.000Z',
+    });
+
+    await expect(
+      service.getConsolidationWatermarks('corp-1', 'user-1', BOT_USER_ID),
+    ).resolves.toEqual({
+      bySession: { 'session-1': '2026-08-25T00:00:00.000Z' },
+      lastSettledMessageAt: '2026-08-25T00:00:00.000Z',
+    });
   });
 });

@@ -248,29 +248,19 @@ export interface SummaryEntry {
   coverageNote?: string;
 }
 
-/** 对话摘要数据 — 分层压缩结构 */
-export interface SessionSummaries {
-  /** 最近 N 条详细摘要 */
-  recent: SummaryEntry[];
+/** consolidation 工作书签；独立于 episodic 记忆内容存放。 */
+export interface ConsolidationWatermarks {
   /**
-   * 更早摘要的追加段，按时间从旧到新排列。旧 string blob 在读边界懒迁移为首段；
-   * 已有段冻结，后续压缩只能追加新段。
+   * 按会话（sessionId=chatId）隔离的沉淀边界。当前长期档已按 botUserId 隔离，
+   * 仍保留 map 形态以承接旧行并明确幂等 key。
    */
-  archive: string[];
+  bySession: Record<string, string>;
   /**
-   * 最近一次已沉淀到长期记忆的消息边界（用户维度，跨 bot 共享）。
-   * 历史字段：双 bot 服务同一候选人时会互相推进，仅作为 lastSettledBySession
-   * 缺失时的回退基准。
+   * 兼容旧行缺少会话级水位时的回退值；新写入仍同步推进，待存量全部迁完后收口。
    */
   lastSettledMessageAt: string | null;
-  /**
-   * 按会话（sessionId=chatId，bot 维度）隔离的沉淀边界。
-   * 双 bot 场景必须隔离：共用用户级边界时，bot A 推进后 bot B 边界之前的消息永不沉淀。
-   */
-  lastSettledBySession?: Record<string, string> | null;
 }
 
-/** agent_long_term_memories 表行类型（每用户一行，Profile facts + Summary jsonb）。 */
 /**
  * 候选人当前有效/待处理预约工单指针。
  *
@@ -317,21 +307,6 @@ export interface ActiveBookingState extends ActiveBookingEntry {
   bookings?: ActiveBookingEntry[];
 }
 
-export interface AgentLongTermMemoryRow {
-  id: string;
-  corp_id: string;
-  user_id: string;
-  /** 托管账号稳定 wecomUserId；null 仅用于冻结存量与 active_booking 兼容行。 */
-  bot_user_id?: string | null;
-  semantic_profile?: UserProfileFacts | null;
-  semantic_job_intent?: JobIntentFacts | null;
-  episodic_session_summaries?: SessionSummaries | null;
-  message_metadata?: MessageMetadata | null;
-  active_booking?: ActiveBookingState | null;
-  created_at: string;
-  updated_at: string;
-}
-
 // ==================== 长期求职意向（semantic_job_intent） ====================
 
 /**
@@ -369,11 +344,8 @@ export type JobIntentFacts = Partial<Record<JobIntentFieldKey, UserProfileFactVa
 /** 便于复用的长期记忆 upsert payload。 */
 export type ProfileUpsertPayload = Partial<UserProfile>;
 
-/** 最大保留的详细摘要条数 */
-export const MAX_RECENT_SUMMARIES = 5;
-
-/** archive 追加段上限；超限时确定性淘汰最老段。 */
-export const MAX_ARCHIVE_SEGMENTS = 12;
+/** 单个候选人 × bot 关系最多保留的咨询段摘要数；超限时淘汰最老段。 */
+export const MAX_SESSION_SUMMARIES = 20;
 
 // ==================== CoALA A3 分组（2026-08-21，治理二期 M2-B） ====================
 
@@ -386,7 +358,7 @@ export interface SemanticMemory {
 
 /** 情景记忆分组：按会话分段的历史摘要集（recall_history 按需拉取）。 */
 export interface EpisodicMemory {
-  sessionSummaries: SessionSummaries | null;
+  sessionSummaries: SummaryEntry[] | null;
 }
 
 /**

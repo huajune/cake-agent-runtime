@@ -28,15 +28,6 @@ const CONSOLIDATION_MAX_PAGES = 10;
 /** 摘要 LLM 输入的消息条数上限：分页扫描后旧会话段可能远超单页。 */
 const SUMMARY_MAX_MESSAGES = 120;
 
-const ARCHIVE_COMPRESS_PROMPT = `你是记忆压缩器。只把本次新溢出的历史求职摘要压缩成一个独立归档段。
-
-要求：
-- 合并重复信息，保留关键事实
-- 按时间顺序概括
-- 不得假设或改写任何既有归档段
-- 不超过 200 字
-- 使用第三人称`;
-
 /**
  * 沉淀服务 — delayed job 到点后复核 DB 活跃时间，将闲置会话记忆沉淀到长期记忆
  *
@@ -49,11 +40,11 @@ const ARCHIVE_COMPRESS_PROMPT = `你是记忆压缩器。只把本次新溢出�
  * ## 实现
  *
  * 幂等与边界使用两个持久化数据源：
- * - `agent_long_term_memories.episodic_session_summaries.lastSettledMessageAt`（Supabase 永久）：上次已沉淀到哪条消息
+ * - `agent_long_term_memories.consolidation_watermarks`（Supabase 永久）：上次已沉淀到哪条消息
  * - `chat_messages` 表里的真实消息时间戳：用来找会话间隔
  *
  * 1. 查询 chat_messages 最新消息并复核闲置时长；不足阈值时返回剩余 delay
- * 2. 读取 `lastSettledBySession[sessionId]`，边界已覆盖最新消息即幂等跳过
+ * 2. 读取 `bySession[sessionId]`，边界已覆盖最新消息即幂等跳过
  * 3. 分页读取水位后的当前咨询段，用当前 sessionFacts 作为已校验事实参考生成摘要
  * 4. 写入长期事实与摘要，并由同名 RPC 原子推进会话级沉淀水位
  */
@@ -97,11 +88,9 @@ export class ConsolidationService {
       };
     }
 
-    const sessionSummaries = await this.longTerm.getSessionSummaries(corpId, userId, botUserId);
+    const watermarks = await this.longTerm.getConsolidationWatermarks(corpId, userId, botUserId);
     const lastConsolidatedAt =
-      sessionSummaries?.lastSettledBySession?.[sessionId] ??
-      sessionSummaries?.lastSettledMessageAt ??
-      null;
+      watermarks.bySession[sessionId] ?? watermarks.lastSettledMessageAt ?? null;
     const lastConsolidatedMs = lastConsolidatedAt ? new Date(lastConsolidatedAt).getTime() : 0;
 
     if (Number.isFinite(lastConsolidatedMs) && lastConsolidatedMs >= latestMessageAt) {
@@ -242,24 +231,10 @@ export class ConsolidationService {
     await this.longTerm.appendSummary(corpId, userId, botUserId, summaryEntry, {
       lastSettledMessageAt: sessionEndAt,
       sessionId,
-      compressArchive: (overflow) => this.compressArchive(overflow),
     });
 
     this.logger.log(
       `[consolidation] 摘要已写入: userId=${userId}, sessionId=${sessionId}, endAt=${sessionEndAt}`,
     );
-  }
-
-  private async compressArchive(overflow: { summary: string }[]): Promise<string> {
-    const result = await this.llm.generate({
-      role: ModelRole.Extract,
-      modelId: await this.systemConfig.getExtractModelOverride(),
-      system: ARCHIVE_COMPRESS_PROMPT,
-      prompt: `需要压缩的新溢出记录：\n${overflow.map((e) => `- ${e.summary}`).join('\n')}`,
-    });
-
-    const segment = result.text?.trim();
-    if (!segment) throw new Error('memory_archive_compression_empty');
-    return segment;
   }
 }

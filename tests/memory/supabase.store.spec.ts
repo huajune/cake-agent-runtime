@@ -1,6 +1,6 @@
 import { SupabaseStore } from '@memory/stores/supabase.store';
 import {
-  MAX_ARCHIVE_SEGMENTS,
+  MAX_SESSION_SUMMARIES,
   UserProfileFactValueSchema,
 } from '@memory/long-term/long-term.types';
 import type { CandidateFactProducer } from '@resolution/evidence/claim.types';
@@ -162,10 +162,11 @@ describe('SupabaseStore', () => {
       expect(result).toBeNull();
     });
 
-    it('should return episodic_session_summaries from row', async () => {
+    it('读边界把旧 recent 并入并反转为按时间排列的裸数组', async () => {
       const sessionSummaries = {
         recent: [
-          { summary: 'test', sessionId: 's1', startTime: '2026-03-15', endTime: '2026-03-15' },
+          { summary: 'new', sessionId: 's2', startTime: '2026-03-16', endTime: '2026-03-16' },
+          { summary: 'old', sessionId: 's1', startTime: '2026-03-15', endTime: '2026-03-15' },
         ],
         archive: null,
       };
@@ -177,26 +178,94 @@ describe('SupabaseStore', () => {
 
       const result = await store.getSessionSummaries('corp1', 'user1', BOT_USER_ID);
 
-      expect(result).toEqual({
-        ...sessionSummaries,
-        archive: [],
-        lastSettledMessageAt: null,
-        lastSettledBySession: null,
-      });
+      expect(result?.map((entry) => entry.summary)).toEqual(['old', 'new']);
+      expect(mockUpsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          episodic_session_summaries: result,
+          consolidation_watermarks: { bySession: {}, lastSettledMessageAt: null },
+        }),
+        { onConflict: 'corp_id,user_id,bot_user_id' },
+      );
     });
 
-    it('读到旧 string archive 时懒迁移为首段', async () => {
+    it('旧 archive 转为无标识符 SummaryEntry 置于数组头部，旧水位写入新列', async () => {
       mockRedis.get.mockResolvedValue({
         episodic_session_summaries: {
-          recent: [],
+          recent: [
+            {
+              summary: '近期咨询',
+              sessionId: 'session-1',
+              startTime: '2026-08-20',
+              endTime: '2026-08-20',
+            },
+          ],
           archive: '旧版合并摘要',
-          lastSettledMessageAt: null,
+          lastSettledMessageAt: '2026-08-19T00:00:00.000Z',
+          lastSettledBySession: { 'session-1': '2026-08-20T00:00:00.000Z' },
         },
       });
 
       const result = await store.getSessionSummaries('corp1', 'user1', BOT_USER_ID);
 
-      expect(result?.archive).toEqual(['旧版合并摘要']);
+      expect(result).toEqual([
+        { summary: '旧版合并摘要', sessionId: '', startTime: '', endTime: '' },
+        {
+          summary: '近期咨询',
+          sessionId: 'session-1',
+          startTime: '2026-08-20',
+          endTime: '2026-08-20',
+        },
+      ]);
+      expect(mockUpsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          episodic_session_summaries: result,
+          consolidation_watermarks: {
+            bySession: { 'session-1': '2026-08-20T00:00:00.000Z' },
+            lastSettledMessageAt: '2026-08-19T00:00:00.000Z',
+          },
+        }),
+        { onConflict: 'corp_id,user_id,bot_user_id' },
+      );
+    });
+
+    it('canonical 裸数组与独立水位直接读取，不触发懒迁移写', async () => {
+      mockRedis.get.mockResolvedValue({
+        episodic_session_summaries: [],
+        consolidation_watermarks: {
+          bySession: { 'session-1': '2026-08-20T00:00:00.000Z' },
+          lastSettledMessageAt: null,
+        },
+      });
+
+      await expect(
+        store.getConsolidationWatermarks('corp1', 'user1', BOT_USER_ID),
+      ).resolves.toEqual({
+        bySession: { 'session-1': '2026-08-20T00:00:00.000Z' },
+        lastSettledMessageAt: null,
+      });
+      expect(mockUpsert).not.toHaveBeenCalled();
+    });
+
+    it('裸数组超过 20 段时确定性淘汰最老段并懒写回', async () => {
+      mockRedis.get.mockResolvedValue({
+        episodic_session_summaries: Array.from({ length: 21 }, (_, index) => ({
+          summary: `摘要-${index}`,
+          sessionId: `session-${index}`,
+          startTime: `2026-08-${String(index + 1).padStart(2, '0')}`,
+          endTime: `2026-08-${String(index + 1).padStart(2, '0')}`,
+        })),
+        consolidation_watermarks: { bySession: {}, lastSettledMessageAt: null },
+      });
+
+      const result = await store.getSessionSummaries('corp1', 'user1', BOT_USER_ID);
+
+      expect(result).toHaveLength(MAX_SESSION_SUMMARIES);
+      expect(result?.[0].summary).toBe('摘要-1');
+      expect(result?.at(-1)?.summary).toBe('摘要-20');
+      expect(mockUpsert).toHaveBeenCalledWith(
+        expect.objectContaining({ episodic_session_summaries: result }),
+        { onConflict: 'corp_id,user_id,bot_user_id' },
+      );
     });
   });
 
@@ -224,74 +293,14 @@ describe('SupabaseStore', () => {
         p_bot_user_id: BOT_USER_ID,
         p_entry: entry,
         p_last_settled_message_at: entry.endTime,
-        p_max_recent: 5,
+        p_max_session_summaries: MAX_SESSION_SUMMARIES,
         p_session_id: null,
       });
       expect(mockRedis.del).toHaveBeenCalledWith(`long-term:corp1:user1:${BOT_USER_ID}`);
     });
 
-    it('只压缩新溢出并追加 archive 段，超过上限确定性淘汰最老段', async () => {
-      const overflow = [
-        {
-          summary: '本次溢出',
-          sessionId: 'old-session',
-          startTime: '2026-01-01',
-          endTime: '2026-01-01',
-        },
-      ];
-      mockRpc.mockResolvedValue({ data: { overflow, recentCount: 5 }, error: null });
-      mockRedis.get.mockResolvedValue({
-        episodic_session_summaries: {
-          recent: [],
-          archive: Array.from({ length: MAX_ARCHIVE_SEGMENTS }, (_, index) => `旧段-${index}`),
-          lastSettledMessageAt: null,
-        },
-      });
-      const compressArchive = jest.fn().mockResolvedValue('新段');
-      const entry = {
-        summary: '最新摘要',
-        sessionId: 'sess-1',
-        startTime: '2026-08-25',
-        endTime: '2026-08-25',
-      };
-
-      await store.appendSummary('corp1', 'user1', BOT_USER_ID, entry, { compressArchive });
-
-      expect(compressArchive).toHaveBeenCalledWith(overflow);
-      expect(mockUpsert).toHaveBeenCalledWith(
-        expect.objectContaining({
-          episodic_session_summaries: expect.objectContaining({
-            archive: [
-              ...Array.from(
-                { length: MAX_ARCHIVE_SEGMENTS - 1 },
-                (_, index) => `旧段-${index + 1}`,
-              ),
-              '新段',
-            ],
-          }),
-        }),
-        { onConflict: 'corp_id,user_id,bot_user_id' },
-      );
-    });
-
-    it('archive 压缩失败向上抛出，并恢复 RPC 前摘要与水位供 Bull 重试', async () => {
-      const overflow = [
-        {
-          summary: '不可丢的溢出',
-          sessionId: 'old-session',
-          startTime: '2026-01-01',
-          endTime: '2026-01-01',
-        },
-      ];
-      mockRpc.mockResolvedValue({ data: { overflow, recentCount: 5 }, error: null });
-      mockRedis.get.mockResolvedValue({
-        episodic_session_summaries: {
-          recent: [],
-          archive: ['既有段'],
-          lastSettledMessageAt: null,
-        },
-      });
-
+    it('RPC 失败直接向上抛出，不做应用层 read-then-write 或失败恢复补偿', async () => {
+      mockRpc.mockResolvedValue({ data: null, error: { message: 'rpc down' } });
       await expect(
         store.appendSummary(
           'corp1',
@@ -303,21 +312,36 @@ describe('SupabaseStore', () => {
             startTime: '2026-08-25',
             endTime: '2026-08-25',
           },
-          { compressArchive: jest.fn().mockRejectedValue(new Error('compress down')) },
-        ),
-      ).rejects.toThrow('compress down');
-      expect(mockUpsert).toHaveBeenCalledTimes(1);
-      expect(mockUpsert).toHaveBeenCalledWith(
-        expect.objectContaining({
-          episodic_session_summaries: {
-            recent: [],
-            archive: ['既有段'],
-            lastSettledMessageAt: null,
-            lastSettledBySession: null,
+          {
+            lastSettledMessageAt: '2026-08-25T00:00:00.000Z',
+            sessionId: 'sess-1',
           },
-        }),
-        { onConflict: 'corp_id,user_id,bot_user_id' },
+        ),
+      ).rejects.toEqual({ message: 'rpc down' });
+      expect(mockUpsert).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('markLastSettledMessageAt', () => {
+    it('只通过同名 RPC 推进独立水位', async () => {
+      mockRpc.mockResolvedValue({ data: null, error: null });
+
+      await store.markLastSettledMessageAt(
+        'corp1',
+        'user1',
+        BOT_USER_ID,
+        '2026-08-25T00:00:00.000Z',
+        'session-1',
       );
+
+      expect(mockRpc).toHaveBeenCalledWith('mark_long_term_settled_boundary', {
+        p_corp_id: 'corp1',
+        p_user_id: 'user1',
+        p_bot_user_id: BOT_USER_ID,
+        p_last_settled_message_at: '2026-08-25T00:00:00.000Z',
+        p_session_id: 'session-1',
+      });
+      expect(mockUpsert).not.toHaveBeenCalled();
     });
   });
 

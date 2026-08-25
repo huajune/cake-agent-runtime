@@ -8,7 +8,7 @@ describe('ConsolidationService（M5 定时闲置沉淀）', () => {
   const latestAt = now - GAP_SECONDS * 1000;
 
   const longTerm = {
-    getSessionSummaries: jest.fn(),
+    getConsolidationWatermarks: jest.fn(),
     appendSummary: jest.fn().mockResolvedValue(undefined),
     writeFromConsolidation: jest.fn().mockResolvedValue(undefined),
   };
@@ -28,11 +28,9 @@ describe('ConsolidationService（M5 定时闲置沉淀）', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.spyOn(Date, 'now').mockReturnValue(now);
-    longTerm.getSessionSummaries.mockResolvedValue({
-      recent: [],
-      archive: [],
+    longTerm.getConsolidationWatermarks.mockResolvedValue({
+      bySession: {},
       lastSettledMessageAt: null,
-      lastSettledBySession: {},
     });
     longTerm.appendSummary.mockResolvedValue(undefined);
     longTerm.writeFromConsolidation.mockResolvedValue(undefined);
@@ -105,12 +103,10 @@ describe('ConsolidationService（M5 定时闲置沉淀）', () => {
     expect(longTerm.appendSummary).not.toHaveBeenCalled();
   });
 
-  it('lastSettledBySession 已覆盖最新消息时幂等跳过', async () => {
-    longTerm.getSessionSummaries.mockResolvedValue({
-      recent: [],
-      archive: [],
+  it('独立 bySession 水位已覆盖最新消息时幂等跳过', async () => {
+    longTerm.getConsolidationWatermarks.mockResolvedValue({
+      bySession: { 'session-1': new Date(latestAt).toISOString() },
       lastSettledMessageAt: null,
-      lastSettledBySession: { 'session-1': new Date(latestAt).toISOString() },
     });
 
     const result = await service.consolidateIdleSession(
@@ -234,37 +230,15 @@ describe('ConsolidationService（M5 定时闲置沉淀）', () => {
     );
   });
 
-  it('archive 压缩只接收新溢出，旧段不会进入 prompt，空结果向上抛出', async () => {
-    longTerm.getSessionSummaries.mockResolvedValue({
-      recent: [],
-      archive: ['不可重写的旧归档段'],
-      lastSettledMessageAt: null,
-      lastSettledBySession: {},
-    });
-    llm.generate
-      .mockResolvedValueOnce({ text: '本轮摘要' })
-      .mockResolvedValueOnce({ text: '新归档段' });
-
+  it('每次沉淀只生成一个新 episode，不再提供 archive 二次压缩回调', async () => {
     await service.consolidateIdleSession('corp-1', 'user-1', 'session-1', BOT_USER_ID, null);
 
     const options = longTerm.appendSummary.mock.calls[0][4];
-    await expect(
-      options.compressArchive([
-        {
-          summary: '本次新溢出',
-          sessionId: 'old-session',
-          startTime: '2026-01-01',
-          endTime: '2026-01-01',
-        },
-      ]),
-    ).resolves.toBe('新归档段');
-    expect(llm.generate.mock.calls[1][0].prompt).toContain('本次新溢出');
-    expect(llm.generate.mock.calls[1][0].prompt).not.toContain('不可重写的旧归档段');
-
-    llm.generate.mockResolvedValueOnce({ text: '  ' });
-    await expect(options.compressArchive([{ summary: '再次溢出' }])).rejects.toThrow(
-      'memory_archive_compression_empty',
-    );
+    expect(options).toEqual({
+      lastSettledMessageAt: new Date(latestAt).toISOString(),
+      sessionId: 'session-1',
+    });
+    expect(llm.generate).toHaveBeenCalledTimes(1);
   });
 
   it('缺少 DB 最新消息时失败而非静默跳过', async () => {

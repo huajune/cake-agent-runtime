@@ -4,12 +4,12 @@
 
 ## 作用域与三个时间数
 
-| 作用域 | 当前内容 | 生命周期 / 边界 | 存储 |
-|---|---|---|---|
-| short-term 消息窗口 | 原始对话窗口 | **7 天** | `chat_messages` 查询窗口 |
-| short-term 会话状态 | facts、工作台、阶段指针 | **3 天** | Redis |
-| 咨询段（episode） | 本次连续咨询的消息切片 | **闲置 3 天**划界 | 无独立存储层 |
-| long-term 关系档 | semantic 档案/意向、episodic 摘要 | 持久 | Supabase + Redis 缓存 |
+| 作用域              | 当前内容                          | 生命周期 / 边界   | 存储                     |
+| ------------------- | --------------------------------- | ----------------- | ------------------------ |
+| short-term 消息窗口 | 原始对话窗口                      | **7 天**          | `chat_messages` 查询窗口 |
+| short-term 会话状态 | facts、工作台、阶段指针           | **3 天**          | Redis                    |
+| 咨询段（episode）   | 本次连续咨询的消息切片            | **闲置 3 天**划界 | 无独立存储层             |
+| long-term 关系档    | semantic 档案/意向、episodic 摘要 | 持久              | Supabase + Redis 缓存    |
 
 三个对外口径固定为 **7d / 3d / 3d**：消息回看窗口 7 天、会话状态 TTL 3 天、闲置沉淀间隙 3 天。`factsv2:` 的实际 TTL 额外加 12 小时，只是保证 delayed job 先读取再过期的安全余量，不构成新的业务生命周期。
 
@@ -148,11 +148,13 @@ Redis hash 没有字段级 TTL，因此 `factsv2:` 内的 facts 与 workbench �
 - Supabase：`agent_long_term_memories` 的 `bot_user_id` 参与唯一关系维；
 - `semantic_profile`：身份档案；
 - `semantic_job_intent`：长期求职意向；
-- `episodic_session_summaries`：咨询段摘要与 `lastSettledBySession` 幂等水位。
+- `episodic_session_summaries`：裸 `SummaryEntry[]`，保存 7 天消息窗口之外的每段咨询摘要；
+- `consolidation_watermarks`：独立工作水位列，不属于记忆内容，也不进入召回契约。
 
-摘要保留最近 5 条明细；更早摘要按批压成只追加的 archive 段。既有段冻结，不再交给
-LLM 重写；最多保留 12 段，超限时确定性淘汰最老段。旧 string archive 在读取时视为
-首段，DB 列名不变。
+摘要数组按时间从旧到新排列，最多保留 20 段，超限时确定性淘汰最老段；已写入条目
+永不再交给 LLM 重写。旧 `{ recent, archive, lastSettled* }` 在读取时懒迁移：recent
+反转并入裸数组，archive 文本补为空标识符 `SummaryEntry` 置于头部，旧水位写入独立列。
+`episodic_session_summaries` 列名保持不变。
 
 没有可验证 bot 血缘的存量行保持冻结且不参与读取；有可靠血缘的数据才拆到关系行。长期召回不再做跨 bot 来源研判，也不渲染跨咨询泛指横幅。
 
@@ -183,14 +185,15 @@ LLM 重写；最多保留 12 段，超限时确定性淘汰最老段。旧 strin
 任务约 3 天后到点时：
 
 1. 重新读取 DB 最新消息时间并校验确已闲置；未达标则按剩余时间重排；
-2. 用 `lastSettledBySession[sessionId]` 判断是否已覆盖，做到幂等；
+2. 用 `consolidation_watermarks.bySession[sessionId]` 判断是否已覆盖，做到幂等；
 3. 摘要消息片段，写 episodic 摘要；
 4. 提拔 profile 与 job intent，写当前 bot 关系档；
-5. 原子推进沉淀边界。
+5. 单次 DB UPDATE 原子追加摘要并推进独立沉淀水位。
 
 Bull job 失败使用指数退避，最多 3 次；最终失败通过 `IncidentReporterService` 写入可观测告警 `memory.consolidation_failed`，不会只留本地日志。
 
-12 小时 facts TTL 余量保证正常 delayed job 在事实过期前读取；任务的 DB 闲置复核与 `lastSettledBySession` 水位分别防止过早执行与重复沉淀。
+12 小时 facts TTL 余量保证正常 delayed job 在事实过期前读取；任务的 DB 闲置复核与
+`consolidation_watermarks.bySession` 水位分别防止过早执行与重复沉淀。
 
 ## 兼容契约
 
@@ -209,12 +212,12 @@ DB RPC 若需要改参数，迁移必须 `DROP FUNCTION` 后以同名重新创�
 
 类型词用于理解，不用于顶层目录命名：
 
-| CoALA 类型 | 当前落点 |
-|---|---|
-| episodic 原料 | message window + `chat_messages` |
-| semantic | short-term facts + `longTerm.semantic.{profile, jobIntent}` |
-| working | short-term workbench（含阶段指针）+ `agent/generator/working-memory/` |
-| episodic 蒸馏 | `episodic_session_summaries` |
-| procedural | 不在 memory：手册、工具 description、`tools/collection` 状态机；台账只做索引 |
+| CoALA 类型    | 当前落点                                                                     |
+| ------------- | ---------------------------------------------------------------------------- |
+| episodic 原料 | message window + `chat_messages`                                             |
+| semantic      | short-term facts + `longTerm.semantic.{profile, jobIntent}`                  |
+| working       | short-term workbench（含阶段指针）+ `agent/generator/working-memory/`        |
+| episodic 蒸馏 | `episodic_session_summaries`                                                 |
+| procedural    | 不在 memory：手册、工具 description、`tools/collection` 状态机；台账只做索引 |
 
 这里的关键是映射可查，而不是把类型词塞进每个目录名。

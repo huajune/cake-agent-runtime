@@ -98,6 +98,8 @@ interface LongTermMemory {
 
 ### M5-深审：两个智能点（2026-08-25，框架完工后的细节专项）
 
+> 执行结果：实锤五条全落（含追加发现的 RPC 水位原子性修复）；archive 追加化曾作为过渡态落地，随后由裁定四整体裁撤；brand_ids 审计结论=**三通道各有实职维持现状**（多品牌 ID 工具参数通道，退役条件见审计文档）；gender_source 审计结论=**化石但承重**（预填安全闸，三步迁移路径登记，不可直删）。审计详情：[memory-intelligence-deep-review-audit.md](./memory-intelligence-deep-review-audit.md)。裁定一与裁定四均已于 2026-08-25 完成。
+
 > 对象：extraction.prompt.ts（会话事实生产线）与 consolidation.service.ts（长期蒸馏炉）——全库仅有的两处 LLM 参与记忆写入的地方。查证式深读，实锤与裁定如下。
 
 **背景事实（查证 2026-08-25）**：收资批已将轮末抽取职权收窄为"表单外软事实"（preferences/brand_intents/labor_form_intent），身份资料唯一写入口 = `saveCompletedCollectionFacts`（仅 booking 办结调用、仅收 high 信封）。sessionFacts 与收资表单是**交集关系互不包含**：交集=身份类字段（CandidateFieldKey 同词表、两种投影：办理格 vs 事实信封）；表单独有=契约自定义槽位；sessionFacts 独有=preferences+brand。
@@ -112,6 +114,16 @@ interface LongTermMemory {
 **裁定一（2026-08-25 用户拍板）——未成单保底走方案 a**：收资表单**逐格回流**——每落一格以 medium 信封写 sessionFacts（写入者仍是收资域），办结统一升 high；consolidation 提拔链路从此真实存在（此前"办结才回流"使半途弃单字段随表单消亡，即用户复议时指出的记忆丢失）。归收资契约 v2 批执行，与该域"勿抢跑"裁定对齐后动工。
 
 **裁定二（待拍，推荐追加化）**：archive 从"LLM 全量重写 blob"改**追加段列表**——每次只压新溢出为一个新段，已有段冻结（复印件代际退化归零，arXiv 2607.26637 警示；event-sourcing 同构；封顶用确定性淘汰最老段，不用 LLM 重写）。备选=限频重写（退化变慢不消失，不推荐）。
+
+**裁定四（2026-08-25 经完整讨论后用户拍板）——SessionSummaries 单层化 + 水位搬家——✅ 已完成（2026-08-25）**：
+
+- **目的定位（讨论定稿）**：消息窗口管近 7 天原文，episodic 管 7 天之外的历史摘要，两者拼成完整记忆；一条简单摘要即可，不做结构化落点/自动注入等扩展（场景①登记为产品侧未来项）。
+- **结构**：`episodic.sessionSummaries: SummaryEntry[]`——recent/archive 二分**取消**（个人助手无界记忆样板误植到有界咨询域；生产实证 archive 非空仅 20/13,830 行），且 **SessionSummaries 包装类型整体退役**（2026-08-25 追问定稿：壳的存在理由是曾装 recent+archive+水位三样，水位搬走 archive 裁撤后只剩单字段，壳删、字段直接为数组；DB 列 JSON 同步为裸数组，旧形状懒迁移）。组名 episodic 与叶子名 sessionSummaries 均按 A3 裁定保留（单成员组=对称性+扩展位；叶子不叫 episodes=此处是蒸馏摘要非原始 episode）。**滚动单条方案否决**（每次沉淀重写全文=复印件退化+时间线压扁+失败恢复复杂化）；已写入条目永不再被 LLM 触碰。
+- **容量**：上限 20 段、确定性淘汰最老。回头客论证：年 4~6 回 × 150 字 = 20 段可装 3~5 年完整履历；archive 合并反而糊掉回头客最值钱的时间线演变。淘汰损失趋零（semantic 档案与意向快照仍在）。
+- **60 天硬约束**：chat_messages 仅保留 60 天（DATA_CLEANUP_CHAT_DAYS）——预计算摘要是 60 天外唯一 episodic 痕迹，**用户裁定失忆不可接受**，沉淀时预计算保留（写侧成本=保险费，按需现算方案否决）。
+- **水位搬家**：lastSettledMessageAt/lastSettledBySession 是 consolidation 的工作书签非记忆内容，迁出摘要结构 → 独立 jsonb 列 `consolidation_watermarks`（M2-B"名实有瑕"登记清账）；RPC 同名 DROP+CREATE，一条 UPDATE 原子写两列（追加 episode + 推水位），失败整体不动——昨日的"失败恢复现场"补偿逻辑随之删除。
+- **存量与契约**：旧 recent 反转并入裸数组、旧 archive 段转无标识符 entry 插入头部、旧水位迁新列，全部读边界懒迁移；`episodic_session_summaries` 列名不动（episodic 层仍在）；新迁移已推测试库并完成真实写入回读验证，生产与 M2-B 列名迁移同发版。
+- **类型边界（2026-08-25 追问定稿）**：三个类型三种命运——`LongTermMemory`（记忆聚合，召回面）**不含水位**、维持 A3 嵌套形态（运行时用结构表达双轴，DB 用前缀表达同一双轴，是一个设计的两种投影，不拍平）；`ConsolidationWatermarks` 独立类型，仅 consolidation 管线消费，永不召回注入；DB 行形状（四列俱全）只活在 supabase.store 存储适配层，行 ≠ 记忆。
 
 ### M4 观察项（登记不承诺）
 

@@ -5,7 +5,7 @@ import { SessionWorkbenchService } from './short-term/workbench.service';
 import { MemoryLifecycleService, type MemoryLifecycleTurnContext } from './lifecycle.service';
 import type { CandidateIdentityHint } from './enrichment.service';
 import type { AgentMemoryContext } from './recall.types';
-import type { SessionSummaries } from './long-term/long-term.types';
+import type { SummaryEntry } from './long-term/long-term.types';
 import type { InvitedGroupRecord } from './short-term/short-term.types';
 import type { TurnHints } from '@resolution/evidence/claim.types';
 import type { StageState } from './short-term/short-term.types';
@@ -102,12 +102,12 @@ export class MemoryService {
     };
   }
 
-  /** 读取历史摘要（recent + archive），供 recall_history 或沉淀逻辑使用。 */
+  /** 读取历史咨询段摘要（裸 SummaryEntry[]），供 recall_history 按需使用。 */
   async getSessionSummaries(
     corpId: string,
     userId: string,
     botUserId: string,
-  ): Promise<SessionSummaries | null> {
+  ): Promise<SummaryEntry[] | null> {
     return await this.longTerm.getSessionSummaries(corpId, userId, botUserId);
   }
 

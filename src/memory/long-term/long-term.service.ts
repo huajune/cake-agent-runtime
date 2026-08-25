@@ -5,8 +5,8 @@ import type {
   UserProfile,
   UserProfileFacts,
   ProfileFactConfidence,
-  SessionSummaries,
   SummaryEntry,
+  ConsolidationWatermarks,
   MessageMetadata,
   ActiveBookingEntry,
   JobIntentFacts,
@@ -48,7 +48,8 @@ export interface ConsolidationFactOrigin extends FactOrigin {
  *
  * 管理跨会话持久化的记忆（Supabase 永久，每用户一行）：
  * - Profile（用户身份信息）：semantic_profile jsonb，字段自身携带置信度/来源/证据
- * - Summary（历次求职摘要）：jsonb，分层压缩（recent[] + archive）
+ * - Summary（历次求职摘要）：jsonb 裸数组，最多 20 段
+ * - consolidation 水位：独立 jsonb 列，不属于记忆内容
  */
 @Injectable()
 export class LongTermService {
@@ -221,7 +222,7 @@ export class LongTermService {
     corpId: string,
     userId: string,
     botUserId: string,
-  ): Promise<SessionSummaries | null> {
+  ): Promise<SummaryEntry[] | null> {
     try {
       return await this.supabaseStore.getSessionSummaries(corpId, userId, botUserId);
     } catch (error) {
@@ -230,11 +231,20 @@ export class LongTermService {
     }
   }
 
-  /**
-   * 追加一条摘要（自动分层压缩）
-   *
-   * @param compressArchive 压缩函数：只把本次溢出的 recent 条目压成一个新 archive 段
-   */
+  async getConsolidationWatermarks(
+    corpId: string,
+    userId: string,
+    botUserId: string,
+  ): Promise<ConsolidationWatermarks> {
+    try {
+      return await this.supabaseStore.getConsolidationWatermarks(corpId, userId, botUserId);
+    } catch (error) {
+      this.logger.warn('获取 consolidation 水位失败', error);
+      throw error;
+    }
+  }
+
+  /** 追加一条 episode，并与会话水位在 DB 单次 UPDATE 中原子提交。 */
   async appendSummary(
     corpId: string,
     userId: string,
@@ -242,9 +252,8 @@ export class LongTermService {
     entry: SummaryEntry,
     options?: {
       lastSettledMessageAt?: string | null;
-      /** 沉淀边界的会话维度 key（sessionId=chatId）；双 bot 场景按会话隔离边界。 */
+      /** 沉淀边界的会话维度 key（sessionId=chatId）。 */
       sessionId?: string | null;
-      compressArchive?: (overflow: SummaryEntry[]) => Promise<string>;
     },
   ): Promise<void> {
     try {
@@ -272,6 +281,7 @@ export class LongTermService {
       );
     } catch (error) {
       this.logger.warn('更新沉淀边界失败', error);
+      throw error;
     }
   }
 
