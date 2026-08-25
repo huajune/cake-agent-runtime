@@ -12,8 +12,8 @@
 | 来源 | 类型 | 本库落点 |
 |---|---|---|
 | [The New Rules of Context Engineering for Claude 5 Generation Models（Anthropic）](https://claude.com/blog/the-new-rules-of-context-engineering-for-claude-5-generation-models) | 官方博客 | 治理方案的起点：六规则逐条研判（governance 第二节）；"删 80% 系统提示无性能损失"的松绑实证 |
-| [Effective context engineering for AI agents（Anthropic）](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents) | 官方工程博客 | C1 注意力预算概念来源；compaction/note-taking/sub-agents 三策略与本库 settlement/recall_history 的对照；context rot 概念 |
-| [Context Engineering Lessons from Building Manus](https://manus.im/blog/Context-Engineering-for-AI-Agents-Lessons-from-Building-Manus) | 技术博客（一线产品复盘） | C2 全条：KV-cache 命中率第一指标（P0-1b 升格依据）、mask-don't-remove（追认 P2-1 裁定）、确定性序列化；C6 recitation（final-check 的存在依据） |
+| [Effective context engineering for AI agents（Anthropic）](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents) | 官方工程博客 | C1 注意力预算概念来源；compaction/note-taking/sub-agents 三策略与本库 settlement/recall_history 的对照；context rot 概念；三期追加落点：可恢复压缩（截断留标识符供 just-in-time 召回）、"最小高信号集"预算观（[context-assembly-compiler.md](../todo/context-assembly-compiler.md) 3.4） |
+| [Context Engineering Lessons from Building Manus](https://manus.im/blog/Context-Engineering-for-AI-Agents-Lessons-from-Building-Manus) | 技术博客（一线产品复盘） | C2 全条：KV-cache 命中率第一指标（P0-1b 升格依据）、mask-don't-remove（追认 P2-1 裁定）、确定性序列化；C6 recitation（final-check 的存在依据）；三期追加落点：工具目录进稳定前缀、tail-recitation 段、10 倍缓存价差的段位轴依据（[context-assembly-compiler.md](../todo/context-assembly-compiler.md) 3.3） |
 | [千问模型的 Context Cache 功能（阿里云百炼）](https://help.aliyun.com/zh/model-studio/context-cache) | 官方文档 | P0-1a 全部结论：隐式缓存自动开启/命中 2 折/tools 参与前缀/显式缓存 5 分钟 TTL（裁定不做显式） |
 | [Virtual context management with MemGPT and Letta](https://www.leoniemonigatti.com/blog/memgpt.html) | 技术博客（论文解读） | 四层记忆 ≈ OS 式分层（core/recall/archival）的骨架健康对照；"代码 pipeline 沉淀比模型自管更可控"的比较基准 |
 | [Cognitive Architectures for Language Agents（CoALA，arXiv 2309.02427）](https://arxiv.org/pdf/2309.02427) | 论文 | 〔补引〕记忆四分法（working/episodic/semantic/procedural）的学理源头——四层记忆复盘（2026-08-21）的对照基准："程序记忆"命名错位诊断、"procedural 层从未进记忆治理框架"洞察、settlement ≈ consolidation gate 的对应 |
@@ -92,6 +92,26 @@
 | [Vercel AI SDK](https://ai-sdk.dev/) | 开源框架官方文档 | 全部 LLM 执行层（generateText/prepareStep/stopWhen）；v7 升级三坑随 PR #827 |
 | [Bull](https://github.com/OptimalBits/bull) / [NestJS Queues](https://docs.nestjs.com/techniques/queues) | 开源库/官方文档 | 消息 debounce 队列（bull-queue-guide） |
 | [Conventional Commits](https://www.conventionalcommits.org/) | 规范 | 提交与 semver 发版约定 |
+
+## 八、上下文装配编译器调研（2026-08-24 八路源码级调研）
+
+> 支撑 [context-assembly-compiler.md](../todo/context-assembly-compiler.md)（上下文治理三期）的全部裁定。本节特点：**source 主体是开源仓库源码**（clone HEAD 精读，非文档转述），落点均指向该文档的共识编号（#1~#5）与批次（B1~B5）。仓库状态勘误（Letta 迁库/OpenHands 迁 SDK/Cline 断代/Mem0·CrewAI 主线推翻教科书版）记录在该文档第二节。
+
+| 来源 | 类型 | 本库落点 |
+|---|---|---|
+| [OpenHands software-agent-sdk](https://github.com/OpenHands/software-agent-sdk) | 开源仓库源码 | 共识 #1/#2：`CacheTier.STATIC/DYNAMIC` 段级类型 + 字节级测试钉死 static 块（B1/B3 直接先例）；condensation 落 typed event（tombstone）可审计重放；反面：skills 注入无预算无仲裁（B3 承重墙论据） |
+| [Letta（archive 分支）](https://github.com/letta-ai/letta) | 开源仓库源码 | 共识 #1/#4：`Memory.compile()` 零 LLM 纯函数 + 产物级幂等变更检测（B1）；`<label><description><metadata>` 载重渲染契约（3.2/B4）；反面：block limit 从硬校验退化成 prompt 提示=预算失守（3.4 硬强制的直接依据） |
+| [ElizaOS（v2）](https://github.com/elizaOS/eliza) | 开源仓库源码 | 共识 #1/#2：provider 三通道（text/values/data，3.2 source 接口原型）、`cacheStable` 声明→stable 合入唯一 system/dynamic 合入 user 消息→段 hash 确定性算断点（B5 先例）；facts 检索故意零向量+置信度×时间衰减（无向量裁定再证）；反面：全局裸整数 position 排序（三键排序的反面论据） |
+| [Cline（v3.39.2 + v4 monorepo）](https://github.com/cline/cline) | 开源仓库源码 | 共识 #1/#5：v3 组件注册表+声明式 config+构建期严格校验+snapshot 锁输出（B1 形态范本）；v4 整体抛弃的教训"组件化不解决该不该有这段"（B3 账本升格承重墙的核心论据）；压缩先无损后有损、溢出恢复禁 LLM；预算判断用 provider 实报 usage（3.5） |
+| [OpenClaw](https://github.com/openclaw/openclaw) | 开源仓库源码 | 共识 #2/#3：`SYSTEM_PROMPT_CACHE_BOUNDARY` 显式物理边界+归位注释以字节稳定为准绳（3.3）；pre-compaction memory flush（幂等闸+三重护栏）；Dreaming 确定性门→LLM 产内容→回退 append-only 三明治；`[Untrusted daily memory]`+引用围栏防注入包裹（B4）；反面：模型自改 AGENTS.md/skills、静默截断——单用户特权清单（明确不做 #3/#4） |
+| [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw) | 开源仓库源码 | 共识 #2/#3：记忆召回前缀拼最后一条 user 消息而非 system（B5 先例）；条目级预算四元组（条数/单条/总量/相关度下限+pinned 豁免，3.2 budget 字段原型）；溢出拒绝摘要、整回合裁剪+breadcrumb"丢失永不静默"（3.4）；注入策略按回合来源键控；防记忆投毒 skip set |
+| [Mem0（主线）](https://github.com/mem0ai/mem0) | 开源仓库源码 | 共识 #3 头号证据：教科书级 LLM ADD/UPDATE/DELETE 仲裁被主线废弃（prompt 尚在、零引用），退到纯追加+md5 确定性去重+linked_memory_ids 读时消解；细节：给 LLM 看整数 id 存 UUID 防幻觉引用 |
+| [LangMem](https://github.com/langchain-ai/langmem) | 开源仓库源码 | ReflectionExecutor 去抖+新消息取消旧反思（与本库 debounce/consolidation 同构）；prompt optimizer=程序记忆作为可版本迭代的 prompt 资产（台账批次删减循环的自动化对照物，M1 观察项重启时的参照）；反面：增删改全权 LLM 工具调用，三家中离确定性管线最远 |
+| [CrewAI（重写版 memory）](https://github.com/crewAIInc/crewAI) | 开源仓库源码 | 共识 #3：老四类（ShortTerm/LongTerm/Entity/External）整体删除重写，LLM 只留抽取+高相似门控仲裁两点；确定性复合分读出（0.5 语义+0.3 时近半衰+0.2 重要度，权重进 config 带 match_reasons）——记忆召回排序的可抄样板；注入文本明写"记忆可能不完整勿单独依赖"（B4 载重标头） |
+| [12-Factor Agents（HumanLayer）](https://github.com/humanlayer/12-factor-agents) | 开源方法论 | Factor 3 "Own your context window"：上下文=typed event thread 的确定性序列化——typed blocks 的学理原型；Factor 9 已解决错误可移出窗口（与 Manus 保留错误轨迹的矛盾按"在途保留/闭环清除"消解，回合边界=闭环边界） |
+| [priompt（Cursor/Anysphere）](https://github.com/anysphere/priompt) | 开源仓库源码 | **反面教材主证**：作者自省"给一切标 priority 是 anti-pattern"；无缓存意识的 priority 裁剪产非确定性前缀——"明确不做 #1"的直接依据；其想加未做的 `<max>`（scope 内 token 上限）正是分类容量账本形态 |
+| [Advanced Context Engineering for Coding Agents（HumanLayer）](https://www.humanlayer.dev/blog/advanced-context-engineering) | 技术博客 | 上下文利用率保持 40-60%；质量排序"正确性>完整性>大小>轨迹"（错的信息比缺的更糟）——账本阈值与截断取舍的参照 |
+| [Context Management（Amp/ampcode.com）](https://ampcode.com/guides/context-management) | 官方指南 | 反过度设计：500 行硬截断在生产够用、更少 context 通常更好——B3 预算实现从简的依据；handoff 用副模型蒸馏开新线程 |
 
 ## 附：与相邻文档的关系
 

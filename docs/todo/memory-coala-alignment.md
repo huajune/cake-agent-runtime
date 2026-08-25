@@ -1,8 +1,10 @@
 # 记忆体系 CoALA 对齐（上下文治理二期）
 
 > 状态：**二期收官（2026-08-21 用户"一口气执行到底"批准后当日完成）**——M1 关闭（观察项）、M1-B ✅、M2 ✅、M2-B ✅（DB 迁移测试库已验、生产随发版）、M2-C ✅、M3 ✅；M4 观察项。
+> **M5 追加批（2026-08-24 设计定稿，待执行）**：短期结构定格与咨询生命周期对齐——收官后用户审树重开的结构议题（五乱源 + 层合并两问）逐条裁定，见工作包 M5。
 > 理论基础：[principles/context-engineering-principles.md](../principles/context-engineering-principles.md)（C1~C9）+ [glossary](../principles/glossary.md)「CoALA 记忆四分法」词条 + CoALA（arXiv 2309.02427，见 [industry-sources](../principles/industry-sources.md)）。
 > 一句话：**一期给程序记忆减肥，二期给程序记忆上户口**——让 procedural 层享受与情景/语义层同等的记忆治理待遇。
+> 续篇：三期（上下文装配编译器，2026-08-24 设计）在 [context-assembly-compiler.md](./context-assembly-compiler.md)——二期管"记忆住哪、叫什么"（存储侧），三期管"记忆怎么编译进 prompt"（装配侧），互不重开对方议题。
 
 ## 一、背景与动因
 
@@ -98,9 +100,67 @@ interface LongTermMemory {
 
 - 跨会话相关片段检索（episodic 的 relevance 取路，CoALA 图中 "RAG for relevance"）：单人数据量小、settlement 摘要已粗粒度覆盖，暂不做；记录于此防遗忘，若未来出现开放域知识（岗位知识库问答）再评估。
 
+### M5 短期结构定格：咨询生命周期对齐（2026-08-24 设计定稿，用户逐条裁定，**待执行**）
+
+> 缘起：收官后用户审树重开——五个残留乱源 + 两个结构问（"stage-state/session-state 为何分开""short-term 为何只有聊天记录"）。经作用域勘定逐条裁定定格。方法论修正：行业词（short-term/long-term/CoALA 类型词）保留为顶层名与 glossary 学习地图，**不再硬套**——层语义以本库自己的 key 维度与 TTL 数字为准。
+
+**作用域勘定（2026-08-24 查证）**：代码 session = chatId = 候选人×bot 关系（无限期存续）；业务"会话" = 咨询段（闲置间隙划界）——**session 双义登记 glossary**。原 2d TTL / 1d 沉淀间隙使跨咨询段记忆滞留 short-term（配置注释明言"隔天回来仍有 facts"是设计意图），且旧段"既在窗口又已沉淀"的层间时间重叠是混淆根因。完整作用域梯五档：轮（working-memory 现编不存）、咨询段（无存储层，仅计算边界：trimToCurrentSessionSegment 防串味 + consolidation 蒸馏单位）、chat 关系（short-term 实际所在）、候选人×bot 关系的长期档（long-term——原跨 bot 共享，第 8 条追裁改为不共享；候选人跨 bot 维只存在于业务系统）、租户/全局（strategy_config/手册/sponge，各归其域）。
+
+**裁定与终态**（用户 2026-08-24 逐条拍板）：
+
+1. **顶层保持 short-term / long-term**；short-term = **一个咨询生命周期**的伞目录。`session-` 前缀从此有实义：带前缀 = 随咨询生命周期（3 天）消亡；message-window 不带（7 天，故意比会话长——回访可召回原文）：
+
+```
+src/memory/
+├── memory.service.ts / memory.module.ts / memory.config.ts
+├── lifecycle.service.ts / enrichment.service.ts          # 原 memory-lifecycle/-enrichment（根部结巴修复；类名保留全称）
+├── memory-runtime.types.ts / reengagement-recall.types.ts
+│                                                         # 根部两条召回投影契约：主链（MemoryRecallContext）/ 复聊（原 reengagement-session-state.types，
+│                                                         #   查证为 recallForProactiveFollowUp 的消费契约而非舱内所有物，2026-08-24 纠置归根；
+│                                                         #   类型名 ReengagementSessionState 不动。M3"terminal/水位归事实舱"说的是字段所有权，不受影响）
+├── confidence-rank.ts / fact-lines.formatter.ts          # types/ formatters/ 萎缩抽屉撤销，跨层件平铺根（消费方查证：跨层+跨模块属实）
+├── short-term/                    # ═ 一个咨询生命周期 ═
+│   ├── message-window/            # 原始消息窗口，7 天（原 short-term.service 迁入；类 ShortTermService→MessageWindowService）
+│   └── session-semantic/          # 结构化状态，3 天（原 session-state/；内部按 M3 两舱升格为子目录，2026-08-24 追裁）
+│       ├── session-semantic.service.ts   # 薄门面（原 session.service；类 SessionService→SessionSemanticService，27 注入点机械改）
+│       ├── session-key.ts                # 本层 Redis hash key 唯一构造（两舱共用留根；session 是内容词非目录回声）
+│       ├── facts/                        # 事实舱域：候选人"说了什么、确认了什么"——一个 facts 结构、多种写入纪律
+│       │   │                             #   （提取守卫合并 / brand 域字段 reducer）+ 收资表单独立 key 整实体快照
+│       │   ├── facts.service.ts          #   状态所有者/事实读写/提取编排/已发生事件（M3 不动）
+│       │   ├── facts.types.ts            #   原 session-facts.types 属事实的部分（拆分：形状零改动纯声明搬迁，避开 active_booking 冻结区）；
+│       │   │                             #   hash 总契约 WeworkSessionState 留此（状态所有者持有），工作台字段类型在 workbench.types 定义、总契约引用
+│       │   ├── extraction.prompt.ts      #   原 session-extraction.prompt——事实生产线的 prompt 跟事实走
+│       │   ├── brand-state.service.ts    #   品牌写路径（reducer 唯一写者）——第 8 条追裁后 brand 并入 SessionFacts 结构，
+│       │   │                             #   本文件独立仅剩行数工程理由（facts.service 已 826 行），不再承载"brand 非 fact"语义
+│       │   └── collection-form.service.ts#   收资表单编排（2026-08-24 复核回迁：store TTL 与会话事实同档、注释明言"会话级/跨会话重开表是预期"、
+│       │                                 #   丢失事故清单与 facts 同列——会话级单据成立。key 无 sessionId = 跨 bot 共表 + candidateRef 人键设计；
+│       │                                 #   是否补 sessionId 维度（堵跨会话并发写 vs 换 bot 重收资）登记为收资契约 v2 议题，M5 勿抢跑）
+│       └── workbench/                    # 工作台舱域：流程簿记"聊到哪了、桌上摆着什么"
+│           ├── workbench.service.ts      #   候选池/已展示/焦点岗位/查询签名 + **阶段指针**（原 stage-state/ 并入，2026-08-24 追裁）
+│           │                             #   依据：阶段=流程指针，与候选池同为过程簿记；同 key 三元组/同 sessionTtl/同 Redis（查证属实）
+│           │                             #   advance_stage 单写入口纪律不变（仍经 memory.service.setStage）；
+│           │                             #   Redis key `stage:` 与 fixture 键 `setup.procedural` 按规约 4 保留；StageStateService 类退役
+│           └── workbench.types.ts        #   工作台类型（自 session-facts.types 拆出）+ 原 stage-state.types 并入
+├── long-term/                     # semantic{ profile, jobIntent } + episodic{ sessionSummaries }（A3 结构不动）+ consolidation
+└── stores/                        # 不动（用户裁定：store 层不许动，supabase/collection-form 域店维持原位）
+```
+
+   tests/ 按镜像原则同步搬迁：`tests/memory/short-term/{message-window, session-semantic/{facts, workbench}}/`。
+
+2. **时间对齐**：`MEMORY_SESSION_TTL_DAYS` 2→3、`MEMORY_SETTLEMENT_GAP_DAYS` 1→3——**episode 边界 = 状态生命周期**，层间重叠消除。7d/3d/3d 三个数写进 README 层定义；"短期 ≠ 单次咨询"（窗口跨段是设计意图）明示。
+3. **沉淀改定时触发**（"3 天自动沉淀"）：不等回访——每回合结束注册/刷新 delay≈3d 的沉淀 job（同 debounce 模式），触发时校验闲置确实达标；幂等靠 `lastSettledBySession` 水位。**防丢护栏（用户点名踩过的坑）**：facts TTL 加余量（3d+12h）保证沉淀读取先于过期；沉淀失败重试 + 告警落观测（不许静默）；README 警句"facts 过期则长期画像字段不会恢复"随本批改写为"定时沉淀保证读在过期前"。
+4. **long-term 语义收窄**：`semantic_profile` **只记录报名成功后的信息**（booking 路径写入，固化为唯一写入路径）；consolidation **删除**"从 sessionFacts.interview_info 提拔身份字段"步骤，只沉淀 jobIntent 快照 + sessionSummaries。存量沉淀来源的 profile 字段不清洗（source/confidence 已表达质量），读侧照旧。
+5. **ruleFacts 更名 turnHints**（用户裁定：与 facts 区分度差）：运行时字段/类型更名；名字表达轮作用域 + hint 零权威轴（glossary hint 命名规约），"规则高置信但未过回合末验证管线"写进类型注释；prompt 标签 `[本轮解析线索]` 等按规约 4 保留；三期编译器 source 本就名 turn-hints，天然同构。
+6. **组装时冲突裁决**（long-term semantic vs session-semantic、turnHints vs facts）归三期编译器：[context-assembly-compiler.md](./context-assembly-compiler.md) 3.7，已由用户逐条裁定，不在本批。
+7. **long-term 跨 bot 不共享（2026-08-24 追裁）**：长期记忆键加 bot 维（原 `(corpId, userId)` 跨 bot 共享 → 候选人×bot 关系维）——memory 模块整体成为**关系维记忆**：两层同轴，只按形态（原料/蒸馏）与寿命（3d/持久）区分；候选人跨 bot 的业务事实仍走业务系统（ops_events/带外工单核验），不受影响。**随之退役**：跨会话来源研判 `detectCrossConversationOrigin` + `[历史背景｜来自此前咨询]` 泛指口径渲染（同关系内"上次咨询"是自然语境）；originSessionId/originBotId 血缘的跨 bot 归因用途降级为排障字段；`lastSettledBySession` 多会话水位退化为单会话。**执行决策两项**：① bot 标识选型对齐「换 wxid 致账号裂两行」已知坑（imBotId 会轮换），须用稳定维度，执行时查证；② DB `agent_long_term_memories` 加 bot 维列 + 存量处置——有血缘的按 originBotId/bySession 拆分归属，无血缘存量降级只读或冻结，先探数据量再定。Redis 缓存 key 加维（新 key 起用、旧 key 自然过期）；memory.service 长期 API 补 bot 入参。收资表单 key 无 bot 维的同类问题并入「收资契约 v2」议题（本裁定增强其补维一致性论据）。
+8. **brand 并入 SessionFacts 结构（2026-08-24 追裁）**：顶层 `brand_state` 与 facts 平级是品牌改造的迁移债，品牌真相是候选人事实，归 SessionFacts 域字段，**字段名定为 `facts.brand`**（2026-08-24 追裁：`_state` 后缀在顶层平级时代的区分职责由类型名 PersistedBrandState 承担，字段回归内容词；改名搭懒迁移同步完成。事件流名 brand_state_change、trace 步骤名 apply_brand_state、BrandStateService 文件/类名按规约 4 不跟改）。**写入纪律原样保留**——reducer 仍是唯一写者、收尾时机与"提取失败不跳过"语义不变、极性状态机仍在 resolution/evidence/brand-policy；防踩踏是构造性的：提取 schema 自 S9 恒无品牌字段，守卫合并永不触碰该域，apply_brand_state 排在 extract_facts 之后。落库懒迁移（读到顶层旧字段即搬入 facts，先例 §9.4），Redis key 不变。**结构原样搬入不套标准事实信封**——PersistedBrandState（currentBrand/excludedBrands/updatedAtMs）是状态机裁决产物非提取信封，历史走 brand_state_change 事件流不入状态，执行时勿"归一化"成 {value,confidence,source,evidence}。文件层面 brand-state.service 保留为舱内品牌写路径（并入则 facts.service 破千行违反 ~500 行约定），独立性降级为行数工程理由。
+
+**闸门**：第 1、5 条 + 抽屉/结巴为纯结构批（零行为变更，全库测试 + typecheck + pathspec 分批提交）；第 2 条为配置变更；第 3、4 条为行为变更——沉淀链路需真实触发验证 + 观测告警可见；badcase 率不回升口径沿用。
+
 ## 二·五、终态代码组织架构图（全部批次完成后的验收基准）
 
 > 验收方式：拿本图走 `tree`，每个框指到一个真实路径；拿任何路径反查，图上有它的框。
+> ⚠️ M5（2026-08-24）重排了 `src/memory/` 子树——该子树以 M5 节的树为准；本图其余部分（generator / procedural 侧）仍有效。
 > 标注：✅=已落地；Ⓑ=M1-B、Ⓒ=M2-C、Ⓐ=M2-B（A3）、Ⓜ=M3 交付。
 
 ```
