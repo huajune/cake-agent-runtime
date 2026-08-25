@@ -1,8 +1,5 @@
 import { ConsolidationService } from '@memory/long-term/consolidation.service';
-import {
-  FALLBACK_EXTRACTION,
-  toSessionFacts,
-} from '@memory/short-term/short-term.types';
+import { FALLBACK_EXTRACTION, toSessionFacts } from '@memory/short-term/short-term.types';
 
 describe('ConsolidationService（M5 定时闲置沉淀）', () => {
   const BOT_USER_ID = 'wecom-user-1';
@@ -62,7 +59,7 @@ describe('ConsolidationService（M5 定时闲置沉淀）', () => {
   });
 
   it('闲置满 3 天时直接沉淀当前咨询段，不再等待回访', async () => {
-    const result = await service.settleIdleSession(
+    const result = await service.consolidateIdleSession(
       'corp-1',
       'user-1',
       'session-1',
@@ -70,7 +67,7 @@ describe('ConsolidationService（M5 定时闲置沉淀）', () => {
       null,
     );
 
-    expect(result).toEqual({ status: 'settled', latestMessageAt: latestAt });
+    expect(result).toEqual({ status: 'consolidated', latestMessageAt: latestAt });
     expect(longTerm.appendSummary).toHaveBeenCalledWith(
       'corp-1',
       'user-1',
@@ -92,7 +89,7 @@ describe('ConsolidationService（M5 定时闲置沉淀）', () => {
       { role: 'user', content: '刚发的新消息', timestamp: freshAt },
     ]);
 
-    const result = await service.settleIdleSession(
+    const result = await service.consolidateIdleSession(
       'corp-1',
       'user-1',
       'session-1',
@@ -116,7 +113,7 @@ describe('ConsolidationService（M5 定时闲置沉淀）', () => {
       lastSettledBySession: { 'session-1': new Date(latestAt).toISOString() },
     });
 
-    const result = await service.settleIdleSession(
+    const result = await service.consolidateIdleSession(
       'corp-1',
       'user-1',
       'session-1',
@@ -124,7 +121,7 @@ describe('ConsolidationService（M5 定时闲置沉淀）', () => {
       null,
     );
 
-    expect(result).toEqual({ status: 'already_settled', latestMessageAt: latestAt });
+    expect(result).toEqual({ status: 'already_consolidated', latestMessageAt: latestAt });
     expect(chatSession.getChatHistoryInRange).not.toHaveBeenCalled();
     expect(longTerm.appendSummary).not.toHaveBeenCalled();
   });
@@ -138,7 +135,7 @@ describe('ConsolidationService（M5 定时闲置沉淀）', () => {
       { role: 'assistant', content: '当前回复', timestamp: latestAt },
     ]);
 
-    await service.settleIdleSession('corp-1', 'user-1', 'session-1', BOT_USER_ID, null);
+    await service.consolidateIdleSession('corp-1', 'user-1', 'session-1', BOT_USER_ID, null);
 
     expect(llm.generate).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -162,7 +159,7 @@ describe('ConsolidationService（M5 定时闲置沉淀）', () => {
       updatedAtMs: now,
     };
 
-    await service.settleIdleSession(
+    await service.consolidateIdleSession(
       'corp-1',
       'user-1',
       'session-1',
@@ -185,7 +182,7 @@ describe('ConsolidationService（M5 定时闲置沉淀）', () => {
     llm.generate.mockRejectedValueOnce(new Error('llm down'));
 
     await expect(
-      service.settleIdleSession('corp-1', 'user-1', 'session-1', BOT_USER_ID, null),
+      service.consolidateIdleSession('corp-1', 'user-1', 'session-1', BOT_USER_ID, null),
     ).rejects.toThrow('llm down');
     expect(longTerm.appendSummary).not.toHaveBeenCalled();
   });
@@ -194,7 +191,7 @@ describe('ConsolidationService（M5 定时闲置沉淀）', () => {
     chatSession.getChatHistory.mockResolvedValue([]);
 
     await expect(
-      service.settleIdleSession('corp-1', 'user-1', 'session-1', BOT_USER_ID, null),
+      service.consolidateIdleSession('corp-1', 'user-1', 'session-1', BOT_USER_ID, null),
     ).rejects.toThrow('memory_consolidation_latest_message_missing:session-1');
   });
 });

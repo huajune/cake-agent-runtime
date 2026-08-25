@@ -40,7 +40,7 @@ export class ConsolidationProcessor implements OnModuleInit {
         throw new Error(`memory_consolidation_bot_user_id_missing:${sessionId}`);
       }
       const state = await this.session.getSessionState(corpId, userId, sessionId);
-      const result = await this.consolidation.settleIdleSession(
+      const result = await this.consolidation.consolidateIdleSession(
         corpId,
         userId,
         sessionId,

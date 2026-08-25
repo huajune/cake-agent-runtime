@@ -67,7 +67,7 @@ export class ConsolidationService {
     private readonly systemConfig: SystemConfigService,
   ) {}
 
-  async settleIdleSession(
+  async consolidateIdleSession(
     corpId: string,
     userId: string,
     sessionId: string,
@@ -76,7 +76,7 @@ export class ConsolidationService {
     botImId?: string,
     brandState?: PersistedBrandState | null,
   ): Promise<
-    | { status: 'settled' | 'already_settled'; latestMessageAt: number }
+    | { status: 'consolidated' | 'already_consolidated'; latestMessageAt: number }
     | { status: 'not_idle'; latestMessageAt: number; retryDelayMs: number }
   > {
     const latest = (await this.chatSession.getChatHistory(sessionId, 1)).at(-1);
@@ -96,40 +96,44 @@ export class ConsolidationService {
     }
 
     const sessionSummaries = await this.longTerm.getSessionSummaries(corpId, userId, botUserId);
-    const lastSettledAt =
+    const lastConsolidatedAt =
       sessionSummaries?.lastSettledBySession?.[sessionId] ??
       sessionSummaries?.lastSettledMessageAt ??
       null;
-    const lastSettledMs = lastSettledAt ? new Date(lastSettledAt).getTime() : 0;
+    const lastConsolidatedMs = lastConsolidatedAt ? new Date(lastConsolidatedAt).getTime() : 0;
 
-    if (Number.isFinite(lastSettledMs) && lastSettledMs >= latestMessageAt) {
-      return { status: 'already_settled', latestMessageAt };
+    if (Number.isFinite(lastConsolidatedMs) && lastConsolidatedMs >= latestMessageAt) {
+      return { status: 'already_consolidated', latestMessageAt };
     }
 
-    const messages = await this.readUnsettledMessages(sessionId, lastSettledMs, latestMessageAt);
+    const messages = await this.readUnconsolidatedMessages(
+      sessionId,
+      lastConsolidatedMs,
+      latestMessageAt,
+    );
     if (messages.length === 0) {
       throw new Error(`memory_consolidation_messages_missing:${sessionId}`);
     }
 
     // 首次接管存量 chat 时只沉淀最后一个连续咨询段，避免把多段历史合成一个 episode。
-    const currentEpisode = lastSettledAt ? messages : this.trimToLatestEpisode(messages);
+    const currentEpisode = lastConsolidatedAt ? messages : this.trimToLatestEpisode(messages);
     const sessionEndAt = new Date(latestMessageAt).toISOString();
     await this.generateAndSaveSummary(corpId, userId, sessionId, {
       facts: sessionFacts,
       botUserId,
-      lastSettledMessageAt: lastSettledAt,
+      lastSettledMessageAt: lastConsolidatedAt,
       sessionEndAt,
       messages: currentEpisode,
       botImId,
       brandState: brandState ?? null,
     });
 
-    return { status: 'settled', latestMessageAt };
+    return { status: 'consolidated', latestMessageAt };
   }
 
   // ==================== 内部方法 ====================
 
-  private async readUnsettledMessages(
+  private async readUnconsolidatedMessages(
     sessionId: string,
     startTimeExclusive: number,
     endTimeInclusive: number,
