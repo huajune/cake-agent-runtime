@@ -44,7 +44,7 @@ import { CollectionFormService } from '@memory/short-term/session-semantic/facts
 import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
 import { HandoffRecorderService } from '@biz/handoff-events/handoff-recorder.service';
 import { AgentTracerService } from '@/observability/agent-tracer.service';
-import { getRuleFactValue } from '@resolution/evidence/merge';
+import { getTurnHintValue } from '@resolution/evidence/merge';
 import { sleep } from '@infra/utils/async.util';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
 import type { FinalizedVisualFactSheet } from '@resolution/signal/visual';
@@ -354,7 +354,7 @@ export class ToolRegistryService {
   private resolveResumeAttachments(context: ToolBuildContext): ResumeAttachment[] {
     const urls = [
       this.normalizeText(
-        getRuleFactValue(context.ledger.facts.ruleFacts, 'interview_info.upload_resume', {
+        getTurnHintValue(context.ledger.facts.turnHints, 'interview_info.upload_resume', {
           minConfidence: 'high',
         }),
       ),

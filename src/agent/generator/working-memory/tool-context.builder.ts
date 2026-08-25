@@ -4,8 +4,8 @@ import type { TurnLedger } from '@shared-types/turn.types';
 import type { SessionBrandState } from '@resolution/brand/brand-resolution.types';
 import { type LaborFormIntentDecision } from '@resolution/labor-form';
 import type { CandidatePrefillField, CandidatePrefillHints } from '@resolution/candidate/types';
-import { projectRuleFactClaims } from '@resolution/evidence/merge';
-import type { RuleFactClaims } from '@resolution/evidence/claim.types';
+import { projectTurnHints } from '@resolution/evidence/merge';
+import type { TurnHints } from '@resolution/evidence/claim.types';
 import { unwrapUserProfileFacts } from '@memory/long-term/long-term.types';
 import {
   type EntityExtractionResult,
@@ -76,13 +76,13 @@ export function buildToolContext(input: {
   const candidatePrefillHints = buildCandidatePrefillHints(memory.sessionMemory?.facts ?? null);
   const sessionFacts = mergeSessionFactsWithRuleClaims(
     trustedSessionFacts,
-    memory.ruleFacts,
+    memory.turnHints,
     currentLaborFormIntent,
   );
   const geocodeLocationAnchor = resolveGeocodeLocationAnchor({
     currentUserMessage,
     shortTermMessages: memory.shortTerm.messageWindow,
-    currentFacts: memory.ruleFacts,
+    currentFacts: memory.turnHints,
     sessionFacts: trustedSessionFacts,
   });
   return {
@@ -202,10 +202,10 @@ function buildCandidatePrefillHints(
  */
 function mergeSessionFactsWithRuleClaims(
   sessionFacts: EntityExtractionResult | null,
-  ruleFacts: RuleFactClaims | null,
+  turnHints: TurnHints | null,
   currentLaborFormIntent: LaborFormIntentDecision = { kind: 'ignore' },
 ): EntityExtractionResult | null {
-  const currentRuleValues = projectRuleFactClaims(ruleFacts, { minConfidence: 'high' });
+  const currentRuleValues = projectTurnHints(turnHints, { minConfidence: 'high' });
   let merged: EntityExtractionResult | null;
   if (!currentRuleValues) {
     merged = sessionFacts;

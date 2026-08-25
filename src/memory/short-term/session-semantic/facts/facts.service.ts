@@ -39,7 +39,7 @@ import {
   SESSION_EXTRACTION_SYSTEM_PROMPT,
 } from './extraction.prompt';
 import { detectBrandAliasHints } from '@resolution/evidence/producers/rule-track';
-import type { RuleFactClaims } from '@resolution/evidence/claim.types';
+import type { TurnHints } from '@resolution/evidence/claim.types';
 import type { BrandResolution } from '@resolution/brand/brand-resolution.types';
 import { produceValidatedBrandIntents } from '@resolution/evidence/producers/brand-intents';
 import { decideGeoPreferenceClear } from '@resolution/evidence/producers/geo-preference';
@@ -51,7 +51,7 @@ import { formatCurrentTime } from '@infra/utils/date.util';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 import { buildSessionFactsHashKey } from '../session-key';
-import { hasMeaningfulValue, resolveRuleFactClaims } from '@resolution/evidence/merge';
+import { hasMeaningfulValue, resolveTurnHints } from '@resolution/evidence/merge';
 
 /**
  * 会话记忆·事实舱（semantic 性质，M3 分家 2026-08-21）
@@ -545,7 +545,7 @@ export class SessionFactsService {
     userId: string,
     sessionId: string,
     messages: { role: string; content: string }[],
-    ruleFacts: RuleFactClaims | null = null,
+    turnHints: TurnHints | null = null,
     preparedLaborFormIntent?: LaborFormIntentDecision,
     extractionToolFacts?: TurnExtractionToolFacts,
   ): Promise<{ llmDegraded: boolean; brandIntents: BrandResolution[] }> {
@@ -576,7 +576,7 @@ export class SessionFactsService {
       currentMessage,
       previousFacts ? history.slice(-this.config.sessionExtractionIncrementalMessages) : history,
       aliasHints,
-      ruleFacts,
+      turnHints,
       formatCurrentTime(),
       previousFacts,
       extractionToolFacts ?? null,
@@ -599,7 +599,7 @@ export class SessionFactsService {
     }).preferences as SessionFacts['preferences'];
 
     // 规则轨也只是软事实来源；身份 claim 在这里被刻意忽略。
-    for (const fact of resolveRuleFactClaims(ruleFacts)) {
+    for (const fact of resolveTurnHints(turnHints)) {
       const [group, field] = fact.field.split('.');
       if (group !== 'preferences' || !(field in preferences)) continue;
       const target = preferences as unknown as Record<string, unknown>;
@@ -629,7 +629,7 @@ export class SessionFactsService {
     }
 
     // 规则轨 clear 是最可靠的显式清空信号。
-    for (const claim of ruleFacts?.claims ?? []) {
+    for (const claim of turnHints?.claims ?? []) {
       if (claim.operation !== 'clear' || !claim.field.startsWith('preferences.')) continue;
       const field = claim.field.slice('preferences.'.length);
       if (field in preferences) {

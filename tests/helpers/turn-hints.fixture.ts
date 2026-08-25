@@ -1,23 +1,23 @@
 import type {
-  RuleFactClaim,
-  RuleFactClaims,
-  RuleFactConfidence,
-  RuleFactFieldPath,
+  TurnHint,
+  TurnHints,
+  TurnHintConfidence,
+  TurnHintFieldPath,
 } from '@resolution/evidence/claim.types';
 
 let sequence = 0;
 
-export function testRuleFact(
-  field: RuleFactFieldPath,
+export function testTurnHint(
+  field: TurnHintFieldPath,
   value: unknown,
   evidence: string,
   options: {
-    confidence?: RuleFactConfidence;
-    producer?: RuleFactClaim['producer'];
+    confidence?: TurnHintConfidence;
+    producer?: TurnHint['producer'];
     /** 候选人原话逐字片段；不传时沿用 evidence 标签（多数用例不关心原话渲染）。 */
     quote?: string;
   } = {},
-): RuleFactClaim {
+): TurnHint {
   const producer = options.producer ?? 'rule';
   return {
     claimId: `${producer}_${field.replace('.', '_')}_test_${(sequence += 1)}`,
@@ -32,7 +32,7 @@ export function testRuleFact(
   };
 }
 
-export function testRuleFacts(...claims: RuleFactClaim[]): RuleFactClaims {
+export function testTurnHints(...claims: TurnHint[]): TurnHints {
   return {
     claims,
     reasoning: claims.map((claim) => claim.evidence.label).join('\n'),

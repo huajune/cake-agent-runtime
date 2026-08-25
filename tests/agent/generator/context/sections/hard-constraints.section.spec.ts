@@ -1,7 +1,7 @@
 import { HardConstraintsSection } from '@agent/generator/context/sections/hard-constraints.section';
 import type { PromptContext } from '@agent/generator/context/sections/section.interface';
 import { cityFixture, sessionFactsOf } from '../../../../helpers/session-facts.fixture';
-import { testRuleFact, testRuleFacts } from '../../../../helpers/rule-fact-claims.fixture';
+import { testTurnHint, testTurnHints } from '../../../../helpers/turn-hints.fixture';
 
 describe('HardConstraintsSection', () => {
   const section = new HardConstraintsSection();
@@ -19,7 +19,7 @@ describe('HardConstraintsSection', () => {
     const output = section.build({
       ...baseCtx,
       sessionFacts: sessionFactsOf(),
-      ruleFacts: testRuleFacts(),
+      turnHints: testTurnHints(),
     });
     expect(output).toBe('');
   });
@@ -143,13 +143,13 @@ describe('HardConstraintsSection', () => {
     expect(output).toContain('反问时不得带具体城市名');
   });
 
-  it('falls back to ruleFacts when sessionFacts has no value for a field', () => {
-    const high = testRuleFacts(testRuleFact('preferences.schedule', '晚班', '班次识别：晚班'));
+  it('falls back to turnHints when sessionFacts has no value for a field', () => {
+    const high = testTurnHints(testTurnHint('preferences.schedule', '晚班', '班次识别：晚班'));
 
     const output = section.build({
       ...baseCtx,
       sessionFacts: sessionFactsOf(),
-      ruleFacts: high,
+      turnHints: high,
     });
 
     expect(output).toContain('班次/工时偏好: 晚班');
@@ -157,14 +157,14 @@ describe('HardConstraintsSection', () => {
   });
 
   it('明确做一休一不满足每周最多一至两天，避免低周频语义串线', () => {
-    const high = testRuleFacts(
-      testRuleFact('preferences.schedule', '每周最多两天', '班次识别：每周最多两天'),
+    const high = testTurnHints(
+      testTurnHint('preferences.schedule', '每周最多两天', '班次识别：每周最多两天'),
     );
 
     const output = section.build({
       ...baseCtx,
       sessionFacts: sessionFactsOf(),
-      ruleFacts: high,
+      turnHints: high,
     });
 
     expect(output).toContain('"做一休一"通常每周出勤 3–4 天');
@@ -189,12 +189,12 @@ describe('HardConstraintsSection', () => {
   });
 
   it('空品牌状态不产出品牌行（不再读 preferences.brands 投影）', () => {
-    const high = testRuleFacts(testRuleFact('preferences.schedule', '晚班', '班次识别：晚班'));
+    const high = testTurnHints(testTurnHint('preferences.schedule', '晚班', '班次识别：晚班'));
 
     const output = section.build({
       ...baseCtx,
       sessionFacts: sessionFactsOf(),
-      ruleFacts: high,
+      turnHints: high,
       sessionBrandState: { currentBrand: null, excludedBrands: [] },
     });
 
@@ -217,12 +217,12 @@ describe('HardConstraintsSection', () => {
     // 候选人上轮说 5000+、本轮改口 8000+：硬约束段必须跟随最新表达——
     // 工具层 mergeSessionFactsWithHighConfidence 一直如此，prompt 层此前相反
     // （旧值压新值，候选人刚改口的条件在硬约束段被无视）。
-    const high = testRuleFacts(testRuleFact('preferences.salary', '8000+', '薪资识别：8000+'));
+    const high = testTurnHints(testTurnHint('preferences.salary', '8000+', '薪资识别：8000+'));
 
     const output = section.build({
       ...baseCtx,
       sessionFacts: sessionFactsOf({ preferences: { salary: '5000+' } }),
-      ruleFacts: high,
+      turnHints: high,
     });
 
     expect(output).toContain('意向薪资: 8000+');
@@ -233,21 +233,21 @@ describe('HardConstraintsSection', () => {
     const output = section.build({
       ...baseCtx,
       sessionFacts: sessionFactsOf({ preferences: { salary: '5000+' } }),
-      ruleFacts: testRuleFacts(),
+      turnHints: testTurnHints(),
     });
 
     expect(output).toContain('意向薪资: 5000+');
   });
 
   it('prefers the current explicit labor form over stale session labor form', () => {
-    const high = testRuleFacts(
-      testRuleFact('preferences.labor_form', '暑假工', '用工形式识别：暑假工'),
+    const high = testTurnHints(
+      testTurnHint('preferences.labor_form', '暑假工', '用工形式识别：暑假工'),
     );
 
     const output = section.build({
       ...baseCtx,
       sessionFacts: sessionFactsOf({ preferences: { labor_form: '兼职' } }),
-      ruleFacts: high,
+      turnHints: high,
     });
 
     expect(output).toContain('用工形式: 暑假工');
@@ -275,13 +275,13 @@ describe('HardConstraintsSection', () => {
     expect(output).toContain('用工形式: 暑假工');
   });
 
-  it('does not consume low-confidence ruleFacts as query constraints', () => {
-    const high = testRuleFacts(
-      testRuleFact('interview_info.gender', '女', '客户详情接口补充性别：女', {
+  it('does not consume low-confidence turnHints as query constraints', () => {
+    const high = testTurnHints(
+      testTurnHint('interview_info.gender', '女', '客户详情接口补充性别：女', {
         confidence: 'low',
         producer: 'system',
       }),
-      testRuleFact('preferences.city', '上海', '低置信城市', {
+      testTurnHint('preferences.city', '上海', '低置信城市', {
         confidence: 'low',
         producer: 'system',
       }),
@@ -290,7 +290,7 @@ describe('HardConstraintsSection', () => {
     const output = section.build({
       ...baseCtx,
       sessionFacts: sessionFactsOf(),
-      ruleFacts: high,
+      turnHints: high,
     });
 
     expect(output).toBe('');

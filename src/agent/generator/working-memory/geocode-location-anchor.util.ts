@@ -1,7 +1,7 @@
 import { isHumanAgentTextMessage } from '@biz/message/utils/message-provenance.util';
-import { produceRuleFactClaims } from '@resolution/evidence/producers/rule-track';
-import { projectRuleFactClaims } from '@resolution/evidence/merge';
-import type { RuleFactClaims } from '@resolution/evidence/claim.types';
+import { produceTurnHints } from '@resolution/evidence/producers/rule-track';
+import { projectTurnHints } from '@resolution/evidence/merge';
+import type { TurnHints } from '@resolution/evidence/claim.types';
 import { resolveCityFromDistrict } from '@resolution/geo';
 import type { ShortTermMessage } from '@memory/short-term/message-window/message-window.types';
 import type {
@@ -17,7 +17,7 @@ const LOCATION_CONTINUATION_PATTERN =
 interface ResolveGeocodeLocationAnchorInput {
   currentUserMessage?: string;
   shortTermMessages: ShortTermMessage[];
-  currentFacts?: RuleFactClaims | null;
+  currentFacts?: TurnHints | null;
   sessionFacts?: EntityExtractionResult | null;
 }
 
@@ -56,14 +56,14 @@ function toAnchor(
   };
 }
 
-function anchorFromRuleFacts(
-  facts: RuleFactClaims | null | undefined,
+function anchorFromTurnHints(
+  facts: TurnHints | null | undefined,
   source: GeocodeLocationAnchor['source'],
   evidence: string,
   referenceText?: string,
 ): GeocodeLocationAnchor | null {
   return toAnchor(
-    projectRuleFactClaims(facts, { minConfidence: 'high' }),
+    projectTurnHints(facts, { minConfidence: 'high' }),
     source,
     evidence,
     referenceText,
@@ -79,7 +79,7 @@ function anchorFromRuleFacts(
 export function resolveGeocodeLocationAnchor(
   input: ResolveGeocodeLocationAnchorInput,
 ): GeocodeLocationAnchor | undefined {
-  const currentAnchor = anchorFromRuleFacts(
+  const currentAnchor = anchorFromTurnHints(
     input.currentFacts,
     'current_user',
     `当前候选人消息：${input.currentUserMessage ?? ''}`,
@@ -98,8 +98,8 @@ export function resolveGeocodeLocationAnchor(
     // 不跨过 Agent/自动 assistant 往更早找人工锚点；当前 user 默认回指最近一轮回复。
     if (!isHumanAgentTextMessage(message)) break;
     const text = stripTimeMarkers(message.content);
-    const manualAnchor = anchorFromRuleFacts(
-      produceRuleFactClaims([text], []),
+    const manualAnchor = anchorFromTurnHints(
+      produceTurnHints([text], []),
       'human_agent',
       `人工招募经理消息：${text}`,
       text,

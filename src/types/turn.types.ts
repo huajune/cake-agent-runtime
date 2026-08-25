@@ -1,4 +1,4 @@
-import type { RuleFactClaims } from '@resolution/evidence/claim.types';
+import type { TurnHints } from '@resolution/evidence/claim.types';
 import type { BrandResolution } from '@resolution/brand/brand-resolution.types';
 import type { CandidateCollectedField, CandidateFieldKey } from '@resolution/candidate/types';
 import type { FinalizedVisualFactSheet } from '@resolution/signal/visual';
@@ -88,7 +88,7 @@ export interface TurnJobsSnapshot {
 }
 
 export interface TurnFactsSnapshot {
-  readonly ruleFacts: RuleFactClaims | null;
+  readonly turnHints: TurnHints | null;
   /** prep 时刻唯一一次 labor-form 规则轨判定；轮末 shadow 对照复用，禁止重跑。 */
   readonly laborFormIntent: LaborFormIntentDecision;
   readonly collectedFields: Readonly<Partial<Record<CandidateFieldKey, CandidateCollectedField>>>;

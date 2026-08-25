@@ -1,7 +1,7 @@
 import { isValidLaborForm } from '@resolution/labor-form';
 import { stripTimeContextSuffix } from '@resolution/candidate/name';
-import type { RuleFactClaims, RuleFactFieldPath } from '@resolution/evidence/claim.types';
-import { projectRuleFactClaims, resolveRuleFactClaims } from '@resolution/evidence/merge';
+import type { TurnHints, TurnHintFieldPath } from '@resolution/evidence/claim.types';
+import { projectTurnHints, resolveTurnHints } from '@resolution/evidence/merge';
 import { RULE_CLAIM_QUOTE_MAX_CHARS } from '@resolution/evidence/producers/direct-field';
 import { formatLocalMinute } from '@infra/utils/date.util';
 import type {
@@ -20,7 +20,7 @@ export interface FactLineFormatOptions {
    * 置 true 的两处都是**规则轨** claim 注入（事实提取 prompt 的 [规则模式匹配线索]、
    * 主 Agent prompt 的 [本轮解析线索]/[本轮待确认线索]，见 turn-hints.section）。
    * 规则轨安全的原因：evidence 是 `年龄识别：25` / `explicit_city` 这类短标签或机器码，
-   * 不含长文；配套的 `原话` 片段也在 formatRuleFactClaimLines 里按
+   * 不含长文；配套的 `原话` 片段也在 formatTurnHintLines 里按
    * RULE_CLAIM_QUOTE_RENDER_MAX_CHARS 截断、并对"整条当轮消息"省略渲染。
    * 长文 evidence 只出现在 LLM 轨/sessionFacts 侧，那里一律保持默认 false。
    */
@@ -203,7 +203,7 @@ function isSessionFactValue(value: unknown): value is SessionFactValue<unknown> 
   );
 }
 
-const FACT_LINE_FIELD_BY_LABEL: Readonly<Record<string, RuleFactFieldPath>> = {
+const FACT_LINE_FIELD_BY_LABEL: Readonly<Record<string, TurnHintFieldPath>> = {
   姓名: 'interview_info.name',
   联系方式: 'interview_info.phone',
   性别: 'interview_info.gender',
@@ -235,7 +235,7 @@ const FACT_LINE_FIELD_BY_LABEL: Readonly<Record<string, RuleFactFieldPath>> = {
  */
 export const RULE_CLAIM_QUOTE_RENDER_MAX_CHARS = 40;
 
-export interface RuleFactClaimLineOptions extends Pick<FactLineFormatOptions, 'includeEvidence'> {
+export interface TurnHintLineOptions extends Pick<FactLineFormatOptions, 'includeEvidence'> {
   /**
    * 是否在 evidence 之后追加候选人逐字原话片段。
    *
@@ -261,13 +261,13 @@ export interface RuleFactClaimLineOptions extends Pick<FactLineFormatOptions, 'i
  * （"这岗位要求18-45岁"）时渲染出的 `证据: 年龄识别：18-45` 不含任何"这句在讲岗位要求"
  * 的信号，而这正是本段文案点名要模型防的两类误判之一（core-flow-review 议题 2-1）。
  */
-export function formatRuleFactClaimLines(
-  facts: RuleFactClaims | null | undefined,
-  options: RuleFactClaimLineOptions = {},
+export function formatTurnHintLines(
+  facts: TurnHints | null | undefined,
+  options: TurnHintLineOptions = {},
 ): string[] {
-  const projected = projectRuleFactClaims(facts);
+  const projected = projectTurnHints(facts);
   if (!projected) return [];
-  const resolved = new Map(resolveRuleFactClaims(facts).map((fact) => [fact.field, fact]));
+  const resolved = new Map(resolveTurnHints(facts).map((fact) => [fact.field, fact]));
   return formatExtractionFactLines(projected).map((line) => {
     const label = /^- ([^:]+):/u.exec(line)?.[1];
     const field = label ? FACT_LINE_FIELD_BY_LABEL[label] : undefined;

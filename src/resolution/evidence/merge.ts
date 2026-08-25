@@ -9,18 +9,13 @@
  * 原语单遍完成；跨轮置信度守卫（mergeFactsWithConfidenceGuard）也共用这些原语。
  */
 
+import type { TurnHint, TurnHints, TurnHintConfidence, TurnHintFieldPath } from './claim.types';
+import { TURN_HINT_FIELD_POLICIES } from './policies';
 import type {
-  RuleFactClaim,
-  RuleFactClaims,
-  RuleFactConfidence,
-  RuleFactFieldPath,
-} from './claim.types';
-import { RULE_FACT_FIELD_POLICIES } from './policies';
-import type {
-  RuleFactCity,
-  RuleFactInterviewFieldKey,
-  RuleFactPreferenceFieldKey,
-  RuleFactProjection,
+  TurnHintCity,
+  TurnHintInterviewFieldKey,
+  TurnHintPreferenceFieldKey,
+  TurnHintProjection,
 } from './types';
 
 export type MergePolicy = 'scalar-first' | 'rule-overrides' | 'array-union' | 'custom' | 'retired';
@@ -58,7 +53,7 @@ export const FIELD_MERGE_POLICIES = {
   time_windows: 'array-union',
   schedule_constraint: 'custom',
   available_after: 'scalar-first',
-} as const satisfies Record<RuleFactInterviewFieldKey | RuleFactPreferenceFieldKey, MergePolicy>;
+} as const satisfies Record<TurnHintInterviewFieldKey | TurnHintPreferenceFieldKey, MergePolicy>;
 
 export function fieldsWithMergePolicy(
   group: 'interview_info' | 'preferences',
@@ -137,7 +132,7 @@ export function mergeNullableArrays<T>(
 /**
  * 某字段的最终值是否应采用 rule 的高置信元数据（high/rule）。
  *
- * 与退役前的规则事实合并判定一致：rule 该字段有意义值，且
+ * 与退役前的本轮提示合并判定一致：rule 该字段有意义值，且
  * （当前合并值无意义 ⇒ rule 补位；或当前值与 rule 值相同 ⇒ 二者一致）。
  * 当前值有意义且与 rule 不同时（LLM 取胜且值不同），保留 LLM 元数据，返回 false。
  */
@@ -147,36 +142,36 @@ export function shouldAdoptRuleMeta(currentValue: unknown, ruleValue: unknown): 
   return isSameFactValue(currentValue, ruleValue);
 }
 
-const RULE_CONFIDENCE_RANK: Record<RuleFactConfidence, number> = {
+const TURN_HINT_CONFIDENCE_RANK: Record<TurnHintConfidence, number> = {
   low: 1,
   medium: 2,
   high: 3,
 };
 
-export interface ResolvedRuleFact {
-  field: RuleFactFieldPath;
+export interface ResolvedTurnHint {
+  field: TurnHintFieldPath;
   value: unknown;
-  confidence: RuleFactConfidence;
-  producer: RuleFactClaim['producer'];
-  evidence: RuleFactClaim['evidence'];
+  confidence: TurnHintConfidence;
+  producer: TurnHint['producer'];
+  evidence: TurnHint['evidence'];
   assertedAt: string;
 }
 
-export interface ResolveRuleFactOptions {
-  minConfidence?: RuleFactConfidence;
+export interface ResolveTurnHintOptions {
+  minConfidence?: TurnHintConfidence;
 }
 
 /** 同一条 claim 流按字段策略表裁决；producer 不持有 first/last/union/composite 逻辑。 */
-export function resolveRuleFactClaims(
-  input: RuleFactClaims | null | undefined,
-  options: ResolveRuleFactOptions = {},
-): ResolvedRuleFact[] {
+export function resolveTurnHints(
+  input: TurnHints | null | undefined,
+  options: ResolveTurnHintOptions = {},
+): ResolvedTurnHint[] {
   if (!input) return [];
-  const minRank = RULE_CONFIDENCE_RANK[options.minConfidence ?? 'low'];
-  const byField = new Map<RuleFactFieldPath, RuleFactClaim[]>();
+  const minRank = TURN_HINT_CONFIDENCE_RANK[options.minConfidence ?? 'low'];
+  const byField = new Map<TurnHintFieldPath, TurnHint[]>();
   for (const claim of input.claims) {
-    if (RULE_CONFIDENCE_RANK[claim.confidence] < minRank) continue;
-    const policy = RULE_FACT_FIELD_POLICIES[claim.field];
+    if (TURN_HINT_CONFIDENCE_RANK[claim.confidence] < minRank) continue;
+    const policy = TURN_HINT_FIELD_POLICIES[claim.field];
     const allowedOperations: readonly ('set' | 'clear')[] = policy.allowedOperations;
     if (!allowedOperations.includes(claim.operation)) continue;
     const list = byField.get(claim.field) ?? [];
@@ -184,12 +179,12 @@ export function resolveRuleFactClaims(
     byField.set(claim.field, list);
   }
 
-  const resolved: ResolvedRuleFact[] = [];
-  for (const field of Object.keys(RULE_FACT_FIELD_POLICIES) as RuleFactFieldPath[]) {
+  const resolved: ResolvedTurnHint[] = [];
+  for (const field of Object.keys(TURN_HINT_FIELD_POLICIES) as TurnHintFieldPath[]) {
     const claims = byField.get(field);
     if (!claims?.length) continue;
-    const policy = RULE_FACT_FIELD_POLICIES[field];
-    let selected: RuleFactClaim | undefined;
+    const policy = TURN_HINT_FIELD_POLICIES[field];
+    let selected: TurnHint | undefined;
     let value: unknown;
 
     if (policy.selection === 'first-scalar') {
@@ -259,24 +254,24 @@ export function resolveRuleFactClaims(
   return resolved;
 }
 
-export function getRuleFact(
-  input: RuleFactClaims | null | undefined,
-  field: RuleFactFieldPath,
-  options: ResolveRuleFactOptions = {},
-): ResolvedRuleFact | null {
-  return resolveRuleFactClaims(input, options).find((fact) => fact.field === field) ?? null;
+export function getTurnHint(
+  input: TurnHints | null | undefined,
+  field: TurnHintFieldPath,
+  options: ResolveTurnHintOptions = {},
+): ResolvedTurnHint | null {
+  return resolveTurnHints(input, options).find((fact) => fact.field === field) ?? null;
 }
 
-export function getRuleFactValue<T>(
-  input: RuleFactClaims | null | undefined,
-  field: RuleFactFieldPath,
-  options: ResolveRuleFactOptions = {},
+export function getTurnHintValue<T>(
+  input: TurnHints | null | undefined,
+  field: TurnHintFieldPath,
+  options: ResolveTurnHintOptions = {},
 ): T | null {
-  return (getRuleFact(input, field, options)?.value as T | undefined) ?? null;
+  return (getTurnHint(input, field, options)?.value as T | undefined) ?? null;
 }
 
 /** resolution 本地的消费视图骨架；不在证据域反向加载 memory 存储实例。 */
-function createEmptyRuleFactProjection(reasoning: string): RuleFactProjection {
+function createEmptyTurnHintProjection(reasoning: string): TurnHintProjection {
   return {
     interview_info: {
       name: null,
@@ -315,13 +310,13 @@ function createEmptyRuleFactProjection(reasoning: string): RuleFactProjection {
 }
 
 /** claim 裁决结果投影为既有运行时/存储 schema；投影不再携带第二套治理语义。 */
-export function projectRuleFactClaims(
-  input: RuleFactClaims | null | undefined,
-  options: ResolveRuleFactOptions = {},
-): RuleFactProjection | null {
-  const resolved = resolveRuleFactClaims(input, options);
+export function projectTurnHints(
+  input: TurnHints | null | undefined,
+  options: ResolveTurnHintOptions = {},
+): TurnHintProjection | null {
+  const resolved = resolveTurnHints(input, options);
   if (resolved.length === 0) return null;
-  const projected = createEmptyRuleFactProjection(input?.reasoning ?? '规则 claim 投影');
+  const projected = createEmptyTurnHintProjection(input?.reasoning ?? '规则 claim 投影');
   for (const fact of resolved) {
     const [group, field] = fact.field.split('.') as ['interview_info' | 'preferences', string];
     const value =
@@ -337,7 +332,7 @@ export function projectRuleFactClaims(
   return projected;
 }
 
-function normalizeCityEvidence(value?: string): RuleFactCity['evidence'] {
+function normalizeCityEvidence(value?: string): TurnHintCity['evidence'] {
   return value === 'municipality_compact' ||
     value === 'explicit_city' ||
     value === 'unique_district_alias' ||

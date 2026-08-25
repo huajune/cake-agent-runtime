@@ -1,7 +1,7 @@
 import { ToolRegistryService } from '@tools/tool-registry.service';
 import type { ToolBuildContext } from '@shared-types/tool.types';
 import { createToolContext, type ToolContextOverrides } from '../helpers/tool-context.fixture';
-import { testRuleFact, testRuleFacts } from '../helpers/rule-fact-claims.fixture';
+import { testTurnHint, testTurnHints } from '../helpers/turn-hints.fixture';
 import type { ResumeAttachment } from '@tools/read-resume-attachment.tool';
 
 function buildRegistry(
@@ -47,7 +47,7 @@ function baseContext(overrides: ToolContextOverrides = {}): ToolBuildContext {
 }
 
 describe('ToolRegistryService', () => {
-  it('injects read_resume_attachment when resume URL is present in rule claims', () => {
+  it('injects read_resume_attachment when resume URL is present in turn hints', () => {
     const registry = buildRegistry();
 
     const tools = registry.buildForScenario(
@@ -55,8 +55,8 @@ describe('ToolRegistryService', () => {
       baseContext({
         ledger: {
           facts: {
-            ruleFacts: testRuleFacts(
-              testRuleFact(
+            turnHints: testTurnHints(
+              testTurnHint(
                 'interview_info.upload_resume',
                 ' https://cdn.example.com/resume.pdf ',
                 '候选人发送了简历附件',
@@ -73,7 +73,7 @@ describe('ToolRegistryService', () => {
     ).toContain('https://cdn.example.com/resume.pdf');
   });
 
-  it('deduplicates resume URLs across rule claims and session facts', () => {
+  it('deduplicates resume URLs across turn hints and session facts', () => {
     const registry = buildRegistry();
 
     const tools = registry.buildForScenario(
@@ -81,8 +81,8 @@ describe('ToolRegistryService', () => {
       baseContext({
         ledger: {
           facts: {
-            ruleFacts: testRuleFacts(
-              testRuleFact(
+            turnHints: testTurnHints(
+              testTurnHint(
                 'interview_info.upload_resume',
                 'https://cdn.example.com/resume.pdf',
                 '候选人发送了简历附件',
@@ -130,8 +130,8 @@ describe('ToolRegistryService', () => {
       },
       ledger: {
         facts: {
-          ruleFacts: testRuleFacts(
-            testRuleFact('interview_info.upload_resume', fileUrl, '候选人发送了简历附件'),
+          turnHints: testTurnHints(
+            testTurnHint('interview_info.upload_resume', fileUrl, '候选人发送了简历附件'),
           ),
         },
       },

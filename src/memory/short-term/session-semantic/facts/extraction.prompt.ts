@@ -1,6 +1,6 @@
 import type { BrandItem } from '@/sponge/sponge.types';
 import type { BrandAliasHint } from '@resolution/evidence/producers/rule-track';
-import type { RuleFactClaims } from '@resolution/evidence/claim.types';
+import type { TurnHints } from '@resolution/evidence/claim.types';
 import type { TurnExtractionToolFacts } from '@shared-types/turn.types';
 import type { SessionFacts } from './facts.types';
 import { isSessionFactValue } from './facts.types';
@@ -76,7 +76,7 @@ export function buildSessionExtractionPrompt(
   message: string,
   history: string[],
   aliasHints: BrandAliasHint[] = [],
-  _ruleFacts: RuleFactClaims | null = null,
+  _turnHints: TurnHints | null = null,
   currentTime?: string,
   previousFacts: SessionFacts | null = null,
   _toolFacts: TurnExtractionToolFacts | null = null,

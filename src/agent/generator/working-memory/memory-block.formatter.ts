@@ -7,7 +7,7 @@ import {
   sanitizeJobDisplayText,
   sanitizeLaborFormForDisplay,
 } from '@resolution/labor-form';
-import { projectRuleFactClaims } from '@resolution/evidence/merge';
+import { projectTurnHints } from '@resolution/evidence/merge';
 import {
   type JobIntentFacts,
   type JobIntentFieldKey,
@@ -67,7 +67,7 @@ function resolveActiveLaborForm(
   memory: TurnStartMemory,
   currentIntent: LaborFormIntentDecision,
 ): string | null {
-  const current = projectRuleFactClaims(memory.ruleFacts, { minConfidence: 'high' })?.preferences
+  const current = projectTurnHints(memory.turnHints, { minConfidence: 'high' })?.preferences
     .labor_form;
   const persisted = unwrapSessionFacts(memory.sessionMemory?.facts ?? null, {
     minConfidence: 'high',

@@ -1,7 +1,7 @@
 import { scanGeoSignalsFromText } from '@resolution/geo';
 import { decideLaborFormIntent } from '@resolution/labor-form';
 import { extractLocationShareLabels } from '@resolution/signal/markers';
-import type { RuleFactCity } from '@resolution/evidence/types';
+import type { TurnHintCity } from '@resolution/evidence/types';
 
 const POSITION_KEYWORDS = [
   '服务员',
@@ -70,7 +70,7 @@ const CHINESE_NUM_MAP: Record<string, number> = {
 };
 
 interface LocationSignals {
-  city: RuleFactCity | null;
+  city: TurnHintCity | null;
   district: string[];
   location: string[];
 }
@@ -293,7 +293,7 @@ function extractTimeRange(message: string): string | null {
 export function extractLocation(message: string): LocationSignals {
   const positionShareLocations = extractLocationShareLabels(message);
   const geoScan = scanGeoSignalsFromText(message);
-  const city: RuleFactCity | null = geoScan.city
+  const city: TurnHintCity | null = geoScan.city
     ? { value: geoScan.city.value, confidence: 'high', evidence: geoScan.city.evidence }
     : null;
   const districts = geoScan.districts;

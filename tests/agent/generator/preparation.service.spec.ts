@@ -3,9 +3,9 @@ import { PromptInjectionService } from '@agent/guardrail/input/prompt-injection.
 import { CallerKind } from '@enums/agent.enum';
 import { StorageMessageSource, StorageMessageType } from '@enums/storage-message.enum';
 import { FALLBACK_EXTRACTION } from '@memory/short-term/session-semantic/facts/facts.types';
-import { getRuleFact } from '@resolution/evidence/merge';
+import { getTurnHint } from '@resolution/evidence/merge';
 import { extractCandidateTextsFromCorpus } from '@resolution/signal/self-report';
-import { testRuleFact, testRuleFacts } from '../../helpers/rule-fact-claims.fixture';
+import { testTurnHint, testTurnHints } from '../../helpers/turn-hints.fixture';
 
 describe('PreparationService', () => {
   const mockToolRegistry = {
@@ -97,7 +97,7 @@ describe('PreparationService', () => {
         presentedJobs: null,
         currentFocusJob: null,
       },
-      ruleFacts: null,
+      turnHints: null,
       longTerm: {
         semantic: {
           profile: {
@@ -205,7 +205,7 @@ describe('PreparationService', () => {
             city: { value: '上海', confidence: 'high', evidence: 'explicit_city' },
           }),
         }),
-        ruleFacts: null,
+        turnHints: null,
       }),
     );
     // 阶段直接取程序性记忆 currentStage（recruitment_cases 已废弃，不再由 case 推导）
@@ -281,7 +281,7 @@ describe('PreparationService', () => {
           presentedJobs: null,
           currentFocusJob: null,
         },
-        ruleFacts: null,
+        turnHints: null,
         longTerm: { semantic: { profile: null } },
         stageState: {
           currentStage: 'job_consultation',
@@ -674,7 +674,7 @@ describe('PreparationService', () => {
         presentedJobs: null,
         currentFocusJob: null,
       },
-      ruleFacts: null,
+      turnHints: null,
       longTerm: {
         semantic: {
           profile: {
@@ -718,8 +718,8 @@ describe('PreparationService', () => {
   });
 
   it('hides non-summer historical jobs when the current intent is summer work', async () => {
-    const ruleFacts = testRuleFacts(
-      testRuleFact('preferences.labor_form', '暑假工', '用工形式识别：暑假工'),
+    const turnHints = testTurnHints(
+      testTurnHint('preferences.labor_form', '暑假工', '用工形式识别：暑假工'),
     );
     mockMemoryService.onTurnStart.mockResolvedValue({
       shortTerm: { messageWindow: [{ role: 'user', content: '我只找暑期工' }] },
@@ -764,7 +764,7 @@ describe('PreparationService', () => {
           laborForm: '全职',
         },
       },
-      ruleFacts,
+      turnHints,
       longTerm: { semantic: { profile: null } },
       stageState: {
         currentStage: 'job_consultation',
@@ -827,7 +827,7 @@ describe('PreparationService', () => {
           partTimeJobType: '暑假工',
         },
       },
-      ruleFacts: null,
+      turnHints: null,
       longTerm: { semantic: { profile: null } },
       stageState: {
         currentStage: 'job_consultation',
@@ -877,7 +877,7 @@ describe('PreparationService', () => {
           },
         ],
       },
-      ruleFacts: null,
+      turnHints: null,
       longTerm: { semantic: { profile: null } },
       stageState: {
         currentStage: 'job_consultation',
@@ -943,7 +943,7 @@ describe('PreparationService', () => {
         presentedJobs: null,
         currentFocusJob: null,
       },
-      ruleFacts: null,
+      turnHints: null,
       longTerm: { semantic: { profile: null } },
       stageState: {
         currentStage: 'job_consultation',
@@ -998,7 +998,7 @@ describe('PreparationService', () => {
     mockMemoryService.onTurnStart.mockResolvedValue({
       shortTerm: { messageWindow: [{ role: 'user', content: '我到店了' }] },
       sessionMemory: null,
-      ruleFacts: null,
+      turnHints: null,
       longTerm: { semantic: { profile: null } },
       stageState: {
         currentStage: 'onboard_followup',
@@ -1062,7 +1062,7 @@ describe('PreparationService', () => {
     mockMemoryService.onTurnStart.mockResolvedValue({
       shortTerm: { messageWindow: [{ role: 'user', content: '我是来米' }] },
       sessionMemory: null,
-      ruleFacts: null,
+      turnHints: null,
       longTerm: { semantic: { profile: null } },
       stageState: {
         currentStage: 'onboard_followup',
@@ -1118,7 +1118,7 @@ describe('PreparationService', () => {
     mockMemoryService.onTurnStart.mockResolvedValue({
       shortTerm: { messageWindow: [{ role: 'user', content: '在吗' }] },
       sessionMemory: null,
-      ruleFacts: null,
+      turnHints: null,
       longTerm: { semantic: { profile: null } },
       stageState: {
         currentStage: 'onboard_followup',
@@ -1160,7 +1160,7 @@ describe('PreparationService', () => {
     mockMemoryService.onTurnStart.mockResolvedValue({
       shortTerm: { messageWindow: [] },
       sessionMemory: null,
-      ruleFacts: null,
+      turnHints: null,
       longTerm: { semantic: { profile: null } },
       stageState: {
         currentStage: 'onboard_followup',
@@ -1270,7 +1270,7 @@ describe('PreparationService', () => {
     mockMemoryService.onTurnStart.mockResolvedValue({
       shortTerm: { messageWindow: [{ role: 'user', content: '我想改面试时间' }] },
       sessionMemory: null,
-      ruleFacts: null,
+      turnHints: null,
       longTerm: { semantic: { profile: null } },
       stageState: {
         currentStage: 'onboard_followup',
@@ -1323,7 +1323,7 @@ describe('PreparationService', () => {
     mockMemoryService.onTurnStart.mockResolvedValue({
       shortTerm: { messageWindow: [] },
       sessionMemory: null,
-      ruleFacts: null,
+      turnHints: null,
       longTerm: { semantic: { profile: null } },
       stageState: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
@@ -1364,7 +1364,7 @@ describe('PreparationService', () => {
     mockMemoryService.onTurnStart.mockResolvedValue({
       shortTerm: { messageWindow: [] },
       sessionMemory: null,
-      ruleFacts: null,
+      turnHints: null,
       longTerm: { semantic: { profile: null } },
       stageState: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
@@ -1400,7 +1400,7 @@ describe('PreparationService', () => {
     mockMemoryService.onTurnStart.mockResolvedValue({
       shortTerm: { messageWindow: [] },
       sessionMemory: null,
-      ruleFacts: null,
+      turnHints: null,
       longTerm: { semantic: { profile: null } },
       stageState: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
@@ -1588,7 +1588,7 @@ describe('PreparationService', () => {
         messageWindow: [],
       },
       sessionMemory: null,
-      ruleFacts: null,
+      turnHints: null,
       longTerm: { semantic: { profile: null } },
       stageState: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
@@ -1625,7 +1625,7 @@ describe('PreparationService', () => {
         messageWindow: [],
       },
       sessionMemory: null,
-      ruleFacts: null,
+      turnHints: null,
       longTerm: { semantic: { profile: null } },
       stageState: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
@@ -1658,7 +1658,7 @@ describe('PreparationService', () => {
     mockMemoryService.onTurnStart.mockResolvedValue({
       shortTerm: { messageWindow: [] },
       sessionMemory: null,
-      ruleFacts: null,
+      turnHints: null,
       longTerm: { semantic: { profile: null } },
       stageState: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
@@ -1706,7 +1706,7 @@ describe('PreparationService', () => {
         presentedJobs: null,
         currentFocusJob: null,
       },
-      ruleFacts: testRuleFacts(testRuleFact('preferences.city', '北京', 'explicit_city')),
+      turnHints: testTurnHints(testTurnHint('preferences.city', '北京', 'explicit_city')),
       longTerm: { semantic: { profile: null } },
       stageState: {
         currentStage: 'trust_building',
@@ -1733,7 +1733,7 @@ describe('PreparationService', () => {
       confidence: 'high',
       evidence: 'explicit_city',
     });
-    expect(getRuleFact(composeArgs.ruleFacts, 'preferences.city')).toEqual(
+    expect(getTurnHint(composeArgs.turnHints, 'preferences.city')).toEqual(
       expect.objectContaining({
         value: '北京',
         confidence: 'high',
@@ -1838,7 +1838,7 @@ describe('PreparationService', () => {
         messageWindow: [{ role: 'user', content: '帮我看看这张图' }],
       },
       sessionMemory: null,
-      ruleFacts: null,
+      turnHints: null,
       longTerm: { semantic: { profile: null } },
       stageState: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
@@ -1879,7 +1879,7 @@ describe('PreparationService', () => {
         ],
       },
       sessionMemory: null,
-      ruleFacts: null,
+      turnHints: null,
       longTerm: { semantic: { profile: null } },
       stageState: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
@@ -1920,7 +1920,7 @@ describe('PreparationService', () => {
       },
       _warnings: ['shortTerm: Connection timeout'],
       sessionMemory: null,
-      ruleFacts: null,
+      turnHints: null,
       longTerm: { semantic: { profile: null } },
       stageState: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
@@ -2037,7 +2037,7 @@ describe('PreparationService', () => {
         ],
       },
       sessionMemory: null,
-      ruleFacts: null,
+      turnHints: null,
       longTerm: { semantic: { profile: null } },
       stageState: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
     });
@@ -2127,7 +2127,7 @@ describe('PreparationService', () => {
       mockMemoryService.onTurnStart.mockResolvedValue({
         shortTerm: { messageWindow: window },
         sessionMemory: null,
-        ruleFacts: null,
+        turnHints: null,
         longTerm: { semantic: { profile: null } },
         stageState: {
           currentStage: 'job_consultation',

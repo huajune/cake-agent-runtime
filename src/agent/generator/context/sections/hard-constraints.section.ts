@@ -4,8 +4,8 @@ import {
   type SessionFacts,
   unwrapSessionFacts,
 } from '@memory/short-term/session-semantic/facts/facts.types';
-import { projectRuleFactClaims } from '@resolution/evidence/merge';
-import type { RuleFactClaims } from '@resolution/evidence/claim.types';
+import { projectTurnHints } from '@resolution/evidence/merge';
+import type { TurnHints } from '@resolution/evidence/claim.types';
 import { isHardFilteredLaborForm, isValidLaborForm } from '@resolution/labor-form';
 import { PromptContext, PromptSection } from './section.interface';
 
@@ -31,7 +31,7 @@ export class HardConstraintsSection implements PromptSection {
   build(ctx: PromptContext): string {
     const merged = this.mergeFacts(
       ctx.sessionFacts ?? null,
-      ctx.ruleFacts ?? null,
+      ctx.turnHints ?? null,
       ctx.currentLaborFormIntent,
     );
     const hardLines = this.collectHardConstraintLines(merged);
@@ -69,7 +69,7 @@ export class HardConstraintsSection implements PromptSection {
   }
 
   /**
-   * 合并 sessionFacts（已确认）与 ruleFacts（本轮新增）。
+   * 合并 sessionFacts（已确认）与 turnHints（本轮新增）。
    *
    * 取并集，**本轮高置信值优先覆盖旧 session 值**（候选人资料证据化 Phase 0 第 2 条）：
    * 工具层 tool-context.builder 的 mergeSessionFactsWithRuleClaims 一直是"本轮非 null
@@ -82,11 +82,11 @@ export class HardConstraintsSection implements PromptSection {
    */
   private mergeFacts(
     sessionFacts: SessionFacts | null,
-    ruleFacts: RuleFactClaims | null,
+    turnHints: TurnHints | null,
     currentLaborFormIntent: PromptContext['currentLaborFormIntent'],
   ): { interview: EntityExtractionResult['interview_info']; pref: Preferences } | null {
     const trustedSessionFacts = unwrapSessionFacts(sessionFacts, { minConfidence: 'high' });
-    const currentRuleValues = projectRuleFactClaims(ruleFacts, { minConfidence: 'high' });
+    const currentRuleValues = projectTurnHints(turnHints, { minConfidence: 'high' });
     if (!trustedSessionFacts && !currentRuleValues && currentLaborFormIntent?.kind !== 'set') {
       return null;
     }

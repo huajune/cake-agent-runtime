@@ -5,7 +5,7 @@ import {
   mergeSupplementalGenderClaims,
   normalizeGenderValue,
 } from '@resolution/evidence/producers/rule-track';
-import { getRuleFactValue } from '@resolution/evidence/merge';
+import { getTurnHintValue } from '@resolution/evidence/merge';
 import { unwrapUserProfileFactValue } from './long-term/long-term.types';
 import { unwrapSessionFactValue } from './short-term/session-semantic/facts/facts.types';
 import type { AgentMemoryContext } from './memory-runtime.types';
@@ -60,9 +60,9 @@ export class MemoryEnrichmentService {
       const gender = await this.candidateProfile.lookupGenderFromCustomerDetail(identity);
       if (!gender) return snapshot;
 
-      const ruleFacts = mergeSupplementalGenderClaims(snapshot.ruleFacts, gender, '客户详情接口');
+      const turnHints = mergeSupplementalGenderClaims(snapshot.turnHints, gender, '客户详情接口');
       this.logger.log(`客户详情补充性别成功: gender=${gender}`);
-      return { ...snapshot, ruleFacts };
+      return { ...snapshot, turnHints };
     } catch (error) {
       const message = toErrorMessage(error);
       this.logger.warn(`客户详情补充性别失败: ${message}`);
@@ -82,7 +82,7 @@ export class MemoryEnrichmentService {
       normalizeGenderValue(
         unwrapSessionFactValue(snapshot.sessionMemory?.facts?.interview_info.gender),
       ) ??
-      normalizeGenderValue(getRuleFactValue(snapshot.ruleFacts, 'interview_info.gender'))
+      normalizeGenderValue(getTurnHintValue(snapshot.turnHints, 'interview_info.gender'))
     );
   }
 }

@@ -42,7 +42,7 @@ import {
   normalizeSpongeCityFilters,
 } from '@tools/job-list/sponge-area-filter.util';
 import { detectGeoSignalConflict } from '@resolution/geo';
-import { getRuleFactValue } from '@resolution/evidence/merge';
+import { getTurnHintValue } from '@resolution/evidence/merge';
 import {
   buildJobListQuerySignature,
   REPEAT_QUERY_NOTICE,
@@ -387,7 +387,7 @@ function readFactValue(value: unknown): unknown {
 
 function resolveCandidateAge(context: ToolBuildContext): number | null {
   const sources = [
-    getRuleFactValue(context.ledger.facts.ruleFacts, 'interview_info.age', {
+    getTurnHintValue(context.ledger.facts.turnHints, 'interview_info.age', {
       minConfidence: 'high',
     }),
     readFactValue(context.archive.sessionFacts?.interview_info?.age),
@@ -409,7 +409,7 @@ function resolveCandidateAge(context: ToolBuildContext): number | null {
  */
 function resolveCandidateIsStudent(context: ToolBuildContext): boolean | null {
   const sources = [
-    getRuleFactValue(context.ledger.facts.ruleFacts, 'interview_info.is_student', {
+    getTurnHintValue(context.ledger.facts.turnHints, 'interview_info.is_student', {
       minConfidence: 'high',
     }),
     readFactValue(context.archive.sessionFacts?.interview_info?.is_student),
@@ -430,7 +430,7 @@ function resolveCandidateIsStudent(context: ToolBuildContext): boolean | null {
  */
 function resolveCandidateLaborForm(context: ToolBuildContext): string | null {
   const sources = [
-    getRuleFactValue(context.ledger.facts.ruleFacts, 'preferences.labor_form', {
+    getTurnHintValue(context.ledger.facts.turnHints, 'preferences.labor_form', {
       minConfidence: 'high',
     }),
     readFactValue(context.archive.sessionFacts?.preferences?.labor_form),

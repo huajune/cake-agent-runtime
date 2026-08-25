@@ -1,6 +1,6 @@
 import { PromptContext } from '@agent/generator/context/sections/section.interface';
 import { TurnHintsSection } from '@agent/generator/context/sections/turn-hints.section';
-import { testRuleFact, testRuleFacts } from '../../../../helpers/rule-fact-claims.fixture';
+import { testTurnHint, testTurnHints } from '../../../../helpers/turn-hints.fixture';
 import { cityFixture, sessionFactsOf } from '../../../../helpers/session-facts.fixture';
 
 describe('TurnHintsSection', () => {
@@ -20,8 +20,8 @@ describe('TurnHintsSection', () => {
       ...baseCtx,
       sessionFacts: null,
       // brands 已随 preferences.brands 退役不再进 turn hints（§19.6），用 district 验证同一数组渲染路径
-      ruleFacts: testRuleFacts(
-        testRuleFact('preferences.district', ['杨浦区'], '区域识别：杨浦区'),
+      turnHints: testTurnHints(
+        testTurnHint('preferences.district', ['杨浦区'], '区域识别：杨浦区'),
       ),
     });
 
@@ -37,8 +37,8 @@ describe('TurnHintsSection', () => {
       ...baseCtx,
       sessionFacts: null,
       currentTurnTexts: [message],
-      ruleFacts: testRuleFacts(
-        testRuleFact('preferences.city', '上海', 'unique_district_alias', { quote: message }),
+      turnHints: testTurnHints(
+        testTurnHint('preferences.city', '上海', 'unique_district_alias', { quote: message }),
       ),
     });
 
@@ -54,7 +54,7 @@ describe('TurnHintsSection', () => {
     const output = section.build({
       ...baseCtx,
       sessionFacts: null,
-      ruleFacts: testRuleFacts(testRuleFact('preferences.city', '上海', 'unique_district_alias')),
+      turnHints: testTurnHints(testTurnHint('preferences.city', '上海', 'unique_district_alias')),
     });
 
     expect(output).toContain('municipality_compact=直辖市紧凑写法');
@@ -69,8 +69,8 @@ describe('TurnHintsSection', () => {
     const output = section.build({
       ...baseCtx,
       sessionFacts: null,
-      ruleFacts: testRuleFacts(
-        testRuleFact('preferences.district', ['杨浦区'], '区域识别：杨浦区'),
+      turnHints: testTurnHints(
+        testTurnHint('preferences.district', ['杨浦区'], '区域识别：杨浦区'),
       ),
     });
 
@@ -86,9 +86,9 @@ describe('TurnHintsSection', () => {
       ...baseCtx,
       sessionFacts: null,
       currentTurnTexts: [first, second],
-      ruleFacts: testRuleFacts(
-        testRuleFact('interview_info.age', '24', '年龄识别：24', { quote: first }),
-        testRuleFact('preferences.city', '上海', 'explicit_city', { quote: second }),
+      turnHints: testTurnHints(
+        testTurnHint('interview_info.age', '24', '年龄识别：24', { quote: first }),
+        testTurnHint('preferences.city', '上海', 'explicit_city', { quote: second }),
       ),
     });
 
@@ -102,9 +102,9 @@ describe('TurnHintsSection', () => {
       ...baseCtx,
       sessionFacts: null,
       currentTurnTexts: [message],
-      ruleFacts: testRuleFacts(
-        testRuleFact('interview_info.age', '24', '年龄识别：24', { quote: message }),
-        testRuleFact('preferences.city', '上海', 'explicit_city', { quote: message }),
+      turnHints: testTurnHints(
+        testTurnHint('interview_info.age', '24', '年龄识别：24', { quote: message }),
+        testTurnHint('preferences.city', '上海', 'explicit_city', { quote: message }),
       ),
     });
 
@@ -115,12 +115,12 @@ describe('TurnHintsSection', () => {
     const output = section.build({
       ...baseCtx,
       sessionFacts: null,
-      ruleFacts: testRuleFacts(
-        testRuleFact('interview_info.gender', '女', '客户详情接口补充性别：女', {
+      turnHints: testTurnHints(
+        testTurnHint('interview_info.gender', '女', '客户详情接口补充性别：女', {
           confidence: 'low',
           producer: 'system',
         }),
-        testRuleFact(
+        testTurnHint(
           'interview_info.gender_source',
           'system',
           '客户详情接口补充性别来源：系统标签',
@@ -139,9 +139,9 @@ describe('TurnHintsSection', () => {
     const output = section.build({
       ...baseCtx,
       sessionFacts: sessionFactsOf({ preferences: { city: cityFixture('上海') } }),
-      ruleFacts: testRuleFacts(
-        testRuleFact('preferences.district', ['杨浦区'], '区域识别：杨浦区'),
-        testRuleFact('preferences.city', '北京', 'explicit_city'),
+      turnHints: testTurnHints(
+        testTurnHint('preferences.district', ['杨浦区'], '区域识别：杨浦区'),
+        testTurnHint('preferences.city', '北京', 'explicit_city'),
       ),
     });
 
@@ -162,8 +162,8 @@ describe('TurnHintsSection', () => {
       ...baseCtx,
       sessionFacts: sessionFactsOf({ preferences: { city: cityFixture('上海') } }),
       currentTurnTexts: ['我在上海'],
-      ruleFacts: testRuleFacts(
-        testRuleFact('preferences.city', '上海', 'explicit_city', { quote: '我在上海' }),
+      turnHints: testTurnHints(
+        testTurnHint('preferences.city', '上海', 'explicit_city', { quote: '我在上海' }),
       ),
     });
 
@@ -176,8 +176,8 @@ describe('TurnHintsSection', () => {
     const output = section.build({
       ...baseCtx,
       sessionFacts: sessionFactsOf({ preferences: { labor_form: '兼职' } }),
-      ruleFacts: testRuleFacts(
-        testRuleFact('preferences.labor_form', '暑假工', '用工形式识别：暑假工'),
+      turnHints: testTurnHints(
+        testTurnHint('preferences.labor_form', '暑假工', '用工形式识别：暑假工'),
       ),
     });
 

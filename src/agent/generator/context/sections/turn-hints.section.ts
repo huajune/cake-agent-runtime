@@ -1,16 +1,12 @@
-import { formatRuleFactClaimLines } from '@memory/fact-lines.formatter';
+import { formatTurnHintLines } from '@memory/fact-lines.formatter';
 import {
   type CityFact,
   type EntityExtractionResult,
   type SessionFacts,
   unwrapSessionFacts,
 } from '@memory/short-term/session-semantic/facts/facts.types';
-import type { RuleFactClaims, RuleFactFieldPath } from '@resolution/evidence/claim.types';
-import {
-  isSameFactValue,
-  projectRuleFactClaims,
-  resolveRuleFactClaims,
-} from '@resolution/evidence/merge';
+import type { TurnHints, TurnHintFieldPath } from '@resolution/evidence/claim.types';
+import { isSameFactValue, projectTurnHints, resolveTurnHints } from '@resolution/evidence/merge';
 import { PromptContext, PromptSection } from './section.interface';
 
 /**
@@ -23,7 +19,7 @@ export class TurnHintsSection implements PromptSection {
   build(ctx: PromptContext): string {
     const { normalHints, pendingHints } = this.partition(
       ctx.sessionFacts ?? null,
-      ctx.ruleFacts ?? null,
+      ctx.turnHints ?? null,
     );
     const parts: string[] = [];
     const currentTurnTexts = ctx.currentTurnTexts;
@@ -33,10 +29,10 @@ export class TurnHintsSection implements PromptSection {
   }
 
   private renderCurrentHints(
-    facts: RuleFactClaims,
+    facts: TurnHints,
     currentTurnTexts: readonly string[] | undefined,
   ): string {
-    const lines = formatRuleFactClaimLines(facts, {
+    const lines = formatTurnHintLines(facts, {
       includeEvidence: true,
       includeQuote: true,
       currentTurnTexts,
@@ -65,10 +61,10 @@ export class TurnHintsSection implements PromptSection {
   }
 
   private renderPendingConfirmation(
-    facts: RuleFactClaims,
+    facts: TurnHints,
     currentTurnTexts: readonly string[] | undefined,
   ): string {
-    const lines = formatRuleFactClaimLines(facts, {
+    const lines = formatTurnHintLines(facts, {
       includeEvidence: true,
       includeQuote: true,
       currentTurnTexts,
@@ -88,20 +84,20 @@ export class TurnHintsSection implements PromptSection {
 
   private partition(
     sessionFacts: SessionFacts | null,
-    ruleFacts: RuleFactClaims | null,
+    turnHints: TurnHints | null,
   ): {
-    normalHints: RuleFactClaims | null;
-    pendingHints: RuleFactClaims | null;
+    normalHints: TurnHints | null;
+    pendingHints: TurnHints | null;
   } {
-    const projected = projectRuleFactClaims(ruleFacts);
+    const projected = projectTurnHints(turnHints);
     if (!projected) return { normalHints: null, pendingHints: null };
 
     const comparable = unwrapSessionFacts(sessionFacts, { minConfidence: 'medium' });
-    if (!comparable) return { normalHints: ruleFacts, pendingHints: null };
+    if (!comparable) return { normalHints: turnHints, pendingHints: null };
 
-    const normalFields = new Set<RuleFactFieldPath>();
-    const pendingFields = new Set<RuleFactFieldPath>();
-    for (const fact of resolveRuleFactClaims(ruleFacts)) {
+    const normalFields = new Set<TurnHintFieldPath>();
+    const pendingFields = new Set<TurnHintFieldPath>();
+    for (const fact of resolveTurnHints(turnHints)) {
       if (fact.field === 'interview_info.gender_source') continue;
       const currentValue = this.readPath(projected, fact.field);
       if (!this.hasValue(currentValue)) continue;
@@ -121,17 +117,17 @@ export class TurnHintsSection implements PromptSection {
     }
 
     return {
-      normalHints: this.selectClaims(ruleFacts, normalFields),
-      pendingHints: this.selectClaims(ruleFacts, pendingFields),
+      normalHints: this.selectClaims(turnHints, normalFields),
+      pendingHints: this.selectClaims(turnHints, pendingFields),
     };
   }
 
-  private readPath(facts: EntityExtractionResult, path: RuleFactFieldPath): unknown {
+  private readPath(facts: EntityExtractionResult, path: TurnHintFieldPath): unknown {
     const [group, field] = path.split('.') as ['interview_info' | 'preferences', string];
     return (facts[group] as unknown as Record<string, unknown>)[field];
   }
 
-  private valuesEqual(path: RuleFactFieldPath, previous: unknown, current: unknown): boolean {
+  private valuesEqual(path: TurnHintFieldPath, previous: unknown, current: unknown): boolean {
     if (path === 'preferences.city') {
       return this.cityValue(previous) === this.cityValue(current);
     }
@@ -153,13 +149,10 @@ export class TurnHintsSection implements PromptSection {
     return true;
   }
 
-  private selectClaims(
-    facts: RuleFactClaims,
-    fields: ReadonlySet<RuleFactFieldPath>,
-  ): RuleFactClaims | null {
+  private selectClaims(facts: TurnHints, fields: ReadonlySet<TurnHintFieldPath>): TurnHints | null {
     const claims = facts.claims.filter((claim) => fields.has(claim.field));
     if (claims.length === 0) return null;
     const selected = { claims, reasoning: facts.reasoning };
-    return formatRuleFactClaimLines(selected).length > 0 ? selected : null;
+    return formatTurnHintLines(selected).length > 0 ? selected : null;
   }
 }

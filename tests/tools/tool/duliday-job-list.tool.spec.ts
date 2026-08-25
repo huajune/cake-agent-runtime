@@ -3,7 +3,7 @@ import { ToolBuildContext } from '@shared-types/tool.types';
 import { TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
 import type { TurnLedger } from '@shared-types/turn.types';
 import { createToolContext, mergeToolContext } from '../../helpers/tool-context.fixture';
-import { testRuleFact, testRuleFacts } from '../../helpers/rule-fact-claims.fixture';
+import { testTurnHint, testTurnHints } from '../../helpers/turn-hints.fixture';
 
 type JobListTestContext = ToolBuildContext & {
   turnId?: string;
@@ -20,7 +20,7 @@ type JobListTestContext = ToolBuildContext & {
   currentLaborFormIntent?: ToolBuildContext['turnInput']['currentLaborFormIntent'];
   contactBrandAliases?: string[];
   thresholds?: ToolBuildContext['runtime']['thresholds'];
-  ruleFacts?: TurnLedger['facts']['ruleFacts'];
+  turnHints?: TurnLedger['facts']['turnHints'];
   geocodeAnchors?: TurnLedger['geo']['anchors'];
   recordFetchedJobs?: TurnLedger['recordFetchedJobs'];
   recordJobListQuery?: TurnLedger['recordJobListQuery'];
@@ -84,7 +84,7 @@ describe('buildJobListTool', () => {
       },
       ledger: {
         facts: {
-          ...(context.ruleFacts === undefined ? {} : { ruleFacts: context.ruleFacts }),
+          ...(context.turnHints === undefined ? {} : { turnHints: context.turnHints }),
         },
         geo: {
           ...(context.geocodeAnchors === undefined ? {} : { anchors: context.geocodeAnchors }),
@@ -2503,8 +2503,8 @@ describe('buildJobListTool', () => {
 
       const result = await executeTool({
         ...contextWithLaborForm('兼职'),
-        ruleFacts: testRuleFacts(
-          testRuleFact('preferences.labor_form', '暑假工', '用工形式识别：暑假工'),
+        turnHints: testTurnHints(
+          testTurnHint('preferences.labor_form', '暑假工', '用工形式识别：暑假工'),
         ),
       });
 

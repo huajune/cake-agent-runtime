@@ -371,7 +371,7 @@ export class GeneratorAgent {
         jobListQuerySignature: ledger.jobs.querySignature ?? null,
         cityAttestation: ledger.geo.cityAttestation ?? null,
         invalidatedJobIds: [...ledger.jobs.invalidatedJobIds],
-        ruleFacts: ledger.facts.ruleFacts,
+        turnHints: ledger.facts.turnHints,
         laborFormIntent: ledger.facts.laborFormIntent,
         extractionToolFacts: {
           jobs: {

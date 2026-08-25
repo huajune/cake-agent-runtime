@@ -21,12 +21,12 @@ import { decideLaborFormIntent } from '@resolution/labor-form';
 import { fieldValues, type FinalizedVisualFactSheet } from '@resolution/signal/visual';
 import { resolveExtractionScope } from '@resolution/evidence/admission';
 import type {
-  RuleFactClaim,
-  RuleFactClaims,
-  RuleFactConfidence,
-  RuleFactFieldPath,
+  TurnHint,
+  TurnHints,
+  TurnHintConfidence,
+  TurnHintFieldPath,
 } from '@resolution/evidence/claim.types';
-import { RULE_FACT_FIELD_POLICIES } from '@resolution/evidence/policies';
+import { TURN_HINT_FIELD_POLICIES } from '@resolution/evidence/policies';
 import { RULE_CLAIM_QUOTE_MAX_CHARS } from '@resolution/evidence/producers/direct-field';
 import {
   produceBrandAliasHints,
@@ -172,30 +172,30 @@ const FIELD_EXTRACTORS: FieldExtractor[] = [
 ];
 
 /** 注册表声明的字段清单：供下游镜像清单做编译期/测试期完备性校验。 */
-export const REGISTRY_FIELD_PATHS: readonly RuleFactFieldPath[] = FIELD_EXTRACTORS.map(
-  (extractor) => `${extractor.group}.${extractor.field}` as RuleFactFieldPath,
+export const REGISTRY_FIELD_PATHS: readonly TurnHintFieldPath[] = FIELD_EXTRACTORS.map(
+  (extractor) => `${extractor.group}.${extractor.field}` as TurnHintFieldPath,
 );
 
 interface RuleClaimSink {
-  claims: RuleFactClaim[];
+  claims: TurnHint[];
   reasons: string[];
   assertedAt: string;
   sequence: number;
 }
 
 interface AppendRuleClaimParams {
-  field: RuleFactFieldPath;
+  field: TurnHintFieldPath;
   value: unknown;
   message: string;
   /** 解析器已知的精确命中片段；缺失时才回退整条候选人消息。 */
   quote?: string;
   label: string;
   reason?: string;
-  confidence?: RuleFactConfidence;
+  confidence?: TurnHintConfidence;
   evidenceCode?: string;
   operation?: 'set' | 'clear';
   clearValues?: readonly unknown[];
-  producer?: RuleFactClaim['producer'];
+  producer?: TurnHint['producer'];
 }
 
 function appendRuleClaim(sink: RuleClaimSink, params: AppendRuleClaimParams): void {
@@ -229,7 +229,7 @@ function applyFieldExtractor(
   sink: RuleClaimSink,
 ): void {
   const toReason = extractor.reason ?? extractor.evidence;
-  const field = `${extractor.group}.${extractor.field}` as RuleFactFieldPath;
+  const field = `${extractor.group}.${extractor.field}` as TurnHintFieldPath;
 
   if (extractor.field === 'labor_form') {
     const intent = decideLaborFormIntent(message);
@@ -267,16 +267,16 @@ function applyFieldExtractor(
 // @resolution/evidence/admission：规则只由 sheet kind 决定，与消费点无关，
 // 且在域内有 Record<VisualFactKind,…> 的加档编译期约束。
 
-export interface ProduceRuleFactClaimsOptions {
+export interface ProduceTurnHintsOptions {
   /** 剥时间后缀内容 → sheet 的映射（visual-fact-structuring 消费侧读路径）。 */
   visualSheetsByContent?: ReadonlyMap<string, FinalizedVisualFactSheet>;
 }
 
-export function produceRuleFactClaims(
+export function produceTurnHints(
   userMessages: string[],
   brandData: BrandItem[],
-  options?: ProduceRuleFactClaimsOptions,
-): RuleFactClaims | null {
+  options?: ProduceTurnHintsOptions,
+): TurnHints | null {
   const normalizedMessages = userMessages
     .map((message) => stripQuotedBlocks(message.trim()))
     .filter(Boolean);
@@ -510,10 +510,10 @@ export function normalizeGenderValue(value: unknown): '男' | '女' | null {
  * 外部标签保持 low/system，不会被只消费 high 的 admission 路径误当成候选人自陈。
  */
 export function mergeSupplementalGenderClaims(
-  existing: RuleFactClaims | null,
+  existing: TurnHints | null,
   gender: '男' | '女',
   sourceLabel: string,
-): RuleFactClaims {
+): TurnHints {
   const sink: RuleClaimSink = {
     claims: [...(existing?.claims ?? [])],
     reasons: [],
@@ -546,10 +546,10 @@ export function mergeSupplementalGenderClaims(
 /** 注册表字段必须在唯一策略表登记；producer 不再维护任何投影镜像。 */
 function assertRegistryFieldsHavePolicy(): void {
   const missing = REGISTRY_FIELD_PATHS.filter(
-    (field) => !Object.prototype.hasOwnProperty.call(RULE_FACT_FIELD_POLICIES, field),
+    (field) => !Object.prototype.hasOwnProperty.call(TURN_HINT_FIELD_POLICIES, field),
   );
   if (missing.length > 0) {
-    throw new Error(`[rule-fact-claims] 注册表字段未登记策略：${missing.join(', ')}`);
+    throw new Error(`[turn-hints] 注册表字段未登记策略：${missing.join(', ')}`);
   }
 }
 

@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common';
 import type { CandidateCollectedField, CandidateFieldKey } from '@resolution/candidate/types';
-import type { RuleFactClaims } from '@resolution/evidence/claim.types';
+import type { TurnHints } from '@resolution/evidence/claim.types';
 import type { LaborFormIntentDecision } from '@resolution/labor-form';
 import type { RecommendedJobSummary } from '@resolution/job/types';
 import type {
@@ -14,7 +14,7 @@ import type {
 const logger = new Logger('TurnLedger');
 
 export interface CreateTurnLedgerInput {
-  ruleFacts?: RuleFactClaims | null;
+  turnHints?: TurnHints | null;
   laborFormIntent?: LaborFormIntentDecision;
   collectedFields?: Partial<Record<CandidateFieldKey, CandidateCollectedField>>;
   geoSignalCities?: Iterable<string>;
@@ -68,7 +68,7 @@ export function createTurnLedger(input: CreateTurnLedgerInput = {}): TurnLedger 
       jobListExecuted: false,
     },
     facts: {
-      ruleFacts: input.ruleFacts ?? null,
+      turnHints: input.turnHints ?? null,
       laborFormIntent: input.laborFormIntent ?? { kind: 'ignore' },
       collectedFields,
     },
@@ -153,7 +153,7 @@ export function createTurnLedger(input: CreateTurnLedgerInput = {}): TurnLedger 
             : { resolvedWorkOrderId: ledger.jobs.resolvedWorkOrderId }),
         },
         facts: {
-          ruleFacts: ledger.facts.ruleFacts,
+          turnHints: ledger.facts.turnHints,
           laborFormIntent: ledger.facts.laborFormIntent,
           collectedFields,
         },

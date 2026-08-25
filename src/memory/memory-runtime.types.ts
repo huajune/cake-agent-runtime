@@ -2,7 +2,7 @@ import type { SemanticMemory } from './long-term/long-term.types';
 import type { StageState } from './short-term/session-semantic/workbench/workbench.types';
 import type { ShortTermMessage } from './short-term/message-window/message-window.types';
 import type { WeworkSessionState } from './short-term/session-semantic/facts/facts.types';
-import type { RuleFactClaims } from '@resolution/evidence/claim.types';
+import type { TurnHints } from '@resolution/evidence/claim.types';
 
 /**
  * Agent 运行时记忆上下文 — memory.onTurnStart() 返回值
@@ -26,7 +26,7 @@ export interface MemoryRecallContext {
   _warnings?: string[];
   sessionMemory: WeworkSessionState | null;
   /** 仅对当前轮生效的前置高置信识别结果，不属于持久化会话记忆。 */
-  ruleFacts: RuleFactClaims | null;
+  turnHints: TurnHints | null;
   stageState: StageState;
   longTerm: {
     /** 语义记忆分组（CoALA A3）：跨会话稳定事实；类型定义见 long-term.types。 */

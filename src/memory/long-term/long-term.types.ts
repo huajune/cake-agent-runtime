@@ -102,7 +102,7 @@ export const UserProfileFactValueSchema = z.object({
 
 export type UserProfileFactMaybeValue<T> = UserProfileFactValue<T> | null;
 
-/** 长期画像事实视图，和 sessionFacts/ruleFacts 保持同一种字段包裹结构。 */
+/** 长期画像事实视图，和 sessionFacts/turnHints 保持同一种字段包裹结构。 */
 export type UserProfileFacts = {
   [K in UserProfileFieldKey]: UserProfileFactMaybeValue<UserProfileFieldValue<K>>;
 };

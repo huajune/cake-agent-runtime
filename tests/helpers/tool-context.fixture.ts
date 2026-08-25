@@ -33,7 +33,7 @@ export interface ToolContextOverrides {
 /** 测试专用五组化上下文；默认值只负责消除与用例无关的装配噪声。 */
 export function createToolContext(overrides: ToolContextOverrides = {}): ToolBuildContext {
   const ledger = createTurnLedger({
-    ruleFacts: overrides.ledger?.facts?.ruleFacts ?? null,
+    turnHints: overrides.ledger?.facts?.turnHints ?? null,
     laborFormIntent: overrides.ledger?.facts?.laborFormIntent,
     collectedFields: overrides.ledger?.facts?.collectedFields,
     geoSignalCities: overrides.ledger?.geo?.signalCities,
@@ -62,7 +62,7 @@ export function mergeToolContext(
   let ledger = base.ledger;
   if (overrides.ledger) {
     ledger = createTurnLedger({
-      ruleFacts: overrides.ledger.facts?.ruleFacts ?? base.ledger.facts.ruleFacts,
+      turnHints: overrides.ledger.facts?.turnHints ?? base.ledger.facts.turnHints,
       laborFormIntent: overrides.ledger.facts?.laborFormIntent ?? base.ledger.facts.laborFormIntent,
       collectedFields: overrides.ledger.facts?.collectedFields ?? base.ledger.facts.collectedFields,
       geoSignalCities: overrides.ledger.geo?.signalCities ?? base.ledger.geo.signalCities,

@@ -1,8 +1,8 @@
 import { MemoryEnrichmentService } from '@memory/enrichment.service';
 import { FALLBACK_EXTRACTION } from '@memory/short-term/session-semantic/facts/facts.types';
 import type { AgentMemoryContext } from '@memory/memory-runtime.types';
-import { getRuleFact } from '@resolution/evidence/merge';
-import { testRuleFact, testRuleFacts } from '../helpers/rule-fact-claims.fixture';
+import { getTurnHint } from '@resolution/evidence/merge';
+import { testTurnHint, testTurnHints } from '../helpers/turn-hints.fixture';
 
 describe('MemoryEnrichmentService', () => {
   const mockCandidate = {
@@ -14,7 +14,7 @@ describe('MemoryEnrichmentService', () => {
   const baseSnapshot = (): AgentMemoryContext => ({
     shortTerm: { messageWindow: [] },
     sessionMemory: null,
-    ruleFacts: null,
+    turnHints: null,
     stageState: { currentStage: null },
     longTerm: { semantic: { profile: null } },
   });
@@ -75,10 +75,10 @@ describe('MemoryEnrichmentService', () => {
     expect(mockCandidate.lookupGenderFromCustomerDetail).not.toHaveBeenCalled();
   });
 
-  it('skips lookup when ruleFacts already has gender', async () => {
+  it('skips lookup when turnHints already has gender', async () => {
     const snapshot: AgentMemoryContext = {
       ...baseSnapshot(),
-      ruleFacts: testRuleFacts(testRuleFact('interview_info.gender', '男', '性别识别：男')),
+      turnHints: testTurnHints(testTurnHint('interview_info.gender', '男', '性别识别：男')),
     };
 
     await service.enrich(snapshot, { token: 't', imBotId: 'b', imContactId: 'c' });
@@ -86,7 +86,7 @@ describe('MemoryEnrichmentService', () => {
     expect(mockCandidate.lookupGenderFromCustomerDetail).not.toHaveBeenCalled();
   });
 
-  it('supplements gender into ruleFacts when external lookup succeeds', async () => {
+  it('supplements gender into turnHints when external lookup succeeds', async () => {
     mockCandidate.lookupGenderFromCustomerDetail.mockResolvedValue('男');
     const snapshot = baseSnapshot();
 
@@ -101,7 +101,7 @@ describe('MemoryEnrichmentService', () => {
       imBotId: 'b',
       imContactId: 'c',
     });
-    expect(getRuleFact(result.ruleFacts, 'interview_info.gender')).toEqual(
+    expect(getTurnHint(result.turnHints, 'interview_info.gender')).toEqual(
       expect.objectContaining({
         value: '男',
         confidence: 'low',
@@ -109,8 +109,8 @@ describe('MemoryEnrichmentService', () => {
         evidence: expect.objectContaining({ label: '客户详情接口补充性别：男' }),
       }),
     );
-    expect(result.ruleFacts?.reasoning).toContain('客户详情接口');
-    expect(snapshot.ruleFacts).toBeNull(); // 原快照不被污染
+    expect(result.turnHints?.reasoning).toContain('客户详情接口');
+    expect(snapshot.turnHints).toBeNull(); // 原快照不被污染
   });
 
   it('only looks up once after the system gender has been persisted for the next turn', async () => {
@@ -149,11 +149,11 @@ describe('MemoryEnrichmentService', () => {
     expect(mockCandidate.lookupGenderFromCustomerDetail).toHaveBeenCalledTimes(1);
   });
 
-  it('preserves existing ruleFacts fields when merging gender', async () => {
+  it('preserves existing turnHints fields when merging gender', async () => {
     mockCandidate.lookupGenderFromCustomerDetail.mockResolvedValue('女');
     const snapshot: AgentMemoryContext = {
       ...baseSnapshot(),
-      ruleFacts: testRuleFacts(testRuleFact('preferences.salary', '30元/时', '薪资识别：30元/时')),
+      turnHints: testTurnHints(testTurnHint('preferences.salary', '30元/时', '薪资识别：30元/时')),
     };
 
     const result = await service.enrich(snapshot, {
@@ -162,14 +162,14 @@ describe('MemoryEnrichmentService', () => {
       imContactId: 'c',
     });
 
-    expect(getRuleFact(result.ruleFacts, 'preferences.salary')).toEqual(
+    expect(getTurnHint(result.turnHints, 'preferences.salary')).toEqual(
       expect.objectContaining({ value: '30元/时' }),
     );
-    expect(getRuleFact(result.ruleFacts, 'interview_info.gender')).toEqual(
+    expect(getTurnHint(result.turnHints, 'interview_info.gender')).toEqual(
       expect.objectContaining({ value: '女' }),
     );
-    expect(result.ruleFacts?.reasoning).toContain('薪资识别');
-    expect(result.ruleFacts?.reasoning).toContain('客户详情接口补充性别：女');
+    expect(result.turnHints?.reasoning).toContain('薪资识别');
+    expect(result.turnHints?.reasoning).toContain('客户详情接口补充性别：女');
   });
 
   it('swallows lookup error and returns original snapshot', async () => {

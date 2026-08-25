@@ -7,7 +7,7 @@ import type { CandidateIdentityHint } from './enrichment.service';
 import type { AgentMemoryContext } from './memory-runtime.types';
 import type { SessionSummaries } from './long-term/long-term.types';
 import type { InvitedGroupRecord } from './short-term/session-semantic/facts/facts.types';
-import type { RuleFactClaims } from '@resolution/evidence/claim.types';
+import type { TurnHints } from '@resolution/evidence/claim.types';
 import type { StageState } from './short-term/session-semantic/workbench/workbench.types';
 import { formatExtractionFactLines } from './fact-lines.formatter';
 
@@ -49,7 +49,7 @@ export class MemoryService {
       shortTermEndTimeInclusive?: number;
       enrichmentIdentity?: CandidateIdentityHint;
       /** prep 已运行的本轮规则轨；memory 只装配，不重复判定。 */
-      ruleFacts?: RuleFactClaims | null;
+      turnHints?: TurnHints | null;
     },
   ): Promise<AgentMemoryContext> {
     return await this.lifecycle.onTurnStart(corpId, userId, sessionId, currentUserMessage, options);

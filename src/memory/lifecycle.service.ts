@@ -24,7 +24,7 @@ import { isUserProfileFactValue } from './long-term/long-term.types';
 import type { ShortTermMessage } from './short-term/message-window/message-window.types';
 import type { WeworkSessionState } from './short-term/session-semantic/facts/facts.types';
 import type { RecommendedJobSummary } from '@resolution/job/types';
-import type { RuleFactClaims } from '@resolution/evidence/claim.types';
+import type { TurnHints } from '@resolution/evidence/claim.types';
 import type { LaborFormIntentDecision } from '@resolution/labor-form';
 
 export interface MemoryLifecycleTurnContext {
@@ -51,7 +51,7 @@ export interface MemoryLifecycleTurnContext {
    */
   invalidatedJobIds?: number[] | null;
   /** prep 时刻唯一一次规则轨判定；轮末直接消费，禁止重跑。 */
-  ruleFacts: RuleFactClaims | null;
+  turnHints: TurnHints | null;
   /** prep 时刻规则轨的 labor-form 三态判定；轮末只消费、不重跑。 */
   laborFormIntent: LaborFormIntentDecision;
   /** 本轮账本中与事实抽取有关的只读工具摘要。 */
@@ -122,7 +122,7 @@ export class MemoryLifecycleService {
        */
       enrichmentIdentity?: CandidateIdentityHint;
       /** prep 已运行的本轮规则轨；memory 只装配，不重复判定。 */
-      ruleFacts?: RuleFactClaims | null;
+      turnHints?: TurnHints | null;
     },
   ): Promise<AgentMemoryContext> {
     const includeShortTerm = options?.includeShortTerm ?? true;
@@ -155,7 +155,7 @@ export class MemoryLifecycleService {
       sessionId,
     );
 
-    const ruleFacts = options?.ruleFacts ?? null;
+    const turnHints = options?.turnHints ?? null;
     const warnings: string[] = [];
     if (includeShortTerm && this.shortTerm.lastLoadError) {
       warnings.push(`shortTerm: ${this.shortTerm.lastLoadError}`);
@@ -176,7 +176,7 @@ export class MemoryLifecycleService {
       },
       ...(warnings.length > 0 ? { _warnings: warnings } : {}),
       sessionMemory: hasOwnSessionMemory ? sessionState : null,
-      ruleFacts,
+      turnHints,
       stageState: stageState,
       longTerm: {
         semantic: { profile, jobIntent: longTermPreferences },
@@ -542,7 +542,7 @@ export class MemoryLifecycleService {
         ctx.userId,
         ctx.sessionId,
         flatMessages,
-        ctx.ruleFacts,
+        ctx.turnHints,
         ctx.laborFormIntent,
         ctx.extractionToolFacts,
       );

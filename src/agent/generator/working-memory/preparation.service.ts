@@ -6,7 +6,7 @@ import { ToolRegistryService } from '@tools/tool-registry.service';
 import { decideLaborFormIntent } from '@resolution/labor-form';
 import { parseLocationShareCoordinates } from '@resolution/signal/markers';
 import { inferCitiesFromGeoSignals } from '@resolution/evidence/producers/city';
-import { produceRuleFactClaims } from '@resolution/evidence/producers/rule-track';
+import { produceTurnHints } from '@resolution/evidence/producers/rule-track';
 import { extractCandidateTextsFromCorpus } from '@resolution/signal/self-report';
 import { parseCandidateFieldsFromText } from '@resolution/candidate';
 import { GeocodingService } from '@infra/geocoding/geocoding.service';
@@ -161,16 +161,16 @@ export class PreparationService {
     // 预 join 会让 `[图片消息]` 占位把整批消息拖进 identity:false 授权域、并击穿
     // 疑问号门等逐消息锚定判据。
     const currentTurnTexts = trailingUserMessages(truncatedMessages);
-    const ruleFactsPromise = this.detectRuleFacts(currentTurnTexts);
+    const turnHintsPromise = this.detectTurnHints(currentTurnTexts);
 
     // 并行拉取本轮依赖：四类记忆快照 + 当前预约工单上下文 + 实时群状态 + 账号身份配置。
     const [memory, bookingContext, realtimeGroups, accountIdentityConfig] = await Promise.all([
-      ruleFactsPromise.then((ruleFacts) =>
+      turnHintsPromise.then((turnHints) =>
         this.memoryService.onTurnStart(corpId, userId, sessionId, currentUserMessage, {
           includeShortTerm: callerKind === CallerKind.WECOM,
           shortTermEndTimeInclusive: params.shortTermEndTimeInclusive,
           enrichmentIdentity: this.buildEnrichmentIdentity(params),
-          ruleFacts,
+          turnHints,
         }),
       ),
       // [当前预约信息] 由 active_booking 指针 + 海绵工单实时状态渲染（理由见 loadBookingContext）。
@@ -237,7 +237,7 @@ export class PreparationService {
       currentStage: stageFromResolver ?? undefined,
       memoryBlock,
       sessionFacts: memory.sessionMemory?.facts ?? null,
-      ruleFacts: memory.ruleFacts,
+      turnHints: memory.turnHints,
       currentTurnTexts,
       currentLaborFormIntent,
       sessionBrandState: turnBrandContext.state,
@@ -265,7 +265,7 @@ export class PreparationService {
     // 工具上下文 + 观测快照（都消费 entryStage）。
     const candidateTexts = extractCandidateTextsFromCorpus(conversationCorpusBlocks);
     const ledger = createTurnLedger({
-      ruleFacts: memory.ruleFacts,
+      turnHints: memory.turnHints,
       laborFormIntent: currentLaborFormIntent,
       collectedFields: parseCandidateFieldsFromText(
         currentUserMessage ? [currentUserMessage] : [],
@@ -375,11 +375,11 @@ export class PreparationService {
   }
 
   /** 当前轮规则 producer（prep 运行点）：产物随 ledger 穿过工具与轮末收编。 */
-  private async detectRuleFacts(currentUserMessages: string[]) {
+  private async detectTurnHints(currentUserMessages: string[]) {
     const texts = currentUserMessages.map((text) => text.trim()).filter(Boolean);
     if (texts.length === 0) return null;
     const brandData = await this.spongeService.fetchBrandList();
-    const facts = produceRuleFactClaims(texts, brandData);
+    const facts = produceTurnHints(texts, brandData);
     if (facts) this.logger.debug(`前置规则识别命中: ${facts.reasoning}`);
     return facts;
   }

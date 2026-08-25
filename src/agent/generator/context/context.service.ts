@@ -18,7 +18,7 @@ import {
   unwrapSessionFacts,
   type SessionFacts,
 } from '@memory/short-term/session-semantic/facts/facts.types';
-import type { RuleFactClaims } from '@resolution/evidence/claim.types';
+import type { TurnHints } from '@resolution/evidence/claim.types';
 import type { LaborFormIntentDecision } from '@resolution/labor-form';
 import type { SessionBrandState } from '@resolution/brand/brand-resolution.types';
 import { StrategyConfigRecord } from '@biz/strategy/entities/strategy-config.entity';
@@ -55,7 +55,7 @@ export interface ComposeParams {
   /** 会话记忆中的已确认提取结果（带信封的存储态）；供 TurnHintsSection 做冲突比对。 */
   sessionFacts?: SessionFacts | null;
   /** 本轮前置识别得到的高置信结果；由 TurnHintsSection 拆分/渲染。 */
-  ruleFacts?: RuleFactClaims | null;
+  turnHints?: TurnHints | null;
   /** 本轮候选人消息原文（逐条，与规则轨输入同源）；turn-hints 的原话渲染判据。 */
   currentTurnTexts?: readonly string[];
   /** 当前消息对用工形式的确定性 set/clear/ignore 决策。 */
@@ -116,7 +116,7 @@ export class ContextService implements OnModuleInit {
       currentStage,
       memoryBlock,
       sessionFacts,
-      ruleFacts,
+      turnHints,
       currentTurnTexts,
       currentLaborFormIntent,
       sessionBrandState,
@@ -137,7 +137,7 @@ export class ContextService implements OnModuleInit {
       currentStage,
       memoryBlock,
       sessionFacts,
-      ruleFacts,
+      turnHints,
       currentTurnTexts,
       currentLaborFormIntent,
       sessionBrandState,
