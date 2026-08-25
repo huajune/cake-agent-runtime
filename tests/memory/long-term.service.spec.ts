@@ -72,7 +72,7 @@ describe('LongTermService（S7 单一 Profile 上游 + preference 三态）', ()
     expect(facts.name.evidence).toContain('workOrderId=9001');
   });
 
-  it('consolidation 不再沉淀身份 Profile，只写稳定偏好', async () => {
+  it('consolidation 以 medium 透传身份 Profile，并同时写稳定偏好', async () => {
     const facts = toSessionFacts(
       {
         ...FALLBACK_EXTRACTION,
@@ -88,7 +88,15 @@ describe('LongTermService（S7 单一 Profile 上游 + preference 三态）', ()
       botImId: 'bot-A',
     });
 
-    expect(store.upsertProfileFacts.mock.calls[0][3]).toEqual({});
+    expect(store.upsertProfileFacts.mock.calls[0][3].name).toEqual(
+      expect.objectContaining({
+        value: '兮兮',
+        confidence: 'medium',
+        source: 'model',
+        originSessionId: 'session-A',
+        originBotId: 'bot-A',
+      }),
+    );
     expect(store.upsertProfileFacts.mock.calls[0][5].position).toEqual(
       expect.objectContaining({
         value: ['服务员'],
@@ -96,6 +104,36 @@ describe('LongTermService（S7 单一 Profile 上游 + preference 三态）', ()
         originSessionId: 'session-A',
         originBotId: 'bot-A',
       }),
+    );
+  });
+
+  it('consolidation 只有身份字段时仍写入 Profile', async () => {
+    const facts = toSessionFacts(
+      {
+        ...FALLBACK_EXTRACTION,
+        interview_info: { ...FALLBACK_EXTRACTION.interview_info, education: '本科' },
+      },
+      { confidence: 'medium', source: 'candidate_quote', evidence: '候选人自述本科' },
+    );
+
+    await service.writeFromConsolidation('corp-1', 'user-1', BOT_USER_ID, facts, {
+      sessionId: 'session-A',
+      botImId: 'bot-A',
+    });
+
+    expect(store.upsertProfileFacts).toHaveBeenCalledWith(
+      'corp-1',
+      'user-1',
+      BOT_USER_ID,
+      {
+        education: expect.objectContaining({
+          value: '本科',
+          confidence: 'medium',
+          source: 'candidate_quote',
+        }),
+      },
+      undefined,
+      {},
     );
   });
 

@@ -10,6 +10,7 @@ import type {
   MessageMetadata,
   ActiveBookingEntry,
   JobIntentFacts,
+  UserProfileFieldKey,
 } from './long-term.types';
 import type { PersistedBrandState } from '@resolution/brand/brand-resolution.types';
 import {
@@ -173,8 +174,11 @@ export class LongTermService {
     origin?: ConsolidationFactOrigin,
   ): Promise<void> {
     try {
+      const profileFacts = this.buildProfileFactsFromConsolidation(facts, origin);
       const jobIntentFacts = this.buildPreferenceFactsFromConsolidation(facts, origin);
-      if (Object.keys(jobIntentFacts).length === 0) return;
+      if (Object.keys(profileFacts).length === 0 && Object.keys(jobIntentFacts).length === 0) {
+        return;
+      }
 
       // profile + preference 单 RPC 事务写入（同一行锁），杜绝两步写之间失败
       // 造成的"profile 落库而意向丢失"半写状态。
@@ -182,16 +186,17 @@ export class LongTermService {
         corpId,
         userId,
         botUserId,
-        {},
+        profileFacts,
         undefined,
         jobIntentFacts,
       );
       this.logger.log(
-        `[writeFromConsolidation] Preference 快照写入: userId=${userId}, ` +
-          `fields=${Object.keys(jobIntentFacts).join(',')}`,
+        `[writeFromConsolidation] Profile+Preference 原子写入: userId=${userId}, ` +
+          `profileFields=${Object.keys(profileFacts).join(',') || '-'}, ` +
+          `preferenceFields=${Object.keys(jobIntentFacts).join(',') || '-'}`,
       );
     } catch (error) {
-      this.logger.warn('[writeFromConsolidation] 写入 Preference 失败', error);
+      this.logger.warn('[writeFromConsolidation] 写入 Profile+Preference 失败', error);
       throw error;
     }
   }
@@ -370,6 +375,34 @@ export class LongTermService {
     return facts;
   }
 
+  private buildProfileFactsFromConsolidation(
+    facts: EntityExtractionResult | SessionFacts,
+    origin?: FactOrigin,
+  ): Partial<UserProfileFacts> {
+    const updatedAt = new Date().toISOString();
+    const profileFacts: Partial<UserProfileFacts> = {};
+    const info = facts.interview_info as Record<UserProfileFieldKey, unknown>;
+
+    for (const key of USER_PROFILE_FIELD_KEYS) {
+      const rawValue = info[key];
+      const value = unwrapSessionFactValue(
+        rawValue as SessionFactValue<string | boolean> | string | boolean | null | undefined,
+      );
+      if (!this.hasProfileValue(value)) continue;
+
+      (profileFacts as Record<string, unknown>)[key] = userProfileFactValue(value, {
+        source: isSessionFactValue(rawValue) ? rawValue.source : 'archive',
+        confidence: 'medium',
+        evidence: this.buildConsolidationEvidence(rawValue),
+        updatedAt,
+        originSessionId: origin?.sessionId,
+        originBotId: origin?.botImId,
+      });
+    }
+
+    return profileFacts;
+  }
+
   /**
    * 从 sessionFacts.preferences 构建长期求职意向快照。
    *
@@ -430,6 +463,13 @@ export class LongTermService {
     if (typeof value === 'string') return value.trim().length > 0;
     if (Array.isArray(value)) return value.length > 0;
     return true;
+  }
+
+  private hasProfileValue(value: unknown): value is string | boolean {
+    if (value === null || value === undefined) return false;
+    if (typeof value === 'boolean') return true;
+    if (typeof value === 'string') return value.trim().length > 0;
+    return false;
   }
 
   private buildConsolidationEvidence(rawValue: unknown): string {
