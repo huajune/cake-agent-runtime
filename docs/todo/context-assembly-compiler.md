@@ -127,7 +127,7 @@ type ContextBlock =
 
 | 字段类 | 裁决规则 |
 |---|---|
-| 身份档案类（姓名/电话/健康证…） | long-term `semantic_profile` 只含报名级信息（二期 M5 裁定），组装时为身份权威；会话新自陈与之冲突 → 渲染档案值 + "本次自称 X，待确认"标注 |
+| 身份档案类（姓名/电话/健康证…） | **与意向类同规则**（2026-08-25 随 M5 第 4 条复议统一——profile 为多置信来源底座，报名级写入天然 high 即权威，权威性来自置信度而非来源特权）：取高置信度，同置信度新鲜度决胜；异值渲染胜者 + "档案记 X，本次称 Y"冲突标注 |
 | 意向类（城市/品牌/岗位/班次/薪资…） | **取高置信度**（用户裁定，推翻设计稿的"本次优先"）；同置信度以新鲜度（extractedAt）决胜——平局时本次会话自然胜出 |
 
 渲染规则：同字段**同值去重**，只渲染权威一处（消灭 `[用户档案]` 与 `[会话记忆]` 的远距复读）；同字段**异值渲染胜者 + 冲突标注**。工具上下文改为消费编译器合并产物（source 三通道的 data 面），同源不重查，高置信 unwrap 语义不变。
@@ -185,4 +185,4 @@ B1–B3 输出逐字节不变（golden test 锁），纯结构落地；B4/B5 是
 ## 附：同分支相邻待办（不属本文档批次）
 
 - README/glossary 双轴地图补写（业界三轴 + memory vs state 之辨 + 双管线图；glossary CoALA 词条出处修正：四分法是 CoALA 对 Tulving 1972（episodic/semantic）+ Baddeley 1974（working）+ 内隐记忆/ACT-R（procedural）三条传统的工程化统一，非单一出处）。
-- memory/ 结构定格与五乱源清理已升格为**二期 M5**（[memory-coala-alignment.md](./memory-coala-alignment.md) 工作包 M5，2026-08-24 逐条裁定）：short-term 伞目录（message-window / session-semantic，阶段指针并入 workbench）、7d/3d/3d 时间对齐、定时沉淀、profile 报名级收窄、ruleFacts→turnHints——不再是本文档待办。
+- memory/ 结构定格与五乱源清理已升格为**二期 M5**（[memory-coala-alignment.md](./memory-coala-alignment.md) 工作包 M5，2026-08-24 逐条裁定）：short-term 伞目录（message-window / session-semantic，阶段指针并入 workbench）、7d/3d/3d 时间对齐、定时沉淀、profile 双写入路径（沉淀 medium + 报名 high，08-25 复议定稿）、ruleFacts→turnHints——不再是本文档待办。
