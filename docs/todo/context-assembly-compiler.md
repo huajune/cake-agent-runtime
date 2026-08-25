@@ -32,6 +32,17 @@
 - 存储侧零改动；模型可见内层标签保留。
 - 闸门：test-suite 回归 + badcase 基线 + 抽 10 条 mpr promptBlocks 前后 diff 人工审计。
 
+### 批四：装配边界治理批（2026-08-26 立案；建议先于批二执行）
+
+> 判据入册：**计算归 working-memory（备料车间），呈现与排布归 sections（摆盘）**。据此三立案一撤诉：
+
+1. **critical-turn-guard 升格为 section**：它本质是条件触发的 procedural section（badcase 驱动禁令，命中才注入 system 末尾），散装在 working-memory 导致不在分类树/不在场景清单/**台账锚点测试照不到**（group-inventory 先例同款盲区，唯一治理缺口）。迁 `sections/procedural/critical-turn-guard.section.ts`，进场景清单末位，注入文本与位置逐字节不变（零行为），补台账锚注。
+2. **memory-block.formatter 并壳**：批三抽走裁决后其主体为呈现——渲染部分迁 `sections/semantic/` 与 16 行的 memory.section 壳体合一，计算残余留车间。
+3. **turn-hints.section 自裁决后门收口**：批三遗留的"直接调用时自行裁决" fallback 是裁决分叉口子——生产强制共享裁决视图，fallback 改 throw，单测改传视图。
+4. 撤诉：revise-directives 非寄居（消费方仅 preparation.service，复聊主动回合亦走 prepare()），留。
+
+闸门：第 1、3 项零行为（现测绿+注入文本字节比对）；第 2 项纯搬迁（golden 同现状）。
+
 ### 批二：system 内重排批（一处顺序）
 
 - **改动就一件**：prepare() 的 system 装配顺序重排——静态段（手册/渠道规范/工具目录）前置，配置段（策略红线/账号身份）居中，动态段（记忆召回块 + 当前阶段策略）置 system 末尾；全阶段一览静态地图留静态段。动态内容保持 **system 语义**，一个字节不进 messages。
