@@ -18,7 +18,7 @@ const DESCRIPTION = `查询用户的历史求职记录。追溯本次会话之�
 
 ## 返回
 - recent：近期详细摘要（数组）
-- archive：更早期压缩总结（字符串）
+- archive：更早期压缩总结（按时间从旧到新的追加段列表）
 
 ## 用途边界
 - [用户档案] 和 [会话记忆] 中已有的信息属于本次会话上下文，不要重复调用本工具来获取
@@ -31,13 +31,15 @@ function formatSummaryForTool(data: SessionSummaries | null): string {
 
   const parts: string[] = [];
 
-  if (data.archive) {
-    parts.push(`### 历史总结\n${data.archive}`);
+  if (data.archive.length > 0) {
+    const archiveLines = data.archive.map((segment, index) => `- [归档段 ${index + 1}] ${segment}`);
+    parts.push(`### 历史总结\n${archiveLines.join('\n')}`);
   }
 
   if (data.recent.length > 0) {
     const recentLines = data.recent.map(
-      (e) => `- [${e.startTime?.substring(0, 10) ?? '?'}] ${e.summary}`,
+      (e) =>
+        `- [${e.startTime?.substring(0, 10) ?? '?'}] ${e.summary}${e.coverageNote ? `（${e.coverageNote}）` : ''}`,
     );
     parts.push(`### 近期求职记录\n${recentLines.join('\n')}`);
   }
@@ -73,7 +75,7 @@ export function buildRecallHistoryTool(memoryService: MemoryService): ToolBuilde
 
         if (
           !sessionSummaries ||
-          (sessionSummaries.recent.length === 0 && !sessionSummaries.archive)
+          (sessionSummaries.recent.length === 0 && sessionSummaries.archive.length === 0)
         ) {
           logger.debug(`无历史摘要: userId=${context.session.userId}`);
           return { found: false, message: '该用户无历史求职记录' };
@@ -87,7 +89,7 @@ export function buildRecallHistoryTool(memoryService: MemoryService): ToolBuilde
         return {
           found: true,
           recentCount: sessionSummaries.recent.length,
-          hasArchive: !!sessionSummaries.archive,
+          hasArchive: sessionSummaries.archive.length > 0,
           content: formatted,
         };
       },

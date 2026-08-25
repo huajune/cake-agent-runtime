@@ -244,14 +244,19 @@ export interface SummaryEntry {
   originBotId?: string;
   startTime: string;
   endTime: string;
+  /** 对话过长时只摘要尾部消息；该注记使召回方知道摘要覆盖并不完整。 */
+  coverageNote?: string;
 }
 
 /** 对话摘要数据 — 分层压缩结构 */
 export interface SessionSummaries {
   /** 最近 N 条详细摘要 */
   recent: SummaryEntry[];
-  /** 更早的摘要被 LLM 压缩合并成的总结 */
-  archive: string | null;
+  /**
+   * 更早摘要的追加段，按时间从旧到新排列。旧 string blob 在读边界懒迁移为首段；
+   * 已有段冻结，后续压缩只能追加新段。
+   */
+  archive: string[];
   /**
    * 最近一次已沉淀到长期记忆的消息边界（用户维度，跨 bot 共享）。
    * 历史字段：双 bot 服务同一候选人时会互相推进，仅作为 lastSettledBySession
@@ -366,6 +371,9 @@ export type ProfileUpsertPayload = Partial<UserProfile>;
 
 /** 最大保留的详细摘要条数 */
 export const MAX_RECENT_SUMMARIES = 5;
+
+/** archive 追加段上限；超限时确定性淘汰最老段。 */
+export const MAX_ARCHIVE_SEGMENTS = 12;
 
 // ==================== CoALA A3 分组（2026-08-21，治理二期 M2-B） ====================
 

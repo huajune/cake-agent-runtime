@@ -44,9 +44,15 @@ describe('buildRecallHistoryTool', () => {
   it('should return formatted summaries when available', async () => {
     mockMemoryService.getSessionSummaries.mockResolvedValue({
       recent: [
-        { summary: '找上海兼职', sessionId: 's1', startTime: '2026-03-15', endTime: '2026-03-15' },
+        {
+          summary: '找上海兼职',
+          sessionId: 's1',
+          startTime: '2026-03-15',
+          endTime: '2026-03-15',
+          coverageNote: '仅覆盖末 120 条（共 121 条）',
+        },
       ],
-      archive: null,
+      archive: [],
     });
 
     const builder = buildRecallHistoryTool(mockMemoryService as never);
@@ -58,5 +64,23 @@ describe('buildRecallHistoryTool', () => {
     expect(result.found).toBe(true);
     expect(result.recentCount).toBe(1);
     expect(result.content).toContain('[历史摘要]');
+    expect(result.content).toContain('仅覆盖末 120 条（共 121 条）');
+  });
+
+  it('按追加顺序渲染 archive 段', async () => {
+    mockMemoryService.getSessionSummaries.mockResolvedValue({
+      recent: [],
+      archive: ['第一段历史', '第二段历史'],
+    });
+
+    const builder = buildRecallHistoryTool(mockMemoryService as never);
+    const builtTool = builder(mockContext);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = await (builtTool as any).execute({});
+
+    expect(result.hasArchive).toBe(true);
+    expect(result.content).toContain('[归档段 1] 第一段历史');
+    expect(result.content).toContain('[归档段 2] 第二段历史');
   });
 });

@@ -1,6 +1,6 @@
 import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger, Optional } from '@nestjs/common';
-import type { CityAttestation, TurnExtractionToolFacts } from '@shared-types/turn.types';
+import type { CityAttestation } from '@shared-types/turn.types';
 import { AgentTracerService } from '@observability/agent-tracer.service';
 import { AlertNotifierService } from '@notification/services/alert-notifier.service';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
@@ -40,6 +40,7 @@ import {
   SESSION_EXTRACTION_SYSTEM_PROMPT,
 } from './extraction.prompt';
 import { detectBrandAliasHints } from '@resolution/evidence/producers/rule-track';
+import { isSameFactValue } from '@resolution/evidence/merge';
 import type { TurnHints } from '@resolution/evidence/claim.types';
 import type {
   BrandResolution,
@@ -396,7 +397,16 @@ export class SessionFactsService {
     if (!previous) return incoming;
     const merged = { ...previous } as Record<string, unknown>;
     for (const [field, raw] of Object.entries(incoming)) {
-      if (raw !== null && raw !== undefined) merged[field] = raw;
+      if (raw === null || raw === undefined) continue;
+      const current = merged[field];
+      if (
+        isSessionFactValue(current) &&
+        isSessionFactValue(raw) &&
+        isSameFactValue(current.value, raw.value)
+      ) {
+        continue;
+      }
+      merged[field] = raw;
     }
     return merged as unknown as SessionFacts['preferences'];
   }
@@ -597,7 +607,6 @@ export class SessionFactsService {
     messages: { role: string; content: string }[],
     turnHints: TurnHints | null = null,
     preparedLaborFormIntent?: LaborFormIntentDecision,
-    extractionToolFacts?: TurnExtractionToolFacts,
   ): Promise<{ llmDegraded: boolean; brandIntents: BrandResolution[] }> {
     const dialogueMessages = messages.filter(
       (message) =>
@@ -626,10 +635,8 @@ export class SessionFactsService {
       currentMessage,
       previousFacts ? history.slice(-this.config.sessionExtractionIncrementalMessages) : history,
       aliasHints,
-      turnHints,
       formatCurrentTime(),
       previousFacts,
-      extractionToolFacts ?? null,
     );
     const llmOutcome = await this.callLLM(prompt);
     this.emitLaborFormSemanticTrackDiff({

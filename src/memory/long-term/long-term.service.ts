@@ -233,7 +233,7 @@ export class LongTermService {
   /**
    * 追加一条摘要（自动分层压缩）
    *
-   * @param compressArchive 压缩函数：将溢出的 recent 条目 + 旧 archive 合并为新 archive
+   * @param compressArchive 压缩函数：只把本次溢出的 recent 条目压成一个新 archive 段
    */
   async appendSummary(
     corpId: string,
@@ -244,10 +244,7 @@ export class LongTermService {
       lastSettledMessageAt?: string | null;
       /** 沉淀边界的会话维度 key（sessionId=chatId）；双 bot 场景按会话隔离边界。 */
       sessionId?: string | null;
-      compressArchive?: (
-        overflow: SummaryEntry[],
-        existingArchive: string | null,
-      ) => Promise<string>;
+      compressArchive?: (overflow: SummaryEntry[]) => Promise<string>;
     },
   ): Promise<void> {
     try {

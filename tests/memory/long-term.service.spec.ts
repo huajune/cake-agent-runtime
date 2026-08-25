@@ -238,13 +238,13 @@ describe('LongTermService（S7 单一 Profile 上游 + preference 三态）', ()
           endTime: '2026-08-20',
         },
       ],
-      archive: 'mixed',
+      archive: ['mixed'],
       lastSettledMessageAt: null,
     });
 
     const result = await service.getSessionSummaries('corp-1', 'user-1', BOT_USER_ID);
     expect(store.getSessionSummaries).toHaveBeenCalledWith('corp-1', 'user-1', BOT_USER_ID);
     expect(result?.recent.map((entry) => entry.summary)).toEqual(['A', 'B']);
-    expect(result?.archive).toBe('mixed');
+    expect(result?.archive).toEqual(['mixed']);
   });
 });

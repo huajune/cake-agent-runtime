@@ -139,12 +139,7 @@ describe('SessionStateService（S1-S6）', () => {
     };
     hash = { facts: { ...softFacts(), brand } };
 
-    await service.saveFacts(
-      'corp-1',
-      'user-1',
-      'session-1',
-      softFacts({ schedule: '晚班' }),
-    );
+    await service.saveFacts('corp-1', 'user-1', 'session-1', softFacts({ schedule: '晚班' }));
 
     expect((await service.getFacts('corp-1', 'user-1', 'session-1'))?.brand).toEqual(brand);
   });
@@ -193,14 +188,35 @@ describe('SessionStateService（S1-S6）', () => {
     expect(saved?.preferences.position?.value).toEqual(['服务员']);
   });
 
-  it('轮末 LLM 只能写 preferences，不会覆盖表单身份', async () => {
-    await service.saveCompletedCollectionFacts('corp-1', 'user-1', 'session-1', {
+  it('轮末 LLM 纯偏好提取不会覆盖 booking high 身份字段', async () => {
+    const bookingIdentity = {
       name: sessionFactValue('兮兮', {
         confidence: 'high',
         source: 'candidate_quote',
-        evidence: '收资表单办结',
+        evidence: '报名成功姓名',
       }),
-    });
+      phone: sessionFactValue('13800138000', {
+        confidence: 'high',
+        source: 'candidate_quote',
+        evidence: '报名成功手机',
+      }),
+      gender: sessionFactValue('女', {
+        confidence: 'high',
+        source: 'candidate_quote',
+        evidence: '报名成功性别',
+      }),
+      gender_source: sessionFactValue('candidate' as const, {
+        confidence: 'high',
+        source: 'candidate_quote',
+        evidence: '报名成功性别来源',
+      }),
+      age: sessionFactValue('25', {
+        confidence: 'high',
+        source: 'candidate_quote',
+        evidence: '报名成功年龄',
+      }),
+    };
+    await service.saveCompletedCollectionFacts('corp-1', 'user-1', 'session-1', bookingIdentity);
     llm.generateStructured.mockResolvedValue({
       output: {
         interview_info: { name: '伪造姓名' },
@@ -216,9 +232,47 @@ describe('SessionStateService（S1-S6）', () => {
       { role: 'user', content: '我只能晚班' },
     ]);
     const saved = await service.getFacts('corp-1', 'user-1', 'session-1');
-    expect(saved?.interview_info.name?.value).toBe('兮兮');
+    expect(saved?.interview_info).toEqual(
+      expect.objectContaining(
+        Object.fromEntries(
+          Object.entries(bookingIdentity).map(([key, value]) => [
+            key,
+            expect.objectContaining(value),
+          ]),
+        ),
+      ),
+    );
     expect(saved?.preferences.schedule).toEqual(
       expect.objectContaining({ value: '晚班', confidence: 'medium' }),
+    );
+  });
+
+  it('相同 preference 值不刷新旧信封的时间与证据', async () => {
+    const originalPosition = sessionFactValue(['服务员'], {
+      confidence: 'medium',
+      source: 'model',
+      evidence: '候选人最初明确说服务员',
+      extractedAt: '2026-08-01T00:00:00.000Z',
+    });
+    const initial = softFacts();
+    initial.preferences.position = originalPosition;
+    await service.saveFacts('corp-1', 'user-1', 'session-1', initial);
+    llm.generateStructured.mockResolvedValue({
+      output: {
+        preferences: preferences({ position: ['服务员'] }),
+        brand_intents: [],
+        labor_form_intent: { intent: 'ignore', quote: '还是服务员' },
+        reasoning: '重复确认岗位',
+      },
+      modelId: 'test/extract',
+    });
+
+    await service.extractAndSave('corp-1', 'user-1', 'session-1', [
+      { role: 'user', content: '还是服务员' },
+    ]);
+
+    expect((await service.getFacts('corp-1', 'user-1', 'session-1'))?.preferences.position).toEqual(
+      originalPosition,
     );
   });
 

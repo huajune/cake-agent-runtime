@@ -30,7 +30,7 @@ describe('ConsolidationService（M5 定时闲置沉淀）', () => {
     jest.spyOn(Date, 'now').mockReturnValue(now);
     longTerm.getSessionSummaries.mockResolvedValue({
       recent: [],
-      archive: null,
+      archive: [],
       lastSettledMessageAt: null,
       lastSettledBySession: {},
     });
@@ -108,7 +108,7 @@ describe('ConsolidationService（M5 定时闲置沉淀）', () => {
   it('lastSettledBySession 已覆盖最新消息时幂等跳过', async () => {
     longTerm.getSessionSummaries.mockResolvedValue({
       recent: [],
-      archive: null,
+      archive: [],
       lastSettledMessageAt: null,
       lastSettledBySession: { 'session-1': new Date(latestAt).toISOString() },
     });
@@ -185,6 +185,86 @@ describe('ConsolidationService（M5 定时闲置沉淀）', () => {
       service.consolidateIdleSession('corp-1', 'user-1', 'session-1', BOT_USER_ID, null),
     ).rejects.toThrow('llm down');
     expect(longTerm.appendSummary).not.toHaveBeenCalled();
+  });
+
+  it('LLM 返回空白时失败，事实与摘要水位都不写入', async () => {
+    llm.generate.mockResolvedValueOnce({ text: '   ' });
+
+    await expect(
+      service.consolidateIdleSession('corp-1', 'user-1', 'session-1', BOT_USER_ID, null),
+    ).rejects.toThrow('memory_consolidation_summary_empty:session-1');
+
+    expect(longTerm.writeFromConsolidation).not.toHaveBeenCalled();
+    expect(longTerm.appendSummary).not.toHaveBeenCalled();
+  });
+
+  it('摘要 prompt 固定四节并要求保留检索标识与拒绝约束', async () => {
+    await service.consolidateIdleSession('corp-1', 'user-1', 'session-1', BOT_USER_ID, null);
+
+    const request = llm.generate.mock.calls[0][0];
+    expect(request.system).toContain('「求职目标」「关键约束」「进展与结果」「未决事项」');
+    expect(request.system).toContain('jobId、门店名、日期');
+    expect(request.system).toContain('拒绝品牌');
+    expect(request.system).toContain('不超过 150 字');
+  });
+
+  it('超长咨询段只摘要末 120 条，并在 SummaryEntry 标注覆盖范围', async () => {
+    const messages = Array.from({ length: 121 }, (_, index) => ({
+      role: index % 2 === 0 ? ('user' as const) : ('assistant' as const),
+      content: `消息-${index}`,
+      timestamp: latestAt - (120 - index) * 1000,
+    }));
+    chatSession.getChatHistoryInRange.mockResolvedValue(messages);
+
+    await service.consolidateIdleSession('corp-1', 'user-1', 'session-1', BOT_USER_ID, null);
+
+    const request = llm.generate.mock.calls[0][0];
+    expect(request.prompt).not.toContain('消息-0\n');
+    expect(request.prompt).toContain('消息-1');
+    expect(request.prompt).toContain('消息-120');
+    expect(longTerm.appendSummary).toHaveBeenCalledWith(
+      'corp-1',
+      'user-1',
+      BOT_USER_ID,
+      expect.objectContaining({
+        startTime: new Date(messages[1].timestamp).toISOString(),
+        coverageNote: '仅覆盖末 120 条（共 121 条）',
+      }),
+      expect.any(Object),
+    );
+  });
+
+  it('archive 压缩只接收新溢出，旧段不会进入 prompt，空结果向上抛出', async () => {
+    longTerm.getSessionSummaries.mockResolvedValue({
+      recent: [],
+      archive: ['不可重写的旧归档段'],
+      lastSettledMessageAt: null,
+      lastSettledBySession: {},
+    });
+    llm.generate
+      .mockResolvedValueOnce({ text: '本轮摘要' })
+      .mockResolvedValueOnce({ text: '新归档段' });
+
+    await service.consolidateIdleSession('corp-1', 'user-1', 'session-1', BOT_USER_ID, null);
+
+    const options = longTerm.appendSummary.mock.calls[0][4];
+    await expect(
+      options.compressArchive([
+        {
+          summary: '本次新溢出',
+          sessionId: 'old-session',
+          startTime: '2026-01-01',
+          endTime: '2026-01-01',
+        },
+      ]),
+    ).resolves.toBe('新归档段');
+    expect(llm.generate.mock.calls[1][0].prompt).toContain('本次新溢出');
+    expect(llm.generate.mock.calls[1][0].prompt).not.toContain('不可重写的旧归档段');
+
+    llm.generate.mockResolvedValueOnce({ text: '  ' });
+    await expect(options.compressArchive([{ summary: '再次溢出' }])).rejects.toThrow(
+      'memory_archive_compression_empty',
+    );
   });
 
   it('缺少 DB 最新消息时失败而非静默跳过', async () => {

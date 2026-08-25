@@ -150,6 +150,10 @@ Redis hash 没有字段级 TTL，因此 `factsv2:` 内的 facts 与 workbench �
 - `semantic_job_intent`：长期求职意向；
 - `episodic_session_summaries`：咨询段摘要与 `lastSettledBySession` 幂等水位。
 
+摘要保留最近 5 条明细；更早摘要按批压成只追加的 archive 段。既有段冻结，不再交给
+LLM 重写；最多保留 12 段，超限时确定性淘汰最老段。旧 string archive 在读取时视为
+首段，DB 列名不变。
+
 没有可验证 bot 血缘的存量行保持冻结且不参与读取；有可靠血缘的数据才拆到关系行。长期召回不再做跨 bot 来源研判，也不渲染跨咨询泛指横幅。
 
 `semantic_profile` 保留两条写入路径：

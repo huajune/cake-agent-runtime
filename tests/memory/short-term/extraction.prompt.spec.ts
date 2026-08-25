@@ -1,6 +1,5 @@
 import {
   SESSION_EXTRACTION_SYSTEM_PROMPT,
-  buildExtractionIdentityProvenanceCorpus,
   buildSessionExtractionPrompt,
 } from '@memory/short-term/extraction.prompt';
 import {
@@ -73,7 +72,6 @@ describe('session extraction prompt（表单外软事实 only）', () => {
       '用户: 我想找晚班',
       [],
       [],
-      null,
       undefined,
       facts,
     );
@@ -92,14 +90,5 @@ describe('session extraction prompt（表单外软事实 only）', () => {
     );
     expect(prompt).toContain('肯德基（别称：KFC）');
     expect(prompt).toContain('「KFC」=>「肯德基」');
-  });
-
-  it('legacy provenance corpus 导出只拼对话，不拼历史身份事实', () => {
-    const corpus = buildExtractionIdentityProvenanceCorpus(
-      '用户: 当前消息',
-      ['用户: 历史消息'],
-      null,
-    );
-    expect(corpus).toBe('用户: 历史消息\n用户: 当前消息');
   });
 });

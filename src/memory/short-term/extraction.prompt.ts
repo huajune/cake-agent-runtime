@@ -1,11 +1,7 @@
 import type { BrandItem } from '@/sponge/sponge.types';
 import type { BrandAliasHint } from '@resolution/evidence/producers/rule-track';
-import type { TurnHints } from '@resolution/evidence/claim.types';
-import type { TurnExtractionToolFacts } from '@shared-types/turn.types';
 import type { SessionFacts } from './short-term.types';
 import { isSessionFactValue } from './short-term.types';
-
-export type SessionExtractionToolFacts = TurnExtractionToolFacts;
 
 /**
  * 轮末抽取只负责表单外软事实。
@@ -59,27 +55,13 @@ function formatKnownPreferences(previousFacts: SessionFacts | null): string | nu
   return entries.length > 0 ? entries.join('\n') : null;
 }
 
-/**
- * 保留旧导出名供调用方平滑迁移；身份出处门已退役，因此语料只用于测试/诊断，
- * 不参与事实准入。
- */
-export function buildExtractionIdentityProvenanceCorpus(
-  message: string,
-  history: string[],
-  _previousFacts: SessionFacts | null,
-): string {
-  return [...history, message].filter((part) => part.trim().length > 0).join('\n');
-}
-
 export function buildSessionExtractionPrompt(
   brandData: BrandItem[],
   message: string,
   history: string[],
   aliasHints: BrandAliasHint[] = [],
-  _turnHints: TurnHints | null = null,
   currentTime?: string,
   previousFacts: SessionFacts | null = null,
-  _toolFacts: TurnExtractionToolFacts | null = null,
 ): string {
   const knownPreferences = formatKnownPreferences(previousFacts);
   const aliasHintInfo =

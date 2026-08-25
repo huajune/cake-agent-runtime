@@ -101,12 +101,6 @@ export interface TurnLedgerSnapshot {
   readonly facts: TurnFactsSnapshot;
 }
 
-/** 轮末事实抽取只借阅岗位与视觉域的最小只读投影。 */
-export interface TurnExtractionToolFacts {
-  readonly jobs: Pick<TurnJobsSnapshot, 'fetchedJobs' | 'currentFocusJob'>;
-  readonly visual: Pick<TurnVisualSnapshot, 'factSheets'>;
-}
-
 /**
  * 回合账本：agent 运行时拥有实例，工具只借阅只读视图与显式追加方法。
  * 列表没有可写出口；所有变更都经 record* / mark*，轮末以 drain() 快照交档。

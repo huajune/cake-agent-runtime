@@ -13,13 +13,14 @@ import {
 } from '../short-term/short-term.types';
 import type { PersistedBrandState } from '@resolution/brand/brand-resolution.types';
 
-const SUMMARY_SYSTEM_PROMPT = `你是对话摘要生成器。将招募经理与候选人的对话和提取的事实信息压缩为一段简洁的摘要。
+const SUMMARY_SYSTEM_PROMPT = `你是对话摘要生成器。将招募经理与候选人的对话和提取事实压缩为结构化短摘要。
 
 要求：
-- 一段话概括：候选人找什么工作、意向品牌/城市、是否安排了面试、最终结果
-- 保留关键事实（岗位、门店、时间、结果）
-- 不超过 100 字
-- 使用第三人称`;
+- 必须严格输出四节，标题依次为「求职目标」「关键约束」「进展与结果」「未决事项」
+- 保留可检索标识符，包括 jobId、门店名、日期；没有的信息写“无”
+- 拒绝品牌、不可接受的岗位/地点/时间等必须写入「关键约束」
+- 不得把岗位要求或助手话术写成候选人事实
+- 总长度不超过 150 字，使用第三人称`;
 
 const CONSOLIDATION_FETCH_LIMIT = 500;
 const CONSOLIDATION_MAX_PAGES = 10;
@@ -27,11 +28,12 @@ const CONSOLIDATION_MAX_PAGES = 10;
 /** 摘要 LLM 输入的消息条数上限：分页扫描后旧会话段可能远超单页。 */
 const SUMMARY_MAX_MESSAGES = 120;
 
-const ARCHIVE_COMPRESS_PROMPT = `你是记忆压缩器。将多条历史求职摘要合并为一段简洁的总结。
+const ARCHIVE_COMPRESS_PROMPT = `你是记忆压缩器。只把本次新溢出的历史求职摘要压缩成一个独立归档段。
 
 要求：
 - 合并重复信息，保留关键事实
 - 按时间顺序概括
+- 不得假设或改写任何既有归档段
 - 不超过 200 字
 - 使用第三人称`;
 
@@ -191,8 +193,8 @@ export class ConsolidationService {
       params;
 
     // 分页扫描后咨询段可能很长，摘要只取末尾一段，避免 LLM prompt 失控。
-    const conversationText = messages
-      .slice(-SUMMARY_MAX_MESSAGES)
+    const summarizedMessages = messages.slice(-SUMMARY_MAX_MESSAGES);
+    const conversationText = summarizedMessages
       .map((m) => `${m.role === 'user' ? '用户' : '助手'}: ${m.content}`)
       .join('\n');
 
@@ -208,16 +210,24 @@ export class ConsolidationService {
       prompt: `[对话记录]\n${conversationText}\n\n[提取信息]\n${factsText}`,
     });
 
-    const firstMsgTime = messages[0]
-      ? new Date(messages[0].timestamp).toISOString()
+    const summary = result.text?.trim();
+    if (!summary) {
+      throw new Error(`memory_consolidation_summary_empty:${sessionId}`);
+    }
+
+    const firstMsgTime = summarizedMessages[0]
+      ? new Date(summarizedMessages[0].timestamp).toISOString()
       : lastSettledMessageAt;
 
     const summaryEntry: SummaryEntry = {
-      summary: result.text || '（摘要生成失败）',
+      summary,
       sessionId,
       ...(botImId ? { originBotId: botImId } : {}),
       startTime: firstMsgTime,
       endTime: sessionEndAt,
+      ...(messages.length > SUMMARY_MAX_MESSAGES
+        ? { coverageNote: `仅覆盖末 ${SUMMARY_MAX_MESSAGES} 条（共 ${messages.length} 条）` }
+        : {}),
     };
 
     // 长期事实先写、摘要水位后推：若摘要写失败，Bull 重试时事实覆盖写仍幂等。
@@ -232,8 +242,7 @@ export class ConsolidationService {
     await this.longTerm.appendSummary(corpId, userId, botUserId, summaryEntry, {
       lastSettledMessageAt: sessionEndAt,
       sessionId,
-      compressArchive: (overflow, existingArchive) =>
-        this.compressArchive(overflow, existingArchive),
+      compressArchive: (overflow) => this.compressArchive(overflow),
     });
 
     this.logger.log(
@@ -241,21 +250,16 @@ export class ConsolidationService {
     );
   }
 
-  private async compressArchive(
-    overflow: { summary: string }[],
-    existingArchive: string | null,
-  ): Promise<string> {
-    const parts: string[] = [];
-    if (existingArchive) parts.push(`已有总结：${existingArchive}`);
-    parts.push(`需要合并的新记录：\n${overflow.map((e) => `- ${e.summary}`).join('\n')}`);
-
+  private async compressArchive(overflow: { summary: string }[]): Promise<string> {
     const result = await this.llm.generate({
       role: ModelRole.Extract,
       modelId: await this.systemConfig.getExtractModelOverride(),
       system: ARCHIVE_COMPRESS_PROMPT,
-      prompt: parts.join('\n\n'),
+      prompt: `需要压缩的新溢出记录：\n${overflow.map((e) => `- ${e.summary}`).join('\n')}`,
     });
 
-    return result.text || existingArchive || '';
+    const segment = result.text?.trim();
+    if (!segment) throw new Error('memory_archive_compression_empty');
+    return segment;
   }
 }

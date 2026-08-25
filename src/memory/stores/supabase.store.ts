@@ -20,6 +20,7 @@ import {
   createEmptyUserProfileFacts,
   isUserProfileFactValue,
   LONG_TERM_JOB_INTENT_FIELD_KEYS,
+  MAX_ARCHIVE_SEGMENTS,
   MAX_RECENT_SUMMARIES,
   UserProfileFactValueSchema,
   userProfileFactValue,
@@ -29,13 +30,33 @@ import type { MemoryEntry, MemoryStore } from './store.types';
 
 const TABLE = 'agent_long_term_memories';
 
+function normalizeArchiveSegments(value: unknown): string[] {
+  if (typeof value === 'string') {
+    const segment = value.trim();
+    return segment ? [segment] : [];
+  }
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((segment): segment is string => typeof segment === 'string')
+    .map((segment) => segment.trim())
+    .filter(Boolean)
+    .slice(-MAX_ARCHIVE_SEGMENTS);
+}
+
+function appendArchiveSegment(existing: readonly string[], segment: string): string[] {
+  const normalized = segment.trim();
+  if (!normalized) throw new Error('memory_archive_segment_empty');
+  return [...existing, normalized].slice(-MAX_ARCHIVE_SEGMENTS);
+}
+
 function normalizeSessionSummaries(
   data: SessionSummaries | null | undefined,
 ): SessionSummaries | null {
   if (!data) return null;
+  const raw = data as unknown as Record<string, unknown>;
   return {
     recent: data.recent ?? [],
-    archive: data.archive ?? null,
+    archive: normalizeArchiveSegments(raw.archive),
     lastSettledMessageAt: data.lastSettledMessageAt ?? null,
     lastSettledBySession: data.lastSettledBySession ?? null,
   };
@@ -261,10 +282,7 @@ export class SupabaseStore implements MemoryStore {
       lastSettledMessageAt?: string | null;
       /** 沉淀边界的会话维度 key；提供时同步写 lastSettledBySession[sessionId]。 */
       sessionId?: string | null;
-      compressArchive?: (
-        overflow: SummaryEntry[],
-        existingArchive: string | null,
-      ) => Promise<string>;
+      compressArchive?: (overflow: SummaryEntry[]) => Promise<string>;
     },
   ): Promise<void> {
     const client = this.supabase.getSupabaseClient();
@@ -272,6 +290,12 @@ export class SupabaseStore implements MemoryStore {
       this.logger.warn('Supabase 不可用，appendSummary 跳过');
       return;
     }
+
+    // RPC 会在返回 overflow 前裁剪 recent 并推进沉淀水位。先留快照，确保后续 LLM
+    // 压缩或 archive 回写失败时能恢复到 RPC 前状态，让 Bull 重试不会被新水位挡住。
+    const beforeAppend = options?.compressArchive
+      ? await this.getSessionSummaries(corpId, userId, botUserId)
+      : null;
 
     const { data: rpcResult, error } = await client.rpc('append_long_term_summary_atomic', {
       p_corp_id: corpId,
@@ -295,18 +319,35 @@ export class SupabaseStore implements MemoryStore {
     if (result?.overflow?.length && options?.compressArchive) {
       try {
         const sessionSummaries = await this.getSessionSummaries(corpId, userId, botUserId);
-        const archive = await options.compressArchive(
-          result.overflow,
-          sessionSummaries?.archive ?? null,
-        );
+        const segment = await options.compressArchive(result.overflow);
+        const archive = appendArchiveSegment(sessionSummaries?.archive ?? [], segment);
         await this.upsertRow(corpId, userId, botUserId, {
           episodic_session_summaries: {
-            ...(sessionSummaries ?? { recent: [], lastSettledMessageAt: null }),
+            ...(sessionSummaries ?? {
+              recent: [],
+              archive: [],
+              lastSettledMessageAt: null,
+            }),
             archive,
           },
         });
-      } catch (err) {
-        this.logger.warn('摘要压缩失败，溢出条目将在下次压缩', err);
+      } catch (archiveError) {
+        try {
+          await this.upsertRow(corpId, userId, botUserId, {
+            episodic_session_summaries: beforeAppend ?? {
+              recent: [],
+              archive: [],
+              lastSettledMessageAt: null,
+              lastSettledBySession: null,
+            },
+          });
+        } catch (rollbackError) {
+          throw new AggregateError(
+            [archiveError, rollbackError],
+            'memory_archive_failure_rollback_failed',
+          );
+        }
+        throw archiveError;
       }
     }
   }
@@ -320,16 +361,13 @@ export class SupabaseStore implements MemoryStore {
     options?: {
       lastSettledMessageAt?: string | null;
       sessionId?: string | null;
-      compressArchive?: (
-        overflow: SummaryEntry[],
-        existingArchive: string | null,
-      ) => Promise<string>;
+      compressArchive?: (overflow: SummaryEntry[]) => Promise<string>;
     },
   ): Promise<void> {
     const existing = await this.getSessionSummaries(corpId, userId, botUserId);
     const data: SessionSummaries = existing ?? {
       recent: [],
-      archive: null,
+      archive: [],
       lastSettledMessageAt: null,
     };
 
@@ -337,12 +375,8 @@ export class SupabaseStore implements MemoryStore {
 
     if (data.recent.length > MAX_RECENT_SUMMARIES && options?.compressArchive) {
       const overflow = data.recent.splice(MAX_RECENT_SUMMARIES);
-      try {
-        data.archive = await options.compressArchive(overflow, data.archive);
-      } catch (err) {
-        this.logger.warn('摘要压缩失败，保留原始条目', err);
-        data.recent.push(...overflow);
-      }
+      const segment = await options.compressArchive(overflow);
+      data.archive = appendArchiveSegment(data.archive, segment);
     } else if (data.recent.length > MAX_RECENT_SUMMARIES) {
       data.recent = data.recent.slice(0, MAX_RECENT_SUMMARIES);
     }
@@ -387,7 +421,7 @@ export class SupabaseStore implements MemoryStore {
     const existing = await this.getSessionSummaries(corpId, userId, botUserId);
     const data: SessionSummaries = existing ?? {
       recent: [],
-      archive: null,
+      archive: [],
       lastSettledMessageAt: null,
     };
 
