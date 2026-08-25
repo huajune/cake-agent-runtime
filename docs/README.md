@@ -38,8 +38,8 @@
 ### 候选人事实链路
 
 - **[候选人档案域架构](architecture/candidate-profile-domain.md)** ⭐ — **域宪法**：主权归 memory / 实现归 resolution、字段四阶段、治理四不变式、claim 通货、消费面纪律
-- **[记忆与状态全局视图](architecture/memory-and-state.md)** 👉 — **排障入口**：一张图看清全部状态存储及其关系（三角色心智模型，110 行）
-- **[记忆系统架构与数据流](architecture/memory-architecture.md)** — 四层记忆（CoALA）、**字段归属唯一权威表**、读写时序、prompt/工具消费、沉淀与排障顺序
+- **[记忆与状态全局视图](architecture/memory-and-state.md)** 👉 — **排障入口**：一张图看清 Redis、Supabase、回合内状态与 tools 单据
+- **[记忆系统架构与数据流](architecture/memory-architecture.md)** — 两层记忆终态、读写时序、Prompt / 工具消费矩阵、consolidation 与排障路径
 - **[品牌解析域](architecture/brand-resolution.md)** — 目录匹配、意图极性、会话品牌状态、图片品牌、queryMeta 对账
 - **[地理解析域](architecture/geo-resolution.md)** — 行政区解析、白名单三轮扫描、供应商适配、距离锚点
 - **[图片信息链路](architecture/visual-fact-pipeline.md)** — VisualFactSheet 生产/存储/消费全链路（附录 A = 字段白名单唯一权威）

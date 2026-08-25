@@ -1,539 +1,340 @@
 # 记忆系统架构与数据流
 
-**最后更新**：2026-08-25
-**代码居所**：`src/memory/`（模块内详细职责见 [`src/memory/README.md`](../../src/memory/README.md)）
-
-> 本文是记忆链路的**唯一完整叙述**：四层结构、字段归属、读写时序、prompt/工具消费、沉淀与排障。
-> **一张图看清全部状态存储**见 [memory-and-state.md](./memory-and-state.md)（心智模型层，排障入口）。
-> 字段的**证据采信与冲突裁决**不在本文——那是 [候选人档案域架构](./candidate-profile-domain.md) 的域宪法：
-> **事实主权归 memory（本文），判断实现归 resolution**。
-
----
-
-## 1. 设计理念
-
-基于认知科学的记忆分类模型（CoALA 框架），分四类正式层 + 一类旁路：
-
-- **编排层固定读写**——记忆的读取 / 回写是 Agent Loop 的固定前置/后置步骤，**不由 LLM 自主决定**；
-- **按需工具补充**——大体量、非每轮必需的记忆（如历史摘要）通过工具按需检索；
-- **语义命名**——代码命名体现「这是什么记忆」，而非「存在哪里」；
-- **facade 单入口**——编排层只通过 `MemoryService` 读写，不直接操作 Redis / Supabase。
-
----
-
-## 2. 四层记忆 + 旁路
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                     Agent Loop（编排层）                              │
-│  onTurnStart:  一次性读取四类记忆 + 当轮规则轨识别 → 注入 prompt        │
-│  onTurnEnd:    Agent 完成后 → 写会话态 + 触发后置事实提取              │
-├──────────── 正式记忆（持久化）────────────────────────────────────────┤
-│  短期记忆   chat_messages（Supabase 永久）+ Redis 窗口热缓存           │
-│  会话记忆   facts / lastCandidatePool / presentedJobs /               │
-│             currentFocusJob / invitedGroups → Redis                   │
-│  阶段状态   STAGE 阶段 + 推进来源/时间/原因 → Redis                    │
-│  长期记忆   semantic_profile / semantic_job_intent / summary                │
-│             → Supabase agent_long_term_memories + Redis 2h 缓存        │
-├──────────── 旁路（非持久化）──────────────────────────────────────────┤
-│  本轮解析线索      对「本轮 user 最新消息」跑一次规则轨                  │
-│                    → 注入本轮 prompt，不作为事实落库                    │
-└─────────────────────────────────────────────────────────────────────┘
-```
-
-### 2.1 短期记忆（Short-term / Working Memory）
-
-**真相源**是 `chat_messages` 表（Supabase 永久）。业务消息先写该表，memory 模块读取并镜像到 Redis 窗口做热缓存。
-
-读取逻辑（`short-term.service.ts`）：Redis 窗口 → miss 回退 `ChatSessionService.getChatHistory` → 回填 Redis → 注入时间上下文 → 按字符上限裁剪为 `ShortTermMessage[]`。DB fallback 的时间边界与 `historyWindowSeconds` 对齐。
-
-| 限制维度 | 默认值 | 环境变量 |
-|---|---|---|
-| 最大消息条数 | 60 | `MAX_HISTORY_PER_CHAT` |
-| 时间窗口 | 7 天 | `MEMORY_HISTORY_WINDOW_DAYS` |
-| 总字符上限 | 12000 | `AGENT_MAX_INPUT_CHARS` |
-
-**空兜底**：WeCom 聚合/重跑时若 Redis/DB 都空，`memory-lifecycle` 用调用方提供的 `currentUserMessage` 构造一条 user fallback，避免 `messages=[]` 抛错。
-
-### 2.2 会话记忆（Session Memory）
-
-Redis，key `facts:{corpId}:{userId}:{sessionId}`，TTL = `sessionTtl`。
-
-```typescript
-interface WeworkSessionState {
-  facts: SessionFacts | null;                        // 结构化事实（LLM 后置提取）
-  lastCandidatePool: RecommendedJobSummary[] | null;  // 每轮覆盖：最后一次 job_list 候选池
-  presentedJobs: RecommendedJobSummary[] | null;      // 最近几轮真正发给候选人的岗位
-  currentFocusJob: RecommendedJobSummary | null;      // 当前在聊或准备报名的岗位
-  invitedGroups: InvitedGroupRecord[] | null;         // 本会话已邀入的兼职群
-}
-```
-
-`brand_state` 是同一 hash 下的独立字段，写入纪律与 facts 不同——见 [品牌解析域 §7](./brand-resolution.md)。
-
-**合并策略**：`deep-merge.util`——null / undefined / 空串不覆盖旧值，对象递归合并，数组去重合并；`saveFacts` 经 `mergeFactsWithConfidenceGuard`，**跨轮低置信不覆盖高置信**。每字段写入打 `extractedAt`；evidence 经 `truncateEvidence()` 截断 `MAX_FACT_EVIDENCE_CHARS=200` 字。
-
-**新旧结构兼容**：旧裸值读取时被包装成 `confidence='unknown'` / `source='archive'`。
-
-### 2.3 阶段状态（Stage State）
-
-Redis，key `stage:{corpId}:{userId}:{sessionId}`，TTL = `sessionTtl`。
-
-```typescript
-interface StageState {
-  currentStage: string | null;  fromStage: string | null;
-  advancedAt: string | null;    reason: string | null;   // 审计用
-}
-```
-
-```
-trust_building → needs_collection → job_recommendation → interview_arrangement
-```
-
-**唯一写入口是 `advance_stage` 工具**。阶段合法性在工具层校验，memory store 不做业务判断。
-
-### 2.4 长期记忆（Long-term Memory）
-
-Supabase `agent_long_term_memories`（每用户一行）+ Redis 整行 2h 缓存，按 `(corp_id, user_id)` **跨 bot 共享**。
-
-#### Profile Facts（身份画像）
-
-```typescript
-interface UserProfileFactValue<T> {
-  value: T;
-  confidence: 'high' | 'medium' | 'low' | 'unknown';
-  source: CandidateFactProducer;   // 六章根词汇，见 §5.2
-  evidence: string;
-  updatedAt: string;
-  originSessionId?: string;   // 数据血缘：沉淀该字段的会话（=chatId，唯一对应一个 bot）
-  originBotId?: string;       // 数据血缘：沉淀该字段的托管账号 wxid
-}
-```
-
-- **读取**：每回合 `onTurnStart` 固定注入 `[用户档案]`，只带字段值 / 置信度 / 来源 / 更新日期——**不带 evidence 全文**（evidence 是排障字段）；
-- **工具消费**：统一 unwrap，**只传 high**，低/中/未知交给模型判断是否追问；
-- **写入**：`ConsolidationService` 沉淀时抽身份字段并打血缘；报名成功经 `writeFromBooking()`；外部补充经 `MemoryService.saveProfile()`。
-
-#### Preference Facts（跨会话稳定意向）
-
-```typescript
-const LONG_TERM_JOB_INTENT_FIELD_KEYS = [
-  'city', 'district', 'location', 'brands', 'position', 'schedule',
-  'salary', 'labor_form', 'schedule_constraint', 'delayed_intent', 'available_after',
-];  // 排除单次 episode 临时态：short_term / time_windows / open_position
-```
-
-- **覆盖语义是快照式整组覆盖**（最新一段会话的意向赢）——与 session facts 的 deepMerge 累积**刻意不同**：累积会让错值 / 错字变体永远清不掉；
-- 唯一写方 `ConsolidationService`；渲染为 `[历史求职意向]`，带更新日期与「本次优先」指引，过期的 `available_after` 不渲染；
-- **不进工具预填**，仅供模型参考。
-
-#### Summary（分层压缩的对话摘要）
-
-```typescript
-interface SessionSummaries {
-  recent: SummaryEntry[];   // 最近 N 条详细摘要（MAX_RECENT_SUMMARIES = 5）
-  archive: string | null;   // 更早的被 LLM 压缩合并成一段
-  lastSettledMessageAt: string | null;              // 全局兜底的已沉淀边界
-  lastSettledBySession?: Record<string, string>;    // 按会话隔离的沉淀边界
-}
-```
-
-压缩：每次沉淀生成一条 `SummaryEntry` 追加到 `recent` 头部 → `recent.length > 5` 时最早条目移出 → 与现有 `archive` 由 LLM 合并为新 `archive`（≤200 字）。
-
-**不固定注入**：摘要条数不定且越积越多，固定注入浪费 token；由 `recall_history` 工具按需检索。
-
-### 2.5 旁路：本轮解析线索
-
-对「本轮 user 最新消息」跑一次**规则轨**识别（品牌 / 城市 / 用工形式 / 年龄 / 身高体重 / 户籍省份等）。
-
-> **实现不在 memory**：规则轨解析器住 `src/resolution/candidate/*`（每字段唯一解析器），
-> claim 生产住 `src/resolution/evidence/producers/rule-track.ts`。memory 只调用与消费。
-
-**关键边界**：
-
-- 只看**当前轮新消息**，不 fallback 到历史窗口；
-- 注入本轮 prompt sidecar（`[本轮解析线索]` / `[本轮待确认线索]`）；
-- **不写入 Redis / Supabase**——它不是正式记忆层，是当前轮前置解析 sidecar。
-
-当前轮规则识别的持久化路径是 `onTurnEnd.extract_facts` **重新跑同类规则**后经 sessionFacts 写入。
-
-### 2.6 跨会话来源研判
-
-**背景**：长期记忆跨 bot 共享。同一候选人添加多位招募经理时，每个 (候选人, bot) 是独立 chat。长期画像被原样注入新 bot 会话，会让新经理的 Agent 开口就当成「自己之前聊过」。
-
-`detectCrossConversationOrigin` 在**三条同时满足**时置 `longTerm.origin.fromOtherConversation = true`：
-
-1. **仅全新 chat 首聊**（`hasStructuredSessionMemoryState=false`），延续会话不提示；
-2. 长期 `semantic_profile` / `semantic_job_intent` 非空；
-3. 长期记忆来自别的会话——优先用逐字段血缘（`originSessionId !== 当前 sessionId`），存量无血缘时回退 `lastSettledBySession` / `recent[].sessionId`。
-
-**展示口径是会话级泛指**：插入 `[历史背景｜来自候选人此前在本平台的咨询]`，让模型泛指「此前与另一位招聘顾问沟通过」——**不假装本会话聊过、不点名具体招募经理**。血缘逐字段记录（可精确追溯），但展示不暴露 bot 名。
-
----
-
-## 3. 字段归属（唯一权威表）
-
-> ⚠️ **本表是全库唯一的字段归属真相源**，随 `session-facts.types.ts` / `long-term.types.ts` 同步。
-> 其它文档引用本节，**不要复制表格**——同一张表抄两份必然演化成两个都不对的版本。
-
-### 3.1 `sessionFacts.interview_info`（16 字段，Redis `sessionTtl`）
-
-```
-name  phone  gender  gender_source  age  applied_store  applied_position
-interview_time  is_student  education  has_health_certificate
-experience  upload_resume  height  weight  household_register_province
-```
-
-### 3.2 `sessionFacts.preferences`（15 字段，Redis `sessionTtl`）
-
-```
-brands  brand_ids  salary  position  schedule  city  district  location
-labor_form  delayed_intent  short_term  open_position
-time_windows  schedule_constraint  available_after
-```
-
-`city` 是 `CityFact = { value, confidence, evidence }`，evidence 枚举 `municipality_compact | explicit_city | unique_district_alias | hotspot_alias`；兼容旧字符串数据自动归一化。
-
-### 3.3 长期沉淀白名单
-
-| 目标 | 字段 | 来源 |
-|---|---|---|
-| `semantic_profile`（7 个） | `name` `phone` `gender` `age` `is_student` `education` `has_health_certificate` | `USER_PROFILE_FIELD_KEYS`，从 `interview_info` 抽 |
-| `semantic_job_intent`（11 个） | 见 §2.4 的 `LONG_TERM_JOB_INTENT_FIELD_KEYS` | 从 `preferences` 抽，整组覆盖 |
-
-**不沉淀的会话级字段**：`applied_store` / `applied_position` / `interview_time`（每次不同）、`experience` / `upload_resume` / `height` / `weight` / `household_register_province`（未列入白名单）、以及 `short_term` / `time_windows` / `open_position`（单次 episode 临时态）。
-
-### 3.4 会话记忆顶层（非 facts）
-
-`lastCandidatePool` / `presentedJobs` / `currentFocusJob`（会话级推导）、`invitedGroups`（会话级副作用）——均在 Redis `sessionTtl`。
-
----
-
-## 4. 读写时序
-
-### 4.1 onTurnStart
-
-`memory-lifecycle.service.ts` 编排：
-
-```
-用户消息到达
-  ├── 并行读取：short-term messages（Redis→DB fallback）/ session state / stage state
-  │             / semantic_profile / semantic_job_intent
-  ├── 短期窗口空兜底
-  ├── 装配 preparation 已算好的 turnHints（memory 不重跑判定）
-  ├── 跨会话来源研判（§2.6）
-  └── 返回 AgentMemoryContext { shortTerm.{messageWindow,sessionState,stage},
-        turnHints, longTerm.semantic.{profile,jobIntent}, _warnings? }
-```
-
-召回紧接完成后，generator 侧的 `SnapshotEnrichmentService` 可按身份信息补齐当轮快照线索；该步骤不属于 memory lifecycle，也不写 memory store。
-
-### 4.2 onTurnEnd
-
-```
-1. load_previous_state                  ← 先读旧 state，给 consolidation 用
-2. 分支 A：consolidation（可选）            ← gap ≥ consolidationGapSeconds 时触发
-3. 分支 B：session_turn_end_updates（串行，避免 Redis 状态互覆盖）
-   ├── save_candidate_pool
-   ├── project_assistant_turn           岗位投影 → presentedJobs / currentFocusJob
-   ├── save_attested_city               本轮 geocode 确权城市 → pref.city（source='system'）
-   │                                     排在 extract_facts 前，本轮候选人原文可覆盖工具确权；
-   │                                     与既有 high 城市冲突时不覆盖，等候选人亲证
-   └── extract_facts                    后置 LLM 事实提取（见 §4.3）
-4. 每步 success/skipped/failure 写入 message_processing_records.post_processing_status
-```
-
-⚠️ **consolidation 刻意使用回合开始前的旧 `sessionFacts`**，不用本轮刚提取的新 facts——沉淀的是「上一段已闭合会话」，用新 facts 会让本轮消息污染上一段摘要边界。
-
-⚠️ **回合收尾必须纳入处理锁**：WeCom 链路用 `deferTurnEnd=true` 让收尾延迟到投递阶段，但**必须在释放 chat 处理锁前 `await` 完成**（`reply-workflow` 的 finally）。否则收尾仍在异步写 session state 时会与下一个 job 并发，整份覆盖写互相丢更新。首次调用若被 replay 丢弃，记忆投影与事实提取一同丢弃——避免「未发出的回复」污染记忆。
-
-### 4.3 extract_facts：sessionFacts 的主写入链路
-
-```
-extract_facts
-  → trimToCurrentSessionSegment()      按消息间隙截到最近连续会话段，避免跨会话串味
-  → 增量回看                            已有 facts 时只看最近 SESSION_EXTRACTION_INCREMENTAL_MESSAGES 条
-  → 纯应答闸门                          isPureAcknowledgment 且规则零命中 → 跳过 LLM，复用旧 facts
-  → 重跑规则轨 + LLM 结构化提取（并行两轨）
-  → mergeRuleAndLlmFacts                单遍合并 + sanitize
-  → saveFacts → mergeFactsWithConfidenceGuard → Redis
-```
-
-**纯应答闸门的两个例外**（在闸门**之前**计算，因为确认应答恰好就是纯应答词）：
-
-- **确认问答裁决**——Agent 城市确认句 + 纯肯定应答，命中时跳过 LLM 但单写 `pref.city`；
-- **定位分享逆解析**——定位分享轮由 `buildLocationShareCityFact` 入档。
-
-**提取原则是增量式**（补充 / 纠正，非累积重抽）；prompt 注入 `[当前时间]` 做时间锚定（相对时间换算绝对日期）+ `[已确认事实]`。
-
-**可观测**：LLM 提取降级（异常兜底为纯规则结果）落 `extract_facts_llm_degraded` 步骤到 `post_processing_status`。
-
-### 4.4 会话沉淀（Settlement）
-
-```
-detectAndSettle(): chat_messages 中出现 gap ≥ consolidationGapSeconds
-  ├── 边界判定：lastSettledBySession[sessionId] → 缺失回退全局 lastSettledMessageAt
-  │             分页扫描边界后消息（每页 500，最多 10 页）
-  ├── 身份字段 → semantic_profile    从 Redis sessionFacts 抽（已校验/清洗过的结构化事实）
-  │                               每条打 originSessionId + originBotId 血缘
-  │                               字段级合并，已有 high 不被非 high 覆盖
-  ├── 稳定意向 → semantic_job_intent  整组覆盖写入，同样打血缘
-  ├── 对话摘要 → Summary          边界后到旧会话断点的消息（截尾最近 120 条）+ facts 意向
-  │                               → LLM 生成 ≤100 字摘要
-  │                               → RPC append_long_term_summary_atomic（行锁内）
-  │                               → RPC mark_long_term_settled_boundary（带 p_session_id）
-  └── 不反写 Redis 会话态；Redis key 自然过期
-```
-
-**沉淀边界按会话隔离**——双 bot 服务同一候选人时不再互相推进彼此边界。
-
----
-
-## 5. 置信度与来源词汇
-
-### 5.1 置信度
-
-| 值 | 含义 | 工具消费 |
-|---|---|---|
-| `high` | 可程序化采用。来自确定性规则、明确结构化输入，或经过强校验的事实 | **默认消费** |
-| `medium` | 可给模型参考。通常来自 LLM 提取、会话沉淀或外部补全 | 默认不消费 |
-| `low` | 弱参考。来自系统兜底、弱规则或补充接口 | 不消费 |
-| `unknown` | 旧数据或缺少元数据的兼容值 | 不消费 |
-
-权威定义在 `confidence-rank.ts`（会话层与长期层共用；DB RPC `long_term_profile_confidence_rank` 是其 SQL 镜像）。
-
-### 5.2 来源六章根词汇
-
-`CandidateFactProducer` 是全库唯一定义（`resolution/evidence/claim.types.ts`）：
-
-| 值 | 含义 |
-|---|---|
-| `candidate_quote` | 候选人直接明示且经原话复算或答问绑定确认 |
-| `rule` | 确定性规则、正则、白名单或别名表匹配得到 |
-| `model` | LLM 结构化提取或模型工具入参 |
-| `system` | 外部系统或平台接口补充得到（含 geocode 确权、报名回填、enrichment） |
-| `manual` | 真人经理带外裁决 |
-| `archive` | 历史记忆或跨会话档案回放得到 |
-
-> **存量数据兼容**：`LEGACY_PROFILE_FACT_PRODUCERS` 把 `candidate` / `llm` / `memory` / `derived` /
-> `tool` / `booking` / `extraction` / `enrichment` 八个值映射进上表——**只在读存量数据时出现，写入侧只用六章**。
-> 取名与待遇判据见 [候选人档案域 §5.1](./candidate-profile-domain.md)。
-
-⚠️ `gender_source` 已进入两刀拆除批 A：活跃写入停止，当前仅保留为 3 天旧存量的兼容 sibling。消费方优先读取 `gender` 信封：`candidate_quote`=候选人自陈，`system+非 high`=系统标签（不得用于直接排除候选人），`system+high`=报名办结确权；仅当信封尚无新语义时回退该 sibling。批 B 待存量 TTL 清零后删除 schema 键与兼容读。
-
----
-
-## 6. Prompt 消费
-
-`PreparationService` 先构造 `memoryBlock`，再交 `ContextService.compose()` 组装 system prompt。**保留字段 metadata**，让模型知道「这个字段从哪来、可信到什么程度」。
-
-| Prompt 段 | 来源 | 内容 |
-|---|---|---|
-| `[历史背景｜来自候选人此前在本平台的咨询]` | `longTerm.origin` | 仅全新 chat 首聊且长期记忆来自别的会话时渲染（§2.6） |
-| `[用户档案]` | 长期 `semantic_profile` | 值 + 置信度 + 来源 + 更新日期（**不带 evidence 全文**）+ **展示出处门**：历史沉淀字段预填/复述必须披露来源并请候选人确认，否认即弃用 |
-| `[历史求职意向]` | 长期 `semantic_job_intent` | 稳定意向 + 更新日期 + 「本次优先」指引 |
-| `[会话记忆]` | Redis `sessionMemory` | sessionFacts、岗位池、已展示岗位、当前焦点岗位、已邀群 |
-| `[本轮解析线索]` | 当前轮规则轨 | 与会话记忆**不冲突**的当前消息解析候选；不构成候选人事实 |
-| `[本轮待确认线索]` | 规则轨 + sessionFacts | 与中高置信会话事实**冲突**的线索 |
-| `[本轮查询硬约束]` | high sessionFacts + high 规则轨 | 查岗必须带的 city / district / age / schedule 等 |
-
-原则：**所有字段都可以展示，但必须带置信度和证据**。模型可参考低/中置信字段，但筛人、约面、booking 等硬判断要依赖工具和高置信输入。
-
-注入形态示例（`fact-lines.formatter.ts` 统一渲染，`includeEvidence` 默认 false）：
+> 本文只描述当前实现。两层结构、存储契约和生命周期以
+> [`src/memory/README.md`](../../src/memory/README.md) 为权威；本文补充跨模块读写时序、
+> Prompt / 工具消费矩阵和排障路径。
+
+## 1. 终态边界
+
+记忆系统只有 `short-term` 与 `long-term` 两层。`turnHints` 是当前轮 sidecar，
+episode 是连续咨询段的计算边界，二者都不是额外记忆层。
+
+| 作用域              | 内容                         | 生命周期 / 边界                       | 权威存储                            |
+| ------------------- | ---------------------------- | ------------------------------------- | ----------------------------------- |
+| short-term 消息窗口 | 候选人与助手原始对话         | 查询最近 7 天，并受条数与字符预算裁剪 | `chat_messages`；Redis 仅作窗口缓存 |
+| short-term 会话状态 | facts、岗位工作台、阶段指针  | 业务口径 3 天                         | Redis                               |
+| episode             | 一段连续咨询的消息切片       | 闲置 3 天划界                         | 无独立 key、表或目录                |
+| long-term 关系档    | 身份档案、求职意向、咨询摘要 | 持久                                  | Supabase；Redis 作 2 小时缓存       |
+
+对外时间口径固定为 **7d / 3d / 3d**：消息回看窗口 7 天、会话状态 3 天、
+咨询段闲置划界 3 天。`factsv2:` 实际比 3 天多保留 12 小时，只为保证延迟任务先读取事实再过期，
+不构成第四个业务时间口径。
+
+代码里的 `sessionId` 是 `chatId`，代表候选人和 bot 的聊天关系；一条聊天关系可以包含多段咨询。
+长期关系档则显式使用 `(corpId, userId, botUserId)`：`botUserId` 是托管账号稳定的
+`wecomUserId`，轮换的 `imBotId` 只用于渠道调用与血缘排障，不能进入长期主键。
 
 ```text
-- 年龄: 24（置信度: high，来源: rule，更新日期: 2026-06-11）
+候选人输入
+  │
+  ├─ short-term：7 天消息窗口 + 3 天会话状态
+  │       │
+  │       └─ preparation：快照补料 → 共享裁决 → Prompt / 工具投影
+  │
+  └─ 闲置满 3 天形成 episode 边界
+          │
+          └─ consolidation
+               ├─ semantic_profile
+               ├─ semantic_job_intent
+               └─ episodic_session_summaries（最多 20 段）
+                    │
+                    └─ long-term：候选人 × bot 关系档
 ```
 
-### 6.1 解析线索 vs 待确认的分野
+收资表单不是记忆。它是工具域内“丢失即事故”的业务单据，由
+`src/tools/collection/` 自持整实体快照、定位指针与 3 天 TTL；迁入工具域后不再经过
+`MemoryService`。
 
-| 段 | 判断逻辑 | 模型应该怎么用 |
-|---|---|---|
-| `[本轮解析线索]` | 会话中没有旧值，或与会话中 `minConfidence=medium` 的旧字段一致 | 可辅助理解本轮意图，不可据此提交候选人资料 |
-| `[本轮待确认线索]` | 与会话中 `minConfidence=medium` 的旧字段**冲突** | 只能用于判断是否澄清，**不能直接覆盖旧记忆** |
+## 2. 两层数据模型
 
-冲突判断：标量 trim 后比较；布尔比值；数组去空去重排序后比较；复杂对象按 JSON 比较；城市比 `CityFact.value`。
+### 2.1 Short-term：原文窗口与会话状态
 
-> 门槛取 `medium` 而非 `high`：medium 虽不进工具硬判断，但对模型已是需要尊重的会话记忆，**不能被当前轮弱理解无声覆盖**。
+`MemoryLifecycleService.onTurnStart()` 读取三项 short-term 部件：
 
-### 6.2 查询硬约束
+1. `MessageWindowService` 先读 `memory:short_term:chat:{chatId}` 热缓存；缓存缺失或
+   provenance 版本过旧时，回退 `chat_messages` 的最近 7 天原文并回填。
+2. `SessionStateService` 从 `factsv2:{corpId}:{userId}:{sessionId}` 读取 facts 与 workbench。
+3. `SessionWorkbenchService` 从独立的 `stage:{corpId}:{userId}:{sessionId}` 读取阶段指针。
 
-`HardConstraintsSection` **只用高置信字段**：sessionFacts unwrap `minConfidence=high` + 规则轨 filter `confidence=high`。
+窗口默认最多 120 条、24,000 字符；超限时从最早消息开始裁剪。Redis 窗口缓存的 3 天 TTL
+不改变 7 天源数据窗口：缓存失效后仍可从数据库重建。
 
-合并规则：查询视图中，**当前轮满足阈值的规则解析值优先覆盖旧 session 值**；本轮无该字段线索时沿用 session 值。该合并只服务查询，不改变候选人事实出处。
+`factsv2:` 是 Redis hash，主要分为两类数据：
 
-| 硬约束字段 | 为什么是硬约束 |
-|---|---|
-| `city` | 不带城市会跨城查岗 |
-| `district` | 不带区域会明显扩大到错误区域 |
-| `location` | 商圈/地标/街道需要 geocode 或位置分享经纬度 |
-| `age` | 影响岗位年龄边界 |
-| `schedule` | 班次不匹配会造成到店后不符 |
-| `salary` | 薪资明显低于预期不能推荐 |
+- facts：候选人结构化事实、偏好、已邀群、终态与活动水位；
+- workbench：候选岗位池、已展示岗位、当前焦点岗位、查询签名与推店过程状态。
 
-参考信息字段（非硬约束）：`gender`（结合招聘要求筛掉明显不符岗位）、`brands`（无结果时可放宽）、`position`、`labor_form`（只作结果过滤，**不填进岗位类别**）、`is_student`（**不得由缺省反推接受学生**）、`has_health_certificate`、`education`、`open_position`、`short_term`、`delayed_intent`、`time_windows`、`schedule_constraint`、`available_after`。
+Redis hash 没有字段级 TTL，因此 facts 与 workbench 共同享有 3 天加 12 小时的实际 TTL。
+阶段指针保持独立 key，严格按 3 天过期。
 
----
+大多数候选人事实使用 `value / confidence / source / evidence` 信封。`facts.brand` 是明确例外：
+它直接保存 `PersistedBrandState`，由 `BrandStateService` reducer 唯一写入，不再套事实信封。
+品牌 reducer 在回合收尾的事实提取之后运行，即使事实提取失败也不会跳过；规则轨、图片轨和
+LLM 轨的品牌解析会在这里汇总。
 
-## 7. 工具消费
+### 2.2 Long-term：候选人 × bot 关系档
 
-工具**默认只消费高置信字段**，避免低/中置信事实参与筛人、约面、booking 这类程序化判断。
+长期关系档的 Supabase 表为 `agent_long_term_memories`，唯一关系维包含
+`(corp_id, user_id, bot_user_id)`；Redis 缓存为
+`long-term:{corpId}:{userId}:{botUserId}`，默认 2 小时。
 
-```mermaid
-flowchart TD
-  A["longTerm.semantic_profile"] --> B["unwrapUserProfileFacts(minConfidence=high)"]
-  C["sessionFacts"] --> D["unwrapSessionFacts(minConfidence=high)"]
-  E["本轮规则轨"] --> F["projectRuleFactClaims(minConfidence=high)"]
-  D --> G["merge sessionFacts + 本轮规则解析值"]
-  F --> G
-  B --> H["ToolBuildContext.profile"]
-  G --> I["ToolBuildContext.sessionFacts"]
-  E --> J["ToolBuildContext.ledger.ruleFacts 原结构"]
+| 列                           | 语义                             | 默认召回                         |
+| ---------------------------- | -------------------------------- | -------------------------------- |
+| `semantic_profile`           | 身份档案，逐字段携带置信度与来源 | 是                               |
+| `semantic_job_intent`        | 最近一段咨询的求职意向快照       | 是                               |
+| `episodic_session_summaries` | 按时间从旧到新的咨询摘要数组     | 否，仅 `recall_history` 显式读取 |
+| `consolidation_watermarks`   | 各聊天关系已处理到的消息水位     | 否，独立工作列                   |
+
+`semantic_profile` 当前由 9 个身份字段组成：`name`、`phone`、`gender`、`age`、
+`is_student`、`education`、`has_health_certificate`、`height`、`weight`。
+它有两条写入路径：consolidation 从会话事实提拔为 medium，报名成功写入 high。
+共享置信度守卫保证 lower rank 不能覆盖 high；Prompt 可展示待确认档案，工具默认只解包 high。
+
+`semantic_job_intent` 当前覆盖 11 个意向键：`city`、`district`、`location`、`brands`、
+`position`、`schedule`、`salary`、`labor_form`、`schedule_constraint`、`delayed_intent`、
+`available_after`。品牌意向从 `facts.brand.currentBrand` 进入同一快照。
+
+`episodic_session_summaries` 是单层 `SummaryEntry[]`：每段咨询追加一条，最多 20 段，
+超限时确定性淘汰最老条目。LLM 只生成本次新增摘要；已经写入的摘要永不交给 LLM 重写。
+
+无可靠 bot 血缘的存量行保持冻结且不参与读取。跨会话来源研判已经退役：召回只读取当前
+`botUserId` 的关系档，不拼接其他 bot 的信息，也不向模型渲染泛化来源横幅。
+
+## 3. 默认召回契约
+
+`memory.onTurnStart()` 返回运行时投影，而不是存储原样：
+
+```ts
+interface MemoryRecallContext {
+  shortTerm: {
+    messageWindow: ShortTermMessage[];
+    sessionState: WeworkSessionState | null;
+    stage: StageState;
+  };
+  turnHints: TurnHints | null;
+  longTerm: {
+    semantic: SemanticMemory;
+  };
+  _warnings?: string[];
+}
 ```
 
-| 字段 | 内容 | 置信度策略 |
-|---|---|---|
-| `profile` | 长期 `semantic_profile` unwrap 后的裸值 | 只保留 `high` |
-| `sessionFacts` | session facts unwrap 后再叠加本轮规则解析值 | 只保留 `high`；**当前轮覆盖旧值** |
-| `ledger.ruleFacts` | 当前轮原始 claim wrapper | 原结构保留，工具按用途自行判断；不得把 producer 当成事实权威 |
-| `currentFocusJob` | 当前焦点岗位 | 会话级状态 |
-| `recentBrandPool` | 最近展示/推荐/焦点岗位品牌去重 | 给品牌别名回指使用 |
+约束如下：
 
-**prompt 层与工具层必须同口径**：两处都是「本轮满足查询阈值的非空解析值覆盖旧 session 高置信」。两处口径若不一致，会出现候选人刚说「我 24」、precheck 拿到 24 而 prompt 硬约束段仍念旧值的自相矛盾。跨轮冲突提醒由 `[本轮待确认线索]` 承担。
+- `turnHints` 只对当前轮有效；经过回合末验证与合并后，采信结果才可能成为 session facts。
+- episodic 摘要不进入默认召回，避免每轮无条件膨胀上下文。
+- `[会话记忆]`、`[用户档案]`、`[本轮解析线索]` 等模型可见标签是契约，不随内部字段重排改名。
+- `AgentMemoryContext` 只是兼容别名，新调用方应使用 `MemoryRecallContext`。
 
-### 7.1 precheck 字段来源规则
+## 4. 回合读时序：召回到 preparation 备料
 
-`duliday_interview_precheck` 构造 `knownFieldMap` 的优先级：
+### 4.1 `onTurnStart()` 并行读取
 
+```text
+MemoryLifecycleService.onTurnStart(corpId, userId, sessionId, botUserId)
+  ├─ 7 天 messageWindow
+  ├─ factsv2 sessionState
+  ├─ stage 指针
+  ├─ 当前候选人 × bot 的 semantic_profile
+  └─ 当前候选人 × bot 的 semantic_job_intent
+       ↓
+MemoryRecallContext
 ```
-显式工具入参  >  本轮规则解析值  >  高置信 session/profile
+
+任一可降级读取失败时，生命周期返回可用的其余部分，并把诊断信息放进 `_warnings`；调用方不能把
+“空值”直接解释为“用户从未提供”。
+
+### 4.2 `PreparationService.prepare()` 备料链
+
+Memory 只负责召回；模型可见呈现与工具投影在 generator preparation 完成：
+
+```text
+提取本轮连续 user 文本并生成 turnHints
+  → memory.onTurnStart()
+  → SnapshotEnrichmentService.enrich()（有身份锚时）
+  → normalizeConversationWithCorpus()
+  → adjudicatePromptMemory()（一次生成共享裁决视图）
+  → buildMemoryBlock()
+  → ContextService.compose()（sections 产出 system promptBlocks）
+  → buildToolContext() + 场景工具集
+  → input guard / 主动回合尾块
+  → renderPromptBlocks()
 ```
 
-允许显式传入：`candidateAge` / `candidateInterviewTime` / `candidateGender` / `candidateEducation` / `candidateHasHealthCertificate` / `candidateIsStudent`。
+`SnapshotEnrichmentService` 紧接召回，用外部候选人详情补齐当轮快照中缺失的可靠线索；当前主要是
+身份锚存在时的 gender 补料。它只返回 enriched snapshot / turnHints，不写 Redis 或 Supabase，
+也不属于 memory lifecycle。
 
-⚠️ **姓名和电话不作为显式入参**——它们来自 `profile/sessionFacts`，并由姓名闸判断是否像真名（HC-2：模型参数单独不构成权威）。
+`adjudicatePromptMemory()` 只计算一次共享视图，`memory` 与 `turn-hints` sections 共同消费：
 
-模型漏传时本轮规则解析值会兜底，但**设计上不能依赖兜底替代显式入参**。
+- 权威链：本轮 accepted > 当前会话 accepted > 历史档案 historical_unconfirmed；
+- 置信度与归一后的 `updatedAt / extractedAt` 只在同一作用域内比较；
+- 同值只在权威位置呈现一次；异值保留胜者并给出冲突提示；
+- 本轮线索与既有事实异值时标记“待确认更新”，不能直接改写存储。
 
-年龄规则：`pass`（符合）/ `boundary`（弹性边界内可继续）/ `hard_reject`（`nextAction='age_rejected'`，禁止继续收资/约面/booking）/ `unknown`（按正常收资处理）。
+所有动态记忆仍处于 system 语义，只进入 `promptBlocks` / `finalPrompt`，不会被搬入
+`normalizedMessages`。
 
----
+## 5. Prompt 与工具消费矩阵
 
-## 8. 工具策略
+### 5.1 Prompt 消费
 
-| 工具 | 记忆类型 | 操作 | 保留原因 |
-|---|---|---|---|
-| `advance_stage` | 阶段状态 | 写入 | 只有 LLM 能判断阶段推进时机 |
-| `recall_history` | 长期（summary） | 读取 | 历史摘要按需检索，避免 token 浪费 |
-| `invite_to_group` | 会话（invitedGroups） | 写入 | 群邀请是 LLM 决策触发的副作用，发卡后需回写 |
+| 消费处                     | short-term                    | long-term                            | 本轮数据               | 关键约束                               |
+| -------------------------- | ----------------------------- | ------------------------------------ | ---------------------- | -------------------------------------- |
+| `normalizedMessages`       | 7 天消息窗口                  | 不使用                               | 调用方本轮消息         | 只承载真实 user / assistant 语义       |
+| `memory` section           | session facts、workbench 投影 | profile、job intent                  | 预约与实时群状态等备料 | 消费共享裁决视图；保留模型可见内层标签 |
+| `turn-hints` section       | 只用于同字段 diff             | 只用于同字段 diff                    | turnHints              | 同值去重，异值进入待确认块             |
+| `hard-constraints` section | 已采信会话约束                | 不直接使用                           | 当前轮约束、品牌状态   | 只呈现本轮岗位查询需要的硬约束         |
+| `group-inventory` section  | 高置信城市                    | 不直接使用                           | 实时群库结果           | 无可靠城市或无群数据时省略             |
+| `stage-strategy` section   | 独立 stage 指针               | profile 仅用于阶段过期后的老用户兜底 | 当前策略配置           | 只渲染当前阶段策略                     |
+| `recall_history` 工具结果  | 不使用                        | episodic 摘要                        | 显式工具调用           | 摘要不在每轮默认 system 中出现         |
 
-**刻意不提供**：`memory_recall`（编排层已固定注入全部当前记忆，无需工具再拉）、`memory_store`（编排层统一结构化写回，LLM 随意写会格式不一致）。
+`memory` section 可以展示 medium 的历史档案供模型追问，但不能因此让工具绕过 high 门槛。
+当前预约信息由 `active_booking` 无 bot 兼容行中的工单指针结合业务系统实时状态备料；
+它是待迁移的业务指针与 Prompt 上下文，不属于三维长期关系档，也不是新增记忆层。
 
-> 设计原则：**编排层保证 LLM 一定知道「当前状态」，工具让 LLM 可以主动「翻阅历史」或「登记副作用」。结构化写入由编排层统一控制。**
+### 5.2 工具消费
 
----
+| 工具侧用途                       | 数据来源                                                   | 读写纪律                                                            |
+| -------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------- |
+| 岗位查询、预检、报名的候选人事实 | high session facts + 本轮已采信规则线索                    | 本轮值可覆盖工具投影，持久化仍等 `onTurnEnd()`                      |
+| 身份档案预填                     | long-term profile                                          | 默认只解包 high；medium 只能形成带值求证提示                        |
+| 岗位 provenance 与防复读         | candidate pool、presented jobs、focus job、query signature | 从 workbench 读取；工具结果写回 turn ledger                         |
+| 品牌查询口径                     | `facts.brand` + 本轮品牌上下文                             | reducer 是唯一持久写者                                              |
+| 阶段推进                         | stage 指针 + 策略可用阶段                                  | `advance_stage` 校验目标后直接覆盖写 `stage:`                       |
+| 群邀请                           | 已邀群 + 当前城市/群状态                                   | `GroupInviteService` 在确认已入群或邀请成功后立即写 `invitedGroups` |
+| 历史回顾                         | episodic 摘要                                              | 只能通过 `recall_history` 显式读取                                  |
+| 收资与报名表单                   | `tools/collection` 的表单实体与定位指针                    | 独立存储、独立 TTL，不读写 memory hash                              |
 
-## 9. 服务周期与时间常量
+`TurnLedger` 是回合内写缓冲：工具把岗位查询、失效岗位、地理确权、图片事实与品牌解析等结果
+记录在 ledger，runner 在成功完成回合后把它交给 `onTurnEnd()`。阶段推进和已邀群有各自的工具期
+即时写路径，不经过 ledger。被更新消息淘汰的旧回复不能投影进会话状态。
 
-多个时间参数围绕同一业务概念——**单次求职服务周期**（候选人打招呼到上岗，典型 1~7 天）。**空闲超时判定**：连续两条消息时间差达 `consolidationGapSeconds` 即认为前一段会话已结束。
+## 6. 回合写时序
 
-| 常量 | 默认值 | 环境变量 | 说明 |
-|---|---|---|---|
-| `sessionTtl` | 2 天 | `MEMORY_SESSION_TTL_DAYS` | Redis 会话级数据 TTL；常见环境配 3 天 |
-| `consolidationGapSeconds` | 1 天 | `MEMORY_SETTLEMENT_GAP_DAYS` | 消息间隔达此值触发旧会话沉淀 |
-| `historyWindowSeconds` | 7 天 | `MEMORY_HISTORY_WINDOW_DAYS` | 短期窗口 DB fallback 回查边界 |
-| `sessionWindowMaxMessages` | 60 | `MAX_HISTORY_PER_CHAT` | 短期记忆最大消息条数 |
-| `sessionWindowMaxChars` | 12000 | `AGENT_MAX_INPUT_CHARS` | 超限从最早消息开始裁剪 |
-| `sessionExtractionIncrementalMessages` | 10 | `SESSION_EXTRACTION_INCREMENTAL_MESSAGES` | 已有 facts 时后置提取只重看最近 N 条 |
-| `longTermCacheTtl` | 2h | — | 长期记忆整行 Redis 缓存（硬编码） |
-| `MAX_RECENT_SUMMARIES` | 5 | — | `summary.recent` 上限（溢出压缩进 archive） |
+### 6.1 `onTurnEnd()`：会话状态收尾
 
-**核心约束**：`sessionTtl` / `consolidationGapSeconds` / `historyWindowSeconds` 已分离——Redis 存活、沉淀判定、DB 回查窗口分别调优。
+回合结束时，生命周期并行启动两条分支：刷新该聊天关系的 delayed consolidation job，
+以及按依赖顺序更新 session state。会话状态分支顺序为：
 
----
+1. `save_candidate_pool`：保存本轮候选岗位池；
+2. `save_job_list_query`：保存查询签名；
+3. `project_assistant_turn`：投影已实际采用的助手回复与岗位呈现；
+4. `drop_invalidated_jobs`：在新投影之后剔除失效岗位，防止死岗位被写回；
+5. `save_attested_city`：保存工具确权城市；
+6. `extract_facts`：结合本轮 turnHints 做结构化提取与置信度合并；
+7. `apply_brand_state`：汇总三条品牌解析轨并运行 reducer。
 
-## 10. 存储后端与表结构
+每一步写入 `message_processing_records.post_processing_status`。单个 hash 字段由各服务原子写入，
+串行顺序表达数据依赖，不依赖整对象回写来保证并发安全。
 
-| 记忆类型 | 后端 | Key | TTL | 写入策略 |
-|---|---|---|---|---|
-| 短期 | Supabase `chat_messages` + Redis 窗口 | `chat_id` / `session:{id}` | 永久 / 会话级 | 业务写表，memory 镜像 Redis |
-| 会话 | Redis | `facts:{corpId}:{userId}:{sessionId}` | `sessionTtl` | deepMerge + 置信度守卫 |
-| 程序 | Redis | `stage:{corpId}:{userId}:{sessionId}` | `sessionTtl` | 覆盖写 |
-| 长期 | Supabase `agent_long_term_memories` + Redis | `(corp_id, user_id)` 唯一 | 永久 / 2h 缓存 | profile 字段级合并；preference 整组覆盖；summary 分层压缩 |
+### 6.2 consolidation：三种产出、三种写法
 
-`agent_long_term_memories` 每用户一行，唯一约束 `(corp_id, user_id)`：
+任务到点后先重新读取数据库最新消息时间。若尚未连续闲置 3 天，按剩余时间重排；达到边界后，
+按 `consolidation_watermarks.bySession[sessionId]` 从上次已处理消息之后扫描本段原文。
+扫描最多 10 页、每页 500 条；首次接管会裁到最后一段连续咨询，摘要输入只取尾部最多 120 条。
 
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `id` / `corp_id` / `user_id` | uuid / string / string | 主键与身份 |
-| `semantic_profile` | jsonb | 7 个身份字段，每个为 fact wrapper 或 null |
-| `semantic_job_intent` | jsonb? | 跨会话稳定意向，快照式整组覆盖 |
-| `episodic_session_summaries` | jsonb? | `{ recent, archive, lastSettledMessageAt, lastSettledBySession }` |
-| `message_metadata` | jsonb? | `{ botId, imBotId, imContactId, contactType, contactName, externalUserId, avatar }` |
-| `created_at` / `updated_at` | timestamptz | — |
+输入分为两组：
 
----
+- A：当前 episode 的聊天原文，是摘要的主料；
+- B：当前 session facts 的 `interview_info`、`preferences` 与 `facts.brand.currentBrand`，
+  workbench 和簿记字段不参与长期事实生成。
 
-## 11. 排障检查顺序
+| 产出                         | 来源                                  | 写法                                                                   | 语义           |
+| ---------------------------- | ------------------------------------- | ---------------------------------------------------------------------- | -------------- |
+| `semantic_profile`           | B 的 `interview_info` 9 字段          | 逐字段守卫合并；输入按 medium 写入，SQL rank 阻止覆盖 high             | 档案越确认越硬 |
+| `semantic_job_intent`        | B 的 `preferences` 11 字段 + 当前品牌 | 最新咨询整组快照覆盖；信封内空值是显式清除，外层缺失表示保持旧值       | 意向以最新为准 |
+| `episodic_session_summaries` | A 原文，B 仅作参考                    | LLM 生成一条不超过 150 字的四节摘要后追加；20 段上限确定性淘汰最老条目 | 经历只增不改   |
 
-**「模型没用上某个字段」**：
+写入分两步：profile 与 job intent 在同一 RPC / 行锁内先写；新增摘要与本次
+`consolidation_watermarks` 在另一原子更新中一起写。水位是独立工作列，不是摘要内容、
+不进默认召回，也不因摘要数组淘汰而丢失。
 
-1. 当前轮规则轨是否识别出该字段，且 `confidence=high`；
-2. system prompt 的 `[本轮解析线索]` / `[本轮待确认线索]` 是否展示了它；
-3. `ToolBuildContext.sessionFacts` 是否已把本轮满足查询阈值的规则字段叠加进去；
-4. 工具是否只读了显式入参、没读 context 兜底；
-5. precheck 场景：模型是否应显式传 `candidateAge` 等；
-6. Redis `sessionFacts` 中该字段是否存在但**置信度不是 high**，被 unwrap 过滤；
-7. 长期画像场景：`semantic_profile` 是否为 high（非 high 不进工具 `profile`）；
-8. 沉淀场景：Redis `sessionFacts` 是否已过期——**过期后 summary 仍可写，但 semantic_profile 无法从过期 facts 恢复**。
+事实写是幂等覆盖；摘要写失败时 Bull 使用指数退避重试，最多 3 次。最终失败通过
+`memory.consolidation_failed` 上报，不能只留本地日志。
 
-**「模型用了不该用的字段」**：
+## 7. 存储所有权
 
-1. 字段是否来自 `[用户档案]` 的 low/medium/unknown，模型误当硬事实；
-2. 字段是否在 `[本轮待确认线索]`，模型没先确认就覆盖旧记忆；
-3. 字段是否被错误纳入 `[本轮查询硬约束]`；
-4. 工具是否没设 `minConfidence=high` 就 unwrap；
-5. `sessionFacts` 旧裸值被兼容成 `unknown/archive`，却被消费方当成 high。
+| 数据                          | 唯一所有者                              | 禁止事项                                     |
+| ----------------------------- | --------------------------------------- | -------------------------------------------- |
+| 原始聊天消息                  | chat message / session 基础设施         | memory 不复制一份长期原文库                  |
+| short-term facts 与 workbench | `src/memory/short-term/`                | sections 与 tools 不直接写 Redis             |
+| `facts.brand`                 | `BrandStateService` reducer             | 其他路径不得旁路写品牌状态                   |
+| long-term 关系档              | `src/memory/long-term/`                 | 不按 `imBotId` 建关系，不跨 bot 混读         |
+| 候选人事实采信规则            | `src/resolution/`                       | memory 不另写一套判定逻辑                    |
+| 模型可见记忆呈现              | `src/agent/generator/context/sections/` | memory formatter 不决定 system 排布          |
+| 收资表单                      | `src/tools/collection/`                 | 不塞进 `factsv2:`，不复用 `MemoryConfig` TTL |
 
----
+判断新状态放在哪里时，依次问：它是纯判定、工具调用期业务动作、跨回合记忆，还是业务域数据。
+纯判定归 `resolution/`，工具状态机归 `tools/`，记忆与 session hash 归 `memory/`，业务数据归
+对应 `biz/` 域。
 
-## 12. 实现入口
+## 8. 排障路径
 
-| 关注点 | 代码位置 |
-|---|---|
-| 对外 facade | `src/memory/memory.service.ts` |
-| 回合生命周期编排 | `src/memory/services/memory-lifecycle.service.ts` |
-| sessionFacts 写回与抽取编排 | `src/memory/services/session.service.ts` |
-| 会话沉淀 | `src/memory/services/consolidation.service.ts` |
-| 长期画像写入 | `src/memory/services/long-term.service.ts` |
-| 抽取提示词 | `src/memory/services/session-extraction.prompt.ts` |
-| fact wrapper 类型与 unwrap | `src/memory/types/session-facts.types.ts` / `long-term.types.ts` |
-| 置信度序 | `src/memory/types/confidence-rank.ts` |
-| 字段行渲染 | `src/memory/formatters/fact-lines.formatter.ts` |
-| 规则轨解析器（每字段唯一） | `src/resolution/candidate/*` |
-| 规则轨 claim 生产 | `src/resolution/evidence/producers/rule-track.ts` |
-| rule×LLM 合并与准入门 | `src/resolution/evidence/merge.ts` / `admission.ts` / `admission-gates.ts` |
-| prompt 组装 | `src/agent/generator/context/context.service.ts` |
-| 本轮线索 / 待确认线索 | `src/agent/generator/context/sections/turn-hints.section.ts` |
-| 查询硬约束 / 参考信息 | `src/agent/generator/context/sections/hard-constraints.section.ts` |
-| 工具上下文合并 | `src/agent/generator/preparation.service.ts` |
-| precheck 字段消费 | `src/tools/duliday-interview-precheck.tool.ts` |
+### 8.1 Prompt 看不到应该存在的信息
 
----
+1. 先查 MPR 的 `promptBlocks`、`memorySnapshot` 与 `memoryLoadWarning`，确认是召回空、裁决隐藏，
+   还是 section 条件省略。
+2. 核对 `corpId / userId / sessionId / botUserId`。长期数据“存在但读不到”时，优先检查稳定
+   `botUserId` 是否错用了轮换 `imBotId`。
+3. 确认 `memory` / `turn-hints` 是否消费同一份 `adjudicatePromptMemory()` 结果；不要在渲染层
+   重算裁决。
+4. 若补料只出现在当轮，检查 `SnapshotEnrichmentService` 输出；它本来就不会写回存储。
 
-## 13. 设计边界
+### 8.2 7 天内原文缺失
 
-- **memory 只持有事实，不实现字段判断**——判断规则住 `resolution`，memory 负责「什么时候裁、拿什么裁、裁完归谁、留多久」；
-- **编排层固定读写，LLM 不能自主决定记什么**——工具只能翻阅历史（`recall_history`）或登记副作用（`invite_to_group`）；
-- **旁路不落库**——`ruleFacts` 是本轮解析线索 sidecar，持久化必须走 `extract_facts` 的证据与准入链；
-- **存储格式与裁决通货解耦**——`SessionFactValue` / `UserProfileFactValue` 是纯落盘格式，裁决语义在 claim（见 [候选人档案域 §5.2](./candidate-profile-domain.md)）。
+1. 检查 Redis list `memory:short_term:chat:{chatId}` 是否含 provenance v2 条目。
+2. 缓存异常时检查 `chat_messages` 的 `chatId`、查询时间边界与消息来源元数据。
+3. 区分缓存 3 天 TTL 与源数据 7 天查询窗口；缓存过期不应导致数据库回查窗口缩短。
+4. 再核对 120 条 / 24,000 字符裁剪是否符合预期。
 
----
+### 8.3 会话事实、岗位工作台或阶段丢失
+
+1. 分别查 `factsv2:{corpId}:{userId}:{sessionId}` 与 `stage:{corpId}:{userId}:{sessionId}`，
+   不要把阶段当成 hash 字段查。
+2. 查 `message_processing_records.post_processing_status`，定位具体失败步骤。
+3. facts 缺失但 brand 存在或相反时，检查字段级原子写和 `apply_brand_state` trace；
+   Redis hash 没有字段 TTL，不应从“单字段提前过期”解释问题。
+4. 岗位反复出现时，沿 `save_candidate_pool → project_assistant_turn → drop_invalidated_jobs`
+   核对写入顺序与 ledger。
+
+### 8.4 长期档案或意向不正确
+
+1. 查 `long-term:{corpId}:{userId}:{botUserId}`，再查 Supabase 同三维关系行，排除缓存旧值。
+2. profile 未更新时比较字段 confidence rank；medium 不能覆盖报名写入的 high 是预期行为。
+3. job intent 残留时区分“本段未提”与“明确清除”：前者保持旧值，后者应生成信封内空值。
+4. 若数据只存在于无可靠 bot 血缘的存量行，冻结且不召回是预期安全策略。
+
+### 8.5 摘要或水位异常
+
+1. 查 delayed job 是否被每个成功回合刷新，以及到点时数据库最新消息是否真的已闲置 3 天。
+2. 查 `consolidation_watermarks.bySession[sessionId]`，确认扫描起点没有越过或重复覆盖消息。
+3. 查消息分页数量、首次接管的连续段裁剪与尾部 120 条摘要输入。
+4. 对比三类写入：profile / intent 成功不代表摘要成功；摘要成功也不能替代独立水位。
+5. 查 Bull 三次重试与 `memory.consolidation_failed` 事件。
+
+### 8.6 收资进度缺失
+
+直接检查 `src/tools/collection/`、`collection-form:` 实体 key 与
+`collection-form-current:` 定位 key。该问题属于工具业务单据恢复，不应从 memory hash 或
+consolidation 路径补救。
+
+## 9. 不变量与沿革
+
+- 记忆只分 short-term / long-term；episode 与 turnHints 不升级为层。
+- 消息窗口、会话状态、咨询段边界分别遵守 7d / 3d / 3d。
+- 长期关系档必须包含稳定 bot 维；不同托管账号默认隔离。
+- summaries 保持单层数组、20 段上限、确定性淘汰、零 LLM 重写。
+- consolidation 水位独立存储，永不伪装成用户记忆。
+- 动态记忆保持 system 语义；Prompt 展示与工具采信使用各自明确的信任门。
+- collection form 是 tools 单据，不属于记忆。
+
+沿革：早期文档曾以“四层”、recent/archive 分级摘要和 settlement 命名描述实现；这些概念现已退役，当前统一为两层记忆、单层 episodes 与 consolidation。
 
 ## 相关文档
 
-- [记忆与状态全局视图](./memory-and-state.md) — 三角色心智模型 + 存储实现清单（排障入口）
-- [候选人档案域架构](./candidate-profile-domain.md) — 域宪法：事实主权 vs 判断实现
-- [Agent 运行时架构](./agent-runtime-architecture.md) — 回合模型与运行时硬约束
-- [品牌解析域](./brand-resolution.md) ｜ [地理解析域](./geo-resolution.md) ｜ [图片信息链路](./visual-fact-pipeline.md)
-- [`src/memory/README.md`](../../src/memory/README.md) — 模块内部职责分解
+- [Memory 当前实现权威](../../src/memory/README.md)
+- [记忆与状态全局视图](./memory-and-state.md)
+- [候选人档案域架构](./candidate-profile-domain.md)
+- [Agent 运行时架构](./agent-runtime-architecture.md)
+- [最终 Prompt 装配示例](../../src/agent/generator/context/final-prompt-example.md)

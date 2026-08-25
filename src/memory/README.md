@@ -258,3 +258,9 @@ DB RPC 若需要改参数，迁移必须 `DROP FUNCTION` 后以同名重新创�
 | procedural    | 不在 memory：手册、工具 description、`tools/collection` 状态机；台账只做索引 |
 
 这里的关键是映射可查，而不是把类型词塞进每个目录名。
+
+## 相关文档
+
+- [记忆系统架构与数据流](../../docs/architecture/memory-architecture.md)
+- [记忆与状态全局视图](../../docs/architecture/memory-and-state.md)
+- [候选人档案域架构](../../docs/architecture/candidate-profile-domain.md)

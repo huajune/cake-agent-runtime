@@ -1,117 +1,164 @@
-# 记忆与状态架构（全局视图）
+# 记忆与状态全局视图
 
-**最后更新**：2026-08-12
+> 这是定位“某个状态在哪里、由谁读写”的排障入口。记忆细节见
+> [记忆系统架构与数据流](./memory-architecture.md)，当前实现权威见
+> [`src/memory/README.md`](../../src/memory/README.md)。
 
-> 目的：一张图看清 Agent 的全部状态存储及其关系。写作原则是**减少概念**——正文只讲
-> 三个角色的心智模型，实现颗粒度的七行清单放附录（排障时用）。
->
-> **本文是记忆链路的入口**：读完这三个角色再往下走。
-> 四层结构、**字段归属权威表**、读写时序、prompt/工具消费的完整叙述见
-> [memory-architecture.md](./memory-architecture.md)；字段的证据裁决见
-> [candidate-profile-domain.md](./candidate-profile-domain.md)。
-> 姊妹文档：[visual-fact-pipeline.md](./visual-fact-pipeline.md)（图片信息链路，本文"原文附件"与"结算判据"的细化）。
+## 1. 一张图看全局
 
----
-
-## 一、心智模型：只有三个角色
-
-```
-┌─ 1. 原文 ─────────────────────────────────────────────┐
-│ "候选人和我们各说了什么"                                 │
-│ = 消息窗口（chat_messages；Redis 缓存只是它的加速层）      │
-│   visual_facts 是钉在某条图片消息上的结构化证据附件，       │
-│   不是独立存储                                          │
-└──────────────────────────────────────────────────────┘
-                │
-                │  每回合结束「结算」一次：原文 → 档案
-                ▼
-┌─ 2. 档案 ─────────────────────────────────────────────┐
-│ "我们从原文里确认了什么"                                 │
-│ = sessionFacts 是主体（每个值带 source + confidence）     │
-│   brand_state / currentStage 是档案里的两个「特区」        │
-│   （历史事故给了它们独立门牌，角色上仍是档案字段，见附录 B）  │
-│   long-term profile = 档案的跨会话沉淀版                  │
-└──────────────────────────────────────────────────────┘
-
-┌─ 3. 草稿纸 ───────────────────────────────────────────┐
-│ "本轮干活的临时变量"，回合结束即弃                         │
-│ = turnState（工具写给同轮工具与收尾的便签）                │
-│   + 本轮解析线索（开工前对本轮消息的解析便签）              │
-│   同一张草稿纸的两个区域：一个开工时写好，一个干活时随手记   │
-└──────────────────────────────────────────────────────┘
-```
-
-**总纲一句话：草稿纸辅助本轮干活，回合结束把值得留的结算进档案，档案和原文一起喂给下一轮。**
-
-## 二、一回合的接力
-
-```
-回合开始（preparation）
-  读：原文窗口 → 模型消息（图片轮附原图）
-      档案 → 提示词 [已确认事实]（全量+置信标注）
-      档案(只留 high) → 工具上下文        ← 出档闸门：工具只见 high
-      profile(只留 high) / brand_state / stage → 提示词 + 工具上下文
-  写草稿纸：规则轨速读本轮消息 ⇒ 本轮解析线索
-           （→ 提示词 hints 区；与档案 medium 视图对照出 [待确认线索]）
-           turnState 置空待写
-
-回合执行
-  工具边干活边写 turnState（候选池/确权城市/visualFactSheets/品牌解析…）
-  同轮工具可互读 turnState（如 invite 城市门读 map 截图 sheet）
-
-回合收尾（turn-finalizer / onTurnEnd）——草稿纸在这里结算入档
-  extractFacts（规则轨全窗口 + LLM 轨 + 各道门 + visual_facts 授权域）⇒ sessionFacts
-  turnState.imageBrandResolutions + 文本品牌意图 ⇒ reducer ⇒ brand_state
-  turnState.cityAttestation ⇒ pref.city(source=tool)
-  turnState.候选池/查询签名/失效岗位 ⇒ 会话记忆
-  草稿纸销毁
-
-空闲期（settlement）
-  sessionFacts ⇒ 沉淀 ⇒ long-term profile（confidence 一律压 medium，
-  防止上个会话的沉淀值绕过出档闸门直接预填本会话的报名）
+```text
+候选人 × bot 聊天关系（sessionId = chatId）
+│
+├─ 原始消息
+│   ├─ Supabase chat_messages                         长期事实源
+│   └─ Redis memory:short_term:chat:{chatId}          3d 热缓存
+│        └─ 每轮投影为 shortTerm.messageWindow        查询窗 7d
+│
+├─ Short-term 会话状态
+│   ├─ Redis factsv2:{corpId}:{userId}:{sessionId}    3d + 12h
+│   │    ├─ facts（含 facts.brand）
+│   │    └─ workbench（岗位池、展示、焦点、查询签名）
+│   └─ Redis stage:{corpId}:{userId}:{sessionId}      3d
+│        └─ 当前阶段指针
+│
+├─ 当前轮进程内状态
+│   ├─ turnHints / Snapshot enrichment
+│   ├─ Prompt 共享裁决视图
+│   └─ TurnLedger / ToolBuildContext
+│        └─ 回合结束后选择性写入 short-term
+│
+├─ Long-term 候选人 × bot 关系档
+│   ├─ Redis long-term:{corpId}:{userId}:{botUserId}  2h 缓存
+│   └─ Supabase agent_long_term_memories              持久
+│        ├─ semantic_profile
+│        ├─ semantic_job_intent
+│        ├─ episodic_session_summaries（最多 20 段）
+│        └─ consolidation_watermarks（独立工作水位）
+│
+├─ 预约兼容业务指针（不属于三维长期记忆）
+│   └─ Supabase agent_long_term_memories.active_booking
+│        └─ (corpId, userId)，bot_user_id IS NULL
+│
+└─ Tools 业务单据（不属于 memory）
+    ├─ collection-form:{corpId}:{userId}:{botUserId}:{candidateRef}:{jobId}
+    └─ collection-form-current:{corpId}:{userId}:{botUserId}:{jobId}
+         └─ 整实体表单 + 当前办理人定位指针，3d
 ```
 
-## 三、置信度：档案的守门体系
+## 2. 维度口径
 
-置信度（high/medium/low）是**档案里每个值的等级标签**，闸门只开在两个口子：
+| 标识           | 含义                                          | 使用处                                          |
+| -------------- | --------------------------------------------- | ----------------------------------------------- |
+| `corpId`       | 企业租户                                      | 所有候选人状态的第一隔离维                      |
+| `userId`       | 候选人身份                                    | short-term、long-term、工具单据                 |
+| `sessionId`    | 当前 `chatId`，代表候选人 × bot 聊天关系      | 消息窗口、`factsv2:`、`stage:`、水位 bySession  |
+| `botUserId`    | 托管账号稳定 `wecomUserId`                    | long-term 三维关系、collection form 显式 bot 维 |
+| `imBotId`      | 可能轮换的渠道账号标识                        | 渠道调用和血缘排障，不作长期主键                |
+| `candidateRef` | 收资表单办理人引用，可能由 session 升为手机号 | collection form 实体 key                        |
+| `jobId`        | 岗位标识                                      | 收资表单与岗位工具                              |
 
-| 口子 | 规则 |
-|---|---|
-| **入档时**（赋值） | `source` / `confidence` 记录出处与证据强度；producer 身份本身不授予确权资格。候选人字段须经过引文、形状或结构化系统来源校验；沉淀入 profile 一律压 medium |
-| **入档时**（防降级） | rank 比较：新值置信低于旧值 → 拒绝覆盖 |
-| **出档时** | 工具上下文只装 high（booking/precheck 预填天然只可能拿到 high）；invite 门 sessionCity 只认 high；硬约束区只渲染 high |
-| **升级通道**（medium→high） | ①explicit-provenance（quote 逐字验证；phone 的 quote 只认手打文本）②确认问答裁决 ③受信结构化系统来源；不存在“因为是规则 producer 就升级”的通道 |
+`factsv2:` 与 `stage:` 没有单独写出 `botUserId`，因为 `sessionId = chatId` 已经携带
+候选人 × bot 的聊天隔离。long-term 与 collection form 不能只靠聊天 key 定位，因而显式包含
+稳定 `botUserId`。
 
-low 档实际几乎无生产者，仅 labor_form 清除逻辑消费——三档实际运行成两档。
+## 3. Redis key 清单
 
-## 四、规则解析的两次用途（最易混淆点）
+| Key 形态                                                               | 类型  | 内容                                 | TTL                    | 所有者                                            |
+| ---------------------------------------------------------------------- | ----- | ------------------------------------ | ---------------------- | ------------------------------------------------- |
+| `memory:short_term:chat:{chatId}`                                      | list  | 带 provenance 的原始消息热缓存       | 3 天                   | `MessageWindowService`                            |
+| `factsv2:{corpId}:{userId}:{sessionId}`                                | hash  | facts + workbench                    | 3 天 + 12 小时安全余量 | `SessionFactsService` / `SessionWorkbenchService` |
+| `stage:{corpId}:{userId}:{sessionId}`                                  | value | `{ currentStage }`                   | 3 天                   | `SessionWorkbenchService`                         |
+| `long-term:{corpId}:{userId}:{botUserId}`                              | value | 当前候选人 × bot 的长期关系行缓存    | 2 小时                 | `LongTermService`                                 |
+| `collection-form:{corpId}:{userId}:{botUserId}:{candidateRef}:{jobId}` | value | 完整 `BookingCollectionForm` 快照    | 3 天                   | `CollectionFormStore`（tools）                    |
+| `collection-form-current:{corpId}:{userId}:{botUserId}:{jobId}`        | value | 当前办理人的 `candidateRef` 定位指针 | 3 天                   | `CollectionFormStore`（tools）                    |
 
-同类规则解析每回合会用于回合开始与回合收尾，产物权力不同：
+`factsv2:` 使用 hash 字段级原子写，但 Redis 不支持 hash field TTL，所以同一 key 内的 facts 与
+workbench 一起享有 12 小时安全余量。`stage:` 和 collection form 严格按 3 天过期。
 
-| | 第一次（回合开始） | 第二次（回合收尾） |
-|---|---|---|
-| 扫什么 | 只扫本轮消息 | 整个会话段窗口（+ visual_facts 授权域） |
-| 产物落点 | 草稿纸（`ruleFacts` / 本轮解析线索） | 作为 `extract_facts` 的辅助上下文，经证据与准入链后才可能进入 `sessionFacts` |
-| 用途 | 模型理解提示 + 查询侧即时参考 | 帮助抽取，不因规则 producer 自动确权 |
-| 寿命 | 回合结束即弃 | 跨轮存活 |
+消息热缓存也按 3 天过期，但它不是 7 天回看窗口的权威来源。缓存 miss 时，
+`MessageWindowService` 仍从 `chat_messages` 查询最近 7 天并回填。
 
----
+collection form 已完整迁入 `src/tools/collection/`：TTL 常量、key builder、整实体写入和
+定位指针都由工具域维护，不依赖 `MemoryConfig`，也不再写进 `factsv2:`。
 
-## 附录 A · 存储实现清单（排障用）
+## 4. Supabase 持久状态
 
-| 寿命 | 存储 | 介质 | 写入方 | 读取方 | 失效语义 |
-|---|---|---|---|---|---|
-| 一回合 | turnState | 进程内存 | 各工具（经回调） | 同轮工具、finalizer | 回合结束即弃 |
-| 一回合 | 本轮解析线索（`ruleFacts`） | 进程内存 | preparation（规则轨） | 提示词 hints、工具上下文 | 同上 |
-| 一条消息 | chat_messages 行（content + visual_facts） | DB | 入站存历史；描述/sheet 由 updateMessageContent 双写 | 窗口加载、收尾抽取（内容等值 join） | 90 天清理 |
-| 会话级 | 短期记忆窗口缓存 | Redis list | 存历史镜像；updateMessageContent 时 del | ShortTermService（miss 回填自 DB） | 缓存可弃可重建 |
-| 会话级 | sessionFacts | Redis hash（factsv2） | 收尾 extractFacts（唯一写入方） | 下一轮提示词/工具/各门 | **事故级 key**（无 DB 备份） |
-| 会话级 | brand_state | Redis | reducer 独占写（turn-finalizer） | 提示词、job_list 兜底 | **事故级 key** |
-| 会话级 | procedural currentStage | Redis | advance_stage → 收尾 | 提示词、工具上下文 | **事故级 key** |
-| 跨会话 | long-term profile | DB | settlement（空闲期） | 提示词 [用户档案]、工具（high 视图） | 持久 |
+| 表 / 列                                               | 主维度                                               | 作用                       | 读取方式                                               |
+| ----------------------------------------------------- | ---------------------------------------------------- | -------------------------- | ------------------------------------------------------ |
+| `chat_messages`                                       | `chatId` + message                                   | 原始聊天事实源             | short-term 每轮查询最近 7 天；consolidation 按水位扫描 |
+| `agent_long_term_memories.semantic_profile`           | `(corp_id, user_id, bot_user_id)`                    | 9 字段候选人身份档案       | 每轮默认召回                                           |
+| `agent_long_term_memories.semantic_job_intent`        | 同上                                                 | 最新求职意向快照           | 每轮默认召回                                           |
+| `agent_long_term_memories.episodic_session_summaries` | 同上                                                 | 咨询段摘要数组，最多 20 段 | 仅 `recall_history` 显式读取                           |
+| `agent_long_term_memories.consolidation_watermarks`   | 同上，内部再按 `sessionId`                           | 已处理消息边界             | 只供 consolidation 幂等控制                            |
+| `agent_long_term_memories.active_booking`             | `(corp_id, user_id)` 的 `bot_user_id IS NULL` 兼容行 | 当前工单定位指针           | preparation 结合业务系统实时状态生成预约上下文         |
+| `message_processing_records.post_processing_status`   | message / processing record                          | 回合末各写入步骤状态       | 排障与告警                                             |
 
-## 附录 B · 「特区」的由来与合并候选
+`consolidation_watermarks` 与咨询摘要是独立列：摘要因 20 段上限淘汰旧条目时，工作水位仍保留，
+不会导致旧消息被重新处理。
 
-- **brand_state 独立**：品牌污染事故（§9 品牌收口）后裁定品牌真相唯一存储、reducer 独占写、替换式状态机——把它并回 sessionFacts 会失去写入纪律的隔离。**保留。**
-- **currentStage 独立**：程序性记忆按阶段机制独立演化。理想态是 sessionFacts 的一个字段；合并属纯存储重构，零用户价值且动事故级 Redis key 清单。**不动，心智上当档案字段。**
-- **本轮解析线索与 turnState 分立**：一个是 prep 期的派生只读数据，一个是执行期的累积总线。合并无收益。**不动。**
+`active_booking` 是暂存于同表无 bot 兼容行的业务指针，不进入 `MemoryRecallContext` 的
+semantic 契约，也不属于三维长期关系档；preparation 单独读取它并结合工单系统实时状态生成
+Prompt 上下文。收资表单仍由 tools 独立持有。
+
+## 5. 进程内回合状态
+
+以下对象有意不直接对应 Redis key：
+
+| 状态                | 生产者                                        | 消费者                                 | 是否持久化                     |
+| ------------------- | --------------------------------------------- | -------------------------------------- | ------------------------------ |
+| `turnHints`         | preparation 的规则 producer                   | 共享裁决、Prompt、工具、回合末事实提取 | 不直接持久化；采信后并入 facts |
+| enriched snapshot   | `SnapshotEnrichmentService`                   | 共享裁决与当轮消费                     | 否                             |
+| Prompt 共享裁决视图 | `adjudicatePromptMemory()`                    | `memory`、`turn-hints` sections        | 否                             |
+| `TurnLedger`        | preparation 创建，岗位/地理/图片等工具追加    | runner、`onTurnEnd()`                  | 只持久化被采用的结果           |
+| `ToolBuildContext`  | `buildToolContext()`                          | 本轮工具集合                           | 否                             |
+| `promptBlocks`      | `ContextService.compose()` + preparation 尾块 | AI SDK、MPR 观测                       | 随处理记录观测，不是记忆源     |
+
+`SnapshotEnrichmentService` 是备料，不是另一条档案写路径。它可以让当轮 Prompt 和工具获得
+补齐线索，但不会越过候选人档案域的置信度与来源纪律。
+
+## 6. 谁读、谁写
+
+| 数据               | 回合开始读                | 回合中消费                                   | 回合结束写                                      |
+| ------------------ | ------------------------- | -------------------------------------------- | ----------------------------------------------- |
+| 消息窗口           | `MessageWindowService`    | `normalizedMessages`、事实提取输入、地理锚点 | 入站消息链写 `chat_messages`；memory 只维护缓存 |
+| session facts      | `SessionStateService`     | Prompt、工具、共享裁决                       | `extract_facts`、工具确权、品牌 reducer         |
+| workbench          | `SessionStateService`     | 岗位 provenance、防复读、焦点岗位            | 岗位池、查询签名、助手投影、失效岗位剔除        |
+| stage              | `SessionWorkbenchService` | 当前阶段策略、`advance_stage`                | `advance_stage` 校验后立即覆盖写                |
+| profile / intent   | `LongTermService`         | Prompt；profile high 供工具                  | consolidation；profile 另有报名 high 写入       |
+| episodic summaries | 默认不读                  | `recall_history` 按需                        | 闲置 3 天后的 consolidation                     |
+| watermarks         | consolidation 任务读      | 不进入 Prompt / 工具                         | 与新增摘要原子推进                              |
+| collection form    | collection tools          | 预检、报名、修改流程                         | collection tools 整实体覆盖写                   |
+
+`invitedGroups` 随 session facts 召回，但写入时机与一般回合收尾不同：
+`GroupInviteService` 只有在确认候选人已在群中或邀请成功后才即时写入，避免把未发生动作记成事实。
+
+## 7. 排障速查
+
+| 症状                      | 先查                                         | 再查                                                         |
+| ------------------------- | -------------------------------------------- | ------------------------------------------------------------ |
+| 7 天内历史消息缺失        | `memory:short_term:chat:{chatId}` provenance | `chat_messages` 时间边界、120 条 / 24,000 字符裁剪           |
+| 候选人事实或岗位状态丢失  | `factsv2:` 对应 hash 字段                    | `post_processing_status` 的具体步骤与 TTL                    |
+| 当前阶段不对              | 独立 `stage:` key                            | `advance_stage` ledger、阶段过期后的老用户兜底               |
+| 品牌反复或串值            | `facts.brand`                                | `apply_brand_state` trace、三条品牌解析输入                  |
+| 档案存在但当前账号读不到  | 三维 long-term cache key                     | Supabase `bot_user_id`、调用方是否误传 `imBotId`             |
+| profile 旧值不被覆盖      | 字段 confidence                              | medium 不覆盖 high 的 SQL rank 守卫                          |
+| 意向清除失败              | 本段快照是否生成显式空值                     | consolidation 的整组覆盖写入                                 |
+| 摘要未生成或重复          | delayed job、DB 最新消息时间                 | `consolidation_watermarks.bySession`、Bull 重试与失败事件    |
+| 收资进度丢失              | `collection-form:` 实体 key                  | `collection-form-current:` 指针及 tools 写路径               |
+| Prompt 与工具看到的值不同 | `promptBlocks` 与 ToolBuildContext           | Prompt 可展示待确认值，工具默认只采 high，这是刻意的信任差异 |
+
+## 8. 边界不变量
+
+- short-term 由 7 天消息窗口与 3 天会话状态组成；长期是候选人 × bot 的持久关系档。
+- `turnHints`、快照补料、共享裁决和 ledger 都是回合内状态，不升级为存储层。
+- `facts.brand` 位于 session facts 内，品牌 reducer 是唯一持久写者。
+- episodic summaries 是最多 20 段的单层数组，新增后不再由 LLM 改写。
+- consolidation 水位单独存放，只控制处理边界。
+- collection form 属于 tools，具有显式 bot 维、独立 TTL 与事故恢复责任。
+
+## 相关文档
+
+- [Memory 当前实现权威](../../src/memory/README.md)
+- [记忆系统架构与数据流](./memory-architecture.md)
+- [候选人档案域架构](./candidate-profile-domain.md)
+- [Agent 运行时架构](./agent-runtime-architecture.md)

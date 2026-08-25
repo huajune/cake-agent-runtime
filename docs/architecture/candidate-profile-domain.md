@@ -350,4 +350,6 @@ T1/T2 全部由确定性规则产生（正则模板、工具返回、消息来�
 - [语义判定三分法](./semantic-decision-taxonomy.md) — 判定机制轴：正则 / LLM 标签位 / 向量的准入边界
 - [品牌解析域](./brand-resolution.md) ｜ [地理解析域](./geo-resolution.md) ｜ [图片信息链路](./visual-fact-pipeline.md)
 - [记忆系统架构与数据流](./memory-architecture.md)
+- [记忆与状态全局视图](./memory-and-state.md)
+- [Memory 当前实现权威](../../src/memory/README.md)
 - `src/resolution/evidence/README.md` — evidence 目录的文件地图
