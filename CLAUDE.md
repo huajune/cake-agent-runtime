@@ -63,9 +63,9 @@ src/
 │                       #   纯确定性代码零 LLM；resolve() 输出标准品牌+极性+置信度；只依赖 sponge 品牌目录
 ├── resolution/geo/     # 地理解析域（唯一真相源）：行政区层级/县级市映射/白名单三轮扫描/地标别名/歧义策略/冲突检测
 │                       #   纯确定性零 LLM 零出向依赖；高德集成留 infra/geocoding，海绵行政区适配留 tools 层
-├── tools/              # Agent 工具（duliday 岗位/约面/改约/取消、拉群、handoff、召回历史等）+ tool-registry
-├── memory/             # 四层记忆：short-term(对话窗口) / session(会话事实) / stage-state(阶段) / long-term(画像)
-│                       #   + settlement(空闲沉淀) / stores(Redis+Supabase 适配)；只持有事实，不实现字段判断
+├── tools/              # Agent 动作层：模型可见契约 + 确定性实现；collection/ 自持收资状态机与 Redis 单据
+├── memory/             # 两层记忆：short-term（7d 消息窗口 + 3d session 状态）/ long-term（候选人×bot 关系档）
+│                       #   lifecycle 编排 + 3d delayed consolidation + 自用 Redis/Supabase stores；episode 仅是计算边界
 ├── agent/              # Agent 编排
 │   ├── runner/         #   回合入口 agent-runner + turn-finalizer(统一副作用出口) + reply-rewrite
 │   ├── generator/      #   preparation(召回/上下文准备) + generator(LLM 调用) + context/(Prompt Section 体系)
