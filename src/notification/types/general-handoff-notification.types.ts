@@ -1,4 +1,4 @@
-import type { WeworkSessionState } from '@memory/session/session-facts.types';
+import type { WeworkSessionState } from '@memory/short-term/short-term.types';
 
 export interface GeneralHandoffNotificationMessage {
   role: 'user' | 'assistant';

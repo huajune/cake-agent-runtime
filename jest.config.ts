@@ -43,12 +43,6 @@ const config: JestConfigWithTsJest = {
             '@biz/*': ['src/biz/*'],
             '@providers/*': ['src/providers/*'],
             '@tools/*': ['src/tools/*'],
-            '@memory/session/session-facts.types': [
-              'src/memory/short-term/short-term.types',
-            ],
-            '@memory/session-state/session-facts.types': [
-              'src/memory/short-term/short-term.types',
-            ],
             '@memory/*': ['src/memory/*'],
             '@mcp/*': ['src/mcp/*'],
             '@sponge/*': ['src/sponge/*'],
