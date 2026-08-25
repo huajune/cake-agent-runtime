@@ -132,10 +132,14 @@ describe('MemoryService', () => {
         lastSettledMessageAt: null,
       });
 
-      const summary = await service.getSessionSummaries('corp1', 'user1');
+      const summary = await service.getSessionSummaries('corp1', 'user1', 'wecom-user-1');
 
       expect(summary).toEqual({ recent: [], archive: null, lastSettledMessageAt: null });
-      expect(mockLongTerm.getSessionSummaries).toHaveBeenCalledWith('corp1', 'user1', undefined);
+      expect(mockLongTerm.getSessionSummaries).toHaveBeenCalledWith(
+        'corp1',
+        'user1',
+        'wecom-user-1',
+      );
     });
 
     it('should set stage via facade', async () => {

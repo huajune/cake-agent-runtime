@@ -6,6 +6,7 @@ import {
 } from '@memory/short-term/short-term.types';
 
 describe('LongTermService（S7 单一 Profile 上游 + preference 三态）', () => {
+  const BOT_USER_ID = 'wecom-user-1';
   const store = {
     getProfile: jest.fn(),
     upsertProfileFacts: jest.fn().mockResolvedValue(undefined),
@@ -26,22 +27,24 @@ describe('LongTermService（S7 单一 Profile 上游 + preference 三态）', ()
   });
 
   it('测试夹具 Profile 只写 medium/archive，空夹具不写', async () => {
-    await service.seedProfileFixture('corp-1', 'user-1', { name: null });
+    await service.seedProfileFixture('corp-1', 'user-1', BOT_USER_ID, { name: null });
     expect(store.upsertProfileFacts).not.toHaveBeenCalled();
 
-    await service.seedProfileFixture('corp-1', 'user-1', { name: '兮兮' });
+    await service.seedProfileFixture('corp-1', 'user-1', BOT_USER_ID, { name: '兮兮' });
     expect(store.upsertProfileFacts).toHaveBeenCalledWith(
       'corp-1',
       'user-1',
+      BOT_USER_ID,
       { name: expect.objectContaining({ value: '兮兮', confidence: 'medium', source: 'archive' }) },
       undefined,
     );
   });
 
-  it('报名办结是唯一 high Profile 上游，并携带 booking/session/bot 血缘', async () => {
+  it('报名办结是最高置信 Profile 上游，并携带 booking/session/bot 血缘', async () => {
     await service.writeFromBooking(
       'corp-1',
       'user-1',
+      BOT_USER_ID,
       {
         name: '兮兮',
         phone: '18271421690',
@@ -53,7 +56,7 @@ describe('LongTermService（S7 单一 Profile 上游 + preference 三态）', ()
       { sessionId: 'session-A', botImId: 'bot-A' },
     );
 
-    const facts = store.upsertProfileFacts.mock.calls[0][2];
+    const facts = store.upsertProfileFacts.mock.calls[0][3];
     expect(facts.name).toEqual(
       expect.objectContaining({
         value: '兮兮',
@@ -80,13 +83,13 @@ describe('LongTermService（S7 单一 Profile 上游 + preference 三态）', ()
       { confidence: 'medium', source: 'model', evidence: '软事实提取' },
     );
 
-    await service.writeFromConsolidation('corp-1', 'user-1', facts, {
+    await service.writeFromConsolidation('corp-1', 'user-1', BOT_USER_ID, facts, {
       sessionId: 'session-A',
       botImId: 'bot-A',
     });
 
-    expect(store.upsertProfileFacts.mock.calls[0][2]).toEqual({});
-    expect(store.upsertProfileFacts.mock.calls[0][4].position).toEqual(
+    expect(store.upsertProfileFacts.mock.calls[0][3]).toEqual({});
+    expect(store.upsertProfileFacts.mock.calls[0][5].position).toEqual(
       expect.objectContaining({
         value: ['服务员'],
         confidence: 'medium',
@@ -103,7 +106,7 @@ describe('LongTermService（S7 单一 Profile 上游 + preference 三态）', ()
       evidence: '无新软事实',
     });
 
-    await service.writeFromConsolidation('corp-1', 'user-1', facts);
+    await service.writeFromConsolidation('corp-1', 'user-1', BOT_USER_ID, facts);
     expect(store.upsertProfileFacts).not.toHaveBeenCalled();
   });
 
@@ -119,12 +122,12 @@ describe('LongTermService（S7 单一 Profile 上游 + preference 三态）', ()
       evidence: '候选人明确表示地点不限',
     });
 
-    await service.writeFromConsolidation('corp-1', 'user-1', facts, {
+    await service.writeFromConsolidation('corp-1', 'user-1', BOT_USER_ID, facts, {
       sessionId: 'session-A',
       botImId: 'bot-A',
     });
 
-    const preferenceArg = store.upsertProfileFacts.mock.calls[0][4];
+    const preferenceArg = store.upsertProfileFacts.mock.calls[0][5];
     expect(preferenceArg.location).toEqual(
       expect.objectContaining({
         value: null,
@@ -152,8 +155,8 @@ describe('LongTermService（S7 单一 Profile 上游 + preference 三态）', ()
       { confidence: 'medium', source: 'model', evidence: '软事实提取' },
     );
 
-    await service.writeFromConsolidation('corp-1', 'user-1', facts);
-    const saved = store.upsertProfileFacts.mock.calls[0][4];
+    await service.writeFromConsolidation('corp-1', 'user-1', BOT_USER_ID, facts);
+    const saved = store.upsertProfileFacts.mock.calls[0][5];
     expect(saved.city.value).toBe('上海');
     expect(saved.district.value).toEqual(['浦东新区']);
     expect(saved.short_term).toBeUndefined();
@@ -166,7 +169,7 @@ describe('LongTermService（S7 单一 Profile 上游 + preference 三态）', ()
       source: 'model',
       evidence: '无新软事实',
     });
-    await service.writeFromConsolidation('corp-1', 'user-1', facts, {
+    await service.writeFromConsolidation('corp-1', 'user-1', BOT_USER_ID, facts, {
       sessionId: 'session-A',
       botImId: 'bot-A',
       brandState: {
@@ -175,11 +178,11 @@ describe('LongTermService（S7 单一 Profile 上游 + preference 三态）', ()
         updatedAtMs: 1,
       },
     });
-    expect(store.upsertProfileFacts.mock.calls[0][2]).toEqual({});
-    expect(store.upsertProfileFacts.mock.calls[0][4].brands.value).toEqual(['肯德基']);
+    expect(store.upsertProfileFacts.mock.calls[0][3]).toEqual({});
+    expect(store.upsertProfileFacts.mock.calls[0][5].brands.value).toEqual(['肯德基']);
   });
 
-  it('按 bot 召回摘要时只返回同账号 recent，并 fail-closed 丢弃混合 archive', async () => {
+  it('按稳定 bot 关系键读取摘要，不再做字段级 originBotId 过滤', async () => {
     store.getSessionSummaries.mockResolvedValue({
       recent: [
         {
@@ -201,8 +204,9 @@ describe('LongTermService（S7 单一 Profile 上游 + preference 三态）', ()
       lastSettledMessageAt: null,
     });
 
-    const result = await service.getSessionSummaries('corp-1', 'user-1', 'bot-A');
-    expect(result?.recent.map((entry) => entry.summary)).toEqual(['A']);
-    expect(result?.archive).toBeNull();
+    const result = await service.getSessionSummaries('corp-1', 'user-1', BOT_USER_ID);
+    expect(store.getSessionSummaries).toHaveBeenCalledWith('corp-1', 'user-1', BOT_USER_ID);
+    expect(result?.recent.map((entry) => entry.summary)).toEqual(['A', 'B']);
+    expect(result?.archive).toBe('mixed');
   });
 });

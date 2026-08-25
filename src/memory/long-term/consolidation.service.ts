@@ -40,7 +40,7 @@ const ARCHIVE_COMPRESS_PROMPT = `你是记忆压缩器。将多条历史求职�
  *
  * ## 设计约束
  *
- * 每回合结束由 SettlementSchedulerService 刷新约 3 天的 Bull delayed job；本服务
+ * 每回合结束由 ConsolidationSchedulerService 刷新约 3 天的 Bull delayed job；本服务
  * 到点后用 chat_messages 最新时间复核闲置，避免旧任务与新消息竞态。facts key 比
  * 沉淀阈值多 12 小时余量，使本服务在状态过期前完成读取。
  *
@@ -71,6 +71,7 @@ export class ConsolidationService {
     corpId: string,
     userId: string,
     sessionId: string,
+    botUserId: string,
     sessionFacts: EntityExtractionResult | SessionFacts | null,
     botImId?: string,
     brandState?: PersistedBrandState | null,
@@ -80,7 +81,7 @@ export class ConsolidationService {
   > {
     const latest = (await this.chatSession.getChatHistory(sessionId, 1)).at(-1);
     if (!latest || !Number.isFinite(latest.timestamp)) {
-      throw new Error(`memory_settlement_latest_message_missing:${sessionId}`);
+      throw new Error(`memory_consolidation_latest_message_missing:${sessionId}`);
     }
 
     const latestMessageAt = latest.timestamp;
@@ -94,7 +95,7 @@ export class ConsolidationService {
       };
     }
 
-    const sessionSummaries = await this.longTerm.getSessionSummaries(corpId, userId);
+    const sessionSummaries = await this.longTerm.getSessionSummaries(corpId, userId, botUserId);
     const lastSettledAt =
       sessionSummaries?.lastSettledBySession?.[sessionId] ??
       sessionSummaries?.lastSettledMessageAt ??
@@ -107,7 +108,7 @@ export class ConsolidationService {
 
     const messages = await this.readUnsettledMessages(sessionId, lastSettledMs, latestMessageAt);
     if (messages.length === 0) {
-      throw new Error(`memory_settlement_messages_missing:${sessionId}`);
+      throw new Error(`memory_consolidation_messages_missing:${sessionId}`);
     }
 
     // 首次接管存量 chat 时只沉淀最后一个连续咨询段，避免把多段历史合成一个 episode。
@@ -115,6 +116,7 @@ export class ConsolidationService {
     const sessionEndAt = new Date(latestMessageAt).toISOString();
     await this.generateAndSaveSummary(corpId, userId, sessionId, {
       facts: sessionFacts,
+      botUserId,
       lastSettledMessageAt: lastSettledAt,
       sessionEndAt,
       messages: currentEpisode,
@@ -147,7 +149,7 @@ export class ConsolidationService {
       scanned.push(...sortedBatch);
       if (batch.length < CONSOLIDATION_FETCH_LIMIT) break;
       if (page === CONSOLIDATION_MAX_PAGES - 1) {
-        throw new Error(`memory_settlement_scan_limit_exceeded:${sessionId}`);
+        throw new Error(`memory_consolidation_scan_limit_exceeded:${sessionId}`);
       }
       cursor = sortedBatch.at(-1)!.timestamp;
     }
@@ -173,6 +175,7 @@ export class ConsolidationService {
     sessionId: string,
     params: {
       facts: EntityExtractionResult | SessionFacts | null;
+      botUserId: string;
       brandState?: PersistedBrandState | null;
       lastSettledMessageAt: string | null;
       sessionEndAt: string;
@@ -180,7 +183,8 @@ export class ConsolidationService {
       botImId?: string;
     },
   ): Promise<void> {
-    const { facts, lastSettledMessageAt, sessionEndAt, messages, botImId, brandState } = params;
+    const { facts, botUserId, lastSettledMessageAt, sessionEndAt, messages, botImId, brandState } =
+      params;
 
     // 分页扫描后咨询段可能很长，摘要只取末尾一段，避免 LLM prompt 失控。
     const conversationText = messages
@@ -214,14 +218,14 @@ export class ConsolidationService {
 
     // 长期事实先写、摘要水位后推：若摘要写失败，Bull 重试时事实覆盖写仍幂等。
     if (facts) {
-      await this.longTerm.writeFromConsolidation(corpId, userId, facts, {
+      await this.longTerm.writeFromConsolidation(corpId, userId, botUserId, facts, {
         sessionId,
         botImId,
         brandState: brandState ?? null,
       });
     }
 
-    await this.longTerm.appendSummary(corpId, userId, summaryEntry, {
+    await this.longTerm.appendSummary(corpId, userId, botUserId, summaryEntry, {
       lastSettledMessageAt: sessionEndAt,
       sessionId,
       compressArchive: (overflow, existingArchive) =>

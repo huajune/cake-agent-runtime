@@ -31,6 +31,7 @@ import { SessionSemanticService } from '@memory/short-term/session-semantic.serv
 import { AlertNotifierService } from '@notification/services/alert-notifier.service';
 import type { GeneratorThinkingConfig } from '@agent/generator/generator.types';
 import { TurnOutcomeInterventionService } from '@agent/runner/turn-outcome-intervention.service';
+import { BotService } from '../../bot/bot.service';
 
 /**
  * 兼容图片描述等待上限。Vision 调用通常 3-6s；15s 给 ~2.5x 余量。
@@ -98,6 +99,7 @@ export class ReplyWorkflowService {
     private readonly imageBrandBackfill: ImageBrandBackfillService,
     private readonly session: SessionSemanticService,
     private readonly llm: LlmExecutorService,
+    private readonly botService: BotService,
   ) {}
 
   async processSingleMessage(messageData: EnterpriseMessageCallbackDto): Promise<void> {
@@ -241,6 +243,9 @@ export class ReplyWorkflowService {
     let shortTermEndTimeInclusive = this.resolveShortTermEndTimeInclusive(allMessages);
 
     const { overrideModelId, thinking } = await this.runtimeConfig.resolveWecomChatModelSelection();
+    const stableBotUserId =
+      (await this.botService.resolveBotUserIdByImBotId(params.primaryMessage.imBotId)) ??
+      params.primaryMessage.botUserId?.trim();
 
     const agentCallParams = {
       sessionId: chatId,
@@ -249,7 +254,7 @@ export class ReplyWorkflowService {
       recordMonitoring: true,
       userId: this.resolveAgentUserId(params.primaryMessage, parsed),
       corpId: this.resolveCorpId(params.primaryMessage),
-      botUserId: params.primaryMessage.botUserId,
+      botUserId: stableBotUserId,
       contactName: parsed.contactName,
       botImId: params.primaryMessage.imBotId,
       groupId: params.primaryMessage.groupId,
@@ -417,7 +422,11 @@ export class ReplyWorkflowService {
         userId: agentCallParams.userId,
         corpId: agentCallParams.corpId,
         isGroupChat: Boolean(params.primaryMessage.imRoomId),
-        channelIdentity: this.buildReengagementChannelIdentity(parsed, params.primaryMessage),
+        channelIdentity: this.buildReengagementChannelIdentity(
+          parsed,
+          params.primaryMessage,
+          stableBotUserId,
+        ),
       });
 
       // 非 reply 终态（skipped 沉默 / guardrail_blocked 守卫拦截 / handoff 转人工）：跳过 WeCom 发送，
@@ -475,11 +484,20 @@ export class ReplyWorkflowService {
           userId: agentCallParams.userId,
           corpId: agentCallParams.corpId,
           isGroupChat: Boolean(params.primaryMessage.imRoomId),
-          channelIdentity: this.buildReengagementChannelIdentity(parsed, params.primaryMessage),
+          channelIdentity: this.buildReengagementChannelIdentity(
+            parsed,
+            params.primaryMessage,
+            stableBotUserId,
+          ),
         };
         // 先确认这是不是本会话首条开场回复。开场本身即使询问了位置，也只排
         // opening_no_reply；不能同时排 address_missing，否则候选人持续沉默时会被连追两次。
-        const replyKind = await this.recordAgentReplied(params.primaryMessage, parsed, traceId);
+        const replyKind = await this.recordAgentReplied(
+          params.primaryMessage,
+          parsed,
+          traceId,
+          stableBotUserId,
+        );
         // 必须先于 settle 等待：推店锚点要读本轮计数 +1 前的
         // storePresentationRounds，否则第一轮可能被误判为升档。
         await this.reengagementAnchors.handleDeliveredReplyAnchors(agentResult, {
@@ -985,6 +1003,7 @@ export class ReplyWorkflowService {
     primaryMessage: EnterpriseMessageCallbackDto,
     parsed: ReturnType<typeof MessageParser.parse>,
     traceId: string,
+    stableBotUserId?: string,
   ): Promise<'opening' | 'reply' | 'unknown'> {
     if (primaryMessage.imRoomId) return 'unknown'; // 群聊不计入候选人漏斗
     const botImId = primaryMessage.imBotId;
@@ -1025,7 +1044,11 @@ export class ReplyWorkflowService {
             scenarioCode: 'opening_no_reply',
             anchorEventId: 'opening',
             anchorAt: Date.now(),
-            channelIdentity: this.buildReengagementChannelIdentity(parsed, primaryMessage),
+            channelIdentity: this.buildReengagementChannelIdentity(
+              parsed,
+              primaryMessage,
+              stableBotUserId,
+            ),
           })
           .catch((error: unknown) => {
             this.logger.warn(
@@ -1157,10 +1180,11 @@ export class ReplyWorkflowService {
   private buildReengagementChannelIdentity(
     parsed: ReturnType<typeof MessageParser.parse>,
     primaryMessage: EnterpriseMessageCallbackDto,
+    stableBotUserId?: string,
   ): ReengagementChannelIdentity {
     return {
       candidateName: parsed.contactName,
-      managerName: primaryMessage.botUserId,
+      managerName: stableBotUserId ?? primaryMessage.botUserId,
       botImId: primaryMessage.imBotId,
       imContactId: parsed.imContactId,
       externalUserId: parsed.externalUserId,

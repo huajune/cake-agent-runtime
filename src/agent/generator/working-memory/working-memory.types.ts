@@ -22,6 +22,8 @@ export interface WorkingMemory {
   corpId: string;
   userId: string;
   sessionId: string;
+  /** 当前托管账号的稳定企微身份（wecomUserId）；长期记忆隔离键。 */
+  botUserId?: string;
   /** 当前与候选人聊天的托管账号 wxid（imBotId）；沉淀时作为长期事实的 bot 血缘。 */
   botImId?: string;
   maxSteps: number;

@@ -24,6 +24,7 @@ import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-re
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { GeneralHandoffNotifierService } from '@notification/services/general-handoff-notifier.service';
 import { GroupBlacklistService } from '@biz/hosting-config/services/group-blacklist.service';
+import { BotService } from '../../bot/bot.service';
 
 /** source_channel 暂不可用，统一写 'unknown'（上游接入后再带真实渠道）。 */
 const UNKNOWN_SOURCE_CHANNEL = 'unknown';
@@ -83,6 +84,7 @@ export class AcceptInboundMessageService {
     private readonly userHostingService: UserHostingService,
     private readonly generalHandoffNotifier: GeneralHandoffNotifierService,
     private readonly groupBlacklistService: GroupBlacklistService,
+    private readonly botService: BotService,
   ) {}
 
   async execute(messageData: EnterpriseMessageCallbackDto): Promise<AcceptInboundMessageResult> {
@@ -339,7 +341,16 @@ export class AcceptInboundMessageService {
     const metadata = this.buildMessageMetadata(messageData);
     if (!metadata) return;
     try {
-      await this.longTerm.updateMessageMetadata(corpId, userId, metadata);
+      const botUserId =
+        (await this.botService.resolveBotUserIdByImBotId(messageData.imBotId)) ??
+        messageData.botUserId?.trim();
+      if (!botUserId) {
+        this.logger.warn(
+          `[新好友] 缺少稳定 botUserId，跳过长期记忆元数据开户 [${messageData.messageId}]`,
+        );
+        return;
+      }
+      await this.longTerm.updateMessageMetadata(corpId, userId, botUserId, metadata);
       this.logger.log(
         `[新好友] 已开户长期记忆元数据: userId=${userId}, chatId=${messageData.chatId}`,
       );

@@ -1,6 +1,6 @@
-import { SettlementProcessor } from '@memory/long-term/settlement.processor';
+import { ConsolidationProcessor } from '@memory/long-term/consolidation.processor';
 
-describe('SettlementProcessor', () => {
+describe('ConsolidationProcessor', () => {
   const queue = { process: jest.fn() };
   const session = { getSessionState: jest.fn() };
   const consolidation = { settleIdleSession: jest.fn() };
@@ -10,11 +10,12 @@ describe('SettlementProcessor', () => {
     corpId: 'corp-1',
     userId: 'user-1',
     sessionId: 'session-1',
+    botUserId: 'wecom-user-1',
     botImId: 'bot-1',
     activityAt: 100,
   };
 
-  let processor: SettlementProcessor;
+  let processor: ConsolidationProcessor;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -25,7 +26,7 @@ describe('SettlementProcessor', () => {
       status: 'settled',
       latestMessageAt: 100,
     });
-    processor = new SettlementProcessor(
+    processor = new ConsolidationProcessor(
       queue as never,
       session as never,
       consolidation as never,
@@ -39,7 +40,11 @@ describe('SettlementProcessor', () => {
 
   it('注册 Bull processor，并在触发时重读 facts', async () => {
     processor.onModuleInit();
-    expect(queue.process).toHaveBeenCalledWith('settle-idle-session', 2, expect.any(Function));
+    expect(queue.process).toHaveBeenCalledWith(
+      'consolidate-idle-session',
+      2,
+      expect.any(Function),
+    );
 
     await processor.process(makeJob());
     expect(session.getSessionState).toHaveBeenCalledWith('corp-1', 'user-1', 'session-1');
@@ -47,6 +52,7 @@ describe('SettlementProcessor', () => {
       'corp-1',
       'user-1',
       'session-1',
+      'wecom-user-1',
       expect.any(Object),
       'bot-1',
       expect.any(Object),
@@ -78,11 +84,10 @@ describe('SettlementProcessor', () => {
     await expect(processor.process(makeJob(2))).rejects.toThrow('db down');
     expect(incidents.notify).toHaveBeenCalledWith(
       expect.objectContaining({
-        code: 'memory.settlement_failed',
+        code: 'memory.consolidation_failed',
         source: expect.objectContaining({ subsystem: 'memory', trigger: 'queue' }),
         scope: { userId: 'user-1', sessionId: 'session-1' },
       }),
     );
   });
 });
-

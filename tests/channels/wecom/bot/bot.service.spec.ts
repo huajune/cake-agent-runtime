@@ -104,4 +104,28 @@ describe('BotService', () => {
       expect(result).toEqual(emptyResult);
     });
   });
+
+  it('resolves rotating imBotId to stable wecomUserId from configured bots', async () => {
+    mockConfigService.get.mockReturnValue('enterprise-token');
+    mockHttpService.get.mockResolvedValue({
+      groups: [
+        {
+          id: 'group-1',
+          bots: [
+            {
+              wxid: 'wxid-rotating-1',
+              wecomUserId: 'wecom-user-stable-1',
+              corpId: 'corp-1',
+            },
+          ],
+        },
+      ],
+    });
+
+    await expect(service.resolveBotUserIdByImBotId('wxid-rotating-1')).resolves.toBe(
+      'wecom-user-stable-1',
+    );
+    await expect(service.resolveCorpIdByImBotId('wxid-rotating-1')).resolves.toBe('corp-1');
+    expect(mockHttpService.get).toHaveBeenCalledTimes(1);
+  });
 });

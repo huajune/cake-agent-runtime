@@ -60,10 +60,15 @@ export function buildRecallHistoryTool(memoryService: MemoryService): ToolBuilde
       description: DESCRIPTION,
       inputSchema,
       execute: async () => {
+        const botUserId = context.session.botUserId?.trim();
+        if (!botUserId) {
+          logger.warn(`缺少稳定 botUserId，拒绝读取长期摘要: userId=${context.session.userId}`);
+          return { found: false, message: '当前账号身份未就绪，无法读取历史求职记录' };
+        }
         const sessionSummaries = await memoryService.getSessionSummaries(
           context.session.corpId,
           context.session.userId,
-          context.session.botImId,
+          botUserId,
         );
 
         if (

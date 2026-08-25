@@ -133,10 +133,11 @@ function buildActiveBookingState(bookings: ActiveBookingEntry[]): ActiveBookingS
 }
 
 /**
- * Supabase 存储后端 — 长期记忆（每用户一行）
+ * Supabase 存储后端 — 长期记忆（候选人 × 托管账号关系一行）
  *
  * 表结构：semantic_profile / semantic_job_intent / episodic_session_summaries / message_metadata / active_booking（均 jsonb）
- * 唯一约束 (corp_id, user_id)，每用户一行。
+ * 长期记忆唯一约束 (corp_id, user_id, bot_user_id)。bot_user_id 使用稳定 wecomUserId；
+ * bot_user_id IS NULL 的存量行只承载冻结旧记忆与 active_booking，不进入长期召回。
  * Redis 2h 缓存整行数据。
  * Supabase 不可用时 graceful 降级。
  */
@@ -152,8 +153,12 @@ export class SupabaseStore implements MemoryStore {
 
   // ==================== Profile 操作 ====================
 
-  async getProfile(corpId: string, userId: string): Promise<UserProfileFacts | null> {
-    const row = await this.getRow(corpId, userId);
+  async getProfile(
+    corpId: string,
+    userId: string,
+    botUserId: string,
+  ): Promise<UserProfileFacts | null> {
+    const row = await this.getRow(corpId, userId, botUserId);
     if (!row) return null;
     return normalizeProfileFacts(row.semantic_profile ?? null);
   }
@@ -170,6 +175,7 @@ export class SupabaseStore implements MemoryStore {
   async upsertProfileFacts(
     corpId: string,
     userId: string,
+    botUserId: string,
     profileFacts: Partial<UserProfileFacts>,
     metadata?: MessageMetadata,
     jobIntentFacts?: JobIntentFacts,
@@ -193,6 +199,7 @@ export class SupabaseStore implements MemoryStore {
     const { data, error } = await client.rpc('upsert_long_term_profile_facts', {
       p_corp_id: corpId,
       p_user_id: userId,
+      p_bot_user_id: botUserId,
       p_profile_facts: profileFactsJson,
       p_message_metadata: metadata ?? null,
       p_preference_facts: hasPreferences ? jobIntentFacts : null,
@@ -200,7 +207,7 @@ export class SupabaseStore implements MemoryStore {
 
     if (error) {
       this.logger.warn('[upsertProfileFacts] RPC 失败', error.message);
-      return;
+      throw error;
     }
 
     const result = data as { written_fields: string[]; skipped_fields: string[] } | null;
@@ -210,21 +217,29 @@ export class SupabaseStore implements MemoryStore {
       );
     }
 
-    await this.invalidateCache(corpId, userId);
+    await this.invalidateCache(corpId, userId, botUserId);
   }
 
   // ==================== Preference 操作 ====================
 
   /** 读取长期求职意向（consolidation 沉淀的跨会话偏好快照）。 */
-  async getPreferenceFacts(corpId: string, userId: string): Promise<JobIntentFacts | null> {
-    const row = await this.getRow(corpId, userId);
+  async getPreferenceFacts(
+    corpId: string,
+    userId: string,
+    botUserId: string,
+  ): Promise<JobIntentFacts | null> {
+    const row = await this.getRow(corpId, userId, botUserId);
     return normalizeJobIntentFacts(row?.semantic_job_intent ?? null);
   }
 
   // ==================== Summary 操作 ====================
 
-  async getSessionSummaries(corpId: string, userId: string): Promise<SessionSummaries | null> {
-    const row = await this.getRow(corpId, userId);
+  async getSessionSummaries(
+    corpId: string,
+    userId: string,
+    botUserId: string,
+  ): Promise<SessionSummaries | null> {
+    const row = await this.getRow(corpId, userId, botUserId);
     return normalizeSessionSummaries(
       (row?.episodic_session_summaries as SessionSummaries | null) ?? null,
     );
@@ -240,6 +255,7 @@ export class SupabaseStore implements MemoryStore {
   async appendSummary(
     corpId: string,
     userId: string,
+    botUserId: string,
     entry: SummaryEntry,
     options?: {
       lastSettledMessageAt?: string | null;
@@ -260,6 +276,7 @@ export class SupabaseStore implements MemoryStore {
     const { data: rpcResult, error } = await client.rpc('append_long_term_summary_atomic', {
       p_corp_id: corpId,
       p_user_id: userId,
+      p_bot_user_id: botUserId,
       p_entry: entry,
       p_last_settled_message_at: options?.lastSettledMessageAt ?? null,
       p_max_recent: MAX_RECENT_SUMMARIES,
@@ -268,21 +285,21 @@ export class SupabaseStore implements MemoryStore {
 
     if (error) {
       this.logger.warn('[appendSummary] RPC 失败，降级到应用层写入', error.message);
-      await this.appendSummaryFallback(corpId, userId, entry, options);
+      await this.appendSummaryFallback(corpId, userId, botUserId, entry, options);
       return;
     }
 
-    await this.invalidateCache(corpId, userId);
+    await this.invalidateCache(corpId, userId, botUserId);
 
     const result = rpcResult as { overflow: SummaryEntry[]; recentCount: number } | null;
     if (result?.overflow?.length && options?.compressArchive) {
       try {
-        const sessionSummaries = await this.getSessionSummaries(corpId, userId);
+        const sessionSummaries = await this.getSessionSummaries(corpId, userId, botUserId);
         const archive = await options.compressArchive(
           result.overflow,
           sessionSummaries?.archive ?? null,
         );
-        await this.upsertRow(corpId, userId, {
+        await this.upsertRow(corpId, userId, botUserId, {
           episodic_session_summaries: {
             ...(sessionSummaries ?? { recent: [], lastSettledMessageAt: null }),
             archive,
@@ -298,6 +315,7 @@ export class SupabaseStore implements MemoryStore {
   private async appendSummaryFallback(
     corpId: string,
     userId: string,
+    botUserId: string,
     entry: SummaryEntry,
     options?: {
       lastSettledMessageAt?: string | null;
@@ -308,7 +326,7 @@ export class SupabaseStore implements MemoryStore {
       ) => Promise<string>;
     },
   ): Promise<void> {
-    const existing = await this.getSessionSummaries(corpId, userId);
+    const existing = await this.getSessionSummaries(corpId, userId, botUserId);
     const data: SessionSummaries = existing ?? {
       recent: [],
       archive: null,
@@ -339,12 +357,13 @@ export class SupabaseStore implements MemoryStore {
       }
     }
 
-    await this.upsertRow(corpId, userId, { episodic_session_summaries: data });
+    await this.upsertRow(corpId, userId, botUserId, { episodic_session_summaries: data });
   }
 
   async markLastSettledMessageAt(
     corpId: string,
     userId: string,
+    botUserId: string,
     lastSettledMessageAt: string,
     sessionId?: string | null,
   ): Promise<void> {
@@ -354,17 +373,18 @@ export class SupabaseStore implements MemoryStore {
       const { error } = await client.rpc('mark_long_term_settled_boundary', {
         p_corp_id: corpId,
         p_user_id: userId,
+        p_bot_user_id: botUserId,
         p_last_settled_message_at: lastSettledMessageAt,
         p_session_id: sessionId ?? null,
       });
       if (!error) {
-        await this.invalidateCache(corpId, userId);
+        await this.invalidateCache(corpId, userId, botUserId);
         return;
       }
       this.logger.warn('[markLastSettledMessageAt] RPC 失败，降级到应用层写入', error.message);
     }
 
-    const existing = await this.getSessionSummaries(corpId, userId);
+    const existing = await this.getSessionSummaries(corpId, userId, botUserId);
     const data: SessionSummaries = existing ?? {
       recent: [],
       archive: null,
@@ -378,18 +398,19 @@ export class SupabaseStore implements MemoryStore {
         [sessionId]: lastSettledMessageAt,
       };
     }
-    await this.upsertRow(corpId, userId, { episodic_session_summaries: data });
+    await this.upsertRow(corpId, userId, botUserId, { episodic_session_summaries: data });
   }
 
   async upsertMessageMetadata(
     corpId: string,
     userId: string,
+    botUserId: string,
     metadata: MessageMetadata,
   ): Promise<void> {
     const cleanMetadata = this.normalizeMessageMetadata(metadata);
     if (!cleanMetadata) return;
 
-    await this.upsertRow(corpId, userId, { message_metadata: cleanMetadata });
+    await this.upsertRow(corpId, userId, botUserId, { message_metadata: cleanMetadata });
   }
 
   // ==================== active_booking 操作 ====================
@@ -401,7 +422,7 @@ export class SupabaseStore implements MemoryStore {
    * 语义关系只存在于实现约定里。需要"最近一笔"的调用方直接取 [0]。
    */
   async getActiveBookings(corpId: string, userId: string): Promise<ActiveBookingEntry[]> {
-    const row = await this.getRow(corpId, userId);
+    const row = await this.getActiveBookingRow(corpId, userId);
     return normalizeActiveBookings(row?.active_booking ?? null);
   }
 
@@ -422,7 +443,9 @@ export class SupabaseStore implements MemoryStore {
       activeBooking,
       ...existing.filter((booking) => booking.work_order_id !== workOrderId),
     ].slice(0, 10);
-    await this.upsertRow(corpId, userId, { active_booking: buildActiveBookingState(bookings) });
+    await this.upsertActiveBookingRow(corpId, userId, {
+      active_booking: buildActiveBookingState(bookings),
+    });
   }
 
   /**
@@ -439,18 +462,21 @@ export class SupabaseStore implements MemoryStore {
       const bookings = await this.getActiveBookings(corpId, userId);
       const remaining = bookings.filter((booking) => booking.work_order_id !== expectedWorkOrderId);
       if (remaining.length === bookings.length) return;
-      await this.upsertRow(corpId, userId, { active_booking: buildActiveBookingState(remaining) });
+      await this.upsertActiveBookingRow(corpId, userId, {
+        active_booking: buildActiveBookingState(remaining),
+      });
       return;
     }
 
-    await this.upsertRow(corpId, userId, { active_booking: null });
+    await this.upsertActiveBookingRow(corpId, userId, { active_booking: null });
   }
 
   // ==================== 旧接口（v1 兼容，Phase 6 删除） ====================
 
   async get(key: string): Promise<MemoryEntry | null> {
-    const { corpId, userId } = this.parseProfileKey(key);
-    const profile = await this.getProfile(corpId, userId);
+    const { corpId, userId, botUserId } = this.parseProfileKey(key);
+    if (!botUserId) return null;
+    const profile = await this.getProfile(corpId, userId, botUserId);
     if (!profile) return null;
     return {
       key,
@@ -460,23 +486,30 @@ export class SupabaseStore implements MemoryStore {
   }
 
   async set(key: string, content: Record<string, unknown>): Promise<void> {
-    const { corpId, userId } = this.parseProfileKey(key);
+    const { corpId, userId, botUserId } = this.parseProfileKey(key);
+    if (!botUserId) return;
     const profileFacts = this.buildProfileFactsFromPlain(content as Partial<UserProfile>, {
       source: 'system',
       confidence: 'medium',
       evidence: '外部补充字段写入长期档案',
     });
-    await this.upsertProfileFacts(corpId, userId, profileFacts);
+    await this.upsertProfileFacts(corpId, userId, botUserId, profileFacts);
   }
 
   async del(key: string): Promise<boolean> {
-    const { corpId, userId } = this.parseProfileKey(key);
-    await this.invalidateCache(corpId, userId);
+    const { corpId, userId, botUserId } = this.parseProfileKey(key);
+    if (!botUserId) return false;
+    await this.invalidateCache(corpId, userId, botUserId);
 
     const client = this.supabase.getSupabaseClient();
     if (!client) return true;
 
-    const { error } = await client.from(TABLE).delete().eq('corp_id', corpId).eq('user_id', userId);
+    const { error } = await client
+      .from(TABLE)
+      .delete()
+      .eq('corp_id', corpId)
+      .eq('user_id', userId)
+      .eq('bot_user_id', botUserId);
 
     if (error) {
       this.logger.warn('删除长期记忆失败', error.message);
@@ -487,9 +520,13 @@ export class SupabaseStore implements MemoryStore {
 
   // ==================== 内部方法 ====================
 
-  private async getRow(corpId: string, userId: string): Promise<AgentLongTermMemoryRow | null> {
+  private async getRow(
+    corpId: string,
+    userId: string,
+    botUserId: string,
+  ): Promise<AgentLongTermMemoryRow | null> {
     // Redis 缓存优先
-    const cacheKey = this.cacheKey(corpId, userId);
+    const cacheKey = this.cacheKey(corpId, userId, botUserId);
     const cached = await this.redis.get<AgentLongTermMemoryRow>(cacheKey);
     if (cached) return cached;
 
@@ -504,6 +541,7 @@ export class SupabaseStore implements MemoryStore {
       .select('*')
       .eq('corp_id', corpId)
       .eq('user_id', userId)
+      .eq('bot_user_id', botUserId)
       .maybeSingle();
 
     if (error) {
@@ -524,6 +562,7 @@ export class SupabaseStore implements MemoryStore {
   private async upsertRow(
     corpId: string,
     userId: string,
+    botUserId: string,
     fields: Record<string, unknown>,
   ): Promise<void> {
     const client = this.supabase.getSupabaseClient();
@@ -532,16 +571,92 @@ export class SupabaseStore implements MemoryStore {
       return;
     }
 
-    const { error } = await client
+    const { error } = await client.from(TABLE).upsert(
+      {
+        corp_id: corpId,
+        user_id: userId,
+        bot_user_id: botUserId,
+        ...fields,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'corp_id,user_id,bot_user_id' },
+    );
+
+    if (error) {
+      this.logger.warn('upsert 长期记忆失败', error.message);
+      throw error;
+    }
+
+    await this.invalidateCache(corpId, userId, botUserId);
+  }
+
+  /**
+   * active_booking 冻结区继续按 (corpId, userId) 读写 bot_user_id IS NULL 的兼容行。
+   * bot 关系行绝不复制/承载该列，避免账号维改造改变工单指针的共享口径。
+   */
+  private async getActiveBookingRow(
+    corpId: string,
+    userId: string,
+  ): Promise<AgentLongTermMemoryRow | null> {
+    const cacheKey = `active-booking:${corpId}:${userId}`;
+    const cached = await this.redis.get<AgentLongTermMemoryRow>(cacheKey);
+    if (cached) return cached;
+
+    const client = this.supabase.getSupabaseClient();
+    if (!client) return null;
+    const { data, error } = await client
       .from(TABLE)
-      .upsert(
-        { corp_id: corpId, user_id: userId, ...fields, updated_at: new Date().toISOString() },
-        { onConflict: 'corp_id,user_id' },
-      );
+      .select('*')
+      .eq('corp_id', corpId)
+      .eq('user_id', userId)
+      .is('bot_user_id', null)
+      .maybeSingle();
+    if (error) {
+      this.logger.warn('查询 active_booking 兼容行失败', error.message);
+      return null;
+    }
+    if (!data) return null;
 
-    if (error) this.logger.warn('upsert 长期记忆失败', error.message);
+    const row = data as AgentLongTermMemoryRow;
+    await this.redis
+      .setex(cacheKey, this.config.longTermCacheTtl, row)
+      .catch((error_) => this.logger.warn('active_booking 缓存回填失败', error_));
+    return row;
+  }
 
-    await this.invalidateCache(corpId, userId);
+  private async upsertActiveBookingRow(
+    corpId: string,
+    userId: string,
+    fields: Record<string, unknown>,
+  ): Promise<void> {
+    const client = this.supabase.getSupabaseClient();
+    if (!client) return;
+
+    const existing = await this.getActiveBookingRow(corpId, userId);
+    const payload = { ...fields, updated_at: new Date().toISOString() };
+    let error: { code?: string; message: string } | null = null;
+
+    if (existing) {
+      ({ error } = await client.from(TABLE).update(payload).eq('id', existing.id));
+    } else {
+      ({ error } = await client.from(TABLE).insert({
+        corp_id: corpId,
+        user_id: userId,
+        bot_user_id: null,
+        ...payload,
+      }));
+      if (error?.code === '23505') {
+        ({ error } = await client
+          .from(TABLE)
+          .update(payload)
+          .eq('corp_id', corpId)
+          .eq('user_id', userId)
+          .is('bot_user_id', null));
+      }
+    }
+
+    if (error) this.logger.warn('upsert active_booking 失败', error.message);
+    await this.redis.del(`active-booking:${corpId}:${userId}`).catch(() => {});
   }
 
   private normalizeMessageMetadata(metadata: MessageMetadata): MessageMetadata | null {
@@ -556,12 +671,12 @@ export class SupabaseStore implements MemoryStore {
     return Object.keys(clean).length > 0 ? clean : null;
   }
 
-  private async invalidateCache(corpId: string, userId: string): Promise<void> {
-    await this.redis.del(this.cacheKey(corpId, userId)).catch(() => {});
+  private async invalidateCache(corpId: string, userId: string, botUserId: string): Promise<void> {
+    await this.redis.del(this.cacheKey(corpId, userId, botUserId)).catch(() => {});
   }
 
-  private cacheKey(corpId: string, userId: string): string {
-    return `long-term:${corpId}:${userId}`;
+  private cacheKey(corpId: string, userId: string, botUserId: string): string {
+    return `long-term:${corpId}:${userId}:${botUserId}`;
   }
 
   private buildProfileFactsFromPlain(
@@ -586,8 +701,12 @@ export class SupabaseStore implements MemoryStore {
     return facts;
   }
 
-  private parseProfileKey(key: string): { corpId: string; userId: string } {
+  private parseProfileKey(key: string): { corpId: string; userId: string; botUserId: string } {
     const parts = key.replace(/^(profile|long-term):/, '').split(':');
-    return { corpId: parts[0] ?? '', userId: parts[1] ?? '' };
+    return {
+      corpId: parts[0] ?? '',
+      userId: parts[1] ?? '',
+      botUserId: parts.slice(2).join(':'),
+    };
   }
 }

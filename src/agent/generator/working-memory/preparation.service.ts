@@ -168,6 +168,7 @@ export class PreparationService {
           shortTermEndTimeInclusive: params.shortTermEndTimeInclusive,
           enrichmentIdentity: this.buildEnrichmentIdentity(params),
           turnHints,
+          botUserId: params.botUserId,
         }),
       ),
       // [当前预约信息] 由 active_booking 指针 + 海绵工单实时状态渲染（理由见 loadBookingContext）。
@@ -326,6 +327,7 @@ export class PreparationService {
       corpId,
       userId,
       sessionId,
+      botUserId: params.botUserId,
       botImId: params.botImId,
       maxSteps,
       entryStage,

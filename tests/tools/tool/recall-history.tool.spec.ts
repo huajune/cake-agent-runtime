@@ -8,7 +8,12 @@ describe('buildRecallHistoryTool', () => {
   };
 
   const mockContext: ToolBuildContext = createToolContext({
-    session: { userId: 'user-123', corpId: 'corp-456', sessionId: 'sess-789' },
+    session: {
+      userId: 'user-123',
+      corpId: 'corp-456',
+      sessionId: 'sess-789',
+      botUserId: 'wecom-user-1',
+    },
   });
 
   beforeEach(() => jest.clearAllMocks());
@@ -29,6 +34,11 @@ describe('buildRecallHistoryTool', () => {
     const result = await (builtTool as any).execute({});
 
     expect(result).toEqual({ found: false, message: '该用户无历史求职记录' });
+    expect(mockMemoryService.getSessionSummaries).toHaveBeenCalledWith(
+      'corp-456',
+      'user-123',
+      'wecom-user-1',
+    );
   });
 
   it('should return formatted summaries when available', async () => {

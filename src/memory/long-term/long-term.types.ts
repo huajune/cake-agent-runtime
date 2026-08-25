@@ -316,6 +316,8 @@ export interface AgentLongTermMemoryRow {
   id: string;
   corp_id: string;
   user_id: string;
+  /** 托管账号稳定 wecomUserId；null 仅用于冻结存量与 active_booking 兼容行。 */
+  bot_user_id?: string | null;
   semantic_profile?: UserProfileFacts | null;
   semantic_job_intent?: JobIntentFacts | null;
   episodic_session_summaries?: SessionSummaries | null;

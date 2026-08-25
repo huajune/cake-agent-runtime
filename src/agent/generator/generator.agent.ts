@@ -59,7 +59,14 @@ import type {
 
 type TurnEndLifecycleContext = Pick<
   Parameters<MemoryService['onTurnEnd']>[0],
-  'corpId' | 'userId' | 'sessionId' | 'messageId' | 'botImId' | 'normalizedMessages' | 'contactName'
+  | 'corpId'
+  | 'userId'
+  | 'sessionId'
+  | 'messageId'
+  | 'botUserId'
+  | 'botImId'
+  | 'normalizedMessages'
+  | 'contactName'
 > & { ledger: TurnLedger };
 export type {
   GeneratorInputMessage,
@@ -363,6 +370,7 @@ export class GeneratorAgent {
         userId: ctx.userId,
         sessionId: ctx.sessionId,
         messageId: ctx.messageId,
+        botUserId: ctx.botUserId,
         botImId: ctx.botImId,
         normalizedMessages: ctx.normalizedMessages,
         candidatePool: ledger.jobs.fetchedJobs.length > 0 ? [...ledger.jobs.fetchedJobs] : null,

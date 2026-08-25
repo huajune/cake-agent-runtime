@@ -3,26 +3,28 @@ import { Injectable, Logger } from '@nestjs/common';
 import type { Queue } from 'bull';
 import { MemoryConfig } from '../memory.config';
 
-export const MEMORY_SETTLEMENT_QUEUE = 'memory-settlement';
-export const MEMORY_SETTLEMENT_JOB = 'settle-idle-session';
+export const MEMORY_CONSOLIDATION_QUEUE = 'memory-consolidation';
+export const MEMORY_CONSOLIDATION_JOB = 'consolidate-idle-session';
 
-export interface MemorySettlementJob {
+export interface MemoryConsolidationJob {
   corpId: string;
   userId: string;
   sessionId: string;
-  /** 当前托管账号标识；M5 bot 维批会替换为查证后的稳定维度。 */
+  /** 长期记忆关系维：企业托管账号稳定 wecomUserId。 */
+  botUserId?: string;
+  /** 当前托管账号 wxid，仅保留为事实血缘/排障字段，不参与主键。 */
   botImId?: string;
   /** 注册/刷新任务时的回合结束时间，用于识别在途旧任务。 */
   activityAt: number;
 }
 
 @Injectable()
-export class SettlementSchedulerService {
-  private readonly logger = new Logger(SettlementSchedulerService.name);
+export class ConsolidationSchedulerService {
+  private readonly logger = new Logger(ConsolidationSchedulerService.name);
 
   constructor(
-    @InjectQueue(MEMORY_SETTLEMENT_QUEUE)
-    private readonly queue: Queue<MemorySettlementJob>,
+    @InjectQueue(MEMORY_CONSOLIDATION_QUEUE)
+    private readonly queue: Queue<MemoryConsolidationJob>,
     private readonly config: MemoryConfig,
   ) {}
 
@@ -31,7 +33,7 @@ export class SettlementSchedulerService {
    * 极小概率遇到旧任务已 active 时，另排一个带 activityAt 的接替任务，旧任务会在
    * 到点闲置校验中 fail closed。
    */
-  async schedule(input: MemorySettlementJob, delayMs?: number): Promise<string> {
+  async schedule(input: MemoryConsolidationJob, delayMs?: number): Promise<string> {
     const baseJobId = this.buildJobId(input.sessionId);
     let jobId = baseJobId;
     const existing = await this.queue.getJob(baseJobId).catch(() => null);
@@ -46,7 +48,7 @@ export class SettlementSchedulerService {
     }
 
     const delay = Math.max(0, delayMs ?? this.config.consolidationGapSeconds * 1000);
-    await this.queue.add(MEMORY_SETTLEMENT_JOB, input, {
+    await this.queue.add(MEMORY_CONSOLIDATION_JOB, input, {
       jobId,
       delay,
       attempts: 3,
@@ -56,12 +58,12 @@ export class SettlementSchedulerService {
     });
 
     this.logger.debug(
-      `[memory-settlement] 已排程: sessionId=${input.sessionId}, delayMs=${delay}, jobId=${jobId}`,
+      `[memory-consolidation] 已排程: sessionId=${input.sessionId}, delayMs=${delay}, jobId=${jobId}`,
     );
     return jobId;
   }
 
   private buildJobId(sessionId: string): string {
-    return `memory-settlement:${sessionId}`;
+    return `memory-consolidation:${sessionId}`;
   }
 }

@@ -467,6 +467,10 @@ export class ResetChatSessionRequestDto {
   @IsString()
   userId: string;
 
+  @ApiProperty({ description: '当前测试托管账号的稳定企微 userId（长期记忆关系维）' })
+  @IsString()
+  botUserId: string;
+
   @ApiPropertyOptional({
     description: '企业 ID，缺省使用 test',
     default: 'test',

@@ -23,8 +23,8 @@ describe('MemoryLifecycleService', () => {
     applyTurnResolutions: jest.fn().mockResolvedValue({ changed: false, initialized: false }),
   };
 
-  const mockSettlementScheduler = {
-    schedule: jest.fn().mockResolvedValue('memory-settlement:sess-1'),
+  const mockConsolidationScheduler = {
+    schedule: jest.fn().mockResolvedValue('memory-consolidation:sess-1'),
   };
 
   const mockWorkbench = {
@@ -60,7 +60,9 @@ describe('MemoryLifecycleService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockShortTerm.lastLoadError = null;
-    mockSettlementScheduler.schedule.mockResolvedValue('memory-settlement:sess-1');
+    mockConsolidationScheduler.schedule.mockResolvedValue('memory-consolidation:sess-1');
+    mockLongTerm.getProfile.mockResolvedValue(null);
+    mockLongTerm.getPreferences.mockResolvedValue(null);
     mockSessionService.getSessionState.mockResolvedValue({
       facts: null,
       lastCandidatePool: null,
@@ -77,7 +79,7 @@ describe('MemoryLifecycleService', () => {
       mockShortTerm as never,
       mockWorkbench as never,
       mockLongTerm as never,
-      mockSettlementScheduler as never,
+      mockConsolidationScheduler as never,
       mockSessionService as never,
       mockSponge as never,
       mockEnrichment as never,
@@ -117,12 +119,14 @@ describe('MemoryLifecycleService', () => {
       },
     });
 
-    const ctx = await service.onTurnStart('corp-1', 'user-1', 'sess-1');
+    const ctx = await service.onTurnStart('corp-1', 'user-1', 'sess-1', undefined, {
+      botUserId: 'bot-user-1',
+    });
 
     expect(mockShortTerm.getMessages).toHaveBeenCalledWith('sess-1');
     expect(mockSessionService.getSessionState).toHaveBeenCalledWith('corp-1', 'user-1', 'sess-1');
     expect(mockWorkbench.getStage).toHaveBeenCalledWith('corp-1', 'user-1', 'sess-1');
-    expect(mockLongTerm.getProfile).toHaveBeenCalledWith('corp-1', 'user-1');
+    expect(mockLongTerm.getProfile).toHaveBeenCalledWith('corp-1', 'user-1', 'bot-user-1');
     expect(ctx.sessionMemory).not.toBeNull();
     expect(ctx.turnHints).toBeNull();
     expect(ctx.shortTerm.messageWindow).toEqual([{ role: 'user', content: 'hello' }]);
@@ -151,131 +155,38 @@ describe('MemoryLifecycleService', () => {
     );
   });
 
-  describe('cross-conversation origin detection', () => {
-    const profileFromOtherChat = {
+  it('长期记忆按稳定 botUserId 直接查询关系行，不再做跨会话来源研判', async () => {
+    mockShortTerm.getMessages.mockResolvedValue([{ role: 'user', content: 'hi' }]);
+    mockWorkbench.getStage.mockResolvedValue({ currentStage: null });
+    mockLongTerm.getProfile.mockResolvedValue({
       name: {
-        value: '张三',
-        confidence: 'high' as const,
-        source: 'archive' as const,
-        evidence: '会话沉淀提取',
-        updatedAt: '2026-06-08T10:00:00.000Z',
-        originSessionId: 'chat-A',
-        originBotId: 'bot-wxid-A',
+        value: '兮兮',
+        confidence: 'high',
+        source: 'system',
+        evidence: 'booking',
+        updatedAt: '2026-08-20T10:00:00.000Z',
       },
-    };
-
-    beforeEach(() => {
-      mockShortTerm.getMessages.mockResolvedValue([{ role: 'user', content: 'hi' }]);
-      mockWorkbench.getStage.mockResolvedValue({
-        currentStage: 'job_consultation',
-        fromStage: null,
-        advancedAt: null,
-        reason: null,
-      });
     });
 
-    it('flags fromOtherConversation when a fresh chat recalls facts settled by another session', async () => {
-      mockLongTerm.getProfile.mockResolvedValue(profileFromOtherChat);
-
-      const ctx = await service.onTurnStart('corp-1', 'user-1', 'sess-NEW');
-
-      expect(ctx.longTerm.origin?.fromOtherConversation).toBe(true);
+    const ctx = await service.onTurnStart('corp-1', 'user-1', 'session-B', '继续', {
+      botUserId: 'wecom-user-B',
     });
 
-    it('does NOT flag when the current session already has its own session memory', async () => {
-      mockSessionService.getSessionState.mockResolvedValue({
-        facts: { interview_info: { name: '张三' }, preferences: {}, reasoning: '' },
-        lastCandidatePool: null,
-        presentedJobs: null,
-        currentFocusJob: null,
-      });
-      mockLongTerm.getProfile.mockResolvedValue(profileFromOtherChat);
+    expect(mockLongTerm.getProfile).toHaveBeenCalledWith('corp-1', 'user-1', 'wecom-user-B');
+    expect(mockLongTerm.getPreferences).toHaveBeenCalledWith('corp-1', 'user-1', 'wecom-user-B');
+    expect(mockLongTerm.getSessionSummaries).not.toHaveBeenCalled();
+    expect(ctx.longTerm.semantic.profile?.name).toEqual(expect.objectContaining({ value: '兮兮' }));
+  });
 
-      const ctx = await service.onTurnStart('corp-1', 'user-1', 'sess-NEW');
+  it('缺少稳定 botUserId 时长期召回 fail-closed', async () => {
+    mockShortTerm.getMessages.mockResolvedValue([{ role: 'user', content: 'hi' }]);
+    mockWorkbench.getStage.mockResolvedValue({ currentStage: null });
 
-      expect(ctx.longTerm.origin).toBeUndefined();
-    });
+    const ctx = await service.onTurnStart('corp-1', 'user-1', 'session-B');
 
-    it('does NOT flag when recalled facts originated from the current session', async () => {
-      mockLongTerm.getProfile.mockResolvedValue({
-        name: { ...profileFromOtherChat.name, originSessionId: 'sess-NEW' },
-      });
-
-      const ctx = await service.onTurnStart('corp-1', 'user-1', 'sess-NEW');
-
-      expect(ctx.longTerm.origin).toBeUndefined();
-    });
-
-    it('falls back to consolidation boundaries when facts lack origin lineage (legacy data)', async () => {
-      mockLongTerm.getProfile.mockResolvedValue({
-        name: {
-          value: '张三',
-          confidence: 'high',
-          source: 'system',
-          evidence: '历史写入（无血缘）',
-          updatedAt: '2026-06-05T10:00:00.000Z',
-        },
-      });
-      mockLongTerm.getSessionSummaries.mockResolvedValue({
-        recent: [],
-        archive: null,
-        lastSettledMessageAt: '2026-06-08T10:00:00.000Z',
-        lastSettledBySession: { 'chat-A': '2026-06-08T10:00:00.000Z' },
-      });
-
-      const ctx = await service.onTurnStart('corp-1', 'user-1', 'sess-NEW');
-
-      expect(ctx.longTerm.origin?.fromOtherConversation).toBe(true);
-    });
-
-    it('does NOT flag when there is no long-term memory at all', async () => {
-      mockLongTerm.getProfile.mockResolvedValue(null);
-
-      const ctx = await service.onTurnStart('corp-1', 'user-1', 'sess-NEW');
-
-      expect(ctx.longTerm.origin).toBeUndefined();
-    });
-
-    it('有 bot 上下文时只召回同账号血缘事实，存量无血缘也 fail-closed', async () => {
-      mockLongTerm.getProfile.mockResolvedValue({
-        name: {
-          value: '兮兮',
-          confidence: 'high',
-          source: 'system',
-          evidence: 'booking A',
-          updatedAt: '2026-08-20T10:00:00.000Z',
-          originSessionId: 'session-A',
-          originBotId: 'bot-A',
-        },
-        phone: {
-          value: '18271421690',
-          confidence: 'high',
-          source: 'system',
-          evidence: 'booking B',
-          updatedAt: '2026-08-20T10:00:00.000Z',
-          originSessionId: 'session-B',
-          originBotId: 'bot-B',
-        },
-        age: {
-          value: '25',
-          confidence: 'high',
-          source: 'system',
-          evidence: 'legacy without bot lineage',
-          updatedAt: '2026-08-20T10:00:00.000Z',
-        },
-      });
-
-      const ctx = await service.onTurnStart('corp-1', 'user-1', 'session-B', '继续', {
-        enrichmentIdentity: { imBotId: 'bot-B' },
-      });
-
-      expect(ctx.longTerm.semantic.profile?.name).toBeNull();
-      expect(ctx.longTerm.semantic.profile?.age).toBeNull();
-      expect(ctx.longTerm.semantic.profile?.phone).toEqual(
-        expect.objectContaining({ value: '18271421690', originBotId: 'bot-B' }),
-      );
-      expect(mockLongTerm.getSessionSummaries).toHaveBeenCalledWith('corp-1', 'user-1', 'bot-B');
-    });
+    expect(mockLongTerm.getProfile).not.toHaveBeenCalled();
+    expect(mockLongTerm.getPreferences).not.toHaveBeenCalled();
+    expect(ctx.longTerm.semantic).toEqual({ profile: null, jobIntent: null });
   });
 
   it('should forward short-term cutoff on turn start', async () => {
@@ -520,6 +431,7 @@ describe('MemoryLifecycleService', () => {
         corpId: 'corp-1',
         userId: 'user-1',
         sessionId: 'sess-1',
+        botUserId: 'wecom-user-1',
         botImId: 'bot-wxid-1',
         turnHints: null,
         laborFormIntent: { kind: 'ignore' },
@@ -553,11 +465,12 @@ describe('MemoryLifecycleService', () => {
     );
 
     expect(mockSessionService.getSessionState).toHaveBeenCalledWith('corp-1', 'user-1', 'sess-1');
-    expect(mockSettlementScheduler.schedule).toHaveBeenCalledWith(
+    expect(mockConsolidationScheduler.schedule).toHaveBeenCalledWith(
       expect.objectContaining({
         corpId: 'corp-1',
         userId: 'user-1',
         sessionId: 'sess-1',
+        botUserId: 'wecom-user-1',
         botImId: 'bot-wxid-1',
         activityAt: expect.any(Number),
       }),

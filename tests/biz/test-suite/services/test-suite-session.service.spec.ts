@@ -15,20 +15,36 @@ describe('TestSuiteSessionService', () => {
     memoryService.clearLongTermMemory.mockResolvedValue({ profile: true });
 
     await expect(
-      service.resetChatSession({ corpId: ' corp-1 ', userId: ' user-1 ' }),
+      service.resetChatSession({
+        corpId: ' corp-1 ',
+        userId: ' user-1 ',
+        botUserId: ' wecom-user-1 ',
+      }),
     ).resolves.toEqual({
       success: true,
       data: { corpId: 'corp-1', userId: 'user-1', cleared: { profile: true } },
     });
-    expect(memoryService.clearLongTermMemory).toHaveBeenCalledWith('corp-1', 'user-1');
+    expect(memoryService.clearLongTermMemory).toHaveBeenCalledWith(
+      'corp-1',
+      'user-1',
+      'wecom-user-1',
+    );
   });
 
   it('defaults corpId to test and rejects blank userId', async () => {
     memoryService.clearLongTermMemory.mockResolvedValue(1);
 
-    await expect(service.resetChatSession({ userId: 'user-1' })).resolves.toMatchObject({
+    await expect(
+      service.resetChatSession({ userId: 'user-1', botUserId: 'wecom-user-1' }),
+    ).resolves.toMatchObject({
       data: { corpId: 'test', userId: 'user-1' },
     });
-    await expect(service.resetChatSession({ userId: '   ' })).rejects.toThrow(BadRequestException);
+    await expect(
+      service.resetChatSession({ userId: '   ', botUserId: 'wecom-user-1' }),
+    ).rejects.toThrow(BadRequestException);
+
+    await expect(
+      service.resetChatSession({ userId: 'user-1', botUserId: '   ' }),
+    ).rejects.toThrow(BadRequestException);
   });
 });

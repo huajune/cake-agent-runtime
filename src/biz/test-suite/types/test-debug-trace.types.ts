@@ -103,6 +103,7 @@ export interface TestRuntimeScope {
   corpId: string;
   userId: string;
   sessionId: string;
+  botUserId?: string;
   callerKind: string;
   strategySource?: string;
   scenario?: string;

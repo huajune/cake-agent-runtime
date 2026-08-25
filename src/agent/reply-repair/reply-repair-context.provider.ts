@@ -71,6 +71,7 @@ export class ReplyRepairContextProvider {
     corpId: string;
     userId: string;
     sessionId: string;
+    botUserId?: string;
     currentUserMessage?: string;
     shortTermEndTimeInclusive?: number;
   }): Promise<ReplyRepairContext> {
@@ -82,6 +83,7 @@ export class ReplyRepairContextProvider {
       {
         includeShortTerm: true,
         shortTermEndTimeInclusive: input.shortTermEndTimeInclusive,
+        botUserId: input.botUserId,
       },
     );
 

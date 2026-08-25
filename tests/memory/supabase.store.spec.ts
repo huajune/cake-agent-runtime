@@ -3,6 +3,7 @@ import { UserProfileFactValueSchema } from '@memory/long-term/long-term.types';
 import type { CandidateFactProducer } from '@resolution/evidence/claim.types';
 
 describe('SupabaseStore', () => {
+  const BOT_USER_ID = 'wecom-user-1';
   const mockRedis = {
     get: jest.fn(),
     set: jest.fn().mockResolvedValue(undefined),
@@ -13,17 +14,15 @@ describe('SupabaseStore', () => {
   const mockMaybeSingle = jest.fn();
   const mockEqChain = {
     eq: jest.fn().mockReturnThis(),
+    is: jest.fn().mockReturnThis(),
     maybeSingle: mockMaybeSingle,
     order: jest.fn().mockReturnThis(),
     limit: jest.fn().mockReturnThis(),
   };
   const mockSelect = jest.fn().mockReturnValue(mockEqChain);
   const mockUpsert = jest.fn().mockResolvedValue({ error: null });
-  const mockDelete = jest.fn().mockReturnValue({
-    eq: jest.fn().mockReturnValue({
-      eq: jest.fn().mockResolvedValue({ error: null }),
-    }),
-  });
+  const mockDeleteChain = { eq: jest.fn().mockReturnThis(), error: null };
+  const mockDelete = jest.fn().mockReturnValue(mockDeleteChain);
   const mockRpc = jest.fn();
 
   const mockSupabaseClient = {
@@ -108,9 +107,10 @@ describe('SupabaseStore', () => {
       };
       mockRedis.get.mockResolvedValue(cached);
 
-      const result = await store.getProfile('corp1', 'user1');
+      const result = await store.getProfile('corp1', 'user1', BOT_USER_ID);
 
       expect(result).toEqual(cached.semantic_profile);
+      expect(mockRedis.get).toHaveBeenCalledWith(`long-term:corp1:user1:${BOT_USER_ID}`);
     });
 
     it('should fallback to Supabase on cache miss', async () => {
@@ -130,10 +130,11 @@ describe('SupabaseStore', () => {
         error: null,
       });
 
-      const result = await store.getProfile('corp1', 'user1');
+      const result = await store.getProfile('corp1', 'user1', BOT_USER_ID);
 
       expect(result?.name?.value).toBe('张三');
       expect(result?.phone?.value).toBe('138');
+      expect(mockEqChain.eq).toHaveBeenCalledWith('bot_user_id', BOT_USER_ID);
       expect(mockRedis.setex).toHaveBeenCalled();
     });
 
@@ -141,7 +142,7 @@ describe('SupabaseStore', () => {
       mockRedis.get.mockResolvedValue(null);
       mockSupabaseService.getSupabaseClient.mockReturnValue(null);
 
-      const result = await store.getProfile('corp1', 'user1');
+      const result = await store.getProfile('corp1', 'user1', BOT_USER_ID);
 
       expect(result).toBeNull();
     });
@@ -152,7 +153,7 @@ describe('SupabaseStore', () => {
       mockRedis.get.mockResolvedValue(null);
       mockMaybeSingle.mockResolvedValue({ data: null, error: null });
 
-      const result = await store.getSessionSummaries('corp1', 'user1');
+      const result = await store.getSessionSummaries('corp1', 'user1', BOT_USER_ID);
 
       expect(result).toBeNull();
     });
@@ -170,7 +171,7 @@ describe('SupabaseStore', () => {
         error: null,
       });
 
-      const result = await store.getSessionSummaries('corp1', 'user1');
+      const result = await store.getSessionSummaries('corp1', 'user1', BOT_USER_ID);
 
       expect(result).toEqual({
         ...sessionSummaries,
@@ -194,19 +195,20 @@ describe('SupabaseStore', () => {
         endTime: '2026-05-27T10:05:00.000Z',
       };
 
-      await store.appendSummary('corp1', 'user1', entry, {
+      await store.appendSummary('corp1', 'user1', BOT_USER_ID, entry, {
         lastSettledMessageAt: entry.endTime,
       });
 
       expect(mockRpc).toHaveBeenCalledWith('append_long_term_summary_atomic', {
         p_corp_id: 'corp1',
         p_user_id: 'user1',
+        p_bot_user_id: BOT_USER_ID,
         p_entry: entry,
         p_last_settled_message_at: entry.endTime,
         p_max_recent: 5,
         p_session_id: null,
       });
-      expect(mockRedis.del).toHaveBeenCalledWith('long-term:corp1:user1');
+      expect(mockRedis.del).toHaveBeenCalledWith(`long-term:corp1:user1:${BOT_USER_ID}`);
     });
   });
 
@@ -219,11 +221,18 @@ describe('SupabaseStore', () => {
 
       const name = profileFact('张三');
       const phone = profileFact('13800138000');
-      await store.upsertProfileFacts('corp1', 'user1', { name, phone }, { botId: 'bot-1' });
+      await store.upsertProfileFacts(
+        'corp1',
+        'user1',
+        BOT_USER_ID,
+        { name, phone },
+        { botId: 'bot-1' },
+      );
 
       expect(mockRpc).toHaveBeenCalledWith('upsert_long_term_profile_facts', {
         p_corp_id: 'corp1',
         p_user_id: 'user1',
+        p_bot_user_id: BOT_USER_ID,
         p_profile_facts: { name, phone },
         p_message_metadata: { botId: 'bot-1' },
         p_preference_facts: null,
@@ -236,13 +245,15 @@ describe('SupabaseStore', () => {
         error: null,
       });
 
-      await store.upsertProfileFacts('corp1', 'user1', { name: profileFact('张三') });
+      await store.upsertProfileFacts('corp1', 'user1', BOT_USER_ID, {
+        name: profileFact('张三'),
+      });
 
-      expect(mockRedis.del).toHaveBeenCalledWith('long-term:corp1:user1');
+      expect(mockRedis.del).toHaveBeenCalledWith(`long-term:corp1:user1:${BOT_USER_ID}`);
     });
 
     it('should not call RPC when profile facts and metadata are empty', async () => {
-      await store.upsertProfileFacts('corp1', 'user1', {});
+      await store.upsertProfileFacts('corp1', 'user1', BOT_USER_ID, {});
 
       expect(mockRpc).not.toHaveBeenCalled();
     });
@@ -255,7 +266,7 @@ describe('SupabaseStore', () => {
         evidence: '候选人明确清空地点偏好',
       });
 
-      await store.upsertProfileFacts('corp1', 'user1', {}, undefined, {
+      await store.upsertProfileFacts('corp1', 'user1', BOT_USER_ID, {}, undefined, {
         location: tombstone,
       });
 
@@ -272,7 +283,7 @@ describe('SupabaseStore', () => {
       });
 
       const phone = profileFact('138');
-      await store.upsertProfileFacts('corp1', 'user1', { name: null, phone });
+      await store.upsertProfileFacts('corp1', 'user1', BOT_USER_ID, { name: null, phone });
 
       expect(mockRpc).toHaveBeenCalledWith(
         'upsert_long_term_profile_facts',
@@ -286,8 +297,10 @@ describe('SupabaseStore', () => {
       mockRpc.mockResolvedValue({ data: null, error: { message: 'RPC not found' } });
 
       await expect(
-        store.upsertProfileFacts('corp1', 'user1', { name: profileFact('张三') }),
-      ).resolves.toBeUndefined();
+        store.upsertProfileFacts('corp1', 'user1', BOT_USER_ID, {
+          name: profileFact('张三'),
+        }),
+      ).rejects.toEqual(expect.objectContaining({ message: 'RPC not found' }));
 
       expect(mockRedis.del).not.toHaveBeenCalled();
     });
@@ -298,7 +311,9 @@ describe('SupabaseStore', () => {
         error: null,
       });
 
-      await store.upsertProfileFacts('corp1', 'user1', { name: profileFact('张三') });
+      await store.upsertProfileFacts('corp1', 'user1', BOT_USER_ID, {
+        name: profileFact('张三'),
+      });
 
       expect(mockRpc).toHaveBeenCalledWith(
         'upsert_long_term_profile_facts',
@@ -312,7 +327,7 @@ describe('SupabaseStore', () => {
         error: null,
       });
 
-      await store.upsertProfileFacts('corp1', 'user1', {}, { botId: 'bot-1' });
+      await store.upsertProfileFacts('corp1', 'user1', BOT_USER_ID, {}, { botId: 'bot-1' });
 
       expect(mockRpc).toHaveBeenCalledWith(
         'upsert_long_term_profile_facts',
@@ -331,7 +346,7 @@ describe('SupabaseStore', () => {
         error: null,
       });
 
-      await store.upsertProfileFacts('corp1', 'user1', {
+      await store.upsertProfileFacts('corp1', 'user1', BOT_USER_ID, {
         name: profileFact('李四', { source: 'archive', confidence: 'medium' }),
         phone: profileFact('139', { source: 'archive', confidence: 'medium' }),
         age: profileFact('25', { source: 'archive', confidence: 'medium' }),
@@ -356,11 +371,12 @@ describe('SupabaseStore', () => {
         error: null,
       });
 
-      await store.set('profile:corp1:user1', { name: '张三' });
+      await store.set(`profile:corp1:user1:${BOT_USER_ID}`, { name: '张三' });
 
       expect(mockRpc).toHaveBeenCalledWith(
         'upsert_long_term_profile_facts',
         expect.objectContaining({
+          p_bot_user_id: BOT_USER_ID,
           p_profile_facts: {
             name: expect.objectContaining({
               value: '张三',
@@ -376,7 +392,7 @@ describe('SupabaseStore', () => {
 
   describe('upsertMessageMetadata', () => {
     it('should upsert compact message metadata and invalidate cache', async () => {
-      await store.upsertMessageMetadata('corp1', 'user1', {
+      await store.upsertMessageMetadata('corp1', 'user1', BOT_USER_ID, {
         botId: 'bot-1',
         imBotId: 'im-bot-1',
         imContactId: 'im-contact-1',
@@ -390,6 +406,7 @@ describe('SupabaseStore', () => {
         {
           corp_id: 'corp1',
           user_id: 'user1',
+          bot_user_id: BOT_USER_ID,
           message_metadata: {
             botId: 'bot-1',
             imBotId: 'im-bot-1',
@@ -399,13 +416,13 @@ describe('SupabaseStore', () => {
           },
           updated_at: expect.any(String),
         },
-        { onConflict: 'corp_id,user_id' },
+        { onConflict: 'corp_id,user_id,bot_user_id' },
       );
-      expect(mockRedis.del).toHaveBeenCalledWith('long-term:corp1:user1');
+      expect(mockRedis.del).toHaveBeenCalledWith(`long-term:corp1:user1:${BOT_USER_ID}`);
     });
 
     it('should skip empty message metadata', async () => {
-      await store.upsertMessageMetadata('corp1', 'user1', {
+      await store.upsertMessageMetadata('corp1', 'user1', BOT_USER_ID, {
         contactName: '',
       });
 
@@ -415,9 +432,10 @@ describe('SupabaseStore', () => {
 
   describe('del (v1 compat)', () => {
     it('should delete from Redis cache', async () => {
-      await store.del('profile:corp1:user1');
+      await store.del(`profile:corp1:user1:${BOT_USER_ID}`);
 
-      expect(mockRedis.del).toHaveBeenCalledWith('long-term:corp1:user1');
+      expect(mockRedis.del).toHaveBeenCalledWith(`long-term:corp1:user1:${BOT_USER_ID}`);
+      expect(mockDeleteChain.eq).toHaveBeenCalledWith('bot_user_id', BOT_USER_ID);
     });
   });
 

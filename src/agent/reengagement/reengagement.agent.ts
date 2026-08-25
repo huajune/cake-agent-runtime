@@ -162,10 +162,12 @@ export class ReengagementAgent {
   async compose(ctx: ReengagementComposeContext): Promise<ReengagementAgentExecution> {
     // 走主动复聊专用 recall：拿到已渲染的 factLines（含陈旧告警）和 Generator 同源的
     // 短期消息窗口，而不是裸记忆快照。
+    const botUserId = ctx.jobData.channelIdentity?.managerName?.trim();
     const memory = await this.memory.recallForProactiveFollowUp(
       ctx.sessionRef.corpId,
       ctx.sessionRef.userId,
       ctx.sessionRef.sessionId,
+      ...(botUserId ? [{ botUserId }] : []),
     );
     const agentInput: ReengagementAgentInput = { trigger: ctx, memory };
 

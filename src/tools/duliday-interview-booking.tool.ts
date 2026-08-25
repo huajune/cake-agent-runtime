@@ -414,21 +414,25 @@ export function buildInterviewBookingTool(
                 },
               );
             });
-            await runPostBookingWrite('长期身份档案写入', () =>
-              longTermService.writeFromBooking(
-                scope.corpId,
-                scope.userId,
-                {
-                  name: identity.name,
-                  phone: identity.phone,
-                  age: Number(identity.age),
-                  gender: identity.gender,
-                  jobId,
-                  workOrderId: result.workOrderId as number,
-                },
-                { sessionId: scope.sessionId, botImId: context.session.botImId },
-              ),
-            );
+            const botUserId = context.session.botUserId?.trim();
+            if (botUserId) {
+              await runPostBookingWrite('长期身份档案写入', () =>
+                longTermService.writeFromBooking(
+                  scope.corpId,
+                  scope.userId,
+                  botUserId,
+                  {
+                    name: identity.name,
+                    phone: identity.phone,
+                    age: Number(identity.age),
+                    gender: identity.gender,
+                    jobId,
+                    workOrderId: result.workOrderId as number,
+                  },
+                  { sessionId: scope.sessionId, botImId: context.session.botImId },
+                ),
+              );
+            }
           }
           recordBookingEvent(
             opsEventsRecorder,

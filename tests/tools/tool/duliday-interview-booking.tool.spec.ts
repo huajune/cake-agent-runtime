@@ -133,6 +133,7 @@ describe('duliday_interview_booking（form → labelList）', () => {
         corpId: 'corp-1',
         userId: 'user-1',
         sessionId: 'session-1',
+        botUserId: 'wecom-user-A',
         botImId: 'bot-A',
         contactName: '测试联系人',
       },
@@ -233,6 +234,7 @@ describe('duliday_interview_booking（form → labelList）', () => {
     expect(longTerm.writeFromBooking).toHaveBeenCalledWith(
       'corp-1',
       'user-1',
+      'wecom-user-A',
       {
         name: '兮兮',
         phone: '18271421690',
@@ -322,7 +324,7 @@ describe('duliday_interview_booking（form → labelList）', () => {
     await execute({ jobId: 100 });
     expect(sponge.uploadAttachmentFromUrl).toHaveBeenCalledWith(
       { fileUrl: 'https://wecom.example.test/resume.pdf' },
-      { botImId: 'bot-A', botUserId: undefined, groupId: undefined },
+      { botImId: 'bot-A', botUserId: 'wecom-user-A', groupId: undefined },
     );
     expect(sponge.bookInterview.mock.calls[0][0].labelList).toContainEqual({
       labelId: 105,

@@ -18,10 +18,10 @@ import { SessionWorkbenchService } from './short-term/workbench.service';
 import { LongTermService } from './long-term/long-term.service';
 import { ConsolidationService } from './long-term/consolidation.service';
 import {
-  MEMORY_SETTLEMENT_QUEUE,
-  SettlementSchedulerService,
-} from './long-term/settlement-scheduler.service';
-import { SettlementProcessor } from './long-term/settlement.processor';
+  MEMORY_CONSOLIDATION_QUEUE,
+  ConsolidationSchedulerService,
+} from './long-term/consolidation-scheduler.service';
+import { ConsolidationProcessor } from './long-term/consolidation.processor';
 import { MemoryEnrichmentService } from './enrichment.service';
 import { MemoryLifecycleService } from './lifecycle.service';
 import { HostingConfigModule } from '@biz/hosting-config/hosting-config.module';
@@ -44,7 +44,7 @@ import { ObservabilityModule } from '@observability/observability.module';
     GeocodingModule,
     ObservabilityModule,
     BullModule.registerQueue({
-      name: MEMORY_SETTLEMENT_QUEUE,
+      name: MEMORY_CONSOLIDATION_QUEUE,
     }),
   ],
   providers: [
@@ -60,8 +60,8 @@ import { ObservabilityModule } from '@observability/observability.module';
     SessionWorkbenchService,
     LongTermService,
     ConsolidationService,
-    SettlementSchedulerService,
-    SettlementProcessor,
+    ConsolidationSchedulerService,
+    ConsolidationProcessor,
     MemoryEnrichmentService,
     MemoryLifecycleService,
     MemoryService,

@@ -41,6 +41,7 @@ import { classifyReviewedOutcome } from '@agent/runner/turn-outcome';
 import { TurnFinalizer } from '@agent/runner/turn-finalizer';
 import { TurnOutcomeInterventionService } from '@agent/runner/turn-outcome-intervention.service';
 import { GroupBlacklistService } from '@biz/hosting-config/services/group-blacklist.service';
+import { BotService } from '@wecom/bot/bot.service';
 
 describe('MessagePipelineService', () => {
   let service: MessagePipelineService;
@@ -261,6 +262,12 @@ describe('MessagePipelineService', () => {
         {
           provide: GroupBlacklistService,
           useValue: { isGroupBlacklisted: jest.fn().mockResolvedValue(false) },
+        },
+        {
+          provide: BotService,
+          useValue: {
+            resolveBotUserIdByImBotId: jest.fn().mockResolvedValue('manager-bob'),
+          },
         },
         {
           provide: FollowUpSchedulerService,

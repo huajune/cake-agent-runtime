@@ -38,7 +38,7 @@ export interface FactOrigin {
 }
 
 /** consolidation 专用：血缘之外附带品牌快照源（preferences.brands 已退役，§19.6）。 */
-export interface SettlementFactOrigin extends FactOrigin {
+export interface ConsolidationFactOrigin extends FactOrigin {
   brandState?: PersistedBrandState | null;
 }
 
@@ -57,9 +57,13 @@ export class LongTermService {
 
   // ==================== Profile ====================
 
-  async getProfile(corpId: string, userId: string): Promise<UserProfileFacts | null> {
+  async getProfile(
+    corpId: string,
+    userId: string,
+    botUserId: string,
+  ): Promise<UserProfileFacts | null> {
     try {
-      return await this.supabaseStore.getProfile(corpId, userId);
+      return await this.supabaseStore.getProfile(corpId, userId, botUserId);
     } catch (error) {
       this.logger.warn('获取 Profile 失败', error);
       return null;
@@ -69,6 +73,7 @@ export class LongTermService {
   async seedProfileFixture(
     corpId: string,
     userId: string,
+    botUserId: string,
     profile: Partial<UserProfile>,
     metadata?: MessageMetadata,
   ): Promise<void> {
@@ -87,7 +92,13 @@ export class LongTermService {
         confidence: 'medium',
         evidence: '测试夹具写入长期档案',
       });
-      await this.supabaseStore.upsertProfileFacts(corpId, userId, profileFacts, metadata);
+      await this.supabaseStore.upsertProfileFacts(
+        corpId,
+        userId,
+        botUserId,
+        profileFacts,
+        metadata,
+      );
     } catch (error) {
       this.logger.warn('保存 Profile 失败', error);
     }
@@ -106,6 +117,7 @@ export class LongTermService {
   async writeFromBooking(
     corpId: string,
     userId: string,
+    botUserId: string,
     data: {
       name: string;
       phone: string;
@@ -136,7 +148,7 @@ export class LongTermService {
         originBotId: origin.botImId,
       });
 
-      await this.supabaseStore.upsertProfileFacts(corpId, userId, profileFacts);
+      await this.supabaseStore.upsertProfileFacts(corpId, userId, botUserId, profileFacts);
       this.logger.log(
         `[writeFromBooking] Profile 写入成功: corpId=${corpId}, userId=${userId}, name=${data.name}`,
       );
@@ -156,16 +168,24 @@ export class LongTermService {
   async writeFromConsolidation(
     corpId: string,
     userId: string,
+    botUserId: string,
     facts: EntityExtractionResult | SessionFacts,
-    origin?: SettlementFactOrigin,
+    origin?: ConsolidationFactOrigin,
   ): Promise<void> {
     try {
-      const jobIntentFacts = this.buildPreferenceFactsFromSettlement(facts, origin);
+      const jobIntentFacts = this.buildPreferenceFactsFromConsolidation(facts, origin);
       if (Object.keys(jobIntentFacts).length === 0) return;
 
       // profile + preference 单 RPC 事务写入（同一行锁），杜绝两步写之间失败
       // 造成的"profile 落库而意向丢失"半写状态。
-      await this.supabaseStore.upsertProfileFacts(corpId, userId, {}, undefined, jobIntentFacts);
+      await this.supabaseStore.upsertProfileFacts(
+        corpId,
+        userId,
+        botUserId,
+        {},
+        undefined,
+        jobIntentFacts,
+      );
       this.logger.log(
         `[writeFromConsolidation] Preference 快照写入: userId=${userId}, ` +
           `fields=${Object.keys(jobIntentFacts).join(',')}`,
@@ -177,9 +197,13 @@ export class LongTermService {
   }
 
   /** 读取长期求职意向（consolidation 沉淀的跨会话偏好快照）。 */
-  async getPreferences(corpId: string, userId: string): Promise<JobIntentFacts | null> {
+  async getPreferences(
+    corpId: string,
+    userId: string,
+    botUserId: string,
+  ): Promise<JobIntentFacts | null> {
     try {
-      return await this.supabaseStore.getPreferenceFacts(corpId, userId);
+      return await this.supabaseStore.getPreferenceFacts(corpId, userId, botUserId);
     } catch (error) {
       this.logger.warn('获取长期求职意向失败', error);
       return null;
@@ -191,17 +215,10 @@ export class LongTermService {
   async getSessionSummaries(
     corpId: string,
     userId: string,
-    botImId?: string,
+    botUserId: string,
   ): Promise<SessionSummaries | null> {
     try {
-      const data = await this.supabaseStore.getSessionSummaries(corpId, userId);
-      if (!data || !botImId) return data;
-      return {
-        ...data,
-        recent: data.recent.filter((entry) => entry.originBotId === botImId),
-        // archive 是历史混合压缩文本，无法证明账号归属；有账号上下文时 fail-closed。
-        archive: null,
-      };
+      return await this.supabaseStore.getSessionSummaries(corpId, userId, botUserId);
     } catch (error) {
       this.logger.warn('获取 Summary 失败', error);
       return null;
@@ -216,6 +233,7 @@ export class LongTermService {
   async appendSummary(
     corpId: string,
     userId: string,
+    botUserId: string,
     entry: SummaryEntry,
     options?: {
       lastSettledMessageAt?: string | null;
@@ -228,7 +246,7 @@ export class LongTermService {
     },
   ): Promise<void> {
     try {
-      await this.supabaseStore.appendSummary(corpId, userId, entry, options);
+      await this.supabaseStore.appendSummary(corpId, userId, botUserId, entry, options);
     } catch (error) {
       this.logger.warn('追加 Summary 失败', error);
       throw error;
@@ -238,6 +256,7 @@ export class LongTermService {
   async markLastSettledMessageAt(
     corpId: string,
     userId: string,
+    botUserId: string,
     lastSettledMessageAt: string,
     sessionId?: string | null,
   ): Promise<void> {
@@ -245,6 +264,7 @@ export class LongTermService {
       await this.supabaseStore.markLastSettledMessageAt(
         corpId,
         userId,
+        botUserId,
         lastSettledMessageAt,
         sessionId,
       );
@@ -256,10 +276,11 @@ export class LongTermService {
   async updateMessageMetadata(
     corpId: string,
     userId: string,
+    botUserId: string,
     metadata: MessageMetadata,
   ): Promise<void> {
     try {
-      await this.supabaseStore.upsertMessageMetadata(corpId, userId, metadata);
+      await this.supabaseStore.upsertMessageMetadata(corpId, userId, botUserId, metadata);
     } catch (error) {
       this.logger.warn('更新长期记忆消息元数据失败', error);
     }
@@ -314,9 +335,9 @@ export class LongTermService {
   /**
    * 清理指定用户的长期记忆（profile + summary）
    */
-  async clearUserMemory(corpId: string, userId: string): Promise<boolean> {
+  async clearUserMemory(corpId: string, userId: string, botUserId: string): Promise<boolean> {
     try {
-      return await this.supabaseStore.del(`long-term:${corpId}:${userId}`);
+      return await this.supabaseStore.del(`long-term:${corpId}:${userId}:${botUserId}`);
     } catch (error) {
       this.logger.warn('清理长期记忆失败', error);
       return false;
@@ -356,9 +377,9 @@ export class LongTermService {
    * - 快照式：不与既有长期意向 merge，由 store 整列覆盖（最新一段会话赢）
    * - confidence 固定 medium（与 Profile 沉淀路径一致），evidence 截断保留一跳来源
    */
-  private buildPreferenceFactsFromSettlement(
+  private buildPreferenceFactsFromConsolidation(
     facts: EntityExtractionResult | SessionFacts,
-    origin?: SettlementFactOrigin,
+    origin?: ConsolidationFactOrigin,
   ): JobIntentFacts {
     const updatedAt = new Date().toISOString();
     const jobIntentFacts: JobIntentFacts = {};
@@ -382,7 +403,7 @@ export class LongTermService {
       jobIntentFacts[key] = userProfileFactValue(explicitClear ? null : value, {
         source: isSessionFactValue(rawValue) ? rawValue.source : 'archive',
         confidence: 'medium',
-        evidence: this.buildSettlementEvidence(rawValue),
+        evidence: this.buildConsolidationEvidence(rawValue),
         updatedAt,
         originSessionId: origin?.sessionId,
         originBotId: origin?.botImId,
@@ -411,7 +432,7 @@ export class LongTermService {
     return true;
   }
 
-  private buildSettlementEvidence(rawValue: unknown): string {
+  private buildConsolidationEvidence(rawValue: unknown): string {
     const prefix = '会话沉淀提取';
     if (!isSessionFactValue(rawValue)) return prefix;
 

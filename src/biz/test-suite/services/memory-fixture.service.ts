@@ -48,7 +48,7 @@ export class MemoryFixtureService {
   }
 
   async seed(
-    scope: Pick<TestRuntimeScope, 'corpId' | 'userId' | 'sessionId'>,
+    scope: Pick<TestRuntimeScope, 'corpId' | 'userId' | 'sessionId' | 'botUserId'>,
     setup?: MemoryFixtureSetup | null,
   ): Promise<void> {
     if (!setup) return;
@@ -147,9 +147,14 @@ export class MemoryFixtureService {
     }
 
     if (setup.profile) {
+      const botUserId = scope.botUserId?.trim();
+      if (!botUserId) {
+        throw new Error('memorySetup.profile 需要稳定 botUserId');
+      }
       await this.longTermService.seedProfileFixture(
         scope.corpId,
         scope.userId,
+        botUserId,
         setup.profile as Partial<UserProfile>,
         { contactName: 'test-suite-memory-fixture' },
       );

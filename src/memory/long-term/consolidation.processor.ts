@@ -7,40 +7,44 @@ import { IncidentReporterService } from '@observability/incidents/incident-repor
 import { SessionSemanticService } from '../short-term/session-semantic.service';
 import { ConsolidationService } from './consolidation.service';
 import {
-  MEMORY_SETTLEMENT_JOB,
-  MEMORY_SETTLEMENT_QUEUE,
-  type MemorySettlementJob,
-  SettlementSchedulerService,
-} from './settlement-scheduler.service';
+  MEMORY_CONSOLIDATION_JOB,
+  MEMORY_CONSOLIDATION_QUEUE,
+  type MemoryConsolidationJob,
+  ConsolidationSchedulerService,
+} from './consolidation-scheduler.service';
 
 @Injectable()
-export class SettlementProcessor implements OnModuleInit {
-  private readonly logger = new Logger(SettlementProcessor.name);
+export class ConsolidationProcessor implements OnModuleInit {
+  private readonly logger = new Logger(ConsolidationProcessor.name);
 
   constructor(
-    @InjectQueue(MEMORY_SETTLEMENT_QUEUE)
-    private readonly queue: Queue<MemorySettlementJob>,
+    @InjectQueue(MEMORY_CONSOLIDATION_QUEUE)
+    private readonly queue: Queue<MemoryConsolidationJob>,
     private readonly session: SessionSemanticService,
     private readonly consolidation: ConsolidationService,
-    private readonly scheduler: SettlementSchedulerService,
+    private readonly scheduler: ConsolidationSchedulerService,
     private readonly incidents: IncidentReporterService,
   ) {}
 
   onModuleInit(): void {
-    this.queue.process(MEMORY_SETTLEMENT_JOB, 2, (job: Job<MemorySettlementJob>) =>
+    this.queue.process(MEMORY_CONSOLIDATION_JOB, 2, (job: Job<MemoryConsolidationJob>) =>
       this.process(job),
     );
-    this.logger.log('[memory-settlement] processor 已注册');
+    this.logger.log('[memory-consolidation] processor 已注册');
   }
 
-  async process(job: Job<MemorySettlementJob>): Promise<void> {
-    const { corpId, userId, sessionId, botImId } = job.data;
+  async process(job: Job<MemoryConsolidationJob>): Promise<void> {
+    const { corpId, userId, sessionId, botUserId, botImId } = job.data;
     try {
+      if (!botUserId) {
+        throw new Error(`memory_consolidation_bot_user_id_missing:${sessionId}`);
+      }
       const state = await this.session.getSessionState(corpId, userId, sessionId);
       const result = await this.consolidation.settleIdleSession(
         corpId,
         userId,
         sessionId,
+        botUserId,
         state.facts ?? null,
         botImId,
         state.facts?.brand ?? null,
@@ -58,12 +62,12 @@ export class SettlementProcessor implements OnModuleInit {
     } catch (error) {
       if (this.isFinalAttempt(job)) {
         await this.incidents.notify({
-          code: 'memory.settlement_failed',
+          code: 'memory.consolidation_failed',
           summary: '会话记忆定时沉淀重试耗尽',
           severity: AlertLevel.ERROR,
           source: {
             subsystem: 'memory',
-            component: 'SettlementProcessor',
+            component: 'ConsolidationProcessor',
             action: 'process',
             trigger: 'queue',
           },
@@ -72,16 +76,16 @@ export class SettlementProcessor implements OnModuleInit {
           diagnostics: {
             errorMessage: toErrorMessage(error),
             totalAttempts: job.opts.attempts ?? 1,
-            payload: { corpId, userId, sessionId, botImId },
+            payload: { corpId, userId, sessionId, botUserId, botImId },
           },
-          dedupe: { key: `memory.settlement_failed:${corpId}:${sessionId}` },
+          dedupe: { key: `memory.consolidation_failed:${corpId}:${sessionId}` },
         });
       }
       throw error;
     }
   }
 
-  private isFinalAttempt(job: Job<MemorySettlementJob>): boolean {
+  private isFinalAttempt(job: Job<MemoryConsolidationJob>): boolean {
     return job.attemptsMade + 1 >= (job.opts.attempts ?? 1);
   }
 }

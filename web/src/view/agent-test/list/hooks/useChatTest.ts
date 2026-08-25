@@ -683,10 +683,12 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
   const handleClear = useCallback(() => {
     const currentUserId = normalizeAgentTestUserId(userId);
     if (currentUserId) {
-      void resetChatSessionMemory({ userId: currentUserId, corpId: 'test' }).catch((error) => {
+      void resetChatSessionMemory({ userId: currentUserId, botUserId, corpId: 'test' }).catch(
+        (error) => {
         const errorMessage = error instanceof Error ? error.message : String(error);
         console.warn(`[agent-test] 清理长期画像失败: ${errorMessage}`);
-      });
+        },
+      );
     }
 
     const nextSessionId = generateUUID();

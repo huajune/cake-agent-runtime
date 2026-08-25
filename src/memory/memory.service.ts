@@ -50,6 +50,8 @@ export class MemoryService {
       enrichmentIdentity?: CandidateIdentityHint;
       /** prep 已运行的本轮规则轨；memory 只装配，不重复判定。 */
       turnHints?: TurnHints | null;
+      /** 当前托管账号的稳定企微身份（wecomUserId）。 */
+      botUserId?: string;
     },
   ): Promise<AgentMemoryContext> {
     return await this.lifecycle.onTurnStart(corpId, userId, sessionId, currentUserMessage, options);
@@ -70,11 +72,12 @@ export class MemoryService {
     corpId: string,
     userId: string,
     sessionId: string,
-    options?: { shortTermEndTimeInclusive?: number },
+    options?: { shortTermEndTimeInclusive?: number; botUserId?: string },
   ): Promise<ProactiveMemoryRecall> {
     const memory = await this.onTurnStart(corpId, userId, sessionId, undefined, {
       includeShortTerm: true,
       shortTermEndTimeInclusive: options?.shortTermEndTimeInclusive,
+      botUserId: options?.botUserId,
     });
     // messageWindow 已由 MessageWindowService 按与 Generator 相同的条数、时间和字符预算裁剪，
     // 这里不再二次截断或改写其时间后缀，只丢弃空正文。
@@ -102,14 +105,14 @@ export class MemoryService {
   async getSessionSummaries(
     corpId: string,
     userId: string,
-    botImId?: string,
+    botUserId: string,
   ): Promise<SessionSummaries | null> {
-    return await this.longTerm.getSessionSummaries(corpId, userId, botImId);
+    return await this.longTerm.getSessionSummaries(corpId, userId, botUserId);
   }
 
   /** 清理指定用户的长期记忆（profile + summary） */
-  async clearLongTermMemory(corpId: string, userId: string): Promise<boolean> {
-    return await this.longTerm.clearUserMemory(corpId, userId);
+  async clearLongTermMemory(corpId: string, userId: string, botUserId: string): Promise<boolean> {
+    return await this.longTerm.clearUserMemory(corpId, userId, botUserId);
   }
 
   async getStage(corpId: string, userId: string, sessionId: string): Promise<StageState> {

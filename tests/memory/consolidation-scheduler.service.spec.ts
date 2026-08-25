@@ -1,6 +1,6 @@
-import { SettlementSchedulerService } from '@memory/long-term/settlement-scheduler.service';
+import { ConsolidationSchedulerService } from '@memory/long-term/consolidation-scheduler.service';
 
-describe('SettlementSchedulerService', () => {
+describe('ConsolidationSchedulerService', () => {
   const queue = {
     getJob: jest.fn(),
     add: jest.fn().mockResolvedValue(undefined),
@@ -12,12 +12,12 @@ describe('SettlementSchedulerService', () => {
     botImId: 'bot-1',
     activityAt: 123,
   };
-  let service: SettlementSchedulerService;
+  let service: ConsolidationSchedulerService;
 
   beforeEach(() => {
     jest.clearAllMocks();
     queue.getJob.mockResolvedValue(null);
-    service = new SettlementSchedulerService(
+    service = new ConsolidationSchedulerService(
       queue as never,
       { consolidationGapSeconds: 3 * 24 * 60 * 60 } as never,
     );
@@ -27,10 +27,10 @@ describe('SettlementSchedulerService', () => {
     await service.schedule(input);
 
     expect(queue.add).toHaveBeenCalledWith(
-      'settle-idle-session',
+      'consolidate-idle-session',
       input,
       expect.objectContaining({
-        jobId: 'memory-settlement:session-1',
+        jobId: 'memory-consolidation:session-1',
         delay: 3 * 24 * 60 * 60 * 1000,
         attempts: 3,
         backoff: { type: 'exponential', delay: 5 * 60 * 1000 },
@@ -49,9 +49,9 @@ describe('SettlementSchedulerService', () => {
 
     expect(existing.remove).toHaveBeenCalled();
     expect(queue.add).toHaveBeenCalledWith(
-      'settle-idle-session',
+      'consolidate-idle-session',
       input,
-      expect.objectContaining({ jobId: 'memory-settlement:session-1', delay: 456 }),
+      expect.objectContaining({ jobId: 'memory-consolidation:session-1', delay: 456 }),
     );
   });
 
@@ -66,10 +66,9 @@ describe('SettlementSchedulerService', () => {
 
     expect(existing.remove).not.toHaveBeenCalled();
     expect(queue.add).toHaveBeenCalledWith(
-      'settle-idle-session',
+      'consolidate-idle-session',
       input,
-      expect.objectContaining({ jobId: 'memory-settlement:session-1:123' }),
+      expect.objectContaining({ jobId: 'memory-consolidation:session-1:123' }),
     );
   });
 });
-
