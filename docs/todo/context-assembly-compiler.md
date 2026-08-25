@@ -43,6 +43,10 @@
 
 闸门：第 1、3 项零行为（现测绿+注入文本字节比对）；第 2 项纯搬迁（golden 同现状）。
 
+### 收尾批（2026-08-26 裁定汇总，先于批二执行）
+
+零行为/纯搬迁七件：①working-memory/ → **preparation/** 正名（类型词不当户口本，session-semantic 同案；WorkingMemory 类型名保留——车间改名、产物不改）；②enrichment 迁出 memory → preparation/snapshot-enrichment（每轮快照装饰=备料非记忆；顺手立"memory 零 @biz 依赖"断言）；③group-inventory → sections/working/（勘误落地）；④group-inventory **指令半部迁出**至既有 procedural 居所（手册/工具描述，台账同步）——section 纯数据化，台账盲区病灶根除；⑤static.section 移 sections/ 根（内容无关机制件不参与分类）；⑥核验批四"自裁决 fallback 改 throw"确已落地；⑦EMPTY_SESSION_STATE 补 storePresentationRounds。批二定型后追加：final-prompt-example.md 按新装配重生成 + KB《Prompt-Section 动态组装体系》按现实重写（括号时代描述清除）。
+
 ### 批二：system 内重排批（一处顺序）
 
 - **改动就一件**：prepare() 的 system 装配顺序重排——静态段（手册/渠道规范/工具目录）前置，配置段（策略红线/账号身份）居中，动态段（记忆召回块 + 当前阶段策略）置 system 末尾；全阶段一览静态地图留静态段。动态内容保持 **system 语义**，一个字节不进 messages。
