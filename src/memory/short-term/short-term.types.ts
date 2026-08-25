@@ -50,7 +50,7 @@ export interface JobListQueryRecord {
   updatedAtMs?: number | null;
 }
 
-/** session-semantic 工作台舱字段；由本文件的 hash 总契约组合引用。 */
+/** session-state 工作台舱字段；由本文件的 hash 总契约组合引用。 */
 export interface SessionWorkbenchState {
   /** 每轮覆盖：最后一次 duliday_job_list 调用返回的候选岗位池。 */
   lastCandidatePool: RecommendedJobSummary[] | null;

@@ -10,7 +10,7 @@ import type { UserHostingService } from '@biz/user/services/user-hosting.service
 import { toErrorMessage } from '@infra/utils/error.util';
 import type { CollectionFormService } from '@memory/short-term/collection-form.service';
 import type { LongTermService } from '@memory/long-term/long-term.service';
-import type { SessionSemanticService } from '@memory/short-term/session-semantic.service';
+import type { SessionStateService } from '@memory/short-term/session-state.service';
 import { sessionFactValue } from '@memory/short-term/short-term.types';
 import type { ActiveBookingEntry } from '@memory/long-term/long-term.types';
 import { Logger } from '@nestjs/common';
@@ -66,7 +66,7 @@ const inputSchema = z.object({
 
 export interface BookingAdjudicationDeps {
   collectionForms?: CollectionFormService;
-  sessionFacts?: SessionSemanticService;
+  sessionFacts?: SessionStateService;
   identityAnchors?: string;
 }
 

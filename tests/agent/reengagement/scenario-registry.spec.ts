@@ -1,4 +1,4 @@
-import type { ReengagementSessionState } from '@memory/reengagement-recall.types';
+import type { ReengagementSessionState } from '@memory/recall.types';
 import {
   bookingFollowUpAnchorId,
   computeFireAt,

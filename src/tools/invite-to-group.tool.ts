@@ -9,7 +9,7 @@ import {
   type GroupInviteInput,
   type GroupInviteResult,
 } from '@biz/group-task/services/group-invite.service';
-import { SessionSemanticService } from '@memory/short-term/session-semantic.service';
+import { SessionStateService } from '@memory/short-term/session-state.service';
 import { evaluateInviteCityGate } from '@tools/invite/invite-city-gate';
 import { evaluateInviteTimingGate, hasAcceptedGroupOffer } from '@tools/invite/invite-timing-gate';
 import { extractUserTexts } from '@resolution/signal/dialogue';
@@ -133,7 +133,7 @@ const inputSchema = z.object({
 
 export function buildInviteToGroupTool(
   groupInviteService: GroupInviteService,
-  sessionService?: SessionSemanticService,
+  sessionService?: SessionStateService,
 ): ToolBuilder {
   return (context) =>
     tool({

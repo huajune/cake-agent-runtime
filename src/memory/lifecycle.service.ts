@@ -10,11 +10,11 @@ import { BrandStateService } from './short-term/brand-state.service';
 import { LongTermService } from './long-term/long-term.service';
 import { MemoryEnrichmentService, type CandidateIdentityHint } from './enrichment.service';
 import { ConsolidationSchedulerService } from './long-term/consolidation-scheduler.service';
-import { SessionSemanticService } from './short-term/session-semantic.service';
+import { SessionStateService } from './short-term/session-state.service';
 import { SessionWorkbenchService } from './short-term/workbench.service';
 import { MessageWindowService } from './short-term/message-window.service';
 import { stripQuotedBlocks, stripTimeContext } from '@resolution/signal/markers';
-import type { AgentMemoryContext } from './memory-runtime.types';
+import type { AgentMemoryContext } from './recall.types';
 import type { ShortTermMessage } from './short-term/short-term.types';
 import type { WeworkSessionState } from './short-term/short-term.types';
 import type { RecommendedJobSummary } from '@resolution/job/types';
@@ -76,7 +76,7 @@ interface TimedTask<T = void> {
  * - `onTurnEnd` 按固定顺序做收尾
  *
  * 它不直接承担具体的领域判断：
- * - 会话记忆投影交给 SessionSemanticService
+ * - 会话记忆投影交给 SessionStateService
  * - 长期记忆沉淀排程交给 ConsolidationSchedulerService
  */
 @Injectable()
@@ -88,7 +88,7 @@ export class MemoryLifecycleService {
     private readonly workbench: SessionWorkbenchService,
     private readonly longTerm: LongTermService,
     private readonly consolidationScheduler: ConsolidationSchedulerService,
-    private readonly session: SessionSemanticService,
+    private readonly session: SessionStateService,
     private readonly sponge: SpongeService,
     private readonly enrichment: MemoryEnrichmentService,
     private readonly messageProcessing: MessageProcessingService,

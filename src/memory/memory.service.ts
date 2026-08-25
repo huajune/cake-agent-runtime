@@ -1,10 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { LongTermService } from './long-term/long-term.service';
-import { SessionSemanticService } from './short-term/session-semantic.service';
+import { SessionStateService } from './short-term/session-state.service';
 import { SessionWorkbenchService } from './short-term/workbench.service';
 import { MemoryLifecycleService, type MemoryLifecycleTurnContext } from './lifecycle.service';
 import type { CandidateIdentityHint } from './enrichment.service';
-import type { AgentMemoryContext } from './memory-runtime.types';
+import type { AgentMemoryContext } from './recall.types';
 import type { SessionSummaries } from './long-term/long-term.types';
 import type { InvitedGroupRecord } from './short-term/short-term.types';
 import type { TurnHints } from '@resolution/evidence/claim.types';
@@ -30,7 +30,7 @@ export class MemoryService {
   constructor(
     private readonly workbench: SessionWorkbenchService,
     private readonly longTerm: LongTermService,
-    private readonly session: SessionSemanticService,
+    private readonly session: SessionStateService,
     private readonly lifecycle: MemoryLifecycleService,
   ) {}
 

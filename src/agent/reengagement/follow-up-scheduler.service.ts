@@ -7,7 +7,7 @@ import {
   ReengagementTrackingService,
   type ReengagementTouchIdentity,
 } from '@biz/monitoring/services/tracking/reengagement-tracking.service';
-import type { ReengagementSessionState } from '@memory/reengagement-recall.types';
+import type { ReengagementSessionState } from '@memory/recall.types';
 import type { SessionRef } from '../runner/agent-runner.types';
 import {
   computeFireAt,

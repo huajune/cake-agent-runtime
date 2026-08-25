@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { MemoryService } from '@memory/memory.service';
-import { SessionSemanticService } from '@memory/short-term/session-semantic.service';
+import { SessionStateService } from '@memory/short-term/session-state.service';
 import { BrandStateService } from '@memory/short-term/brand-state.service';
 import { LongTermService } from '@memory/long-term/long-term.service';
 import {
@@ -31,7 +31,7 @@ export class MemoryFixtureService {
 
   constructor(
     private readonly memoryService: MemoryService,
-    private readonly sessionService: SessionSemanticService,
+    private readonly sessionService: SessionStateService,
     private readonly brandStateService: BrandStateService,
     private readonly longTermService: LongTermService,
   ) {}

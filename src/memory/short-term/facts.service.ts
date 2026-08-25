@@ -33,7 +33,7 @@ import {
   truncateEvidence,
   unwrapSessionFactValue,
 } from './short-term.types';
-import type { ReengagementSessionState, CollectedField } from '../reengagement-recall.types';
+import type { ReengagementSessionState, CollectedField } from '../recall.types';
 import { parseCandidateFieldsFromText } from '@resolution/candidate';
 import {
   buildSessionExtractionPrompt,
@@ -63,7 +63,7 @@ import { hasMeaningfulValue, resolveTurnHints } from '@resolution/evidence/merge
  * 职责：会话状态存取（本舱是状态所有者）、结构化事实读写（置信度合并/extractedAt
  * 时间锚）、LLM 后置提取、已发生事件（invitedGroups/terminal/活动水位——复聊停发
  * 信号消费的都是事实）。工作台舱（注意力/查询状态）见 workbench.service.ts；
- * 对外聚合入口仍是 SessionSemanticService facade，跨域注入点只做机械正名。
+ * 对外聚合入口仍是 SessionStateService facade，跨域注入点只做机械正名。
  */
 
 @Injectable()

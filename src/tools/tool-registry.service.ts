@@ -38,7 +38,7 @@ import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { PrivateChatMonitorNotifierService } from '@notification/services/private-chat-monitor-notifier.service';
 import { InterventionService } from '@biz/intervention/intervention.service';
 import { MessageSenderService } from '@channels/wecom/message-sender/message-sender.service';
-import { SessionSemanticService } from '@memory/short-term/session-semantic.service';
+import { SessionStateService } from '@memory/short-term/session-state.service';
 import { LongTermService } from '@memory/long-term/long-term.service';
 import { CollectionFormService } from '@memory/short-term/collection-form.service';
 import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
@@ -82,7 +82,7 @@ export class ToolRegistryService {
     private readonly llm: LlmExecutorService,
     userHostingService: UserHostingService,
     interventionService: InterventionService,
-    sessionService: SessionSemanticService,
+    sessionService: SessionStateService,
     longTermService: LongTermService,
     opsEventsRecorder: OpsEventsRecorderService,
     handoffRecorder: HandoffRecorderService,

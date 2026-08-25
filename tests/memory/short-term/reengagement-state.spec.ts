@@ -1,5 +1,5 @@
 import { Test } from '@nestjs/testing';
-import { SessionSemanticService } from '@memory/short-term/session-semantic.service';
+import { SessionStateService } from '@memory/short-term/session-state.service';
 import { SessionFactsService } from '@memory/short-term/facts.service';
 import { SessionWorkbenchService } from '@memory/short-term/workbench.service';
 import { RedisStore } from '@memory/stores/redis.store';
@@ -8,7 +8,7 @@ import { LlmExecutorService } from '@/llm/llm-executor.service';
 import { SpongeService } from '@sponge/sponge.service';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 
-describe('SessionSemanticService reengagement store presentation state', () => {
+describe('SessionStateService reengagement store presentation state', () => {
   const job = {
     jobId: 519709,
     brandName: '奥乐齐',
@@ -22,7 +22,7 @@ describe('SessionSemanticService reengagement store presentation state', () => {
     distanceKm: 2.1,
   };
 
-  let service: SessionSemanticService;
+  let service: SessionStateService;
   let hashState: Record<string, unknown>;
 
   beforeEach(async () => {
@@ -42,7 +42,7 @@ describe('SessionSemanticService reengagement store presentation state', () => {
     };
     const moduleRef = await Test.createTestingModule({
       providers: [
-        SessionSemanticService,
+        SessionStateService,
         SessionFactsService,
         SessionWorkbenchService,
         { provide: RedisStore, useValue: redisStore },
@@ -60,7 +60,7 @@ describe('SessionSemanticService reengagement store presentation state', () => {
         { provide: SystemConfigService, useValue: { getExtractModelOverride: jest.fn() } },
       ],
     }).compile();
-    service = moduleRef.get(SessionSemanticService);
+    service = moduleRef.get(SessionStateService);
   });
 
   it('increments presentation rounds even when the presented job set is deduplicated', async () => {

@@ -6,10 +6,7 @@ import { ROLE_MODEL_OVERRIDES, type RoleModelOverridesProvider } from '@/llm/rol
 import { ModelRole } from '@/llm/llm.types';
 import { MemoryService } from '@memory/memory.service';
 import { z } from 'zod';
-import type {
-  ReengagementSessionState,
-  CandidateFieldKey,
-} from '@memory/reengagement-recall.types';
+import type { ReengagementSessionState, CandidateFieldKey } from '@memory/recall.types';
 import type { TurnOutcome } from '../runner/agent-runner.types';
 import type { AgentStepDetail } from '@shared-types/agent-telemetry.types';
 import type { FollowUpJob } from './follow-up-scheduler.service';

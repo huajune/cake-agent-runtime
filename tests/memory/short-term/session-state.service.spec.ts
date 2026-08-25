@@ -1,6 +1,6 @@
 import { SessionFactsService } from '@memory/short-term/facts.service';
 import { SessionWorkbenchService } from '@memory/short-term/workbench.service';
-import { SessionSemanticService } from '@memory/short-term/session-semantic.service';
+import { SessionStateService } from '@memory/short-term/session-state.service';
 import {
   FALLBACK_EXTRACTION,
   SessionFactsSchema,
@@ -26,7 +26,7 @@ const preferences = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
-describe('SessionSemanticService（S1-S6）', () => {
+describe('SessionStateService（S1-S6）', () => {
   let hash: Record<string, unknown>;
   const redis = {
     get: jest.fn().mockResolvedValue(null),
@@ -46,7 +46,7 @@ describe('SessionSemanticService（S1-S6）', () => {
     sessionExtractionIncrementalMessages: 8,
     consolidationGapSeconds: 86400,
   };
-  let service: SessionSemanticService;
+  let service: SessionStateService;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -74,7 +74,7 @@ describe('SessionSemanticService（S1-S6）', () => {
       sponge as never,
       systemConfig as never,
     );
-    service = new SessionSemanticService(
+    service = new SessionStateService(
       facts,
       new SessionWorkbenchService(facts, redis as never, config as never),
     );

@@ -12,7 +12,7 @@ import { CollectionFormService } from './short-term/collection-form.service';
 import { SupabaseStore } from './stores/supabase.store';
 import { BrandStateService } from './short-term/brand-state.service';
 import { MessageWindowService } from './short-term/message-window.service';
-import { SessionSemanticService } from './short-term/session-semantic.service';
+import { SessionStateService } from './short-term/session-state.service';
 import { SessionFactsService } from './short-term/facts.service';
 import { SessionWorkbenchService } from './short-term/workbench.service';
 import { LongTermService } from './long-term/long-term.service';
@@ -55,7 +55,7 @@ import { ObservabilityModule } from '@observability/observability.module';
     SupabaseStore,
     BrandStateService,
     MessageWindowService,
-    SessionSemanticService,
+    SessionStateService,
     SessionFactsService,
     SessionWorkbenchService,
     LongTermService,
@@ -70,7 +70,7 @@ import { ObservabilityModule } from '@observability/observability.module';
     MemoryConfig,
     MemoryService,
     CollectionFormService,
-    SessionSemanticService,
+    SessionStateService,
     SessionFactsService,
     SessionWorkbenchService,
     LongTermService,

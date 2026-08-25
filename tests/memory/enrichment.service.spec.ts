@@ -1,6 +1,6 @@
 import { MemoryEnrichmentService } from '@memory/enrichment.service';
 import { FALLBACK_EXTRACTION } from '@memory/short-term/short-term.types';
-import type { AgentMemoryContext } from '@memory/memory-runtime.types';
+import type { AgentMemoryContext } from '@memory/recall.types';
 import { getTurnHint } from '@resolution/evidence/merge';
 import { testTurnHint, testTurnHints } from '../helpers/turn-hints.fixture';
 

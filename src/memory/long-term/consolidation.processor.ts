@@ -4,7 +4,7 @@ import type { Job, Queue } from 'bull';
 import { AlertLevel } from '@enums/alert.enum';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { IncidentReporterService } from '@observability/incidents/incident-reporter.service';
-import { SessionSemanticService } from '../short-term/session-semantic.service';
+import { SessionStateService } from '../short-term/session-state.service';
 import { ConsolidationService } from './consolidation.service';
 import {
   MEMORY_CONSOLIDATION_JOB,
@@ -20,7 +20,7 @@ export class ConsolidationProcessor implements OnModuleInit {
   constructor(
     @InjectQueue(MEMORY_CONSOLIDATION_QUEUE)
     private readonly queue: Queue<MemoryConsolidationJob>,
-    private readonly session: SessionSemanticService,
+    private readonly session: SessionStateService,
     private readonly consolidation: ConsolidationService,
     private readonly scheduler: ConsolidationSchedulerService,
     private readonly incidents: IncidentReporterService,
