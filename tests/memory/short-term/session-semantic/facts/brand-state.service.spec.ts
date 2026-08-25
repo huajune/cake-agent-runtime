@@ -46,7 +46,7 @@ describe('BrandStateService', () => {
     getHash: jest.fn(),
     patchHash: jest.fn().mockResolvedValue(undefined),
   };
-  const mockConfig = { sessionTtl: 3600 };
+  const mockConfig = { sessionTtl: 3600, sessionFactsTtl: 46800 };
   const mockSponge = { fetchBrandList: jest.fn().mockResolvedValue(catalog) };
   const mockTracer = { emit: jest.fn() };
 
@@ -141,6 +141,7 @@ describe('BrandStateService', () => {
       expect(Object.keys(patch)).toEqual(['brand_state']);
       expect(patch.brand_state.currentBrand.canonicalName).toBe('肯德基');
       expect(typeof patch.brand_state.updatedAtMs).toBe('number');
+      expect(mockRedisStore.patchHash.mock.calls[0][2]).toBe(46800);
       expect(mockTracer.emit).toHaveBeenCalledWith(
         expect.objectContaining({ type: 'brand_state_change', initialized: true }),
       );

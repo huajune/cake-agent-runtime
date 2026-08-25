@@ -239,7 +239,7 @@ export class SessionFactsService {
     await this.redisStore.patchHash(
       buildSessionFactsHashKey(corpId, userId, sessionId),
       validated,
-      this.config.sessionTtl,
+      this.config.sessionFactsTtl,
     );
   }
 
@@ -250,7 +250,7 @@ export class SessionFactsService {
     legacyContent: Record<string, unknown>,
   ): Promise<void> {
     try {
-      await this.redisStore.backfillHash(hashKey, legacyContent, this.config.sessionTtl);
+      await this.redisStore.backfillHash(hashKey, legacyContent, this.config.sessionFactsTtl);
       await this.redisStore.del(legacyKey);
       this.logger.log(`[getSessionState] 旧版 session blob 已迁移为 hash: ${legacyKey}`);
     } catch (error) {

@@ -28,14 +28,19 @@ export class MemoryConfig {
   readonly sessionTtl: number;
 
   /**
+   * `factsv2:` hash 的实际 TTL（秒）：咨询生命周期基准 + 12 小时沉淀读取余量。
+   *
+   * Redis hash 不支持字段级 TTL，因此同 key 中的 facts 与 workbench 投影会一起享有
+   * 这段余量；`stage:` 与 collection-form 仍严格使用 `sessionTtl`。
+   */
+  readonly sessionFactsTtl: number;
+
+  /**
    * 沉淀间隙阈值（秒）。
    *
-   * 连续两条消息的时间差 ≥ 此阈值时，ConsolidationService 认为上一段会话已结束，
-   * 触发摘要沉淀到长期记忆。
-   *
-   * 与 `sessionTtl` 分离的原因：Redis facts 的存活时长（sessionTtl）是"数据还在不在"，
-   * 沉淀阈值是"对话是否已断"——两者可以独立调优。例如 sessionTtl=2天让隔天回来的用户
-   * 仍有 facts 可用，而 consolidationGap=1天让超过一天的间隙及时沉淀。
+   * 连续两条消息的时间差 ≥ 此阈值时，ConsolidationService 认为上一段咨询已结束。
+   * M5 将它与 `sessionTtl` 同步为 3 天，使 episode 边界与咨询状态生命周期对齐；
+   * `sessionFactsTtl` 额外保留 12 小时，只用于保证定时沉淀先读后过期。
    */
   readonly consolidationGapSeconds: number;
 
@@ -63,11 +68,12 @@ export class MemoryConfig {
   readonly longTermCacheTtl: number;
 
   constructor(private readonly configService: ConfigService) {
-    const days = parseInt(this.configService.get('MEMORY_SESSION_TTL_DAYS', '2'), 10);
+    const days = parseInt(this.configService.get('MEMORY_SESSION_TTL_DAYS', '3'), 10);
     this.sessionTtl = days * 24 * 60 * 60;
+    this.sessionFactsTtl = this.sessionTtl + 12 * 60 * 60;
 
     const consolidationGapDays = parseInt(
-      this.configService.get('MEMORY_SETTLEMENT_GAP_DAYS', '1'),
+      this.configService.get('MEMORY_SETTLEMENT_GAP_DAYS', '3'),
       10,
     );
     this.consolidationGapSeconds = consolidationGapDays * 24 * 60 * 60;

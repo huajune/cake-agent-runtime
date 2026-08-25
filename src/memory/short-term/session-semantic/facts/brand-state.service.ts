@@ -233,7 +233,7 @@ export class BrandStateService {
     await this.redisStore.patchHash(
       buildSessionFactsHashKey(corpId, userId, sessionId),
       { brand_state: state },
-      this.config.sessionTtl,
+      this.config.sessionFactsTtl,
     );
   }
 

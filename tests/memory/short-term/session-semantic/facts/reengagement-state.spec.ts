@@ -50,6 +50,7 @@ describe('SessionSemanticService reengagement store presentation state', () => {
           provide: MemoryConfig,
           useValue: {
             sessionTtl: 86400,
+            sessionFactsTtl: 129600,
             sessionExtractionIncrementalMessages: 10,
             consolidationGapSeconds: 86400,
           },

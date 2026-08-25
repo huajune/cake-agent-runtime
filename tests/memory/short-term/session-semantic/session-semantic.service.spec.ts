@@ -42,6 +42,7 @@ describe('SessionSemanticService（S1-S6）', () => {
   const systemConfig = { getExtractModelOverride: jest.fn().mockResolvedValue(undefined) };
   const config = {
     sessionTtl: 86400,
+    sessionFactsTtl: 129600,
     sessionExtractionIncrementalMessages: 8,
     consolidationGapSeconds: 86400,
   };
@@ -123,6 +124,11 @@ describe('SessionSemanticService（S1-S6）', () => {
     expect(saved?.interview_info.name).toBeNull();
     expect(saved?.preferences.city?.value).toBe('上海');
     expect(saved?.preferences.schedule?.value).toBe('晚班');
+    expect(redis.patchHash).toHaveBeenLastCalledWith(
+      'factsv2:corp-1:user-1:session-1',
+      expect.any(Object),
+      config.sessionFactsTtl,
+    );
   });
 
   it('收资办结入口只接受 high，并保留既有软偏好', async () => {
