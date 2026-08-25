@@ -104,6 +104,7 @@ describe('ContextService', () => {
       'final-check': 'teaching',
       'red-lines': 'teaching',
       thresholds: 'teaching',
+      'stage-overview': 'teaching',
       'stage-strategy': 'teaching',
       channel: 'teaching',
       memory: 'evidence',
@@ -140,7 +141,22 @@ describe('ContextService', () => {
     }
   });
 
-  it('should compose candidate consultation prompt in 5 top-level blocks', async () => {
+  it('composes candidate consultation as static, config, then dynamic system blocks', async () => {
+    expect(SCENARIO_SECTIONS['candidate-consultation']).toEqual([
+      'base-manual',
+      'final-check',
+      'channel',
+      'stage-overview',
+      'red-lines',
+      'thresholds',
+      'identity',
+      'memory',
+      'turn-hints',
+      'hard-constraints',
+      'datetime',
+      'group-inventory',
+      'stage-strategy',
+    ]);
     const result = await service.compose({
       scenario: 'candidate-consultation',
       currentStage: 'trust_building',
@@ -159,18 +175,28 @@ describe('ContextService', () => {
         expect.objectContaining({ id: 'datetime', domain: 'tool_result' }),
       ]),
     );
-    // 复合 section 必须展开，不能把 evidence/tool_result 混回一个 runtime-context 大串。
-    expect(result.promptBlocks.some((block) => block.id === 'runtime-context')).toBe(false);
+    expect(result.promptBlocks.map((block) => block.id)).toEqual([
+      'base-manual',
+      'final-check',
+      'stage-overview',
+      'red-lines',
+      'thresholds',
+      'identity',
+      'memory',
+      'datetime',
+      'stage-strategy',
+    ]);
+    expect(result.promptBlocks.every((block) => block.role === 'system')).toBe(true);
 
-    expect(prompt.indexOf('# 角色')).toBeGreaterThanOrEqual(0);
-    expect(prompt.indexOf('# 全局工作原则')).toBeGreaterThan(prompt.indexOf('# 人格设定'));
+    expect(prompt.indexOf('# 角色')).toBeGreaterThan(prompt.indexOf('# 业务阈值'));
+    expect(prompt.indexOf('# 全局工作原则')).toBeLessThan(prompt.indexOf('# 人格设定'));
     expect(prompt.indexOf('# 红线规则（以下行为绝对禁止）')).toBeGreaterThan(
-      prompt.indexOf('# 回合 SOP'),
+      prompt.indexOf('[阶段推进提示]'),
     );
-    expect(prompt.lastIndexOf('[当前阶段策略]')).toBeGreaterThan(prompt.indexOf('# 业务阈值'));
-    expect(prompt.indexOf('# 发送前自检（全部需通过）')).toBeGreaterThan(
-      prompt.indexOf('当前时间：'),
+    expect(prompt.indexOf('# 发送前自检（全部需通过）')).toBeLessThan(
+      prompt.indexOf('# 红线规则（以下行为绝对禁止）'),
     );
+    expect(prompt.lastIndexOf('[当前阶段策略]')).toBeGreaterThan(prompt.indexOf('当前时间：'));
 
     expect(prompt).toContain('[用户档案]');
     expect(prompt).toContain('姓名: 张三');
@@ -217,6 +243,40 @@ describe('ContextService', () => {
     // 不再出现在主 system prompt 中。
     expect(prompt).not.toContain('# 工具手册');
     expect(prompt).not.toContain('bookingChecklist.collectionStrategy');
+  });
+
+  it('keeps the static prefix byte-identical across turn-varying inputs', async () => {
+    const first = await service.compose({
+      scenario: 'candidate-consultation',
+      currentStage: 'trust_building',
+      memoryBlock: '[会话记忆]\n- 唯一动态值: 第一轮',
+      strategySource: 'testing',
+    });
+    const second = await service.compose({
+      scenario: 'candidate-consultation',
+      currentStage: 'job_consultation',
+      memoryBlock: '[会话记忆]\n- 唯一动态值: 第二轮',
+      strategySource: 'testing',
+    });
+    const staticIds = new Set(['base-manual', 'final-check', 'channel', 'stage-overview']);
+    const staticPrefix = (blocks: typeof first.promptBlocks) =>
+      blocks.filter((block) => staticIds.has(block.id));
+
+    expect(staticPrefix(first.promptBlocks)).toEqual(staticPrefix(second.promptBlocks));
+    expect(staticPrefix(first.promptBlocks).map((block) => block.id)).toEqual([
+      'base-manual',
+      'final-check',
+      'stage-overview',
+    ]);
+    const renderedStatic = staticPrefix(first.promptBlocks)
+      .map((block) => block.content)
+      .join('\n\n');
+    expect(renderedStatic).not.toContain('第一轮');
+    expect(renderedStatic).not.toContain('第二轮');
+    expect(renderedStatic).not.toMatch(/当前时间：\d/u);
+    expect(
+      staticPrefix(first.promptBlocks).find((block) => block.id === 'stage-overview')?.content,
+    ).not.toContain('→');
   });
 
   it('should thread accountIdentity (nickname/gender/botUserId) into the identity anchor', async () => {

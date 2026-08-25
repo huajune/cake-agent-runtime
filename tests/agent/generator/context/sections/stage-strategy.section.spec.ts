@@ -1,10 +1,14 @@
-import { StageStrategySection } from '@agent/generator/context/sections/procedural/stage-strategy.section';
+import {
+  StageOverviewSection,
+  StageStrategySection,
+} from '@agent/generator/context/sections/procedural/stage-strategy.section';
 import { PromptContext } from '@agent/generator/context/sections/section.interface';
 import { StrategyConfigRecord } from '@biz/strategy/entities/strategy-config.entity';
 import { StageGoalConfig } from '@biz/strategy/types/strategy.types';
 
 describe('StageStrategySection', () => {
   const section = new StageStrategySection();
+  const overviewSection = new StageOverviewSection();
 
   const makeStage = (overrides?: Partial<StageGoalConfig>): StageGoalConfig => ({
     stage: 'trust_building',
@@ -47,18 +51,21 @@ describe('StageStrategySection', () => {
     expect(block).toContain('跳过自我介绍');
   });
 
-  it('should include all stages overview with description', () => {
-    const block = section.build(makeCtx('trust_building'));
+  it('keeps the all-stage overview byte-stable across current stages', () => {
+    const trustBlock = overviewSection.build(makeCtx('trust_building'));
+    const consultationBlock = overviewSection.build(makeCtx('job_consultation'));
 
-    expect(block).toContain('[所有阶段概览]');
-    expect(block).toContain('→ trust_building');
-    expect(block).toContain('初次接触，建立信任');
-    expect(block).toContain('  job_consultation');
-    expect(block).toContain('根据候选人意向匹配岗位');
+    expect(trustBlock).toBe(consultationBlock);
+    expect(trustBlock).toContain('[所有阶段概览]');
+    expect(trustBlock).toContain('  trust_building');
+    expect(trustBlock).toContain('初次接触，建立信任');
+    expect(trustBlock).toContain('  job_consultation');
+    expect(trustBlock).toContain('根据候选人意向匹配岗位');
+    expect(trustBlock).not.toContain('→');
   });
 
   it('should include advance stage hint', () => {
-    const block = section.build(makeCtx());
+    const block = overviewSection.build(makeCtx());
 
     expect(block).toContain('advance_stage');
     expect(block).toContain('先单独调用');
@@ -68,14 +75,15 @@ describe('StageStrategySection', () => {
   it('should default to first stage when currentStage is undefined', () => {
     const block = section.build(makeCtx());
 
-    expect(block).toContain('→ trust_building');
+    expect(block).toContain('阶段: trust_building');
   });
 
-  it('should mark correct current stage', () => {
+  it('should render the correct current stage without duplicating the static overview', () => {
     const block = section.build(makeCtx('job_consultation'));
 
-    expect(block).toContain('→ job_consultation');
-    expect(block).toContain('  trust_building');
+    expect(block).toContain('阶段: job_consultation');
+    expect(block).not.toContain('[所有阶段概览]');
+    expect(block).not.toContain('[阶段推进提示]');
   });
 
   it('should handle string ctaStrategy', () => {

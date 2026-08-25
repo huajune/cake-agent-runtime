@@ -33,7 +33,10 @@ import { IdentitySection } from './sections/procedural/identity.section';
 import { RedLinesSection } from './sections/procedural/red-lines.section';
 import { DateTimeSection } from './sections/working/datetime.section';
 import { ChannelSection } from './sections/procedural/channel.section';
-import { StageStrategySection } from './sections/procedural/stage-strategy.section';
+import {
+  StageOverviewSection,
+  StageStrategySection,
+} from './sections/procedural/stage-strategy.section';
 import { ThresholdsSection } from './sections/procedural/thresholds.section';
 import { MemorySection } from './sections/semantic/memory.section';
 import { TurnHintsSection } from './sections/working/turn-hints.section';
@@ -41,8 +44,6 @@ import { HardConstraintsSection } from './sections/working/hard-constraints.sect
 import { GroupInventorySection } from './sections/semantic/group-inventory.section';
 import { SCENARIO_SECTIONS, DEFAULT_SCENARIO } from './scenarios/scenario.registry';
 import { StaticSection } from './sections/procedural/static.section';
-import { PolicySection } from './sections/procedural/policy.section';
-import { RuntimeContextSection } from './sections/working/runtime-context.section';
 
 export interface ComposeParams {
   scenario?: string;
@@ -191,16 +192,12 @@ export class ContextService implements OnModuleInit {
     const baseManual = this.promptAssets.get('candidate-consultation') ?? '';
     const finalCheck = this.promptAssets.get('candidate-consultation-final-check') ?? '';
 
-    // 顶层结构（推荐用于 candidate-consultation）
     this.sections.set('identity', new IdentitySection());
     this.sections.set('base-manual', new StaticSection('base-manual', baseManual));
-    this.sections.set('policy', new PolicySection());
-    this.sections.set('runtime-context', new RuntimeContextSection());
     this.sections.set('final-check', new StaticSection('final-check', finalCheck));
-
-    // 叶子 section 仍保留，便于其他场景或测试复用
     this.sections.set('red-lines', new RedLinesSection());
     this.sections.set('thresholds', new ThresholdsSection());
+    this.sections.set('stage-overview', new StageOverviewSection());
     this.sections.set('stage-strategy', new StageStrategySection());
     this.sections.set('memory', new MemorySection());
     this.sections.set('turn-hints', new TurnHintsSection());

@@ -95,6 +95,7 @@ const PROMPT_SECTION_DOMAIN_REGISTRY: Readonly<Record<string, CorpusDomain>> = {
   'final-check': 'teaching',
   'red-lines': 'teaching',
   thresholds: 'teaching',
+  'stage-overview': 'teaching',
   'stage-strategy': 'teaching',
   channel: 'teaching',
   memory: 'evidence',

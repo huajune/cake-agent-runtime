@@ -4,10 +4,7 @@ import { PromptSection, PromptContext } from '../section.interface';
 import { StageGoalConfig } from '@biz/strategy/types/strategy.types';
 
 /**
- * 阶段策略段落 — 当前阶段配置 + 所有阶段概览 + 推进提示
- *
- * 从 strategyConfig.stage_goals 中提取当前阶段的完整策略，
- * 并生成所有阶段的概览（含 description），供模型判断何时推进。
+ * 当前阶段策略段落 — 只渲染随当前阶段变化的策略，固定置于 system 动态尾部。
  */
 export class StageStrategySection implements PromptSection {
   readonly name = 'stage-strategy';
@@ -19,11 +16,7 @@ export class StageStrategySection implements PromptSection {
 
     if (!stageConfig) return '';
 
-    const lines = this.buildCurrentStage(stageConfig);
-    this.appendStageOverview(lines, stageGoals, stageConfig.stage);
-    this.appendAdvanceHint(lines);
-
-    return lines.join('\n');
+    return this.buildCurrentStage(stageConfig).join('\n');
   }
 
   private buildCurrentStage(config: StageGoalConfig): string[] {
@@ -61,35 +54,37 @@ export class StageStrategySection implements PromptSection {
     return lines;
   }
 
-  private appendStageOverview(
-    lines: string[],
-    stageGoals: Record<string, StageGoalConfig>,
-    currentStage: string,
-  ): void {
-    const stages = Object.values(stageGoals);
-    if (stages.length <= 1) return;
-
-    lines.push('', '[所有阶段概览]');
-    for (const stage of stages) {
-      const marker = stage.stage === currentStage ? '→' : ' ';
-      lines.push(`${marker} ${stage.stage}: ${stage.label}`);
-      lines.push(`  ${stage.description}`);
-    }
-  }
-
-  private appendAdvanceHint(lines: string[]): void {
-    lines.push(
-      '',
-      '[阶段推进提示]',
-      '当你判断需要切换阶段时，下一步必须先单独调用 advance_stage：调用前不输出候选人文本，也不并行调用其他工具；收到 effectiveStageStrategy 后再继续业务工具和完整回复。',
-    );
-  }
-
   private buildStageGoalsMap(ctx: PromptContext): Record<string, StageGoalConfig> {
     const result: Record<string, StageGoalConfig> = {};
     for (const stage of ctx.strategyConfig.stage_goals.stages) {
       result[stage.stage] = stage;
     }
     return result;
+  }
+}
+
+/** 全阶段静态地图；不读取 currentStage，保证跨轮渲染逐字节稳定。 */
+export class StageOverviewSection implements PromptSection {
+  readonly name = 'stage-overview';
+
+  build(ctx: PromptContext): string {
+    const stages = ctx.strategyConfig.stage_goals.stages;
+    const lines: string[] = [];
+
+    if (stages.length > 1) {
+      lines.push('[所有阶段概览]');
+      for (const stage of stages) {
+        lines.push(`  ${stage.stage}: ${stage.label}`);
+        lines.push(`  ${stage.description}`);
+      }
+    }
+
+    lines.push(
+      ...(lines.length > 0 ? [''] : []),
+      '[阶段推进提示]',
+      '当你判断需要切换阶段时，下一步必须先单独调用 advance_stage：调用前不输出候选人文本，也不并行调用其他工具；收到 effectiveStageStrategy 后再继续业务工具和完整回复。',
+    );
+
+    return lines.join('\n');
   }
 }

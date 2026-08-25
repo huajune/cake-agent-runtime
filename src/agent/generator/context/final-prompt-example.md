@@ -25,24 +25,18 @@ finalPrompt =
 
 ## systemPrompt 顶层结构
 
-`candidate-consultation` 现在按 6 个顶层块拼接：
+`candidate-consultation` 按稳定性分三段拼接；所有块都保持 `role: system`：
 
-1. `identity`
-2. `base-manual`
-3. `policy`
-4. `runtime-context`
-5. `group-inventory`
-6. `final-check`
+1. 静态前缀：`base-manual` → `final-check` → `channel` → `stage-overview`
+2. 配置段：`red-lines` → `thresholds` → `identity`
+3. 动态尾部：`memory` → `turn-hints` → `hard-constraints` → `datetime` → `group-inventory` → `stage-strategy`
+
+空 section 会省略。工具目录由 AI SDK 的 `tools` 参数单独序列化，不进入候选人 `messages`；
+Qwen 会把稳定 system 前缀与 tools 一起纳入隐式前缀缓存。
 
 也就是：
 
 ```text
-# 角色
-...
-
-# 人格设定
-...
-
 # 全局工作原则
 ...
 
@@ -55,7 +49,13 @@ finalPrompt =
 # 记忆使用规则
 ...
 
-# 工具手册
+# 发送前自检（全部需通过）
+...
+
+[所有阶段概览]
+...
+
+[阶段推进提示]
 ...
 
 # 红线规则（以下行为绝对禁止）
@@ -64,43 +64,30 @@ finalPrompt =
 # 业务阈值
 ...
 
-[当前阶段策略]
+# 角色 / 人格设定 / 账号身份
 ...
 
-[用户档案]
+[用户档案] / [会话记忆]
 ...
 
-[会话记忆]
-...
-
-[本轮解析线索]
-...
-
-[本轮待确认线索]
+[本轮解析线索] / [本轮待确认线索]
 ...
 
 当前时间：2026年04月01日星期三 10:04
 
-# 通道规范（企微群聊）
+## 兼职群资源（按需）
 ...
 
-# 发送前自检（全部需通过）
+[当前阶段策略]
 ...
 ```
 
 说明：
 
-- `identity` 只负责角色和人格，不再混入整份静态工作手册。
-- `base-manual` 只放静态规则：全局工作原则、回合 SOP、阶段使用规则、记忆使用规则、工具手册。
-- `policy` 聚合动态红线和阈值。
-- `runtime-context` 聚合本轮运行时信息，内部顺序是：
-  1. `stage-strategy`
-  2. `memory`
-  3. `turn-hints`
-  4. `hard-constraints`
-  5. `datetime`
-  6. `channel`
-- `final-check` 独立放在最后，确保“发送前自检”真的是最后一块。
+- `stage-overview` 不读取 `currentStage`，全阶段地图跨轮逐字节稳定；当前阶段不再用箭头写入地图。
+- `stage-strategy` 只渲染当前阶段，并固定为 system 最后一个 section。
+- `identity`、`red-lines`、`thresholds` 来自配置，位于静态前缀和动态尾部之间。
+- `memory`、本轮线索、硬约束、时间与群库事实都留在 system 动态尾部，一个字节不进入 messages。
 
 ## 配置边界
 
@@ -128,13 +115,17 @@ finalPrompt =
   - `sections/procedural/candidate-consultation.md`
 - `final-check`
   - `sections/procedural/candidate-consultation-final-check.md`
-- `policy`
+- `red-lines` / `thresholds`
   - `strategy_config.red_lines`
   - `strategy_config.red_lines.thresholds`
-- `runtime-context`
+- `stage-overview` / `stage-strategy`
   - `strategy_config.stage_goals`
+- `memory` / `turn-hints` / `hard-constraints` / `datetime` / `group-inventory`
   - `memoryBlock`
+  - 本轮确定性解析线索
   - 当前时间
+  - 本轮城市群库事实
+- `channel`
   - 通道类型
 
 ## memoryBlock 结构
@@ -152,10 +143,10 @@ finalPrompt =
 其中：
 
 - 上述各段都是持久化记忆的投影
-- `[本轮解析线索]`、`[本轮待确认线索]` **不属于 memoryBlock**，由 `turn-hints` 段独立渲染（见 runtime-context 顺序）
+- `[本轮解析线索]`、`[本轮待确认线索]` **不属于 memoryBlock**，由 `turn-hints` 段独立渲染
 - `ruleFacts` 只用于 prompt 侧理解，不写入持久化会话记忆，也不参与 `extractAndSave()` 落库
 
-如果各部分都为空，`runtime-context` 中不会出现记忆块。
+如果各部分都为空，`memory` section 不会产生 prompt block。
 
 示例：
 
