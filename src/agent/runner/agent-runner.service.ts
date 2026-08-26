@@ -483,7 +483,6 @@ export class AgentRunnerService {
         ? detectRepairRegression(firstText, revisedText, {
             committedSideEffects: committed || undefined,
             jobEvidenceAvailable: this.resolveJobEvidenceAvailability(reviewedToolCalls),
-            triggeredRuleIds: decision.ruleIds,
           })
         : null;
     // 检出回归后的收敛对齐 guardrail-quality-system.md §2.3 ④：

@@ -8,8 +8,15 @@ const UNSUPPORTED_STORE_STATUS_PATTERN =
 function hasNoMatchScript(call: AgentToolCall): boolean {
   if (call.toolName !== 'duliday_job_list' || call.status === 'error') return false;
   if (!call.result || typeof call.result !== 'object') return false;
-  const noMatchScript = (call.result as Record<string, unknown>).noMatchScript;
-  return Boolean(noMatchScript && typeof noMatchScript === 'object');
+  const result = call.result as Record<string, unknown>;
+  const noMatchScript = result.noMatchScript;
+  if (!noMatchScript || typeof noMatchScript !== 'object') return false;
+  const errorType = result.errorType;
+  return (
+    typeof errorType === 'string' &&
+    errorType.startsWith('job_list.') &&
+    (noMatchScript as Record<string, unknown>).nextAction === 'wait_for_inventory'
+  );
 }
 
 /**

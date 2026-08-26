@@ -1,6 +1,47 @@
 import { OutboundReplySanitizer } from '@agent/guardrail/output/outbound-reply-sanitizer';
 
 describe('OutboundReplySanitizer', () => {
+  describe('pruneRepeatedSegments - 精确分段去重', () => {
+    const delivered = '这家门店目前有服务员岗位，工作地点在万象城一楼。';
+
+    it('删除与近期真实投递全等的长分段，保留本轮新内容', () => {
+      expect(
+        OutboundReplySanitizer.pruneRepeatedSegments(
+          `${delivered}\n\n你更关心班次还是距离？`,
+          [delivered],
+          '还有呢',
+        ),
+      ).toEqual({ text: '你更关心班次还是距离？', droppedSegments: [delivered] });
+    });
+
+    it('只忽略空白和标点差异，不做相似度判断', () => {
+      expect(
+        OutboundReplySanitizer.pruneRepeatedSegments(
+          '这家门店目前有服务员岗位 工作地点在万象城一楼',
+          [delivered],
+          '还有呢',
+        ).droppedSegments,
+      ).toHaveLength(1);
+      expect(
+        OutboundReplySanitizer.pruneRepeatedSegments(
+          '这家门店目前有后厨岗位，工作地点在万象城一楼。',
+          [delivered],
+          '还有呢',
+        ).droppedSegments,
+      ).toEqual([]);
+    });
+
+    it('短句不去重，候选人明确要求重发时也不去重', () => {
+      expect(
+        OutboundReplySanitizer.pruneRepeatedSegments('好的', ['好的'], '嗯').droppedSegments,
+      ).toEqual([]);
+      expect(
+        OutboundReplySanitizer.pruneRepeatedSegments(delivered, [delivered], '麻烦再发一遍')
+          .droppedSegments,
+      ).toEqual([]);
+    });
+  });
+
   describe('stripTimeMarkers - 守卫审查前的最小剥离', () => {
     it('剥掉模型模仿输出的时间标记，其余内容不动', () => {
       const input =

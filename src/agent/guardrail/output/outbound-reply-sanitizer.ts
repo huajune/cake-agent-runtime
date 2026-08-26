@@ -7,6 +7,15 @@ import { stripInternalReasoningArtifacts } from './rules/internal-info-leaks.rul
  * 保证所有渠道拿到的 TurnOutcome.reply.text / generatedText 已经是清洗后的文本。
  */
 export class OutboundReplySanitizer {
+  private static readonly REPEAT_WINDOW = 8;
+  private static readonly MIN_REPEAT_LENGTH = 16;
+  private static readonly RESEND_MARKERS = [
+    '再发一遍',
+    '重新发一遍',
+    '再发一次',
+    '重新发我',
+    '重发',
+  ] as const;
   /**
    * 时间标记正则表达式。
    * 匹配历史消息中注入的时间标记，防止模型模仿输出。
@@ -59,6 +68,54 @@ export class OutboundReplySanitizer {
     );
 
     return this.removeEmptyResidue(this.cleanWhitespace(cleaned));
+  }
+
+  /**
+   * 删除与近期真实投递分段全等的长分段。只做去空白标点后的机械全等比较，
+   * 不做相似度或“不满意/无岗”等语义判断；候选人明确要求重发时原样保留。
+   */
+  static pruneRepeatedSegments(
+    text: string,
+    recentAssistantTexts: readonly string[] | undefined,
+    userMessage: string | undefined,
+  ): { text: string; droppedSegments: string[] } {
+    if (
+      !recentAssistantTexts?.length ||
+      this.RESEND_MARKERS.some((marker) => userMessage?.includes(marker))
+    ) {
+      return { text, droppedSegments: [] };
+    }
+
+    const delivered = recentAssistantTexts
+      .slice(-this.REPEAT_WINDOW)
+      .flatMap((item) => this.splitExactRepeatSegments(item))
+      .map((item) => this.normalizeForExactRepeat(item))
+      .filter((item) => item.length >= this.MIN_REPEAT_LENGTH);
+    const droppedSegments: string[] = [];
+    const kept = this.splitExactRepeatSegments(text).filter((segment) => {
+      const normalized = this.normalizeForExactRepeat(segment);
+      const repeated =
+        normalized.length >= this.MIN_REPEAT_LENGTH && delivered.includes(normalized);
+      if (repeated) droppedSegments.push(segment);
+      return !repeated;
+    });
+
+    return {
+      text: droppedSegments.length > 0 ? kept.join('\n\n') : text,
+      droppedSegments,
+    };
+  }
+
+  private static normalizeForExactRepeat(text: string): string {
+    return text.replace(/[\s，。！？!?、；;：:~～…\-—"'“”‘’（）()【】\[\]]/g, '').toLowerCase();
+  }
+
+  /** 按出站正文显式段落切分，但保留原字词与标点，避免去重顺带改写未重复内容。 */
+  private static splitExactRepeatSegments(text: string): string[] {
+    return text
+      .split(/(?:\r?\n){2,}/)
+      .map((segment) => segment.trim())
+      .filter(Boolean);
   }
 
   private static removeTimeMarkers(text: string): string {

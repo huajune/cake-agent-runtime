@@ -438,12 +438,14 @@ export class MemoryLifecycleService {
     }
     steps.push(extractFactsResult.step);
 
-    // 品牌状态 reducer（§6.3.1/§9.3）：排在 extract_facts 之后（吃它的极性/指代链接产出），
-    // 且不因其失败/降级跳过——extract_facts 抛错时以规则轨 + 图片解析结果照常运行，
-    // 否则当轮确定性解析出的 positive/negative（连同首轮 seed）会随异常一起丢失。
+    // 品牌状态 reducer 排在 extract_facts 之后。正常提取时，LLM 负责复杂极性，
+    // 规则只做目录验证；仅提取失败/降级时才用本轮文本规则恢复核心显式极性。
     const brandStateResult = await this.runMeasuredStep('apply_brand_state', async () => {
       return await this.applyBrandState(ctx, extractFactsResult.value?.brandIntents ?? [], {
         previousState,
+        llmDegraded:
+          extractFactsResult.step.status !== 'success' ||
+          extractFactsResult.value?.llmDegraded === true,
       });
     });
     steps.push(brandStateResult.step);
@@ -454,13 +456,13 @@ export class MemoryLifecycleService {
   /**
    * 汇总本轮全部品牌解析结果 → reducer 批量应用 → 单字段写回（§5.3 锚点二）。
    *
-   * 三路输入：规则轨（本轮 user 文本重解析，确定性）、LLM 轨（extract_facts 扩展输出，
-   * 已过目录验证）、图片轨（save_image_description execute 内产出，挂回合上下文）。
+   * 正常输入：LLM 轨（extract_facts 产出且已过目录验证）+ 图片轨。
+   * 降级输入：规则轨（本轮 user 文本核心显式极性）+ 图片轨。
    */
   private async applyBrandState(
     ctx: MemoryLifecycleTurnContext,
     llmBrandIntents: BrandResolution[],
-    options: { previousState?: WeworkSessionState },
+    options: { previousState?: WeworkSessionState; llmDegraded: boolean },
   ): Promise<{ changed: boolean; initialized: boolean }> {
     let brandData: Awaited<ReturnType<SpongeService['fetchBrandList']>> = [];
     try {
@@ -469,14 +471,14 @@ export class MemoryLifecycleService {
       brandData = [];
     }
 
-    // 规则轨：本轮末尾连续 user 块的文本（与回合准备的 trailingUserContent 同口径），
-    // 剥引用块与时间后缀后逐条解析。
-    const ruleResolutions = this.collectTrailingUserTexts(ctx.normalizedMessages).flatMap((text) =>
-      resolveBrands(text, 'user_text', brandData),
-    );
+    const fallbackResolutions = options.llmDegraded
+      ? this.collectTrailingUserTexts(ctx.normalizedMessages).flatMap((text) =>
+          resolveBrands(text, 'user_text', brandData),
+        )
+      : [];
     const resolutions: BrandResolution[] = [
       ...(ctx.imageBrandResolutions ?? []),
-      ...ruleResolutions,
+      ...fallbackResolutions,
       ...llmBrandIntents,
     ];
 

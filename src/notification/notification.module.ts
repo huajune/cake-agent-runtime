@@ -13,7 +13,6 @@ import { ConversationRiskNotifierService } from './services/conversation-risk-no
 import { GeneralHandoffNotifierService } from './services/general-handoff-notifier.service';
 import { OpsNotifierService } from './services/ops-notifier.service';
 import { PrivateChatMonitorNotifierService } from './services/private-chat-monitor-notifier.service';
-import { SemanticReviewNotifierService } from './services/semantic-review-notifier.service';
 
 @Global()
 @Module({
@@ -32,7 +31,6 @@ import { SemanticReviewNotifierService } from './services/semantic-review-notifi
     GeneralHandoffNotifierService,
     OpsNotifierService,
     PrivateChatMonitorNotifierService,
-    SemanticReviewNotifierService,
   ],
   exports: [
     AlertNotifierService,
@@ -40,7 +38,6 @@ import { SemanticReviewNotifierService } from './services/semantic-review-notifi
     GeneralHandoffNotifierService,
     OpsNotifierService,
     PrivateChatMonitorNotifierService,
-    SemanticReviewNotifierService,
   ],
 })
 export class NotificationModule {}

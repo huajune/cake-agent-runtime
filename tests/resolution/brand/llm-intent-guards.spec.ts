@@ -8,7 +8,7 @@ import { normalizeForBrandMatch } from '@resolution/brand/brand-normalize';
 describe('isSystemTextReflow（守卫 repair 反馈回流）', () => {
   it('守卫档案条目前缀 / 守卫反馈措辞命中', () => {
     expect(
-      isSystemTextReflow('- [requested_brand_mismatch] 问题：工具实际应用品牌为"肯德基"'),
+      isSystemTextReflow('- [brand_alias_fuzzy_match_ignored] 问题：工具品牌回指为"肯德基"'),
     ).toBe(true);
     expect(isSystemTextReflow('工具实际应用品牌为："麦当劳"')).toBe(false); // 无标签前缀且措辞不同
     expect(isSystemTextReflow('规则ID: brand_name_error')).toBe(true);

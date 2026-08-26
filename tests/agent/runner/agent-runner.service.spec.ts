@@ -118,7 +118,7 @@ describe('AgentRunnerService.runTurn', () => {
     );
     outputGuard.check.mockResolvedValue({
       ...passDecision,
-      ruleIds: ['repeated_reply_verbatim'],
+      ruleIds: [],
       deterministicReply: '徐汇区还有一家，我继续帮你核实',
     });
 
@@ -1081,7 +1081,7 @@ describe('AgentRunnerService.runTurn', () => {
     expect(outcome.reply).toBeUndefined();
   });
 
-  it('repairs a legacy image-description decision without granting any tool access', async () => {
+  it('never grants business tool access to output repair even if a decision carries legacy tool fields', async () => {
     generator.invoke.mockResolvedValueOnce(makeResult({ text: '图片里是健康证，可以继续报名。' }));
     outputGuard.check
       .mockResolvedValueOnce({
@@ -1089,17 +1089,17 @@ describe('AgentRunnerService.runTurn', () => {
         riskLevel: 'medium',
         violations: [
           {
-            type: 'image_description_not_saved',
-            evidence: '图片事实尚未保存',
-            suggestion: '按已确认事实修正表述',
+            type: 'booking_receipt_mismatch',
+            evidence: '预约回执不一致',
+            suggestion: '按已确认回执修正表述',
             severity: 'P1',
             recoverability: 'recoverable',
             currentReplySendable: false,
             repairMode: 'replan',
           },
         ],
-        ruleIds: ['image_description_not_saved'],
-        blockedRuleIds: ['image_description_not_saved'],
+        ruleIds: ['booking_receipt_mismatch'],
+        blockedRuleIds: ['booking_receipt_mismatch'],
         repairMode: 'replan',
         repairToolNames: ['save_image_description'],
       })
@@ -1278,14 +1278,14 @@ describe('AgentRunnerService.runTurn', () => {
       riskLevel: 'medium' as const,
       violations: [
         {
-          type: 'job_detail_lookup_required',
-          evidence: '区级位置报精确距离',
-          suggestion: '不输出精确公里数',
+          type: 'booking_receipt_mismatch',
+          evidence: '预约回执不一致',
+          suggestion: '按回执修正',
           recoverability: 'recoverable' as const,
         },
       ],
-      ruleIds: ['job_detail_lookup_required'],
-      blockedRuleIds: ['job_detail_lookup_required'],
+      ruleIds: ['booking_receipt_mismatch'],
+      blockedRuleIds: ['booking_receipt_mismatch'],
       repairMode: 'rewrite' as const,
     };
     outputGuard.check.mockResolvedValue(p1ReviseDecision);
@@ -1328,8 +1328,8 @@ describe('AgentRunnerService.runTurn', () => {
       repairMode: 'rewrite' as const,
     });
     outputGuard.check
-      .mockResolvedValueOnce(makeDecision(['job_detail_lookup_required']))
-      .mockResolvedValueOnce(makeDecision(['settlement_cycle_mismatch']));
+      .mockResolvedValueOnce(makeDecision(['booking_receipt_mismatch']))
+      .mockResolvedValueOnce(makeDecision(['brand_alias_fuzzy_match_ignored']));
 
     const outcome = await service.runTurn({
       sessionRef,
@@ -1372,17 +1372,17 @@ describe('AgentRunnerService.runTurn', () => {
         riskLevel: 'medium' as const,
         violations: [
           {
-            type: 'job_detail_lookup_required',
-            evidence: '详情字段需实时刷新',
-            suggestion: '按 jobId 补查后回答',
+            type: 'booking_receipt_mismatch',
+            evidence: '预约回执不一致',
+            suggestion: '按回执修正后回答',
             recoverability: 'recoverable' as const,
             // 生产上 revise 档一律派生 currentReplySendable=false（deriveRulePolicy）；
             // mock 保持同形态，防止"用该字段判定禁回退"的恒真条件回潮（2026-07-29）。
             currentReplySendable: false,
           },
         ],
-        ruleIds: ['job_detail_lookup_required'],
-        blockedRuleIds: ['job_detail_lookup_required'],
+        ruleIds: ['booking_receipt_mismatch'],
+        blockedRuleIds: ['booking_receipt_mismatch'],
         repairMode: 'rewrite' as const,
       })
       .mockResolvedValueOnce({
@@ -1624,8 +1624,8 @@ describe('AgentRunnerService.runTurn', () => {
       decision: 'revise' as const,
       riskLevel: 'medium' as const,
       violations: [{ type: 'bad_tone', evidence: '僵硬', suggestion: '更自然' }],
-      ruleIds: ['job_detail_lookup_required'],
-      blockedRuleIds: ['job_detail_lookup_required'],
+      ruleIds: ['booking_receipt_mismatch'],
+      blockedRuleIds: ['booking_receipt_mismatch'],
       repairMode: 'rewrite' as const,
       feedbackToGenerator: '不要给区级距离结论',
     };
@@ -1676,7 +1676,7 @@ describe('AgentRunnerService.runTurn', () => {
           firstReply: '首版（含区级距离断言）',
           first: expect.objectContaining({
             decision: 'revise',
-            ruleIds: ['job_detail_lookup_required'],
+            ruleIds: ['booking_receipt_mismatch'],
             violations: reviseDecision.violations,
             feedback: '不要给区级距离结论',
           }),

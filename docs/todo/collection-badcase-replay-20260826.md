@@ -76,7 +76,7 @@ npx ts-node -r tsconfig-paths/register --project scripts/tsconfig.json --transpi
 ```
 
 参考实现：会话 scratchpad 里的 `simulate-templates.ts` 演示了快照→契约→渲染的完整管线；
-`tests/tools/collection/collection-core.spec.ts` 演示了多轮驱动与 claims 构造。
+`tests/tools/collection/collection-core.spec.ts` 演示了多轮驱动与统一 formAnswers 构造。
 
 逐案步骤：
 
@@ -85,12 +85,13 @@ npx ts-node -r tsconfig-paths/register --project scripts/tsconfig.json --transpi
    可能与 0826 快照不同——运营 0820-0826 做过大清理，这是本重放的已知边界，如实写）。
 2. **切轮**：把聊天记录切成轮次，候选人消息作 `candidateTexts`，逐轮调 `runCollectionCore`，
    上一轮返回的 `form` 传入下一轮（多轮状态就是这么串的）。
-3. **claims 构造**：主聊模型的作证在离线重放里没有，按两档跑：
-   - 第一遍**不给 claims**——只测确定性通道（form_line 模板行回捞 + adapter_sweep），
+3. **formAnswers 构造**：主聊模型的作证在离线重放里没有，按两档跑：
+   - 第一遍**不给 formAnswers**——只测确定性通道（form_line 模板行回捞 + adapter_sweep），
      结论标「确定性通道行为」；
-   - 第二遍给**合理 claims**（照 spec 的 `{field, value, quote}` 形态手工构造，quote 必须
-     是候选人原话里逐字存在的片段），结论标「含模型作证假设」。裸"对/好/行"类案子必须
-     带 `agentQuestionQuote`（绑定 Agent 上一问）才能作证——这正是要检验的机制。
+   - 第二遍给**合理 formAnswers**（照 spec 的 `{labelTitle, value, quote}` 形态手工构造，
+     labelTitle 逐字取自当岗契约，quote 必须是候选人原话里逐字存在的片段），结论标
+     「含模型作证假设」。裸"对/好/行"类案子必须带 `agentQuestionQuote`（绑定 Agent
+     上一问）才能作证——这正是要检验的机制。
 4. **看什么**：每轮记录 `verdict / template.missingFields / askableFields / audits /
    form.slots 状态`。对照案发现象逐条判：
    - 答后复问：filled 字段还出不出现在 missingFields/askableFields？

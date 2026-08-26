@@ -104,7 +104,6 @@ const FALLBACK_ROLE_LABELS: Record<string, string> = {
   extract: '事实提取',
   vision: '图片理解',
   evaluate: '对话质量评估',
-  review: '守卫语义审查',
   repair: '守卫修复',
   reengagement: '复聊',
 };
@@ -352,12 +351,6 @@ export default function Config() {
       hint: '对话质量 LLM 评分。切换后评估分数环比会出现口径断点。',
     },
     {
-      key: 'reviewModelId',
-      label: '守卫语义审查',
-      envVar: 'AGENT_REVIEW_MODEL',
-      hint: '出站语义审查，建议与聊天模型跨厂商；切换后 shadow 精度需重新基线。',
-    },
-    {
       key: 'repairModelId',
       label: '守卫修复',
       envVar: 'AGENT_REPAIR_MODEL',
@@ -428,11 +421,6 @@ export default function Config() {
   const currentMergeWindow = Number(getCurrentValue('initialMergeWindowMs') ?? 0);
   // env 降级链快照：只读展示，来源 AGENT_DEFAULT_FALLBACKS / AGENT_{ROLE}_FALLBACKS
   const fallbackChains = agentConfigData?.fallbackChains;
-  // 出站守卫开关直接读服务端最新值（3s 轮询），不进 editingConfig 表单态——切换即保存
-  const guardrailLlmEnabled = Boolean(agentConfigData?.config.outputGuardrailLlmEnabled);
-  const guardrailShadowEnabled = Boolean(
-    agentConfigData?.config.outputGuardrailSemanticShadowEnabled,
-  );
   const hardRuleOverrides = agentConfigData?.config.hardRuleOverrides ?? {};
   // 主动复聊开关同守卫开关：直接读服务端最新值，切换即保存
   const reengagementEnabled = Boolean(agentConfigData?.config.reengagementEnabled);
@@ -481,28 +469,6 @@ export default function Config() {
       : scenario.delayMode === 'after_interview'
         ? '分钟后'
         : '分钟后';
-
-  // ===== 三态运行状态：两个布尔开关（总开关 × shadow）收敛成 关闭/Shadow 观测/生效 =====
-  const guardrailState: ModuleRunState = guardrailLlmEnabled
-    ? 'live'
-    : guardrailShadowEnabled
-      ? 'shadow'
-      : 'off';
-  const setGuardrailState = (next: ModuleRunState) => {
-    if (next === 'off') {
-      updateConfig.mutate({
-        outputGuardrailLlmEnabled: false,
-        outputGuardrailSemanticShadowEnabled: false,
-      });
-    } else if (next === 'shadow') {
-      updateConfig.mutate({
-        outputGuardrailLlmEnabled: false,
-        outputGuardrailSemanticShadowEnabled: true,
-      });
-    } else {
-      updateConfig.mutate({ outputGuardrailLlmEnabled: true });
-    }
-  };
 
   const saveHardRuleOverrides = (next: Record<string, HardRuleOverrideMode>) => {
     updateConfig.mutate({ hardRuleOverrides: next });
@@ -1007,44 +973,17 @@ export default function Config() {
             <div className={styles.moduleHeader}>
               <div>
                 <h3 className={styles.moduleTitle}>
-                  出站守卫（LLM 语义审查）
+                  出站确定性守卫
                   {renderSectionModeBadge('instant')}
                 </h3>
                 <p className={styles.moduleDescription}>
-                  回复发出前的最后一道语义审查：核对岗位推荐、地理品牌、预约状态与工具证据是否一致。
-                  开关即时生效，无需保存；灰度期先开
-                  Shadow，判例达标后再开拦截，拦截出问题可随时在这里熔断。
+                  回复发出前只检查格式、封闭高风险词形和结构化工具回执。开放对话语义由主 Agent
+                  承担；这里不运行第二个模型。
                 </p>
               </div>
             </div>
 
             <div className={styles.settingsPanel}>
-              <div className={styles.settingRow}>
-                <div className={styles.settingBody}>
-                  <div className={styles.settingHeading}>
-                    <span className={styles.settingLabel}>运行状态</span>
-                  </div>
-                  <p className={styles.settingDescription}>
-                    <strong>关闭</strong>：仅确定性规则档生效，语义审查不运行。
-                    <strong>Shadow 观测</strong>：审查跟随真实流量试跑，结论写入守卫日志和
-                    执行事件，不影响发送，用于评估"如果它说了算，会拦哪些回复"。
-                    <strong>拦截生效</strong>
-                    ：审查结论真正参与出站裁决，高风险回复（已提交预约等副作用、含承诺性措辞）会被打回重写或拦截不发。
-                  </p>
-                  <div className={styles.settingMeta}>
-                    <span>切换即时生效</span>
-                    <span>拦截生效时审查故障按 fail-close 拦截</span>
-                    <span>完整判例见守卫日志，运行统计见执行事件</span>
-                  </div>
-                </div>
-                <div className={styles.controlBlock}>
-                  {renderRunStateControl(guardrailState, setGuardrailState, {
-                    off: '关闭',
-                    shadow: 'Shadow 观测',
-                    live: '拦截生效',
-                  })}
-                </div>
-              </div>
               <div className={styles.settingRow}>
                 <div className={styles.settingBody}>
                   <div className={styles.settingHeading}>

@@ -222,7 +222,7 @@ describe('SystemConfigService', () => {
       (service as any).agentReplyConfig = {
         ...DEFAULT_AGENT_REPLY_CONFIG,
         extractModelId: 'deepseek/deepseek-v4-pro',
-        reviewModelId: '  deepseek/deepseek-v4-pro  ',
+        repairModelId: '  deepseek/deepseek-v4-pro  ',
         evaluateModelId: '',
         reengagementModelId: 'deepseek/deepseek-v4-pro',
       };
@@ -230,7 +230,7 @@ describe('SystemConfigService', () => {
     });
 
     it('returns trimmed override for configured roles', async () => {
-      await expect(service.getRoleModelOverride('review')).resolves.toBe(
+      await expect(service.getRoleModelOverride('repair')).resolves.toBe(
         'deepseek/deepseek-v4-pro',
       );
       await expect(service.getRoleModelOverride('extract')).resolves.toBe(
@@ -266,7 +266,7 @@ describe('SystemConfigService', () => {
         'qwen/qwen3.7-plus',
         'anthropic/claude-sonnet-5',
       ]);
-      await expect(service.getFallbackChainOverride('review')).resolves.toEqual([
+      await expect(service.getFallbackChainOverride('repair')).resolves.toEqual([
         'qwen/qwen3.7-plus',
         'anthropic/claude-sonnet-5',
       ]);

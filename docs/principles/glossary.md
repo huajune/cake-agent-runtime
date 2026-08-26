@@ -14,11 +14,11 @@
 | 行业名（中文对照） | 一句话定义 | 库内范本 | 检索线索 |
 |---|---|---|---|
 | **Guardrails**（守卫） | 对 LLM 应用分层设防：input / prompt / tool / output 四层 | `src/agent/guardrail/{input,tool,output}`；prompt 层见示教纪律 | OWASP LLM Top 10、NVIDIA NeMo Guardrails、Datadog guardrails |
-| **Grounding**（证据锚定） | 模型输出必须锚定可验证的证据源 | `candidateClaims` 强制附 quote | Anthropic Citations API、grounded generation |
+| **Grounding**（证据锚定） | 模型输出必须锚定可验证的证据源 | precheck `formAnswers` 的规范值必须附候选人 quote 并经公证回查 | Anthropic Citations API、grounded generation |
 | **Citation verification**（引文校验） | 对模型给出的引用做确定性/检索校验——只生成引用不校验是不够的 | `evidence/notary.ts` 三问 | CiteCheck、CiteGuard |
 | **Provenance / Attribution**（出处/归属） | 内容来源可追溯：谁产生的、经过什么管道 | 传输来源标记（`extractCandidateTexts`）、jobId 溯源闸 | data provenance、W3C PROV |
 | **Canary values**（占位值/金丝雀值） | 注册的假值，永不应出现在合法输出；输出侧确定性扫描即测出泄漏 | 占位号黑名单 `PLACEHOLDER_PHONES` | canary tokens、OWASP LLM07:2025 |
-| **Shadow mode**（影子模式） | 新逻辑并行计算、只落观测不改行为，攒精确率再切换 | 裁决 shadow、`semantic_track_diff`、语义审查 shadow | shadow deployment、dark launch |
+| **Shadow mode**（影子模式） | 新逻辑并行计算、只落观测不改行为 | 通用发布模式；当前 labor/output 主链不运行 shadow 对照 | shadow deployment、dark launch |
 | **Fail-open / fail-closed** | 防线自身失效时：放行＋告警（open）还是拒绝（closed） | P4 fail-open 兜底（可恢复违规不许静默收场） | fail-open security |
 | **Event sourcing**（事件溯源） | 追加式不可变观测记录 + 由解析推导现值，不做可变覆盖——**"账本"的学名** | claim 账本、`agent_execution_events` | event sourcing、append-only log |
 | **Human-in-the-loop（HITL）**（人在环） | 关键决策交给人终审——"本人终审"是它的数据主体版 | 确认流 `needs_confirmation`、转人工 handoff | HITL、user confirmation |

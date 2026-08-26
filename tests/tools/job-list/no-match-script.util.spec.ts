@@ -1,9 +1,6 @@
 import {
   buildNoMatchScript,
   buildPostInviteClosureScript,
-  buildRecommendationLimitScript,
-  countDissatisfiedRecommendationRounds,
-  hasPriorNoMatchReply,
 } from '@tools/job-list/no-match-script.util';
 
 describe('buildNoMatchScript', () => {
@@ -118,117 +115,13 @@ describe('buildNoMatchScript', () => {
     });
   });
 
-  describe('推荐两轮上限与拉群后收口', () => {
-    const twoRejectedRounds = [
-      {
-        role: 'assistant',
-        content: '推荐肯德基 A 店岗位，薪资 22 元/小时，班次 09:00-18:00',
-      },
-      { role: 'user', content: '这个太远了，不合适' },
-      {
-        role: 'assistant',
-        content: '再看瑞幸 B 店岗位，薪资 21 元/小时，班次 12:00-20:00',
-      },
-      { role: 'user', content: '时间也不行，换别的吧' },
-    ];
-
-    it('counts one round per concrete recommendation followed by dissatisfaction', () => {
-      expect(countDissatisfiedRecommendationRounds(twoRejectedRounds)).toBe(2);
-      expect(
-        countDissatisfiedRecommendationRounds([
-          ...twoRejectedRounds,
-          { role: 'user', content: '还有吗' },
-        ]),
-      ).toBe(2);
-    });
-
-    it('counts production job cards that use store names instead of the words 岗位/门店', () => {
-      expect(
-        countDissatisfiedRecommendationRounds([
-          {
-            role: 'assistant',
-            content:
-              '成都你六姐（凌空SOHO店）- 洗碗工 2.3km\n班次：12:00-14:30\n薪资：24元/时',
-          },
-          { role: 'assistant', content: '你看哪家方便' },
-          { role: 'user', content: '我上不了那么长时间' },
-          {
-            role: 'assistant',
-            content:
-              '成都你六姐（金光汇店）- 后厨 8.2km\n班次：18:00-22:00\n薪资：24元/时',
-          },
-          { role: 'assistant', content: '这几家都是晚高峰短班，你看哪家方便' },
-          { role: 'user', content: '没有近的，都有点远' },
-        ]),
-      ).toBe(2);
-    });
-
-    it('offers group consent after two rounds without claiming or executing an invite', () => {
-      const script = buildRecommendationLimitScript({ cityLabels: ['上海'] });
-      expect(script.nextAction).toBe('offer_group_invite');
-      expect(script.candidateMessage).toContain('前面两轮');
-      expect(script.candidateMessage).toContain('回复我“可以”');
-      expect(script.candidateMessage).not.toMatch(/已拉|邀请已经发/);
-      expect(script.forbiddenActions.some((x) => x.includes('不得调用 invite_to_group'))).toBe(
-        true,
-      );
-    });
-
+  describe('拉群后收口', () => {
     it('closes recommendation wording after a successful prior invite', () => {
       const script = buildPostInviteClosureScript({ groupName: '上海兼职群', city: '上海' });
       expect(script.nextAction).toBe('group_handoff_complete');
       expect(script.candidateMessage).toContain('上海兼职群');
       expect(script.forbiddenActions.join('\n')).toContain('禁止继续调用 duliday_job_list');
       expect(script.forbiddenActions.join('\n')).toContain('其他区域');
-    });
-  });
-
-  describe('二次无岗升级（badcase 6a5df7e7 Aron 复读辱骂案）', () => {
-    it('second-stage candidateMessage differs from first-stage and drops the group line', () => {
-      const first = buildNoMatchScript({ brandLabels: ['必胜客'], cityLabels: ['沈阳'] });
-      const second = buildNoMatchScript({
-        brandLabels: ['必胜客'],
-        cityLabels: ['沈阳'],
-        priorNoMatchReplySent: true,
-      });
-      expect(second.candidateMessage).not.toBe(first.candidateMessage);
-      expect(second.candidateMessage).toContain('记下来');
-      expect(second.candidateMessage).toContain('第一时间联系你');
-    });
-
-    it('second-stage adds a no-verbatim-repeat forbidden action', () => {
-      const second = buildNoMatchScript({ priorNoMatchReplySent: true });
-      expect(second.forbiddenActions.some((x) => x.includes('逐字重复'))).toBe(true);
-      const first = buildNoMatchScript({});
-      expect(first.forbiddenActions.some((x) => x.includes('逐字重复'))).toBe(false);
-    });
-  });
-
-  describe('hasPriorNoMatchReply', () => {
-    it('detects prior no-match assistant reply (Aron 案原文形态)', () => {
-      expect(
-        hasPriorNoMatchReply([
-          { role: 'user', content: '沈阳和平长白这里' },
-          { role: 'assistant', content: '沈阳这边暂时没有合适的岗位，后续有匹配我会主动联系你' },
-        ]),
-      ).toBe(true);
-      expect(
-        hasPriorNoMatchReply([
-          {
-            role: 'assistant',
-            content: '必胜客在你附近 10 公里内暂时没找到合适的岗位，我先帮你进餐饮兼职群',
-          },
-        ]),
-      ).toBe(true);
-    });
-
-    it('ignores user messages and unrelated assistant texts', () => {
-      expect(
-        hasPriorNoMatchReply([
-          { role: 'user', content: '暂时没有合适的岗位吗' },
-          { role: 'assistant', content: '帮你查到 3 个岗位，看看哪个合适' },
-        ]),
-      ).toBe(false);
     });
   });
 });

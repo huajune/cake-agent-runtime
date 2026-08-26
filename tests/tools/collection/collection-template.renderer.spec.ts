@@ -1,8 +1,5 @@
 import { createForm, proposeValue, type ContractFieldDef } from '@resolution/collection';
-import {
-  formLabel,
-  renderCollectionTemplate,
-} from '@tools/collection/collection-template.renderer';
+import { renderCollectionTemplate } from '@tools/collection/collection-template.renderer';
 
 const CONTRACT: ContractFieldDef[] = [
   {
@@ -40,8 +37,7 @@ describe('renderCollectionTemplate', () => {
     expect(result.displayOrder).toEqual(['姓名', '是否学生（不要学生及暑假工）', '具体住址']);
     expect(result.missingFields).toEqual(result.displayOrder);
     expect(result.screeningFields).toEqual(['是否学生（不要学生及暑假工）']);
-    expect(result.templateText).toContain('是否学生（社会人士/学生）：');
-    expect(result.templateText).not.toContain('不要学生');
+    expect(result.templateText).toContain('是否学生（不要学生及暑假工）：（社会人士/学生）');
   });
 
   it('prefills a notarized value and never reports the filled slot as missing', () => {
@@ -60,8 +56,15 @@ describe('renderCollectionTemplate', () => {
     expect(result.templateText).toContain('姓名：兮兮');
   });
 
-  it('keeps dirty or long contract labels compatible with the atomic form splitter', () => {
-    expect(formLabel('字段，带句读。')).toBe('字段 带句读');
-    expect(formLabel('很长'.repeat(30))).toHaveLength(48);
+  it('templateText 行标签与清单逐字使用契约 labelTitle，不清洗脏标题或截断长标题', () => {
+    const dirty = {
+      ...CONTRACT[2],
+      labelId: 104,
+      labelTitle: `字段，带句读。${'很长'.repeat(30)}`,
+    };
+    const result = renderCollectionTemplate(createForm({ jobId: 1, contract: [dirty] }), [dirty]);
+    expect(result.requiredFields).toEqual([dirty.labelTitle]);
+    expect(result.displayOrder).toEqual([dirty.labelTitle]);
+    expect(result.templateText).toContain(`${dirty.labelTitle}：`);
   });
 });

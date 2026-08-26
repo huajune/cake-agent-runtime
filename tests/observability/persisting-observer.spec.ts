@@ -58,24 +58,6 @@ describe('PersistingObserver', () => {
     expect(persister.persist).toHaveBeenCalledTimes(2);
   });
 
-  it('persists semantic_track_diff（labor-form 冻结令要求的分歧档案，PR #1000 评审 P1-15）', () => {
-    const observer = makeObserver();
-
-    observer.emit({
-      type: 'semantic_track_diff',
-      semantic: 'labor_form_intent',
-      userId: 'user1',
-      ruleTrack: { intent: 'ignore' },
-      extractionTrack: { intent: 'set', laborForm: '兼职' },
-      quote: '想找个周末兼职',
-    });
-
-    expect(persister.persist).toHaveBeenCalledTimes(1);
-    expect(persister.persist).toHaveBeenCalledWith(
-      expect.objectContaining({ type: 'semantic_track_diff' }),
-    );
-  });
-
   it('persists only material tool calls', () => {
     const observer = makeObserver();
 

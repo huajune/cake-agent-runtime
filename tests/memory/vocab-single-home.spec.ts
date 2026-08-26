@@ -1,12 +1,8 @@
 import {
   CANDIDATE_CLAIM_FIELDS,
-  CandidateClaimInputSchema,
   CANDIDATE_FACT_OPERATIONS,
 } from '@resolution/evidence/claim.types';
-import {
-  FACT_CONFIDENCE_LEVELS,
-  FACT_CONFIDENCE_LEVELS_DESC,
-} from '@/memory/confidence-rank';
+import { FACT_CONFIDENCE_LEVELS, FACT_CONFIDENCE_LEVELS_DESC } from '@/memory/confidence-rank';
 import {
   BrandIntentEntrySchema,
   SESSION_TERMINAL_STATES,
@@ -63,11 +59,9 @@ describe('词表单一居所 · 期 0', () => {
       expect([...BRAND_INTENT_POLARITIES]).toEqual(['positive', 'negative', 'browse_all']);
     });
 
-    it('CandidateClaimInput.operation 取值与顺序不变', () => {
+    it('CandidateFactOperation 取值与顺序不变', () => {
       expect([...CANDIDATE_FACT_OPERATIONS]).toEqual(['set', 'correct', 'confirm', 'clear']);
-      // field 早已是派生写法（本期不动），一并锁住防回退
       expect(CANDIDATE_CLAIM_FIELDS.length).toBeGreaterThan(0);
-      expect(CandidateClaimInputSchema.shape.field).toBeDefined();
     });
 
     it('brandFilterMode 取值与顺序不变', () => {

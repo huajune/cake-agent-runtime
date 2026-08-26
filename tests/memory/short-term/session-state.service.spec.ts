@@ -411,6 +411,75 @@ describe('SessionStateService（S1-S6）', () => {
     expect(saved?.preferences.district?.value).toEqual(['浦东新区']);
   });
 
+  it('正常提取时 labor_form_intent 覆盖 legacy preference 与规则提示', async () => {
+    llm.generateStructured.mockResolvedValue({
+      output: {
+        preferences: preferences({ labor_form: '兼职' }),
+        brand_intents: [],
+        labor_form_intent: { intent: 'set', labor_form: '全职', quote: '我改找全职' },
+        reasoning: '候选人明确改口',
+      },
+      modelId: 'test/extract',
+    });
+
+    await service.extractAndSave(
+      'corp-1',
+      'user-1',
+      'session-1',
+      [{ role: 'user', content: '我改找全职' }],
+      null,
+      { kind: 'set', value: '暑假工' },
+    );
+
+    expect(
+      (await service.getFacts('corp-1', 'user-1', 'session-1'))?.preferences.labor_form,
+    ).toEqual(expect.objectContaining({ value: '全职', source: 'model', evidence: '我改找全职' }));
+  });
+
+  it('正常提取为 ignore 时不让 legacy preference 或规则覆盖旧用工形式', async () => {
+    await service.saveFacts('corp-1', 'user-1', 'session-1', softFacts({ labor_form: '小时工' }));
+    llm.generateStructured.mockResolvedValue({
+      output: {
+        preferences: preferences({ labor_form: '兼职' }),
+        brand_intents: [],
+        labor_form_intent: { intent: 'ignore', quote: '这是兼职岗位吗' },
+        reasoning: '仅核对岗位事实',
+      },
+      modelId: 'test/extract',
+    });
+
+    await service.extractAndSave(
+      'corp-1',
+      'user-1',
+      'session-1',
+      [{ role: 'user', content: '这是兼职岗位吗' }],
+      null,
+      { kind: 'set', value: '兼职' },
+    );
+
+    expect(
+      (await service.getFacts('corp-1', 'user-1', 'session-1'))?.preferences.labor_form?.value,
+    ).toBe('小时工');
+  });
+
+  it('提取降级时才使用显式用工形式规则兜底', async () => {
+    llm.generateStructured.mockRejectedValueOnce(new Error('extract unavailable'));
+
+    const outcome = await service.extractAndSave(
+      'corp-1',
+      'user-1',
+      'session-1',
+      [{ role: 'user', content: '我找全职' }],
+      null,
+      { kind: 'set', value: '全职' },
+    );
+
+    expect(outcome.llmDegraded).toBe(true);
+    expect(
+      (await service.getFacts('corp-1', 'user-1', 'session-1'))?.preferences.labor_form,
+    ).toEqual(expect.objectContaining({ value: '全职', source: 'rule' }));
+  });
+
   it('城市模型写入与工具确权都共用单一裁决器', async () => {
     await service.saveFacts(
       'corp-1',

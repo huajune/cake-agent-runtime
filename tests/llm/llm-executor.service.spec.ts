@@ -522,9 +522,9 @@ describe('LlmExecutorService', () => {
       const overriddenService = makeServiceWithOverrides(getOverride);
       mockGenerateText.mockResolvedValueOnce(makeGenerateResult());
 
-      await overriddenService.generate({ role: ModelRole.Review, prompt: 'hi' });
+      await overriddenService.generate({ role: ModelRole.Repair, prompt: 'hi' });
 
-      expect(getOverride).toHaveBeenCalledWith('review');
+      expect(getOverride).toHaveBeenCalledWith('repair');
       expect(mockRouter.resolveRoute).toHaveBeenCalledWith(
         expect.objectContaining({ overrideModelId }),
       );
@@ -536,7 +536,7 @@ describe('LlmExecutorService', () => {
       mockGenerateText.mockResolvedValueOnce(makeGenerateResult());
 
       await overriddenService.generate({
-        role: ModelRole.Review,
+        role: ModelRole.Repair,
         modelId: 'qwen/qwen3.7-plus',
         prompt: 'hi',
       });
@@ -553,7 +553,7 @@ describe('LlmExecutorService', () => {
       );
       mockGenerateText.mockResolvedValueOnce(makeGenerateResult());
 
-      const result = await overriddenService.generate({ role: ModelRole.Review, prompt: 'hi' });
+      const result = await overriddenService.generate({ role: ModelRole.Repair, prompt: 'hi' });
 
       expect(result.text).toBe('mock response');
       expect(mockRouter.resolveRoute).toHaveBeenCalledWith(

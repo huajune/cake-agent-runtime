@@ -92,7 +92,7 @@ Prompt Construction；本库在此基础上还把副作用 Tool 门禁独立成�
 | 档案侧（候选人抄我方模板）       | 回声检查（quote 命中我方已发消息 → 转确认）                                                                                                   | ✅ 已落地（PR #1000 C4）                        |
 | 工具入参侧                       | jobId 溯源闸、占位号/纯数字姓名形状门                                                                                                         | ✅ 已上线                                       |
 | 出站侧（元语言泄漏）             | meta_narration / internal_output_leak BLOCK                                                                                                   | ✅ 已上线                                       |
-| **出站侧（示例值漏给候选人）**   | **示例词表出站扫描**：回复含注册示例值（测试娟/测试门店/占位号）→ `example_value_leak`。纯字符串比对，P3 合法封闭形态，业界 canary 守卫的同款 | ✅ 已落地，按发牌制以 `observe` 入场            |
+| **出站侧（示例值漏给候选人）**   | 示例值治理留在 Prompt 语料分域和事实 quote 公证；不再维护出站开放扫描规则 | ✅ `example_value_leak` 已退役 |
 | 注意力稀释                       | "最小高信号 token 集"——普查红黄区清洗即是减法                                                                                                 | ✅ R1–R6 已清洗；Y2 已换弱 canary               |
 | **Prompt Construction 语料边界** | prompt 叶子块与对话旁路标注 `teaching / evidence / tool_result`；出处公证、回声审计、booking 水位按标签选语料                                 | ✅ BL2 已落地；封闭枚举，不新增开放自然语言裁决 |
 

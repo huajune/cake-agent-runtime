@@ -99,7 +99,7 @@ describe('HostingConfigFacadeService', () => {
     it('reports a saved runtime model override as the effective model', async () => {
       mockSystemConfigService.getAgentReplyConfig.mockResolvedValue({
         ...DEFAULT_AGENT_REPLY_CONFIG,
-        reviewModelId: 'deepseek/deepseek-v4-pro',
+        repairModelId: 'deepseek/deepseek-v4-pro',
       });
       mockSystemConfigService.getGroupTaskConfig.mockResolvedValue({
         enabled: false,
@@ -108,10 +108,10 @@ describe('HostingConfigFacadeService', () => {
 
       const result = await service.getAgentReplyConfig();
 
-      expect(result.resolvedModels.reviewModelId).toEqual({
+      expect(result.resolvedModels.repairModelId).toEqual({
         modelId: 'deepseek/deepseek-v4-pro',
         source: 'runtime_override',
-        envVar: 'AGENT_REVIEW_MODEL',
+        envVar: 'AGENT_REPAIR_MODEL',
       });
     });
 
@@ -154,7 +154,7 @@ describe('HostingConfigFacadeService', () => {
     });
 
     it('accepts registered model ids for role overrides and empty string as clear', async () => {
-      const partial = { reviewModelId: 'deepseek/deepseek-v4-pro', evaluateModelId: '' };
+      const partial = { repairModelId: 'deepseek/deepseek-v4-pro', evaluateModelId: '' };
       mockSystemConfigService.setAgentReplyConfig.mockResolvedValue({
         ...DEFAULT_AGENT_REPLY_CONFIG,
         ...partial,
@@ -167,7 +167,7 @@ describe('HostingConfigFacadeService', () => {
 
     it('rejects unregistered model ids for role overrides', async () => {
       await expect(
-        service.updateAgentReplyConfig({ reviewModelId: 'foo/not-a-model' }),
+        service.updateAgentReplyConfig({ repairModelId: 'foo/not-a-model' }),
       ).rejects.toThrow('不是已登记的模型');
       expect(mockSystemConfigService.setAgentReplyConfig).not.toHaveBeenCalled();
     });

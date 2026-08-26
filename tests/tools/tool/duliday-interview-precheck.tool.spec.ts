@@ -1,6 +1,11 @@
 import { createForm, markSubmitted, type BookingCollectionForm } from '@resolution/collection';
 import type { ToolBuildContext } from '@shared-types/tool.types';
-import { buildInterviewPrecheckTool } from '@tools/duliday-interview-precheck.tool';
+import {
+  buildInterviewPrecheckTool,
+  COLLECTION_TEMPLATE_SEND_INSTRUCTION,
+  PRECHECK_DESCRIPTION,
+  PRECHECK_INPUT_SCHEMA,
+} from '@tools/duliday-interview-precheck.tool';
 import { TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
 import { createToolContext, mergeToolContext } from '../../helpers/tool-context.fixture';
 
@@ -110,6 +115,7 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
     fetchJobCollectionContract: jest.fn(),
   };
   const ops = { recordEvent: jest.fn().mockResolvedValue(true) };
+  const observer = { emit: jest.fn() };
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -130,6 +136,7 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
   async function execute(input: Record<string, unknown>) {
     const built = buildInterviewPrecheckTool(sponge as never, ops as never, {
       collectionForms: collectionForms as never,
+      observer,
     })(context);
     return built.execute!(input as never, {
       toolCallId: 'precheck-test',
@@ -138,6 +145,32 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
       abortSignal: undefined as never,
     }) as Promise<Record<string, any>>;
   }
+
+  it('公开工具 Schema 只保留 formAnswers 一个收资入口，且 description 共用照发指令', () => {
+    expect(Object.keys(PRECHECK_INPUT_SCHEMA.shape)).toEqual([
+      'jobId',
+      'requestedDate',
+      'formAnswers',
+    ]);
+    expect(PRECHECK_DESCRIPTION).not.toContain('candidateClaims');
+    expect(PRECHECK_DESCRIPTION).toContain(COLLECTION_TEMPLATE_SEND_INSTRUCTION);
+    expect(
+      PRECHECK_INPUT_SCHEMA.safeParse({
+        jobId: 100,
+        formAnswers: [{ labelTitle: '年龄', value: false, quote: '不是学生' }],
+      }).success,
+    ).toBe(false);
+  });
+
+  it('无答案时字段全集、展示顺序和模板全部只来自实时岗位契约', async () => {
+    const result = await execute({ jobId: 100 });
+    expect(result.bookingChecklist.requiredFields).toEqual(['姓名', '联系电话', '年龄', '性别']);
+    expect(result.bookingChecklist.displayOrder).toEqual(['姓名', '联系电话', '年龄', '性别']);
+    for (const title of result.bookingChecklist.requiredFields) {
+      expect(result.bookingChecklist.templateText).toContain(`${title}：`);
+    }
+    expect(result._replyInstruction).toContain(COLLECTION_TEMPLATE_SEND_INSTRUCTION);
+  });
 
   it('拒绝无法解析的 requestedDate，且不触碰外部接口', async () => {
     const result = await execute({ jobId: 100, requestedDate: 'next week' });
@@ -158,7 +191,7 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
     context.turnInput.messages = [{ role: 'user', content: '我叫兮兮' }];
     const result = await execute({
       jobId: 100,
-      candidateClaims: [{ field: 'name', value: '兮兮', quote: '我叫兮兮' }],
+      formAnswers: [{ labelTitle: '姓名', value: '兮兮', quote: '我叫兮兮' }],
     });
     expect(result.collectionVerdict).toBe('collecting');
     expect(result.nextAction).toBe('collect_fields');
@@ -188,11 +221,11 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
     ];
     const result = await execute({
       jobId: 100,
-      candidateClaims: [
-        { field: 'name', value: '兮兮', quote: '我叫兮兮' },
-        { field: 'phone', value: '18271421690', quote: '电话18271421690' },
-        { field: 'age', value: '25', quote: '我今年25岁' },
-        { field: 'gender', value: '女', quote: '我是女的' },
+      formAnswers: [
+        { labelTitle: '姓名', value: '兮兮', quote: '我叫兮兮' },
+        { labelTitle: '联系电话', value: '18271421690', quote: '电话18271421690' },
+        { labelTitle: '年龄', value: '25', quote: '我今年25岁' },
+        { labelTitle: '性别', value: '女', quote: '我是女的' },
       ],
     });
     expect(result.collectionVerdict).toBe('ready');
@@ -215,14 +248,61 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
     context.turnInput.messages = [{ role: 'user', content: '年龄不是25，是26' }];
     const result = await execute({
       jobId: 100,
-      candidateClaims: [
-        { field: 'age', value: '26', quote: '年龄不是25，是26', operation: 'correct' },
+      formAnswers: [
+        {
+          labelTitle: '年龄',
+          value: '26',
+          quote: '年龄不是25，是26',
+          operation: 'correct',
+        },
       ],
     });
     expect(result.nextAction).toBe('confirm_collection');
     expect(currentForm?.slots[103].value?.value).toBe('26');
     expect(currentForm?.slots[101].value?.value).toBe('兮兮');
     expect(result.recap.candidateMessage).toContain('年龄：26');
+  });
+
+  it('clear 经 recap 精确重开一格，其它已填槽不受影响', async () => {
+    currentForm = filledForm();
+    context.turnInput.messages = [{ role: 'user', content: '联系电话先清掉，我重新发' }];
+    const result = await execute({
+      jobId: 100,
+      formAnswers: [
+        {
+          labelTitle: '联系电话',
+          value: null,
+          quote: '联系电话先清掉',
+          operation: 'clear',
+        },
+      ],
+    });
+    expect(result.nextAction).toBe('collect_fields');
+    expect(currentForm?.slots[102].state).toBe('empty');
+    expect(currentForm?.slots[101].value?.value).toBe('兮兮');
+    expect(result.bookingChecklist.requiredFieldsToCollectNow).toEqual(['联系电话']);
+  });
+
+  it('契约外 formAnswers 标题不改槽位与清单，并通过既有 collection_form_audit 落审计', async () => {
+    context.turnInput.messages = [{ role: 'user', content: '我是社会人士' }];
+    const result = await execute({
+      jobId: 100,
+      formAnswers: [{ labelTitle: '身份', value: '社会人士', quote: '我是社会人士' }],
+    });
+    expect(result.bookingChecklist.requiredFields).toEqual(['姓名', '联系电话', '年龄', '性别']);
+    expect(
+      Object.keys(currentForm?.slots ?? {})
+        .map(Number)
+        .sort(),
+    ).toEqual([101, 102, 103, 104]);
+    expect(observer.emit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'collection_form_audit',
+        kind: 'proposal_rejected',
+        reason: 'label_title_not_found',
+        channel: 'form_answer',
+      }),
+    );
   });
 
   it('disqualified：契约 rejectedOption 生产接线到中性拒绝话术', async () => {
@@ -239,7 +319,7 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
     context.turnInput.messages = [{ role: 'user', content: '我是学生' }];
     const result = await execute({
       jobId: 100,
-      candidateClaims: [{ field: 'isStudent', value: '学生', quote: '我是学生' }],
+      formAnswers: [{ labelTitle: '是否学生', value: '学生', quote: '我是学生' }],
     });
     expect(result.collectionVerdict).toBe('disqualified');
     expect(result.nextAction).toBe('screening_rejected');

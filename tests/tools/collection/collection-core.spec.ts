@@ -97,10 +97,10 @@ describe('runCollectionCore · 先写后问', () => {
       contract: CONTRACT,
       candidateTexts: [text],
       messages: [{ role: 'user', content: text }],
-      claims: [
-        { field: 'name', value: '兮兮', quote: '我叫兮兮' },
-        { field: 'age', value: '26', quote: '今年26岁' },
-        { field: 'healthCertificate', value: '有本地有效健康证', quote: '有本地有效健康证' },
+      formAnswers: [
+        { labelTitle: '姓名', value: '兮兮', quote: '我叫兮兮' },
+        { labelTitle: '年龄', value: '26', quote: '今年26岁' },
+        { labelTitle: '有无本地健康证', value: '有本地有效健康证', quote: '有本地有效健康证' },
       ],
     });
     expect(result.verdict).toBe('ready');
@@ -128,9 +128,9 @@ describe('runCollectionCore · 多人闸（D1：疑似代报第二人即转人�
       contract: CONTRACT_WITH_PHONE,
       candidateTexts: [text],
       messages: [{ role: 'user', content: text }],
-      claims: [
-        { field: 'name', value: '兮兮', quote: '我叫兮兮' },
-        { field: 'phone', value: '18271421690', quote: '手机号18271421690' },
+      formAnswers: [
+        { labelTitle: '姓名', value: '兮兮', quote: '我叫兮兮' },
+        { labelTitle: '手机号', value: '18271421690', quote: '手机号18271421690' },
       ],
     });
     expect(round1.form.slots[769].state).toBe('filled');
@@ -145,9 +145,14 @@ describe('runCollectionCore · 多人闸（D1：疑似代报第二人即转人�
       contract: CONTRACT_WITH_PHONE,
       candidateTexts: [text],
       messages: [{ role: 'user', content: text }],
-      claims: [
-        { field: 'name', value: '李四', quote: '帮李四报一个', operation: 'correct' },
-        { field: 'phone', value: '13900001111', quote: '手机号13900001111', operation: 'correct' },
+      formAnswers: [
+        { labelTitle: '姓名', value: '李四', quote: '帮李四报一个', operation: 'correct' },
+        {
+          labelTitle: '手机号',
+          value: '13900001111',
+          quote: '手机号13900001111',
+          operation: 'correct',
+        },
       ],
     });
     expect(result.verdict).toBe('escalated');
@@ -168,8 +173,13 @@ describe('runCollectionCore · 多人闸（D1：疑似代报第二人即转人�
       contract: CONTRACT_WITH_PHONE,
       candidateTexts: [text],
       messages: [{ role: 'user', content: text }],
-      claims: [
-        { field: 'phone', value: '18271421691', quote: '应该是18271421691', operation: 'correct' },
+      formAnswers: [
+        {
+          labelTitle: '手机号',
+          value: '18271421691',
+          quote: '应该是18271421691',
+          operation: 'correct',
+        },
       ],
     });
     expect(result.verdict).not.toBe('escalated');
@@ -199,12 +209,45 @@ describe('runCollectionCore · 筛选与审计', () => {
 
   it('公证拒收落审计事件——臆造防线的观测面，不能只打日志', () => {
     const result = run('你好还招人吗', {
-      claims: [{ field: 'age', value: '30', quote: '我30岁' }],
+      formAnswers: [{ labelTitle: '年龄', value: '30', quote: '我30岁' }],
     });
     const rejected = result.audits.find((a) => a.kind === 'proposal_rejected');
     expect(rejected).toBeDefined();
-    expect(rejected?.channel).toBe('claim');
+    expect(rejected?.channel).toBe('form_answer');
     expect(rejected?.reason).toBe('source_text_not_found');
+  });
+
+  it('formAnswers 契约外标题不能创建/删除/改名槽位，字段全集与顺序仍只来自契约', () => {
+    const result = run('我是社会人士', {
+      formAnswers: [{ labelTitle: '身份', value: '社会人士', quote: '我是社会人士' }],
+    });
+    expect(result.template.requiredFields).toEqual(['姓名', '年龄', '有无本地健康证']);
+    expect(result.template.displayOrder).toEqual(['姓名', '年龄', '有无本地健康证']);
+    expect(Object.keys(result.form.slots).map(Number).sort()).toEqual([13, 687, 769]);
+    expect(result.audits).toContainEqual(
+      expect.objectContaining({
+        kind: 'proposal_rejected',
+        reason: 'label_title_not_found',
+        channel: 'form_answer',
+      }),
+    );
+  });
+
+  it('选项值适配失败不再静默丢弃：公证拒收、字段保持 missing', () => {
+    const text = '健康证入职前办妥';
+    const result = run(text, {
+      formAnswers: [{ labelTitle: '有无本地健康证', value: '入职前办妥', quote: text }],
+    });
+    expect(result.form.slots[13].state).toBe('empty');
+    expect(result.template.missingFields).toContain('有无本地健康证');
+    expect(result.askableFields).toContain('有无本地健康证');
+    expect(result.audits).toContainEqual(
+      expect.objectContaining({
+        kind: 'proposal_rejected',
+        labelId: 13,
+        reason: 'value_not_in_contract_vocabulary',
+      }),
+    );
   });
 
   it('熔断：同槽问满上限 → handoff，askableFields 空', () => {
@@ -250,7 +293,7 @@ describe('因果隔离判据', () => {
 });
 
 describe('模板字段名与契约同源', () => {
-  it('字段名一律用契约 labelTitle，脏标题在模板行里剥括号（不泄露筛选指令）', () => {
+  it('字段名一律逐字使用契约 labelTitle，脏标题不做代码清洗', () => {
     const dirty: ContractFieldDef = {
       labelId: 605,
       labelTitle: '是否学生（不要学生及暑假工）',
@@ -266,9 +309,7 @@ describe('模板字段名与契约同源', () => {
       messages: [],
     });
     expect(result.template.missingFields).toEqual(['是否学生（不要学生及暑假工）']);
-    // 单选项不出枚举提示（不是选择题）；标题的括号补充照剥。
-    expect(result.template.templateText).toContain('是否学生：');
-    expect(result.template.templateText).not.toContain('不要学生及暑假工');
+    expect(result.template.templateText).toContain('是否学生（不要学生及暑假工）：');
   });
 });
 
@@ -332,6 +373,28 @@ describe('记忆→表单预填（跨岗不重复盘问）', () => {
       archiveFacts: [{ claimField: 'householdProvince' as const, value: '安徽' }],
     });
     expect(Object.values(result.form.slots).every((s) => s.value?.value !== '安徽')).toBe(true);
+  });
+
+  it('档案布尔字符串化产物过不了值词表门，模板留空且 recap 无裸 false/代答是非', () => {
+    const studentField: ContractFieldDef = {
+      labelId: 605,
+      labelTitle: '学信网是否在籍',
+      fieldType: 'TEXT',
+      required: true,
+      acceptedOptions: [],
+      rejectedOptions: [],
+    };
+    const result = runCollectionCore({
+      form: createForm({ jobId: 1, contract: [studentField] }),
+      contract: [studentField],
+      candidateTexts: [],
+      messages: [],
+      archiveFacts: [{ claimField: 'isStudent', value: 'false' }],
+    });
+    expect(result.form.slots[605].state).toBe('empty');
+    expect(result.template.templateText).toContain('学信网是否在籍：');
+    expect(result.template.templateText).not.toContain('false');
+    expect(result.template.templateText).not.toContain('学信网是否在籍：否');
   });
 });
 
@@ -458,8 +521,8 @@ describe('必填全收 + 筛选项优先（0820 用户确认口径）', () => {
     const lines = runBig()
       .template.templateText.split('\n')
       .slice(1)
-      // 剥掉枚举提示只留标签本体（选项型会渲染成「能做多久（半年以上/3个月内）：」）。
-      .map((line) => line.split('：')[0].replace(/（[^）]*）$/u, ''));
+      // 枚举提示位于冒号右侧，左侧天然就是契约标签原文。
+      .map((line) => line.split('：')[0]);
     expect(lines).toEqual([
       '姓名',
       '手机号',

@@ -627,7 +627,7 @@ describe('MemoryLifecycleService', () => {
   });
 
   describe('apply_brand_state 步骤（§6.3.1 时序）', () => {
-    it('排在 extract_facts 之后，汇总规则轨 + 图片轨 + LLM 轨结果进 reducer', async () => {
+    it('正常提取时仅汇总图片轨 + LLM 权威极性结果进 reducer', async () => {
       const llmIntent = {
         canonicalName: '麦当劳',
         brandId: null,
@@ -673,14 +673,7 @@ describe('MemoryLifecycleService', () => {
       expect(mockBrandState.applyTurnResolutions).toHaveBeenCalledTimes(1);
       const call = mockBrandState.applyTurnResolutions.mock.calls[0][0];
       expect(call.contactName).toBe('小王 肯德基');
-      // 图片轨透传 + LLM 轨极性结果 + 规则轨对本轮 user 文本的解析（KFC → 肯德基）
-      expect(call.resolutions).toEqual(
-        expect.arrayContaining([
-          imageResolution,
-          llmIntent,
-          expect.objectContaining({ canonicalName: '肯德基', source: 'user_text' }),
-        ]),
-      );
+      expect(call.resolutions).toEqual([imageResolution, llmIntent]);
       // 步骤顺序：apply_brand_state 在 extract_facts 之后
       const finalStatus = mockMessageProcessing.updatePostProcessingStatus.mock.calls.at(-1)![1];
       const stepNames = finalStatus.steps.map((step: { name: string }) => step.name);
@@ -718,6 +711,33 @@ describe('MemoryLifecycleService', () => {
           expect.objectContaining({ name: 'extract_facts', status: 'failure' }),
           expect.objectContaining({ name: 'apply_brand_state', status: 'success' }),
         ]),
+      );
+    });
+
+    it('extract_facts 返回降级标记时使用规则极性兜底', async () => {
+      mockSessionService.extractAndSave.mockResolvedValueOnce({
+        llmDegraded: true,
+        brandIntents: [],
+      });
+
+      await service.onTurnEnd(
+        {
+          corpId: 'corp-1',
+          userId: 'user-1',
+          sessionId: 'sess-1',
+          turnHints: null,
+          laborFormIntent: { kind: 'ignore' },
+          normalizedMessages: [{ role: 'user', content: '不要肯德基' }],
+        },
+        '好的',
+      );
+
+      expect(mockBrandState.applyTurnResolutions).toHaveBeenCalledWith(
+        expect.objectContaining({
+          resolutions: [
+            expect.objectContaining({ canonicalName: '肯德基', intentPolarity: 'negative' }),
+          ],
+        }),
       );
     });
   });

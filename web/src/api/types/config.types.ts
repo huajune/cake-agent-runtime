@@ -27,7 +27,6 @@ export interface AgentReplyConfig {
   // 其余角色的运行时模型覆盖（空字符串 = 走对应 AGENT_{ROLE}_MODEL 环境变量路由）
   visionModelId: string;
   evaluateModelId: string;
-  reviewModelId: string;
   repairModelId: string;
   reengagementModelId: string;
 
@@ -54,9 +53,6 @@ export interface AgentReplyConfig {
   queueDepthCritical: number;
   errorRateCritical: number;
 
-  // 出站守卫 llm 档（语义审查）灰度开关
-  outputGuardrailLlmEnabled: boolean;
-  outputGuardrailSemanticShadowEnabled: boolean;
   hardRuleOverrides: Record<string, HardRuleOverrideMode>;
 
   // 主动复聊（reengagement）开关
@@ -79,7 +75,6 @@ export type AgentModelConfigKey =
   | 'extractModelId'
   | 'visionModelId'
   | 'evaluateModelId'
-  | 'reviewModelId'
   | 'repairModelId'
   | 'reengagementModelId';
 

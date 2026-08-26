@@ -26,7 +26,7 @@ export interface GuardrailSemanticFinding {
   feedbackToGenerator: string;
 }
 
-/** 语义守卫的一次完整裁决；同一 trace 可包含首审、修复后二审等多次记录。 */
+/** 升级前语义守卫留下的历史裁决，只用于读取已有档案。 */
 export interface GuardrailSemanticReview {
   mode: GuardrailSemanticReviewMode;
   decision: OutputDecision;
@@ -34,15 +34,6 @@ export interface GuardrailSemanticReview {
   findings: GuardrailSemanticFinding[];
   draftReply: string;
   reviewedAt?: string;
-}
-
-export interface GuardrailSemanticReviewInput extends Omit<GuardrailSemanticReview, 'reviewedAt'> {
-  traceId: string;
-  chatId?: string;
-  userId?: string;
-  botUserName?: string;
-  contactName?: string;
-  userMessage?: string;
 }
 
 /** 一条出站守卫审查档案（写入/读取共用形状，camelCase）。 */
@@ -66,7 +57,7 @@ export interface GuardrailReviewRecord {
   committedSideEffects?: string;
   finalDecision: OutputDecision;
   reasonCode?: string;
-  /** Semantic Reviewer 的完整判例序列；包含 shadow 与 enforce 首审/二审。 */
+  /** 升级前 Semantic Reviewer 的历史判例；当前链路不再写入。 */
   semanticReviews: GuardrailSemanticReview[];
   createdAt?: string;
 }

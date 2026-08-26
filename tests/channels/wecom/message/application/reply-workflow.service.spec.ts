@@ -1156,8 +1156,8 @@ describe('ReplyWorkflowService', () => {
       decision: 'block',
       riskLevel: 'high',
       violations: [],
-      ruleIds: ['proactive_insurance_policy_mention'],
-      blockedRuleIds: ['proactive_insurance_policy_mention'],
+      ruleIds: ['quota_promise'],
+      blockedRuleIds: ['quota_promise'],
     };
     runner.invoke.mockResolvedValueOnce({
       text: '约好了，另外这个有五险',

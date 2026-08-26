@@ -113,7 +113,7 @@ describe('produceValidatedBrandIntents（LLM 意图的目录确权与说话人�
   });
 
   it('rejects guardrail/system text reflow（守卫反馈被当候选人原话会形成自我强化回路）', () => {
-    const reflow = '- [requested_brand_mismatch] 问题：工具实际应用品牌为：肯德基';
+    const reflow = '- [brand_alias_fuzzy_match_ignored] 问题：工具品牌回指为：肯德基';
     const { accepted, rejected } = produceValidatedBrandIntents(
       [{ brand: reflow, polarity: 'positive' }],
       catalog,

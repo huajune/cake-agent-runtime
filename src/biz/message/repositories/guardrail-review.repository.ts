@@ -10,17 +10,15 @@ import type { GuardrailReviewDbRecord } from '../entities/guardrail-review.entit
 import type {
   GuardrailReviewInsertInput,
   GuardrailReviewRecord,
-  GuardrailSemanticReviewInput,
   GuardrailReviewWriteOutcome,
 } from '../types/guardrail-review.types';
 
 /**
  * 出站守卫审查档案 Repository。
  *
- * 稀疏附属表：硬规则有信号的回合由 runner 写档；语义评审（shadow/enforce）跑过的回合
- * 由异步追加补最小基线行（含 pass 判例）。与 message_processing_records 按 trace_id 1:0..1 关联。
- * 存首版全文/违规证据全文/重写版全文——紧凑摘要（guardrail_output 列）刻意不带的部分，
- * 供 Dashboard 详情页还原「首版 → 首审意见 → 重写版 → 二审」全过程。
+ * 稀疏附属表：确定性规则有信号或发生修复的回合由 runner 写档，
+ * 与 message_processing_records 按 trace_id 1:0..1 关联。
+ * 存首版全文、违规证据全文和重写版全文，供现有详情查询还原守卫处理过程。
  */
 @Injectable()
 export class GuardrailReviewRepository extends BaseRepository {
@@ -33,8 +31,8 @@ export class GuardrailReviewRepository extends BaseRepository {
   /**
    * 写入一条 runner 审查档案（按 trace_id 幂等更新）。
    *
-   * shadow 语义判例可能先创建同 trace 的最小基线行，因此这里不能 ignoreDuplicates；
-   * 冲突时更新 runner 字段，而 payload 不携带 semantic_reviews，数据库会保留异步追加内容。
+   * 使用 upsert 支持同一 trace 的幂等更新。payload 不携带历史 `semantic_reviews` 字段，
+   * 因此升级前已有的历史数据不会被覆盖。
    */
   async insertReviewRecord(
     input: GuardrailReviewInsertInput,
@@ -69,70 +67,12 @@ export class GuardrailReviewRepository extends BaseRepository {
     }
   }
 
-  /**
-   * 追加一条语义审查判例。
-   *
-   * RPC 只合并 semantic_reviews，避免 shadow 异步写入与 runner 的首审/修复档案并发时
-   * 互相覆盖；trace 尚无 hard-rule 档案时由数据库创建一条最小 pass 基线行。
-   */
-  async appendSemanticReview(input: GuardrailSemanticReviewInput): Promise<boolean> {
-    if (!this.isAvailable()) {
-      this.logger.warn(`Supabase 未初始化，跳过 ${this.tableName} 语义判例写入`);
-      return false;
-    }
-    if (this.circuitBlocked('APPEND_SEMANTIC_REVIEW')) {
-      return false;
-    }
-
-    try {
-      const result = await this.rpc<Array<{ appended: boolean }>>(
-        'append_guardrail_semantic_review',
-        {
-          p_trace_id: input.traceId,
-          p_chat_id: input.chatId ?? null,
-          p_user_id: input.userId ?? null,
-          p_bot_user_name: input.botUserName ?? null,
-          p_contact_name: input.contactName ?? null,
-          p_user_message: input.userMessage ?? null,
-          p_draft_reply: input.draftReply,
-          p_review: {
-            mode: input.mode,
-            decision: input.decision,
-            confidence: input.confidence,
-            findings: input.findings,
-            draftReply: input.draftReply,
-          },
-        },
-      );
-      return result?.[0]?.appended === true;
-    } catch (error) {
-      this.handleError('APPEND_SEMANTIC_REVIEW', error);
-      return false;
-    }
-  }
-
   /** 按 trace_id（= message_id）取审查档案；未命中守卫的回合返回 null。 */
   async findByTraceId(traceId: string): Promise<GuardrailReviewRecord | null> {
     const row = await this.selectOne<GuardrailReviewDbRecord>('*', (q) =>
       q.eq('trace_id', traceId).order('created_at', { ascending: false }),
     );
     return row ? this.fromDbRecord(row) : null;
-  }
-
-  /**
-   * 时间窗内产出过语义评审的档案条数（覆盖率看门狗用）。
-   *
-   * `semantic_reviews` 由语义 shadow 异步追加；语义评审整体停摆时该计数会掉到 0，
-   * 而硬规则命中仍在写行——所以只能数带语义评审的行，不能数总行数。
-   */
-  async countWithSemanticReviewsBetween(from: Date, to: Date): Promise<number> {
-    return this.count((q) =>
-      q
-        .gte('created_at', from.toISOString())
-        .lt('created_at', to.toISOString())
-        .not('semantic_reviews', 'is', null)
-        .neq('semantic_reviews', '[]'),
-    );
   }
 
   /**

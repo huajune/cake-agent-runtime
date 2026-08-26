@@ -131,14 +131,14 @@ section 清单到 `final-check` 结束，`critical-turn-guard` 已不是独立 s
 | G1    | 先答候选人当前最明确的问题                                                  | 通用                                     | —       |                                                        |
 | G2    | 事实信息必须工具获取；禁扭曲候选人意向假装匹配                              | 通用                                     | —       |                                                        |
 | G2a   | 福利/薪资细则追问必须实时重查（记忆只用于定 jobId）；阶梯薪资照括注原文     | 2026-08-06 周报（阶梯算法 3 次误转人工） | 2026-08 |                                                        |
-| G3    | 有岗/没岗判断必须先调 job_list，零查岗禁断言                                | badcase 6a32317a                         | —       | 拦侧配对：`job_availability_without_lookup`            |
+| G3    | 有岗/没岗判断必须先调 job_list，零查岗禁断言                                | badcase 6a32317a                         | —       | 工具 description 与主 Agent final-check 承担            |
 | G4    | 位置线索处理链：坐标直用/文字先 geocode/行政区默认按位置/城市三步判定       | badcase 6a3356e2                         | —       | 教/拦配对：无                                          |
 | G4a   | 城市一旦确认禁再反问城市                                                    | badcase 簇                               | —       |                                                        |
 | G5    | 地址追问→send_store_location + 面试形式先核对                               | 工具语义                                 | —       | 与 BK6 成对（booking 场景）                            |
 | G6/G7 | 阶段策略不压当前问题；跨阶段先判断再 advance_stage                          | 架构设计                                 | —       | 结构件                                                 |
 | G8    | 流程问题正常化解释，不说"系统需要"                                          | 人设                                     | —       |                                                        |
 | G9    | 先接情绪再解释                                                              | 人设                                     | —       |                                                        |
-| G10   | 禁重复已告知信息；"答完就收"反模式                                          | badcase 簇                               | —       | 拦侧配对：`repeated_reply` / `repeated_reply_verbatim` |
+| G10   | 禁重复已告知信息；"答完就收"反模式                                          | badcase 簇                               | —       | 仅逐字长段落由 sanitizer 精确去重                       |
 | G11   | 岗位推荐规格→job_list description 为准                                      | 分层裁定（05 文档）                      | —       | **指针条目，非重复**                                   |
 | G12   | 收资/约面前置→precheck/booking description 为准                             | 分层裁定                                 | —       | **指针条目，非重复**                                   |
 | G13   | 多问题合并一条消息分点答                                                    | 体验                                     | —       |                                                        |
@@ -159,7 +159,7 @@ section 清单到 `final-check` 结束，`critical-turn-guard` 已不是独立 s
 | #   | 规则摘要                                                 | 来源                         | 加入    | 时效                                 |
 | --- | -------------------------------------------------------- | ---------------------------- | ------- | ------------------------------------ |
 | B1  | 咖啡类默认 M Stand，不展开全品类                         | 业务配置（品类词仅咖啡开启） | 2026-08 | ⚠️ 随品类配置变化，配置变更时须同步  |
-| B2  | 点名品牌豁免距离上限；0 条先放宽重查再下"无岗"结论       | badcase 簇                   | —       | 拦侧配对：`requested_brand_mismatch` |
+| B2  | 点名品牌豁免距离上限；0 条先放宽重查再下"无岗"结论       | badcase 簇                   | —       | 拦侧配对：`requested_brand_mismatch`（observe 哨兵，2026-08-26 恢复） |
 | B3  | 点名门店/地标用 searchJobName 模糊召回，禁 storeNameList | storeNameList 精确匹配特性   | —       |                                      |
 | B4  | 企微备注品牌 = 点名品牌同等待遇                          | 运营流程                     | —       |                                      |
 | B5  | 跨门店转化用"连锁就近"暖话术                             | 体验                         | —       |                                      |
@@ -212,7 +212,8 @@ section 清单到 `final-check` 结束，`critical-turn-guard` 已不是独立 s
 
 - `F11` — 禁止替候选人填写收资字段；年龄尤其不能拿岗位上下限兜底。
   - **来源**：badcase（把岗位上限 50 当成候选人年龄）。
-  - **代码兜底**：状态机公证拒收，claims 必须引用候选人原话。
+  - **代码兜底**：状态机公证拒收；precheck 唯一答案入口 `formAnswers` 必须使用契约
+    labelTitle，并以候选人 quote 作证。
 
 - `F12` — 工作内容只按工具字段回答，禁止用行业常识泛化。
   - **来源**：badcase（“六姐洗碗”）。
@@ -226,7 +227,7 @@ section 清单到 `final-check` 结束，`critical-turn-guard` 已不是独立 s
 
 - `F15` — 班次不得截短，也不得改写成岗位未列出的时段。
   - **来源**：badcase 簇。
-  - **拦侧配对**：`unsupported_schedule_window_claim`。
+  - **拦侧配对**：无；由岗位结构化字段与主 Agent final-check 承担。
 
 - `F16` — 禁止臆测门店开业或筹建状态。
   - **来源**：badcase（新店未开却改派面试）。
@@ -248,7 +249,7 @@ section 清单到 `final-check` 结束，`critical-turn-guard` 已不是独立 s
 
 - `F20a` — 暑假工状态默认“否”，禁止主动盘问。
   - **来源/加入**：同 F20。
-  - **拦侧配对**：`summer_worker_alternative_upsell`。
+  - **拦侧配对**：无；由 `labor_form_intent` 与主 Agent 承担。
 
 - `F21` — 不主动反问“全职还是兼职”。
   - **来源**：体验原则。
@@ -273,7 +274,8 @@ section 清单到 `final-check` 结束，`critical-turn-guard` 已不是独立 s
 
 ### 话术节奏与敏感约束（T）
 
-- `T1` — 禁止分批收资；字段范围以 precheck 的 `requiredFieldsToCollectNow` 为准。
+- `T1` — 禁止分批收资；字段范围以 precheck 的 `requiredFieldsToCollectNow` 为准，发出时
+  逐字照发同次返回的 `templateText`，不得改写标签、增删或重排行。
   - **来源**：报名率数据。
   - **状态**：2026-08-21 已对齐收资状态机，progressive 由状态机裁决。
 
@@ -296,7 +298,7 @@ section 清单到 `final-check` 结束，`critical-turn-guard` 已不是独立 s
 
 - `T9` — 不主动提保险或社保；`haveInsurance` 与社保准入是两套概念。
   - **来源/加入**：2026-08-06 运营口径。
-  - **拦侧配对**：`proactive_insurance_policy_mention`。
+  - **拦侧配对**：`proactive_insurance_policy_mention`（observe 哨兵，2026-08-26 恢复）。
 
 - `T10` — 关键用工事实无法确认时，必须当轮转人工；禁止只说“帮你确认下”却不转。
   - **来源**：badcase 簇。
@@ -332,7 +334,7 @@ section 清单到 `final-check` 结束，`critical-turn-guard` 已不是独立 s
 
 | #   | 规则摘要                                                | 来源                      | 加入       | 备注                               |
 | --- | ------------------------------------------------------- | ------------------------- | ---------- | ---------------------------------- |
-| Z1  | 禁"我帮你查下"将来时单独成回复；完成时态+实质内容才合法 | badcase 6a69ba9f/6a69be5c | 2026-07-29 | 拦侧配对：`dangling_reply_promise` |
+| Z1  | 禁"我帮你查下"将来时单独成回复；完成时态+实质内容才合法 | badcase 6a69ba9f/6a69be5c | 2026-07-29 | 拦侧配对：`dangling_reply_promise`（observe 哨兵，2026-08-26 恢复） |
 
 ### 结构件（不逐条登记）
 
@@ -448,26 +450,35 @@ FC 编号保留为历史别名：
 | duliday_modify_interview_time                  | 1,810                                        | 改约契约                                            | 与 T14/BK2 成对                                                                                                                                                                                                                                                                                                                                                                    |
 | skip_reply                                     | 974                                          | 沉默场景                                            | 与 G14 成对                                                                                                                                                                                                                                                                                                                                                                        |
 | send_store_location                            | 829                                          | 定位发送                                            | 与 G5/BK6/FC1 成对                                                                                                                                                                                                                                                                                                                                                                 |
-| duliday_interview_precheck                     | 729                                          | 参数纪律/行动纪律（收资状态机接管后瘦身 13.5K→729） | **"职责收进代码、描述自然变薄"的先例**                                                                                                                                                                                                                                                                                                                                             |
+| duliday_interview_precheck                     | 807                                          | 参数纪律/行动纪律（收资状态机接管后保持精简）       | **唯一 `formAnswers` 入参与逐字照发模板的公开契约**                                                                                                                                                                                                                                                                                                                                 |
 | risk_alert / advance_stage / recall_history 等 | ≤620                                         | —                                                   | 健康                                                                                                                                                                                                                                                                                                                                                                               |
 
-## 七、守卫 hard-rules（拦侧，32 ruleId）
+## 七、守卫 hard-rules（拦侧，19 ruleId）
 
 本节是 Prompt 教侧与 Output 拦侧的**配对索引**，不是把 hard-rules 算进 Prompt 执行器。
-完整防线有 Input / Prompt / Tool / Output 四个作用位：本台账治理 Prompt，下面 32 个 ruleId
+完整防线有 Input / Prompt / Tool / Output 四个作用位：本台账治理 Prompt，下面 19 个 ruleId
 由 `OutputGuardrailService` 执行；教/拦可以配对，但权限与唯一权威各自独立。
 
-`application_record_update_promise`、`booking_promise_without_booking`、`booking_receipt_mismatch`、
-`brand_alias_fuzzy_match_ignored`、`combination_schedule_weekly_generalization`、`dangling_reply_promise`、
-`date_reference_mismatch`、`discriminatory_screening_leak`、`example_value_leak`、
-`experience_fraud_coaching`、`handoff_promise_reconciliation`、`health_certificate_generalization`、
-`human_service_phrase_leak`、`identity_misregistration_coaching`、`image_description_not_saved`、
-`internal_output_leak`、`interview_time_change_unconfirmed`、`invalid_model_output`、
-`job_availability_without_lookup`、`job_detail_lookup_required`、`meta_narration_reply`、`online_interview_location_claim`、
-`proactive_insurance_policy_mention`、`quota_promise`、`repeated_reply`、`repeated_reply_verbatim`、
-`requested_brand_mismatch`、`sensitive_origin_probe`、`settlement_cycle_mismatch`、
-`summer_worker_alternative_upsell`、`unsupported_schedule_window_claim`、
-`unsupported_store_status_speculation`。
+执行档（revise/block，14 条）：`invalid_model_output`、`internal_output_leak`、`meta_narration_reply`、
+`identity_misregistration_coaching`、`experience_fraud_coaching`、
+`discriminatory_screening_leak`、`sensitive_origin_probe`、`quota_promise`、
+`online_interview_location_claim`、`unsupported_store_status_speculation`、
+`booking_receipt_mismatch`、`interview_time_change_unconfirmed`、
+`brand_alias_fuzzy_match_ignored`、`human_service_phrase_leak`。
+
+observe 哨兵（只落档不拦截，5 条，2026-08-26 数据复核恢复）：`dangling_reply_promise`、
+`requested_brand_mismatch`、`settlement_cycle_mismatch`、`proactive_insurance_policy_mention`、
+`booking_done_claim_without_submission`（新哨兵，接替 `booking_promise_without_booking`
+的完成时态缺口；将来时口径经生产抽样证实几乎全命中合法收资话术，不恢复）。
+
+精确重复由 sanitizer 处理，handoff 承诺由 turn outcome/副作用对账处理，日期与结构一致性由
+既有格式化与 repair regression gate 处理；它们不再登记为 Output ruleId。开放式事实、承诺、
+岗位质量和语气判断由现有主 Agent 理解承担，不启用第二个 reviewer。
+
+2026-08-26 恢复裁定：规则简化改造后按近 7 天生产数据逐条复核，`human_service_phrase_leak`
+仍有真阳人设露馅（封闭词形零误报史）予以恢复执行档；4 条有信号量的 observe 哨兵恢复落档；
+`job_detail_lookup_required`（宽口径噪音 200 次/周）、`date_reference_mismatch`（抽样全为
+日期正确记录）、零命中规则族和语义审查器维持删除。
 
 教/拦配对已在上文各表"拦侧配对"列互链。守卫规则的增删遵守既有裁定：只拦完成时态假宣称；大规模重加已被 7-10 月下线史否决。
 

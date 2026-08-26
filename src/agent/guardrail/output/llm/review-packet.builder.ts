@@ -262,8 +262,7 @@ export class GuardrailReviewPacketBuilder {
 
   /**
    * 视觉事实证据以回合账本为准；账本没有的（降级 sheet 不进 ledger）从
-   * save_image_description 入参回退重建（PR #1000 评审 P2-9）——否则语义评审的证据
-   * 包里看不到降级图片的描述，凭图回复会被误判无据。
+   * save_image_description 入参回退重建，确保回复修复 Agent 能读取降级图片描述。
    */
   private buildVisualFactsEvidence(
     visualFactSheets: TurnLedger['visual']['factSheets'],

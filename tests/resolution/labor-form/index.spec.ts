@@ -15,79 +15,37 @@ import {
 
 describe('labor-form', () => {
   describe('decideLaborFormIntent', () => {
-    describe('招聘限制疑问句与长期改口（badcase chat 6a61c97c）', () => {
-      it.each(['只招暑假工吗', '你们只招暑假工吗？', '仅招暑假工么', '只要暑假工吗'])(
-        'ignores hiring-restriction questions: %s',
-        (message) => {
-          expect(decideLaborFormIntent(message)).toEqual({ kind: 'ignore' });
-        },
-      );
-
-      it('still treats plain 招-questions as summer intent (还招暑假工吗)', () => {
-        expect(decideLaborFormIntent('还招暑假工吗')).toEqual({ kind: 'set', value: '暑假工' });
-      });
-
-      it.each(['长期呢', '我说长期有没有', '要长期的', '能长期做'])(
-        'clears seasonal forms on explicit long-term intent: %s',
-        (message) => {
-          expect(decideLaborFormIntent(message)).toEqual({
-            kind: 'clear',
-            clearedValues: ['暑假工', '寒假工'],
-          });
-        },
-      );
-
-      it.each(['做不了长期', '长期做不了'])(
-        'does NOT clear when long-term is rejected: %s',
-        (message) => {
-          expect(decideLaborFormIntent(message)).toEqual({ kind: 'ignore' });
-        },
-      );
-
-      it('长期兼职 still sets 兼职 via mention path', () => {
-        expect(decideLaborFormIntent('找长期兼职')).toEqual({ kind: 'set', value: '兼职' });
-      });
+    it.each([
+      ['我找全职', '全职'],
+      ['我想做暑期工', '暑假工'],
+      ['小时工也行', '小时工'],
+      ['兼职', '兼职'],
+    ] as const)('keeps only core explicit fallback selections: %s', (message, value) => {
+      expect(decideLaborFormIntent(message)).toEqual({ kind: 'set', value });
     });
 
-    it.each(['暑假工短期的兼职', '我想找暑假工这种兼职', '寒假工也是兼职'])(
-      'keeps the seasonal subtype when 兼职 is only its parent category: %s',
+    it.each(['不要暑假工', '兼职不考虑了', '除了小时工都可以'])(
+      'keeps explicit fallback clears: %s',
       (message) => {
-        expect(decideLaborFormIntent(message)).toEqual({
-          kind: 'set',
-          value: message.includes('寒假工') ? '寒假工' : '暑假工',
-        });
+        expect(decideLaborFormIntent(message).kind).toBe('clear');
       },
     );
 
-    it.each(['暑假工或者普通兼职都可以', '暑假工、长期兼职也行'])(
-      'allows an explicitly accepted non-summer alternative to win: %s',
-      (message) => {
-        expect(decideLaborFormIntent(message)).toEqual({ kind: 'set', value: '兼职' });
-      },
-    );
-
-    it('does not treat an administrative registration label as a changed job preference', () => {
-      expect(decideLaborFormIntent('是准备用兼职身份登记的')).toEqual({ kind: 'ignore' });
+    it.each([
+      '这是兼职岗位吗',
+      '还招暑假工吗',
+      '兼职还是全职',
+      '是准备用兼职身份登记的',
+      '长期呢',
+      '暑假工短期的兼职',
+    ])('leaves semantic or factual statements to extract_facts: %s', (message) => {
+      expect(decideLaborFormIntent(message)).toEqual({ kind: 'ignore' });
     });
 
-    describe('无问号选择疑问句（badcase chat 6a62c6f8：兼职被误 set 成全职）', () => {
-      it.each(['兼职还是全职的', '兼职还是全职', '是兼职或者全职', '暑假工还是小时工的'])(
-        'ignores alternative questions joining two labor forms: %s',
-        (message) => {
-          expect(decideLaborFormIntent(message)).toEqual({ kind: 'ignore' });
-        },
-      );
-
-      it('带问号的选择疑问句沿用 FACT_QUESTION 分支，仍 ignore', () => {
-        expect(decideLaborFormIntent('这个是兼职还是全职？')).toEqual({ kind: 'ignore' });
-      });
-
-      it('带明确求职动作的并列表达不受豁免影响', () => {
-        expect(decideLaborFormIntent('想找兼职或者全职')).toEqual({ kind: 'set', value: '全职' });
-      });
-
-      it('单一形式的直陈选择不受影响', () => {
-        expect(decideLaborFormIntent('我要做兼职')).toEqual({ kind: 'set', value: '兼职' });
+    it('merges explicit clauses in order', () => {
+      expect(decideLaborFormIntent('不要暑假工，普通兼职就行')).toEqual({
+        kind: 'set',
+        value: '兼职',
       });
     });
   });

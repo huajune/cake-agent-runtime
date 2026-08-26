@@ -12,10 +12,7 @@ import {
   type ContractFieldDef,
   type Verdict,
 } from '@resolution/collection';
-import {
-  CandidateClaimInputSchema,
-  type CandidateClaimField,
-} from '@resolution/evidence/claim.types';
+import { normalizedIncludes } from '@resolution/evidence/normalize';
 import { selectEvidenceDialogueMessages } from '@resolution/signal/corpus';
 import { extractCandidateTexts } from '@resolution/signal/self-report';
 import { isAffirmativeAnswer, normalizeShortAnswer } from '@resolution/signal/dialogue';
@@ -29,11 +26,8 @@ import {
   type CollectionAuditEvent,
   type CollectionCoreResult,
 } from '@tools/collection/collection-core';
-import {
-  findFieldForClaim,
-  selectArchiveFacts,
-  type IntakeClaim,
-} from '@tools/collection/proposal-intake';
+import { findFieldByTitle, selectArchiveFacts } from '@tools/collection/proposal-intake';
+import { FormAnswersInputSchema, type FormAnswerInput } from '@tools/collection/form-answer-input';
 import { renderRecap } from '@tools/collection/recap-renderer';
 import { renderRejection } from '@tools/collection/rejection-renderer';
 import {
@@ -65,49 +59,36 @@ export {
 
 const logger = new Logger('duliday_interview_precheck');
 
+/** description 与每次回执共用这一条照发指令，避免模型同时看到两套标签/模板口径。 */
+export const COLLECTION_TEMPLATE_SEND_INSTRUCTION =
+  '逐字照发 bookingChecklist.templateText，不得改写、增删、重排任何标签或行；不要另起一套收资清单。';
+
 // 程序记忆层（procedural memory）工具绑定规则；总目录：docs/prompt-rule-ledger.md
-const DESCRIPTION = `面试前置校验。实时读取岗位收资契约，推进候选人 × 岗位的持久表单，并返回可约时段。
+export const PRECHECK_DESCRIPTION = `面试前置校验。实时读取岗位收资契约，推进候选人 × 岗位的持久表单，并返回可约时段。
 
 参数纪律：
 - jobId 必须来自本会话最近一次 duliday_job_list 的真实召回。
 - requestedDate 只在候选人明确提出日期时传；不确定就不传。
-- candidateClaims 是姓名、电话、年龄、性别、学历、健康证、学生身份、身高、体重、户籍等语义字段的唯一作证通道。quote 必须是候选人原话逐字片段；确认式声明同时传 agentQuestionQuote。
-- formAnswers 用于实时契约中的动态字段，key 必须逐字使用 bookingChecklist.requiredFields 返回的标签标题，value 必须来自候选人原话。文件字段的 value 传候选人附件 URL。
-- 不得传岗位要求冒充候选人答案，不得补造字段，也不得沿用旧 candidateXxx 裸参数。
+- formAnswers 是唯一收资答案入口；每项 labelTitle 必须逐字取自 bookingChecklist.requiredFields，value 传规范值，quote 传候选人原话。纠正用 correct、清除用 clear、确认用 confirm + 必要的 agentQuestionQuote；文件 value 传候选人真实附件 URL。
+- formAnswers 只能填写实时契约已有槽位，不能增删字段，也不能控制 requiredFields/displayOrder。不得传岗位要求冒充候选人答案，不得补造字段或沿用旧 candidateXxx 裸参数。
 
 行动纪律：
-- collect_fields：只询问 bookingChecklist.requiredFieldsToCollectNow。
+- collect_fields：只收 bookingChecklist.requiredFieldsToCollectNow。${COLLECTION_TEMPLATE_SEND_INSTRUCTION}
 - confirm_collection：照发 recap.candidateMessage；候选人确认或纠正后重新调用本工具。
 - screening_rejected：只使用 rejection.candidateMessage，不自行披露内部筛选原因。
 - handoff：停止收资并转人工。
 - ready_to_book：才允许调用 duliday_interview_booking；booking 成功前禁止声称已报名。
 - already_submitted：停止重复提交。`;
 
-const inputSchema = z.object({
+export const PRECHECK_INPUT_SCHEMA = z.object({
   jobId: z.coerce.number().int().positive().describe('岗位 ID，必须来自本会话真实召回'),
   requestedDate: z
     .string()
     .optional()
     .describe('候选人明确提出的面试日期，如 明天、下周三、2026-08-25'),
-  candidateClaims: z
-    .array(CandidateClaimInputSchema)
-    .max(20)
-    .optional()
-    .describe('候选人语义资料的带证据声明；纠正用 correct，清除用 clear，确认用 confirm'),
-  formAnswers: z
-    .preprocess(
-      (value) => {
-        if (typeof value !== 'string') return value;
-        try {
-          return JSON.parse(value) as unknown;
-        } catch {
-          return value;
-        }
-      },
-      z.record(z.string(), z.string()),
-    )
-    .optional()
-    .describe('动态契约字段答案：key=实时标签标题原文，value=候选人原话或附件 URL'),
+  formAnswers: FormAnswersInputSchema.optional().describe(
+    '唯一收资答案入口：labelTitle=实时契约标题原文，value=规范值，quote=候选人原话或真实附件 URL',
+  ),
 });
 
 export interface PrecheckAdjudicationDeps {
@@ -142,9 +123,9 @@ export function buildInterviewPrecheckTool(
 ): ToolBuilder {
   return (context) =>
     tool({
-      description: DESCRIPTION,
-      inputSchema,
-      execute: async ({ jobId, requestedDate, candidateClaims, formAnswers }) => {
+      description: PRECHECK_DESCRIPTION,
+      inputSchema: PRECHECK_INPUT_SCHEMA,
+      execute: async ({ jobId, requestedDate, formAnswers }) => {
         if (!deps?.collectionForms) {
           return buildToolError({
             errorType: TOOL_ERROR_TYPES.PRECHECK_FAILED,
@@ -220,7 +201,6 @@ export function buildInterviewPrecheckTool(
             spongeService,
             context,
             jobId,
-            claims: candidateClaims as readonly IntakeClaim[] | undefined,
             formAnswers,
             messages: evidenceMessages,
           });
@@ -362,8 +342,7 @@ async function runForm(params: {
   spongeService: SpongeService;
   context: Parameters<ToolBuilder>[0];
   jobId: number;
-  claims?: readonly IntakeClaim[];
-  formAnswers?: Record<string, string>;
+  formAnswers?: readonly FormAnswerInput[];
   messages: readonly unknown[];
 }): Promise<FormRun> {
   const botUserId = params.context.session.botUserId?.trim();
@@ -394,15 +373,20 @@ async function runForm(params: {
     });
   }
 
-  const corrections = (params.claims ?? [])
-    .filter((claim) => claim.operation === 'correct' || claim.operation === 'clear')
-    .map((claim) => findFieldForClaim(mapped.fields, claim.field as CandidateClaimField)?.labelId)
+  const candidateTexts = extractCandidateTexts(params.messages);
+  const corrections = (params.formAnswers ?? [])
+    .filter((answer) => answer.operation === 'correct' || answer.operation === 'clear')
+    .filter(
+      (answer) =>
+        Boolean(answer.quote) &&
+        candidateTexts.some((text) => normalizedIncludes(text, answer.quote ?? '')),
+    )
+    .map((answer) => findFieldByTitle(mapped.fields, answer.labelTitle)?.labelId)
     .filter((labelId): labelId is number => labelId !== undefined);
   if (corrections.length > 0 && form.lastRecap) {
     form = applyRecapResult(form, { corrections });
   }
 
-  const candidateTexts = extractCandidateTexts(params.messages);
   const latestCandidateText = candidateTexts.at(-1) ?? '';
   const recapAffirmed = Boolean(
     form.lastRecap &&
@@ -416,7 +400,6 @@ async function runForm(params: {
     contract: mapped.fields,
     candidateTexts,
     messages: params.messages,
-    claims: params.claims,
     formAnswers: params.formAnswers,
     archiveFacts: selectArchiveFacts(
       params.context.archive.sessionFacts?.interview_info as Record<string, unknown> | null,
@@ -478,7 +461,7 @@ function replyInstruction(
 ): string {
   switch (action) {
     case 'collect_fields':
-      return `只缺：${run.result.askableFields.join('、') || run.result.template.missingFields.join('、')}。按 templateText 一次性收齐；已 filled 字段禁止重复问。`;
+      return `${COLLECTION_TEMPLATE_SEND_INSTRUCTION} 只缺：${run.result.askableFields.join('、') || run.result.template.missingFields.join('、')}；已 filled 字段禁止重复问。`;
     case 'confirm_collection':
       return run.recapText
         ? '资料已收齐。只发送 recap.candidateMessage，等待候选人确认；确认前禁止 booking。'

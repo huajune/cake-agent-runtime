@@ -60,9 +60,10 @@ export function renderCollectionTemplate(
     .map((field) => field.labelTitle);
 
   // 模板一次性列全部字段（已知的预填、缺的留空）：分批发清单是明令禁止的漏斗式收资。
-  const lines = ordered.map(
-    (field) => `${formLabel(field.labelTitle, field)}：${knownFieldMap[field.labelTitle] ?? ''}`,
-  );
+  const lines = ordered.map((field) => {
+    const known = knownFieldMap[field.labelTitle];
+    return `${field.labelTitle}：${known ?? optionPlaceholder(field)}`;
+  });
 
   return {
     // required 恒 true：契约返回什么就全收（0820 用户确认）。
@@ -77,53 +78,28 @@ export function renderCollectionTemplate(
 }
 
 /**
- * 表单行标签清洗——与 recap-renderer 同一口径：
- * 标签含逗号/句号或超 48 字时 `MessageSplitter` 不认这一行为表单行，整块随之失去
- * 原子性、被按句拆散刷屏。生产实测脏配置不少（「是否学生（不要学生及暑假工）」），
- * 且括号里往往就是**筛选指令**——原样发给候选人等于泄露筛选条件。
- */
-export function formLabel(title: string, field?: ContractFieldDef): string {
-  const stripped = title
-    .replace(/[（(][^）)]*[）)]/gu, '')
-    .replace(/[，,。！？!?；;]/gu, ' ')
-    .trim();
-  const label = (stripped || title.trim()).slice(0, 48);
-  const hint = field ? optionHint(field) : null;
-  if (!hint) return label;
-  const withHint = `${label}（${hint}）`;
-  // 加了提示仍要过分段器的表单行判据（≤48 字），超了就退回裸标签。
-  return withHint.length <= 48 ? withHint : label;
-}
-
-/**
- * 选项型字段的枚举提示：`身份（学生/社会人士）`。候选人知道该填什么，
- * 比裸「身份：」少一轮来回。
+ * 选项型字段的枚举占位：`身份：（学生/社会人士）`。提示只能出现在冒号右侧，
+ * 冒号左侧的标签 100% 使用契约 labelTitle 原文，不做剥括号、剥标点或截断。
  *
  * ⚠️ **必须列全部选项，不能只列 accepted**——只列可接受项等于用省略泄露筛选条件：
  * 「籍贯（北京/河北/…）」里没有天津，候选人一眼就看出天津被排除了，
  * 那正是 disclosure=RESTRICTED 要防的事。候选人如实填、筛在写入时判，
  * 拒绝话术再按披露分级决定说什么。
  *
- * 三种情况不加提示：
- * - 选项标签自带逗号/句号（如「无本地有效健康证，接受办理」）——会让分段器不认这一行
- *   表单行，整块失去原子性被按句拆散；
- * - 选项太多（如籍贯 34 个省）——塞进一行没法读；
- * - 非选项型字段。
+ * 两种情况不加提示：选项太多（如籍贯 34 个省）或非选项型字段。选项里的标点位于
+ * 冒号右侧，不再污染标签位，也不会改变 labelTitle 拼法。
  */
-function optionHint(field: ContractFieldDef): string | null {
-  if (field.fieldType !== 'SINGLE_OPTION' && field.fieldType !== 'MULTIPLE_OPTION') return null;
+export function optionPlaceholder(field: ContractFieldDef): string {
+  if (field.fieldType !== 'SINGLE_OPTION' && field.fieldType !== 'MULTIPLE_OPTION') return '';
   const options = [...field.acceptedOptions, ...field.rejectedOptions];
 
   // 少于 2 项不是选择题（"（社会人士）"只会让人困惑）。
-  if (options.length < 2) return null;
+  if (options.length < 2) return '';
   // 多于 4 项塞进一行没法读。生产实测：籍贯 29 项——列出来是灾难，留空让候选人自己写。
-  if (options.length > 4) return null;
+  if (options.length > 4) return '';
   // **常识型字段留空**（0820 用户裁定）：选项全是短词（男/女、是/否、本科/大专）时，
   // 候选人自己就知道该怎么答，提示纯属噪音。提示只该出现在**系统特有措辞**上——
   // 那种候选人猜不到该怎么写的（"无本地有效健康证，接受办理"、"3个月内"）。
-  if (options.every((option) => option.optionLabel.trim().length <= 3)) return null;
-  // 选项含逗号句号会让分段器不认这一行表单行，整块失去原子性被按句拆散。
-  if (options.some((option) => /[，,。！？!?；;（）()]/u.test(option.optionLabel))) return null;
-
-  return options.map((option) => option.optionLabel).join('/');
+  if (options.every((option) => option.optionLabel.trim().length <= 3)) return '';
+  return `（${options.map((option) => option.optionLabel).join('/')}）`;
 }

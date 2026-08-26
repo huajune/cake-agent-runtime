@@ -11,6 +11,7 @@
 
 import type { BookingCollectionForm, ContractFieldDef, Verdict } from '@resolution/collection';
 import {
+  adapterFor,
   detectSuspectedMultiPerson,
   escalate,
   ESCALATION_REASONS,
@@ -22,13 +23,10 @@ import {
   recordConfigDebt,
   routeOf,
   verdictOf,
+  genericAdapter,
 } from '@resolution/collection';
-import {
-  collectProposals,
-  findFieldForClaim,
-  type ArchiveFact,
-  type IntakeClaim,
-} from './proposal-intake';
+import { collectProposals, findFieldForClaim, type ArchiveFact } from './proposal-intake';
+import type { FormAnswerInput } from './form-answer-input';
 import { renderCollectionTemplate, type CollectionTemplate } from './collection-template.renderer';
 
 /** 收资维度的 nextAction 取值——与既有 Agent 契约同名，语义不变。 */
@@ -69,8 +67,7 @@ export interface CollectionCoreInput {
   contract: readonly ContractFieldDef[];
   candidateTexts: readonly string[];
   messages: readonly unknown[];
-  claims?: readonly IntakeClaim[];
-  formAnswers?: Record<string, string> | null;
+  formAnswers?: readonly FormAnswerInput[] | null;
   /** 本轮是否要向候选人发问（发问才计熔断次数；只读探查不计）。 */
   askThisTurn?: boolean;
   /**
@@ -110,14 +107,14 @@ export function runCollectionCore(input: CollectionCoreInput): CollectionCoreRes
       .map((slot) => slot.labelId),
   );
 
-  // ── 写入：四条作证通道的提案逐条过公证 ──
+  // ── 写入：统一 formAnswers + 两条既有安全网的提案逐条过公证 ──
   let proposals = collectProposals({
     contract,
     candidateTexts: input.candidateTexts,
     messages: input.messages,
-    claims: input.claims,
     formAnswers: input.formAnswers,
     filledLabelIds,
+    onAudit: (audit) => audits.push(audit),
   });
 
   // ── 多人闸：新姓名+新手机号成对出现＝疑似中介代报第二人（D1 v1 只转人工不自动化）──
@@ -181,7 +178,13 @@ export function runCollectionCore(input: CollectionCoreInput): CollectionCoreRes
   for (const archived of input.archiveFacts ?? []) {
     const field = findFieldForClaim(contract, archived.claimField);
     if (!field) continue;
-    form = seedArchiveValue(form, field, { value: archived.value, evidence: archived.evidence });
+    const adapterInput = { field, candidateText: archived.value };
+    const adapted = adapterFor(field)(adapterInput) ?? genericAdapter(adapterInput);
+    form = seedArchiveValue(form, field, {
+      value: adapted?.value ?? archived.value,
+      optionCodes: adapted?.optionCodes,
+      evidence: archived.evidence,
+    });
   }
 
   // ── 配置债：走通用道的槽位记一行账，报名卡片直读 ──

@@ -295,34 +295,6 @@ export function hasTechnicalDocumentationShape(content: string): boolean {
 }
 
 /**
- * 人设露馅：Agent 人设是真人招募经理，说"转人工/人工客服"等词等于自曝机器人身份。
- *
- * 正确口径是"我帮你问下同事/让负责的同事联系你"。该规则与内部状态泄漏同族，
- * 只匹配封闭词组；"真人/人工"单词不入表，避免误伤正常业务表述。
- */
-const HUMAN_SERVICE_PHRASE_PATTERN =
-  /转人工|人工客服|人工坐席|转接人工|人工渠道|人工登记|人工确认|人工介入|人工处理|人工跟进|真人招募经理|真人经理|真人客服|专人联系|专人跟进|专人对接/;
-// 刻意不入表："人工审核"（描述门店/品牌侧简历审核外部流程，属合法业务表述，
-// precheck wait_notice 话术用"先进入审核"避免主动引导该词形）。
-
-/**
- * 本规则只负责修正人设露馅措辞，不推断承诺是否有外部动作支撑。
- */
-export function detectHumanServicePhraseLeak(content: string): RuleContradiction | null {
-  if (!content) return null;
-  if (!HUMAN_SERVICE_PHRASE_PATTERN.test(content)) return null;
-  return {
-    ruleId: 'human_service_phrase_leak',
-    label:
-      '回复出现"转人工/人工客服/真人经理/专人联系"等表述，把自己与"人工/真人"割裂、与账号本人人设冲突（badcase recvjXBkmV6idz / recvnV3iYGZnBJ / chat 6a5dedb2ce406a6aeee1ea62），应改为"帮你问下同事"类口径',
-    action: GUARDRAIL_ACTION.REVISE,
-    feedbackToGenerator:
-      '上一版回复出现"转人工/人工客服/真人经理/专人联系"类表述，与"候选人看到的这个账号就是你本人"的身份设定冲突，当前文本不可发送。' +
-      '只把露馅措辞改成人设内口径（如"我帮你问下同事""让负责的同事联系你"），其余内容原样保留，不要改变承诺的事实和后续动作。',
-  };
-}
-
-/**
  * 元叙述旁白：整条回复是描述 Agent 自身行为的括号旁白，说明模型有"本轮不该说话"
  * 的意图但没走 skip_reply 工具，把内心独白当成了正文。
  *
@@ -353,5 +325,36 @@ export function detectMetaNarrationReply(content: string): RuleContradiction | n
     label:
       '整条回复是描述 Agent 自身行为的括号旁白（如"AI 保持静默，不插入回复"），属内心独白外发，必须拦截并整轮静默（badcase chat 6a5740ff）',
     action: GUARDRAIL_ACTION.BLOCK,
+  };
+}
+
+/**
+ * 人设露馅：Agent 人设是真人招募经理，说"转人工/人工客服"等词等于自曝机器人身份。
+ *
+ * 正确口径是"我帮你问下同事/让负责的同事联系你"。该规则与内部状态泄漏同族，
+ * 只匹配封闭词组；"真人/人工"单词不入表，避免误伤正常业务表述。
+ *
+ * 2026-08-26 恢复裁定：规则简化改造曾随开放语义规则一并下线，但近 7 天生产抽样
+ * 仍有真阳性人设露馅（"真人经理已经说了…"直发候选人），prompt 红线拦不住说漏嘴，
+ * 且本规则 7-21 升档时两周判例零误报，属计划本应保留的封闭词形，予以恢复。
+ */
+const HUMAN_SERVICE_PHRASE_PATTERN =
+  /转人工|人工客服|人工坐席|转接人工|人工渠道|人工登记|人工确认|人工介入|人工处理|人工跟进|真人招募经理|真人经理|真人客服|专人联系|专人跟进|专人对接/;
+// 刻意不入表："人工审核"（描述门店/品牌侧简历审核外部流程，属合法业务表述，
+// precheck wait_notice 话术用"先进入审核"避免主动引导该词形）。
+/**
+ * 本规则只负责修正人设露馅措辞，不推断承诺是否有外部动作支撑。
+ */
+export function detectHumanServicePhraseLeak(content: string): RuleContradiction | null {
+  if (!content) return null;
+  if (!HUMAN_SERVICE_PHRASE_PATTERN.test(content)) return null;
+  return {
+    ruleId: 'human_service_phrase_leak',
+    label:
+      '回复出现"转人工/人工客服/真人经理/专人联系"等表述，把自己与"人工/真人"割裂、与账号本人人设冲突（badcase recvjXBkmV6idz / recvnV3iYGZnBJ / chat 6a5dedb2ce406a6aeee1ea62），应改为"帮你问下同事"类口径',
+    action: GUARDRAIL_ACTION.REVISE,
+    feedbackToGenerator:
+      '上一版回复出现"转人工/人工客服/真人经理/专人联系"类表述，与"候选人看到的这个账号就是你本人"的身份设定冲突，当前文本不可发送。' +
+      '只把露馅措辞改成人设内口径（如"我帮你问下同事""让负责的同事联系你"），其余内容原样保留，不要改变承诺的事实和后续动作。',
   };
 }

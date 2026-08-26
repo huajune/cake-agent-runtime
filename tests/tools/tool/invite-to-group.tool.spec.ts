@@ -243,7 +243,7 @@ describe('buildInviteToGroupTool', () => {
       expect(mockRoomService.addMemberEnterprise).not.toHaveBeenCalled();
     });
 
-    it('两轮具体推荐已被否定但尚未同意：拒绝实调并返回征询话术', async () => {
+    it('历史文本看似两轮否定也只按当前同意工具闸门拒绝，不做正则轮次裁决', async () => {
       const result = await executeTool(
         { city: '上海' },
         {
@@ -270,9 +270,10 @@ describe('buildInviteToGroupTool', () => {
 
       expect(result.success).toBe(false);
       expect(result.errorType).toBe(TOOL_ERROR_TYPES.INVITE_GROUP_CONSENT_REQUIRED);
-      expect(result.noMatchScript?.nextAction).toBe('offer_group_invite');
-      expect(result.noMatchScript?.candidateMessage).toContain('回复我“可以”');
-      expect(result._replyInstruction).toContain('不得再次调用 invite_to_group');
+      expect(result.noMatchScript).toBeUndefined();
+      expect(result.dissatisfiedRecommendationRounds).toBeUndefined();
+      expect(result._replyInstruction).toContain('主 Agent 根据完整对话确认');
+      expect(result._replyInstruction).toContain('不要再次调用 invite_to_group');
       expect(mockRoomService.addMemberEnterprise).not.toHaveBeenCalled();
     });
 

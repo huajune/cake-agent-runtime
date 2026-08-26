@@ -14,10 +14,6 @@ type RepositoryWithClient = GuardrailReviewRepository & {
 type RepositoryWithSelectOne = GuardrailReviewRepository & {
   selectOne: jest.Mock;
 };
-type RepositoryWithRpc = GuardrailReviewRepository & {
-  rpc: jest.Mock;
-};
-
 describe('GuardrailReviewRepository', () => {
   const repository = new GuardrailReviewRepository({
     getSupabaseClient: jest.fn(),
@@ -90,40 +86,6 @@ describe('GuardrailReviewRepository', () => {
     mockClient({ data: [], error: null });
 
     await expect(repository.insertReviewRecord(baseRecord)).resolves.toBe('failed');
-  });
-
-  it('atomically appends semantic reviews through the merge-only RPC', async () => {
-    const rpc = jest
-      .spyOn(repository as unknown as RepositoryWithRpc, 'rpc')
-      .mockResolvedValue([{ appended: true }]);
-
-    await expect(
-      repository.appendSemanticReview({
-        traceId: 'msg-shadow',
-        chatId: 'chat-1',
-        mode: 'shadow',
-        decision: 'revise',
-        confidence: 'high',
-        findings: [
-          {
-            code: 'active_booking_state_conflict',
-            evidenceQuote: '已约好',
-            userImpact: '预约状态冲突',
-            feedbackToGenerator: '按预约证据重写',
-          },
-        ],
-        draftReply: '已帮你约好',
-      }),
-    ).resolves.toBe(true);
-
-    expect(rpc).toHaveBeenCalledWith(
-      'append_guardrail_semantic_review',
-      expect.objectContaining({
-        p_trace_id: 'msg-shadow',
-        p_draft_reply: '已帮你约好',
-        p_review: expect.objectContaining({ mode: 'shadow', decision: 'revise' }),
-      }),
-    );
   });
 
   it('returns failed when the database write fails', async () => {
