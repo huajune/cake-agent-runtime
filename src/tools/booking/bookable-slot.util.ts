@@ -1,7 +1,7 @@
 /**
  * 面试时段构建：未来 N 天可约 slot + 周期性班次规则压缩 + 候选人请求日期评估。
  *
- * 从 duliday-interview-precheck.tool.ts 拆出（Phase 1.A 机械搬运，0 逻辑改动）：
+ * 提供以下面试时段原语：
  * - buildUpcomingTimeOptions：未来 horizonDays 天扁平 label 数组（给候选人挑时间）
  * - buildBookableSlots：未来 N 天结构化 slot（含 bookingAllowed / requiresManualConfirmation）
  * - buildScheduleRule + formatWeekdayList + formatDeadlineClause：把周期窗口压缩成"周一至周五 10:00-12:00"

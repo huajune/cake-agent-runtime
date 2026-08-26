@@ -7,10 +7,10 @@ import { FIELD_OWNERSHIPS, type FieldOwnership } from '../types';
  * 设计依据：docs/architecture/visual-fact-pipeline.md（附录 A 为字段白名单与裁决
  * 记录的唯一权威；前身三份 2026-08-05 立项文档已整合进该文，全文存 git 历史）。
  * 与 brand/geo 域同构：纯确定性、零 LLM、零仓内出向依赖；vision/主模型调用留在
- * channels（P1 兜底引擎：漏调补描述/降级重跑/懒补写/自侧消息）与 tools（P2 主路径
- * 工具）两个生产者，本域只持有 schema、归属规则与渲染/解析。
+ * channels（兜底引擎：漏调补描述/降级重跑/懒补写/自侧消息）与 tools（主路径工具）
+ * 两个生产者，本域只持有 schema、归属规则与渲染/解析。
  *
- * 直接诱因 badcase `vkikct39`（P0）：BOSS 截图描述被拍平成文本回写进用户消息，
+ * 直接诱因 badcase `vkikct39`：BOSS 截图描述被拍平成文本回写进用户消息，
  * 交换微信截图里招募经理本人的微信号与岗位卡「18岁以上」门槛句被当候选人自陈，
  * 提交进真实报名。三判据（这是什么图/归谁/可不可信）在 7 个消费点全部缺失。
  */
@@ -39,7 +39,7 @@ const VISUAL_FACT_KIND_GLOSSES: Record<VisualFactKind, string> = {
 };
 
 /**
- * 两个生产者（channels P1 兜底引擎 / tools P2 主路径工具）schema 共用的 kind 释义串。
+ * 两个生产者（channels 兜底引擎 / tools 主路径工具）schema 共用的 kind 释义串。
  * 手抄一份到 describe 里就会漂移——词表是模型唯一的可见来源，此处是唯一产出点。
  */
 export const VISUAL_FACT_KIND_PROMPT = VISUAL_FACT_KINDS.map(
@@ -47,21 +47,21 @@ export const VISUAL_FACT_KIND_PROMPT = VISUAL_FACT_KINDS.map(
 ).join('；');
 
 /**
- * 字段 key 白名单（裁决 A7/B3，2026-08-11 砍 7 留 8）：
+ * 字段 key 白名单：
  * - candidate_address：岗位页「我的地址：XX街道」/「距我 X km」锚点——候选人设备
  *   上的真实地址，位置证据强度不低于定位分享；
  * - publisher / store：当前零读者但必须保留为分流槽，保护 brand 不被发布方名、
- *   门店名污染（R2）；砍掉会让 vision 模型把无处安放的名称回填到 brand，劫持回归；
- * - 刻意不设身份证号/证件号 key：booking 用不到，纯隐私暴露面（裁决 B3'）。
+ *   门店名污染；砍掉会让 vision 模型把无处安放的名称回填到 brand，劫持回归；
+ * - 刻意不设身份证号/证件号 key：booking 用不到，纯隐私暴露面。
  *
  * 已移除的旧 key 会在 finalize 白名单过滤时静默丢弃；存量 visual_facts 无需迁移。
  */
 export const VISUAL_FACT_FIELD_KEYS = [
   'phone',
   'brand',
-  // 零读者分流槽：保护 brand 不被发布方名污染（R2），砍除即劫持回归。
+  // 零读者分流槽：保护 brand 不被发布方名污染，砍除即劫持回归。
   'publisher',
-  // 零读者分流槽：保护 brand 不被门店名污染（R2），砍除即劫持回归。
+  // 零读者分流槽：保护 brand 不被门店名污染，砍除即劫持回归。
   'store',
   'city',
   'address',

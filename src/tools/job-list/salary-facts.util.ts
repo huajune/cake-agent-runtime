@@ -1,5 +1,5 @@
 /**
- * 从 raw job.jobSalary 派生结构化 SalaryFacts（Phase 1.B.4 数据契约层）。
+ * 从 raw job.jobSalary 派生结构化 SalaryFacts。
  *
  * 历史 badcase 簇 salary_fabrication：Agent 在回复里编造"节假日双倍/周末加薪/
  * 工资浮动/薪资面议"等本平台没有的薪资口径——常因为：

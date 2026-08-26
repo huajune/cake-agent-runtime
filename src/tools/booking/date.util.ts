@@ -1,7 +1,7 @@
 /**
  * 候选人输入的日期/周几解析 + Shanghai 时区格式化。
  *
- * 从 duliday-interview-precheck.tool.ts 拆出（Phase 1.A 机械搬运，0 逻辑改动）：
+ * 提供以下日期解析与格式化原语：
  * - normalizeRequestedDate：把"今天/明天/后天/本周三/下周一/3月5日/2026-03-05"
  *   统一解析成 YYYY-MM-DD
  * - resolveWeeklyDateExpression / resolveDateFromWeekday：周表达式解析

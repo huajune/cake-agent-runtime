@@ -203,13 +203,8 @@ export class AgentRunnerService {
    *   再审一次；二次仍不过按 §9「repair 死循环硬上限 1」分级收敛。
    * - decision='block'：先进入一次受控修复；二审仍不通过才不投递。
    *
-   * （2026-07-27 发牌切换收尾：replan 修复模式已整体退役——GuardrailRuleAction 已删
-   *   REPLAN、语义档裁决在 normalizeDecision 归一为 revise，本方法不再存在重进
-   *   generator 的修复路径；历史语义见评估文档 §2.4。）
-   *
    * turn-end 语义：生成结果上的 `runTurnEnd` 一律原样透传给调用方（repair 产物复用首版的
    * 闭包），由调用方在投递结局已知后触发一次——被丢弃的首版因此不会写记忆。
-   * 「生成完就 fire-and-forget」的旧默认分支已随 deferTurnEnd 开关删除（议题 5-1）。
    *
    * **flag 关闭时**（默认）：守卫只跑 rule 档；可恢复 veto 会先进一次受控 repair。
    */
@@ -976,7 +971,7 @@ export class AgentRunnerService {
     guardrailTrace?: GuardrailTurnTrace,
   ): ReviewedRunResult {
     // runTurnEnd 一律透传：触发时机（含 block 时的 includeAssistantText=false）由
-    // TurnFinalizer 在投递结局已知后统一决定，runner 不再代为触发（议题 5-1）。
+    // TurnFinalizer 在投递结局已知后统一决定，runner 不再代为触发。
     return { ...result, outputDecision: decision, revised, guardrailTrace };
   }
 

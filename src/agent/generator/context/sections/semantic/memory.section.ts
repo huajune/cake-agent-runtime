@@ -410,7 +410,7 @@ export function formatBookingContext(
   if (businessLines.length === 0) return '';
 
   // 岗位ID 单独渲染：改约前 Agent 要用它调 duliday_interview_precheck 校验新日期。
-  // 通用处理规则不在此逐条渲染（治理方案 P1-2）：N 条 booking 会把同一段 ~1.5-2KB
+  // 通用处理规则不在此逐条渲染：N 条 booking 会把同一段 ~1.5-2KB
   // 教学文字重复 N 次，统一由 BOOKING_CONTEXT_SHARED_RULES 在 [当前预约信息] 末尾渲染一次。
   const lines = [
     `预约 ${index}：当前存在一个仍在进行中的面试/上岗跟进 case（状态实时取自海绵工单系统）。`,
@@ -425,7 +425,7 @@ export function formatBookingContext(
 /**
  * [当前预约信息] 的通用处理规则：对所有 booking 生效，整段只渲染一次
  * （由 preparation.loadBookingContext 在全部预约块之后拼接）。
- * 文案与原逐条渲染版本逐字一致——P1-2 是无损瘦身，只改渲染次数不改语义。
+ * 文案与原逐条渲染版本逐字一致；这里只改渲染次数，不改语义。
  */
 // 程序记忆层·booking 共享规则（代码动态注入居所）；总目录：docs/prompt-rule-ledger.md
 export const BOOKING_CONTEXT_SHARED_RULES = [

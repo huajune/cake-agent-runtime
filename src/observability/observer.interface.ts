@@ -36,8 +36,8 @@ export type AgentEvent = AgentEventContext &
         totalTokens?: number;
         /**
          * 前缀缓存命中的输入 token（prompt_tokens_details.cached_tokens 求和）。
-         * 缓存命中率（cachedTokens / 输入量）是生产 agent 第一健康度指标（Manus 主张，
-         * 治理方案 P0-1b）；undefined = provider 未上报。
+         * 缓存命中率（cachedTokens / 输入量）是生产 agent 的核心健康指标；
+         * undefined = provider 未上报。
          */
         cachedTokens?: number;
         durationMs: number;

@@ -226,8 +226,7 @@ function normalizeActiveBookings(value: unknown): ActiveBookingEntry[] {
  *
  * 入参恒为 normalizeActiveBookingEntry 产出的三字段对象，原实现里那次
  * `.map(({ bookings: _bookings, ...b }) => b)` 剥离在运行时必然是恒等映射；
- * 类型拆分后 ActiveBookingEntry 已不含 bookings，剥离随之成为死代码（议题 3-2，
- * 落库 JSONB 逐字节不变）。
+ * `ActiveBookingEntry` 已不含 bookings，因此不需要再剥离递归字段；落库 JSONB 形态不变。
  */
 function buildActiveBookingState(bookings: ActiveBookingEntry[]): ActiveBookingState | null {
   const [latest, ...rest] = bookings;
@@ -430,8 +429,7 @@ export class SupabaseStore implements MemoryStore {
   /**
    * 读取候选人当前有效/待处理预约工单列表（按 linked_at 倒序，[0] 即最近一笔）。
    *
-   * 单数读 API 已于议题 3-3 删除：它的实现本就是 `bookings[0] ?? null`，
-   * 语义关系只存在于实现约定里。需要"最近一笔"的调用方直接取 [0]。
+   * 单数关系由 `bookings[0] ?? null` 派生；需要“最近一笔”的调用方直接取 `[0]`。
    */
   async getActiveBookings(corpId: string, userId: string): Promise<ActiveBookingEntry[]> {
     const row = await this.getActiveBookingRow(corpId, userId);
@@ -483,7 +481,10 @@ export class SupabaseStore implements MemoryStore {
     await this.upsertActiveBookingRow(corpId, userId, { active_booking: null });
   }
 
-  // ==================== 旧接口（v1 兼容，Phase 6 删除） ====================
+  // ==================== MemoryStore 通用接口适配 ====================
+
+  // LongTermService 生产路径使用上方的领域化方法；get/set/del 保留为
+  // MemoryStore 契约与管理操作的窄适配层，不是另一条长期记忆读写链。
 
   async get(key: string): Promise<MemoryEntry | null> {
     const { corpId, userId, botUserId } = this.parseProfileKey(key);

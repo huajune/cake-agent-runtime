@@ -31,8 +31,7 @@ export interface PromptContext {
    * HardConstraintsSection 做置信度门取值。
    *
    * 只接受 SessionFacts：裸 EntityExtractionResult 在 unwrapSessionFacts 里会在置信度
-   * 比较**之前**原样返回，minConfidence 对它完全不生效——历史上联合类型让测试全走裸态
-   * 分支，置信度门从未被执行过（core-flow-review 议题 1-1）。生产链路本就只有
+   * 比较**之前**原样返回，minConfidence 对它完全不生效。生产链路本就只有
    * `memory.sessionMemory?.facts`（SessionFacts）一条来源；测试用
    * `tests/helpers/session-facts.fixture.ts` 的 sessionFactsOf() 构造。
    */
@@ -50,7 +49,7 @@ export interface PromptContext {
   /**
    * 本轮候选人消息原文（逐条，与规则轨输入同源）。
    * TurnHintsSection 用它判定 claim 的 quote 是否"就是整条当轮消息"——是且本轮只有一条
-   * 消息时省略渲染，避免逐字段把同一条消息重复注入（议题 2-1）。
+   * 消息时省略渲染，避免逐字段把同一条消息重复注入。
    */
   currentTurnTexts?: readonly string[];
   /** 当前消息对用工形式的 set/clear/ignore 决策；用于区分撤销旧偏好与岗位事实问句。 */

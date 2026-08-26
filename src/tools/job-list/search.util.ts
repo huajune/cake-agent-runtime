@@ -1,7 +1,7 @@
 /**
  * duliday_job_list 工具的检索/过滤/排序辅助。
  *
- * 从 duliday-job-list.tool.ts 拆出（Phase 1.A 机械搬运，0 逻辑变更）：
+ * 包含以下检索原语：
  * - haversineDistance：经纬度球面距离
  * - scoreJobAgainstRequestedCategories：候选人意向类目与岗位的相似度评分
  * - rankJobsByRequestedCategories：按类目评分软排序（仅排序不过滤）

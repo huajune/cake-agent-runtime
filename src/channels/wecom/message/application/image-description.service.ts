@@ -35,7 +35,7 @@ export interface ArtworkContext {
   imRoomId?: string;
 }
 
-/** P1 结构化输出 schema：描述 + kind + fields（归属可缺省，finalize 按 kind 补）。 */
+/** 独立 Vision 路径的结构化输出 schema：描述 + kind + fields。 */
 const VISION_SHEET_SCHEMA = z.object({
   description: z.string().describe('图片内容的中文描述，遵循系统提示词里的各类图片提取要求'),
   kind: z.enum(VISUAL_FACT_KINDS).describe(VISUAL_FACT_KIND_PROMPT),
@@ -264,7 +264,7 @@ export class ImageDescriptionService {
         ? '请用 4-12 个字描述这个表情传达的情绪或动作。不要描述角色外观、颜色、姿势细节，也不要猜测台词或意图。'
         : '请描述这张图片的内容。';
 
-    // 视觉事实结构化（P1 生产者）：图片优先走结构化输出（描述 + kind + fields）；
+    // 独立 Vision 路径：图片优先走结构化输出（描述 + kind + fields）；
     // 任何失败回退纯文本路径——降级不是失败，纯文本描述本身就是可用产物。表情不结构化。
     let description = '';
     let sheet: FinalizedVisualFactSheet | null = null;
@@ -336,8 +336,8 @@ export class ImageDescriptionService {
     // 先剥离视觉描述里可能已带的"简历附件：…"行，再以本服务解析到的权威 URL 追加唯一
     // 一行，避免重复行（badcase chat 6a2fac72…：单条简历消息出现两条相同"简历附件"）。
     // 简历判定双保险（并跑对照）：sheet resume kind 与旧文本标记任一命中即走简历链路。
-    // A1（2026-08-11）仅覆盖当前容器连续 92h23m，分歧为 0；尚未达到完整 7 天
-    // 删除门槛，故继续保留 legacy 判据。连续 7 天复扫仍为 0 后删除本并跑与 OR 路径。
+    // 旧文本判据仍作兼容保险；当前只有本地 warn，没有可证明长窗口
+    // 分歧归零的持久化指标。删除 OR 路径前必须先让该分歧可持续观测并达标。
     const legacyResume = kind === MessageType.IMAGE && isResumeImageDescription(description);
     const sheetResume = sheet?.kind === 'resume';
     if (sheet && legacyResume !== sheetResume) {
@@ -369,7 +369,7 @@ export class ImageDescriptionService {
    * 裸 `[图片消息]` 占位的历史图片描述。
    *
    * 归因实证（30 条裸占位抽样）：90% 是人工接管/非托管时段经 MOBILE_PUSH 同步
-   * 进历史的候选人图片——从不进 Agent 链路（无回合 → P2 与漏调兜底都覆盖不到），
+   * 进历史的候选人图片——从不进 Agent 链路（无回合时主路径与漏调兜底都覆盖不到），
    * 其余为 timeout 丢回合。这些图 URL 均可达、vision 均可识别（14/14 批测实证），
    * 纯粹没人去描述。托管恢复后 Agent 读窗口时对它们全盲。
    *

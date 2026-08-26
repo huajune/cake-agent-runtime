@@ -74,14 +74,14 @@ export class HardConstraintsSection implements PromptSection {
   /**
    * 合并 sessionFacts（已确认）与 turnHints（本轮新增）。
    *
-   * 取并集，**本轮高置信值优先覆盖旧 session 值**（候选人资料证据化 Phase 0 第 2 条）：
+   * 取并集，**本轮高置信值优先覆盖旧 session 值**：
    * 工具层 tool-context.builder 的 mergeSessionFactsWithRuleClaims 一直是"本轮非 null
    * 高置信覆盖旧值"，本段若取"旧值优先、本轮仅补缺"——prompt 与工具就会对同一字段
    * 展示不同值（候选人刚改口的年龄/城市，硬约束段仍念旧值）。此处与工具层统一口径。
    * labor_form 走独立分支：除覆盖外还承担 clear（明确不要某形式）语义。
    *
    * 入参只接受 SessionFacts（带信封的存储态）：裸 EntityExtractionResult 会绕过
-   * unwrapSessionFacts 的 minConfidence 比较，下面这道 high 门对它形同虚设（议题 1-1）。
+   * unwrapSessionFacts 的 minConfidence 比较，下面这道 high 门会对它形同虚设。
    */
   private mergeFacts(
     sessionFacts: SessionFacts | null,
@@ -113,7 +113,7 @@ export class HardConstraintsSection implements PromptSection {
           : previousLaborForm;
 
     const pref: Preferences = {
-      // 品牌不进 Preferences（brands 字段已于 2026-08-19 记忆审计 S9 整体删除）；
+      // 品牌不进 Preferences（brands 字段已删除）；
       // 软提示行直读 sessionBrandState，品牌唯一真相是 facts.brand。
       brand_ids:
         currentRuleValues?.preferences.brand_ids ??

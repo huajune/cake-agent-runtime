@@ -401,7 +401,7 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'job_detail_lookup_required',
-    // 2026-07-27 发牌切换：replan → observe（评估文档 §2.2/§2.4）。三期审计全部重度
+    // 2026-07-27 发牌切换：replan → observe（评估文档 §2.2/§2.4）。生产审计的全部重度
     // 已投递伤害的宿主（事实反转 6a59dcad/周二改周一 6a630be4/内容坍缩 6a62d97b），
     // 提示层防护均证明被击穿。observe 后首版直投，接盘方=每日 badcase 日报 4.5 栏目
     // 的 L1 投递文本 vs 工具事实矛盾抽查（同步上线，满足 §6）。
@@ -477,7 +477,7 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'settlement_cycle_mismatch',
-    // 2026-07-27 发牌切换第一批：revise → observe。三期审计假阳触发本目录"精确率 <70%
+    // 2026-07-27 发牌切换：revise → observe。生产审计假阳触发本目录“精确率 <70%
     // 应自动降 observe"治理条款；同 PR 已修否定语序假阳，observe 期重新累计精确率，
     // 连续两周 ≥90% 可重新申请 revise（评估文档 §2.2 发牌表）。
     action: GUARDRAIL_ACTION.OBSERVE,

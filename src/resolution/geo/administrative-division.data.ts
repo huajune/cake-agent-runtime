@@ -1,14 +1,12 @@
 /**
- * 行政区基础数据 + 业务高置信别名（自 memory/facts/geo-mappings.ts 行为等价迁移，Phase 1）。
+ * 行政区基础数据 + 业务高置信别名。
  *
  * 维护口径（docs/architecture/geo-resolution.md §5）：
- * - 本表不在 Phase 4 生成化范围内（生成化只覆盖县级市映射），长期维持人工白名单 + 小步补录；
+ * - 本表维持人工白名单 + 小步补录；全国县级市映射由 generated 数据单独提供；
  * - "朝阳 → 北京"等条目是刻意业务偏置（其余同名行政区不在业务区域），已由 geo:validate
  *   对照国家数据交叉校验、经 overrides 的 BUSINESS_BIASED_SUBDIVISION_ALIASES 登记豁免，
  *   不得被"纠正"；新增跨城重名条目必须同步登记；
- * - §9.5 改名已落地（2026-07-28）：SUPPORTED_CITY_PREFIXES → HIGH_CONFIDENCE_BARE_LOCATION_ALIASES、
- *   DISTRICT_TO_CITY → UNIQUE_SUBDIVISION_TO_CITY、LOCATION_TO_CITY → UNIQUE_PLACE_ALIAS_TO_CITY，
- *   语义随名称对齐（裸地名别名表可合法含省级条目如"江西"，不再伪装城市表）。
+ * - 裸地名别名表可合法包含省级条目（如“江西”），名称表达的是高置信位置线索而非行政级别。
  */
 
 /** 直辖市（前缀识别：用户常用"上海浦东"这种省略"市"字的紧凑表达） */
@@ -51,7 +49,7 @@ export const COUNTY_LEVEL_CITY_TO_PREFECTURE: Record<string, string> = {
   珲春市: '延边朝鲜族自治州',
   龙井市: '延边朝鲜族自治州',
   和龙市: '延边朝鲜族自治州',
-  // 业务足迹补录（方案 §9.2/Phase 3 第 3-4 步，2026-07-22 真实海绵只读查询实证）：
+  // 业务足迹补录（2026-07-22 真实海绵只读查询实证）：
   // city=苏州(市) 在招岗位含 storeCityName=苏州市 + storeRegionName=昆山市；
   // city=昆山 直查 0；city=苏州市 + region=昆山市 精确命中——与延吉完全同构。
   // 余姚市/慈溪市暂不补录：宁波全城 0 在库岗位（含不可报名），存储口径无法用

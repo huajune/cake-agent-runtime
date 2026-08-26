@@ -368,7 +368,7 @@ export class HardRulesService {
       contradictions.push(this.withRulePolicy(danglingPromise));
     }
 
-    // 承诺-动作对账（议题 7-1 / 9-4）：handoff 承诺的补动作由 turn-outcome
+    // 承诺-动作对账：handoff 承诺的补动作由 turn-outcome
     // 按 ruleId 挂 sideEffect 执行；报名承诺无法自动补，改写为未提交的诚实口径。
     const handoffPromise = detectHandoffPromiseWithoutAction(text, toolCalls);
     if (handoffPromise) {

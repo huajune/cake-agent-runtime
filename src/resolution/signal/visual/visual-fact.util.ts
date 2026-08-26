@@ -9,7 +9,7 @@ import {
 import type { FieldOwnership } from '../types';
 
 /**
- * 归属默认规则（裁决记录见产品方案附录 A）。字段显式给了 ownership 则尊重；
+ * 归属默认规则（完整契约见视觉事实架构文档）。字段显式给了 ownership 则尊重；
  * 缺省按 kind 补。`unknown` 一律按第三方消费——宁可要求候选人重说一遍，
  * 不可把陌生人信息当自陈。
  */
@@ -26,15 +26,15 @@ const KIND_DEFAULT_OWNERSHIP: Record<VisualFactKind, FieldOwnership> = {
 const CANDIDATE_KEYS_ON_PUBLISHER_KINDS = new Set(['candidate_address']);
 
 /**
- * 证件号确定性清洗（裁决 B3'：证件号不设 key、不入档）。
- * P2 批测实证：模型会无视"证件号不要写"的提示词指令（写出 证件号码/健康证证号
+ * 证件号确定性清洗：证件号不设 key、不入档。
+ * 批测实证：模型会无视“证件号不要写”的提示词指令（写出证件号码/健康证证号
  * 字段）——中文 key 本会被白名单拦下，但若值被塞进合法 key（如 other），
  * 提示词防线就穿了。按值形态兜底：15/18 位身份证形态一律丢弃。
  */
 const ID_NUMBER_VALUE_RE = /^\d{15}(\d{2}[0-9Xx])?$/;
 
 /**
- * 自由描述里的证件号（裁决 B3' 的自由文本一侧）。
+ * 自由描述里的证件号。
  *
  * 生产实证（08-07 扫描日报红标 2，chat 6a1e42e6 10:18）：候选人发来一张员工名单表格
  * 截图，白名单**正确地**让 `fields` 为空，但同一 JSONB 的 `rawDescription` 原样留下了

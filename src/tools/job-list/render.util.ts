@@ -1,7 +1,7 @@
 /**
  * duliday_job_list 工具的 markdown 渲染层（render-sections + 编排）。
  *
- * 从 duliday-job-list.tool.ts 拆出（Phase 1.A 机械搬运，0 逻辑变更）：
+ * 统一承载以下岗位数据到 markdown 的投影：
  * - addSummaryLine + formatInterviewDecisionSummary：约面重点 section
  * - renderBasicInfoSection / renderSalarySection / renderWelfareSection /
  *   renderHiringRequirementSection / renderWorkTimeSection / renderInterviewProcessSection：

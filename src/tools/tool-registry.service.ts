@@ -53,8 +53,8 @@ import type { FinalizedVisualFactSheet } from '@resolution/signal/visual';
  * 统一工具注册表
  *
  * 所有内置工具的 name + description + create 集中定义于此。
- * MCP 工具运行时动态注册。
- * orchestrator 调用 buildAll(context) 一次性构建所有工具。
+ * Preparation 生产路径通过 `buildForScenario()` 构建场景子集；只有未登记
+ * 场景才会回退到 `buildAll()`。MCP 工具运行时动态注册，并叠加到场景工具集。
  *
  * 记忆工具策略：
  * - memory_store / memory_recall 已删除（编排层固定读写，不由 LLM 自主决定）
@@ -277,7 +277,7 @@ export class ToolRegistryService {
     return tools;
   }
 
-  /** 按场景构建工具子集，未注册场景回退到 buildAll */
+  /** 按场景构建工具子集；未注册场景回退到 buildAll。 */
   buildForScenario(scenario: string, context: ToolBuildContext): AiToolSet {
     const names = this.scenarioToolMap[scenario];
     if (!names) {

@@ -65,7 +65,7 @@ import {
 } from '../memory.ports';
 
 /**
- * 会话记忆·事实舱（semantic 性质，M3 分家 2026-08-21）
+ * 会话记忆·事实舱（semantic 性质）。
  *
  * 职责：会话状态存取（本舱是状态所有者）、结构化事实读写（置信度合并/extractedAt
  * 时间锚）、LLM 后置提取、已发生事件（invitedGroups/terminal/活动水位——复聊停发
@@ -202,7 +202,7 @@ export class SessionFactsService {
   }
 
   /**
-   * M5 懒迁移：旧 hash 顶层 brand_state 读时投影为 facts.brand，并回写新形态。
+   * 旧 hash 顶层 brand_state 读时投影为 facts.brand，并回写新形态。
    *
    * 旧字段不主动 HDEL：同一 factsv2 key 的 TTL 会让它自然过期；迁移窗口内嵌套新值
    * 一旦存在即优先，绝不被旧顶层字段覆盖。
@@ -574,7 +574,7 @@ export class SessionFactsService {
   }
 
   /**
-   * 写入端上限（治理方案 P1-3）：本轮 fetchedJobs 可累积到同工具限次 3 × 单页 20 = 60 条，
+   * 写入端上限：本轮 fetchedJobs 可累积到同工具限次 3 × 单页 20 = 60 条，
    * 全量落 Redis 但只有前 10 条会被渲染（memory.section MAX_POOL_LINES），
    * 其余仅充当 jobId provenance/品牌回指匹配。截尾保序（渲染取 slice(0,10)，
    * cap 对渲染结果零影响），只裁掉极端多查询轮次里几乎不可能被回指的尾部。
@@ -588,7 +588,7 @@ export class SessionFactsService {
     const state = await this.getSessionState(corpId, userId, sessionId);
     const validated = InvitedGroupRecordSchema.parse(record) as InvitedGroupRecord;
     const existing = state.invitedGroups ?? [];
-    // 按群名去重；新记录在前，超上限裁最旧（P1-3：该数组会全量渲染进 prompt 的
+    // 按群名去重；新记录在前，超上限裁最旧（该数组会全量渲染进 prompt 的
     // "已邀入群"段，正常会话个位数，cap 只是防单调增长的安全阀）。
     const MAX_INVITED_GROUPS = 20;
     const merged = [validated, ...existing]

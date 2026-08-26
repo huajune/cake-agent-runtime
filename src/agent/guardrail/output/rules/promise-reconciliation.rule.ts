@@ -2,7 +2,7 @@ import type { AgentToolCall } from '@agent/generator/generator.types';
 import { GUARDRAIL_ACTION } from '@shared-types/guardrail.contract';
 
 /**
- * 承诺-动作对账（core-flow-review 议题 7-1 / 9-4）。
+ * 承诺-动作对账。
  *
  * 沿革：`handoff_promise_without_handoff` 于 2026-08-11 第三批下线（commit ca0ce158，
  * 删 383 行）。下线的理由不是"这个问题不存在"，而是**拦截形态本身就是错的**：模型承诺

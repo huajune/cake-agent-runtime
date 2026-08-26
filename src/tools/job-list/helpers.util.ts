@@ -1,7 +1,6 @@
 /**
  * duliday_job_list 工具内部的单字段格式化 / 文本清洗 / 空值判断辅助。
  *
- * 从 duliday-job-list.tool.ts 拆出（Phase 1.A 机械搬运，0 逻辑变更）。
  * 这一层不涉及业务语义，只做字段级文本/数值/区间格式化，render 层依赖此模块。
  */
 

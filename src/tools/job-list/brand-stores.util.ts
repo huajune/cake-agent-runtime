@@ -1,7 +1,7 @@
 /**
  * 同品牌"最近门店"聚合 + multi-store warning section 渲染。
  *
- * 从 duliday-job-list.tool.ts 拆出（Phase 1.A 机械搬运，0 逻辑变更）：
+ * 包含以下同品牌多门店原语：
  * - BrandStoreEntry / BrandNearestStoresGroup 类型
  * - formatSalarySummary：单条岗位的薪资摘要（"24-26 元/时"）
  * - formatBrandStoreDisplayLine：拼成"品牌（门店，距离，班次，薪资，要求）"展示行

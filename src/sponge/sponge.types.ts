@@ -529,7 +529,7 @@ export interface SignupWorkOrderItem {
  *
  * 状态词是海绵的领域语言，唯一权威在此。此前全集只存在于 SignupWorkOrderItem 的行注释里，
  * 而"活跃约面"与"不可自助取消"两个语义子集在 precheck / oob-work-order /
- * follow-up.processor / cancel-work-order 各有一份字面副本（core-flow-review 议题 3-1）。
+ * follow-up.processor / cancel-work-order 不再各自维护字面副本。
  *
  * ⚠️ 各消费点的比较预处理（precheck 的 normalizePolicyText、oob 的 trim）**各自保留**，
  * 本常量只统一集合成员，不统一比较函数——统一比较属于行为变更。

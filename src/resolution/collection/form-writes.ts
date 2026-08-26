@@ -555,10 +555,10 @@ export function escalate(form: BookingCollectionForm, reason: string): BookingCo
 }
 
 /**
- * 疑似多人会话检测（D1 v1）：本轮提案里**同时**出现与在案值不同的新姓名与新手机号。
+ * 疑似多人会话检测：本轮提案里**同时**出现与在案值不同的新姓名与新手机号。
  *
  * 单个身份字段变更不算——候选人纠正自己的错别字、换个号码都是正常的；成对更换才是
- * 中介替第二个人报名的形态。生产频率无数据（Spike S2 只读量化），v1 只转人工不自动化。
+ * 中介替第二个人报名的形态。生产频率暂无可靠数据，当前只转人工、不自动化。
  */
 export function detectSuspectedMultiPerson(
   form: BookingCollectionForm,

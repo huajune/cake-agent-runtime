@@ -1,28 +1,27 @@
 # 收资表单域架构（collection form machine）
 
-**最后更新**：2026-08-20（随 PR #1023 上线）
-**代码居所**：`src/resolution/collection/`（纯逻辑，零 LLM 零 IO）+ `src/tools/collection/`（编排与渲染）+ `src/memory/stores|services/collection-form.*`（持久化）
+**最后更新**：2026-08-26
+**代码居所**：`src/resolution/collection/`（纯逻辑，零 LLM 零 IO）+
+`src/tools/collection/`（编排、渲染与 Redis 存储）
 
 > 本文描述已实现的系统。裁决底盘（claim 通货/公证内核/身份闸门，P11 三分法）见
 > [candidate-profile-domain.md](./candidate-profile-domain.md)——本域的写入公证是其在收资
-> 事务上的应用。设计史（一期方案、蓝图 v3-lean、总纲、逐日裁定过程）见 git 历史：
-> `docs/architecture/collection-field-resolution-plan.md`（一期：三层匹配+claim 化，随 PR #1000
-> 发版、已被本域 §7 退役批取代）、`docs/todo/collection-form-machine-implementation.md`、
-> `docs/todo/label-driven-collection-refactor.md`。
+> 事务上的应用。本文只描述现状，设计与施工过程见 Git 历史。
 
 ---
 
 ## 1. 领域边界
 
 **负责**：候选人 × 岗位的报名资料收集全生命周期——收什么（读契约）、值如何入账（作证+公证）、
-何时发问/复述/提交/熔断（状态派生）、提交（entryUser）与打回（errorList）。
+何时发问/复述/提交/熔断（状态派生）、提交（entryUser）与打回（errorList），以及表单 Redis 单据。
 
 **不负责**：字段判决标准（唯一判据源＝海绵标签契约 `batch-query`，岗位详情接口只服务展示）；
 语义理解的正确性（模型作证，复述终审兜底）；跨会话候选人认同（candidateRef=phone，person 键
 另案）。
 
 核心原则：**表单是事务底稿**（人×岗、有终点、办结封存），**记忆是对人的持续认知**——
-岗位要什么归表单，人是什么样归记忆。
+岗位要什么归表单，人是什么样归记忆。表单 key 显式包含稳定 `botUserId`，换 bot 重新收资；
+不会把单据写进 memory 的 `factsv2:`。
 
 ## 2. 实体与状态机（form.types.ts）
 

@@ -111,7 +111,7 @@ Prompt 上下文。收资表单仍由 tools 独立持有。
 | Prompt 共享裁决视图 | `adjudicatePromptMemory()`                    | `memory`、`turn-hints` sections        | 否                             |
 | `TurnLedger`        | preparation 创建，岗位/地理/图片等工具追加    | runner、`onTurnEnd()`                  | 只持久化被采用的结果           |
 | `ToolBuildContext`  | `buildToolContext()`                          | 本轮工具集合                           | 否                             |
-| `promptBlocks`      | `ContextService.compose()` + preparation 尾块 | AI SDK、MPR 观测                       | 随处理记录观测，不是记忆源     |
+| `promptBlocks`      | `ContextService.compose()` + preparation 尾块 | AI SDK、测试与进程内调试               | 当前不单独写入 MPR，不是记忆源 |
 
 `SnapshotEnrichmentService` 是备料，不是另一条档案写路径。它可以让当轮 Prompt 和工具获得
 补齐线索，但不会越过候选人档案域的置信度与来源纪律。

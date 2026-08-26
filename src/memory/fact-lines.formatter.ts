@@ -29,7 +29,7 @@ export interface FactLineFormatOptions {
   /**
    * 会话当前意向品牌（facts.brand.currentBrand.canonicalName）。
    *
-   * preferences.brands 字段已退役（§19.6）：品牌唯一真相是 facts.brand，
+   * preferences.brands 字段已退役：品牌唯一真相是 facts.brand，
    * 由调用方显式传入而非从 facts 里读——防止存储里收口前的旧值复活。
    * 不传则不渲染意向品牌行（如事实提取 prompt 的规则线索注入，无需品牌上下文）。
    */
@@ -270,7 +270,7 @@ export interface TurnHintLineOptions extends Pick<FactLineFormatOptions, 'includ
  * `includeEvidence` 下除了 `证据`（解析结论的机器码/中文标签）还会渲染 `原话`
  * （候选人逐字片段）：`证据` 只是把结论重说一遍——候选人复述岗位要求
  * （"这岗位要求18-45岁"）时渲染出的 `证据: 年龄识别：18-45` 不含任何"这句在讲岗位要求"
- * 的信号，而这正是本段文案点名要模型防的两类误判之一（core-flow-review 议题 2-1）。
+ * 的信号，而这正是本段文案点名要模型防的两类误判之一。
  */
 export function formatTurnHintLines(
   facts: TurnHints | null | undefined,

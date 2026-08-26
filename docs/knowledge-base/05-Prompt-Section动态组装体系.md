@@ -99,12 +99,13 @@ lifecycle；memory 域只负责召回、存储与回合收尾。
 1. 开篇人设：`identity`。它属于配置档，但变更极低频，前置对缓存代价近似为零。
 2. 稳定内容与配置：`base-manual → channel → stage-overview → red-lines → thresholds`。
 3. 动态事实与阶段：`memory → turn-hints → hard-constraints → datetime → group-inventory → stage-strategy`。
-4. recitation 收口：`final-check` 复合 section 产出 `final-check → critical-turn-guard` 两个块；
-   常驻自检块固定次末位，动态硬禁令块固定末位且按命中出现。
+4. recitation 收口：section 终序只有 `final-check`（复合 section）；它固定产出
+   `final-check` 常驻块，规则命中时再在内部追加 `critical-turn-guard` 子块。
 
 `stage-overview` 展示全阶段地图且不读取 `currentStage`；`stage-strategy` 只展示当前阶段，因此留在动态
 尾部。`final-check` 的常驻自检块虽是静态文本，但位置承担发送前自检功能，因此放在当前阶段策略之后。
-空 section 不产生 block。输入安全 guard 在 preparation 中插到 `critical-turn-guard` 块之前，主动跟进
+空 section 不产生 block。输入安全 guard 在 preparation 中插到 `final-check` 的条件子块
+`critical-turn-guard` 之前，主动跟进
 directive 则追加到全部场景 block 之后。
 
 这些内容全部保持 system 语义，通过 `instructions` 传入。记忆、当前阶段和本轮线索不会伪装成

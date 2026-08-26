@@ -295,7 +295,7 @@ export function produceTurnHints(
     options?.visualSheetsByContent?.get(stripTimeContextSuffix(message).trim());
 
   // 品牌收口（§9.2）：本函数不内联直写 preferences.brands——品牌真相唯一存储是
-  // facts.brand（写入只经 reducer），preferences.brands 已退役（§19.6）、读边界恒 null。
+  // facts.brand（写入只经 reducer），preferences.brands 已退役、读边界恒 null。
   // 品牌线索仍产出到 reasoning 供排障与提取 prompt 参考。
   // R2 发布方剔除：带 job_posting sheet 的消息，品牌线索只吃 key=brand 字段值
   // （发布方公司名在 key=publisher，不进品牌语料）；其余消息照旧全文。

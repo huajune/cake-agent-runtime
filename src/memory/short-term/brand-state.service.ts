@@ -242,7 +242,7 @@ export class BrandStateService {
   /**
    * 测试夹具专用直写（test-suite memory-fixture）。
    *
-   * preferences.brands 已退役（§11），用例预设的品牌意向必须以 facts.brand
+   * preferences.brands 已退役；用例预设的品牌意向必须以 facts.brand
    * 形态种入才对链路可见。生产路径禁止调用——生产写入仍只经 reducer
    * （applyTurnResolutions / applyLateImageResolutions，§7.1 单一写入方）。
    */

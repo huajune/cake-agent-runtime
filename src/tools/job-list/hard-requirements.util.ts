@@ -1,5 +1,5 @@
 /**
- * 从 raw job.hiringRequirement 派生候选人硬条件 enum（Phase 1.B 数据契约层）。
+ * 从 raw job.hiringRequirement 派生候选人硬条件 enum。
  *
  * 历史 badcase 簇：候选人意向某岗位 → 岗位有"不要 X 籍/限女性/必须有健康证/不接受学生"
  * 等硬条件，Agent 不主动核对就 booking → 候选人到店被刷或被店长拒。
