@@ -55,25 +55,15 @@ const TOOL_NAMES = [
 /**
  * 工具调用 XML 标签形态——**泄漏检测与残文剥离共用的单一真相源**。
  *
- * 2026-08-06 生产 badcase（运营反馈 `8pu8f8we`，chat `6a72a29d…` 08-05 10:42）：
- * 整条回复只有一个闭合标签 `</function_calls>`，被原样投递给候选人，候选人回了
- * 一个「？」，Agent 三分钟后才以"抱歉刚才在帮你查～"补救。
- *
- * 根因是同族判据单边漂移：2026-08-04 审计把**残文剥离**的交替组从 `function_call/s`
- * 扩到了 `function(?:_calls?)?` 与 `thinking`，却漏改**泄漏检测**侧——那里一直是窄的
- * `<\/?tool_call>`。`isToolCallArtifactOnly` 以 `detectOutputLeak` 为前置闸，检测不
- * 命中就直接短路返回 false，于是这条残文既没被拦、也没走整轮静默。
- * 既往同族残文之所以侥幸被捕，是因为正文里另带了已注册工具名（`skip_reply` 等）
- * 命中了工具名词条，并非 XML 标签判据生效。
- *
- * 两处共用同一份来源，杜绝再次单边扩展。
+ * 泄漏检测和残文剥离必须共用同一份标签来源；否则新增形态只在一侧生效时，
+ * `isToolCallArtifactOnly` 会在检测前置闸直接短路，导致裸 XML 残文既未拦截也未剥离。
  */
 const TOOL_CALL_XML_TAG_SOURCE =
   '<\\/?(?:tool_call|tool_use|invoke|parameter|function(?:_calls?)?|thinking|antthinking)\\b[^>]*>';
 
 /**
- * 2026-08-20 新簇（nkyiuvdx / z3toosp6 / dnjmwffe / lrerr7zx）：Provider 降级时把
- * 推理独白混进了候选人可见文本。每条模式都锚定本簇已发生形态，不扩成通用语义判断。
+ * Provider 降级时可能把推理独白混入候选人可见文本。每条模式只锚定已知形态，
+ * 不扩成通用语义判断。
  */
 const INTERNAL_REASONING_PATTERNS: readonly RegExp[] = [
   /^(?:Now\s+)?confirmed\s+\d+\s+results?\s+(?:twice|\d+\s+times?)[.!]?\s*Proceed(?:ing)?\s+with\s+(?:the\s+)?(?:script|group invite)\b[^\n]*$/im,
@@ -100,8 +90,7 @@ const PATTERNS: RegExp[] = [
   new RegExp(`(?:调用|call|invoke)\\s*(?:${TOOL_NAMES.map(escapeRegex).join('|')})`, 'i'),
   // 工具名标识符出现在候选人可见文本的任何位置都属于泄漏（覆盖 `[duliday_job_list]`、
   // `["geocode", {...}]`、`{"name":"geocode",...}` 等一切携带已注册工具名的形态。
-  // 上线首日 badcase：repair 以 toolMode:'none' 重写时模型把工具调用写成文本，
-  // 3 条 JSON 原文穿透旧词库发给了候选人（06:14/06:40/06:41 三单）
+  // repair 以 toolMode:'none' 重写时仍可能把工具调用写成文本，因此工具名也属泄漏信号。
   new RegExp(`\\b(?:${TOOL_NAMES.map(escapeRegex).join('|')})\\b`),
   // 工具调用 JSON 骨架（未注册工具名/MCP 动态工具也能兜住）
   new RegExp(TOOL_CALL_XML_TAG_SOURCE, 'i'),
@@ -138,7 +127,7 @@ const INTERNAL_REASONING_BLOCK_PATTERN =
   /<(antthinking|analysis|reasoning)\b[^>]*>[\s\S]*?<\/\1\s*>/gi;
 const INTERNAL_REASONING_TAG_PATTERN = /<\/?(?:antthinking|analysis|reasoning)\b[^>]*>/gi;
 
-/** 只做机械删除：剥推理标签块、残标签和本簇实证独白整行，不生成或改写候选人正文。 */
+/** 只做机械删除：剥推理标签块、残标签和已知独白整行，不生成或改写候选人正文。 */
 export function stripInternalReasoningArtifacts(content: string): string {
   const withoutTags = content
     .replace(INTERNAL_REASONING_BLOCK_PATTERN, '')
@@ -160,10 +149,8 @@ export function isInternalReasoningArtifactOnly(content: string): boolean {
 /**
  * 剥掉 markdown 代码围栏标记（```` ```lang ````），围栏内的正文原样保留。
  *
- * 业务背景：2026-07-21 生产 badcase——首版用 ```text 围栏包了一张逐项填写的报名表模板，
- * 仅因围栏命中本规则进了 LLM 重写，重写把整张模板压成一句话流水账。围栏是本词库里
- * 唯一"删掉标记即完整修复"的形态，runner 对 fence-only 命中走此确定性最小修复，
- * 不进 LLM 重写（修复代价为零）。
+ * 围栏是本词库里唯一「删掉标记即完整修复」的形态。runner 对 fence-only 命中
+ * 走确定性最小修复，不进 LLM 重写，避免结构化正文被压扁。
  *
  * 行为：行首 ``` 标记行整行删除；``` 后跟正文的行只删标记保留正文；压缩多余空行。
  */
@@ -260,17 +247,15 @@ export function tryUnwrapEnvelopeReply(content: string): string | null {
 }
 
 /**
- * 整条回复只是工具调用残文——模型没发起工具调用，而是把调用语法当正文吐了出来
- * （2026-07-28 15:05–15:11 生产降级：`<tool_call><invoke name="duliday_job_list">…`、
- * `{"name":"geocode",…}`、`geocode(address="海珠", city="广州")`、裸串 `duliday_job_list`）。
+ * 整条回复只是工具调用残文——模型没发起工具调用，而是把调用语法当正文吐了出来，
+ * 例如 XML、JSON、函数调用或裸工具名。
  *
  * 这种输入不能进 rewrite：泄漏反馈要求"其余内容逐字保留"，而残文剥完无一字可留，
- * 指令退化成自由创作——当时 4/4 例编出了薪资、门店岗位乃至字面占位的伪造报名链接
- * 并全部投递。正确结局与元叙述旁白同型：整轮静默。
+ * 指令会退化成自由创作。正确结局与元叙述旁白同型：整轮静默。
  *
  * 判据：剥掉工具调用骨架与字面量后，不再剩下任何可读字符（汉字/字母）。
  * 可拆封的 JSON 信封（见 tryUnwrapEnvelopeReply）不算残文——里面有完整正文可放出，
- * 静默会把好回复一起吞掉（2026-08-04 审计静默误伤 ×2）。
+ * 静默会把好回复一起吞掉。
  */
 export function isToolCallArtifactOnly(content: string): boolean {
   const text = content?.trim() ?? '';
@@ -312,17 +297,8 @@ export function hasTechnicalDocumentationShape(content: string): boolean {
 /**
  * 人设露馅：Agent 人设是真人招募经理，说"转人工/人工客服"等词等于自曝机器人身份。
  *
- * 运营反馈（recvjXBkmV6idz"能不能不要说转人工，这样不是露馅了吗"、
- * recvnV3iYGZnBJ"别说我给你转人工，有点像人机"）。正确口径是"我帮你问下同事/
- * 让负责的同事联系你"。与上面的内部状态泄漏同族（实现细节外露）。
- *
- * 2026-07-07 observe 入场收判例；2026-07-21 升 revise：两周 5 条命中全为真阳性
- * 人设露馅（守卫档案 7-14/7-16/7-17/7-20/7-21），封闭词表零误报，措辞替换即可
- * 修复，满足 catalog 准入条件（≥2 周判例、精确率 ≥90%、恢复路径可靠）。
- *
- * 2026-07-22 扩词（badcase chat 6a5dedb2ce406a6aeee1ea62"东升是真人招募经理哈"
- * 直发未拦）：补"人工登记/人工确认"等动作变体与"真人经理/专人联系"类第三方
- * 割裂表述。仍是封闭词表；"真人/人工"单字不入表，避免误伤正常语义。
+ * 正确口径是"我帮你问下同事/让负责的同事联系你"。该规则与内部状态泄漏同族，
+ * 只匹配封闭词组；"真人/人工"单词不入表，避免误伤正常业务表述。
  */
 const HUMAN_SERVICE_PHRASE_PATTERN =
   /转人工|人工客服|人工坐席|转接人工|人工渠道|人工登记|人工确认|人工介入|人工处理|人工跟进|真人招募经理|真人经理|真人客服|专人联系|专人跟进|专人对接/;
@@ -330,9 +306,7 @@ const HUMAN_SERVICE_PHRASE_PATTERN =
 // precheck wait_notice 话术用"先进入审核"避免主动引导该词形）。
 
 /**
- * 2026-08-04 曾按“本轮是否有真实人工升级动作”分叉反馈，以规避已于 8-11 下线的
- * handoff_promise_without_handoff 规则与本规则互锁。该规则退役后，本规则只负责修正
- * 人设露馅措辞，不再推断承诺是否有外部动作支撑。
+ * 本规则只负责修正人设露馅措辞，不推断承诺是否有外部动作支撑。
  */
 export function detectHumanServicePhraseLeak(content: string): RuleContradiction | null {
   if (!content) return null;

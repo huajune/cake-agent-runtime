@@ -17,6 +17,23 @@ describe('HardRulesService', () => {
   const check = (replyText: string) =>
     service.check({ replyText, toolCalls: [], chatId: 'chat-1', userId: 'user-1' });
 
+  describe('job availability grounding', () => {
+    it('wires zero-lookup availability claims into a non-sendable revise decision', () => {
+      const result = check('上海兼职岗位挺多的，我先帮你看看附近的。');
+
+      expect(result.contradictions).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            ruleId: 'job_availability_without_lookup',
+            action: GUARDRAIL_ACTION.REVISE,
+            currentReplySendable: false,
+            feedbackToGenerator: expect.stringContaining('我先帮你查下附近有没有合适的'),
+          }),
+        ]),
+      );
+    });
+  });
+
   describe('ungrounded generalizations', () => {
     const successfulJobLookup = {
       toolName: 'duliday_job_list',
@@ -895,8 +912,8 @@ describe('HardRulesService', () => {
     });
   });
 
-  // 2026-07-21 守卫审计：本分支要求的补救是"先反问哪家门店"这一对话行为，而规则拿不到
-  // replyText；且入参在 repair 轮内不变，命中即注定二审复燃（生产 57/57）。降级 observe。
+  // 本分支要求的补救是"先反问哪家门店"这一对话行为，而规则拿不到 replyText；
+  // 入参在 repair 轮内又不变，因此命中会在二审复燃，只做 observe。
   describe('job_detail_lookup_required with an ambiguous focus job', () => {
     const ambiguousSnapshot = {
       currentStage: 'job_matching',
@@ -1015,8 +1032,7 @@ describe('HardRulesService', () => {
       );
     });
 
-    // 2026-07-21 守卫审计：窗口内 16 条命中 rewrite 二审通过率 0%，抽样 6/6 假阳。
-    // 两类根因各补一组回归。
+    // 锁定否定句与补充结算语境的假阳回归。
     describe('production false positives (2026-07-21 audit)', () => {
       const monthlyOnlyCall = {
         toolName: 'duliday_job_list',
@@ -1092,7 +1108,7 @@ describe('HardRulesService', () => {
       });
     });
 
-    // 2026-07-24 守卫审计：窗口内评审 4 例 3 例假阳（精确率 25%），三类根因各补回归。
+    // 锁定补充结算、他岗前瞻和心愿复述的假阳回归。
     describe('production false positives (2026-07-24 audit)', () => {
       const monthlyOnlyCall = {
         toolName: 'duliday_job_list',
@@ -1177,7 +1193,7 @@ describe('HardRulesService', () => {
       });
     });
 
-    // 2026-07-27 守卫审计：窗口内命中 2/2 全假阳（精确率 0%），两类语序缺口各补回归。
+    // 锁定后缀否定与转折并列语序的假阳回归。
     describe('production false positives (2026-07-27 audit)', () => {
       const monthlyOnlyCall = {
         toolName: 'duliday_job_list',
@@ -1726,8 +1742,7 @@ describe('HardRulesService', () => {
         expect.arrayContaining([
           expect.objectContaining({
             ruleId: 'requested_brand_mismatch',
-            // 2026-07-27 发牌专项审计降 observe：生产抽样 3/3 假阳（门店名被当品牌名），
-            // 检测保留观察真跨品牌串台，不再触发 repair。
+            // 门店名可被结构化解析误当品牌名，因此只观察真跨品牌串台，不触发 repair。
             action: GUARDRAIL_ACTION.OBSERVE,
             currentReplySendable: true,
           }),

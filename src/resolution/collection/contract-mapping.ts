@@ -1,14 +1,13 @@
 /**
- * 线上契约 DTO → 收资域内部型的**单向映射**，外加 systemField 缺席期的身份识别兜底。
+ * 线上契约 DTO → 收资域内部型的**单向映射**，含身份四槽的识别（本域唯一识别点）。
  *
  * 为什么要一层映射：`@sponge/collection-contract.types` 的字段名随后端走，收资域的
  * 判决逻辑不该随之返工。映射是唯一的耦合点，后端改名只动这一个文件。
  *
- * ⚠️ **身份识别兜底**（D4 + 契约诉求 #3）：0820 实测契约**尚未带 systemField**
- * （后端承诺改）。落地前身份四槽靠「环境级配置的 labelId 锚点 + 每轮拿实时契约核验
- * labelTitle」补齐——ID 只做加速，语义由标题核验背书；核验不过即**告警并降通用道**
- * （身份闸门不挂、人键回退 session，漏斗优先不卡报名）。
- * 契约带上 systemField 后本兜底自动让位，无需改代码。
+ * **身份识别机制**（0826 裁定：后端 systemField 诉求废弃，本机制由兜底转正）：
+ * 身份四槽由「环境级配置的 labelId 锚点 + 每轮拿实时契约核验 labelTitle」识别——
+ * ID 定位、语义由标题核验背书；核验不过即**告警并降通用道**（身份闸门不挂、
+ * 人键回退 session，漏斗优先不卡报名）。ID 只进环境配置不进代码（D4 仍有效）。
  */
 
 import type { ContractField, JobCollectionContract } from '@sponge/collection-contract.types';
@@ -53,17 +52,15 @@ export interface IdentityResolution {
 /**
  * 判定单个契约字段是不是身份槽位。
  *
- * 优先级：契约 systemField（后端补上后的权威）> 标题语义 > 环境锚点核验。
- * **锚点单独不足以定身份**：配置说 769 是姓名、契约里 769 的标题却是「紧急联系人」，
- * 那是标签表重建后的静默断链——正是 D4 撤回"把 ID 写进文档"诉求时点名要防的事故。
- * 此时不认身份、返回 mismatch 让调用方告警。
+ * 判据：标题语义为准，labelId 锚点做核验（契约不带语义标记——原 systemField 诉求
+ * 0826 已废弃）。**锚点单独不足以定身份**：配置说 769 是姓名、契约里 769 的标题却是
+ * 「紧急联系人」，那是标签表重建后的静默断链——正是 D4 撤回"把 ID 写进文档"诉求时
+ * 点名要防的事故。此时不认身份、返回 mismatch 让调用方告警。
  */
 export function resolveIdentityKey(
   field: ContractField,
   config: IdentityAnchorConfig,
 ): IdentityResolution {
-  if (field.systemField) return { systemField: field.systemField };
-
   const title = field.labelTitle.trim();
   const byTitle = IDENTITY_TITLE_PATTERNS.find((pattern) => pattern.test.test(title))?.key;
   const byAnchor = config.anchors.get(field.labelId);

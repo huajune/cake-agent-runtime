@@ -109,6 +109,75 @@ describe('runCollectionCore · 先写后问', () => {
   });
 });
 
+describe('runCollectionCore · 多人闸（D1：疑似代报第二人即转人工）', () => {
+  const PHONE: ContractFieldDef = {
+    labelId: 770,
+    labelTitle: '手机号',
+    fieldType: 'TEXT',
+    required: true,
+    acceptedOptions: [],
+    rejectedOptions: [],
+    systemField: 'phone',
+  };
+  const CONTRACT_WITH_PHONE = [NAME, PHONE, AGE];
+
+  function filledPersonOneForm() {
+    const text = '我叫兮兮，手机号18271421690';
+    const round1 = runCollectionCore({
+      form: createForm({ jobId: 528962, contract: CONTRACT_WITH_PHONE }),
+      contract: CONTRACT_WITH_PHONE,
+      candidateTexts: [text],
+      messages: [{ role: 'user', content: text }],
+      claims: [
+        { field: 'name', value: '兮兮', quote: '我叫兮兮' },
+        { field: 'phone', value: '18271421690', quote: '手机号18271421690' },
+      ],
+    });
+    expect(round1.form.slots[769].state).toBe('filled');
+    expect(round1.form.slots[770].state).toBe('filled');
+    return round1.form;
+  }
+
+  it('新姓名+新手机号成对出现 → 本轮零写入、escalated 转人工', () => {
+    const text = '再帮李四报一个，他手机号13900001111';
+    const result = runCollectionCore({
+      form: filledPersonOneForm(),
+      contract: CONTRACT_WITH_PHONE,
+      candidateTexts: [text],
+      messages: [{ role: 'user', content: text }],
+      claims: [
+        { field: 'name', value: '李四', quote: '帮李四报一个', operation: 'correct' },
+        { field: 'phone', value: '13900001111', quote: '手机号13900001111', operation: 'correct' },
+      ],
+    });
+    expect(result.verdict).toBe('escalated');
+    expect(result.action).toBe('handoff');
+    expect(result.form.escalatedReason).toBe('suspected_multi_person');
+    // 零写入：显式改口标记也不放行——第一个人的在案值原样保留
+    expect(result.form.slots[769].value?.value).toBe('兮兮');
+    expect(result.form.slots[770].value?.value).toBe('18271421690');
+    expect(result.audits).toContainEqual(
+      expect.objectContaining({ kind: 'escalated', reason: 'suspected_multi_person' }),
+    );
+  });
+
+  it('只换手机号（自我纠错改口）不触发多人闸，正常 restated 替换', () => {
+    const text = '手机号写错了，应该是18271421691';
+    const result = runCollectionCore({
+      form: filledPersonOneForm(),
+      contract: CONTRACT_WITH_PHONE,
+      candidateTexts: [text],
+      messages: [{ role: 'user', content: text }],
+      claims: [
+        { field: 'phone', value: '18271421691', quote: '应该是18271421691', operation: 'correct' },
+      ],
+    });
+    expect(result.verdict).not.toBe('escalated');
+    expect(result.form.slots[770].value?.value).toBe('18271421691');
+    expect(result.audits).toContainEqual(expect.objectContaining({ kind: 'slot_restated' }));
+  });
+});
+
 describe('runCollectionCore · 筛选与审计', () => {
   it('命中 rejectedOptions → screening_rejected + 审计事件', () => {
     const text = '没有健康证，我不愿意办';

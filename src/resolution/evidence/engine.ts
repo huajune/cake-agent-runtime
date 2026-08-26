@@ -13,9 +13,8 @@ import {
  *
  * 三步：公证（./notary 三问）→ 归并（同字段多 claim）→ 物化（EffectiveCandidateProfile）。
  *
- * 2026-08-12 换血：删掉按*产者身份*排信任的 PRODUCER_PRIORITY 与值复算否决
- * （实测假阳率 72.3%、model 轨 41% 被拒而引文全部真实）。代码只回答"这段引文站不
- * 站得住"，值对不对由候选人本人终审。
+ * 信任不按产者身份排序，也不用规则复算否决值。代码只回答
+ * "这段引文站不站得住"，值对不对由候选人本人终审。
  */
 
 export interface AdjudicateParams {

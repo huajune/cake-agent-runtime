@@ -2,7 +2,7 @@ import { detectOnlineInterviewLocationClaim } from '@agent/guardrail/output/rule
 import type { AgentToolCall } from '@shared-types/agent-telemetry.types';
 
 /**
- * 线上面试却给到店指引（2026-07-30 连续第二天复发、当日 4 次）。
+ * 线上面试却给到店指引的回归边界。
  *
  * 候选人会为一场线上面试白跑一趟门店。destination='store' 是最主要的假阳来源
  * ——候选人问"工作地点在哪"时发门店定位是正确行为，必须区分。
@@ -12,7 +12,7 @@ describe('detectOnlineInterviewLocationClaim', () => {
     ({ toolName: 'send_store_location', status: 'ok', result }) as AgentToolCall;
 
   describe('命中：无需到店却给到店指引', () => {
-    // 生产实证 6a69674e：实际是电话面试，回复却说"门店位置我发你了…门店在 1 层，别走错"。
+    // 电话面试不得附带到店导航或门店走位提示。
     it('flags navigation guidance for a phone interview', () => {
       const hit = detectOnlineInterviewLocationClaim(
         '门店位置我发你了，点开就能看导航。门店在 1 层 1-51 号，别走错。',

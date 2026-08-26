@@ -1,4 +1,4 @@
--- 触达状态机回归防护下沉到表级（2026-07-06 发版 review）。
+-- 触达状态机回归防护下沉到表级。
 --
 -- 现状：防回退口径只写在 record_reengagement_touch() 的 ON CONFLICT DO UPDATE 里，
 -- 任何绕开该 RPC 的直接 UPDATE（人工修复脚本、未来新服务方法、Dashboard 直连）都不受约束，

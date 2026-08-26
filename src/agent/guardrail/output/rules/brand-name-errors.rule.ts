@@ -43,12 +43,8 @@ export function detectRequestedBrandMismatch(text: string, toolCalls: AgentToolC
     return {
       ruleId: 'requested_brand_mismatch',
       label: `工具实际应用品牌为"${[...appliedBrands].join('/')}"，但回复结构化推荐了其它品牌"${claimed}"`,
-      // 2026-07-27 发牌专项审计后降档：replan → observe。生产抽样 3/3 假阳——
-      // extractStructuredJobTitleBrands 把"江南赋店-蔬菜理货员/置汇旭辉店-收银员"等
-      // 门店名当成品牌名（trace batch_6a6185f3…×2、batch_6a609660…），replan 被派去
-      // 修不存在的错误、重新生成"品牌（门店）"前缀格式骗过解析器——历史 7/7 二审
-      // 通过实为格式空转。按目录治理条款"精确率 <70% 自动降 observe"收回动手权；
-      // 检测保留（真跨品牌串台仍留档给事后环），门店名误判修复后可重新申请。
+      // 结构化标题解析可能把门店名当成品牌名，确定性修复容易改坏正确回复。
+      // 因此只保留 observe 供事后识别真跨品牌串台。
       action: GUARDRAIL_ACTION.OBSERVE,
     };
   }

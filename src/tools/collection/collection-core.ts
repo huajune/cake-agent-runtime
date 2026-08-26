@@ -11,6 +11,9 @@
 
 import type { BookingCollectionForm, ContractFieldDef, Verdict } from '@resolution/collection';
 import {
+  detectSuspectedMultiPerson,
+  escalate,
+  ESCALATION_REASONS,
   isSensitiveAttribute,
   markAsked,
   orderForAsking,
@@ -108,7 +111,7 @@ export function runCollectionCore(input: CollectionCoreInput): CollectionCoreRes
   );
 
   // ── 写入：四条作证通道的提案逐条过公证 ──
-  const proposals = collectProposals({
+  let proposals = collectProposals({
     contract,
     candidateTexts: input.candidateTexts,
     messages: input.messages,
@@ -116,6 +119,15 @@ export function runCollectionCore(input: CollectionCoreInput): CollectionCoreRes
     formAnswers: input.formAnswers,
     filledLabelIds,
   });
+
+  // ── 多人闸：新姓名+新手机号成对出现＝疑似中介代报第二人（D1 v1 只转人工不自动化）──
+  // 必须拦在写入之前：带显式改口标记的提案能合法穿过棘轮，一旦写入就是跨人污染，
+  // 办结后会连 sessionFacts 与长期画像一起写错人。检测命中即本轮零写入、直接转人工。
+  if (detectSuspectedMultiPerson(form, contract, proposals)) {
+    form = escalate(form, ESCALATION_REASONS.suspectedMultiPerson);
+    audits.push({ kind: 'escalated', reason: ESCALATION_REASONS.suspectedMultiPerson });
+    proposals = [];
+  }
 
   const fieldById = new Map(contract.map((field) => [field.labelId, field]));
   for (const proposal of proposals) {

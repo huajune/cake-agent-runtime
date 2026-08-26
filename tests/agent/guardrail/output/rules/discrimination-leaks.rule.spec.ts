@@ -10,8 +10,7 @@ const screeningLeak = ruleById('discriminatory_screening_leak');
 const originProbe = ruleById('sensitive_origin_probe');
 
 describe('discriminatory_screening_leak', () => {
-  // 2026-08-06 badcase（chat 6a744a86，记录 249939）：属性与"要求"之间插一个"有"
-  // 就整条漏拦，投递给候选人后当场被质问。
+  // 属性与“要求”之间允许“有”等有限连接词，仍应识别为敏感门槛披露。
   it.each([
     '这家对户籍有要求，方便问一下你老家是哪里的吗',
     '这家门店户籍这块有要求',

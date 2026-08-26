@@ -1653,7 +1653,7 @@ describe('FollowUpProcessor', () => {
 
     it('passes the per-bot token context to the sponge work-order lookup', async () => {
       // 多 bot 企业 per-bot token ≠ 全局 fallback，不带 botImId 查工单会静默 miss，
-      // 外部取消检测整条失效（2026-07-06 review）
+      // 外部取消检测会整条失效。
       sponge.getWorkOrderById.mockResolvedValue({
         workOrderId: 555,
         currentStatus: '约面取消',

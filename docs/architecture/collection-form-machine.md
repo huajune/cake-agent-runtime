@@ -92,6 +92,20 @@ outcome=`restated` 落审计；askCount 不清零防刷熔断配额）。系统/
 - 成功 → `markSubmitted(workOrderId)` 封存 + `setActiveBooking`；
   errorList → `applyErrorList` 按 labelId（缺失按 labelTitle 匹配）精确重开该槽，
   失配 → escalated 不静默；成功但缺 workOrderId → escalated 防重复提交。
+  `errorList[].labelId` 后端 0826 已上线；生产验证靠 `error_list_unmapped` 哨兵——
+  定位失败即转人工并可观测，无需专项验收。
+
+### 契约消费边界（0826 复测核实 + 维持现状裁定）
+
+- **`labelInstructions` 不被执行也不被渲染**：候选人模板与模型可见输出只用
+  `labelTitle`，instructions 仅进披露红线的敏感词扫描。运营认知规则：**筛选必须配
+  `rejectedOptions` / `valueSpec`**，写进说明字段的筛选意图不会生效（判决单源）。
+- **`fieldType` 同 id 分裂可容忍**：判决与提交每轮实时拉契约、按岗执行，单岗自洽；
+  代价是跨岗复用退化（文本值对不上新岗选项集 → 重问一遍）与迁移窗口的
+  errorList 往返，均有自愈，不产生数据错误。
+- **`optionCode` 语义漂移低危**：跨岗/跨轮复用走**文本值回流 + 每轮重配选项**
+  （sessionFacts 存 optionLabel 文本不存 code），code 只在单次提交的实时契约内使用；
+  analytics 亦不按 code 聚合。后端自律「发布后不改语义」即可，AI 侧无需防护。
 
 ## 7. 与记忆的边界
 
@@ -121,8 +135,9 @@ outcome=`restated` 落审计；askCount 不清零防刷熔断配额）。系统/
 - **作证主通道＝主聊模型随工具调用提交 claims**；不设常驻第二语义读者（双通道判同值
   必打架）；小模型仅作轮末空槽收网与 shadow 审计。
 - **公证零语义判断**；判定入账永远如实（委婉只在渲染层）；producer 署名如实。
-- **D4 禁硬编码外系统 ID**：labelId/optionCode 字面量不进 src/；语义锚点读契约
-  systemField（缺席期：环境级配置 + labelTitle 每轮核验，核验不过告警降通用道）。
+- **D4 禁硬编码外系统 ID**：labelId/optionCode 字面量不进 src/；身份四槽识别走
+  环境级 labelId 锚点（`COLLECTION_IDENTITY_LABEL_IDS`）+ labelTitle 每轮核验，
+  核验不过告警降通用道（0826 裁定：原契约 systemField 诉求废弃，此机制即终态）。
 - **披露分级**：契约 `disclosure` 优先 → 属性族兜底注册表 → 未知敏感族默认禁明说；
   禁说词表与出站守卫红线同源，禁另立副本。
 - **候选人信息不跨托管账号共享**（预填与记忆召回同受约束）。
