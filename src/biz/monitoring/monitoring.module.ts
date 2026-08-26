@@ -117,6 +117,7 @@ import { AGENT_EVENT_PERSISTER } from '@observability/persistence/agent-event-pe
     DataCleanupService,
     ALERT_LOG_PERSISTER,
     AGENT_EVENT_PERSISTER,
+    AgentExecutionEventRepository,
   ],
 })
 export class MonitoringModule {}

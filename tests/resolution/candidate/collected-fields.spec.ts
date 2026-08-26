@@ -14,6 +14,7 @@ import {
   parseName,
   parsePhone,
   parseWeight,
+  readGenderProvenance,
 } from '@resolution/candidate';
 import { PERSISTABLE_CANDIDATE_FIELD_PRODUCERS } from '@resolution/candidate/types';
 
@@ -51,6 +52,38 @@ describe('candidate-field-parser', () => {
       expect(parseGender('想找女装门店的岗位')).toBeNull();
       expect(parseGender('要招男生吗')).toBeNull();
       expect(parseGender('女士优先')).toBeNull();
+    });
+  });
+
+  describe('readGenderProvenance（gender_source 批 A 兼容边界）', () => {
+    it.each([
+      [
+        'candidate_quote 信封',
+        'candidate',
+        false,
+        { source: 'candidate_quote', value: '女' },
+        null,
+      ],
+      ['system 信封', 'system', false, { source: 'system', value: '女' }, null],
+      [
+        '旧 candidate sibling',
+        'candidate',
+        true,
+        { source: 'rule', value: '女' },
+        { source: 'rule', value: 'candidate' },
+      ],
+      [
+        '旧 system sibling',
+        'system',
+        true,
+        { source: 'rule', value: '女' },
+        { source: 'system', value: 'system' },
+      ],
+    ] as const)('%s', (_name, source, fromLegacySibling, gender, genderSource) => {
+      expect(readGenderProvenance({ gender, gender_source: genderSource })).toEqual({
+        source,
+        fromLegacySibling,
+      });
     });
   });
 

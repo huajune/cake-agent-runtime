@@ -6,14 +6,6 @@ import type {
   SessionBrandState,
 } from '@resolution/brand/brand-resolution.types';
 import type { ToolErrorType } from '@tools/shared/tool-error-types';
-import type {
-  CandidateClaimDecision,
-  CandidateClaimField,
-  CandidateFactProducer,
-  CandidateClaimRejectionReason,
-  CandidateFactInterpretation,
-  CandidateFactOperation,
-} from '@resolution/evidence/claim.types';
 import type { ValidLaborForm } from '@resolution/labor-form';
 
 /**
@@ -42,6 +34,12 @@ export type AgentEvent = AgentEventContext &
         userId?: string;
         steps?: number;
         totalTokens?: number;
+        /**
+         * 前缀缓存命中的输入 token（prompt_tokens_details.cached_tokens 求和）。
+         * 缓存命中率（cachedTokens / 输入量）是生产 agent 第一健康度指标（Manus 主张，
+         * 治理方案 P0-1b）；undefined = provider 未上报。
+         */
+        cachedTokens?: number;
         durationMs: number;
       }
     | { type: 'agent_error'; userId?: string; error: string }
@@ -94,8 +92,6 @@ export type AgentEvent = AgentEventContext &
         apiCode?: string | number;
       }
     | { type: 'tool_error'; toolName: string; error: string; durationMs?: number }
-    | { type: 'memory_recall'; userId: string; found: boolean }
-    | { type: 'memory_store'; userId: string; keys: string[] }
     /**
      * 会话品牌状态迁移（§12 长期事件）：前后快照 + 触发它的解析结果。
      * 仅状态实际变化时发射；它是品牌链路上不可重放信息之一（另一类见 brand_resolution_ambiguous），承担历史回放职责。
@@ -144,31 +140,16 @@ export type AgentEvent = AgentEventContext &
         late: boolean;
       }
     /**
-     * 抽取臆造字段拦截（is_student 首写证据门等，badcase 2026-07-28 chat 6a673402…）：
-     * 首写无会话证据的身份字段被字段级丢弃。正常量级应接近零，持续出现即抽取
-     * 模型指令遵循劣化信号，日巡检据此核对。
-     */
-    | {
-        type: 'extraction_field_dropped';
-        userId?: string;
-        field: string;
-        droppedValue: string;
-        reason: string;
-        /** 本次抽取经 fallback 后真正成功的模型。 */
-        modelId: string;
-      }
-    /**
      * 会话状态字段落盘态与 schema 失配、被逐字段校验丢弃。
      *
-     * 与 `extraction_field_dropped` 刻意分开：那条是**模型抽的值**没过准入门（业务判定），
-     * 这条是**存量数据**与代码 schema 对不上（存储完整性）——跨版本词表漂移、脏写、
-     * 回滚到旧代码读新数据都会命中。Redis 是 facts / terminal / brand_state 的唯一
-     * 事实源，丢一个字段就是丢一段事实，正常量级应恒为零。
+     * 这是**存量数据**与代码 schema 对不上（存储完整性），不是模型提取值的业务准入
+     * 判定。跨版本词表漂移、脏写、回滚到旧代码读新数据都会命中。Redis 是 facts /
+     * terminal / facts（含 brand）的唯一事实源，丢一个字段就是丢一段事实，正常量级应恒为零。
      */
     | {
         type: 'session_state_field_dropped';
         userId?: string;
-        /** 被丢弃的顶层字段（facts / terminal / brand_state …）。 */
+        /** 被丢弃的顶层字段（facts / terminal …）。 */
         field: string;
         /** zod 失败明细（字段路径 + 原因），不含值本体，避免 PII 进观测。 */
         issues: string[];
@@ -208,15 +189,6 @@ export type AgentEvent = AgentEventContext &
         userId?: string;
         jobId: number;
       }
-    | {
-        type: 'extraction_raw_output_sampled';
-        userId?: string;
-        modelId: string;
-        dropCount: number;
-        droppedFields: string[];
-        /** 仅模型响应，不含 prompt；UTF-8 最多 8KB。 */
-        rawOutput: string;
-      }
     /**
      * 封闭语义标签的双轨 shadow 分歧：仅分歧时落档，绝不改变规则轨生效结果。
      * traceId 由 AgentTracer 的请求上下文补齐，可与消息主账本直接 join。
@@ -234,44 +206,6 @@ export type AgentEvent = AgentEventContext &
           laborForm?: ValidLaborForm;
         };
         quote: string;
-      }
-    /**
-     * 候选人事实裁决档案（证据化方案 §11）：precheck 每次裁决一条、booking
-     * 快照对账不一致时一条。decisions 刻意不携带字段值与 quote 原文（PII 纪律，
-     * 方案 §11"完整证据仅进入受控审计存储"）——值本体可经 trace_id join
-     * message_processing_records 的工具入参回查。
-     */
-    | {
-        type: 'fact_adjudication';
-        stage: 'precheck' | 'booking_gate';
-        mode: 'shadow' | 'enforce';
-        userId?: string;
-        precheckId?: string;
-        factsVersion?: number;
-        // 六个字段一律复用裁决域权威类型，不另立 string（与本文件 errorType 用
-        // ToolErrorType 同口径）：观测字段与产出方漂移会让日巡检按错的取值集聚合，
-        // 而裸 string 下这种漂移零信号。
-        decisions: Array<{
-          field: CandidateClaimField;
-          producer: CandidateFactProducer;
-          operation: CandidateFactOperation;
-          interpretation: CandidateFactInterpretation;
-          decision: CandidateClaimDecision;
-          rejectionReason?: CandidateClaimRejectionReason;
-          supersededByClaimId?: string;
-          claimId: string;
-        }>;
-        /** booking_gate 专用：payload 与快照不一致的字段名（含水位失效伪字段）。 */
-        mismatchedFields?: string[];
-        /**
-         * 覆盖率 delta（P11 工序 C6）：规则解析器抓到、模型却没经作证通道提交的
-         * 字段。迁移期唯一的覆盖率仪表，也是 P2 拆机判据（≤ 噪音水平持续两周）。
-         */
-        coverageDelta?: CandidateClaimField[];
-        /** 回声检查（工序 C4）本次命中数；shadow 期用于算误报率（enforce 判据④）。 */
-        echoDetections?: number;
-        /** 性别表内确认过渡识别器的裁决状态；用于 D5 退役观测。 */
-        genderInlineConfirmation?: 'pending' | 'confirmed_inline';
       }
   );
 

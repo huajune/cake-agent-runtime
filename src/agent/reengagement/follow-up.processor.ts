@@ -19,12 +19,12 @@ import {
 } from '@biz/group-task/services/group-invite.service';
 import { HandoffRecorderService } from '@biz/handoff-events/handoff-recorder.service';
 import { GeneralHandoffNotifierService } from '@notification/services/general-handoff-notifier.service';
-import { SessionService } from '@memory/services/session.service';
-import { unwrapSessionFactValue } from '@memory/types/session-facts.types';
-import { LongTermService } from '@memory/services/long-term.service';
+import { SessionStateService } from '@memory/short-term/session-state.service';
+import { unwrapSessionFactValue } from '@memory/short-term/short-term.types';
+import { LongTermService } from '@memory/long-term/long-term.service';
 import { SpongeService } from '@sponge/sponge.service';
 import { ACTIVE_INTERVIEW_WORK_ORDER_STATUSES } from '@sponge/sponge.types';
-import type { ReengagementSessionState } from '@memory/types/reengagement-session-state.types';
+import type { ReengagementSessionState } from '@memory/recall.types';
 import { MessageDeliveryService } from '@wecom/message/delivery/delivery.service';
 import type { DeliveryContext, DeliveryResult } from '@wecom/message/types';
 import type { TurnOutcome } from '../runner/agent-runner.types';
@@ -152,7 +152,7 @@ export class FollowUpProcessor implements OnModuleInit {
 
   constructor(
     @InjectQueue(REENGAGEMENT_QUEUE) private readonly queue: Queue<FollowUpJob>,
-    private readonly session: SessionService,
+    private readonly session: SessionStateService,
     private readonly reengagementAgent: ReengagementAgent,
     private readonly touchLedger: TouchLedgerService,
     private readonly systemConfig: SystemConfigService,

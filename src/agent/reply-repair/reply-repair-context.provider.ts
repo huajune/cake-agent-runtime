@@ -3,17 +3,17 @@ import { ConfigService } from '@nestjs/config';
 import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
 import type { GroupContext } from '@biz/group-task/group-task.types';
 import { normalizeCityName as normalizeCity } from '@resolution/geo';
-import { formatExtractionFactLines } from '@memory/formatters/fact-lines.formatter';
+import { formatExtractionFactLines } from '@memory/fact-lines.formatter';
 import { MemoryService } from '@memory/memory.service';
 import { stripTimeContext } from '@resolution/signal/markers';
-import type { InvitedGroupRecord, SessionFacts } from '@memory/types/session-facts.types';
+import type { InvitedGroupRecord, SessionFacts } from '@memory/short-term/short-term.types';
 import type { RecommendedJobSummary } from '@resolution/job/types';
 import type {
   UserProfileFacts,
   UserProfileFactValue,
-  LongTermPreferenceFacts,
-  LongTermPreferenceFieldKey,
-} from '@memory/types/long-term.types';
+  JobIntentFacts,
+  JobIntentFieldKey,
+} from '@memory/long-term/long-term.types';
 
 const MAX_RECENT_MESSAGES = 8;
 const MAX_FACT_LINES = 40;
@@ -71,6 +71,7 @@ export class ReplyRepairContextProvider {
     corpId: string;
     userId: string;
     sessionId: string;
+    botUserId?: string;
     currentUserMessage?: string;
     shortTermEndTimeInclusive?: number;
   }): Promise<ReplyRepairContext> {
@@ -82,14 +83,15 @@ export class ReplyRepairContextProvider {
       {
         includeShortTerm: true,
         shortTermEndTimeInclusive: input.shortTermEndTimeInclusive,
+        botUserId: input.botUserId,
       },
     );
 
-    const session = memory.sessionMemory;
+    const session = memory.shortTerm.sessionState;
     const factLines = session?.facts
       ? formatExtractionFactLines(session.facts, {
-          // 品牌唯一真相是 brand_state（§19.6）；facts.preferences.brands 已退役
-          currentBrandName: session.brand_state?.currentBrand?.canonicalName ?? null,
+          // 品牌唯一真相是 facts.brand（M5）；facts.preferences.brands 已退役
+          currentBrandName: session.facts.brand?.currentBrand?.canonicalName ?? null,
         })
       : [];
     const city = this.readCity(session?.facts ?? null);
@@ -108,11 +110,11 @@ export class ReplyRepairContextProvider {
     return {
       recentMessages: this.buildRecentMessages(memory.shortTerm.messageWindow),
       factLines: factLines.slice(0, MAX_FACT_LINES),
-      profileLines: this.formatProfileLines(memory.longTerm.profile),
+      profileLines: this.formatProfileLines(memory.longTerm.semantic.profile),
       longTermPreferenceLines: this.formatLongTermPreferenceLines(
-        memory.longTerm.preferences ?? null,
+        memory.longTerm.semantic.jobIntent ?? null,
       ),
-      currentStage: memory.procedural.currentStage ?? null,
+      currentStage: memory.shortTerm.stage.currentStage ?? null,
       jobLines,
       invitedGroupLines: (session?.invitedGroups ?? []).map((group) =>
         this.formatInvitedGroup(group),
@@ -272,9 +274,9 @@ export class ReplyRepairContextProvider {
     return lines;
   }
 
-  private formatLongTermPreferenceLines(prefs: LongTermPreferenceFacts | null): string[] {
+  private formatLongTermPreferenceLines(prefs: JobIntentFacts | null): string[] {
     if (!prefs) return [];
-    const labels: Array<[LongTermPreferenceFieldKey, string]> = [
+    const labels: Array<[JobIntentFieldKey, string]> = [
       ['city', '意向城市'],
       ['district', '意向区域'],
       ['location', '意向地点'],
@@ -298,7 +300,7 @@ export class ReplyRepairContextProvider {
   }
 
   /** 渲染单个历史意向值；返回 null 表示不注入（如已过期的最早可面日期）。 */
-  private renderPreferenceValue(key: LongTermPreferenceFieldKey, value: unknown): string | null {
+  private renderPreferenceValue(key: JobIntentFieldKey, value: unknown): string | null {
     if (Array.isArray(value)) {
       return value.length > 0 ? value.map(String).join('、') : null;
     }

@@ -6,7 +6,7 @@ describe('booking failure current-result-only contract', () => {
 
   it('requires an explicit terminal reply when the candidate asks for only the current result', () => {
     const candidatePrompt = readFileSync(
-      join(root, 'src/agent/generator/context/prompts/candidate-consultation.md'),
+      join(root, 'src/agent/generator/context/sections/procedural/candidate-consultation.md'),
       'utf8',
     );
 

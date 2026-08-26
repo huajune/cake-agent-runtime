@@ -1,5 +1,5 @@
-import { resolveGeocodeLocationAnchor } from '@agent/generator/preparation-utils/geocode-location-anchor.util';
-import { produceRuleFactClaims } from '@resolution/evidence/producers/rule-track';
+import { resolveGeocodeLocationAnchor } from '@agent/generator/preparation/geocode-location-anchor.util';
+import { produceTurnHints } from '@resolution/evidence/producers/rule-track';
 import { StorageMessageSource, StorageMessageType } from '@enums/storage-message.enum';
 
 describe('resolveGeocodeLocationAnchor', () => {
@@ -71,7 +71,7 @@ describe('resolveGeocodeLocationAnchor', () => {
   });
 
   it('当前候选人明示的新区县优先于旧人工锚点', () => {
-    const currentFacts = produceRuleFactClaims(['杨浦附近呢'], []);
+    const currentFacts = produceTurnHints(['杨浦附近呢'], []);
     const result = resolveGeocodeLocationAnchor({
       currentUserMessage: '杨浦附近呢',
       shortTermMessages: [

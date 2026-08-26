@@ -204,7 +204,7 @@ onTurnStart → Compose → Execute (LLM + Tools) → onTurnEnd
 
 ## 6. Memory System — 四层记忆 + 一路旁路
 
-> 灵感来自认知科学的 CoALA 框架：让 Agent 像人一样有"工作记忆 / 短期记忆 / 程序记忆 / 长期记忆"。
+> 灵感来自认知科学的 CoALA 框架：让 Agent 像人一样有"工作记忆 / 短期记忆 / 阶段状态 / 长期记忆"。
 
 ```
 ┌──────────────────── Agent Loop（编排层）─────────────────────┐
@@ -241,15 +241,15 @@ onTurnStart → Compose → Execute (LLM + Tools) → onTurnEnd
 ### 6.1 三大设计原则
 
 1. **编排层固定读写**：LLM 不持有记忆读写权，由 `MemoryService.onTurnStart/onTurnEnd` 统一调度。
-2. **工具仅保留两个触达**：`advance_stage`（写程序记忆）、`recall_history`（读长期摘要）。
-3. **会话沉淀单向搬运**：`SessionService → SettlementService → LongTerm`，消息间隔达到 `settlementGapSeconds` 触发，Redis key 自然过期。
+2. **工具仅保留两个触达**：`advance_stage`（写阶段状态）、`recall_history`（读长期摘要）。
+3. **会话沉淀单向搬运**：`SessionService → ConsolidationService → LongTerm`，消息间隔达到 `consolidationGapSeconds` 触发，Redis key 自然过期。
 
 ### 6.2 时间常量
 
 记忆系统现在拆成三个时间参数：
 
 - `sessionTtl`：Redis 会话态 TTL，默认 2 天，常见环境配置 3 天
-- `settlementGapSeconds`：沉淀间隔阈值，默认 1 天
+- `consolidationGapSeconds`：沉淀间隔阈值，默认 1 天
 - `historyWindowSeconds`：短期窗口 DB fallback 回查范围，默认 7 天
 
 > **延伸阅读**：[memory-architecture.md](./architecture/memory-architecture.md)
@@ -444,7 +444,7 @@ Agent 生成期间用户又发了新消息，怎么办？
 
 | 工具 | 职责 |
 | --- | --- |
-| `advance_stage` | 推进程序记忆阶段 |
+| `advance_stage` | 推进阶段状态阶段 |
 | `recall_history` | 查询用户历史求职记录摘要 |
 | `duliday_job_list` | 查询在招岗位（geocode + 距离排序 + 业务阈值过滤） |
 | `duliday_interview_precheck` | 面试前置校验（不真正提交） |
@@ -591,7 +591,7 @@ Cron 触发 → GroupTaskScheduler.executeTask()
    │
    └─ MemoryLifecycleService.onTurnEnd()
        ├─ load_previous_state
-       ├─ 分支 A：settlement（未超阈值 → skipped）
+       ├─ 分支 A：consolidation（未超阈值 → skipped）
        └─ 分支 B（串行）：
            ├─ save_candidate_pool（3 个岗位 → session）
            ├─ project_assistant_turn（投影 presentedJobs）

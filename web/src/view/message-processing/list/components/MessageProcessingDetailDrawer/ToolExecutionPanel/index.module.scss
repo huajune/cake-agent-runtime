@@ -1,0 +1,131 @@
+@use '@/assets/styles/variables' as *;
+
+.panel {
+  margin-top: $spacing-lg;
+}
+
+.sectionTitle {
+  margin: 0 0 $spacing-sm;
+  color: $text-primary;
+  font-size: $font-size-sm;
+  font-weight: $font-weight-bold;
+}
+
+.toolList {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xs;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.toolItem {
+  overflow: hidden;
+  border: 1px solid rgba($primary, 0.14);
+  border-radius: $radius-md;
+  background: $bg-primary;
+}
+
+.toolHeader {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-sm;
+  padding: $spacing-sm $spacing-md;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+
+  &:disabled {
+    cursor: default;
+  }
+}
+
+.toolIdentity,
+.toolMeta {
+  display: flex;
+  align-items: center;
+  gap: $spacing-xs;
+}
+
+.toolIdentity {
+  min-width: 0;
+  color: $primary;
+}
+
+.toolName {
+  overflow: hidden;
+  font-family: $font-family-mono;
+  font-size: $font-size-xs;
+  font-weight: $font-weight-semibold;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.toolMeta {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  color: $text-muted;
+  font-size: $font-size-xs;
+}
+
+.statusBadge {
+  display: inline-flex;
+  padding: 2px $spacing-xs;
+  border-radius: $radius-full;
+  font-family: $font-family-mono;
+  font-size: $font-size-xs;
+  font-weight: $font-weight-bold;
+}
+
+.statusSuccess {
+  background: $success-soft;
+  color: $success;
+}
+
+.statusWarning {
+  border: 1px solid rgba($warning, 0.4);
+  background: $warning-soft;
+  color: $warning;
+  box-shadow: 0 0 0 2px rgba($warning, 0.1);
+}
+
+.statusError {
+  background: $danger-soft;
+  color: $danger;
+}
+
+.statusUnknown {
+  background: $bg-secondary;
+  color: $text-muted;
+}
+
+.toolDetails {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: $spacing-sm;
+  padding: 0 $spacing-md $spacing-md;
+
+  pre {
+    max-height: 240px;
+    margin: $spacing-xs 0 0;
+    padding: $spacing-sm;
+    overflow: auto;
+    border-radius: $radius-md;
+    background: #0f172a;
+    color: #e2e8f0;
+    font-family: $font-family-mono;
+    font-size: $font-size-xs;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+}
+
+.detailLabel {
+  color: $text-secondary;
+  font-size: $font-size-xs;
+  font-weight: $font-weight-semibold;
+}

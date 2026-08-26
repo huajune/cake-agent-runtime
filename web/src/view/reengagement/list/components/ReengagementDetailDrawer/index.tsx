@@ -436,7 +436,7 @@ export default function ReengagementDetailDrawer({
     return extractGenerationInsight(
       asRecord(turnRecord.agentInvocation.request),
       asRecord(turnRecord.agentInvocation.response),
-      turnRecord.agentSteps,
+      turnRecord.agentSteps ?? undefined,
     );
   }, [turnRecord]);
 

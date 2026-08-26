@@ -1,9 +1,12 @@
 import { Tool, ToolSet } from 'ai';
 import { StageGoalConfig, Threshold } from '@biz/strategy/types/strategy.types';
 import type { CandidatePrefillHints } from '@resolution/candidate/types';
-import type { EntityExtractionResult, InvitedGroupRecord } from '@memory/types/session-facts.types';
+import type {
+  EntityExtractionResult,
+  InvitedGroupRecord,
+} from '@memory/short-term/short-term.types';
 import type { RecommendedJobSummary } from '@resolution/job/types';
-import type { UserProfile } from '@memory/types/long-term.types';
+import type { UserProfile } from '@memory/long-term/long-term.types';
 import type { MessageType } from '@enums/message-callback.enum';
 import type { LaborFormIntentDecision } from '@resolution/labor-form';
 import type { SessionBrandState } from '@resolution/brand/brand-resolution.types';

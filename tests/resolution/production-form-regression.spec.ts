@@ -12,8 +12,8 @@ import { parseHealthCertificateMatch } from '@resolution/candidate/health-cert';
 import { parseHeight, parseWeight } from '@resolution/candidate/height-weight';
 import { parseCandidateFieldsFromText } from '@resolution/candidate/collected-fields';
 import { matchIdentityStatement } from '@resolution/candidate/student-identity';
-import { produceRuleFactClaims } from '@resolution/evidence/producers/rule-track';
-import { projectRuleFactClaims } from '@resolution/evidence/merge';
+import { produceTurnHints } from '@resolution/evidence/producers/rule-track';
+import { projectTurnHints } from '@resolution/evidence/merge';
 import type { BrandItem } from '@/sponge/sponge.types';
 import type { FinalizedVisualFactSheet } from '@resolution/signal/visual';
 import {
@@ -94,8 +94,8 @@ describe('生产形态：规则轨授权域（P0-1）', () => {
   };
 
   it('先图后文合并批：图片占位不吞同批手打身份自陈', () => {
-    const facts = projectRuleFactClaims(
-      produceRuleFactClaims(
+    const facts = projectTurnHints(
+      produceTurnHints(
         [withTimeSuffix(IMAGE_PLACEHOLDER), withTimeSuffix('我是女的，25岁')],
         brandData,
       ),
@@ -106,14 +106,14 @@ describe('生产形态：规则轨授权域（P0-1）', () => {
 
   it('拼接单串（回归前形态）确会丢身份抽取——固化教训防止回退', () => {
     const joined = debounceJoin(IMAGE_PLACEHOLDER, '我是女的，25岁');
-    const facts = projectRuleFactClaims(produceRuleFactClaims([joined], brandData));
+    const facts = projectTurnHints(produceTurnHints([joined], brandData));
     expect(facts?.interview_info?.gender).toBeUndefined();
   });
 
   it('带时间后缀的简历描述消息可按内容查到 sheet 并放行身份抽取', () => {
     const content = imageDescription('个人简历\n姓名：李梅\n年龄：25\n学历：大专');
-    const facts = projectRuleFactClaims(
-      produceRuleFactClaims([withTimeSuffix(content)], brandData, {
+    const facts = projectTurnHints(
+      produceTurnHints([withTimeSuffix(content)], brandData, {
         visualSheetsByContent: new Map([[content, resumeSheet]]),
       }),
     );
@@ -129,8 +129,8 @@ describe('生产形态：规则轨授权域（P0-1）', () => {
       rawDescription: '招聘海报，要求18-40岁，联系电话13777776666',
       degraded: false,
     };
-    const facts = projectRuleFactClaims(
-      produceRuleFactClaims([withTimeSuffix(content)], brandData, {
+    const facts = projectTurnHints(
+      produceTurnHints([withTimeSuffix(content)], brandData, {
         visualSheetsByContent: new Map([[content, jobSheet]]),
       }),
     );
@@ -139,8 +139,8 @@ describe('生产形态：规则轨授权域（P0-1）', () => {
   });
 
   it('身份 fallback 的疑问号门按消息生效：疑问消息不污染同批陈述消息', () => {
-    const facts = projectRuleFactClaims(
-      produceRuleFactClaims(
+    const facts = projectTurnHints(
+      produceTurnHints(
         [withTimeSuffix('有什么兼职吗？'), withTimeSuffix('我目前待岗')],
         brandData,
       ),
@@ -149,7 +149,7 @@ describe('生产形态：规则轨授权域（P0-1）', () => {
   });
 
   it('时间后缀本身不产生任何字段（星期三不是自陈）', () => {
-    const facts = produceRuleFactClaims([`好的\n${PROD_TIME_SUFFIX}`], brandData);
+    const facts = produceTurnHints([`好的\n${PROD_TIME_SUFFIX}`], brandData);
     expect(facts?.claims.filter((claim) => claim.field.startsWith('interview_info')) ?? []).toEqual(
       [],
     );

@@ -908,6 +908,7 @@ export class AgentRunnerService {
         corpId: ctx.sessionRef.corpId,
         userId: ctx.sessionRef.userId,
         sessionId: ctx.sessionRef.sessionId,
+        botUserId: ctx.botUserName,
         currentUserMessage: ctx.userMessage,
         shortTermEndTimeInclusive: ctx.shortTermEndTimeInclusive,
       });
@@ -1024,6 +1025,7 @@ export class AgentRunnerService {
         type: 'agent_end',
         steps: outcome.agentSteps?.length,
         totalTokens: outcome.usage?.totalTokens,
+        cachedTokens: outcome.usage?.cachedInputTokens,
         durationMs: Date.now() - startedAt,
       });
       return outcome;

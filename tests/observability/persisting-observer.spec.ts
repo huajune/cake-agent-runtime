@@ -40,22 +40,19 @@ describe('PersistingObserver', () => {
     expect(persister.persist).toHaveBeenCalledTimes(4);
   });
 
-  it('always persists extraction drop diagnostics and raw-output samples', () => {
+  it('always persists collection and session-state diagnostics', () => {
     const observer = makeObserver();
 
     observer.emit({
-      type: 'extraction_field_dropped',
-      field: 'age',
-      droppedValue: '21',
-      reason: 'no_candidate_provenance',
-      modelId: 'deepseek/deepseek-v3.2',
+      type: 'session_state_field_dropped',
+      field: 'facts',
+      issues: ['facts.age: Invalid input'],
     });
     observer.emit({
-      type: 'extraction_raw_output_sampled',
-      modelId: 'deepseek/deepseek-v3.2',
-      dropCount: 3,
-      droppedFields: ['age', 'gender', 'height'],
-      rawOutput: '{"reasoning":"本轮无新信息"}',
+      type: 'collection_form_audit',
+      jobId: 123,
+      kind: 'rejected',
+      reason: 'missing_evidence',
     });
 
     expect(persister.persist).toHaveBeenCalledTimes(2);

@@ -19,9 +19,7 @@ const ALWAYS_PERSISTED_EVENT_TYPES = new Set<AgentEvent['type']>([
   'semantic_review',
   // 歧义词形现场：不写状态故 brand_state_change 看不见，量级=冲突别名频率（每天个位数）
   'brand_resolution_ambiguous',
-  // 抽取臆造字段拦截：量级应接近零，出现即弱模型劣化信号，必须可查（不能只打日志）
-  'extraction_field_dropped',
-  // 落盘态字段被逐字段校验丢弃：Redis 是 facts/terminal/brand_state 的唯一事实源，
+  // 落盘态字段被逐字段校验丢弃：Redis 是 facts（含 brand）/terminal 的唯一事实源，
   // 丢一个字段就是丢一段事实（terminal 丢了复聊会去骚扰已约面的人）。量级应恒为零，
   // 非零即存储完整性事故——只打日志等于没发生（记忆审计风险点 8）。
   'session_state_field_dropped',
@@ -32,10 +30,6 @@ const ALWAYS_PERSISTED_EVENT_TYPES = new Set<AgentEvent['type']>([
   // 身份锚点断链与空标签岗：两者量级都应恒为零，非零即上游数据/配置出事。
   'collection_identity_anchor_mismatch',
   'collection_empty_contract',
-  // 同轮多字段丢弃时采样的模型原始响应（8KB 封顶），用于区分幻觉与供应商串请求。
-  'extraction_raw_output_sampled',
-  // 候选人事实裁决档案：claim 接受率/拒绝原因分布是证据化 Phase 1/2 的核心观测
-  'fact_adjudication',
   // labor-form 双轨分歧档案：冻结令（2026-08-11，labor-form/index.ts）要求新 badcase
   // 先查本事件再动正则——只进日志等于档案不存在（PR #1000 评审 P1-15）
   'semantic_track_diff',

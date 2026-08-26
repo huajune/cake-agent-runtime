@@ -41,6 +41,12 @@ export interface AgentStepDetail {
     inputTokens: number;
     outputTokens: number;
     totalTokens: number;
+    /**
+     * provider 前缀缓存命中的输入 token 数（OpenAI 兼容口径 prompt_tokens_details.cached_tokens）。
+     * 缓存命中率 = cachedInputTokens / inputTokens，是生产 agent 第一健康度指标；
+     * undefined 表示 provider 未上报（≠ 0 命中）。
+     */
+    cachedInputTokens?: number;
   };
   durationMs?: number;
   finishReason?: string;
@@ -48,7 +54,7 @@ export interface AgentStepDetail {
 
 /** 本轮触发时的记忆上下文快照：用于判定"模型是否正确继承了上轮上下文"。 */
 export interface AgentMemorySnapshot {
-  /** 本轮入口阶段（来自 procedural.currentStage + recruitmentCase 解析） */
+  /** 本轮入口阶段（来自 stageState.currentStage + recruitmentCase 解析） */
   currentStage: string | null;
   /** 本会话近几轮已展示给候选人的岗位 id 列表 */
   presentedJobIds: number[] | null;

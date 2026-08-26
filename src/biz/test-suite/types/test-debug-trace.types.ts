@@ -77,7 +77,7 @@ export interface MemoryFixtureSetup {
   profile?: Record<string, unknown>;
   /** Convenience stage field. */
   currentStage?: string | null;
-  /** ProceduralState-compatible fixture. */
+  /** StageState-compatible fixture. */
   procedural?: Record<string, unknown>;
 }
 
@@ -103,6 +103,7 @@ export interface TestRuntimeScope {
   corpId: string;
   userId: string;
   sessionId: string;
+  botUserId?: string;
   callerKind: string;
   strategySource?: string;
   scenario?: string;

@@ -1,0 +1,130 @@
+@use '@/assets/styles/variables' as *;
+
+.sectionTitle {
+  margin: 0 0 $spacing-sm;
+  color: $text-primary;
+  font-size: $font-size-sm;
+  font-weight: $font-weight-bold;
+}
+
+.timelineCard {
+  overflow: hidden;
+  border: 1px solid rgba($primary, 0.14);
+  border-radius: $radius-lg;
+  background: $bg-primary;
+  box-shadow: $shadow-sm;
+}
+
+.emptyState {
+  padding: $spacing-md $spacing-lg;
+  color: $text-muted;
+  font-size: $font-size-xs;
+}
+
+.timelineList {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: $spacing-md $spacing-lg;
+  list-style: none;
+}
+
+.timelineItem {
+  position: relative;
+  display: grid;
+  grid-template-columns: $spacing-md 1fr;
+  gap: $spacing-sm;
+  padding-bottom: $spacing-md;
+
+  &::before {
+    position: absolute;
+    top: $spacing-sm;
+    bottom: 0;
+    left: 5px;
+    width: 1px;
+    background: rgba($primary, 0.2);
+    content: '';
+  }
+
+  &:last-child {
+    padding-bottom: 0;
+
+    &::before {
+      display: none;
+    }
+  }
+}
+
+.timelineMarker {
+  position: relative;
+  z-index: 1;
+  width: 11px;
+  height: 11px;
+  margin-top: 4px;
+  border: 2px solid $bg-primary;
+  border-radius: $radius-full;
+  background: $primary;
+  box-shadow: 0 0 0 1px rgba($primary, 0.24);
+}
+
+.eventBody {
+  min-width: 0;
+}
+
+.eventHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: $spacing-xs;
+}
+
+.relativeTime {
+  color: $text-muted;
+  font-family: $font-family-mono;
+  font-size: $font-size-xs;
+  font-variant-numeric: tabular-nums;
+}
+
+.eventBadge {
+  display: inline-flex;
+  padding: 2px $spacing-xs;
+  border: 1px solid rgba($primary, 0.18);
+  border-radius: $radius-full;
+  background: rgba($primary, 0.08);
+  color: $primary;
+  font-family: $font-family-mono;
+  font-size: $font-size-xs;
+  font-weight: $font-weight-semibold;
+}
+
+.eventSummary {
+  margin-top: $spacing-xs;
+  color: $text-secondary;
+  font-size: $font-size-xs;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.rawDetails {
+  margin-top: $spacing-xs;
+  color: $text-muted;
+  font-size: $font-size-xs;
+
+  summary {
+    cursor: pointer;
+  }
+
+  pre {
+    max-height: 240px;
+    margin: $spacing-xs 0 0;
+    padding: $spacing-sm;
+    overflow: auto;
+    border-radius: $radius-md;
+    background: $bg-secondary;
+    color: $text-secondary;
+    font-family: $font-family-mono;
+    font-size: $font-size-xs;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+}

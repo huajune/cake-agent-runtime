@@ -63,10 +63,10 @@ function buildEffectiveStageStrategy(
  * 阶段状态持久化在 Redis 中，下一轮对话将注入新阶段的策略配置。
  *
  * 设计要点：
- * - 程序记忆（Procedural Memory）的唯一写入工具
+ * - 阶段状态（stage state）的唯一写入工具
  * - 允许跨阶段跳转，但 nextStage 必须是当前策略中的合法阶段
  * - 允许直接从当前阶段跳到更匹配的目标阶段，不要求线性推进
- * - 阶段变迁的审计链在 logger 行与 agent_execution_events，不落进程序记忆（S10）
+ * - 阶段变迁的审计链在 logger 行与 agent_execution_events，不落进阶段状态（S10）
  * - 模型跳过调用的后果：停留在当前阶段一轮 → 温和降级
  */
 export function buildAdvanceStageTool(memoryService: MemoryService): ToolBuilder {
@@ -114,7 +114,7 @@ export function buildAdvanceStageTool(memoryService: MemoryService): ToolBuilder
 
         const effectiveStageStrategy = buildEffectiveStageStrategy(stageGoals[nextStage]);
 
-        // 程序记忆只落 currentStage（S10）：from/at/reason 三个字段曾一起落库号称
+        // 阶段状态只落 currentStage（S10）：from/at/reason 三个字段曾一起落库号称
         // 审计，但全库无人读回。真实审计链是下面那行日志 + agent_execution_events
         // 的工具调用事件 + 本工具返回给模型的 fromStage。
         await memoryService.setStage(

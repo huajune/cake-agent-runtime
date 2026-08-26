@@ -17,11 +17,13 @@ import { Redis } from '@upstash/redis';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { SupabaseStore } from '@memory/stores/supabase.store';
 import { RedisStore } from '@memory/stores/redis.store';
-import { LongTermService } from '@memory/services/long-term.service';
-import { SettlementService } from '@memory/services/settlement.service';
-import { ShortTermService } from '@memory/services/short-term.service';
-import { SessionService } from '@memory/services/session.service';
-import { FALLBACK_EXTRACTION } from '@memory/types/session-facts.types';
+import { LongTermService } from '@memory/long-term/long-term.service';
+import { ConsolidationService } from '@memory/long-term/consolidation.service';
+import { MessageWindowService } from '@memory/short-term/message-window.service';
+import { SessionStateService } from '@memory/short-term/session-state.service';
+import { SessionFactsService } from '@memory/short-term/facts.service';
+import { SessionWorkbenchService } from '@memory/short-term/workbench.service';
+import { FALLBACK_EXTRACTION, toSessionFacts } from '@memory/short-term/short-term.types';
 
 // ============================================================
 // 环境 & 客户端初始化
@@ -46,6 +48,8 @@ const supabase: SupabaseClient = createClient(
 
 const TEST_CORP = 'test-corp-memory-int';
 const TEST_USER = `test-user-mem-${Date.now()}`;
+const TEST_BOT_USER_ID = 'test-bot-user-memory-int';
+const TEST_BOT_IM_ID = 'test-bot-im-memory-int';
 // 实际系统中 chatId === sessionId（WeChat 会话 ID 即 chat_id）
 const TEST_CHAT = `test-chat-mem-${Date.now()}`;
 const TEST_SESSION = TEST_CHAT;
@@ -91,13 +95,16 @@ const redisServiceShim = {
 
 /** 模拟 MemoryConfig */
 const memoryConfigShim = {
-  sessionTtl: 86400,           // 1 天
+  sessionTtl: 3 * 86400,
+  consolidationGapSeconds: 3 * 86400,
   historyWindowSeconds: 7 * 86400,
   sessionWindowMaxMessages: 60,
   sessionWindowMaxChars: 8000,
   sessionExtractionIncrementalMessages: 10,
   longTermCacheTtl: 7200,
-  get sessionTtlDays() { return 1; },
+  get sessionTtlDays() {
+    return 3;
+  },
 };
 
 /** 模拟 ChatSessionService — 直接查 Supabase */
@@ -175,9 +182,20 @@ const llmShim = {
   },
 };
 
-/** 模拟 SpongeService（SessionService 用到） */
+/** 模拟 SpongeService（SessionFactsService 用到） */
 const spongeShim = {
-  async fetchBrandList() { return []; },
+  async fetchBrandList() {
+    return [];
+  },
+};
+
+const systemConfigShim = {
+  async getExtractModelOverride() {
+    return undefined;
+  },
+  async getConsolidationModelOverride() {
+    return undefined;
+  },
 };
 
 // ============================================================
@@ -194,24 +212,30 @@ const redisStore = new RedisStore(redisServiceShim as never);
 
 const longTermService = new LongTermService(supabaseStore);
 
-const settlementService = new SettlementService(
+const consolidationService = new ConsolidationService(
   memoryConfigShim as never,
   longTermService,
   chatSessionShim as never,
   llmShim as never,
+  systemConfigShim as never,
 );
 
-const shortTermService = new ShortTermService(
+const shortTermService = new MessageWindowService(
   chatSessionShim as never,
   memoryConfigShim as never,
   redisServiceShim as never,
 );
 
-const sessionService = new SessionService(
+const sessionFactsService = new SessionFactsService(
   redisStore,
   memoryConfigShim as never,
   llmShim as never,
   spongeShim as never,
+  systemConfigShim as never,
+);
+const sessionService = new SessionStateService(
+  sessionFactsService,
+  new SessionWorkbenchService(sessionFactsService, redisStore, memoryConfigShim as never),
 );
 
 // ============================================================
@@ -257,7 +281,7 @@ async function seedMessage(
     content,
     timestamp: new Date(timestampMs).toISOString(),
     org_id: TEST_CORP,
-    bot_id: 'test-bot',
+    bot_id: TEST_BOT_IM_ID,
     is_room: false,
     message_type: 'TEXT',
     source: 'API_SEND',
@@ -267,42 +291,12 @@ async function seedMessage(
   return messageId;
 }
 
-/** 向 agent_long_term_memories 写入沉淀边界（lastSettledMessageAt） */
-async function seedAgentMemoryBaseline(lastSettledMessageAt: string): Promise<void> {
-  const existing = await supabase
-    .from('agent_long_term_memories')
-    .select('id')
-    .eq('corp_id', TEST_CORP)
-    .eq('user_id', TEST_USER)
-    .maybeSingle();
-
-  const summaryData = { recent: [], archive: null, lastSettledMessageAt };
-
-  if (existing.data) {
-    const { error } = await supabase
-      .from('agent_long_term_memories')
-      .update({ summary_data: summaryData, updated_at: new Date().toISOString() })
-      .eq('id', existing.data.id);
-    if (error) throw new Error(`更新 agent_long_term_memories 失败: ${error.message}`);
-  } else {
-    const { error } = await supabase.from('agent_long_term_memories').insert({
-      corp_id: TEST_CORP,
-      user_id: TEST_USER,
-      summary_data: summaryData,
-    });
-    if (error) throw new Error(`插入 agent_long_term_memories 失败: ${error.message}`);
-  }
-}
-
 /** 清理所有测试数据 */
 async function cleanup(): Promise<void> {
   console.log('\n🧹 清理测试数据...');
 
   // 1. Supabase: chat_messages
-  const { error: e1 } = await supabase
-    .from('chat_messages')
-    .delete()
-    .eq('chat_id', TEST_CHAT);
+  const { error: e1 } = await supabase.from('chat_messages').delete().eq('chat_id', TEST_CHAT);
   if (e1) console.warn('  ⚠️  清理 chat_messages 失败:', e1.message);
   else console.log('  ✓ chat_messages 已清理');
 
@@ -311,19 +305,16 @@ async function cleanup(): Promise<void> {
     .from('agent_long_term_memories')
     .delete()
     .eq('corp_id', TEST_CORP)
-    .eq('user_id', TEST_USER);
+    .eq('user_id', TEST_USER)
+    .eq('bot_user_id', TEST_BOT_USER_ID);
   if (e2) console.warn('  ⚠️  清理 agent_long_term_memories 失败:', e2.message);
   else console.log('  ✓ agent_long_term_memories 已清理');
 
   // 3. Redis: session facts
-  const factsKey = `facts:${TEST_CORP}:${TEST_USER}:${TEST_SESSION}`;
-  const profileCacheKey = `long-term:${TEST_CORP}:${TEST_USER}`;
+  const factsKey = `factsv2:${TEST_CORP}:${TEST_USER}:${TEST_SESSION}`;
+  const profileCacheKey = `long-term:${TEST_CORP}:${TEST_USER}:${TEST_BOT_USER_ID}`;
   const shortTermKey = `memory:short_term:chat:${TEST_CHAT}`;
-  await redis.del(
-    ENV_PREFIX + factsKey,
-    ENV_PREFIX + profileCacheKey,
-    ENV_PREFIX + shortTermKey,
-  );
+  await redis.del(ENV_PREFIX + factsKey, ENV_PREFIX + profileCacheKey, ENV_PREFIX + shortTermKey);
   console.log('  ✓ Redis 键已清理');
 }
 
@@ -334,7 +325,7 @@ async function cleanup(): Promise<void> {
 async function scenario1_coldStart() {
   section('Scenario 1 — Cold Start（首次读取，无任何数据）');
 
-  const profile = await longTermService.getProfile(TEST_CORP, TEST_USER);
+  const profile = await longTermService.getProfile(TEST_CORP, TEST_USER, TEST_BOT_USER_ID);
   check('getProfile 返回 null（无画像）', profile === null);
 
   const messages = await shortTermService.getMessages(TEST_CHAT);
@@ -343,8 +334,12 @@ async function scenario1_coldStart() {
   const state = await sessionService.getSessionState(TEST_CORP, TEST_USER, TEST_SESSION);
   check('getSessionState 返回空态', state.facts === null && state.presentedJobs === null);
 
-  const summaryData = await longTermService.getSummaryData(TEST_CORP, TEST_USER);
-  check('getSummaryData 返回 null（无摘要）', summaryData === null);
+  const sessionSummaries = await longTermService.getSessionSummaries(
+    TEST_CORP,
+    TEST_USER,
+    TEST_BOT_USER_ID,
+  );
+  check('getSessionSummaries 返回 null（无摘要）', sessionSummaries === null);
 }
 
 // ============================================================
@@ -357,9 +352,17 @@ async function scenario2_shortTermRecall() {
   const now = Date.now();
   const msgs = [
     { role: 'user' as const, content: '你好，我想找餐饮兼职', ts: now - 5 * 60 * 1000 },
-    { role: 'assistant' as const, content: '你好！我来帮你推荐合适的岗位。请问你在哪个城市？', ts: now - 4 * 60 * 1000 },
+    {
+      role: 'assistant' as const,
+      content: '你好！我来帮你推荐合适的岗位。请问你在哪个城市？',
+      ts: now - 4 * 60 * 1000,
+    },
     { role: 'user' as const, content: '上海杨浦区', ts: now - 3 * 60 * 1000 },
-    { role: 'assistant' as const, content: '好的，上海杨浦区有几个不错的选择，我来为你推荐…', ts: now - 2 * 60 * 1000 },
+    {
+      role: 'assistant' as const,
+      content: '好的，上海杨浦区有几个不错的选择，我来为你推荐…',
+      ts: now - 2 * 60 * 1000,
+    },
     { role: 'user' as const, content: '海底捞那个可以，怎么报名？', ts: now - 1 * 60 * 1000 },
   ];
 
@@ -378,17 +381,12 @@ async function scenario2_shortTermRecall() {
     result.length === msgs.length,
     `got ${result.length}, want ${msgs.length}`,
   );
-  check(
-    '消息内容正确（第一条）',
-    result[0]?.content?.includes('你好，我想找餐饮兼职') ?? false,
-  );
-  check(
-    '时间上下文已注入',
-    result[0]?.content?.includes('[消息发送时间') ?? false,
-  );
+  check('消息内容正确（第一条）', result[0]?.content?.includes('你好，我想找餐饮兼职') ?? false);
+  check('时间上下文已注入', result[0]?.content?.includes('[消息发送时间') ?? false);
   check(
     '消息按时间升序',
-    (result[0]?.content ?? '').includes('你好') && (result[result.length - 1]?.content ?? '').includes('海底捞'),
+    (result[0]?.content ?? '').includes('你好') &&
+      (result[result.length - 1]?.content ?? '').includes('海底捞'),
   );
 }
 
@@ -400,22 +398,25 @@ async function scenario3_sessionFacts() {
   section('Scenario 3 — Session Facts（Redis 会话事实读取）');
 
   // 直接写入 Redis，模拟前一个回合写入的 facts
-  const factsKey = `facts:${TEST_CORP}:${TEST_USER}:${TEST_SESSION}`;
+  const factsKey = `factsv2:${TEST_CORP}:${TEST_USER}:${TEST_SESSION}`;
   const sessionEntry = {
     key: factsKey,
     content: {
-      facts: {
-        ...FALLBACK_EXTRACTION,
-        interview_info: {
-          ...FALLBACK_EXTRACTION.interview_info,
-          name: '王小明',
-          phone: '13800138000',
+      facts: toSessionFacts(
+        {
+          ...FALLBACK_EXTRACTION,
+          interview_info: {
+            ...FALLBACK_EXTRACTION.interview_info,
+            name: '王小明',
+            phone: '13800138000',
+          },
+          preferences: {
+            ...FALLBACK_EXTRACTION.preferences,
+            city: { value: '上海', confidence: 'high', evidence: 'municipality_compact' },
+          },
         },
-        preferences: {
-          ...FALLBACK_EXTRACTION.preferences,
-          city: { value: '上海', confidence: 'high', evidence: 'municipality_compact' },
-        },
-      },
+        { confidence: 'high', source: 'system', evidence: '集成测试夹具' },
+      ),
       lastCandidatePool: null,
       presentedJobs: null,
       currentFocusJob: null,
@@ -431,13 +432,13 @@ async function scenario3_sessionFacts() {
 
   check(
     'facts 被正确读取',
-    state.facts?.interview_info?.name === '王小明',
-    `name=${state.facts?.interview_info?.name}`,
+    state.facts?.interview_info?.name?.value === '王小明',
+    `name=${state.facts?.interview_info?.name?.value}`,
   );
   check(
     'phone 被正确读取',
-    state.facts?.interview_info?.phone === '13800138000',
-    `phone=${state.facts?.interview_info?.phone}`,
+    state.facts?.interview_info?.phone?.value === '13800138000',
+    `phone=${state.facts?.interview_info?.phone?.value}`,
   );
   check(
     'city 被正确读取',
@@ -453,20 +454,29 @@ async function scenario3_sessionFacts() {
 async function scenario4_bookingWrite() {
   section('Scenario 4 — Booking Write（Path A 报名写入画像）');
 
-  await longTermService.writeFromBooking(TEST_CORP, TEST_USER, {
-    name: '李小花',
-    phone: '13900139000',
-    age: 20,
-    gender: '女',
-  });
+  await longTermService.writeFromBooking(
+    TEST_CORP,
+    TEST_USER,
+    TEST_BOT_USER_ID,
+    {
+      name: '李小花',
+      phone: '13900139000',
+      age: 20,
+      gender: '女',
+      jobId: 1001,
+      workOrderId: 2001,
+    },
+    { sessionId: TEST_SESSION, botImId: TEST_BOT_IM_ID },
+  );
   console.log('  📝 writeFromBooking 调用完成');
 
   // 读取 Supabase 验证
   const { data, error } = await supabase
     .from('agent_long_term_memories')
-    .select('profile_facts')
+    .select('semantic_profile')
     .eq('corp_id', TEST_CORP)
     .eq('user_id', TEST_USER)
+    .eq('bot_user_id', TEST_BOT_USER_ID)
     .maybeSingle();
 
   if (error || !data) {
@@ -475,19 +485,43 @@ async function scenario4_bookingWrite() {
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const profileFacts = data.profile_facts as any;
-  check('profile_facts 存在', profileFacts != null);
-  check('name 写入正确', profileFacts?.name?.value === '李小花', `got ${profileFacts?.name?.value}`);
-  check('phone 写入正确', profileFacts?.phone?.value === '13900139000', `got ${profileFacts?.phone?.value}`);
-  check('age 写入正确（string）', profileFacts?.age?.value === '20', `got ${profileFacts?.age?.value}`);
-  check('gender 写入正确', profileFacts?.gender?.value === '女', `got ${profileFacts?.gender?.value}`);
-  check('name source = booking', profileFacts?.name?.source === 'booking', `got ${profileFacts?.name?.source}`);
-  check('phone confidence = high', profileFacts?.phone?.confidence === 'high', `got ${profileFacts?.phone?.confidence}`);
+  const profileFacts = data.semantic_profile as any;
+  check('semantic_profile 存在', profileFacts != null);
+  check(
+    'name 写入正确',
+    profileFacts?.name?.value === '李小花',
+    `got ${profileFacts?.name?.value}`,
+  );
+  check(
+    'phone 写入正确',
+    profileFacts?.phone?.value === '13900139000',
+    `got ${profileFacts?.phone?.value}`,
+  );
+  check(
+    'age 写入正确（string）',
+    profileFacts?.age?.value === '20',
+    `got ${profileFacts?.age?.value}`,
+  );
+  check(
+    'gender 写入正确',
+    profileFacts?.gender?.value === '女',
+    `got ${profileFacts?.gender?.value}`,
+  );
+  check(
+    'name source = system',
+    profileFacts?.name?.source === 'system',
+    `got ${profileFacts?.name?.source}`,
+  );
+  check(
+    'phone confidence = high',
+    profileFacts?.phone?.confidence === 'high',
+    `got ${profileFacts?.phone?.confidence}`,
+  );
   check('age updatedAt 有值', typeof profileFacts?.age?.updatedAt === 'string');
 
   // 通过 LongTermService 读取验证 Redis 失效 + Supabase 回查
-  await redis.del(ENV_PREFIX + `long-term:${TEST_CORP}:${TEST_USER}`); // 清 Redis 缓存
-  const profile = await longTermService.getProfile(TEST_CORP, TEST_USER);
+  await redis.del(ENV_PREFIX + `long-term:${TEST_CORP}:${TEST_USER}:${TEST_BOT_USER_ID}`); // 清 Redis 缓存
+  const profile = await longTermService.getProfile(TEST_CORP, TEST_USER, TEST_BOT_USER_ID);
 
   check(
     'getProfile 返回正确名字',
@@ -502,89 +536,92 @@ async function scenario4_bookingWrite() {
 }
 
 // ============================================================
-// Scenario 5: Settlement — detectAndSettle 跨会话沉淀
+// Scenario 5: Consolidation — 闲置咨询段定时沉淀
 // ============================================================
 
-async function scenario5_settlement() {
-  section('Scenario 5 — Settlement（detectAndSettle 跨会话沉淀）');
+async function scenario5_consolidation() {
+  section('Scenario 5 — Consolidation（闲置咨询段定时沉淀）');
 
   const now = Date.now();
-  const SESSION_GAP_MS = memoryConfigShim.sessionTtl * 1000; // 1 天
+  const firstAt = now - 3.5 * 86400 * 1000;
+  const latestAt = firstAt + 5 * 60 * 1000;
 
-  // 旧会话：3 天前（2 条消息）
-  const oldT1 = now - 3 * 86400 * 1000;
-  const oldT2 = oldT1 + 5 * 60 * 1000;
-  // 新会话：昨天（1 条消息，与旧会话间隔 > 1 天）
-  const newT1 = now - 1 * 86400 * 1000;
+  await seedMessage('user', '我想找上海的餐厅兼职', firstAt);
+  await seedMessage('assistant', '好的，我帮你查询上海的兼职岗位', latestAt);
 
-  await seedMessage('user', '我想找上海的餐厅兼职', oldT1);
-  await seedMessage('assistant', '好的，我帮你查询上海的兼职岗位', oldT2);
-  await seedMessage('user', '你好，我回来了，之前聊的那个海底捞还在招吗？', newT1);
-
-  console.log(`  📝 写入 3 条跨会话消息（旧：${new Date(oldT1).toLocaleDateString()}，新：${new Date(newT1).toLocaleDateString()}）`);
-  console.log(`  📝 间隔 ${((newT1 - oldT2) / 86400 / 1000).toFixed(1)} 天，sessionTtl = 1 天`);
-
-  // 设置 lastSettledMessageAt = 旧会话开始之前（3.5 天前）
-  const baseline = new Date(now - 3.5 * 86400 * 1000).toISOString();
-  await seedAgentMemoryBaseline(baseline);
-  console.log(`  📝 baseline lastSettledMessageAt = ${baseline}`);
+  console.log('  📝 写入 2 条已闲置超过 3 天的咨询消息');
 
   // 清 Redis 缓存避免 Supabase Store 读到旧数据
-  await redis.del(ENV_PREFIX + `long-term:${TEST_CORP}:${TEST_USER}`);
+  await redis.del(ENV_PREFIX + `long-term:${TEST_CORP}:${TEST_USER}:${TEST_BOT_USER_ID}`);
 
-  const result = await settlementService.detectAndSettle(
+  const result = await consolidationService.consolidateIdleSession(
     TEST_CORP,
     TEST_USER,
     TEST_SESSION,
+    TEST_BOT_USER_ID,
     null,
+    TEST_BOT_IM_ID,
   );
 
-  check('detectAndSettle 返回 true（触发了沉淀）', result === true, `got ${result}`);
+  check(
+    'consolidateIdleSession 返回 consolidated',
+    result.status === 'consolidated',
+    `got ${result.status}`,
+  );
 
-  // 验证 Supabase agent_long_term_memories 的 summary_data 已更新
+  // 验证 Supabase agent_long_term_memories 的 episodic_session_summaries 已更新
   const { data } = await supabase
     .from('agent_long_term_memories')
-    .select('summary_data')
+    .select('episodic_session_summaries')
     .eq('corp_id', TEST_CORP)
     .eq('user_id', TEST_USER)
+    .eq('bot_user_id', TEST_BOT_USER_ID)
     .maybeSingle();
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const summaryData = data?.summary_data as any;
-  check('summary_data.recent 有新增摘要', (summaryData?.recent?.length ?? 0) >= 1);
+  const sessionSummaries = data?.episodic_session_summaries as any;
+  check(
+    'episodic_session_summaries.recent 有新增摘要',
+    (sessionSummaries?.recent?.length ?? 0) >= 1,
+  );
   check(
     '摘要内容非空',
-    typeof summaryData?.recent?.[0]?.summary === 'string' && summaryData.recent[0].summary.length > 0,
-    `summary="${summaryData?.recent?.[0]?.summary?.slice(0, 30)}..."`,
+    typeof sessionSummaries?.recent?.[0]?.summary === 'string' &&
+      sessionSummaries.recent[0].summary.length > 0,
+    `summary="${sessionSummaries?.recent?.[0]?.summary?.slice(0, 30)}..."`,
   );
   check(
-    'lastSettledMessageAt 已更新（比 baseline 更新）',
-    summaryData?.lastSettledMessageAt > baseline,
-    `old=${baseline.slice(0, 19)}, new=${summaryData?.lastSettledMessageAt?.slice(0, 19)}`,
+    'lastSettledBySession 已推进到最新消息',
+    sessionSummaries?.lastSettledBySession?.[TEST_SESSION] === new Date(latestAt).toISOString(),
+    `got ${sessionSummaries?.lastSettledBySession?.[TEST_SESSION]}`,
   );
 
-  // 验证沉淀边界：endTime 应该是旧会话的最后一条消息
-  const endTime = summaryData?.recent?.[0]?.endTime;
+  // 验证沉淀边界：endTime 应该是本咨询段最后一条消息
+  const endTime = sessionSummaries?.recent?.[0]?.endTime;
   check(
-    'endTime 指向旧会话末尾',
-    endTime != null && new Date(endTime).getTime() <= oldT2 + 1000, // 允许 1s 误差
+    'endTime 指向咨询段末尾',
+    endTime != null && Math.abs(new Date(endTime).getTime() - latestAt) <= 1000,
     `endTime=${endTime?.slice(0, 19)}`,
   );
 
-  console.log(`\n  📋 生成的摘要: "${summaryData?.recent?.[0]?.summary}"`);
-  console.log(`  📋 沉淀边界: ${summaryData?.lastSettledMessageAt?.slice(0, 19)}`);
+  console.log(`\n  📋 生成的摘要: "${sessionSummaries?.recent?.[0]?.summary}"`);
+  console.log(
+    `  📋 沉淀边界: ${sessionSummaries?.lastSettledBySession?.[TEST_SESSION]?.slice(0, 19)}`,
+  );
 
-  // 验证二次调用不触发（没有新的内部 gap）
-  const secondResult = await settlementService.detectAndSettle(
+  // 验证二次调用命中会话级幂等水位
+  const secondResult = await consolidationService.consolidateIdleSession(
     TEST_CORP,
     TEST_USER,
     TEST_SESSION,
+    TEST_BOT_USER_ID,
     null,
+    TEST_BOT_IM_ID,
   );
   check(
-    '二次 detectAndSettle 不重复触发',
-    secondResult === false,
-    `got ${secondResult}（无新间隔，应跳过）`,
+    '二次 consolidateIdleSession 不重复触发',
+    secondResult.status === 'already_consolidated',
+    `got ${secondResult.status}`,
   );
 }
 
@@ -592,30 +629,39 @@ async function scenario5_settlement() {
 // Scenario 6: 逆向验证 — 沉淀后画像保留 booking 数据
 // ============================================================
 
-async function scenario6_profileRetainedAfterSettlement() {
+async function scenario6_profileRetainedAfterConsolidation() {
   section('Scenario 6 — Profile Retention（沉淀不覆盖 booking 画像）');
 
-  // 刚才 Scenario 4 已经写入了 booking profile，Scenario 5 做了 settlement
-  // 验证 profile 字段没有被 settlement 覆盖
-  await redis.del(ENV_PREFIX + `long-term:${TEST_CORP}:${TEST_USER}`);
-  const profile = await longTermService.getProfile(TEST_CORP, TEST_USER);
+  // 刚才 Scenario 4 已经写入了 booking profile，Scenario 5 做了 consolidation。
+  // 验证 profile 字段没有被低置信沉淀覆盖。
+  await redis.del(ENV_PREFIX + `long-term:${TEST_CORP}:${TEST_USER}:${TEST_BOT_USER_ID}`);
+  const profile = await longTermService.getProfile(TEST_CORP, TEST_USER, TEST_BOT_USER_ID);
 
-  check('booking 写入的 name 仍然存在', profile?.name?.value === '李小花', `got ${profile?.name?.value}`);
-  check('booking 写入的 phone 仍然存在', profile?.phone?.value === '13900139000', `got ${profile?.phone?.value}`);
+  check(
+    'booking 写入的 name 仍然存在',
+    profile?.name?.value === '李小花',
+    `got ${profile?.name?.value}`,
+  );
+  check(
+    'booking 写入的 phone 仍然存在',
+    profile?.phone?.value === '13900139000',
+    `got ${profile?.phone?.value}`,
+  );
 
-  // 验证 profile_facts 元数据也保留
+  // 验证 semantic_profile 元数据也保留
   const { data } = await supabase
     .from('agent_long_term_memories')
-    .select('profile_facts')
+    .select('semantic_profile')
     .eq('corp_id', TEST_CORP)
     .eq('user_id', TEST_USER)
+    .eq('bot_user_id', TEST_BOT_USER_ID)
     .maybeSingle();
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const profileFacts = data?.profile_facts as any;
+  const profileFacts = data?.semantic_profile as any;
   check(
-    'profile_facts.name.source = booking（沉淀后未被清除）',
-    profileFacts?.name?.source === 'booking',
+    'semantic_profile.name.source = system（沉淀后未被清除）',
+    profileFacts?.name?.source === 'system',
     `got ${profileFacts?.name?.source}`,
   );
 }
@@ -649,8 +695,8 @@ async function main() {
     await scenario2_shortTermRecall();
     await scenario3_sessionFacts();
     await scenario4_bookingWrite();
-    await scenario5_settlement();
-    await scenario6_profileRetainedAfterSettlement();
+    await scenario5_consolidation();
+    await scenario6_profileRetainedAfterConsolidation();
   } finally {
     await cleanup();
   }

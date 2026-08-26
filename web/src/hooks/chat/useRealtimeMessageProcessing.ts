@@ -25,6 +25,7 @@ export function useRealtimeMessageProcessing() {
           if (timerRef.current) clearTimeout(timerRef.current);
           timerRef.current = setTimeout(() => {
             queryClient.invalidateQueries({ queryKey: ['message-processing-records'] });
+            queryClient.invalidateQueries({ queryKey: ['message-processing-record-detail'] });
             queryClient.invalidateQueries({ queryKey: ['message-stats'] });
             queryClient.invalidateQueries({ queryKey: ['slowest-messages'] });
           }, 1000);

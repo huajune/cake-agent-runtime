@@ -126,15 +126,14 @@ export const VERDICT_SITE_REGISTRY = [
     id: 'candidate_rule_fact_prompt_hint',
     authority: 'hint',
     effect: 'advisory',
-    source: 'src/agent/generator/context/sections/turn-hints.section.ts#renderCurrentHints',
+    source: 'src/agent/generator/context/sections/working/turn-hints.section.ts#renderCurrentHints',
     rationale: '规则识别只进模型内部提示便签，模型与候选人保留决定权。',
   },
   {
     id: 'candidate_profile_prefill_hint',
     authority: 'hint',
     effect: 'advisory',
-    source:
-      'src/agent/generator/preparation-utils/tool-context.builder.ts#buildCandidatePrefillHints',
+    source: 'src/agent/generator/preparation/tool-context.builder.ts#buildCandidatePrefillHints',
     rationale: 'medium/system 值只投影为带值求证，不得据此拒绝、提交或升级来源。',
   },
 ] as const satisfies readonly VerdictSiteRegistration[];

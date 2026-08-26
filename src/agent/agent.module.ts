@@ -19,7 +19,8 @@ import { AgentRunnerService } from './runner/agent-runner.service';
 import { ReplyRepairAgent } from './reply-repair/reply-repair.agent';
 import { ReplyRepairContextProvider } from './reply-repair/reply-repair-context.provider';
 import { TurnOutcomeInterventionService } from './runner/turn-outcome-intervention.service';
-import { PreparationService } from './generator/preparation.service';
+import { PreparationService } from './generator/preparation/preparation.service';
+import { PreparationModule } from './generator/preparation/preparation.module';
 import { ContextService } from './generator/context/context.service';
 import { AgentController } from './agent.controller';
 import { AgentHealthService } from './agent-health.service';
@@ -45,6 +46,7 @@ import {
     ToolModule,
     GroupTaskModule,
     MemoryModule,
+    PreparationModule,
     SpongeModule,
     LlmModule,
     NotificationModule,

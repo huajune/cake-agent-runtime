@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { ChatMessageRepository } from '@biz/message/repositories/chat-message.repository';
 import { RedisService } from '@infra/redis/redis.service';
-import { buildChatHistoryCacheKey } from '@biz/message/utils/chat-history-cache.util';
+import { buildChatHistoryCacheKey } from '@memory/short-term/chat-history-cache.util';
 import { MessageSource, MessageType } from '@enums/message-callback.enum';
 import { StorageMessageSource, StorageMessageType } from '@enums/storage-message.enum';
 

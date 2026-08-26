@@ -5,7 +5,7 @@ import {
   EntityExtractionResultSchema,
   toSessionFacts,
   type SessionFacts,
-} from '@memory/types/session-facts.types';
+} from '@memory/short-term/short-term.types';
 
 /**
  * 用例里的事实字面量是裸值形态，而落盘态只收信封或 null（记忆审计 S9 拆掉了裸值

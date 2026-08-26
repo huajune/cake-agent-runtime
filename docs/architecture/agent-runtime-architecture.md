@@ -211,7 +211,7 @@ stream(options: LlmStreamOptions)
 supportsVisionInput(options): boolean
 ```
 
-消费方包括：`AgentRunnerService`、`SessionService.extractAndSave`（事实提取）、`MemoryEnrichmentService`（外部画像补全）、`LlmEvaluationService`、`InputGuardrailService`（注入分析）等。所有请求都经由 `RouterService → ReliableService → RegistryService` 三层处理。
+消费方包括：`AgentRunnerService`、`SessionFactsService`（事实提取）、`LlmEvaluationService`、`InputGuardrailService`（注入分析）等。所有请求都经由 `RouterService → ReliableService → RegistryService` 三层处理。
 
 #### 分层关系
 
@@ -242,7 +242,7 @@ flowchart LR
     U["User Turn"] --> R["AgentRunnerService"]
     R --> M["MemoryService.onTurnStart / onTurnEnd"]
     M --> S["SessionService.extract facts"]
-    M --> T["SettlementService.summarize archive"]
+    M --> T["ConsolidationService.summarize archive"]
     S --> X["LlmExecutorService"]
     T --> X
     R --> X
@@ -345,7 +345,7 @@ SCENARIO_SECTIONS = {
     'policy',            // red-lines + thresholds 聚合
     'runtime-context',   // stage-strategy + memory + turn-hints + hard-constraints + datetime + channel
     'group-inventory',   // 候选人意向城市的兼职群资源概览（GroupInventorySection）
-    'final-check',       // 从 candidate-consultation-final-check.md 加载的出规校验清单
+    'final-check',       // 发送前防线统一规则表（FinalCheckSection：常驻自检 + 命中式动态硬禁令）
   ],
   'group-operations': ['identity', 'datetime', 'channel'],
   evaluation: ['identity'],
@@ -365,7 +365,7 @@ SCENARIO_SECTIONS = {
 | `policy`          | 聚合 `red-lines` + `thresholds`                                           |
 | `runtime-context` | 聚合 `stage-strategy` → `memory` → `turn-hints` → `hard-constraints` → `datetime` → `channel` |
 | `group-inventory` | 按候选人意向城市预渲染兼职群库存（行业、可用容量）                        |
-| `final-check`     | `candidate-consultation-final-check.md` 出规校验清单                      |
+| `final-check`     | 发送前防线统一规则表（`final-check.section.ts`：常驻自检块 + `critical-turn-guard` 动态禁令块） |
 
 **叶子 section（被上面聚合，也可独立使用）**：`red-lines / thresholds / stage-strategy / memory / turn-hints / hard-constraints / datetime / channel`。
 
@@ -393,7 +393,7 @@ SCENARIO_SECTIONS = {
 [final-check]
 ```
 
-`memoryBlock` 的三段由 ``preparation-utils/memory-block.formatter.ts` 的 `buildMemoryBlock()`` 组装，来源：长期档案 facts + `WeworkSessionState` + `RecruitmentCaseRecord`。
+`memoryBlock` 的模型可见呈现由 `context/sections/semantic/memory.section.ts` 的 `buildMemoryBlock()` 组装，来源：长期档案 facts + `WeworkSessionState` + 当前预约上下文。
 
 ---
 
@@ -467,7 +467,7 @@ SCENARIO_SECTIONS = {
   ├─ facts（interview_info + preferences）
   ├─ lastCandidatePool / presentedJobs / currentFocusJob
   └─ invitedGroups
-程序记忆   Redis SESSION_TTL → currentStage             读/写：ProceduralService
+阶段状态   Redis SESSION_TTL → currentStage             读/写：StageStateService
 长期记忆   Supabase（+Redis 2h 缓存）                   读/写：LongTermService
   ├─ profile_facts（画像字段 + 置信度 + 来源 + 证据 + 更新时间）
   └─ summary（对话摘要）
@@ -475,15 +475,21 @@ SCENARIO_SECTIONS = {
 
 ### 6.2 统一生命周期：onTurnStart / onTurnEnd
 
-[src/memory/memory.service.ts](../../src/memory/memory.service.ts) 是唯一对外 facade，背后由 [MemoryLifecycleService](../../src/memory/services/memory-lifecycle.service.ts) 统一编排：
+[src/memory/memory.service.ts](../../src/memory/memory.service.ts) 是唯一对外 facade，背后由 [MemoryLifecycleService](../../src/memory/lifecycle.service.ts) 统一编排：
 
 ```typescript
-// 回合开始：并行读取四类记忆 + 前置高置信识别 + 可选外部画像补全
-await memoryService.onTurnStart(corpId, userId, sessionId, currentUserMessage, {
+// 回合开始：memory 只读取记忆与装配已算好的本轮线索
+const snapshot = await memoryService.onTurnStart(corpId, userId, sessionId, currentUserMessage, {
   includeShortTerm: callerKind === CallerKind.WECOM,
   shortTermEndTimeInclusive,
-  enrichmentIdentity,   // 触发 MemoryEnrichmentService 向外部系统补全
+  turnHints,
+  botUserId,
 });
+
+// generator preparation 紧接召回之后补齐当轮快照；不进入 memory lifecycle
+const enrichedSnapshot = enrichmentIdentity
+  ? await snapshotEnrichment.enrich(snapshot, enrichmentIdentity)
+  : snapshot;
 
 // 回合结束：按步骤写回 + 观测埋点
 await memoryService.onTurnEnd({
@@ -501,7 +507,7 @@ await memoryService.onTurnEnd({
 load_previous_state (串行)
   ↓
 ┌─ 分支 A (可能 skip):
-│    settlement  ─ 消息间隔达到 settlementGapSeconds → 沉淀到 profile_facts + summary
+│    consolidation  ─ 消息间隔达到 consolidationGapSeconds → 沉淀到 profile_facts + summary
 │
 └─ 分支 B (串行，因为共享 session state):
      save_candidate_pool     ─ 写入 lastCandidatePool
@@ -511,18 +517,18 @@ load_previous_state (串行)
 
 ### 6.4 解析线索（前置）
 
-规则轨在 `onTurnStart` 里对当前 user 文本做匹配（品牌别名、城市、年龄、labor_form 等），产出带置信度与证据的 `ruleFacts`，以 `[本轮解析线索]` 注入 Context 的 `turn-hints` section。它是当前轮解析 sidecar，不因 producer 或 confidence 自动成为候选人事实。解析器住 [src/resolution/candidate/](../../src/resolution/candidate/)（每字段唯一），claim 生产在 [src/resolution/evidence/producers/rule-track.ts](../../src/resolution/evidence/producers/rule-track.ts)——`src/memory/facts/` 已随候选人档案域改造解散。
+规则轨在 `PreparationService.prepare()` 里对当前 user 文本做一次匹配（品牌别名、城市、年龄、labor_form 等），产出带置信度与证据的 `turnHints`；memory 只把这个已裁定的 sidecar 装入召回快照，不重跑判定。共享裁决视图随后以 `[本轮解析线索]` 注入 Context 的 `turn-hints` section。它不因 producer 或 confidence 自动成为候选人事实。解析器住 [src/resolution/candidate/](../../src/resolution/candidate/)（每字段唯一），claim 生产在 [src/resolution/evidence/producers/rule-track.ts](../../src/resolution/evidence/producers/rule-track.ts)。
 
 [src/resolution/labor-form/](../../src/resolution/labor-form/)：用工形式领域模型——岗位轴为两级结构化字段（用工形式=全职/兼职 + 兼职类型=寒假工/暑假工/小时工），候选人偏好侧为扁平词汇，匹配层做层级翻译。
 
 ### 6.5 外部画像补全
 
-[MemoryEnrichmentService](../../src/memory/services/memory-enrichment.service.ts) 当 `onTurnStart` 传入 `enrichmentIdentity`（token + imBotId + externalUserId 等）时，向外部杜力岱系统补全缺失的 profile_facts 字段（如性别），并更新长期记忆快照。仅 `candidate-consultation` 场景 + 有 token 时触发。
+[SnapshotEnrichmentService](../../src/agent/generator/preparation/snapshot-enrichment.service.ts) 位于 generator 备料车间。`memory.onTurnStart` 返回快照后，它根据 token + imBotId + externalUserId 等身份按需查询外部杜力岱系统，当前只对缺失的性别线索做当轮 sidecar 补齐。它不修改 memory 存储；仅 `candidate-consultation` 场景 + 有 token 时触发。
 
 ### 6.6 设计原则
 
 - **LLM 不直接持有记忆读写权**：所有记忆读取 / 写入由编排层在 `onTurnStart` / `onTurnEnd` 统一调度
-- **工具仅保留两个触达记忆**：`advance_stage`（写程序记忆）、`recall_history`（读长期摘要）
+- **工具仅保留两个触达记忆**：`advance_stage`（写阶段状态）、`recall_history`（读长期摘要）
 - **会话记忆是结构化的**：`SessionService` 拆分成 store / projection / extraction 三块，外部不应直接拼 Redis key
 
 ---
@@ -535,7 +541,7 @@ load_previous_state (串行)
 
 | 工具                          | 职责                                                                       |
 | ----------------------------- | -------------------------------------------------------------------------- |
-| `advance_stage`               | 推进程序记忆阶段                                                           |
+| `advance_stage`               | 推进阶段状态阶段                                                           |
 | `recall_history`              | 查询用户历史求职记录摘要                                                   |
 | `duliday_job_list`            | 查询在招岗位（含 geocode + 距离排序 + 业务阈值过滤）；回调写入候选池       |
 | `duliday_interview_precheck`  | 面试前置校验（可约日期 / 时段 / 备注字段）；不真正提交预约                 |
@@ -739,10 +745,9 @@ AppModule
 │   ├── MemoryLifecycleService  onTurnStart / onTurnEnd 编排
 │   ├── ShortTermService     短期窗口
 │   ├── SessionService       会话记忆（store + projection + extraction）
-│   ├── ProceduralService    程序阶段
+│   ├── StageStateService    程序阶段
 │   ├── LongTermService      用户档案 facts + 摘要
-│   ├── SettlementService    Session → profile_facts 沉淀
-│   ├── MemoryEnrichmentService  外部画像补全
+│   ├── ConsolidationService    Session → profile_facts 沉淀
 │   ├── RedisStore / SupabaseStore
 │   └── MemoryConfig
 │
@@ -751,7 +756,8 @@ AppModule
 │
 ├── AgentModule
 │   ├── AgentRunnerService         编排引擎
-│   ├── PreparationService    prepare 流程
+│   ├── PreparationService         prepare 流程
+│   ├── SnapshotEnrichmentService  当轮快照外部补全
 │   ├── ContextService             prompt 组装
 │   ├── AgentController / AgentHealthService
 │   └── guardrail/
@@ -868,7 +874,7 @@ AppModule
        │
        └─ MemoryLifecycleService.onTurnEnd()
            ├─ load_previous_state
-           ├─ 分支 A: settlement（未超阈值 → skipped）
+           ├─ 分支 A: consolidation（未超阈值 → skipped）
            └─ 分支 B（串行）：
                ├─ save_candidate_pool（3 个岗位写入 session）
                ├─ project_assistant_turn（从回复投影 presentedJobs）

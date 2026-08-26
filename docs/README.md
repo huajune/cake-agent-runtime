@@ -38,8 +38,8 @@
 ### 候选人事实链路
 
 - **[候选人档案域架构](architecture/candidate-profile-domain.md)** ⭐ — **域宪法**：主权归 memory / 实现归 resolution、字段四阶段、治理四不变式、claim 通货、消费面纪律
-- **[记忆与状态全局视图](architecture/memory-and-state.md)** 👉 — **排障入口**：一张图看清全部状态存储及其关系（三角色心智模型，110 行）
-- **[记忆系统架构与数据流](architecture/memory-architecture.md)** — 四层记忆（CoALA）、**字段归属唯一权威表**、读写时序、prompt/工具消费、沉淀与排障顺序
+- **[记忆与状态全局视图](architecture/memory-and-state.md)** 👉 — **排障入口**：一张图看清 Redis、Supabase、回合内状态与 tools 单据
+- **[记忆系统架构与数据流](architecture/memory-architecture.md)** — 两层记忆终态、读写时序、Prompt / 工具消费矩阵、consolidation 与排障路径
 - **[品牌解析域](architecture/brand-resolution.md)** — 目录匹配、意图极性、会话品牌状态、图片品牌、queryMeta 对账
 - **[地理解析域](architecture/geo-resolution.md)** — 行政区解析、白名单三轮扫描、供应商适配、距离锚点
 - **[图片信息链路](architecture/visual-fact-pipeline.md)** — VisualFactSheet 生产/存储/消费全链路（附录 A = 字段白名单唯一权威）
@@ -127,11 +127,14 @@
 
 > 这些是工程 backlog / 规划稿，不代表已实现的设计。落地后应更新对应架构文档或归档。
 
+- **[上下文治理三期 · 装配层轻量化](todo/context-assembly-compiler.md)** — 三期唯一权威：归类/组装冲突裁决/system 内重排三个轻量批；§七挂同分支发版待办（⚠️ 生产 DB 迁移待随发版 push）
 - **[LLM 判官标定](todo/judge-calibration.md)** — 自迭代循环的唯一欠账：周频抽检给判官算精确率（发牌制用在 LLM-as-a-judge 上）
+- **[观测链路 P1 采集补洞](todo/observability-p0-p1-checklist.md)** — P0 展示侧七项已完成；剩模型身份/守卫过程事件/booking 审计/empty 放行/ttft 修正五项
+- **[记忆域深审查证与遗留登记](todo/memory-intelligence-deep-review-audit.md)** — brand_ids/gender_source 查证结论 + 二期收官后的观察项与遗留
+- **[报名标签配置修正清单（给运营）](todo/label-cleanup-for-ops.md)** — 109 标签规范化到约 30；待运营执行后重跑探针核对
+- **[标签补数据清单（给运营）](todo/label-backfill-for-ops-20260820.md)** — 276 条筛选标签缺配；判决单源化后不补=该岗不筛
+- **[报名标签契约建议（给海绵后端）](todo/label-contract-change-requests.md)** — 契约 v2 终态对账；剩后端承诺项与收资契约 v2 登记（key 补 bot 维）
 - **[收资表单域](architecture/collection-form-machine.md)** — 标签制×收资表单状态机终态架构；设计史见 git 历史 docs/todo/ 原文
-- **[Prompt 守卫层与命名对齐](todo/prompt-guardrail-and-naming-alignment.md)** — 全部落地（余 C3 待观测会话）；发版验收（D4 回归案+A5 采用率观察）后删除
-- **[BadCase 架构覆盖分诊](todo/badcase-arch-coverage-triage.md)** — α/β/γ 三工程已执行；本文即发版验收清单（A 类回归验证+回归案回放+block 底账重扫），验收完成后删除
-- **[PR #1000 评审修复底账](todo/pr1000-review-fixes.md)** / **[二轮修复底账](todo/pr1000-review-round2-fixes.md)** — 两轮全部落地；合并评审的直接证据，PR 合入即删
 
 
 ---

@@ -1,7 +1,7 @@
 /**
  * SessionBrandState 纯 reducer（§9.3）：(prevState, resolutions[]) → nextState。
  *
- * 状态迁移规则全部集中在此，memory 侧只负责「持锁读 brand_state → 调 reducer → 写回」。
+ * 状态迁移规则全部集中在此，memory 侧只负责「持锁读 facts.brand → 调 reducer → 写回」。
  * 固定四步执行顺序自动保证（§9.3）：结果与说话顺序无关；同品牌又要又不要时排斥赢；
  * 图文并发时文字赢（图片先应用、文字后应用）。
  */
@@ -39,8 +39,8 @@ export function brandStateChanged(prev: SessionBrandState, next: SessionBrandSta
  *
  * 原「旧 preferences.brands 末位品牌」档（§9.4 懒迁移）已于 2026-07-22 退役：
  * 生产 Redis 实测 889 个会话中仅 1 个仍具备迁移条件且 TTL 剩 <17h——迁移窗口
- * （sessionTtl=3 天，早于 brand_state 上线时长）已数学耗尽（§19.6）。
- * seed 仅在 brand_state 不存在时执行一次，状态一旦存在（哪怕被 browse_all
+ * （sessionTtl=3 天，早于原顶层 brand_state 上线时长）已数学耗尽（§19.6）。
+ * seed 仅在 facts.brand 不存在时执行一次，状态一旦存在（哪怕被 browse_all
  * 清成空值）永不重新 seed。
  */
 export function initBrandState(input: {
@@ -150,12 +150,20 @@ export function adjudicateBrandState(
     excludedBrands = [];
   }
 
+  // 单调增长安全阀（治理方案 P1-3）：排斥表会全量渲染进 prompt 硬约束段且只随
+  // browse_all 清空。cap 保最近（新排斥 push 在尾部）——正常会话远够不到，
+  // 够到时最旧的排斥最可能已过时。
+  const MAX_EXCLUDED_BRANDS = 30;
+  if (excludedBrands.length > MAX_EXCLUDED_BRANDS) {
+    excludedBrands = excludedBrands.slice(-MAX_EXCLUDED_BRANDS);
+  }
+
   return { currentBrand, excludedBrands };
 }
 
 /**
  * 异步补写的「过期即弃」判定（§10.3 第二道防护）：
- * 补写结果的产生轮次早于 brand_state 最后变更时间 → 晚到旧信号只弃不写，不做时间倒流。
+ * 补写结果的产生轮次早于 facts.brand 最后变更时间 → 晚到旧信号只弃不写，不做时间倒流。
  */
 export function shouldDropLateResolutions(
   state: PersistedBrandState,

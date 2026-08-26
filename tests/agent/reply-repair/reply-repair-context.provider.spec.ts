@@ -9,41 +9,40 @@ describe('ReplyRepairContextProvider', () => {
             { role: 'user', content: '上海有餐饮兼职吗【消息发送时间：昨天】' },
             { role: 'assistant', content: '可以，我帮你看看' },
           ],
-        },
-        sessionMemory: {
-          facts: {
-            interview_info: {},
-            preferences: {
-              city: { value: '上海', confidence: 'high' },
+          sessionState: {
+            facts: {
+              interview_info: {},
+              preferences: {
+                city: { value: '上海', confidence: 'high' },
+              },
             },
-          },
-          currentFocusJob: {
-            jobId: 1,
-            brandName: 'M Stand',
-            jobName: '店员',
-            storeName: '静安店',
-            cityName: '上海',
-            regionName: '静安',
-            laborForm: '兼职',
-            salaryDesc: '24元/小时',
-            jobCategoryName: '餐饮',
-          },
-          presentedJobs: [],
-          lastCandidatePool: [],
-          invitedGroups: [
-            {
-              groupName: '上海餐饮兼职群',
-              city: '上海',
-              industry: '餐饮',
-              invitedAt: '2026-07-09T10:00:00.000Z',
+            currentFocusJob: {
+              jobId: 1,
+              brandName: 'M Stand',
+              jobName: '店员',
+              storeName: '静安店',
+              cityName: '上海',
+              regionName: '静安',
+              laborForm: '兼职',
+              salaryDesc: '24元/小时',
+              jobCategoryName: '餐饮',
             },
-          ],
+            presentedJobs: [],
+            lastCandidatePool: [],
+            invitedGroups: [
+              {
+                groupName: '上海餐饮兼职群',
+                city: '上海',
+                industry: '餐饮',
+                invitedAt: '2026-07-09T10:00:00.000Z',
+              },
+            ],
+          },
+          stage: { currentStage: 'job_consultation' },
         },
-        ruleFacts: null,
-        procedural: { currentStage: 'job_consultation' },
+        turnHints: null,
         longTerm: {
-          profile: { name: '候选人A' },
-          preferences: null,
+          semantic: { profile: { name: '候选人A' }, jobIntent: null },
         },
       }),
     };

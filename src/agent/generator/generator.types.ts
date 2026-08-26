@@ -161,6 +161,8 @@ export interface GeneratorRunResult {
     inputTokens: number;
     outputTokens: number;
     totalTokens: number;
+    /** 前缀缓存命中的输入 token（回合内各 step 求和）；undefined = provider 未上报。 */
+    cachedInputTokens?: number;
   };
   agentRequest?: Record<string, unknown>;
   /** 本轮触发时的记忆上下文快照 */

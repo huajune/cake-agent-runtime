@@ -1,9 +1,12 @@
-import type { SessionFacts } from '@memory/types/session-facts.types';
-import type { RuleFactClaims } from '@resolution/evidence/claim.types';
+// 归位依据：section 基础设施契约，不是模型可见 section，不参与知识分类。
+// prompt-rule-ledger: docs/prompt-rule-ledger.md（Prompt section 契约与语料域执法点）
+import type { SessionFacts } from '@memory/short-term/short-term.types';
+import type { TurnHintFieldPath, TurnHints } from '@resolution/evidence/claim.types';
 import type { SessionBrandState } from '@resolution/brand/brand-resolution.types';
 import { StrategyConfigRecord } from '@biz/strategy/entities/strategy-config.entity';
 import type { LaborFormIntentDecision } from '@resolution/labor-form';
 import type { CorpusDomain, PromptCorpusBlock } from '@shared-types/corpus.types';
+import type { ModelMessage } from 'ai';
 
 /**
  * 提示词组装上下文 — 所有 section 共享
@@ -35,7 +38,15 @@ export interface PromptContext {
    */
   sessionFacts?: SessionFacts | null;
   /** 本轮前置识别得到的高置信结果；由 TurnHintsSection 拆分为普通/待确认线索后渲染。 */
-  ruleFacts?: RuleFactClaims | null;
+  turnHints?: TurnHints | null;
+  /** 仅供 TurnHintsSection 渲染的共享裁决副本；生产路径必须显式提供（可为 null）。 */
+  displayTurnHints?: TurnHints | null;
+  /** 与跨层权威 facts 异值、需强制进入「待确认更新」块的本轮字段；生产必须显式提供。 */
+  pendingTurnHintFields?: readonly TurnHintFieldPath[];
+  /** 本轮合并后的候选人消息；FinalCheckSection turn 规则的 current 匹配输入。 */
+  currentUserMessage?: string;
+  /** 含短期近邻窗口的归一化消息；FinalCheckSection turn 规则的 combined 匹配输入。 */
+  normalizedMessages?: readonly ModelMessage[];
   /**
    * 本轮候选人消息原文（逐条，与规则轨输入同源）。
    * TurnHintsSection 用它判定 claim 的 quote 是否"就是整条当轮消息"——是且本轮只有一条
@@ -82,14 +93,20 @@ export interface PromptSection {
   buildBlocks?(ctx: PromptContext): Promise<PromptCorpusBlock[]> | PromptCorpusBlock[];
 }
 
-/** 生产 prompt 叶子 section → 语料域的唯一封闭注册表。 */
+/**
+ * 生产 prompt 叶子块 id → 语料域的唯一封闭注册表。
+ * final-check 复合 section 经 buildBlocks 产出 final-check / critical-turn-guard 两个块，
+ * 其块级 domain 声明必须与此处一致（context.service.spec 对拍）。
+ */
 const PROMPT_SECTION_DOMAIN_REGISTRY: Readonly<Record<string, CorpusDomain>> = {
   identity: 'teaching',
   'base-manual': 'teaching',
   'final-check': 'teaching',
   'red-lines': 'teaching',
   thresholds: 'teaching',
+  'stage-overview': 'teaching',
   'stage-strategy': 'teaching',
+  'critical-turn-guard': 'teaching',
   channel: 'teaching',
   memory: 'evidence',
   'turn-hints': 'evidence',

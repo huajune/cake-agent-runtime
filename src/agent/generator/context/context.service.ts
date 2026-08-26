@@ -14,8 +14,8 @@ import { StrategyConfigService as BizStrategyConfigService } from '@biz/strategy
 import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
 import { GroupContext } from '@biz/group-task/group-task.types';
 import { normalizeCityName as normalizeCity } from '@resolution/geo';
-import { unwrapSessionFacts, type SessionFacts } from '@memory/types/session-facts.types';
-import type { RuleFactClaims } from '@resolution/evidence/claim.types';
+import { unwrapSessionFacts, type SessionFacts } from '@memory/short-term/short-term.types';
+import type { TurnHintFieldPath, TurnHints } from '@resolution/evidence/claim.types';
 import type { LaborFormIntentDecision } from '@resolution/labor-form';
 import type { SessionBrandState } from '@resolution/brand/brand-resolution.types';
 import { StrategyConfigRecord } from '@biz/strategy/entities/strategy-config.entity';
@@ -29,20 +29,23 @@ import {
   renderPromptBlocks,
 } from './sections/section.interface';
 import type { PromptCorpusBlock } from '@shared-types/corpus.types';
-import { IdentitySection } from './sections/identity.section';
-import { RedLinesSection } from './sections/red-lines.section';
-import { DateTimeSection } from './sections/datetime.section';
-import { ChannelSection } from './sections/channel.section';
-import { StageStrategySection } from './sections/stage-strategy.section';
-import { ThresholdsSection } from './sections/thresholds.section';
-import { MemorySection } from './sections/memory.section';
-import { TurnHintsSection } from './sections/turn-hints.section';
-import { HardConstraintsSection } from './sections/hard-constraints.section';
-import { GroupInventorySection } from './sections/group-inventory.section';
+import { IdentitySection } from './sections/procedural/identity.section';
+import { RedLinesSection } from './sections/procedural/red-lines.section';
+import { DateTimeSection } from './sections/working/datetime.section';
+import { ChannelSection } from './sections/procedural/channel.section';
+import {
+  StageOverviewSection,
+  StageStrategySection,
+} from './sections/procedural/stage-strategy.section';
+import { ThresholdsSection } from './sections/procedural/thresholds.section';
+import { MemorySection } from './sections/semantic/memory.section';
+import { TurnHintsSection } from './sections/working/turn-hints.section';
+import { HardConstraintsSection } from './sections/working/hard-constraints.section';
+import { GroupInventorySection } from './sections/working/group-inventory.section';
 import { SCENARIO_SECTIONS, DEFAULT_SCENARIO } from './scenarios/scenario.registry';
 import { StaticSection } from './sections/static.section';
-import { PolicySection } from './sections/policy.section';
-import { RuntimeContextSection } from './sections/runtime-context.section';
+import { FinalCheckSection } from './sections/procedural/final-check.section';
+import type { ModelMessage } from 'ai';
 
 export interface ComposeParams {
   scenario?: string;
@@ -52,9 +55,17 @@ export interface ComposeParams {
   /** 会话记忆中的已确认提取结果（带信封的存储态）；供 TurnHintsSection 做冲突比对。 */
   sessionFacts?: SessionFacts | null;
   /** 本轮前置识别得到的高置信结果；由 TurnHintsSection 拆分/渲染。 */
-  ruleFacts?: RuleFactClaims | null;
+  turnHints?: TurnHints | null;
+  /** 渲染层裁决后的本轮增量提示；不影响工具/台账消费的原 turnHints。 */
+  displayTurnHints?: TurnHints | null;
+  /** 与跨层权威 facts 异值、需进入待确认块的字段。 */
+  pendingTurnHintFields?: readonly TurnHintFieldPath[];
   /** 本轮候选人消息原文（逐条，与规则轨输入同源）；turn-hints 的原话渲染判据。 */
   currentTurnTexts?: readonly string[];
+  /** 本轮合并后的候选人消息；critical-turn-guard current 规则输入。 */
+  currentUserMessage?: string;
+  /** 含短期近邻窗口的归一化消息；critical-turn-guard combined 规则输入。 */
+  normalizedMessages?: readonly ModelMessage[];
   /** 当前消息对用工形式的确定性 set/clear/ignore 决策。 */
   currentLaborFormIntent?: LaborFormIntentDecision;
   /** 本轮生效的会话品牌状态；turn-hints / hard-constraints 的品牌口径数据源。 */
@@ -86,8 +97,8 @@ export class ContextService implements OnModuleInit {
     private readonly groupResolver: GroupResolverService,
     private readonly configService: ConfigService,
   ) {
-    const devPath = join(__dirname, 'prompts');
-    const prodPath = join(__dirname, '..', '..', 'agent', 'context', 'prompts');
+    const devPath = join(__dirname, 'sections', 'procedural');
+    const prodPath = join(__dirname, '..', '..', 'agent', 'context', 'sections', 'procedural');
     this.promptsBasePath = existsSync(devPath) ? devPath : prodPath;
     this.groupMemberLimit = parseInt(
       this.configService.get<string>('GROUP_MEMBER_LIMIT', '200'),
@@ -113,8 +124,12 @@ export class ContextService implements OnModuleInit {
       currentStage,
       memoryBlock,
       sessionFacts,
-      ruleFacts,
+      turnHints,
+      displayTurnHints,
+      pendingTurnHintFields,
       currentTurnTexts,
+      currentUserMessage,
+      normalizedMessages,
       currentLaborFormIntent,
       sessionBrandState,
       accountIdentity,
@@ -134,8 +149,12 @@ export class ContextService implements OnModuleInit {
       currentStage,
       memoryBlock,
       sessionFacts,
-      ruleFacts,
+      turnHints,
+      displayTurnHints,
+      pendingTurnHintFields,
       currentTurnTexts,
+      currentUserMessage,
+      normalizedMessages,
       currentLaborFormIntent,
       sessionBrandState,
       accountIdentity,
@@ -181,18 +200,13 @@ export class ContextService implements OnModuleInit {
 
   private registerSections(): void {
     const baseManual = this.promptAssets.get('candidate-consultation') ?? '';
-    const finalCheck = this.promptAssets.get('candidate-consultation-final-check') ?? '';
 
-    // 顶层结构（推荐用于 candidate-consultation）
     this.sections.set('identity', new IdentitySection());
     this.sections.set('base-manual', new StaticSection('base-manual', baseManual));
-    this.sections.set('policy', new PolicySection());
-    this.sections.set('runtime-context', new RuntimeContextSection());
-    this.sections.set('final-check', new StaticSection('final-check', finalCheck));
-
-    // 叶子 section 仍保留，便于其他场景或测试复用
+    this.sections.set('final-check', new FinalCheckSection());
     this.sections.set('red-lines', new RedLinesSection());
     this.sections.set('thresholds', new ThresholdsSection());
+    this.sections.set('stage-overview', new StageOverviewSection());
     this.sections.set('stage-strategy', new StageStrategySection());
     this.sections.set('memory', new MemorySection());
     this.sections.set('turn-hints', new TurnHintsSection());
@@ -205,13 +219,13 @@ export class ContextService implements OnModuleInit {
   /**
    * 根据 sessionFacts 中候选人意向城市，预渲染该城市兼职群资源概览。
    *
-   * - 目的：让 Agent 在调用 invite_to_group 前对该城市群库有"上帝视角"
+   * - 只渲染该城市群库数据；操作约束由 invite_to_group description 承载
    * - 行为：无城市/无群数据/查询失败时返回空串，不影响 prompt 组装
    *
    * 城市取值必须与硬约束段同门（minConfidence='high'，议题 1-2）：本块不只是"参考信息"，
-   * 群库为空时会输出「禁止承诺拉群」这类有行为后果的指令，城市取错两个方向都会错。
+   * 群库数据会影响工具调用决策，城市取错两个方向都会错。
    * 此前直读 `.value` 绕过置信度门——Redis 旧档归一化出的 confidence='unknown' 城市
-   * 会让 prompt 里出现「兼职群资源（南京）… 禁止承诺拉群」而硬约束段根本没有该城市。
+   * 会让 prompt 里出现「兼职群资源（南京）」而硬约束段根本没有该城市。
    * 放宽的风险由 invite_to_group 自己的 invite-city-gate 兜底。
    */
   private async renderGroupInventoryBlock(sessionFacts?: SessionFacts | null): Promise<string> {
@@ -231,13 +245,7 @@ export class ContextService implements OnModuleInit {
     }
 
     if (cityGroups.length === 0) {
-      return [
-        `## 兼职群资源（${city}）`,
-        '- 该城市暂无可用兼职群',
-        '',
-        '本城市群库为空：禁止承诺"我先把你拉进群/进我们群/发群邀请/后面群里通知"等拉群相关动作；',
-        '本城市本就没有兼职群（区别于群满），属于"推荐无岗且没有兼职群"场景，不要转人工，继续托管即可：礼貌告知暂时没有合适岗位、后续有匹配会主动联系，引导候选人留意后续主动联系，不要调用 request_handoff。',
-      ].join('\n');
+      return [`## 兼职群资源（${city}）`, '- 该城市暂无可用兼职群'].join('\n');
     }
 
     const byIndustry = new Map<string, { groupCount: number; availableCount: number }>();
@@ -261,17 +269,11 @@ export class ContextService implements OnModuleInit {
         return `- ${industry}：${stats.groupCount} 个群（${capacity}）`;
       });
 
-    return [
-      `## 兼职群资源（${city}）`,
-      ...lines,
-      '',
-      '调用 invite_to_group 时，若候选人求职意向明确（如餐饮/零售），必须传对应 industry 参数。',
-      '否则工具会按"人数最少"兜底，可能选到不匹配行业的群引起候选人疑问。',
-    ].join('\n');
+    return [`## 兼职群资源（${city}）`, ...lines].join('\n');
   }
 
   private async loadPromptAssets(): Promise<void> {
-    const assetNames = ['candidate-consultation', 'candidate-consultation-final-check'];
+    const assetNames = ['candidate-consultation'];
     for (const assetName of assetNames) {
       const filePath = join(this.promptsBasePath, `${assetName}.md`);
       const content = await this.readTextFile(filePath);

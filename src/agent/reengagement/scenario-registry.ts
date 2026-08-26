@@ -1,4 +1,4 @@
-import type { ReengagementSessionState } from '@memory/types/reengagement-session-state.types';
+import type { ReengagementSessionState } from '@memory/recall.types';
 
 export type FollowUpScenarioCode =
   | 'opening_no_reply'

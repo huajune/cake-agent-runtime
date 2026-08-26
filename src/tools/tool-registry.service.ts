@@ -38,13 +38,13 @@ import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { PrivateChatMonitorNotifierService } from '@notification/services/private-chat-monitor-notifier.service';
 import { InterventionService } from '@biz/intervention/intervention.service';
 import { MessageSenderService } from '@channels/wecom/message-sender/message-sender.service';
-import { SessionService } from '@memory/services/session.service';
-import { LongTermService } from '@memory/services/long-term.service';
-import { CollectionFormService } from '@memory/services/collection-form.service';
+import { SessionStateService } from '@memory/short-term/session-state.service';
+import { LongTermService } from '@memory/long-term/long-term.service';
+import { CollectionFormService } from '@tools/collection/collection-form.service';
 import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
 import { HandoffRecorderService } from '@biz/handoff-events/handoff-recorder.service';
 import { AgentTracerService } from '@/observability/agent-tracer.service';
-import { getRuleFactValue } from '@resolution/evidence/merge';
+import { getTurnHintValue } from '@resolution/evidence/merge';
 import { sleep } from '@infra/utils/async.util';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
 import type { FinalizedVisualFactSheet } from '@resolution/signal/visual';
@@ -58,7 +58,7 @@ import type { FinalizedVisualFactSheet } from '@resolution/signal/visual';
  *
  * 记忆工具策略：
  * - memory_store / memory_recall 已删除（编排层固定读写，不由 LLM 自主决定）
- * - advance_stage 保留（程序记忆，只有 LLM 能判断推进时机）
+ * - advance_stage 保留（阶段状态，只有 LLM 能判断推进时机）
  */
 @Injectable()
 export class ToolRegistryService {
@@ -82,7 +82,7 @@ export class ToolRegistryService {
     private readonly llm: LlmExecutorService,
     userHostingService: UserHostingService,
     interventionService: InterventionService,
-    sessionService: SessionService,
+    sessionService: SessionStateService,
     longTermService: LongTermService,
     opsEventsRecorder: OpsEventsRecorderService,
     handoffRecorder: HandoffRecorderService,
@@ -354,7 +354,7 @@ export class ToolRegistryService {
   private resolveResumeAttachments(context: ToolBuildContext): ResumeAttachment[] {
     const urls = [
       this.normalizeText(
-        getRuleFactValue(context.ledger.facts.ruleFacts, 'interview_info.upload_resume', {
+        getTurnHintValue(context.ledger.facts.turnHints, 'interview_info.upload_resume', {
           minConfidence: 'high',
         }),
       ),

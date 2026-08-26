@@ -1,25 +1,25 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { MemoryService } from '@memory/memory.service';
-import { SessionService } from '@memory/services/session.service';
-import { BrandStateService } from '@memory/services/brand-state.service';
-import { LongTermService } from '@memory/services/long-term.service';
+import { SessionStateService } from '@memory/short-term/session-state.service';
+import { BrandStateService } from '@memory/short-term/brand-state.service';
+import { LongTermService } from '@memory/long-term/long-term.service';
 import {
   EntityExtractionResultSchema,
   FALLBACK_EXTRACTION,
   toSessionFacts,
   type EntityExtractionResult,
   type InvitedGroupRecord,
-} from '@memory/types/session-facts.types';
+} from '@memory/short-term/short-term.types';
 import type { RecommendedJobSummary } from '@resolution/job/types';
-import type { ProceduralState } from '@memory/types/procedural.types';
-import type { UserProfile } from '@memory/types/long-term.types';
+import type { StageState } from '@memory/short-term/short-term.types';
+import type { UserProfile } from '@memory/long-term/long-term.types';
 import { buildJobListQuerySignature } from '@tools/shared/job-list-query-signature';
 import type { MemoryFixtureSetup, TestRuntimeScope } from '../types/test-debug-trace.types';
 
 export interface MemoryFixtureSnapshot {
   readAt: string;
   sessionState: unknown;
-  proceduralState: unknown;
+  stageState: unknown;
 }
 
 /** 夹具落档的 evidence 署名——署名如实：这不是旧数据迁移，是测试用例回放的档案。 */
@@ -31,7 +31,7 @@ export class MemoryFixtureService {
 
   constructor(
     private readonly memoryService: MemoryService,
-    private readonly sessionService: SessionService,
+    private readonly sessionService: SessionStateService,
     private readonly brandStateService: BrandStateService,
     private readonly longTermService: LongTermService,
   ) {}
@@ -48,7 +48,7 @@ export class MemoryFixtureService {
   }
 
   async seed(
-    scope: Pick<TestRuntimeScope, 'corpId' | 'userId' | 'sessionId'>,
+    scope: Pick<TestRuntimeScope, 'corpId' | 'userId' | 'sessionId' | 'botUserId'>,
     setup?: MemoryFixtureSetup | null,
   ): Promise<void> {
     if (!setup) return;
@@ -72,7 +72,7 @@ export class MemoryFixtureService {
       );
     }
 
-    // 用例预设的品牌意向按「末位≈最近」种成 brand_state：品牌唯一真相是 brand_state，
+    // 用例预设的品牌意向按「末位≈最近」种成 facts.brand：品牌唯一真相是 facts.brand，
     // sessionFacts 侧的 brands 字段已随 S9 删除，故直接读夹具原始入参，不再绕道 facts。
     const lastBrand = this.resolveFixtureBrands(setup).at(-1);
     if (lastBrand) {
@@ -147,29 +147,29 @@ export class MemoryFixtureService {
     }
 
     if (setup.profile) {
+      const botUserId = scope.botUserId?.trim();
+      if (!botUserId) {
+        throw new Error('memorySetup.profile 需要稳定 botUserId');
+      }
       await this.longTermService.seedProfileFixture(
         scope.corpId,
         scope.userId,
+        botUserId,
         setup.profile as Partial<UserProfile>,
         { contactName: 'test-suite-memory-fixture' },
       );
     }
 
-    const proceduralState = this.resolveProceduralState(setup);
-    if (proceduralState) {
-      await this.memoryService.setStage(
-        scope.corpId,
-        scope.userId,
-        scope.sessionId,
-        proceduralState,
-      );
+    const stageState = this.resolveStageState(setup);
+    if (stageState) {
+      await this.memoryService.setStage(scope.corpId, scope.userId, scope.sessionId, stageState);
     }
   }
 
   async read(
     scope: Pick<TestRuntimeScope, 'corpId' | 'userId' | 'sessionId'>,
   ): Promise<MemoryFixtureSnapshot> {
-    const [sessionState, proceduralState] = await Promise.all([
+    const [sessionState, stageState] = await Promise.all([
       this.sessionService.getSessionState(scope.corpId, scope.userId, scope.sessionId),
       this.memoryService.getStage(scope.corpId, scope.userId, scope.sessionId),
     ]);
@@ -177,11 +177,11 @@ export class MemoryFixtureService {
     return {
       readAt: new Date().toISOString(),
       sessionState,
-      proceduralState,
+      stageState,
     };
   }
 
-  private resolveProceduralState(setup: MemoryFixtureSetup): ProceduralState | null {
+  private resolveStageState(setup: MemoryFixtureSetup): StageState | null {
     const procedural = setup.procedural ?? {};
     const currentStage =
       setup.currentStage !== undefined
@@ -194,9 +194,9 @@ export class MemoryFixtureService {
       return null;
     }
 
-    // 程序记忆只有 currentStage 一个字段（S10）；用例仍可传 procedural.fromStage 等
+    // 阶段状态只有 currentStage 一个字段（S10）；用例仍可传 procedural.fromStage 等
     // 旧键，它们只作"这个用例确实要种阶段"的存在性信号，不再落档。
-    const state: ProceduralState = { currentStage: this.readNullableString(currentStage) };
+    const state: StageState = { currentStage: this.readNullableString(currentStage) };
 
     this.logger.debug(`Seed memory stage=${state.currentStage ?? '<null>'}`);
     return state;
@@ -261,7 +261,7 @@ export class MemoryFixtureService {
       },
       preferences: {
         ...FALLBACK_EXTRACTION.preferences,
-        // brands 不进 facts（S9 已删该字段）：品牌走 resolveFixtureBrands → brand_state。
+        // brands 不进 preferences（S9 已删该字段）：品牌走 resolveFixtureBrands → facts.brand。
         salary: this.readStringFromKeys(raw, ['salary', 'salaryDesc']),
         position: this.readStringArrayFromKeys(raw, ['position', 'positions']),
         schedule: this.readString(raw, 'schedule'),

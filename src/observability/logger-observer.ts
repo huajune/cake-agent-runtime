@@ -53,12 +53,6 @@ export class LoggerObserver implements Observer {
           `工具错误: ${event.toolName} (trace=${event.traceId ?? '-'}): ${event.error}`,
         );
         break;
-      case 'memory_recall':
-        this.logger.debug(`记忆回忆: userId=${event.userId}, found=${event.found}`);
-        break;
-      case 'memory_store':
-        this.logger.debug(`记忆存储: userId=${event.userId}, keys=[${event.keys.join(',')}]`);
-        break;
       default:
         this.logger.debug(`事件: ${JSON.stringify(event)}`);
     }

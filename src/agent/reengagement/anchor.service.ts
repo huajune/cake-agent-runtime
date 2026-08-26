@@ -2,8 +2,8 @@ import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import type { AgentToolCall } from '@agent/generator/generator.types';
 import { extractPresentedJobs } from '@resolution/job';
-import type { ReengagementSessionState } from '@memory/types/reengagement-session-state.types';
-import { SessionService } from '@memory/services/session.service';
+import type { ReengagementSessionState } from '@memory/recall.types';
+import { SessionStateService } from '@memory/short-term/session-state.service';
 import {
   FollowUpSchedulerService,
   type ReengagementChannelIdentity,
@@ -37,7 +37,7 @@ export class ReengagementAnchorService {
 
   constructor(
     private readonly scheduler: FollowUpSchedulerService,
-    private readonly session: SessionService,
+    private readonly session: SessionStateService,
   ) {}
 
   handleToolAnchors(result: AnchorAgentResult, context: AnchorContext): void {
@@ -259,8 +259,8 @@ export class ReengagementAnchorService {
   }
 
   private async loadState(context: AnchorContext): Promise<ReengagementState> {
-    const session = this.session as SessionService & {
-      getReengagementState?: SessionService['getReengagementState'];
+    const session = this.session as SessionStateService & {
+      getReengagementState?: SessionStateService['getReengagementState'];
     };
     if (typeof session.getReengagementState === 'function') {
       return (await session.getReengagementState(

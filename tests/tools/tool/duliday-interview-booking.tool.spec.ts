@@ -133,6 +133,7 @@ describe('duliday_interview_booking（form → labelList）', () => {
         corpId: 'corp-1',
         userId: 'user-1',
         sessionId: 'session-1',
+        botUserId: 'wecom-user-A',
         botImId: 'bot-A',
         contactName: '测试联系人',
       },
@@ -216,6 +217,20 @@ describe('duliday_interview_booking（form → labelList）', () => {
 
   it('成功后 markSubmitted，active booking 与高置信 booking lineage 同步写入', async () => {
     await execute({ jobId: 100 });
+    expect(collectionForms.loadOrCreate).toHaveBeenCalledWith(
+      {
+        corpId: 'corp-1',
+        userId: 'user-1',
+        botUserId: 'wecom-user-A',
+        sessionId: 'session-1',
+        jobId: 100,
+      },
+      expect.any(Array),
+    );
+    expect(collectionForms.persist).toHaveBeenLastCalledWith(
+      expect.objectContaining({ botUserId: 'wecom-user-A', jobId: 100 }),
+      expect.objectContaining({ workOrderId: 9001 }),
+    );
     expect(verdictOf(currentForm)).toBe('submitted');
     expect(currentForm.workOrderId).toBe(9001);
     expect(longTerm.setActiveBooking).toHaveBeenCalledWith('corp-1', 'user-1', 9001, {
@@ -228,11 +243,15 @@ describe('duliday_interview_booking（form → labelList）', () => {
       expect.objectContaining({
         name: expect.objectContaining({ value: '兮兮', confidence: 'high' }),
         phone: expect.objectContaining({ value: '18271421690', confidence: 'high' }),
+        gender: expect.objectContaining({ value: '女', confidence: 'high', source: 'system' }),
       }),
     );
+    const completedFacts = sessionFacts.saveCompletedCollectionFacts.mock.calls[0][3];
+    expect(completedFacts).not.toHaveProperty('gender_source');
     expect(longTerm.writeFromBooking).toHaveBeenCalledWith(
       'corp-1',
       'user-1',
+      'wecom-user-A',
       {
         name: '兮兮',
         phone: '18271421690',
@@ -322,7 +341,7 @@ describe('duliday_interview_booking（form → labelList）', () => {
     await execute({ jobId: 100 });
     expect(sponge.uploadAttachmentFromUrl).toHaveBeenCalledWith(
       { fileUrl: 'https://wecom.example.test/resume.pdf' },
-      { botImId: 'bot-A', botUserId: undefined, groupId: undefined },
+      { botImId: 'bot-A', botUserId: 'wecom-user-A', groupId: undefined },
     );
     expect(sponge.bookInterview.mock.calls[0][0].labelList).toContainEqual({
       labelId: 105,

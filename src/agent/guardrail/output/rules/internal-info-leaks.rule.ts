@@ -5,7 +5,7 @@ import type { RuleContradiction } from '../output-rule.types';
  * Agent 回复输出泄漏检测。
  *
  * 业务背景：badcase `vllg7hlu` 中，模型直接给候选人发送了 `阶段已切换到 job_consultation，
- * 等待候选人回复年龄信息。`，把内部程序记忆术语暴露给用户。Prompt 已写过
+ * 等待候选人回复年龄信息。`，把内部阶段状态术语暴露给用户。Prompt 已写过
  * "严禁暴露阶段切换"，但模型偶尔违反，必须在出站 guardrail 做确定性兜底。
  *
  * 职责：

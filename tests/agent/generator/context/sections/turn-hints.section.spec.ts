@@ -1,6 +1,12 @@
 import { PromptContext } from '@agent/generator/context/sections/section.interface';
-import { TurnHintsSection } from '@agent/generator/context/sections/turn-hints.section';
-import { testRuleFact, testRuleFacts } from '../../../../helpers/rule-fact-claims.fixture';
+import { TurnHintsSection } from '@agent/generator/context/sections/working/turn-hints.section';
+import {
+  adjudicatePromptMemory,
+  type TurnStartMemory,
+} from '@agent/generator/preparation/prompt-memory-adjudicator';
+import type { TurnHints } from '@resolution/evidence/claim.types';
+import type { SessionFacts } from '@memory/short-term/short-term.types';
+import { testTurnHint, testTurnHints } from '../../../../helpers/turn-hints.fixture';
 import { cityFixture, sessionFactsOf } from '../../../../helpers/session-facts.fixture';
 
 describe('TurnHintsSection', () => {
@@ -9,6 +15,33 @@ describe('TurnHintsSection', () => {
     scenario: 'candidate-consultation',
     channelType: 'private',
     strategyConfig: {} as PromptContext['strategyConfig'],
+    displayTurnHints: null,
+    pendingTurnHintFields: [],
+  };
+
+  const sharedView = (turnHints: TurnHints | null, sessionFacts: SessionFacts | null = null) => {
+    const memory = {
+      shortTerm: {
+        messageWindow: [],
+        sessionState: sessionFacts
+          ? {
+              facts: sessionFacts,
+              lastCandidatePool: null,
+              presentedJobs: null,
+              currentFocusJob: null,
+            }
+          : null,
+        stage: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
+      },
+      longTerm: { semantic: { profile: null, jobIntent: null } },
+      turnHints,
+    } as unknown as TurnStartMemory;
+    const view = adjudicatePromptMemory(memory);
+    return {
+      sessionFacts,
+      displayTurnHints: view.displayTurnHints,
+      pendingTurnHintFields: view.pendingTurnHintFields,
+    };
   };
 
   it('should return empty string when no high-confidence facts', () => {
@@ -18,10 +51,9 @@ describe('TurnHintsSection', () => {
   it('should render high-confidence facts as a single runtime hints block when no session facts exist', () => {
     const output = section.build({
       ...baseCtx,
-      sessionFacts: null,
       // brands 已随 preferences.brands 退役不再进 turn hints（§19.6），用 district 验证同一数组渲染路径
-      ruleFacts: testRuleFacts(
-        testRuleFact('preferences.district', ['杨浦区'], '区域识别：杨浦区'),
+      ...sharedView(
+        testTurnHints(testTurnHint('preferences.district', ['杨浦区'], '区域识别：杨浦区')),
       ),
     });
 
@@ -35,10 +67,11 @@ describe('TurnHintsSection', () => {
     const message = '我在杨浦';
     const output = section.build({
       ...baseCtx,
-      sessionFacts: null,
       currentTurnTexts: [message],
-      ruleFacts: testRuleFacts(
-        testRuleFact('preferences.city', '上海', 'unique_district_alias', { quote: message }),
+      ...sharedView(
+        testTurnHints(
+          testTurnHint('preferences.city', '上海', 'unique_district_alias', { quote: message }),
+        ),
       ),
     });
 
@@ -53,8 +86,9 @@ describe('TurnHintsSection', () => {
   it('explains the city evidence codes as a dictionary instead of a confidence tier lesson', () => {
     const output = section.build({
       ...baseCtx,
-      sessionFacts: null,
-      ruleFacts: testRuleFacts(testRuleFact('preferences.city', '上海', 'unique_district_alias')),
+      ...sharedView(
+        testTurnHints(testTurnHint('preferences.city', '上海', 'unique_district_alias')),
+      ),
     });
 
     expect(output).toContain('municipality_compact=直辖市紧凑写法');
@@ -68,9 +102,8 @@ describe('TurnHintsSection', () => {
   it('defers the geocode policy to the hard-constraint section instead of restating it', () => {
     const output = section.build({
       ...baseCtx,
-      sessionFacts: null,
-      ruleFacts: testRuleFacts(
-        testRuleFact('preferences.district', ['杨浦区'], '区域识别：杨浦区'),
+      ...sharedView(
+        testTurnHints(testTurnHint('preferences.district', ['杨浦区'], '区域识别：杨浦区')),
       ),
     });
 
@@ -84,11 +117,12 @@ describe('TurnHintsSection', () => {
     const second = '我在上海想找兼职';
     const output = section.build({
       ...baseCtx,
-      sessionFacts: null,
       currentTurnTexts: [first, second],
-      ruleFacts: testRuleFacts(
-        testRuleFact('interview_info.age', '24', '年龄识别：24', { quote: first }),
-        testRuleFact('preferences.city', '上海', 'explicit_city', { quote: second }),
+      ...sharedView(
+        testTurnHints(
+          testTurnHint('interview_info.age', '24', '年龄识别：24', { quote: first }),
+          testTurnHint('preferences.city', '上海', 'explicit_city', { quote: second }),
+        ),
       ),
     });
 
@@ -100,11 +134,12 @@ describe('TurnHintsSection', () => {
     const message = '我今年24，在上海想找兼职';
     const output = section.build({
       ...baseCtx,
-      sessionFacts: null,
       currentTurnTexts: [message],
-      ruleFacts: testRuleFacts(
-        testRuleFact('interview_info.age', '24', '年龄识别：24', { quote: message }),
-        testRuleFact('preferences.city', '上海', 'explicit_city', { quote: message }),
+      ...sharedView(
+        testTurnHints(
+          testTurnHint('interview_info.age', '24', '年龄识别：24', { quote: message }),
+          testTurnHint('preferences.city', '上海', 'explicit_city', { quote: message }),
+        ),
       ),
     });
 
@@ -114,17 +149,12 @@ describe('TurnHintsSection', () => {
   it('should render low-confidence facts to LLM with labels instead of filtering them out', () => {
     const output = section.build({
       ...baseCtx,
-      sessionFacts: null,
-      ruleFacts: testRuleFacts(
-        testRuleFact('interview_info.gender', '女', '客户详情接口补充性别：女', {
-          confidence: 'low',
-          producer: 'system',
-        }),
-        testRuleFact(
-          'interview_info.gender_source',
-          'system',
-          '客户详情接口补充性别来源：系统标签',
-          { confidence: 'low', producer: 'system' },
+      ...sharedView(
+        testTurnHints(
+          testTurnHint('interview_info.gender', '女', '客户详情接口补充性别：女', {
+            confidence: 'low',
+            producer: 'system',
+          }),
         ),
       ),
     });
@@ -135,13 +165,32 @@ describe('TurnHintsSection', () => {
     );
   });
 
+  it('projects candidate_quote gender as candidate self-report without a sibling claim', () => {
+    const output = section.build({
+      ...baseCtx,
+      ...sharedView(
+        testTurnHints(
+          testTurnHint('interview_info.gender', '男', '性别识别：男', {
+            producer: 'candidate_quote',
+          }),
+        ),
+      ),
+    });
+
+    expect(output).toContain(
+      '性别: 男（候选人自陈）（置信度: high，来源: candidate_quote，证据: 性别识别：男',
+    );
+  });
+
   it('should move conflicting fields into pending confirmation hints and keep new fields in normal hints', () => {
     const output = section.build({
       ...baseCtx,
-      sessionFacts: sessionFactsOf({ preferences: { city: cityFixture('上海') } }),
-      ruleFacts: testRuleFacts(
-        testRuleFact('preferences.district', ['杨浦区'], '区域识别：杨浦区'),
-        testRuleFact('preferences.city', '北京', 'explicit_city'),
+      ...sharedView(
+        testTurnHints(
+          testTurnHint('preferences.district', ['杨浦区'], '区域识别：杨浦区'),
+          testTurnHint('preferences.city', '北京', 'explicit_city'),
+        ),
+        sessionFactsOf({ preferences: { city: cityFixture('上海') } }),
       ),
     });
 
@@ -157,32 +206,44 @@ describe('TurnHintsSection', () => {
     expect(cityIndex).toBeGreaterThan(pendingIndex);
   });
 
-  it('should still render current-turn facts when they match session facts', () => {
+  it('deduplicates current-turn facts when they match session facts', () => {
     const output = section.build({
       ...baseCtx,
-      sessionFacts: sessionFactsOf({ preferences: { city: cityFixture('上海') } }),
       currentTurnTexts: ['我在上海'],
-      ruleFacts: testRuleFacts(
-        testRuleFact('preferences.city', '上海', 'explicit_city', { quote: '我在上海' }),
+      ...sharedView(
+        testTurnHints(
+          testTurnHint('preferences.city', '上海', 'explicit_city', { quote: '我在上海' }),
+        ),
+        sessionFactsOf({ preferences: { city: cityFixture('上海') } }),
       ),
     });
 
-    expect(output).toContain('[本轮解析线索]');
-    expect(output).toContain('意向城市: 上海（置信度: high，来源: rule，证据: explicit_city）');
-    expect(output).not.toContain('[本轮待确认线索]');
+    expect(output).toBe('');
   });
 
-  it('treats a current labor-form change as the active intent instead of pending confirmation', () => {
+  it('marks a current labor-form change as pending confirmation instead of overwriting facts', () => {
     const output = section.build({
       ...baseCtx,
-      sessionFacts: sessionFactsOf({ preferences: { labor_form: '兼职' } }),
-      ruleFacts: testRuleFacts(
-        testRuleFact('preferences.labor_form', '暑假工', '用工形式识别：暑假工'),
+      ...sharedView(
+        testTurnHints(testTurnHint('preferences.labor_form', '暑假工', '用工形式识别：暑假工')),
+        sessionFactsOf({ preferences: { labor_form: '兼职' } }),
       ),
     });
 
-    expect(output).toContain('[本轮解析线索]');
+    expect(output).toContain('[本轮待确认线索]');
+    expect(output).toContain('待确认更新');
+    expect(output).toContain('不得因存在冲突而留空或静默');
     expect(output).toContain('用工形式: 暑假工');
-    expect(output).not.toContain('[本轮待确认线索]');
+    expect(output).not.toContain('[本轮解析线索]');
+  });
+
+  it('throws when a caller bypasses the shared adjudication view', () => {
+    expect(() =>
+      section.build({
+        scenario: 'candidate-consultation',
+        channelType: 'private',
+        strategyConfig: {} as PromptContext['strategyConfig'],
+      }),
+    ).toThrow('adjudicatePromptMemory');
   });
 });

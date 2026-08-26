@@ -1,5 +1,5 @@
 import { toErrorMessage } from '@infra/utils/error.util';
-import type { CollectionFormService } from '@memory/services/collection-form.service';
+import type { CollectionFormService } from '@tools/collection/collection-form.service';
 import { Logger } from '@nestjs/common';
 import {
   applyRecapResult,
@@ -65,6 +65,7 @@ export {
 
 const logger = new Logger('duliday_interview_precheck');
 
+// 程序记忆层（procedural memory）工具绑定规则；总目录：docs/prompt-rule-ledger.md
 const DESCRIPTION = `面试前置校验。实时读取岗位收资契约，推进候选人 × 岗位的持久表单，并返回可约时段。
 
 参数纪律：
@@ -365,6 +366,10 @@ async function runForm(params: {
   formAnswers?: Record<string, string>;
   messages: readonly unknown[];
 }): Promise<FormRun> {
+  const botUserId = params.context.session.botUserId?.trim();
+  if (!botUserId) {
+    throw new Error('缺少稳定 botUserId，无法定位收资表单');
+  }
   const rawContract = await params.spongeService.fetchJobCollectionContract(
     params.jobId,
     buildSpongeTokenContext(params.context),
@@ -375,6 +380,7 @@ async function runForm(params: {
   const scope = {
     corpId: params.context.session.corpId,
     userId: params.context.session.userId,
+    botUserId,
     jobId: params.jobId,
   };
   let form = await params.deps.collectionForms.loadOrCreate(scope, mapped.fields);
@@ -417,6 +423,13 @@ async function runForm(params: {
     ),
     askThisTurn: !recapAffirmed,
   });
+
+  await params.deps.collectionForms.saveFinalizedProgressFacts(
+    { ...scope, sessionId: params.context.session.sessionId },
+    result.form,
+    mapped.fields,
+    result.answeredThisTurn,
+  );
 
   const phoneField = mapped.fields.find((field) => field.systemField === 'phone');
   const phoneValue = phoneField ? result.form.slots[phoneField.labelId]?.value?.value : null;

@@ -7,7 +7,7 @@ import { hasToolCall, stepCountIs, type generateText } from 'ai';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
 import { ModelRole } from '@/llm/llm.types';
 import { MemoryService } from '@memory/memory.service';
-import { PreparationService, type PreparedAgentContext } from './preparation.service';
+import { PreparationService, type WorkingMemory } from './preparation/preparation.service';
 import type { AgentError } from '@shared-types/agent-error.types';
 import type { TurnLedger } from '@shared-types/turn.types';
 import {
@@ -59,7 +59,14 @@ import type {
 
 type TurnEndLifecycleContext = Pick<
   Parameters<MemoryService['onTurnEnd']>[0],
-  'corpId' | 'userId' | 'sessionId' | 'messageId' | 'botImId' | 'normalizedMessages' | 'contactName'
+  | 'corpId'
+  | 'userId'
+  | 'sessionId'
+  | 'messageId'
+  | 'botUserId'
+  | 'botImId'
+  | 'normalizedMessages'
+  | 'contactName'
 > & { ledger: TurnLedger };
 export type {
   GeneratorInputMessage,
@@ -130,7 +137,9 @@ export class GeneratorAgent {
       if (r.reasoningText) {
         this.logger.debug(`Thinking: ${r.reasoningText.substring(0, 200)}...`);
       }
-      this.logger.log(`Loop 完成: steps=${r.steps.length}, tokens=${r.usage.totalTokens}`);
+      this.logger.log(
+        `Loop 完成: steps=${r.steps.length}, tokens=${r.usage.totalTokens}, cached=${r.usage.inputTokenDetails?.cacheReadTokens ?? 'n/a'}`,
+      );
 
       let result = this.buildRunResult({
         text: r.text,
@@ -141,6 +150,7 @@ export class GeneratorAgent {
           inputTokens: r.usage.inputTokens ?? 0,
           outputTokens: r.usage.outputTokens ?? 0,
           totalTokens: r.usage.totalTokens,
+          cachedInputTokens: r.usage.inputTokenDetails?.cacheReadTokens,
         },
         agentRequest,
         memorySnapshot: ctx.memorySnapshot,
@@ -204,6 +214,7 @@ export class GeneratorAgent {
               inputTokens: usage.inputTokens ?? 0,
               outputTokens: usage.outputTokens ?? 0,
               totalTokens: usage.totalTokens,
+              cachedInputTokens: usage.inputTokenDetails?.cacheReadTokens,
             },
             agentRequest,
             memorySnapshot: ctx.memorySnapshot,
@@ -244,7 +255,7 @@ export class GeneratorAgent {
     };
   }
 
-  private buildLlmExecutionOptions(params: GeneratorInvokeParams, ctx: PreparedAgentContext) {
+  private buildLlmExecutionOptions(params: GeneratorInvokeParams, ctx: WorkingMemory) {
     return {
       role: ModelRole.Chat,
       modelId: params.modelId,
@@ -278,7 +289,7 @@ export class GeneratorAgent {
    * 会直接结束整轮，可能导致没有最终回复输出；prepareStep 让模型仍能用其他工具或
    * 文本完成本轮。
    */
-  private buildPrepareStep(ctx: PreparedAgentContext): PrepareStepFn | undefined {
+  private buildPrepareStep(ctx: WorkingMemory): PrepareStepFn | undefined {
     const baseTools = Object.keys(ctx.tools ?? {});
     if (baseTools.length === 0) return undefined;
     const baseInstructions = ctx.finalPrompt;
@@ -359,6 +370,7 @@ export class GeneratorAgent {
         userId: ctx.userId,
         sessionId: ctx.sessionId,
         messageId: ctx.messageId,
+        botUserId: ctx.botUserId,
         botImId: ctx.botImId,
         normalizedMessages: ctx.normalizedMessages,
         candidatePool: ledger.jobs.fetchedJobs.length > 0 ? [...ledger.jobs.fetchedJobs] : null,
@@ -367,15 +379,8 @@ export class GeneratorAgent {
         jobListQuerySignature: ledger.jobs.querySignature ?? null,
         cityAttestation: ledger.geo.cityAttestation ?? null,
         invalidatedJobIds: [...ledger.jobs.invalidatedJobIds],
-        ruleFacts: ledger.facts.ruleFacts,
+        turnHints: ledger.facts.turnHints,
         laborFormIntent: ledger.facts.laborFormIntent,
-        extractionToolFacts: {
-          jobs: {
-            fetchedJobs: ledger.jobs.fetchedJobs,
-            currentFocusJob: ledger.jobs.currentFocusJob,
-          },
-          visual: { factSheets: ledger.visual.factSheets },
-        },
       },
       assistantText,
     );
@@ -431,6 +436,7 @@ export class GeneratorAgent {
         inputTokens?: number;
         outputTokens?: number;
         totalTokens?: number;
+        inputTokenDetails?: { cacheReadTokens?: number };
       };
       response?: { timestamp?: Date | string | number };
       toolCalls?: Array<{ toolCallId: string; toolName: string; input?: unknown }>;
@@ -515,6 +521,7 @@ export class GeneratorAgent {
                 inputTokens: step.usage.inputTokens ?? 0,
                 outputTokens: step.usage.outputTokens ?? 0,
                 totalTokens: step.usage.totalTokens,
+                cachedInputTokens: step.usage.inputTokenDetails?.cacheReadTokens,
               }
             : undefined,
         durationMs: stepDurationMs,
@@ -548,7 +555,7 @@ export class GeneratorAgent {
    */
   private async recoverEmptyTextResult(
     result: GeneratorRunResult,
-    ctx: PreparedAgentContext,
+    ctx: WorkingMemory,
     params: GeneratorInvokeParams,
   ): Promise<GeneratorRunResult> {
     if (result.text.trim().length > 0) return result;
@@ -569,10 +576,11 @@ export class GeneratorAgent {
     );
 
     try {
-      const recoveryUsage = {
+      const recoveryUsage: GeneratorRunResult['usage'] = {
         inputTokens: 0,
         outputTokens: 0,
         totalTokens: 0,
+        cachedInputTokens: 0,
       };
       const recovery = await this.llm.generate({
         role: ModelRole.Chat,
@@ -588,6 +596,7 @@ export class GeneratorAgent {
       recoveryUsage.inputTokens = recovery.usage.inputTokens ?? 0;
       recoveryUsage.outputTokens = recovery.usage.outputTokens ?? 0;
       recoveryUsage.totalTokens = recovery.usage.totalTokens ?? 0;
+      recoveryUsage.cachedInputTokens = recovery.usage.inputTokenDetails?.cacheReadTokens ?? 0;
 
       if (!text) {
         this.logger.warn(`空文本恢复仍未产出回复: sessionId=${ctx.sessionId}`);
@@ -621,6 +630,8 @@ export class GeneratorAgent {
           inputTokens: result.usage.inputTokens + recoveryUsage.inputTokens,
           outputTokens: result.usage.outputTokens + recoveryUsage.outputTokens,
           totalTokens: result.usage.totalTokens + recoveryUsage.totalTokens,
+          cachedInputTokens:
+            (result.usage.cachedInputTokens ?? 0) + (recoveryUsage.cachedInputTokens ?? 0),
         },
       };
     } catch (error) {
@@ -634,10 +645,7 @@ export class GeneratorAgent {
     }
   }
 
-  private buildEmptyTextRecoveryPrompt(
-    result: GeneratorRunResult,
-    ctx: PreparedAgentContext,
-  ): string {
+  private buildEmptyTextRecoveryPrompt(result: GeneratorRunResult, ctx: WorkingMemory): string {
     const transcript = result.agentSteps.map((step) => ({
       stepIndex: step.stepIndex,
       finishReason: step.finishReason,
@@ -669,7 +677,7 @@ export class GeneratorAgent {
     ].join('\n');
   }
 
-  private formatMessagesForRecovery(messages: PreparedAgentContext['normalizedMessages']): string {
+  private formatMessagesForRecovery(messages: WorkingMemory['normalizedMessages']): string {
     return messages
       .map((message) => {
         const content = this.stringifyMessageContent(message.content);
@@ -726,10 +734,7 @@ export class GeneratorAgent {
   }
 
   private createEmptyMessagesError(
-    ctx: Pick<
-      PreparedAgentContext,
-      'sessionId' | 'userId' | 'normalizedMessages' | 'memoryLoadWarning'
-    >,
+    ctx: Pick<WorkingMemory, 'sessionId' | 'userId' | 'normalizedMessages' | 'memoryLoadWarning'>,
   ): AgentError {
     return this.enrichAgentError(
       new Error(
@@ -742,10 +747,7 @@ export class GeneratorAgent {
 
   private enrichAgentError(
     err: unknown,
-    ctx: Pick<
-      PreparedAgentContext,
-      'sessionId' | 'userId' | 'normalizedMessages' | 'memoryLoadWarning'
-    >,
+    ctx: Pick<WorkingMemory, 'sessionId' | 'userId' | 'normalizedMessages' | 'memoryLoadWarning'>,
   ): AgentError {
     let error: AgentError;
     if (err instanceof Error) {

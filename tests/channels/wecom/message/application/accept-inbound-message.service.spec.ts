@@ -57,6 +57,9 @@ describe('AcceptInboundMessageService', () => {
   const groupBlacklistService = {
     isGroupBlacklisted: jest.fn(),
   };
+  const botService = {
+    resolveBotUserIdByImBotId: jest.fn(),
+  };
 
   let service: AcceptInboundMessageService;
 
@@ -88,6 +91,7 @@ describe('AcceptInboundMessageService', () => {
     userHostingService.pauseUser.mockResolvedValue(undefined);
     generalHandoffNotifier.notify.mockResolvedValue(true);
     groupBlacklistService.isGroupBlacklisted.mockResolvedValue(false);
+    botService.resolveBotUserIdByImBotId.mockResolvedValue(null);
     imageDescription.resolveArtworkUrl.mockImplementation((_id: string, url: string) =>
       Promise.resolve(url),
     );
@@ -104,6 +108,7 @@ describe('AcceptInboundMessageService', () => {
       userHostingService as never,
       generalHandoffNotifier as never,
       groupBlacklistService as never,
+      botService as never,
     );
   });
 
@@ -512,7 +517,11 @@ describe('AcceptInboundMessageService', () => {
       }),
     );
     // friend.added 首次插入时开户长期记忆元数据
-    expect(longTerm.updateMessageMetadata).toHaveBeenCalledWith('corp-1', 'im-contact-1', {
+    expect(longTerm.updateMessageMetadata).toHaveBeenCalledWith(
+      'corp-1',
+      'im-contact-1',
+      'manager-1',
+      {
       botId: 'bot-1',
       imBotId: 'im-bot-1',
       imContactId: 'im-contact-1',
@@ -520,7 +529,8 @@ describe('AcceptInboundMessageService', () => {
       contactName: '张三',
       externalUserId: 'external-1',
       avatar: 'https://example.com/avatar.png',
-    });
+      },
+    );
     // 不应再记 agent.opening_sent（开场白改由 reply-workflow 在首条对外回复时记）
     expect(opsEventsRecorder.recordEvent).not.toHaveBeenCalledWith(
       expect.objectContaining({ eventName: 'agent.opening_sent' }),

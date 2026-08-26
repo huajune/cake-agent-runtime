@@ -20,7 +20,10 @@
 
 - **[rules-vs-semantics-design-philosophy.md](./rules-vs-semantics-design-philosophy.md)** ⭐ — 确定性规则与语义理解的分工哲学（P1~P11）。全库引用最多的原则基线；P11 为裁决权宪法（模型作证、代码公证、本人终审），源自候选人事实裁决 72.3% 假阳观测与三大事故家族考古。
 - **[prompt-example-hygiene.md](./prompt-example-hygiene.md)** ⭐ — 示例示教与幻觉：教学示例引发幻觉的三机制、全库示例面普查（约 130 处）、2026-08 业界解法对照、示教四原则。
+- **[context-engineering-principles.md](./context-engineering-principles.md)** ⭐ — 上下文工程九原则（C1~C9）：注意力预算/前缀稳定/行为归代码/约束放置判定树/拉取式披露/末尾复诵/四烂源防腐/居所变更纪律/harness 两分法与松绑就绪。源自 2026-08 生产基线实测（单步输入 98% 静态）、三个事故标本（张漪 27K、precheck 13.5K→729、守卫 30→10 条）与业界对照。
+- **[bitter-lessons.md](./bitter-lessons.md)** ⭐ — 苦涩教训台账（L1~L8 + 元规律 M1~M5）：机制级方向性证伪的复盘——守卫规则面 30→10、语义审查 enforce 从未够格、repair 链破产、模型仲裁 72.3% 假阳、提示词状态机 13.5K→729 等。核心元规律：二次模型链精度天花板、确定性边界、机制入场须实证在场须可退。
 - **[glossary.md](./glossary.md)** — 术语宪章：A 层行业规范（学习地图+检索线索）/ B 层借喻名 / C 层 ⚑ 自造词；新概念命名与代码对齐改名的唯一权威源。
+- **[industry-sources.md](./industry-sources.md)** — 行业经验引用库：历次架构重构引用过的开源项目/官方文档/博客/论文/访谈总索引，每条带"source → 本库落点"映射与检索日期。**每次行业调研形成结论后必须入库**；查概念去 glossary，查出处来这里。
 
 ## 写作规范
 

@@ -20,6 +20,18 @@
   gap: 8px;
 }
 
+.userMessage {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 11px 12px;
+  border-bottom: 1px solid rgba(139, 92, 246, 0.09);
+
+  .replyText {
+    background: rgba(239, 246, 255, 0.82);
+  }
+}
+
 .stepHeader {
   display: flex;
   align-items: center;
@@ -61,6 +73,49 @@
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+.verdictMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.riskBadge,
+.blockedRuleTag,
+.semanticMode,
+.findingCode {
+  padding: 2px 7px;
+  border-radius: 6px;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.riskBadge {
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.risklow {
+  background: rgba(34, 197, 94, 0.1);
+  color: #15803d;
+}
+
+.riskmedium {
+  background: rgba(245, 158, 11, 0.12);
+  color: #b45309;
+}
+
+.riskhigh,
+.blockedRuleTag {
+  background: rgba(239, 68, 68, 0.1);
+  color: #dc2626;
+}
+
+.blockedRuleTag {
+  border: 1px solid rgba(239, 68, 68, 0.18);
+  overflow-wrap: anywhere;
 }
 
 .ruleTag {
@@ -158,6 +213,115 @@
   color: #92400e;
 }
 
+.semanticSection {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 11px 12px;
+  border-bottom: 1px solid rgba(139, 92, 246, 0.09);
+  background: rgba(237, 233, 254, 0.18);
+}
+
+.semanticTitle {
+  color: #5b21b6;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.semanticReview {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 9px 10px;
+  border: 1px solid rgba(139, 92, 246, 0.14);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.86);
+}
+
+.semanticHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+}
+
+.semanticIndex {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.semanticMode {
+  background: rgba(139, 92, 246, 0.1);
+  color: #7c3aed;
+}
+
+.confidence,
+.noFindings {
+  color: #64748b;
+  font-size: 11px;
+}
+
+.findingList {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.finding {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 8px;
+  background: rgba(248, 250, 252, 0.92);
+}
+
+.findingCode {
+  align-self: flex-start;
+  background: rgba(99, 102, 241, 0.1);
+  color: #4f46e5;
+}
+
+.findingLine {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  gap: 8px;
+  color: #334155;
+  font-size: 12px;
+  line-height: 1.6;
+
+  > span {
+    color: #94a3b8;
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  > div {
+    min-width: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+}
+
+.draftReply {
+  color: #64748b;
+  font-size: 11px;
+
+  summary {
+    cursor: pointer;
+  }
+
+  div {
+    margin-top: 6px;
+    color: #334155;
+    font-size: 12px;
+    line-height: 1.65;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+}
+
 .finalRow {
   display: flex;
   flex-wrap: wrap;
@@ -184,7 +348,8 @@
   }
 
   .violationLine,
-  .feedback {
+  .feedback,
+  .findingLine {
     grid-template-columns: 1fr;
     row-gap: 2px;
   }

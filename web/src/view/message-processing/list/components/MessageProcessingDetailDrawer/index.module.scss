@@ -5,8 +5,7 @@
   border: 1px solid rgba(139, 92, 246, 0.16);
   background:
     radial-gradient(circle at 18% 0%, rgba(139, 92, 246, 0.08), transparent 34%),
-    radial-gradient(circle at 82% 16%, rgba(99, 102, 241, 0.06), transparent 30%),
-    #ffffff;
+    radial-gradient(circle at 82% 16%, rgba(99, 102, 241, 0.06), transparent 30%), #ffffff;
   box-shadow:
     0 26px 72px rgba(31, 41, 55, 0.2),
     0 0 0 1px rgba(255, 255, 255, 0.82) inset;
@@ -23,6 +22,22 @@
 
 .headerTitle {
   @include monitoring-detail-header-title;
+}
+
+.conversationLink {
+  padding: 5px 10px;
+  border: 1px solid rgba(139, 92, 246, 0.22);
+  border-radius: 999px;
+  background: rgba(139, 92, 246, 0.08);
+  color: #6d28d9;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+
+  &:hover {
+    border-color: rgba(139, 92, 246, 0.38);
+    background: rgba(139, 92, 246, 0.13);
+  }
 }
 
 .closeBtn {
@@ -144,8 +159,7 @@
 }
 
 .metricCard {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(250, 249, 255, 0.96) 100%);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(250, 249, 255, 0.96) 100%);
   border: 1px solid rgba(139, 92, 246, 0.14);
   border-radius: 16px;
   padding: 12px 10px;
@@ -174,8 +188,7 @@
 .latencyList {
   display: flex;
   flex-direction: column;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(250, 249, 255, 0.94) 100%);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(250, 249, 255, 0.94) 100%);
   border: 1px solid rgba(139, 92, 246, 0.14);
   border-radius: 16px;
   overflow: hidden;
@@ -216,6 +229,134 @@
     ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
     monospace;
   font-size: 11px;
+}
+
+.traceValue {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+
+  code {
+    max-width: 165px;
+    overflow: hidden;
+    color: #334155;
+    font-size: 11px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  button {
+    padding: 2px 6px;
+    border: 1px solid rgba(139, 92, 246, 0.18);
+    border-radius: 6px;
+    background: rgba(139, 92, 246, 0.07);
+    color: #6d28d9;
+    cursor: pointer;
+    font-size: 10px;
+  }
+}
+
+.anomalyFlags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  padding: 12px;
+  border: 1px solid rgba(239, 68, 68, 0.16);
+  border-radius: 14px;
+  background: rgba(254, 242, 242, 0.8);
+}
+
+.anomalyFlag {
+  padding: 4px 8px;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: 999px;
+  background: rgba(239, 68, 68, 0.09);
+  color: #b91c1c;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.postProcessingPanel {
+  overflow: hidden;
+  border: 1px solid rgba(139, 92, 246, 0.14);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.94);
+}
+
+.postProcessingSummary,
+.postStepHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+}
+
+.postProcessingSummary {
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(139, 92, 246, 0.09);
+  color: #64748b;
+  font-size: 11px;
+}
+
+.postStatus {
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-weight: 700;
+}
+
+.postStatusSuccess,
+.postStepsuccess {
+  background: rgba(34, 197, 94, 0.1);
+  color: #15803d;
+}
+
+.postStatusError,
+.postStepfailure {
+  background: rgba(239, 68, 68, 0.1);
+  color: #dc2626;
+}
+
+.postStatusNeutral,
+.postStepskipped {
+  background: rgba(100, 116, 139, 0.1);
+  color: #64748b;
+}
+
+.postProcessingStep {
+  padding: 9px 12px;
+  border-bottom: 1px solid rgba(139, 92, 246, 0.07);
+
+  &:last-child {
+    border-bottom: 0;
+  }
+}
+
+.postStepHeader {
+  color: #64748b;
+  font-size: 11px;
+
+  code {
+    min-width: 0;
+    flex: 1;
+    color: #334155;
+    overflow-wrap: anywhere;
+  }
+
+  span:first-of-type {
+    padding: 2px 6px;
+    border-radius: 6px;
+    font-weight: 700;
+  }
+}
+
+.postStepMessage {
+  margin-top: 6px;
+  color: #b91c1c;
+  font-size: 11px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
 /* ── Loading state ── */

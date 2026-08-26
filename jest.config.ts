@@ -74,6 +74,10 @@ const config: JestConfigWithTsJest = {
     '^@biz/(.*)$': '<rootDir>/src/biz/$1',
     '^@providers/(.*)$': '<rootDir>/src/providers/$1',
     '^@tools/(.*)$': '<rootDir>/src/tools/$1',
+    '^@memory/session/session-facts\.types$':
+      '<rootDir>/src/memory/short-term/short-term.types',
+    '^@memory/session-state/session-facts\.types$':
+      '<rootDir>/src/memory/short-term/short-term.types',
     '^@memory/(.*)$': '<rootDir>/src/memory/$1',
     '^@mcp/(.*)$': '<rootDir>/src/mcp/$1',
     '^@sponge/(.*)$': '<rootDir>/src/sponge/$1',

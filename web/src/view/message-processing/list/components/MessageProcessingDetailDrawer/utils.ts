@@ -1,5 +1,9 @@
 import type { UIMessage } from 'ai';
-import type { MessageRecord, MessageRecordMemorySnapshot } from '@/api/types/chat.types';
+import type {
+  MessageRecord,
+  MessageRecordMemorySnapshot,
+  MessageRecordToolCallStatus,
+} from '@/api/types/chat.types';
 import { asRecord } from '@/utils/object';
 import { buildAgentResponseTimeline, type AgentTimelinePart } from './agent-response-timeline';
 
@@ -20,10 +24,14 @@ export interface TimingMetrics {
 
 export interface ToolCallInfo {
   name: string;
-  status: 'success' | 'error' | 'unknown';
+  status: MessageRecordToolCallStatus;
   toolCallId?: string;
   input?: unknown;
   output?: unknown;
+  resultCount?: number;
+  durationMs?: number;
+  errorType?: string;
+  apiCode?: string | number;
 }
 
 export interface RawPayloadPanel {
@@ -340,7 +348,19 @@ function buildRenderablePartsFromResponseMessages(
 export function getAssistantRenderableMessage(message: MessageRecord): UIMessage | undefined {
   const response = getInvocationResponse(message);
   const responseMessages = asArray<AnyRecord>(response?.messages);
-  const directToolCalls = asArray<AnyRecord>(response?.toolCalls);
+  const invocationToolCalls = asArray<AnyRecord>(response?.toolCalls);
+  const directToolCalls = Array.isArray(message.toolCalls)
+    ? message.toolCalls
+    : invocationToolCalls.map((toolCall) => ({
+        toolName:
+          asString(toolCall.toolName) ||
+          asString(toolCall.tool) ||
+          asString(toolCall.name) ||
+          'unknown-tool',
+        args: toolCall.input ?? toolCall.args ?? toolCall.arguments ?? {},
+        result: toolCall.result ?? toolCall.output,
+        status: inferToolStatus(toolCall),
+      }));
   const reply = asRecord(response?.reply);
   const replyReasoning = asString(reply?.reasoning) || asString(response?.reasoningPreview);
   const replyContent =
@@ -349,17 +369,13 @@ export function getAssistantRenderableMessage(message: MessageRecord): UIMessage
     responseMessages,
   ) as AgentTimelinePart[];
   const timelineParts = buildAgentResponseTimeline({
-    steps: message.agentSteps,
+    steps: message.agentSteps ?? undefined,
     responseParts,
     directToolCalls: directToolCalls.map((toolCall) => ({
-      toolName:
-        asString(toolCall.toolName) ||
-        asString(toolCall.tool) ||
-        asString(toolCall.name) ||
-        'unknown-tool',
-      args: toolCall.input ?? toolCall.args ?? toolCall.arguments,
-      result: toolCall.result ?? toolCall.output,
-      status: asString(toolCall.status),
+      toolName: toolCall.toolName,
+      args: toolCall.args,
+      result: toolCall.result,
+      status: toolCall.status,
     })),
     finalReasoning: replyReasoning,
     finalText: replyContent,
@@ -634,7 +650,9 @@ export function getRawPayloadPanels(message: MessageRecord): RawPayloadPanel[] {
     });
   }
 
-  const toolCalls = asArray<AnyRecord>(responseRecord?.toolCalls);
+  const toolCalls = Array.isArray(message.toolCalls)
+    ? message.toolCalls
+    : asArray<AnyRecord>(responseRecord?.toolCalls);
   if (toolCalls.length > 0) {
     panels.push({
       key: 'tool-calls',
@@ -788,7 +806,7 @@ export function getHistoryMessages(message: MessageRecord): Array<{
 
 function inferToolStatus(toolCall: AnyRecord): ToolCallInfo['status'] {
   const result = asRecord(toolCall.result) ?? asRecord(toolCall.output);
-  if (result?.success === true) return 'success';
+  if (result?.success === true) return 'ok';
   if (
     toolCall.state === 'error' ||
     toolCall.state === 'output-error' ||
@@ -803,24 +821,49 @@ function inferToolStatus(toolCall: AnyRecord): ToolCallInfo['status'] {
     toolCall.output !== undefined ||
     toolCall.result !== undefined
   ) {
-    return 'success';
+    return 'ok';
   }
   return 'unknown';
 }
 
 export function getToolCalls(message: MessageRecord): ToolCallInfo[] {
+  if (Array.isArray(message.toolCalls)) {
+    return message.toolCalls.map((toolCall) => {
+      const result = asRecord(toolCall.result);
+      const nestedApiCode = result?.apiCode;
+      return {
+        name: toolCall.toolName,
+        status: toolCall.status ?? 'unknown',
+        input: toolCall.args,
+        output: toolCall.result,
+        resultCount: toolCall.resultCount,
+        durationMs: toolCall.durationMs,
+        errorType: toolCall.errorType ?? asString(result?.errorType),
+        apiCode:
+          toolCall.apiCode ??
+          (typeof nestedApiCode === 'string' || typeof nestedApiCode === 'number'
+            ? nestedApiCode
+            : undefined),
+      };
+    });
+  }
+
   const response = getInvocationResponse(message);
   const directToolCalls = asArray<AnyRecord>(response?.toolCalls);
   if (directToolCalls.length > 0) {
     return directToolCalls.reduce<ToolCallInfo[]>((acc, toolCall) => {
       const name = asString(toolCall.toolName);
       if (!name) return acc;
+      const result = asRecord(toolCall.result ?? toolCall.output);
+      const apiCode = toolCall.apiCode ?? result?.apiCode;
       acc.push({
         name,
         toolCallId: asString(toolCall.toolCallId),
         status: inferToolStatus(toolCall),
         input: toolCall.input ?? toolCall.args ?? toolCall.arguments,
         output: toolCall.result ?? toolCall.output,
+        errorType: asString(toolCall.errorType) ?? asString(result?.errorType),
+        apiCode: typeof apiCode === 'string' || typeof apiCode === 'number' ? apiCode : undefined,
       });
       return acc;
     }, []);
@@ -840,7 +883,7 @@ export function getToolCalls(message: MessageRecord): ToolCallInfo[] {
         toolCallId: asString(part.toolCallId),
         status:
           part.state === 'output-available'
-            ? 'success'
+            ? 'ok'
             : part.state === 'error' || part.state === 'output-error'
               ? 'error'
               : 'unknown',
@@ -927,27 +970,6 @@ export function getContextFacts(message: MessageRecord): Array<{
   return facts;
 }
 
-export function getDeliverySummary(message: MessageRecord): AnyRecord | undefined {
-  return asRecord(getInvocationResponse(message)?.delivery);
-}
-
 export function getFallbackSummary(message: MessageRecord): AnyRecord | undefined {
   return asRecord(getInvocationResponse(message)?.fallback);
-}
-
-export function getChunkSummary(message: MessageRecord): string | undefined {
-  const response = getInvocationResponse(message);
-  const chunkTypeCounts = asRecord(response?.chunkTypeCounts);
-  if (!chunkTypeCounts) return undefined;
-
-  const entries = Object.entries(chunkTypeCounts)
-    .filter(([, value]) => typeof value === 'number' && value > 0)
-    .sort((a, b) => Number(b[1]) - Number(a[1]));
-
-  if (entries.length === 0) return undefined;
-
-  return entries
-    .slice(0, 4)
-    .map(([key, value]) => `${key}: ${value}`)
-    .join(' · ');
 }

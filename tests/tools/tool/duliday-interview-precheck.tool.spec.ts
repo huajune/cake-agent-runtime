@@ -102,6 +102,7 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
     persist: jest.fn(async (_scope, form) => {
       currentForm = form;
     }),
+    saveFinalizedProgressFacts: jest.fn().mockResolvedValue(undefined),
     rebindToPhone: jest.fn(async (_scope, form, phone) => ({ ...form, candidateRef: phone })),
   };
   const sponge = {
@@ -114,7 +115,12 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
     jest.clearAllMocks();
     currentForm = null;
     context = createToolContext({
-      session: { corpId: 'corp-1', userId: 'user-1', sessionId: 'session-1' },
+      session: {
+        corpId: 'corp-1',
+        userId: 'user-1',
+        sessionId: 'session-1',
+        botUserId: 'wecom-user-A',
+      },
       turnInput: { messages: [] },
     });
     sponge.fetchJobs.mockResolvedValue({ jobs: [JOB] });
@@ -162,6 +168,18 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
       '性别',
     ]);
     expect(result.bookingChecklist.requiredFieldsToCollectNow).not.toContain('姓名');
+    expect(collectionForms.saveFinalizedProgressFacts).toHaveBeenCalledWith(
+      {
+        corpId: 'corp-1',
+        userId: 'user-1',
+        botUserId: 'wecom-user-A',
+        jobId: 100,
+        sessionId: 'session-1',
+      },
+      expect.objectContaining({ slots: expect.any(Object) }),
+      expect.any(Array),
+      [expect.objectContaining({ labelId: 101 })],
+    );
   });
 
   it('ready：资料齐后先返回一次提交前复述，不直接 booking', async () => {

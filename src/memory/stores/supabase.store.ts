@@ -8,34 +8,139 @@ import type {
   UserProfileFactValue,
   UserProfileFacts,
   ProfileFactConfidence,
-  SummaryData,
   SummaryEntry,
+  ConsolidationWatermarks,
   MessageMetadata,
-  AgentLongTermMemoryRow,
   ActiveBookingEntry,
   ActiveBookingState,
-  LongTermPreferenceFacts,
-} from '../types/long-term.types';
+  JobIntentFacts,
+} from '../long-term/long-term.types';
 import {
   createEmptyUserProfileFacts,
   isUserProfileFactValue,
-  LONG_TERM_PREFERENCE_FIELD_KEYS,
-  MAX_RECENT_SUMMARIES,
+  LONG_TERM_JOB_INTENT_FIELD_KEYS,
+  MAX_SESSION_SUMMARIES,
   UserProfileFactValueSchema,
   userProfileFactValue,
   USER_PROFILE_FIELD_KEYS,
-} from '../types/long-term.types';
+} from '../long-term/long-term.types';
 import type { MemoryEntry, MemoryStore } from './store.types';
 
 const TABLE = 'agent_long_term_memories';
 
-function normalizeSummaryData(data: SummaryData | null | undefined): SummaryData | null {
-  if (!data) return null;
+/** Supabase 存储适配层的行投影；数据库行不是 LongTermMemory 召回契约。 */
+interface AgentLongTermMemoryRow {
+  id: string;
+  corp_id: string;
+  user_id: string;
+  bot_user_id?: string | null;
+  semantic_profile?: UserProfileFacts | null;
+  semantic_job_intent?: JobIntentFacts | null;
+  episodic_session_summaries?: SummaryEntry[] | null;
+  consolidation_watermarks?: ConsolidationWatermarks | null;
+  message_metadata?: MessageMetadata | null;
+  active_booking?: ActiveBookingState | null;
+  created_at: string;
+  updated_at: string;
+}
+
+const EMPTY_CONSOLIDATION_WATERMARKS: ConsolidationWatermarks = {
+  bySession: {},
+  lastSettledMessageAt: null,
+};
+
+interface NormalizedEpisodicState {
+  sessionSummaries: SummaryEntry[] | null;
+  consolidationWatermarks: ConsolidationWatermarks;
+  needsMigration: boolean;
+}
+
+function toStringRecord(value: unknown): Record<string, string> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value).filter(
+      (entry): entry is [string, string] =>
+        typeof entry[1] === 'string' && entry[1].trim().length > 0,
+    ),
+  );
+}
+
+function toSummaryEntries(value: unknown): SummaryEntry[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(
+    (entry): entry is SummaryEntry =>
+      Boolean(entry) && typeof entry === 'object' && typeof entry.summary === 'string',
+  );
+}
+
+/** 旧 archive 没有逐段标识符；用空标识符补齐既有 SummaryEntry 形状。 */
+function legacyArchiveEntries(value: unknown): SummaryEntry[] {
+  const segments = (typeof value === 'string' ? [value] : Array.isArray(value) ? value : [])
+    .filter((segment): segment is string => typeof segment === 'string')
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+  return segments.map((summary) => ({
+    summary,
+    sessionId: '',
+    startTime: '',
+    endTime: '',
+  }));
+}
+
+function isCanonicalWatermarks(value: unknown): value is ConsolidationWatermarks {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const raw = value as Record<string, unknown>;
+  return (
+    Object.keys(raw).every((key) => key === 'bySession' || key === 'lastSettledMessageAt') &&
+    Boolean(raw.bySession) &&
+    typeof raw.bySession === 'object' &&
+    !Array.isArray(raw.bySession) &&
+    Object.values(raw.bySession).every((timestamp) => typeof timestamp === 'string') &&
+    (raw.lastSettledMessageAt === null || typeof raw.lastSettledMessageAt === 'string')
+  );
+}
+
+function normalizeEpisodicState(row: AgentLongTermMemoryRow): NormalizedEpisodicState {
+  const summaryValue = row.episodic_session_summaries;
+  const canonicalSummaries = Array.isArray(summaryValue);
+  const rawSummary =
+    summaryValue && typeof summaryValue === 'object' && !canonicalSummaries
+      ? (summaryValue as unknown as Record<string, unknown>)
+      : null;
+
+  let sessionSummaries: SummaryEntry[] | null = null;
+  let summaryNeedsMigration = false;
+  if (canonicalSummaries) {
+    sessionSummaries = toSummaryEntries(summaryValue).slice(-MAX_SESSION_SUMMARIES);
+    summaryNeedsMigration = sessionSummaries.length !== summaryValue.length;
+  } else if (rawSummary) {
+    // 旧 recent 以新到旧排列；裸数组统一为旧到新，archive 旧段置于头部。
+    const recent = toSummaryEntries(rawSummary.recent).reverse();
+    sessionSummaries = [...legacyArchiveEntries(rawSummary.archive), ...recent].slice(
+      -MAX_SESSION_SUMMARIES,
+    );
+    summaryNeedsMigration = true;
+  }
+
+  const rawWatermarks = row.consolidation_watermarks;
+  const canonicalWatermarks = isCanonicalWatermarks(rawWatermarks);
+  const currentWatermarks = canonicalWatermarks ? rawWatermarks : EMPTY_CONSOLIDATION_WATERMARKS;
+  const legacyBySession = toStringRecord(rawSummary?.lastSettledBySession);
+  const legacyFallback =
+    typeof rawSummary?.lastSettledMessageAt === 'string' ? rawSummary.lastSettledMessageAt : null;
+  const consolidationWatermarks: ConsolidationWatermarks = {
+    bySession: { ...legacyBySession, ...currentWatermarks.bySession },
+    lastSettledMessageAt: currentWatermarks.lastSettledMessageAt ?? legacyFallback,
+  };
+
   return {
-    recent: data.recent ?? [],
-    archive: data.archive ?? null,
-    lastSettledMessageAt: data.lastSettledMessageAt ?? null,
-    lastSettledBySession: data.lastSettledBySession ?? null,
+    sessionSummaries,
+    consolidationWatermarks,
+    needsMigration:
+      summaryNeedsMigration ||
+      (!canonicalWatermarks && Boolean(rawSummary)) ||
+      Object.keys(legacyBySession).length > 0 ||
+      legacyFallback !== null,
   };
 }
 
@@ -57,13 +162,11 @@ function normalizeProfileFacts(data: UserProfileFacts | null | undefined): UserP
   return hasValue ? facts : null;
 }
 
-function normalizePreferenceFacts(
-  data: LongTermPreferenceFacts | null | undefined,
-): LongTermPreferenceFacts | null {
+function normalizeJobIntentFacts(data: JobIntentFacts | null | undefined): JobIntentFacts | null {
   if (!data || typeof data !== 'object') return null;
-  const facts: LongTermPreferenceFacts = {};
+  const facts: JobIntentFacts = {};
   const raw = data as Record<string, unknown>;
-  for (const key of LONG_TERM_PREFERENCE_FIELD_KEYS) {
+  for (const key of LONG_TERM_JOB_INTENT_FIELD_KEYS) {
     const parsed = UserProfileFactValueSchema.safeParse(raw[key]);
     if (parsed.success) facts[key] = parsed.data as UserProfileFactValue<unknown>;
   }
@@ -133,10 +236,12 @@ function buildActiveBookingState(bookings: ActiveBookingEntry[]): ActiveBookingS
 }
 
 /**
- * Supabase 存储后端 — 长期记忆（每用户一行）
+ * Supabase 存储后端 — 长期记忆（候选人 × 托管账号关系一行）
  *
- * 表结构：profile_facts / preference_facts / summary_data / message_metadata / active_booking（均 jsonb）
- * 唯一约束 (corp_id, user_id)，每用户一行。
+ * 表结构：semantic_profile / semantic_job_intent / episodic_session_summaries /
+ * consolidation_watermarks / message_metadata / active_booking（均 jsonb）
+ * 长期记忆唯一约束 (corp_id, user_id, bot_user_id)。bot_user_id 使用稳定 wecomUserId；
+ * bot_user_id IS NULL 的存量行只承载冻结旧记忆与 active_booking，不进入长期召回。
  * Redis 2h 缓存整行数据。
  * Supabase 不可用时 graceful 降级。
  */
@@ -152,10 +257,14 @@ export class SupabaseStore implements MemoryStore {
 
   // ==================== Profile 操作 ====================
 
-  async getProfile(corpId: string, userId: string): Promise<UserProfileFacts | null> {
-    const row = await this.getRow(corpId, userId);
+  async getProfile(
+    corpId: string,
+    userId: string,
+    botUserId: string,
+  ): Promise<UserProfileFacts | null> {
+    const row = await this.getRow(corpId, userId, botUserId);
     if (!row) return null;
-    return normalizeProfileFacts(row.profile_facts ?? null);
+    return normalizeProfileFacts(row.semantic_profile ?? null);
   }
 
   /**
@@ -164,15 +273,16 @@ export class SupabaseStore implements MemoryStore {
    * 置信度守卫由 DB 端 RPC `upsert_long_term_profile_facts` 原子保证：
    * 已有 high 时，incoming 非 high 不得覆盖。
    *
-   * 可选同时携带 preferenceFacts（沉淀路径）：两列在同一 RPC 事务/行锁内写入，
+   * 可选同时携带 jobIntentFacts（沉淀路径）：两列在同一 RPC 事务/行锁内写入，
    * 消除"profile 落库而意向丢失"的半写状态。preference 维持快照式整列覆盖语义。
    */
   async upsertProfileFacts(
     corpId: string,
     userId: string,
+    botUserId: string,
     profileFacts: Partial<UserProfileFacts>,
     metadata?: MessageMetadata,
-    preferenceFacts?: LongTermPreferenceFacts,
+    jobIntentFacts?: JobIntentFacts,
   ): Promise<void> {
     const client = this.supabase.getSupabaseClient();
     if (!client) {
@@ -187,20 +297,21 @@ export class SupabaseStore implements MemoryStore {
         profileFactsJson[key] = fact;
       }
     }
-    const hasPreferences = Boolean(preferenceFacts && Object.keys(preferenceFacts).length > 0);
+    const hasPreferences = Boolean(jobIntentFacts && Object.keys(jobIntentFacts).length > 0);
     if (Object.keys(profileFactsJson).length === 0 && !metadata && !hasPreferences) return;
 
     const { data, error } = await client.rpc('upsert_long_term_profile_facts', {
       p_corp_id: corpId,
       p_user_id: userId,
+      p_bot_user_id: botUserId,
       p_profile_facts: profileFactsJson,
       p_message_metadata: metadata ?? null,
-      p_preference_facts: hasPreferences ? preferenceFacts : null,
+      p_preference_facts: hasPreferences ? jobIntentFacts : null,
     });
 
     if (error) {
       this.logger.warn('[upsertProfileFacts] RPC 失败', error.message);
-      return;
+      throw error;
     }
 
     const result = data as { written_fields: string[]; skipped_fields: string[] } | null;
@@ -210,187 +321,108 @@ export class SupabaseStore implements MemoryStore {
       );
     }
 
-    await this.invalidateCache(corpId, userId);
+    await this.invalidateCache(corpId, userId, botUserId);
   }
 
   // ==================== Preference 操作 ====================
 
-  /** 读取长期求职意向（settlement 沉淀的跨会话偏好快照）。 */
+  /** 读取长期求职意向（consolidation 沉淀的跨会话偏好快照）。 */
   async getPreferenceFacts(
     corpId: string,
     userId: string,
-  ): Promise<LongTermPreferenceFacts | null> {
-    const row = await this.getRow(corpId, userId);
-    return normalizePreferenceFacts(row?.preference_facts ?? null);
+    botUserId: string,
+  ): Promise<JobIntentFacts | null> {
+    const row = await this.getRow(corpId, userId, botUserId);
+    return normalizeJobIntentFacts(row?.semantic_job_intent ?? null);
   }
 
   // ==================== Summary 操作 ====================
 
-  async getSummaryData(corpId: string, userId: string): Promise<SummaryData | null> {
-    const row = await this.getRow(corpId, userId);
-    return normalizeSummaryData((row?.summary_data as SummaryData | null) ?? null);
+  async getSessionSummaries(
+    corpId: string,
+    userId: string,
+    botUserId: string,
+  ): Promise<SummaryEntry[] | null> {
+    return (await this.getEpisodicState(corpId, userId, botUserId)).sessionSummaries;
   }
 
-  /**
-   * 原子追加一条摘要（DB 端 RPC 行锁），自动执行分层压缩。
-   *
-   * Phase 1: RPC `append_long_term_summary_atomic` 在行锁内追加 entry 到 recent 头部，
-   *          超限时返回溢出条目但不压缩（压缩需 LLM，不能在 DB 事务里做）。
-   * Phase 2: 若有溢出且提供了 compressArchive，在应用层压缩后回写 archive。
-   */
+  async getConsolidationWatermarks(
+    corpId: string,
+    userId: string,
+    botUserId: string,
+  ): Promise<ConsolidationWatermarks> {
+    return (await this.getEpisodicState(corpId, userId, botUserId)).consolidationWatermarks;
+  }
+
+  /** 原子追加一条 episode 并推进独立水位；DB 端同一 UPDATE 写两列。 */
   async appendSummary(
     corpId: string,
     userId: string,
+    botUserId: string,
     entry: SummaryEntry,
     options?: {
       lastSettledMessageAt?: string | null;
-      /** 沉淀边界的会话维度 key；提供时同步写 lastSettledBySession[sessionId]。 */
+      /** 沉淀边界的会话维度 key；提供时同步写 consolidation_watermarks.bySession。 */
       sessionId?: string | null;
-      compressArchive?: (
-        overflow: SummaryEntry[],
-        existingArchive: string | null,
-      ) => Promise<string>;
     },
   ): Promise<void> {
     const client = this.supabase.getSupabaseClient();
     if (!client) {
-      this.logger.warn('Supabase 不可用，appendSummary 跳过');
-      return;
+      throw new Error('memory_summary_store_unavailable');
     }
 
-    const { data: rpcResult, error } = await client.rpc('append_long_term_summary_atomic', {
+    const { error } = await client.rpc('append_long_term_summary_atomic', {
       p_corp_id: corpId,
       p_user_id: userId,
+      p_bot_user_id: botUserId,
       p_entry: entry,
       p_last_settled_message_at: options?.lastSettledMessageAt ?? null,
-      p_max_recent: MAX_RECENT_SUMMARIES,
+      p_max_session_summaries: MAX_SESSION_SUMMARIES,
       p_session_id: options?.sessionId ?? null,
     });
 
     if (error) {
-      this.logger.warn('[appendSummary] RPC 失败，降级到应用层写入', error.message);
-      await this.appendSummaryFallback(corpId, userId, entry, options);
-      return;
+      this.logger.warn('[appendSummary] RPC 失败', error.message);
+      throw error;
     }
 
-    await this.invalidateCache(corpId, userId);
-
-    const result = rpcResult as { overflow: SummaryEntry[]; recentCount: number } | null;
-    if (result?.overflow?.length && options?.compressArchive) {
-      try {
-        const summaryData = await this.getSummaryData(corpId, userId);
-        const archive = await options.compressArchive(
-          result.overflow,
-          summaryData?.archive ?? null,
-        );
-        await this.upsertRow(corpId, userId, {
-          summary_data: {
-            ...(summaryData ?? { recent: [], lastSettledMessageAt: null }),
-            archive,
-          },
-        });
-      } catch (err) {
-        this.logger.warn('摘要压缩失败，溢出条目将在下次压缩', err);
-      }
-    }
-  }
-
-  /** RPC 不可用时的降级路径（应用层 read-then-write，非原子）。 */
-  private async appendSummaryFallback(
-    corpId: string,
-    userId: string,
-    entry: SummaryEntry,
-    options?: {
-      lastSettledMessageAt?: string | null;
-      sessionId?: string | null;
-      compressArchive?: (
-        overflow: SummaryEntry[],
-        existingArchive: string | null,
-      ) => Promise<string>;
-    },
-  ): Promise<void> {
-    const existing = await this.getSummaryData(corpId, userId);
-    const data: SummaryData = existing ?? {
-      recent: [],
-      archive: null,
-      lastSettledMessageAt: null,
-    };
-
-    data.recent.unshift(entry);
-
-    if (data.recent.length > MAX_RECENT_SUMMARIES && options?.compressArchive) {
-      const overflow = data.recent.splice(MAX_RECENT_SUMMARIES);
-      try {
-        data.archive = await options.compressArchive(overflow, data.archive);
-      } catch (err) {
-        this.logger.warn('摘要压缩失败，保留原始条目', err);
-        data.recent.push(...overflow);
-      }
-    } else if (data.recent.length > MAX_RECENT_SUMMARIES) {
-      data.recent = data.recent.slice(0, MAX_RECENT_SUMMARIES);
-    }
-
-    if (options?.lastSettledMessageAt !== undefined) {
-      data.lastSettledMessageAt = options.lastSettledMessageAt;
-      if (options.sessionId && options.lastSettledMessageAt) {
-        data.lastSettledBySession = {
-          ...(data.lastSettledBySession ?? {}),
-          [options.sessionId]: options.lastSettledMessageAt,
-        };
-      }
-    }
-
-    await this.upsertRow(corpId, userId, { summary_data: data });
+    await this.invalidateCache(corpId, userId, botUserId);
   }
 
   async markLastSettledMessageAt(
     corpId: string,
     userId: string,
+    botUserId: string,
     lastSettledMessageAt: string,
     sessionId?: string | null,
   ): Promise<void> {
     const client = this.supabase.getSupabaseClient();
-    if (client) {
-      // 优先走行锁 RPC，避免应用层 read-then-write 与并发 appendSummary 互相覆盖。
-      const { error } = await client.rpc('mark_long_term_settled_boundary', {
-        p_corp_id: corpId,
-        p_user_id: userId,
-        p_last_settled_message_at: lastSettledMessageAt,
-        p_session_id: sessionId ?? null,
-      });
-      if (!error) {
-        await this.invalidateCache(corpId, userId);
-        return;
-      }
-      this.logger.warn('[markLastSettledMessageAt] RPC 失败，降级到应用层写入', error.message);
-    }
+    if (!client) throw new Error('memory_watermark_store_unavailable');
 
-    const existing = await this.getSummaryData(corpId, userId);
-    const data: SummaryData = existing ?? {
-      recent: [],
-      archive: null,
-      lastSettledMessageAt: null,
-    };
-
-    data.lastSettledMessageAt = lastSettledMessageAt;
-    if (sessionId) {
-      data.lastSettledBySession = {
-        ...(data.lastSettledBySession ?? {}),
-        [sessionId]: lastSettledMessageAt,
-      };
+    const { error } = await client.rpc('mark_long_term_settled_boundary', {
+      p_corp_id: corpId,
+      p_user_id: userId,
+      p_bot_user_id: botUserId,
+      p_last_settled_message_at: lastSettledMessageAt,
+      p_session_id: sessionId ?? null,
+    });
+    if (error) {
+      this.logger.warn('[markLastSettledMessageAt] RPC 失败', error.message);
+      throw error;
     }
-    await this.upsertRow(corpId, userId, { summary_data: data });
+    await this.invalidateCache(corpId, userId, botUserId);
   }
 
   async upsertMessageMetadata(
     corpId: string,
     userId: string,
+    botUserId: string,
     metadata: MessageMetadata,
   ): Promise<void> {
     const cleanMetadata = this.normalizeMessageMetadata(metadata);
     if (!cleanMetadata) return;
 
-    await this.upsertRow(corpId, userId, { message_metadata: cleanMetadata });
+    await this.upsertRow(corpId, userId, botUserId, { message_metadata: cleanMetadata });
   }
 
   // ==================== active_booking 操作 ====================
@@ -402,7 +434,7 @@ export class SupabaseStore implements MemoryStore {
    * 语义关系只存在于实现约定里。需要"最近一笔"的调用方直接取 [0]。
    */
   async getActiveBookings(corpId: string, userId: string): Promise<ActiveBookingEntry[]> {
-    const row = await this.getRow(corpId, userId);
+    const row = await this.getActiveBookingRow(corpId, userId);
     return normalizeActiveBookings(row?.active_booking ?? null);
   }
 
@@ -423,7 +455,9 @@ export class SupabaseStore implements MemoryStore {
       activeBooking,
       ...existing.filter((booking) => booking.work_order_id !== workOrderId),
     ].slice(0, 10);
-    await this.upsertRow(corpId, userId, { active_booking: buildActiveBookingState(bookings) });
+    await this.upsertActiveBookingRow(corpId, userId, {
+      active_booking: buildActiveBookingState(bookings),
+    });
   }
 
   /**
@@ -440,18 +474,21 @@ export class SupabaseStore implements MemoryStore {
       const bookings = await this.getActiveBookings(corpId, userId);
       const remaining = bookings.filter((booking) => booking.work_order_id !== expectedWorkOrderId);
       if (remaining.length === bookings.length) return;
-      await this.upsertRow(corpId, userId, { active_booking: buildActiveBookingState(remaining) });
+      await this.upsertActiveBookingRow(corpId, userId, {
+        active_booking: buildActiveBookingState(remaining),
+      });
       return;
     }
 
-    await this.upsertRow(corpId, userId, { active_booking: null });
+    await this.upsertActiveBookingRow(corpId, userId, { active_booking: null });
   }
 
   // ==================== 旧接口（v1 兼容，Phase 6 删除） ====================
 
   async get(key: string): Promise<MemoryEntry | null> {
-    const { corpId, userId } = this.parseProfileKey(key);
-    const profile = await this.getProfile(corpId, userId);
+    const { corpId, userId, botUserId } = this.parseProfileKey(key);
+    if (!botUserId) return null;
+    const profile = await this.getProfile(corpId, userId, botUserId);
     if (!profile) return null;
     return {
       key,
@@ -461,23 +498,30 @@ export class SupabaseStore implements MemoryStore {
   }
 
   async set(key: string, content: Record<string, unknown>): Promise<void> {
-    const { corpId, userId } = this.parseProfileKey(key);
+    const { corpId, userId, botUserId } = this.parseProfileKey(key);
+    if (!botUserId) return;
     const profileFacts = this.buildProfileFactsFromPlain(content as Partial<UserProfile>, {
       source: 'system',
       confidence: 'medium',
       evidence: '外部补充字段写入长期档案',
     });
-    await this.upsertProfileFacts(corpId, userId, profileFacts);
+    await this.upsertProfileFacts(corpId, userId, botUserId, profileFacts);
   }
 
   async del(key: string): Promise<boolean> {
-    const { corpId, userId } = this.parseProfileKey(key);
-    await this.invalidateCache(corpId, userId);
+    const { corpId, userId, botUserId } = this.parseProfileKey(key);
+    if (!botUserId) return false;
+    await this.invalidateCache(corpId, userId, botUserId);
 
     const client = this.supabase.getSupabaseClient();
     if (!client) return true;
 
-    const { error } = await client.from(TABLE).delete().eq('corp_id', corpId).eq('user_id', userId);
+    const { error } = await client
+      .from(TABLE)
+      .delete()
+      .eq('corp_id', corpId)
+      .eq('user_id', userId)
+      .eq('bot_user_id', botUserId);
 
     if (error) {
       this.logger.warn('删除长期记忆失败', error.message);
@@ -488,9 +532,84 @@ export class SupabaseStore implements MemoryStore {
 
   // ==================== 内部方法 ====================
 
-  private async getRow(corpId: string, userId: string): Promise<AgentLongTermMemoryRow | null> {
+  /**
+   * episodic 读边界懒迁移：旧 recent/archive 合成裸 SummaryEntry[]，摘要内旧水位搬到独立列。
+   * 回写走 CAS RPC，避免较早的读快照覆盖并发 append/mark 已推进的摘要或水位。
+   */
+  private async getEpisodicState(
+    corpId: string,
+    userId: string,
+    botUserId: string,
+  ): Promise<NormalizedEpisodicState> {
+    const row = await this.getRow(corpId, userId, botUserId);
+    if (!row) {
+      return {
+        sessionSummaries: null,
+        consolidationWatermarks: { ...EMPTY_CONSOLIDATION_WATERMARKS, bySession: {} },
+        needsMigration: false,
+      };
+    }
+
+    const normalized = normalizeEpisodicState(row);
+    if (normalized.needsMigration && normalized.sessionSummaries) {
+      return this.migrateEpisodicStateAtomic(corpId, userId, botUserId, row, normalized);
+    }
+    return normalized;
+  }
+
+  /**
+   * compare-and-swap 懒迁移。RPC 未命中说明并发写已改变两列，此时以 RPC 返回的
+   * 数据库当前值重新规范化；最多再尝试一次仍为旧形状的极窄竞争窗口。
+   */
+  private async migrateEpisodicStateAtomic(
+    corpId: string,
+    userId: string,
+    botUserId: string,
+    initialRow: AgentLongTermMemoryRow,
+    initialNormalized: NormalizedEpisodicState,
+  ): Promise<NormalizedEpisodicState> {
+    const client = this.supabase.getSupabaseClient();
+    if (!client) {
+      this.logger.warn('Supabase 不可用，episodic 旧形状未持久化');
+      return initialNormalized;
+    }
+
+    let expectedRow = initialRow;
+    let normalized = initialNormalized;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const { data, error } = await client.rpc('migrate_long_term_episodic_state_atomic', {
+        p_corp_id: corpId,
+        p_user_id: userId,
+        p_bot_user_id: botUserId,
+        p_expected_session_summaries: expectedRow.episodic_session_summaries ?? null,
+        p_expected_consolidation_watermarks: expectedRow.consolidation_watermarks ?? null,
+        p_session_summaries: normalized.sessionSummaries,
+        p_consolidation_watermarks: normalized.consolidationWatermarks,
+      });
+
+      if (error) {
+        this.logger.warn('[migrateEpisodicStateAtomic] RPC 失败', error.message);
+        throw error;
+      }
+      if (!data) return normalized;
+
+      const currentRow = data as AgentLongTermMemoryRow;
+      normalized = normalizeEpisodicState(currentRow);
+      await this.invalidateCache(corpId, userId, botUserId);
+      if (!normalized.needsMigration || !normalized.sessionSummaries) return normalized;
+      expectedRow = currentRow;
+    }
+
+    return normalized;
+  }
+
+  private async getRow(
+    corpId: string,
+    userId: string,
+    botUserId: string,
+  ): Promise<AgentLongTermMemoryRow | null> {
     // Redis 缓存优先
-    const cacheKey = this.cacheKey(corpId, userId);
+    const cacheKey = this.cacheKey(corpId, userId, botUserId);
     const cached = await this.redis.get<AgentLongTermMemoryRow>(cacheKey);
     if (cached) return cached;
 
@@ -505,6 +624,7 @@ export class SupabaseStore implements MemoryStore {
       .select('*')
       .eq('corp_id', corpId)
       .eq('user_id', userId)
+      .eq('bot_user_id', botUserId)
       .maybeSingle();
 
     if (error) {
@@ -525,6 +645,7 @@ export class SupabaseStore implements MemoryStore {
   private async upsertRow(
     corpId: string,
     userId: string,
+    botUserId: string,
     fields: Record<string, unknown>,
   ): Promise<void> {
     const client = this.supabase.getSupabaseClient();
@@ -533,16 +654,92 @@ export class SupabaseStore implements MemoryStore {
       return;
     }
 
-    const { error } = await client
+    const { error } = await client.from(TABLE).upsert(
+      {
+        corp_id: corpId,
+        user_id: userId,
+        bot_user_id: botUserId,
+        ...fields,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'corp_id,user_id,bot_user_id' },
+    );
+
+    if (error) {
+      this.logger.warn('upsert 长期记忆失败', error.message);
+      throw error;
+    }
+
+    await this.invalidateCache(corpId, userId, botUserId);
+  }
+
+  /**
+   * active_booking 冻结区继续按 (corpId, userId) 读写 bot_user_id IS NULL 的兼容行。
+   * bot 关系行绝不复制/承载该列，避免账号维改造改变工单指针的共享口径。
+   */
+  private async getActiveBookingRow(
+    corpId: string,
+    userId: string,
+  ): Promise<AgentLongTermMemoryRow | null> {
+    const cacheKey = `active-booking:${corpId}:${userId}`;
+    const cached = await this.redis.get<AgentLongTermMemoryRow>(cacheKey);
+    if (cached) return cached;
+
+    const client = this.supabase.getSupabaseClient();
+    if (!client) return null;
+    const { data, error } = await client
       .from(TABLE)
-      .upsert(
-        { corp_id: corpId, user_id: userId, ...fields, updated_at: new Date().toISOString() },
-        { onConflict: 'corp_id,user_id' },
-      );
+      .select('*')
+      .eq('corp_id', corpId)
+      .eq('user_id', userId)
+      .is('bot_user_id', null)
+      .maybeSingle();
+    if (error) {
+      this.logger.warn('查询 active_booking 兼容行失败', error.message);
+      return null;
+    }
+    if (!data) return null;
 
-    if (error) this.logger.warn('upsert 长期记忆失败', error.message);
+    const row = data as AgentLongTermMemoryRow;
+    await this.redis
+      .setex(cacheKey, this.config.longTermCacheTtl, row)
+      .catch((error_) => this.logger.warn('active_booking 缓存回填失败', error_));
+    return row;
+  }
 
-    await this.invalidateCache(corpId, userId);
+  private async upsertActiveBookingRow(
+    corpId: string,
+    userId: string,
+    fields: Record<string, unknown>,
+  ): Promise<void> {
+    const client = this.supabase.getSupabaseClient();
+    if (!client) return;
+
+    const existing = await this.getActiveBookingRow(corpId, userId);
+    const payload = { ...fields, updated_at: new Date().toISOString() };
+    let error: { code?: string; message: string } | null = null;
+
+    if (existing) {
+      ({ error } = await client.from(TABLE).update(payload).eq('id', existing.id));
+    } else {
+      ({ error } = await client.from(TABLE).insert({
+        corp_id: corpId,
+        user_id: userId,
+        bot_user_id: null,
+        ...payload,
+      }));
+      if (error?.code === '23505') {
+        ({ error } = await client
+          .from(TABLE)
+          .update(payload)
+          .eq('corp_id', corpId)
+          .eq('user_id', userId)
+          .is('bot_user_id', null));
+      }
+    }
+
+    if (error) this.logger.warn('upsert active_booking 失败', error.message);
+    await this.redis.del(`active-booking:${corpId}:${userId}`).catch(() => {});
   }
 
   private normalizeMessageMetadata(metadata: MessageMetadata): MessageMetadata | null {
@@ -557,12 +754,12 @@ export class SupabaseStore implements MemoryStore {
     return Object.keys(clean).length > 0 ? clean : null;
   }
 
-  private async invalidateCache(corpId: string, userId: string): Promise<void> {
-    await this.redis.del(this.cacheKey(corpId, userId)).catch(() => {});
+  private async invalidateCache(corpId: string, userId: string, botUserId: string): Promise<void> {
+    await this.redis.del(this.cacheKey(corpId, userId, botUserId)).catch(() => {});
   }
 
-  private cacheKey(corpId: string, userId: string): string {
-    return `long-term:${corpId}:${userId}`;
+  private cacheKey(corpId: string, userId: string, botUserId: string): string {
+    return `long-term:${corpId}:${userId}:${botUserId}`;
   }
 
   private buildProfileFactsFromPlain(
@@ -587,8 +784,12 @@ export class SupabaseStore implements MemoryStore {
     return facts;
   }
 
-  private parseProfileKey(key: string): { corpId: string; userId: string } {
+  private parseProfileKey(key: string): { corpId: string; userId: string; botUserId: string } {
     const parts = key.replace(/^(profile|long-term):/, '').split(':');
-    return { corpId: parts[0] ?? '', userId: parts[1] ?? '' };
+    return {
+      corpId: parts[0] ?? '',
+      userId: parts[1] ?? '',
+      botUserId: parts.slice(2).join(':'),
+    };
   }
 }

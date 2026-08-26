@@ -62,7 +62,7 @@ export const CANDIDATE_FACT_PRODUCERS = [
 ] as const satisfies readonly CandidateFactProducer[];
 
 /** rule-track 仍会产出的完整字段路径；路径本身消除 interview/preferences 同名歧义。 */
-export const RULE_FACT_FIELD_PATHS = [
+export const TURN_HINT_FIELD_PATHS = [
   'interview_info.name',
   'interview_info.phone',
   'interview_info.gender',
@@ -86,7 +86,7 @@ export const RULE_FACT_FIELD_PATHS = [
   'preferences.schedule_constraint',
   'preferences.available_after',
 ] as const;
-export type RuleFactFieldPath = (typeof RULE_FACT_FIELD_PATHS)[number];
+export type TurnHintFieldPath = (typeof TURN_HINT_FIELD_PATHS)[number];
 
 export function isCandidateClaimField(value: string): value is CandidateClaimField {
   return (CANDIDATE_CLAIM_FIELDS as readonly string[]).includes(value);
@@ -155,33 +155,37 @@ export type CandidateFactClaim<T = unknown> = FactClaim<
   Extract<CandidateFactProducer, 'candidate_quote' | 'rule' | 'model' | 'manual'>
 >;
 
-export type RuleFactConfidence = 'high' | 'medium' | 'low';
+export type TurnHintConfidence = 'high' | 'medium' | 'low';
 
-export interface RuleFactEvidence extends CandidateFactEvidence {
+export interface TurnHintEvidence extends CandidateFactEvidence {
   /** 旧规则轨 evidence 的人类可读标签；供 prompt 与持久化元数据直接复用。 */
   label: string;
   /** city 等字段需要保留的机器可读证据码。 */
   code?: string;
 }
 
-/** prep 规则 producer 的统一通货；消费者只能经 evidence/merge 的字段策略裁决。 */
-export type RuleFactClaim<T = unknown> = Omit<
+/**
+ * prep 产出的本轮提示：规则高置信但未过回合末验证管线，零权威。
+ * 消费者只能经 evidence/merge 的字段策略裁决；持久事实仍以回合末写入结果为准。
+ */
+export type TurnHint<T = unknown> = Omit<
   FactClaim<
     T,
-    RuleFactFieldPath,
-    Extract<CandidateFactProducer, 'rule' | 'system'>,
-    RuleFactEvidence
+    TurnHintFieldPath,
+    Extract<CandidateFactProducer, 'candidate_quote' | 'rule' | 'system'>,
+    TurnHintEvidence
   >,
   'operation'
 > & {
   operation: 'set' | 'clear';
-  confidence: RuleFactConfidence;
+  confidence: TurnHintConfidence;
   /** clear 仅用于规则轨条件清除时声明允许清掉的旧值；value 本身仍保持 null。 */
   clearValues?: readonly unknown[];
 };
 
-export interface RuleFactClaims {
-  readonly claims: readonly RuleFactClaim[];
+/** 轮作用域提示集合；不等同于已确认的 session facts。 */
+export interface TurnHints {
+  readonly claims: readonly TurnHint[];
   readonly reasoning: string;
 }
 

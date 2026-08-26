@@ -21,12 +21,12 @@ import { decideLaborFormIntent } from '@resolution/labor-form';
 import { fieldValues, type FinalizedVisualFactSheet } from '@resolution/signal/visual';
 import { resolveExtractionScope } from '@resolution/evidence/admission';
 import type {
-  RuleFactClaim,
-  RuleFactClaims,
-  RuleFactConfidence,
-  RuleFactFieldPath,
+  TurnHint,
+  TurnHints,
+  TurnHintConfidence,
+  TurnHintFieldPath,
 } from '@resolution/evidence/claim.types';
-import { RULE_FACT_FIELD_POLICIES } from '@resolution/evidence/policies';
+import { TURN_HINT_FIELD_POLICIES } from '@resolution/evidence/policies';
 import { RULE_CLAIM_QUOTE_MAX_CHARS } from '@resolution/evidence/producers/direct-field';
 import {
   produceBrandAliasHints,
@@ -172,30 +172,30 @@ const FIELD_EXTRACTORS: FieldExtractor[] = [
 ];
 
 /** 注册表声明的字段清单：供下游镜像清单做编译期/测试期完备性校验。 */
-export const REGISTRY_FIELD_PATHS: readonly RuleFactFieldPath[] = FIELD_EXTRACTORS.map(
-  (extractor) => `${extractor.group}.${extractor.field}` as RuleFactFieldPath,
+export const REGISTRY_FIELD_PATHS: readonly TurnHintFieldPath[] = FIELD_EXTRACTORS.map(
+  (extractor) => `${extractor.group}.${extractor.field}` as TurnHintFieldPath,
 );
 
 interface RuleClaimSink {
-  claims: RuleFactClaim[];
+  claims: TurnHint[];
   reasons: string[];
   assertedAt: string;
   sequence: number;
 }
 
 interface AppendRuleClaimParams {
-  field: RuleFactFieldPath;
+  field: TurnHintFieldPath;
   value: unknown;
   message: string;
   /** 解析器已知的精确命中片段；缺失时才回退整条候选人消息。 */
   quote?: string;
   label: string;
   reason?: string;
-  confidence?: RuleFactConfidence;
+  confidence?: TurnHintConfidence;
   evidenceCode?: string;
   operation?: 'set' | 'clear';
   clearValues?: readonly unknown[];
-  producer?: RuleFactClaim['producer'];
+  producer?: TurnHint['producer'];
 }
 
 function appendRuleClaim(sink: RuleClaimSink, params: AppendRuleClaimParams): void {
@@ -229,7 +229,7 @@ function applyFieldExtractor(
   sink: RuleClaimSink,
 ): void {
   const toReason = extractor.reason ?? extractor.evidence;
-  const field = `${extractor.group}.${extractor.field}` as RuleFactFieldPath;
+  const field = `${extractor.group}.${extractor.field}` as TurnHintFieldPath;
 
   if (extractor.field === 'labor_form') {
     const intent = decideLaborFormIntent(message);
@@ -267,16 +267,16 @@ function applyFieldExtractor(
 // @resolution/evidence/admission：规则只由 sheet kind 决定，与消费点无关，
 // 且在域内有 Record<VisualFactKind,…> 的加档编译期约束。
 
-export interface ProduceRuleFactClaimsOptions {
+export interface ProduceTurnHintsOptions {
   /** 剥时间后缀内容 → sheet 的映射（visual-fact-structuring 消费侧读路径）。 */
   visualSheetsByContent?: ReadonlyMap<string, FinalizedVisualFactSheet>;
 }
 
-export function produceRuleFactClaims(
+export function produceTurnHints(
   userMessages: string[],
   brandData: BrandItem[],
-  options?: ProduceRuleFactClaimsOptions,
-): RuleFactClaims | null {
+  options?: ProduceTurnHintsOptions,
+): TurnHints | null {
   const normalizedMessages = userMessages
     .map((message) => stripQuotedBlocks(message.trim()))
     .filter(Boolean);
@@ -295,7 +295,7 @@ export function produceRuleFactClaims(
     options?.visualSheetsByContent?.get(stripTimeContextSuffix(message).trim());
 
   // 品牌收口（§9.2）：本函数不内联直写 preferences.brands——品牌真相唯一存储是
-  // brand_state（写入只经 reducer），preferences.brands 已退役（§19.6）、读边界恒 null。
+  // facts.brand（写入只经 reducer），preferences.brands 已退役（§19.6）、读边界恒 null。
   // 品牌线索仍产出到 reasoning 供排障与提取 prompt 参考。
   // R2 发布方剔除：带 job_posting sheet 的消息，品牌线索只吃 key=brand 字段值
   // （发布方公司名在 key=publisher，不进品牌语料）；其余消息照旧全文。
@@ -341,8 +341,8 @@ export function produceRuleFactClaims(
 
     // ── 以下为带字段间联动 / 自定义合并语义的特殊字段，保留在循环内手写 ──
 
-    // gender：一次识别发布 gender 与 gender_source 两条 claim。
-    // 同属身份字段：岗位截图里的"仅限男"不是候选人性别。
+    // gender：候选人原话经确定性规则复算后，来源章直接记 candidate_quote。
+    // 批 A 起不再发布 gender_source sibling；岗位截图里的"仅限男"仍不是候选人性别。
     const gender = isSelfReported ? extractGender(message) : null;
     if (gender) {
       appendRuleClaim(sink, {
@@ -351,13 +351,7 @@ export function produceRuleFactClaims(
         message,
         quote: gender.excerpt,
         label: `性别识别：${gender.value}`,
-      });
-      appendRuleClaim(sink, {
-        field: 'interview_info.gender_source',
-        value: 'candidate',
-        message,
-        quote: gender.excerpt,
-        label: '性别来源：候选人自陈',
+        producer: 'candidate_quote',
       });
     }
 
@@ -475,7 +469,7 @@ export function produceRuleFactClaims(
  *
  * 匹配主体已迁入 `resolution/brand`（§5.1 单一居所），本函数消费新解析结果、
  * 保持旧接口与输出形态兼容：提及级线索（不区分极性——"不要肯德基"仍产出肯德基的
- * 归一化线索，极性语义由 brand_state reducer 消费 resolveBrands 原始结果处理），
+ * 归一化线索，极性语义由 facts.brand reducer 消费 resolveBrands 原始结果处理），
  * 品类兜底行为不回归（已上线的咖啡品类召回）。
  *
  * 引用块在**本函数内**剥离，不依赖调用方：引用块里的品牌是招募经理/Agent 的话，
@@ -510,10 +504,10 @@ export function normalizeGenderValue(value: unknown): '男' | '女' | null {
  * 外部标签保持 low/system，不会被只消费 high 的 admission 路径误当成候选人自陈。
  */
 export function mergeSupplementalGenderClaims(
-  existing: RuleFactClaims | null,
+  existing: TurnHints | null,
   gender: '男' | '女',
   sourceLabel: string,
-): RuleFactClaims {
+): TurnHints {
   const sink: RuleClaimSink = {
     claims: [...(existing?.claims ?? [])],
     reasons: [],
@@ -528,14 +522,6 @@ export function mergeSupplementalGenderClaims(
     confidence: 'low',
     producer: 'system',
   });
-  appendRuleClaim(sink, {
-    field: 'interview_info.gender_source',
-    value: 'system',
-    message: sourceLabel,
-    label: `${sourceLabel}补充性别来源：系统标签`,
-    confidence: 'low',
-    producer: 'system',
-  });
   const suffix = `${sourceLabel}补充性别：${gender}`;
   return {
     claims: sink.claims,
@@ -546,10 +532,10 @@ export function mergeSupplementalGenderClaims(
 /** 注册表字段必须在唯一策略表登记；producer 不再维护任何投影镜像。 */
 function assertRegistryFieldsHavePolicy(): void {
   const missing = REGISTRY_FIELD_PATHS.filter(
-    (field) => !Object.prototype.hasOwnProperty.call(RULE_FACT_FIELD_POLICIES, field),
+    (field) => !Object.prototype.hasOwnProperty.call(TURN_HINT_FIELD_POLICIES, field),
   );
   if (missing.length > 0) {
-    throw new Error(`[rule-fact-claims] 注册表字段未登记策略：${missing.join(', ')}`);
+    throw new Error(`[turn-hints] 注册表字段未登记策略：${missing.join(', ')}`);
   }
 }
 

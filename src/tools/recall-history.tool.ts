@@ -2,7 +2,7 @@ import { Logger } from '@nestjs/common';
 import { tool } from 'ai';
 import { z } from 'zod';
 import { MemoryService } from '@memory/memory.service';
-import type { SummaryData } from '@memory/types/long-term.types';
+import type { SummaryEntry } from '@memory/long-term/long-term.types';
 import { ToolBuilder } from '@shared-types/tool.types';
 
 const logger = new Logger('recall_history');
@@ -17,8 +17,7 @@ const DESCRIPTION = `查询用户的历史求职记录。追溯本次会话之�
 - 无参数，直接调用
 
 ## 返回
-- recent：近期详细摘要（数组）
-- archive：更早期压缩总结（字符串）
+- sessionSummaries：历史咨询段摘要数组，按时间从旧到新排列，最多 20 段
 
 ## 用途边界
 - [用户档案] 和 [会话记忆] 中已有的信息属于本次会话上下文，不要重复调用本工具来获取
@@ -26,24 +25,15 @@ const DESCRIPTION = `查询用户的历史求职记录。追溯本次会话之�
 
 const inputSchema = z.object({});
 
-function formatSummaryForTool(data: SummaryData | null): string {
+function formatSummaryForTool(data: SummaryEntry[] | null): string {
   if (!data) return '';
+  if (data.length === 0) return '';
 
-  const parts: string[] = [];
-
-  if (data.archive) {
-    parts.push(`### 历史总结\n${data.archive}`);
-  }
-
-  if (data.recent.length > 0) {
-    const recentLines = data.recent.map(
-      (e) => `- [${e.startTime?.substring(0, 10) ?? '?'}] ${e.summary}`,
-    );
-    parts.push(`### 近期求职记录\n${recentLines.join('\n')}`);
-  }
-
-  if (parts.length === 0) return '';
-  return `\n\n[历史摘要]\n\n${parts.join('\n\n')}`;
+  const summaryLines = data.map(
+    (entry) =>
+      `- [${entry.startTime?.substring(0, 10) || '历史'}] ${entry.summary}${entry.coverageNote ? `（${entry.coverageNote}）` : ''}`,
+  );
+  return `\n\n[历史摘要]\n\n### 历次求职记录\n${summaryLines.join('\n')}`;
 }
 
 /**
@@ -52,7 +42,7 @@ function formatSummaryForTool(data: SummaryData | null): string {
  * LLM 按需检索用户的历史求职摘要。
  * 当用户提到"上次"、"之前"、"以前"等关键词时，LLM 主动调用此工具。
  *
- * 返回分层压缩的摘要数据（recent + archive），格式化为可读文本。
+ * 返回按时间排列的单层 sessionSummaries 数组，格式化为可读文本。
  */
 export function buildRecallHistoryTool(memoryService: MemoryService): ToolBuilder {
   return (context) => {
@@ -60,26 +50,30 @@ export function buildRecallHistoryTool(memoryService: MemoryService): ToolBuilde
       description: DESCRIPTION,
       inputSchema,
       execute: async () => {
-        const summaryData = await memoryService.getSummaryData(
+        const botUserId = context.session.botUserId?.trim();
+        if (!botUserId) {
+          logger.warn(`缺少稳定 botUserId，拒绝读取长期摘要: userId=${context.session.userId}`);
+          return { found: false, message: '当前账号身份未就绪，无法读取历史求职记录' };
+        }
+        const sessionSummaries = await memoryService.getSessionSummaries(
           context.session.corpId,
           context.session.userId,
-          context.session.botImId,
+          botUserId,
         );
 
-        if (!summaryData || (summaryData.recent.length === 0 && !summaryData.archive)) {
+        if (!sessionSummaries || sessionSummaries.length === 0) {
           logger.debug(`无历史摘要: userId=${context.session.userId}`);
           return { found: false, message: '该用户无历史求职记录' };
         }
 
-        const formatted = formatSummaryForTool(summaryData);
+        const formatted = formatSummaryForTool(sessionSummaries);
         logger.debug(
-          `返回历史摘要: userId=${context.session.userId}, recent=${summaryData.recent.length}`,
+          `返回历史摘要: userId=${context.session.userId}, count=${sessionSummaries.length}`,
         );
 
         return {
           found: true,
-          recentCount: summaryData.recent.length,
-          hasArchive: !!summaryData.archive,
+          summaryCount: sessionSummaries.length,
           content: formatted,
         };
       },

@@ -53,6 +53,8 @@ export class BotService {
 
   // imBotId(系统 wxid) → 所属企业 corpId 缓存（托管账号列表是小而稳的数据，30min 刷新）。
   private corpIdByWxid = new Map<string, string>();
+  // imBotId(系统 wxid) → 稳定企微 wecomUserId；长期记忆以该值隔离，不能使用会轮换的 wxid。
+  private botUserIdByWxid = new Map<string, string>();
   private corpMapExpireAt = 0;
   private readonly CORP_MAP_TTL_MS = 30 * 60 * 1000;
 
@@ -73,24 +75,47 @@ export class BotService {
     return this.corpIdByWxid.get(wxid) ?? null;
   }
 
-  /** 构建/刷新 wxid→corpId 缓存；失败时保留旧缓存（不抛）。 */
+  /** imBotId（会轮换的系统 wxid）→ 稳定企微 wecomUserId。 */
+  async resolveBotUserIdByImBotId(imBotId?: string | null): Promise<string | null> {
+    const wxid = imBotId?.trim();
+    if (!wxid) return null;
+    await this.ensureCorpMap();
+    return this.botUserIdByWxid.get(wxid) ?? null;
+  }
+
+  /** 构建/刷新 wxid→corpId/wecomUserId 缓存；失败或部分响应时保留对应旧缓存（不抛）。 */
   private async ensureCorpMap(): Promise<void> {
-    if (this.corpMapExpireAt > Date.now() && this.corpIdByWxid.size > 0) {
+    if (
+      this.corpMapExpireAt > Date.now() &&
+      (this.corpIdByWxid.size > 0 || this.botUserIdByWxid.size > 0)
+    ) {
       return;
     }
 
     try {
       const bots = await this.getConfiguredBotList();
-      const map = new Map<string, string>();
+      const corpMap = new Map<string, string>();
+      const botUserIdMap = new Map<string, string>();
       for (const bot of bots) {
         const wxid = bot.wxid?.trim();
         const corpId = bot.corpId?.trim();
         if (wxid && corpId) {
-          map.set(wxid, corpId);
+          corpMap.set(wxid, corpId);
+        }
+        const botUserId = (bot.wecomUserId ?? bot.weixin)?.trim();
+        if (wxid && botUserId) {
+          botUserIdMap.set(wxid, botUserId);
         }
       }
-      if (map.size > 0) {
-        this.corpIdByWxid = map;
+      // 上游偶发只返回 corpId 或稳定账号字段中的一组；两张缓存独立替换，避免
+      // 半套响应把另一张仍健康的 map 清空并维持整个 TTL 窗口。
+      if (corpMap.size > 0) {
+        this.corpIdByWxid = corpMap;
+      }
+      if (botUserIdMap.size > 0) {
+        this.botUserIdByWxid = botUserIdMap;
+      }
+      if (corpMap.size > 0 || botUserIdMap.size > 0) {
         this.corpMapExpireAt = Date.now() + this.CORP_MAP_TTL_MS;
       }
     } catch (error) {

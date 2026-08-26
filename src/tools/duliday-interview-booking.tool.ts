@@ -8,11 +8,11 @@
 import type { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
 import type { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { toErrorMessage } from '@infra/utils/error.util';
-import type { CollectionFormService } from '@memory/services/collection-form.service';
-import type { LongTermService } from '@memory/services/long-term.service';
-import type { SessionService } from '@memory/services/session.service';
-import { sessionFactValue } from '@memory/types/session-facts.types';
-import type { ActiveBookingEntry } from '@memory/types/long-term.types';
+import type { CollectionFormService } from '@tools/collection/collection-form.service';
+import type { LongTermService } from '@memory/long-term/long-term.service';
+import type { SessionStateService } from '@memory/short-term/session-state.service';
+import { sessionFactValue } from '@memory/short-term/short-term.types';
+import type { ActiveBookingEntry } from '@memory/long-term/long-term.types';
 import { Logger } from '@nestjs/common';
 import type { PrivateChatMonitorNotifierService } from '@notification/services/private-chat-monitor-notifier.service';
 import {
@@ -46,6 +46,7 @@ const logger = new Logger('duliday_interview_booking');
 const INTERVIEW_TIME_REGEX = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/u;
 const BOOKING_DEDUP_WINDOW_MS = 30 * 60 * 1000;
 
+// 程序记忆层（procedural memory）工具绑定规则；总目录：docs/prompt-rule-ledger.md
 const DESCRIPTION = `提交面试报名。候选人资料全部来自已确认的收资表单，本工具只接收 jobId 与可选 interviewTime。
 
 调用前必须在**本轮**调用 duliday_interview_precheck 并得到 nextAction=ready_to_book；其它 action 一律禁止 booking。
@@ -65,7 +66,7 @@ const inputSchema = z.object({
 
 export interface BookingAdjudicationDeps {
   collectionForms?: CollectionFormService;
-  sessionFacts?: SessionService;
+  sessionFacts?: SessionStateService;
   identityAnchors?: string;
 }
 
@@ -129,10 +130,24 @@ export function buildInterviewBookingTool(
           );
         }
 
+        const botUserId = context.session.botUserId?.trim();
+        if (!botUserId) {
+          return fail(
+            buildToolError({
+              errorType: TOOL_ERROR_TYPES.BOOKING_REJECTED,
+              outcome: '预约未提交（缺少稳定托管账号身份）',
+              replyInstruction:
+                '停止重试并调用 request_handoff，禁止在 bot 身份缺失时读写收资表单。',
+              details: { jobId },
+            }),
+          );
+        }
+
         const tokenContext = buildSpongeTokenContext(context);
         const scope = {
           corpId: context.session.corpId,
           userId: context.session.userId,
+          botUserId,
           sessionId: context.session.sessionId,
           jobId,
         };
@@ -403,31 +418,34 @@ export function buildInterviewBookingTool(
                   name: formFact(identity.name, '收资表单办结：姓名'),
                   phone: formFact(identity.phone, '收资表单办结：手机号'),
                   age: formFact(identity.age, '收资表单办结：年龄'),
-                  gender: formFact(identity.gender, '收资表单办结：性别'),
-                  gender_source: sessionFactValue('candidate' as const, {
+                  gender: sessionFactValue(identity.gender, {
                     confidence: 'high',
-                    source: 'candidate_quote',
-                    evidence: '收资表单办结：性别来源',
+                    source: 'system',
+                    evidence: '收资表单办结：性别',
                     extractedAt: new Date().toISOString(),
                   }),
                 },
               );
             });
-            await runPostBookingWrite('长期身份档案写入', () =>
-              longTermService.writeFromBooking(
-                scope.corpId,
-                scope.userId,
-                {
-                  name: identity.name,
-                  phone: identity.phone,
-                  age: Number(identity.age),
-                  gender: identity.gender,
-                  jobId,
-                  workOrderId: result.workOrderId as number,
-                },
-                { sessionId: scope.sessionId, botImId: context.session.botImId },
-              ),
-            );
+            const botUserId = context.session.botUserId?.trim();
+            if (botUserId) {
+              await runPostBookingWrite('长期身份档案写入', () =>
+                longTermService.writeFromBooking(
+                  scope.corpId,
+                  scope.userId,
+                  botUserId,
+                  {
+                    name: identity.name,
+                    phone: identity.phone,
+                    age: Number(identity.age),
+                    gender: identity.gender,
+                    jobId,
+                    workOrderId: result.workOrderId as number,
+                  },
+                  { sessionId: scope.sessionId, botImId: context.session.botImId },
+                ),
+              );
+            }
           }
           recordBookingEvent(
             opsEventsRecorder,

@@ -169,9 +169,9 @@
 
 ## 短期记忆（memory:short_term:*）
 
-**Key 工具**：[src/biz/message/utils/chat-history-cache.util.ts](../../src/biz/message/utils/chat-history-cache.util.ts)
+**Key 工具**：[src/memory/short-term/chat-history-cache.util.ts](../../src/memory/short-term/chat-history-cache.util.ts)
 
-**代码位置**：[src/memory/services/short-term.service.ts](../../src/memory/services/short-term.service.ts) / [src/biz/message/services/chat-session.service.ts](../../src/biz/message/services/chat-session.service.ts)
+**代码位置**：[src/memory/short-term/message-window.service.ts](../../src/memory/short-term/message-window.service.ts) / [src/biz/message/services/chat-session.service.ts](../../src/biz/message/services/chat-session.service.ts)
 
 ### 6. `memory:short_term:chat:{chatId}` — 会话短期缓存
 

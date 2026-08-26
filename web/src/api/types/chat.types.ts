@@ -103,6 +103,19 @@ export interface AgentInvocationRecord {
   http?: RawHttpResponse;
 }
 
+export interface ExecutionEvent {
+  id: number;
+  type: string;
+  traceId: string;
+  userId?: string;
+  corpId?: string;
+  chatId?: string;
+  scenario?: string;
+  callerKind?: string;
+  payload: Record<string, unknown>;
+  createdAt: string;
+}
+
 // ==================== 消息处理记录 ====================
 
 /**
@@ -122,6 +135,8 @@ export interface MessageRecordToolCall {
   resultCount?: number;
   status?: MessageRecordToolCallStatus;
   durationMs?: number;
+  errorType?: string;
+  apiCode?: string | number;
 }
 
 export interface MessageRecordAgentStep {
@@ -144,6 +159,38 @@ export type MessageRecordAnomalyFlag =
   | 'tool_narrow_result'
   | 'tool_chain_overlong'
   | 'no_tool_called';
+
+export type MessageRecordAlertType =
+  | 'agent'
+  | 'message'
+  | 'delivery'
+  | 'system'
+  | 'merge'
+  | 'unknown';
+
+export interface MessageRecordPostProcessingStepStatus {
+  name: string;
+  status: 'success' | 'failure' | 'skipped';
+  success: boolean;
+  durationMs: number;
+  error?: string;
+  reason?: string;
+}
+
+export interface MessageRecordPostProcessingStatus {
+  status: 'running' | 'completed' | 'completed_with_errors' | 'skipped' | 'interrupted';
+  startedAt: string;
+  completedAt?: string;
+  interruptedAt?: string;
+  durationMs?: number;
+  counts: {
+    total: number;
+    succeeded: number;
+    failed: number;
+    skipped: number;
+  };
+  steps: MessageRecordPostProcessingStepStatus[];
+}
 
 export interface MessageRecordMemorySnapshot {
   currentStage: string | null;
@@ -209,6 +256,22 @@ export interface GuardrailReviewStepDetail {
   feedback?: string;
 }
 
+export interface GuardrailSemanticFinding {
+  code: string;
+  evidenceQuote: string;
+  userImpact: string;
+  feedbackToGenerator: string;
+}
+
+export interface GuardrailSemanticReview {
+  mode: 'shadow' | 'enforce' | 'confidence_downgraded';
+  decision: GuardrailDecision;
+  confidence: string;
+  findings: GuardrailSemanticFinding[];
+  draftReply: string;
+  reviewedAt?: string;
+}
+
 /**
  * 出站守卫审查全程档案（guardrail_review_records 表，按 trace_id 关联）。
  * 仅守卫命中的回合存在；含首版全文/重写版全文，支撑详情页还原完整过程。
@@ -228,6 +291,7 @@ export interface GuardrailReviewRecord {
   committedSideEffects?: string;
   finalDecision: GuardrailDecision;
   reasonCode?: string;
+  semanticReviews: GuardrailSemanticReview[];
   createdAt?: string;
 }
 
@@ -237,6 +301,7 @@ export interface MessageRecord {
   userId?: string;
   userName?: string;
   managerName?: string;
+  botImId?: string;
   chatId: string;
   messagePreview?: string;
   replyPreview?: string;
@@ -249,26 +314,29 @@ export interface MessageRecord {
   replySegments?: number;
   status: 'success' | 'failed' | 'failure' | 'processing' | 'timeout';
   error?: string;
+  alertType?: MessageRecordAlertType;
   scenario?: string;
   tokenUsage?: number;
   isFallback?: boolean;
   fallbackSuccess?: boolean;
-  agentInvocation?: AgentInvocationRecord;
+  agentInvocation?: AgentInvocationRecord | null;
   batchId?: string;
   /** 工具调用详情（取代旧的 tools string[]） */
-  toolCalls?: MessageRecordToolCall[];
+  toolCalls?: MessageRecordToolCall[] | null;
   /** 每步循环快照（text/reasoning/toolCalls/usage） */
-  agentSteps?: MessageRecordAgentStep[];
+  agentSteps?: MessageRecordAgentStep[] | null;
   /** 异常信号标签，用于周报/巡检过滤 */
   anomalyFlags?: MessageRecordAnomalyFlag[];
   /** 本轮触发时的记忆上下文快照 */
   memorySnapshot?: MessageRecordMemorySnapshot;
   /** turn-end 后处理状态 */
-  postProcessingStatus?: Record<string, unknown>;
+  postProcessingStatus?: MessageRecordPostProcessingStatus;
   /** 入站守卫拦截摘要（仅拦截命中时非空） */
   guardrailInput?: GuardrailInputTrace;
   /** 出站守卫全程 trace（首审→repair→二审） */
   guardrailOutput?: GuardrailTurnTrace;
   /** 出站守卫审查全程档案（详情接口附带；仅守卫命中回合非空，历史数据无） */
   guardrailReview?: GuardrailReviewRecord;
+  /** Agent 执行过程事件（详情接口按 created_at 升序附带，最多 200 条） */
+  executionEvents?: ExecutionEvent[];
 }

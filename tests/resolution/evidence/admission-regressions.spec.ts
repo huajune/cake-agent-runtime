@@ -1,5 +1,5 @@
-import { produceRuleFactClaims } from '@resolution/evidence/producers/rule-track';
-import { projectRuleFactClaims } from '@resolution/evidence/merge';
+import { produceTurnHints } from '@resolution/evidence/producers/rule-track';
+import { projectTurnHints } from '@resolution/evidence/merge';
 import { EXTRACTION_BADCASES } from './extraction-badcases.fixture';
 
 const BRANDS = [
@@ -17,9 +17,9 @@ function readPath(values: Record<string, unknown> | null, path: string): unknown
 describe('规则提取误捕回归集（data-driven）', () => {
   for (const fixture of EXTRACTION_BADCASES) {
     it(fixture.description, () => {
-      const result = produceRuleFactClaims([fixture.input], BRANDS as never);
+      const result = produceTurnHints([fixture.input], BRANDS as never);
       const values = result
-        ? (projectRuleFactClaims(result) as unknown as Record<string, unknown> | null)
+        ? (projectTurnHints(result) as unknown as Record<string, unknown> | null)
         : null;
 
       for (const [path, expected] of Object.entries(fixture.shouldExtract ?? {})) {

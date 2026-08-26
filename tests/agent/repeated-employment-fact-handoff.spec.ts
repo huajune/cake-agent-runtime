@@ -6,7 +6,7 @@ describe('unknown employment fact handoff contract', () => {
 
   it('forces unresolved contract or agreement questions to salary_admin_inquiry handoff', () => {
     const candidatePrompt = readFileSync(
-      join(root, 'src/agent/generator/context/prompts/candidate-consultation.md'),
+      join(root, 'src/agent/generator/context/sections/procedural/candidate-consultation.md'),
       'utf8',
     );
     const handoffTool = readFileSync(join(root, 'src/tools/request-handoff.tool.ts'), 'utf8');

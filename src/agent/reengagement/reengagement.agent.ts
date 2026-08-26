@@ -6,10 +6,7 @@ import { ROLE_MODEL_OVERRIDES, type RoleModelOverridesProvider } from '@/llm/rol
 import { ModelRole } from '@/llm/llm.types';
 import { MemoryService } from '@memory/memory.service';
 import { z } from 'zod';
-import type {
-  ReengagementSessionState,
-  CandidateFieldKey,
-} from '@memory/types/reengagement-session-state.types';
+import type { ReengagementSessionState, CandidateFieldKey } from '@memory/recall.types';
 import type { TurnOutcome } from '../runner/agent-runner.types';
 import type { AgentStepDetail } from '@shared-types/agent-telemetry.types';
 import type { FollowUpJob } from './follow-up-scheduler.service';
@@ -162,10 +159,12 @@ export class ReengagementAgent {
   async compose(ctx: ReengagementComposeContext): Promise<ReengagementAgentExecution> {
     // 走主动复聊专用 recall：拿到已渲染的 factLines（含陈旧告警）和 Generator 同源的
     // 短期消息窗口，而不是裸记忆快照。
+    const botUserId = ctx.jobData.channelIdentity?.managerName?.trim();
     const memory = await this.memory.recallForProactiveFollowUp(
       ctx.sessionRef.corpId,
       ctx.sessionRef.userId,
       ctx.sessionRef.sessionId,
+      ...(botUserId ? [{ botUserId }] : []),
     );
     const agentInput: ReengagementAgentInput = { trigger: ctx, memory };
 
