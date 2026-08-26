@@ -14,7 +14,7 @@
 **预计版本**: `v10.45.0`
 **最近更新**: `2026-08-26`
 **来源分支**: `develop`
-**累计 PR**: 10
+**累计 PR**: 11
 
 ### 更新摘要
 - PR #1016 回填 v10.44.0 发布结果
@@ -208,6 +208,11 @@
 - PR #1035 批二段序返修——final-check 归位收口、identity 归位开篇
 - PR #1035 三期收官——全部批次执行完毕，文档转记录态
 - PR #1035 上下文工程治理一期：缓存埋点、膨胀哨兵、无损瘦身与规则台账（P0+P1+P3-1+F1~F4）
+- PR #1037 清理核心链路注释并按实现刷新架构文档
+- PR #1037 全局清理核心运行链路中的阶段编号、批次标签、失效兼容说明和误导性代码注释。
+- PR #1037 以当前实现为唯一事实源，重写/刷新 Agent Runtime、消息链路、记忆、Guardrail、数据库与运营文档。
+- PR #1037 清理已完成或失效的 TODO，建立待办总览并拆分仍需执行的兼容与发布事项。
+- PR #1037 核心链路注释与架构文档按实现终态清理
 
 ### 新功能
 - PR #1022 新增 analyze-guardrail 守卫效果分析 skill
@@ -222,6 +227,7 @@
 - PR #1035 新增行业经验引用库——历次重构引用源的总索引与落点映射
 - PR #1035 README 新增目录结构与命名规约终态节——六条规约+词汇对照唯一权威
 - PR #1035 打通会话与处理流水跳转
+- PR #1037 无。
 
 ### 问题修复
 - PR #1019 修正 v10.44.0 底账「无前端改动」的事实错误
@@ -237,6 +243,10 @@
 - PR #1035 M2-C 防过碎修正——混合形态，单件平铺成簇立目录（沿工具层终态惯例）
 - PR #1035 目录对称化二次修正——四层全目录、跨层服务平铺根、services/ 取消
 - PR #1035 修复懒迁移竞态与 bot 映射缓存降级
+- PR #1037 明确 Guardrail 的 Input / Prompt / Tool / Output 四个位置，避免把 Prompt 层漏出架构描述。
+- PR #1037 明确 `final-check` 是复合 section；规则命中时内部追加 `critical-turn-guard` 子块，不再描述为两个独立注册段。
+- PR #1037 对齐当前 ReplyWorkflow → AgentRunner → TurnFinalizer 调用链、两层记忆结构、replay 阻断集合、Redis 租约参数和工具步数。
+- PR #1037 删除全库零调用的 deprecated `dispatchIfNeeded()` 转发方法。
 
 ### 优化调整
 - PR #1024 抽取拉群编排服务
@@ -247,6 +257,11 @@
 - PR #1035 批一归类纠偏——按内容归位、撤空目录、procedural 归一
 - PR #1035 收尾批裁定汇总入档——正名/enrichment迁出/群库拆分/机制件归根/示例重生成
 - PR #1035 装配层收尾——preparation 正名、enrichment 归车间、群库拆分归位
+- PR #1037 知识库条目由“四层记忆系统”改为“两层记忆系统”，并将“出站守卫三档裁决链”改为当前裁决链描述。
+- PR #1037 校正文档中的代码路径、配置默认值、存储键和运行时边界；Markdown 文件链接与知识库 Wiki 双链全部核验通过。
+- PR #1037 全局清理核心运行链路中的阶段编号、批次标签、失效兼容说明和误导性代码注释。
+- PR #1037 以当前实现为唯一事实源，重写/刷新 Agent Runtime、消息链路、记忆、Guardrail、数据库与运营文档。
+- PR #1037 清理已完成或失效的 TODO，建立待办总览并拆分仍需执行的兼容与发布事项。
 
 ### 运维与流程
 - PR #1016 回填 v10.44.0 发布结果
@@ -402,12 +417,17 @@
 - PR #1035 装配示例与 KB 文档按终态重写
 - PR #1035 批二段序返修——final-check 归位收口、identity 归位开篇
 - PR #1035 三期收官——全部批次执行完毕，文档转记录态
+- PR #1037 删除已收官的 `context-assembly-compiler.md` 和失效的 memory 深审清单。
+- PR #1037 新增 `docs/todo/README.md`、memory compatibility cleanup 与 runtime release follow-ups，保留真实未完成事项。
+- PR #1037 清理核心链路注释并按实现刷新架构文档
 
 ### 配置变更
-- 无
+- PR #1037 仅更新 `.env.example` 的说明：`AGENT_MAX_INPUT_CHARS` 默认值对齐代码为 24000，并去掉一处重复的旧开关说明。
+- PR #1037 无新增必填环境变量、数据库 migration、RPC、权限、依赖或外部服务变更。
 
 ### 环境变量提醒
 - PR #1035 检测到环境变量相关文件变更：`.env.example`。请手动同步远程服务器 `/data/cake/.env.production`。
+- PR #1037 检测到环境变量相关文件变更：`.env.example`。请手动同步远程服务器 `/data/cake/.env.production`。
 
 ### 验证记录
 - PR #1021 新增 4 个回归用例：本 badcase 首版仍拦 / 修复版放行 / 否定从句级绑定（正反两例）；
@@ -427,6 +447,14 @@
 - PR #1035 geo / vocab 跨介质一致性校验
 - PR #1035 Web 与服务端构建
 - PR #1035 Jest 全库测试与 coverage
+- PR #1037 `pnpm run ci:check`
+- PR #1037 关键链路已按源码逐项人工核对
+- PR #1037 未新增对开放自然语言直接 reject/覆盖/判缺的正则分支
+- PR #1037 未新增 Prompt 示例值
+- PR #1037 `pnpm run duplication:check`：0.79% duplicated lines，低于 2.06% 阈值
+- PR #1037 `pnpm run test:di-smoke`：1/1 通过
+- PR #1037 全库：448 suites / 6812 tests / 3 snapshots 通过；1 suite / 5 tests 按原配置跳过
+- PR #1037 `git diff --check`、Markdown 文件链接、知识库 Wiki 双链检查通过
 <!-- release:pending:end -->
 
 ## [10.44.0] - 2026-08-19
