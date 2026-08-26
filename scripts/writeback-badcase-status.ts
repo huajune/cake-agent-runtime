@@ -21,7 +21,7 @@ type Plan = {
   reason: string;
 };
 
-// === 2026-06-22 第六批：裁判 v2（补工具语义）判已修复 + 人工复核（7 条）===
+// === 第六批：补充工具语义后的裁判结果，并经人工复核 ===
 const PLANS: Plan[] = [
   { badcaseId: '2ol2dhcl', recordId: 'recvm1EYTDILDa', current: '待分析', target: '已解决', reason: '裁判v2+复核：新回复文本不再出现候选人名字' },
   { badcaseId: 'goryw5og', recordId: 'recvmB2NLos0wm', current: '待分析', target: '已解决', reason: '裁判v2+复核：文本纠正定位（龙之梦在长宁非宝山），重查宝山门店' },
@@ -44,7 +44,7 @@ const _BATCH5_PLANS: Plan[] = [
   { badcaseId: 'o9i2mzfr', recordId: 'recvmjydmBLHxe', current: '待分析', target: '已解决', reason: '用户确认图片识别已改好：订单截图识别/话术' },
 ];
 
-// === 2026-06-22 第四批：qwen3.7-plus 裁判判「已修复」、用户认可（4 条，已 apply）===
+// === 第四批：模型判定已修复，并经用户复核 ===
 const _BATCH4_PLANS: Plan[] = [
   {
     badcaseId: 'uavevvdl',
@@ -115,7 +115,7 @@ const _BATCH3_PLANS: Plan[] = [
   },
 ];
 
-// === 2026-06-22 第二批：忠实重放新确认已修复（5 条，已 apply）===
+// === 第二批：经忠实重放确认已修复 ===
 const _BATCH2_PLANS: Plan[] = [
   {
     badcaseId: 'mzXMuJA9eJ',
@@ -154,7 +154,7 @@ const _BATCH2_PLANS: Plan[] = [
   },
 ];
 
-// === 2026-06-22 第一批：单轮复测验证已修复（13 条，已 apply）===
+// === 第一批：经单轮复测确认已修复 ===
 const _BATCH1_PLANS: Plan[] = [
   {
     badcaseId: 'zx6g64gt',
@@ -303,8 +303,8 @@ const _ARCHIVED_PLANS: Plan[] = [
     reason:
       '业务事实非缺陷：琪琪侧暂未运营北京零售兼职群池，invite 返 no_group_in_city 为预期；Agent reply "附近暂时没看到在招的岗位，后续有匹配的再联系你" 未承诺拉群也未骗用户。如需承接北京零售候选人，需运营建群',
   },
-  // === 2026-05-11 二次批量修复：代码已落，待线上观察后再标已解决 ===
-  // ❶ 0nmr8jh6: request_handoff no_active_case 走 general_handoff 飞书告警（intervention.service.ts + request-handoff.tool.ts），等首次告警卡片真实命中
+  // === 二次批量修复：代码已落，待线上观察后再标已解决 ===
+  // request_handoff no_active_case 已接入 general_handoff 飞书告警，待首次真实告警卡片验证。
   {
     badcaseId: '0nmr8jh6',
     recordId: 'recvieKzCpWQUW',

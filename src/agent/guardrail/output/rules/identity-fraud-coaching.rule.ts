@@ -59,11 +59,9 @@ const COERCED_SUMMER_DENIAL_PATTERN =
 const STUDENT_IDENTITY_RECLASSIFICATION_PATTERN =
   /(?:不算|不是|不属于)(?:在校)?学生(?:了|身份|本人|哈|吧|呀|哦|$|[，,。！？!?\n])|(?:按|算作|视为|当作?)(?:社会身份|社会人士)|(?:可以|能)[^。！？\n]{0,12}(?:按社会身份|做社会兼职|报社会兼职)/;
 
-// 档5（badcase 2026-07-28 chat 6a673402…）：候选人以条件/让步语气"报价"社会人士身份
-// （"如果没有，我可以是社会人士"）。这类措辞被共享识别器刻意拒认——不构成真实自报，
-// 改口核实机制（2026-07-15 产品裁定）同样要求先核实——Agent 顺水推舟指示按社会人士
-// 登记/代填即教唆。本档只依赖会话原文：不依赖记忆 is_student（可被抽取污染，该案
-// 被臆造成 false 致档4 失效）也不依赖本轮 precheck（该案 tools=[] 致档3 失效）。
+// 档5：候选人以条件/让步语气「报价」社会人士身份，例如「如果没有，我可以是社会人士」。
+// 这不构成真实自报；Agent 若顺势指示按社会人士登记/代填即属教唆。
+// 本档只依赖会话原文，不依赖可被抽取污染的 is_student 记忆或本轮 precheck。
 const CONDITIONAL_IDENTITY_OFFER_PATTERN =
   /(?:可以|也能|能|就当|当作?|算作?|就按)(?:我)?(?:是|成|作|按)[^。！？\n]{0,4}(?:社会人士|社会人|非学生|不是学生)/u;
 // "资料里的身份直接填社会人士"：填/写/选/报动词直接接身份值、无成/为/按连接词，
@@ -91,14 +89,12 @@ function readBooleanFact(
  * 3. 身份改写登记（"按非暑假工登记/登记成社会人士"）→ 本轮 precheck 存在
  *    暑假工守卫，或 bookingChecklist 仍把身份列为 missing 时违规。**豁免**：候选人
  *    本轮已明确自报非学生（共享识别器判定）时，Agent 转述/代填其口径属如实登记，
- *    不算教唆（2026-07-15 产品裁定；若无此豁免，识别器缺口致 precheck 身份滞留
- *    missing 时，本档会把诚实回复误判成造假教唆 block）。
+ *    不算教唆；否则 precheck 身份滞留 missing 时会把诚实回复误判为教唆。
  * 4. 记忆已确认学生，回复却自行宣布“不算学生/按社会身份”→ 无需本轮工具即可违规；
  *    仅候选人本轮明确自报“我不是学生/我是社会人士”时豁免陈旧记忆。
  * 5. 候选人条件式身份报价（"如果没有，我可以是社会人士"——识别器拒认的非自报措辞）
- *    + 回复含改判/代填/指示填写句式 → 违规；不依赖记忆与本轮 precheck（badcase
- *    6a673402：is_student 被抽取污染成 false 且 tools=[]，档3/档4 双双失效）。
- *    真实自报（"我是社会人士"）走共享识别器命中豁免，本档天然不触碰 6a448d09 死锁场景。
+ *    + 回复含改判/代填/指示填写句式 → 违规；不依赖记忆与本轮 precheck。
+ *    真实自报（"我是社会人士"）走共享识别器命中豁免。
  */
 export function detectIdentityMisregistrationCoaching(
   text: string,
@@ -112,9 +108,8 @@ export function detectIdentityMisregistrationCoaching(
   const concealment = IDENTITY_CONCEALMENT_PATTERN.test(text);
   const coercedSummerDenial = COERCED_SUMMER_DENIAL_PATTERN.test(text);
   // 候选人本轮明确自报非学生（共享识别器：剥时间戳/引用块、子句级+表单式）。
-  // 2026-07-15 产品裁定的豁免依据：候选人已作答时，Agent 转述/代填其口径不算教唆。
-  // 识别器缺口曾让 precheck missingFields 滞留"身份"，本规则据此把诚实回复误判成
-  // 造假教唆并 block（候选人 18:03 刚答"不是学生"，18:04 回复被拦）。
+  // 候选人已明确作答时，Agent 转述/代填其口径不算教唆；
+  // 该豁免避免将 precheck 仍标记 missing 的诚实回复误判为造假教唆。
   const latestConversationIdentity = findLatestExplicitIdentityEvidence([
     ...(recentMessages ?? []),
     ...(userMessage ? [{ role: 'user', content: userMessage }] : []),

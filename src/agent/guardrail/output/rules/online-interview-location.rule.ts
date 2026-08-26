@@ -5,15 +5,12 @@ import type { RuleContradiction } from '../output-rule.types';
 /**
  * 线上面试却声称已发面试定位 / 要求到店。
  *
- * 2026-07-30 生产实证（07-31 扫描日报红标，连续第二天复发，当日 4 次）：面试方式是
- * AI 面试／视频面试（无需到店），回复仍说"门店位置我发你了，你点开就能看导航"，
- * 部分还补"门店在负一层，别走错"。会话 `6a6ab32a` 10:24、`6a6af9d4` 15:32 与 15:33
- * （连发两轮）、`6a5dbb50` 20:57；07-29 另有同型 `6a69674e`。
- * **候选人会为一场线上面试白跑一趟门店**，是直接可见的伤害。
+ * AI／视频等线上面试无需到店；此时声称已发面试定位或要求到店，
+ * 会让候选人白跑一趟。
  *
  * 语义层早有对应条款（reviewer 提示词「只有 interviewMethod 明确为线下/到店/现场面试时
- * 才允许声称有面试地址」），但语义审查是 shadow，判了也拦不住投递——连续两天复发即是
- * 明证。`send_store_location` 的 `interviewMethod` / `locationNotRequired` 就在工具结果里，
+ * 才允许声称有面试地址」），但 `send_store_location` 的 `interviewMethod` /
+ * `locationNotRequired` 已在工具结果里，
  * 这个形态**确定性可判**，不需要 LLM。
  *
  * 边界：`destination='store'` 表示候选人明确问的是"工作地点在哪"，此时发门店定位是正确

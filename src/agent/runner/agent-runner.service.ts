@@ -214,8 +214,8 @@ export class AgentRunnerService {
   ): Promise<ReviewedRunResult> {
     const first = await this.generator.invoke(params);
 
-    // 审查前先剥模型模仿输出的 `[消息发送时间：…]` 标记（占全部回合 ~11%，2026-07-24 审计）：
-    // 避免噪声进入 LLM 审查上下文与守卫档案。只剥时间标记，不跑完整 sanitize——后者会剥
+    // 审查前先剥模型模仿输出的 `[消息发送时间：…]` 标记，避免噪声进入 LLM 审查
+    // 上下文与守卫档案。只剥时间标记，不跑完整 sanitize——后者会剥
     // 反引号，破坏 internal_output_leak 的围栏检测。投递文本另由 turn-outcome 统一清洗。
     let firstText = OutboundReplySanitizer.stripTimeMarkers((first.text ?? '').trim());
     const firstSkipped = (first.toolCalls ?? []).some(isShortCircuitedToolCall);
@@ -288,13 +288,13 @@ export class AgentRunnerService {
 
     // 确定性修复快通道：仅命中 internal_output_leak 且剥掉代码围栏标记后不再有任何
     // 泄漏形态时，剥离本身就是完整修复——围栏内正文（报名表模板等结构化内容）逐字保留，
-    // 跳过 LLM 重写（2026-07-21 badcase：rewrite 把围栏里的报名表模板压成一句话流水账）。
+    // 跳过 LLM 重写，避免结构化正文被压缩成一句话。
     // 剥离产物仍走下方二审，二审才是放行依据。
     const reasoningStrippedText = this.tryStripInternalReasoningLeak(decision, firstText);
     const fenceStrippedText =
       reasoningStrippedText === null ? this.tryStripFenceOnlyLeak(decision, firstText) : null;
-    // 第二条确定性快通道（2026-08-04 审计 P0-2）：JSON 信封拆封。模型把完整正文包进
-    // `{"agent_response":"…"}` 类信封，旧链路误判纯残文整轮静默（好回复被吞）。拆封
+    // 第二条确定性快通道：JSON 信封拆封。模型把完整正文包进
+    // `{"agent_response":"…"}` 类信封时，直接拆封可避免把合法正文当成残文静默。拆封
     // 产物与剥围栏同样走二审 + 悬空检测。
     const envelopeUnwrappedText =
       reasoningStrippedText === null && fenceStrippedText === null
@@ -593,9 +593,8 @@ export class AgentRunnerService {
       return;
     }
 
-    // block 档案必须可归因（2026-07-06~08 生产曾落 46 条 null reason_code，复盘时
-    // 无法区分拦截路径）：现行所有 block 分支都应显式携带 reasonCode，这里只兜历史
-    // 上出现过的遗漏并告警，让回归在观测里现形而不是沉默落 null。
+    // block 档案必须可归因：所有 block 分支都应显式携带 reasonCode。
+    // 这里对遗漏值兜底并告警，让回归在观测中现形，而不是沉默落 null。
     let reasonCode = data.finalDecision.reasonCode;
     if (!reasonCode && data.finalDecision.decision === 'block') {
       reasonCode = 'unattributed_block';
@@ -789,12 +788,9 @@ export class AgentRunnerService {
   /**
    * 直达静默判据——三类首版进 repair 只会产出另一条不该发的文本：
    *
-   * - `meta_narration_silenced`：元叙述旁白（badcase chat 6a5740ff…：真人经理接管期间
-   *   模型输出"（AI 保持静默，不插入回复）"被投递）。模型本轮的真实意图就是不说话。
-   * - `tool_call_artifact_silenced`：整条首版只是工具调用残文（2026-07-30 审计 P0-2，
-   *   2026-07-28 15:05–15:11 模型降级窗口）。泄漏反馈要求"其余内容逐字保留"，而残文
-   *   剥完无一字可留，rewrite 只能凭空创作——当时 4/4 例编出薪资/门店/伪造报名链接
-   *   并全部投递。没有事实可依时，沉默是唯一安全的结局。
+   * - `meta_narration_silenced`：元叙述旁白表达的真实意图就是不回复。
+   * - `tool_call_artifact_silenced`：整条首版只是工具调用残文；剥离后无正文可供 rewrite
+   *   保留，没有事实可依时只能静默。
    * 混合命中其它规则时都不走捷径，仍按常规 repair 流程保守处理。
    */
   private resolveDirectSilenceReason(

@@ -22,7 +22,7 @@ import {
  * 字段解释：
  * - id：必须与检测逻辑返回的 ruleId 完全一致；
  * - action：命中后的默认处理语义，observe=只记录，revise=要求重写，
- *   block=高风险，先重写自救，救不活才丢弃不发送（replan 已于 2026-07-27 退役）；
+ *   block=高风险，先重写自救，救不活才丢弃不发送；
  * - priority：风险优先级，P0 通常是合规/不可逆风险，P1 是强业务风险，P2 偏体验/质量；
  * - riskGoal：这条规则要防的真实业务风险；
  * - exogenousSignal：这条规则依赖的外生信号或词库。没有外生信号的规则要特别谨慎；
@@ -53,8 +53,8 @@ export interface OutputRuleCatalogMetadata extends OutputRulePolicy {
 type OutputRuleCatalogSeed = Omit<OutputRuleCatalogMetadata, keyof OutputRulePolicy | 'action'> &
   Partial<OutputRulePolicy> & {
     /**
-     * 2026-07-27 发牌制（评估文档 §2.2）：缺省 observe——新规则默认只观测不动手，
-     * repair 动手权（revise/replan/block）须以生产战绩显式申领后填写。
+     * 缺省 observe：新规则默认只观测不动手，repair 动手权（revise/block）
+     * 须满足上述准入条件后显式申领。
      */
     action?: GuardrailRuleAction;
   };
@@ -419,10 +419,8 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'job_detail_lookup_required',
-    // 2026-07-27 发牌切换：replan → observe（评估文档 §2.2/§2.4）。生产审计的全部重度
-    // 已投递伤害的宿主（事实反转 6a59dcad/周二改周一 6a630be4/内容坍缩 6a62d97b），
-    // 提示层防护均证明被击穿。observe 后首版直投，接盘方=每日 badcase 日报 4.5 栏目
-    // 的 L1 投递文本 vs 工具事实矛盾抽查（同步上线，满足 §6）。
+    // 宽泛重写容易改坏正确的岗位事实、日期和报名状态，因此该规则只做 observe；
+    // 真实事实矛盾交由事后环对照工具证据核验。
     action: GUARDRAIL_ACTION.OBSERVE,
     priority: GUARDRAIL_PRIORITY.P1,
     description:
@@ -495,9 +493,8 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'settlement_cycle_mismatch',
-    // 2026-07-27 发牌切换：revise → observe。生产审计假阳触发本目录“精确率 <70%
-    // 应自动降 observe"治理条款；同 PR 已修否定语序假阳，observe 期重新累计精确率，
-    // 连续两周 ≥90% 可重新申请 revise（评估文档 §2.2 发牌表）。
+    // 否定语序和补充结算语境会制造假阳，故按目录治理条款保持 observe；
+    // 只有重新满足 revise 准入门槛才能申请动手权。
     action: GUARDRAIL_ACTION.OBSERVE,
     priority: GUARDRAIL_PRIORITY.P1,
     description:
@@ -585,12 +582,8 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'interview_time_change_unconfirmed',
-    // badcase 2026-08-06 chat 6a1e42c5（trace …_1785977561594）：候选人要把面试从 15:00
-    // 改到 15:30，precheck 已返回在途工单 455384 并在 _replyInstruction 点名
-    // "改时间用 duliday_modify_interview_time（传该工单号）"，模型一个工具没调。
-    // 首审只命中 handoff_promise_without_handoff（已于 8-11 下线；首版"让同事帮你确认下"），
-    // repair 删掉承诺改成"你说的15:30这个时间没问题"，二审无规则可拦，直接投递。
-    // 与回归闸的 commitment_upgraded 并联：那条管 repair 链，这条管"模型首版就直接确认"。
+    // precheck 返回在途工单后，未成功改约却确认不同时间会让候选人按错误时间到店。
+    // 本规则覆盖首版直接确认；repair 链的承诺升级由 commitment_upgraded 并联防护。
     action: GUARDRAIL_ACTION.REVISE,
     priority: GUARDRAIL_PRIORITY.P0,
     description:
@@ -614,12 +607,8 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'requested_brand_mismatch',
-    // 2026-07-27 发牌专项审计：replan → observe。生产抽样 3/3 假阳（门店名被
-    // extractStructuredJobTitleBrands 当品牌名，"江南赋店/置汇旭辉店/枫蓝国际"），
-    // 历史 7/7 二审通过实为 replan 重新生成"品牌（门店）"格式骗过解析器的空转。
-    // 触发目录治理条款"精确率 <70% 自动降 observe"。检测保留观察真跨品牌串台；
-    // 门店名误判修复 + 两周精确率 ≥90% 后可重新申请（届时按评估文档 §2.4 条件项
-    // 实现"两步拆解"取数修复，不回 replan）。至此 REPLAN 在硬规则目录零雇主。
+    // 结构化标题解析可能把门店名当成品牌名，确定性修复容易改坏正确回复。
+    // 因此只保留 observe 供事后识别真跨品牌串台；重新动手须再满足目录准入门槛。
     action: GUARDRAIL_ACTION.OBSERVE,
     priority: GUARDRAIL_PRIORITY.P1,
     description: '拦住候选人/工具入参已指定品牌，但回复结构化推荐了其它品牌的岗位。',
@@ -647,10 +636,8 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'image_description_not_saved',
-    // 2026-07-27 发牌切换第一批：replan → observe。纯流程违规（缺工具调用，文本无错），
-    // replan 全文重写曾引入编造并投递（trace batch_6a38e61c…编造考勤扣款政策）。终态
-    // "补调工具+原文照发"副作用补执行未实现前先 observe，命中由每日 badcase 日报追踪
-    // （评估文档 §2.2/§2.4）。
+    // 这是缺工具调用的流程违规，文本本身可能正确；全文重写反而容易引入编造。
+    // 在支持「补调工具 + 原文照发」的副作用补执行前，只做 observe。
     action: GUARDRAIL_ACTION.OBSERVE,
     priority: GUARDRAIL_PRIORITY.P1,
     description: '拦住当前轮有图片/表情消息，但回复基于图片内容判断时没有成功保存图片描述的情况。',

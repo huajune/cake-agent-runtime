@@ -86,10 +86,8 @@ export type GuardrailCoverage = (typeof GUARDRAIL_COVERAGES)[number];
  * - revise：内容不可发，LLM 重写文案
  * - block：内容不可发；runner 先做一次受控重写自救，二审仍违规才硬拦
  *
- * `replan`（重走工具再生成）已于 2026-07-27 退役，2026-08-13 清理出类型层：退役后
- * 17 天 5726 条 guardrail_review_records 里模型未在任何枚举字段吐过该值，容忍位失去
- * 实证依据。历史档案（459 条 first_decision='replan'）仍在库，但读取链路是 `as
- * OutputDecision` 断言、无运行时校验，展示由 web 侧独立词表承担，不依赖本枚举。
+ * `replan`（重走工具再生成）不属于当前决策枚举。历史档案中的 `first_decision='replan'`
+ * 由读取链路断言和 web 侧独立词表兼容，不依赖本枚举。
  */
 export const GUARDRAIL_DECISION = {
   PASS: 'pass',

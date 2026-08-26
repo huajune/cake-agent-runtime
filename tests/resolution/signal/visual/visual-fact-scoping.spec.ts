@@ -7,13 +7,13 @@ function extractTurnHints(...args: Parameters<typeof produceTurnHints>) {
 }
 
 /**
- * visual-fact-structuring R1/R1e/R3 规则轨授权域回归（badcase vkikct39 全链路）。
+ * visual-fact-structuring R1/R1e/R3 规则轨授权域回归。
  *
  * 三通道模型（产品方案附录 A.2）在规则轨的投影：
  * - job_posting sheet：全关（薪资≠期望薪资、门店城市≠候选人城市、门槛≠候选人属性）
  * - map_location sheet：仅地理
  * - resume/certificate sheet：身份可提但 phone 除外（裁决 B3：medium+确认升级）
- * - 无 sheet 视觉消息：身份关、偏好+地理开（= PR #870 现状，不劣化）
+ * - 无 sheet 视觉消息：身份关、偏好和地理开
  */
 describe('规则轨 · sheet 授权域', () => {
   const JOB_DESC =

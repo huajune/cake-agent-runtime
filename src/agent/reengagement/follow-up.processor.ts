@@ -360,8 +360,7 @@ export class FollowUpProcessor implements OnModuleInit {
     // 入群卡片或复聊回灌当人工介入。
     //
     // 这道闸与 lastProcessedCandidateMessageAt 水位正交：候选人 timeout 后若无人
-    // 回复，不会命中；只有后续确有真人回复才停，避免把 PR #766 修复的无人搭理回话
-    // 重新算成“已回话”。
+    // 回复，不会命中；只有后续确有真人回复才停，避免把无人回复误判成真人已介入。
     if (scenario.phase === 'post_booking') {
       const humanReplyAt = await this.detectHumanInterventionAfterCandidate(
         sessionRef.sessionId,

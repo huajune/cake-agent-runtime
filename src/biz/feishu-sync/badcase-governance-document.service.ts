@@ -416,8 +416,7 @@ export class BadcaseGovernanceDocumentService {
     const occurredAt = update.occurredAt || new Date();
     const displayedItems = update.items.slice(0, 40);
     // 同日多次运行只保留一个小节：已存在当日小节时只追加条目，不再新建标题。
-    // 旧实现按「月 日 时:分」建标题，2026-08-06 单日跑了 11 次巡检就堆出 20 个小节，
-    // 同一条 case 在不同小节里状态互相矛盾，运营从上往下读看不出最终状态。
+    // 避免按运行时刻反复建标题，导致同一条 case 分散在多个小节并出现状态冲突。
     const blocks: Array<Record<string, unknown>> = existingDaySection
       ? [...displayedItems.map((item) => this.bulletBlock(this.formatItem(item)))]
       : [

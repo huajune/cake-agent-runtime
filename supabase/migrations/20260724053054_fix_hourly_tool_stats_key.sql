@@ -4,8 +4,7 @@
 -- 背景：生产库实际生效的函数版本读 call_entry->>'name'，而写入侧
 -- （message_processing_records.tool_calls）的键是 'toolName'（仓库
 -- 20260417130223 迁移的定义也是 toolName）。取不到键 → tool_stats
--- 自 2026-04-17 起恒为 '{}'，Dashboard「人工介入触发次数」等依赖
--- 小时聚合的工具统计只剩当前小时实时补尾，长期严重低估。
+-- 键名不一致会让 tool_stats 恒为 '{}'，导致依赖小时聚合的工具统计长期低估。
 --
 -- 处置：
 --   1. CREATE OR REPLACE 重推与仓库 20260417130223 一致的定义

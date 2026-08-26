@@ -1,7 +1,7 @@
 // 知识归类：procedural —— 发送前反幻觉防线：常驻自检 recitation + 本轮命中才注入的动态硬禁令。
 // prompt-rule-ledger: docs/prompt-rule-ledger.md（发送前自检 + 本轮动态硬禁令总账）
 /**
- * 发送前防线统一规则表（2026-08-26 裁定：final-check 与 critical-turn-guard 合并为单一居所）。
+ * 发送前防线统一规则表：final-check 与 critical-turn-guard 的单一居所。
  *
  * 两类规则同表登记，靠 trigger 区分：
  * - trigger='always'：每轮常驻的发送前自检项，按分组渲染成「# 发送前自检」块
@@ -11,7 +11,7 @@
  *   先承认规则、最后又被阶段策略带回收资或预约。
  *
  * 装配不变量：本 section 产出至多两个 block（id 固定为 final-check / critical-turn-guard），
- * preparation 的 input-guard 依赖 critical-turn-guard 块 id 插缝；两块内容与合并前逐字节一致。
+ * preparation 的 input-guard 依赖 critical-turn-guard 块 id 插缝。
  *
  * turn 规则匹配语义：
  * - target=current：只匹配本轮用户输入（末尾连续 user 块）；

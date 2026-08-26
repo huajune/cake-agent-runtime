@@ -134,7 +134,7 @@ export function buildCancelWorkOrderTool(
         const chatId = context.session.chatId ?? context.session.sessionId;
 
         // 测试链路 PII 白名单闸门：cancel 真调海绵生产网关，测试重放只允许
-        // 假身份工单（与 booking 同源防线，2026-07-27 误建工单事故后固化）。
+        // 假身份工单，与 booking 共用同一条生产写入防线。
         if (context.runtime.strategySource === 'testing' && !isTestPiiPhoneAllowed(phone)) {
           return buildToolError({
             errorType: TOOL_ERROR_TYPES.TEST_LINK_REAL_PII_BLOCKED,
