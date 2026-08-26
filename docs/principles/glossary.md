@@ -14,7 +14,7 @@
 | 行业名（中文对照） | 一句话定义 | 库内范本 | 检索线索 |
 |---|---|---|---|
 | **Guardrails**（守卫） | 对 LLM 应用分层设防：input / prompt / tool / output 四层 | `src/agent/guardrail/{input,tool,output}`；prompt 层见示教纪律 | OWASP LLM Top 10、NVIDIA NeMo Guardrails、Datadog guardrails |
-| **Grounding**（证据锚定） | 模型输出必须锚定可验证的证据源 | `candidateClaims` 强制附 quote | Anthropic Citations API、grounded generation |
+| **Grounding**（证据锚定） | 模型输出必须锚定可验证的证据源 | precheck `formAnswers` 的规范值必须附候选人 quote 并经公证回查 | Anthropic Citations API、grounded generation |
 | **Citation verification**（引文校验） | 对模型给出的引用做确定性/检索校验——只生成引用不校验是不够的 | `evidence/notary.ts` 三问 | CiteCheck、CiteGuard |
 | **Provenance / Attribution**（出处/归属） | 内容来源可追溯：谁产生的、经过什么管道 | 传输来源标记（`extractCandidateTexts`）、jobId 溯源闸 | data provenance、W3C PROV |
 | **Canary values**（占位值/金丝雀值） | 注册的假值，永不应出现在合法输出；输出侧确定性扫描即测出泄漏 | 占位号黑名单 `PLACEHOLDER_PHONES` | canary tokens、OWASP LLM07:2025 |

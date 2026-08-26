@@ -39,18 +39,19 @@
 ```
 契约实时查询（零缓存；空标签岗=数据异常→escalated+告警，禁按「无筛」放行）
   → loadOrCreate 表单（Redis 快照；phone 到达即 rebind）
-  → 四通道提案（只对 empty 槽位）：
-      claim（主聊模型作证，唯一语义主通道） > form_line（模板行回捞）
-      > form_answer（模型转写） > adapter_sweep（确定性判据收网）
-      同槽多通道命中按优先级去重，主作证胜出
+  → 三通道提案（只对 empty 槽位）：
+      formAnswers（主聊模型唯一作证入口，labelTitle + value + quote + operation）
+      > form_line（模板行回捞） > adapter_sweep（确定性判据收网）
+      同槽多通道命中按优先级去重，formAnswers 胜出
   → proposeValue 写入公证（§4）→ 槽位 filled / disqualified / 拒收(askCount+1)
   → verdictOf 派生行动：collecting=只问 empty（先写入后发问；筛选项排登记项前）/
       ready=复述一次 / disqualified=按披露分级渲染 / escalated=转人工 / submitted=停手
   → persist（渲染复述与落账同步完成，lastRecap 在案）
 ```
 
-模板与复述从槽位渲染（字段名一律契约 labelTitle 原文），所见即所记；模板一次列全字段，
-已知预填、缺的留空，禁止分批漏斗式收资。
+模板与复述从槽位渲染（字段名一律 100% 使用契约 labelTitle 原文），所见即所记；模板一次列
+全字段，已知预填、缺的留空，禁止分批漏斗式收资。渲染层不剥括号、标点或截断脏标题；
+选项提示只放在冒号右侧占位（`标签：（选项 A/选项 B）`），候选人原样回传占位时不算作答。
 
 ## 4. 写入公证（form-writes.ts `proposeValue`——改表唯一途径之一）
 
@@ -60,7 +61,9 @@
 1. **出处门**：sourceText 必须逐字连续出现在本轮候选人原文（归一化子串查找）；
    身份槽位另查值本体锚定——值须逐字在承值文本中（候选人原话，或 confirm 式的
    `agentQuestionQuote` 问句：候选人答"对"+问句含值，两段合成完整证据）；
-2. **形态门**：身份字段形状（手机 11 位/姓名非昵称形）＋ optionCode ∈ 契约选项集；
+2. **形态/值词表门**：身份字段形状（手机 11 位/姓名非昵称形）＋ optionCode ∈ 契约选项集；
+   选项值必须能回配实时契约 optionLabel/code，FILE 必须是候选人消息中的真实附件 URL；
+   `true`/`false` 等布尔字符串化产物拒收入槽，渲染层不做 `false`→「否」代答；
 3. **归属门**（仅姓名/手机号）：值须为本人给出——引用块经理、截图第三方、Agent 自述
    均拒（evaluateBookingName/PhoneGate 走消息结构取证）；
 4. **置信授予**：确定性判据可从原话复算出等价值＝high，否则 medium——**只定档不否决**
@@ -109,7 +112,8 @@ outcome=`restated` 落审计；askCount 不清零防刷熔断配额）。系统/
 
 ## 7. 与记忆的边界
 
-- **记忆→表单预填**（archiveFacts）：只填空槽、只在本表首次见到该槽时生效；
+- **记忆→表单预填**（archiveFacts）：只填空槽、只在本表首次见到该槽时生效，并经过与
+  公证写入一致的字段答案词表门，无法适配当岗契约的旧值不 seed；
   **作用域＝同一托管账号**（候选人信息不跨账号共享，跨账号视为首次接触）；
   预填值仍过复述终审。
 - **表单→记忆回写**：办结后身份字段以 `confidence:'high'/source:'candidate_quote'` 写
@@ -121,7 +125,7 @@ outcome=`restated` 落审计；askCount 不清零防刷熔断配额）。系统/
 - Redis 快照 `collection-form:{corpId}:{userId}:{botUserId}:{candidateRef}:{jobId}`，
   `botUserId` 取稳定企微 `wecomUserId`；整实体读写，回合租约（90s 心跳）单写者，无 CAS；
   列入「丢了算事故」key 清单。旧 key 不迁移、不兜底读，随 3 天 TTL 自然过期。
-- 审计：公证拒收 / slot_restated / slot_disqualified / escalated / config_debt /
+- 审计：labelTitle 定位失败、值适配/公证拒收 / slot_restated / slot_disqualified / escalated / config_debt /
   submitted 各落一条 `agent_execution_events`（同 traceId 可 join）；配置债经
   booking-card「收资配置备注」段披露给运营。
 
@@ -132,7 +136,8 @@ outcome=`restated` 落审计；askCount 不清零防刷熔断配额）。系统/
 - **词表禁判语义**：确定性第一档只做契约选项字面精确匹配（Map 级，含糊即 miss）；
   自然语言语义一律模型作证（LLM-as-judge + 公证出处），unknown 不得成为追问终点；
   禁以新增正则/别名追口语长尾。
-- **作证主通道＝主聊模型随工具调用提交 claims**；不设常驻第二语义读者（双通道判同值
+- **作证主通道＝主聊模型随 precheck 提交统一 `formAnswers`**；labelTitle 只定位实时契约
+  已有槽位，不能创建字段或控制 required/displayOrder；不设常驻第二语义读者（双通道判同值
   必打架）；小模型仅作轮末空槽收网与 shadow 审计。
 - **公证零语义判断**；判定入账永远如实（委婉只在渲染层）；producer 署名如实。
 - **D4 禁硬编码外系统 ID**：labelId/optionCode 字面量不进 src/；身份四槽识别走

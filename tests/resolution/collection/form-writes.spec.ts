@@ -531,7 +531,7 @@ describe('防线 4 · 臆造防线：sourceText 回查失败的提案零入账',
       agentQuestionQuote: `手机号是${TEST_CANDIDATE_PHONE}，对吗？`,
     });
     expect(result.outcome).toBe('rejected');
-    expect(result.reason).toBe(PROPOSAL_REJECTION_REASONS.identityGateRejected);
+    expect(result.reason).toBe(PROPOSAL_REJECTION_REASONS.confirmationEvidenceRejected);
   });
 
   it('确认式身份提案绑定真实相邻问答对 → 允许入账', () => {

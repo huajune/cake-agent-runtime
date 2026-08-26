@@ -130,7 +130,9 @@ export const PROPOSAL_REJECTION_REASONS = {
   sourceTextNotFound: 'source_text_not_found',
   valueNotInSourceText: 'value_not_in_source_text',
   invalidValueShape: 'invalid_value_shape',
+  valueNotInContractVocabulary: 'value_not_in_contract_vocabulary',
   unknownOptionCode: 'unknown_option_code',
+  confirmationEvidenceRejected: 'confirmation_evidence_rejected',
   missingAttributionCorpus: 'missing_attribution_corpus',
   identityGateRejected: 'identity_gate_rejected',
 } as const;
@@ -224,6 +226,19 @@ export function proposeValue(
   }
   // 值本体的基准文本：带 R1 问句时以问句为准（确认式作证），否则以候选人原话为准。
   const valueBearingText = proposal.agentQuestionQuote?.trim() || sourceText;
+  const agentQuestionQuote = proposal.agentQuestionQuote?.trim();
+  if (agentQuestionQuote) {
+    if (
+      !proposal.messages ||
+      !isAgentQuestionConfirmedInDialogue(agentQuestionQuote, sourceText, proposal.messages)
+    ) {
+      return reject(
+        form,
+        PROPOSAL_REJECTION_REASONS.confirmationEvidenceRejected,
+        '确认问句与候选人肯定应答未在真实相邻对话中找到',
+      );
+    }
+  }
   if (identityKey && !valueContainedInSource(identityKey, proposal.value, valueBearingText)) {
     return reject(
       form,
@@ -235,6 +250,11 @@ export function proposeValue(
   }
 
   // ── ② 形态门 ──
+  const contractValueRejection = validateContractValue(field, proposal.value, proposal.optionCodes);
+  if (contractValueRejection) {
+    return reject(form, contractValueRejection.reason, contractValueRejection.detail);
+  }
+
   const claimField = identityKey ? IDENTITY_TO_CLAIM_FIELD[identityKey] : null;
   if (claimField && !isValidCandidateFieldShape(claimField, proposal.value)) {
     return reject(
@@ -243,15 +263,6 @@ export function proposeValue(
       `值形状非法: ${proposal.value}`,
     );
   }
-  const unknownCode = firstUnknownOptionCode(field, proposal.optionCodes);
-  if (unknownCode !== null) {
-    return reject(
-      form,
-      PROPOSAL_REJECTION_REASONS.unknownOptionCode,
-      `optionCode ${unknownCode} 不在 labelId ${field.labelId} 的契约选项集内`,
-    );
-  }
-
   // ── ③ 归属门（身份槽位专属） ──
   if (identityKey === 'name' || identityKey === 'phone') {
     if (!proposal.messages) {
@@ -261,16 +272,7 @@ export function proposeValue(
         `身份槽位 ${identityKey} 缺归属取证语料，闸门无法判定`,
       );
     }
-    const agentQuestionQuote = proposal.agentQuestionQuote?.trim();
-    if (agentQuestionQuote) {
-      if (!isAgentQuestionConfirmedInDialogue(agentQuestionQuote, sourceText, proposal.messages)) {
-        return reject(
-          form,
-          PROPOSAL_REJECTION_REASONS.identityGateRejected,
-          `身份槽位 ${identityKey} 的确认问句/肯定应答未在真实相邻对话中找到`,
-        );
-      }
-    } else {
+    if (!agentQuestionQuote) {
       const gate =
         identityKey === 'name'
           ? evaluateBookingNameGate(proposal.value, proposal.messages)
@@ -506,6 +508,7 @@ export function seedArchiveValue(
   if (!slot || slot.state !== 'empty') return form;
   const value = archived.value.trim();
   if (!value) return form;
+  if (validateContractValue(field, value, archived.optionCodes)) return form;
 
   return withSlot(form, {
     labelId: field.labelId,
@@ -630,6 +633,67 @@ function firstUnknownOptionCode(
     ...field.rejectedOptions.map((option) => option.optionCode),
   ]);
   return optionCodes.find((code) => !known.has(code)) ?? null;
+}
+
+/**
+ * 岗位字段答案词表门。模板与 recap 只负责显示已办结槽位，不在渲染层替候选人做
+ * `false`→「否」一类语义转换；无法用实时契约答案形态表达的值必须在写入边界拒收。
+ */
+function validateContractValue(
+  field: ContractFieldDef,
+  value: string,
+  optionCodes: readonly string[] | undefined,
+): { reason: ProposalRejectionReason; detail: string } | null {
+  const normalizedValue = value.normalize('NFKC').trim();
+  if (!normalizedValue || /^(?:true|false)$/iu.test(normalizedValue)) {
+    return {
+      reason: PROPOSAL_REJECTION_REASONS.valueNotInContractVocabulary,
+      detail: `值「${normalizedValue}」不属于 labelId ${field.labelId} 的候选人答案词表`,
+    };
+  }
+
+  if (field.fieldType === 'FILE') {
+    return /^https?:\/\/\S+$/iu.test(normalizedValue)
+      ? null
+      : {
+          reason: PROPOSAL_REJECTION_REASONS.invalidValueShape,
+          detail: `labelId ${field.labelId} 的 FILE 值不是候选人附件 URL`,
+        };
+  }
+
+  if (field.fieldType !== 'SINGLE_OPTION' && field.fieldType !== 'MULTIPLE_OPTION') return null;
+  if (!optionCodes?.length) {
+    return {
+      reason: PROPOSAL_REJECTION_REASONS.valueNotInContractVocabulary,
+      detail: `值「${normalizedValue}」无法适配 labelId ${field.labelId} 的契约选项`,
+    };
+  }
+
+  const unknownCode = firstUnknownOptionCode(field, optionCodes);
+  if (unknownCode !== null) {
+    return {
+      reason: PROPOSAL_REJECTION_REASONS.unknownOptionCode,
+      detail: `optionCode ${unknownCode} 不在 labelId ${field.labelId} 的契约选项集内`,
+    };
+  }
+
+  const optionByCode = new Map(
+    [...field.acceptedOptions, ...field.rejectedOptions].map((option) => [
+      option.optionCode,
+      option.optionLabel.normalize('NFKC').trim(),
+    ]),
+  );
+  const selectedLabels = optionCodes.map((code) => optionByCode.get(code) ?? '');
+  const labelsAgree =
+    field.fieldType === 'SINGLE_OPTION'
+      ? selectedLabels.length === 1 && normalizedValue === selectedLabels[0]
+      : selectedLabels.every((label) => label && normalizedIncludes(normalizedValue, label));
+  return labelsAgree
+    ? null
+    : {
+        reason: PROPOSAL_REJECTION_REASONS.valueNotInContractVocabulary,
+        detail: `值「${normalizedValue}」与 labelId ${field.labelId} 的 optionCode 不一致`,
+      };
 }
 
 /**

@@ -1,5 +1,3 @@
-import { z } from 'zod';
-
 /**
  * 候选人事实声明（CandidateFactClaim）——候选人资料证据化方案 §4.1 的落地类型。
  *
@@ -223,31 +221,3 @@ export interface AdjudicatedClaim<T = unknown> {
   /** superseded 时指向取代它的 claimId。 */
   supersededByClaimId?: string;
 }
-
-// ==================== 模型入参 schema（precheck candidateClaims） ====================
-
-/**
- * 模型经 precheck `candidateClaims` 提交的声明。刻意窄于内部 Claim：
- * producer/assertedAt/claimId 由工具侧统一填充，模型只提交它的理解与出处。
- */
-export const CandidateClaimInputSchema = z.object({
-  field: z.enum(CANDIDATE_CLAIM_FIELDS).describe('字段名'),
-  value: z
-    .union([z.string(), z.number(), z.boolean(), z.null()])
-    .describe('字段值；operation=clear 时传 null'),
-  operation: z.enum(CANDIDATE_FACT_OPERATIONS).optional().describe('操作语义，默认 set'),
-  quote: z
-    .string()
-    .min(1)
-    .max(200)
-    .describe('候选人原话逐字片段——必须能在候选人消息里原样找到，否则该声明无效'),
-  agentQuestionQuote: z
-    .string()
-    .min(1)
-    .max(300)
-    .optional()
-    .describe('operation=confirm 时绑定的 Agent 求证问句逐字片段；值本体必须出现在该问句中'),
-  reasoning: z.string().max(300).optional().describe('该值如何从原话得出（归一化/纠错说明）'),
-});
-
-export type CandidateClaimInput = z.infer<typeof CandidateClaimInputSchema>;

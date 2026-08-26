@@ -40,7 +40,7 @@ export function renderRecap(
   const titleById = new Map(contract.map((field) => [field.labelId, field.labelTitle]));
   const lines = labelIds.map((labelId) => {
     const slot = form.slots[labelId];
-    return `${normalizeFormLabel(titleById.get(labelId) ?? String(labelId))}：${slot.value?.value ?? ''}`;
+    return `${titleById.get(labelId) ?? String(labelId)}：${slot.value?.value ?? ''}`;
   });
 
   return {
@@ -48,19 +48,4 @@ export function renderRecap(
     labelIds,
     form: markRecapSent(form, labelIds),
   };
-}
-
-/**
- * 表单行的标签清洗：标点会让 `MessageSplitter.isGenericFormFieldLine` 不认这一行
- * （它要求冒号左侧不含逗号/句号/问号/分号，且长度 ≤48），行一旦不被认成表单行，
- * 整块就失去原子性、会被按句拆散。生产实测标题里带筛选指令的脏配置不少
- * （「是否学生（不要学生及暑假工）」），故渲染前统一剥括号补充与句读。
- */
-function normalizeFormLabel(title: string): string {
-  const stripped = title
-    .replace(/[（(][^）)]*[）)]/gu, '')
-    .replace(/[，,。！？!?；;]/gu, ' ')
-    .trim();
-  const label = stripped || title.trim();
-  return label.length > 48 ? label.slice(0, 48) : label;
 }

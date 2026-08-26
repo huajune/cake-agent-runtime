@@ -83,7 +83,7 @@ describe('renderRecap', () => {
       姓名：兮兮
       手机号：18271421690
       年龄：26
-      是否学生：社会人士
+      是否学生（不要学生及暑假工）：社会人士
 
       没问题的话我这就帮你提交，有不对的地方直接说改哪项"
     `);
@@ -102,10 +102,9 @@ describe('renderRecap', () => {
     expect(rendered.form.lastRecap).toBeUndefined();
   });
 
-  it('脏标题在表单行里被清洗（括号补充与句读会让分段器不认表单行）', () => {
+  it('recap 标签 100% 使用契约 labelTitle 原文，不做清洗', () => {
     const text = renderRecap(filledForm(), CONTRACT).text!;
-    expect(text).toContain('是否学生：社会人士');
-    expect(text).not.toContain('不要学生及暑假工');
+    expect(text).toContain('是否学生（不要学生及暑假工）：社会人士');
   });
 });
 
@@ -119,7 +118,12 @@ describe('Spike S5 · 复述文案与分段协议兼容', () => {
     const segments = MessageSplitter.split(text);
     expect(segments).toHaveLength(2);
     expect(segments[0]).toContain('帮你核对一下报名信息');
-    for (const line of ['姓名：兮兮', '手机号：18271421690', '年龄：26', '是否学生：社会人士']) {
+    for (const line of [
+      '姓名：兮兮',
+      '手机号：18271421690',
+      '年龄：26',
+      '是否学生（不要学生及暑假工）：社会人士',
+    ]) {
       expect(segments[0]).toContain(line);
     }
   });
@@ -137,7 +141,7 @@ describe('Spike S5 · 复述文案与分段协议兼容', () => {
   it('段数上限收口时表单块仍不被合并（原子块不参与 coalesce）', () => {
     const segments = MessageSplitter.split(text, 1);
     expect(segments[0]).toContain('姓名：兮兮');
-    expect(segments[0]).toContain('是否学生：社会人士');
+    expect(segments[0]).toContain('是否学生（不要学生及暑假工）：社会人士');
   });
 
   it('末尾标点会被投递层剥掉——复述文案不把语义押在句末标点上', () => {

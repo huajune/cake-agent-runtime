@@ -212,7 +212,8 @@ section 清单到 `final-check` 结束，`critical-turn-guard` 已不是独立 s
 
 - `F11` — 禁止替候选人填写收资字段；年龄尤其不能拿岗位上下限兜底。
   - **来源**：badcase（把岗位上限 50 当成候选人年龄）。
-  - **代码兜底**：状态机公证拒收，claims 必须引用候选人原话。
+  - **代码兜底**：状态机公证拒收；precheck 唯一答案入口 `formAnswers` 必须使用契约
+    labelTitle，并以候选人 quote 作证。
 
 - `F12` — 工作内容只按工具字段回答，禁止用行业常识泛化。
   - **来源**：badcase（“六姐洗碗”）。
@@ -273,7 +274,8 @@ section 清单到 `final-check` 结束，`critical-turn-guard` 已不是独立 s
 
 ### 话术节奏与敏感约束（T）
 
-- `T1` — 禁止分批收资；字段范围以 precheck 的 `requiredFieldsToCollectNow` 为准。
+- `T1` — 禁止分批收资；字段范围以 precheck 的 `requiredFieldsToCollectNow` 为准，发出时
+  逐字照发同次返回的 `templateText`，不得改写标签、增删或重排行。
   - **来源**：报名率数据。
   - **状态**：2026-08-21 已对齐收资状态机，progressive 由状态机裁决。
 
@@ -448,7 +450,7 @@ FC 编号保留为历史别名：
 | duliday_modify_interview_time                  | 1,810                                        | 改约契约                                            | 与 T14/BK2 成对                                                                                                                                                                                                                                                                                                                                                                    |
 | skip_reply                                     | 974                                          | 沉默场景                                            | 与 G14 成对                                                                                                                                                                                                                                                                                                                                                                        |
 | send_store_location                            | 829                                          | 定位发送                                            | 与 G5/BK6/FC1 成对                                                                                                                                                                                                                                                                                                                                                                 |
-| duliday_interview_precheck                     | 729                                          | 参数纪律/行动纪律（收资状态机接管后瘦身 13.5K→729） | **"职责收进代码、描述自然变薄"的先例**                                                                                                                                                                                                                                                                                                                                             |
+| duliday_interview_precheck                     | 807                                          | 参数纪律/行动纪律（收资状态机接管后保持精简）       | **唯一 `formAnswers` 入参与逐字照发模板的公开契约**                                                                                                                                                                                                                                                                                                                                 |
 | risk_alert / advance_stage / recall_history 等 | ≤620                                         | —                                                   | 健康                                                                                                                                                                                                                                                                                                                                                                               |
 
 ## 七、守卫 hard-rules（拦侧，19 ruleId）

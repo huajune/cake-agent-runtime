@@ -87,5 +87,5 @@ gate 处理。
 - 不为开放语义新增正则分支；
 - 不新增输入分类 LLM、输出 reviewer 或 shadow diff；
 - 不用向量判断否定、品牌同音或 quote 真实性；
-- 不把 precheck 的 `candidateClaims/formAnswers` 契约问题混入本改造；
+- precheck 已收敛为单一 `formAnswers` 契约；本分类不另建收资语义入口；
 - 不用新观测、Dashboard、Rule Catalog 或人工标注流程替代代码边界。

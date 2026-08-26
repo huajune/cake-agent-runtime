@@ -18,7 +18,8 @@
 **producers/ · 主张的生产（按信号渠道切分）**
 
 - `rule-track.ts` — 规则轨全字段 claim producer：逐条命中并锚定 quote，不持有字段合并策略
-- `direct-field.ts` / `model-claims.ts` / `student-identity.ts` — 逐条锚定 / 模型主张 / 学生身份识别器
+- `direct-field.ts` / `student-identity.ts` — 逐条锚定 / 学生身份识别器；precheck 的模型答案由
+  `tools/collection` 接收统一 `formAnswers` 并直接进入表单公证，不再在档案域生成第二份 model claim
 - `city.ts` / `geo-preference.ts` / `brand-intents.ts` — 城市多路 / 地理偏好清除 / LLM 品牌极性
 
 **入档准入（memory 写入前的门）**

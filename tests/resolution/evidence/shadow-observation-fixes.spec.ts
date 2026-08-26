@@ -1,7 +1,6 @@
 import { adjudicateCandidateClaims } from '@resolution/evidence/engine';
 import { extractCandidateTexts } from '@resolution/signal/self-report';
 import { produceDirectFieldClaims } from '@resolution/evidence/producers/direct-field';
-import { produceLegacyModelClaims } from '@resolution/evidence/producers/model-claims';
 
 /**
  * shadow 观测第 1 天（2026-08-06）生产实测缺陷的回归防线。
@@ -71,7 +70,18 @@ describe('P0-1 quote 截断与推导输入一致（shadow 观测 2026-08-06）',
     // 原不变式守的是「补录的 quote 必须支撑该值」——那条链路本身（拿正则在候选人全文
     // 里反推一段 quote 出来）已随 C3 删除：它是按产者排信任的教义遗产，也是 72.3%
     // 假阳的来源。裸值现在只有一个诚实结论：没有引文就是没有出处，模型本轮补 quote 即可。
-    const claims = produceLegacyModelClaims({ age: '24' }, AT);
+    const claims = [
+      {
+        claimId: 'legacy_age_1',
+        field: 'age' as const,
+        value: '24',
+        operation: 'set' as const,
+        producer: 'model' as const,
+        interpretation: 'direct' as const,
+        evidence: { quote: '' },
+        assertedAt: AT,
+      },
+    ];
     const { adjudicated } = adjudicateCandidateClaims({
       claims,
       candidateTexts: [LONG_MESSAGE],

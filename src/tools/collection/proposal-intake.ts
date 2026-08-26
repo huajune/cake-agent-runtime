@@ -1,34 +1,28 @@
 /**
  * 收资值的**写入运输规范**：把本轮所有作证通道汇成统一的槽位提案流。
  *
- * 通道优先级（§11 0819 追加裁定：**作证主通道＝主聊模型随工具调用提交 claims**）：
- *  1. `candidateClaims` —— 主通道。主模型是全系统最好的语义读者，其证词即语义判决、
- *     零额外调用。claim 自带 quote，直接作 sourceText。
- *  2. `formAnswers` —— 动态契约字段答案，按标签标题定位
- *     labelId。0819 死循环案里"补充标签在 claim 运输里无座位"正是缺这条。
- *  3. 适配器轮末扫描 —— 安全网。主模型漏作证时兜底（§11：小模型/确定性扫描只做
+ * 通道优先级：
+ *  1. `formAnswers` —— 主聊模型唯一作证通道。字段名直接使用实时契约 labelTitle，
+ *     同时携带规范值、候选人原话与操作语义，零额外调用。
+ *  2. `form_line` —— 候选人按模板逐行回填的确定性回捞。
+ *  3. 适配器轮末扫描 —— 安全网。主模型漏作证时兜底（§11：确定性扫描只做
  *     轮末空槽收网，不设常驻第二语义读者）。只补**空槽**，不碰已填。
  *
- * 四条通道的产物一律过 `proposeValue` 公证，本文件不做任何判定——它只负责
+ * 三条通道的产物一律过 `proposeValue` 公证，本文件不做语义判定——它只负责
  * "把话搬到正确的槽位并附上出处"。
  */
 
-import { adapterFor, type ContractFieldDef, type ValueProposal } from '@resolution/collection';
+import {
+  adapterFor,
+  genericAdapter,
+  type ContractFieldDef,
+  type SlotProposal,
+  type ValueProposal,
+} from '@resolution/collection';
 import type { CandidateClaimField } from '@resolution/evidence/claim.types';
-
-/** 主通道 claim 的最小形状（与 precheck 入参 candidateClaims 同构）。 */
-export interface IntakeClaim {
-  field: string;
-  value?: string | number | boolean | null;
-  quote?: string;
-  operation?: 'set' | 'correct' | 'confirm' | 'clear';
-  /**
-   * 绑定的 Agent 问句原文（R1 通道，§10.1「确认可作证」）。
-   * 候选人对复述清单/针对性提问的肯定应答靠它折算成本人终审——此时值本体在**问句**里，
-   * 不要求候选人原话逐字含值。
-   */
-  agentQuestionQuote?: string;
-}
+import { normalizedIncludes } from '@resolution/evidence/normalize';
+import type { FormAnswerInput } from './form-answer-input';
+import { optionPlaceholder } from './collection-template.renderer';
 
 export interface IntakeInput {
   contract: readonly ContractFieldDef[];
@@ -36,11 +30,20 @@ export interface IntakeInput {
   candidateTexts: readonly string[];
   /** 完整消息序列，身份槽位归属门取证用。 */
   messages: readonly unknown[];
-  claims?: readonly IntakeClaim[];
-  /** 动态契约字段答案：键为实时契约标签标题原文，值为候选人答案。 */
-  formAnswers?: Record<string, string> | null;
+  /** 主模型唯一收资入口；标题只能定位实时契约已有槽位。 */
+  formAnswers?: readonly FormAnswerInput[] | null;
   /** 已 filled 的槽位（安全网只扫空槽，不碰已填）。 */
   filledLabelIds: ReadonlySet<number>;
+  /** 定位/无值提案等无法进入 proposeValue 的拒收，同样接入既有收资审计面。 */
+  onAudit?: (audit: IntakeAudit) => void;
+}
+
+export interface IntakeAudit {
+  kind: 'proposal_rejected';
+  labelId?: number;
+  reason: string;
+  detail?: string;
+  channel: 'form_answer';
 }
 
 /** claim 字段名 → 契约字段：身份四槽走 systemField，其余按标题语义族。 */
@@ -76,13 +79,13 @@ export function findFieldForClaim(
 }
 
 /**
- * 按标签标题定位契约字段（补充标签答案 / applyErrorList 展示名共用同一口径）。
+ * 按标签标题定位契约字段（统一 formAnswers / 表单行回捞共用同一口径）。
  *
  * 两级匹配，**歧义即放弃**：
  * 1. labelTitle 全等——0818 全量实测 468 岗 × 109 标签**零标题冲突**，
  *    labelTitle → labelId 是干净的 1:1，这是"名字即键、无需翻译表"的依据；
- * 2. 剥括号后的主干相等——模板行会剥括号（既为分段兼容，也因为括号里往往是筛选指令，
- *    原样发给候选人等于泄露），所以候选人/模型回填时给的是主干。
+ * 2. 剥括号后的主干相等——只作为模型/候选人天然改写漂移的容错，所有对外渲染仍
+ *    100% 使用契约 labelTitle 原文。
  *
  * ⚠️ 主干**不唯一**：实测 `体重 → {20, 50}`、`专业 → {544, 659}`。当前之所以安全，
  * 只是因为匹配限定在单岗契约内、且实测同岗位内主干撞车数为 0——那是**数据碰巧安全，
@@ -94,11 +97,21 @@ export function findFieldByTitle(
   contract: readonly ContractFieldDef[],
   title: string,
 ): ContractFieldDef | null {
+  return resolveFieldByTitle(contract, title).field;
+}
+
+export type FieldTitleResolutionReason = 'label_title_not_found' | 'label_title_ambiguous';
+
+/** 与 findFieldByTitle 同一匹配逻辑，但保留失败原因供审计。 */
+export function resolveFieldByTitle(
+  contract: readonly ContractFieldDef[],
+  title: string,
+): { field: ContractFieldDef | null; reason?: FieldTitleResolutionReason } {
   const target = normalizeTitle(title);
-  if (!target) return null;
+  if (!target) return { field: null, reason: 'label_title_not_found' };
 
   const exact = contract.find((field) => normalizeTitle(field.labelTitle) === target);
-  if (exact) return exact;
+  if (exact) return { field: exact };
 
   // 括号要**两边都剥**：契约标题可能自带括号补充（"是否学生（不要学生及暑假工）"），
   // 而候选人回填时带的括号往往是**我们模板加上去的**枚举提示（"身份（学生/社会人士）："）。
@@ -111,13 +124,17 @@ export function findFieldByTitle(
       stripParenthetical(field.labelTitle) === targetTrunk,
   );
   // 撞车即放弃：定位错会把答案静默写进别的槽位（不可恢复），定位不到只是多问一句。
-  return byTrunk.length === 1 ? byTrunk[0] : null;
+  if (byTrunk.length === 1) return { field: byTrunk[0] };
+  return {
+    field: null,
+    reason: byTrunk.length > 1 ? 'label_title_ambiguous' : 'label_title_not_found',
+  };
 }
 
 export interface IntakeProposal extends ValueProposal {
   labelId: number;
   /** 供审计事件区分"这条值从哪条通道来的"。 */
-  channel: 'claim' | 'form_line' | 'form_answer' | 'adapter_sweep';
+  channel: 'form_answer' | 'form_line' | 'adapter_sweep';
 }
 
 /**
@@ -130,50 +147,15 @@ export function collectProposals(input: IntakeInput): IntakeProposal[] {
     if (!byLabel.has(proposal.labelId)) byLabel.set(proposal.labelId, proposal);
   };
 
-  for (const proposal of fromClaims(input)) put(proposal);
-  for (const proposal of fromFormLines(input)) put(proposal);
   for (const proposal of fromFormAnswers(input)) put(proposal);
+  for (const proposal of fromFormLines(input)) put(proposal);
   for (const proposal of fromAdapterSweep(input)) put(proposal);
 
   return [...byLabel.values()];
 }
 
-/** 通道 1：主聊模型 claims。quote 直接作 sourceText；confirm 类带 agentQuestionQuote。 */
-function fromClaims(input: IntakeInput): IntakeProposal[] {
-  const proposals: IntakeProposal[] = [];
-  for (const claim of input.claims ?? []) {
-    if (claim.operation === 'clear') continue;
-    const value = claim.value === null || claim.value === undefined ? '' : String(claim.value);
-    if (!value.trim()) continue;
-    const field = findFieldForClaim(input.contract, claim.field as CandidateClaimField);
-    if (!field) continue;
-    const adapted = adapterFor(field)({ field, candidateText: value });
-    if (
-      !adapted &&
-      (field.fieldType === 'SINGLE_OPTION' || field.fieldType === 'MULTIPLE_OPTION')
-    ) {
-      continue;
-    }
-
-    proposals.push({
-      labelId: field.labelId,
-      value: adapted?.value ?? value,
-      optionCodes: adapted?.optionCodes,
-      sourceText: (claim.quote ?? '').trim(),
-      producer: 'model',
-      candidateTexts: input.candidateTexts,
-      messages: input.messages,
-      agentQuestionQuote: claim.agentQuestionQuote,
-      // 显式改口只认作证者声明的 operation='correct'（§11：代码不推断"像不像改口"）。
-      ...(claim.operation === 'correct' ? { restatement: true } : {}),
-      channel: 'claim',
-    });
-  }
-  return proposals;
-}
-
 /**
- * 通道 1.5：**表单回捞**——候选人按我们发的模板逐行回填。
+ * 通道 2：**表单回捞**——候选人按我们发的模板逐行回填。
  *
  * 这条通道是必需品不是兼容层：收资模板就是 `标签：值` 行，候选人的回复自然也是
  * `标签：值` 行。不拆行就等于把整行喂给字段识别器，两种错法都实测过：
@@ -188,15 +170,16 @@ function fromFormLines(input: IntakeInput): IntakeProposal[] {
   const proposals: IntakeProposal[] = [];
   for (const text of input.candidateTexts) {
     for (const rawLine of text.split(/\r?\n/u)) {
-      const matched = /^\s*([^：:\n]{1,48})\s*[：:]\s*(.+?)\s*$/u.exec(rawLine);
+      const matched = /^\s*([^：:\n]+?)\s*[：:]\s*(.+?)\s*$/u.exec(rawLine);
       if (!matched) continue;
       const [, label, value] = matched;
       const field = findFieldByTitle(input.contract, label);
       if (!field) continue;
+      if (value.trim() === optionPlaceholder(field)) continue;
 
-      // 只把值交给适配器；适配器认不出时，TEXT 型直接收原值，选项型交模型作证。
-      const adapted = adapterFor(field)({ field, candidateText: value });
-      if (!adapted && field.fieldType !== 'TEXT') continue;
+      // 只把值交给适配器。选项型认不出也生成提案，统一由值词表门拒收并落审计，
+      // 不再在运输层静默丢弃。
+      const adapted = adaptAnswerValue(field, value);
 
       proposals.push({
         labelId: field.labelId,
@@ -215,31 +198,91 @@ function fromFormLines(input: IntakeInput): IntakeProposal[] {
 }
 
 /**
- * 通道 2：补充标签答案。键是标签标题原文，值是候选人答案。
- * 答案本身就是候选人说的话，故 sourceText 取答案在语料里的原样片段——
- * 回查不到（模型改写过）就交给公证拒收，这里不替它圆场。
+ * 通道 1：主聊模型唯一 formAnswers 入口。labelTitle 只定位实时契约已有槽位；
+ * value 是规范值，quote 是候选人原话，两者不再混为一个字符串。
  */
 function fromFormAnswers(input: IntakeInput): IntakeProposal[] {
   const proposals: IntakeProposal[] = [];
-  for (const [title, answer] of Object.entries(input.formAnswers ?? {})) {
-    const value = String(answer ?? '').trim();
-    if (!value) continue;
-    const field = findFieldByTitle(input.contract, title);
-    if (!field) continue;
+  for (const answer of input.formAnswers ?? []) {
+    const resolution = resolveFieldByTitle(input.contract, answer.labelTitle);
+    const field = resolution.field;
+    if (!field) {
+      input.onAudit?.({
+        kind: 'proposal_rejected',
+        reason: resolution.reason ?? 'label_title_not_found',
+        detail: `labelTitle「${answer.labelTitle}」未能唯一定位当前岗位契约槽位`,
+        channel: 'form_answer',
+      });
+      continue;
+    }
 
-    const adapted = adapterFor(field)({ field, candidateText: value });
+    const operation = answer.operation ?? 'set';
+    if (operation === 'clear') {
+      const quote = answer.quote?.trim() ?? '';
+      if (!quote || !input.candidateTexts.some((text) => normalizedIncludes(text, quote))) {
+        input.onAudit?.({
+          kind: 'proposal_rejected',
+          labelId: field.labelId,
+          reason: 'source_text_not_found',
+          detail: 'clear 的 quote 未出现在候选人原文',
+          channel: 'form_answer',
+        });
+      }
+      continue;
+    }
+
+    const value = answer.value === null ? '' : String(answer.value).trim();
+    if (!value) continue;
+
+    const adapted = adaptAnswerValue(field, value);
     proposals.push({
       labelId: field.labelId,
       value: adapted?.value ?? value,
       optionCodes: adapted?.optionCodes,
-      sourceText: adapted?.sourceText ?? value,
+      // 文件字段以真实附件 URL 自证；其它字段必须以候选人 quote 作出处。
+      sourceText: field.fieldType === 'FILE' ? value : (answer.quote?.trim() ?? ''),
       producer: 'model',
       candidateTexts: input.candidateTexts,
       messages: input.messages,
+      agentQuestionQuote: answer.agentQuestionQuote,
+      ...(operation === 'correct' ? { restatement: true } : {}),
       channel: 'form_answer',
     });
   }
   return proposals;
+}
+
+/** 语义适配器优先；规范值恰为 optionLabel 时再走契约字面直配。 */
+function adaptAnswerValue(field: ContractFieldDef, value: string): SlotProposal | null {
+  const input = { field, candidateText: value };
+  return (
+    adapterFor(field)(input) ?? genericAdapter(input) ?? adaptMultipleOptionLabels(field, value)
+  );
+}
+
+/** MULTIPLE_OPTION 的规范值可列多个 optionLabel；只做契约标签逐字拆分，不猜同义词。 */
+function adaptMultipleOptionLabels(field: ContractFieldDef, value: string): SlotProposal | null {
+  if (field.fieldType !== 'MULTIPLE_OPTION') return null;
+  let remainder = value.normalize('NFKC');
+  const candidates = [...field.acceptedOptions, ...field.rejectedOptions]
+    .map((option) => ({ option, label: option.optionLabel.normalize('NFKC').trim() }))
+    .filter(({ label }) => label)
+    .sort((left, right) => right.label.length - left.label.length);
+  const selected: typeof candidates = [];
+  for (const candidate of candidates) {
+    if (!remainder.includes(candidate.label)) continue;
+    selected.push(candidate);
+    remainder = remainder.replaceAll(candidate.label, '');
+  }
+  if (selected.length === 0) return null;
+  if (remainder.replace(/[\s、/|,，;；]+/gu, '')) return null;
+  return {
+    labelId: field.labelId,
+    value: selected.map(({ option }) => option.optionLabel).join('、'),
+    optionCodes: selected.map(({ option }) => option.optionCode),
+    sourceText: value,
+    producer: 'candidate_quote',
+  };
 }
 
 /** 通道 3：安全网。只扫**空槽**，且只用确定性适配器（不引入第二语义读者）。 */
@@ -250,6 +293,7 @@ function fromAdapterSweep(input: IntakeInput): IntakeProposal[] {
   const proposals: IntakeProposal[] = [];
   for (const field of input.contract) {
     if (input.filledLabelIds.has(field.labelId)) continue;
+    if (hasExactPlaceholderEcho(input.candidateTexts, input.contract, field.labelId)) continue;
     const swept = adapterFor(field)({ field, candidateText: corpus });
     if (!swept) continue;
     proposals.push({
@@ -264,6 +308,22 @@ function fromAdapterSweep(input: IntakeInput): IntakeProposal[] {
     });
   }
   return proposals;
+}
+
+function hasExactPlaceholderEcho(
+  candidateTexts: readonly string[],
+  contract: readonly ContractFieldDef[],
+  labelId: number,
+): boolean {
+  for (const text of candidateTexts) {
+    for (const rawLine of text.split(/\r?\n/u)) {
+      const matched = /^\s*([^：:\n]+?)\s*[：:]\s*(.+?)\s*$/u.exec(rawLine);
+      if (!matched) continue;
+      const field = findFieldByTitle(contract, matched[1]);
+      if (field?.labelId === labelId && matched[2].trim() === optionPlaceholder(field)) return true;
+    }
+  }
+  return false;
 }
 
 function normalizeTitle(title: string): string {

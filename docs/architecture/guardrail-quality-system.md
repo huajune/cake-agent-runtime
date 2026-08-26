@@ -88,7 +88,7 @@ repair 是 Output 裁决后的有界收敛，不是新的 guardrail 层：
 2. ruleId 与现有 output catalog 双向一致，单测覆盖真阳和主要假阳；
 3. Prompt 教侧配对变化同步更新 [Prompt 规则台账](../prompt-rule-ledger.md)；
 4. 对话理解问题优先修主 Agent Prompt、既有抽取标签或工具契约；
-5. precheck `candidateClaims/formAnswers` 由独立改造负责，不在 Output 修补。
+5. precheck 只暴露统一 `formAnswers`，字段全集与标签原文由岗位契约负责，不在 Output 修补。
 
 ## 相关代码
 
