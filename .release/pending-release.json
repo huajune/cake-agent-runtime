@@ -819,6 +819,50 @@
         "450/450 测试套件通过，6826/6826 测试通过",
         "1 个套件 / 5 个测试按仓库配置跳过"
       ]
+    },
+    {
+      "number": "1045",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1045",
+      "title": "移除第二语义审查并收敛规则链",
+      "author": "huajune",
+      "mergedAt": "2026-08-26",
+      "businessUpdates": [
+        "将出站审查收敛到可确定性对账的高风险规则，并新增预约成功声明与工具回执对账。"
+      ],
+      "summary": [
+        "移除第二语义审查并收敛规则链",
+        "统一 precheck 收资入参契约",
+        "清理已移交的标签清单",
+        "移除 Output Guardrail 的第二模型 Semantic Reviewer、相关运行时配置、告警/观测与管理页入口。",
+        "将出站审查收敛到可确定性对账的高风险规则，并新增预约成功声明与工具回执对账。",
+        "调整品牌、用工形式、记忆、无岗、拉群与工具链路，并同步架构文档。"
+      ],
+      "features": [
+        "将出站审查收敛到可确定性对账的高风险规则，并新增预约成功声明与工具回执对账。"
+      ],
+      "fixes": [],
+      "optimizations": [
+        "移除 Output Guardrail 的第二模型 Semantic Reviewer、相关运行时配置、告警/观测与管理页入口。",
+        "调整品牌、用工形式、记忆、无岗、拉群与工具链路，并同步架构文档。"
+      ],
+      "ops": [
+        "移除第二语义审查并收敛规则链",
+        "统一 precheck 收资入参契约",
+        "清理已移交的标签清单"
+      ],
+      "config": [],
+      "envFiles": [
+        ".env.example"
+      ],
+      "verification": [
+        "`pnpm run ci:check`",
+        "定向回归：45 suites / 993 tests passed",
+        "pre-push 全量门禁：443 suites passed、1 skipped；6313 tests passed、5 skipped",
+        "`pnpm run duplication:check`：0.79%，低于 2.06%",
+        "`pnpm run test:di-smoke`：1/1 passed",
+        "`pnpm run release:ledger:check`",
+        "`git diff --check`"
+      ]
     }
   ],
   "lastRelease": {
