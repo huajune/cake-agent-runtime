@@ -96,8 +96,6 @@ export const TOOL_ERROR_TYPES = {
   // ============================================================
   JOB_LIST_MISSING_CITY_CONTEXT: 'job_list.missing_city_context',
   JOB_LIST_NO_RESULTS: 'job_list.no_results',
-  /** 连续两轮具体岗位推荐均被候选人否定，停止第三轮推荐并进入入群征询。 */
-  JOB_LIST_RECOMMENDATION_LIMIT_REACHED: 'job_list.recommendation_limit_reached',
   /** 本会话已经成功拉群，岗位查询/推荐链路永久收口。 */
   JOB_LIST_GROUP_HANDOFF_COMPLETE: 'job_list.group_handoff_complete',
   /**

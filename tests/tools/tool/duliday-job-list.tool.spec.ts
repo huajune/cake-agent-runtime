@@ -196,7 +196,9 @@ describe('buildJobListTool', () => {
     expect(builtTool.description).toContain('年龄判断必须沿用 precheck 弹性口径');
     expect(builtTool.description).toContain('候选人 52 岁遇到 20-50 岁 / 40-50 岁岗位');
     // 2026-08-21 P3-2 首批：福利追问条目并入"岗位详情缺字段必须按 jobId 补查（通用规则，含福利追问）"
-    expect(builtTool.description).toContain('岗位详情缺字段必须按 jobId 补查（通用规则，含福利追问）');
+    expect(builtTool.description).toContain(
+      '岗位详情缺字段必须按 jobId 补查（通用规则，含福利追问）',
+    );
     expect(builtTool.description).toContain('记忆只用于定位 jobId');
     expect(builtTool.description).toContain('综合薪资的"元/月"');
   });
@@ -753,7 +755,8 @@ describe('buildJobListTool', () => {
     expect(result._replyInstruction).toContain('不得调用 invite_to_group');
   });
 
-  it('stops before a third recommendation query after two dissatisfied rounds', async () => {
+  it('does not infer recommendation dissatisfaction from message regex history', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJobData()], total: 1 });
     const messages = [
       {
         role: 'assistant',
@@ -769,11 +772,8 @@ describe('buildJobListTool', () => {
 
     const result = await executeTool({ ...mockContext, messages });
 
-    expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_RECOMMENDATION_LIMIT_REACHED);
-    expect(result.noMatchScript.nextAction).toBe('offer_group_invite');
-    expect(result._replyInstruction).toContain('本轮不得继续查询或推荐');
-    expect(result._replyInstruction).toContain('不得调用 invite_to_group');
-    expect(mockSpongeService.fetchJobs).not.toHaveBeenCalled();
+    expect(result.errorType).toBeUndefined();
+    expect(mockSpongeService.fetchJobs).toHaveBeenCalledTimes(1);
   });
 
   it('closes job queries after the candidate was already invited to a group', async () => {

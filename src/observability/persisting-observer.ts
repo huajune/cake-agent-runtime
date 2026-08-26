@@ -14,9 +14,6 @@ const ALWAYS_PERSISTED_EVENT_TYPES = new Set<AgentEvent['type']>([
   'tool_error',
   // 品牌状态迁移：仅状态变化时发射，前后快照不可重放，必须落库（§12）
   'brand_state_change',
-  // 语义评审分母：每次 shadow/enforce 评审一条（日均几百），是评审"总运行次数"的可靠计数源
-  // （guardrail_review_records 按 trace 稀疏存储，不天然是分母）
-  'semantic_review',
   // 歧义词形现场：不写状态故 brand_state_change 看不见，量级=冲突别名频率（每天个位数）
   'brand_resolution_ambiguous',
   // 落盘态字段被逐字段校验丢弃：Redis 是 facts（含 brand）/terminal 的唯一事实源，
@@ -30,9 +27,6 @@ const ALWAYS_PERSISTED_EVENT_TYPES = new Set<AgentEvent['type']>([
   // 身份锚点断链与空标签岗：两者量级都应恒为零，非零即上游数据/配置出事。
   'collection_identity_anchor_mismatch',
   'collection_empty_contract',
-  // labor-form 双轨分歧档案：冻结令（2026-08-11，labor-form/index.ts）要求新 badcase
-  // 先查本事件再动正则——只进日志等于档案不存在（PR #1000 评审 P1-15）
-  'semantic_track_diff',
 ]);
 
 const SLOW_TOOL_THRESHOLD_MS = 3000;

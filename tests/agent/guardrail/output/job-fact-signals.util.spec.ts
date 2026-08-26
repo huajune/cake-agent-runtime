@@ -1,7 +1,4 @@
-import {
-  QUANTIFIED_JOB_FACT_PATTERN,
-  hasQuantifiedJobFact,
-} from '@/agent/guardrail/output/job-fact-signals.util';
+import { QUANTIFIED_JOB_FACT_PATTERN } from '@/agent/guardrail/output/job-fact-signals.util';
 
 describe('job-fact-signals.util', () => {
   describe('QUANTIFIED_JOB_FACT_PATTERN', () => {
@@ -25,28 +22,6 @@ describe('job-fact-signals.util', () => {
       ['发薪日不属于结构行判据', '每月 15 号发薪'],
     ])('不把%s识别为结构化岗位硬事实', (_label, text) => {
       expect(QUANTIFIED_JOB_FACT_PATTERN.test(text)).toBe(false);
-    });
-  });
-
-  describe('hasQuantifiedJobFact', () => {
-    it.each([
-      ['每月15号发薪'],
-      ['20 号发工资'],
-      ['每月 5 号结算'],
-      ['距离约0.5km'],
-      ['薪资24元/时'],
-      ['班次 10:00—14:00'],
-    ])('识别量化岗位事实：%s', (text) => {
-      expect(hasQuantifiedJobFact(text)).toBe(true);
-    });
-
-    it.each([
-      ['暂时没查到匹配的在招岗位'],
-      ['薪资需要向门店确认'],
-      ['你之前看过这家门店'],
-      ['15号门店开业'],
-    ])('放过非量化岗位事实：%s', (text) => {
-      expect(hasQuantifiedJobFact(text)).toBe(false);
     });
   });
 });

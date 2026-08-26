@@ -5,11 +5,13 @@
 
 ## 工程待办
 
-| 文档                                                       | 状态           | 完成条件                                    |
-| ---------------------------------------------------------- | -------------- | ------------------------------------------- |
-| [观测链路 P1 采集补洞](./observability-p0-p1-checklist.md) | 未实施         | P1-1…P1-5 落码并通过全库测试                |
-| [Memory 兼容字段清理](./memory-compatibility-cleanup.md)   | 等生产存量归零 | `gender_source` 兼容命中为 0 后删除 sibling |
-| [LLM 判官标定](./judge-calibration.md)                     | 未制度化       | 周频抽检口径、台账和降级阈值投入运行        |
+| 文档                                                                     | 状态           | 完成条件                                       |
+| ------------------------------------------------------------------------ | -------------- | ---------------------------------------------- |
+| [Precheck 收资入参统一专项](./precheck-form-answer-contract-refactor.md) | 待执行         | 单一答案协议落地，清单契约不变量与完整 CI 通过 |
+| [复用现有 LLM 的规则简化改造](./llm-reuse-rule-simplification-plan.md)   | 待执行         | 非 precheck 语义重复规则完成收缩并通过完整 CI  |
+| [观测链路 P1 采集补洞](./observability-p0-p1-checklist.md)               | 未实施         | P1-1…P1-5 落码并通过全库测试                   |
+| [Memory 兼容字段清理](./memory-compatibility-cleanup.md)                 | 等生产存量归零 | `gender_source` 兼容命中为 0 后删除 sibling    |
+| [LLM 判官标定](./judge-calibration.md)                                   | 未制度化       | 周频抽检口径、台账和降级阈值投入运行           |
 
 ## 发版与生产验证
 

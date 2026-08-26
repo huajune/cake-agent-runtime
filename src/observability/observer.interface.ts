@@ -6,7 +6,6 @@ import type {
   SessionBrandState,
 } from '@resolution/brand/brand-resolution.types';
 import type { ToolErrorType } from '@tools/shared/tool-error-types';
-import type { ValidLaborForm } from '@resolution/labor-form';
 
 /**
  * Agent 事件观测接口（对标 ZeroClaw Observer）。
@@ -61,17 +60,6 @@ export type AgentEvent = AgentEventContext &
       }
     | { type: 'model_call'; modelId: string; role: string }
     | { type: 'model_fallback'; fromModel: string; toModel: string; reason: string }
-    /**
-     * 出站语义评审执行档案（shadow / enforce 各发一条）：承担是否运行、通过量与
-     * finding code 统计；完整判例与证据归档在 guardrail_review_records。
-     */
-    | {
-        type: 'semantic_review';
-        mode: 'shadow' | 'enforce';
-        decision: string;
-        confidence: string;
-        findingCodes: string[];
-      }
     | {
         type: 'tool_call';
         toolName: string;
@@ -188,24 +176,6 @@ export type AgentEvent = AgentEventContext &
         type: 'collection_empty_contract';
         userId?: string;
         jobId: number;
-      }
-    /**
-     * 封闭语义标签的双轨 shadow 分歧：仅分歧时落档，绝不改变规则轨生效结果。
-     * traceId 由 AgentTracer 的请求上下文补齐，可与消息主账本直接 join。
-     */
-    | {
-        type: 'semantic_track_diff';
-        semantic: 'labor_form_intent';
-        userId?: string;
-        ruleTrack:
-          | { intent: 'set'; laborForm: ValidLaborForm }
-          | { intent: 'clear'; laborForms: ValidLaborForm[] }
-          | { intent: 'ignore' };
-        extractionTrack: {
-          intent: 'set' | 'clear' | 'ignore';
-          laborForm?: ValidLaborForm;
-        };
-        quote: string;
       }
   );
 

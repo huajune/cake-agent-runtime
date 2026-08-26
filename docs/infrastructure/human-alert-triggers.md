@@ -101,13 +101,7 @@
 - **code**：`output_guardrail_p0_intercepted`
 - **条件**：P0 hard rule 命中；首版不可发送，Runner 可能经一次有界修复后放行，也可能最终拦截
 
-### 10. 语义 reviewer 故障
-
-- **位置**：[semantic-review-notifier.service.ts](../../src/notification/services/semantic-review-notifier.service.ts)
-- **code**：`output_semantic_review_fail_close` / `output_semantic_review_degraded`
-- **条件**：enforce 高风险审查故障时 fail-close；普通或 shadow 审查故障时降级告警
-
-### 11. 调试接口异常
+### 10. 调试接口异常
 
 - **位置**：[agent.controller.ts:81](../../src/agent/agent.controller.ts#L81)
 - **code**：`agent.debug_chat_failed`

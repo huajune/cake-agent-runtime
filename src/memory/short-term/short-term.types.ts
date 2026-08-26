@@ -381,7 +381,7 @@ export const BrandIntentEntrySchema = z.object({
 export type BrandIntentEntry = z.infer<typeof BrandIntentEntrySchema>;
 
 /**
- * labor-form 语义轨 shadow 标签：只描述本轮候选人的偏好变更意向，不直接驱动业务。
+ * labor-form 权威意图标签：描述本轮候选人的偏好变更意向并驱动会话偏好写入。
  * set/clear/ignore 口径与 resolution/labor-form 的 LaborFormIntentDecision 同构；
  * quote 必须是候选人消息中的逐字连续片段，解释性推理不得混入。
  */
@@ -413,7 +413,7 @@ export const LLMEntityExtractionResultSchema = z.object({
   labor_form_intent: LaborFormIntentExtractionSchema.nullable()
     .optional()
     .describe(
-      '本轮候选人的用工形式偏好变更标签，仅作 shadow 对照：set=明确选择，clear=明确排除/撤销，' +
+      '本轮候选人的用工形式偏好变更标签：set=明确选择，clear=明确排除/撤销，' +
         'ignore=未表达偏好或只在核对岗位事实；quote 必须是候选人消息中的逐字连续片段',
     ),
   reasoning: z

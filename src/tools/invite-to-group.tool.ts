@@ -14,11 +14,6 @@ import { evaluateInviteCityGate } from '@tools/invite/invite-city-gate';
 import { evaluateInviteTimingGate, hasAcceptedGroupOffer } from '@tools/invite/invite-timing-gate';
 import { extractUserTexts } from '@resolution/signal/dialogue';
 import { resolveCityFromDistrict } from '@resolution/geo';
-import {
-  buildRecommendationLimitScript,
-  countDissatisfiedRecommendationRounds,
-  hasPriorNoMatchReply,
-} from '@tools/job-list/no-match-script.util';
 import { canUseFactForAction } from '@tools/shared/action-confidence';
 
 const logger = new Logger('invite_to_group');
@@ -30,15 +25,6 @@ const UNDELIVERED_INVITE_HANDOFF_INSTRUCTION =
 // 该城市/平台本就没有可对接的兼职群时，不触发人工介入，Agent 自然收口并继续托管。
 const NO_GROUP_CONTINUE_INSTRUCTION =
   '该城市/平台本就没有可对接的兼职群（注意：这不是群满，而是没有群）。这种情况不要调用 request_handoff 转人工，也不要向候选人提及群相关内容。请自然收口：礼貌告知候选人当前暂时没有合适岗位、后续有匹配会主动联系，然后正常结束本轮、保持托管。';
-
-// 二次无岗升级（badcase 6a5df7e7 Aron 案）：无群城市里 Agent 连续两轮照本指令输出
-// 一字不差的"暂时没有合适的岗位"，且没回应候选人"除了必胜客还有其他吗"的具体提问，
-// 候选人评价"说话跟人机一样"后辱骂流失。已告知过一次无岗时只回应本轮问题并引导入群，
-// 不再让模型通过“换一种说法”重复同一结论。
-const NO_GROUP_REPEAT_ESCALATION =
-  '注意：本会话已经告知过候选人"暂时没有岗位"，本次**严禁与已发送的消息逐字重复**。' +
-  '只用一句话正面回应候选人本轮的具体问题并引导其查看/进入岗位信息群；' +
-  '不要再次复述无岗原因，也不要重复“后续有岗位通知你”的承诺。';
 
 // 多步回合送达提醒（badcase recvqgsttbhyYq / chat 6a62f368，2026-07-24）：无岗→拉群链路里，
 // 模型在工具调用之间"计划说"的无岗承接句从未真正发出，最终只投递了拉群确认句，候选人
@@ -64,7 +50,7 @@ const DESCRIPTION = `邀请候选人加入企微兼职岗位信息群。
 
 ## 触发场景（满足任一即可）
 1. **首次面试预约成功后** — duliday_interview_booking 返回 success: true（必须检查 _outcome 字段确认预约成功），且已知候选人城市时，在同轮调用。仅限本会话首次预约成功时触发，后续再预约不再重复拉群
-2. **连续两轮推荐均不满意后的群承接** — 候选人已明确否定两轮具体岗位推荐，上一轮已停止第三轮推荐并征询入群，候选人本轮明确回复同意后调用本工具。真实搜索 0 条/暑假工无库存不属于本场景，不得因此直接拉群。**拉群不能替代取消工单**：若候选人在**面试开始之前**放弃的岗位在 [当前预约信息] 里有进行中的工单，必须同时走 duliday_cancel_work_order 取消该工单再拉群收尾。面试时间已到/已过之后才说没去属爽约，不要取消工单
+2. **连续两轮推荐均不满意后的群承接** — 你必须根据完整对话确认候选人已明确否定两轮具体岗位推荐；工具不会用关键词替你计数。上一轮已停止第三轮推荐并征询入群，候选人本轮明确回复同意后调用本工具。真实搜索 0 条/暑假工无库存不属于本场景，不得因此直接拉群。**拉群不能替代取消工单**：若候选人在**面试开始之前**放弃的岗位在 [当前预约信息] 里有进行中的工单，必须同时走 duliday_cancel_work_order 取消该工单再拉群收尾。面试时间已到/已过之后才说没去属爽约，不要取消工单
 3. **候选人同意入群/后续通知** — 如果上一轮你曾提出"拉群/进群/有岗位通知"，候选人本轮回复"好/可以/嗯/谢谢"等同意词，必须调用本工具确认是否真的能拉群；只有 success: true 才能说已拉群或已发邀请
 
 ## 调用前置条件（必须满足）
@@ -330,27 +316,17 @@ export function buildInviteToGroupTool(
               });
             }
             if (timingVerdict.reason === 'group_consent_required') {
-              const dissatisfiedRecommendationRounds = countDissatisfiedRecommendationRounds(
-                context.turnInput.messages ?? [],
-              );
-              const noMatchScript =
-                dissatisfiedRecommendationRounds >= 2
-                  ? buildRecommendationLimitScript({ cityLabels: [city] })
-                  : null;
               return buildToolError({
                 errorType: TOOL_ERROR_TYPES.INVITE_GROUP_CONSENT_REQUIRED,
                 outcome: '本轮没有合法的入群授权，禁止用查岗完成替代候选人同意',
-                replyInstruction: noMatchScript
-                  ? '**候选人已连续否定两轮具体岗位，但本轮尚未同意入群。严格按 noMatchScript.candidateMessage 征询入群意愿，' +
-                    '不得重查或继续推荐，不得再次调用 invite_to_group；候选人下一轮明确同意后才实调。'
-                  : '本轮虽然已经查过岗位，但拉群只允许两种入口：预约成功后的首次承接，或连续两轮推荐均不满意、' +
-                    '上一轮已征询入群且候选人本轮明确同意。真实无岗请按 noMatchScript 如实收口并等待库存，' +
-                    '查到岗位则继续正常推荐/推进；本轮不要提群相关内容，也不要调用 request_handoff。',
+                replyInstruction:
+                  '本轮虽然已经查过岗位，但拉群只允许两种入口：预约成功后的首次承接，或主 Agent 根据完整对话确认' +
+                  '连续两轮推荐均不满意、上一轮已征询入群且候选人本轮明确同意。当前工具闸门没有收到合法同意，' +
+                  '真实无岗请按 noMatchScript 如实收口并等待库存，查到岗位则继续正常推荐/推进；' +
+                  '本轮不要声称已拉群，也不要再次调用 invite_to_group。',
                 details: {
                   city,
                   industry: industry ?? undefined,
-                  dissatisfiedRecommendationRounds,
-                  noMatchScript,
                 },
               });
             }
@@ -391,7 +367,6 @@ export function buildInviteToGroupTool(
             result: inviteResult,
             city,
             industry,
-            priorNoMatch: hasPriorNoMatchReply(context.turnInput.messages ?? []),
           });
         } catch (error: unknown) {
           const message = toErrorMessage(error);
@@ -429,7 +404,6 @@ function buildGroupInviteResult(params: {
   result: GroupInviteResult;
   city: string;
   industry?: string;
-  priorNoMatch: boolean;
 }) {
   const { result, city, industry } = params;
   if (result.success) {
@@ -480,13 +454,13 @@ function buildGroupInviteResult(params: {
       return buildToolError({
         errorType: TOOL_ERROR_TYPES.INVITE_NO_GROUP_AVAILABLE,
         outcome: '暂无可用群',
-        replyInstruction: `当前平台无可用兼职群数据，本次不向候选人提及群相关内容。${NO_GROUP_CONTINUE_INSTRUCTION}${params.priorNoMatch ? NO_GROUP_REPEAT_ESCALATION : ''}`,
+        replyInstruction: `当前平台无可用兼职群数据，本次不向候选人提及群相关内容。${NO_GROUP_CONTINUE_INSTRUCTION}`,
       });
     case 'no_group_in_city':
       return buildToolError({
         errorType: TOOL_ERROR_TYPES.INVITE_NO_GROUP_IN_CITY,
         outcome: '该城市无匹配群',
-        replyInstruction: `该候选人所在城市暂无兼职群，本次不向候选人提及群相关内容。${NO_GROUP_CONTINUE_INSTRUCTION}${params.priorNoMatch ? NO_GROUP_REPEAT_ESCALATION : ''}`,
+        replyInstruction: `该候选人所在城市暂无兼职群，本次不向候选人提及群相关内容。${NO_GROUP_CONTINUE_INSTRUCTION}`,
         details: { city },
       });
     case 'group_full':

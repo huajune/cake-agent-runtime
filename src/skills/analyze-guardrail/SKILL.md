@@ -13,10 +13,9 @@ description: 分析出站守卫（output guardrail）的生产效果，产出一
 
 ### 数据源真相
 
-**`guardrail_review_records` 有两个写入者，行数不等于命中数：**
-
-1. **runner**（`agent-runner.service.ts` 的 `persistReviewRecord`）：只在有硬规则信号时落行——`first_decision <> 'pass'` 或 `first_rule_ids` 非空。干净通过的回合**不落行**。
-2. **语义影子 recorder**：每个被语义评审的回合都落/更新行（`semantic_reviews` 字段），即使零硬规则命中。这类行 `first_decision='pass'` 且 `first_rule_ids` 为空，占表的大多数。
+**`guardrail_review_records` 是稀疏规则档案，行数不等于全部回合数。** 当前生产者是 runner：
+只在有确定性规则信号或修复过程时落行。干净通过的回合不落行；`semantic_reviews` 仅可能出现在
+历史存量记录，没有当前生产者。
 
 因此：
 - **硬规则信号行** = `first_decision <> 'pass' OR array_length(first_rule_ids,1) > 0`
@@ -27,7 +26,7 @@ description: 分析出站守卫（output guardrail）的生产效果，产出一
 
 | 字段/值 | 含义 | 分析时怎么算 |
 |---|---|---|
-| `first_decision='pass'` + rules 非空 | **observe 档命中**（只记录不动手） | 升档候选池，不是拦截 |
+| `first_decision='pass'` + rules 非空 | observe 档命中（原生 observe 哨兵，或 runtime override 降档） | 不是拦截；哨兵 vs override 看 catalog 登记档位 |
 | `first_decision='revise'/'block'` | enforce 档首审命中 | 拦截尝试 |
 | `revised_decision <> 'pass'` | **二审复燃**：修复版仍命中 | 假阳嫌疑 or repair 无效，须抽样分辨 |
 | `final_decision='block'` | 整轮静默，候选人收不到回复 | 杀伤最大，最优先人工核查 |
@@ -35,7 +34,7 @@ description: 分析出站守卫（output guardrail）的生产效果，产出一
 | `reason_code='repair_exhausted'` | 复燃且高风险/不可恢复 → 静默 | 真事故或高杀伤假阳 |
 | `repair_regression_*` | 修复版退化被回归闸拦下 | repair 质量问题 |
 | `fence_stripped` / `envelope_unwrapped` | 确定性机械剥离修复 | 不是 LLM 重写，单独归类 |
-| `semantic_reviews` | **shadow 档**，不 enforce | 只作形状勘探，绝不能算"防住了 N 起事故"（0811 裁定：语义层是勘探器；0805 清算：大簇几乎全假阳） |
+| `semantic_reviews` | 历史兼容字段 | 不纳入当前窗口规则效果统计 |
 
 ### 判真假阳的铁律
 
@@ -142,22 +141,7 @@ COMMIT;
 
 每条给出判定：真阳（首版确实违规）/ 假阳（首版没问题被误拦）/ 复燃假阳（修复版正确仍被拦）/ repair 无效（修复版仍违规）。**5 条里 ≥2 条假阳即可立案**，写进优化清单；样本不足下结论时明说"样本 N 条，置信度低"。
 
-### Step 5 — 语义影子勘探（可选，只作线索）
-
-```sql
-BEGIN; SET LOCAL statement_timeout = '25s';
-SELECT f->>'code' AS finding_code, count(*) AS n
-FROM guardrail_review_records g,
-     jsonb_array_elements(g.semantic_reviews) r,
-     jsonb_array_elements(r->'findings') f
-WHERE g.created_at >= now() - interval '7 days'
-GROUP BY 1 ORDER BY n DESC LIMIT 12;
-COMMIT;
-```
-
-只回答"哪些形状高频出现、值得孵化成硬规则或收资需求"，抽 3 条 findings 看 `evidenceQuote` 验形状。禁止把 shadow 命中数当效果或事故数报。
-
-### Step 6 — 按天趋势（可选）
+### Step 5 — 按天趋势（可选）
 
 ```sql
 BEGIN; SET LOCAL statement_timeout = '25s';
@@ -197,8 +181,11 @@ fail-open N，静默 N。一句话定性。
 
 ## 已知坑与历史裁定（引用前先核对是否被推翻）
 
-- **升降档治理条款**（output-rule-catalog.ts 头注）：新规则 observe 入场；升 revise 需 ≥2 周 observe + 抽标精确率 ≥90%；revise 档精确率 <70% 应自动降 observe。建议升降档时引用这个标准。
-- **2026-07-10 用户裁定**批量下线 17+ 条规则（ungrounded_job_recommendation 等族）：**勿建议重加**，岗位/预约事实治理归语义档。
+- 当前 Output 执行档只允许格式、封闭高风险词形和结构化工具回执对账；另有 5 条 observe 哨兵
+  （2026-08-26 数据复核定点恢复，见 catalog）。不要建议新增开放语义规则；哨兵升档须满足
+  目录准入门槛（≥2 周判例、精确率 ≥90%）。
+- **2026-07-10 起的批量下线裁定**：勿建议重加岗位/预约开放语义正则，这类理解归主 Agent；
+  只有工具回执的确定性矛盾留在 Output。
 - 精度快照会过期：0721 快照已被 08-05 审计推翻。引用任何历史精度数字须带日期，与当期抽样冲突时以当期为准。
 - `agent_execution_events` 工具调用漏采约 2/3，工具统计一律用 `mpr.tool_calls`。
 - 已有三个定时审计在跑（`guardrail-accuracy-audit` 每 2 天、`daily-auto-scan-report`、`daily-badcase-triage`，均为 Claude scheduled task 而非 src/ 代码）；它们的报告是人工核对过的抽标，与本分析冲突时先怀疑自己的口径。

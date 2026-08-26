@@ -18,7 +18,6 @@ const ABUSE_KEYWORDS = [
   // 不收 '有病'：候选人常说"家里有病人 / 我爸有病要照顾"等真实诉求，substring
   // 匹配会误伤为辱骂。要骂人通常会用 '神经病 / 傻逼 / sb / 操你' 等明确词。
   '神经病',
-  '垃圾',
   '废物',
   '滚',
   '去死',
@@ -30,19 +29,13 @@ const ABUSE_KEYWORDS = [
   'cnm',
 ] as const;
 
-const COMPLAINT_RISK_KEYWORDS = [
-  '投诉',
-  '举报',
-  '曝光',
-  '劳动局',
-  '仲裁',
-  '骗人',
-  '骗子',
-  '坑',
-  '报警',
-  '维权',
-  '欺骗',
-  '黑心',
+const COMPLAINT_RISK_KEYWORDS = ['投诉', '举报', '骗人', '骗子', '维权', '欺骗', '黑心'] as const;
+
+/** 单词本身有正常求职语义时，只拦截封闭的攻击/投诉动作句式。 */
+const ABUSE_CLOSED_PATTERNS = [/(?:你|你们)(?:这帮人)?(?:真是|就是|都是)?垃圾/];
+const COMPLAINT_ACTION_PATTERNS = [
+  /(?:我要|我会|准备|现在就|马上|去)(?:向[^，。！？!?\n]{0,8})?(?:申请|进行)?(?:曝光|报警|仲裁)/,
+  /(?:劳动局|劳动仲裁)[^，。！？!?\n]{0,10}(?:投诉|举报|仲裁)/,
 ] as const;
 
 /**
@@ -217,6 +210,14 @@ export class RiskInterceptService {
     if (abuseResult.hit) {
       return abuseResult;
     }
+    const closedAbuse = this.detectPatternRisk(
+      content,
+      ABUSE_CLOSED_PATTERNS,
+      'abuse',
+      '辱骂/攻击',
+      '候选人出现明显辱骂或攻击性表达',
+    );
+    if (closedAbuse.hit) return closedAbuse;
 
     const complaintResult = this.detectKeywordRisk(
       content,
@@ -228,6 +229,14 @@ export class RiskInterceptService {
     if (complaintResult.hit) {
       return complaintResult;
     }
+    const complaintAction = this.detectPatternRisk(
+      content,
+      COMPLAINT_ACTION_PATTERNS,
+      'complaint_risk',
+      '投诉/举报风险',
+      '候选人出现明确投诉、举报或欺骗风险表达',
+    );
+    if (complaintAction.hit) return complaintAction;
 
     const interviewResult = this.detectKeywordRisk(
       content,
@@ -327,15 +336,31 @@ export class RiskInterceptService {
     };
   }
 
+  private detectPatternRisk(
+    content: string,
+    patterns: readonly RegExp[],
+    riskType: InputRiskType,
+    riskLabel: string,
+    summary: string,
+  ): InputRiskDetectionResult {
+    const normalized = this.normalize(content);
+    const matched = patterns.find((pattern) => pattern.test(normalized));
+    if (!matched) return { hit: false };
+    return {
+      hit: true,
+      riskType,
+      riskLabel,
+      summary,
+      reason: `命中封闭句式：${matched.source}`,
+    };
+  }
+
   private findMatchedKeywords(content: string, keywords: readonly string[]): string[] {
     const normalized = this.normalize(content);
     return keywords.filter((keyword) => {
       const normalizedKeyword = this.normalize(keyword);
       if (normalizedKeyword === '滚') {
         return this.matchesAbusiveGun(normalized);
-      }
-      if (normalizedKeyword === '坑') {
-        return this.matchesScamKeng(normalized);
       }
       return normalized.includes(normalizedKeyword);
     });
@@ -357,97 +382,8 @@ export class RiskInterceptService {
       return true;
     }
 
-    const abusiveSuffixes = [
-      '出去',
-      '远一点',
-      '一边去',
-      '犊子',
-      '回去',
-      '开',
-      '蛋',
-      '出',
-      '远点',
-      '吧',
-      '啊',
-      '呀',
-      '啦',
-      '呢',
-      '你',
-      '尼玛',
-      'nmd',
-      'nm',
-      '妈',
-    ];
-    const suffixPattern = `(?:${abusiveSuffixes.join('|')}|[!！?？。.,，、~～]|$)`;
-
-    if (new RegExp(`(?:^|[!！?？。.,，、~～])滚${suffixPattern}`).test(compact)) {
-      return true;
-    }
-
-    const imperativePrefixes = [
-      '你',
-      '你们',
-      '妳',
-      '您',
-      '他',
-      '她',
-      '它',
-      '给我',
-      '让你',
-      '让你们',
-      '让他',
-      '让她',
-      '让它',
-      '叫你',
-      '叫你们',
-      '叫他',
-      '叫她',
-      '叫它',
-      '快',
-      '快点',
-      '赶紧',
-      '马上',
-      '都',
-    ];
-    return new RegExp(`(?:${imperativePrefixes.join('|')})滚${suffixPattern}`).test(compact);
-  }
-
-  private matchesScamKeng(content: string): boolean {
-    const compact = content.replace(/\s+/g, '');
-    if (!compact) {
-      return false;
-    }
-
-    // "坑" 只在"坑人/坑钱/太坑"等诈骗投诉语义中命中，避免误伤坑梓等地名。
-    const punctuation = '[!！?？。.,，、~～]*';
-    if (new RegExp(`^坑${punctuation}$`).test(compact)) {
-      return true;
-    }
-
-    const scamPrefixes = ['太', '真', '好', '很', '超', '忒', '巨', '老', '够', '被', '净', '专'];
-    if (new RegExp(`(?:${scamPrefixes.join('|')})坑`).test(compact)) {
-      return true;
-    }
-
-    const scamSuffixes = [
-      '人',
-      '钱',
-      '爹',
-      '货',
-      '骗',
-      '客',
-      '客户',
-      '顾客',
-      '消费者',
-      '老百姓',
-      '学生',
-      '我',
-      '我们',
-      '你',
-      '你们',
-      '死',
-      '惨',
-    ];
-    return new RegExp(`坑(?:${scamSuffixes.join('|')})`).test(compact);
+    return /(?:^|[!！?？。.,，、~～]|你|你们|给我|赶紧|快点?|马上)滚(?:开|出去|远点|一边去|犊子|蛋|吧|啊|呀|啦|[!！?？。.,，、~～]|$)/.test(
+      compact,
+    );
   }
 }

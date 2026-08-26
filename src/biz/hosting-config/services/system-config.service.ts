@@ -91,10 +91,6 @@ export class SystemConfigService {
         typeof config?.evaluateModelId === 'string'
           ? config.evaluateModelId.trim()
           : DEFAULT_AGENT_REPLY_CONFIG.evaluateModelId,
-      reviewModelId:
-        typeof config?.reviewModelId === 'string'
-          ? config.reviewModelId.trim()
-          : DEFAULT_AGENT_REPLY_CONFIG.reviewModelId,
       repairModelId:
         typeof config?.repairModelId === 'string'
           ? config.repairModelId.trim()
@@ -155,15 +151,6 @@ export class SystemConfigService {
         typeof config?.errorRateCritical === 'number'
           ? config.errorRateCritical
           : DEFAULT_AGENT_REPLY_CONFIG.errorRateCritical,
-      // DB 未持久化过该字段时回退环境变量（部署期 bootstrap 默认），页面保存后以 DB 为准
-      outputGuardrailLlmEnabled:
-        typeof config?.outputGuardrailLlmEnabled === 'boolean'
-          ? config.outputGuardrailLlmEnabled
-          : this.configService.get('OUTPUT_GUARDRAIL_LLM_ENABLED', 'false') === 'true',
-      outputGuardrailSemanticShadowEnabled:
-        typeof config?.outputGuardrailSemanticShadowEnabled === 'boolean'
-          ? config.outputGuardrailSemanticShadowEnabled
-          : this.configService.get('OUTPUT_GUARDRAIL_SEMANTIC_SHADOW_ENABLED', 'false') === 'true',
       hardRuleOverrides: this.sanitizeHardRuleOverrides(config?.hardRuleOverrides),
       // 复聊开关同守卫开关：DB 未持久化过时回退环境变量（bootstrap 默认），页面保存后以 DB 为准
       reengagementEnabled:
@@ -361,7 +348,6 @@ export class SystemConfigService {
       extract: config.extractModelId,
       vision: config.visionModelId,
       evaluate: config.evaluateModelId,
-      review: config.reviewModelId,
       repair: config.repairModelId,
       reengagement: config.reengagementModelId,
     };

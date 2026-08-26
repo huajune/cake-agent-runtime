@@ -20,7 +20,7 @@ HTTP 请求
   → [Input]      高危入站短路；Prompt Injection 检测
   → [Prompt]     system sections + 动态红线/证据 + final-check；注入命中时追加防护 suffix
   → [Tool]       业务动作执行前做 provenance / precheck / 身份 / 拉群门禁
-  → [Output]     确定性规则 + 可配置语义 reviewer + 一次有界修复 + 最终清洗
+  → [Output]     确定性格式/封闭词形/工具回执对账 + 一次有界修复 + 最终清洗
   → 候选人可见回复，或 guardrail_blocked / handoff / skipped
 ```
 
@@ -125,33 +125,23 @@ Tool / Output 的确定性边界裁决。
 
 ### 6.1 确定性规则
 
-`output-rule-catalog.ts` 当前登记 **32 个 ruleId**，动作分布以 catalog 实况为准：
+`output-rule-catalog.ts` 当前登记 **19 个 ruleId**（14 条执行档 + 5 条 observe 哨兵）：
 
-| 动作      | 数量 | 运行语义                                                   |
-| --------- | ---: | ---------------------------------------------------------- |
-| `block`   |    6 | 高风险且首版不可发送；除直达静默特例外，先尝试一次受控修复 |
-| `revise`  |   15 | 首版不可发送，进入一次有界修复                             |
-| `observe` |   11 | 内容仍可发送，保留命中证据供复盘                           |
+- 格式/内部泄漏：`invalid_model_output`、`internal_output_leak`、`meta_narration_reply`、
+  `human_service_phrase_leak`（人设露馅封闭词表，2026-08-26 数据复核恢复）；
+- 封闭高风险：身份/经历造假教唆、歧视性筛选、主动籍贯探问、名额承诺；
+- 工具回执对账：预约、改约、线上面试位置、明确 no-match 门店状态、高置信品牌回指；
+- observe 哨兵（只落档不拦截，2026-08-26 数据复核恢复）：裸查询承诺、跨品牌串台、
+  结算周期错配、主动保险提及、零调用完成时态报名宣称。
 
-规则 ID、风险目标、外生信号、盲区与回归测试只在 catalog 维护；本文不复制 32 行矩阵。
-`HardRulesService` 会检查回复、工具结果、短期会话文本和 memory snapshot 等证据，并按
-`block > revise > observe > pass` 聚合。
+`HardRulesService` 只检查封闭文本形态、工具结果和必要的 memory 事实，并按
+`block > revise > observe > pass` 聚合。Output 不运行第二个 LLM reviewer，不做 semantic shadow，
+开放语义由主 Agent 承担。
 
-### 6.2 语义 reviewer
+精确重复由 sanitizer 机械删除；handoff 承诺在 outcome/副作用层对账；两者都不登记成
+Output ruleId。
 
-`SemanticReviewerService` 处理规则难以表达、但证据包可以支撑的语义问题。当前 finding code 共 5 类：
-
-- `job_recommendation_not_best_supported`
-- `brand_or_geo_ambiguity_ignored`
-- `active_booking_state_conflict`
-- `fact_asserted_without_any_evidence`
-- `sensitive_screening_disclosure_or_probe`
-
-是否 enforce / shadow 由托管配置 `agent_reply_config` 控制，环境变量只作 DB 未持久化时的 bootstrap。
-低置信 veto 会在代码层降为 observe；高风险回复的 reviewer 故障 fail-close，普通语义触发故障
-回退 rule 档。语义档关闭时仍会运行确定性规则。
-
-### 6.3 一次有界修复与收敛
+### 6.2 一次有界修复与收敛
 
 Output guard 只读、不直接改文案。Runner 持有修复编排权：
 
@@ -165,10 +155,10 @@ Output guard 只读、不直接改文案。Runner 持有修复编排权：
 `replan` 已退役：修复不能重进 Generator、不能重新调用工具，也不能重做已经提交的副作用。
 直达静默、悬空承接句等特例同样由 Runner 显式给出 `reasonCode`，不允许裸静默。
 
-### 6.4 最终清洗
+### 6.3 最终清洗
 
-`OutboundReplySanitizer` 负责确定性清理时间标记和投递格式残留。清洗不是新的语义裁决器，
-也不能替代前面的 Output 审查。
+`OutboundReplySanitizer` 负责确定性清理时间标记、投递格式残留与近期已投递长段落的精确
+全等去重。清洗不是新的语义裁决器，不做相似度判断。
 
 ---
 
@@ -185,8 +175,8 @@ Output guard 只读、不直接改文案。Runner 持有修复编排权：
 主要观测面：
 
 - `message_processing_records.guardrail_input / guardrail_output`：回合级紧凑摘要；
-- `guardrail_review_records`：规则命中、语义 verdict、首版/修复版与最终裁决；
-- `agent_execution_events`：`semantic_review` 等运行事件；
+- `guardrail_review_records`：确定性规则命中、首版/修复版与最终裁决；存量
+  `semantic_reviews` 字段只作历史兼容；
 - `TurnOutcome.guardrail`：渠道投递前的确定性终态归因。
 
 `silent: true` 仅供调试 / test-suite advisory，不能写入生产守卫判例池。
@@ -195,13 +185,11 @@ Output guard 只读、不直接改文案。Runner 持有修复编排权：
 
 ## 8. 配置与验证
 
-| 配置                                       | 代码默认值 | 说明                                    |
-| ------------------------------------------ | ---------: | --------------------------------------- |
-| `AGENT_MAX_INPUT_CHARS`                    |    `24000` | prepare 的消息字符预算                  |
-| `MAX_HISTORY_PER_CHAT`                     |      `120` | 单会话历史消息上限                      |
-| `AGENT_MAX_OUTPUT_TOKENS`                  |     `4096` | 单次模型输出上限                        |
-| `OUTPUT_GUARDRAIL_LLM_ENABLED`             |    `false` | 语义 reviewer enforce 的 bootstrap 默认 |
-| `OUTPUT_GUARDRAIL_SEMANTIC_SHADOW_ENABLED` |    `false` | 语义 reviewer shadow 的 bootstrap 默认  |
+| 配置 | 代码默认值 | 说明 |
+| --- | ---: | --- |
+| `AGENT_MAX_INPUT_CHARS` | `24000` | prepare 的消息字符预算 |
+| `MAX_HISTORY_PER_CHAT` | `120` | 单会话历史消息上限 |
+| `AGENT_MAX_OUTPUT_TOKENS` | `4096` | 单次模型输出上限 |
 
 验证入口：
 
@@ -220,7 +208,7 @@ Catalog 不变量测试负责核对执行实现与登记表的 ruleId；Prompt �
 - `src/agent/guardrail/catalog.ts` — Input / Tool / Output 执行守卫聚合审计视图
 - `src/agent/guardrail/input/` — 入站判定与注入检测
 - `src/agent/guardrail/tool/tool-guardrail.catalog.ts` — Tool 守卫登记
-- `src/agent/guardrail/output/` — 出站规则、语义 reviewer、清洗与证据包
+- `src/agent/guardrail/output/` — 出站确定性规则、清洗与修复回归检查
 - `src/agent/runner/agent-runner.service.ts` — 入站短路、修复、终态分类
 - `src/agent/reply-repair/reply-repair.agent.ts` — 唯一的 LLM 文本修复者
 - [Agent 运行时架构](./agent-runtime-architecture.md) — 回合主干与四个防线作用位

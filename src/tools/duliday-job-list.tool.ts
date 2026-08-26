@@ -28,9 +28,6 @@ import { buildToolError, TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types
 import {
   buildNoMatchScript,
   buildPostInviteClosureScript,
-  buildRecommendationLimitScript,
-  countDissatisfiedRecommendationRounds,
-  hasPriorNoMatchReply,
 } from '@tools/job-list/no-match-script.util';
 import { formatSettlementSummary } from '@tools/job-list/salary-settlement.util';
 import { buildJobPolicyAnalysis } from '@tools/job-list/job-policy-parser';
@@ -635,7 +632,7 @@ const DESCRIPTION = `查询在招岗位列表。支持渐进式数据返回，�
 - **无岗与推荐不满意分流**（互斥顺序收口）：
    1. 首次 0 条 → 本轮直接放宽一次（同城邻区 / 同品牌邻店 / 放宽距离），不向候选人多问一句
    2. 放宽仍 0 条 = **真实无岗** → 直接告知"暂时没有合适岗位"结束本轮，不拉群替代岗位供给
-   3. 连续否定两轮具体推荐 → 停止第三轮，只征询进群意愿；下轮明确同意后才实调 invite_to_group
+   3. 你根据完整对话确认候选人连续否定两轮具体推荐 → 停止第三轮，只征询进群意愿；下轮明确同意后才实调 invite_to_group（工具不做文本轮次计数）
    4. 已成功拉群 → 永久停止查岗、推荐及"看其他区域"类追问，只提示留意既有群消息
    5. **历史轨迹打破**：即使自己上轮提议过"换品牌/换城市"，本轮工具证实无岗就直接收口，不顺承旧反问思路
    6. **结果非空但全部与硬约束冲突** = 视同 0 条有效，先放宽一维重查；仍无匹配才按真实无岗收口。年龄判断必须沿用 precheck 弹性口径：候选人 52 岁遇到 20-50 岁 / 40-50 岁岗位属上限边界，用 duliday_interview_precheck 复核，不得直接判无岗
@@ -714,9 +711,6 @@ export function buildJobListTool(
         const normalizedRegionNameList = regionNameList
           .map((region) => region.trim())
           .filter(Boolean);
-        // B7 二次无岗升级（badcase 6a5df7e7）：本会话已发过无岗话术时，noMatchScript 出二档
-        // 文案并禁止逐字复读，四个无岗出口共用同一判定。
-        const priorNoMatchReplySent = hasPriorNoMatchReply(context.turnInput.messages ?? []);
         const invitedGroup = context.archive.invitedGroups?.[0];
         if (invitedGroup) {
           const noMatchScript = buildPostInviteClosureScript({
@@ -730,24 +724,6 @@ export function buildJobListTool(
               '**严格按 noMatchScript.candidateMessage 收口**。不得继续查询、推荐岗位或询问其他区域/品牌，' +
               '也不得重复调用 invite_to_group。',
             details: { noMatchScript },
-          });
-        }
-
-        const dissatisfiedRecommendationRounds = countDissatisfiedRecommendationRounds(
-          context.turnInput.messages ?? [],
-        );
-        if (dissatisfiedRecommendationRounds >= 2) {
-          const noMatchScript = buildRecommendationLimitScript({
-            cityLabels: normalizedCityNameList,
-            regionLabels: normalizedRegionNameList,
-          });
-          return buildToolError({
-            errorType: TOOL_ERROR_TYPES.JOB_LIST_RECOMMENDATION_LIMIT_REACHED,
-            outcome: '候选人已连续两轮对具体岗位推荐不满意，停止第三轮推荐',
-            replyInstruction:
-              '**严格按 noMatchScript.candidateMessage 征询入群意愿**，本轮不得继续查询或推荐，' +
-              '也不得调用 invite_to_group；候选人下一轮明确同意后才实调邀请工具。',
-            details: { dissatisfiedRecommendationRounds, noMatchScript },
           });
         }
 
@@ -816,7 +792,6 @@ export function buildJobListTool(
             brandPlan,
             fuzzySuggestions,
             noMatchScript: buildNoMatchScript({
-              priorNoMatchReplySent,
               brandLabels: rejectedInputs,
               storeLabels: storeNameList,
               cityLabels: normalizedCityNameList,
@@ -1337,7 +1312,6 @@ export function buildJobListTool(
                   details: {
                     maxKm,
                     noMatchScript: buildNoMatchScript({
-                      priorNoMatchReplySent,
                       brandLabels: noMatchBrandLabels,
                       storeLabels: storeNameList,
                       cityLabels: normalizedCityNameList,
@@ -1494,7 +1468,6 @@ export function buildJobListTool(
                   ? { brandFilterNotice: brandPlan.disclosure }
                   : {}),
                 noMatchScript: buildNoMatchScript({
-                  priorNoMatchReplySent,
                   brandLabels: noMatchBrandLabels,
                   storeLabels: storeNameList,
                   cityLabels: normalizedCityNameList,
@@ -1557,7 +1530,6 @@ export function buildJobListTool(
                   candidateScheduleConstraint,
                 ),
                 noMatchScript: buildNoMatchScript({
-                  priorNoMatchReplySent,
                   brandLabels: brandAliasList,
                   storeLabels: storeNameList,
                   cityLabels: normalizedCityNameList,
@@ -1673,7 +1645,6 @@ export function buildJobListTool(
                     },
                   },
                   noMatchScript: buildNoMatchScript({
-                    priorNoMatchReplySent,
                     brandLabels: brandAliasList,
                     storeLabels: storeNameList,
                     cityLabels: normalizedCityNameList,

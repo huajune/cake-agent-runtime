@@ -686,14 +686,6 @@ export class SessionFactsService {
       previousFacts,
     );
     const llmOutcome = await this.callLLM(prompt);
-    this.emitLaborFormSemanticTrackDiff({
-      corpId,
-      userId,
-      sessionId,
-      ruleDecision: laborFormDecision,
-      extractionDecision: llmOutcome.laborFormIntent,
-      degraded: llmOutcome.degraded,
-    });
 
     const preferences = toSessionFacts(llmOutcome.facts, {
       confidence: 'medium',
@@ -701,11 +693,16 @@ export class SessionFactsService {
       evidence: 'LLM 软事实提取',
       extractedAt: new Date().toISOString(),
     }).preferences as SessionFacts['preferences'];
+    // labor_form 只有一个语义写入口：正常提取时由 labor_form_intent 决定，
+    // 提取降级或标签无效时才使用当前消息的确定性规则兜底。模型的 legacy
+    // preferences.labor_form 和 turnHints 都不能绕过这个裁决入口。
+    preferences.labor_form = null;
 
-    // 规则轨也只是软事实来源；身份 claim 在这里被刻意忽略。
+    // 规则轨也只是软事实来源；身份 claim 在这里被刻意忽略。labor_form 由下方
+    // 单独裁决，避免正常 LLM 结果又被规则轨覆盖。
     for (const fact of resolveTurnHints(turnHints)) {
       const [group, field] = fact.field.split('.');
-      if (group !== 'preferences' || !(field in preferences)) continue;
+      if (group !== 'preferences' || field === 'labor_form' || !(field in preferences)) continue;
       const target = preferences as unknown as Record<string, unknown>;
       const value =
         field === 'city' && typeof fact.value === 'string'
@@ -724,6 +721,7 @@ export class SessionFactsService {
     const llmPrefs = llmOutcome.facts.preferences as unknown as Record<string, unknown>;
     const preferenceTarget = preferences as unknown as Record<string, unknown>;
     for (const [field, value] of Object.entries(llmPrefs)) {
+      if (field === 'labor_form') continue;
       if (
         (Array.isArray(value) && value.length === 0) ||
         (typeof value === 'string' && !value.trim())
@@ -736,6 +734,7 @@ export class SessionFactsService {
     for (const claim of turnHints?.claims ?? []) {
       if (claim.operation !== 'clear' || !claim.field.startsWith('preferences.')) continue;
       const field = claim.field.slice('preferences.'.length);
+      if (field === 'labor_form') continue;
       if (field in preferences) {
         preferenceTarget[field] = this.preferenceTombstone(
           truncateEvidence(claim.evidence.code ?? claim.evidence.label),
@@ -763,9 +762,7 @@ export class SessionFactsService {
     if (geoClear.location) {
       preferences.location = this.preferenceTombstone('候选人明确表示地点不限');
     }
-    if (laborFormDecision.kind === 'clear') {
-      preferences.labor_form = this.preferenceTombstone('候选人明确撤销用工形式偏好');
-    }
+    this.applyLaborFormIntent(preferences, llmOutcome, laborFormDecision);
 
     // city 的所有写方共用同一个裁决器。
     const incomingCity = preferences.city;
@@ -801,6 +798,48 @@ export class SessionFactsService {
       evidence: truncateEvidence(evidence),
       extractedAt: new Date().toISOString(),
     });
+  }
+
+  private applyLaborFormIntent(
+    preferences: SessionFacts['preferences'],
+    llmOutcome: {
+      laborFormIntent: LaborFormIntentExtraction | null;
+      degraded: boolean;
+    },
+    fallback: LaborFormIntentDecision,
+  ): void {
+    const extracted = llmOutcome.laborFormIntent;
+    const validExtractedIntent =
+      !llmOutcome.degraded &&
+      extracted != null &&
+      (extracted.intent !== 'set' || extracted.labor_form != null);
+
+    if (validExtractedIntent) {
+      if (extracted.intent === 'set' && extracted.labor_form) {
+        preferences.labor_form = sessionFactValue(extracted.labor_form, {
+          confidence: 'medium',
+          source: 'model',
+          evidence: truncateEvidence(extracted.quote || 'LLM 用工形式意图提取'),
+          extractedAt: new Date().toISOString(),
+        });
+      } else if (extracted.intent === 'clear') {
+        preferences.labor_form = this.preferenceTombstone(
+          extracted.quote || '候选人明确撤销用工形式偏好',
+        );
+      }
+      return;
+    }
+
+    if (fallback.kind === 'set') {
+      preferences.labor_form = sessionFactValue(fallback.value, {
+        confidence: 'medium',
+        source: 'rule',
+        evidence: '用工形式明确表达规则兜底',
+        extractedAt: new Date().toISOString(),
+      });
+    } else if (fallback.kind === 'clear') {
+      preferences.labor_form = this.preferenceTombstone('候选人明确撤销用工形式偏好');
+    }
   }
 
   private async callLLM(prompt: string): Promise<{
@@ -844,53 +883,6 @@ export class SessionFactsService {
         degraded: true,
       };
     }
-  }
-
-  /** 仅记录 labor-form 双轨分歧；规则轨继续是唯一生效判定。 */
-  private emitLaborFormSemanticTrackDiff(params: {
-    corpId: string;
-    userId: string;
-    sessionId: string;
-    ruleDecision: LaborFormIntentDecision;
-    extractionDecision: LaborFormIntentExtraction | null;
-    degraded: boolean;
-  }): void {
-    if (params.degraded || !params.extractionDecision) return;
-
-    const ruleTrack =
-      params.ruleDecision.kind === 'set'
-        ? { intent: 'set' as const, laborForm: params.ruleDecision.value }
-        : params.ruleDecision.kind === 'clear'
-          ? { intent: 'clear' as const, laborForms: params.ruleDecision.clearedValues }
-          : { intent: 'ignore' as const };
-    const extractionTrack = {
-      intent: params.extractionDecision.intent,
-      ...(params.extractionDecision.labor_form
-        ? { laborForm: params.extractionDecision.labor_form }
-        : {}),
-    };
-    const sameIntent = ruleTrack.intent === extractionTrack.intent;
-    const sameValue =
-      !sameIntent ||
-      extractionTrack.intent === 'ignore' ||
-      (extractionTrack.intent === 'set' &&
-        ruleTrack.intent === 'set' &&
-        extractionTrack.laborForm === ruleTrack.laborForm) ||
-      (extractionTrack.intent === 'clear' &&
-        ruleTrack.intent === 'clear' &&
-        (!extractionTrack.laborForm || ruleTrack.laborForms.includes(extractionTrack.laborForm)));
-    if (sameIntent && sameValue) return;
-
-    this.tracer?.emit({
-      type: 'semantic_track_diff',
-      corpId: params.corpId,
-      userId: params.userId,
-      chatId: params.sessionId,
-      semantic: 'labor_form_intent',
-      ruleTrack,
-      extractionTrack,
-      quote: params.extractionDecision.quote,
-    });
   }
 
   /**

@@ -9,7 +9,6 @@ import { QUANTIFIED_JOB_FACT_PATTERN } from './job-fact-signals.util';
  * - 有岗/无岗结论极性反转；
  * - 工具确认的日期或星期被改错；
  * - 已完成的副作用被降级为待办；
- * - 未确认的承诺被升级为已确认事实。
  *
  * 命中任一形态即判定 repair 回归；runner 再结合首版是否明确可发送决定：
  * 可发送才允许回退首版，首版已明确不可发送则两版都不投递。检测刻意保守：
@@ -20,8 +19,7 @@ export type RepairRegressionKind =
   | 'structure_collapsed'
   | 'polarity_reversed'
   | 'fact_mutated'
-  | 'commitment_downgraded'
-  | 'commitment_upgraded';
+  | 'commitment_downgraded';
 
 export interface RepairRegressionContext {
   /** agent-runner 的 summarizeCommittedSideEffects 产物；含 duliday_interview_booking 时启用副作用降级检测。 */
@@ -37,11 +35,6 @@ export interface RepairRegressionContext {
    * 避免把“删除幻觉事实”误判成结构压扁/结论反转。
    */
   jobEvidenceAvailable?: boolean;
-  /**
-   * 本轮触发的守卫规则 id（首审判定结果）。
-   * 承诺类回归检测只在对应守卫实际触发时启用，避免把正常应答误判为承诺升级。
-   */
-  triggeredRuleIds?: readonly string[];
   /** 仅测试注入；生产走系统时钟。用于把"M月D日"推断到最近的完整年份以计算真实星期。 */
   now?: Date;
 }
@@ -118,24 +111,6 @@ function computeActualWeekday(month: number, day: number, now: Date): number | n
   return best === null ? null : best.getDay();
 }
 
-/**
- * 承诺类规则：命中即说明守卫已认定首版存在"无真实动作支撑的跟进承诺"。
- * commitment_upgraded 只在这些规则触发的轮次生效——正常轮次里"没问题"是合法应答，
- * 无差别检测会把大量正常改写判成回归。
- */
-const PROMISE_RULE_IDS: ReadonlySet<string> = new Set([
-  'dangling_reply_promise',
-  'application_record_update_promise',
-]);
-
-/** 跟进承诺：让同事确认 / 我再核实下 / 稍等 / 稍后告诉你。 */
-const FOLLOW_UP_PROMISE_PATTERN =
-  /(?:同事|负责人|专员|经理|人工)[^。！？!?\n]{0,8}(?:确认|联系|处理|跟进|核实)|我(?:这边)?(?:再|去|先)?(?:确认|核实|问)(?:一)?下|稍等|稍后[^。！？!?\n]{0,6}(?:回复|告诉|联系|通知|确认)/u;
-
-/** 确认语：把"待办"说成"已定"。 */
-const AFFIRMATION_PATTERN =
-  /没问题|可以的|没得问题|安排好了|已(?:经)?(?:改|调整|安排|确认)好|就这么定|定好了/u;
-
 /** 首版对已成事实的成功宣称：已提交报名/报名成功/已帮你预约等。 */
 const BOOKING_DONE_PATTERN =
   /已(?:经)?(?:帮你)?(?:成功)?(?:提交|报名|预约|约好)|(?:报名|预约|提交)(?:已(?:经)?)?成功/u;
@@ -210,21 +185,6 @@ export function detectRepairRegression(
     BOOKING_PENDING_PATTERN.test(revised)
   ) {
     return 'commitment_downgraded';
-  }
-
-  // commitment_upgraded：修复删掉未履行的承诺后，不能反而用确认语把待办写成已完成。
-  // 只在承诺类规则实际触发、且首版不含确认语时判定；首版自身的误确认交硬规则。
-  const promiseRuleTriggered = (context?.triggeredRuleIds ?? []).some((id) =>
-    PROMISE_RULE_IDS.has(id),
-  );
-  if (
-    promiseRuleTriggered &&
-    FOLLOW_UP_PROMISE_PATTERN.test(first) &&
-    !FOLLOW_UP_PROMISE_PATTERN.test(revised) &&
-    !AFFIRMATION_PATTERN.test(first) &&
-    AFFIRMATION_PATTERN.test(revised)
-  ) {
-    return 'commitment_upgraded';
   }
 
   return null;

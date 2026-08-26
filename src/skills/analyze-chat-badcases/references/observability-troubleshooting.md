@@ -90,9 +90,8 @@ ORDER BY created_at, id;
 - `model_call / model_fallback / agent_error / agent_end`
 - `tool_call / tool_error`
 - `memory_recall / memory_store`
-- `semantic_review` 的 `mode / decision / confidence / findingCodes`
-
-`semantic_review` 无命中也应有 pass 事件；它可作为 shadow/enforce 是否存活的证据。若事件缺失，先核对配置、执行路径和事件落库健康，不能直接断言语义评审通过。
+- Output 规则裁决与修复结果应从 `guardrail_review_records` / `guardrail_output` 查看；
+  `semantic_review` 只可能是历史事件，不代表当前链路仍执行 reviewer。
 
 ### 4.3 查看守卫全过程
 
@@ -157,7 +156,7 @@ ORDER BY created_at;
 | 重复追问、遗忘已给信息           | `chat_messages + memory_snapshot + agent_steps + agent_invocation(单 trace)`   |
 | 工具没调、参数错、动态事实错     | `tool_calls + agent_execution_events(tool_*) + agent_steps`                    |
 | 回复被改写、拦截或静默           | `guardrail_output + guardrail_review_records + reply_segments`                 |
-| semantic shadow/enforce 是否执行 | `agent_execution_events(event_type='semantic_review') + 当前配置`              |
+| Output 是否执行及如何收敛        | `guardrail_output + guardrail_review_records + reply_segments`                |
 | 声称已预约/转人工但事实可疑      | `ops_events + handoff_events + tool_calls`                                     |
 | “Agent 没回复”                   | 主表终态 + `reply_segments` + guardrail/skip outcome + `monitoring_error_logs` |
 | 真人插话后不该回复               | 对话来源标记 + agent steps/skip_reply + 投递终态                               |

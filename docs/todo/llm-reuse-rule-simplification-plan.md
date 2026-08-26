@@ -1,7 +1,9 @@
 # 复用现有 LLM 的规则简化改造方案
 
-**状态**：待执行
-**范围**：候选人语义提取、品牌/用工形式解析、收资作证、Input/Output Guardrail 及相关规则清理
+**状态**：已完成（2026-08-26）
+**范围**：候选人表单外语义提取、品牌/用工形式解析、Input/Output Guardrail 及相关规则清理
+
+**Precheck 边界**：收资入参问题已拆到 [Precheck 收资入参统一专项](./precheck-form-answer-contract-refactor.md)，本方案不再裁定 `candidateClaims` / `formAnswers` 的接口形态
 **核心约束**：不新增 LLM 调用，不新增观测项、Dashboard、Rule Catalog、shadow 对照或人工标注流程
 
 ## 1. 背景与目标
@@ -9,7 +11,7 @@
 当前仓库同时存在两类能力：
 
 1. 确定性能力：文本清洗、格式解析、品牌/行政区划目录、工具回执和不可逆动作闸门；
-2. 语义能力：主 Agent、轮末 `extract_facts`、`brand_intents`、`labor_form_intent` 和预检查 `candidateClaims`。
+2. 语义能力：主 Agent、轮末 `extract_facts`、`brand_intents` 和 `labor_form_intent`。
 
 历史代码中仍有不少正则在重复判断开放自然语言的意图、否定、身份、承诺和上下文。这些规则容易形成“增加一个命中分支，再增加一个豁免分支”的维护循环，也会与已经存在的 LLM 语义结果互相覆盖。
 
@@ -19,8 +21,7 @@
 
 ```text
 主 Agent
-  ├─ 负责理解当前对话和生成回复
-  └─ 通过 candidateClaims 为报名资料作证
+  └─ 负责理解当前对话和生成回复
 
 现有 extract_facts
   ├─ 负责表单外软偏好
@@ -69,35 +70,11 @@ labor_form_intent
 
 因此品牌复杂极性和用工形式意图可以直接复用这一调用，不需要新增分类模型。
 
-### 3.2 主 Agent 的 `candidateClaims`
+### 3.2 Precheck 收资语义
 
-姓名、手机号、年龄、性别、学历、健康证、学生身份、身高、体重、户籍等报名资料，已经有专用作证通道：
-
-- 工具入口：`src/tools/duliday-interview-precheck.tool.ts`
-- 输入 Schema：`src/resolution/evidence/claim.types.ts#CandidateClaimInputSchema`
-- Model Claim：`src/resolution/evidence/producers/model-claims.ts`
-- 收资接入：`src/tools/collection/proposal-intake.ts`
-- 公证：`src/resolution/evidence/notary.ts`
-- 冲突裁决：`src/resolution/evidence/engine.ts`
-
-主 Agent 在调用 precheck 时提交：
-
-```ts
-candidateClaims: [
-  {
-    field: 'isStudent',
-    value: false,
-    quote: '我已经毕业了',
-  },
-  {
-    field: 'healthCertificate',
-    value: '可办理',
-    quote: '健康证还没办，不过可以办',
-  },
-]
-```
-
-该通道不增加 LLM 调用：语义理解由本来就在聊天的主 Agent 完成，代码只验证 quote、值形态、来源和冲突。
+报名资料仍复用主 Agent 已完成的对话理解和现有确定性公证，不新增字段抽取 LLM；但主模型应通过
+哪一种工具入参提交答案、岗位动态标签和常见语义字段如何统一，不在本方案继续重复定义。唯一执行
+规格见 [Precheck 收资入参统一专项](./precheck-form-answer-contract-refactor.md)。
 
 ### 3.3 主 Agent 的对话理解
 
@@ -115,18 +92,7 @@ candidateClaims: [
   → 写入偏好或品牌状态
 ```
 
-### 4.2 报名资料
-
-```text
-候选人消息
-  → 主 Agent 理解
-  → precheck.candidateClaims(value + quote)
-  → 现有 notary 公证
-  → accepted / rejected / needs_confirmation
-  → 收资表单或候选人确认
-```
-
-### 4.3 输出回复
+### 4.2 输出回复
 
 ```text
 主 Agent 根据对话和工具结果生成回复
@@ -213,78 +179,7 @@ LLM 降级：decideLaborFormIntent() 兜底
 - `src/resolution/evidence/producers/rule-track.ts`
 - `src/resolution/evidence/producers/rule-track-preferences.ts`
 
-### 5.3 候选人资料：复用 `candidateClaims`
-
-原则：
-
-- 不把身份字段重新放回 `extract_facts`；
-- 不增加新的身份抽取 LLM；
-- 主 Agent 是语义理解者；
-- `candidateClaims` 是报名资料的主作证通道；
-- 确定性扫描只处理封闭格式、表单行或主 Agent 漏提交时的安全兜底；
-- 冲突事实继续交候选人确认。
-
-保留确定性解析：
-
-- 手机号；
-- 明确年龄；
-- 明确身高体重；
-- 标准省份名；
-- 姓名、手机号等严格身份值形态；
-- `字段：值` 表单回填；
-- 简历邮箱、手机号及来源排除；
-- quote 原文公证；
-- 回声检查；
-- 冲突转确认。
-
-收缩自由聊天正则：
-
-- 健康证复杂状态；
-- 学生/社会人士复杂表达；
-- 学历复杂上下文；
-- 姓名复杂口语推断；
-- 第三方、反问、假设和语气词的无限枚举。
-
-主 Agent 示例：
-
-```text
-Agent：你目前还是在校学生吗？
-用户：已经毕业两年了
-
-precheck.candidateClaims：
-{
-  field: "isStudent",
-  value: false,
-  quote: "已经毕业两年了"
-}
-```
-
-确认式作证继续使用：
-
-```ts
-{
-  field: 'name',
-  value: '张伟',
-  operation: 'confirm',
-  quote: '对',
-  agentQuestionQuote: '姓名是张伟对吧？',
-}
-```
-
-涉及文件：
-
-- `src/tools/duliday-interview-precheck.tool.ts`
-- `src/tools/collection/proposal-intake.ts`
-- `src/resolution/evidence/claim.types.ts`
-- `src/resolution/evidence/producers/model-claims.ts`
-- `src/resolution/evidence/notary.ts`
-- `src/resolution/evidence/engine.ts`
-- `src/resolution/candidate/health-cert.ts`
-- `src/resolution/candidate/student-identity.ts`
-- `src/resolution/candidate/education.ts`
-- `src/resolution/candidate/name.ts`
-
-### 5.4 无岗、不满意和切换意图：交给主 Agent
+### 5.3 无岗、不满意和切换意图：交给主 Agent
 
 改造：
 
@@ -302,7 +197,7 @@ precheck.candidateClaims：
 - `src/tools/invite/invite-timing-gate.ts`
 - 主 Agent 的候选人沟通 Prompt。
 
-### 5.5 Input Guardrail：只保留明确高风险形态
+### 5.4 Input Guardrail：只保留明确高风险形态
 
 保留：
 
@@ -325,7 +220,7 @@ precheck.candidateClaims：
 - `src/agent/guardrail/input/risk-intercept.service.ts`
 - `src/agent/guardrail/input/prompt-injection.service.ts`
 
-### 5.6 Output Guardrail：只保留格式和权威事实对账
+### 5.5 Output Guardrail：只保留格式和权威事实对账
 
 继续保留或迁移为确定性实现：
 
@@ -396,122 +291,116 @@ precheck.candidateClaims：
 
 ### 第一批：让现有 LLM 结果真正生效
 
-- [ ] `labor_form_intent` 从对照项改为生效结果；
-- [ ] 删除 `emitLaborFormSemanticTrackDiff()`；
-- [ ] 删除 labor-form 的 `semantic_track_diff` 发射；
-- [ ] LLM 正常时禁止 rule-track 覆盖 labor-form；
-- [ ] LLM 降级时回退 `decideLaborFormIntent()`；
-- [ ] `brand_intents` 负责复杂品牌极性；
-- [ ] LLM 正常时规则轨仅保留品牌实体结果，不覆盖复杂极性；
-- [ ] LLM 降级时回退品牌极性正则。
+- [x] `labor_form_intent` 从对照项改为生效结果；
+- [x] 删除 `emitLaborFormSemanticTrackDiff()`；
+- [x] 删除 labor-form 的 `semantic_track_diff` 发射；
+- [x] LLM 正常时禁止 rule-track 覆盖 labor-form；
+- [x] LLM 降级时回退 `decideLaborFormIntent()`；
+- [x] `brand_intents` 负责复杂品牌极性；
+- [x] LLM 正常时规则轨仅保留品牌实体结果，不覆盖复杂极性；
+- [x] LLM 降级时回退品牌极性正则。
 
-### 第二批：收资语义统一走 `candidateClaims`
+### 第二批：删除重复对话语义判断
 
-- [ ] 保持 `extract_facts` 禁止输出身份资料；
-- [ ] 强化 precheck 工具说明：已表达的报名字段必须用 `candidateClaims` 提交；
-- [ ] 确认式 claim 必须携带 `agentQuestionQuote`；
-- [ ] 收缩健康证自由聊天正则；
-- [ ] 收缩学生身份自由聊天正则；
-- [ ] 收缩学历、姓名的开放语义正则；
-- [ ] 保留手机号、年龄、表单行等封闭格式解析；
-- [ ] 保留 quote 公证和值形态检查；
-- [ ] 保留冲突转候选人确认。
+- [x] 删除 `DISSATISFACTION_SIGNAL`；
+- [x] 删除连续两轮不满意的文本计数；
+- [x] 保留本轮结构化 `noMatchScript`；
+- [x] 保留 `invite_timing_gate`；
+- [x] 收缩 Input Guardrail 宽泛关键词；
+- [x] 不新增输入语义分类器。
 
-### 第三批：删除重复对话语义判断
+### 第三批：Output Guardrail 瘦身
 
-- [ ] 删除 `DISSATISFACTION_SIGNAL`；
-- [ ] 删除连续两轮不满意的文本计数；
-- [ ] 保留本轮结构化 `noMatchScript`；
-- [ ] 保留 `invite_timing_gate`；
-- [ ] 收缩 Input Guardrail 宽泛关键词；
-- [ ] 不新增输入语义分类器。
+- [x] 删除纯观察规则；
+- [x] 精确重复回复移到 sanitizer；
+- [x] handoff 对账移到副作用处理；
+- [x] 日期错配移到日期格式化/一致性处理；
+- [x] 只保留格式、封闭词形和工具事实对账规则；
+- [x] 收窄造假、歧视等高风险正则；
+- [x] 删除开放语义泛化规则；
+- [x] 不启用额外 Semantic Reviewer；
+- [x] 修复器只做一次局部修复。
 
-### 第四批：Output Guardrail 瘦身
+### 第四批：清理与验证
 
-- [ ] 删除纯观察规则；
-- [ ] 精确重复回复移到 sanitizer；
-- [ ] handoff 对账移到副作用处理；
-- [ ] 日期错配移到日期格式化/一致性处理；
-- [ ] 只保留格式、封闭词形和工具事实对账规则；
-- [ ] 收窄造假、歧视等高风险正则；
-- [ ] 删除开放语义泛化规则；
-- [ ] 不启用额外 Semantic Reviewer；
-- [ ] 修复器只做一次局部修复。
-
-### 第五批：清理与验证
-
-- [ ] 删除不再引用的正则、常量、分支和测试夹具；
-- [ ] 删除不再使用的规则实现文件；
-- [ ] 更新 Output Rule Catalog；
-- [ ] 更新 Guardrail、品牌、候选人资料和语义三分法文档；
-- [ ] 更新 Prompt Rule Ledger；
-- [ ] 补充 LLM 正常与降级回退测试；
-- [ ] 补充 `candidateClaims` 直接作证与确认式作证测试；
-- [ ] 补充品牌极性、labor-form 和工具回执回归测试；
-- [ ] 运行格式检查、类型检查、相关单测和完整 CI。
+- [x] 删除不再引用的正则、常量、分支和测试夹具；
+- [x] 删除不再使用的规则实现文件；
+- [x] 更新 Output Rule Catalog；
+- [x] 更新 Guardrail、品牌、用工形式和语义三分法文档；
+- [x] 更新 Prompt Rule Ledger；
+- [x] 补充 LLM 正常与降级回退测试；
+- [x] 补充品牌极性、labor-form 和工具回执回归测试；
+- [x] 运行格式检查、类型检查、相关单测和完整 CI。
 
 ## 8. 必测场景
 
 ### 品牌
 
-- [ ] “我想去肯德基”；
-- [ ] “肯德基以前做过，不想再去了”；
-- [ ] “这个不考虑了”；
-- [ ] “品牌都可以”；
-- [ ] 同一轮同时表达正向和排斥；
-- [ ] LLM 降级时明确否定仍能由规则兜底；
-- [ ] 模糊品牌不会直接写入状态。
+- [x] “我想去肯德基”；
+- [x] “肯德基以前做过，不想再去了”；
+- [x] “这个不考虑了”；
+- [x] “品牌都可以”；
+- [x] 同一轮同时表达正向和排斥；
+- [x] LLM 降级时明确否定仍能由规则兜底；
+- [x] 模糊品牌不会直接写入状态。
 
 ### 用工形式
 
-- [ ] “我找全职”；
-- [ ] “我现在做兼职，但接下来想找全职”；
-- [ ] “这是兼职岗位吗”必须为 ignore；
-- [ ] “兼职不考虑了”必须 clear；
-- [ ] LLM 降级时核心明确表达仍能识别；
-- [ ] ignore 不覆盖已有偏好。
-
-### 候选人资料
-
-- [ ] “已经毕业了”通过 `candidateClaims` 提交 `isStudent=false`；
-- [ ] “健康证还没办，不过可以办”通过 claim 提交；
-- [ ] quote 不存在时拒绝；
-- [ ] 姓名/手机号值不在 quote 中时拒绝；
-- [ ] “对”类确认必须绑定真实 Agent 问句；
-- [ ] 岗位截图中的姓名、电话、年龄不能成为候选人资料；
-- [ ] 同字段冲突进入 `needs_confirmation`；
-- [ ] 表单 `字段：值` 继续正常回填。
+- [x] “我找全职”；
+- [x] “我现在做兼职，但接下来想找全职”；
+- [x] “这是兼职岗位吗”必须为 ignore；
+- [x] “兼职不考虑了”必须 clear；
+- [x] LLM 降级时核心明确表达仍能识别；
+- [x] ignore 不覆盖已有偏好。
 
 ### Output 与工具
 
-- [ ] booking 成功回执与回复一致；
-- [ ] 未成功改约时不得确认新时间；
-- [ ] 线上面试不得发送到店指引；
-- [ ] 无岗位事实时不得猜关店、搬迁或招满；
-- [ ] 精确重复回复可以确定性去重；
-- [ ] 格式泄漏可以局部删除，不整段重写；
-- [ ] 修复器不得新增事实。
+- [x] booking 成功回执与回复一致；
+- [x] 未成功改约时不得确认新时间；
+- [x] 线上面试不得发送到店指引；
+- [x] 无岗位事实时不得猜关店、搬迁或招满；
+- [x] 精确重复回复可以确定性去重；
+- [x] 格式泄漏可以局部删除，不整段重写；
+- [x] 修复器不得新增事实。
 
 ## 9. 完成标准
 
 改造完成必须同时满足：
 
-- [ ] 没有新增 LLM 调用；
-- [ ] 没有新增观测项、Dashboard、shadow diff 或 Rule Catalog；
-- [ ] `brand_intents` 已承担复杂品牌极性；
-- [ ] `labor_form_intent` 已直接影响偏好，不再只做对照；
-- [ ] 报名资料的开放语义统一通过 `candidateClaims` 作证；
-- [ ] `extract_facts` 仍只处理表单外软事实；
-- [ ] 健康证、学生身份、labor-form 和品牌极性正则明显收缩；
-- [ ] 无岗与不满意不再依靠复杂历史文本计数；
-- [ ] Output Guardrail 只保留格式、封闭高风险形态和权威事实对账；
-- [ ] 纯观察规则已删除或迁移到真实行为位置；
-- [ ] 报名、改约、拉群的确定性闸门保持不变；
-- [ ] 相关单测、类型检查和 CI 全部通过；
-- [ ] 文档与实际代码保持一致。
+- [x] 没有新增 LLM 调用；
+- [x] 没有新增观测项、Dashboard、shadow diff 或 Rule Catalog；
+- [x] `brand_intents` 已承担复杂品牌极性；
+- [x] `labor_form_intent` 已直接影响偏好，不再只做对照；
+- [x] Precheck 收资入参未在本方案中被重复改造，专项边界保持清晰；
+- [x] `extract_facts` 仍只处理表单外软事实；
+- [x] labor-form 和品牌极性正则明显收缩；
+- [x] 无岗与不满意不再依靠复杂历史文本计数；
+- [x] Output Guardrail 只保留格式、封闭高风险形态和权威事实对账；
+- [x] 纯观察规则已删除或迁移到真实行为位置；
+- [x] 报名、改约、拉群的确定性闸门保持不变；
+- [x] 相关单测、类型检查和 CI 全部通过；
+- [x] 文档与实际代码保持一致。
 
-## 10. 执行 Goal 指令
+## 10. 恢复记录（2026-08-26 数据复核）
+
+改造完成当日按近 7/30 天生产 `guardrail_review_records` 逐条复核删除项，做了定点回补
+（非整体回滚），详见 prompt-rule-ledger 第七节：
+
+- **恢复执行档**：`human_service_phrase_leak`——近 7 天仍有真阳人设露馅（"真人经理已经
+  说了…"直发前被拦），封闭词形 7-21 升档史零误报，符合本方案"只保留封闭词形"的保留标准，
+  属误删。
+- **恢复 observe 哨兵（只落档不拦截）**：`dangling_reply_promise`、`requested_brand_mismatch`、
+  `settlement_cycle_mismatch`、`proactive_insurance_policy_mention`。
+- **新哨兵**：`booking_done_claim_without_submission`（observe 入场）接替
+  `booking_promise_without_booking` 的完成时态缺口；原规则的将来时口径经抽样证实
+  几乎全命中合法收资话术（约 60 次/天），维持删除。
+- **维持删除**：语义审查器全链路（生产 shadow-only、近全假阳）、
+  `job_detail_lookup_required`（宽口径噪音 200 次/周）、`date_reference_mismatch`
+  （抽样全为日期正确记录）、`unsupported_schedule_window_claim`（8 次/周中约 6-7 假阳，
+  拦的是诚实兜底话术）及全部零命中规则族。
+
+## 11. 执行 Goal 指令
 
 ```text
-/goal 按 docs/todo/llm-reuse-rule-simplification-plan.md 完成规则简化改造。必须复用现有 extract_facts、brand_intents、labor_form_intent、主 Agent candidateClaims、evidence notary 和工具闸门；不得新增任何 LLM 调用、观测项、Dashboard、Rule Catalog、shadow diff 或人工标注流程。按文档执行顺序逐批实施，保护工作区已有改动，完成相关单测、类型检查和 CI；发现文档与当前代码冲突时，以“不新增能力、删除重复语义正则、保留确定性格式/目录/quote/工具回执对账”为原则做最小改造，直至清单与完成标准全部满足。
+/goal 按 docs/todo/llm-reuse-rule-simplification-plan.md 完成规则简化改造。必须复用现有 extract_facts、brand_intents、labor_form_intent、主 Agent 对话理解和工具闸门；precheck 的 candidateClaims/formAnswers 问题不在本 Goal 内改动，另按 docs/todo/precheck-form-answer-contract-refactor.md 执行。不得新增任何 LLM 调用、观测项、Dashboard、Rule Catalog、shadow diff 或人工标注流程。按文档执行顺序逐批实施，保护工作区已有改动，完成相关单测、类型检查和 CI；发现文档与当前代码冲突时，以“不新增能力、删除重复语义正则、保留确定性格式/目录/工具回执对账”为原则做最小改造，直至清单与完成标准全部满足。
 ```
