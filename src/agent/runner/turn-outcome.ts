@@ -275,7 +275,7 @@ export function classifyReviewedOutcome(
     };
   }
 
-  // 承诺-动作对账补动作（议题 7-1）：模型明确承诺了一次人工升级但本轮没有 handoff
+  // 承诺-动作对账补动作：模型明确承诺了一次人工升级但本轮没有 handoff
   // 动作。正确处置不是改写/拦掉文案（消灭承诺），而是补执行 handoff 让承诺成真——
   // 文本原样投递，真人接续兑现。直接 enforce（用户 8-14 裁定，不设 shadow 期）。
   const promiseReconciliation = result.outputDecision.ruleIds.includes(
@@ -302,7 +302,7 @@ export function classifyReviewedOutcome(
 }
 
 /**
- * handoff 承诺-动作对账的补动作意图（议题 7-1）。
+ * handoff 承诺-动作对账的补动作意图。
  *
  * 复用既有 `other` reasonCode，不新开底账分桶：对运营来说这就是一次普通的"需人工跟进"，
  * 该做的动作与模型自发 handoff 完全一样；补动作与自发 handoff 的区分只有排障需要，

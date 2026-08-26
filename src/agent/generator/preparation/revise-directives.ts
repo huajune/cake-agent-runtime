@@ -5,11 +5,8 @@ import { type GeneratorInvokeParams } from '../generator.types';
  *
  * 由 PreparationService 在组装 finalPrompt 时调用；被动回合返回空串，不产生任何影响。
  *
- * 沿革：本文件原本还承载 HC-1 revise/repair 注入（buildReviseNotice /
- * buildReviseUserDirective）。replan 退役后三个入参（reviseFeedback / guardrailRepair /
- * committedSideEffects）全库零写侧，两个函数恒返回空串/null，preparation 每轮空调一次；
- * 活的修复链路是独立的 ReplyRepairAgent，不经 generator 重生成。
- * 已随 core-flow-review 议题 5-2 整体删除；要重建 revise 回路请从 git 历史取回。
+ * 现行修复链路由独立的 ReplyRepairAgent 承担，不经 generator 重生成；本文件只负责
+ * 主动回合 directive。
  */
 
 /**

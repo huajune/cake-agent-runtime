@@ -15,7 +15,7 @@ import {
 } from './short-term.types';
 
 /**
- * 会话记忆·工作台舱（working state，M3 分家 2026-08-21）
+ * 会话记忆·工作台舱（working state）。
  *
  * 职责：注意力与查询状态——lastCandidatePool / presentedJobs / currentFocusJob /
  * lastJobListQuery 与阶段指针的投影与维护。候选池等字段的状态 IO 经事实舱

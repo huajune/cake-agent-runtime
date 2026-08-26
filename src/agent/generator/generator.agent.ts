@@ -1,4 +1,9 @@
-/** Agent 执行编排：prepare -> model -> turn end lifecycle。 */
+/**
+ * Agent 生成器：prepare → AI SDK 多步模型/工具循环 → 生成结果归一化。
+ *
+ * 本类只把 `runTurnEnd` 收尾闭包挂到结果上；它不在生成结束时立即写记忆。
+ * Runner/渠道会在 replay 和投递结局确定后，通过 `TurnFinalizer` 只触发一次。
+ */
 
 import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
@@ -224,9 +229,8 @@ export class GeneratorAgent {
             toolExecutionTimings: ctx.toolExecutionTimings,
           });
           this.attachTurnEnd(result, ctx, params.messageId, result.text);
-          // stream 路径专项（议题 5-1 第 6 条）：SSE 交互测试链此前依赖 fire-and-forget
-          // 默认分支自动收尾。开关删除后由 stream 自己在挂上闭包后立即触发，
-          // 保持既有收尾行为不变（runTurnEnd 幂等，调用方再触发一次是空操作）。
+          // stream 没有渠道层 TurnFinalizer；挂上闭包后立即触发，保持 SSE 交互链的收尾
+          // 行为（runTurnEnd 幂等，调用方再触发一次是空操作）。
           void result
             .runTurnEnd?.()
             .catch((err) => this.logger.warn('流式回合记忆生命周期执行失败', err));
@@ -389,11 +393,10 @@ export class GeneratorAgent {
   /**
    * 把 turn-end 触发器挂到结果上，交给调用方在本轮结局定局时触发。
    *
-   * 延迟触发是**唯一语义**（`deferTurnEnd` 开关已删除，core-flow-review 议题 5-1）：
+   * 延迟触发是唯一语义：
    * 首次生成结果可能被后续合并消息丢弃（replay），也可能被出站守卫拦下或投递失败；
    * 生成结束就 fire-and-forget 会把「本应丢弃 / 用户根本没看到」的回复写进 session 记忆，
-   * 污染下一轮 recall 与复聊判定。生产全路径本就 defer（invokeReviewed 恒强制、
-   * test-suite 两处显式传 true），保留的默认分支只是 PR #415 重构前的世界观残留。
+   * 污染下一轮 recall 与复聊判定。
    *
    * ⚠️ 代价：没有兜底了。新调用方忘记触发 runTurnEnd = 本轮记忆写入静默丢失。
    * 契约写在 GeneratorRunResult.runTurnEnd 的注释里。

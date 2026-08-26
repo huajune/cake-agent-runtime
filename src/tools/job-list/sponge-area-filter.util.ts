@@ -1,12 +1,12 @@
 /**
- * 海绵行政区适配（方案 §11.2，Phase 3 自 duliday-job-list.tool.ts 抽取归位）。
+ * 海绵行政区适配。
  *
  * 海绵按"地级 city + 县级 region"分层存储（实证：延吉市→延边朝鲜族自治州、
  * 昆山市→苏州市），候选人却常把县级市直接称作"城市"。本 util 承担供应商口径
  * 转换与串城防护，行政区层级知识一律经 @resolution/geo 的 resolver 查询，
  * 岗位工具不再 import 任何行政区映射常量。
  *
- * 海绵非标准命名如出现，维护在本 util 的本地 override，不进 geo（§11.2）。
+ * 海绵非标准命名如出现，维护在本 util 的本地 override，不进 geo。
  */
 
 import { isRecord } from '@infra/utils/object.util';

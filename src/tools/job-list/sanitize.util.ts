@@ -1,5 +1,5 @@
 /**
- * duliday-job-list 工具的"对外口径净化层"（Phase 1.B 数据契约层起点）。
+ * duliday-job-list 工具的对外口径净化层。
  *
  * sponge / duliday 原始数据里夹杂内部排版编码 / 已废品牌名 / 内部短语，
  * 直接透传给 Agent 会让 Agent 把这些噪音当业务事实复述给候选人。

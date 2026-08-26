@@ -183,7 +183,8 @@ function buildCandidatePrefillHints(
     const value = String(fact.value ?? '').trim();
     if (!value) continue;
 
-    // 新语义：gender 自身的 source+confidence 足以判定；旧 sibling 只作 3 天兼容回退。
+    // gender 自身的 source+confidence 是当前权威语义；旧 sibling 只在
+    // 存量记录缺少新来源章时做兼容回退，不得反向覆盖新信封。
     // booking 是 system+high，可程序化预填；企微标签是 system+非 high，仍被安全闸拦截。
     const genderSource = hintField === 'gender' ? readGenderProvenance(info) : null;
     const isSystemSourced =

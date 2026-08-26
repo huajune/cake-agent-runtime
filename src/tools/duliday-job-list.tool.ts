@@ -842,7 +842,7 @@ export function buildJobListTool(
           brandPlan.filterMode === 'enforce'
             ? brandPlan.applied.map((brand) => brand.canonicalName)
             : [];
-        // Phase 3.1：候选人在更早轮次表达过的班次硬约束已经被 fact-extraction 持久化到
+        // 候选人在更早轮次表达过的班次硬约束已经被 fact-extraction 持久化到
         // sessionFacts.preferences.schedule_constraint。Agent 本轮调本工具时若没显式
         // 传 candidateScheduleConstraint，自动从 sessionFacts 兜底，避免 Agent 忘了
         // 拉回候选人原话（badcase 簇 schedule_constraint_forgotten）。
@@ -1821,7 +1821,7 @@ export function buildJobListTool(
               coordsProvenance,
               coordsDeviationKm,
             },
-            // 地理信号冲突 shadow（方案 §8.2 / Phase 3 第 6 步）：会话事实的多个
+            // 地理信号冲突 shadow：会话事实的多个
             // 地理信号指向不同城市时记录"本应 ambiguous"案例，仅观测不干预——
             // 现行先命中先赢行为不变；enforce 已于 2026-08-14 终审 no-go（3 周 25 样本
             // 真冲突 0 起，见 docs/architecture/geo-resolution.md §9.3），本字段今后

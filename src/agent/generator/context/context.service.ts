@@ -222,7 +222,7 @@ export class ContextService implements OnModuleInit {
    * - 只渲染该城市群库数据；操作约束由 invite_to_group description 承载
    * - 行为：无城市/无群数据/查询失败时返回空串，不影响 prompt 组装
    *
-   * 城市取值必须与硬约束段同门（minConfidence='high'，议题 1-2）：本块不只是"参考信息"，
+   * 城市取值必须与硬约束段同门（minConfidence='high'）：本块不只是“参考信息”，
    * 群库数据会影响工具调用决策，城市取错两个方向都会错。
    * 此前直读 `.value` 绕过置信度门——Redis 旧档归一化出的 confidence='unknown' 城市
    * 会让 prompt 里出现「兼职群资源（南京）」而硬约束段根本没有该城市。

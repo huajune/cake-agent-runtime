@@ -3,7 +3,7 @@
  *
  * 与 `recap-renderer` 的分工：这张是**收资中**发的（缺什么问什么，已知的预填），
  * 那张是**提交前**发的一次性复述（全部 filled 槽位求证）。两者共用表单块形态，
- * 分段兼容结论见 recap-renderer 的 Spike S5 断言。
+ * 分段兼容结论见 recap-renderer 的同名断言。
  *
  * 字段名一律用**契约 labelTitle 原文**：Agent 契约要求"发给候选人的模板字段名必须与
  * 工具返回一致"，而 booking payload 也按 labelId 回填——三处同源才不会出现
@@ -77,7 +77,7 @@ export function renderCollectionTemplate(
 }
 
 /**
- * 表单行标签清洗——与 recap-renderer 同一口径（Spike S5 结论）：
+ * 表单行标签清洗——与 recap-renderer 同一口径：
  * 标签含逗号/句号或超 48 字时 `MessageSplitter` 不认这一行为表单行，整块随之失去
  * 原子性、被按句拆散刷屏。生产实测脏配置不少（「是否学生（不要学生及暑假工）」），
  * 且括号里往往就是**筛选指令**——原样发给候选人等于泄露筛选条件。
@@ -106,7 +106,7 @@ export function formLabel(title: string, field?: ContractFieldDef): string {
  *
  * 三种情况不加提示：
  * - 选项标签自带逗号/句号（如「无本地有效健康证，接受办理」）——会让分段器不认这一行
- *   表单行，整块失去原子性被按句拆散（Spike S5 结论）；
+ *   表单行，整块失去原子性被按句拆散；
  * - 选项太多（如籍贯 34 个省）——塞进一行没法读；
  * - 非选项型字段。
  */
@@ -122,7 +122,7 @@ function optionHint(field: ContractFieldDef): string | null {
   // 候选人自己就知道该怎么答，提示纯属噪音。提示只该出现在**系统特有措辞**上——
   // 那种候选人猜不到该怎么写的（"无本地有效健康证，接受办理"、"3个月内"）。
   if (options.every((option) => option.optionLabel.trim().length <= 3)) return null;
-  // 选项含逗号句号会让分段器不认这一行表单行，整块失去原子性被按句拆散（Spike S5）。
+  // 选项含逗号句号会让分段器不认这一行表单行，整块失去原子性被按句拆散。
   if (options.some((option) => /[，,。！？!?；;（）()]/u.test(option.optionLabel))) return null;
 
   return options.map((option) => option.optionLabel).join('/');

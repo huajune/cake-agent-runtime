@@ -278,8 +278,8 @@ export class ReplyWorkflowService {
     //（fire-and-forget，本轮不阻塞；描述缺失归因 2026-08-05：90% 来自无回合时段）。
     this.imageDescription.backfillBareDescriptionsForChat?.(chatId);
 
-    // 首次调用延迟 turn-end：若随后检测到新消息会走 replay 丢弃本次回复，
-    // 记忆投影/事实提取也必须一同被丢弃，否则会把「未发出的回复」污染到 session 记忆里。
+    // 每次运行都返回独立的 turn-end 闭包；先由 TurnFinalizer 持有，不在生成结束时执行。
+    // 若随后 replay，丢弃本版 finalizer，避免把「未发出的回复」污染到 session 记忆里。
     let agentResult = await this.callAgentWithVisualCompatibilityFallback({
       ...agentCallParams,
       userMessage: content,

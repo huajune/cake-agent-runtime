@@ -65,7 +65,7 @@ export interface ShortTermMemoryState {
 /**
  * 阶段状态 — 招聘流程阶段状态。
  *
- * 只有 `currentStage` 一个字段（2026-08-19 记忆审计 S10）：原先还落
+ * 只有 `currentStage` 一个字段：原先还落
  * `fromStage` / `advancedAt` / `reason` 三个"审计"字段，但它们只写不读。
  * 阶段变迁的真实审计链在 advance_stage 日志、agent_execution_events 与
  * message_processing_records；这里仅保存下一轮要读取的流程指针。
@@ -264,7 +264,7 @@ const NullableAvailableAfterSchema = AvailableAfterFactSchema.nullable().default
  * 兼容性：所有新字段均 nullable + default(null)，旧 Redis 数据缺字段时解析为 null。
  */
 export const PreferencesSchema = z.object({
-  // brands 字段已删（2026-08-19 记忆审计 S9）：品牌唯一真相是 facts.brand，
+  // brands 字段已删：品牌唯一真相是 facts.brand，
   // 写入只经 reducer；本字段的存储值在收口后恒 null，模型填了也当场丢弃。
   brand_ids: z
     .array(z.number().int())
@@ -310,7 +310,7 @@ export const PreferencesSchema = z.object({
  * LLM 返回后，service 层再通过 EntityExtractionResultSchema.parse 归一化为 CityFact。
  */
 export const LLMPreferencesSchema = z.object({
-  // brands 已删（S9）：本轮品牌意图统一走 brand_intents（带极性与指代链接），
+  // brands 已删：本轮品牌意图统一走 brand_intents（带极性与指代链接），
   // 再让模型填一个当场被丢弃的 brands 只是多一条会打架的通道。
   brand_ids: z
     .array(z.number().int())
@@ -612,13 +612,13 @@ const SessionFactValueSchema = <T extends z.ZodTypeAny>(valueSchema: T) =>
 /**
  * 旧 city 字符串的兼容信封。
  *
- * 沿革（2026-08-19 记忆审计 S9）：这里原是**通用**裸值信封，任何字段的裸标量都能经它
+ * 这里原是**通用**裸值信封，任何字段的裸标量都能经它
  * 悄悄落成 unknown/archive。0817 复扫时数据侧已归零（443 份生产 factsv2、13733 个字段
  * 槽位，全是信封或 null），但当时删不掉——`saveFacts` 还收裸 `EntityExtractionResult`，
  * `MemoryFixtureService.seed()`（生产 Dashboard 在跑的 test-suite 种子）正是这么调的，
  * 那条路径就是靠本信封默默生成置信度签名的「无守卫写入」。
  *
- * S9 把 saveFacts 入参收成 `SessionFacts` 单形态、夹具改经 `toSessionFacts` 显式署名后，
+ * saveFacts 入参收成 `SessionFacts` 单形态、夹具改经 `toSessionFacts` 显式署名后，
  * 通用裸值分支随之删除。**只剩 city 一路**：`NullableSessionCityFactSchema` 的
  * 字符串/CityFact 分支服务的是旧 Redis 记录（其存量计数尚未复扫归零，见 NullableCityFactSchema
  * 的拆除判据），不是活跃写入方——保留是为了不让一条陈年记录的 pref.city 被逐字段校验静默丢掉。
@@ -630,7 +630,7 @@ function legacyCityFactValue<T>(value: T, evidence: string): SessionFactValue<T>
 /**
  * 落盘字段的信封 schema。
  *
- * **只收信封或 null**（S9）：裸标量不再被接受——它意味着一个没人为其置信度签名负责的值。
+ * **只收信封或 null**：裸标量不再被接受——它意味着一个没人为其置信度签名负责的值。
  * 写入方必须显式经 `toSessionFacts` 或自己构造 `SessionFactValue`。
  */
 const NullableSessionFactSchema = <T extends z.ZodTypeAny>(valueSchema: T) =>
@@ -710,7 +710,7 @@ export const SessionPreferencesSchema = z.object({
 /**
  * Redis 落盘的会话事实形态。
  *
- * ⚠️ 刻意**不含 `reasoning`**（2026-08-19 记忆审计 S8 拆除）：它曾随每次 saveFacts
+ * ⚠️ 刻意**不含 `reasoning`**：它曾随每次 saveFacts
  * 落盘，但全库零读消费者——`buildLlmFactEvidence` 收下它却返回常量，
  * `unwrapSessionFacts` 的下游（consolidation / tool-context / memory-block / context）
  * 一个都不读它。仓库外亦无消费：`memory_snapshot.sessionFacts` 由
@@ -895,7 +895,7 @@ export function unwrapSessionFacts(
           : null
         : city,
     },
-    // 落盘态不再持有 reasoning（S8）；回程只为满足 EntityExtractionResult 的形状。
+    // 落盘态不再持有 reasoning；回程只为满足 EntityExtractionResult 的形状。
     reasoning: '',
   });
 }

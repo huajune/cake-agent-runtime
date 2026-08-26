@@ -93,7 +93,7 @@ export function adjudicateCandidateClaims(params: AdjudicateParams): Adjudicatio
     // correct/clear 是显式覆盖操作：最新一条生效，其前的全部 superseded。
     //
     // ⚠️ "其前"不能只看 assertedAt：同一次裁决里所有 claim 共享一个时间戳
-    // （adjudicate.ts 统一 now.toISOString() 戳一次后传给全部 producer），
+    // （调用方统一用同一个 now.toISOString() 传给全部 producer），
     // 时间戳比较会恒成立，把覆盖操作**之后**提交的 claim 也一并杀掉——
     // 模型在同一轮先 clear 再 set 改正手机号时，改正值被静默丢弃、字段回 missing，
     // 候选人会被重新盘问已经给过的信息。同戳时以提交顺序（数组下标）判先后。

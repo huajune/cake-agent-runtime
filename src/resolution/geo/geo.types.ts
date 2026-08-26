@@ -4,8 +4,7 @@
  * 与 `resolution/brand` 的 resolve 契约刻意同构：状态 + 标准实体 + 证据，
  * 评审与观测复用同一套心智（docs/architecture/geo-resolution.md §3.1）。
  *
- * 现有函数保持字符串签名（与迁移前行为等价）；Phase 3 冲突检测最终以
- * GeoSignalConflictShadow 契约落地。
+ * 多信号冲突只通过 GeoSignalConflictShadow 记录观测线索，不改变解析结果。
  */
 
 /** 行政级别。 */
@@ -49,10 +48,9 @@ export interface GeoTextScanResult {
 }
 
 /**
- * 地理信号冲突 shadow 观测（§8.2 / Phase 3 第 6 步，shadow → enforce 两段发版的
- * shadow 档）：多个信号指向不同城市时，现行 resolveCityFromGeoSignals 先命中先赢；
- * 本结构记录"本应 ambiguous"的案例供落 GeoQueryMeta 观测，**不改变任何返回值**。
- * enforce 切换需 shadow 观测 1~2 周后人工决策（§17.4）。
+ * 地理信号冲突 shadow 观测：多个信号指向不同城市时，resolveCityFromGeoSignals
+ * 仍先命中先赢；本结构只记录“存在多个候选”的案例供 GeoQueryMeta 排障，
+ * **不改变任何返回值，也没有待开启的 enforce 路径**。
  */
 export interface GeoSignalConflictShadow {
   /** 各信号解析出的城市候选（按信号顺序去重；≥2 才构成冲突）。 */

@@ -99,7 +99,7 @@ export function createTurnLedger(input: CreateTurnLedgerInput = {}): TurnLedger 
       geocodeAnchors.push({ ...anchor });
     },
     recordCityAttestation(attestation) {
-      // 证据强度优先级（议题 4-2）：真实位置（定位分享）强于文本查询解析（geocode）。
+      // 证据强度优先级：真实位置（定位分享）强于文本查询解析（geocode）。
       // 同源异城维持 last-write-wins；异源且城市相同也照常覆盖（只是刷新 evidence）。
       if (
         cityAttestation &&

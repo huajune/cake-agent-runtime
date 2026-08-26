@@ -38,7 +38,7 @@ export interface FactOrigin {
   botImId?: string;
 }
 
-/** consolidation 专用：血缘之外附带品牌快照源（preferences.brands 已退役，§19.6）。 */
+/** consolidation 专用：血缘之外附带品牌快照源；preferences.brands 已退役。 */
 export interface ConsolidationFactOrigin extends FactOrigin {
   brandState?: PersistedBrandState | null;
 }
@@ -426,7 +426,7 @@ export class LongTermService {
     const prefs = facts.preferences as unknown as Record<string, unknown>;
 
     for (const key of LONG_TERM_JOB_INTENT_FIELD_KEYS) {
-      // 品牌快照不再走 preferences.brands（字段已退役，读边界恒 null，§19.6），
+      // 品牌快照不再走 preferences.brands（字段已退役，读边界恒 null），
       // 由下方 facts.brand.currentBrand 显式提供。
       if (key === 'brands') continue;
       const rawValue = prefs[key];

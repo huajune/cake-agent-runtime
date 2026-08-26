@@ -1,5 +1,5 @@
 /**
- * 从 raw job.welfare 派生结构化 WelfareFacts（Phase 1.B.5 数据契约层）。
+ * 从 raw job.welfare 派生结构化 WelfareFacts。
  *
  * 历史 badcase 簇 welfare_fabrication：Agent 看到 catering="员工自理" / haveInsurance="不购买"
  * 等字面值后，仍在 reply 中说"公司包吃 / 有保险"——核心原因有两个：

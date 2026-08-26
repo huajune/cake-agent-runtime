@@ -1,5 +1,5 @@
 /**
- * 行政区数据人工 override 登记（方案 §9.3 Phase 4：generated 与 overrides 分离）。
+ * 行政区数据人工 override 登记（generated 与 overrides 分离）。
  *
  * 本文件登记两类"与国家行政区划数据不一致、但属于刻意决策"的条目，供
  * scripts/geo/validate-administrative-divisions.ts 在交叉校验时豁免——

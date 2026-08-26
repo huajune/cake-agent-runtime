@@ -8,7 +8,8 @@ import type { AgentMemorySnapshot } from '../generator.types';
  *
  * 覆盖范围是"初始装配"（finalPrompt + 归一化消息 + 工具集 + 回合账本）；
  * 回合内经 prepareStep 增长的部分（工具结果累积）在 generator.agent 侧，回合结束即弃。
- * 命名裁定见 docs/todo/memory-coala-alignment.md M2-B（2026-08-21）。
+ * 它是进程内当轮工作台，不是 short-term / long-term 存储中的第三层记忆。
+ * 现行边界见 `src/memory/README.md` 的 CoALA 类型映射。
  */
 export interface WorkingMemory {
   finalPrompt: string;

@@ -4,7 +4,7 @@ import { SessionFactsService } from './facts.service';
 import { SessionWorkbenchService } from './workbench.service';
 
 /**
- * session-state 聚合 facade（M3 分家后保留，M5 正名）
+ * session-state 聚合 facade。
  *
  * 实现按 CoALA 两舱拆分并在 short-term 层内平铺：事实舱 facts.service
  * （semantic：状态所有者/事实读写/提取/已发生事件）与工作台舱 workbench.service

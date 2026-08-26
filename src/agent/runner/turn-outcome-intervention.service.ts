@@ -44,14 +44,6 @@ export class TurnOutcomeInterventionService {
     }
   }
 
-  /** @deprecated 迁移兼容；新调用方请使用 commit。 */
-  async dispatchIfNeeded(
-    outcome: TurnOutcome | undefined,
-    context: TurnOutcomeCommitContext,
-  ): Promise<void> {
-    await this.commit(outcome, context);
-  }
-
   private async dispatchIntent(
     intent: TurnSideEffectIntent,
     context: TurnOutcomeCommitContext,

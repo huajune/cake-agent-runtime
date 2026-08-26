@@ -48,7 +48,10 @@ export interface MemoryRecallContext {
   // episodic 摘要不进入默认召回；需要时由显式 recall_history 路径按需读取。
 }
 
-/** TODO(M5-followup): 兼容旧命名，待调用方全部收口后移除。 */
+/**
+ * Agent/generator 侧沿用的语义别名。唯一结构定义仍是
+ * `MemoryRecallContext`；此处不维护第二份 DTO。
+ */
 export type AgentMemoryContext = MemoryRecallContext;
 
 // ==================== 主动复聊召回投影 ====================

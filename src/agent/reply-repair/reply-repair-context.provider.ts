@@ -90,7 +90,7 @@ export class ReplyRepairContextProvider {
     const session = memory.shortTerm.sessionState;
     const factLines = session?.facts
       ? formatExtractionFactLines(session.facts, {
-          // 品牌唯一真相是 facts.brand（M5）；facts.preferences.brands 已退役
+          // 品牌唯一真相是 facts.brand；facts.preferences.brands 已退役。
           currentBrandName: session.facts.brand?.currentBrand?.canonicalName ?? null,
         })
       : [];

@@ -1,233 +1,90 @@
 # Agent 调用链路对比
 
-本文档对比系统中四种 Agent 调用场景的完整链路差异。
+> 对比生产企微、单条/流式测试、批量用例与多轮回归当前如何进入 Agent。所有链路共享 Preparation 和 Generator，但入口、历史来源、守卫覆盖与 turn-end 责任不同。
 
-## 核心设计要点
+## 1. 当前入口
 
-### callerKind：调用方身份的显式声明
+| 场景           | 入口                                              | callerKind   | 主要执行路径                                                  |
+| -------------- | ------------------------------------------------- | ------------ | ------------------------------------------------------------- |
+| 企微生产       | WeCom callback                                    | `WECOM`      | `ReplyWorkflowService → AgentRunner.runTurn()`                |
+| Agent 调试接口 | `POST /agent/debug-chat`                          | `DEBUG`      | `AgentRunner.invokeReviewed()`                                |
+| 单条测试       | `POST /test-suite/chat`                           | `TEST_SUITE` | `TestExecutionService.executeTest() → invokeReviewed()`       |
+| 流式测试       | `POST /test-suite/chat/stream` / `chat/ai-stream` | `TEST_SUITE` | `TestExecutionService.executeTestStreamWithMeta() → stream()` |
+| 批量用例       | test-suite batch / Bull                           | `TEST_SUITE` | 每条调用 `executeTest()`                                      |
+| 多轮回归       | conversation execute                              | `TEST_SUITE` | 逐轮 `ConversationTestService.executeTurn() → invoke()`       |
 
-`AgentInvokeParams.callerKind`（`CallerKind` 枚举，必填）用于替代早期基于 `userMessage !== undefined` / `corpId === 'test' | 'debug'` 的隐式分叉。agent / memory 层据此决定是否加载短期记忆、默认 strategySource 等行为。
+`AgentFacadeService`、`chatWithScenario()` 和旧的 message-agent-gateway 已不在当前链路中。
 
-| callerKind | 含义 | 对应本文场景 |
-|---|---|---|
-| `WECOM` | 企微生产链路，只传本轮 userMessage，历史由 memory 加载 | 生产链路 |
-| `DEBUG` | Controller 调试端点（`/agent/debug-chat`），直传 messages[]，默认 `strategySource: 'testing'` | 对话调试 |
-| `TEST_SUITE` | 测试套件链路，直传 messages[]，`strategySource` 可由调用方指定（`testing` 或 `released` 联调） | 用例测试 / 回归验证 |
+## 2. 共享的核心
 
-`callerKind` 与 `strategySource` **正交**：test-suite 可通过 `strategySource: 'released'` 跑联调模式。
+除生产入口前后的渠道编排外，各链路最终都复用：
 
-### userId + sessionId：会话记忆的组合 key
-
-Agent 端使用 `userId + sessionId` 作为会话级记忆的组合 key。两者**缺一不可**，否则 Agent 无法正确管理上下文记忆。
-
-- **userId**：标识"谁在对话"，Agent 可据此查询该用户的候选人岗位、面试等业务数据
-- **sessionId**：标识"哪次对话"，同一用户可能同时有多个会话
-- **组合 key**：`userId + sessionId` 唯一确定一个会话记忆空间，不同组合互不干扰
-
-`OrchestratorService.run()` 作为最后一道防线，缺少任一字段直接抛出 400 错误。
-
-### userId/sessionId 各场景来源
-
-| 场景 | userId 来源 | sessionId 来源 | 唯一性保障 |
-|------|------------|---------------|-----------|
-| **生产链路** | `imContactId`（微信联系人 ID） | `chatId`（微信会话 ID，跨消息复用） | 平台保障 |
-| **对话调试** | `'dashboard-test-user'`（前端硬编码） | `crypto.randomUUID()`（清空聊天时重置） | UUID 保障 |
-| **用例测试** | `scenario-test-${batchId}`（自动生成） | `test-${caseId}`（自动生成） | batchId + caseId 组合保障 |
-| **回归验证** | `source.participant_name`（飞书对话数据） | `source.conversation_id`（飞书对话数据） | 飞书数据保障 |
-
-**用例测试设计说明**：userId 按批次自动生成，同批次各 case 的 sessionId（`test-${caseId}`）各不相同，组合 key 天然唯一。不同批次 batchId 不同，因此跨批次也不会互相污染。
-
-### Extended Thinking：测试场景统一开启
-
-所有 3 种测试场景（对话调试、用例测试、回归验证）均默认开启 extended thinking（`budgetTokens: 10000`），用于回归测试时查看模型思考过程。生产链路不启用 thinking，避免增加延迟和 token 消耗。
-
-| 场景 | thinking 配置 | 来源 |
-|------|-------------|------|
-| **生产链路** | 未启用 | — |
-| **对话调试** | `{ type: 'enabled', budgetTokens: 10000 }` | 前端 `useChatTest.ts` 传入 |
-| **用例测试** | `{ type: 'enabled', budgetTokens: 10000 }` | `DEFAULT_TEST_THINKING` 常量兜底 |
-| **回归验证** | `{ type: 'enabled', budgetTokens: 10000 }` | `DEFAULT_TEST_THINKING` 常量兜底 |
-
-### 必填校验：三层防线
-
-1. **调用方层**：Processor 自动生成 / 前端传入 / 飞书数据提取
-2. **Service 层**：`executeTest()` / `executeTurn()` 校验 userId 非空，否则 throw Error
-3. **Facade 层**：`prepareRequestParams()` 校验 userId + sessionId 非空，否则 throw HttpException(400)
-
-## 四种场景概览
-
-| 场景 | 页面/入口 | 用途 |
-|------|----------|------|
-| 生产链路 | 微信回调 → `/wecom/message` | 真实用户对话，自动回复 |
-| 对话调试 | `/dashboard/agent-test` | 单条对话调试，实时流式 |
-| 用例测试 | `/dashboard/test-suite` Tab1 | 批量场景用例测试 + 评审 |
-| 回归验证 | `/dashboard/test-suite` Tab2 | 多轮回归验证 + 相似度评分 |
-
-## 完整对比表
-
-| 维度 | 生产链路 (WeChat) | 对话调试 (agent-test) | 用例测试 (test-suite Tab1) | 回归验证 (test-suite Tab2) |
-|------|-------------------|----------------------|--------------------------|--------------------------|
-| **callerKind** | `WECOM` | `DEBUG` | `TEST_SUITE` | `TEST_SUITE` |
-| **触发方式** | 微信用户发消息 | 手动输入 + 发送 | quick-create → Bull Queue | conversations/:id/execute |
-| **调度机制** | SimpleMergeService (2s聚合) | 无，直接请求 | TestSuiteProcessor (并发3) | 同步逐轮执行 |
-| **后端接口** | `/wecom/message` (回调) | `POST /test-suite/chat/ai-stream` | `POST /test-suite/chat` (内部调用) | 内部调用 agentFacade |
-| **流式/非流式** | 非流式 `stream: false` | **流式 `stream: true`** | 非流式 `stream: false` | 非流式 `stream: false` |
-| **Agent 调用** | `agentFacade.chatWithScenario()` | `agentFacade.chatStreamWithScenario()` | `agentFacade.chatWithScenario()` | `agentFacade.chatWithScenario()` |
-| **Vercel AI SDK** | `generateText / streamText` |`POST /api/v1/chat` (stream) | `POST /api/v1/chat` | `POST /api/v1/chat` |
-| **userId** | `imContactId` (真实微信ID) | `'dashboard-test-user'` (硬编码) | `scenario-test-${batchId}` (自动生成) | `source.participant_name` (飞书数据) |
-| **sessionId** | `chatId` (微信会话ID，复用) | `crypto.randomUUID()` (清空时重置) | `test-${caseId}` (自动生成) | `source.conversation_id` (飞书数据) |
-| **thinking** | 未启用 | **启用** (budgetTokens: 10000) | **启用** (DEFAULT_TEST_THINKING) | **启用** (DEFAULT_TEST_THINKING) |
-| **history 来源** | Redis (最多60条, TTL 2h) | useChat 自动管理 (内存) | 飞书用例自带, `slice(0,-2)` | 按轮次逐步累积 |
-| **history 截断** | 无需 (Redis 已限制) | `skipHistoryTrim: true` (不截断) | `slice(0, -2)` 去最后一轮 | 无需 |
-| **systemPrompt** | Profile + StrategyConfig | 同左 | 同左 | 同左 |
-| **消息聚合** | 有 (2s窗口, 最多5条) | 无 | 无 | 无 |
-| **回复处理** | 分段 + 打字延迟 → 微信发送 | SSE 透传 → 前端实时渲染 | 存 Supabase 执行记录 | 存 Supabase + 计算相似度 |
-| **保存记录** | 不保存到 test_executions | `saveExecution: false` | `saveExecution: false` (Queue中更新) | 保存到 test_executions |
-| **错误处理** | fallback 消息 + 飞书告警 | 前端 toast 展示错误 | 标记 FAILURE 状态 | 标记失败 + errorMessage |
-
-## 调用链路详情
-
-### 1. 生产链路 (WeChat)
-
-```
-微信用户发消息
-  → 托管平台回调 → POST /wecom/message
-  → MessageController.receiveMessage()  (立即返回 200)
-  → MessageService.handleMessage()
-      ├── 过滤 (自身消息/类型/黑名单)
-      ├── 去重 (Redis)
-      ├── 记录历史 (Redis)
-      └── dispatchMessage()
-           ├── [聚合模式] SimpleMergeService.addMessage()
-           │     → Redis List 暂存 + Bull Queue 延迟任务 (2s)
-           │     → MessageProcessor.handleProcessJob()
-           │       → processMessageCore()
-           └── [直接模式] processSingleMessage()
-                 → processMessageCore()
-                      ├── historyService.getHistoryForContext() (Redis)
-                      ├── agentGateway.invoke()
-                      │     → agentFacade.chatWithScenario()
-                      │       → prepareRequestParams()
-                      │         → context: { userId: imContactId, sessionId: chatId }
-                      │       → agentService.chat() (stream: false)
-                      │         → orchestrator.run() → Vercel AI SDK generateText
-                      ├── deliveryService.deliverReply()
-                      │     → MessageSplitter 分段
-                      │     → 打字延迟
-                      │     → messageSenderService.sendMessage() → 托管平台 API
-                      └── 标记已处理 + 监控打点
+```text
+PreparationService.prepare
+  → 两层记忆/fixture 输入
+  → conversation normalization
+  → snapshot enrichment + 共享事实裁决
+  → Prompt sections + tools
+GeneratorAgent.invoke / stream
+  → 模型多步工具循环（默认最多 5 steps）
+AgentRunner.invokeReviewed（非流式审查链）
+  → Output Guard
+  → 最多一次 ReplyRepairAgent
 ```
 
-### 2. 对话调试 (agent-test)
+Prompt section 终序、复合 `final-check` 和工具注册规则在所有场景中共用；`callerKind` 只决定历史来源、策略源、图片/外部补料等场景差异。
 
-```
-用户在 ChatTester 输入消息
-  → useChat hook (DefaultChatTransport)
-      body: { userId: 'dashboard-test-user', chatId: UUID, thinking: { type: 'enabled', budgetTokens: 10000 } }
-  → POST /test-suite/chat/ai-stream
-  → TestSuiteController.testChatAIStream()
-      ├── 解析 UIMessage → TestChatRequestDto { userId, chatId, thinking }
-      ├── VercelAIStreamHandler.flushSSEHeaders() (立即flush)
-      ├── testService.executeTestStreamWithMeta()
-      │     → 校验 userId 非空 ✅
-      │     → TestExecutionService.executeTestStreamWithMeta()
-      │       → agentFacade.chatStreamWithScenario()
-      │         → prepareRequestParams()
-      │           → context: { userId: 'dashboard-test-user', sessionId: UUID }
-      │         → agentService.chatStreamWithProfile()
-      │           → agentService.chatStream() (stream: true, thinking: enabled)
-      │             → orchestrator.run() → Vercel AI SDK streamText
-      ├── stream.on('data') → VercelAIStreamHandler.processChunk()
-      │     → 透传 chunk + 提取 tokenUsage
-      └── stream.on('end') → sendUsageAndEnd()
-            → 前端 useChat 实时渲染 MessagePartsAdapter
-```
+## 3. 关键差异
 
-### 3. 用例测试 (test-suite Tab1)
+| 维度          | 企微生产                                               | 单条/批量测试                            | 流式测试                                                | 多轮回归                     |
+| ------------- | ------------------------------------------------------ | ---------------------------------------- | ------------------------------------------------------- | ---------------------------- |
+| 历史来源      | `MessageWindowService`：7 天、最多 120 条、24,000 字符 | 请求 history + 可选 memory fixture       | 请求 messages，由前端会话维护                           | 数据集逐轮累积的 history     |
+| 策略源        | released                                               | 默认 testing，可显式选择                 | testing                                                 | testing                      |
+| 模型 fallback | 按生产角色路由                                         | `disableFallbacks: true`，让失败可见     | `disableFallbacks: true`                                | `disableFallbacks: true`     |
+| Output Guard  | `runTurn()` 内完整执行                                 | `invokeReviewed()` 完整执行              | stream 只走生成流；适合交互调试，不作为出站守卫验收替代 | 当前 `invoke()` 完整执行审查 |
+| Replay        | 有，最多 3 次                                          | 无                                       | 无                                                      | 无                           |
+| 投递          | 企微分段与拟人延迟                                     | 返回 JSON / 写测试记录                   | SSE / AI SDK UI stream                                  | 写执行记录并评分             |
+| turn-end      | `TurnFinalizer` 按真实投递结局结算                     | 测试服务显式执行并读取 post-turn fixture | stream 完成时由 generator 自触发                        | 每轮显式执行                 |
 
-```
-用户点击"一键创建"
-  → POST /test-suite/batches/quick-create
-  → TestSuiteService.quickCreateBatch()
-      ├── 从飞书导入测试用例
-      ├── 创建批次 + 执行记录 (Supabase)
-      └── TestSuiteProcessor.addBatchTestJobs() → Bull Queue
-            → handleTestJob() (并发3)
-              → 自动生成: userId = `scenario-test-${batchId}`
-              → 自动生成: chatId = `test-${caseId}`
-              → testSuiteService.executeTest({ userId, chatId, ... })
-                → 校验 userId 非空 ✅
-                → TestExecutionService.executeTest()
-                  ├── history.slice(0, -2) (去掉最后一轮)
-                  ├── ScenarioOptions { userId, thinking: DEFAULT_TEST_THINKING }
-                  ├── agentFacade.chatWithScenario()
-                  │     → prepareRequestParams()
-                  │       → context: { userId: 'scenario-test-{batchId}', sessionId: 'test-{caseId}' }
-                  │     → agentService.chat() (stream: false, thinking: enabled)
-                  │       → orchestrator.run() → Vercel AI SDK generateText
-                  ├── extractResult() (文本/工具/token)
-                  └── 更新执行记录 (Supabase)
-            → checkBatchCompletion()
-              → 更新批次统计 + 状态 → reviewing
-```
+## 4. 生产链路的额外编排
 
-### 4. 回归验证 (test-suite Tab2)
+只有企微生产链路包含：
 
-```
-用户点击"执行回归验证"
-  → POST /test-suite/conversations/:sourceId/execute
-  → ConversationTestService.executeConversation()
-      → 获取对话源 (含 participant_name, conversation_id)
-      → 拆解对话为测试轮次
-      → 逐轮执行:
-          ├── userId = source.participant_name, 校验非空 ✅
-          ├── sessionId = source.conversation_id
-          ├── 构建当前轮 history (前几轮的 user+assistant)
-          ├── ScenarioOptions { userId, thinking: DEFAULT_TEST_THINKING }
-          ├── agentFacade.chatWithScenario()
-          │     → prepareRequestParams()
-          │       → context: { userId: '张三', sessionId: 'conv-xxx' }
-          │     → agentService.chat() (stream: false, thinking: enabled)
-          │       → orchestrator.run() → Vercel AI SDK generateText
-          ├── LLM 评估相似度 (actualOutput vs expectedOutput)
-          └── 保存轮次执行记录 (Supabase)
-      → 更新对话源统计 (平均/最低相似度)
-      → 更新批次统计
-```
+1. intake 去重、消息历史落库与图片准备；
+2. debounce 静默窗口、pending list、chat 级处理锁和 worker 并发槽；
+3. `TurnOutcome` 分类、最多 3 次 replay 与最终副作用提交；
+4. 分段投递、拟人延迟、托管状态复核；
+5. `TurnFinalizer.settle({ delivered })` 与锁释放前等待记忆落盘。
 
-## 关键差异点
+完整时序见 [WeCom 消息处理数据流](./wecom-message-dataflow.md)。
 
-### 1. 流式 vs 非流式
+## 5. 测试链的真实性边界
 
-只有**对话调试**走流式（`chatStreamWithScenario`），其他三种都走非流式（`chatWithScenario`）。原因：对话调试需要实时渲染思考块、工具调用等中间状态；生产和批量测试只需最终结果。
+- memory fixture 会先 reset/seed 指定的 `(corpId, userId, sessionId, botUserId)`，运行后再读回状态；它不是生产记忆的复制品。
+- 单条测试为图片合成 `imageMessageIds`，确保 `save_image_description` 的注册条件与生产一致。
+- 流式测试的首要目标是展示增量文本、工具与 reasoning；需要验证最终守卫 outcome 时应使用非流式单条/批量路径。
+- 多轮回归按数据集显式 history 重放，不依赖生产的 7 天消息窗口。
+- 测试默认关闭模型 fallback，避免主模型失败被备用模型掩盖；这与生产可用性策略不同。
 
-### 2. sessionId 连续性
+## 6. 身份与隔离
 
-| 场景 | sessionId | 会话记忆 |
-|------|-----------|---------|
-| 生产 | 微信 chatId (跨消息复用) | 有，Agent 端维护会话上下文 |
-| 对话调试 | UUID (清空时重置) | 有，同一会话内连续 |
-| 用例测试 | `test-${caseId}` | 无，每个 case 独立 |
-| 回归验证 | `source.conversation_id` | 无，依赖手动构建 history |
+| 场景          | userId / sessionId                                           |
+| ------------- | ------------------------------------------------------------ |
+| 企微          | 渠道稳定用户标识 + `chatId`                                  |
+| Agent debug   | 请求 userId 或 `debug-user` + 请求 sessionId 或临时 debug id |
+| 单条/批量测试 | 必填 userId + 请求 sessionId 或临时 test id                  |
+| 多轮回归      | 数据源派生的稳定 test userId + `source.conversation_id`      |
 
-### 3. 消息聚合
+`userId` 不能为空；单条测试和多轮回归都应使用可重复且互不污染的标识。长期档案还包含 `botUserId` 关系维，fixture 涉及长期记忆时必须显式处理这一维。
 
-仅生产链路有消息聚合（SimpleMergeService），2s 窗口内最多合并 5 条消息为一次 Agent 调用。测试场景均为一对一调用。
+## 7. 关键代码
 
-## 相关代码位置
-
-| 模块 | 路径 |
-|------|------|
-| 生产入口 | `src/channels/wecom/message/message.controller.ts` |
-| 生产管道 | `src/channels/wecom/message/services/message-pipeline.service.ts` |
-| 生产 Agent 网关 | `src/channels/wecom/message/services/message-agent-gateway.service.ts` |
-| 消息聚合 | `src/channels/wecom/message/services/simple-merge.service.ts` |
-| 消息投递 | `src/channels/wecom/message/services/message-delivery.service.ts` |
-| 测试控制器 | `src/biz/test-suite/test-suite.controller.ts` |
-| 测试执行 | `src/biz/test-suite/services/test-execution.service.ts` |
-| 批次处理 | `src/biz/test-suite/test-suite.processor.ts` |
-| 回归验证 | `src/biz/test-suite/services/conversation-test.service.ts` |
-| Agent 编排 | `src/agent/services/orchestrator.service.ts` |
-| SSE 流处理 | `src/biz/test-suite/utils/sse-stream-handler.ts` |
-| 前端对话调试 | `web/src/view/agent-test/list/hooks/useChatTest.ts` |
-| 前端测试套件 | `web/src/view/test-suite/list/index.tsx` |
+| 职责          | 文件                                                                                                |
+| ------------- | --------------------------------------------------------------------------------------------------- |
+| 生产主编排    | [reply-workflow.service.ts](../../src/channels/wecom/message/application/reply-workflow.service.ts) |
+| Runner        | [agent-runner.service.ts](../../src/agent/runner/agent-runner.service.ts)                           |
+| Preparation   | [preparation.service.ts](../../src/agent/generator/preparation/preparation.service.ts)              |
+| Generator     | [generator.agent.ts](../../src/agent/generator/generator.agent.ts)                                  |
+| 单条/流式测试 | [test-execution.service.ts](../../src/biz/test-suite/services/test-execution.service.ts)            |
+| 多轮回归      | [conversation-test.service.ts](../../src/biz/test-suite/services/conversation-test.service.ts)      |
+| 测试控制器    | [test-suite.controller.ts](../../src/biz/test-suite/test-suite.controller.ts)                       |

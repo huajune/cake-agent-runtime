@@ -2,21 +2,21 @@
 
 > Cake Agent Runtime — 技术文档导航
 
-**最后更新**：2026-08-12
+**最后更新**：2026-08-26
 
 ---
 
 ## 🧭 我该读哪份？
 
-| 角色 / 目标         | 建议入口                                                                                                                                                          |
-| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 快速了解系统全貌    | [系统宣讲说明书](cake-agent-runtime-overview.md) → [Agent 运行时架构](architecture/agent-runtime-architecture.md)                                                 |
-| 产品 / 运营         | [产品定义](product/product-definition.md)、[Agent 运营手册](product/agent-for-operations.md)                               |
+| 角色 / 目标         | 建议入口                                                                                                                                                   |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 快速了解系统全貌    | [系统宣讲说明书](cake-agent-runtime-overview.md) → [Agent 运行时架构](architecture/agent-runtime-architecture.md)                                          |
+| 产品 / 运营         | [产品定义](product/product-definition.md)、[Agent 运营手册](product/agent-for-operations.md)                                                               |
 | 新人研发入门        | [开发指南](guides/development-guide.md) → [Agent 运行时架构](architecture/agent-runtime-architecture.md) → [记忆系统](architecture/memory-architecture.md) |
-| 做可靠性 / 守卫改进 | [安全护栏说明](architecture/security-guardrails.md) + [Guardrail 质量体系](architecture/guardrail-quality-system.md)                        |
+| 做可靠性 / 守卫改进 | [安全护栏说明](architecture/security-guardrails.md) + [Guardrail 质量体系](architecture/guardrail-quality-system.md)                                       |
 | 改候选人事实链路    | [候选人档案域架构](architecture/candidate-profile-domain.md)（域宪法）→ [记忆系统](architecture/memory-architecture.md)                                    |
-| 质量评测 / 回归     | [测试套件架构](architecture/test-suite-architecture.md) + [质量评测指南](guides/test-suite-guide.md)                                                              |
-| 发版 / 部署         | [发版底账](releases/README.md) → [版本发布指南](workflows/version-release-guide.md) → [构建与部署指南](workflows/deploy-guide.md)                                 |
+| 质量评测 / 回归     | [测试套件架构](architecture/test-suite-architecture.md) + [质量评测指南](guides/test-suite-guide.md)                                                       |
+| 发版 / 部署         | [发版底账](releases/README.md) → [版本发布指南](workflows/version-release-guide.md) → [构建与部署指南](workflows/deploy-guide.md)                          |
 
 ---
 
@@ -27,13 +27,12 @@
 
 ### 运行时核心
 
-- **[Agent 运行时架构](architecture/agent-runtime-architecture.md)** ⭐ — 主干：分层架构、编排（Generator/Runner）、**运行时硬约束 HC-1~HC-5**、Context 组装、Provider 三层、工具、消息管线、模块依赖图
+- **[Agent 运行时架构](architecture/agent-runtime-architecture.md)** ⭐ — 主干：分层所有权、Runner/Generator、Preparation 与 Prompt、工具、记忆、Provider、消息链路、四个防线作用位和运行时不变量
 - **[Agent 运营手册](product/agent-for-operations.md)** 👉 — 上文的业务语言版（运营向，收录在 product/）
 - **[企微消息服务架构](architecture/message-service-architecture.md)** — 消息管道：去重→过滤→存储→聚合→Agent→投递
 - **[Gate 拒绝与人工介入流水线](architecture/handoff-gate-and-intervention-pipeline.md)** — Tool gate → LLM 短路 → Runner handoff → 底账判重 → 暂停托管与飞书告警
 - **[二次主动回复流水线](architecture/reengagement-pipeline.md)** — 复聊：锚点触发、停止条件与水位、outbox 幂等、带外工单核验
 - **[群任务通知流水线](architecture/group-task-pipeline.md)** — 群任务定时通知的运行时流水线
-- **[岗位召回链路现状](architecture/job-recall-chain.md)** — 实时调海绵、召回智能在查询参数构造层；含 G1-G4 已知缺口 backlog
 
 ### 候选人事实链路
 
@@ -46,9 +45,9 @@
 
 ### 守卫与判定哲学
 
-- **[安全护栏说明](architecture/security-guardrails.md)** ⭐ — 护栏现状总览：基础设施层 + Agent 三层守卫（input/tool/output）
+- **[安全护栏说明](architecture/security-guardrails.md)** ⭐ — 防线现状总览：基础设施 + Input / Prompt / Tool / Output 四个作用位
 - **[语义判定三分法](architecture/semantic-decision-taxonomy.md)** — 正则、LLM 标签位与向量判定的准入边界
-- **[Guardrail 质量体系](architecture/guardrail-quality-system.md)** 🚧 — 双环质量体系；**离线环仅落成 skills，src 内未实现**
+- **[Guardrail 质量体系](architecture/guardrail-quality-system.md)** — Output 实时裁决、一次有界修复与快/慢质量闭环；慢环为仓外流程，`src/**` 无自动执行器
 
 ### 平台系统与规范
 
@@ -125,17 +124,8 @@
 
 ## 📌 待办与规划 (todo/)
 
-> 这些是工程 backlog / 规划稿，不代表已实现的设计。落地后应更新对应架构文档或归档。
-
-- **[上下文治理三期 · 装配层轻量化](todo/context-assembly-compiler.md)** — 三期唯一权威：归类/组装冲突裁决/system 内重排三个轻量批；§七挂同分支发版待办（⚠️ 生产 DB 迁移待随发版 push）
-- **[LLM 判官标定](todo/judge-calibration.md)** — 自迭代循环的唯一欠账：周频抽检给判官算精确率（发牌制用在 LLM-as-a-judge 上）
-- **[观测链路 P1 采集补洞](todo/observability-p0-p1-checklist.md)** — P0 展示侧七项已完成；剩模型身份/守卫过程事件/booking 审计/empty 放行/ttft 修正五项
-- **[记忆域深审查证与遗留登记](todo/memory-intelligence-deep-review-audit.md)** — brand_ids/gender_source 查证结论 + 二期收官后的观察项与遗留
-- **[报名标签配置修正清单（给运营）](todo/label-cleanup-for-ops.md)** — 109 标签规范化到约 30；待运营执行后重跑探针核对
-- **[标签补数据清单（给运营）](todo/label-backfill-for-ops-20260820.md)** — 276 条筛选标签缺配；判决单源化后不补=该岗不筛
-- **[报名标签契约建议（给海绵后端）](todo/label-contract-change-requests.md)** — 契约 v2 终态对账；剩后端承诺项与收资契约 v2 登记（key 补 bot 维）
-- **[收资表单域](architecture/collection-form-machine.md)** — 标签制×收资表单状态机终态架构；设计史见 git 历史 docs/todo/ 原文
-
+> 入口见 **[Todo 索引](todo/README.md)**。这里只保留有所有者、状态和完成条件的未完成事项；
+> 已落地方案删除并留在 Git 历史，不在 todo 中长期保存执行记录。
 
 ---
 

@@ -6,7 +6,7 @@
  *
  * 仅在 imageMessageIds 非空时注册（即当前轮次包含图片或表情消息）。
  *
- * 视觉事实结构化（visual-fact-structuring，P2 生产者）：主模型看图时顺手给出
+ * 主路径视觉事实结构化：主模型看图时顺手给出
  * kind 与 fields，工具内 finalize 补归属默认值后随描述同次落库；kind/fields 缺失
  * 或不合法一律降级 kind=other——行为逐字等同结构化之前。
  */
@@ -122,10 +122,8 @@ export function buildSaveImageDescriptionTool(
         const safeDescription = sanitizeVisualDescription(description);
         // 简历判定双保险（并跑对照）：sheet 的 resume kind 与旧文本标记任一命中即走
         // 简历链路；两者不一致记 warn 供并跑对照统计，删旧判据前需一致率达标。
-        // A1（2026-08-11）仅覆盖当前容器连续 92h23m，分歧为 0；尚未达到完整 7 天
-        // 删除门槛，故继续保留 legacy 判据。连续 7 天复扫仍为 0 后删除本并跑与 OR 路径。
-        // A2（2026-08-17）复扫：生产容器日志本地不可得，取不到完整 7 天窗口，判据无法证实，
-        // 维持并跑不删。下次复扫须先拿到生产日志或把该 warn 接进告警通道再判。
+        // 旧文本判据仍作兼容保险；当前只有本地 warn，没有可证明长窗口
+        // 分歧归零的持久化指标。删除 OR 路径前必须先让该分歧可持续观测并达标。
         const legacyResume = isResumeImageDescription(description);
         const sheetResume = !sheet.degraded && sheet.kind === 'resume';
         if (!sheet.degraded && legacyResume !== sheetResume) {

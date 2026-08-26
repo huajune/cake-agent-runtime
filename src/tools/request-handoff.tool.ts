@@ -149,8 +149,7 @@ export function buildRequestHandoffTool(
           });
         }
 
-        // 最近一笔 = 列表首项（getActiveBookings 按 linked_at 倒序；议题 3-3 删除单数 API 后
-        // 由调用方直接取 [0]，语义不再藏在存储实现的约定里）。
+        // getActiveBookings 按 linked_at 倒序；最近一笔由调用方显式取 `[0]`。
         const [activeBooking] = await longTermService
           .getActiveBookings(context.session.corpId, context.session.userId)
           .catch(() => []);

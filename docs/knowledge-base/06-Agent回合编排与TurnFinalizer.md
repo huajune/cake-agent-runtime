@@ -11,7 +11,7 @@ source: src/agent/runner/
 Recall（记忆召回+上下文准备 preparation）
   → Compose（Section 体系拼 prompt）
   → Execute（LLM 多步工具调用循环）
-  → Review（出站守卫审查，见 [[07-出站守卫三档裁决链]]）
+  → Review（出站守卫审查，见 [[07-出站守卫裁决链]]）
   → Repair（不通过则修复，hard cap = 1 次）
   → Finalize（TurnFinalizer 统一沉淀副作用）
 ```
@@ -21,9 +21,9 @@ Repair 只有一种模式且**只允许一次**（防止修复循环烧钱烧时
 不给工具。
 
 > 曾经还有一档 `replan`（事实/计划问题 → 复用 generator 带工具只读重查）：2026-07-27 退役
-> （三期审计里全部"已投递伤害"都出自该路径），2026-08-13 从类型层清理。缺事实类违规现在
-> 一律降 observe 交事后环根修，不在投递路径上补救——见
-> [guardrail-quality-system.md §2.4](../architecture/guardrail-quality-system.md)。
+> （三期审计里全部“已投递伤害”都出自该路径），2026-08-13 从类型层清理。现行 repair
+> 不能补取事实；具体规则是 observe、revise 还是 block 只看 output catalog，不再用“缺事实”
+> 自动选择重规划——见 [Guardrail 质量体系 §4](../architecture/guardrail-quality-system.md#4-修复不是第四个-guardrail-层)。
 
 修复后还有兜底检查：重写产物为空、或产出"悬空检查话术"（dangling reply，比如"我确认一下"这种没有下文的话）时按 revise_empty / revise_dangling 处置，不会把半成品发给用户。
 
@@ -34,8 +34,8 @@ Repair 只有一种模式且**只允许一次**（防止修复循环烧钱烧时
 方案：所有副作用收敛到 TurnFinalizer，并且**等投递结局已知后才结算**：
 
 ```ts
-finalizer.settle({ delivered });  // delivered=false 时只记用户侧记忆，
-                                  // Agent 侧的"我说过什么"全部丢弃
+finalizer.settle({ delivered }); // delivered=false 时只记用户侧记忆，
+// Agent 侧的"我说过什么"全部丢弃
 ```
 
 丢弃后 settle/whenSettled 都变成空操作（幂等）。这保证了**记忆与真实世界一致**：没送达的回复不污染 session 记忆。
