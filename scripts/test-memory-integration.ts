@@ -53,6 +53,7 @@ const TEST_BOT_IM_ID = 'test-bot-im-memory-int';
 // 实际系统中 chatId === sessionId（WeChat 会话 ID 即 chat_id）
 const TEST_CHAT = `test-chat-mem-${Date.now()}`;
 const TEST_SESSION = TEST_CHAT;
+const TEST_CONSOLIDATION_CHAT = `test-chat-consolidation-${Date.now()}`;
 
 // ============================================================
 // 最小 Shim（绕过 NestJS DI，直接接入真实 SDK）
@@ -91,6 +92,16 @@ const redisServiceShim = {
   async expire(key: string, seconds: number): Promise<number> {
     return redis.expire(ENV_PREFIX + key, seconds);
   },
+  async hgetall<T extends Record<string, unknown>>(key: string): Promise<T | null> {
+    return redis.hgetall<T>(ENV_PREFIX + key);
+  },
+  async eval(script: string, keys: string[], args: Array<string | number>): Promise<unknown> {
+    return redis.eval(
+      script,
+      keys.map((key) => ENV_PREFIX + key),
+      args,
+    );
+  },
 };
 
 /** 模拟 MemoryConfig */
@@ -98,8 +109,8 @@ const memoryConfigShim = {
   sessionTtl: 3 * 86400,
   consolidationGapSeconds: 3 * 86400,
   historyWindowSeconds: 7 * 86400,
-  sessionWindowMaxMessages: 60,
-  sessionWindowMaxChars: 8000,
+  sessionWindowMaxMessages: 120,
+  sessionWindowMaxChars: 24000,
   sessionExtractionIncrementalMessages: 10,
   longTermCacheTtl: 7200,
   get sessionTtlDays() {
@@ -272,10 +283,11 @@ async function seedMessage(
   role: 'user' | 'assistant',
   content: string,
   timestampMs: number,
+  chatId = TEST_CHAT,
 ): Promise<string> {
   const messageId = `test-msg-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
   const { error } = await supabase.from('chat_messages').insert({
-    chat_id: TEST_CHAT,
+    chat_id: chatId,
     message_id: messageId,
     role,
     content,
@@ -296,7 +308,10 @@ async function cleanup(): Promise<void> {
   console.log('\n🧹 清理测试数据...');
 
   // 1. Supabase: chat_messages
-  const { error: e1 } = await supabase.from('chat_messages').delete().eq('chat_id', TEST_CHAT);
+  const { error: e1 } = await supabase
+    .from('chat_messages')
+    .delete()
+    .in('chat_id', [TEST_CHAT, TEST_CONSOLIDATION_CHAT]);
   if (e1) console.warn('  ⚠️  清理 chat_messages 失败:', e1.message);
   else console.log('  ✓ chat_messages 已清理');
 
@@ -397,35 +412,27 @@ async function scenario2_shortTermRecall() {
 async function scenario3_sessionFacts() {
   section('Scenario 3 — Session Facts（Redis 会话事实读取）');
 
-  // 直接写入 Redis，模拟前一个回合写入的 facts
-  const factsKey = `factsv2:${TEST_CORP}:${TEST_USER}:${TEST_SESSION}`;
-  const sessionEntry = {
-    key: factsKey,
-    content: {
-      facts: toSessionFacts(
-        {
-          ...FALLBACK_EXTRACTION,
-          interview_info: {
-            ...FALLBACK_EXTRACTION.interview_info,
-            name: '王小明',
-            phone: '13800138000',
-          },
-          preferences: {
-            ...FALLBACK_EXTRACTION.preferences,
-            city: { value: '上海', confidence: 'high', evidence: 'municipality_compact' },
-          },
+  // 走生产写入口，验证 factsv2 Redis Hash 契约，不在测试里手工拼存储形态。
+  await sessionService.saveFacts(
+    TEST_CORP,
+    TEST_USER,
+    TEST_SESSION,
+    toSessionFacts(
+      {
+        ...FALLBACK_EXTRACTION,
+        interview_info: {
+          ...FALLBACK_EXTRACTION.interview_info,
+          name: '王小明',
+          phone: '13800138000',
         },
-        { confidence: 'high', source: 'system', evidence: '集成测试夹具' },
-      ),
-      lastCandidatePool: null,
-      presentedJobs: null,
-      currentFocusJob: null,
-      invitedGroups: null,
-    },
-    updatedAt: new Date().toISOString(),
-  };
-
-  await redis.setex(ENV_PREFIX + factsKey, 86400, JSON.stringify(sessionEntry));
+        preferences: {
+          ...FALLBACK_EXTRACTION.preferences,
+          city: { value: '上海', confidence: 'high', evidence: 'municipality_compact' },
+        },
+      },
+      { confidence: 'high', source: 'system', evidence: '集成测试夹具' },
+    ),
+  );
   console.log('  📝 写入 Redis session facts');
 
   const state = await sessionService.getSessionState(TEST_CORP, TEST_USER, TEST_SESSION);
@@ -546,8 +553,13 @@ async function scenario5_consolidation() {
   const firstAt = now - 3.5 * 86400 * 1000;
   const latestAt = firstAt + 5 * 60 * 1000;
 
-  await seedMessage('user', '我想找上海的餐厅兼职', firstAt);
-  await seedMessage('assistant', '好的，我帮你查询上海的兼职岗位', latestAt);
+  await seedMessage('user', '我想找上海的餐厅兼职', firstAt, TEST_CONSOLIDATION_CHAT);
+  await seedMessage(
+    'assistant',
+    '好的，我帮你查询上海的兼职岗位',
+    latestAt,
+    TEST_CONSOLIDATION_CHAT,
+  );
 
   console.log('  📝 写入 2 条已闲置超过 3 天的咨询消息');
 
@@ -557,7 +569,7 @@ async function scenario5_consolidation() {
   const result = await consolidationService.consolidateIdleSession(
     TEST_CORP,
     TEST_USER,
-    TEST_SESSION,
+    TEST_CONSOLIDATION_CHAT,
     TEST_BOT_USER_ID,
     null,
     TEST_BOT_IM_ID,
@@ -572,48 +584,47 @@ async function scenario5_consolidation() {
   // 验证 Supabase agent_long_term_memories 的 episodic_session_summaries 已更新
   const { data } = await supabase
     .from('agent_long_term_memories')
-    .select('episodic_session_summaries')
+    .select('episodic_session_summaries,consolidation_watermarks')
     .eq('corp_id', TEST_CORP)
     .eq('user_id', TEST_USER)
     .eq('bot_user_id', TEST_BOT_USER_ID)
     .maybeSingle();
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const sessionSummaries = data?.episodic_session_summaries as any;
-  check(
-    'episodic_session_summaries.recent 有新增摘要',
-    (sessionSummaries?.recent?.length ?? 0) >= 1,
-  );
+  const sessionSummaries = data?.episodic_session_summaries as any[] | null | undefined;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const consolidationWatermarks = data?.consolidation_watermarks as any;
+  check('episodic_session_summaries 有新增摘要', (sessionSummaries?.length ?? 0) >= 1);
   check(
     '摘要内容非空',
-    typeof sessionSummaries?.recent?.[0]?.summary === 'string' &&
-      sessionSummaries.recent[0].summary.length > 0,
-    `summary="${sessionSummaries?.recent?.[0]?.summary?.slice(0, 30)}..."`,
+    typeof sessionSummaries?.[0]?.summary === 'string' && sessionSummaries[0].summary.length > 0,
+    `summary="${sessionSummaries?.[0]?.summary?.slice(0, 30)}..."`,
   );
   check(
     'lastSettledBySession 已推进到最新消息',
-    sessionSummaries?.lastSettledBySession?.[TEST_SESSION] === new Date(latestAt).toISOString(),
-    `got ${sessionSummaries?.lastSettledBySession?.[TEST_SESSION]}`,
+    consolidationWatermarks?.bySession?.[TEST_CONSOLIDATION_CHAT] ===
+      new Date(latestAt).toISOString(),
+    `got ${consolidationWatermarks?.bySession?.[TEST_CONSOLIDATION_CHAT]}`,
   );
 
   // 验证沉淀边界：endTime 应该是本咨询段最后一条消息
-  const endTime = sessionSummaries?.recent?.[0]?.endTime;
+  const endTime = sessionSummaries?.[0]?.endTime;
   check(
     'endTime 指向咨询段末尾',
     endTime != null && Math.abs(new Date(endTime).getTime() - latestAt) <= 1000,
     `endTime=${endTime?.slice(0, 19)}`,
   );
 
-  console.log(`\n  📋 生成的摘要: "${sessionSummaries?.recent?.[0]?.summary}"`);
+  console.log(`\n  📋 生成的摘要: "${sessionSummaries?.[0]?.summary}"`);
   console.log(
-    `  📋 沉淀边界: ${sessionSummaries?.lastSettledBySession?.[TEST_SESSION]?.slice(0, 19)}`,
+    `  📋 沉淀边界: ${consolidationWatermarks?.bySession?.[TEST_CONSOLIDATION_CHAT]?.slice(0, 19)}`,
   );
 
   // 验证二次调用命中会话级幂等水位
   const secondResult = await consolidationService.consolidateIdleSession(
     TEST_CORP,
     TEST_USER,
-    TEST_SESSION,
+    TEST_CONSOLIDATION_CHAT,
     TEST_BOT_USER_ID,
     null,
     TEST_BOT_IM_ID,

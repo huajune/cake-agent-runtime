@@ -17,6 +17,23 @@ describe('HardRulesService', () => {
   const check = (replyText: string) =>
     service.check({ replyText, toolCalls: [], chatId: 'chat-1', userId: 'user-1' });
 
+  describe('job availability grounding', () => {
+    it('wires zero-lookup availability claims into a non-sendable revise decision', () => {
+      const result = check('上海兼职岗位挺多的，我先帮你看看附近的。');
+
+      expect(result.contradictions).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            ruleId: 'job_availability_without_lookup',
+            action: GUARDRAIL_ACTION.REVISE,
+            currentReplySendable: false,
+            feedbackToGenerator: expect.stringContaining('我先帮你查下附近有没有合适的'),
+          }),
+        ]),
+      );
+    });
+  });
+
   describe('ungrounded generalizations', () => {
     const successfulJobLookup = {
       toolName: 'duliday_job_list',
