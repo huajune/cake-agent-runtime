@@ -14,7 +14,7 @@ import {
 import { normalizedIncludes } from '@resolution/evidence/normalize';
 import { selectEvidenceDialogueMessages } from '@resolution/signal/corpus';
 import { extractCandidateTexts } from '@resolution/signal/self-report';
-import { isAffirmativeAnswer, normalizeShortAnswer } from '@resolution/signal/dialogue';
+import { isAffirmativeAnswerSequence, normalizeShortAnswer } from '@resolution/signal/dialogue';
 import { EMPTY_CONTRACT_ESCALATION_REASON } from '@sponge/collection-contract.types';
 import type { SpongeService } from '@sponge/sponge.service';
 import type { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
@@ -489,7 +489,7 @@ async function runForm(params: {
   const recapAffirmed = Boolean(
     form.lastRecap &&
       corrections.length === 0 &&
-      isAffirmativeAnswer(normalizeShortAnswer(latestCandidateText)),
+      isAffirmativeAnswerSequence(normalizeShortAnswer(latestCandidateText)),
   );
   if (recapAffirmed) form = applyRecapResult(form, { affirmed: true });
 

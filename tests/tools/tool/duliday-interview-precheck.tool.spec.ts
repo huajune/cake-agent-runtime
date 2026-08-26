@@ -259,6 +259,21 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
     expect(context.ledger.jobs.collectionReadyJobId).toBe(100);
   });
 
+  it('组合式确认（对的，没问题）同样写入放行凭据，不再多绕一轮', async () => {
+    currentForm = filledForm();
+    context.turnInput.messages = [{ role: 'user', content: '对的，没问题' }];
+    const result = await execute({ jobId: 100 });
+    expect(result.nextAction).toBe('ready_to_book');
+    expect(context.ledger.jobs.collectionReadyJobId).toBe(100);
+  });
+
+  it('确认词与纠错混排（对的，但是电话错了）不判确认，停在 confirm_collection', async () => {
+    currentForm = filledForm();
+    context.turnInput.messages = [{ role: 'user', content: '对的，但是电话错了' }];
+    const result = await execute({ jobId: 100 });
+    expect(result.nextAction).toBe('confirm_collection');
+  });
+
   it('候选人纠正复述里的年龄时只重开并改写该槽，其它槽保持 filled', async () => {
     currentForm = filledForm();
     context.turnInput.messages = [{ role: 'user', content: '年龄不是25，是26' }];
