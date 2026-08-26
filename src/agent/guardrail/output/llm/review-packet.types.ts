@@ -69,7 +69,6 @@ export interface JobListEvidenceItem {
 export interface PrecheckEvidence {
   nextAction?: string;
   requiredFieldsToCollectNow: string[];
-  starterFields: string[];
   missingFields: string[];
   interviewTimeMode?: string;
   blockedReason?: string;

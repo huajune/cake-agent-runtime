@@ -278,6 +278,10 @@ section 清单到 `final-check` 结束，`critical-turn-guard` 已不是独立 s
   逐字照发同次返回的 `templateText`，不得改写标签、增删或重排行。
   - **来源**：报名率数据。
   - **状态**：2026-08-21 已对齐收资状态机，progressive 由状态机裁决。
+    2026-08-26 精简 bookingChecklist：progressive 降级实测无任何启用路径，`starterFields`/`displayOrder`
+    已从工具返回删除（守卫审查包读的 `collectionStrategy.starterFields` 是从不存在的幽灵形状，同批清理）；
+    筛选字段集只保留 `bookingChecklist.screeningFields`（纯 labelTitle），顶层 `contractScreeningFields`
+    双编码连同 labelId 一并删除（labelId 是内部主键，模型无权使用，见 §5.5 标签协议裁定）。
 
 - `T2` — 发出收资表后，候选人插问岗位细节时不要重发整表。
   - **来源**：体验原则。
@@ -450,7 +454,7 @@ FC 编号保留为历史别名：
 | duliday_modify_interview_time                  | 1,810                                        | 改约契约                                            | 与 T14/BK2 成对                                                                                                                                                                                                                                                                                                                                                                    |
 | skip_reply                                     | 974                                          | 沉默场景                                            | 与 G14 成对                                                                                                                                                                                                                                                                                                                                                                        |
 | send_store_location                            | 829                                          | 定位发送                                            | 与 G5/BK6/FC1 成对                                                                                                                                                                                                                                                                                                                                                                 |
-| duliday_interview_precheck                     | ~~807~~ **896**                              | 参数纪律/行动纪律（收资状态机接管后保持精简）       | **唯一 `formAnswers` 入参与逐字照发模板的公开契约**。2026-08-27 requestedDate 纪律补一句"期望面试时间只走 requestedDate、不进 formAnswers；定位失败条目见返回 unmatchedAnswers"（来源：0826 生产回放，5% 可判定答案把面试时间误投 formAnswers 被静默丢弃）；教侧这一句与代码侧确定性转运 + unmatchedAnswers 回执成对，长期有效                                                                                                                                                                                                                                                                                                                                 |
+| duliday_interview_precheck                     | ~~807~~ **896**                              | 参数纪律/行动纪律（收资状态机接管后保持精简）       | **唯一 `formAnswers` 入参与逐字照发模板的公开契约**。2026-08-27 requestedDate 纪律补一句"期望面试时间只走 requestedDate、不进 formAnswers；定位失败条目见返回 unmatchedAnswers"（来源：0826 生产回放，5% 可判定答案把面试时间误投 formAnswers 被静默丢弃）；教侧这一句与代码侧确定性转运 + unmatchedAnswers 回执成对，长期有效。2026-08-26 返回体同步精简：bookingChecklist 删 displayOrder/starterFields，顶层 contractScreeningFields 双编码删除 |
 | risk_alert / advance_stage / recall_history 等 | ≤620                                         | —                                                   | 健康                                                                                                                                                                                                                                                                                                                                                                               |
 
 ## 七、守卫 hard-rules（拦侧，19 ruleId）

@@ -485,7 +485,7 @@ describe('必填全收 + 筛选项优先（0820 用户确认口径）', () => {
 
   it('顺序：身份核 → 带筛选条件的 → 纯登记项', () => {
     const result = runBig();
-    expect(result.template.displayOrder).toEqual([
+    expect(result.template.missingFields).toEqual([
       // 身份核（契约原序内稳定）
       '姓名',
       '手机号',
@@ -505,19 +505,7 @@ describe('必填全收 + 筛选项优先（0820 用户确认口径）', () => {
     expect(result.template.screeningFields).toEqual(['年龄', '能做多久', '有无本地健康证']);
   });
 
-  it('降级起手字段 = 身份核 + 带筛的，绝不是随机几个登记项', () => {
-    const result = runBig();
-    expect(result.template.starterFields).toEqual([
-      '姓名',
-      '手机号',
-      '年龄',
-      '能做多久',
-      '有无本地健康证',
-    ]);
-    expect(result.template.starterFields).not.toContain('具体住址');
-  });
-
-  it('模板行顺序与 displayOrder 一致（候选人看到的就是这个次序）', () => {
+  it('模板行顺序与发问顺序一致（候选人看到的就是这个次序）', () => {
     const lines = runBig()
       .template.templateText.split('\n')
       .slice(1)

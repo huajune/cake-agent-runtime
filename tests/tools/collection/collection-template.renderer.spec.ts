@@ -34,8 +34,8 @@ describe('renderCollectionTemplate', () => {
     const form = createForm({ jobId: 528962, contract: CONTRACT });
     const result = renderCollectionTemplate(form, CONTRACT);
 
-    expect(result.displayOrder).toEqual(['姓名', '是否学生（不要学生及暑假工）', '具体住址']);
-    expect(result.missingFields).toEqual(result.displayOrder);
+    expect(result.missingFields).toEqual(['姓名', '是否学生（不要学生及暑假工）', '具体住址']);
+    expect(result.requiredFields).toEqual(result.missingFields);
     expect(result.screeningFields).toEqual(['是否学生（不要学生及暑假工）']);
     expect(result.templateText).toContain('是否学生（不要学生及暑假工）：（社会人士/学生）');
   });

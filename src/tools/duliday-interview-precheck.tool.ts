@@ -3,7 +3,6 @@ import type { CollectionFormService } from '@tools/collection/collection-form.se
 import { Logger } from '@nestjs/common';
 import {
   applyRecapResult,
-  carriesScreening,
   escalate,
   mapContractFields,
   parseIdentityAnchors,
@@ -379,7 +378,6 @@ export function buildInterviewPrecheckTool(
             },
             bookingChecklist: {
               requiredFields: formRun.result.template.requiredFields,
-              displayOrder: formRun.result.template.displayOrder,
               missingFields: formRun.result.template.missingFields,
               requiredFieldsToCollectNow: formRun.result.askableFields,
               knownFieldMap:
@@ -387,7 +385,6 @@ export function buildInterviewPrecheckTool(
                   ? formRun.result.template.knownFieldMap
                   : undefined,
               templateText: formRun.result.template.templateText,
-              starterFields: formRun.result.template.starterFields,
               screeningFields: formRun.result.template.screeningFields,
             },
             unmatchedAnswers: formRun.unmatchedAnswers,
@@ -411,9 +408,6 @@ export function buildInterviewPrecheckTool(
               formRun.form.configDebts && formRun.form.configDebts.length > 0
                 ? formRun.form.configDebts
                 : undefined,
-            contractScreeningFields: formRun.contract
-              .filter(carriesScreening)
-              .map((field) => ({ labelId: field.labelId, labelTitle: field.labelTitle })),
           });
         } catch (error) {
           logger.error(`面试前置校验失败: ${toErrorMessage(error)}`);
