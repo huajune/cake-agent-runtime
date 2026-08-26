@@ -632,6 +632,65 @@
         "Web 与服务端构建",
         "Jest 全库测试与 coverage"
       ]
+    },
+    {
+      "number": "1037",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1037",
+      "title": "核心链路注释与架构文档按实现终态清理",
+      "author": "huajune",
+      "mergedAt": "2026-08-26",
+      "businessUpdates": [
+        "无。",
+        "明确 Guardrail 的 Input / Prompt / Tool / Output 四个位置，避免把 Prompt 层漏出架构描述。",
+        "明确 `final-check` 是复合 section；规则命中时内部追加 `critical-turn-guard` 子块，不再描述为两个独立注册段。",
+        "对齐当前 ReplyWorkflow → AgentRunner → TurnFinalizer 调用链、两层记忆结构、replay 阻断集合、Redis 租约参数和工具步数。",
+        "删除全库零调用的 deprecated `dispatchIfNeeded()` 转发方法。"
+      ],
+      "summary": [
+        "清理核心链路注释并按实现刷新架构文档",
+        "全局清理核心运行链路中的阶段编号、批次标签、失效兼容说明和误导性代码注释。",
+        "以当前实现为唯一事实源，重写/刷新 Agent Runtime、消息链路、记忆、Guardrail、数据库与运营文档。",
+        "清理已完成或失效的 TODO，建立待办总览并拆分仍需执行的兼容与发布事项。",
+        "核心链路注释与架构文档按实现终态清理"
+      ],
+      "features": [
+        "无。"
+      ],
+      "fixes": [
+        "明确 Guardrail 的 Input / Prompt / Tool / Output 四个位置，避免把 Prompt 层漏出架构描述。",
+        "明确 `final-check` 是复合 section；规则命中时内部追加 `critical-turn-guard` 子块，不再描述为两个独立注册段。",
+        "对齐当前 ReplyWorkflow → AgentRunner → TurnFinalizer 调用链、两层记忆结构、replay 阻断集合、Redis 租约参数和工具步数。",
+        "删除全库零调用的 deprecated `dispatchIfNeeded()` 转发方法。"
+      ],
+      "optimizations": [
+        "知识库条目由“四层记忆系统”改为“两层记忆系统”，并将“出站守卫三档裁决链”改为当前裁决链描述。",
+        "校正文档中的代码路径、配置默认值、存储键和运行时边界；Markdown 文件链接与知识库 Wiki 双链全部核验通过。",
+        "全局清理核心运行链路中的阶段编号、批次标签、失效兼容说明和误导性代码注释。",
+        "以当前实现为唯一事实源，重写/刷新 Agent Runtime、消息链路、记忆、Guardrail、数据库与运营文档。",
+        "清理已完成或失效的 TODO，建立待办总览并拆分仍需执行的兼容与发布事项。"
+      ],
+      "ops": [
+        "删除已收官的 `context-assembly-compiler.md` 和失效的 memory 深审清单。",
+        "新增 `docs/todo/README.md`、memory compatibility cleanup 与 runtime release follow-ups，保留真实未完成事项。",
+        "清理核心链路注释并按实现刷新架构文档"
+      ],
+      "config": [
+        "仅更新 `.env.example` 的说明：`AGENT_MAX_INPUT_CHARS` 默认值对齐代码为 24000，并去掉一处重复的旧开关说明。",
+        "无新增必填环境变量、数据库 migration、RPC、权限、依赖或外部服务变更。"
+      ],
+      "envFiles": [
+        ".env.example"
+      ],
+      "verification": [
+        "`pnpm run ci:check`",
+        "关键链路已按源码逐项人工核对",
+        "未新增对开放自然语言直接 reject/覆盖/判缺的正则分支",
+        "未新增 Prompt 示例值",
+        "`pnpm run duplication:check`：0.79% duplicated lines，低于 2.06% 阈值",
+        "`pnpm run test:di-smoke`：1/1 通过",
+        "全库：448 suites / 6812 tests / 3 snapshots 通过；1 suite / 5 tests 按原配置跳过",
+        "`git diff --check`、Markdown 文件链接、知识库 Wiki 双链检查通过"
+      ]
     }
   ],
   "lastRelease": {
