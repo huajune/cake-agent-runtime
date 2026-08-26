@@ -15,7 +15,7 @@
 **预计版本**: `v10.45.0`
 **最近更新**: `2026-08-26`
 **来源分支**: `develop`
-**累计 PR**: 11
+**累计 PR**: 13
 
 ### 更新摘要
 
@@ -215,6 +215,12 @@
 - PR #1037 以当前实现为唯一事实源，重写/刷新 Agent Runtime、消息链路、记忆、Guardrail、数据库与运营文档。
 - PR #1037 清理已完成或失效的 TODO，建立待办总览并拆分仍需执行的兼容与发布事项。
 - PR #1037 核心链路注释与架构文档按实现终态清理
+- PR #1039 收口 v10.45.0 审批门禁
+- PR #1039 同步规则数量
+- PR #1041 精简事故流水账式注释
+- PR #1041 精简 90 个带日期、版本、案例号和审计计数的事故流水账式注释块
+- PR #1041 将源码注释收敛为当前职责、约束和维护边界，测试注释只保留回归行为
+- PR #1041 全库宽口径复扫候选数由 90 降至 0，不改业务逻辑
 
 ### 新功能
 
@@ -267,6 +273,10 @@
 - PR #1037 全局清理核心运行链路中的阶段编号、批次标签、失效兼容说明和误导性代码注释。
 - PR #1037 以当前实现为唯一事实源，重写/刷新 Agent Runtime、消息链路、记忆、Guardrail、数据库与运营文档。
 - PR #1037 清理已完成或失效的 TODO，建立待办总览并拆分仍需执行的兼容与发布事项。
+- PR #1041 清理源码、测试、脚本和迁移中的历史事故叙事，保留当前可执行维护信息
+- PR #1041 精简 90 个带日期、版本、案例号和审计计数的事故流水账式注释块
+- PR #1041 将源码注释收敛为当前职责、约束和维护边界，测试注释只保留回归行为
+- PR #1041 全库宽口径复扫候选数由 90 降至 0，不改业务逻辑
 
 ### 运维与流程
 
@@ -426,12 +436,15 @@
 - PR #1037 删除已收官的 `context-assembly-compiler.md` 和失效的 memory 深审清单。
 - PR #1037 新增 `docs/todo/README.md`、memory compatibility cleanup 与 runtime release follow-ups，保留真实未完成事项。
 - PR #1037 清理核心链路注释并按实现刷新架构文档
+- PR #1039 收口 v10.45.0 审批门禁
+- PR #1039 同步规则数量
+- PR #1041 无；仅注释改动
+- PR #1041 精简事故流水账式注释
 
 ### 配置变更
-
-- PR #1035 v10.45.0 包含 5 个 Supabase migration：`20260821210000`、`20260825025701`、`20260825050239`、`20260825055058`、`20260825063752`；测试库已应用，生产库待受控切换时应用。
+- PR #1035 v10.45.0 包含 5 个 Supabase migration：20260821210000、20260825025701、20260825050239、20260825055058、20260825063752；测试库已应用，生产库待受控切换时应用。
 - PR #1035 首个 migration 会重命名长期记忆列，旧版 v10.44.0 与迁移后 schema 不兼容；合并/部署前必须完成生产配置同步并单独授权 migration 与应用切换。
-- PR #1035 生产环境 `AGENT_MAX_INPUT_CHARS` 与 `MEMORY_SETTLEMENT_GAP_DAYS` 当前值未对齐 v10.45.0 默认值；`MEMORY_SESSION_TTL_DAYS` 已对齐。
+- PR #1035 生产环境 AGENT_MAX_INPUT_CHARS 与 MEMORY_SETTLEMENT_GAP_DAYS 当前值未对齐 v10.45.0 默认值；MEMORY_SESSION_TTL_DAYS 已对齐。
 - PR #1037 仅更新 `.env.example` 的说明：`AGENT_MAX_INPUT_CHARS` 默认值对齐代码为 24000，并去掉一处重复的旧开关说明。
 - PR #1037 本 PR 自身无新增必填环境变量、数据库 migration、RPC、权限、依赖或外部服务变更；v10.45.0 整体的 migration 见 PR #1035 配置记录。
 
@@ -467,6 +480,19 @@
 - PR #1037 `pnpm run test:di-smoke`：1/1 通过
 - PR #1037 全库：448 suites / 6812 tests / 3 snapshots 通过；1 suite / 5 tests 按原配置跳过
 - PR #1037 `git diff --check`、Markdown 文件链接、知识库 Wiki 双链检查通过
+- PR #1039 pnpm run ci:check：lint、format、typecheck、geo、vocab、前后端 build 全绿。
+- PR #1039 Jest：450/450 套件、6825/6825 测试通过；另 1 套件 / 5 测试按仓库配置跳过。
+- PR #1039 测试 Supabase + Redis 真实记忆集成链路：30/30，通过后已清理测试数据。
+- PR #1039 安全 Agent smoke：修复后为查询承接，无岗位可用性断言、无工具调用、无外部副作用。
+- PR #1039 release ledger checker 与 git diff --check 通过。
+- PR #1041 pnpm run ci:check
+- PR #1041 pnpm run duplication:check
+- PR #1041 pnpm run test:di-smoke
+- PR #1041 git diff --check
+- PR #1041 全库事故流水账式注释复扫：0
+- PR #1041 关键链路人工验证：N/A（纯注释，无运行时行为变化）
+- PR #1041 未新增自然语言 reject、覆盖或判缺正则分支
+- PR #1041 新增虚构 prompt 示例值：N/A
 <!-- release:pending:end -->
 
 ## [10.44.0] - 2026-08-19
