@@ -297,8 +297,8 @@ describe('AcceptInboundMessageService', () => {
   });
 
   it('入群邀请卡片（ROOM_INVITE）回灌的自发消息不当人工介入处理', async () => {
-    // 回归 2026-06-17 李宇杭 case：invite_to_group 成功后平台向候选人发出的入群邀请卡片，
-    // 会以 isSelf=true + source=MOBILE_PUSH + messageType=ROOM_INVITE 回灌。仅 TEXT 才算真人介入，
+    // invite_to_group 成功后的入群邀请卡片会以 isSelf=true、source=MOBILE_PUSH、
+    // messageType=ROOM_INVITE 回灌。仅 TEXT 才算真人介入，
     // 卡片非文字 → 不暂停托管 + 不告警。卡片本身仍存为占位历史。
     await service.execute(
       createMessage({

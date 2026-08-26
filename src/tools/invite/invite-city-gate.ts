@@ -6,31 +6,13 @@ import { mapLocationCityCandidates } from '@resolution/evidence/admission';
 /**
  * invite_to_group 城市 provenance gate（tool guardrail，纯函数）。
  *
- * 根因（badcase recvk28F1xrsKj 图片识别后把候选人拉进杭州兼职群）：
- * invite 的 city 入参完全信模型自报——与 booking 曾经信 `prechecked` 是同一个
- * "模型自证"模式。拉群是不可逆副作用，city 必须能追溯到外生出处：
+ * 拉群是不可逆副作用，city 不能由模型自证，必须能追溯到外生出处：
  * ① 会话记忆里的高置信城市事实（确定性抽取写入），或
  * ② 候选人本会话原文里出现过该城市（含定位消息渲染文本），或
  * ③ 候选人原文命中 @resolution/geo 地名白名单（区名唯一映射 / 高置信地标），
  *   且推导城市与入参一致（district_inference），或
- * ④ 本轮 geocode unique 解析确权过该城市（turn_geocode，#765 补"轮末写档、
- *   下轮才进 session_fact"的同轮时序空档）。
+ * ④ 本轮 geocode unique 解析确权过该城市（turn_geocode）。
  * 模型参数单独不构成依据（HC-2 权威字段准入的同一原则）。
- *
- * 演进史：
- * - 2026-07-20 放宽（badcase：候选人说"顺义区马坡镇"/"浦东川沙"仍被反问城市）：
- *   字面匹配漏掉区级地名 → 城市的确定性推断，新增 district_inference 档
- *   （静态映射曾落 tools 层私表 district-city-map.ts）。
- * - 2026-07-27 证据化穿线（badcase 6a671722 沈阳 / 6a618a6e 上海浦东 GPS 连拒 3 次）：
- *   geocode unique 确权与定位分享逆解析现已按 source='system' 写入 sessionFacts.pref.city
- *   （lifecycle save_attested_city / extractFacts 定位注入），跨轮场景由
- *   session_fact 档（①）命中——工具确权是外生证据，不属于"模型自证"。
- * - 2026-07-28 #765：turn_geocode 档补同轮时序空档（④）。
- * - 2026-07-28 收编：district-city-map.ts 私表删除——与 @resolution/geo 的
- *   UNIQUE_SUBDIVISION_TO_CITY 双轨维护、每补一个区名只修一半（拉群门认、查询路径不认，
- *   青岛批次即被迫双写两表）。③ 现统一走 geo 白名单扫描；朝阳/通州等业务偏置
- *   条目随统一对齐提取层口径（同一句话提取层本就写 city 高置信事实，gate 下一轮
- *   凭 ① 放行——此前的"更严"只在同轮内生效，跨轮不成立，属幻觉严格性）。
  *
  * 判定只读、不产生副作用；拒绝均为可恢复（reject_collect 语义）：
  * - city_conflict：会话记忆有城市且与入参不一致 → 模型应改用 expectedCity 或先与候选人确认；
@@ -70,9 +52,8 @@ export interface InviteCityGateInput {
   /**
    * 本轮 geocode unique 解析确权的城市（context.ledger.geo.anchors）。
    *
-   * 同轮时序空档（v10.31.0 发版后残留 2 例实证，chat 6a680c63"高明万悦天地"/
-   * 6a66d0f8"莘庄"）：城市确权走回合收尾写档、下轮才进 sessionCity，而
-   * geocode → job_list 无岗 → invite 常发生在同一轮，闸门看不到本轮刚确权的
+   * 城市确权在回合收尾才写档、下轮才进 sessionCity；geocode → job_list → invite
+   * 可能发生在同一轮，因此闸门还要直接消费本轮刚确权的
    * 城市。这里把轮内锚点作为第四档出处直接消费——与 save_attested_city 同一
    * 证据源（amap 解析，外生非模型自报），只是消费时机提前到轮内。
    */
@@ -80,7 +61,7 @@ export interface InviteCityGateInput {
   /**
    * 本轮视觉事实 sheet（context.ledger.visual.factSheets，visual-fact-structuring R3）。
    * map_location 截图的城市字段是候选人位置证据，作第五档出处；job_posting 的
-   * 门店城市不算（badcase x3pdj7qh：截图门店城市被当候选人城市拉错群）。
+   * 门店城市不算，因为它不表示候选人所在地。
    */
   turnVisualSheets?: ReadonlyArray<{ messageId: string; sheet: FinalizedVisualFactSheet }>;
 }
@@ -89,7 +70,7 @@ export function evaluateInviteCityGate(input: InviteCityGateInput): InviteCityGa
   const requested = normalizeCity(input.requestedCity);
   const session = normalizeCity(input.sessionCity);
 
-  // normalizeCityName 对空/纯后缀输入返回 null（PR #1000 评审 P2-1）：不判空则下方
+  // normalizeCityName 对空/纯后缀输入返回 null：不判空则下方
   // `requested.length` NPE，被外层 catch 误分类成 INVITE_API_FAILED 且 replyInstruction
   // 错路由。city 入参解析不出即无出处，走 city_unverified 收集语义。
   if (!requested) {
@@ -125,7 +106,7 @@ export function evaluateInviteCityGate(input: InviteCityGateInput): InviteCityGa
     return { decision: 'allow', matchedBy: 'turn_geocode' };
   }
 
-  // 本轮地图截图档（visual-fact-structuring R3，badcase oaz6inzf）：map_location
+  // 本轮地图截图档（visual-fact-structuring R3）：map_location
   // sheet 的城市字段是候选人用来指自己位置的证据，经 geo 白名单归一后作第五档
   // 出处。job_posting / 聊天截图的城市不进本档（那是门店/他人的位置）。
   const sheetCities = new Set<string>();

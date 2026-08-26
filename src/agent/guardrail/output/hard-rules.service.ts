@@ -176,17 +176,10 @@ export class HardRulesService {
      * 顺序不用于短路：同一条 reply 可能同时命中多条规则，全部收集后统一告警。
      * 只有最终 blocked=true 才由 OutputGuardrail/runner 丢弃回复。
      *
-     * 2026-07-10 用户裁定批量下线（勿修补勿重加，与 settlement_cycle_mismatch 同批治理）：
-     * job-fact-hallucinations（未接地推荐/薪资编造/班次过滤空推荐/暑假工降级）、
-     * job-fact-value-mismatch（班次极性/时薪数值对账）、booking-claim-errors（收资字段/
-     * 确认时间透传/等通知收时间与编时间/precheck 口径/handoff 无预约）、
-     * location-claim-errors（geocode 不确定位置声称）整族删除；false-promises 只保留
-     * quota_promise（group_full_without_invite / system_status_fabrication /
-     * tool_failure_success_claim 同批下线）；brand_name_violation（平台错名+岗位品牌改写）
-     * 及其 runner 确定性修复快通道同批下线。岗位/预约事实治理交语义档。
-     * 2026-07-15 新 badcase 6a5729fe 表明“详情缺字段仍直接猜测”无法仅靠语义档治理，
-     * 用户重新裁定启用两条更窄的确定性契约：job_detail_lookup_required 只检查是否按
-     * 当前 jobId 补查；settlement_cycle_mismatch 只对账正式结算与培训/阶梯补充结算。
+     * 岗位、预约和位置事实的宽泛语义判定归语义档，不得重新堆回确定性规则。
+     * 这里只保留可由结构化证据稳定公证的窄契约：
+     * job_detail_lookup_required 检查是否按当前 jobId 补查；
+     * settlement_cycle_mismatch 只对账正式结算与培训/阶梯补充结算。
      */
 
     // 必须在 sanitizer 删除 <think> 标签之前识别模型/Provider 异常，避免畸形推理文本

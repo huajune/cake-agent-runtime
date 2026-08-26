@@ -1,5 +1,5 @@
 /**
- * 报名筛选标签契约 v2 —— **收资判决的唯一判据源**（0818 与后端约定，0820 上生产）。
+ * 报名筛选标签契约 v2 —— **收资判决的唯一判据源**。
  *
  * 接口：`POST /ai/api/jobs/interview-labels/batch-query`
  *
@@ -8,22 +8,20 @@
  * 不走岗位自由文本解析兜底。⚠️ 这条"没带=无此筛"只适用于**字段级缺失**；整岗
  * 返回空标签是数据异常，见 `isEmptyLabelAnomaly`。
  *
- * 形状依据：2026-08-20 生产实测 9 岗（jobIds 528962/528980/528781/528995/529003/
- * 528731/529042/528720/529020），27 个不同标签，字段集九项恒定齐全。
+ * 后端契约要求标签字段保持完整；整岗返回空标签按数据异常处理。
  */
 
 import { z } from 'zod';
 
-/** 基线实测四种：TEXT 20 / SINGLE_OPTION 5 / MULTIPLE_OPTION 1 / FILE 1（按标签去重计）。 */
+/** 后端契约支持的字段类型。 */
 export const CONTRACT_FIELD_TYPES = ['TEXT', 'SINGLE_OPTION', 'MULTIPLE_OPTION', 'FILE'] as const;
 export const ContractFieldTypeSchema = z.enum(CONTRACT_FIELD_TYPES);
 
 /**
- * 披露级别（契约诉求 #6，0820 已落地）。
+ * 披露级别。
  *
- * `RESTRICTED` = 该字段的不合格原因**绝不能**告诉候选人（实测：籍贯[3] 已标）。
- * ⚠️ 专业族（659/544）后端 0820 承诺补标但**尚未落地**，仍返回 PLAIN——所以
- * AI 侧的披露兜底注册表不是过渡品，是与契约标记并行的第二道闸
+ * `RESTRICTED` = 该字段的不合格原因**绝不能**告诉候选人。AI 侧的披露兜底注册表
+ * 与契约标记并行，防止新建敏感标签漏标
  * （`resolution/collection/disclosure-policy.ts`，红线压过契约的 PLAIN）。
  */
 export const CONTRACT_DISCLOSURE_LEVELS = ['PLAIN', 'RESTRICTED'] as const;
@@ -35,7 +33,7 @@ export const ContractOptionSchema = z.object({
 });
 
 /**
- * 分性别值域（实测 528995 身高/体重）。同一字段对男女给不同区间，
+ * 分性别值域。同一字段对男女给不同区间，
  * 判据选取需要先知道候选人性别——性别未知时该值域**不参与判决**（漏斗优先，多报下游可截）。
  */
 export const ContractGenderRangeSchema = z.object({

@@ -48,9 +48,8 @@ export type CandidatePrefillHints = Partial<Record<CandidatePrefillField, Candid
 /**
  * 允许作为候选人字段持久化出处的 producer 白名单。
  *
- * 2026-08-12 摘除 `'rule'`（宪法 P11：置信度是证据的属性，不是产者的属性）：
- * 正则认不出口语形态时判假阳（实测 72.3%），却因产者身份是"规则"而享有确权资格。
- * 解析器转岗为提示便签与形态校验器，其产物改走 CandidatePrefillHint。
+ * 置信度是证据的属性，不是产者的属性，因此规则解析器不能直接确权。
+ * 其产物只作提示便签和形态校验，统一走 CandidatePrefillHint。
  */
 export const PERSISTABLE_CANDIDATE_FIELD_PRODUCERS: ReadonlySet<CandidateFactProducer> = new Set([
   'candidate_quote',

@@ -127,13 +127,9 @@ export function detectJobDetailLookupRequired(
   // 已展示多个岗位但没有形成 currentFocusJob 时，不能把其中任一岗位的班次泛化成
   // “这些店都可以协调”。
   //
-  // 2026-07-21 审计：本分支只能 observe，不能 replan。它要求的补救动作是“先反问候选人
-  // 问的是哪家门店”——一个**对话行为**，而本规则拿不到 replyText（入参只有 toolCalls/
-  // memorySnapshot/userMessage），无从判断回复是否已经反问。且这三个入参在 repair 轮内
-  // 都不会变（memory 不在回合中途回写，repair 会重建同一份 snapshot），因此命中即注定
-  // 二审复燃 → isSecondDecisionWorse/回归闸门判定 → 修复版默认胜出，仅真变差时回退首版。
-  // 生产实测：57 条 replan 二审失败全部复燃在本规则上，即每条命中白烧一次带工具的
-  // Agent 生成而候选人拿到的仍是原文。降级为 observe：保留档案与告警，不再触发无效 repair。
+  // 本分支只能 observe：补救动作是先反问候选人指的是哪家门店，但本规则拿不到
+  // replyText，且输入在 repair 轮内不会变化，无法验证补救动作是否已经完成。
+  // 因此这里只保留档案与告警，不触发无法收敛的 repair。
   if (!focusJob) {
     const presentedJobIds = memorySnapshot?.presentedJobIds ?? [];
 
@@ -176,14 +172,8 @@ export function detectJobDetailLookupRequired(
   return {
     ruleId: 'job_detail_lookup_required',
     label: `候选人追问当前岗位详情(${fields})，但精简记忆缺字段或该字段要求实时刷新，本轮未按 jobId=${focusJob.jobId} 调用 duliday_job_list`,
-    // 2026-07-27 发牌切换：主分支 replan → observe（docs/architecture/
-    // guardrail-quality-system.md §2.2/§2.4）。本规则曾承载全部
-    // 重度已投递伤害的宿主——replan 重生成曾把正确首版改成事实反转（trace
-    // batch_6a59dcad…"要求"→"奥乐齐没岗位"）、把工具盖章的"周二"改成"周一"并降级
-    // 已成功报名（trace batch_6a630be4…），且反馈注入/首版注入/白名单补 geocode 等
-    // 提示层防护均被击穿。降 observe 后首版直投（多为"未现查即答详情"级轻问题），
-    // 接盘方=事后环 L1 投递文本 vs 工具事实矛盾抽查（每日 badcase 日报 4.5 栏目，
-    // 与本切换同步上线，满足 §6 硬约束）。
+    // 宽泛重写可能改坏正确的岗位事实、日期或报名状态，而本命中只表示
+    // 「未按当前 jobId 补查」。因此保持 observe，将事实矛盾交由事后环核验。
     action: GUARDRAIL_ACTION.OBSERVE,
   };
 }

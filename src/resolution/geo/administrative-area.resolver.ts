@@ -128,12 +128,9 @@ export function resolveCityFromGeoSignals(
  * 地理信号冲突检测（只供 shadow 观测与排障）。
  *
  * 与 resolveCityFromGeoSignals 的先命中先赢不同，本函数扫描**全部**信号并
- * 收集去重后的城市候选；≥2 个不同城市即"本应 ambiguous"（现网实证：
- * badcase xnp1u820 "成都的 + 静安区"、i2vljy1u）。仅供观测落 GeoQueryMeta，
- * 不参与任何行为决策；**enforce 已于 2026-08-14 终审 no-go，不再是待办**——3 周生产
- * shadow（约 22,800 回合）累计 25 起样本，逐条分类后真冲突 0 起，噪音全部是地标别名
- * 与跨层级同形地名（长阳、宝山中街），详见 docs/architecture/geo-resolution.md §9.3。
- * 本函数保留为排障线索（判断城市判错是否源于别名误命中），不要再按"待决策"推动。
+ * 收集去重后的城市候选；至少两个不同城市时记录冲突。它只向 GeoQueryMeta
+ * 写入排障线索，不参与行为决策，也不得转为 enforce；观测到的冲突主要来自地标别名和
+ * 跨层级同形地名，详见 docs/architecture/geo-resolution.md §9.3。
  */
 export function detectGeoSignalConflict(
   districts: readonly string[] | null | undefined,
