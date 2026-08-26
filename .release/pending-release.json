@@ -695,6 +695,37 @@
         "全库：448 suites / 6812 tests / 3 snapshots 通过；1 suite / 5 tests 按原配置跳过",
         "`git diff --check`、Markdown 文件链接、知识库 Wiki 双链检查通过"
       ]
+    },
+    {
+      "number": "1039",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1039",
+      "title": "收口 v10.45.0 审批门禁",
+      "author": "huajune",
+      "mergedAt": "2026-08-26",
+      "businessUpdates": [
+        "收口 v10.45.0 审批门禁",
+        "同步规则数量"
+      ],
+      "summary": [
+        "收口 v10.45.0 审批门禁",
+        "同步规则数量"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "收口 v10.45.0 审批门禁",
+        "同步规则数量"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "pnpm run ci:check：lint、format、typecheck、geo、vocab、前后端 build 全绿。",
+        "Jest：450/450 套件、6825/6825 测试通过；另 1 套件 / 5 测试按仓库配置跳过。",
+        "测试 Supabase + Redis 真实记忆集成链路：30/30，通过后已清理测试数据。",
+        "安全 Agent smoke：修复后为查询承接，无岗位可用性断言、无工具调用、无外部副作用。",
+        "release ledger checker 与 git diff --check 通过。"
+      ]
     }
   ],
   "lastRelease": {
