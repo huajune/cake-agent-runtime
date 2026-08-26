@@ -44,7 +44,7 @@ import { HardConstraintsSection } from './sections/working/hard-constraints.sect
 import { GroupInventorySection } from './sections/working/group-inventory.section';
 import { SCENARIO_SECTIONS, DEFAULT_SCENARIO } from './scenarios/scenario.registry';
 import { StaticSection } from './sections/static.section';
-import { CriticalTurnGuardSection } from './sections/procedural/critical-turn-guard.section';
+import { FinalCheckSection } from './sections/procedural/final-check.section';
 import type { ModelMessage } from 'ai';
 
 export interface ComposeParams {
@@ -200,11 +200,10 @@ export class ContextService implements OnModuleInit {
 
   private registerSections(): void {
     const baseManual = this.promptAssets.get('candidate-consultation') ?? '';
-    const finalCheck = this.promptAssets.get('candidate-consultation-final-check') ?? '';
 
     this.sections.set('identity', new IdentitySection());
     this.sections.set('base-manual', new StaticSection('base-manual', baseManual));
-    this.sections.set('final-check', new StaticSection('final-check', finalCheck));
+    this.sections.set('final-check', new FinalCheckSection());
     this.sections.set('red-lines', new RedLinesSection());
     this.sections.set('thresholds', new ThresholdsSection());
     this.sections.set('stage-overview', new StageOverviewSection());
@@ -215,7 +214,6 @@ export class ContextService implements OnModuleInit {
     this.sections.set('datetime', new DateTimeSection());
     this.sections.set('channel', new ChannelSection());
     this.sections.set('group-inventory', new GroupInventorySection());
-    this.sections.set('critical-turn-guard', new CriticalTurnGuardSection());
   }
 
   /**
@@ -275,7 +273,7 @@ export class ContextService implements OnModuleInit {
   }
 
   private async loadPromptAssets(): Promise<void> {
-    const assetNames = ['candidate-consultation', 'candidate-consultation-final-check'];
+    const assetNames = ['candidate-consultation'];
     for (const assetName of assetNames) {
       const filePath = join(this.promptsBasePath, `${assetName}.md`);
       const content = await this.readTextFile(filePath);

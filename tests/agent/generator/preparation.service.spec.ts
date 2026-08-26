@@ -5,10 +5,9 @@ import { StorageMessageSource, StorageMessageType } from '@enums/storage-message
 import type { MemoryRecallContext } from '@memory/recall.types';
 import { FALLBACK_EXTRACTION } from '@memory/short-term/short-term.types';
 import { getTurnHint } from '@resolution/evidence/merge';
-import { extractCandidateTextsFromCorpus } from '@resolution/signal/self-report';
 import { testTurnHint, testTurnHints } from '../../helpers/turn-hints.fixture';
 import { sessionFactsOf } from '../../helpers/session-facts.fixture';
-import { CriticalTurnGuardSection } from '@agent/generator/context/sections/procedural/critical-turn-guard.section';
+import { FinalCheckSection } from '@agent/generator/context/sections/procedural/final-check.section';
 import type { ComposeParams } from '@agent/generator/context/context.service';
 import { renderPromptBlocks } from '@agent/generator/context/sections/section.interface';
 import type { PromptCorpusBlock } from '@shared-types/corpus.types';
@@ -68,22 +67,15 @@ describe('PreparationService', () => {
 
   const buildMockComposeResult = async (params: ComposeParams = {}) => {
     const baseContent = ['SYSTEM_PROMPT', params.memoryBlock].filter(Boolean).join('\n\n');
-    const criticalContent = new CriticalTurnGuardSection().build({
-      currentUserMessage: params.currentUserMessage,
-      normalizedMessages: params.normalizedMessages,
-    } as never);
+    const criticalBlock = new FinalCheckSection()
+      .buildBlocks({
+        currentUserMessage: params.currentUserMessage,
+        normalizedMessages: params.normalizedMessages,
+      } as never)
+      .find((block) => block.id === 'critical-turn-guard');
     const promptBlocks: PromptCorpusBlock[] = [
       { id: 'system-prompt', domain: 'teaching', role: 'system', content: baseContent },
-      ...(criticalContent
-        ? [
-            {
-              id: 'critical-turn-guard',
-              domain: 'teaching' as const,
-              role: 'system' as const,
-              content: criticalContent.trim(),
-            },
-          ]
-        : []),
+      ...(criticalBlock ? [criticalBlock] : []),
     ];
     return {
       systemPrompt: renderPromptBlocks(promptBlocks),

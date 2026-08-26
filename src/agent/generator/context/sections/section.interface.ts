@@ -43,9 +43,9 @@ export interface PromptContext {
   displayTurnHints?: TurnHints | null;
   /** 与跨层权威 facts 异值、需强制进入「待确认更新」块的本轮字段；生产必须显式提供。 */
   pendingTurnHintFields?: readonly TurnHintFieldPath[];
-  /** 本轮合并后的候选人消息；CriticalTurnGuardSection 的 current 规则输入。 */
+  /** 本轮合并后的候选人消息；FinalCheckSection turn 规则的 current 匹配输入。 */
   currentUserMessage?: string;
-  /** 含短期近邻窗口的归一化消息；CriticalTurnGuardSection 的 combined 规则输入。 */
+  /** 含短期近邻窗口的归一化消息；FinalCheckSection turn 规则的 combined 匹配输入。 */
   normalizedMessages?: readonly ModelMessage[];
   /**
    * 本轮候选人消息原文（逐条，与规则轨输入同源）。
@@ -93,7 +93,11 @@ export interface PromptSection {
   buildBlocks?(ctx: PromptContext): Promise<PromptCorpusBlock[]> | PromptCorpusBlock[];
 }
 
-/** 生产 prompt 叶子 section → 语料域的唯一封闭注册表。 */
+/**
+ * 生产 prompt 叶子块 id → 语料域的唯一封闭注册表。
+ * final-check 复合 section 经 buildBlocks 产出 final-check / critical-turn-guard 两个块，
+ * 其块级 domain 声明必须与此处一致（context.service.spec 对拍）。
+ */
 const PROMPT_SECTION_DOMAIN_REGISTRY: Readonly<Record<string, CorpusDomain>> = {
   identity: 'teaching',
   'base-manual': 'teaching',

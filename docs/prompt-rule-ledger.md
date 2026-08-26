@@ -1,14 +1,18 @@
-# 程序记忆索引 · Prompt 规则台账（Procedural Memory Index）
+# 程序性知识索引 · Prompt 规则台账（Procedural Knowledge Index）
 
-> **本文件是程序记忆层（procedural memory）的唯一总目录**——手册、工具 description、DB 策略文本、
-> booking 共享规则、final-check、守卫 hard-rules 六居所的规则全量登记处，也是该记忆层三项治理的挂载点：
+> **本文件是程序性知识（procedural knowledge）的唯一总目录**——手册、procedural sections、工具 description、
+> DB 策略文本、条件式规则块与守卫 hard-rules 的全量登记处，也是三项治理的挂载点：
 > **容量**（台账+膨胀哨兵）、**沉淀**（批次删减循环，即 procedural refinement）、**放置**（判定树）。
-> 物理居所按判定树就近散布（规则贴消费者，反口径漂移）；逻辑收拢于此，各居所头部有锚注指回本索引（M1-B）。
+> 这里的 procedural 是 context section 的知识类型轴，**不是 `src/memory/` 的第三层存储**；运行时记忆仍只有
+> 短期会话与长期候选人×bot 关系档两层。物理居所按判定树就近散布（规则贴消费者，反口径漂移），
+> 逻辑收拢于此，各 procedural 内容文件头部有锚注指回本索引（M1-B）。
 > 建立：2026-08-21（治理方案 P3-1 / 防腐机制 F1，裁定 4：markdown 轻量版，不建系统不建表）
-> 范围：主 generator 链路全部内容居所——手册、工具 description、DB 策略文本（red-lines / thresholds / stage-strategy）、booking 上下文、final-check、出站守卫 hard-rules。
+> 终态刷新：2026-08-26（context assembly compiler 三期收官）。
+> 范围：主 generator 链路全部规则居所——procedural sections、工具 description、DB 策略文本
+> （red-lines / thresholds / stage-strategy）、booking 规则片段、条件式尾部块、出站守卫 hard-rules。
 > 维护纪律见文末；**新增/修改/删除任何 prompt 侧规则的 PR，必须同批更新本台账对应行**。
 
-## 约束放置判定树（分类轴，2026-08-21 裁定 7）
+## 约束放置判定树（分类轴，2026-08-21 裁定 7；2026-08-26 补发送前防线分支）
 
 ```
 新约束 →
@@ -16,22 +20,97 @@
 └─ 生成时行为约束：
    ├─ 与单一工具强绑定 → 该工具 description
    ├─ 与单一阶段强绑定 → stage-strategy（DB）
-   ├─ 跨工具跨阶段的人格/红线 → red-lines（DB）
+   ├─ 业务政策级人格/红线（业务不允许什么）→ red-lines（DB）
+   ├─ 发送前反幻觉自检/禁令（常驻或按轮命中）→ final-check 统一规则表（trigger 属性区分 always/turn）
    └─ 跨工具的操作规程 → 手册
 铁律：同一约束只准住一处；"教"（prompt）与"拦"（守卫）允许成对存在，但必须在本台账互链。
+红线 vs final-check 的语义边界（2026-08-26 合居所裁定）：红线承载业务政策（对外承诺口径、业务底线），
+运营语义、留 DB；final-check 承载反幻觉内部教（贴工具事实说话的自检与禁令），工程语义、住代码。
 ```
 
-## 居所索引（六居所三纪律）
+## 居所索引（终态）
 
-| 居所 | 载体 | 变更纪律 | 规模（2026-08-21 实测） |
+| 居所 | 载体 | 变更纪律 | 终态快照（2026-08-26） |
 |---|---|---|---|
-| 手册 | `src/agent/generator/context/sections/procedural/candidate-consultation.md` | PR + review | 76KB / ~90 条规则 |
-| final-check | `candidate-consultation-final-check.md`（组装置末尾，≈ recitation） | PR + review | 6.5KB / 17 条自检项 |
-| 工具 description | 各 tool 文件内 DESCRIPTION | 代码 PR（无尺寸压力） | 13 常挂合计 31,729 字符 |
-| DB red-lines/thresholds | `strategy_config.red_lines`（Dashboard 可改，零 review） | ⚠️ 零审计 | 15 规则 + 2 阈值（1,580 字符） |
-| DB stage-strategy | `strategy_config.stage_goals`（Dashboard 可改，零 review） | ⚠️ 零审计 | 5 阶段（6,282 字符） |
-| 代码动态注入 | booking 共享规则 / hard-constraints / turn-hints / critical-turn-guard / 拦截说明；group-inventory 仅数据 | 代码 PR | booking 共享规则 ~2KB |
-| 守卫 hard-rules（拦侧） | `src/agent/guardrail/output/rules/` | 代码 PR | 23 文件 / 29 ruleId |
+| 仓内 procedural sections | `src/agent/generator/context/sections/procedural/` | PR + review；每个 `.ts/.md` 必须带本台账锚点 | 手册 74,654B；final-check 统一规则表 27 条（18 always + 9 turn）；其余见下表 |
+| 工具 description | 各 tool 文件内 DESCRIPTION | 代码 PR；规则贴唯一工具消费者 | 13 个常挂工具；一期压缩基线 31,729→26,738 字符，后续随功能演进 |
+| DB red-lines/thresholds | `strategy_config.red_lines` / `thresholds` | Dashboard 可改；变更须同批补台账/changelog | 10 条现行红线 + 2 阈值 |
+| DB stage-strategy | `strategy_config.stage_goals` | Dashboard 可改；released/testing 双行同步 | 5 阶段，当前阶段动态渲染 |
+| 条件式规则块 | booking 共享规则 / input-guard / proactive-directive | 代码 PR | 都留在 system；按上下文条件出现 |
+| 守卫 hard-rules（拦侧） | `src/agent/guardrail/output/rules/` | 代码 PR | 31 个 `ruleId` |
+
+`PROMPT_SECTION_DOMAIN_REGISTRY` 是 teaching/evidence/tool_result 的语料域轴，用于指令—数据分离；
+它与本台账的 procedural/semantic/working 知识类型轴正交，不合并、不互相替代。
+
+## 零、现行 procedural sections 与装配位
+
+`candidate-consultation` 的 block 终序如下；这一顺序同时是 `promptBlocks` 的观测顺序：
+
+`identity` → `base-manual` → `channel` → `stage-overview` → `red-lines` → `thresholds` →
+`memory` → `turn-hints` → `hard-constraints` → `datetime` → `group-inventory` →
+`stage-strategy` → `final-check` → `critical-turn-guard`
+
+末两个块由 `final-check` 复合 section（发送前防线统一规则表，2026-08-26 合居所）经 `buildBlocks`
+一并产出：常驻自检块固定次末位，动态硬禁令块仅命中时出现在末位；块 id 与字节与合并前一致。
+其中 `memory` 至 `group-inventory` 是 semantic/working 数据段，不是程序性规则的新居所；列在这里仅为说明
+完整装配相对位置。所有段仍渲染到 system，动态内容不进入 messages。准备阶段若命中输入注入风险，
+`input-guard` 插在 `critical-turn-guard` 块之前；主动修订指令 `proactive-directive` 作为条件式 system 尾块追加。
+
+| section id | 程序性知识职责 | 稳定档/装配依据 |
+|---|---|---|
+| `identity` | agent 人设、账号身份与边界 | 开篇人设；低频配置档前置无缓存代价 |
+| `base-manual` | 跨工具操作规程与全局行为手册 | 稳定静态段 |
+| `channel` | 群聊/私聊渠道规范 | 稳定静态段 |
+| `stage-overview` | 全阶段一览与推进协议 | 全阶段静态一览，不随当前阶段移动 |
+| `red-lines` | 跨阶段策略红线 | DB 配置段 |
+| `thresholds` | 回复字数、推荐距离等策略阈值 | DB 配置段 |
+| `stage-strategy` | 当前阶段目标、必做与禁做 | 随阶段变化的动态尾部 |
+| `final-check`（复合） | 发送前防线：常驻 recitation 自检块（次末位收口）+ 关键轮次命中式动态硬禁令块（末位） | `stage-strategy` 后；两块 id 为 `final-check` / `critical-turn-guard` |
+
+### final-check turn 规则明细（本轮动态硬禁令）
+
+载体：`src/agent/generator/context/sections/procedural/final-check.section.ts`
+`FINAL_CHECK_RULES` 中 `trigger='turn'` 的条目（2026-08-26 合居所前为独立
+critical-turn-guard.section.ts，规则 id 与注入字节不变）。
+
+这些规则不是常驻 prompt：系统只对本轮消息（`current`）或“近 12 条消息 + 本轮”
+（`combined`）做确定性匹配；命中后才在 system 末尾生成 `# 本轮动态硬禁令`。多条可同时命中。
+
+- `job_detail_missing_field_lookup`
+  - **命中**：`current`；候选人追问薪资、班次、福利、门槛、地址、工期等岗位字段。
+  - **作用**：缺字段时按当前 `jobId` 重查；薪资、结算、福利、班次即使摘要已有也实时重查，禁止靠常识、旧话术或其他岗位推断。
+
+- `schedule_constraint_precheck_first`
+  - **命中**：`current`；候选人提出每周天数、做一休一、只周末、不上夜班、可下班时间等硬约束。
+  - **作用**：先用 precheck 或 job-list 校验岗位，再确认可行性；校验前禁止说“没问题/资料收到了”或继续收资。
+
+- `interview_date_precheck_first`
+  - **命中**：`current`；候选人指定某天面试。
+  - **作用**：必须以指定日期调用 precheck 后才能承诺；岗位不明确时先确认岗位，禁止擅自换日期或继续收整套资料。
+
+- `interview_time_only_precheck_first`
+  - **命中**：`current`；日期在上文，本轮只说“三点过去/三点吧”等钟点。
+  - **作用**：重新按上文日期 precheck，防止沿用已过截止时间的旧承诺；不可约时给真实可约时段。
+
+- `health_cert_is_not_major`
+  - **命中**：`combined`；上下文同时出现健康证与专业筛选。
+  - **作用**：阻止把健康证误当专业证明；先确认真实专业，禁止据此拒绝预约或虚报已拉群。
+
+- `post_interview_no_rebook`
+  - **命中**：`combined`；已面试、已通过、入职、报到、门店联系或只能保留一家店。
+  - **作用**：禁止流程倒退到重新收资、约面或荐岗；状态异常与门店选择优先转人工。
+
+- `submitted_form_no_refill`
+  - **命中**：`current`；本轮已提交电话及年龄、学历、面试时间等资料。
+  - **作用**：承接已给字段并原样保留时间，禁止让候选人重填整表或退回“发地址查岗”入口。
+
+- `salary_account_no_fabricated_policy`
+  - **命中**：`combined`；讨论银行卡、税务、发薪主体或本人卡异常。
+  - **作用**：禁止编造“公司统一规定”或承诺门店可变通；本人卡存在异常时转人工确认，不继续强推约面。
+
+- `location_reference_needs_grounding`
+  - **命中**：`combined`；近邻上下文含位置、住处或地址线索。
+  - **作用**：使用“这家/刚才那家/附近岗位”时必须写清门店或地址，并以本轮工具、焦点岗位或预约信息为依据。
 
 ---
 
@@ -94,31 +173,86 @@
 
 ### 事实一致性红线（F）
 
-| # | 规则摘要 | 来源 | 加入 | 时效 |
-|---|---|---|---|---|
-| F1 | 「独立客」身份统一口径；独立日/杜力岱/DuLiDay 同主体 | 品牌裁定 | — | |
-| F2 | 关键事实以最新工具结果为准；说错要道歉纠正 | 通用 | — | |
-| F3 | 禁名额保留/未来可用性保证 | badcase 6a266b51（办证 3 天岗位下架投诉） | — | 拦侧配对：`quota_promise` |
-| F4 | 未报名不引导自行到店 | badcase 2cz1o1nd + wlterrb1 + 回归 P865-09 | 2026-08-04 | |
-| F5 | "组合排班"≠周频，不虚构周频门槛 | 回归 SCN-P862-SCHEDULE-01 | 2026-08-05 | 拦侧配对：`combination_schedule_weekly_generalization` |
-| F6 | 餐饮一律需健康证；不编办理阶段比例 | 2026-08-05 业务口径 | 2026-08-05 | 拦侧配对：`health_certificate_generalization`；与 DB 红线 R3 成对（见 R3 备注） |
-| F7 | 健康证费用：自费约 100、不免费、默认不报销 | badcase d29laq3e/kzut0et8 + 08-06 运营口径 | 2026-07-28 | |
-| F8 | 健康证电子=纸质有效；默认须应聘城市本地证 | 2026-08-06 运营口径 | 2026-08-06 | |
-| F9 | 查岗结论先查后说；"愿意帮查"≠存在性承诺 | 回归簇 | — | |
-| F10 | 禁编造系统状态/报错；报名成败只看 booking 返回 | badcase 簇 | — | 拦侧配对：`booking_promise_without_booking` / `booking_receipt_mismatch` |
-| F11 | 禁替候选人填收资字段（年龄禁用岗位上下限兜底） | badcase（岗位上限 50 当年龄） | — | 状态机公证拒收兜底（claims 必须原话 quote） |
-| F12 | 工作内容只按工具字段，禁通识泛化 | badcase（六姐洗碗） | — | 拦侧配对：`ungrounded-generalizations` 族 |
-| F13 | 备注时间限定按当前日期解析，过期不复述 | 口径 | — | |
-| F14 | 同 reply 禁自相矛盾 | badcase 簇 | — | |
-| F15 | 班次禁截短/改写成未列时段 | badcase 簇 | — | 拦侧配对：`unsupported_schedule_window_claim` |
-| F16 | 禁臆测门店开业/筹建状态 | badcase（新店未开改派面试） | — | 拦侧配对：`unsupported_store_status_speculation` |
-| F17 | 班次硬约束过滤必须向候选人解释；做一休一≠低周频 | badcase + v10.38.0 回归 | — | |
-| F18 | 岗位"每周 N 天"要求须主动确认出勤能力 | badcase | — | |
-| F19 | 用工形式两级轴按字段如实介绍；正式工/临时工不复述；过滤空结果如实说 | 业务口径 | — | ⚠️ **与 DB 红线 R13 双居所重复**（见铁律违例①） |
-| F20 | 暑假工单向硬约束：拒绝即收口，禁劝转 | 用户裁定 | 2026-07 | ⚠️ **季节性**：2026 暑期语境，暑期结束（≈2026-09）复查是否降档 |
-| F20a | 暑假工状态默认"否"，禁主动盘问 | 同上 | 2026-07 | 同上；拦侧配对：`summer_worker_alternative_upsell` |
-| F21 | 不主动反问"全职还是兼职" | 体验 | — | ⚠️ 同属 R13 重复段 |
-| F22 | 转正/转全职须字段支撑，否则转人工 | 岗位数据缺口口径 | — | |
+- `F1` — 「独立客」身份统一口径；独立日、杜力岱、DuLiDay 是同一主体。
+  - **来源**：品牌裁定。
+
+- `F2` — 关键事实以最新工具结果为准；说错后必须道歉并纠正。
+  - **来源**：通用原则。
+
+- `F3` — 禁止承诺保留名额或保证岗位未来仍可报名。
+  - **来源**：badcase `6a266b51`（办证 3 天后岗位下架投诉）。
+  - **拦侧配对**：`quota_promise`。
+
+- `F4` — 候选人尚未报名时，不引导其自行到店。
+  - **来源**：badcase `2cz1o1nd`、`wlterrb1`，回归 `P865-09`；**加入**：2026-08-04。
+
+- `F5` — “组合排班”不等于周频；禁止虚构每周出勤门槛。
+  - **来源**：回归 `SCN-P862-SCHEDULE-01`；**加入**：2026-08-05。
+  - **拦侧配对**：`combination_schedule_weekly_generalization`。
+
+- `F6` — 餐饮岗位一律需要健康证；禁止编造办理阶段比例。
+  - **来源/加入**：2026-08-05 业务口径。
+  - **关联**：拦侧 `health_certificate_generalization`；与 DB 红线 R3 成对。
+
+- `F7` — 健康证费用约 100 元、自费、不免费，默认不报销。
+  - **来源**：badcase `d29laq3e`、`kzut0et8`，08-06 运营口径；**加入**：2026-07-28。
+
+- `F8` — 电子健康证与纸质健康证同等有效；默认需要应聘城市本地证。
+  - **来源/加入**：2026-08-06 运营口径。
+
+- `F9` — 查岗结论必须先查后说；“愿意帮查”不等于岗位存在性承诺。
+  - **来源**：回归簇。
+
+- `F10` — 禁止编造系统状态或报错；报名成败只看 booking 返回。
+  - **来源**：badcase 簇。
+  - **拦侧配对**：`booking_promise_without_booking`、`booking_receipt_mismatch`。
+
+- `F11` — 禁止替候选人填写收资字段；年龄尤其不能拿岗位上下限兜底。
+  - **来源**：badcase（把岗位上限 50 当成候选人年龄）。
+  - **代码兜底**：状态机公证拒收，claims 必须引用候选人原话。
+
+- `F12` — 工作内容只按工具字段回答，禁止用行业常识泛化。
+  - **来源**：badcase（“六姐洗碗”）。
+  - **拦侧配对**：`ungrounded-generalizations` 族。
+
+- `F13` — 备注里的时间限定按当前日期解析；过期内容不复述。
+  - **来源**：业务口径。
+
+- `F14` — 同一条 reply 禁止自相矛盾。
+  - **来源**：badcase 簇。
+
+- `F15` — 班次不得截短，也不得改写成岗位未列出的时段。
+  - **来源**：badcase 簇。
+  - **拦侧配对**：`unsupported_schedule_window_claim`。
+
+- `F16` — 禁止臆测门店开业或筹建状态。
+  - **来源**：badcase（新店未开却改派面试）。
+  - **拦侧配对**：`unsupported_store_status_speculation`。
+
+- `F17` — 按班次硬约束过滤岗位时必须向候选人解释；做一休一不等于低周频。
+  - **来源**：badcase + v10.38.0 回归。
+
+- `F18` — 岗位要求“每周 N 天”时，必须主动确认候选人的出勤能力。
+  - **来源**：badcase。
+
+- `F19` — 用工形式按两级字段如实介绍；不复述“正式工/临时工”标签；过滤为空时如实说明。
+  - **来源**：业务口径。
+  - **居所状态**：DB 红线 R13 已删，本条是唯一 prompt 居所。
+
+- `F20` — 暑假工是单向硬约束：候选人拒绝后立即收口，禁止劝转。
+  - **来源**：用户裁定；**加入**：2026-07。
+  - **TTL**：2026 暑期语境，暑期结束（约 2026-09）复查是否降档。
+
+- `F20a` — 暑假工状态默认“否”，禁止主动盘问。
+  - **来源/加入**：同 F20。
+  - **拦侧配对**：`summer_worker_alternative_upsell`。
+
+- `F21` — 不主动反问“全职还是兼职”。
+  - **来源**：体验原则。
+  - **居所状态**：DB 红线 R13 已删，本条是唯一 prompt 居所。
+
+- `F22` — 转正或转全职必须有岗位字段支撑，否则转人工。
+  - **来源**：岗位数据缺口口径。
 
 ### 常见场景（C）
 
@@ -136,21 +270,50 @@
 
 ### 话术节奏与敏感约束（T）
 
-| # | 规则摘要 | 来源 | 加入 | 备注 |
-|---|---|---|---|---|
-| T1 | 禁分批收资；字段范围以 precheck `requiredFieldsToCollectNow` 为准 | 报名率数据 | — | 2026-08-21 已对齐收资状态机（progressive 由状态机裁决） |
-| T2 | 发表后插问岗位细节不重发整表 | 体验 | — | |
-| T3 | 同岗位信息不重复介绍 | 体验 | — | |
-| T4/T5 | 回避信号软收尾；收尾词即收尾 | 体验 | — | |
-| T6/T7 | 简洁原则；封闭式改开放式 | 体验 | — | |
-| T8 | 敏感门槛（地域/籍贯/民族/专业/婚育）禁问禁透露；拒绝理由中性；敏感拒绝即终局禁翻案 | badcase weurg1xg | — | 拦侧配对：`discriminatory_screening_leak` / `sensitive_origin_probe`；与 DB 红线 R11 成对 |
-| T9 | 不主动提保险/社保；haveInsurance vs 社保准入两分 | 2026-08-06 运营口径 | 2026-08-06 | 拦侧配对：`proactive_insurance_policy_mention` |
-| T10 | 关键用工事实无法确认当轮转人工，禁"帮你确认下"却不转 | badcase 簇 | — | ⚠️ 与 DB 红线 R2 口径冲突（见铁律违例⑤） |
-| T11 | 发薪/签约主体按「合作模式」结论答；禁提 BPO/RPO | 2026-08-06 运营口径 + 海绵 cooperationMode 字段 | 2026-08-06 | |
-| T12 | 月薪岗不折算时薪；每日工时按排班字段 | 2026-08-06 运营口径 | 2026-08-06 | |
-| T13 | 发薪方式合规硬边界：仅本人银行卡；不能接受即暂停推进 | badcase gg4x4eo7/1ujkxxm6 | — | |
-| T14 | 改期必须先 precheck 再 modify；两轮时间硬冲突→handoff(modify_appointment) | badcase 7jkfh83r + kjc5877z | — | ⚠️ 与 stage_goals interview_scheduling 末条双居所重复（铁律违例③）；①段与 BK3 成对 |
-| T15 | 已拒条件是跨轮硬负向约束，推进冲突岗前须显式提示 | badcase yno1y9ir | — | |
+- `T1` — 禁止分批收资；字段范围以 precheck 的 `requiredFieldsToCollectNow` 为准。
+  - **来源**：报名率数据。
+  - **状态**：2026-08-21 已对齐收资状态机，progressive 由状态机裁决。
+
+- `T2` — 发出收资表后，候选人插问岗位细节时不要重发整表。
+  - **来源**：体验原则。
+
+- `T3` — 不重复介绍同一岗位的信息。
+  - **来源**：体验原则。
+
+- `T4/T5` — 出现回避信号时软收尾；候选人给出收尾词后立即收尾。
+  - **来源**：体验原则。
+
+- `T6/T7` — 回复保持简洁；把封闭式追问改成开放式表达。
+  - **来源**：体验原则。
+
+- `T8` — 地域、籍贯、民族、专业、婚育等敏感门槛禁止询问和透露；拒绝理由保持中性，敏感拒绝后禁止翻案。
+  - **来源**：badcase `weurg1xg`。
+  - **拦侧配对**：`discriminatory_screening_leak`、`sensitive_origin_probe`。
+  - **居所状态**：DB 红线 R11 已删，本条是唯一 prompt 居所。
+
+- `T9` — 不主动提保险或社保；`haveInsurance` 与社保准入是两套概念。
+  - **来源/加入**：2026-08-06 运营口径。
+  - **拦侧配对**：`proactive_insurance_policy_mention`。
+
+- `T10` — 关键用工事实无法确认时，必须当轮转人工；禁止只说“帮你确认下”却不转。
+  - **来源**：badcase 簇。
+  - **居所状态**：冲突旧口径 DB 红线 R2 已删，本条与 T11 承载现行口径。
+
+- `T11` — 发薪和签约主体按“合作模式”字段结论回答；禁止提 BPO/RPO。
+  - **来源/加入**：2026-08-06 运营口径 + 海绵 `cooperationMode` 字段。
+
+- `T12` — 月薪岗位不折算时薪；每日工时按排班字段回答。
+  - **来源/加入**：2026-08-06 运营口径。
+
+- `T13` — 发薪方式的合规硬边界是仅使用本人银行卡；候选人不能接受时暂停推进。
+  - **来源**：badcase `gg4x4eo7`、`1ujkxxm6`。
+
+- `T14` — 改期必须先 precheck 再 modify；连续两轮时间硬冲突时调用 `handoff(modify_appointment)`。
+  - **来源**：badcase `7jkfh83r`、`kjc5877z`。
+  - **居所状态**：`stage_goals.interview_scheduling` 的重复末条已删；与 BK2 成对。
+
+- `T15` — 已拒绝条件是跨轮硬负向约束；推进冲突岗位前必须显式提示。
+  - **来源**：badcase `yno1y9ir`。
 
 ### 平台来源识别（P）
 
@@ -174,24 +337,64 @@
 
 ---
 
-## 二、booking 上下文共享规则（代码动态注入）
+## 二、booking 上下文共享规则（条件式规则片段）
 
-载体：`context/sections/semantic/memory.section.ts` `BOOKING_CONTEXT_SHARED_RULES`（2026-08-21 P1-2 起 N 条 booking 只渲染一次）。
+载体：`src/agent/generator/context/sections/semantic/memory.section.ts` `BOOKING_CONTEXT_SHARED_RULES`
+（2026-08-21 P1-2 起 N 条 booking 只渲染一次）。它因依赖预约上下文随 memory 呈现，知识性质仍是程序性规则。
 
-| # | 规则摘要 | 备注 |
-|---|---|---|
-| BK1 | 多岗可并行报名；同工单禁重复提交 | |
-| BK2 | 改约先 precheck 后 modify；面试前放弃必须 cancel；**过时未到=爽约禁 cancel** | 与 T14① 成对：BK 版在"有预约"轮次必然在场，是主承载 |
-| BK3 | 「面试时间」已给出时禁说等排期；过期未知须先核实 | 拦侧配对：`interview_time_change_unconfirmed` |
-| BK4 | 预约可能非本人经手；不主动提及 | |
-| BK5 | 阻塞场景必须 request_handoff | 与 stage_goals onboard_followup 呼应 |
-| BK6 | 面试形式先核对；线上面试禁发定位 | 拦侧配对：`online_interview_location_claim`；与 G5/FC1 成对 |
+- `BK1` — 多岗可并行报名；同工单禁止重复提交。
 
-## 三、final-check（发送前自检，组装置末尾 ≈ recitation）
+- `BK2` — 改约先 precheck 后 modify；面试前放弃必须 cancel；**过时未到 = 爽约，禁止 cancel**。
+  - **关联**：与 T14① 成对；BK 版在“有预约”轮次必然在场，是主承载。
 
-16 条自检项（FC1 定位发送一致性、~~FC2 报名完成时态~~、FC3 未来预约保证、FC4 健康证岗位存在性、FC5 两群区分（完成时态半段已删）、FC6 名额保留、FC7 距离数字接地、FC8 薪酬工时接地、FC9 组合排班两维、FC10 健康证一般询问、FC11 收资前薪资已告知、FC12 时间不合适先澄清、FC13 户籍门槛不改名泄漏、FC14 暂不报名即收口、FC15 内部表述、FC16 逐句查重、FC17 元规则）。
-**行业对照裁定（2026-08-21）：final-check 位于末尾不碍前缀缓存，精简须按 recitation 视角，勿并入前缀。**
-**P3-2 首批执行（2026-08-21，用户裁定跳过生产数据等待）**：✅ FC2 整条删除、FC5 完成时态前半删除——守卫 `booking_promise`/`booking_receipt`/拉群假宣称确定性拦侧在产 + 手册 F10 教侧仍在，三居所去其一（recitation 复核面）；context.service.spec 断言同步翻转。文件 6,505B→5,865B。
+- `BK3` — 「面试时间」已经给出时，禁止说仍在等排期；过期且状态未知时必须先核实。
+  - **拦侧配对**：`interview_time_change_unconfirmed`。
+
+- `BK4` — 预约可能并非当前 agent 本人经手；不要主动提及这一内部事实。
+
+- `BK5` — 阻塞场景必须调用 `request_handoff`。
+  - **关联**：与 `stage_goals.onboard_followup` 呼应。
+
+- `BK6` — 先核对面试形式；线上面试禁止发送门店定位。
+  - **拦侧配对**：`online_interview_location_claim`；与 G5、FC1 成对。
+
+## 三、final-check always 规则（发送前自检，固定次末位 ≈ recitation）
+
+载体：`src/agent/generator/context/sections/procedural/final-check.section.ts` `FINAL_CHECK_RULES`
+中 `trigger='always'` 的条目（**2026-08-26 合居所裁定**：原 `candidate-consultation-final-check.md`
+与 critical-turn-guard 规则表合并为同一张规则表，渲染字节与合并前逐字节一致；md 资产退役。
+语义轴同判定树：红线=业务政策留 DB，本表=反幻觉内部教住代码）。18 条 always 规则按三分组渲染，
+FC 编号保留为历史别名：
+
+**普适元规则**
+
+- `answer_current_question_first`（历史 FC17①）— 先答候选人当前最明确的问题。
+- `obey_dynamic_red_lines_thresholds`（历史 FC17②）— 遵守动态注入的红线与业务阈值。
+- `act_on_covering_rule_directly`（历史 FC17③）— 有明确覆盖条款时直接执行，不横跳权衡。
+
+**承诺—工具一致性**
+
+- `store_location_send_consistency`（历史 FC1）— 说发定位必须本轮真调 `send_store_location`，且先核面试形式。
+- `future_booking_promise_grounding`（历史 FC3）— 未来预约保证须有工具证据；等证场景全部删除。
+- `cert_flexible_job_existence`（历史 FC4）— “先面试后补证岗位”的存在性断言必须先查 job-list。
+- `job_pool_vs_interview_group`（历史 FC5）— 兼职群不等于面试群；区分两群并保持本人连续口径。
+- `quota_reservation_promise`（历史 FC6）— 删除名额保留与未来可用性保证。
+- `distance_number_grounding`（历史 FC7）— 距离数字必须来自本轮工具结果。
+- `salary_worktime_fact_grounding`（历史 FC8）— 结算周期、发薪日、工时等必须逐字对应本轮工具返回。
+- `combo_schedule_two_dimensions`（历史 FC9）— 组合排班与每周天数是独立维度，禁止泛化。
+- `health_cert_general_answer`（历史 FC10）— 一般询问使用健康证统一口径，禁止编造比例结论。
+- `salary_told_before_collection`（历史 FC11）— 收资或推进约面前必须已经告知薪资、班次。
+- `time_unsuitable_clarify_first`（历史 FC12）— “时间不合适”先澄清是工作班次还是面试时间。
+- `residency_gate_no_leak`（历史 FC13）— 内部户籍、地域门槛不透露，也不改名泄漏。
+- `walkin_without_signup_closure`（历史 FC14）— 暂不报名立即收口，不附和候选人自行到店。
+
+**表达自检**
+
+- `no_internal_terms_no_nickname`（历史 FC15）— 不出现系统、后台等内部表述，不复读昵称。
+- `per_sentence_dedup`（历史 FC16）— 逐句扫描，删除上一轮已经说过的内容。
+
+**装配裁定（2026-08-26）：final-check 常驻自检块位于 `stage-strategy` 之后、`critical-turn-guard` 块之前，作为 recitation 固定次末位收口；精简须按 recitation 视角，勿并入稳定前缀。**
+**P3-2 首批执行（2026-08-21，用户裁定跳过生产数据等待）**：✅ FC2 整条删除、FC5 完成时态前半删除——守卫 `booking_promise_without_booking`/`booking_receipt_mismatch`/拉群假宣称确定性拦侧在产 + 手册 F10 教侧仍在，三居所去其一（recitation 复核面）；context.service.spec 断言同步翻转。
 
 ## 四、DB red-lines（strategy_config.red_lines，Dashboard 可改零 review）
 
@@ -215,17 +418,20 @@
 | TH1 | 推荐距离上限 10km | 阈值，保留 |
 | TH2 | 单次回复 120 字上限 | 阈值，保留 |
 
-## 五、DB stage-strategy（strategy_config.stage_goals，5 阶段 6,282 字符）
+## 五、DB stage-strategy（strategy_config.stage_goals，5 阶段）
 
 | 阶段 | 审计发现 |
 |---|---|
 | trust_building | ✅ disallowed"渠道来源身份否认"**已删（2026-08-21 F5 裁定执行）**，手册 P1 为唯一居所；"首问地址"教学与手册 N8 呼应（各有侧重，保留） |
 | qualify_candidate | 无重复，健康 |
 | job_consultation | "无岗时 invite_to_group"与 job_list description 无岗动作链重叠（观察项）；包餐偏好重查是唯一居所 |
-| interview_scheduling | ①"收资料直接发 templateText…以 missingFields 为字段范围"——提案同步 T1 对齐：字段范围改 `requiredFieldsToCollectNow`（**未批，挂账**）；② ✅ 末条"2 轮时间硬冲突→handoff"**已删（2026-08-21 F5 裁定执行）**，T14 为唯一居所；③"今天可以吗必须先 precheck"段内自重复（**未批，挂账**） |
+| interview_scheduling | ✅ 收资字段范围已改为 `requiredFieldsToCollectNow`；✅ 末条“2 轮时间硬冲突→handoff”已删，T14 为唯一居所；✅ “今天可以吗必须先 precheck”段内重复已收敛 |
 | onboard_followup | 与 BK5 呼应（阶段管方向、BK 管动作），保留 |
 
-> **F5 已裁定并执行（2026-08-21）**：5 处铁律违例/旧口径删改全部落地（released+testing 双行同步，`strategy_config_changelog` 补录，changed_by=claude-context-governance-f5）。长效机制裁定：策略文本编辑主体只有我们（用户+AI 会话），不加 Dashboard 侧额外约束；AI 侧台账登记纪律（F1）已覆盖。剩余挂账小提案：interview_scheduling ①③、R8 TTL 标注、R10/R11 收敛——随后续批次顺手处理，不单独开批。
+> **F5 与挂账收官均已执行（2026-08-21）**：5 处铁律违例/旧口径删改及后续小项全部落地——
+> `interview_scheduling` 字段范围/段内重复已修，R8 已标 TTL，R10/R11 已收敛；released+testing 双行同步，
+> `strategy_config_changelog` 已留痕。当前 red-lines 为 10 条现行规则，无本批遗留挂账。长效机制裁定：
+> 策略文本编辑主体只有我们（用户+AI 会话），不加 Dashboard 侧额外约束；AI 侧台账登记纪律（F1）覆盖。
 
 ## 六、工具 description（章节级登记）
 
@@ -242,9 +448,19 @@
 | duliday_interview_precheck | 729 | 参数纪律/行动纪律（收资状态机接管后瘦身 13.5K→729） | **"职责收进代码、描述自然变薄"的先例** |
 | risk_alert / advance_stage / recall_history 等 | ≤620 | — | 健康 |
 
-## 七、守卫 hard-rules（拦侧，29 ruleId）
+## 七、守卫 hard-rules（拦侧，31 ruleId）
 
-`application_record_update_promise`、`booking_promise_without_booking`、`booking_receipt_mismatch`、`brand_alias_fuzzy_match_ignored`、`combination_schedule_weekly_generalization`、`dangling_reply_promise`、`date_reference_mismatch`、`discriminatory_screening_leak`、`example_value_leak`、`experience_fraud_coaching`、`health_certificate_generalization`、`human_service_phrase_leak`、`identity_misregistration_coaching`、`image_description_not_saved`、`interview_time_change_unconfirmed`、`invalid_model_output`、`job_detail_lookup_required`、`meta_narration_reply`、`online_interview_location_claim`、`proactive_insurance_policy_mention`、`quota_promise`、`repeated_reply`(+`_verbatim`)、`requested_brand_mismatch`、`sensitive_origin_probe`、`settlement_cycle_mismatch`、`summer_worker_alternative_upsell`、`unsupported_schedule_window_claim`、`unsupported_store_status_speculation`。
+`application_record_update_promise`、`booking_promise_without_booking`、`booking_receipt_mismatch`、
+`brand_alias_fuzzy_match_ignored`、`combination_schedule_weekly_generalization`、`dangling_reply_promise`、
+`date_reference_mismatch`、`discriminatory_screening_leak`、`example_value_leak`、
+`experience_fraud_coaching`、`handoff_promise_reconciliation`、`health_certificate_generalization`、
+`human_service_phrase_leak`、`identity_misregistration_coaching`、`image_description_not_saved`、
+`internal_output_leak`、`interview_time_change_unconfirmed`、`invalid_model_output`、
+`job_detail_lookup_required`、`meta_narration_reply`、`online_interview_location_claim`、
+`proactive_insurance_policy_mention`、`quota_promise`、`repeated_reply`、`repeated_reply_verbatim`、
+`requested_brand_mismatch`、`sensitive_origin_probe`、`settlement_cycle_mismatch`、
+`summer_worker_alternative_upsell`、`unsupported_schedule_window_claim`、
+`unsupported_store_status_speculation`。
 
 教/拦配对已在上文各表"拦侧配对"列互链。守卫规则的增删遵守既有裁定：只拦完成时态假宣称；大规模重加已被 7-10 月下线史否决。
 
@@ -257,3 +473,5 @@
 3. **临时规则必须标 TTL**（F3）：带时效的口径（季节性、开城状态、活动期）必须写明"过期条件/复查日期"，过期即删。当前带 TTL 条目：F20/F20a（暑假工，≈2026-09 复查）、B1（随品类配置）、R8（随开城）。
 4. **职责迁移必须回收**（F2）：代码/状态机接管某行为的 PR，必须同批删除 prompt 侧对应教学并更新本台账（先例：precheck 描述 13.5K→729）。
 5. **删除也要留痕**：删规则时不删台账行，改标 `~~已下线（日期+原因）~~`，保留证据链。
+6. **可导出规则 ID 必须全量入账**：测试会逐项核对 `FINAL_CHECK_RULES` 与 `OUTPUT_RULE_IDS`；
+   不得用 `foo`(+`_bar`) 这类缩写代替真实 ID。

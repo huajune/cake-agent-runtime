@@ -345,7 +345,7 @@ SCENARIO_SECTIONS = {
     'policy',            // red-lines + thresholds 聚合
     'runtime-context',   // stage-strategy + memory + turn-hints + hard-constraints + datetime + channel
     'group-inventory',   // 候选人意向城市的兼职群资源概览（GroupInventorySection）
-    'final-check',       // 从 candidate-consultation-final-check.md 加载的出规校验清单
+    'final-check',       // 发送前防线统一规则表（FinalCheckSection：常驻自检 + 命中式动态硬禁令）
   ],
   'group-operations': ['identity', 'datetime', 'channel'],
   evaluation: ['identity'],
@@ -365,7 +365,7 @@ SCENARIO_SECTIONS = {
 | `policy`          | 聚合 `red-lines` + `thresholds`                                           |
 | `runtime-context` | 聚合 `stage-strategy` → `memory` → `turn-hints` → `hard-constraints` → `datetime` → `channel` |
 | `group-inventory` | 按候选人意向城市预渲染兼职群库存（行业、可用容量）                        |
-| `final-check`     | `candidate-consultation-final-check.md` 出规校验清单                      |
+| `final-check`     | 发送前防线统一规则表（`final-check.section.ts`：常驻自检块 + `critical-turn-guard` 动态禁令块） |
 
 **叶子 section（被上面聚合，也可独立使用）**：`red-lines / thresholds / stage-strategy / memory / turn-hints / hard-constraints / datetime / channel`。
 

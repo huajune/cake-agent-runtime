@@ -334,8 +334,8 @@ export class PreparationService {
               content: systemPrompt.trim(),
             },
           ];
-    // input-guard 既有位置在 critical-turn-guard 之前；critical 升格为场景末位 section 后，
-    // 仅把独立输入防护块插回该边界，保持二者同时命中时的最终 system 字节顺序不变。
+    // input-guard 既有位置在 critical-turn-guard 块之前；该块由 final-check 复合 section
+    // 在命中 turn 规则时产出，仅把独立输入防护块插回该边界，保持最终 system 字节顺序不变。
     const criticalBlockIndex = basePromptBlocks.findIndex(
       (block) => block.id === 'critical-turn-guard',
     );

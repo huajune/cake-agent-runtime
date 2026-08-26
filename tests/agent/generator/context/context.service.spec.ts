@@ -163,7 +163,6 @@ describe('ContextService', () => {
       'group-inventory',
       'stage-strategy',
       'final-check',
-      'critical-turn-guard',
     ]);
     const result = await compose({
       scenario: 'candidate-consultation',

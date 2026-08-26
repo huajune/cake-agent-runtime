@@ -34,7 +34,9 @@ memory.onTurnStart()
 
 ## 场景 Section 顺序
 
-`SCENARIO_SECTIONS['candidate-consultation']` 当前包含 14 个模型可见叶子 section：
+`SCENARIO_SECTIONS['candidate-consultation']` 当前包含 13 个模型可见 section，产出至多 14 个
+block——末两行的 `final-check` / `critical-turn-guard` 两个块由 `final-check` 复合 section
+（发送前防线统一规则表）经 `buildBlocks` 一并产出：
 
 | 段位             | 顺序 | Section               | 知识归类   | 语料域      | 稳定性 / 省略条件                     |
 | ---------------- | ---: | --------------------- | ---------- | ----------- | ------------------------------------- |
@@ -50,8 +52,8 @@ memory.onTurnStart()
 | 动态尾部         |   10 | `datetime`            | working    | tool_result | 每轮当前时间                          |
 | 动态尾部         |   11 | `group-inventory`     | working    | tool_result | 无高置信城市或群库数据时省略          |
 | 动态尾部         |   12 | `stage-strategy`      | procedural | teaching    | 只渲染当前阶段策略                    |
-| recitation 收口  |   13 | `final-check`         | procedural | teaching    | 固定发送前自检；固定次末位            |
-| 关键回合动态末位 |   14 | `critical-turn-guard` | procedural | teaching    | 命中关键回合规则时才渲染              |
+| recitation 收口  |   13 | `final-check`         | procedural | teaching    | 常驻自检块（trigger=always）；固定次末位 |
+| 关键回合动态末位 |   14 | `critical-turn-guard` | procedural | teaching    | 同一规则表 trigger=turn 规则命中时才渲染 |
 
 这里有两根互不替代的轴：目录表达知识主类型；`PROMPT_SECTION_DOMAIN_REGISTRY` 表达
 teaching / evidence / tool_result 语料域。`static.section.ts` 和 `section.interface.ts` 是根目录
@@ -88,10 +90,11 @@ finalPrompt = renderPromptBlocks(
 )
 ```
 
-- `input-guard` 固定插在 `critical-turn-guard` 前，保持既有最终字节顺序。
-- `final-check` 在场景清单中固定次末位，以 recitation 在发送前收口；输入安全 guard 按需插在它与
-  `critical-turn-guard` 之间。
-- `critical-turn-guard` 是场景清单末位；未命中时不产生 block，此时 `final-check` 成为场景尾块。
+- `input-guard` 固定插在 `critical-turn-guard` 块前，保持既有最终字节顺序。
+- `final-check` 常驻自检块固定次末位，以 recitation 在发送前收口；输入安全 guard 按需插在它与
+  `critical-turn-guard` 块之间。
+- `critical-turn-guard` 块是场景块末位，由 `final-check` 复合 section 在 turn 规则命中时产出；
+  未命中时不产生该块，此时常驻自检块成为场景尾块。
 - `proactive-directive` 不属于场景 section，只在主动/复聊回合追加到最终 system 尾部。
 - 已退役的 generator 重写回路不再产生额外尾块；修复由独立 `ReplyRepairAgent` 承担。
 

@@ -27,9 +27,8 @@ src/agent/generator/context/
     ├── static.section.ts
     ├── procedural/
     │   ├── candidate-consultation.md
-    │   ├── candidate-consultation-final-check.md
     │   ├── channel.section.ts
-    │   ├── critical-turn-guard.section.ts
+    │   ├── final-check.section.ts
     │   ├── identity.section.ts
     │   ├── red-lines.section.ts
     │   ├── stage-strategy.section.ts
@@ -43,9 +42,11 @@ src/agent/generator/context/
         └── turn-hints.section.ts
 ```
 
-`candidate-consultation` 场景注册 14 个叶子，终序是：`identity`、`base-manual`、`channel`、
+`candidate-consultation` 场景注册 13 个 section，终序是：`identity`、`base-manual`、`channel`、
 `stage-overview`、`red-lines`、`thresholds`、`memory`、`turn-hints`、`hard-constraints`、
-`datetime`、`group-inventory`、`stage-strategy`、`final-check`、`critical-turn-guard`。
+`datetime`、`group-inventory`、`stage-strategy`、`final-check`。其中 `final-check` 是复合
+section（发送前防线统一规则表），经 `buildBlocks` 产出次末位的 `final-check` 常驻自检块与
+末位按命中出现的 `critical-turn-guard` 动态硬禁令块——块级终序与合并前一致。
 
 `section.interface.ts` 是契约，`static.section.ts` 是静态资产适配器；两者是基础设施，不参加知识
 分类。目录只跟真实住户走，没有空分类目录。
@@ -98,13 +99,13 @@ lifecycle；memory 域只负责召回、存储与回合收尾。
 1. 开篇人设：`identity`。它属于配置档，但变更极低频，前置对缓存代价近似为零。
 2. 稳定内容与配置：`base-manual → channel → stage-overview → red-lines → thresholds`。
 3. 动态事实与阶段：`memory → turn-hints → hard-constraints → datetime → group-inventory → stage-strategy`。
-4. recitation 收口：`final-check → critical-turn-guard`；`final-check` 固定次末位，
-   `critical-turn-guard` 固定末位且按需出现。
+4. recitation 收口：`final-check` 复合 section 产出 `final-check → critical-turn-guard` 两个块；
+   常驻自检块固定次末位，动态硬禁令块固定末位且按命中出现。
 
 `stage-overview` 展示全阶段地图且不读取 `currentStage`；`stage-strategy` 只展示当前阶段，因此留在动态
-尾部。`final-check` 虽是静态资产，但位置承担发送前自检功能，因此放在当前阶段策略之后。空 section
-不产生 block。输入安全 guard 在 preparation 中插到 `critical-turn-guard` 之前，主动跟进 directive
-则追加到全部场景 block 之后。
+尾部。`final-check` 的常驻自检块虽是静态文本，但位置承担发送前自检功能，因此放在当前阶段策略之后。
+空 section 不产生 block。输入安全 guard 在 preparation 中插到 `critical-turn-guard` 块之前，主动跟进
+directive 则追加到全部场景 block 之后。
 
 这些内容全部保持 system 语义，通过 `instructions` 传入。记忆、当前阶段和本轮线索不会伪装成
 候选人消息。`messages` 只承载归一化的对话历史与多模态消息，`tools` 由 AI SDK 单独序列化。
@@ -146,7 +147,8 @@ interface PromptCorpusBlock {
 ## 配置与内容资产边界
 
 - `candidate-consultation.md`：稳定的全局工作手册、工具通用原则和固定业务解释口径。
-- `candidate-consultation-final-check.md`：稳定的发送前自检。
+- `final-check.section.ts`（`FINAL_CHECK_RULES`）：发送前防线统一规则表——`trigger='always'`
+  的常驻自检项与 `trigger='turn'` 的本轮动态硬禁令同表登记。
 - `strategy_config.role_setting / persona`：角色、人设与表达风格。
 - `strategy_config.red_lines / thresholds`：可运营调整的业务底线与数值约束。
 - `strategy_config.stage_goals`：全阶段地图和当前阶段目标、成功标准、CTA 与禁止行为。
@@ -161,8 +163,8 @@ interface PromptCorpusBlock {
 
 主聊走 Qwen 隐式前缀缓存，当前代码没有显式缓存断点，也没有 provider 缓存适配层。领先稳定前缀
 以低频变化的 `identity` 开篇，再接手册、渠道、阶段总览和配置规则；字节级测试会用不同时间、记忆
-和当前阶段输入对拍，保证其中不混入轮变化内容。`final-check` 为发挥 recitation 收口功能固定在场景
-次末位，虽是静态资产，但不计入领先缓存前缀。
+和当前阶段输入对拍，保证其中不混入轮变化内容。`final-check` 常驻自检块为发挥 recitation 收口功能
+固定在场景次末位，虽是静态文本，但不计入领先缓存前缀。
 
 tools 也参与供应商前缀。普通文本回合的固定工具键顺序、description 和 input schema 已有稳定性
 测试；图片、简历与 MCP 工具是按上下文或注册状态变化的已知动态边界。治理要求是先报告边界，

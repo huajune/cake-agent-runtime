@@ -1,6 +1,7 @@
 # 上下文治理三期——装配层轻量化（终稿 v2）
 
 > 状态：**✅ 全部批次执行完毕（2026-08-26）**——批一（归类+纠偏+拆括号）、批三（共享裁决视图）、批四（装配边界治理）、收尾批（preparation 正名/enrichment 归车间/群库拆分）、批二（system 内重排，含段序返修：final-check 收口、identity 开篇）、示例与 KB 重写。生产侧余项：发版包（DB 迁移同批）+ 命中率/badcase 观察。本文档转为记录态；"typed sources → 确定性编译器"原设计已整体退役（历程见第二节，编号对照见第八节）。
+> 后记（2026-08-26 合居所裁定）：final-check 与 critical-turn-guard 合并为单一规则表，统一住 `sections/procedural/final-check.section.ts`（trigger 属性区分 always/turn）；`critical-turn-guard.section.ts` 与 `candidate-consultation-final-check.md` 退役。块级产出与字节不变：复合 section 经 `buildBlocks` 仍产出 `final-check` / `critical-turn-guard` 两个块 id。终态见 [docs/prompt-rule-ledger.md](../prompt-rule-ledger.md)。
 > 关系：二期管"记忆住哪、叫什么"（终态见 [src/memory/README.md](../../src/memory/README.md)，过程在 git 历史）；三期管"记忆怎么进 prompt"。
 > 一句话：**三批、零新增机制**——归类（git mv）、冲突裁决（一个纯函数）、system 内重排（一处顺序）。执行顺序：批一 → 批三 → 批二。
 
@@ -36,7 +37,7 @@
 
 > 判据入册：**计算归 working-memory（备料车间），呈现与排布归 sections（摆盘）**。据此三立案一撤诉：
 
-1. **critical-turn-guard 升格为 section**：它本质是条件触发的 procedural section（badcase 驱动禁令，命中才注入 system 末尾），散装在 working-memory 导致不在分类树/不在场景清单/**台账锚点测试照不到**（group-inventory 先例同款盲区，唯一治理缺口）。迁 `sections/procedural/critical-turn-guard.section.ts`，进场景清单末位，注入文本与位置逐字节不变（零行为），补台账锚注。
+1. **critical-turn-guard 升格为 section**：它本质是条件触发的 procedural section（badcase 驱动禁令，命中才注入 system 末尾），散装在 working-memory 导致不在分类树/不在场景清单/**台账锚点测试照不到**（group-inventory 先例同款盲区，唯一治理缺口）。迁 `sections/procedural/critical-turn-guard.section.ts`，进场景清单末位，注入文本与位置逐字节不变（零行为），补台账锚注。（该文件后经同日合居所裁定并入 `final-check.section.ts`，见文首后记。）
 2. **memory-block.formatter 并壳**：批三抽走裁决后其主体为呈现——渲染部分迁 `sections/semantic/` 与 16 行的 memory.section 壳体合一，计算残余留车间。
 3. **turn-hints.section 自裁决后门收口**：批三遗留的"直接调用时自行裁决" fallback 是裁决分叉口子——生产强制共享裁决视图，fallback 改 throw，单测改传视图。
 4. 撤诉：revise-directives 非寄居（消费方仅 preparation.service，复聊主动回合亦走 prepare()），留。
