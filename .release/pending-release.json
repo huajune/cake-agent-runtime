@@ -10,12 +10,18 @@
       "title": "回填 v10.44.0 发布结果",
       "author": "huajune",
       "mergedAt": "2026-08-19",
-      "businessUpdates": ["回填 v10.44.0 发布结果"],
-      "summary": ["回填 v10.44.0 发布结果"],
+      "businessUpdates": [
+        "回填 v10.44.0 发布结果"
+      ],
+      "summary": [
+        "回填 v10.44.0 发布结果"
+      ],
       "features": [],
       "fixes": [],
       "optimizations": [],
-      "ops": ["回填 v10.44.0 发布结果"],
+      "ops": [
+        "回填 v10.44.0 发布结果"
+      ],
       "config": [],
       "envFiles": [],
       "verification": []
@@ -26,10 +32,16 @@
       "title": "修正 v10.44.0 底账「无前端改动」的事实错误",
       "author": "huajune",
       "mergedAt": "2026-08-19",
-      "businessUpdates": ["修正 v10.44.0 底账「无前端改动」的事实错误"],
-      "summary": ["修正 v10.44.0 底账「无前端改动」的事实错误"],
+      "businessUpdates": [
+        "修正 v10.44.0 底账「无前端改动」的事实错误"
+      ],
+      "summary": [
+        "修正 v10.44.0 底账「无前端改动」的事实错误"
+      ],
       "features": [],
-      "fixes": ["修正 v10.44.0 底账「无前端改动」的事实错误"],
+      "fixes": [
+        "修正 v10.44.0 底账「无前端改动」的事实错误"
+      ],
       "optimizations": [],
       "ops": [],
       "config": [],
@@ -42,15 +54,21 @@
       "title": "新增 analyze-guardrail 守卫效果分析 skill",
       "author": "huajune",
       "mergedAt": "2026-08-21",
-      "businessUpdates": ["新增 analyze-guardrail 守卫效果分析 skill"],
+      "businessUpdates": [
+        "新增 analyze-guardrail 守卫效果分析 skill"
+      ],
       "summary": [
         "新增 analyze-guardrail 守卫效果分析 skill",
         "analyze-guardrail 补规则存续期核验步骤"
       ],
-      "features": ["新增 analyze-guardrail 守卫效果分析 skill"],
+      "features": [
+        "新增 analyze-guardrail 守卫效果分析 skill"
+      ],
       "fixes": [],
       "optimizations": [],
-      "ops": ["analyze-guardrail 补规则存续期核验步骤"],
+      "ops": [
+        "analyze-guardrail 补规则存续期核验步骤"
+      ],
       "config": [],
       "envFiles": [],
       "verification": []
@@ -61,12 +79,21 @@
       "title": "班次时段承诺判定收窄到同句并豁免否定/复述语境",
       "author": "huajune",
       "mergedAt": "2026-08-21",
-      "businessUpdates": ["班次时段承诺判定收窄到同句并豁免否定/复述语境", "补齐班次否定语境边界"],
-      "summary": ["班次时段承诺判定收窄到同句并豁免否定/复述语境", "补齐班次否定语境边界"],
+      "businessUpdates": [
+        "班次时段承诺判定收窄到同句并豁免否定/复述语境",
+        "补齐班次否定语境边界"
+      ],
+      "summary": [
+        "班次时段承诺判定收窄到同句并豁免否定/复述语境",
+        "补齐班次否定语境边界"
+      ],
       "features": [],
       "fixes": [],
       "optimizations": [],
-      "ops": ["班次时段承诺判定收窄到同句并豁免否定/复述语境", "补齐班次否定语境边界"],
+      "ops": [
+        "班次时段承诺判定收窄到同句并豁免否定/复述语境",
+        "补齐班次否定语境边界"
+      ],
       "config": [],
       "envFiles": [],
       "verification": [
@@ -81,12 +108,18 @@
       "title": "绑定跨分句班次承诺",
       "author": "huajune",
       "mergedAt": "2026-08-21",
-      "businessUpdates": ["绑定跨分句班次承诺"],
-      "summary": ["绑定跨分句班次承诺"],
+      "businessUpdates": [
+        "绑定跨分句班次承诺"
+      ],
+      "summary": [
+        "绑定跨分句班次承诺"
+      ],
       "features": [],
       "fixes": [],
       "optimizations": [],
-      "ops": ["绑定跨分句班次承诺"],
+      "ops": [
+        "绑定跨分句班次承诺"
+      ],
       "config": [],
       "envFiles": [],
       "verification": []
@@ -124,7 +157,9 @@
         "入职跟进正式话术仍待运营提供"
       ],
       "fixes": [],
-      "optimizations": ["抽取拉群编排服务"],
+      "optimizations": [
+        "抽取拉群编排服务"
+      ],
       "ops": [
         "复聊二期方案与执行清单",
         "增加面试前两天确认档",
@@ -294,7 +329,9 @@
       "title": "产品文档全量梳理专项——12 份文档审计后终态化",
       "author": "huajune",
       "mergedAt": "2026-08-21",
-      "businessUpdates": ["合并 develop 并解决产品文档冲突"],
+      "businessUpdates": [
+        "合并 develop 并解决产品文档冲突"
+      ],
       "summary": [
         "退役三份已完结/失实文档——审计实证后进 git 历史",
         "敏感信息运营文档终态大修——性别年龄可明说、户籍禁说禁问、矩阵让位代码权威",
@@ -305,7 +342,9 @@
         "产品文档全量梳理专项——12 份文档审计后终态化"
       ],
       "features": [],
-      "fixes": ["合并 develop 并解决产品文档冲突"],
+      "fixes": [
+        "合并 develop 并解决产品文档冲突"
+      ],
       "optimizations": [],
       "ops": [
         "退役三份已完结/失实文档——审计实证后进 git 历史",
@@ -324,7 +363,9 @@
       "title": "工具层目录终态重排——删 duliday 壳、散件跟工具走",
       "author": "huajune",
       "mergedAt": "2026-08-21",
-      "businessUpdates": ["修复目录重排后的遗漏引用"],
+      "businessUpdates": [
+        "修复目录重排后的遗漏引用"
+      ],
       "summary": [
         "测试套件架构文档对齐代码现状",
         "解散 duliday/precheck 目录——三个工具文件各回语义主场",
@@ -333,7 +374,9 @@
         "工具层目录终态重排——删 duliday 壳、散件跟工具走"
       ],
       "features": [],
-      "fixes": ["修复目录重排后的遗漏引用"],
+      "fixes": [
+        "修复目录重排后的遗漏引用"
+      ],
       "optimizations": [],
       "ops": [
         "测试套件架构文档对齐代码现状",
@@ -583,7 +626,9 @@
         "首个 migration 会重命名长期记忆列，旧版 v10.44.0 与迁移后 schema 不兼容；合并/部署前必须完成生产配置同步并单独授权 migration 与应用切换。",
         "生产环境 AGENT_MAX_INPUT_CHARS 与 MEMORY_SETTLEMENT_GAP_DAYS 当前值未对齐 v10.45.0 默认值；MEMORY_SESSION_TTL_DAYS 已对齐。"
       ],
-      "envFiles": [".env.example"],
+      "envFiles": [
+        ".env.example"
+      ],
       "verification": [
         "ESLint / Prettier",
         "TypeScript typecheck",
@@ -612,7 +657,9 @@
         "清理已完成或失效的 TODO，建立待办总览并拆分仍需执行的兼容与发布事项。",
         "核心链路注释与架构文档按实现终态清理"
       ],
-      "features": ["无。"],
+      "features": [
+        "无。"
+      ],
       "fixes": [
         "明确 Guardrail 的 Input / Prompt / Tool / Output 四个位置，避免把 Prompt 层漏出架构描述。",
         "明确 `final-check` 是复合 section；规则命中时内部追加 `critical-turn-guard` 子块，不再描述为两个独立注册段。",
@@ -635,7 +682,9 @@
         "仅更新 `.env.example` 的说明：`AGENT_MAX_INPUT_CHARS` 默认值对齐代码为 24000，并去掉一处重复的旧开关说明。",
         "本 PR 自身无新增必填环境变量、数据库 migration、RPC、权限、依赖或外部服务变更；v10.45.0 整体的 migration 见 PR #1035 配置记录。"
       ],
-      "envFiles": [".env.example"],
+      "envFiles": [
+        ".env.example"
+      ],
       "verification": [
         "`pnpm run ci:check`",
         "关键链路已按源码逐项人工核对",
@@ -720,6 +769,56 @@
         "未新增自然语言 reject、覆盖或判缺正则分支",
         "新增虚构 prompt 示例值：N/A"
       ]
+    },
+    {
+      "number": "1043",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1043",
+      "title": "收口 v10.45 收资与治理改动",
+      "author": "huajune",
+      "mergedAt": "2026-08-26",
+      "businessUpdates": [
+        "收资身份四槽不再依赖后端 systemField，改为可配置 labelId 锚点与实时标题核验",
+        "在写入姓名和手机号前增加疑似多人代报闸，成对出现第二人身份时转人工且保持原表单不被污染"
+      ],
+      "summary": [
+        "收口 v10.45 收资与治理改动",
+        "补充 LLM 规则简化方案",
+        "同步 develop 最新改动",
+        "清理方案文档格式",
+        "收资身份四槽不再依赖后端 systemField，改为可配置 labelId 锚点与实时标题核验",
+        "在写入姓名和手机号前增加疑似多人代报闸，成对出现第二人身份时转人工且保持原表单不被污染",
+        "更新收资架构、运营标签清理、BadCase 重放清单和 LLM 规则简化方案",
+        "同步 v10.45 发版元数据与 CHANGELOG，并基于最新 develop 消除已合并 PR #1041/#1040 的重复改动"
+      ],
+      "features": [
+        "收资身份四槽不再依赖后端 systemField，改为可配置 labelId 锚点与实时标题核验",
+        "在写入姓名和手机号前增加疑似多人代报闸，成对出现第二人身份时转人工且保持原表单不被污染"
+      ],
+      "fixes": [],
+      "optimizations": [
+        "更新收资架构、运营标签清理、BadCase 重放清单和 LLM 规则简化方案",
+        "同步 v10.45 发版元数据与 CHANGELOG，并基于最新 develop 消除已合并 PR #1041/#1040 的重复改动",
+        "补充 LLM 规则简化方案"
+      ],
+      "ops": [
+        "收口 v10.45 收资与治理改动",
+        "同步 develop 最新改动",
+        "清理方案文档格式"
+      ],
+      "config": [
+        ".env.example 新增可选 COLLECTION_IDENTITY_LABEL_IDS 示例",
+        "不配置时仍按标题语义识别；本 PR 净差异不新增数据库 migration"
+      ],
+      "envFiles": [
+        ".env.example"
+      ],
+      "verification": [
+        "pre-commit lint 与格式检查",
+        "git diff --check",
+        "pnpm run ci:check（pre-push）",
+        "450/450 测试套件通过，6826/6826 测试通过",
+        "1 个套件 / 5 个测试按仓库配置跳过"
+      ]
     }
   ],
   "lastRelease": {
@@ -733,12 +832,18 @@
         "title": "补齐 v10.41.0 / v10.42.0 / v10.43.0 发布结果",
         "author": "huajune",
         "mergedAt": "2026-08-07",
-        "businessUpdates": ["补齐 v10.41.0 / v10.42.0 / v10.43.0 发布结果"],
-        "summary": ["补齐 v10.41.0 / v10.42.0 / v10.43.0 发布结果"],
+        "businessUpdates": [
+          "补齐 v10.41.0 / v10.42.0 / v10.43.0 发布结果"
+        ],
+        "summary": [
+          "补齐 v10.41.0 / v10.42.0 / v10.43.0 发布结果"
+        ],
         "features": [],
         "fixes": [],
         "optimizations": [],
-        "ops": ["补齐 v10.41.0 / v10.42.0 / v10.43.0 发布结果"],
+        "ops": [
+          "补齐 v10.41.0 / v10.42.0 / v10.43.0 发布结果"
+        ],
         "config": [],
         "envFiles": [],
         "verification": [
@@ -775,8 +880,12 @@
           "将 TypeScript 显式 `any` lint 规则从关闭调整为错误，并清理本批 19 处边界类型债务",
           "为企微消息发送、回调与脱敏、HTTP/飞书 API、统一响应和岗位列表补齐 `unknown`、`Record<string, unknown>` 及领域类型"
         ],
-        "ops": ["清理显式 any 并启用 lint 门禁"],
-        "config": ["仅 ESLint 静态检查规则变更；无运行时环境变量、数据库或功能开关变更"],
+        "ops": [
+          "清理显式 any 并启用 lint 门禁"
+        ],
+        "config": [
+          "仅 ESLint 静态检查规则变更；无运行时环境变量、数据库或功能开关变更"
+        ],
         "envFiles": [],
         "verification": [
           "`pnpm run ci:check`",
@@ -791,12 +900,18 @@
         "title": "禁止主动询问候选人户籍信息",
         "author": "huajune",
         "mergedAt": "2026-08-13",
-        "businessUpdates": ["禁止主动询问候选人户籍信息"],
-        "summary": ["禁止主动询问候选人户籍信息"],
+        "businessUpdates": [
+          "禁止主动询问候选人户籍信息"
+        ],
+        "summary": [
+          "禁止主动询问候选人户籍信息"
+        ],
         "features": [],
         "fixes": [],
         "optimizations": [],
-        "ops": ["禁止主动询问候选人户籍信息"],
+        "ops": [
+          "禁止主动询问候选人户籍信息"
+        ],
         "config": [],
         "envFiles": [],
         "verification": [
@@ -1063,7 +1178,9 @@
           "**有** GitHub Actions 变更：`ci.yml` 增加 `duplication:check` 步骤；`pull_request_template.md` 增加两条正则/示例值检查项。",
           "D4/D7 及县级映射等运行时开关保持原值，未做 rollout。"
         ],
-        "envFiles": [".env.example"],
+        "envFiles": [
+          ".env.example"
+        ],
         "verification": [
           "`pnpm run ci:check`（本地及 pre-push 各一遍）",
           "445 个测试套件通过（1 个跳过），7179 个测试通过（6 个跳过）；lint、format、typecheck、重复度基线、行政区/词表校验及前后端构建均通过（2026-08-18 对最终 HEAD `0d9827e5` 全量重跑）",
@@ -1082,12 +1199,18 @@
         "title": "岗位查询显式 location.range 在本地距离过滤生效",
         "author": "huajune",
         "mergedAt": "2026-08-19",
-        "businessUpdates": ["岗位查询显式 location.range 在本地距离过滤生效"],
-        "summary": ["岗位查询显式 location.range 在本地距离过滤生效"],
+        "businessUpdates": [
+          "岗位查询显式 location.range 在本地距离过滤生效"
+        ],
+        "summary": [
+          "岗位查询显式 location.range 在本地距离过滤生效"
+        ],
         "features": [],
         "fixes": [],
         "optimizations": [],
-        "ops": ["岗位查询显式 location.range 在本地距离过滤生效"],
+        "ops": [
+          "岗位查询显式 location.range 在本地距离过滤生效"
+        ],
         "config": [],
         "envFiles": [],
         "verification": [
@@ -1101,12 +1224,18 @@
         "title": "补 handoff 承诺对账两处生产真阳词形",
         "author": "huajune",
         "mergedAt": "2026-08-19",
-        "businessUpdates": ["补 handoff 承诺对账两处生产真阳词形"],
-        "summary": ["补 handoff 承诺对账两处生产真阳词形"],
+        "businessUpdates": [
+          "补 handoff 承诺对账两处生产真阳词形"
+        ],
+        "summary": [
+          "补 handoff 承诺对账两处生产真阳词形"
+        ],
         "features": [],
         "fixes": [],
         "optimizations": [],
-        "ops": ["补 handoff 承诺对账两处生产真阳词形"],
+        "ops": [
+          "补 handoff 承诺对账两处生产真阳词形"
+        ],
         "config": [],
         "envFiles": [],
         "verification": [
@@ -1122,9 +1251,15 @@
         "title": "新增 v10.44.0 发版底账",
         "author": "huajune",
         "mergedAt": "2026-08-19",
-        "businessUpdates": ["新增 v10.44.0 发版底账"],
-        "summary": ["新增 v10.44.0 发版底账"],
-        "features": ["新增 v10.44.0 发版底账"],
+        "businessUpdates": [
+          "新增 v10.44.0 发版底账"
+        ],
+        "summary": [
+          "新增 v10.44.0 发版底账"
+        ],
+        "features": [
+          "新增 v10.44.0 发版底账"
+        ],
         "fixes": [],
         "optimizations": [],
         "ops": [],
