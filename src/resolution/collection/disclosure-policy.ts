@@ -39,8 +39,8 @@ export type DisclosureLevel = 'open' | 'restricted';
  * 「专业要求/限制/背景」这些组合形态，**裸标题「专业」认不出来**。而契约字段**标题**
  * 是另一种文本：一个叫「专业」的字段不可能是形容词，它就是学科筛选。
  *
- * 生产实测这正是缺口所在——专业族(659/544) 后端 0820 承诺补 RESTRICTED 但**尚未落地**，
- * 契约仍返 PLAIN；没有这条标题判据，专业不符就会被当面告诉候选人。
+ * 0826 复测：专业族已合并为「专业(213)」且契约返 RESTRICTED（籍贯/婚育同），
+ * 缺口已闭合；本红线保留为与契约标记**并行的第二道闸**——防运营新建敏感标签漏标。
  * 收词纪律与共用词表一致：只收**属性名本身**，不收组合形态（组合形态归共用词表）。
  */
 const SENSITIVE_TITLE_FAMILIES =
@@ -60,8 +60,8 @@ export function disclosureLevelOf(field: ContractFieldDef): DisclosureLevel {
   // ① 契约标记（0820 落地，实测籍贯[3]=RESTRICTED）：后端明说禁明说就是禁明说。
   if (field.disclosure === 'RESTRICTED') return 'restricted';
   // ② 红线词表：**压过契约的 PLAIN**。契约的 PLAIN 不是"确认可说"，只是"没标"——
-  //    实测专业族(659/544)仍返 PLAIN（后端 0820 承诺补标未落地），只信契约就会把
-  //    专业不符当面告诉候选人。红线是唯一不降级的那条（蓝图 v3-lean 头注）。
+  //    新建敏感标签漏标 RESTRICTED 时（0820-0826 专业族即如此），只信契约就会把
+  //    敏感拒因当面告诉候选人。红线是唯一不降级的那条（蓝图 v3-lean 头注）。
   if (SENSITIVE_TITLE_FAMILIES.test(field.labelTitle)) return 'restricted';
   if (containsSensitiveScreeningText(field.labelTitle)) return 'restricted';
   if (containsSensitiveScreeningText(field.labelInstructions ?? '')) return 'restricted';

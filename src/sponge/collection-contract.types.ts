@@ -67,14 +67,8 @@ export const ContractFieldSchema = z.object({
   valueSpec: ContractValueSpecSchema.nullable().optional(),
   acceptedOptions: z.array(ContractOptionSchema).default([]),
   rejectedOptions: z.array(ContractOptionSchema).default([]),
-  /**
-   * 身份核语义标记（契约诉求 #3）。
-   *
-   * ⚠️ **0820 实测未进契约**，后端承诺改。设为 optional 是前向兼容：后端补上即自动
-   * 生效，落地前身份识别走既定兜底（环境级配置 + 每轮拿实时契约核验 labelTitle，
-   * 核验不过告警并降通用道）。代码任何地方都不得硬编码 769/770/687/771（D4）。
-   */
-  systemField: z.enum(['name', 'phone', 'age', 'gender']).optional(),
+  // 身份核不走契约语义标记：原诉求 #3（systemField）已于 0826 裁定废弃，身份四槽由
+  // AI 侧「环境级 labelId 锚点 + labelTitle 每轮核验」识别（contract-mapping.ts）。
 });
 
 export const ContractJobLabelsSchema = z.object({

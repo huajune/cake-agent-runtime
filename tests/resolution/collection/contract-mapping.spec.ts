@@ -37,15 +37,7 @@ describe('parseIdentityAnchors', () => {
 describe('resolveIdentityKey', () => {
   const anchors = parseIdentityAnchors('name:769,phone:770,age:687,gender:771');
 
-  it('契约 systemField 落地后是权威，压过一切兜底', () => {
-    const resolved = resolveIdentityKey(
-      field({ labelId: 999, labelTitle: '联系人', systemField: 'phone' }),
-      anchors,
-    );
-    expect(resolved.systemField).toBe('phone');
-  });
-
-  it('systemField 缺席时按标题语义识别（0820 实测契约尚未带该字段）', () => {
+  it('按标题语义识别身份四槽（契约不带语义标记，0826 裁定 systemField 诉求废弃）', () => {
     expect(
       resolveIdentityKey(field({ labelId: 769, labelTitle: '姓名' }), anchors).systemField,
     ).toBe('name');

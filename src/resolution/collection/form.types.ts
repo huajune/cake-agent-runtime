@@ -50,10 +50,10 @@ export interface ContractFieldDef {
    */
   valueSpec?: ContractValueRange | null;
   /**
-   * 契约的**语义标记**：身份核槽位（姓名/手机号/年龄/性别）由它识别，不由 labelId 识别。
-   * ⚠️ 0820 实测**尚未进契约**（后端承诺改）——落地前由适配器按环境级配置 +
-   * labelTitle 每轮核验补齐，核验不过告警并降通用道。
-   * 代码任何地方都不得硬编码 769/770/687/771（D4）。
+   * 身份核槽位（姓名/手机号/年龄/性别）的**语义标记**，由映射层产出：环境级 labelId
+   * 锚点 + labelTitle 每轮核验（`contract-mapping.ts`），核验不过告警并降通用道。
+   * 契约本身不带此标记（原后端 systemField 诉求 0826 已裁定废弃）。
+   * 代码任何地方都不得硬编码 769/770/687/771（D4，ID 只进环境配置）。
    */
   systemField?: IdentitySlotKey;
 }
