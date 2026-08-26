@@ -31,6 +31,7 @@ import { detectExampleValueLeak } from './rules/example-value-leak.rule';
 import { detectIdentityMisregistrationCoaching } from './rules/identity-fraud-coaching.rule';
 import { detectProactiveInsurancePolicyMention } from './rules/insurance-policy-claims.rule';
 import { detectInvalidModelOutput } from './rules/invalid-model-output.rule';
+import { detectJobAvailabilityWithoutLookup } from './rules/job-availability-grounding.rule';
 import { detectOnlineInterviewLocationClaim } from './rules/online-interview-location.rule';
 import {
   detectHumanServicePhraseLeak,
@@ -361,6 +362,11 @@ export class HardRulesService {
     const requestedBrandMismatch = detectRequestedBrandMismatch(text, toolCalls);
     if (requestedBrandMismatch) {
       contradictions.push(this.withRulePolicy(requestedBrandMismatch));
+    }
+
+    const jobAvailabilityWithoutLookup = detectJobAvailabilityWithoutLookup(text, toolCalls);
+    if (jobAvailabilityWithoutLookup) {
+      contradictions.push(this.withRulePolicy(jobAvailabilityWithoutLookup));
     }
 
     const danglingPromise = detectDanglingReplyPromise(text, toolCalls);

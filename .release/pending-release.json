@@ -621,7 +621,11 @@
         "批二段序返修——final-check 归位收口、identity 归位开篇",
         "三期收官——全部批次执行完毕，文档转记录态"
       ],
-      "config": [],
+      "config": [
+        "v10.45.0 包含 5 个 Supabase migration：20260821210000、20260825025701、20260825050239、20260825055058、20260825063752；测试库已应用，生产库待受控切换时应用。",
+        "首个 migration 会重命名长期记忆列，旧版 v10.44.0 与迁移后 schema 不兼容；合并/部署前必须完成生产配置同步并单独授权 migration 与应用切换。",
+        "生产环境 AGENT_MAX_INPUT_CHARS 与 MEMORY_SETTLEMENT_GAP_DAYS 当前值未对齐 v10.45.0 默认值；MEMORY_SESSION_TTL_DAYS 已对齐。"
+      ],
       "envFiles": [
         ".env.example"
       ],
@@ -676,7 +680,7 @@
       ],
       "config": [
         "仅更新 `.env.example` 的说明：`AGENT_MAX_INPUT_CHARS` 默认值对齐代码为 24000，并去掉一处重复的旧开关说明。",
-        "无新增必填环境变量、数据库 migration、RPC、权限、依赖或外部服务变更。"
+        "本 PR 自身无新增必填环境变量、数据库 migration、RPC、权限、依赖或外部服务变更；v10.45.0 整体的 migration 见 PR #1035 配置记录。"
       ],
       "envFiles": [
         ".env.example"

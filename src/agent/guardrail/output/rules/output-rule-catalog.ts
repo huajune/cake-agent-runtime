@@ -281,6 +281,24 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
       '上一版回复在向候选人打听籍贯/老家/是否本地人，当前文本禁止发送。请删除该问句以及任何解释为什么要问的说法（不得说登记、核对、系统、流程需要）。岗位的户籍门槛仅供内部判断，不得追问也不得暗示其存在；需要了解地点时只能开放式问"你常驻在哪个城市"或"想去哪个城市工作"，回复其余内容逐字保留。',
   },
   {
+    id: 'job_availability_without_lookup',
+    action: GUARDRAIL_ACTION.REVISE,
+    priority: GUARDRAIL_PRIORITY.P1,
+    description:
+      '拦住零查岗回复正向断言“岗位很多 / 我们有岗位 / 多家门店在招”；查询问句和“我先帮你查”承接不拦。',
+    riskGoal:
+      '防止 Agent 在未调用 duliday_job_list 时编造城市、区域或用工形式的岗位可用性，后续真实查岗结果相反时造成失信。',
+    exogenousSignal: '本轮 toolCalls 中是否存在 duliday_job_list 调用。',
+    residualRisk:
+      '只覆盖窄词形的正向可用性结论；隐含断言、已调用但结果为空时的错误正向结论仍由语义档治理。',
+    verification:
+      'tests/agent/guardrail/output/rules/job-availability-grounding.rule.spec.ts；真实 test-suite smoke REL-V1045-SAFE-01',
+    feedbackToGenerator:
+      '上一版在本轮没有调用 duliday_job_list 的情况下，直接声称岗位很多、我们有岗位或多家门店在招，当前文本不可发送。' +
+      '请只删除无工具支撑的岗位可用性结论；保留候选人已给出的城市/用工形式和正常承接，改为“我先帮你查下附近有没有合适的”，再询问推进查询所需的最少位置信息。' +
+      '禁止反向编造“没有岗位”，也不要新增具体门店、岗位、薪资或预约事实。',
+  },
+  {
     id: 'dangling_reply_promise',
     action: GUARDRAIL_ACTION.OBSERVE,
     priority: GUARDRAIL_PRIORITY.P1,

@@ -37,7 +37,7 @@
 | DB red-lines/thresholds  | `strategy_config.red_lines` / `thresholds`           | Dashboard 可改；变更须同批补台账/changelog   | 10 条现行红线 + 2 阈值                                                       |
 | DB stage-strategy        | `strategy_config.stage_goals`                        | Dashboard 可改；released/testing 双行同步    | 5 阶段，当前阶段动态渲染                                                     |
 | 条件式规则块             | booking 共享规则 / input-guard / proactive-directive | 代码 PR                                      | 都留在 system；按上下文条件出现                                              |
-| 守卫 hard-rules（拦侧）  | `src/agent/guardrail/output/rules/`                  | 代码 PR                                      | 31 个 `ruleId`                                                               |
+| 守卫 hard-rules（拦侧）  | `src/agent/guardrail/output/rules/`                  | 代码 PR                                      | 32 个 `ruleId`                                                               |
 
 `PROMPT_SECTION_DOMAIN_REGISTRY` 是 teaching/evidence/tool_result 的语料域轴，用于指令—数据分离；
 它与本台账的 procedural/semantic/working 知识类型轴正交，不合并、不互相替代。
@@ -131,7 +131,7 @@ section 清单到 `final-check` 结束，`critical-turn-guard` 已不是独立 s
 | G1    | 先答候选人当前最明确的问题                                                  | 通用                                     | —       |                                                        |
 | G2    | 事实信息必须工具获取；禁扭曲候选人意向假装匹配                              | 通用                                     | —       |                                                        |
 | G2a   | 福利/薪资细则追问必须实时重查（记忆只用于定 jobId）；阶梯薪资照括注原文     | 2026-08-06 周报（阶梯算法 3 次误转人工） | 2026-08 |                                                        |
-| G3    | 有岗/没岗判断必须先调 job_list，零查岗禁断言                                | badcase 6a32317a                         | —       |                                                        |
+| G3    | 有岗/没岗判断必须先调 job_list，零查岗禁断言                                | badcase 6a32317a                         | —       | 拦侧配对：`job_availability_without_lookup`            |
 | G4    | 位置线索处理链：坐标直用/文字先 geocode/行政区默认按位置/城市三步判定       | badcase 6a3356e2                         | —       | 教/拦配对：无                                          |
 | G4a   | 城市一旦确认禁再反问城市                                                    | badcase 簇                               | —       |                                                        |
 | G5    | 地址追问→send_store_location + 面试形式先核对                               | 工具语义                                 | —       | 与 BK6 成对（booking 场景）                            |
@@ -451,10 +451,10 @@ FC 编号保留为历史别名：
 | duliday_interview_precheck                     | 729                                          | 参数纪律/行动纪律（收资状态机接管后瘦身 13.5K→729） | **"职责收进代码、描述自然变薄"的先例**                                                                                                                                                                                                                                                                                                                                             |
 | risk_alert / advance_stage / recall_history 等 | ≤620                                         | —                                                   | 健康                                                                                                                                                                                                                                                                                                                                                                               |
 
-## 七、守卫 hard-rules（拦侧，31 ruleId）
+## 七、守卫 hard-rules（拦侧，32 ruleId）
 
 本节是 Prompt 教侧与 Output 拦侧的**配对索引**，不是把 hard-rules 算进 Prompt 执行器。
-完整防线有 Input / Prompt / Tool / Output 四个作用位：本台账治理 Prompt，下面 31 个 ruleId
+完整防线有 Input / Prompt / Tool / Output 四个作用位：本台账治理 Prompt，下面 32 个 ruleId
 由 `OutputGuardrailService` 执行；教/拦可以配对，但权限与唯一权威各自独立。
 
 `application_record_update_promise`、`booking_promise_without_booking`、`booking_receipt_mismatch`、
@@ -463,7 +463,7 @@ FC 编号保留为历史别名：
 `experience_fraud_coaching`、`handoff_promise_reconciliation`、`health_certificate_generalization`、
 `human_service_phrase_leak`、`identity_misregistration_coaching`、`image_description_not_saved`、
 `internal_output_leak`、`interview_time_change_unconfirmed`、`invalid_model_output`、
-`job_detail_lookup_required`、`meta_narration_reply`、`online_interview_location_claim`、
+`job_availability_without_lookup`、`job_detail_lookup_required`、`meta_narration_reply`、`online_interview_location_claim`、
 `proactive_insurance_policy_mention`、`quota_promise`、`repeated_reply`、`repeated_reply_verbatim`、
 `requested_brand_mismatch`、`sensitive_origin_probe`、`settlement_cycle_mismatch`、
 `summer_worker_alternative_upsell`、`unsupported_schedule_window_claim`、

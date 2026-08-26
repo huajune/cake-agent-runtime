@@ -422,8 +422,11 @@
 - PR #1037 清理核心链路注释并按实现刷新架构文档
 
 ### 配置变更
+- PR #1035 v10.45.0 包含 5 个 Supabase migration：`20260821210000`、`20260825025701`、`20260825050239`、`20260825055058`、`20260825063752`；测试库已应用，生产库待受控切换时应用。
+- PR #1035 首个 migration 会重命名长期记忆列，旧版 v10.44.0 与迁移后 schema 不兼容；合并/部署前必须完成生产配置同步并单独授权 migration 与应用切换。
+- PR #1035 生产环境 `AGENT_MAX_INPUT_CHARS` 与 `MEMORY_SETTLEMENT_GAP_DAYS` 当前值未对齐 v10.45.0 默认值；`MEMORY_SESSION_TTL_DAYS` 已对齐。
 - PR #1037 仅更新 `.env.example` 的说明：`AGENT_MAX_INPUT_CHARS` 默认值对齐代码为 24000，并去掉一处重复的旧开关说明。
-- PR #1037 无新增必填环境变量、数据库 migration、RPC、权限、依赖或外部服务变更。
+- PR #1037 本 PR 自身无新增必填环境变量、数据库 migration、RPC、权限、依赖或外部服务变更；v10.45.0 整体的 migration 见 PR #1035 配置记录。
 
 ### 环境变量提醒
 - PR #1035 检测到环境变量相关文件变更：`.env.example`。请手动同步远程服务器 `/data/cake/.env.production`。
