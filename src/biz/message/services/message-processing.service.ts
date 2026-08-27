@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { AgentExecutionEventRepository } from '@biz/monitoring/repositories/agent-execution-event.repository';
 import { MessageProcessingRepository } from '../repositories/message-processing.repository';
 import { MessageProcessingRecordInput } from '../types/message.types';
 import { GuardrailReviewService } from './guardrail-review.service';
@@ -15,6 +16,7 @@ export class MessageProcessingService {
   constructor(
     private readonly messageProcessingRepository: MessageProcessingRepository,
     private readonly guardrailReviewService: GuardrailReviewService,
+    private readonly agentExecutionEventRepository: AgentExecutionEventRepository,
   ) {}
 
   /**
@@ -105,12 +107,13 @@ export class MessageProcessingService {
    */
   async getMessageProcessingRecordById(messageId: string) {
     this.logger.debug(`获取消息处理记录详情: ${messageId}`);
-    const [record, guardrailReview] = await Promise.all([
+    const [record, guardrailReview, executionEvents] = await Promise.all([
       this.messageProcessingRepository.getMessageProcessingRecordById(messageId),
       this.guardrailReviewService.findByTraceId(messageId),
+      this.agentExecutionEventRepository.findByTraceId(messageId),
     ]);
     if (!record) return null;
-    return { ...record, guardrailReview: guardrailReview ?? undefined };
+    return { ...record, guardrailReview: guardrailReview ?? undefined, executionEvents };
   }
 
   /**

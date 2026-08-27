@@ -147,9 +147,9 @@ describe('resolveReengagementBookingContext', () => {
 
   it('uses active_booking only as an index when no work order is explicitly bound', async () => {
     const longTerm = {
-      getActiveBookings: jest.fn().mockResolvedValue([
-        { work_order_id: 333, linked_at: '2026-07-03T00:00:00.000Z' },
-      ]),
+      getActiveBookings: jest
+        .fn()
+        .mockResolvedValue([{ work_order_id: 333, linked_at: '2026-07-03T00:00:00.000Z' }]),
     };
     const sponge = {
       getWorkOrderById: jest.fn().mockResolvedValue({

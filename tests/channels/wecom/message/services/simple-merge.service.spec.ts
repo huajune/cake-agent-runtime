@@ -396,11 +396,51 @@ describe('SimpleMergeService', () => {
       expect(mockMessageQueue.add).not.toHaveBeenCalled();
     });
 
-    it('should swallow queue errors instead of failing the caller', async () => {
+    it('should retry queue errors and then throw so Bull can mark/retry the current job', async () => {
       mockRedisService.llen.mockResolvedValue(1);
       mockMessageQueue.add.mockRejectedValue(new Error('Queue error'));
+      jest.spyOn(service as unknown as ServicePrivateAccess, 'delay').mockResolvedValue(undefined);
 
-      await expect(service.scheduleLockRetryCheck('chat-err')).resolves.not.toThrow();
+      await expect(service.scheduleLockRetryCheck('chat-err')).rejects.toThrow('Queue error');
+      expect(mockMessageQueue.add).toHaveBeenCalledTimes(3);
+    });
+  });
+
+  describe('scheduleQuietWindowRetryCheck', () => {
+    it('uses the remaining quiet window and refreshes pending leases', async () => {
+      mockRedisService.llen.mockResolvedValue(1);
+      mockRedisService.get.mockResolvedValue(String(Date.now() - 500));
+
+      await expect(service.scheduleQuietWindowRetryCheck('chat-123')).resolves.toBe(true);
+
+      expect(mockRedisService.expire).toHaveBeenCalledWith('wecom:message:pending:chat-123', 300);
+      expect(mockMessageQueue.add).toHaveBeenCalledWith(
+        'process',
+        { chatId: 'chat-123' },
+        expect.objectContaining({
+          delay: expect.any(Number),
+          jobId: expect.stringContaining('chat-123:quietretry:'),
+        }),
+      );
+      expect(mockMessageQueue.add.mock.calls[0][2].delay).toBeGreaterThan(0);
+    });
+
+    it('throws after retry exhaustion instead of leaving pending to expire silently', async () => {
+      mockRedisService.llen.mockResolvedValue(1);
+      mockMessageQueue.add.mockRejectedValue(new Error('Queue error'));
+      jest.spyOn(service as unknown as ServicePrivateAccess, 'delay').mockResolvedValue(undefined);
+
+      await expect(service.scheduleQuietWindowRetryCheck('chat-err')).rejects.toThrow(
+        'Queue error',
+      );
+      expect(mockMessageQueue.add).toHaveBeenCalledTimes(3);
+    });
+
+    it('does not create a retry job when pending is already empty', async () => {
+      mockRedisService.llen.mockResolvedValue(0);
+
+      await expect(service.scheduleQuietWindowRetryCheck('chat-empty')).resolves.toBe(false);
+      expect(mockMessageQueue.add).not.toHaveBeenCalled();
     });
   });
 

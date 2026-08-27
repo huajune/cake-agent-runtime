@@ -3,7 +3,7 @@
 > **一句话定位**：DuLiDay 旗下专为餐饮连锁招聘场景打造的 AI Agent 运行时，
 > 通过企业微信渠道，把"招呼-咨询-推荐-面试-入职"的全链路服务交给 AI 自动完成。
 
-**最后更新**：2026-04-23 ｜ **维护者**：DuLiDay Team
+**最后更新**：2026-08-26 ｜ **维护者**：DuLiDay Team
 
 > 本文是**工程视角**的系统宣讲（怎么构建）。产品视角（做什么、给谁、价值）见 [产品定义](product/product-definition.md)。
 
@@ -13,15 +13,15 @@
 
 本文整合了下列 7 份架构源文档，按"先看全景、再看模块、最后看落地"的顺序编排：
 
-| # | 来源文档 | 章节映射 |
-| - | --- | --- |
-| 1 | [agent-runtime-architecture.md](./architecture/agent-runtime-architecture.md) | §2 §3 §4 §5 §10 |
-| 2 | [memory-architecture.md](./architecture/memory-architecture.md) | §6 |
-| 3 | [message-service-architecture.md](./architecture/message-service-architecture.md) | §7 |
-| 4 | [monitoring-system-architecture.md](./architecture/monitoring-system-architecture.md) | §8 |
-| 5 | [test-suite-architecture.md](./architecture/test-suite-architecture.md) | §9 |
-| 6 | [security-guardrails.md](./architecture/security-guardrails.md) | §11 |
-| 7 | [group-task-pipeline.md](./architecture/group-task-pipeline.md) | §12 |
+| #   | 来源文档                                                                              | 章节映射        |
+| --- | ------------------------------------------------------------------------------------- | --------------- |
+| 1   | [agent-runtime-architecture.md](./architecture/agent-runtime-architecture.md)         | §2 §3 §4 §5 §10 |
+| 2   | [memory-architecture.md](./architecture/memory-architecture.md)                       | §6              |
+| 3   | [message-service-architecture.md](./architecture/message-service-architecture.md)     | §7              |
+| 4   | [monitoring-system-architecture.md](./architecture/monitoring-system-architecture.md) | §8              |
+| 5   | [test-suite-architecture.md](./architecture/test-suite-architecture.md)               | §9              |
+| 6   | [security-guardrails.md](./architecture/security-guardrails.md)                       | §11             |
+| 7   | [group-task-pipeline.md](./architecture/group-task-pipeline.md)                       | §12             |
 
 需要进一步深入某个领域时，按章节末尾的"延伸阅读"跳到原文档。
 
@@ -43,11 +43,11 @@
 
 ### 1.1 三个度量目标
 
-| 目标 | 指标 | 现状 |
-| --- | --- | --- |
-| **接得住** | 高峰期 99% 消息在 10s 内首字回复 | 平均 ~5s（含 Debounce 等待） |
-| **答得对** | 端到端测试套件通过率 ≥ 80% | 见 §9 测试套件 |
-| **不闯祸** | 不可逆操作（面试预约/群邀请/阶段推进）有 Replay 保护 | 见 §7.3 Replay 保护 |
+| 目标       | 指标                                                 | 现状                         |
+| ---------- | ---------------------------------------------------- | ---------------------------- |
+| **接得住** | 高峰期 99% 消息在 10s 内首字回复                     | 平均 ~5s（含 Debounce 等待） |
+| **答得对** | 端到端测试套件通过率 ≥ 80%                           | 见 §9 测试套件               |
+| **不闯祸** | 不可逆操作（面试预约/群邀请/阶段推进）有 Replay 保护 | 见 §7.3 Replay 保护          |
 
 ---
 
@@ -66,14 +66,14 @@
                            ▼
 ┌─────────────────────────────────────────────────────────────────────┐
 │  Agent 编排层  AgentRunnerService                                   │
-│   ├─ AgentPreparationService  prepare（拉记忆 / 装 prompt / 建工具） │
+│   ├─ PreparationService       prepare（拉记忆 / 装 prompt / 建工具） │
 │   ├─ ContextService           Section 化 Prompt 组装                │
 │   └─ LlmExecutorService       共享 LLM 入口                          │
 └─────────┬───────────┬───────────┬────────────┬───────────────────────┘
           ▼           ▼           ▼            ▼
      ┌────────┐ ┌─────────┐ ┌──────────┐ ┌────────────┐
      │ Memory │ │  Tools  │ │ TestSuite│ │ Providers  │
-     │ 4 layer│ │ 11 内置 │ │  评估    │ │ Registry   │
+     │ 2 layer│ │ 13 内置 │ │  评估    │ │ Registry   │
      │+enrich │ │ +MCP 扩 │ │ +AI Trace│ │ Reliable   │
      └────────┘ └─────────┘ └──────────┘ │ Router     │
                                          └────────────┘
@@ -90,12 +90,12 @@
 **关键分层规则**：
 
 - `infra/` 不依赖 `biz/`、`channels/`、`agent/`、`memory/`
-- `agent/` 不依赖 `channels/`，通过参数接收上下文
+- Runner 的输入输出契约不含企微类型；当前 Nest 模块仍保留 `agent/` 与渠道/工具模块的物理依赖
 - `memory/`、`tools/`、`evaluation/` 通过 `LlmExecutorService` 间接使用模型，不直连 `providers/`
 
 > **金句**：所有 LLM 调用都收口到 **一个执行入口**（LlmExecutorService），
-> 所有记忆读写都收口到 **一对生命周期方法**（onTurnStart / onTurnEnd），
-> 所有不可逆动作都收口到 **一个工具白名单**（REPLAY_BLOCKING_TOOL_NAMES）。
+> 记忆主生命周期收口到 **一对方法**（onTurnStart / onTurnEnd），
+> Replay 是否可以丢弃当前结果则由 **outcome + 已固化工具副作用**共同裁决。
 
 ---
 
@@ -104,25 +104,26 @@
 入口：[`src/agent/runner/agent-runner.service.ts`](../src/agent/runner/agent-runner.service.ts)
 
 ```
-onTurnStart → Compose → Execute (LLM + Tools) → onTurnEnd
-   ↑ 读记忆       组装 prompt       多步工具循环       写记忆 / 沉淀
+入站预检 → prepare → LLM / Tools → 出站审核与一次有界 repair → TurnOutcome
+         ↑ 读记忆 / 组装 system / 建工具                         │
+渠道：Replay → 副作用提交或回复投递 → TurnFinalizer → onTurnEnd ─┘
 ```
 
-`AgentRunnerService` 只做两件事：**调 LLM** + **收尾**。其它全部下放：
-
-| 职责 | 服务 | 说明 |
-| --- | --- | --- |
-| 准备 | `AgentPreparationService` | 入参归一化、并行拉记忆、入参检查、Context 组装、工具构建、记忆快照 |
-| Prompt 组装 | `ContextService` | Section 体系按场景注册（见 §4） |
-| LLM 执行 | `LlmExecutorService` | 唯一调用 Vercel AI SDK 的地方 |
+| 职责        | 服务/对象              | 说明                                                                        |
+| ----------- | ---------------------- | --------------------------------------------------------------------------- |
+| 回合裁决    | `AgentRunnerService`   | Input/Output guard、生成/repair 编排与 `TurnOutcome` 分类；不负责渠道投递   |
+| 准备        | `PreparationService`   | 入参归一化、记忆备料、共享裁决视图、Context 组装、工具构建与记忆快照        |
+| Prompt 组装 | `ContextService`       | 按 `SCENARIO_SECTIONS` 顺序构建 system blocks（见 §4）                      |
+| LLM 执行    | `LlmExecutorService`   | 唯一调用 Vercel AI SDK 的入口                                               |
+| 采纳与收尾  | 渠道 + `TurnFinalizer` | 最多三次 Replay；按投递结局只触发一次 `onTurnEnd`，丢弃版本不写助手轮次记忆 |
 
 ### 3.1 三种调用身份（callerKind）
 
-| `callerKind` | `messages[]` 含义 | 短期记忆 | 调用方 |
-| --- | --- | --- | --- |
-| `WECOM` | 只含当前 user 消息 | 从 Redis/DB 加载完整历史 | ReplyWorkflow |
-| `TEST_SUITE` | 完整历史 + 当前消息 | 不加载 | 测试套件 |
-| `DEBUG` | 完整历史 + 当前消息 | 不加载 | Dashboard |
+| `callerKind` | `messages[]` 含义   | 短期记忆                 | 调用方        |
+| ------------ | ------------------- | ------------------------ | ------------- |
+| `WECOM`      | 只含当前 user 消息  | 从 Redis/DB 加载完整历史 | ReplyWorkflow |
+| `TEST_SUITE` | 完整历史 + 当前消息 | 不加载                   | 测试套件      |
+| `DEBUG`      | 完整历史 + 当前消息 | 不加载                   | Dashboard     |
 
 `callerKind` 与 `strategySource (released | testing)` 正交 —— 测试套件可以跑生产策略做联调。
 
@@ -136,7 +137,7 @@ onTurnStart → Compose → Execute (LLM + Tools) → onTurnEnd
 所有 LLM 消费方（Agent、记忆事实抽取、外部画像补全、评估打分、注入检测）都走它，
 背后是 `RouterService → ReliableService → RegistryService` 三层处理。
 
-> **延伸阅读**：[agent-runtime-architecture.md §3.8](./architecture/agent-runtime-architecture.md#38-llmexecutorservice--共享-llm-入口)
+> **延伸阅读**：[agent-runtime-architecture.md §8.1](./architecture/agent-runtime-architecture.md#81-统一执行入口)
 
 ---
 
@@ -146,28 +147,23 @@ onTurnStart → Compose → Execute (LLM + Tools) → onTurnEnd
 
 我们把 Prompt 拆成可注册的 `PromptSection`，按场景组装：
 
+```text
+identity → base-manual → channel → stage-overview → red-lines → thresholds
+→ memory → turn-hints → hard-constraints → datetime → group-inventory
+→ stage-strategy → final-check
 ```
-[identity]              ← 角色 / 沟通风格 / 工作流程
-[base-manual]           ← 业务手册（StaticSection）
-[policy]                ← red-lines + thresholds
-[runtime-context]       ← 本轮会变动的全部内容（聚合 6 个叶子 section）
-  ├─ stage-strategy     · 当前阶段策略
-  ├─ memory             · 用户档案 + 会话记忆 + 当前预约信息
-  ├─ turn-hints         · 本轮解析线索
-  ├─ hard-constraints   · 当下硬约束
-  ├─ datetime           · 当前时间
-  └─ channel            · 渠道上下文
-[group-inventory]       ← 候选人意向城市的兼职群库存
-[final-check]           ← 出规校验清单
-```
+
+`final-check` 是复合 section：每轮固定产出同名的发送前自检块；本轮命中规则时，
+再在其后追加 block id 为 `critical-turn-guard` 的动态硬禁令。两者不是两个注册 section。
 
 **关键决策**：
 
-- `runtime-context` 聚合所有"每轮都会变"的内容，便于缓存其它 Section。
+- 动态内容仍全部进入 system；不会为缓存目的下沉到 `messages`。
+- 静态/低频内容前置，记忆、本轮线索、当前阶段策略与动态硬禁令靠近 system 尾部。
 - `strategy_config` 来自 Supabase `strategy` 表，支持 `released` / `testing` 双版本。
 - 新增场景只需在 `SCENARIO_SECTIONS` 与 `scenarioToolMap` 中各加一行。
 
-> **延伸阅读**：[agent-runtime-architecture.md §4](./architecture/agent-runtime-architecture.md#4-context-system--prompt-组装)
+> **延伸阅读**：[agent-runtime-architecture.md §5](./architecture/agent-runtime-architecture.md#5-preparation单轮备料编译器)
 
 ---
 
@@ -192,64 +188,48 @@ onTurnStart → Compose → Execute (LLM + Tools) → onTurnEnd
 
 **容错策略**：
 
-| 错误类别 | 触发条件 | 行为 |
-| --- | --- | --- |
-| `non_retryable` | 401/403/404 / 余额不足 | 跳过重试，直接降级 |
-| `rate_limited` | 429 | 指数退避，尊重 Retry-After |
-| `retryable` | 5xx / timeout / 网络 | 标准指数退避 |
+| 错误类别        | 触发条件               | 行为                       |
+| --------------- | ---------------------- | -------------------------- |
+| `non_retryable` | 401/403/404 / 余额不足 | 跳过重试，直接降级         |
+| `rate_limited`  | 429                    | 指数退避，尊重 Retry-After |
+| `retryable`     | 5xx / timeout / 网络   | 标准指数退避               |
 
-> **延伸阅读**：[agent-runtime-architecture.md §5](./architecture/agent-runtime-architecture.md#5-provider-层--三层模型架构)
+> **延伸阅读**：[agent-runtime-architecture.md §8](./architecture/agent-runtime-architecture.md#8-llm-与-provider)
 
 ---
 
-## 6. Memory System — 四层记忆 + 一路旁路
+## 6. Memory System — 两层存储 + 类型化组装
 
-> 灵感来自认知科学的 CoALA 框架：让 Agent 像人一样有"工作记忆 / 短期记忆 / 程序记忆 / 长期记忆"。
+CoALA 在本项目中用于解释内容类型，不等于建立四套存储。运行时只有两层持久状态：
 
+```text
+短期（Redis + chat_messages）
+├─ 7 天消息窗口：最近最多 120 条、最多 24000 字符，Redis 缺失时由 DB 回填
+├─ 3 天会话事实：factsv2:{corp}:{user}:{session} Hash
+└─ 3 天阶段状态：stage:{corp}:{user}:{session}
+
+长期（Supabase agent_long_term_memories）
+├─ 主键维度：(corpId, userId, botUserId)
+├─ semantic_profile / semantic_job_intent
+├─ episodic_session_summaries：单层数组，最多 20 段，FIFO 淘汰
+└─ consolidation_watermarks：独立水位，不混入摘要正文
 ```
-┌──────────────────── Agent Loop（编排层）─────────────────────┐
-│  onTurnStart  → 一次性读取四类记忆 + 当轮高置信识别 → 注入 prompt │
-│  onTurnEnd    → 写会话态 + 触发后置事实提取                    │
-└──────────────────────────────────────────────────────────────┘
 
-┌── 短期 Working ─── chat_messages + Redis 窗口热缓存 ───────┐
-│   读 Redis 优先，DB 兜底；按 historyWindow 对齐窗口          │
-└──────────────────────────────────────────────────────────────┘
-
-┌── 会话 Session ─── Redis  facts:{corp}:{user}:{session} ───┐
-│   facts / lastCandidatePool / presentedJobs /                │
-│   currentFocusJob / invitedGroups                            │
-└──────────────────────────────────────────────────────────────┘
-
-┌── 程序 Procedural ── Redis  stage:{corp}:{user}:{session} ──┐
-│   currentStage = trust_building → needs_collection →        │
-│                  job_recommendation → interview_arrangement │
-│   唯一写入口：advance_stage 工具                              │
-└──────────────────────────────────────────────────────────────┘
-
-┌── 长期 Long-term ── Supabase agent_long_term_memories + Redis 2h ┐
-│   profile_facts：画像字段 + 置信度/来源/证据/更新时间             │
-│   summary：recent[5] + archive（LLM 分层压缩）                  │
-└──────────────────────────────────────────────────────────────┘
-
-┌── 旁路 ruleFacts（不持久化） ───────────────────────────────┐
-│   规则 + 别名解析（品牌、城市、用工形式），属于解析线索         │
-│   只注入本轮 prompt，不作为候选人事实入库                     │
-└──────────────────────────────────────────────────────────────┘
-```
+Prompt 组装时再按 procedural / semantic / episodic / working 类型组织信息；
+`WorkingMemory` 是单次 prepare 的进程内工作台，不是第三个存储层。
 
 ### 6.1 三大设计原则
 
-1. **编排层固定读写**：LLM 不持有记忆读写权，由 `MemoryService.onTurnStart/onTurnEnd` 统一调度。
-2. **工具仅保留两个触达**：`advance_stage`（写程序记忆）、`recall_history`（读长期摘要）。
-3. **会话沉淀单向搬运**：`SessionService → SettlementService → LongTerm`，消息间隔达到 `settlementGapSeconds` 触发，Redis key 自然过期。
+1. **编排层固定读写**：LLM 不直接操作存储，由 `MemoryService.onTurnStart/onTurnEnd` 统一调度主生命周期。
+2. **工具仅保留两个触达**：`advance_stage`（写阶段状态）、`recall_history`（读长期摘要）。
+3. **Consolidation 三路独立写入**：画像 patch、求职意向 patch、会话摘要 append 分别落库；摘要不再做 recent/archive 分级压缩。
 
 ### 6.2 时间常量
 
 记忆系统现在拆成三个时间参数：
 
-- `sessionTtl`：Redis 会话态 TTL，默认 2 天，常见环境配置 3 天
-- `settlementGapSeconds`：沉淀间隔阈值，默认 1 天
+- `sessionTtl`：Redis 会话事实与阶段状态，当前环境按 3 天配置
+- `consolidationGapSeconds`：当前环境按 3 天配置；水位单独记录已处理边界
 - `historyWindowSeconds`：短期窗口 DB fallback 回查范围，默认 7 天
 
 > **延伸阅读**：[memory-architecture.md](./architecture/memory-architecture.md)
@@ -303,30 +283,29 @@ t=3   job#M3 触发 → now-last=2.0s ≥ 2s → 取出全部消息，调 Agent
 
 Agent 生成期间用户又发了新消息，怎么办？
 
-```
-首次 callAgent({ deferTurnEnd: true })   ← turn-end 副作用先挂起
-  │
-  ├─ 检查：生成期间到达的 pending 是否非空？
-  │    ├─ 否 → 投递首次回复，触发 turn-end
-  │    └─ 是 → 看首次 toolCalls 是否命中 REPLAY_BLOCKING：
-  │         ├─ 命中（advance_stage / invite_to_group / duliday_interview_booking）
-  │         │     副作用已落，不能丢弃 → 投递首次回复 + 触发 turn-end
-  │         └─ 未命中
-  │             丢弃首次回复 + 丢弃 runTurnEnd
-  │             合并新消息重跑一次（最多一次，避免活锁）
+```text
+Agent 产出 TurnOutcome + TurnFinalizer
+  ├─ 非 reply outcome，或工具已产生不可丢弃副作用 → 采用当前结果，不 replay
+  └─ 普通 reply 且生成期间收到新消息
+       → discard 当前 TurnFinalizer
+       → 合并新消息后重跑（最多 3 次）
+
+最终采用结果
+  ├─ reply：先投递，再 settle({ delivered })
+  └─ skipped / blocked / handoff：提交相应副作用，再 settle({ delivered: false })
 ```
 
-**为什么需要 deferTurnEnd**：首次回复若被丢弃，它写入的 `presentedJobs / facts` 会污染下一轮 recall。
-延后触发 turn-end 让"采纳后才落地"成为默认。
+`TurnFinalizer` 把“采纳后才落地”固化为一次性契约，避免被 Replay 丢弃、被出站守卫拦截
+或投递失败的文本污染下一轮 `presentedJobs / facts`。
 
 ### 7.4 关键容量
 
-| 维度 | 配置 | 说明 |
-| --- | --- | --- |
-| Bull 注册并发 | 20（固定） | 保证 delayed job 能被及时调度 |
-| 真正执行并发 | 4（动态） | 应用层 semaphore，hosting_config 可调 |
-| per-chat 处理锁 | 300s TTL | 长于单轮 Agent 最坏耗时 |
-| 去重 TTL | 300s | Redis SET NX EX，多实例共享 |
+| 维度            | 配置       | 说明                                  |
+| --------------- | ---------- | ------------------------------------- |
+| Bull 注册并发   | 20（固定） | 保证 delayed job 能被及时调度         |
+| 真正执行并发    | 4（动态）  | 应用层 semaphore，hosting_config 可调 |
+| per-chat 处理锁 | 300s TTL   | 长于单轮 Agent 最坏耗时               |
+| 去重 TTL        | 300s       | Redis SET NX EX，多实例共享           |
 
 > **延伸阅读**：[message-service-architecture.md](./architecture/message-service-architecture.md)
 
@@ -345,6 +324,7 @@ Agent 生成期间用户又发了新消息，怎么办？
 ```
 
 **为什么不用纯内存快照**：
+
 - 重启不丢数据
 - 多实例共享真相
 - SQL/RPC 直接支持分位数 / 窗口切片
@@ -354,12 +334,12 @@ Agent 生成期间用户又发了新消息，怎么办？
 
 ### 8.2 关键 cron
 
-| 任务 | 周期 | 时区 |
-| --- | --- | --- |
-| 小时聚合（cron 回填 14d） | `5 * * * *` | Asia/Shanghai |
-| 日聚合（cron 回填 30d） | `10 0 * * *` | Asia/Shanghai |
-| 业务指标告警评估 | `*/5 * * * *` | 默认 |
-| 数据清理 + stuck → timeout | `0 3 * * *` | 默认 |
+| 任务                       | 周期          | 时区          |
+| -------------------------- | ------------- | ------------- |
+| 小时聚合（cron 回填 14d）  | `5 * * * *`   | Asia/Shanghai |
+| 日聚合（cron 回填 30d）    | `10 0 * * *`  | Asia/Shanghai |
+| 业务指标告警评估           | `*/5 * * * *` | 默认          |
+| 数据清理 + stuck → timeout | `0 3 * * *`   | 默认          |
 
 ### 8.3 告警系统 — 当前实现
 
@@ -374,12 +354,12 @@ Agent 生成期间用户又发了新消息，怎么办？
 
 **业务指标告警阈值**：
 
-| 指标 | WARNING | CRITICAL |
-| --- | --- | --- |
-| 成功率 | < 90% | < 80% |
-| 平均响应时间 | > 42s | > 60s |
-| 在途请求 | > 10 条 | > 20 条 |
-| 近 1h 错误数 | > 7 | > 10 |
+| 指标         | WARNING | CRITICAL |
+| ------------ | ------- | -------- |
+| 成功率       | < 90%   | < 80%    |
+| 平均响应时间 | > 42s   | > 60s    |
+| 在途请求     | > 10 条 | > 20 条  |
+| 近 1h 错误数 | > 7     | > 10     |
 
 > **延伸阅读**：[monitoring-system-architecture.md](./architecture/monitoring-system-architecture.md) ·
 > [飞书通知系统](./infrastructure/feishu-alert-system.md) ·
@@ -393,13 +373,13 @@ Agent 生成期间用户又发了新消息，怎么办？
 
 ### 9.1 两种测试类型
 
-| 维度 | 用例测试 (Scenario) | 回归验证 (Conversation) |
-| --- | --- | --- |
-| 数据来源 | 人工编写的测试用例 | 真实客户对话记录 |
-| 飞书数据表 | testSuite | validationSet |
-| 测试粒度 | 单轮问答 | 多轮对话（按 turn 拆） |
-| 评估方式 | 人工评审（通过/失败） | LLM 自动评分（0-100） |
-| 典型用途 | 发版前场景回归 | 质量基线、对话回放 |
+| 维度       | 用例测试 (Scenario)   | 回归验证 (Conversation) |
+| ---------- | --------------------- | ----------------------- |
+| 数据来源   | 人工编写的测试用例    | 真实客户对话记录        |
+| 飞书数据表 | testSuite             | validationSet           |
+| 测试粒度   | 单轮问答              | 多轮对话（按 turn 拆）  |
+| 评估方式   | 人工评审（通过/失败） | LLM 自动评分（0-100）   |
+| 典型用途   | 发版前场景回归        | 质量基线、对话回放      |
 
 ### 9.2 执行链路
 
@@ -426,6 +406,7 @@ Agent 生成期间用户又发了新消息，怎么办？
 ### 9.4 资产血缘（LineageSync）
 
 `assetRelation` 表维护：
+
 - Scenario case ↔ 来源 BadCase
 - Conversation case ↔ 来源 BadCase / 原始 chat_id
 - 用例 / 验证集 ↔ 所属测试批次
@@ -440,39 +421,43 @@ Agent 生成期间用户又发了新消息，怎么办？
 
 入口：[`src/tools/tool-registry.service.ts`](../src/tools/tool-registry.service.ts)
 
-### 10.1 内置工具（11 个）
+### 10.1 候选人咨询场景工具（13 个）
 
-| 工具 | 职责 |
-| --- | --- |
-| `advance_stage` | 推进程序记忆阶段 |
-| `recall_history` | 查询用户历史求职记录摘要 |
-| `duliday_job_list` | 查询在招岗位（geocode + 距离排序 + 业务阈值过滤） |
-| `duliday_interview_precheck` | 面试前置校验（不真正提交） |
-| `duliday_interview_booking` | 面试预约提交（不可逆） |
-| `geocode` | 地名 → 标准化地址 + 经纬度 |
-| `send_store_location` | 按面试形式发送面试地点或工作门店的企微位置；进行中预约默认核对面试目的地 |
-| `invite_to_group` | 邀请加入企微兼职群（不可逆） |
-| `raise_risk_alert` | 候选人投诉/辱骂时人工介入 |
-| `request_handoff` | 面试/入职跟进阻塞时申请人工接管 |
-| `skip_reply` | 主动沉默本轮 |
+| 工具                            | 职责                                                                     |
+| ------------------------------- | ------------------------------------------------------------------------ |
+| `advance_stage`                 | 推进阶段状态阶段                                                         |
+| `recall_history`                | 查询用户历史求职记录摘要                                                 |
+| `duliday_job_list`              | 查询在招岗位（geocode + 距离排序 + 业务阈值过滤）                        |
+| `duliday_interview_precheck`    | 面试前置校验（不真正提交）                                               |
+| `duliday_interview_booking`     | 面试预约提交（不可逆）                                                   |
+| `duliday_cancel_work_order`     | 取消符合前置条件的面试工单                                               |
+| `duliday_modify_interview_time` | 修改符合前置条件的面试时间                                               |
+| `geocode`                       | 地名 → 标准化地址 + 经纬度                                               |
+| `send_store_location`           | 按面试形式发送面试地点或工作门店的企微位置；进行中预约默认核对面试目的地 |
+| `invite_to_group`               | 邀请加入企微兼职群（不可逆）                                             |
+| `raise_risk_alert`              | 候选人投诉/辱骂时人工介入                                                |
+| `request_handoff`               | 面试/入职跟进阻塞时申请人工接管                                          |
+| `skip_reply`                    | 主动沉默本轮                                                             |
 
 **动态扩展**：
+
 - 本轮 `imageMessageIds` 非空 → 注入 `save_image_description`
+- 本轮包含附件 → 注入 `read_resume_attachment`
 - MCP 服务运行时 → `registerMcpTool()` 自动叠加到所有场景
 
-### 10.2 不可逆工具白名单
+### 10.2 Replay 阻断判定
 
 ```typescript
-REPLAY_BLOCKING_TOOL_NAMES = [
-  'advance_stage',              // procedural memory 直写
-  'invite_to_group',            // 企微 addMember 外部 API
-  'duliday_interview_booking',  // 杜力岱外部预约 API
-];
+REPLAY_BLOCKING_TOOLS = new Set([
+  'invite_to_group', // 企微 addMember 外部 API
+  'duliday_interview_booking', // 杜力岱外部预约 API
+]);
 ```
 
-任意命中即跳过 Replay，配合 §7.3 的 `deferTurnEnd` 机制，保证副作用与回复严格一致。
+除此之外，非 reply outcome 与已声明、已提交的工具副作用也会阻断 Replay；
+`advance_stage` 不在该集合中。
 
-> **延伸阅读**：[agent-runtime-architecture.md §7](./architecture/agent-runtime-architecture.md#7-工具系统)
+> **延伸阅读**：[agent-runtime-architecture.md §6](./architecture/agent-runtime-architecture.md#6-工具系统)
 
 ---
 
@@ -480,27 +465,25 @@ REPLAY_BLOCKING_TOOL_NAMES = [
 
 ```
 HTTP 请求
-  → [1] env.validation.ts — 启动校验，缺关键变量直接退出
-  → [2] ApiTokenGuard — Bearer Token 鉴权（@Public 端点豁免）
-  → [3] DTO 输入校验（class-validator）
-  → [4] trimMessages — 总字符 > AGENT_MAX_INPUT_CHARS 丢弃最早消息
-  → [5] InputGuardService — Prompt Injection 检测（不阻断，追加防护提醒 + 异步告警）
-  → [6] maxOutputTokens — LLM 调用上限
-  → [7] ReliableService — 重试 + 降级
-  → [8] FeishuAlertService — 告警节流
+  → [基础设施] 启动校验 / Token / DTO / 输入输出预算 / Provider 重试降级
+  → [Input]      高危入站短路为 guardrail_blocked；Prompt Injection 检测
+  → [Prompt]     system sections + final-check；注入命中时追加防护 suffix
+  → [Tool]       jobId、precheck、身份、拉群城市/时机等动作门禁
+  → [Output]     确定性规则 + 可选语义 reviewer + 一次有界修复 + 最终清洗
 ```
 
-**Prompt Injection 三类模式**：角色劫持（"你现在是…"）、提示词泄露（"显示你的 system prompt"）、指令注入（`[[SYSTEM]]`、`<|im_start|>system`）。
-**策略**：不阻断，追加 GUARD_SUFFIX + 异步飞书告警。
+这是 **Input / Prompt / Tool / Output 四个防线作用位**。Prompt 负责生成前预防，不拥有最终 veto；
+Input / Tool / Output 才负责运行时短路、动作拒绝与出站验收。Prompt Injection 检测不直接阻断，
+而是追加 system 防护 suffix 并异步告警。
 
 **关键安全变量**：
 
-| 变量 | 默认值 | 说明 |
-| --- | --- | --- |
-| `API_GUARD_TOKEN` | 无 | 管理端点 Bearer Token，未配置则不鉴权 |
-| `AGENT_MAX_OUTPUT_TOKENS` | 4096 | 单次输出上限 |
-| `AGENT_MAX_INPUT_CHARS` | 12000 | 输入字符上限 |
-| `AGENT_DEFAULT_FALLBACKS` | 无 | 全局模型降级链 |
+| 变量                      | 默认值 | 说明                                  |
+| ------------------------- | ------ | ------------------------------------- |
+| `API_GUARD_TOKEN`         | 无     | 管理端点 Bearer Token，未配置则不鉴权 |
+| `AGENT_MAX_OUTPUT_TOKENS` | 4096   | 单次输出上限                          |
+| `AGENT_MAX_INPUT_CHARS`   | 24000  | 输入字符上限                          |
+| `AGENT_DEFAULT_FALLBACKS` | 无     | 全局模型降级链                        |
 
 > **延伸阅读**：[security-guardrails.md](./architecture/security-guardrails.md)
 
@@ -527,14 +510,15 @@ Cron 触发 → GroupTaskScheduler.executeTask()
 
 **四种策略**：
 
-| 类型 | tagPrefix | 数据源 | 生成方式 | Cron |
-| --- | --- | --- | --- | --- |
-| 抢单群 | `抢单群` | BI 订单 | 模板 | 10:00 / 13:00 / 17:30 每天 |
-| 兼职群 | `兼职群` | 岗位列表 | 模板 + 小程序卡片 | 13:00 工作日 |
-| 店长群 | `店长群` | BI 数据 | 模板 | 10:30 工作日 |
-| 工作小贴士 | `店长群` | 预设话题 | AI 生成 | 15:00 周六 |
+| 类型       | tagPrefix | 数据源   | 生成方式          | Cron                       |
+| ---------- | --------- | -------- | ----------------- | -------------------------- |
+| 抢单群     | `抢单群`  | BI 订单  | 模板              | 10:00 / 13:00 / 17:30 每天 |
+| 兼职群     | `兼职群`  | 岗位列表 | 模板 + 小程序卡片 | 13:00 工作日               |
+| 店长群     | `店长群`  | BI 数据  | 模板              | 10:30 工作日               |
+| 工作小贴士 | `店长群`  | 预设话题 | AI 生成           | 15:00 周六                 |
 
 **亮点**：
+
 - 同城同行业的群只拉一次数据、生成一次文案，N 群复用。
 - 品牌轮转避免重复推送同一品牌。
 
@@ -544,84 +528,58 @@ Cron 触发 → GroupTaskScheduler.executeTask()
 
 ## 13. 端到端：一条消息的完整旅程
 
-以候选人发送 *"你们招收银员吗？工资多少？"* 为例：
+以候选人发送 _"你们招收银员吗？工资多少？"_ 为例：
 
-```
-1. 托管平台 POST /wecom/message
-   │
-2. AcceptInboundMessageService
-   ├─ 过滤通过（用户消息、非自发、未暂停）
-   ├─ Redis 去重 (5min)
-   ├─ 写 chat_messages + Redis 短期窗口
-   └─ 立即 ACK 200
-   │
-3. SimpleMergeService — debounce 静默 ~3s
-   │
-4. ReplyWorkflowService.processMessageCore()
-   │
-5. PreAgentRiskInterceptService.precheck()  → 安全
-   │
-6. callAgent({ deferTurnEnd: true })
-   │
-   └─ AgentRunnerService.invoke
-       │
-       ├─ AgentPreparationService.prepare()
-       │   ├─ MemoryService.onTurnStart() 并行读：
-       │   │   ├─ 短期：最近 60 条对话
-       │   │   ├─ 会话：{ preferences: { city: '上海' }, lastCandidatePool }
-       │   │   ├─ 程序阶段：'needs_collection'
-       │   │   ├─ 长期档案 facts：{ name: { value: '张三', confidence: 'high', source: 'booking', evidence: '报名成功后写入', updatedAt: '...' } }
-       │   │   └─ 高置信识别：{ jobIntent: '收银员' }
-       │   ├─ RecruitmentCaseService 查活跃 case → 无
-       │   ├─ InputGuard 扫注入 → safe
-       │   ├─ ContextService.compose() → systemPrompt
-       │   └─ ToolRegistryService.buildForScenario() → 11 工具
-       │
-       ├─ LlmExecutorService.generate()  role=Chat
-       │   ├─ Step 1: 调用 duliday_job_list → onJobsFetched 写入 candidatePool
-       │   └─ Step 2: 组织自然语言回复
-       │
-       └─ attachTurnEnd(deferTurnEnd=true)  → result.runTurnEnd 暴露
-   │
-7. ReplyWorkflowService 检查：
-   ├─ toolCalls 只含 duliday_job_list → 非不可逆
-   └─ fetchPendingSinceAgentStart → 无新消息
-   │
-8. 显式触发 result.runTurnEnd()
-   │
-   └─ MemoryLifecycleService.onTurnEnd()
-       ├─ load_previous_state
-       ├─ 分支 A：settlement（未超阈值 → skipped）
-       └─ 分支 B（串行）：
-           ├─ save_candidate_pool（3 个岗位 → session）
-           ├─ project_assistant_turn（投影 presentedJobs）
-           └─ extract_facts（LLM 提取 preferences.salary）
-   │
-9. MessageDeliveryService
-   ├─ 分段：["我们确实招收银员！...", "时薪大概..."]
-   ├─ 段 1 打字延迟 ~400ms
-   ├─ 段间隔 2000ms
-   └─ 段 2 打字延迟 ~400ms
-   │
-10. markMessagesAsProcessed + recordSuccess → message_processing_records
+```text
+1. 托管平台回调
+   → AcceptInboundMessageService：过滤、去重、持久化、入队并立即 ACK
+
+2. SimpleMergeService / MessageProcessor
+   → debounce 聚合 → 获取 per-chat 锁 → ReplyWorkflowService
+
+3. 入站防线
+   → PreAgentRiskInterceptService 处理需暂停/告警的业务风险
+   → AgentRunnerService 执行 input guard；阻断时直接产出 guardrail_blocked
+
+4. PreparationService.prepare()
+   → MemoryService.onTurnStart() 拉取短期窗口、会话事实、阶段与长期档案
+   → snapshot-enrichment 补全档案来源
+   → prompt-memory-adjudicator 生成共享裁决视图
+   → ContextService 按 section 顺序构建 system prompt
+   → ToolRegistryService.buildForScenario() 构建 13 个场景工具并叠加动态工具
+
+5. GeneratorAgent / LlmExecutorService
+   → AI SDK 多步工具循环，例如 duliday_job_list
+   → Runner 执行出站确定性审查、可选语义 reviewer 与最多一次 repair
+   → 归一化为 reply / skipped / guardrail_blocked / handoff
+
+6. ReplyWorkflowService
+   → 普通 reply 生成期间若有新消息，丢弃当前 finalizer 后合并 Replay（最多 3 次）
+   → 非 reply 或已有不可丢弃副作用时采用当前结果
+
+7. 最终结局
+   → reply：MessageDeliveryService 分段投递，提交回复关联副作用
+   → non-reply：提交暂停、告警或沉默等结局副作用
+   → TurnFinalizer.settle({ delivered }) 只执行一次 onTurnEnd
+   → 等待收尾后记录 MPR 并释放 per-chat 锁
 ```
 
 ---
 
 ## 14. 核心能力总结 — 一张表带走
 
-| 能力 | 实现 | 价值 |
-| --- | --- | --- |
-| **多模型容错** | Provider 三层（Registry → Reliable → Router） | 单家 API 故障自动降级，业务零感知 |
-| **四层记忆** | onTurnStart 并行读 + onTurnEnd 串行写 + 沉淀 | Agent 像人一样有"现在/昨天/上周"的认知层次 |
-| **Debounce 聚合** | 每条消息注册 delay=2s 的 Bull job | 用户连发不抢答，停止打字才回 |
-| **Replay 保护** | REPLAY_BLOCKING 白名单 + deferTurnEnd | 不可逆操作绝不被丢弃，记忆与回复一致 |
-| **per-chat 串行** | Redis 处理锁 (300s) | 同一会话同时只有一个 Agent 在生成 |
-| **Section 化 Prompt** | 场景注册表 + PromptSection 接口 | 新场景 / 新护栏接入只改一处 |
-| **AI 流追踪** | AiStreamTrace 解析 UIMessageChunk | 测试与生产隔离观测，时间线粒度到首字节 |
-| **告警限流聚合** | 5min 窗口 + 恢复检测 | 一次故障一条告警，不刷屏 |
-| **数据三段式** | Supabase SoT + 投影表 + Redis 实时 | 重启不丢数据，热路径走原表，长期趋势走投影 |
-| **测试 + 血缘** | Bull Queue 异步执行 + LineageSync | 真实 badcase 反向溯源到对应用例 |
+| 能力                  | 实现                                             | 价值                                       |
+| --------------------- | ------------------------------------------------ | ------------------------------------------ |
+| **多模型容错**        | Provider 三层（Registry → Reliable → Router）    | 单家 API 故障自动降级，业务零感知          |
+| **两层记忆**          | 短期会话态 + 长期候选人×bot 档案 + consolidation | 跨轮连续，同时保持存储边界清晰             |
+| **Debounce 聚合**     | 每条消息注册 delay=2s 的 Bull job                | 用户连发不抢答，停止打字才回               |
+| **Replay 保护**       | outcome/副作用门禁 + `TurnFinalizer`             | 丢弃版本不污染记忆，投递结局与收尾一致     |
+| **per-chat 串行**     | Redis 处理锁 (300s)                              | 同一会话同时只有一个 Agent 在生成          |
+| **Section 化 Prompt** | 场景注册表 + PromptSection 接口                  | 新场景 / 新护栏接入只改一处                |
+| **AI 流追踪**         | AiStreamTrace 解析 UIMessageChunk                | 测试与生产隔离观测，时间线粒度到首字节     |
+| **告警限流聚合**      | 5min 窗口 + 恢复检测                             | 一次故障一条告警，不刷屏                   |
+| **数据三段式**        | Supabase SoT + 投影表 + Redis 实时               | 重启不丢数据，热路径走原表，长期趋势走投影 |
+| **测试 + 血缘**       | Bull Queue 异步执行 + LineageSync                | 真实 badcase 反向溯源到对应用例            |
 
 ---
 
@@ -629,81 +587,60 @@ Cron 触发 → GroupTaskScheduler.executeTask()
 
 ### 15.1 必填环境变量（缺失即启动失败）
 
-| 变量 | 说明 |
-| --- | --- |
-| `ANTHROPIC_API_KEY` | Anthropic API 密钥 |
-| `AGENT_CHAT_MODEL` | 主对话模型（`provider/model` 格式） |
-| `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | Redis 接入 |
-| `NEXT_PUBLIC_SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` | Supabase 接入 |
-| `DULIDAY_API_TOKEN` | 杜力岱 API |
-| `STRIDE_API_BASE_URL` | 托管平台 API |
-| `FEISHU_ALERT_WEBHOOK_URL` / `FEISHU_ALERT_SECRET` | 飞书告警 |
+| 变量                                                     | 说明                                |
+| -------------------------------------------------------- | ----------------------------------- |
+| `ANTHROPIC_API_KEY`                                      | Anthropic API 密钥                  |
+| `AGENT_CHAT_MODEL`                                       | 主对话模型（`provider/model` 格式） |
+| `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN`    | Redis 接入                          |
+| `NEXT_PUBLIC_SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` | Supabase 接入                       |
+| `DULIDAY_API_TOKEN`                                      | 杜力岱 API                          |
+| `STRIDE_API_BASE_URL`                                    | 托管平台 API                        |
+| `FEISHU_ALERT_WEBHOOK_URL` / `FEISHU_ALERT_SECRET`       | 飞书告警                            |
 
 ### 15.2 由 Supabase `hosting_config` 动态下发
 
-| 键 | 默认值 | 说明 |
-| --- | --- | --- |
-| `initialMergeWindowMs` | 3000 | 消息聚合 debounce 窗口 |
-| `typingSpeedCharsPerSec` / `paragraphGapMs` | - | 拟人化打字策略 |
-| `workerConcurrency` | 4 | 实际执行并发 |
-| `wecomCallbackModelId` / `wecomCallbackThinkingMode` | - | 渠道侧模型选择 |
+| 键                                                   | 默认值 | 说明                   |
+| ---------------------------------------------------- | ------ | ---------------------- |
+| `initialMergeWindowMs`                               | 3000   | 消息聚合 debounce 窗口 |
+| `typingSpeedCharsPerSec` / `paragraphGapMs`          | -      | 拟人化打字策略         |
+| `workerConcurrency`                                  | 4      | 实际执行并发           |
+| `wecomCallbackModelId` / `wecomCallbackThinkingMode` | -      | 渠道侧模型选择         |
 
 ### 15.3 关键 Agent 行为变量
 
-| 变量 | 默认值 | 说明 |
-| --- | --- | --- |
-| `AGENT_MAX_OUTPUT_TOKENS` | 4096 | 单次输出上限 |
-| `AGENT_MAX_INPUT_CHARS` | 12000 | 输入字符上限 |
-| `AGENT_THINKING_BUDGET_TOKENS` | 0 | Extended thinking 预算 |
-| `MAX_HISTORY_PER_CHAT` | 60 | 短期窗口最大消息数 |
-| `MEMORY_SESSION_TTL_DAYS` | 2 | 会话级 Redis TTL |
-| `MEMORY_SETTLEMENT_GAP_DAYS` | 1 | 会话沉淀间隔阈值 |
-| `MEMORY_HISTORY_WINDOW_DAYS` | 7 | 短期记忆 DB fallback 回查窗口 |
-| `MESSAGE_DEDUP_TTL_SECONDS` | 300 | 去重 TTL |
+| 变量                           | 默认值 | 说明                          |
+| ------------------------------ | ------ | ----------------------------- |
+| `AGENT_MAX_OUTPUT_TOKENS`      | 4096   | 单次输出上限                  |
+| `AGENT_MAX_INPUT_CHARS`        | 24000  | 输入字符上限                  |
+| `AGENT_THINKING_BUDGET_TOKENS` | 0      | Extended thinking 预算        |
+| `MAX_HISTORY_PER_CHAT`         | 120    | 短期窗口最大消息数            |
+| `MEMORY_SESSION_TTL_DAYS`      | 3      | 会话级 Redis TTL              |
+| `MEMORY_SETTLEMENT_GAP_DAYS`   | 3      | 跨会话 consolidation 间隔阈值 |
+| `MEMORY_HISTORY_WINDOW_DAYS`   | 7      | 短期记忆 DB fallback 回查窗口 |
+| `MESSAGE_DEDUP_TTL_SECONDS`    | 300    | 去重 TTL                      |
 
 ---
 
 ## 16. 可扩展点
 
-| 想做的事 | 入口 |
-| --- | --- |
-| 新增 Provider | `RegistryService.onModuleInit()` 自动检测 / OAI-compatible 表 |
-| 新增工具 | `src/tools/my-tool.ts` + `ToolRegistryService` 注册 + `scenarioToolMap` |
-| 新增不可逆工具 | 同上 + 加入 `REPLAY_BLOCKING_TOOL_NAMES` |
-| 新增 Prompt Section | 实现 `PromptSection` + `ContextService.registerSections()` |
-| 新增场景 | `SCENARIO_SECTIONS` + `scenarioToolMap` 各加一行 |
-| 新增渠道 | `src/channels/` 新建模块，构造 `AgentInvokeParams` 调 `AgentRunnerService` |
-| 新增告警渠道 | 仿 `FeiShuAlertService` 实现，注册到 `AlertOrchestratorService` |
-| 新增评估维度 | `LlmEvaluationService.generateStructured` + 自定义 schema |
+| 想做的事             | 入口                                                                           |
+| -------------------- | ------------------------------------------------------------------------------ |
+| 新增 Provider        | `RegistryService.onModuleInit()` 自动检测 / OAI-compatible 表                  |
+| 新增工具             | `src/tools/my-tool.ts` + `ToolRegistryService` 注册 + `scenarioToolMap`        |
+| 新增 Replay 阻断工具 | 同上，并仅在确有不可丢弃外部副作用时加入 `REPLAY_BLOCKING_TOOLS`               |
+| 新增 Prompt Section  | 实现 `PromptSection`，在 `ContextService` 注册，并加入目标 `SCENARIO_SECTIONS` |
+| 新增场景             | `SCENARIO_SECTIONS` + `scenarioToolMap` 各加一行                               |
+| 新增渠道             | `src/channels/` 新建适配，构造 `TurnRequest` 调 `AgentRunnerService.runTurn()` |
+| 新增告警渠道         | 扩展 notification 模块，由 `AlertNotifierService` 统一路由                     |
+| 新增评估维度         | `LlmEvaluationService.generateStructured` + 自定义 schema                      |
 
 ---
 
-## 17. 演进路线
+## 17. 演进与未完成事项
 
-### 已完成（v1.x）
-
-- ✅ Agent 编排引擎（Recall → Compose → Execute → Store）
-- ✅ 三层模型容错（Registry / Reliable / Router）
-- ✅ 四层记忆系统 + 后置事实提取 + 闲置沉淀
-- ✅ 企微消息 Debounce 聚合 + Replay 保护
-- ✅ 监控数据三段式 + 飞书告警限流聚合
-- ✅ 测试套件（用例 + 回归 + LLM 评分 + 飞书双向同步）
-- ✅ AI 流追踪 + 资产血缘
-- ✅ 群任务流水线（4 种策略）
-
-### 进行中（v2.x）
-
-- ⏳ Dashboard 实时进度 SSE/WebSocket（目前轮询）
-- ⏳ 测试套件统计图表可视化
-- ⏳ 多维评估（规则 + 性能 + 安全）
-
-### 规划中
-
-- 🔜 用户级限流 + 成本预算控制
-- 🔜 Provider 熔断器（Circuit Breaker）
-- 🔜 从生产 badcase 自动沉淀测试用例
-- 🔜 CI/CD 集成（PR 触发回归 + 评估推送）
-- 🔜 版本对比（A/B Testing、Prompt/模型对照）
+本文件只陈述已经落地的能力，不再维护未经代码或任务单确认的路线图。当前工程、外部协作与
+上线后验证事项统一收口到 [`docs/todo/README.md`](./todo/README.md)；已完成方案保留在 Git 历史，
+不继续占用 todo 目录。
 
 ---
 

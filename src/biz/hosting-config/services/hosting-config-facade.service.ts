@@ -95,7 +95,7 @@ export class HostingConfigFacadeService {
             source: 'environment',
           };
 
-    const roles = ['chat', 'extract', 'vision', 'evaluate', 'review', 'repair', 'reengagement'];
+    const roles = ['chat', 'extract', 'vision', 'evaluate', 'repair', 'reengagement'];
     const roleOverrides: Record<string, AgentFallbackChainEntry> = {};
     for (const role of roles) {
       if (role === 'vision' && config.visionFallbackModelIds.length > 0) {
@@ -125,7 +125,6 @@ export class HostingConfigFacadeService {
       { key: 'extractModelId', role: 'extract', envVar: 'AGENT_EXTRACT_MODEL' },
       { key: 'visionModelId', role: 'vision', envVar: 'AGENT_VISION_MODEL' },
       { key: 'evaluateModelId', role: 'evaluate', envVar: 'AGENT_EVALUATE_MODEL' },
-      { key: 'reviewModelId', role: 'review', envVar: 'AGENT_REVIEW_MODEL' },
       { key: 'repairModelId', role: 'repair', envVar: 'AGENT_REPAIR_MODEL' },
       {
         key: 'reengagementModelId',
@@ -225,7 +224,6 @@ export class HostingConfigFacadeService {
       'extractModelId',
       'visionModelId',
       'evaluateModelId',
-      'reviewModelId',
       'repairModelId',
       'reengagementModelId',
     ];

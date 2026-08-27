@@ -1,7 +1,7 @@
 import { buildGeocodeTool } from '@tools/geocode.tool';
 import { GeocodingService } from '@infra/geocoding/geocoding.service';
 import type { GeocodeCandidate } from '@infra/geocoding/geocoding.types';
-import { TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
+import { TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
 import type { ToolBuildContext } from '@shared-types/tool.types';
 import { createToolContext, mergeToolContext } from '../../helpers/tool-context.fixture';
 

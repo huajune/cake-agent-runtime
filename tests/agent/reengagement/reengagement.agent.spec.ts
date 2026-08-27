@@ -1,7 +1,7 @@
 import { ReengagementAgent } from '@agent/reengagement/reengagement.agent';
 import { getScenario } from '@agent/reengagement/scenario-registry';
 import type { FollowUpJob } from '@agent/reengagement/follow-up-scheduler.service';
-import type { ReengagementSessionState } from '@memory/types/reengagement-session-state.types';
+import type { ReengagementSessionState } from '@memory/recall.types';
 
 const sessionRef = { corpId: 'corp-1', userId: 'user-1', sessionId: 'sess-1' };
 
@@ -223,6 +223,90 @@ describe('ReengagementAgent', () => {
     expect(result.agentRequest).not.toHaveProperty('outputGuardrail');
     expect(result.outcome.reply?.text).toContain('明天14:00');
     expect(result.outcome.reply?.text).toContain('身份证');
+  });
+
+  it('builds the d2 confirmation prompt with weekday and adjustment or abandonment exits', async () => {
+    llm.generateStructured.mockResolvedValueOnce({
+      output: {
+        decision: 'send',
+        blockReason: 'none',
+        message: '还在找工作吗？周四14:00约了面试，时间不合适可以提前跟我说调整。',
+        reason: '报名后尚未另行确认求职意向',
+      },
+      usage: { inputTokens: 12, outputTokens: 9, totalTokens: 21 },
+    });
+
+    const result = await reengagementAgent.compose({
+      sessionRef,
+      scenario: getScenario('interview_reminder')!,
+      jobData: job('interview_reminder', {
+        workOrderId: 555,
+        touchVariant: 'd2_confirm',
+      }),
+      state: baseState({ terminal: 'booked' }),
+      bookingContext: liveBookingContext({
+        interviewType: '线下面试',
+        interviewAddress: '测试地址',
+      }),
+    });
+
+    const system = llm.generateStructured.mock.calls[0][0].system as string;
+    expect(system).toContain('面试日期（含星期）：2026-06-25 星期四');
+    expect(system).toContain('时间不合适可以提前调整');
+    expect(system).toContain('已经找到合适工作可以告知放弃');
+    expect(system).toContain('blockReason=confirmation_already_sent');
+    expect(result.outcome.kind).toBe('reply');
+  });
+
+  it('does not treat an earlier d2 intent confirmation as an arrival reminder already sent', async () => {
+    memoryRecall.recentMessages = [
+      { role: 'assistant', content: '还在找工作吗？周四的面试时间可以吧？' },
+    ];
+    llm.generateStructured.mockResolvedValueOnce({
+      output: {
+        decision: 'send',
+        blockReason: 'none',
+        message: '提醒一下，今天14:00记得按面试通知参加。',
+        reason: '此前只有提前意向确认，没有到场提醒',
+      },
+      usage: { inputTokens: 12, outputTokens: 8, totalTokens: 20 },
+    });
+
+    const result = await reengagementAgent.compose({
+      sessionRef,
+      scenario: getScenario('interview_reminder')!,
+      jobData: job('interview_reminder', { workOrderId: 555 }),
+      state: baseState({ terminal: 'booked' }),
+      bookingContext: liveBookingContext(),
+    });
+
+    expect(llm.generateStructured.mock.calls[0][0].system).toContain(
+      '面试前 1–3 天发出的求职意向确认消息不构成已提醒',
+    );
+    expect(result.outcome.kind).toBe('reply');
+  });
+
+  it('accepts confirmation_already_sent as a d2 semantic stop reason', async () => {
+    llm.generateStructured.mockResolvedValueOnce({
+      output: {
+        decision: 'skip',
+        blockReason: 'confirmation_already_sent',
+        message: '',
+        reason: '招募经理已在报名后另行确认过本次面试意向',
+      },
+      usage: { inputTokens: 12, outputTokens: 5, totalTokens: 17 },
+    });
+
+    const result = await reengagementAgent.compose({
+      sessionRef,
+      scenario: getScenario('interview_reminder')!,
+      jobData: job('interview_reminder', { workOrderId: 555, touchVariant: 'd2_confirm' }),
+      state: baseState({ terminal: 'booked' }),
+      bookingContext: liveBookingContext(),
+    });
+
+    expect(result.outcome.kind).toBe('skipped');
+    expect(result.validationReason).toBe('confirmation_already_sent');
   });
 
   it('corrects “tomorrow” to “today” when an interview reminder fires on the interview date', async () => {
@@ -1024,5 +1108,131 @@ describe('ReengagementAgent', () => {
 
     expect(result.outcome.kind).toBe('reply');
     expect(result.validationReason).toBeUndefined();
+  });
+
+  it('generates escalated store copy with a future-tense group invite preview', async () => {
+    llm.generateStructured.mockResolvedValueOnce({
+      output: {
+        decision: 'send',
+        blockReason: 'none',
+        message: '这批新岗位也不太感兴趣吗？稍后邀请你进兼职岗位群，可以继续看看其他机会。',
+        reason: '已经是第二轮扩面后的沉默，需要确认兴趣并预告后续拉群',
+      },
+      usage: { inputTokens: 10, outputTokens: 8, totalTokens: 18 },
+    });
+
+    const result = await reengagementAgent.compose({
+      sessionRef,
+      scenario: getScenario('store_presented_no_reply')!,
+      jobData: job('store_presented_no_reply', { escalateToGroupInvite: true }),
+      state: baseState({
+        presentedStores: [{ jobId: 519709 }],
+        storePresentationRounds: 2,
+      }),
+    });
+
+    const system = llm.generateStructured.mock.calls[0][0].system as string;
+    expect(system).toContain('询问候选人是否对这些机会不感兴趣');
+    expect(system).toContain('拉群只能用将来或待执行时态');
+    expect(system).toContain('目前尚未执行');
+    expect(result.outcome.kind).toBe('reply');
+    expect(result.outcome.reply?.text).toContain('稍后邀请你进兼职岗位群');
+    expect(result.outcome.reply?.text).not.toMatch(/已拉|已经进群|已加入/u);
+  });
+
+  it('rejects only a false completed group-invite claim and accepts the corrected preview', async () => {
+    llm.generateStructured
+      .mockResolvedValueOnce({
+        output: {
+          decision: 'send',
+          blockReason: 'none',
+          message: '这些岗位不感兴趣吗？已经拉你进兼职岗位群了。',
+          reason: '第二轮扩面收口',
+        },
+        usage: { inputTokens: 10, outputTokens: 8, totalTokens: 18 },
+      })
+      .mockResolvedValueOnce({
+        output: {
+          decision: 'send',
+          blockReason: 'none',
+          message: '这些岗位不感兴趣吗？稍后邀请你进兼职岗位群继续看看。',
+          reason: '第二轮扩面收口',
+        },
+        usage: { inputTokens: 10, outputTokens: 8, totalTokens: 18 },
+      });
+
+    const result = await reengagementAgent.compose({
+      sessionRef,
+      scenario: getScenario('store_presented_no_reply')!,
+      jobData: job('store_presented_no_reply', { escalateToGroupInvite: true }),
+      state: baseState({ presentedStores: [{ jobId: 519709 }] }),
+    });
+
+    expect(llm.generateStructured).toHaveBeenCalledTimes(2);
+    expect(llm.generateStructured.mock.calls[1][0].system).toContain(
+      'group_invite_completed_claim',
+    );
+    expect(result.outcome.kind).toBe('reply');
+    expect(result.outcome.reply?.text).toBe('这些岗位不感兴趣吗？稍后邀请你进兼职岗位群继续看看。');
+  });
+
+  it('builds the onboarding prompt without tools or unsupported employment claims', async () => {
+    llm.generateStructured.mockResolvedValueOnce({
+      output: {
+        decision: 'send',
+        blockReason: 'none',
+        message: '最近入职进展还顺利吗？有遇到什么问题需要协助可以跟我说。',
+        reason: '工单仍是面试成功，适合确认入职进展',
+      },
+      usage: { inputTokens: 10, outputTokens: 8, totalTokens: 18 },
+    });
+
+    const result = await reengagementAgent.compose({
+      sessionRef,
+      scenario: getScenario('post_interview_onboarding')!,
+      jobData: job('post_interview_onboarding', { workOrderId: 901 }),
+      state: baseState({ terminal: 'booked' }),
+      bookingContext: liveBookingContext({
+        workOrderId: 901,
+        currentStatus: '面试成功',
+        interviewAt: undefined,
+      }),
+    });
+
+    const request = llm.generateStructured.mock.calls[0][0];
+    expect(request.system).toContain('确认候选人是否已顺利入职、有没有遇到问题');
+    expect(request.system).toContain('不得断言候选人已入职或未入职');
+    expect(request.system).toContain('blockReason=candidate_abandoned_onboarding');
+    expect(request.system).toContain('blockReason=candidate_reported_onboarded');
+    expect(request.system).toContain('面试通过时间：2026/6/24 10:00');
+    expect(request).not.toHaveProperty('tools');
+    expect(result.outcome.kind).toBe('reply');
+  });
+
+  it.each([
+    ['candidate_abandoned_onboarding', '我决定不去了，不入职了'],
+    ['candidate_reported_onboarded', '我已经入职上岗了'],
+  ] as const)('skips onboarding when the candidate reports %s', async (blockReason, content) => {
+    memoryRecall.recentMessages = [{ role: 'user', content }];
+    llm.generateStructured.mockResolvedValueOnce({
+      output: {
+        decision: 'skip',
+        blockReason,
+        message: '',
+        reason: `候选人明确表示：${content}`,
+      },
+      usage: { inputTokens: 10, outputTokens: 8, totalTokens: 18 },
+    });
+
+    const result = await reengagementAgent.compose({
+      sessionRef,
+      scenario: getScenario('post_interview_onboarding')!,
+      jobData: job('post_interview_onboarding', { workOrderId: 901 }),
+      state: baseState({ terminal: 'booked' }),
+      bookingContext: liveBookingContext({ workOrderId: 901, currentStatus: '面试成功' }),
+    });
+
+    expect(result.outcome.kind).toBe('skipped');
+    expect(result.validationReason).toBe(blockReason);
   });
 });

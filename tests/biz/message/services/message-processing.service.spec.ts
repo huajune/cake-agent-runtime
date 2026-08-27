@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { MessageProcessingService } from '@biz/message/services/message-processing.service';
 import { MessageProcessingRepository } from '@biz/message/repositories/message-processing.repository';
 import { GuardrailReviewService } from '@biz/message/services/guardrail-review.service';
+import { AgentExecutionEventRepository } from '@biz/monitoring/repositories/agent-execution-event.repository';
 
 describe('MessageProcessingService', () => {
   let service: MessageProcessingService;
@@ -19,6 +20,10 @@ describe('MessageProcessingService', () => {
     findByTraceId: jest.fn().mockResolvedValue(null),
   };
 
+  const mockAgentExecutionEventRepository = {
+    findByTraceId: jest.fn().mockResolvedValue([]),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -30,6 +35,10 @@ describe('MessageProcessingService', () => {
         {
           provide: GuardrailReviewService,
           useValue: mockGuardrailReviewService,
+        },
+        {
+          provide: AgentExecutionEventRepository,
+          useValue: mockAgentExecutionEventRepository,
         },
       ],
     }).compile();
@@ -302,10 +311,11 @@ describe('MessageProcessingService', () => {
 
       const result = await service.getMessageProcessingRecordById('msg-123');
 
-      expect(result).toEqual(mockRecord);
+      expect(result).toEqual({ ...mockRecord, executionEvents: [] });
       expect(mockMessageProcessingRepository.getMessageProcessingRecordById).toHaveBeenCalledWith(
         'msg-123',
       );
+      expect(mockAgentExecutionEventRepository.findByTraceId).toHaveBeenCalledWith('msg-123');
     });
 
     it('should return null when record does not exist', async () => {
@@ -324,8 +334,28 @@ describe('MessageProcessingService', () => {
 
       const result = await service.getMessageProcessingRecordById('msg-123');
 
-      expect(result).toEqual({ ...mockRecord, guardrailReview: mockReview });
+      expect(result).toEqual({ ...mockRecord, guardrailReview: mockReview, executionEvents: [] });
       expect(mockGuardrailReviewService.findByTraceId).toHaveBeenCalledWith('msg-123');
+    });
+
+    it('should attach execution events in the detail response', async () => {
+      const mockRecord = { id: 'msg-123', status: 'success' };
+      const mockEvents = [
+        {
+          id: 1,
+          type: 'tool_call',
+          traceId: 'msg-123',
+          payload: { toolName: 'duliday_job_list', status: 'empty' },
+          createdAt: '2026-08-24T01:02:03.000Z',
+        },
+      ];
+      mockMessageProcessingRepository.getMessageProcessingRecordById.mockResolvedValue(mockRecord);
+      mockAgentExecutionEventRepository.findByTraceId.mockResolvedValueOnce(mockEvents);
+
+      const result = await service.getMessageProcessingRecordById('msg-123');
+
+      expect(result).toEqual({ ...mockRecord, executionEvents: mockEvents });
+      expect(mockAgentExecutionEventRepository.findByTraceId).toHaveBeenCalledWith('msg-123');
     });
 
     it('should pass through repository errors', async () => {

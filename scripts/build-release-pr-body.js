@@ -40,6 +40,7 @@ function buildReleasePrContent({ base, head }) {
   const fallbackVersion = readPackageVersion();
   const version = extractExpectedVersion(pending) || `v${fallbackVersion}`;
   const updateSummary = extractBulletSection(pending, '更新摘要');
+  const configChanges = extractBulletSection(pending, '配置变更', { preserveCode: true });
   const envReminder = extractBulletSection(pending, '环境变量提醒');
   const verification = extractBulletSection(pending, '验证记录', { preserveCode: true });
 
@@ -56,6 +57,9 @@ function buildReleasePrContent({ base, head }) {
       '',
       '## 更新摘要',
       ...renderLines(updateSummary, '- 暂无待发布摘要'),
+      '',
+      '## 配置与 Migration 提醒',
+      ...renderLines(configChanges, '- 无'),
       '',
       '## 发布前确认',
       '- [ ] GitHub CI 已通过',

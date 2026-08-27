@@ -98,6 +98,16 @@ export interface PendingHireWorkOrder {
   botImId: string | null;
 }
 
+/** 复聊入职跟进 sweep 消费的面试通过事件。 */
+export interface RecentInterviewPassedEvent {
+  corpId: string;
+  userId: string;
+  chatId: string;
+  botImId: string | null;
+  workOrderId: number;
+  occurredAt: string;
+}
+
 /** daily_ops_report 在某时间范围内的计数汇总（仪表盘业务卡 / KPI 用）。 */
 export interface DailyOpsReportSums {
   friendsAdded: number;

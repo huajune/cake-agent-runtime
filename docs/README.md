@@ -2,21 +2,21 @@
 
 > Cake Agent Runtime — 技术文档导航
 
-**最后更新**：2026-08-12
+**最后更新**：2026-08-26
 
 ---
 
 ## 🧭 我该读哪份？
 
-| 角色 / 目标         | 建议入口                                                                                                                                                          |
-| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 快速了解系统全貌    | [系统宣讲说明书](cake-agent-runtime-overview.md) → [Agent 运行时架构](architecture/agent-runtime-architecture.md)                                                 |
-| 产品 / 运营         | [产品定义](product/product-definition.md)、[Agent 运营手册](product/agent-for-operations.md)、[业务流程](product/business-flows.md)                               |
+| 角色 / 目标         | 建议入口                                                                                                                                                   |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 快速了解系统全貌    | [系统宣讲说明书](cake-agent-runtime-overview.md) → [Agent 运行时架构](architecture/agent-runtime-architecture.md)                                          |
+| 产品 / 运营         | [产品定义](product/product-definition.md)、[Agent 运营手册](product/agent-for-operations.md)                                                               |
 | 新人研发入门        | [开发指南](guides/development-guide.md) → [Agent 运行时架构](architecture/agent-runtime-architecture.md) → [记忆系统](architecture/memory-architecture.md) |
-| 做可靠性 / 守卫改进 | [安全护栏说明](architecture/security-guardrails.md) + [Guardrail 质量体系](architecture/guardrail-quality-system.md)                        |
+| 做可靠性 / 守卫改进 | [安全护栏说明](architecture/security-guardrails.md) + [Guardrail 质量体系](architecture/guardrail-quality-system.md)                                       |
 | 改候选人事实链路    | [候选人档案域架构](architecture/candidate-profile-domain.md)（域宪法）→ [记忆系统](architecture/memory-architecture.md)                                    |
-| 质量评测 / 回归     | [测试套件架构](architecture/test-suite-architecture.md) + [质量评测指南](guides/test-suite-guide.md)                                                              |
-| 发版 / 部署         | [发版底账](releases/README.md) → [版本发布指南](workflows/version-release-guide.md) → [构建与部署指南](workflows/deploy-guide.md)                                 |
+| 质量评测 / 回归     | [测试套件架构](architecture/test-suite-architecture.md) + [质量评测指南](guides/test-suite-guide.md)                                                       |
+| 发版 / 部署         | [发版底账](releases/README.md) → [版本发布指南](workflows/version-release-guide.md) → [构建与部署指南](workflows/deploy-guide.md)                          |
 
 ---
 
@@ -27,28 +27,27 @@
 
 ### 运行时核心
 
-- **[Agent 运行时架构](architecture/agent-runtime-architecture.md)** ⭐ — 主干：分层架构、编排（Generator/Runner）、**运行时硬约束 HC-1~HC-5**、Context 组装、Provider 三层、工具、消息管线、模块依赖图
+- **[Agent 运行时架构](architecture/agent-runtime-architecture.md)** ⭐ — 主干：分层所有权、Runner/Generator、Preparation 与 Prompt、工具、记忆、Provider、消息链路、四个防线作用位和运行时不变量
 - **[Agent 运营手册](product/agent-for-operations.md)** 👉 — 上文的业务语言版（运营向，收录在 product/）
 - **[企微消息服务架构](architecture/message-service-architecture.md)** — 消息管道：去重→过滤→存储→聚合→Agent→投递
 - **[Gate 拒绝与人工介入流水线](architecture/handoff-gate-and-intervention-pipeline.md)** — Tool gate → LLM 短路 → Runner handoff → 底账判重 → 暂停托管与飞书告警
 - **[二次主动回复流水线](architecture/reengagement-pipeline.md)** — 复聊：锚点触发、停止条件与水位、outbox 幂等、带外工单核验
 - **[群任务通知流水线](architecture/group-task-pipeline.md)** — 群任务定时通知的运行时流水线
-- **[岗位召回链路现状](architecture/job-recall-chain.md)** — 实时调海绵、召回智能在查询参数构造层；含 G1-G4 已知缺口 backlog
 
 ### 候选人事实链路
 
 - **[候选人档案域架构](architecture/candidate-profile-domain.md)** ⭐ — **域宪法**：主权归 memory / 实现归 resolution、字段四阶段、治理四不变式、claim 通货、消费面纪律
-- **[记忆与状态全局视图](architecture/memory-and-state.md)** 👉 — **排障入口**：一张图看清全部状态存储及其关系（三角色心智模型，110 行）
-- **[记忆系统架构与数据流](architecture/memory-architecture.md)** — 四层记忆（CoALA）、**字段归属唯一权威表**、读写时序、prompt/工具消费、沉淀与排障顺序
+- **[记忆与状态全局视图](architecture/memory-and-state.md)** 👉 — **排障入口**：一张图看清 Redis、Supabase、回合内状态与 tools 单据
+- **[记忆系统架构与数据流](architecture/memory-architecture.md)** — 两层记忆终态、读写时序、Prompt / 工具消费矩阵、consolidation 与排障路径
 - **[品牌解析域](architecture/brand-resolution.md)** — 目录匹配、意图极性、会话品牌状态、图片品牌、queryMeta 对账
 - **[地理解析域](architecture/geo-resolution.md)** — 行政区解析、白名单三轮扫描、供应商适配、距离锚点
 - **[图片信息链路](architecture/visual-fact-pipeline.md)** — VisualFactSheet 生产/存储/消费全链路（附录 A = 字段白名单唯一权威）
 
 ### 守卫与判定哲学
 
-- **[安全护栏说明](architecture/security-guardrails.md)** ⭐ — 护栏现状总览：基础设施层 + Agent 三层守卫（input/tool/output）
+- **[安全护栏说明](architecture/security-guardrails.md)** ⭐ — 防线现状总览：基础设施 + Input / Prompt / Tool / Output 四个作用位
 - **[语义判定三分法](architecture/semantic-decision-taxonomy.md)** — 正则、LLM 标签位与向量判定的准入边界
-- **[Guardrail 质量体系](architecture/guardrail-quality-system.md)** 🚧 — 双环质量体系；**离线环仅落成 skills，src 内未实现**
+- **[Guardrail 质量体系](architecture/guardrail-quality-system.md)** — Output 实时裁决、一次有界修复与快/慢质量闭环；慢环为仓外流程，`src/**` 无自动执行器
 
 ### 平台系统与规范
 
@@ -79,14 +78,13 @@
 
 - **[飞书通知系统](infrastructure/feishu-alert-system.md)** — 飞书 Webhook 机器人集成
 - **[人工告警触发场景清单](infrastructure/human-alert-triggers.md)** — 需要人工介入的告警触发场景
+- **[Bull Queue 使用指南](infrastructure/bull-queue-guide.md)** — 消息聚合队列的使用与排障
 
 ---
 
 ## 📋 产品 (product/)
 
 - **[产品定义](product/product-definition.md)** — 定位、用户角色、核心功能
-- **[业务流程详细说明](product/business-flows.md)** — 候选人招聘全流程 + 群聊管理
-- **[产品规划路线图](product/product-roadmap.md)** — 版本规划与功能优先级
 - **[复聊功能产品说明](product/reengagement.md)** — 主动跟进的场景、触发/停止规则、内容规范、灰度、指标与验收口径
 - **[Agent 运营手册（理解系统+日常操作）](product/agent-for-operations.md)** ⭐ — 运营向：消息旅程、记忆、工具清单、剧本、可调项、排查（原 product-view + agent-workflow 合并）
 - **[敏感信息与安全护栏全景（运营版）](product/sensitive-info-guardrails-for-operations.md)** — 公平性/诚信/隐私保护与运营处置指引（技术侧见 [security-guardrails.md](architecture/security-guardrails.md)）
@@ -94,7 +92,6 @@
 - **[群任务定时通知系统](product/group-task.md)** — 群任务产品设计（运行时见 [group-task-pipeline.md](architecture/group-task-pipeline.md)）
 - **[运营数据体系 + 海绵集成 产品设计](product/ops-data-and-sponge-integration.md)** — ops_events 数据模型设计（研发向；顶部含实现校准记录）
 - **[运营数据体系 · 产品说明](product/ops-data-spec-for-operations.md)** — 上文的运营使用说明（日报/Web/埋点三出口）
-- **[收资流字段去重与一次成型](product/collection-flow-dedup-requirement.md)** — 已知字段扣除、字段集去重与缺口式追问需求草案
 
 ---
 
@@ -125,22 +122,10 @@
 
 ---
 
-## 🛠️ 技术专题 (technical/)
-
-- **[Bull Queue 使用指南](technical/bull-queue-guide.md)** — 消息聚合队列的使用与排障
-
----
-
 ## 📌 待办与规划 (todo/)
 
-> 这些是工程 backlog / 规划稿，不代表已实现的设计。落地后应更新对应架构文档或归档。
-
-- **[LLM 判官标定](todo/judge-calibration.md)** — 自迭代循环的唯一欠账：周频抽检给判官算精确率（发牌制用在 LLM-as-a-judge 上）
-- **[收资域总纲](todo/label-driven-collection-refactor.md)** — 标签制×收资表单状态机主蓝图；附录A采信诊断/附录B claim引擎P11底账/附录C 0817执行底账
-- **[Prompt 守卫层与命名对齐](todo/prompt-guardrail-and-naming-alignment.md)** — 全部落地（余 C3 待观测会话）；发版验收（D4 回归案+A5 采用率观察）后删除
-- **[BadCase 架构覆盖分诊](todo/badcase-arch-coverage-triage.md)** — α/β/γ 三工程已执行；本文即发版验收清单（A 类回归验证+回归案回放+block 底账重扫），验收完成后删除
-- **[PR #1000 评审修复底账](todo/pr1000-review-fixes.md)** / **[二轮修复底账](todo/pr1000-review-round2-fixes.md)** — 两轮全部落地；合并评审的直接证据，PR 合入即删
-
+> 入口见 **[Todo 索引](todo/README.md)**。这里只保留有所有者、状态和完成条件的未完成事项；
+> 已落地方案删除并留在 Git 历史，不在 todo 中长期保存执行记录。
 
 ---
 

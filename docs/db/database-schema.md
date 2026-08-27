@@ -2,7 +2,7 @@
 
 > Cake Agent Runtime - Supabase (PostgreSQL) 数据库设计文档
 
-**最后更新**：2026-05-27
+**最后更新**：2026-08-26
 
 **数据库**：Supabase PostgreSQL | **基线迁移**：[supabase/migrations/20260310000000_baseline.sql](../../supabase/migrations/20260310000000_baseline.sql)
 
@@ -43,24 +43,24 @@
 
 ## 总览
 
-| # | 表名 | 业务域 | 写入方式 | 读取方式 | 数据保留 |
-|---|------|--------|---------|---------|---------|
-| 1 | `chat_messages` | 消息 | upsert | select / RPC | 90 天 |
-| 2 | `message_processing_records` | 消息 | insert / upsert | select / RPC | 30 天（7 天后清空 agent_invocation） |
-| ~~3~~ | ~~`interview_booking_records`~~ 🗄️ 已删除 | — | — | — | 迁移 20260625111500 移除 |
-| ~~4~~ | ~~`recruitment_cases`~~ 🗄️ 已删除 | — | — | — | 迁移 20260610170000 移除 |
-| 5 | `agent_long_term_memories` | 记忆 | RPC upsert / select | select | 永久 |
-| 6 | `user_activity` | 用户 | RPC upsert | select | 30 天 |
-| 7 | `user_hosting_status` | 用户 | upsert / update | select | 永久 |
-| 8 | `monitoring_hourly_stats` | 监控 | upsert | select | 永久 |
-| 9 | `monitoring_daily_stats` | 监控 | upsert | select | 永久 |
-| 10 | `monitoring_error_logs` | 监控 | insert | select | 30 天 |
-| 11 | `system_config` | 配置 | upsert | select | 永久 |
-| 12 | `strategy_config` | 配置 | insert / update | select | 永久（多版本） |
-| 13 | `strategy_config_changelog` | 配置 | insert | select | 永久 |
-| 14 | `test_batches` | 测试 | insert / update | select | 永久 |
-| 15 | `test_executions` | 测试 | insert / update | select | 永久 |
-| 16 | `test_conversation_snapshots` | 测试 | insert / update | select | 永久 |
+| #     | 表名                                      | 业务域 | 写入方式            | 读取方式     | 数据保留                             |
+| ----- | ----------------------------------------- | ------ | ------------------- | ------------ | ------------------------------------ |
+| 1     | `chat_messages`                           | 消息   | upsert              | select / RPC | 90 天                                |
+| 2     | `message_processing_records`              | 消息   | insert / upsert     | select / RPC | 30 天（7 天后清空 agent_invocation） |
+| ~~3~~ | ~~`interview_booking_records`~~ 🗄️ 已删除 | —      | —                   | —            | 迁移 20260625111500 移除             |
+| ~~4~~ | ~~`recruitment_cases`~~ 🗄️ 已删除         | —      | —                   | —            | 迁移 20260610170000 移除             |
+| 5     | `agent_long_term_memories`                | 记忆   | RPC upsert / select | select       | 永久                                 |
+| 6     | `user_activity`                           | 用户   | RPC upsert          | select       | 30 天                                |
+| 7     | `user_hosting_status`                     | 用户   | upsert / update     | select       | 永久                                 |
+| 8     | `monitoring_hourly_stats`                 | 监控   | upsert              | select       | 永久                                 |
+| 9     | `monitoring_daily_stats`                  | 监控   | upsert              | select       | 永久                                 |
+| 10    | `monitoring_error_logs`                   | 监控   | insert              | select       | 30 天                                |
+| 11    | `system_config`                           | 配置   | upsert              | select       | 永久                                 |
+| 12    | `strategy_config`                         | 配置   | insert / update     | select       | 永久（多版本）                       |
+| 13    | `strategy_config_changelog`               | 配置   | insert              | select       | 永久                                 |
+| 14    | `test_batches`                            | 测试   | insert / update     | select       | 永久                                 |
+| 15    | `test_executions`                         | 测试   | insert / update     | select       | 永久                                 |
+| 16    | `test_conversation_snapshots`             | 测试   | insert / update     | select       | 永久                                 |
 
 ---
 
@@ -78,7 +78,7 @@
 ├─────────────────────────────────────────────────────────────────┤
 │                        记忆/画像                                 │
 │                                                                 │
-│  agent_long_term_memories  (corp_id + user_id 唯一，跨会话长期记忆) │
+│  agent_long_term_memories  (corp_id + user_id + bot_user_id 关系档) │
 ├─────────────────────────────────────────────────────────────────┤
 │                        用户管理表                                │
 │                                                                 │
@@ -118,29 +118,29 @@
 - Repository: [src/biz/message/repositories/chat-message.repository.ts](../../src/biz/message/repositories/chat-message.repository.ts)
 - Entity: [src/biz/message/entities/chat-message.entity.ts](../../src/biz/message/entities/chat-message.entity.ts)
 
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `id` | uuid | gen_random_uuid() | 主键 |
-| `chat_id` | text | NOT NULL | 会话ID，通常为 recipientId |
-| `message_id` | text | NOT NULL, UNIQUE | 消息唯一ID，用于去重 |
-| `role` | text | NOT NULL | 消息角色：`user` / `assistant` |
-| `content` | text | NOT NULL | 消息内容 |
-| `timestamp` | timestamptz | NOT NULL | 消息发送时间 |
-| `candidate_name` | text | - | 候选人微信昵称 |
-| `manager_name` | text | - | 招募经理姓名 |
-| `org_id` | text | - | 企业ID |
-| `bot_id` | text | - | Bot ID |
-| `is_room` | boolean | false | 是否群聊 |
-| `message_type` | text | 'TEXT' | TEXT/IMAGE/VOICE/FILE/VIDEO/LINK |
-| `source` | text | 'MOBILE_PUSH' | MOBILE_PUSH/API_SEND/AI_REPLY |
-| `im_bot_id` | text | - | 托管账号的系统 wxid |
-| `im_contact_id` | text | - | 联系人系统ID |
-| `contact_type` | text | 'UNKNOWN' | UNKNOWN/PERSONAL_WECHAT/OFFICIAL_ACCOUNT/ENTERPRISE_WECHAT |
-| `is_self` | boolean | false | 是否托管账号自己发送 |
-| `payload` | jsonb | - | 原始消息 JSON |
-| `avatar` | text | - | 用户头像 URL |
-| `external_user_id` | text | - | 企微外部用户ID |
-| `created_at` | timestamptz | now() | 记录创建时间 |
+| 字段               | 类型        | 默认值            | 说明                                                       |
+| ------------------ | ----------- | ----------------- | ---------------------------------------------------------- |
+| `id`               | uuid        | gen_random_uuid() | 主键                                                       |
+| `chat_id`          | text        | NOT NULL          | 会话ID，通常为 recipientId                                 |
+| `message_id`       | text        | NOT NULL, UNIQUE  | 消息唯一ID，用于去重                                       |
+| `role`             | text        | NOT NULL          | 消息角色：`user` / `assistant`                             |
+| `content`          | text        | NOT NULL          | 消息内容                                                   |
+| `timestamp`        | timestamptz | NOT NULL          | 消息发送时间                                               |
+| `candidate_name`   | text        | -                 | 候选人微信昵称                                             |
+| `manager_name`     | text        | -                 | 招募经理姓名                                               |
+| `org_id`           | text        | -                 | 企业ID                                                     |
+| `bot_id`           | text        | -                 | Bot ID                                                     |
+| `is_room`          | boolean     | false             | 是否群聊                                                   |
+| `message_type`     | text        | 'TEXT'            | TEXT/IMAGE/VOICE/FILE/VIDEO/LINK                           |
+| `source`           | text        | 'MOBILE_PUSH'     | MOBILE_PUSH/API_SEND/AI_REPLY                              |
+| `im_bot_id`        | text        | -                 | 托管账号的系统 wxid                                        |
+| `im_contact_id`    | text        | -                 | 联系人系统ID                                               |
+| `contact_type`     | text        | 'UNKNOWN'         | UNKNOWN/PERSONAL_WECHAT/OFFICIAL_ACCOUNT/ENTERPRISE_WECHAT |
+| `is_self`          | boolean     | false             | 是否托管账号自己发送                                       |
+| `payload`          | jsonb       | -                 | 原始消息 JSON                                              |
+| `avatar`           | text        | -                 | 用户头像 URL                                               |
+| `external_user_id` | text        | -                 | 企微外部用户ID                                             |
+| `created_at`       | timestamptz | now()             | 记录创建时间                                               |
 
 **索引**：
 
@@ -165,40 +165,40 @@
 - Entity: [src/biz/message/entities/message-processing.entity.ts](../../src/biz/message/entities/message-processing.entity.ts)
 - Tracking: [src/biz/monitoring/services/tracking/message-tracking.service.ts](../../src/biz/monitoring/services/tracking/message-tracking.service.ts)
 
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `id` | bigint | sequence | 主键（自增） |
-| `message_id` | text | NOT NULL, UNIQUE | 关联 chat_messages |
-| `chat_id` | text | NOT NULL | 会话ID |
-| `user_id` | text | - | 用户ID |
-| `user_name` | text | - | 用户昵称（trgm 索引） |
-| `manager_name` | text | - | 经理姓名 |
-| `received_at` | timestamptz | now() | 消息接收时间 |
-| `message_preview` | text | - | 用户消息预览 |
-| `reply_preview` | text | - | AI 回复预览 |
-| `reply_segments` | integer | 0 | 回复分段数 |
-| `status` | text | NOT NULL, CHECK | `processing` / `success` / `failure` / `timeout` |
-| `error` | text | - | 错误信息 |
-| `scenario` | text | - | 场景分类 |
-| `alert_type` | text | - | 失败分类：agent/message/delivery/system/merge/unknown |
-| `total_duration` | integer | - | 总耗时（ms） |
-| `queue_duration` | integer | - | 队列等待耗时（ms） |
-| `prep_duration` | integer | - | 准备阶段耗时（ms） |
-| `ai_start_at` | bigint | - | AI 处理开始时间戳 |
-| `ai_end_at` | bigint | - | AI 处理结束时间戳 |
-| `ai_duration` | integer | - | AI 处理耗时（ms） |
-| `send_duration` | integer | - | 消息发送耗时（ms） |
-| `tool_calls` | jsonb | - | 工具调用明细 `[{ toolName, args, result, status, durationMs }]` |
-| `agent_steps` | jsonb | - | Agent 逐步轨迹 `[{ stepIndex, text, reasoning, toolCalls, usage, durationMs }]` |
-| `anomaly_flags` | text[] | - | 异常标记：tool_loop/tool_empty_result/tool_narrow_result/tool_chain_overlong/no_tool_called |
-| `memory_snapshot` | jsonb | - | 运行时记忆快照 `{ currentStage, presentedJobIds, recommendedJobIds, sessionFacts, profileKeys }` |
-| `token_usage` | integer | - | Token 消耗量 |
-| `is_fallback` | boolean | false | 是否降级处理 |
-| `fallback_success` | boolean | - | 降级是否成功 |
-| `agent_invocation` | jsonb | - | Agent 完整调用记录（request/response/http，7 天后置 NULL） |
-| `batch_id` | varchar(255) | - | 聚合批次ID |
-| `created_at` | timestamptz | now() | - |
-| `updated_at` | timestamptz | now() | trigger 自动维护 |
+| 字段               | 类型         | 默认值           | 说明                                                                                             |
+| ------------------ | ------------ | ---------------- | ------------------------------------------------------------------------------------------------ |
+| `id`               | bigint       | sequence         | 主键（自增）                                                                                     |
+| `message_id`       | text         | NOT NULL, UNIQUE | 关联 chat_messages                                                                               |
+| `chat_id`          | text         | NOT NULL         | 会话ID                                                                                           |
+| `user_id`          | text         | -                | 用户ID                                                                                           |
+| `user_name`        | text         | -                | 用户昵称（trgm 索引）                                                                            |
+| `manager_name`     | text         | -                | 经理姓名                                                                                         |
+| `received_at`      | timestamptz  | now()            | 消息接收时间                                                                                     |
+| `message_preview`  | text         | -                | 用户消息预览                                                                                     |
+| `reply_preview`    | text         | -                | AI 回复预览                                                                                      |
+| `reply_segments`   | integer      | 0                | 回复分段数                                                                                       |
+| `status`           | text         | NOT NULL, CHECK  | `processing` / `success` / `failure` / `timeout`                                                 |
+| `error`            | text         | -                | 错误信息                                                                                         |
+| `scenario`         | text         | -                | 场景分类                                                                                         |
+| `alert_type`       | text         | -                | 失败分类：agent/message/delivery/system/merge/unknown                                            |
+| `total_duration`   | integer      | -                | 总耗时（ms）                                                                                     |
+| `queue_duration`   | integer      | -                | 队列等待耗时（ms）                                                                               |
+| `prep_duration`    | integer      | -                | 准备阶段耗时（ms）                                                                               |
+| `ai_start_at`      | bigint       | -                | AI 处理开始时间戳                                                                                |
+| `ai_end_at`        | bigint       | -                | AI 处理结束时间戳                                                                                |
+| `ai_duration`      | integer      | -                | AI 处理耗时（ms）                                                                                |
+| `send_duration`    | integer      | -                | 消息发送耗时（ms）                                                                               |
+| `tool_calls`       | jsonb        | -                | 工具调用明细 `[{ toolName, args, result, status, durationMs }]`                                  |
+| `agent_steps`      | jsonb        | -                | Agent 逐步轨迹 `[{ stepIndex, text, reasoning, toolCalls, usage, durationMs }]`                  |
+| `anomaly_flags`    | text[]       | -                | 异常标记：tool_loop/tool_empty_result/tool_narrow_result/tool_chain_overlong/no_tool_called      |
+| `memory_snapshot`  | jsonb        | -                | 运行时记忆快照 `{ currentStage, presentedJobIds, recommendedJobIds, sessionFacts, profileKeys }` |
+| `token_usage`      | integer      | -                | Token 消耗量                                                                                     |
+| `is_fallback`      | boolean      | false            | 是否降级处理                                                                                     |
+| `fallback_success` | boolean      | -                | 降级是否成功                                                                                     |
+| `agent_invocation` | jsonb        | -                | Agent 完整调用记录（request/response/http，7 天后置 NULL）                                       |
+| `batch_id`         | varchar(255) | -                | 聚合批次ID                                                                                       |
+| `created_at`       | timestamptz  | now()            | -                                                                                                |
+| `updated_at`       | timestamptz  | now()            | trigger 自动维护                                                                                 |
 
 > `is_primary` 字段已于 20260414 迁移中移除，单条消息均视为自身主记录；`tools text[]` 已于 20260417 迁移中被 `tool_calls jsonb` 取代。
 
@@ -235,20 +235,20 @@
 
 **代码位置**：已随表删除（原 `src/biz/message/repositories/booking.repository.ts` / `booking.entity.ts`）
 
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `id` | uuid | gen_random_uuid() | 主键 |
-| `date` | date | NOT NULL | 预约日期 |
-| `brand_name` | text | - | 品牌名称 |
-| `store_name` | text | - | 门店名称 |
-| `booking_count` | integer | 0 | 预约次数 |
-| `chat_id` | varchar(255) | - | 会话ID |
-| `user_id` | varchar(255) | - | 用户 wxid（imContactId） |
-| `user_name` | varchar(255) | - | 用户昵称 |
-| `manager_id` | varchar(255) | - | 招募经理 ID |
-| `manager_name` | varchar(255) | - | 招募经理昵称 |
-| `created_at` | timestamptz | now() | - |
-| `updated_at` | timestamptz | now() | - |
+| 字段            | 类型         | 默认值            | 说明                     |
+| --------------- | ------------ | ----------------- | ------------------------ |
+| `id`            | uuid         | gen_random_uuid() | 主键                     |
+| `date`          | date         | NOT NULL          | 预约日期                 |
+| `brand_name`    | text         | -                 | 品牌名称                 |
+| `store_name`    | text         | -                 | 门店名称                 |
+| `booking_count` | integer      | 0                 | 预约次数                 |
+| `chat_id`       | varchar(255) | -                 | 会话ID                   |
+| `user_id`       | varchar(255) | -                 | 用户 wxid（imContactId） |
+| `user_name`     | varchar(255) | -                 | 用户昵称                 |
+| `manager_id`    | varchar(255) | -                 | 招募经理 ID              |
+| `manager_name`  | varchar(255) | -                 | 招募经理昵称             |
+| `created_at`    | timestamptz  | now()             | -                        |
+| `updated_at`    | timestamptz  | now()             | -                        |
 
 **唯一约束**：`(date, brand_name, store_name)`
 
@@ -270,27 +270,27 @@
 
 **代码位置**：已随表删除（原 `src/biz/recruitment-case/` 模块）
 
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `id` | uuid | gen_random_uuid() | 主键 |
-| `corp_id` | text | NOT NULL | 企业ID |
-| `chat_id` | text | NOT NULL | 会话ID |
-| `user_id` | text | - | 候选人ID |
-| `case_type` | text | NOT NULL, CHECK | 当前仅 `onboard_followup` |
-| `status` | text | NOT NULL, CHECK | `active` / `handoff` / `closed` / `expired` |
-| `booking_id` | text | - | 预约ID |
-| `booked_at` | timestamptz | - | 预约时间 |
-| `interview_time` | text | - | 面试时间（文本） |
-| `job_id` | bigint | - | 岗位ID |
-| `job_name` | text | - | 岗位名 |
-| `brand_name` | text | - | 品牌 |
-| `store_name` | text | - | 门店 |
-| `bot_im_id` | text | - | 托管账号 |
-| `followup_window_ends_at` | timestamptz | - | 跟进窗口截止 |
-| `last_relevant_at` | timestamptz | - | 最近相关活动 |
-| `metadata` | jsonb | - | 扩展字段 |
-| `created_at` | timestamptz | now() | - |
-| `updated_at` | timestamptz | now() | trigger 自动维护 |
+| 字段                      | 类型        | 默认值            | 说明                                        |
+| ------------------------- | ----------- | ----------------- | ------------------------------------------- |
+| `id`                      | uuid        | gen_random_uuid() | 主键                                        |
+| `corp_id`                 | text        | NOT NULL          | 企业ID                                      |
+| `chat_id`                 | text        | NOT NULL          | 会话ID                                      |
+| `user_id`                 | text        | -                 | 候选人ID                                    |
+| `case_type`               | text        | NOT NULL, CHECK   | 当前仅 `onboard_followup`                   |
+| `status`                  | text        | NOT NULL, CHECK   | `active` / `handoff` / `closed` / `expired` |
+| `booking_id`              | text        | -                 | 预约ID                                      |
+| `booked_at`               | timestamptz | -                 | 预约时间                                    |
+| `interview_time`          | text        | -                 | 面试时间（文本）                            |
+| `job_id`                  | bigint      | -                 | 岗位ID                                      |
+| `job_name`                | text        | -                 | 岗位名                                      |
+| `brand_name`              | text        | -                 | 品牌                                        |
+| `store_name`              | text        | -                 | 门店                                        |
+| `bot_im_id`               | text        | -                 | 托管账号                                    |
+| `followup_window_ends_at` | timestamptz | -                 | 跟进窗口截止                                |
+| `last_relevant_at`        | timestamptz | -                 | 最近相关活动                                |
+| `metadata`                | jsonb       | -                 | 扩展字段                                    |
+| `created_at`              | timestamptz | now()             | -                                           |
+| `updated_at`              | timestamptz | now()             | trigger 自动维护                            |
 
 **索引**：
 
@@ -306,26 +306,31 @@
 
 ### 5. agent_long_term_memories - 用户长期记忆
 
-**用途**：按 `(corp_id, user_id)` 存储跨会话的候选人长期记忆（字段级画像事实 + summary JSON）
+**用途**：按 `(corp_id, user_id, bot_user_id)` 存储候选人与托管账号之间的长期关系档。
+`bot_user_id` 必须使用稳定的企微 `wecomUserId`，不可使用会轮换的 `imBotId`。
 
 **代码位置**：
 
 - Store: [src/memory/stores/supabase.store.ts](../../src/memory/stores/supabase.store.ts)
-- Service: [src/memory/services/long-term.service.ts](../../src/memory/services/long-term.service.ts)
-- Types: [src/memory/types/long-term.types.ts](../../src/memory/types/long-term.types.ts)
+- Service: [src/memory/long-term/long-term.service.ts](../../src/memory/long-term/long-term.service.ts)
+- Types: [src/memory/long-term/long-term.types.ts](../../src/memory/long-term/long-term.types.ts)
 
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `id` | uuid | gen_random_uuid() | 主键 |
-| `corp_id` | text | NOT NULL | 企业ID |
-| `user_id` | text | NOT NULL | 候选人唯一ID |
-| `profile_facts` | jsonb | 默认空字段对象 | 姓名、电话、性别、年龄、学生身份、学历、健康证等画像事实 |
-| `summary_data` | jsonb | `{ recent: [], archive: null, lastSettledMessageAt: null }` | 摘要 |
-| `message_metadata` | jsonb | - | 最近消息元数据 |
-| `created_at` | timestamptz | now() | - |
-| `updated_at` | timestamptz | now() | trigger 自动维护 |
+| 字段                         | 类型        | 默认值                               | 说明                                                          |
+| ---------------------------- | ----------- | ------------------------------------ | ------------------------------------------------------------- |
+| `id`                         | uuid        | gen_random_uuid()                    | 主键                                                          |
+| `corp_id`                    | text        | NOT NULL                             | 企业ID                                                        |
+| `user_id`                    | text        | NOT NULL                             | 候选人唯一ID                                                  |
+| `bot_user_id`                | text        | NULL（仅兼容行）                     | 稳定托管账号维；生产长期召回只读非空关系行                    |
+| `semantic_profile`           | jsonb       | `default_long_term_profile_facts()`  | 9 个带置信度与来源的候选人身份字段                            |
+| `semantic_job_intent`        | jsonb       | `{}`                                 | 最新一段求职意向快照，按段整组覆盖                            |
+| `episodic_session_summaries` | jsonb       | `[]`                                 | 咨询段摘要数组，最多 20 段，超限淘汰最老条目                  |
+| `consolidation_watermarks`   | jsonb       | `default_consolidation_watermarks()` | 按 session 记录已处理消息边界，不属于记忆正文                 |
+| `message_metadata`           | jsonb       | -                                    | 最近消息元数据                                                |
+| `active_booking`             | jsonb       | -                                    | 兼容业务指针；只读写 `bot_user_id IS NULL` 行，不进入长期召回 |
+| `created_at`                 | timestamptz | now()                                | -                                                             |
+| `updated_at`                 | timestamptz | now()                                | trigger 自动维护                                              |
 
-`profile_facts` 固定字段：
+`semantic_profile` 固定字段：
 
 - `name`
 - `phone`
@@ -334,6 +339,8 @@
 - `is_student`
 - `education`
 - `has_health_certificate`
+- `height`
+- `weight`
 
 每个字段值结构：
 
@@ -341,7 +348,7 @@
 {
   "value": "19986247174",
   "confidence": "high",
-  "source": "booking",
+  "source": "system",
   "evidence": "报名成功后写入",
   "updatedAt": "2026-05-27T10:00:00.000Z"
 }
@@ -351,37 +358,41 @@
 
 `confidence` 取值说明：
 
-| 值 | 含义 | 工具消费 |
-|----|------|----------|
-| `high` | 可程序化采用。来自确定性规则、明确结构化输入，或经过强校验的事实 | 默认消费 |
-| `medium` | 可给模型参考。通常来自 LLM 结构化提取、会话沉淀或外部补全 | 默认不消费 |
-| `low` | 弱参考。来自系统兜底、弱规则或补充接口 | 不消费 |
-| `unknown` | 旧数据或缺少元数据的兼容值 | 不消费 |
+| 值       | 含义                                                             | 工具消费   |
+| -------- | ---------------------------------------------------------------- | ---------- |
+| `high`   | 可程序化采用。来自确定性规则、明确结构化输入，或经过强校验的事实 | 默认消费   |
+| `medium` | 可给模型参考。通常来自 LLM 结构化提取、会话沉淀或外部补全        | 默认不消费 |
+
+读边界会把旧 `low/unknown` 兼容归一为 `medium`；当前写入只使用 `high/medium`。
 
 `source` 取值说明：
 
-| 值 | 含义 |
-|----|------|
-| `candidate` | 候选人直接明示的结构化输入，且写入链路保留了候选人来源 |
-| `llm` | LLM 根据对话做的结构化提取 |
-| `rule` | 确定性规则、正则、白名单或别名表匹配得到 |
-| `system` | 外部系统或平台接口补充得到 |
-| `memory` | 历史记忆或旧结构兼容迁移得到 |
-| `derived` | 由其他字段推导得到，例如由区/地标白名单反推出城市 |
-| `booking` | 预约/报名成功后写入长期档案，是长期画像的最高质量来源 |
-| `extraction` | 会话沉淀时从 sessionFacts 抽取后写入长期档案；原 sessionFact 来源会记录在 evidence 中 |
-| `enrichment` | 外部画像补全链路写入，例如客户详情接口补充性别 |
+| 值                | 含义                                     |
+| ----------------- | ---------------------------------------- |
+| `candidate_quote` | 候选人直接明示且保留了原话证据           |
+| `model`           | LLM 根据对话做的结构化提取或模型工具入参 |
+| `rule`            | 确定性规则、正则、白名单或别名表匹配得到 |
+| `system`          | 外部系统或平台接口补充得到               |
+| `manual`          | 真人经理带外裁决                         |
+| `archive`         | 历史记忆或跨会话档案回放                 |
 
-**唯一约束**：`(corp_id, user_id)`（每用户仅一行）
+旧 source 名字只在读边界兼容映射，不再作为当前写入词汇。
+
+**约束与兼容行**：
+
+- 生产关系行唯一约束：`(corp_id, user_id, bot_user_id)`；
+- `bot_user_id IS NULL` 的旧行保留且不参与长期召回；
+- NULL 行由部分唯一索引约束为每个 `(corp_id, user_id)` 至多一行，用于兼容 `active_booking`。
 
 **触发器**：`trigger_agent_long_term_memories_updated_at`
 
 **RPC**：
 
-- `upsert_long_term_profile_facts`：字段级合并写入，已有 `high` 字段不会被非 `high` 覆盖
-- `append_long_term_summary_atomic`：原子追加 summary，维护 `recent/archive/lastSettledMessageAt`
+- `upsert_long_term_profile_facts`：写 profile patch，并可整组替换最新 job intent；置信度 rank 防止降级覆盖
+- `append_long_term_summary_atomic`：原子追加单层摘要数组，最多保留 20 段
+- `mark_long_term_settled_boundary`：兼容名称；原子更新摘要与独立 `consolidation_watermarks`
 
-**Key 命名**：`long-term:{corpId}:{userId}`（由 SupabaseStore 内部使用）
+**Redis 缓存 key**：`long-term:{corpId}:{userId}:{botUserId}`，TTL 2 小时。
 
 ---
 
@@ -396,21 +407,21 @@
 - Repository: [src/biz/user/repositories/user-hosting.repository.ts](../../src/biz/user/repositories/user-hosting.repository.ts)
 - Entity: [src/biz/user/entities/user-activity.entity.ts](../../src/biz/user/entities/user-activity.entity.ts)
 
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `id` | bigint | sequence | 主键（自增） |
-| `chat_id` | text | NOT NULL | 用户唯一标识 |
-| `od_id` | text | - | 用户 OD ID |
-| `od_name` | text | - | 用户昵称 |
-| `group_id` | text | - | 所属小组 ID |
-| `group_name` | text | - | 所属小组名称 |
-| `activity_date` | date | NOT NULL | 活跃日期（按天聚合） |
-| `message_count` | integer | 0 | 当日消息数 |
-| `token_usage` | integer | 0 | 当日 Token 消耗 |
-| `first_active_at` | timestamptz | NOT NULL | 首次活跃时间 |
-| `last_active_at` | timestamptz | NOT NULL | 末次活跃时间 |
-| `created_at` | timestamptz | now() | - |
-| `updated_at` | timestamptz | now() | - |
+| 字段              | 类型        | 默认值   | 说明                 |
+| ----------------- | ----------- | -------- | -------------------- |
+| `id`              | bigint      | sequence | 主键（自增）         |
+| `chat_id`         | text        | NOT NULL | 用户唯一标识         |
+| `od_id`           | text        | -        | 用户 OD ID           |
+| `od_name`         | text        | -        | 用户昵称             |
+| `group_id`        | text        | -        | 所属小组 ID          |
+| `group_name`      | text        | -        | 所属小组名称         |
+| `activity_date`   | date        | NOT NULL | 活跃日期（按天聚合） |
+| `message_count`   | integer     | 0        | 当日消息数           |
+| `token_usage`     | integer     | 0        | 当日 Token 消耗      |
+| `first_active_at` | timestamptz | NOT NULL | 首次活跃时间         |
+| `last_active_at`  | timestamptz | NOT NULL | 末次活跃时间         |
+| `created_at`      | timestamptz | now()    | -                    |
+| `updated_at`      | timestamptz | now()    | -                    |
 
 **唯一约束**：`(chat_id, activity_date)`
 
@@ -431,15 +442,15 @@
 - Repository: [src/biz/user/repositories/user-hosting.repository.ts](../../src/biz/user/repositories/user-hosting.repository.ts)
 - Entity: [src/biz/user/entities/user-hosting-status.entity.ts](../../src/biz/user/entities/user-hosting-status.entity.ts)
 
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `user_id` | varchar(100) | NOT NULL | 主键，用户ID |
-| `is_paused` | boolean | false | 是否暂停 |
-| `paused_at` | timestamptz | - | 暂停时间 |
-| `resumed_at` | timestamptz | - | 恢复时间 |
-| `pause_count` | integer | 0 | 累计暂停次数 |
-| `created_at` | timestamptz | now() | - |
-| `updated_at` | timestamptz | now() | - |
+| 字段          | 类型         | 默认值   | 说明         |
+| ------------- | ------------ | -------- | ------------ |
+| `user_id`     | varchar(100) | NOT NULL | 主键，用户ID |
+| `is_paused`   | boolean      | false    | 是否暂停     |
+| `paused_at`   | timestamptz  | -        | 暂停时间     |
+| `resumed_at`  | timestamptz  | -        | 恢复时间     |
+| `pause_count` | integer      | 0        | 累计暂停次数 |
+| `created_at`  | timestamptz  | now()    | -            |
+| `updated_at`  | timestamptz  | now()    | -            |
 
 **操作说明**：
 
@@ -460,20 +471,20 @@
 - Repository: [src/biz/monitoring/repositories/hourly-stats.repository.ts](../../src/biz/monitoring/repositories/hourly-stats.repository.ts)
 - Entity: [src/biz/monitoring/entities/hourly-stats.entity.ts](../../src/biz/monitoring/entities/hourly-stats.entity.ts)
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `id` | uuid | 主键 |
-| `hour` | timestamptz UNIQUE | 统计小时（整点） |
-| `message_count` / `success_count` / `failure_count` / `timeout_count` | integer | 消息数/成功/失败（非超时）/超时 |
-| `success_rate` | numeric | 成功率 |
-| `avg_duration` / `min_duration` / `max_duration` | integer | 耗时统计 |
-| `p50_duration` / `p95_duration` / `p99_duration` | integer | 耗时分位 |
-| `avg_queue_duration` / `avg_prep_duration` / `avg_ai_duration` / `avg_send_duration` | integer | 各阶段耗时 |
-| `active_users` / `active_chats` | integer | 活跃维度 |
-| `total_token_usage` | bigint | Token 总消耗 |
-| `fallback_count` / `fallback_success_count` | integer | 降级计数 |
-| `scenario_stats` / `tool_stats` / `error_type_stats` | jsonb | 场景/工具/错误类型分布 |
-| `created_at` / `updated_at` | timestamptz | - |
+| 字段                                                                                 | 类型               | 说明                            |
+| ------------------------------------------------------------------------------------ | ------------------ | ------------------------------- |
+| `id`                                                                                 | uuid               | 主键                            |
+| `hour`                                                                               | timestamptz UNIQUE | 统计小时（整点）                |
+| `message_count` / `success_count` / `failure_count` / `timeout_count`                | integer            | 消息数/成功/失败（非超时）/超时 |
+| `success_rate`                                                                       | numeric            | 成功率                          |
+| `avg_duration` / `min_duration` / `max_duration`                                     | integer            | 耗时统计                        |
+| `p50_duration` / `p95_duration` / `p99_duration`                                     | integer            | 耗时分位                        |
+| `avg_queue_duration` / `avg_prep_duration` / `avg_ai_duration` / `avg_send_duration` | integer            | 各阶段耗时                      |
+| `active_users` / `active_chats`                                                      | integer            | 活跃维度                        |
+| `total_token_usage`                                                                  | bigint             | Token 总消耗                    |
+| `fallback_count` / `fallback_success_count`                                          | integer            | 降级计数                        |
+| `scenario_stats` / `tool_stats` / `error_type_stats`                                 | jsonb              | 场景/工具/错误类型分布          |
+| `created_at` / `updated_at`                                                          | timestamptz        | -                               |
 
 **索引**：`idx_hourly_stats_hour` (hour DESC)
 
@@ -494,18 +505,18 @@
 - Repository: [src/biz/monitoring/repositories/daily-stats.repository.ts](../../src/biz/monitoring/repositories/daily-stats.repository.ts)
 - Entity: [src/biz/monitoring/entities/daily-stats.entity.ts](../../src/biz/monitoring/entities/daily-stats.entity.ts)
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `id` | uuid | 主键 |
-| `stat_date` | date UNIQUE | 统计日期 |
-| `message_count` / `success_count` / `failure_count` / `timeout_count` | integer | 消息/成功/失败（非超时）/超时 |
-| `success_rate` / `avg_duration` | numeric / integer | 成功率/平均耗时 |
-| `total_token_usage` | bigint | Token 总消耗 |
-| `unique_users` / `unique_chats` | integer | 去重用户/会话 |
-| `fallback_count` / `fallback_success_count` / `fallback_affected_users` | integer | 降级指标 |
-| `avg_queue_duration` / `avg_prep_duration` | integer | 各阶段平均耗时 |
-| `error_type_stats` | jsonb | 错误类型分布 |
-| `created_at` / `updated_at` | timestamptz | - |
+| 字段                                                                    | 类型              | 说明                          |
+| ----------------------------------------------------------------------- | ----------------- | ----------------------------- |
+| `id`                                                                    | uuid              | 主键                          |
+| `stat_date`                                                             | date UNIQUE       | 统计日期                      |
+| `message_count` / `success_count` / `failure_count` / `timeout_count`   | integer           | 消息/成功/失败（非超时）/超时 |
+| `success_rate` / `avg_duration`                                         | numeric / integer | 成功率/平均耗时               |
+| `total_token_usage`                                                     | bigint            | Token 总消耗                  |
+| `unique_users` / `unique_chats`                                         | integer           | 去重用户/会话                 |
+| `fallback_count` / `fallback_success_count` / `fallback_affected_users` | integer           | 降级指标                      |
+| `avg_queue_duration` / `avg_prep_duration`                              | integer           | 各阶段平均耗时                |
+| `error_type_stats`                                                      | jsonb             | 错误类型分布                  |
+| `created_at` / `updated_at`                                             | timestamptz       | -                             |
 
 **索引**：`idx_monitoring_daily_stats_stat_date` (stat_date DESC)
 
@@ -522,14 +533,14 @@
 - Repository: [src/biz/monitoring/repositories/error-log.repository.ts](../../src/biz/monitoring/repositories/error-log.repository.ts)
 - Entity: [src/biz/monitoring/entities/error-log.entity.ts](../../src/biz/monitoring/entities/error-log.entity.ts)
 
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `id` | uuid | gen_random_uuid() | 主键 |
-| `message_id` | text | NOT NULL | 关联消息ID |
-| `timestamp` | timestamptz | NOT NULL | 错误时间（20260312 迁移后改为 timestamptz） |
-| `error` | text | NOT NULL | 错误信息 |
-| `alert_type` | text | - | 告警类型分类 |
-| `created_at` | timestamptz | now() | - |
+| 字段         | 类型        | 默认值            | 说明                                        |
+| ------------ | ----------- | ----------------- | ------------------------------------------- |
+| `id`         | uuid        | gen_random_uuid() | 主键                                        |
+| `message_id` | text        | NOT NULL          | 关联消息ID                                  |
+| `timestamp`  | timestamptz | NOT NULL          | 错误时间（20260312 迁移后改为 timestamptz） |
+| `error`      | text        | NOT NULL          | 错误信息                                    |
+| `alert_type` | text        | -                 | 告警类型分类                                |
+| `created_at` | timestamptz | now()             | -                                           |
 
 **索引**：`idx_error_logs_timestamp` (timestamp DESC)
 
@@ -551,12 +562,12 @@
 - Repository: [src/biz/hosting-config/repositories/system-config.repository.ts](../../src/biz/hosting-config/repositories/system-config.repository.ts)
 - Entity: [src/biz/hosting-config/entities/system-config.entity.ts](../../src/biz/hosting-config/entities/system-config.entity.ts)
 
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `key` | varchar(100) | NOT NULL | 主键 |
-| `value` | jsonb | NOT NULL | 配置值 |
-| `description` | text | - | 配置描述 |
-| `created_at` / `updated_at` | timestamptz | now() | - |
+| 字段                        | 类型         | 默认值   | 说明     |
+| --------------------------- | ------------ | -------- | -------- |
+| `key`                       | varchar(100) | NOT NULL | 主键     |
+| `value`                     | jsonb        | NOT NULL | 配置值   |
+| `description`               | text         | -        | 配置描述 |
+| `created_at` / `updated_at` | timestamptz  | now()    | -        |
 
 **常用配置键**：
 
@@ -576,17 +587,17 @@
 - Repository: [src/biz/strategy/repositories/strategy-config.repository.ts](../../src/biz/strategy/repositories/strategy-config.repository.ts)
 - Entity: [src/biz/strategy/entities/strategy-config.entity.ts](../../src/biz/strategy/entities/strategy-config.entity.ts)
 
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `id` | uuid | gen_random_uuid() | 主键 |
-| `name` / `description` | text | - | 名称/描述 |
-| `persona` / `stage_goals` / `red_lines` / `industry_skills` / `role_setting` | jsonb | '{}' | 策略各片段 |
-| `is_active` | boolean | true | 是否激活 |
-| `status` | text | CHECK | `testing` / `released` / `archived`（20260330 新增版本化） |
-| `version` | integer | 1 | 版本号 |
-| `version_note` | text | - | 版本说明 |
-| `released_at` | timestamptz | - | 发布时间 |
-| `created_at` / `updated_at` | timestamptz | now() | trigger 维护 updated_at |
+| 字段                                                                         | 类型        | 默认值            | 说明                                                       |
+| ---------------------------------------------------------------------------- | ----------- | ----------------- | ---------------------------------------------------------- |
+| `id`                                                                         | uuid        | gen_random_uuid() | 主键                                                       |
+| `name` / `description`                                                       | text        | -                 | 名称/描述                                                  |
+| `persona` / `stage_goals` / `red_lines` / `industry_skills` / `role_setting` | jsonb       | '{}'              | 策略各片段                                                 |
+| `is_active`                                                                  | boolean     | true              | 是否激活                                                   |
+| `status`                                                                     | text        | CHECK             | `testing` / `released` / `archived`（20260330 新增版本化） |
+| `version`                                                                    | integer     | 1                 | 版本号                                                     |
+| `version_note`                                                               | text        | -                 | 版本说明                                                   |
+| `released_at`                                                                | timestamptz | -                 | 发布时间                                                   |
+| `created_at` / `updated_at`                                                  | timestamptz | now()             | trigger 维护 updated_at                                    |
 
 **索引**：
 
@@ -611,14 +622,14 @@
 - Repository: [src/biz/strategy/repositories/strategy-changelog.repository.ts](../../src/biz/strategy/repositories/strategy-changelog.repository.ts)
 - Entity: [src/biz/strategy/entities/strategy-changelog.entity.ts](../../src/biz/strategy/entities/strategy-changelog.entity.ts)
 
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `id` | uuid | gen_random_uuid() | 主键 |
-| `config_id` | uuid | FK → strategy_config | 关联策略（ON DELETE CASCADE） |
-| `field` | text | NOT NULL | 变更字段：persona/stage_goals/red_lines/... |
-| `old_value` / `new_value` | jsonb | - / NOT NULL | 前后值 |
-| `changed_at` | timestamptz | now() | 变更时间 |
-| `changed_by` | text | - | 操作者（预留） |
+| 字段                      | 类型        | 默认值               | 说明                                        |
+| ------------------------- | ----------- | -------------------- | ------------------------------------------- |
+| `id`                      | uuid        | gen_random_uuid()    | 主键                                        |
+| `config_id`               | uuid        | FK → strategy_config | 关联策略（ON DELETE CASCADE）               |
+| `field`                   | text        | NOT NULL             | 变更字段：persona/stage_goals/red_lines/... |
+| `old_value` / `new_value` | jsonb       | - / NOT NULL         | 前后值                                      |
+| `changed_at`              | timestamptz | now()                | 变更时间                                    |
+| `changed_by`              | text        | -                    | 操作者（预留）                              |
 
 **索引**：`idx_changelog_config_time` (config_id, changed_at DESC) / `idx_changelog_field` (field)
 
@@ -635,18 +646,18 @@
 - Repository: [src/biz/test-suite/repositories/test-batch.repository.ts](../../src/biz/test-suite/repositories/test-batch.repository.ts)
 - Entity: [src/biz/test-suite/entities/test-batch.entity.ts](../../src/biz/test-suite/entities/test-batch.entity.ts)
 
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `id` | uuid | gen_random_uuid() | 主键 |
-| `name` | varchar(200) | NOT NULL | 批次名称 |
-| `source` | varchar(50) | 'manual' | `manual` / `feishu` |
-| `feishu_table_id` | varchar(100) | - | 飞书回写目标 |
-| `total_cases` / `executed_count` / `passed_count` / `failed_count` / `pending_review_count` | integer | 0 | 计数 |
-| `pass_rate` / `avg_duration_ms` / `avg_token_usage` | numeric / integer | - | 汇总 |
-| `status` | varchar(20) | 'created' | created/running/reviewing/completed/cancelled |
-| `test_type` | varchar(50) | 'scenario' | `scenario` / `conversation` |
-| `created_by` | varchar(100) | - | 创建者 |
-| `created_at` / `completed_at` | timestamptz | - | - |
+| 字段                                                                                        | 类型              | 默认值            | 说明                                          |
+| ------------------------------------------------------------------------------------------- | ----------------- | ----------------- | --------------------------------------------- |
+| `id`                                                                                        | uuid              | gen_random_uuid() | 主键                                          |
+| `name`                                                                                      | varchar(200)      | NOT NULL          | 批次名称                                      |
+| `source`                                                                                    | varchar(50)       | 'manual'          | `manual` / `feishu`                           |
+| `feishu_table_id`                                                                           | varchar(100)      | -                 | 飞书回写目标                                  |
+| `total_cases` / `executed_count` / `passed_count` / `failed_count` / `pending_review_count` | integer           | 0                 | 计数                                          |
+| `pass_rate` / `avg_duration_ms` / `avg_token_usage`                                         | numeric / integer | -                 | 汇总                                          |
+| `status`                                                                                    | varchar(20)       | 'created'         | created/running/reviewing/completed/cancelled |
+| `test_type`                                                                                 | varchar(50)       | 'scenario'        | `scenario` / `conversation`                   |
+| `created_by`                                                                                | varchar(100)      | -                 | 创建者                                        |
+| `created_at` / `completed_at`                                                               | timestamptz       | -                 | -                                             |
 
 > `feishu_app_token` 字段已于 20260312 迁移中删除。
 
@@ -663,26 +674,26 @@
 - Repository: [src/biz/test-suite/repositories/test-execution.repository.ts](../../src/biz/test-suite/repositories/test-execution.repository.ts)
 - Entity: [src/biz/test-suite/entities/test-execution.entity.ts](../../src/biz/test-suite/entities/test-execution.entity.ts)
 
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `id` | uuid | gen_random_uuid() | 主键 |
-| `batch_id` | uuid | FK → test_batches | - |
-| `case_id` / `case_name` / `category` | varchar | - | 用例标识 |
-| `test_input` | jsonb | NOT NULL | 输入 |
-| `expected_output` / `actual_output` | text | - | 期望/实际 |
-| `agent_request` / `agent_response` / `tool_calls` / `token_usage` | jsonb | - | Agent 调用详情 |
-| `execution_status` | varchar(20) | 'pending' | pending/running/completed/failed |
-| `duration_ms` | integer | - | 耗时 |
-| `error_message` | text | - | 错误信息 |
-| `review_status` / `review_comment` / `reviewed_by` / `reviewed_at` | - | - | 审核相关 |
-| `failure_reason` | varchar(100) | - | 失败分类 |
-| `test_scenario` | varchar(100) | - | 飞书场景名 |
-| `conversation_snapshot_id` | uuid | - | 关联 snapshot |
-| `turn_number` | integer | - | 对话轮次 |
-| `similarity_score` | numeric | - | 语义相似度（0-100） |
-| `input_message` | text | - | 当前轮用户输入 |
-| `evaluation_reason` | text | - | LLM 评估理由 |
-| `created_at` | timestamptz | now() | - |
+| 字段                                                               | 类型         | 默认值            | 说明                             |
+| ------------------------------------------------------------------ | ------------ | ----------------- | -------------------------------- |
+| `id`                                                               | uuid         | gen_random_uuid() | 主键                             |
+| `batch_id`                                                         | uuid         | FK → test_batches | -                                |
+| `case_id` / `case_name` / `category`                               | varchar      | -                 | 用例标识                         |
+| `test_input`                                                       | jsonb        | NOT NULL          | 输入                             |
+| `expected_output` / `actual_output`                                | text         | -                 | 期望/实际                        |
+| `agent_request` / `agent_response` / `tool_calls` / `token_usage`  | jsonb        | -                 | Agent 调用详情                   |
+| `execution_status`                                                 | varchar(20)  | 'pending'         | pending/running/completed/failed |
+| `duration_ms`                                                      | integer      | -                 | 耗时                             |
+| `error_message`                                                    | text         | -                 | 错误信息                         |
+| `review_status` / `review_comment` / `reviewed_by` / `reviewed_at` | -            | -                 | 审核相关                         |
+| `failure_reason`                                                   | varchar(100) | -                 | 失败分类                         |
+| `test_scenario`                                                    | varchar(100) | -                 | 飞书场景名                       |
+| `conversation_snapshot_id`                                         | uuid         | -                 | 关联 snapshot                    |
+| `turn_number`                                                      | integer      | -                 | 对话轮次                         |
+| `similarity_score`                                                 | numeric      | -                 | 语义相似度（0-100）              |
+| `input_message`                                                    | text         | -                 | 当前轮用户输入                   |
+| `evaluation_reason`                                                | text         | -                 | LLM 评估理由                     |
+| `created_at`                                                       | timestamptz  | now()             | -                                |
 
 **索引**：batch_id / execution_status / review_status / category / created_at / (batch_id, execution_status) / (batch_id, review_status) / (batch_id, created_at) / conversation_snapshot_id / (conversation_snapshot_id, turn_number) / turn_number
 
@@ -697,19 +708,19 @@
 - Repository: [src/biz/test-suite/repositories/conversation-snapshot.repository.ts](../../src/biz/test-suite/repositories/conversation-snapshot.repository.ts)
 - Entity: [src/biz/test-suite/entities/conversation-snapshot.entity.ts](../../src/biz/test-suite/entities/conversation-snapshot.entity.ts)
 
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `id` | uuid | gen_random_uuid() | 主键 |
-| `batch_id` | uuid | NOT NULL, FK | - |
-| `feishu_record_id` | varchar(100) | NOT NULL | 飞书记录ID |
-| `conversation_id` | varchar(100) | NOT NULL | 对话唯一标识 |
-| `participant_name` | varchar(200) | - | 候选人姓名 |
-| `full_conversation` | jsonb | NOT NULL | 解析后的对话数组 |
-| `raw_text` | text | - | 原始对话文本 |
-| `total_turns` | integer | 0 | 总轮数 |
-| `avg_similarity_score` / `min_similarity_score` | numeric | - | 相似度分 |
-| `status` | varchar(50) | 'pending' | pending/running/completed/failed |
-| `created_at` / `updated_at` | timestamptz | now() | trigger 维护 updated_at |
+| 字段                                            | 类型         | 默认值            | 说明                             |
+| ----------------------------------------------- | ------------ | ----------------- | -------------------------------- |
+| `id`                                            | uuid         | gen_random_uuid() | 主键                             |
+| `batch_id`                                      | uuid         | NOT NULL, FK      | -                                |
+| `feishu_record_id`                              | varchar(100) | NOT NULL          | 飞书记录ID                       |
+| `conversation_id`                               | varchar(100) | NOT NULL          | 对话唯一标识                     |
+| `participant_name`                              | varchar(200) | -                 | 候选人姓名                       |
+| `full_conversation`                             | jsonb        | NOT NULL          | 解析后的对话数组                 |
+| `raw_text`                                      | text         | -                 | 原始对话文本                     |
+| `total_turns`                                   | integer      | 0                 | 总轮数                           |
+| `avg_similarity_score` / `min_similarity_score` | numeric      | -                 | 相似度分                         |
+| `status`                                        | varchar(50)  | 'pending'         | pending/running/completed/failed |
+| `created_at` / `updated_at`                     | timestamptz  | now()             | trigger 维护 updated_at          |
 
 **触发器**：`trigger_conversation_snapshots_updated_at`
 
@@ -721,49 +732,49 @@
 
 ### 清理类
 
-| 函数 | 默认参数 | 说明 |
-|------|---------|------|
-| `cleanup_chat_messages(retention_days)` | 90 | 删除过期聊天消息 |
-| `cleanup_message_processing_records(days_to_keep)` | 30 | 删除过期处理记录 |
-| `cleanup_user_activity(retention_days)` | 30 | 删除过期用户活跃记录 |
-| `null_agent_invocation(p_days_old)` | 7 | 清空旧记录 agent_invocation 字段 |
+| 函数                                               | 默认参数 | 说明                             |
+| -------------------------------------------------- | -------- | -------------------------------- |
+| `cleanup_chat_messages(retention_days)`            | 90       | 删除过期聊天消息                 |
+| `cleanup_message_processing_records(days_to_keep)` | 30       | 删除过期处理记录                 |
+| `cleanup_user_activity(retention_days)`            | 30       | 删除过期用户活跃记录             |
+| `null_agent_invocation(p_days_old)`                | 7        | 清空旧记录 agent_invocation 字段 |
 
 ### 查询类
 
-| 函数 | 说明 |
-|------|------|
-| `get_distinct_chat_ids()` | 所有 chat_id |
-| `get_chat_session_list(start, end)` | 会话列表（含最新消息/头像） |
-| `get_chat_daily_stats(start, end)` | 按天聚合消息/会话数 |
-| `get_chat_summary_stats(start, end)` | 汇总（总会话/总消息/活跃会话） |
-| `get_active_users_by_range(start, end)` | 指定区间活跃用户 |
-| `get_daily_user_stats_by_range(start, end)` | 按天的用户活跃统计 |
+| 函数                                        | 说明                           |
+| ------------------------------------------- | ------------------------------ |
+| `get_distinct_chat_ids()`                   | 所有 chat_id                   |
+| `get_chat_session_list(start, end)`         | 会话列表（含最新消息/头像）    |
+| `get_chat_daily_stats(start, end)`          | 按天聚合消息/会话数            |
+| `get_chat_summary_stats(start, end)`        | 汇总（总会话/总消息/活跃会话） |
+| `get_active_users_by_range(start, end)`     | 指定区间活跃用户               |
+| `get_daily_user_stats_by_range(start, end)` | 按天的用户活跃统计             |
 
 ### Dashboard 类
 
-| 函数 | 说明 |
-|------|------|
-| `get_dashboard_overview_stats(start, end)` | 总览（消息数/成功率/耗时/Token/avg_ttft） |
-| `get_dashboard_fallback_stats(start, end)` | 降级统计（含受影响用户） |
-| `get_dashboard_hourly_trend(start, end)` | 小时趋势 |
-| `get_dashboard_minute_trend(start, end, interval)` | 分钟趋势（可配间隔） |
-| `get_dashboard_daily_trend(start, end)` | 日趋势 |
-| `get_dashboard_scenario_stats(start, end)` | 场景分布 |
-| `get_dashboard_tool_stats(start, end)` | 工具使用（20260417 改为从 tool_calls jsonb 解析） |
+| 函数                                               | 说明                                              |
+| -------------------------------------------------- | ------------------------------------------------- |
+| `get_dashboard_overview_stats(start, end)`         | 总览（消息数/成功率/耗时/Token/avg_ttft）         |
+| `get_dashboard_fallback_stats(start, end)`         | 降级统计（含受影响用户）                          |
+| `get_dashboard_hourly_trend(start, end)`           | 小时趋势                                          |
+| `get_dashboard_minute_trend(start, end, interval)` | 分钟趋势（可配间隔）                              |
+| `get_dashboard_daily_trend(start, end)`            | 日趋势                                            |
+| `get_dashboard_scenario_stats(start, end)`         | 场景分布                                          |
+| `get_dashboard_tool_stats(start, end)`             | 工具使用（20260417 改为从 tool_calls jsonb 解析） |
 
 ### 聚合类
 
-| 函数 | 说明 |
-|------|------|
+| 函数                                           | 说明                                                                          |
+| ---------------------------------------------- | ----------------------------------------------------------------------------- |
 | `aggregate_hourly_stats(hour_start, hour_end)` | 小时级聚合（20260417 refine，支持 timeout_count/error_type_stats/tool_calls） |
-| `aggregate_daily_stats(day_start, day_end)` | 日级聚合（20260416 新增） |
+| `aggregate_daily_stats(day_start, day_end)`    | 日级聚合（20260416 新增）                                                     |
 
 ### 数据修改类
 
-| 函数 | 说明 |
-|------|------|
-| `increment_booking_count(...)` | 面试预约原子 upsert（自动 COALESCE NULL） |
-| `upsert_user_activity(...)` | 用户活跃度 upsert（每次消息触发） |
+| 函数                               | 说明                                                       |
+| ---------------------------------- | ---------------------------------------------------------- |
+| `increment_booking_count(...)`     | 面试预约原子 upsert（自动 COALESCE NULL）                  |
+| `upsert_user_activity(...)`        | 用户活跃度 upsert（每次消息触发）                          |
 | `publish_strategy(p_version_note)` | 策略版本发布（testing → released，旧 released → archived） |
 
 ---

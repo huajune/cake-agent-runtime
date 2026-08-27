@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
 import { ModelRole } from '@/llm/llm.types';
 import type { AgentToolCall } from '@agent/generator/generator.types';
-import { buildDateTimeGroundingLines } from '@agent/generator/context/sections/datetime.section';
+import { buildDateTimeGroundingLines } from '@agent/generator/context/sections/working/datetime.section';
 import type { GuardViolation } from '@shared-types/guardrail.contract';
 import { GuardrailReviewPacketBuilder } from '../guardrail/output/llm/review-packet.builder';
 import type { GuardrailReviewPacket } from '../guardrail/output/llm/review-packet.types';

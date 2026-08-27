@@ -308,21 +308,18 @@ describe('SpongeService', () => {
         json: jest.fn().mockResolvedValue({
           code: 0,
           message: 'success',
-          data: { notice: '预约成功', errorList: null },
+          data: { notice: '预约成功', applyErrorList: null },
         }),
       };
       jest.spyOn(global, 'fetch').mockResolvedValue(mockResponse as unknown as Response);
 
       const result = await service.bookInterview({
-        name: '张三',
-        phone: '13800138000',
-        age: 22,
-        genderId: 1,
         jobId: 100,
         interviewTime: '2026-04-01 10:00:00',
-        operateType: 6,
-        educationId: 5,
-        hasHealthCertificate: 1,
+        labelList: [
+          { labelId: 101, value: '兮兮' },
+          { labelId: 102, optionCodes: ['FEMALE'] },
+        ],
       });
 
       expect(result.success).toBe(true);
@@ -339,13 +336,10 @@ describe('SpongeService', () => {
           body: JSON.stringify({
             jobId: 100,
             interviewTime: '2026-04-01 10:00:00',
-            name: '张三',
-            phone: '13800138000',
-            age: 22,
-            genderId: 1,
-            hasHealthCertificate: 1,
-            educationId: 5,
-            operateType: 6,
+            labelList: [
+              { labelId: 101, value: '兮兮' },
+              { labelId: 102, optionCodes: ['FEMALE'] },
+            ],
           }),
         }),
       );
@@ -363,15 +357,9 @@ describe('SpongeService', () => {
       jest.spyOn(global, 'fetch').mockResolvedValue(mockResponse as unknown as Response);
 
       const result = await service.bookInterview({
-        name: '张三',
-        phone: '13800138000',
-        age: 22,
-        genderId: 1,
         jobId: 100,
         interviewTime: '2026-04-01 10:00:00',
-        operateType: 6,
-        educationId: 5,
-        hasHealthCertificate: 1,
+        labelList: [{ labelId: 101, value: '兮兮' }],
       });
 
       expect(result.success).toBe(false);
@@ -393,15 +381,9 @@ describe('SpongeService', () => {
       jest.spyOn(global, 'fetch').mockResolvedValue(mockResponse as unknown as Response);
 
       const result = await service.bookInterview({
-        name: '张三',
-        phone: '13800138000',
-        age: 22,
-        genderId: 1,
         jobId: 100,
         interviewTime: '2026-04-01 10:00:00',
-        operateType: 6,
-        educationId: 5,
-        hasHealthCertificate: 1,
+        labelList: [{ labelId: 101, value: '兮兮' }],
       });
 
       expect(result.success).toBe(false);

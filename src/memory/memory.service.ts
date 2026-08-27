@@ -1,18 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ProceduralService } from './services/procedural.service';
-import { LongTermService } from './services/long-term.service';
-import { SessionService } from './services/session.service';
-import {
-  MemoryLifecycleService,
-  type MemoryLifecycleTurnContext,
-} from './services/memory-lifecycle.service';
-import type { CandidateIdentityHint } from './services/memory-enrichment.service';
-import type { AgentMemoryContext } from './types/memory-runtime.types';
-import type { MessageMetadata, SummaryData, UserProfile } from './types/long-term.types';
-import type { InvitedGroupRecord } from './types/session-facts.types';
-import type { RuleFactClaims } from '@resolution/evidence/claim.types';
-import type { ProceduralState } from './types/procedural.types';
-import { formatExtractionFactLines } from './formatters/fact-lines.formatter';
+import { LongTermService } from './long-term/long-term.service';
+import { SessionStateService } from './short-term/session-state.service';
+import { SessionWorkbenchService } from './short-term/workbench.service';
+import { MemoryLifecycleService, type MemoryLifecycleTurnContext } from './lifecycle.service';
+import type { AgentMemoryContext } from './recall.types';
+import type { SummaryEntry } from './long-term/long-term.types';
+import type { InvitedGroupRecord } from './short-term/short-term.types';
+import type { TurnHints } from '@resolution/evidence/claim.types';
+import type { StageState } from './short-term/short-term.types';
+import { formatExtractionFactLines } from './fact-lines.formatter';
 
 export interface ProactiveMemoryRecall {
   recentMessages: Array<{
@@ -23,17 +19,15 @@ export interface ProactiveMemoryRecall {
   warnings?: string[];
 }
 
-export type { CandidateIdentityHint } from './services/memory-enrichment.service';
-
 /** memory 模块对外 facade，只保留真实外部入口。 */
 @Injectable()
 export class MemoryService {
   private readonly logger = new Logger(MemoryService.name);
 
   constructor(
-    private readonly procedural: ProceduralService,
+    private readonly workbench: SessionWorkbenchService,
     private readonly longTerm: LongTermService,
-    private readonly session: SessionService,
+    private readonly session: SessionStateService,
     private readonly lifecycle: MemoryLifecycleService,
   ) {}
 
@@ -50,9 +44,10 @@ export class MemoryService {
     options?: {
       includeShortTerm?: boolean;
       shortTermEndTimeInclusive?: number;
-      enrichmentIdentity?: CandidateIdentityHint;
       /** prep 已运行的本轮规则轨；memory 只装配，不重复判定。 */
-      ruleFacts?: RuleFactClaims | null;
+      turnHints?: TurnHints | null;
+      /** 当前托管账号的稳定企微身份（wecomUserId）。 */
+      botUserId?: string;
     },
   ): Promise<AgentMemoryContext> {
     return await this.lifecycle.onTurnStart(corpId, userId, sessionId, currentUserMessage, options);
@@ -73,13 +68,14 @@ export class MemoryService {
     corpId: string,
     userId: string,
     sessionId: string,
-    options?: { shortTermEndTimeInclusive?: number },
+    options?: { shortTermEndTimeInclusive?: number; botUserId?: string },
   ): Promise<ProactiveMemoryRecall> {
     const memory = await this.onTurnStart(corpId, userId, sessionId, undefined, {
       includeShortTerm: true,
       shortTermEndTimeInclusive: options?.shortTermEndTimeInclusive,
+      botUserId: options?.botUserId,
     });
-    // messageWindow 已由 ShortTermService 按与 Generator 相同的条数、时间和字符预算裁剪，
+    // messageWindow 已由 MessageWindowService 按与 Generator 相同的条数、时间和字符预算裁剪，
     // 这里不再二次截断或改写其时间后缀，只丢弃空正文。
     const recentMessages = memory.shortTerm.messageWindow
       .filter(
@@ -88,10 +84,11 @@ export class MemoryService {
           message.content.trim().length > 0,
       )
       .map((message) => ({ role: message.role, content: message.content }));
-    const factLines = memory.sessionMemory?.facts
-      ? formatExtractionFactLines(memory.sessionMemory.facts, {
-          // 品牌唯一真相是 brand_state（§19.6）；facts.preferences.brands 已退役
-          currentBrandName: memory.sessionMemory.brand_state?.currentBrand?.canonicalName ?? null,
+    const factLines = memory.shortTerm.sessionState?.facts
+      ? formatExtractionFactLines(memory.shortTerm.sessionState.facts, {
+          // 品牌唯一真相是 facts.brand；facts.preferences.brands 已退役。
+          currentBrandName:
+            memory.shortTerm.sessionState.facts.brand?.currentBrand?.canonicalName ?? null,
         })
       : [];
     return {
@@ -101,34 +98,28 @@ export class MemoryService {
     };
   }
 
-  /** 读取历史摘要（recent + archive），供 recall_history 或沉淀逻辑使用。 */
-  async getSummaryData(corpId: string, userId: string): Promise<SummaryData | null> {
-    return await this.longTerm.getSummaryData(corpId, userId);
-  }
-
-  /** 写入长期档案的外部补充字段，统一落到 profile_facts。 */
-  async saveProfile(
+  /** 读取历史咨询段摘要（裸 SummaryEntry[]），供 recall_history 按需使用。 */
+  async getSessionSummaries(
     corpId: string,
     userId: string,
-    profile: Partial<UserProfile>,
-    metadata?: MessageMetadata,
-  ): Promise<void> {
-    await this.longTerm.saveProfile(corpId, userId, profile, metadata);
+    botUserId: string,
+  ): Promise<SummaryEntry[] | null> {
+    return await this.longTerm.getSessionSummaries(corpId, userId, botUserId);
   }
 
   /** 清理指定用户的长期记忆（profile + summary） */
-  async clearLongTermMemory(corpId: string, userId: string): Promise<boolean> {
-    return await this.longTerm.clearUserMemory(corpId, userId);
+  async clearLongTermMemory(corpId: string, userId: string, botUserId: string): Promise<boolean> {
+    return await this.longTerm.clearUserMemory(corpId, userId, botUserId);
   }
 
-  async getStage(corpId: string, userId: string, sessionId: string): Promise<ProceduralState> {
-    return await this.procedural.get(corpId, userId, sessionId);
+  async getStage(corpId: string, userId: string, sessionId: string): Promise<StageState> {
+    return await this.workbench.getStage(corpId, userId, sessionId);
   }
 
   async clearSessionMemory(corpId: string, userId: string, sessionId: string): Promise<boolean> {
     const [sessionCleared, stageCleared] = await Promise.all([
       this.session.clearSessionState(corpId, userId, sessionId),
-      this.procedural.clear(corpId, userId, sessionId),
+      this.workbench.clearStage(corpId, userId, sessionId),
     ]);
     return sessionCleared || stageCleared;
   }
@@ -148,8 +139,8 @@ export class MemoryService {
     corpId: string,
     userId: string,
     sessionId: string,
-    state: ProceduralState,
+    state: StageState,
   ): Promise<void> {
-    await this.procedural.set(corpId, userId, sessionId, state);
+    await this.workbench.setStage(corpId, userId, sessionId, state);
   }
 }

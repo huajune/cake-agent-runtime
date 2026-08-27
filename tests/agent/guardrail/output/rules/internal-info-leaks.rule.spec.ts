@@ -1,10 +1,40 @@
 import {
   detectOutputLeak,
   hasTechnicalDocumentationShape,
+  isInternalReasoningArtifactOnly,
   isToolCallArtifactOnly,
+  stripInternalReasoningArtifacts,
   stripMarkdownCodeFences,
   tryUnwrapEnvelopeReply,
 } from '@agent/guardrail/output/rules/internal-info-leaks.rule';
+
+describe('internal reasoning artifacts — 2026-08-20 production cluster', () => {
+  it.each([
+    '</antThinking>',
+    'Now confirmed 0 results twice. Proceeding with the script and group invite',
+    '我应该简洁地回答这两个问题',
+    '根据工具查询结果，接下来应该先告诉候选人暂无岗位',
+  ])('detects evidence-backed leak form: %s', (draft) => {
+    expect(detectOutputLeak(draft)).not.toBeNull();
+    expect(isInternalReasoningArtifactOnly(draft)).toBe(true);
+  });
+
+  it('strips only the leaked line and preserves candidate-facing content verbatim', () => {
+    const draft = [
+      'Now confirmed 0 results twice. Proceeding with the script and group invite',
+      '目前附近暂时没有合适岗位，有新岗位我再及时告诉你。',
+    ].join('\n');
+    expect(stripInternalReasoningArtifacts(draft)).toBe(
+      '目前附近暂时没有合适岗位，有新岗位我再及时告诉你。',
+    );
+  });
+
+  it('does not treat ordinary first-person recruiter wording as internal reasoning', () => {
+    const reply = '我先帮你看看附近的岗位，你比较想做餐饮还是零售呀？';
+    expect(detectOutputLeak(reply)).toBeNull();
+    expect(stripInternalReasoningArtifacts(reply)).toBe(reply);
+  });
+});
 
 describe('stripMarkdownCodeFences', () => {
   it('removes fence markers while preserving the wrapped form template verbatim', () => {
@@ -51,9 +81,8 @@ describe('stripMarkdownCodeFences', () => {
 });
 
 /**
- * 2026-07-30 守卫审计 P0-2：用例取自 2026-07-28 15:05–15:11 模型降级窗口的生产首版
- * （模型停止发起工具调用，把调用语法当正文吐出），这些首版当时全部进了 rewrite，
- * 4/4 编出薪资/门店/伪造报名链接并投递。
+ * 模型降级时可能停止发起工具调用，把调用语法当正文输出。
+ * 这类输出必须被识别为内部信息泄漏，不能交给宽泛重写生成新事实。
  */
 describe('isToolCallArtifactOnly', () => {
   it('识别 XML 骨架残文（trace …_1785222323383）', () => {
@@ -114,9 +143,7 @@ describe('isToolCallArtifactOnly', () => {
     expect(isToolCallArtifactOnly('</thinking>\n\n<function=skip_reply>\n</function>')).toBe(true);
   });
 
-  // 2026-08-06 生产实证（运营反馈 8pu8f8we，chat 6a72a29d… 08-05 10:42）：整条回复
-  // 只有 `</function_calls>` 一个裸闭合标签，原样投递给候选人。既往同族残文都另带
-  // 已注册工具名（skip_reply 等）而被工具名词条兜住，这条不带任何工具名，直接穿透。
+  // 裸 `</function_calls>` 不含已注册工具名，仍必须依靠 XML 标签判据命中。
   it('识别裸 </function_calls> 闭合标签残文（badcase 8pu8f8we）', () => {
     expect(isToolCallArtifactOnly('</function_calls>')).toBe(true);
     expect(isToolCallArtifactOnly('<function_calls>')).toBe(true);
@@ -201,7 +228,7 @@ describe('tryUnwrapEnvelopeReply', () => {
 });
 
 /**
- * 2026-07-30 守卫审计 P0-3：确定性剥围栏快通道的领域合规前置。
+ * 确定性剥围栏快通道的领域合规前置。
  */
 describe('hasTechnicalDocumentationShape', () => {
   it('识别跨域接口设计答案（trace …_1785222187376，剥围栏后原样投递给了候选人）', () => {
@@ -250,9 +277,8 @@ describe('hasTechnicalDocumentationShape', () => {
 });
 
 /**
- * 2026-08-06 巡检：泄漏检测与残文剥离的 XML 标签判据曾单边漂移——08-04 审计只扩了
- * 剥离侧的交替组，检测侧仍是窄的 `<\/?tool_call>`，裸 `</function_calls>` 因此穿透
- * 出站守卫投递给候选人（badcase 8pu8f8we）。两侧现共用 TOOL_CALL_XML_TAG_SOURCE。
+ * 泄漏检测与残文剥离必须共用 TOOL_CALL_XML_TAG_SOURCE，
+ * 确保 `</function_calls>` 等新形态不会只在一侧生效。
  */
 describe('detectOutputLeak — 工具调用 XML 标签', () => {
   it.each([

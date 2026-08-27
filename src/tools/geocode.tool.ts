@@ -29,8 +29,8 @@ import {
 } from '@resolution/geo';
 import type { ToolBuildContext, ToolBuilder } from '@shared-types/tool.types';
 import type { GeocodeLocationAnchor } from '@shared-types/turn.types';
-import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
-import { evaluateInviteCityGate } from '@tools/shared/invite-city-gate';
+import { buildToolError, TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
+import { evaluateInviteCityGate } from '@tools/invite/invite-city-gate';
 import { extractUserTexts } from '@resolution/signal/dialogue';
 
 const logger = new Logger('geocode');
@@ -287,7 +287,7 @@ function recordResolvedAnchor(
   // 城市确权穿线（badcase 6a671722：geocode 两次确认沈阳，invite 门仍报 city 无依据）：
   // unique 解析即城市确认，暂存 ledger 供回合收尾写 pref.city，让 invite 城市门
   // 的 session_fact 档与 [兼职群资源] 段在后续轮直接可用。
-  // anchor 与 attestation 的成对写入由 recordGeoResolution 统一维护（议题 4-1）。
+  // anchor 与 attestation 的成对写入由 recordGeoResolution 统一维护。
   context.ledger.recordGeoResolution({
     longitude: c.longitude,
     latitude: c.latitude,

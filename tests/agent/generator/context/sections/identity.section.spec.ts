@@ -1,4 +1,4 @@
-import { IdentitySection } from '@agent/generator/context/sections/identity.section';
+import { IdentitySection } from '@agent/generator/context/sections/procedural/identity.section';
 import { PromptContext } from '@agent/generator/context/sections/section.interface';
 
 describe('IdentitySection', () => {

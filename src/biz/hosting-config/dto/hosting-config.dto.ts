@@ -43,10 +43,6 @@ export class UpdateAgentReplyConfigDto {
 
   @IsOptional()
   @IsString()
-  reviewModelId?: string;
-
-  @IsOptional()
-  @IsString()
   repairModelId?: string;
 
   @IsOptional()
@@ -136,14 +132,6 @@ export class UpdateAgentReplyConfigDto {
   @IsNumber()
   @Min(0)
   errorRateCritical?: number;
-
-  @IsOptional()
-  @IsBoolean()
-  outputGuardrailLlmEnabled?: boolean;
-
-  @IsOptional()
-  @IsBoolean()
-  outputGuardrailSemanticShadowEnabled?: boolean;
 
   /** 硬规则只降权 override；值域在类型和服务层共同收口为 off/observe。 */
   @IsOptional()

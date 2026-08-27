@@ -26,7 +26,7 @@ import { join } from 'path';
 
 import { VALID_LABOR_FORMS } from '@resolution/labor-form';
 import { AGENT_TOOL_CALL_STATUSES } from '@shared-types/agent-telemetry.types';
-import { TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
+import { TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
 
 const REPO_ROOT = join(__dirname, '../..');
 
@@ -82,7 +82,7 @@ function checkMembersPresent(check: string, relPath: string, members: readonly s
   //     不能整文件 includes——这些词在同文件的规则条目里到处出现，
   //     删掉合法值列表里的某一项也检不出来（已实测会假通过）。
   const check = 'labor_form 词表 ↔ 抽取提示词合法值行';
-  const relPath = 'src/memory/services/session-extraction.prompt.ts';
+  const relPath = 'src/memory/short-term/extraction.prompt.ts';
   const line = read(relPath)
     .split('\n')
     .find((l) => l.includes('仅允许以下合法值之一'));
@@ -110,7 +110,7 @@ function checkMembersPresent(check: string, relPath: string, members: readonly s
 //     那恰好是本项要防的风险（加档漏改）；删除方向检不出，如实标注。
 checkMembersPresent(
   'labor_form 词表 ↔ 咨询提示词（仅检出新增漏写）',
-  'src/agent/generator/context/prompts/candidate-consultation.md',
+  'src/agent/generator/context/sections/procedural/candidate-consultation.md',
   VALID_LABOR_FORMS,
 );
 
@@ -194,7 +194,7 @@ checkMembersPresent(
 {
   const check = 'errorType 提示词写法 ↔ 线上真值';
   const PROMPT_ASSETS = [
-    'src/agent/generator/context/prompts/candidate-consultation.md',
+    'src/agent/generator/context/sections/procedural/candidate-consultation.md',
     'src/tools/geocode.tool.ts',
     'src/tools/duliday-job-list.tool.ts',
     'src/tools/duliday-interview-precheck.tool.ts',

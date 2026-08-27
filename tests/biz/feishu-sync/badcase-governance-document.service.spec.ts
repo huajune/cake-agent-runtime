@@ -143,11 +143,7 @@ describe('BadcaseGovernanceDocumentService', () => {
 });
 
 /**
- * 按日聚合（2026-08-06）。
- *
- * 旧实现按「月 日 时:分」建小节标题，单日跑 11 次巡检就堆出 20 个小节，同一条 case
- * 在不同小节里状态互相矛盾，运营从上往下读看不出最终状态。改为同日共用一个小节：
- * 已存在当日小节时只追加条目，插到该小节末尾（下一个根级标题之前）。
+ * 按日聚合：同日共用一个小节，后续条目追加到该小节末尾、下一个根级标题之前。
  */
 describe('BadcaseGovernanceDocumentService — 按日聚合', () => {
   const documentId = 'docx-1';

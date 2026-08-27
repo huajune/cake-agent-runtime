@@ -1,9 +1,12 @@
 import { Tool, ToolSet } from 'ai';
 import { StageGoalConfig, Threshold } from '@biz/strategy/types/strategy.types';
 import type { CandidatePrefillHints } from '@resolution/candidate/types';
-import type { EntityExtractionResult } from '@memory/types/session-facts.types';
+import type {
+  EntityExtractionResult,
+  InvitedGroupRecord,
+} from '@memory/short-term/short-term.types';
 import type { RecommendedJobSummary } from '@resolution/job/types';
-import type { UserProfile } from '@memory/types/long-term.types';
+import type { UserProfile } from '@memory/long-term/long-term.types';
 import type { MessageType } from '@enums/message-callback.enum';
 import type { LaborFormIntentDecision } from '@resolution/labor-form';
 import type { SessionBrandState } from '@resolution/brand/brand-resolution.types';
@@ -45,6 +48,8 @@ export interface ToolArchiveContext {
   currentFocusJob?: RecommendedJobSummary | null;
   recentBrandPool?: string[];
   bookingCandidateFacts?: EntityExtractionResult['interview_info'] | null;
+  /** 已成功拉群事实；岗位工具据此永久关闭后续推荐查询。 */
+  invitedGroups?: InvitedGroupRecord[];
 }
 
 export interface ToolTurnInputContext {

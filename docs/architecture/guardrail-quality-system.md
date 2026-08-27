@@ -1,313 +1,102 @@
 # Guardrail 质量体系
 
-**最后更新**：2026-08-12（对代码核实：路径 / 服务名 / 表名 / 常量）
+**最后更新**：2026-08-26
 
-> 出站链路的**分段职权、repair 动手权、规则生命周期治理**。每条护栏的清单与实现见
-> [security-guardrails.md](./security-guardrails.md)；判定该用规则还是语义见
-> [rules-vs-semantics-design-philosophy.md](../principles/rules-vs-semantics-design-philosophy.md)。
->
-> 核心命题：**质量保障不能只靠投递前的单轮闸门。** 事前防线只覆盖单轮可判定的违规，
-> 跨轮问题、投递物质量、未被拦下的多数回合都需要事后检测环兜底——两环缺一不可。
+> 本文描述当前 Output 守卫的实时裁决和修复边界。Input / Prompt / Tool / Output 全景见
+> [安全护栏说明](./security-guardrails.md)。
 
----
+## 1. 当前实时链
 
-## 1. 链路全景与分段职权
-
-```
-候选人消息
-  │
-  ├─ 输入守卫 input/          prompt-injection + risk-intercept
-  │
-  ├─ Agent 生成（首版草稿）
-  │
-  ├─ 出站守卫 output/
-  │    ├─ ① hard-rules        确定性规则（现存 10 条，7-10 大规模下线后的精简集）
-  │    ├─ ② LLM 语义审查      shadow/enforce 由 system_config 控制；现状 shadow
-  │    ├─ ③ sanitizer         时间标记剥离 / fence 确定性剥围栏
-  │    ├─ ④ repair（上限1轮） rewrite（无工具改文案）/ replan（重进 generator+工具白名单）
-  │    ├─ ⑤ 二审 + 回归闸     二审查违规；detectRepairRegression 查"相对首版退步"
-  │    └─ ⑥ 收敛              P0→block；P1/P2→fail-open；回归→回退首版
-  │
-  ├─ 投递 delivery
-  │
-  └─ （此后无人再看 ←—— 本文要补的就是这一段）
+```text
+Prompt 生成首版
+  → Tool gate 已约束本轮动作
+  → OutputGuardrailService
+      ├─ 精确分段去重
+      └─ HardRulesService：格式、封闭高风险词形、工具回执对账
+  → pass / observe：进入 outcome 分类
+  → revise / block：
+      ├─ 可机械删除的泄漏做确定性最小修复
+      └─ ReplyRepairAgent 无工具局部重写，hard cap = 1
+          → 同一确定性 Output guard 二审
+          → repair regression gate
+          → pass / 有记录的 fail-open / guardrail_blocked
+  → OutboundReplySanitizer
+  → Replay 定局
+  → 投递或提交 handoff/暂停托管副作用
 ```
 
-### 分段裁定表
-
-| 段 | 三期数据 | 裁定 |
-|---|---|---|
-| 输入守卫 | 未纳入三期审计，无事故记录 | **不动**（本文不展开，后续可单独审计） |
-| ① hard-rules | 命中精度多数 70%〜100%；`store_status` 三期 100%；例外：`settlement` 语序假阳三期未收敛（07-27 命中 2/2 全假阳，v10.30.0 已修并上生产） | **保留**。规则口径债按 badcase 逐条修，非架构问题 |
-| ② 语义审查（shadow） | 07-24〜27 审 387 轮 → 116 revise + 1 block（30% 标记率），精度 ~80%；真阳主类（薪资编造/面试形式臆造/编造报名叙述）**是硬规则完全无覆盖的独有检测能力** | **保留并升级为核心资产**——但它的裁决落在 `semantic_reviews` 列里**没有任何下游消费**，是一台产出没人读的 badcase 检测器（见 §3 L0） |
-| ③ sanitizer | 时间标记剥离正常；fence 确定性剥离（`fence_stripped`）是全链路表现最好的修复档 | **保留**，是"确定性最小修复"的样板 |
-| ④ repair | 变好率 54.5%→60%；**三期全部已投递伤害出自此层，且集中在 replan**（编造扣薪政策/结论反转/周二→周一均为 replan；rewrite 唯一一次引入编造被 fail-open 挡住） | **收权**（见 §2） |
-| ⑤ 二审 + 回归闸 | 二审只查"新文本是否违规"，不比对"相对首版是否退步"——坏修复干净 pass 是唯一致害路径；回归闸（v10.29.0 二形态 + v10.30.0 二形态，已全量上生产）是对策 | **回归闸持续加形态**，每个新形态须有已投递 trace 实证 |
-| ⑥ 收敛 | `final_decision=block` 连续三期 0；fail-open"二审没过→回退首版"实际救过候选人 | **不动**，已被生产验证安全 |
-
-### 全链路的四个结构性发现（重建的依据）
-
-1. **覆盖率 33%**：2026-07-24 实测投递回复 1204 轮，守卫档案仅 395 行。语义审查有门控（`shouldReview`：仅审带 jobList/geocode/booking/定位证据且回复含相关关键词的回合），纯话术轮完全不进审不落档。**67% 的回合出任何问题，今天没有任何系统在看。**
-2. **审的是草稿，不是投递物**：语义审查跑在首版上，repair 发生在其后。周二→周一案（trace `batch_6a630be4…`）错误由 replan 引入，shadow 物理上看不见。即使在覆盖的 33% 里，被审文本 ≠ 候选人收到的文本。
-3. **单轮快照，无事后视角**：跨轮矛盾、"稍后给你回执"是否兑现、候选人同题追问 4 遍、timeout 静默丢消息（高峰期日均 ~7 条）、回复后即流失——这些 badcase 大头需要"第二天回看"才能判定，投递前闸门结构上不可能覆盖。
-4. **repair 的"整段重写权"是唯一已投递伤害源，replan 是重灾区**：replan 拿到"重写+重规划+重取数"三合一权力，上下文却更差（工具白名单被砍；booking 结构化事实块只注入 rewrite 不注入 replan——已确认的不对称）。缺事实类违规 rewrite 确实修不了（无工具，二审必然复燃；生产实测二审通过组 96% 调了白名单工具，失败组 51%）——但 §2 的发牌结论是：这类规则连 repair 动手权本身也该收回（降 observe 交事后环），而非给 replan 续命。
-
-## 2. 事前防线：repair 动手权
-
-### 2.1 为什么 repair 结构性难以为正
-
-repair 的存在前提——"带违规反馈的第二次生成会比第一次好"——三期数据仅 ~60% 成立，且失败尾巴重于成功头部。这不是运气，是四个结构性原因：
-
-1. **修复者上下文更差**：rewrite 无工具、replan 白名单被砍，都比首版生成者拿得少；
-2. **目标函数错位**：首版优化"回答好候选人"，repair 优化"别再命中规则"——模板化、防御性、丢信息的根源；
-3. **选择效应**：命中集天然混着假阳与边缘（settlement 本期精确率 0%、job_detail 边缘 4/13），对本来就对的回复动手只有白改或改坏两种结局——周二→周一案即全对首版被改出两个错（星期翻错 + 已成功报名降级成"正在办"）；
-4. **伤害不对称**：修掉的多是 P1 措辞问题，修出来的是重度事实错误（编造扣薪政策/有岗说成无岗/面试日期翻错）——严重度加权后期望为负，replan 档明确为负。
-
-### 2.2 终态：默认 observe + 白名单发牌
-
-现行默认是"命中即修，人人有份"；终态翻转为**命中默认 observe + 落事后环（§3），repair 动手权白名单化——规则必须用生产变好率挣到**。按三期战绩发牌：
-
-| 规则 | 三期战绩 | 发牌 |
-|---|---|---|
-| `internal_output_leak` | 确定性剥离 100%（fence_stripped） | 保留（非 LLM） |
-| `unsupported_store_status_speculation` | rewrite 3/3 教科书级最小修复 | **保留 rewrite** |
-| `unsupported_schedule_window_claim` | 累计 8/8 二审通过 | **保留 rewrite** |
-| `settlement_cycle_mismatch` | 本期精确率 0%（语序假阳三期未收敛） | **收回 ✅ 已切 observe（2026-07-27 本 PR）**，观察期精确率 ≥90% 两周再申请 |
-| `job_detail_lookup_required` | 命中最大户，三期全部重度已投递伤害的宿主 | **收回 ✅ 已切 observe（2026-07-27 本 PR）**；接盘=日报 4.5 的 L1 矛盾抽查（同步上线，满足 §6"先于或同步"） |
-| `image_description_not_saved` | replan 修出编造扣薪政策并投递 | **收回 ✅ 已切 observe（2026-07-27 本 PR）**；"补调工具+原文照发"副作用补执行为后续项 |
-| `requested_brand_mismatch` | 专项审计抽样 3/3 假阳（门店名当品牌名，"江南赋店/置汇旭辉店"）；7/7 二审通过实为格式空转 | **收回 ✅ 已切 observe（2026-07-27 本 PR）**；门店名误判修复 + 两周 ≥90% 后按 §2.4 条件项申请取数式修复 |
-| `handoff_promise_without_handoff` | P0 假承诺类；检测=过程判据（承诺词形+dispatched 对账）；07-24 命中 1/1 | **降 revise ✅（2026-07-27 本 PR）**：rewrite 删完成时态承诺修法唯一，P0 收敛兜底；补执行 handoff 属 §2.4 条件项 |
-
-白名单准入标准（也是退出标准）：**违规句可精确定位 + 修法唯一 + rewrite 窄改**；连续两期变好率 <70% 或出现任一已投递退步即收回。仓库先例：2026-07-21 已把 job_detail"焦点不明确"分支降 observe（理由相同——repair 轮内入参不变必然复燃），本方案是把该局部决定升格为 repair 层的默认策略。
-
-> **发牌表边界（诚实声明）**：上表只覆盖三期审计窗口内有命中的规则。切换后目录全景 = 6 observe + 8 revise + 5 block（P0 红线）。revise 档另有 5 条未经本轮复审（human_service_phrase_leak 7-21 凭 5/5 真阳升档、repeated_reply_verbatim、identity_misregistration_coaching、summer_worker_alternative_upsell、brand_alias_fuzzy_match_ignored）——牌是各自 badcase 战绩挣的，按同一生命周期由每日日报累计精确率，下期守卫审计逐条复审；其中 summer_worker 07-24 二审 0% 通过，是最先该复审的一条。
-
-**代价与接盘方**：job_detail 收回后 ~14 条/天真违规首版直接投递（多为"未现查即答详情"级轻问题），由事后环当天 L1 回扫抓矛盾、次日归因修生成侧的根。定位从此明确：**repair 不是质量提升机制（数据证明干不了），只是 P0 抢救 + 少数已证明的窄修；质量在源头复利，不在出口缝补。**
-
-### 2.3 白名单内规则的动作阶梯
-
-```
-命中白名单规则
-  ├─ ① 确定性最小编辑    剥围栏/剥标记/句级替换。零 LLM，零回归风险。（已有：fence_stripped）
-  ├─ ② 保文补参          纯流程违规（缺工具调用/缺落库）：补执行工具，文本逐字保留。
-  │                      （试点：image_description_not_saved 反馈已明示原文保留，v10.30.0）
-  ├─ ③ 受约束重写        事实性违规才允许 LLM 改文本；必须带首版 + 违规句定位 +
-  │                      工具事实包（booking 盖章字段等，ReplyRepairAgent 已具备）
-  └─ ④ 确定性回退闸      出口必经。修复版改动未点名的已确认事实/结论极性/结构块/
-     （出口必经）         既成副作用宣称 → 回退首版（P1/P2）或 block（P0）。
-                          已有四形态：structure_collapsed / polarity_reversed（v10.29.0）
-                          + fact_mutated / commitment_downgraded（v10.30.0）
-```
-
-**设计原则**：检测可以广，动手必须窄；回退闸只做"比较"不做"判断"；fail-open 优于静默、首版优于坏修复；每档新增形态必须有已投递 trace 实证。
-
-**第一性原理（用户实践裁定 + 三期数据双重证实）：实时反馈循环行不通，只能做观测 + 离线修复。**
-
-反直觉之处：repair 明明拿到了首版没有的"增量信号"（审查反馈），理论上「存量上下文 + 增量」
-应严格更强——但这个等式被三处偷换：
+Output 不调用第二个评审模型，也没有 semantic shadow/enforce 分支。主 Agent 负责开放对话语义；
+Output 只对可复算信号裁决。
 
-1. **存量先被削减**：repair 被设计为廉价第二遍（完整复现首版上下文=重跑 generator），实际
-   等式是「存量子集 + 增量」——rewrite 无工具无完整记忆，replan 白名单被砍、重查结果可能
-   比首轮更差。增量买到了，入场费是丢一大块存量，净额从不保证为正。
-2. **增量是二手信号，不是新观测**：守卫反馈由「首版文本 + 同一批工具结果」推导而来，信息
-   上限被原始证据封顶，还叠加判定误差（首审精确率 70-80%，settlement 曾 0%）；假阳时是
-   强制执行的负信息（修复者无权反驳，必须去"修"不存在的错误）。真正的增量只能由时间产生
-   ——候选人后续反应、投递结局、跨轮矛盾——都是首版生成那一刻物理上不存在的新观测，且恰
-   好只在 T+1 可得。**"repair 需要增量信号"的直觉是对的，推到底的结论是：单回合内不存在
-   真增量信号，所以 inline repair 不可能系统性变好；真增量在次日，故修复只能放离线环。**
-3. **增量替换而非补充目标函数**：反馈以命令注入，修复者目标从"回答好候选人"整体替换为
-   "满足这条反馈"；首版其他优点（星期/报名状态/结构/承诺）退出优化目标成为无人守护的副
-   产品，被随机重掷——周二→周一即此机制（反馈只说补查详情，星期不在目标里，重掷翻错）。
-
-外加动作不可逆（inline 发出即收不回，离线修复作用于下一版发布，有评审/灰度/回滚）。即
-控制系统老规矩：**快环必须笨而稳（确定性动作），聪明只能放慢环**。本链路三期演化史是其
-实证：活到最后的 inline 组件全是确定性的（hard-rules 纯函数/sanitizer/回归闸——只做比较）；
-唯一安全存活的 inline LLM 是 shadow——恰因它只观测不动手；所有出过事的都是在快环里做聪明
-动作的部分（repair）。双环体系不是新发明，是把"聪明"搬回它唯一能安全存在的地方。
+## 2. 当前规则面
 
-### 2.4 replan 的处置：随发牌退役，拆解降级为条件项
+`output/rules/output-rule-catalog.ts` 是唯一运行目录，当前 19 条（14 执行档 + 5 observe 哨兵）：
 
-推理链摊开（避免"怎么突然不用拆了"的误读）：
+| 类别 | ruleId |
+| --- | --- |
+| 格式/内部泄漏 | `invalid_model_output`、`internal_output_leak`、`meta_narration_reply`、`human_service_phrase_leak` |
+| 封闭高风险 | `identity_misregistration_coaching`、`experience_fraud_coaching`、`discriminatory_screening_leak`、`sensitive_origin_probe`、`quota_promise` |
+| 工具回执对账 | `online_interview_location_claim`、`unsupported_store_status_speculation`、`booking_receipt_mismatch`、`interview_time_change_unconfirmed`、`brand_alias_fuzzy_match_ignored` |
+| observe 哨兵（只落档不拦截） | `dangling_reply_promise`、`requested_brand_mismatch`、`settlement_cycle_mismatch`、`proactive_insurance_policy_mention`、`booking_done_claim_without_submission` |
 
-1. **replan 不是独立系统，是被规则"雇佣"的**：链路里没有自主运行的 replan 模块，每条规则登记时声明命中后走哪条修复路径。目录内雇主实为**四个**（两次勘误的教训：雇主清单必须 grep 目录，不能拿命中窗口反推）：`job_detail_lookup_required`、`image_description_not_saved`、`requested_brand_mismatch`、`handoff_promise_without_handoff`。
-2. **07-27 发牌切换把四个雇主全部裁定完毕**：job_detail / image_desc / brand_mismatch 收回动手权降 observe（brand_mismatch 经专项抽样 3/3 假阳——门店名被当品牌名，历史 7/7 二审通过实为 replan 重新生成"品牌（门店）"格式骗过解析器的空转）；handoff_promise 降 **revise**（P0 假承诺类，rewrite 修法唯一=删完成时态承诺，P0 收敛保证修不好即 block）。**REPLAN 已从 `GuardrailRuleAction` 联合类型删除（类型层保险栓落地）**，目录不变量测试守住零雇主状态；**replan 执行路径已同日物理删除，无死码遗留**——三层全封：runner（重进 generator 臂/短路块/工具白名单解析删除，repair 统一走 ReplyRepairAgent）、guardrail 分流（mergeRuleDecision/mergeByPriority/repairMode 映射均无 replan 档，resolveRepairToolNames 删除）、语义档（normalizeDecision 无条件把 'replan' 归一为 revise + applyConfidenceBackstop 纵深防御，防 mock/实现替换注入）。
-3. **为什么"不拆"反而对**：原两步拆解（取数归 generator 只跑工具文本丢弃、写字统一归 ReplyRepairAgent）是给 replan 做安全化手术，前提是它还有活干。发牌后其服务对象已被裁定不值得修（三期数据：对这两条规则做任何 inline 修复期望为负）——**给没有调用者的路径做安全化改造是纯浪费**。拆解降级为条件项：仅当未来某规则以生产数据挣到"补取数修复"资格时再做（ReplyRepairAgent 的 `toolCalls`+`repairContext` 通道现成，工具轨迹合并是一行 concat，届时是接线不是新造）；按 §2.1 第一性原理，这一天大概率不来——"补事实"的正确位置在慢环根修。
-4. **job_detail 的违规不是没人管，是换人管**：今天=命中→replan→二审→投修复版（60% 变好但全部重度伤害产自此路）；终态=命中→observe 首版原样投递+证据留档→次日事后环 L1 扫投递物对照工具事实→系统性形态走生成侧根修。代价 ~14 条/天轻违规首版直投，换重度伤害归零——§6 的"L1 接盘检查先上线"硬约束由此而来。
-5. **枚举是退役的保险栓**：直接从现有 `action` 枚举**删除 REPLAN 值**（`repairMode`/`repairToolNames` 字段随之陪葬）——退役不是"恰好没人用"的偶然状态，而是类型层面硬约束；未来想给新规则配"重新规划回复"，必须先回本文档打这场架。
+observe 哨兵是 2026-08-26 数据复核恢复的定点回补（人设露馅升执行档、四族有信号量的哨兵
+落档），不是开放语义规则的整体回归；新规则仍一律 observe 入场，升档须 ≥2 周判例且精确率
+≥90%。既有运行时 override 仅兼容 `off | observe` 降档；它不允许增加规则或提高权限。
+聚合顺序仍为 `block > revise > observe > pass`。
 
-   **✅ 已落地（2026-08-13）**：`GUARDRAIL_ACTION` / `GUARDRAIL_DECISION` / `OUTPUT_DECISIONS` /
-   `GUARDRAIL_REPAIR_MODE(S)` 全部删除 REPLAN 值，`repairMode` 收成 `rewrite` 单档；死代码
-   （`buildReplanToolConstraint` 与两处 `hasReplan` 分支）删除；提示词里"不要 revise/replan/block"
-   的措辞一并摘除（模型唯一一次吐出 replan 是照抄这句）。放行判据是生产实证：退役后 17 天、
-   5726 条 `guardrail_review_records` 里模型**未在任何枚举字段**产出过该值，"留着容忍模型输出
-   避免结构化重试"的理由已无实证支撑。历史档案（459 条 `first_decision='replan'`）不受影响——
-   读取链路是 `as OutputDecision` 断言无运行时校验，Dashboard 展示走 web 侧独立词表。
-   回归闸见 `tests/agent/guardrail/vocab-single-home-guardrail.spec.ts`「replan 不得回到任何出站词表」。
-   **未做**：`repairMode`/`repairToolNames` 字段本身的删除（涉及 `guardrail_review_records.repair_mode`
-   列与 Dashboard 展示，另案）。
+精确重复不登记 ruleId：`OutboundReplySanitizer.pruneRepeatedSegments()` 只删除与近期真实投递
+段落在去空白标点后全等的长段落；候选人明确要求重发时不删，不做相似度判断。
 
-replan 曾是三期全部已投递伤害的宿主，且提示词约束已证明天花板（周二→周一案发生在 v10.29.0 首版注入 + 双通道保留指令生效**之后**）。拆解与发牌是通往同一终点（LLM 失去整段重写权）的两条路——发牌不用动刀，还顺手回答了更根本的"该不该修"，故拆解从必做降为备用。
+handoff 承诺也不登记 Output ruleId：`turn-outcome.ts` 将封闭承诺词形与本轮成功
+`request_handoff`/托管暂停副作用对账，缺失时生成既有 `general_handoff` side effect。
 
-### 2.5 repair 还算一"层"吗——不算了，解体为三个残件
+## 3. 修复边界
 
-发牌 + 第一性原理推到底，repair 作为"反馈循环层"已死；存续的是三个身份不同的残件：
+repair 是 Output 裁决后的有界收敛，不是新的 guardrail 层：
 
-1. **确定性最小编辑**（剥围栏/剥标记，fence_stripped）：非 LLM、无反馈、无二次生成，哲学上是
-   sanitizer 家族的延伸——从来不是反馈循环，只是历史上归在 repair 名下。
-2. **P0 抢救**（block 前最后一搏）：唯一数学上稳赚的场景——失败兜底恰好等于不修的
-   counterfactual（P0 修不好就 block，不修本来就是 block），尝试下行为零、上行是免于整轮
-   沉默。三期 block=0 说明近乎不被行使：是保险，不是循环。
-3. **白名单句级窄修**（store_status / schedule_window）：存活原因恰是三处偷换的三个豁免，
-   与准入条件一一对应——违规句可精确定位（目标替换半径=1 句）、修法唯一（存量子集够用）、
-   检测确定性 100% 精度（信号不脏，是 regex 级事实非二手意见）。本质是"需要 LLM 润色的
-   模板替换"。缺任一条件即退回三处偷换的世界，立刻收牌。
-
-架构图上 repair 从链路一"层"降格为收敛策略里的三个工具。退役的机器：replan 路径、被收回
-规则的反馈注入、"repair=质量提升手段"的定位。保留的机器：二审（只服务残件 2/3）、回归闸
-（残件 3 兜底）。**残件也有退出路径**：残件 3 跌破准入线→收牌只剩 P0 抢救；连续多期 P0
-仍 block=0→评估连抢救改纯确定性处置（block+留档事后环），届时 repair 归零，链路收敛为
-"确定性防线 + 观测 + 离线修复"纯净形态——不强求，让数据决定。
+- 最多修复一次；
+- 格式残留优先机械删除或拆封，保留正文；
+- `ReplyRepairAgent` 只修改命中局部，不拥有业务工具；
+- 不得新增岗位、薪资、门店、地址、时间、预约状态或政策事实；
+- 修复版使用相同工具轨迹再过一次确定性二审；
+- regression gate 保留结构坍缩、岗位极性反转、日期星期改错和已完成 booking 被降级为待办的检查；
+- P0/不可恢复问题仍不合格时 block；只剩可恢复 P1/P2 时按既有规则留档 fail-open。
 
-### 2.6 运营"本轮回复要达标"要求的路由（本方案没有放弃本轮质量）
+`replan` 已退役；修复不得重进 Generator 或重新执行副作用。
 
-被三期数据证伪的不是"本轮要达标"这个目标，是"在出口修出达标"这条实现路径。本轮质量的产地
-只有生成时（prompt/场景策略/证据注入/记忆——场景质量定义的居所即 `biz/strategy` 的
-persona+红线+阶段目标）。账本：7-24 实测 1204 轮投递中仅 1.7% 进 repair——**>93% 的回合首版
-即投递版，"本轮达标"的主战场从来在生成侧**；生成侧每改好一处吃到 100% 回合且永久复利。
-
-运营要求按可验证性路由：
-
-| 要求类型 | 例子 | 路由 | 本轮兜得住吗 |
-|---|---|---|---|
-| 客观可验证项 | 星期不错/薪资不编/不泄内部信息 | 硬规则+回归闸+sanitizer（快环） | **能**，inline 实时兜底 |
-| 场景质量定义 | 约面确认复述时间地址、报名给完整表单 | 生成侧（persona/阶段目标/prompt/证据注入） | 能——靠生成时装备，不靠出口返修 |
-| 主观判断项 | 推荐是否最优、语气 | shadow → 日报 → 归因 → 生成侧修 | 本轮如实投递，次日修根 |
-| 运营验收 | 到底达没达标 | 每日 badcase 日报（L0 已上线） | 逐日证据，不凭体感 |
-
-高危场景（约面确认/首次报价等）若要求本轮质量再抬一档，合法阀门是 **best-of-N 选择**（生成
-2-3 候选、排序挑最好）——选择安全/修改危险（§8.1），最坏选中另一合格候选而非改坏好文本；
-代价是延迟与 token，按场景白名单开，不全量。这是"本轮达标"野心的合规上升通道。
-
-**待落地**：(a) **不新增任何枚举/字段，在现有类型上做减法**（用户裁定：guardrail 类型维度已够多）——~~`action` 枚举删除 REPLAN 值~~（✅ 2026-08-13 落地，见 §2.4 点 5）、observe 从"pass + risk_level=low"暗语转正为一等值并设为**默认**，终态 `action = OBSERVE(默认) | REVISE | BLOCK` 三值；`repairMode`/`repairToolNames` 字段删除（⏳ 未做，涉及 DB 列与 Dashboard）。image_desc 的"补调工具+原文照发"不需要目录值：文本不变即 observe，缺失的工具调用作为副作用补执行（finalizer/异步皆可），与 fence_stripped 同类——代码特例，不进目录当概念。净账：类型维度 5→2（action+priority），枚举值 4→3，零新增；(b) 发牌切换按规则逐条灰度（先 settlement / image_desc，再 job_detail），每条切换后由事后环日报验收（对应检查项须先于或同步于该规则的切换上线，见 §6）。
+## 4. 组件所有权
 
-## 3. 事后检测环：每日全量自动 badcase 扫描
-
-> 定位：审计对象是 **Agent 的投递物与对话结局**，与投递前闸门互补；与人工运营反馈链路（analyze-chat-badcases 的反馈验证 SOP）**并行不替代**——那条链路处理"人报的"，本环处理"系统自己发现的"。
-
-按成本分三层漏斗：
-
-### L0｜消费语义 shadow 存量裁决（零新增检测成本，最先落地）
-
-shadow 每天已经产出 ~60 条/日高置信 revise/block findings（含 `evidenceQuote`/`userImpact`/`confidence`），但无人消费。每日任务：拉昨日 findings → 按 chat 去重 → 高置信优先轻量复核 → 确认清单。**检测早已做完，缺的只是 triage 和呈现。**
-
-### L1｜确定性全量回扫（零 LLM，覆盖全部 ~1200 轮/日）
-
-只做代码可判、且投递前闸门结构上判不了的事：
-
-| 检查项 | 依据 |
-|---|---|
-| 投递文本日期↔星期算术校验 | 周二→周一案；`fact_mutated` 的纯函数可直接复用，指向 `reply_preview` |
-| 投递文本 vs 工具事实矛盾 | settlement/schedule 等硬规则纯函数掉头复扫投递物（含 repair 后文本） |
-| 悬空承诺 + 次日兑现核验 | "稍后给你回执/我帮你查下X"→ 后续轮是否真有下文 |
-| timeout 静默丢消息 | 流水表 status，高峰期日均 ~7 条 |
-| 宣称已报名但无 booking 成功记录 | 臆造报名叙述类（shadow 真阳主类之一） |
-| 候选人同题重复追问 ≥3 次 | 挫败信号，历史身份死锁 badcase 的形态 |
-
-### L2｜LLM 定向抽扫（预算内）
-
-67% 盲区轮次 + 高危切片（booking 轮、转人工轮、回复后即流失会话）抽样送 LLM 评审。L1/L2 的确定性发现持续反哺硬规则与回归闸新形态。
-
-### 出口
-
-- **P0 形态（✅ 已上线 2026-07-27）**：本地 md 日报——产出报告文件到 badcase-scan-reports/，直接在 Fable 会话里查看（同 guardrail-accuracy-audit 报告模式，用户裁定：不做飞书日报）。首期报告即产出 47 会话高置信清单 + timeout 超基线信号。⚠️ **交付形态是 Claude scheduled task，不是 `src/` 代码**（只扫 src 会误判为零实现）；承载任务 2026-07-30 由 `daily-badcase-scan`（每日 09:00）迁移为 **`daily-auto-scan-report`（每日 06:00）**，旧任务已停用待删。同族在跑的还有 `daily-badcase-triage`（每日 07:00，根因分析 + 修复决策）与 `guardrail-accuracy-audit`（每 2 天）；
-- **P3 形态**：独立落库表（finding 类型/置信/trace_id/判定依据）+ 高置信案例自动策展进 test-suite 回归资产（复用 analyze-chat-badcases 的策展机器）。
-
-## 4. 双环闭环：badcase 驱动的规则生命周期
-
-```
-        ┌────────────── 事前防线（inline，毫秒级，只拦不可逆伤害）──────────────┐
-        │  hard-rules → 语义审查 → sanitizer → repair 阶梯 → 回归闸 → 收敛      │
-   生成 ─┤                                                                      ├─ 投递
-        │                                                                      │
-        └──← 新规则 / 新回归闸形态 / action 发牌调整 ←────────────┐              │
-                                                                │              ▼
-        ┌────────────── 事后检测（offline，每日，100% 投递物）───┴──────────────┐
-        │  L0 shadow 裁决消费 → L1 确定性全量回扫 → L2 LLM 定向抽扫             │
-        │  → md 日报（P0，已上线）／findings 落库 + 自动策展回归用例（P3）      │
-        └───────────────────────────────────────────────────────────────────────┘
-```
-
-规则生命周期（双环的连接约定）：**badcase 实证（trace）→ 进 L1 确定性检查或 shadow 观测 → 精度达标才 enforce/进硬规则 → 持续监控命中率与假阳 → 长期 0 命中或假阳超标则退役**。7-10 硬规则大规模下线（20 条）就是没有这个生命周期时欠下的债——规则只进不出、精度无人监控。
-
-### 4.1 三条数据流的读写边界
-
-#### 流 1｜事前环（实时，每回合，毫秒级）
-
-```
-候选人消息
- → 输入守卫
- → generator 首版草稿
- → hard-rules 检测（10 条，全量回合）
-     ├─ 无命中 ─────────────────────────────→ sanitizer → 投递
-     ├─ 命中·持牌规则（revise 8 条 + block 5 条，2026-07-27 切换后现状）
-     │    → 动作阶梯修复（确定性剥离/受约束 rewrite，replan 已不存在）
-     │      → 回归闸 + 二审 → 收敛（过→投修复版；P1/P2 败→投首版；P0 败→block）
-     │      ─→ sanitizer → 投递
-     └─ 命中·无牌规则（observe 6 条：job_detail/settlement/image_desc/brand_mismatch 等）
-          → observe：首版原样放行 + 留档给事后环 ─→ sanitizer → 投递
- 语义审查 shadow（门控，~33% 带证据回合）→ 只写档案，不动文本
-
- 写入：guardrail_review_records   ← 命中/observe 证据、修复轨迹、semantic_reviews
-       message_processing_records ← trace_id + reply_preview（投递物全文）
-       agent_execution_events     ← 工具调用轨迹
-```
-
-与现状的差别只有一处分流：非白名单命中从"进 repair"改道"observe 放行"。
-**observe 档案是两环之间的接口**——事前环不动手，但把证据完整留下，等事后环接盘。
-
-#### 流 2｜事后环（离线，每日 T+1）
-
-```
-读取（只读生产表，join 键 = trace_id）：
-  昨日 message_processing_records 全量（~1200 轮/日，取 reply_preview＝投递物）
-  ⋈ guardrail_review_records（observe 档案 + shadow findings）
-  ⋈ 工具轨迹（agent_invocation / agent_execution_events）
-
-  L0：semantic_reviews findings → 按 chat 去重 → 高置信过滤 → 轻量复核 ─┐
-  L1：确定性检查 × 全量投递物（日期星期校验/文本vs工具事实/悬空承诺   ├→ 确认 badcase
-      次日兑现/静默丢消息/宣称已报名无 booking/同题追问）              │
-  L2：盲区 67% + 高危切片抽样 → LLM 评审 ─────────────────────────────┘
-
-出口：P0＝本地 md 日报（scheduled task 产出，Fable 会话查看）
-      P3＝findings 落库表 + 高置信案例 → test-suite 回归资产（策展机器复用）
-```
-
-两个关键性质：**① 审查对象换了**——事前环审草稿，事后环审 `reply_preview`（候选人真正收到
-的文本），直接修掉"审的不是投递物"缺陷（周二→周一类 repair 引入错误在此必被 L1 日期校验
-抓到）；**② 单向依赖**——事后环只读生产表、只写自己的表，不回写任何热路径，离线环整个
-挂掉消息链路零感知。
-
-#### 流 3｜反馈流（按需，人审 + 代码发布，刻意不自动化）
-
-```
-badcase findings → 归因 → 三路出口：
-  ① 生成侧根修：prompt / 记忆 / 工具描述 → 首版质量提升（走正常 PR 发版）
-  ② 新检查候选：先进 L1 确定性检查或 shadow 规则 → 精度达标 → 才升硬规则/enforce
-  ③ 发牌调整：两期战绩数据 → 白名单发牌/收牌（改规则目录 action 值，走 PR）
-```
-
-badcase 数据影响热路径的唯一通道是代码发布（PR + 灰度），离线环的误判不会自动污染线上
-行为——即 §4 生命周期在数据流层面的落法。发牌切换的验收数据也从流 2 日报出来，形成
-"切一条规则 → 看一周日报 → 再切下一条"的闭环。
-
-**基础设施增量**：流 1 只改分流逻辑（表全现成）、流 3 是流程约定（零代码）；P0 阶段真正
-新建的只有一个每日 scheduled task（md 日报），findings 落库表推迟到 P3——这也是 P0 能
-零生产改动启动的原因。
-
-## 5. 已知盲区与观测锚点
-
-- 回归闸是枚举式的，会出现第五种形态——接受，由事后检测环兜住并按 §4 生命周期补形态。
-- `job_detail_lookup_required` 已于 2026-07-27 收回动手权降 observe（与日报 4.5 的 L1 矛盾抽查同步上线，约束满足）；~14 条/天真违规首版直投的实际代价由日报逐日验收，**出现编造政策/事实反转/星期写错级伤害即为发牌回滚信号**。
-- 观测锚点：`reason_code` 的 `repair_regression_reverted:*` 前缀 = 回归闸命中率；L0/L1 md 日报的日环比 = Agent 质量趋势；shadow findings 消费率 = 事后环健康度。
-- 每 2 天的 guardrail-accuracy-audit（审守卫自身的 repair 质量）继续运行，未来直接消费 L0/L1 产出作为输入。
+| 组件 | 可以做什么 | 不能做什么 |
+| --- | --- | --- |
+| `HardRulesService` | 读取回复、memory 和工具回执，产出确定性 contradiction | 改文案、调工具、猜开放语义 |
+| `OutputGuardrailService` | 精确去重、运行规则并形成 pass/revise/block | 调第二个模型、提交副作用 |
+| `AgentRunnerService` | 选择一次确定性/LLM 局部修复，二审并收敛 outcome | 在 repair 中重跑业务工具 |
+| `TurnOutcomeInterventionService` | Replay 定局后提交暂停托管、handoff 和告警 | 重新解释回复语义 |
 
+## 5. 记录面
+
+- `message_processing_records.guardrail_output`：回合级紧凑摘要；
+- `guardrail_review_records`：确定性规则命中、首版/修复版与最终裁决；历史
+  `semantic_reviews` 字段只作存量数据兼容，没有新的生产者；
+- `TurnOutcome.outputGuardrail`：渠道投递前的最终裁决事实。
+
+本链路不新增观测项、Dashboard、shadow diff、自动 Rule Catalog 或人工标注流程。
+
+## 6. 维护纪律
+
+1. 新规则必须有封闭词形或结构化外生信号，不能用正则猜开放语义；
+2. ruleId 与现有 output catalog 双向一致，单测覆盖真阳和主要假阳；
+3. Prompt 教侧配对变化同步更新 [Prompt 规则台账](../prompt-rule-ledger.md)；
+4. 对话理解问题优先修主 Agent Prompt、既有抽取标签或工具契约；
+5. precheck 只暴露统一 `formAnswers`，字段全集与标签原文由岗位契约负责，不在 Output 修补。
+
+## 相关代码
+
+- `src/agent/guardrail/output/output-guardrail.service.ts`
+- `src/agent/guardrail/output/hard-rules.service.ts`
+- `src/agent/guardrail/output/rules/output-rule-catalog.ts`
+- `src/agent/guardrail/output/repair-regression.util.ts`
+- `src/agent/guardrail/output/outbound-reply-sanitizer.ts`
+- `src/agent/runner/agent-runner.service.ts`
+- `src/agent/runner/turn-outcome.ts`
+- `src/agent/reply-repair/reply-repair.agent.ts`

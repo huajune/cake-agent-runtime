@@ -226,11 +226,18 @@ export function useFeedback({ source, onError }: UseFeedbackOptions = {}): UseFe
         });
         setSuccessType(submittedType);
         closeModal();
-        toast.success(
-          result.message ||
-            `${submittedType === 'goodcase' ? 'GoodCase' : 'BadCase'} 已成功写入飞书表格`,
-          { duration: 3500 },
-        );
+        if (result.duplicate) {
+          toast(result.message || '相同内容的反馈在 24 小时内已提交过，本次未重复写入', {
+            icon: '⚠️',
+            duration: 4500,
+          });
+        } else {
+          toast.success(
+            result.message ||
+              `${submittedType === 'goodcase' ? 'GoodCase' : 'BadCase'} 已成功写入飞书表格`,
+            { duration: 3500 },
+          );
+        }
         // 3 秒后清除成功状态
         setTimeout(() => setSuccessType(null), 3000);
         return true;

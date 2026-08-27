@@ -1,5 +1,5 @@
 /**
- * 城市/区县名称归一化（自 memory/facts/geo-mappings.ts 行为等价迁移，Phase 1）。
+ * 城市/区县名称归一化。
  */
 
 /**

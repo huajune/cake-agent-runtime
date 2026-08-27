@@ -81,13 +81,6 @@ export const VERDICT_SITE_REGISTRY = [
     rationale: '仅消费已公证 clear 操作，把对应结构化字段物化为 missing。',
   },
   {
-    id: 'booking_candidate_snapshot_match',
-    authority: 'structural_gate',
-    effect: 'reject',
-    source: 'src/resolution/evidence/snapshot-gate.ts#evaluateSnapshotGate',
-    rationale: 'booking payload 与 precheck 快照按 jobId、水位和封闭字段值对账。',
-  },
-  {
     id: 'booking_candidate_name_provenance',
     authority: 'notary',
     effect: 'reject',
@@ -130,25 +123,17 @@ export const VERDICT_SITE_REGISTRY = [
     rationale: '判缺是必填字段集合减去 accepted / needs_confirmation 账本字段的集合运算。',
   },
   {
-    id: 'precheck_gender_inline_confirmation',
-    authority: 'closed_form',
-    effect: 'supersede',
-    source: 'src/resolution/evidence/producers/gender-confirmation.ts#isGenderConfirmedInline',
-    rationale: 'PR #1000 P0-4 表内确认死锁修复；D5 退役批成员，模型 confirm claim 稳定后随批拆除。',
-  },
-  {
     id: 'candidate_rule_fact_prompt_hint',
     authority: 'hint',
     effect: 'advisory',
-    source: 'src/agent/generator/context/sections/turn-hints.section.ts#renderCurrentHints',
+    source: 'src/agent/generator/context/sections/working/turn-hints.section.ts#renderCurrentHints',
     rationale: '规则识别只进模型内部提示便签，模型与候选人保留决定权。',
   },
   {
     id: 'candidate_profile_prefill_hint',
     authority: 'hint',
     effect: 'advisory',
-    source:
-      'src/agent/generator/preparation-utils/tool-context.builder.ts#buildCandidatePrefillHints',
+    source: 'src/agent/generator/preparation/tool-context.builder.ts#buildCandidatePrefillHints',
     rationale: 'medium/system 值只投影为带值求证，不得据此拒绝、提交或升级来源。',
   },
 ] as const satisfies readonly VerdictSiteRegistration[];

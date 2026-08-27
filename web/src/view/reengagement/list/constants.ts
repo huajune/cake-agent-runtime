@@ -51,6 +51,7 @@ export const SCENARIO_LABELS: Record<string, string> = {
   booking_incomplete: '收资未完成',
   interview_reminder: '面试提醒',
   post_interview_followup: '面试后回访',
+  post_interview_onboarding: '面试后回访 · 入职跟进',
   new_job_for_waiting: '新岗上线',
 };
 

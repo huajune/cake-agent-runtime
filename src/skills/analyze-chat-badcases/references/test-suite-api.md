@@ -134,6 +134,7 @@ POST /test-suite/datasets/conversation/import-curated
 ```
 
 语义说明：
+
 - 以 `caseId / validationId` 为稳定键做幂等 upsert
 - payload 完全一致时记为 `unchanged`，不会重复重置测试结果
 - payload 发生变化时，会把旧的 `测试状态 / 批次 / 分数` 等执行痕迹清回 `待测试`

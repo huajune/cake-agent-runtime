@@ -1,7 +1,23 @@
 import { FeishuCardBuilderService } from '@infra/feishu/services/card-builder.service';
 import { FEISHU_RECEIVER_USERS } from '@infra/feishu/constants/receivers';
 import { ConversationRiskCardRenderer } from '@notification/renderers/conversation-risk-card.renderer';
-import { SessionFactsSchema, type SessionFacts } from '@memory/types/session-facts.types';
+import {
+  EntityExtractionResultSchema,
+  toSessionFacts,
+  type SessionFacts,
+} from '@memory/short-term/short-term.types';
+
+/**
+ * 用例里的事实字面量是裸值形态，而落盘态只收信封或 null（记忆审计 S9 拆掉了裸值
+ * 兼容信封）。这里统一经 toSessionFacts 署名，与生产写入方同口径。
+ */
+function storedFacts(raw: Record<string, unknown>) {
+  return toSessionFacts(EntityExtractionResultSchema.parse({ reasoning: 'spec fixture', ...raw }), {
+    confidence: 'medium',
+    source: 'archive',
+    evidence: 'spec fixture',
+  });
+}
 
 describe('ConversationRiskCardRenderer', () => {
   let renderer: ConversationRiskCardRenderer;
@@ -30,7 +46,7 @@ describe('ConversationRiskCardRenderer', () => {
         { role: 'user', content: '你们是不是骗子，我要投诉', timestamp: 1712044860000 },
       ],
       sessionState: {
-        facts: SessionFactsSchema.parse({
+        facts: storedFacts({
           interview_info: {
             name: 'Alice',
             phone: '13800000000',
@@ -45,7 +61,6 @@ describe('ConversationRiskCardRenderer', () => {
             has_health_certificate: null,
           },
           preferences: {
-            brands: null,
             salary: null,
             position: ['服务员'],
             schedule: null,
@@ -112,7 +127,7 @@ describe('ConversationRiskCardRenderer', () => {
       currentMessageContent: '我要举报',
       recentMessages: [{ role: 'user', content: '我要举报', timestamp: 1712044860000 }],
       sessionState: {
-        facts: SessionFactsSchema.parse({
+        facts: storedFacts({
           interview_info: {
             name: null,
             phone: null,
@@ -127,7 +142,6 @@ describe('ConversationRiskCardRenderer', () => {
             has_health_certificate: null,
           },
           preferences: {
-            brands: null,
             salary: null,
             position: null,
             schedule: null,
@@ -168,7 +182,7 @@ describe('ConversationRiskCardRenderer', () => {
         { role: 'user', content: '滚犊子，要我这么多信息', timestamp: 1712044860000 },
       ],
       sessionState: {
-        facts: SessionFactsSchema.parse({
+        facts: storedFacts({
           interview_info: {
             name: null,
             phone: null,
@@ -183,7 +197,6 @@ describe('ConversationRiskCardRenderer', () => {
             has_health_certificate: null,
           },
           preferences: {
-            brands: null,
             salary: null,
             position: ['小时工', '日结小时工'],
             schedule: null,
@@ -225,7 +238,7 @@ describe('ConversationRiskCardRenderer', () => {
         { role: 'user', content: '滚犊子，要我这么多信息', timestamp: 1712044860000 },
       ],
       sessionState: {
-        facts: SessionFactsSchema.parse({
+        facts: storedFacts({
           interview_info: {
             name: null,
             phone: null,
@@ -240,7 +253,6 @@ describe('ConversationRiskCardRenderer', () => {
             has_health_certificate: null,
           },
           preferences: {
-            brands: null,
             salary: null,
             position: null,
             schedule: null,

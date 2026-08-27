@@ -1,5 +1,5 @@
 import { GuardrailReviewPacketBuilder } from '@agent/guardrail/output/llm/review-packet.builder';
-import { createTurnLedger } from '@agent/generator/preparation-utils/turn-ledger';
+import { createTurnLedger } from '@agent/generator/preparation/turn-ledger';
 import { finalizeVisualFactSheet } from '@resolution/signal/visual';
 
 function visualLedger(raw: { description?: string } & Record<string, unknown>) {
@@ -63,7 +63,6 @@ describe('GuardrailReviewPacketBuilder', () => {
             bookingChecklist: {
               requiredFieldsToCollectNow: ['姓名', '电话'],
               missingFields: ['姓名'],
-              collectionStrategy: { starterFields: ['姓名', '电话', '年龄'] },
             },
             interview: { interviewTimeMode: 'fixed_slots' },
           },
@@ -129,7 +128,6 @@ describe('GuardrailReviewPacketBuilder', () => {
     expect(packet.evidence.precheck).toMatchObject({
       nextAction: 'collect_fields',
       requiredFieldsToCollectNow: ['姓名', '电话'],
-      starterFields: ['姓名', '电话', '年龄'],
       missingFields: ['姓名'],
       interviewTimeMode: 'fixed_slots',
     });

@@ -63,9 +63,9 @@ src/
 │                       #   纯确定性代码零 LLM；resolve() 输出标准品牌+极性+置信度；只依赖 sponge 品牌目录
 ├── resolution/geo/     # 地理解析域（唯一真相源）：行政区层级/县级市映射/白名单三轮扫描/地标别名/歧义策略/冲突检测
 │                       #   纯确定性零 LLM 零出向依赖；高德集成留 infra/geocoding，海绵行政区适配留 tools 层
-├── tools/              # Agent 工具（duliday 岗位/约面/改约/取消、拉群、handoff、召回历史等）+ tool-registry
-├── memory/             # 四层记忆：short-term(对话窗口) / session(会话事实) / procedural(阶段) / long-term(画像)
-│                       #   + settlement(空闲沉淀) / stores(Redis+Supabase 适配)；只持有事实，不实现字段判断
+├── tools/              # Agent 动作层：模型可见契约 + 确定性实现；collection/ 自持收资状态机与 Redis 单据
+├── memory/             # 两层记忆：short-term（7d 消息窗口 + 3d session 状态）/ long-term（候选人×bot 关系档）
+│                       #   lifecycle 编排 + 3d delayed consolidation + 自用 Redis/Supabase stores；episode 仅是计算边界
 ├── agent/              # Agent 编排
 │   ├── runner/         #   回合入口 agent-runner + turn-finalizer(统一副作用出口) + reply-rewrite
 │   ├── generator/      #   preparation(召回/上下文准备) + generator(LLM 调用) + context/(Prompt Section 体系)
@@ -123,6 +123,12 @@ supabase/migrations/    # 120+ 迁移；baseline 是 20260310000000
 - Service 结构顺序：logger → config 属性 → constructor(DI) → public 方法 → private helpers；单一职责，超过 ~500 行考虑拆分。
 - 命名：文件 kebab-case；类/接口 PascalCase；变量/函数 camelCase；常量 UPPER_SNAKE_CASE。
 - 完整错误处理；统一响应由 ResponseInterceptor / HttpExceptionFilter 处理，第三方回调用 `@RawResponse` 绕过包装。
+
+## Prompt 内容防腐纪律（改手册/工具 description/DB 策略/守卫规则时必读）
+
+- **规则台账是必经登记处**：任何 prompt 侧规则的增/改/删，必须同批更新 [docs/prompt-rule-ledger.md](./docs/prompt-rule-ledger.md)（摘要/来源/日期/时效性），放置位置先过台账文首的判定树——同一约束只准住一处。
+- **职责迁移必须回收**：代码/状态机接管某行为的 PR，必须同批删除 prompt 侧对应教学（先例：收资状态机上线后 precheck 描述 13.5K→729）。
+- **临时规则必须标 TTL**：季节性/开城状态/活动期口径必须写明过期条件，过期即删（标本：暑假工 2026 暑期规则）。
 
 ## Git & Release Convention
 

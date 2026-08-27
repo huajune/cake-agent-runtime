@@ -95,13 +95,12 @@ describe('RiskInterceptService', () => {
     });
   });
 
-  it.each(['坑', '太坑了', '你们这是坑人吧', '我被你们坑惨了', '就是坑钱的'])(
-    'detects scam-sense "坑" as complaint risk: %s',
+  it.each(['我要去报警', '我准备向劳动局投诉', '这事我会申请仲裁'])(
+    'detects closed complaint actions: %s',
     async (scanContent) => {
-      await expect(service.precheck(baseInput({ scanContent }))).resolves.toEqual({
+      await expect(service.precheck(baseInput({ scanContent }))).resolves.toMatchObject({
         hit: true,
         riskType: 'complaint_risk',
-        reason: expect.stringContaining('坑'),
         label: '投诉/举报风险',
       });
     },
@@ -109,15 +108,23 @@ describe('RiskInterceptService', () => {
 
   it.each([
     '你好',
+    '这个岗位会不会踩坑',
+    '我想找垃圾分类岗位',
+    '劳动局附近有门店吗',
+    '这个岗位曝光量高吗',
+    '我了解一下劳动仲裁流程',
     '坪山坑梓这边',
     '我在坑梓附近，沙坑村那边也行',
     '前面有个大坑，路不太好走',
     '这个游戏我早就入坑了',
-  ])('does NOT flag benign "坑" (place names / neutral words): %s', async (scanContent) => {
-    await expect(service.precheck(baseInput({ scanContent }))).resolves.toEqual({
-      hit: false,
-    });
-  });
+  ])(
+    'does NOT flag broad neutral keywords without a closed risk expression: %s',
+    async (scanContent) => {
+      await expect(service.precheck(baseInput({ scanContent }))).resolves.toEqual({
+        hit: false,
+      });
+    },
+  );
 
   it('does NOT flag "家里有病人 / 我爸有病" as abuse', async () => {
     await expect(

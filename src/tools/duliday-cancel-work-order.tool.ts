@@ -12,13 +12,13 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { SpongeService } from '@sponge/sponge.service';
 import { SELF_CANCEL_BLOCKED_STATUSES, type FailureReasonItem } from '@sponge/sponge.types';
-import { buildSpongeTokenContext } from '@tools/utils/sponge-token-context.util';
+import { buildSpongeTokenContext } from '@tools/shared/sponge-token-context.util';
 import { isTestPiiPhoneAllowed, maskPhoneForDetails } from '@tools/shared/test-pii-gate';
 import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
-import { LongTermService } from '@memory/services/long-term.service';
+import { LongTermService } from '@memory/long-term/long-term.service';
 import { PrivateChatMonitorNotifierService } from '@notification/services/private-chat-monitor-notifier.service';
 import { ToolBuilder } from '@shared-types/tool.types';
-import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
+import { buildToolError, TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
 
 const logger = new Logger('duliday_cancel_work_order');
 
@@ -134,7 +134,7 @@ export function buildCancelWorkOrderTool(
         const chatId = context.session.chatId ?? context.session.sessionId;
 
         // 测试链路 PII 白名单闸门：cancel 真调海绵生产网关，测试重放只允许
-        // 假身份工单（与 booking 同源防线，2026-07-27 误建工单事故后固化）。
+        // 假身份工单，与 booking 共用同一条生产写入防线。
         if (context.runtime.strategySource === 'testing' && !isTestPiiPhoneAllowed(phone)) {
           return buildToolError({
             errorType: TOOL_ERROR_TYPES.TEST_LINK_REAL_PII_BLOCKED,

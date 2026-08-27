@@ -39,7 +39,6 @@ export interface AgentReplyConfig {
   // chat 角色刻意不入此列：企微回调链路沿用 wecomCallbackModelId 专用通道。
   visionModelId: string; // 图片理解角色覆盖（AGENT_VISION_MODEL）
   evaluateModelId: string; // 对话质量评估角色覆盖（AGENT_EVALUATE_MODEL）
-  reviewModelId: string; // 出站守卫语义审查角色覆盖（AGENT_REVIEW_MODEL）
   repairModelId: string; // 出站守卫修复器角色覆盖（AGENT_REPAIR_MODEL）
   reengagementModelId: string; // 复聊语义判定/生成角色覆盖（AGENT_REENGAGEMENT_MODEL）
 
@@ -70,9 +69,6 @@ export interface AgentReplyConfig {
   queueDepthCritical: number; // 队列深度严重阈值（条数，高于此值触发严重告警）
   errorRateCritical: number; // 错误率严重阈值（每小时次数，高于此值触发严重告警）
 
-  // 出站守卫 llm 档（语义审查）灰度开关：即时生效，用于灰度上量与紧急熔断
-  outputGuardrailLlmEnabled: boolean; // enforce：语义审查结论参与出站裁决（revise/replan/block 真实拦截）
-  outputGuardrailSemanticShadowEnabled: boolean; // shadow：未 enforce 时跟随真实流量试跑，结论只观测不拦截
   hardRuleOverrides: HardRuleOverrides; // 硬规则运行时降档/关停；只能 off/observe，默认空对象
 
   // 主动复聊（reengagement）开关：即时生效（scheduler 排程 + processor 到点都读最新值）
@@ -88,7 +84,6 @@ export type AgentModelConfigKey =
   | 'extractModelId'
   | 'visionModelId'
   | 'evaluateModelId'
-  | 'reviewModelId'
   | 'repairModelId'
   | 'reengagementModelId';
 
@@ -134,7 +129,6 @@ export const DEFAULT_AGENT_REPLY_CONFIG: AgentReplyConfig = {
   extractModelId: '',
   visionModelId: '',
   evaluateModelId: '',
-  reviewModelId: '',
   repairModelId: '',
   reengagementModelId: '',
   defaultFallbackModelIds: [],
@@ -153,9 +147,6 @@ export const DEFAULT_AGENT_REPLY_CONFIG: AgentReplyConfig = {
   avgDurationCritical: 90000, // 响应时间高于 90 秒触发告警（totalMs 含 ~3s 合并窗口 + 真实 p50≈52s，60s 阈值会近乎常报）
   queueDepthCritical: 20, // 队列深度高于 20 条触发告警
   errorRateCritical: 10, // 每小时错误超过 10 次触发告警
-  // 出站守卫 llm 档默认全关：先 shadow 观测评估，达标后再开 enforce
-  outputGuardrailLlmEnabled: false,
-  outputGuardrailSemanticShadowEnabled: false,
   hardRuleOverrides: {},
   // 主动复聊默认关排程、开 shadow：放量顺序是 先开排程看"本应发" → 达标后再关 shadow 真发
   reengagementEnabled: false,

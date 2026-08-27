@@ -1,4 +1,9 @@
-/** Agent 执行编排：prepare -> model -> turn end lifecycle。 */
+/**
+ * Agent 生成器：prepare → AI SDK 多步模型/工具循环 → 生成结果归一化。
+ *
+ * 本类只把 `runTurnEnd` 收尾闭包挂到结果上；它不在生成结束时立即写记忆。
+ * Runner/渠道会在 replay 和投递结局确定后，通过 `TurnFinalizer` 只触发一次。
+ */
 
 import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
@@ -7,7 +12,7 @@ import { hasToolCall, stepCountIs, type generateText } from 'ai';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
 import { ModelRole } from '@/llm/llm.types';
 import { MemoryService } from '@memory/memory.service';
-import { PreparationService, type PreparedAgentContext } from './preparation.service';
+import { PreparationService, type WorkingMemory } from './preparation/preparation.service';
 import type { AgentError } from '@shared-types/agent-error.types';
 import type { TurnLedger } from '@shared-types/turn.types';
 import {
@@ -59,7 +64,14 @@ import type {
 
 type TurnEndLifecycleContext = Pick<
   Parameters<MemoryService['onTurnEnd']>[0],
-  'corpId' | 'userId' | 'sessionId' | 'messageId' | 'botImId' | 'normalizedMessages' | 'contactName'
+  | 'corpId'
+  | 'userId'
+  | 'sessionId'
+  | 'messageId'
+  | 'botUserId'
+  | 'botImId'
+  | 'normalizedMessages'
+  | 'contactName'
 > & { ledger: TurnLedger };
 export type {
   GeneratorInputMessage,
@@ -130,7 +142,9 @@ export class GeneratorAgent {
       if (r.reasoningText) {
         this.logger.debug(`Thinking: ${r.reasoningText.substring(0, 200)}...`);
       }
-      this.logger.log(`Loop 完成: steps=${r.steps.length}, tokens=${r.usage.totalTokens}`);
+      this.logger.log(
+        `Loop 完成: steps=${r.steps.length}, tokens=${r.usage.totalTokens}, cached=${r.usage.inputTokenDetails?.cacheReadTokens ?? 'n/a'}`,
+      );
 
       let result = this.buildRunResult({
         text: r.text,
@@ -141,6 +155,7 @@ export class GeneratorAgent {
           inputTokens: r.usage.inputTokens ?? 0,
           outputTokens: r.usage.outputTokens ?? 0,
           totalTokens: r.usage.totalTokens,
+          cachedInputTokens: r.usage.inputTokenDetails?.cacheReadTokens,
         },
         agentRequest,
         memorySnapshot: ctx.memorySnapshot,
@@ -204,6 +219,7 @@ export class GeneratorAgent {
               inputTokens: usage.inputTokens ?? 0,
               outputTokens: usage.outputTokens ?? 0,
               totalTokens: usage.totalTokens,
+              cachedInputTokens: usage.inputTokenDetails?.cacheReadTokens,
             },
             agentRequest,
             memorySnapshot: ctx.memorySnapshot,
@@ -213,9 +229,8 @@ export class GeneratorAgent {
             toolExecutionTimings: ctx.toolExecutionTimings,
           });
           this.attachTurnEnd(result, ctx, params.messageId, result.text);
-          // stream 路径专项（议题 5-1 第 6 条）：SSE 交互测试链此前依赖 fire-and-forget
-          // 默认分支自动收尾。开关删除后由 stream 自己在挂上闭包后立即触发，
-          // 保持既有收尾行为不变（runTurnEnd 幂等，调用方再触发一次是空操作）。
+          // stream 没有渠道层 TurnFinalizer；挂上闭包后立即触发，保持 SSE 交互链的收尾
+          // 行为（runTurnEnd 幂等，调用方再触发一次是空操作）。
           void result
             .runTurnEnd?.()
             .catch((err) => this.logger.warn('流式回合记忆生命周期执行失败', err));
@@ -244,7 +259,7 @@ export class GeneratorAgent {
     };
   }
 
-  private buildLlmExecutionOptions(params: GeneratorInvokeParams, ctx: PreparedAgentContext) {
+  private buildLlmExecutionOptions(params: GeneratorInvokeParams, ctx: WorkingMemory) {
     return {
       role: ModelRole.Chat,
       modelId: params.modelId,
@@ -278,7 +293,7 @@ export class GeneratorAgent {
    * 会直接结束整轮，可能导致没有最终回复输出；prepareStep 让模型仍能用其他工具或
    * 文本完成本轮。
    */
-  private buildPrepareStep(ctx: PreparedAgentContext): PrepareStepFn | undefined {
+  private buildPrepareStep(ctx: WorkingMemory): PrepareStepFn | undefined {
     const baseTools = Object.keys(ctx.tools ?? {});
     if (baseTools.length === 0) return undefined;
     const baseInstructions = ctx.finalPrompt;
@@ -359,6 +374,7 @@ export class GeneratorAgent {
         userId: ctx.userId,
         sessionId: ctx.sessionId,
         messageId: ctx.messageId,
+        botUserId: ctx.botUserId,
         botImId: ctx.botImId,
         normalizedMessages: ctx.normalizedMessages,
         candidatePool: ledger.jobs.fetchedJobs.length > 0 ? [...ledger.jobs.fetchedJobs] : null,
@@ -367,15 +383,8 @@ export class GeneratorAgent {
         jobListQuerySignature: ledger.jobs.querySignature ?? null,
         cityAttestation: ledger.geo.cityAttestation ?? null,
         invalidatedJobIds: [...ledger.jobs.invalidatedJobIds],
-        ruleFacts: ledger.facts.ruleFacts,
+        turnHints: ledger.facts.turnHints,
         laborFormIntent: ledger.facts.laborFormIntent,
-        extractionToolFacts: {
-          jobs: {
-            fetchedJobs: ledger.jobs.fetchedJobs,
-            currentFocusJob: ledger.jobs.currentFocusJob,
-          },
-          visual: { factSheets: ledger.visual.factSheets },
-        },
       },
       assistantText,
     );
@@ -384,11 +393,10 @@ export class GeneratorAgent {
   /**
    * 把 turn-end 触发器挂到结果上，交给调用方在本轮结局定局时触发。
    *
-   * 延迟触发是**唯一语义**（`deferTurnEnd` 开关已删除，core-flow-review 议题 5-1）：
+   * 延迟触发是唯一语义：
    * 首次生成结果可能被后续合并消息丢弃（replay），也可能被出站守卫拦下或投递失败；
    * 生成结束就 fire-and-forget 会把「本应丢弃 / 用户根本没看到」的回复写进 session 记忆，
-   * 污染下一轮 recall 与复聊判定。生产全路径本就 defer（invokeReviewed 恒强制、
-   * test-suite 两处显式传 true），保留的默认分支只是 PR #415 重构前的世界观残留。
+   * 污染下一轮 recall 与复聊判定。
    *
    * ⚠️ 代价：没有兜底了。新调用方忘记触发 runTurnEnd = 本轮记忆写入静默丢失。
    * 契约写在 GeneratorRunResult.runTurnEnd 的注释里。
@@ -431,6 +439,7 @@ export class GeneratorAgent {
         inputTokens?: number;
         outputTokens?: number;
         totalTokens?: number;
+        inputTokenDetails?: { cacheReadTokens?: number };
       };
       response?: { timestamp?: Date | string | number };
       toolCalls?: Array<{ toolCallId: string; toolName: string; input?: unknown }>;
@@ -515,6 +524,7 @@ export class GeneratorAgent {
                 inputTokens: step.usage.inputTokens ?? 0,
                 outputTokens: step.usage.outputTokens ?? 0,
                 totalTokens: step.usage.totalTokens,
+                cachedInputTokens: step.usage.inputTokenDetails?.cacheReadTokens,
               }
             : undefined,
         durationMs: stepDurationMs,
@@ -548,7 +558,7 @@ export class GeneratorAgent {
    */
   private async recoverEmptyTextResult(
     result: GeneratorRunResult,
-    ctx: PreparedAgentContext,
+    ctx: WorkingMemory,
     params: GeneratorInvokeParams,
   ): Promise<GeneratorRunResult> {
     if (result.text.trim().length > 0) return result;
@@ -569,10 +579,11 @@ export class GeneratorAgent {
     );
 
     try {
-      const recoveryUsage = {
+      const recoveryUsage: GeneratorRunResult['usage'] = {
         inputTokens: 0,
         outputTokens: 0,
         totalTokens: 0,
+        cachedInputTokens: 0,
       };
       const recovery = await this.llm.generate({
         role: ModelRole.Chat,
@@ -588,6 +599,7 @@ export class GeneratorAgent {
       recoveryUsage.inputTokens = recovery.usage.inputTokens ?? 0;
       recoveryUsage.outputTokens = recovery.usage.outputTokens ?? 0;
       recoveryUsage.totalTokens = recovery.usage.totalTokens ?? 0;
+      recoveryUsage.cachedInputTokens = recovery.usage.inputTokenDetails?.cacheReadTokens ?? 0;
 
       if (!text) {
         this.logger.warn(`空文本恢复仍未产出回复: sessionId=${ctx.sessionId}`);
@@ -621,6 +633,8 @@ export class GeneratorAgent {
           inputTokens: result.usage.inputTokens + recoveryUsage.inputTokens,
           outputTokens: result.usage.outputTokens + recoveryUsage.outputTokens,
           totalTokens: result.usage.totalTokens + recoveryUsage.totalTokens,
+          cachedInputTokens:
+            (result.usage.cachedInputTokens ?? 0) + (recoveryUsage.cachedInputTokens ?? 0),
         },
       };
     } catch (error) {
@@ -634,10 +648,7 @@ export class GeneratorAgent {
     }
   }
 
-  private buildEmptyTextRecoveryPrompt(
-    result: GeneratorRunResult,
-    ctx: PreparedAgentContext,
-  ): string {
+  private buildEmptyTextRecoveryPrompt(result: GeneratorRunResult, ctx: WorkingMemory): string {
     const transcript = result.agentSteps.map((step) => ({
       stepIndex: step.stepIndex,
       finishReason: step.finishReason,
@@ -669,7 +680,7 @@ export class GeneratorAgent {
     ].join('\n');
   }
 
-  private formatMessagesForRecovery(messages: PreparedAgentContext['normalizedMessages']): string {
+  private formatMessagesForRecovery(messages: WorkingMemory['normalizedMessages']): string {
     return messages
       .map((message) => {
         const content = this.stringifyMessageContent(message.content);
@@ -726,10 +737,7 @@ export class GeneratorAgent {
   }
 
   private createEmptyMessagesError(
-    ctx: Pick<
-      PreparedAgentContext,
-      'sessionId' | 'userId' | 'normalizedMessages' | 'memoryLoadWarning'
-    >,
+    ctx: Pick<WorkingMemory, 'sessionId' | 'userId' | 'normalizedMessages' | 'memoryLoadWarning'>,
   ): AgentError {
     return this.enrichAgentError(
       new Error(
@@ -742,10 +750,7 @@ export class GeneratorAgent {
 
   private enrichAgentError(
     err: unknown,
-    ctx: Pick<
-      PreparedAgentContext,
-      'sessionId' | 'userId' | 'normalizedMessages' | 'memoryLoadWarning'
-    >,
+    ctx: Pick<WorkingMemory, 'sessionId' | 'userId' | 'normalizedMessages' | 'memoryLoadWarning'>,
   ): AgentError {
     let error: AgentError;
     if (err instanceof Error) {

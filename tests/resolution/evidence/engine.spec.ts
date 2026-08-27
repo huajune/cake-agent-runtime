@@ -4,7 +4,9 @@ import type { CandidateFactClaim } from '@resolution/evidence/claim.types';
 
 const NOW = new Date('2026-08-05T10:00:00+08:00');
 
-function claim(partial: Partial<CandidateFactClaim> & Pick<CandidateFactClaim, 'field' | 'value'>): CandidateFactClaim {
+function claim(
+  partial: Partial<CandidateFactClaim> & Pick<CandidateFactClaim, 'field' | 'value'>,
+): CandidateFactClaim {
   return {
     claimId: partial.claimId ?? `test_${partial.field}_1`,
     field: partial.field,
@@ -78,7 +80,9 @@ describe('candidate-fact-adjudicator（证据化方案 §12 测试矩阵）', ()
       candidateTexts: ['13800000001', '换成13900000002'],
     });
     expect(result.acceptedValues.phone).toBe('13900000002');
-    const earlyDecision = result.adjudicated.find((entry) => entry.claim.claimId === 'rule_phone_1');
+    const earlyDecision = result.adjudicated.find(
+      (entry) => entry.claim.claimId === 'rule_phone_1',
+    );
     expect(earlyDecision?.decision).toBe('superseded');
   });
 
@@ -157,9 +161,7 @@ describe('candidate-fact-adjudicator（证据化方案 §12 测试矩阵）', ()
 
     // 显式 claim 但 quote 是编的：quote_not_found
     const fabricated = adjudicate({
-      claims: [
-        claim({ field: 'name', value: '李雷', evidence: { quote: '我叫李雷' } }),
-      ],
+      claims: [claim({ field: 'name', value: '李雷', evidence: { quote: '我叫李雷' } })],
       candidateTexts: ['我想找兼职'],
     });
     expect(fabricated.adjudicated[0]).toMatchObject({
@@ -289,9 +291,7 @@ describe('candidate-fact-adjudicator（证据化方案 §12 测试矩阵）', ()
     expect(result.profile.fields.age?.status).toBe('needs_confirmation');
     expect(result.profile.fields.age?.value).toBe(26);
     expect(result.acceptedValues.age).toBeUndefined();
-    expect(
-      result.adjudicated.every((entry) => entry.decision === 'needs_confirmation'),
-    ).toBe(true);
+    expect(result.adjudicated.every((entry) => entry.decision === 'needs_confirmation')).toBe(true);
   });
 
   it('会话既有高置信值作为基线沿用（无新 claim 字段）', () => {

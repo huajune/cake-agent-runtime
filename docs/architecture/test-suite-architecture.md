@@ -2,7 +2,7 @@
 
 > 本文档描述 Cake Agent Runtime 测试套件的整体架构、设计原则和技术实现
 >
-> 最后更新：2026-08-12（全文对代码核实：服务清单 / 路径 / 表名 / 代码规模）
+> 最后更新：2026-08-21（对代码复核：路由清单 / 模块文件树 / 反馈防重 / 评估模型角色路由）
 
 ## 目录
 
@@ -125,7 +125,8 @@ src/biz/test-suite/
 │   └── test.enum.ts                   # 执行/评审/批次/相似度等枚举
 │
 ├── types/
-│   └── test-suite.types.ts            # Service 层的 Create/Update 入参类型
+│   ├── test-suite.types.ts            # Service 层的 Create/Update 入参类型
+│   └── test-debug-trace.types.ts      # BadCase trace / 记忆夹具与断言的字段契约
 │
 ├── repositories/                      # Supabase 数据访问
 │   ├── test-batch.repository.ts
@@ -151,15 +152,20 @@ src/biz/test-suite/
 │   ├── test-suite-session.service.ts         # 测试会话重置（清 memory 现场）
 │   ├── test-suite-queue.service.ts           # 批次进度 / 取消 / 队列状态 / 清失败 job
 │   ├── memory-fixture.service.ts             # 记忆夹具：reset / seed / read / cleanup
+│   │                                         #   （夹具事实经 toSessionFacts 显式署名 medium/archive；
+│   │                                         #    画像种子走 LongTermService.seedProfileFixture）
 │   ├── badcase-evidence-resolver.service.ts  # 按 recordId 批量解析 BadCase 证据账本
-│   └── test-feedback.service.ts              # 人工反馈提交（含截图，回写飞书）
+│   ├── test-trace.helpers.ts                 # sourceTrace 归一化（ID 列表清洗 / 别名收拢）
+│   └── test-feedback.service.ts              # 人工反馈提交（Redis 幂等防重，回写飞书）
 │
 ├── test-suite.module.ts               # 模块定义
 ├── test-suite.controller.ts           # HTTP / SSE 控制器
 ├── test-suite.processor.ts            # Bull Queue 处理器（execute-test）
 │
 └── utils/
-    └── sse-stream-handler.ts          # 非 Vercel AI 风格 SSE 流包装
+    ├── badcase-evidence-filter.util.ts # BadCase recordId → PostgREST 过滤串（白名单字符集 + 扫描上限 500）
+    ├── scenario-turn-count.util.ts     # 从场景用例对话历史统计用户轮数
+    └── sse-stream-handler.ts           # 非 Vercel AI 风格 SSE 流包装
 ```
 
 **代码规模**：约 13,400 行 TypeScript（含 entities / types / repositories / services / 支撑文件）。
@@ -171,10 +177,11 @@ src/biz/test-suite/
 | 单条测试 | `POST /test-suite/chat`<br>`POST /test-suite/chat/stream`<br>`POST /test-suite/chat/ai-stream`<br>`POST /test-suite/chat/reset-session` | 同步 / SSE / Vercel AI UIMessage / 会话重置 |
 | 批次管理 | `POST /test-suite/batch`<br>`POST /test-suite/batches`<br>`POST /test-suite/batches/quick-create`<br>`POST /test-suite/batches/import-from-feishu` | 执行单条并归属批次 / 创建批次 / 快速建并执行 / 从飞书导入 |
 | 批次查询 | `GET /test-suite/batches`<br>`GET /test-suite/batches/:id`<br>`GET /test-suite/batches/:id/stats`<br>`GET /test-suite/batches/:id/progress`<br>`GET /test-suite/batches/:id/category-stats`<br>`GET /test-suite/batches/:id/failure-stats`<br>`GET /test-suite/batches/:id/executions`<br>`POST /test-suite/batches/:id/cancel` | 列表 / 详情 / 分类统计 / 失败原因统计 / 进度 / 取消 |
-| 执行记录 | `GET /test-suite/executions`<br>`GET /test-suite/executions/:id`<br>`PATCH /test-suite/executions/:id/review`<br>`PATCH /test-suite/executions/batch-review`<br>`POST /test-suite/executions/:id/write-back`<br>`POST /test-suite/executions/batch-write-back` | 查询 / 评审 / 回写飞书 |
+| 执行记录 | `GET /test-suite/executions`<br>`GET /test-suite/executions/:id`<br>`POST /test-suite/executions/:id/execute`<br>`PATCH /test-suite/executions/:id/review`<br>`PATCH /test-suite/executions/batch-review`<br>`POST /test-suite/executions/:id/write-back`<br>`POST /test-suite/executions/batch-write-back` | 查询 / 重跑单条 / 评审 / 回写飞书 |
 | 数据集 | `POST /test-suite/datasets/scenario/import-curated`<br>`POST /test-suite/datasets/conversation/import-curated` | 精选 dataset upsert + 血缘同步 |
-| 回归验证 | `POST /test-suite/conversations/sync`<br>`GET /test-suite/conversations`<br>`GET /test-suite/conversations/:sourceId/turns`<br>`POST /test-suite/conversations/:sourceId/execute`<br>`POST /test-suite/conversations/batch/:batchId/execute`<br>`PATCH /test-suite/conversations/turns/:executionId/review` | 飞书同步 / 列表 / 轮次 / 单对话执行 / 批次执行 / 轮次评审 |
-| 反馈 | `POST /test-suite/feedback` | 提交 badcase / goodcase 反馈 |
+| 回归验证 | `POST /test-suite/conversations/sync`（501 未实现）<br>`GET /test-suite/conversations`<br>`GET /test-suite/conversations/:sourceId/turns`<br>`POST /test-suite/conversations/:sourceId/execute`<br>`POST /test-suite/conversations/batch/:batchId/execute`<br>`PATCH /test-suite/conversations/turns/:executionId/review` | 列表 / 轮次 / 单对话执行 / 批次执行 / 轮次评审；飞书同步入口一直是 501，数据实际经 curated dataset 导入 |
+| 反馈 | `POST /test-suite/feedback` | 提交 badcase / goodcase 反馈（Redis 幂等防重 24h） |
+| BadCase 治理 | `POST /test-suite/badcase-governance/backfill-evidence` | 盘点 / 回填历史测试证据（默认 dry-run，`apply: true` 才落库） |
 | 队列 | `GET /test-suite/queue/status`<br>`POST /test-suite/queue/clean-failed` | Bull Queue 状态 / 清理失败 |
 
 ### 消息 / 执行流程
@@ -257,7 +264,7 @@ User Action (Dashboard / API)
 
 #### 1. 扁平服务 + 职责切分
 
-当前放弃统一门面，控制器直连 8 个服务，每个服务职责单一：
+当前放弃统一门面，控制器直连 10 个服务，每个服务职责单一：
 
 | 服务 | 关键方法 | 跨模块依赖 |
 |------|---------|-----------|
@@ -269,6 +276,7 @@ User Action (Dashboard / API)
 | `CuratedDatasetImportService` | `importScenarioDataset` / `importConversationDataset` | `FeishuBitableApiService`、`LineageSyncService` |
 | `CuratedDatasetPayloadBuilderService` | 字段别名解析、payload 构造 | - |
 | `LineageSyncService` | `loadLineageTableContext` / `syncScenarioLineageRelations` | `FeishuBitableApiService` |
+| `TestFeedbackService` | `submitFeedback`（Redis 幂等闸 + 回写飞书） | `FeishuBitableApiService`、`RedisService` |
 | `AiStreamObservabilityService` | `startTrace` → `AiStreamTrace` | `MessageTrackingService`、`Observer` |
 
 #### 2. 仓储模式 (Repository Pattern)
@@ -319,6 +327,14 @@ validation set ↔ chat id
 ```
 
 每次通过 `CuratedDatasetImportService` upsert 数据集时同步更新，保证关系一致。
+
+#### 6. 反馈幂等防重
+
+`TestFeedbackService` 在写飞书前过一道 Redis 幂等闸（TTL 24h），防重键 = 反馈类型 + 分类 + 全文哈希。背景：前端提交超时后重试，曾造成同一条反馈在飞书 BadCase 表落多行假失败重复行。要点：
+
+- 命中重复：不写表，直接返回提示（前端弹警示 toast）
+- 写表失败：释放防重键，允许正当重试
+- Redis 异常：**fail-open** 放行写入——防重是兜底，不能反过来挡住正常反馈
 
 ### 依赖关系图
 
@@ -515,7 +531,7 @@ PENDING ──► RUNNING ──► COMPLETED
 |------|------|---------|
 | **飞书多维表格** | 测试用例 / 验证集 / 结果双向同步 | Bitable REST |
 | **多 Provider（Anthropic / OpenAI / DeepSeek）** | Agent 对话能力 | 通过 `@providers` 三层架构 |
-| **LLM 评估模型（GPT-4o-mini 为主）** | 回归验证打分 | OpenAI REST（via Vercel AI SDK） |
+| **LLM 评估模型（Evaluate 角色路由）** | 回归验证打分 | `AGENT_EVALUATE_MODEL` 环境变量 + DB 运行时覆盖（`agent_reply_config.evaluateModelId`），经 `@providers` 路由 |
 
 ### 前端技术栈
 
@@ -582,8 +598,8 @@ CREATE INDEX idx_conversation_snapshots_batch_id ON test_conversation_snapshots(
 
 ### LLM 评估优化
 
-- **模型**：默认 `openai/gpt-4o-mini`（比 GPT-4 便宜 ~60 倍，足够评分稳定）
-- **温度**：`temperature: 0`，禁用工具，限制输出长度
+- **模型**：按 `ModelRole.Evaluate` 角色路由（env `AGENT_EVALUATE_MODEL`，可经 `agent_reply_config` 运行时覆盖），不在评估服务内硬编码
+- **输出约束**：走 `LlmExecutorService.generateStructured`，用 Zod schema 约束四维评分结构（factualAccuracy / responseEfficiency / processCompliance / toneNaturalness，各含 score + reason），无自由文本解析
 - **并发**：对单条对话的多轮评估可以 `Promise.all` 并行；跨对话仍走 Bull Queue
 
 ## 架构演进路径
@@ -695,5 +711,5 @@ CREATE INDEX idx_conversation_snapshots_batch_id ON test_conversation_snapshots(
 
 其他：
 
-- [Bull Queue 使用指南](../technical/bull-queue-guide.md)
+- [Bull Queue 使用指南](../infrastructure/bull-queue-guide.md)
 - [NestJS 最佳实践](../../.claude/agents/code-standards.md)

@@ -3,28 +3,21 @@ import { GUARDRAIL_ACTION } from '@shared-types/guardrail.contract';
 import { asRecord, type RuleContradiction } from '../output-rule.types';
 
 /**
- * booking 回执对账（badcase recvoFsFPZHTxw / 7-27 复测 RT-016 第二失败形态）。
+ * booking 回执对账。
  *
- * booking 成功的 _replyInstruction 播报硬指令是 prompt 层约束，已被生产实测击穿：
- * 工单真实建单后回复仍问「你定哪一天」（候选人以为没约上，重复提交撞 already_booked，
- * badcase yfrc6wb9 同族）。本规则做确定性对账——本轮 duliday_interview_booking
- * success=true 是不可逆副作用，回复必须与它一致：
+ * 本轮 duliday_interview_booking 的结果是不可逆副作用的真值，回复必须与它一致：
  *
  * - 形态 A（REVISE，近零假阳）：预约已提交却仍在向候选人征询日期/时刻
  *   （「你定哪天/几号方便/什么时候有空」）——直接与已提交的工单矛盾；
- * - 形态 B（OBSERVE）：回复完全未提报名/预约结果（一个报名类词都没有）——
- *   播报缺失，候选人不知已报名；表述方式多样，先 observe 落档累计精确率。
- * - 形态 C（REVISE，2026-07-30 审计 P1-7）：booking **失败**却宣称正在/已经提交——
+ * - 形态 B（REVISE）：booking **失败**却宣称正在/已经提交——
  *   与形态 A 镜像，对账的是失败路径。
- * - 形态 D（REVISE，2026-08-04 发版回归）：候选人本轮明确说“先别报名/预约”，
+ * - 形态 C（REVISE）：候选人本轮明确说“先别报名/预约”，
  *   回复却仍催其登记或直接承诺安排面试时间——即使没有真实调用工具，也违背了
  *   候选人的当前明确指令；候选人同时想自行到店时，也不得在提示流程后又附和
  *   “那你先自己看看”。
  */
 const DATE_ASK_PATTERN =
   /(?:你|您)(?:定|看|选|挑)[^，。！？!?\n]{0,6}(?:哪一?天|几号|几点|什么时候|时间)|(?:哪一?天|几号|几点|什么时候)[^，。！？!?\n]{0,4}(?:方便|有空|合适|可以|行)[^，。！？!?\n]{0,4}[？?]?|(?:选|挑|定)(?:个|一个)[^，。！？!?\n]{0,4}(?:时间|日子|时段)/u;
-
-const BOOKING_MENTION_PATTERN = /报名|预约|登记|约好|约上|已(?:帮你)?约|帮你约|面试|工单/u;
 
 // 已确认口径：回复明确播报了"已约好/已登记/报名成功"。窗口制岗位"已帮你约好周四，
 // 你几点方便到店"是合法话术——确认在场时的时间征询不算回执矛盾。
@@ -33,18 +26,12 @@ const CONFIRMATION_PATTERN =
 
 // —— 失败路径（2026-07-30 审计 P1-7）————————————————————————————————
 // 形态 C：booking 调用失败/报错，回复却以进行时或完成时宣称在提交/已提交预约。
-// 生产实例 …_1785332310556：duliday_interview_booking status=error，回复"好的，信息
-// 都收到啦，我现在帮你提交两家门店的面试预约"——语义 shadow 判 high 置信 block，
-// 硬规则却整条放行（对账前提是 booking 成功，失败即提前 return）。候选人会一直等
-// 一个永远不来的回执。
+// 失败时若只返回，就会绕过成功路径的回执对账，让候选人等待不会到来的结果。
 const BOOKING_IN_FLIGHT_CLAIM_PATTERN =
   /(?:现在|这就|马上|立刻|立即|正在|稍后)[^，。！？!?\n]{0,8}(?:帮你|给你)?[^，。！？!?\n]{0,6}(?:提交|报名|预约)/u;
 
-// 敲定式宣称（2026-08-04 审计 P0-3）：booking 失败后 repair 曾产出"那就给你约明天
-// （8月4日）下午1点半的面试哈"/"好的，那就定在明天上午10点"——没有"已/正在"词形，
-// 上面两个 pattern 都跨不住，二审对修复版复跑本规则时照样放行。"那就约/定"的口吻
-// 向候选人传达的是预约已敲定，而工单根本没提交成功（trace …_1785740343589 /
-// …_1785748484273，幸被投递层 hosting_paused 丢弃）。
+// 敲定式声称不一定包含"已/正在"词形，但"那就约/定"同样会让候选人
+// 认为预约已敲定，因此需要单独识别。
 const BOOKING_SETTLED_CLAIM_PATTERN =
   /那就(?:帮你|给你)?(?:约|定|安排)|(?:约|定)在(?:明天|今天|后天|周[一二三四五六日天]|\d{1,2}月\d{1,2}[号日]|\d{1,2}[点:：])/u;
 
@@ -296,7 +283,7 @@ function readConfirmedInterviewTimeHuman(booking: AgentToolCall): string | null 
  * 回复是否把已建单的那一天告诉了候选人。
  *
  * 判据刻意宽松——只要**月日**或**星期**任一出现即放行：目的是保证候选人拿得到可核对
- * 的锚点，不是规定话术怎么写。日期与星期是否自洽由 date_reference_mismatch 负责，
+ * 的锚点，不是规定话术怎么写。日期与星期的生成由既有结构化日期格式化负责，
  * 本规则不重复对账，避免同一条回复被两条规则夹击。
  */
 function replyStatesBookedDate(replyText: string, confirmedTimeHuman: string): boolean {
@@ -412,13 +399,9 @@ export function detectBookingReceiptMismatch(
 ): RuleContradiction | null {
   if (!replyText.trim()) return null;
 
-  // 形态 F（badcase 2026-08-06 chat 6a1e42c5 trace …_1785977561594）：
-  // precheck 已返回在途工单 455384（约面时间 15:00）并点名改时间要调
-  // duliday_modify_interview_time，模型零工具调用，回复却确认了"15:30没问题"。
-  // 工单至今是 15:00，候选人会按 15:30 到店白跑一趟——不可挽回，故 REVISE 而非 OBSERVE。
-  // 该轮首审只命中了 handoff_promise_without_handoff（已于 8-11 下线；"让同事确认下"），repair 删掉承诺
-  // 改成"没问题"后二审无人可拦；回归闸的 commitment_upgraded 是并联防线，本规则则覆盖
-  // "模型首版就直接确认"这条 repair 链够不着的路径。
+  // 形态 F：precheck 返回在途工单后，未成功调用 duliday_modify_interview_time
+  // 却确认了不同时间。这会让候选人按错误时间到店，故 REVISE 而非 OBSERVE。
+  // 本规则覆盖首版就直接确认的路径；repair 中的承诺升级由回归闸并联防护。
   const activeGuard = findActiveWorkOrderGuard(toolCalls);
   if (activeGuard && !hasSuccessfulModify(toolCalls) && TIME_CONFIRMATION_PATTERN.test(replyText)) {
     const workOrderMinutes = extractWorkOrderMinutes(activeGuard.interviewTime);
@@ -553,16 +536,6 @@ export function detectBookingReceiptMismatch(
         '本轮 duliday_interview_booking 已成功提交工单，回复却仍在向候选人征询面试日期/时间' +
         '——与已提交的预约直接矛盾，候选人会以为没约上而重复提交或流失',
       action: GUARDRAIL_ACTION.REVISE,
-    };
-  }
-
-  if (!BOOKING_MENTION_PATTERN.test(replyText)) {
-    return {
-      ruleId: 'booking_receipt_mismatch',
-      label:
-        '本轮 duliday_interview_booking 已成功提交工单，回复却完全未向候选人播报报名结果' +
-        '（badcase yfrc6wb9：候选人不知已报名，重复提交撞 already_booked）',
-      action: GUARDRAIL_ACTION.OBSERVE,
     };
   }
 

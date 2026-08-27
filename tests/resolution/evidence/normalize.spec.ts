@@ -60,18 +60,18 @@ describe('normalizedIncludes 证据包含匹配', () => {
 
 describe('experienceValueSupportedByQuote 合成经历出处（PR #1000 评审 P0-3）', () => {
   it('「公司+岗位+时长」合成短句可被原话二元组覆盖支持', () => {
-    expect(
-      experienceValueSupportedByQuote('我之前在肯德基后厨干过一年', '肯德基后厨1年'),
-    ).toBe(true);
-    expect(
-      experienceValueSupportedByQuote('在麦当劳做服务员做了两年多', '麦当劳服务员2年'),
-    ).toBe(true);
+    expect(experienceValueSupportedByQuote('我之前在肯德基后厨干过一年', '肯德基后厨1年')).toBe(
+      true,
+    );
+    expect(experienceValueSupportedByQuote('在麦当劳做服务员做了两年多', '麦当劳服务员2年')).toBe(
+      true,
+    );
   });
 
   it('与原话无关的臆造经历不被支持', () => {
-    expect(
-      experienceValueSupportedByQuote('我之前在肯德基后厨干过一年', '星巴克咖啡师3年'),
-    ).toBe(false);
+    expect(experienceValueSupportedByQuote('我之前在肯德基后厨干过一年', '星巴克咖啡师3年')).toBe(
+      false,
+    );
     expect(experienceValueSupportedByQuote('想找个兼职', '海底捞服务员2年')).toBe(false);
   });
 

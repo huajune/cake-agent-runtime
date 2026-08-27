@@ -24,41 +24,63 @@ interface ExampleShapeViolation {
 const PROMPT_ASSETS: readonly PromptSurface[] = [
   {
     id: 'candidate-consultation',
-    source: 'src/agent/generator/context/prompts/candidate-consultation.md',
-  },
-  {
-    id: 'candidate-consultation-final-check',
-    source: 'src/agent/generator/context/prompts/candidate-consultation-final-check.md',
+    source: 'src/agent/generator/context/sections/procedural/candidate-consultation.md',
   },
 ];
 
-/** ContextService.registerSections 的 14 个模型可见 section 实例；StaticSection 有两个实例。 */
+/** ContextService.registerSections 的 13 个模型可见 section；final-check 复合 section 产出两个块。 */
 const PROMPT_SECTION_BUILDERS: readonly PromptSurface[] = [
-  { id: 'identity', source: 'src/agent/generator/context/sections/identity.section.ts' },
-  { id: 'base-manual', source: 'src/agent/generator/context/sections/static.section.ts' },
-  { id: 'policy', source: 'src/agent/generator/context/sections/policy.section.ts' },
   {
-    id: 'runtime-context',
-    source: 'src/agent/generator/context/sections/runtime-context.section.ts',
+    id: 'identity',
+    source: 'src/agent/generator/context/sections/procedural/identity.section.ts',
   },
-  { id: 'final-check', source: 'src/agent/generator/context/sections/static.section.ts' },
-  { id: 'red-lines', source: 'src/agent/generator/context/sections/red-lines.section.ts' },
-  { id: 'thresholds', source: 'src/agent/generator/context/sections/thresholds.section.ts' },
+  {
+    id: 'base-manual',
+    source: 'src/agent/generator/context/sections/static.section.ts',
+  },
+  {
+    id: 'final-check',
+    source: 'src/agent/generator/context/sections/procedural/final-check.section.ts',
+  },
+  {
+    id: 'red-lines',
+    source: 'src/agent/generator/context/sections/procedural/red-lines.section.ts',
+  },
+  {
+    id: 'thresholds',
+    source: 'src/agent/generator/context/sections/procedural/thresholds.section.ts',
+  },
+  {
+    id: 'stage-overview',
+    source: 'src/agent/generator/context/sections/procedural/stage-strategy.section.ts',
+  },
   {
     id: 'stage-strategy',
-    source: 'src/agent/generator/context/sections/stage-strategy.section.ts',
+    source: 'src/agent/generator/context/sections/procedural/stage-strategy.section.ts',
   },
-  { id: 'memory', source: 'src/agent/generator/context/sections/memory.section.ts' },
-  { id: 'turn-hints', source: 'src/agent/generator/context/sections/turn-hints.section.ts' },
+  {
+    id: 'memory',
+    source: 'src/agent/generator/context/sections/semantic/memory.section.ts',
+  },
+  {
+    id: 'turn-hints',
+    source: 'src/agent/generator/context/sections/working/turn-hints.section.ts',
+  },
   {
     id: 'hard-constraints',
-    source: 'src/agent/generator/context/sections/hard-constraints.section.ts',
+    source: 'src/agent/generator/context/sections/working/hard-constraints.section.ts',
   },
-  { id: 'datetime', source: 'src/agent/generator/context/sections/datetime.section.ts' },
-  { id: 'channel', source: 'src/agent/generator/context/sections/channel.section.ts' },
+  {
+    id: 'datetime',
+    source: 'src/agent/generator/context/sections/working/datetime.section.ts',
+  },
+  {
+    id: 'channel',
+    source: 'src/agent/generator/context/sections/procedural/channel.section.ts',
+  },
   {
     id: 'group-inventory',
-    source: 'src/agent/generator/context/sections/group-inventory.section.ts',
+    source: 'src/agent/generator/context/sections/working/group-inventory.section.ts',
   },
 ];
 
@@ -97,7 +119,10 @@ function listToolSourceFiles(directory: string): string[] {
 }
 
 const EXTRACTION_PROMPTS: readonly PromptSurface[] = [
-  { id: 'session-extraction', source: 'src/memory/services/session-extraction.prompt.ts' },
+  {
+    id: 'session-extraction',
+    source: 'src/memory/short-term/extraction.prompt.ts',
+  },
 ];
 
 const ALL_SURFACES = [
@@ -205,9 +230,9 @@ function scanSurface(surface: PromptSurface): ExampleShapeViolation[] {
 }
 
 describe('prompt example shape CI guard', () => {
-  it('keeps the census surface explicit: 2 assets, 14 sections, all tool descriptions, extraction prompt', () => {
-    expect(PROMPT_ASSETS).toHaveLength(2);
-    expect(PROMPT_SECTION_BUILDERS).toHaveLength(14);
+  it('keeps the census surface explicit: 1 asset, 13 sections, all tool descriptions, extraction prompt', () => {
+    expect(PROMPT_ASSETS).toHaveLength(1);
+    expect(PROMPT_SECTION_BUILDERS).toHaveLength(13);
     expect(TOOL_DESCRIPTION_BUILDERS.length).toBeGreaterThanOrEqual(13);
     expect(EXTRACTION_PROMPTS).toHaveLength(1);
     expect(new Set(ALL_SURFACES.map((surface) => surface.id)).size).toBe(ALL_SURFACES.length);

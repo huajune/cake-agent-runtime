@@ -1,5 +1,5 @@
 /**
- * 地标/商圈别名解析（自 memory/facts/geo-mappings.ts 行为等价迁移，Phase 1）。
+ * 地标/商圈别名解析。
  */
 
 import { UNIQUE_PLACE_ALIAS_TO_CITY } from './place-alias.data';

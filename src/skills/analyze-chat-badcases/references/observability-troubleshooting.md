@@ -23,16 +23,16 @@
 
 ## 2. 表的职责与关联方式
 
-| 表 | 回答的问题 | 首选关联键 | 重要边界 |
-|---|---|---|---|
-| `chat_messages` | 候选人和 Agent 实际说了什么 | `chat_id`, `message_id` | 对话事实，不解释运行原因 |
-| `message_processing_records` | 本 turn 的主链终态、工具、步骤、记忆、守卫摘要和后处理 | `message_id = trace_id` | 主账本；大字段按单 trace 读取 |
-| `agent_execution_events` | 模型、工具、语义评审、memory、error/end 的结构化时间线 | `trace_id` | 一条 trace 多行；`payload` 随 event_type 变化 |
-| `guardrail_review_records` | 首版回复、首审、修复版、二审和最终裁决 | `trace_id` | 稀疏表，仅守卫有信号的生产回合写；写入是异步 best-effort |
-| `monitoring_error_logs` | 渠道、外部依赖、观测持久化、告警与投递基础设施是否异常 | `message_id`；无 ID 时用时间窗 + subsystem/component | 系统级告警可以没有 message_id |
-| `handoff_events` | 是否真实触发转人工及 reason/stage | `chat_id`, `user_id`, 时间窗 | 没有 trace_id，需用业务时间对齐 |
-| `ops_events` | booking/precheck/replied/handoff 等业务副作用是否实际落账 | `chat_id`, `user_id`, 时间窗 | 是业务事实底账，不是模型推理档案 |
-| `reengagement_touch_records` | 主动复聊为何排程、停止、shadow、重复或投递失败 | `session_id`, `touch_key`, `anchor_event_id` | 只适用于 reengagement 场景 |
+| 表                           | 回答的问题                                                | 首选关联键                                           | 重要边界                                                 |
+| ---------------------------- | --------------------------------------------------------- | ---------------------------------------------------- | -------------------------------------------------------- |
+| `chat_messages`              | 候选人和 Agent 实际说了什么                               | `chat_id`, `message_id`                              | 对话事实，不解释运行原因                                 |
+| `message_processing_records` | 本 turn 的主链终态、工具、步骤、记忆、守卫摘要和后处理    | `message_id = trace_id`                              | 主账本；大字段按单 trace 读取                            |
+| `agent_execution_events`     | 模型、工具、语义评审、memory、error/end 的结构化时间线    | `trace_id`                                           | 一条 trace 多行；`payload` 随 event_type 变化            |
+| `guardrail_review_records`   | 首版回复、首审、修复版、二审和最终裁决                    | `trace_id`                                           | 稀疏表，仅守卫有信号的生产回合写；写入是异步 best-effort |
+| `monitoring_error_logs`      | 渠道、外部依赖、观测持久化、告警与投递基础设施是否异常    | `message_id`；无 ID 时用时间窗 + subsystem/component | 系统级告警可以没有 message_id                            |
+| `handoff_events`             | 是否真实触发转人工及 reason/stage                         | `chat_id`, `user_id`, 时间窗                         | 没有 trace_id，需用业务时间对齐                          |
+| `ops_events`                 | booking/precheck/replied/handoff 等业务副作用是否实际落账 | `chat_id`, `user_id`, 时间窗                         | 是业务事实底账，不是模型推理档案                         |
+| `reengagement_touch_records` | 主动复聊为何排程、停止、shadow、重复或投递失败            | `session_id`, `touch_key`, `anchor_event_id`         | 只适用于 reengagement 场景                               |
 
 `daily_ops_report` 等聚合/投影表适合看趋势，不适合给单条 BadCase 定责；单条排障查原始底账。
 
@@ -90,9 +90,8 @@ ORDER BY created_at, id;
 - `model_call / model_fallback / agent_error / agent_end`
 - `tool_call / tool_error`
 - `memory_recall / memory_store`
-- `semantic_review` 的 `mode / decision / confidence / findingCodes`
-
-`semantic_review` 无命中也应有 pass 事件；它可作为 shadow/enforce 是否存活的证据。若事件缺失，先核对配置、执行路径和事件落库健康，不能直接断言语义评审通过。
+- Output 规则裁决与修复结果应从 `guardrail_review_records` / `guardrail_output` 查看；
+  `semantic_review` 只可能是历史事件，不代表当前链路仍执行 reviewer。
 
 ### 4.3 查看守卫全过程
 
@@ -152,16 +151,16 @@ ORDER BY created_at;
 
 ## 5. 按症状选择证据
 
-| 症状 | 最少证据组合 |
-|---|---|
-| 重复追问、遗忘已给信息 | `chat_messages + memory_snapshot + agent_steps + agent_invocation(单 trace)` |
-| 工具没调、参数错、动态事实错 | `tool_calls + agent_execution_events(tool_*) + agent_steps` |
-| 回复被改写、拦截或静默 | `guardrail_output + guardrail_review_records + reply_segments` |
-| semantic shadow/enforce 是否执行 | `agent_execution_events(event_type='semantic_review') + 当前配置` |
-| 声称已预约/转人工但事实可疑 | `ops_events + handoff_events + tool_calls` |
-| “Agent 没回复” | 主表终态 + `reply_segments` + guardrail/skip outcome + `monitoring_error_logs` |
-| 真人插话后不该回复 | 对话来源标记 + agent steps/skip_reply + 投递终态 |
-| 主动复聊没发或重复发 | `reengagement_touch_records.events + reserve_result + monitoring_error_logs` |
+| 症状                             | 最少证据组合                                                                   |
+| -------------------------------- | ------------------------------------------------------------------------------ |
+| 重复追问、遗忘已给信息           | `chat_messages + memory_snapshot + agent_steps + agent_invocation(单 trace)`   |
+| 工具没调、参数错、动态事实错     | `tool_calls + agent_execution_events(tool_*) + agent_steps`                    |
+| 回复被改写、拦截或静默           | `guardrail_output + guardrail_review_records + reply_segments`                 |
+| Output 是否执行及如何收敛        | `guardrail_output + guardrail_review_records + reply_segments`                |
+| 声称已预约/转人工但事实可疑      | `ops_events + handoff_events + tool_calls`                                     |
+| “Agent 没回复”                   | 主表终态 + `reply_segments` + guardrail/skip outcome + `monitoring_error_logs` |
+| 真人插话后不该回复               | 对话来源标记 + agent steps/skip_reply + 投递终态                               |
+| 主动复聊没发或重复发             | `reengagement_touch_records.events + reserve_result + monitoring_error_logs`   |
 
 ## 6. 证据判定规则
 

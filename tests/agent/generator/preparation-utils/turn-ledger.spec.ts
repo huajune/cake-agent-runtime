@@ -1,4 +1,4 @@
-import { createTurnLedger } from '@agent/generator/preparation-utils/turn-ledger';
+import { createTurnLedger } from '@agent/generator/preparation/turn-ledger';
 
 describe('createTurnLedger — geo 双记录（议题 4）', () => {
   const locationShare = {
@@ -75,7 +75,10 @@ describe('createTurnLedger — geo 双记录（议题 4）', () => {
     const ledger = createTurnLedger();
 
     ledger.recordGeoResolution(locationShare);
-    ledger.recordGeoResolution({ ...geocodeUnique('上海市'), evidence: 'geocode 唯一解析：上海市' });
+    ledger.recordGeoResolution({
+      ...geocodeUnique('上海市'),
+      evidence: 'geocode 唯一解析：上海市',
+    });
 
     expect(ledger.geo.cityAttestation).toMatchObject({
       city: '上海市',

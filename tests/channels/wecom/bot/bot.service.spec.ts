@@ -104,4 +104,84 @@ describe('BotService', () => {
       expect(result).toEqual(emptyResult);
     });
   });
+
+  it('resolves rotating imBotId to stable wecomUserId from configured bots', async () => {
+    mockConfigService.get.mockReturnValue('enterprise-token');
+    mockHttpService.get.mockResolvedValue({
+      groups: [
+        {
+          id: 'group-1',
+          bots: [
+            {
+              wxid: 'wxid-rotating-1',
+              wecomUserId: 'wecom-user-stable-1',
+              corpId: 'corp-1',
+            },
+          ],
+        },
+      ],
+    });
+
+    await expect(service.resolveBotUserIdByImBotId('wxid-rotating-1')).resolves.toBe(
+      'wecom-user-stable-1',
+    );
+    await expect(service.resolveCorpIdByImBotId('wxid-rotating-1')).resolves.toBe('corp-1');
+    expect(mockHttpService.get).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the healthy stable-user map when a refresh only returns corpId fields', async () => {
+    mockConfigService.get.mockReturnValue('enterprise-token');
+    mockHttpService.get
+      .mockResolvedValueOnce({
+        groups: [
+          {
+            bots: [
+              {
+                wxid: 'wxid-1',
+                wecomUserId: 'wecom-user-stable-1',
+                corpId: 'corp-old',
+              },
+            ],
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        groups: [{ bots: [{ wxid: 'wxid-1', corpId: 'corp-new' }] }],
+      });
+
+    await expect(service.resolveBotUserIdByImBotId('wxid-1')).resolves.toBe('wecom-user-stable-1');
+    (service as unknown as { corpMapExpireAt: number }).corpMapExpireAt = 0;
+
+    await expect(service.resolveCorpIdByImBotId('wxid-1')).resolves.toBe('corp-new');
+    await expect(service.resolveBotUserIdByImBotId('wxid-1')).resolves.toBe('wecom-user-stable-1');
+    expect(mockHttpService.get).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps the healthy corp map when a refresh only returns stable-user fields', async () => {
+    mockConfigService.get.mockReturnValue('enterprise-token');
+    mockHttpService.get
+      .mockResolvedValueOnce({
+        groups: [
+          {
+            bots: [
+              {
+                wxid: 'wxid-1',
+                wecomUserId: 'wecom-user-old',
+                corpId: 'corp-1',
+              },
+            ],
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        groups: [{ bots: [{ wxid: 'wxid-1', wecomUserId: 'wecom-user-new' }] }],
+      });
+
+    await expect(service.resolveCorpIdByImBotId('wxid-1')).resolves.toBe('corp-1');
+    (service as unknown as { corpMapExpireAt: number }).corpMapExpireAt = 0;
+
+    await expect(service.resolveBotUserIdByImBotId('wxid-1')).resolves.toBe('wecom-user-new');
+    await expect(service.resolveCorpIdByImBotId('wxid-1')).resolves.toBe('corp-1');
+    expect(mockHttpService.get).toHaveBeenCalledTimes(2);
+  });
 });

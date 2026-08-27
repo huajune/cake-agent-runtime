@@ -148,12 +148,6 @@ export function matchesLaborForm(
 // ==================== 候选人意向解析（当前消息 → 偏好变更决策） ====================
 
 /**
- * 意向规则轨冻结令（2026-08-11）：本区正则只维持现有生效行为。
- * 新 badcase 不再追加正则分支，先查 agent_execution_events 中的 semantic_track_diff
- * shadow 档案；是否切换 enforce 必须由双轨分歧数据另行立项裁定。
- */
-
-/**
  * 当前消息对用工形式偏好的确定性变更。
  *
  * - set：候选人明确选择/接受了一个合法用工形式；
@@ -170,33 +164,20 @@ export type LaborFormIntentDecision =
 
 const SUMMER_LABOR_FORM_ALIAS_PATTERN = /暑期工作|暑期兼职|暑假兼职|暑期工/g;
 const LABOR_FORM_MENTION_PATTERN = /暑假工|寒假工|小时工|全职|(?:普通|常规|长期)?兼职/g;
-const LABOR_FORM_UNCERTAINTY_PATTERN = /不知道|不确定|不清楚|没想好|没确定|还没定|看情况|拿不准/;
-const LABOR_FORM_PREFERENCE_SIGNAL_PATTERN =
-  /想(?:找|做|要)|要(?:找|做|看)?|只(?:找|做|要|考虑)|找个|做个|接受|考虑|能做|可以做|也行|都行|都可以|也可以|就行|貌似好|帮我(?:找|看|查)|给我(?:找|看|查)|有[^，。！？?!；;\n]{0,8}[吗么？?]|招[^，。！？?!；;\n]{0,8}[吗么？?]/;
-const CURRENT_JOB_LABOR_FORM_CONTEXT_PATTERN =
-  /(?:这个|这份|这家|该|当前)(?:岗位|工作)?|(?:岗位|工作|用工形式)[^，。！？?!；;\n]{0,6}(?:是|属于|算)|(?:^|\s)(?:就|也就|所以|也就是说)?是/;
-const LABOR_FORM_FACT_QUESTION_PATTERN =
-  /是不是|是否|算不算|属于吗|是吗|对吗|对吧|到底是|还是[^，。！；;\n]{0,12}[？?]/;
-const LABOR_FORM_REGISTRATION_LABEL_PATTERN = /(?:身份|登记|填写|填报|录入|申报)/;
-/**
- * 招聘限制疑问句（badcase chat 6a61c97c，2026-07-23）："只招暑假工吗"是在询问岗位
- * 的招聘限制——言下之意候选人自己很可能**不是**暑假工，与"还招暑假工吗"（求职意向）
- * 语义相反。命中即整句忽略，不得提取为候选人用工形式偏好；否则该值以 rule/high 每轮
- * 重刷粘死，候选人后续改口"长期"都清不掉，job_list 被过滤到 0 只能转人工。
- */
-const LABOR_FORM_HIRING_RESTRICTION_QUESTION_PATTERN =
-  /(?:只|仅)(?:招|要|收)[^，。！？?!；;\n]{0,10}[吗么？?]/;
-/**
- * "长期"意向（同 badcase）：候选人说"长期呢/我说长期有没有/要长期的"时，明确否定了
- * 寒暑假季节工偏好，但"长期"不在 labor_form 合法枚举内映射不出新值——旧的季节工值
- * 会永生。此处产出 clear 信号：既清除已存的暑/寒假工，也让 job_list 本轮旁路季节过滤
- * （currentLaborFormIntent.kind==='clear' 消费路径），给模型留出口。
- */
-const LONG_TERM_MENTION_PATTERN = /长期/;
 const LABOR_FORM_REJECTION_PREFIX_PATTERN =
-  /(?:(?<!是)不是|并非|不要|别|不想|不考虑|不接受|不找|不做|拒绝|排除|除了|不适合|不能做|做不了)[^，。！？?!；;\n]{0,14}$/;
+  /(?:不要|别|不想|不考虑|不接受|不找|不做|拒绝|排除|除了)[^，。！？?!；;\n]{0,10}$/;
 const LABOR_FORM_REJECTION_SUFFIX_PATTERN =
-  /^[^，。！？?!；;\n]{0,10}(?:做不了|不能做|不做|不找|不要|不考虑|不接受|不行|不合适|不可以|不能(?:给我|给你|帮我|帮你)?(?:推荐|报名|预约|安排)?)/;
+  /^[^，。！？?!；;\n]{0,8}(?:不要了|不考虑了?|不找了?|不做了?|不可以|不行|不合适|做不了|算了|排除)/;
+const LABOR_FORM_SELECTION_PATTERN =
+  /(?:(?:想|要|准备|打算|希望)(?:找|做|选|考虑|接受)?|(?:帮我|给我)(?:找|看)|(?:只|就)(?:找|做|要)|(?:找|做|选|考虑|接受|要))[^，。！？?!；;\n]{0,10}(?:暑假工|寒假工|小时工|全职|(?:普通|常规|长期)?兼职)/;
+const LABOR_FORM_ACCEPTANCE_SUFFIX_PATTERN =
+  /(?:暑假工|寒假工|小时工|全职|(?:普通|常规|长期)?兼职)[^，。！？?!；;\n]{0,6}(?:可以|也行|都行|就行|都可以|也可以|能做)/;
+const LABOR_FORM_AVAILABILITY_REQUEST_PATTERN =
+  /(?:有|找得到|能找到)[^，。！？?!；;\n]{0,8}(?:暑假工|寒假工|小时工|全职|(?:普通|常规|长期)?兼职)(?:吗|么|嘛|不)?/;
+const LABOR_FORM_IDENTITY_REGISTRATION_PATTERN =
+  /(?:身份|资料|报名表)[^，。！？?!；;\n]{0,10}(?:登记|填写|填|录入)|(?:登记|填写|填|录入)[^，。！？?!；;\n]{0,10}(?:身份|资料|报名表)/;
+const LABOR_FORM_BARE_SELECTION_PATTERN =
+  /^(?:我)?(?:就|选)?(?:暑假工|寒假工|小时工|全职|(?:普通|常规|长期)?兼职)(?:吧|就行|也行)?$/;
 
 interface LaborFormMention {
   value: ValidLaborForm;
@@ -250,64 +231,10 @@ export function decideLaborFormIntent(message: string | null | undefined): Labor
 }
 
 function decideLaborFormClause(clause: string): LaborFormIntentDecision {
-  // "长期呢/我说长期有没有/要长期的"：明确否定季节工偏好。"长期"不在合法枚举内，
-  // 无法以 set 覆盖旧值，必须走 clear 清除暑/寒假工（拒绝方向"做不了长期"不清，
-  // 保持原偏好）。含"兼职"时交给下方 mention 路径（"长期兼职"→ set 兼职）。
-  if (LONG_TERM_MENTION_PATTERN.test(clause) && !/兼职/.test(clause)) {
-    const index = clause.search(LONG_TERM_MENTION_PATTERN);
-    const prefix = clause.slice(0, index);
-    const suffix = clause.slice(index + 2);
-    const isRejected =
-      LABOR_FORM_REJECTION_PREFIX_PATTERN.test(prefix) ||
-      LABOR_FORM_REJECTION_SUFFIX_PATTERN.test(suffix);
-    if (!isRejected) {
-      return { kind: 'clear', clearedValues: ['暑假工', '寒假工'] };
-    }
-  }
-
   const mentions = readLaborFormMentions(clause);
   if (mentions.length === 0) return { kind: 'ignore' };
 
-  // "只招暑假工吗"是招聘限制疑问，不是求职意向（与"还招暑假工吗"相反），整句忽略。
-  if (LABOR_FORM_HIRING_RESTRICTION_QUESTION_PATTERN.test(clause)) {
-    return { kind: 'ignore' };
-  }
-
-  // “不确定是暑假工还是小时工”没有形成偏好；整句忽略，不能用最后一个关键词改口。
-  if (LABOR_FORM_UNCERTAINTY_PATTERN.test(clause)) return { kind: 'ignore' };
-
-  // “兼职还是全职的”（badcase chat 6a62c6f8，2026-07-24）：两个不同用工形式被
-  // “还是/或者”连接且无求职/接受动作时，是在问岗位属于哪种——选择疑问句常省略
-  // 问号，不能兜到 FACT_QUESTION 的“还是…？”分支后按末位关键词 set 成偏好。
-  const distinctMentionValues = new Set(mentions.map((mention) => mention.value));
-  if (
-    distinctMentionValues.size >= 2 &&
-    /还是|或者|或是/.test(clause) &&
-    !LABOR_FORM_PREFERENCE_SIGNAL_PATTERN.test(clause)
-  ) {
-    return { kind: 'ignore' };
-  }
-
-  // “这个岗位是小时工吗 / 就是小时工是吗”是在核对岗位事实。只有同时出现明确的
-  // 求职/接受动作时，才把用工形式当成新的候选人偏好。
-  const asksOrStatesCurrentJobType =
-    (CURRENT_JOB_LABOR_FORM_CONTEXT_PATTERN.test(clause) &&
-      (LABOR_FORM_FACT_QUESTION_PATTERN.test(clause) || /(?:是|属于|算)/.test(clause))) ||
-    (LABOR_FORM_FACT_QUESTION_PATTERN.test(clause) && /还是/.test(clause));
-  if (asksOrStatesCurrentJobType && !LABOR_FORM_PREFERENCE_SIGNAL_PATTERN.test(clause)) {
-    return { kind: 'ignore' };
-  }
-  // “准备用兼职身份登记”只是在复述报名标签，不等于主动放弃已确认的暑假工偏好。
-  // 必须同时出现“接受/考虑/想做”等明确意向动作，才能据此改写 labor_form。
-  if (
-    LABOR_FORM_REGISTRATION_LABEL_PATTERN.test(clause) &&
-    !LABOR_FORM_PREFERENCE_SIGNAL_PATTERN.test(clause)
-  ) {
-    return { kind: 'ignore' };
-  }
-
   const rejected: ValidLaborForm[] = [];
-  const accepted: LaborFormMention[] = [];
   for (const mention of mentions) {
     const prefix = clause.slice(0, mention.index);
     const suffix = clause.slice(mention.index + mention.length);
@@ -315,37 +242,23 @@ function decideLaborFormClause(clause: string): LaborFormIntentDecision {
       LABOR_FORM_REJECTION_PREFIX_PATTERN.test(prefix) ||
       LABOR_FORM_REJECTION_SUFFIX_PATTERN.test(suffix);
     if (isRejected) rejected.push(mention.value);
-    else accepted.push(mention);
-  }
-
-  if (accepted.length > 0) {
-    // “暑假工短期的兼职”里的“兼职”是上位类目，不是候选人同时接受普通兼职。
-    // 只有出现“或者/都可以/普通兼职”等并列接受信号时，才允许非季节性形式覆盖。
-    const seasonal = accepted.find((mention) => isSeasonalLaborForm(mention.value));
-    const hasSeasonal = seasonal != null;
-    const hasExplicitAlternativeSignal =
-      /(?:或者|或是|还是|以及|都可以|均可|都行|也可以|也行|普通兼职|常规兼职|长期兼职)/.test(
-        clause,
-      );
-    const nonSeasonal = accepted.filter(
-      (mention) =>
-        !isSeasonalLaborForm(mention.value) &&
-        !(
-          hasSeasonal &&
-          mention.value === '兼职' &&
-          mention.raw === '兼职' &&
-          !hasExplicitAlternativeSignal
-        ),
-    );
-    const chosen = hasSeasonal && nonSeasonal.length > 0 ? nonSeasonal.at(-1)! : accepted.at(-1)!;
-    if (hasSeasonal && nonSeasonal.length === 0 && seasonal) {
-      return { kind: 'set', value: seasonal.value };
-    }
-    return { kind: 'set', value: chosen.value };
   }
 
   if (rejected.length > 0) {
     return { kind: 'clear', clearedValues: Array.from(new Set(rejected)) };
+  }
+
+  if (LABOR_FORM_IDENTITY_REGISTRATION_PATTERN.test(clause)) return { kind: 'ignore' };
+
+  // 规则仅保留封闭的显式选择/接受句式；岗位事实问句、招聘范围询问和复杂改口
+  // 交给正常 extract_facts 的 labor_form_intent，不在降级规则里继续堆语义例外。
+  if (
+    LABOR_FORM_SELECTION_PATTERN.test(clause) ||
+    LABOR_FORM_ACCEPTANCE_SUFFIX_PATTERN.test(clause) ||
+    LABOR_FORM_AVAILABILITY_REQUEST_PATTERN.test(clause) ||
+    LABOR_FORM_BARE_SELECTION_PATTERN.test(clause)
+  ) {
+    return { kind: 'set', value: mentions.at(-1)!.value };
   }
 
   return { kind: 'ignore' };

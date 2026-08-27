@@ -1,6 +1,47 @@
 import { OutboundReplySanitizer } from '@agent/guardrail/output/outbound-reply-sanitizer';
 
 describe('OutboundReplySanitizer', () => {
+  describe('pruneRepeatedSegments - 精确分段去重', () => {
+    const delivered = '这家门店目前有服务员岗位，工作地点在万象城一楼。';
+
+    it('删除与近期真实投递全等的长分段，保留本轮新内容', () => {
+      expect(
+        OutboundReplySanitizer.pruneRepeatedSegments(
+          `${delivered}\n\n你更关心班次还是距离？`,
+          [delivered],
+          '还有呢',
+        ),
+      ).toEqual({ text: '你更关心班次还是距离？', droppedSegments: [delivered] });
+    });
+
+    it('只忽略空白和标点差异，不做相似度判断', () => {
+      expect(
+        OutboundReplySanitizer.pruneRepeatedSegments(
+          '这家门店目前有服务员岗位 工作地点在万象城一楼',
+          [delivered],
+          '还有呢',
+        ).droppedSegments,
+      ).toHaveLength(1);
+      expect(
+        OutboundReplySanitizer.pruneRepeatedSegments(
+          '这家门店目前有后厨岗位，工作地点在万象城一楼。',
+          [delivered],
+          '还有呢',
+        ).droppedSegments,
+      ).toEqual([]);
+    });
+
+    it('短句不去重，候选人明确要求重发时也不去重', () => {
+      expect(
+        OutboundReplySanitizer.pruneRepeatedSegments('好的', ['好的'], '嗯').droppedSegments,
+      ).toEqual([]);
+      expect(
+        OutboundReplySanitizer.pruneRepeatedSegments(delivered, [delivered], '麻烦再发一遍')
+          .droppedSegments,
+      ).toEqual([]);
+    });
+  });
+
   describe('stripTimeMarkers - 守卫审查前的最小剥离', () => {
     it('剥掉模型模仿输出的时间标记，其余内容不动', () => {
       const input =
@@ -17,9 +58,7 @@ describe('OutboundReplySanitizer', () => {
     });
 
     it('无时间标记时原样返回', () => {
-      expect(OutboundReplySanitizer.stripTimeMarkers('你好，岗位还在招')).toBe(
-        '你好，岗位还在招',
-      );
+      expect(OutboundReplySanitizer.stripTimeMarkers('你好，岗位还在招')).toBe('你好，岗位还在招');
     });
   });
 
@@ -70,6 +109,23 @@ describe('OutboundReplySanitizer', () => {
       const result = OutboundReplySanitizer.sanitize(input);
 
       expect(result).toBe('第一段\n\n第二段');
+    });
+  });
+
+  describe('推理独白机械剥离（2026-08-20 BadCase 新簇）', () => {
+    it('剥掉 antThinking 残标并保留候选人正文', () => {
+      expect(OutboundReplySanitizer.sanitize('</antThinking>\n附近暂时没有合适岗位')).toBe(
+        '附近暂时没有合适岗位',
+      );
+    });
+
+    it.each([
+      'Now confirmed 0 results twice. Proceeding with the script and group invite',
+      '我应该简洁地回答这两个问题',
+      '根据工具查询结果，接下来应该先告诉候选人暂无岗位',
+    ])('独白整行无正文时清空：%s', (input) => {
+      expect(OutboundReplySanitizer.sanitize(input)).toBe('');
+      expect(OutboundReplySanitizer.needsSanitization(input)).toBe(true);
     });
   });
 

@@ -109,6 +109,9 @@ describe('ReplyWorkflowService', () => {
   const alertNotifier = {
     sendSimpleAlert: jest.fn().mockResolvedValue(true),
   };
+  const botService = {
+    resolveBotUserIdByImBotId: jest.fn(),
+  };
 
   let service: ReplyWorkflowService;
 
@@ -280,6 +283,7 @@ describe('ReplyWorkflowService', () => {
       alerted: true,
     });
     handoffRecorder.record.mockResolvedValue('inserted');
+    botService.resolveBotUserIdByImBotId.mockResolvedValue(null);
 
     const reengagementAnchors = new ReengagementAnchorService(
       followUpScheduler as never,
@@ -308,6 +312,7 @@ describe('ReplyWorkflowService', () => {
       imageBrandBackfill as never,
       session as never,
       llm as never,
+      botService as never,
     );
   });
 
@@ -1151,8 +1156,8 @@ describe('ReplyWorkflowService', () => {
       decision: 'block',
       riskLevel: 'high',
       violations: [],
-      ruleIds: ['proactive_insurance_policy_mention'],
-      blockedRuleIds: ['proactive_insurance_policy_mention'],
+      ruleIds: ['quota_promise'],
+      blockedRuleIds: ['quota_promise'],
     };
     runner.invoke.mockResolvedValueOnce({
       text: '约好了，另外这个有五险',

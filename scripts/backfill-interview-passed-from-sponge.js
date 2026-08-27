@@ -9,7 +9,7 @@
  *
  * 本脚本绕过丢失的 booking_id：
  *   recruitment_cases（报名人）
- *     → agent_long_term_memories.profile_facts.phone（取手机号）
+ *     → agent_long_term_memories.semantic_profile.phone（取手机号）
  *     → 海绵 signup/list 按 phone 拉该候选人全部工单
  *     → 用 interviewTime 跟 recruitment_cases.interview_time 比对挑出对应工单
  *     → 工单有 interviewPassTime ⇒ 补记 interview.passed（幂等键 workOrderId:pass）
@@ -284,12 +284,12 @@ async function loadPhoneMap(client) {
   for (let offset = 0; ; offset += pageSize) {
     const { data, error } = await client
       .from('agent_long_term_memories')
-      .select('corp_id, user_id, profile_facts')
+      .select('corp_id, user_id, semantic_profile')
       .range(offset, offset + pageSize - 1);
     if (error) throw error;
     if (!data || data.length === 0) break;
     for (const row of data) {
-      const phone = row?.profile_facts?.phone?.value;
+      const phone = row?.semantic_profile?.phone?.value;
       if (phone && PHONE_RE.test(String(phone).trim())) {
         map.set(`${row.corp_id}::${row.user_id}`, String(phone).trim());
       }

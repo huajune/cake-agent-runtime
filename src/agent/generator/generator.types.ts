@@ -161,6 +161,8 @@ export interface GeneratorRunResult {
     inputTokens: number;
     outputTokens: number;
     totalTokens: number;
+    /** 前缀缓存命中的输入 token（回合内各 step 求和）；undefined = provider 未上报。 */
+    cachedInputTokens?: number;
   };
   agentRequest?: Record<string, unknown>;
   /** 本轮触发时的记忆上下文快照 */
@@ -168,8 +170,8 @@ export interface GeneratorRunResult {
   /** agent 运行时拥有的本轮账本；runner/guardrail 仅借阅只读证据。 */
   turnLedger?: TurnLedger;
   /**
-   * turn-end 生命周期触发器。`invoke()` / `stream()` 返回的结果上**必然存在**
-   * （attachTurnEnd 无条件挂载；fire-and-forget 默认分支已随 deferTurnEnd 开关删除）。
+   * turn-end 生命周期触发器。`invoke()` / `stream()` 返回的结果上**必然存在**；
+   * `attachTurnEnd` 会无条件挂载它。
    *
    * ⚠️ **硬契约**：调用 invoke 后必须在本轮结局定局时触发一次 runTurnEnd，
    * 否则本轮记忆投影/事实提取静默丢失——删掉 fire-and-forget 兜底后这是唯一防线。

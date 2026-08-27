@@ -27,7 +27,10 @@ describe('evaluateOutOfBandWorkOrders（pre_booking 带外工单核验，human_o
   it('约面成功但面试时间已过去 4 天未推进（僵尸单）→ 放行', () => {
     const stale = new Date(NOW - 4 * DAY).toISOString().slice(0, 16).replace('T', ' ');
     expect(
-      evaluateOutOfBandWorkOrders([order({ currentStatus: '约面成功', interviewTime: stale })], NOW),
+      evaluateOutOfBandWorkOrders(
+        [order({ currentStatus: '约面成功', interviewTime: stale })],
+        NOW,
+      ),
     ).toBeNull();
   });
 
@@ -49,15 +52,16 @@ describe('evaluateOutOfBandWorkOrders（pre_booking 带外工单核验，human_o
   });
 
   it('面试成功但无通过时间（无法判旧）→ 保守停', () => {
-    expect(
-      evaluateOutOfBandWorkOrders([order({ currentStatus: '面试成功' })], NOW),
-    ).toMatchObject({ stop: true });
+    expect(evaluateOutOfBandWorkOrders([order({ currentStatus: '面试成功' })], NOW)).toMatchObject({
+      stop: true,
+    });
   });
 
   it('上岗成功（在职中）→ 停', () => {
-    expect(
-      evaluateOutOfBandWorkOrders([order({ currentStatus: '上岗成功' })], NOW),
-    ).toMatchObject({ stop: true, reason: 'oob_work_order_progressed:上岗成功' });
+    expect(evaluateOutOfBandWorkOrders([order({ currentStatus: '上岗成功' })], NOW)).toMatchObject({
+      stop: true,
+      reason: 'oob_work_order_progressed:上岗成功',
+    });
   });
 
   it.each(['约面失败', '约面取消', '面试失败', '上岗失败', '已离职'])(

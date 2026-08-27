@@ -135,6 +135,7 @@ export class TestExecutionService {
       corpId: TEST_CORP_ID,
       userId: request.userId,
       sessionId,
+      botUserId: request.botUserId,
       callerKind: CallerKind.TEST_SUITE,
       strategySource,
       scenario,

@@ -1,8 +1,8 @@
 /**
  * 姓名字段唯一解析器（形态判定 + 单条文本提取）。
  *
- * 跨轮问答证据（索名→应答）在 evidence/producers/name-confirmation，booking 闸门在
- * evidence/identity-gates——本文件只回答"这段文本里是不是一个姓名、像不像真名"。
+ * booking 直接出处闸门在 evidence/identity-gates；确认式作证由 collection claim 的
+ * agentQuestionQuote 主通道承担。本文件只回答"这段文本里是不是一个姓名、像不像真名"。
  * 注释里的 badcase 是各判据的裁决记录，改口径前先读它们（原居所 memory/facts/name-guard
  * 与 tools/shared/candidate-field-parser 两轨，2026-08 合一于此）。
  */
@@ -59,8 +59,7 @@ const PLACEHOLDER_PREFIX_BLACKLIST = ['测试', '用户', '昵称', '游客', '�
 
 /**
  * 整句锚定类识别器（打招呼语/确认句/肯定答复）匹配前必须先过这一层。
- * badcase 6a448d09：v10.13.0 的修复被时间后缀击穿——任何对"整条消息"做锚定判断的
- * 正则，不剥后缀则 `$` 永远失配。
+ * 时间后缀会让 `$` 失配，因此任何整条消息的锚定判断都必须先剥离它。
  */
 export function stripTimeContextSuffix(message: string): string {
   return stripTimeContext(message);

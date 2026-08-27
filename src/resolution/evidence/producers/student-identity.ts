@@ -6,10 +6,10 @@ import {
 import type { CandidateFactClaim } from '../claim.types';
 
 /**
- * 身份 producer（方案 §8 Phase 1）：把既有 IdentityEvidence 适配为
+ * 身份 producer：把 IdentityEvidence 适配为
  * CandidateFactClaim<boolean>（isStudent）。
  *
- * 唯一识别器仍是 candidate/student-identity（方案 §2 契约：不平行建设第二套
+ * 唯一识别器仍是 candidate/student-identity（不平行建设第二套
  * 身份正则）；本模块只做形态适配与改口核实语义的桥接：
  * - direct / form_answer / choice_answer → interpretation='direct'；
  * - confirmation（确认问句+肯定应答）→ interpretation='context_confirmation'；

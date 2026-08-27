@@ -1,984 +1,795 @@
 # Agent 运行时架构
 
-**最后更新**：2026-08-12（全文对代码核实：路径 / 服务名 / 常量 / 模块依赖图）
-**面向**：研发同学
-**运营/产品视角**：[agent-for-operations.md](../product/agent-for-operations.md)
+**最后更新**：2026-08-26（按当前 `develop` 代码全局复核）
+
+**面向**：研发、测试与运行时排障
+
+**运营/产品视角**：[Agent 面向运营的说明](../product/agent-for-operations.md)
+
+> 本文描述 Agent 从触发到投递结局的当前运行时，并给出跨模块边界。领域细节以各自权威文档为准：
+> 记忆看 [`src/memory/README.md`](../../src/memory/README.md)，Prompt 规则看
+> [Prompt 规则台账](../prompt-rule-ledger.md)，消息可靠性看
+> [消息服务架构](./message-service-architecture.md)，守卫看
+> [安全护栏说明](./security-guardrails.md)。代码与本文冲突时，以代码和领域权威文档为准。
 
 ---
 
-## 1. 总览
+## 1. 运行时总览
 
-Cake Agent Runtime 是一个**自主 AI Agent 编排引擎**，基于 Vercel AI SDK 构建，通过企业微信渠道为招聘场景提供智能对话服务。
-
-核心回合模型（turn lifecycle）：
-
-```
-onTurnStart → Compose → Execute (LLM + Tools) → onTurnEnd
-   ↑ 读记忆       组装 prompt       多步工具循环       写记忆 / 沉淀
-```
-
-
-## 2. 分层架构
-
-```
-┌──────────────────────────────────────────┐
-│   WeChat 托管平台回调 / 其它入口         │
-└──────────────────┬───────────────────────┘
-                   ↓
-┌──────────────────────────────────────────┐
-│  Channels 渠道层                          │
-│  Ingress → Pipeline → ReplyWorkflow      │
-│  Delivery / Merge / Dedup / Observability│
-└──────────────────┬───────────────────────┘
-                   ↓
-┌──────────────────────────────────────────┐
-│  Agent 编排层                             │
-│  AgentRunnerService                      │
-│   ├─ PreparationService  (prepare)  │
-│   ├─ ContextService           (compose)  │
-│   └─ LlmExecutorService       (execute)  │
-└──────────────────┬───────────────────────┘
-                   ↓
-┌────────────┐ ┌────────┐ ┌──────────┐ ┌────────────┐
-│ Memory     │ │ Tools  │ │ Evaluation│ │ Providers  │
-│ Lifecycle  │ │ Registry│ │ TestSuite│ │ Registry   │
-└────────────┘ └────────┘ └──────────┘ │ Reliable   │
-                                       │ Router     │
-                                       └────────────┘
-                   ↓
-┌──────────────────────────────────────────┐
-│  Infrastructure 层                        │
-│  Redis / Supabase / HTTP / Feishu / etc. │
-└──────────────────────────────────────────┘
-```
-
-**层间依赖规则**：
-
-- `infra/` 禁止依赖 `biz/`、`channels/`、`agent/`、`memory/`
-- `agent/` 不依赖 `channels/`，通过参数接收上下文（含回调）
-- `channels/` 通过 `AgentRunnerService` 接口调用 Agent
-- `memory/`、`tools/`、`evaluation/` 通过 `llm/` 使用模型能力，不直接依赖 `providers/` 内部实现
-
-LLM 调用边界与完整时序已收敛到本文 §3.8，不再维护独立的依赖图文档。
-
----
-
-## 3. Agent 编排层
-
-> 编排分两层：
-> - **`GeneratorAgent`**（`src/agent/generator/generator.agent.ts`）——LLM 多步工具循环与生成结果归一化。
-> - **`AgentRunnerService`**（`src/agent/runner/agent-runner.service.ts`）——回合编排接缝：`invokeReviewed`（generator → 出站守卫 → 受控 repair）、`runTurn`（渠道无关终态分类）、`precheckInboundOutcome`（入站风险预检）。
->
-> 出站守卫见 [security-guardrails.md](./security-guardrails.md)。代码引用以文件名 + 方法名为准，不用行号。
-
-入口：[src/agent/generator/generator.agent.ts](../../src/agent/generator/generator.agent.ts)（生成）、[src/agent/runner/agent-runner.service.ts](../../src/agent/runner/agent-runner.service.ts)（编排）
-
-生成层只做两件事：**调 LLM**、**收尾**。所有准备工作下放到独立的 `PreparationService`，所有 LLM 请求统一走 `LlmExecutorService`。
-
-### 3.1 调用链
-
-```
-invoke(params) / stream(params)
- │
- ├─ PreparationService.prepare(params, mode, { enableVision })
- │     返回 PreparedAgentContext
- │
- ├─ LlmExecutorService.generate() / stream()
- │     system  = ctx.finalPrompt
- │     messages = ctx.normalizedMessages
- │     tools    = ctx.tools
- │     stopWhen = [stepCountIs(ctx.maxSteps), hasToolCall('skip_reply')]
- │     prepareStep = buildPrepareStep(ctx)   // 工具黑名单动态注入
- │
- ├─ recoverEmptyTextResult(...)            // 空文本无工具恢复（兜底一次）
- │
- └─ attachTurnEnd(...)
-       ├─ deferTurnEnd=false → fire-and-forget 触发 memory.onTurnEnd
-       └─ deferTurnEnd=true  → 挂一个 runTurnEnd dispatcher 给调用方
-```
-
-### 3.2 PreparationService.prepare()
-
-[src/agent/generator/preparation.service.ts](../../src/agent/generator/preparation.service.ts)
-
-单次 prepare 内部步骤：
-
-1. **入参归一化** — 按字符预算裁剪 `messages[]`，从末尾取连续 user 块合并出 `currentUserMessage`（覆盖 WeCom replay / test-suite 多条连发场景）
-2. **并行拉取本轮依赖**：
-   - `MemoryService.onTurnStart(corpId, userId, sessionId, currentUserMessage, options)` — 记忆快照
-   - `RecruitmentCaseService.getActiveOnboardFollowupCase()` — 在跟进中的面试/入职 case
-3. **消息归一化** — 按 `callerKind` 选择消息源（WECOM 用 memory 历史，其它直传），转 AI SDK `ModelMessage[]`，启用 vision 时注入顶层图片 parts
-4. **输入安全检查** — `InputGuardrailService.detectMessages()` 扫 prompt injection，命中时异步告警并返回 `GUARD_SUFFIX`
-5. **Context 组装** — 调 `ContextService.compose()` 产出 `systemPrompt + stageGoals + thresholds`；入口阶段在 `prepare()` 内联推导：**持久化程序阶段 > 老用户回访兜底阶段（须在策略阶段表中存在）> 策略首个 stage**
-6. **工具构建** — `ToolRegistryService.buildForScenario(scenario, toolContext)`，挂 `onJobsFetched` 回调把候选池写入 `turnState`
-7. **记忆观测快照** — 基于本轮 recall 构造 `memorySnapshot`（入口阶段 / 已展示岗位 IDs / sessionFacts 扁平化 / profile keys）
-
-返回的 `PreparedAgentContext` 包含 `finalPrompt / normalizedMessages / tools / entryStage / turnState / memorySnapshot / memoryLoadWarning`。
-
-### 3.3 AgentInvokeParams（主要字段）
-
-```typescript
-interface AgentInvokeParams {
-  callerKind: CallerKind;              // WECOM | TEST_SUITE | DEBUG
-  messages: AgentInputMessage[];
-  userId: string;
-  corpId: string;
-  sessionId: string;
-  messageId?: string;                  // trace id，用于 turn-end 观测
-  scenario?: string;                   // 默认 candidate-consultation
-  maxSteps?: number;                   // 默认 5
-
-  // 模型控制
-  modelId?: string;                    // 覆盖角色路由
-  disableFallbacks?: boolean;          // 测试保真用
-  thinking?: AgentThinkingConfig;      // extended thinking
-
-  // 多模态
-  imageUrls?: string[];
-  imageMessageIds?: string[];
-  visualMessageTypes?: Record<string, IMAGE | EMOTION>;
-
-  // 策略版本
-  strategySource?: 'released' | 'testing';
-
-  // WeCom 链路身份（供工具使用）
-  botUserId?: string;
-  botImId?: string;
-  externalUserId?: string;
-  contactName?: string;
-  token?: string;
-  imContactId?: string;
-  imRoomId?: string;
-  apiType?: 'enterprise' | 'group';
-
-  // 回合控制
-  shortTermEndTimeInclusive?: number;  // 短期记忆读取上界（replay/merge 用）
-  deferTurnEnd?: boolean;              // 由调用方显式触发 turn-end
-  onPreparedRequest?: (request) => void; // LLM 请求快照观测
-}
-```
-
-### 3.4 AgentRunResult（主要字段）
-
-```typescript
-interface AgentRunResult {
-  text: string;
-  reasoning?: string;
-  responseMessages?: Array<Record<string, unknown>>;
-  steps: number;
-  agentSteps: AgentStepDetail[];      // 每步详情（text / toolCalls / usage / durationMs）
-  toolCalls: AgentToolCall[];         // 扁平工具调用序列（含 status / resultCount）
-  usage: { inputTokens; outputTokens; totalTokens };
-  agentRequest?: Record<string, unknown>;
-  memorySnapshot?: AgentMemorySnapshot;
-  runTurnEnd?: () => Promise<void>;    // deferTurnEnd=true 时可用
-}
-```
-
-### 3.5 三条调用路径
-
-`callerKind` 是调用方身份的显式声明，控制"是否从 memory 读取历史"等运行时行为：
-
-| callerKind   | messages[] 含义           | 短期记忆                | 调用方                                   |
-| ------------ | ------------------------- | ----------------------- | ---------------------------------------- |
-| `WECOM`      | 只含当前 user 消息        | 从 Redis/DB 加载完整历史 | ReplyWorkflowService                     |
-| `TEST_SUITE` | 完整历史 + 当前消息       | 不加载                  | TestExecutionService / ConversationTest  |
-| `DEBUG`      | 完整历史 + 当前消息       | 不加载                  | AgentController.debugChat                |
-
-`callerKind` 与 `strategySource` 正交：test-suite 可覆盖 `strategySource: 'released'` 跑联调。
-
-### 3.6 prepareStep 动态工具屏蔽
-
-`generator.agent.ts` 的 `buildPrepareStep()` 在每一步开始前基于历史 steps 收紧 `activeTools`：
-
-- **同名工具超限**：单轮同一工具 ≥ `MAX_SAME_TOOL_CALLS_PER_TURN` 次 → 屏蔽后续调用（典型场景：`duliday_job_list` 不断换参扩面）
-- **skip_reply 互斥**：本轮已有任一业务工具调用 → 屏蔽 `skip_reply`（沉默只允许在无业务动作的轮次）
-
-屏蔽同时在 system 末尾拼上说明，避免直接 stopWhen 导致整轮无回复。
-
-### 3.7 空文本恢复
-
-工具链偶发以"有 reasoning、有 tool results，但最终文本为空"结束。`generator.agent.ts` 的 `recoverEmptyTextResult()` 在这种情况下关闭工具、把已执行工具结果压缩成 transcript，让模型再补一条候选人可见回复。恢复失败则保留原空结果交上层兜底。
-
-### 3.8 LlmExecutorService — 共享 LLM 入口
-
-[src/llm/llm-executor.service.ts](../../src/llm/llm-executor.service.ts) 是所有 LLM 调用的统一入口：
-
-```typescript
-generate(options: LlmGenerateOptions)
-generateStructured(options: LlmGenerateStructuredOptions)
-stream(options: LlmStreamOptions)
-supportsVisionInput(options): boolean
-```
-
-消费方包括：`AgentRunnerService`、`SessionService.extractAndSave`（事实提取）、`MemoryEnrichmentService`（外部画像补全）、`LlmEvaluationService`、`InputGuardrailService`（注入分析）等。所有请求都经由 `RouterService → ReliableService → RegistryService` 三层处理。
-
-#### 分层关系
+Cake Agent Runtime 是面向招聘咨询的 NestJS Agent 服务。生产主链路当前来自企业微信消息回调，
+系统同时支持测试套件、调试接口和主动复聊。Vercel AI SDK 负责多步模型/工具循环；业务状态、
+动作门禁、投递可靠性和记忆收尾由确定性运行时控制。
 
 ```mermaid
 flowchart TD
-    A["Channels / Biz / Memory"] --> B["LlmExecutorService"]
-    C["AgentRunnerService"] --> B
-    B --> D["RouterService"]
-    B --> E["ReliableService"]
-    B --> F["RegistryService"]
-    D --> G["AGENT_*_MODEL / FALLBACKS"]
-    E --> H["availability / retry / backoff policy"]
-    F --> I["provider SDK instances"]
+    A["企业微信回调"] --> B["Channels · 接入、聚合、Replay、投递"]
+    A2["主动复聊调度"] --> C["AgentRunnerService.runTurn"]
+    A3["Test Suite / Debug"] --> C
+    B --> C
+    C --> D["Input guardrail"]
+    D --> E["GeneratorAgent"]
+    E --> F["PreparationService"]
+    F --> G["Memory recall / Prompt Context / Tools"]
+    E --> H["LlmExecutorService"]
+    H --> I["Router → Reliable → Registry"]
+    E --> J["Output guardrail → ReplyRepairAgent"]
+    J --> K["TurnOutcome"]
+    K --> B
+    K --> A2
+    B --> L["Delivery + side-effect commit + TurnFinalizer"]
+    L --> M["Memory onTurnEnd + Observability"]
 ```
 
-关键约束：
+一轮的核心模型是：
 
-- `provider` 层只保留注册、路由和可靠性策略；
-- 真正调用 Vercel AI SDK `generateText / streamText / Output.object` 的统一入口是 `LlmExecutorService`；
-- `PreparationService` 只准备上下文，不做模型选择；
-- `AgentRunnerService` 负责编排，不直接拼 provider-specific SDK 参数；
-- `RouterService` 决定模型链，`ReliableService` 决定重试/退避，`RegistryService` 解析 provider SDK 实例。
-
-#### Memory 为什么可以调用 LLM
-
-```mermaid
-flowchart LR
-    U["User Turn"] --> R["AgentRunnerService"]
-    R --> M["MemoryService.onTurnStart / onTurnEnd"]
-    M --> S["SessionService.extract facts"]
-    M --> T["SettlementService.summarize archive"]
-    S --> X["LlmExecutorService"]
-    T --> X
-    R --> X
+```text
+触发 → 入站预检 → prepare → LLM/Tools → 出站审查/一次修复 → TurnOutcome
+     → Replay 定局 → 副作用提交/投递 → TurnFinalizer → onTurnEnd
 ```
 
-Memory 调用 LLM 是职责内的事实抽取和摘要压缩，不是越过分层直连 provider。Agent、Memory 和 Evaluation 可以消费模型能力，但都必须经过同一个执行入口。
+这里有三个重要边界：
 
-#### 一轮对话时序
+- `AgentRunnerService` 负责渠道无关的回合判定，但不发送消息。
+- `GeneratorAgent` 负责 prepare、模型工具循环和生成结果归一化，不决定最终投递。
+- 渠道在 Replay 和投递结局确定后才提交 outcome 副作用、结算记忆并确认 pending 消息。
 
-```mermaid
-sequenceDiagram
-    participant Channel as ReplyWorkflowService
-    participant Runner as AgentRunnerService
-    participant Prep as PreparationService
-    participant Memory as MemoryService
-    participant LLM as LlmExecutorService
-    participant Router as RouterService
-    participant Reliable as ReliableService
-    participant Registry as RegistryService
-
-    Channel->>Runner: invoke(messages, modelId?, thinking?)
-    Runner->>LLM: supportsVisionInput(role=chat, modelId?)
-    LLM->>Router: resolveRoute(...)
-    Runner->>Prep: prepare(..., enableVision)
-    Prep->>Memory: onTurnStart(...)
-    Prep-->>Runner: finalPrompt + normalizedMessages + tools
-    Runner->>LLM: generate(role=chat, system, messages, tools)
-    LLM->>Router: resolveRoute(...)
-    LLM->>Reliable: availability / retry policy
-    LLM->>Registry: resolve(modelId)
-    LLM-->>Runner: text / steps / usage
-    Runner->>Memory: onTurnEnd(...) [deferred]
-    Runner-->>Channel: TurnOutcome
-```
+Runner 的接口已经渠道中立；Nest 模块依赖尚未完全端口化：`AgentModule` 仍引用 WeCom 的
+`CustomerModule` / `MessageModule`，`ToolModule` 仍引用 `RoomModule` / `MessageSenderModule`。
+因此不能把当前物理依赖图描述为“Agent 已完全渠道无关”。
 
 ---
 
-## 3.9 运行时硬约束（HC-1 ~ HC-5）
+## 2. 分层与所有权
 
-源自 2026-06 可靠性架构评审，是**全库被引用最广的一组不变式**——`HC-2` 在 `identity-gates.ts`、`invite-city-gate.ts`、`session.service.ts`、`booking.tool.ts`、`claim.types.ts` 等处均以代码注释直接援引。它们约束的是「哪些判断不能交给模型」。
+| 层                 | 当前职责                                              | 主要入口                                          |
+| ------------------ | ----------------------------------------------------- | ------------------------------------------------- |
+| Channels           | 回调适配、过滤、去重、聚合、per-chat 锁、Replay、投递 | `src/channels/wecom/message/`                     |
+| Agent runner       | 入站预检、已审生成、终态分类、副作用意图              | `src/agent/runner/agent-runner.service.ts`        |
+| Agent generator    | prepare、AI SDK 多步循环、空文本恢复、turn-end 闭包   | `src/agent/generator/generator.agent.ts`          |
+| Preparation        | 当轮备料、记忆召回、工具集、TurnLedger                | `src/agent/generator/preparation/`                |
+| Prompt / Context   | system sections 编译与生成侧首版防线                  | `src/agent/generator/context/`                    |
+| Guardrail / Repair | input、tool、output 执行守卫；受控文本修复            | `src/agent/guardrail/`、`src/agent/reply-repair/` |
+| Memory             | 两层召回、会话状态收尾、闲置沉淀                      | `src/memory/`                                     |
+| Tools              | 工具注册、工具业务流程、动作门禁、收资单据            | `src/tools/`                                      |
+| LLM / Providers    | 统一执行、角色路由、重试/降级、SDK 实例               | `src/llm/`、`src/providers/`                      |
+| Biz                | 策略、托管、监控、人工介入、测试套件等业务域          | `src/biz/`                                        |
+| Infrastructure     | Redis、Supabase、Bull、HTTP、飞书、地理编码、Web      | `src/infra/`                                      |
+| Observability      | 请求上下文、Agent 事件、incident 与组合 observer      | `src/observability/`                              |
 
-### HC-1 · 副作用后的 revise 只能「无工具文本重写」
+依赖纪律：
 
-副作用已提交的回合，出站守卫触发修复时**不能全量重跑 generator**（prepareStep 的副作用屏蔽只在同一次 AI SDK loop 内生效）。
-
-落地形态：正向副作用判定 → `toolMode:'none'` + `reviseFeedback` + `committedSideEffects` → **一次** revise → 二次审查使用 `draft.toolCalls ∪ rewritten.toolCalls` → 最终 result/outcome 保留已提交副作用的工具结果。命中 `invite_to_group` / `booking` 的回合跳过 replay。
-
-### HC-2 · 权威状态字段必须有 evidence 准入，模型工具参数单独不构成权威
-
-> **确定性守门、LLM 只降级不放权。**
-
-模型可以换个字段「自证」，因此模型入参不得直接 override 进权威态。落地：jobId provenance 成员判定、候选人原文 parser、姓名闸（负向证据口径）——**模型参数不构成 jobId / name 的 runtime 准入 evidence**。
-
-这条约束的完整体系化表达见 [候选人档案域架构](./candidate-profile-domain.md)：claim 通货的「出处审」即 HC-2 骨架的升级版。
-
-### HC-3 · `reject_hard` 的短路必须由 runner/tool runtime 保证
-
-工具内不能调另一个 AI 工具；工具自己 dispatch intervention 会破坏「只读」；只返 `_replyInstruction` 模型会忽略。
-
-落地：booking hard-reject 返回统一 `shortCircuited` gate result（携 `gateRejected + reasonCode`）→ `runner.stopWhen` 识别停 loop → `TurnOutcome.kind='handoff'` → outcome 处理层执行 handoff（pause + 告警）。**gate 只判定，不执行副作用。**
-
-### HC-4 · 记忆写入边界二分
-
-revise 前草稿、被拦草稿、未投递成功的回复**都不应写入「已对用户说过」**。落地：`deferTurnEnd` 只在最终采纳/投递路径触发；booking/handoff 等已发生副作用的回合写 `terminal`，供复聊停止条件消费。
-
-### HC-5 · 渠道无关抽离范围包含 tool 侧能力
-
-`ToolRegistryService` 依赖 `RoomService` / `MessageSenderService`，`AgentModule` import `CustomerModule`。**渠道无关不只是 `ChannelDeliveryPort`**，tool 侧渠道能力（`RoomPort` / `SenderPort`）同样需要端口化。
-
-⚠️ 该项未完成——在 tool 端口化落地前，**不可声称已达成渠道无关**。
+- `resolution/` 是零 IO 的确定性判定层。
+- `tools/` 拥有工具调用期动作与业务单据；收资表单不属于 memory。
+- `memory/` 只拥有消息窗口、session hash 和候选人 × bot 长期关系档。
+- `sections/` 负责模型可见呈现与排布，不直接写存储。
+- Agent、Memory、Evaluation、Guardrail 需要模型能力时统一调用 `LlmExecutorService`，不直接操作 provider SDK。
+- `biz/**` 的 Controller / Service / Repository 纪律见 [Biz 分层边界规范](./biz-layer-boundaries.md)。
 
 ---
 
-## 4. Context System — Prompt 组装
+## 3. Runner：统一回合入口
 
-入口：[src/agent/generator/context/context.service.ts](../../src/agent/generator/context/context.service.ts)
+### 3.1 TurnRequest
 
-`ContextService.compose()` 输出 `{ systemPrompt, stageGoals, thresholds }`。
-
-### 4.1 PromptSection 接口
+`AgentRunnerService.runTurn(req)` 同时承接被动消息和主动复聊：
 
 ```typescript
-interface PromptSection {
-  readonly name: string;
-  build(ctx: PromptContext): Promise<string> | string;
+type TurnTrigger =
+  | { kind: 'inbound'; userMessage: string; images?: string[] }
+  | { kind: 'proactive'; directive: string; scenarioCode: string };
+
+interface TurnRequest {
+  sessionRef: { corpId: string; userId: string; sessionId: string };
+  trigger: TurnTrigger;
+  context?: TurnContext;
+  toolMode?: 'scenario' | 'readonly' | 'none';
+  modelId?: string;
 }
 ```
 
-`PromptContext` 由 prepare 阶段装配：`strategyConfig / currentStage / memoryBlock / sessionFacts / ruleFacts / groupInventoryBlock / currentTimeText / channelType`。
+`sessionId` 在生产链路中就是 `chatId`。稳定的 `botUserId` 用于长期关系档隔离；可能轮换的
+`botImId` 用于渠道调用和血缘排障，不能替代长期主键。
 
-### 4.2 场景注册表
+`callerKind` 与 trigger 是两根轴：
 
-[src/agent/generator/context/scenarios/scenario.registry.ts](../../src/agent/generator/context/scenarios/scenario.registry.ts)
+| callerKind   | `messages` 的含义 | short-term 消息窗口                  |
+| ------------ | ----------------- | ------------------------------------ |
+| `WECOM`      | 当前轮 user 输入  | 从 Memory 读取，并受本批时间上界约束 |
+| `TEST_SUITE` | 完整测试对话      | 不从生产聊天历史加载                 |
+| `DEBUG`      | 完整调试对话      | 不从生产聊天历史加载                 |
+
+### 3.2 TurnOutcome
+
+Runner 不返回“随便一段文本”，而是返回明确终态：
+
+| kind                | 渠道动作                                      | 典型来源                           |
+| ------------------- | --------------------------------------------- | ---------------------------------- |
+| `reply`             | 可进入投递；投递后提交随 reply 携带的副作用   | 正常生成或修复后通过               |
+| `skipped`           | 不投递、不告警                                | `skip_reply`、无文本、普通短路     |
+| `guardrail_blocked` | 不投递；按 `sideEffects` / `disposition` 处置 | 入站风险或出站 veto                |
+| `handoff`           | 不投递；统一执行暂停、告警和底账              | `request_handoff` 或工具 hard gate |
+
+`TurnOutcome` 还携带 `toolCalls`、usage、step、memory snapshot、guardrail trace、
+`sideEffects` 和 `runTurnEnd`。副作用意图与副作用执行分离：守卫和分类器只声明，渠道在 Replay
+定局后调用 `TurnOutcomeInterventionService.commit()`，防止被丢弃的首版误触发暂停或告警。
+
+### 3.3 runTurn 时序
+
+```text
+runTurn
+  ├─ 建立 RequestContext + agent_start 事件
+  ├─ inbound：InputGuardrailService.evaluate()
+  │    └─ 命中 → guardrail_blocked（不进入 Generator）
+  ├─ proactive：默认 toolMode=readonly
+  ├─ invokeReviewedTurn()
+  │    ├─ GeneratorAgent.invoke()
+  │    ├─ OutputGuardrailService.check()
+  │    ├─ 必要时 ReplyRepairAgent 修复一次并二审
+  │    └─ classifyReviewedOutcome()
+  └─ agent_end / agent_error 事件
+```
+
+主动回合发生生成异常时收敛为 `skipped`，避免单个复聊任务拖垮调度；被动 inbound 异常会抛回
+WeCom 链路，由消息失败处理器给出降级回复并告警。
+
+---
+
+## 4. Generator：prepare 与模型工具循环
+
+### 4.1 执行链
+
+```text
+GeneratorAgent.invoke(params)
+  ├─ LlmExecutorService.supportsVisionInput()
+  ├─ PreparationService.prepare()
+  ├─ LlmExecutorService.generate()
+  │    instructions = workingMemory.finalPrompt
+  │    messages    = workingMemory.normalizedMessages
+  │    tools       = workingMemory.tools
+  │    stopWhen    = 步数上限 / skip_reply / 任一 shortCircuited tool result
+  │    prepareStep = 每步动态收紧 activeTools
+  ├─ recoverEmptyTextResult()（仅兜底一次、禁用工具）
+  └─ attachTurnEnd()（总是挂载 runTurnEnd）
+```
+
+`GeneratorRunResult` 的主要观测字段：
+
+- `text`、`reasoning`、`responseMessages`；
+- `steps`、`agentSteps[]`、扁平 `toolCalls[]`；
+- `usage.inputTokens / outputTokens / totalTokens / cachedInputTokens`；
+- `agentRequest`、`memorySnapshot`、`turnLedger`；
+- `runTurnEnd({ includeAssistantText, assistantTextOverride })`。
+
+`runTurnEnd` 是硬契约，不再有“生成结束即 fire-and-forget”的默认分支。生产调用方必须让
+`TurnFinalizer` 在结局确定后执行或丢弃它。
+
+### 4.2 每步工具收紧
+
+`buildPrepareStep()` 会根据已经完成的 steps 动态调整工具集合：
+
+- 同名工具单轮最多 3 次；`duliday_interview_precheck` 最多 2 次；
+- 已成功执行的副作用工具本轮不再暴露，防止重复提交；
+- 发生业务工具调用后屏蔽 `skip_reply`；
+- `readonly` 模式物理移除主动回合禁止的副作用工具；
+- 工具返回 `shortCircuited: true` 时立即结束 loop。
+
+空文本恢复只把已执行结果压成 transcript，关闭工具后补一条回复；它不会重新执行业务动作。
+
+### 4.3 出站审查与修复
+
+`invokeReviewed()` 执行确定性规则和可配置的语义 reviewer，裁决为
+`pass | observe | revise | block`。`revise` / `block` 最多进入一次受控修复：
+
+- 唯一写手是 `ReplyRepairAgent`，不重新取数、不重进 Generator；
+- 代码围栏、内部 reasoning、JSON 信封等封闭形态优先确定性剥壳；
+- 修复后必须二审；repair 硬上限为 1；
+- 已提交的工具副作用被保留，修复阶段不再暴露副作用工具；
+- 最终投递文本还会经过 `OutboundReplySanitizer`。
+
+完整规则和 fail-open / fail-close 策略见
+[Guardrail 质量体系](./guardrail-quality-system.md)。
+
+---
+
+## 5. Preparation：单轮备料编译器
+
+`PreparationService.prepare()` 返回 `WorkingMemory`，它是本轮初始工作记忆，不是持久层：
 
 ```typescript
-SCENARIO_SECTIONS = {
-  'candidate-consultation': [
-    'identity',          // 角色定义、沟通风格（IdentitySection）
-    'base-manual',       // 从 candidate-consultation.md 加载的业务手册（StaticSection）
-    'policy',            // red-lines + thresholds 聚合
-    'runtime-context',   // stage-strategy + memory + turn-hints + hard-constraints + datetime + channel
-    'group-inventory',   // 候选人意向城市的兼职群资源概览（GroupInventorySection）
-    'final-check',       // 从 candidate-consultation-final-check.md 加载的出规校验清单
-  ],
-  'group-operations': ['identity', 'datetime', 'channel'],
-  evaluation: ['identity'],
-};
+interface WorkingMemory {
+  finalPrompt: string;
+  promptBlocks: PromptCorpusBlock[];
+  normalizedMessages: ModelMessage[];
+  conversationCorpusBlocks: CorpusBlock[];
+  tools: ToolSet;
+  entryStage: string | null;
+  ledger: TurnLedger;
+  memorySnapshot?: AgentMemorySnapshot;
+  memoryLoadWarning?: string;
+  toolExecutionTimings: Map<string, number>;
+}
 ```
 
-### 4.3 Section 清单
+### 5.1 当前 prepare 顺序
 
-[src/agent/generator/context/sections/](../../src/agent/generator/context/sections/)
+1. 按 `AGENT_MAX_INPUT_CHARS` 裁剪传入消息，并从末尾连续 user 块得到本轮文本。
+2. 对逐条本轮 user 文本运行确定性 `turnHints` producer，同时判定用工形式 set/clear/ignore。
+3. 并行读取两层记忆、当前预约实时上下文、实时群成员状态和托管账号身份；有身份锚时执行
+   `SnapshotEnrichmentService` 当轮补料。
+4. 归一化为 AI SDK `ModelMessage[]` 与旁路 `conversationCorpusBlocks`；按模型能力保留图片输入。
+5. 扫 Prompt Injection；命中时告警并准备 `input-guard` system 尾块，不修改 user messages。
+6. 派生当前品牌状态；调用 `adjudicatePromptMemory()` 一次生成 memory / turn-hints 共享裁决视图。
+7. 渲染记忆块，调用 `ContextService.compose()` 生成结构化 `promptBlocks`。
+8. 解析入口阶段：持久化 stage > 有长期 profile 的老用户兜底阶段 > 策略首阶段。
+9. 创建 `TurnLedger` 和 `ToolBuildContext`，按场景与 `toolMode` 构建工具并挂耗时 wrapper。
+10. 插入条件式 `input-guard` / `proactive-directive`，唯一一次降维为 `finalPrompt`。
+11. 构造 `memorySnapshot`；`finalPrompt` 超过 60,000 字符时发 `agent.prompt_bloat` 告警。
 
-**顶层结构（candidate-consultation 使用）**：
+外部补料、共享裁决和 `TurnLedger` 都只活在当轮；它们不能绕过候选人档案域的来源和置信度纪律。
 
-| Section           | 职责                                                                      |
-| ----------------- | ------------------------------------------------------------------------- |
-| `identity`        | 角色、沟通风格、工作流程                                                  |
-| `base-manual`     | `candidate-consultation.md` 业务手册（StaticSection）                     |
-| `policy`          | 聚合 `red-lines` + `thresholds`                                           |
-| `runtime-context` | 聚合 `stage-strategy` → `memory` → `turn-hints` → `hard-constraints` → `datetime` → `channel` |
-| `group-inventory` | 按候选人意向城市预渲染兼职群库存（行业、可用容量）                        |
-| `final-check`     | `candidate-consultation-final-check.md` 出规校验清单                      |
+### 5.2 Prompt section 终序与 block 展开
 
-**叶子 section（被上面聚合，也可独立使用）**：`red-lines / thresholds / stage-strategy / memory / turn-hints / hard-constraints / datetime / channel`。
+`candidate-consultation` 的 section 终序到 `final-check` 为止：
 
-### 4.4 策略配置来源
-
-`strategyConfig` 由 [StrategyConfigService](../../src/biz/strategy/services/strategy-config.service.ts) 从 Supabase 读取。`strategySource` 决定版本：
-
-- `released`（默认，WeCom 走这里）
-- `testing`（测试套件、dashboard 调试）
-
-### 4.5 Compose 最终结构
-
-```
-[identity]
-[base-manual]
-[policy]                  ← red-lines + thresholds
-[runtime-context]         ← 本轮会变动的全部内容
-  ├─ stage-strategy
-  ├─ memory               ← 来自 memoryBlock: [用户档案] + [会话记忆] + [当前预约信息]
-  ├─ turn-hints
-  ├─ hard-constraints
-  ├─ datetime
-  └─ channel
-[group-inventory]
-[final-check]
+```text
+identity
+→ base-manual
+→ channel
+→ stage-overview
+→ red-lines
+→ thresholds
+→ memory
+→ turn-hints
+→ hard-constraints
+→ datetime
+→ group-inventory
+→ stage-strategy
+→ final-check（复合 section）
 ```
 
-`memoryBlock` 的三段由 ``preparation-utils/memory-block.formatter.ts` 的 `buildMemoryBlock()`` 组装，来源：长期档案 facts + `WeworkSessionState` + `RecruitmentCaseRecord`。
+`critical-turn-guard` 不是另一个 section，也不占用场景清单中的新位置。它是
+`FinalCheckSection.buildBlocks()` 按命中追加的子块；因此 `promptBlocks` 的末尾在
+命中时会展开为 `final-check → critical-turn-guard`，未命中时只有 `final-check`。
+
+| 区段          | 内容                                                                          | 稳定性                           |
+| ------------- | ----------------------------------------------------------------------------- | -------------------------------- |
+| 开篇/静态前缀 | identity、手册、渠道规范、全阶段一览                                          | 极低频变化                       |
+| 配置段        | red-lines、thresholds                                                         | 随 released/testing 策略配置变化 |
+| 动态段        | memory、turn-hints、hard-constraints、datetime、group inventory、当前阶段策略 | 随轮变化                         |
+| 发送前收口    | final-check 复合 section（命中时内部追加 critical-turn-guard 子块）           | 常驻 recitation + 条件式动态禁令 |
+
+`final-check` 是复合 `PromptSection`：一个常驻块和一个命中才产生的动态子块共同消费
+`FINAL_CHECK_RULES`。为保持观测契约和模型可见字节不变，两个 block id 仍分别为 `final-check`
+与 `critical-turn-guard`；这不代表后者仍是独立 section。
+
+条件块位置：
+
+- `input-guard` 位于 `final-check` 之后；若本轮有 `critical-turn-guard`，则插在它之前；
+- `proactive-directive` 始终是主动回合的 system 尾块；
+- 全部动态信息继续保持 system 语义，一个字节也不会迁入 `normalizedMessages`。
+
+### 5.3 结构化语料与缓存
+
+`promptBlocks` 在 `WorkingMemory` 降维前保留 `id / domain / role / content`。封闭的
+`PROMPT_SECTION_DOMAIN_REGISTRY` 把叶子块标为 `teaching | evidence | tool_result`，用于审计
+指令与数据边界；这根轴与 procedural / semantic / working 的知识类型轴正交。
+
+当前生产观测尚未把 `promptBlocks` 作为独立字段持久化：Agent 的 LLM 请求快照记录的是降维后的
+`agentRequest.instructions`、messages 和 tool names。结构化 blocks 目前主要由 compose/preparation 测试和
+进程内调试消费；若要在 MPR 中逐块检索，需要另行把该字段从 `WorkingMemory` 透传到观测层，不能把
+“进程内保留”误写成“已经落库”。
+
+当前没有 Anthropic `cacheControl` 等显式缓存断点，也没有 provider 缓存适配层。稳定前缀和稳定的
+tools 序列用于获得 Qwen 的隐式前缀缓存；命中量从 AI SDK
+`usage.inputTokenDetails.cacheReadTokens` 汇总为 `cachedInputTokens` 并进入 Agent 观测。
+
+真实形态和维护注释见
+[最终 Prompt 示例](../../src/agent/generator/context/final-prompt-example.md)。
 
 ---
 
-## 5. Provider 层 — 三层模型架构
+## 6. 工具系统
 
-```
-┌────────────────────────────────────────────────┐
-│ Layer 3: RouterService — 角色/路由             │
-│  resolveRoute({ role, overrideModelId, ... })  │
-│  AGENT_CHAT_MODEL / AGENT_EXTRACT_MODEL / ...  │
-├────────────────────────────────────────────────┤
-│ Layer 2: ReliableService — 容错                │
-│  retry（指数退避）+ fallback 链降级             │
-│  错误分类：retryable / rate_limited / non_retryable │
-├────────────────────────────────────────────────┤
-│ Layer 1: RegistryService — 工厂注册            │
-│  "provider/model" → LanguageModel 实例         │
-└────────────────────────────────────────────────┘
-```
+### 6.1 candidate-consultation 常挂工具
 
-[src/providers/](../../src/providers/)
+`ToolRegistryService` 当前按以下顺序构建场景工具：
 
-### 5.1 角色枚举
+| 类别      | 工具                                                                          |
+| --------- | ----------------------------------------------------------------------------- |
+| 流程/回忆 | `advance_stage`、`recall_history`                                             |
+| 岗位/报名 | `duliday_job_list`、`duliday_interview_precheck`、`duliday_interview_booking` |
+| 工单      | `duliday_cancel_work_order`、`duliday_modify_interview_time`                  |
+| 地理/位置 | `geocode`、`send_store_location`                                              |
+| 群邀请    | `invite_to_group`                                                             |
+| 介入/沉默 | `raise_risk_alert`、`request_handoff`、`skip_reply`                           |
 
-[src/llm/llm.types.ts](../../src/llm/llm.types.ts) 定义 `ModelRole`：`Chat / Fast / Classify / Extract / Reasoning / Vision` 等。每个角色通过 `AGENT_{ROLE}_MODEL` 映射到具体 modelId，`AGENT_{ROLE}_FALLBACKS` 定义降级链。
+此外按本轮输入动态注入：
 
-### 5.2 Provider 注册
+- 有图片或表情：`save_image_description`；
+- 有可读简历附件：`read_resume_attachment`；
+- 已连接 MCP server：将其运行时工具叠加到场景集合。
 
-[registry.service.ts](../../src/providers/registry.service.ts) 启动时按环境变量按需注册：
+工具 description 是程序性规则的一种正式居所，新增或修改必须同步
+[Prompt 规则台账](../prompt-rule-ledger.md)。
 
-| 分类           | Provider     | SDK                        | 注册条件                  |
-| -------------- | ------------ | -------------------------- | ------------------------- |
-| 原生           | `anthropic`  | @ai-sdk/anthropic          | ANTHROPIC_API_KEY         |
-| 原生           | `google`     | @ai-sdk/google             | GEMINI_API_KEY            |
-| 原生           | `deepseek`   | @ai-sdk/deepseek           | DEEPSEEK_API_KEY          |
-| 自定义         | `openai`     | custom-openai.provider     | ANTHROPIC_API_KEY（代理） |
-| 自定义         | `openrouter` | custom-openrouter.provider | OPENROUTER_API_KEY        |
-| OAI-compatible | `qwen`       | @ai-sdk/openai-compatible  | DASHSCOPE_API_KEY         |
-| OAI-compatible | `moonshotai` | @ai-sdk/openai-compatible  | MOONSHOT_API_KEY          |
-| OAI-compatible | `gateway`    | @ai-sdk/openai-compatible  | GATEWAY_API_KEY + URL     |
+### 6.2 工具上下文与 TurnLedger
 
-### 5.3 容错策略
+`ToolBuildContext` 包含 session 身份、归一化消息、结构化语料、当前阶段、策略目标、记忆投影、
+品牌/地点/预约上下文和本轮 `TurnLedger`。工具执行结果先写 ledger，成功采纳的回合再由
+`onTurnEnd()` 选择性持久化；阶段推进和已邀群确认有各自的即时写路径。
 
-[reliable.service.ts](../../src/providers/reliable.service.ts)
+副作用集合包括报名、拉群、取消、改约、发位置、风险告警和转人工。是否“成功提交”必须看正向
+结果信号，不能仅因工具被调用就判定副作用已经发生。
 
-```
-请求 → 主模型重试 → fallback 模型 1 → fallback 模型 2 → 抛出
-```
+### 6.3 Replay 与工具动作
 
-错误分类：
-
-| 类别            | 触发条件                           | 行为                           |
-| --------------- | ---------------------------------- | ------------------------------ |
-| `non_retryable` | 401/403/404、invalid key、余额不足 | 跳过重试，直接降级             |
-| `rate_limited`  | 429、rate limit                    | 指数退避，尊重 Retry-After     |
-| `retryable`     | 5xx、timeout、网络错误             | 标准指数退避                   |
-
-默认 `maxRetries=3, baseBackoff=100ms, maxBackoff=10s`。
-
----
-
-## 6. 记忆系统
-
-> 完整设计与端到端数据流详见 [memory-architecture.md](memory-architecture.md)。
-
-### 6.1 四类记忆
-
-```
-短期记忆   chat_messages → 窗口裁剪 → messages[]        读/写：ShortTermService
-会话记忆   Redis SESSION_TTL                            读/写：SessionService
-  ├─ facts（interview_info + preferences）
-  ├─ lastCandidatePool / presentedJobs / currentFocusJob
-  └─ invitedGroups
-程序记忆   Redis SESSION_TTL → currentStage             读/写：ProceduralService
-长期记忆   Supabase（+Redis 2h 缓存）                   读/写：LongTermService
-  ├─ profile_facts（画像字段 + 置信度 + 来源 + 证据 + 更新时间）
-  └─ summary（对话摘要）
-```
-
-### 6.2 统一生命周期：onTurnStart / onTurnEnd
-
-[src/memory/memory.service.ts](../../src/memory/memory.service.ts) 是唯一对外 facade，背后由 [MemoryLifecycleService](../../src/memory/services/memory-lifecycle.service.ts) 统一编排：
+`REPLAY_BLOCKING_TOOLS` 当前只有：
 
 ```typescript
-// 回合开始：并行读取四类记忆 + 前置高置信识别 + 可选外部画像补全
-await memoryService.onTurnStart(corpId, userId, sessionId, currentUserMessage, {
-  includeShortTerm: callerKind === CallerKind.WECOM,
-  shortTermEndTimeInclusive,
-  enrichmentIdentity,   // 触发 MemoryEnrichmentService 向外部系统补全
-});
-
-// 回合结束：按步骤写回 + 观测埋点
-await memoryService.onTurnEnd({
-  corpId, userId, sessionId, messageId,
-  normalizedMessages,
-  candidatePool,        // 本轮 duliday_job_list 工具产出的候选池
-}, assistantText);
+new Set(['invite_to_group', 'duliday_interview_booking']);
 ```
 
-### 6.3 onTurnEnd 的执行步骤
-
-每一步在 `message_processing_records.post_processing_status` 中留下 `success / failure / skipped + durationMs`，串行 + 分支并行混合执行：
-
-```
-load_previous_state (串行)
-  ↓
-┌─ 分支 A (可能 skip):
-│    settlement  ─ 消息间隔达到 settlementGapSeconds → 沉淀到 profile_facts + summary
-│
-└─ 分支 B (串行，因为共享 session state):
-     save_candidate_pool     ─ 写入 lastCandidatePool
-     project_assistant_turn  ─ 从 assistant 文本投影 presentedJobs / currentFocusJob
-     extract_facts           ─ LLM 提取 facts（preferences / interview_info）
-```
-
-### 6.4 解析线索（前置）
-
-规则轨在 `onTurnStart` 里对当前 user 文本做匹配（品牌别名、城市、年龄、labor_form 等），产出带置信度与证据的 `ruleFacts`，以 `[本轮解析线索]` 注入 Context 的 `turn-hints` section。它是当前轮解析 sidecar，不因 producer 或 confidence 自动成为候选人事实。解析器住 [src/resolution/candidate/](../../src/resolution/candidate/)（每字段唯一），claim 生产在 [src/resolution/evidence/producers/rule-track.ts](../../src/resolution/evidence/producers/rule-track.ts)——`src/memory/facts/` 已随候选人档案域改造解散。
-
-[src/resolution/labor-form/](../../src/resolution/labor-form/)：用工形式领域模型——岗位轴为两级结构化字段（用工形式=全职/兼职 + 兼职类型=寒假工/暑假工/小时工），候选人偏好侧为扁平词汇，匹配层做层级翻译。
-
-### 6.5 外部画像补全
-
-[MemoryEnrichmentService](../../src/memory/services/memory-enrichment.service.ts) 当 `onTurnStart` 传入 `enrichmentIdentity`（token + imBotId + externalUserId 等）时，向外部杜力岱系统补全缺失的 profile_facts 字段（如性别），并更新长期记忆快照。仅 `candidate-consultation` 场景 + 有 token 时触发。
-
-### 6.6 设计原则
-
-- **LLM 不直接持有记忆读写权**：所有记忆读取 / 写入由编排层在 `onTurnStart` / `onTurnEnd` 统一调度
-- **工具仅保留两个触达记忆**：`advance_stage`（写程序记忆）、`recall_history`（读长期摘要）
-- **会话记忆是结构化的**：`SessionService` 拆分成 store / projection / extraction 三块，外部不应直接拼 Redis key
+这两类成功动作会阻止渠道丢弃当前回合。取消、改约等动作虽是副作用，也由单轮工具屏蔽和 outcome
+保护，但不在这份 Replay blocking 集合中。报名类副作用提交前还会调用
+`hasNewerUserInput()`；发现更晚消息时返回 stale-input 短路，让渠道吸收新消息后重跑，而不是用旧资料下单。
 
 ---
 
-## 7. 工具系统
+## 7. Memory：两层记忆与结算边界
 
-入口：[src/tools/tool-registry.service.ts](../../src/tools/tool-registry.service.ts)
+运行时记忆只有 short-term 和 long-term 两层：
 
-### 7.1 内置工具清单
+| 作用域              | 当前内容                            | 生命周期 / 边界                              | 存储                     |
+| ------------------- | ----------------------------------- | -------------------------------------------- | ------------------------ |
+| short-term 消息窗口 | 原始对话                            | 查询最近 7 天，再按 120 条 / 24,000 字符裁剪 | Supabase；Redis 热缓存   |
+| short-term 会话状态 | facts、岗位工作台、阶段指针         | 3 天；facts hash 多 12 小时沉淀余量          | Redis                    |
+| episode             | 连续咨询切片                        | 闲置 3 天划界，不是独立层                    | 无独立 key/表            |
+| long-term 关系档    | profile、job intent、最多 20 段摘要 | 持久；候选人 × bot 隔离                      | Supabase + 2h Redis 缓存 |
 
-| 工具                          | 职责                                                                       |
-| ----------------------------- | -------------------------------------------------------------------------- |
-| `advance_stage`               | 推进程序记忆阶段                                                           |
-| `recall_history`              | 查询用户历史求职记录摘要                                                   |
-| `duliday_job_list`            | 查询在招岗位（含 geocode + 距离排序 + 业务阈值过滤）；回调写入候选池       |
-| `duliday_interview_precheck`  | 面试前置校验（可约日期 / 时段 / 备注字段）；不真正提交预约                 |
-| `duliday_interview_booking`   | 面试预约提交；安全 gate hard-reject 时由 Runner 收敛为人工介入              |
-| `geocode`                     | 地名 → 标准化地址 + 经纬度                                                 |
-| `send_store_location`         | 按面试形式发送面试地点或工作门店位置；避免预约场景混用两类地址             |
-| `invite_to_group`             | 邀请加入企微兼职群（副作用：addMember 外部 API + session facts 写入）       |
-| `raise_risk_alert`            | 声明会话风险副作用意图；回复投递后由统一出口暂停托管并告警                   |
-| `request_handoff`             | 声明人工接管意图并短路本轮；Runner 统一写底账、暂停托管和告警                |
-| `skip_reply`                  | 主动沉默本轮（仅候选人发纯确认词且上轮已推进时使用）                       |
+`turnHints`、snapshot enrichment、Prompt 裁决视图和 ledger 都是当轮 sidecar，不是额外记忆层。
 
-**动态注入**：本轮 `imageMessageIds` 非空时，运行时注入 `save_image_description` 工具（让模型把图片/表情内容写回 DB 供后续检索）。
+### 7.1 onTurnStart
 
-**MCP 扩展**：`registerMcpTool(name, tool, mcpServer)` 可运行时注册 MCP 工具，自动叠加到所有场景。
+`MemoryLifecycleService.onTurnStart()` 并行读：
 
-### 7.2 场景 → 工具映射
+- 最近 7 天消息窗口；
+- `factsv2:{corpId}:{userId}:{sessionId}`；
+- 独立 `stage:{corpId}:{userId}:{sessionId}`；
+- `long-term:{corpId}:{userId}:{botUserId}` 对应的 profile / job intent。
+
+episodic summaries 不进默认 Prompt，只允许 `recall_history` 显式读取。可降级读取失败通过
+`_warnings` 进入 `memoryLoadWarning`，不能把空值直接解释成“用户从未提供”。
+
+### 7.2 onTurnEnd 与 TurnFinalizer
+
+`GeneratorAgent` 只创建一次性 `runTurnEnd` 闭包。渠道用 `TurnFinalizer` 表达结局：
+
+| 结局                           | finalizer 动作                 | 记忆语义                            |
+| ------------------------------ | ------------------------------ | ----------------------------------- |
+| Replay 丢弃首版                | `discard()`                    | 首版不写任何记忆                    |
+| 回复真实送达                   | `settle({ delivered: true })`  | 记 user 侧并投影真实 assistant 文本 |
+| 守卫拦截、沉默、暂停或投递失败 | `settle({ delivered: false })` | 记 user 侧，不投影未送达回复        |
+
+`whenSettled()` 必须在释放 per-chat 锁前完成，保证相邻 job 的 session 读写串行。
+
+回合末依次保存岗位池、查询签名、助手投影、失效岗位、确权城市、事实提取和品牌 reducer；同时刷新
+闲置 3 天后的 consolidation job。consolidation 分别以守卫合并、整组覆盖、追加淘汰写入
+profile、job intent 和单层 episodic summaries。
+
+完整数据模型、Redis key 和排障矩阵见：
+
+- [Memory 当前实现权威](../../src/memory/README.md)
+- [记忆系统架构与数据流](./memory-architecture.md)
+- [记忆与状态全局视图](./memory-and-state.md)
+
+---
+
+## 8. LLM 与 Provider
+
+### 8.1 统一执行入口
+
+`LlmExecutorService` 是 AI SDK 的统一调用边界：
 
 ```typescript
-scenarioToolMap = {
-  'candidate-consultation': [
-    'advance_stage', 'recall_history',
-    'duliday_job_list', 'duliday_interview_precheck', 'duliday_interview_booking',
-    'geocode', 'send_store_location',
-    'invite_to_group',
-    'raise_risk_alert', 'request_handoff',
-    'skip_reply',
-  ],
-  'group-operations': [],
-  evaluation: [],
-};
+generate(options);
+generateStructured({ schema, ...options });
+stream(options);
+generateSimple(options);
+supportsVisionInput(options);
 ```
 
-### 7.3 工具构建上下文
+模型角色为：`chat`、`extract`、`vision`、`evaluate`、`review`、`repair`。Memory 的事实抽取和
+摘要、Evaluation 的评分、Guardrail 的语义审查都可以调用模型，但必须经过这个入口。
 
-`ToolBuildContext` 由 ``preparation-utils/tool-context.builder.ts` 的 `buildToolContext()`` 装配，含 `userId / corpId / sessionId / messages / currentStage / stageGoals / thresholds / profile / sessionFacts / currentFocusJob / onJobsFetched / token / botUserId / botImId / imContactId / imRoomId / apiType ...`。
+### 8.2 路由、可靠性、注册
 
-### 7.4 不可逆工具与 Replay 保护
-
-WeCom 链路识别以下工具为"触发后不可撤销"：
-
-```typescript
-// src/agent/generator/tool-call-analysis.ts
-REPLAY_BLOCKING_TOOLS = new Set(['invite_to_group', 'duliday_interview_booking']);
+```text
+LlmExecutorService
+  ├─ RouterService   ：role → primary + fallbacks
+  ├─ ReliableService ：可用性、错误分类、重试、退避
+  └─ RegistryService ：provider/model → AI SDK LanguageModel
 ```
 
-⚠️ `advance_stage` **不在**该集合内——它是可重放的状态推进，不是不可逆副作用。
+模型选择优先级：
 
-首次 Agent 调用若命中其中任意一个，即便生成期间有新消息到达也不 replay —— 直接投递首次回复（详见 §8.3）。
+1. 调用方显式 `modelId`；
+2. Dashboard `ROLE_MODEL_OVERRIDES` / `agent_reply_config`；
+3. `AGENT_{ROLE}_MODEL` 环境变量。
+
+调用方显式 fallbacks > Dashboard fallback chain > `AGENT_{ROLE}_FALLBACKS` >
+`AGENT_DEFAULT_FALLBACKS`；`disableFallbacks=true` 会清空降级链。每个候选模型先做 vision 能力和
+provider 注册检查，再在模型内重试，耗尽后切下一模型。
+
+Registry 按 API key 条件注册：
+
+- 原生 SDK：Anthropic、Google、DeepSeek；
+- 自定义接入：OpenAI 代理、OpenRouter；
+- OpenAI-compatible：Qwen、Moonshot、OhMyGPT 和自定义 Gateway。
+
+Provider 专属 `providerOptions` 当前只承载 thinking / reasoning 配置；不承载显式 Prompt 缓存断点。
 
 ---
 
-## 8. 消息管线 — WeCom 渠道
+## 9. WeCom 消息链路
 
-[src/channels/wecom/message/](../../src/channels/wecom/message/)
+### 9.1 接入与聚合
 
-```
-ingress/             回调入口（Controller + DTO + Schema）
-application/         业务逻辑
-  ├─ accept-inbound-message.service.ts   管线入口（去重/过滤/写历史/监控）
-  ├─ reply-workflow.service.ts           Agent 调用 + Replay + 投递
-  ├─ image-description.service.ts        图片/表情描述处理
-  ├─ message-processing-failure.service.ts 错误分类 + 飞书告警
-  ├─ pipeline.service.ts                 薄门面，转发到 accept/reply
-  └─ filter/                             过滤规则
-delivery/            打字延迟 + 分段发送
-runtime/             dedup / merge / processor / worker / redis-keys
-telemetry/           observability / trace store
-```
+当前公开回调入口是 `POST /message`：
 
-前置风险同步预检位于 `src/agent/guardrail/input/risk-intercept.service.ts`，高置信关键词检测内聚在该服务内。
-
-### 8.1 回调处理流程
-
-```
-POST /wecom/message
-  │
-  ├─ AcceptInboundMessageService.execute()
-  │   ├─ 自发消息处理（bot 自己发 → 存 assistant 历史）
-  │   ├─ 过滤（消息类型 / 来源校验）
-  │   ├─ 去重（Redis 24h）
-  │   ├─ 写历史（Supabase chat_messages）
-  │   └─ 记录入站流水（message_processing_records）
-  │   → 返回 200 OK
-  │
-  ├─ AI 开关检查 → 分发决策
-  │   ├─ 聚合：SimpleMergeService（debounce 静默窗口）
-  │   └─ 直发：processSingleMessage
-  │
-  └─ ReplyWorkflowService.processMessageCore()
-      ├─ 前置风险预检（命中则同步暂停+告警，不短路 Agent）
-      ├─ 首次 callAgent(deferTurnEnd=true)
-      ├─ 不可逆工具检查 → 若命中，立即投递（跳过 replay）
-      ├─ 否则 Replay 检测（见 §8.3）
-      ├─ 降级响应 → 飞书告警
-      ├─ 主动沉默（skip_reply）→ 跳过发送
-      └─ DeliveryService 分段发送 + 打字延迟
+```text
+MessageIngressController
+  └─ MessageCallbackAdapterService.normalizeCallback()
+      └─ MessageService.handleMessage() 立即 ACK
+          └─ 异步 MessagePipelineService.execute()
+              ├─ 过滤（来源、托管、黑名单、消息类型等）
+              ├─ Redis 原子去重（默认 300s）
+              ├─ 写 chat_messages 与处理流水
+              └─ 运行时开关：聚合或直发
 ```
 
-### 8.2 消息聚合（debounce）
+聚合路径由 Bull `message-merge` 队列驱动。`MessageProcessor` 对每个 chat 获取短租约锁并续心跳，
+复查 quiet window，claim pending 快照但不提前删除；成功终态才 ack，异常和进程退出时保留 pending
+供 stalled retry / 新实例接管。SIGTERM 会停止领取新任务并等待 in-flight，默认最多 60 秒。
 
-静默窗口机制，处理用户快速连发场景：
+合并窗口、AI 开关、分段发送、模型和 thinking 均从托管运行时配置读取；读取失败才使用环境默认。
+`initialMergeWindowMs` 当前缺省回落为 2,000ms，不再存在“最大合并条数”口径。
 
-```
-消息 1  → pending list，注册 delay=3s 的 job A
-消息 2  → 追加 list，注册 delay=3s 的 job B
-消息 3  → 追加 list，注册 delay=3s 的 job C
+### 9.2 Reply workflow 与 Replay
 
-t=3s    job A 触发 → 距最后消息未静默够 → 跳过
-...
-job C   距最后消息 3s → 静默够了 → 取出全部消息交给 Agent
-```
-
-| 参数                | 默认   | 配置位置                                       |
-| ------------------- | ------ | ---------------------------------------------- |
-| `initialMergeWindowMs` | 3000ms | Supabase `hosting_config`（Dashboard 动态调整） |
-
-> 不再有 "最大聚合数" 上限 —— debounce 天然会在用户停顿后触发。
-
-### 8.3 Replay 保护
-
-Agent 生成期间若用户又发了新消息，默认行为：
-
-```
-首次 callAgent(deferTurnEnd=true)
-  ↓
-检测 pending list 有新消息？
-  ├─ 否 → 投递首次回复，显式触发 turn-end lifecycle
-  └─ 是
-      ↓
-    首次 toolCalls 命中 REPLAY_BLOCKING_TOOLS？
-      ├─ 是 → 投递首次回复，触发 turn-end（副作用已固化，不能丢弃）
-      └─ 否
-          ↓
-        丢弃首次回复 + runTurnEnd（记忆副作用一并丢弃，避免污染 session）
-        合并新消息重跑一次（不再二次 replay，避免无限循环）
-        第二次 runner 内部 fire-and-forget 触发 turn-end
+```text
+ReplyWorkflowService.processMessageCore()
+  ├─ 解析稳定 botUserId、模型/思考配置、图片集合、本批消息时间上界
+  ├─ runner.runTurn(defer 语义由 TurnFinalizer 接管)
+  ├─ 检查运行期间的新 pending 消息
+  │    ├─ 可 replay：discard 当前 finalizer，合入新消息重跑
+  │    └─ 非 reply / 待提交副作用 / blocking tool：采用当前 outcome
+  ├─ 最多 Replay 3 次
+  ├─ 非 reply：commit sideEffects，记录 skipped，settle(delivered=false)
+  ├─ reply：投递、commit reply sideEffects、写复聊锚点
+  ├─ settle(delivered=真实投递结果)
+  ├─ 标记源消息处理完成并 ack pending
+  └─ finally: await finalizer.whenSettled()
 ```
 
-设计原因：首次生成的回复若被丢弃，它所投影的 `presentedJobs / facts` 若写入 session 会污染下一轮 recall。`deferTurnEnd=true` 让调用方控制"采纳后才触发"。
+图片主路径优先让可 vision 模型直接看图，并动态提供 `save_image_description`。全链纯文本或模型漏调
+工具时，渠道还有兼容描述/异步补写，保证下一轮至少有文字记忆；补写不会改变已经定局的本轮回复。
 
-### 8.4 降级策略
+### 9.3 失败与降级
 
-Agent 抛错时，[MessageProcessingFailureService](../../src/channels/wecom/message/application/message-processing-failure.service.ts) 统一处理：
+被动消息生成失败时，`MessageProcessingFailureService` 负责：
 
-- 发送降级回复（环境变量 `AGENT_FALLBACK_MESSAGE` 自定义，或内置 6 条随机话术）
-- 分级飞书告警（WARNING / ERROR / CRITICAL）
-- 记录失败流水（`message_processing_records.status = failed`）
+- 发送 `AGENT_FALLBACK_MESSAGE` 或内置降级话术；
+- 记录失败流水和 trace；
+- 按错误类型发送告警。
+
+pending 只在成功终态后裁掉；处理异常会让 Bull retry 继续消费同一快照。去重、pending、per-chat 锁和
+TurnFinalizer 共同保证“快速 ACK 不丢消息、Replay 不写幽灵记忆、相邻回合不并发覆盖”。
 
 ---
 
-## 9. 评估模块
+## 10. 主动复聊
 
-Agent 质量保障被拆在两处：
+主动触达位于 `src/agent/reengagement/`：
 
-- [src/evaluation/](../../src/evaluation/) — 通用评估能力（`LlmEvaluationService` 打分、`ConversationParserService` 对话解析）
-- [src/biz/test-suite/](../../src/biz/test-suite/) — 测试套件业务层（编排、执行、数据导入、写回、lineage 同步、AI 流观测）
-
-```
-biz/test-suite/
-├── TestExecutionService       单条测试执行（通过 AgentRunnerService.invoke callerKind=TEST_SUITE）
-├── TestBatchService           批量管理 + 统计
-├── ConversationTestService    多轮对话测试
-├── TestImportService          测试用例导入
-├── TestWriteBackService       结果回写
-├── CuratedDatasetImportService 精选数据集导入
-├── LineageSyncService         飞书 lineage 同步
-├── AiStreamObservabilityService + trace store / timing   AI 流观测
-└── TestSuiteProcessor         Bull 队列异步执行
-
-evaluation/
-├── LlmEvaluationService       LLM-based 意图等价性打分
-└── ConversationParserService  对话文本解析
+```text
+业务锚点 / onboarding sweep
+  → FollowUpSchedulerService
+  → Bull reengagement queue
+  → FollowUpProcessor
+  → ReengagementAgent
+  → AgentRunnerService.runTurn(trigger=proactive, toolMode=readonly)
+  → TurnOutcome
+  → shadow 或真实投递
+  → TurnFinalizer + touch ledger
 ```
 
-评估返回 `{ score: 0-100, passed: score >= 60, reason }`，通过 `LlmExecutorService.generateStructured()` 走 classify/extract 角色。
+主动和被动共享 prepare、记忆、上下文、出站守卫及终态分类。差异是主动回合：
+
+- 追加 `proactive-directive` system 尾块；
+- 默认使用 `readonly` 工具模式，物理禁用副作用工具；
+- 调度、幂等触达、静默/真实投递由 reengagement processor 管理；
+- 单会话失败收敛为 skipped，不让队列批次整体失败。
+
+具体场景、锚点、停止条件和 shadow 开关见
+[主动复聊与二次触达流水线](./reengagement-pipeline.md)。
 
 ---
 
-## 10. 模块依赖图
+## 11. 四个防线作用位：Input / Prompt / Tool / Output
 
-```
+运行时防线共有四个作用位。Prompt 是生成侧防线；Input / Tool / Output 是具有确定性判定、动作拒绝
+或最终 veto 权的执行 guardrail。不能因为 Prompt 不负责最终拦截，就把它从架构防线中省略。
+
+| 防线   | 时机                      | 职责                                                                               | 权限边界                                |
+| ------ | ------------------------- | ---------------------------------------------------------------------------------- | --------------------------------------- |
+| Input  | Generator 前 / prepare 内 | 高危风险短路；Prompt Injection 追加 system 防护                                    | 可阻断整轮或硬化 system，不决定工具准入 |
+| Prompt | prepare / 模型生成前      | 用 identity、手册、渠道规范、策略红线、阶段策略、证据块和 final-check 引导首版生成 | 负责“教”和预防，不作为最终放行依据      |
+| Tool   | 工具执行前                | jobId provenance、precheck、身份、硬筛、拉群城市/时机等确定性门禁                  | 可拒绝动作或短路 loop，不审查最终文案   |
+| Output | 生成后、投递前            | 确定性规则 + 语义 reviewer + 一次受控 repair                                       | 最终出站验收，可 revise / block         |
+
+四个作用位不是“都写一遍同一条规则”。Prompt 负责降低首次违规率，Tool 负责守住业务动作，Output 只拦
+可从生成结果与证据确定性判断的错误；同一约束若存在教/拦配对，必须在
+[Prompt 规则台账](../prompt-rule-ledger.md) 中互链，禁止多处漂移。
+
+运行时必须保持以下不变量：
+
+1. **模型参数不是权威 evidence**：jobId、姓名、报名条件等必须通过确定性来源门禁。
+2. **gate 只判定，outcome 提交副作用**：hard reject 返回 short-circuit / side-effect intent，不能靠模型自行执行转人工。
+3. **副作用后只允许无工具文本修复**：不能重进 Generator 重做业务动作。
+4. **投递结局决定 assistant 记忆**：未送达、被拦或被 Replay 丢弃的文本不能投影为“已对用户说过”。
+5. **成功副作用必须看正向信号**：工具调用存在不等于外部动作已完成。
+6. **Replay 有界且输入新鲜**：最多三次；报名等不可逆动作提交前还要检查更新消息。
+7. **模型可见内层标签是契约**：section 重排不能随意改名或把动态 system 内容搬进 messages。
+
+守卫目录、规则 catalog 和裁决细节见
+[安全护栏说明](./security-guardrails.md)；转人工提交链见
+[Gate 拒绝与人工介入流水线](./handoff-gate-and-intervention-pipeline.md)。
+
+---
+
+## 12. 可观测性与评估
+
+### 12.1 生产观测
+
+| 观测载体                     | 主要内容                                                                                                        |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `message_processing_records` | 入站/AI/投递阶段、agent request（含降维 instructions）、memory snapshot、tool calls、guardrail、post-processing |
+| `agent_execution_events`     | `agent_start/end/error`、model call/fallback、tool call/error、缓存 token 等细粒度事件                          |
+| `guardrail_review_records`   | 规则证据、首版/修复版、语义 reviewer findings                                                                   |
+| `AgentTracerService`         | 用 request context 把 Agent、模型、工具事件关联到 trace                                                         |
+| `IncidentReporterService`    | memory consolidation 等跨模块失败事件                                                                           |
+
+生产排查 Prompt 先看 `agent_invocation.request.agentRequest.instructions`；若需要 section 级归因，再用同轮
+输入复现 `ContextService.compose()` 或查看 compose/preparation 测试中的 `promptBlocks`。排查成本与缓存时
+同时看 `inputTokens` 和 `cachedInputTokens`；排查工具延迟要区分 step 墙钟与 tool execute 的真实耗时。
+
+### 12.2 Test Suite 与 Evaluation
+
+- `src/evaluation/` 只提供通用 LLM 评分和对话解析，无 DB / HTTP。
+- `src/biz/test-suite/` 负责单条、多轮、批次、Bull 执行、fixture、导入回写、lineage 和流式观测。
+- test-suite 通过 `callerKind=TEST_SUITE` 复用 Agent；可指定模型并
+  `disableFallbacks=true` 保证模型保真。
+- 流式调试可以使用 output guardrail advisory，不应污染生产告警和守卫档案。
+
+详见 [测试套件架构](./test-suite-architecture.md)。
+
+---
+
+## 13. Nest 模块图
+
+```text
 AppModule
-├── InfraModule
-│   ├── ConfigModule         env 校验
-│   ├── RedisModule          Upstash REST (Global)
-│   ├── SupabaseModule       数据库
-│   ├── HttpClientModule     HTTP 工厂
-│   ├── FeishuModule         飞书
-│   └── GeocodingModule      地理编码
-│
-├── ProvidersModule
-│   ├── RegistryService      Layer 1
-│   ├── ReliableService      Layer 2
-│   └── RouterService        Layer 3
-│
-├── LlmModule
-│   └── LlmExecutorService   共享 LLM 入口
-│
-├── MemoryModule
-│   ├── MemoryService        facade
-│   ├── MemoryLifecycleService  onTurnStart / onTurnEnd 编排
-│   ├── ShortTermService     短期窗口
-│   ├── SessionService       会话记忆（store + projection + extraction）
-│   ├── ProceduralService    程序阶段
-│   ├── LongTermService      用户档案 facts + 摘要
-│   ├── SettlementService    Session → profile_facts 沉淀
-│   ├── MemoryEnrichmentService  外部画像补全
-│   ├── RedisStore / SupabaseStore
-│   └── MemoryConfig
-│
-├── ToolModule
-│   └── ToolRegistryService  内置 + 动态 + MCP
-│
-├── AgentModule
-│   ├── AgentRunnerService         编排引擎
-│   ├── PreparationService    prepare 流程
-│   ├── ContextService             prompt 组装
-│   ├── AgentController / AgentHealthService
-│   └── guardrail/
-│       ├── input/InputGuardrailService      input guardrail 编排入口
-│       ├── input/PromptInjectionService     prompt injection 检测
-│       ├── input/RiskInterceptService       高置信风险预检
-│       ├── output/OutputGuardrailService    出站 rule/llm 组合裁决
-│       ├── output/HardRulesService          确定性出站规则调度
-│       └── output/LlmReviewerService        高风险语义 reviewer
-│
-├── ChannelsModule
-│   └── WecomModule
-│       └── MessageModule
-│           ├── AcceptInboundMessageService
-│           ├── ReplyWorkflowService
-│           ├── MessageProcessingFailureService
-│           ├── MessageDeliveryService
-│           ├── MessageDeduplicationService
-│           ├── SimpleMergeService
-│           └── WecomMessageObservabilityService
-│
-├── BizModule
-│   ├── StrategyConfigService       策略版本（released / testing）
-│   ├── RecruitmentCaseService      面试/入职跟进 case
-│   ├── MessageTrackingService      监控
-│   ├── HostingConfigService        托管配置
-│   ├── UserHostingService          托管状态
-│   ├── InterventionService         人工介入
-│   ├── GroupResolverService        企微兼职群解析
-│   ├── FeishuSyncService           飞书双向同步
-│   └── ChatSessionService          会话持久化
-│
-├── NotificationModule
-│   ├── OpsNotifierService          运营飞书群
-│   └── PrivateChatMonitorNotifierService  私聊监听飞书群
-│
-├── ObservabilityModule
-│   └── 观察者接口 + incidents + runtime 观测
-│
-├── EvaluationModule
-│   ├── LlmEvaluationService
-│   └── ConversationParserService
-│
-└── (BizModule → TestSuiteModule)
-    ├── TestExecutionService / TestBatchService / ConversationTestService
-    ├── TestImportService / TestWriteBackService
-    ├── CuratedDatasetImportService / LineageSyncService
-    ├── AiStreamObservabilityService + trace store / timing
-    └── TestSuiteProcessor
+├─ Infrastructure
+│  ├─ Config / HTTP / WebEntry
+│  ├─ Redis / Supabase / Bull
+│  └─ Feishu / Geocoding
+├─ AI infrastructure
+│  ├─ ProvidersModule
+│  ├─ LlmModule
+│  ├─ MemoryModule
+│  ├─ ToolModule / McpModule
+│  └─ SpongeModule
+├─ AgentModule
+│  ├─ AgentRunnerService / GeneratorAgent
+│  ├─ PreparationModule / ContextService
+│  ├─ GuardrailModule / ReplyRepairAgent
+│  └─ reengagement scheduler / processor / agent
+├─ WecomModule
+│  └─ MessageModule + Bot/Chat/Contact/Customer/Group/Room/Sender
+├─ Business
+│  ├─ BizModule
+│  ├─ OpsEvents / HandoffEvents / HostingMemberConfig
+│  └─ Huajune / TestSuite
+└─ Cross-cutting
+   ├─ Observability / Analytics / Notification
+   └─ Evaluation
 ```
+
+`ProvidersModule` 是全局模块；业务模块仍应通过 `LlmModule` 消费执行能力，而不是借全局可见性直接
+调用 `RegistryService`。`TestSuiteModule` 在根模块单独挂载，因为它同时组合 Agent、Biz、
+Evaluation、Memory、Tool 和 Feishu Sync。
 
 ---
 
-## 11. 完整请求生命周期
+## 14. 完整 inbound 生命周期
 
-以用户发送"你们招收银员吗？工资多少？"为例：
+以候选人连续发送“我在徐汇，想找收银员”“周末可以，工资多少？”为例：
 
-```
-1. POST /wecom/message
-   │
-2. AcceptInboundMessageService.execute()
-   ├─ 通过过滤 / 非重复 / 写 chat_messages / 记录入站流水
-   └─ shouldDispatch=true
-   │
-3. SimpleMergeService: debounce 静默 3s
-   └─ 超时触发 processMergedMessages(batchId)
-   │
-4. ReplyWorkflowService.processMessageCore()
-   │
-5. RiskInterceptService.evaluate()
-   └─ 不命中继续；命中则返回 guardrail_blocked 并由统一出口执行暂停/告警
-   │
-6. callAgent({ deferTurnEnd: true })
-   │
-   └─ AgentRunnerService.invoke(params)
-       │
+```text
+1. POST /message
+   └─ 标准化企业/小组回调，立即返回 200
+
+2. 异步 intake
+   ├─ 过滤、Redis 去重、写 chat_messages、创建 MPR trace
+   └─ 放入 message-merge pending + Bull delayed job
+
+3. MessageProcessor
+   ├─ 获取 chat 短租约锁并续心跳
+   ├─ 复查 quiet window 与托管状态
+   └─ claim 两条 pending 快照（暂不删除）
+
+4. ReplyWorkflowService
+   └─ runner.runTurn(inbound)
+       ├─ 入站风险预检
        ├─ PreparationService.prepare()
-       │   ├─ 入参归一化 → currentUserMessage
-       │   ├─ MemoryService.onTurnStart() 并行读：
-       │   │   ├─ 短期：最近 60 条对话（WECOM 启用）
-       │   │   ├─ 会话记忆：{ preferences: { city:'上海' }, lastCandidatePool: [...] }
-       │   │   ├─ 程序阶段：'needs_collection'
-       │   │   ├─ 长期档案 facts：{ name: { value: '张三', confidence: 'high', source: 'booking', evidence: '报名成功后写入', updatedAt: '...' } }
-       │   │   └─ 高置信识别：{ preferences: { jobIntent: '收银员' } }
-       │   ├─ RecruitmentCaseService 查活跃 case（无）
-       │   ├─ InputGuard 扫注入 → safe
-       │   ├─ RecruitmentStageResolver.resolve → entryStage='recommend'
-       │   ├─ ContextService.compose()
-       │   │   → systemPrompt (identity + base-manual + policy + runtime-context + group-inventory + final-check)
-       │   ├─ ToolRegistryService.buildForScenario('candidate-consultation', toolContext)
-       │   │   → 11 个内置工具
-       │   └─ memorySnapshot 快照构造
-       │
-       ├─ LlmExecutorService.generate()
-       │   │ role=Chat → AGENT_CHAT_MODEL
-       │   │ prepareStep 钩子 + stopWhen
-       │   │
-       │   ├─ Step 1: 调用 duliday_job_list(position='收银员', location='上海')
-       │   │   ↓
-       │   │   onJobsFetched 回调 → turnState.candidatePool = 3 个岗位
-       │   │
-       │   └─ Step 2: 组织自然语言回复
-       │
-       ├─ recoverEmptyTextResult() → text 非空，跳过
-       │
-       └─ attachTurnEnd(deferTurnEnd=true)
-           → result.runTurnEnd 暴露给调用方
-   │
-7. ReplyWorkflowService 检查 blockingTools
-   └─ toolCalls 只含 duliday_job_list → 非不可逆
-   │
-8. fetchPendingSinceAgentStart
-   └─ 无新消息 → 显式触发 result.runTurnEnd()
-       │
-       └─ MemoryLifecycleService.onTurnEnd()
-           ├─ load_previous_state
-           ├─ 分支 A: settlement（未超阈值 → skipped）
-           └─ 分支 B（串行）：
-               ├─ save_candidate_pool（3 个岗位写入 session）
-               ├─ project_assistant_turn（从回复投影 presentedJobs）
-               └─ extract_facts（LLM 提取 preferences.salary、interview_info 等）
-   │
-9. MessageDeliveryService
-   ├─ 回复分段: ["我们确实招收银员！...", "时薪大概..."]
-   ├─ 段 1 打字延迟 ~400ms
-   ├─ 段间隔 2000ms
-   └─ 段 2 打字延迟 ~400ms
-   │
-10. markMessagesAsProcessed + recordSuccess
+       │   ├─ 规则识别 turnHints
+       │   ├─ Memory.onTurnStart + 预约/群/账号并行备料
+       │   ├─ 共享裁决 + 13 个常驻 system blocks（另有条件式动态块）
+       │   ├─ entryStage + TurnLedger
+       │   └─ 构建场景工具
+       ├─ LLM step 1：geocode / duliday_job_list
+       ├─ LLM step 2：生成候选人回复
+       ├─ output guardrail；必要时一次文本修复并二审
+       └─ 返回 reply / skipped / guardrail_blocked / handoff
+
+5. Replay 定局
+   ├─ Agent 运行中无新消息：采用本版
+   ├─ 有新消息且可重跑：discard 本版 finalizer，合并后重跑
+   └─ 非 reply / 待提交副作用 / blocking tool：不丢弃本版
+
+6. 终态
+   ├─ reply：分段投递，提交 reply sideEffects，settle(delivered=真实结果)
+   └─ 非 reply：提交 outcome sideEffects，跳过投递，settle(delivered=false)
+
+7. 回合收尾
+   ├─ Memory.onTurnEnd 更新事实、工作台、品牌并刷新 consolidation job
+   ├─ MPR / Agent events / guardrail records 写入
+   ├─ 标记源消息已处理并 ack pending
+   └─ await finalizer.whenSettled() 后释放 chat 锁
 ```
 
----
-
-## 12. 扩展点
-
-### 12.1 新增 Provider
-1. 配置环境变量 API Key
-2. `RegistryService.onModuleInit()` 自动检测并注册（原生 SDK）或追加到 `providers/types.ts` OAI-compatible 表
-3. 使用 `provider/model` 格式引用
-
-### 12.2 新增工具
-1. 创建 `src/tools/my-tool.ts`，导出 `buildMyTool()` 工厂函数
-2. 在 `ToolRegistryService` 构造函数的 `registry` 映射中注册
-3. 在 `scenarioToolMap` 中添加到目标场景
-4. 若副作用不可逆，同步更新 [tool-call-analysis.ts](../../src/agent/generator/tool-call-analysis.ts) 的 `REPLAY_BLOCKING_TOOLS`
-
-### 12.3 新增 Prompt Section
-1. 实现 `PromptSection` 接口
-2. 在 `ContextService.registerSections()` 注册
-3. 在 `SCENARIO_SECTIONS` 中加入目标场景
-
-### 12.4 新增场景
-1. `SCENARIO_SECTIONS` 定义 section 列表
-2. `scenarioToolMap` 定义工具列表
-3. 调用时传入 `scenario` 参数
-
-### 12.5 新增渠道
-1. `src/channels/` 下新建渠道模块
-2. 实现"消息接收 → 构造 AgentInvokeParams（callerKind） → 调用 `AgentRunnerService.invoke()` → 发送回复"
-3. Agent 层完全复用
+如果处理在成功终态前抛错，pending 不 ack，Bull 可重试；如果生成失败，渠道负责降级回复和告警；
+如果投递未确认成功，仍提取候选人本轮事实，但不会投影 assistant 文本。
 
 ---
 
-## 13. 关键配置
+## 15. 扩展指南
 
-### 必填（无默认值）
+### 15.1 新增 Provider 或模型
 
-| 变量                        | 说明                                   |
-| --------------------------- | -------------------------------------- |
-| `ANTHROPIC_API_KEY`         | Anthropic API 密钥                     |
-| `AGENT_CHAT_MODEL`          | 主对话模型（`provider/model` 格式）    |
-| `UPSTASH_REDIS_REST_URL`    | Redis REST API                         |
-| `UPSTASH_REDIS_REST_TOKEN`  | Redis Token                            |
-| `NEXT_PUBLIC_SUPABASE_URL`  | Supabase URL                           |
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase 密钥                          |
-| `DULIDAY_API_TOKEN`         | 杜力岱 API Token                       |
-| `STRIDE_API_BASE_URL`       | 托管平台 API                           |
+1. 在 `RegistryService` 注册原生/自定义 provider，或更新 `providers/types.ts` 的 compatible 配置。
+2. 在 `providers/models.ts` 登记模型能力，尤其是 multimodal。
+3. 配置 provider API key 与 `AGENT_{ROLE}_MODEL` / fallbacks。
+4. 为路由、provider options、结构化输出和 fallback 补测试。
 
-### Agent 行为（有默认值）
+### 15.2 新增工具
 
-| 变量                                         | 默认值   | 说明                                       |
-| -------------------------------------------- | -------- | ------------------------------------------ |
-| `AGENT_MAX_OUTPUT_TOKENS`                    | 4096     | 单次输出 token 上限                        |
-| `AGENT_THINKING_BUDGET_TOKENS`               | 0 (关闭) | Extended thinking 预算                     |
-| `AGENT_MAX_INPUT_CHARS`                      | 12000    | 输入字符上限（用于窗口裁剪）               |
-| `MAX_HISTORY_PER_CHAT`                       | 60       | 短期记忆单轮最多消息数                     |
-| `MEMORY_SESSION_TTL_DAYS`                    | 2        | 会话级 Redis TTL（天）                     |
-| `MEMORY_SETTLEMENT_GAP_DAYS`                 | 1        | 会话沉淀间隔阈值（天）                     |
-| `MEMORY_HISTORY_WINDOW_DAYS`                 | 7        | 短期记忆 DB fallback 回查窗口（天）        |
-| `SESSION_EXTRACTION_INCREMENTAL_MESSAGES`    | 10       | 已有 facts 时事实提取的增量窗口            |
-| `GROUP_MEMBER_LIMIT`                         | 200      | 企微兼职群人数上限                         |
-| `AGENT_{ROLE}_MODEL` / `AGENT_{ROLE}_FALLBACKS` | —     | 各角色模型与降级链                         |
+1. 在 `src/tools/` 的所属域创建工具工厂和 description。
+2. 在 `ToolRegistryService` 注册，并加入目标 `scenarioToolMap`。
+3. 若有外部副作用，更新 side-effect、单轮重复屏蔽和 Replay 语义；不能只加工具名。
+4. 将确定性动作门禁放在工具执行边界，并登记 tool guardrail catalog。
+5. 更新 Prompt 规则台账和相关回归测试。
 
-### 由托管配置（Supabase `hosting_config`）下发
+### 15.3 新增 Prompt section
 
-| 键                     | 默认值 | 说明                   |
-| ---------------------- | ------ | ---------------------- |
-| `initialMergeWindowMs` | 3000   | 消息聚合 debounce 窗口 |
+1. 放到 `sections/procedural|semantic|working/` 的主类型目录；基础设施接口留根目录。
+2. 实现 `PromptSection`，procedural 内容添加 `prompt-rule-ledger` 锚点。
+3. 在 `ContextService.registerSections()` 注册。
+4. 在 `SCENARIO_SECTIONS` 指定精确顺序。
+5. 在 `PROMPT_SECTION_DOMAIN_REGISTRY` 登记 teaching/evidence/tool_result。
+6. 补 block 顺序、模型可见标签和静态纯净性测试。
 
-> 旧环境变量 `INITIAL_MERGE_WINDOW_MS` / `MAX_MERGED_MESSAGES` 已废弃。
+### 15.4 新增场景
+
+1. 在 `SCENARIO_SECTIONS` 定义 Prompt 组合。
+2. 在 `scenarioToolMap` 定义物理工具集。
+3. 明确 trigger、callerKind、toolMode 和 strategySource。
+4. 用 `promptBlocks`、tool list、TurnOutcome 和 turn-end 结局测试锁定契约。
+
+### 15.5 新增渠道
+
+渠道适配器至少需要完成：
+
+```text
+接收/标准化 → 构造 TurnRequest → runner.runTurn()
+→ Replay 或等价的新消息仲裁 → commit outcome sideEffects
+→ 投递 → TurnFinalizer.settle() → 观测/去重确认
+```
+
+仅调用 `GeneratorAgent.invoke()` 并发送文本是不完整实现，会绕过入站/出站守卫、统一终态、
+副作用提交和记忆结算。
+
+---
+
+## 16. 关键配置口径
+
+下表只列运行时架构会直接用到的默认值；必填项以
+`src/infra/config/env.validation.ts` 和部署配置为准。
+
+| 配置                                      | 当前默认 | 作用                                            |
+| ----------------------------------------- | -------- | ----------------------------------------------- |
+| `AGENT_MAX_OUTPUT_TOKENS`                 | `4096`   | 单次模型输出上限                                |
+| `AGENT_THINKING_BUDGET_TOKENS`            | `0`      | 环境默认关闭；WeCom deep 模式可由运行时配置开启 |
+| `AGENT_MAX_INPUT_CHARS`                   | `24000`  | 消息窗口字符预算                                |
+| `MAX_HISTORY_PER_CHAT`                    | `120`    | 单轮历史消息上限                                |
+| `MEMORY_SESSION_TTL_DAYS`                 | `3`      | session stage / 状态业务生命周期                |
+| `MEMORY_SETTLEMENT_GAP_DAYS`              | `3`      | episode 闲置边界和 consolidation delay          |
+| `MEMORY_HISTORY_WINDOW_DAYS`              | `7`      | DB 消息回看窗口                                 |
+| `SESSION_EXTRACTION_INCREMENTAL_MESSAGES` | `10`     | 已有 facts 时的增量提取窗口                     |
+| `GROUP_MEMBER_LIMIT`                      | `200`    | 群容量判断                                      |
+| `MESSAGE_DEDUP_TTL_SECONDS`               | `300`    | 回调 messageId 去重 TTL                         |
+| `SHUTDOWN_DRAIN_TIMEOUT_MS`               | `60000`  | SIGTERM 等待 in-flight 上限                     |
+
+托管 `agent_reply_config` / system config 动态控制：AI 回复开关、消息聚合开关、
+`initialMergeWindowMs`、分段/打字策略、WeCom 模型、thinking、角色模型覆盖、fallback 链以及部分
+output guardrail 开关。运行时配置优先，环境变量主要负责启动基线和故障回退。
+
+启动时硬校验的核心项包括 `NODE_ENV`、`PORT`、Stride API、`AGENT_CHAT_MODEL`、Upstash Redis 和
+DuLiDay token；所选 provider 还必须有对应 API key。Supabase、飞书及各外部集成的完整部署要求
+以环境模板和相应基础设施文档为准，本文不复制易漂移的全量变量表。
 
 ---
 
 ## 相关文档
 
-- [记忆系统架构](memory-architecture.md) — 四类记忆完整设计
-- [消息服务架构](message-service-architecture.md) — 消息管线详细设计
-- [监控系统架构](monitoring-system-architecture.md) — 消息追踪与分析
-- [飞书通知系统](../infrastructure/feishu-alert-system.md) — 通知渠道与接收人配置
-- [人工告警触发清单](../infrastructure/human-alert-triggers.md) — 告警触发场景
-- [Gate 拒绝与人工介入流水线](handoff-gate-and-intervention-pipeline.md) — 确定性转人工和副作用提交
-- [测试套件架构](test-suite-architecture.md) — Agent 评估体系
-- [安全防护](security-guardrails.md) — Prompt injection 防护
-- [Group Task Pipeline](group-task-pipeline.md) — 群任务流程
+- [最终 Prompt 示例](../../src/agent/generator/context/final-prompt-example.md)
+- [Prompt 规则台账](../prompt-rule-ledger.md)
+- [记忆系统架构与数据流](./memory-architecture.md)
+- [记忆与状态全局视图](./memory-and-state.md)
+- [候选人档案域架构](./candidate-profile-domain.md)
+- [消息服务架构](./message-service-architecture.md)
+- [安全护栏说明](./security-guardrails.md)
+- [Guardrail 质量体系](./guardrail-quality-system.md)
+- [Gate 拒绝与人工介入流水线](./handoff-gate-and-intervention-pipeline.md)
+- [主动复聊与二次触达流水线](./reengagement-pipeline.md)
+- [测试套件架构](./test-suite-architecture.md)
+- [监控系统架构](./monitoring-system-architecture.md)
+- [Biz 分层边界规范](./biz-layer-boundaries.md)
 
 ## 相关代码
 
-| 模块       | 入口                                                                       |
-| ---------- | -------------------------------------------------------------------------- |
-| Agent 编排 | [src/agent/runner/agent-runner.service.ts](../../src/agent/runner/agent-runner.service.ts)                 |
-| Prepare    | [src/agent/generator/preparation.service.ts](../../src/agent/generator/preparation.service.ts) |
-| Context    | [src/agent/generator/context/context.service.ts](../../src/agent/generator/context/context.service.ts) |
-| LLM        | [src/llm/llm-executor.service.ts](../../src/llm/llm-executor.service.ts)         |
-| Providers  | [src/providers/router.service.ts](../../src/providers/router.service.ts)         |
-| Memory     | [src/memory/memory.service.ts](../../src/memory/memory.service.ts)               |
-| Lifecycle  | [src/memory/services/memory-lifecycle.service.ts](../../src/memory/services/memory-lifecycle.service.ts) |
-| Tools      | [src/tools/tool-registry.service.ts](../../src/tools/tool-registry.service.ts)   |
-| WeCom 回复 | [src/channels/wecom/message/application/reply-workflow.service.ts](../../src/channels/wecom/message/application/reply-workflow.service.ts) |
-| Evaluation | [src/evaluation/llm-evaluation.service.ts](../../src/evaluation/llm-evaluation.service.ts) |
-| TestSuite  | [src/biz/test-suite/services/test-execution.service.ts](../../src/biz/test-suite/services/test-execution.service.ts) |
+| 模块              | 入口                                                                                                  |
+| ----------------- | ----------------------------------------------------------------------------------------------------- |
+| Runner            | [`agent-runner.service.ts`](../../src/agent/runner/agent-runner.service.ts)                           |
+| Generator         | [`generator.agent.ts`](../../src/agent/generator/generator.agent.ts)                                  |
+| Preparation       | [`preparation.service.ts`](../../src/agent/generator/preparation/preparation.service.ts)              |
+| Context           | [`context.service.ts`](../../src/agent/generator/context/context.service.ts)                          |
+| Scenario sections | [`scenario.registry.ts`](../../src/agent/generator/context/scenarios/scenario.registry.ts)            |
+| LLM               | [`llm-executor.service.ts`](../../src/llm/llm-executor.service.ts)                                    |
+| Providers         | [`router.service.ts`](../../src/providers/router.service.ts)                                          |
+| Memory            | [`memory.service.ts`](../../src/memory/memory.service.ts)                                             |
+| Tools             | [`tool-registry.service.ts`](../../src/tools/tool-registry.service.ts)                                |
+| WeCom reply       | [`reply-workflow.service.ts`](../../src/channels/wecom/message/application/reply-workflow.service.ts) |
+| Reengagement      | [`follow-up.processor.ts`](../../src/agent/reengagement/follow-up.processor.ts)                       |
+| Evaluation        | [`llm-evaluation.service.ts`](../../src/evaluation/llm-evaluation.service.ts)                         |
+| Test Suite        | [`test-execution.service.ts`](../../src/biz/test-suite/services/test-execution.service.ts)            |

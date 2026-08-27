@@ -1,5 +1,5 @@
 import { detectSettlementCycleMismatch } from '@agent/guardrail/output/rules/settlement-cycle-mismatch.rule';
-import { formatJobsToMarkdown } from '@tools/duliday/job-list/render.util';
+import { formatJobsToMarkdown } from '@tools/job-list/render.util';
 
 describe('settlement renderer ↔ guardrail parser contract', () => {
   it('parses formal and supplemental settlement truth from the real job renderer', () => {

@@ -21,9 +21,7 @@ export class PromptInjectionService {
     /disregard\s+(all\s+)?previous/i,
     /forget\s+(all\s+)?(your\s+)?instructions/i,
     /你现在是(?:一个|一名|位)?(?:黑客|DAN|开发者模式|无限制|无约束|没有限制|不受限制|无需遵守|无视规则)/i,
-    /从现在起你(的角色|是)/,
-    /假装你是/,
-    /扮演一个/,
+    /(?:从现在起你(?:的角色|是)|假装你是|扮演一个)[^，。！？!?\n]{0,24}(?:黑客|DAN|开发者模式|无限制|没有限制|无约束|不受限制|无视规则|系统管理员)/i,
   ];
 
   private readonly promptLeakPatterns = [

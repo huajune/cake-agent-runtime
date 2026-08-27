@@ -50,7 +50,7 @@ export class BookingCardRenderer {
     const resultMessage = this.pickString(toolOutput.message, toolOutput.notice);
     const bookingId = this.pickString(toolOutput.booking_id);
     const failureReason = this.pickString(toolOutput.error);
-    const failureDetails = this.stringifyErrorList(toolOutput.errorList);
+    const failureDetails = this.stringifyErrorList(toolOutput.applyErrorList);
     const traceId = this.pickString(toolOutput.traceId);
     const sections: string[] = [];
 
@@ -92,6 +92,11 @@ export class BookingCardRenderer {
       }
     } else if (resultMessage) {
       sections.push(`**结果**：${resultMessage}`);
+    }
+
+    const configDebts = this.stringifyConfigDebts(toolOutput.collectionConfigDebts);
+    if (configDebts) {
+      sections.push(`**收资配置备注**\n${configDebts}`);
     }
 
     sections.push(
@@ -181,6 +186,19 @@ export class BookingCardRenderer {
       .join('；');
 
     return text || undefined;
+  }
+
+  private stringifyConfigDebts(value: unknown): string | undefined {
+    if (!Array.isArray(value) || value.length === 0) return undefined;
+    const lines = value
+      .map((item) => {
+        if (!item || typeof item !== 'object') return null;
+        const record = item as { labelId?: unknown; note?: unknown };
+        if (typeof record.note !== 'string' || !record.note.trim()) return null;
+        return `- labelId=${typeof record.labelId === 'number' ? record.labelId : 'unknown'}：${record.note.trim()}`;
+      })
+      .filter((line): line is string => Boolean(line));
+    return lines.length > 0 ? lines.join('\n') : undefined;
   }
 
   private pickString(...values: unknown[]): string | undefined {

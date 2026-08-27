@@ -220,7 +220,13 @@ export class MessageProcessor implements OnModuleInit, OnModuleDestroy {
 
       const quietWindowElapsed = await this.simpleMergeService.isQuietWindowElapsed(chatId);
       if (!quietWindowElapsed) {
-        this.logger.debug(`[Bull] chatId=${chatId} 静默窗口未结束，跳过当前检查任务 ${job.id}`);
+        // Bull delayed job 可能被提前唤醒，或对应最后一条消息的检查任务已丢失。旧逻辑
+        // 直接 return，假设“后面总有另一条 job”，当用户不再发消息时 pending 会静默过期。
+        // 现在显式补建剩余窗口后的检查；补建失败上抛，让 Bull failed/retry 可观测。
+        await this.simpleMergeService.scheduleQuietWindowRetryCheck(chatId);
+        this.logger.debug(
+          `[Bull] chatId=${chatId} 静默窗口未结束，已补建剩余窗口检查任务 ${job.id}`,
+        );
         return;
       }
 
@@ -286,7 +292,7 @@ export class MessageProcessor implements OnModuleInit, OnModuleDestroy {
    * 同时把每条 messageId 标记为已处理（与 historyOnly 路径对齐），避免回调
    * 重试时再次进入 debounce 队列。
    *
-   * 并回收这批消息在 intake 时写下的 processing 流水（core-flow-review 议题 8-4）：
+   * 并回收这批消息在 intake 时写下的 processing 流水：
    * 本批不会再进入 Agent，也就永远不会有终态回写，行会一直停在 processing 直到
    * 03:00 UTC cron 标 timeout。这不影响候选人（本就该由真人接），但污染观测口径
    * ——processing 被当作"真在处理"计数。复用聚合路径既有的回收语义（删除源行 +

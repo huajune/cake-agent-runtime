@@ -260,7 +260,7 @@ export class LlmExecutorService {
 
   /**
    * 带运行时角色覆盖的路由解析。优先级：调用方显式 modelId > Dashboard 角色覆盖
-   * （ROLE_MODEL_OVERRIDES，如 agent_reply_config.reviewModelId）> AGENT_{ROLE}_MODEL
+   * （ROLE_MODEL_OVERRIDES，如 agent_reply_config.repairModelId）> AGENT_{ROLE}_MODEL
    * 环境变量。覆盖读取失败按无覆盖处理，绝不阻塞生成链路。
    */
   private async resolveExecutionPlanWithOverrides(options: {

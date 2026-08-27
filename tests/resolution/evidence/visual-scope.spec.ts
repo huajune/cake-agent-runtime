@@ -3,10 +3,7 @@ import {
   finalizeVisualFactSheet,
   type VisualFactKind,
 } from '@/resolution/signal/visual';
-import {
-  mapLocationCityCandidates,
-  resolveExtractionScope,
-} from '@resolution/evidence/admission';
+import { mapLocationCityCandidates, resolveExtractionScope } from '@resolution/evidence/admission';
 
 const sheetOf = (kind: VisualFactKind, fields: Array<{ key: string; value: string }> = []) =>
   finalizeVisualFactSheet({ kind, fields }, `${kind} 图片描述`);
@@ -91,9 +88,9 @@ describe('resolution/visual · mapLocationCityCandidates', () => {
       { key: 'candidate_address', value: '西湖区文三路' },
     ]);
     expect(mapLocationCityCandidates(jobSheet)).toEqual([]);
-    expect(mapLocationCityCandidates(sheetOf('chat_screenshot', [{ key: 'city', value: '杭州' }]))).toEqual(
-      [],
-    );
+    expect(
+      mapLocationCityCandidates(sheetOf('chat_screenshot', [{ key: 'city', value: '杭州' }])),
+    ).toEqual([]);
   });
 
   it('无关字段不进候选（salary_text/store 等）', () => {

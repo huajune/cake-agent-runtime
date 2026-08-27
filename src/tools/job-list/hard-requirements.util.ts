@@ -1,0 +1,274 @@
+/**
+ * 从 raw job.hiringRequirement 派生候选人硬条件 enum。
+ *
+ * 历史 badcase 簇：候选人意向某岗位 → 岗位有"不要 X 籍/限女性/必须有健康证/不接受学生"
+ * 等硬条件，Agent 不主动核对就 booking → 候选人到店被刷或被店长拒。
+ *
+ * 当前 normalizedRequirements 是字符串字段（"18-40 岁" / "限本地" 等），Agent 解读时
+ * 容易遗漏。这一层把硬条件结构化成显式 enum，便于：
+ *  1. render 层用 markdown 高亮显示给 Agent
+ *  2. booking-guards 层做 hard gate（候选人 facts 与硬约束冲突 → 拒 booking）
+ *  3. precheck 层把 screeningChecks 与 hardRequirements 对账
+ *
+ * 设计原则：
+ *  - 保守归类——只在 raw 数据明确表达"限/不要 X"时输出 include/exclude，
+ *    其它情况一律 'unspecified'，避免误判
+ *  - 输入是 raw job.hiringRequirement（任意 unknown 结构），输出是稳定 enum
+ *  - 仅做派生不做校验——booking-guards 是另一层
+ */
+
+import { asRecord } from '@infra/utils/object.util';
+import type { HealthCertGate } from '@tools/job-list/job-policy-parser';
+
+export type GenderRequirement = 'male' | 'female' | 'any' | 'unspecified';
+
+export type HouseholdRequirementMode = 'include' | 'exclude';
+
+export interface HouseholdRequirement {
+  /** include = 只接受这些户籍；exclude = 拒绝这些户籍 */
+  mode: HouseholdRequirementMode;
+  /** 户籍/省份/区域列表（原文，未做地理归一） */
+  regions: string[];
+}
+
+export type HealthCertRequirement =
+  | 'required_before_interview' // 面试前必须有
+  | 'required_before_onboard' // 入职前必须有（可入职后办）
+  | 'not_required' // 岗位明确不需要
+  | 'unspecified'; // 数据未明确
+
+export type StudentRequirement = 'student_only' | 'social_only' | 'any' | 'unspecified';
+
+export interface HardRequirements {
+  gender: GenderRequirement;
+  household: HouseholdRequirement | null;
+  healthCert: HealthCertRequirement;
+  student: StudentRequirement;
+}
+
+const HOUSEHOLD_REGION_GROUPS: Record<string, string[]> = {
+  东北: ['辽宁', '吉林', '黑龙江'],
+  东三省: ['辽宁', '吉林', '黑龙江'],
+  东北三省: ['辽宁', '吉林', '黑龙江'],
+  京津冀: ['北京', '天津', '河北'],
+};
+
+const HOUSEHOLD_REGION_SUFFIX_PATTERN =
+  /(?:壮族自治区|回族自治区|维吾尔自治区|特别行政区|自治区|省|市)$/;
+
+function normalizeHouseholdRegion(value: string): string {
+  return value
+    .trim()
+    .replace(/\s+/g, '')
+    .replace(/^(?:户籍|籍贯)[:：]?/, '')
+    .replace(HOUSEHOLD_REGION_SUFFIX_PATTERN, '')
+    .replace(/(?:户籍|户口|籍|本地人?|人)$/, '');
+}
+
+function householdRegionMatches(candidateProvince: string, configuredRegion: string): boolean {
+  const candidate = normalizeHouseholdRegion(candidateProvince);
+  const configured = normalizeHouseholdRegion(configuredRegion);
+  if (!candidate || !configured) return false;
+  if (candidate === configured) return true;
+  const configuredRaw = configuredRegion.trim().replace(/\s+/g, '');
+  return (
+    HOUSEHOLD_REGION_GROUPS[configuredRaw] ??
+    HOUSEHOLD_REGION_GROUPS[configured] ??
+    []
+  ).includes(candidate);
+}
+
+/**
+ * 判断候选人户籍是否违反岗位结构化户籍硬约束。
+ *
+ * 候选人户籍未知时不猜测；已知时同时支持省/市后缀差异和常见区域组（如东三省）。
+ */
+export function isHouseholdRequirementViolated(
+  requirement: HouseholdRequirement | null,
+  candidateProvince: string | null | undefined,
+): boolean {
+  if (!requirement || !candidateProvince?.trim()) return false;
+  const listed = requirement.regions.some((region) =>
+    householdRegionMatches(candidateProvince, region),
+  );
+  return requirement.mode === 'exclude' ? listed : !listed;
+}
+
+const FEMALE_TOKENS = new Set(['女', '女性', '仅女', '限女', '只要女', '只招女']);
+const MALE_TOKENS = new Set(['男', '男性', '仅男', '限男', '只要男', '只招男']);
+const ANY_TOKENS = new Set(['不限', '男女不限', '均可', '不限性别']);
+
+function normalizeGender(raw: unknown): GenderRequirement {
+  if (typeof raw !== 'string') return 'unspecified';
+  const trimmed = raw.trim();
+  if (!trimmed) return 'unspecified';
+  // sponge 实际用逗号串表达多选，如 "男性,女性" / "女性,男性"（=不限）。
+  // 先按分隔符拆分，命中男女两性即视为不限。
+  const parts = trimmed
+    .split(/[,，、/\s]+/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (parts.length > 1) {
+    const hasMale = parts.some((p) => MALE_TOKENS.has(p) || /男/.test(p));
+    const hasFemale = parts.some((p) => FEMALE_TOKENS.has(p) || /女/.test(p));
+    if (hasMale && hasFemale) return 'any';
+    if (hasFemale) return 'female';
+    if (hasMale) return 'male';
+  }
+  if (FEMALE_TOKENS.has(trimmed)) return 'female';
+  if (MALE_TOKENS.has(trimmed)) return 'male';
+  if (ANY_TOKENS.has(trimmed)) return 'any';
+  // 包含但不严格匹配（如"限女性 18-40"）
+  if (/^限女|^只(要|招)女|仅女/.test(trimmed)) return 'female';
+  if (/^限男|^只(要|招)男|仅男/.test(trimmed)) return 'male';
+  if (/不限/.test(trimmed)) return 'any';
+  return 'unspecified';
+}
+
+const HOUSEHOLD_EXCLUDE_TYPES = new Set(['不要', '不接受', '排除', '不限制（除）', '黑名单']);
+const HOUSEHOLD_INCLUDE_TYPES = new Set(['限', '只要', '只接受', '白名单', '仅']);
+
+/**
+ * 从 hometown 块派生户籍约束 enum。
+ *
+ * sponge 字段：
+ *  - nativePlaceRequirementType: "不限" / "限" / "不要" 等
+ *  - nativePlaces: ['天津', '东三省', ...]（具体区域列表）
+ *
+ * 仅当 type 明确为 include/exclude 且 places 非空时返回结构化结果，否则 null。
+ */
+function normalizeHousehold(hometown: unknown): HouseholdRequirement | null {
+  const h = asRecord(hometown);
+  if (!h) return null;
+  const typeRaw =
+    typeof h.nativePlaceRequirementType === 'string' ? h.nativePlaceRequirementType.trim() : '';
+  const placesRaw = Array.isArray(h.nativePlaces) ? h.nativePlaces : [];
+  const regions = placesRaw.filter(
+    (p: unknown): p is string => typeof p === 'string' && p.trim().length > 0,
+  );
+
+  if (!typeRaw || regions.length === 0) return null;
+
+  if (HOUSEHOLD_INCLUDE_TYPES.has(typeRaw) || /^(限|只要|只接受|仅)/.test(typeRaw)) {
+    return { mode: 'include', regions };
+  }
+  if (HOUSEHOLD_EXCLUDE_TYPES.has(typeRaw) || /^(不要|不接受|排除)/.test(typeRaw)) {
+    return { mode: 'exclude', regions };
+  }
+  return null;
+}
+
+const CERT_REQUIRED_BEFORE_INTERVIEW = /面试前|上岗前必须|必备|必须有|凭证.*入职/;
+const CERT_BEFORE_ONBOARD = /入职前办|上岗前办|可入职后|录用后办|入职后/;
+const CERT_NOT_REQUIRED = /不需要|无需|不必/;
+
+function isHealthCertGate(value: unknown): value is HealthCertGate {
+  return (
+    value === 'before_interview' ||
+    value === 'before_onboard' ||
+    value === 'not_required' ||
+    value === 'unknown'
+  );
+}
+
+/**
+ * 从 healthCertGate + healthCertificateRequirement 文本派生健康证 enum。
+ *
+ * 优先级：明确字段 (healthCertGate) > 文本关键词推断 > 默认 unspecified。
+ */
+function normalizeHealthCert(
+  // 收成域类型而非 unknown：实参来源是有类型的 normalized?.healthCertGate，
+  // 收 unknown 等于把类型丢掉——下面三行与字面量比对，档位改名/加档时静默落空，
+  // 掉进正则兜底后保守判成 required_before_onboard，即「面试前必须持证」被
+  // 悄悄派生成「入职前办即可」，无错无日志。
+  gate: HealthCertGate | null | undefined,
+  requirementText: unknown,
+): HealthCertRequirement {
+  if (gate === 'before_interview') return 'required_before_interview';
+  if (gate === 'before_onboard') return 'required_before_onboard';
+  if (gate === 'not_required') return 'not_required';
+
+  const text = typeof requirementText === 'string' ? requirementText : '';
+  if (!text || /未明确/.test(text)) return 'unspecified';
+
+  if (CERT_NOT_REQUIRED.test(text)) return 'not_required';
+  if (CERT_REQUIRED_BEFORE_INTERVIEW.test(text)) return 'required_before_interview';
+  if (CERT_BEFORE_ONBOARD.test(text)) return 'required_before_onboard';
+
+  // 含"健康证"但没指定时机 → 保守归为 before_onboard（多数岗位允许后办）
+  if (/健康证/.test(text)) return 'required_before_onboard';
+
+  return 'unspecified';
+}
+
+function normalizeStudentRequirement(
+  figure: unknown,
+  remark: unknown,
+  policyText: unknown,
+): StudentRequirement {
+  const normalizedFigure = typeof figure === 'string' ? figure.replace(/\s+/g, '') : '';
+  const figureParts = normalizedFigure.split(/[,，、/；;]+/).filter(Boolean);
+  const figureAllowsStudent = figureParts.includes('学生');
+  const figureAllowsSocial = figureParts.includes('社会人士');
+  if (/不限/.test(normalizedFigure) || (figureAllowsStudent && figureAllowsSocial)) return 'any';
+  if (figureAllowsSocial) return 'social_only';
+  if (figureAllowsStudent) return 'student_only';
+
+  const text = [remark, policyText]
+    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    .join('；')
+    .replace(/\s+/g, '');
+  if (!text) return 'unspecified';
+
+  if (/不限学生|学生不限/.test(text)) return 'any';
+  if (/(不招|不接受|不要|拒绝|仅限非|只要非)学生|学生勿扰|需要已毕业|社会人士/.test(text)) {
+    return 'social_only';
+  }
+  if (/(仅限|只招|只要|仅要)学生/.test(text) || /^学生$/.test(text)) {
+    return 'student_only';
+  }
+  return 'unspecified';
+}
+
+/**
+ * 顶层入口：从 raw job + 可选的 policy 派生 HardRequirements enum。
+ *
+ * 当前覆盖 gender / household / healthCert / student 四类高频硬约束。
+ * 后续切片会扩展 age / education 等。
+ *
+ * policy 参数：调用方已经跑过 buildJobPolicyAnalysis 时直接传进来，避免重复构建。
+ * 不传则只能从 job._policy（测试 fixture 通道）兜底，realtime 调用务必显式传入。
+ */
+export function extractHardRequirements(
+  job:
+    | {
+        hiringRequirement?: unknown;
+        _policy?: { normalizedRequirements?: unknown };
+      }
+    | null
+    | undefined,
+  policy?: { normalizedRequirements?: unknown } | null,
+): HardRequirements {
+  const req = asRecord(job?.hiringRequirement);
+  // sponge raw 用 basicPersonalRequirements；render/job-policy-parser 都按此 key 解构。
+  const basic = asRecord((req && (req.basicPersonalRequirements || req.basic)) || {}) ?? {};
+  const hometown = (req && req.requirementsForHometown) || null;
+  const normalized = asRecord(
+    policy?.normalizedRequirements ?? job?._policy?.normalizedRequirements,
+  );
+  const healthCertGate = normalized?.healthCertGate;
+
+  return {
+    gender: normalizeGender(basic.genderRequirement),
+    household: normalizeHousehold(hometown),
+    healthCert: normalizeHealthCert(
+      isHealthCertGate(healthCertGate) ? healthCertGate : undefined,
+      normalized?.healthCertificateRequirement,
+    ),
+    student: normalizeStudentRequirement(
+      req?.figure,
+      req?.remark,
+      [normalized?.remark, normalized?.interviewRemark].filter(Boolean).join('；'),
+    ),
+  };
+}

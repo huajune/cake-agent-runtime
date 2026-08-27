@@ -1,4 +1,4 @@
-import { ContextService } from '@agent/generator/context/context.service';
+import { ContextService, type ComposeParams } from '@agent/generator/context/context.service';
 import { StrategyConfigRecord } from '@biz/strategy/entities/strategy-config.entity';
 import { CORPUS_DOMAINS } from '@shared-types/corpus.types';
 import {
@@ -84,6 +84,12 @@ describe('ContextService', () => {
   };
 
   let service: ContextService;
+  const compose = (params: ComposeParams = {}) =>
+    service.compose({
+      displayTurnHints: null,
+      pendingTurnHintFields: [],
+      ...params,
+    });
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -104,7 +110,9 @@ describe('ContextService', () => {
       'final-check': 'teaching',
       'red-lines': 'teaching',
       thresholds: 'teaching',
+      'stage-overview': 'teaching',
       'stage-strategy': 'teaching',
+      'critical-turn-guard': 'teaching',
       channel: 'teaching',
       memory: 'evidence',
       'turn-hints': 'evidence',
@@ -128,7 +136,7 @@ describe('ContextService', () => {
     }
 
     for (const scenario of Object.keys(SCENARIO_SECTIONS)) {
-      const result = await service.compose({
+      const result = await compose({
         scenario,
         currentStage: 'trust_building',
         memoryBlock: productionShapedText,
@@ -140,8 +148,23 @@ describe('ContextService', () => {
     }
   });
 
-  it('should compose candidate consultation prompt in 5 top-level blocks', async () => {
-    const result = await service.compose({
+  it('composes candidate consultation in the adjudicated semantic order', async () => {
+    expect(SCENARIO_SECTIONS['candidate-consultation']).toEqual([
+      'identity',
+      'base-manual',
+      'channel',
+      'stage-overview',
+      'red-lines',
+      'thresholds',
+      'memory',
+      'turn-hints',
+      'hard-constraints',
+      'datetime',
+      'group-inventory',
+      'stage-strategy',
+      'final-check',
+    ]);
+    const result = await compose({
       scenario: 'candidate-consultation',
       currentStage: 'trust_building',
       memoryBlock: '[用户档案]\n- 姓名: 张三',
@@ -159,18 +182,28 @@ describe('ContextService', () => {
         expect.objectContaining({ id: 'datetime', domain: 'tool_result' }),
       ]),
     );
-    // 复合 section 必须展开，不能把 evidence/tool_result 混回一个 runtime-context 大串。
-    expect(result.promptBlocks.some((block) => block.id === 'runtime-context')).toBe(false);
+    expect(result.promptBlocks.map((block) => block.id)).toEqual([
+      'identity',
+      'base-manual',
+      'stage-overview',
+      'red-lines',
+      'thresholds',
+      'memory',
+      'datetime',
+      'stage-strategy',
+      'final-check',
+    ]);
+    expect(result.promptBlocks.every((block) => block.role === 'system')).toBe(true);
 
-    expect(prompt.indexOf('# 角色')).toBeGreaterThanOrEqual(0);
-    expect(prompt.indexOf('# 全局工作原则')).toBeGreaterThan(prompt.indexOf('# 人格设定'));
+    expect(prompt.indexOf('# 角色')).toBeLessThan(prompt.indexOf('# 全局工作原则'));
+    expect(prompt.indexOf('# 人格设定')).toBeLessThan(prompt.indexOf('# 全局工作原则'));
     expect(prompt.indexOf('# 红线规则（以下行为绝对禁止）')).toBeGreaterThan(
-      prompt.indexOf('# 回合 SOP'),
+      prompt.indexOf('[阶段推进提示]'),
     );
-    expect(prompt.lastIndexOf('[当前阶段策略]')).toBeGreaterThan(prompt.indexOf('# 业务阈值'));
     expect(prompt.indexOf('# 发送前自检（全部需通过）')).toBeGreaterThan(
-      prompt.indexOf('当前时间：'),
+      prompt.lastIndexOf('[当前阶段策略]'),
     );
+    expect(prompt.lastIndexOf('[当前阶段策略]')).toBeGreaterThan(prompt.indexOf('当前时间：'));
 
     expect(prompt).toContain('[用户档案]');
     expect(prompt).toContain('姓名: 张三');
@@ -189,8 +222,10 @@ describe('ContextService', () => {
     // 工作班次 vs 面试时间澄清（P2-029 修复）
     expect(prompt).toContain('当前**工作班次**不合适');
     expect(prompt).toContain('提议的**面试时间**不合适');
-    expect(prompt).toContain('这就帮你登记');
-    expect(prompt).toContain('nextAction 不是 ready_to_book');
+    // final-check FC2（报名完成时态自检）已删——守卫 booking_promise/booking_receipt 确定性拦侧在产 +
+    // 手册 F10 教侧仍在（2026-08-21 P3-2 首批：删与守卫完全同构的复核条目）
+    expect(prompt).not.toContain('这就帮你登记');
+    expect(prompt).not.toContain('nextAction 不是 ready_to_book');
     expect(prompt).toContain('booking 成功前不说已登记');
     // 11 班次硬约束 — 已下沉到 strategy_config.red_lines（运营可配），主 prompt 不再固化
     expect(prompt).not.toContain('候选人已明确表达时段/班次硬约束');
@@ -217,8 +252,91 @@ describe('ContextService', () => {
     expect(prompt).not.toContain('bookingChecklist.collectionStrategy');
   });
 
+  it('keeps a matched critical-turn guard as the final scenario block and system suffix', async () => {
+    const currentUserMessage = '我5月1号回来面试可以吗';
+    const result = await compose({
+      scenario: 'candidate-consultation',
+      currentStage: 'job_consultation',
+      currentUserMessage,
+      normalizedMessages: [{ role: 'user', content: currentUserMessage }],
+      strategySource: 'testing',
+    });
+
+    const criticalBlock = result.promptBlocks.at(-1);
+    expect(criticalBlock).toEqual(
+      expect.objectContaining({
+        id: 'critical-turn-guard',
+        domain: 'teaching',
+        role: 'system',
+      }),
+    );
+    expect(criticalBlock?.content).toContain('本轮候选人指定了面试日期');
+    expect(result.promptBlocks.at(-2)?.id).toBe('final-check');
+    expect(result.systemPrompt.endsWith(criticalBlock?.content ?? '')).toBe(true);
+    expect(result.systemPrompt.indexOf('# 发送前自检（全部需通过）')).toBeGreaterThan(
+      result.systemPrompt.lastIndexOf('[当前阶段策略]'),
+    );
+    expect(result.systemPrompt.indexOf('# 本轮动态硬禁令')).toBeGreaterThan(
+      result.systemPrompt.indexOf('# 发送前自检（全部需通过）'),
+    );
+  });
+
+  it('keeps stable leading blocks and the late static final-check byte-identical across turns', async () => {
+    const first = await compose({
+      scenario: 'candidate-consultation',
+      currentStage: 'trust_building',
+      memoryBlock: '[会话记忆]\n- 唯一动态值: 第一轮',
+      strategySource: 'testing',
+    });
+    const second = await compose({
+      scenario: 'candidate-consultation',
+      currentStage: 'job_consultation',
+      memoryBlock: '[会话记忆]\n- 唯一动态值: 第二轮',
+      strategySource: 'testing',
+    });
+    const stableLeadingIds = new Set([
+      'identity',
+      'base-manual',
+      'channel',
+      'stage-overview',
+      'red-lines',
+      'thresholds',
+    ]);
+    const stableLeadingBlocks = (blocks: typeof first.promptBlocks) =>
+      blocks.filter((block) => stableLeadingIds.has(block.id));
+    const finalCheck = (blocks: typeof first.promptBlocks) =>
+      blocks.find((block) => block.id === 'final-check');
+
+    expect(stableLeadingBlocks(first.promptBlocks)).toEqual(
+      stableLeadingBlocks(second.promptBlocks),
+    );
+    expect(stableLeadingBlocks(first.promptBlocks).map((block) => block.id)).toEqual([
+      'identity',
+      'base-manual',
+      'stage-overview',
+      'red-lines',
+      'thresholds',
+    ]);
+    expect(finalCheck(first.promptBlocks)).toEqual(finalCheck(second.promptBlocks));
+    expect(first.promptBlocks.at(-1)?.id).toBe('final-check');
+    const renderedStable = [
+      ...stableLeadingBlocks(first.promptBlocks),
+      finalCheck(first.promptBlocks),
+    ]
+      .filter((block) => block !== undefined)
+      .map((block) => block.content)
+      .join('\n\n');
+    expect(renderedStable).not.toContain('第一轮');
+    expect(renderedStable).not.toContain('第二轮');
+    expect(renderedStable).not.toMatch(/当前时间：\d/u);
+    expect(
+      stableLeadingBlocks(first.promptBlocks).find((block) => block.id === 'stage-overview')
+        ?.content,
+    ).not.toContain('→');
+  });
+
   it('should thread accountIdentity (nickname/gender/botUserId) into the identity anchor', async () => {
-    const { systemPrompt } = await service.compose({
+    const { systemPrompt } = await compose({
       scenario: 'candidate-consultation',
       strategySource: 'testing',
       accountIdentity: { botUserId: 'ZhuDongSheng', nickname: '东升', gender: '男' },
@@ -232,7 +350,7 @@ describe('ContextService', () => {
   });
 
   it('should still inject the account-identity anchor without accountIdentity', async () => {
-    const { systemPrompt } = await service.compose({
+    const { systemPrompt } = await compose({
       scenario: 'candidate-consultation',
       strategySource: 'testing',
     });
@@ -243,7 +361,7 @@ describe('ContextService', () => {
   });
 
   it('should keep runtime time injection to a single rendered current time line', async () => {
-    const { systemPrompt } = await service.compose({
+    const { systemPrompt } = await compose({
       scenario: 'candidate-consultation',
       strategySource: 'testing',
     });
@@ -255,7 +373,7 @@ describe('ContextService', () => {
   });
 
   it('should not leak markdown front matter or html comments into prompt', async () => {
-    const { systemPrompt } = await service.compose({
+    const { systemPrompt } = await compose({
       scenario: 'candidate-consultation',
       strategySource: 'testing',
     });
@@ -300,7 +418,7 @@ describe('ContextService', () => {
       },
     ]);
 
-    const { systemPrompt, promptBlocks } = await service.compose({
+    const { systemPrompt, promptBlocks } = await compose({
       scenario: 'candidate-consultation',
       strategySource: 'testing',
       sessionFacts: sessionFactsOf({ preferences: { city: cityFixture('上海') } }),
@@ -312,16 +430,34 @@ describe('ContextService', () => {
     // 检查"非候选人所在城市的群"未泄漏到 inventory 段，而非整个 prompt 不能含 "北京" 字样
     // （hard-constraints 段会把"禁止凭通识补北京/重庆等城市"作为反例文案列出）
     expect(systemPrompt).not.toContain('北京餐饮兼职群');
-    expect(systemPrompt).toContain('必须传对应 industry 参数');
-    expect(promptBlocks).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ id: 'group-inventory', domain: 'tool_result' }),
-      ]),
+    const groupInventoryBlock = promptBlocks.find((block) => block.id === 'group-inventory');
+    expect(groupInventoryBlock).toEqual(
+      expect.objectContaining({ id: 'group-inventory', domain: 'tool_result' }),
+    );
+    expect(groupInventoryBlock?.content).toBe(
+      ['## 兼职群资源（上海）', '- 餐饮：1 个群（均有空位）', '- 零售：1 个群（均有空位）'].join(
+        '\n',
+      ),
+    );
+    expect(systemPrompt).not.toContain('必须传对应 industry 参数');
+  });
+
+  it('keeps the empty-city inventory data bytes unchanged without embedding instructions', async () => {
+    mockGroupResolver.resolveGroups.mockResolvedValue([]);
+
+    const { promptBlocks } = await compose({
+      scenario: 'candidate-consultation',
+      strategySource: 'testing',
+      sessionFacts: sessionFactsOf({ preferences: { city: cityFixture('上海') } }),
+    });
+
+    expect(promptBlocks.find((block) => block.id === 'group-inventory')?.content).toBe(
+      ['## 兼职群资源（上海）', '- 该城市暂无可用兼职群'].join('\n'),
     );
   });
 
   it('should skip group inventory block when no city is known', async () => {
-    const { systemPrompt } = await service.compose({
+    const { systemPrompt } = await compose({
       scenario: 'candidate-consultation',
       strategySource: 'testing',
     });
@@ -330,11 +466,11 @@ describe('ContextService', () => {
     expect(mockGroupResolver.resolveGroups).not.toHaveBeenCalled();
   });
 
-  // 议题 1-2：兼职群资源块会输出「本城市群库为空 → 禁止承诺拉群」这类有行为后果的指令，
-  // 取值必须与硬约束段同门（high）。此前直读 .value 绕过置信度门，导致 prompt 里出现
+  // 议题 1-2：兼职群资源会影响工具调用决策，取值必须与硬约束段同门（high）。
+  // 此前直读 .value 绕过置信度门，导致 prompt 里出现
   // 硬约束段根本没有的城市。
   it('should skip group inventory block when the city confidence is below the hard-constraint gate', async () => {
-    const { systemPrompt } = await service.compose({
+    const { systemPrompt } = await compose({
       scenario: 'candidate-consultation',
       strategySource: 'testing',
       sessionFacts: sessionFactsOf({ preferences: { city: cityFixture('上海', 'medium') } }),

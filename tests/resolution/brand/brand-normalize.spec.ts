@@ -20,5 +20,4 @@ describe('brand-normalize', () => {
     );
     expect(buildExactMatchTokens('')).toEqual([]);
   });
-
 });

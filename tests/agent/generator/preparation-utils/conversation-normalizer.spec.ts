@@ -2,7 +2,7 @@ import { CallerKind } from '@/enums/agent.enum';
 import {
   normalizeConversation,
   normalizeConversationWithCorpus,
-} from '@agent/generator/preparation-utils/conversation-normalizer';
+} from '@agent/generator/preparation/conversation-normalizer';
 import { StorageMessageType } from '@enums/storage-message.enum';
 
 describe('normalizeConversation', () => {

@@ -1,4 +1,4 @@
-import { MemorySection } from '@agent/generator/context/sections/memory.section';
+import { MemorySection } from '@agent/generator/context/sections/semantic/memory.section';
 import { PromptContext } from '@agent/generator/context/sections/section.interface';
 
 describe('MemorySection', () => {

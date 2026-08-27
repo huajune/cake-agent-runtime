@@ -5,24 +5,21 @@ import {
 import { isDigitsOnlyName } from '@resolution/candidate/name';
 import { isSelfReportedVisualMessage as isResumeImageMessage } from '@resolution/signal/visual';
 import { isVisualDescriptionText as isVisualDescriptionMessage } from '@/resolution/signal/markers';
-import { produceRuleFactClaims } from '@resolution/evidence/producers/rule-track';
-import { projectRuleFactClaims } from '@resolution/evidence/merge';
+import { produceTurnHints } from '@resolution/evidence/producers/rule-track';
+import { projectTurnHints } from '@resolution/evidence/merge';
 
-function extractRuleFacts(...args: Parameters<typeof produceRuleFactClaims>) {
-  return projectRuleFactClaims(produceRuleFactClaims(...args));
+function extractTurnHints(...args: Parameters<typeof produceTurnHints>) {
+  return projectTurnHints(produceTurnHints(...args));
 }
 
 /**
- * badcase 2026-08-04 `vkikct39`（chat 6a714c00…，P0）：候选人转发 BOSS 直聘岗位截图，
- * vision 描述被回写进用户消息内容，描述里的「18岁以上」门槛句与交换微信截图里
- * **招聘者（招募经理本人）的微信号**被当成候选人自陈落档，最终提交进真实报名 ——
- * AI 面试短信因此发到了经理自己的手机上（运营原话"报名填我的电话干嘛"）。
+ * 岗位卡和交换微信截图中的年龄门槛、发布方手机号属于第三方信息，
+ * 不得当成候选人自陈落档或提交报名。
  *
- * fixture 必须用生产真实字符串（2026-08-05 复核修正）：
+ * fixture 必须保留能穿过既有岗位范围守卫的真实形态：
  * - 年龄串是「面试基本都过，18岁以上+健康证即可」——**没有「要求/需要/限/须」触发词**，
  *   extractAge 既有的岗位范围守卫剥不掉它，这才是真实穿透路径；
- * - 早期版本写成「年龄要求 18-40岁」，带触发词会被既有守卫拦下，年龄断言在
- *   没有本修复时也通过——测试空转。
+ * - 若写成「年龄要求 18-40岁」，触发词会被既有守卫拦下，无法验证本模块的防线。
  */
 describe('visual-description（第三方图片内容不得当候选人自陈）', () => {
   const POSTER_PHONE = '13788930869';
@@ -106,7 +103,7 @@ describe('visual-description（第三方图片内容不得当候选人自陈）'
 
   describe('规则提取轨回归', () => {
     it('岗位截图里的"18岁以上"不再被提成候选人年龄', () => {
-      const facts = extractRuleFacts([BOSS_JOB_CARD], []);
+      const facts = extractTurnHints([BOSS_JOB_CARD], []);
       expect(facts?.interview_info.age ?? null).toBeNull();
     });
 
@@ -115,30 +112,24 @@ describe('visual-description（第三方图片内容不得当候选人自陈）'
     //（该守卫只拦「要求/需要/限/须」前缀的范围句，本串没有触发词）。
     // 若本断言未来变红，说明 extractAge 口径变了，上一条用例需要重新选穿透串。
     it('对照：同串手打文本会命中既有年龄提取器', () => {
-      const facts = extractRuleFacts(['面试基本都过，18岁以上+健康证即可。'], []);
+      const facts = extractTurnHints(['面试基本都过，18岁以上+健康证即可。'], []);
       expect(facts?.interview_info.age).toBe('18');
     });
 
     it('候选人自己说的年龄仍然提取', () => {
-      const facts = extractRuleFacts(['我今年22岁'], []);
+      const facts = extractTurnHints(['我今年22岁'], []);
       expect(facts?.interview_info.age).toBe('22');
     });
 
     it('岗位截图里的"仅限男"不再被提成候选人性别', () => {
-      const facts = extractRuleFacts(
-        ['[图片消息] 岗位截图：招夜班理货，要求仅限男，22-50岁'],
-        [],
-      );
+      const facts = extractTurnHints(['[图片消息] 岗位截图：招夜班理货，要求仅限男，22-50岁'], []);
       expect(facts?.interview_info.gender ?? null).toBeNull();
     });
 
     // 收窄只针对身份字段。候选人发地图/门店截图指位置是被期待的能力
     // （badcase oaz6inzf 的诉求正是"图上已经看到是北京了还问城市"），不能被这次收窄打掉。
     it('图片描述里的城市仍然可用于定位（收窄不外溢到 preferences/地理）', () => {
-      const facts = extractRuleFacts(
-        ['[图片消息] 地图截图：北京市顺义区富林路卫星店'],
-        [],
-      );
+      const facts = extractTurnHints(['[图片消息] 地图截图：北京市顺义区富林路卫星店'], []);
       expect(facts?.preferences.city?.value).toBe('北京');
     });
   });

@@ -7,13 +7,21 @@ import {
 } from '../generator/tool-call-analysis';
 import type { OutputGuardDecision } from '../guardrail/output/output-guardrail.service';
 import { OutboundReplySanitizer } from '../guardrail/output/outbound-reply-sanitizer';
-import { HANDOFF_PROMISE_RECONCILIATION_RULE_ID } from '../guardrail/output/rules/promise-reconciliation.rule';
 import { buildHandoffIdempotencyKey } from './handoff-idempotency';
 import type { SessionRef, TurnOutcome, TurnTrigger } from './agent-runner.types';
 import type {
   GeneralHandoffSideEffectIntent,
   TurnSideEffectIntent,
 } from './turn-side-effect.types';
+
+const HANDOFF_PROMISE_PATTERNS: readonly RegExp[] = [
+  /我(?:们)?(?:这边)?(?:还)?(?:已经|会|来|先|马上|尽快|需要|得|要)?(?:帮你|给你)?(?:(?:让|请|找|问|联系|反馈给|转给|转达给)[^。！？\n]{0,12}|跟|同)(?:同事|负责人|店长|门店|招聘经理)[^。！？\n]{0,20}(?:确认|核实|处理|跟进|联系你|回复你|答复你|安排)/u,
+  /我(?:们)?(?:这边)?[^。！？\n]{0,10}(?:帮你|给你)[^。！？\n]{0,12}[，,]\s*(?:让|请)(?:同事|负责人|招聘经理)[^。！？\n]{0,20}(?:确认|核实|处理|跟进|联系你|回复你|答复你|安排)/u,
+];
+const HANDOFF_BOUNDARY_PATTERN =
+  /(?:具体|最终|实际|准确的?)[^。！？\n]{0,8}(?:以|看|按)[^。！？\n]{0,10}(?:同事|负责人|店长|门店|招聘经理|现场|面试时)[^。！？\n]{0,6}(?:确认|沟通|说明|为准|通知)/u;
+const NEGATED_HANDOFF_PROMISE_PATTERN =
+  /(?:如果|要是|万一|假如)[^。！？\n]{0,20}(?:同事|负责人|店长|门店|招聘经理)[^。！？\n]{0,12}(?:没有?|未|不)/u;
 
 /** 已审生成结果的最小投入：生成结果 + 出站裁决（runner.invokeReviewed 的产物子集）。 */
 export type ReviewedResultLike = GeneratorRunResult & {
@@ -275,12 +283,9 @@ export function classifyReviewedOutcome(
     };
   }
 
-  // 承诺-动作对账补动作（议题 7-1）：模型明确承诺了一次人工升级但本轮没有 handoff
-  // 动作。正确处置不是改写/拦掉文案（消灭承诺），而是补执行 handoff 让承诺成真——
-  // 文本原样投递，真人接续兑现。直接 enforce（用户 8-14 裁定，不设 shadow 期）。
-  const promiseReconciliation = result.outputDecision.ruleIds.includes(
-    HANDOFF_PROMISE_RECONCILIATION_RULE_ID,
-  )
+  // 第一人称明确承诺由同事/负责人跟进，但工具尚未执行时，在终态直接补人工介入。
+  // 这属于 side-effect/result reconciliation，不进入 Output Guardrail 规则目录。
+  const promiseReconciliation = hasUnreconciledHandoffPromise(text, toolCalls)
     ? buildPromiseReconciliationSideEffect({
         sessionRef,
         turnId: messageId ?? scenarioCode ?? sessionRef.sessionId,
@@ -302,12 +307,9 @@ export function classifyReviewedOutcome(
 }
 
 /**
- * handoff 承诺-动作对账的补动作意图（议题 7-1）。
+ * handoff 承诺-动作对账的补动作意图。
  *
- * 复用既有 `other` reasonCode，不新开底账分桶：对运营来说这就是一次普通的"需人工跟进"，
- * 该做的动作与模型自发 handoff 完全一样；补动作与自发 handoff 的区分只有排障需要，
- * 由 guardrail_review_records 的 handoff_promise_reconciliation ruleId 承担，
- * 精确率回看查那里即可。
+ * 复用既有 `other` reasonCode，不新开底账分桶：对运营来说这就是一次普通的"需人工跟进"。
  */
 function buildPromiseReconciliationSideEffect(params: {
   sessionRef: SessionRef;
@@ -327,6 +329,32 @@ function buildPromiseReconciliationSideEffect(params: {
     }),
     recordHandoff: true,
   };
+}
+
+function hasUnreconciledHandoffPromise(text: string, toolCalls: AgentToolCall[]): boolean {
+  if (!text.trim()) return false;
+  if (HANDOFF_BOUNDARY_PATTERN.test(text) || NEGATED_HANDOFF_PROMISE_PATTERN.test(text)) {
+    return false;
+  }
+  if (!HANDOFF_PROMISE_PATTERNS.some((pattern) => pattern.test(text))) return false;
+  if (toolCalls.some((call) => hasCompletedHandoffAction(call))) return false;
+  return !toolCalls.some((call) => {
+    const result =
+      call.result && typeof call.result === 'object' && !Array.isArray(call.result)
+        ? (call.result as Record<string, unknown>)
+        : undefined;
+    return result?.hostingPaused === true;
+  });
+}
+
+function hasCompletedHandoffAction(call: AgentToolCall): boolean {
+  if (call.toolName === 'request_handoff') return isCommittedRequestHandoffCall(call);
+  if (call.toolName !== 'raise_risk_alert') return false;
+  const result =
+    call.result && typeof call.result === 'object' && !Array.isArray(call.result)
+      ? (call.result as Record<string, unknown>)
+      : undefined;
+  return Boolean(result && result.success !== false && typeof result.errorType !== 'string');
 }
 
 function sanitizeResponseMessages(

@@ -1,7 +1,16 @@
 import { buildInviteToGroupTool } from '@tools/invite-to-group.tool';
+import { Test } from '@nestjs/testing';
+import { ConfigService } from '@nestjs/config';
 import { ToolBuildContext } from '@shared-types/tool.types';
 import { GroupContext } from '@biz/group-task/group-task.types';
-import { TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
+import { GroupInviteService } from '@biz/group-task/services/group-invite.service';
+import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
+import { GroupMembershipService } from '@biz/group-task/services/group-membership.service';
+import { RoomService } from '@channels/wecom/room/room.service';
+import { MemoryService } from '@memory/memory.service';
+import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
+import { OpsNotifierService } from '@notification/services/ops-notifier.service';
+import { TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
 import { createToolContext, mergeToolContext } from '../../helpers/tool-context.fixture';
 
 interface InviteContextOverrides {
@@ -29,10 +38,9 @@ describe('buildInviteToGroupTool', () => {
     },
     // 城市 provenance gate 要求 city 有出处：默认让候选人原文提到上海
     turnInput: { messages: [{ role: 'user', content: '你好，我在上海找兼职' }] },
-    // 时机 gate 要求本轮已给出查岗结论；本文件测的是选群/投递链路，
-    // 默认按"已查过岗"建模（生产上拉群必在查岗之后）。时机 gate 自身的
-    // 三档判定见 tests/tools/shared/invite-timing-gate.spec.ts。
-    ledger: { jobs: { jobListExecuted: true } },
+    // 本文件多数用例测选群/投递链路，默认按“首次预约已成功”这一合法拉群入口建模。
+    // 两轮同意与非法直拉的时机档位在本文件的专门分组及 shared 单测覆盖。
+    ledger: { jobs: { jobListExecuted: true, bookingSucceeded: true } },
   });
 
   const buildContext = (overrides: InviteContextOverrides = {}) => {
@@ -86,6 +94,41 @@ describe('buildInviteToGroupTool', () => {
   const mockOpsEventsRecorder = { recordEvent: jest.fn().mockResolvedValue(true) };
   const MEMBER_LIMIT = 200;
 
+  const createGroupInviteService = async (options?: {
+    groupMembership?: unknown;
+    enterpriseToken?: string | null;
+  }): Promise<GroupInviteService> => {
+    const groupMembership = options?.groupMembership ?? {
+      listUserRooms: jest.fn().mockResolvedValue([]),
+    };
+    const enterpriseToken =
+      options && Object.prototype.hasOwnProperty.call(options, 'enterpriseToken')
+        ? options.enterpriseToken
+        : 'enterprise-token-test';
+    const moduleRef = await Test.createTestingModule({
+      providers: [
+        GroupInviteService,
+        { provide: GroupResolverService, useValue: mockGroupResolver },
+        { provide: GroupMembershipService, useValue: groupMembership },
+        { provide: RoomService, useValue: mockRoomService },
+        { provide: MemoryService, useValue: mockMemoryService },
+        { provide: OpsEventsRecorderService, useValue: mockOpsEventsRecorder },
+        { provide: OpsNotifierService, useValue: mockOpsNotifier },
+        {
+          provide: ConfigService,
+          useValue: {
+            get: (key: string, fallback?: string) => {
+              if (key === 'GROUP_MEMBER_LIMIT') return String(MEMBER_LIMIT);
+              if (key === 'STRIDE_ENTERPRISE_TOKEN') return enterpriseToken;
+              return fallback;
+            },
+          },
+        },
+      ],
+    }).compile();
+    return moduleRef.get(GroupInviteService);
+  };
+
   beforeEach(() => {
     jest.clearAllMocks();
     mockOpsNotifier.sendGroupFullAlert.mockResolvedValue(true);
@@ -104,17 +147,16 @@ describe('buildInviteToGroupTool', () => {
     overrideContext?: InviteContextOverrides,
     deps?: { groupMembership?: unknown; sessionService?: unknown },
   ) => {
-    const builder = buildInviteToGroupTool(
-      mockGroupResolver as any,
-      mockRoomService as any,
-      mockOpsNotifier as any,
-      mockMemoryService as any,
-      mockOpsEventsRecorder as any,
-      MEMBER_LIMIT,
-      'enterprise-token-test',
-      deps?.groupMembership as any,
-      deps?.sessionService as any,
-    );
+    const service = await createGroupInviteService({
+      groupMembership: deps?.groupMembership,
+    });
+    const groupInviteService = deps?.groupMembership
+      ? service
+      : ({
+          invite: service.invite.bind(service),
+          preflightExistingMembership: jest.fn().mockResolvedValue(null),
+        } as unknown as GroupInviteService);
+    const builder = buildInviteToGroupTool(groupInviteService, deps?.sessionService as any);
     const builtTool = builder(buildContext(overrideContext));
     return builtTool.execute(input as any, {
       toolCallId: 'test',
@@ -175,7 +217,10 @@ describe('buildInviteToGroupTool', () => {
   // 一次在查岗结论出来前，一次在候选人问"直接去门店面试吗还是怎么样"时。
   describe('时机 gate 端到端（badcase 63eefu6c）', () => {
     it('本轮未查岗就拉群：拒绝且不触达企业接口', async () => {
-      const result = await executeTool({ city: '上海' }, { jobListExecuted: false });
+      const result = await executeTool(
+        { city: '上海' },
+        { jobListExecuted: false, bookingSucceeded: undefined },
+      );
 
       expect(result.success).toBe(false);
       expect(result.errorType).toBe(TOOL_ERROR_TYPES.INVITE_NO_JOB_RESULT);
@@ -185,10 +230,83 @@ describe('buildInviteToGroupTool', () => {
       expect(mockRoomService.addMemberEnterprise).not.toHaveBeenCalled();
     });
 
+    it('本轮查过岗位但没有两轮协议同意：拒绝且不触达企业接口', async () => {
+      const result = await executeTool(
+        { city: '上海' },
+        { jobListExecuted: true, bookingSucceeded: undefined },
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.INVITE_GROUP_CONSENT_REQUIRED);
+      expect(result._replyInstruction).toContain('真实无岗');
+      expect(mockGroupResolver.resolveGroups).not.toHaveBeenCalled();
+      expect(mockRoomService.addMemberEnterprise).not.toHaveBeenCalled();
+    });
+
+    it('历史文本看似两轮否定也只按当前同意工具闸门拒绝，不做正则轮次裁决', async () => {
+      const result = await executeTool(
+        { city: '上海' },
+        {
+          jobListExecuted: true,
+          bookingSucceeded: undefined,
+          currentUserMessage: '没有近的，都有点远',
+          messages: [
+            { role: 'user', content: '我在上海找兼职' },
+            {
+              role: 'assistant',
+              content: '必胜客（A店）2km，班次09:00-18:00，薪资22元/时',
+            },
+            { role: 'assistant', content: '你看这家方便吗' },
+            { role: 'user', content: '时间太长了，不合适' },
+            {
+              role: 'assistant',
+              content: '成都你六姐（B店）8km，班次18:00-22:00，薪资24元/时',
+            },
+            { role: 'assistant', content: '你看这家方便吗' },
+            { role: 'user', content: '没有近的，都有点远' },
+          ],
+        },
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.INVITE_GROUP_CONSENT_REQUIRED);
+      expect(result.noMatchScript).toBeUndefined();
+      expect(result.dissatisfiedRecommendationRounds).toBeUndefined();
+      expect(result._replyInstruction).toContain('主 Agent 根据完整对话确认');
+      expect(result._replyInstruction).toContain('不要再次调用 invite_to_group');
+      expect(mockRoomService.addMemberEnterprise).not.toHaveBeenCalled();
+    });
+
+    it('两轮协议第二轮：上一轮已征询且本轮同意时无需重复查岗即可实调邀请', async () => {
+      mockGroupResolver.resolveGroups.mockResolvedValue([makeGroup({ memberCount: 10 })]);
+      mockRoomService.addMemberEnterprise.mockResolvedValue({ errcode: 0 });
+
+      const result = await executeTool(
+        { city: '上海' },
+        {
+          jobListExecuted: false,
+          bookingSucceeded: undefined,
+          currentUserMessage: '可以',
+          messages: [
+            { role: 'user', content: '我在上海找兼职' },
+            {
+              role: 'assistant',
+              content: '可以邀请你进上海兼职岗位信息群，你愿意的话回复我“可以”',
+            },
+            { role: 'user', content: '可以' },
+          ],
+        },
+      );
+      await flushAsyncEvents();
+
+      expect(result.success).toBe(true);
+      expect(mockRoomService.addMemberEnterprise).toHaveBeenCalledTimes(1);
+    });
+
     it('候选人正在追问报名/面试怎么走：拒绝拉群，指令回到约面收尾', async () => {
       const result = await executeTool(
         { city: '上海' },
-        { currentUserMessage: '直接去门店面试吗还是怎么样' },
+        { currentUserMessage: '直接去门店面试吗还是怎么样', bookingSucceeded: undefined },
       );
 
       expect(result.success).toBe(false);
@@ -244,15 +362,10 @@ describe('buildInviteToGroupTool', () => {
   });
 
   it('documents that invite_to_group.city must not receive district or region names', () => {
-    const builder = buildInviteToGroupTool(
-      mockGroupResolver as any,
-      mockRoomService as any,
-      mockOpsNotifier as any,
-      mockMemoryService as any,
-      { recordEvent: jest.fn() } as any,
-      MEMBER_LIMIT,
-      'enterprise-token-test',
-    );
+    const builder = buildInviteToGroupTool({
+      invite: jest.fn(),
+      preflightExistingMembership: jest.fn(),
+    } as any);
     const builtTool = builder(mockContext);
 
     expect(builtTool.description).toContain('候选人所在**城市级**名称');
@@ -957,15 +1070,13 @@ describe('buildInviteToGroupTool', () => {
   });
 
   it('should fail clearly when enterprise token is missing', async () => {
-    const builder = buildInviteToGroupTool(
-      mockGroupResolver as any,
-      mockRoomService as any,
-      mockOpsNotifier as any,
-      mockMemoryService as any,
-      { recordEvent: jest.fn() } as any,
-      MEMBER_LIMIT,
-      undefined,
-    );
+    const builder = buildInviteToGroupTool({
+      preflightExistingMembership: jest.fn().mockResolvedValue(null),
+      invite: jest.fn().mockResolvedValue({
+        success: false,
+        reason: 'enterprise_token_missing',
+      }),
+    } as unknown as GroupInviteService);
     const builtTool = builder(mockContext);
 
     const result = await builtTool.execute({ city: '上海' } as any, {
@@ -1006,17 +1117,12 @@ describe('buildInviteToGroupTool', () => {
       sessionService: unknown,
       overrideContext?: InviteContextOverrides,
     ) => {
-      const builder = buildInviteToGroupTool(
-        mockGroupResolver as any,
-        mockRoomService as any,
-        mockOpsNotifier as any,
-        mockMemoryService as any,
-        mockOpsEventsRecorder as any,
-        MEMBER_LIMIT,
-        'enterprise-token-test',
-        undefined,
-        sessionService as any,
-      );
+      const service = await createGroupInviteService();
+      const groupInviteService = {
+        invite: service.invite.bind(service),
+        preflightExistingMembership: jest.fn().mockResolvedValue(null),
+      } as unknown as GroupInviteService;
+      const builder = buildInviteToGroupTool(groupInviteService, sessionService as any);
       const builtTool = builder(buildContext(overrideContext));
       return builtTool.execute(input as any, {
         toolCallId: 'test',

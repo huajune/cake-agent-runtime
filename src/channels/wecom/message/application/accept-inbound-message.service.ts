@@ -17,13 +17,14 @@ import {
   getMessageSourceDescription,
 } from '@enums/message-callback.enum';
 import { FilterReason } from '@enums/message-filter.enum';
-import { LongTermService } from '@memory/services/long-term.service';
-import { SessionService } from '@memory/services/session.service';
-import type { MessageMetadata } from '@memory/types/long-term.types';
+import { LongTermService } from '@memory/long-term/long-term.service';
+import { SessionStateService } from '@memory/short-term/session-state.service';
+import type { MessageMetadata } from '@memory/long-term/long-term.types';
 import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { GeneralHandoffNotifierService } from '@notification/services/general-handoff-notifier.service';
 import { GroupBlacklistService } from '@biz/hosting-config/services/group-blacklist.service';
+import { BotService } from '../../bot/bot.service';
 
 /** source_channel 暂不可用，统一写 'unknown'（上游接入后再带真实渠道）。 */
 const UNKNOWN_SOURCE_CHANNEL = 'unknown';
@@ -78,11 +79,12 @@ export class AcceptInboundMessageService {
     private readonly wecomObservability: WecomMessageObservabilityService,
     private readonly monitoringService: MessageTrackingService,
     private readonly longTerm: LongTermService,
-    private readonly session: SessionService,
+    private readonly session: SessionStateService,
     private readonly opsEventsRecorder: OpsEventsRecorderService,
     private readonly userHostingService: UserHostingService,
     private readonly generalHandoffNotifier: GeneralHandoffNotifierService,
     private readonly groupBlacklistService: GroupBlacklistService,
+    private readonly botService: BotService,
   ) {}
 
   async execute(messageData: EnterpriseMessageCallbackDto): Promise<AcceptInboundMessageResult> {
@@ -339,7 +341,16 @@ export class AcceptInboundMessageService {
     const metadata = this.buildMessageMetadata(messageData);
     if (!metadata) return;
     try {
-      await this.longTerm.updateMessageMetadata(corpId, userId, metadata);
+      const botUserId =
+        (await this.botService.resolveBotUserIdByImBotId(messageData.imBotId)) ??
+        messageData.botUserId?.trim();
+      if (!botUserId) {
+        this.logger.warn(
+          `[新好友] 缺少稳定 botUserId，跳过长期记忆元数据开户 [${messageData.messageId}]`,
+        );
+        return;
+      }
+      await this.longTerm.updateMessageMetadata(corpId, userId, botUserId, metadata);
       this.logger.log(
         `[新好友] 已开户长期记忆元数据: userId=${userId}, chatId=${messageData.chatId}`,
       );

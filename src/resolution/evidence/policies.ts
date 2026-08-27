@@ -1,10 +1,4 @@
-import type { CandidateClaimField, RuleFactFieldPath } from './claim.types';
-import {
-  candidateValuesEquivalent,
-  deriveFieldValueFromQuote,
-  experienceValueSupportedByQuote,
-  normalizedIncludes,
-} from './normalize';
+import type { CandidateClaimField, TurnHintFieldPath } from './claim.types';
 
 /**
  * 字段风险分级（方案 §5.2；2026-08-12 按宪法 P11 重述）。
@@ -51,90 +45,15 @@ export const MIN_QUOTE_CONTEXT_CHARS: Record<CandidateClaimField, number> = {
   householdProvince: 0,
 };
 
-/**
- * 候选人明确提供时，允许由模型来源升级为候选人引文来源的 session 字段。
- *
- * 这是 session 提取与 evidence 裁决之间的策略，不属于 memory 的存储编排；字段增删必须
- * 在此处审阅。姓名仍走独立真名门，事务字段不得因候选人一句话升级成已确认副作用。
- */
-export const EXPLICIT_EXTRACTION_UPGRADE_FIELDS: ReadonlySet<string> = new Set([
-  'phone',
-  'gender',
-  'age',
-  'education',
-  'has_health_certificate',
-  'experience',
-  'height',
-  'weight',
-  'is_student',
-  'household_register_province',
-]);
-
-/** 首次写入必须能从候选人自陈语料复算的身份族 session 字段。 */
-export const IDENTITY_FIRST_WRITE_FIELDS: ReadonlySet<string> = new Set([
-  'age',
-  'gender',
-  'education',
-  'height',
-  'weight',
-  'experience',
-]);
-
-/** session 字段名到确定性 quote 解析器字段名的映射。 */
-const PROVENANCE_DERIVATION_FIELDS: Readonly<Record<string, CandidateClaimField>> = {
-  name: 'name',
-  phone: 'phone',
-  gender: 'gender',
-  age: 'age',
-  is_student: 'isStudent',
-  education: 'education',
-  has_health_certificate: 'healthCertificate',
-  height: 'height',
-  weight: 'weight',
-  household_register_province: 'householdProvince',
-};
-
-/**
- * 判断候选人引文是否足以支持 session 提取的当前字段值。
- *
- * 合成式 experience 使用 token 覆盖；其余字段优先走确定性解析器。首写身份族只允许
- * 解析器等价或双向等价文本，不能退回宽松的单向包含；非首写升级字段保留既有的保守
- * 单向包含兜底。该函数只迁移既有策略，不改变任何准入行为。
- */
-export function extractionQuoteSupportsCurrentValue(
-  field: string,
-  quote: string,
-  currentValue: unknown,
-): boolean {
-  if (field === 'experience') {
-    return experienceValueSupportedByQuote(quote, String(currentValue));
-  }
-
-  const derivationField = PROVENANCE_DERIVATION_FIELDS[field];
-  if (!derivationField) return false;
-  const derived = deriveFieldValueFromQuote(derivationField, quote);
-  if (derived !== null) {
-    return candidateValuesEquivalent(derivationField, derived, currentValue);
-  }
-  if (
-    IDENTITY_FIRST_WRITE_FIELDS.has(field) &&
-    normalizedIncludes(quote, String(currentValue)) &&
-    normalizedIncludes(String(currentValue), quote)
-  ) {
-    return true;
-  }
-  return !IDENTITY_FIRST_WRITE_FIELDS.has(field) && normalizedIncludes(quote, String(currentValue));
-}
-
 // PR #1000 评审 P3：曾有一张 FIELD_POLICIES 全字段策略表（producerPriority/conflict）
 // 声明为「策略差异唯一居所」，但引擎从未读它——真正生效的策略是下方
-// RULE_FACT_FIELD_POLICIES 与 engine/merge 的实现。为避免两套并存的假权威，已删除；
+// TURN_HINT_FIELD_POLICIES 与 engine/merge 的实现。为避免两套并存的假权威，已删除；
 // 若未来引擎真按表驱动，再从版本历史恢复并接线。
 
-export type RuleFactSelection = 'first-scalar' | 'last-scalar' | 'union-array' | 'composite';
+export type TurnHintSelection = 'first-scalar' | 'last-scalar' | 'union-array' | 'composite';
 
-export interface RuleFactFieldPolicy {
-  selection: RuleFactSelection;
+export interface TurnHintFieldPolicy {
+  selection: TurnHintSelection;
   allowedOperations: readonly ('set' | 'clear')[];
   /** composite 投影的固定形状；producer 的 null 不参与覆盖，但消费者仍看到完整对象。 */
   defaults?: Readonly<Record<string, unknown>>;
@@ -144,7 +63,7 @@ export interface RuleFactFieldPolicy {
  * rule-track 的逐字段归并参数。producer 只发 claim，不得依据这些语义自行吞并；
  * first/last/union/composite 全部在 evidence/merge 的同一条 claim 流上执行。
  */
-export const RULE_FACT_FIELD_POLICIES = {
+export const TURN_HINT_FIELD_POLICIES = {
   'interview_info.name': { selection: 'first-scalar', allowedOperations: ['set'] },
   'interview_info.phone': { selection: 'first-scalar', allowedOperations: ['set'] },
   'interview_info.gender': { selection: 'first-scalar', allowedOperations: ['set'] },
@@ -185,4 +104,4 @@ export const RULE_FACT_FIELD_POLICIES = {
     selection: 'last-scalar',
     allowedOperations: ['set', 'clear'],
   },
-} as const satisfies Record<RuleFactFieldPath, RuleFactFieldPolicy>;
+} as const satisfies Record<TurnHintFieldPath, TurnHintFieldPolicy>;

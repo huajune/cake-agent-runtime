@@ -1,19 +1,19 @@
-import { produceRuleFactClaims } from '@resolution/evidence/producers/rule-track';
-import { projectRuleFactClaims } from '@resolution/evidence/merge';
+import { produceTurnHints } from '@resolution/evidence/producers/rule-track';
+import { projectTurnHints } from '@resolution/evidence/merge';
 import { finalizeVisualFactSheet, type FinalizedVisualFactSheet } from '@/resolution/signal/visual';
 
-function extractRuleFacts(...args: Parameters<typeof produceRuleFactClaims>) {
-  return projectRuleFactClaims(produceRuleFactClaims(...args));
+function extractTurnHints(...args: Parameters<typeof produceTurnHints>) {
+  return projectTurnHints(produceTurnHints(...args));
 }
 
 /**
- * visual-fact-structuring R1/R1e/R3 规则轨授权域回归（badcase vkikct39 全链路）。
+ * visual-fact-structuring R1/R1e/R3 规则轨授权域回归。
  *
  * 三通道模型（产品方案附录 A.2）在规则轨的投影：
  * - job_posting sheet：全关（薪资≠期望薪资、门店城市≠候选人城市、门槛≠候选人属性）
  * - map_location sheet：仅地理
  * - resume/certificate sheet：身份可提但 phone 除外（裁决 B3：medium+确认升级）
- * - 无 sheet 视觉消息：身份关、偏好+地理开（= PR #870 现状，不劣化）
+ * - 无 sheet 视觉消息：身份关、偏好和地理开
  */
 describe('规则轨 · sheet 授权域', () => {
   const JOB_DESC =
@@ -29,14 +29,14 @@ describe('规则轨 · sheet 授权域', () => {
     new Map(entries.map(([content, sheet]) => [content.trim(), sheet] as const));
 
   it('R1e：岗位卡薪资不再进 pref.salary（vkikct39 同案 6000元/月 污染）', () => {
-    const withSheet = extractRuleFacts([JOB_DESC], [], {
+    const withSheet = extractTurnHints([JOB_DESC], [], {
       visualSheetsByContent: sheets([[JOB_DESC, jobSheet]]),
     });
     expect(withSheet?.preferences.salary ?? null).toBeNull();
     expect(withSheet?.interview_info.age ?? null).toBeNull();
 
     // 对照：无 sheet（旧数据/降级）保持 PR #870 现状——偏好照旧提取，身份仍拦
-    const withoutSheet = extractRuleFacts([JOB_DESC], []);
+    const withoutSheet = extractTurnHints([JOB_DESC], []);
     expect(withoutSheet?.preferences.salary).toBe('6000元/月');
     expect(withoutSheet?.interview_info.age ?? null).toBeNull();
   });
@@ -47,7 +47,7 @@ describe('规则轨 · sheet 授权域', () => {
       { kind: 'job_posting', fields: [{ key: 'store', value: '中赢国际店' }] },
       desc,
     );
-    const facts = extractRuleFacts([desc], [], {
+    const facts = extractTurnHints([desc], [], {
       visualSheetsByContent: sheets([[desc, sheet]]),
     });
     expect(facts?.preferences.city ?? null).toBeNull();
@@ -59,7 +59,7 @@ describe('规则轨 · sheet 授权域', () => {
       { kind: 'map_location', fields: [{ key: 'city', value: '北京市' }] },
       desc,
     );
-    const facts = extractRuleFacts([desc], [], {
+    const facts = extractTurnHints([desc], [], {
       visualSheetsByContent: sheets([[desc, sheet]]),
     });
     expect(facts?.preferences.city?.value).toBe('北京');
@@ -70,7 +70,7 @@ describe('规则轨 · sheet 授权域', () => {
     // 结构化逐行形态（vision 简历提取的真实输出形态；规则轨结构化正则要求行首锚定）
     const desc = '[图片消息] 简历图片：\n姓名：李耀海\n电话：13500001111\n年龄：22\n学历：大专';
     const sheet = finalizeVisualFactSheet({ kind: 'resume' }, desc);
-    const facts = extractRuleFacts([desc], [], {
+    const facts = extractTurnHints([desc], [], {
       visualSheetsByContent: sheets([[desc, sheet]]),
     });
     expect(facts?.interview_info.age).toBe('22');
@@ -83,10 +83,10 @@ describe('规则轨 · sheet 授权域', () => {
     // 结构化逐行形态（vision 证件提取的输出要求"按字段逐项输出"）
     const desc = '[图片消息] 食品健康证：\n姓名：毛梦港\n发证日期：2026-08-02\n从业范围：食品';
     const certSheet = finalizeVisualFactSheet({ kind: 'certificate' }, desc);
-    const withSheet = extractRuleFacts([desc], [], {
+    const withSheet = extractTurnHints([desc], [], {
       visualSheetsByContent: sheets([[desc, certSheet]]),
     });
-    const withoutSheet = extractRuleFacts([desc], []);
+    const withoutSheet = extractTurnHints([desc], []);
     expect(withSheet?.interview_info.name).toBe('毛梦港');
     expect(withoutSheet?.interview_info.name ?? null).toBeNull();
     // phone 域在证件上同样关闭（B3——本图无号码，此断言防未来回归）
@@ -97,7 +97,7 @@ describe('规则轨 · sheet 授权域', () => {
   // sheetFor 查表键若不剥后缀则 sheet 授权域静默失效——fixture 必须带真实后缀。
   it('带时间后缀的窗口消息仍能命中 sheet（生产真实形态）', () => {
     const suffixed = `${JOB_DESC}\n[消息发送时间：2026-08-05 14:00 星期三]`;
-    const facts = extractRuleFacts([suffixed], [], {
+    const facts = extractTurnHints([suffixed], [], {
       visualSheetsByContent: sheets([[JOB_DESC, jobSheet]]),
     });
     // sheet 命中 → job_posting 全关（薪资/年龄都不提取）
@@ -110,19 +110,19 @@ describe('规则轨 · sheet 授权域', () => {
   it('岗位截图里的学历要求不进 education（兜底路径门控）', () => {
     const desc = '[图片消息] BOSS直聘岗位截图：学历要求：大专以上，经验不限';
     const sheet = finalizeVisualFactSheet({ kind: 'job_posting' }, desc);
-    const withSheet = extractRuleFacts([desc], [], {
+    const withSheet = extractTurnHints([desc], [], {
       visualSheetsByContent: sheets([[desc, sheet]]),
     });
-    const withoutSheet = extractRuleFacts([desc], []);
+    const withoutSheet = extractTurnHints([desc], []);
     expect(withSheet?.interview_info.education ?? null).toBeNull();
     expect(withoutSheet?.interview_info.education ?? null).toBeNull();
     // 对照：手打自述学历照常提取
-    const typed = extractRuleFacts(['我是大专学历'], []);
+    const typed = extractTurnHints(['我是大专学历'], []);
     expect(typed?.interview_info.education ?? null).not.toBeNull();
   });
 
   it('手打文本不受任何影响', () => {
-    const facts = extractRuleFacts(['我今年22岁，想找佛山的兼职'], [], {
+    const facts = extractTurnHints(['我今年22岁，想找佛山的兼职'], [], {
       visualSheetsByContent: sheets([]),
     });
     expect(facts?.interview_info.age).toBe('22');

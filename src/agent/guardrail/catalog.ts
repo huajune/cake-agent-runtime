@@ -21,41 +21,15 @@ import type {
 import { OUTPUT_RULE_CATALOG, OUTPUT_RULE_IDS } from './output/rules/output-rule-catalog';
 import { TOOL_GUARDRAIL_CATALOG, TOOL_GUARDRAIL_IDS } from './tool/tool-guardrail.catalog';
 
-// 2026-07-10 用户裁定批量下线（勿修补勿重加）：job-fact-hallucinations /
-// job-fact-value-mismatch / booking-claim-errors / location-claim-errors 四个规则文件
-// 整族删除（13 个 rule id）；另有 group_full_without_invite / system_status_fabrication /
-// tool_failure_success_claim / brand_name_violation 4 条下线。岗位/预约事实治理交语义档。
-// 2026-07-15 经新 badcase 与用户裁定，加入范围收窄后的详情补查和结算范围对账契约。
 const OUTPUT_RULE_SOURCE_BY_ID: Record<string, string> = {
   invalid_model_output:
     'agent/guardrail/output/rules/invalid-model-output.rule.ts（HardRulesService 调度）',
   brand_alias_fuzzy_match_ignored:
     'agent/guardrail/output/rules/brand-name-errors.rule.ts（HardRulesService 调度）',
-  human_service_phrase_leak:
-    'agent/guardrail/output/rules/internal-info-leaks.rule.ts（HardRulesService 调度）',
   identity_misregistration_coaching:
     'agent/guardrail/output/rules/identity-fraud-coaching.rule.ts（HardRulesService 调度）',
   experience_fraud_coaching:
     'agent/guardrail/output/rules/experience-fraud-coaching.rule.ts（HardRulesService 调度）',
-  application_record_update_promise:
-    'agent/guardrail/output/rules/application-record-update-promise.rule.ts（HardRulesService 调度）',
-  date_reference_mismatch:
-    'agent/guardrail/output/rules/date-reference-mismatch.rule.ts（HardRulesService 调度）',
-  image_description_not_saved:
-    'agent/guardrail/output/rules/visual-message-errors.rule.ts（HardRulesService 调度）',
-  repeated_reply: 'agent/guardrail/output/rules/repeated-reply.rule.ts（HardRulesService 调度）',
-  repeated_reply_verbatim:
-    'agent/guardrail/output/rules/repeated-reply.rule.ts（HardRulesService 调度）',
-  summer_worker_alternative_upsell:
-    'agent/guardrail/output/rules/summer-worker-alternative-upsell.rule.ts（HardRulesService 调度）',
-  requested_brand_mismatch:
-    'agent/guardrail/output/rules/brand-name-errors.rule.ts（HardRulesService 调度）',
-  dangling_reply_promise:
-    'agent/guardrail/output/rules/dangling-promise.rule.ts（HardRulesService 调度）',
-  handoff_promise_reconciliation:
-    'agent/guardrail/output/rules/promise-reconciliation.rule.ts（HardRulesService 检测 + turn-outcome 补动作）',
-  booking_promise_without_booking:
-    'agent/guardrail/output/rules/promise-reconciliation.rule.ts（HardRulesService 调度）',
   discriminatory_screening_leak:
     'agent/guardrail/output/rules/discrimination-leaks.rule.ts（HardRulesService 调度）',
   sensitive_origin_probe:
@@ -64,21 +38,7 @@ const OUTPUT_RULE_SOURCE_BY_ID: Record<string, string> = {
     'agent/guardrail/output/rules/internal-info-leaks.rule.ts（HardRulesService 调度）',
   meta_narration_reply:
     'agent/guardrail/output/rules/internal-info-leaks.rule.ts（HardRulesService 调度）',
-  example_value_leak:
-    'agent/guardrail/output/rules/example-value-leak.rule.ts（HardRulesService 调度）',
-  proactive_insurance_policy_mention:
-    'agent/guardrail/output/rules/insurance-policy-claims.rule.ts（HardRulesService 调度）',
   quota_promise: 'agent/guardrail/output/rules/false-promises.rule.ts（HardRulesService 调度）',
-  job_detail_lookup_required:
-    'agent/guardrail/output/rules/job-detail-grounding.rule.ts（HardRulesService 调度）',
-  combination_schedule_weekly_generalization:
-    'agent/guardrail/output/rules/ungrounded-generalizations.rule.ts（HardRulesService 调度）',
-  health_certificate_generalization:
-    'agent/guardrail/output/rules/ungrounded-generalizations.rule.ts（HardRulesService 调度）',
-  unsupported_schedule_window_claim:
-    'agent/guardrail/output/rules/schedule-window-claims.rule.ts（HardRulesService 调度）',
-  settlement_cycle_mismatch:
-    'agent/guardrail/output/rules/settlement-cycle-mismatch.rule.ts（HardRulesService 调度）',
   online_interview_location_claim:
     'agent/guardrail/output/rules/online-interview-location.rule.ts（HardRulesService 调度）',
   unsupported_store_status_speculation:
@@ -87,6 +47,19 @@ const OUTPUT_RULE_SOURCE_BY_ID: Record<string, string> = {
     'agent/guardrail/output/rules/booking-receipt.rule.ts（HardRulesService 调度）',
   interview_time_change_unconfirmed:
     'agent/guardrail/output/rules/booking-receipt.rule.ts（HardRulesService 调度）',
+  // ---- 2026-08-26 数据复核恢复（1 条 revise + 5 条 observe 哨兵）----
+  human_service_phrase_leak:
+    'agent/guardrail/output/rules/internal-info-leaks.rule.ts（HardRulesService 调度）',
+  booking_done_claim_without_submission:
+    'agent/guardrail/output/rules/booking-claim-reconciliation.rule.ts（HardRulesService 调度）',
+  dangling_reply_promise:
+    'agent/guardrail/output/rules/dangling-promise.rule.ts（HardRulesService 调度）',
+  requested_brand_mismatch:
+    'agent/guardrail/output/rules/brand-name-errors.rule.ts（HardRulesService 调度）',
+  settlement_cycle_mismatch:
+    'agent/guardrail/output/rules/settlement-cycle-mismatch.rule.ts（HardRulesService 调度）',
+  proactive_insurance_policy_mention:
+    'agent/guardrail/output/rules/insurance-policy-claims.rule.ts（HardRulesService 调度）',
 };
 
 export interface GuardrailCatalogEntry {
@@ -173,24 +146,6 @@ export const GUARDRAIL_CATALOG: GuardrailCatalogEntry[] = [
       status: 'active',
     }),
   ),
-  // ---- output（llm 档，高风险才触发，强模型） ----
-  {
-    id: 'output_llm_reviewer',
-    layer: 'output',
-    stage: 'output_pre_send',
-    action: 'revise',
-    coverage: 'code',
-    priority: 'P1',
-    riskGoal: '对规则无法表达的高风险语义、事实接地和话术问题做强模型复核。',
-    source:
-      'agent/guardrail/output/llm/semantic-reviewer.service.ts（OutputGuardrailService 组合器调度）',
-    exogenousSignal: 'toolCalls.result + memory + redLines（接地才有信号）',
-    residualRisk:
-      '开关主控是托管配置 agent_reply_config（Dashboard 即时生效），env OUTPUT_GUARDRAIL_LLM_ENABLED 仅为 DB 未持久化时的 bootstrap 默认；关闭时只剩确定性 rule 档。',
-    verification: 'tests/agent/guardrail/output/output-guardrail.service.spec.ts',
-    owner: 'agent-runtime',
-    status: 'active',
-  },
 ];
 
 /** 按层取 catalog 条目（审计/测试用）。 */

@@ -1,7 +1,7 @@
 import { buildSendStoreLocationTool } from '@tools/send-store-location.tool';
 import { ToolBuildContext } from '@shared-types/tool.types';
 import { SendMessageType } from '@channels/wecom/message-sender/dto/send-message.dto';
-import { TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
+import { TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
 import { createToolContext, mergeToolContext } from '../../helpers/tool-context.fixture';
 
 interface LocationContextOverrides {
@@ -31,21 +31,29 @@ describe('buildSendStoreLocationTool', () => {
 
   const mockContext: ToolBuildContext = createToolContext({
     session: {
-      userId: 'user-1', corpId: 'corp-1', sessionId: 'sess-1', botImId: 'bot-im-1',
-      token: 'token-1', imContactId: 'contact-1', chatId: 'chat-1', apiType: 'enterprise',
+      userId: 'user-1',
+      corpId: 'corp-1',
+      sessionId: 'sess-1',
+      botImId: 'bot-im-1',
+      token: 'token-1',
+      imContactId: 'contact-1',
+      chatId: 'chat-1',
+      apiType: 'enterprise',
     },
-    archive: { currentFocusJob: {
-      jobId: 100,
-      brandName: '必胜客',
-      jobName: '青塔店-兼职',
-      storeName: '青塔店',
-      storeAddress: '北京市丰台区青塔西路 1 号',
-      cityName: '北京市',
-      regionName: '丰台区',
-      laborForm: '兼职',
-      salaryDesc: '20元/时',
-      jobCategoryName: '服务员',
-    } },
+    archive: {
+      currentFocusJob: {
+        jobId: 100,
+        brandName: '必胜客',
+        jobName: '青塔店-兼职',
+        storeName: '青塔店',
+        storeAddress: '北京市丰台区青塔西路 1 号',
+        cityName: '北京市',
+        regionName: '丰台区',
+        laborForm: '兼职',
+        salaryDesc: '20元/时',
+        jobCategoryName: '服务员',
+      },
+    },
   });
 
   const buildContext = (overrides: LocationContextOverrides = {}) => {

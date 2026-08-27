@@ -668,11 +668,9 @@ export class ChatMessageRepository extends BaseRepository {
   /**
    * 拉取会话内「描述缺失」的裸视觉消息（visual-fact-structuring 读时懒补写）。
    *
-   * 2026-08-05 归因实证（30 条裸占位抽样）：90% 是人工接管/非托管时段经
-   * MOBILE_PUSH 同步进历史的候选人图片——从不进 Agent 链路，没有任何回合，
-   * P2/漏调兜底天然覆盖不到；其余为 timeout 丢回合。这些图在托管恢复后进入
-   * 消息窗口时对 Agent 全盲。读时补写：回合开始时按会话捞出裸图，交给
-   * ImageDescriptionService 补描述（fire-and-forget，本轮或下一轮生效）。
+   * 人工接管、非托管或超时期间同步进历史的候选人图片可能没有经过 Agent 链路，
+   * 因而只留下裸占位。托管恢复后按会话捞出这些图片，交给 ImageDescriptionService
+   * 异步补写描述，使其在本轮或下一轮进入消息窗口。
    */
   async getBareVisualMessagesByChat(
     chatId: string,

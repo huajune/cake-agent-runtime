@@ -18,26 +18,31 @@ export class MemoryConfig {
   /**
    * Redis 会话状态的生命周期（秒）。
    *
-   * 控制 `session.service` 和 `procedural.service` 写进 Redis 的会话级数据的过期时间，
+   * 控制 session-state 所辖结构化状态写进 Redis 的会话级数据过期时间，
    * 包括：候选人事实、候选岗位池、已展示岗位、当前焦点岗位、当前阶段等临时状态。
    *
    * ⚠️ 此 TTL 只控制 Redis key 的存活时长，不影响：
    *    - Supabase 历史消息的回查窗口（由 `historyWindowSeconds` 控制）
-   *    - 会话沉淀的间隙判定阈值（由 `settlementGapSeconds` 控制）
+   *    - 会话沉淀的间隙判定阈值（由 `consolidationGapSeconds` 控制）
    */
   readonly sessionTtl: number;
 
   /**
+   * `factsv2:` hash 的实际 TTL（秒）：咨询生命周期基准 + 12 小时沉淀读取余量。
+   *
+   * Redis hash 不支持字段级 TTL，因此同 key 中的 facts 与 workbench 投影会一起享有
+   * 这段余量；`stage:` 与 collection-form 仍严格使用 `sessionTtl`。
+   */
+  readonly sessionFactsTtl: number;
+
+  /**
    * 沉淀间隙阈值（秒）。
    *
-   * 连续两条消息的时间差 ≥ 此阈值时，SettlementService 认为上一段会话已结束，
-   * 触发摘要沉淀到长期记忆。
-   *
-   * 与 `sessionTtl` 分离的原因：Redis facts 的存活时长（sessionTtl）是"数据还在不在"，
-   * 沉淀阈值是"对话是否已断"——两者可以独立调优。例如 sessionTtl=2天让隔天回来的用户
-   * 仍有 facts 可用，而 settlementGap=1天让超过一天的间隙及时沉淀。
+   * 每回合结束按此阈值刷新 delayed job；任务到点后还会用 DB 最新消息时间复核
+   * 闲置已达标。它与 `sessionTtl` 同为 3 天，使 episode 边界与咨询状态生命周期
+   * 对齐；`sessionFactsTtl` 额外保留 12 小时，保证定时沉淀先读后过期。
    */
-  readonly settlementGapSeconds: number;
+  readonly consolidationGapSeconds: number;
 
   /**
    * 从 Supabase 回查历史消息的时间窗口（秒）。
@@ -63,24 +68,25 @@ export class MemoryConfig {
   readonly longTermCacheTtl: number;
 
   constructor(private readonly configService: ConfigService) {
-    const days = parseInt(this.configService.get('MEMORY_SESSION_TTL_DAYS', '2'), 10);
+    const days = parseInt(this.configService.get('MEMORY_SESSION_TTL_DAYS', '3'), 10);
     this.sessionTtl = days * 24 * 60 * 60;
+    this.sessionFactsTtl = this.sessionTtl + 12 * 60 * 60;
 
-    const settlementGapDays = parseInt(
-      this.configService.get('MEMORY_SETTLEMENT_GAP_DAYS', '1'),
+    const consolidationGapDays = parseInt(
+      this.configService.get('MEMORY_SETTLEMENT_GAP_DAYS', '3'),
       10,
     );
-    this.settlementGapSeconds = settlementGapDays * 24 * 60 * 60;
+    this.consolidationGapSeconds = consolidationGapDays * 24 * 60 * 60;
 
     const historyDays = parseInt(this.configService.get('MEMORY_HISTORY_WINDOW_DAYS', '7'), 10);
     this.historyWindowSeconds = historyDays * 24 * 60 * 60;
 
     this.sessionWindowMaxMessages = parseInt(
-      this.configService.get('MAX_HISTORY_PER_CHAT', '60'),
+      this.configService.get('MAX_HISTORY_PER_CHAT', '120'),
       10,
     );
     this.sessionWindowMaxChars = parseInt(
-      this.configService.get('AGENT_MAX_INPUT_CHARS', '12000'),
+      this.configService.get('AGENT_MAX_INPUT_CHARS', '24000'),
       10,
     );
     this.sessionExtractionIncrementalMessages = parseInt(
@@ -90,7 +96,7 @@ export class MemoryConfig {
     this.longTermCacheTtl = 2 * 60 * 60; // 2h
 
     this.logger.log(
-      `MemoryConfig: sessionTtl=${days}d, settlementGap=${settlementGapDays}d, historyWindow=${historyDays}d, windowMessages=${this.sessionWindowMaxMessages}, windowChars=${this.sessionWindowMaxChars}, extractionIncremental=${this.sessionExtractionIncrementalMessages}`,
+      `MemoryConfig: sessionTtl=${days}d, consolidationGap=${consolidationGapDays}d, historyWindow=${historyDays}d, windowMessages=${this.sessionWindowMaxMessages}, windowChars=${this.sessionWindowMaxChars}, extractionIncremental=${this.sessionExtractionIncrementalMessages}`,
     );
   }
 

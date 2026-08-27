@@ -5,18 +5,19 @@
 > 由 `IncidentReporterService` 与 `InterventionService` 等做编排，最终落到飞书机器人卡片。
 >
 > 配套查阅：
+>
 > - 飞书群组与 webhook 配置：[feishu-alert-system.md](./feishu-alert-system.md)
 > - 按目标群组聚合的简表：[feishu-alert-system.md](./feishu-alert-system.md) 的「通知分布」
 > - Tool gate、Runner handoff、底账和幂等：[handoff-gate-and-intervention-pipeline.md](../architecture/handoff-gate-and-intervention-pipeline.md)
 
 ## 人工介入路径对比
 
-| 触发器 | 是否短路 Agent | 本轮是否回复候选人 | 暂停托管/告警执行方式 |
-|---|---|---|---|
-| `request_handoff` 工具 | ✅ `shortCircuited` 立即结束 loop | ❌ | Runner 最终 outcome 提交后统一写底账、暂停和告警 |
-| Tool gate hard-reject | ✅ `shortCircuited + gateRejected` | ❌ | Runner 确定性分类为 handoff 后统一提交 |
-| `raise_risk_alert` 工具 | ❌ Agent 可继续生成安抚回复 | ✅（投递成功后再提交副作用） | `reply` outcome 投递成功后统一暂停和告警 |
-| Input risk intercept | ✅ 生成前拦截 | ❌ | Runner/Outcome 统一提交暂停和告警 |
+| 触发器                  | 是否短路 Agent                     | 本轮是否回复候选人           | 暂停托管/告警执行方式                            |
+| ----------------------- | ---------------------------------- | ---------------------------- | ------------------------------------------------ |
+| `request_handoff` 工具  | ✅ `shortCircuited` 立即结束 loop  | ❌                           | Runner 最终 outcome 提交后统一写底账、暂停和告警 |
+| Tool gate hard-reject   | ✅ `shortCircuited + gateRejected` | ❌                           | Runner 确定性分类为 handoff 后统一提交           |
+| `raise_risk_alert` 工具 | ❌ Agent 可继续生成安抚回复        | ✅（投递成功后再提交副作用） | `reply` outcome 投递成功后统一暂停和告警         |
+| Input risk intercept    | ✅ 生成前拦截                      | ❌                           | Runner/Outcome 统一提交暂停和告警                |
 
 ---
 
@@ -24,12 +25,12 @@
 
 > 路径：Runner 声明 side-effect intent → 渠道确认最终回合 → `TurnOutcomeInterventionService.commit` → 底账判重 → `InterventionService.dispatch` → 暂停托管 + 飞书人工介入卡。
 
-### 1. 规则前置拦截
+### 1. Input 守卫前置拦截
 
 - **位置**：[risk-intercept.service.ts](../../src/agent/guardrail/input/risk-intercept.service.ts)
 - **来源**：`source=regex_intercept`
-- **条件**：用户消息命中高置信关键词正则（辱骂 / 投诉 / 举报 / 情绪升级）
-- **效果**：命中 input guardrail 后本轮静默拦截，并通过统一出口暂停托管 + 发卡
+- **条件**：用户消息命中高置信关键词正则（包括辱骂、投诉/举报、历史面试结果追问、明确转人工请求等）
+- **效果**：Runner 收敛为 `guardrail_blocked/inbound`；Replay 定局后通过统一出口暂停托管 + 发卡
 
 ### 2. Agent 主动告警（`raise_risk_alert` 工具）
 
@@ -86,15 +87,21 @@
 
 ---
 
-## 三、Agent 输入安全
+## 三、Agent 安全与守卫告警
 
 ### 8. Prompt 注入检测
 
-- **位置**：[input-guard.service.ts:124](../../src/agent/guardrail/input/input-guard.service.ts#L124)
+- **位置**：[input-guard.service.ts](../../src/agent/guardrail/input/input-guard.service.ts)
 - **code**：`prompt_injection`
-- **条件**：用户输入命中 prompt injection 检测
+- **条件**：用户输入命中 prompt injection 检测；消息不直接拦截，Prompt 防线追加 system suffix
 
-### 9. 调试接口异常
+### 9. Output P0 确定性规则命中
+
+- **位置**：[hard-rules.service.ts](../../src/agent/guardrail/output/hard-rules.service.ts)
+- **code**：`output_guardrail_p0_intercepted`
+- **条件**：P0 hard rule 命中；首版不可发送，Runner 可能经一次有界修复后放行，也可能最终拦截
+
+### 10. 调试接口异常
 
 - **位置**：[agent.controller.ts:81](../../src/agent/agent.controller.ts#L81)
 - **code**：`agent.debug_chat_failed`
@@ -107,22 +114,22 @@
 > [analytics-alert.service.ts:84](../../src/biz/monitoring/services/alerts/analytics-alert.service.ts#L84)
 > → `BusinessMetricRuleEngine` 评估，阈值由 Supabase `hosting_config` 动态读取，每条 30 分钟节流。
 
-### 10. 成功率（`success-rate`）
+### 12. 成功率（`success-rate`）
 
 - **WARNING**：低于 `successRateCritical + 10`（默认 90%）
 - **CRITICAL**：低于 `successRateCritical`（默认 80%）
 
-### 11. 平均响应时间（`avg-duration`）
+### 13. 平均响应时间（`avg-duration`）
 
 - **WARNING**：超过 `avgDurationCritical * 0.7`（默认 42s）
 - **CRITICAL**：超过 `avgDurationCritical`（默认 60s）
 
-### 12. 在途请求队列（`queue-depth`）
+### 14. 在途请求队列（`queue-depth`）
 
 - **WARNING**：超过阈值/2（默认 10）
 - **CRITICAL**：超过阈值（默认 20）
 
-### 13. 错误率（`error-rate`）
+### 15. 错误率（`error-rate`）
 
 - **WARNING**：近 1h 错误数超过 `errorRateCritical * 0.7` 向下取整（默认 7/h）
 - **CRITICAL**：超过阈值（默认 10/h）

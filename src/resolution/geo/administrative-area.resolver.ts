@@ -1,8 +1,7 @@
 /**
- * 行政区解析（自 memory/facts/geo-mappings.ts 行为等价迁移，Phase 1）。
+ * 行政区解析公共入口。
  *
- * resolveParentAdministrativeArea 为 §8.3 新增查询 API（替代直接读取
- * COUNTY_LEVEL_CITY_TO_PREFECTURE 数据表），语义与岗位工具边界的县级市
+ * resolveParentAdministrativeArea 隔离底层行政区数据表，语义与岗位工具边界的县级市
  * 兼容规则一致：允许兼容裸名称，因为调用方（cityNameList 等结构化参数）
  * 已表达明确语义；自由文本扫描仍只命中"延吉市"这种显式后缀。
  */
@@ -19,10 +18,10 @@ import { normalizeCityName, normalizeDistrictForLookup } from './geo-name.normal
 import { resolveCityFromLocation } from './place-alias.resolver';
 
 /**
- * 全国县级市映射灰度开关（方案 §17.2，Phase 4 短期开关，收敛后删除）。
+ * 全国县级市映射运行时开关。
  *
  * geo 域零依赖、非 Nest module，无法走 ConfigService；直接读 process.env
- * 是方案预期内的短期形态。每次调用实时读取（不缓存），便于测试与运维即改即生效。
+ * 并在每次调用时实时读取，便于测试与运维即改即生效。
  */
 function isNationalCountyMappingEnabled(): boolean {
   return process.env.GEO_NATIONAL_COUNTY_MAPPING_ENABLED === 'true';
@@ -107,9 +106,8 @@ export function resolveCityFromDistrict(candidate: string): string | null {
  * 排除，剩下的（青浦/浦东/朝阳/海淀…）应当无歧义地补出来。此函数让确定性兜底逻
  * 辑覆盖 LLM 的保守留空，避免"高置信明明能识别，sessionFacts 却 city=null"的尴尬。
  *
- * 现状语义 = 先命中先赢（先区县后地标，命中即返回）。多信号指向不同城市时的
- * 冲突出口按方案 §8.2/Phase 3 以 shadow 档另行落地，本函数迁移期行为不变
- * （Phase 0 golden case 锁定）。
+ * 语义 = 先命中先赢（先区县后地标，命中即返回）。多信号冲突另由
+ * detectGeoSignalConflict 记录排障线索，不改变本函数结果。
  */
 export function resolveCityFromGeoSignals(
   districts: readonly string[] | null | undefined,
@@ -127,15 +125,12 @@ export function resolveCityFromGeoSignals(
 }
 
 /**
- * 地理信号冲突检测——shadow 档（§8.2 / Phase 3 第 6 步）。
+ * 地理信号冲突检测（只供 shadow 观测与排障）。
  *
  * 与 resolveCityFromGeoSignals 的先命中先赢不同，本函数扫描**全部**信号并
- * 收集去重后的城市候选；≥2 个不同城市即"本应 ambiguous"（现网实证：
- * badcase xnp1u820 "成都的 + 静安区"、i2vljy1u）。仅供观测落 GeoQueryMeta，
- * 不参与任何行为决策；**enforce 已于 2026-08-14 终审 no-go，不再是待办**——3 周生产
- * shadow（约 22,800 回合）累计 25 起样本，逐条分类后真冲突 0 起，噪音全部是地标别名
- * 与跨层级同形地名（长阳、宝山中街），详见 docs/architecture/geo-resolution.md §9.3。
- * 本函数保留为排障线索（判断城市判错是否源于别名误命中），不要再按"待决策"推动。
+ * 收集去重后的城市候选；至少两个不同城市时记录冲突。它只向 GeoQueryMeta
+ * 写入排障线索，不参与行为决策，也不得转为 enforce；观测到的冲突主要来自地标别名和
+ * 跨层级同形地名，详见 docs/architecture/geo-resolution.md §9.3。
  */
 export function detectGeoSignalConflict(
   districts: readonly string[] | null | undefined,
@@ -143,12 +138,9 @@ export function detectGeoSignalConflict(
   options?: {
     /**
      * 会话内已确立的城市。给出且命中某个候选时，判定为"已被已知城市裁决"——
-     * 返回值带 `adjudicatedByKnownCity`，消费方须视为**非真冲突**（见 §17.4.1）。
+     * 返回值带 `adjudicatedByKnownCity`，消费方须视为**非真冲突**。
      *
-     * 注意作用域：enforce 的落点 `backfillCityFromWhitelist` 仅在 city 为空时才运行，
-     * 那里天然拿不到已知城市，故本参数**对 enforce 无效**，只服务岗位工具侧的
-     * shadow 观测降噪。真正降低 enforce 误伤面的是脏别名清表
-     * （DIRTY_ALIAS_EXCLUSIONS + geo:validate 检查项 8）。
+     * 本参数只服务岗位工具侧的 shadow 观测降噪，不改变城市选择行为。
      */
     knownCity?: string | null;
   },
@@ -191,8 +183,8 @@ export function detectGeoSignalConflict(
  *   { input:'延吉', canonicalName:'延吉市', level:'county_level_city', parentCity:'延边朝鲜族自治州' }
  *
  * 查询顺序：人工策展表（COUNTY_LEVEL_CITY_TO_PREFECTURE，海绵口径逐条实证）始终
- * 优先；未命中且 GEO_NATIONAL_COUNTY_MAPPING_ENABLED=true 时回退全国生成表
- * （administrative-division.generated.ts，Phase 4 灰度接入）。开关关闭时未收录
+ * 优先；未命中且 GEO_NATIONAL_COUNTY_MAPPING_ENABLED=true 时回退全国生成表。
+ * 开关关闭时未收录
  * 条目（含待补录的余姚/慈溪类）返回 null，不猜父级。
  */
 export function resolveParentAdministrativeArea(input: string): ParentAdministrativeArea | null {
@@ -216,7 +208,7 @@ export function resolveParentAdministrativeArea(input: string): ParentAdministra
  * 区名唯一映射的全量条目（district → city）只读视图。
  *
  * 供跨域消费方（brand 城市同形词门槛按城市索引区名后缀）建索引；Record 本身
- * 不作为公共 API（§8.1 终态原则：行政区关系一律通过 resolver 查询）。
+ * 不作为公共 API，行政区关系一律通过 resolver 查询。
  */
 export function listUniqueDistrictCityEntries(): ReadonlyArray<readonly [string, string]> {
   return Object.entries(UNIQUE_SUBDIVISION_TO_CITY);
@@ -226,8 +218,7 @@ export function listUniqueDistrictCityEntries(): ReadonlyArray<readonly [string,
  * 文本是否以已知城市名开头、且后面还有更具体内容（"常州钟楼区" → true，"常州" → false）。
  *
  * 供 infra/geocoding 的查询分类器判断"文本自带城市线索、可走结构化地址"（§11.1 消费场景）。
- * 替代消费方直接拼接 HIGH_CONFIDENCE_BARE_LOCATION_ALIASES / NATIONAL_CITY_SUFFIX_TO_CITY 数据表
- * （§8.1 过渡期导出收口，Phase 5）。
+ * 避免消费方直接拼接 HIGH_CONFIDENCE_BARE_LOCATION_ALIASES / NATIONAL_CITY_SUFFIX_TO_CITY 数据表。
  */
 export function hasKnownCityPrefix(text: string): boolean {
   const trimmed = text.trim();

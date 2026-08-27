@@ -1,4 +1,4 @@
-import type { ReengagementSessionState } from '@memory/types/reengagement-session-state.types';
+import type { ReengagementSessionState } from '@memory/recall.types';
 import {
   bookingFollowUpAnchorId,
   computeFireAt,
@@ -21,6 +21,17 @@ const baseState = (over: Partial<ReengagementSessionState> = {}): ReengagementSe
 const at = (utcHour: number, minute = 0): number => Date.UTC(2026, 5, 24, utcHour, minute, 0);
 
 describe('scenario-registry', () => {
+  it('registers the onboarding follow-up as a default-on post-booking family member', () => {
+    expect(getScenario('post_interview_onboarding')).toMatchObject({
+      phase: 'post_booking',
+      displayName: '面试后回访 · 入职跟进',
+      anchorEvent: 'interview.passed',
+      defaultDelayMinutes: 4320,
+      // 0820 裁定：三档发版即开
+      defaultRolloutEnabled: true,
+    });
+  });
+
   it('versions AI 17:00 follow-up anchors without changing other booking anchors', () => {
     expect(
       bookingFollowUpAnchorId(451713, 1784599200000, 'post_interview_followup', 'AI面试'),
@@ -28,6 +39,9 @@ describe('scenario-registry', () => {
     expect(bookingFollowUpAnchorId(451713, 1784599200000, 'interview_reminder', 'AI面试')).toBe(
       'wo451713:iv1784599200000:interview_reminder',
     );
+    expect(
+      bookingFollowUpAnchorId(451713, 1784599200000, 'interview_reminder', 'AI面试', 'd2_confirm'),
+    ).toBe('wo451713:iv1784599200000:interview_reminder:d2');
   });
 
   it('allows grounded context carry-over for store follow-ups', () => {
@@ -157,6 +171,21 @@ describe('scenario-registry', () => {
           60,
         ),
       ).toBe(at(7));
+    });
+
+    it('defaults the d2 confirmation variant to 2880 minutes before interview', () => {
+      const anchorAt = Date.UTC(2026, 5, 20, 2, 0, 0);
+      const interviewAt = Date.UTC(2026, 5, 25, 6, 0, 0);
+      const state = baseState({ terminal: 'booked', interviewAt } as never);
+
+      expect(
+        computeFireAt(
+          getScenario('interview_reminder')!,
+          { anchorAt, state },
+          undefined,
+          'd2_confirm',
+        ),
+      ).toBe(interviewAt - 2 * 24 * 60 * 60_000);
     });
   });
 
@@ -300,6 +329,42 @@ describe('scenario-registry', () => {
       expect(shouldStop(s, state, anchorAt, { externallyVerifiable: true }).stop).toBe(false);
     });
 
+    it.each(['interview_reminder', 'post_interview_followup'] as const)(
+      'keeps terminal and replied exemptions unchanged for %s',
+      (scenarioCode) => {
+        const postBooking = getScenario(scenarioCode)!;
+        const state = baseState({
+          terminal: 'booked',
+          lastCandidateMessageAt: anchorAt + 1,
+          interviewAt: anchorAt + 3_600_000,
+        } as never);
+
+        expect(
+          shouldStop(postBooking, state, anchorAt, { externallyVerifiable: true }),
+        ).toEqual({ stop: false });
+        expect(shouldStop(postBooking, state, anchorAt)).toEqual({
+          stop: true,
+          reason: 'candidate_replied_after_anchor',
+        });
+      },
+    );
+
+    it('applies the generalized post-booking exemptions to onboarding', () => {
+      const onboarding = getScenario('post_interview_onboarding')!;
+      const state = baseState({
+        terminal: 'handed_off',
+        lastCandidateMessageAt: anchorAt + 1,
+      });
+
+      expect(
+        shouldStop(onboarding, state, anchorAt, { externallyVerifiable: true }),
+      ).toEqual({ stop: false });
+      expect(shouldStop(onboarding, state, anchorAt)).toEqual({
+        stop: true,
+        reason: 'candidate_replied_after_anchor',
+      });
+    });
+
     it('keeps the replied rule for booking follow-ups without verification capability', () => {
       const s = getScenario('interview_reminder')!;
       const state = baseState({ terminal: 'booked', lastCandidateMessageAt: anchorAt + 1 });
@@ -385,6 +450,69 @@ describe('scenario-registry', () => {
 
     it('missing post-booking switch is treated as open', () => {
       expect(resolveRolloutEnabled(getScenario('interview_reminder')!, {})).toBe(true);
+    });
+
+    // 0820 裁定：变体子键缺省开（发版即开），但从属于场景开关——场景关（Dashboard
+    // 有行，急停出口）则变体必关；子键显式 false 可单独关变体不影响本档。
+    it('d2 defaults on but stays subordinate to the reminder scenario switch', () => {
+      const scenario = getScenario('interview_reminder')!;
+      expect(
+        resolveRolloutEnabled(
+          scenario,
+          { reengagementScenarioRollout: { interview_reminder: true } },
+          'd2_confirm',
+        ),
+      ).toBe(true);
+      expect(
+        resolveRolloutEnabled(
+          scenario,
+          { reengagementScenarioRollout: { interview_reminder: false } },
+          'd2_confirm',
+        ),
+      ).toBe(false);
+      expect(
+        resolveRolloutEnabled(
+          scenario,
+          { reengagementScenarioRollout: { 'interview_reminder:d2': false } },
+          'd2_confirm',
+        ),
+      ).toBe(false);
+      expect(
+        resolveRolloutEnabled(
+          scenario,
+          {
+            reengagementPostBookingEnabled: false,
+            reengagementScenarioRollout: { 'interview_reminder:d2': true },
+          },
+          'd2_confirm',
+        ),
+      ).toBe(false);
+    });
+
+    it('store invite escalation defaults on, is scenario-subordinate, and its child key only affects the escalation', () => {
+      const scenario = getScenario('store_presented_no_reply')!;
+      const config = {
+        reengagementScenarioRollout: { store_presented_no_reply: true },
+      };
+
+      expect(resolveRolloutEnabled(scenario, config)).toBe(true);
+      expect(resolveRolloutEnabled(scenario, config, undefined, 'invite')).toBe(true);
+      expect(
+        resolveRolloutEnabled(
+          scenario,
+          { reengagementScenarioRollout: { store_presented_no_reply: false } },
+          undefined,
+          'invite',
+        ),
+      ).toBe(false);
+      const inviteOff = {
+        reengagementScenarioRollout: {
+          store_presented_no_reply: true,
+          'store_presented_no_reply:invite': false,
+        },
+      };
+      expect(resolveRolloutEnabled(scenario, inviteOff, undefined, 'invite')).toBe(false);
+      expect(resolveRolloutEnabled(scenario, inviteOff)).toBe(true);
     });
   });
 });

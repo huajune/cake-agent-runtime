@@ -172,7 +172,7 @@ export class OpsCardRenderer {
       '**回复预览（前 400 字）**',
       `> ${params.replyPreview.replace(/\n/g, ' ')}`,
       '',
-      '排查建议：若准确率高，可升级到 phase 2（命中即静默丢弃回复）；若误报多，调整规则关键词或加 exception。',
+      '排查建议：先按 ruleId 抽样核对证据；误报应修正规则或例外，是否升级为 veto 需另行评审并以标定数据为准。',
     ].join('\n');
 
     return this.cardBuilder.buildMarkdownCard({

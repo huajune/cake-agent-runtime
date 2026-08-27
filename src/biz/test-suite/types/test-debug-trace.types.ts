@@ -58,14 +58,9 @@ export interface MemoryFixtureSetup {
   /**
    * 已确认的预约工单指针（长期记忆 active_booking），供「依赖已有预约」的用例注入前置状态。
    *
-   * 2026-08-06 巡检实证：单轮 scenarioCase 的 chatHistory 只是消息回放，不会重建跨轮状态。
-   * badcase au5gy9hy（爽约不取消）因会话内没有真实工单，模型自行臆造了工单号
-   * WO_2100366180047430400，超出安全整数范围致工具报错，回复看似正常——判据整个落空，
-   * 差点被记成「修复未生效」。改约（x4xis2s2）、预约错门店（pypni6fs）、线上面试不得跳过
-   * （gh137zjo）同族均卡在这里。
-   *
-   * 注入后 [当前预约信息] 才会出现，duliday_cancel_work_order / duliday_modify_interview_time
-   * 也才拿得到 workOrderId。
+   * 单轮 scenarioCase 的 chatHistory 只回放消息，不会重建跨轮状态。注入该字段后
+   * [当前预约信息] 才会出现，duliday_cancel_work_order / duliday_modify_interview_time
+   * 也才能获取真实 workOrderId，避免模型为缺失状态臆造工单号。
    */
   activeBookings?: Array<{
     /** 海绵工单号；对应 ActiveBooking.work_order_id。 */
@@ -77,7 +72,7 @@ export interface MemoryFixtureSetup {
   profile?: Record<string, unknown>;
   /** Convenience stage field. */
   currentStage?: string | null;
-  /** ProceduralState-compatible fixture. */
+  /** StageState-compatible fixture. */
   procedural?: Record<string, unknown>;
 }
 
@@ -103,6 +98,7 @@ export interface TestRuntimeScope {
   corpId: string;
   userId: string;
   sessionId: string;
+  botUserId?: string;
   callerKind: string;
   strategySource?: string;
   scenario?: string;

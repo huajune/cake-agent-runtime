@@ -74,6 +74,7 @@ export async function executeTest(request: TestChatRequest): Promise<TestChatRes
 
 export async function resetChatSessionMemory(params: {
   userId: string;
+  botUserId: string;
   corpId?: string;
 }): Promise<ResetChatSessionResponse> {
   const { data } = await api.post('/test-suite/chat/reset-session', params, {
@@ -315,7 +316,10 @@ export async function importFromFeishu(request: ImportFromFeishuRequest): Promis
 export async function submitFeedback(
   request: SubmitFeedbackRequest,
 ): Promise<SubmitFeedbackResponse> {
-  const { data } = await api.post('/test-suite/feedback', request);
+  // 写飞书含截图上传（最多 10MB），默认 10s 超时会假失败诱发用户重试出重复行
+  const { data } = await api.post('/test-suite/feedback', request, {
+    timeout: AGENT_TEST_TIMEOUT,
+  });
   return unwrapResponse<SubmitFeedbackResponse>(data);
 }
 

@@ -9,9 +9,12 @@ import type { GeocodeCandidate } from '@infra/geocoding/geocoding.types';
 import { SpongeService } from '@sponge/sponge.service';
 import type { JobDetail } from '@sponge/sponge.types';
 import { ToolBuilder } from '@shared-types/tool.types';
-import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
-import { buildSpongeTokenContext } from '@tools/utils/sponge-token-context.util';
-import { buildJobPolicyAnalysis, isOfflineInterviewMethod } from '@tools/utils/job-policy-parser';
+import { buildToolError, TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
+import { buildSpongeTokenContext } from '@tools/shared/sponge-token-context.util';
+import {
+  buildJobPolicyAnalysis,
+  isOfflineInterviewMethod,
+} from '@tools/job-list/job-policy-parser';
 import { canUseFactForAction } from '@tools/shared/action-confidence';
 
 const logger = new Logger('send_store_location');

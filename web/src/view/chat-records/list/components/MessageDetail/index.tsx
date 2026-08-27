@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import type { ChatMessage, ChatSession } from '@/hooks/chat/useChatSessions';
+import { useMessageProcessingRecords } from '@/hooks/chat/useMessageProcessingRecords';
+import type { MessageRecord } from '@/api/types/chat.types';
 import type { FeedbackSourceTrace } from '@/api/types/agent-test.types';
 import { FeedbackButtons } from '@/view/agent-test/list/components/FeedbackButtons';
 import { FeedbackModal } from '@/view/agent-test/list/components/FeedbackModal';
@@ -51,6 +54,35 @@ function getMessageId(message: ChatMessage, fallbackIndex?: number): string | un
   );
 }
 
+const PROCESSING_MATCH_WINDOW_MS = 5 * 60 * 1000;
+
+function toTimestamp(value: string | number): number | undefined {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : undefined;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? timestamp : undefined;
+}
+
+function findNearestProcessingRecord(
+  records: MessageRecord[],
+  messageTimestamp: number,
+): MessageRecord | undefined {
+  let nearest: MessageRecord | undefined;
+  let nearestDistance = PROCESSING_MATCH_WINDOW_MS + 1;
+
+  for (const record of records) {
+    if (!record.messageId) continue;
+    const receivedAt = toTimestamp(record.receivedAt);
+    if (receivedAt === undefined) continue;
+    const distance = Math.abs(receivedAt - messageTimestamp);
+    if (distance <= PROCESSING_MATCH_WINDOW_MS && distance < nearestDistance) {
+      nearest = record;
+      nearestDistance = distance;
+    }
+  }
+
+  return nearest;
+}
+
 interface MessageDetailProps {
   selectedChatId: string | null;
   messages: ChatMessage[];
@@ -64,6 +96,12 @@ export default function MessageDetail({
   currentSession,
   isLoading,
 }: MessageDetailProps) {
+  const navigate = useNavigate();
+  const { data: processingRecords = [], isLoading: processingRecordsLoading } =
+    useMessageProcessingRecords({
+      chatId: selectedChatId ?? undefined,
+      enabled: Boolean(selectedChatId),
+    });
   const feedback = useFeedback({ source: 'chat_record' });
   const {
     addScreenshots,
@@ -225,6 +263,9 @@ export default function MessageDetail({
             </div>
             {group.messages.map((msg, index) => {
               const isAssistant = isAssistantMessage(msg);
+              const processingRecord = !isAssistant
+                ? findNearestProcessingRecord(processingRecords, msg.timestamp)
+                : undefined;
               const messageKey = getMessageId(msg, index);
               const displayName = isAssistant
                 ? msg.managerName || currentSession?.managerName || '招募经理'
@@ -268,6 +309,28 @@ export default function MessageDetail({
                     <div className={`${styles.messageMeta} ${isAssistant ? styles.assistant : ''}`}>
                       <span className={styles.senderName}>{displayName}</span>
                       <span className={styles.messageTime}>{formatTime(msg.timestamp)}</span>
+                      {!isAssistant && (
+                        <button
+                          type="button"
+                          className={styles.processingLink}
+                          disabled={processingRecordsLoading || !processingRecord?.messageId}
+                          title={
+                            processingRecord?.messageId
+                              ? `打开流水 ${processingRecord.messageId}`
+                              : '该消息前后 5 分钟内未匹配到处理流水'
+                          }
+                          onClick={() => {
+                            if (!processingRecord?.messageId) return;
+                            navigate(
+                              `/message-processing?messageId=${encodeURIComponent(
+                                processingRecord.messageId,
+                              )}`,
+                            );
+                          }}
+                        >
+                          查看处理详情
+                        </button>
+                      )}
                     </div>
                     <div className={bubbleClass}>
                       <MessageBubbleContent

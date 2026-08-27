@@ -6,7 +6,7 @@
  * 也不 import resolution/brand（§12，ESLint no-restricted-imports 固化）。
  */
 
-// —— 稳定 API（长期保留）——
+// —— 公共 API ——
 export type {
   AdministrativeLevel,
   GeoTextScanCity,
@@ -33,5 +33,5 @@ export { scanGeoSignalsFromText } from './geo-text-scan';
 export { hasGenericAmbiguousSuffix, GENERIC_AMBIGUOUS_SUFFIXES } from './ambiguous-place.policy';
 export { NATIONAL_CITY_BARE_NAMES } from './explicit-city.data';
 
-// 过渡期数据表导出已随 Phase 5 收口删除（§8.1）：行政区关系一律通过 resolver 查询，
-// 数据常量不是公共 API。域内测试需要断言数据现状时，直接从数据模块相对导入。
+// 行政区关系一律通过 resolver 查询，数据常量不是公共 API。
+// 域内测试需要断言数据现状时，直接从数据模块相对导入。

@@ -10,12 +10,12 @@ import { Logger } from '@nestjs/common';
 import { tool } from 'ai';
 import { z } from 'zod';
 import { SpongeService } from '@sponge/sponge.service';
-import { buildSpongeTokenContext } from '@tools/utils/sponge-token-context.util';
+import { buildSpongeTokenContext } from '@tools/shared/sponge-token-context.util';
 import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
-import { LongTermService } from '@memory/services/long-term.service';
+import { LongTermService } from '@memory/long-term/long-term.service';
 import { ToolBuilder } from '@shared-types/tool.types';
-import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
-import { isInterviewSlotAvailabilityInquiryOnly } from '@tools/utils/interview-time-intent.util';
+import { buildToolError, TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
+import { isInterviewSlotAvailabilityInquiryOnly } from '@tools/booking/interview-time-intent.util';
 
 const logger = new Logger('duliday_modify_interview_time');
 

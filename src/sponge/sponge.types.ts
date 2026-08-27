@@ -288,27 +288,15 @@ export interface InterviewBookingParams {
   jobId: number;
   /** 面试时间；无面试时段（等通知）岗位不传，stripNullish 会将其从 payload 中剔除 */
   interviewTime?: string;
-  name: string;
-  phone: string;
-  age: number;
-  genderId: number;
-  operateType: number;
-  avatar?: string;
-  householdRegisterProvinceId?: number;
-  height?: number;
-  weight?: number;
-  hasHealthCertificate?: number;
-  healthCertificateTypes?: number[];
-  educationId?: number;
-  uploadResume?: string;
-  customerLabelList?: InterviewBookingCustomerLabel[];
-  logId?: number;
+  /** 实时契约字段值；身份字段与动态字段全部经此列表提交。 */
+  labelList: InterviewBookingLabelValue[];
 }
 
-export interface InterviewBookingCustomerLabel {
+export interface InterviewBookingLabelValue {
   labelId: number;
-  labelName: string;
-  name: string;
+  /** 选项型字段只传 optionCodes。 */
+  optionCodes?: string[];
+  /** TEXT / FILE 字段只传 value。 */
   value?: string;
 }
 
@@ -322,8 +310,9 @@ export interface UploadAttachmentResult {
   cloudStorageKey: string;
 }
 
-export interface InterviewBookingErrorItem {
-  field: string;
+export interface InterviewBookingApplyErrorItem {
+  labelId?: number;
+  field?: string;
   msg: string;
 }
 
@@ -333,7 +322,7 @@ export interface InterviewBookingResult {
   code?: number;
   message?: string;
   notice?: string | null;
-  errorList?: InterviewBookingErrorItem[] | null;
+  applyErrorList?: InterviewBookingApplyErrorItem[] | null;
   /**
    * 海绵工单 ID（预约成功时返回）。
    *
@@ -349,24 +338,24 @@ export interface InterviewBookingResult {
   traceId?: string | null;
 }
 
-/**
- * Sponge `customerLabel.value` 字段最大长度。
- *
- * 来源：杜力岱后台对岗位补充字段值的硬约束。booking 工具的 customer-label
- * builder 在拼装入参前按本常量校验；超长直接报错拒绝整次报名
- * （BOOKING_INVALID_CUSTOMER_LABEL_VALUES），不做裁剪。
- */
-export const SPONGE_CUSTOMER_LABEL_MAX_LENGTH = 51;
+export const InterviewBookingLabelValueSchema = z
+  .object({
+    labelId: z.number().int(),
+    optionCodes: z.array(z.string().min(1)).min(1).optional(),
+    value: z.string().min(1).optional(),
+  })
+  .superRefine((item, context) => {
+    if (Boolean(item.optionCodes) === Boolean(item.value)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'optionCodes 与 value 必须且只能提供一个',
+      });
+    }
+  });
 
-export const InterviewBookingCustomerLabelSchema = z.object({
-  labelId: z.number().int(),
-  labelName: z.string().min(1),
-  name: z.string().min(1),
-  value: z.string().max(SPONGE_CUSTOMER_LABEL_MAX_LENGTH).optional(),
-});
-
-export const InterviewBookingErrorItemSchema = z.object({
-  field: z.string().min(1),
+export const InterviewBookingApplyErrorItemSchema = z.object({
+  labelId: z.number().int().optional(),
+  field: z.string().min(1).optional(),
   msg: z.string().min(1),
 });
 
@@ -377,7 +366,7 @@ export const InterviewBookingApiResponseSchema = z
     data: z
       .object({
         notice: z.string().nullable().optional(),
-        errorList: z.array(InterviewBookingErrorItemSchema).nullable().optional(),
+        applyErrorList: z.array(InterviewBookingApplyErrorItemSchema).nullable().optional(),
         // 预约成功时海绵返回的工单对象。int64，可能以 number 或 string 形式下发，
         // 统一 coerce 成 number；缺失时为 null（不阻断解析）。
         workOrder: z
@@ -540,7 +529,7 @@ export interface SignupWorkOrderItem {
  *
  * 状态词是海绵的领域语言，唯一权威在此。此前全集只存在于 SignupWorkOrderItem 的行注释里，
  * 而"活跃约面"与"不可自助取消"两个语义子集在 precheck / oob-work-order /
- * follow-up.processor / cancel-work-order 各有一份字面副本（core-flow-review 议题 3-1）。
+ * follow-up.processor / cancel-work-order 不再各自维护字面副本。
  *
  * ⚠️ 各消费点的比较预处理（precheck 的 normalizePolicyText、oob 的 trim）**各自保留**，
  * 本常量只统一集合成员，不统一比较函数——统一比较属于行为变更。

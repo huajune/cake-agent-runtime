@@ -7,15 +7,17 @@ import {
   ReengagementTrackingService,
   type ReengagementTouchIdentity,
 } from '@biz/monitoring/services/tracking/reengagement-tracking.service';
-import type { ReengagementSessionState } from '@memory/types/reengagement-session-state.types';
+import type { ReengagementSessionState } from '@memory/recall.types';
 import type { SessionRef } from '../runner/agent-runner.types';
 import {
   computeFireAt,
   getScenario,
   hasInterviewAt,
+  resolveVariantConfigKey,
   shouldStop,
   type FollowUpScenario,
   type FollowUpScenarioCode,
+  type FollowUpTouchVariant,
 } from './scenario-registry';
 
 export const REENGAGEMENT_QUEUE = 'reengagement';
@@ -55,6 +57,12 @@ export interface FollowUpJob {
   interviewType?: string;
   /** 仅携带稳定工单引用、等待海绵同步后解析正式触达时间的重试任务。 */
   resolveBookingAtFire?: boolean;
+  /** 同场景内的触达档位；通过 anchorEventId 后缀保留追溯身份。 */
+  touchVariant?: FollowUpTouchVariant;
+  /** 推店未回的第二轮起升级标记；是否生效仍由独立 invite 子开关到点裁决。 */
+  escalateToGroupInvite?: boolean;
+  /** 入职跟进触达后 +48h 的纯复核任务；只查工单并按需告警，不生成或投递消息。 */
+  onboardingCheck?: boolean;
 }
 
 /** 触达底账 outbox 状态机。 */
@@ -82,6 +90,10 @@ export interface ScheduleFollowUpInput {
   interviewType?: string;
   /** 渠道身份快照（候选人昵称/接管 bot），随触达记录落库供追溯页直读。 */
   channelIdentity?: ReengagementChannelIdentity;
+  /** 同场景内的触达档位。 */
+  touchVariant?: FollowUpTouchVariant;
+  /** 推店未回的第二轮起升级标记。 */
+  escalateToGroupInvite?: boolean;
 }
 
 function createEmptyState(): ReengagementSessionState {
@@ -108,6 +120,13 @@ export interface ScheduleBookingResolutionInput {
   scenarioCode: Extract<FollowUpScenarioCode, 'interview_reminder' | 'post_interview_followup'>;
   workOrderId: number;
   anchorEventId: string;
+  anchorAt: number;
+  channelIdentity?: ReengagementChannelIdentity;
+}
+
+export interface ScheduleOnboardingCheckInput {
+  sessionRef: SessionRef;
+  workOrderId: number;
   anchorAt: number;
   channelIdentity?: ReengagementChannelIdentity;
 }
@@ -159,7 +178,7 @@ export class FollowUpSchedulerService {
 
     // 报名后触达必须绑定明确面试时间。等通知/无面试时间岗位没有可提醒或回访的时间点，
     // 不生成主动触达任务，避免按报名成功锚点兜底骚扰候选人。
-    if (scenario.phase === 'post_booking' && !hasInterviewAt(state)) {
+    if (scenario.anchorEvent === 'booking.succeeded' && !hasInterviewAt(state)) {
       this.tracking.trackScheduleSkipped(identity, 'missing_interview_time');
       return { scheduled: false, reason: 'missing_interview_time' };
     }
@@ -176,6 +195,7 @@ export class FollowUpSchedulerService {
       }
     }
 
+    const variantConfigKey = resolveVariantConfigKey(scenario.code, input.touchVariant);
     const fireAt = computeFireAt(
       scenario,
       {
@@ -183,7 +203,8 @@ export class FollowUpSchedulerService {
         state,
         interviewType: input.interviewType,
       },
-      runtime.reengagementScenarioDelayMinutes?.[scenario.code],
+      runtime.reengagementScenarioDelayMinutes?.[variantConfigKey ?? scenario.code],
+      input.touchVariant,
     );
     const delay = Math.max(0, fireAt - Date.now());
     const jobId = this.buildJobId(
@@ -231,6 +252,8 @@ export class FollowUpSchedulerService {
           anchorAt: input.anchorAt,
           ...(input.workOrderId != null ? { workOrderId: input.workOrderId } : {}),
           ...(input.channelIdentity ? { channelIdentity: input.channelIdentity } : {}),
+          ...(input.touchVariant ? { touchVariant: input.touchVariant } : {}),
+          ...(input.escalateToGroupInvite ? { escalateToGroupInvite: true } : {}),
         },
         {
           jobId,
@@ -250,6 +273,50 @@ export class FollowUpSchedulerService {
       this.logger.error(`[reengagement] 排程失败 jobId=${jobId}: ${toErrorMessage(error)}`);
       this.tracking.trackScheduleError(identity, toErrorMessage(error));
       return { scheduled: false, reason: 'enqueue_error' };
+    }
+  }
+
+  /** 入职跟进消息送达后排 +48h 复核；稳定 jobId 让重复回调天然幂等。 */
+  async scheduleOnboardingCheck(
+    input: ScheduleOnboardingCheckInput,
+  ): Promise<ScheduleFollowUpResult> {
+    if (!(await this.isEnabled())) return { scheduled: false, reason: 'disabled' };
+
+    const scenarioCode: FollowUpScenarioCode = 'post_interview_onboarding';
+    const anchorEventId = `wo${input.workOrderId}:onboarding_check`;
+    const jobId = this.buildJobId(input.sessionRef.sessionId, scenarioCode, anchorEventId);
+    try {
+      const existingJob = await this.queue.getJob(jobId).catch(() => null);
+      if (existingJob) return { scheduled: false, reason: 'duplicate_job', jobId };
+
+      const fireAt = input.anchorAt + 48 * 60 * 60_000;
+      await this.queue.add(
+        REENGAGEMENT_JOB_NAME,
+        {
+          sessionRef: input.sessionRef,
+          scenarioCode,
+          anchorEventId,
+          anchorAt: input.anchorAt,
+          workOrderId: input.workOrderId,
+          onboardingCheck: true,
+          ...(input.channelIdentity ? { channelIdentity: input.channelIdentity } : {}),
+        },
+        {
+          jobId,
+          delay: Math.max(0, fireAt - Date.now()),
+          attempts: 2,
+          backoff: { type: 'fixed', delay: 30_000 },
+          removeOnComplete: { age: 7 * 24 * 60 * 60, count: 500 },
+          removeOnFail: { age: 7 * 24 * 60 * 60, count: 500 },
+        },
+      );
+      this.logger.log(
+        `[reengagement] 已排入职复核 jobId=${jobId} fireAt=${new Date(fireAt).toISOString()}`,
+      );
+      return { scheduled: true, fireAt, jobId };
+    } catch (error) {
+      this.logger.error(`[reengagement] 入职复核排程失败 jobId=${jobId}: ${toErrorMessage(error)}`);
+      return { scheduled: false, reason: 'enqueue_error', jobId };
     }
   }
 
@@ -489,10 +556,13 @@ export class FollowUpSchedulerService {
     if (candidateScenario.phase === 'pre_booking') return true;
     // 报名后任务以工单为隔离边界：同一候选人可以同时存在多个有效面试，跨工单
     // 绝不能互相覆盖。同工单的不同场景（提醒/回访）也应并存；只有同工单同场景的
-    // 旧任务才是改约前的过期任务，需要由新时间对应的任务替换。
+    // 同触达档位的旧任务才是改约前的过期任务，需要由新时间对应的任务替换。
     if (input.workOrderId != null && candidate.workOrderId != null) {
       if (candidate.workOrderId !== input.workOrderId) return false;
-      return candidate.scenarioCode === input.scenarioCode;
+      return (
+        candidate.scenarioCode === input.scenarioCode &&
+        (candidate.touchVariant ?? null) === (input.touchVariant ?? null)
+      );
     }
 
     // 缺少工单身份的存量任务无法安全区分面试，沿用旧行为，由新任务收敛。

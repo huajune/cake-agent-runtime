@@ -1,6 +1,6 @@
 # 品牌解析域架构（brand resolution）
 
-**最后更新**：2026-08-12
+**最后更新**：2026-08-26
 **代码居所**：`src/resolution/brand/`（纯确定性，零 LLM 调用）+ `src/resolution/evidence/brand-policy.ts`（状态迁移策略行）
 
 > 本文描述已实现的系统。品牌状态的**入档裁决**共用候选人档案域的证据底盘，域宪法见
@@ -55,7 +55,7 @@ src/resolution/brand/
   Debounce 静默窗口合并成一轮
         ↓
 【回合准备】preparation / memory.onTurnStart          ← 锚点一
-  resolve(用户文字, 'user_text')     规则轨定极性，目录匹配定实体
+  resolve(用户文字, 'user_text')     目录识别实体；规则极性只作抽取降级兜底
   resolve(昵称, 'contact_name')      目录验证；brand_state 不存在时
                                      seed 为 currentBrand（仅一次，见 §7.3）
   读 SessionBrandState → Prompt Section 注入品牌状态
@@ -73,7 +73,7 @@ src/resolution/brand/
   产出 queryMeta（filterMode + brandSource）
         ↓
 【出站守卫】guardrail（§9）
-  硬规则 + 语义档只读 queryMeta 对账
+  只对账高置信 fuzzySuggestions 与回复，不做开放式品牌抽取
         ↓
 【turn-finalizer / memory.onTurnEnd】统一副作用出口    ← 锚点二
   extract_facts（LLM 轨）  极性判断 + 指代链接，品牌名回目录验证
@@ -86,7 +86,7 @@ src/resolution/brand/
 
 ### 2.1 四条贯穿性规则
 
-1. **实体裁定只有一处**：`resolve()` 的目录验证。四个 LLM 触点产出的只是候选文本 / 极性 / 参数。
+1. **实体裁定只有一处**：`resolve()` 的目录验证。三个既有 LLM 触点产出的只是候选文本 / 极性 / 参数。
 2. **状态写入只有一扇门**：turn-finalizer 里的策略行应用。准备阶段、工具、守卫全部只读。
 3. **当轮行为与跨轮状态解耦**：当轮查什么靠主 Agent 判断 + 入口标准化 + 会话品牌兜底，不等图片解析；图片品牌进状态服务的是下一轮。
 4. **审计一条线**：三类事件同 `trace_id` 落库，任何品牌行为可回答「从哪来、为什么命中、最后用了什么」。
@@ -111,13 +111,13 @@ export type BrandResolutionSource = 'user_text' | 'contact_name' | 'image_descri
 
 分类轴是**证据形态**，因为证据形态决定误判时的修法——修法不同的档位不合并。
 
-| 匹配方式 | 含义 | 例子 | 误判修法 |
-| --- | --- | --- | --- |
-| `brand_id` | 文本中直接出现品牌 ID | 图片描述中的「品牌ID：10239」 | 格式契约 |
-| `canonical_exact` | 归一化后与标准名完全相等 | 「肯德基」→ 肯德基 | 清理品牌库数据 |
-| `alias_exact` | 归一化后与唯一别名完全相等 | 「KFC」→ 肯德基 | 清理品牌库数据 |
-| `alias_containment` | 安全长别名以子串形式出现在整句中 | 「我要瑞幸咖啡的兼职」 | 收紧长别名白名单 |
-| `category_expansion` | 品类词展开为品类下一组品牌 | 「咖啡」→ 品类内每个品牌一条 | 调品类词典 |
+| 匹配方式             | 含义                             | 例子                          | 误判修法         |
+| -------------------- | -------------------------------- | ----------------------------- | ---------------- |
+| `brand_id`           | 文本中直接出现品牌 ID            | 图片描述中的「品牌ID：10239」 | 格式契约         |
+| `canonical_exact`    | 归一化后与标准名完全相等         | 「肯德基」→ 肯德基            | 清理品牌库数据   |
+| `alias_exact`        | 归一化后与唯一别名完全相等       | 「KFC」→ 肯德基               | 清理品牌库数据   |
+| `alias_containment`  | 安全长别名以子串形式出现在整句中 | 「我要瑞幸咖啡的兼职」        | 收紧长别名白名单 |
+| `category_expansion` | 品类词展开为品类下一组品牌       | 「咖啡」→ 品类内每个品牌一条  | 调品类词典       |
 
 **长短别名匹配规则不同**：「瑞幸咖啡」这类长名出现在句中即命中（几个字连在一起基本不可能巧合）；「全家」这类短名（同时是日常词）必须是候选人独立说出的词才算命中——说「想去全家」算，说「我们全家都可以」不算。
 
@@ -131,12 +131,12 @@ export type BrandResolutionSource = 'user_text' | 'contact_name' | 'image_descri
 export type BrandIntentPolarity = 'positive' | 'negative' | 'browse_all';
 ```
 
-| 用户表达 | 极性 |
-| --- | --- |
-| 「我想去肯德基」/「肯德基还招吗」/「你刚才说的肯德基」 | `positive` |
-| 「不要肯德基」 | `negative` |
-| 「换个品牌」 | `negative`（品牌为空，指向当前主品牌） |
-| 「品牌不限」 | `browse_all` |
+| 用户表达                                               | 极性                                   |
+| ------------------------------------------------------ | -------------------------------------- |
+| 「我想去肯德基」/「肯德基还招吗」/「你刚才说的肯德基」 | `positive`                             |
+| 「不要肯德基」                                         | `negative`                             |
+| 「换个品牌」                                           | `negative`（品牌为空，指向当前主品牌） |
+| 「品牌不限」                                           | `browse_all`                           |
 
 **默认极性是 `positive`**（业务裁定）：候选人在求职对话里主动提到一个品牌就视为兴趣信号——不感兴趣不会提。**不设中性的「仅提及」档位**，也不做 6 值细分（「换个品牌」语义上就是排斥当前主品牌；「还招吗」在招聘场景就是意向表达）。
 
@@ -214,14 +214,14 @@ normalize('NFKC') → lowerCase → 剔除非 [a-z0-9一-龥]
 
 `confidence` 是可解释的规则评分，**不宣称为统计概率**。
 
-| 匹配结果 | 评分 |
-| --- | ---: |
-| 品牌 ID 命中 | 1.0 |
-| 标准名唯一精确命中 | 0.95 |
-| 唯一别名精确命中 | 0.90 |
-| 安全长别名包含命中 | 0.75 |
-| 品类展开 | 0.75 |
-| 冲突或上下文不足 | ≤ 0.40 |
+| 匹配结果           |   评分 |
+| ------------------ | -----: |
+| 品牌 ID 命中       |    1.0 |
+| 标准名唯一精确命中 |   0.95 |
+| 唯一别名精确命中   |   0.90 |
+| 安全长别名包含命中 |   0.75 |
+| 品类展开           |   0.75 |
+| 冲突或上下文不足   | ≤ 0.40 |
 
 **工具可执行阈值**：`>= 0.75` 的无歧义结果才可形成品牌过滤条件，`<= 0.40` 一律进 rejected。档位设计上不产生 (0.40, 0.75) 区间的值——**阈值即二分，不存在灰区行为**。
 
@@ -231,14 +231,13 @@ normalize('NFKC') → lowerCase → 剔除非 [a-z0-9一-龥]
 
 ## 5. LLM 触点全景
 
-品牌链路共有四个 LLM 触点。`resolution/brand` 自身零 LLM 调用，是全部触点共同的确定性裁定关口。
+品牌链路复用三个既有 LLM 触点。`resolution/brand` 自身零 LLM 调用，是全部触点共同的确定性裁定关口。
 
 | 触点 | 居所 | 时机 | 允许决定 | 禁止决定 | 失效兜底 |
 | --- | --- | --- | --- | --- | --- |
-| 图片转写者 | 多模态主路径=主 Agent `save_image_description`；兼容路径=channels 独立 Vision 服务 | 主路径回合内；兼容路径消息接入时 | 转写图片可见内容（品牌名 / ID / 门店） | 不认定品牌：转写文本经 `resolve()` 目录验证 | turn-finalizer 异步 Vision 补写 |
-| 事实提取 LLM | memory `extractFacts` | onTurnEnd 收尾序列 | 极性判断 + **指代链接** | 不创造品牌名：输出必须过目录验证 | 只剩规则轨，默认 positive |
-| 主 Agent LLM | agent/generator | 回合内 | 本轮工具查询传什么品牌参数 | 参数不是事实：入口标准化校验重写，永不直接写状态 | 参数为空走会话品牌兜底 |
-| 守卫 LLM（语义档） | guardrail | 出站审查时 | 回复与工具实际行为是否对账一致 | 不做品牌匹配：只读 queryMeta | 确定性硬规则仍在 |
+| 图片转写者 | 主 Agent `save_image_description` / 既有 Vision 兼容路径 | 回合内或接入时 | 转写图片可见内容 | 不认定品牌：文本仍经目录验证 | turn-finalizer 异步补写 |
+| 事实提取 LLM | memory `extractFacts` | onTurnEnd | `brand_intents` 极性与指代链接 | 不创造品牌名 | 规则极性降级兜底 |
+| 主 Agent LLM | agent/generator | 回合内 | 本轮工具查询参数 | 参数不直接写状态 | 会话品牌兜底 |
 
 **共同原则**：LLM 产出的是候选文本、极性或参数，**品牌实体是否成立一律由 `resolution/brand` 的目录验证裁定**；品牌状态的写入一律经 §7.3 的策略行。
 
@@ -249,14 +248,16 @@ normalize('NFKC') → lowerCase → 剔除非 [a-z0-9一-龥]
 1. **助手话术回声**——Agent 自己的找店话术被当作候选人意向输出（生产实例 chat `6a633590`，`null → 塔可贝尔` 凭空立主品牌）；
 2. **系统文本回流**——守卫 repair 反馈被当候选人原话解析，形成「守卫抱怨品牌 → 品牌被重新种进状态」的自我强化回路。
 
-两个判定都是纯函数，调用方 `session.service` 的 `validateBrandIntents` 持有对话上下文，命中即整条丢弃。**裸品牌名 / 短指代不在拦截范围**——指代链接（「你刚才说的那家」→ 品牌名）是 LLM 轨的本职，不能因 Agent 提过该品牌就拦。
+两个判定都是纯函数，`resolution/evidence/producers/brand-intents.ts` 的
+`produceValidatedBrandIntents` 持有对话上下文，命中即整条丢弃；memory 只记录拒绝原因。
+**裸品牌名 / 短指代不在拦截范围**——指代链接（「你刚才说的那家」→ 品牌名）是 LLM 轨的本职，不能因 Agent 提过该品牌就拦。
 
-### 5.2 极性双轨的时序与降级
+### 5.2 极性权威与降级
 
-- **规则轨在 onTurnStart 运行**：处理高置信模式的有限清单——「不要X」「除了X都行」「品牌不限 / 都行 / 随便」「换个品牌」，以及**指示代词排斥**「这个 / 那个不考虑」（输出品牌为空的 `negative`）。规则命中即定极性；
-- **LLM 轨在 onTurnEnd 的 `session_turn_end_updates` 串行序列内运行**（`extract_facts` 步骤，带缓存 / 跳过 / 降级），产出正好赶在品牌状态写入之前；
-- **两轨冲突时显式否定规则优先**——把「不要肯德基」落成 positive 的代价远高于漏掉一次 positive；
-- ⚠️ **状态应用步骤不因 extract_facts 失败而跳过**：extract_facts 抛错或降级时仍须以规则轨结果照常运行，否则当轮确定性解析出的 positive/negative（连同首轮 seed）随异常一起丢失。
+- **正常抽取**：onTurnEnd 的 `extract_facts.brand_intents` 是复杂极性的权威输入；经目录和
+  输入闸验证后，与图片解析结果汇总写状态。规则轨不得覆盖 LLM 的 positive/negative/browse_all；
+- **抽取失败、缺失或非法**：才回退既有规则极性有限清单；状态应用不能因抽取异常整体跳过；
+- 不再运行规则/LLM 双轨 shadow diff，也不为开放表达继续扩正则。
 
 LLM 轨承担一个规则轨和目录匹配**结构上做不了**的职责——**指代链接**：候选人发 M Stand 海报配文「这个不考虑」，「这个」在品牌库中无从命中，只有能读到完整上下文的 LLM 才能把它链接到图片品牌。
 
@@ -273,21 +274,21 @@ export type BrandFilterMode = 'enforce' | 'exclude' | 'clear' | 'browse_all';
 export type BrandSource = 'model_input' | 'session_state' | 'none';
 ```
 
-| 模式 | 行为 |
-| --- | --- |
-| `enforce` | 仅查询指定品牌（列表非空时的默认语义） |
-| `exclude` | 排除指定品牌 |
-| `clear` | 模型有意放宽（0 结果重查、探索别家）：不带品牌查询，**不修改会话状态** |
-| `browse_all` | 用户明确不限品牌：查询所有品牌，**清空会话状态** |
+| 模式         | 行为                                                                   |
+| ------------ | ---------------------------------------------------------------------- |
+| `enforce`    | 仅查询指定品牌（列表非空时的默认语义）                                 |
+| `exclude`    | 排除指定品牌                                                           |
+| `clear`      | 模型有意放宽（0 结果重查、探索别家）：不带品牌查询，**不修改会话状态** |
+| `browse_all` | 用户明确不限品牌：查询所有品牌，**清空会话状态**                       |
 
 ⚠️ `clear` 与 `browse_all` 必须保持区别：前者是模型的单次查询策略，后者是候选人的明确表达。
 
-| 组合 | 生效查询 | brandSource |
-| --- | --- | --- |
-| 品牌列表非空 | 按指定品牌查 / 排除 | `model_input` |
-| 列表空 + mode 未传 | 会话品牌兜底：`currentBrand` 命中按 enforce 并披露 | `session_state` / `none` |
-| 列表空 + `clear` / `browse_all` | 无品牌查询 | `none` |
-| 列表空 + `enforce`/`exclude` | 矛盾组合，工具报错引导 | — |
+| 组合                            | 生效查询                                           | brandSource              |
+| ------------------------------- | -------------------------------------------------- | ------------------------ |
+| 品牌列表非空                    | 按指定品牌查 / 排除                                | `model_input`            |
+| 列表空 + mode 未传              | 会话品牌兜底：`currentBrand` 命中按 enforce 并披露 | `session_state` / `none` |
+| 列表空 + `clear` / `browse_all` | 无品牌查询                                         | `none`                   |
+| 列表空 + `enforce`/`exclude`    | 矛盾组合，工具报错引导                             | —                        |
 
 **兜底边界原则：只补「模型看不到的跨轮遗忘」，不干预「模型刚看过的本轮判断」。** 仅 `currentBrand` 一档；本轮文字 / 图片是模型眼前的上下文，没传更可能是策略而非遗忘，不注入。
 
@@ -307,11 +308,11 @@ export type BrandSource = 'model_input' | 'session_state' | 'none';
 
 `brandAliasList` 硬过滤 0 结果时的拼音同音回指（badcase「刘姐妹」→「成都你六姐」）住在 `fuzzy-recall.ts`，但**不并入 `resolve()`**，三个实质差异：
 
-| | `resolve()` | `fuzzy-recall` |
-| --- | --- | --- |
-| 候选集 | 整个品牌库 | 仅本会话最近推荐过的少数品牌 |
+|          | `resolve()`                        | `fuzzy-recall`                               |
+| -------- | ---------------------------------- | -------------------------------------------- |
+| 候选集   | 整个品牌库                         | 仅本会话最近推荐过的少数品牌                 |
 | 置信契约 | 可直接执行的品牌事实（≥0.75 放行） | **必须经候选人确认的猜测**，永不直接成为事实 |
-| 触发条件 | 每条消息 | 仅「查询命中 0 结果」事件 |
+| 触发条件 | 每条消息                           | 仅「查询命中 0 结果」事件                    |
 
 若并入 `resolve()` 每条消息都跑，会在普通文本上持续产出低置信噪音，破坏「解析结果必须能溯源到品牌库」的确定性。衔接点在 queryMeta 的 `fuzzySuggestions` 字段。
 
@@ -334,13 +335,15 @@ export interface SessionBrandState {
 
 ### 7.2 存储与并发
 
-`SessionBrandState` 整体 JSON 序列化后存入会话状态 hash（`factsv2:{corpId}:{userId}:{sessionId}`）的**单一字段** `brand_state`——不是独立 Redis key。复用 factsv2 的字段级写入与 **90s 租约锁 + 心跳续期**；读取搭 `getSessionState` 的 HGETALL 便车。
+`PersistedBrandState` 保存在会话状态 hash（`factsv2:{corpId}:{userId}:{sessionId}`）的
+`facts` 字段内，即 `facts.brand`，不是独立 Redis key。回合仍在 chat 处理租约锁内执行；
+`SessionFactsService` 通过字段级写入替换 `facts` 投影。
 
-⚠️ **禁止**把 current/excluded 拆成多个 hash 字段——字段级合并会让事务性迁移出现半更新状态，这正是 debounce 并发下修过的 P0 坑型。`brand_state` 需注册进 `SessionFactsRedisContentSchema`，否则 zod 校验会丢弃该字段。
+⚠️ **禁止**把 current/excluded 拆成多个独立 hash 字段。它们共同组成一次品牌裁决状态，必须通过 `BrandStateService` reducer 原子地产出下一版 `facts.brand`。
 
 ### 7.3 状态迁移规则
 
-实现在 `src/resolution/evidence/brand-policy.ts`（品牌策略行：复合槽值 + set/exclude/clear 替换语义），与其它候选人字段共用同一套证据裁决底盘。执行位置在 `memory/services/brand-state.service.ts` 的 `applyTurnResolutions`，memory 侧只负责「持锁读 → 调策略 → 写回」。
+实现在 `src/resolution/evidence/brand-policy.ts`（品牌策略行：复合槽值 + set/exclude/clear 替换语义），与其它候选人字段共用同一套证据裁决底盘。执行位置在 `src/memory/short-term/brand-state.service.ts` 的 `applyTurnResolutions`，memory 侧只负责「读 `facts.brand` → 调纯 reducer → 写回」。
 
 **第 0 步 · 过滤输入**：剔除 `contact_name` 来源的结果——昵称品牌不参与常规轮次的状态更新，否则这个每轮都在的静态值会不断把自己写回 `currentBrand`。它进入状态的唯一通道是**首次初始化 seed**：`brand_state` 不存在时设为初始值，一次性、此后与普通品牌同权。**状态一旦存在（哪怕被 browse_all 清成空值）永不重新 seed**——「清空后被昵称锁回」在结构上不可能发生。
 
@@ -374,11 +377,11 @@ export interface SessionBrandState {
 
 取决于主聊天模型是否支持 vision（`accept-inbound-message` 按 `supportsVisionInput` 分流）：
 
-| 路径 | 条件 | 产出者 | 时机 |
-| --- | --- | --- | --- |
-| **多模态主路径**（生产常态） | 主模型支持 vision | 主 Agent 调 `save_image_description` 回写 | **回合内** |
-| 文本兼容路径 | 主模型不支持 vision | 独立 Vision 服务预转写 | 回合前 |
-| 运行时降级 | 多模态调用失败 | 独立 Vision 服务转写后文本重跑 | 回合内重试时 |
+| 路径                         | 条件                | 产出者                                    | 时机         |
+| ---------------------------- | ------------------- | ----------------------------------------- | ------------ |
+| **多模态主路径**（生产常态） | 主模型支持 vision   | 主 Agent 调 `save_image_description` 回写 | **回合内**   |
+| 文本兼容路径                 | 主模型不支持 vision | 独立 Vision 服务预转写                    | 回合前       |
+| 运行时降级                   | 多模态调用失败      | 独立 Vision 服务转写后文本重跑            | 回合内重试时 |
 
 关键推论：**多模态主路径下，回合准备时刻图片描述尚不存在**，无法在准备阶段解析。
 
@@ -415,18 +418,20 @@ export interface NormalizedBrandQueryMeta {
   brandSource: BrandSource;
   appliedBrandIds: number[];
   appliedCanonicalNames: string[];
-  rejected: Array<{ input: string; reason: 'unmatched' | 'ambiguous' | 'low_confidence'; candidates?: BrandCandidate[] }>;
+  rejected: Array<{
+    input: string;
+    reason: 'unmatched' | 'ambiguous' | 'low_confidence';
+    candidates?: BrandCandidate[];
+  }>;
   fuzzySuggestions?: Array<{ brandName: string; inputAlias: string; score: number }>;
 }
 ```
 
 工具返回值整体就是喂回模型的 tool output（AI SDK 机制），**模型天然可见 queryMeta**——兜底披露即通过它送达。
 
-**出站守卫读 `toolResult.queryMeta.brand`，不读模型原始 `brandAliasList`**，共三个读点：
-
-- `requested_brand_mismatch` → 读 `appliedCanonicalNames` / `appliedBrandIds`（对账对象是「工具实际应用的」而非「模型请求的」）；
-- `brand_alias_fuzzy_match_ignored` → 读 `queryMeta.brand.fuzzySuggestions`；
-- **语义档 review packet** → `review-packet.builder` 读 `queryMeta.brand`（applied + rejected）。前两条是硬规则，这条在语义档取数层，最容易被遗漏。
+**出站守卫只读 `toolResult.queryMeta.brand.fuzzySuggestions`，不读模型原始
+`brandAliasList` 做开放式匹配。** `brand_alias_fuzzy_match_ignored` 只在工具给出单一或明显领先的
+高置信回指、而回复仍声称品牌未找到时触发。低置信、多候选或没有工具回执时不强行采用。
 
 被拒绝的昵称或模型别名不会成为品牌不匹配守卫的权威依据——rejected 不在 applied 里。
 
@@ -436,10 +441,10 @@ export interface NormalizedBrandQueryMeta {
 
 复用 observability 体系（AgentTracer → CompositeObserver → PersistingObserver），落 `agent_execution_events`，与 `message_processing_records` 同 `trace_id` 可 join。
 
-| 事件 | 触发 | 内容 |
-| --- | --- | --- |
-| `brand_state_change` | 仅状态**实际变化**时（多数轮次零行） | 前后快照 + 触发它的解析结果（来源 / 匹配方式 / 极性 / `matchedText` / `sourceText`） |
-| `brand_resolution_ambiguous` | 歧义结果无条件记录（不依赖状态变化） | 歧义现场 + candidates；过期丢弃路径也留痕 |
+| 事件                         | 触发                                 | 内容                                                                                 |
+| ---------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------ |
+| `brand_state_change`         | 仅状态**实际变化**时（多数轮次零行） | 前后快照 + 触发它的解析结果（来源 / 匹配方式 / 极性 / `matchedText` / `sourceText`） |
+| `brand_resolution_ambiguous` | 歧义结果无条件记录（不依赖状态变化） | 歧义现场 + candidates；过期丢弃路径也留痕                                            |
 
 ⚠️ 新事件除加入 `AgentEvent` union 外**必须同时注册 `PersistingObserver` 的 `ALWAYS_PERSISTED_EVENT_TYPES` 白名单**，否则事件发了不落库。
 
@@ -456,11 +461,11 @@ export interface NormalizedBrandQueryMeta {
 
 ## 11. 开放项
 
-| # | 项目 | 现状 |
-| --- | --- | --- |
-| 1 | **品类偏好跨轮记忆** | `currentCategory` 未实现。品类词走 `category_expansion` 不写会话主品牌，跨轮不留痕迹、只能靠模型读对话历史。该退化已成既成事实，**需补裁定** |
-| 2 | **`excludedBrands` 查询侧强制** | 仍是提示词软约束。`brand-query.util.ts` 只在**品类展开**时减 `excludedBrands`，`brandSource ∈ {session_state, none}` 的无品牌查询无确定性后过滤 |
-| 3 | **受控模糊匹配** | 不是「待决策」，而是**决策所依赖的数据从未采集**——`unmatched` 仅作为工具入参的 rejected reason 存在，无未命中率聚合观测。要么补观测，要么承认无限期挂起 |
+| #   | 项目                            | 现状                                                                                                                                                    |
+| --- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | **品类偏好跨轮记忆**            | `currentCategory` 未实现。品类词走 `category_expansion` 不写会话主品牌，跨轮不留痕迹、只能靠模型读对话历史。该退化已成既成事实，**需补裁定**            |
+| 2   | **`excludedBrands` 查询侧强制** | 仍是提示词软约束。`brand-query.util.ts` 只在**品类展开**时减 `excludedBrands`，`brandSource ∈ {session_state, none}` 的无品牌查询无确定性后过滤         |
+| 3   | **受控模糊匹配**                | 不是「待决策」，而是**决策所依赖的数据从未采集**——`unmatched` 仅作为工具入参的 rejected reason 存在，无未命中率聚合观测。要么补观测，要么承认无限期挂起 |
 
 ---
 

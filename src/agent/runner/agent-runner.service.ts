@@ -27,7 +27,9 @@ import { isDanglingCheckReply } from './dangling-reply';
 import {
   detectOutputLeak,
   hasTechnicalDocumentationShape,
+  isInternalReasoningArtifactOnly,
   isToolCallArtifactOnly,
+  stripInternalReasoningArtifacts,
   stripMarkdownCodeFences,
   tryUnwrapEnvelopeReply,
 } from '../guardrail/output/rules/internal-info-leaks.rule';
@@ -201,13 +203,8 @@ export class AgentRunnerService {
    *   再审一次；二次仍不过按 §9「repair 死循环硬上限 1」分级收敛。
    * - decision='block'：先进入一次受控修复；二审仍不通过才不投递。
    *
-   * （2026-07-27 发牌切换收尾：replan 修复模式已整体退役——GuardrailRuleAction 已删
-   *   REPLAN、语义档裁决在 normalizeDecision 归一为 revise，本方法不再存在重进
-   *   generator 的修复路径；历史语义见评估文档 §2.4。）
-   *
    * turn-end 语义：生成结果上的 `runTurnEnd` 一律原样透传给调用方（repair 产物复用首版的
    * 闭包），由调用方在投递结局已知后触发一次——被丢弃的首版因此不会写记忆。
-   * 「生成完就 fire-and-forget」的旧默认分支已随 deferTurnEnd 开关删除（议题 5-1）。
    *
    * **flag 关闭时**（默认）：守卫只跑 rule 档；可恢复 veto 会先进一次受控 repair。
    */
@@ -217,8 +214,8 @@ export class AgentRunnerService {
   ): Promise<ReviewedRunResult> {
     const first = await this.generator.invoke(params);
 
-    // 审查前先剥模型模仿输出的 `[消息发送时间：…]` 标记（占全部回合 ~11%，2026-07-24 审计）：
-    // 避免噪声进入 LLM 审查上下文与守卫档案。只剥时间标记，不跑完整 sanitize——后者会剥
+    // 审查前先剥模型模仿输出的 `[消息发送时间：…]` 标记，避免噪声进入 LLM 审查
+    // 上下文与守卫档案。只剥时间标记，不跑完整 sanitize——后者会剥
     // 反引号，破坏 internal_output_leak 的围栏检测。投递文本另由 turn-outcome 统一清洗。
     let firstText = OutboundReplySanitizer.stripTimeMarkers((first.text ?? '').trim());
     const firstSkipped = (first.toolCalls ?? []).some(isShortCircuitedToolCall);
@@ -291,21 +288,28 @@ export class AgentRunnerService {
 
     // 确定性修复快通道：仅命中 internal_output_leak 且剥掉代码围栏标记后不再有任何
     // 泄漏形态时，剥离本身就是完整修复——围栏内正文（报名表模板等结构化内容）逐字保留，
-    // 跳过 LLM 重写（2026-07-21 badcase：rewrite 把围栏里的报名表模板压成一句话流水账）。
+    // 跳过 LLM 重写，避免结构化正文被压缩成一句话。
     // 剥离产物仍走下方二审，二审才是放行依据。
-    const fenceStrippedText = this.tryStripFenceOnlyLeak(decision, firstText);
-    // 第二条确定性快通道（2026-08-04 审计 P0-2）：JSON 信封拆封。模型把完整正文包进
-    // `{"agent_response":"…"}` 类信封，旧链路误判纯残文整轮静默（好回复被吞）。拆封
+    const reasoningStrippedText = this.tryStripInternalReasoningLeak(decision, firstText);
+    const fenceStrippedText =
+      reasoningStrippedText === null ? this.tryStripFenceOnlyLeak(decision, firstText) : null;
+    // 第二条确定性快通道：JSON 信封拆封。模型把完整正文包进
+    // `{"agent_response":"…"}` 类信封时，直接拆封可避免把合法正文当成残文静默。拆封
     // 产物与剥围栏同样走二审 + 悬空检测。
     const envelopeUnwrappedText =
-      fenceStrippedText === null ? this.tryUnwrapEnvelopeLeak(decision, firstText) : null;
-    const deterministicRepairText = fenceStrippedText ?? envelopeUnwrappedText;
+      reasoningStrippedText === null && fenceStrippedText === null
+        ? this.tryUnwrapEnvelopeLeak(decision, firstText)
+        : null;
+    const deterministicRepairText =
+      reasoningStrippedText ?? fenceStrippedText ?? envelopeUnwrappedText;
     const deterministicReasonCode =
-      fenceStrippedText !== null
-        ? 'fence_stripped'
-        : envelopeUnwrappedText !== null
-          ? 'envelope_unwrapped'
-          : null;
+      reasoningStrippedText !== null
+        ? 'internal_reasoning_stripped'
+        : fenceStrippedText !== null
+          ? 'fence_stripped'
+          : envelopeUnwrappedText !== null
+            ? 'envelope_unwrapped'
+            : null;
 
     // repair（hard cap 1）：统一走独立 ReplyRepairAgent 受约束重写——replan（重进
     // generator 重取数+重写全文）已于 2026-07-27 发牌切换整体退役（评估文档 §2.4），
@@ -315,6 +319,7 @@ export class AgentRunnerService {
       `[invokeReviewed] output=${decision.decision}，触发一次受控修复: rules=${decision.ruleIds.join(',') || '-'}, ` +
         `violations=${decision.violations.map((v) => v.type).join(',') || '-'}` +
         (fenceStrippedText !== null ? '，fence-only 命中走确定性剥围栏，跳过 LLM 重写' : '') +
+        (reasoningStrippedText !== null ? '，推理独白命中走确定性剥离，跳过 LLM 重写' : '') +
         (envelopeUnwrappedText !== null ? '，JSON 信封命中走确定性拆封，跳过 LLM 重写' : ''),
     );
     const revised =
@@ -478,7 +483,6 @@ export class AgentRunnerService {
         ? detectRepairRegression(firstText, revisedText, {
             committedSideEffects: committed || undefined,
             jobEvidenceAvailable: this.resolveJobEvidenceAvailability(reviewedToolCalls),
-            triggeredRuleIds: decision.ruleIds,
           })
         : null;
     // 检出回归后的收敛对齐 guardrail-quality-system.md §2.3 ④：
@@ -588,9 +592,8 @@ export class AgentRunnerService {
       return;
     }
 
-    // block 档案必须可归因（2026-07-06~08 生产曾落 46 条 null reason_code，复盘时
-    // 无法区分拦截路径）：现行所有 block 分支都应显式携带 reasonCode，这里只兜历史
-    // 上出现过的遗漏并告警，让回归在观测里现形而不是沉默落 null。
+    // block 档案必须可归因：所有 block 分支都应显式携带 reasonCode。
+    // 这里对遗漏值兜底并告警，让回归在观测中现形，而不是沉默落 null。
     let reasonCode = data.finalDecision.reasonCode;
     if (!reasonCode && data.finalDecision.decision === 'block') {
       reasonCode = 'unattributed_block';
@@ -749,6 +752,18 @@ export class AgentRunnerService {
     return stripped;
   }
 
+  /** 推理独白混入正常正文时只机械删掉实证形态；剥完为空的情况由直达静默分支处理。 */
+  private tryStripInternalReasoningLeak(
+    decision: OutputGuardDecision,
+    text: string,
+  ): string | null {
+    if (!this.isOnlyInternalOutputLeakBlock(decision)) return null;
+    const stripped = stripInternalReasoningArtifacts(text);
+    if (!stripped || stripped === text) return null;
+    if (detectOutputLeak(stripped)) return null;
+    return stripped;
+  }
+
   /**
    * JSON 信封的确定性最小修复（2026-08-04 审计 P0-2）：不可发送命中仅为
    * internal_output_leak，且整条首版是"正文被包进 JSON 信封"的形态
@@ -772,12 +787,9 @@ export class AgentRunnerService {
   /**
    * 直达静默判据——三类首版进 repair 只会产出另一条不该发的文本：
    *
-   * - `meta_narration_silenced`：元叙述旁白（badcase chat 6a5740ff…：真人经理接管期间
-   *   模型输出"（AI 保持静默，不插入回复）"被投递）。模型本轮的真实意图就是不说话。
-   * - `tool_call_artifact_silenced`：整条首版只是工具调用残文（2026-07-30 审计 P0-2，
-   *   2026-07-28 15:05–15:11 模型降级窗口）。泄漏反馈要求"其余内容逐字保留"，而残文
-   *   剥完无一字可留，rewrite 只能凭空创作——当时 4/4 例编出薪资/门店/伪造报名链接
-   *   并全部投递。没有事实可依时，沉默是唯一安全的结局。
+   * - `meta_narration_silenced`：元叙述旁白表达的真实意图就是不回复。
+   * - `tool_call_artifact_silenced`：整条首版只是工具调用残文；剥离后无正文可供 rewrite
+   *   保留，没有事实可依时只能静默。
    * 混合命中其它规则时都不走捷径，仍按常规 repair 流程保守处理。
    */
   private resolveDirectSilenceReason(
@@ -786,6 +798,12 @@ export class AgentRunnerService {
   ): string | null {
     if (decision.decision === 'block') {
       if (this.isOnlyMetaNarrationBlock(decision)) return 'meta_narration_silenced';
+      if (
+        this.isOnlyInternalOutputLeakBlock(decision) &&
+        isInternalReasoningArtifactOnly(firstText)
+      ) {
+        return 'internal_reasoning_artifact_silenced';
+      }
       if (this.isOnlyInternalOutputLeakBlock(decision) && isToolCallArtifactOnly(firstText)) {
         return 'tool_call_artifact_silenced';
       }
@@ -880,6 +898,7 @@ export class AgentRunnerService {
         corpId: ctx.sessionRef.corpId,
         userId: ctx.sessionRef.userId,
         sessionId: ctx.sessionRef.sessionId,
+        botUserId: ctx.botUserName,
         currentUserMessage: ctx.userMessage,
         shortTermEndTimeInclusive: ctx.shortTermEndTimeInclusive,
       });
@@ -947,7 +966,7 @@ export class AgentRunnerService {
     guardrailTrace?: GuardrailTurnTrace,
   ): ReviewedRunResult {
     // runTurnEnd 一律透传：触发时机（含 block 时的 includeAssistantText=false）由
-    // TurnFinalizer 在投递结局已知后统一决定，runner 不再代为触发（议题 5-1）。
+    // TurnFinalizer 在投递结局已知后统一决定，runner 不再代为触发。
     return { ...result, outputDecision: decision, revised, guardrailTrace };
   }
 
@@ -996,6 +1015,7 @@ export class AgentRunnerService {
         type: 'agent_end',
         steps: outcome.agentSteps?.length,
         totalTokens: outcome.usage?.totalTokens,
+        cachedTokens: outcome.usage?.cachedInputTokens,
         durationMs: Date.now() - startedAt,
       });
       return outcome;

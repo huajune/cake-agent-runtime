@@ -1,13 +1,14 @@
 import { MemoryService } from '@memory/memory.service';
 
 describe('MemoryService', () => {
-  const mockProcedural = {
-    get: jest.fn(),
-    set: jest.fn().mockResolvedValue(undefined),
+  const mockWorkbench = {
+    getStage: jest.fn(),
+    setStage: jest.fn().mockResolvedValue(undefined),
+    clearStage: jest.fn(),
   };
 
   const mockLongTerm = {
-    getSummaryData: jest.fn(),
+    getSessionSummaries: jest.fn(),
   };
 
   const mockLifecycle = {
@@ -20,7 +21,7 @@ describe('MemoryService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     service = new MemoryService(
-      mockProcedural as never,
+      mockWorkbench as never,
       mockLongTerm as never,
       { saveInvitedGroup: jest.fn().mockResolvedValue(undefined) } as never,
       mockLifecycle as never,
@@ -30,11 +31,13 @@ describe('MemoryService', () => {
   describe('turn lifecycle facade', () => {
     it('should delegate onTurnStart to lifecycle service', async () => {
       mockLifecycle.onTurnStart.mockResolvedValue({
-        shortTerm: { messageWindow: [{ role: 'user', content: 'hello' }] },
-        sessionMemory: null,
-        ruleFacts: null,
-        procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
-        longTerm: { profile: null },
+        shortTerm: {
+          messageWindow: [{ role: 'user', content: 'hello' }],
+          sessionState: null,
+          stage: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
+        },
+        turnHints: null,
+        longTerm: { semantic: { profile: null } },
       });
 
       const ctx = await service.onTurnStart('corp1', 'user1', 'sess1');
@@ -74,11 +77,11 @@ describe('MemoryService', () => {
               content: `message-${index + 1}`,
             })),
           ],
+          sessionState: null,
+          stage: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
         },
-        sessionMemory: null,
-        ruleFacts: null,
-        procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
-        longTerm: { profile: null },
+        turnHints: null,
+        longTerm: { semantic: { profile: null } },
       });
 
       const recall = await service.recallForProactiveFollowUp('corp1', 'user1', 'sess1');
@@ -101,11 +104,11 @@ describe('MemoryService', () => {
               content: '好的\n[消息发送时间：2026-07-12 16:31 星期日]',
             },
           ],
+          sessionState: null,
+          stage: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
         },
-        sessionMemory: null,
-        ruleFacts: null,
-        procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
-        longTerm: { profile: null },
+        turnHints: null,
+        longTerm: { semantic: { profile: null } },
       });
 
       const recall = await service.recallForProactiveFollowUp('corp1', 'user1', 'sess1');
@@ -125,16 +128,16 @@ describe('MemoryService', () => {
 
   describe('facade methods', () => {
     it('should get summary data via facade', async () => {
-      mockLongTerm.getSummaryData.mockResolvedValue({
-        recent: [],
-        archive: null,
-        lastSettledMessageAt: null,
-      });
+      mockLongTerm.getSessionSummaries.mockResolvedValue([]);
 
-      const summary = await service.getSummaryData('corp1', 'user1');
+      const summary = await service.getSessionSummaries('corp1', 'user1', 'wecom-user-1');
 
-      expect(summary).toEqual({ recent: [], archive: null, lastSettledMessageAt: null });
-      expect(mockLongTerm.getSummaryData).toHaveBeenCalledWith('corp1', 'user1');
+      expect(summary).toEqual([]);
+      expect(mockLongTerm.getSessionSummaries).toHaveBeenCalledWith(
+        'corp1',
+        'user1',
+        'wecom-user-1',
+      );
     });
 
     it('should set stage via facade', async () => {
@@ -147,7 +150,7 @@ describe('MemoryService', () => {
 
       await service.setStage('corp1', 'user1', 'sess1', nextStage);
 
-      expect(mockProcedural.set).toHaveBeenCalledWith('corp1', 'user1', 'sess1', nextStage);
+      expect(mockWorkbench.setStage).toHaveBeenCalledWith('corp1', 'user1', 'sess1', nextStage);
     });
   });
 });

@@ -13,9 +13,8 @@ import {
  *
  * 三步：公证（./notary 三问）→ 归并（同字段多 claim）→ 物化（EffectiveCandidateProfile）。
  *
- * 2026-08-12 换血：删掉按*产者身份*排信任的 PRODUCER_PRIORITY 与值复算否决
- * （实测假阳率 72.3%、model 轨 41% 被拒而引文全部真实）。代码只回答"这段引文站不
- * 站得住"，值对不对由候选人本人终审。
+ * 信任不按产者身份排序，也不用规则复算否决值。代码只回答
+ * "这段引文站不站得住"，值对不对由候选人本人终审。
  */
 
 export interface AdjudicateParams {
@@ -93,7 +92,7 @@ export function adjudicateCandidateClaims(params: AdjudicateParams): Adjudicatio
     // correct/clear 是显式覆盖操作：最新一条生效，其前的全部 superseded。
     //
     // ⚠️ "其前"不能只看 assertedAt：同一次裁决里所有 claim 共享一个时间戳
-    // （adjudicate.ts 统一 now.toISOString() 戳一次后传给全部 producer），
+    // （调用方统一用同一个 now.toISOString() 传给全部 producer），
     // 时间戳比较会恒成立，把覆盖操作**之后**提交的 claim 也一并杀掉——
     // 模型在同一轮先 clear 再 set 改正手机号时，改正值被静默丢弃、字段回 missing，
     // 候选人会被重新盘问已经给过的信息。同戳时以提交顺序（数组下标）判先后。

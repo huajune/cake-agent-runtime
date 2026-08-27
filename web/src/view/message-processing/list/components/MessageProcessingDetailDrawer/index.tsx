@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { formatDuration, formatLocaleNumber } from '@/utils/format';
 import { FeedbackButtons } from '@/view/agent-test/list/components/FeedbackButtons';
 import { FeedbackModal } from '@/view/agent-test/list/components/FeedbackModal';
@@ -6,6 +7,7 @@ import { useFeedback } from '@/view/agent-test/list/hooks/useFeedback';
 import { useMessageProcessingRecordDetail } from '@/hooks/chat/useMessageProcessingRecords';
 import type { FeedbackSourceTrace } from '@/api/types/agent-test.types';
 import ChatSection from './ChatSection';
+import ExecutionEventTimeline from './ExecutionEventTimeline';
 import GuardrailSection from './GuardrailSection';
 import {
   getRecordStatusLabel,
@@ -35,12 +37,28 @@ function asString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 }
 
+const POST_PROCESSING_STATUS_LABELS = {
+  running: '运行中',
+  completed: '已完成',
+  completed_with_errors: '部分失败',
+  skipped: '已跳过',
+  interrupted: '已中断',
+} as const;
+
+const POST_PROCESSING_STEP_LABELS = {
+  success: '成功',
+  failure: '失败',
+  skipped: '跳过',
+} as const;
+
 export default function MessageProcessingDetailDrawer({
   messageId,
   onClose,
 }: MessageProcessingDetailDrawerProps) {
+  const navigate = useNavigate();
   const { data: message, isLoading } = useMessageProcessingRecordDetail(messageId);
   const leftColRef = useRef<HTMLDivElement | null>(null);
+  const [traceCopied, setTraceCopied] = useState(false);
   const feedback = useFeedback();
   const {
     clearSuccess,
@@ -186,6 +204,7 @@ export default function MessageProcessingDetailDrawer({
 
   useEffect(() => {
     clearSuccess();
+    setTraceCopied(false);
   }, [clearSuccess, messageId]);
 
   if (isLoading || !message) {
@@ -207,6 +226,11 @@ export default function MessageProcessingDetailDrawer({
   }
 
   const statusTone = getRecordStatusTone(message);
+  const traceId = message.messageId ?? messageId;
+  const handleCopyTraceId = async () => {
+    await navigator.clipboard.writeText(traceId);
+    setTraceCopied(true);
+  };
 
   const tokenValue =
     message.tokenUsage != null && message.tokenUsage !== 0
@@ -233,6 +257,13 @@ export default function MessageProcessingDetailDrawer({
         <div className={styles.header}>
           <div className={styles.headerTop}>
             <h3 className={styles.headerTitle}>处理记录详情</h3>
+            <button
+              type="button"
+              className={styles.conversationLink}
+              onClick={() => navigate(`/chat-records?chatId=${encodeURIComponent(message.chatId)}`)}
+            >
+              查看会话
+            </button>
             <span className={`status-badge ${statusTone}`} title={message.error}>
               {getRecordStatusLabel(message)}
             </span>
@@ -251,6 +282,7 @@ export default function MessageProcessingDetailDrawer({
         <div className={styles.body}>
           <div ref={leftColRef} className={styles.leftCol}>
             <ChatSection message={message} />
+            <ExecutionEventTimeline events={message.executionEvents ?? []} />
           </div>
 
           <div className={styles.rightCol}>
@@ -284,16 +316,93 @@ export default function MessageProcessingDetailDrawer({
             )}
 
             {/* Context facts */}
-            {contextFacts.length > 0 && (
+            <div className={styles.sideTitle}>排障上下文</div>
+            <div className={styles.latencyList}>
+              <div className={styles.latencyRow}>
+                <span className={styles.latencyLabel}>Trace ID</span>
+                <span className={styles.traceValue}>
+                  <code title={traceId}>{traceId}</code>
+                  <button type="button" onClick={() => void handleCopyTraceId()}>
+                    {traceCopied ? '已复制' : '复制'}
+                  </button>
+                </span>
+              </div>
+              {message.alertType && (
+                <div className={styles.latencyRow}>
+                  <span className={styles.latencyLabel}>Alert Type</span>
+                  <code className={`${styles.latencyValue} ${styles.monoValue}`}>
+                    {message.alertType}
+                  </code>
+                </div>
+              )}
+              {message.botImId && (
+                <div className={styles.latencyRow}>
+                  <span className={styles.latencyLabel}>Bot IM ID</span>
+                  <code className={`${styles.latencyValue} ${styles.monoValue}`}>
+                    {message.botImId}
+                  </code>
+                </div>
+              )}
+              {contextFacts.map((f) => (
+                <div key={f.label} className={styles.latencyRow}>
+                  <span className={styles.latencyLabel}>{f.label}</span>
+                  <span className={`${styles.latencyValue} ${f.mono ? styles.monoValue : ''}`}>
+                    {f.value}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {message.anomalyFlags && message.anomalyFlags.length > 0 && (
               <>
-                <div className={styles.sideTitle}>排障上下文</div>
-                <div className={styles.latencyList}>
-                  {contextFacts.map((f) => (
-                    <div key={f.label} className={styles.latencyRow}>
-                      <span className={styles.latencyLabel}>{f.label}</span>
-                      <span className={`${styles.latencyValue} ${f.mono ? styles.monoValue : ''}`}>
-                        {f.value}
-                      </span>
+                <div className={styles.sideTitle}>异常信号</div>
+                <div className={styles.anomalyFlags}>
+                  {message.anomalyFlags.map((flag) => (
+                    <code key={flag} className={styles.anomalyFlag}>
+                      {flag}
+                    </code>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {message.postProcessingStatus && (
+              <>
+                <div className={styles.sideTitle}>后处理状态</div>
+                <div className={styles.postProcessingPanel}>
+                  <div className={styles.postProcessingSummary}>
+                    <span
+                      className={`${styles.postStatus} ${
+                        message.postProcessingStatus.status === 'completed'
+                          ? styles.postStatusSuccess
+                          : message.postProcessingStatus.status === 'completed_with_errors' ||
+                              message.postProcessingStatus.status === 'interrupted'
+                            ? styles.postStatusError
+                            : styles.postStatusNeutral
+                      }`}
+                    >
+                      {POST_PROCESSING_STATUS_LABELS[message.postProcessingStatus.status]}
+                    </span>
+                    <span>
+                      {message.postProcessingStatus.counts.succeeded}/
+                      {message.postProcessingStatus.counts.total} 成功
+                    </span>
+                    {message.postProcessingStatus.durationMs !== undefined && (
+                      <span>{formatDuration(message.postProcessingStatus.durationMs)}</span>
+                    )}
+                  </div>
+                  {message.postProcessingStatus.steps.map((step, index) => (
+                    <div key={`${step.name}-${index}`} className={styles.postProcessingStep}>
+                      <div className={styles.postStepHeader}>
+                        <code>{step.name}</code>
+                        <span className={styles[`postStep${step.status}`]}>
+                          {POST_PROCESSING_STEP_LABELS[step.status]}
+                        </span>
+                        <span>{formatDuration(step.durationMs)}</span>
+                      </div>
+                      {(step.error || step.reason) && (
+                        <div className={styles.postStepMessage}>{step.error || step.reason}</div>
+                      )}
                     </div>
                   ))}
                 </div>

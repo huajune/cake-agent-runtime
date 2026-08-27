@@ -1,9 +1,6 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import {
-  VERDICT_SITE_AUTHORITIES,
-  VERDICT_SITE_REGISTRY,
-} from '@resolution/verdict-site.registry';
+import { VERDICT_SITE_AUTHORITIES, VERDICT_SITE_REGISTRY } from '@resolution/verdict-site.registry';
 
 describe('VERDICT_SITE_REGISTRY', () => {
   const expectedSiteIds = [
@@ -14,14 +11,12 @@ describe('VERDICT_SITE_REGISTRY', () => {
     'candidate_claim_same_value_merge',
     'candidate_claim_conflict_route',
     'candidate_profile_clear_projection',
-    'booking_candidate_snapshot_match',
     'booking_candidate_name_provenance',
     'booking_candidate_phone_provenance',
     'job_list_job_id_provenance',
     'precheck_job_id_provenance',
     'booking_job_id_provenance',
     'precheck_required_field_difference',
-    'precheck_gender_inline_confirmation',
     'candidate_rule_fact_prompt_hint',
     'candidate_profile_prefill_hint',
   ] as const;
@@ -34,12 +29,7 @@ describe('VERDICT_SITE_REGISTRY', () => {
   });
 
   it('admits only the four P11 authority classes and no semantic verdict class', () => {
-    expect(VERDICT_SITE_AUTHORITIES).toEqual([
-      'structural_gate',
-      'closed_form',
-      'notary',
-      'hint',
-    ]);
+    expect(VERDICT_SITE_AUTHORITIES).toEqual(['structural_gate', 'closed_form', 'notary', 'hint']);
     for (const site of VERDICT_SITE_REGISTRY) {
       expect(VERDICT_SITE_AUTHORITIES).toContain(site.authority);
       expect(site.authority).not.toBe('semantic_verdict');

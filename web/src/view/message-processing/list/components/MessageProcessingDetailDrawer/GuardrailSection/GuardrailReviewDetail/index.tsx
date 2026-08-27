@@ -4,7 +4,11 @@ import {
   guardrailRuleLabel,
   guardrailRuleTitle,
 } from '@/components/GuardrailTrace/labels';
-import type { GuardrailReviewRecord, GuardrailReviewStepDetail } from '@/api/types/chat.types';
+import type {
+  GuardrailReviewRecord,
+  GuardrailReviewStepDetail,
+  GuardrailSemanticReview,
+} from '@/api/types/chat.types';
 import styles from './index.module.scss';
 
 function normalizeReviewText(text: string) {
@@ -25,20 +29,19 @@ function shouldShowStepFeedback(step: GuardrailReviewStepDetail) {
   const normalizedFeedback = normalizeReviewText(feedback);
   if (suggestionSet.has(normalizedFeedback)) return false;
 
-  const feedbackLines = feedback
-    .split('\n')
-    .map(normalizeReviewText)
-    .filter(Boolean);
+  const feedbackLines = feedback.split('\n').map(normalizeReviewText).filter(Boolean);
   if (feedbackLines.length > 0 && feedbackLines.every((line) => suggestionSet.has(line))) {
     return false;
   }
 
-  return normalizeReviewText(
-    step.violations
-      .map((violation) => violation.suggestion?.trim())
-      .filter(Boolean)
-      .join('\n'),
-  ) !== normalizedFeedback;
+  return (
+    normalizeReviewText(
+      step.violations
+        .map((violation) => violation.suggestion?.trim())
+        .filter(Boolean)
+        .join('\n'),
+    ) !== normalizedFeedback
+  );
 }
 
 function StepVerdict({ step }: { step: GuardrailReviewStepDetail }) {
@@ -55,6 +58,16 @@ function StepVerdict({ step }: { step: GuardrailReviewStepDetail }) {
           ))}
         </div>
       )}
+      <div className={styles.verdictMeta}>
+        <span className={`${styles.riskBadge} ${styles[`risk${step.riskLevel}`]}`}>
+          风险 {step.riskLevel}
+        </span>
+        {step.blockedRuleIds.map((rule) => (
+          <code key={rule} className={styles.blockedRuleTag} title={guardrailRuleTitle(rule)}>
+            阻断 · {guardrailRuleLabel(rule)}
+          </code>
+        ))}
+      </div>
       {step.violations.length > 0 && (
         <div className={styles.violationList}>
           {step.violations.map((v, i) => (
@@ -91,6 +104,54 @@ function StepVerdict({ step }: { step: GuardrailReviewStepDetail }) {
   );
 }
 
+function SemanticReview({ review, index }: { review: GuardrailSemanticReview; index: number }) {
+  return (
+    <div className={styles.semanticReview}>
+      <div className={styles.semanticHeader}>
+        <span className={styles.semanticIndex}>判例 {index + 1}</span>
+        <code className={styles.semanticMode}>{review.mode}</code>
+        {decisionBadge(review.decision)}
+        <span className={styles.confidence}>置信度 {review.confidence}</span>
+      </div>
+      {review.findings.length > 0 ? (
+        <div className={styles.findingList}>
+          {review.findings.map((finding, findingIndex) => (
+            <div key={`${finding.code}-${findingIndex}`} className={styles.finding}>
+              <code className={styles.findingCode}>{finding.code}</code>
+              {finding.evidenceQuote && (
+                <div className={styles.findingLine}>
+                  <span>证据</span>
+                  <div>{finding.evidenceQuote}</div>
+                </div>
+              )}
+              {finding.userImpact && (
+                <div className={styles.findingLine}>
+                  <span>影响</span>
+                  <div>{finding.userImpact}</div>
+                </div>
+              )}
+              {finding.feedbackToGenerator && (
+                <div className={styles.findingLine}>
+                  <span>反馈</span>
+                  <div>{finding.feedbackToGenerator}</div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className={styles.noFindings}>无语义问题</div>
+      )}
+      {review.draftReply && (
+        <details className={styles.draftReply}>
+          <summary>审查回复草稿</summary>
+          <div>{review.draftReply}</div>
+        </details>
+      )}
+    </div>
+  );
+}
+
 /**
  * 出站守卫审查全程档案视图：首版全文 → 首审意见（证据/建议全文）→ 重写版全文 → 二审 → 最终。
  * 数据来自 guardrail_review_records（详情接口 guardrailReview 字段），仅守卫命中回合存在；
@@ -99,6 +160,13 @@ function StepVerdict({ step }: { step: GuardrailReviewStepDetail }) {
 export default function GuardrailReviewDetail({ review }: { review: GuardrailReviewRecord }) {
   return (
     <div className={styles.container}>
+      {review.userMessage && (
+        <div className={styles.userMessage}>
+          <span className={styles.stepStage}>用户消息</span>
+          <div className={styles.replyText}>{review.userMessage}</div>
+        </div>
+      )}
+
       <div className={styles.stepRow}>
         <div className={styles.stepHeader}>
           <span className={styles.stepStage}>首版</span>
@@ -142,6 +210,19 @@ export default function GuardrailReviewDetail({ review }: { review: GuardrailRev
             {decisionBadge(review.revised.decision)}
           </div>
           <StepVerdict step={review.revised} />
+        </div>
+      )}
+
+      {review.semanticReviews.length > 0 && (
+        <div className={styles.semanticSection}>
+          <div className={styles.semanticTitle}>语义审查</div>
+          {review.semanticReviews.map((semanticReview, index) => (
+            <SemanticReview
+              key={`${semanticReview.reviewedAt ?? semanticReview.mode}-${index}`}
+              review={semanticReview}
+              index={index}
+            />
+          ))}
         </div>
       )}
 

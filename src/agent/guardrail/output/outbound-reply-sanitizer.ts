@@ -1,3 +1,5 @@
+import { stripInternalReasoningArtifacts } from './rules/internal-info-leaks.rule';
+
 /**
  * 确定性出站回复清洗。
  *
@@ -5,6 +7,15 @@
  * 保证所有渠道拿到的 TurnOutcome.reply.text / generatedText 已经是清洗后的文本。
  */
 export class OutboundReplySanitizer {
+  private static readonly REPEAT_WINDOW = 8;
+  private static readonly MIN_REPEAT_LENGTH = 16;
+  private static readonly RESEND_MARKERS = [
+    '再发一遍',
+    '重新发一遍',
+    '再发一次',
+    '重新发我',
+    '重发',
+  ] as const;
   /**
    * 时间标记正则表达式。
    * 匹配历史消息中注入的时间标记，防止模型模仿输出。
@@ -34,9 +45,8 @@ export class OutboundReplySanitizer {
     /^(?:>\s*)?(?:📣\s*)?(?:\*\*)?(?:(?:候选人)?(?:岗位推荐|推荐(?:岗位)?))(?:对话用|对话|话术|用)?模板(?:\*\*)?(?:\s*[：:（(].*)?$/;
 
   /**
-   * 只剥时间标记，不做其它清洗。供出站守卫在审查前调用：模型模仿短期记忆注入格式
-   * 输出的 `[消息发送时间：…]` 占全部回合 ~11%（2026-07-24 审计），会污染 LLM 审查
-   * 上下文并噪声化守卫档案。刻意不复用 sanitize()——它会剥反引号，破坏
+   * 只剥时间标记，不做其它清洗。供出站守卫在审查前移除模型模仿短期记忆注入格式
+   * 产生的噪声。刻意不复用 sanitize()——它会剥反引号，破坏
    * internal_output_leak 的围栏检测与 fence_stripped 修复路径。
    */
   static stripTimeMarkers(text: string): string {
@@ -49,11 +59,63 @@ export class OutboundReplySanitizer {
 
     const cleaned = this.removeMarkdownDecoration(
       this.removeInternalJobCardBanner(
-        this.removeTimeMarkers(this.removeVisualPlaceholders(this.removeThinkTags(text))),
+        this.removeTimeMarkers(
+          this.removeVisualPlaceholders(
+            this.removeThinkTags(stripInternalReasoningArtifacts(text)),
+          ),
+        ),
       ),
     );
 
     return this.removeEmptyResidue(this.cleanWhitespace(cleaned));
+  }
+
+  /**
+   * 删除与近期真实投递分段全等的长分段。只做去空白标点后的机械全等比较，
+   * 不做相似度或“不满意/无岗”等语义判断；候选人明确要求重发时原样保留。
+   */
+  static pruneRepeatedSegments(
+    text: string,
+    recentAssistantTexts: readonly string[] | undefined,
+    userMessage: string | undefined,
+  ): { text: string; droppedSegments: string[] } {
+    if (
+      !recentAssistantTexts?.length ||
+      this.RESEND_MARKERS.some((marker) => userMessage?.includes(marker))
+    ) {
+      return { text, droppedSegments: [] };
+    }
+
+    const delivered = recentAssistantTexts
+      .slice(-this.REPEAT_WINDOW)
+      .flatMap((item) => this.splitExactRepeatSegments(item))
+      .map((item) => this.normalizeForExactRepeat(item))
+      .filter((item) => item.length >= this.MIN_REPEAT_LENGTH);
+    const droppedSegments: string[] = [];
+    const kept = this.splitExactRepeatSegments(text).filter((segment) => {
+      const normalized = this.normalizeForExactRepeat(segment);
+      const repeated =
+        normalized.length >= this.MIN_REPEAT_LENGTH && delivered.includes(normalized);
+      if (repeated) droppedSegments.push(segment);
+      return !repeated;
+    });
+
+    return {
+      text: droppedSegments.length > 0 ? kept.join('\n\n') : text,
+      droppedSegments,
+    };
+  }
+
+  private static normalizeForExactRepeat(text: string): string {
+    return text.replace(/[\s，。！？!?、；;：:~～…\-—"'“”‘’（）()【】\[\]]/g, '').toLowerCase();
+  }
+
+  /** 按出站正文显式段落切分，但保留原字词与标点，避免去重顺带改写未重复内容。 */
+  private static splitExactRepeatSegments(text: string): string[] {
+    return text
+      .split(/(?:\r?\n){2,}/)
+      .map((segment) => segment.trim())
+      .filter(Boolean);
   }
 
   private static removeTimeMarkers(text: string): string {
@@ -106,6 +168,7 @@ export class OutboundReplySanitizer {
 
   static needsSanitization(text: string): boolean {
     if (!text) return false;
+    if (stripInternalReasoningArtifacts(text) !== text.trim()) return true;
     if (/<\/?think\s*>/i.test(text)) return true;
     if (/\[(?:图片|表情)消息\]/.test(text)) return true;
     if (this.TIME_MARKER_TEST_PATTERN.test(text)) return true;

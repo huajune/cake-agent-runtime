@@ -32,6 +32,11 @@ import { OpsEventsRecorderService } from './services/ops-events-recorder.service
     DailyOpsReportService,
     OpsDailyReportCronService,
   ],
-  exports: [OpsEventsRecorderService, BotGroupResolverService, DailyOpsReportService],
+  exports: [
+    OpsEventsRepository,
+    OpsEventsRecorderService,
+    BotGroupResolverService,
+    DailyOpsReportService,
+  ],
 })
 export class OpsEventsModule {}

@@ -69,7 +69,7 @@ src/resolution/geo/                          # 文件平铺，与 resolution/bra
 ├── place-alias.resolver.ts                 # resolveCityFromLocation
 └── ambiguous-place.policy.ts               # GENERIC_AMBIGUOUS_SUFFIXES / hasGenericAmbiguousSuffix
 
-src/tools/duliday/job-list/
+src/tools/job-list/
 └── sponge-area-filter.util.ts              # 海绵行政区适配（见 §6.2）
 
 scripts/geo/                                # data/ 数据集快照 + 生成/校验脚本
@@ -192,7 +192,7 @@ scanGeoSignalsFromText(message: string): GeoTextScanResult
 
 ### 6.2 海绵行政区适配
 
-落位 `src/tools/duliday/job-list/sponge-area-filter.util.ts`。**为什么不是 `src/sponge`**：分层规则禁止 sponge 反向 import resolution，且该转换只有岗位查询编排一个消费方。
+落位 `src/tools/job-list/sponge-area-filter.util.ts`。**为什么不是 `src/sponge`**：分层规则禁止 sponge 反向 import resolution，且该转换只有岗位查询编排一个消费方。
 
 ```mermaid
 sequenceDiagram

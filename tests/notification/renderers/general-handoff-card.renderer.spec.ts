@@ -5,10 +5,11 @@ import type {
   GeneralHandoffNotificationPayload,
 } from '@notification/types/general-handoff-notification.types';
 import {
-  SessionFactsSchema,
+  EntityExtractionResultSchema,
+  toSessionFacts,
   type SessionFacts,
   type WeworkSessionState,
-} from '@memory/types/session-facts.types';
+} from '@memory/short-term/short-term.types';
 
 type RendererInput = Parameters<GeneralHandoffCardRenderer['buildCard']>[0];
 
@@ -16,7 +17,7 @@ function buildSessionState(
   override: Partial<WeworkSessionState['facts']['interview_info']> = {},
 ): WeworkSessionState {
   return {
-    facts: SessionFactsSchema.parse({
+    facts: storedFacts({
       interview_info: {
         name: '张三',
         phone: '13800000000',
@@ -32,7 +33,6 @@ function buildSessionState(
         ...override,
       },
       preferences: {
-        brands: null,
         salary: null,
         position: null,
         schedule: null,
@@ -71,6 +71,18 @@ function buildPayload(override: Partial<RendererInput> = {}): RendererInput {
     sessionState: buildSessionState(),
   };
   return { ...base, ...override } as RendererInput;
+}
+
+/**
+ * 用例里的事实字面量是裸值形态，而落盘态只收信封或 null（记忆审计 S9 拆掉了裸值
+ * 兼容信封）。这里统一经 toSessionFacts 署名，与生产写入方同口径。
+ */
+function storedFacts(raw: Record<string, unknown>) {
+  return toSessionFacts(EntityExtractionResultSchema.parse({ reasoning: 'spec fixture', ...raw }), {
+    confidence: 'medium',
+    source: 'archive',
+    evidence: 'spec fixture',
+  });
 }
 
 describe('GeneralHandoffCardRenderer', () => {
@@ -125,6 +137,14 @@ describe('GeneralHandoffCardRenderer', () => {
     it('omits the action-advice line when actionAdvice is empty', () => {
       const card = renderer.buildCard(buildPayload({ actionAdvice: undefined }));
       expect(card.content as string).not.toContain('**建议动作**');
+    });
+
+    it('does not ask operators to restore hosting for alert-only onboarding handoffs', () => {
+      const card = renderer.buildCard(buildPayload({ hostingPaused: false }));
+      const content = card.content as string;
+
+      expect(content).toContain('本次仅告警，未暂停 AI 托管');
+      expect(content).not.toContain('手动恢复托管');
     });
 
     it('renders dash placeholder when currentMessageContent is empty', () => {

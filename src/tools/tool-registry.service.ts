@@ -1,5 +1,4 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { MemoryService } from '@memory/memory.service';
 import { SpongeService } from '@sponge/sponge.service';
 import { BrandResolutionService } from '@resolution/brand/brand-resolution.service';
@@ -34,21 +33,18 @@ import {
 import { StorageMessageType } from '@enums/storage-message.enum';
 import { GeocodingService } from '@infra/geocoding/geocoding.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
-import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
-import { GroupMembershipService } from '@biz/group-task/services/group-membership.service';
-import { RoomService } from '@channels/wecom/room/room.service';
+import { GroupInviteService } from '@biz/group-task/services/group-invite.service';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
-import { OpsNotifierService } from '@notification/services/ops-notifier.service';
 import { PrivateChatMonitorNotifierService } from '@notification/services/private-chat-monitor-notifier.service';
 import { InterventionService } from '@biz/intervention/intervention.service';
 import { MessageSenderService } from '@channels/wecom/message-sender/message-sender.service';
-import { SessionService } from '@memory/services/session.service';
-import { LongTermService } from '@memory/services/long-term.service';
-import { CandidateSnapshotService } from '@memory/services/candidate-snapshot.service';
+import { SessionStateService } from '@memory/short-term/session-state.service';
+import { LongTermService } from '@memory/long-term/long-term.service';
+import { CollectionFormService } from '@tools/collection/collection-form.service';
 import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
 import { HandoffRecorderService } from '@biz/handoff-events/handoff-recorder.service';
 import { AgentTracerService } from '@/observability/agent-tracer.service';
-import { getRuleFactValue } from '@resolution/evidence/merge';
+import { getTurnHintValue } from '@resolution/evidence/merge';
 import { sleep } from '@infra/utils/async.util';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
 import type { FinalizedVisualFactSheet } from '@resolution/signal/visual';
@@ -57,12 +53,12 @@ import type { FinalizedVisualFactSheet } from '@resolution/signal/visual';
  * 统一工具注册表
  *
  * 所有内置工具的 name + description + create 集中定义于此。
- * MCP 工具运行时动态注册。
- * orchestrator 调用 buildAll(context) 一次性构建所有工具。
+ * Preparation 生产路径通过 `buildForScenario()` 构建场景子集；只有未登记
+ * 场景才会回退到 `buildAll()`。MCP 工具运行时动态注册，并叠加到场景工具集。
  *
  * 记忆工具策略：
  * - memory_store / memory_recall 已删除（编排层固定读写，不由 LLM 自主决定）
- * - advance_stage 保留（程序记忆，只有 LLM 能判断推进时机）
+ * - advance_stage 保留（阶段状态，只有 LLM 能判断推进时机）
  */
 @Injectable()
 export class ToolRegistryService {
@@ -79,33 +75,21 @@ export class ToolRegistryService {
     memoryService: MemoryService,
     spongeService: SpongeService,
     geocodingService: GeocodingService,
-    groupResolverService: GroupResolverService,
-    groupMembershipService: GroupMembershipService,
-    roomService: RoomService,
+    groupInviteService: GroupInviteService,
     messageSenderService: MessageSenderService,
-    opsNotifier: OpsNotifierService,
     privateChatMonitorNotifier: PrivateChatMonitorNotifierService,
     private readonly chatSessionService: ChatSessionService,
     private readonly llm: LlmExecutorService,
     userHostingService: UserHostingService,
-    configService: ConfigService,
     interventionService: InterventionService,
-    sessionService: SessionService,
+    sessionService: SessionStateService,
     longTermService: LongTermService,
     opsEventsRecorder: OpsEventsRecorderService,
     handoffRecorder: HandoffRecorderService,
     private readonly brandResolutionService: BrandResolutionService,
-    candidateSnapshotService: CandidateSnapshotService,
     agentTracer: AgentTracerService,
+    collectionFormService: CollectionFormService,
   ) {
-    const memberLimit = parseInt(configService.get('GROUP_MEMBER_LIMIT', '200'), 10);
-    const enterpriseToken = configService.get<string>('STRIDE_ENTERPRISE_TOKEN')?.trim();
-    // 候选人事实裁决模式（证据化 §10 灰度）：shadow=只观测不改行为（默认），
-    // enforce=无据模型裸值剔出 checklist + booking 快照差异硬拒。差异率稳定前勿切。
-    const adjudicationMode =
-      configService.get<string>('CANDIDATE_FACT_ADJUDICATION_MODE', 'shadow') === 'enforce'
-        ? ('enforce' as const)
-        : ('shadow' as const);
     this.registry = {
       // ===== 阶段工具 =====
       advance_stage: createToolDefinition({
@@ -139,9 +123,9 @@ export class ToolRegistryService {
           longTermService,
           opsEventsRecorder,
           {
-            mode: adjudicationMode,
-            snapshots: candidateSnapshotService,
-            observer: agentTracer,
+            collectionForms: collectionFormService,
+            sessionFacts: sessionService,
+            identityAnchors: process.env.COLLECTION_IDENTITY_LABEL_IDS,
           },
         ),
       }),
@@ -151,9 +135,10 @@ export class ToolRegistryService {
         description:
           '面试前置校验（按岗位返回可约日期/时段、备注解析后的字段建议、报名补充信息；不真正提交预约）',
         create: buildInterviewPrecheckTool(spongeService, opsEventsRecorder, {
-          mode: adjudicationMode,
-          snapshots: candidateSnapshotService,
           observer: agentTracer,
+          // 收资表单接管（蓝图 §5）：注入即换轨，生产恒走表单路径。
+          collectionForms: collectionFormService,
+          identityAnchors: process.env.COLLECTION_IDENTITY_LABEL_IDS,
         }),
       }),
 
@@ -191,17 +176,7 @@ export class ToolRegistryService {
       invite_to_group: createToolDefinition({
         name: 'invite_to_group',
         description: '邀请候选人加入企微兼职群（穷尽推荐无匹配/登记完成后触发）',
-        create: buildInviteToGroupTool(
-          groupResolverService,
-          roomService,
-          opsNotifier,
-          memoryService,
-          opsEventsRecorder,
-          memberLimit,
-          enterpriseToken,
-          groupMembershipService,
-          sessionService,
-        ),
+        create: buildInviteToGroupTool(groupInviteService, sessionService),
       }),
 
       // ===== 人工介入工具 =====
@@ -302,7 +277,7 @@ export class ToolRegistryService {
     return tools;
   }
 
-  /** 按场景构建工具子集，未注册场景回退到 buildAll */
+  /** 按场景构建工具子集；未注册场景回退到 buildAll。 */
   buildForScenario(scenario: string, context: ToolBuildContext): AiToolSet {
     const names = this.scenarioToolMap[scenario];
     if (!names) {
@@ -379,7 +354,7 @@ export class ToolRegistryService {
   private resolveResumeAttachments(context: ToolBuildContext): ResumeAttachment[] {
     const urls = [
       this.normalizeText(
-        getRuleFactValue(context.ledger.facts.ruleFacts, 'interview_info.upload_resume', {
+        getTurnHintValue(context.ledger.facts.turnHints, 'interview_info.upload_resume', {
           minConfidence: 'high',
         }),
       ),

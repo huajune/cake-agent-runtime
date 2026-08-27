@@ -300,6 +300,25 @@ Before submitting documentation, check:
 
 ---
 
+## 🧊 Prompt Content Anti-Rot Discipline（Prompt 内容防腐纪律）
+
+> 适用对象：手册（candidate-consultation.md / final-check）、工具 description、DB 策略文本（red-lines / stage-strategy，Dashboard 可改）、booking 上下文等代码注入段、守卫 hard-rules。这些内容每回合进入生产 prompt，是"上下文预算"的直接消耗方；治理背景见 docs/principles/context-engineering-principles.md（C1~C9；一期执行记录见 git 历史 docs/todo/context-engineering-governance.md）。
+
+### 四条硬纪律
+
+1. **台账登记（F1）**：任何 prompt 侧规则的新增/修改/删除，必须同批更新 [docs/prompt-rule-ledger.md](../../docs/prompt-rule-ledger.md)：内容摘要、来源（badcase id / 用户裁定 / 运营口径，带日期）、加入日期、时效性。无台账更新的规则变更，review 时应打回。
+2. **放置过判定树（裁定 7）**：新约束先按台账文首的判定树选定唯一居所（守卫 hard-rule / 工具 description / stage-strategy / red-lines / 手册）。**同一约束只准住一处**；"教"（prompt）与"拦"（守卫）允许成对存在，但台账必须互链。
+3. **职责迁移回收（F2）**：代码/状态机接管某行为时，同一批 PR 必须回收 prompt 侧对应教学段（手册段落、DB 策略文本行、description 教学），并更新台账。先例：收资状态机上线后 precheck 描述从 13.5K 瘦身到 729 字符。
+4. **临时规则标 TTL（F3）**：带时效的口径（季节性规则、品牌开城状态、活动期话术）必须在规则旁标注过期条件或复查日期，过期即删。标本：暑假工 2026 暑期规则、"成都你六姐仅上海在招"。
+
+### 配套约定
+
+- 手册内面向维护者的信息（badcase 出处、裁定日期、数据佐证）一律写在 HTML 注释里（`stripMaintainerComments` 加载时剥离），不进模型可见正文。
+- 改动 prompt 中的示例值须过 example-registry（防示例值泄漏进真实回复）。
+- 删规则时台账行不删，改标 `~~已下线（日期+原因）~~`，保留证据链。
+
+---
+
 ## 🔗 Related Documents
 
 - [code-standards.md](code-standards.md) - Code quality standards

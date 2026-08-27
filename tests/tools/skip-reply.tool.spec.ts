@@ -5,8 +5,13 @@ import { createToolContext, mergeToolContext } from '../helpers/tool-context.fix
 describe('buildSkipReplyTool', () => {
   const mockContext: ToolBuildContext = createToolContext({
     session: {
-      userId: 'user-1', corpId: 'corp-1', sessionId: 'sess-1', chatId: 'chat-1',
-      botUserId: 'mgr-bob', botImId: 'bot-im-1', contactName: 'Alice',
+      userId: 'user-1',
+      corpId: 'corp-1',
+      sessionId: 'sess-1',
+      chatId: 'chat-1',
+      botUserId: 'mgr-bob',
+      botImId: 'bot-im-1',
+      contactName: 'Alice',
     },
   });
 

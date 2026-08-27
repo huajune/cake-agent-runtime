@@ -16,6 +16,19 @@ interface AgentExecutionEventDbRecord {
   created_at: string;
 }
 
+export interface AgentExecutionEventRecord {
+  id: number;
+  type: string;
+  traceId: string;
+  userId?: string;
+  corpId?: string;
+  chatId?: string;
+  scenario?: string;
+  callerKind?: string;
+  payload: Record<string, unknown>;
+  createdAt: string;
+}
+
 @Injectable()
 export class AgentExecutionEventRepository extends BaseRepository {
   protected readonly tableName = 'agent_execution_events';
@@ -33,6 +46,13 @@ export class AgentExecutionEventRepository extends BaseRepository {
     if (!inserted) {
       throw new Error('agent_execution_events insert returned no row');
     }
+  }
+
+  async findByTraceId(traceId: string): Promise<AgentExecutionEventRecord[]> {
+    const rows = await this.select<AgentExecutionEventDbRecord>('*', (query) =>
+      query.eq('trace_id', traceId).order('created_at', { ascending: true }).limit(200),
+    );
+    return rows.map((row) => this.fromDbRecord(row, traceId));
   }
 
   async cleanupExpiredEvents(retentionDays: number): Promise<number> {
@@ -80,6 +100,24 @@ export class AgentExecutionEventRepository extends BaseRepository {
       caller_kind: callerKind ?? null,
       payload,
       created_at: new Date(timestamp ?? Date.now()).toISOString(),
+    };
+  }
+
+  private fromDbRecord(
+    row: AgentExecutionEventDbRecord,
+    fallbackTraceId: string,
+  ): AgentExecutionEventRecord {
+    return {
+      id: row.id,
+      type: row.event_type,
+      traceId: row.trace_id ?? fallbackTraceId,
+      userId: row.user_id ?? undefined,
+      corpId: row.corp_id ?? undefined,
+      chatId: row.chat_id ?? undefined,
+      scenario: row.scenario ?? undefined,
+      callerKind: row.caller_kind ?? undefined,
+      payload: row.payload,
+      createdAt: row.created_at,
     };
   }
 }
