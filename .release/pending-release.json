@@ -109,6 +109,29 @@
         "观测面：新增 `collection_form_audit` 事件 kind `escalation_yielded`；`unparseable_answer` 熔断与 `rejectedAttempts` 均落审计，明日可直接按事件观测。"
       ],
       "level": "patch"
+    },
+    {
+      "number": "1088",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1088",
+      "title": "固化 v11.0.4 发版底账",
+      "author": "huajune",
+      "mergedAt": "2026-08-27",
+      "businessUpdates": [
+        "固化 v11.0.4 发版底账"
+      ],
+      "summary": [
+        "固化 v11.0.4 发版底账"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "固化 v11.0.4 发版底账"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [],
+      "level": "patch"
     }
   ],
   "lastRelease": {
@@ -152,5 +175,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "4884054d9022688771c004709bea61555cf1a621"
+  "lastAnalyzedSha": "9bd76b8f868a04193ddf507f7223ebd90ec67931"
 }
