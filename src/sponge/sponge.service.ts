@@ -42,8 +42,7 @@ import {
   type JobCollectionContract,
 } from './collection-contract.types';
 
-// 报名/上传仍走旧的 supplier 域（a/supplier/*，非 海绵2.0 ai接口，未随网关迁移）。
-const INTERVIEW_BOOKING_API = 'https://k8s.duliday.com/persistence/a/supplier/entryUser';
+// 附件上传仍走旧的 supplier 域（a/supplier/*，非 海绵2.0 ai接口，未随网关迁移）。
 const UPLOAD_ATTACHMENT_API = 'https://k8s.duliday.com/persistence/a/supplier/uploadAttachment';
 
 /** 海绵网关默认 base url（可被 SPONGE_API_BASE_URL 覆盖）。 */
@@ -64,14 +63,18 @@ const MAX_ATTACHMENT_UPLOAD_BYTES = 20 * 1024 * 1024;
  * 海绵网关在每个响应头里下发的链路追踪 ID。
  *
  * 预约失败时（如"麻麻呀，服务器暂时跑丢了～"这类网关兜底报错），后端需要凭
- * traceId 去查海绵侧日志定位。实测 k8s.duliday.com 网关固定下发 `Traceid` 头
- * （Headers.get 大小写不敏感）；无论成功/失败/坏请求都会带。
+ * traceId 去查海绵侧日志定位。实测 gateway.duliday.com 下发 `X-Trace-Id` 头、
+ * k8s.duliday.com 下发 `Traceid` 头（Headers.get 大小写不敏感），坏请求也会带。
  */
-const SPONGE_TRACE_HEADER_NAME = 'traceid';
+const SPONGE_TRACE_HEADER_NAMES = ['x-trace-id', 'traceid'] as const;
 
 /** 从响应头里提取海绵链路 traceId，取不到返回 null。 */
 function extractSpongeTraceId(headers: Headers): string | null {
-  return headers.get(SPONGE_TRACE_HEADER_NAME)?.trim() || null;
+  for (const name of SPONGE_TRACE_HEADER_NAMES) {
+    const value = headers.get(name)?.trim();
+    if (value) return value;
+  }
+  return null;
 }
 
 /**
@@ -92,6 +95,7 @@ export class SpongeService {
   private readonly signupListApi: string;
   private readonly selfSignupListApi: string;
   private readonly cancelWorkOrderApi: string;
+  private readonly interviewBookingApi: string;
   private readonly modifyInterviewTimeApi: string;
   private readonly failureReasonsApi: string;
   private readonly collectionContractApi: string;
@@ -120,6 +124,7 @@ export class SpongeService {
     this.signupListApi = `${spongeBaseUrl}/ai/api/workorder/signup/list`;
     this.selfSignupListApi = `${spongeBaseUrl}/ai/api/workorder/signup/self/list`;
     this.cancelWorkOrderApi = `${spongeBaseUrl}/ai/api/workorder/cancel`;
+    this.interviewBookingApi = `${spongeBaseUrl}/ai/api/workorder/entryUser`;
     this.modifyInterviewTimeApi = `${spongeBaseUrl}/ai/api/workorder/interviewTime/modify`;
     this.failureReasonsApi = `${spongeBaseUrl}/ai/api/workorder/failureReasons/byPids`;
     this.collectionContractApi = `${spongeBaseUrl}/ai/api/jobs/interview-labels/batch-query`;
@@ -272,7 +277,7 @@ export class SpongeService {
       labelList: params.labelList,
     });
 
-    const response = await fetchWithTimeout(INTERVIEW_BOOKING_API, {
+    const response = await fetchWithTimeout(this.interviewBookingApi, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -325,7 +330,7 @@ export class SpongeService {
       code: parsed.data.code,
       message: parsed.data.message,
       notice: parsed.data.data?.notice ?? null,
-      applyErrorList: parsed.data.data?.applyErrorList ?? null,
+      applyErrorList: parsed.data.data?.errorList ?? parsed.data.data?.applyErrorList ?? null,
       workOrderId,
       traceId,
     };

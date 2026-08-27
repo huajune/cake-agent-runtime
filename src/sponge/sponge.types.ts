@@ -292,10 +292,16 @@ export interface InterviewBookingParams {
   labelList: InterviewBookingLabelValue[];
 }
 
+/** 选项型标签的提交选项：单选传一个，多选可传多个；optionLabel 服务端按编码自查，可不传。 */
+export interface InterviewBookingLabelOption {
+  optionCode: string;
+  optionLabel?: string;
+}
+
 export interface InterviewBookingLabelValue {
   labelId: number;
-  /** 选项型字段只传 optionCodes。 */
-  optionCodes?: string[];
+  /** 选项型字段只传 options。 */
+  options?: InterviewBookingLabelOption[];
   /** TEXT / FILE 字段只传 value。 */
   value?: string;
 }
@@ -341,14 +347,17 @@ export interface InterviewBookingResult {
 export const InterviewBookingLabelValueSchema = z
   .object({
     labelId: z.number().int(),
-    optionCodes: z.array(z.string().min(1)).min(1).optional(),
+    options: z
+      .array(z.object({ optionCode: z.string().min(1), optionLabel: z.string().optional() }))
+      .min(1)
+      .optional(),
     value: z.string().min(1).optional(),
   })
   .superRefine((item, context) => {
-    if (Boolean(item.optionCodes) === Boolean(item.value)) {
+    if (Boolean(item.options) === Boolean(item.value)) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'optionCodes 与 value 必须且只能提供一个',
+        message: 'options 与 value 必须且只能提供一个',
       });
     }
   });
@@ -366,6 +375,9 @@ export const InterviewBookingApiResponseSchema = z
     data: z
       .object({
         notice: z.string().nullable().optional(),
+        // 网关新 entryUser 打回清单键名为 errorList（实测 0827，条目含 labelId/disclosure/field/msg）；
+        // applyErrorList 是旧域键名，留作过渡期兜底。
+        errorList: z.array(InterviewBookingApplyErrorItemSchema).nullable().optional(),
         applyErrorList: z.array(InterviewBookingApplyErrorItemSchema).nullable().optional(),
         // 预约成功时海绵返回的工单对象。int64，可能以 number 或 string 形式下发，
         // 统一 coerce 成 number；缺失时为 null（不阻断解析）。
