@@ -37,6 +37,29 @@
         "受影响 4 个 spec 套件 93/93 通过；typecheck / lint:check 全绿；pre-push 全量 CI 通过。"
       ],
       "level": "patch"
+    },
+    {
+      "number": "1075",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1075",
+      "title": "merge master into develop, 解发版元数据冲突（保 v11.0.3）",
+      "author": "huajune",
+      "mergedAt": "2026-08-27",
+      "businessUpdates": [
+        "merge master into develop, 解发版元数据冲突（保 v11.0.3）"
+      ],
+      "summary": [
+        "merge master into develop, 解发版元数据冲突（保 v11.0.3）"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "merge master into develop, 解发版元数据冲突（保 v11.0.3）"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [],
+      "level": "patch"
     }
   ],
   "lastRelease": {
@@ -169,5 +192,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "475997fd199bacb44f799fd1c03b4eb85156bba3"
+  "lastAnalyzedSha": "587ca44c4e112579d7e1cb37ea1dba508228c60f"
 }
