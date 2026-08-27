@@ -14,7 +14,7 @@
 **预计版本**: `v11.0.0`
 **最近更新**: `2026-08-27`
 **来源分支**: `develop`
-**累计 PR**: 17
+**累计 PR**: 18
 
 ### 更新摘要
 - PR #1016 回填 v10.44.0 发布结果
@@ -250,6 +250,8 @@
 - PR #1049 新增 P0-09（analyze-chat-badcases 正式回归闸门：发布负责人 2026-08-27 裁定豁免）
 - PR #1049 登记发布授权（合并/生产 migration/部署一条龙）与 env 遗留裁定
 - PR #1049 v11.0.0 发版底账（自 v10.45.0 升级）
+- PR #1051 v11.0.0 底账 P0 表修正——豁免裁定并入 P0-08 证据栏
+- PR #1051 v11.0.0 底账 P0 表修正
 
 ### 新功能
 - PR #1022 新增 analyze-guardrail 守卫效果分析 skill
@@ -289,6 +291,7 @@
 - PR #1037 明确 `final-check` 是复合 section；规则命中时内部追加 `critical-turn-guard` 子块，不再描述为两个独立注册段。
 - PR #1037 对齐当前 ReplyWorkflow → AgentRunner → TurnFinalizer 调用链、两层记忆结构、replay 阻断集合、Redis 租约参数和工具步数。
 - PR #1037 删除全库零调用的 deprecated `dispatchIfNeeded()` 转发方法。
+- PR #1051 v11.0.0 底账 P0 表修正——豁免裁定并入 P0-08 证据栏
 
 ### 优化调整
 - PR #1024 抽取拉群编排服务

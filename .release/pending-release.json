@@ -951,6 +951,29 @@
       "config": [],
       "envFiles": [],
       "verification": []
+    },
+    {
+      "number": "1051",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1051",
+      "title": "v11.0.0 底账 P0 表修正",
+      "author": "huajune",
+      "mergedAt": "2026-08-27",
+      "businessUpdates": [
+        "v11.0.0 底账 P0 表修正——豁免裁定并入 P0-08 证据栏"
+      ],
+      "summary": [
+        "v11.0.0 底账 P0 表修正——豁免裁定并入 P0-08 证据栏",
+        "v11.0.0 底账 P0 表修正"
+      ],
+      "features": [],
+      "fixes": [
+        "v11.0.0 底账 P0 表修正——豁免裁定并入 P0-08 证据栏"
+      ],
+      "optimizations": [],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": []
     }
   ],
   "lastRelease": {
