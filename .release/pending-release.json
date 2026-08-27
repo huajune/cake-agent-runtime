@@ -1,55 +1,31 @@
 {
-  "baseVersion": "11.0.5",
+  "baseVersion": "11.0.6",
   "nextVersion": "11.0.6",
   "updatedAt": "2026-08-27",
   "sourceBranch": "develop",
-  "entries": [
-    {
-      "number": "1100",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1100",
-      "title": "InterviewBookingLabelValueSchema 用例对齐 options 线格式",
-      "author": "huajune",
-      "mergedAt": "2026-08-27",
-      "businessUpdates": [
-        "InterviewBookingLabelValueSchema 用例对齐 options 线格式"
-      ],
-      "summary": [
-        "InterviewBookingLabelValueSchema 用例对齐 options 线格式"
-      ],
-      "features": [],
-      "fixes": [],
-      "optimizations": [],
-      "ops": [
-        "InterviewBookingLabelValueSchema 用例对齐 options 线格式"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [],
-      "level": "patch"
-    }
-  ],
+  "entries": [],
   "lastRelease": {
-    "version": "11.0.5",
+    "version": "11.0.6",
     "date": "2026-08-27",
     "sourceBranch": "develop",
     "entries": [
       {
-        "number": "1092",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/1092",
-        "title": "回填 v11.0.4 发布结果",
+        "number": "1100",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1100",
+        "title": "InterviewBookingLabelValueSchema 用例对齐 options 线格式",
         "author": "huajune",
         "mergedAt": "2026-08-27",
         "businessUpdates": [
-          "回填 v11.0.4 发布结果"
+          "InterviewBookingLabelValueSchema 用例对齐 options 线格式"
         ],
         "summary": [
-          "回填 v11.0.4 发布结果"
+          "InterviewBookingLabelValueSchema 用例对齐 options 线格式"
         ],
         "features": [],
         "fixes": [],
         "optimizations": [],
         "ops": [
-          "回填 v11.0.4 发布结果"
+          "InterviewBookingLabelValueSchema 用例对齐 options 线格式"
         ],
         "config": [],
         "envFiles": [],
@@ -58,5 +34,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "fc3b837c08fa0bfbc72ba76652f5f8c73c6fdd3e"
+  "lastAnalyzedSha": "89ec2239b4870a7a61b7ca4e57f480d83ce25189"
 }
