@@ -606,11 +606,28 @@ jobs:
               exit "${MERGE_STATUS}"
             fi
 
-            ALLOWED_CONFLICTS=".release/pending-release.json CHANGELOG.md package.json pnpm-lock.yaml"
+            # 冲突取舍按"谁是权威"定（2026-08-27 v11.0.3 连环冲突复盘）：
+            # - pending-release.json / CHANGELOG.md 完全由脚本生成，master 固化侧是
+            #   发布后的清零/定版权威。取 develop 侧会把已发布 entry 和旧版本号留在
+            #   账上（含发版前 30 秒才自动合入的过时元数据 PR），下一轮 develop→master
+            #   发版 PR 必然 DIRTY——取 master 侧后由下方 prepare 从 lastAnalyzedSha
+            #   重扫增量，发布后新合入的 entry 不会丢。
+            # - package.json / pnpm-lock.yaml 可能承载 develop 侧真实依赖变更，
+            #   整文件取 master 会丢代码改动，保 develop 侧；版本字段由 prepare 校正。
+            THEIRS_CONFLICTS=".release/pending-release.json CHANGELOG.md"
+            OURS_CONFLICTS="package.json pnpm-lock.yaml"
             for file in ${CONFLICTS}; do
-              case " ${ALLOWED_CONFLICTS} " in
+              case " ${THEIRS_CONFLICTS} " in
                 *" ${file} "*)
-                  echo "ℹ️ Resolving expected release metadata conflict with develop version: ${file}"
+                  echo "ℹ️ Resolving release metadata conflict with master (finalized) version: ${file}"
+                  git checkout --theirs -- "${file}"
+                  git add "${file}"
+                  continue
+                  ;;
+              esac
+              case " ${OURS_CONFLICTS} " in
+                *" ${file} "*)
+                  echo "ℹ️ Resolving release metadata conflict with develop version: ${file}"
                   git checkout --ours -- "${file}"
                   git add "${file}"
                   ;;
