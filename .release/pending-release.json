@@ -1,7 +1,7 @@
 {
   "baseVersion": "10.44.0",
-  "nextVersion": "10.45.0",
-  "updatedAt": "2026-08-26",
+  "nextVersion": "11.0.0",
+  "updatedAt": "2026-08-27",
   "sourceBranch": "develop",
   "entries": [
     {
@@ -862,6 +862,58 @@
         "`pnpm run test:di-smoke`：1/1 passed",
         "`pnpm run release:ledger:check`",
         "`git diff --check`"
+      ]
+    },
+    {
+      "number": "1047",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1047",
+      "title": "precheck 收资协议统一收尾——身份标题回退/清单瘦身/面试时间转运/确认词扩展",
+      "author": "huajune",
+      "mergedAt": "2026-08-27",
+      "businessUpdates": [
+        "移除第二语义审查并收敛规则链",
+        "统一 precheck 收资入参契约",
+        "清理已移交的标签清单",
+        "收资标题定位增加身份四槽同义词第三级回退",
+        "precheck 面试时间误投 formAnswers 确定性转运 + unmatchedAnswers 回执",
+        "精简 precheck bookingChecklist 冗余字段",
+        "复述确认识别组合式肯定应答，免临门多绕一轮",
+        "合流清理 displayOrder 跨基座残留断言与注释",
+        "Merge remote-tracking branch 'origin/develop' into codex/next-task-20…",
+        "precheck 收资协议统一收尾——身份标题回退/清单瘦身/面试时间转运/确认词扩展"
+      ],
+      "summary": [
+        "移除第二语义审查并收敛规则链",
+        "统一 precheck 收资入参契约",
+        "清理已移交的标签清单",
+        "收资标题定位增加身份四槽同义词第三级回退",
+        "precheck 面试时间误投 formAnswers 确定性转运 + unmatchedAnswers 回执",
+        "精简 precheck bookingChecklist 冗余字段",
+        "复述确认识别组合式肯定应答，免临门多绕一轮",
+        "合流清理 displayOrder 跨基座残留断言与注释",
+        "Merge remote-tracking branch 'origin/develop' into codex/next-task-20…",
+        "precheck 收资协议统一收尾——身份标题回退/清单瘦身/面试时间转运/确认词扩展"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "移除第二语义审查并收敛规则链",
+        "统一 precheck 收资入参契约",
+        "清理已移交的标签清单",
+        "收资标题定位增加身份四槽同义词第三级回退",
+        "precheck 面试时间误投 formAnswers 确定性转运 + unmatchedAnswers 回执",
+        "精简 precheck bookingChecklist 冗余字段",
+        "复述确认识别组合式肯定应答，免临门多绕一轮",
+        "合流清理 displayOrder 跨基座残留断言与注释",
+        "Merge remote-tracking branch 'origin/develop' into codex/next-task-20…"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "typecheck / ESLint（--max-warnings=0）全绿；",
+        "全量 Jest：**443 套件 / 6355 测试通过**（含四任务新增 33 个用例）；",
+        "台账 `docs/prompt-rule-ledger.md` 已同步（precheck 行合并两条注记）。"
       ]
     }
   ],
