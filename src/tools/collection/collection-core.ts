@@ -12,18 +12,21 @@
 import type { BookingCollectionForm, ContractFieldDef, Verdict } from '@resolution/collection';
 import {
   adapterFor,
+  ANSWERED_BUT_UNPARSEABLE_REASONS,
   detectSuspectedMultiPerson,
   escalate,
   ESCALATION_REASONS,
   isSensitiveAttribute,
   MAX_ASKS_PER_SLOT,
   orderForAsking,
+  recordRejectedAttempts,
   recordUnansweredAsks,
   seedArchiveValue,
   proposeValue,
   recordConfigDebt,
   routeOf,
   verdictOf,
+  yieldRecoverableEscalationToScreening,
   genericAdapter,
 } from '@resolution/collection';
 import { extractMessageText } from '@resolution/signal/markers';
@@ -57,7 +60,13 @@ export function deriveCollectionAction(verdict: Verdict): CollectionAction {
 
 /** 一条待落库的审计事件（调用方转成 agent_execution_events，蓝图 §4）。 */
 export interface CollectionAuditEvent {
-  kind: 'proposal_rejected' | 'slot_disqualified' | 'slot_restated' | 'config_debt' | 'escalated';
+  kind:
+    | 'proposal_rejected'
+    | 'slot_disqualified'
+    | 'slot_restated'
+    | 'config_debt'
+    | 'escalated'
+    | 'escalation_yielded';
   labelId?: number;
   reason?: string;
   detail?: string;
@@ -131,6 +140,9 @@ export function runCollectionCore(input: CollectionCoreInput): CollectionCoreRes
   }
 
   const fieldById = new Map(contract.map((field) => [field.labelId, field]));
+  // 本轮「真实作答但公证读不懂」的槽位（出处门已过、卡在值词表/形态）。
+  // 这些轮次不算"没搭理"：不消耗发问配额、不触发同槽问满熔断，改记 rejectedAttempts。
+  const unparseableAttemptIds = new Set<number>();
   for (const proposal of proposals) {
     const field = fieldById.get(proposal.labelId);
     if (!field) continue;
@@ -168,6 +180,9 @@ export function runCollectionCore(input: CollectionCoreInput): CollectionCoreRes
           detail: result.detail,
           channel: proposal.channel,
         });
+        if (result.reason && ANSWERED_BUT_UNPARSEABLE_REASONS.has(result.reason)) {
+          unparseableAttemptIds.add(field.labelId);
+        }
         break;
       case 'ignored':
         break;
@@ -182,7 +197,7 @@ export function runCollectionCore(input: CollectionCoreInput): CollectionCoreRes
   for (const archived of input.archiveFacts ?? []) {
     const field = findFieldForClaim(contract, archived.claimField);
     if (!field) continue;
-    const adapterInput = { field, candidateText: archived.value };
+    const adapterInput = { field, candidateText: archived.value, answerBound: true };
     const adapted = adapterFor(field)(adapterInput) ?? genericAdapter(adapterInput);
     form = seedArchiveValue(form, field, {
       value: adapted?.value ?? archived.value,
@@ -205,8 +220,22 @@ export function runCollectionCore(input: CollectionCoreInput): CollectionCoreRes
     }
   }
 
+  // ── 作答账：真实作答被值词表/形态门拒收的槽位记 rejectedAttempts（读不懂两次转人工）──
+  const attemptReceipt = recordRejectedAttempts(form, [...unparseableAttemptIds]);
+  form = attemptReceipt.form;
+  if (attemptReceipt.exhausted.length > 0) {
+    audits.push({
+      kind: 'escalated',
+      reason: form.escalatedReason,
+      detail: `同槽连续真实作答仍无法适配：${attemptReceipt.exhausted.join(',')}`,
+    });
+  }
+
   // ── 问句回执：只登记上一轮真实送达、且本轮仍未补齐的槽位 ──
-  const actuallyAskedIds = askedLabelIdsBeforeLatestUser(input.messages, contract);
+  // 本轮有真实作答（哪怕被拒收）的槽位不入账：作答轮不是"没搭理"，不烧发问配额。
+  const actuallyAskedIds = askedLabelIdsBeforeLatestUser(input.messages, contract).filter(
+    (labelId) => !unparseableAttemptIds.has(labelId),
+  );
   const askReceipt = recordUnansweredAsks(form, actuallyAskedIds, input.askReceiptTurnId);
   form = askReceipt.form;
   if (askReceipt.exhausted.length > 0) {
@@ -218,11 +247,13 @@ export function runCollectionCore(input: CollectionCoreInput): CollectionCoreRes
   }
 
   // 已经问满后因纠错/errorList 重开的槽位保留历史次数，禁止绕过配额发出第 3 问。
+  // 本轮真实作答过的槽位豁免：配额烧完但人在认真答，重问一次（枚举提示）比熔断便宜。
   const emptyFields = orderForAsking(contract).filter(
     (field) => form.slots[field.labelId]?.state === 'empty',
   );
   if (verdictOf(form) === 'collecting') {
     const alreadyExhausted = emptyFields
+      .filter((field) => !unparseableAttemptIds.has(field.labelId))
       .filter((field) => (form.slots[field.labelId]?.askCount ?? 0) >= MAX_ASKS_PER_SLOT)
       .map((field) => field.labelId);
     if (alreadyExhausted.length > 0) {
@@ -236,6 +267,16 @@ export function runCollectionCore(input: CollectionCoreInput): CollectionCoreRes
         detail: '已问满的槽位重新变空：' + alreadyExhausted.join(','),
       });
     }
+  }
+
+  // ── 筛选终局优先：表内已判不合格时，可恢复型熔断让位，走拒绝话术+转岗而非转人工 ──
+  const yielded = yieldRecoverableEscalationToScreening(form);
+  if (yielded !== form) {
+    audits.push({
+      kind: 'escalation_yielded',
+      detail: `熔断让位筛选终局：${form.escalatedReason ?? ''}`,
+    });
+    form = yielded;
   }
 
   // ── 生成本轮待问清单：这里只规划，不提前消耗下一次配额 ──

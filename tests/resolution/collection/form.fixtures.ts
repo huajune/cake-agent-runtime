@@ -93,6 +93,27 @@ export const HEIGHT_FIELD_GENDERED: ContractFieldDef = {
   },
 };
 
+/**
+ * 基线实测社保缴纳情况(12)：5 个系统措辞选项（jobId 528762，2026-08-27 生产实拉）。
+ * 选项 >4 → 模板普通档不渲染提示；候选人自然答案（「无」）逐字配不上任何标签——
+ * badcase batch_6a8fec04ce406a6aee03d65f_* 的字段形态。
+ */
+export const SOCIAL_INSURANCE_FIELD: ContractFieldDef = {
+  labelId: 12,
+  labelTitle: '社保缴纳情况',
+  fieldType: 'SINGLE_OPTION',
+  required: true,
+  acceptedOptions: [
+    { optionCode: '1', optionLabel: '本人缴纳本地社保' },
+    { optionCode: '2', optionLabel: '无公司在缴社保流水' },
+  ],
+  rejectedOptions: [
+    { optionCode: '3', optionLabel: '公司缴纳本地社保' },
+    { optionCode: '4', optionLabel: '本人缴纳外地社保' },
+    { optionCode: '5', optionLabel: '公司缴纳外地社保' },
+  ],
+};
+
 /** 契约标 RESTRICTED 的敏感字段（实测籍贯[3]）。 */
 export const HOMETOWN_RESTRICTED_FIELD: ContractFieldDef = {
   labelId: 3,

@@ -67,3 +67,33 @@ describe('renderCollectionTemplate', () => {
     expect(result.templateText).toContain(`${dirty.labelTitle}：`);
   });
 });
+
+describe('拒收重问档 · 强制枚举占位', () => {
+  const SOCIAL: ContractFieldDef = {
+    labelId: 12,
+    labelTitle: '社保缴纳情况',
+    fieldType: 'SINGLE_OPTION',
+    required: true,
+    acceptedOptions: [
+      { optionCode: '1', optionLabel: '本人缴纳本地社保' },
+      { optionCode: '2', optionLabel: '无公司在缴社保流水' },
+    ],
+    rejectedOptions: [
+      { optionCode: '3', optionLabel: '公司缴纳本地社保' },
+      { optionCode: '4', optionLabel: '本人缴纳外地社保' },
+      { optionCode: '5', optionLabel: '公司缴纳外地社保' },
+    ],
+  };
+
+  it('选项 >4 普通档留空；该槽位有 rejectedAttempts 后强制列全（badcase 6a8fec04）', () => {
+    const blank = renderCollectionTemplate(createForm({ jobId: 1, contract: [SOCIAL] }), [SOCIAL]);
+    expect(blank.templateText.endsWith('社保缴纳情况：')).toBe(true);
+
+    const attempted = createForm({ jobId: 1, contract: [SOCIAL] });
+    attempted.slots[12].rejectedAttempts = 1;
+    const forced = renderCollectionTemplate(attempted, [SOCIAL]);
+    expect(forced.templateText).toContain(
+      '社保缴纳情况：（本人缴纳本地社保/无公司在缴社保流水/公司缴纳本地社保/本人缴纳外地社保/公司缴纳外地社保）',
+    );
+  });
+});

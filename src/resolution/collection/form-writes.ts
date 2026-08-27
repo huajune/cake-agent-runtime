@@ -53,9 +53,19 @@ import {
  */
 export const MAX_ASKS_PER_SLOT = 2;
 
+/**
+ * 同一槽位允许「真实作答但公证读不懂」的次数上限。第 1 次拒收后模板强制枚举选项
+ * 重问一次；第 2 次仍读不懂 → 转人工（unparseable_answer）。与 MAX_ASKS_PER_SLOT
+ * 分账：那边计「没搭理」，这边计「答了但系统解不出」——把作答轮当不答轮烧配额，
+ * 正是 badcase batch_6a8fec04ce406a6aee03d65f_*（候选人首次作答即熔断）的病根。
+ */
+export const MAX_REJECTED_ATTEMPTS_PER_SLOT = 2;
+
 export const ESCALATION_REASONS = {
   /** 同槽问满上限仍拿不到值。 */
   askLimitExhausted: 'ask_limit_exhausted',
+  /** 同槽连续真实作答仍无法适配值词表/形态（读不懂两次，人来）。 */
+  unparseableAnswer: 'unparseable_answer',
   /** applyErrorList 的字段定位不到槽位（D2：失配不静默）。 */
   errorListUnmapped: 'error_list_unmapped',
   /** 疑似多人会话（新姓名 + 新手机号成对出现，D1 v1 不建自动化协议）。 */
@@ -139,6 +149,18 @@ export const PROPOSAL_REJECTION_REASONS = {
 
 export type ProposalRejectionReason =
   (typeof PROPOSAL_REJECTION_REASONS)[keyof typeof PROPOSAL_REJECTION_REASONS];
+
+/**
+ * 拒收原因里「候选人真实作答、系统读不懂」的子集——公证五步串行保证这三种拒收
+ * 发生时出处门已通过（sourceText 逐字命中候选人原话），值是真话只是解不出形态。
+ * 出处门自己的拒收（sourceText 缺失/臆造、身份闸）**不在此列**：那是反臆造防线，
+ * 不能被"算作答"绕过熔断。调用方据此把这类轮次记 rejectedAttempts 而非烧 askCount。
+ */
+export const ANSWERED_BUT_UNPARSEABLE_REASONS: ReadonlySet<string> = new Set([
+  PROPOSAL_REJECTION_REASONS.valueNotInContractVocabulary,
+  PROPOSAL_REJECTION_REASONS.invalidValueShape,
+  PROPOSAL_REJECTION_REASONS.unknownOptionCode,
+]);
 
 export const PROPOSAL_IGNORE_REASONS = {
   slotNotInContract: 'slot_not_in_contract',
@@ -491,21 +513,74 @@ export function recordUnansweredAsks(
 }
 
 /**
- * `ask_limit_exhausted` 是由「指定槽位仍 empty」派生的可恢复人工原因。
- * 候选人后来补齐或契约移除对应槽位时，逐项解除；其他人工原因一律不动。
+ * 把「候选人真实作答但公证在值词表/形态门拒收」的槽位记一笔 rejectedAttempts
+ * （蓝图 §10 防线 6 的姊妹账）。达到 MAX_REJECTED_ATTEMPTS_PER_SLOT → 表级
+ * escalatedReason=unparseable_answer。与 askCount 分账：作答轮不烧发问配额，
+ * 否则模板重发两次就把配额烧光、候选人首次作答失败即熔断（badcase
+ * batch_6a8fec04ce406a6aee03d65f_* 的机械成因）。
+ */
+export function recordRejectedAttempts(
+  form: BookingCollectionForm,
+  labelIds: readonly number[],
+): { form: BookingCollectionForm; exhausted: number[] } {
+  const slots = { ...form.slots };
+  const exhausted: number[] = [];
+  for (const labelId of new Set(labelIds)) {
+    const slot = slots[labelId];
+    // 拒收零入账，槽位应仍 empty；同轮已被其它通道写成 filled/disqualified 的不记。
+    if (!slot || slot.state !== 'empty') continue;
+    const rejectedAttempts = (slot.rejectedAttempts ?? 0) + 1;
+    slots[labelId] = { ...slot, rejectedAttempts };
+    if (rejectedAttempts >= MAX_REJECTED_ATTEMPTS_PER_SLOT) {
+      exhausted.push(labelId);
+    }
+  }
+  const next: BookingCollectionForm = { ...form, slots };
+  if (exhausted.length === 0) return { form: next, exhausted };
+  return {
+    form: {
+      ...next,
+      escalatedReason:
+        form.escalatedReason ?? `${ESCALATION_REASONS.unparseableAnswer}: ${exhausted.join('、')}`,
+    },
+    exhausted,
+  };
+}
+
+/**
+ * `ask_limit_exhausted` / `unparseable_answer` 是由「指定槽位仍 empty」派生的
+ * 可恢复人工原因。候选人后来补齐或契约移除对应槽位时，逐项解除；
+ * 其他人工原因（疑似多人 / errorList 失配 / 空契约）一律不动。
  */
 export function reconcileAskLimitEscalation(form: BookingCollectionForm): BookingCollectionForm {
-  const exhaustedIds = parseAskLimitExhaustedIds(form.escalatedReason);
-  if (!exhaustedIds) return form;
-  const unresolved = exhaustedIds.filter((labelId) => form.slots[labelId]?.state === 'empty');
-  if (unresolved.length === exhaustedIds.length) return form;
+  const parsed = parseRecoverableEscalation(form.escalatedReason);
+  if (!parsed) return form;
+  const unresolved = parsed.ids.filter((labelId) => form.slots[labelId]?.state === 'empty');
+  if (unresolved.length === parsed.ids.length) return form;
   if (unresolved.length > 0) {
     return {
       ...form,
-      escalatedReason: `${ESCALATION_REASONS.askLimitExhausted}: ${unresolved.join('、')}`,
+      escalatedReason: `${parsed.prefix}: ${unresolved.join('、')}`,
     };
   }
   const { escalatedReason: _resolvedReason, ...rest } = form;
+  return rest;
+}
+
+/**
+ * 筛选终局优先：表内已有 disqualified 槽位时，可恢复型收资熔断（同槽问满/读不懂）
+ * 让位，使 verdict 落到 disqualified → 拒绝话术 + 转岗，而不是把一个已确定不合格的
+ * 候选人转给人工去"继续收资"（badcase batch_6a8fec04ce406a6aee03d65f_*：年龄 22
+ * 已被 24-38 值域正确筛掉，却因社保槽熔断走了 handoff，压掉了本该发出的转岗承接）。
+ * 不可恢复原因（疑似多人 / errorList 失配 / 空契约）不让位——那些即使换岗也需要人工。
+ */
+export function yieldRecoverableEscalationToScreening(
+  form: BookingCollectionForm,
+): BookingCollectionForm {
+  if (!parseRecoverableEscalation(form.escalatedReason)) return form;
+  const hasDisqualified = Object.values(form.slots).some((slot) => slot.state === 'disqualified');
+  if (!hasDisqualified) return form;
+  const { escalatedReason: _yielded, ...rest } = form;
   return rest;
 }
 
@@ -522,7 +597,7 @@ export function migrateAskTracking(form: BookingCollectionForm): BookingCollecti
     }),
   ) as BookingCollectionForm['slots'];
   const migrated = { ...form, askTrackingVersion: 2 as const, slots };
-  if (!parseAskLimitExhaustedIds(migrated.escalatedReason)) return migrated;
+  if (!parseRecoverableEscalation(migrated.escalatedReason)) return migrated;
   const { escalatedReason: _legacyAskLimit, ...rest } = migrated;
   return rest;
 }
@@ -669,14 +744,25 @@ function withoutRecap(form: BookingCollectionForm): BookingCollectionForm {
   return rest;
 }
 
-function parseAskLimitExhaustedIds(reason: string | undefined): number[] | null {
-  if (!reason?.startsWith(`${ESCALATION_REASONS.askLimitExhausted}:`)) return null;
+/** 可恢复（槽位级派生）人工原因的封闭前缀集；解析不出即视为不可恢复原因。 */
+const RECOVERABLE_ESCALATION_PREFIXES = [
+  ESCALATION_REASONS.askLimitExhausted,
+  ESCALATION_REASONS.unparseableAnswer,
+] as const;
+
+function parseRecoverableEscalation(
+  reason: string | undefined,
+): { prefix: string; ids: number[] } | null {
+  const prefix = RECOVERABLE_ESCALATION_PREFIXES.find((candidate) =>
+    reason?.startsWith(`${candidate}:`),
+  );
+  if (!reason || !prefix) return null;
   const ids = reason
     .slice(reason.indexOf(':') + 1)
     .split(/[、,，\s]+/u)
     .map(Number)
     .filter((value) => Number.isSafeInteger(value) && value > 0);
-  return ids.length > 0 ? [...new Set(ids)] : null;
+  return ids.length > 0 ? { prefix, ids: [...new Set(ids)] } : null;
 }
 
 /** 身份槽位的值本体是否逐字落在原话内（手机号忽略非数字字符）。 */
