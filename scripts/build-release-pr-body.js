@@ -34,10 +34,14 @@ function main() {
   }
 }
 
-function buildReleasePrContent({ base, head }) {
-  const changelog = readText(CHANGELOG_PATH);
+// changelogPath / packageJsonPath 仅供测试注入夹具；生产调用一律走默认仓库路径。
+// 背景（2026-08-27 v11.0.0 发版事故）：spec 直接读真实 CHANGELOG 断言"迁移提醒存在"，
+// 而发布 tag 打在固化提交上（待发布段已清空），deploy 工作流按 tag 检出后该断言必挂，
+// 阻断每一次发版部署。测试必须夹具驱动，不得依赖仓库可变状态。
+function buildReleasePrContent({ base, head, changelogPath, packageJsonPath }) {
+  const changelog = readText(changelogPath || CHANGELOG_PATH);
   const pending = extractPendingSection(changelog);
-  const fallbackVersion = readPackageVersion();
+  const fallbackVersion = readPackageVersion(packageJsonPath);
   const version = extractExpectedVersion(pending) || `v${fallbackVersion}`;
   const updateSummary = extractBulletSection(pending, '更新摘要');
   const configChanges = extractBulletSection(pending, '配置变更', { preserveCode: true });
@@ -151,9 +155,9 @@ function readText(filePath) {
   return fs.existsSync(filePath) ? fs.readFileSync(filePath, 'utf8') : '';
 }
 
-function readPackageVersion() {
+function readPackageVersion(packageJsonPath) {
   try {
-    return JSON.parse(fs.readFileSync(PACKAGE_JSON_PATH, 'utf8')).version || '0.0.0';
+    return JSON.parse(fs.readFileSync(packageJsonPath || PACKAGE_JSON_PATH, 'utf8')).version || '0.0.0';
   } catch {
     return '0.0.0';
   }
