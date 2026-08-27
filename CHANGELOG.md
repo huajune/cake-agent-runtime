@@ -11,10 +11,10 @@
 <!-- release:pending:start -->
 ## 待发布
 
-**预计版本**: `v10.45.0`
-**最近更新**: `2026-08-26`
+**预计版本**: `v11.0.0`
+**最近更新**: `2026-08-27`
 **来源分支**: `develop`
-**累计 PR**: 15
+**累计 PR**: 16
 
 ### 更新摘要
 - PR #1016 回填 v10.44.0 发布结果
@@ -233,6 +233,16 @@
 - PR #1045 移除 Output Guardrail 的第二模型 Semantic Reviewer、相关运行时配置、告警/观测与管理页入口。
 - PR #1045 将出站审查收敛到可确定性对账的高风险规则，并新增预约成功声明与工具回执对账。
 - PR #1045 调整品牌、用工形式、记忆、无岗、拉群与工具链路，并同步架构文档。
+- PR #1047 移除第二语义审查并收敛规则链
+- PR #1047 统一 precheck 收资入参契约
+- PR #1047 清理已移交的标签清单
+- PR #1047 收资标题定位增加身份四槽同义词第三级回退
+- PR #1047 precheck 面试时间误投 formAnswers 确定性转运 + unmatchedAnswers 回执
+- PR #1047 精简 precheck bookingChecklist 冗余字段
+- PR #1047 复述确认识别组合式肯定应答，免临门多绕一轮
+- PR #1047 合流清理 displayOrder 跨基座残留断言与注释
+- PR #1047 Merge remote-tracking branch 'origin/develop' into codex/next-task-20…
+- PR #1047 precheck 收资协议统一收尾——身份标题回退/清单瘦身/面试时间转运/确认词扩展
 
 ### 新功能
 - PR #1022 新增 analyze-guardrail 守卫效果分析 skill
@@ -462,6 +472,15 @@
 - PR #1045 移除第二语义审查并收敛规则链
 - PR #1045 统一 precheck 收资入参契约
 - PR #1045 清理已移交的标签清单
+- PR #1047 移除第二语义审查并收敛规则链
+- PR #1047 统一 precheck 收资入参契约
+- PR #1047 清理已移交的标签清单
+- PR #1047 收资标题定位增加身份四槽同义词第三级回退
+- PR #1047 precheck 面试时间误投 formAnswers 确定性转运 + unmatchedAnswers 回执
+- PR #1047 精简 precheck bookingChecklist 冗余字段
+- PR #1047 复述确认识别组合式肯定应答，免临门多绕一轮
+- PR #1047 合流清理 displayOrder 跨基座残留断言与注释
+- PR #1047 Merge remote-tracking branch 'origin/develop' into codex/next-task-20…
 
 ### 配置变更
 - PR #1035 v10.45.0 包含 5 个 Supabase migration：20260821210000、20260825025701、20260825050239、20260825055058、20260825063752；测试库已应用，生产库待受控切换时应用。
@@ -529,6 +548,9 @@
 - PR #1045 `pnpm run test:di-smoke`：1/1 passed
 - PR #1045 `pnpm run release:ledger:check`
 - PR #1045 `git diff --check`
+- PR #1047 typecheck / ESLint（--max-warnings=0）全绿；
+- PR #1047 全量 Jest：**443 套件 / 6355 测试通过**（含四任务新增 33 个用例）；
+- PR #1047 台账 `docs/prompt-rule-ledger.md` 已同步（precheck 行合并两条注记）。
 <!-- release:pending:end -->
 
 ## [10.44.0] - 2026-08-19
