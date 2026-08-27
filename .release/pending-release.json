@@ -1,179 +1,144 @@
 {
-  "baseVersion": "11.0.3",
+  "baseVersion": "11.0.4",
   "nextVersion": "11.0.4",
   "updatedAt": "2026-08-27",
   "sourceBranch": "develop",
-  "entries": [
-    {
-      "number": "1081",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1081",
-      "title": "固化 v11.0.3 发版底账 + 失败路径守卫回归用例",
-      "author": "huajune",
-      "mergedAt": "2026-08-27",
-      "businessUpdates": [
-        "固化 v11.0.3 发版底账 + 失败路径守卫回归用例"
-      ],
-      "summary": [
-        "固化 v11.0.3 发版底账 + 失败路径守卫回归用例"
-      ],
-      "features": [],
-      "fixes": [],
-      "optimizations": [],
-      "ops": [
-        "固化 v11.0.3 发版底账 + 失败路径守卫回归用例"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "`booking-receipt.rule.spec.ts` + `hard-rules.service.spec.ts` 38/38 通过",
-        "`node scripts/check-release-ledger.js` ✅",
-        "生产抽查：v11.0.3 部署（07:41 UTC）后消息流水正常产出（13 条 / 10 success）"
-      ],
-      "level": "patch"
-    },
-    {
-      "number": "1080",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1080",
-      "title": "repair 回归闸豁免\"首版即违规结构\"的坍缩误伤",
-      "author": "huajune",
-      "mergedAt": "2026-08-27",
-      "businessUpdates": [
-        "repair 回归闸豁免\"首版即违规结构\"的坍缩误伤"
-      ],
-      "summary": [
-        "repair 回归闸豁免\"首版即违规结构\"的坍缩误伤"
-      ],
-      "features": [],
-      "fixes": [],
-      "optimizations": [],
-      "ops": [
-        "repair 回归闸豁免\"首版即违规结构\"的坍缩误伤"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "回归闸 util 26 用例、runner 47 用例、守卫目录全量 22 套 444 测试通过",
-        "`tsc --noEmit` / ESLint（--max-warnings=0）干净"
-      ],
-      "level": "patch"
-    },
-    {
-      "number": "1084",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1084",
-      "title": "发版流程提速——底账生成器 + 回同步冲突策略修正",
-      "author": "huajune",
-      "mergedAt": "2026-08-27",
-      "businessUpdates": [
-        "发版流程提速——底账生成器 + 回同步冲突策略修正"
-      ],
-      "summary": [
-        "发版流程提速——底账生成器 + 回同步冲突策略修正"
-      ],
-      "features": [],
-      "fixes": [
-        "发版流程提速——底账生成器 + 回同步冲突策略修正"
-      ],
-      "optimizations": [],
-      "ops": [],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "`generate-release-ledger.spec.ts` 4 用例（草稿过校验/拒绝覆盖/旧草稿清理/空窗版本）+ `update-version-changelog.spec.ts` 回归，14/14 通过",
-        "workflow YAML 语法校验通过；生成器真仓库冒烟（对人工定稿正确拒绝覆盖）"
-      ],
-      "level": "patch"
-    },
-    {
-      "number": "1086",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1086",
-      "title": "社保自然答案语义适配 + 作答轮不烧配额 + 筛选终局优先",
-      "author": "huajune",
-      "mergedAt": "2026-08-27",
-      "businessUpdates": [
-        "社保自然答案语义适配 + 作答轮不烧配额 + 筛选终局优先"
-      ],
-      "summary": [
-        "社保自然答案语义适配 + 作答轮不烧配额 + 筛选终局优先"
-      ],
-      "features": [],
-      "fixes": [],
-      "optimizations": [],
-      "ops": [
-        "社保自然答案语义适配 + 作答轮不烧配额 + 筛选终局优先"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "全量 Jest：444 套件 / 6435 用例全绿；lint:check 零告警；tsc 干净。",
-        "badcase 三环节各钉回归：adapter 8 条、form-writes 7 条、collection-core 7 条、renderer 1 条；彭妮场景端到端断言现在落 `screening_rejected`、社保「无」一次落格。",
-        "观测面：新增 `collection_form_audit` 事件 kind `escalation_yielded`；`unparseable_answer` 熔断与 `rejectedAttempts` 均落审计，明日可直接按事件观测。"
-      ],
-      "level": "patch"
-    },
-    {
-      "number": "1088",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1088",
-      "title": "固化 v11.0.4 发版底账",
-      "author": "huajune",
-      "mergedAt": "2026-08-27",
-      "businessUpdates": [
-        "固化 v11.0.4 发版底账"
-      ],
-      "summary": [
-        "固化 v11.0.4 发版底账"
-      ],
-      "features": [],
-      "fixes": [],
-      "optimizations": [],
-      "ops": [
-        "固化 v11.0.4 发版底账"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [],
-      "level": "patch"
-    }
-  ],
+  "entries": [],
   "lastRelease": {
-    "version": "11.0.3",
+    "version": "11.0.4",
     "date": "2026-08-27",
     "sourceBranch": "develop",
     "entries": [
       {
-        "number": "1072",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/1072",
-        "title": "recap 确认词表扩词 + 下线 booking 失败轮承诺重试拦截",
+        "number": "1081",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1081",
+        "title": "固化 v11.0.3 发版底账 + 失败路径守卫回归用例",
         "author": "huajune",
         "mergedAt": "2026-08-27",
         "businessUpdates": [
-          "**recap 确认词表扩词**（`resolution/signal/dialogue.ts`）：补入 行/好/中/妥/要得/得嘞/没毛病/阔以/OK/嗯呐/约吧 等整句放行表态，仅进 recap 组合通道，不进身份作证词表。疑问/否定形态（行吗/不行/好了）因 吗/不/了 不是 token 天然不命中，spec 已覆盖。",
-          "**`booking_receipt_mismatch` 失败路径收窄**（用户裁定，与拉群守卫\"只拦完成时态\"同口径）：删除 `BOOKING_RETRY_PROMISE_PATTERN` 整段——booking 失败后\"稍后再帮你提交\"是合法承接话术；in-flight 假宣称只保留「正在」词形。继续拦：宣称正在/已经提交的假回执（形态不变）。",
-          "规则台账同批登记（`docs/prompt-rule-ledger.md`）。"
+          "固化 v11.0.3 发版底账 + 失败路径守卫回归用例"
         ],
         "summary": [
-          "recap 确认词表扩词 + 下线 booking 失败轮承诺重试拦截",
-          "**recap 确认词表扩词**（`resolution/signal/dialogue.ts`）：补入 行/好/中/妥/要得/得嘞/没毛病/阔以/OK/嗯呐/约吧 等整句放行表态，仅进 recap 组合通道，不进身份作证词表。疑问/否定形态（行吗/不行/好了）因 吗/不/了 不是 token 天然不命中，spec 已覆盖。",
-          "**`booking_receipt_mismatch` 失败路径收窄**（用户裁定，与拉群守卫\"只拦完成时态\"同口径）：删除 `BOOKING_RETRY_PROMISE_PATTERN` 整段——booking 失败后\"稍后再帮你提交\"是合法承接话术；in-flight 假宣称只保留「正在」词形。继续拦：宣称正在/已经提交的假回执（形态不变）。",
-          "规则台账同批登记（`docs/prompt-rule-ledger.md`）。"
+          "固化 v11.0.3 发版底账 + 失败路径守卫回归用例"
         ],
         "features": [],
-        "fixes": [
-          "**recap 确认词表扩词**（`resolution/signal/dialogue.ts`）：补入 行/好/中/妥/要得/得嘞/没毛病/阔以/OK/嗯呐/约吧 等整句放行表态，仅进 recap 组合通道，不进身份作证词表。疑问/否定形态（行吗/不行/好了）因 吗/不/了 不是 token 天然不命中，spec 已覆盖。",
-          "**`booking_receipt_mismatch` 失败路径收窄**（用户裁定，与拉群守卫\"只拦完成时态\"同口径）：删除 `BOOKING_RETRY_PROMISE_PATTERN` 整段——booking 失败后\"稍后再帮你提交\"是合法承接话术；in-flight 假宣称只保留「正在」词形。继续拦：宣称正在/已经提交的假回执（形态不变）。",
-          "规则台账同批登记（`docs/prompt-rule-ledger.md`）。"
-        ],
+        "fixes": [],
         "optimizations": [],
         "ops": [
-          "recap 确认词表扩词 + 下线 booking 失败轮承诺重试拦截"
+          "固化 v11.0.3 发版底账 + 失败路径守卫回归用例"
         ],
         "config": [],
         "envFiles": [],
         "verification": [
-          "受影响 4 个 spec 套件 93/93 通过；typecheck / lint:check 全绿；pre-push 全量 CI 通过。"
+          "`booking-receipt.rule.spec.ts` + `hard-rules.service.spec.ts` 38/38 通过",
+          "`node scripts/check-release-ledger.js` ✅",
+          "生产抽查：v11.0.3 部署（07:41 UTC）后消息流水正常产出（13 条 / 10 success）"
         ],
+        "level": "patch"
+      },
+      {
+        "number": "1080",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1080",
+        "title": "repair 回归闸豁免\"首版即违规结构\"的坍缩误伤",
+        "author": "huajune",
+        "mergedAt": "2026-08-27",
+        "businessUpdates": [
+          "repair 回归闸豁免\"首版即违规结构\"的坍缩误伤"
+        ],
+        "summary": [
+          "repair 回归闸豁免\"首版即违规结构\"的坍缩误伤"
+        ],
+        "features": [],
+        "fixes": [],
+        "optimizations": [],
+        "ops": [
+          "repair 回归闸豁免\"首版即违规结构\"的坍缩误伤"
+        ],
+        "config": [],
+        "envFiles": [],
+        "verification": [
+          "回归闸 util 26 用例、runner 47 用例、守卫目录全量 22 套 444 测试通过",
+          "`tsc --noEmit` / ESLint（--max-warnings=0）干净"
+        ],
+        "level": "patch"
+      },
+      {
+        "number": "1084",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1084",
+        "title": "发版流程提速——底账生成器 + 回同步冲突策略修正",
+        "author": "huajune",
+        "mergedAt": "2026-08-27",
+        "businessUpdates": [
+          "发版流程提速——底账生成器 + 回同步冲突策略修正"
+        ],
+        "summary": [
+          "发版流程提速——底账生成器 + 回同步冲突策略修正"
+        ],
+        "features": [],
+        "fixes": [
+          "发版流程提速——底账生成器 + 回同步冲突策略修正"
+        ],
+        "optimizations": [],
+        "ops": [],
+        "config": [],
+        "envFiles": [],
+        "verification": [
+          "`generate-release-ledger.spec.ts` 4 用例（草稿过校验/拒绝覆盖/旧草稿清理/空窗版本）+ `update-version-changelog.spec.ts` 回归，14/14 通过",
+          "workflow YAML 语法校验通过；生成器真仓库冒烟（对人工定稿正确拒绝覆盖）"
+        ],
+        "level": "patch"
+      },
+      {
+        "number": "1086",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1086",
+        "title": "社保自然答案语义适配 + 作答轮不烧配额 + 筛选终局优先",
+        "author": "huajune",
+        "mergedAt": "2026-08-27",
+        "businessUpdates": [
+          "社保自然答案语义适配 + 作答轮不烧配额 + 筛选终局优先"
+        ],
+        "summary": [
+          "社保自然答案语义适配 + 作答轮不烧配额 + 筛选终局优先"
+        ],
+        "features": [],
+        "fixes": [],
+        "optimizations": [],
+        "ops": [
+          "社保自然答案语义适配 + 作答轮不烧配额 + 筛选终局优先"
+        ],
+        "config": [],
+        "envFiles": [],
+        "verification": [
+          "全量 Jest：444 套件 / 6435 用例全绿；lint:check 零告警；tsc 干净。",
+          "badcase 三环节各钉回归：adapter 8 条、form-writes 7 条、collection-core 7 条、renderer 1 条；彭妮场景端到端断言现在落 `screening_rejected`、社保「无」一次落格。",
+          "观测面：新增 `collection_form_audit` 事件 kind `escalation_yielded`；`unparseable_answer` 熔断与 `rejectedAttempts` 均落审计，明日可直接按事件观测。"
+        ],
+        "level": "patch"
+      },
+      {
+        "number": "1088",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1088",
+        "title": "固化 v11.0.4 发版底账",
+        "author": "huajune",
+        "mergedAt": "2026-08-27",
+        "businessUpdates": [
+          "固化 v11.0.4 发版底账"
+        ],
+        "summary": [
+          "固化 v11.0.4 发版底账"
+        ],
+        "features": [],
+        "fixes": [],
+        "optimizations": [],
+        "ops": [
+          "固化 v11.0.4 发版底账"
+        ],
+        "config": [],
+        "envFiles": [],
+        "verification": [],
         "level": "patch"
       }
     ]
   },
-  "lastAnalyzedSha": "9bd76b8f868a04193ddf507f7223ebd90ec67931"
+  "lastAnalyzedSha": "6e4633e4878c1ff50f6b1ce05980e0f9ad3f8940"
 }
