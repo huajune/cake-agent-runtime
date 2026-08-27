@@ -12,13 +12,14 @@ import {
   detectSuspectedMultiPerson,
   escalate,
   isTerminal,
-  markAsked,
   markRecapSent,
   markSubmitted,
   MAX_ASKS_PER_SLOT,
+  migrateAskTracking,
   proposeValue,
   PROPOSAL_IGNORE_REASONS,
   PROPOSAL_REJECTION_REASONS,
+  recordUnansweredAsks,
   recordConfigDebt,
   type ValueProposal,
 } from '@resolution/collection/form-writes';
@@ -119,10 +120,14 @@ describe('防线 1 · 反复问根治：filled 槽位零重问', () => {
     expect(filledSlotIds(filled, CONTRACT)).toEqual([NAME_FIELD.labelId]);
   });
 
-  it('markAsked 对 filled 槽位不计数、不返回可问', () => {
+  it('实际问句回执对 filled 槽位不计数', () => {
     const filled = fillName();
-    const { form: next, askable } = markAsked(filled, [NAME_FIELD.labelId, PHONE_FIELD.labelId]);
-    expect(askable).toEqual([PHONE_FIELD.labelId]);
+    const { form: next, recorded } = recordUnansweredAsks(
+      filled,
+      [NAME_FIELD.labelId, PHONE_FIELD.labelId],
+      'turn-1',
+    );
+    expect(recorded).toEqual([PHONE_FIELD.labelId]);
     expect(next.slots[NAME_FIELD.labelId].askCount).toBe(0);
   });
 
@@ -150,7 +155,7 @@ describe('防线 1 · 反复问根治：filled 槽位零重问', () => {
           messages: NAME_MESSAGES,
         }),
       ).form;
-      current = markAsked(current, [NAME_FIELD.labelId]).form;
+      current = recordUnansweredAsks(current, [NAME_FIELD.labelId], 'turn-' + turn).form;
     }
     expect(current.slots[NAME_FIELD.labelId].state).toBe('filled');
     expect(current.slots[NAME_FIELD.labelId].askCount).toBe(0);
@@ -176,7 +181,7 @@ describe('棘轮：对系统单向、对本人双向（§3 0819 裁定）', () =
   });
 
   it('改口 askCount 不清零——防"改一次刷新一次配额"绕过熔断', () => {
-    let current = markAsked(form(), [NAME_FIELD.labelId]).form;
+    let current = recordUnansweredAsks(form(), [NAME_FIELD.labelId], 'turn-1').form;
     current = fillName(current);
     const text = '姓名：李四';
     const restated = proposeValue(current, NAME_FIELD, {
@@ -352,16 +357,35 @@ describe('防线 2 · 复述落账：「不对，电话错了」精确重开一�
     expect(corrected.slots[NAME_FIELD.labelId].value?.value).toBe(TEST_CANDIDATE_NAME);
   });
 
-  it('affirmed 不动表单，verdict 停在 ready 放行提交', () => {
+  it('affirmed 持久化到当前复述，verdict 停在 ready 放行提交', () => {
     const filled = markRecapSent(fillName(createForm({ jobId: 1, contract: [NAME_FIELD] })), [
       NAME_FIELD.labelId,
     ]);
-    expect(applyRecapResult(filled, { affirmed: true })).toBe(filled);
-    expect(verdictOf(filled)).toBe('ready');
+    const affirmed = applyRecapResult(filled, { affirmed: true });
+    expect(affirmed.lastRecap).toEqual({ labelIds: [NAME_FIELD.labelId], affirmed: true });
+    expect(verdictOf(affirmed)).toBe('ready');
+  });
+
+  it('复述确认后任一槽位改口都作废旧快照', () => {
+    const recapped = markRecapSent(fillName(createForm({ jobId: 1, contract: [NAME_FIELD] })), [
+      NAME_FIELD.labelId,
+    ]);
+    const affirmed = applyRecapResult(recapped, { affirmed: true });
+    const text = '姓名：李四';
+    const restated = proposeValue(affirmed, NAME_FIELD, {
+      value: '李四',
+      sourceText: text,
+      producer: 'candidate_quote',
+      candidateTexts: [text],
+      messages: [userMessage(text)],
+      restatement: true,
+    });
+    expect(restated.outcome).toBe('restated');
+    expect(restated.form.lastRecap).toBeUndefined();
   });
 
   it('重开不清零 askCount：改口不刷新熔断配额', () => {
-    let current = markAsked(form(), [NAME_FIELD.labelId]).form;
+    let current = recordUnansweredAsks(form(), [NAME_FIELD.labelId], 'turn-1').form;
     current = fillName(current);
     current = markRecapSent(current, [NAME_FIELD.labelId]);
     const corrected = applyRecapResult(current, { corrections: [NAME_FIELD.labelId] });
@@ -595,7 +619,12 @@ describe('防线 5 · 死锁终结：errorList 回写后不存在永卡 ready', 
   const singleField = [NAME_FIELD];
 
   it('按 labelId 定位重开该槽 → verdict 回到 collecting', () => {
-    const ready = fillName(createForm({ jobId: 1, contract: singleField }));
+    const ready = applyRecapResult(
+      markRecapSent(fillName(createForm({ jobId: 1, contract: singleField })), [
+        NAME_FIELD.labelId,
+      ]),
+      { affirmed: true },
+    );
     expect(verdictOf(ready)).toBe('ready');
 
     const reopened = applyErrorList(
@@ -605,6 +634,7 @@ describe('防线 5 · 死锁终结：errorList 回写后不存在永卡 ready', 
     );
     expect(verdictOf(reopened)).toBe('collecting');
     expect(reopened.slots[NAME_FIELD.labelId].state).toBe('empty');
+    expect(reopened.lastRecap).toBeUndefined();
   });
 
   it('只带展示名时按 labelTitle 匹配（D2）', () => {
@@ -640,29 +670,67 @@ describe('防线 5 · 死锁终结：errorList 回写后不存在永卡 ready', 
 });
 
 describe('防线 6 · 熔断：同槽 2 问不中 → escalated，第 3 问不存在', () => {
-  it('问满上限后不再返回可问，整表转人工', () => {
+  it('第 2 次实际发问后仍未补齐，整表转人工', () => {
     let current = form();
     for (let i = 0; i < MAX_ASKS_PER_SLOT; i += 1) {
-      const step = markAsked(current, [NAME_FIELD.labelId]);
-      expect(step.askable).toEqual([NAME_FIELD.labelId]);
+      const step = recordUnansweredAsks(current, [NAME_FIELD.labelId], 'turn-' + (i + 1));
+      expect(step.recorded).toEqual([NAME_FIELD.labelId]);
+      expect(step.exhausted).toEqual(i + 1 === MAX_ASKS_PER_SLOT ? [NAME_FIELD.labelId] : []);
       current = step.form;
     }
     expect(current.slots[NAME_FIELD.labelId].askCount).toBe(MAX_ASKS_PER_SLOT);
-    expect(verdictOf(current)).toBe('collecting');
+    expect(verdictOf(current)).toBe('escalated');
+    expect(current.escalatedReason).toContain('ask_limit_exhausted');
+  });
 
-    const third = markAsked(current, [NAME_FIELD.labelId]);
-    expect(third.askable).toEqual([]);
-    expect(third.exhausted).toEqual([NAME_FIELD.labelId]);
-    expect(verdictOf(third.form)).toBe('escalated');
-    expect(third.form.escalatedReason).toContain('ask_limit_exhausted');
-    expect(third.form.slots[NAME_FIELD.labelId].askCount).toBe(MAX_ASKS_PER_SLOT);
+  it('同一候选人回复回合内工具重试不重复计数', () => {
+    const first = recordUnansweredAsks(form(), [NAME_FIELD.labelId], 'same-turn');
+    const retried = recordUnansweredAsks(first.form, [NAME_FIELD.labelId], 'same-turn');
+    expect(retried.recorded).toEqual([]);
+    expect(retried.form.slots[NAME_FIELD.labelId].askCount).toBe(1);
   });
 
   it('答上了就不再计数——熔断只惩罚"问不中"', () => {
-    let current = markAsked(form(), [NAME_FIELD.labelId]).form;
+    let current = recordUnansweredAsks(form(), [NAME_FIELD.labelId], 'turn-1').form;
     current = fillName(current);
-    for (let i = 0; i < 5; i += 1) current = markAsked(current, [NAME_FIELD.labelId]).form;
+    for (let i = 0; i < 5; i += 1) {
+      current = recordUnansweredAsks(current, [NAME_FIELD.labelId], 'later-' + i).form;
+    }
     expect(current.escalatedReason).toBeUndefined();
+  });
+
+  it('问满转人工后候选人补齐该槽，解除 ask_limit_exhausted 但保留历史次数', () => {
+    const single = createForm({ jobId: 1, contract: [NAME_FIELD] });
+    const first = recordUnansweredAsks(single, [NAME_FIELD.labelId], 'turn-1').form;
+    const exhausted = recordUnansweredAsks(first, [NAME_FIELD.labelId], 'turn-2').form;
+    expect(verdictOf(exhausted)).toBe('escalated');
+
+    const resolved = fillName(exhausted);
+    expect(resolved.slots[NAME_FIELD.labelId].askCount).toBe(MAX_ASKS_PER_SLOT);
+    expect(resolved.escalatedReason).toBeUndefined();
+    expect(verdictOf(resolved)).toBe('ready');
+  });
+
+  it('旧版虚假计数首次加载时清零，已填资料与其它人工原因不受影响', () => {
+    const legacyAskLimit = {
+      ...form(),
+      askTrackingVersion: undefined,
+      escalatedReason: 'ask_limit_exhausted: ' + NAME_FIELD.labelId,
+      slots: {
+        ...form().slots,
+        [NAME_FIELD.labelId]: { ...form().slots[NAME_FIELD.labelId], askCount: 2 },
+      },
+    } as unknown as BookingCollectionForm;
+    const migrated = migrateAskTracking(legacyAskLimit);
+    expect(migrated.askTrackingVersion).toBe(2);
+    expect(migrated.slots[NAME_FIELD.labelId].askCount).toBe(0);
+    expect(migrated.escalatedReason).toBeUndefined();
+
+    const otherEscalation = {
+      ...legacyAskLimit,
+      escalatedReason: 'suspected_multi_person',
+    };
+    expect(migrateAskTracking(otherEscalation).escalatedReason).toBe('suspected_multi_person');
   });
 
   it('escalate 首个原因胜出，后续不覆盖', () => {

@@ -149,8 +149,13 @@ export interface FormSlot {
   state: SlotState;
   /** `filled` 必有值；`disqualified` 带触发不合格的那个值；`empty` 无值。 */
   value?: SlotValue;
-  /** 已就该槽位发问的次数。≥2 仍 empty → 表级 escalatedReason（熔断，第 3 问不存在）。 */
+  /**
+   * 已实际发出、且候选人下一轮仍未补齐该槽位的次数。
+   * ≥2 仍 empty → 表级 escalatedReason（熔断，第 3 问不存在）。
+   */
   askCount: number;
+  /** 最近一次已入账的候选人回复回合；防同一回合工具重试重复消耗配额。 */
+  lastAskCountedTurnId?: string;
 }
 
 // ==================== 表单实体 ====================
@@ -161,12 +166,20 @@ export interface ConfigDebt {
   note: string;
 }
 
-/** 提交前复述在案：候选人回「不对」时靠它定位改哪格。 */
+/**
+ * 提交前复述在案：候选人回「不对」时靠它定位改哪格。
+ *
+ * `affirmed` 是该份复述快照的跨轮确认回执；任一槽位、契约槽位集合或语义标记变更
+ * 都必须整体作废 `lastRecap`，禁止把旧快照的确认沿用到新资料。
+ */
 export interface RecapRecord {
   labelIds: number[];
+  affirmed?: true;
 }
 
 export interface BookingCollectionForm {
+  /** 问询计数口径版本：v2 起只认真实送达的 assistant 问句。 */
+  askTrackingVersion: 2;
   /**
    * 人键（D1）：phone 槽位值归一 11 位，与海绵人键同源。
    * 手机号未知期取 `SESSION_CANDIDATE_REF`，到达时由 service 层 rebind。
@@ -225,6 +238,7 @@ export function createForm(params: {
     };
   }
   return {
+    askTrackingVersion: 2,
     candidateRef: params.candidateRef ?? SESSION_CANDIDATE_REF,
     jobId: params.jobId,
     slots,

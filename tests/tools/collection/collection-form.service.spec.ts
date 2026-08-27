@@ -1,6 +1,12 @@
 import { CollectionFormService } from '@tools/collection/collection-form.service';
 import { buildCollectionFormKey } from '@tools/collection/collection-form.store';
-import { createForm, proposeValue, type ContractFieldDef } from '@resolution/collection';
+import {
+  applyRecapResult,
+  createForm,
+  markRecapSent,
+  proposeValue,
+  type ContractFieldDef,
+} from '@resolution/collection';
 
 const NAME_FIELD: ContractFieldDef = {
   labelId: 769,
@@ -165,6 +171,17 @@ describe('CollectionFormService', () => {
       expect(form.slots[756].state).toBe('empty');
       expect(form.slots[769].state).toBe('filled');
       expect(form.slots[769].value?.value).toBe('兮兮');
+    });
+
+    it('契约变更时作废已确认的复述快照', async () => {
+      const recapped = markRecapSent(createForm({ jobId: 528962, contract: [NAME_FIELD] }), [
+        NAME_FIELD.labelId,
+      ]);
+      const affirmed = applyRecapResult(recapped, { affirmed: true });
+      store.read.mockResolvedValue(affirmed);
+
+      const synced = await service.loadOrCreate(SCOPE, [NAME_FIELD, ADDRESS_FIELD]);
+      expect(synced.lastRecap).toBeUndefined();
     });
 
     it('契约里消失的槽位退出办理态，不再卡 verdict 或误进 payload', async () => {
