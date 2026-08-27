@@ -475,6 +475,12 @@ observe 哨兵（只落档不拦截，5 条，2026-08-26 数据复核恢复）�
 `booking_done_claim_without_submission`（新哨兵，接替 `booking_promise_without_booking`
 的完成时态缺口；将来时口径经生产抽样证实几乎全命中合法收资话术，不恢复）。
 
+> **2026-08-27 收窄（用户裁定）**：`booking_receipt_mismatch` 失败路径下线"承诺重试"
+> 拦截（BOOKING_RETRY_PROMISE_PATTERN 整段删除），in-flight 假宣称只保留「正在」词形。
+> booking 失败后"稍后/这就再帮你提交"是合法承接话术，与拉群守卫"只拦完成时态"同口径；
+> 该分支曾把 recap 词表漏词引发的失败轮改写成"没约上"死胡同回复（batch …_1787812777667），
+> 在转化临门一脚劝退候选人。失败路径继续拦的只有：宣称正在/已经提交的假回执。
+
 精确重复由 sanitizer 处理，handoff 承诺由 turn outcome/副作用对账处理，日期与结构一致性由
 既有格式化与 repair regression gate 处理；它们不再登记为 Output ruleId。开放式事实、承诺、
 岗位质量和语气判断由现有主 Agent 理解承担，不启用第二个 reviewer。
