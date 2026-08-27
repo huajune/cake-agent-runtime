@@ -82,6 +82,33 @@
         "workflow YAML 语法校验通过；生成器真仓库冒烟（对人工定稿正确拒绝覆盖）"
       ],
       "level": "patch"
+    },
+    {
+      "number": "1086",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1086",
+      "title": "社保自然答案语义适配 + 作答轮不烧配额 + 筛选终局优先",
+      "author": "huajune",
+      "mergedAt": "2026-08-27",
+      "businessUpdates": [
+        "社保自然答案语义适配 + 作答轮不烧配额 + 筛选终局优先"
+      ],
+      "summary": [
+        "社保自然答案语义适配 + 作答轮不烧配额 + 筛选终局优先"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "社保自然答案语义适配 + 作答轮不烧配额 + 筛选终局优先"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "全量 Jest：444 套件 / 6435 用例全绿；lint:check 零告警；tsc 干净。",
+        "badcase 三环节各钉回归：adapter 8 条、form-writes 7 条、collection-core 7 条、renderer 1 条；彭妮场景端到端断言现在落 `screening_rejected`、社保「无」一次落格。",
+        "观测面：新增 `collection_form_audit` 事件 kind `escalation_yielded`；`unparseable_answer` 熔断与 `rejectedAttempts` 均落审计，明日可直接按事件观测。"
+      ],
+      "level": "patch"
     }
   ],
   "lastRelease": {
@@ -125,5 +152,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "88c5f30ed3ff007ba1e07612cd7321656e4c191f"
+  "lastAnalyzedSha": "4884054d9022688771c004709bea61555cf1a621"
 }
