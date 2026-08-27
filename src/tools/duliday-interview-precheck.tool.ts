@@ -62,9 +62,16 @@ export {
 
 const logger = new Logger('duliday_interview_precheck');
 
-/** description 与每次回执共用这一条照发指令，避免模型同时看到两套标签/模板口径。 */
+/**
+ * description 与每次回执共用这一条照发指令，避免模型同时看到两套标签/模板口径。
+ *
+ * 照发的硬约束只在**标签与行结构**（标签逐字=契约 labelTitle，候选人回填才对得上槽位）；
+ * 冒号右侧的值明确放行预填——会话已知答案不填进去，模型就被「勿重复追问」夹死，
+ * 只能整句改写模板逃生（batch 6a8fd314，2026-08-27 用户裁定：预填是正确行为）。
+ * 状态机的标准清单判定同口径：已预填值不算再次发问（见 collection-core）。
+ */
 export const COLLECTION_TEMPLATE_SEND_INSTRUCTION =
-  '逐字照发 bookingChecklist.templateText，不得改写、增删、重排任何标签或行；不要另起一套收资清单。';
+  '照发 bookingChecklist.templateText：标签逐字用原文，不得增删、重排字段行，不要另起一套收资清单；会话中候选人已给过的答案可直接预填在对应标签冒号后让其确认。候选人确认或补齐后，把预填项在内的全部答案经 formAnswers 提交。';
 
 // 程序记忆层（procedural memory）工具绑定规则；总目录：docs/prompt-rule-ledger.md
 export const PRECHECK_DESCRIPTION = `面试前置校验。实时读取岗位收资契约，推进候选人 × 岗位的持久表单，并返回可约时段。
