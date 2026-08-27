@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [11.0.6] - 2026-08-27
 
-**预计版本**: `v11.0.6`
-**最近更新**: `2026-08-27`
 **来源分支**: `develop`
-**累计 PR**: 1
 
 ### 更新摘要
 - PR #1100 InterviewBookingLabelValueSchema 用例对齐 options 线格式
@@ -39,7 +35,6 @@
 
 ### 验证记录
 - 无
-<!-- release:pending:end -->
 
 ## [11.0.5] - 2026-08-27
 
