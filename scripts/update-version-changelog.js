@@ -111,14 +111,6 @@ const SECTION_ALIASES = new Map([
 ]);
 
 const MODE = process.argv[2] || 'prepare';
-if (require.main === module) {
-  if (!['prepare', 'finalize'].includes(MODE)) {
-    console.error('用法: node scripts/update-version-changelog.js <prepare|finalize>');
-    process.exit(1);
-  }
-
-  main();
-}
 
 function main() {
   const latestRelease = getLatestReleaseTag();
@@ -1174,3 +1166,14 @@ module.exports = {
   aggregateEntryLevels,
   bumpVersion,
 };
+
+// CLI 启动必须放在所有顶层 const 初始化之后。main() 会同步进入 runPrepare，
+// 若提前调用，会在 Node.js 24 下触发 RELEASE_LEVEL_ORDER 的 TDZ ReferenceError。
+if (require.main === module) {
+  if (!['prepare', 'finalize'].includes(MODE)) {
+    console.error('用法: node scripts/update-version-changelog.js <prepare|finalize>');
+    process.exit(1);
+  }
+
+  main();
+}
