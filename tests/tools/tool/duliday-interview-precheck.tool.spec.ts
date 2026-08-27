@@ -1,3 +1,4 @@
+import { getTomorrowDate } from '@infra/utils/date.util';
 import { createForm, markSubmitted, type BookingCollectionForm } from '@resolution/collection';
 import type { ToolBuildContext } from '@shared-types/tool.types';
 import {
@@ -65,6 +66,21 @@ const JOB = {
     firstInterview: {
       firstInterviewWay: '电话面试',
       periodicInterviewTimes: [],
+      fixedInterviewTimes: [],
+    },
+  },
+};
+
+// 覆盖全周的周期性面试窗口：requestedDate 可约性校验对任意未来日期都能命中时段。
+const JOB_WITH_WINDOWS = {
+  ...JOB,
+  interviewProcess: {
+    firstInterview: {
+      firstInterviewWay: '门店面试',
+      periodicInterviewTimes: ['一', '二', '三', '四', '五', '六', '日'].map((day) => ({
+        interviewWeekday: `每周${day}`,
+        interviewTimes: [{ interviewStartTime: '10:00', interviewEndTime: '18:00' }],
+      })),
       fixedInterviewTimes: [],
     },
   },
@@ -338,6 +354,108 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
     const result = await execute({ jobId: 100 });
     expect(result.collectionVerdict).toBe('submitted');
     expect(result.nextAction).toBe('already_submitted');
+  });
+
+  it('误投 formAnswers 的「面试时间」条目转运为 requestedDate 参加可约性校验', async () => {
+    sponge.fetchJobs.mockResolvedValue({ jobs: [JOB_WITH_WINDOWS] });
+    context.turnInput.messages = [{ role: 'user', content: '我明天有空' }];
+    const result = await execute({
+      jobId: 100,
+      formAnswers: [{ labelTitle: '面试时间', value: '明天', quote: '我明天有空' }],
+    });
+    expect(result.success).toBe(true);
+    expect(result.interview.requestedDate).toEqual(
+      expect.objectContaining({ value: getTomorrowDate(), status: 'available' }),
+    );
+    // 转运成功的条目不算定位失败，也不再进收资核落定位失败审计。
+    expect(result.unmatchedAnswers).toBeUndefined();
+    expect(observer.emit).not.toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'proposal_rejected', reason: 'label_title_not_found' }),
+    );
+  });
+
+  it('「面试时间」值解析失败不升级为日期报错，走 unmatchedAnswers 反馈', async () => {
+    sponge.fetchJobs.mockResolvedValue({ jobs: [JOB_WITH_WINDOWS] });
+    context.turnInput.messages = [{ role: 'user', content: '过几天再说吧' }];
+    const result = await execute({
+      jobId: 100,
+      formAnswers: [{ labelTitle: '面试时间', value: '过几天', quote: '过几天再说吧' }],
+    });
+    expect(result.success).toBe(true);
+    expect(result.errorType).toBeUndefined();
+    expect(result.interview.requestedDate).toBeUndefined();
+    expect(result.unmatchedAnswers).toEqual([
+      { labelTitle: '面试时间', hint: expect.stringContaining('requestedDate') },
+    ]);
+  });
+
+  it('显式 requestedDate 参数优先，误投条目只走 unmatchedAnswers', async () => {
+    sponge.fetchJobs.mockResolvedValue({ jobs: [JOB_WITH_WINDOWS] });
+    context.turnInput.messages = [{ role: 'user', content: '明天或者后天都行' }];
+    const result = await execute({
+      jobId: 100,
+      requestedDate: '明天',
+      formAnswers: [{ labelTitle: '面试日期', value: '后天', quote: '后天都行' }],
+    });
+    expect(result.success).toBe(true);
+    expect(result.interview.requestedDate.value).toBe(getTomorrowDate());
+    expect(result.unmatchedAnswers).toEqual([
+      { labelTitle: '面试日期', hint: expect.stringContaining('requestedDate 参数为准') },
+    ]);
+  });
+
+  it('unmatchedAnswers 覆盖定位失败与主干撞车弃权，契约内标题正常入槽不受影响', async () => {
+    const trunkCollisionContract = [
+      ...CONTRACT,
+      {
+        labelId: 105,
+        labelTitle: '体重（kg）',
+        fieldType: 'TEXT' as const,
+        required: true,
+        acceptedOptions: [],
+        rejectedOptions: [],
+      },
+      {
+        labelId: 106,
+        labelTitle: '体重（斤）',
+        fieldType: 'TEXT' as const,
+        required: true,
+        acceptedOptions: [],
+        rejectedOptions: [],
+      },
+    ];
+    sponge.fetchJobCollectionContract.mockResolvedValue({
+      jobId: 100,
+      fields: trunkCollisionContract,
+    });
+    context.turnInput.messages = [{ role: 'user', content: '我叫兮兮，有健康证' }];
+    const result = await execute({
+      jobId: 100,
+      formAnswers: [
+        { labelTitle: '姓名', value: '兮兮', quote: '我叫兮兮' },
+        { labelTitle: '健康证', value: '有', quote: '有健康证' },
+        { labelTitle: '体重', value: '60', quote: '体重60' },
+      ],
+    });
+    expect(result.unmatchedAnswers).toEqual([
+      { labelTitle: '健康证', hint: expect.stringContaining('不在本岗契约') },
+      { labelTitle: '体重', hint: expect.stringContaining('命中多个字段') },
+    ]);
+    expect(currentForm?.slots[101].value?.value).toBe('兮兮');
+  });
+
+  it('动态标签全部命中契约时不产生 unmatchedAnswers，路径与改造前一致', async () => {
+    context.turnInput.messages = [{ role: 'user', content: '我叫兮兮，电话18271421690' }];
+    const result = await execute({
+      jobId: 100,
+      formAnswers: [
+        { labelTitle: '姓名', value: '兮兮', quote: '我叫兮兮' },
+        { labelTitle: '联系电话', value: '18271421690', quote: '电话18271421690' },
+      ],
+    });
+    expect(result.unmatchedAnswers).toBeUndefined();
+    expect(currentForm?.slots[101].value?.value).toBe('兮兮');
+    expect(currentForm?.slots[102].value?.value).toBe('18271421690');
   });
 
   it('岗位自由文本年龄要求不再作为第二判据源', async () => {

@@ -26,7 +26,11 @@ import {
   type CollectionAuditEvent,
   type CollectionCoreResult,
 } from '@tools/collection/collection-core';
-import { findFieldByTitle, selectArchiveFacts } from '@tools/collection/proposal-intake';
+import {
+  findFieldByTitle,
+  resolveFieldByTitle,
+  selectArchiveFacts,
+} from '@tools/collection/proposal-intake';
 import { FormAnswersInputSchema, type FormAnswerInput } from '@tools/collection/form-answer-input';
 import { renderRecap } from '@tools/collection/recap-renderer';
 import { renderRejection } from '@tools/collection/rejection-renderer';
@@ -68,7 +72,7 @@ export const PRECHECK_DESCRIPTION = `面试前置校验。实时读取岗位收�
 
 参数纪律：
 - jobId 必须来自本会话最近一次 duliday_job_list 的真实召回。
-- requestedDate 只在候选人明确提出日期时传；不确定就不传。
+- requestedDate 只在候选人明确提出日期时传；不确定就不传。候选人的期望面试时间/日期只走本参数、不得写成 formAnswers 条目；定位失败的 formAnswers 条目会在返回的 unmatchedAnswers 中附纠正提示。
 - formAnswers 是唯一收资答案入口；每项 labelTitle 必须逐字取自 bookingChecklist.requiredFields，value 传规范值，quote 传候选人原话。纠正用 correct、清除用 clear、确认用 confirm + 必要的 agentQuestionQuote；文件 value 传候选人真实附件 URL。
 - formAnswers 只能填写实时契约已有槽位，不能增删字段，也不能控制 requiredFields/displayOrder。不得传岗位要求冒充候选人答案，不得补造字段或沿用旧 candidateXxx 裸参数。
 
@@ -104,6 +108,88 @@ interface FormRun {
   recapText?: string;
   recapAffirmed: boolean;
   verdict: Verdict;
+  /** 误投 formAnswers 的期望面试日期，转运成功后作为本次 requestedDate（显式参数优先）。 */
+  divertedRequestedDate?: string;
+  /** labelTitle 定位失败/撞车弃权/面试时间族解析失败的条目——模型可见的纠错回执。 */
+  unmatchedAnswers: UnmatchedAnswer[];
+}
+
+interface UnmatchedAnswer {
+  labelTitle: string;
+  hint: string;
+}
+
+/**
+ * 面试时间语义族封闭词表（NFKC + 去空白后整串匹配）。生产回放 2026-08-26：5% 可判定答案
+ * 把候选人期望面试时间误投成 labelTitle「面试时间」，定位失败静默丢弃，可约性校验从未运行。
+ * 只有**定位不到契约槽位**的条目才进本词表判定——真契约字段永远优先。
+ */
+const INTERVIEW_TIME_TITLE_PATTERN =
+  /^(?:(?:期望|意向|预约)?面试(?:时间段|时间|日期)|预约(?:时间|日期)|到[面店](?:时间|日期)|想约的?时间)$/u;
+
+const LABEL_TITLE_HINT = 'labelTitle 必须逐字取自 bookingChecklist.requiredFields';
+
+interface FormAnswerIntake {
+  answers: FormAnswerInput[];
+  divertedRequestedDate?: string;
+  unmatched: UnmatchedAnswer[];
+}
+
+/**
+ * formAnswers 进收资核前的定向分流：
+ * - 面试时间语义族 + 本次未显式传 requestedDate + 值可解析 → 转运为 requestedDate 并移出答案；
+ *   解析失败**不**升级为 PRECHECK_INVALID_REQUESTED_DATE（那会把原本成功的调用变失败）；
+ * - 其余定位失败条目原样传给收资核（既有 collection_form_audit 审计面不变），
+ *   同时汇成 unmatchedAnswers 让模型在工具返回里直接看到失败原因并自我纠正。
+ */
+function intakeFormAnswers(params: {
+  contract: readonly ContractFieldDef[];
+  formAnswers?: readonly FormAnswerInput[];
+  hasExplicitRequestedDate: boolean;
+}): FormAnswerIntake {
+  const answers: FormAnswerInput[] = [];
+  const unmatched: UnmatchedAnswer[] = [];
+  let divertedRequestedDate: string | undefined;
+
+  for (const answer of params.formAnswers ?? []) {
+    const resolution = resolveFieldByTitle(params.contract, answer.labelTitle);
+    if (resolution.field) {
+      answers.push(answer);
+      continue;
+    }
+
+    const normalizedTitle = answer.labelTitle.normalize('NFKC').replace(/\s+/gu, '');
+    if (INTERVIEW_TIME_TITLE_PATTERN.test(normalizedTitle)) {
+      const value = answer.value === null ? '' : String(answer.value).trim();
+      const alreadyHasDate = params.hasExplicitRequestedDate || Boolean(divertedRequestedDate);
+      if (!alreadyHasDate) {
+        const parsed = normalizeRequestedDate(value);
+        if (parsed.date) {
+          divertedRequestedDate = parsed.date;
+          continue;
+        }
+      }
+      answers.push(answer);
+      unmatched.push({
+        labelTitle: answer.labelTitle,
+        hint: alreadyHasDate
+          ? '面试时间不是收资字段，本次已以 requestedDate 参数为准；期望面试日期一律走 requestedDate 参数传入'
+          : `面试时间不是收资字段，且「${value}」无法解析为日期；与候选人确认具体日期后改用 requestedDate 参数传入`,
+      });
+      continue;
+    }
+
+    answers.push(answer);
+    unmatched.push({
+      labelTitle: answer.labelTitle,
+      hint:
+        resolution.reason === 'label_title_ambiguous'
+          ? `该标题在本岗契约命中多个字段、已放弃写入；${LABEL_TITLE_HINT}`
+          : `该标题不在本岗契约；${LABEL_TITLE_HINT}`,
+    });
+  }
+
+  return { answers, divertedRequestedDate, unmatched };
 }
 
 type PrecheckAction =
@@ -191,10 +277,6 @@ export function buildInterviewPrecheckTool(
           const analysis = buildJobPolicyAnalysis(job);
           const interviewTimeWaitNotice = isWaitNoticeInterview(analysis);
           const windows = analysis.interviewWindows;
-          const requestedDateCheck =
-            !interviewTimeWaitNotice && normalizedDate.date
-              ? evaluateRequestedDate({ date: normalizedDate.date, windows })
-              : null;
 
           const formRun = await runForm({
             deps: { ...deps, collectionForms: deps.collectionForms },
@@ -202,8 +284,17 @@ export function buildInterviewPrecheckTool(
             context,
             jobId,
             formAnswers,
+            hasExplicitRequestedDate: Boolean(normalizedDate.date),
             messages: evidenceMessages,
           });
+
+          // 误投 formAnswers 的期望面试日期经转运后与显式参数同权参加可约性校验；显式参数优先。
+          const effectiveRequestedDate =
+            normalizedDate.date ?? formRun.divertedRequestedDate ?? null;
+          const requestedDateCheck =
+            !interviewTimeWaitNotice && effectiveRequestedDate
+              ? evaluateRequestedDate({ date: effectiveRequestedDate, windows })
+              : null;
 
           let nextAction = actionForForm(formRun);
           if (
@@ -225,7 +316,7 @@ export function buildInterviewPrecheckTool(
           });
           const bookableSlots = interviewTimeWaitNotice
             ? []
-            : buildBookableSlots({ windows, requestedDate: normalizedDate.date });
+            : buildBookableSlots({ windows, requestedDate: effectiveRequestedDate });
           const scheduleRule = interviewTimeWaitNotice ? '' : buildScheduleRule(windows);
           const upcomingTimeOptions = interviewTimeWaitNotice
             ? []
@@ -280,7 +371,7 @@ export function buildInterviewPrecheckTool(
                   : undefined,
               requestedDate: requestedDateCheck
                 ? {
-                    value: normalizedDate.date,
+                    value: effectiveRequestedDate,
                     status: requestedDateCheck.status,
                     reason: requestedDateCheck.reason,
                   }
@@ -299,6 +390,7 @@ export function buildInterviewPrecheckTool(
               starterFields: formRun.result.template.starterFields,
               screeningFields: formRun.result.template.screeningFields,
             },
+            unmatchedAnswers: formRun.unmatchedAnswers,
             recap:
               nextAction === 'confirm_collection'
                 ? {
@@ -343,6 +435,7 @@ async function runForm(params: {
   context: Parameters<ToolBuilder>[0];
   jobId: number;
   formAnswers?: readonly FormAnswerInput[];
+  hasExplicitRequestedDate: boolean;
   messages: readonly unknown[];
 }): Promise<FormRun> {
   const botUserId = params.context.session.botUserId?.trim();
@@ -355,6 +448,17 @@ async function runForm(params: {
   );
   const mapped = mapContractFields(rawContract, parseIdentityAnchors(params.deps.identityAnchors));
   emitAnchorMismatches(params, mapped.anchorMismatches);
+
+  const intake = intakeFormAnswers({
+    contract: mapped.fields,
+    formAnswers: params.formAnswers,
+    hasExplicitRequestedDate: params.hasExplicitRequestedDate,
+  });
+  if (intake.divertedRequestedDate) {
+    logger.log(
+      `[precheck] formAnswers 面试时间条目转运为 requestedDate=${intake.divertedRequestedDate}: jobId=${params.jobId}`,
+    );
+  }
 
   const scope = {
     corpId: params.context.session.corpId,
@@ -374,7 +478,7 @@ async function runForm(params: {
   }
 
   const candidateTexts = extractCandidateTexts(params.messages);
-  const corrections = (params.formAnswers ?? [])
+  const corrections = intake.answers
     .filter((answer) => answer.operation === 'correct' || answer.operation === 'clear')
     .filter(
       (answer) =>
@@ -400,7 +504,7 @@ async function runForm(params: {
     contract: mapped.fields,
     candidateTexts,
     messages: params.messages,
-    formAnswers: params.formAnswers,
+    formAnswers: intake.answers,
     archiveFacts: selectArchiveFacts(
       params.context.archive.sessionFacts?.interview_info as Record<string, unknown> | null,
     ),
@@ -436,6 +540,8 @@ async function runForm(params: {
     recapText,
     recapAffirmed,
     verdict: verdictOf(persisted),
+    divertedRequestedDate: intake.divertedRequestedDate,
+    unmatchedAnswers: intake.unmatched,
   };
 }
 
