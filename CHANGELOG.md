@@ -14,10 +14,11 @@
 **预计版本**: `v11.0.4`
 **最近更新**: `2026-08-27`
 **来源分支**: `develop`
-**累计 PR**: 1
+**累计 PR**: 2
 
 ### 更新摘要
 - PR #1081 固化 v11.0.3 发版底账 + 失败路径守卫回归用例
+- PR #1080 repair 回归闸豁免"首版即违规结构"的坍缩误伤
 
 ### 新功能
 - 无
@@ -30,6 +31,7 @@
 
 ### 运维与流程
 - PR #1081 固化 v11.0.3 发版底账 + 失败路径守卫回归用例
+- PR #1080 repair 回归闸豁免"首版即违规结构"的坍缩误伤
 
 ### 配置变更
 - 无
@@ -41,6 +43,8 @@
 - PR #1081 `booking-receipt.rule.spec.ts` + `hard-rules.service.spec.ts` 38/38 通过
 - PR #1081 `node scripts/check-release-ledger.js` ✅
 - PR #1081 生产抽查：v11.0.3 部署（07:41 UTC）后消息流水正常产出（13 条 / 10 success）
+- PR #1080 回归闸 util 26 用例、runner 47 用例、守卫目录全量 22 套 444 测试通过
+- PR #1080 `tsc --noEmit` / ESLint（--max-warnings=0）干净
 <!-- release:pending:end -->
 
 ## [11.0.3] - 2026-08-27

@@ -30,6 +30,32 @@
         "生产抽查：v11.0.3 部署（07:41 UTC）后消息流水正常产出（13 条 / 10 success）"
       ],
       "level": "patch"
+    },
+    {
+      "number": "1080",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1080",
+      "title": "repair 回归闸豁免\"首版即违规结构\"的坍缩误伤",
+      "author": "huajune",
+      "mergedAt": "2026-08-27",
+      "businessUpdates": [
+        "repair 回归闸豁免\"首版即违规结构\"的坍缩误伤"
+      ],
+      "summary": [
+        "repair 回归闸豁免\"首版即违规结构\"的坍缩误伤"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "repair 回归闸豁免\"首版即违规结构\"的坍缩误伤"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "回归闸 util 26 用例、runner 47 用例、守卫目录全量 22 套 444 测试通过",
+        "`tsc --noEmit` / ESLint（--max-warnings=0）干净"
+      ],
+      "level": "patch"
     }
   ],
   "lastRelease": {
@@ -73,5 +99,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "14ba2ee5a2934b5fe298344a997117d085f4bdc8"
+  "lastAnalyzedSha": "1e7582e5e77e1ba6bf06322004b3bf3080e8fe82"
 }
