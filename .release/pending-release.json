@@ -1,173 +1,49 @@
 {
-  "baseVersion": "11.0.2",
+  "baseVersion": "11.0.3",
   "nextVersion": "11.0.3",
+  "lastAnalyzedSha": "587ca44c4e112579d7e1cb37ea1dba508228c60f",
   "updatedAt": "2026-08-27",
   "sourceBranch": "develop",
-  "entries": [
-    {
-      "number": "1072",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1072",
-      "title": "recap 确认词表扩词 + 下线 booking 失败轮承诺重试拦截",
-      "author": "huajune",
-      "mergedAt": "2026-08-27",
-      "businessUpdates": [
-        "**recap 确认词表扩词**（`resolution/signal/dialogue.ts`）：补入 行/好/中/妥/要得/得嘞/没毛病/阔以/OK/嗯呐/约吧 等整句放行表态，仅进 recap 组合通道，不进身份作证词表。疑问/否定形态（行吗/不行/好了）因 吗/不/了 不是 token 天然不命中，spec 已覆盖。",
-        "**`booking_receipt_mismatch` 失败路径收窄**（用户裁定，与拉群守卫\"只拦完成时态\"同口径）：删除 `BOOKING_RETRY_PROMISE_PATTERN` 整段——booking 失败后\"稍后再帮你提交\"是合法承接话术；in-flight 假宣称只保留「正在」词形。继续拦：宣称正在/已经提交的假回执（形态不变）。",
-        "规则台账同批登记（`docs/prompt-rule-ledger.md`）。"
-      ],
-      "summary": [
-        "recap 确认词表扩词 + 下线 booking 失败轮承诺重试拦截",
-        "**recap 确认词表扩词**（`resolution/signal/dialogue.ts`）：补入 行/好/中/妥/要得/得嘞/没毛病/阔以/OK/嗯呐/约吧 等整句放行表态，仅进 recap 组合通道，不进身份作证词表。疑问/否定形态（行吗/不行/好了）因 吗/不/了 不是 token 天然不命中，spec 已覆盖。",
-        "**`booking_receipt_mismatch` 失败路径收窄**（用户裁定，与拉群守卫\"只拦完成时态\"同口径）：删除 `BOOKING_RETRY_PROMISE_PATTERN` 整段——booking 失败后\"稍后再帮你提交\"是合法承接话术；in-flight 假宣称只保留「正在」词形。继续拦：宣称正在/已经提交的假回执（形态不变）。",
-        "规则台账同批登记（`docs/prompt-rule-ledger.md`）。"
-      ],
-      "features": [],
-      "fixes": [
-        "**recap 确认词表扩词**（`resolution/signal/dialogue.ts`）：补入 行/好/中/妥/要得/得嘞/没毛病/阔以/OK/嗯呐/约吧 等整句放行表态，仅进 recap 组合通道，不进身份作证词表。疑问/否定形态（行吗/不行/好了）因 吗/不/了 不是 token 天然不命中，spec 已覆盖。",
-        "**`booking_receipt_mismatch` 失败路径收窄**（用户裁定，与拉群守卫\"只拦完成时态\"同口径）：删除 `BOOKING_RETRY_PROMISE_PATTERN` 整段——booking 失败后\"稍后再帮你提交\"是合法承接话术；in-flight 假宣称只保留「正在」词形。继续拦：宣称正在/已经提交的假回执（形态不变）。",
-        "规则台账同批登记（`docs/prompt-rule-ledger.md`）。"
-      ],
-      "optimizations": [],
-      "ops": [
-        "recap 确认词表扩词 + 下线 booking 失败轮承诺重试拦截"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "受影响 4 个 spec 套件 93/93 通过；typecheck / lint:check 全绿；pre-push 全量 CI 通过。"
-      ],
-      "level": "patch"
-    }
-  ],
+  "entries": [],
   "lastRelease": {
-    "version": "11.0.2",
+    "version": "11.0.3",
     "date": "2026-08-27",
     "sourceBranch": "develop",
     "entries": [
       {
-        "number": "1063",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/1063",
-        "title": "修复元数据脚本初始化顺序",
+        "number": "1072",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1072",
+        "title": "recap 确认词表扩词 + 下线 booking 失败轮承诺重试拦截",
         "author": "huajune",
         "mergedAt": "2026-08-27",
         "businessUpdates": [
-          "修复 `Release Metadata Automation` 无法创建待发布版本 PR。",
-          "修复版本元数据 CLI 在 Node.js 24 下启动过早导致的 TDZ `ReferenceError`。",
-          "将 `main()` 启动移到所有顶层常量初始化完成之后，不改变版本号计算逻辑。",
-          "修复元数据脚本初始化顺序"
+          "**recap 确认词表扩词**（`resolution/signal/dialogue.ts`）：补入 行/好/中/妥/要得/得嘞/没毛病/阔以/OK/嗯呐/约吧 等整句放行表态，仅进 recap 组合通道，不进身份作证词表。疑问/否定形态（行吗/不行/好了）因 吗/不/了 不是 token 天然不命中，spec 已覆盖。",
+          "**`booking_receipt_mismatch` 失败路径收窄**（用户裁定，与拉群守卫\"只拦完成时态\"同口径）：删除 `BOOKING_RETRY_PROMISE_PATTERN` 整段——booking 失败后\"稍后再帮你提交\"是合法承接话术；in-flight 假宣称只保留「正在」词形。继续拦：宣称正在/已经提交的假回执（形态不变）。",
+          "规则台账同批登记（`docs/prompt-rule-ledger.md`）。"
         ],
         "summary": [
-          "修复元数据脚本初始化顺序",
-          "修复版本元数据 CLI 在 Node.js 24 下启动过早导致的 TDZ `ReferenceError`。",
-          "将 `main()` 启动移到所有顶层常量初始化完成之后，不改变版本号计算逻辑。"
+          "recap 确认词表扩词 + 下线 booking 失败轮承诺重试拦截",
+          "**recap 确认词表扩词**（`resolution/signal/dialogue.ts`）：补入 行/好/中/妥/要得/得嘞/没毛病/阔以/OK/嗯呐/约吧 等整句放行表态，仅进 recap 组合通道，不进身份作证词表。疑问/否定形态（行吗/不行/好了）因 吗/不/了 不是 token 天然不命中，spec 已覆盖。",
+          "**`booking_receipt_mismatch` 失败路径收窄**（用户裁定，与拉群守卫\"只拦完成时态\"同口径）：删除 `BOOKING_RETRY_PROMISE_PATTERN` 整段——booking 失败后\"稍后再帮你提交\"是合法承接话术；in-flight 假宣称只保留「正在」词形。继续拦：宣称正在/已经提交的假回执（形态不变）。",
+          "规则台账同批登记（`docs/prompt-rule-ledger.md`）。"
         ],
         "features": [],
         "fixes": [
-          "修复 `Release Metadata Automation` 无法创建待发布版本 PR。",
-          "修复版本元数据 CLI 在 Node.js 24 下启动过早导致的 TDZ `ReferenceError`。",
-          "将 `main()` 启动移到所有顶层常量初始化完成之后，不改变版本号计算逻辑。",
-          "修复元数据脚本初始化顺序"
+          "**recap 确认词表扩词**（`resolution/signal/dialogue.ts`）：补入 行/好/中/妥/要得/得嘞/没毛病/阔以/OK/嗯呐/约吧 等整句放行表态，仅进 recap 组合通道，不进身份作证词表。疑问/否定形态（行吗/不行/好了）因 吗/不/了 不是 token 天然不命中，spec 已覆盖。",
+          "**`booking_receipt_mismatch` 失败路径收窄**（用户裁定，与拉群守卫\"只拦完成时态\"同口径）：删除 `BOOKING_RETRY_PROMISE_PATTERN` 整段——booking 失败后\"稍后再帮你提交\"是合法承接话术；in-flight 假宣称只保留「正在」词形。继续拦：宣称正在/已经提交的假回执（形态不变）。",
+          "规则台账同批登记（`docs/prompt-rule-ledger.md`）。"
         ],
-        "optimizations": [
-          "增加启动顺序回归测试，防止 CLI bootstrap 再次移动到常量声明之前。"
-        ],
-        "ops": [
-          "解阻 PR #1062 的正式发版链路。"
-        ],
-        "config": [
-          "无。"
-        ],
-        "envFiles": [],
-        "verification": [
-          "`node --check scripts/update-version-changelog.js`",
-          "`pnpm exec jest tests/scripts/update-version-changelog.spec.ts --runInBand --watchman=false`",
-          "pre-push 完整 `pnpm run ci:check`（443 suites / 6371 tests）",
-          "未新增开放自然语言规则或 prompt 示例值"
-        ],
-        "level": "patch"
-      },
-      {
-        "number": "1062",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/1062",
-        "title": "修复收资追问计数与复述确认状态",
-        "author": "huajune",
-        "mergedAt": "2026-08-27",
-        "businessUpdates": [
-          "修复 precheck 计划但未实际发送的问题被计入 `ask_limit_exhausted`。",
-          "修复字段补齐后 `ask_limit_exhausted` 仍保持 sticky、继续转人工。",
-          "修复复述确认只保留在单轮 ledger，跨轮选择面试时间时无法继续报名。",
-          "修复收资项追问次数误计：只统计实际发送给候选人的单项追问，并按回合去重。",
-          "候选人补齐已触发上限的字段后，清除对应人工升级原因，恢复正常报名流程。",
-          "持久化报名资料复述确认，候选人下一轮选择面试时间时仍可继续预约。",
-          "修复收资追问计数与复述确认状态",
-          "补充报名收资修复发版底账"
-        ],
-        "summary": [
-          "修复收资追问计数与复述确认状态",
-          "补充报名收资修复发版底账",
-          "修复收资项追问次数误计：只统计实际发送给候选人的单项追问，并按回合去重。",
-          "候选人补齐已触发上限的字段后，清除对应人工升级原因，恢复正常报名流程。",
-          "持久化报名资料复述确认，候选人下一轮选择面试时间时仍可继续预约。"
-        ],
-        "features": [],
-        "fixes": [
-          "修复 precheck 计划但未实际发送的问题被计入 `ask_limit_exhausted`。",
-          "修复字段补齐后 `ask_limit_exhausted` 仍保持 sticky、继续转人工。",
-          "修复复述确认只保留在单轮 ledger，跨轮选择面试时间时无法继续报名。",
-          "修复收资项追问次数误计：只统计实际发送给候选人的单项追问，并按回合去重。",
-          "候选人补齐已触发上限的字段后，清除对应人工升级原因，恢复正常报名流程。",
-          "持久化报名资料复述确认，候选人下一轮选择面试时间时仍可继续预约。",
-          "修复收资追问计数与复述确认状态",
-          "补充报名收资修复发版底账"
-        ],
-        "optimizations": [
-          "旧版不可信追问计数首次加载时自动迁移，保留已填资料和非追问类升级原因。",
-          "字段重新打开且历史已问满时仍阻止第三次追问。"
-        ],
-        "ops": [],
-        "config": [
-          "无；无数据库 migration、环境变量或外部权限变更。"
-        ],
-        "envFiles": [],
-        "verification": [
-          "`pnpm run ci:check`（443 个测试套件通过，6370 个测试通过）",
-          "`pnpm run duplication:check`",
-          "`pnpm run test:di-smoke`",
-          "生产问题等价场景已由 precheck 工具级回归覆盖",
-          "未新增对候选人开放自然语言直接 reject/覆盖/判缺的正则分支",
-          "未新增虚构 prompt 示例值"
-        ],
-        "level": "patch"
-      },
-      {
-        "number": "1067",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/1067",
-        "title": "固化 v11.0.2 发版底账",
-        "author": "huajune",
-        "mergedAt": "2026-08-27",
-        "businessUpdates": [
-          "将待发布底账固化为 `docs/releases/2026/v11.0.2.md`",
-          "记录 Release PR #1065、实现 PR 和门禁状态",
-          "固化 v11.0.2 发版底账"
-        ],
-        "summary": [
-          "将待发布底账固化为 `docs/releases/2026/v11.0.2.md`",
-          "记录 Release PR #1065、实现 PR 和门禁状态",
-          "固化 v11.0.2 发版底账"
-        ],
-        "features": [],
-        "fixes": [],
         "optimizations": [],
         "ops": [
-          "将待发布底账固化为 `docs/releases/2026/v11.0.2.md`",
-          "记录 Release PR #1065、实现 PR 和门禁状态"
+          "recap 确认词表扩词 + 下线 booking 失败轮承诺重试拦截"
         ],
         "config": [],
         "envFiles": [],
-        "verification": [],
+        "verification": [
+          "受影响 4 个 spec 套件 93/93 通过；typecheck / lint:check 全绿；pre-push 全量 CI 通过。"
+        ],
         "level": "patch"
       }
     ]
-  },
-  "lastAnalyzedSha": "475997fd199bacb44f799fd1c03b4eb85156bba3"
+  }
 }
