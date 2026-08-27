@@ -209,7 +209,7 @@ describe('duliday_interview_booking（form → labelList）', () => {
       { labelId: 101, value: '兮兮' },
       { labelId: 102, value: '18271421690' },
       { labelId: 103, value: '25' },
-      { labelId: 104, optionCodes: ['FEMALE'] },
+      { labelId: 104, options: [{ optionCode: 'FEMALE' }] },
     ]);
     expect(payload).not.toEqual(expect.objectContaining({ name: expect.anything() }));
     expect(payload).not.toEqual(expect.objectContaining({ customerLabelList: expect.anything() }));
