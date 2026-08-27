@@ -915,6 +915,42 @@
         "全量 Jest：**443 套件 / 6355 测试通过**（含四任务新增 33 个用例）；",
         "台账 `docs/prompt-rule-ledger.md` 已同步（precheck 行合并两条注记）。"
       ]
+    },
+    {
+      "number": "1049",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1049",
+      "title": "v11.0.0 发版底账（自 v10.45.0 升级）",
+      "author": "huajune",
+      "mergedAt": "2026-08-27",
+      "businessUpdates": [
+        "新增 P0-08（precheck v11 契约收口：全量单测 6355 + 440 岗契约数据面 + 272 生产会话回放，零错槽）",
+        "新增 P0-09（analyze-chat-badcases 正式回归闸门：发布负责人 2026-08-27 裁定豁免）"
+      ],
+      "summary": [
+        "v10.45.0 底账升级为 v11.0.0 并扩展收口批范围",
+        "底账 `v10.45.0.md` → `v11.0.0.md`：#1047 携 BREAKING 标记触发 major",
+        "范围扩展 +#1039/#1041/#1043/#1045/#1047；变更摘要补 v11 收口批",
+        "新增 P0-08（precheck v11 契约收口：全量单测 6355 + 440 岗契约数据面 + 272 生产会话回放，零错槽）",
+        "新增 P0-09（analyze-chat-badcases 正式回归闸门：发布负责人 2026-08-27 裁定豁免）",
+        "登记发布授权（合并/生产 migration/部署一条龙）与 env 遗留裁定",
+        "v11.0.0 发版底账（自 v10.45.0 升级）"
+      ],
+      "features": [
+        "新增 P0-08（precheck v11 契约收口：全量单测 6355 + 440 岗契约数据面 + 272 生产会话回放，零错槽）",
+        "新增 P0-09（analyze-chat-badcases 正式回归闸门：发布负责人 2026-08-27 裁定豁免）"
+      ],
+      "fixes": [],
+      "optimizations": [
+        "登记发布授权（合并/生产 migration/部署一条龙）与 env 遗留裁定"
+      ],
+      "ops": [
+        "底账 `v10.45.0.md` → `v11.0.0.md`：#1047 携 BREAKING 标记触发 major",
+        "范围扩展 +#1039/#1041/#1043/#1045/#1047；变更摘要补 v11 收口批",
+        "v10.45.0 底账升级为 v11.0.0 并扩展收口批范围"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": []
     }
   ],
   "lastRelease": {
