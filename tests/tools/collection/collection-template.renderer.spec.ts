@@ -64,7 +64,6 @@ describe('renderCollectionTemplate', () => {
     };
     const result = renderCollectionTemplate(createForm({ jobId: 1, contract: [dirty] }), [dirty]);
     expect(result.requiredFields).toEqual([dirty.labelTitle]);
-    expect(result.displayOrder).toEqual([dirty.labelTitle]);
     expect(result.templateText).toContain(`${dirty.labelTitle}：`);
   });
 });

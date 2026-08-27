@@ -181,7 +181,6 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
   it('无答案时字段全集、展示顺序和模板全部只来自实时岗位契约', async () => {
     const result = await execute({ jobId: 100 });
     expect(result.bookingChecklist.requiredFields).toEqual(['姓名', '联系电话', '年龄', '性别']);
-    expect(result.bookingChecklist.displayOrder).toEqual(['姓名', '联系电话', '年龄', '性别']);
     for (const title of result.bookingChecklist.requiredFields) {
       expect(result.bookingChecklist.templateText).toContain(`${title}：`);
     }

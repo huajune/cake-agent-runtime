@@ -7,7 +7,7 @@ const ATTACHMENT_URL_RE = /^https?:\/\/\S+$/iu;
  * precheck 对主模型公开的唯一收资答案协议。
  *
  * `labelTitle` 只负责在本轮实时岗位契约里定位槽位；它无权创建字段，也不参与
- * required/displayOrder 的生成。值与候选人原话分开承载，继续交既有 ValueProposal
+ * requiredFields 的生成与排序。值与候选人原话分开承载，继续交既有 ValueProposal
  * 与 proposeValue 公证链处理。
  */
 export const FormAnswerInputSchema = z

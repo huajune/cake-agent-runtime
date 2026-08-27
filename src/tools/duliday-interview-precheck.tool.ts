@@ -73,7 +73,7 @@ export const PRECHECK_DESCRIPTION = `面试前置校验。实时读取岗位收�
 - jobId 必须来自本会话最近一次 duliday_job_list 的真实召回。
 - requestedDate 只在候选人明确提出日期时传；不确定就不传。候选人的期望面试时间/日期只走本参数、不得写成 formAnswers 条目；定位失败的 formAnswers 条目会在返回的 unmatchedAnswers 中附纠正提示。
 - formAnswers 是唯一收资答案入口；每项 labelTitle 必须逐字取自 bookingChecklist.requiredFields，value 传规范值，quote 传候选人原话。纠正用 correct、清除用 clear、确认用 confirm + 必要的 agentQuestionQuote；文件 value 传候选人真实附件 URL。
-- formAnswers 只能填写实时契约已有槽位，不能增删字段，也不能控制 requiredFields/displayOrder。不得传岗位要求冒充候选人答案，不得补造字段或沿用旧 candidateXxx 裸参数。
+- formAnswers 只能填写实时契约已有槽位，不能增删字段，也不能控制 requiredFields 及其顺序。不得传岗位要求冒充候选人答案，不得补造字段或沿用旧 candidateXxx 裸参数。
 
 行动纪律：
 - collect_fields：只收 bookingChecklist.requiredFieldsToCollectNow。${COLLECTION_TEMPLATE_SEND_INSTRUCTION}

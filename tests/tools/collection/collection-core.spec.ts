@@ -222,7 +222,6 @@ describe('runCollectionCore · 筛选与审计', () => {
       formAnswers: [{ labelTitle: '身份', value: '社会人士', quote: '我是社会人士' }],
     });
     expect(result.template.requiredFields).toEqual(['姓名', '年龄', '有无本地健康证']);
-    expect(result.template.displayOrder).toEqual(['姓名', '年龄', '有无本地健康证']);
     expect(Object.keys(result.form.slots).map(Number).sort()).toEqual([13, 687, 769]);
     expect(result.audits).toContainEqual(
       expect.objectContaining({
