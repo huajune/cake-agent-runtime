@@ -1,10 +1,37 @@
 {
   "baseVersion": "11.0.3",
-  "nextVersion": "11.0.3",
-  "lastAnalyzedSha": "587ca44c4e112579d7e1cb37ea1dba508228c60f",
+  "nextVersion": "11.0.4",
   "updatedAt": "2026-08-27",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "1081",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1081",
+      "title": "固化 v11.0.3 发版底账 + 失败路径守卫回归用例",
+      "author": "huajune",
+      "mergedAt": "2026-08-27",
+      "businessUpdates": [
+        "固化 v11.0.3 发版底账 + 失败路径守卫回归用例"
+      ],
+      "summary": [
+        "固化 v11.0.3 发版底账 + 失败路径守卫回归用例"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "固化 v11.0.3 发版底账 + 失败路径守卫回归用例"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`booking-receipt.rule.spec.ts` + `hard-rules.service.spec.ts` 38/38 通过",
+        "`node scripts/check-release-ledger.js` ✅",
+        "生产抽查：v11.0.3 部署（07:41 UTC）后消息流水正常产出（13 条 / 10 success）"
+      ],
+      "level": "patch"
+    }
+  ],
   "lastRelease": {
     "version": "11.0.3",
     "date": "2026-08-27",
@@ -45,5 +72,6 @@
         "level": "patch"
       }
     ]
-  }
+  },
+  "lastAnalyzedSha": "14ba2ee5a2934b5fe298344a997117d085f4bdc8"
 }
