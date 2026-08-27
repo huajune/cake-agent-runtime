@@ -8,6 +8,47 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v11.0.2`
+**最近更新**: `2026-08-27`
+**来源分支**: `develop`
+**累计 PR**: 1
+
+### 更新摘要
+- PR #1063 修复元数据脚本初始化顺序
+- PR #1063 修复版本元数据 CLI 在 Node.js 24 下启动过早导致的 TDZ `ReferenceError`。
+- PR #1063 将 `main()` 启动移到所有顶层常量初始化完成之后，不改变版本号计算逻辑。
+
+### 新功能
+- 无
+
+### 问题修复
+- PR #1063 修复 `Release Metadata Automation` 无法创建待发布版本 PR。
+- PR #1063 修复版本元数据 CLI 在 Node.js 24 下启动过早导致的 TDZ `ReferenceError`。
+- PR #1063 将 `main()` 启动移到所有顶层常量初始化完成之后，不改变版本号计算逻辑。
+- PR #1063 修复元数据脚本初始化顺序
+
+### 优化调整
+- PR #1063 增加启动顺序回归测试，防止 CLI bootstrap 再次移动到常量声明之前。
+
+### 运维与流程
+- PR #1063 解阻 PR #1062 的正式发版链路。
+
+### 配置变更
+- PR #1063 无。
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #1063 `node --check scripts/update-version-changelog.js`
+- PR #1063 `pnpm exec jest tests/scripts/update-version-changelog.spec.ts --runInBand --watchman=false`
+- PR #1063 pre-push 完整 `pnpm run ci:check`（443 suites / 6371 tests）
+- PR #1063 未新增开放自然语言规则或 prompt 示例值
+<!-- release:pending:end -->
+
 ## [11.0.1] - 2026-08-27
 
 **来源分支**: `develop`
