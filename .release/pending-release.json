@@ -3,7 +3,32 @@
   "nextVersion": "12.0.0",
   "updatedAt": "2026-08-27",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "1055",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1055",
+      "title": "发版 PR 正文 spec 夹具化，解除 tag 检出必挂的部署阻断",
+      "author": "huajune",
+      "mergedAt": "2026-08-27",
+      "businessUpdates": [
+        "发版 PR 正文 spec 夹具化，解除 tag 检出必挂的部署阻断"
+      ],
+      "summary": [
+        "发版 PR 正文 spec 夹具化，解除 tag 检出必挂的部署阻断"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "发版 PR 正文 spec 夹具化，解除 tag 检出必挂的部署阻断"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "tests/scripts 7 suites / 41 tests 全绿；typecheck、lint 通过"
+      ]
+    }
+  ],
   "lastRelease": {
     "version": "11.0.0",
     "date": "2026-08-27",
