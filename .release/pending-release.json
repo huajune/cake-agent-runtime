@@ -1,1421 +1,979 @@
 {
-  "baseVersion": "10.44.0",
-  "nextVersion": "11.0.0",
+  "baseVersion": "11.0.0",
+  "nextVersion": "12.0.0",
   "updatedAt": "2026-08-27",
   "sourceBranch": "develop",
-  "entries": [
-    {
-      "number": "1016",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1016",
-      "title": "回填 v10.44.0 发布结果",
-      "author": "huajune",
-      "mergedAt": "2026-08-19",
-      "businessUpdates": [
-        "回填 v10.44.0 发布结果"
-      ],
-      "summary": [
-        "回填 v10.44.0 发布结果"
-      ],
-      "features": [],
-      "fixes": [],
-      "optimizations": [],
-      "ops": [
-        "回填 v10.44.0 发布结果"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": []
-    },
-    {
-      "number": "1019",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1019",
-      "title": "修正 v10.44.0 底账「无前端改动」的事实错误",
-      "author": "huajune",
-      "mergedAt": "2026-08-19",
-      "businessUpdates": [
-        "修正 v10.44.0 底账「无前端改动」的事实错误"
-      ],
-      "summary": [
-        "修正 v10.44.0 底账「无前端改动」的事实错误"
-      ],
-      "features": [],
-      "fixes": [
-        "修正 v10.44.0 底账「无前端改动」的事实错误"
-      ],
-      "optimizations": [],
-      "ops": [],
-      "config": [],
-      "envFiles": [],
-      "verification": []
-    },
-    {
-      "number": "1022",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1022",
-      "title": "新增 analyze-guardrail 守卫效果分析 skill",
-      "author": "huajune",
-      "mergedAt": "2026-08-21",
-      "businessUpdates": [
-        "新增 analyze-guardrail 守卫效果分析 skill"
-      ],
-      "summary": [
-        "新增 analyze-guardrail 守卫效果分析 skill",
-        "analyze-guardrail 补规则存续期核验步骤"
-      ],
-      "features": [
-        "新增 analyze-guardrail 守卫效果分析 skill"
-      ],
-      "fixes": [],
-      "optimizations": [],
-      "ops": [
-        "analyze-guardrail 补规则存续期核验步骤"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": []
-    },
-    {
-      "number": "1021",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1021",
-      "title": "班次时段承诺判定收窄到同句并豁免否定/复述语境",
-      "author": "huajune",
-      "mergedAt": "2026-08-21",
-      "businessUpdates": [
-        "班次时段承诺判定收窄到同句并豁免否定/复述语境",
-        "补齐班次否定语境边界"
-      ],
-      "summary": [
-        "班次时段承诺判定收窄到同句并豁免否定/复述语境",
-        "补齐班次否定语境边界"
-      ],
-      "features": [],
-      "fixes": [],
-      "optimizations": [],
-      "ops": [
-        "班次时段承诺判定收窄到同句并豁免否定/复述语境",
-        "补齐班次否定语境边界"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "新增 4 个回归用例：本 badcase 首版仍拦 / 修复版放行 / 否定从句级绑定（正反两例）；",
-        "老 badcase 6a573349（单句内承诺+时段）用例不受影响；",
-        "全量 Jest 7293 passed、typecheck / lint:check / prettier 干净。"
-      ]
-    },
-    {
-      "number": "1027",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1027",
-      "title": "绑定跨分句班次承诺",
-      "author": "huajune",
-      "mergedAt": "2026-08-21",
-      "businessUpdates": [
-        "绑定跨分句班次承诺"
-      ],
-      "summary": [
-        "绑定跨分句班次承诺"
-      ],
-      "features": [],
-      "fixes": [],
-      "optimizations": [],
-      "ops": [
-        "绑定跨分句班次承诺"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": []
-    },
-    {
-      "number": "1024",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1024",
-      "title": "完成复聊二期三项优化",
-      "author": "huajune",
-      "mergedAt": "2026-08-21",
-      "businessUpdates": [
-        "无数据库迁移，无 .env 变更",
-        "未执行 Dashboard、Supabase、shadow 或真发配置操作",
-        "入职跟进正式话术仍待运营提供"
-      ],
-      "summary": [
-        "复聊二期方案与执行清单",
-        "增加面试前两天确认档",
-        "抽取拉群编排服务",
-        "增加推店未回拉群收口档",
-        "增加面试后入职跟进档",
-        "隔离面试提醒触达档位",
-        "固化推店锚点结算顺序",
-        "观测入职跟进跳过事件",
-        "落 0820 话术裁定与分级放量口径",
-        "三档发版即开（0820 终版裁定）",
-        "无数据库迁移，无 .env 变更",
-        "未执行 Dashboard、Supabase、shadow 或真发配置操作",
-        "入职跟进正式话术仍待运营提供",
-        "完成复聊二期三项优化"
-      ],
-      "features": [
-        "无数据库迁移，无 .env 变更",
-        "未执行 Dashboard、Supabase、shadow 或真发配置操作",
-        "入职跟进正式话术仍待运营提供"
-      ],
-      "fixes": [],
-      "optimizations": [
-        "抽取拉群编排服务"
-      ],
-      "ops": [
-        "复聊二期方案与执行清单",
-        "增加面试前两天确认档",
-        "增加推店未回拉群收口档",
-        "增加面试后入职跟进档",
-        "隔离面试提醒触达档位",
-        "固化推店锚点结算顺序",
-        "观测入职跟进跳过事件",
-        "落 0820 话术裁定与分级放量口径",
-        "三档发版即开（0820 终版裁定）"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "pnpm run test tests/agent/reengagement tests/biz/group-task tests/tools/tool/invite-to-group.tool.spec.ts --watchman=false：29 suites / 548 tests passed",
-        "pnpm run lint:check：passed",
-        "pnpm run typecheck：passed",
-        "pnpm run test --watchman=false：458 suites / 7,360 tests passed；1 suite / 6 tests skipped",
-        "pnpm run ci:check：lint、format、typecheck、geo、vocab、Web build、Nest build、coverage tests 全部通过"
-      ]
-    },
-    {
-      "number": "1023",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1023",
-      "title": "完成收资切换、记忆闭集与 BadCase 复测",
-      "author": "huajune",
-      "mergedAt": "2026-08-21",
-      "businessUpdates": [
-        "红线新增「词表禁判语义」——第一档仅选项字面精确匹配，语义一律模型作证",
-        "红线新增——候选人信息不跨托管账号共享（0820 运营裁定）",
-        "§10.1 补 0819 确认死循环实案回归门——用户裁定本批必须完全修复",
-        "收资批随批修复项——独白泄漏sanitizer/静默丢消息重开/无岗承接三口径",
-        "收资核 + 清单渲染 + 披露兜底注册表补标题面判据",
-        "修复推荐轮次与拉群授权漏口",
-        "修复预约提交边界与性别筛选",
-        "合并 develop 并解决收资重构冲突"
-      ],
-      "summary": [
-        "三份确定性判据下沉 resolution，解除收资表单域对 tools 的依赖",
-        "收资表单状态机纯逻辑核（蓝图 §8 步骤 1）",
-        "健康证资格判据补否定前瞻——「没有健康证」曾被判成持证",
-        "解析与披露层——选项直配 + 三适配器 + 披露分级（蓝图 §8 步骤 2）",
-        "文案层——提交前复述与不合格话术渲染器（蓝图 §8 步骤 3）",
-        "删 reasoning 持久化（记忆审计 S8）",
-        "删 preferences.brands 样板 + 收 saveFacts 入参，拆裸值兼容信封（S9）",
-        "删「健康证类型」死分支与 procedural 三个只写字段（S10）",
-        "落盘态字段被丢弃时落执行事件 + 飞书告警（记忆审计风险点 8 接线）",
-        "钉死「清空意向后长期 preference_facts 清不掉」缺陷（不修）",
-        "回填 Spike S2/S4/S5 结论与记忆审计 §4 实际处置结果",
-        "卡片渲染器 spec 的事实字面量改经 toSessionFacts 署名",
-        "§10.1 补 0819 确认死循环实案回归门——用户裁定本批必须完全修复",
-        "红线新增「词表禁判语义」——第一档仅选项字面精确匹配，语义一律模型作证",
-        "§3 补改口通道裁定 + 公证②闸措辞对齐实现",
-        "红线追加——作证主通道=主聊模型随工具调用，不设常驻第二语义读者",
-        "§8 契约检查点 0820 实测通过——required/valueSpec(genderRanges)/disc…",
-        "契约诉求单终态回执——三条后端承诺改，空标签岗裁定直接转人工",
-        "红线新增——候选人信息不跨托管账号共享（0820 运营裁定）",
-        "收资批随批修复项——独白泄漏sanitizer/静默丢消息重开/无岗承接三口径",
-        "契约 v2 客户端 + DTO 定稿 + 判据泛化（蓝图 §8 步骤 5 上半）",
-        "收资表单 Redis 快照 store/service（蓝图 §8 步骤 5 下半）",
-        "写入运输规范 + R1 确认作证通道 + §10.1 实案回归门",
-        "收资核 + 清单渲染 + 披露兜底注册表补标题面判据",
-        "收资表单接管收资核（蓝图 §8 步骤 6 主体）",
-        "记忆→表单预填（跨岗不重复盘问，同账号内）",
-        "标题主干撞车时不猜 + 回填覆盖度复测结论（收窄 §7 退役范围）",
-        "必填全收 + 筛选项优先发问（0820 用户口径确认）",
-        "表单回捞 + 身份适配器 + 枚举提示（§7 接线补齐三块）",
-        "R1 确认作证恢复接进裸字段通道（0819 死循环的另一半）",
-        "标签补数据清单交运营 + 肯定词表收三词 + 常识型字段不出枚举提示",
-        "迁入 develop 侧待提交文档——铁证 D 实证/回归 + 上下文治理方案",
-        "§8.6 岗位侧硬筛退役裁定（0820 对齐运营后定案，推翻 §8.5 保留意见）",
-        "记忆→表单预填读错了形态，在生产里是死代码",
-        "切换表单采集与记忆主链路",
-        "拦截并剥离内部推理泄漏",
-        "收口静默窗口与锁重检丢消息",
-        "收敛两轮推荐与无岗群承接",
-        "对齐记忆闭集与退役链路断言",
-        "经纬度对调确定性纠偏，堵假无岗漏口",
-        "反馈写飞书防重，堵超时假失败重复行",
-        "修复推荐轮次与拉群授权漏口",
-        "保留分段岗位卡片反馈状态",
-        "拦截两轮未同意直接拉群",
-        "拦截未落地预约承诺",
-        "同步 develop 发版元数据",
-        "记录收资切换验证底账",
-        "收紧身份确认并补齐专测",
-        "回填 PR 门禁结果",
-        "修复预约提交边界与性别筛选",
-        "回填最终评审整改",
-        "收资批文档清理——蓝图/总纲迁 architecture，五份已完结工作文档退役",
-        "收资表单域终态文档重写——纠正「搬运过程文档当归档」的错误",
-        "一期方案文档退役——机制已被表单状态机 §7 退役批取代",
-        "档案域发版状态刷新 + 与收资表单域双向链接",
-        "合并 develop 并解决收资重构冲突",
-        "完成收资切换、记忆闭集与 BadCase 复测"
-      ],
-      "features": [
-        "红线新增「词表禁判语义」——第一档仅选项字面精确匹配，语义一律模型作证",
-        "红线新增——候选人信息不跨托管账号共享（0820 运营裁定）"
-      ],
-      "fixes": [
-        "§10.1 补 0819 确认死循环实案回归门——用户裁定本批必须完全修复",
-        "收资批随批修复项——独白泄漏sanitizer/静默丢消息重开/无岗承接三口径",
-        "收资核 + 清单渲染 + 披露兜底注册表补标题面判据",
-        "修复推荐轮次与拉群授权漏口",
-        "修复预约提交边界与性别筛选",
-        "合并 develop 并解决收资重构冲突"
-      ],
-      "optimizations": [],
-      "ops": [
-        "三份确定性判据下沉 resolution，解除收资表单域对 tools 的依赖",
-        "收资表单状态机纯逻辑核（蓝图 §8 步骤 1）",
-        "健康证资格判据补否定前瞻——「没有健康证」曾被判成持证",
-        "解析与披露层——选项直配 + 三适配器 + 披露分级（蓝图 §8 步骤 2）",
-        "文案层——提交前复述与不合格话术渲染器（蓝图 §8 步骤 3）",
-        "删 reasoning 持久化（记忆审计 S8）",
-        "删 preferences.brands 样板 + 收 saveFacts 入参，拆裸值兼容信封（S9）",
-        "删「健康证类型」死分支与 procedural 三个只写字段（S10）",
-        "落盘态字段被丢弃时落执行事件 + 飞书告警（记忆审计风险点 8 接线）",
-        "钉死「清空意向后长期 preference_facts 清不掉」缺陷（不修）",
-        "回填 Spike S2/S4/S5 结论与记忆审计 §4 实际处置结果",
-        "卡片渲染器 spec 的事实字面量改经 toSessionFacts 署名",
-        "§3 补改口通道裁定 + 公证②闸措辞对齐实现",
-        "红线追加——作证主通道=主聊模型随工具调用，不设常驻第二语义读者",
-        "§8 契约检查点 0820 实测通过——required/valueSpec(genderRanges)/disc…",
-        "契约诉求单终态回执——三条后端承诺改，空标签岗裁定直接转人工",
-        "契约 v2 客户端 + DTO 定稿 + 判据泛化（蓝图 §8 步骤 5 上半）",
-        "收资表单 Redis 快照 store/service（蓝图 §8 步骤 5 下半）",
-        "写入运输规范 + R1 确认作证通道 + §10.1 实案回归门",
-        "收资表单接管收资核（蓝图 §8 步骤 6 主体）",
-        "记忆→表单预填（跨岗不重复盘问，同账号内）",
-        "标题主干撞车时不猜 + 回填覆盖度复测结论（收窄 §7 退役范围）",
-        "必填全收 + 筛选项优先发问（0820 用户口径确认）",
-        "表单回捞 + 身份适配器 + 枚举提示（§7 接线补齐三块）",
-        "R1 确认作证恢复接进裸字段通道（0819 死循环的另一半）",
-        "标签补数据清单交运营 + 肯定词表收三词 + 常识型字段不出枚举提示",
-        "迁入 develop 侧待提交文档——铁证 D 实证/回归 + 上下文治理方案",
-        "§8.6 岗位侧硬筛退役裁定（0820 对齐运营后定案，推翻 §8.5 保留意见）",
-        "记忆→表单预填读错了形态，在生产里是死代码",
-        "切换表单采集与记忆主链路",
-        "拦截并剥离内部推理泄漏",
-        "收口静默窗口与锁重检丢消息",
-        "收敛两轮推荐与无岗群承接",
-        "对齐记忆闭集与退役链路断言",
-        "经纬度对调确定性纠偏，堵假无岗漏口",
-        "反馈写飞书防重，堵超时假失败重复行",
-        "保留分段岗位卡片反馈状态",
-        "拦截两轮未同意直接拉群",
-        "拦截未落地预约承诺",
-        "同步 develop 发版元数据",
-        "记录收资切换验证底账",
-        "收紧身份确认并补齐专测",
-        "回填 PR 门禁结果",
-        "回填最终评审整改",
-        "收资批文档清理——蓝图/总纲迁 architecture，五份已完结工作文档退役",
-        "收资表单域终态文档重写——纠正「搬运过程文档当归档」的错误",
-        "一期方案文档退役——机制已被表单状态机 §7 退役批取代",
-        "档案域发版状态刷新 + 与收资表单域双向链接"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": []
-    },
-    {
-      "number": "1030",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1030",
-      "title": "产品文档全量梳理专项——12 份文档审计后终态化",
-      "author": "huajune",
-      "mergedAt": "2026-08-21",
-      "businessUpdates": [
-        "合并 develop 并解决产品文档冲突"
-      ],
-      "summary": [
-        "退役三份已完结/失实文档——审计实证后进 git 历史",
-        "敏感信息运营文档终态大修——性别年龄可明说、户籍禁说禁问、矩阵让位代码权威",
-        "拉群与群任务三文档终态刷新——0820 三口径、Bull 队列模型、二级过时链同步",
-        "运营数据两文档终态刷新+复聊小修——回填 7-8 月九轮改造",
-        "运营手册与产品定义终态刷新——修十处事实错、补收资/复聊/守卫三节",
-        "合并 develop 并解决产品文档冲突",
-        "产品文档全量梳理专项——12 份文档审计后终态化"
-      ],
-      "features": [],
-      "fixes": [
-        "合并 develop 并解决产品文档冲突"
-      ],
-      "optimizations": [],
-      "ops": [
-        "退役三份已完结/失实文档——审计实证后进 git 历史",
-        "敏感信息运营文档终态大修——性别年龄可明说、户籍禁说禁问、矩阵让位代码权威",
-        "拉群与群任务三文档终态刷新——0820 三口径、Bull 队列模型、二级过时链同步",
-        "运营数据两文档终态刷新+复聊小修——回填 7-8 月九轮改造",
-        "运营手册与产品定义终态刷新——修十处事实错、补收资/复聊/守卫三节"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": []
-    },
-    {
-      "number": "1033",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1033",
-      "title": "工具层目录终态重排——删 duliday 壳、散件跟工具走",
-      "author": "huajune",
-      "mergedAt": "2026-08-21",
-      "businessUpdates": [
-        "修复目录重排后的遗漏引用"
-      ],
-      "summary": [
-        "测试套件架构文档对齐代码现状",
-        "解散 duliday/precheck 目录——三个工具文件各回语义主场",
-        "工具层目录终态重排——删 duliday 壳、散件跟工具走、三抽屉并一",
-        "修复目录重排后的遗漏引用",
-        "工具层目录终态重排——删 duliday 壳、散件跟工具走"
-      ],
-      "features": [],
-      "fixes": [
-        "修复目录重排后的遗漏引用"
-      ],
-      "optimizations": [],
-      "ops": [
-        "测试套件架构文档对齐代码现状",
-        "解散 duliday/precheck 目录——三个工具文件各回语义主场",
-        "工具层目录终态重排——删 duliday 壳、散件跟工具走、三抽屉并一"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "纯移动零行为：`ci:check` 全量 **446 suites / 6768 例绿**（typecheck+lint+test）",
-        "测试镜像同步重排（tests/tools 与 src/tools 目录一一对应）",
-        "import 别名三种形态（@tools/、@/tools/、相对路径）+ scripts/ 消费面全部改写，旧路径引用清零（仅保留「原居所」出处注释按史实指向 git 历史）",
-        "docs 与守卫 catalog 的路径注记同步刷新"
-      ]
-    },
-    {
-      "number": "1035",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1035",
-      "title": "上下文工程治理一期：缓存埋点、膨胀哨兵、无损瘦身与规则台账（P0+P1+P3-1+F1~F4）",
-      "author": "huajune",
-      "mergedAt": "2026-08-26",
-      "businessUpdates": [
-        "新增上下文工程八原则 C1~C8——治理调研蒸馏为经验宪法",
-        "新增 C9 harness两分法与松绑就绪——业界松绑趋势的本库落位",
-        "新增苦涩教训台账 L1~L8——机制级方向性证伪的复盘账本",
-        "新增行业经验引用库——历次重构引用源的总索引与落点映射",
-        "README 新增目录结构与命名规约终态节——六条规约+词汇对照唯一权威",
-        "打通会话与处理流水跳转",
-        "治理 P3-2 手册批——双居所归并修复口径冲突 + 结构件去重",
-        "M2-C 防过碎修正——混合形态，单件平铺成簇立目录（沿工具层终态惯例）",
-        "目录对称化二次修正——四层全目录、跨层服务平铺根、services/ 取消",
-        "修复懒迁移竞态与 bot 映射缓存降级"
-      ],
-      "summary": [
-        "上下文工程治理方案定稿——基线复核、缓存文档核实与三条总纲裁定",
-        "治理方案升级三元目标——注意力质量+抗腐烂+设计合理性",
-        "治理方案第三轮——约束放置判定树、行业对照结论与P3-4 Skill化实验",
-        "新增上下文工程八原则 C1~C8——治理调研蒸馏为经验宪法",
-        "新增 C9 harness两分法与松绑就绪——业界松绑趋势的本库落位",
-        "新增苦涩教训台账 L1~L8——机制级方向性证伪的复盘账本",
-        "新增行业经验引用库——历次重构引用源的总索引与落点映射",
-        "引用库补引两域——裁决权/自纠边界学理 + 编排多代理git回收",
-        "上下文治理 P0+P1 代码批——缓存命中埋点、膨胀哨兵与无损瘦身",
-        "四层记忆对照 CoALA 四分法复盘——功能完备、一处命名错位、一个治理洞察",
-        "登记治理二期意向——记忆体系 CoALA 对齐（一期完成后启动）",
-        "上下文治理 P1-1 审计定稿 + P3-1 规则台账建成 + F1~F3 防腐纪律落地",
-        "治理二期立项——记忆体系 CoALA 对齐（M1 分层供给/M2 命名搭车/M3 分家）",
-        "F5 裁定执行完毕——5 处 DB 双居所违例/旧口径删改落地并销账",
-        "治理 P3-2/P3-3 首批——final-check 守卫同构条目下线 + job_list 描…",
-        "治理 P3-3 二批——数据开关章节坍缩 + handoff 协议副本归并",
-        "治理 P3-2 手册批——双居所归并修复口径冲突 + 结构件去重",
-        "一期收官批——job_list 深度压缩至 8,515 + DB 挂账清零 + P2/P3-4 裁决",
-        "CoALA 命名范围裁定——只改'程序记忆'一处，不做全量改名",
-        "命名轴设计哲学查证——业界主流是复合轴，本库顶层命名获同构追认",
-        "社区脉搏入库——记忆归属之争/分类法必要性质疑/文件式记忆与重写退化警告",
-        "二期方案时效刷新——启动条件已满足、P3-4 并入 M1 落定候选段清单",
-        "二期 M2 提前执行——procedural 更名 stage-state 全量落地",
-        "memory-architecture 术语同步——程序记忆→阶段状态",
-        "全库术语扫尾——程序记忆→阶段状态",
-        "程序记忆术语最终扫尾——advance-stage 注释与产品文档",
-        "程序记忆术语残留清零（注释级 3 处）",
-        "settlement 更名 consolidation——同库与薪资结算域双义冲突",
-        "回滚误改——AgentJobDetailField 的 settlement 是薪资结算域枚举非沉淀标签",
-        "二期 M2-B 长期层 A3 结构分组设计定稿——待批准执行",
-        "二期三裁定入档——M1 playbook 抽取关闭、C8 留常驻、M3 边界定稿",
-        "短期窗口 60/12K→120/24K——p99 触顶数据裁定放大",
-        "M2-B 追加 Working Memory 类型命名设计——PreparedAgentContext→Worki…",
-        "M1-B 程序记忆逻辑收拢设计——物理分散维持+索引互链补齐认知轴导航",
-        "M2-C memory 模块生命周期轴目录重组设计——代码树对齐结构图，待批准",
-        "结构图三悬空元素的代码组织落点——working-memory 目录/procedural 物理仓/两舱文件级拆分",
-        "终态代码组织架构图入档——逐路径标注交付批次，作为验收基准",
-        "M2-C 防过碎修正——混合形态，单件平铺成簇立目录（沿工具层终态惯例）",
-        "M1-B 程序记忆索引升格 + 六居所互链锚注",
-        "M2-C 目录终态重组——代码树对齐记忆结构图",
-        "M2-B 长期层 A3 结构分组落地——semantic/episodic 入代码与数据库",
-        "M3 会话记忆两舱分家——facts/workbench 文件级拆分，facade 保 26 注入点零波及",
-        "目录对称化二次修正——四层全目录、跨层服务平铺根、services/ 取消",
-        "session/ 更名 session-state/——scope 名两头不靠，与 stage-sta…",
-        "README 新增目录结构与命名规约终态节——六条规约+词汇对照唯一权威",
-        "展示执行事件时间线",
-        "优先展示工具调用观测字段",
-        "展示守卫语义审查判例",
-        "补充详情排障关键信息",
-        "打通会话与处理流水跳转",
-        "刷新详情并清理死代码",
-        "下线断流事件消费",
-        "定稿 M5 结构与三期装配设计",
-        "定格短期记忆目录结构",
-        "将本轮规则事实正名为提示",
-        "对齐咨询周期与沉淀间隙",
-        "M5 第 4 条复议改定——profile 双写入路径",
-        "将品牌状态并入会话事实",
-        "改定短期记忆层为平铺结构",
-        "按层平铺短期记忆结构",
-        "定时沉淀闲置会话",
-        "按托管账号隔离长期记忆",
-        "恢复 profile 双写入路径",
-        "门面正名 session-state——伞用中性词，类型词住舱级映射",
-        "收资单据迁入工具域",
-        "召回契约形状对齐两层结构——四层平铺退役",
-        "清理 session-state 门面旧名残留",
-        "收尾 M5 两层记忆文档",
-        "清理定时沉淀退役标识符",
-        "收紧智能写入并追加归档摘要",
-        "收资表单逐格回流 sessionFacts——未成单不丢（M5 裁定一）",
-        "SessionSummaries 单层化 episodes + 沉淀水位独立列——archive 机构…",
-        "类型契约改为总图先行",
-        "README 补沉淀总装图——三种产出三套写法",
-        "补齐 height/weight 长期档案 RPC 键框（M5 裁定五）",
-        "跟随 procedural 提示词迁址",
-        "收资表单 key 补 bot 维——跨 bot 不共表（M5 裁定六）",
-        "补齐 M5 深审裁定与编译器评审结论",
-        "收口短期类型 canonical import",
-        "gender 来源语义入信封、停写 gender_source——两刀拆除批 A（M5 裁定八）",
-        "三期终版轻量化 + M5 深审裁定全量入档",
-        "修复懒迁移竞态与 bot 映射缓存降级",
-        "三期批二终态定稿——2b 否决、批三升格、先例降级入档",
-        "收官文档清理——一期/二期/复聊二期方案转 git 历史，遗留项归位",
-        "sections 按知识类型归类 + 台账锚点测试——三期批一",
-        "三期终稿 v2——外部评审四 P1 采纳 + 不过度设计终裁",
-        "三期批一定稿——归类裁定表、episodic 空目录不立、顶层 procedural 合并",
-        "批一追加拆聚合壳——policy/runtime-context 括号退役，12 真实块铺平",
-        "批一归类纠偏——按内容归位、撤空目录、procedural 归一",
-        "组装冲突裁决——同值去重/异值标注/turnHints 增量块——三期批三",
-        "三期批四立案——装配边界治理（禁令升格 section/formatter 并壳/裁决后门收口）",
-        "system 拆稳定前缀+动态尾部——三期批二",
-        "装配边界治理——禁令升格 section、formatter 并壳、裁决后门收口（三期批四）",
-        "归类表勘误——group-inventory 归 working，semantic 收窄为候选人事实",
-        "收尾批裁定汇总入档——正名/enrichment迁出/群库拆分/机制件归根/示例重生成",
-        "装配层收尾——preparation 正名、enrichment 归车间、群库拆分归位",
-        "system 拆稳定前缀+动态尾部——三期批二（Qwen 隐式缓存路线）",
-        "装配示例与 KB 文档按终态重写",
-        "批二段序返修——final-check 归位收口、identity 归位开篇",
-        "三期收官——全部批次执行完毕，文档转记录态",
-        "上下文工程治理一期：缓存埋点、膨胀哨兵、无损瘦身与规则台账（P0+P1+P3-1+F1~F4）"
-      ],
-      "features": [
-        "新增上下文工程八原则 C1~C8——治理调研蒸馏为经验宪法",
-        "新增 C9 harness两分法与松绑就绪——业界松绑趋势的本库落位",
-        "新增苦涩教训台账 L1~L8——机制级方向性证伪的复盘账本",
-        "新增行业经验引用库——历次重构引用源的总索引与落点映射",
-        "README 新增目录结构与命名规约终态节——六条规约+词汇对照唯一权威",
-        "打通会话与处理流水跳转"
-      ],
-      "fixes": [
-        "治理 P3-2 手册批——双居所归并修复口径冲突 + 结构件去重",
-        "M2-C 防过碎修正——混合形态，单件平铺成簇立目录（沿工具层终态惯例）",
-        "目录对称化二次修正——四层全目录、跨层服务平铺根、services/ 取消",
-        "修复懒迁移竞态与 bot 映射缓存降级"
-      ],
-      "optimizations": [
-        "二期三裁定入档——M1 playbook 抽取关闭、C8 留常驻、M3 边界定稿",
-        "结构图三悬空元素的代码组织落点——working-memory 目录/procedural 物理仓/两舱文件级拆分",
-        "M3 会话记忆两舱分家——facts/workbench 文件级拆分，facade 保 26 注入点零波及",
-        "三期批一定稿——归类裁定表、episodic 空目录不立、顶层 procedural 合并",
-        "批一归类纠偏——按内容归位、撤空目录、procedural 归一",
-        "收尾批裁定汇总入档——正名/enrichment迁出/群库拆分/机制件归根/示例重生成",
-        "装配层收尾——preparation 正名、enrichment 归车间、群库拆分归位"
-      ],
-      "ops": [
-        "上下文工程治理方案定稿——基线复核、缓存文档核实与三条总纲裁定",
-        "治理方案升级三元目标——注意力质量+抗腐烂+设计合理性",
-        "治理方案第三轮——约束放置判定树、行业对照结论与P3-4 Skill化实验",
-        "引用库补引两域——裁决权/自纠边界学理 + 编排多代理git回收",
-        "上下文治理 P0+P1 代码批——缓存命中埋点、膨胀哨兵与无损瘦身",
-        "四层记忆对照 CoALA 四分法复盘——功能完备、一处命名错位、一个治理洞察",
-        "登记治理二期意向——记忆体系 CoALA 对齐（一期完成后启动）",
-        "上下文治理 P1-1 审计定稿 + P3-1 规则台账建成 + F1~F3 防腐纪律落地",
-        "治理二期立项——记忆体系 CoALA 对齐（M1 分层供给/M2 命名搭车/M3 分家）",
-        "F5 裁定执行完毕——5 处 DB 双居所违例/旧口径删改落地并销账",
-        "治理 P3-2/P3-3 首批——final-check 守卫同构条目下线 + job_list 描…",
-        "治理 P3-3 二批——数据开关章节坍缩 + handoff 协议副本归并",
-        "一期收官批——job_list 深度压缩至 8,515 + DB 挂账清零 + P2/P3-4 裁决",
-        "CoALA 命名范围裁定——只改'程序记忆'一处，不做全量改名",
-        "命名轴设计哲学查证——业界主流是复合轴，本库顶层命名获同构追认",
-        "社区脉搏入库——记忆归属之争/分类法必要性质疑/文件式记忆与重写退化警告",
-        "二期方案时效刷新——启动条件已满足、P3-4 并入 M1 落定候选段清单",
-        "二期 M2 提前执行——procedural 更名 stage-state 全量落地",
-        "memory-architecture 术语同步——程序记忆→阶段状态",
-        "全库术语扫尾——程序记忆→阶段状态",
-        "程序记忆术语最终扫尾——advance-stage 注释与产品文档",
-        "程序记忆术语残留清零（注释级 3 处）",
-        "settlement 更名 consolidation——同库与薪资结算域双义冲突",
-        "回滚误改——AgentJobDetailField 的 settlement 是薪资结算域枚举非沉淀标签",
-        "二期 M2-B 长期层 A3 结构分组设计定稿——待批准执行",
-        "短期窗口 60/12K→120/24K——p99 触顶数据裁定放大",
-        "M2-B 追加 Working Memory 类型命名设计——PreparedAgentContext→Worki…",
-        "M1-B 程序记忆逻辑收拢设计——物理分散维持+索引互链补齐认知轴导航",
-        "M2-C memory 模块生命周期轴目录重组设计——代码树对齐结构图，待批准",
-        "终态代码组织架构图入档——逐路径标注交付批次，作为验收基准",
-        "M1-B 程序记忆索引升格 + 六居所互链锚注",
-        "M2-C 目录终态重组——代码树对齐记忆结构图",
-        "M2-B 长期层 A3 结构分组落地——semantic/episodic 入代码与数据库",
-        "session/ 更名 session-state/——scope 名两头不靠，与 stage-sta…",
-        "展示执行事件时间线",
-        "优先展示工具调用观测字段",
-        "展示守卫语义审查判例",
-        "补充详情排障关键信息",
-        "刷新详情并清理死代码",
-        "下线断流事件消费",
-        "定稿 M5 结构与三期装配设计",
-        "定格短期记忆目录结构",
-        "将本轮规则事实正名为提示",
-        "对齐咨询周期与沉淀间隙",
-        "M5 第 4 条复议改定——profile 双写入路径",
-        "将品牌状态并入会话事实",
-        "改定短期记忆层为平铺结构",
-        "按层平铺短期记忆结构",
-        "定时沉淀闲置会话",
-        "按托管账号隔离长期记忆",
-        "恢复 profile 双写入路径",
-        "门面正名 session-state——伞用中性词，类型词住舱级映射",
-        "收资单据迁入工具域",
-        "召回契约形状对齐两层结构——四层平铺退役",
-        "清理 session-state 门面旧名残留",
-        "收尾 M5 两层记忆文档",
-        "清理定时沉淀退役标识符",
-        "收紧智能写入并追加归档摘要",
-        "收资表单逐格回流 sessionFacts——未成单不丢（M5 裁定一）",
-        "SessionSummaries 单层化 episodes + 沉淀水位独立列——archive 机构…",
-        "类型契约改为总图先行",
-        "README 补沉淀总装图——三种产出三套写法",
-        "补齐 height/weight 长期档案 RPC 键框（M5 裁定五）",
-        "跟随 procedural 提示词迁址",
-        "收资表单 key 补 bot 维——跨 bot 不共表（M5 裁定六）",
-        "补齐 M5 深审裁定与编译器评审结论",
-        "收口短期类型 canonical import",
-        "gender 来源语义入信封、停写 gender_source——两刀拆除批 A（M5 裁定八）",
-        "三期终版轻量化 + M5 深审裁定全量入档",
-        "三期批二终态定稿——2b 否决、批三升格、先例降级入档",
-        "收官文档清理——一期/二期/复聊二期方案转 git 历史，遗留项归位",
-        "sections 按知识类型归类 + 台账锚点测试——三期批一",
-        "三期终稿 v2——外部评审四 P1 采纳 + 不过度设计终裁",
-        "批一追加拆聚合壳——policy/runtime-context 括号退役，12 真实块铺平",
-        "组装冲突裁决——同值去重/异值标注/turnHints 增量块——三期批三",
-        "三期批四立案——装配边界治理（禁令升格 section/formatter 并壳/裁决后门收口）",
-        "system 拆稳定前缀+动态尾部——三期批二",
-        "装配边界治理——禁令升格 section、formatter 并壳、裁决后门收口（三期批四）",
-        "归类表勘误——group-inventory 归 working，semantic 收窄为候选人事实",
-        "system 拆稳定前缀+动态尾部——三期批二（Qwen 隐式缓存路线）",
-        "装配示例与 KB 文档按终态重写",
-        "批二段序返修——final-check 归位收口、identity 归位开篇",
-        "三期收官——全部批次执行完毕，文档转记录态"
-      ],
-      "config": [
-        "v10.45.0 包含 5 个 Supabase migration：20260821210000、20260825025701、20260825050239、20260825055058、20260825063752；测试库已应用，生产库待受控切换时应用。",
-        "首个 migration 会重命名长期记忆列，旧版 v10.44.0 与迁移后 schema 不兼容；合并/部署前必须完成生产配置同步并单独授权 migration 与应用切换。",
-        "生产环境 AGENT_MAX_INPUT_CHARS 与 MEMORY_SETTLEMENT_GAP_DAYS 当前值未对齐 v10.45.0 默认值；MEMORY_SESSION_TTL_DAYS 已对齐。"
-      ],
-      "envFiles": [
-        ".env.example"
-      ],
-      "verification": [
-        "ESLint / Prettier",
-        "TypeScript typecheck",
-        "geo / vocab 跨介质一致性校验",
-        "Web 与服务端构建",
-        "Jest 全库测试与 coverage"
-      ]
-    },
-    {
-      "number": "1037",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1037",
-      "title": "核心链路注释与架构文档按实现终态清理",
-      "author": "huajune",
-      "mergedAt": "2026-08-26",
-      "businessUpdates": [
-        "无。",
-        "明确 Guardrail 的 Input / Prompt / Tool / Output 四个位置，避免把 Prompt 层漏出架构描述。",
-        "明确 `final-check` 是复合 section；规则命中时内部追加 `critical-turn-guard` 子块，不再描述为两个独立注册段。",
-        "对齐当前 ReplyWorkflow → AgentRunner → TurnFinalizer 调用链、两层记忆结构、replay 阻断集合、Redis 租约参数和工具步数。",
-        "删除全库零调用的 deprecated `dispatchIfNeeded()` 转发方法。"
-      ],
-      "summary": [
-        "清理核心链路注释并按实现刷新架构文档",
-        "全局清理核心运行链路中的阶段编号、批次标签、失效兼容说明和误导性代码注释。",
-        "以当前实现为唯一事实源，重写/刷新 Agent Runtime、消息链路、记忆、Guardrail、数据库与运营文档。",
-        "清理已完成或失效的 TODO，建立待办总览并拆分仍需执行的兼容与发布事项。",
-        "核心链路注释与架构文档按实现终态清理"
-      ],
-      "features": [
-        "无。"
-      ],
-      "fixes": [
-        "明确 Guardrail 的 Input / Prompt / Tool / Output 四个位置，避免把 Prompt 层漏出架构描述。",
-        "明确 `final-check` 是复合 section；规则命中时内部追加 `critical-turn-guard` 子块，不再描述为两个独立注册段。",
-        "对齐当前 ReplyWorkflow → AgentRunner → TurnFinalizer 调用链、两层记忆结构、replay 阻断集合、Redis 租约参数和工具步数。",
-        "删除全库零调用的 deprecated `dispatchIfNeeded()` 转发方法。"
-      ],
-      "optimizations": [
-        "知识库条目由“四层记忆系统”改为“两层记忆系统”，并将“出站守卫三档裁决链”改为当前裁决链描述。",
-        "校正文档中的代码路径、配置默认值、存储键和运行时边界；Markdown 文件链接与知识库 Wiki 双链全部核验通过。",
-        "全局清理核心运行链路中的阶段编号、批次标签、失效兼容说明和误导性代码注释。",
-        "以当前实现为唯一事实源，重写/刷新 Agent Runtime、消息链路、记忆、Guardrail、数据库与运营文档。",
-        "清理已完成或失效的 TODO，建立待办总览并拆分仍需执行的兼容与发布事项。"
-      ],
-      "ops": [
-        "删除已收官的 `context-assembly-compiler.md` 和失效的 memory 深审清单。",
-        "新增 `docs/todo/README.md`、memory compatibility cleanup 与 runtime release follow-ups，保留真实未完成事项。",
-        "清理核心链路注释并按实现刷新架构文档"
-      ],
-      "config": [
-        "仅更新 `.env.example` 的说明：`AGENT_MAX_INPUT_CHARS` 默认值对齐代码为 24000，并去掉一处重复的旧开关说明。",
-        "本 PR 自身无新增必填环境变量、数据库 migration、RPC、权限、依赖或外部服务变更；v10.45.0 整体的 migration 见 PR #1035 配置记录。"
-      ],
-      "envFiles": [
-        ".env.example"
-      ],
-      "verification": [
-        "`pnpm run ci:check`",
-        "关键链路已按源码逐项人工核对",
-        "未新增对开放自然语言直接 reject/覆盖/判缺的正则分支",
-        "未新增 Prompt 示例值",
-        "`pnpm run duplication:check`：0.79% duplicated lines，低于 2.06% 阈值",
-        "`pnpm run test:di-smoke`：1/1 通过",
-        "全库：448 suites / 6812 tests / 3 snapshots 通过；1 suite / 5 tests 按原配置跳过",
-        "`git diff --check`、Markdown 文件链接、知识库 Wiki 双链检查通过"
-      ]
-    },
-    {
-      "number": "1039",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1039",
-      "title": "收口 v10.45.0 审批门禁",
-      "author": "huajune",
-      "mergedAt": "2026-08-26",
-      "businessUpdates": [
-        "收口 v10.45.0 审批门禁",
-        "同步规则数量"
-      ],
-      "summary": [
-        "收口 v10.45.0 审批门禁",
-        "同步规则数量"
-      ],
-      "features": [],
-      "fixes": [],
-      "optimizations": [],
-      "ops": [
-        "收口 v10.45.0 审批门禁",
-        "同步规则数量"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "pnpm run ci:check：lint、format、typecheck、geo、vocab、前后端 build 全绿。",
-        "Jest：450/450 套件、6825/6825 测试通过；另 1 套件 / 5 测试按仓库配置跳过。",
-        "测试 Supabase + Redis 真实记忆集成链路：30/30，通过后已清理测试数据。",
-        "安全 Agent smoke：修复后为查询承接，无岗位可用性断言、无工具调用、无外部副作用。",
-        "release ledger checker 与 git diff --check 通过。"
-      ]
-    },
-    {
-      "number": "1041",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1041",
-      "title": "精简事故流水账式注释",
-      "author": "huajune",
-      "mergedAt": "2026-08-26",
-      "businessUpdates": [
-        "精简事故流水账式注释",
-        "精简 90 个带日期、版本、案例号和审计计数的事故流水账式注释块",
-        "将源码注释收敛为当前职责、约束和维护边界，测试注释只保留回归行为",
-        "全库宽口径复扫候选数由 90 降至 0，不改业务逻辑"
-      ],
-      "summary": [
-        "精简事故流水账式注释",
-        "精简 90 个带日期、版本、案例号和审计计数的事故流水账式注释块",
-        "将源码注释收敛为当前职责、约束和维护边界，测试注释只保留回归行为",
-        "全库宽口径复扫候选数由 90 降至 0，不改业务逻辑"
-      ],
-      "features": [],
-      "fixes": [],
-      "optimizations": [
-        "清理源码、测试、脚本和迁移中的历史事故叙事，保留当前可执行维护信息",
-        "精简 90 个带日期、版本、案例号和审计计数的事故流水账式注释块",
-        "将源码注释收敛为当前职责、约束和维护边界，测试注释只保留回归行为",
-        "全库宽口径复扫候选数由 90 降至 0，不改业务逻辑"
-      ],
-      "ops": [
-        "无；仅注释改动",
-        "精简事故流水账式注释"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "pnpm run ci:check",
-        "pnpm run duplication:check",
-        "pnpm run test:di-smoke",
-        "git diff --check",
-        "全库事故流水账式注释复扫：0",
-        "关键链路人工验证：N/A（纯注释，无运行时行为变化）",
-        "未新增自然语言 reject、覆盖或判缺正则分支",
-        "新增虚构 prompt 示例值：N/A"
-      ]
-    },
-    {
-      "number": "1043",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1043",
-      "title": "收口 v10.45 收资与治理改动",
-      "author": "huajune",
-      "mergedAt": "2026-08-26",
-      "businessUpdates": [
-        "收资身份四槽不再依赖后端 systemField，改为可配置 labelId 锚点与实时标题核验",
-        "在写入姓名和手机号前增加疑似多人代报闸，成对出现第二人身份时转人工且保持原表单不被污染"
-      ],
-      "summary": [
-        "收口 v10.45 收资与治理改动",
-        "补充 LLM 规则简化方案",
-        "同步 develop 最新改动",
-        "清理方案文档格式",
-        "收资身份四槽不再依赖后端 systemField，改为可配置 labelId 锚点与实时标题核验",
-        "在写入姓名和手机号前增加疑似多人代报闸，成对出现第二人身份时转人工且保持原表单不被污染",
-        "更新收资架构、运营标签清理、BadCase 重放清单和 LLM 规则简化方案",
-        "同步 v10.45 发版元数据与 CHANGELOG，并基于最新 develop 消除已合并 PR #1041/#1040 的重复改动"
-      ],
-      "features": [
-        "收资身份四槽不再依赖后端 systemField，改为可配置 labelId 锚点与实时标题核验",
-        "在写入姓名和手机号前增加疑似多人代报闸，成对出现第二人身份时转人工且保持原表单不被污染"
-      ],
-      "fixes": [],
-      "optimizations": [
-        "更新收资架构、运营标签清理、BadCase 重放清单和 LLM 规则简化方案",
-        "同步 v10.45 发版元数据与 CHANGELOG，并基于最新 develop 消除已合并 PR #1041/#1040 的重复改动",
-        "补充 LLM 规则简化方案"
-      ],
-      "ops": [
-        "收口 v10.45 收资与治理改动",
-        "同步 develop 最新改动",
-        "清理方案文档格式"
-      ],
-      "config": [
-        ".env.example 新增可选 COLLECTION_IDENTITY_LABEL_IDS 示例",
-        "不配置时仍按标题语义识别；本 PR 净差异不新增数据库 migration"
-      ],
-      "envFiles": [
-        ".env.example"
-      ],
-      "verification": [
-        "pre-commit lint 与格式检查",
-        "git diff --check",
-        "pnpm run ci:check（pre-push）",
-        "450/450 测试套件通过，6826/6826 测试通过",
-        "1 个套件 / 5 个测试按仓库配置跳过"
-      ]
-    },
-    {
-      "number": "1045",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1045",
-      "title": "移除第二语义审查并收敛规则链",
-      "author": "huajune",
-      "mergedAt": "2026-08-26",
-      "businessUpdates": [
-        "将出站审查收敛到可确定性对账的高风险规则，并新增预约成功声明与工具回执对账。"
-      ],
-      "summary": [
-        "移除第二语义审查并收敛规则链",
-        "统一 precheck 收资入参契约",
-        "清理已移交的标签清单",
-        "移除 Output Guardrail 的第二模型 Semantic Reviewer、相关运行时配置、告警/观测与管理页入口。",
-        "将出站审查收敛到可确定性对账的高风险规则，并新增预约成功声明与工具回执对账。",
-        "调整品牌、用工形式、记忆、无岗、拉群与工具链路，并同步架构文档。"
-      ],
-      "features": [
-        "将出站审查收敛到可确定性对账的高风险规则，并新增预约成功声明与工具回执对账。"
-      ],
-      "fixes": [],
-      "optimizations": [
-        "移除 Output Guardrail 的第二模型 Semantic Reviewer、相关运行时配置、告警/观测与管理页入口。",
-        "调整品牌、用工形式、记忆、无岗、拉群与工具链路，并同步架构文档。"
-      ],
-      "ops": [
-        "移除第二语义审查并收敛规则链",
-        "统一 precheck 收资入参契约",
-        "清理已移交的标签清单"
-      ],
-      "config": [],
-      "envFiles": [
-        ".env.example"
-      ],
-      "verification": [
-        "`pnpm run ci:check`",
-        "定向回归：45 suites / 993 tests passed",
-        "pre-push 全量门禁：443 suites passed、1 skipped；6313 tests passed、5 skipped",
-        "`pnpm run duplication:check`：0.79%，低于 2.06%",
-        "`pnpm run test:di-smoke`：1/1 passed",
-        "`pnpm run release:ledger:check`",
-        "`git diff --check`"
-      ]
-    },
-    {
-      "number": "1047",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1047",
-      "title": "precheck 收资协议统一收尾——身份标题回退/清单瘦身/面试时间转运/确认词扩展",
-      "author": "huajune",
-      "mergedAt": "2026-08-27",
-      "businessUpdates": [
-        "移除第二语义审查并收敛规则链",
-        "统一 precheck 收资入参契约",
-        "清理已移交的标签清单",
-        "收资标题定位增加身份四槽同义词第三级回退",
-        "precheck 面试时间误投 formAnswers 确定性转运 + unmatchedAnswers 回执",
-        "精简 precheck bookingChecklist 冗余字段",
-        "复述确认识别组合式肯定应答，免临门多绕一轮",
-        "合流清理 displayOrder 跨基座残留断言与注释",
-        "Merge remote-tracking branch 'origin/develop' into codex/next-task-20…",
-        "precheck 收资协议统一收尾——身份标题回退/清单瘦身/面试时间转运/确认词扩展"
-      ],
-      "summary": [
-        "移除第二语义审查并收敛规则链",
-        "统一 precheck 收资入参契约",
-        "清理已移交的标签清单",
-        "收资标题定位增加身份四槽同义词第三级回退",
-        "precheck 面试时间误投 formAnswers 确定性转运 + unmatchedAnswers 回执",
-        "精简 precheck bookingChecklist 冗余字段",
-        "复述确认识别组合式肯定应答，免临门多绕一轮",
-        "合流清理 displayOrder 跨基座残留断言与注释",
-        "Merge remote-tracking branch 'origin/develop' into codex/next-task-20…",
-        "precheck 收资协议统一收尾——身份标题回退/清单瘦身/面试时间转运/确认词扩展"
-      ],
-      "features": [],
-      "fixes": [],
-      "optimizations": [],
-      "ops": [
-        "移除第二语义审查并收敛规则链",
-        "统一 precheck 收资入参契约",
-        "清理已移交的标签清单",
-        "收资标题定位增加身份四槽同义词第三级回退",
-        "precheck 面试时间误投 formAnswers 确定性转运 + unmatchedAnswers 回执",
-        "精简 precheck bookingChecklist 冗余字段",
-        "复述确认识别组合式肯定应答，免临门多绕一轮",
-        "合流清理 displayOrder 跨基座残留断言与注释",
-        "Merge remote-tracking branch 'origin/develop' into codex/next-task-20…"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "typecheck / ESLint（--max-warnings=0）全绿；",
-        "全量 Jest：**443 套件 / 6355 测试通过**（含四任务新增 33 个用例）；",
-        "台账 `docs/prompt-rule-ledger.md` 已同步（precheck 行合并两条注记）。"
-      ]
-    },
-    {
-      "number": "1049",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1049",
-      "title": "v11.0.0 发版底账（自 v10.45.0 升级）",
-      "author": "huajune",
-      "mergedAt": "2026-08-27",
-      "businessUpdates": [
-        "新增 P0-08（precheck v11 契约收口：全量单测 6355 + 440 岗契约数据面 + 272 生产会话回放，零错槽）",
-        "新增 P0-09（analyze-chat-badcases 正式回归闸门：发布负责人 2026-08-27 裁定豁免）"
-      ],
-      "summary": [
-        "v10.45.0 底账升级为 v11.0.0 并扩展收口批范围",
-        "底账 `v10.45.0.md` → `v11.0.0.md`：#1047 携 BREAKING 标记触发 major",
-        "范围扩展 +#1039/#1041/#1043/#1045/#1047；变更摘要补 v11 收口批",
-        "新增 P0-08（precheck v11 契约收口：全量单测 6355 + 440 岗契约数据面 + 272 生产会话回放，零错槽）",
-        "新增 P0-09（analyze-chat-badcases 正式回归闸门：发布负责人 2026-08-27 裁定豁免）",
-        "登记发布授权（合并/生产 migration/部署一条龙）与 env 遗留裁定",
-        "v11.0.0 发版底账（自 v10.45.0 升级）"
-      ],
-      "features": [
-        "新增 P0-08（precheck v11 契约收口：全量单测 6355 + 440 岗契约数据面 + 272 生产会话回放，零错槽）",
-        "新增 P0-09（analyze-chat-badcases 正式回归闸门：发布负责人 2026-08-27 裁定豁免）"
-      ],
-      "fixes": [],
-      "optimizations": [
-        "登记发布授权（合并/生产 migration/部署一条龙）与 env 遗留裁定"
-      ],
-      "ops": [
-        "底账 `v10.45.0.md` → `v11.0.0.md`：#1047 携 BREAKING 标记触发 major",
-        "范围扩展 +#1039/#1041/#1043/#1045/#1047；变更摘要补 v11 收口批",
-        "v10.45.0 底账升级为 v11.0.0 并扩展收口批范围"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": []
-    },
-    {
-      "number": "1051",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1051",
-      "title": "v11.0.0 底账 P0 表修正",
-      "author": "huajune",
-      "mergedAt": "2026-08-27",
-      "businessUpdates": [
-        "v11.0.0 底账 P0 表修正——豁免裁定并入 P0-08 证据栏"
-      ],
-      "summary": [
-        "v11.0.0 底账 P0 表修正——豁免裁定并入 P0-08 证据栏",
-        "v11.0.0 底账 P0 表修正"
-      ],
-      "features": [],
-      "fixes": [
-        "v11.0.0 底账 P0 表修正——豁免裁定并入 P0-08 证据栏"
-      ],
-      "optimizations": [],
-      "ops": [],
-      "config": [],
-      "envFiles": [],
-      "verification": []
-    }
-  ],
+  "entries": [],
   "lastRelease": {
-    "version": "10.44.0",
-    "date": "2026-08-19",
+    "version": "11.0.0",
+    "date": "2026-08-27",
     "sourceBranch": "develop",
     "entries": [
       {
-        "number": "996",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/996",
-        "title": "补齐 v10.41.0 / v10.42.0 / v10.43.0 发布结果",
+        "number": "1016",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1016",
+        "title": "回填 v10.44.0 发布结果",
         "author": "huajune",
-        "mergedAt": "2026-08-07",
+        "mergedAt": "2026-08-19",
         "businessUpdates": [
-          "补齐 v10.41.0 / v10.42.0 / v10.43.0 发布结果"
+          "回填 v10.44.0 发布结果"
         ],
         "summary": [
-          "补齐 v10.41.0 / v10.42.0 / v10.43.0 发布结果"
+          "回填 v10.44.0 发布结果"
         ],
         "features": [],
         "fixes": [],
         "optimizations": [],
         "ops": [
-          "补齐 v10.41.0 / v10.42.0 / v10.43.0 发布结果"
+          "回填 v10.44.0 发布结果"
         ],
         "config": [],
         "envFiles": [],
-        "verification": [
-          "`prettier --write` 已格式化三份文件",
-          "时间、workflow run ID、健康检查结论均取自 [部署 run 31165737816](https://github.com/huajune/cake-agent-runtime/actions/runs/31165737816) 日志与线上 `/agent/health` 实测，未凭记忆填写"
-        ]
+        "verification": []
       },
       {
-        "number": "999",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/999",
-        "title": "清理显式 any 并启用 lint 门禁",
+        "number": "1019",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1019",
+        "title": "修正 v10.44.0 底账「无前端改动」的事实错误",
         "author": "huajune",
-        "mergedAt": "2026-08-13",
+        "mergedAt": "2026-08-19",
         "businessUpdates": [
-          "修复结构化异常中非字符串 `message` / `code` 直接进入响应字段的类型风险",
-          "修复消息日志脱敏由 `unknown` 返回导致调用方丢失输入形状的问题",
-          "修正结构化 HTTP 异常的安全收窄并补充回归测试；消息载荷保留企业 DTO 强类型和小组 API 对象透传能力"
+          "修正 v10.44.0 底账「无前端改动」的事实错误"
         ],
         "summary": [
-          "清理显式 any 并启用 lint 门禁",
-          "将 TypeScript 显式 `any` lint 规则从关闭调整为错误，并清理本批 19 处边界类型债务",
-          "为企微消息发送、回调与脱敏、HTTP/飞书 API、统一响应和岗位列表补齐 `unknown`、`Record<string, unknown>` 及领域类型",
-          "修正结构化 HTTP 异常的安全收窄并补充回归测试；消息载荷保留企业 DTO 强类型和小组 API 对象透传能力"
+          "修正 v10.44.0 底账「无前端改动」的事实错误"
         ],
         "features": [],
         "fixes": [
-          "修复结构化异常中非字符串 `message` / `code` 直接进入响应字段的类型风险",
-          "修复消息日志脱敏由 `unknown` 返回导致调用方丢失输入形状的问题",
-          "修正结构化 HTTP 异常的安全收窄并补充回归测试；消息载荷保留企业 DTO 强类型和小组 API 对象透传能力"
+          "修正 v10.44.0 底账「无前端改动」的事实错误"
         ],
-        "optimizations": [
-          "`@typescript-eslint/no-explicit-any` 升级为错误级门禁",
-          "岗位列表结果改用 `JobBasicInfo`、`JobDetail`、`StoreInfoView` 与 `JobWithDistance` 显式建模",
-          "将 TypeScript 显式 `any` lint 规则从关闭调整为错误，并清理本批 19 处边界类型债务",
-          "为企微消息发送、回调与脱敏、HTTP/飞书 API、统一响应和岗位列表补齐 `unknown`、`Record<string, unknown>` 及领域类型"
-        ],
-        "ops": [
-          "清理显式 any 并启用 lint 门禁"
-        ],
-        "config": [
-          "仅 ESLint 静态检查规则变更；无运行时环境变量、数据库或功能开关变更"
-        ],
-        "envFiles": [],
-        "verification": [
-          "`pnpm run ci:check`",
-          "消息发送服务 25 个定向测试通过",
-          "HTTP 异常过滤器与消息日志脱敏 23 个定向测试通过",
-          "其他说明：全量 417 个测试套件、7057 个测试通过；1 套件/6 个测试按既有配置跳过"
-        ]
-      },
-      {
-        "number": "1001",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/1001",
-        "title": "禁止主动询问候选人户籍信息",
-        "author": "huajune",
-        "mergedAt": "2026-08-13",
-        "businessUpdates": [
-          "禁止主动询问候选人户籍信息"
-        ],
-        "summary": [
-          "禁止主动询问候选人户籍信息"
-        ],
-        "features": [],
-        "fixes": [],
         "optimizations": [],
-        "ops": [
-          "禁止主动询问候选人户籍信息"
-        ],
+        "ops": [],
         "config": [],
         "envFiles": [],
-        "verification": [
-          "ESLint、Prettier、TypeScript typecheck",
-          "地理数据与词表一致性校验",
-          "Web 与后端生产构建",
-          "Jest：417 个测试套件通过，7055 个测试通过"
-        ]
+        "verification": []
       },
       {
-        "number": "1000",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/1000",
-        "title": "统一候选人档案域",
+        "number": "1022",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1022",
+        "title": "新增 analyze-guardrail 守卫效果分析 skill",
         "author": "huajune",
-        "mergedAt": "2026-08-18",
+        "mergedAt": "2026-08-21",
         "businessUpdates": [
-          "新增候选人事实 claim/evidence 管线、归一匹配器与原文探针升档，要求 LLM 证据逐字摘录且可回查。",
-          "新增回合账本及工具构建上下文分组，统一跨协调者、工具和记忆层的回合事实视图。",
-          "新增全国县级映射 shadow 对照报告与 A1 生产记忆数据质量基线报告；未翻任何运行时开关。",
-          "新增收资流去重需求草案",
-          "新增废弃/退役设计残留的全库审计执行清单",
-          "修复候选人档案在 agent、memory、tools 多处重复解析和互相覆盖的问题，明确类型居所、实例归属与跨轮持久化边界。",
-          "修复城市/区域/定位、品牌意图、学生身份、健康证、姓名/手机号、性别补充和简历读取等证据来源与置信度不一致问题。",
-          "修复 active booking 兼容边界、岗位类别误下传 API、历史来源词汇分叉及失效兼容字段残留。",
-          "保留既定行为裁定：简历表格优先且文本兜底；区域/地点累计去重，仅显式不限地区时清空；裸 LLM 城市为 medium；姓名不自动升档，手机号保持 medium。",
-          "落实评审修复与命名收口",
-          "字段解析器生产形态回归修复",
-          "工具层小回归批量修复",
-          "重复话标本 chat 6a7d5cce 归因入册——B12 段级去重 + B13 invite 收口指令矛盾修正",
-          "同步 develop 并解决 job-list 冲突",
-          "中文数字/星期映射收拢，修正日=0/日=7 口径分裂",
-          "核心链路 review 26 条修复——收资死循环/多人代报/承诺对账",
-          "round2 修复清单完结删除——底账核验通过"
+          "新增 analyze-guardrail 守卫效果分析 skill"
         ],
         "summary": [
-          "统一候选人档案域",
-          "落实评审修复与命名收口",
-          "建立回合账本并前移轮内判定",
-          "统一规则事实 claim 通货",
-          "归拢候选人信号轴",
-          "收口候选人域契约",
-          "消费权限表收口",
-          "同步 P6-P9 执行状态与图解历史横幅",
-          "岗位指代解析归位 resolution/job",
-          "active_booking 死字段清理与界碑",
-          "enrichment 性别入档 gender_source=system",
-          "visual 词表瘦身（砍7留8，分流槽保留）",
-          "县级市映射开关对照表",
-          "清除 resolution 对 memory 类型反依赖",
-          "兼容层清点——空壳删除与拆除判据标注",
-          "生产记忆数据质量基线审计",
-          "岗位查询 jobCategoryList 不再下传 API，改召回后本地软排序",
-          "来源词汇根统一为六章，拆除 interop 海关",
-          "LLM 轨证据纪律——逐字摘录、原文探针升档、归一匹配器",
-          "删除 2026-08-07 周报草稿",
-          "更新收尾任务与语义治理",
-          "新增收资流去重需求草案",
-          "更新候选人域文档导航",
-          "立项收资流去重收尾任务",
-          "规则轨证据回传命中片段",
-          "labor-form 意向抽取标签位 shadow 对照",
-          "下线 job_facts_without_any_lookup（假阳率不可修，用户裁定）",
-          "第三批硬规则下线（handoff承诺/筛选原因隐匿/结算出处）",
-          "收资流去重三漏口——预填确认、标签重叠、追问不重发",
-          "身份字段首写出处门与抽取诚实性三件套（P0 止血）",
-          "抽取臆造观测三件套（modelId/原始输出采样/速率告警）",
-          "抽取提示词反臆造手术（推断白名单/reasoning防编造/空轮短路/回声审计/上下文增强）",
-          "LLM 轨身份字段污染面扫描（A2）",
-          "候选人档案域发版前全量复测案卷",
-          "P0 数据管线——规则轨双时点与首写出处门",
-          "字段解析器生产形态回归修复",
-          "booking 身份闸门与性别表内确认",
-          "守卫回退逃生舱与观测证据补全",
-          "工具层小回归批量修复",
-          "P3 清理——死表死导出与边界规则",
-          "收敛为纯现状架构文档 (#1003)",
-          "新建生产实践原则目录，沉淀分工哲学与示教纪律",
-          "示教纪律定位为 guardrail 第四层（prompt construction）",
-          "术语宪章——行业名做主名、自造词打旗",
-          "prompt 守卫层实体化 + 命名对齐 + 防再生棘轮执行清单",
-          "撤销 resolution 改名时机闸 + 明确两批执行方案",
-          "登记两例生产案——jobId 出处闸门补在途工单来源(D3) + 确认死锁第4变体回归案(D4)",
-          "增加提示词示例值守卫",
-          "对齐复聊会话与提示词命名",
-          "隔离交叠文件的术语与示教修订",
-          "完成提示词守卫与命名对齐清单",
-          "建立候选人事实出处公证闭环",
-          "陈年方案清理——按'落地即删'规范处置三份",
-          "第四层两项 backlog 记账——CI 门店形空洞 + 语料分域结构化执法（挂触发器不排期）",
-          "结构化隔离提示词证据语料",
-          "普查 Y1 补 2026-08-13 裁定——要求语境例句换苏海龙真实原句，指代例句保留待实案",
-          "校准 turn-hints 解析线索措辞",
-          "P3 延期项复裁——一步到位批（P3-R）",
-          "完成 P3-R 结构重构",
-          "BadCase 积压 75 条 × P11 架构覆盖判定——A10/B11/C5/D8/E20 五桶分诊 + GP…",
-          "重复话标本 chat 6a7d5cce 归因入册——B12 段级去重 + B13 invite 收口指令矛盾修正",
-          "rule 档 block 静默普查入册——14 天 19 次人工介入约半数假阳，12/19 来自分支已下线规则",
-          "D5 硬规则运行时降档开关——消灭下线裁定的死刑未执行窗口（只降权不升权）",
-          "执行 badcase 架构覆盖分诊清单",
-          "增加硬规则运行时降档开关",
-          "姓名闸门作证收紧为确认级",
-          "身份证据消费切至 corpus 证据域",
-          "shadow 回灌已采信 claim 空位",
-          "登记 gender 表内确认裁决点",
-          "补齐 prompt 工具面与语料域棘轮",
-          "二轮评审底账与偏离声明面补齐",
-          "同步 develop 并解决 job-list 冲突",
-          "普查表删除的配套收尾——引用改指 git 历史 + README todo 节挂删除条件",
-          "bootstrap 日志改用 NestJS Logger",
-          "replan 档清理出类型层——枚举/死代码/提示词三处摘除",
-          "新增废弃/退役设计残留的全库审计执行清单",
-          "统一 prompt 时间锚格式，删除 3 份日期格式化副本",
-          "清理废弃设计残留",
-          "asRecord 收拢至 infra/utils/object.util",
-          "中文数字/星期映射收拢，修正日=0/日=7 口径分裂",
-          "错误信息提取收拢 + ESLint 防回流",
-          "sleep/backoff 收拢至 infra/utils/async.util",
-          "formatPercent 与日期格式化收拢至 utils",
-          "后端内部类型重复合并 + 跨层同源标注",
-          "消除同文件内重复代码块（前 10 项）",
-          "抽公共计算，消除 4 服务间 437 行重复",
-          "SCSS 重复块收敛为 mixin",
-          "地理域观测结案——enforce 终审 no-go + 更正守卫后盾不存在",
-          "核心链路 review 26 条修复——收资死循环/多人代报/承诺对账",
-          "完成简历附件读取 v4 改造",
-          "统一简历 Extract 调用约定",
-          "清理已完结清单四份，收资专项三文档入库",
-          "收资域四文档合一——总纲+三附录",
-          "prompt 守卫清单完结删除（C3 移交 judge-calibration），util-dup 审计归档入库",
-          "util-duplication-audit 执行完毕删除（34 项全 ✅，原文见 git 历史）",
-          "多人代报 spec 真实候选人 PII 替换为统一假身份",
-          "round2 修复清单完结删除——底账核验通过",
-          "注释与文档残留真实候选人 PII 匿名化（0f9cc5ba 补遗）",
-          "将候选人档案的解析、证据裁决、信号识别与岗位语义统一收口到 `resolution` 域，memory 回归存储职责，agent 运行时持有回合实例与 `TurnLedger`。",
-          "完成 P6-P10、收尾 1-10 与 A1：工具上下文五组化、rule-track claim 化、信号轴/契约收口、兼容层清理、来源词汇归一和 LLM 证据纪律。",
-          "同步架构/实施/语义治理文档、生产记忆基线与收资流去重需求；收尾 11-14 仅保留为后续任务，未在本 PR 实施。"
+          "新增 analyze-guardrail 守卫效果分析 skill",
+          "analyze-guardrail 补规则存续期核验步骤"
         ],
         "features": [
-          "新增候选人事实 claim/evidence 管线、归一匹配器与原文探针升档，要求 LLM 证据逐字摘录且可回查。",
-          "新增回合账本及工具构建上下文分组，统一跨协调者、工具和记忆层的回合事实视图。",
-          "新增全国县级映射 shadow 对照报告与 A1 生产记忆数据质量基线报告；未翻任何运行时开关。",
-          "新增收资流去重需求草案",
-          "新增废弃/退役设计残留的全库审计执行清单"
+          "新增 analyze-guardrail 守卫效果分析 skill"
         ],
-        "fixes": [
-          "修复候选人档案在 agent、memory、tools 多处重复解析和互相覆盖的问题，明确类型居所、实例归属与跨轮持久化边界。",
-          "修复城市/区域/定位、品牌意图、学生身份、健康证、姓名/手机号、性别补充和简历读取等证据来源与置信度不一致问题。",
-          "修复 active booking 兼容边界、岗位类别误下传 API、历史来源词汇分叉及失效兼容字段残留。",
-          "保留既定行为裁定：简历表格优先且文本兜底；区域/地点累计去重，仅显式不限地区时清空；裸 LLM 城市为 medium；姓名不自动升档，手机号保持 medium。",
-          "落实评审修复与命名收口",
-          "字段解析器生产形态回归修复",
-          "工具层小回归批量修复",
-          "重复话标本 chat 6a7d5cce 归因入册——B12 段级去重 + B13 invite 收口指令矛盾修正",
-          "同步 develop 并解决 job-list 冲突",
-          "中文数字/星期映射收拢，修正日=0/日=7 口径分裂",
-          "核心链路 review 26 条修复——收资死循环/多人代报/承诺对账",
-          "round2 修复清单完结删除——底账核验通过"
+        "fixes": [],
+        "optimizations": [],
+        "ops": [
+          "analyze-guardrail 补规则存续期核验步骤"
         ],
+        "config": [],
+        "envFiles": [],
+        "verification": []
+      },
+      {
+        "number": "1021",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1021",
+        "title": "班次时段承诺判定收窄到同句并豁免否定/复述语境",
+        "author": "huajune",
+        "mergedAt": "2026-08-21",
+        "businessUpdates": [
+          "班次时段承诺判定收窄到同句并豁免否定/复述语境",
+          "补齐班次否定语境边界"
+        ],
+        "summary": [
+          "班次时段承诺判定收窄到同句并豁免否定/复述语境",
+          "补齐班次否定语境边界"
+        ],
+        "features": [],
+        "fixes": [],
+        "optimizations": [],
+        "ops": [
+          "班次时段承诺判定收窄到同句并豁免否定/复述语境",
+          "补齐班次否定语境边界"
+        ],
+        "config": [],
+        "envFiles": [],
+        "verification": [
+          "新增 4 个回归用例：本 badcase 首版仍拦 / 修复版放行 / 否定从句级绑定（正反两例）；",
+          "老 badcase 6a573349（单句内承诺+时段）用例不受影响；",
+          "全量 Jest 7293 passed、typecheck / lint:check / prettier 干净。"
+        ]
+      },
+      {
+        "number": "1027",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1027",
+        "title": "绑定跨分句班次承诺",
+        "author": "huajune",
+        "mergedAt": "2026-08-21",
+        "businessUpdates": [
+          "绑定跨分句班次承诺"
+        ],
+        "summary": [
+          "绑定跨分句班次承诺"
+        ],
+        "features": [],
+        "fixes": [],
+        "optimizations": [],
+        "ops": [
+          "绑定跨分句班次承诺"
+        ],
+        "config": [],
+        "envFiles": [],
+        "verification": []
+      },
+      {
+        "number": "1024",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1024",
+        "title": "完成复聊二期三项优化",
+        "author": "huajune",
+        "mergedAt": "2026-08-21",
+        "businessUpdates": [
+          "无数据库迁移，无 .env 变更",
+          "未执行 Dashboard、Supabase、shadow 或真发配置操作",
+          "入职跟进正式话术仍待运营提供"
+        ],
+        "summary": [
+          "复聊二期方案与执行清单",
+          "增加面试前两天确认档",
+          "抽取拉群编排服务",
+          "增加推店未回拉群收口档",
+          "增加面试后入职跟进档",
+          "隔离面试提醒触达档位",
+          "固化推店锚点结算顺序",
+          "观测入职跟进跳过事件",
+          "落 0820 话术裁定与分级放量口径",
+          "三档发版即开（0820 终版裁定）",
+          "无数据库迁移，无 .env 变更",
+          "未执行 Dashboard、Supabase、shadow 或真发配置操作",
+          "入职跟进正式话术仍待运营提供",
+          "完成复聊二期三项优化"
+        ],
+        "features": [
+          "无数据库迁移，无 .env 变更",
+          "未执行 Dashboard、Supabase、shadow 或真发配置操作",
+          "入职跟进正式话术仍待运营提供"
+        ],
+        "fixes": [],
         "optimizations": [
-          "`jobCategoryList` 改为召回后本地软排序，避免外部 API 硬过滤漏召回。",
-          "将 visual/dialogue/self-report/markers 归入统一信号轴，并集中 labor form、job、candidate 和 evidence 域契约。",
-          "更新候选人域文档导航；清理两份历史报告的空白字符，确保全分支 `git diff --check` 通过。",
-          "将候选人档案的解析、证据裁决、信号识别与岗位语义统一收口到 `resolution` 域，memory 回归存储职责，agent 运行时持有回合实例与 `TurnLedger`。",
-          "完成 P6-P10、收尾 1-10 与 A1：工具上下文五组化、rule-track claim 化、信号轴/契约收口、兼容层清理、来源词汇归一和 LLM 证据纪律。",
-          "同步架构/实施/语义治理文档、生产记忆基线与收资流去重需求；收尾 11-14 仅保留为后续任务，未在本 PR 实施。",
-          "LLM 轨证据纪律——逐字摘录、原文探针升档、归一匹配器",
-          "labor-form 意向抽取标签位 shadow 对照",
-          "身份字段首写出处门与抽取诚实性三件套（P0 止血）",
-          "抽取臆造观测三件套（modelId/原始输出采样/速率告警）",
-          "抽取提示词反臆造手术（推断白名单/reasoning防编造/空轮短路/回声审计/上下文增强）",
-          "完成 P3-R 结构重构",
-          "后端内部类型重复合并 + 跨层同源标注",
-          "消除同文件内重复代码块（前 10 项）",
-          "抽公共计算，消除 4 服务间 437 行重复",
-          "统一简历 Extract 调用约定"
+          "抽取拉群编排服务"
         ],
         "ops": [
-          "本 PR 为实现分支合并到 `develop`，不执行发版、合并或生产验证。",
-          "原本 staged 的 `docs/releases/2026/weekly-2026-08-07.md` 删除已保留为独立提交；该文件在 `origin/develop...HEAD` 中无净差异。",
-          "分支共 144 个提交（描述初稿写的 26 是早期快照，已按 `git rev-list --count origin/develop..HEAD` 校正）；新增文档均按精确 pathspec 独立提交。",
-          "统一候选人档案域",
-          "建立回合账本并前移轮内判定",
-          "统一规则事实 claim 通货",
-          "归拢候选人信号轴",
-          "收口候选人域契约",
-          "消费权限表收口",
-          "同步 P6-P9 执行状态与图解历史横幅",
-          "岗位指代解析归位 resolution/job",
-          "active_booking 死字段清理与界碑",
-          "enrichment 性别入档 gender_source=system",
-          "visual 词表瘦身（砍7留8，分流槽保留）",
-          "县级市映射开关对照表",
-          "清除 resolution 对 memory 类型反依赖",
-          "兼容层清点——空壳删除与拆除判据标注",
-          "生产记忆数据质量基线审计",
-          "岗位查询 jobCategoryList 不再下传 API，改召回后本地软排序",
-          "来源词汇根统一为六章，拆除 interop 海关",
-          "删除 2026-08-07 周报草稿",
-          "更新收尾任务与语义治理",
-          "更新候选人域文档导航",
-          "立项收资流去重收尾任务",
-          "规则轨证据回传命中片段",
-          "下线 job_facts_without_any_lookup（假阳率不可修，用户裁定）",
-          "第三批硬规则下线（handoff承诺/筛选原因隐匿/结算出处）",
-          "收资流去重三漏口——预填确认、标签重叠、追问不重发",
-          "LLM 轨身份字段污染面扫描（A2）",
-          "候选人档案域发版前全量复测案卷",
-          "P0 数据管线——规则轨双时点与首写出处门",
-          "booking 身份闸门与性别表内确认",
-          "守卫回退逃生舱与观测证据补全",
-          "P3 清理——死表死导出与边界规则",
-          "收敛为纯现状架构文档 (#1003)",
-          "新建生产实践原则目录，沉淀分工哲学与示教纪律",
-          "示教纪律定位为 guardrail 第四层（prompt construction）",
-          "术语宪章——行业名做主名、自造词打旗",
-          "prompt 守卫层实体化 + 命名对齐 + 防再生棘轮执行清单",
-          "撤销 resolution 改名时机闸 + 明确两批执行方案",
-          "登记两例生产案——jobId 出处闸门补在途工单来源(D3) + 确认死锁第4变体回归案(D4)",
-          "增加提示词示例值守卫",
-          "对齐复聊会话与提示词命名",
-          "隔离交叠文件的术语与示教修订",
-          "完成提示词守卫与命名对齐清单",
-          "建立候选人事实出处公证闭环",
-          "陈年方案清理——按'落地即删'规范处置三份",
-          "第四层两项 backlog 记账——CI 门店形空洞 + 语料分域结构化执法（挂触发器不排期）",
-          "结构化隔离提示词证据语料",
-          "普查 Y1 补 2026-08-13 裁定——要求语境例句换苏海龙真实原句，指代例句保留待实案",
-          "校准 turn-hints 解析线索措辞",
-          "P3 延期项复裁——一步到位批（P3-R）",
-          "BadCase 积压 75 条 × P11 架构覆盖判定——A10/B11/C5/D8/E20 五桶分诊 + GP…",
-          "rule 档 block 静默普查入册——14 天 19 次人工介入约半数假阳，12/19 来自分支已下线规则",
-          "D5 硬规则运行时降档开关——消灭下线裁定的死刑未执行窗口（只降权不升权）",
-          "执行 badcase 架构覆盖分诊清单",
-          "增加硬规则运行时降档开关",
-          "姓名闸门作证收紧为确认级",
-          "身份证据消费切至 corpus 证据域",
-          "shadow 回灌已采信 claim 空位",
-          "登记 gender 表内确认裁决点",
-          "补齐 prompt 工具面与语料域棘轮",
-          "二轮评审底账与偏离声明面补齐",
-          "普查表删除的配套收尾——引用改指 git 历史 + README todo 节挂删除条件",
-          "bootstrap 日志改用 NestJS Logger",
-          "replan 档清理出类型层——枚举/死代码/提示词三处摘除",
-          "统一 prompt 时间锚格式，删除 3 份日期格式化副本",
-          "清理废弃设计残留",
-          "asRecord 收拢至 infra/utils/object.util",
-          "错误信息提取收拢 + ESLint 防回流",
-          "sleep/backoff 收拢至 infra/utils/async.util",
-          "formatPercent 与日期格式化收拢至 utils",
-          "SCSS 重复块收敛为 mixin",
-          "地理域观测结案——enforce 终审 no-go + 更正守卫后盾不存在",
-          "完成简历附件读取 v4 改造",
-          "清理已完结清单四份，收资专项三文档入库",
-          "收资域四文档合一——总纲+三附录",
-          "prompt 守卫清单完结删除（C3 移交 judge-calibration），util-dup 审计归档入库",
-          "util-duplication-audit 执行完毕删除（34 项全 ✅，原文见 git 历史）",
-          "多人代报 spec 真实候选人 PII 替换为统一假身份",
-          "注释与文档残留真实候选人 PII 匿名化（0f9cc5ba 补遗）"
+          "复聊二期方案与执行清单",
+          "增加面试前两天确认档",
+          "增加推店未回拉群收口档",
+          "增加面试后入职跟进档",
+          "隔离面试提醒触达档位",
+          "固化推店锚点结算顺序",
+          "观测入职跟进跳过事件",
+          "落 0820 话术裁定与分级放量口径",
+          "三档发版即开（0820 终版裁定）"
+        ],
+        "config": [],
+        "envFiles": [],
+        "verification": [
+          "pnpm run test tests/agent/reengagement tests/biz/group-task tests/tools/tool/invite-to-group.tool.spec.ts --watchman=false：29 suites / 548 tests passed",
+          "pnpm run lint:check：passed",
+          "pnpm run typecheck：passed",
+          "pnpm run test --watchman=false：458 suites / 7,360 tests passed；1 suite / 6 tests skipped",
+          "pnpm run ci:check：lint、format、typecheck、geo、vocab、Web build、Nest build、coverage tests 全部通过"
+        ]
+      },
+      {
+        "number": "1023",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1023",
+        "title": "完成收资切换、记忆闭集与 BadCase 复测",
+        "author": "huajune",
+        "mergedAt": "2026-08-21",
+        "businessUpdates": [
+          "红线新增「词表禁判语义」——第一档仅选项字面精确匹配，语义一律模型作证",
+          "红线新增——候选人信息不跨托管账号共享（0820 运营裁定）",
+          "§10.1 补 0819 确认死循环实案回归门——用户裁定本批必须完全修复",
+          "收资批随批修复项——独白泄漏sanitizer/静默丢消息重开/无岗承接三口径",
+          "收资核 + 清单渲染 + 披露兜底注册表补标题面判据",
+          "修复推荐轮次与拉群授权漏口",
+          "修复预约提交边界与性别筛选",
+          "合并 develop 并解决收资重构冲突"
+        ],
+        "summary": [
+          "三份确定性判据下沉 resolution，解除收资表单域对 tools 的依赖",
+          "收资表单状态机纯逻辑核（蓝图 §8 步骤 1）",
+          "健康证资格判据补否定前瞻——「没有健康证」曾被判成持证",
+          "解析与披露层——选项直配 + 三适配器 + 披露分级（蓝图 §8 步骤 2）",
+          "文案层——提交前复述与不合格话术渲染器（蓝图 §8 步骤 3）",
+          "删 reasoning 持久化（记忆审计 S8）",
+          "删 preferences.brands 样板 + 收 saveFacts 入参，拆裸值兼容信封（S9）",
+          "删「健康证类型」死分支与 procedural 三个只写字段（S10）",
+          "落盘态字段被丢弃时落执行事件 + 飞书告警（记忆审计风险点 8 接线）",
+          "钉死「清空意向后长期 preference_facts 清不掉」缺陷（不修）",
+          "回填 Spike S2/S4/S5 结论与记忆审计 §4 实际处置结果",
+          "卡片渲染器 spec 的事实字面量改经 toSessionFacts 署名",
+          "§10.1 补 0819 确认死循环实案回归门——用户裁定本批必须完全修复",
+          "红线新增「词表禁判语义」——第一档仅选项字面精确匹配，语义一律模型作证",
+          "§3 补改口通道裁定 + 公证②闸措辞对齐实现",
+          "红线追加——作证主通道=主聊模型随工具调用，不设常驻第二语义读者",
+          "§8 契约检查点 0820 实测通过——required/valueSpec(genderRanges)/disc…",
+          "契约诉求单终态回执——三条后端承诺改，空标签岗裁定直接转人工",
+          "红线新增——候选人信息不跨托管账号共享（0820 运营裁定）",
+          "收资批随批修复项——独白泄漏sanitizer/静默丢消息重开/无岗承接三口径",
+          "契约 v2 客户端 + DTO 定稿 + 判据泛化（蓝图 §8 步骤 5 上半）",
+          "收资表单 Redis 快照 store/service（蓝图 §8 步骤 5 下半）",
+          "写入运输规范 + R1 确认作证通道 + §10.1 实案回归门",
+          "收资核 + 清单渲染 + 披露兜底注册表补标题面判据",
+          "收资表单接管收资核（蓝图 §8 步骤 6 主体）",
+          "记忆→表单预填（跨岗不重复盘问，同账号内）",
+          "标题主干撞车时不猜 + 回填覆盖度复测结论（收窄 §7 退役范围）",
+          "必填全收 + 筛选项优先发问（0820 用户口径确认）",
+          "表单回捞 + 身份适配器 + 枚举提示（§7 接线补齐三块）",
+          "R1 确认作证恢复接进裸字段通道（0819 死循环的另一半）",
+          "标签补数据清单交运营 + 肯定词表收三词 + 常识型字段不出枚举提示",
+          "迁入 develop 侧待提交文档——铁证 D 实证/回归 + 上下文治理方案",
+          "§8.6 岗位侧硬筛退役裁定（0820 对齐运营后定案，推翻 §8.5 保留意见）",
+          "记忆→表单预填读错了形态，在生产里是死代码",
+          "切换表单采集与记忆主链路",
+          "拦截并剥离内部推理泄漏",
+          "收口静默窗口与锁重检丢消息",
+          "收敛两轮推荐与无岗群承接",
+          "对齐记忆闭集与退役链路断言",
+          "经纬度对调确定性纠偏，堵假无岗漏口",
+          "反馈写飞书防重，堵超时假失败重复行",
+          "修复推荐轮次与拉群授权漏口",
+          "保留分段岗位卡片反馈状态",
+          "拦截两轮未同意直接拉群",
+          "拦截未落地预约承诺",
+          "同步 develop 发版元数据",
+          "记录收资切换验证底账",
+          "收紧身份确认并补齐专测",
+          "回填 PR 门禁结果",
+          "修复预约提交边界与性别筛选",
+          "回填最终评审整改",
+          "收资批文档清理——蓝图/总纲迁 architecture，五份已完结工作文档退役",
+          "收资表单域终态文档重写——纠正「搬运过程文档当归档」的错误",
+          "一期方案文档退役——机制已被表单状态机 §7 退役批取代",
+          "档案域发版状态刷新 + 与收资表单域双向链接",
+          "合并 develop 并解决收资重构冲突",
+          "完成收资切换、记忆闭集与 BadCase 复测"
+        ],
+        "features": [
+          "红线新增「词表禁判语义」——第一档仅选项字面精确匹配，语义一律模型作证",
+          "红线新增——候选人信息不跨托管账号共享（0820 运营裁定）"
+        ],
+        "fixes": [
+          "§10.1 补 0819 确认死循环实案回归门——用户裁定本批必须完全修复",
+          "收资批随批修复项——独白泄漏sanitizer/静默丢消息重开/无岗承接三口径",
+          "收资核 + 清单渲染 + 披露兜底注册表补标题面判据",
+          "修复推荐轮次与拉群授权漏口",
+          "修复预约提交边界与性别筛选",
+          "合并 develop 并解决收资重构冲突"
+        ],
+        "optimizations": [],
+        "ops": [
+          "三份确定性判据下沉 resolution，解除收资表单域对 tools 的依赖",
+          "收资表单状态机纯逻辑核（蓝图 §8 步骤 1）",
+          "健康证资格判据补否定前瞻——「没有健康证」曾被判成持证",
+          "解析与披露层——选项直配 + 三适配器 + 披露分级（蓝图 §8 步骤 2）",
+          "文案层——提交前复述与不合格话术渲染器（蓝图 §8 步骤 3）",
+          "删 reasoning 持久化（记忆审计 S8）",
+          "删 preferences.brands 样板 + 收 saveFacts 入参，拆裸值兼容信封（S9）",
+          "删「健康证类型」死分支与 procedural 三个只写字段（S10）",
+          "落盘态字段被丢弃时落执行事件 + 飞书告警（记忆审计风险点 8 接线）",
+          "钉死「清空意向后长期 preference_facts 清不掉」缺陷（不修）",
+          "回填 Spike S2/S4/S5 结论与记忆审计 §4 实际处置结果",
+          "卡片渲染器 spec 的事实字面量改经 toSessionFacts 署名",
+          "§3 补改口通道裁定 + 公证②闸措辞对齐实现",
+          "红线追加——作证主通道=主聊模型随工具调用，不设常驻第二语义读者",
+          "§8 契约检查点 0820 实测通过——required/valueSpec(genderRanges)/disc…",
+          "契约诉求单终态回执——三条后端承诺改，空标签岗裁定直接转人工",
+          "契约 v2 客户端 + DTO 定稿 + 判据泛化（蓝图 §8 步骤 5 上半）",
+          "收资表单 Redis 快照 store/service（蓝图 §8 步骤 5 下半）",
+          "写入运输规范 + R1 确认作证通道 + §10.1 实案回归门",
+          "收资表单接管收资核（蓝图 §8 步骤 6 主体）",
+          "记忆→表单预填（跨岗不重复盘问，同账号内）",
+          "标题主干撞车时不猜 + 回填覆盖度复测结论（收窄 §7 退役范围）",
+          "必填全收 + 筛选项优先发问（0820 用户口径确认）",
+          "表单回捞 + 身份适配器 + 枚举提示（§7 接线补齐三块）",
+          "R1 确认作证恢复接进裸字段通道（0819 死循环的另一半）",
+          "标签补数据清单交运营 + 肯定词表收三词 + 常识型字段不出枚举提示",
+          "迁入 develop 侧待提交文档——铁证 D 实证/回归 + 上下文治理方案",
+          "§8.6 岗位侧硬筛退役裁定（0820 对齐运营后定案，推翻 §8.5 保留意见）",
+          "记忆→表单预填读错了形态，在生产里是死代码",
+          "切换表单采集与记忆主链路",
+          "拦截并剥离内部推理泄漏",
+          "收口静默窗口与锁重检丢消息",
+          "收敛两轮推荐与无岗群承接",
+          "对齐记忆闭集与退役链路断言",
+          "经纬度对调确定性纠偏，堵假无岗漏口",
+          "反馈写飞书防重，堵超时假失败重复行",
+          "保留分段岗位卡片反馈状态",
+          "拦截两轮未同意直接拉群",
+          "拦截未落地预约承诺",
+          "同步 develop 发版元数据",
+          "记录收资切换验证底账",
+          "收紧身份确认并补齐专测",
+          "回填 PR 门禁结果",
+          "回填最终评审整改",
+          "收资批文档清理——蓝图/总纲迁 architecture，五份已完结工作文档退役",
+          "收资表单域终态文档重写——纠正「搬运过程文档当归档」的错误",
+          "一期方案文档退役——机制已被表单状态机 §7 退役批取代",
+          "档案域发版状态刷新 + 与收资表单域双向链接"
+        ],
+        "config": [],
+        "envFiles": [],
+        "verification": []
+      },
+      {
+        "number": "1030",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1030",
+        "title": "产品文档全量梳理专项——12 份文档审计后终态化",
+        "author": "huajune",
+        "mergedAt": "2026-08-21",
+        "businessUpdates": [
+          "合并 develop 并解决产品文档冲突"
+        ],
+        "summary": [
+          "退役三份已完结/失实文档——审计实证后进 git 历史",
+          "敏感信息运营文档终态大修——性别年龄可明说、户籍禁说禁问、矩阵让位代码权威",
+          "拉群与群任务三文档终态刷新——0820 三口径、Bull 队列模型、二级过时链同步",
+          "运营数据两文档终态刷新+复聊小修——回填 7-8 月九轮改造",
+          "运营手册与产品定义终态刷新——修十处事实错、补收资/复聊/守卫三节",
+          "合并 develop 并解决产品文档冲突",
+          "产品文档全量梳理专项——12 份文档审计后终态化"
+        ],
+        "features": [],
+        "fixes": [
+          "合并 develop 并解决产品文档冲突"
+        ],
+        "optimizations": [],
+        "ops": [
+          "退役三份已完结/失实文档——审计实证后进 git 历史",
+          "敏感信息运营文档终态大修——性别年龄可明说、户籍禁说禁问、矩阵让位代码权威",
+          "拉群与群任务三文档终态刷新——0820 三口径、Bull 队列模型、二级过时链同步",
+          "运营数据两文档终态刷新+复聊小修——回填 7-8 月九轮改造",
+          "运营手册与产品定义终态刷新——修十处事实错、补收资/复聊/守卫三节"
+        ],
+        "config": [],
+        "envFiles": [],
+        "verification": []
+      },
+      {
+        "number": "1033",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1033",
+        "title": "工具层目录终态重排——删 duliday 壳、散件跟工具走",
+        "author": "huajune",
+        "mergedAt": "2026-08-21",
+        "businessUpdates": [
+          "修复目录重排后的遗漏引用"
+        ],
+        "summary": [
+          "测试套件架构文档对齐代码现状",
+          "解散 duliday/precheck 目录——三个工具文件各回语义主场",
+          "工具层目录终态重排——删 duliday 壳、散件跟工具走、三抽屉并一",
+          "修复目录重排后的遗漏引用",
+          "工具层目录终态重排——删 duliday 壳、散件跟工具走"
+        ],
+        "features": [],
+        "fixes": [
+          "修复目录重排后的遗漏引用"
+        ],
+        "optimizations": [],
+        "ops": [
+          "测试套件架构文档对齐代码现状",
+          "解散 duliday/precheck 目录——三个工具文件各回语义主场",
+          "工具层目录终态重排——删 duliday 壳、散件跟工具走、三抽屉并一"
+        ],
+        "config": [],
+        "envFiles": [],
+        "verification": [
+          "纯移动零行为：`ci:check` 全量 **446 suites / 6768 例绿**（typecheck+lint+test）",
+          "测试镜像同步重排（tests/tools 与 src/tools 目录一一对应）",
+          "import 别名三种形态（@tools/、@/tools/、相对路径）+ scripts/ 消费面全部改写，旧路径引用清零（仅保留「原居所」出处注释按史实指向 git 历史）",
+          "docs 与守卫 catalog 的路径注记同步刷新"
+        ]
+      },
+      {
+        "number": "1035",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1035",
+        "title": "上下文工程治理一期：缓存埋点、膨胀哨兵、无损瘦身与规则台账（P0+P1+P3-1+F1~F4）",
+        "author": "huajune",
+        "mergedAt": "2026-08-26",
+        "businessUpdates": [
+          "新增上下文工程八原则 C1~C8——治理调研蒸馏为经验宪法",
+          "新增 C9 harness两分法与松绑就绪——业界松绑趋势的本库落位",
+          "新增苦涩教训台账 L1~L8——机制级方向性证伪的复盘账本",
+          "新增行业经验引用库——历次重构引用源的总索引与落点映射",
+          "README 新增目录结构与命名规约终态节——六条规约+词汇对照唯一权威",
+          "打通会话与处理流水跳转",
+          "治理 P3-2 手册批——双居所归并修复口径冲突 + 结构件去重",
+          "M2-C 防过碎修正——混合形态，单件平铺成簇立目录（沿工具层终态惯例）",
+          "目录对称化二次修正——四层全目录、跨层服务平铺根、services/ 取消",
+          "修复懒迁移竞态与 bot 映射缓存降级"
+        ],
+        "summary": [
+          "上下文工程治理方案定稿——基线复核、缓存文档核实与三条总纲裁定",
+          "治理方案升级三元目标——注意力质量+抗腐烂+设计合理性",
+          "治理方案第三轮——约束放置判定树、行业对照结论与P3-4 Skill化实验",
+          "新增上下文工程八原则 C1~C8——治理调研蒸馏为经验宪法",
+          "新增 C9 harness两分法与松绑就绪——业界松绑趋势的本库落位",
+          "新增苦涩教训台账 L1~L8——机制级方向性证伪的复盘账本",
+          "新增行业经验引用库——历次重构引用源的总索引与落点映射",
+          "引用库补引两域——裁决权/自纠边界学理 + 编排多代理git回收",
+          "上下文治理 P0+P1 代码批——缓存命中埋点、膨胀哨兵与无损瘦身",
+          "四层记忆对照 CoALA 四分法复盘——功能完备、一处命名错位、一个治理洞察",
+          "登记治理二期意向——记忆体系 CoALA 对齐（一期完成后启动）",
+          "上下文治理 P1-1 审计定稿 + P3-1 规则台账建成 + F1~F3 防腐纪律落地",
+          "治理二期立项——记忆体系 CoALA 对齐（M1 分层供给/M2 命名搭车/M3 分家）",
+          "F5 裁定执行完毕——5 处 DB 双居所违例/旧口径删改落地并销账",
+          "治理 P3-2/P3-3 首批——final-check 守卫同构条目下线 + job_list 描…",
+          "治理 P3-3 二批——数据开关章节坍缩 + handoff 协议副本归并",
+          "治理 P3-2 手册批——双居所归并修复口径冲突 + 结构件去重",
+          "一期收官批——job_list 深度压缩至 8,515 + DB 挂账清零 + P2/P3-4 裁决",
+          "CoALA 命名范围裁定——只改'程序记忆'一处，不做全量改名",
+          "命名轴设计哲学查证——业界主流是复合轴，本库顶层命名获同构追认",
+          "社区脉搏入库——记忆归属之争/分类法必要性质疑/文件式记忆与重写退化警告",
+          "二期方案时效刷新——启动条件已满足、P3-4 并入 M1 落定候选段清单",
+          "二期 M2 提前执行——procedural 更名 stage-state 全量落地",
+          "memory-architecture 术语同步——程序记忆→阶段状态",
+          "全库术语扫尾——程序记忆→阶段状态",
+          "程序记忆术语最终扫尾——advance-stage 注释与产品文档",
+          "程序记忆术语残留清零（注释级 3 处）",
+          "settlement 更名 consolidation——同库与薪资结算域双义冲突",
+          "回滚误改——AgentJobDetailField 的 settlement 是薪资结算域枚举非沉淀标签",
+          "二期 M2-B 长期层 A3 结构分组设计定稿——待批准执行",
+          "二期三裁定入档——M1 playbook 抽取关闭、C8 留常驻、M3 边界定稿",
+          "短期窗口 60/12K→120/24K——p99 触顶数据裁定放大",
+          "M2-B 追加 Working Memory 类型命名设计——PreparedAgentContext→Worki…",
+          "M1-B 程序记忆逻辑收拢设计——物理分散维持+索引互链补齐认知轴导航",
+          "M2-C memory 模块生命周期轴目录重组设计——代码树对齐结构图，待批准",
+          "结构图三悬空元素的代码组织落点——working-memory 目录/procedural 物理仓/两舱文件级拆分",
+          "终态代码组织架构图入档——逐路径标注交付批次，作为验收基准",
+          "M2-C 防过碎修正——混合形态，单件平铺成簇立目录（沿工具层终态惯例）",
+          "M1-B 程序记忆索引升格 + 六居所互链锚注",
+          "M2-C 目录终态重组——代码树对齐记忆结构图",
+          "M2-B 长期层 A3 结构分组落地——semantic/episodic 入代码与数据库",
+          "M3 会话记忆两舱分家——facts/workbench 文件级拆分，facade 保 26 注入点零波及",
+          "目录对称化二次修正——四层全目录、跨层服务平铺根、services/ 取消",
+          "session/ 更名 session-state/——scope 名两头不靠，与 stage-sta…",
+          "README 新增目录结构与命名规约终态节——六条规约+词汇对照唯一权威",
+          "展示执行事件时间线",
+          "优先展示工具调用观测字段",
+          "展示守卫语义审查判例",
+          "补充详情排障关键信息",
+          "打通会话与处理流水跳转",
+          "刷新详情并清理死代码",
+          "下线断流事件消费",
+          "定稿 M5 结构与三期装配设计",
+          "定格短期记忆目录结构",
+          "将本轮规则事实正名为提示",
+          "对齐咨询周期与沉淀间隙",
+          "M5 第 4 条复议改定——profile 双写入路径",
+          "将品牌状态并入会话事实",
+          "改定短期记忆层为平铺结构",
+          "按层平铺短期记忆结构",
+          "定时沉淀闲置会话",
+          "按托管账号隔离长期记忆",
+          "恢复 profile 双写入路径",
+          "门面正名 session-state——伞用中性词，类型词住舱级映射",
+          "收资单据迁入工具域",
+          "召回契约形状对齐两层结构——四层平铺退役",
+          "清理 session-state 门面旧名残留",
+          "收尾 M5 两层记忆文档",
+          "清理定时沉淀退役标识符",
+          "收紧智能写入并追加归档摘要",
+          "收资表单逐格回流 sessionFacts——未成单不丢（M5 裁定一）",
+          "SessionSummaries 单层化 episodes + 沉淀水位独立列——archive 机构…",
+          "类型契约改为总图先行",
+          "README 补沉淀总装图——三种产出三套写法",
+          "补齐 height/weight 长期档案 RPC 键框（M5 裁定五）",
+          "跟随 procedural 提示词迁址",
+          "收资表单 key 补 bot 维——跨 bot 不共表（M5 裁定六）",
+          "补齐 M5 深审裁定与编译器评审结论",
+          "收口短期类型 canonical import",
+          "gender 来源语义入信封、停写 gender_source——两刀拆除批 A（M5 裁定八）",
+          "三期终版轻量化 + M5 深审裁定全量入档",
+          "修复懒迁移竞态与 bot 映射缓存降级",
+          "三期批二终态定稿——2b 否决、批三升格、先例降级入档",
+          "收官文档清理——一期/二期/复聊二期方案转 git 历史，遗留项归位",
+          "sections 按知识类型归类 + 台账锚点测试——三期批一",
+          "三期终稿 v2——外部评审四 P1 采纳 + 不过度设计终裁",
+          "三期批一定稿——归类裁定表、episodic 空目录不立、顶层 procedural 合并",
+          "批一追加拆聚合壳——policy/runtime-context 括号退役，12 真实块铺平",
+          "批一归类纠偏——按内容归位、撤空目录、procedural 归一",
+          "组装冲突裁决——同值去重/异值标注/turnHints 增量块——三期批三",
+          "三期批四立案——装配边界治理（禁令升格 section/formatter 并壳/裁决后门收口）",
+          "system 拆稳定前缀+动态尾部——三期批二",
+          "装配边界治理——禁令升格 section、formatter 并壳、裁决后门收口（三期批四）",
+          "归类表勘误——group-inventory 归 working，semantic 收窄为候选人事实",
+          "收尾批裁定汇总入档——正名/enrichment迁出/群库拆分/机制件归根/示例重生成",
+          "装配层收尾——preparation 正名、enrichment 归车间、群库拆分归位",
+          "system 拆稳定前缀+动态尾部——三期批二（Qwen 隐式缓存路线）",
+          "装配示例与 KB 文档按终态重写",
+          "批二段序返修——final-check 归位收口、identity 归位开篇",
+          "三期收官——全部批次执行完毕，文档转记录态",
+          "上下文工程治理一期：缓存埋点、膨胀哨兵、无损瘦身与规则台账（P0+P1+P3-1+F1~F4）"
+        ],
+        "features": [
+          "新增上下文工程八原则 C1~C8——治理调研蒸馏为经验宪法",
+          "新增 C9 harness两分法与松绑就绪——业界松绑趋势的本库落位",
+          "新增苦涩教训台账 L1~L8——机制级方向性证伪的复盘账本",
+          "新增行业经验引用库——历次重构引用源的总索引与落点映射",
+          "README 新增目录结构与命名规约终态节——六条规约+词汇对照唯一权威",
+          "打通会话与处理流水跳转"
+        ],
+        "fixes": [
+          "治理 P3-2 手册批——双居所归并修复口径冲突 + 结构件去重",
+          "M2-C 防过碎修正——混合形态，单件平铺成簇立目录（沿工具层终态惯例）",
+          "目录对称化二次修正——四层全目录、跨层服务平铺根、services/ 取消",
+          "修复懒迁移竞态与 bot 映射缓存降级"
+        ],
+        "optimizations": [
+          "二期三裁定入档——M1 playbook 抽取关闭、C8 留常驻、M3 边界定稿",
+          "结构图三悬空元素的代码组织落点——working-memory 目录/procedural 物理仓/两舱文件级拆分",
+          "M3 会话记忆两舱分家——facts/workbench 文件级拆分，facade 保 26 注入点零波及",
+          "三期批一定稿——归类裁定表、episodic 空目录不立、顶层 procedural 合并",
+          "批一归类纠偏——按内容归位、撤空目录、procedural 归一",
+          "收尾批裁定汇总入档——正名/enrichment迁出/群库拆分/机制件归根/示例重生成",
+          "装配层收尾——preparation 正名、enrichment 归车间、群库拆分归位"
+        ],
+        "ops": [
+          "上下文工程治理方案定稿——基线复核、缓存文档核实与三条总纲裁定",
+          "治理方案升级三元目标——注意力质量+抗腐烂+设计合理性",
+          "治理方案第三轮——约束放置判定树、行业对照结论与P3-4 Skill化实验",
+          "引用库补引两域——裁决权/自纠边界学理 + 编排多代理git回收",
+          "上下文治理 P0+P1 代码批——缓存命中埋点、膨胀哨兵与无损瘦身",
+          "四层记忆对照 CoALA 四分法复盘——功能完备、一处命名错位、一个治理洞察",
+          "登记治理二期意向——记忆体系 CoALA 对齐（一期完成后启动）",
+          "上下文治理 P1-1 审计定稿 + P3-1 规则台账建成 + F1~F3 防腐纪律落地",
+          "治理二期立项——记忆体系 CoALA 对齐（M1 分层供给/M2 命名搭车/M3 分家）",
+          "F5 裁定执行完毕——5 处 DB 双居所违例/旧口径删改落地并销账",
+          "治理 P3-2/P3-3 首批——final-check 守卫同构条目下线 + job_list 描…",
+          "治理 P3-3 二批——数据开关章节坍缩 + handoff 协议副本归并",
+          "一期收官批——job_list 深度压缩至 8,515 + DB 挂账清零 + P2/P3-4 裁决",
+          "CoALA 命名范围裁定——只改'程序记忆'一处，不做全量改名",
+          "命名轴设计哲学查证——业界主流是复合轴，本库顶层命名获同构追认",
+          "社区脉搏入库——记忆归属之争/分类法必要性质疑/文件式记忆与重写退化警告",
+          "二期方案时效刷新——启动条件已满足、P3-4 并入 M1 落定候选段清单",
+          "二期 M2 提前执行——procedural 更名 stage-state 全量落地",
+          "memory-architecture 术语同步——程序记忆→阶段状态",
+          "全库术语扫尾——程序记忆→阶段状态",
+          "程序记忆术语最终扫尾——advance-stage 注释与产品文档",
+          "程序记忆术语残留清零（注释级 3 处）",
+          "settlement 更名 consolidation——同库与薪资结算域双义冲突",
+          "回滚误改——AgentJobDetailField 的 settlement 是薪资结算域枚举非沉淀标签",
+          "二期 M2-B 长期层 A3 结构分组设计定稿——待批准执行",
+          "短期窗口 60/12K→120/24K——p99 触顶数据裁定放大",
+          "M2-B 追加 Working Memory 类型命名设计——PreparedAgentContext→Worki…",
+          "M1-B 程序记忆逻辑收拢设计——物理分散维持+索引互链补齐认知轴导航",
+          "M2-C memory 模块生命周期轴目录重组设计——代码树对齐结构图，待批准",
+          "终态代码组织架构图入档——逐路径标注交付批次，作为验收基准",
+          "M1-B 程序记忆索引升格 + 六居所互链锚注",
+          "M2-C 目录终态重组——代码树对齐记忆结构图",
+          "M2-B 长期层 A3 结构分组落地——semantic/episodic 入代码与数据库",
+          "session/ 更名 session-state/——scope 名两头不靠，与 stage-sta…",
+          "展示执行事件时间线",
+          "优先展示工具调用观测字段",
+          "展示守卫语义审查判例",
+          "补充详情排障关键信息",
+          "刷新详情并清理死代码",
+          "下线断流事件消费",
+          "定稿 M5 结构与三期装配设计",
+          "定格短期记忆目录结构",
+          "将本轮规则事实正名为提示",
+          "对齐咨询周期与沉淀间隙",
+          "M5 第 4 条复议改定——profile 双写入路径",
+          "将品牌状态并入会话事实",
+          "改定短期记忆层为平铺结构",
+          "按层平铺短期记忆结构",
+          "定时沉淀闲置会话",
+          "按托管账号隔离长期记忆",
+          "恢复 profile 双写入路径",
+          "门面正名 session-state——伞用中性词，类型词住舱级映射",
+          "收资单据迁入工具域",
+          "召回契约形状对齐两层结构——四层平铺退役",
+          "清理 session-state 门面旧名残留",
+          "收尾 M5 两层记忆文档",
+          "清理定时沉淀退役标识符",
+          "收紧智能写入并追加归档摘要",
+          "收资表单逐格回流 sessionFacts——未成单不丢（M5 裁定一）",
+          "SessionSummaries 单层化 episodes + 沉淀水位独立列——archive 机构…",
+          "类型契约改为总图先行",
+          "README 补沉淀总装图——三种产出三套写法",
+          "补齐 height/weight 长期档案 RPC 键框（M5 裁定五）",
+          "跟随 procedural 提示词迁址",
+          "收资表单 key 补 bot 维——跨 bot 不共表（M5 裁定六）",
+          "补齐 M5 深审裁定与编译器评审结论",
+          "收口短期类型 canonical import",
+          "gender 来源语义入信封、停写 gender_source——两刀拆除批 A（M5 裁定八）",
+          "三期终版轻量化 + M5 深审裁定全量入档",
+          "三期批二终态定稿——2b 否决、批三升格、先例降级入档",
+          "收官文档清理——一期/二期/复聊二期方案转 git 历史，遗留项归位",
+          "sections 按知识类型归类 + 台账锚点测试——三期批一",
+          "三期终稿 v2——外部评审四 P1 采纳 + 不过度设计终裁",
+          "批一追加拆聚合壳——policy/runtime-context 括号退役，12 真实块铺平",
+          "组装冲突裁决——同值去重/异值标注/turnHints 增量块——三期批三",
+          "三期批四立案——装配边界治理（禁令升格 section/formatter 并壳/裁决后门收口）",
+          "system 拆稳定前缀+动态尾部——三期批二",
+          "装配边界治理——禁令升格 section、formatter 并壳、裁决后门收口（三期批四）",
+          "归类表勘误——group-inventory 归 working，semantic 收窄为候选人事实",
+          "system 拆稳定前缀+动态尾部——三期批二（Qwen 隐式缓存路线）",
+          "装配示例与 KB 文档按终态重写",
+          "批二段序返修——final-check 归位收口、identity 归位开篇",
+          "三期收官——全部批次执行完毕，文档转记录态"
         ],
         "config": [
-          "`.eslintrc.js` 增加候选人域架构边界约束。",
-          "无数据库 migration、无 RPC 变更、无 Docker 变更。",
-          "**有** `.env.example` 变更（描述初稿写的「无环境变量变更」不准确，已校正）：`AGENT_EXTRACT_MODEL` 改为 `qwen/qwen3.7-plus`；删除代码已不再读取的 `ENABLE_BULL_QUEUE`、`SUPABASE_BUCKET_NAME`、`SUPABASE_BRAND_CONFIG_PATH`（三者在 `.env.production` 仍有残留行，属无害死键，本次不动）。`.env.example` 只影响新环境，生产以运行时配置与 `.env.production` 为准。",
-          "**有** GitHub Actions 变更：`ci.yml` 增加 `duplication:check` 步骤；`pull_request_template.md` 增加两条正则/示例值检查项。",
-          "D4/D7 及县级映射等运行时开关保持原值，未做 rollout。"
+          "v10.45.0 包含 5 个 Supabase migration：20260821210000、20260825025701、20260825050239、20260825055058、20260825063752；测试库已应用，生产库待受控切换时应用。",
+          "首个 migration 会重命名长期记忆列，旧版 v10.44.0 与迁移后 schema 不兼容；合并/部署前必须完成生产配置同步并单独授权 migration 与应用切换。",
+          "生产环境 AGENT_MAX_INPUT_CHARS 与 MEMORY_SETTLEMENT_GAP_DAYS 当前值未对齐 v10.45.0 默认值；MEMORY_SESSION_TTL_DAYS 已对齐。"
         ],
         "envFiles": [
           ".env.example"
         ],
         "verification": [
-          "`pnpm run ci:check`（本地及 pre-push 各一遍）",
-          "445 个测试套件通过（1 个跳过），7179 个测试通过（6 个跳过）；lint、format、typecheck、重复度基线、行政区/词表校验及前后端构建均通过（2026-08-18 对最终 HEAD `0d9827e5` 全量重跑）",
-          "`pnpm run test:di-smoke`",
-          "`git diff --check origin/develop...HEAD`",
-          "确认无 migration / RPC / Docker 净差异（`.env.example` 与 GitHub Actions 有净差异，见「配置变更」）",
-          "关键链路已人工验证",
-          "其他说明：按要求仅做本地验证；未连接生产链路、未执行发版。",
-          "既有策展回归 / 复测结论的案卷基线是 `cb8ee452`，该提交早于最终 HEAD **110 个提交**。",
-          "因此那批结论**不覆盖**最终 HEAD 上的改动（含上表 6 笔审计修复）。合并前应对最终 HEAD 重跑回归集，勿以旧案卷结论作为最终验收依据。"
+          "ESLint / Prettier",
+          "TypeScript typecheck",
+          "geo / vocab 跨介质一致性校验",
+          "Web 与服务端构建",
+          "Jest 全库测试与 coverage"
         ]
       },
       {
-        "number": "1008",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/1008",
-        "title": "岗位查询显式 location.range 在本地距离过滤生效",
+        "number": "1037",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1037",
+        "title": "核心链路注释与架构文档按实现终态清理",
         "author": "huajune",
-        "mergedAt": "2026-08-19",
+        "mergedAt": "2026-08-26",
         "businessUpdates": [
-          "岗位查询显式 location.range 在本地距离过滤生效"
+          "无。",
+          "明确 Guardrail 的 Input / Prompt / Tool / Output 四个位置，避免把 Prompt 层漏出架构描述。",
+          "明确 `final-check` 是复合 section；规则命中时内部追加 `critical-turn-guard` 子块，不再描述为两个独立注册段。",
+          "对齐当前 ReplyWorkflow → AgentRunner → TurnFinalizer 调用链、两层记忆结构、replay 阻断集合、Redis 租约参数和工具步数。",
+          "删除全库零调用的 deprecated `dispatchIfNeeded()` 转发方法。"
         ],
         "summary": [
-          "岗位查询显式 location.range 在本地距离过滤生效"
-        ],
-        "features": [],
-        "fixes": [],
-        "optimizations": [],
-        "ops": [
-          "岗位查询显式 location.range 在本地距离过滤生效"
-        ],
-        "config": [],
-        "envFiles": [],
-        "verification": [
-          "新增 4 个单测：range=20000 保留 15km 门店 / 超出 20km 仍过滤且话术按 20km / range=50000 截断到 30km 并披露 / 未传 range 走阈值兜底不变",
-          "`duliday-job-list.tool.spec.ts` 92/92 通过；`tsc --noEmit`、changed-files ESLint（--max-warnings=0）、prettier check 均绿"
-        ]
-      },
-      {
-        "number": "1010",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/1010",
-        "title": "补 handoff 承诺对账两处生产真阳词形",
-        "author": "huajune",
-        "mergedAt": "2026-08-19",
-        "businessUpdates": [
-          "补 handoff 承诺对账两处生产真阳词形"
-        ],
-        "summary": [
-          "补 handoff 承诺对账两处生产真阳词形"
-        ],
-        "features": [],
-        "fixes": [],
-        "optimizations": [],
-        "ops": [
-          "补 handoff 承诺对账两处生产真阳词形"
-        ],
-        "config": [],
-        "envFiles": [],
-        "verification": [
-          "12 条生产真阳全部接住（含上述两形 + 原有 10 形）",
-          "12 条假阳防线不回归：边界声明（\"具体以门店确认为准\"）、条件否定（\"如果同事没联系你\"）、会通知类（已裁定 OK）、同事主语、建议候选人自己问、报名后衔接话术、\"我同意\"/\"我跟你说\"歧义形",
-          "spec 补 4 组用例；`promise-reconciliation` 18/18、`hard-rules.service` 393/393、`turn-outcome-promise-reconciliation` 2/2",
-          "本地 `ci:check` 全绿（455 套件 / 7286 测试）"
-        ]
-      },
-      {
-        "number": "1012",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/1012",
-        "title": "新增 v10.44.0 发版底账",
-        "author": "huajune",
-        "mergedAt": "2026-08-19",
-        "businessUpdates": [
-          "新增 v10.44.0 发版底账"
-        ],
-        "summary": [
-          "新增 v10.44.0 发版底账"
+          "清理核心链路注释并按实现刷新架构文档",
+          "全局清理核心运行链路中的阶段编号、批次标签、失效兼容说明和误导性代码注释。",
+          "以当前实现为唯一事实源，重写/刷新 Agent Runtime、消息链路、记忆、Guardrail、数据库与运营文档。",
+          "清理已完成或失效的 TODO，建立待办总览并拆分仍需执行的兼容与发布事项。",
+          "核心链路注释与架构文档按实现终态清理"
         ],
         "features": [
-          "新增 v10.44.0 发版底账"
+          "无。"
+        ],
+        "fixes": [
+          "明确 Guardrail 的 Input / Prompt / Tool / Output 四个位置，避免把 Prompt 层漏出架构描述。",
+          "明确 `final-check` 是复合 section；规则命中时内部追加 `critical-turn-guard` 子块，不再描述为两个独立注册段。",
+          "对齐当前 ReplyWorkflow → AgentRunner → TurnFinalizer 调用链、两层记忆结构、replay 阻断集合、Redis 租约参数和工具步数。",
+          "删除全库零调用的 deprecated `dispatchIfNeeded()` 转发方法。"
+        ],
+        "optimizations": [
+          "知识库条目由“四层记忆系统”改为“两层记忆系统”，并将“出站守卫三档裁决链”改为当前裁决链描述。",
+          "校正文档中的代码路径、配置默认值、存储键和运行时边界；Markdown 文件链接与知识库 Wiki 双链全部核验通过。",
+          "全局清理核心运行链路中的阶段编号、批次标签、失效兼容说明和误导性代码注释。",
+          "以当前实现为唯一事实源，重写/刷新 Agent Runtime、消息链路、记忆、Guardrail、数据库与运营文档。",
+          "清理已完成或失效的 TODO，建立待办总览并拆分仍需执行的兼容与发布事项。"
+        ],
+        "ops": [
+          "删除已收官的 `context-assembly-compiler.md` 和失效的 memory 深审清单。",
+          "新增 `docs/todo/README.md`、memory compatibility cleanup 与 runtime release follow-ups，保留真实未完成事项。",
+          "清理核心链路注释并按实现刷新架构文档"
+        ],
+        "config": [
+          "仅更新 `.env.example` 的说明：`AGENT_MAX_INPUT_CHARS` 默认值对齐代码为 24000，并去掉一处重复的旧开关说明。",
+          "本 PR 自身无新增必填环境变量、数据库 migration、RPC、权限、依赖或外部服务变更；v10.45.0 整体的 migration 见 PR #1035 配置记录。"
+        ],
+        "envFiles": [
+          ".env.example"
+        ],
+        "verification": [
+          "`pnpm run ci:check`",
+          "关键链路已按源码逐项人工核对",
+          "未新增对开放自然语言直接 reject/覆盖/判缺的正则分支",
+          "未新增 Prompt 示例值",
+          "`pnpm run duplication:check`：0.79% duplicated lines，低于 2.06% 阈值",
+          "`pnpm run test:di-smoke`：1/1 通过",
+          "全库：448 suites / 6812 tests / 3 snapshots 通过；1 suite / 5 tests 按原配置跳过",
+          "`git diff --check`、Markdown 文件链接、知识库 Wiki 双链检查通过"
+        ]
+      },
+      {
+        "number": "1039",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1039",
+        "title": "收口 v10.45.0 审批门禁",
+        "author": "huajune",
+        "mergedAt": "2026-08-26",
+        "businessUpdates": [
+          "收口 v10.45.0 审批门禁",
+          "同步规则数量"
+        ],
+        "summary": [
+          "收口 v10.45.0 审批门禁",
+          "同步规则数量"
+        ],
+        "features": [],
+        "fixes": [],
+        "optimizations": [],
+        "ops": [
+          "收口 v10.45.0 审批门禁",
+          "同步规则数量"
+        ],
+        "config": [],
+        "envFiles": [],
+        "verification": [
+          "pnpm run ci:check：lint、format、typecheck、geo、vocab、前后端 build 全绿。",
+          "Jest：450/450 套件、6825/6825 测试通过；另 1 套件 / 5 测试按仓库配置跳过。",
+          "测试 Supabase + Redis 真实记忆集成链路：30/30，通过后已清理测试数据。",
+          "安全 Agent smoke：修复后为查询承接，无岗位可用性断言、无工具调用、无外部副作用。",
+          "release ledger checker 与 git diff --check 通过。"
+        ]
+      },
+      {
+        "number": "1041",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1041",
+        "title": "精简事故流水账式注释",
+        "author": "huajune",
+        "mergedAt": "2026-08-26",
+        "businessUpdates": [
+          "精简事故流水账式注释",
+          "精简 90 个带日期、版本、案例号和审计计数的事故流水账式注释块",
+          "将源码注释收敛为当前职责、约束和维护边界，测试注释只保留回归行为",
+          "全库宽口径复扫候选数由 90 降至 0，不改业务逻辑"
+        ],
+        "summary": [
+          "精简事故流水账式注释",
+          "精简 90 个带日期、版本、案例号和审计计数的事故流水账式注释块",
+          "将源码注释收敛为当前职责、约束和维护边界，测试注释只保留回归行为",
+          "全库宽口径复扫候选数由 90 降至 0，不改业务逻辑"
+        ],
+        "features": [],
+        "fixes": [],
+        "optimizations": [
+          "清理源码、测试、脚本和迁移中的历史事故叙事，保留当前可执行维护信息",
+          "精简 90 个带日期、版本、案例号和审计计数的事故流水账式注释块",
+          "将源码注释收敛为当前职责、约束和维护边界，测试注释只保留回归行为",
+          "全库宽口径复扫候选数由 90 降至 0，不改业务逻辑"
+        ],
+        "ops": [
+          "无；仅注释改动",
+          "精简事故流水账式注释"
+        ],
+        "config": [],
+        "envFiles": [],
+        "verification": [
+          "pnpm run ci:check",
+          "pnpm run duplication:check",
+          "pnpm run test:di-smoke",
+          "git diff --check",
+          "全库事故流水账式注释复扫：0",
+          "关键链路人工验证：N/A（纯注释，无运行时行为变化）",
+          "未新增自然语言 reject、覆盖或判缺正则分支",
+          "新增虚构 prompt 示例值：N/A"
+        ]
+      },
+      {
+        "number": "1043",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1043",
+        "title": "收口 v10.45 收资与治理改动",
+        "author": "huajune",
+        "mergedAt": "2026-08-26",
+        "businessUpdates": [
+          "收资身份四槽不再依赖后端 systemField，改为可配置 labelId 锚点与实时标题核验",
+          "在写入姓名和手机号前增加疑似多人代报闸，成对出现第二人身份时转人工且保持原表单不被污染"
+        ],
+        "summary": [
+          "收口 v10.45 收资与治理改动",
+          "补充 LLM 规则简化方案",
+          "同步 develop 最新改动",
+          "清理方案文档格式",
+          "收资身份四槽不再依赖后端 systemField，改为可配置 labelId 锚点与实时标题核验",
+          "在写入姓名和手机号前增加疑似多人代报闸，成对出现第二人身份时转人工且保持原表单不被污染",
+          "更新收资架构、运营标签清理、BadCase 重放清单和 LLM 规则简化方案",
+          "同步 v10.45 发版元数据与 CHANGELOG，并基于最新 develop 消除已合并 PR #1041/#1040 的重复改动"
+        ],
+        "features": [
+          "收资身份四槽不再依赖后端 systemField，改为可配置 labelId 锚点与实时标题核验",
+          "在写入姓名和手机号前增加疑似多人代报闸，成对出现第二人身份时转人工且保持原表单不被污染"
         ],
         "fixes": [],
+        "optimizations": [
+          "更新收资架构、运营标签清理、BadCase 重放清单和 LLM 规则简化方案",
+          "同步 v10.45 发版元数据与 CHANGELOG，并基于最新 develop 消除已合并 PR #1041/#1040 的重复改动",
+          "补充 LLM 规则简化方案"
+        ],
+        "ops": [
+          "收口 v10.45 收资与治理改动",
+          "同步 develop 最新改动",
+          "清理方案文档格式"
+        ],
+        "config": [
+          ".env.example 新增可选 COLLECTION_IDENTITY_LABEL_IDS 示例",
+          "不配置时仍按标题语义识别；本 PR 净差异不新增数据库 migration"
+        ],
+        "envFiles": [
+          ".env.example"
+        ],
+        "verification": [
+          "pre-commit lint 与格式检查",
+          "git diff --check",
+          "pnpm run ci:check（pre-push）",
+          "450/450 测试套件通过，6826/6826 测试通过",
+          "1 个套件 / 5 个测试按仓库配置跳过"
+        ]
+      },
+      {
+        "number": "1045",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1045",
+        "title": "移除第二语义审查并收敛规则链",
+        "author": "huajune",
+        "mergedAt": "2026-08-26",
+        "businessUpdates": [
+          "将出站审查收敛到可确定性对账的高风险规则，并新增预约成功声明与工具回执对账。"
+        ],
+        "summary": [
+          "移除第二语义审查并收敛规则链",
+          "统一 precheck 收资入参契约",
+          "清理已移交的标签清单",
+          "移除 Output Guardrail 的第二模型 Semantic Reviewer、相关运行时配置、告警/观测与管理页入口。",
+          "将出站审查收敛到可确定性对账的高风险规则，并新增预约成功声明与工具回执对账。",
+          "调整品牌、用工形式、记忆、无岗、拉群与工具链路，并同步架构文档。"
+        ],
+        "features": [
+          "将出站审查收敛到可确定性对账的高风险规则，并新增预约成功声明与工具回执对账。"
+        ],
+        "fixes": [],
+        "optimizations": [
+          "移除 Output Guardrail 的第二模型 Semantic Reviewer、相关运行时配置、告警/观测与管理页入口。",
+          "调整品牌、用工形式、记忆、无岗、拉群与工具链路，并同步架构文档。"
+        ],
+        "ops": [
+          "移除第二语义审查并收敛规则链",
+          "统一 precheck 收资入参契约",
+          "清理已移交的标签清单"
+        ],
+        "config": [],
+        "envFiles": [
+          ".env.example"
+        ],
+        "verification": [
+          "`pnpm run ci:check`",
+          "定向回归：45 suites / 993 tests passed",
+          "pre-push 全量门禁：443 suites passed、1 skipped；6313 tests passed、5 skipped",
+          "`pnpm run duplication:check`：0.79%，低于 2.06%",
+          "`pnpm run test:di-smoke`：1/1 passed",
+          "`pnpm run release:ledger:check`",
+          "`git diff --check`"
+        ]
+      },
+      {
+        "number": "1047",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1047",
+        "title": "precheck 收资协议统一收尾——身份标题回退/清单瘦身/面试时间转运/确认词扩展",
+        "author": "huajune",
+        "mergedAt": "2026-08-27",
+        "businessUpdates": [
+          "移除第二语义审查并收敛规则链",
+          "统一 precheck 收资入参契约",
+          "清理已移交的标签清单",
+          "收资标题定位增加身份四槽同义词第三级回退",
+          "precheck 面试时间误投 formAnswers 确定性转运 + unmatchedAnswers 回执",
+          "精简 precheck bookingChecklist 冗余字段",
+          "复述确认识别组合式肯定应答，免临门多绕一轮",
+          "合流清理 displayOrder 跨基座残留断言与注释",
+          "Merge remote-tracking branch 'origin/develop' into codex/next-task-20…",
+          "precheck 收资协议统一收尾——身份标题回退/清单瘦身/面试时间转运/确认词扩展"
+        ],
+        "summary": [
+          "移除第二语义审查并收敛规则链",
+          "统一 precheck 收资入参契约",
+          "清理已移交的标签清单",
+          "收资标题定位增加身份四槽同义词第三级回退",
+          "precheck 面试时间误投 formAnswers 确定性转运 + unmatchedAnswers 回执",
+          "精简 precheck bookingChecklist 冗余字段",
+          "复述确认识别组合式肯定应答，免临门多绕一轮",
+          "合流清理 displayOrder 跨基座残留断言与注释",
+          "Merge remote-tracking branch 'origin/develop' into codex/next-task-20…",
+          "precheck 收资协议统一收尾——身份标题回退/清单瘦身/面试时间转运/确认词扩展"
+        ],
+        "features": [],
+        "fixes": [],
+        "optimizations": [],
+        "ops": [
+          "移除第二语义审查并收敛规则链",
+          "统一 precheck 收资入参契约",
+          "清理已移交的标签清单",
+          "收资标题定位增加身份四槽同义词第三级回退",
+          "precheck 面试时间误投 formAnswers 确定性转运 + unmatchedAnswers 回执",
+          "精简 precheck bookingChecklist 冗余字段",
+          "复述确认识别组合式肯定应答，免临门多绕一轮",
+          "合流清理 displayOrder 跨基座残留断言与注释",
+          "Merge remote-tracking branch 'origin/develop' into codex/next-task-20…"
+        ],
+        "config": [],
+        "envFiles": [],
+        "verification": [
+          "typecheck / ESLint（--max-warnings=0）全绿；",
+          "全量 Jest：**443 套件 / 6355 测试通过**（含四任务新增 33 个用例）；",
+          "台账 `docs/prompt-rule-ledger.md` 已同步（precheck 行合并两条注记）。"
+        ]
+      },
+      {
+        "number": "1049",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1049",
+        "title": "v11.0.0 发版底账（自 v10.45.0 升级）",
+        "author": "huajune",
+        "mergedAt": "2026-08-27",
+        "businessUpdates": [
+          "新增 P0-08（precheck v11 契约收口：全量单测 6355 + 440 岗契约数据面 + 272 生产会话回放，零错槽）",
+          "新增 P0-09（analyze-chat-badcases 正式回归闸门：发布负责人 2026-08-27 裁定豁免）"
+        ],
+        "summary": [
+          "v10.45.0 底账升级为 v11.0.0 并扩展收口批范围",
+          "底账 `v10.45.0.md` → `v11.0.0.md`：#1047 携 BREAKING 标记触发 major",
+          "范围扩展 +#1039/#1041/#1043/#1045/#1047；变更摘要补 v11 收口批",
+          "新增 P0-08（precheck v11 契约收口：全量单测 6355 + 440 岗契约数据面 + 272 生产会话回放，零错槽）",
+          "新增 P0-09（analyze-chat-badcases 正式回归闸门：发布负责人 2026-08-27 裁定豁免）",
+          "登记发布授权（合并/生产 migration/部署一条龙）与 env 遗留裁定",
+          "v11.0.0 发版底账（自 v10.45.0 升级）"
+        ],
+        "features": [
+          "新增 P0-08（precheck v11 契约收口：全量单测 6355 + 440 岗契约数据面 + 272 生产会话回放，零错槽）",
+          "新增 P0-09（analyze-chat-badcases 正式回归闸门：发布负责人 2026-08-27 裁定豁免）"
+        ],
+        "fixes": [],
+        "optimizations": [
+          "登记发布授权（合并/生产 migration/部署一条龙）与 env 遗留裁定"
+        ],
+        "ops": [
+          "底账 `v10.45.0.md` → `v11.0.0.md`：#1047 携 BREAKING 标记触发 major",
+          "范围扩展 +#1039/#1041/#1043/#1045/#1047；变更摘要补 v11 收口批",
+          "v10.45.0 底账升级为 v11.0.0 并扩展收口批范围"
+        ],
+        "config": [],
+        "envFiles": [],
+        "verification": []
+      },
+      {
+        "number": "1051",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1051",
+        "title": "v11.0.0 底账 P0 表修正",
+        "author": "huajune",
+        "mergedAt": "2026-08-27",
+        "businessUpdates": [
+          "v11.0.0 底账 P0 表修正——豁免裁定并入 P0-08 证据栏"
+        ],
+        "summary": [
+          "v11.0.0 底账 P0 表修正——豁免裁定并入 P0-08 证据栏",
+          "v11.0.0 底账 P0 表修正"
+        ],
+        "features": [],
+        "fixes": [
+          "v11.0.0 底账 P0 表修正——豁免裁定并入 P0-08 证据栏"
+        ],
         "optimizations": [],
         "ops": [],
         "config": [],
