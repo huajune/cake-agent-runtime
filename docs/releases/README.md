@@ -15,10 +15,14 @@
 
 ## 生命周期
 
-1. **范围确认**：从目标分支 diff、关联 PR、配置和 migration 生成 pending 底账。
-2. **回归策展**：按改动影响设计 P0/P1 case，写明输入、期望、验证方式和来源。
+1. **草稿生成（推荐起点）**：发版前运行 `pnpm run release:ledger`——从
+   `.release/pending-release.json` 渲染 `docs/releases/YYYY/v{next}.md` 草稿，
+   P0 表按各实现 PR 的验证记录预填。生成稿带 `<!-- auto-generated-from-pending-release -->`
+   标记；人工修订定稿时删除该标记（否则下次生成会清理/覆盖它）。
+2. **人工复核**：检查 P0 表是否需要补真实回归 case、高风险区域/migration/回滚条件是否属实；
+   复杂发布仍可从 `_template.md` 手写 pending 底账走完整流程。
 3. **发布闸口**：P0 全部通过，自动检查、模型回放、人工联调和外部依赖有证据。
-4. **版本固化**：版本元数据确定后，将 pending 文件重命名为 `vX.Y.Z.md`。
+4. **版本固化**：版本号与文件名由 `nextVersion` 对齐（生成器自动处理；手写 pending 文件则重命名为 `vX.Y.Z.md`）。
 5. **发布闭环**：补齐 tag、release、部署时间、生产验证、监控和遗留事项。
 
 正式 `develop → master` Release PR 会运行 `pnpm release:ledger:check`。缺少当前版本底账、

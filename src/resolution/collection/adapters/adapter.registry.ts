@@ -22,6 +22,7 @@ import { proposeEducation } from './education.adapter';
 import { proposeHealthCertificate } from './health-certificate.adapter';
 import { proposeIdentityCore } from './identity-core.adapter';
 import { proposeIdentityStatus } from './identity-status.adapter';
+import { proposeSocialInsurance } from './social-insurance.adapter';
 import type { AdapterInput, SlotAdapter, SlotProposal } from './adapter.types';
 
 /** 标题语义族判据（词面判定，不认 ID）。 */
@@ -31,6 +32,8 @@ const TITLE_FAMILIES: ReadonlyArray<{ test: RegExp; adapter: SlotAdapter }> = [
   // 身份族排在学历之后：学历标题不含"学生"，不会互相截胡；反过来
   //「是否学生」若排在学历前会先命中身份族，正确。
   { test: /社会身份|是否学生|学生|学信网|在籍|身份/u, adapter: proposeIdentityStatus },
+  // 社保族排在身份族之后：「社保缴纳情况」标题不含身份词，不会互相截胡。
+  { test: /社保/u, adapter: proposeSocialInsurance },
 ];
 
 /**

@@ -251,4 +251,86 @@ describe('detectRepairRegression', () => {
       ).toBeNull();
     });
   });
+
+  // ====== 首版即违规结构的豁免（2026-08-27 生产案，trace batch_6a8faabb…） ======
+
+  describe('structure_collapsed 豁免：首版整体是内部分析泄漏', () => {
+    // 生产案（文本节选）：首版把内部分析当回复输出（工具名/规则引用/筛选清单），
+    // internal_output_leak 正确 block；repair 重写出合格话术且二审 pass，却被
+    // structure_collapsed 判退化，两版都不投——候选人在关键意向节点整轮静默。
+    const leakedAnalysisFirst = [
+      '根据查询结果，我来分析一下符合候选人要求的岗位：',
+      '**候选人要求：**',
+      '- 白天上班',
+      '- 做五休二（每周最多5天）',
+      '- 税前6000以上',
+      '**筛选结果：**',
+      '成都你六姐的岗位都不符合要求：',
+      '- 薪资都是1000-3000元/月，远低于6000',
+      '- 大部分要求每周至少6-7天，不符合做五休二',
+      '奥乐齐的岗位：',
+      '1. **通岗店员**：4000-5500元/月，每周6天 - 薪资不够6000，且每周6天不符合做五休二',
+      '2. **分拣打包**：6200-9800元/月，每周6天 - 薪资符合6000+，但每周6天不符合做五休二',
+      '根据规则："候选人说班次硬约束后，duliday_job_list会按约束剔除不兼容岗位并在queryMeta.scheduleFilter里说明剔除数量与理由"',
+      '但queryMeta.scheduleFilter显示excludedCount=0，说明没有岗位被剔除。',
+    ].join('\n');
+    const goodRepair = [
+      '我帮你查了下，附近符合白天上班、税前6000以上的岗位只有奥乐齐分拣打包，10公里，6200-9800元/月，但这家要求每周上6天，和你做五休二有点冲突',
+      '其他薪资高的岗位要么班次不合适，要么要求每周6天',
+      '你看奥乐齐这家能不能接受每周6天',
+    ].join('\n');
+
+    it('accepts stripping analysis scaffolding when first was blocked as internal_output_leak', () => {
+      expect(
+        detectRepairRegression(leakedAnalysisFirst, goodRepair, {
+          firstBlockedRuleIds: ['internal_output_leak'],
+          jobEvidenceAvailable: true,
+        }),
+      ).toBeNull();
+    });
+
+    it('documents the pre-fix false positive: same pair without rule context is flagged', () => {
+      expect(
+        detectRepairRegression(leakedAnalysisFirst, goodRepair, { jobEvidenceAvailable: true }),
+      ).toBe('structure_collapsed');
+    });
+
+    it('meta_narration_reply / invalid_model_output share the exemption', () => {
+      for (const ruleId of ['meta_narration_reply', 'invalid_model_output']) {
+        expect(
+          detectRepairRegression(leakedAnalysisFirst, goodRepair, {
+            firstBlockedRuleIds: [ruleId],
+            jobEvidenceAvailable: true,
+          }),
+        ).toBeNull();
+      }
+    });
+
+    it('does not exempt collapse when first was blocked by a non-leak rule', () => {
+      expect(
+        detectRepairRegression(bookingFormFirst, bookingFormRevised, {
+          firstBlockedRuleIds: ['booking_done_claim_without_submission'],
+        }),
+      ).toBe('structure_collapsed');
+    });
+
+    it('exemption only disables the structure detector, not polarity/fact checks', () => {
+      const reversed = '你附近暂时没有在招的岗位，有新岗我第一时间通知你。';
+      expect(
+        detectRepairRegression(leakedAnalysisFirst, reversed, {
+          firstBlockedRuleIds: ['internal_output_leak'],
+          jobEvidenceAvailable: true,
+        }),
+      ).toBe('polarity_reversed');
+
+      const weekdayFirst = '已帮你提交报名！面试安排在 7 月 28 日（周二）上午 10:30。';
+      const weekdayFlipped = '已帮你提交报名！面试安排在 7 月 28 日（周一）上午 10:30。';
+      expect(
+        detectRepairRegression(weekdayFirst, weekdayFlipped, {
+          firstBlockedRuleIds: ['internal_output_leak'],
+          now: new Date(2026, 6, 24),
+        }),
+      ).toBe('fact_mutated');
+    });
+  });
 });

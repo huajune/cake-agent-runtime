@@ -8,6 +8,55 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v11.0.4`
+**最近更新**: `2026-08-27`
+**来源分支**: `develop`
+**累计 PR**: 5
+
+### 更新摘要
+- PR #1081 固化 v11.0.3 发版底账 + 失败路径守卫回归用例
+- PR #1080 repair 回归闸豁免"首版即违规结构"的坍缩误伤
+- PR #1084 发版流程提速——底账生成器 + 回同步冲突策略修正
+- PR #1086 社保自然答案语义适配 + 作答轮不烧配额 + 筛选终局优先
+- PR #1088 固化 v11.0.4 发版底账
+
+### 新功能
+- 无
+
+### 问题修复
+- PR #1084 发版流程提速——底账生成器 + 回同步冲突策略修正
+
+### 优化调整
+- 无
+
+### 运维与流程
+- PR #1081 固化 v11.0.3 发版底账 + 失败路径守卫回归用例
+- PR #1080 repair 回归闸豁免"首版即违规结构"的坍缩误伤
+- PR #1086 社保自然答案语义适配 + 作答轮不烧配额 + 筛选终局优先
+- PR #1088 固化 v11.0.4 发版底账
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #1081 `booking-receipt.rule.spec.ts` + `hard-rules.service.spec.ts` 38/38 通过
+- PR #1081 `node scripts/check-release-ledger.js` ✅
+- PR #1081 生产抽查：v11.0.3 部署（07:41 UTC）后消息流水正常产出（13 条 / 10 success）
+- PR #1080 回归闸 util 26 用例、runner 47 用例、守卫目录全量 22 套 444 测试通过
+- PR #1080 `tsc --noEmit` / ESLint（--max-warnings=0）干净
+- PR #1084 `generate-release-ledger.spec.ts` 4 用例（草稿过校验/拒绝覆盖/旧草稿清理/空窗版本）+ `update-version-changelog.spec.ts` 回归，14/14 通过
+- PR #1084 workflow YAML 语法校验通过；生成器真仓库冒烟（对人工定稿正确拒绝覆盖）
+- PR #1086 全量 Jest：444 套件 / 6435 用例全绿；lint:check 零告警；tsc 干净。
+- PR #1086 badcase 三环节各钉回归：adapter 8 条、form-writes 7 条、collection-core 7 条、renderer 1 条；彭妮场景端到端断言现在落 `screening_rejected`、社保「无」一次落格。
+- PR #1086 观测面：新增 `collection_form_audit` 事件 kind `escalation_yielded`；`unparseable_answer` 熔断与 `rejectedAttempts` 均落审计，明日可直接按事件观测。
+<!-- release:pending:end -->
+
 ## [11.0.3] - 2026-08-27
 
 **来源分支**: `develop`

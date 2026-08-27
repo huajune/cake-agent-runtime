@@ -19,8 +19,11 @@ import {
   proposeValue,
   PROPOSAL_IGNORE_REASONS,
   PROPOSAL_REJECTION_REASONS,
+  MAX_REJECTED_ATTEMPTS_PER_SLOT,
+  recordRejectedAttempts,
   recordUnansweredAsks,
   recordConfigDebt,
+  yieldRecoverableEscalationToScreening,
   type ValueProposal,
 } from '@resolution/collection/form-writes';
 import {
@@ -794,5 +797,103 @@ describe('markSubmitted / configDebts / 疑似多人', () => {
     });
     expect(result.outcome).toBe('rejected');
     expect(result.reason).toBe(PROPOSAL_REJECTION_REASONS.sourceTextNotFound);
+  });
+});
+
+describe('recordRejectedAttempts · 答而不解 ≠ 不答（badcase batch_6a8fec04ce406a6aee03d65f_*）', () => {
+  it('第 1 次拒收只记账不熔断；达到上限落 unparseable_answer', () => {
+    let form = createForm({ jobId: 1, contract: [NAME_FIELD] });
+
+    const first = recordRejectedAttempts(form, [NAME_FIELD.labelId]);
+    form = first.form;
+    expect(first.exhausted).toEqual([]);
+    expect(form.slots[NAME_FIELD.labelId].rejectedAttempts).toBe(1);
+    expect(form.escalatedReason).toBeUndefined();
+
+    const second = recordRejectedAttempts(form, [NAME_FIELD.labelId]);
+    expect(second.exhausted).toEqual([NAME_FIELD.labelId]);
+    expect(second.form.slots[NAME_FIELD.labelId].rejectedAttempts).toBe(
+      MAX_REJECTED_ATTEMPTS_PER_SLOT,
+    );
+    expect(second.form.escalatedReason).toBe(`unparseable_answer: ${NAME_FIELD.labelId}`);
+  });
+
+  it('非 empty 槽位不记账（同轮已被其它通道写入的不算读不懂）', () => {
+    let form = createForm({ jobId: 1, contract: [NAME_FIELD] });
+    const written = proposeValue(form, NAME_FIELD, {
+      value: TEST_CANDIDATE_NAME,
+      sourceText: `姓名：${TEST_CANDIDATE_NAME}`,
+      producer: 'candidate_quote',
+      candidateTexts: [`姓名：${TEST_CANDIDATE_NAME}`],
+      messages: [userMessage(`姓名：${TEST_CANDIDATE_NAME}`)],
+    });
+    form = written.form;
+    const receipt = recordRejectedAttempts(form, [NAME_FIELD.labelId]);
+    expect(receipt.form.slots[NAME_FIELD.labelId].rejectedAttempts).toBeUndefined();
+  });
+
+  it('已有 escalatedReason 不被覆盖（与 recordUnansweredAsks 同款保序）', () => {
+    let form = createForm({ jobId: 1, contract: [NAME_FIELD] });
+    form = escalate(form, 'suspected_multi_person');
+    form = recordRejectedAttempts(form, [NAME_FIELD.labelId]).form;
+    form = recordRejectedAttempts(form, [NAME_FIELD.labelId]).form;
+    expect(form.escalatedReason).toBe('suspected_multi_person');
+  });
+
+  it('unparseable_answer 是可恢复原因：槽位后来补齐即解除（reconcile 双前缀）', () => {
+    let form = createForm({ jobId: 1, contract: [NAME_FIELD] });
+    form = recordRejectedAttempts(form, [NAME_FIELD.labelId]).form;
+    form = recordRejectedAttempts(form, [NAME_FIELD.labelId]).form;
+    expect(verdictOf(form)).toBe('escalated');
+
+    const written = proposeValue(form, NAME_FIELD, {
+      value: TEST_CANDIDATE_NAME,
+      sourceText: `姓名：${TEST_CANDIDATE_NAME}`,
+      producer: 'candidate_quote',
+      candidateTexts: [`姓名：${TEST_CANDIDATE_NAME}`],
+      messages: [userMessage(`姓名：${TEST_CANDIDATE_NAME}`)],
+    });
+    expect(written.outcome).toBe('accepted');
+    expect(written.form.escalatedReason).toBeUndefined();
+    expect(verdictOf(written.form)).toBe('ready');
+  });
+});
+
+describe('yieldRecoverableEscalationToScreening · 筛选终局优先', () => {
+  function formWithDisqualifiedAge(): BookingCollectionForm {
+    const form = createForm({ jobId: 1, contract: [AGE_FIELD_18_40] });
+    const result = proposeValue(form, AGE_FIELD_18_40, {
+      value: '55',
+      sourceText: '我55岁',
+      producer: 'candidate_quote',
+      candidateTexts: ['我55岁'],
+      messages: [userMessage('我55岁')],
+    });
+    expect(result.outcome).toBe('disqualified');
+    return result.form;
+  }
+
+  it('可恢复熔断（问满/读不懂）让位 disqualified，verdict 回到筛选终局', () => {
+    for (const reason of ['ask_limit_exhausted: 12', 'unparseable_answer: 12']) {
+      const escalated = { ...formWithDisqualifiedAge(), escalatedReason: reason };
+      const yielded = yieldRecoverableEscalationToScreening(escalated);
+      expect(yielded.escalatedReason).toBeUndefined();
+      expect(verdictOf(yielded)).toBe('disqualified');
+    }
+  });
+
+  it('不可恢复原因（疑似多人/errorList 失配）不让位', () => {
+    const escalated = { ...formWithDisqualifiedAge(), escalatedReason: 'suspected_multi_person' };
+    const kept = yieldRecoverableEscalationToScreening(escalated);
+    expect(kept.escalatedReason).toBe('suspected_multi_person');
+    expect(verdictOf(kept)).toBe('escalated');
+  });
+
+  it('没有 disqualified 槽位时不动（熔断该转人工就转）', () => {
+    let form = createForm({ jobId: 1, contract: [NAME_FIELD] });
+    form = { ...form, escalatedReason: 'ask_limit_exhausted: 769' };
+    expect(yieldRecoverableEscalationToScreening(form).escalatedReason).toBe(
+      'ask_limit_exhausted: 769',
+    );
   });
 });

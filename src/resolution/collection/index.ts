@@ -17,6 +17,7 @@ export { proposeIdentityCore } from './adapters/identity-core.adapter';
 export { proposeEducation } from './adapters/education.adapter';
 export { proposeIdentityStatus } from './adapters/identity-status.adapter';
 export { proposeHealthCertificate } from './adapters/health-certificate.adapter';
+export { proposeSocialInsurance } from './adapters/social-insurance.adapter';
 export {
   containsSensitiveScreeningText,
   SENSITIVE_SCREENING_CRITERIA_NOTICE,

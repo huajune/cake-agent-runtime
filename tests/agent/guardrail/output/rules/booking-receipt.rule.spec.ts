@@ -153,3 +153,41 @@ describe('detectBookingReceiptMismatch — 形态 F：在途工单未改约却�
     ).toBeNull();
   });
 });
+
+/**
+ * 形态 B 失败路径收窄（2026-08-27 用户裁定，v11.0.3）：booking 失败后只拦
+ * "正在/已经提交"的假宣称；将来时承诺（"稍后再帮你提交"）是合法承接话术，
+ * 与拉群守卫"只拦完成时态"同口径。收窄前该分支曾把失败轮改写成
+ * "没约上"死胡同回复（batch …_1787812777667），在转化临门一脚劝退候选人。
+ */
+describe('detectBookingReceiptMismatch — 失败路径：只拦假宣称，放行重试承诺', () => {
+  const failedBooking = [
+    {
+      toolName: 'duliday_interview_booking',
+      status: 'ok',
+      result: { success: false, errorType: 'booking.rejected' },
+    } as never,
+  ];
+
+  it.each([
+    '这次没有提交成功，我稍后再帮你提交一次',
+    '刚才没约上，我这就再帮你试试',
+    '这轮没提交成功，明天我再帮你约',
+  ])('booking 失败 + 承诺重试/稍后推进 → 放行：%s', (reply) => {
+    expect(detectBookingReceiptMismatch(reply, failedBooking)).toBeNull();
+  });
+
+  it.each(['已经帮你提交预约了，等通知就行', '正在帮你提交报名，稍等', '那就约在明天13:00'])(
+    'booking 失败 + 宣称正在/已经提交 → 仍拦截：%s',
+    (reply) => {
+      const verdict = detectBookingReceiptMismatch(reply, failedBooking);
+      expect(verdict?.ruleId).toBe('booking_receipt_mismatch');
+    },
+  );
+
+  it('如实披露失败后附带承接话术，整条放行', () => {
+    expect(
+      detectBookingReceiptMismatch('这次预约没提交成功，你确认下信息，我再帮你约', failedBooking),
+    ).toBeNull();
+  });
+});
