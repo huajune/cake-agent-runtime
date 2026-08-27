@@ -604,7 +604,10 @@ async function buildLabelList(params: {
           message: '选项字段缺 optionCodes',
         };
       }
-      labelList.push({ labelId: field.labelId, optionCodes: [...slot.value.optionCodes] });
+      labelList.push({
+        labelId: field.labelId,
+        options: slot.value.optionCodes.map((optionCode) => ({ optionCode })),
+      });
       continue;
     }
 

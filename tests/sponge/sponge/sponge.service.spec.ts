@@ -304,7 +304,7 @@ describe('SpongeService', () => {
     it('should call booking API and return result', async () => {
       const mockResponse = {
         ok: true,
-        headers: new Headers({ Traceid: 'trace-success-1' }),
+        headers: new Headers({ 'X-Trace-Id': 'trace-success-1' }),
         json: jest.fn().mockResolvedValue({
           code: 0,
           message: 'success',
@@ -318,7 +318,7 @@ describe('SpongeService', () => {
         interviewTime: '2026-04-01 10:00:00',
         labelList: [
           { labelId: 101, value: '兮兮' },
-          { labelId: 102, optionCodes: ['FEMALE'] },
+          { labelId: 102, options: [{ optionCode: 'FEMALE' }] },
         ],
       });
 
@@ -326,7 +326,7 @@ describe('SpongeService', () => {
       expect(result.notice).toBe('预约成功');
       expect(result.traceId).toBe('trace-success-1');
       expect(global.fetch).toHaveBeenCalledWith(
-        expect.stringContaining('/a/supplier/entryUser'),
+        expect.stringContaining('/ai/api/workorder/entryUser'),
         expect.objectContaining({
           method: 'POST',
           headers: expect.objectContaining({
@@ -338,7 +338,7 @@ describe('SpongeService', () => {
             interviewTime: '2026-04-01 10:00:00',
             labelList: [
               { labelId: 101, value: '兮兮' },
-              { labelId: 102, optionCodes: ['FEMALE'] },
+              { labelId: 102, options: [{ optionCode: 'FEMALE' }] },
             ],
           }),
         }),
@@ -389,6 +389,32 @@ describe('SpongeService', () => {
       expect(result.success).toBe(false);
       expect(result.message).toBe('麻麻呀，服务器暂时跑丢了～');
       expect(result.traceId).toBe('trace-fail-1');
+    });
+
+    it('网关新协议打回：data.errorList 映射进 applyErrorList，剥除 disclosure', async () => {
+      const mockResponse = {
+        ok: true,
+        headers: new Headers({ 'X-Trace-Id': 'trace-errorlist-1' }),
+        json: jest.fn().mockResolvedValue({
+          code: 30056,
+          message: '报名信息不符合岗位要求',
+          data: {
+            notice: null,
+            errorList: [{ labelId: 771, disclosure: 'PLAIN', field: '性别', msg: '不能为空' }],
+            workOrder: null,
+          },
+        }),
+      };
+      jest.spyOn(global, 'fetch').mockResolvedValue(mockResponse as unknown as Response);
+
+      const result = await service.bookInterview({
+        jobId: 100,
+        labelList: [{ labelId: 771, options: [{ optionCode: '1' }] }],
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.applyErrorList).toEqual([{ labelId: 771, field: '性别', msg: '不能为空' }]);
+      expect(result.traceId).toBe('trace-errorlist-1');
     });
   });
 
