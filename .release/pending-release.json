@@ -1,6 +1,6 @@
 {
   "baseVersion": "11.0.0",
-  "nextVersion": "12.0.0",
+  "nextVersion": "11.0.1",
   "updatedAt": "2026-08-27",
   "sourceBranch": "develop",
   "entries": [
@@ -26,7 +26,8 @@
       "envFiles": [],
       "verification": [
         "tests/scripts 7 suites / 41 tests 全绿；typecheck、lint 通过"
-      ]
+      ],
+      "level": "patch"
     }
   ],
   "lastRelease": {
@@ -1006,5 +1007,6 @@
         "verification": []
       }
     ]
-  }
+  },
+  "lastAnalyzedSha": "c27cb4b0252241c658528ac8c6cee917f9c6609a"
 }

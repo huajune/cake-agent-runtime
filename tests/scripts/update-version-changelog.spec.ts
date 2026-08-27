@@ -47,3 +47,27 @@ describe('update-version-changelog release level', () => {
     ).toBeNull();
   });
 });
+
+describe('update-version-changelog entry level aggregation', () => {
+  const { aggregateEntryLevels } = require('../../scripts/update-version-changelog');
+
+  it('takes the highest level across entries', () => {
+    expect(aggregateEntryLevels([{ level: 'patch' }, { level: 'minor' }])).toBe('minor');
+    expect(aggregateEntryLevels([{ level: 'major' }, { level: 'patch' }])).toBe('major');
+  });
+
+  it('defaults missing or unknown levels to patch (legacy entries)', () => {
+    expect(aggregateEntryLevels([{}, { level: 'weird' }])).toBe('patch');
+  });
+
+  it('returns null for empty entries', () => {
+    expect(aggregateEntryLevels([])).toBeNull();
+  });
+
+  // 2026-08-27 v11.0.0 事故回归：档位只由 entry 累计决定，历史 feat!/feat 提交
+  // 不再参与汇总——squash+回同步拓扑下 lastTag..HEAD 重扫造成的 major 重复计数
+  // 在结构上不可能（旧提交没有对应 entry）。
+  it('release level derives from entries only, not from historical commits', () => {
+    expect(aggregateEntryLevels([{ level: 'patch' }])).toBe('patch');
+  });
+});
