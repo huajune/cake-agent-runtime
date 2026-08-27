@@ -8,20 +8,15 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [11.0.3] - 2026-08-27
 
-**预计版本**: `v11.0.3`
-**最近更新**: `2026-08-27`
 **来源分支**: `develop`
-**累计 PR**: 2
 
 ### 更新摘要
 - PR #1072 recap 确认词表扩词 + 下线 booking 失败轮承诺重试拦截
 - PR #1072 **recap 确认词表扩词**（`resolution/signal/dialogue.ts`）：补入 行/好/中/妥/要得/得嘞/没毛病/阔以/OK/嗯呐/约吧 等整句放行表态，仅进 recap 组合通道，不进身份作证词表。疑问/否定形态（行吗/不行/好了）因 吗/不/了 不是 token 天然不命中，spec 已覆盖。
 - PR #1072 **`booking_receipt_mismatch` 失败路径收窄**（用户裁定，与拉群守卫"只拦完成时态"同口径）：删除 `BOOKING_RETRY_PROMISE_PATTERN` 整段——booking 失败后"稍后再帮你提交"是合法承接话术；in-flight 假宣称只保留「正在」词形。继续拦：宣称正在/已经提交的假回执（形态不变）。
 - PR #1072 规则台账同批登记（`docs/prompt-rule-ledger.md`）。
-- PR #1075 merge master into develop, 解发版元数据冲突（保 v11.0.3）
 
 ### 新功能
 - 无
@@ -36,7 +31,6 @@
 
 ### 运维与流程
 - PR #1072 recap 确认词表扩词 + 下线 booking 失败轮承诺重试拦截
-- PR #1075 merge master into develop, 解发版元数据冲突（保 v11.0.3）
 
 ### 配置变更
 - 无
@@ -46,7 +40,6 @@
 
 ### 验证记录
 - PR #1072 受影响 4 个 spec 套件 93/93 通过；typecheck / lint:check 全绿；pre-push 全量 CI 通过。
-<!-- release:pending:end -->
 
 ## [11.0.2] - 2026-08-27
 
