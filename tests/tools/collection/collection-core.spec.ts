@@ -1,9 +1,10 @@
 import {
+  askedLabelIdsBeforeLatestUser,
   deriveCollectionAction,
   hasRestrictedAnswerThisTurn,
   runCollectionCore,
 } from '@tools/collection/collection-core';
-import { createForm, verdictOf, type ContractFieldDef } from '@resolution/collection';
+import { createForm, type ContractFieldDef } from '@resolution/collection';
 import { selectArchiveFacts } from '@tools/collection/proposal-intake';
 
 const NAME: ContractFieldDef = {
@@ -44,6 +45,14 @@ const HOMETOWN: ContractFieldDef = {
   disclosure: 'RESTRICTED',
   acceptedOptions: [{ optionCode: '310000', optionLabel: '上海市' }],
   rejectedOptions: [{ optionCode: '120000', optionLabel: '天津市' }],
+};
+const PROFESSIONAL: ContractFieldDef = {
+  labelId: 213,
+  labelTitle: '专业',
+  fieldType: 'TEXT',
+  required: true,
+  acceptedOptions: [],
+  rejectedOptions: [],
 };
 
 const CONTRACT = [NAME, AGE, HEALTH];
@@ -249,33 +258,100 @@ describe('runCollectionCore · 筛选与审计', () => {
     );
   });
 
-  it('熔断：同槽问满上限 → handoff，askableFields 空', () => {
-    let form = createForm({ jobId: 528962, contract: CONTRACT });
-    for (let turn = 0; turn < 3; turn += 1) {
-      const result = runCollectionCore({
-        form,
-        contract: CONTRACT,
-        candidateTexts: ['嗯'],
-        messages: [{ role: 'user', content: '嗯' }],
-      });
-      form = result.form;
-      if (turn < 2) expect(result.action).toBe('collect_fields');
-    }
-    expect(verdictOf(form)).toBe('escalated');
-    const final = runCollectionCore({
-      form,
-      contract: CONTRACT,
-      candidateTexts: ['嗯'],
-      messages: [{ role: 'user', content: '嗯' }],
+  it('precheck 计划过但实际回复没问该字段，不消耗配额', () => {
+    const result = runCollectionCore({
+      form: createForm({ jobId: 528962, contract: [PROFESSIONAL] }),
+      contract: [PROFESSIONAL],
+      candidateTexts: ['社会人士'],
+      messages: [
+        { role: 'assistant', content: '那确认下你目前是学生还是社会人士呀？' },
+        { role: 'user', content: '社会人士' },
+      ],
+      askReceiptTurnId: 'turn-1',
     });
-    expect(final.action).toBe('handoff');
-    expect(final.askableFields).toEqual([]);
+    expect(result.form.slots[213].askCount).toBe(0);
+    expect(result.action).toBe('collect_fields');
+    expect(result.askableFields).toEqual(['专业']);
+  });
+
+  it('只按真实 assistant 问句逐字段计数；第 2 次仍空才 handoff', () => {
+    let form = createForm({ jobId: 528962, contract: [PROFESSIONAL] });
+    const first = runCollectionCore({
+      form,
+      contract: [PROFESSIONAL],
+      candidateTexts: ['专业：'],
+      messages: [
+        { role: 'assistant', content: '请补充：\n专业：' },
+        { role: 'user', content: '专业：' },
+      ],
+      askReceiptTurnId: 'turn-1',
+    });
+    form = first.form;
+    expect(form.slots[213].askCount).toBe(1);
+    expect(first.action).toBe('collect_fields');
+    expect(first.askableFields).toEqual(['专业']);
+
+    const second = runCollectionCore({
+      form,
+      contract: [PROFESSIONAL],
+      candidateTexts: ['没有'],
+      messages: [
+        { role: 'user', content: '专业：' },
+        { role: 'assistant', content: '你什么专业？没有就是无' },
+        { role: 'user', content: '没有' },
+      ],
+      askReceiptTurnId: 'turn-2',
+    });
+    expect(second.form.slots[213].askCount).toBe(2);
+    expect(second.action).toBe('handoff');
+    expect(second.askableFields).toEqual([]);
+  });
+
+  it('已问满的槽位后来重开，不允许绕过配额发出第 3 问', () => {
+    const reopened = createForm({ jobId: 528962, contract: [PROFESSIONAL] });
+    reopened.slots[213].askCount = 2;
+    const result = runCollectionCore({
+      form: reopened,
+      contract: [PROFESSIONAL],
+      candidateTexts: ['我再改一下'],
+      messages: [{ role: 'user', content: '我再改一下' }],
+      askReceiptTurnId: 'turn-reopened',
+    });
+    expect(result.action).toBe('handoff');
+    expect(result.askableFields).toEqual([]);
+    expect(result.form.escalatedReason).toBe('ask_limit_exhausted: 213');
   });
 
   it('askThisTurn=false 时只写不问，不消耗熔断配额', () => {
     const result = run('我今年26岁', { askThisTurn: false });
     expect(result.askableFields).toEqual([]);
     expect(result.form.slots[769].askCount).toBe(0);
+  });
+});
+
+describe('askedLabelIdsBeforeLatestUser · 实际问句取证', () => {
+  it('空模板行和定向问句命中，预填值与普通陈述不命中', () => {
+    expect(
+      askedLabelIdsBeforeLatestUser(
+        [
+          { role: 'assistant', content: '更早的专业：\n姓名：' },
+          { role: 'user', content: '先等等' },
+          { role: 'assistant', content: '专业：\n姓名：张三\n这个专业没有额外要求' },
+          { role: 'user', content: '专业：' },
+        ],
+        [PROFESSIONAL, NAME],
+      ),
+    ).toEqual([PROFESSIONAL.labelId]);
+
+    expect(
+      askedLabelIdsBeforeLatestUser(
+        [
+          { role: 'assistant', content: '你什么专业？' },
+          { role: 'user', content: '没有' },
+        ],
+        [PROFESSIONAL],
+      ),
+    ).toEqual([PROFESSIONAL.labelId]);
   });
 });
 

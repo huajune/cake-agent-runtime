@@ -11,6 +11,8 @@ import { SessionStateService } from '@memory/short-term/session-state.service';
 import { sessionFactValue, type SessionInterviewInfo } from '@memory/short-term/short-term.types';
 import {
   createForm,
+  migrateAskTracking,
+  reconcileAskLimitEscalation,
   SESSION_CANDIDATE_REF,
   type BookingCollectionForm,
   type ContractFieldDef,
@@ -103,7 +105,7 @@ export class CollectionFormService {
     if (!existing) {
       return createForm({ candidateRef, jobId: scope.jobId, contract });
     }
-    return this.syncContractSlots(existing, contract);
+    return this.syncContractSlots(migrateAskTracking(existing), contract);
   }
 
   async persist(scope: CollectionFormScope, form: BookingCollectionForm): Promise<void> {
@@ -212,16 +214,14 @@ export class CollectionFormService {
         .map((field) => field.labelId)
         .join(',')}], removed=[${removed.join(',')}]`,
     );
-    return {
-      ...form,
+    const { lastRecap: _staleRecap, ...formWithoutRecap } = form;
+    return reconcileAskLimitEscalation({
+      ...formWithoutRecap,
       slots,
-      ...(form.lastRecap
-        ? { lastRecap: { labelIds: form.lastRecap.labelIds.filter((id) => currentIds.has(id)) } }
-        : {}),
       ...(form.configDebts
         ? { configDebts: form.configDebts.filter((debt) => currentIds.has(debt.labelId)) }
         : {}),
-    };
+    });
   }
 }
 
