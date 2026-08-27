@@ -56,6 +56,32 @@
         "`tsc --noEmit` / ESLint（--max-warnings=0）干净"
       ],
       "level": "patch"
+    },
+    {
+      "number": "1084",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1084",
+      "title": "发版流程提速——底账生成器 + 回同步冲突策略修正",
+      "author": "huajune",
+      "mergedAt": "2026-08-27",
+      "businessUpdates": [
+        "发版流程提速——底账生成器 + 回同步冲突策略修正"
+      ],
+      "summary": [
+        "发版流程提速——底账生成器 + 回同步冲突策略修正"
+      ],
+      "features": [],
+      "fixes": [
+        "发版流程提速——底账生成器 + 回同步冲突策略修正"
+      ],
+      "optimizations": [],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`generate-release-ledger.spec.ts` 4 用例（草稿过校验/拒绝覆盖/旧草稿清理/空窗版本）+ `update-version-changelog.spec.ts` 回归，14/14 通过",
+        "workflow YAML 语法校验通过；生成器真仓库冒烟（对人工定稿正确拒绝覆盖）"
+      ],
+      "level": "patch"
     }
   ],
   "lastRelease": {
@@ -99,5 +125,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "1e7582e5e77e1ba6bf06322004b3bf3080e8fe82"
+  "lastAnalyzedSha": "88c5f30ed3ff007ba1e07612cd7321656e4c191f"
 }
