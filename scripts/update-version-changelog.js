@@ -161,20 +161,30 @@ function runPrepare({
   pendingState,
   historicalSections,
 }) {
-  const commits = getCommitsSince(latestRelease?.tag || null);
-  const releaseLevel = analyzeReleaseLevel(commits);
-  const computedVersion = releaseLevel
-    ? bumpVersion(releaseBaseVersion, releaseLevel)
-    : packageJson.version;
-
+  // 版本档位按「本次推送的增量提交」判定并**存到 entry 上**，汇总取各 entry 最高档。
+  // 2026-08-27 v11.0.0 事故：旧逻辑扫 lastTag..HEAD，而 squash 发版 + master 回同步的
+  // 拓扑下 develop 侧原始提交永远不是 tag 的祖先，旧 feat!/feat 会被每轮重复计入——
+  // 首个 `!` 提交把 v11.0.1 补丁误算成 v12.0.0。此前全是 feat/fix 时重扫恰好也得
+  // minor，从未暴露。增量窗口优先取 push 事件 before..after，其次 lastAnalyzedSha。
+  const pushCommits = getPushCommits(pendingState, latestRelease);
   const entry = parsePullRequestEntry();
+  if (entry) {
+    entry.level = analyzeReleaseLevel(pushCommits) || 'patch';
+  }
+
   pendingState.baseVersion = releaseBaseVersion;
-  pendingState.nextVersion = computedVersion;
   pendingState.updatedAt = formatShanghaiDate();
 
   if (entry) {
     upsertPendingEntry(pendingState, entry);
   }
+
+  const releaseLevel = aggregateEntryLevels(pendingState.entries);
+  pendingState.nextVersion = releaseLevel
+    ? bumpVersion(releaseBaseVersion, releaseLevel)
+    : packageJson.version;
+  pendingState.lastAnalyzedSha =
+    execGit('git rev-parse HEAD') || pendingState.lastAnalyzedSha || null;
 
   if (packageJson.version !== pendingState.nextVersion) {
     packageJson.version = pendingState.nextVersion;
@@ -326,6 +336,55 @@ function getLatestReleaseTag() {
   };
 }
 
+/** 档位序：null < patch < minor < major。 */
+const RELEASE_LEVEL_ORDER = { patch: 1, minor: 2, major: 3 };
+
+/** 各 entry 档位取最高；历史 entry 缺 level 字段按 patch 兜底。entries 为空返回 null。 */
+function aggregateEntryLevels(entries) {
+  let max = null;
+  for (const entry of entries || []) {
+    const level = RELEASE_LEVEL_ORDER[entry.level] ? entry.level : 'patch';
+    if (!max || RELEASE_LEVEL_ORDER[level] > RELEASE_LEVEL_ORDER[max]) {
+      max = level;
+    }
+  }
+  return max;
+}
+
+/**
+ * 本次推送的增量提交窗口，三级回退：
+ * 1. push 事件 payload 的 before..after（最准，只含本次合入）；
+ * 2. pendingState.lastAnalyzedSha..HEAD（上次 prepare 之后的新提交）；
+ * 3. lastTag..HEAD（legacy 兜底——squash+回同步拓扑下会重扫旧提交，仅在前两者
+ *    均不可用时使用，勿依赖其档位判定）。
+ */
+function getPushCommits(pendingState, latestRelease) {
+  const eventPath = process.env.GITHUB_EVENT_PATH;
+  if (eventPath && fs.existsSync(eventPath)) {
+    try {
+      const event = JSON.parse(fs.readFileSync(eventPath, 'utf-8'));
+      const before = String(event.before || '');
+      const after = String(event.after || '');
+      if (before && after && !/^0+$/.test(before) && execGit(`git cat-file -t ${before}`)) {
+        return getCommitsInRange(`${before}..${after || 'HEAD'}`);
+      }
+    } catch {
+      // payload 不可读时走下一级回退
+    }
+  }
+  if (pendingState.lastAnalyzedSha && execGit(`git cat-file -t ${pendingState.lastAnalyzedSha}`)) {
+    return getCommitsInRange(`${pendingState.lastAnalyzedSha}..HEAD`);
+  }
+  return getCommitsSince(latestRelease?.tag || null);
+}
+
+function getCommitsInRange(range) {
+  const format = '%H%x1f%s%x1f%b%x1e';
+  const output = execGit(`git log ${range} --format="${format}"`);
+  if (!output) return [];
+  return parseCommitRecords(output);
+}
+
 function getCommitsSince(lastTag) {
   const format = '%H%x1f%s%x1f%b%x1e';
   const command = lastTag
@@ -333,7 +392,10 @@ function getCommitsSince(lastTag) {
     : `git log -${CONFIG.commitLimit} --format="${format}"`;
   const output = execGit(command);
   if (!output) return [];
+  return parseCommitRecords(output);
+}
 
+function parseCommitRecords(output) {
   return output
     .split('\x1e')
     .map((record) => record.trim())
@@ -390,6 +452,7 @@ function createEmptyPendingState(baseVersion) {
   return {
     baseVersion,
     nextVersion: baseVersion,
+    lastAnalyzedSha: null,
     updatedAt: formatShanghaiDate(),
     sourceBranch: 'develop',
     entries: [],
@@ -411,6 +474,7 @@ function loadPendingState(baseVersion, currentVersion) {
       sourceBranch: parsed.sourceBranch || 'develop',
       entries: Array.isArray(parsed.entries) ? parsed.entries : [],
       lastRelease: parsed.lastRelease || null,
+      lastAnalyzedSha: parsed.lastAnalyzedSha || null,
     };
   } catch (error) {
     return createEmptyPendingState(baseVersion);
@@ -1107,5 +1171,6 @@ function formatShanghaiDate(date = new Date()) {
 
 module.exports = {
   analyzeReleaseLevel,
+  aggregateEntryLevels,
   bumpVersion,
 };
