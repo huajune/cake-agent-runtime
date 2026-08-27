@@ -1,10 +1,44 @@
 {
   "baseVersion": "11.0.2",
-  "nextVersion": "11.0.2",
-  "lastAnalyzedSha": "4dfb477745202e37fbe22c182b7e728e5ae42ae0",
+  "nextVersion": "11.0.3",
   "updatedAt": "2026-08-27",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "1072",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1072",
+      "title": "recap 确认词表扩词 + 下线 booking 失败轮承诺重试拦截",
+      "author": "huajune",
+      "mergedAt": "2026-08-27",
+      "businessUpdates": [
+        "**recap 确认词表扩词**（`resolution/signal/dialogue.ts`）：补入 行/好/中/妥/要得/得嘞/没毛病/阔以/OK/嗯呐/约吧 等整句放行表态，仅进 recap 组合通道，不进身份作证词表。疑问/否定形态（行吗/不行/好了）因 吗/不/了 不是 token 天然不命中，spec 已覆盖。",
+        "**`booking_receipt_mismatch` 失败路径收窄**（用户裁定，与拉群守卫\"只拦完成时态\"同口径）：删除 `BOOKING_RETRY_PROMISE_PATTERN` 整段——booking 失败后\"稍后再帮你提交\"是合法承接话术；in-flight 假宣称只保留「正在」词形。继续拦：宣称正在/已经提交的假回执（形态不变）。",
+        "规则台账同批登记（`docs/prompt-rule-ledger.md`）。"
+      ],
+      "summary": [
+        "recap 确认词表扩词 + 下线 booking 失败轮承诺重试拦截",
+        "**recap 确认词表扩词**（`resolution/signal/dialogue.ts`）：补入 行/好/中/妥/要得/得嘞/没毛病/阔以/OK/嗯呐/约吧 等整句放行表态，仅进 recap 组合通道，不进身份作证词表。疑问/否定形态（行吗/不行/好了）因 吗/不/了 不是 token 天然不命中，spec 已覆盖。",
+        "**`booking_receipt_mismatch` 失败路径收窄**（用户裁定，与拉群守卫\"只拦完成时态\"同口径）：删除 `BOOKING_RETRY_PROMISE_PATTERN` 整段——booking 失败后\"稍后再帮你提交\"是合法承接话术；in-flight 假宣称只保留「正在」词形。继续拦：宣称正在/已经提交的假回执（形态不变）。",
+        "规则台账同批登记（`docs/prompt-rule-ledger.md`）。"
+      ],
+      "features": [],
+      "fixes": [
+        "**recap 确认词表扩词**（`resolution/signal/dialogue.ts`）：补入 行/好/中/妥/要得/得嘞/没毛病/阔以/OK/嗯呐/约吧 等整句放行表态，仅进 recap 组合通道，不进身份作证词表。疑问/否定形态（行吗/不行/好了）因 吗/不/了 不是 token 天然不命中，spec 已覆盖。",
+        "**`booking_receipt_mismatch` 失败路径收窄**（用户裁定，与拉群守卫\"只拦完成时态\"同口径）：删除 `BOOKING_RETRY_PROMISE_PATTERN` 整段——booking 失败后\"稍后再帮你提交\"是合法承接话术；in-flight 假宣称只保留「正在」词形。继续拦：宣称正在/已经提交的假回执（形态不变）。",
+        "规则台账同批登记（`docs/prompt-rule-ledger.md`）。"
+      ],
+      "optimizations": [],
+      "ops": [
+        "recap 确认词表扩词 + 下线 booking 失败轮承诺重试拦截"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "受影响 4 个 spec 套件 93/93 通过；typecheck / lint:check 全绿；pre-push 全量 CI 通过。"
+      ],
+      "level": "patch"
+    }
+  ],
   "lastRelease": {
     "version": "11.0.2",
     "date": "2026-08-27",
@@ -134,5 +168,6 @@
         "level": "patch"
       }
     ]
-  }
+  },
+  "lastAnalyzedSha": "475997fd199bacb44f799fd1c03b4eb85156bba3"
 }
