@@ -35,9 +35,28 @@ export interface RepairRegressionContext {
    * 避免把“删除幻觉事实”误判成结构压扁/结论反转。
    */
   jobEvidenceAvailable?: boolean;
+  /**
+   * 首版被出站守卫封禁的规则 id（agent-runner 传 decision.blockedRuleIds）。
+   * 含泄漏类规则（STRUCTURE_IS_VIOLATION_RULE_IDS）时跳过 structure_collapsed：
+   * 首版的"结构行"正是违规内容本身（内部分析清单/标签行/规则引用），压扁是修复
+   * 目标而非退化。其余三个检测器不受影响。
+   */
+  firstBlockedRuleIds?: readonly string[];
   /** 仅测试注入；生产走系统时钟。用于把"M月D日"推断到最近的完整年份以计算真实星期。 */
   now?: Date;
 }
+
+/**
+ * 首版命中这些规则时，首版整体不是候选人可见正文（内部分析/自我旁白/异常
+ * completion），结构化行统计的分母是脏的——被数进"结构"的正是违规脚手架，
+ * structure_collapsed 对这类首版必然误报（2026-08-27 生产案 batch_6a8faabb…：
+ * 修复版合格，却因结构坍缩两版都不投，候选人整轮静默）。
+ */
+const STRUCTURE_IS_VIOLATION_RULE_IDS: ReadonlySet<string> = new Set([
+  'internal_output_leak',
+  'meta_narration_reply',
+  'invalid_model_output',
+]);
 
 /** 表单字段行：`姓名：` / `联系电话：13xxx` / `面试时间（…）：` 等短标签开头的行。 */
 const FORM_FIELD_LINE_PATTERN = /^[-•\s]*[^：:\n]{1,14}[：:]/u;
@@ -124,6 +143,7 @@ const BOOKING_PENDING_PATTERN =
  *
  * - structure_collapsed：首版含 ≥3 行结构化内容（表单字段/岗位事实），修复版结构化行数
  *   掉到首版 1/3 以下且总长缩水到 60% 以下。单独的长度缩水不算——精简是合法修复。
+ *   首版命中泄漏类封禁规则时豁免（见 STRUCTURE_IS_VIOLATION_RULE_IDS）。
  * - polarity_reversed：首版含 ≥2 处岗位事实（正在展示具体岗位）且自身没有无岗断言，
  *   修复版新增了"附近没有岗位"类断言。首版本来就说无岗时不判（无极性变化）。
  * - fact_mutated：首版与修复版对同一个"M月D日"标注了不同星期，且首版星期与真实
@@ -148,8 +168,12 @@ export function detectRepairRegression(
     !NO_JOB_CLAIM_PATTERN.test(first) &&
     NO_JOB_CLAIM_PATTERN.test(revised);
 
+  const firstStructureIsViolation = (context?.firstBlockedRuleIds ?? []).some((ruleId) =>
+    STRUCTURE_IS_VIOLATION_RULE_IDS.has(ruleId),
+  );
+
   const firstStructured = countStructuredLines(first);
-  if (!removesUngroundedJobClaims && firstStructured >= 3) {
+  if (!removesUngroundedJobClaims && !firstStructureIsViolation && firstStructured >= 3) {
     const revisedStructured = countStructuredLines(revised);
     const collapsed =
       revisedStructured * 3 < firstStructured && revised.length < first.length * 0.6;

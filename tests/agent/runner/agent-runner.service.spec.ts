@@ -1411,9 +1411,11 @@ describe('AgentRunnerService.runTurn', () => {
     );
   });
 
-  it('blocks both versions when a regressed repair follows a non-fail-open first reply (P0 leak)', async () => {
+  it('blocks both versions when a regressed repair follows a non-fail-open first reply', async () => {
     // 对齐 guardrail-chain-assessment-and-rebuild.md §2.3 ④：检出回归时 P1/P2 回退首版、
-    // P0 两版都不投。首版是泄漏类红线内容时，回退等于把守卫已否决的文本重新投递。
+    // P0 两版都不投。首版是红线内容时，回退等于把守卫已否决的文本重新投递。
+    // 注意首版规则须取豁免集之外的不可恢复规则：internal_output_leak 等"首版即
+    // 违规结构"的规则已豁免 structure_collapsed（2026-08-27 生产案 batch_6a8faabb…）。
     const firstReply = [
       '要帮你登记预约的话，先把下面资料发我：',
       '姓名：',
@@ -1431,15 +1433,15 @@ describe('AgentRunnerService.runTurn', () => {
         riskLevel: 'medium' as const,
         violations: [
           {
-            type: 'internal_output_leak',
-            evidence: '泄漏内部实现',
-            suggestion: '删除内部内容',
+            type: 'discriminatory_screening_leak',
+            evidence: '外发了歧视性筛选条件',
+            suggestion: '删除歧视性内容',
             recoverability: 'non_recoverable' as const,
             currentReplySendable: false,
           },
         ],
-        ruleIds: ['internal_output_leak'],
-        blockedRuleIds: ['internal_output_leak'],
+        ruleIds: ['discriminatory_screening_leak'],
+        blockedRuleIds: ['discriminatory_screening_leak'],
         repairMode: 'rewrite' as const,
       })
       .mockResolvedValueOnce(passDecision);
@@ -1458,6 +1460,59 @@ describe('AgentRunnerService.runTurn', () => {
         repaired: true,
         finalDecision: 'block',
         reasonCode: 'repair_regression_blocked:structure_collapsed',
+      }),
+    );
+  });
+
+  it('delivers a passing rewrite of a leaked internal analysis without tripping the structure gate', async () => {
+    // 2026-08-27 生产案 batch_6a8faabb…：首版把内部分析当回复输出（internal_output_leak
+    // 正确 block），repair 重写合格且二审 pass，却被 structure_collapsed 判退化、两版
+    // 都不投——候选人整轮静默。首版即违规结构时豁免结构坍缩，修复版应正常投递。
+    const leakedAnalysis = [
+      '根据查询结果，我来分析一下符合候选人要求的岗位：',
+      '**候选人要求：**',
+      '- 白天上班',
+      '- 税前6000以上',
+      '**筛选结果：**',
+      '1. **通岗店员**：4000-5500元/月，每周6天 - 薪资不够6000',
+      '2. **分拣打包**：6200-9800元/月，每周6天 - 薪资符合6000+',
+      '但queryMeta.scheduleFilter显示excludedCount=0，说明没有岗位被剔除。',
+    ].join('\n');
+    const goodRepair = '我帮你查了下，符合的只有奥乐齐分拣打包，6200-9800元/月，但要每周上6天。';
+    generator.invoke.mockResolvedValueOnce(makeResult({ text: leakedAnalysis }));
+    replyRepairAgent.repair.mockResolvedValueOnce(goodRepair);
+    outputGuard.check
+      .mockResolvedValueOnce({
+        decision: 'revise' as const,
+        riskLevel: 'high' as const,
+        violations: [
+          {
+            type: 'internal_output_leak',
+            evidence: '泄漏内部实现',
+            suggestion: '只输出候选人可见回复',
+            recoverability: 'non_recoverable' as const,
+            currentReplySendable: false,
+          },
+        ],
+        ruleIds: ['internal_output_leak'],
+        blockedRuleIds: ['internal_output_leak'],
+        repairMode: 'rewrite' as const,
+      })
+      .mockResolvedValueOnce(passDecision);
+
+    const outcome = await service.runTurn({
+      sessionRef,
+      trigger: { kind: 'inbound', userMessage: '有没有白天班' },
+      context: { messageId: 'msg-leak-rewrite-delivered' },
+    });
+
+    expect(outcome.kind).toBe('reply');
+    expect(outcome.reply?.text).toBe(goodRepair);
+    expect(guardrailReviews.recordReview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        traceId: 'msg-leak-rewrite-delivered',
+        repaired: true,
+        finalDecision: 'pass',
       }),
     );
   });
