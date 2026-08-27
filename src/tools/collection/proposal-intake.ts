@@ -15,6 +15,7 @@
 import {
   adapterFor,
   genericAdapter,
+  identitySlotKeyForTitle,
   type ContractFieldDef,
   type SlotProposal,
   type ValueProposal,
@@ -81,17 +82,26 @@ export function findFieldForClaim(
 /**
  * 按标签标题定位契约字段（统一 formAnswers / 表单行回捞共用同一口径）。
  *
- * 两级匹配，**歧义即放弃**：
- * 1. labelTitle 全等——0818 全量实测 468 岗 × 109 标签**零标题冲突**，
+ * 三级匹配，**歧义即放弃**：
+ * 1. labelTitle 全等（NFKC + 去空白）——0818 全量实测 468 岗 × 109 标签**零标题冲突**，
  *    labelTitle → labelId 是干净的 1:1，这是"名字即键、无需翻译表"的依据；
  * 2. 剥括号后的主干相等——只作为模型/候选人天然改写漂移的容错，所有对外渲染仍
- *    100% 使用契约 labelTitle 原文。
+ *    100% 使用契约 labelTitle 原文；
+ * 3. 身份四槽同义词回退——标题命中身份词表（contract-mapping 的
+ *    IDENTITY_TITLE_PATTERNS，`^…$` 全匹配）时按 systemField 定位对应身份槽位。
+ *    依据 0826 生产回放（272 会话 / 440 条 formAnswers 答案）：模型 labelTitle
+ *    逐字命中 49%、剥括号主干救回 6%，持久性定位失败的最大类是身份字段同义词——
+ *    「联系方式」19 条、「联系电话」5 条（均指手机号），此前一律拒收退化为重问。
+ *    **封闭四槽**：词表只覆盖 name/phone/age/gender，动态标签仍只走前两级。
+ *    第三级先试归一化原文、原文不中再试剥括号主干（「联系电话（本人）」由主干救回）。
  *
  * ⚠️ 主干**不唯一**：实测 `体重 → {20, 50}`、`专业 → {544, 659}`。当前之所以安全，
  * 只是因为匹配限定在单岗契约内、且实测同岗位内主干撞车数为 0——那是**数据碰巧安全，
  * 不是结构安全**，运营配一个同时挂两个「体重」的岗位就会翻车。
  * 故主干命中多于一个时**返回 null 而不是取第一个**：定位不到会走追问/转人工（可恢复），
  * 定位错了会把答案静默写进别的槽位（不可恢复，且正是旧翻译表那类失配事故的形态）。
+ * 第 2 级主干撞车即终局弃权（**不落入第 3 级**）；第 3 级同 systemField 多槽
+ * （契约异常态）同款弃权不猜。
  */
 export function findFieldByTitle(
   contract: readonly ContractFieldDef[],
@@ -125,10 +135,18 @@ export function resolveFieldByTitle(
   );
   // 撞车即放弃：定位错会把答案静默写进别的槽位（不可恢复），定位不到只是多问一句。
   if (byTrunk.length === 1) return { field: byTrunk[0] };
-  return {
-    field: null,
-    reason: byTrunk.length > 1 ? 'label_title_ambiguous' : 'label_title_not_found',
-  };
+  if (byTrunk.length > 1) return { field: null, reason: 'label_title_ambiguous' };
+
+  // 第三级：身份四槽同义词回退（词表唯一居所在 contract-mapping，此处只查询不复制）。
+  // 先试归一化原文，再试剥括号主干；正则 `^…$` 全匹配，「电话费报销」这类包含式不触发。
+  const identityKey = identitySlotKeyForTitle(target) ?? identitySlotKeyForTitle(targetTrunk);
+  if (identityKey) {
+    const byIdentity = contract.filter((field) => field.systemField === identityKey);
+    if (byIdentity.length === 1) return { field: byIdentity[0] };
+    // 同 systemField 多槽是契约异常态，与主干撞车同款处置：弃权不猜。
+    if (byIdentity.length > 1) return { field: null, reason: 'label_title_ambiguous' };
+  }
+  return { field: null, reason: 'label_title_not_found' };
 }
 
 export interface IntakeProposal extends ValueProposal {

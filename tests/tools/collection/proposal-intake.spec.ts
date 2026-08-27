@@ -52,7 +52,17 @@ const RESUME: ContractFieldDef = {
   acceptedOptions: [],
   rejectedOptions: [],
 };
+const PHONE: ContractFieldDef = {
+  labelId: 770,
+  labelTitle: '手机号',
+  fieldType: 'TEXT',
+  required: true,
+  acceptedOptions: [],
+  rejectedOptions: [],
+  systemField: 'phone',
+};
 const CONTRACT = [NAME, AGE, HEALTH, STUDENT, RESUME];
+const PHONE_CONTRACT = [NAME, AGE, PHONE, HEALTH, STUDENT];
 
 function base(overrides: Partial<Parameters<typeof collectProposals>[0]> = {}) {
   return {
@@ -170,6 +180,74 @@ describe('proposal intake（统一 formAnswers 运输）', () => {
       'label_title_not_found',
       'label_title_ambiguous',
     ]);
+  });
+
+  it('第三级身份同义词回退：「联系方式」「联系电话」定位 phone 槽并可入槽（0826 生产回放最大失配类）', () => {
+    expect(findFieldByTitle(PHONE_CONTRACT, '联系方式')?.labelId).toBe(770);
+    expect(findFieldByTitle(PHONE_CONTRACT, '联系电话')?.labelId).toBe(770);
+
+    const quote = '我的手机号是18271421690';
+    const [proposal] = collectProposals(
+      base({
+        contract: PHONE_CONTRACT,
+        formAnswers: [{ labelTitle: '联系方式', value: '18271421690', quote }],
+        candidateTexts: [quote],
+        messages: [{ role: 'user', content: quote }],
+      }),
+    );
+    expect(proposal).toMatchObject({ labelId: 770, value: '18271421690', channel: 'form_answer' });
+    const result = proposeValue(
+      createForm({ jobId: 1, contract: PHONE_CONTRACT }),
+      PHONE,
+      proposal,
+    );
+    expect(result.outcome).toBe('accepted');
+    expect(result.form.slots[770].value?.value).toBe('18271421690');
+  });
+
+  it('第三级判定顺序：原文全匹配先行，「联系电话（本人）」由剥括号主干救回', () => {
+    // 原文「联系电话（本人）」对身份词表全匹配不中（正则 ^…$），剥主干得「联系电话」后命中 phone。
+    expect(findFieldByTitle(PHONE_CONTRACT, '联系电话（本人）')?.labelId).toBe(770);
+    // 包含式不触发：「电话费报销」含「电话」但非全匹配，主干亦然 → 弃权不猜。
+    expect(resolveFieldByTitle(PHONE_CONTRACT, '电话费报销')).toEqual({
+      field: null,
+      reason: 'label_title_not_found',
+    });
+  });
+
+  it('第三级封闭四槽：契约无 phone systemField 槽时弃权并落定位审计，不臆造字段', () => {
+    const audits: Array<{ reason: string }> = [];
+    expect(
+      collectProposals(
+        base({
+          formAnswers: [
+            { labelTitle: '联系方式', value: '18271421690', quote: '我的手机号是18271421690' },
+          ],
+          candidateTexts: ['我的手机号是18271421690'],
+          onAudit: (audit) => audits.push(audit),
+        }),
+      ),
+    ).toEqual([]);
+    expect(audits).toContainEqual(expect.objectContaining({ reason: 'label_title_not_found' }));
+  });
+
+  it('第三级同 systemField 多槽（契约异常态）与动态标签同名时的优先级', () => {
+    // 同 systemField 出现两槽 → 弃权不猜，与主干撞车同款处置。
+    const doubled = [PHONE, { ...PHONE, labelId: 771, labelTitle: '手机号码' }];
+    expect(resolveFieldByTitle(doubled, '联系方式')).toEqual({
+      field: null,
+      reason: 'label_title_ambiguous',
+    });
+    // 契约恰有名为「联系方式」的动态标签时，第一级全等先命中它——第三级只兜前两级全灭的场景。
+    const dynamicContact: ContractFieldDef = {
+      labelId: 888,
+      labelTitle: '联系方式',
+      fieldType: 'TEXT',
+      required: true,
+      acceptedOptions: [],
+      rejectedOptions: [],
+    };
+    expect(findFieldByTitle([...PHONE_CONTRACT, dynamicContact], '联系方式')?.labelId).toBe(888);
   });
 
   it('候选人逐行回填时只把冒号右侧交给适配器，未删占位提示则跳过', () => {

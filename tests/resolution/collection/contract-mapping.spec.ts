@@ -1,4 +1,5 @@
 import {
+  identitySlotKeyForTitle,
   mapContractFields,
   parseIdentityAnchors,
   resolveIdentityKey,
@@ -31,6 +32,17 @@ describe('parseIdentityAnchors', () => {
   it('没配就是空表——代码里不留任何 labelId 默认值（D4）', () => {
     expect(parseIdentityAnchors(undefined).anchors.size).toBe(0);
     expect(parseIdentityAnchors('').anchors.size).toBe(0);
+  });
+});
+
+describe('identitySlotKeyForTitle', () => {
+  it('身份同义词全匹配命中四槽键；包含式不误触发（供收资标题第三级回退复用，词条唯一居所）', () => {
+    expect(identitySlotKeyForTitle('联系方式')).toBe('phone');
+    expect(identitySlotKeyForTitle('联系电话')).toBe('phone');
+    expect(identitySlotKeyForTitle('真实姓名')).toBe('name');
+    expect(identitySlotKeyForTitle('周岁')).toBe('age');
+    expect(identitySlotKeyForTitle('电话费报销')).toBeNull();
+    expect(identitySlotKeyForTitle('紧急联系人电话')).toBeNull();
   });
 });
 
