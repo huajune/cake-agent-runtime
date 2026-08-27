@@ -151,14 +151,12 @@ export class GuardrailReviewPacketBuilder {
     if (!result) return undefined;
 
     const checklist = readRecord(result.bookingChecklist);
-    const strategy = readRecord(checklist?.collectionStrategy);
     const interview = readRecord(result.interview);
     const ageBoundary = readRecord(result.ageBoundary);
     const nameFieldGuard = readRecord(result.nameFieldGuard);
     return {
       nextAction: readString(result.nextAction),
       requiredFieldsToCollectNow: readStringArray(checklist?.requiredFieldsToCollectNow),
-      starterFields: readStringArray(strategy?.starterFields),
       missingFields: readStringArray(checklist?.missingFields),
       interviewTimeMode:
         readString(interview?.interviewTimeMode) ?? readString(result.interviewTimeMode),

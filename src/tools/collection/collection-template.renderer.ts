@@ -11,29 +11,20 @@
  */
 
 import type { BookingCollectionForm, ContractFieldDef } from '@resolution/collection';
-import {
-  carriesScreening,
-  filledSlotIds,
-  orderForAsking,
-  starterFields,
-} from '@resolution/collection';
+import { carriesScreening, filledSlotIds, orderForAsking } from '@resolution/collection';
 
 const INTRO_LINE = '面试要求：先将以下资料补充下发给我，我来帮你约面试';
 
 export interface CollectionTemplate {
-  /** 契约要求收的全部字段（labelTitle）。required 实测恒 true，即"契约返回什么就全收"。 */
+  /**
+   * 契约要求收的全部字段（labelTitle），按发问顺序：身份核 → 带筛选条件的 → 纯登记项
+   * （见 orderForAsking）。required 实测恒 true，即"契约返回什么就全收"。
+   */
   requiredFields: string[];
-  /** 展示顺序：身份核 → 带筛选条件的 → 纯登记项（见 orderForAsking）。 */
-  displayOrder: string[];
   /** 还缺哪些字段——**空槽位的 labelTitle**，是本轮唯一收资事实源。同样按发问顺序。 */
   missingFields: string[];
   /** 已知字段值（filled 槽位），模板里预填。 */
   knownFieldMap: Record<string, string>;
-  /**
-   * 降级为渐进收资时的起手字段（身份核 + 带筛选条件的）。
-   * 只在蓝图允许的两种降级下使用：collectionStrategy=progressive、候选人已抗拒。
-   */
-  starterFields: string[];
   /** 带筛选条件的字段——答错会筛掉候选人，不只是登记一笔。 */
   screeningFields: string[];
   templateText: string;
@@ -68,10 +59,8 @@ export function renderCollectionTemplate(
   return {
     // required 恒 true：契约返回什么就全收（0820 用户确认）。
     requiredFields: ordered.filter((field) => field.required).map((field) => field.labelTitle),
-    displayOrder: ordered.map((field) => field.labelTitle),
     missingFields,
     knownFieldMap,
-    starterFields: starterFields(ordered).map((field) => field.labelTitle),
     screeningFields: ordered.filter(carriesScreening).map((field) => field.labelTitle),
     templateText: [INTRO_LINE, ...lines].join('\n'),
   };

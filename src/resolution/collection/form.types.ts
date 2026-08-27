@@ -265,15 +265,6 @@ export function orderForAsking(contract: readonly ContractFieldDef[]): ContractF
   return [...contract].sort((left, right) => rank(left) - rank(right));
 }
 
-/**
- * 降级为渐进收资时的起手字段（蓝图允许的两种降级：collectionStrategy=progressive、
- * 候选人已表现抗拒）。取身份核 + 带筛选条件的——降负担不能降成"问了一堆登记项、
- * 筛人的那几个还没问"，那样候选人填完两轮才被拒，比一次问完更糟。
- */
-export function starterFields(contract: readonly ContractFieldDef[]): ContractFieldDef[] {
-  return contract.filter((field) => field.systemField || carriesScreening(field));
-}
-
 /** 仍需发问的槽位（按契约顺序，调用方决定本轮问几个）。 */
 export function emptySlotIds(
   form: BookingCollectionForm,

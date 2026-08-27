@@ -21,6 +21,16 @@ const IDENTITY_TITLE_PATTERNS: ReadonlyArray<{ key: IdentitySlotKey; test: RegEx
   { key: 'gender', test: /^(?:性别)$/u },
 ];
 
+/**
+ * 标题 → 身份槽位键的查询口。词表唯一居所在本文件（IDENTITY_TITLE_PATTERNS），
+ * 收资运输层的标题第三级回退（proposal-intake 的 findFieldByTitle）复用本函数，
+ * 禁止在别处复制词条。入参须已 trim/归一化；正则一律 `^…$` 全匹配，
+ * 「电话费报销」这类包含式命中不会误判。
+ */
+export function identitySlotKeyForTitle(title: string): IdentitySlotKey | null {
+  return IDENTITY_TITLE_PATTERNS.find((pattern) => pattern.test.test(title))?.key ?? null;
+}
+
 /** 环境级 labelId 锚点配置（`COLLECTION_IDENTITY_LABEL_IDS`，形如 `name:769,phone:770`）。 */
 export interface IdentityAnchorConfig {
   anchors: ReadonlyMap<number, IdentitySlotKey>;
@@ -62,7 +72,7 @@ export function resolveIdentityKey(
   config: IdentityAnchorConfig,
 ): IdentityResolution {
   const title = field.labelTitle.trim();
-  const byTitle = IDENTITY_TITLE_PATTERNS.find((pattern) => pattern.test.test(title))?.key;
+  const byTitle = identitySlotKeyForTitle(title) ?? undefined;
   const byAnchor = config.anchors.get(field.labelId);
 
   if (byAnchor && byTitle && byAnchor !== byTitle) {
