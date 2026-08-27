@@ -597,3 +597,167 @@ describe('必填全收 + 筛选项优先（0820 用户确认口径）', () => {
     ]);
   });
 });
+
+// ══════════════════════════════════════════════════════════════════════════
+// badcase batch_6a8fec04ce406a6aee03d65f_*（2026-08-27 彭妮/达美乐佛山大道中）回归：
+// ① 社保「无」被词表门拒收（选项是系统措辞）→ ② 模板重发烧光配额、首次作答即熔断
+// → ③ 熔断压过年龄值域筛，本该转岗承接走成了 handoff。
+// ══════════════════════════════════════════════════════════════════════════
+
+/** 生产实拉 jobId 528762 的社保契约形态（5 个系统措辞选项，>4 → 普通档不渲染提示）。 */
+const SOCIAL: ContractFieldDef = {
+  labelId: 12,
+  labelTitle: '社保缴纳情况',
+  fieldType: 'SINGLE_OPTION',
+  required: true,
+  acceptedOptions: [
+    { optionCode: '1', optionLabel: '本人缴纳本地社保' },
+    { optionCode: '2', optionLabel: '无公司在缴社保流水' },
+  ],
+  rejectedOptions: [
+    { optionCode: '3', optionLabel: '公司缴纳本地社保' },
+    { optionCode: '4', optionLabel: '本人缴纳外地社保' },
+    { optionCode: '5', optionLabel: '公司缴纳外地社保' },
+  ],
+};
+
+/** 该岗年龄硬区间 24-38（badcase 岗位实配），候选人 22 岁必被值域筛。 */
+const AGE_24_38: ContractFieldDef = {
+  ...AGE,
+  valueSpec: { kind: 'number', min: 24, max: 38, unit: '岁', genderRanges: [] },
+};
+
+describe('badcase 6a8fec04 · 社保自然答案与作答轮记账', () => {
+  it('「社保缴纳情况：无」经语义适配落定为契约否定选项（首恶根治）', () => {
+    const result = runCollectionCore({
+      form: createForm({ jobId: 528762, contract: [SOCIAL] }),
+      contract: [SOCIAL],
+      candidateTexts: ['社保缴纳情况：无'],
+      messages: [{ role: 'user', content: '社保缴纳情况：无' }],
+    });
+    expect(result.form.slots[12].state).toBe('filled');
+    expect(result.form.slots[12].value?.value).toBe('无公司在缴社保流水');
+    expect(result.form.slots[12].value?.optionCodes).toEqual(['2']);
+    expect(result.action).toBe('ready_to_book');
+  });
+
+  it('真实作答被词表门拒收：不烧发问配额、记 rejectedAttempts、模板强制枚举重问', () => {
+    const asked = createForm({ jobId: 528762, contract: [SOCIAL] });
+    asked.slots[12].askCount = 1;
+    const result = runCollectionCore({
+      form: asked,
+      contract: [SOCIAL],
+      candidateTexts: ['社保缴纳情况：不知道'],
+      messages: [
+        { role: 'assistant', content: '请补充：\n社保缴纳情况：' },
+        { role: 'user', content: '社保缴纳情况：不知道' },
+      ],
+      askReceiptTurnId: 'turn-attempt-1',
+    });
+    expect(result.form.slots[12].askCount).toBe(1);
+    expect(result.form.slots[12].rejectedAttempts).toBe(1);
+    expect(result.form.escalatedReason).toBeUndefined();
+    expect(result.action).toBe('collect_fields');
+    expect(result.askableFields).toEqual(['社保缴纳情况']);
+    expect(result.template.templateText).toContain(
+      '社保缴纳情况：（本人缴纳本地社保/无公司在缴社保流水/公司缴纳本地社保/本人缴纳外地社保/公司缴纳外地社保）',
+    );
+  });
+
+  it('配额已烧光（askCount=2）但本轮真实作答 → 豁免 ask_limit 熔断，重问而非转人工（彭妮场景）', () => {
+    const exhausted = createForm({ jobId: 528762, contract: [SOCIAL] });
+    exhausted.slots[12].askCount = 2;
+    const result = runCollectionCore({
+      form: exhausted,
+      contract: [SOCIAL],
+      candidateTexts: ['社保缴纳情况：不知道'],
+      messages: [
+        { role: 'assistant', content: '请补充：\n社保缴纳情况：' },
+        { role: 'user', content: '社保缴纳情况：不知道' },
+      ],
+      askReceiptTurnId: 'turn-attempt-exempt',
+    });
+    expect(result.form.escalatedReason).toBeUndefined();
+    expect(result.action).toBe('collect_fields');
+    expect(result.form.slots[12].rejectedAttempts).toBe(1);
+  });
+
+  it('连续 2 次真实作答仍读不懂 → unparseable_answer 转人工（读不懂两次，人来）', () => {
+    let form = createForm({ jobId: 528762, contract: [SOCIAL] });
+    form = runCollectionCore({
+      form,
+      contract: [SOCIAL],
+      candidateTexts: ['社保缴纳情况：不知道'],
+      messages: [
+        { role: 'assistant', content: '请补充：\n社保缴纳情况：' },
+        { role: 'user', content: '社保缴纳情况：不知道' },
+      ],
+      askReceiptTurnId: 'turn-attempt-1',
+    }).form;
+
+    const second = runCollectionCore({
+      form,
+      contract: [SOCIAL],
+      candidateTexts: ['社保缴纳情况：反正没五险'],
+      messages: [
+        { role: 'user', content: '社保缴纳情况：不知道' },
+        { role: 'assistant', content: '辛苦按选项填：\n社保缴纳情况：（本人缴纳本地社保/无公司在缴社保流水/公司缴纳本地社保/本人缴纳外地社保/公司缴纳外地社保）' },
+        { role: 'user', content: '社保缴纳情况：反正没五险' },
+      ],
+      askReceiptTurnId: 'turn-attempt-2',
+    });
+    expect(second.form.escalatedReason).toBe('unparseable_answer: 12');
+    expect(second.action).toBe('handoff');
+    expect(second.askableFields).toEqual([]);
+    expect(second.audits.some((audit) => audit.kind === 'escalated')).toBe(true);
+  });
+});
+
+describe('badcase 6a8fec04 · 筛选终局优先于可恢复熔断', () => {
+  it('同轮「年龄值域筛掉 + 社保读不懂」→ screening_rejected 而非 handoff', () => {
+    const exhausted = createForm({ jobId: 528762, contract: [AGE_24_38, SOCIAL] });
+    exhausted.slots[12].askCount = 2;
+    const text = '年龄：22\n社保缴纳情况：不知道';
+    const result = runCollectionCore({
+      form: exhausted,
+      contract: [AGE_24_38, SOCIAL],
+      candidateTexts: [text],
+      messages: [
+        { role: 'assistant', content: '请补充：\n年龄：\n社保缴纳情况：' },
+        { role: 'user', content: text },
+      ],
+      askReceiptTurnId: 'turn-penny',
+    });
+    expect(result.form.slots[687].state).toBe('disqualified');
+    expect(result.form.escalatedReason).toBeUndefined();
+    expect(result.action).toBe('screening_rejected');
+    expect(result.askableFields).toEqual([]);
+  });
+
+  it('上一轮已落盘的可恢复熔断，本轮出现 disqualified 即让位并留审计', () => {
+    const escalated = createForm({ jobId: 528762, contract: [AGE_24_38, SOCIAL] });
+    escalated.escalatedReason = 'ask_limit_exhausted: 12';
+    const result = runCollectionCore({
+      form: escalated,
+      contract: [AGE_24_38, SOCIAL],
+      candidateTexts: ['年龄：22'],
+      messages: [{ role: 'user', content: '年龄：22' }],
+      askReceiptTurnId: 'turn-late-age',
+    });
+    expect(result.form.escalatedReason).toBeUndefined();
+    expect(result.action).toBe('screening_rejected');
+    expect(result.audits.some((audit) => audit.kind === 'escalation_yielded')).toBe(true);
+  });
+
+  it('不可恢复原因不让位：疑似多人 + disqualified 仍 handoff', () => {
+    const multi = createForm({ jobId: 528762, contract: [AGE_24_38] });
+    multi.escalatedReason = 'suspected_multi_person';
+    const result = runCollectionCore({
+      form: multi,
+      contract: [AGE_24_38],
+      candidateTexts: ['年龄：22'],
+      messages: [{ role: 'user', content: '年龄：22' }],
+    });
+    expect(result.action).toBe('handoff');
+  });
+});

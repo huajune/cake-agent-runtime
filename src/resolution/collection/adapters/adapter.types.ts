@@ -35,6 +35,12 @@ export interface AdapterInput {
   candidateText: string;
   /** 跨轮已知的同字段历史值，健康证等需要二次确认的字段用。 */
   historicalValues?: readonly unknown[];
+  /**
+   * candidateText 是否已绑定到本槽位——表单行回填（「社保缴纳情况：无」拆行后的值）、
+   * formAnswers 定位后的规范值、档案预填值为 true；轮末安全网的自由语料扫描为 false。
+   * 绑定后适配器才允许解释裸短答（「无」「没有」）——脱离语境的裸否定能回答任何一问。
+   */
+  answerBound?: boolean;
 }
 
 /** 提案不出来就返回 null——绝不猜（追问的代价远小于报错人）。 */

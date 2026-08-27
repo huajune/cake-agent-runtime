@@ -53,7 +53,15 @@ export function renderCollectionTemplate(
   // 模板一次性列全部字段（已知的预填、缺的留空）：分批发清单是明令禁止的漏斗式收资。
   const lines = ordered.map((field) => {
     const known = knownFieldMap[field.labelTitle];
-    return `${field.labelTitle}：${known ?? optionPlaceholder(field)}`;
+    if (known) return `${field.labelTitle}：${known}`;
+    // 该槽位有过「真实作答被词表门拒收」的记录 → 强制枚举全部选项：候选人已经用
+    // 自然语言答过一次而系统读不懂，两条抑制规则（常识型留空/选项过多留空）全部失效，
+    // 逐字照抄选项是唯一确定性出路（badcase batch_6a8fec04ce406a6aee03d65f_*）。
+    const rejectedBefore = (form.slots[field.labelId]?.rejectedAttempts ?? 0) > 0;
+    const placeholder = rejectedBefore
+      ? forcedOptionPlaceholder(field) || optionPlaceholder(field)
+      : optionPlaceholder(field);
+    return `${field.labelTitle}：${placeholder}`;
   });
 
   return {
@@ -90,5 +98,17 @@ export function optionPlaceholder(field: ContractFieldDef): string {
   // 候选人自己就知道该怎么答，提示纯属噪音。提示只该出现在**系统特有措辞**上——
   // 那种候选人猜不到该怎么写的（"无本地有效健康证，接受办理"、"3个月内"）。
   if (options.every((option) => option.optionLabel.trim().length <= 3)) return '';
+  return `（${options.map((option) => option.optionLabel).join('/')}）`;
+}
+
+/**
+ * 拒收重问档的强制枚举：不做任何抑制，把契约全部选项列出。只在该槽位已有
+ * `rejectedAttempts` 记录时使用——此时"留空让候选人自己写"已被证伪一次。
+ * 与 optionPlaceholder 同样列全（accepted+rejected），不用省略泄露筛选条件。
+ */
+export function forcedOptionPlaceholder(field: ContractFieldDef): string {
+  if (field.fieldType !== 'SINGLE_OPTION' && field.fieldType !== 'MULTIPLE_OPTION') return '';
+  const options = [...field.acceptedOptions, ...field.rejectedOptions];
+  if (options.length === 0) return '';
   return `（${options.map((option) => option.optionLabel).join('/')}）`;
 }

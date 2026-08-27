@@ -152,10 +152,18 @@ export interface FormSlot {
   /**
    * 已实际发出、且候选人下一轮仍未补齐该槽位的次数。
    * ≥2 仍 empty → 表级 escalatedReason（熔断，第 3 问不存在）。
+   * 只计「没搭理」：候选人真实作答但被词表/形态门拒收的轮次不计入（那是
+   * rejectedAttempts 的账，见 recordRejectedAttempts）。
    */
   askCount: number;
   /** 最近一次已入账的候选人回复回合；防同一回合工具重试重复消耗配额。 */
   lastAskCountedTurnId?: string;
+  /**
+   * 候选人**真实作答**但公证在值词表/形态门拒收的次数（出处门已过、系统读不懂）。
+   * ≥2 → 表级 escalatedReason=unparseable_answer（读不懂两次，人来）。
+   * 第 1 次后模板对该槽位强制枚举全部选项——逐字照抄是唯一确定性出路。
+   */
+  rejectedAttempts?: number;
 }
 
 // ==================== 表单实体 ====================

@@ -8,6 +8,7 @@ import { proposeEducation } from '@resolution/collection/adapters/education.adap
 import { proposeHealthCertificate } from '@resolution/collection/adapters/health-certificate.adapter';
 import { proposeIdentityCore } from '@resolution/collection/adapters/identity-core.adapter';
 import { proposeIdentityStatus } from '@resolution/collection/adapters/identity-status.adapter';
+import { proposeSocialInsurance } from '@resolution/collection/adapters/social-insurance.adapter';
 import { createForm, type ContractFieldDef } from '@resolution/collection/form.types';
 import { proposeValue } from '@resolution/collection/form-writes';
 import {
@@ -16,6 +17,7 @@ import {
   HEALTH_CERT_FIELD,
   NAME_FIELD,
   PHONE_FIELD,
+  SOCIAL_INSURANCE_FIELD,
   TEST_CANDIDATE_NAME,
   TEST_CANDIDATE_PHONE,
   userMessage,
@@ -223,5 +225,88 @@ describe('适配器 → 公证 端到端', () => {
     ] as const) {
       expect(proposeForField(input(field, text))?.producer).toBe('candidate_quote');
     }
+  });
+});
+
+describe('social-insurance.adapter（badcase batch_6a8fec04ce406a6aee03d65f_*）', () => {
+  it('绑定值「无」→ 契约唯一否定选项（生产措辞「无公司在缴社保流水」）', () => {
+    const proposal = proposeSocialInsurance({
+      field: SOCIAL_INSURANCE_FIELD,
+      candidateText: '无',
+      answerBound: true,
+    });
+    expect(proposal).toEqual({
+      labelId: 12,
+      value: '无公司在缴社保流水',
+      optionCodes: ['2'],
+      sourceText: '无',
+      producer: 'candidate_quote',
+    });
+  });
+
+  it('绑定短答否定族（没有/没交过/未缴纳）都认', () => {
+    for (const text of ['没有', '没交过', '未缴纳', '没买过']) {
+      expect(
+        proposeSocialInsurance({
+          field: SOCIAL_INSURANCE_FIELD,
+          candidateText: text,
+          answerBound: true,
+        })?.value,
+      ).toBe('无公司在缴社保流水');
+    }
+  });
+
+  it('未绑定的裸「无」不解释——脱离语境的裸否定能回答任何一问', () => {
+    expect(
+      proposeSocialInsurance({ field: SOCIAL_INSURANCE_FIELD, candidateText: '无' }),
+    ).toBeNull();
+  });
+
+  it('自由语料的显式语境档：句内点名社保的否定可识别，excerpt 取命中子句', () => {
+    const proposal = proposeSocialInsurance({
+      field: SOCIAL_INSURANCE_FIELD,
+      candidateText: '我在老家，没有交社保的',
+    });
+    expect(proposal?.value).toBe('无公司在缴社保流水');
+    expect(proposal?.sourceText).toBe('没有交社保的');
+  });
+
+  it('肯定/在缴不产提案——缴纳方与参保地决定筛选方向，猜错即错筛', () => {
+    for (const text of ['有', '在缴', '有社保', '公司给交着社保呢']) {
+      expect(
+        proposeSocialInsurance({
+          field: SOCIAL_INSURANCE_FIELD,
+          candidateText: text,
+          answerBound: true,
+        }),
+      ).toBeNull();
+    }
+  });
+
+  it('疑问句与岗位咨询语境不解释', () => {
+    for (const text of ['要交社保吗', '有没有不用交社保的工作', '这个岗位不交社保吧']) {
+      expect(
+        proposeSocialInsurance({ field: SOCIAL_INSURANCE_FIELD, candidateText: text }),
+      ).toBeNull();
+    }
+  });
+
+  it('契约否定选项不唯一时弃权（D4：措辞漂移退化为留空追问，不猜）', () => {
+    const ambiguous = {
+      ...SOCIAL_INSURANCE_FIELD,
+      acceptedOptions: [
+        { optionCode: 'a', optionLabel: '无本地社保' },
+        { optionCode: 'b', optionLabel: '无外地社保' },
+      ],
+      rejectedOptions: [],
+    };
+    expect(
+      proposeSocialInsurance({ field: ambiguous, candidateText: '无', answerBound: true }),
+    ).toBeNull();
+  });
+
+  it('社保族走标题语义族路由，不再是通用道', () => {
+    expect(routeOf(SOCIAL_INSURANCE_FIELD)).toBe('title_family');
+    expect(adapterFor(SOCIAL_INSURANCE_FIELD)).toBe(proposeSocialInsurance);
   });
 });

@@ -23,7 +23,7 @@ import {
 import type { CandidateClaimField } from '@resolution/evidence/claim.types';
 import { normalizedIncludes } from '@resolution/evidence/normalize';
 import type { FormAnswerInput } from './form-answer-input';
-import { optionPlaceholder } from './collection-template.renderer';
+import { forcedOptionPlaceholder, optionPlaceholder } from './collection-template.renderer';
 
 export interface IntakeInput {
   contract: readonly ContractFieldDef[];
@@ -193,7 +193,7 @@ function fromFormLines(input: IntakeInput): IntakeProposal[] {
       const [, label, value] = matched;
       const field = findFieldByTitle(input.contract, label);
       if (!field) continue;
-      if (value.trim() === optionPlaceholder(field)) continue;
+      if (isPlaceholderEcho(field, value)) continue;
 
       // 只把值交给适配器。选项型认不出也生成提案，统一由值词表门拒收并落审计，
       // 不再在运输层静默丢弃。
@@ -272,10 +272,21 @@ function fromFormAnswers(input: IntakeInput): IntakeProposal[] {
 
 /** 语义适配器优先；规范值恰为 optionLabel 时再走契约字面直配。 */
 function adaptAnswerValue(field: ContractFieldDef, value: string): SlotProposal | null {
-  const input = { field, candidateText: value };
+  // answerBound：值已由表单行标签 / formAnswers 定位绑定到本槽位，
+  // 适配器可解释裸短答（「无」「没有」）——绑定关系就是语境。
+  const input = { field, candidateText: value, answerBound: true };
   return (
     adapterFor(field)(input) ?? genericAdapter(input) ?? adaptMultipleOptionLabels(field, value)
   );
+}
+
+/** 候选人原样回抄了模板的枚举占位（普通档或拒收重问的强制枚举档），不是答案。 */
+function isPlaceholderEcho(field: ContractFieldDef, value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  return [optionPlaceholder(field), forcedOptionPlaceholder(field)]
+    .filter(Boolean)
+    .includes(trimmed);
 }
 
 /** MULTIPLE_OPTION 的规范值可列多个 optionLabel；只做契约标签逐字拆分，不猜同义词。 */
@@ -338,7 +349,7 @@ function hasExactPlaceholderEcho(
       const matched = /^\s*([^：:\n]+?)\s*[：:]\s*(.+?)\s*$/u.exec(rawLine);
       if (!matched) continue;
       const field = findFieldByTitle(contract, matched[1]);
-      if (field?.labelId === labelId && matched[2].trim() === optionPlaceholder(field)) return true;
+      if (field?.labelId === labelId && isPlaceholderEcho(field, matched[2])) return true;
     }
   }
   return false;
