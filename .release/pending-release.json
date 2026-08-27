@@ -26,6 +26,33 @@
       "envFiles": [],
       "verification": [],
       "level": "patch"
+    },
+    {
+      "number": "1095",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1095",
+      "title": "预约提交切换网关新 entryUser 接口 + labelList 线格式对齐",
+      "author": "huajune",
+      "mergedAt": "2026-08-27",
+      "businessUpdates": [
+        "预约提交切换网关新 entryUser 接口 + labelList 线格式对齐"
+      ],
+      "summary": [
+        "预约提交切换网关新 entryUser 接口 + labelList 线格式对齐"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "预约提交切换网关新 entryUser 接口 + labelList 线格式对齐"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "真实 case（0827 失败单）三发实测：旧格式复现字段判空 → `options` 格式通过校验被业务查重正确拦截（无重复工单产生）",
+        "`sponge.service.spec` + `duliday-interview-booking.tool.spec` 43 例全绿；typecheck / lint 通过",
+        "未实测 `code:0` 成功路径的响应结构（该 case 已被运营手工报名），schema 失配会安全降级为失败回执不会假成功；上线后盯第一笔成功单"
+      ],
+      "level": "patch"
     }
   ],
   "lastRelease": {
@@ -164,5 +191,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "50090a015bcce34e25150a588e04eea15d045a92"
+  "lastAnalyzedSha": "70f49257f13c9aea23a2c4b462e728fc8e1ecae4"
 }
