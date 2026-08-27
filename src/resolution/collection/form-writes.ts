@@ -13,7 +13,7 @@
  * ── 与蓝图 §3 四函数清单的偏离（三处，均为落地必需，非扩权） ─────────────────
  * 1. `proposeValue` 返回**信封**而非裸表单：蓝图 §4 要求"拒收/disqualify 各落一条
  *    审计事件"，只返回表单则调用方无法区分"拒收了"与"什么都没发生"，审计写不出来；
- * 2. 新增 `markAsked` / `markRecapSent` / `recordConfigDebt` / `escalate` 四个写函数：
+ * 2. 新增 `recordUnansweredAsks` / `markRecapSent` / `recordConfigDebt` / `escalate` 四个写函数：
  *    `askCount` / `lastRecap` / `configDebts` / `escalatedReason` 是 §2 实体声明的字段，
  *    而"改表的唯一途径是本文件"意味着它们的写入必须在这里，不能散到 service；
  * 3. `applyErrorList` 多收一个 `contract` 参数：D2 规定 applyErrorList 只带展示名时按
@@ -346,7 +346,7 @@ export type RecapResult = { affirmed: true } | { corrections: number[] };
 /**
  * 提交前复述的结果回写（构造性质②的落地面，D3 全程只复述一次）。
  *
- * - 「认」→ 表单不动，放行提交（verdict 保持 ready）；
+ * - 「认」→ 在 lastRecap 上持久化确认回执，放行当前轮或后续选时间轮提交；
  * - 「改某格」→ 该格重开（state=empty），**askCount 不清零**：候选人改口不是系统
  *   没问到，重开后仍受同槽熔断约束，避免"改一次刷新一次配额"绕过熔断。
  *
@@ -357,7 +357,10 @@ export function applyRecapResult(
   form: BookingCollectionForm,
   result: RecapResult,
 ): BookingCollectionForm {
-  if ('affirmed' in result) return form;
+  if ('affirmed' in result) {
+    if (!form.lastRecap || form.lastRecap.affirmed) return form;
+    return { ...form, lastRecap: { ...form.lastRecap, affirmed: true } };
+  }
 
   const recapped = new Set(form.lastRecap?.labelIds ?? []);
   const targets = result.corrections.filter(
@@ -375,7 +378,7 @@ export function applyRecapResult(
       askCount: slots[labelId].askCount,
     };
   }
-  return { ...form, slots };
+  return withoutRecap({ ...form, slots });
 }
 
 // ==================== 写路径 3：entryUser applyErrorList 回写 ====================
@@ -422,7 +425,7 @@ export function applyErrorList(
     reopened += 1;
   }
 
-  const next: BookingCollectionForm = reopened > 0 ? { ...form, slots } : { ...form };
+  const next: BookingCollectionForm = reopened > 0 ? withoutRecap({ ...form, slots }) : { ...form };
   if (unmapped.length === 0) return next;
   return {
     ...next,
@@ -443,41 +446,85 @@ export function markSubmitted(
 // ==================== 写路径 5-8：账面字段 ====================
 
 /**
- * 登记本轮向候选人发问的槽位（熔断计数，蓝图 §10 防线 6）。
+ * 把上一条**实际送达**的提问登记为「候选人本轮仍未补齐」（熔断计数，蓝图 §10 防线 6）。
  *
- * 已问满 `MAX_ASKS_PER_SLOT` 仍 empty 的槽位不再计数、不再发问，整表转人工——
- * 「第 3 问不存在」。返回值同时给出本轮实际可问的槽位，调用方据此渲染问句。
+ * 本函数不登记 precheck 计划生成的模板，只接收调用方从真实 assistant 对话中核出的槽位。
+ * 同一候选人回复回合用 `turnId` 去重，避免模型在一轮内重试工具时重复消耗配额。
+ * 第 2 次实际提问后仍 empty 即转人工——第 3 问不存在。
  */
-export function markAsked(
+export function recordUnansweredAsks(
   form: BookingCollectionForm,
   labelIds: readonly number[],
-): { form: BookingCollectionForm; askable: number[]; exhausted: number[] } {
+  turnId?: string,
+): { form: BookingCollectionForm; recorded: number[]; exhausted: number[] } {
   const slots = { ...form.slots };
-  const askable: number[] = [];
+  const recorded: number[] = [];
   const exhausted: number[] = [];
 
   for (const labelId of labelIds) {
     const slot = slots[labelId];
     if (!slot || slot.state !== 'empty') continue;
-    if (slot.askCount >= MAX_ASKS_PER_SLOT) {
+    if (turnId && slot.lastAskCountedTurnId === turnId) continue;
+    const askCount = slot.askCount + 1;
+    slots[labelId] = {
+      ...slot,
+      askCount,
+      ...(turnId ? { lastAskCountedTurnId: turnId } : {}),
+    };
+    recorded.push(labelId);
+    if (askCount >= MAX_ASKS_PER_SLOT) {
       exhausted.push(labelId);
-      continue;
     }
-    slots[labelId] = { ...slot, askCount: slot.askCount + 1 };
-    askable.push(labelId);
   }
 
   const next: BookingCollectionForm = { ...form, slots };
-  if (exhausted.length === 0) return { form: next, askable, exhausted };
+  if (exhausted.length === 0) return { form: next, recorded, exhausted };
   return {
     form: {
       ...next,
       escalatedReason:
         form.escalatedReason ?? `${ESCALATION_REASONS.askLimitExhausted}: ${exhausted.join('、')}`,
     },
-    askable,
+    recorded,
     exhausted,
   };
+}
+
+/**
+ * `ask_limit_exhausted` 是由「指定槽位仍 empty」派生的可恢复人工原因。
+ * 候选人后来补齐或契约移除对应槽位时，逐项解除；其他人工原因一律不动。
+ */
+export function reconcileAskLimitEscalation(form: BookingCollectionForm): BookingCollectionForm {
+  const exhaustedIds = parseAskLimitExhaustedIds(form.escalatedReason);
+  if (!exhaustedIds) return form;
+  const unresolved = exhaustedIds.filter((labelId) => form.slots[labelId]?.state === 'empty');
+  if (unresolved.length === exhaustedIds.length) return form;
+  if (unresolved.length > 0) {
+    return {
+      ...form,
+      escalatedReason: `${ESCALATION_REASONS.askLimitExhausted}: ${unresolved.join('、')}`,
+    };
+  }
+  const { escalatedReason: _resolvedReason, ...rest } = form;
+  return rest;
+}
+
+/**
+ * 旧表单的 askCount 来自 precheck 计划而非真实送达，不能沿用到 v2。
+ * 首次加载时只迁移问询账：清零旧计数、清掉旧 ask-limit 原因；其它槽值和人工原因保持。
+ */
+export function migrateAskTracking(form: BookingCollectionForm): BookingCollectionForm {
+  if (form.askTrackingVersion === 2) return form;
+  const slots = Object.fromEntries(
+    Object.entries(form.slots).map(([labelId, slot]) => {
+      const { lastAskCountedTurnId: _legacyReceipt, ...rest } = slot;
+      return [labelId, { ...rest, askCount: 0 }];
+    }),
+  ) as BookingCollectionForm['slots'];
+  const migrated = { ...form, askTrackingVersion: 2 as const, slots };
+  if (!parseAskLimitExhaustedIds(migrated.escalatedReason)) return migrated;
+  const { escalatedReason: _legacyAskLimit, ...rest } = migrated;
+  return rest;
 }
 
 /**
@@ -607,10 +654,29 @@ function reject(
 }
 
 function withSlot(form: BookingCollectionForm, slot: FormSlot): BookingCollectionForm {
-  return {
-    ...form,
-    slots: { ...form.slots, [slot.labelId]: { ...form.slots[slot.labelId], ...slot } },
-  };
+  return reconcileAskLimitEscalation(
+    withoutRecap({
+      ...form,
+      slots: { ...form.slots, [slot.labelId]: { ...form.slots[slot.labelId], ...slot } },
+    }),
+  );
+}
+
+/** 任一槽位变更都使提交前复述快照失效，后续必须按新值重新复述并确认。 */
+function withoutRecap(form: BookingCollectionForm): BookingCollectionForm {
+  if (!form.lastRecap) return form;
+  const { lastRecap: _lastRecap, ...rest } = form;
+  return rest;
+}
+
+function parseAskLimitExhaustedIds(reason: string | undefined): number[] | null {
+  if (!reason?.startsWith(`${ESCALATION_REASONS.askLimitExhausted}:`)) return null;
+  const ids = reason
+    .slice(reason.indexOf(':') + 1)
+    .split(/[、,，\s]+/u)
+    .map(Number)
+    .filter((value) => Number.isSafeInteger(value) && value > 0);
+  return ids.length > 0 ? [...new Set(ids)] : null;
 }
 
 /** 身份槽位的值本体是否逐字落在原话内（手机号忽略非数字字符）。 */

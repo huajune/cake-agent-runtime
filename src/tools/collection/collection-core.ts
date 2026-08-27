@@ -16,8 +16,9 @@ import {
   escalate,
   ESCALATION_REASONS,
   isSensitiveAttribute,
-  markAsked,
+  MAX_ASKS_PER_SLOT,
   orderForAsking,
+  recordUnansweredAsks,
   seedArchiveValue,
   proposeValue,
   recordConfigDebt,
@@ -25,6 +26,7 @@ import {
   verdictOf,
   genericAdapter,
 } from '@resolution/collection';
+import { extractMessageText } from '@resolution/signal/markers';
 import { collectProposals, findFieldForClaim, type ArchiveFact } from './proposal-intake';
 import type { FormAnswerInput } from './form-answer-input';
 import { renderCollectionTemplate, type CollectionTemplate } from './collection-template.renderer';
@@ -68,8 +70,10 @@ export interface CollectionCoreInput {
   candidateTexts: readonly string[];
   messages: readonly unknown[];
   formAnswers?: readonly FormAnswerInput[] | null;
-  /** 本轮是否要向候选人发问（发问才计熔断次数；只读探查不计）。 */
+  /** 本轮是否允许继续向候选人发问；只控制待问清单，不参与上一轮实际问句的记账。 */
   askThisTurn?: boolean;
+  /** 当前候选人回复的稳定回合 ID；用于上一轮实际问句入账去重。 */
+  askReceiptTurnId?: string;
   /**
    * 档案预填（蓝图「记忆→表单预填」：跨岗不重复盘问）。
    * 只填空槽、只在**本表首次见到该槽**时有意义；作用域同账号（表单 key 含 corpId）。
@@ -201,24 +205,44 @@ export function runCollectionCore(input: CollectionCoreInput): CollectionCoreRes
     }
   }
 
-  // ── 发问：先写后问，熔断在此生效 ──
-  let askableFields: string[] = [];
-  if (input.askThisTurn !== false && verdictOf(form) === 'collecting') {
-    // 按发问顺序取空槽：熔断计数与可问清单都跟着"筛选项优先"的次序走。
-    const emptyIds = orderForAsking(contract)
-      .filter((field) => form.slots[field.labelId]?.state === 'empty')
+  // ── 问句回执：只登记上一轮真实送达、且本轮仍未补齐的槽位 ──
+  const actuallyAskedIds = askedLabelIdsBeforeLatestUser(input.messages, contract);
+  const askReceipt = recordUnansweredAsks(form, actuallyAskedIds, input.askReceiptTurnId);
+  form = askReceipt.form;
+  if (askReceipt.exhausted.length > 0) {
+    audits.push({
+      kind: 'escalated',
+      reason: form.escalatedReason,
+      detail: `同槽实际问满上限仍空：${askReceipt.exhausted.join(',')}`,
+    });
+  }
+
+  // 已经问满后因纠错/errorList 重开的槽位保留历史次数，禁止绕过配额发出第 3 问。
+  const emptyFields = orderForAsking(contract).filter(
+    (field) => form.slots[field.labelId]?.state === 'empty',
+  );
+  if (verdictOf(form) === 'collecting') {
+    const alreadyExhausted = emptyFields
+      .filter((field) => (form.slots[field.labelId]?.askCount ?? 0) >= MAX_ASKS_PER_SLOT)
       .map((field) => field.labelId);
-    const asked = markAsked(form, emptyIds);
-    form = asked.form;
-    const titleById = new Map(contract.map((field) => [field.labelId, field.labelTitle]));
-    askableFields = asked.askable.map((id) => titleById.get(id) ?? String(id));
-    if (asked.exhausted.length > 0) {
+    if (alreadyExhausted.length > 0) {
+      form = escalate(
+        form,
+        ESCALATION_REASONS.askLimitExhausted + ': ' + alreadyExhausted.join('、'),
+      );
       audits.push({
         kind: 'escalated',
         reason: form.escalatedReason,
-        detail: `同槽问满上限仍空：${asked.exhausted.join(',')}`,
+        detail: '已问满的槽位重新变空：' + alreadyExhausted.join(','),
       });
     }
+  }
+
+  // ── 生成本轮待问清单：这里只规划，不提前消耗下一次配额 ──
+  let askableFields: string[] = [];
+  if (input.askThisTurn !== false && verdictOf(form) === 'collecting') {
+    // 按发问顺序取空槽；实际是否送达在候选人下一轮回来时核账。
+    askableFields = emptyFields.map((field) => field.labelTitle);
   }
 
   const verdict = verdictOf(form);
@@ -226,7 +250,7 @@ export function runCollectionCore(input: CollectionCoreInput): CollectionCoreRes
     form,
     verdict,
     action: deriveCollectionAction(verdict),
-    // 模板在发问之后渲染：markAsked 只动 askCount/escalatedReason 不动槽位状态，
+    // 模板在回执核账之后渲染：核账只动 askCount/escalatedReason 不动槽位状态，
     // 但熔断会改 verdict，模板要反映最终状态。熔断后模板照返（内部可见），
     // askableFields 为空——调用方据此不再发问。
     template: renderCollectionTemplate(form, contract),
@@ -234,6 +258,77 @@ export function runCollectionCore(input: CollectionCoreInput): CollectionCoreRes
     audits,
     answeredThisTurn,
   };
+}
+
+/**
+ * 取最新候选人消息之前、上一条候选人消息之后的真实 assistant 回复，逐字段核对是否发问。
+ * tool/system 消息不参与；更早的 assistant 历史不会在每轮被重复累计。
+ */
+export function askedLabelIdsBeforeLatestUser(
+  messages: readonly unknown[],
+  contract: readonly ContractFieldDef[],
+): number[] {
+  const records = messages.map(toDialogueRecord);
+  let latestUserIndex = -1;
+  for (let index = records.length - 1; index >= 0; index -= 1) {
+    if (records[index]?.role === 'user') {
+      latestUserIndex = index;
+      break;
+    }
+  }
+  if (latestUserIndex <= 0) return [];
+
+  let previousUserIndex = -1;
+  for (let index = latestUserIndex - 1; index >= 0; index -= 1) {
+    if (records[index]?.role === 'user') {
+      previousUserIndex = index;
+      break;
+    }
+  }
+
+  const assistantTexts = records
+    .slice(previousUserIndex + 1, latestUserIndex)
+    .filter((record): record is { role: 'assistant'; text: string } => record?.role === 'assistant')
+    .map((record) => record.text)
+    .filter(Boolean);
+  if (assistantTexts.length === 0) return [];
+
+  return contract
+    .filter((field) =>
+      assistantTexts.some((text) => assistantAskedForField(text, field.labelTitle)),
+    )
+    .map((field) => field.labelId);
+}
+
+function toDialogueRecord(message: unknown): { role: 'user' | 'assistant'; text: string } | null {
+  if (!message || typeof message !== 'object') return null;
+  const record = message as Record<string, unknown>;
+  if (record.role !== 'user' && record.role !== 'assistant') return null;
+  return { role: record.role, text: extractMessageText(record.content) };
+}
+
+function assistantAskedForField(text: string, labelTitle: string): boolean {
+  const normalizedText = text.normalize('NFKC');
+  const normalizedTitle = labelTitle.normalize('NFKC').trim();
+  if (!normalizedTitle || !normalizedText.includes(normalizedTitle)) return false;
+
+  // 标准清单：只认空值或仅带选项提示的「字段：」行；已预填值不算再次发问。
+  const escapedTitle = normalizedTitle.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+  const emptyTemplateLine = new RegExp(
+    `(?:^|\\n)\\s*${escapedTitle}\\s*:\\s*(?:\\([^\\n]*\\))?\\s*(?=\\n|$)`,
+    'u',
+  );
+  if (emptyTemplateLine.test(normalizedText)) return true;
+
+  // 定向追问：如「你什么专业」「手机号是多少？」；纯陈述里偶然出现字段名不计。
+  const titleIndex = normalizedText.indexOf(normalizedTitle);
+  const nearby = normalizedText.slice(
+    Math.max(0, titleIndex - 16),
+    titleIndex + normalizedTitle.length + 16,
+  );
+  return /(?:什么|多少|几|哪|是否|有无|请问|补充|提供|填写|填下|发下|告诉|确认|[?？])/u.test(
+    nearby,
+  );
 }
 
 /** 本轮是否有**确凿敏感**字段刚落值（因果隔离判据；不是 disclosureLevelOf，见其注释）。 */

@@ -486,12 +486,16 @@ async function runForm(params: {
   }
 
   const latestCandidateText = candidateTexts.at(-1) ?? '';
-  const recapAffirmed = Boolean(
+  const affirmedThisTurn = Boolean(
     form.lastRecap &&
       corrections.length === 0 &&
       isAffirmativeAnswerSequence(normalizeShortAnswer(latestCandidateText)),
   );
-  if (recapAffirmed) form = applyRecapResult(form, { affirmed: true });
+  if (affirmedThisTurn) form = applyRecapResult(form, { affirmed: true });
+  // 复述确认是跨轮事实：候选人先回“没问题”、下一轮再选面试时间时，
+  // 本轮最新文本已不是肯定短答，仍应沿用在案复述的确认回执。槽位变更或契约槽位
+  // 对齐会整体作废 lastRecap，因此不会把旧确认带到新资料。
+  const recapAffirmed = form.lastRecap?.affirmed === true;
 
   const result = runCollectionCore({
     form,
@@ -503,6 +507,7 @@ async function runForm(params: {
       params.context.archive.sessionFacts?.interview_info as Record<string, unknown> | null,
     ),
     askThisTurn: !recapAffirmed,
+    askReceiptTurnId: params.context.session.turnId,
   });
 
   await params.deps.collectionForms.saveFinalizedProgressFacts(

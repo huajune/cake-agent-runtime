@@ -51,6 +51,16 @@ const CONTRACT = [
     systemField: 'gender' as const,
   },
 ];
+const PROFESSIONAL_CONTRACT = [
+  {
+    labelId: 213,
+    labelTitle: '专业',
+    fieldType: 'TEXT' as const,
+    required: true,
+    acceptedOptions: [],
+    rejectedOptions: [],
+  },
+];
 
 const JOB = {
   basicInfo: {
@@ -250,6 +260,34 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
     expect(currentForm?.lastRecap?.labelIds).toEqual([101, 102, 103, 104]);
   });
 
+  it('ask_limit_exhausted 后候选人补齐对应字段，解除 handoff 并恢复复述确认', async () => {
+    sponge.fetchJobCollectionContract.mockResolvedValue({
+      jobId: 100,
+      fields: PROFESSIONAL_CONTRACT,
+    });
+    currentForm = createForm({ jobId: 100, contract: PROFESSIONAL_CONTRACT });
+    currentForm.slots[213].askCount = 2;
+    currentForm.slots[213].lastAskCountedTurnId = 'previous-turn';
+    currentForm.escalatedReason = 'ask_limit_exhausted: 213';
+    context.session.turnId = 'candidate-filled-professional';
+    context.turnInput.messages = [
+      { role: 'assistant', content: '你什么专业？没有就是无' },
+      { role: 'user', content: '专业：无' },
+    ];
+
+    const result = await execute({
+      jobId: 100,
+      formAnswers: [{ labelTitle: '专业', value: '无', quote: '专业：无' }],
+    });
+
+    expect(result.collectionVerdict).toBe('ready');
+    expect(result.nextAction).toBe('confirm_collection');
+    expect(currentForm?.slots[213].state).toBe('filled');
+    expect(currentForm?.slots[213].askCount).toBe(2);
+    expect(currentForm?.escalatedReason).toBeUndefined();
+    expect(result.recap.candidateMessage).toContain('专业：无');
+  });
+
   it('候选人明确确认复述后，本轮写入 booking 的短期放行凭据', async () => {
     currentForm = filledForm();
     context.turnInput.messages = [{ role: 'user', content: '确认' }];
@@ -263,6 +301,26 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
     context.turnInput.messages = [{ role: 'user', content: '对的，没问题' }];
     const result = await execute({ jobId: 100 });
     expect(result.nextAction).toBe('ready_to_book');
+    expect(context.ledger.jobs.collectionReadyJobId).toBe(100);
+  });
+
+  it('先确认复述、下一轮再选面试日期时仍放行 booking', async () => {
+    currentForm = filledForm();
+    context.turnInput.messages = [{ role: 'user', content: '没问题' }];
+    const confirmed = await execute({ jobId: 100 });
+    expect(confirmed.nextAction).toBe('ready_to_book');
+    expect(currentForm?.lastRecap?.affirmed).toBe(true);
+
+    // 模拟新回合：ledger 是轮内态，但 Redis 表单保留上轮的复述确认。
+    context.ledger.jobs.collectionReadyJobId = undefined;
+    context.turnInput.messages = [{ role: 'user', content: '明天10点' }];
+    sponge.fetchJobs.mockResolvedValue({ jobs: [JOB_WITH_WINDOWS] });
+
+    const dated = await execute({ jobId: 100, requestedDate: '明天' });
+    expect(dated.nextAction).toBe('ready_to_book');
+    expect(dated.interview.requestedDate).toEqual(
+      expect.objectContaining({ value: getTomorrowDate(), status: 'available' }),
+    );
     expect(context.ledger.jobs.collectionReadyJobId).toBe(100);
   });
 

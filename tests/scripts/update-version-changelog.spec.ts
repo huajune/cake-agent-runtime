@@ -51,6 +51,16 @@ describe('update-version-changelog release level', () => {
 describe('update-version-changelog entry level aggregation', () => {
   const { aggregateEntryLevels } = require('../../scripts/update-version-changelog');
 
+  it('initializes release-level constants before booting the CLI', () => {
+    const source = require('fs').readFileSync(
+      require.resolve('../../scripts/update-version-changelog'),
+      'utf8',
+    );
+    expect(source.indexOf('const RELEASE_LEVEL_ORDER')).toBeLessThan(
+      source.lastIndexOf('if (require.main === module)'),
+    );
+  });
+
   it('takes the highest level across entries', () => {
     expect(aggregateEntryLevels([{ level: 'patch' }, { level: 'minor' }])).toBe('minor');
     expect(aggregateEntryLevels([{ level: 'major' }, { level: 'patch' }])).toBe('major');
