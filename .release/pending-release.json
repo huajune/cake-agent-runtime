@@ -98,6 +98,34 @@
         "未新增虚构 prompt 示例值"
       ],
       "level": "patch"
+    },
+    {
+      "number": "1067",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1067",
+      "title": "固化 v11.0.2 发版底账",
+      "author": "huajune",
+      "mergedAt": "2026-08-27",
+      "businessUpdates": [
+        "将待发布底账固化为 `docs/releases/2026/v11.0.2.md`",
+        "记录 Release PR #1065、实现 PR 和门禁状态",
+        "固化 v11.0.2 发版底账"
+      ],
+      "summary": [
+        "将待发布底账固化为 `docs/releases/2026/v11.0.2.md`",
+        "记录 Release PR #1065、实现 PR 和门禁状态",
+        "固化 v11.0.2 发版底账"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "将待发布底账固化为 `docs/releases/2026/v11.0.2.md`",
+        "记录 Release PR #1065、实现 PR 和门禁状态"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [],
+      "level": "patch"
     }
   ],
   "lastRelease": {
@@ -132,5 +160,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "786ca049380327d20fa191adb5e95e0e0aeddfa0"
+  "lastAnalyzedSha": "2bc706e35e69f85bba9989f84f04b70936a8c3f8"
 }
