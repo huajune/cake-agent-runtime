@@ -3,10 +3,7 @@ import type { StorageMessageSource, StorageMessageType } from '@enums/storage-me
 import { BRAND_INTENT_POLARITIES } from '@resolution/brand/brand-resolution.types';
 import type { PersistedBrandState } from '@resolution/brand/brand-resolution.types';
 import { RecommendedJobSummarySchema, type RecommendedJobSummary } from '@resolution/job/types';
-import {
-  CANDIDATE_FACT_PRODUCERS,
-  type CandidateFactProducer,
-} from '@resolution/evidence/claim.types';
+import { CANDIDATE_FACT_PRODUCERS, type CandidateFactProducer } from '@resolution/candidate/types';
 import { FACT_CONFIDENCE_LEVELS_DESC, factConfidenceRank } from '../confidence-rank';
 
 // ==================== 0. 结构总览（从这里读） ====================

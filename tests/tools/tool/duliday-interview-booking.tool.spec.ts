@@ -4,6 +4,7 @@ import {
   type BookingCollectionForm,
   type ContractFieldDef,
 } from '@resolution/collection';
+import { getTomorrowDate } from '@infra/utils/date.util';
 import type { ToolBuildContext } from '@shared-types/tool.types';
 import {
   buildInterviewBookingTool,
@@ -70,6 +71,20 @@ const JOB = {
   },
 };
 
+const JOB_WITH_WINDOWS = {
+  ...JOB,
+  interviewProcess: {
+    firstInterview: {
+      firstInterviewWay: '门店面试',
+      periodicInterviewTimes: ['一', '二', '三', '四', '五', '六', '日'].map((day) => ({
+        interviewWeekday: `每周${day}`,
+        interviewTimes: [{ interviewStartTime: '10:00', interviewEndTime: '18:00' }],
+      })),
+      fixedInterviewTimes: [],
+    },
+  },
+};
+
 function readyForm(contract: readonly ContractFieldDef[] = CONTRACT): BookingCollectionForm {
   const form = createForm({ jobId: 100, contract });
   const values: Record<number, { value: string; optionCodes?: string[] }> = {
@@ -90,7 +105,6 @@ function readyForm(contract: readonly ContractFieldDef[] = CONTRACT): BookingCol
         ...value,
         sourceText: value.value,
         producer: 'candidate_quote',
-        confidence: 'high',
       },
     };
   }
@@ -213,6 +227,44 @@ describe('duliday_interview_booking（form → labelList）', () => {
     ]);
     expect(payload).not.toEqual(expect.objectContaining({ name: expect.anything() }));
     expect(payload).not.toEqual(expect.objectContaining({ customerLabelList: expect.anything() }));
+  });
+
+  it('普通岗不能用仅有 interviewTime 的输入绕过持久化 schedule draft', async () => {
+    sponge.fetchJobs.mockResolvedValue({ jobs: [JOB_WITH_WINDOWS] });
+    const interviewTime = `${getTomorrowDate()} 10:00:00`;
+    const result = await execute({ jobId: 100, interviewTime });
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_REJECTED);
+    expect(sponge.bookInterview).not.toHaveBeenCalled();
+  });
+
+  it('普通岗只接受与草稿一致且实时仍可约的精确 interviewTime', async () => {
+    sponge.fetchJobs.mockResolvedValue({ jobs: [JOB_WITH_WINDOWS] });
+    const interviewTime = `${getTomorrowDate()} 10:00:00`;
+    currentForm.scheduleDraft = {
+      requestedDate: getTomorrowDate(),
+      selectedInterviewTime: interviewTime,
+      sourceText: '我明天10点可以',
+    };
+    const result = await execute({ jobId: 100, interviewTime });
+    expect(result.success).toBe(true);
+    expect(sponge.bookInterview).toHaveBeenCalledWith(
+      expect.objectContaining({ jobId: 100, interviewTime }),
+      expect.any(Object),
+    );
+  });
+
+  it('外部预填未确认时，即使时间草稿正确也拒绝旁路提交', async () => {
+    sponge.fetchJobs.mockResolvedValue({ jobs: [JOB_WITH_WINDOWS] });
+    const interviewTime = `${getTomorrowDate()} 10:00:00`;
+    currentForm.slots[101].value!.producer = 'archive';
+    currentForm.scheduleDraft = {
+      requestedDate: getTomorrowDate(),
+      selectedInterviewTime: interviewTime,
+      sourceText: '我明天10点可以',
+    };
+    const result = await execute({ jobId: 100, interviewTime });
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_REJECTED);
+    expect(sponge.bookInterview).not.toHaveBeenCalled();
   });
 
   it('成功后 markSubmitted，active booking 与高置信 booking lineage 同步写入', async () => {
@@ -354,7 +406,6 @@ describe('duliday_interview_booking（form → labelList）', () => {
       value: '女',
       sourceText: '女',
       producer: 'candidate_quote',
-      confidence: 'high',
     };
     const result = await execute({ jobId: 100 });
     expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_REJECTED);
@@ -367,7 +418,6 @@ describe('duliday_interview_booking（form → labelList）', () => {
       value: '13912345678',
       sourceText: '13912345678',
       producer: 'candidate_quote',
-      confidence: 'high',
     };
     context.runtime.strategySource = 'testing';
     const result = await execute({ jobId: 100 });

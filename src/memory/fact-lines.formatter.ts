@@ -1,8 +1,8 @@
 import { isValidLaborForm } from '@resolution/labor-form';
 import { stripTimeContextSuffix } from '@resolution/candidate/name';
-import type { TurnHints, TurnHintFieldPath } from '@resolution/evidence/claim.types';
-import { projectTurnHints, resolveTurnHints } from '@resolution/evidence/merge';
-import { RULE_CLAIM_QUOTE_MAX_CHARS } from '@resolution/evidence/producers/direct-field';
+import type { TurnHints, TurnHintFieldPath } from '@resolution/turn-hints/turn-hint.types';
+import { projectTurnHints, resolveTurnHints } from '@resolution/turn-hints/reducer';
+import { RULE_HINT_QUOTE_MAX_CHARS } from '@resolution/turn-hints/producers/rule-track';
 import { readGenderProvenance, type GenderProvenance } from '@resolution/candidate/gender';
 import { formatLocalMinute } from '@infra/utils/date.util';
 import type {
@@ -22,7 +22,7 @@ export interface FactLineFormatOptions {
    * 主 Agent prompt 的 [本轮解析线索]/[本轮待确认线索]，见 turn-hints.section）。
    * 规则轨安全的原因：evidence 是 `年龄识别：25` / `explicit_city` 这类短标签或机器码，
    * 不含长文；配套的 `原话` 片段也在 formatTurnHintLines 里按
-   * RULE_CLAIM_QUOTE_RENDER_MAX_CHARS 截断、并对"整条当轮消息"省略渲染。
+   * RULE_HINT_QUOTE_RENDER_MAX_CHARS 截断、并对"整条当轮消息"省略渲染。
    * 长文 evidence 只出现在 LLM 轨/sessionFacts 侧，那里一律保持默认 false。
    */
   includeEvidence?: boolean;
@@ -241,10 +241,10 @@ const FACT_LINE_FIELD_BY_LABEL: Readonly<Record<string, TurnHintFieldPath>> = {
 /**
  * 规则 claim 的原话片段渲染上限。
  *
- * quote 默认取整条候选人消息（上限 1000 字，见 direct-field.RULE_CLAIM_QUOTE_MAX_CHARS），
+ * quote 默认取整条候选人消息（上限 1000 字，见 rule-track.RULE_HINT_QUOTE_MAX_CHARS），
  * 逐字段渲染会把同一条消息重复 N 遍。这里只保留足以定位来源句的开头。
  */
-export const RULE_CLAIM_QUOTE_RENDER_MAX_CHARS = 40;
+export const TURN_HINT_QUOTE_RENDER_MAX_CHARS = 40;
 
 export interface TurnHintLineOptions extends Pick<FactLineFormatOptions, 'includeEvidence'> {
   /**
@@ -318,12 +318,12 @@ function renderClaimQuote(
     );
     if (isWholeMessage && currentTurnTexts.length === 1) return null;
   }
-  return trimmed.length > RULE_CLAIM_QUOTE_RENDER_MAX_CHARS
-    ? `${trimmed.slice(0, RULE_CLAIM_QUOTE_RENDER_MAX_CHARS)}…`
+  return trimmed.length > TURN_HINT_QUOTE_RENDER_MAX_CHARS
+    ? `${trimmed.slice(0, TURN_HINT_QUOTE_RENDER_MAX_CHARS)}…`
     : trimmed;
 }
 
 /** 与 rule-track appendRuleClaim 存 quote 时的归一化保持一致，否则全等比对必失效。 */
 function normalizeClaimQuoteSource(text: string): string {
-  return stripTimeContextSuffix(text).trim().slice(0, RULE_CLAIM_QUOTE_MAX_CHARS);
+  return stripTimeContextSuffix(text).trim().slice(0, RULE_HINT_QUOTE_MAX_CHARS);
 }

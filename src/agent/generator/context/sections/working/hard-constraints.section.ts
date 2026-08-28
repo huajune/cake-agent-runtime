@@ -6,8 +6,8 @@ import {
   type SessionFacts,
   unwrapSessionFacts,
 } from '@memory/short-term/short-term.types';
-import { projectTurnHints } from '@resolution/evidence/merge';
-import type { TurnHints } from '@resolution/evidence/claim.types';
+import { projectTurnHints } from '@resolution/turn-hints/reducer';
+import type { TurnHints } from '@resolution/turn-hints/turn-hint.types';
 import { isHardFilteredLaborForm, isValidLaborForm } from '@resolution/labor-form';
 import { PromptContext, PromptSection } from '../section.interface';
 

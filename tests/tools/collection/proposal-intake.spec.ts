@@ -1,9 +1,9 @@
-import { createForm, proposeValue, type ContractFieldDef } from '@resolution/collection';
-import { FormAnswerInputSchema } from '@tools/collection/form-answer-input';
+import { createForm, applyFieldValueProposal, type ContractFieldDef } from '@resolution/collection';
+import { FieldValueProposalInputSchema } from '@tools/collection/field-value-proposal-input';
 import {
-  collectProposals,
+  collectFieldValueProposals,
   findFieldByTitle,
-  findFieldForClaim,
+  findFieldForCandidateFact,
   resolveFieldByTitle,
 } from '@tools/collection/proposal-intake';
 
@@ -64,30 +64,29 @@ const PHONE: ContractFieldDef = {
 const CONTRACT = [NAME, AGE, HEALTH, STUDENT, RESUME];
 const PHONE_CONTRACT = [NAME, AGE, PHONE, HEALTH, STUDENT];
 
-function base(overrides: Partial<Parameters<typeof collectProposals>[0]> = {}) {
+function base(overrides: Partial<Parameters<typeof collectFieldValueProposals>[0]> = {}) {
   return {
     contract: CONTRACT,
     candidateTexts: [] as string[],
-    messages: [] as unknown[],
     filledLabelIds: new Set<number>(),
     ...overrides,
   };
 }
 
-describe('FormAnswerInputSchema', () => {
+describe('FieldValueProposalInputSchema', () => {
   it('只收统一数组项协议，不收 boolean', () => {
     expect(
-      FormAnswerInputSchema.safeParse({ labelTitle: '年龄', value: false, quote: '不是学生' })
+      FieldValueProposalInputSchema.safeParse({ labelTitle: '年龄', value: false, quote: '不是学生' })
         .success,
     ).toBe(false);
     expect(
-      FormAnswerInputSchema.safeParse({ labelTitle: '年龄', value: '26', quote: '我26岁' }).success,
+      FieldValueProposalInputSchema.safeParse({ labelTitle: '年龄', value: '26', quote: '我26岁' }).success,
     ).toBe(true);
   });
 
   it('clear 必须 value=null 且带 quote；对类确认在值来自问句时必须绑定问句', () => {
     expect(
-      FormAnswerInputSchema.safeParse({
+      FieldValueProposalInputSchema.safeParse({
         labelTitle: '年龄',
         value: null,
         operation: 'clear',
@@ -95,7 +94,7 @@ describe('FormAnswerInputSchema', () => {
       }).success,
     ).toBe(true);
     expect(
-      FormAnswerInputSchema.safeParse({
+      FieldValueProposalInputSchema.safeParse({
         labelTitle: '年龄',
         value: '25',
         operation: 'confirm',
@@ -105,10 +104,10 @@ describe('FormAnswerInputSchema', () => {
   });
 });
 
-describe('proposal intake（统一 formAnswers 运输）', () => {
+describe('proposal intake（统一 fieldValueProposals 运输）', () => {
   it('档案语义字段仍只映射当岗契约已有槽位，不臆造字段', () => {
-    expect(findFieldForClaim(CONTRACT, 'name')?.labelId).toBe(769);
-    expect(findFieldForClaim(CONTRACT, 'phone')).toBeNull();
+    expect(findFieldForCandidateFact(CONTRACT, 'name')?.labelId).toBe(769);
+    expect(findFieldForCandidateFact(CONTRACT, 'phone')).toBeNull();
   });
 
   it('标题按 NFKC + 双侧剥括号主干容错，主干撞车时弃权', () => {
@@ -124,10 +123,10 @@ describe('proposal intake（统一 formAnswers 运输）', () => {
     });
   });
 
-  it('标准语义字段与动态字段都从 formAnswers 携带 value + quote，correct 标为改口', () => {
-    const proposals = collectProposals(
+  it('标准语义字段与动态字段都从 fieldValueProposals 携带 value + quote，correct 标为改口', () => {
+    const proposals = collectFieldValueProposals(
       base({
-        formAnswers: [
+        fieldValueProposals: [
           { labelTitle: '姓名', value: '兮兮', quote: '我叫兮兮' },
           { labelTitle: '年龄', value: 26, quote: '我26岁', operation: 'correct' },
           { labelTitle: '有无本地健康证', value: '有本地有效健康证', quote: '我有本地有效健康证' },
@@ -147,9 +146,9 @@ describe('proposal intake（统一 formAnswers 运输）', () => {
   it('clear 不生成值提案；证据不存在时拒收原因进入既有审计面', () => {
     const audits: Array<{ reason: string }> = [];
     expect(
-      collectProposals(
+      collectFieldValueProposals(
         base({
-          formAnswers: [
+          fieldValueProposals: [
             { labelTitle: '年龄', value: null, quote: '年龄先清掉', operation: 'clear' },
           ],
           candidateTexts: ['没有说过这句'],
@@ -166,10 +165,10 @@ describe('proposal intake（统一 formAnswers 运输）', () => {
       { ...STUDENT, labelId: 20, labelTitle: '体重（净重）' },
       { ...STUDENT, labelId: 50, labelTitle: '体重（kg）' },
     ];
-    const proposals = collectProposals({
+    const proposals = collectFieldValueProposals({
       ...base(),
       contract: collided,
-      formAnswers: [
+      fieldValueProposals: [
         { labelTitle: '身份', value: '社会人士', quote: '我是社会人士' },
         { labelTitle: '体重', value: '60', quote: '我60公斤' },
       ],
@@ -187,19 +186,19 @@ describe('proposal intake（统一 formAnswers 运输）', () => {
     expect(findFieldByTitle(PHONE_CONTRACT, '联系电话')?.labelId).toBe(770);
 
     const quote = '我的手机号是18271421690';
-    const [proposal] = collectProposals(
+    const [proposal] = collectFieldValueProposals(
       base({
         contract: PHONE_CONTRACT,
-        formAnswers: [{ labelTitle: '联系方式', value: '18271421690', quote }],
+        fieldValueProposals: [{ labelTitle: '联系方式', value: '18271421690', quote }],
         candidateTexts: [quote],
-        messages: [{ role: 'user', content: quote }],
       }),
     );
     expect(proposal).toMatchObject({ labelId: 770, value: '18271421690', channel: 'form_answer' });
-    const result = proposeValue(
+    const result = applyFieldValueProposal(
       createForm({ jobId: 1, contract: PHONE_CONTRACT }),
       PHONE,
       proposal,
+      { candidateTexts: [quote], messages: [{ role: 'user', content: quote }] },
     );
     expect(result.outcome).toBe('accepted');
     expect(result.form.slots[770].value?.value).toBe('18271421690');
@@ -218,9 +217,9 @@ describe('proposal intake（统一 formAnswers 运输）', () => {
   it('第三级封闭四槽：契约无 phone systemField 槽时弃权并落定位审计，不臆造字段', () => {
     const audits: Array<{ reason: string }> = [];
     expect(
-      collectProposals(
+      collectFieldValueProposals(
         base({
-          formAnswers: [
+          fieldValueProposals: [
             { labelTitle: '联系方式', value: '18271421690', quote: '我的手机号是18271421690' },
           ],
           candidateTexts: ['我的手机号是18271421690'],
@@ -251,7 +250,7 @@ describe('proposal intake（统一 formAnswers 运输）', () => {
   });
 
   it('候选人逐行回填时只把冒号右侧交给适配器，未删占位提示则跳过', () => {
-    const [proposal] = collectProposals(
+    const [proposal] = collectFieldValueProposals(
       base({ candidateTexts: ['是否学生（不要学生及暑假工）：社会人士'] }),
     );
     expect(proposal).toMatchObject({
@@ -261,7 +260,7 @@ describe('proposal intake（统一 formAnswers 运输）', () => {
       channel: 'form_line',
     });
     expect(
-      collectProposals(
+      collectFieldValueProposals(
         base({
           candidateTexts: ['有无本地健康证：（有本地有效健康证/无本地有效健康证，接受办理）'],
         }),
@@ -269,13 +268,13 @@ describe('proposal intake（统一 formAnswers 运输）', () => {
     ).toEqual([]);
   });
 
-  it('主模型漏作证时确定性扫描只补 empty 槽；同槽命中时 formAnswers 胜出', () => {
-    expect(collectProposals(base({ candidateTexts: ['我今年26岁'] }))).toEqual([
+  it('主模型漏作证时确定性扫描只补 empty 槽；同槽命中时 fieldValueProposals 胜出', () => {
+    expect(collectFieldValueProposals(base({ candidateTexts: ['我今年26岁'] }))).toEqual([
       expect.objectContaining({ labelId: 687, value: '26', channel: 'adapter_sweep' }),
     ]);
-    const proposals = collectProposals(
+    const proposals = collectFieldValueProposals(
       base({
-        formAnswers: [{ labelTitle: '年龄', value: '26', quote: '我今年26岁' }],
+        fieldValueProposals: [{ labelTitle: '年龄', value: '26', quote: '我今年26岁' }],
         candidateTexts: ['我今年26岁'],
       }),
     );
@@ -284,14 +283,18 @@ describe('proposal intake（统一 formAnswers 运输）', () => {
   });
 
   it('统一入口不豁免公证：quote 不在候选人原文时拒收', () => {
-    const [proposal] = collectProposals(
+    const [proposal] = collectFieldValueProposals(
       base({
-        formAnswers: [{ labelTitle: '年龄', value: '35', quote: '我35岁' }],
+        fieldValueProposals: [{ labelTitle: '年龄', value: '35', quote: '我35岁' }],
         candidateTexts: ['你好'],
-        messages: [{ role: 'user', content: '你好' }],
       }),
     );
-    const result = proposeValue(createForm({ jobId: 1, contract: CONTRACT }), AGE, proposal);
+    const result = applyFieldValueProposal(
+      createForm({ jobId: 1, contract: CONTRACT }),
+      AGE,
+      proposal,
+      { candidateTexts: ['你好'], messages: [{ role: 'user', content: '你好' }] },
+    );
     expect(result.outcome).toBe('rejected');
   });
 
@@ -301,9 +304,9 @@ describe('proposal intake（统一 formAnswers 运输）', () => {
       { role: 'assistant', content: question },
       { role: 'user', content: '对' },
     ];
-    const [proposal] = collectProposals(
+    const [proposal] = collectFieldValueProposals(
       base({
-        formAnswers: [
+        fieldValueProposals: [
           {
             labelTitle: '年龄',
             value: '25',
@@ -313,23 +316,32 @@ describe('proposal intake（统一 formAnswers 运输）', () => {
           },
         ],
         candidateTexts: ['对'],
-        messages,
       }),
     );
     expect(proposal.agentQuestionQuote).toBe(question);
-    const result = proposeValue(createForm({ jobId: 1, contract: CONTRACT }), AGE, proposal);
+    const result = applyFieldValueProposal(
+      createForm({ jobId: 1, contract: CONTRACT }),
+      AGE,
+      proposal,
+      { candidateTexts: ['对'], messages },
+    );
     expect(result.outcome).toBe('accepted');
   });
 
   it('FILE 字段用候选人消息中的真实附件 URL 作证', () => {
     const url = 'https://cdn.example.com/resume.pdf';
-    const [proposal] = collectProposals(
+    const [proposal] = collectFieldValueProposals(
       base({
-        formAnswers: [{ labelTitle: '简历附件', value: url }],
+        fieldValueProposals: [{ labelTitle: '简历附件', value: url }],
         candidateTexts: [`简历附件：${url}`],
       }),
     );
-    const result = proposeValue(createForm({ jobId: 1, contract: CONTRACT }), RESUME, proposal);
+    const result = applyFieldValueProposal(
+      createForm({ jobId: 1, contract: CONTRACT }),
+      RESUME,
+      proposal,
+      { candidateTexts: [`简历附件：${url}`], messages: [] },
+    );
     expect(result.outcome).toBe('accepted');
     expect(result.form.slots[900].value?.value).toBe(url);
   });
@@ -346,10 +358,10 @@ describe('proposal intake（统一 formAnswers 运输）', () => {
       ],
       rejectedOptions: [],
     };
-    const [proposal] = collectProposals({
+    const [proposal] = collectFieldValueProposals({
       ...base(),
       contract: [shifts],
-      formAnswers: [{ labelTitle: '意向班次', value: '早班、晚班', quote: '早晚班都可以' }],
+      fieldValueProposals: [{ labelTitle: '意向班次', value: '早班、晚班', quote: '早晚班都可以' }],
       candidateTexts: ['早晚班都可以'],
     });
     expect(proposal).toMatchObject({
@@ -358,7 +370,12 @@ describe('proposal intake（统一 formAnswers 运输）', () => {
       channel: 'form_answer',
     });
     expect(
-      proposeValue(createForm({ jobId: 1, contract: [shifts] }), shifts, proposal).outcome,
+      applyFieldValueProposal(
+        createForm({ jobId: 1, contract: [shifts] }),
+        shifts,
+        proposal,
+        { candidateTexts: ['早晚班都可以'], messages: [] },
+      ).outcome,
     ).toBe('accepted');
   });
 });

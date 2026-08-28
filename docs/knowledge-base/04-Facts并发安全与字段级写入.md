@@ -22,7 +22,7 @@ source: src/memory/short-term/facts.service.ts, src/memory/short-term/session-st
 
 同一轮内规则提取与 LLM 提取的结果要合并；跨轮的新值要过**置信度守卫**（`mergeFactsWithConfidenceGuard`）：低置信新值不能覆盖高置信旧值。两条路径共用同一套字段合并原语（数组去重合并、可空字符串合并等），避免两处遍历各写一套合并逻辑导致行为漂移。
 
-规则提取与 LLM 提取先统一成候选事实，再由 confidence rank 和共享裁决原语决定是否覆盖。姓名、地理和高置信来源的判定归 `src/resolution/evidence/`，memory 只执行已裁定的持久化合并。
+规则提取先形成仅本轮有效的 turn hints，LLM 回合末只补表单外软事实；memory 按字段信封与 confidence guard 执行持久化合并。姓名/手机号的形态与归属归 `resolution/candidate/`，citation 机械校验归 `resolution/notary/`，城市与品牌分别由各自领域策略裁决。报名字段不经 memory 合并确权，只能由 collection form machine 写槽。
 
 ## 学习要点
 

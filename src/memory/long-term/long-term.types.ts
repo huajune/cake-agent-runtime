@@ -1,8 +1,5 @@
 import { z } from 'zod';
-import {
-  CANDIDATE_FACT_PRODUCERS,
-  type CandidateFactProducer,
-} from '@resolution/evidence/claim.types';
+import { CANDIDATE_FACT_PRODUCERS, type CandidateFactProducer } from '@resolution/candidate/types';
 import {
   FACT_CONFIDENCE_LEVELS_DESC,
   FACT_CONFIDENCE_RANK,

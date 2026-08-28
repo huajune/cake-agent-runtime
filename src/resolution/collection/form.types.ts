@@ -11,7 +11,7 @@
  * 答不上来不许加。
  */
 
-import type { CandidateFactProducer } from '@resolution/evidence/claim.types';
+import type { CandidateFactProducer } from '@resolution/candidate/types';
 
 // ==================== 契约字段定义（收资域内部型） ====================
 
@@ -123,13 +123,6 @@ export type IdentitySlotKey = 'name' | 'phone' | 'age' | 'gender';
  */
 export type SlotState = 'empty' | 'filled' | 'disqualified';
 
-/**
- * 置信度：**代码按证据形态授予，不是模型自报**（宪法 P11）。
- * - `high`：候选人原话逐字支持，且经既有解析器复算等价；
- * - `medium`：原话支持但值经归一化/选项匹配得来，回查不到逐字等价。
- */
-export type SlotConfidence = 'high' | 'medium';
-
 export interface SlotValue {
   /** 归一化后的值（TEXT 型的展示值；选项型为选项标签）。 */
   value: string;
@@ -137,9 +130,8 @@ export interface SlotValue {
   optionCodes?: string[];
   /** 候选人原话逐字片段——公证回查锚点，臆造防线的地基。 */
   sourceText: string;
-  /** 全库唯一「谁说的」词表（`@resolution/evidence/claim.types`），署名如实，禁 system 冒名。 */
+  /** 全库唯一「谁产生的」词表（`@resolution/candidate/types`），署名如实，禁 system 冒名。 */
   producer: CandidateFactProducer;
-  confidence: SlotConfidence;
 }
 
 export interface FormSlot {
@@ -185,6 +177,19 @@ export interface RecapRecord {
   affirmed?: true;
 }
 
+/**
+ * 岗位级预约草稿。它与 `slots` 平级，不属于 Sponge collection contract，永不进入
+ * `FormSlot`、booking `labelList` 或候选人长期档案。
+ */
+export interface BookingScheduleDraft {
+  /** 候选人明确提出的日期；尚未唯一落到具体可约 slot 时仍保留。 */
+  requestedDate?: string;
+  /** 只能逐字取自最近一次 precheck 返回且 bookingAllowed=true 的 slot。 */
+  selectedInterviewTime?: string;
+  /** 候选人表达该选择的完整原话，由可信消息语料回查。 */
+  sourceText: string;
+}
+
 export interface BookingCollectionForm {
   /** 问询计数口径版本：v2 起只认真实送达的 assistant 问句。 */
   askTrackingVersion: 2;
@@ -201,6 +206,8 @@ export interface BookingCollectionForm {
   /** 转人工触发原因（同槽 2 问不中 / 疑似多人 / applyErrorList 失配）。不可推导，故落盘。 */
   escalatedReason?: string;
   lastRecap?: RecapRecord;
+  /** 与候选人资料槽位分离的岗位级预约草稿。 */
+  scheduleDraft?: BookingScheduleDraft;
   /** 配置债台账，报名成功卡片的「收资配置备注」段直读。 */
   configDebts?: ConfigDebt[];
 }

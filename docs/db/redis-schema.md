@@ -2,7 +2,7 @@
 
 > Cake Agent Runtime - Redis (Upstash) 缓存层设计文档
 
-**最后更新**：2026-08-26
+**最后更新**：2026-08-28
 
 **Redis 客户端**：`@upstash/redis`（REST）+ `ioredis`（Bull Queue TCP）
 
@@ -244,6 +244,12 @@ Supabase `agent_long_term_memories` 是权威源。无 bot 的旧缓存 key 不�
 | `collection-form-current:{corpId}:{userId}:{botUserId}:{jobId}`        | 当前办理人的 `candidateRef`       | 3 天 |
 
 collection form 是 tools 自持的业务单据，不属于 memory；它采用整实体覆盖写，不使用 deep merge。
+key 形状与 TTL 在候选人证据链收口中保持不变：手机号到达前 `candidateRef=session`，到达后
+由 `CollectionFormService` rebind 到 11 位手机号；稳定 `botUserId` 继续作为隔离维度。
+
+`BookingCollectionForm`、`FormSlot`、recap、errorList 和提交终态只存在于上述 key，绝不写入
+`factsv2:*`。表单逐格落定或 booking 成功时，应用桥接层只把对应候选人字段值信封回写
+session / long-term memory，不搬运表单实体或槽位状态。
 
 ---
 

@@ -14,11 +14,29 @@ import {
   filledSlotIds,
   markRecapSent,
   markSubmitted,
-  proposeValue,
+  applyFieldValueProposal as applyFieldValueProposalRaw,
   verdictOf,
   type BookingCollectionForm,
   type ContractFieldDef,
+  type FieldValueProposal,
 } from '@resolution/collection';
+
+type FieldValueProposalFixture = FieldValueProposal & {
+  candidateTexts?: readonly string[];
+  messages?: readonly unknown[];
+};
+
+function applyFieldValueProposal(
+  targetForm: BookingCollectionForm,
+  field: ContractFieldDef,
+  fixture: FieldValueProposalFixture,
+) {
+  const { candidateTexts = [fixture.sourceText], messages = [], ...valueProposal } = fixture;
+  return applyFieldValueProposalRaw(targetForm, field, valueProposal, {
+    candidateTexts,
+    messages,
+  });
+}
 
 const NAME: ContractFieldDef = {
   labelId: 769,
@@ -91,7 +109,7 @@ function fill(
   sourceText: string,
   extra: { optionCodes?: string[]; messages?: readonly unknown[] } = {},
 ): BookingCollectionForm {
-  const result = proposeValue(form, field, {
+  const result = applyFieldValueProposal(form, field, {
     value,
     sourceText,
     producer: 'candidate_quote',
@@ -129,7 +147,7 @@ describe('§10.1 · 0819 确认死循环实案回归', () => {
     expect(verdictOf(form)).toBe('ready');
 
     // 下一轮：证据窗已翻篇（跨轮原话不在当轮语料里）——旧体系正是在这里判"缺"。
-    const nextTurn = proposeValue(form, ADDRESS, {
+    const nextTurn = applyFieldValueProposal(form, ADDRESS, {
       value: '杨浦区国和路100弄',
       sourceText: BULK_TEXT,
       producer: 'model',
@@ -176,7 +194,7 @@ describe('§10.1 · 0819 确认死循环实案回归', () => {
     const ready = markRecapSent(afterBulkAnswer(), [769, 770, 756, 1, 13]);
     const corrected = applyRecapResult(ready, { corrections: [ADDRESS.labelId] });
     const newAddress = '住址是虹口区四平路200号';
-    const refilled = proposeValue(corrected, ADDRESS, {
+    const refilled = applyFieldValueProposal(corrected, ADDRESS, {
       value: '虹口区四平路200号',
       sourceText: newAddress,
       producer: 'candidate_quote',
@@ -200,7 +218,7 @@ describe('§10.1 · 0819 确认死循环实案回归', () => {
     it('值在 Agent 问句里、应答只有"确认"时照样入账——正是死循环的病根', () => {
       const form = createForm({ jobId: 528962, contract: CONTRACT });
       const question = '帮你核对一下：姓名 兮兮，手机号 18271421690，对吗？';
-      const result = proposeValue(form, NAME, {
+      const result = applyFieldValueProposal(form, NAME, {
         value: '兮兮',
         sourceText: '确认',
         producer: 'model',
@@ -214,7 +232,7 @@ describe('§10.1 · 0819 确认死循环实案回归', () => {
 
     it('出处门第一问不豁免：应答不是候选人原话即拒（防自问自答绕过公证）', () => {
       const form = createForm({ jobId: 528962, contract: CONTRACT });
-      const result = proposeValue(form, NAME, {
+      const result = applyFieldValueProposal(form, NAME, {
         value: '兮兮',
         sourceText: '确认',
         producer: 'model',
@@ -227,7 +245,7 @@ describe('§10.1 · 0819 确认死循环实案回归', () => {
 
     it('问句里没有该值 → 确认作证不成立（模型不能借确认塞值）', () => {
       const form = createForm({ jobId: 528962, contract: CONTRACT });
-      const result = proposeValue(form, PHONE, {
+      const result = applyFieldValueProposal(form, PHONE, {
         value: '18271421690',
         sourceText: '确认',
         producer: 'model',

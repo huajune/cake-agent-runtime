@@ -54,8 +54,9 @@ src/
 │   └── utils/          #   零依赖纯函数抽屉：date / string / object / fetch-timeout
 ├── providers/          # 多模型三层：registry(注册) → reliable(重试/降级) → router(角色路由)
 ├── llm/                # LLM 执行器（llm-executor：底层 generateText 封装、重试）
-├── resolution/candidate/ # 候选人字段解析唯一居所：姓名/电话/年龄/性别/学历/健康证/身份问答
-├── resolution/evidence/  # 候选人档案裁决底盘：claim/策略/准入链/合并表/city+brand producer/物化视图
+├── resolution/candidate/ # 候选人字段解析、形态、值等价与身份归属；CandidateFactProducer 唯一居所
+├── resolution/notary/    # citation / 对话绑定 / Assistant 回声的共享机械公证原语；无状态所有权
+├── resolution/turn-hints/ # 本轮临时线索的准入、字段策略、reducer 与规则 producer；不依赖 collection
 ├── resolution/signal/    # 跨工序信号注册与解析：markers / self-report / dialogue / visual
 │                         #   写入者只登记信号；候选人自陈选择、对话问答、视觉 sheet 各归其位
 ├── resolution/labor-form/ # 用工形式三态意向、层级匹配与展示规整

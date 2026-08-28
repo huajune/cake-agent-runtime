@@ -9,7 +9,7 @@ import {
   brandStateChanged,
   initBrandState,
   shouldDropLateResolutions,
-} from '@resolution/evidence/brand-policy';
+} from '@resolution/brand/state-policy';
 import type { BrandResolution, SessionBrandState } from '@resolution/brand/brand-resolution.types';
 
 const catalog: BrandItem[] = [

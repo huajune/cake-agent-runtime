@@ -5,7 +5,7 @@ import {
   type SessionFactConfidence,
   type SessionFacts,
 } from '@memory/short-term/short-term.types';
-import type { CandidateFactProducer } from '@resolution/evidence/claim.types';
+import type { CandidateFactProducer } from '@resolution/candidate/types';
 
 export interface SessionFactsFixtureInput {
   interview_info?: Partial<EntityExtractionResult['interview_info']>;

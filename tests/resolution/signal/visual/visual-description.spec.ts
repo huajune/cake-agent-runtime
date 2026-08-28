@@ -5,8 +5,8 @@ import {
 import { isDigitsOnlyName } from '@resolution/candidate/name';
 import { isSelfReportedVisualMessage as isResumeImageMessage } from '@resolution/signal/visual';
 import { isVisualDescriptionText as isVisualDescriptionMessage } from '@/resolution/signal/markers';
-import { produceTurnHints } from '@resolution/evidence/producers/rule-track';
-import { projectTurnHints } from '@resolution/evidence/merge';
+import { produceTurnHints } from '@resolution/turn-hints/producers/rule-track';
+import { projectTurnHints } from '@resolution/turn-hints/reducer';
 
 function extractTurnHints(...args: Parameters<typeof produceTurnHints>) {
   return projectTurnHints(produceTurnHints(...args));

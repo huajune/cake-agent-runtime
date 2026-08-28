@@ -5,8 +5,8 @@ import type { SessionBrandState } from '@resolution/brand/brand-resolution.types
 import { type LaborFormIntentDecision } from '@resolution/labor-form';
 import type { CandidatePrefillField, CandidatePrefillHints } from '@resolution/candidate/types';
 import { readGenderProvenance } from '@resolution/candidate/gender';
-import { projectTurnHints } from '@resolution/evidence/merge';
-import type { TurnHints } from '@resolution/evidence/claim.types';
+import { projectTurnHints } from '@resolution/turn-hints/reducer';
+import type { TurnHints } from '@resolution/turn-hints/turn-hint.types';
 import { unwrapUserProfileFacts } from '@memory/long-term/long-term.types';
 import {
   type EntityExtractionResult,

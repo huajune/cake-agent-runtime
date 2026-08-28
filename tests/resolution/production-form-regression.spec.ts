@@ -12,8 +12,8 @@ import { parseHealthCertificateMatch } from '@resolution/candidate/health-cert';
 import { parseHeight, parseWeight } from '@resolution/candidate/height-weight';
 import { parseCandidateFieldsFromText } from '@resolution/candidate/collected-fields';
 import { matchIdentityStatement } from '@resolution/candidate/student-identity';
-import { produceTurnHints } from '@resolution/evidence/producers/rule-track';
-import { projectTurnHints } from '@resolution/evidence/merge';
+import { produceTurnHints } from '@resolution/turn-hints/producers/rule-track';
+import { projectTurnHints } from '@resolution/turn-hints/reducer';
 import type { BrandItem } from '@/sponge/sponge.types';
 import type { FinalizedVisualFactSheet } from '@resolution/signal/visual';
 import {

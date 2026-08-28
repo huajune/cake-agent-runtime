@@ -11,13 +11,13 @@ import {
   type WeworkSessionState,
   unwrapSessionFacts,
 } from '@memory/short-term/short-term.types';
-import type { TurnHintFieldPath, TurnHints } from '@resolution/evidence/claim.types';
+import type { TurnHintFieldPath, TurnHints } from '@resolution/turn-hints/turn-hint.types';
 import {
   hasMeaningfulValue,
   isSameFactValue,
   projectTurnHints,
   resolveTurnHints,
-} from '@resolution/evidence/merge';
+} from '@resolution/turn-hints/reducer';
 import { isValidLaborForm, type LaborFormIntentDecision } from '@resolution/labor-form';
 
 /** 本轮 turn-start 记忆召回结果（preparation 与 prompt 渲染函数的公共输入形状）。 */

@@ -6,7 +6,7 @@ import { MemoryLifecycleService, type MemoryLifecycleTurnContext } from './lifec
 import type { AgentMemoryContext } from './recall.types';
 import type { SummaryEntry } from './long-term/long-term.types';
 import type { InvitedGroupRecord } from './short-term/short-term.types';
-import type { TurnHints } from '@resolution/evidence/claim.types';
+import type { TurnHints } from '@resolution/turn-hints/turn-hint.types';
 import type { StageState } from './short-term/short-term.types';
 import { formatExtractionFactLines } from './fact-lines.formatter';
 

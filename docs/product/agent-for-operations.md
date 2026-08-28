@@ -202,21 +202,23 @@ onboard_followup   面试/入职跟进
 
 ### 6.5 `duliday_interview_precheck` — 面试前置校验
 
-- **做什么**：实时读取岗位标签契约，解释可约日期/时段并推进持久收资表单，**不真正提交**
+- **做什么**：实时读取岗位标签契约，同时展示/收集可约时段与报名资料并推进持久收资表单，**不真正提交**
 - **触发**：候选人问「今天可以吗/什么时候能面/要准备什么」，或对当前岗位补充/纠正报名资料
-- **唯一答案入参**：`formAnswers[]`；每项用契约 `labelTitle` 原文定位，`value` 放规范值，
+- **唯一字段值入参**：`fieldValueProposals[]`；每项用契约 `labelTitle` 原文定位，`value` 放规范值，
   `quote` 放候选人原话，另可表达 `correct/clear/confirm` 与确认问句。它只能填写岗位契约已有
-  槽位，不能增删字段，也不能改变 `requiredFields/displayOrder`
+  槽位，不能增删字段，也不能改变 `requiredFields`；面试时间只走独立 `requestedDate`
+- **外部预填核对**：只有 archive/system/manual 值需要 recap。所有明确确认表达均由模型提交同形态
+  `recapConfirmation`，notary 只绑定最新完整回复、真实相邻 recap 与当前表单快照
 - **输出清单**：字段全集与顺序只来自实时岗位契约；模板和 recap 标签逐字显示契约
   `labelTitle`，选项提示在冒号右侧。只有公证入槽的值才会从 missing 清单移除
-- **副作用**：更新候选人 × 岗位的收资表单快照；不调用报名接口
+- **副作用**：更新候选人 × 岗位的收资表单及其 `scheduleDraft` 快照；不调用报名接口
 - **重要约束**：必须先调它**才允许**调 `duliday_interview_booking`，避免直接拿默认值代填
 
 ### 6.6 `duliday_interview_booking` — 预约面试 ⚠️ 不可逆
 
 - **做什么**：真正调预约接口提交报名。**入参只有 jobId + interviewTime（可选）**——候选人资料（姓名/电话/健康证等）不由模型传入，全部由**已办结的收资表单**生成 labelList 提交（见 5.1）
-- **触发**：① 已通过 precheck（nextAction=ready_to_book）；② 该岗位收资表单已办结（资料齐 + 复述确认）——两个前提缺一不可，机制上杜绝模型编资料/填默认值
-- **时间规则**：有面试时段的岗位 interviewTime 必须逐字取自 precheck 返回的可约时段；「等通知」岗位不传时间
+- **触发**：① 已通过 precheck（nextAction=ready_to_book）；② 该岗位资料已授权（仅外部预填需要复述确认）；③ 非等通知岗位的精确时间与草稿一致且本轮仍可约——三个前提缺一不可
+- **时间规则**：有面试时段的岗位 interviewTime 必须等于表单 `scheduleDraft.selectedInterviewTime`，并逐字取自本轮 precheck 返回的可约时段；「等通知」岗位不传时间
 - **副作用**：**写库**（记录 workOrderId/bookedAt/jobId，落 `active_booking` 指针 + `ops_events` 的 `booking.succeeded`）；**通知**私聊监控飞书群；**失败时**自动暂停托管
 - **关键约束**：jobId 必须来自本会话真实召回过的岗位（无出处直接拦截）；提交被打回（errorList）时按字段精确重开表单对应格，不整单重收；**未返回 success 严禁说「已预约成功」**
 - 🚨 运营提示：提交后候选人要改期/取消，AI 可用 6.7/6.8 的改约、取消工具自助处理（仅限候选人主动要求）
@@ -322,9 +324,8 @@ Agent："好的～明天 10-12 点和 14-16 点都可以约。麻烦按下面把
   ~ 姓名：
   ~ 联系电话：
   ~ 是否有健康证："
-（候选人：10 点吧。张三 138xxxx，有健康证）→ 三个字段带原话证据入账，答过的不会再问
-Agent（复述确认）："跟你确认下哈：张三，138xxxx，有健康证，约明天 10 点麦当劳静安寺店面试，没问题吧？"
-（候选人：对的）
+（候选人：10 点吧。张三 138xxxx，有健康证）→ 三个字段带原话证据入账，时间写入岗位草稿并实时复验；无外部预填，不额外复述
+🔧 duliday_interview_precheck(麦当劳静安寺, fieldValueProposals, "tomorrow 10:00") → ready_to_book
 🔧 duliday_interview_booking(jobId, "2026-08-22 10:00:00") → 资料由表单生成 labelList 提交 → 预约成功
 🔧 invite_to_group(上海, 餐饮) → 群 <40 人直接拉入兼职群
 Agent："已经帮你约好啦！明天 10 点麦当劳静安寺店面试～顺便拉你进了上海兼职群，有合适岗位也会发群里"

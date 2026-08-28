@@ -1,5 +1,5 @@
 import type { BrandItem } from '@/sponge/sponge.types';
-import type { BrandAliasHint } from '@resolution/evidence/producers/rule-track';
+import type { BrandAliasHint } from '@resolution/turn-hints/producers/rule-track';
 import type { SessionFacts } from './short-term.types';
 import { isSessionFactValue } from './short-term.types';
 

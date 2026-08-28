@@ -4,7 +4,7 @@ import {
   applyRecapResult,
   createForm,
   markRecapSent,
-  proposeValue,
+  applyFieldValueProposal,
   type ContractFieldDef,
 } from '@resolution/collection';
 
@@ -85,7 +85,6 @@ describe('CollectionFormService', () => {
           value,
           sourceText: value,
           producer: 'candidate_quote',
-          confidence: 'high',
         },
       };
     }
@@ -154,16 +153,15 @@ describe('CollectionFormService', () => {
 
     it('契约新增槽位补入；已有槽位一格不动（含候选人原话）', async () => {
       const text = '姓名：兮兮';
-      const filled = proposeValue(
+      const filled = applyFieldValueProposal(
         createForm({ jobId: 528962, contract: [NAME_FIELD] }),
         NAME_FIELD,
         {
           value: '兮兮',
           sourceText: text,
           producer: 'candidate_quote',
-          candidateTexts: [text],
-          messages: [{ role: 'user', content: text }],
         },
+        { candidateTexts: [text], messages: [{ role: 'user', content: text }] },
       ).form;
       store.read.mockResolvedValue(filled);
 

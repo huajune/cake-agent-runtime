@@ -2,7 +2,7 @@
  * 自然语言 → optionCode 的**确定性直配**（蓝图 §1）。
  *
  * 职责边界（刻意窄）：只回答"候选人这句话里有没有逐字点名某个契约选项"。点不出、
- * 或点出多个 → 返回 null，交模型作证选 optionCode，产物仍要过 `proposeValue` 的公证。
+ * 或点出多个 → 返回 null，交模型作证选 optionCode，产物仍要过字段值提案公证。
  * 「含糊 → null」不是能力不足，是分工：开放语言裁决属模型，确定性代码在裁决点无此权力
  * （宪法 P11）。
  *
@@ -30,7 +30,7 @@ const LABEL_SEPARATOR_RE = /[\\/、|]/gu;
 
 export interface OptionMatch {
   option: ContractOption;
-  /** 命中该选项的候选人原话子句——直接作为 `proposeValue` 的 sourceText。 */
+  /** 命中该选项的候选人原话子句——直接作为字段值提案的 sourceText。 */
   sourceText: string;
 }
 
