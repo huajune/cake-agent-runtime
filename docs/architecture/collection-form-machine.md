@@ -83,6 +83,16 @@ outcome=`restated` 落审计；askCount 不清零防刷熔断配额）。系统/
   lastRecap（拿不到"只渲染不落账"的出口）；文案排成表单块形态与分段器兼容。
 - "确认" → `applyRecapResult({affirmed})` 放行提交；"改 X" → corrections 只重开该格，
   新值当轮公证后直接提交，**同会话第二张全量确认清单在结构上不存在**。
+- **自填模板直通**（self-filled-template，0827 产品裁定）：候选人在**一条消息里**逐行
+  填满整表时，那条消息本身即提交前核对——`markSelfFilledConfirmed` 一次性落成已确认
+  的 lastRecap（`source:'self_filled'`），nextAction 直接 `ready_to_book`，复述轮不发。
+  核对人与作者重合、内容逐字就是他刚打的字，再发回去讨一次"对"是零信息增量。
+  判据确定性且收得极紧，任一不满足即退回正常复述：契约 ≥2 格（一行作答不算誊表）/
+  **同一条**消息覆盖全部契约字段（跨条拼的整表没有任何一屏被完整看过）/ 全部格本轮
+  落值 / 无棘轮挡下（值分歧只能靠复述暴露）/ 无档案预填格（那些值候选人这屏没见过）。
+  落账形状与正常复述一致，事后回「不对，电话错了」照走 corrections 精确重开——
+  直通不牺牲可纠错性。命中与未命中各落一条 `collection_form_audit`（`recap_self_filled`
+  / `recap_self_filled_missed` + 归因），直通率与拦截原因是这条捷径的唯一观测面。
 - 同槽 2 轮问不中 / 疑似多人（新姓名+新手机号对）/ errorList 失配 → escalated 转人工，
   熔断内建。
 

@@ -5,6 +5,7 @@ import {
   applyRecapResult,
   escalate,
   mapContractFields,
+  markSelfFilledConfirmed,
   parseIdentityAnchors,
   verdictOf,
   type BookingCollectionForm,
@@ -31,6 +32,7 @@ import {
   selectArchiveFacts,
 } from '@tools/collection/proposal-intake';
 import { FormAnswersInputSchema, type FormAnswerInput } from '@tools/collection/form-answer-input';
+import { detectSelfFilledTemplate } from '@tools/collection/self-filled-template';
 import { renderRecap } from '@tools/collection/recap-renderer';
 import { renderRejection } from '@tools/collection/rejection-renderer';
 import {
@@ -71,7 +73,7 @@ const logger = new Logger('duliday_interview_precheck');
  * 状态机的标准清单判定同口径：已预填值不算再次发问（见 collection-core）。
  */
 export const COLLECTION_TEMPLATE_SEND_INSTRUCTION =
-  '照发 bookingChecklist.templateText：标签逐字用原文，不得增删、重排字段行，不要另起一套收资清单；会话中候选人已给过的答案可直接预填在对应标签冒号后让其确认。候选人确认或补齐后，把预填项在内的全部答案经 formAnswers 提交。';
+  '照发 bookingChecklist.templateText：标签逐字用原文，不得增删、重排字段行，不要另起一套收资清单；会话中候选人已给过的答案可直接预填在对应标签冒号后让其确认。候选人发来答案的**当轮**立即把预填项在内的全部答案经 formAnswers 提交本工具——提交答案不等于提交预约，核对轮由本工具的 recap 承担；**禁止**在提交前自行复述资料向候选人讨确认。';
 
 // 程序记忆层（procedural memory）工具绑定规则；总目录：docs/prompt-rule-ledger.md
 export const PRECHECK_DESCRIPTION = `面试前置校验。实时读取岗位收资契约，推进候选人 × 岗位的持久表单，并返回可约时段。
@@ -84,7 +86,8 @@ export const PRECHECK_DESCRIPTION = `面试前置校验。实时读取岗位收�
 
 行动纪律：
 - collect_fields：只收 bookingChecklist.requiredFieldsToCollectNow。${COLLECTION_TEMPLATE_SEND_INSTRUCTION}
-- confirm_collection：照发 recap.candidateMessage；候选人确认或纠正后重新调用本工具。
+- confirm_collection：照发 recap.candidateMessage；候选人确认或纠正后重新调用本工具。核对轮只由本工具在此发起，你不得自行复述资料讨确认。
+- 候选人一条消息填满整表时本工具直接返回 ready_to_book（那条消息即核对），此时不要再补一轮确认。
 - screening_rejected：只使用 rejection.candidateMessage，不自行披露内部筛选原因。
 - handoff：停止收资并转人工。
 - ready_to_book：才允许调用 duliday_interview_booking；booking 成功前禁止声称已报名。
@@ -113,6 +116,8 @@ interface FormRun {
   result: CollectionCoreResult;
   recapText?: string;
   recapAffirmed: boolean;
+  /** 本轮走了自填模板直通（候选人一条消息填满整表，未发复述轮）。 */
+  selfFilledConfirmed?: boolean;
   verdict: Verdict;
   /** 误投 formAnswers 的期望面试日期，转运成功后作为本次 requestedDate（显式参数优先）。 */
   divertedRequestedDate?: string;
@@ -530,6 +535,27 @@ async function runForm(params: {
     ? await params.deps.collectionForms.rebindToPhone(scope, result.form, phoneValue)
     : result.form;
 
+  // ── 自填模板直通：候选人一条消息填满整表 → 那条消息即核对，不再发复述轮 ──
+  // 判据收得极紧（见 self-filled-template），未命中一律退回下面的正常复述。
+  let selfFilled = false;
+  if (verdictOf(persisted) === 'ready' && !persisted.lastRecap) {
+    const detection = detectSelfFilledTemplate({
+      form: persisted,
+      contract: mapped.fields,
+      candidateTexts,
+      answeredThisTurn: result.answeredThisTurn,
+      ratchetIgnoredLabelIds: result.ratchetIgnoredLabelIds,
+    });
+    if (detection.matched) {
+      persisted = markSelfFilledConfirmed(persisted, detection.labelIds);
+      selfFilled = true;
+    }
+    result.audits.push({
+      kind: detection.matched ? 'recap_self_filled' : 'recap_self_filled_missed',
+      detail: detection.reason,
+    });
+  }
+
   let recapText: string | undefined;
   if (verdictOf(persisted) === 'ready' && (!persisted.lastRecap || corrections.length > 0)) {
     const recap = renderRecap(persisted, mapped.fields);
@@ -544,7 +570,9 @@ async function runForm(params: {
     contract: mapped.fields,
     result: { ...result, form: persisted, verdict: verdictOf(persisted) },
     recapText,
-    recapAffirmed,
+    // 直通命中即等价于"已确认"：确认回执已随 markSelfFilledConfirmed 落账。
+    recapAffirmed: persisted.lastRecap?.affirmed === true || recapAffirmed,
+    selfFilledConfirmed: selfFilled,
     verdict: verdictOf(persisted),
     divertedRequestedDate: intake.divertedRequestedDate,
     unmatchedAnswers: intake.unmatched,
@@ -583,7 +611,9 @@ function replyInstruction(
     case 'handoff':
       return `表单已转人工：${run.form.escalatedReason ?? 'unknown'}。停止发问并调用 request_handoff。`;
     case 'ready_to_book':
-      return '候选人已确认提交前复述，可以调用 duliday_interview_booking。只有 booking success=true 后才能说已报名。';
+      return run.selfFilledConfirmed
+        ? '候选人已在一条消息里逐行填满整表，那条消息即提交前核对——**不要再复述资料讨确认**，直接调用 duliday_interview_booking。只有 booking success=true 后才能说已报名；报名回执里再顺带带上已提交的资料，供候选人事后发现有误时纠正。'
+        : '候选人已确认提交前复述，可以调用 duliday_interview_booking。只有 booking success=true 后才能说已报名。';
     case 'already_submitted':
       return `当前表单已提交（工单 ${run.form.workOrderId ?? 'unknown'}），禁止重复 booking。`;
     case 'confirm_date':

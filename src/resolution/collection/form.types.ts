@@ -183,6 +183,12 @@ export interface ConfigDebt {
 export interface RecapRecord {
   labelIds: number[];
   affirmed?: true;
+  /**
+   * 这份确认从哪来：`agent_recap`＝我们发过复述、候选人回了确认；
+   * `self_filled`＝候选人在一条消息里逐行填满整表，那条消息本身即核对（直通，不再复述）。
+   * 只作观测与排障归因，两者对提交闸门等价——都代表"候选人亲眼过目了这份资料"。
+   */
+  source?: 'agent_recap' | 'self_filled';
 }
 
 export interface BookingCollectionForm {

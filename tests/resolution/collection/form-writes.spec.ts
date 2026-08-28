@@ -365,7 +365,11 @@ describe('防线 2 · 复述落账：「不对，电话错了」精确重开一�
       NAME_FIELD.labelId,
     ]);
     const affirmed = applyRecapResult(filled, { affirmed: true });
-    expect(affirmed.lastRecap).toEqual({ labelIds: [NAME_FIELD.labelId], affirmed: true });
+    expect(affirmed.lastRecap).toEqual({
+      labelIds: [NAME_FIELD.labelId],
+      affirmed: true,
+      source: 'agent_recap',
+    });
     expect(verdictOf(affirmed)).toBe('ready');
   });
 

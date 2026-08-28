@@ -656,7 +656,27 @@ export function markRecapSent(
   form: BookingCollectionForm,
   labelIds: readonly number[],
 ): BookingCollectionForm {
-  return { ...form, lastRecap: { labelIds: [...labelIds] } };
+  return { ...form, lastRecap: { labelIds: [...labelIds], source: 'agent_recap' } };
+}
+
+/**
+ * 自填模板直通：候选人在一条消息里逐行填满整表，那条消息本身即提交前核对。
+ *
+ * 一次性落成**已确认**的复述快照——不发复述、不等下一轮确认。判据在
+ * `tools/collection/self-filled-template`（确定性、收得极紧），本函数只负责落账：
+ * 提交闸门要的从来不是"我们发过一条消息"，而是"候选人亲眼过目了这份资料"。
+ *
+ * 落账形状与正常复述一致（labelIds 齐全），因此候选人事后回「不对，电话错了」仍能走
+ * `applyRecapResult({corrections})` 精确重开那一格——直通不牺牲可纠错性。
+ */
+export function markSelfFilledConfirmed(
+  form: BookingCollectionForm,
+  labelIds: readonly number[],
+): BookingCollectionForm {
+  return {
+    ...form,
+    lastRecap: { labelIds: [...labelIds], affirmed: true, source: 'self_filled' },
+  };
 }
 
 /**

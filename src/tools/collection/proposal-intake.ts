@@ -187,24 +187,17 @@ export function collectProposals(input: IntakeInput): IntakeProposal[] {
 function fromFormLines(input: IntakeInput): IntakeProposal[] {
   const proposals: IntakeProposal[] = [];
   for (const text of input.candidateTexts) {
-    for (const rawLine of text.split(/\r?\n/u)) {
-      const matched = /^\s*([^：:\n]+?)\s*[：:]\s*(.+?)\s*$/u.exec(rawLine);
-      if (!matched) continue;
-      const [, label, value] = matched;
-      const field = findFieldByTitle(input.contract, label);
-      if (!field) continue;
-      if (isPlaceholderEcho(field, value)) continue;
-
+    for (const line of parseTemplateLines(text, input.contract)) {
       // 只把值交给适配器。选项型认不出也生成提案，统一由值词表门拒收并落审计，
       // 不再在运输层静默丢弃。
-      const adapted = adaptAnswerValue(field, value);
+      const adapted = adaptAnswerValue(line.field, line.value);
 
       proposals.push({
-        labelId: field.labelId,
-        value: adapted?.value ?? value,
+        labelId: line.field.labelId,
+        value: adapted?.value ?? line.value,
         optionCodes: adapted?.optionCodes,
         // sourceText 取**整行**：整行才是候选人原文里逐字存在的东西，公证回查按它对。
-        sourceText: rawLine.trim(),
+        sourceText: line.rawLine,
         producer: 'candidate_quote',
         candidateTexts: input.candidateTexts,
         messages: input.messages,
@@ -213,6 +206,38 @@ function fromFormLines(input: IntakeInput): IntakeProposal[] {
     }
   }
   return proposals;
+}
+
+/** 一条成功定位到契约槽位的模板回填行。 */
+export interface TemplateLine {
+  field: ContractFieldDef;
+  /** 冒号右侧的候选人原始作答（未经适配器规范化）。 */
+  value: string;
+  /** 整行原文（公证出处门按它逐字回查）。 */
+  rawLine: string;
+}
+
+/**
+ * 解析一条候选人消息里的模板回填行——`form_line` 通道与自填直通判据的**共用口径**。
+ *
+ * 两个消费者必须同源：判据说"这条消息逐行填满了整张表"，写入通道就必须真的按同样
+ * 的行解析把值搬进槽位。各自实现一份行正则，判据与实际写入迟早会漂移。
+ */
+export function parseTemplateLines(
+  text: string,
+  contract: readonly ContractFieldDef[],
+): TemplateLine[] {
+  const lines: TemplateLine[] = [];
+  for (const rawLine of text.split(/\r?\n/u)) {
+    const matched = /^\s*([^：:\n]+?)\s*[：:]\s*(.+?)\s*$/u.exec(rawLine);
+    if (!matched) continue;
+    const [, label, value] = matched;
+    const field = findFieldByTitle(contract, label);
+    if (!field) continue;
+    if (isPlaceholderEcho(field, value)) continue;
+    lines.push({ field, value, rawLine: rawLine.trim() });
+  }
+  return lines;
 }
 
 /**

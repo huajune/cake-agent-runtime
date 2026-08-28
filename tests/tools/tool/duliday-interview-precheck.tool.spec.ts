@@ -260,6 +260,67 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
     expect(currentForm?.lastRecap?.labelIds).toEqual([101, 102, 103, 104]);
   });
 
+  // 生产原型 chat 6a901168ce406a6aeeeee205：候选人照模板逐行填满整表，却被要求核对两遍。
+  it('自填模板直通：候选人一条消息填满整表 → 直接 ready_to_book，不发复述轮', async () => {
+    const filledTemplate = [
+      '姓名：兮兮',
+      '联系电话：18271421690',
+      '年龄：25',
+      '性别：女',
+    ].join('\n');
+    context.turnInput.messages = [{ role: 'user', content: filledTemplate }];
+
+    const result = await execute({
+      jobId: 100,
+      formAnswers: [
+        { labelTitle: '姓名', value: '兮兮', quote: '姓名：兮兮' },
+        { labelTitle: '联系电话', value: '18271421690', quote: '联系电话：18271421690' },
+        { labelTitle: '年龄', value: '25', quote: '年龄：25' },
+        { labelTitle: '性别', value: '女', quote: '性别：女' },
+      ],
+    });
+
+    expect(result.collectionVerdict).toBe('ready');
+    expect(result.nextAction).toBe('ready_to_book');
+    expect(result.recap).toBeUndefined();
+    // 提交闸门要的确认回执已落账（booking 入口闸查 lastRecap），来源标为自填。
+    expect(currentForm?.lastRecap).toEqual({
+      labelIds: [101, 102, 103, 104],
+      affirmed: true,
+      source: 'self_filled',
+    });
+    expect(context.ledger.jobs.collectionReadyJobId).toBe(100);
+  });
+
+  // 生产事故复刻：模型在资料到达那轮漏调 precheck、自产了一份野生复述讨确认，直到候选人
+  // 回「对」才首次提交 formAnswers。直通判据认的是**证据**（哪条消息里填满了表）而不是
+  // **时序**（哪一轮提交的），所以模型晚一轮也不再多讨一次确认。
+  it('模型迟一轮提交时，早前那条自填模板仍然构成核对 → 直接 ready_to_book', async () => {
+    context.turnInput.messages = [
+      { role: 'assistant', content: '你先把资料发我，我帮你约：\n姓名：\n联系电话：\n年龄：\n性别：' },
+      {
+        role: 'user',
+        content: ['姓名：兮兮', '联系电话：18271421690', '年龄：25', '性别：女'].join('\n'),
+      },
+      { role: 'assistant', content: '收到你的资料啦，我先核对一下' },
+      { role: 'user', content: '对' },
+    ];
+
+    const result = await execute({
+      jobId: 100,
+      formAnswers: [
+        { labelTitle: '姓名', value: '兮兮', quote: '姓名：兮兮' },
+        { labelTitle: '联系电话', value: '18271421690', quote: '联系电话：18271421690' },
+        { labelTitle: '年龄', value: '25', quote: '年龄：25' },
+        { labelTitle: '性别', value: '女', quote: '性别：女' },
+      ],
+    });
+
+    expect(result.nextAction).toBe('ready_to_book');
+    expect(result.recap).toBeUndefined();
+    expect(currentForm?.lastRecap?.source).toBe('self_filled');
+  });
+
   it('ask_limit_exhausted 后候选人补齐对应字段，解除 handoff 并恢复复述确认', async () => {
     sponge.fetchJobCollectionContract.mockResolvedValue({
       jobId: 100,

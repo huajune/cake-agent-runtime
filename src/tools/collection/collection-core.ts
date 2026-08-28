@@ -19,6 +19,7 @@ import {
   isSensitiveAttribute,
   MAX_ASKS_PER_SLOT,
   orderForAsking,
+  PROPOSAL_IGNORE_REASONS,
   recordRejectedAttempts,
   recordUnansweredAsks,
   seedArchiveValue,
@@ -66,7 +67,10 @@ export interface CollectionAuditEvent {
     | 'slot_restated'
     | 'config_debt'
     | 'escalated'
-    | 'escalation_yielded';
+    | 'escalation_yielded'
+    // 自填模板直通的命中/未命中各记一行——直通率与拦截原因是这条捷径的唯一观测面。
+    | 'recap_self_filled'
+    | 'recap_self_filled_missed';
   labelId?: number;
   reason?: string;
   detail?: string;
@@ -100,6 +104,11 @@ export interface CollectionCoreResult {
   audits: CollectionAuditEvent[];
   /** 本轮刚落值的字段——拒绝话术的因果隔离判据。 */
   answeredThisTurn: ContractFieldDef[];
+  /**
+   * 本轮被棘轮挡下（已 filled、非显式改口）的槽位。
+   * 不落审计（正常态，模板重复回填就会命中），但自填直通判据要据此退回复述。
+   */
+  ratchetIgnoredLabelIds: number[];
 }
 
 /**
@@ -112,6 +121,7 @@ export function runCollectionCore(input: CollectionCoreInput): CollectionCoreRes
   const { contract } = input;
   const audits: CollectionAuditEvent[] = [];
   const answeredThisTurn: ContractFieldDef[] = [];
+  const ratchetIgnoredLabelIds: number[] = [];
   let form = input.form;
 
   const filledLabelIds = new Set(
@@ -185,6 +195,9 @@ export function runCollectionCore(input: CollectionCoreInput): CollectionCoreRes
         }
         break;
       case 'ignored':
+        if (result.reason === PROPOSAL_IGNORE_REASONS.slotAlreadyFilled) {
+          ratchetIgnoredLabelIds.push(field.labelId);
+        }
         break;
     }
   }
@@ -298,6 +311,7 @@ export function runCollectionCore(input: CollectionCoreInput): CollectionCoreRes
     askableFields,
     audits,
     answeredThisTurn,
+    ratchetIgnoredLabelIds,
   };
 }
 
