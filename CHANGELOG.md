@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [11.0.7] - 2026-08-28
 
-**预计版本**: `v11.0.7`
-**最近更新**: `2026-08-28`
 **来源分支**: `develop`
-**累计 PR**: 2
 
 ### 更新摘要
 - PR #1104 自填模板直通，消灭重复确认轮
@@ -63,7 +59,6 @@
 - PR #1107 `pnpm exec jest tests/scripts/generate-release-ledger.spec.ts tests/scripts/check-release-ledger.spec.ts --runInBand`：2 suites / 14 tests 通过
 - PR #1107 `pnpm run ci:check`：442 suites / 6387 tests 通过（1 suite / 5 tests skipped）
 - PR #1107 Prettier、Workflow YAML 解析、`git diff --check` 通过
-<!-- release:pending:end -->
 
 ## [11.0.6] - 2026-08-27
 
