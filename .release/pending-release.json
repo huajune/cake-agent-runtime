@@ -1,123 +1,99 @@
 {
-  "baseVersion": "11.0.6",
+  "baseVersion": "11.0.7",
   "nextVersion": "11.0.7",
   "updatedAt": "2026-08-28",
   "sourceBranch": "develop",
-  "entries": [
-    {
-      "number": "1104",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1104",
-      "title": "收口候选人证据链与报名授权",
-      "author": "huajune",
-      "mergedAt": "2026-08-28",
-      "businessUpdates": [
-        "收资与面试时间并行：新增 `scheduleDraft` / `select_interview_time`，precheck 与 booking 共用唯一提交授权闸门。",
-        "修复候选人完整填写或多轮明确回答后仍重复确认的问题。",
-        "修复面试时间与资料串行收集、岗位切换继承旧时间、失效时段未及时重选等状态机问题。",
-        "修复纯短答与带礼貌尾巴确认表达走不同生产入口的问题。"
-      ],
-      "summary": [
-        "自填模板直通，消灭重复确认轮",
-        "公证拒收对模型可见 + 出生年推算不再被当臆造",
-        "收口候选人证据链与报名授权",
-        "收口候选人字段提案、出处公证与表单授权边界，删除旧 evidence 裁决层和 collection 槽位置信度。",
-        "所有明确确认表达统一提交 `recapConfirmation`，由 recap notary 绑定当前回复、真实 recap 与表单快照；纯短答和开放确认不再分流。",
-        "收资与面试时间并行：新增 `scheduleDraft` / `select_interview_time`，precheck 与 booking 共用唯一提交授权闸门。",
-        "候选人明确报齐资料可直接授权；仅存在外部预填时要求 recap，纠正优先于确认。"
-      ],
-      "features": [
-        "收资与面试时间并行：新增 `scheduleDraft` / `select_interview_time`，precheck 与 booking 共用唯一提交授权闸门。"
-      ],
-      "fixes": [
-        "修复候选人完整填写或多轮明确回答后仍重复确认的问题。",
-        "修复面试时间与资料串行收集、岗位切换继承旧时间、失效时段未及时重选等状态机问题。",
-        "修复纯短答与带礼貌尾巴确认表达走不同生产入口的问题。"
-      ],
-      "optimizations": [
-        "将 `resolution/evidence` 拆分为 candidate、notary、turn-hints 等职责清晰的模块。",
-        "删除 self-filled 特判、伪 recap、旧 confidence / candidateConfirmed / requiresCandidateReview 等过期机制。",
-        "同步架构、产品、原则、规则台账及实施对账文档。",
-        "收口候选人字段提案、出处公证与表单授权边界，删除旧 evidence 裁决层和 collection 槽位置信度。",
-        "所有明确确认表达统一提交 `recapConfirmation`，由 recap notary 绑定当前回复、真实 recap 与表单快照；纯短答和开放确认不再分流。",
-        "候选人明确报齐资料可直接授权；仅存在外部预填时要求 recap，纠正优先于确认。"
-      ],
-      "ops": [
-        "自填模板直通，消灭重复确认轮",
-        "公证拒收对模型可见 + 出生年推算不再被当臆造",
-        "收口候选人证据链与报名授权"
-      ],
-      "config": [
-        "删除已退役的 `CANDIDATE_FACT_ADJUDICATION_MODE` 示例项；无新增环境变量、数据库 migration、RPC 或权限变化。"
-      ],
-      "envFiles": [
-        ".env.example"
-      ],
-      "verification": [
-        "`pnpm run ci:check`：442 suites、6387 tests、3 snapshots 通过；1 suite / 5 tests 为仓库既有 skip。",
-        "lint、format、typecheck、geo/vocab 校验、前后端构建全部通过。",
-        "定向回归：24 suites、379 tests、3 snapshots 通过。",
-        "`git diff --check` 与旧符号扫描通过。",
-        "真实 Agent / Dashboard 回归：发布负责人于 2026-08-28 明确要求跳过，本次不记为已通过。"
-      ],
-      "level": "patch"
-    },
-    {
-      "number": "1107",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1107",
-      "title": "移除发版底账硬门禁",
-      "author": "huajune",
-      "mergedAt": "2026-08-28",
-      "businessUpdates": [
-        "移除发版底账硬门禁"
-      ],
-      "summary": [
-        "移除发版底账硬门禁"
-      ],
-      "features": [],
-      "fixes": [],
-      "optimizations": [],
-      "ops": [
-        "移除发版底账硬门禁"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "`pnpm exec jest tests/scripts/generate-release-ledger.spec.ts tests/scripts/check-release-ledger.spec.ts --runInBand`：2 suites / 14 tests 通过",
-        "`pnpm run ci:check`：442 suites / 6387 tests 通过（1 suite / 5 tests skipped）",
-        "Prettier、Workflow YAML 解析、`git diff --check` 通过"
-      ],
-      "level": "patch"
-    }
-  ],
+  "entries": [],
   "lastRelease": {
-    "version": "11.0.6",
-    "date": "2026-08-27",
+    "version": "11.0.7",
+    "date": "2026-08-28",
     "sourceBranch": "develop",
     "entries": [
       {
-        "number": "1100",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/1100",
-        "title": "InterviewBookingLabelValueSchema 用例对齐 options 线格式",
+        "number": "1104",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1104",
+        "title": "收口候选人证据链与报名授权",
         "author": "huajune",
-        "mergedAt": "2026-08-27",
+        "mergedAt": "2026-08-28",
         "businessUpdates": [
-          "InterviewBookingLabelValueSchema 用例对齐 options 线格式"
+          "收资与面试时间并行：新增 `scheduleDraft` / `select_interview_time`，precheck 与 booking 共用唯一提交授权闸门。",
+          "修复候选人完整填写或多轮明确回答后仍重复确认的问题。",
+          "修复面试时间与资料串行收集、岗位切换继承旧时间、失效时段未及时重选等状态机问题。",
+          "修复纯短答与带礼貌尾巴确认表达走不同生产入口的问题。"
         ],
         "summary": [
-          "InterviewBookingLabelValueSchema 用例对齐 options 线格式"
+          "自填模板直通，消灭重复确认轮",
+          "公证拒收对模型可见 + 出生年推算不再被当臆造",
+          "收口候选人证据链与报名授权",
+          "收口候选人字段提案、出处公证与表单授权边界，删除旧 evidence 裁决层和 collection 槽位置信度。",
+          "所有明确确认表达统一提交 `recapConfirmation`，由 recap notary 绑定当前回复、真实 recap 与表单快照；纯短答和开放确认不再分流。",
+          "收资与面试时间并行：新增 `scheduleDraft` / `select_interview_time`，precheck 与 booking 共用唯一提交授权闸门。",
+          "候选人明确报齐资料可直接授权；仅存在外部预填时要求 recap，纠正优先于确认。"
+        ],
+        "features": [
+          "收资与面试时间并行：新增 `scheduleDraft` / `select_interview_time`，precheck 与 booking 共用唯一提交授权闸门。"
+        ],
+        "fixes": [
+          "修复候选人完整填写或多轮明确回答后仍重复确认的问题。",
+          "修复面试时间与资料串行收集、岗位切换继承旧时间、失效时段未及时重选等状态机问题。",
+          "修复纯短答与带礼貌尾巴确认表达走不同生产入口的问题。"
+        ],
+        "optimizations": [
+          "将 `resolution/evidence` 拆分为 candidate、notary、turn-hints 等职责清晰的模块。",
+          "删除 self-filled 特判、伪 recap、旧 confidence / candidateConfirmed / requiresCandidateReview 等过期机制。",
+          "同步架构、产品、原则、规则台账及实施对账文档。",
+          "收口候选人字段提案、出处公证与表单授权边界，删除旧 evidence 裁决层和 collection 槽位置信度。",
+          "所有明确确认表达统一提交 `recapConfirmation`，由 recap notary 绑定当前回复、真实 recap 与表单快照；纯短答和开放确认不再分流。",
+          "候选人明确报齐资料可直接授权；仅存在外部预填时要求 recap，纠正优先于确认。"
+        ],
+        "ops": [
+          "自填模板直通，消灭重复确认轮",
+          "公证拒收对模型可见 + 出生年推算不再被当臆造",
+          "收口候选人证据链与报名授权"
+        ],
+        "config": [
+          "删除已退役的 `CANDIDATE_FACT_ADJUDICATION_MODE` 示例项；无新增环境变量、数据库 migration、RPC 或权限变化。"
+        ],
+        "envFiles": [
+          ".env.example"
+        ],
+        "verification": [
+          "`pnpm run ci:check`：442 suites、6387 tests、3 snapshots 通过；1 suite / 5 tests 为仓库既有 skip。",
+          "lint、format、typecheck、geo/vocab 校验、前后端构建全部通过。",
+          "定向回归：24 suites、379 tests、3 snapshots 通过。",
+          "`git diff --check` 与旧符号扫描通过。",
+          "真实 Agent / Dashboard 回归：发布负责人于 2026-08-28 明确要求跳过，本次不记为已通过。"
+        ],
+        "level": "patch"
+      },
+      {
+        "number": "1107",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1107",
+        "title": "移除发版底账硬门禁",
+        "author": "huajune",
+        "mergedAt": "2026-08-28",
+        "businessUpdates": [
+          "移除发版底账硬门禁"
+        ],
+        "summary": [
+          "移除发版底账硬门禁"
         ],
         "features": [],
         "fixes": [],
         "optimizations": [],
         "ops": [
-          "InterviewBookingLabelValueSchema 用例对齐 options 线格式"
+          "移除发版底账硬门禁"
         ],
         "config": [],
         "envFiles": [],
-        "verification": [],
+        "verification": [
+          "`pnpm exec jest tests/scripts/generate-release-ledger.spec.ts tests/scripts/check-release-ledger.spec.ts --runInBand`：2 suites / 14 tests 通过",
+          "`pnpm run ci:check`：442 suites / 6387 tests 通过（1 suite / 5 tests skipped）",
+          "Prettier、Workflow YAML 解析、`git diff --check` 通过"
+        ],
         "level": "patch"
       }
     ]
   },
-  "lastAnalyzedSha": "f669b08a07dd4f04aa4737852bd8c7c0f83e994d"
+  "lastAnalyzedSha": "e8d2f532275640a4b49d946e3aedf0e5b0af3d78"
 }
