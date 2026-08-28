@@ -14,7 +14,7 @@
 **预计版本**: `v11.0.7`
 **最近更新**: `2026-08-28`
 **来源分支**: `develop`
-**累计 PR**: 1
+**累计 PR**: 2
 
 ### 更新摘要
 - PR #1104 自填模板直通，消灭重复确认轮
@@ -24,6 +24,7 @@
 - PR #1104 所有明确确认表达统一提交 `recapConfirmation`，由 recap notary 绑定当前回复、真实 recap 与表单快照；纯短答和开放确认不再分流。
 - PR #1104 收资与面试时间并行：新增 `scheduleDraft` / `select_interview_time`，precheck 与 booking 共用唯一提交授权闸门。
 - PR #1104 候选人明确报齐资料可直接授权；仅存在外部预填时要求 recap，纠正优先于确认。
+- PR #1107 移除发版底账硬门禁
 
 ### 新功能
 - PR #1104 收资与面试时间并行：新增 `scheduleDraft` / `select_interview_time`，precheck 与 booking 共用唯一提交授权闸门。
@@ -45,6 +46,7 @@
 - PR #1104 自填模板直通，消灭重复确认轮
 - PR #1104 公证拒收对模型可见 + 出生年推算不再被当臆造
 - PR #1104 收口候选人证据链与报名授权
+- PR #1107 移除发版底账硬门禁
 
 ### 配置变更
 - PR #1104 删除已退役的 `CANDIDATE_FACT_ADJUDICATION_MODE` 示例项；无新增环境变量、数据库 migration、RPC 或权限变化。
@@ -58,6 +60,9 @@
 - PR #1104 定向回归：24 suites、379 tests、3 snapshots 通过。
 - PR #1104 `git diff --check` 与旧符号扫描通过。
 - PR #1104 真实 Agent / Dashboard 回归：发布负责人于 2026-08-28 明确要求跳过，本次不记为已通过。
+- PR #1107 `pnpm exec jest tests/scripts/generate-release-ledger.spec.ts tests/scripts/check-release-ledger.spec.ts --runInBand`：2 suites / 14 tests 通过
+- PR #1107 `pnpm run ci:check`：442 suites / 6387 tests 通过（1 suite / 5 tests skipped）
+- PR #1107 Prettier、Workflow YAML 解析、`git diff --check` 通过
 <!-- release:pending:end -->
 
 ## [11.0.6] - 2026-08-27
