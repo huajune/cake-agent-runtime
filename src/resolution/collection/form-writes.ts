@@ -11,7 +11,7 @@
  * 碰巧没失灵"，是"在结构上不可能"。
  *
  * ── 与蓝图 §3 四函数清单的偏离（三处，均为落地必需，非扩权） ─────────────────
- * 1. `proposeValue` 返回**信封**而非裸表单：蓝图 §4 要求"拒收/disqualify 各落一条
+ * 1. `applyFieldValueProposal` 返回**信封**而非裸表单：蓝图 §4 要求"拒收/disqualify 各落一条
  *    审计事件"，只返回表单则调用方无法区分"拒收了"与"什么都没发生"，审计写不出来；
  * 2. 新增 `recordUnansweredAsks` / `markRecapSent` / `recordConfigDebt` / `escalate` 四个写函数：
  *    `askCount` / `lastRecap` / `configDebts` / `escalatedReason` 是 §2 实体声明的字段，
@@ -25,22 +25,25 @@ import { normalizeGenderValue } from '@resolution/candidate/gender';
 import {
   evaluateBookingNameGate,
   evaluateBookingPhoneGate,
-  isAgentQuestionConfirmedInDialogue,
-} from '@resolution/evidence/identity-gates';
+} from '@resolution/candidate/identity-attribution';
+import { candidateValuesEquivalent } from '@resolution/candidate/value-equivalence';
 import {
-  candidateValuesEquivalent,
   deriveFieldValueFromQuote,
   isValidCandidateFieldShape,
-  normalizedIncludes,
-} from '@resolution/evidence/normalize';
-import type { CandidateClaimField, CandidateFactProducer } from '@resolution/evidence/claim.types';
+} from '@resolution/candidate/value-shape';
+import type { CandidateFactField, CandidateFactProducer } from '@resolution/candidate/types';
+import { verifyCitation } from '@resolution/notary/citation-verifier';
+import { isAssistantQuestionConfirmedInDialogue } from '@resolution/notary/dialogue-confirmation';
+import { normalizedIncludes } from '@resolution/notary/text-normalization';
+import { adapterFor, genericAdapter } from './adapters/adapter.registry';
+import type { SlotProposal } from './adapters/adapter.types';
 import {
   resolveValueRange,
   type BookingCollectionForm,
+  type BookingScheduleDraft,
   type ContractFieldDef,
   type FormSlot,
   type IdentitySlotKey,
-  type SlotConfidence,
   type SlotValue,
   verdictOf,
 } from './form.types';
@@ -76,7 +79,7 @@ export type EscalationReason = (typeof ESCALATION_REASONS)[keyof typeof ESCALATI
 
 // ==================== 提案与结论 ====================
 
-export interface ValueProposal {
+export interface FieldValueProposal {
   /** 归一化后的值。 */
   value: string;
   /** 选项型字段命中的 optionCode；TEXT/FILE 型不带。 */
@@ -88,13 +91,6 @@ export interface ValueProposal {
    * （词表口径「自陈 quote 复算」），模型作证的选项署 `model`。禁 `system` 冒名。
    */
   producer: CandidateFactProducer;
-  /** 候选人可作证语料（已剥引用块与时间后缀）——公证第一问的基准。 */
-  candidateTexts: readonly string[];
-  /**
-   * 完整消息序列，身份槽位的归属门（真名闸/手机号出处闸）取证用。
-   * 身份槽位缺此项即拒收（fail-closed）：闸门看不见语料时"放行"等于没有闸门。
-   */
-  messages?: readonly unknown[];
   /**
    * 绑定的 Agent 问句原文（R1 作证通道，§10.1「确认可作证」）。
    *
@@ -110,7 +106,7 @@ export interface ValueProposal {
   /**
    * 本提案是候选人**显式改口**（§3 0819 裁定的第三条重开路径）。
    *
-   * ⚠️ 只能由**作证者显式声明**（主聊模型 claim 的 `operation='correct'`），
+   * ⚠️ 只能由**作证者显式声明**（主聊模型字段提案的 `operation='correct'`），
    * 代码不得自行推断——"这句话像不像在改口"是开放语言裁决，属模型
    * （§11 词表禁判语义）。含糊提及不算改口：履历/排除语境不覆盖既有值的既有判例继续适用。
    *
@@ -120,7 +116,18 @@ export interface ValueProposal {
   restatement?: boolean;
 }
 
-export type ProposalOutcome =
+/**
+ * 由 runtime 从真实 session 构造的公证运行环境。它不是模型提案的一部分，模型无权
+ * 构造或修改这两份可信语料。
+ */
+export interface FieldValueNotaryContext {
+  /** 候选人可作证语料（已剥引用块与时间后缀）。 */
+  candidateTexts: readonly string[];
+  /** 完整消息序列，确认问答绑定与身份归属门取证用。 */
+  messages: readonly unknown[];
+}
+
+export type FieldValueOutcome =
   /** 值已入账（槽位 filled）。 */
   | 'accepted'
   /**
@@ -145,9 +152,10 @@ export const PROPOSAL_REJECTION_REASONS = {
   confirmationEvidenceRejected: 'confirmation_evidence_rejected',
   missingAttributionCorpus: 'missing_attribution_corpus',
   identityGateRejected: 'identity_gate_rejected',
+  deterministicConflict: 'deterministic_conflict',
 } as const;
 
-export type ProposalRejectionReason =
+export type FieldValueRejectionReason =
   (typeof PROPOSAL_REJECTION_REASONS)[keyof typeof PROPOSAL_REJECTION_REASONS];
 
 /**
@@ -171,38 +179,38 @@ export const PROPOSAL_IGNORE_REASONS = {
 export type ProposalIgnoreReason =
   (typeof PROPOSAL_IGNORE_REASONS)[keyof typeof PROPOSAL_IGNORE_REASONS];
 
-export interface ProposeResult {
+export interface FieldValueProposalResult {
   form: BookingCollectionForm;
-  outcome: ProposalOutcome;
-  reason?: ProposalRejectionReason | ProposalIgnoreReason;
+  outcome: FieldValueOutcome;
+  reason?: FieldValueRejectionReason | ProposalIgnoreReason;
   /** 排障用人类可读说明。不进 PII 观测事件——调用方落审计前自行裁剪。 */
   detail?: string;
 }
 
-// ==================== 写路径 1：值写入（公证内联五步） ====================
+// ==================== 写路径 1：值写入（filled 棘轮 + 公证五门） ====================
 
 /**
  * 值写入。公证一次、同轮完成（构造性质①）——证据就在手边的当前消息里，
  * 跨轮引文搬运装置整体不需要存在。
  *
- * 五步串行，任一步不过即短路：
+ * filled 棘轮先行；随后五门串行，任一步不过即短路：
  * ① **出处门**：sourceText 必须在候选人可作证语料里逐字命中（反臆造主力——模型编不出
  *    一段真实存在过的原话）；身份槽位追加"值本体须落在 sourceText 内"；
  * ② **形态门**：值形状封闭校验（手机号 11 位且非占位号、年龄 14-70、姓名非纯数字……）；
  *    选项型字段的 optionCode 必须是契约选项集的成员；
- * ③ **归属门**：身份槽位挂真名闸（打招呼语昵称/引用前缀经理名）与手机号出处闸；
- * ④ **置信授予**：按证据形态查表，不采信模型自报（宪法 P11）；
+ * ③ **已知冲突门**：确定性 parser/adapter 明确得出另一个契约值时拒绝；未覆盖不拒绝；
+ * ④ **归属门**：身份槽位挂真名闸（打招呼语昵称/引用前缀经理名）与手机号出处闸；
  * ⑤ **先筛后收**：命中 rejectedOptions、或年龄越出契约 min/max 硬区间 → 该槽
  *    disqualified，本岗不再收资。
  *
- * ⚠️ ②不复算值否决（宪法 P11：公证器是代价路由器，不是真值裁判）。"解析器能不能从
- * 原话复算出这个值"只用来**授予置信度**（第④步），不构成否决理由。
+ * 确定性 parser/adapter 只在能得出明确不同值时否决；未覆盖的正常表达不构成拒收理由。
  */
-export function proposeValue(
+export function applyFieldValueProposal(
   form: BookingCollectionForm,
   field: ContractFieldDef,
-  proposal: ValueProposal,
-): ProposeResult {
+  proposal: FieldValueProposal,
+  notaryContext: FieldValueNotaryContext,
+): FieldValueProposalResult {
   const slot = form.slots[field.labelId];
   if (!slot) {
     return {
@@ -239,7 +247,7 @@ export function proposeValue(
   if (!sourceText) {
     return reject(form, PROPOSAL_REJECTION_REASONS.sourceTextNotFound, '证据文本为空');
   }
-  if (!proposal.candidateTexts.some((text) => normalizedIncludes(text, sourceText))) {
+  if (!verifyCitation({ quote: sourceText }, notaryContext.candidateTexts).verified) {
     return reject(
       form,
       PROPOSAL_REJECTION_REASONS.sourceTextNotFound,
@@ -251,8 +259,11 @@ export function proposeValue(
   const agentQuestionQuote = proposal.agentQuestionQuote?.trim();
   if (agentQuestionQuote) {
     if (
-      !proposal.messages ||
-      !isAgentQuestionConfirmedInDialogue(agentQuestionQuote, sourceText, proposal.messages)
+      !isAssistantQuestionConfirmedInDialogue(
+        agentQuestionQuote,
+        sourceText,
+        notaryContext.messages,
+      )
     ) {
       return reject(
         form,
@@ -281,41 +292,52 @@ export function proposeValue(
     return reject(form, contractValueRejection.reason, contractValueRejection.detail);
   }
 
-  const claimField = identityKey ? IDENTITY_TO_CLAIM_FIELD[identityKey] : null;
-  if (claimField && !isValidCandidateFieldShape(claimField, proposal.value)) {
+  const factField = identityKey ? IDENTITY_TO_FACT_FIELD[identityKey] : null;
+  if (factField && !isValidCandidateFieldShape(factField, proposal.value)) {
     return reject(
       form,
       PROPOSAL_REJECTION_REASONS.invalidValueShape,
       `值形状非法: ${proposal.value}`,
     );
   }
+
+  // 确定性 parser/adapter 只做**已知冲突否决器**：能从原话明确得出另一个值才拒；
+  // 没覆盖该表达时返回 null，不降级、不触发 recap，也不建立第二套开放语义判官。
+  const deterministicConflict = findDeterministicConflict(
+    field,
+    proposal,
+    valueBearingText,
+    factField,
+  );
+  if (deterministicConflict) {
+    return reject(form, PROPOSAL_REJECTION_REASONS.deterministicConflict, deterministicConflict);
+  }
+
   // ── ③ 归属门（身份槽位专属） ──
   if (identityKey === 'name' || identityKey === 'phone') {
-    if (!proposal.messages) {
+    if (notaryContext.messages.length === 0) {
       return reject(
         form,
         PROPOSAL_REJECTION_REASONS.missingAttributionCorpus,
-        `身份槽位 ${identityKey} 缺归属取证语料，闸门无法判定`,
+        `身份槽位 ${identityKey} 缺少对话归属取证语料`,
       );
     }
     if (!agentQuestionQuote) {
       const gate =
         identityKey === 'name'
-          ? evaluateBookingNameGate(proposal.value, proposal.messages)
-          : evaluateBookingPhoneGate(proposal.value, proposal.messages);
+          ? evaluateBookingNameGate(proposal.value, notaryContext.messages)
+          : evaluateBookingPhoneGate(proposal.value, notaryContext.messages);
       if (gate.decision !== 'allow') {
         return reject(form, PROPOSAL_REJECTION_REASONS.identityGateRejected, gate.reason);
       }
     }
   }
 
-  // ── ④ 置信授予 ──
   const value: SlotValue = {
     value: proposal.value,
     ...(proposal.optionCodes?.length ? { optionCodes: [...proposal.optionCodes] } : {}),
     sourceText,
     producer: proposal.producer,
-    confidence: grantConfidence(claimField, proposal.value, valueBearingText),
   };
 
   // ── ⑤ 先筛后收 ──
@@ -609,15 +631,15 @@ export function migrateAskTracking(form: BookingCollectionForm): BookingCollecti
 /**
  * 档案预填（蓝图「记忆→表单预填」：跨岗不重复盘问）。
  *
- * 为什么不走 `proposeValue` 的公证：公证第一问验的是**本轮**证据窗里有没有这段原话，
+ * 为什么不走 `applyFieldValueProposal` 的公证：公证第一问验的是**本轮**证据窗里有没有这段原话，
  * 而档案值是**之前某一轮**收的——它当时已经过一次公证才进的记忆。拿本轮语料去验
  * 一句上周说的话，结论必然是"查无此话"，于是每开一张新表就把人重问一遍。
  *
  * 安全边界（缺一不可）：
  * 1. **只收已公证过的档案值**——调用方按 producer 白名单过滤（模型自报的、
  *    unknown 档的一律不进，防 badcase 6e9ar9gd 族"臆造档案经沿用洗白"）；
- * 2. **署名如实**：producer 记 `archive`、confidence 记 `medium`——它不是本人本轮
- *    说的，永远拿不到 high；sourceText 记原始出处并加 `档案：` 前缀，回查时一眼
+ * 2. **署名如实**：producer 记 `archive`——它不是本人本轮说的；sourceText 记原始
+ *    出处并加 `档案：` 前缀，回查时一眼
  *    看出这不是本轮原话；
  * 3. **必经复述求证**：预填值落 filled，而提交前复述覆盖全部 filled 槽位——
  *    候选人一定会看到它并有机会说"不对"（这就是"带值求证"的兑现处）；
@@ -644,7 +666,6 @@ export function seedArchiveValue(
       ...(archived.optionCodes?.length ? { optionCodes: [...archived.optionCodes] } : {}),
       sourceText: `档案：${archived.evidence?.trim() || value}`,
       producer: 'archive',
-      confidence: 'medium',
     },
     askCount: slot.askCount,
   });
@@ -660,27 +681,101 @@ export function markRecapSent(
   form: BookingCollectionForm,
   labelIds: readonly number[],
 ): BookingCollectionForm {
-  return { ...form, lastRecap: { labelIds: [...labelIds], source: 'agent_recap' } };
+  return { ...form, lastRecap: { labelIds: [...labelIds] } };
+}
+
+export interface LiveBookableInterviewSlot {
+  date: string;
+  bookingAllowed: boolean;
+  interviewTime?: string;
 }
 
 /**
- * 自填模板直通：候选人在一条消息里逐行填满整表，那条消息本身即提交前核对。
- *
- * 一次性落成**已确认**的复述快照——不发复述、不等下一轮确认。判据在
- * `tools/collection/self-filled-template`（确定性、收得极紧），本函数只负责落账：
- * 提交闸门要的从来不是"我们发过一条消息"，而是"候选人亲眼过目了这份资料"。
- *
- * 落账形状与正常复述一致（labelIds 齐全），因此候选人事后回「不对，电话错了」仍能走
- * `applyRecapResult({corrections})` 精确重开那一格——直通不牺牲可纠错性。
+ * 用本轮实时面试窗口复验并更新岗位级预约草稿。它不创建 FormSlot，也不碰资料 recap：
+ * 两条授权管道只在最终提交闸门汇合。
  */
-export function markSelfFilledConfirmed(
+export function reconcileScheduleDraft(
   form: BookingCollectionForm,
-  labelIds: readonly number[],
+  input: {
+    waitNotice: boolean;
+    liveSlots: readonly LiveBookableInterviewSlot[];
+    candidateTexts: readonly string[];
+    requestedDate?: string;
+    selectedInterviewTime?: string;
+    sourceText?: string;
+  },
 ): BookingCollectionForm {
-  return {
-    ...form,
-    lastRecap: { labelIds: [...labelIds], affirmed: true, source: 'self_filled' },
-  };
+  if (input.waitNotice) return withoutScheduleDraft(form);
+
+  const liveSelectedTimes = new Set(
+    input.liveSlots
+      .filter((slot) => slot.bookingAllowed && slot.interviewTime)
+      .map((slot) => slot.interviewTime as string),
+  );
+  const previous = revalidateExistingScheduleDraft(form.scheduleDraft, liveSelectedTimes);
+  const sourceText = input.sourceText?.trim();
+  const hasTrustedNewSelection = Boolean(
+    sourceText && verifyCitation({ quote: sourceText }, input.candidateTexts).verified,
+  );
+
+  if (!hasTrustedNewSelection) {
+    return replaceScheduleDraft(form, previous);
+  }
+
+  const requestedDate = input.requestedDate?.trim() || undefined;
+  const explicitSelected = input.selectedInterviewTime?.trim();
+  let selectedInterviewTime =
+    explicitSelected && liveSelectedTimes.has(explicitSelected) ? explicitSelected : undefined;
+
+  if (!selectedInterviewTime && requestedDate) {
+    const onDate = input.liveSlots
+      .filter(
+        (slot) =>
+          slot.date === requestedDate &&
+          slot.bookingAllowed &&
+          slot.interviewTime &&
+          liveSelectedTimes.has(slot.interviewTime),
+      )
+      .map((slot) => slot.interviewTime as string);
+    // 同一日期唯一可约 slot 才能自动落具体时间；多个时段必须继续让候选人选择。
+    if (onDate.length === 1) selectedInterviewTime = onDate[0];
+  }
+
+  const next: BookingScheduleDraft | undefined =
+    requestedDate || selectedInterviewTime
+      ? {
+          ...(requestedDate ? { requestedDate } : {}),
+          ...(selectedInterviewTime ? { selectedInterviewTime } : {}),
+          sourceText: sourceText as string,
+        }
+      : previous;
+  return replaceScheduleDraft(form, next);
+}
+
+function revalidateExistingScheduleDraft(
+  draft: BookingScheduleDraft | undefined,
+  liveSelectedTimes: ReadonlySet<string>,
+): BookingScheduleDraft | undefined {
+  if (!draft) return undefined;
+  if (!draft.selectedInterviewTime || liveSelectedTimes.has(draft.selectedInterviewTime)) {
+    return draft;
+  }
+  const { selectedInterviewTime: _expired, ...remaining } = draft;
+  return remaining.requestedDate ? remaining : undefined;
+}
+
+function replaceScheduleDraft(
+  form: BookingCollectionForm,
+  draft: BookingScheduleDraft | undefined,
+): BookingCollectionForm {
+  if (draft) return { ...form, scheduleDraft: draft };
+  return withoutScheduleDraft(form);
+}
+
+function withoutScheduleDraft(form: BookingCollectionForm): BookingCollectionForm {
+  if (!form.scheduleDraft) return form;
+  const { scheduleDraft: _removed, ...rest } = form;
+  return rest;
 }
 
 /**
@@ -721,8 +816,8 @@ export function detectSuspectedMultiPerson(
     if (key !== 'name' && key !== 'phone') continue;
     const slot = form.slots[proposal.labelId];
     if (slot?.state !== 'filled' || !slot.value) continue;
-    const claimField = IDENTITY_TO_CLAIM_FIELD[key];
-    if (!candidateValuesEquivalent(claimField, slot.value.value, proposal.value)) {
+    const factField = IDENTITY_TO_FACT_FIELD[key];
+    if (!candidateValuesEquivalent(factField, slot.value.value, proposal.value)) {
       conflicting.add(key);
     }
   }
@@ -737,7 +832,7 @@ export function isTerminal(form: BookingCollectionForm): boolean {
 
 // ==================== 私有 ====================
 
-const IDENTITY_TO_CLAIM_FIELD: Record<IdentitySlotKey, CandidateClaimField> = {
+const IDENTITY_TO_FACT_FIELD: Record<IdentitySlotKey, CandidateFactField> = {
   name: 'name',
   phone: 'phone',
   age: 'age',
@@ -746,9 +841,9 @@ const IDENTITY_TO_CLAIM_FIELD: Record<IdentitySlotKey, CandidateClaimField> = {
 
 function reject(
   form: BookingCollectionForm,
-  reason: ProposalRejectionReason,
+  reason: FieldValueRejectionReason,
   detail?: string,
-): ProposeResult {
+): FieldValueProposalResult {
   return { form, outcome: 'rejected', reason, detail };
 }
 
@@ -801,10 +896,9 @@ function valueContainedInSource(key: IdentitySlotKey, value: string, sourceText:
 /**
  * 值本体虽未逐字出现，但**确定性解析器能从这段原话独立复算出等价值**。
  *
- * 值锚定门的用途是反臆造（"模型编不出一段真实存在过的原话"，见 proposeValue ①）。
- * 代码自己就能从候选人真话里算出同一个值时，臆造的可能性已被排除——这正是
- * `grantConfidence` 授予 `high` 的同一条判据。两处此前口径不一致：置信度认复算、
- * 闸门只认逐字，于是「93年」→ 33 这种**正确换算**被当成臆造拒收
+ * 值锚定门的用途是反臆造（"模型编不出一段真实存在过的原话"，见 applyFieldValueProposal ①）。
+ * 代码自己就能从候选人真话里算出同一个值时，臆造的可能性已被排除。旧实现的值锚定门
+ * 只认逐字，于是「93年」→ 33 这种**正确换算**被当成臆造拒收
  *（生产 chat `6a8d583bce406a6aee063e2b`：候选人被连问两遍年龄）。
  *
  * 只放宽"值是否落在原话内"这一条；出处门（sourceText 必须是候选人真话）与归属门
@@ -815,9 +909,45 @@ function valueDerivableFromSource(
   value: string,
   sourceText: string,
 ): boolean {
-  const claimField = IDENTITY_TO_CLAIM_FIELD[key];
-  const derived = deriveFieldValueFromQuote(claimField, sourceText);
-  return derived !== null && candidateValuesEquivalent(claimField, derived, value);
+  const factField = IDENTITY_TO_FACT_FIELD[key];
+  const derived = deriveFieldValueFromQuote(factField, sourceText);
+  return derived !== null && candidateValuesEquivalent(factField, derived, value);
+}
+
+/**
+ * 模型提案与确定性 parser/adapter 的**已知冲突**。parser 返回 null 代表没有覆盖该表达，
+ * 不是拒收理由；只有它明确产出另一个契约值时才否决。
+ */
+function findDeterministicConflict(
+  field: ContractFieldDef,
+  proposal: FieldValueProposal,
+  sourceText: string,
+  factField: CandidateFactField | null,
+): string | null {
+  if (proposal.producer !== 'model') return null;
+  const adapterInput = { field, candidateText: sourceText, answerBound: true };
+  const derived = adapterFor(field)(adapterInput) ?? genericAdapter(adapterInput);
+  if (!derived || deterministicValuesAgree(derived, proposal, factField)) return null;
+  return `确定性 parser/adapter 从候选人原话得出「${derived.value}」，与模型提案「${proposal.value}」冲突`;
+}
+
+function deterministicValuesAgree(
+  derived: SlotProposal,
+  proposal: FieldValueProposal,
+  factField: CandidateFactField | null,
+): boolean {
+  if (factField) {
+    return candidateValuesEquivalent(factField, derived.value, proposal.value);
+  }
+  if (derived.optionCodes?.length || proposal.optionCodes?.length) {
+    const left = [...(derived.optionCodes ?? [])].sort();
+    const right = [...(proposal.optionCodes ?? [])].sort();
+    // 通用 MULTIPLE_OPTION adapter 只会识别一个明确选项；它命中模型提案的
+    // 子集时只是覆盖不完整，不是已知冲突。
+    if (right.length > 1 && left.every((code) => right.includes(code))) return true;
+    return left.length === right.length && left.every((code, index) => code === right[index]);
+  }
+  return derived.value.normalize('NFKC').trim() === proposal.value.normalize('NFKC').trim();
 }
 
 /** 提案里第一个不在契约选项集内的 optionCode；全部合法返回 null。 */
@@ -841,7 +971,7 @@ function validateContractValue(
   field: ContractFieldDef,
   value: string,
   optionCodes: readonly string[] | undefined,
-): { reason: ProposalRejectionReason; detail: string } | null {
+): { reason: FieldValueRejectionReason; detail: string } | null {
   const normalizedValue = value.normalize('NFKC').trim();
   if (!normalizedValue || /^(?:true|false)$/iu.test(normalizedValue)) {
     return {
@@ -892,23 +1022,6 @@ function validateContractValue(
         reason: PROPOSAL_REJECTION_REASONS.valueNotInContractVocabulary,
         detail: `值「${normalizedValue}」与 labelId ${field.labelId} 的 optionCode 不一致`,
       };
-}
-
-/**
- * 置信按证据形态授予（宪法 P11：置信度是证据的属性，不是产者的属性）。
- * `high`：值本体逐字落在原话里，或既有解析器能从原话复算出等价值；
- * `medium`：归一化产物 / 选项匹配结果，回查不到逐字等价。
- */
-function grantConfidence(
-  claimField: CandidateClaimField | null,
-  value: string,
-  sourceText: string,
-): SlotConfidence {
-  if (normalizedIncludes(sourceText, value)) return 'high';
-  if (!claimField) return 'medium';
-  const derived = deriveFieldValueFromQuote(claimField, sourceText);
-  if (derived === null) return 'medium';
-  return candidateValuesEquivalent(claimField, derived, value) ? 'high' : 'medium';
 }
 
 /**

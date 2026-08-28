@@ -32,12 +32,12 @@ Output 只对可复算信号裁决。
 
 `output/rules/output-rule-catalog.ts` 是唯一运行目录，当前 19 条（14 执行档 + 5 observe 哨兵）：
 
-| 类别 | ruleId |
-| --- | --- |
-| 格式/内部泄漏 | `invalid_model_output`、`internal_output_leak`、`meta_narration_reply`、`human_service_phrase_leak` |
-| 封闭高风险 | `identity_misregistration_coaching`、`experience_fraud_coaching`、`discriminatory_screening_leak`、`sensitive_origin_probe`、`quota_promise` |
-| 工具回执对账 | `online_interview_location_claim`、`unsupported_store_status_speculation`、`booking_receipt_mismatch`、`interview_time_change_unconfirmed`、`brand_alias_fuzzy_match_ignored` |
-| observe 哨兵（只落档不拦截） | `dangling_reply_promise`、`requested_brand_mismatch`、`settlement_cycle_mismatch`、`proactive_insurance_policy_mention`、`booking_done_claim_without_submission` |
+| 类别                         | ruleId                                                                                                                                                                        |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 格式/内部泄漏                | `invalid_model_output`、`internal_output_leak`、`meta_narration_reply`、`human_service_phrase_leak`                                                                           |
+| 封闭高风险                   | `identity_misregistration_coaching`、`experience_fraud_coaching`、`discriminatory_screening_leak`、`sensitive_origin_probe`、`quota_promise`                                  |
+| 工具回执对账                 | `online_interview_location_claim`、`unsupported_store_status_speculation`、`booking_receipt_mismatch`、`interview_time_change_unconfirmed`、`brand_alias_fuzzy_match_ignored` |
+| observe 哨兵（只落档不拦截） | `dangling_reply_promise`、`requested_brand_mismatch`、`settlement_cycle_mismatch`、`proactive_insurance_policy_mention`、`booking_done_claim_without_submission`              |
 
 observe 哨兵是 2026-08-26 数据复核恢复的定点回补（人设露馅升执行档、四族有信号量的哨兵
 落档），不是开放语义规则的整体回归；新规则仍一律 observe 入场，升档须 ≥2 周判例且精确率
@@ -66,12 +66,12 @@ repair 是 Output 裁决后的有界收敛，不是新的 guardrail 层：
 
 ## 4. 组件所有权
 
-| 组件 | 可以做什么 | 不能做什么 |
-| --- | --- | --- |
-| `HardRulesService` | 读取回复、memory 和工具回执，产出确定性 contradiction | 改文案、调工具、猜开放语义 |
-| `OutputGuardrailService` | 精确去重、运行规则并形成 pass/revise/block | 调第二个模型、提交副作用 |
-| `AgentRunnerService` | 选择一次确定性/LLM 局部修复，二审并收敛 outcome | 在 repair 中重跑业务工具 |
-| `TurnOutcomeInterventionService` | Replay 定局后提交暂停托管、handoff 和告警 | 重新解释回复语义 |
+| 组件                             | 可以做什么                                            | 不能做什么                 |
+| -------------------------------- | ----------------------------------------------------- | -------------------------- |
+| `HardRulesService`               | 读取回复、memory 和工具回执，产出确定性 contradiction | 改文案、调工具、猜开放语义 |
+| `OutputGuardrailService`         | 精确去重、运行规则并形成 pass/revise/block            | 调第二个模型、提交副作用   |
+| `AgentRunnerService`             | 选择一次确定性/LLM 局部修复，二审并收敛 outcome       | 在 repair 中重跑业务工具   |
+| `TurnOutcomeInterventionService` | Replay 定局后提交暂停托管、handoff 和告警             | 重新解释回复语义           |
 
 ## 5. 记录面
 
@@ -88,7 +88,7 @@ repair 是 Output 裁决后的有界收敛，不是新的 guardrail 层：
 2. ruleId 与现有 output catalog 双向一致，单测覆盖真阳和主要假阳；
 3. Prompt 教侧配对变化同步更新 [Prompt 规则台账](../prompt-rule-ledger.md)；
 4. 对话理解问题优先修主 Agent Prompt、既有抽取标签或工具契约；
-5. precheck 只暴露统一 `formAnswers`，字段全集与标签原文由岗位契约负责，不在 Output 修补。
+5. precheck 只暴露统一 `fieldValueProposals`，字段全集与标签原文由岗位契约负责，不在 Output 修补。
 
 ## 相关代码
 

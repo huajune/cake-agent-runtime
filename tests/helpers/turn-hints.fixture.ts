@@ -3,7 +3,7 @@ import type {
   TurnHints,
   TurnHintConfidence,
   TurnHintFieldPath,
-} from '@resolution/evidence/claim.types';
+} from '@resolution/turn-hints/turn-hint.types';
 
 let sequence = 0;
 

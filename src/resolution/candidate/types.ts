@@ -1,4 +1,42 @@
-import type { CandidateFactProducer } from '@resolution/evidence/claim.types';
+/**
+ * 全库唯一「谁产生了候选人事实」词汇。置信度是证据属性，不是 producer 属性。
+ */
+export type CandidateFactProducer =
+  | 'candidate_quote'
+  | 'rule'
+  | 'model'
+  | 'system'
+  | 'manual'
+  | 'archive';
+
+export const CANDIDATE_FACT_PRODUCERS = [
+  'candidate_quote',
+  'rule',
+  'model',
+  'system',
+  'manual',
+  'archive',
+] as const satisfies readonly CandidateFactProducer[];
+
+/** 收资与档案桥接层共同引用的候选人事实字段。 */
+export const CANDIDATE_FACT_FIELDS = [
+  'name',
+  'phone',
+  'gender',
+  'age',
+  'isStudent',
+  'education',
+  'healthCertificate',
+  'height',
+  'weight',
+  'householdProvince',
+] as const;
+
+export type CandidateFactField = (typeof CANDIDATE_FACT_FIELDS)[number];
+
+export function isCandidateFactField(value: string): value is CandidateFactField {
+  return (CANDIDATE_FACT_FIELDS as readonly string[]).includes(value);
+}
 
 /** 回合账本与会话档案共同使用的候选人字段键。 */
 export type CandidateFieldKey =

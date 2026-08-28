@@ -61,6 +61,7 @@ const PROFESSIONAL_CONTRACT = [
     rejectedOptions: [],
   },
 ];
+const RECAP_TAIL = '没问题的话我这就帮你提交，有不对的地方直接说改哪项';
 
 const JOB = {
   basicInfo: {
@@ -113,13 +114,37 @@ function filledForm(contract = CONTRACT): BookingCollectionForm {
       value: {
         ...value,
         sourceText: value.value,
-        producer: 'candidate_quote',
-        confidence: 'high',
+        producer: field.labelId === contract[0]?.labelId ? 'archive' : 'candidate_quote',
       },
     };
   }
   form.lastRecap = { labelIds: contract.map((field) => field.labelId) };
   return form;
+}
+
+function recapDialogue(reply: string): Array<{ role: 'assistant' | 'user'; content: string }> {
+  return [
+    {
+      role: 'assistant',
+      content: [
+        '帮你核对一下报名信息：',
+        '姓名：兮兮',
+        '联系电话：18271421690',
+        '年龄：25',
+        '性别：女',
+        '',
+        RECAP_TAIL,
+      ].join('\n'),
+    },
+    { role: 'user', content: reply },
+  ];
+}
+
+function recapConfirmationInput(candidateQuote: string) {
+  return {
+    jobId: 100,
+    recapConfirmation: { candidateQuote, recapQuote: RECAP_TAIL },
+  };
 }
 
 describe('duliday_interview_precheck（collection form 唯一路径）', () => {
@@ -172,18 +197,19 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
     }) as Promise<Record<string, any>>;
   }
 
-  it('公开工具 Schema 只保留 formAnswers 一个收资入口，且 description 共用照发指令', () => {
+  it('公开工具 Schema 只保留 fieldValueProposals 一个收资入口，并提供 recapConfirmation', () => {
     expect(Object.keys(PRECHECK_INPUT_SCHEMA.shape)).toEqual([
       'jobId',
       'requestedDate',
-      'formAnswers',
+      'fieldValueProposals',
+      'recapConfirmation',
     ]);
     expect(PRECHECK_DESCRIPTION).not.toContain('candidateClaims');
     expect(PRECHECK_DESCRIPTION).toContain(COLLECTION_TEMPLATE_SEND_INSTRUCTION);
     expect(
       PRECHECK_INPUT_SCHEMA.safeParse({
         jobId: 100,
-        formAnswers: [{ labelTitle: '年龄', value: false, quote: '不是学生' }],
+        fieldValueProposals: [{ labelTitle: '年龄', value: false, quote: '不是学生' }],
       }).success,
     ).toBe(false);
   });
@@ -197,10 +223,24 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
     expect(result._replyInstruction).toContain(COLLECTION_TEMPLATE_SEND_INSTRUCTION);
   });
 
-  it('拒绝无法解析的 requestedDate，且不触碰外部接口', async () => {
+  it('岗位确定后的首次收资同时返回真实 bookableSlots', async () => {
+    sponge.fetchJobs.mockResolvedValue({ jobs: [JOB_WITH_WINDOWS] });
+    const result = await execute({ jobId: 100 });
+    expect(result.collectionVerdict).toBe('collecting');
+    expect(result.bookingChecklist.templateText).toContain('姓名：');
+    expect(result.interview.bookableSlots.length).toBeGreaterThan(0);
+    expect(result.interview.bookableSlots).toEqual(
+      expect.arrayContaining([expect.objectContaining({ bookingAllowed: true })]),
+    );
+    expect(result._replyInstruction).toContain('面试时间');
+  });
+
+  it('无法解析的 requestedDate 不落草稿，但不阻断并行收资', async () => {
     const result = await execute({ jobId: 100, requestedDate: 'next week' });
-    expect(result.errorType).toBe(TOOL_ERROR_TYPES.PRECHECK_INVALID_REQUESTED_DATE);
-    expect(sponge.fetchJobs).not.toHaveBeenCalled();
+    expect(result.errorType).toBeUndefined();
+    expect(result.interview.scheduleDraft).toBeUndefined();
+    expect(result.collectionVerdict).toBe('collecting');
+    expect(sponge.fetchJobs).toHaveBeenCalled();
   });
 
   it('jobId 不在会话召回集时先于 Sponge 拦截', async () => {
@@ -216,7 +256,7 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
     context.turnInput.messages = [{ role: 'user', content: '我叫兮兮' }];
     const result = await execute({
       jobId: 100,
-      formAnswers: [{ labelTitle: '姓名', value: '兮兮', quote: '我叫兮兮' }],
+      fieldValueProposals: [{ labelTitle: '姓名', value: '兮兮', quote: '我叫兮兮' }],
     });
     expect(result.collectionVerdict).toBe('collecting');
     expect(result.nextAction).toBe('collect_fields');
@@ -240,13 +280,15 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
     );
   });
 
-  it('ready：资料齐后先返回一次提交前复述，不直接 booking', async () => {
+  it('完整自然表达同轮给齐资料和时间：无 recap 并直接 ready_to_book', async () => {
+    sponge.fetchJobs.mockResolvedValue({ jobs: [JOB_WITH_WINDOWS] });
     context.turnInput.messages = [
-      { role: 'user', content: '我叫兮兮，电话18271421690，我今年25岁，我是女的' },
+      { role: 'user', content: '我叫兮兮，电话18271421690，我今年25岁，我是女的，明天面试' },
     ];
     const result = await execute({
       jobId: 100,
-      formAnswers: [
+      requestedDate: '明天',
+      fieldValueProposals: [
         { labelTitle: '姓名', value: '兮兮', quote: '我叫兮兮' },
         { labelTitle: '联系电话', value: '18271421690', quote: '电话18271421690' },
         { labelTitle: '年龄', value: '25', quote: '我今年25岁' },
@@ -254,25 +296,28 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
       ],
     });
     expect(result.collectionVerdict).toBe('ready');
-    expect(result.nextAction).toBe('confirm_collection');
-    expect(result.recap.candidateMessage).toContain('姓名：兮兮');
-    expect(result.recap.candidateMessage).toContain('联系电话：18271421690');
-    expect(currentForm?.lastRecap?.labelIds).toEqual([101, 102, 103, 104]);
+    expect(result.nextAction).toBe('ready_to_book');
+    expect(result.recap).toBeUndefined();
+    expect(currentForm?.lastRecap).toBeUndefined();
+    expect(currentForm?.scheduleDraft).toEqual(
+      expect.objectContaining({
+        requestedDate: getTomorrowDate(),
+        selectedInterviewTime: expect.any(String),
+      }),
+    );
+    expect(context.ledger.jobs.collectionReadyJobId).toBe(100);
   });
 
-  // 生产原型 chat 6a901168ce406a6aeeeee205：候选人照模板逐行填满整表，却被要求核对两遍。
-  it('自填模板直通：候选人一条消息填满整表 → 直接 ready_to_book，不发复述轮', async () => {
-    const filledTemplate = [
-      '姓名：兮兮',
-      '联系电话：18271421690',
-      '年龄：25',
-      '性别：女',
-    ].join('\n');
+  it('逐行填满模板与自然表达走同一路径：资料授权，无时间则 select_interview_time', async () => {
+    sponge.fetchJobs.mockResolvedValue({ jobs: [JOB_WITH_WINDOWS] });
+    const filledTemplate = ['姓名：兮兮', '联系电话：18271421690', '年龄：25', '性别：女'].join(
+      '\n',
+    );
     context.turnInput.messages = [{ role: 'user', content: filledTemplate }];
 
     const result = await execute({
       jobId: 100,
-      formAnswers: [
+      fieldValueProposals: [
         { labelTitle: '姓名', value: '兮兮', quote: '姓名：兮兮' },
         { labelTitle: '联系电话', value: '18271421690', quote: '联系电话：18271421690' },
         { labelTitle: '年龄', value: '25', quote: '年龄：25' },
@@ -281,23 +326,19 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
     });
 
     expect(result.collectionVerdict).toBe('ready');
-    expect(result.nextAction).toBe('ready_to_book');
+    expect(result.nextAction).toBe('select_interview_time');
     expect(result.recap).toBeUndefined();
-    // 提交闸门要的确认回执已落账（booking 入口闸查 lastRecap），来源标为自填。
-    expect(currentForm?.lastRecap).toEqual({
-      labelIds: [101, 102, 103, 104],
-      affirmed: true,
-      source: 'self_filled',
-    });
-    expect(context.ledger.jobs.collectionReadyJobId).toBe(100);
+    expect(currentForm?.lastRecap).toBeUndefined();
+    expect(context.ledger.jobs.collectionReadyJobId).toBeUndefined();
   });
 
-  // 生产事故复刻：模型在资料到达那轮漏调 precheck、自产了一份野生复述讨确认，直到候选人
-  // 回「对」才首次提交 formAnswers。直通判据认的是**证据**（哪条消息里填满了表）而不是
-  // **时序**（哪一轮提交的），所以模型晚一轮也不再多讨一次确认。
-  it('模型迟一轮提交时，早前那条自填模板仍然构成核对 → 直接 ready_to_book', async () => {
+  it('多轮里的明确候选人作答同样直接资料授权，不生成 recap', async () => {
+    sponge.fetchJobs.mockResolvedValue({ jobs: [JOB_WITH_WINDOWS] });
     context.turnInput.messages = [
-      { role: 'assistant', content: '你先把资料发我，我帮你约：\n姓名：\n联系电话：\n年龄：\n性别：' },
+      {
+        role: 'assistant',
+        content: '你先把资料发我，我帮你约：\n姓名：\n联系电话：\n年龄：\n性别：',
+      },
       {
         role: 'user',
         content: ['姓名：兮兮', '联系电话：18271421690', '年龄：25', '性别：女'].join('\n'),
@@ -308,7 +349,7 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
 
     const result = await execute({
       jobId: 100,
-      formAnswers: [
+      fieldValueProposals: [
         { labelTitle: '姓名', value: '兮兮', quote: '姓名：兮兮' },
         { labelTitle: '联系电话', value: '18271421690', quote: '联系电话：18271421690' },
         { labelTitle: '年龄', value: '25', quote: '年龄：25' },
@@ -316,9 +357,9 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
       ],
     });
 
-    expect(result.nextAction).toBe('ready_to_book');
+    expect(result.nextAction).toBe('select_interview_time');
     expect(result.recap).toBeUndefined();
-    expect(currentForm?.lastRecap?.source).toBe('self_filled');
+    expect(currentForm?.lastRecap).toBeUndefined();
   });
 
   // 生产 chat 6a8d583b：年龄被公证退回，工具只回了 missing=[年龄]、没说为什么，
@@ -329,7 +370,7 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
 
     const result = await execute({
       jobId: 100,
-      formAnswers: [
+      fieldValueProposals: [
         { labelTitle: '姓名', value: '兮兮', quote: '我叫兮兮' },
         // 候选人这句话里没有电话，模型却提交了一个号码——公证必须退回。
         { labelTitle: '联系电话', value: '18271421690', quote: '我叫兮兮，我是女的' },
@@ -350,14 +391,15 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
     context.turnInput.messages = [{ role: 'user', content: '我叫兮兮' }];
     const result = await execute({
       jobId: 100,
-      formAnswers: [{ labelTitle: '姓名', value: '兮兮', quote: '我叫兮兮' }],
+      fieldValueProposals: [{ labelTitle: '姓名', value: '兮兮', quote: '我叫兮兮' }],
     });
 
     expect(result.rejectedAnswers).toBeUndefined();
     expect(result._replyInstruction).not.toContain('被公证退回');
   });
 
-  it('ask_limit_exhausted 后候选人补齐对应字段，解除 handoff 并恢复复述确认', async () => {
+  it('ask_limit_exhausted 后候选人补齐对应字段，解除 handoff 并进入选时间', async () => {
+    sponge.fetchJobs.mockResolvedValue({ jobs: [JOB_WITH_WINDOWS] });
     sponge.fetchJobCollectionContract.mockResolvedValue({
       jobId: 100,
       fields: PROFESSIONAL_CONTRACT,
@@ -374,37 +416,107 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
 
     const result = await execute({
       jobId: 100,
-      formAnswers: [{ labelTitle: '专业', value: '无', quote: '专业：无' }],
+      fieldValueProposals: [{ labelTitle: '专业', value: '无', quote: '专业：无' }],
     });
 
     expect(result.collectionVerdict).toBe('ready');
-    expect(result.nextAction).toBe('confirm_collection');
+    expect(result.nextAction).toBe('select_interview_time');
     expect(currentForm?.slots[213].state).toBe('filled');
     expect(currentForm?.slots[213].askCount).toBe(2);
     expect(currentForm?.escalatedReason).toBeUndefined();
-    expect(result.recap.candidateMessage).toContain('专业：无');
+    expect(result.recap).toBeUndefined();
   });
 
-  it('候选人明确确认复述后，本轮写入 booking 的短期放行凭据', async () => {
+  it('archive 外部预填的 ready 表单进入 confirm_collection', async () => {
     currentForm = filledForm();
-    context.turnInput.messages = [{ role: 'user', content: '确认' }];
+    currentForm.lastRecap = undefined;
     const result = await execute({ jobId: 100 });
+    expect(result.collectionVerdict).toBe('ready');
+    expect(result.nextAction).toBe('confirm_collection');
+    expect(result.recap.candidateMessage).toContain('姓名：兮兮');
+    expect(context.ledger.jobs.collectionReadyJobId).toBeUndefined();
+  });
+
+  it.each(['没问题', '好的', '确认', '没问题，麻烦老师了', '可以的，麻烦了'])(
+    '明确确认“%s”均以同形态 recapConfirmation 绑定真实相邻 recap 后一次放行',
+    async (candidateQuote) => {
+      currentForm = filledForm();
+      context.turnInput.messages = recapDialogue(candidateQuote);
+      const input = recapConfirmationInput(candidateQuote);
+      expect(Object.keys(input.recapConfirmation)).toEqual(['candidateQuote', 'recapQuote']);
+
+      const result = await execute(input);
+
+      expect(result.nextAction).toBe('ready_to_book');
+      expect(currentForm?.lastRecap?.affirmed).toBe(true);
+      expect(context.ledger.jobs.collectionReadyJobId).toBe(100);
+    },
+  );
+
+  it('外部预填 recap 与选择时间可在同一候选人轮完成', async () => {
+    sponge.fetchJobs.mockResolvedValue({ jobs: [JOB_WITH_WINDOWS] });
+    currentForm = filledForm();
+    const candidateQuote = '没问题，明天可以面试';
+    context.turnInput.messages = recapDialogue(candidateQuote);
+
+    const result = await execute({
+      ...recapConfirmationInput(candidateQuote),
+      requestedDate: '明天',
+    });
+
+    expect(currentForm?.lastRecap?.affirmed).toBe(true);
+    expect(currentForm?.scheduleDraft).toEqual(
+      expect.objectContaining({
+        requestedDate: getTomorrowDate(),
+        selectedInterviewTime: expect.any(String),
+      }),
+    );
     expect(result.nextAction).toBe('ready_to_book');
     expect(context.ledger.jobs.collectionReadyJobId).toBe(100);
   });
 
-  it('组合式确认（对的，没问题）同样写入放行凭据，不再多绕一轮', async () => {
+  it('候选人纠正最后一个外部预填值后重新派生为无 recap，无时间则只选时间', async () => {
+    sponge.fetchJobs.mockResolvedValue({ jobs: [JOB_WITH_WINDOWS] });
+    sponge.fetchJobCollectionContract.mockResolvedValue({
+      jobId: 100,
+      fields: PROFESSIONAL_CONTRACT,
+    });
+    currentForm = createForm({ jobId: 100, contract: PROFESSIONAL_CONTRACT });
+    currentForm.slots[213] = {
+      labelId: 213,
+      state: 'filled',
+      askCount: 0,
+      value: { value: '市场营销', sourceText: '档案：市场营销', producer: 'archive' },
+    };
+    currentForm.lastRecap = { labelIds: [213] };
+    const text = '专业不是市场营销，是计算机';
+    context.turnInput.messages = [{ role: 'user', content: text }];
+    const result = await execute({
+      jobId: 100,
+      fieldValueProposals: [
+        { labelTitle: '专业', value: '计算机', quote: text, operation: 'correct' },
+      ],
+    });
+    expect(currentForm?.slots[213].value).toEqual(
+      expect.objectContaining({ value: '计算机', producer: 'model' }),
+    );
+    expect(currentForm?.lastRecap).toBeUndefined();
+    expect(result.nextAction).toBe('select_interview_time');
+  });
+
+  it('未提交 recapConfirmation 时，短答也不能旁路 recap notary', async () => {
     currentForm = filledForm();
-    context.turnInput.messages = [{ role: 'user', content: '对的，没问题' }];
+    context.turnInput.messages = recapDialogue('好的');
     const result = await execute({ jobId: 100 });
-    expect(result.nextAction).toBe('ready_to_book');
-    expect(context.ledger.jobs.collectionReadyJobId).toBe(100);
+    expect(result.nextAction).toBe('confirm_collection');
+    expect(currentForm?.lastRecap?.affirmed).not.toBe(true);
+    expect(context.ledger.jobs.collectionReadyJobId).toBeUndefined();
   });
 
   it('先确认复述、下一轮再选面试日期时仍放行 booking', async () => {
     currentForm = filledForm();
-    context.turnInput.messages = [{ role: 'user', content: '没问题' }];
-    const confirmed = await execute({ jobId: 100 });
+    context.turnInput.messages = recapDialogue('没问题');
+    const confirmed = await execute(recapConfirmationInput('没问题'));
     expect(confirmed.nextAction).toBe('ready_to_book');
     expect(currentForm?.lastRecap?.affirmed).toBe(true);
 
@@ -433,7 +545,7 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
     context.turnInput.messages = [{ role: 'user', content: '年龄不是25，是26' }];
     const result = await execute({
       jobId: 100,
-      formAnswers: [
+      fieldValueProposals: [
         {
           labelTitle: '年龄',
           value: '26',
@@ -453,7 +565,7 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
     context.turnInput.messages = [{ role: 'user', content: '联系电话先清掉，我重新发' }];
     const result = await execute({
       jobId: 100,
-      formAnswers: [
+      fieldValueProposals: [
         {
           labelTitle: '联系电话',
           value: null,
@@ -468,11 +580,11 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
     expect(result.bookingChecklist.requiredFieldsToCollectNow).toEqual(['联系电话']);
   });
 
-  it('契约外 formAnswers 标题不改槽位与清单，并通过既有 collection_form_audit 落审计', async () => {
+  it('契约外 fieldValueProposals 标题不改槽位与清单，并通过既有 collection_form_audit 落审计', async () => {
     context.turnInput.messages = [{ role: 'user', content: '我是社会人士' }];
     const result = await execute({
       jobId: 100,
-      formAnswers: [{ labelTitle: '身份', value: '社会人士', quote: '我是社会人士' }],
+      fieldValueProposals: [{ labelTitle: '身份', value: '社会人士', quote: '我是社会人士' }],
     });
     expect(result.bookingChecklist.requiredFields).toEqual(['姓名', '联系电话', '年龄', '性别']);
     expect(
@@ -504,7 +616,7 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
     context.turnInput.messages = [{ role: 'user', content: '我是学生' }];
     const result = await execute({
       jobId: 100,
-      formAnswers: [{ labelTitle: '是否学生', value: '学生', quote: '我是学生' }],
+      fieldValueProposals: [{ labelTitle: '是否学生', value: '学生', quote: '我是学生' }],
     });
     expect(result.collectionVerdict).toBe('disqualified');
     expect(result.nextAction).toBe('screening_rejected');
@@ -525,12 +637,12 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
     expect(result.nextAction).toBe('already_submitted');
   });
 
-  it('误投 formAnswers 的「面试时间」条目转运为 requestedDate 参加可约性校验', async () => {
+  it('误投 fieldValueProposals 的「面试时间」条目转运为 requestedDate 参加可约性校验', async () => {
     sponge.fetchJobs.mockResolvedValue({ jobs: [JOB_WITH_WINDOWS] });
     context.turnInput.messages = [{ role: 'user', content: '我明天有空' }];
     const result = await execute({
       jobId: 100,
-      formAnswers: [{ labelTitle: '面试时间', value: '明天', quote: '我明天有空' }],
+      fieldValueProposals: [{ labelTitle: '面试时间', value: '明天', quote: '我明天有空' }],
     });
     expect(result.success).toBe(true);
     expect(result.interview.requestedDate).toEqual(
@@ -548,7 +660,7 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
     context.turnInput.messages = [{ role: 'user', content: '过几天再说吧' }];
     const result = await execute({
       jobId: 100,
-      formAnswers: [{ labelTitle: '面试时间', value: '过几天', quote: '过几天再说吧' }],
+      fieldValueProposals: [{ labelTitle: '面试时间', value: '过几天', quote: '过几天再说吧' }],
     });
     expect(result.success).toBe(true);
     expect(result.errorType).toBeUndefined();
@@ -564,7 +676,7 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
     const result = await execute({
       jobId: 100,
       requestedDate: '明天',
-      formAnswers: [{ labelTitle: '面试日期', value: '后天', quote: '后天都行' }],
+      fieldValueProposals: [{ labelTitle: '面试日期', value: '后天', quote: '后天都行' }],
     });
     expect(result.success).toBe(true);
     expect(result.interview.requestedDate.value).toBe(getTomorrowDate());
@@ -600,7 +712,7 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
     context.turnInput.messages = [{ role: 'user', content: '我叫兮兮，有健康证' }];
     const result = await execute({
       jobId: 100,
-      formAnswers: [
+      fieldValueProposals: [
         { labelTitle: '姓名', value: '兮兮', quote: '我叫兮兮' },
         { labelTitle: '健康证', value: '有', quote: '有健康证' },
         { labelTitle: '体重', value: '60', quote: '体重60' },
@@ -617,7 +729,7 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
     context.turnInput.messages = [{ role: 'user', content: '我叫兮兮，电话18271421690' }];
     const result = await execute({
       jobId: 100,
-      formAnswers: [
+      fieldValueProposals: [
         { labelTitle: '姓名', value: '兮兮', quote: '我叫兮兮' },
         { labelTitle: '联系电话', value: '18271421690', quote: '电话18271421690' },
       ],
@@ -629,8 +741,8 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
 
   it('岗位自由文本年龄要求不再作为第二判据源', async () => {
     currentForm = filledForm();
-    context.turnInput.messages = [{ role: 'user', content: '确认' }];
-    const result = await execute({ jobId: 100 });
+    context.turnInput.messages = recapDialogue('确认');
+    const result = await execute(recapConfirmationInput('确认'));
     expect(JOB.hiringRequirement.basicPersonalRequirements.maxAge).toBe(20);
     expect(currentForm?.slots[103].value?.value).toBe('25');
     expect(result.nextAction).toBe('ready_to_book');

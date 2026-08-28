@@ -4,7 +4,7 @@ import {
   adjudicatePromptMemory,
   type TurnStartMemory,
 } from '@agent/generator/preparation/prompt-memory-adjudicator';
-import type { TurnHints } from '@resolution/evidence/claim.types';
+import type { TurnHints } from '@resolution/turn-hints/turn-hint.types';
 import type { SessionFacts } from '@memory/short-term/short-term.types';
 import { testTurnHint, testTurnHints } from '../../../../helpers/turn-hints.fixture';
 import { cityFixture, sessionFactsOf } from '../../../../helpers/session-facts.fixture';
@@ -59,7 +59,7 @@ describe('TurnHintsSection', () => {
 
     expect(output).toContain('[本轮解析线索]');
     expect(output).toContain('意向区域: 杨浦区');
-    expect(output).toContain('duliday_interview_precheck 的 formAnswers');
+    expect(output).toContain('duliday_interview_precheck 的 fieldValueProposals');
     expect(output).toContain('labelTitle 逐字取自 bookingChecklist.requiredFields');
     expect(output).not.toContain('candidateClaims');
     expect(output).toContain('严禁向候选人复述或提及“系统识别/系统提示/系统解析”字样');

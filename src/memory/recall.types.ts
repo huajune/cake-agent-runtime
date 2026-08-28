@@ -3,7 +3,7 @@ import type { StageState } from './short-term/short-term.types';
 import type { ShortTermMessage } from './short-term/short-term.types';
 import type { ShortTermMemoryStructure } from './short-term/short-term.types';
 import type { WeworkSessionState } from './short-term/short-term.types';
-import type { TurnHints } from '@resolution/evidence/claim.types';
+import type { TurnHints } from '@resolution/turn-hints/turn-hint.types';
 import type { CandidateCollectedField, CandidateFieldKey } from '@resolution/candidate/types';
 
 // ==================== 0. 记忆系统总览（从这里读） ====================

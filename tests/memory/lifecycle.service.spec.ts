@@ -1,6 +1,6 @@
 import { MemoryLifecycleService } from '@memory/lifecycle.service';
-import { produceTurnHints } from '@resolution/evidence/producers/rule-track';
-import { getTurnHint } from '@resolution/evidence/merge';
+import { produceTurnHints } from '@resolution/turn-hints/producers/rule-track';
+import { getTurnHint } from '@resolution/turn-hints/reducer';
 import { FALLBACK_EXTRACTION } from '@memory/short-term/short-term.types';
 
 describe('MemoryLifecycleService', () => {

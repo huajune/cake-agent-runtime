@@ -4,8 +4,8 @@ import { CandidateProfileEnrichmentService } from '@biz/user/services/candidate-
 import {
   mergeSupplementalGenderClaims,
   normalizeGenderValue,
-} from '@resolution/evidence/producers/rule-track';
-import { getTurnHintValue } from '@resolution/evidence/merge';
+} from '@resolution/turn-hints/producers/rule-track';
+import { getTurnHintValue } from '@resolution/turn-hints/reducer';
 import { unwrapUserProfileFactValue } from '@memory/long-term/long-term.types';
 import { unwrapSessionFactValue } from '@memory/short-term/short-term.types';
 import type { AgentMemoryContext } from '@memory/recall.types';

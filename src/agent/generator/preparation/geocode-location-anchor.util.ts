@@ -1,7 +1,7 @@
 import { isHumanAgentTextMessage } from '@biz/message/utils/message-provenance.util';
-import { produceTurnHints } from '@resolution/evidence/producers/rule-track';
-import { projectTurnHints } from '@resolution/evidence/merge';
-import type { TurnHints } from '@resolution/evidence/claim.types';
+import { produceTurnHints } from '@resolution/turn-hints/producers/rule-track';
+import { projectTurnHints } from '@resolution/turn-hints/reducer';
+import type { TurnHints } from '@resolution/turn-hints/turn-hint.types';
 import { resolveCityFromDistrict } from '@resolution/geo';
 import type { ShortTermMessage } from '@memory/short-term/short-term.types';
 import type { CityFact, EntityExtractionResult } from '@memory/short-term/short-term.types';

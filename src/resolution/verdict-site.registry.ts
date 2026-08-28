@@ -25,73 +25,45 @@ export interface VerdictSiteRegistration {
 }
 
 /**
- * 候选人事实链首批裁决点注册表。
+ * 候选人资料与收资链的在产裁决点注册表。
  *
  * 登记对象按“能造成什么权力效果”而不是按目录归类。新增 reject / supersede / 判缺位前，
  * 必须先在这里选择四种合法身份之一；若四类都不适用，确定性代码就没有该裁决权。
  */
 export const VERDICT_SITE_REGISTRY = [
   {
-    id: 'candidate_claim_quote_provenance',
+    id: 'collection_citation_verification',
     authority: 'notary',
     effect: 'reject',
-    source: 'src/resolution/evidence/notary.ts#verifyQuoteProvenance',
+    source: 'src/resolution/notary/citation-verifier.ts#verifyCitation',
     rationale: '候选人语料与模型 quote 两边均为已知字符串，只做逐字出处核验。',
   },
   {
-    id: 'candidate_claim_value_shape',
+    id: 'collection_field_value_shape',
     authority: 'closed_form',
     effect: 'reject',
-    source: 'src/resolution/evidence/notary.ts#verifyValueShape',
+    source: 'src/resolution/candidate/value-shape.ts#isValidCandidateFieldShape',
     rationale: '只调用年龄值域、占位号、纯数字姓名等封闭形状函数。',
   },
   {
-    id: 'candidate_claim_quote_context',
+    id: 'collection_dialogue_confirmation',
     authority: 'notary',
     effect: 'reject',
-    source: 'src/resolution/evidence/notary.ts#verifyQuoteContext',
-    rationale: '按字段静态表比较引文长度，不解释开放语言语义。',
-  },
-  {
-    id: 'candidate_claim_agent_echo',
-    authority: 'notary',
-    effect: 'needs_confirmation',
-    source: 'src/resolution/evidence/notary.ts#detectAgentEcho',
-    rationale: '模型引文与我方已发文本做封闭包含比对，命中只转本人确认。',
-  },
-  {
-    id: 'candidate_claim_same_value_merge',
-    authority: 'closed_form',
-    effect: 'supersede',
-    source: 'src/resolution/evidence/engine.ts#adjudicateCandidateClaims',
-    rationale: '同字段值经统一归一化等值比较后只做账本去重，不按产者身份排信任。',
-  },
-  {
-    id: 'candidate_claim_conflict_route',
-    authority: 'notary',
-    effect: 'needs_confirmation',
-    source: 'src/resolution/evidence/engine.ts#adjudicateCandidateClaims',
-    rationale: '同字段有效证据值不一致时不判真伪，只把冲突显式交还候选人。',
-  },
-  {
-    id: 'candidate_profile_clear_projection',
-    authority: 'structural_gate',
-    effect: 'mark_missing',
-    source: 'src/resolution/evidence/profile.ts#buildEffectiveProfile',
-    rationale: '仅消费已公证 clear 操作，把对应结构化字段物化为 missing。',
+    source: 'src/resolution/notary/dialogue-confirmation.ts#isAssistantQuestionConfirmedInDialogue',
+    rationale: '只核验真实相邻问答、求证语气与封闭肯定短答。',
   },
   {
     id: 'booking_candidate_name_provenance',
     authority: 'notary',
     effect: 'reject',
-    source: 'src/resolution/evidence/identity-gates.ts#evaluateBookingNameGate',
-    rationale: '只核验结构化姓名出处、引用 speaker 标记与已公证 claim；拒收后有确认出口。',
+    source: 'src/resolution/candidate/identity-attribution.ts#evaluateBookingNameGate',
+    rationale: '只核验结构化姓名出处、引用 speaker 标记与已公证事实；拒收后有确认出口。',
   },
   {
     id: 'booking_candidate_phone_provenance',
     authority: 'notary',
     effect: 'reject',
-    source: 'src/resolution/evidence/identity-gates.ts#evaluateBookingPhoneGate',
+    source: 'src/resolution/candidate/identity-attribution.ts#evaluateBookingPhoneGate',
     rationale: '手机号形状与候选人自陈文本逐字出处双重核验。',
   },
   {

@@ -19,9 +19,9 @@ import {
 } from '@resolution/collection';
 import { isStorableCandidatePhone } from '@resolution/candidate/phone';
 import type { CandidateFieldKey } from '@resolution/candidate/types';
-import type { CandidateClaimField } from '@resolution/evidence/claim.types';
+import type { CandidateFactField } from '@resolution/candidate/types';
 import { CollectionFormStore } from './collection-form.store';
-import { findFieldForClaim } from './proposal-intake';
+import { findFieldForCandidateFact } from './proposal-intake';
 
 export interface CollectionFormScope {
   corpId: string;
@@ -47,24 +47,24 @@ type ProgressInterviewField = Extract<
 
 /** CandidateFieldKey 与 interview_info 的语义交集；新增候选字段时必须显式裁定去向。 */
 const COLLECTION_PROGRESS_FACT_MAPPING = {
-  name: { claimField: 'name', interviewField: 'name' },
-  phone: { claimField: 'phone', interviewField: 'phone' },
-  age: { claimField: 'age', interviewField: 'age' },
-  gender: { claimField: 'gender', interviewField: 'gender' },
-  education: { claimField: 'education', interviewField: 'education' },
+  name: { factField: 'name', interviewField: 'name' },
+  phone: { factField: 'phone', interviewField: 'phone' },
+  age: { factField: 'age', interviewField: 'age' },
+  gender: { factField: 'gender', interviewField: 'gender' },
+  education: { factField: 'education', interviewField: 'education' },
   healthCert: {
-    claimField: 'healthCertificate',
+    factField: 'healthCertificate',
     interviewField: 'has_health_certificate',
   },
   householdProvince: {
-    claimField: 'householdProvince',
+    factField: 'householdProvince',
     interviewField: 'household_register_province',
   },
-  height: { claimField: 'height', interviewField: 'height' },
-  weight: { claimField: 'weight', interviewField: 'weight' },
+  height: { factField: 'height', interviewField: 'height' },
+  weight: { factField: 'weight', interviewField: 'weight' },
 } as const satisfies Record<
   ProgressCandidateField,
-  { claimField: CandidateClaimField; interviewField: ProgressInterviewField }
+  { factField: CandidateFactField; interviewField: ProgressInterviewField }
 >;
 
 @Injectable()
@@ -133,7 +133,8 @@ export class CollectionFormService {
       if (slot?.state !== 'filled' || !slot.value?.value) continue;
 
       const mapping = Object.values(COLLECTION_PROGRESS_FACT_MAPPING).find(
-        ({ claimField }) => findFieldForClaim(contract, claimField)?.labelId === field.labelId,
+        ({ factField }) =>
+          findFieldForCandidateFact(contract, factField)?.labelId === field.labelId,
       );
       if (!mapping) continue;
 

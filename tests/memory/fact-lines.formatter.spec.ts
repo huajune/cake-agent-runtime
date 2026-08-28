@@ -1,7 +1,7 @@
 import {
   formatExtractionFactLines,
   formatTurnHintLines,
-  RULE_CLAIM_QUOTE_RENDER_MAX_CHARS,
+  TURN_HINT_QUOTE_RENDER_MAX_CHARS,
 } from '@memory/fact-lines.formatter';
 import {
   FALLBACK_EXTRACTION,
@@ -209,7 +209,7 @@ describe('formatExtractionFactLines', () => {
         { includeEvidence: true, includeQuote: true, currentTurnTexts: ['另一条消息', '再一条'] },
       );
 
-      expect(line).toContain(`原话: ${'我'.repeat(RULE_CLAIM_QUOTE_RENDER_MAX_CHARS)}…`);
+      expect(line).toContain(`原话: ${'我'.repeat(TURN_HINT_QUOTE_RENDER_MAX_CHARS)}…`);
       expect(line.length).toBeLessThan(120);
     });
   });

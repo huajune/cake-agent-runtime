@@ -39,7 +39,7 @@ import {
   normalizeSpongeCityFilters,
 } from '@tools/job-list/sponge-area-filter.util';
 import { detectGeoSignalConflict } from '@resolution/geo';
-import { getTurnHintValue } from '@resolution/evidence/merge';
+import { getTurnHintValue } from '@resolution/turn-hints/reducer';
 import {
   buildJobListQuerySignature,
   REPEAT_QUERY_NOTICE,

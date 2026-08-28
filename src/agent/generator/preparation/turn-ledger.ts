@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common';
 import type { CandidateCollectedField, CandidateFieldKey } from '@resolution/candidate/types';
-import type { TurnHints } from '@resolution/evidence/claim.types';
+import type { TurnHints } from '@resolution/turn-hints/turn-hint.types';
 import type { LaborFormIntentDecision } from '@resolution/labor-form';
 import type { RecommendedJobSummary } from '@resolution/job/types';
 import type {

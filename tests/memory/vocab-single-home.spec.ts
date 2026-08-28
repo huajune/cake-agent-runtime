@@ -1,7 +1,7 @@
 import {
-  CANDIDATE_CLAIM_FIELDS,
-  CANDIDATE_FACT_OPERATIONS,
-} from '@resolution/evidence/claim.types';
+  CANDIDATE_FACT_FIELDS,
+} from '@resolution/candidate/types';
+import { FIELD_VALUE_PROPOSAL_OPERATIONS } from '@tools/collection/field-value-proposal-input';
 import { FACT_CONFIDENCE_LEVELS, FACT_CONFIDENCE_LEVELS_DESC } from '@/memory/confidence-rank';
 import {
   BrandIntentEntrySchema,
@@ -59,9 +59,9 @@ describe('词表单一居所 · 期 0', () => {
       expect([...BRAND_INTENT_POLARITIES]).toEqual(['positive', 'negative', 'browse_all']);
     });
 
-    it('CandidateFactOperation 取值与顺序不变', () => {
-      expect([...CANDIDATE_FACT_OPERATIONS]).toEqual(['set', 'correct', 'confirm', 'clear']);
-      expect(CANDIDATE_CLAIM_FIELDS.length).toBeGreaterThan(0);
+    it('FieldValueProposal operation 取值与顺序不变', () => {
+      expect([...FIELD_VALUE_PROPOSAL_OPERATIONS]).toEqual(['set', 'correct', 'confirm', 'clear']);
+      expect(CANDIDATE_FACT_FIELDS.length).toBeGreaterThan(0);
     });
 
     it('brandFilterMode 取值与顺序不变', () => {

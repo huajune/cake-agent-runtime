@@ -10,7 +10,7 @@ import { proposeIdentityCore } from '@resolution/collection/adapters/identity-co
 import { proposeIdentityStatus } from '@resolution/collection/adapters/identity-status.adapter';
 import { proposeSocialInsurance } from '@resolution/collection/adapters/social-insurance.adapter';
 import { createForm, type ContractFieldDef } from '@resolution/collection/form.types';
-import { proposeValue } from '@resolution/collection/form-writes';
+import { applyFieldValueProposal } from '@resolution/collection/form-writes';
 import {
   AGE_FIELD,
   GENDER_MALE_ONLY_FIELD,
@@ -199,21 +199,18 @@ describe('适配器 → 公证 端到端', () => {
   it('适配器产的提案能过公证入账', () => {
     const text = `姓名：${TEST_CANDIDATE_NAME}`;
     const proposal = proposeForField(input(NAME_FIELD, text));
-    const result = proposeValue(createForm({ jobId: 1, contract }), NAME_FIELD, {
+    const result = applyFieldValueProposal(createForm({ jobId: 1, contract }), NAME_FIELD, {
       ...proposal!,
-      candidateTexts: [text],
-      messages: [userMessage(text)],
-    });
+    }, { candidateTexts: [text], messages: [userMessage(text)] });
     expect(result.outcome).toBe('accepted');
   });
 
   it('适配器不做公证——命中 rejectedOption 的提案由公证判不合格', () => {
     const text = '没有健康证，我不愿意办';
     const proposal = proposeForField(input(HEALTH_CERT_FIELD, text));
-    const result = proposeValue(createForm({ jobId: 1, contract }), HEALTH_CERT_FIELD, {
+    const result = applyFieldValueProposal(createForm({ jobId: 1, contract }), HEALTH_CERT_FIELD, {
       ...proposal!,
-      candidateTexts: [text],
-    });
+    }, { candidateTexts: [text], messages: [] });
     expect(result.outcome).toBe('disqualified');
   });
 

@@ -4,13 +4,9 @@ import { VERDICT_SITE_AUTHORITIES, VERDICT_SITE_REGISTRY } from '@resolution/ver
 
 describe('VERDICT_SITE_REGISTRY', () => {
   const expectedSiteIds = [
-    'candidate_claim_quote_provenance',
-    'candidate_claim_value_shape',
-    'candidate_claim_quote_context',
-    'candidate_claim_agent_echo',
-    'candidate_claim_same_value_merge',
-    'candidate_claim_conflict_route',
-    'candidate_profile_clear_projection',
+    'collection_citation_verification',
+    'collection_field_value_shape',
+    'collection_dialogue_confirmation',
     'booking_candidate_name_provenance',
     'booking_candidate_phone_provenance',
     'job_list_job_id_provenance',

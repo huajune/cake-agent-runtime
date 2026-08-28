@@ -16,7 +16,7 @@ import type { AgentMemoryContext } from './recall.types';
 import type { ShortTermMessage } from './short-term/short-term.types';
 import type { WeworkSessionState } from './short-term/short-term.types';
 import type { RecommendedJobSummary } from '@resolution/job/types';
-import type { TurnHints } from '@resolution/evidence/claim.types';
+import type { TurnHints } from '@resolution/turn-hints/turn-hint.types';
 import type { LaborFormIntentDecision } from '@resolution/labor-form';
 import { MEMORY_MESSAGE_PROCESSING_PORT, type MemoryMessageProcessingPort } from './memory.ports';
 

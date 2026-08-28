@@ -39,7 +39,7 @@ const CONTEXTUAL_NONE_RE =
 /**
  * 裸短答档：整段文本就是一个否定词。脱离语境的裸否定能回答任何一问（见
  * option-matching「不做终答识别」），故**只有值已绑定到社保槽位时**（表单行回填 /
- * formAnswers 定位后的规范值）才允许按本档解释——绑定关系由调用方以 answerBound 声明。
+ * fieldValueProposals 定位后的规范值）才允许按本档解释——绑定关系由调用方以 answerBound 声明。
  */
 const BARE_NONE_RE = /^(?:无|没有|没|没交过?|没缴过?|没买过?|未缴纳?|不交)$/u;
 

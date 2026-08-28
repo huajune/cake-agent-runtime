@@ -9,6 +9,7 @@
 export * from './form.types';
 export * from './contract-mapping';
 export * from './form-writes';
+export * from './authorization';
 export * from './option-matching';
 export * from './disclosure-policy';
 export * from './adapters/adapter.types';

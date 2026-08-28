@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { SupabaseService } from '@infra/supabase/supabase.service';
 import { RedisService } from '@infra/redis/redis.service';
 import { MemoryConfig } from '../memory.config';
-import type { CandidateFactProducer } from '@resolution/evidence/claim.types';
+import type { CandidateFactProducer } from '@resolution/candidate/types';
 import type {
   UserProfile,
   UserProfileFactValue,

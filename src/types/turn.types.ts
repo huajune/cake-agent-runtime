@@ -1,4 +1,4 @@
-import type { TurnHints } from '@resolution/evidence/claim.types';
+import type { TurnHints } from '@resolution/turn-hints/turn-hint.types';
 import type { BrandResolution } from '@resolution/brand/brand-resolution.types';
 import type { CandidateCollectedField, CandidateFieldKey } from '@resolution/candidate/types';
 import type { FinalizedVisualFactSheet } from '@resolution/signal/visual';

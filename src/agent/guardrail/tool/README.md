@@ -12,5 +12,5 @@ Key implementation files:
 - `src/tools/duliday-interview-precheck.tool.ts`
 - `src/tools/duliday-interview-booking.tool.ts`
 - `src/tools/booking/booking-guards.util.ts`
-- `src/resolution/evidence/identity-gates.ts`
+- `src/resolution/candidate/identity-attribution.ts`
 - `src/tools/job-list/hard-requirements.util.ts`

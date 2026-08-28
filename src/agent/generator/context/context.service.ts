@@ -15,7 +15,7 @@ import { GroupResolverService } from '@biz/group-task/services/group-resolver.se
 import { GroupContext } from '@biz/group-task/group-task.types';
 import { normalizeCityName as normalizeCity } from '@resolution/geo';
 import { unwrapSessionFacts, type SessionFacts } from '@memory/short-term/short-term.types';
-import type { TurnHintFieldPath, TurnHints } from '@resolution/evidence/claim.types';
+import type { TurnHintFieldPath, TurnHints } from '@resolution/turn-hints/turn-hint.types';
 import type { LaborFormIntentDecision } from '@resolution/labor-form';
 import type { SessionBrandState } from '@resolution/brand/brand-resolution.types';
 import { StrategyConfigRecord } from '@biz/strategy/entities/strategy-config.entity';
