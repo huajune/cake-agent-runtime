@@ -3,8 +3,7 @@
 /**
  * 发版底账生成器：从 .release/pending-release.json 渲染 docs/releases/YYYY/v{next}.md 草稿。
  *
- * 动机：底账闸门（check-release-ledger.js）要求发版前存在完整底账，而每轮从零手写
- * P0 表格是发版链路最大的人工墙钟（几十分钟）。entries 里已经带有各实现 PR 的
+ * 动机：需要长期审计时，从零手写 P0 表格成本较高。entries 里已经带有各实现 PR 的
  * 标题/业务摘要/验证记录（由 update-version-changelog prepare 从 PR body 抽取），
  * 本脚本把它们组装成一份能通过校验的草稿；发版前人工只需复核 P0 表与高风险区域。
  *
@@ -48,11 +47,14 @@ function renderLedger(pending, { owner }) {
     return `| ${id} | ${cell(entry.title)}（PR #${entry.number}） | 行为与 PR 验证记录一致，无回归 | PR 级验证（required checks + PR 验证记录） | 通过 | ${evidence} |`;
   });
   if (p0Rows.length === 0) {
-    p0Rows.push('| P0-01 | 空窗版本（无业务 entry） | 构建与部署健康 | CI | 通过 | required checks 全绿 |');
+    p0Rows.push(
+      '| P0-01 | 空窗版本（无业务 entry） | 构建与部署健康 | CI | 通过 | required checks 全绿 |',
+    );
   }
 
   const checksRows = entries.map(
-    (entry) => `| PR #${entry.number} required checks | 通过 | CI Checks + ai-code-review 全绿后合入 |`,
+    (entry) =>
+      `| PR #${entry.number} required checks | 通过 | CI Checks + ai-code-review 全绿后合入 |`,
   );
   if (checksRows.length === 0) {
     checksRows.push('| CI | 通过 | required checks 全绿 |');
@@ -166,7 +168,9 @@ function generateReleaseLedger(rootDir = DEFAULT_ROOT, options = {}) {
   if (fs.existsSync(targetPath) && !force) {
     const existing = fs.readFileSync(targetPath, 'utf8');
     if (!existing.startsWith(AUTO_MARKER)) {
-      throw new Error(`目标底账已被人工定稿，拒绝覆盖：${path.relative(rootDir, targetPath)}（--force 强制）`);
+      throw new Error(
+        `目标底账已被人工定稿，拒绝覆盖：${path.relative(rootDir, targetPath)}（--force 强制）`,
+      );
     }
   }
 
