@@ -519,6 +519,34 @@ describe('防线 4 · 臆造防线：sourceText 回查失败的提案零入账',
     expect(result.reason).toBe(PROPOSAL_REJECTION_REASONS.valueNotInSourceText);
   });
 
+  // 生产 chat 6a8d583b：候选人报「93年」，模型正确换算成 33 却被当成臆造拒收，
+  // 候选人被连问两遍年龄。闸门的用途是反臆造——代码能从真话里复算出同一个值时，
+  // 臆造已被排除，判据应与 grantConfidence 的 high 档一致。
+  it('确定性解析器能从原话复算出的身份值放行（93年 → 33 岁）', () => {
+    const text = '陈佚非  93年  15001908960 男 有健康证';
+    const result = proposeValue(form(), AGE_FIELD, {
+      value: String(new Date().getFullYear() - 1993),
+      sourceText: text,
+      producer: 'model',
+      candidateTexts: [text],
+      messages: [userMessage(text)],
+    });
+    expect(result.outcome).toBe('accepted');
+  });
+
+  it('复算不出等价值时仍然拒收——放宽的只是"逐字"，不是反臆造本身', () => {
+    const text = '我今年不太想说年龄';
+    const result = proposeValue(form(), AGE_FIELD, {
+      value: '26',
+      sourceText: text,
+      producer: 'model',
+      candidateTexts: [text],
+      messages: [userMessage(text)],
+    });
+    expect(result.outcome).toBe('rejected');
+    expect(result.reason).toBe(PROPOSAL_REJECTION_REASONS.valueNotInSourceText);
+  });
+
   it('占位号形态被形态门拦下（gu2kra6p 族，进真实工单前最后一道）', () => {
     const text = '我的手机号是13800138000';
     const result = proposeValue(

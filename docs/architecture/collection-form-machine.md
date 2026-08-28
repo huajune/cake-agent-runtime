@@ -60,7 +60,10 @@
 0. **棘轮**：filled 槽位的提案，非显式改口一律拒（`slotAlreadyFilled`）；
 1. **出处门**：sourceText 必须逐字连续出现在本轮候选人原文（归一化子串查找）；
    身份槽位另查值本体锚定——值须逐字在承值文本中（候选人原话，或 confirm 式的
-   `agentQuestionQuote` 问句：候选人答"对"+问句含值，两段合成完整证据）；
+   `agentQuestionQuote` 问句：候选人答"对"+问句含值，两段合成完整证据），
+   **或确定性解析器能从这段原话独立复算出等价值**（`valueDerivableFromSource`，
+   与第 4 步 high 档同一判据）。闸门用途是反臆造，代码自己算得出来就谈不上臆造；
+   两处口径此前不一致，导致「93年」→33 这类正确换算被当臆造拒收（0828 修）。
 2. **形态/值词表门**：身份字段形状（手机 11 位/姓名非昵称形）＋ optionCode ∈ 契约选项集；
    选项值必须能回配实时契约 optionLabel/code，FILE 必须是候选人消息中的真实附件 URL；
    `true`/`false` 等布尔字符串化产物拒收入槽，渲染层不做 `false`→「否」代答；
@@ -69,6 +72,12 @@
 4. **置信授予**：确定性判据可从原话复算出等价值＝high，否则 medium——**只定档不否决**
    （公证器是代价路由器，不是真值裁判）；
 5. **先筛后收**：值命中 `rejectedOptions` → 槽位 disqualified，本岗停止收资。
+
+**拒收必须对模型可见**（`rejectedAnswers`，0828）：定位成功但被公证退回的条目，连同
+原因与可执行改法回给模型，`collect_fields` 的 replyInstruction 另点名被退回的字段。
+此前拒收只落 `collection_form_audit` 给我们看，模型只看得到"这个字段还缺"——于是原样
+重投或回头再问候选人一遍（chat `6a8d583b` 年龄被连问两遍）。与 0826 给 labelTitle
+定位失败补 `unmatchedAnswers` 是同一类修法：**判据可以严，但不能静默**。
 
 **棘轮对系统单向、对本人双向**：filled 重开仅三条路径——复述 corrections /
 applyErrorList / 候选人显式改口（`proposal.restatement`，同套公证，通过即替换，

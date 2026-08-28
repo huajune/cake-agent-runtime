@@ -144,16 +144,39 @@ export function parseSpokenWeightKg(text: string): number | null {
 }
 
 /**
- * "03年的"/"95年" → 年龄（按当前年份推算周岁近似值）。
+ * "03年的"/"95年"/"1993年" → 年龄（按当前年份推算周岁近似值）。
  * 出生年表达是年龄的白名单语义映射（方案 §1："我 03 年的"不是 3 岁）。
+ *
+ * **裸年份必须收**：生产 chat `6a8d583bce406a6aee063e2b`（2026-08-28）候选人报「93年」，
+ * 而此前只认带 `的/生/出生` 后缀的写法——docstring 举的 "95年" 例子实现里从来没通过。
+ * 年龄整轮取不到，模型自行换算成 33 又被身份值锚定门拒收，候选人被连问两遍年龄。
+ *
+ * 裸年份与**时长**同形（「做了10年」「12年经验」），所以带时长语境时一律不认。
+ * 这里的封闭词表拦的是"已知会撞车的形状"，不是去认"什么算年龄"——**收窄用词表安全，
+ * 放宽用词表才危险**，与确认词表的误用方向相反。
  */
+const BIRTH_YEAR_DURATION_BEFORE = /(?:干|做|工作|从业|待|呆|上班|满|近|约|大概)\s*了?\s*$/u;
+const BIRTH_YEAR_DURATION_AFTER = /^\s*(?:经验|工龄|以上|左右|多)/u;
+
 export function parseBirthYearAge(text: string, now: Date): number | null {
-  const m = /(?:^|[^\d])((?:19|20)?\d{2})\s*年(?:的|生|出生)/u.exec(text);
-  if (!m) return null;
-  let year = Number(m[1]);
-  if (year < 100) year += year <= now.getFullYear() % 100 ? 2000 : 1900;
-  const age = now.getFullYear() - year;
-  return age >= 14 && age <= 70 ? age : null;
+  for (const match of text.matchAll(/((?:19|20)?\d{2})\s*年(的|生|出生)?/gu)) {
+    const [whole, digits, suffix] = match;
+    const start = match.index ?? 0;
+    // 前一个字符是数字说明这是更长数字串的尾巴（如手机号里截出的两位），不是年份。
+    if (start > 0 && /\d/u.test(text[start - 1])) continue;
+    if (!suffix) {
+      const before = text.slice(Math.max(0, start - 6), start);
+      const after = text.slice(start + whole.length, start + whole.length + 4);
+      if (BIRTH_YEAR_DURATION_BEFORE.test(before) || BIRTH_YEAR_DURATION_AFTER.test(after)) {
+        continue;
+      }
+    }
+    let year = Number(digits);
+    if (year < 100) year += year <= now.getFullYear() % 100 ? 2000 : 1900;
+    const age = now.getFullYear() - year;
+    if (age >= 14 && age <= 70) return age;
+  }
+  return null;
 }
 
 // ==================== 字段级推导（quote → 值） ====================

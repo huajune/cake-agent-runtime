@@ -321,6 +321,42 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
     expect(currentForm?.lastRecap?.source).toBe('self_filled');
   });
 
+  // 生产 chat 6a8d583b：年龄被公证退回，工具只回了 missing=[年龄]、没说为什么，
+  // 模型于是回头再问候选人一遍。拒收必须对模型可见，与 unmatchedAnswers 同形。
+  it('公证拒收对模型可见：rejectedAnswers 带原因与改法，收资指令点名被退回的字段', async () => {
+    const text = '我叫兮兮，我是女的';
+    context.turnInput.messages = [{ role: 'user', content: text }];
+
+    const result = await execute({
+      jobId: 100,
+      formAnswers: [
+        { labelTitle: '姓名', value: '兮兮', quote: '我叫兮兮' },
+        // 候选人这句话里没有电话，模型却提交了一个号码——公证必须退回。
+        { labelTitle: '联系电话', value: '18271421690', quote: '我叫兮兮，我是女的' },
+      ],
+    });
+
+    expect(result.rejectedAnswers).toEqual([
+      expect.objectContaining({ labelTitle: '联系电话', reason: 'value_not_in_source_text' }),
+    ]);
+    expect(result.rejectedAnswers[0].hint).toContain('不要提交自行加工过的值');
+    expect(result._replyInstruction).toContain('联系电话');
+    expect(result._replyInstruction).toContain('被公证退回');
+    // 退回的字段没有入账，仍在待收清单里。
+    expect(result.bookingChecklist.missingFields).toContain('联系电话');
+  });
+
+  it('没有拒收时不返回 rejectedAnswers，收资指令保持原样', async () => {
+    context.turnInput.messages = [{ role: 'user', content: '我叫兮兮' }];
+    const result = await execute({
+      jobId: 100,
+      formAnswers: [{ labelTitle: '姓名', value: '兮兮', quote: '我叫兮兮' }],
+    });
+
+    expect(result.rejectedAnswers).toBeUndefined();
+    expect(result._replyInstruction).not.toContain('被公证退回');
+  });
+
   it('ask_limit_exhausted 后候选人补齐对应字段，解除 handoff 并恢复复述确认', async () => {
     sponge.fetchJobCollectionContract.mockResolvedValue({
       jobId: 100,

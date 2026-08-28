@@ -83,6 +83,7 @@ export const PRECHECK_DESCRIPTION = `面试前置校验。实时读取岗位收�
 - requestedDate 只在候选人明确提出日期时传；不确定就不传。候选人的期望面试时间/日期只走本参数、不得写成 formAnswers 条目；定位失败的 formAnswers 条目会在返回的 unmatchedAnswers 中附纠正提示。
 - formAnswers 是唯一收资答案入口；每项 labelTitle 必须逐字取自 bookingChecklist.requiredFields，value 传规范值，quote 传候选人原话。纠正用 correct、清除用 clear、确认用 confirm + 必要的 agentQuestionQuote；文件 value 传候选人真实附件 URL。
 - formAnswers 只能填写实时契约已有槽位，不能增删字段，也不能控制 requiredFields 及其顺序。不得传岗位要求冒充候选人答案，不得补造字段或沿用旧 candidateXxx 裸参数。
+- 返回里出现 rejectedAnswers 表示这些答案**已被退回、没有入账**：按其 hint 改投，不要把候选人已经答过的字段再问一遍。
 
 行动纪律：
 - collect_fields：只收 bookingChecklist.requiredFieldsToCollectNow。${COLLECTION_TEMPLATE_SEND_INSTRUCTION}
@@ -123,12 +124,45 @@ interface FormRun {
   divertedRequestedDate?: string;
   /** labelTitle 定位失败/撞车弃权/面试时间族解析失败的条目——模型可见的纠错回执。 */
   unmatchedAnswers: UnmatchedAnswer[];
+  /** 定位成功但被公证拒收的条目——模型可见的纠错回执。 */
+  rejectedAnswers: RejectedAnswer[];
 }
 
 interface UnmatchedAnswer {
   labelTitle: string;
   hint: string;
 }
+
+/**
+ * 公证拒收对模型的回执。
+ *
+ * 此前拒收只落 `collection_form_audit` 给我们看，工具返回给模型的只有
+ * `missingFields` ——**模型不知道自己为什么被拒**，于是要么原样重投、要么回头再问
+ * 候选人一遍（生产 chat `6a8d583bce406a6aee063e2b`：年龄被拒后候选人被连问两遍）。
+ * 与 0826 给 labelTitle 定位失败补 `unmatchedAnswers` 是同一类修法、同一种形状。
+ */
+interface RejectedAnswer {
+  labelTitle: string;
+  reason: string;
+  hint: string;
+}
+
+/** 拒收原因 → 模型可执行的下一步。措辞只讲"怎么办"，不复述候选人隐私值。 */
+const REJECTION_HINTS: Readonly<Record<string, string>> = {
+  source_text_not_found: 'quote 必须是候选人原话里逐字存在的片段；请改用候选人真实说过的原文重投。',
+  value_not_in_source_text:
+    '身份字段的值必须能在候选人原话里逐字找到、或由确定性解析器从原话复算出来。不要提交自行加工过的值；按候选人原话提交，或先问一句、等候选人自己说出该值再提交。',
+  invalid_value_shape:
+    '值形状不合法（如手机号非 11 位、年龄超出 14-70）；核对后重投或向候选人澄清。',
+  value_not_in_contract_vocabulary:
+    '值不在本岗契约的选项集内；必须逐字使用 enumHints/契约选项原文，不要自造同义表述。',
+  unknown_option_code: 'optionCode 不属于本岗契约；改用契约返回的选项原文。',
+  confirmation_evidence_rejected:
+    'confirm 操作要求 agentQuestionQuote 是你真实问过的那句话、且候选人紧接着作了肯定应答；两段证据对不上时改用候选人原话走 set。',
+  missing_attribution_corpus: '缺少可归属的对话语料，无法核验该值出自候选人本人。',
+  identity_gate_rejected:
+    '姓名/手机号未通过归属核验（可能取自昵称、引用块里的经理、或第三方截图）；请让候选人本人再说一遍。',
+};
 
 /**
  * 面试时间语义族封闭词表（NFKC + 去空白后整串匹配）。生产回放 2026-08-26：5% 可判定答案
@@ -400,6 +434,8 @@ export function buildInterviewPrecheckTool(
               screeningFields: formRun.result.template.screeningFields,
             },
             unmatchedAnswers: formRun.unmatchedAnswers,
+            rejectedAnswers:
+              formRun.rejectedAnswers.length > 0 ? formRun.rejectedAnswers : undefined,
             recap:
               nextAction === 'confirm_collection'
                 ? {
@@ -576,7 +612,30 @@ async function runForm(params: {
     verdict: verdictOf(persisted),
     divertedRequestedDate: intake.divertedRequestedDate,
     unmatchedAnswers: intake.unmatched,
+    rejectedAnswers: collectRejectedAnswers(result.audits, mapped.fields),
   };
+}
+
+/** 公证拒收 → 模型可见回执。只保留能定位到契约字段、且有可执行下一步的拒收。 */
+function collectRejectedAnswers(
+  audits: readonly CollectionAuditEvent[],
+  contract: readonly ContractFieldDef[],
+): RejectedAnswer[] {
+  const titleById = new Map(contract.map((field) => [field.labelId, field.labelTitle]));
+  const rejected: RejectedAnswer[] = [];
+  const seen = new Set<string>();
+  for (const audit of audits) {
+    if (audit.kind !== 'proposal_rejected' || audit.labelId === undefined || !audit.reason)
+      continue;
+    const labelTitle = titleById.get(audit.labelId);
+    const hint = REJECTION_HINTS[audit.reason];
+    if (!labelTitle || !hint) continue;
+    const key = `${labelTitle}:${audit.reason}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    rejected.push({ labelTitle, reason: audit.reason, hint });
+  }
+  return rejected;
 }
 
 function actionForForm(run: FormRun): PrecheckAction {
@@ -600,8 +659,15 @@ function replyInstruction(
   requestedDateReason?: string,
 ): string {
   switch (action) {
-    case 'collect_fields':
-      return `${COLLECTION_TEMPLATE_SEND_INSTRUCTION} 只缺：${run.result.askableFields.join('、') || run.result.template.missingFields.join('、')}；已 filled 字段禁止重复问。`;
+    case 'collect_fields': {
+      // 有拒收时先讲清楚"你提交的被退回了、按 hint 改"，否则模型只看到字段还缺、
+      // 会把已经答过的字段再问候选人一遍。
+      const rejectedNote =
+        run.rejectedAnswers.length > 0
+          ? ` 注意：${run.rejectedAnswers.map((item) => item.labelTitle).join('、')} 这几项你提交的答案被公证退回了，原因与改法见 rejectedAnswers——先按 hint 改投，候选人已经答过的不要再问一遍。`
+          : '';
+      return `${COLLECTION_TEMPLATE_SEND_INSTRUCTION} 只缺：${run.result.askableFields.join('、') || run.result.template.missingFields.join('、')}；已 filled 字段禁止重复问。${rejectedNote}`;
+    }
     case 'confirm_collection':
       return run.recapText
         ? '资料已收齐。只发送 recap.candidateMessage，等待候选人确认；确认前禁止 booking。'

@@ -261,7 +261,11 @@ export function proposeValue(
       );
     }
   }
-  if (identityKey && !valueContainedInSource(identityKey, proposal.value, valueBearingText)) {
+  if (
+    identityKey &&
+    !valueContainedInSource(identityKey, proposal.value, valueBearingText) &&
+    !valueDerivableFromSource(identityKey, proposal.value, valueBearingText)
+  ) {
     return reject(
       form,
       PROPOSAL_REJECTION_REASONS.valueNotInSourceText,
@@ -792,6 +796,28 @@ function valueContainedInSource(key: IdentitySlotKey, value: string, sourceText:
     return digits.length > 0 && sourceText.replace(/\D/gu, '').includes(digits);
   }
   return normalizedIncludes(sourceText, value);
+}
+
+/**
+ * 值本体虽未逐字出现，但**确定性解析器能从这段原话独立复算出等价值**。
+ *
+ * 值锚定门的用途是反臆造（"模型编不出一段真实存在过的原话"，见 proposeValue ①）。
+ * 代码自己就能从候选人真话里算出同一个值时，臆造的可能性已被排除——这正是
+ * `grantConfidence` 授予 `high` 的同一条判据。两处此前口径不一致：置信度认复算、
+ * 闸门只认逐字，于是「93年」→ 33 这种**正确换算**被当成臆造拒收
+ *（生产 chat `6a8d583bce406a6aee063e2b`：候选人被连问两遍年龄）。
+ *
+ * 只放宽"值是否落在原话内"这一条；出处门（sourceText 必须是候选人真话）与归属门
+ * （姓名/手机号须本人给出）不受影响。
+ */
+function valueDerivableFromSource(
+  key: IdentitySlotKey,
+  value: string,
+  sourceText: string,
+): boolean {
+  const claimField = IDENTITY_TO_CLAIM_FIELD[key];
+  const derived = deriveFieldValueFromQuote(claimField, sourceText);
+  return derived !== null && candidateValuesEquivalent(claimField, derived, value);
 }
 
 /** 提案里第一个不在契约选项集内的 optionCode；全部合法返回 null。 */
