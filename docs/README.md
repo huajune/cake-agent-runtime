@@ -16,7 +16,7 @@
 | 做可靠性 / 守卫改进 | [安全护栏说明](architecture/security-guardrails.md) + [Guardrail 质量体系](architecture/guardrail-quality-system.md)                                       |
 | 改候选人事实链路    | [候选人档案域架构](architecture/candidate-profile-domain.md)（域宪法）→ [记忆系统](architecture/memory-architecture.md)                                    |
 | 质量评测 / 回归     | [测试套件架构](architecture/test-suite-architecture.md) + [质量评测指南](guides/test-suite-guide.md)                                                       |
-| 发版 / 部署         | [发版底账](releases/README.md) → [版本发布指南](workflows/version-release-guide.md) → [构建与部署指南](workflows/deploy-guide.md)                          |
+| 发版 / 部署         | [版本发布指南](workflows/version-release-guide.md) → [构建与部署指南](workflows/deploy-guide.md)；按需维护[可选发版底账](releases/README.md)               |
 
 ---
 
@@ -114,7 +114,7 @@
 
 ### 版本 / 部署 / CI
 
-- **[发版底账](releases/README.md)** ⭐ — 每个正式版本的范围、风险、回归证据、回滚与上线结果归档
+- **[发版底账](releases/README.md)** — 可选的版本范围、风险、回归证据、回滚与上线结果归档
 - **[版本与发布指南](workflows/version-release-guide.md)** — 发布操作流程 + 版本自动化机制（原 auto-version-changelog 已并入）
 - **[构建与部署指南](workflows/deploy-guide.md)** — tag 触发构建部署、健康检查、回滚
 - **[分支保护规则配置](workflows/branch-protection-guide.md)** — 分支保护、环境隔离、CI 必需检查

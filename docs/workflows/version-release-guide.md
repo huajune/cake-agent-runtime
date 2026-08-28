@@ -47,13 +47,14 @@ PR 正文按模板填中文说明，重点这些小节（自动化脚本按中�
 
 ## 三、正式发布怎么走
 
-1. 从 [发版底账模板](../releases/_template.md) 创建或更新本批 pending 底账，按实际 diff 策展 P0/P1 回归 case
-2. 确认 `develop` 上 `CHANGELOG.md` 待发布内容正确
-3. 合并机器人「版本元数据 PR」，版本确定后将 pending 底账重命名为 `docs/releases/YYYY/vX.Y.Z.md`
-4. 等系统自动创建/更新 `develop → master` release PR（也可 `pnpm release:pr:create` 手动创建、`pnpm release:pr:preview` 预览）
-5. 确认底账 P0 全部通过，审核版本说明 / 配置影响 / 验证证据 / 回滚方案 → 合并 release PR
-6. 合并后系统创建机器人「正式发布固化 PR」到 `master`；**该 PR 合并后**才继续：打 `vX.Y.Z` tag → 创建 GitHub Release → 触发部署 → 发飞书企微私域监控群通知
-7. 发布完成后在底账补齐 tag、Release、部署、生产验证、监控与遗留事项
+1. 确认 `develop` 上 `CHANGELOG.md` 待发布内容正确
+2. 合并机器人「版本元数据 PR」
+3. 等系统自动创建/更新 `develop → master` release PR（也可 `pnpm release:pr:create` 手动创建、`pnpm release:pr:preview` 预览）
+4. 审核版本说明、配置影响、验证证据与回滚方案后合并 release PR
+5. 合并后系统创建机器人「正式发布固化 PR」到 `master`；**该 PR 合并后**才继续：打 `vX.Y.Z` tag → 创建 GitHub Release → 触发部署 → 发飞书企微私域监控群通知
+
+发版底账是可选制品。需要长期审计时，可从 [发版底账模板](../releases/_template.md) 创建，
+或运行 `pnpm release:ledger` 生成草稿；它不参与 Release PR 的 CI 门禁。
 
 > 手动在网页建 `develop → master` PR 时不用填通用模板，填个临时标题即可，`Release PR Autofill` workflow 会从 `CHANGELOG.md` 待发布区生成标题正文。
 
@@ -108,13 +109,13 @@ pnpm config:hosting:check:prod
 
 ## 六、文件职责
 
-| 文件                               | 职责                                                                   |
-| ---------------------------------- | ---------------------------------------------------------------------- |
-| `package.json`                     | 当前待发布版本号；在 `develop` 体现"下次发哪个版本"                    |
-| `CHANGELOG.md`                     | 面向团队的中文版本记录；顶部「待发布」区，发布后固化成正式版本区       |
-| `.release/pending-release.json`    | 机器读写的待发布状态；存累计 PR 条目避免重复追加；不建议手改           |
-| `.github/pull_request_template.md` | 规范 PR 中文说明；CHANGELOG 内容优先从这里提取                         |
-| `docs/releases/`                   | 人工可审计的逐版本发版底账；记录范围、风险、回归、证据、回滚与发布结果 |
+| 文件                               | 职责                                                             |
+| ---------------------------------- | ---------------------------------------------------------------- |
+| `package.json`                     | 当前待发布版本号；在 `develop` 体现"下次发哪个版本"              |
+| `CHANGELOG.md`                     | 面向团队的中文版本记录；顶部「待发布」区，发布后固化成正式版本区 |
+| `.release/pending-release.json`    | 机器读写的待发布状态；存累计 PR 条目避免重复追加；不建议手改     |
+| `.github/pull_request_template.md` | 规范 PR 中文说明；CHANGELOG 内容优先从这里提取                   |
+| `docs/releases/`                   | 可选的逐版本审计记录；记录范围、风险、回归、证据、回滚与发布结果 |
 
 ## 七、版本号规则
 
