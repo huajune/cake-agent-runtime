@@ -1,7 +1,7 @@
 # 品牌解析域架构（brand resolution）
 
 **最后更新**：2026-08-26
-**代码居所**：`src/resolution/brand/`（纯确定性，零 LLM 调用）+ `src/resolution/evidence/brand-policy.ts`（状态迁移策略行）
+**代码居所**：`src/resolution/brand/`（纯确定性，零 LLM 调用，含意图 producer 与状态策略）
 
 > 本文描述已实现的系统。品牌状态的**入档裁决**共用候选人档案域的证据底盘，域宪法见
 > [candidate-profile-domain.md](./candidate-profile-domain.md)；品牌是候选人信息的一种，与姓名/城市平级。
@@ -248,7 +248,7 @@ normalize('NFKC') → lowerCase → 剔除非 [a-z0-9一-龥]
 1. **助手话术回声**——Agent 自己的找店话术被当作候选人意向输出（生产实例 chat `6a633590`，`null → 塔可贝尔` 凭空立主品牌）；
 2. **系统文本回流**——守卫 repair 反馈被当候选人原话解析，形成「守卫抱怨品牌 → 品牌被重新种进状态」的自我强化回路。
 
-两个判定都是纯函数，`resolution/evidence/producers/brand-intents.ts` 的
+两个判定都是纯函数，`resolution/brand/intent-producer.ts` 的
 `produceValidatedBrandIntents` 持有对话上下文，命中即整条丢弃；memory 只记录拒绝原因。
 **裸品牌名 / 短指代不在拦截范围**——指代链接（「你刚才说的那家」→ 品牌名）是 LLM 轨的本职，不能因 Agent 提过该品牌就拦。
 
@@ -343,7 +343,7 @@ export interface SessionBrandState {
 
 ### 7.3 状态迁移规则
 
-实现在 `src/resolution/evidence/brand-policy.ts`（品牌策略行：复合槽值 + set/exclude/clear 替换语义），与其它候选人字段共用同一套证据裁决底盘。执行位置在 `src/memory/short-term/brand-state.service.ts` 的 `applyTurnResolutions`，memory 侧只负责「读 `facts.brand` → 调纯 reducer → 写回」。
+实现在 `src/resolution/brand/state-policy.ts`（品牌策略行：复合槽值 + set/exclude/clear 替换语义）。品牌持有自己的聚合策略，不经过通用候选人裁决器。执行位置在 `src/memory/short-term/brand-state.service.ts` 的 `applyTurnResolutions`，memory 侧只负责「读 `facts.brand` → 调纯 reducer → 写回」。
 
 **第 0 步 · 过滤输入**：剔除 `contact_name` 来源的结果——昵称品牌不参与常规轮次的状态更新，否则这个每轮都在的静态值会不断把自己写回 `currentBrand`。它进入状态的唯一通道是**首次初始化 seed**：`brand_state` 不存在时设为初始值，一次性、此后与普通品牌同权。**状态一旦存在（哪怕被 browse_all 清成空值）永不重新 seed**——「清空后被昵称锁回」在结构上不可能发生。
 

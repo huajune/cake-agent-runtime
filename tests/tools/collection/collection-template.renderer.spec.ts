@@ -1,4 +1,4 @@
-import { createForm, proposeValue, type ContractFieldDef } from '@resolution/collection';
+import { createForm, applyFieldValueProposal, type ContractFieldDef } from '@resolution/collection';
 import { renderCollectionTemplate } from '@tools/collection/collection-template.renderer';
 
 const CONTRACT: ContractFieldDef[] = [
@@ -42,13 +42,11 @@ describe('renderCollectionTemplate', () => {
 
   it('prefills a notarized value and never reports the filled slot as missing', () => {
     const form = createForm({ jobId: 528962, contract: CONTRACT });
-    const written = proposeValue(form, CONTRACT[0], {
+    const written = applyFieldValueProposal(form, CONTRACT[0], {
       value: '兮兮',
       sourceText: '我叫兮兮',
       producer: 'candidate_quote',
-      candidateTexts: ['我叫兮兮'],
-      messages: [{ role: 'user', content: '我叫兮兮' }],
-    }).form;
+    }, { candidateTexts: ['我叫兮兮'], messages: [{ role: 'user', content: '我叫兮兮' }] }).form;
 
     const result = renderCollectionTemplate(written, CONTRACT);
     expect(result.knownFieldMap).toEqual({ 姓名: '兮兮' });

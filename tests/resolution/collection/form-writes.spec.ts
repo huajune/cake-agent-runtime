@@ -16,7 +16,7 @@ import {
   markSubmitted,
   MAX_ASKS_PER_SLOT,
   migrateAskTracking,
-  proposeValue,
+  applyFieldValueProposal as applyFieldValueProposalRaw,
   PROPOSAL_IGNORE_REASONS,
   PROPOSAL_REJECTION_REASONS,
   MAX_REJECTED_ATTEMPTS_PER_SLOT,
@@ -24,7 +24,7 @@ import {
   recordUnansweredAsks,
   recordConfigDebt,
   yieldRecoverableEscalationToScreening,
-  type ValueProposal,
+  type FieldValueProposal,
 } from '@resolution/collection/form-writes';
 import {
   AGE_FIELD,
@@ -40,6 +40,23 @@ import {
   userMessage,
 } from './form.fixtures';
 
+type FieldValueProposalFixture = FieldValueProposal & {
+  candidateTexts?: readonly string[];
+  messages?: readonly unknown[];
+};
+
+function applyFieldValueProposal(
+  targetForm: BookingCollectionForm,
+  field: ContractFieldDef,
+  fixture: FieldValueProposalFixture,
+) {
+  const { candidateTexts = [fixture.sourceText], messages = [], ...valueProposal } = fixture;
+  return applyFieldValueProposalRaw(targetForm, field, valueProposal, {
+    candidateTexts,
+    messages,
+  });
+}
+
 const CONTRACT: ContractFieldDef[] = [
   NAME_FIELD,
   PHONE_FIELD,
@@ -52,7 +69,10 @@ function form(contract: ContractFieldDef[] = CONTRACT): BookingCollectionForm {
   return createForm({ jobId: 528781, contract });
 }
 
-function proposal(overrides: Partial<ValueProposal> & Pick<ValueProposal, 'value' | 'sourceText'>) {
+function proposal(
+  overrides: Partial<FieldValueProposalFixture> &
+    Pick<FieldValueProposalFixture, 'value' | 'sourceText'>,
+): FieldValueProposalFixture {
   return {
     producer: 'candidate_quote' as const,
     candidateTexts: [overrides.sourceText],
@@ -65,7 +85,7 @@ const NAME_MESSAGES = [userMessage(`姓名：${TEST_CANDIDATE_NAME}`)];
 const PHONE_MESSAGES = [userMessage(`我的手机号是${TEST_CANDIDATE_PHONE}`)];
 
 function fillName(base = form()): BookingCollectionForm {
-  const result = proposeValue(
+  const result = applyFieldValueProposal(
     base,
     NAME_FIELD,
     proposal({
@@ -79,7 +99,7 @@ function fillName(base = form()): BookingCollectionForm {
 }
 
 function fillPhone(base: BookingCollectionForm): BookingCollectionForm {
-  const result = proposeValue(
+  const result = applyFieldValueProposal(
     base,
     PHONE_FIELD,
     proposal({
@@ -136,7 +156,7 @@ describe('防线 1 · 反复问根治：filled 槽位零重问', () => {
 
   it('对 filled 槽位再提案一律 ignored，值不被覆盖（类型级不变量）', () => {
     const filled = fillName();
-    const result = proposeValue(
+    const result = applyFieldValueProposal(
       filled,
       NAME_FIELD,
       proposal({ value: '张三', sourceText: '姓名：张三', messages: [userMessage('姓名：张三')] }),
@@ -149,7 +169,7 @@ describe('防线 1 · 反复问根治：filled 槽位零重问', () => {
   it('重放同一条消息不会让 filled 槽位回到 empty（跨轮重放不变量）', () => {
     let current = fillName();
     for (let turn = 0; turn < 5; turn += 1) {
-      current = proposeValue(
+      current = applyFieldValueProposal(
         current,
         NAME_FIELD,
         proposal({
@@ -170,7 +190,7 @@ describe('棘轮：对系统单向、对本人双向（§3 0819 裁定）', () =
   it('候选人显式改口 → 公证通过即替换，outcome=restated', () => {
     const filled = fillName();
     const text = '姓名：李四';
-    const result = proposeValue(filled, NAME_FIELD, {
+    const result = applyFieldValueProposal(filled, NAME_FIELD, {
       value: '李四',
       sourceText: text,
       producer: 'candidate_quote',
@@ -187,7 +207,7 @@ describe('棘轮：对系统单向、对本人双向（§3 0819 裁定）', () =
     let current = recordUnansweredAsks(form(), [NAME_FIELD.labelId], 'turn-1').form;
     current = fillName(current);
     const text = '姓名：李四';
-    const restated = proposeValue(current, NAME_FIELD, {
+    const restated = applyFieldValueProposal(current, NAME_FIELD, {
       value: '李四',
       sourceText: text,
       producer: 'candidate_quote',
@@ -200,7 +220,7 @@ describe('棘轮：对系统单向、对本人双向（§3 0819 裁定）', () =
 
   it('改口同样过公证——出处站不住的改口照拒', () => {
     const filled = fillName();
-    const result = proposeValue(filled, NAME_FIELD, {
+    const result = applyFieldValueProposal(filled, NAME_FIELD, {
       value: '李四',
       sourceText: '姓名：李四',
       producer: 'model',
@@ -215,7 +235,7 @@ describe('棘轮：对系统单向、对本人双向（§3 0819 裁定）', () =
   it('不带 restatement 的重推一律挡死——系统/模型永远推不动 filled 槽位', () => {
     const filled = fillName();
     const text = '姓名：李四';
-    const result = proposeValue(filled, NAME_FIELD, {
+    const result = applyFieldValueProposal(filled, NAME_FIELD, {
       value: '李四',
       sourceText: text,
       producer: 'model',
@@ -229,14 +249,14 @@ describe('棘轮：对系统单向、对本人双向（§3 0819 裁定）', () =
   it('改口命中筛选条件照样当轮判不合格', () => {
     const contract = [GENDER_MALE_ONLY_FIELD];
     let current = createForm({ jobId: 1, contract });
-    current = proposeValue(current, GENDER_MALE_ONLY_FIELD, {
+    current = applyFieldValueProposal(current, GENDER_MALE_ONLY_FIELD, {
       value: '男',
       optionCodes: ['1'],
       sourceText: '我是男的',
       producer: 'candidate_quote',
       candidateTexts: ['我是男的'],
     }).form;
-    const restated = proposeValue(current, GENDER_MALE_ONLY_FIELD, {
+    const restated = applyFieldValueProposal(current, GENDER_MALE_ONLY_FIELD, {
       value: '女',
       optionCodes: ['2'],
       sourceText: '写错了我是女的',
@@ -254,7 +274,7 @@ describe('分性别值域筛（实测 528995 身高/体重）', () => {
   function withGender(value: '男' | '女'): BookingCollectionForm {
     const optionCodes = value === '男' ? ['1'] : ['2'];
     const source = `我是${value}的`;
-    return proposeValue(createForm({ jobId: 1, contract }), GENDER_MALE_ONLY_FIELD, {
+    return applyFieldValueProposal(createForm({ jobId: 1, contract }), GENDER_MALE_ONLY_FIELD, {
       value,
       optionCodes,
       sourceText: source,
@@ -265,7 +285,7 @@ describe('分性别值域筛（实测 528995 身高/体重）', () => {
 
   function proposeHeight(base: BookingCollectionForm, cm: string) {
     const source = `我身高${cm}`;
-    return proposeValue(base, HEIGHT_FIELD_GENDERED, {
+    return applyFieldValueProposal(base, HEIGHT_FIELD_GENDERED, {
       value: cm,
       sourceText: source,
       producer: 'candidate_quote',
@@ -291,7 +311,7 @@ describe('分性别值域筛（实测 528995 身高/体重）', () => {
     };
     const neutral = [neutralGender, HEIGHT_FIELD_GENDERED];
     const source = '我是女的';
-    const base = proposeValue(createForm({ jobId: 1, contract: neutral }), neutralGender, {
+    const base = applyFieldValueProposal(createForm({ jobId: 1, contract: neutral }), neutralGender, {
       value: '女',
       optionCodes: ['2'],
       sourceText: source,
@@ -320,13 +340,13 @@ describe('分性别值域筛（实测 528995 身高/体重）', () => {
     };
     const localContract = [experienceField, neutralGender, HEIGHT_FIELD_GENDERED];
     let current = createForm({ jobId: 1, contract: localContract });
-    current = proposeValue(current, experienceField, {
+    current = applyFieldValueProposal(current, experienceField, {
       value: '男装导购经验',
       sourceText: '我有男装导购经验',
       producer: 'candidate_quote',
       candidateTexts: ['我有男装导购经验'],
     }).form;
-    current = proposeValue(current, neutralGender, {
+    current = applyFieldValueProposal(current, neutralGender, {
       value: '女',
       optionCodes: ['2'],
       sourceText: '我是女的',
@@ -365,7 +385,10 @@ describe('防线 2 · 复述落账：「不对，电话错了」精确重开一�
       NAME_FIELD.labelId,
     ]);
     const affirmed = applyRecapResult(filled, { affirmed: true });
-    expect(affirmed.lastRecap).toEqual({ labelIds: [NAME_FIELD.labelId], affirmed: true });
+    expect(affirmed.lastRecap).toEqual({
+      labelIds: [NAME_FIELD.labelId],
+      affirmed: true,
+    });
     expect(verdictOf(affirmed)).toBe('ready');
   });
 
@@ -375,7 +398,7 @@ describe('防线 2 · 复述落账：「不对，电话错了」精确重开一�
     ]);
     const affirmed = applyRecapResult(recapped, { affirmed: true });
     const text = '姓名：李四';
-    const restated = proposeValue(affirmed, NAME_FIELD, {
+    const restated = applyFieldValueProposal(affirmed, NAME_FIELD, {
       value: '李四',
       sourceText: text,
       producer: 'candidate_quote',
@@ -404,7 +427,7 @@ describe('防线 2 · 复述落账：「不对，电话错了」精确重开一�
 
 describe('防线 3 · 先筛后收：命中 rejectedOptions 当轮即 disqualified', () => {
   it('性别答"女"命中 rejected[女] → 该槽 disqualified，整表 verdict=disqualified', () => {
-    const result = proposeValue(
+    const result = applyFieldValueProposal(
       form(),
       GENDER_MALE_ONLY_FIELD,
       proposal({ value: '女', optionCodes: ['2'], sourceText: '我是女的' }),
@@ -416,7 +439,7 @@ describe('防线 3 · 先筛后收：命中 rejectedOptions 当轮即 disqualifi
   });
 
   it('账本落真实原因（判定入账永远如实，委婉只在渲染层）', () => {
-    const result = proposeValue(
+    const result = applyFieldValueProposal(
       form(),
       GENDER_MALE_ONLY_FIELD,
       proposal({ value: '女', optionCodes: ['2'], sourceText: '我是女的' }),
@@ -427,12 +450,12 @@ describe('防线 3 · 先筛后收：命中 rejectedOptions 当轮即 disqualifi
   });
 
   it('不合格后不再收该槽后续字段', () => {
-    const disqualified = proposeValue(
+    const disqualified = applyFieldValueProposal(
       form(),
       GENDER_MALE_ONLY_FIELD,
       proposal({ value: '女', optionCodes: ['2'], sourceText: '我是女的' }),
     ).form;
-    const retry = proposeValue(
+    const retry = applyFieldValueProposal(
       disqualified,
       GENDER_MALE_ONLY_FIELD,
       proposal({ value: '男', optionCodes: ['1'], sourceText: '我是男的' }),
@@ -442,7 +465,7 @@ describe('防线 3 · 先筛后收：命中 rejectedOptions 当轮即 disqualifi
   });
 
   it('accepted 选项照常入账', () => {
-    const result = proposeValue(
+    const result = applyFieldValueProposal(
       form(),
       GENDER_MALE_ONLY_FIELD,
       proposal({ value: '男', optionCodes: ['1'], sourceText: '我是男的' }),
@@ -453,7 +476,7 @@ describe('防线 3 · 先筛后收：命中 rejectedOptions 当轮即 disqualifi
 
   it('年龄越出契约 min/max 硬区间 → 值域筛不合格（判决单源：判据读契约）', () => {
     const contract = [AGE_FIELD_18_40];
-    const result = proposeValue(
+    const result = applyFieldValueProposal(
       createForm({ jobId: 1, contract }),
       AGE_FIELD_18_40,
       proposal({ value: '55', sourceText: '我今年55岁了' }),
@@ -463,7 +486,7 @@ describe('防线 3 · 先筛后收：命中 rejectedOptions 当轮即 disqualifi
   });
 
   it('契约没带 min/max = 该岗没有这道筛（不读岗位数据补筛）', () => {
-    const result = proposeValue(
+    const result = applyFieldValueProposal(
       createForm({ jobId: 1, contract: [AGE_FIELD] }),
       AGE_FIELD,
       proposal({ value: '55', sourceText: '我今年55岁了' }),
@@ -472,7 +495,7 @@ describe('防线 3 · 先筛后收：命中 rejectedOptions 当轮即 disqualifi
   });
 
   it('年龄弹性档（boundary）不判不合格，可继续推进', () => {
-    const result = proposeValue(
+    const result = applyFieldValueProposal(
       createForm({ jobId: 1, contract: [AGE_FIELD_18_40] }),
       AGE_FIELD_18_40,
       proposal({ value: '42', sourceText: '我42岁' }),
@@ -484,7 +507,7 @@ describe('防线 3 · 先筛后收：命中 rejectedOptions 当轮即 disqualifi
 describe('防线 4 · 臆造防线：sourceText 回查失败的提案零入账', () => {
   it('sourceText 不在候选人原文里 → rejected，表单一格不动', () => {
     const base = form();
-    const result = proposeValue(base, PHONE_FIELD, {
+    const result = applyFieldValueProposal(base, PHONE_FIELD, {
       value: '15921708092',
       sourceText: '我的手机号是15921708092',
       producer: 'model',
@@ -497,15 +520,43 @@ describe('防线 4 · 臆造防线：sourceText 回查失败的提案零入账',
   });
 
   it('空 sourceText 直接拒收', () => {
-    const result = proposeValue(form(), AGE_FIELD, proposal({ value: '26', sourceText: '  ' }));
+    const result = applyFieldValueProposal(form(), AGE_FIELD, proposal({ value: '26', sourceText: '  ' }));
     expect(result.outcome).toBe('rejected');
     expect(result.reason).toBe(PROPOSAL_REJECTION_REASONS.sourceTextNotFound);
   });
 
   it('身份槽位的值本体没落在原话里 → rejected（严格身份追加判据）', () => {
     const text = '我叫兮兮，之前在奶茶店做过';
-    const result = proposeValue(form(), PHONE_FIELD, {
+    const result = applyFieldValueProposal(form(), PHONE_FIELD, {
       value: TEST_CANDIDATE_PHONE,
+      sourceText: text,
+      producer: 'model',
+      candidateTexts: [text],
+      messages: [userMessage(text)],
+    });
+    expect(result.outcome).toBe('rejected');
+    expect(result.reason).toBe(PROPOSAL_REJECTION_REASONS.valueNotInSourceText);
+  });
+
+  // 生产 chat 6a8d583b：候选人报「93年」，模型正确换算成 33 却被当成臆造拒收，
+  // 候选人被连问两遍年龄。闸门的用途是反臆造——代码能从真话里复算出同一个值时，
+  // 臆造已被排除，判据应与 grantConfidence 的 high 档一致。
+  it('确定性解析器能从原话复算出的身份值放行（93年 → 33 岁）', () => {
+    const text = '陈佚非  93年  15001908960 男 有健康证';
+    const result = applyFieldValueProposal(form(), AGE_FIELD, {
+      value: String(new Date().getFullYear() - 1993),
+      sourceText: text,
+      producer: 'model',
+      candidateTexts: [text],
+      messages: [userMessage(text)],
+    });
+    expect(result.outcome).toBe('accepted');
+  });
+
+  it('复算不出等价值时仍然拒收——放宽的只是"逐字"，不是反臆造本身', () => {
+    const text = '我今年不太想说年龄';
+    const result = applyFieldValueProposal(form(), AGE_FIELD, {
+      value: '26',
       sourceText: text,
       producer: 'model',
       candidateTexts: [text],
@@ -517,7 +568,7 @@ describe('防线 4 · 臆造防线：sourceText 回查失败的提案零入账',
 
   it('占位号形态被形态门拦下（gu2kra6p 族，进真实工单前最后一道）', () => {
     const text = '我的手机号是13800138000';
-    const result = proposeValue(
+    const result = applyFieldValueProposal(
       form(),
       PHONE_FIELD,
       proposal({ value: '13800138000', sourceText: text, messages: [userMessage(text)] }),
@@ -527,7 +578,7 @@ describe('防线 4 · 臆造防线：sourceText 回查失败的提案零入账',
   });
 
   it('契约选项集外的 optionCode 拒收', () => {
-    const result = proposeValue(
+    const result = applyFieldValueProposal(
       form(),
       GENDER_MALE_ONLY_FIELD,
       proposal({ value: '男', optionCodes: ['99'], sourceText: '我是男的' }),
@@ -538,7 +589,7 @@ describe('防线 4 · 臆造防线：sourceText 回查失败的提案零入账',
 
   it('身份槽位缺归属取证语料 → fail-closed 拒收，不当作放行', () => {
     const text = `我的手机号是${TEST_CANDIDATE_PHONE}`;
-    const result = proposeValue(form(), PHONE_FIELD, {
+    const result = applyFieldValueProposal(form(), PHONE_FIELD, {
       value: TEST_CANDIDATE_PHONE,
       sourceText: text,
       producer: 'candidate_quote',
@@ -549,7 +600,7 @@ describe('防线 4 · 臆造防线：sourceText 回查失败的提案零入账',
   });
 
   it('确认式身份提案的问句只由模型自报、真实历史不存在 → fail-closed 拒收', () => {
-    const result = proposeValue(form(), PHONE_FIELD, {
+    const result = applyFieldValueProposal(form(), PHONE_FIELD, {
       value: TEST_CANDIDATE_PHONE,
       sourceText: '确认',
       producer: 'model',
@@ -563,7 +614,7 @@ describe('防线 4 · 臆造防线：sourceText 回查失败的提案零入账',
 
   it('确认式身份提案绑定真实相邻问答对 → 允许入账', () => {
     const question = `手机号是${TEST_CANDIDATE_PHONE}，对吗？`;
-    const result = proposeValue(form(), PHONE_FIELD, {
+    const result = applyFieldValueProposal(form(), PHONE_FIELD, {
       value: TEST_CANDIDATE_PHONE,
       sourceText: '确认',
       producer: 'model',
@@ -576,7 +627,7 @@ describe('防线 4 · 臆造防线：sourceText 回查失败的提案零入账',
 
   it('姓名仅以「我是X」打招呼语昵称出现 → 归属门拒收', () => {
     const text = '你好，我是小晴';
-    const result = proposeValue(
+    const result = applyFieldValueProposal(
       form(),
       NAME_FIELD,
       proposal({ value: '小晴', sourceText: text, messages: [userMessage(text)] }),
@@ -585,15 +636,15 @@ describe('防线 4 · 臆造防线：sourceText 回查失败的提案零入账',
     expect(result.reason).toBe(PROPOSAL_REJECTION_REASONS.identityGateRejected);
   });
 
-  it('置信按证据形态授予：逐字落在原话里=high，归一化产物=medium', () => {
-    const high = proposeValue(
+  it('槽位值不再持久化置信度，字面与非字面明确表达走同一入账结构', () => {
+    const literal = applyFieldValueProposal(
       form(),
       AGE_FIELD,
       proposal({ value: '26', sourceText: '我今年26岁' }),
     );
-    expect(high.form.slots[AGE_FIELD.labelId].value?.confidence).toBe('high');
+    expect(literal.form.slots[AGE_FIELD.labelId].value).not.toHaveProperty('confidence');
 
-    const medium = proposeValue(
+    const semantic = applyFieldValueProposal(
       form(),
       HEALTH_CERT_FIELD,
       proposal({
@@ -602,12 +653,74 @@ describe('防线 4 · 臆造防线：sourceText 回查失败的提案零入账',
         sourceText: '有的，本地办的健康证',
       }),
     );
-    expect(medium.form.slots[HEALTH_CERT_FIELD.labelId].value?.confidence).toBe('medium');
+    expect(semantic.outcome).toBe('accepted');
+    expect(semantic.form.slots[HEALTH_CERT_FIELD.labelId].value).not.toHaveProperty('confidence');
+  });
+
+  it('开放语义提案的正常表达未被确定性 adapter 覆盖时不拒收、不降级', () => {
+    const professional: ContractFieldDef = {
+      labelId: 999,
+      labelTitle: '专业',
+      fieldType: 'TEXT',
+      required: true,
+      acceptedOptions: [],
+      rejectedOptions: [],
+    };
+    const result = applyFieldValueProposal(
+      form([professional]),
+      professional,
+      proposal({
+        value: '无',
+        sourceText: '我读的通识课程，没有分专业',
+        producer: 'model',
+      }),
+    );
+    expect(result.outcome).toBe('accepted');
+    expect(result.form.slots[professional.labelId].value?.value).toBe('无');
+  });
+
+  it('确定性 adapter 从原话得出不同契约值时拒绝模型提案', () => {
+    const text = '没有健康证，可以办';
+    const result = applyFieldValueProposal(form(), HEALTH_CERT_FIELD, {
+      value: '有本地有效健康证',
+      optionCodes: ['1'],
+      sourceText: text,
+      producer: 'model',
+      candidateTexts: [text],
+    });
+    expect(result.outcome).toBe('rejected');
+    expect(result.reason).toBe(PROPOSAL_REJECTION_REASONS.deterministicConflict);
+  });
+
+  it('「93 年的」与「还在读书」可由模型映射为规范值后通过封闭公证', () => {
+    const age = applyFieldValueProposal(
+      form(),
+      AGE_FIELD,
+      proposal({ value: '33', sourceText: '我93年的', producer: 'model' }),
+    );
+    expect(age.outcome).toBe('accepted');
+
+    const student: ContractFieldDef = {
+      labelId: 998,
+      labelTitle: '是否学生',
+      fieldType: 'SINGLE_OPTION',
+      required: true,
+      acceptedOptions: [{ optionCode: 'student', optionLabel: '在校学生' }],
+      rejectedOptions: [],
+    };
+    const studentResult = applyFieldValueProposal(form([student]), student, {
+      value: '在校学生',
+      optionCodes: ['student'],
+      sourceText: '我还在读书',
+      producer: 'model',
+      candidateTexts: ['我还在读书'],
+    });
+    expect(studentResult.outcome).toBe('accepted');
   });
 
   it('producer 原样入账（署名如实，公证不改写来源）', () => {
     const text = '有的，本地办的健康证';
-    const result = proposeValue(form(), HEALTH_CERT_FIELD, {
+    const result = applyFieldValueProposal(form(), HEALTH_CERT_FIELD, {
       value: '有本地有效健康证',
       optionCodes: ['1'],
       sourceText: text,
@@ -788,7 +901,7 @@ describe('markSubmitted / configDebts / 疑似多人', () => {
 
   it('assistant 消息不参与候选人语料判定（回声不构成出处）', () => {
     const text = `姓名：${TEST_CANDIDATE_NAME}`;
-    const result = proposeValue(form(), NAME_FIELD, {
+    const result = applyFieldValueProposal(form(), NAME_FIELD, {
       value: TEST_CANDIDATE_NAME,
       sourceText: text,
       producer: 'model',
@@ -820,7 +933,7 @@ describe('recordRejectedAttempts · 答而不解 ≠ 不答（badcase batch_6a8f
 
   it('非 empty 槽位不记账（同轮已被其它通道写入的不算读不懂）', () => {
     let form = createForm({ jobId: 1, contract: [NAME_FIELD] });
-    const written = proposeValue(form, NAME_FIELD, {
+    const written = applyFieldValueProposal(form, NAME_FIELD, {
       value: TEST_CANDIDATE_NAME,
       sourceText: `姓名：${TEST_CANDIDATE_NAME}`,
       producer: 'candidate_quote',
@@ -846,7 +959,7 @@ describe('recordRejectedAttempts · 答而不解 ≠ 不答（badcase batch_6a8f
     form = recordRejectedAttempts(form, [NAME_FIELD.labelId]).form;
     expect(verdictOf(form)).toBe('escalated');
 
-    const written = proposeValue(form, NAME_FIELD, {
+    const written = applyFieldValueProposal(form, NAME_FIELD, {
       value: TEST_CANDIDATE_NAME,
       sourceText: `姓名：${TEST_CANDIDATE_NAME}`,
       producer: 'candidate_quote',
@@ -862,7 +975,7 @@ describe('recordRejectedAttempts · 答而不解 ≠ 不答（badcase batch_6a8f
 describe('yieldRecoverableEscalationToScreening · 筛选终局优先', () => {
   function formWithDisqualifiedAge(): BookingCollectionForm {
     const form = createForm({ jobId: 1, contract: [AGE_FIELD_18_40] });
-    const result = proposeValue(form, AGE_FIELD_18_40, {
+    const result = applyFieldValueProposal(form, AGE_FIELD_18_40, {
       value: '55',
       sourceText: '我55岁',
       producer: 'candidate_quote',

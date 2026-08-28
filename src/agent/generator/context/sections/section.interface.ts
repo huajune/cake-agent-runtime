@@ -1,7 +1,7 @@
 // 归位依据：section 基础设施契约，不是模型可见 section，不参与知识分类。
 // prompt-rule-ledger: docs/prompt-rule-ledger.md（Prompt section 契约与语料域执法点）
 import type { SessionFacts } from '@memory/short-term/short-term.types';
-import type { TurnHintFieldPath, TurnHints } from '@resolution/evidence/claim.types';
+import type { TurnHintFieldPath, TurnHints } from '@resolution/turn-hints/turn-hint.types';
 import type { SessionBrandState } from '@resolution/brand/brand-resolution.types';
 import { StrategyConfigRecord } from '@biz/strategy/entities/strategy-config.entity';
 import type { LaborFormIntentDecision } from '@resolution/labor-form';

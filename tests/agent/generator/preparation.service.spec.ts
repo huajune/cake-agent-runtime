@@ -4,7 +4,7 @@ import { CallerKind } from '@enums/agent.enum';
 import { StorageMessageSource, StorageMessageType } from '@enums/storage-message.enum';
 import type { MemoryRecallContext } from '@memory/recall.types';
 import { FALLBACK_EXTRACTION } from '@memory/short-term/short-term.types';
-import { getTurnHint } from '@resolution/evidence/merge';
+import { getTurnHint } from '@resolution/turn-hints/reducer';
 import { testTurnHint, testTurnHints } from '../../helpers/turn-hints.fixture';
 import { sessionFactsOf } from '../../helpers/session-facts.fixture';
 import { FinalCheckSection } from '@agent/generator/context/sections/procedural/final-check.section';

@@ -22,7 +22,7 @@ import {
   recordRejectedAttempts,
   recordUnansweredAsks,
   seedArchiveValue,
-  proposeValue,
+  applyFieldValueProposal,
   recordConfigDebt,
   routeOf,
   verdictOf,
@@ -30,8 +30,12 @@ import {
   genericAdapter,
 } from '@resolution/collection';
 import { extractMessageText } from '@resolution/signal/markers';
-import { collectProposals, findFieldForClaim, type ArchiveFact } from './proposal-intake';
-import type { FormAnswerInput } from './form-answer-input';
+import {
+  collectFieldValueProposals,
+  findFieldForCandidateFact,
+  type ArchiveFact,
+} from './proposal-intake';
+import type { FieldValueProposalInput } from './field-value-proposal-input';
 import { renderCollectionTemplate, type CollectionTemplate } from './collection-template.renderer';
 
 /** 收资维度的 nextAction 取值——与既有 Agent 契约同名，语义不变。 */
@@ -78,7 +82,7 @@ export interface CollectionCoreInput {
   contract: readonly ContractFieldDef[];
   candidateTexts: readonly string[];
   messages: readonly unknown[];
-  formAnswers?: readonly FormAnswerInput[] | null;
+  fieldValueProposals?: readonly FieldValueProposalInput[] | null;
   /** 本轮是否允许继续向候选人发问；只控制待问清单，不参与上一轮实际问句的记账。 */
   askThisTurn?: boolean;
   /** 当前候选人回复的稳定回合 ID；用于上一轮实际问句入账去重。 */
@@ -120,12 +124,11 @@ export function runCollectionCore(input: CollectionCoreInput): CollectionCoreRes
       .map((slot) => slot.labelId),
   );
 
-  // ── 写入：统一 formAnswers + 两条既有安全网的提案逐条过公证 ──
-  let proposals = collectProposals({
+  // ── 写入：统一 fieldValueProposals + 两条既有安全网的提案逐条过公证 ──
+  let proposals = collectFieldValueProposals({
     contract,
     candidateTexts: input.candidateTexts,
-    messages: input.messages,
-    formAnswers: input.formAnswers,
+    fieldValueProposals: input.fieldValueProposals,
     filledLabelIds,
     onAudit: (audit) => audits.push(audit),
   });
@@ -146,7 +149,10 @@ export function runCollectionCore(input: CollectionCoreInput): CollectionCoreRes
   for (const proposal of proposals) {
     const field = fieldById.get(proposal.labelId);
     if (!field) continue;
-    const result = proposeValue(form, field, proposal);
+    const result = applyFieldValueProposal(form, field, proposal, {
+      candidateTexts: input.candidateTexts,
+      messages: input.messages,
+    });
     form = result.form;
 
     switch (result.outcome) {
@@ -195,7 +201,7 @@ export function runCollectionCore(input: CollectionCoreInput): CollectionCoreRes
   // 亲口说的那句话当"已填"忽略掉——把最好的证据挡在门外。
   // 先写后填之下：本轮说了的走公证正常入账，没说的才用档案补，跨岗不重复盘问。
   for (const archived of input.archiveFacts ?? []) {
-    const field = findFieldForClaim(contract, archived.claimField);
+    const field = findFieldForCandidateFact(contract, archived.factField);
     if (!field) continue;
     const adapterInput = { field, candidateText: archived.value, answerBound: true };
     const adapted = adapterFor(field)(adapterInput) ?? genericAdapter(adapterInput);

@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { SupabaseStore } from '../stores/supabase.store';
-import type { CandidateFactProducer } from '@resolution/evidence/claim.types';
+import type { CandidateFactProducer } from '@resolution/candidate/types';
 import type {
   UserProfile,
   UserProfileFacts,

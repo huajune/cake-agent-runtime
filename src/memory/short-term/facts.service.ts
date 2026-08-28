@@ -40,22 +40,22 @@ import {
   buildSessionExtractionPrompt,
   SESSION_EXTRACTION_SYSTEM_PROMPT,
 } from './extraction.prompt';
-import { detectBrandAliasHints } from '@resolution/evidence/producers/rule-track';
-import { isSameFactValue } from '@resolution/evidence/merge';
-import type { TurnHints } from '@resolution/evidence/claim.types';
+import { detectBrandAliasHints } from '@resolution/turn-hints/producers/rule-track';
+import { isSameFactValue } from '@resolution/turn-hints/reducer';
+import type { TurnHints } from '@resolution/turn-hints/turn-hint.types';
 import type {
   BrandResolution,
   PersistedBrandState,
 } from '@resolution/brand/brand-resolution.types';
-import { produceValidatedBrandIntents } from '@resolution/evidence/producers/brand-intents';
-import { decideGeoPreferenceClear } from '@resolution/evidence/producers/geo-preference';
+import { produceValidatedBrandIntents } from '@resolution/brand/intent-producer';
+import { decideGeoPreferenceClear } from '@resolution/geo/preference-clear';
 import { normalizeCityName } from '@resolution/geo';
-import { adjudicateCityClaims, cityClaimFromFact } from '@resolution/evidence/producers/city';
+import { adjudicateCityClaims, cityClaimFromFact } from '@resolution/geo/city-adjudicator';
 import { decideLaborFormIntent, type LaborFormIntentDecision } from '@resolution/labor-form';
 import { parseTimeContextAt, stripTimeContext } from '@resolution/signal/markers';
 import { formatCurrentTime } from '@infra/utils/date.util';
 import { buildSessionFactsHashKey } from './session-key';
-import { hasMeaningfulValue, resolveTurnHints } from '@resolution/evidence/merge';
+import { hasMeaningfulValue, resolveTurnHints } from '@resolution/turn-hints/reducer';
 import { factConfidenceRank } from '../confidence-rank';
 import {
   MEMORY_CHAT_SESSION_PORT,

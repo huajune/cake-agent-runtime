@@ -1,6 +1,6 @@
 import { MessageSplitter } from '@channels/wecom/message/utils/message-splitter.util';
 import { createForm, type ContractFieldDef } from '@resolution/collection/form.types';
-import { proposeValue } from '@resolution/collection/form-writes';
+import { applyFieldValueProposal } from '@resolution/collection/form-writes';
 import { renderRecap } from '@tools/collection/recap-renderer';
 
 const NAME_FIELD: ContractFieldDef = {
@@ -45,34 +45,28 @@ const CONTRACT = [NAME_FIELD, PHONE_FIELD, AGE_FIELD, DIRTY_TITLE_FIELD];
 function filledForm() {
   let form = createForm({ jobId: 528781, contract: CONTRACT });
   const nameText = '姓名：兮兮';
-  form = proposeValue(form, NAME_FIELD, {
+  form = applyFieldValueProposal(form, NAME_FIELD, {
     value: '兮兮',
     sourceText: nameText,
     producer: 'candidate_quote',
-    candidateTexts: [nameText],
-    messages: [{ role: 'user', content: nameText }],
-  }).form;
+  }, { candidateTexts: [nameText], messages: [{ role: 'user', content: nameText }] }).form;
   const phoneText = '我的手机号是18271421690';
-  form = proposeValue(form, PHONE_FIELD, {
+  form = applyFieldValueProposal(form, PHONE_FIELD, {
     value: '18271421690',
     sourceText: phoneText,
     producer: 'candidate_quote',
-    candidateTexts: [phoneText],
-    messages: [{ role: 'user', content: phoneText }],
-  }).form;
-  form = proposeValue(form, AGE_FIELD, {
+  }, { candidateTexts: [phoneText], messages: [{ role: 'user', content: phoneText }] }).form;
+  form = applyFieldValueProposal(form, AGE_FIELD, {
     value: '26',
     sourceText: '我今年26岁',
     producer: 'candidate_quote',
-    candidateTexts: ['我今年26岁'],
-  }).form;
-  form = proposeValue(form, DIRTY_TITLE_FIELD, {
+  }, { candidateTexts: ['我今年26岁'], messages: [] }).form;
+  form = applyFieldValueProposal(form, DIRTY_TITLE_FIELD, {
     value: '社会人士',
     optionCodes: ['s1'],
     sourceText: '我是社会人士',
     producer: 'candidate_quote',
-    candidateTexts: ['我是社会人士'],
-  }).form;
+  }, { candidateTexts: ['我是社会人士'], messages: [] }).form;
   return form;
 }
 

@@ -98,7 +98,6 @@ describe('CollectionFormStore', () => {
         value: 'bot A 的答案',
         sourceText: 'bot A 的答案',
         producer: 'candidate_quote',
-        confidence: 'high',
       },
     };
     const formB = createForm({ ...shared, contract: [FIELD] });

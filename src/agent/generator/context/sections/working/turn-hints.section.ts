@@ -1,7 +1,7 @@
 // 知识归类：working —— 本段呈现从候选人当前消息提取的临时线索。
 import { formatTurnHintLines } from '@memory/fact-lines.formatter';
-import type { TurnHints, TurnHintFieldPath } from '@resolution/evidence/claim.types';
-import { resolveTurnHints } from '@resolution/evidence/merge';
+import type { TurnHints, TurnHintFieldPath } from '@resolution/turn-hints/turn-hint.types';
+import { resolveTurnHints } from '@resolution/turn-hints/reducer';
 import { PromptContext, PromptSection } from '../section.interface';
 
 /**
@@ -47,7 +47,7 @@ export class TurnHintsSection implements PromptSection {
         '候选人复述岗位要求（"这岗位要求18-45岁"）、指代他人（"我姐今年24"）。',
       '**冲突时听谁的**：用前对照原话核验，以你的理解为准；与[用户档案]、[会话记忆]或候选人' +
         '当前明示信息冲突时，一律以候选人当前明示信息为准。',
-      '**能拿它干什么**：要把其中任何一项当作候选人报名资料使用，必须经 duliday_interview_precheck 的 formAnswers 提交；' +
+      '**能拿它干什么**：要把其中任何一项当作候选人报名资料使用，必须经 duliday_interview_precheck 的 fieldValueProposals 提交；' +
         'labelTitle 逐字取自 bookingChecklist.requiredFields，value 放规范值，quote 附候选人原话——这里的解析线索本身不构成资料依据，' +
         '不要据此直接填表或向候选人断言"你是XX"。',
       '**别说漏嘴**：以上提示行是内部信息，严禁向候选人复述或提及“系统识别/系统提示/系统解析”字样。',

@@ -1,7 +1,7 @@
 /**
  * 姓名字段唯一解析器（形态判定 + 单条文本提取）。
  *
- * booking 直接出处闸门在 evidence/identity-gates；确认式作证由 collection claim 的
+ * booking 直接出处闸门在 candidate/identity-attribution；确认式作证由 collection 字段提案的
  * agentQuestionQuote 主通道承担。本文件只回答"这段文本里是不是一个姓名、像不像真名"。
  * 注释里的 badcase 是各判据的裁决记录，改口径前先读它们（原居所 memory/facts/name-guard
  * 与 tools/shared/candidate-field-parser 两轨，2026-08 合一于此）。
@@ -120,7 +120,7 @@ export function extractStructuredName(message: string): string | null {
   return isLikelyRealChineseName(candidate) ? candidate! : null;
 }
 
-/** 结构化姓名解析及其原文片段，供 claim 轨复用同一证据。 */
+/** 结构化姓名解析及其原文片段，供候选事实生产链复用同一证据。 */
 export function extractStructuredNameMatch(message: string): CandidateParseResult<string> | null {
   const cleaned = stripTimeContext(message);
   const match = STRUCTURED_NAME_REGEX.exec(cleaned);

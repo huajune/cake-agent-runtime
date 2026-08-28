@@ -1,6 +1,6 @@
 import { evaluateInviteCityGate } from '@tools/invite/invite-city-gate';
 import type { InviteCityGateInput } from '@tools/invite/invite-city-gate';
-import { inferCitiesFromGeoSignals } from '@resolution/evidence/producers/city';
+import { inferCitiesFromGeoSignals } from '@resolution/geo/city-adjudicator';
 
 function evaluateGate(input: Omit<InviteCityGateInput, 'geoSignalCities'>) {
   const userTexts = input.userTexts.filter((text): text is string => typeof text === 'string');

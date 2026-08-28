@@ -1,5 +1,5 @@
-import { produceTurnHints } from '@resolution/evidence/producers/rule-track';
-import { projectTurnHints } from '@resolution/evidence/merge';
+import { produceTurnHints } from '@resolution/turn-hints/producers/rule-track';
+import { projectTurnHints } from '@resolution/turn-hints/reducer';
 import { finalizeVisualFactSheet, type FinalizedVisualFactSheet } from '@/resolution/signal/visual';
 
 function extractTurnHints(...args: Parameters<typeof produceTurnHints>) {

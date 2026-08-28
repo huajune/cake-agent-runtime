@@ -94,12 +94,26 @@ export function buildUpcomingTimeOptions(
   return options.slice(0, maxOptions).map((option) => option.label);
 }
 
+export interface BookableSlot {
+  date: string;
+  weekday: string;
+  startTime: string;
+  endTime: string;
+  label: string;
+  registrationDeadline: string | null;
+  dateOnly: boolean;
+  bookingAllowed: boolean;
+  interviewTime?: string;
+  requiresManualConfirmation?: boolean;
+  reason?: string;
+}
+
 export function buildBookableSlots(params: {
   windows: InterviewWindow[];
   requestedDate?: string | null;
   horizonDays?: number;
   maxOptions?: number;
-}): Array<Record<string, unknown>> {
+}): BookableSlot[] {
   const { windows, requestedDate = null, horizonDays = 7, maxOptions = 10 } = params;
   if (windows.length === 0) return [];
 
@@ -114,7 +128,7 @@ export function buildBookableSlots(params: {
   }
   if (requestedDate) dates.add(requestedDate);
 
-  const slots: Array<Record<string, unknown> & { date: string; startTime: string }> = [];
+  const slots: BookableSlot[] = [];
   const seen = new Set<string>();
 
   for (const date of dates) {

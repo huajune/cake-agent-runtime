@@ -8,6 +8,63 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v11.0.7`
+**最近更新**: `2026-08-28`
+**来源分支**: `develop`
+**累计 PR**: 2
+
+### 更新摘要
+- PR #1104 自填模板直通，消灭重复确认轮
+- PR #1104 公证拒收对模型可见 + 出生年推算不再被当臆造
+- PR #1104 收口候选人证据链与报名授权
+- PR #1104 收口候选人字段提案、出处公证与表单授权边界，删除旧 evidence 裁决层和 collection 槽位置信度。
+- PR #1104 所有明确确认表达统一提交 `recapConfirmation`，由 recap notary 绑定当前回复、真实 recap 与表单快照；纯短答和开放确认不再分流。
+- PR #1104 收资与面试时间并行：新增 `scheduleDraft` / `select_interview_time`，precheck 与 booking 共用唯一提交授权闸门。
+- PR #1104 候选人明确报齐资料可直接授权；仅存在外部预填时要求 recap，纠正优先于确认。
+- PR #1107 移除发版底账硬门禁
+
+### 新功能
+- PR #1104 收资与面试时间并行：新增 `scheduleDraft` / `select_interview_time`，precheck 与 booking 共用唯一提交授权闸门。
+
+### 问题修复
+- PR #1104 修复候选人完整填写或多轮明确回答后仍重复确认的问题。
+- PR #1104 修复面试时间与资料串行收集、岗位切换继承旧时间、失效时段未及时重选等状态机问题。
+- PR #1104 修复纯短答与带礼貌尾巴确认表达走不同生产入口的问题。
+
+### 优化调整
+- PR #1104 将 `resolution/evidence` 拆分为 candidate、notary、turn-hints 等职责清晰的模块。
+- PR #1104 删除 self-filled 特判、伪 recap、旧 confidence / candidateConfirmed / requiresCandidateReview 等过期机制。
+- PR #1104 同步架构、产品、原则、规则台账及实施对账文档。
+- PR #1104 收口候选人字段提案、出处公证与表单授权边界，删除旧 evidence 裁决层和 collection 槽位置信度。
+- PR #1104 所有明确确认表达统一提交 `recapConfirmation`，由 recap notary 绑定当前回复、真实 recap 与表单快照；纯短答和开放确认不再分流。
+- PR #1104 候选人明确报齐资料可直接授权；仅存在外部预填时要求 recap，纠正优先于确认。
+
+### 运维与流程
+- PR #1104 自填模板直通，消灭重复确认轮
+- PR #1104 公证拒收对模型可见 + 出生年推算不再被当臆造
+- PR #1104 收口候选人证据链与报名授权
+- PR #1107 移除发版底账硬门禁
+
+### 配置变更
+- PR #1104 删除已退役的 `CANDIDATE_FACT_ADJUDICATION_MODE` 示例项；无新增环境变量、数据库 migration、RPC 或权限变化。
+
+### 环境变量提醒
+- PR #1104 检测到环境变量相关文件变更：`.env.example`。请手动同步远程服务器 `/data/cake/.env.production`。
+
+### 验证记录
+- PR #1104 `pnpm run ci:check`：442 suites、6387 tests、3 snapshots 通过；1 suite / 5 tests 为仓库既有 skip。
+- PR #1104 lint、format、typecheck、geo/vocab 校验、前后端构建全部通过。
+- PR #1104 定向回归：24 suites、379 tests、3 snapshots 通过。
+- PR #1104 `git diff --check` 与旧符号扫描通过。
+- PR #1104 真实 Agent / Dashboard 回归：发布负责人于 2026-08-28 明确要求跳过，本次不记为已通过。
+- PR #1107 `pnpm exec jest tests/scripts/generate-release-ledger.spec.ts tests/scripts/check-release-ledger.spec.ts --runInBand`：2 suites / 14 tests 通过
+- PR #1107 `pnpm run ci:check`：442 suites / 6387 tests 通过（1 suite / 5 tests skipped）
+- PR #1107 Prettier、Workflow YAML 解析、`git diff --check` 通过
+<!-- release:pending:end -->
+
 ## [11.0.6] - 2026-08-27
 
 **来源分支**: `develop`

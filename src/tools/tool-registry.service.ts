@@ -44,7 +44,7 @@ import { CollectionFormService } from '@tools/collection/collection-form.service
 import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
 import { HandoffRecorderService } from '@biz/handoff-events/handoff-recorder.service';
 import { AgentTracerService } from '@/observability/agent-tracer.service';
-import { getTurnHintValue } from '@resolution/evidence/merge';
+import { getTurnHintValue } from '@resolution/turn-hints/reducer';
 import { sleep } from '@infra/utils/async.util';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
 import type { FinalizedVisualFactSheet } from '@resolution/signal/visual';

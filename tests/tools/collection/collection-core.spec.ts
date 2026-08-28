@@ -106,7 +106,7 @@ describe('runCollectionCore · 先写后问', () => {
       contract: CONTRACT,
       candidateTexts: [text],
       messages: [{ role: 'user', content: text }],
-      formAnswers: [
+      fieldValueProposals: [
         { labelTitle: '姓名', value: '兮兮', quote: '我叫兮兮' },
         { labelTitle: '年龄', value: '26', quote: '今年26岁' },
         { labelTitle: '有无本地健康证', value: '有本地有效健康证', quote: '有本地有效健康证' },
@@ -115,6 +115,31 @@ describe('runCollectionCore · 先写后问', () => {
     expect(result.verdict).toBe('ready');
     expect(result.action).toBe('ready_to_book');
     expect(result.template.missingFields).toEqual([]);
+  });
+
+  it('“周末一般有时间”未由模型提交唯一字段提案时，槽位保持 empty 并定向追问', () => {
+    const availability: ContractFieldDef = {
+      labelId: 900,
+      labelTitle: '可上班日期',
+      fieldType: 'MULTIPLE_OPTION',
+      required: true,
+      acceptedOptions: [
+        { optionCode: 'SATURDAY', optionLabel: '周六' },
+        { optionCode: 'SUNDAY', optionLabel: '周日' },
+      ],
+      rejectedOptions: [],
+    };
+    const text = '周末一般有时间';
+    const result = runCollectionCore({
+      form: createForm({ jobId: 528962, contract: [availability] }),
+      contract: [availability],
+      candidateTexts: [text],
+      messages: [{ role: 'user', content: text }],
+    });
+
+    expect(result.form.slots[availability.labelId].state).toBe('empty');
+    expect(result.template.missingFields).toEqual(['可上班日期']);
+    expect(result.askableFields).toEqual(['可上班日期']);
   });
 });
 
@@ -137,7 +162,7 @@ describe('runCollectionCore · 多人闸（D1：疑似代报第二人即转人�
       contract: CONTRACT_WITH_PHONE,
       candidateTexts: [text],
       messages: [{ role: 'user', content: text }],
-      formAnswers: [
+      fieldValueProposals: [
         { labelTitle: '姓名', value: '兮兮', quote: '我叫兮兮' },
         { labelTitle: '手机号', value: '18271421690', quote: '手机号18271421690' },
       ],
@@ -154,7 +179,7 @@ describe('runCollectionCore · 多人闸（D1：疑似代报第二人即转人�
       contract: CONTRACT_WITH_PHONE,
       candidateTexts: [text],
       messages: [{ role: 'user', content: text }],
-      formAnswers: [
+      fieldValueProposals: [
         { labelTitle: '姓名', value: '李四', quote: '帮李四报一个', operation: 'correct' },
         {
           labelTitle: '手机号',
@@ -182,7 +207,7 @@ describe('runCollectionCore · 多人闸（D1：疑似代报第二人即转人�
       contract: CONTRACT_WITH_PHONE,
       candidateTexts: [text],
       messages: [{ role: 'user', content: text }],
-      formAnswers: [
+      fieldValueProposals: [
         {
           labelTitle: '手机号',
           value: '18271421691',
@@ -218,7 +243,7 @@ describe('runCollectionCore · 筛选与审计', () => {
 
   it('公证拒收落审计事件——臆造防线的观测面，不能只打日志', () => {
     const result = run('你好还招人吗', {
-      formAnswers: [{ labelTitle: '年龄', value: '30', quote: '我30岁' }],
+      fieldValueProposals: [{ labelTitle: '年龄', value: '30', quote: '我30岁' }],
     });
     const rejected = result.audits.find((a) => a.kind === 'proposal_rejected');
     expect(rejected).toBeDefined();
@@ -226,9 +251,9 @@ describe('runCollectionCore · 筛选与审计', () => {
     expect(rejected?.reason).toBe('source_text_not_found');
   });
 
-  it('formAnswers 契约外标题不能创建/删除/改名槽位，字段全集与顺序仍只来自契约', () => {
+  it('fieldValueProposals 契约外标题不能创建/删除/改名槽位，字段全集与顺序仍只来自契约', () => {
     const result = run('我是社会人士', {
-      formAnswers: [{ labelTitle: '身份', value: '社会人士', quote: '我是社会人士' }],
+      fieldValueProposals: [{ labelTitle: '身份', value: '社会人士', quote: '我是社会人士' }],
     });
     expect(result.template.requiredFields).toEqual(['姓名', '年龄', '有无本地健康证']);
     expect(Object.keys(result.form.slots).map(Number).sort()).toEqual([13, 687, 769]);
@@ -244,7 +269,7 @@ describe('runCollectionCore · 筛选与审计', () => {
   it('选项值适配失败不再静默丢弃：公证拒收、字段保持 missing', () => {
     const text = '健康证入职前办妥';
     const result = run(text, {
-      formAnswers: [{ labelTitle: '有无本地健康证', value: '入职前办妥', quote: text }],
+      fieldValueProposals: [{ labelTitle: '有无本地健康证', value: '入职前办妥', quote: text }],
     });
     expect(result.form.slots[13].state).toBe('empty');
     expect(result.template.missingFields).toContain('有无本地健康证');
@@ -389,9 +414,9 @@ describe('模板字段名与契约同源', () => {
 });
 
 describe('记忆→表单预填（跨岗不重复盘问）', () => {
-  const archived = [{ claimField: 'age' as const, value: '26', evidence: '我今年26岁' }];
+  const archived = [{ factField: 'age' as const, value: '26', evidence: '我今年26岁' }];
 
-  it('空槽用档案兜底，署名如实（archive/medium，sourceText 带「档案：」前缀）', () => {
+  it('空槽用档案兜底，署名如实（archive，sourceText 带「档案：」前缀）', () => {
     const result = runCollectionCore({
       form: createForm({ jobId: 528962, contract: CONTRACT }),
       contract: CONTRACT,
@@ -402,7 +427,7 @@ describe('记忆→表单预填（跨岗不重复盘问）', () => {
     const slot = result.form.slots[687];
     expect(slot.state).toBe('filled');
     expect(slot.value?.producer).toBe('archive');
-    expect(slot.value?.confidence).toBe('medium');
+    expect(slot.value).not.toHaveProperty('confidence');
     expect(slot.value?.sourceText).toBe('档案：我今年26岁');
     expect(result.template.missingFields).not.toContain('年龄');
   });
@@ -434,7 +459,7 @@ describe('记忆→表单预填（跨岗不重复盘问）', () => {
       contract: CONTRACT,
       candidateTexts: [''],
       messages: [],
-      archiveFacts: [{ claimField: 'healthCertificate' as const, value: '有本地有效健康证' }],
+      archiveFacts: [{ factField: 'healthCertificate' as const, value: '有本地有效健康证' }],
     });
     expect(seeded.form.slots[13].state).toBe('disqualified');
   });
@@ -445,7 +470,7 @@ describe('记忆→表单预填（跨岗不重复盘问）', () => {
       contract: CONTRACT,
       candidateTexts: [''],
       messages: [],
-      archiveFacts: [{ claimField: 'householdProvince' as const, value: '安徽' }],
+      archiveFacts: [{ factField: 'householdProvince' as const, value: '安徽' }],
     });
     expect(Object.values(result.form.slots).every((s) => s.value?.value !== '安徽')).toBe(true);
   });
@@ -464,7 +489,7 @@ describe('记忆→表单预填（跨岗不重复盘问）', () => {
       contract: [studentField],
       candidateTexts: [],
       messages: [],
-      archiveFacts: [{ claimField: 'isStudent', value: 'false' }],
+      archiveFacts: [{ factField: 'isStudent', value: 'false' }],
     });
     expect(result.form.slots[605].state).toBe('empty');
     expect(result.template.templateText).toContain('学信网是否在籍：');
@@ -484,8 +509,8 @@ describe('selectArchiveFacts · 预填来源白名单', () => {
       education: null,
     });
     expect(facts).toEqual([
-      { claimField: 'name', value: '兮兮' },
-      { claimField: 'age', value: '26' },
+      { factField: 'name', value: '兮兮' },
+      { factField: 'age', value: '26' },
     ]);
   });
 
@@ -500,7 +525,7 @@ describe('selectArchiveFacts · 预填来源白名单', () => {
       // 白名单内但置信度不够。
       gender: { value: '男', source: 'candidate_quote', confidence: 'low' },
     });
-    expect(facts.map((f) => f.claimField).sort()).toEqual(['age', 'name']);
+    expect(facts.map((f) => f.factField).sort()).toEqual(['age', 'name']);
   });
 
   it('空档案返回空', () => {
@@ -701,7 +726,11 @@ describe('badcase 6a8fec04 · 社保自然答案与作答轮记账', () => {
       candidateTexts: ['社保缴纳情况：反正没五险'],
       messages: [
         { role: 'user', content: '社保缴纳情况：不知道' },
-        { role: 'assistant', content: '辛苦按选项填：\n社保缴纳情况：（本人缴纳本地社保/无公司在缴社保流水/公司缴纳本地社保/本人缴纳外地社保/公司缴纳外地社保）' },
+        {
+          role: 'assistant',
+          content:
+            '辛苦按选项填：\n社保缴纳情况：（本人缴纳本地社保/无公司在缴社保流水/公司缴纳本地社保/本人缴纳外地社保/公司缴纳外地社保）',
+        },
         { role: 'user', content: '社保缴纳情况：反正没五险' },
       ],
       askReceiptTurnId: 'turn-attempt-2',

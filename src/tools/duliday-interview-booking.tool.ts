@@ -1,7 +1,7 @@
 /**
  * 面试预约提交边界。
  *
- * booking 不再接收候选人裸字段：唯一取数口是 precheck 已办结并由候选人确认的
+ * booking 不再接收候选人裸字段：唯一取数口是 precheck 已办结并完成资料授权的
  * BookingCollectionForm，唯一外发形状是 `{ jobId, interviewTime?, labelList }`。
  */
 
@@ -18,6 +18,7 @@ import type { PrivateChatMonitorNotifierService } from '@notification/services/p
 import {
   applyErrorList,
   escalate,
+  isSubmissionAuthorized,
   mapContractFields,
   markSubmitted,
   parseIdentityAnchors,
@@ -47,7 +48,7 @@ const INTERVIEW_TIME_REGEX = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/u;
 const BOOKING_DEDUP_WINDOW_MS = 30 * 60 * 1000;
 
 // 程序记忆层（procedural memory）工具绑定规则；总目录：docs/prompt-rule-ledger.md
-const DESCRIPTION = `提交面试报名。候选人资料全部来自已确认的收资表单，本工具只接收 jobId 与可选 interviewTime。
+const DESCRIPTION = `提交面试报名。候选人资料全部来自已授权的收资表单，本工具只接收 jobId 与可选 interviewTime。
 
 调用前必须在**本轮**调用 duliday_interview_precheck 并得到 nextAction=ready_to_book；其它 action 一律禁止 booking。
 - 有面试时段的岗位：interviewTime 必须逐字取自 precheck 的 bookableSlots，格式 YYYY-MM-DD HH:mm:ss。
@@ -124,7 +125,7 @@ export function buildInterviewBookingTool(
               errorType: TOOL_ERROR_TYPES.BOOKING_REJECTED,
               outcome: '预约未提交（本轮没有已确认的 precheck 凭据）',
               replyInstruction:
-                '先调用 duliday_interview_precheck。只有候选人确认提交前复述、工具返回 ready_to_book 后，才能在同一轮调用 booking。',
+                '先调用 duliday_interview_precheck。只有资料已授权、非 wait_notice 岗位的时间草稿实时可约且工具返回 ready_to_book 后，才能在同一轮调用 booking。',
               details: { jobId },
             }),
           );
@@ -158,13 +159,13 @@ export function buildInterviewBookingTool(
           const mapped = mapContractFields(rawContract, parseIdentityAnchors(deps.identityAnchors));
           const form = await deps.collectionForms.loadOrCreate(scope, mapped.fields);
           const verdict = verdictOf(form);
-          if (verdict !== 'ready' || !form.lastRecap) {
+          if (verdict !== 'ready') {
             return fail(
               buildToolError({
                 errorType: TOOL_ERROR_TYPES.BOOKING_REJECTED,
                 outcome: `预约未提交（收资表单状态=${verdict}）`,
                 replyInstruction:
-                  '回到 duliday_interview_precheck，按其 nextAction 继续收资、复述确认或转人工；禁止绕过表单提交。',
+                  '回到 duliday_interview_precheck，按其 nextAction 继续收资、确认外部预填、选择时间或转人工；禁止绕过表单提交。',
                 details: { jobId, verdict },
               }),
             );
@@ -257,6 +258,25 @@ export function buildInterviewBookingTool(
             interviewTime,
           });
           if (guardFailure) return fail(guardFailure);
+
+          if (
+            !isSubmissionAuthorized({
+              form,
+              waitNotice,
+              interviewTime,
+              interviewTimeBookingAllowed: waitNotice || Boolean(interviewTime),
+            })
+          ) {
+            return fail(
+              buildToolError({
+                errorType: TOOL_ERROR_TYPES.BOOKING_REJECTED,
+                outcome: '预约未提交（资料或面试时间尚未获得最终授权）',
+                replyInstruction:
+                  '回到 duliday_interview_precheck：外部预填资料须先确认；非 wait_notice 岗位须让候选人选择当前 bookableSlots 中的具体时间，并以同一 interviewTime 提交。',
+                details: { jobId },
+              }),
+            );
+          }
 
           const duplicate = (
             await longTermService.getActiveBookings(scope.corpId, scope.userId)

@@ -4,7 +4,7 @@ import {
   USER_PROFILE_FIELD_KEYS,
   UserProfileFactValueSchema,
 } from '@memory/long-term/long-term.types';
-import type { CandidateFactProducer } from '@resolution/evidence/claim.types';
+import type { CandidateFactProducer } from '@resolution/candidate/types';
 
 describe('SupabaseStore', () => {
   const BOT_USER_ID = 'wecom-user-1';

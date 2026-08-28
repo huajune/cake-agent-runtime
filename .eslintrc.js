@@ -60,6 +60,28 @@ module.exports = {
                 group: ['@memory/*', '@/memory/*'],
                 message: 'resolution 禁止依赖 memory（memory 消费 resolution，不得反向）',
               },
+              {
+                group: [
+                  '@resolution/collection',
+                  '@resolution/collection/*',
+                  '@/resolution/collection',
+                  '@/resolution/collection/*',
+                  '../collection',
+                  '../collection/*',
+                ],
+                message: 'collection 是报名写入权威，只能由 tools 应用层消费，resolution 兄弟域不得反向依赖',
+              },
+              {
+                group: [
+                  '@resolution/turn-hints',
+                  '@resolution/turn-hints/*',
+                  '@/resolution/turn-hints',
+                  '@/resolution/turn-hints/*',
+                  '../turn-hints',
+                  '../turn-hints/*',
+                ],
+                message: 'turn-hints 是本轮临时线索，resolution 兄弟域不得把它作为状态或写入依赖',
+              },
             ],
           },
         ],
