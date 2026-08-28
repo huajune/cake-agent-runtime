@@ -60,6 +60,33 @@
         "真实 Agent / Dashboard 回归：发布负责人于 2026-08-28 明确要求跳过，本次不记为已通过。"
       ],
       "level": "patch"
+    },
+    {
+      "number": "1107",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1107",
+      "title": "移除发版底账硬门禁",
+      "author": "huajune",
+      "mergedAt": "2026-08-28",
+      "businessUpdates": [
+        "移除发版底账硬门禁"
+      ],
+      "summary": [
+        "移除发版底账硬门禁"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "移除发版底账硬门禁"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`pnpm exec jest tests/scripts/generate-release-ledger.spec.ts tests/scripts/check-release-ledger.spec.ts --runInBand`：2 suites / 14 tests 通过",
+        "`pnpm run ci:check`：442 suites / 6387 tests 通过（1 suite / 5 tests skipped）",
+        "Prettier、Workflow YAML 解析、`git diff --check` 通过"
+      ],
+      "level": "patch"
     }
   ],
   "lastRelease": {
@@ -92,5 +119,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "2dd891767f8ff26f8dcaf253bc90cb1e7b6d1521"
+  "lastAnalyzedSha": "f669b08a07dd4f04aa4737852bd8c7c0f83e994d"
 }
