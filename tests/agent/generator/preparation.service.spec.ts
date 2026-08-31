@@ -110,6 +110,7 @@ describe('PreparationService', () => {
     getWorkOrderById: jest.fn(),
     fetchJobs: jest.fn(),
     fetchBrandList: jest.fn(),
+    fetchSignupWorkOrders: jest.fn(),
   };
 
   const mockGroupResolver = {
@@ -142,6 +143,7 @@ describe('PreparationService', () => {
     mockSpongeService.getCachedWorkOrderById.mockResolvedValue(null);
     mockSpongeService.getWorkOrderById.mockResolvedValue(null);
     mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [], total: 0 });
+    mockSpongeService.fetchSignupWorkOrders.mockResolvedValue({ total: 0, workOrders: [] });
     mockSpongeService.fetchBrandList.mockResolvedValue([
       { id: 1, name: '肯德基', aliases: ['KFC'] },
       { id: 2, name: '奥乐齐', aliases: ['ALDI'] },
@@ -1089,7 +1091,182 @@ describe('PreparationService', () => {
     expect(result.finalPrompt).toContain(
       '严禁使用"已帮你报名/已报名成功/已登记好/已提交预约"等完成口径',
     );
+    // 反向接地（badcase 蒋强 8-31 到店扑空）：系统查不到的面试安排不得替系统背书
+    expect(result.finalPrompt).toContain('严禁替系统确认"没有变动/已安排好/到店会有人接待"');
     // 段名必须与 [当前预约信息] 区分——后者的存在性被工具指令当作"已有预约"信号
+    expect(result.finalPrompt).not.toContain('[当前预约信息]');
+  });
+
+  it('指针为空但海绵有带外在途工单：面试相关回合按手机号核验并渲染 [当前预约信息]（badcase 蒋强 459783）', async () => {
+    mockLongTermService.getActiveBookings.mockResolvedValue([]);
+    mockSpongeService.fetchSignupWorkOrders.mockResolvedValue({
+      total: 1,
+      workOrders: [
+        {
+          workOrderId: 459783,
+          jobId: 529007,
+          brandName: '肯德基',
+          projectName: '肯德基',
+          jobName: '肯德基-曹杨桂巷LA-兼职+-小时工',
+          currentStatus: '约面成功',
+          signUpTime: '2026-08-27 13:50:52',
+          interviewTime: '2026-08-31 11:00',
+        },
+        // 已终结工单不进上下文
+        {
+          workOrderId: 400001,
+          jobId: 500001,
+          brandName: '必胜客',
+          jobName: '必胜客-店员',
+          currentStatus: '约面取消',
+        },
+      ],
+    });
+    setRecallOnce({
+      shortTerm: { messageWindow: [{ role: 'user', content: '今天11点的面试没有变动吧' }] },
+      sessionState: {
+        facts: {
+          ...FALLBACK_EXTRACTION,
+          interview_info: {
+            ...FALLBACK_EXTRACTION.interview_info,
+            phone: {
+              value: '18928806109',
+              confidence: 'medium',
+              source: 'model',
+              evidence: '收资表单落定',
+            },
+          },
+        },
+        lastCandidatePool: null,
+        presentedJobs: null,
+        currentFocusJob: null,
+      },
+      turnHints: null,
+      longTerm: { semantic: { profile: null } },
+      stage: {
+        currentStage: 'job_consultation',
+        fromStage: null,
+        advancedAt: null,
+        reason: null,
+      },
+    });
+
+    const result = await service.prepare(
+      {
+        callerKind: CallerKind.WECOM,
+        messages: [{ role: 'user', content: '今天11点的面试没有变动吧' }],
+        userId: 'user-1',
+        corpId: 'corp-1',
+        sessionId: 'sess-1',
+        strategySource: 'testing',
+      },
+      'invoke',
+    );
+
+    expect(mockSpongeService.fetchSignupWorkOrders).toHaveBeenCalledWith(
+      { phone: '18928806109' },
+      undefined,
+    );
+    expect(result.finalPrompt).toContain('[当前预约信息]');
+    expect(result.finalPrompt).toContain('非本会话提交');
+    expect(result.finalPrompt).toContain('工单号: 459783');
+    expect(result.finalPrompt).toContain('面试时间: 2026-08-31 11:00');
+    expect(result.finalPrompt).not.toContain('工单号: 400001');
+    expect(result.finalPrompt).not.toContain('[预约状态]');
+  });
+
+  it('非面试相关回合不触发带外工单查询（热路径不加海绵调用）', async () => {
+    mockLongTermService.getActiveBookings.mockResolvedValue([]);
+    setRecallOnce({
+      shortTerm: { messageWindow: [{ role: 'user', content: '有什么岗位推荐' }] },
+      sessionState: {
+        facts: {
+          ...FALLBACK_EXTRACTION,
+          interview_info: {
+            ...FALLBACK_EXTRACTION.interview_info,
+            phone: {
+              value: '18928806109',
+              confidence: 'medium',
+              source: 'model',
+              evidence: '收资表单落定',
+            },
+          },
+        },
+        lastCandidatePool: null,
+        presentedJobs: null,
+        currentFocusJob: null,
+      },
+      turnHints: null,
+      longTerm: { semantic: { profile: null } },
+      stage: {
+        currentStage: 'job_consultation',
+        fromStage: null,
+        advancedAt: null,
+        reason: null,
+      },
+    });
+
+    const result = await service.prepare(
+      {
+        callerKind: CallerKind.WECOM,
+        messages: [{ role: 'user', content: '有什么岗位推荐' }],
+        userId: 'user-1',
+        corpId: 'corp-1',
+        sessionId: 'sess-1',
+        strategySource: 'testing',
+      },
+      'invoke',
+    );
+
+    expect(mockSpongeService.fetchSignupWorkOrders).not.toHaveBeenCalled();
+    expect(result.finalPrompt).toContain('[预约状态]');
+  });
+
+  it('带外核验查询失败时 fail open 回退 [预约状态] 空态', async () => {
+    mockLongTermService.getActiveBookings.mockResolvedValue([]);
+    mockSpongeService.fetchSignupWorkOrders.mockRejectedValue(new Error('sponge down'));
+    setRecallOnce({
+      shortTerm: { messageWindow: [{ role: 'user', content: '面试还算数吗' }] },
+      sessionState: {
+        facts: {
+          ...FALLBACK_EXTRACTION,
+          interview_info: {
+            ...FALLBACK_EXTRACTION.interview_info,
+            phone: {
+              value: '18928806109',
+              confidence: 'medium',
+              source: 'model',
+              evidence: '收资表单落定',
+            },
+          },
+        },
+        lastCandidatePool: null,
+        presentedJobs: null,
+        currentFocusJob: null,
+      },
+      turnHints: null,
+      longTerm: { semantic: { profile: null } },
+      stage: {
+        currentStage: 'job_consultation',
+        fromStage: null,
+        advancedAt: null,
+        reason: null,
+      },
+    });
+
+    const result = await service.prepare(
+      {
+        callerKind: CallerKind.WECOM,
+        messages: [{ role: 'user', content: '面试还算数吗' }],
+        userId: 'user-1',
+        corpId: 'corp-1',
+        sessionId: 'sess-1',
+        strategySource: 'testing',
+      },
+      'invoke',
+    );
+
+    expect(result.finalPrompt).toContain('[预约状态]');
     expect(result.finalPrompt).not.toContain('[当前预约信息]');
   });
 

@@ -544,25 +544,54 @@ export function recordUnansweredAsks(
  * escalatedReason=unparseable_answer。与 askCount 分账：作答轮不烧发问配额，
  * 否则模板重发两次就把配额烧光、候选人首次作答失败即熔断（badcase
  * batch_6a8fec04ce406a6aee03d65f_* 的机械成因）。
+ *
+ * 双重去重，两道挡两种重复：
+ * 1. `turnId` 挡同回合——模型在一轮内重试 precheck 时原样重投同一句作答；
+ * 2. `answerKeys` 内容指纹挡跨回合——候选人贴回的模板滞留证据窗，被逐轮重新解析拒收。
+ *
+ * 配额语义是「两次不同的作答」。`answerKeys` 缺省时退回纯回合去重。
  */
 export function recordRejectedAttempts(
   form: BookingCollectionForm,
   labelIds: readonly number[],
-): { form: BookingCollectionForm; exhausted: number[] } {
+  turnId?: string,
+  answerKeys?: ReadonlyMap<number, string>,
+): { form: BookingCollectionForm; exhausted: number[]; counted: number[] } {
   const slots = { ...form.slots };
   const exhausted: number[] = [];
+  const counted: number[] = [];
   for (const labelId of new Set(labelIds)) {
     const slot = slots[labelId];
     // 拒收零入账，槽位应仍 empty；同轮已被其它通道写成 filled/disqualified 的不记。
     if (!slot || slot.state !== 'empty') continue;
+    if (turnId && slot.lastRejectionCountedTurnId === turnId) continue;
+
+    // 同一句作答不论隔了几轮、被哪条通道重新捡起来，都只烧一次配额。
+    const answerKey = answerKeys?.get(labelId);
+    const countedKeys = slot.countedRejectionKeys ?? [];
+    if (answerKey && countedKeys.includes(answerKey)) continue;
+
     const rejectedAttempts = (slot.rejectedAttempts ?? 0) + 1;
-    slots[labelId] = { ...slot, rejectedAttempts };
+    slots[labelId] = {
+      ...slot,
+      rejectedAttempts,
+      ...(turnId ? { lastRejectionCountedTurnId: turnId } : {}),
+      // 只留最近 MAX_REJECTED_ATTEMPTS_PER_SLOT 条：熔断就在这个数上，留更多没有用途。
+      ...(answerKey
+        ? {
+            countedRejectionKeys: [...countedKeys, answerKey].slice(
+              -MAX_REJECTED_ATTEMPTS_PER_SLOT,
+            ),
+          }
+        : {}),
+    };
+    counted.push(labelId);
     if (rejectedAttempts >= MAX_REJECTED_ATTEMPTS_PER_SLOT) {
       exhausted.push(labelId);
     }
   }
   const next: BookingCollectionForm = { ...form, slots };
-  if (exhausted.length === 0) return { form: next, exhausted };
+  if (exhausted.length === 0) return { form: next, exhausted, counted };
   return {
     form: {
       ...next,
@@ -570,6 +599,7 @@ export function recordRejectedAttempts(
         form.escalatedReason ?? `${ESCALATION_REASONS.unparseableAnswer}: ${exhausted.join('、')}`,
     },
     exhausted,
+    counted,
   };
 }
 
@@ -1052,7 +1082,10 @@ function screenValue(
     const numeric = parseLeadingNumber(value);
     const signal = detectAgeBoundary({ candidateAge: numeric, range });
     if (signal.severity === 'hard_reject') {
-      return `labelId ${field.labelId}「${field.labelTitle}」值域越界：${signal.reason}`;
+      // 只借 detectAgeBoundary 的数值判据（判数值 vs 区间，与字段语义无关），不借其
+      // 措辞——它的 reason 写死「岁」，用在体重等字段上会把值复述成年龄。按字段名重新造句。
+      const bound = signal.side === 'under_min' ? `下限 ${range.min}` : `上限 ${range.max}`;
+      return `labelId ${field.labelId}「${field.labelTitle}」值域越界：实际 ${signal.candidateAge}，岗位${bound}`;
     }
   }
   return null;

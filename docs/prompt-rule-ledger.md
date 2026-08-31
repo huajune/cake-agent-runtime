@@ -379,6 +379,21 @@ section 清单到 `final-check` 结束，`critical-turn-guard` 已不是独立 s
 - `BK6` — 先核对面试形式；线上面试禁止发送门店定位。
   - **拦侧配对**：`online_interview_location_claim`；与 G5、FC1 成对。
 
+### [预约状态] 空态接地块（无在途工单轮次的条件式片段）
+
+载体：`src/agent/generator/preparation/preparation.service.ts` `NO_BOOKING_STATUS_BLOCK`
+（active_booking 指针为空、且带外工单核验也未命中时注入；与 [当前预约信息] 互斥出现）。
+
+- `BS1` — 正向接地：零工单时严禁"已帮你报名/已报名成功"等完成口径（badcase zvey1mg8/as1f14iz/5wglb8k7，
+  2026-08-21 前既有文案，本次补登记）。
+  - **拦侧配对**：`booking_done_claim_without_submission`。
+- `BS2` — 反向接地（2026-08-31 新增，badcase 蒋强到店扑空 workOrderId=459783）：候选人声称/追问一个
+  系统查不到的面试安排（典型为真人顾问带外口头约面）时，严禁替系统确认"没有变动/已安排好/到店会有
+  人接待"，严禁编造面试时间/门店/接待流程；应答"我帮你确认一下"并调 `request_handoff` 转人工核实。
+  - **关联**：确定性主修复是带外工单核验 `maybeLoadOutOfBandBookingContext`（面试相关回合按记忆手机号
+    直查海绵 signup/list，命中即渲染 [当前预约信息] + "非本会话提交"来源行，BK1–BK6 随之生效）；
+    本条只兜"核验也查不到/查询失败"的残余面。
+
 ## 三、final-check always 规则（发送前自检，固定次末位 ≈ recitation）
 
 载体：`src/agent/generator/context/sections/procedural/final-check.section.ts` `FINAL_CHECK_RULES`
@@ -466,7 +481,7 @@ FC 编号保留为历史别名：
 | duliday_modify_interview_time                  | 1,810                                        | 改约契约                                      | 与 T14/BK2 成对                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | skip_reply                                     | 974                                          | 沉默场景                                      | 与 G14 成对                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | send_store_location                            | 829                                          | 定位发送                                      | 与 G5/BK6/FC1 成对                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| duliday_interview_precheck                     | 以源码常量为准                               | 字段值提案、统一 recap 确认、时间并行行动纪律 | **唯一 `fieldValueProposals` 字段值入口与照发模板（标签/行结构逐字）的公开契约**。模型只提交候选人原话明确支持的最终值，歧义不猜；公证拒收通过 `rejectedAnswers` 回显。面试时间只走 `requestedDate`，不进字段提案；首次收资并行展示 `bookableSlots`。只有外部预填触发 recap，所有明确确认表达均提交同形态 `recapConfirmation`，`candidateQuote` 绑定本轮完整回复、`recapQuote` 绑定真实相邻复述，correct/clear 优先。`ready_to_book` 只在资料授权且时间闸门通过后返回；答案到达当轮提交，禁止自行复述资料讨确认。 |
+| duliday_interview_precheck                     | 以源码常量为准                               | 字段值提案、统一 recap 确认、时间并行行动纪律 | **唯一 `fieldValueProposals` 字段值入口与照发模板（标签/行结构逐字）的公开契约**。模型只提交候选人原话明确支持的最终值，歧义不猜；公证拒收通过 `rejectedAnswers` 回显。面试时间只走 `requestedDate`，不进字段提案；首次收资并行展示 `bookableSlots`。只有外部预填触发 recap，所有明确确认表达（含「没」这类语境化短答）均提交同形态 `recapConfirmation`——它是确认的唯一入账入口，不提交则确认永不入账；`candidateQuote` 绑定本轮完整回复、`recapQuote` 绑定实际已发出的复述文案（**2026-08-31 起允许隔轮**：资料未变时在案复述仍是有效锚点，紧邻组锚定会让第二轮追认结构性死锁，生产 chat 6a951ac7ce406a6aeea1338c），correct/clear 优先。公证拒收通过 `rejectedRecapConfirmation` 回执（reason+hint）回显并落 `collection_form_audit`；`recap_snapshot_mismatch`（复述被改写送达，chat 6a951cadce406a6aeed925e7）时返回官方文案供照发重投。booking 凭据闸拒绝回执同步指引补带 `recapConfirmation` 重调。`ready_to_book` 只在资料授权且时间闸门通过后返回；答案到达当轮提交，禁止自行复述资料讨确认。**FILE 字段（2026-08-31，生产 chat 6a9117face406a6aee7f99c9）**：文件字段只收候选人真实附件 URL，文字作答的拒收提示（`FILE_SHAPE_HINT`）指示模型让候选人直接发文件/截图而非重投；收资模板对 FILE 字段常驻「直接发文件或截图，不用打字填写」占位；引导后下一轮仍失败才转人工（拒收账本按候选人回合去重）。 |
 | risk_alert / advance_stage / recall_history 等 | ≤620                                         | —                                             | 健康                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 
 ## 七、守卫 hard-rules（拦侧，19 ruleId）

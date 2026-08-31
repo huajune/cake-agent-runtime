@@ -281,3 +281,19 @@ export function buildToolError(args: {
     ...args.details,
   } as ToolErrorReturn;
 }
+
+/** stale-input 短路的 reasonCode；turn-outcome 的 replay 旁路以此判定，勿手写字面量。 */
+export const STALE_INPUT_REASON_CODE = 'newer_user_input_pending';
+
+/**
+ * stale-input 短路契约：不可逆工具在提交前发现候选人有更新消息时，把本对象整体并入
+ * 返回值。turn-outcome 的 hasStaleInputAbort 以 `staleInput === true && reasonCode ===
+ * STALE_INPUT_REASON_CODE` 放行 reply-workflow 的原地合并 replay。工具侧与判定侧必须
+ * 共同引用这里：两侧曾各写字面量，booking 分支重写时丢失 reasonCode（PR #1023），
+ * replay 旁路静默失效、退化为 follow-up 补建批次。
+ */
+export const STALE_INPUT_SHORT_CIRCUIT = {
+  shortCircuited: true,
+  staleInput: true,
+  reasonCode: STALE_INPUT_REASON_CODE,
+} as const;

@@ -7,6 +7,7 @@ import {
 } from '../generator/tool-call-analysis';
 import type { OutputGuardDecision } from '../guardrail/output/output-guardrail.service';
 import { OutboundReplySanitizer } from '../guardrail/output/outbound-reply-sanitizer';
+import { STALE_INPUT_REASON_CODE } from '@tools/shared/tool-error-types';
 import { buildHandoffIdempotencyKey } from './handoff-idempotency';
 import type { SessionRef, TurnOutcome, TurnTrigger } from './agent-runner.types';
 import type {
@@ -70,7 +71,7 @@ function hasStaleInputAbort(toolCalls: AgentToolCall[] | undefined): boolean {
       call.result && typeof call.result === 'object' && !Array.isArray(call.result)
         ? (call.result as Record<string, unknown>)
         : undefined;
-    return result?.staleInput === true && result?.reasonCode === 'newer_user_input_pending';
+    return result?.staleInput === true && result?.reasonCode === STALE_INPUT_REASON_CODE;
   });
 }
 

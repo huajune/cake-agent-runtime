@@ -123,6 +123,7 @@ export class ToolRegistryService {
           longTermService,
           opsEventsRecorder,
           {
+            observer: agentTracer,
             collectionForms: collectionFormService,
             sessionFacts: sessionService,
             identityAnchors: process.env.COLLECTION_IDENTITY_LABEL_IDS,

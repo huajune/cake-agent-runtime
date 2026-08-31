@@ -124,12 +124,19 @@ export class GeneratorAgent {
 
     try {
       let agentRequest: Record<string, unknown> | undefined;
-      const stepStartMs = Date.now();
+      let stepStartMs = Date.now();
       const stepEndWallclocks: number[] = [];
       const r = await this.llm.generate({
         ...this.buildLlmExecutionOptions(params, ctx),
         onStepFinish: () => {
           stepEndWallclocks.push(Date.now());
+        },
+        // 失败尝试（结果校验不过/多步中途断）同样触发 onStepFinish：锚不随尝试重置，
+        // 其步末墙钟会错配到成功尝试的 steps 上。重置后 agent_steps 只计成功尝试，
+        // 失败尝试耗时由 llm_execution 事件承接。
+        onAttemptStart: () => {
+          stepStartMs = Date.now();
+          stepEndWallclocks.length = 0;
         },
         onPreparedRequest: async (request) => {
           agentRequest = request;

@@ -156,6 +156,19 @@ export interface FormSlot {
    * 第 1 次后模板对该槽位强制枚举全部选项——逐字照抄是唯一确定性出路。
    */
   rejectedAttempts?: number;
+  /**
+   * 最近一次已入账拒收的候选人回复回合；防模型同回合重试工具（重投同一句话）把
+   * 「两次真实作答」的熔断配额一轮烧光（生产 chat 6a9117face406a6aee7f99c9：
+   * 候选人只答了一次「上传简历」就被转人工）。与 lastAskCountedTurnId 同款账法。
+   */
+  lastRejectionCountedTurnId?: string;
+  /**
+   * 已烧过配额的作答内容指纹（同槽最多留 MAX_REJECTED_ATTEMPTS_PER_SLOT 条）。
+   *
+   * `lastRejectionCountedTurnId` 只挡同回合重复入账；候选人贴回的模板滞留在证据窗里，
+   * 会被逐轮重新解析、重新拒收。配额语义是「两次**不同**的作答」，故按内容去重。
+   */
+  countedRejectionKeys?: string[];
 }
 
 // ==================== 表单实体 ====================

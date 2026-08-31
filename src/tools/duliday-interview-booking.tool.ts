@@ -18,6 +18,7 @@ import type { PrivateChatMonitorNotifierService } from '@notification/services/p
 import {
   applyErrorList,
   escalate,
+  ESCALATION_REASONS,
   isSubmissionAuthorized,
   mapContractFields,
   markSubmitted,
@@ -26,6 +27,7 @@ import {
   type BookingCollectionForm,
   type ContractFieldDef,
 } from '@resolution/collection';
+import type { AgentEvent } from '@observability/observer.interface';
 import type { InterviewBookingLabelValue, JobDetail } from '@sponge/sponge.types';
 import type { SpongeService } from '@sponge/sponge.service';
 import type { ToolBuildContext, ToolBuilder } from '@shared-types/tool.types';
@@ -39,7 +41,11 @@ import { runBookingScheduleAndNameGuards } from '@tools/booking/booking-guards.u
 import { isTestPiiPhoneAllowed, maskPhoneForDetails } from '@tools/shared/test-pii-gate';
 import { buildJobPolicyAnalysis, isWaitNoticeInterview } from '@tools/job-list/job-policy-parser';
 import { buildSpongeTokenContext } from '@tools/shared/sponge-token-context.util';
-import { buildToolError, TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
+import {
+  buildToolError,
+  STALE_INPUT_SHORT_CIRCUIT,
+  TOOL_ERROR_TYPES,
+} from '@tools/shared/tool-error-types';
 import { tool } from 'ai';
 import { z } from 'zod';
 
@@ -69,6 +75,36 @@ export interface BookingAdjudicationDeps {
   collectionForms?: CollectionFormService;
   sessionFacts?: SessionStateService;
   identityAnchors?: string;
+  /** 收资审计面：`error_list_unmapped` 熔断此前只落盘不发事件，观测里完全看不见。 */
+  observer?: { emit: (event: AgentEvent) => void };
+}
+
+/**
+ * `applyErrorList` 定位不到槽位 → 熔断转人工。该路径只改表单落盘，事件不发则整条
+ * 熔断在 `collection_form_audit` 里不可见。形状对齐 precheck 侧 `emitAudits`，
+ * 日频巡检口径不变。
+ */
+function emitErrorListEscalation(params: {
+  deps: BookingAdjudicationDeps;
+  context: ToolBuildContext;
+  jobId: number;
+  before: BookingCollectionForm;
+  after: BookingCollectionForm;
+}): void {
+  const { after, before } = params;
+  const reason = after.escalatedReason;
+  if (!reason || reason === before.escalatedReason) return;
+  if (!reason.startsWith(ESCALATION_REASONS.errorListUnmapped)) return;
+
+  logger.warn(`[booking] errorList 字段定位失败已转人工: jobId=${params.jobId} reason=${reason}`);
+  params.deps.observer?.emit({
+    type: 'collection_form_audit',
+    userId: params.context.session.userId,
+    jobId: params.jobId,
+    kind: 'escalated',
+    reason,
+    detail: 'applyErrorList 回写的字段定位不到契约槽位',
+  });
 }
 
 export function buildInterviewBookingTool(
@@ -125,7 +161,7 @@ export function buildInterviewBookingTool(
               errorType: TOOL_ERROR_TYPES.BOOKING_REJECTED,
               outcome: '预约未提交（本轮没有已确认的 precheck 凭据）',
               replyInstruction:
-                '先调用 duliday_interview_precheck。只有资料已授权、非 wait_notice 岗位的时间草稿实时可约且工具返回 ready_to_book 后，才能在同一轮调用 booking。',
+                '先调用 duliday_interview_precheck。只有资料已授权、非 wait_notice 岗位的时间草稿实时可约且工具返回 ready_to_book 后，才能在同一轮调用 booking。候选人已明确确认过提交前复述的，重调 precheck 时必须带上 recapConfirmation 登记确认——缺了它会一直停在 confirm_collection。',
               details: { jobId },
             }),
           );
@@ -300,8 +336,7 @@ export function buildInterviewBookingTool(
                 replyInstruction: '立即停止，不要回复或重试；runtime 会合并最新消息重新处理。',
                 details: { jobId },
               }),
-              shortCircuited: true,
-              staleInput: true,
+              ...STALE_INPUT_SHORT_CIRCUIT,
             });
           }
 
@@ -323,6 +358,13 @@ export function buildInterviewBookingTool(
               ],
               mapped.fields,
             );
+            emitErrorListEscalation({
+              deps,
+              context,
+              jobId,
+              before: form,
+              after: reopened,
+            });
             await deps.collectionForms.persist(scope, reopened);
             return fail(
               buildToolError({
@@ -366,6 +408,13 @@ export function buildInterviewBookingTool(
 
           if (!result.success) {
             const rewritten = applyErrorList(form, result.applyErrorList ?? [], mapped.fields);
+            emitErrorListEscalation({
+              deps,
+              context,
+              jobId,
+              before: form,
+              after: rewritten,
+            });
             await deps.collectionForms.persist(scope, rewritten);
             recordBookingEvent(opsEventsRecorder, context, 'booking.failed', jobId, interviewTime, {
               reason: result.message ?? null,

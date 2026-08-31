@@ -23,7 +23,11 @@ import {
 import type { CandidateFactField } from '@resolution/candidate/types';
 import { normalizedIncludes } from '@resolution/notary/text-normalization';
 import type { FieldValueProposalInput } from './field-value-proposal-input';
-import { forcedOptionPlaceholder, optionPlaceholder } from './collection-template.renderer';
+import {
+  filePlaceholder,
+  forcedOptionPlaceholder,
+  optionPlaceholder,
+} from './collection-template.renderer';
 
 export interface IntakeInput {
   contract: readonly ContractFieldDef[];
@@ -297,11 +301,11 @@ function adaptAnswerValue(field: ContractFieldDef, value: string): SlotProposal 
   );
 }
 
-/** 候选人原样回抄了模板的枚举占位（普通档或拒收重问的强制枚举档），不是答案。 */
+/** 候选人原样回抄了模板的占位提示（枚举占位或 FILE 发文件提示），不是答案。 */
 function isPlaceholderEcho(field: ContractFieldDef, value: string): boolean {
   const trimmed = value.trim();
   if (!trimmed) return false;
-  return [optionPlaceholder(field), forcedOptionPlaceholder(field)]
+  return [optionPlaceholder(field), forcedOptionPlaceholder(field), filePlaceholder(field)]
     .filter(Boolean)
     .includes(trimmed);
 }
@@ -331,17 +335,32 @@ function adaptMultipleOptionLabels(field: ContractFieldDef, value: string): Slot
   };
 }
 
-/** 通道 3：安全网。只扫**空槽**，且只用确定性适配器（不引入第二语义读者）。 */
+/**
+ * 通道 3：安全网。只扫**空槽**，且只用确定性适配器（不引入第二语义读者）。
+ *
+ * ⚠️ 逐条消息喂适配器，不拼接语料：适配器的 sourceText 允许就是它拿到的整段文本
+ * （见 identity-status.adapter），而 `proposeValue` 的出处门按**逐条消息**逐字回查
+ * ——喂拼接语料则多消息轮次必被判「sourceText 未出现在候选人原文」。逐条扫描让
+ * 检测单元与公证单元对齐，也堵掉"新增适配器返回整段"的复发面。
+ *
+ * 取最后一条命中的消息：同槽位多条命中时，后说的是更新的表述。
+ */
 function fromAdapterSweep(input: IntakeInput): RoutedFieldValueProposal[] {
-  const corpus = input.candidateTexts.join('\n');
-  if (!corpus.trim()) return [];
+  const texts = input.candidateTexts.filter((text) => text.trim());
+  if (texts.length === 0) return [];
 
   const proposals: RoutedFieldValueProposal[] = [];
   for (const field of input.contract) {
     if (input.filledLabelIds.has(field.labelId)) continue;
     if (hasExactPlaceholderEcho(input.candidateTexts, input.contract, field.labelId)) continue;
-    const swept = adapterFor(field)({ field, candidateText: corpus });
+
+    const adapter = adapterFor(field);
+    let swept: SlotProposal | null = null;
+    for (const candidateText of texts) {
+      swept = adapter({ field, candidateText }) ?? swept;
+    }
     if (!swept) continue;
+
     proposals.push({
       labelId: field.labelId,
       value: swept.value,

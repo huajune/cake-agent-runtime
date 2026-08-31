@@ -266,6 +266,12 @@ describe('proposal intake（统一 fieldValueProposals 运输）', () => {
         }),
       ),
     ).toEqual([]);
+    // FILE 字段的发文件占位同样是模板噪音，回抄不算作答。
+    expect(
+      collectFieldValueProposals(
+        base({ candidateTexts: ['简历附件：（直接发文件或截图，不用打字填写）'] }),
+      ),
+    ).toEqual([]);
   });
 
   it('主模型漏作证时确定性扫描只补 empty 槽；同槽命中时 fieldValueProposals 胜出', () => {
@@ -377,5 +383,47 @@ describe('proposal intake（统一 fieldValueProposals 运输）', () => {
         { candidateTexts: ['早晚班都可以'], messages: [] },
       ).outcome,
     ).toBe('accepted');
+  });
+});
+
+describe('adapter_sweep 逐条喂适配器（0828 提出 / 0831 复发的确定性假阳）', () => {
+  // 生产形态：证据窗里有多条候选人消息，社会身份的答案只在其中一条里。
+  const TEXTS = ['奥乐齐吧', '工作了', '有健康证'];
+
+  it('sourceText 必须逐字落在**某一条**消息内——拼接语料会让出处门必然判假阳', () => {
+    const [proposal] = collectFieldValueProposals(
+      base({ contract: [STUDENT], candidateTexts: TEXTS }),
+    );
+    expect(proposal).toMatchObject({ labelId: 605, channel: 'adapter_sweep', value: '社会人士' });
+    expect(TEXTS.some((text) => text.includes(proposal.sourceText))).toBe(true);
+  });
+
+  it('端到端：多消息窗里的社会身份提案过得了公证，不再被拒成 source_text_not_found', () => {
+    const [proposal] = collectFieldValueProposals(
+      base({ contract: [STUDENT], candidateTexts: TEXTS }),
+    );
+    const result = applyFieldValueProposal(
+      createForm({ jobId: 1, contract: [STUDENT] }),
+      STUDENT,
+      proposal,
+      { candidateTexts: TEXTS, messages: TEXTS.map((text) => ({ role: 'user', content: text })) },
+    );
+    expect(result.outcome).toBe('accepted');
+    expect(result.form.slots[605].value?.value).toBe('社会人士');
+  });
+
+  it('单条消息的既有行为不变', () => {
+    const [proposal] = collectFieldValueProposals(
+      base({ contract: [STUDENT], candidateTexts: ['我已经工作了'] }),
+    );
+    expect(proposal).toMatchObject({ labelId: 605, value: '社会人士', channel: 'adapter_sweep' });
+  });
+
+  it('同一槽位多条消息都能解析时取最后一条（后说的是更新的表述）', () => {
+    const [proposal] = collectFieldValueProposals(
+      base({ contract: [STUDENT], candidateTexts: ['我是学生', '不对，我已经工作了'] }),
+    );
+    expect(proposal.value).toBe('社会人士');
+    expect(proposal.sourceText).toContain('工作了');
   });
 });

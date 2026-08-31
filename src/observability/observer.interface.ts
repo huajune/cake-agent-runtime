@@ -6,6 +6,25 @@ import type {
   SessionBrandState,
 } from '@resolution/brand/brand-resolution.types';
 import type { ToolErrorType } from '@tools/shared/tool-error-types';
+import type { ErrorCategory } from '@providers/types';
+
+/**
+ * llm-executor 单次 provider 尝试轨迹。`attempt=0` 为发起前预检跳过（不认图 /
+ * provider 未注册），`>=1` 为真实请求。error 已截断，不含 prompt/响应体。
+ */
+export interface LlmAttemptTrace {
+  modelId: string;
+  attempt: number;
+  /** 相对本次 llm-executor 调用入口的开始偏移（ms）。 */
+  startOffsetMs: number;
+  durationMs: number;
+  status: 'success' | 'error' | 'skipped';
+  /** reliable.classifyError 三分类；success/skipped 时缺省。 */
+  errorCategory?: ErrorCategory;
+  error?: string;
+  /** 本次失败后进入的指数退避等待（ms）；最后一次失败/不重试时缺省。 */
+  backoffMs?: number;
+}
 
 /**
  * Agent 事件观测接口（对标 ZeroClaw Observer）。
@@ -60,6 +79,29 @@ export type AgentEvent = AgentEventContext &
       }
     | { type: 'model_call'; modelId: string; role: string }
     | { type: 'model_fallback'; fromModel: string; toModel: string; reason: string }
+    /**
+     * llm-executor 单次调用（generate/stream）的尝试轨迹：同模型重试与降级换模型
+     * 的耗时只在此可见（`model_call` 不落库），故收尾时无条件发射。
+     *
+     * stream 的 totalDurationMs 只覆盖初始化窗口，不含流式消费；重试期间进程被
+     * SIGTERM 打断则本事件不发射。
+     */
+    | {
+        type: 'llm_execution';
+        userId?: string;
+        role: string;
+        mode: 'generate' | 'stream';
+        primaryModelId: string;
+        /** 最终成功返回结果的模型；全链耗尽为 null。 */
+        finalModelId: string | null;
+        status: 'success' | 'exhausted';
+        /** 真实发起的 provider 请求次数（不含预检跳过）。 */
+        attemptCount: number;
+        totalDurationMs: number;
+        /** 重试退避 sleep 累计（ms）。 */
+        backoffTotalMs: number;
+        attempts: LlmAttemptTrace[];
+      }
     | {
         type: 'tool_call';
         toolName: string;

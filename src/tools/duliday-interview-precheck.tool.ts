@@ -15,7 +15,10 @@ import {
   type ContractFieldDef,
   type Verdict,
 } from '@resolution/collection';
-import { verifyRecapConfirmationBinding } from '@resolution/notary/recap-confirmation';
+import {
+  verifyRecapConfirmationBinding,
+  type RecapConfirmationRejectionReason,
+} from '@resolution/notary/recap-confirmation';
 import { normalizedIncludes } from '@resolution/notary/text-normalization';
 import { selectEvidenceDialogueMessages } from '@resolution/signal/corpus';
 import { extractCandidateTexts } from '@resolution/signal/self-report';
@@ -38,7 +41,7 @@ import {
   FieldValueProposalsInputSchema,
   type FieldValueProposalInput,
 } from '@tools/collection/field-value-proposal-input';
-import { renderRecap } from '@tools/collection/recap-renderer';
+import { renderRecap, renderRecapRedeliveryText } from '@tools/collection/recap-renderer';
 import { renderRejection } from '@tools/collection/rejection-renderer';
 import {
   buildBookableSlots,
@@ -90,8 +93,9 @@ export const PRECHECK_DESCRIPTION = `面试前置校验。实时读取岗位收�
 - fieldValueProposals 是唯一收资字段入口。只在候选人原话明确支持最终契约值时提交；没提到、无法唯一映射、带保留或有歧义时不提交，让该槽位保持 empty。不得为了填满表单猜值，不得提交置信分、待复核标记或“先填后确认”值。
 - 每项 labelTitle 必须逐字取自 bookingChecklist.requiredFields，value 传规范值，quote 必须逐字取自候选人完整原话。一条消息明确支持多个字段时全部提交。纠正用 correct、清除用 clear；confirm 只用于候选人对真实相邻字段问句的短答确认，不得把 recap 拆成全部 filled 字段重投。
 - fieldValueProposals 只能填写实时契约已有槽位，不能增删字段，也不能控制 requiredFields 及其顺序。不得传岗位要求冒充候选人答案，不得补造字段或沿用旧 candidateXxx 裸参数。
-- recapConfirmation 只在上一轮 nextAction=confirm_collection、候选人正在回应当前 recap 时提交：所有明确确认表达（包括「好的」「确认」等纯短答）都必须走这一入口。candidateQuote 必须是本轮完整回复，recapQuote 必须逐字取自紧邻 assistant recap。存在 correct/clear 时不要提交，纠正优先。
+- recapConfirmation 是 recap 确认的**唯一入账入口**：候选人对提交前复述明确表态确认时（包括「好的」「确认」等纯短答，也包括「没」这类语境化短答——回应「有不对的地方直接说改哪项」即确认），必须提交它，不提交则确认永不入账、booking 永远被拒。candidateQuote 必须是本轮完整回复，recapQuote 必须逐字取自实际已发出的复述文案（允许隔轮：资料未变时此前发过的复述仍有效）。存在 correct/clear 时不要提交，纠正优先。
 - 返回里出现 rejectedAnswers 表示这些答案**已被退回、没有入账**：按其 hint 改投，不要把候选人已经答过的字段再问一遍。
+- 返回里出现 rejectedRecapConfirmation 表示本轮 recap 确认被公证退回、没有入账：按其 hint 修复后重投，不要把候选人已经确认过的内容再问一遍。
 
 行动纪律：
 - collect_fields：只收 bookingChecklist.requiredFieldsToCollectNow。${COLLECTION_TEMPLATE_SEND_INSTRUCTION}
@@ -114,10 +118,15 @@ export const PRECHECK_INPUT_SCHEMA = z.object({
   recapConfirmation: z
     .object({
       candidateQuote: z.string().trim().min(1).max(500).describe('候选人本轮完整回复'),
-      recapQuote: z.string().trim().min(1).max(500).describe('紧邻 assistant recap 的逐字片段'),
+      recapQuote: z
+        .string()
+        .trim()
+        .min(1)
+        .max(500)
+        .describe('实际已发出的复述文案中的逐字片段（资料未变时允许隔轮引用）'),
     })
     .optional()
-    .describe('仅用于 confirm_collection；所有明确确认表达均提交同一种 recap 确认陈述'),
+    .describe('recap 确认的唯一入账入口；候选人明确表态确认时必须提交，否则确认不入账'),
 });
 
 export interface PrecheckAdjudicationDeps {
@@ -138,6 +147,8 @@ interface FormRun {
   unmatchedAnswers: UnmatchedAnswer[];
   /** 定位成功但被公证拒收的条目——模型可见的纠错回执。 */
   rejectedAnswers: RejectedAnswer[];
+  /** 本轮 recapConfirmation 被公证拒收的原因——模型可见的纠错回执 + 审计落账。 */
+  recapConfirmationRejection?: RecapConfirmationRejectionReason;
 }
 
 interface RecapConfirmationInput {
@@ -149,6 +160,25 @@ interface UnmatchedAnswer {
   labelTitle: string;
   hint: string;
 }
+
+/**
+ * recap 确认公证拒收 → 模型可见回执。没有它模型只看到 confirm_collection 原地踏步，
+ * 会把"确认没入账"误诊成系统故障转人工（生产 chat 6a951ac7ce406a6aeea1338c），或者
+ * 假宣称已提交（chat 6a951cadce406a6aeed925e7）。
+ */
+const RECAP_CONFIRMATION_REJECTION_HINTS: Record<RecapConfirmationRejectionReason, string> = {
+  recap_not_required: '当前表单无外部预填、不需要复述确认，不必提交 recapConfirmation。',
+  recap_missing_or_already_affirmed:
+    '没有待确认的复述在案（尚未发出或已确认过），按本次 nextAction 行动即可。',
+  candidate_quote_not_full_latest_reply:
+    'candidateQuote 必须逐字等于候选人本轮完整回复，不得截取、拼接或改写后重投。',
+  recap_quote_not_delivered:
+    'recapQuote 在实际发出的消息里找不到，必须逐字取自真实发出的复述文案。',
+  recap_snapshot_mismatch:
+    '此前复述没有按官方文本完整送达候选人。照发本次返回的 recap.candidateMessage 重新复述，候选人确认后再带 recapConfirmation 重调。',
+  correction_takes_precedence:
+    '本轮存在字段纠正，纠正优先入账；纠正落账后会重新发复述，勿在同轮提交确认。',
+};
 
 /**
  * 公证拒收对模型的回执。
@@ -182,6 +212,16 @@ const REJECTION_HINTS: Readonly<Record<string, string>> = {
   deterministic_conflict:
     '确定性 parser/adapter 从原话明确得出了另一个值；不要覆盖候选人原话，核对规范值后重投，仍有歧义就保持该槽位 empty 并定向追问。',
 };
+
+/**
+ * FILE 型字段的 invalid_value_shape 专属提示，压过通用条目。通用提示的「核对后重投」
+ * 对文件字段是死路：文字永远过不了附件 URL 形态门，重投只会烧掉「读不懂两次转人工」
+ * 的熔断配额（生产 chat 6a9117face406a6aee7f99c9：候选人打字填「上传简历」，模型
+ * 按通用提示同轮重投，一轮熔断转人工）。正确动作只有一个：让候选人把文件发过来。
+ */
+const FILE_SHAPE_HINT =
+  '该字段是文件字段，只能录入候选人真实发来的附件链接（候选人发文件/图片后，消息里会出现「简历附件：URL」标注行，用那个 URL 提交）。' +
+  '文字描述无法作为它的值，不要原样重投；请明确告诉候选人：这一项需要直接把简历文件或简历截图/照片发过来，打字发文字没法录入。';
 
 /**
  * 面试时间语义族封闭词表（NFKC + 去空白后整串匹配）。生产回放 2026-08-26：5% 可判定答案
@@ -244,12 +284,19 @@ function intakeFieldValueProposals(params: {
     }
 
     proposals.push(answer);
+    // 把**本岗合法标题**逐字列进 hint，而不是只叫模型"去看 requiredFields"。
+    // 生产实证（0831，chat 6a8e4e2c… job 524240）：契约只有 5 个字段，模型每轮都额外
+    // 提交「学历」「健康证」「身份（学生/社会人士）」三个不存在的标题，连续 4 轮
+    // 收到同一句"该标题不在本岗契约"的回执仍原样重投——指路式提示没能让它自我纠正。
+    // 直接给出可选集合，纠正动作就不再需要模型回头做一次交叉引用。
+    const availableTitles = params.contract.map((field) => field.labelTitle).join('、');
     unmatched.push({
       labelTitle: answer.labelTitle,
       hint:
         resolution.reason === 'label_title_ambiguous'
-          ? `该标题在本岗契约命中多个字段、已放弃写入；${LABEL_TITLE_HINT}`
-          : `该标题不在本岗契约；${LABEL_TITLE_HINT}`,
+          ? `该标题在本岗契约命中多个字段、已放弃写入；${LABEL_TITLE_HINT}。本岗合法标题只有：${availableTitles}`
+          : `该标题不在本岗契约，本岗不收这一项——不要再提交它，也不要就它追问候选人。` +
+            `${LABEL_TITLE_HINT}。本岗合法标题只有：${availableTitles}`,
     });
   }
 
@@ -481,6 +528,12 @@ export function buildInterviewPrecheckTool(
             unmatchedAnswers: formRun.unmatchedAnswers,
             rejectedAnswers:
               formRun.rejectedAnswers.length > 0 ? formRun.rejectedAnswers : undefined,
+            rejectedRecapConfirmation: formRun.recapConfirmationRejection
+              ? {
+                  reason: formRun.recapConfirmationRejection,
+                  hint: RECAP_CONFIRMATION_REJECTION_HINTS[formRun.recapConfirmationRejection],
+                }
+              : undefined,
             recap:
               nextAction === 'confirm_collection'
                 ? {
@@ -590,8 +643,23 @@ async function runForm(params: {
         recapQuote: params.recapConfirmation.recapQuote,
         hasValidatedCorrection: corrections.length > 0,
       })
-    : { accepted: false };
-  const affirmedThisTurn = recapBinding.accepted;
+    : undefined;
+  const affirmedThisTurn = recapBinding?.accepted === true;
+  const recapConfirmationRejection =
+    recapBinding && !recapBinding.accepted
+      ? ((recapBinding.reason ??
+          'recap_missing_or_already_affirmed') as RecapConfirmationRejectionReason)
+      : undefined;
+  if (recapConfirmationRejection) {
+    params.deps.observer?.emit({
+      type: 'collection_form_audit',
+      userId: params.context.session.userId,
+      jobId: params.jobId,
+      kind: 'recap_confirmation_rejected',
+      reason: recapConfirmationRejection,
+      channel: 'recap_confirmation',
+    });
+  }
   if (affirmedThisTurn) form = applyRecapResult(form, { affirmed: true });
   // 复述确认是跨轮事实：候选人先明确确认、下一轮再选面试时间时，仍应沿用在案
   // 复述确认回执。槽位变更或契约槽位
@@ -629,6 +697,12 @@ async function runForm(params: {
     const recap = renderRecap(persisted, mapped.fields);
     persisted = recap.form;
     recapText = recap.text ?? undefined;
+  } else if (
+    recapConfirmationRejection === 'recap_snapshot_mismatch' &&
+    verdictOf(persisted) === 'ready'
+  ) {
+    // 在案复述从未按官方文本送达——给出同一快照的官方文案供照发重投，走出确认死锁。
+    recapText = renderRecapRedeliveryText(persisted, mapped.fields) ?? undefined;
   }
   await params.deps.collectionForms.persist(scope, persisted);
   emitAudits(params.deps, params.context, params.jobId, result.audits);
@@ -642,6 +716,7 @@ async function runForm(params: {
     divertedRequestedDate: intake.divertedRequestedDate,
     unmatchedAnswers: intake.unmatched,
     rejectedAnswers: collectRejectedAnswers(result.audits, mapped.fields),
+    recapConfirmationRejection,
   };
 }
 
@@ -650,19 +725,22 @@ function collectRejectedAnswers(
   audits: readonly CollectionAuditEvent[],
   contract: readonly ContractFieldDef[],
 ): RejectedAnswer[] {
-  const titleById = new Map(contract.map((field) => [field.labelId, field.labelTitle]));
+  const fieldById = new Map(contract.map((field) => [field.labelId, field]));
   const rejected: RejectedAnswer[] = [];
   const seen = new Set<string>();
   for (const audit of audits) {
     if (audit.kind !== 'proposal_rejected' || audit.labelId === undefined || !audit.reason)
       continue;
-    const labelTitle = titleById.get(audit.labelId);
-    const hint = REJECTION_HINTS[audit.reason];
-    if (!labelTitle || !hint) continue;
-    const key = `${labelTitle}:${audit.reason}`;
+    const field = fieldById.get(audit.labelId);
+    const hint =
+      field?.fieldType === 'FILE' && audit.reason === 'invalid_value_shape'
+        ? FILE_SHAPE_HINT
+        : REJECTION_HINTS[audit.reason];
+    if (!field || !hint) continue;
+    const key = `${field.labelTitle}:${audit.reason}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    rejected.push({ labelTitle, reason: audit.reason, hint });
+    rejected.push({ labelTitle: field.labelTitle, reason: audit.reason, hint });
   }
   return rejected;
 }
@@ -705,10 +783,18 @@ function replyInstruction(action: PrecheckAction, run: FormRun): string {
           : '';
       return `${COLLECTION_TEMPLATE_SEND_INSTRUCTION} 只缺：${run.result.askableFields.join('、') || run.result.template.missingFields.join('、')}；已 filled 字段禁止重复问。${rejectedNote}`;
     }
-    case 'confirm_collection':
-      return run.recapText
-        ? '资料含外部预填。发送 recap.candidateMessage；若尚未选时间，同时并列展示 interview.bookableSlots，允许候选人一轮确认资料并选时间。确认前禁止 booking。'
-        : '已发过提交前复述但尚未得到明确确认。只简短请候选人确认或指出哪项要改；若尚未选时间可同时给出真实 bookableSlots，禁止重发整张收资表。';
+    case 'confirm_collection': {
+      if (run.recapConfirmationRejection === 'recap_snapshot_mismatch' && run.recapText) {
+        return '候选人的确认没能入账：此前复述未按官方文本送达（见 rejectedRecapConfirmation）。照发 recap.candidateMessage 重新复述并请候选人确认，确认后带 recapConfirmation 重调本工具。';
+      }
+      if (run.recapText) {
+        return '资料含外部预填。发送 recap.candidateMessage；若尚未选时间，同时并列展示 interview.bookableSlots，允许候选人一轮确认资料并选时间。确认前禁止 booking。';
+      }
+      const rejectionNote = run.recapConfirmationRejection
+        ? ' 注意：本轮提交的 recapConfirmation 被公证退回，原因与改法见 rejectedRecapConfirmation。'
+        : '';
+      return `已发过提交前复述但尚未得到明确确认。候选人本轮已明确表态确认的，立即带 recapConfirmation 重调本工具登记确认——不登记则确认永不入账；候选人尚未表态的才简短请他确认或指出哪项要改；若尚未选时间可同时给出真实 bookableSlots，禁止重发整张收资表。${rejectionNote}`;
+    }
     case 'select_interview_time':
       return '候选人资料已经授权，但当前没有实时有效的预约时段。只让候选人从 interview.bookableSlots 选择具体时间；保留已收资料，不得重新收资或签发 booking。';
     case 'screening_rejected':

@@ -12,6 +12,8 @@ const ALWAYS_PERSISTED_EVENT_TYPES = new Set<AgentEvent['type']>([
   'agent_error',
   'model_fallback',
   'tool_error',
+  // LLM 尝试轨迹：条件采样（下方 shouldPersist）会漏掉本事件要抓的重试与慢尝试
+  'llm_execution',
   // 品牌状态迁移：仅状态变化时发射，前后快照不可重放，必须落库（§12）
   'brand_state_change',
   // 歧义词形现场：不写状态故 brand_state_change 看不见，量级=冲突别名频率（每天个位数）

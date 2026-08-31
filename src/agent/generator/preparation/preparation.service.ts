@@ -19,6 +19,10 @@ import { GroupResolverService } from '@biz/group-task/services/group-resolver.se
 import { HostingMemberConfigService } from '@biz/hosting-config/services/hosting-member-config.service';
 import { SpongeService } from '@sponge/sponge.service';
 import {
+  ACTIVE_INTERVIEW_WORK_ORDER_STATUSES,
+  type SignupWorkOrderItem,
+} from '@sponge/sponge.types';
+import {
   buildJobPolicyAnalysis,
   isOfflineInterviewMethod,
 } from '@tools/job-list/job-policy-parser';
@@ -169,34 +173,44 @@ export class PreparationService {
 
     // 并行拉取本轮依赖：两层记忆快照 + 当前预约工单上下文 + 实时群状态 + 账号身份配置。
     const enrichmentIdentity = this.buildEnrichmentIdentity(params);
-    const [memory, bookingContext, realtimeGroups, accountIdentityConfig] = await Promise.all([
-      turnHintsPromise.then(async (turnHints) => {
-        const snapshot = await this.memoryService.onTurnStart(
+    const [memory, pointerBookingContext, realtimeGroups, accountIdentityConfig] =
+      await Promise.all([
+        turnHintsPromise.then(async (turnHints) => {
+          const snapshot = await this.memoryService.onTurnStart(
+            corpId,
+            userId,
+            sessionId,
+            currentUserMessage,
+            {
+              includeShortTerm: callerKind === CallerKind.WECOM,
+              shortTermEndTimeInclusive: params.shortTermEndTimeInclusive,
+              turnHints,
+              botUserId: params.botUserId,
+            },
+          );
+          return enrichmentIdentity
+            ? this.snapshotEnrichment.enrich(snapshot, enrichmentIdentity)
+            : snapshot;
+        }),
+        // [当前预约信息] 由 active_booking 指针 + 海绵工单实时状态渲染（理由见 loadBookingContext）。
+        this.loadBookingContext(
           corpId,
           userId,
-          sessionId,
           currentUserMessage,
-          {
-            includeShortTerm: callerKind === CallerKind.WECOM,
-            shortTermEndTimeInclusive: params.shortTermEndTimeInclusive,
-            turnHints,
-            botUserId: params.botUserId,
-          },
-        );
-        return enrichmentIdentity
-          ? this.snapshotEnrichment.enrich(snapshot, enrichmentIdentity)
-          : snapshot;
-      }),
-      // [当前预约信息] 由 active_booking 指针 + 海绵工单实时状态渲染（理由见 loadBookingContext）。
-      this.loadBookingContext(
-        corpId,
-        userId,
-        currentUserMessage,
-        this.buildSpongeTokenContext(params),
-      ),
-      this.loadRealtimeGroupStatus(params),
-      this.loadAccountIdentity(params.botImId),
-    ]);
+          this.buildSpongeTokenContext(params),
+        ),
+        this.loadRealtimeGroupStatus(params),
+        this.loadAccountIdentity(params.botImId),
+      ]);
+
+    // 指针路径没有在途预约时，按记忆里的手机号补一道带外工单核验（人工建单对指针全盲，
+    // 详见 maybeLoadOutOfBandBookingContext）。依赖 memory 里的手机号，须在 Promise.all 之后。
+    const bookingContext = await this.maybeLoadOutOfBandBookingContext(
+      pointerBookingContext,
+      memory,
+      currentUserMessage,
+      this.buildSpongeTokenContext(params),
+    );
 
     // 对话消息归一化为 AI SDK ModelMessage[]（含多模态图片/表情注入）。
     const { messages: normalizedMessages, corpusBlocks: conversationCorpusBlocks } =
@@ -577,13 +591,7 @@ export class PreparationService {
         // 宣称"已帮你报好/已登记好"）。无工单时明示 ground truth，让完成口径必须以本轮工具结果
         // 为据。注意段名必须区别于 [当前预约信息]——后者的**存在性**被多个工具指令当作"已有
         // 预约"信号（如 request_handoff "存在时必须调用"），空状态复用同名段会毒化这些判断。
-        return {
-          block:
-            '\n\n[预约状态]\n\n当前候选人没有任何进行中的报名/预约工单。' +
-            '严禁使用"已帮你报名/已报名成功/已登记好/已提交预约"等完成口径描述报名状态；' +
-            '只有本轮 duliday_interview_booking 返回 success 后，才能向候选人确认报名成功。',
-          jobIds: [],
-        };
+        return { block: PreparationService.NO_BOOKING_STATUS_BLOCK, jobIds: [] };
       }
 
       const requiresFreshLookup = this.requiresFreshBookingContext(currentUserMessage);
@@ -599,42 +607,10 @@ export class PreparationService {
                 })
               : await this.spongeService.getCachedWorkOrderById(workOrderId, tokenContext);
             const normalizedJobId = this.normalizeJobId(workOrder?.jobId);
-            let location:
-              | { storeAddress?: string; interviewMethod?: string; interviewAddress?: string }
-              | undefined;
-            if (requiresLocationDetails && normalizedJobId != null) {
-              try {
-                const detail = await this.spongeService.fetchJobs(
-                  {
-                    jobIdList: [normalizedJobId],
-                    pageNum: 1,
-                    pageSize: 1,
-                    onlySignableJobs: false,
-                    options: { includeBasicInfo: true, includeInterviewProcess: true },
-                  },
-                  tokenContext,
-                );
-                const job = detail.jobs[0];
-                if (job) {
-                  const storeAddress =
-                    typeof job.basicInfo?.storeInfo?.storeAddress === 'string'
-                      ? job.basicInfo.storeInfo.storeAddress.trim()
-                      : undefined;
-                  const interviewMeta = buildJobPolicyAnalysis(job).interviewMeta;
-                  const interviewMethod = interviewMeta.method ?? undefined;
-                  const interviewAddress = isOfflineInterviewMethod(interviewMethod)
-                    ? (interviewMeta.address ?? undefined)
-                    : undefined;
-                  location = { storeAddress, interviewMethod, interviewAddress };
-                }
-              } catch (error) {
-                this.logger.warn(
-                  `加载预约地址详情失败 workOrderId=${workOrderId}: ${
-                    error instanceof Error ? error.message : String(error)
-                  }`,
-                );
-              }
-            }
+            const location =
+              requiresLocationDetails && normalizedJobId != null
+                ? await this.loadJobLocationDetails(normalizedJobId, workOrderId, tokenContext)
+                : undefined;
             return { workOrderId, workOrder, location, fetchFailed: false };
           } catch (error) {
             this.logger.warn(
@@ -701,6 +677,153 @@ export class PreparationService {
       );
       return { block: '', jobIds: [] };
     }
+  }
+
+  /**
+   * [预约状态] 空态接地块（active_booking 指针为空且带外核验也未发现在途工单时注入）。
+   *
+   * 两个方向都要接地：
+   * - 正向（badcase zvey1mg8）：禁止空头宣称"已帮你报名"；
+   * - 反向（badcase 蒋强 8-31 到店扑空）：候选人声称/追问一个系统查不到的面试安排
+   *   （典型为真人顾问带外口头约面）时，Agent 无从核实，严禁替系统背书。
+   */
+  // 程序记忆层·预约状态空态规则（代码动态注入居所）；总目录：docs/prompt-rule-ledger.md
+  private static readonly NO_BOOKING_STATUS_BLOCK =
+    '\n\n[预约状态]\n\n当前候选人没有任何进行中的报名/预约工单。' +
+    '严禁使用"已帮你报名/已报名成功/已登记好/已提交预约"等完成口径描述报名状态；' +
+    '只有本轮 duliday_interview_booking 返回 success 后，才能向候选人确认报名成功。\n' +
+    '若候选人声称已约好面试、或追问某场面试是否有变动/怎么走/找谁（该安排可能由人工顾问' +
+    '带外沟通产生，系统查不到），你无法核实其真实性：严禁替系统确认"没有变动/已安排好/' +
+    '到店会有人接待"等口径，也严禁编造面试时间、门店或接待流程；应自然回复"我帮你确认一下"，' +
+    '并调用 request_handoff(reasonCode="other", reason=说明候选人声称的面试安排详情) 转人工核实。';
+
+  /**
+   * 按 jobId 补查门店地址与面试形式/地址（线下面试才允许下发面试地址）。
+   * 失败按无详情降级：预约块仍渲染业务字段，只是缺地址行。
+   */
+  private async loadJobLocationDetails(
+    jobId: number,
+    workOrderId: number,
+    tokenContext?: { botImId?: string; botUserId?: string; groupId?: string },
+  ): Promise<
+    { storeAddress?: string; interviewMethod?: string; interviewAddress?: string } | undefined
+  > {
+    try {
+      const detail = await this.spongeService.fetchJobs(
+        {
+          jobIdList: [jobId],
+          pageNum: 1,
+          pageSize: 1,
+          onlySignableJobs: false,
+          options: { includeBasicInfo: true, includeInterviewProcess: true },
+        },
+        tokenContext,
+      );
+      const job = detail.jobs[0];
+      if (!job) return undefined;
+      const storeAddress =
+        typeof job.basicInfo?.storeInfo?.storeAddress === 'string'
+          ? job.basicInfo.storeInfo.storeAddress.trim()
+          : undefined;
+      const interviewMeta = buildJobPolicyAnalysis(job).interviewMeta;
+      const interviewMethod = interviewMeta.method ?? undefined;
+      const interviewAddress = isOfflineInterviewMethod(interviewMethod)
+        ? (interviewMeta.address ?? undefined)
+        : undefined;
+      return { storeAddress, interviewMethod, interviewAddress };
+    } catch (error) {
+      this.logger.warn(
+        `加载预约地址详情失败 workOrderId=${workOrderId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return undefined;
+    }
+  }
+
+  /**
+   * 带外工单核验（badcase 蒋强 workOrderId=459783，2026-08-31 到店扑空）：
+   *
+   * 真人顾问在海绵手工建单/改约不会写回 active_booking 指针，loadBookingContext
+   * 的指针路径对这类工单全盲——[预约状态] 会在候选人来确认面试的当口断言
+   * "没有任何进行中的工单"，模型只能在反事实系统块与聊天历史之间二选一。
+   * 复聊侧已有同源核验（follow-up.processor.checkOutOfBandWorkOrderAtFire），
+   * 本方法把同一 source of truth（海绵 signup/list 按手机号查询）接到主链路。
+   *
+   * 触发条件（控制热路径成本，仅预约相关回合追加一次海绵查询）：
+   * - 指针路径没有渲染出 [当前预约信息]（无指针或全部失效）；
+   * - 本轮消息命中面试/预约词面（requiresFreshBookingContext）；
+   * - 记忆里有可信手机号（会话收资 or 长期档案）。
+   * fail open：查询失败/无工单时原样返回指针路径结果（空态块）。
+   */
+  private async maybeLoadOutOfBandBookingContext(
+    base: { block: string; jobIds: number[] },
+    memory: TurnStartMemory,
+    currentUserMessage: string | undefined,
+    tokenContext?: { botImId?: string; botUserId?: string; groupId?: string },
+  ): Promise<{ block: string; jobIds: number[] }> {
+    if (base.block.includes('[当前预约信息]')) return base;
+    if (!this.requiresFreshBookingContext(currentUserMessage)) return base;
+    const phone = this.resolveCandidatePhone(memory);
+    if (!phone) return base;
+
+    try {
+      const result = await this.spongeService.fetchSignupWorkOrders({ phone }, tokenContext);
+      const activeOrders = (result.workOrders ?? []).filter((order: SignupWorkOrderItem) =>
+        ACTIVE_INTERVIEW_WORK_ORDER_STATUSES.has(order.currentStatus?.trim() ?? ''),
+      );
+      if (activeOrders.length === 0) return base;
+
+      const requiresLocationDetails = this.requiresBookingLocationDetails(currentUserMessage);
+      const contexts: Array<{ block: string; jobId: number | null }> = [];
+      for (const order of activeOrders) {
+        const normalizedJobId = this.normalizeJobId(order.jobId);
+        const location =
+          requiresLocationDetails && normalizedJobId != null
+            ? await this.loadJobLocationDetails(normalizedJobId, order.workOrderId, tokenContext)
+            : undefined;
+        const block = formatBookingContext(order, contexts.length + 1, location);
+        if (block) contexts.push({ block, jobId: normalizedJobId });
+      }
+      if (contexts.length === 0) return base;
+
+      this.logger.log(
+        `[prepare] 带外工单核验命中：phone 尾号${phone.slice(-4)} 在途工单 ${contexts.length} 个（active_booking 指针为空）`,
+      );
+      const oobNote =
+        '_以下预约按候选人手机号从工单系统实时查得，非本会话提交（多为人工顾问或其它渠道登记）。_';
+      const renderedContexts = [
+        oobNote,
+        ...contexts.map((context) => context.block),
+        BOOKING_CONTEXT_SHARED_RULES,
+      ];
+      return {
+        block: `\n\n[当前预约信息]\n\n${renderedContexts.join('\n\n')}`,
+        jobIds: contexts
+          .map((context) => context.jobId)
+          .filter((jobId): jobId is number => jobId != null),
+      };
+    } catch (error) {
+      this.logger.warn(
+        `带外工单核验失败（fail open 维持指针路径结果）: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return base;
+    }
+  }
+
+  /** 从会话收资/长期档案取可信手机号；两处都拿不到视为候选人未走过报名流程。 */
+  private resolveCandidatePhone(memory: TurnStartMemory): string | null {
+    const sessionPhone = memory.shortTerm.sessionState?.facts?.interview_info?.phone?.value;
+    const profileFact = memory.longTerm.semantic.profile?.phone;
+    const profilePhone = isUserProfileFactValue(profileFact) ? profileFact.value : undefined;
+    for (const candidate of [sessionPhone, profilePhone]) {
+      if (typeof candidate === 'string' && /^1\d{10}$/.test(candidate.trim())) {
+        return candidate.trim();
+      }
+    }
+    return null;
   }
 
   /**
