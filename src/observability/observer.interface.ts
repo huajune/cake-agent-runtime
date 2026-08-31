@@ -6,6 +6,28 @@ import type {
   SessionBrandState,
 } from '@resolution/brand/brand-resolution.types';
 import type { ToolErrorType } from '@tools/shared/tool-error-types';
+import type { ErrorCategory } from '@providers/types';
+
+/**
+ * llm-executor 单次 provider 尝试的轨迹条目。
+ *
+ * `attempt=0` 表示候选模型在真正发起请求前被预检跳过（不支持图片输入 / provider 未注册），
+ * `attempt>=1` 表示一次真实的 generateText/streamText 调用。error 为截断后的错误消息或
+ * 跳过原因，不含 prompt/响应体全文，避免 PII 进观测。
+ */
+export interface LlmAttemptTrace {
+  modelId: string;
+  attempt: number;
+  /** 相对本次 llm-executor 调用入口的开始偏移（ms）。 */
+  startOffsetMs: number;
+  durationMs: number;
+  status: 'success' | 'error' | 'skipped';
+  /** reliable.classifyError 三分类；success/skipped 时缺省。 */
+  errorCategory?: ErrorCategory;
+  error?: string;
+  /** 本次失败后进入的指数退避等待（ms）；最后一次失败/不重试时缺省。 */
+  backoffMs?: number;
+}
 
 /**
  * Agent 事件观测接口（对标 ZeroClaw Observer）。
@@ -60,6 +82,32 @@ export type AgentEvent = AgentEventContext &
       }
     | { type: 'model_call'; modelId: string; role: string }
     | { type: 'model_fallback'; fromModel: string; toModel: string; reason: string }
+    /**
+     * llm-executor 单次调用（generate/stream）的完整尝试轨迹（2026-08-31 慢回合事故）：
+     * 同模型静默重试此前完全不可见——成功即丢弃 attempts 内存轨迹、重试只有 logger.warn、
+     * agent_steps 的墙钟锚跨尝试错位——生产曾出现 ai_duration 207s 而 agent_steps 只记 31s、
+     * 全链路零观测记录。本事件在每次执行收尾（成功或全链耗尽）无条件发射并落库，
+     * 让"每次 provider 尝试的开始/耗时/错误分类/退避"可按 traceId 下钻。
+     *
+     * stream 模式的 totalDurationMs 只覆盖初始化窗口（streamText 同步返回），
+     * 不含流式消费耗时；重试期间进程被 SIGTERM 打断时本事件不发射（收尾点埋点的固有盲区）。
+     */
+    | {
+        type: 'llm_execution';
+        userId?: string;
+        role: string;
+        mode: 'generate' | 'stream';
+        primaryModelId: string;
+        /** 最终成功返回结果的模型；全链耗尽为 null。 */
+        finalModelId: string | null;
+        status: 'success' | 'exhausted';
+        /** 真实发起的 provider 请求次数（不含预检跳过）。 */
+        attemptCount: number;
+        totalDurationMs: number;
+        /** 重试退避 sleep 累计（ms）。 */
+        backoffTotalMs: number;
+        attempts: LlmAttemptTrace[];
+      }
     | {
         type: 'tool_call';
         toolName: string;

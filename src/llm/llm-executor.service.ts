@@ -8,6 +8,7 @@ import { RouterService } from '@providers/router.service';
 import { supportsVision, type ReliableConfig } from '@providers/types';
 import type { AgentError } from '@shared-types/agent-error.types';
 import { AgentTracerService } from '@observability/agent-tracer.service';
+import type { LlmAttemptTrace } from '@observability/observer.interface';
 import { z } from 'zod';
 import { type LlmThinkingConfig, ModelRole } from './llm.types';
 import { ROLE_MODEL_OVERRIDES, type RoleModelOverridesProvider } from './role-model-overrides';
@@ -25,6 +26,14 @@ export interface LlmGenerateOptions extends Omit<Parameters<typeof generateText>
    * AI SDK structured output can throw only when `result.output` is accessed.
    */
   validateResult?: (result: Awaited<ReturnType<typeof generateText>>) => void;
+  /**
+   * 每次真实 provider 尝试（含同模型重试与降级换模型）发起前回调。
+   *
+   * 调用方（generator）用它把 onStepFinish 的墙钟锚重置到当前尝试：失败尝试也会
+   * 触发 onStepFinish，锚不重置会让 agent_steps 的 durationMs 把首个失败尝试的
+   * 步末墙钟错配到最终成功尝试的 steps 上，重试耗时整段隐形（2026-08-31 事故）。
+   */
+  onAttemptStart?: (info: { modelId: string; attempt: number }) => void;
 }
 
 export interface LlmGenerateStructuredOptions<TSchema extends z.ZodTypeAny>
@@ -83,9 +92,12 @@ export class LlmExecutorService {
   ) {}
 
   async generate(options: LlmGenerateOptions): Promise<LlmGenerateResult> {
-    const { config, onPreparedRequest, thinking, validateResult, ...routeOptions } = options;
+    const { config, onPreparedRequest, onAttemptStart, thinking, validateResult, ...routeOptions } =
+      options;
     const plan = await this.resolveExecutionPlanWithOverrides(routeOptions);
-    const attempts: string[] = [];
+    const executionStartMs = Date.now();
+    const trail: LlmAttemptTrace[] = [];
+    let backoffTotalMs = 0;
     let lastRawError: unknown = null;
     const requiresVisionInput = this.hasVisionInput(routeOptions.messages);
 
@@ -94,11 +106,11 @@ export class LlmExecutorService {
     let previousModelId: string | undefined;
     for (const modelId of this.iterateCandidateModels(plan)) {
       if (requiresVisionInput && !supportsVision(modelId)) {
-        attempts.push(`${modelId}: 模型不支持图片输入`);
+        trail.push(this.buildSkippedAttempt(modelId, executionStartMs, '模型不支持图片输入'));
         continue;
       }
       if (!this.reliable.isModelAvailable(modelId)) {
-        attempts.push(`${modelId}: provider未注册`);
+        trail.push(this.buildSkippedAttempt(modelId, executionStartMs, 'provider未注册'));
         continue;
       }
 
@@ -108,10 +120,12 @@ export class LlmExecutorService {
       const params = this.buildGenerateParams(routeOptions, providerOptions);
       const retryConfig = this.reliable.getRetryConfig(config);
 
-      this.emitModelAttempt(plan, modelId, previousModelId, attempts.at(-1));
+      this.emitModelAttempt(plan, modelId, previousModelId, this.formatAttempt(trail.at(-1)));
       previousModelId = modelId;
 
       for (let attempt = 1; attempt <= retryConfig.maxRetries; attempt += 1) {
+        const attemptStartMs = Date.now();
+        onAttemptStart?.({ modelId, attempt });
         try {
           const result = await generateText({
             ...params,
@@ -120,21 +134,38 @@ export class LlmExecutorService {
           } as Parameters<typeof generateText>[0]);
           this.assertUsableChatResult(result, plan.role);
           validateResult?.(result);
+          trail.push({
+            modelId,
+            attempt,
+            startOffsetMs: attemptStartMs - executionStartMs,
+            durationMs: Date.now() - attemptStartMs,
+            status: 'success',
+          });
+          this.emitLlmExecution(plan, 'generate', modelId, trail, executionStartMs, backoffTotalMs);
           // 结果对象由 AI SDK 创建；附加路由层实际 modelId，供业务观测区分首选与 fallback。
           return Object.assign(result, { modelId });
         } catch (err) {
           lastRawError = err;
           const category = this.reliable.classifyError(err);
           const message = toErrorMessage(err);
-          attempts.push(
-            `${modelId} attempt ${attempt}/${retryConfig.maxRetries}: ${category}; ${message}`,
-          );
+          const entry: LlmAttemptTrace = {
+            modelId,
+            attempt,
+            startOffsetMs: attemptStartMs - executionStartMs,
+            durationMs: Date.now() - attemptStartMs,
+            status: 'error',
+            errorCategory: category,
+            error: this.truncateErrorForTrace(message),
+          };
+          trail.push(entry);
 
           if (!this.reliable.shouldRetry(category, attempt, retryConfig)) {
             break;
           }
 
           const backoff = this.reliable.getBackoffMs(attempt, err, retryConfig);
+          entry.backoffMs = backoff;
+          backoffTotalMs += backoff;
           this.logger.warn(
             `${modelId} 重试 ${attempt}/${retryConfig.maxRetries}, 等待 ${backoff}ms`,
           );
@@ -143,7 +174,8 @@ export class LlmExecutorService {
       }
     }
 
-    throw this.buildExhaustedError(plan, attempts, lastRawError);
+    this.emitLlmExecution(plan, 'generate', null, trail, executionStartMs, backoffTotalMs);
+    throw this.buildExhaustedError(plan, trail, lastRawError);
   }
 
   async generateStructured<TSchema extends z.ZodTypeAny>(
@@ -170,6 +202,8 @@ export class LlmExecutorService {
   async stream(options: LlmStreamOptions): Promise<ReturnType<typeof streamText>> {
     const { onPreparedRequest, thinking, ...routeOptions } = options;
     const plan = await this.resolveExecutionPlanWithOverrides(routeOptions);
+    const executionStartMs = Date.now();
+    const trail: LlmAttemptTrace[] = [];
     const requiresVisionInput = this.hasVisionInput(routeOptions.messages);
     await this.emitPreparedRequest(plan, routeOptions, thinking, onPreparedRequest);
 
@@ -177,29 +211,41 @@ export class LlmExecutorService {
     let previousModelId: string | undefined;
     for (const modelId of this.iterateCandidateModels(plan)) {
       if (requiresVisionInput && !supportsVision(modelId)) {
+        trail.push(this.buildSkippedAttempt(modelId, executionStartMs, '模型不支持图片输入'));
         lastError = new Error(`模型不支持图片输入: ${modelId}`);
         continue;
       }
       if (!this.reliable.isModelAvailable(modelId)) {
+        trail.push(this.buildSkippedAttempt(modelId, executionStartMs, 'provider未注册'));
         lastError = new Error(`模型不可用: ${modelId}`);
         continue;
       }
 
+      const attemptStartMs = Date.now();
       try {
-        this.emitModelAttempt(plan, modelId, previousModelId, lastError?.message);
+        this.emitModelAttempt(plan, modelId, previousModelId, this.formatAttempt(trail.at(-1)));
         previousModelId = modelId;
         const effectiveThinking = this.resolveRequestThinking(
           modelId,
           thinking,
           requiresVisionInput,
         );
-        return streamText({
+        const streamResult = streamText({
           ...this.buildStreamParams(
             routeOptions,
             this.buildProviderOptions(modelId, effectiveThinking),
           ),
           model: this.registry.resolve(modelId),
         } as Parameters<typeof streamText>[0]);
+        trail.push({
+          modelId,
+          attempt: 1,
+          startOffsetMs: attemptStartMs - executionStartMs,
+          durationMs: Date.now() - attemptStartMs,
+          status: 'success',
+        });
+        this.emitLlmExecution(plan, 'stream', modelId, trail, executionStartMs, 0);
+        return streamResult;
       } catch (error) {
         let err: Error;
         if (error instanceof Error) {
@@ -208,11 +254,21 @@ export class LlmExecutorService {
           err = new Error(String(error));
         }
         lastError = err;
+        trail.push({
+          modelId,
+          attempt: 1,
+          startOffsetMs: attemptStartMs - executionStartMs,
+          durationMs: Date.now() - attemptStartMs,
+          status: 'error',
+          errorCategory: this.reliable.classifyError(err),
+          error: this.truncateErrorForTrace(err.message),
+        });
         this.logger.warn(`流式初始化失败，尝试下一个模型: ${modelId}; ${err.message}`);
       }
     }
 
-    throw this.buildExhaustedError(plan, lastError ? [lastError.message] : [], lastError);
+    this.emitLlmExecution(plan, 'stream', null, trail, executionStartMs, 0);
+    throw this.buildExhaustedError(plan, trail, lastError);
   }
 
   async generateSimple(params: {
@@ -320,6 +376,61 @@ export class LlmExecutorService {
 
   private iterateCandidateModels(plan: ExecutionPlan): string[] {
     return Array.from(new Set([plan.primaryModelId, ...plan.fallbackModelIds].filter(Boolean)));
+  }
+
+  private buildSkippedAttempt(
+    modelId: string,
+    executionStartMs: number,
+    reason: string,
+  ): LlmAttemptTrace {
+    return {
+      modelId,
+      attempt: 0,
+      startOffsetMs: Date.now() - executionStartMs,
+      durationMs: 0,
+      status: 'skipped',
+      error: reason,
+    };
+  }
+
+  /** 尝试轨迹条目 → 单行可读文本（耗尽错误信息与 model_fallback reason 复用）。 */
+  private formatAttempt(entry?: LlmAttemptTrace): string | undefined {
+    if (!entry) return undefined;
+    if (entry.status === 'skipped') return `${entry.modelId}: ${entry.error}`;
+    const category = entry.errorCategory ? `${entry.errorCategory}; ` : '';
+    return `${entry.modelId} attempt ${entry.attempt}: ${category}${entry.error ?? entry.status}`;
+  }
+
+  /**
+   * 错误消息截断后进观测 payload：provider 错误可能携带响应体片段，
+   * 全文属于日志/异常链路，事件表只需要可归因的头部。
+   */
+  private truncateErrorForTrace(message: string): string {
+    const MAX_LENGTH = 300;
+    return message.length <= MAX_LENGTH ? message : `${message.slice(0, MAX_LENGTH)}…`;
+  }
+
+  /** 一次 llm-executor 调用收尾（成功或耗尽）时无条件发射尝试轨迹事件。 */
+  private emitLlmExecution(
+    plan: ExecutionPlan,
+    mode: 'generate' | 'stream',
+    finalModelId: string | null,
+    attempts: LlmAttemptTrace[],
+    executionStartMs: number,
+    backoffTotalMs: number,
+  ): void {
+    this.tracer?.emit({
+      type: 'llm_execution',
+      role: String(plan.role),
+      mode,
+      primaryModelId: plan.primaryModelId,
+      finalModelId,
+      status: finalModelId !== null ? 'success' : 'exhausted',
+      attemptCount: attempts.filter((entry) => entry.status !== 'skipped').length,
+      totalDurationMs: Date.now() - executionStartMs,
+      backoffTotalMs,
+      attempts,
+    });
   }
 
   private emitModelAttempt(
@@ -545,10 +656,13 @@ export class LlmExecutorService {
 
   private buildExhaustedError(
     plan: ExecutionPlan,
-    attempts: string[],
+    attempts: LlmAttemptTrace[],
     lastRawError: unknown,
   ): AgentError {
-    const trail = attempts.length > 0 ? attempts.join('\n  ') : '无可用模型';
+    const lines = attempts
+      .map((entry) => this.formatAttempt(entry))
+      .filter((line): line is string => Boolean(line));
+    const trail = lines.length > 0 ? lines.join('\n  ') : '无可用模型';
     const error = new Error(`所有模型均失败:\n  ${trail}`) as AgentError;
     const lastCategory = lastRawError ? this.reliable.classifyError(lastRawError) : 'retryable';
     error.isAgentError = true;

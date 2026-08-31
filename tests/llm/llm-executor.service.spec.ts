@@ -1,6 +1,8 @@
 import { generateText, Output, streamText } from 'ai';
 import { z } from 'zod';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
+import { AgentTracerService } from '@observability/agent-tracer.service';
+import type { AgentEvent } from '@observability/observer.interface';
 import { RegistryService } from '@providers/registry.service';
 import { ReliableService } from '@providers/reliable.service';
 import { RouterService } from '@providers/router.service';
@@ -378,6 +380,120 @@ describe('LlmExecutorService', () => {
       });
       expect(getGenerateModelIds()).toEqual([primaryModelId, primaryModelId]);
       expect(mockRegistry.resolve).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('llm_execution 观测事件', () => {
+    let mockTracer: { emit: jest.Mock };
+
+    beforeEach(() => {
+      mockTracer = { emit: jest.fn() };
+      service = new LlmExecutorService(
+        mockRouter as unknown as RouterService,
+        mockRegistry as unknown as RegistryService,
+        mockReliable as unknown as ReliableService,
+        mockTracer as unknown as AgentTracerService,
+      );
+    });
+
+    function getLlmExecutionEvents(): Array<Extract<AgentEvent, { type: 'llm_execution' }>> {
+      return mockTracer.emit.mock.calls
+        .map(([event]) => event as AgentEvent)
+        .filter(
+          (event): event is Extract<AgentEvent, { type: 'llm_execution' }> =>
+            event.type === 'llm_execution',
+        );
+    }
+
+    it('同模型重试后成功：无条件发射一条含完整尝试轨迹的事件', async () => {
+      mockReliable.getBackoffMs.mockReturnValue(7);
+      mockGenerateText
+        .mockRejectedValueOnce(new Error('HTTP 500 flaky'))
+        .mockResolvedValueOnce(makeGenerateResult({ text: '重试成功' }));
+      const onAttemptStart = jest.fn();
+
+      await service.generate({
+        role: ModelRole.Chat,
+        prompt: 'hello',
+        disableFallbacks: true,
+        config: { maxRetries: 3 },
+        onAttemptStart,
+      });
+
+      const events = getLlmExecutionEvents();
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        mode: 'generate',
+        status: 'success',
+        primaryModelId,
+        finalModelId: primaryModelId,
+        attemptCount: 2,
+        backoffTotalMs: 7,
+      });
+      expect(events[0].attempts).toHaveLength(2);
+      expect(events[0].attempts[0]).toMatchObject({
+        modelId: primaryModelId,
+        attempt: 1,
+        status: 'error',
+        errorCategory: 'retryable',
+        backoffMs: 7,
+      });
+      expect(events[0].attempts[0].error).toContain('HTTP 500 flaky');
+      expect(events[0].attempts[1]).toMatchObject({ attempt: 2, status: 'success' });
+      expect(onAttemptStart).toHaveBeenNthCalledWith(1, { modelId: primaryModelId, attempt: 1 });
+      expect(onAttemptStart).toHaveBeenNthCalledWith(2, { modelId: primaryModelId, attempt: 2 });
+    });
+
+    it('全链耗尽：抛错前发射 exhausted 事件，vision 预检跳过的候选以 skipped 入轨', async () => {
+      mockSupportsVision.mockImplementation((modelId: string) => modelId === primaryModelId);
+      mockGenerateText
+        .mockRejectedValueOnce(new Error('HTTP 500 a'))
+        .mockRejectedValueOnce(new Error('HTTP 500 b'));
+
+      await expect(
+        service.generate({
+          role: ModelRole.Chat,
+          messages: [
+            {
+              role: 'user',
+              content: [
+                { type: 'image', image: new URL('https://example.com/image.jpg') },
+                { type: 'text', text: '看下这张图' },
+              ],
+            },
+          ],
+          config: { maxRetries: 2 },
+        }),
+      ).rejects.toMatchObject({ isAgentError: true });
+
+      const events = getLlmExecutionEvents();
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        status: 'exhausted',
+        finalModelId: null,
+        attemptCount: 2,
+      });
+      const skipped = events[0].attempts.find((entry) => entry.status === 'skipped');
+      expect(skipped).toMatchObject({
+        modelId: fallbackModelId,
+        attempt: 0,
+        error: '模型不支持图片输入',
+      });
+    });
+
+    it('stream 初始化成功同样发射事件（耗时仅覆盖初始化窗口）', async () => {
+      mockStreamText.mockReturnValueOnce({} as ReturnType<typeof streamText>);
+
+      await service.stream({ role: ModelRole.Chat, prompt: 'hi', disableFallbacks: true });
+
+      const events = getLlmExecutionEvents();
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        mode: 'stream',
+        status: 'success',
+        finalModelId: primaryModelId,
+        attemptCount: 1,
+      });
     });
   });
 

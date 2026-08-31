@@ -12,6 +12,10 @@ const ALWAYS_PERSISTED_EVENT_TYPES = new Set<AgentEvent['type']>([
   'agent_error',
   'model_fallback',
   'tool_error',
+  // LLM 执行尝试轨迹：必须无条件落库。tool_call 的条件采样（下方 shouldPersist）造成过
+  // 约 2/3 漏采、事件表口径统计失真的教训——重试/慢尝试恰恰是本事件要抓的对象，
+  // 任何"只落异常"的条件过滤都会复刻同一漏采根因（2026-08-31 qwen 慢回合事故）。
+  'llm_execution',
   // 品牌状态迁移：仅状态变化时发射，前后快照不可重放，必须落库（§12）
   'brand_state_change',
   // 歧义词形现场：不写状态故 brand_state_change 看不见，量级=冲突别名频率（每天个位数）

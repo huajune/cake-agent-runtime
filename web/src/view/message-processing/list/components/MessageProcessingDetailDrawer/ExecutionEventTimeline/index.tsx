@@ -48,6 +48,20 @@ function summarizeEvent(event: ExecutionEvent): string | undefined {
         .filter(Boolean)
         .join(' · ');
     }
+    case 'llm_execution': {
+      const model = asString(payload.finalModelId) ?? asString(payload.primaryModelId);
+      const attemptCount = typeof payload.attemptCount === 'number' ? payload.attemptCount : undefined;
+      const totalDurationMs =
+        typeof payload.totalDurationMs === 'number' ? payload.totalDurationMs : undefined;
+      return [
+        model,
+        asString(payload.status),
+        attemptCount !== undefined ? `${attemptCount}次尝试` : undefined,
+        totalDurationMs !== undefined ? formatDuration(totalDurationMs) : undefined,
+      ]
+        .filter(Boolean)
+        .join(' · ');
+    }
     case 'brand_state_change':
       return `${getBrandStateLabel(payload.prev)} → ${getBrandStateLabel(payload.next)}`;
     case 'semantic_review':
@@ -92,6 +106,12 @@ export default function ExecutionEventTimeline({ events }: ExecutionEventTimelin
           <ol className={styles.timelineList}>
             {events.map((event) => {
               const summary = summarizeEvent(event);
+              // llm_execution 有重试/降级时，摘要之外仍展开原始 payload——attempts 轨迹
+              // （每次尝试的耗时/错误分类/退避）正是该事件的排障主体。
+              const showRawWithSummary =
+                event.type === 'llm_execution' &&
+                Array.isArray(event.payload.attempts) &&
+                event.payload.attempts.length > 1;
               return (
                 <li key={event.id} className={styles.timelineItem}>
                   <div className={styles.timelineMarker} />
@@ -103,7 +123,7 @@ export default function ExecutionEventTimeline({ events }: ExecutionEventTimelin
                       <span className={styles.eventBadge}>{event.type}</span>
                     </div>
                     {summary ? <div className={styles.eventSummary}>{summary}</div> : null}
-                    {!summary ? (
+                    {!summary || showRawWithSummary ? (
                       <details className={styles.rawDetails}>
                         <summary>查看原始 JSON</summary>
                         <pre>{stringifyPayload(event.payload)}</pre>
