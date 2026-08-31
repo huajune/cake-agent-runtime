@@ -544,10 +544,16 @@ export function recordUnansweredAsks(
  * escalatedReason=unparseable_answer。与 askCount 分账：作答轮不烧发问配额，
  * 否则模板重发两次就把配额烧光、候选人首次作答失败即熔断（badcase
  * batch_6a8fec04ce406a6aee03d65f_* 的机械成因）。
+ *
+ * 同一候选人回复回合用 `turnId` 去重，与 recordUnansweredAsks 对称：模型在一轮内
+ * 重试 precheck（拒收提示"重投"后原样重投）时，同一句作答只准记一次。缺这道去重时
+ * 两次工具调用就烧光配额——候选人只作答一次即熔断转人工（生产 chat
+ * 6a9117face406a6aee7f99c9「上传简历」案的机械成因）。
  */
 export function recordRejectedAttempts(
   form: BookingCollectionForm,
   labelIds: readonly number[],
+  turnId?: string,
 ): { form: BookingCollectionForm; exhausted: number[] } {
   const slots = { ...form.slots };
   const exhausted: number[] = [];
@@ -555,8 +561,13 @@ export function recordRejectedAttempts(
     const slot = slots[labelId];
     // 拒收零入账，槽位应仍 empty；同轮已被其它通道写成 filled/disqualified 的不记。
     if (!slot || slot.state !== 'empty') continue;
+    if (turnId && slot.lastRejectionCountedTurnId === turnId) continue;
     const rejectedAttempts = (slot.rejectedAttempts ?? 0) + 1;
-    slots[labelId] = { ...slot, rejectedAttempts };
+    slots[labelId] = {
+      ...slot,
+      rejectedAttempts,
+      ...(turnId ? { lastRejectionCountedTurnId: turnId } : {}),
+    };
     if (rejectedAttempts >= MAX_REJECTED_ATTEMPTS_PER_SLOT) {
       exhausted.push(labelId);
     }

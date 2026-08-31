@@ -398,6 +398,43 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
     expect(result._replyInstruction).not.toContain('被公证退回');
   });
 
+  // 生产 chat 6a9117face406a6aee7f99c9：候选人打字填「上传简历」，通用提示「核对后重投」
+  // 引导模型同轮重投，两次拒收一轮烧光「读不懂两次」配额，候选人只作答一次即转人工。
+  it('FILE 字段文字作答：拒收提示改为让候选人发文件；同轮重投不熔断，下一轮仍失败才转人工', async () => {
+    const fileContract = [
+      ...CONTRACT,
+      {
+        labelId: 149,
+        labelTitle: '上传简历',
+        fieldType: 'FILE' as const,
+        required: true,
+        acceptedOptions: [],
+        rejectedOptions: [],
+      },
+    ];
+    sponge.fetchJobCollectionContract.mockResolvedValue({ jobId: 100, fields: fileContract });
+    context.session.turnId = 'batch-turn-1';
+    const text = '上传简历：之前在宿迁开挖掘机，后来在苏州当司机';
+    context.turnInput.messages = [{ role: 'user', content: text }];
+
+    const first = await execute({ jobId: 100 });
+    expect(first.rejectedAnswers).toEqual([
+      expect.objectContaining({ labelTitle: '上传简历', reason: 'invalid_value_shape' }),
+    ]);
+    expect(first.rejectedAnswers[0].hint).toContain('直接把简历文件或简历截图/照片发过来');
+    expect(first.rejectedAnswers[0].hint).not.toContain('手机号非 11 位');
+    expect(first.nextAction).toBe('collect_fields');
+
+    // 模型收到拒收回执后同轮原样重投：不得把「读不懂两次」的配额一轮烧光。
+    const sameTurnRetry = await execute({ jobId: 100 });
+    expect(sameTurnRetry.nextAction).toBe('collect_fields');
+
+    // 候选人下一轮仍以文字作答（发文件引导已明确给过）→ 这才转人工。
+    context.session.turnId = 'batch-turn-2';
+    const nextTurn = await execute({ jobId: 100 });
+    expect(nextTurn.nextAction).toBe('handoff');
+  });
+
   it('ask_limit_exhausted 后候选人补齐对应字段，解除 handoff 并进入选时间', async () => {
     sponge.fetchJobs.mockResolvedValue({ jobs: [JOB_WITH_WINDOWS] });
     sponge.fetchJobCollectionContract.mockResolvedValue({

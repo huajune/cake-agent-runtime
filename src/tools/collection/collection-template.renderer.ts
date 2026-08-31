@@ -58,9 +58,11 @@ export function renderCollectionTemplate(
     // 自然语言答过一次而系统读不懂，两条抑制规则（常识型留空/选项过多留空）全部失效，
     // 逐字照抄选项是唯一确定性出路（badcase batch_6a8fec04ce406a6aee03d65f_*）。
     const rejectedBefore = (form.slots[field.labelId]?.rejectedAttempts ?? 0) > 0;
-    const placeholder = rejectedBefore
-      ? forcedOptionPlaceholder(field) || optionPlaceholder(field)
-      : optionPlaceholder(field);
+    const placeholder =
+      filePlaceholder(field) ||
+      (rejectedBefore
+        ? forcedOptionPlaceholder(field) || optionPlaceholder(field)
+        : optionPlaceholder(field));
     return `${field.labelTitle}：${placeholder}`;
   });
 
@@ -111,4 +113,14 @@ export function forcedOptionPlaceholder(field: ContractFieldDef): string {
   const options = [...field.acceptedOptions, ...field.rejectedOptions];
   if (options.length === 0) return '';
   return `（${options.map((option) => option.optionLabel).join('/')}）`;
+}
+
+/**
+ * FILE 型字段的占位提示：这类槽位只能录候选人真实发送的附件 URL，打字的文字
+ * 永远过不了形态门。不提示就是在邀请候选人打字——生产 chat 6a9117face406a6aee7f99c9
+ * 里「上传简历：」空行换来一段认真的文字工作经历，随后拒收熔断转人工。
+ * 提示常驻（不分首问/重问档）：文件字段没有"留空更自然"的档位。
+ */
+export function filePlaceholder(field: ContractFieldDef): string {
+  return field.fieldType === 'FILE' ? '（直接发文件或截图，不用打字填写）' : '';
 }

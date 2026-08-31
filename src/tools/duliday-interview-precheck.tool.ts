@@ -184,6 +184,16 @@ const REJECTION_HINTS: Readonly<Record<string, string>> = {
 };
 
 /**
+ * FILE 型字段的 invalid_value_shape 专属提示，压过通用条目。通用提示的「核对后重投」
+ * 对文件字段是死路：文字永远过不了附件 URL 形态门，重投只会烧掉「读不懂两次转人工」
+ * 的熔断配额（生产 chat 6a9117face406a6aee7f99c9：候选人打字填「上传简历」，模型
+ * 按通用提示同轮重投，一轮熔断转人工）。正确动作只有一个：让候选人把文件发过来。
+ */
+const FILE_SHAPE_HINT =
+  '该字段是文件字段，只能录入候选人真实发来的附件链接（候选人发文件/图片后，消息里会出现「简历附件：URL」标注行，用那个 URL 提交）。' +
+  '文字描述无法作为它的值，不要原样重投；请明确告诉候选人：这一项需要直接把简历文件或简历截图/照片发过来，打字发文字没法录入。';
+
+/**
  * 面试时间语义族封闭词表（NFKC + 去空白后整串匹配）。生产回放 2026-08-26：5% 可判定答案
  * 把候选人期望面试时间误投成 labelTitle「面试时间」，定位失败静默丢弃，可约性校验从未运行。
  * 只有**定位不到契约槽位**的条目才进本词表判定——真契约字段永远优先。
@@ -650,19 +660,22 @@ function collectRejectedAnswers(
   audits: readonly CollectionAuditEvent[],
   contract: readonly ContractFieldDef[],
 ): RejectedAnswer[] {
-  const titleById = new Map(contract.map((field) => [field.labelId, field.labelTitle]));
+  const fieldById = new Map(contract.map((field) => [field.labelId, field]));
   const rejected: RejectedAnswer[] = [];
   const seen = new Set<string>();
   for (const audit of audits) {
     if (audit.kind !== 'proposal_rejected' || audit.labelId === undefined || !audit.reason)
       continue;
-    const labelTitle = titleById.get(audit.labelId);
-    const hint = REJECTION_HINTS[audit.reason];
-    if (!labelTitle || !hint) continue;
-    const key = `${labelTitle}:${audit.reason}`;
+    const field = fieldById.get(audit.labelId);
+    const hint =
+      field?.fieldType === 'FILE' && audit.reason === 'invalid_value_shape'
+        ? FILE_SHAPE_HINT
+        : REJECTION_HINTS[audit.reason];
+    if (!field || !hint) continue;
+    const key = `${field.labelTitle}:${audit.reason}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    rejected.push({ labelTitle, reason: audit.reason, hint });
+    rejected.push({ labelTitle: field.labelTitle, reason: audit.reason, hint });
   }
   return rejected;
 }

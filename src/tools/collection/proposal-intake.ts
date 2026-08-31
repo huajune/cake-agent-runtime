@@ -23,7 +23,11 @@ import {
 import type { CandidateFactField } from '@resolution/candidate/types';
 import { normalizedIncludes } from '@resolution/notary/text-normalization';
 import type { FieldValueProposalInput } from './field-value-proposal-input';
-import { forcedOptionPlaceholder, optionPlaceholder } from './collection-template.renderer';
+import {
+  filePlaceholder,
+  forcedOptionPlaceholder,
+  optionPlaceholder,
+} from './collection-template.renderer';
 
 export interface IntakeInput {
   contract: readonly ContractFieldDef[];
@@ -297,11 +301,11 @@ function adaptAnswerValue(field: ContractFieldDef, value: string): SlotProposal 
   );
 }
 
-/** 候选人原样回抄了模板的枚举占位（普通档或拒收重问的强制枚举档），不是答案。 */
+/** 候选人原样回抄了模板的占位提示（枚举占位或 FILE 发文件提示），不是答案。 */
 function isPlaceholderEcho(field: ContractFieldDef, value: string): boolean {
   const trimmed = value.trim();
   if (!trimmed) return false;
-  return [optionPlaceholder(field), forcedOptionPlaceholder(field)]
+  return [optionPlaceholder(field), forcedOptionPlaceholder(field), filePlaceholder(field)]
     .filter(Boolean)
     .includes(trimmed);
 }

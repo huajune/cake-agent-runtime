@@ -931,6 +931,24 @@ describe('recordRejectedAttempts · 答而不解 ≠ 不答（badcase batch_6a8f
     expect(second.form.escalatedReason).toBe(`unparseable_answer: ${NAME_FIELD.labelId}`);
   });
 
+  it('同一候选人回合（turnId）重复拒收只记一次——模型同轮重试工具不烧配额（生产 chat 6a9117face406a6aee7f99c9）', () => {
+    let form = createForm({ jobId: 1, contract: [NAME_FIELD] });
+    const first = recordRejectedAttempts(form, [NAME_FIELD.labelId], 'turn-1');
+    form = first.form;
+    expect(form.slots[NAME_FIELD.labelId].rejectedAttempts).toBe(1);
+
+    // 模型收到拒收提示后同轮原样重投：第二次工具调用不得再记账、更不得熔断。
+    const sameTurnRetry = recordRejectedAttempts(form, [NAME_FIELD.labelId], 'turn-1');
+    expect(sameTurnRetry.exhausted).toEqual([]);
+    expect(sameTurnRetry.form.slots[NAME_FIELD.labelId].rejectedAttempts).toBe(1);
+    expect(sameTurnRetry.form.escalatedReason).toBeUndefined();
+
+    // 候选人下一轮再次真实作答仍读不懂 → 这才是第 2 次，熔断成立。
+    const nextTurn = recordRejectedAttempts(sameTurnRetry.form, [NAME_FIELD.labelId], 'turn-2');
+    expect(nextTurn.exhausted).toEqual([NAME_FIELD.labelId]);
+    expect(nextTurn.form.escalatedReason).toBe(`unparseable_answer: ${NAME_FIELD.labelId}`);
+  });
+
   it('非 empty 槽位不记账（同轮已被其它通道写入的不算读不懂）', () => {
     let form = createForm({ jobId: 1, contract: [NAME_FIELD] });
     const written = applyFieldValueProposal(form, NAME_FIELD, {

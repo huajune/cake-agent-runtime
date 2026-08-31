@@ -266,6 +266,12 @@ describe('proposal intake（统一 fieldValueProposals 运输）', () => {
         }),
       ),
     ).toEqual([]);
+    // FILE 字段的发文件占位同样是模板噪音，回抄不算作答。
+    expect(
+      collectFieldValueProposals(
+        base({ candidateTexts: ['简历附件：（直接发文件或截图，不用打字填写）'] }),
+      ),
+    ).toEqual([]);
   });
 
   it('主模型漏作证时确定性扫描只补 empty 槽；同槽命中时 fieldValueProposals 胜出', () => {

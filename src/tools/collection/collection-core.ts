@@ -85,7 +85,7 @@ export interface CollectionCoreInput {
   fieldValueProposals?: readonly FieldValueProposalInput[] | null;
   /** 本轮是否允许继续向候选人发问；只控制待问清单，不参与上一轮实际问句的记账。 */
   askThisTurn?: boolean;
-  /** 当前候选人回复的稳定回合 ID；用于上一轮实际问句入账去重。 */
+  /** 当前候选人回复的稳定回合 ID；问句入账与拒收入账都按它做同回合去重。 */
   askReceiptTurnId?: string;
   /**
    * 档案预填（蓝图「记忆→表单预填」：跨岗不重复盘问）。
@@ -227,7 +227,13 @@ export function runCollectionCore(input: CollectionCoreInput): CollectionCoreRes
   }
 
   // ── 作答账：真实作答被值词表/形态门拒收的槽位记 rejectedAttempts（读不懂两次转人工）──
-  const attemptReceipt = recordRejectedAttempts(form, [...unparseableAttemptIds]);
+  // 按候选人回合去重：模型同轮重试 precheck 重投同一句话时只记一次，
+  // 「两次」必须是两轮真实作答，不是两次工具调用。
+  const attemptReceipt = recordRejectedAttempts(
+    form,
+    [...unparseableAttemptIds],
+    input.askReceiptTurnId,
+  );
   form = attemptReceipt.form;
   if (attemptReceipt.exhausted.length > 0) {
     audits.push({
