@@ -379,6 +379,21 @@ section 清单到 `final-check` 结束，`critical-turn-guard` 已不是独立 s
 - `BK6` — 先核对面试形式；线上面试禁止发送门店定位。
   - **拦侧配对**：`online_interview_location_claim`；与 G5、FC1 成对。
 
+### [预约状态] 空态接地块（无在途工单轮次的条件式片段）
+
+载体：`src/agent/generator/preparation/preparation.service.ts` `NO_BOOKING_STATUS_BLOCK`
+（active_booking 指针为空、且带外工单核验也未命中时注入；与 [当前预约信息] 互斥出现）。
+
+- `BS1` — 正向接地：零工单时严禁"已帮你报名/已报名成功"等完成口径（badcase zvey1mg8/as1f14iz/5wglb8k7，
+  2026-08-21 前既有文案，本次补登记）。
+  - **拦侧配对**：`booking_done_claim_without_submission`。
+- `BS2` — 反向接地（2026-08-31 新增，badcase 蒋强到店扑空 workOrderId=459783）：候选人声称/追问一个
+  系统查不到的面试安排（典型为真人顾问带外口头约面）时，严禁替系统确认"没有变动/已安排好/到店会有
+  人接待"，严禁编造面试时间/门店/接待流程；应答"我帮你确认一下"并调 `request_handoff` 转人工核实。
+  - **关联**：确定性主修复是带外工单核验 `maybeLoadOutOfBandBookingContext`（面试相关回合按记忆手机号
+    直查海绵 signup/list，命中即渲染 [当前预约信息] + "非本会话提交"来源行，BK1–BK6 随之生效）；
+    本条只兜"核验也查不到/查询失败"的残余面。
+
 ## 三、final-check always 规则（发送前自检，固定次末位 ≈ recitation）
 
 载体：`src/agent/generator/context/sections/procedural/final-check.section.ts` `FINAL_CHECK_RULES`
