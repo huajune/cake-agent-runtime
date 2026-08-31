@@ -39,13 +39,10 @@ export class MemoryConfig {
    * 沉淀间隙阈值（秒）。
    *
    * 每回合结束按此阈值刷新 delayed job；任务到点后还会用 DB 最新消息时间复核
-   * 闲置已达标。代码默认与 `sessionTtl` 同为 3 天，使 episode 边界与咨询状态
-   * 生命周期对齐；可被 `MEMORY_SETTLEMENT_GAP_DAYS` 覆盖——⚠️ 覆盖成
-   * gap < sessionTtl 时，会话状态仍存活期间即会发生沉淀，同一会话会读到自己
-   * 刚沉淀的长期记忆（2026-08 生产曾配 1 天引发蒋强 case 的自沉淀回流，8-31
-   * 已改回 3 天；消费端 prompt 裁决器的跨层去重是该形态的兜底，勿假设长期
-   * 记忆必来自"上一段会话"）。`sessionFactsTtl` 额外保留 12 小时，保证定时
-   * 沉淀先读后过期。
+   * 闲置已达标。它与 `sessionTtl` 同为 3 天，使 episode 边界与咨询状态生命周期
+   * 对齐；`MEMORY_SETTLEMENT_GAP_DAYS` 不得配成小于 sessionTtl——否则会话存活
+   * 期间即发生沉淀，会话会读回自己刚沉淀的长期记忆（badcase 蒋强）。
+   * `sessionFactsTtl` 额外保留 12 小时，保证定时沉淀先读后过期。
    */
   readonly consolidationGapSeconds: number;
 

@@ -66,7 +66,7 @@ src/
 │                       #   纯确定性零 LLM 零出向依赖；高德集成留 infra/geocoding，海绵行政区适配留 tools 层
 ├── tools/              # Agent 动作层：模型可见契约 + 确定性实现；collection/ 自持收资状态机与 Redis 单据
 ├── memory/             # 两层记忆：short-term（7d 消息窗口 + 3d session 状态）/ long-term（候选人×bot 关系档）
-│                       #   lifecycle 编排 + 3d delayed consolidation（勿配env覆盖成<sessionTtl，会致会话内自沉淀回流）+ 自用 Redis/Supabase stores；episode 仅是计算边界
+│                       #   lifecycle 编排 + 3d delayed consolidation + 自用 Redis/Supabase stores；episode 仅是计算边界
 ├── agent/              # Agent 编排
 │   ├── runner/         #   回合入口 agent-runner + turn-finalizer(统一副作用出口) + reply-rewrite
 │   ├── generator/      #   preparation(召回/上下文准备) + generator(LLM 调用) + context/(Prompt Section 体系)
