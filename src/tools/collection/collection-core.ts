@@ -145,10 +145,7 @@ export function runCollectionCore(input: CollectionCoreInput): CollectionCoreRes
   const fieldById = new Map(contract.map((field) => [field.labelId, field]));
   // 本轮「真实作答但公证读不懂」的槽位（出处门已过、卡在值词表/形态）。
   // 这些轮次不算"没搭理"：不消耗发问配额、不触发同槽问满熔断，改记 rejectedAttempts。
-  //
-  // 值是**作答内容指纹**：候选人贴回的模板会滞留在证据窗里被逐轮重新解析，
-  // 只按回合去重挡不住跨轮重复入账（见 recordRejectedAttempts）。指纹取
-  // 「出处原话 + 归一化值」——同一句话解析出同一个值就是同一次作答。
+  // 值是作答内容指纹「出处原话 + 归一化值」，用于跨轮去重（见 recordRejectedAttempts）。
   const unparseableAttemptIds = new Map<number, string>();
   for (const proposal of proposals) {
     const field = fieldById.get(proposal.labelId);
@@ -236,9 +233,8 @@ export function runCollectionCore(input: CollectionCoreInput): CollectionCoreRes
   }
 
   // ── 作答账：真实作答被值词表/形态门拒收的槽位记 rejectedAttempts（读不懂两次转人工）──
-  // 双重去重（见 recordRejectedAttempts）：按回合挡同轮工具重试，按内容指纹挡跨轮
-  // 重复解析同一句话。「两次」必须是**两次不同的真实作答**，既不是两次工具调用，
-  // 也不是同一张模板在证据窗里被读了两轮。
+  // 双重去重见 recordRejectedAttempts：「两次」须是两次不同的真实作答，
+  // 既非两次工具调用，也非同一张模板被读了两轮。
   const attemptReceipt = recordRejectedAttempts(
     form,
     [...unparseableAttemptIds.keys()],
@@ -246,12 +242,9 @@ export function runCollectionCore(input: CollectionCoreInput): CollectionCoreRes
     unparseableAttemptIds,
   );
   form = attemptReceipt.form;
-  // 只有**本轮真正入账**的拒收才算"这一轮候选人认真答过了"。
-  //
-  // 被内容指纹挡掉的重复拒收不能享受同一份豁免：那说明候选人这一轮没给出新东西，
-  // 却仍占着"作答轮"的名义把发问配额也免掉——两个计数器同时冻结，槽位就**永远不会
-  // 熔断**，退化成无限重问。让它落回普通发问账：问满两次仍拿不到新答案时，
-  // 以 `ask_limit_exhausted` 收尾（那也是更诚实的原因：我们问了两遍，没等到新东西）。
+  // 只有本轮真正入账的拒收才豁免发问配额。被内容指纹挡掉的重复拒收不豁免：
+  // 否则两个计数器同时冻结，槽位永不熔断、退化成无限重问；让它落回普通发问账，
+  // 问满仍无新答案时以 `ask_limit_exhausted` 收尾。
   const answeredThisTurnIds = new Set(attemptReceipt.counted);
   if (attemptReceipt.exhausted.length > 0) {
     audits.push({

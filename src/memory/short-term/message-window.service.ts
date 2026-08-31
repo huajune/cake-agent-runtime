@@ -65,9 +65,8 @@ export class MessageWindowService {
           // sessionTtl 只控制 Redis 会话状态的生命周期；用户跨天回来续聊时，
           // Redis facts 可能已过期，但 Supabase 历史依然要能追溯，避免被当新用户对待。
           startTimeInclusive: Date.now() - this.config.historyWindowSeconds * 1000,
-          // endTimeInclusive 不下推到 SQL：边界需要区分角色（只裁 user、保留
-          // 已投递的 assistant），由 applyTimeBoundary 在内存中统一应用；
-          // 缓存回填保留未裁剪的完整窗口，边界永远只是读取时的视图。
+          // endTimeInclusive 不下推 SQL：边界要区分角色（见 applyTimeBoundary），
+          // 且缓存回填须保留完整窗口——边界只是读取时的视图。
         },
       );
       await this.backfillCache(chatId, rawHistory);
@@ -106,14 +105,12 @@ export class MessageWindowService {
   /**
    * 按触发消息时间戳裁剪窗口，但保留边界后已投递的 assistant 消息。
    *
-   * 边界的本意是防「更晚到的用户输入」泄进本轮上下文（那些属于下一轮 debounce 批次）；
-   * 而 assistant 消息一旦入库就是已发给候选人的既成事实。若一并裁掉，拟人化投递
-   * 期间候选人插话时，下一轮会看不到上一轮刚发出的内容，把同样的话再发一遍
-   * （生产案例：岗位推荐卡片被原样重发）。
+   * 边界只防「更晚到的用户输入」泄进本轮（那属于下一轮 debounce 批次）；assistant
+   * 一旦入库即已发给候选人，裁掉会让下一轮看不见刚发出的内容而重发。
    *
-   * 因此边界只作用于 user 消息；边界后的 assistant 消息插到末尾 user 触发块之前，
-   * 维持「窗口以本轮用户输入收尾」的下游不变量（trailingUserMessages、图片注入等）。
-   * 边界内完全无消息时返回空，保持调用方原有的缓存 miss 回退语义。
+   * 边界后的 assistant 插到末尾 user 触发块之前，维持「窗口以本轮用户输入收尾」的
+   * 下游不变量（trailingUserMessages、图片注入）。边界内无消息时返回空，保持调用方
+   * 的缓存 miss 回退语义。
    */
   private applyTimeBoundary<T extends { timestamp: number; role: 'user' | 'assistant' }>(
     messages: T[],

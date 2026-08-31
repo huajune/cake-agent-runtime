@@ -545,16 +545,11 @@ export function recordUnansweredAsks(
  * 否则模板重发两次就把配额烧光、候选人首次作答失败即熔断（badcase
  * batch_6a8fec04ce406a6aee03d65f_* 的机械成因）。
  *
- * 双重去重，两道挡的是两种重复：
- * 1. **同回合** `turnId`——模型在一轮内重试 precheck（拒收提示"重投"后原样重投）时，
- *    同一句作答只准记一次。缺这道时两次工具调用就烧光配额（生产 chat
- *    6a9117face406a6aee7f99c9「上传简历」案的机械成因）。
- * 2. **跨回合** `answerKeys` 内容指纹——候选人贴回的模板会滞留在证据窗里，被
- *    form_line **每轮重新解析、重新拒收**。只按回合去重挡不住它：候选人明明只答过
- *    一次，两轮就熔断（生产 chat 6a94e92d… labelId 3 籍贯「南京」，熔断比 Agent 的
- *    纠正话术早 21 秒）。按内容去重后「两次」才真的是**两次不同的作答**。
+ * 双重去重，两道挡两种重复：
+ * 1. `turnId` 挡同回合——模型在一轮内重试 precheck 时原样重投同一句作答；
+ * 2. `answerKeys` 内容指纹挡跨回合——候选人贴回的模板滞留证据窗，被逐轮重新解析拒收。
  *
- * `answerKeys` 缺省（调用方没传）时退回纯回合去重，行为与改造前一致。
+ * 配额语义是「两次不同的作答」。`answerKeys` 缺省时退回纯回合去重。
  */
 export function recordRejectedAttempts(
   form: BookingCollectionForm,
@@ -1087,11 +1082,8 @@ function screenValue(
     const numeric = parseLeadingNumber(value);
     const signal = detectAgeBoundary({ candidateAge: numeric, range });
     if (signal.severity === 'hard_reject') {
-      // ⚠️ 只借 detectAgeBoundary 的**数值判据**，不借它的**措辞**。它的 reason 串写死了
-      // 「岁」（那是它自己域内的正确措辞），而这里判的是任意数值字段——体重 60 撞下限 65
-      // 会落成「候选人 60 岁，岗位下限 65 岁」，把体重误记成年龄，后续分析者照读必错
-      //（0828 台账实录）。判据本身按设计正确（判的是数值 vs 区间，与字段语义无关），
-      // 错的只是复述口径，故在这里按字段名重新造句。
+      // 只借 detectAgeBoundary 的数值判据（判数值 vs 区间，与字段语义无关），不借其
+      // 措辞——它的 reason 写死「岁」，用在体重等字段上会把值复述成年龄。按字段名重新造句。
       const bound = signal.side === 'under_min' ? `下限 ${range.min}` : `上限 ${range.max}`;
       return `labelId ${field.labelId}「${field.labelTitle}」值域越界：实际 ${signal.candidateAge}，岗位${bound}`;
     }

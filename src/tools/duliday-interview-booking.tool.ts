@@ -76,12 +76,9 @@ export interface BookingAdjudicationDeps {
 }
 
 /**
- * `applyErrorList` 定位不到槽位 → 熔断转人工。此前这条路径**只改表单 escalatedReason
- * 落盘、不发审计事件**，于是它在 `collection_form_audit` 里完全不可见：日频观测只能
- * 看到 `ask_limit_exhausted` / `unparseable_answer` 两条熔断路径，报告里连"今日转人工
- * 多少起"都答不出（0828/0831 台账连续两次把它记作 P1 观测缺口）。
- *
- * 补这一发：与 precheck 侧 `emitAudits` 同事件同形状，日频巡检的 SQL-F 无需改口径。
+ * `applyErrorList` 定位不到槽位 → 熔断转人工。该路径只改表单落盘，事件不发则整条
+ * 熔断在 `collection_form_audit` 里不可见。形状对齐 precheck 侧 `emitAudits`，
+ * 日频巡检口径不变。
  */
 function emitErrorListEscalation(params: {
   deps: BookingAdjudicationDeps;
