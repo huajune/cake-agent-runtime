@@ -65,12 +65,15 @@ export class MessageWindowService {
           // sessionTtl 只控制 Redis 会话状态的生命周期；用户跨天回来续聊时，
           // Redis facts 可能已过期，但 Supabase 历史依然要能追溯，避免被当新用户对待。
           startTimeInclusive: Date.now() - this.config.historyWindowSeconds * 1000,
-          endTimeInclusive: options?.endTimeInclusive,
+          // endTimeInclusive 不下推 SQL：边界要区分角色（见 applyTimeBoundary），
+          // 且缓存回填须保留完整窗口——边界只是读取时的视图。
         },
       );
       await this.backfillCache(chatId, rawHistory);
 
-      return this.trimByChars(this.injectTimeContext(rawHistory));
+      return this.trimByChars(
+        this.injectTimeContext(this.applyTimeBoundary(rawHistory, options?.endTimeInclusive)),
+      );
     } catch (error) {
       this.lastLoadError = toErrorMessage(error);
       this.logger.error(`获取短期记忆失败 [${chatId}]:`, error);
@@ -99,12 +102,38 @@ export class MessageWindowService {
     }));
   }
 
-  private applyTimeBoundary<T extends { timestamp: number }>(
+  /**
+   * 按触发消息时间戳裁剪窗口，但保留边界后已投递的 assistant 消息。
+   *
+   * 边界只防「更晚到的用户输入」泄进本轮（那属于下一轮 debounce 批次）；assistant
+   * 一旦入库即已发给候选人，裁掉会让下一轮看不见刚发出的内容而重发。
+   *
+   * 边界后的 assistant 插到末尾 user 触发块之前，维持「窗口以本轮用户输入收尾」的
+   * 下游不变量（trailingUserMessages、图片注入）。边界内无消息时返回空，保持调用方
+   * 的缓存 miss 回退语义。
+   */
+  private applyTimeBoundary<T extends { timestamp: number; role: 'user' | 'assistant' }>(
     messages: T[],
     endTimeInclusive?: number,
   ): T[] {
     if (!Number.isFinite(endTimeInclusive)) return messages;
-    return messages.filter((message) => message.timestamp <= endTimeInclusive);
+    const bounded = messages.filter((message) => message.timestamp <= endTimeInclusive);
+    if (bounded.length === 0) return bounded;
+
+    const lateAssistant = messages.filter(
+      (message) => message.timestamp > endTimeInclusive && message.role === 'assistant',
+    );
+    if (lateAssistant.length === 0) return bounded;
+
+    let trailingUserStart = bounded.length;
+    while (trailingUserStart > 0 && bounded[trailingUserStart - 1].role === 'user') {
+      trailingUserStart -= 1;
+    }
+    return [
+      ...bounded.slice(0, trailingUserStart),
+      ...lateAssistant,
+      ...bounded.slice(trailingUserStart),
+    ];
   }
 
   private async getCachedHistory(

@@ -248,6 +248,22 @@ export function adjudicatePromptMemory(memory: TurnStartMemory): PromptMemoryAdj
     if (field.path && hasMeaningfulValue(single)) canonicalFacts.set(field.path, single);
   }
 
+  // 品牌轨的跨层去重单独处理：brands 不在 CROSS_LAYER_FIELDS——session 侧的品牌
+  // 权威是 facts.brand 状态机（SessionBrandRef），不存在同名同形字段。会话当前品牌
+  // 已覆盖长期意向品牌时，长期侧不再注入，避免同一会话自己的 consolidation 沉淀
+  // 以「上一段求职会话」的名义回流（蒋强 case：[历史求职意向] 只剩一行本会话品牌）。
+  const currentBrandName = sessionFacts?.brand?.currentBrand?.canonicalName;
+  const archivedBrands = (jobIntent as Record<string, unknown> | null)?.brands;
+  if (
+    currentBrandName &&
+    isUserProfileFactValue(archivedBrands) &&
+    Array.isArray(archivedBrands.value) &&
+    archivedBrands.value.length > 0 &&
+    archivedBrands.value.every((brand) => brand === currentBrandName)
+  ) {
+    (jobIntent as Record<string, unknown>).brands = null;
+  }
+
   // session 独有字段也属于 facts；供 turnHints 做同值去重/异值待确认。
   if (sessionFacts) {
     for (const hint of resolveTurnHints(memory.turnHints)) {

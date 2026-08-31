@@ -85,7 +85,7 @@ export interface CollectionCoreInput {
   fieldValueProposals?: readonly FieldValueProposalInput[] | null;
   /** 本轮是否允许继续向候选人发问；只控制待问清单，不参与上一轮实际问句的记账。 */
   askThisTurn?: boolean;
-  /** 当前候选人回复的稳定回合 ID；用于上一轮实际问句入账去重。 */
+  /** 当前候选人回复的稳定回合 ID；问句入账与拒收入账都按它做同回合去重。 */
   askReceiptTurnId?: string;
   /**
    * 档案预填（蓝图「记忆→表单预填」：跨岗不重复盘问）。
@@ -145,7 +145,8 @@ export function runCollectionCore(input: CollectionCoreInput): CollectionCoreRes
   const fieldById = new Map(contract.map((field) => [field.labelId, field]));
   // 本轮「真实作答但公证读不懂」的槽位（出处门已过、卡在值词表/形态）。
   // 这些轮次不算"没搭理"：不消耗发问配额、不触发同槽问满熔断，改记 rejectedAttempts。
-  const unparseableAttemptIds = new Set<number>();
+  // 值是作答内容指纹「出处原话 + 归一化值」，用于跨轮去重（见 recordRejectedAttempts）。
+  const unparseableAttemptIds = new Map<number, string>();
   for (const proposal of proposals) {
     const field = fieldById.get(proposal.labelId);
     if (!field) continue;
@@ -187,7 +188,12 @@ export function runCollectionCore(input: CollectionCoreInput): CollectionCoreRes
           channel: proposal.channel,
         });
         if (result.reason && ANSWERED_BUT_UNPARSEABLE_REASONS.has(result.reason)) {
-          unparseableAttemptIds.add(field.labelId);
+          unparseableAttemptIds.set(
+            field.labelId,
+            `${proposal.sourceText.normalize('NFKC').trim()}→${proposal.value
+              .normalize('NFKC')
+              .trim()}`,
+          );
         }
         break;
       case 'ignored':
@@ -227,8 +233,19 @@ export function runCollectionCore(input: CollectionCoreInput): CollectionCoreRes
   }
 
   // ── 作答账：真实作答被值词表/形态门拒收的槽位记 rejectedAttempts（读不懂两次转人工）──
-  const attemptReceipt = recordRejectedAttempts(form, [...unparseableAttemptIds]);
+  // 双重去重见 recordRejectedAttempts：「两次」须是两次不同的真实作答，
+  // 既非两次工具调用，也非同一张模板被读了两轮。
+  const attemptReceipt = recordRejectedAttempts(
+    form,
+    [...unparseableAttemptIds.keys()],
+    input.askReceiptTurnId,
+    unparseableAttemptIds,
+  );
   form = attemptReceipt.form;
+  // 只有本轮真正入账的拒收才豁免发问配额。被内容指纹挡掉的重复拒收不豁免：
+  // 否则两个计数器同时冻结，槽位永不熔断、退化成无限重问；让它落回普通发问账，
+  // 问满仍无新答案时以 `ask_limit_exhausted` 收尾。
+  const answeredThisTurnIds = new Set(attemptReceipt.counted);
   if (attemptReceipt.exhausted.length > 0) {
     audits.push({
       kind: 'escalated',
@@ -240,7 +257,7 @@ export function runCollectionCore(input: CollectionCoreInput): CollectionCoreRes
   // ── 问句回执：只登记上一轮真实送达、且本轮仍未补齐的槽位 ──
   // 本轮有真实作答（哪怕被拒收）的槽位不入账：作答轮不是"没搭理"，不烧发问配额。
   const actuallyAskedIds = askedLabelIdsBeforeLatestUser(input.messages, contract).filter(
-    (labelId) => !unparseableAttemptIds.has(labelId),
+    (labelId) => !answeredThisTurnIds.has(labelId),
   );
   const askReceipt = recordUnansweredAsks(form, actuallyAskedIds, input.askReceiptTurnId);
   form = askReceipt.form;
@@ -259,7 +276,7 @@ export function runCollectionCore(input: CollectionCoreInput): CollectionCoreRes
   );
   if (verdictOf(form) === 'collecting') {
     const alreadyExhausted = emptyFields
-      .filter((field) => !unparseableAttemptIds.has(field.labelId))
+      .filter((field) => !answeredThisTurnIds.has(field.labelId))
       .filter((field) => (form.slots[field.labelId]?.askCount ?? 0) >= MAX_ASKS_PER_SLOT)
       .map((field) => field.labelId);
     if (alreadyExhausted.length > 0) {

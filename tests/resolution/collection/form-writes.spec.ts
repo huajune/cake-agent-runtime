@@ -299,6 +299,16 @@ describe('分性别值域筛（实测 528995 身高/体重）', () => {
     expect(result.detail).toContain('值域越界');
   });
 
+  it('账本措辞按字段名造句，不复用年龄口径（体重/身高不得被写成"岁"）', () => {
+    // 值域判据统一借 detectAgeBoundary 的**数值**逻辑，但它的 reason 串写死了「岁」。
+    // 直接复述会把身高 155cm 记成「候选人 155 岁」——0828 台账实录的误导来源。
+    const result = proposeHeight(withGender('男'), '155');
+    expect(result.detail).toContain('身高(cm)');
+    expect(result.detail).toContain('155');
+    expect(result.detail).toContain('下限 160');
+    expect(result.detail).not.toContain('岁');
+  });
+
   it('同一个值换性别档就合格——分档不能取错', () => {
     // 女档 150-180：155 合格。（性别槽位本岗 rejected 女，故单独造一份不筛性别的契约）
     const neutralGender = {
@@ -929,6 +939,24 @@ describe('recordRejectedAttempts · 答而不解 ≠ 不答（badcase batch_6a8f
       MAX_REJECTED_ATTEMPTS_PER_SLOT,
     );
     expect(second.form.escalatedReason).toBe(`unparseable_answer: ${NAME_FIELD.labelId}`);
+  });
+
+  it('同一候选人回合（turnId）重复拒收只记一次——模型同轮重试工具不烧配额（生产 chat 6a9117face406a6aee7f99c9）', () => {
+    let form = createForm({ jobId: 1, contract: [NAME_FIELD] });
+    const first = recordRejectedAttempts(form, [NAME_FIELD.labelId], 'turn-1');
+    form = first.form;
+    expect(form.slots[NAME_FIELD.labelId].rejectedAttempts).toBe(1);
+
+    // 模型收到拒收提示后同轮原样重投：第二次工具调用不得再记账、更不得熔断。
+    const sameTurnRetry = recordRejectedAttempts(form, [NAME_FIELD.labelId], 'turn-1');
+    expect(sameTurnRetry.exhausted).toEqual([]);
+    expect(sameTurnRetry.form.slots[NAME_FIELD.labelId].rejectedAttempts).toBe(1);
+    expect(sameTurnRetry.form.escalatedReason).toBeUndefined();
+
+    // 候选人下一轮再次真实作答仍读不懂 → 这才是第 2 次，熔断成立。
+    const nextTurn = recordRejectedAttempts(sameTurnRetry.form, [NAME_FIELD.labelId], 'turn-2');
+    expect(nextTurn.exhausted).toEqual([NAME_FIELD.labelId]);
+    expect(nextTurn.form.escalatedReason).toBe(`unparseable_answer: ${NAME_FIELD.labelId}`);
   });
 
   it('非 empty 槽位不记账（同轮已被其它通道写入的不算读不懂）', () => {

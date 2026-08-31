@@ -169,6 +169,45 @@ describe('memory block deterministic adjudication', () => {
     expect(output).toContain('意向城市: 北京');
   });
 
+  it('drops long-term brand intent already covered by the session brand state（同会话沉淀回流去重）', () => {
+    const brandMeta = {
+      confidence: 'medium',
+      source: 'archive',
+      evidence: 'test',
+      updatedAt: '2026-08-29T05:10:43.854Z',
+    } as const;
+    const sessionFacts = sessionFactsOf();
+    sessionFacts.brand = {
+      currentBrand: { canonicalName: '肯德基', brandId: 10005 },
+      excludedBrands: [],
+    };
+
+    // 会话当前品牌已覆盖长期意向品牌 → 长期侧整字段不注入（蒋强 case：
+    // [历史求职意向] 只剩一行本会话自己的沉淀，还标成"上一段求职会话"）
+    const covered = adjudicatePromptMemory(
+      memoryOf({
+        jobIntent: { brands: userProfileFactValue(['肯德基'], brandMeta) },
+        sessionFacts,
+      }),
+    );
+    expect(buildMemoryBlock(covered, '')).not.toContain('[历史求职意向]');
+
+    // 品牌不一致时仍保留历史意向（真实的跨会话品牌变化不受影响）
+    const different = adjudicatePromptMemory(
+      memoryOf({
+        jobIntent: { brands: userProfileFactValue(['必胜客'], brandMeta) },
+        sessionFacts,
+      }),
+    );
+    expect(buildMemoryBlock(different, '')).toContain('意向品牌: 必胜客');
+
+    // 会话无品牌状态时长期品牌照常注入（跨会话承接的主用途）
+    const noSessionBrand = adjudicatePromptMemory(
+      memoryOf({ jobIntent: { brands: userProfileFactValue(['肯德基'], brandMeta) } }),
+    );
+    expect(buildMemoryBlock(noSessionBrand, '')).toContain('意向品牌: 肯德基');
+  });
+
   it('compares turn hints with a long-term winner even when no session fact exists', () => {
     const jobIntent: JobIntentFacts = {
       city: userProfileFactValue('上海', {

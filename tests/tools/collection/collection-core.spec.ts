@@ -222,6 +222,112 @@ describe('runCollectionCore · 多人闸（D1：疑似代报第二人即转人�
   });
 });
 
+describe('runCollectionCore · FILE 字段（生产 chat 6a9117face406a6aee7f99c9「上传简历」案）', () => {
+  const RESUME_FILE: ContractFieldDef = {
+    labelId: 49,
+    labelTitle: '上传简历',
+    fieldType: 'FILE',
+    required: true,
+    acceptedOptions: [],
+    rejectedOptions: [],
+  };
+  const contract = [NAME, RESUME_FILE];
+  const resumeText = '上传简历：2017年-2024年在宿迁开挖掘机';
+
+  function runResume(
+    form: ReturnType<typeof createForm>,
+    turnId: string,
+  ): ReturnType<typeof runCollectionCore> {
+    return runCollectionCore({
+      form,
+      contract,
+      candidateTexts: [resumeText],
+      messages: [{ role: 'user', content: resumeText }],
+      askReceiptTurnId: turnId,
+    });
+  }
+
+  it('文字作答被形态门拒收：审计落 invalid_value_shape、槽位保持 empty、首轮不熔断', () => {
+    const result = runResume(createForm({ jobId: 529091, contract }), 'turn-1');
+    expect(
+      result.audits.some(
+        (a) =>
+          a.kind === 'proposal_rejected' && a.labelId === 49 && a.reason === 'invalid_value_shape',
+      ),
+    ).toBe(true);
+    expect(result.verdict).toBe('collecting');
+    expect(result.form.slots[49].state).toBe('empty');
+    expect(result.form.slots[49].rejectedAttempts).toBe(1);
+  });
+
+  it('模型同轮重试 precheck 不烧熔断配额——「读不懂两次」必须是两轮真实作答', () => {
+    const first = runResume(createForm({ jobId: 529091, contract }), 'turn-1');
+    const sameTurnRetry = runResume(first.form, 'turn-1');
+    expect(sameTurnRetry.verdict).toBe('collecting');
+    expect(sameTurnRetry.form.slots[49].rejectedAttempts).toBe(1);
+
+    // 候选人下一轮**换了一句**仍是文字 → 引导已给过一次，这才转人工。
+    const secondTurn = runCollectionCore({
+      form: sameTurnRetry.form,
+      contract,
+      candidateTexts: ['上传简历：我干过挖掘机和叉车'],
+      messages: [{ role: 'user', content: '上传简历：我干过挖掘机和叉车' }],
+      askReceiptTurnId: 'turn-2',
+    });
+    expect(secondTurn.verdict).toBe('escalated');
+    expect(secondTurn.action).toBe('handoff');
+  });
+
+  it('跨轮重复读到**同一句**作答不烧配额——熔断配额按作答内容记，不按轮数记', () => {
+    // 生产 chat 6a94e92d…（labelId 3 籍贯「南京」）：候选人 03:21:03 只贴回过一次模板，
+    // 但那条消息滞留在证据窗里被连续两轮重新解析、重新拒收，两轮就烧到熔断——
+    // 而 Agent 的正确引导话术（「籍贯改成省级」）比熔断晚 21 秒才发出。
+    const first = runResume(createForm({ jobId: 529091, contract }), 'turn-1');
+    expect(first.form.slots[49].rejectedAttempts).toBe(1);
+
+    const laterTurn = runResume(first.form, 'turn-2');
+    expect(laterTurn.form.slots[49].rejectedAttempts).toBe(1);
+    expect(laterTurn.verdict).toBe('collecting');
+    expect(laterTurn.action).toBe('collect_fields');
+  });
+
+  it('重复作答不再豁免发问配额——否则两个计数器同时冻结，槽位永不熔断', () => {
+    // 内容指纹挡掉重复拒收之后，必须留一条终止路径：这一轮候选人没给出新东西，
+    // 就该落回普通发问账，问满两次以 ask_limit_exhausted 收尾。
+    const asked = [
+      { role: 'user', content: '你好' },
+      { role: 'assistant', content: '上传简历：（直接发文件或截图，不用打字填写）' },
+      { role: 'user', content: resumeText },
+    ];
+    const runAsked = (
+      form: ReturnType<typeof createForm>,
+      turnId: string,
+    ): ReturnType<typeof runCollectionCore> =>
+      runCollectionCore({
+        form,
+        contract,
+        candidateTexts: [resumeText],
+        messages: asked,
+        askReceiptTurnId: turnId,
+      });
+
+    let run = runAsked(createForm({ jobId: 529091, contract }), 'turn-1');
+    expect(run.verdict).toBe('collecting');
+    // 后续轮次同一句话不再记拒收，但发问配额照常推进，最终仍能收口。
+    run = runAsked(run.form, 'turn-2');
+    run = runAsked(run.form, 'turn-3');
+    expect(run.verdict).toBe('escalated');
+    expect(run.form.escalatedReason).toContain('ask_limit_exhausted');
+  });
+
+  it('模板对 FILE 字段常驻「发文件别打字」占位提示', () => {
+    const result = runResume(createForm({ jobId: 529091, contract }), 'turn-1');
+    expect(result.template.templateText).toContain(
+      '上传简历：（直接发文件或截图，不用打字填写）',
+    );
+  });
+});
+
 describe('runCollectionCore · 筛选与审计', () => {
   it('命中 rejectedOptions → screening_rejected + 审计事件', () => {
     const text = '没有健康证，我不愿意办';

@@ -95,3 +95,28 @@ describe('拒收重问档 · 强制枚举占位', () => {
     );
   });
 });
+
+describe('FILE 字段 · 发文件占位提示（生产 chat 6a9117face406a6aee7f99c9）', () => {
+  const RESUME_FILE: ContractFieldDef = {
+    labelId: 49,
+    labelTitle: '上传简历',
+    fieldType: 'FILE',
+    required: true,
+    acceptedOptions: [],
+    rejectedOptions: [],
+  };
+
+  it('FILE 字段常驻「发文件别打字」提示——空行会邀请候选人打字，文字永远过不了形态门', () => {
+    const blank = renderCollectionTemplate(
+      createForm({ jobId: 529091, contract: [RESUME_FILE] }),
+      [RESUME_FILE],
+    );
+    expect(blank.templateText).toContain('上传简历：（直接发文件或截图，不用打字填写）');
+
+    // 拒收重问档同样保留提示（FILE 无枚举可强制，提示不分档）。
+    const attempted = createForm({ jobId: 529091, contract: [RESUME_FILE] });
+    attempted.slots[49].rejectedAttempts = 1;
+    const forced = renderCollectionTemplate(attempted, [RESUME_FILE]);
+    expect(forced.templateText).toContain('上传简历：（直接发文件或截图，不用打字填写）');
+  });
+});

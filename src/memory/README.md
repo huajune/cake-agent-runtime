@@ -11,7 +11,7 @@
 | 咨询段（episode）   | 本次连续咨询的消息切片            | **闲置 3 天**划界 | 无独立存储层             |
 | long-term 关系档    | semantic 档案/意向、episodic 摘要 | 持久              | Supabase + Redis 缓存    |
 
-三个对外口径固定为 **7d / 3d / 3d**：消息回看窗口 7 天、会话状态 TTL 3 天、闲置沉淀间隙 3 天。`factsv2:` 的实际 TTL 额外加 12 小时，只是保证 delayed job 先读取再过期的安全余量，不构成新的业务生命周期。
+三个对外口径固定为 **7d / 3d / 3d**：消息回看窗口 7 天、会话状态 TTL 3 天、闲置沉淀间隙 3 天。沉淀间隙（`MEMORY_SETTLEMENT_GAP_DAYS`）不得配成小于 sessionTtl：否则会话存活期间即发生沉淀，会话会读回自己刚沉淀的长期记忆。`factsv2:` 的实际 TTL 额外加 12 小时，只是保证 delayed job 先读取再过期的安全余量，不构成新的业务生命周期。
 
 **短期不等于单次咨询。** 代码里的 session 是 `chatId`，即候选人 × bot 的关系，可跨多次咨询长期存在；业务里的 session 是连续咨询段，由闲置 3 天计算得到。消息窗口故意跨段保留 7 天，便于回访重建上下文。episode 只是裁剪与沉淀的计算边界，没有自己的 Redis key、表或目录。
 
@@ -219,7 +219,7 @@ Redis hash 没有字段级 TTL，因此 `factsv2:` 内的 facts 与 workbench �
 
 回合收尾按固定顺序更新工作台和事实，并在结束时注册或刷新同一 chat 的 delayed consolidation job。新队列与 job 标识统一使用 `consolidation` 词根。
 
-任务约 3 天后到点时：
+任务在闲置满沉淀间隙（3 天）到点时：
 
 1. 重新读取 DB 最新消息时间并校验确已闲置；未达标则按剩余时间重排；
 2. 用 `consolidation_watermarks.bySession[sessionId]` 判断是否已覆盖，做到幂等；
