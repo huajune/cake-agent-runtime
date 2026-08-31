@@ -14,7 +14,7 @@
 **预计版本**: `v11.1.0`
 **最近更新**: `2026-08-31`
 **来源分支**: `develop`
-**累计 PR**: 3
+**累计 PR**: 4
 
 ### 更新摘要
 - PR #1111 修复 stale-input 短路与 replay 旁路的契约漂移
@@ -32,6 +32,7 @@
 - PR #1112 拒收配额跨轮按作答指纹去重 + 户籍省级容差 + 熔断观测补账 + 记忆边界保留已投递回复
 - PR #1112 收资/记忆批注释按仓库风格精简
 - PR #1112 0831 预约链路批修——recap 确认死锁、带外工单核验、FILE 收资引导与记忆沉淀口径
+- PR #1118 v11.1.0 发版底账
 
 ### 新功能
 - PR #1115 **新增 `llm_execution` 事件**：每次 llm-executor `generate`/`stream` 收尾（成功或全链耗尽）无条件发射，落 `agent_execution_events` 同 traceId。payload 含每次 provider 尝试的 modelId、开始偏移、耗时、`errorCategory`、截断错误消息、退避时长，及 attemptCount/totalDurationMs/backoffTotalMs 汇总。**刻意进 ALWAYS_PERSISTED 无条件集合**——tool_call 漏采 2/3 的根因正是条件采样，此处不复刻。
@@ -55,6 +56,7 @@
 - PR #1112 精简沉淀间隙注释，只留约束去掉事故叙事
 - PR #1112 拒收配额跨轮按作答指纹去重 + 户籍省级容差 + 熔断观测补账 + 记忆边界保留已投递回复
 - PR #1112 收资/记忆批注释按仓库风格精简
+- PR #1118 v11.1.0 发版底账
 
 ### 配置变更
 - 无

@@ -113,6 +113,29 @@
         "台账 `docs/prompt-rule-ledger.md` 同批更新"
       ],
       "level": "patch"
+    },
+    {
+      "number": "1118",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1118",
+      "title": "v11.1.0 发版底账",
+      "author": "huajune",
+      "mergedAt": "2026-08-31",
+      "businessUpdates": [
+        "v11.1.0 发版底账"
+      ],
+      "summary": [
+        "v11.1.0 发版底账"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "v11.1.0 发版底账"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [],
+      "level": "patch"
     }
   ],
   "lastRelease": {
@@ -206,5 +229,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "1a11b56b97be47269b8bc1f8de5886db9de3c337"
+  "lastAnalyzedSha": "7207a8ff080d73fa6e6ea298f9b56fb5c1ff5bee"
 }
