@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [11.1.0] - 2026-08-31
 
-**预计版本**: `v11.1.0`
-**最近更新**: `2026-08-31`
 **来源分支**: `develop`
-**累计 PR**: 4
 
 ### 更新摘要
 - PR #1111 修复 stale-input 短路与 replay 旁路的契约漂移
@@ -73,7 +69,6 @@
 - PR #1112 公证/precheck/booking/renderer 四个 spec 74 用例全绿（含 4 个新增生产形态回归：「没」隔轮追认、改写复述快照失配重投等）
 - PR #1112 `pnpm run typecheck` / `lint:check` 全绿
 - PR #1112 台账 `docs/prompt-rule-ledger.md` 同批更新
-<!-- release:pending:end -->
 
 ## [11.0.7] - 2026-08-28
 
