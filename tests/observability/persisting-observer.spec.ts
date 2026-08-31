@@ -58,6 +58,34 @@ describe('PersistingObserver', () => {
     expect(persister.persist).toHaveBeenCalledTimes(2);
   });
 
+  it('always persists llm_execution regardless of status or attempt count', () => {
+    const observer = makeObserver();
+
+    // 单次干净成功也必须落库——任何"只落异常"的条件过滤都会复刻 tool_call 漏采根因。
+    observer.emit({
+      type: 'llm_execution',
+      role: 'chat',
+      mode: 'generate',
+      primaryModelId: 'qwen/qwen3.7-plus',
+      finalModelId: 'qwen/qwen3.7-plus',
+      status: 'success',
+      attemptCount: 1,
+      totalDurationMs: 1200,
+      backoffTotalMs: 0,
+      attempts: [
+        {
+          modelId: 'qwen/qwen3.7-plus',
+          attempt: 1,
+          startOffsetMs: 0,
+          durationMs: 1200,
+          status: 'success',
+        },
+      ],
+    });
+
+    expect(persister.persist).toHaveBeenCalledTimes(1);
+  });
+
   it('persists only material tool calls', () => {
     const observer = makeObserver();
 
