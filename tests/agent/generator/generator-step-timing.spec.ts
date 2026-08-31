@@ -3,12 +3,8 @@ import { createTurnLedger } from '@agent/generator/preparation/turn-ledger';
 import { CallerKind } from '@/enums/agent.enum';
 
 /**
- * agent_steps 墙钟锚与 llm-executor 重试的对齐契约（2026-08-31 慢回合事故）：
- *
- * 失败尝试（结果校验不过/多步中途断）也会触发 onStepFinish；若锚不随 onAttemptStart
- * 重置，首个失败尝试的步末墙钟会错配到最终成功尝试的 steps 上——生产曾出现
- * ai_duration 207s 而 agent_steps 只记 31s，重试整段隐形。本 spec 钉住：
- * agent_steps 的 durationMs 只计最后一次（成功）尝试的窗口。
+ * agent_steps 墙钟锚随 llm-executor 每次尝试重置：失败尝试同样触发 onStepFinish，
+ * 锚不重置则其步末墙钟错配到成功尝试的 steps 上。durationMs 只计成功尝试的窗口。
  */
 describe('GeneratorAgent step timing across executor retries', () => {
   const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));

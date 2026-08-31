@@ -9,11 +9,8 @@ import type { ToolErrorType } from '@tools/shared/tool-error-types';
 import type { ErrorCategory } from '@providers/types';
 
 /**
- * llm-executor 单次 provider 尝试的轨迹条目。
- *
- * `attempt=0` 表示候选模型在真正发起请求前被预检跳过（不支持图片输入 / provider 未注册），
- * `attempt>=1` 表示一次真实的 generateText/streamText 调用。error 为截断后的错误消息或
- * 跳过原因，不含 prompt/响应体全文，避免 PII 进观测。
+ * llm-executor 单次 provider 尝试轨迹。`attempt=0` 为发起前预检跳过（不认图 /
+ * provider 未注册），`>=1` 为真实请求。error 已截断，不含 prompt/响应体。
  */
 export interface LlmAttemptTrace {
   modelId: string;
@@ -83,14 +80,11 @@ export type AgentEvent = AgentEventContext &
     | { type: 'model_call'; modelId: string; role: string }
     | { type: 'model_fallback'; fromModel: string; toModel: string; reason: string }
     /**
-     * llm-executor 单次调用（generate/stream）的完整尝试轨迹（2026-08-31 慢回合事故）：
-     * 同模型静默重试此前完全不可见——成功即丢弃 attempts 内存轨迹、重试只有 logger.warn、
-     * agent_steps 的墙钟锚跨尝试错位——生产曾出现 ai_duration 207s 而 agent_steps 只记 31s、
-     * 全链路零观测记录。本事件在每次执行收尾（成功或全链耗尽）无条件发射并落库，
-     * 让"每次 provider 尝试的开始/耗时/错误分类/退避"可按 traceId 下钻。
+     * llm-executor 单次调用（generate/stream）的尝试轨迹：同模型重试与降级换模型
+     * 的耗时只在此可见（`model_call` 不落库），故收尾时无条件发射。
      *
-     * stream 模式的 totalDurationMs 只覆盖初始化窗口（streamText 同步返回），
-     * 不含流式消费耗时；重试期间进程被 SIGTERM 打断时本事件不发射（收尾点埋点的固有盲区）。
+     * stream 的 totalDurationMs 只覆盖初始化窗口，不含流式消费；重试期间进程被
+     * SIGTERM 打断则本事件不发射。
      */
     | {
         type: 'llm_execution';

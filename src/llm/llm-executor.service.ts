@@ -27,11 +27,10 @@ export interface LlmGenerateOptions extends Omit<Parameters<typeof generateText>
    */
   validateResult?: (result: Awaited<ReturnType<typeof generateText>>) => void;
   /**
-   * 每次真实 provider 尝试（含同模型重试与降级换模型）发起前回调。
+   * 每次真实 provider 尝试（含同模型重试与降级）发起前回调。
    *
-   * 调用方（generator）用它把 onStepFinish 的墙钟锚重置到当前尝试：失败尝试也会
-   * 触发 onStepFinish，锚不重置会让 agent_steps 的 durationMs 把首个失败尝试的
-   * 步末墙钟错配到最终成功尝试的 steps 上，重试耗时整段隐形（2026-08-31 事故）。
+   * 失败尝试同样触发 onStepFinish，调用方须借此重置步骤墙钟锚，否则失败尝试的
+   * 步末墙钟会错配到成功尝试的 steps 上。
    */
   onAttemptStart?: (info: { modelId: string; attempt: number }) => void;
 }
@@ -401,10 +400,7 @@ export class LlmExecutorService {
     return `${entry.modelId} attempt ${entry.attempt}: ${category}${entry.error ?? entry.status}`;
   }
 
-  /**
-   * 错误消息截断后进观测 payload：provider 错误可能携带响应体片段，
-   * 全文属于日志/异常链路，事件表只需要可归因的头部。
-   */
+  /** provider 错误可能携带响应体片段；事件表只留可归因的头部，全文归日志/异常链路。 */
   private truncateErrorForTrace(message: string): string {
     const MAX_LENGTH = 300;
     return message.length <= MAX_LENGTH ? message : `${message.slice(0, MAX_LENGTH)}…`;
