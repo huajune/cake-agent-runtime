@@ -1,9 +1,37 @@
 {
   "baseVersion": "11.0.7",
-  "nextVersion": "11.0.7",
-  "updatedAt": "2026-08-28",
+  "nextVersion": "11.0.8",
+  "updatedAt": "2026-08-31",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "1111",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1111",
+      "title": "修复 stale-input 短路与 replay 旁路的契约漂移",
+      "author": "huajune",
+      "mergedAt": "2026-08-31",
+      "businessUpdates": [
+        "修复 stale-input 短路与 replay 旁路的契约漂移"
+      ],
+      "summary": [
+        "修复 stale-input 短路与 replay 旁路的契约漂移"
+      ],
+      "features": [],
+      "fixes": [
+        "修复 stale-input 短路与 replay 旁路的契约漂移"
+      ],
+      "optimizations": [],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`tsc --noEmit`（TS 5.9.3）✅",
+        "booking spec + tests/agent/runner + reply-workflow spec：87 tests passed ✅",
+        "改动 src 文件 eslint --max-warnings=0 ✅"
+      ],
+      "level": "patch"
+    }
+  ],
   "lastRelease": {
     "version": "11.0.7",
     "date": "2026-08-28",
@@ -95,5 +123,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "e8d2f532275640a4b49d946e3aedf0e5b0af3d78"
+  "lastAnalyzedSha": "2679047f71ce557f12b13546a6b9bc557ddeb6ca"
 }

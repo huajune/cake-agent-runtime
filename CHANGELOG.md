@@ -8,6 +8,41 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v11.0.8`
+**最近更新**: `2026-08-31`
+**来源分支**: `develop`
+**累计 PR**: 1
+
+### 更新摘要
+- PR #1111 修复 stale-input 短路与 replay 旁路的契约漂移
+
+### 新功能
+- 无
+
+### 问题修复
+- PR #1111 修复 stale-input 短路与 replay 旁路的契约漂移
+
+### 优化调整
+- 无
+
+### 运维与流程
+- 无
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #1111 `tsc --noEmit`（TS 5.9.3）✅
+- PR #1111 booking spec + tests/agent/runner + reply-workflow spec：87 tests passed ✅
+- PR #1111 改动 src 文件 eslint --max-warnings=0 ✅
+<!-- release:pending:end -->
+
 ## [11.0.7] - 2026-08-28
 
 **来源分支**: `develop`
