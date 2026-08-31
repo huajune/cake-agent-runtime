@@ -570,6 +570,66 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
     expect(context.ledger.jobs.collectionReadyJobId).toBe(100);
   });
 
+  it('隔轮追认：复述后插入简短追问轮，候选人再确认仍可入账（死锁回归）', async () => {
+    // 生产 chat 6a951ac7ce406a6aeea1338c 形态：紧邻 assistant 组只有简短追问、
+    // 不含「标签：值」行；快照未变时在案复述仍是有效锚点，「没」这类语境化短答可入账。
+    currentForm = filledForm();
+    context.turnInput.messages = [
+      ...recapDialogue('稍等'),
+      { role: 'assistant', content: '好嘞，确认下没问题我就帮你提交' },
+      { role: 'user', content: '没' },
+    ];
+    const result = await execute(recapConfirmationInput('没'));
+    expect(result.nextAction).toBe('ready_to_book');
+    expect(currentForm?.lastRecap?.affirmed).toBe(true);
+    expect(context.ledger.jobs.collectionReadyJobId).toBe(100);
+  });
+
+  it('recapConfirmation 被公证拒收时给模型回执并落审计', async () => {
+    currentForm = filledForm();
+    context.turnInput.messages = recapDialogue('好的');
+    const result = await execute({
+      jobId: 100,
+      recapConfirmation: { candidateQuote: '好的', recapQuote: '我从未发出过的复述文案' },
+    });
+    expect(result.nextAction).toBe('confirm_collection');
+    expect(result.rejectedRecapConfirmation).toEqual({
+      reason: 'recap_quote_not_delivered',
+      hint: expect.stringContaining('逐字'),
+    });
+    expect(result._replyInstruction).toContain('rejectedRecapConfirmation');
+    expect(observer.emit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'collection_form_audit',
+        kind: 'recap_confirmation_rejected',
+        reason: 'recap_quote_not_delivered',
+        channel: 'recap_confirmation',
+      }),
+    );
+  });
+
+  it('复述被改写送达时判快照失配，并返回官方文案供照发重投', async () => {
+    // 生产 chat 6a951cadce406a6aeed925e7 形态：模型没照发官方复述，标签被改写，
+    // 教科书式「好的」也无法入账；回执给出官方文案让模型重发走出死锁。
+    currentForm = filledForm();
+    context.turnInput.messages = [
+      {
+        role: 'assistant',
+        content: '资料确认下：\n名字 兮兮\n电话 18271421690\n确认无误我就帮你提交了',
+      },
+      { role: 'user', content: '好的' },
+    ];
+    const result = await execute({
+      jobId: 100,
+      recapConfirmation: { candidateQuote: '好的', recapQuote: '确认无误我就帮你提交了' },
+    });
+    expect(result.nextAction).toBe('confirm_collection');
+    expect(result.rejectedRecapConfirmation.reason).toBe('recap_snapshot_mismatch');
+    expect(result.recap.candidateMessage).toContain('姓名：兮兮');
+    expect(result._replyInstruction).toContain('照发');
+    expect(currentForm?.lastRecap?.affirmed).not.toBe(true);
+  });
+
   it('确认词与纠错混排（对的，但是电话错了）不判确认，停在 confirm_collection', async () => {
     currentForm = filledForm();
     context.turnInput.messages = [{ role: 'user', content: '对的，但是电话错了' }];

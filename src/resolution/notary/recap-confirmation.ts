@@ -6,7 +6,7 @@ export type RecapConfirmationRejectionReason =
   | 'recap_not_required'
   | 'recap_missing_or_already_affirmed'
   | 'candidate_quote_not_full_latest_reply'
-  | 'recap_quote_not_in_adjacent_assistant_group'
+  | 'recap_quote_not_delivered'
   | 'recap_snapshot_mismatch'
   | 'correction_takes_precedence';
 
@@ -36,6 +36,12 @@ interface RecapContractField {
 /**
  * recap 确认只做机械对话绑定，不判断同意、否定、转折或礼貌语义。无论纯短答还是
  * 带礼貌尾巴的开放表达，语义结论都来自主模型提交的同一种 `recapConfirmation`。
+ *
+ * 绑定锚点是「已真实送达的复述」而非「紧邻 assistant 组」：首轮确认落空后，回复纪律
+ * 禁止重发整张复述、只允许简短追认，紧邻组必然不再含 `标签：值` 行——按紧邻组锚定
+ * 会让第二轮追认结构性死锁（生产 chat 6a951ac7ce406a6aeea1338c）。快照一致性由
+ * `lastRecap` 落账不变式兜底：任一槽位变更都会整体作废 `lastRecap`，因此只要在案
+ * 复述仍未作废，窗口内任一含官方复述全文的 assistant 连续组都是同一份快照的送达证明。
  */
 export function verifyRecapConfirmationBinding(
   input: RecapConfirmationNotaryInput,
@@ -52,20 +58,23 @@ export function verifyRecapConfirmationBinding(
     return reject('candidate_quote_not_full_latest_reply');
   }
 
-  const assistantGroup = adjacentAssistantGroupBeforeLatestCandidate(input.messages);
-  if (!assistantGroup) return reject('recap_quote_not_in_adjacent_assistant_group');
   const recapQuote = input.recapQuote.trim();
-  if (!recapQuote || !normalizedIncludes(assistantGroup, recapQuote)) {
-    return reject('recap_quote_not_in_adjacent_assistant_group');
-  }
+  const carrierGroups = recapQuote
+    ? assistantGroupsBeforeLatestCandidate(input.messages).filter((group) =>
+        normalizedIncludes(group, recapQuote),
+      )
+    : [];
+  if (carrierGroups.length === 0) return reject('recap_quote_not_delivered');
 
-  if (!assistantGroupMatchesCurrentSnapshot(input.form, input.contract, assistantGroup)) {
-    return reject('recap_snapshot_mismatch');
-  }
+  const snapshotDelivered = carrierGroups.some((group) =>
+    assistantGroupMatchesCurrentSnapshot(input.form, input.contract, group),
+  );
+  if (!snapshotDelivered) return reject('recap_snapshot_mismatch');
   return { accepted: true };
 }
 
-function adjacentAssistantGroupBeforeLatestCandidate(messages: readonly unknown[]): string {
+/** 最新候选人消息之前的全部 assistant 连续组，新→旧排列；组内按原顺序拼接。 */
+function assistantGroupsBeforeLatestCandidate(messages: readonly unknown[]): string[] {
   const turns = extractDialogueTurns(messages);
   let candidateIndex = -1;
   for (let index = turns.length - 1; index >= 0; index -= 1) {
@@ -74,14 +83,22 @@ function adjacentAssistantGroupBeforeLatestCandidate(messages: readonly unknown[
       break;
     }
   }
-  if (candidateIndex <= 0) return '';
+  if (candidateIndex <= 0) return [];
 
-  const segments: string[] = [];
+  const groups: string[] = [];
+  let current: string[] = [];
   for (let index = candidateIndex - 1; index >= 0; index -= 1) {
-    if (turns[index].role !== 'assistant') break;
-    segments.unshift(turns[index].text);
+    if (turns[index].role === 'assistant') {
+      current.unshift(turns[index].text);
+      continue;
+    }
+    if (current.length > 0) {
+      groups.push(current.join('\n'));
+      current = [];
+    }
   }
-  return segments.join('\n');
+  if (current.length > 0) groups.push(current.join('\n'));
+  return groups;
 }
 
 function assistantGroupMatchesCurrentSnapshot(

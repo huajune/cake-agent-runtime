@@ -79,23 +79,51 @@ describe('recap confirmation notary', () => {
     ).toEqual({ accepted: false, reason: 'candidate_quote_not_full_latest_reply' });
   });
 
-  it('未真实发送、引用旧 recap 或不在紧邻 assistant 组的复述均不放行', () => {
+  it('复述从未真实发出（引用凭空文案）不放行', () => {
     expect(
       verify({
         messages: [{ role: 'user', content: '可以的，麻烦了' }],
       }),
-    ).toEqual({ accepted: false, reason: 'recap_quote_not_in_adjacent_assistant_group' });
+    ).toEqual({ accepted: false, reason: 'recap_quote_not_delivered' });
 
     expect(
       verify({
         messages: [
-          { role: 'assistant', content: `姓名：兮兮\n年龄：25\n${RECAP_TAIL}` },
-          { role: 'user', content: '稍等' },
           { role: 'assistant', content: '今天天气不错' },
           { role: 'user', content: '可以的，麻烦了' },
         ],
       }),
-    ).toEqual({ accepted: false, reason: 'recap_quote_not_in_adjacent_assistant_group' });
+    ).toEqual({ accepted: false, reason: 'recap_quote_not_delivered' });
+  });
+
+  it('隔轮追认可绑定：首轮未确认、简短追问后候选人再确认（死锁回归）', () => {
+    // 生产 chat 6a951ac7ce406a6aeea1338c 形态：复述组之后插入了追问轮，
+    // 紧邻 assistant 组不再含「标签：值」行；快照未变时在案复述仍是有效锚点。
+    expect(
+      verify({
+        candidateTexts: ['稍等', '可以的，麻烦了'],
+        messages: [
+          { role: 'assistant', content: `帮你核对一下报名信息：\n姓名：兮兮\n年龄：25` },
+          { role: 'assistant', content: RECAP_TAIL },
+          { role: 'user', content: '稍等' },
+          { role: 'assistant', content: '好嘞，确认下资料没问题就帮你提交' },
+          { role: 'user', content: '可以的，麻烦了' },
+        ],
+      }),
+    ).toEqual({ accepted: true });
+  });
+
+  it('模型改写复述（官方标签/值未逐字送达）不放行且定性为快照失配', () => {
+    // 生产 chat 6a951cadce406a6aeed925e7 形态：「姓名：兮兮」被改写成「名字 兮兮」，
+    // 官方「标签：值」行从未送达，教科书式确认也不得入账。
+    expect(
+      verify({
+        messages: [
+          { role: 'assistant', content: `资料确认下：\n名字 兮兮\n年龄：25\n${RECAP_TAIL}` },
+          { role: 'user', content: '可以的，麻烦了' },
+        ],
+      }),
+    ).toEqual({ accepted: false, reason: 'recap_snapshot_mismatch' });
   });
 
   it('当前表单快照与 assistant recap 不一致时拒绝陈旧确认', () => {

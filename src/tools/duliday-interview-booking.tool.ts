@@ -125,7 +125,7 @@ export function buildInterviewBookingTool(
               errorType: TOOL_ERROR_TYPES.BOOKING_REJECTED,
               outcome: '预约未提交（本轮没有已确认的 precheck 凭据）',
               replyInstruction:
-                '先调用 duliday_interview_precheck。只有资料已授权、非 wait_notice 岗位的时间草稿实时可约且工具返回 ready_to_book 后，才能在同一轮调用 booking。',
+                '先调用 duliday_interview_precheck。只有资料已授权、非 wait_notice 岗位的时间草稿实时可约且工具返回 ready_to_book 后，才能在同一轮调用 booking。候选人已明确确认过提交前复述的，重调 precheck 时必须带上 recapConfirmation 登记确认——缺了它会一直停在 confirm_collection。',
               details: { jobId },
             }),
           );
