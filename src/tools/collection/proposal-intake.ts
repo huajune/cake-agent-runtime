@@ -407,16 +407,12 @@ export interface ArchiveFact {
 /**
  * 从会话档案里挑**可预填**的事实。
  *
- * ⚠️ **入参是裸值不是信封**（2026-08-20 修）：`context.archive.sessionFacts` 是
- * `unwrapSessionFacts(facts, { minConfidence: 'high' })` 的产物——工具上下文在
- * `tool-context.builder` 里已经拆过信封并按高置信过滤。此前本函数按信封形态读
- * `.value/.source/.confidence`，在生产里**永远匹配不到任何字段**，
- * 记忆→表单预填因此是死代码（联调 precheck 接线时才发现）。
+ * ⚠️ 入参是**裸值不是信封**：`context.archive.sessionFacts` 是
+ * `unwrapSessionFacts(facts, { minConfidence: 'high' })` 的产物——`tool-context.builder`
+ * 已拆信封并按高置信过滤。按信封形态读 `.value/.source/.confidence` 会匹配不到任何字段。
  *
- * 过滤纪律仍在，只是**执行点在上游**：`minConfidence: 'high'` 已经把模型自报与
- * unknown 档挡在门外——高置信会话事实正是过了准入门的那批。badcase 6e9ar9gd 族
- *（"臆造档案经沿用洗白后进真实工单"）的入口由那道门守。
- * 为兼容直接传信封的调用方（单测/未来改动），两种形态都收。
+ * 过滤纪律的**执行点在上游**：`minConfidence: 'high'` 已把模型自报与 unknown 档挡在门外，
+ * 臆造档案洗白进真实工单的入口由那道门守。为兼容直接传信封的调用方（单测），两种形态都收。
  */
 export function selectArchiveFacts(
   interviewInfo: Record<string, unknown> | null | undefined,

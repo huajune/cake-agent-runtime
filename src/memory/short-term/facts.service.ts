@@ -160,11 +160,9 @@ export class SessionFactsService {
    * 归空」——终态一并丢失后，复聊会继续触达已约面/已转人工的候选人。降级粒度必须是字段。
    * 存储形态本就是按字段的 Redis hash（旧 blob 的 top-level 键同名），逐字段校验与之同构。
    *
-   * **丢弃必须能被发现**（2026-08-19，记忆审计风险点 8 接线）：此前只有一条
-   * logger.warn，日志不进库、无人巡检——「观测不落库=没发生」。丢字段是丢事实：
-   * 丢 facts 是候选人档案缺一块，丢 terminal 是复聊去骚扰已约面的人。现在同时
-   * 落 `agent_execution_events`（同 traceId 可与回合流水 join）与飞书告警
-   * （AlertNotifierService 自带节流，坏数据反复读到不会刷屏）。
+   * **丢弃必须能被发现**：丢字段就是丢事实（丢 facts 是档案缺一块，丢 terminal 是复聊去
+   * 骚扰已约面的人），只打日志等于没发生。故同时落 `agent_execution_events`（同 traceId
+   * 可与回合流水 join）与飞书告警（AlertNotifierService 自带节流）。
    */
   private parseSessionStateFields(
     combined: Record<string, unknown>,
@@ -906,7 +904,7 @@ export class SessionFactsService {
     return messages;
   }
 
-  /** 解析 `[消息发送时间：2026-06-03 12:11 星期三]` 后缀（北京时间）为毫秒时间戳。 */
+  /** 解析 `[消息发送时间：12:11 星期三]` 后缀（北京时间）为毫秒时间戳。 */
   private parseMessageSentAt(content: string): number | null {
     return parseTimeContextAt(content);
   }

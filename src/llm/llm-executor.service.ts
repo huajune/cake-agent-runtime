@@ -297,11 +297,11 @@ export class LlmExecutorService {
   /**
    * 当前路由（primary + 降级链）是否有任一候选支持图片输入。
    *
-   * 语义（2026-07-28 裁定）：只要链上存在认图候选就按多模态构建请求——纯文本主模型
+   * 语义：只要链上存在认图候选就按多模态构建请求——纯文本主模型
    * （如 deepseek）会在生成时被 vision 闸门跳过，整轮落到链上首个认图候选亲眼看图，
    * 取代旧的「主模型不认图就预描述转文字」间接路径（信息保真更高、save_image_description
    * 回到一手描述）。链上全为纯文本模型时返回 false；该场景由 reply-workflow 的运行时
-   * 兼容重跑兜底（入站预描述分支已于 2026-08-05 废弃）。
+   * 兼容重跑兜底（入站预描述分支已于 废弃）。
    */
   async supportsVisionInput(options: {
     role?: ModelRole | string;

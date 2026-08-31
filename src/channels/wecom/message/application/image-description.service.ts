@@ -326,7 +326,7 @@ export class ImageDescriptionService {
       return null;
     }
     // 证件号脱敏：sheet 侧 finalizeVisualFactSheet 内部已做，这里补 content 一侧，
-    // 保证 chat_messages 的 content 与 visual_facts 同源同脱敏（红标 2，chat 6a1e42e6）。
+    // 保证 chat_messages 的 content 与 visual_facts 同源同脱敏（红标 2，）。
     description = sanitizeVisualDescription(description);
 
     // 简历图片：追加 "简历附件：URL" 行，让候选人发的手写简历/简历照片走与
@@ -334,7 +334,7 @@ export class ImageDescriptionService {
     // 流入会话事实 upload_resume → precheck checklist 补齐"简历附件" →
     // booking 经 uploadAttachmentFromUrl 上传图片拿 cloudStorageKey 提交。
     // 先剥离视觉描述里可能已带的"简历附件：…"行，再以本服务解析到的权威 URL 追加唯一
-    // 一行，避免重复行（badcase chat 6a2fac72…：单条简历消息出现两条相同"简历附件"）。
+    // 一行，避免重复行（单条简历消息出现两条相同"简历附件"）。
     // 简历判定双保险（并跑对照）：sheet resume kind 与旧文本标记任一命中即走简历链路。
     // 旧文本判据仍作兼容保险；当前只有本地 warn，没有可证明长窗口
     // 分歧归零的持久化指标。删除 OR 路径前必须先让该分歧可持续观测并达标。

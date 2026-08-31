@@ -7,12 +7,10 @@ import { parseInterviewTimestamp } from './scenario-registry';
 /**
  * pre_booking 带外工单核验（候选人资料证据化 P1「human_oob」确定性切片）。
  *
- * 背景（badcase recvqgvKqRAcKg/recvqgw2wm58yF/recvqgxF51YhD8，2026-07-24）：
- * 真人招募经理带外操作（手工约面、拒绝面试）或候选人已面试的事实只存在于海绵
- * 工单里，pre_booking 复聊场景只认 Agent 自建 terminal 态，对带外工单全盲——
- * 已被经理拒面/已面试过的候选人仍被持续追问"要不要看看别的岗"。
- * post_booking 场景已有到点核验（checkBookingInvalidAtFire），本模块把同一
- * source of truth（海绵工单）接到 pre_booking 侧。
+ * 真人带外操作（手工约面、拒面）与候选人已面试的事实只存在于海绵工单里，而 pre_booking
+ * 复聊只认 Agent 自建 terminal 态——不接这道核验就会追问已被拒面/已面试的候选人。
+ * post_booking 侧已有到点核验（checkBookingInvalidAtFire），本模块把同一 source of truth
+ * 接到 pre_booking 侧。
  *
  * 判定纯确定性（工单状态 + 时间窗），无 LLM：
  * - 约面待确认 / 约面成功：带外报名在途 → 停。仅当工单面试时间已过去超过

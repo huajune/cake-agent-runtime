@@ -47,7 +47,7 @@ const OUTPUT_RULE_SOURCE_BY_ID: Record<string, string> = {
     'agent/guardrail/output/rules/booking-receipt.rule.ts（HardRulesService 调度）',
   interview_time_change_unconfirmed:
     'agent/guardrail/output/rules/booking-receipt.rule.ts（HardRulesService 调度）',
-  // ---- 2026-08-26 数据复核恢复（1 条 revise + 5 条 observe 哨兵）----
+  // ---- 数据复核恢复（1 条 revise + 5 条 observe 哨兵）----
   human_service_phrase_leak:
     'agent/guardrail/output/rules/internal-info-leaks.rule.ts（HardRulesService 调度）',
   booking_done_claim_without_submission:

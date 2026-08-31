@@ -624,7 +624,7 @@ const HEALTH_CERT_TIGHT_PATTERNS = [
   /面试(?:前|时).{0,12}(?:需|要|必须|携带|带|持有|出示).{0,12}健康证/,
   /健康证(?:原件)?.{0,12}(?:面试前|面试时).{0,12}(?:需|要|必须|携带|带|持有|出示)/,
   // "有证约" 的并列变体：jobName 里常写成 "（有证、有经验约）/（有证有经验约）"，
-  // 顿号+经验会把 "有证约" 三字拆断，导致字面关键词匹配不中（badcase a8gh8d9m：
+  // 顿号+经验会把 "有证约" 三字拆断，导致字面关键词匹配不中（
   // "后厨（有证、有经验约）" 未识别为收紧，无证候选人 ready_to_book 直至 booking 成功）。
   /有证[、，,\s]*(?:有?经验[、，,\s]*)?约/,
 ];
@@ -767,8 +767,8 @@ export function isResumeReviewFirstInterview(address: string | null | undefined)
  * - 岗位配了时段但流程是"先审简历、通过后由面试官另行通知"（isResumeReviewFirstInterview）。
  *
  * 收敛到这一处，确保 precheck（决定 nextAction/是否收"面试时间"）与 booking（决定
- * interviewTime 是否必填）口径一致，避免二者漂移（badcase chat 6a2fac72…：precheck 放行
- * wait_notice 但 booking 仍按"有时段"要 interviewTime，把预约打回）。
+ * interviewTime 是否必填）口径一致：二者漂移会让 precheck 放行 wait_notice 而 booking
+ * 仍要 interviewTime，预约被打回。
  */
 export function isWaitNoticeInterview(analysis: JobPolicyAnalysis): boolean {
   return (

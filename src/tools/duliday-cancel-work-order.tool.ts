@@ -158,7 +158,7 @@ export function buildCancelWorkOrderTool(
         const tokenContext = buildSpongeTokenContext(context);
 
         // B5-1 工单归属核验：workOrderId 必须在候选人当前有效预约（active_booking）集合内。
-        // 记忆污染/示例回声可能让模型引用根本不存在或不属于本人的"预约"（badcase 6e9ar9gd：
+        // 记忆污染/示例回声可能让模型引用根本不存在或不属于本人的"预约"（
         // Agent 声称取消一个臆造的上海预约），取消是不可逆动作，必须锚定真实工单证据。
         try {
           const activeBookings = await longTermService.getActiveBookings(
@@ -189,7 +189,7 @@ export function buildCancelWorkOrderTool(
           );
         }
 
-        // B5-2 工单状态核验：面试已通过/入职推进中的工单不可自助取消（badcase j8ed80tk：
+        // B5-2 工单状态核验：面试已通过/入职推进中的工单不可自助取消（
         // 面试面完了还取消工单）。海绵查询失败时降级放行——status 守卫是 best-effort，
         // 不能让海绵抖动把正常取消都打成转人工。
         try {

@@ -110,7 +110,7 @@ export class GeocodingService {
   /**
    * 逆地理编码：经纬度 → 行政区划（候选人资料证据化 A2）。
    *
-   * 定位分享消息的坐标是候选人给出的最强位置证据（badcase 6a618a6e：候选人发了
+   * 定位分享消息的坐标是候选人给出的最强位置证据（候选人发了
    * GPS 定位，invite 城市门仍连拒 3 次要求字面报城市）。渲染文本常无城市名
    * （"黎明村98号楼（No Address）"），必须坐标反解。
    * 文档：https://lbs.amap.com/api/webservice/guide/api/georegeo#regeo
@@ -481,8 +481,8 @@ export class GeocodingService {
    * AMAP 业务层失败（status !== '1'）上报：落 monitoring_error_logs + 飞书告警。
    *
    * 配额/密钥类 infocode（见 AMAP_SYSTEMIC_INFOCODES）意味着地理解析对所有候选人
-   * 降级为"查无结果"，与单条地址解析不出来性质不同，只打日志会静默吞掉整条链路
-   * 的失败（2026-07-28 生产账号日配额耗尽、监控 0 感知）。dedupe 按 infocode 聚合，
+   * 降级为"查无结果"，与单条地址解析不出来性质不同——只打日志会让整条链路的失败静默
+   * （日配额耗尽时监控零感知）。dedupe 按 infocode 聚合，
    * 飞书侧由 ALERT_THROTTLE 节流，monitoring_error_logs 每次都落。
    */
   private reportAmapFailure(action: string, data: unknown, query: string): void {

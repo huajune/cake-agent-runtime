@@ -209,10 +209,9 @@ export class BadcaseGovernanceDocumentService {
     const root = blockById.get(document.documentId);
     // 按文档顺序展开根级块及其后代。
     //
-    // 只扫根级会漏掉容器块内部的文本：文档抬头的「当前剩余 N 个未解决问题」与
-    // 「更新时间：…」写在高亮块（callout, block_type 19）里，callout 自身没有文本、
-    // 文本挂在它的 children 上，因此旧实现的正则永远匹配不到，抬头数字长期停在
-    // 首次写入的值（2026-08-06 巡检实测：正文已刷成 39，抬头仍是 65）。
+    // 只扫根级会漏掉容器块内部的文本：文档抬头的「当前剩余 N 个未解决问题」与「更新时间」
+    // 写在高亮块（callout, block_type 19）里，callout 自身没有文本、文本挂在 children 上，
+    // 只扫根级则抬头数字永远停在首次写入的值。
     const order: DocxBlock[] = [];
     const walk = (ids: string[] | undefined, depth: number) => {
       for (const id of ids || []) {

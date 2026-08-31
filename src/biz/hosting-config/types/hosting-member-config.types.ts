@@ -20,7 +20,7 @@ export interface HostingMemberEntry {
   /**
    * 企微账号对外昵称（候选人聊天界面看到的名字，如"东升"）。
    * 注入 Agent system prompt 身份段，让模型确知自己叫什么——防止被候选人追问
-   * 姓名时现编（badcase chat 6a5dedb2ce406a6aeee1ea62 自称"李娜"）。
+   * 姓名时现编（badcase 自称"李娜"）。
    */
   wecomNickname?: string;
   /** 账号人设性别（"男"/"女"）；同上注入身份段，防止性别答反。 */

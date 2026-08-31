@@ -81,22 +81,13 @@ export const DIRTY_ALIAS_EXCLUSIONS: ReadonlyMap<string, string> = new Map([
 ]);
 
 /*
- * DEFERRED_COUNTY_BACKFILL（"余姚防线"待补录登记表）已于 2026-08-14 整体下线，
- * 连同 geo:validate 原检查项 7 一并移除。理由：
+ * 待补录县级市登记表（DEFERRED_COUNTY_BACKFILL）与 geo:validate 检查项 7 已下线：那批
+ * 县级市在 `NATIONAL_COUNTY_LEVEL_CITY_TO_PREFECTURE` 里本就有正确父级映射，真正的闸门
+ * 是单个开关 `GEO_NATIONAL_COUNTY_MAPPING_ENABLED`。
  *
- * 1. **登记表与生成表重复**：23 条待补录县级市（余姚/慈溪/太仓/常熟/张家港/胶州/
- *    宜都/松滋/麻城/枣阳/瑞金/新民…）在 `NATIONAL_COUNTY_LEVEL_CITY_TO_PREFECTURE`
- *    里**本来就全部有正确父级映射**（§9.2 对照表 28 行实测）。真正的闸门是单个开关
- *    `GEO_NATIONAL_COUNTY_MAPPING_ENABLED`——它一开，23 条同时生效。把同一件事拆成
- *    23 条待办登记 + 一条 CI 检查去守这张待办表，是纯仪式。
- * 2. **三周生产零命中**：2026-07-22~08-13 观测（约 22,800 回合）中，这 23 个县级市
- *    **一次都没有被查询过**，不存在真实业务需求信号。
- * 3. **阻塞条件是外部的**：补录前置的口径验证卡在"宁波/苏州全城 0 在库岗位"
- *    （2026-07-30 真实海绵只读实测），属数据侧条件，不是地理域的工程债。
- *
- * 何时需要重新处理：某个县级市出现真实查询且解析失败时，按昆山法（真实海绵只读
- * 查询确认 storeCityName/storeRegionName 口径）单条补录进
- * `COUNTY_LEVEL_CITY_TO_PREFECTURE`，或直接评估开启上述开关。
+ * 某个县级市出现真实查询且解析失败时，按昆山法（真实海绵只读查询确认
+ * storeCityName/storeRegionName 口径）单条补录进 `COUNTY_LEVEL_CITY_TO_PREFECTURE`，
+ * 或直接评估开启上述开关。
  */
 
 /**

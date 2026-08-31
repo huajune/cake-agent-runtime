@@ -70,8 +70,7 @@ export interface CandidateCollectedField<T = string | number> {
  *
  * 这不是 accepted fact，**三禁令**：消费者只能把它渲染成「值（如有误请改）」；
  * 不得据此拒绝候选人、不得据此提交报名、不得把来源升级成 candidate。
- *
- * 2026-08-12 从性别推广到全字段：约束力在三禁令本身，不在字段数量。
+ * 适用于全部字段——约束力在三禁令本身，不在字段数量。
  */
 export interface CandidatePrefillHint {
   value: string;

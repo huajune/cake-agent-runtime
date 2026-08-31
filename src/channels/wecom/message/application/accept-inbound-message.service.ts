@@ -43,7 +43,7 @@ const HUMAN_INTERVENTION_SOURCES = new Set<MessageSource>([
 // 人工介入信号只认「真人手打文字」。仅 TEXT 类型才算真人介入，其余一律不暂停托管：
 // 图片/语音/表情/卡片等结构化或非逐字输入都排除。典型误报：invite_to_group 成功后平台向候选人
 // 发出的「入群邀请卡片」会以自发消息回灌（isSelf=true + source=MOBILE_PUSH + messageType=ROOM_INVITE），
-// 只看 source 不看 messageType 会把它误判成真人介入 → 误暂停托管 + 误告警（2026-06-17 李宇杭 case）。
+// 只看 source 不看 messageType 会把它误判成真人介入 → 误暂停托管 + 误告警（李宇杭 case）。
 const HUMAN_INTERVENTION_MESSAGE_TYPE = MessageType.TEXT;
 
 // 暂停托管暗号：真人手打文字内容必须恰好等于「~」才触发暂停，避免经理日常正常回复被误判为介入。
@@ -384,7 +384,7 @@ export class AcceptInboundMessageService {
     target[key] = value;
   }
 
-  // 入站预描述分支已废弃（2026-08-05 用户裁定，visual-fact-structuring 链路简化）：
+  // 入站预描述分支已废弃（用户裁定，visual-fact-structuring 链路简化）：
   // 主聊链路按输入换模型（executor 有图跳非多模态候选），预描述唯一剩余场景
   // 「全链纯文本」由 reply-workflow 的运行时兼容重跑（describeAndUpdate → 文本重跑）兜底，
   // 无需在入站多留一条条件分支。自侧消息与漏调兜底的描述触发不受影响。

@@ -38,7 +38,7 @@ export class OpsEventsRepository extends BaseRepository {
     input: RecordOpsEventInput & { occurredAt: Date | string },
   ): Promise<OpsEventWriteResult> {
     // 走 BaseRepository.rpc：受进程级熔断器保护（DB 濒死时快速失败、记录故障），
-    // 避免绕过 2026-06-04 事故后加固的熔断逻辑。null = 不可用/熔断/出错 → 'failed'。
+    // 避免绕过 事故后加固的熔断逻辑。null = 不可用/熔断/出错 → 'failed'。
     const data = await this.rpc<{ inserted?: boolean }>('upsert_ops_event', {
       p_corp_id: input.corpId,
       p_event_name: input.eventName,

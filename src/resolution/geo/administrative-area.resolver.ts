@@ -77,9 +77,8 @@ const MULTI_ETHNIC_AREA_NAME_PREFIXES: ReadonlySet<string> = (() => {
  * 它们的归属地由 resolveCityFromDistrict / resolveCityFromGeoSignals 另行解析，
  * 占着 pref.city 只会让城市门拿到错误结论。
  *
- * 存在的原因（2026-08-06 生产观测）：抽取污染把 `hello` / `null` / `只晚班` /
- * `我是应聘的` 这类短串写进 pref.city，纯形状门（长度 + 标点 + 疑问尾词）对它们
- * 全部放行，下游 geocode 据此发出"你现在是在上海市这边找工作吗"的多余反问。
+ * 存在的原因：抽取污染会把 `hello` / `null` / `只晚班` 这类短串写进 pref.city，纯形状门
+ * （长度 + 标点 + 疑问尾词）对它们全部放行，下游 geocode 据此发出多余的城市反问。
  * 短串靠形状分辨不了真假城市，只能靠数据表认领。
  */
 export function isRecognizedCityName(value: string | null | undefined): boolean {

@@ -49,8 +49,7 @@ export interface RepairRegressionContext {
 /**
  * 首版命中这些规则时，首版整体不是候选人可见正文（内部分析/自我旁白/异常
  * completion），结构化行统计的分母是脏的——被数进"结构"的正是违规脚手架，
- * structure_collapsed 对这类首版必然误报（2026-08-27 生产案 batch_6a8faabb…：
- * 修复版合格，却因结构坍缩两版都不投，候选人整轮静默）。
+ * structure_collapsed 对这类首版必然误报，合格的修复版会连同首版一起被拦成整轮静默。
  */
 const STRUCTURE_IS_VIOLATION_RULE_IDS: ReadonlySet<string> = new Set([
   'internal_output_leak',
@@ -81,10 +80,9 @@ function countStructuredLines(text: string): number {
 /**
  * 岗位事实的**出现次数**（不是行数）。
  *
- * 2026-07-30 审计 P2-8：若按行统计，首版把多个岗位写成一段散文（单行）时
- * 计数恒为 1，`polarity_reversed` 的 `>= 2` 门槛永远够不到——2026-07-27 生产实例
- * batch_6a6726d4… 首版散文式给出最高薪岗位、修复版反转成"附近 10 公里内没岗位"，
- * 两个检测器都没拦住并已投递。全局计数下，散文与分行结构同等达标。
+ * 按行统计会漏：首版把多个岗位写成一段散文（单行）时计数恒为 1，`polarity_reversed` 的
+ * `>= 2` 门槛永远够不到，散文式首版被反转成"附近没岗位"也拦不住。全局计数下，散文与
+ * 分行结构同等达标。
  */
 function countJobFactOccurrences(text: string): number {
   return text.match(new RegExp(QUANTIFIED_JOB_FACT_PATTERN, 'gu'))?.length ?? 0;

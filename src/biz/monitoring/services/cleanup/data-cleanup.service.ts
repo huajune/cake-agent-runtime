@@ -400,7 +400,7 @@ export class DataCleanupService implements OnModuleInit {
       if (updatedCount > 0) {
         this.logger.log(`[数据清理] 已将 ${updatedCount} 条卡住的 processing 记录标记为 timeout`);
         // timeout = 候选人消息被静默丢弃、无任何回复（生产日均 ~7 条，曾连带复聊误停，
-        // 见 chat 6a62c6f8）。只落日志运营无感知，按批告警到飞书让静默丢消息可被运营看见。
+        // 见 ）。只落日志运营无感知，按批告警到飞书让静默丢消息可被运营看见。
         this.exceptionNotifier?.notifyAsync({
           source: {
             subsystem: 'monitoring',

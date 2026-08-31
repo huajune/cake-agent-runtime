@@ -379,7 +379,7 @@ export class FollowUpProcessor implements OnModuleInit {
 
     // 1.4) 候选人待答前置闸：候选人最后一条消息晚于我方最后一条消息，且从未进过
     // 处理管道（无对应 message_processing_record）时，说明该轮被静默丢弃、候选人
-    // 还在等回复——任何主动触达都不该压在未答消息上面（badcase recvqz4yWbdIKm：
+    // 还在等回复——任何主动触达都不该压在未答消息上面（
     // 候选人 7/24 自曝暑假工身份的三条消息被丢，7/27 面试提醒照发触怒候选人）。
     // 与"Agent 主动沉默"区分：主动沉默的轮次有处理记录，本闸不拦。
     // 命中即停止并落触达底账（reason=pending_candidate_message），该信号同时是
@@ -467,7 +467,7 @@ export class FollowUpProcessor implements OnModuleInit {
     // 1.6) 同 session 触达冷却：跨场景兜底互斥，避免候选人短时间内收到**连续无回应**
     // 追问。候选人在上次触达后已回话时冷却不适用（对话恢复过，本次锚点是新一段
     // 沉默）——否则开场唤醒会把 booking_incomplete 等深漏斗跟进一并压住
-    // （badcase recvqD1PRROepW）。
+    // 。
     if (
       !scenario.sessionCooldownExempt &&
       (await this.touchLedger.isInSessionTouchCooldown(sessionRef.sessionId, now, {

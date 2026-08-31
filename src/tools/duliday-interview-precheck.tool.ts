@@ -77,8 +77,8 @@ const logger = new Logger('duliday_interview_precheck');
  * description 与每次回执共用这一条照发指令，避免模型同时看到两套标签/模板口径。
  *
  * 照发的硬约束只在**标签与行结构**（标签逐字=契约 labelTitle，候选人回填才对得上槽位）；
- * 冒号右侧的值明确放行预填——会话已知答案不填进去，模型就被「勿重复追问」夹死，
- * 只能整句改写模板逃生（batch 6a8fd314，2026-08-27 用户裁定：预填是正确行为）。
+ * 冒号右侧的值明确放行预填（用户裁定预填是正确行为）——会话已知答案不填进去，模型就被
+ * 「勿重复追问」夹死，只能整句改写模板逃生。
  * 状态机的标准清单判定同口径：已预填值不算再次发问（见 collection-core）。
  */
 export const COLLECTION_TEMPLATE_SEND_INSTRUCTION =
@@ -163,8 +163,8 @@ interface UnmatchedAnswer {
 
 /**
  * recap 确认公证拒收 → 模型可见回执。没有它模型只看到 confirm_collection 原地踏步，
- * 会把"确认没入账"误诊成系统故障转人工（生产 chat 6a951ac7ce406a6aeea1338c），或者
- * 假宣称已提交（chat 6a951cadce406a6aeed925e7）。
+ * 会把"确认没入账"误诊成系统故障转人工，或者
+ * 假宣称已提交。
  */
 const RECAP_CONFIRMATION_REJECTION_HINTS: Record<RecapConfirmationRejectionReason, string> = {
   recap_not_required: '当前表单无外部预填、不需要复述确认，不必提交 recapConfirmation。',
@@ -185,7 +185,7 @@ const RECAP_CONFIRMATION_REJECTION_HINTS: Record<RecapConfirmationRejectionReaso
  *
  * 此前拒收只落 `collection_form_audit` 给我们看，工具返回给模型的只有
  * `missingFields` ——**模型不知道自己为什么被拒**，于是要么原样重投、要么回头再问
- * 候选人一遍（生产 chat `6a8d583bce406a6aee063e2b`：年龄被拒后候选人被连问两遍）。
+ * 候选人一遍（年龄被拒后候选人被连问两遍）。
  * 与 0826 给 labelTitle 定位失败补 `unmatchedAnswers` 是同一类修法、同一种形状。
  */
 interface RejectedAnswer {
@@ -216,7 +216,7 @@ const REJECTION_HINTS: Readonly<Record<string, string>> = {
 /**
  * FILE 型字段的 invalid_value_shape 专属提示，压过通用条目。通用提示的「核对后重投」
  * 对文件字段是死路：文字永远过不了附件 URL 形态门，重投只会烧掉「读不懂两次转人工」
- * 的熔断配额（生产 chat 6a9117face406a6aee7f99c9：候选人打字填「上传简历」，模型
+ * 的熔断配额（候选人打字填「上传简历」，模型
  * 按通用提示同轮重投，一轮熔断转人工）。正确动作只有一个：让候选人把文件发过来。
  */
 const FILE_SHAPE_HINT =
@@ -224,8 +224,8 @@ const FILE_SHAPE_HINT =
   '文字描述无法作为它的值，不要原样重投；请明确告诉候选人：这一项需要直接把简历文件或简历截图/照片发过来，打字发文字没法录入。';
 
 /**
- * 面试时间语义族封闭词表（NFKC + 去空白后整串匹配）。生产回放 2026-08-26：5% 可判定答案
- * 把候选人期望面试时间误投成 labelTitle「面试时间」，定位失败静默丢弃，可约性校验从未运行。
+ * 面试时间语义族封闭词表（NFKC + 去空白后整串匹配）。模型会把候选人期望面试时间误投成
+ * labelTitle「面试时间」，定位失败即静默丢弃，可约性校验从未运行。
  * 只有**定位不到契约槽位**的条目才进本词表判定——真契约字段永远优先。
  */
 const INTERVIEW_TIME_TITLE_PATTERN =
@@ -285,7 +285,7 @@ function intakeFieldValueProposals(params: {
 
     proposals.push(answer);
     // 把**本岗合法标题**逐字列进 hint，而不是只叫模型"去看 requiredFields"。
-    // 生产实证（0831，chat 6a8e4e2c… job 524240）：契约只有 5 个字段，模型每轮都额外
+    // 生产实证（0831，… job 524240）：契约只有 5 个字段，模型每轮都额外
     // 提交「学历」「健康证」「身份（学生/社会人士）」三个不存在的标题，连续 4 轮
     // 收到同一句"该标题不在本岗契约"的回执仍原样重投——指路式提示没能让它自我纠正。
     // 直接给出可选集合，纠正动作就不再需要模型回头做一次交叉引用。

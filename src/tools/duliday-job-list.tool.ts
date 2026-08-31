@@ -104,7 +104,7 @@ const GEOCODE_ANCHOR_COORD_TOLERANCE = 0.005;
  * 模型自编坐标判定阈值（km）：本轮存在 geocode 锚点、但模型传入坐标与所有锚点
  * 偏差都超过该值时，判定坐标疑似模型凭记忆自编（方案 11.3 修复点 1，v3.2）。
  * shadow 观测：只记 queryMeta.anchor 并告警，不改变查询行为。
- * 实证 chat 6a60528bce406a6aee8004f9：模型自编坐标与真实锚点偏差 3.7km，
+ * 实证 ：模型自编坐标与真实锚点偏差 3.7km，
  * 5 公里搜索圈整体画错位置（4.5km 门店被算成 1.2km）。
  */
 const MODEL_SUPPLIED_COORD_DEVIATION_KM = 1;
@@ -113,7 +113,7 @@ const MODEL_SUPPLIED_COORD_DEVIATION_KM = 1;
  * 候选人主动要求更大范围、或点名品牌 0 条放宽复查时，模型可显式传更大 range
  * 放宽过滤（与 DESCRIPTION「点名品牌 0 条时放大到 30000」口径一致）；
  * 上限截断防止把全城岗位都算作"附近"。
- * badcase batch_6a850deece406a6aee24c149：此前本地过滤只读业务阈值，模型传
+ * badcase ：此前本地过滤只读业务阈值，模型传
  * range=20000 实际仍按 10km 过滤，模型据此对候选人谎称"扩到 20 公里查了没有"。
  */
 const EXPLICIT_RANGE_CAP_KM = 30;
@@ -402,7 +402,7 @@ function resolveCandidateAge(context: ToolBuildContext): number | null {
  * 解析候选人是否学生（本轮规则解析结果优先，其次会话事实；不依赖 LLM 入参）。
  *
  * 只用于学生身份硬过滤：仅 true（候选人明确自报学生）触发；false 有抽取
- * 污染史（badcase 6a673402 凭空落 false），调用方不得据 false 做过滤。
+ * 污染史（badcase 凭空落 false），调用方不得据 false 做过滤。
  */
 function resolveCandidateIsStudent(context: ToolBuildContext): boolean | null {
   const sources = [
@@ -689,7 +689,7 @@ export function buildJobListTool(
         includeInterviewProcess = false,
         candidateScheduleConstraint,
       }) => {
-        // 经纬度对调确定性纠偏（badcase 6a86a508：模型 reasoning 绑定正确、发射的
+        // 经纬度对调确定性纠偏（模型 reasoning 绑定正确、发射的
         // JSON 值却对调，圆心落到纬度 121° → 必然 0 条假"无岗"）。args 落库仍是模型
         // 原始入参，簇收敛继续用 lat 越界探针观测；此处只修查询行为并记 queryMeta。
         let coordSwapOriginal: { latitude: number; longitude: number } | null = null;
@@ -727,7 +727,7 @@ export function buildJobListTool(
           });
         }
 
-        // jobIdList provenance 闸门（badcase 6a6c4c13：候选人全程只聊东莞长安晚班兼职，
+        // jobIdList provenance 闸门（候选人全程只聊东莞长安晚班兼职，
         // 模型却在收尾轮凭空查 jobIdList=[53035]+新白鹿+上海——预训练知识幻觉成查询参数，
         // 还经无岗脚本把"新白鹿在上海"说给了候选人）。与 precheck/booking 的同名闸门同口径：
         // 按 jobId 精查只能用本会话真实召回过的 jobId；幻觉参数直接拦截，不打接口。
@@ -821,7 +821,7 @@ export function buildJobListTool(
         // sessionFacts.preferences.schedule_constraint。Agent 本轮调本工具时若没显式
         // 传 candidateScheduleConstraint，自动从 sessionFacts 兜底，避免 Agent 忘了
         // 拉回候选人原话（badcase 簇 schedule_constraint_forgotten）。
-        // 模型传了约束也不整体采信（badcase batch_6a4e430dce406a6aee7a3421）：
+        // 模型传了约束也不整体采信：
         // 候选人要"周六的兼职"，模型却传 {onlyEvenings:true} 把"周六"弄丢。持久化约束
         // 是候选人原话的高置信沉淀，须与模型入参逐字段合并：模型显式传的字段保留
         // （本轮新信息优先），漏传的字段由持久化约束补齐；空对象 {} 视同未传
@@ -880,7 +880,7 @@ export function buildJobListTool(
         // jobCategoryList 只做本地软排序信号、不下传 API；两道确定性剥离保住排序信号纯净度：
         // 1）用工形式词（兼职/全职/小时工/寒假工/暑假工 等）——是岗位 laborForm 属性，已有独立硬过滤；
         // 2）「店员/员工/工作人员」等泛化统称——不是真实工种名的子串，必然 0 命中，
-        //    会触发「无明确匹配工种」披露误导模型说"没有店员岗"（历史 badcase：果蔬好·天津 chat 6a66d888）。
+        //    会触发「无明确匹配工种」披露误导模型说"没有店员岗"。
         const laborFormStrip = stripLaborFormFromCategories(jobCategoryList);
         const umbrellaStrip = stripGenericPositionUmbrella(laborFormStrip.cleaned);
         const sanitizedJobCategoryList = umbrellaStrip.cleaned;
@@ -942,7 +942,7 @@ export function buildJobListTool(
         ];
 
         // 有坐标时丢弃 regionNameList：坐标（候选人真实位置）才是就近信号，区级精确过滤
-        // 与坐标 AND 在一起只会把隔壁区更近的门店排除掉（badcase 6a3356e2 同源）。模型偶尔
+        // 与坐标 AND 在一起只会把隔壁区更近的门店排除掉（badcase 同源）。模型偶尔
         // 同时传 region+location，此处统一归一成纯距离召回，坐标比区中心更精确。
         // 品牌意向不动（品牌豁免距离上限，交由品牌专属逻辑处理）。
         let regionDroppedForCoords = false;
@@ -994,7 +994,7 @@ export function buildJobListTool(
             recoveredCount: number;
           } = null;
 
-          // 跨轮重复查询检测（badcase 6a5dc7c4ce406a6aee57bf6d）：归一化后的实质过滤条件
+          // 跨轮重复查询检测：归一化后的实质过滤条件
           // 与上一轮完全一致时，结果必然相同——结果头部注入提醒，要求模型实质调整查询
           // 或按既有拉群优先阶梯兜底，不得复读"没有"。同轮 Bull 重试（turnId 相同）不触发。
           const querySignature = buildJobListQuerySignature({
@@ -1039,10 +1039,10 @@ export function buildJobListTool(
           // 是因为"发过请求但抛异常"不构成可告知候选人的查岗结论。
           context.ledger.jobs.jobListExecuted = true;
 
-          // 县级市行政层级兜底（生产 badcase 6a4f83a5ce406a6aeeeab4b2）：
-          // 候选人说“延吉市铁南”，确定性提取曾把“延吉”强制放进 cityNameList；但海绵
-          // 存的是 city=延边朝鲜族自治州、region=延吉市，导致正确坐标与错误 city 做 AND
-          // 后返回 0。已有精确坐标时，0 条后去掉 city 做一次 location-only 召回；为了避免
+          // 县级市行政层级兜底：候选人报县级市（“延吉市铁南”）时提取会把“延吉”放进
+          // cityNameList，而海绵存的是 city=延边朝鲜族自治州、region=延吉市，正确坐标与
+          // 错误 city 做 AND 后返回 0。已有精确坐标时，0 条后去掉 city 做一次 location-only
+          // 召回；为了避免
           // 边界坐标把邻市岗位带回来，只采纳 storeCityName/storeRegionName 仍能匹配原城市名
           // 的岗位。恢复查询失败不覆盖原始“0 条”语义。
           if (jobs.length === 0 && hasCoordinates && normalizedCityNameList.length > 0) {
@@ -1078,7 +1078,7 @@ export function buildJobListTool(
           // 门店名模糊匹配回退：去掉 storeNameList 后在同范围（城市/区域/品牌等）宽查，
           // 再按门店名本地模糊过滤。不能查全量（{ options }）——上游要求至少一个筛选
           // 条件，无筛选请求会被拒（"查询岗位时至少提供一个筛选条件"），把"该门店已
-          // 无在招岗位"这一合法结果污染成接口故障（badcase 6a266b51536c9654027cbf40）。
+          // 无在招岗位"这一合法结果污染成接口故障。
           if (jobs.length === 0 && storeNameList.length > 0) {
             const fallback = await fetchJobs({ ...fetchBaseParams, storeNameList: [] });
             if (fallback.jobs.length > 0) {
@@ -1097,7 +1097,7 @@ export function buildJobListTool(
             }
           }
 
-          // 区级精确过滤 → 距离召回 确定性兜底（修复生产 badcase 6a3356e2）。
+          // 区级精确过滤 → 距离召回的确定性兜底。
           // 模型把"候选人所在的区"塞进 regionNameList 时，后端做区级 storeRegionName 精确匹配，
           // 会把离候选人更近但注册地在隔壁区的门店整批漏掉（候选人在浦东，最近的店在宝山/杨浦
           // 8km 内，被 regionNameList:["浦东新区"] 卡没；而浦东本区岗位数并不低，靠"结果数偏低"
@@ -1229,7 +1229,7 @@ export function buildJobListTool(
           );
           // 模型显式传入 location.range 时，本地距离过滤以 range 为准（schema 契约：
           // 候选人要求更广/更窄半径时的放宽出口），超过 EXPLICIT_RANGE_CAP_KM 截断；
-          // 未传时按业务阈值兜底（badcase batch_6a850deece406a6aee24c149：此前只读
+          // 未传时按业务阈值兜底（此前只读
           // 阈值，range=20000 实际仍按 10km 过滤，模型据"附近 10km 内"的结果口径
           // 谎称"扩到 20 公里查了没有"）。
           const requestedRangeKm =
@@ -1338,7 +1338,7 @@ export function buildJobListTool(
           }
 
           // 品牌意向硬过滤（§8.2 入口标准化后为等值比较）：enforce 档把结果过滤到
-          // 实际应用的品牌 ID/标准名，杜绝跨品牌乱推（badcase bb012h5c：找大米先生
+          // 实际应用的品牌 ID/标准名，杜绝跨品牌乱推（找大米先生
           // 推史伟莎——sponge 某些场景做模糊匹配）。过滤后 0 条 fall through 到下方
           // no-match 路径，触发 noMatchScript 拉群兜底。
           const brandEqualityTarget = {
@@ -1371,9 +1371,9 @@ export function buildJobListTool(
 
           if (jobs.length === 0) {
             // 乡镇/街道/新镇/地标级地名被误当 regionNameList（川沙、九亭、周浦 等）：后端只精确
-            // 匹配区级 storeRegionName，这类地名必然命中 0 ≠ 该片区无岗（badcase
-            // batch_6a2fabf0536c9654020e6683：候选人答"川沙"，Agent 直接 regionNameList=["川沙"]
-            // 查 0 条就拉群收口）。无坐标、无高稳定主键、无品牌别名兜底时，引导 Agent 先 geocode
+            // 匹配区级 storeRegionName，这类地名必然命中 0 ≠ 该片区无岗（候选人答"川沙"、
+            // Agent 直接 regionNameList=["川沙"] 查 0 条就拉群收口）。
+            // 无坐标、无高稳定主键、无品牌别名兜底时，引导 Agent 先 geocode
             // 把地名规范成区级 district + 经纬度再重查，而不是照 noMatchScript 拉群。
             // 判定：规范县级行政区名以 区/县/旗/市 结尾；裸地名（川沙）或区名简称（浦东）视为需 geocode。
             const suspectedTownshipRegions = normalizedRegionNameList.filter(
@@ -1406,8 +1406,8 @@ export function buildJobListTool(
             }
 
             // 品牌查询命中 0 时，先和会话最近推荐过的品牌池做同音/字形回指匹配，
-            // 识别"刘姐妹"实指上轮推过的"成都你六姐"这类候选人口误（badcase
-            // batch_6a0c074c536c9654029b6930）。全未命中品牌库的入参已在入口标准化
+            // 识别"刘姐妹"实指上轮推过的"成都你六姐"这类候选人口误。
+            // 全未命中品牌库的入参已在入口标准化
             // 提前走 buildBrandRejectedResult；此处兜的是"品牌合法但查无岗位"的残余，
             // 用模型原始入参（口误原文）做回指。
             const hadBrandCondition =
@@ -1792,11 +1792,10 @@ export function buildJobListTool(
               coordsProvenance,
               coordsDeviationKm,
             },
-            // 地理信号冲突 shadow：会话事实的多个
-            // 地理信号指向不同城市时记录"本应 ambiguous"案例，仅观测不干预——
-            // 现行先命中先赢行为不变；enforce 已于 2026-08-14 终审 no-go（3 周 25 样本
-            // 真冲突 0 起，见 docs/architecture/geo-resolution.md §9.3），本字段今后
-            // 只作排障线索，无定时观测者，勿再当"待决策 shadow"推动。
+            // 地理信号冲突 shadow：多个地理信号指向不同城市时记录"本应 ambiguous"案例，
+            // 仅观测不干预，先命中先赢行为不变。enforce 已终审 no-go
+            // （见 docs/architecture/geo-resolution.md §9.3）——本字段只作排障线索，
+            // 勿再当"待决策 shadow"推动。
             // 传已确立会话城市做候选裁决：命中即打 adjudicatedByKnownCity，标记为
             // 同形地名一类噪音而非真冲突，让累计统计能分开两者。
             geoSignalConflictShadow: detectGeoSignalConflict(

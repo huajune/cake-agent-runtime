@@ -64,9 +64,8 @@ export type BadcaseDerivedStatus = '处理中' | '待验证' | '已解决';
  * 飞书多维表格同步服务
  *
  * 职责：写入 Agent 测试反馈 + BadCase 样本池状态回写与治理文档同步。
- * 「聊天记录」表的每日同步不在这里——由 ChatRecordSyncService 负责同步完整会话；
- * 本服务原有的 message_processing_records 片段同步入口已于 2026-08-17 删除
- *（零调用方，且片段数据会覆盖/重复写入 chat 表）。
+ * 「聊天记录」表的每日同步不在这里——由 ChatRecordSyncService 负责同步完整会话。
+ * 不要再加 message_processing_records 的片段同步入口：片段数据会覆盖/重复写入 chat 表。
  */
 @Injectable()
 export class FeishuBitableSyncService {
@@ -270,8 +269,8 @@ export class FeishuBitableSyncService {
         remarkParts.push(feedback.remark);
       }
       // 「分类」是单选列，飞书会为任何未知取值自动创建选项——analyze-skill 等自动提交
-      // 曾把 semantic_review 规则串原样塞进 errorType，把选项池污染到 174 个（2026-07-29
-      // 已存量清洗）。写入侧白名单归一：白名单外的原始标签归「15-其他」，原值落备注保留取证。
+      // 曾把 semantic_review 规则串原样塞进 errorType，把选项池污染到上百个。写入侧白名单
+      // 归一：白名单外的原始标签归「15-其他」，原值落备注保留取证。
       const normalizedCategory =
         feedback.type === 'badcase' && feedback.errorType
           ? FeishuBitableSyncService.BADCASE_CATEGORY_WHITELIST.has(feedback.errorType)
@@ -406,7 +405,7 @@ export class FeishuBitableSyncService {
       /**
        * 调用方从生产库反推出的证据台账（真相源）。
        * 飞书的「测试证据JSON」列存在时以列为准并继续写列；列被删时用它兜底，
-       * 这样双门禁不依赖飞书表结构，2026-07-29 删列后的关闭死锁才解得开。
+       * 这样双门禁不依赖飞书表结构 删列后的关闭死锁才解得开。
        */
       ledger?: BadcaseEvidenceLedger;
     }>,

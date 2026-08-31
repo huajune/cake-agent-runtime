@@ -6,7 +6,7 @@ import { asRecord } from '../output-rule.types';
 /**
  * 报名完成时态宣称 ↔ 提交动作对账哨兵。
  *
- * 背景（2026-08-26 恢复裁定）：规则简化改造下线了 `booking_promise_without_booking`
+ * 背景：规则简化改造下线了 `booking_promise_without_booking`
  * ——生产 7 天抽样证实其将来时口径几乎全部命中"资料发我，我帮你约"的合法收资话术
  * （约 60 次/天假阳），不予恢复。但它退场后，**零调用却用完成时态宣称"已帮你报好/
  * 报名成功"** 的假宣称失去了唯一确定性哨兵：booking_receipt_mismatch 只对账本轮

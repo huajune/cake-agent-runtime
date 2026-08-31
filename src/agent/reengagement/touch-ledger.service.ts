@@ -122,9 +122,8 @@ return 1
    * 短时间内被连环追问；候选人在上次触达之后已经回过话时，上次触达已经"落地"
    * （对话恢复过），本次锚点是新一段沉默，冷却不适用。
    *
-   * badcase recvqD1PRROepW（chat 6a672f5b）：开场唤醒 18:14 发出后候选人回来聊到
-   * 选岗选时间，随后收资中断；两次 booking_incomplete 深漏斗跟进都被开场唤醒消耗的
-   * 冷却窗压住（stopped=session_touch_cooldown），候选人流失。
+   * 不这样算时，开场唤醒消耗的冷却窗会压住其后的深漏斗跟进（stopped=session_touch_cooldown），
+   * 即便候选人中途已经回来聊过。
    *
    * @param candidateRepliedAt 候选人最近一条消息时间戳；晚于上次触达即视为冷却已被
    *   对话恢复打断。不传/为空时保持旧行为（纯时间窗冷却），fail conservative。

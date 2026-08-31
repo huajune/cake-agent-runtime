@@ -293,8 +293,7 @@ export class MessageParser {
    * 剥离 injectTimeContext 追加的时间后缀。
    *
    * 用于下游需要对消息做正则/模式匹配（如识别"我是xx"加好友硬规则）时，
-   * 先还原成用户原始发出的文本，避免被时间后缀破坏锚点（badcase
-   * `batch_69e9bba2536c9654026522da_*`）。
+   * 先还原成用户原始发出的文本，避免被时间后缀破坏锚点。
    */
   static stripTimeContext(content: string): string {
     return stripTimeMarkup(content);

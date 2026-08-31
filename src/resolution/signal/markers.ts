@@ -15,7 +15,7 @@
 
 import type { LocationShareCoordinates } from './types';
 
-// ── 时间上下文后缀 `[消息发送时间：2026-06-03 12:11 星期三]` ──────────────────
+// ── 时间上下文后缀 `[消息发送时间：12:11 星期三]` ──────────────────
 
 export const TIME_CONTEXT_LABEL = '消息发送时间';
 
@@ -132,8 +132,8 @@ export function formatImageCountPlaceholder(count: number): string {
 // ── 多模态选图标签 `[图片 messageId=…]` / `[表情 messageId=…]` ────────────────
 
 /**
- * 多 part 消息扁平化后，描述文本前面还会挂着这个标签（生产实例 chat 6a714c00 的
- * content 数组是 `[图片 messageId=…]` + image + `[图片消息] 描述`），消息级
+ * 多 part 消息扁平化后，描述文本前面还会挂着这个标签（content 数组形如
+ * `[图片 messageId=…]` + image + `[图片消息] 描述`），消息级
  * startsWith 判据会因此落空，故需要逐 part 判定。
  */
 const VISUAL_PLACEHOLDER_TAG_RE = /^\s*\[(?:图片|表情)\s+messageId=[^\]]*\]\s*$/u;

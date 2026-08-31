@@ -13,7 +13,7 @@ import {
 
 /**
  * 登记当前实际运行的封闭确定性规则：执行档（revise/block）+ 少量 observe 哨兵。
- * observe 哨兵只落档不改变出站裁决（2026-08-26 数据复核恢复）；新规则一律 observe
+ * observe 哨兵只落档不改变出站裁决；新规则一律 observe
  * 入场，升档须 ≥2 周判例且精确率 ≥90%。
  */
 export interface OutputRuleCatalogMetadata extends OutputRulePolicy {
@@ -189,11 +189,11 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     residualRisk: '低置信或多候选不强行采用。',
     verification: V,
   },
-  // ——以下为 2026-08-26 数据复核恢复的规则（规则简化改造的定点回补，非整体回滚）——
+  // ——以下为 数据复核恢复的规则（规则简化改造的定点回补，非整体回滚）——
   {
     id: 'human_service_phrase_leak',
-    // 2026-07-07 observe 入场；2026-07-21 升 revise：两周 5 判例全真阳性零误报。
-    // 2026-08-26 恢复：简化改造误删后，近 7 天生产仍有 2 例真阳人设露馅直发前被拦，
+    // observe 入场；升 revise：两周 5 判例全真阳性零误报。
+    // 恢复：简化改造误删后，近 7 天生产仍有 2 例真阳人设露馅直发前被拦，
     // 封闭词形符合"只保留封闭词形"的保留标准。
     action: GUARDRAIL_ACTION.REVISE,
     priority: GUARDRAIL_PRIORITY.P2,
@@ -236,7 +236,7 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'requested_brand_mismatch',
-    // 2026-07-27 降 observe：结构化标题解析可能把门店名当品牌名，确定性修复易改坏正确回复。
+    // 降 observe：结构化标题解析可能把门店名当品牌名，确定性修复易改坏正确回复。
     action: GUARDRAIL_ACTION.OBSERVE,
     priority: GUARDRAIL_PRIORITY.P1,
     description: '候选人/工具已指定品牌，回复却结构化推荐了其它品牌的岗位。',

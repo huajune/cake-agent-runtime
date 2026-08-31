@@ -287,7 +287,7 @@ export function produceTurnHints(
     assertedAt: new Date().toISOString(),
     sequence: 0,
   };
-  // 查表键必须剥时间后缀（评审阻断项，2026-08-05）：map 键是 DB 原始内容（无后缀），
+  // 查表键必须剥时间后缀（评审阻断项）：map 键是 DB 原始内容（无后缀），
   // 而生产窗口消息带 injectTimeContext 注入的 `\n[消息发送时间：…]` 后缀——不剥则
   // 查表永远 miss，sheet 授权域静默失效、全部回落文本兜底（测试曾因 fixture 无后缀漏过）。
   const sheetFor = (message: string): FinalizedVisualFactSheet | undefined =>
@@ -315,7 +315,7 @@ export function produceTurnHints(
     );
   }
 
-  // 自陈收窄（badcase 2026-08-04 vkikct39）：候选人转发的第三方岗位截图，其 vision
+  // 自陈收窄（badcase vkikct39）：候选人转发的第三方岗位截图，其 vision
   // 描述被回写进用户消息内容，描述里**发布方**的手机号与"18-40岁"岗位年龄区间会被
   // 身份字段提取器当成候选人自陈。与 stripQuotedBlocks 同一理由：第三方内容不是自陈。
   //
@@ -472,7 +472,7 @@ export function produceTurnHints(
  * 品类兜底行为不回归（已上线的咖啡品类召回）。
  *
  * 引用块在**本函数内**剥离，不依赖调用方：引用块里的品牌是招募经理/Agent 的话，
- * 不是候选人自陈。2026-07-21 生产实例 6a5f21ef——候选人引用 Agent 的
+ * 不是候选人自陈。生产实例 6a5f21ef——候选人引用 Agent 的
  * 「零售群是超市、便利店、门店导购这类」，"便利店"命中品牌"7-11便利店"并进入
  * 提取提示词，形成 Agent 说品牌 → 候选人引用 → 品牌被当作其兴趣的自污染回路。
  * 根因是调用方（session.service extractFacts）传了原始消息，而剥离契约只写在
@@ -644,11 +644,8 @@ function extractExperience(message: string): string | null {
   if (labeled) return sanitizeExperienceText(labeled);
 
   // 时长里的空白只允许行内空格/制表符：`\s` 会吃掉 `\n`，让匹配跨行拼接。
-  // badcase 2026-08-06 chat 6a1e42c5（近 7 天 9 个会话、34 个 turn 同形态）：
-  // 候选人按收资模板换行回填"电话13872896163\n年龄22"，正文由"电话1387289616"起头、
-  // `\d+` 吃掉"3"、`\s*` 跨过换行、`年` 取自下一行"年龄"，得到
-  // interview.experience="电话13872896163年"（source=rule / confidence=high），
-  // 并已随 precheck 的 templateText 渲染成"过往公司+岗位+年限：电话13872896163年"。
+  // 候选人按收资模板换行回填时（"电话…\n年龄22"），跨行匹配会把手机号尾数与下一行的
+  // "年"拼成 experience="电话…年"，并随 precheck 模板渲染出去。
   const inlineSpace = '[ \\t]*';
   const durationPattern = `(?:\\d+|[一二两三四五六七八九十半]+)${inlineSpace}(?:个?多?月|个月|月多|月|年多?|年)`;
   const rolePattern =

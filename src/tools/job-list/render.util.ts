@@ -164,14 +164,10 @@ const HEALTH_CERT_LABEL: Record<HardRequirements['healthCert'], string | null> =
  * - 用 "> ⚠️ 候选人硬性约束" 引用块包裹，让 LLM 容易识别这是不可妥协的硬规则。
  * - 文案直接告诉 LLM 该如何处理，避免它把硬约束当软建议处理。
  *
- * ⚠️ 户籍这类敏感门槛的文案**只准写禁令，不准派采集动作**——banner 与岗位数据同在
- * 当轮上下文里、比系统提示词更贴近决策，一旦写"不掌握时先确认/委婉了解"，模型就会
- * 真的去问候选人籍贯，把内部筛选条件捅到台面上。2026-08-06 badcase
- * （chat 6a744a86，记录 249939）：banner 写着"不掌握候选人户籍时按敏感门槛话术委婉
- * 了解后内部判断"，模型据此发出「这家对户籍有要求，方便问一下你老家是哪里的吗」，
- * 候选人当场质问"为什么找工作还要问我户籍"。30 天内同族探问 6 条。
- * 该门槛真正的执行点在 booking-guards 的 isHouseholdRequirementViolated 硬闸，
- * 数据来自收资 checklist 的「籍贯/户籍」字段（表单场景合规），不需要口头打听。
+ * ⚠️ 户籍这类敏感门槛的文案**只准写禁令，不准派采集动作**：banner 与岗位数据同在当轮
+ * 上下文、比系统提示词更贴近决策，写"不掌握时先确认/委婉了解"模型就会真去问候选人籍贯，
+ * 把内部筛选条件捅到台面上。该门槛的执行点是 booking-guards 的
+ * isHouseholdRequirementViolated 硬闸，数据来自收资 checklist 的籍贯字段，不需要口头打听。
  */
 function renderHardRequirementsBanner(hr: HardRequirements): string {
   const lines: string[] = [];
@@ -217,13 +213,13 @@ function asNumber(value: unknown): number | null {
 // ==================== 模块 1：基本信息 ====================
 
 /**
- * 合作模式（basicInfo.cooperationMode，海绵 2026-08-06 新增）→ 发薪/签约主体口径。
+ * 合作模式（basicInfo.cooperationMode，海绵 新增）→ 发薪/签约主体口径。
  *
  * 候选人高频追问"工资是你们发还是门店发""签的是谁的合同"，答案完全由合作模式决定，
  * 而 BPO/RPO 是商业内部术语，直接把裸值丢给模型有两个风险：一是它可能原样说给候选人，
  * 二是它得自己记住映射关系。所以这里**只输出结论**，裸值仅作 🔒 内部标注保留。
  *
- * 口径来源：2026-08-06 运营确认。注意两条规则的 RPO 分支**不一样**——
+ * 口径来源：运营确认。注意两条规则的 RPO 分支**不一样**——
  * 发薪在 RPO 下两种都可能（必须转人工），签约在 RPO 下主体确定是客户（只是形式不定）。
  */
 function renderCooperationModeLines(rawMode: string | null): string[] {
@@ -346,7 +342,7 @@ function renderSalaryScenario(scenarioInput: unknown, index: number): string {
   const periodParts: string[] = [];
   if (hasValue(scenario.salaryPeriod)) periodParts.push(String(scenario.salaryPeriod));
   if (hasValue(scenario.payday)) {
-    // 月结的发薪日平台全局口径是"次月发上月"，没有当月发当月的情况（2026-08-06 运营确认）。
+    // 月结的发薪日平台全局口径是"次月发上月"，没有当月发当月的情况（运营确认）。
     // 候选人高频追问"X 号上班当月 X 号能不能发薪"，裸"15号发薪"会被理解成当月 →
     // 月结 + 具体几号时显式标注归属月份，模型照读即可；周结/日结不适用不标。
     const isMonthly =
@@ -624,7 +620,7 @@ function renderHiringRequirementSection(reqInput: unknown, policy: JobPolicyAnal
   if (hasValue(comp.minWorkTime)) {
     // minWorkTimeUnit 现网下发的是数字枚举 id（非文本单位），直接拼接会渲染成
     // "最低工作经验: 3 1" 这种读不懂的串，模型索性忽略该条件，对候选人答"接受无经验"
-    // （badcase umkgixpq：实际要求咖啡师 3 个月经验）。枚举字典本仓库没有，
+    // （实际要求咖啡师 3 个月经验）。枚举字典本仓库没有，
     // 不猜映射——单位不可读时只给数值并显式标注待确认，保证"有经验门槛"这个事实不丢。
     const unitIsReadable =
       hasValue(comp.minWorkTimeUnit) && Number.isNaN(Number(String(comp.minWorkTimeUnit).trim()));

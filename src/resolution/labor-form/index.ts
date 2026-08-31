@@ -1,7 +1,7 @@
 /**
  * 用工形式（labor_form）领域模型：常量、匹配、意向解析与展示规整的单一事实来源。
  *
- * ## 业务模型（2026-07 产品调整后的层级结构）
+ * ## 业务模型（层级结构）
  *
  * 岗位轴是**两级结构化字段**：
  * - `basicInfo.laborForm`：用工形式，仅 全职 / 兼职 两值；
@@ -75,9 +75,8 @@ export type ValidLaborForm = (typeof VALID_LABOR_FORMS)[number];
 /**
  * 判断一个 labor_form 值是否为合法候选人偏好。
  *
- * 作为读取侧的词汇表闸门：会话事实由 LLM 提取产生、且口径会随产品调整（如 2026-07
- * 废除"兼职+"），存量数据里可能短暂残留表外值（2026-07-10 排查生产 Redis：331 条
- * labor_form 中仅 3 条"兼职+"，随 key TTL 数天内自然过期），读取时一律视为无效。
+ * 作为读取侧的词汇表闸门：会话事实由 LLM 提取产生、且口径会随产品调整（如废除"兼职+"），
+ * 存量数据里可能短暂残留表外值（随 key TTL 自然过期），读取时一律视为无效。
  */
 export function isValidLaborForm(value: string | null | undefined): boolean {
   if (!value) return false;
@@ -101,7 +100,7 @@ export function isHardFilteredLaborForm(value: string | null | undefined): boole
 /**
  * 兼职形态家族（**候选人偏好侧**词汇）：候选人要的是这些兼职形态之一、而附近岗位
  * 没有严格匹配的细分标签时，同为兼职的岗位不该被一刀切成"附近暂无岗位"
- * （badcase 6a334d26：细分标签在岗位轴上分布不均，严格过滤会清空整个召回池）。
+ * （细分标签在岗位轴上分布不均，严格过滤会清空整个召回池）。
  *
  * 只用于判定**候选人想要的值**是否可参与家族放宽；放宽后的岗位侧判定是
  * laborForm=兼职 严格相等（见 applyLaborFormConstraint），不认历史扁平脏数据。

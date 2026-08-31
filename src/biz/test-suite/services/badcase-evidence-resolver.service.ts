@@ -25,9 +25,9 @@ interface EvidenceAccumulator {
  * 从生产库反推 BadCase 的双侧测试证据台账。
  *
  * 证据的真相源是 test_executions / test_conversation_snapshots，飞书表只是运营视图。
- * 台账不能靠飞书的「测试证据JSON」列持久化——2026-07-29 那批列被清理后双门禁直接死锁
- * （缺列即强制压回处理中/待验证，永远关不成已解决）。每次按 recordId 现查现算，
- * 飞书表结构怎么变都不影响关闭判定，也不需要往飞书塞机器可读字段。
+ * 台账**不得**靠飞书的「测试证据JSON」列持久化：列一旦被清理，双门禁即死锁（缺列强制
+ * 压回处理中，永远关不成已解决）。每次按 recordId 现查现算，飞书表结构怎么变都不影响
+ * 关闭判定。
  */
 @Injectable()
 export class BadcaseEvidenceResolverService {
