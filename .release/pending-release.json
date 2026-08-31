@@ -68,6 +68,51 @@
         "`tests/agent` + `tests/llm` + `tests/observability` + `tests/providers`：78 套件 1197 用例全过，含 3 个新增用例（重试轨迹发射、耗尽事件含 skipped 候选、墙钟锚重置）"
       ],
       "level": "minor"
+    },
+    {
+      "number": "1112",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1112",
+      "title": "0831 预约链路批修——recap 确认死锁、带外工单核验、FILE 收资引导与记忆沉淀口径",
+      "author": "huajune",
+      "mergedAt": "2026-08-31",
+      "businessUpdates": [
+        "沉淀间隙口径对齐实测 + 记忆块注入教学修正"
+      ],
+      "summary": [
+        "预约上下文补带外工单核验 + 记忆组装同会话回流去重",
+        "FILE 字段收资引导 + 拒收熔断账本按候选人回合去重",
+        "沉淀间隙口径对齐实测 + 记忆块注入教学修正",
+        "recap 确认通道解死锁——公证锚点放宽至已送达复述 + 拒收回执与审计",
+        "沉淀间隙口径回归 3d 并固化 gap>=sessionTtl 约束",
+        "精简沉淀间隙注释，只留约束去掉事故叙事",
+        "拒收配额跨轮按作答指纹去重 + 户籍省级容差 + 熔断观测补账 + 记忆边界保留已投递回复",
+        "收资/记忆批注释按仓库风格精简",
+        "0831 预约链路批修——recap 确认死锁、带外工单核验、FILE 收资引导与记忆沉淀口径"
+      ],
+      "features": [],
+      "fixes": [
+        "沉淀间隙口径对齐实测 + 记忆块注入教学修正"
+      ],
+      "optimizations": [],
+      "ops": [
+        "预约上下文补带外工单核验 + 记忆组装同会话回流去重",
+        "FILE 字段收资引导 + 拒收熔断账本按候选人回合去重",
+        "recap 确认通道解死锁——公证锚点放宽至已送达复述 + 拒收回执与审计",
+        "沉淀间隙口径回归 3d 并固化 gap>=sessionTtl 约束",
+        "精简沉淀间隙注释，只留约束去掉事故叙事",
+        "拒收配额跨轮按作答指纹去重 + 户籍省级容差 + 熔断观测补账 + 记忆边界保留已投递回复",
+        "收资/记忆批注释按仓库风格精简"
+      ],
+      "config": [],
+      "envFiles": [
+        ".env.example"
+      ],
+      "verification": [
+        "公证/precheck/booking/renderer 四个 spec 74 用例全绿（含 4 个新增生产形态回归：「没」隔轮追认、改写复述快照失配重投等）",
+        "`pnpm run typecheck` / `lint:check` 全绿",
+        "台账 `docs/prompt-rule-ledger.md` 同批更新"
+      ],
+      "level": "patch"
     }
   ],
   "lastRelease": {
@@ -161,5 +206,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "2f4d6781648c408152088787f48362b4f8d77d4d"
+  "lastAnalyzedSha": "1a11b56b97be47269b8bc1f8de5886db9de3c337"
 }
