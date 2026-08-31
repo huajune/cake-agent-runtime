@@ -6,6 +6,7 @@ import { ReengagementAnchorService } from '@agent/reengagement/anchor.service';
 import type { GeneratorInvokeParams } from '@agent/generator/generator.types';
 import type { SessionRef, TurnRequest, TurnTrigger } from '@agent/runner/agent-runner.types';
 import { classifyReviewedOutcome } from '@agent/runner/turn-outcome';
+import { STALE_INPUT_SHORT_CIRCUIT } from '@tools/shared/tool-error-types';
 import { TurnFinalizer } from '@agent/runner/turn-finalizer';
 import { TurnOutcomeInterventionService } from '@agent/runner/turn-outcome-intervention.service';
 
@@ -1497,11 +1498,10 @@ describe('ReplyWorkflowService', () => {
             {
               toolName: 'duliday_interview_booking',
               args: {},
+              // 与真实工具同源的契约对象：字段漂移会同时改变这里与生产返回值。
               result: {
                 success: false,
-                shortCircuited: true,
-                staleInput: true,
-                reasonCode: 'newer_user_input_pending',
+                ...STALE_INPUT_SHORT_CIRCUIT,
               },
             },
           ],
