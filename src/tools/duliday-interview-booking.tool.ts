@@ -18,6 +18,7 @@ import type { PrivateChatMonitorNotifierService } from '@notification/services/p
 import {
   applyErrorList,
   escalate,
+  ESCALATION_REASONS,
   isSubmissionAuthorized,
   mapContractFields,
   markSubmitted,
@@ -26,6 +27,7 @@ import {
   type BookingCollectionForm,
   type ContractFieldDef,
 } from '@resolution/collection';
+import type { AgentEvent } from '@observability/observer.interface';
 import type { InterviewBookingLabelValue, JobDetail } from '@sponge/sponge.types';
 import type { SpongeService } from '@sponge/sponge.service';
 import type { ToolBuildContext, ToolBuilder } from '@shared-types/tool.types';
@@ -69,6 +71,39 @@ export interface BookingAdjudicationDeps {
   collectionForms?: CollectionFormService;
   sessionFacts?: SessionStateService;
   identityAnchors?: string;
+  /** 收资审计面：`error_list_unmapped` 熔断此前只落盘不发事件，观测里完全看不见。 */
+  observer?: { emit: (event: AgentEvent) => void };
+}
+
+/**
+ * `applyErrorList` 定位不到槽位 → 熔断转人工。此前这条路径**只改表单 escalatedReason
+ * 落盘、不发审计事件**，于是它在 `collection_form_audit` 里完全不可见：日频观测只能
+ * 看到 `ask_limit_exhausted` / `unparseable_answer` 两条熔断路径，报告里连"今日转人工
+ * 多少起"都答不出（0828/0831 台账连续两次把它记作 P1 观测缺口）。
+ *
+ * 补这一发：与 precheck 侧 `emitAudits` 同事件同形状，日频巡检的 SQL-F 无需改口径。
+ */
+function emitErrorListEscalation(params: {
+  deps: BookingAdjudicationDeps;
+  context: ToolBuildContext;
+  jobId: number;
+  before: BookingCollectionForm;
+  after: BookingCollectionForm;
+}): void {
+  const { after, before } = params;
+  const reason = after.escalatedReason;
+  if (!reason || reason === before.escalatedReason) return;
+  if (!reason.startsWith(ESCALATION_REASONS.errorListUnmapped)) return;
+
+  logger.warn(`[booking] errorList 字段定位失败已转人工: jobId=${params.jobId} reason=${reason}`);
+  params.deps.observer?.emit({
+    type: 'collection_form_audit',
+    userId: params.context.session.userId,
+    jobId: params.jobId,
+    kind: 'escalated',
+    reason,
+    detail: 'applyErrorList 回写的字段定位不到契约槽位',
+  });
 }
 
 export function buildInterviewBookingTool(
@@ -323,6 +358,13 @@ export function buildInterviewBookingTool(
               ],
               mapped.fields,
             );
+            emitErrorListEscalation({
+              deps,
+              context,
+              jobId,
+              before: form,
+              after: reopened,
+            });
             await deps.collectionForms.persist(scope, reopened);
             return fail(
               buildToolError({
@@ -366,6 +408,13 @@ export function buildInterviewBookingTool(
 
           if (!result.success) {
             const rewritten = applyErrorList(form, result.applyErrorList ?? [], mapped.fields);
+            emitErrorListEscalation({
+              deps,
+              context,
+              jobId,
+              before: form,
+              after: rewritten,
+            });
             await deps.collectionForms.persist(scope, rewritten);
             recordBookingEvent(opsEventsRecorder, context, 'booking.failed', jobId, interviewTime, {
               reason: result.message ?? null,

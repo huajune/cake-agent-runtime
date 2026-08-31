@@ -299,6 +299,16 @@ describe('分性别值域筛（实测 528995 身高/体重）', () => {
     expect(result.detail).toContain('值域越界');
   });
 
+  it('账本措辞按字段名造句，不复用年龄口径（体重/身高不得被写成"岁"）', () => {
+    // 值域判据统一借 detectAgeBoundary 的**数值**逻辑，但它的 reason 串写死了「岁」。
+    // 直接复述会把身高 155cm 记成「候选人 155 岁」——0828 台账实录的误导来源。
+    const result = proposeHeight(withGender('男'), '155');
+    expect(result.detail).toContain('身高(cm)');
+    expect(result.detail).toContain('155');
+    expect(result.detail).toContain('下限 160');
+    expect(result.detail).not.toContain('岁');
+  });
+
   it('同一个值换性别档就合格——分档不能取错', () => {
     // 女档 150-180：155 合格。（性别槽位本岗 rejected 女，故单独造一份不筛性别的契约）
     const neutralGender = {

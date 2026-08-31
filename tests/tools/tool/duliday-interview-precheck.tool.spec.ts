@@ -429,8 +429,15 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
     const sameTurnRetry = await execute({ jobId: 100 });
     expect(sameTurnRetry.nextAction).toBe('collect_fields');
 
-    // 候选人下一轮仍以文字作答（发文件引导已明确给过）→ 这才转人工。
+    // 同一句话滞留在证据窗里被下一轮重新解析，也不得再烧一次配额：
+    // 熔断配额按**作答内容**记，不按轮数记（生产 chat 6a94e92d… 籍贯「南京」案）。
     context.session.turnId = 'batch-turn-2';
+    const sameTextNextTurn = await execute({ jobId: 100 });
+    expect(sameTextNextTurn.nextAction).toBe('collect_fields');
+
+    // 候选人**换了一句**仍以文字作答（发文件引导已明确给过）→ 这才转人工。
+    context.session.turnId = 'batch-turn-3';
+    context.turnInput.messages = [{ role: 'user', content: '上传简历：我还开过叉车' }];
     const nextTurn = await execute({ jobId: 100 });
     expect(nextTurn.nextAction).toBe('handoff');
   });

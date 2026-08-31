@@ -8,6 +8,7 @@ import { proposeEducation } from '@resolution/collection/adapters/education.adap
 import { proposeHealthCertificate } from '@resolution/collection/adapters/health-certificate.adapter';
 import { proposeIdentityCore } from '@resolution/collection/adapters/identity-core.adapter';
 import { proposeIdentityStatus } from '@resolution/collection/adapters/identity-status.adapter';
+import { proposeHouseholdRegister } from '@resolution/collection/adapters/household-register.adapter';
 import { proposeSocialInsurance } from '@resolution/collection/adapters/social-insurance.adapter';
 import { createForm, type ContractFieldDef } from '@resolution/collection/form.types';
 import { applyFieldValueProposal } from '@resolution/collection/form-writes';
@@ -15,6 +16,7 @@ import {
   AGE_FIELD,
   GENDER_MALE_ONLY_FIELD,
   HEALTH_CERT_FIELD,
+  HOMETOWN_RESTRICTED_FIELD,
   NAME_FIELD,
   PHONE_FIELD,
   SOCIAL_INSURANCE_FIELD,
@@ -305,5 +307,102 @@ describe('social-insurance.adapter（badcase batch_6a8fec04ce406a6aee03d65f_*）
   it('社保族走标题语义族路由，不再是通用道', () => {
     expect(routeOf(SOCIAL_INSURANCE_FIELD)).toBe('title_family');
     expect(adapterFor(SOCIAL_INSURANCE_FIELD)).toBe(proposeSocialInsurance);
+  });
+});
+
+describe('household-register.adapter · 籍贯省级选项的行政后缀容差', () => {
+  /** 生产实测 labelId 3：optionCode 就是海绵省份 ID，标签是省级全称。 */
+  const PROVINCE_FIELD: ContractFieldDef = {
+    ...HOMETOWN_RESTRICTED_FIELD,
+    acceptedOptions: [
+      { optionCode: '310000', optionLabel: '上海市' },
+      { optionCode: '320000', optionLabel: '江苏省' },
+      { optionCode: '450000', optionLabel: '广西壮族自治区' },
+    ],
+    rejectedOptions: [],
+  };
+
+  it('逐字直配仍优先，sourceText 取精确命中子句', () => {
+    const proposal = proposeHouseholdRegister({
+      field: PROVINCE_FIELD,
+      candidateText: '我籍贯是江苏省',
+    });
+    expect(proposal?.value).toBe('江苏省');
+    expect(proposal?.optionCodes).toEqual(['320000']);
+    expect(proposal?.producer).toBe('candidate_quote');
+  });
+
+  it('生产 badcase：答「上海」配不上「上海市」——差一个市字就整格入不了账', () => {
+    const proposal = proposeHouseholdRegister({
+      field: PROVINCE_FIELD,
+      candidateText: '上海',
+      answerBound: true,
+    });
+    expect(proposal?.value).toBe('上海市');
+    expect(proposal?.optionCodes).toEqual(['310000']);
+    expect(proposal?.sourceText).toBe('上海');
+  });
+
+  it('省后缀同理：「江苏」→「江苏省」', () => {
+    expect(
+      proposeHouseholdRegister({
+        field: PROVINCE_FIELD,
+        candidateText: '江苏',
+        answerBound: true,
+      })?.value,
+    ).toBe('江苏省');
+  });
+
+  it('自治区全称按最长后缀剥：「广西」→「广西壮族自治区」', () => {
+    expect(
+      proposeHouseholdRegister({
+        field: PROVINCE_FIELD,
+        candidateText: '广西',
+        answerBound: true,
+      })?.value,
+    ).toBe('广西壮族自治区');
+  });
+
+  it('未绑定的自由语料只走逐字直配——后缀容差不对长句开放', () => {
+    // 「我在江苏打过两年工」是工作地点不是籍贯。未绑定时不许剥后缀去配「江苏省」，
+    // 否则轮末安全网会把任何提到省名的句子都写进这一格。
+    expect(
+      proposeHouseholdRegister({ field: PROVINCE_FIELD, candidateText: '我在江苏打过两年工' }),
+    ).toBeNull();
+    expect(
+      proposeHouseholdRegister({ field: PROVINCE_FIELD, candidateText: '我以前在浙江上班' }),
+    ).toBeNull();
+    // 但完整省级全称逐字出现时照旧直配（这条通道改造前就有，不能丢）。
+    expect(
+      proposeHouseholdRegister({ field: PROVINCE_FIELD, candidateText: '我籍贯江苏省的' })?.value,
+    ).toBe('江苏省');
+  });
+
+  it('契约没有这一档就留空追问，不塞近似值', () => {
+    expect(
+      proposeHouseholdRegister({
+        field: PROVINCE_FIELD,
+        candidateText: '山东',
+        answerBound: true,
+      }),
+    ).toBeNull();
+  });
+
+  it('市→省推导刻意不做：「南京」不猜成「江苏省」（那需要 geo 的省级映射表）', () => {
+    expect(
+      proposeHouseholdRegister({
+        field: PROVINCE_FIELD,
+        candidateText: '南京',
+        answerBound: true,
+      }),
+    ).toBeNull();
+  });
+
+  it('籍贯/户籍走标题语义族路由，不再是通用道', () => {
+    expect(routeOf(PROVINCE_FIELD)).toBe('title_family');
+    expect(adapterFor(PROVINCE_FIELD)).toBe(proposeHouseholdRegister);
+    expect(adapterFor({ ...PROVINCE_FIELD, labelTitle: '户籍所在地' })).toBe(
+      proposeHouseholdRegister,
+    );
   });
 });

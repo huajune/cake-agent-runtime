@@ -284,12 +284,19 @@ function intakeFieldValueProposals(params: {
     }
 
     proposals.push(answer);
+    // 把**本岗合法标题**逐字列进 hint，而不是只叫模型"去看 requiredFields"。
+    // 生产实证（0831，chat 6a8e4e2c… job 524240）：契约只有 5 个字段，模型每轮都额外
+    // 提交「学历」「健康证」「身份（学生/社会人士）」三个不存在的标题，连续 4 轮
+    // 收到同一句"该标题不在本岗契约"的回执仍原样重投——指路式提示没能让它自我纠正。
+    // 直接给出可选集合，纠正动作就不再需要模型回头做一次交叉引用。
+    const availableTitles = params.contract.map((field) => field.labelTitle).join('、');
     unmatched.push({
       labelTitle: answer.labelTitle,
       hint:
         resolution.reason === 'label_title_ambiguous'
-          ? `该标题在本岗契约命中多个字段、已放弃写入；${LABEL_TITLE_HINT}`
-          : `该标题不在本岗契约；${LABEL_TITLE_HINT}`,
+          ? `该标题在本岗契约命中多个字段、已放弃写入；${LABEL_TITLE_HINT}。本岗合法标题只有：${availableTitles}`
+          : `该标题不在本岗契约，本岗不收这一项——不要再提交它，也不要就它追问候选人。` +
+            `${LABEL_TITLE_HINT}。本岗合法标题只有：${availableTitles}`,
     });
   }
 

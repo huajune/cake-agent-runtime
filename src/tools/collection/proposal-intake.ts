@@ -335,17 +335,42 @@ function adaptMultipleOptionLabels(field: ContractFieldDef, value: string): Slot
   };
 }
 
-/** 通道 3：安全网。只扫**空槽**，且只用确定性适配器（不引入第二语义读者）。 */
+/**
+ * 通道 3：安全网。只扫**空槽**，且只用确定性适配器（不引入第二语义读者）。
+ *
+ * ⚠️ **逐条消息喂适配器，不拼接语料**（2026-08-31 修）。此前本函数把
+ * `candidateTexts.join('\n')` 整段喂进去，而适配器的 `sourceText` 允许是"它拿到的
+ * 那段文本"本身（`identity-status.adapter` 即如此，与其余四个产 excerpt 的适配器不同）。
+ * 于是整段拼接语料被当成出处交给公证，而 `proposeValue` 的①出处门是按**逐条消息**
+ * 逐字回查的——证据窗里只要有 ≥2 条候选人消息，这类提案就**必然**被判
+ * 「sourceText 未出现在候选人原文」。
+ *
+ * 生产实证（0828 提出、0831 复发未修）：社会身份槽位（labelId 1）连续两日在
+ * 多消息轮次里被安全网静默放弃，候选人明说过"工作了""我本科刚毕业…没在工作"仍判假阳，
+ * 结果是这一格反复重问。这不是"模型编不出原话"，是拼接语料 vs 逐条校验的**口径错配**。
+ *
+ * 逐条扫描把**检测单元与公证单元对齐**：适配器只能看见一条真实消息，产出的 sourceText
+ * 因此天然落在该条消息内，出处门必过。这比只改某一个适配器彻底——它同时消掉了
+ * "未来新增适配器返回整段"的复发面。
+ *
+ * 取**最后一条**命中的消息：同一槽位在多条消息里都能解析时，后说的是更新的表述。
+ */
 function fromAdapterSweep(input: IntakeInput): RoutedFieldValueProposal[] {
-  const corpus = input.candidateTexts.join('\n');
-  if (!corpus.trim()) return [];
+  const texts = input.candidateTexts.filter((text) => text.trim());
+  if (texts.length === 0) return [];
 
   const proposals: RoutedFieldValueProposal[] = [];
   for (const field of input.contract) {
     if (input.filledLabelIds.has(field.labelId)) continue;
     if (hasExactPlaceholderEcho(input.candidateTexts, input.contract, field.labelId)) continue;
-    const swept = adapterFor(field)({ field, candidateText: corpus });
+
+    const adapter = adapterFor(field);
+    let swept: SlotProposal | null = null;
+    for (const candidateText of texts) {
+      swept = adapter({ field, candidateText }) ?? swept;
+    }
     if (!swept) continue;
+
     proposals.push({
       labelId: field.labelId,
       value: swept.value,

@@ -139,22 +139,89 @@ describe('MessageWindowService', () => {
     expect(result[0].content).not.toContain('下一批 pending');
   });
 
-  it('should pass the inclusive cutoff to db history on cache miss', async () => {
+  it('should not push the inclusive cutoff down to db and filter only user messages in memory', async () => {
+    const customService = new MessageWindowService(
+      mockRepo as never,
+      { ...mockConfig, sessionWindowMaxChars: 100000 } as never,
+      mockRedis as never,
+    );
     mockRedis.lrange.mockResolvedValue([]);
-    mockRepo.getChatHistory.mockResolvedValue([]);
+    mockRepo.getChatHistory.mockResolvedValue([
+      { messageId: 'u1', role: 'user', content: '好的', timestamp: 1710900001000 },
+      { messageId: 'a1', role: 'assistant', content: '岗位卡片已投递', timestamp: 1710900002000 },
+      { messageId: 'u2', role: 'user', content: '下一批 pending', timestamp: 1710900003000 },
+    ]);
 
-    await service.getMessages('chat_1', {
-      endTimeInclusive: 1710900000000,
+    const result = await customService.getMessages('chat_1', {
+      endTimeInclusive: 1710900001000,
     });
 
-    expect(mockRepo.getChatHistory).toHaveBeenCalledWith(
-      'chat_1',
-      60,
-      expect.objectContaining({
-        startTimeInclusive: expect.any(Number),
-        endTimeInclusive: 1710900000000,
-      }),
+    // 边界不再下推到 SQL（SQL 无法区分角色），由内存统一应用
+    const dbOptions = mockRepo.getChatHistory.mock.calls[0][2] as Record<string, unknown>;
+    expect(dbOptions.startTimeInclusive).toEqual(expect.any(Number));
+    expect(dbOptions.endTimeInclusive).toBeUndefined();
+
+    // 边界后的 assistant 保留（插到触发块之前），边界后的 user 裁掉
+    expect(result.map((m) => m.role)).toEqual(['assistant', 'user']);
+    expect(result[0].content).toContain('岗位卡片已投递');
+    expect(result[1].content).toContain('好的');
+    expect(result.some((m) => m.content.includes('下一批 pending'))).toBe(false);
+
+    // 缓存回填保留未裁剪的完整窗口
+    expect(mockRedis.rpush.mock.calls[0].length - 1).toBe(3);
+  });
+
+  it('should keep post-cutoff assistant messages from cache, reinserted before the trailing user block', async () => {
+    const customService = new MessageWindowService(
+      mockRepo as never,
+      { ...mockConfig, sessionWindowMaxChars: 100000 } as never,
+      mockRedis as never,
     );
+    mockRedis.lrange.mockResolvedValue([
+      JSON.stringify({
+        chatId: 'chat_1',
+        messageId: 'a1',
+        role: 'assistant',
+        content: '给你看最近的3家',
+        timestamp: 1710900000000,
+        provenanceVersion: 2,
+      }),
+      JSON.stringify({
+        chatId: 'chat_1',
+        messageId: 'u1',
+        role: 'user',
+        content: '好的',
+        timestamp: 1710900001000,
+        provenanceVersion: 2,
+      }),
+      JSON.stringify({
+        chatId: 'chat_1',
+        messageId: 'a2',
+        role: 'assistant',
+        content: '1. 必胜客岗位卡片',
+        timestamp: 1710900002000,
+        provenanceVersion: 2,
+      }),
+      JSON.stringify({
+        chatId: 'chat_1',
+        messageId: 'u2',
+        role: 'user',
+        content: '下一批 pending',
+        timestamp: 1710900003000,
+        provenanceVersion: 2,
+      }),
+    ]);
+
+    const result = await customService.getMessages('chat_1', {
+      endTimeInclusive: 1710900001000,
+    });
+
+    expect(mockRepo.getChatHistory).not.toHaveBeenCalled();
+    // 已投递的岗位卡片保留，且插在本轮触发消息「好的」之前，窗口仍以 user 收尾
+    expect(result.map((m) => m.role)).toEqual(['assistant', 'assistant', 'user']);
+    expect(result[1].content).toContain('必胜客岗位卡片');
+    expect(result[2].content).toContain('好的');
+    expect(result.some((m) => m.content.includes('下一批 pending'))).toBe(false);
   });
 
   it('should use historyWindowSeconds (not sessionTtl) for Supabase startTimeInclusive', async () => {
