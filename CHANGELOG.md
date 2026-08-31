@@ -11,25 +11,33 @@
 <!-- release:pending:start -->
 ## 待发布
 
-**预计版本**: `v11.0.8`
+**预计版本**: `v11.1.0`
 **最近更新**: `2026-08-31`
 **来源分支**: `develop`
-**累计 PR**: 1
+**累计 PR**: 2
 
 ### 更新摘要
 - PR #1111 修复 stale-input 短路与 replay 旁路的契约漂移
+- PR #1115 LLM 执行尝试轨迹无条件落库 + agent_steps 墙钟锚随重试对齐
+- PR #1115 llm_execution 埋点注释精简
+- PR #1115 **新增 `llm_execution` 事件**：每次 llm-executor `generate`/`stream` 收尾（成功或全链耗尽）无条件发射，落 `agent_execution_events` 同 traceId。payload 含每次 provider 尝试的 modelId、开始偏移、耗时、`errorCategory`、截断错误消息、退避时长，及 attemptCount/totalDurationMs/backoffTotalMs 汇总。**刻意进 ALWAYS_PERSISTED 无条件集合**——tool_call 漏采 2/3 的根因正是条件采样，此处不复刻。
+- PR #1115 **修正墙钟错账**：executor 新增 `onAttemptStart` 钩子，generator 在每次尝试起点重置步骤锚——agent_steps 只计成功尝试，失败尝试耗时由 `llm_execution` 承接。
+- PR #1115 Dashboard 执行事件时间线补 `llm_execution` 摘要（模型·状态·N次尝试·耗时）；有重试时同时展开 attempts 原始 JSON。
 
 ### 新功能
-- 无
+- PR #1115 **新增 `llm_execution` 事件**：每次 llm-executor `generate`/`stream` 收尾（成功或全链耗尽）无条件发射，落 `agent_execution_events` 同 traceId。payload 含每次 provider 尝试的 modelId、开始偏移、耗时、`errorCategory`、截断错误消息、退避时长，及 attemptCount/totalDurationMs/backoffTotalMs 汇总。**刻意进 ALWAYS_PERSISTED 无条件集合**——tool_call 漏采 2/3 的根因正是条件采样，此处不复刻。
+- PR #1115 Dashboard 执行事件时间线补 `llm_execution` 摘要（模型·状态·N次尝试·耗时）；有重试时同时展开 attempts 原始 JSON。
 
 ### 问题修复
 - PR #1111 修复 stale-input 短路与 replay 旁路的契约漂移
+- PR #1115 **修正墙钟错账**：executor 新增 `onAttemptStart` 钩子，generator 在每次尝试起点重置步骤锚——agent_steps 只计成功尝试，失败尝试耗时由 `llm_execution` 承接。
 
 ### 优化调整
 - 无
 
 ### 运维与流程
-- 无
+- PR #1115 LLM 执行尝试轨迹无条件落库 + agent_steps 墙钟锚随重试对齐
+- PR #1115 llm_execution 埋点注释精简
 
 ### 配置变更
 - 无
@@ -41,6 +49,8 @@
 - PR #1111 `tsc --noEmit`（TS 5.9.3）✅
 - PR #1111 booking spec + tests/agent/runner + reply-workflow spec：87 tests passed ✅
 - PR #1111 改动 src 文件 eslint --max-warnings=0 ✅
+- PR #1115 typecheck / lint:check / format:check / web tsc / web eslint 全绿
+- PR #1115 `tests/agent` + `tests/llm` + `tests/observability` + `tests/providers`：78 套件 1197 用例全过，含 3 个新增用例（重试轨迹发射、耗尽事件含 skipped 候选、墙钟锚重置）
 <!-- release:pending:end -->
 
 ## [11.0.7] - 2026-08-28
