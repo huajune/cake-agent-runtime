@@ -6,11 +6,13 @@ import {
 } from '@resolution/collection';
 import { getTomorrowDate } from '@infra/utils/date.util';
 import type { ToolBuildContext } from '@shared-types/tool.types';
+import type { TurnOutcome } from '@agent/runner/agent-runner.types';
+import { resolveReplaySkipDecision } from '@agent/runner/turn-outcome';
 import {
   buildInterviewBookingTool,
   resolveInterviewType,
 } from '@tools/duliday-interview-booking.tool';
-import { TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
+import { STALE_INPUT_REASON_CODE, TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
 import { createToolContext } from '../../helpers/tool-context.fixture';
 
 const CONTRACT: ContractFieldDef[] = [
@@ -428,8 +430,21 @@ describe('duliday_interview_booking（form → labelList）', () => {
   it('提交前发现新消息时短路，不创建工单', async () => {
     context.runtime.hasNewerUserInput = jest.fn().mockResolvedValue(true);
     const result = await execute({ jobId: 100 });
+    expect(result.shortCircuited).toBe(true);
     expect(result.staleInput).toBe(true);
+    expect(result.reasonCode).toBe(STALE_INPUT_REASON_CODE);
     expect(sponge.bookInterview).not.toHaveBeenCalled();
+  });
+
+  it('stale-input 真实返回值必须解锁 turn-outcome 的 replay 旁路（契约配对）', async () => {
+    context.runtime.hasNewerUserInput = jest.fn().mockResolvedValue(true);
+    const result = await execute({ jobId: 100 });
+    // 短路回合的 outcome 是 skipped；若工具返回值与 hasStaleInputAbort 的判定
+    // 再次漂移（历史上 PR #1023 丢过 reasonCode），这里会退回 skip:true。
+    const decision = resolveReplaySkipDecision({ kind: 'skipped' } as TurnOutcome, [
+      { toolName: 'duliday_interview_booking', args: { jobId: 100 }, result },
+    ]);
+    expect(decision).toEqual({ skip: false, reasons: [], blockingTools: [] });
   });
 
   it('近期同岗位 active booking 命中软查重', async () => {

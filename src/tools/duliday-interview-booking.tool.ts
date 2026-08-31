@@ -39,7 +39,11 @@ import { runBookingScheduleAndNameGuards } from '@tools/booking/booking-guards.u
 import { isTestPiiPhoneAllowed, maskPhoneForDetails } from '@tools/shared/test-pii-gate';
 import { buildJobPolicyAnalysis, isWaitNoticeInterview } from '@tools/job-list/job-policy-parser';
 import { buildSpongeTokenContext } from '@tools/shared/sponge-token-context.util';
-import { buildToolError, TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
+import {
+  buildToolError,
+  STALE_INPUT_SHORT_CIRCUIT,
+  TOOL_ERROR_TYPES,
+} from '@tools/shared/tool-error-types';
 import { tool } from 'ai';
 import { z } from 'zod';
 
@@ -300,8 +304,7 @@ export function buildInterviewBookingTool(
                 replyInstruction: '立即停止，不要回复或重试；runtime 会合并最新消息重新处理。',
                 details: { jobId },
               }),
-              shortCircuited: true,
-              staleInput: true,
+              ...STALE_INPUT_SHORT_CIRCUIT,
             });
           }
 
