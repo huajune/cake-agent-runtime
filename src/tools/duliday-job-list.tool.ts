@@ -993,6 +993,7 @@ export function buildJobListTool(
             candidateCount: number;
             recoveredCount: number;
           } = null;
+          let searchNameRelaxed = false;
 
           // 跨轮重复查询检测：归一化后的实质过滤条件
           // 与上一轮完全一致时，结果必然相同——结果头部注入提醒，要求模型实质调整查询
@@ -1072,6 +1073,32 @@ export function buildJobListTool(
             } catch (error: unknown) {
               const reason = toErrorMessage(error);
               logger.warn(`城市层级过滤兜底查询失败，保留原始 0 条结果: ${reason}`);
+            }
+          }
+
+          // 场所名模糊查回退：候选人分享了精确坐标、模型又把候选人口述的商场/写字楼名
+          // （"万辉国际"）塞进 searchJobName 时，两者做 AND 必然 0 条——口述名多半与库内
+          // 岗位名对不上，而坐标才是硬约束。0 条后去掉 searchJobName 再做一次距离召回，
+          // 避免把"这个楼里没有在招岗"误报成"你附近 10 公里没有岗位"并直接拉群收口。
+          // 距离仍受原 location.range 约束，不会带回远处岗位。
+          if (jobs.length === 0 && hasCoordinates && searchJobName?.trim()) {
+            try {
+              const locationOnly = await fetchJobs({
+                ...fetchBaseParams,
+                searchJobName: undefined,
+              });
+              if (locationOnly.jobs.length > 0) {
+                jobs = locationOnly.jobs;
+                total = locationOnly.total ?? locationOnly.jobs.length;
+                fetchBaseParams = { ...fetchBaseParams, searchJobName: undefined };
+                searchNameRelaxed = true;
+                logger.warn(
+                  `场所名模糊查兜底命中：searchJobName="${searchJobName.trim()}" 原查询 0 条，` +
+                    `去掉名称后距离召回 ${locationOnly.jobs.length} 条`,
+                );
+              }
+            } catch (error: unknown) {
+              logger.warn(`场所名模糊查兜底失败，保留原始 0 条结果: ${toErrorMessage(error)}`);
             }
           }
 
@@ -1770,6 +1797,9 @@ export function buildJobListTool(
             cityFilterNormalization:
               cityFilterNormalization.mappings.length > 0 ? cityFilterNormalization.mappings : null,
             cityFilterRecovery,
+            // 场所名兜底：true 表示按候选人口述的场所名查为 0，已改用坐标做距离召回。
+            // 结果是"你附近的岗位"而非"该场所内的岗位"，回复时不得把它说成那个楼里的岗位。
+            searchNameRelaxed,
             usedDistanceFiltering: hasUserCoords,
             // 距离锚点精度（方案 16.1 GeoQueryMeta.anchor 的 B-1 先行子集）：
             // 区级锚点查询占比的观测口径。⚠️ 原设计的对账对象是守卫规则，但那条规则

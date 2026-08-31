@@ -222,6 +222,34 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     verification: 'tests/agent/guardrail/output/rules/booking-claim-reconciliation.rule.spec.ts',
   },
   {
+    id: 'cancel_done_claim_without_submission',
+    // 与 booking_done_claim_without_submission 同族同风险：跨轮合法提醒会命中，observe 入场。
+    action: GUARDRAIL_ACTION.OBSERVE,
+    priority: GUARDRAIL_PRIORITY.P1,
+    description: '零 cancel/modify 调用却用完成时态宣称"面试已取消/已改期"。',
+    riskGoal: '发现取消从未提交却被宣称已办好的假回执，防候选人据此不到店。',
+    exogenousSignal: '本轮 duliday_cancel_work_order / duliday_modify_interview_time 调用存在性。',
+    residualRisk: '跨轮合法提醒（前几轮已真实取消）会命中，observe 期以判例分辨占比。',
+    verification: 'tests/agent/guardrail/output/rules/booking-claim-reconciliation.rule.spec.ts',
+    feedbackToGenerator:
+      '上一版回复宣称面试已取消/已改期，但本轮没有任何取消或改期工具调用。若确实已办好请复述工单事实，' +
+      '否则改成如实说明当前状态并说明下一步动作，不要用完成时态宣称未发生的操作。',
+  },
+  {
+    id: 'cancel_done_claim_failed_tool',
+    // 硬矛盾：本轮工具自证失败，不存在跨轮复述的解释空间，故直接 revise。
+    action: GUARDRAIL_ACTION.REVISE,
+    priority: GUARDRAIL_PRIORITY.P0,
+    description: '本轮取消/改期工具全部失败，回复却宣称已取消/已改期。',
+    riskGoal: '防候选人据假回执不到店而爽约（代价与到店扑空同级）。',
+    exogenousSignal: '本轮取消/改期工具调用的 status 全为 error。',
+    residualRisk: '无——本轮工具失败是自证事实，不依赖跨轮推断。',
+    verification: 'tests/agent/guardrail/output/rules/booking-claim-reconciliation.rule.spec.ts',
+    feedbackToGenerator:
+      '上一版回复宣称面试已取消/已改期，但本轮取消/改期工具全部调用失败，该操作并未发生。' +
+      '必须如实告知候选人当前预约仍然有效、正在安排人工跟进处理，不得保留任何"已取消/已改好"的表述。',
+  },
+  {
     id: 'dangling_reply_promise',
     action: GUARDRAIL_ACTION.OBSERVE,
     priority: GUARDRAIL_PRIORITY.P1,

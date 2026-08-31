@@ -1,4 +1,5 @@
 import { getTomorrowDate } from '@infra/utils/date.util';
+import { buildBookableSlots } from '@tools/booking/bookable-slot.util';
 import { createForm, markSubmitted, type BookingCollectionForm } from '@resolution/collection';
 import type { ToolBuildContext } from '@shared-types/tool.types';
 import {
@@ -850,5 +851,28 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
     expect(JOB.hiringRequirement.basicPersonalRequirements.maxAge).toBe(20);
     expect(currentForm?.slots[103].value?.value).toBe('25');
     expect(result.nextAction).toBe('ready_to_book');
+  });
+});
+
+describe('窗口制岗位可约时刻口径（badcase 8x91d33j / kx7173ak）', () => {
+  it('可约窗口 slot 带 interviewTimeFlexible 与窗口内任意时刻提示', () => {
+    const slots = buildBookableSlots({
+      windows: [{ weekday: '每周一', startTime: '13:30', endTime: '16:30' } as never],
+      horizonDays: 7,
+    });
+    const bookable = slots.find((s) => s.bookingAllowed);
+    expect(bookable?.interviewTimeFlexible).toBe(true);
+    expect(bookable?.interviewTimeHint).toContain('窗口内任意时刻都可预约');
+    expect(bookable?.interviewTimeHint).toContain('不要改写成窗口起点');
+    // 默认提交时刻仍是窗口起点（候选人没说时刻时用）
+    expect(bookable?.interviewTime).toContain('13:30:00');
+  });
+
+  it('只标日期的窗口不给灵活提示（bookingAllowed=false）', () => {
+    const slots = buildBookableSlots({
+      windows: [{ weekday: '每周二' } as never],
+      horizonDays: 7,
+    });
+    expect(slots.every((s) => s.interviewTimeFlexible === undefined)).toBe(true);
   });
 });

@@ -19,7 +19,10 @@ import {
 } from './rules/brand-name-errors.rule';
 import { DISCRIMINATION_LEAK_RULES } from './rules/discrimination-leaks.rule';
 import { FALSE_PROMISE_RULES } from './rules/false-promises.rule';
-import { detectBookingDoneClaimWithoutSubmission } from './rules/booking-claim-reconciliation.rule';
+import {
+  detectBookingDoneClaimWithoutSubmission,
+  detectCancelDoneClaimWithoutSubmission,
+} from './rules/booking-claim-reconciliation.rule';
 import { detectDanglingReplyPromise } from './rules/dangling-promise.rule';
 import { detectExperienceFraudCoaching } from './rules/experience-fraud-coaching.rule';
 import { detectIdentityMisregistrationCoaching } from './rules/identity-fraud-coaching.rule';
@@ -270,6 +273,11 @@ export class HardRulesService {
     );
     if (bookingDoneClaimWithoutSubmission) {
       contradictions.push(this.withRulePolicy(bookingDoneClaimWithoutSubmission));
+    }
+
+    const cancelDoneClaim = detectCancelDoneClaimWithoutSubmission(text, toolCalls);
+    if (cancelDoneClaim) {
+      contradictions.push(this.withRulePolicy(cancelDoneClaim));
     }
 
     const { effectiveContradictions, overrideHits } = this.applyHardRuleOverrides(

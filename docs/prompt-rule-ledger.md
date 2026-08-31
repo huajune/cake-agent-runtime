@@ -502,6 +502,14 @@ observe 哨兵（只落档不拦截，5 条，2026-08-26 数据复核恢复）�
 `booking_done_claim_without_submission`（新哨兵，接替 `booking_promise_without_booking`
 的完成时态缺口；将来时口径经生产抽样证实几乎全命中合法收资话术，不恢复）。
 
+取消/改期链路（2026-08-31 新增，badcase nrz6axmr / 4peya6s9）：
+- `cancel_done_claim_without_submission`（observe 哨兵）——零 cancel/modify 调用却用完成时态
+  宣称"面试已取消"。与 `booking_done_claim_without_submission` 同族同残余风险（跨轮合法提醒会
+  命中），先累计判例再议升档。
+- `cancel_done_claim_failed_tool`（revise，P0）——本轮 cancel/modify **全部调用失败**，回复却
+  宣称已取消或承诺"这就帮你取消"。失败轮里将来时同样是谎（候选人照样不到店 = 爽约），故口径
+  比上一条宽。本轮工具自证失败，无跨轮复述的解释空间，残余风险为零。
+
 > **2026-08-27 收窄（用户裁定）**：`booking_receipt_mismatch` 失败路径下线"承诺重试"
 > 拦截（BOOKING_RETRY_PROMISE_PATTERN 整段删除），in-flight 假宣称只保留「正在」词形。
 > booking 失败后"稍后/这就再帮你提交"是合法承接话术，与拉群守卫"只拦完成时态"同口径；

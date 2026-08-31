@@ -52,6 +52,10 @@ const OUTPUT_RULE_SOURCE_BY_ID: Record<string, string> = {
     'agent/guardrail/output/rules/internal-info-leaks.rule.ts（HardRulesService 调度）',
   booking_done_claim_without_submission:
     'agent/guardrail/output/rules/booking-claim-reconciliation.rule.ts（HardRulesService 调度）',
+  cancel_done_claim_without_submission:
+    'agent/guardrail/output/rules/booking-claim-reconciliation.rule.ts（HardRulesService 调度）',
+  cancel_done_claim_failed_tool:
+    'agent/guardrail/output/rules/booking-claim-reconciliation.rule.ts（HardRulesService 调度）',
   dangling_reply_promise:
     'agent/guardrail/output/rules/dangling-promise.rule.ts（HardRulesService 调度）',
   requested_brand_mismatch:
