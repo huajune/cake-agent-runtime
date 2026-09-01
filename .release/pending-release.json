@@ -37,6 +37,35 @@
         "typecheck / lint / format 全绿；全量 6448 用例通过（第一批时点），排班批相关 2476 通过"
       ],
       "level": "patch"
+    },
+    {
+      "number": "1125",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1125",
+      "title": "v11.1.1 发版底账",
+      "author": "huajune",
+      "mergedAt": "2026-09-01",
+      "businessUpdates": [
+        "周报新增质量密度指标——每千回合 badcase 反馈数"
+      ],
+      "summary": [
+        "v11.1.1 发版底账",
+        "周报新增质量密度指标——每千回合 badcase 反馈数"
+      ],
+      "features": [
+        "周报新增质量密度指标——每千回合 badcase 反馈数"
+      ],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "v11.1.1 发版底账"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`pnpm run release:ledger:check` ✅",
+        "`npx prettier --check` ✅"
+      ],
+      "level": "patch"
     }
   ],
   "lastRelease": {
@@ -179,5 +208,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "8e66cc4c5ceef02f7be7f5668c15c33f734e84a1"
+  "lastAnalyzedSha": "b6f8da168f49eed26cb2e27a6f7ddfd1a18343c1"
 }
