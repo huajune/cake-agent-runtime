@@ -59,10 +59,16 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     id: 'invalid_model_output',
     action: GUARDRAIL_ACTION.BLOCK,
     priority: GUARDRAIL_PRIORITY.P0,
-    description: '模型输出含推理标签或整条仅为长数字标识符。',
-    riskGoal: '阻止异常 completion 被当作候选人回复发送。',
-    exogenousSignal: '<think> 标签或纯数字输出形态。',
-    residualRisk: '不对一般语言质量做语义判断。',
+    description: '模型输出含推理标签、控制标记、工具调用 JSON，或整条仅为长数字标识符。',
+    riskGoal:
+      '阻止异常 completion 被当作候选人回复发送。工具调用被写成正文时还意味着该工具本轮并未执行，' +
+      '据此宣称的动作（报名/预约/取消/拉群）全是空的。',
+    exogenousSignal:
+      '<think> 标签、[NO_REPLY] 类控制标记、纯数字输出，或协议名字键（tool_name/toolName/tool_use 等）' +
+      '与入参键同处一个 JSON blob。',
+    residualRisk:
+      '不对一般语言质量做语义判断。工具调用泄漏进 reasoning（正文干净）时守卫看不到——' +
+      '那一路由 GeneratorAgent 在定稿前带工具重生成一次，判据同源 containsLeakedToolCallBlob。',
     verification: V,
   },
   {
