@@ -502,6 +502,13 @@ observe 哨兵（只落档不拦截，5 条，2026-08-26 数据复核恢复）�
 `booking_done_claim_without_submission`（新哨兵，接替 `booking_promise_without_booking`
 的完成时态缺口；将来时口径经生产抽样证实几乎全命中合法收资话术，不恢复）。
 
+工具调用文本化泄漏（`invalid_model_output` 扩形态）：模型不走 tool-call 通道、把调用写成
+JSON 文本时，该工具本轮并未执行，据此宣称的报名/预约/取消/拉群全是空的。判据 `containsLeakedToolCallBlob`
+取协议专属键名对（名字键 + 入参键同处一个 blob），不取工具名清单（清单会漂移，MCP 动态工具也不在表内）。
+**判据一处、消费两处**：blob 进候选人可见正文由本规则 BLOCK；blob 只落 reasoning、正文干净时守卫看不到，
+改由 `GeneratorAgent.retryTextualToolCall` 在定稿前带工具重生成一次（前置条件本轮零工具调用 = 无既成副作用）。
+出站守卫治不了后者——入参无 reasoning，且 repair 只能改文本、变不出没发生过的工单。
+
 取消/改期链路（2026-08-31 新增，badcase nrz6axmr / 4peya6s9）：
 - `cancel_done_claim_without_submission`（observe 哨兵）——零 cancel/modify 调用却用完成时态
   宣称"面试已取消"。与 `booking_done_claim_without_submission` 同族同残余风险（跨轮合法提醒会
