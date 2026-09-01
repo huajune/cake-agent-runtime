@@ -143,6 +143,9 @@ function buildMemorySnapshotPayload(snapshot?: MessageRecordMemorySnapshot): Any
   if (snapshot.profileKeys && snapshot.profileKeys.length > 0) {
     entries['长期画像 keys'] = snapshot.profileKeys;
   }
+  if (snapshot.currentFocusJob) {
+    entries['焦点岗位'] = snapshot.currentFocusJob;
+  }
 
   return Object.keys(entries).length > 0 ? entries : undefined;
 }
@@ -617,7 +620,8 @@ export function getRawPayloadPanels(message: MessageRecord): RawPayloadPanel[] {
     panels.push({
       key: 'memory-snapshot',
       label: '记忆快照',
-      description: '本轮 Agent 触发时的四层记忆上下文（阶段 / 会话事实 / 推荐记录 / 画像 keys）',
+      description:
+        '本轮 Agent 触发时的记忆上下文（阶段 / 已展示岗位 / 推荐记录 / 会话事实 / 画像 keys / 焦点岗位；空字段不展示）',
       data: memorySnapshotPayload,
     });
   }

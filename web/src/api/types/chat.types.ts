@@ -198,6 +198,11 @@ export interface MessageRecordMemorySnapshot {
   recommendedJobIds: number[] | null;
   sessionFacts: Record<string, unknown> | null;
   profileKeys: string[] | null;
+  /** 当前焦点岗位及精简记忆已具备的详情字段名单（对应后端 AgentFocusJobSnapshot） */
+  currentFocusJob?: {
+    jobId: number;
+    availableDetailFields: string[];
+  } | null;
 }
 
 // ==================== 出站/入站守卫 trace ====================
