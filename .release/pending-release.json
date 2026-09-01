@@ -1,95 +1,67 @@
 {
-  "baseVersion": "11.1.2",
+  "baseVersion": "11.1.3",
   "nextVersion": "11.1.3",
+  "lastAnalyzedSha": null,
   "updatedAt": "2026-09-01",
   "sourceBranch": "develop",
-  "entries": [
-    {
-      "number": "1136",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1136",
-      "title": "窗口制岗位放行候选人约定时刻 + 证件自陈进出处池 + 单轮工具上限提至 10",
-      "author": "huajune",
-      "mergedAt": "2026-09-01",
-      "businessUpdates": [
-        "窗口制岗位放行候选人约定时刻 + 证件自陈进出处池 + 单轮工具上限提至 10"
-      ],
-      "summary": [
-        "窗口制岗位放行候选人约定时刻 + 证件自陈进出处池 + 单轮工具上限提至 10"
-      ],
-      "features": [],
-      "fixes": [],
-      "optimizations": [],
-      "ops": [
-        "窗口制岗位放行候选人约定时刻 + 证件自陈进出处池 + 单轮工具上限提至 10"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "窗口授权 7 例（含端点、跨日、非窗口制不放宽、缺 liveSlots 行为不变、资料闸不被越过）",
-        "出处池自陈准入 7 例（证件放行、无 sheet 对照、时间后缀键、简历兜底不回退、第三方截图仍排除、降级回落、手打不受影响）"
-      ],
-      "level": "patch"
-    },
-    {
-      "number": "1135",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1135",
-      "title": "记忆快照面板补渲染焦点岗位字段并修正描述文案",
-      "author": "huajune",
-      "mergedAt": "2026-09-01",
-      "businessUpdates": [
-        "记忆快照面板补渲染焦点岗位字段并修正描述文案"
-      ],
-      "summary": [
-        "记忆快照面板补渲染焦点岗位字段并修正描述文案"
-      ],
-      "features": [],
-      "fixes": [
-        "记忆快照面板补渲染焦点岗位字段并修正描述文案"
-      ],
-      "optimizations": [],
-      "ops": [],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "`web` 目录 `tsc -b` 与 `eslint`（两个改动文件）均通过。",
-        "渲染路径与既有字段完全同构（非空判断 + JSON 面板展示），无行为分支。"
-      ],
-      "level": "patch"
-    }
-  ],
+  "entries": [],
   "lastRelease": {
-    "version": "11.1.2",
+    "version": "11.1.3",
     "date": "2026-09-01",
     "sourceBranch": "develop",
     "entries": [
       {
-        "number": "1129",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/1129",
-        "title": "工具调用被写成文本时不再凭空宣称动作已完成",
+        "number": "1136",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1136",
+        "title": "窗口制岗位放行候选人约定时刻 + 证件自陈进出处池 + 单轮工具上限提至 10",
         "author": "huajune",
         "mergedAt": "2026-09-01",
         "businessUpdates": [
-          "工具调用被写成文本时不再凭空宣称动作已完成"
+          "窗口制岗位放行候选人约定时刻 + 证件自陈进出处池 + 单轮工具上限提至 10"
         ],
         "summary": [
-          "工具调用被写成文本时不再凭空宣称动作已完成"
+          "窗口制岗位放行候选人约定时刻 + 证件自陈进出处池 + 单轮工具上限提至 10"
         ],
         "features": [],
         "fixes": [],
         "optimizations": [],
         "ops": [
-          "工具调用被写成文本时不再凭空宣称动作已完成"
+          "窗口制岗位放行候选人约定时刻 + 证件自陈进出处池 + 单轮工具上限提至 10"
         ],
         "config": [],
         "envFiles": [],
         "verification": [
-          "`typecheck` / `lint:check` / `format:check` 全绿",
-          "446 套件 6466 用例通过",
-          "新增回归：守卫判据 9 例（含生产原文 blob、单行紧凑/驼峰/tool_use 三种形态、裸 `name` 与跨段落两个反例）+ 生成侧重试 4 例（纠正生效 / 已有工具调用不重试 / 无 blob 不重试 / 重试抛错保留首版）"
+          "窗口授权 7 例（含端点、跨日、非窗口制不放宽、缺 liveSlots 行为不变、资料闸不被越过）",
+          "出处池自陈准入 7 例（证件放行、无 sheet 对照、时间后缀键、简历兜底不回退、第三方截图仍排除、降级回落、手打不受影响）"
+        ],
+        "level": "patch"
+      },
+      {
+        "number": "1135",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1135",
+        "title": "记忆快照面板补渲染焦点岗位字段并修正描述文案",
+        "author": "huajune",
+        "mergedAt": "2026-09-01",
+        "businessUpdates": [
+          "记忆快照面板补渲染焦点岗位字段并修正描述文案"
+        ],
+        "summary": [
+          "记忆快照面板补渲染焦点岗位字段并修正描述文案"
+        ],
+        "features": [],
+        "fixes": [
+          "记忆快照面板补渲染焦点岗位字段并修正描述文案"
+        ],
+        "optimizations": [],
+        "ops": [],
+        "config": [],
+        "envFiles": [],
+        "verification": [
+          "`web` 目录 `tsc -b` 与 `eslint`（两个改动文件）均通过。",
+          "渲染路径与既有字段完全同构（非空判断 + JSON 面板展示），无行为分支。"
         ],
         "level": "patch"
       }
     ]
-  },
-  "lastAnalyzedSha": "9ecc25338d54050d96decc149e7a9b33c54976d5"
+  }
 }
