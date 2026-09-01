@@ -133,6 +133,11 @@ describe('PreparationService', () => {
     enrich: jest.fn(async (snapshot) => snapshot),
   };
 
+  // 视觉事实读路径：默认无 sheet（回落文本兜底），个别用例按需覆盖。
+  const mockChatSession = {
+    getVisualFacts: jest.fn().mockResolvedValue([]),
+  };
+
   let service: PreparationService;
 
   beforeEach(() => {
@@ -224,6 +229,7 @@ describe('PreparationService', () => {
       mockBrandStateService as never,
       mockHostingMemberConfig as never,
       mockSnapshotEnrichment as never,
+      mockChatSession as never,
     );
   });
 
@@ -2391,6 +2397,7 @@ describe('PreparationService', () => {
       mockBrandStateService as never,
       mockHostingMemberConfig as never,
       mockSnapshotEnrichment as never,
+      mockChatSession as never,
       undefined,
       geocoding as never,
     );

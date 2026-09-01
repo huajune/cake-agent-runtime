@@ -93,7 +93,7 @@ export const PRECHECK_DESCRIPTION = `面试前置校验。实时读取岗位收�
 - fieldValueProposals 是唯一收资字段入口。只在候选人原话明确支持最终契约值时提交；没提到、无法唯一映射、带保留或有歧义时不提交，让该槽位保持 empty。不得为了填满表单猜值，不得提交置信分、待复核标记或“先填后确认”值。
 - 每项 labelTitle 必须逐字取自 bookingChecklist.requiredFields，value 传规范值，quote 必须逐字取自候选人完整原话。一条消息明确支持多个字段时全部提交。纠正用 correct、清除用 clear；confirm 只用于候选人对真实相邻字段问句的短答确认，不得把 recap 拆成全部 filled 字段重投。
 - fieldValueProposals 只能填写实时契约已有槽位，不能增删字段，也不能控制 requiredFields 及其顺序。不得传岗位要求冒充候选人答案，不得补造字段或沿用旧 candidateXxx 裸参数。
-- recapConfirmation 是 recap 确认的**唯一入账入口**：候选人对提交前复述明确表态确认时（包括「好的」「确认」等纯短答，也包括「没」这类语境化短答——回应「有不对的地方直接说改哪项」即确认），必须提交它，不提交则确认永不入账、booking 永远被拒。candidateQuote 必须是本轮完整回复，recapQuote 必须逐字取自实际已发出的复述文案（允许隔轮：资料未变时此前发过的复述仍有效）。存在 correct/clear 时不要提交，纠正优先。
+- recapConfirmation 是 recap 确认的**唯一入账入口**：候选人对提交前复述明确表态确认时（包括「好的」「确认」等纯短答，也包括「没」这类语境化短答——回应「有不对的地方直接说改哪项」即确认），必须提交它，不提交则确认永不入账、booking 会被拒。**这只适用于确实需要复述确认的表单**：若回执给出 recap_not_required，说明本岗无需确认，不要卡在讨确认上。candidateQuote 必须是本轮完整回复，recapQuote 必须逐字取自实际已发出的复述文案（允许隔轮：资料未变时此前发过的复述仍有效）。存在 correct/clear 时不要提交，纠正优先。
 - 返回里出现 rejectedAnswers 表示这些答案**已被退回、没有入账**：按其 hint 改投，不要把候选人已经答过的字段再问一遍。
 - 返回里出现 rejectedRecapConfirmation 表示本轮 recap 确认被公证退回、没有入账：按其 hint 修复后重投，不要把候选人已经确认过的内容再问一遍。
 
@@ -167,7 +167,8 @@ interface UnmatchedAnswer {
  * 假宣称已提交。
  */
 const RECAP_CONFIRMATION_REJECTION_HINTS: Record<RecapConfirmationRejectionReason, string> = {
-  recap_not_required: '当前表单无外部预填、不需要复述确认，不必提交 recapConfirmation。',
+  recap_not_required:
+    '本岗表单无外部预填，**本就不需要复述确认**——资料不是「还没最终确认」。不要再向候选人讨确认，也不要重复提交 recapConfirmation；直接按本次 nextAction 行动（ready_to_book 即立刻调用 duliday_interview_booking）。',
   recap_missing_or_already_affirmed:
     '没有待确认的复述在案（尚未发出或已确认过），按本次 nextAction 行动即可。',
   candidate_quote_not_full_latest_reply:
@@ -399,7 +400,9 @@ export function buildInterviewPrecheckTool(
           const bookableSlots = interviewTimeWaitNotice
             ? []
             : buildBookableSlots({ windows, requestedDate: effectiveRequestedDate });
-          const candidateTexts = extractCandidateTexts(evidenceMessages);
+          const candidateTexts = extractCandidateTexts(evidenceMessages, {
+            visualSheetsByContent: context.turnInput.visualSheetsByContent,
+          });
           const selectedInterviewTime = selectRequestedInterviewTime(
             rawScheduleRequest,
             bookableSlots,
@@ -618,7 +621,9 @@ async function runForm(params: {
     });
   }
 
-  const candidateTexts = extractCandidateTexts(params.messages);
+  const candidateTexts = extractCandidateTexts(params.messages, {
+    visualSheetsByContent: params.context.turnInput.visualSheetsByContent,
+  });
   const corrections = intake.proposals
     .filter((answer) => answer.operation === 'correct' || answer.operation === 'clear')
     .filter(

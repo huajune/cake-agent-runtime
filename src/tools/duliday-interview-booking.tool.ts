@@ -40,6 +40,7 @@ import {
 import { runBookingScheduleAndNameGuards } from '@tools/booking/booking-guards.util';
 import { isTestPiiPhoneAllowed, maskPhoneForDetails } from '@tools/shared/test-pii-gate';
 import { buildJobPolicyAnalysis, isWaitNoticeInterview } from '@tools/job-list/job-policy-parser';
+import { buildBookableSlots } from '@tools/booking/bookable-slot.util';
 import { buildSpongeTokenContext } from '@tools/shared/sponge-token-context.util';
 import {
   buildToolError,
@@ -301,6 +302,8 @@ export function buildInterviewBookingTool(
               waitNotice,
               interviewTime,
               interviewTimeBookingAllowed: waitNotice || Boolean(interviewTime),
+              // 窗口制岗位：草稿只按日期落到窗口起点，候选人约定的窗口内时刻靠这批 slot 放行。
+              liveSlots: buildBookableSlots({ windows: analysis.interviewWindows }),
             })
           ) {
             return fail(
