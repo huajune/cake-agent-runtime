@@ -1,4 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { Cron } from '@nestjs/schedule';
 import { AnalyticsMetricsService } from '@analytics/metrics/analytics-metrics.service';
 import { AnalyticsTrendBuilderService } from '@analytics/trends/analytics-trend-builder.service';
 import {
@@ -139,6 +141,7 @@ export class AnalyticsDashboardService {
     private readonly analyticsMetricsService: AnalyticsMetricsService,
     private readonly analyticsTrendBuilder: AnalyticsTrendBuilderService,
     private readonly dailyOpsReportService: DailyOpsReportService,
+    private readonly configService: ConfigService,
   ) {}
 
   // ========================================
@@ -676,6 +679,45 @@ export class AnalyticsDashboardService {
       .then((value) => this.setCachedDashboardOverview(timeRange, groups, value))
       .catch((error) => this.logger.warn(`[Dashboard] 概览缓存后台刷新失败 [${key}]:`, error))
       .finally(() => this.overviewRefreshing.delete(key));
+  }
+
+  /** 预热覆盖的时间范围：与前端 tab 一一对应（均为「全部小组」这一默认视图）。 */
+  private static readonly PREWARM_RANGES: TimeRange[] = [
+    'today',
+    'week',
+    'month',
+    'twoMonths',
+    'threeMonths',
+  ];
+
+  /**
+   * 定时预热概览缓存。
+   *
+   * 缓存分 fresh / stale 两档：只要 key 还在 stale 窗口内，请求就立即拿旧值返回并在后台刷新，
+   * 用户不阻塞；一旦掉出 stale 窗口，下一个访客就要等一次完整冷计算（近 2 月实测 3.3s，
+   * 而命中缓存只要 0.29s）。冷计算共 4 个串行阶段，每阶段一次 app→Supabase 往返。
+   *
+   * 最短的 stale 窗口是 today 的 300s，所以按 2 分钟跑一轮即可让所有档位常驻 stale 内，
+   * 把冷计算从「访客路径」挪到「后台路径」。
+   *
+   * 串行而非并行遍历：并发全量聚合正是 2026-06-04 连接池耗尽宕机的形态；
+   * 逐个预热配合 resolveOverviewWithCache 的 single-flight 去重，峰值压力可控。
+   */
+  @Cron('*/2 * * * *', { name: 'prewarmDashboardOverview', timeZone: 'Asia/Shanghai' })
+  async prewarmDashboardOverview(): Promise<void> {
+    if (this.isReadOnlyPreview()) return;
+
+    for (const range of AnalyticsDashboardService.PREWARM_RANGES) {
+      try {
+        await this.getDashboardOverviewAsync(range, []);
+      } catch (error) {
+        this.logger.warn(`[Dashboard] 概览缓存预热失败 [${range}]:`, error);
+      }
+    }
+  }
+
+  private isReadOnlyPreview(): boolean {
+    return this.configService.get<string>('READ_ONLY_PREVIEW', 'false') === 'true';
   }
 
   private setCachedDashboardOverview(

@@ -6,6 +6,7 @@ import { AnalyticsDashboardService } from '@biz/monitoring/services/dashboard/an
 import { MonitoringCacheService } from '@biz/monitoring/services/tracking/monitoring-cache.service';
 import { MessageProcessingService } from '@biz/message/services/message-processing.service';
 import { DailyOpsReportService } from '@biz/ops-events/services/daily-ops-report.service';
+import { ConfigService } from '@nestjs/config';
 import { MonitoringDailyStatsRepository } from '@biz/monitoring/repositories/daily-stats.repository';
 import { MonitoringHourlyStatsRepository } from '@biz/monitoring/repositories/hourly-stats.repository';
 import { MonitoringErrorLogRepository } from '@biz/monitoring/repositories/error-log.repository';
@@ -137,6 +138,9 @@ describe('AnalyticsDashboardService', () => {
   };
 
   // 默认 getEarliestReportDate→null：daily_ops_report 尚无覆盖时预约数返回 0。
+  // 预热 cron 需要 READ_ONLY_PREVIEW 开关
+  const mockConfigService = { get: jest.fn().mockReturnValue('false') };
+
   const mockDailyOpsReportService = {
     getEarliestReportDate: jest.fn().mockResolvedValue(null),
     sumByDateRange: jest.fn(),
@@ -225,6 +229,10 @@ describe('AnalyticsDashboardService', () => {
         {
           provide: DailyOpsReportService,
           useValue: mockDailyOpsReportService,
+        },
+        {
+          provide: ConfigService,
+          useValue: mockConfigService,
         },
       ],
     }).compile();
@@ -1418,6 +1426,55 @@ describe('AnalyticsDashboardService', () => {
       const result = service.buildBusinessTrend(records, 'today');
 
       expect(result[0].consultations).toBe(1); // only user-1
+    });
+  });
+
+  // ========================================
+  // prewarmDashboardOverview
+  // ========================================
+
+  describe('prewarmDashboardOverview', () => {
+    it('should warm every dashboard range so visitors never hit the cold path', async () => {
+      const spy = jest
+        .spyOn(service, 'getDashboardOverviewAsync')
+        .mockResolvedValue({} as never);
+
+      await service.prewarmDashboardOverview();
+
+      // 5 个档位与前端 tab 一一对应，且都按「全部小组」默认视图预热
+      expect(spy.mock.calls.map((c) => c[0])).toEqual([
+        'today',
+        'week',
+        'month',
+        'twoMonths',
+        'threeMonths',
+      ]);
+      expect(spy.mock.calls.every((c) => Array.isArray(c[1]) && c[1].length === 0)).toBe(true);
+      spy.mockRestore();
+    });
+
+    it('should keep going when one range fails', async () => {
+      const spy = jest
+        .spyOn(service, 'getDashboardOverviewAsync')
+        .mockRejectedValueOnce(new Error('boom'))
+        .mockResolvedValue({} as never);
+
+      await expect(service.prewarmDashboardOverview()).resolves.toBeUndefined();
+
+      expect(spy).toHaveBeenCalledTimes(5);
+      spy.mockRestore();
+    });
+
+    it('should not warm anything in read-only preview', async () => {
+      mockConfigService.get.mockReturnValueOnce('true');
+      const spy = jest
+        .spyOn(service, 'getDashboardOverviewAsync')
+        .mockResolvedValue({} as never);
+
+      await service.prewarmDashboardOverview();
+
+      expect(spy).not.toHaveBeenCalled();
+      spy.mockRestore();
     });
   });
 });
