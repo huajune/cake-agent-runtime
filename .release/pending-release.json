@@ -55,6 +55,32 @@
         "渲染路径与既有字段完全同构（非空判断 + JSON 面板展示），无行为分支。"
       ],
       "level": "patch"
+    },
+    {
+      "number": "1134",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1134",
+      "title": "收拢 MEMORY_SESSION_TTL_DAYS 默认值到共享常量消除漂移",
+      "author": "huajune",
+      "mergedAt": "2026-09-01",
+      "businessUpdates": [
+        "收拢 MEMORY_SESSION_TTL_DAYS 默认值到共享常量消除漂移"
+      ],
+      "summary": [
+        "收拢 MEMORY_SESSION_TTL_DAYS 默认值到共享常量消除漂移"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [
+        "收拢 MEMORY_SESSION_TTL_DAYS 默认值到共享常量消除漂移"
+      ],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`tests/memory/memory.config.spec.ts` + `tests/biz/message/services/chat-session.service.spec.ts`：26 通过",
+        "`pnpm run typecheck` / `pnpm run lint:check`：通过"
+      ],
+      "level": "patch"
     }
   ],
   "lastRelease": {
@@ -91,5 +117,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "9ecc25338d54050d96decc149e7a9b33c54976d5"
+  "lastAnalyzedSha": "10f0994d5dd66a3bbaa21318b3515b74b5aa31c6"
 }
