@@ -715,10 +715,30 @@ function renderWorkTimeSection(workTimeInput: unknown): string {
   const wm = asRecord(wt.weekAndMonthWorkTime) ?? {};
   const cycleLabel = hasValue(wm.arrangementCycleType) ? String(wm.arrangementCycleType) : '';
   const wmParts: string[] = [];
-  // 做X休Y（用中文数字以触发"做六休一"等全周强排班识别）
+  // 做X休Y（用中文数字以触发"做六休一"等全周强排班识别）。
+  // X+Y=7 时是周频描述（做六休一=每周 6 天）；X+Y≠7 时是循环班型（做一休一=隔天轮换
+  // ≈每周 3-4 天），必须把周频换算直出——留给模型自己换算就会把"做一休一"读成"每周休 1 天"。
+  const weekWorkDays = Number(wm.perWeekWorkDays);
+  const weekRestDays = Number(wm.perWeekRestDays);
+  let renderedWeeklyDays: number | null = null;
   if (hasValue(wm.perWeekWorkDays) && hasValue(wm.perWeekRestDays)) {
-    wmParts.push(`做${toCnNum(wm.perWeekWorkDays)}休${toCnNum(wm.perWeekRestDays)}`);
+    const idiom = `做${toCnNum(wm.perWeekWorkDays)}休${toCnNum(wm.perWeekRestDays)}`;
+    if (Number.isFinite(weekWorkDays) && Number.isFinite(weekRestDays)) {
+      if (weekWorkDays + weekRestDays === 7) {
+        renderedWeeklyDays = weekWorkDays;
+        wmParts.push(`${idiom}（每周出勤 ${weekWorkDays} 天）`);
+      } else {
+        const cycleWeekly = Math.floor((7 * weekWorkDays) / (weekWorkDays + weekRestDays));
+        renderedWeeklyDays = cycleWeekly;
+        wmParts.push(
+          `${idiom}（上${weekWorkDays}休${weekRestDays}循环班型，平均每周出勤约 ${cycleWeekly} 天，不是每周休 ${weekRestDays} 天）`,
+        );
+      }
+    } else {
+      wmParts.push(idiom);
+    }
   } else if (hasValue(wm.perWeekWorkDays)) {
+    if (Number.isFinite(weekWorkDays)) renderedWeeklyDays = weekWorkDays;
     wmParts.push(`每周出勤 ${wm.perWeekWorkDays} 天`);
   } else if (hasValue(wm.perWeekRestDays)) {
     wmParts.push(`每周休 ${wm.perWeekRestDays} 天`);
@@ -728,13 +748,39 @@ function renderWorkTimeSection(workTimeInput: unknown): string {
     const limit = hasValue(wm.onWorkLimitType) ? String(wm.onWorkLimitType) : '上岗';
     wmParts.push(`${limit} ${wm.onWorkTime} ${wm.onWorkTimeUnit}`);
   }
-  // 休息模式（周中休/周末休）
-  if (hasValue(wm.weekMonthRestMode)) wmParts.push(String(wm.weekMonthRestMode));
+  // 休息模式：语义直出。"周中休"曾被模型读反成"周末不用上班"，这里把出勤含义写死。
+  if (hasValue(wm.weekMonthRestMode)) {
+    const restMode = String(wm.weekMonthRestMode);
+    if (restMode.includes('周中休')) {
+      wmParts.push(`${restMode}（周内休息，**周末需出勤**）`);
+    } else if (restMode.includes('周末休')) {
+      wmParts.push(`${restMode}（周末休息，周一至周五出勤）`);
+    } else {
+      wmParts.push(restMode);
+    }
+  }
   // 单双号
   if (hasValue(wm.workSingleDouble)) wmParts.push(`仅${wm.workSingleDouble}`);
   if (wmParts.length) {
     const cyclePrefix = cycleLabel ? `${cycleLabel}: ` : '';
     lines.push(`- **排班周期**: ${cyclePrefix}${wmParts.join('，')}`);
+  }
+  // 「每周至少 N 天」与「每周出勤 M 天」并存且 N>M 属数据配置冲突：并列直出会让模型
+  // 二选一，被候选人质疑后又改口另一个。冲突时显式声明，禁止模型择一断言。
+  const minWeeklyRequired = Number(wm.onWorkTime);
+  if (
+    renderedWeeklyDays !== null &&
+    Number.isFinite(minWeeklyRequired) &&
+    hasValue(wm.onWorkLimitType) &&
+    String(wm.onWorkLimitType).includes('至少') &&
+    hasValue(wm.onWorkTimeUnit) &&
+    String(wm.onWorkTimeUnit).includes('天') &&
+    minWeeklyRequired > renderedWeeklyDays
+  ) {
+    lines.push(
+      `- **排班数据冲突提示**: 该岗位「至少 ${minWeeklyRequired} 天」与「每周出勤 ${renderedWeeklyDays} 天」互相矛盾，属数据配置问题。` +
+        '向候选人说明排班以门店最终确认为准，不要自行选择其中一个数字作为事实断言',
+    );
   }
 
   // 每日排班（海绵2.0 dayWorkTime）
