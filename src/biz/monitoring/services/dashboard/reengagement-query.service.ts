@@ -116,11 +116,9 @@ export class ReengagementQueryService {
         outcomeKind: row.outcome_kind,
         updatedAt: row.updated_at,
       });
-      // 下一次待发 = 各场景中 scheduled/rescheduled 且 fire_at 未到者取最早
+      // 下一次待发 = 各场景中 scheduled 且 fire_at 未到者取最早
       const pending =
-        (row.status === 'scheduled' || row.status === 'rescheduled') &&
-        row.fire_at != null &&
-        Date.parse(row.fire_at) > now;
+        row.status === 'scheduled' && row.fire_at != null && Date.parse(row.fire_at) > now;
       if (
         pending &&
         (!candidate.nextTouch || Date.parse(row.fire_at!) < Date.parse(candidate.nextTouch.fireAt))

@@ -74,7 +74,7 @@ export interface ReengagementCandidateSummary {
   botImId?: string | null;
   /** 全场景最新活动时间（ISO，候选人排序键） */
   latestAt: string;
-  /** 最近的一个待发任务（scheduled/rescheduled 且 fire_at 未到）；无则 null */
+  /** 最近的一个待发任务（scheduled 且 fire_at 未到）；无则 null */
   nextTouch: { scenarioCode: string; touchKey: string; fireAt: string } | null;
   scenarios: ReengagementCandidateScenario[];
 }
