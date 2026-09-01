@@ -1565,6 +1565,7 @@ export function buildJobListTool(
                   scheduleConstraintLabel: formatScheduleConstraintLabel(
                     candidateScheduleConstraint,
                   ),
+                  scheduleExcludedCount: scheduleFilterResult.excluded.length,
                 }),
               },
             });

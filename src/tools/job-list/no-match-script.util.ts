@@ -21,6 +21,12 @@ export interface NoMatchQueryContext {
   regionLabels?: string[];
   maxKm?: number | null;
   scheduleConstraintLabel?: string | null;
+  /**
+   * 被班次硬约束剔除的在招岗位数。>0 时附近**有岗**只是排班对不上——话术必须如实说
+   * "有 N 家但排班对不上"，不得说成"没找到岗位"（8 家在招被剔除后仍口播"附近没岗"，
+   * 候选人换个渠道一查就穿帮）。
+   */
+  scheduleExcludedCount?: number | null;
   /** 身份硬门槛过滤标签（如"学生可做"），进 querySummary 观测口径 */
   identityConstraintLabel?: string | null;
 }
@@ -91,7 +97,12 @@ export function buildNoMatchScript(ctx: NoMatchQueryContext): NoMatchScript {
         : city
           ? `${city}这边`
           : '附近';
-  const intro = `${subjectPhrase}${store ? '' : `在${placePhrase}`}暂时没找到合适的岗位`;
+  const scheduleExcluded = ctx.scheduleExcludedCount ?? 0;
+  const intro =
+    scheduleExcluded > 0 && ctx.scheduleConstraintLabel
+      ? `${subjectPhrase}${store ? '' : `在${placePhrase}`}有 ${scheduleExcluded} 家在招，` +
+        `但排班要求和你「${ctx.scheduleConstraintLabel}」的时段对不上，暂时没有能直接匹配的`
+      : `${subjectPhrase}${store ? '' : `在${placePhrase}`}暂时没找到合适的岗位`;
 
   // 真无岗只做库存等待，不用拉群替代岗位供给。
   const action = '后续有合适的新岗位上来，我会第一时间联系你';
@@ -110,6 +121,11 @@ export function buildNoMatchScript(ctx: NoMatchQueryContext): NoMatchScript {
       '不得跨品牌推荐（候选人提了 X 品牌，无岗就走拉群，不能默默推 Y 品牌）',
       '不得说"这家可能关了 / 应该是搬了 / 估计招满了"等门店运营状态推测',
       '本轮是真实无岗结论，不得调用 invite_to_group；拉群只用于连续两轮推荐均不满意后的承接',
+      ...(ctx.scheduleExcludedCount
+        ? [
+            '附近有在招岗位、只是排班与候选人时段不匹配：不得说成"附近没有岗位/没查到岗位"，必须按照 candidateMessage 的"有 N 家但排班对不上"口径说',
+          ]
+        : []),
     ],
   };
 }
