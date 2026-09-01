@@ -1,106 +1,42 @@
 {
-  "baseVersion": "11.1.1",
+  "baseVersion": "11.1.2",
   "nextVersion": "11.1.2",
   "updatedAt": "2026-09-01",
   "sourceBranch": "develop",
-  "entries": [
-    {
-      "number": "1129",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1129",
-      "title": "工具调用被写成文本时不再凭空宣称动作已完成",
-      "author": "huajune",
-      "mergedAt": "2026-09-01",
-      "businessUpdates": [
-        "工具调用被写成文本时不再凭空宣称动作已完成"
-      ],
-      "summary": [
-        "工具调用被写成文本时不再凭空宣称动作已完成"
-      ],
-      "features": [],
-      "fixes": [],
-      "optimizations": [],
-      "ops": [
-        "工具调用被写成文本时不再凭空宣称动作已完成"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "`typecheck` / `lint:check` / `format:check` 全绿",
-        "446 套件 6466 用例通过",
-        "新增回归：守卫判据 9 例（含生产原文 blob、单行紧凑/驼峰/tool_use 三种形态、裸 `name` 与跨段落两个反例）+ 生成侧重试 4 例（纠正生效 / 已有工具调用不重试 / 无 blob 不重试 / 重试抛错保留首版）"
-      ],
-      "level": "patch"
-    }
-  ],
+  "entries": [],
   "lastRelease": {
-    "version": "11.1.1",
+    "version": "11.1.2",
     "date": "2026-09-01",
     "sourceBranch": "develop",
     "entries": [
       {
-        "number": "1122",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/1122",
-        "title": "BadCase 积压清账批 + 核心链路注释精简",
+        "number": "1129",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1129",
+        "title": "工具调用被写成文本时不再凭空宣称动作已完成",
         "author": "huajune",
         "mergedAt": "2026-09-01",
         "businessUpdates": [
-          "飞书 BadCase 积压修复——取消假回执/控制标记泄漏/窗口可约时刻/场所名搜空"
+          "工具调用被写成文本时不再凭空宣称动作已完成"
         ],
         "summary": [
-          "核心链路注释按仓库风格全量精简",
-          "飞书 BadCase 积压修复——取消假回执/控制标记泄漏/窗口可约时刻/场所名搜空",
-          "排班语义确定性收敛——做N休M循环换算/休息模式直出/至少N天冲突对账",
-          "班次过滤致空时如实披露在招岗位数，不再说\"没找到岗位\"",
-          "BadCase 积压清账批 + 核心链路注释精简"
+          "工具调用被写成文本时不再凭空宣称动作已完成"
         ],
         "features": [],
-        "fixes": [
-          "飞书 BadCase 积压修复——取消假回执/控制标记泄漏/窗口可约时刻/场所名搜空"
-        ],
-        "optimizations": [],
-        "ops": [
-          "核心链路注释按仓库风格全量精简",
-          "排班语义确定性收敛——做N休M循环换算/休息模式直出/至少N天冲突对账",
-          "班次过滤致空时如实披露在招岗位数，不再说\"没找到岗位\""
-        ],
-        "config": [],
-        "envFiles": [],
-        "verification": [
-          "守卫新规则以生产 badcase 原文写回归用例；登记 prompt-rule-ledger；catalog 快照同步",
-          "typecheck / lint / format 全绿；全量 6448 用例通过（第一批时点），排班批相关 2476 通过"
-        ],
-        "level": "patch"
-      },
-      {
-        "number": "1125",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/1125",
-        "title": "v11.1.1 发版底账",
-        "author": "huajune",
-        "mergedAt": "2026-09-01",
-        "businessUpdates": [
-          "周报新增质量密度指标——每千回合 badcase 反馈数"
-        ],
-        "summary": [
-          "v11.1.1 发版底账",
-          "周报新增质量密度指标——每千回合 badcase 反馈数"
-        ],
-        "features": [
-          "周报新增质量密度指标——每千回合 badcase 反馈数"
-        ],
         "fixes": [],
         "optimizations": [],
         "ops": [
-          "v11.1.1 发版底账"
+          "工具调用被写成文本时不再凭空宣称动作已完成"
         ],
         "config": [],
         "envFiles": [],
         "verification": [
-          "`pnpm run release:ledger:check` ✅",
-          "`npx prettier --check` ✅"
+          "`typecheck` / `lint:check` / `format:check` 全绿",
+          "446 套件 6466 用例通过",
+          "新增回归：守卫判据 9 例（含生产原文 blob、单行紧凑/驼峰/tool_use 三种形态、裸 `name` 与跨段落两个反例）+ 生成侧重试 4 例（纠正生效 / 已有工具调用不重试 / 无 blob 不重试 / 重试抛错保留首版）"
         ],
         "level": "patch"
       }
     ]
   },
-  "lastAnalyzedSha": "80e44e7a81dd6663ef69fbdd06e39633bc40690c"
+  "lastAnalyzedSha": "186ef6ea765523e6f3a625020fb61d4a66b54b84"
 }
