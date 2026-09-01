@@ -19,6 +19,7 @@ import { type GeneratorInvokeParams } from '../generator.types';
 import { resolveGeocodeLocationAnchor } from './geocode-location-anchor.util';
 import { type TurnStartMemory } from './prompt-memory-adjudicator';
 import type { CorpusBlock } from '@shared-types/corpus.types';
+import type { FinalizedVisualFactSheet } from '@resolution/signal/visual';
 
 /**
  * ToolBuildContext 组装（PreparationService 的纯函数辅助层）：
@@ -46,6 +47,8 @@ export function buildToolContext(input: {
   currentLaborFormIntent: LaborFormIntentDecision;
   /** 当前进行中预约工单的 jobId（改约场景 system prompt 暴露给模型的「岗位ID」），并入 provenance 集。 */
   bookingWorkOrderJobIds: number[];
+  /** 剥时间后缀内容 → 视觉事实 sheet；出处公证据此认简历/证件类自陈材料。 */
+  visualSheetsByContent?: ReadonlyMap<string, FinalizedVisualFactSheet>;
 }): ToolBuildContext {
   const {
     params,
@@ -138,6 +141,7 @@ export function buildToolContext(input: {
       visualMessageTypes: params.visualMessageTypes,
       contactBrandAliases,
       geocodeLocationAnchor,
+      visualSheetsByContent: input.visualSheetsByContent,
     },
     ledger,
     runtime: {

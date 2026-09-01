@@ -7,7 +7,10 @@ import { decideLaborFormIntent } from '@resolution/labor-form';
 import { parseLocationShareCoordinates } from '@resolution/signal/markers';
 import { inferCitiesFromGeoSignals } from '@resolution/geo/city-adjudicator';
 import { produceTurnHints } from '@resolution/turn-hints/producers/rule-track';
-import { extractCandidateTextsFromCorpus } from '@resolution/signal/self-report';
+import {
+  buildVisualSheetIndex,
+  extractCandidateTextsFromCorpus,
+} from '@resolution/signal/self-report';
 import { parseCandidateFieldsFromText } from '@resolution/candidate';
 import { GeocodingService } from '@infra/geocoding/geocoding.service';
 import { MemoryService } from '@memory/memory.service';
@@ -17,6 +20,7 @@ import { LongTermService } from '@memory/long-term/long-term.service';
 import { GroupMembershipService } from '@biz/group-task/services/group-membership.service';
 import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
 import { HostingMemberConfigService } from '@biz/hosting-config/services/hosting-member-config.service';
+import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { SpongeService } from '@sponge/sponge.service';
 import {
   ACTIVE_INTERVIEW_WORK_ORDER_STATUSES,
@@ -92,6 +96,7 @@ export class PreparationService {
     private readonly brandStateService: BrandStateService,
     private readonly hostingMemberConfig: HostingMemberConfigService,
     private readonly snapshotEnrichment: SnapshotEnrichmentService,
+    private readonly chatSession: ChatSessionService,
     @Optional()
     private readonly tracer?: AgentTracerService,
     @Optional()
@@ -147,7 +152,7 @@ export class PreparationService {
       corpId,
       sessionId,
       scenario = 'candidate-consultation',
-      maxSteps = 5,
+      maxSteps = 10,
     } = params;
 
     this.logger.log(
@@ -298,8 +303,16 @@ export class PreparationService {
       );
     }
 
+    // 视觉事实 sheet 索引（每轮一次读）：出处公证按 sheet kind 认候选人自陈材料。
+    // 缺它则证件类（健康证/学生证）自陈原话被排除出出处池——模型引用其中的姓名/性别/年龄
+    // 会被判 source_text_not_found，进而重复追问已答字段。降级/异常一律回落空索引，
+    // 即恢复到无 sheet 的文本兜底行为，不阻断回合。
+    const visualSheetsByContent = await this.loadVisualSheetIndex(sessionId);
+
     // 工具上下文 + 观测快照（都消费 entryStage）。
-    const candidateTexts = extractCandidateTextsFromCorpus(conversationCorpusBlocks);
+    const candidateTexts = extractCandidateTextsFromCorpus(conversationCorpusBlocks, {
+      visualSheetsByContent,
+    });
     const ledger = createTurnLedger({
       turnHints: memory.turnHints,
       laborFormIntent: currentLaborFormIntent,
@@ -315,6 +328,7 @@ export class PreparationService {
       memory,
       normalizedMessages,
       conversationCorpusBlocks,
+      visualSheetsByContent,
       entryStage,
       stageGoals,
       thresholds,
@@ -436,6 +450,20 @@ export class PreparationService {
       .catch((error) => {
         this.logger.warn(`[prepare] finalPrompt 膨胀告警发送失败: ${toErrorMessage(error)}`);
       });
+  }
+
+  /**
+   * 视觉事实索引装配：读会话内带 sheet 的视觉消息，按「剥时间后缀的内容」建索引。
+   * 读失败不阻断回合——返回空索引即回落文本兜底（降级不是失败）。
+   */
+  private async loadVisualSheetIndex(sessionId: string) {
+    try {
+      const rows = await this.chatSession.getVisualFacts(sessionId);
+      return buildVisualSheetIndex(rows);
+    } catch (error) {
+      this.logger.warn(`视觉事实索引装配失败，回落文本兜底: ${toErrorMessage(error)}`);
+      return undefined;
+    }
   }
 
   /** 当前轮规则 producer（prep 运行点）：产物随 ledger 穿过工具与轮末收编。 */

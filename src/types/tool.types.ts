@@ -12,6 +12,7 @@ import type { LaborFormIntentDecision } from '@resolution/labor-form';
 import type { SessionBrandState } from '@resolution/brand/brand-resolution.types';
 import type { GeocodeLocationAnchor, TurnLedger } from './turn.types';
 import type { CorpusBlock } from './corpus.types';
+import type { FinalizedVisualFactSheet } from '@resolution/signal/visual';
 
 export type AiTool = Tool;
 export type AiToolSet = ToolSet;
@@ -63,6 +64,12 @@ export interface ToolTurnInputContext {
   visualMessageTypes?: Record<string, MessageType.IMAGE | MessageType.EMOTION>;
   contactBrandAliases?: string[];
   geocodeLocationAnchor?: GeocodeLocationAnchor;
+  /**
+   * 剥时间后缀内容 → 视觉事实 sheet（visual-fact-structuring 消费侧读路径）。
+   * 出处公证按 sheet kind 认候选人自陈材料（简历/证件），缺此映射则回落文本兜底、
+   * 证件类自陈原话会被排除出出处池。prep 每轮装配一次，工具只读。
+   */
+  visualSheetsByContent?: ReadonlyMap<string, FinalizedVisualFactSheet>;
 }
 
 export interface ToolRuntimeContext {
