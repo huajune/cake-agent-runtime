@@ -1,212 +1,78 @@
 {
-  "baseVersion": "11.1.0",
+  "baseVersion": "11.1.1",
   "nextVersion": "11.1.1",
   "updatedAt": "2026-09-01",
   "sourceBranch": "develop",
-  "entries": [
-    {
-      "number": "1122",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1122",
-      "title": "BadCase 积压清账批 + 核心链路注释精简",
-      "author": "huajune",
-      "mergedAt": "2026-09-01",
-      "businessUpdates": [
-        "飞书 BadCase 积压修复——取消假回执/控制标记泄漏/窗口可约时刻/场所名搜空"
-      ],
-      "summary": [
-        "核心链路注释按仓库风格全量精简",
-        "飞书 BadCase 积压修复——取消假回执/控制标记泄漏/窗口可约时刻/场所名搜空",
-        "排班语义确定性收敛——做N休M循环换算/休息模式直出/至少N天冲突对账",
-        "班次过滤致空时如实披露在招岗位数，不再说\"没找到岗位\"",
-        "BadCase 积压清账批 + 核心链路注释精简"
-      ],
-      "features": [],
-      "fixes": [
-        "飞书 BadCase 积压修复——取消假回执/控制标记泄漏/窗口可约时刻/场所名搜空"
-      ],
-      "optimizations": [],
-      "ops": [
-        "核心链路注释按仓库风格全量精简",
-        "排班语义确定性收敛——做N休M循环换算/休息模式直出/至少N天冲突对账",
-        "班次过滤致空时如实披露在招岗位数，不再说\"没找到岗位\""
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "守卫新规则以生产 badcase 原文写回归用例；登记 prompt-rule-ledger；catalog 快照同步",
-        "typecheck / lint / format 全绿；全量 6448 用例通过（第一批时点），排班批相关 2476 通过"
-      ],
-      "level": "patch"
-    },
-    {
-      "number": "1125",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1125",
-      "title": "v11.1.1 发版底账",
-      "author": "huajune",
-      "mergedAt": "2026-09-01",
-      "businessUpdates": [
-        "周报新增质量密度指标——每千回合 badcase 反馈数"
-      ],
-      "summary": [
-        "v11.1.1 发版底账",
-        "周报新增质量密度指标——每千回合 badcase 反馈数"
-      ],
-      "features": [
-        "周报新增质量密度指标——每千回合 badcase 反馈数"
-      ],
-      "fixes": [],
-      "optimizations": [],
-      "ops": [
-        "v11.1.1 发版底账"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "`pnpm run release:ledger:check` ✅",
-        "`npx prettier --check` ✅"
-      ],
-      "level": "patch"
-    }
-  ],
+  "entries": [],
   "lastRelease": {
-    "version": "11.1.0",
-    "date": "2026-08-31",
+    "version": "11.1.1",
+    "date": "2026-09-01",
     "sourceBranch": "develop",
     "entries": [
       {
-        "number": "1111",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/1111",
-        "title": "修复 stale-input 短路与 replay 旁路的契约漂移",
+        "number": "1122",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1122",
+        "title": "BadCase 积压清账批 + 核心链路注释精简",
         "author": "huajune",
-        "mergedAt": "2026-08-31",
+        "mergedAt": "2026-09-01",
         "businessUpdates": [
-          "修复 stale-input 短路与 replay 旁路的契约漂移"
+          "飞书 BadCase 积压修复——取消假回执/控制标记泄漏/窗口可约时刻/场所名搜空"
         ],
         "summary": [
-          "修复 stale-input 短路与 replay 旁路的契约漂移"
+          "核心链路注释按仓库风格全量精简",
+          "飞书 BadCase 积压修复——取消假回执/控制标记泄漏/窗口可约时刻/场所名搜空",
+          "排班语义确定性收敛——做N休M循环换算/休息模式直出/至少N天冲突对账",
+          "班次过滤致空时如实披露在招岗位数，不再说\"没找到岗位\"",
+          "BadCase 积压清账批 + 核心链路注释精简"
         ],
         "features": [],
         "fixes": [
-          "修复 stale-input 短路与 replay 旁路的契约漂移"
+          "飞书 BadCase 积压修复——取消假回执/控制标记泄漏/窗口可约时刻/场所名搜空"
         ],
         "optimizations": [],
-        "ops": [],
+        "ops": [
+          "核心链路注释按仓库风格全量精简",
+          "排班语义确定性收敛——做N休M循环换算/休息模式直出/至少N天冲突对账",
+          "班次过滤致空时如实披露在招岗位数，不再说\"没找到岗位\""
+        ],
         "config": [],
         "envFiles": [],
         "verification": [
-          "`tsc --noEmit`（TS 5.9.3）✅",
-          "booking spec + tests/agent/runner + reply-workflow spec：87 tests passed ✅",
-          "改动 src 文件 eslint --max-warnings=0 ✅"
+          "守卫新规则以生产 badcase 原文写回归用例；登记 prompt-rule-ledger；catalog 快照同步",
+          "typecheck / lint / format 全绿；全量 6448 用例通过（第一批时点），排班批相关 2476 通过"
         ],
         "level": "patch"
       },
       {
-        "number": "1115",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/1115",
-        "title": "LLM 执行尝试轨迹无条件落库 + agent_steps 墙钟锚随重试对齐",
+        "number": "1125",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1125",
+        "title": "v11.1.1 发版底账",
         "author": "huajune",
-        "mergedAt": "2026-08-31",
+        "mergedAt": "2026-09-01",
         "businessUpdates": [
-          "**新增 `llm_execution` 事件**：每次 llm-executor `generate`/`stream` 收尾（成功或全链耗尽）无条件发射，落 `agent_execution_events` 同 traceId。payload 含每次 provider 尝试的 modelId、开始偏移、耗时、`errorCategory`、截断错误消息、退避时长，及 attemptCount/totalDurationMs/backoffTotalMs 汇总。**刻意进 ALWAYS_PERSISTED 无条件集合**——tool_call 漏采 2/3 的根因正是条件采样，此处不复刻。",
-          "Dashboard 执行事件时间线补 `llm_execution` 摘要（模型·状态·N次尝试·耗时）；有重试时同时展开 attempts 原始 JSON。",
-          "**修正墙钟错账**：executor 新增 `onAttemptStart` 钩子，generator 在每次尝试起点重置步骤锚——agent_steps 只计成功尝试，失败尝试耗时由 `llm_execution` 承接。"
+          "周报新增质量密度指标——每千回合 badcase 反馈数"
         ],
         "summary": [
-          "LLM 执行尝试轨迹无条件落库 + agent_steps 墙钟锚随重试对齐",
-          "llm_execution 埋点注释精简",
-          "**新增 `llm_execution` 事件**：每次 llm-executor `generate`/`stream` 收尾（成功或全链耗尽）无条件发射，落 `agent_execution_events` 同 traceId。payload 含每次 provider 尝试的 modelId、开始偏移、耗时、`errorCategory`、截断错误消息、退避时长，及 attemptCount/totalDurationMs/backoffTotalMs 汇总。**刻意进 ALWAYS_PERSISTED 无条件集合**——tool_call 漏采 2/3 的根因正是条件采样，此处不复刻。",
-          "**修正墙钟错账**：executor 新增 `onAttemptStart` 钩子，generator 在每次尝试起点重置步骤锚——agent_steps 只计成功尝试，失败尝试耗时由 `llm_execution` 承接。",
-          "Dashboard 执行事件时间线补 `llm_execution` 摘要（模型·状态·N次尝试·耗时）；有重试时同时展开 attempts 原始 JSON。"
+          "v11.1.1 发版底账",
+          "周报新增质量密度指标——每千回合 badcase 反馈数"
         ],
         "features": [
-          "**新增 `llm_execution` 事件**：每次 llm-executor `generate`/`stream` 收尾（成功或全链耗尽）无条件发射，落 `agent_execution_events` 同 traceId。payload 含每次 provider 尝试的 modelId、开始偏移、耗时、`errorCategory`、截断错误消息、退避时长，及 attemptCount/totalDurationMs/backoffTotalMs 汇总。**刻意进 ALWAYS_PERSISTED 无条件集合**——tool_call 漏采 2/3 的根因正是条件采样，此处不复刻。",
-          "Dashboard 执行事件时间线补 `llm_execution` 摘要（模型·状态·N次尝试·耗时）；有重试时同时展开 attempts 原始 JSON。"
+          "周报新增质量密度指标——每千回合 badcase 反馈数"
         ],
-        "fixes": [
-          "**修正墙钟错账**：executor 新增 `onAttemptStart` 钩子，generator 在每次尝试起点重置步骤锚——agent_steps 只计成功尝试，失败尝试耗时由 `llm_execution` 承接。"
-        ],
-        "optimizations": [],
-        "ops": [
-          "LLM 执行尝试轨迹无条件落库 + agent_steps 墙钟锚随重试对齐",
-          "llm_execution 埋点注释精简"
-        ],
-        "config": [],
-        "envFiles": [],
-        "verification": [
-          "typecheck / lint:check / format:check / web tsc / web eslint 全绿",
-          "`tests/agent` + `tests/llm` + `tests/observability` + `tests/providers`：78 套件 1197 用例全过，含 3 个新增用例（重试轨迹发射、耗尽事件含 skipped 候选、墙钟锚重置）"
-        ],
-        "level": "minor"
-      },
-      {
-        "number": "1112",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/1112",
-        "title": "0831 预约链路批修——recap 确认死锁、带外工单核验、FILE 收资引导与记忆沉淀口径",
-        "author": "huajune",
-        "mergedAt": "2026-08-31",
-        "businessUpdates": [
-          "沉淀间隙口径对齐实测 + 记忆块注入教学修正"
-        ],
-        "summary": [
-          "预约上下文补带外工单核验 + 记忆组装同会话回流去重",
-          "FILE 字段收资引导 + 拒收熔断账本按候选人回合去重",
-          "沉淀间隙口径对齐实测 + 记忆块注入教学修正",
-          "recap 确认通道解死锁——公证锚点放宽至已送达复述 + 拒收回执与审计",
-          "沉淀间隙口径回归 3d 并固化 gap>=sessionTtl 约束",
-          "精简沉淀间隙注释，只留约束去掉事故叙事",
-          "拒收配额跨轮按作答指纹去重 + 户籍省级容差 + 熔断观测补账 + 记忆边界保留已投递回复",
-          "收资/记忆批注释按仓库风格精简",
-          "0831 预约链路批修——recap 确认死锁、带外工单核验、FILE 收资引导与记忆沉淀口径"
-        ],
-        "features": [],
-        "fixes": [
-          "沉淀间隙口径对齐实测 + 记忆块注入教学修正"
-        ],
-        "optimizations": [],
-        "ops": [
-          "预约上下文补带外工单核验 + 记忆组装同会话回流去重",
-          "FILE 字段收资引导 + 拒收熔断账本按候选人回合去重",
-          "recap 确认通道解死锁——公证锚点放宽至已送达复述 + 拒收回执与审计",
-          "沉淀间隙口径回归 3d 并固化 gap>=sessionTtl 约束",
-          "精简沉淀间隙注释，只留约束去掉事故叙事",
-          "拒收配额跨轮按作答指纹去重 + 户籍省级容差 + 熔断观测补账 + 记忆边界保留已投递回复",
-          "收资/记忆批注释按仓库风格精简"
-        ],
-        "config": [],
-        "envFiles": [
-          ".env.example"
-        ],
-        "verification": [
-          "公证/precheck/booking/renderer 四个 spec 74 用例全绿（含 4 个新增生产形态回归：「没」隔轮追认、改写复述快照失配重投等）",
-          "`pnpm run typecheck` / `lint:check` 全绿",
-          "台账 `docs/prompt-rule-ledger.md` 同批更新"
-        ],
-        "level": "patch"
-      },
-      {
-        "number": "1118",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/1118",
-        "title": "v11.1.0 发版底账",
-        "author": "huajune",
-        "mergedAt": "2026-08-31",
-        "businessUpdates": [
-          "v11.1.0 发版底账"
-        ],
-        "summary": [
-          "v11.1.0 发版底账"
-        ],
-        "features": [],
         "fixes": [],
         "optimizations": [],
         "ops": [
-          "v11.1.0 发版底账"
+          "v11.1.1 发版底账"
         ],
         "config": [],
         "envFiles": [],
-        "verification": [],
+        "verification": [
+          "`pnpm run release:ledger:check` ✅",
+          "`npx prettier --check` ✅"
+        ],
         "level": "patch"
       }
     ]
   },
-  "lastAnalyzedSha": "b6f8da168f49eed26cb2e27a6f7ddfd1a18343c1"
+  "lastAnalyzedSha": "10a49726bb97f275d47b236150d09fd1085fc9d8"
 }
