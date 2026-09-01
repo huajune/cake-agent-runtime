@@ -91,7 +91,9 @@ export class DataCleanupService implements OnModuleInit {
       ),
       10,
     );
-    this.chatRetentionDays = parseInt(this.configService.get('DATA_CLEANUP_CHAT_DAYS', '60'), 10);
+    // 100 天：消息趋势面板最长档是「近 3 月」（约 92 天），留 8 天余量。
+    // 曾配 60 天，导致「近 3 月」实际只有 60 天数据且无任何提示。
+    this.chatRetentionDays = parseInt(this.configService.get('DATA_CLEANUP_CHAT_DAYS', '100'), 10);
     this.userActivityRetentionDays = parseInt(
       this.configService.get('DATA_CLEANUP_USER_ACTIVITY_DAYS', '365'),
       10,
