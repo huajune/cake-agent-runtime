@@ -388,45 +388,64 @@ describe('UserHostingRepository', () => {
       expect(result).toEqual([]);
     });
 
-    it('should aggregate user_activity rows by day', async () => {
+    it('should map the database-side daily aggregate', async () => {
       mockSupabaseService.isClientInitialized.mockReturnValue(true);
-
-      const queryMock = makeQueryMock({
+      mockSupabaseClient.rpc.mockResolvedValue({
         data: [
           {
             activity_date: '2026-04-28',
-            chat_id: 'chat-1',
-            message_count: 3,
-            token_usage: 100,
-          },
-          {
-            activity_date: '2026-04-28',
-            chat_id: 'chat-2',
-            message_count: 5,
-            token_usage: 200,
+            user_count: 2,
+            message_count: 8,
+            token_usage: 300,
           },
           {
             activity_date: '2026-04-29',
-            chat_id: 'chat-1',
+            user_count: 1,
             message_count: 2,
             token_usage: 50,
           },
         ],
         error: null,
       });
-      mockSupabaseClient.from.mockReturnValue(queryMock);
 
       const result = await repository.findDailyActivityStatsByDateRange(
         new Date('2026-04-28T00:00:00+08:00'),
         new Date('2026-04-29T23:59:59+08:00'),
       );
 
-      expect(mockSupabaseClient.from).toHaveBeenCalledWith('user_activity');
-      expect(queryMock.gte).toHaveBeenCalledWith('activity_date', '2026-04-28');
-      expect(queryMock.lte).toHaveBeenCalledWith('activity_date', '2026-04-29');
+      expect(mockSupabaseClient.rpc).toHaveBeenCalledWith('get_user_activity_daily_stats', {
+        p_start_date: '2026-04-28',
+        p_end_date: '2026-04-29',
+      });
+      // 聚合已下沉到 DB：不再逐行拉 user_activity 明细
+      expect(mockSupabaseClient.from).not.toHaveBeenCalledWith('user_activity');
       expect(result).toEqual([
         { date: '2026-04-28', userCount: 2, messageCount: 8, tokenUsage: 300 },
         { date: '2026-04-29', userCount: 1, messageCount: 2, tokenUsage: 50 },
+      ]);
+    });
+
+    it('should coerce bigint columns serialized as strings', async () => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(true);
+      mockSupabaseClient.rpc.mockResolvedValue({
+        data: [
+          {
+            activity_date: '2026-04-28',
+            user_count: '2',
+            message_count: '8',
+            token_usage: null,
+          },
+        ],
+        error: null,
+      });
+
+      const result = await repository.findDailyActivityStatsByDateRange(
+        new Date('2026-04-28T00:00:00+08:00'),
+        new Date('2026-04-28T23:59:59+08:00'),
+      );
+
+      expect(result).toEqual([
+        { date: '2026-04-28', userCount: 2, messageCount: 8, tokenUsage: 0 },
       ]);
     });
   });

@@ -150,6 +150,13 @@ export class MessageProcessingService {
   }
 
   /**
+   * 队列耗时聚合（DB 侧 AVG），供 System 面板使用。
+   */
+  async getQueueDurationStats(startTime: number, endTime: number) {
+    return this.messageProcessingRepository.getQueueDurationStats(startTime, endTime);
+  }
+
+  /**
    * 获取 Dashboard 业务趋势所需的轻量记录。
    */
   async getBusinessTrendRecordsByTimeRange(startTime: number, endTime: number, limit?: number) {
@@ -170,6 +177,10 @@ export class MessageProcessingService {
     chatIds?: string[];
     limit?: number;
     offset?: number;
+    /** 关掉精确 count：不传时仓储层会对整表做一次无 WHERE 的 count(*)。 */
+    includeTotal?: boolean;
+    /** summary 投影不含大 jsonb 列，避免只取少量行也触发 TOAST detoast。 */
+    projection?: 'summary' | 'diagnostic';
   }) {
     return this.messageProcessingRepository.getMessageProcessingRecords(options);
   }

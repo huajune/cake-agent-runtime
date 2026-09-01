@@ -51,6 +51,7 @@ describe('AnalyticsQueryService', () => {
 
   const mockMessageProcessingService = {
     getRecordsByTimeRange: jest.fn(),
+    getQueueDurationStats: jest.fn(),
     getRecordsByTimestamps: recordsByTimestampsMock,
     getMessageProcessingRecords: recordsByTimestampsMock,
     getMessageStatsByTimestamps: messageStatsByTimestampsMock,
@@ -206,13 +207,15 @@ describe('AnalyticsQueryService', () => {
   describe('getSystemMonitoringAsync', () => {
     it('should return queue metrics, alerts summary, and alert trend', async () => {
       const now = Date.now();
-      const records = [buildRecord({ queueDuration: 500 }), buildRecord({ queueDuration: 1000 })];
       const errorLogs = [
         buildErrorLog({ timestamp: now - 1000 }),
         buildErrorLog({ timestamp: now - 2000 }),
       ];
 
-      mockMessageProcessingService.getRecordsByTimeRange.mockResolvedValue(records);
+      mockMessageProcessingService.getQueueDurationStats.mockResolvedValue({
+        sampleCount: 2,
+        avgQueueDuration: 750,
+      });
       mockErrorLogRepository.getErrorLogsSince.mockResolvedValue(errorLogs);
 
       const result = await service.getSystemMonitoringAsync();
@@ -224,10 +227,25 @@ describe('AnalyticsQueryService', () => {
       expect(result.alertsSummary.total).toBe(2);
     });
 
-    it('should return empty data gracefully when records fetch fails', async () => {
-      // getRecordsByTimeRange private method swallows errors and returns []
-      // so getSystemMonitoringAsync resolves with empty/default values
-      mockMessageProcessingService.getRecordsByTimeRange.mockRejectedValue(new Error('DB error'));
+    it('should not pull message_processing_records detail rows', async () => {
+      // 只需要一个均值，拉明细会因 jsonb 列 detoast 拖慢接口
+      mockMessageProcessingService.getQueueDurationStats.mockResolvedValue({
+        sampleCount: 0,
+        avgQueueDuration: 0,
+      });
+
+      await service.getSystemMonitoringAsync();
+
+      expect(mockMessageProcessingService.getQueueDurationStats).toHaveBeenCalledTimes(1);
+      expect(mockMessageProcessingService.getRecordsByTimeRange).not.toHaveBeenCalled();
+    });
+
+    it('should return empty data gracefully when the queue aggregate fails', async () => {
+      // 仓储层吞掉错误并返回零值，接口应照常返回默认结构
+      mockMessageProcessingService.getQueueDurationStats.mockResolvedValue({
+        sampleCount: 0,
+        avgQueueDuration: 0,
+      });
 
       const result = await service.getSystemMonitoringAsync();
 
@@ -236,9 +254,11 @@ describe('AnalyticsQueryService', () => {
       expect(result.alertsSummary.total).toBeGreaterThanOrEqual(0);
     });
 
-    it('should return queue with avgQueueDuration calculated from records', async () => {
-      const records = [buildRecord({ queueDuration: 400 }), buildRecord({ queueDuration: 600 })];
-      mockMessageProcessingService.getRecordsByTimeRange.mockResolvedValue(records);
+    it('should return queue with avgQueueDuration from the database aggregate', async () => {
+      mockMessageProcessingService.getQueueDurationStats.mockResolvedValue({
+        sampleCount: 2,
+        avgQueueDuration: 500.4,
+      });
 
       const result = await service.getSystemMonitoringAsync();
 
@@ -252,6 +272,10 @@ describe('AnalyticsQueryService', () => {
         buildErrorLog({ timestamp: now - 2 * 60 * 60 * 1000 }), // 2h ago (last 24h but not last hour)
         buildErrorLog({ timestamp: now - 25 * 60 * 60 * 1000 }), // 25h ago (not in last 24h)
       ];
+      mockMessageProcessingService.getQueueDurationStats.mockResolvedValue({
+        sampleCount: 0,
+        avgQueueDuration: 0,
+      });
       mockErrorLogRepository.getErrorLogsSince.mockResolvedValue(errorLogs);
 
       const result = await service.getSystemMonitoringAsync();
@@ -713,8 +737,11 @@ describe('AnalyticsQueryService', () => {
       const result = await service.getRecentDetailRecords();
 
       expect(result).toHaveLength(2);
+      // 只要这 50 行本身：关掉整表 count、用不含大 jsonb 的 summary 投影
       expect(messageProcessingService.getMessageProcessingRecords).toHaveBeenCalledWith({
         limit: 50,
+        includeTotal: false,
+        projection: 'summary',
       });
     });
 
@@ -728,6 +755,8 @@ describe('AnalyticsQueryService', () => {
 
       expect(messageProcessingService.getMessageProcessingRecords).toHaveBeenCalledWith({
         limit: 20,
+        includeTotal: false,
+        projection: 'summary',
       });
     });
 
