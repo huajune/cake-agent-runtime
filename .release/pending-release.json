@@ -1,10 +1,37 @@
 {
   "baseVersion": "11.1.1",
-  "nextVersion": "11.1.1",
-  "lastAnalyzedSha": null,
+  "nextVersion": "11.1.2",
   "updatedAt": "2026-09-01",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "1129",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1129",
+      "title": "工具调用被写成文本时不再凭空宣称动作已完成",
+      "author": "huajune",
+      "mergedAt": "2026-09-01",
+      "businessUpdates": [
+        "工具调用被写成文本时不再凭空宣称动作已完成"
+      ],
+      "summary": [
+        "工具调用被写成文本时不再凭空宣称动作已完成"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "工具调用被写成文本时不再凭空宣称动作已完成"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`typecheck` / `lint:check` / `format:check` 全绿",
+        "446 套件 6466 用例通过",
+        "新增回归：守卫判据 9 例（含生产原文 blob、单行紧凑/驼峰/tool_use 三种形态、裸 `name` 与跨段落两个反例）+ 生成侧重试 4 例（纠正生效 / 已有工具调用不重试 / 无 blob 不重试 / 重试抛错保留首版）"
+      ],
+      "level": "patch"
+    }
+  ],
   "lastRelease": {
     "version": "11.1.1",
     "date": "2026-09-01",
@@ -74,5 +101,6 @@
         "level": "patch"
       }
     ]
-  }
+  },
+  "lastAnalyzedSha": "80e44e7a81dd6663ef69fbdd06e39633bc40690c"
 }

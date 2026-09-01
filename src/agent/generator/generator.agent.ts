@@ -12,6 +12,7 @@ import { hasToolCall, stepCountIs, type generateText } from 'ai';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
 import { ModelRole } from '@/llm/llm.types';
 import { MemoryService } from '@memory/memory.service';
+import { containsLeakedToolCallBlob } from '@agent/guardrail/output/rules/invalid-model-output.rule';
 import { PreparationService, type WorkingMemory } from './preparation/preparation.service';
 import type { AgentError } from '@shared-types/agent-error.types';
 import type { TurnLedger } from '@shared-types/turn.types';
@@ -36,6 +37,16 @@ import {
  * - 一旦被调用，stopWhen 立即结束本轮 loop，不再进入下一步
  */
 const SKIP_REPLY_TOOL_NAME = 'skip_reply';
+
+/**
+ * 工具调用被写成文本后的纠正指令（追加在 system prompt 末尾，只用于重生成那一次）。
+ *
+ * 只说明协议事实与后果，不教具体该调哪个工具——该调什么由本轮上下文自行决定。
+ */
+const TEXTUAL_TOOL_CALL_RETRY_NOTICE =
+  '⚠️ 系统拦截：上一次生成把工具调用写成了 JSON 文本，没有真正执行。工具只能通过 tool call 通道发起，' +
+  '写在正文或思考里的调用一律不会执行，对应的动作没有发生。请重新作答：需要执行动作就真正发起 tool call，' +
+  '不需要就直接写候选人可见回复。严禁在工具未执行的情况下宣称报名/预约/取消/拉群等动作已完成。';
 
 /**
  * stopWhen 条件：当任意工具的 toolResult 标记 `shortCircuited: true` 时结束本轮 loop。
@@ -123,55 +134,9 @@ export class GeneratorAgent {
     }
 
     try {
-      let agentRequest: Record<string, unknown> | undefined;
-      let stepStartMs = Date.now();
-      const stepEndWallclocks: number[] = [];
-      const r = await this.llm.generate({
-        ...this.buildLlmExecutionOptions(params, ctx),
-        onStepFinish: () => {
-          stepEndWallclocks.push(Date.now());
-        },
-        // 失败尝试（结果校验不过/多步中途断）同样触发 onStepFinish：锚不随尝试重置，
-        // 其步末墙钟会错配到成功尝试的 steps 上。重置后 agent_steps 只计成功尝试，
-        // 失败尝试耗时由 llm_execution 事件承接。
-        onAttemptStart: () => {
-          stepStartMs = Date.now();
-          stepEndWallclocks.length = 0;
-        },
-        onPreparedRequest: async (request) => {
-          agentRequest = request;
-          if (params.onPreparedRequest) {
-            await Promise.resolve(params.onPreparedRequest(request));
-          }
-        },
-      });
+      let result = await this.runGeneration(params, ctx);
 
-      if (r.reasoningText) {
-        this.logger.debug(`Thinking: ${r.reasoningText.substring(0, 200)}...`);
-      }
-      this.logger.log(
-        `Loop 完成: steps=${r.steps.length}, tokens=${r.usage.totalTokens}, cached=${r.usage.inputTokenDetails?.cacheReadTokens ?? 'n/a'}`,
-      );
-
-      let result = this.buildRunResult({
-        text: r.text,
-        reasoningText: r.reasoningText,
-        responseMessages: r.response?.messages as Array<Record<string, unknown>> | undefined,
-        steps: r.steps,
-        usage: {
-          inputTokens: r.usage.inputTokens ?? 0,
-          outputTokens: r.usage.outputTokens ?? 0,
-          totalTokens: r.usage.totalTokens,
-          cachedInputTokens: r.usage.inputTokenDetails?.cacheReadTokens,
-        },
-        agentRequest,
-        memorySnapshot: ctx.memorySnapshot,
-        turnLedger: ctx.ledger,
-        stepStartMs,
-        stepEndWallclocks,
-        toolExecutionTimings: ctx.toolExecutionTimings,
-      });
-
+      result = await this.retryTextualToolCall(result, ctx, params);
       result = await this.recoverEmptyTextResult(result, ctx, params);
 
       this.attachTurnEnd(result, ctx, params.messageId, result.text);
@@ -553,6 +518,144 @@ export class GeneratorAgent {
       memorySnapshot: params.memorySnapshot,
       turnLedger: params.turnLedger,
     };
+  }
+
+  /**
+   * 一次完整的 agent 生成：步末墙钟锚点 + agentRequest 捕获 + 归一成 GeneratorRunResult。
+   *
+   * @param options.extraInstructions 追加到 system prompt 末尾的临时指令（重试纠正用）。
+   * @param options.emitPreparedRequest 是否把本次 prompt 透给调用方；重试传 false，
+   *        让流水里留存的始终是本回合首版 prompt，与 agent_steps 的起点对齐。
+   */
+  private async runGeneration(
+    params: GeneratorInvokeParams,
+    ctx: WorkingMemory,
+    options?: { extraInstructions?: string; emitPreparedRequest?: boolean },
+  ): Promise<GeneratorRunResult> {
+    let agentRequest: Record<string, unknown> | undefined;
+    let stepStartMs = Date.now();
+    const stepEndWallclocks: number[] = [];
+    const executionOptions = this.buildLlmExecutionOptions(params, ctx);
+    const r = await this.llm.generate({
+      ...executionOptions,
+      instructions: options?.extraInstructions
+        ? `${executionOptions.instructions}\n\n${options.extraInstructions}`
+        : executionOptions.instructions,
+      onStepFinish: () => {
+        stepEndWallclocks.push(Date.now());
+      },
+      // 失败尝试（结果校验不过/多步中途断）同样触发 onStepFinish：锚不随尝试重置，
+      // 其步末墙钟会错配到成功尝试的 steps 上。重置后 agent_steps 只计成功尝试，
+      // 失败尝试耗时由 llm_execution 事件承接。
+      onAttemptStart: () => {
+        stepStartMs = Date.now();
+        stepEndWallclocks.length = 0;
+      },
+      onPreparedRequest: async (request) => {
+        agentRequest = request;
+        if (params.onPreparedRequest && options?.emitPreparedRequest !== false) {
+          await Promise.resolve(params.onPreparedRequest(request));
+        }
+      },
+    });
+
+    if (r.reasoningText) {
+      this.logger.debug(`Thinking: ${r.reasoningText.substring(0, 200)}...`);
+    }
+    this.logger.log(
+      `Loop 完成: steps=${r.steps.length}, tokens=${r.usage.totalTokens}, cached=${r.usage.inputTokenDetails?.cacheReadTokens ?? 'n/a'}`,
+    );
+
+    return this.buildRunResult({
+      text: r.text,
+      reasoningText: r.reasoningText,
+      responseMessages: r.response?.messages as Array<Record<string, unknown>> | undefined,
+      steps: r.steps,
+      usage: {
+        inputTokens: r.usage.inputTokens ?? 0,
+        outputTokens: r.usage.outputTokens ?? 0,
+        totalTokens: r.usage.totalTokens,
+        cachedInputTokens: r.usage.inputTokenDetails?.cacheReadTokens,
+      },
+      agentRequest,
+      memorySnapshot: ctx.memorySnapshot,
+      turnLedger: ctx.ledger,
+      stepStartMs,
+      stepEndWallclocks,
+      toolExecutionTimings: ctx.toolExecutionTimings,
+    });
+  }
+
+  /**
+   * 工具调用文本化泄漏的一次带工具重生成（hard cap 1）。
+   *
+   * 模型偶发不走 tool-call 通道，把调用写成 JSON 文本（thinking 模式下 blob 落在 reasoning、
+   * 正文只留一句想当然的回执），结果是零工具调用 + 一条凭空的成功宣称。
+   *
+   * 前置条件是**本轮零工具调用**：此时不存在任何已提交的副作用，带工具重跑不会重复
+   * 预约/拉群。出站守卫治不了这一形态——它的入参里没有 reasoning，且 repair 只能改文本、
+   * 变不出没发生过的工单，所以修复点必须落在定稿之前。
+   *
+   * 重试产物一律取代首版（更新的一次尝试），首版 steps 前置保留，让泄漏在流水里可见。
+   */
+  private async retryTextualToolCall(
+    result: GeneratorRunResult,
+    ctx: WorkingMemory,
+    params: GeneratorInvokeParams,
+  ): Promise<GeneratorRunResult> {
+    if (result.toolCalls.length > 0) return result;
+
+    const leaked = [result.text, result.reasoning, ...result.agentSteps.map((s) => s.reasoning)]
+      .filter((value): value is string => typeof value === 'string' && value.length > 0)
+      .some((value) => containsLeakedToolCallBlob(value));
+    if (!leaked) return result;
+
+    this.logger.warn(
+      `模型把工具调用写成了文本且本轮零工具调用，带工具重生成一次: sessionId=${ctx.sessionId}`,
+    );
+
+    try {
+      const retry = await this.runGeneration(params, ctx, {
+        extraInstructions: TEXTUAL_TOOL_CALL_RETRY_NOTICE,
+        emitPreparedRequest: false,
+      });
+
+      if (retry.toolCalls.length === 0 && containsLeakedToolCallBlob(retry.reasoning ?? '')) {
+        this.logger.warn(
+          `重生成后工具调用仍为文本形态: sessionId=${ctx.sessionId}——回复交出站守卫与哨兵接手`,
+        );
+      } else {
+        this.logger.log(
+          `工具调用文本化已纠正: sessionId=${ctx.sessionId}, toolCalls=${retry.toolCalls.length}`,
+        );
+      }
+
+      return {
+        ...retry,
+        // 首版 prompt 才是本回合的规范快照，重试只在末尾多一段纠正指令。
+        agentRequest: result.agentRequest ?? retry.agentRequest,
+        steps: result.steps + retry.steps,
+        agentSteps: [
+          ...result.agentSteps,
+          ...retry.agentSteps.map((step, index) => ({
+            ...step,
+            stepIndex: result.agentSteps.length + index,
+          })),
+        ],
+        usage: {
+          inputTokens: result.usage.inputTokens + retry.usage.inputTokens,
+          outputTokens: result.usage.outputTokens + retry.usage.outputTokens,
+          totalTokens: result.usage.totalTokens + retry.usage.totalTokens,
+          cachedInputTokens:
+            (result.usage.cachedInputTokens ?? 0) + (retry.usage.cachedInputTokens ?? 0),
+        },
+      };
+    } catch (error) {
+      this.logger.warn(
+        `工具调用文本化重生成失败: sessionId=${ctx.sessionId}; ${toErrorMessage(error)}`,
+      );
+      return result;
+    }
   }
 
   /**
