@@ -1,7 +1,6 @@
 {
   "baseVersion": "11.1.3",
   "nextVersion": "11.1.3",
-  "lastAnalyzedSha": null,
   "updatedAt": "2026-09-01",
   "sourceBranch": "develop",
   "entries": [],
@@ -63,5 +62,6 @@
         "level": "patch"
       }
     ]
-  }
+  },
+  "lastAnalyzedSha": "ea5059772a0725f1497c369179f98c7156aa8c89"
 }
