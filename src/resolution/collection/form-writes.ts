@@ -717,6 +717,11 @@ export interface LiveBookableInterviewSlot {
   date: string;
   bookingAllowed: boolean;
   interviewTime?: string;
+  /** 窗口起止（HH:mm）。窗口制岗位据此放行候选人约定的窗口内时刻。 */
+  startTime?: string;
+  endTime?: string;
+  /** true 表示 `[startTime, endTime]` 内任意时刻都可约，interviewTime 只是默认起点。 */
+  interviewTimeFlexible?: boolean;
 }
 
 /**
