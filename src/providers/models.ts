@@ -18,7 +18,7 @@ export interface ModelEntry {
 }
 
 export const MODEL_DICTIONARY: Record<string, ModelEntry> = {
-  // 收录原则（2026-07-28 产品裁定）：每家厂商只保留各档位的**最新**在售模型，
+  // 收录原则：每家厂商只保留各档位的**最新**在售模型，
   // 上一代模型即使官方仍 Active 也不收录；新一代发布后应同步替换对应档位。
   // ⚠️ 本字典是 supportsVision 的单一事实源、Dashboard 模型覆盖保存校验的白名单；
   // 运行时 resolve() 不查本字典，历史配置里的旧 ID 仍可执行（但图片轮会走 fallback）。
@@ -69,7 +69,7 @@ export const MODEL_DICTIONARY: Record<string, ModelEntry> = {
     capabilities: ['thinking', 'tool-use', 'multimodal', 'long-context'],
   },
   // ==================== Google ====================
-  // 2026-07-28 实测 v1beta/models 校正：3.1 Pro 官方只有 -preview 后缀 ID（裸
+  // v1beta/models 校正：3.1 Pro 官方只有 -preview 后缀 ID（裸
   // gemini-3.1-pro 打过去 404）；gemini-3-flash 同理只有 preview 且已被
   // 3.5/3.6 Flash 取代，直接移除。
   'google/gemini-3.1-pro-preview': {
@@ -141,7 +141,7 @@ export const MODEL_DICTIONARY: Record<string, ModelEntry> = {
   },
 
   // ==================== MoonshotAI / Kimi ====================
-  // K2 系列（k2.5/k2.6/k2-thinking）已于 2026-07 移除：官方公告 K2 全平台 2026-08-31 下线，
+  // K2 系列（k2.5/k2.6/k2-thinking）已移除：官方公告 K2 全平台下线，
   // kimi-thinking 系已停服；统一迁移到 K3。
   'moonshotai/kimi-k3': {
     provider: 'moonshotai',

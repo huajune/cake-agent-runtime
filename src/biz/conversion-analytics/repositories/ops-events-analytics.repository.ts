@@ -20,7 +20,7 @@ export class OpsEventsAnalyticsRepository extends BaseRepository {
 
   /**
    * 翻页拉全。走 BaseRepository.selectAllPaged：受进程级熔断器保护（DB 濒死时快速失败、
-   * 记录故障，不绕过 2026-06-04 事故后加固的熔断逻辑）。
+   * 记录故障，不绕过 事故后加固的熔断逻辑）。
    *
    * 两张表均以 id(bigserial) 为主键，调用方排序字段（report_date/occurred_at 等）非唯一，
    * 这里统一补 id 作稳定二级排序，避免 range 分页跨 1000 行时漏/重。

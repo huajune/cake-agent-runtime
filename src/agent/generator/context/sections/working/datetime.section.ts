@@ -24,10 +24,8 @@ export class DateTimeSection implements PromptSection {
 /**
  * 当前时间 + 今天/明天/后天/大后天映射的 grounding 行（系统侧日历计算）。
  *
- * 主链路 DateTimeSection 与 ReplyRepairAgent 共用：任何产出候选人可见文本的
- * LLM 调用都需要这份锚——没有它，相对日期只能从历史消息里猜（badcase
- * batch_6a66f559…：repair 无时间锚，把当天 15:00 的真实约面复述成
- * "明天…不是今天"，劝退了正在等面的候选人）。
+ * 主链路 DateTimeSection 与 ReplyRepairAgent 共用：任何产出候选人可见文本的 LLM 调用都
+ * 需要这份锚——没有它，相对日期只能从历史消息里猜，会把当天的真实约面复述成"明天"。
  */
 export function buildDateTimeGroundingLines(
   now: Date = new Date(),

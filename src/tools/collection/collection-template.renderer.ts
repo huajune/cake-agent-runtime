@@ -56,7 +56,7 @@ export function renderCollectionTemplate(
     if (known) return `${field.labelTitle}：${known}`;
     // 该槽位有过「真实作答被词表门拒收」的记录 → 强制枚举全部选项：候选人已经用
     // 自然语言答过一次而系统读不懂，两条抑制规则（常识型留空/选项过多留空）全部失效，
-    // 逐字照抄选项是唯一确定性出路（badcase batch_6a8fec04ce406a6aee03d65f_*）。
+    // 逐字照抄选项是唯一确定性出路（badcase ）。
     const rejectedBefore = (form.slots[field.labelId]?.rejectedAttempts ?? 0) > 0;
     const placeholder =
       filePlaceholder(field) ||
@@ -117,8 +117,8 @@ export function forcedOptionPlaceholder(field: ContractFieldDef): string {
 
 /**
  * FILE 型字段的占位提示：这类槽位只能录候选人真实发送的附件 URL，打字的文字
- * 永远过不了形态门。不提示就是在邀请候选人打字——生产 chat 6a9117face406a6aee7f99c9
- * 里「上传简历：」空行换来一段认真的文字工作经历，随后拒收熔断转人工。
+ * 永远过不了形态门。不提示就是在邀请候选人打字：「上传简历：」空行会换来一段认真的
+ * 文字工作经历，随后拒收熔断转人工。
  * 提示常驻（不分首问/重问档）：文件字段没有"留空更自然"的档位。
  */
 export function filePlaceholder(field: ContractFieldDef): string {

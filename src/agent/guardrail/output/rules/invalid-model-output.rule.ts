@@ -4,6 +4,14 @@ import type { RuleContradiction } from '../output-rule.types';
 /** Provider/model artifacts that can never be a valid candidate-facing reply. */
 const THINK_TAG_PATTERN = /<\/?think\s*>/i;
 const OPAQUE_NUMERIC_REPLY_PATTERN = /^\d{12,}$/;
+/**
+ * 模型自造的「本轮不回复」控制标记。沉默的唯一合法出口是 skip_reply 工具；模型改用
+ * 一个方括号标记表达同样意图时，它会被当正文整段投递给候选人（候选人只看到一句乱码）。
+ *
+ * 只认整条回复就是该标记的形态——正文里出现方括号内容属正常话术，不命中。
+ */
+const CONTROL_MARKER_ONLY_PATTERN =
+  /^[[［【(（]\s*(?:no[\s_-]*reply|no[\s_-]*response|skip(?:[\s_-]*reply)?|silence|silent|empty|none|null)\s*[\]］】)）]$/i;
 
 /**
  * Detect malformed model output before the outbound sanitizer removes evidence.
@@ -20,6 +28,16 @@ export function detectInvalidModelOutput(content: string): RuleContradiction | n
     return {
       ruleId: 'invalid_model_output',
       label: '回复正文含 <think> 推理标签，属于模型/Provider 输出格式异常，必须拦截',
+      action: GUARDRAIL_ACTION.BLOCK,
+    };
+  }
+
+  if (CONTROL_MARKER_ONLY_PATTERN.test(text)) {
+    return {
+      ruleId: 'invalid_model_output',
+      label:
+        '整条回复只是模型自造的「本轮不回复」控制标记（如 [NO_REPLY]），不是候选人可读文本；' +
+        '沉默必须走 skip_reply 工具，标记本身绝不能投递',
       action: GUARDRAIL_ACTION.BLOCK,
     };
   }

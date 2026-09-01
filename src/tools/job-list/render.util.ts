@@ -164,14 +164,10 @@ const HEALTH_CERT_LABEL: Record<HardRequirements['healthCert'], string | null> =
  * - 用 "> ⚠️ 候选人硬性约束" 引用块包裹，让 LLM 容易识别这是不可妥协的硬规则。
  * - 文案直接告诉 LLM 该如何处理，避免它把硬约束当软建议处理。
  *
- * ⚠️ 户籍这类敏感门槛的文案**只准写禁令，不准派采集动作**——banner 与岗位数据同在
- * 当轮上下文里、比系统提示词更贴近决策，一旦写"不掌握时先确认/委婉了解"，模型就会
- * 真的去问候选人籍贯，把内部筛选条件捅到台面上。2026-08-06 badcase
- * （chat 6a744a86，记录 249939）：banner 写着"不掌握候选人户籍时按敏感门槛话术委婉
- * 了解后内部判断"，模型据此发出「这家对户籍有要求，方便问一下你老家是哪里的吗」，
- * 候选人当场质问"为什么找工作还要问我户籍"。30 天内同族探问 6 条。
- * 该门槛真正的执行点在 booking-guards 的 isHouseholdRequirementViolated 硬闸，
- * 数据来自收资 checklist 的「籍贯/户籍」字段（表单场景合规），不需要口头打听。
+ * ⚠️ 户籍这类敏感门槛的文案**只准写禁令，不准派采集动作**：banner 与岗位数据同在当轮
+ * 上下文、比系统提示词更贴近决策，写"不掌握时先确认/委婉了解"模型就会真去问候选人籍贯，
+ * 把内部筛选条件捅到台面上。该门槛的执行点是 booking-guards 的
+ * isHouseholdRequirementViolated 硬闸，数据来自收资 checklist 的籍贯字段，不需要口头打听。
  */
 function renderHardRequirementsBanner(hr: HardRequirements): string {
   const lines: string[] = [];
@@ -217,13 +213,13 @@ function asNumber(value: unknown): number | null {
 // ==================== 模块 1：基本信息 ====================
 
 /**
- * 合作模式（basicInfo.cooperationMode，海绵 2026-08-06 新增）→ 发薪/签约主体口径。
+ * 合作模式（basicInfo.cooperationMode，海绵 新增）→ 发薪/签约主体口径。
  *
  * 候选人高频追问"工资是你们发还是门店发""签的是谁的合同"，答案完全由合作模式决定，
  * 而 BPO/RPO 是商业内部术语，直接把裸值丢给模型有两个风险：一是它可能原样说给候选人，
  * 二是它得自己记住映射关系。所以这里**只输出结论**，裸值仅作 🔒 内部标注保留。
  *
- * 口径来源：2026-08-06 运营确认。注意两条规则的 RPO 分支**不一样**——
+ * 口径来源：运营确认。注意两条规则的 RPO 分支**不一样**——
  * 发薪在 RPO 下两种都可能（必须转人工），签约在 RPO 下主体确定是客户（只是形式不定）。
  */
 function renderCooperationModeLines(rawMode: string | null): string[] {
@@ -346,7 +342,7 @@ function renderSalaryScenario(scenarioInput: unknown, index: number): string {
   const periodParts: string[] = [];
   if (hasValue(scenario.salaryPeriod)) periodParts.push(String(scenario.salaryPeriod));
   if (hasValue(scenario.payday)) {
-    // 月结的发薪日平台全局口径是"次月发上月"，没有当月发当月的情况（2026-08-06 运营确认）。
+    // 月结的发薪日平台全局口径是"次月发上月"，没有当月发当月的情况（运营确认）。
     // 候选人高频追问"X 号上班当月 X 号能不能发薪"，裸"15号发薪"会被理解成当月 →
     // 月结 + 具体几号时显式标注归属月份，模型照读即可；周结/日结不适用不标。
     const isMonthly =
@@ -624,7 +620,7 @@ function renderHiringRequirementSection(reqInput: unknown, policy: JobPolicyAnal
   if (hasValue(comp.minWorkTime)) {
     // minWorkTimeUnit 现网下发的是数字枚举 id（非文本单位），直接拼接会渲染成
     // "最低工作经验: 3 1" 这种读不懂的串，模型索性忽略该条件，对候选人答"接受无经验"
-    // （badcase umkgixpq：实际要求咖啡师 3 个月经验）。枚举字典本仓库没有，
+    // （实际要求咖啡师 3 个月经验）。枚举字典本仓库没有，
     // 不猜映射——单位不可读时只给数值并显式标注待确认，保证"有经验门槛"这个事实不丢。
     const unitIsReadable =
       hasValue(comp.minWorkTimeUnit) && Number.isNaN(Number(String(comp.minWorkTimeUnit).trim()));
@@ -719,10 +715,30 @@ function renderWorkTimeSection(workTimeInput: unknown): string {
   const wm = asRecord(wt.weekAndMonthWorkTime) ?? {};
   const cycleLabel = hasValue(wm.arrangementCycleType) ? String(wm.arrangementCycleType) : '';
   const wmParts: string[] = [];
-  // 做X休Y（用中文数字以触发"做六休一"等全周强排班识别）
+  // 做X休Y（用中文数字以触发"做六休一"等全周强排班识别）。
+  // X+Y=7 时是周频描述（做六休一=每周 6 天）；X+Y≠7 时是循环班型（做一休一=隔天轮换
+  // ≈每周 3-4 天），必须把周频换算直出——留给模型自己换算就会把"做一休一"读成"每周休 1 天"。
+  const weekWorkDays = Number(wm.perWeekWorkDays);
+  const weekRestDays = Number(wm.perWeekRestDays);
+  let renderedWeeklyDays: number | null = null;
   if (hasValue(wm.perWeekWorkDays) && hasValue(wm.perWeekRestDays)) {
-    wmParts.push(`做${toCnNum(wm.perWeekWorkDays)}休${toCnNum(wm.perWeekRestDays)}`);
+    const idiom = `做${toCnNum(wm.perWeekWorkDays)}休${toCnNum(wm.perWeekRestDays)}`;
+    if (Number.isFinite(weekWorkDays) && Number.isFinite(weekRestDays)) {
+      if (weekWorkDays + weekRestDays === 7) {
+        renderedWeeklyDays = weekWorkDays;
+        wmParts.push(`${idiom}（每周出勤 ${weekWorkDays} 天）`);
+      } else {
+        const cycleWeekly = Math.floor((7 * weekWorkDays) / (weekWorkDays + weekRestDays));
+        renderedWeeklyDays = cycleWeekly;
+        wmParts.push(
+          `${idiom}（上${weekWorkDays}休${weekRestDays}循环班型，平均每周出勤约 ${cycleWeekly} 天，不是每周休 ${weekRestDays} 天）`,
+        );
+      }
+    } else {
+      wmParts.push(idiom);
+    }
   } else if (hasValue(wm.perWeekWorkDays)) {
+    if (Number.isFinite(weekWorkDays)) renderedWeeklyDays = weekWorkDays;
     wmParts.push(`每周出勤 ${wm.perWeekWorkDays} 天`);
   } else if (hasValue(wm.perWeekRestDays)) {
     wmParts.push(`每周休 ${wm.perWeekRestDays} 天`);
@@ -732,13 +748,39 @@ function renderWorkTimeSection(workTimeInput: unknown): string {
     const limit = hasValue(wm.onWorkLimitType) ? String(wm.onWorkLimitType) : '上岗';
     wmParts.push(`${limit} ${wm.onWorkTime} ${wm.onWorkTimeUnit}`);
   }
-  // 休息模式（周中休/周末休）
-  if (hasValue(wm.weekMonthRestMode)) wmParts.push(String(wm.weekMonthRestMode));
+  // 休息模式：语义直出。"周中休"曾被模型读反成"周末不用上班"，这里把出勤含义写死。
+  if (hasValue(wm.weekMonthRestMode)) {
+    const restMode = String(wm.weekMonthRestMode);
+    if (restMode.includes('周中休')) {
+      wmParts.push(`${restMode}（周内休息，**周末需出勤**）`);
+    } else if (restMode.includes('周末休')) {
+      wmParts.push(`${restMode}（周末休息，周一至周五出勤）`);
+    } else {
+      wmParts.push(restMode);
+    }
+  }
   // 单双号
   if (hasValue(wm.workSingleDouble)) wmParts.push(`仅${wm.workSingleDouble}`);
   if (wmParts.length) {
     const cyclePrefix = cycleLabel ? `${cycleLabel}: ` : '';
     lines.push(`- **排班周期**: ${cyclePrefix}${wmParts.join('，')}`);
+  }
+  // 「每周至少 N 天」与「每周出勤 M 天」并存且 N>M 属数据配置冲突：并列直出会让模型
+  // 二选一，被候选人质疑后又改口另一个。冲突时显式声明，禁止模型择一断言。
+  const minWeeklyRequired = Number(wm.onWorkTime);
+  if (
+    renderedWeeklyDays !== null &&
+    Number.isFinite(minWeeklyRequired) &&
+    hasValue(wm.onWorkLimitType) &&
+    String(wm.onWorkLimitType).includes('至少') &&
+    hasValue(wm.onWorkTimeUnit) &&
+    String(wm.onWorkTimeUnit).includes('天') &&
+    minWeeklyRequired > renderedWeeklyDays
+  ) {
+    lines.push(
+      `- **排班数据冲突提示**: 该岗位「至少 ${minWeeklyRequired} 天」与「每周出勤 ${renderedWeeklyDays} 天」互相矛盾，属数据配置问题。` +
+        '向候选人说明排班以门店最终确认为准，不要自行选择其中一个数字作为事实断言',
+    );
   }
 
   // 每日排班（海绵2.0 dayWorkTime）

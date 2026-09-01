@@ -36,10 +36,9 @@ const ID_NUMBER_VALUE_RE = /^\d{15}(\d{2}[0-9Xx])?$/;
 /**
  * 自由描述里的证件号。
  *
- * 生产实证（08-07 扫描日报红标 2，chat 6a1e42e6 10:18）：候选人发来一张员工名单表格
- * 截图，白名单**正确地**让 `fields` 为空，但同一 JSONB 的 `rawDescription` 原样留下了
- * 整行明文——真实姓名 + 11 位手机号 + 18 位身份证号，并随 `chat_messages.content`
- * 与 `visual_facts` 长期留存。白名单只约束 `fields`，管不到模型自由文本这一侧。
+ * 白名单只约束 `fields`，管不到模型自由文本：员工名单类截图会让 `fields` 正确留空，而同一
+ * JSONB 的 `rawDescription` 仍原样留下姓名 + 手机号 + 身份证号明文，并随 `chat_messages`
+ * 与 `visual_facts` 长期留存。
  *
  * 只脱敏证件号：招聘链路全程没有身份证号的消费点（`ID_NUMBER_VALUE_RE` 已经把它挡在
  * `fields` 之外），删掉零业务损失。**手机号不在此列**——它是收资/预约要真消费的字段

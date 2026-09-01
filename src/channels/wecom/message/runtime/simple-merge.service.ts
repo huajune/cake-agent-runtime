@@ -265,9 +265,9 @@ export class SimpleMergeService implements OnModuleInit {
    * 锁冲突时的兜底重检。
    *
    * 正常情况下锁由同 chat 的另一个存活 worker 持有，它处理完会自查新消息，
-   * 冲突任务静默跳过是安全的。但持锁进程被发版重启杀死时，锁会孤悬到 TTL
-   * 过期（最长 PROCESSING_LOCK_TTL_SECONDS），期间所有检查任务若只是跳过，
-   * pending 会跟着自身 TTL 过期、消息永久丢失（2026-06-09 v5.13.0 发版事故）。
+   * 冲突任务静默跳过是安全的。但持锁进程被发版重启杀死时，锁会孤悬到 TTL 过期
+   * （最长 PROCESSING_LOCK_TTL_SECONDS），期间所有检查任务若只是跳过，pending 会跟着
+   * 自身 TTL 过期、消息永久丢失。
    *
    * 这里做两件事：
    * 1. 续期 pending / lastMessageAt，保证消息能活到孤悬锁过期之后；

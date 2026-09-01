@@ -198,7 +198,7 @@ export interface StudentIdentityFilterResult {
  *
  * 只在 candidateIsStudent === true 时过滤（剔除 student='social_only' 的岗位）：
  * - true 来自候选人明确自报，可信；
- * - false 有抽取污染史（badcase 6a673402：evidence 自证"不填"仍落 false），
+ * - false 有抽取污染史（evidence 自证"不填"仍落 false），
  *   不能据此隐藏"仅限学生"岗位，false/null 一律不过滤；
  * - 身份未知时的处理走推荐卡片披露 + 收资前单问（prompt 层先筛后推规则）。
  */
@@ -262,7 +262,7 @@ function buildLaborFormKeepPredicate(
  * 按候选人想要的用工形式过滤岗位（层级严格匹配，见 matchesLaborForm）。
  *
  * 严格匹配清空召回、且候选人要的是兼职形态（暑假工除外，其口径是如实告知没岗）时，
- * 按兼职家族放宽重筛：细分标签在岗位轴上分布不均（badcase 6a334d26），
+ * 按兼职家族放宽重筛：细分标签在岗位轴上分布不均，
  * 不能因为附近兼职岗都没标候选人要的细分就一刀切"附近没岗"。放宽只扩召回，
  * 介绍口径仍按岗位真实 用工形式/兼职类型（relaxedToFamily 信号交由上层提示模型）。
  *
@@ -396,9 +396,6 @@ export function rankJobsByRequestedCategories(
  * 见 {@link rankJobsByRequestedCategories}），但这类词作为排序关键词同样有害：「店员」不是任何
  * 真实工种名的子串（真实工种是收银员/理货员/促销员/保洁员…），两字词又够不到字符重叠兜底，
  * 必然 0 命中——会触发「无明确匹配工种」的头部披露，误导模型对候选人说"没有店员岗"。
- *
- * 历史 badcase 实证（chat 6a66d888，果蔬好·天津，API 直传时代）：候选人「我想应聘店员」→
- * jobCategoryList=["店员"] → 果蔬好乐提港店 6 个真实岗位被 API 精确类目过滤为空。
  *
  * 只剥离「纯泛化统称」——它们语义上等价于「员工」，任何品牌都不会把岗位分类命名成这些词；
  * 「收银员/分拣员/骑手」等具体工种一律不动。

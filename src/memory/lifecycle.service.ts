@@ -42,7 +42,7 @@ export interface MemoryLifecycleTurnContext {
   cityAttestation?: CityAttestation | null;
   /**
    * 本轮工具判定失效（海绵查不到）的 jobId；回合结束从会话岗位记忆剔除，
-   * 避免下一轮模型又从记忆取到死岗位重试 precheck（badcase chat 6a685393）。
+   * 避免下一轮模型又从记忆取到死岗位重试 precheck。
    */
   invalidatedJobIds?: number[] | null;
   /** prep 时刻唯一一次规则轨判定；轮末直接消费，禁止重跑。 */

@@ -169,8 +169,8 @@ function formatProfile(profile: UserProfileFacts | null): string {
   }
 
   if (lines.length === 0) return '';
-  // 展示出处门（badcase 6a4f520a 赵堤案：历史档案被整张预填进报名表甩给候选人；
-  // badcase 6a61bb34："哪里看出来之前在上海的"——旧档案被当断言复述引发投诉）：
+  // 展示出处门：历史档案被整张预填进报名表甩给候选人、旧档案被当断言复述（"哪里看出来
+  // 之前在上海的"）都会引发投诉。
   // 历史沉淀字段对候选人只能以"披露 + 请确认"口径使用，不得当作本次已确认的事实。
   return (
     `\n\n[用户档案]\n\n` +
@@ -397,8 +397,8 @@ export function formatBookingContext(
     displayJobName ? `岗位: ${displayJobName}` : null,
     workOrder.currentStatus ? `当前状态: ${workOrder.currentStatus}` : null,
     workOrder.signUpTime ? `报名时间: ${workOrder.signUpTime}` : null,
-    // 海绵 2026-07 起下发；缺了它模型只看到「约面待确认」这个无日期状态词，
-    // 会把"已排期"语义补全成"还在等门店确认排期"（badcase pm2ivers）。
+    // 海绵下发；缺了它模型只看到「约面待确认」这个无日期状态词，
+    // 会把"已排期"语义补全成"还在等门店确认排期"。
     workOrder.interviewTime ? `面试时间: ${workOrder.interviewTime}` : null,
     workOrder.interviewPassTime ? `面试通过时间: ${workOrder.interviewPassTime}` : null,
     location?.storeAddress ? `工作门店地址: ${location.storeAddress}` : null,

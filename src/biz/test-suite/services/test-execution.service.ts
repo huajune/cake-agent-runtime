@@ -154,7 +154,7 @@ export class TestExecutionService {
         historyForAgent,
       });
 
-      // 图片工具保真（2026-08-05 v10.40.0 P0 回归发现）：生产 wecom 管线始终给
+      // 图片工具保真（v10.40.0 P0 回归发现）：生产 wecom 管线始终给
       // Agent 传 imageMessageIds（tool-registry 据此注册 save_image_description），
       // 测试链若只把 imageUrls 内嵌进消息 → 工具从未注册，P2 结构化路径在测试里
       // 不可达。故走生产同款注入：合成 messageId + params 传入（injectImageParts

@@ -14,7 +14,7 @@ describe('HardRulesService — 封闭确定性输出规则', () => {
   const ids = (replyText: string, extra: Record<string, unknown> = {}) =>
     check(replyText, extra).contradictions.map((item) => item.ruleId);
 
-  it('catalog 只包含保留的执行档规则与 2026-08-26 数据复核恢复的 observe 哨兵', () => {
+  it('catalog 只包含保留的执行档规则与已恢复的 observe 哨兵', () => {
     expect(OUTPUT_RULE_IDS).toEqual([
       'invalid_model_output',
       'internal_output_leak',
@@ -29,9 +29,11 @@ describe('HardRulesService — 封闭确定性输出规则', () => {
       'booking_receipt_mismatch',
       'interview_time_change_unconfirmed',
       'brand_alias_fuzzy_match_ignored',
-      // ——2026-08-26 数据复核恢复——
+      // —— 数据复核后恢复的哨兵 ——
       'human_service_phrase_leak',
       'booking_done_claim_without_submission',
+      'cancel_done_claim_without_submission',
+      'cancel_done_claim_failed_tool',
       'dangling_reply_promise',
       'requested_brand_mismatch',
       'settlement_cycle_mismatch',

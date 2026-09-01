@@ -37,7 +37,7 @@ export function brandStateChanged(prev: SessionBrandState, next: SessionBrandSta
 /**
  * 首次初始化（§9.4）：已验证昵称品牌 seed > 空。
  *
- * 原「旧 preferences.brands 末位品牌」档（§9.4 懒迁移）已于 2026-07-22 退役：
+ * 原「旧 preferences.brands 末位品牌」档（§9.4 懒迁移）已于 退役：
  * 生产 Redis 实测 889 个会话中仅 1 个仍具备迁移条件且 TTL 剩 <17h——迁移窗口
  * （sessionTtl=3 天，早于原顶层 brand_state 上线时长）已数学耗尽。
  * seed 仅在 facts.brand 不存在时执行一次，状态一旦存在（哪怕被 browse_all
@@ -88,7 +88,7 @@ export function adjudicateBrandState(
   // §6.3.1 规则 3 的跨轨延伸：同一品牌同轮又要又不要（不同消息/不同轨各出一条，
   // resolveBrands 的单文本合并覆盖不到）时显式否定优先。净否定品牌不得参与第 1 步
   // 的 currentBrand 替换与排斥赦免——否则它会先上位把无辜的在位品牌顶下台、再被
-  // 第 2 步排斥，最终在位者凭空出局（2026-07-21 审计："肯德基年龄不行"两次误清
+  // 第 2 步排斥，最终在位者凭空出局（"肯德基年龄不行"两次误清
   // 在位的成都你六姐/奥乐齐）。
   const negatedRefs = negatives.filter((r) => r.canonicalName !== null).map(toRef);
   const isNegatedThisTurn = (ref: SessionBrandRef) =>
@@ -101,7 +101,7 @@ export function adjudicateBrandState(
     );
     if (group.length === 0) continue;
 
-    // 履历语境闸（2026-07-27 全天审计：优衣库/盒马/生鲜超市三例状态污染）：
+    // 履历语境闸（全天审计：优衣库/盒马/生鲜超市三例状态污染）：
     // 候选人自述过往就职是记忆性提及，不是新求职意向——不解除排斥、不顶替已确立的
     // currentBrand；currentBrand 为空且本组唯一提及时仍可 seed（「提及即兴趣」裁定不变）。
     const intentGroup = group.filter((r) => !r.historyContext);

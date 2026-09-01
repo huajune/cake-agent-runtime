@@ -192,7 +192,7 @@ export const FINAL_CHECK_RULES: FinalCheckRule[] = [
     id: 'interview_time_only_precheck_first',
     trigger: 'turn',
     target: 'current',
-    // CUTOFF 缺口（badcase recvhv3W5Dy24G / SCN-PREBOOK-20260511-CUTOFF，2026-07-28）：
+    // CUTOFF 缺口（badcase recvhv3W5Dy24G / SCN-PREBOOK-20260511-CUTOFF）：
     // 日期在上一轮敲定（"今天可以吗"），本轮只剩裸钟点+动身/征询（"我三点过去/三点吧"）。
     // interview_date_precheck_first 要求日期词，本形态扫不到——历史里"今天可以"的说法
     // 可能已过报名截止，模型顺着旧承诺直接登记。

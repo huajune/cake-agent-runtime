@@ -59,8 +59,8 @@ export const MAX_ASKS_PER_SLOT = 2;
 /**
  * 同一槽位允许「真实作答但公证读不懂」的次数上限。第 1 次拒收后模板强制枚举选项
  * 重问一次；第 2 次仍读不懂 → 转人工（unparseable_answer）。与 MAX_ASKS_PER_SLOT
- * 分账：那边计「没搭理」，这边计「答了但系统解不出」——把作答轮当不答轮烧配额，
- * 正是 badcase batch_6a8fec04ce406a6aee03d65f_*（候选人首次作答即熔断）的病根。
+ * 分账：那边计「没搭理」，这边计「答了但系统解不出」。把作答轮当不答轮烧配额，候选人
+ * 首次作答就会熔断。
  */
 export const MAX_REJECTED_ATTEMPTS_PER_SLOT = 2;
 
@@ -541,9 +541,8 @@ export function recordUnansweredAsks(
 /**
  * 把「候选人真实作答但公证在值词表/形态门拒收」的槽位记一笔 rejectedAttempts
  * （蓝图 §10 防线 6 的姊妹账）。达到 MAX_REJECTED_ATTEMPTS_PER_SLOT → 表级
- * escalatedReason=unparseable_answer。与 askCount 分账：作答轮不烧发问配额，
- * 否则模板重发两次就把配额烧光、候选人首次作答失败即熔断（badcase
- * batch_6a8fec04ce406a6aee03d65f_* 的机械成因）。
+ * escalatedReason=unparseable_answer。与 askCount 分账：作答轮不烧发问配额，否则模板重发
+ * 两次就把配额烧光、候选人首次作答失败即熔断。
  *
  * 双重去重，两道挡两种重复：
  * 1. `turnId` 挡同回合——模型在一轮内重试 precheck 时原样重投同一句作答；
@@ -626,8 +625,8 @@ export function reconcileAskLimitEscalation(form: BookingCollectionForm): Bookin
 /**
  * 筛选终局优先：表内已有 disqualified 槽位时，可恢复型收资熔断（同槽问满/读不懂）
  * 让位，使 verdict 落到 disqualified → 拒绝话术 + 转岗，而不是把一个已确定不合格的
- * 候选人转给人工去"继续收资"（badcase batch_6a8fec04ce406a6aee03d65f_*：年龄 22
- * 已被 24-38 值域正确筛掉，却因社保槽熔断走了 handoff，压掉了本该发出的转岗承接）。
+ * 候选人转给人工去"继续收资"：年龄已被值域正确筛掉的人若因另一槽熔断走 handoff，
+ * 本该发出的转岗承接就被压掉了。
  * 不可恢复原因（疑似多人 / errorList 失配 / 空契约）不让位——那些即使换岗也需要人工。
  */
 export function yieldRecoverableEscalationToScreening(
@@ -928,8 +927,7 @@ function valueContainedInSource(key: IdentitySlotKey, value: string, sourceText:
  *
  * 值锚定门的用途是反臆造（"模型编不出一段真实存在过的原话"，见 applyFieldValueProposal ①）。
  * 代码自己就能从候选人真话里算出同一个值时，臆造的可能性已被排除。旧实现的值锚定门
- * 只认逐字，于是「93年」→ 33 这种**正确换算**被当成臆造拒收
- *（生产 chat `6a8d583bce406a6aee063e2b`：候选人被连问两遍年龄）。
+ * 只认逐字，于是「93年」→ 33 这种**正确换算**会被当成臆造拒收，候选人被反复追问。
  *
  * 只放宽"值是否落在原话内"这一条；出处门（sourceText 必须是候选人真话）与归属门
  * （姓名/手机号须本人给出）不受影响。

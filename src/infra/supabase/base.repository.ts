@@ -40,7 +40,7 @@ export interface UpsertOptions {
  * 3. 错误处理标准化 - PostgrestError 统一处理
  * 4. 类型安全 - 泛型支持强类型操作
  *
- * 韧性（2026-06-04 事故后加固）：
+ * 韧性：
  * - 瞬时网关错误（522/503/cloudflare/fetch failed…）重试时加「指数退避 + 抖动」，
  *   不再零间隔疯狂重打。
  * - 所有调用前经过「进程级共享熔断器」：任一 Repository 连续观察到瞬时故障即跳闸，
@@ -131,7 +131,7 @@ export abstract class BaseRepository {
    *
    * 与 {@link select} 共享同一套「熔断 + 退避重试」韧性逻辑，但允许查询非本仓储默认表
    * （如监控仓储读 user_activity）。所有跨表只读查询都应走这里，确保统一受熔断器保护，
-   * 避免绕过熔断器在 DB 濒死时继续施压（2026-06-04 事故根因之一）。
+   * 避免绕过熔断器在 DB 濒死时继续施压（事故根因之一）。
    */
   protected async selectFrom<T>(
     table: string,

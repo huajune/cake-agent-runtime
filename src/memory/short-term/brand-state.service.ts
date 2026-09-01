@@ -9,7 +9,7 @@
  *   带「过期即弃」防护。
  *
  * 首次初始化（§7.3）：已验证昵称品牌 seed > 空（旧 preferences.brands 懒迁移档已于
- * 2026-07-22 退役，§11）；seed 状态在首轮回合准备阶段即经 deriveTurnBrandContext
+ * 退役，§11）；seed 状态在首轮回合准备阶段即经 deriveTurnBrandContext
  * 构造生效（注入提示词、供工具兜底），持久化仍随收尾 reducer 统一落盘。
  */
 
@@ -104,7 +104,7 @@ export class BrandStateService {
     persistedBrandState?: PersistedBrandState | null;
   }): Promise<{ changed: boolean; initialized: boolean }> {
     // 歧义现场在入口无条件记录：歧义结果不写状态，若绑在"状态变化才发事件"上，
-    // 纯歧义轮（冲突别名如「小龙」）整档零留痕（§11 观测债，2026-07-21 修复）。
+    // 纯歧义轮（冲突别名如「小龙」）整档零留痕（§11 观测债 修复）。
     this.emitAmbiguousResolutions(params, params.resolutions, false);
 
     const persisted =
@@ -353,7 +353,7 @@ export class BrandStateService {
         matchedText: r.matchedText,
         sourceText: r.sourceText,
         confidence: r.confidence,
-        // 履历语境标记（2026-07-27）：true = 该命中被 reducer 按履历提及处理
+        // 履历语境标记：true = 该命中被 reducer 按履历提及处理
         //（不顶替在位品牌）。每日观测据此核对闸门行为。
         historyContext: r.historyContext ?? false,
       })),

@@ -12,7 +12,7 @@ import type { FactRule } from '../output-rule.types';
  * - quota_promise 用 block：名额承诺没有任何工具能正当化，发出去风险不可逆；
  *   runner 会先尝试一次重写，二审仍违规才静默。
  *
- * 2026-07-10 用户裁定批量下线（勿修补勿重加）：group_full_without_invite（未拉群编造群满）、
+ * 用户裁定批量下线（勿修补勿重加）：group_full_without_invite（未拉群编造群满）、
  * system_status_fabrication（系统状态甩锅观察）、tool_failure_success_claim（副作用工具失败
  * 反向声称成功对账）随本批删除；detectCompletionSuccessClaimWithoutTool（复聊完成时态对账）
  * 自 ReengagementAgent 取代 composer 后已无消费方，作为死代码一并清理。句粒度“声称”判定

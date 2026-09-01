@@ -446,7 +446,7 @@ const REPLY_PROCESSING_GRACE_MS = 10 * MINUTE;
  *
  * lastCandidateMessageAt 在入站接收层写入，被 timeout 静默丢弃的消息也会计入；
  * 只有回合成功收尾（正常回复或有意沉默）才推进 lastProcessedCandidateMessageAt 水位。
- * 生产实锤 chat 6a62c6f8：候选人连发两条均 timeout 丢弃，却被当「已回话」停掉
+ * 候选人连发两条均 timeout 丢弃时，会被当「已回话」停掉
  * address_missing 触达，候选人彻底没人理。水位缺失（部署前旧会话）时无法判定，
  * 按已回话停发保持旧行为。
  */

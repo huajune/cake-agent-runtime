@@ -115,8 +115,7 @@ export class SessionWorkbenchService {
    * 下一轮 prompt 的岗位来源与 precheck/booking 的 jobId provenance 集，漏掉任一处
    * 死岗位就会被重新喂给模型。
    *
-   * 背景（badcase chat 6a685393，jobId 528572）：岗位失效后仍留在记忆中，模型连续
-   * 3 轮拿同一 jobId 重试 precheck，每轮都 job_not_found，最终转人工。
+   * 不剔除时，模型会连续多轮拿同一个死 jobId 重试 precheck，每轮 job_not_found，最终转人工。
    *
    * @returns 实际被移除的 jobId（用于观测；空数组表示记忆里本就没有它们）
    */

@@ -1,12 +1,10 @@
 /**
  * 敏感筛选信息检测（户籍/籍贯/民族/地域/专业/婚育类歧视性条件）。
  *
- * 背景：岗位数据的自由文本（remark / interviewRemark / 面试补充项 / 面试描述等）
- * 可能内嵌"不要新疆西藏籍 / 仅限本地户口 / 限汉族 / 专业（非新媒、食品）/
- * 婚育要求（已婚已育）"等
- * 歧视性/排除性筛选条件。结构化字段
- * （hometown 块、户籍 banner）渲染时已带 🔒 勿透露标注；自由文本路径没有自带
- * 标注，只靠全局 prompt 规则兜底拦不住。本工具提供统一检测原语：
+ * 岗位自由文本（remark / interviewRemark / 面试补充项 / 面试描述）可能内嵌"仅限本地户口 /
+ * 限汉族 / 专业（非新媒、食品）/ 已婚已育"等歧视性筛选条件。结构化字段（hometown 块、
+ * 户籍 banner）渲染时自带 🔒 勿透露标注，自由文本路径没有，只靠全局 prompt 兜底拦不住。
+ * 本工具提供统一检测原语：
  * - 渲染层（job-list/render.util）：命中的 section 末尾追加 🔒 标注
  * - precheck 工具：screeningCriteria / screeningChecks 命中时回传 sensitiveScreeningNotice
  *
@@ -14,19 +12,17 @@
  * 筛选条件；误报的代价只是多一行内部提示，对候选人不可见，宁滥勿漏。
  * 出站回复侧（discrimination-leaks 硬规则）需要窄口径规则避免误伤合规收资话术，不复用本 pattern。
  *
- * 居所（2026-08-19）：原在 `tools/utils/sensitive-screening.util.ts`，随收资表单状态机
- * 迁入 resolution/collection。动机是**红线词表唯一居所**：收资披露策略
- * （`disclosure-policy.ts`）要拿同一份判据决定某个标签的拒绝理由能不能对候选人明说，
- * 而 `.eslintrc.js` 禁止 resolution 依赖 @tools/*——判据留在 tools 层则披露策略只能
- * 另抄一份，蓝图 §11「禁说词表禁止另立副本」明令禁止。消费方向不变：
- * tools（岗位渲染 / precheck）与 guardrail（discrimination-leaks）继续读本文件。
+ * 居所纪律——**红线词表唯一居所**（蓝图 §11「禁说词表禁止另立副本」）：收资披露策略
+ * （`disclosure-policy.ts`）要拿同一份判据决定拒绝理由能不能对候选人明说，而 `.eslintrc.js`
+ * 禁止 resolution 依赖 @tools/*，故判据必须住在 resolution 侧。消费方是 tools（岗位渲染 /
+ * precheck）与 guardrail（discrimination-leaks）。
  */
 
 /**
  * “专业”后的形容词用法后缀（“专业培训 / 专业带教 / 专业人士”），跟这些后缀时“专业”
  * 不是学科筛选语义。岗位数据侧、收资披露策略侧与出站守卫侧（discrimination-leaks）
  * 共用同一份清单，防止各处自维护漂移——守卫侧曾从上线起就漏了 人员/人士/师傅 三个
- * 后缀（2026-07-06 review）。
+ * 后缀（review）。
  */
 export const PROFESSIONAL_ADJECTIVE_SUFFIXES = '培训|带教|指导|团队|老师|课程|人员|人士|师傅';
 

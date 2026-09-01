@@ -117,7 +117,7 @@ export function buildSaveImageDescriptionTool(
 
         const prefix = resolvePrefix(messageId, visualMessageTypes);
         const sheet = finalizeVisualFactSheet({ kind, fields }, description);
-        // 证件号脱敏（红标 2，chat 6a1e42e6）：sheet 的 rawDescription 由 finalize 内部
+        // 证件号脱敏（红标 2，）：sheet 的 rawDescription 由 finalize 内部
         // 处理，content 一侧在这里对齐，二者永远同源同脱敏。
         const safeDescription = sanitizeVisualDescription(description);
         // 简历判定双保险（并跑对照）：sheet 的 resume kind 与旧文本标记任一命中即走

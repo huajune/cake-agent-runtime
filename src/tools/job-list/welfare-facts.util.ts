@@ -79,7 +79,7 @@ const SELF_OR_NONE_TOKENS = new Set([
 function classifyWelfareValue(
   raw: unknown,
   hasAllowance: boolean,
-  // 字段缺失/空值时的归类。吃住两项传 'self_or_none'：运营口径（2026-08-06）
+  // 字段缺失/空值时的归类。吃住两项传 'self_or_none'：运营口径
   // "吃和住都在岗位福利中，没有填就默认没有"——welfare 对象存在但没填吃/住，
   // 应直接按"无"答复候选人，而不是 ❓ 未明确 → 转人工。保险不适用该默认
   // （敏感字段，未明确时不得替公司断言"无保险"）。
@@ -210,7 +210,7 @@ export function renderWelfareFactsBanner(facts: WelfareFacts): string {
     '> 🎁 **福利字段速览**（reply 时只能主动引用员工餐/住宿/交通补贴/晋升/其它福利里的"✅ 公司提供"和"💵 仅补贴"项目；"❌ 无"项目不得包装成"有"；保险/社保严禁主动提及）',
   );
   // 本 banner 一出现就是吃/住的最终答案，模型不得再以"岗位没有这个字段"为由转人工。
-  // 2026-08-06 周报：食宿类缺口 7 项提及全部转人工，而实测 catering/accommodation
+  // 周报：食宿类缺口 7 项提及全部转人工，而实测 catering/accommodation
   // 在 includeWelfare=true 时 20/20 均有值——转人工发生在"没重查"或"有值仍不敢答"。
   lines.push(
     '> ⚠️ 本速览即员工餐/住宿的**最终事实**：候选人问包不包吃住/有没有员工餐时按上面各项直接答（含"❌ 无"），**不得**回"岗位没写/我确认下"，也**不得**为此调 `request_handoff`。',

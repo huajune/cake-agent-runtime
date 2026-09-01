@@ -61,7 +61,7 @@ export interface JobBasicInfo {
   /** 兼职类型（laborForm=兼职 时的细分）：寒假工 / 暑假工 / 小时工 */
   partTimeJobType?: string;
   /**
-   * 合作模式：`BPO` / `RPO`（海绵 2026-08-06 新增，发布前老数据为空）。
+   * 合作模式：`BPO` / `RPO`（老数据为空）。
    *
    * 决定**发薪主体**与**签约主体**，是这两类高频咨询能否自答的唯一依据：
    * - BPO：独立客发薪；与独立客签约，形式为灵活用工协议（不签劳动合同）
@@ -104,7 +104,7 @@ export const JobBasicInfoSchema = z
     jobContent: NullableOptionalStringSchema,
     laborForm: NullableOptionalStringSchema,
     partTimeJobType: NullableOptionalStringSchema,
-    // 海绵 2026-08-06 新增；nullish 保证发布前的老数据（无此键）照样通过校验。
+    // 海绵 新增；nullish 保证发布前的老数据（无此键）照样通过校验。
     cooperationMode: NullableOptionalStringSchema,
     requirementNum: NullableOptionalNumberSchema,
     minAge: NullableOptionalNumberSchema,
@@ -513,7 +513,7 @@ export interface SignupWorkOrderItem {
   phone?: string | null;
   signUpTime?: string | null;
   /**
-   * 当前约面时间（yyyy-MM-dd HH:mm，2026-07 与海绵约定新增下发）。
+   * 当前约面时间（yyyy-MM-dd HH:mm，与海绵约定新增下发）。
    * 复聊到点核验用它比对改期（后台改时间也能发现）；老版本响应无此字段，读取方必须容缺。
    */
   interviewTime?: string | null;
@@ -572,7 +572,7 @@ export const ACTIVE_INTERVIEW_WORK_ORDER_STATUSES: ReadonlySet<string> = new Set
 ]);
 
 /**
- * 不可由 Agent 自助取消的工单状态（badcase j8ed80tk：面试面完了还取消工单）。
+ * 不可由 Agent 自助取消的工单状态（面试面完了还取消工单）。
  * 面试已通过或已进入入职推进流程，只能转人工。
  */
 export const SELF_CANCEL_BLOCKED_STATUSES: ReadonlySet<string> = new Set<string>([

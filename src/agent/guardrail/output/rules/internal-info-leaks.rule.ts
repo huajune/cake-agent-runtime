@@ -94,7 +94,7 @@ const PATTERNS: RegExp[] = [
   new RegExp(`\\b(?:${TOOL_NAMES.map(escapeRegex).join('|')})\\b`),
   // 工具调用 JSON 骨架（未注册工具名/MCP 动态工具也能兜住）
   new RegExp(TOOL_CALL_XML_TAG_SOURCE, 'i'),
-  // 推理/自我指令自然语言泄漏（仅收录 2026-08 新簇已发生形态）
+  // 推理/自我指令自然语言泄漏（只收已实证形态）
   ...INTERNAL_REASONING_PATTERNS,
   /["']name["']\s*:\s*["'][\w-]+["']\s*,\s*["']arguments["']\s*:/,
   /["']arguments["']\s*:\s*\{/,
@@ -168,12 +168,12 @@ export function stripMarkdownCodeFences(content: string): string {
     .trim();
 }
 
-// —— 残文与跨域形态识别（2026-07-30 守卫审计 P0-2 / P0-3）————————————————
+// —— 残文与跨域形态识别（守卫审计 P0-2 / P0-3）————————————————
 
 /**
  * 工具调用骨架：XML 标签、`toolName(args)` 调用式、字面量与括号。
  *
- * 2026-08-04 审计修正：
+ * 修正：
  * - XML 交替组补 `function(?:_calls?)?` 与 `thinking`——生产实测漏杀
  *   `<function invite_to_group>`（rewrite 编出"已经拉你进群了"并投递）与
  *   `</thinking>\n<function=skip_reply>`（旧组只匹配 function_call/s）；
@@ -192,15 +192,15 @@ const TOOL_CALL_SKELETON_PATTERNS: readonly RegExp[] = [
 ];
 
 /**
- * JSON 信封：模型把本想发的正文包进了 JSON 信封再当回复吐出（2026-08-04 生产实测两形态：
- * `{"censorStatus":"ok","_replyInstruction":"不客气～…"}`、`{"agent_response":"好的，我帮你…"}`）。
+ * JSON 信封：模型把本想发的正文包进 JSON 信封再当回复吐出
+ * （`{"agent_response":"好的，我帮你…"}`、`{"censorStatus":"ok","_replyInstruction":"…"}`）。
  *
- * 这种形态曾被 isToolCallArtifactOnly 误判成纯残文整轮静默——字符串字面量剥离把
- * 信封里的完整好回复连壳一起剥掉了。正解与剥围栏同型：确定性拆封、逐字放出正文。
+ * 这种形态会被 isToolCallArtifactOnly 误判成纯残文整轮静默——字符串字面量剥离把信封里的
+ * 完整好回复连壳一起剥掉。正解与剥围栏同型：确定性拆封、逐字放出正文。
  *
- * 防反例（同窗口生产实测 `{"type":"tool_use","name":"request_handoff","input":{"reason":"候选人追问…"}}`）：
- * tool_use 信封的 reason 同样是长中文，但那是内部升级理由不是候选人话术——含
- * type/name/input/arguments 等调用结构键的对象一律不拆，维持静默。
+ * 防反例：`{"type":"tool_use","name":"request_handoff","input":{"reason":"…"}}` 的 reason
+ * 同样是长中文，但那是内部升级理由不是候选人话术——含 type/name/input/arguments 等调用
+ * 结构键的对象一律不拆，维持静默。
  */
 const ENVELOPE_TOOL_STRUCTURE_KEYS = new Set([
   'type',
@@ -272,13 +272,12 @@ export function isToolCallArtifactOnly(content: string): boolean {
 /**
  * 技术文档形态：markdown 表格/标题、JSON 键值对、长驼峰标识符、接口术语。
  *
- * 用于给"剥围栏即完整修复"的确定性快通道加前置闸——2026-07-28 生产实例：候选人问
- * 日结岗，模型回了一整篇后端接口设计答案（`TjybappHousingConfirm` 表金额透传、JSON
- * 示例、字段映射表）。围栏只是它最表层的问题，剥掉围栏后词库不再命中，快通道遂
- * 逐字放行，整篇跨域内容投递给了候选人。
+ * 用于给"剥围栏即完整修复"的确定性快通道加前置闸：模型可能整篇答成跨域技术内容
+ * （接口设计、JSON 示例、字段映射表），围栏只是最表层的问题，剥掉后词库不再命中，
+ * 快通道会把整篇逐字放行给候选人。
  *
- * 要求至少两类信号同时出现：报名表模板（逐项"姓名："）不含其中任何一类，
- * 2026-07-21 锚定判例的最小修复路径不受影响。
+ * 要求至少两类信号同时出现：报名表模板（逐项"姓名："）不含其中任何一类，最小修复
+ * 路径不受影响。
  */
 const TECHNICAL_DOC_PATTERNS: readonly RegExp[] = [
   /^\s*\|[^\n|]*\|[^\n|]*\|/m,
@@ -298,12 +297,10 @@ export function hasTechnicalDocumentationShape(content: string): boolean {
  * 元叙述旁白：整条回复是描述 Agent 自身行为的括号旁白，说明模型有"本轮不该说话"
  * 的意图但没走 skip_reply 工具，把内心独白当成了正文。
  *
- * 业务背景：badcase chat 6a5740ff…（2026-07-15）：真人招募经理手动插话筛选候选人、
- * 候选人回应真人后，模型输出「（本轮为真人招募经理与候选人直接沟通，AI 保持静默，
- * 不插入回复）」被当正文投递，经理被迫撤回。与上面的内部状态泄漏同族（内部
- * 视角文本外发），但形态是自然语言旁白，词库式 PATTERNS 覆盖不到。
+ * 典型形态：「（本轮为真人招募经理与候选人直接沟通，AI 保持静默）」被当正文投递。
+ * 与内部状态泄漏同族（内部视角文本外发），但形态是自然语言旁白，词库式 PATTERNS 盖不到。
  *
- * 口径刻意收窄（兜底边界原则，30 天生产仅此一例形态）：
+ * 口径刻意收窄（兜底边界原则）：
  * - 整条回复必须被全角/半角括号完整包裹——正常候选人话术不存在这种形态；
  * - 且含自我指涉元词（真人/AI/静默/不插入回复 等）。
  * 两个条件叠加，正文里合法使用括号（如"到店说（独立客介绍来的）"）不会命中。
@@ -334,9 +331,8 @@ export function detectMetaNarrationReply(content: string): RuleContradiction | n
  * 正确口径是"我帮你问下同事/让负责的同事联系你"。该规则与内部状态泄漏同族，
  * 只匹配封闭词组；"真人/人工"单词不入表，避免误伤正常业务表述。
  *
- * 2026-08-26 恢复裁定：规则简化改造曾随开放语义规则一并下线，但近 7 天生产抽样
- * 仍有真阳性人设露馅（"真人经理已经说了…"直发候选人），prompt 红线拦不住说漏嘴，
- * 且本规则 7-21 升档时两周判例零误报，属计划本应保留的封闭词形，予以恢复。
+ * 保留裁定：prompt 红线拦不住说漏嘴（"真人经理已经说了…"直发候选人仍有真阳性），
+ * 而本规则是零误报的封闭词形——勿随规则简化再次下线。
  */
 const HUMAN_SERVICE_PHRASE_PATTERN =
   /转人工|人工客服|人工坐席|转接人工|人工渠道|人工登记|人工确认|人工介入|人工处理|人工跟进|真人招募经理|真人经理|真人客服|专人联系|专人跟进|专人对接/;

@@ -312,7 +312,7 @@ export class AgentRunnerService {
             : null;
 
     // repair（hard cap 1）：统一走独立 ReplyRepairAgent 受约束重写——replan（重进
-    // generator 重取数+重写全文）已于 2026-07-27 发牌切换整体退役（评估文档 §2.4），
+    // generator 重取数+重写全文）已于 发牌切换整体退役（评估文档 §2.4），
     // 全链路只剩一个能改候选人可见文本的写手。
     const committed = this.summarizeCommittedSideEffects(first.toolCalls ?? []);
     this.logger.log(
@@ -341,10 +341,9 @@ export class AgentRunnerService {
           );
 
     const revisedText = OutboundReplySanitizer.stripTimeMarkers((revised.text ?? '').trim());
-    // 悬空承接句 = repair 失败：repair 是本轮最后一次生成，"我帮你查下 X"式的
-    // 将来时承诺不可能兑现，投递即空头承诺（badcase batch_6a4790c7…：候选人
-    // 只收到一句"我帮你查下花桥中骏附近的岗位"，之后再无下文）。与空文本同样
-    // 收敛为 block（沉默 + 落审查档案），不送二审——二审只查规则违规，会放行。
+    // 悬空承接句 = repair 失败：repair 是本轮最后一次生成，"我帮你查下 X"式的将来时
+    // 承诺不可能兑现，投递即空头承诺。与空文本同样收敛为 block（沉默 + 落审查档案），
+    // 不送二审——二审只查规则违规，会放行。
     const danglingRepair = revisedText !== '' && isDanglingCheckReply(revisedText);
     if (!revisedText || danglingRepair) {
       if (danglingRepair) {
@@ -458,8 +457,8 @@ export class AgentRunnerService {
     // §9：repair 死循环硬上限 1 —— 二次仍 revise 时按风险分级收敛：
     // - P0（riskLevel=high）或含不可恢复违规：block（静默 + 档案），发出去即不可挽回；
     // - 仅 P1/P2 可恢复违规：fail-open 投递修复版 + 档案标注 repair_exhausted_fail_open。
-    //   依据 2026-07-06 生产守卫档案首日复盘：假阳 × repair_exhausted 静默的组合杀伤最大
-    //   （候选人在约面/收资节点整轮收不到回复），P1 级假阳的代价应是"多一条告警"而不是丢单。
+    //   依据：假阳 × repair_exhausted 静默的组合杀伤最大（候选人在约面/收资节点整轮收不到
+    //   回复），P1 级假阳的代价应是"多一条告警"而不是丢单。
     //   注意 revise 档规则本就定义为"可改写修复"的口径问题，修复版即使仍有残留，
     //   其风险也低于关键转化节点的整轮静默。
     const wantsRepairAgain = decision2.decision !== 'pass' && decision2.decision !== 'observe';
@@ -473,9 +472,9 @@ export class AgentRunnerService {
           `rules=${decision2.ruleIds.join(',') || '-'}, traceId=${ctx.traceId ?? '-'}`,
       );
     }
-    // 确定性 repair 回归闸门（2026-07-24 审计 P1-5）：二审只判"修复版是否违规"，不比较
+    // 确定性 repair 回归闸门（P1-5）：二审只判"修复版是否违规"，不比较
     // "相对首版是否退步"——结构压扁/结论反转的修复版曾带着二审 pass 直接投递
-    // （trace batch_6a606ac5…）。检测需同时读取真实岗位证据，避免把删除幻觉岗位误判
+    // 。检测需同时读取真实岗位证据，避免把删除幻觉岗位误判
     // 为退化。fence_stripped / envelope_unwrapped 是逐字剥离/提取，不可能回归，跳过检测
     // ——拆封产物相对信封原文本就是"结构骤变"，跑回归闸只会误报。
     const regression =
@@ -490,8 +489,8 @@ export class AgentRunnerService {
     // 首版可 fail-open（P1/P2 全部可恢复且非高风险）→ 回退首版；
     // 首版不可 fail-open（P0/泄漏类/高风险）→ 两版都不投，静默 block 并留档——
     // 修复版已证明退化，首版又是守卫明确否决的泄漏/红线内容，谁都不能进投递链。
-    // 注意不能用 violation.currentReplySendable 判定：revise 档一律派生为 false，
-    // 会把"P1/P2 回退首版"整条路径变成不可达（2026-07-29 复审修正）。
+    // 注意不能用 violation.currentReplySendable 判定：revise 档一律派生为 false，会把
+    // "P1/P2 回退首版"整条路径变成不可达。
     const regressionBlock = regression !== null && !this.isFirstReplyFailOpenEligible(decision);
     const regressionRevert = regression !== null && !regressionBlock;
     if (regressionBlock) {
@@ -707,10 +706,8 @@ export class AgentRunnerService {
    */
   private resolveJobEvidenceAvailability(toolCalls: AgentToolCall[]): boolean {
     const jobListCalls = toolCalls.filter((call) => call.toolName === 'duliday_job_list');
-    // 零查岗轮视同无岗位证据（PR #1000 评审 P0-9）：本轮一次查岗都没调时，首版的
-    // 岗位事实必然无本轮工具支撑——repair 诚实删除编造岗位的改写不能被判
-    // structure_collapsed 回退成编造原文投递（2026-07-29 事故形态；随规则下线删掉的
-    // ZERO_EVIDENCE_RULE_IDS 逃生舱即为此缺口而设）。
+    // 零查岗轮视同无岗位证据：本轮一次查岗都没调时，首版的岗位事实必然无工具支撑——
+    // repair 诚实删除编造岗位的改写不能被判 structure_collapsed 回退成编造原文投递。
     if (jobListCalls.length === 0) return false;
     return jobListCalls.some(
       (call) =>
@@ -733,10 +730,9 @@ export class AgentRunnerService {
    * markdown 围栏标记后词库再无任何命中 → 返回剥离后的文本（围栏内正文逐字保留）。
    * 其余情况（混合命中、剥完仍有泄漏、剥完为空）返回 null，交给常规 LLM repair。
    *
-   * 领域合规前置（2026-07-30 审计 P0-3）：快通道的隐含前提是"围栏是这条回复唯一的
-   * 问题"，而 2026-07-28 生产实例证明该前提会被整篇跨域内容击穿——候选人问日结岗，
-   * 模型回了一整篇后端接口设计答案，剥完围栏词库不再命中，逐字放行投递给了候选人。
-   * 剥离产物呈技术文档形态时不走快通道，交给常规 repair（该路径还会过回归闸）。
+   * 领域合规前置：快通道的隐含前提是"围栏是这条回复唯一的问题"，整篇跨域技术内容会
+   * 击穿它（剥完围栏词库不再命中，逐字放行给候选人）。剥离产物呈技术文档形态时不走
+   * 快通道，交给常规 repair（该路径还会过回归闸）。
    */
   private tryStripFenceOnlyLeak(decision: OutputGuardDecision, text: string): string | null {
     if (!this.isOnlyInternalOutputLeakBlock(decision)) return null;
@@ -766,11 +762,9 @@ export class AgentRunnerService {
   }
 
   /**
-   * JSON 信封的确定性最小修复（2026-08-04 审计 P0-2）：不可发送命中仅为
-   * internal_output_leak，且整条首版是"正文被包进 JSON 信封"的形态
-   * （`{"agent_response":"好的，我帮你看下罗湖…"}`、`{"censorStatus":"ok","_replyInstruction":"不客气～…"}`）
-   * → 拆出信封内正文逐字放行。生产实测该形态曾被残文判据误伤成整轮静默——
-   * 字符串字面量剥离把好回复连壳一起剥掉了。
+   * JSON 信封的确定性最小修复：不可发送命中仅为 internal_output_leak，且整条首版是
+   * "正文被包进 JSON 信封"的形态（`{"agent_response":"好的，我帮你看下…"}`）→ 拆出信封内
+   * 正文逐字放行。不拆则该形态会被残文判据误伤成整轮静默。
    *
    * 拆封判定（含 tool_use 结构键黑名单、唯一候选、正文自身无泄漏/非技术文档）
    * 收敛在 tryUnwrapEnvelopeReply；拆封产物仍走二审 + 悬空承接句检测，二审才是放行依据。
@@ -821,11 +815,11 @@ export class AgentRunnerService {
   }
 
   /**
-   * fail-open 时修复版默认胜出（2026-07-24 审计 P1-3）。
+   * fail-open 时修复版默认胜出（P1-3）。
    *
    * 旧判据是"首版 blocked 规则集完全复燃 → 弃修复版投首版"，把本窗口 10/16 的
    * fail-open 修复版丢回首版，其中多例修复版明确更优（结算口径精确化、删掉洗身份
-   * 叙述）却被弃用，甚至致洗身份文本实际投递（trace batch_6a6190cd…）。同一规则
+   * 叙述）却被弃用，甚至致洗身份文本实际投递。同一规则
    * 复燃时两版违规程度相同，而修复版还多消化了一次反馈与二审；因此只有修复版引入
    * 首版没有的新 blocked 规则（真变差）才回退首版。结构压扁/结论反转类退化由
    * 确定性回归闸门（detectRepairRegression）在调用点并联把守。

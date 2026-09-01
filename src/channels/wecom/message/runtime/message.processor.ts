@@ -61,7 +61,7 @@ export class MessageProcessor implements OnModuleInit, OnModuleDestroy {
    *
    * queue.close() 默认会先停止领取新任务，再等待 active 任务执行完成——让正在
    * 调 Agent / 投递中的消息走完整个流程（含 ack pending 与终态落库），而不是被
-   * 半路杀死后永久卡在 processing（2026-06-09 v5.13.0 发版事故）。
+   * 半路杀死后永久卡在 processing（v5.13.0 发版事故）。
    *
    * 超过 drainTimeoutMs 仍未排空则放弃等待：此时未 ack 的 pending 保留在 Redis，
    * 锁冲突重检机制会让新实例接手重放，不能为等待拖垮部署平台的强杀窗口。

@@ -4,15 +4,13 @@ import { FIELD_OWNERSHIPS, type FieldOwnership } from '../types';
 /**
  * 视觉信号域（resolution/signal/visual）—— 图片/表情消息结构化事实的唯一类型定义点。
  *
- * 设计依据：docs/architecture/visual-fact-pipeline.md（附录 A 为字段白名单与裁决
- * 记录的唯一权威；前身三份 2026-08-05 立项文档已整合进该文，全文存 git 历史）。
- * 与 brand/geo 域同构：纯确定性、零 LLM、零仓内出向依赖；vision/主模型调用留在
- * channels（兜底引擎：漏调补描述/降级重跑/懒补写/自侧消息）与 tools（主路径工具）
- * 两个生产者，本域只持有 schema、归属规则与渲染/解析。
+ * 设计依据：docs/architecture/visual-fact-pipeline.md（附录 A 是字段白名单与裁决记录的
+ * 唯一权威）。与 brand/geo 域同构：纯确定性、零 LLM、零仓内出向依赖；vision/主模型调用留在
+ * channels（兜底引擎）与 tools（主路径工具）两个生产者，本域只持有 schema、归属规则与
+ * 渲染/解析。
  *
- * 直接诱因 badcase `vkikct39`：BOSS 截图描述被拍平成文本回写进用户消息，
- * 交换微信截图里招募经理本人的微信号与岗位卡「18岁以上」门槛句被当候选人自陈，
- * 提交进真实报名。三判据（这是什么图/归谁/可不可信）在 7 个消费点全部缺失。
+ * 要守的三判据是「这是什么图 / 归谁 / 可不可信」：缺任一判据，截图里的第三方微信号、
+ * 岗位门槛句就会被当候选人自陈提交进真实报名（badcase `vkikct39`）。
  */
 
 export const VISUAL_FACT_KINDS = [
@@ -81,7 +79,7 @@ export type VisualFactFieldKey = (typeof VISUAL_FACT_FIELD_KEYS)[number];
 export const VISUAL_FACT_FIELD_KEY_PROMPT = `只能用这些值：${VISUAL_FACT_FIELD_KEYS.join(' / ')}`;
 
 export const VisualFactFieldSchema = z.object({
-  // 刻意收 string 而非 enum（2026-08-05 生产 50 图批测实证：32/50 的模型输出含
+  // 刻意收 string 而非 enum（生产 50 图批测实证：32/50 的模型输出含
   // 白名单外 key，如 position/distance/welfare——严格 enum 会让一个坏 key 拖垮
   // 整张 sheet 的 safeParse 触发全量降级）。白名单过滤在 finalizeVisualFactSheet
   // 做：坏字段丢弃、好字段保留，kind 判定不受牵连。

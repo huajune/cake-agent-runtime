@@ -315,7 +315,7 @@ export function isIdentityAskMessage(rawText: string): boolean {
 /**
  * 统计 assistant 已向候选人追问身份的轮数，以及最近一次追问后候选人是否已回复。
  *
- * badcase 6a448d09：识别器不认候选人回答时，模型在 4 个 turn 里把同一个身份问题
+ * badcase：识别器不认候选人回答时，模型在 4 个 turn 里把同一个身份问题
  * 问了 4 遍。该统计供 identityFieldGuard 升级判断：追问 ≥2 次且候选人已作答仍
  * 无法核验 → 停止追问、强制转人工。
  */
@@ -368,7 +368,7 @@ export function detectIdentityCorrectionNotice(rawText: string): boolean {
 /**
  * 识别"学生自认 → 被拒 → 改口社会人士"序列并判断改口是否已核实。
  *
- * 产品裁定（2026-07-15）：被拒后的策略性首次改口不能直接采信——Agent 必须核实一次
+ * 产品裁定：被拒后的策略性首次改口不能直接采信——Agent 必须核实一次
  * （告知如实填写不影响推荐其它岗位），候选人在核实问句后再次明确确认，改口才生效。
  * 候选人明确说明先前是误填/口误（可与身份陈述分开发送）时，属于纠错而非策略性改口，
  * 后续清晰身份陈述直接生效。
