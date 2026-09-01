@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [11.1.1] - 2026-09-01
 
-**预计版本**: `v11.1.1`
-**最近更新**: `2026-09-01`
 **来源分支**: `develop`
-**累计 PR**: 2
 
 ### 更新摘要
 - PR #1122 核心链路注释按仓库风格全量精简
@@ -51,7 +47,6 @@
 - PR #1122 typecheck / lint / format 全绿；全量 6448 用例通过（第一批时点），排班批相关 2476 通过
 - PR #1125 `pnpm run release:ledger:check` ✅
 - PR #1125 `npx prettier --check` ✅
-<!-- release:pending:end -->
 
 ## [11.1.0] - 2026-08-31
 
