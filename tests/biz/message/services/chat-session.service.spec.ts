@@ -4,6 +4,7 @@ import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { ChatMessageRepository } from '@biz/message/repositories/chat-message.repository';
 import { RedisService } from '@infra/redis/redis.service';
 import { buildChatHistoryCacheKey } from '@memory/short-term/chat-history-cache.util';
+import { MEMORY_SESSION_TTL_DAYS_DEFAULT } from '@memory/memory.config';
 import { MessageSource, MessageType } from '@enums/message-callback.enum';
 import { StorageMessageSource, StorageMessageType } from '@enums/storage-message.enum';
 
@@ -103,6 +104,41 @@ describe('ChatSessionService', () => {
       // Index key is gone — dedup delegated to DB UNIQUE(message_id)
       expect(mockRedisService.setex).not.toHaveBeenCalled();
       expect(mockRedisService.exists).not.toHaveBeenCalled();
+    });
+
+    it('should fall back to the shared memory-side default TTL when env is not set', async () => {
+      // 回归锁：短期 list 缓存的 TTL 默认值必须与 MemoryConfig.sessionTtl 同源，
+      // 两条续期路径默认值漂移会让缓存生命周期取决于最后一次写来自哪条路径。
+      const module = await Test.createTestingModule({
+        providers: [
+          ChatSessionService,
+          { provide: ChatMessageRepository, useValue: mockChatMessageRepository },
+          { provide: RedisService, useValue: mockRedisService },
+          {
+            provide: ConfigService,
+            useValue: { get: jest.fn((_key: string, defaultValue?: string) => defaultValue) },
+          },
+        ],
+      }).compile();
+      const svc = module.get<ChatSessionService>(ChatSessionService);
+      mockChatMessageRepository.saveChatMessage.mockResolvedValue({ inserted: true });
+
+      await svc.saveMessage({
+        chatId: 'chat-1',
+        messageId: 'msg-default-ttl',
+        role: 'assistant',
+        content: '你好',
+        timestamp: 1710900000000,
+        contactType: 1,
+        source: MessageSource.AGGREGATED_CHAT_MANUAL,
+        messageType: MessageType.TEXT,
+        isSelf: true,
+      });
+
+      expect(mockRedisService.expire).toHaveBeenCalledWith(
+        buildChatHistoryCacheKey('chat-1'),
+        parseInt(MEMORY_SESSION_TTL_DAYS_DEFAULT, 10) * 24 * 60 * 60,
+      );
     });
 
     it('should skip cache mirror when DB reports the row already existed (UNIQUE conflict)', async () => {

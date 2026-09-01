@@ -15,6 +15,7 @@ import {
   type CachedChatHistoryMessage,
   serializeCachedChatHistoryMessage,
 } from '@memory/short-term/chat-history-cache.util';
+import { MEMORY_SESSION_TTL_DAYS_DEFAULT } from '@memory/memory.config';
 
 /**
  * 聊天会话服务
@@ -291,10 +292,13 @@ export class ChatSessionService {
   }
 
   private get shortTermCacheTtlSeconds(): number {
-    // 默认值必须与 MemoryConfig.sessionTtl（memory.config.ts，默认 '2'）一致：
     // 同一个短期 list 缓存被本服务 append 续期、又被 MessageWindowService backfill 续期，
-    // 两处默认值不同（曾经 1d vs 2d）会让缓存生命周期取决于最后一次写来自哪条路径。
-    const days = parseInt(this.configService?.get('MEMORY_SESSION_TTL_DAYS', '2') ?? '2', 10);
+    // 默认值必须与 MemoryConfig.sessionTtl 一致，故共用 MEMORY_SESSION_TTL_DAYS_DEFAULT。
+    const days = parseInt(
+      this.configService?.get('MEMORY_SESSION_TTL_DAYS', MEMORY_SESSION_TTL_DAYS_DEFAULT) ??
+        MEMORY_SESSION_TTL_DAYS_DEFAULT,
+      10,
+    );
     return days * 24 * 60 * 60;
   }
 }
