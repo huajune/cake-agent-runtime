@@ -2,6 +2,16 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 /**
+ * `MEMORY_SESSION_TTL_DAYS` 未配置时的默认天数。
+ *
+ * 短期 list 缓存（memory:short_term:chat:{chatId}）被两条写路径续期：
+ * memory 侧 MessageWindowService backfill 与 biz 侧 ChatSessionService append。
+ * 两处必须引用此常量作为默认值——默认值不同会让缓存实际生命周期
+ * 取决于最后一次写入来自哪条路径。
+ */
+export const MEMORY_SESSION_TTL_DAYS_DEFAULT = '3';
+
+/**
  * 记忆模块配置
  *
  * 统一管理记忆相关的时间、窗口和缓存参数。
@@ -70,7 +80,10 @@ export class MemoryConfig {
   readonly longTermCacheTtl: number;
 
   constructor(private readonly configService: ConfigService) {
-    const days = parseInt(this.configService.get('MEMORY_SESSION_TTL_DAYS', '3'), 10);
+    const days = parseInt(
+      this.configService.get('MEMORY_SESSION_TTL_DAYS', MEMORY_SESSION_TTL_DAYS_DEFAULT),
+      10,
+    );
     this.sessionTtl = days * 24 * 60 * 60;
     this.sessionFactsTtl = this.sessionTtl + 12 * 60 * 60;
 
