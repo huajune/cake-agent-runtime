@@ -13,7 +13,7 @@ describe('ChatSessionService', () => {
 
   const mockChatMessageRepository = {
     getTodayChatMessages: jest.fn(),
-    getChatSessionListByDateRange: jest.fn(),
+    getChatSessionPage: jest.fn(),
     getChatSessionList: jest.fn(),
     getChatDailyStats: jest.fn(),
     getChatSummaryStats: jest.fn(),
@@ -215,51 +215,53 @@ describe('ChatSessionService', () => {
   // ==================== getChatSessions ====================
 
   describe('getChatSessions', () => {
+    const emptyPage = { sessions: [], total: 0, nextCursor: null };
+
     it('should use date range when startDate is provided', async () => {
-      const mockSessions = [{ chatId: 'chat1' }];
-      mockChatMessageRepository.getChatSessionListByDateRange.mockResolvedValue(mockSessions);
+      const mockPage = { sessions: [{ chatId: 'chat1' }], total: 1, nextCursor: null };
+      mockChatMessageRepository.getChatSessionPage.mockResolvedValue(mockPage);
 
       const result = await service.getChatSessions({
         startDate: '2024-01-01',
         endDate: '2024-01-31',
       });
 
-      expect(result).toEqual({ sessions: mockSessions });
-      expect(mockChatMessageRepository.getChatSessionListByDateRange).toHaveBeenCalledTimes(1);
+      expect(result).toEqual(mockPage);
+      expect(mockChatMessageRepository.getChatSessionPage).toHaveBeenCalledTimes(1);
       expect(mockChatMessageRepository.getChatSessionList).not.toHaveBeenCalled();
 
-      const [start, end] = mockChatMessageRepository.getChatSessionListByDateRange.mock.calls[0];
-      expect(start.getHours()).toBe(0); // start of day
-      expect(end.getHours()).toBe(23); // end of day
+      const [{ startDate, endDate }] = mockChatMessageRepository.getChatSessionPage.mock.calls[0];
+      expect(startDate.getHours()).toBe(0); // start of day
+      expect(endDate.getHours()).toBe(23); // end of day
     });
 
     it('should use days-based query when no startDate provided', async () => {
-      const mockSessions = [{ chatId: 'chat1' }];
-      mockChatMessageRepository.getChatSessionList.mockResolvedValue(mockSessions);
+      const mockPage = { sessions: [{ chatId: 'chat1' }], total: 1, nextCursor: null };
+      mockChatMessageRepository.getChatSessionList.mockResolvedValue(mockPage);
 
       const result = await service.getChatSessions({ days: '7' });
 
-      expect(result).toEqual({ sessions: mockSessions });
-      expect(mockChatMessageRepository.getChatSessionList).toHaveBeenCalledWith(7);
-      expect(mockChatMessageRepository.getChatSessionListByDateRange).not.toHaveBeenCalled();
+      expect(result).toEqual(mockPage);
+      expect(mockChatMessageRepository.getChatSessionList).toHaveBeenCalledWith(7, 200);
+      expect(mockChatMessageRepository.getChatSessionPage).not.toHaveBeenCalled();
     });
 
     it('should default to 1 day when no days option provided', async () => {
-      mockChatMessageRepository.getChatSessionList.mockResolvedValue([]);
+      mockChatMessageRepository.getChatSessionList.mockResolvedValue(emptyPage);
 
       await service.getChatSessions({});
 
-      expect(mockChatMessageRepository.getChatSessionList).toHaveBeenCalledWith(1);
+      expect(mockChatMessageRepository.getChatSessionList).toHaveBeenCalledWith(1, 200);
     });
 
     it('should use end of today when no endDate provided for date range', async () => {
-      mockChatMessageRepository.getChatSessionListByDateRange.mockResolvedValue([]);
+      mockChatMessageRepository.getChatSessionPage.mockResolvedValue(emptyPage);
 
       await service.getChatSessions({ startDate: '2024-01-01' });
 
-      const [, end] = mockChatMessageRepository.getChatSessionListByDateRange.mock.calls[0];
-      expect(end.getHours()).toBe(23);
-      expect(end.getMinutes()).toBe(59);
+      const [{ endDate }] = mockChatMessageRepository.getChatSessionPage.mock.calls[0];
+      expect(endDate.getHours()).toBe(23);
+      expect(endDate.getMinutes()).toBe(59);
     });
   });
 
@@ -326,26 +328,66 @@ describe('ChatSessionService', () => {
   // ==================== getChatSessionsOptimized ====================
 
   describe('getChatSessionsOptimized', () => {
-    it('should call getChatSessionListByDateRange with 30-day range', async () => {
-      const mockSessions = [{ chatId: 'chat1', messages: 10 }];
-      mockChatMessageRepository.getChatSessionListByDateRange.mockResolvedValue(mockSessions);
+    const emptyPage = { sessions: [], total: 0, nextCursor: null };
 
-      const result = await service.getChatSessionsOptimized();
+    it('should call getChatSessionPage with 30-day range', async () => {
+      const mockPage = { sessions: [{ chatId: 'chat1', messageCount: 10 }], total: 1, nextCursor: null };
+      mockChatMessageRepository.getChatSessionPage.mockResolvedValue(mockPage);
 
-      expect(result).toEqual(mockSessions);
-      expect(mockChatMessageRepository.getChatSessionListByDateRange).toHaveBeenCalledTimes(1);
+      const result = await service.getChatSessionsOptimized({});
+
+      expect(result).toEqual(mockPage);
+      expect(mockChatMessageRepository.getChatSessionPage).toHaveBeenCalledTimes(1);
     });
 
     it('should use provided date range', async () => {
-      mockChatMessageRepository.getChatSessionListByDateRange.mockResolvedValue([]);
+      mockChatMessageRepository.getChatSessionPage.mockResolvedValue(emptyPage);
 
-      await service.getChatSessionsOptimized('2024-01-01', '2024-01-31');
+      await service.getChatSessionsOptimized({ startDate: '2024-01-01', endDate: '2024-01-31' });
 
-      const [start, end] = mockChatMessageRepository.getChatSessionListByDateRange.mock.calls[0];
-      expect(start.getFullYear()).toBe(2024);
-      expect(start.getMonth()).toBe(0); // January = 0
-      expect(start.getDate()).toBe(1);
-      expect(end.getHours()).toBe(23);
+      const [{ startDate, endDate }] = mockChatMessageRepository.getChatSessionPage.mock.calls[0];
+      expect(startDate.getFullYear()).toBe(2024);
+      expect(startDate.getMonth()).toBe(0); // January = 0
+      expect(startDate.getDate()).toBe(1);
+      expect(endDate.getHours()).toBe(23);
+    });
+
+    it('should default the page size when limit is absent or invalid', async () => {
+      mockChatMessageRepository.getChatSessionPage.mockResolvedValue(emptyPage);
+
+      await service.getChatSessionsOptimized({ limit: 'abc' });
+
+      const [query] = mockChatMessageRepository.getChatSessionPage.mock.calls[0];
+      expect(query.limit).toBe(200);
+    });
+
+    it('should pass search and cursor through', async () => {
+      mockChatMessageRepository.getChatSessionPage.mockResolvedValue(emptyPage);
+
+      await service.getChatSessionsOptimized({
+        limit: '50',
+        search: 'Alice',
+        cursorTimestamp: '2026-09-01T09:00:00.000Z',
+        cursorChatId: 'chat_002',
+      });
+
+      const [query] = mockChatMessageRepository.getChatSessionPage.mock.calls[0];
+      expect(query.limit).toBe(50);
+      expect(query.search).toBe('Alice');
+      expect(query.cursor).toEqual({
+        timestamp: '2026-09-01T09:00:00.000Z',
+        chatId: 'chat_002',
+      });
+    });
+
+    it('should ignore a half-specified cursor', async () => {
+      mockChatMessageRepository.getChatSessionPage.mockResolvedValue(emptyPage);
+
+      // 游标必须成对出现，只有时间戳时无法定位排序键，应视为从头开始
+      await service.getChatSessionsOptimized({ cursorTimestamp: '2026-09-01T09:00:00.000Z' });
+
+      const [query] = mockChatMessageRepository.getChatSessionPage.mock.calls[0];
+      expect(query.cursor).toBeUndefined();
     });
   });
 

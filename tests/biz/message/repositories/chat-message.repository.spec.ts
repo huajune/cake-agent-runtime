@@ -504,27 +504,29 @@ describe('ChatMessageRepository', () => {
   // ==================== getChatSessionList ====================
 
   describe('getChatSessionList', () => {
-    it('should return empty array when supabase is not available', async () => {
+    it('should return an empty page when supabase is not available', async () => {
       mockSupabaseService.isClientInitialized.mockReturnValue(false);
 
       const result = await repository.getChatSessionList();
 
-      expect(result).toEqual([]);
+      expect(result).toEqual({ sessions: [], total: 0, nextCursor: null });
     });
 
     it('should return session summaries from RPC', async () => {
       mockSupabaseService.isClientInitialized.mockReturnValue(true);
 
-      const rpcRows = [
+      mockSupabaseClient.rpc.mockResolvedValue({
+        data: [
         {
           chat_id: 'chat_001',
           candidate_name: 'Alice',
           manager_name: 'Bob',
           message_count: '2',
           last_message: 'I am fine',
-          last_timestamp: new Date().toISOString(),
+          last_timestamp: '2026-09-01T10:00:00.000Z',
           avatar: null,
           contact_type: '1',
+          total_count: '2',
         },
         {
           chat_id: 'chat_002',
@@ -532,68 +534,178 @@ describe('ChatMessageRepository', () => {
           manager_name: 'Dave',
           message_count: '1',
           last_message: 'Another session',
-          last_timestamp: new Date().toISOString(),
+          last_timestamp: '2026-09-01T09:00:00.000Z',
           avatar: null,
           contact_type: '1',
+          total_count: '2',
         },
-      ];
-
-      mockSupabaseClient.rpc.mockResolvedValue({ data: rpcRows, error: null });
+        ],
+        error: null,
+      });
 
       const result = await repository.getChatSessionList(1);
 
-      expect(result).toHaveLength(2);
-      const chat001 = result.find((s) => s.chatId === 'chat_001');
+      expect(result.sessions).toHaveLength(2);
+      expect(result.total).toBe(2);
+      const chat001 = result.sessions.find((s) => s.chatId === 'chat_001');
       expect(chat001).toBeDefined();
       expect(chat001?.messageCount).toBe(2);
     });
   });
 
-  // ==================== getChatSessionListByDateRange ====================
+  // ==================== getChatSessionPage ====================
 
-  describe('getChatSessionListByDateRange', () => {
-    it('should return empty array when supabase is not available', async () => {
+  describe('getChatSessionPage', () => {
+    const query = { startDate: new Date(), endDate: new Date(), limit: 2 };
+
+    it('should return an empty page when supabase is not available', async () => {
       mockSupabaseService.isClientInitialized.mockReturnValue(false);
 
-      const result = await repository.getChatSessionListByDateRange(new Date(), new Date());
+      const result = await repository.getChatSessionPage(query);
 
-      expect(result).toEqual([]);
+      expect(result).toEqual({ sessions: [], total: 0, nextCursor: null });
     });
 
-    it('should return mapped sessions from RPC', async () => {
+    it('should return mapped sessions and the true total', async () => {
       mockSupabaseService.isClientInitialized.mockReturnValue(true);
 
       mockSupabaseClient.rpc.mockResolvedValue({
         data: [
-          {
-            chat_id: 'chat_001',
-            candidate_name: 'Alice',
-            manager_name: 'Bob',
-            message_count: '5',
-            last_message: 'Goodbye',
-            last_timestamp: new Date().toISOString(),
-            avatar: null,
-            contact_type: '1',
-          },
+        {
+          chat_id: 'chat_001',
+          candidate_name: 'Alice',
+          manager_name: 'Bob',
+          message_count: '5',
+          last_message: 'Goodbye',
+          last_timestamp: '2026-09-01T10:00:00.000Z',
+          avatar: null,
+          contact_type: '1',
+          total_count: '37',
+        },
         ],
         error: null,
       });
 
-      const result = await repository.getChatSessionListByDateRange(new Date(), new Date());
+      const result = await repository.getChatSessionPage(query);
 
-      expect(result).toHaveLength(1);
-      expect(result[0].chatId).toBe('chat_001');
-      expect(result[0].messageCount).toBe(5);
+      expect(result.sessions).toHaveLength(1);
+      expect(result.sessions[0].chatId).toBe('chat_001');
+      expect(result.sessions[0].messageCount).toBe(5);
+      // total 是时间窗内的总数，与本页条数无关
+      expect(result.total).toBe(37);
+      // 返回条数未超过 limit → 已到末页
+      expect(result.nextCursor).toBeNull();
     });
 
-    it('should return empty array when RPC returns null', async () => {
+    it('should over-fetch by one to detect the next page and trim it off', async () => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(true);
+
+      mockSupabaseClient.rpc.mockResolvedValue({
+        data: [
+        {
+          chat_id: 'chat_001',
+          candidate_name: 'Alice',
+          manager_name: 'Bob',
+          message_count: '5',
+          last_message: 'a',
+          last_timestamp: '2026-09-01T10:00:00.000Z',
+          avatar: null,
+          contact_type: '1',
+          total_count: '9',
+        },
+        {
+          chat_id: 'chat_002',
+          candidate_name: 'Carol',
+          manager_name: 'Dave',
+          message_count: '3',
+          last_message: 'b',
+          last_timestamp: '2026-09-01T09:00:00.000Z',
+          avatar: null,
+          contact_type: '1',
+          total_count: '9',
+        },
+        {
+          chat_id: 'chat_003',
+          candidate_name: 'Eve',
+          manager_name: 'Frank',
+          message_count: '1',
+          last_message: 'c',
+          last_timestamp: '2026-09-01T08:00:00.000Z',
+          avatar: null,
+          contact_type: '1',
+          total_count: '9',
+        },
+        ],
+        error: null,
+      });
+
+      const result = await repository.getChatSessionPage(query);
+
+      // limit=2 → 请求 3 条，多出的第 3 条只用于判断还有下一页
+      expect(mockSupabaseClient.rpc).toHaveBeenCalledWith(
+        'get_chat_session_list',
+        expect.objectContaining({ p_limit: 3 }),
+      );
+      expect(result.sessions).toHaveLength(2);
+      // 游标锚在本页最后一条上，而非被裁掉的探测条
+      expect(result.nextCursor).toEqual({
+        timestamp: '2026-09-01T09:00:00.000Z',
+        chatId: 'chat_002',
+      });
+    });
+
+    it('should push the search term and cursor down to the RPC', async () => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(true);
+      mockSupabaseClient.rpc.mockResolvedValue({ data: [], error: null });
+
+      await repository.getChatSessionPage({
+        ...query,
+        search: '  Alice  ',
+        cursor: { timestamp: '2026-09-01T09:00:00.000Z', chatId: 'chat_002' },
+      });
+
+      expect(mockSupabaseClient.rpc).toHaveBeenCalledWith(
+        'get_chat_session_list',
+        expect.objectContaining({
+          p_search: 'Alice',
+          p_cursor_timestamp: '2026-09-01T09:00:00.000Z',
+          p_cursor_chat_id: 'chat_002',
+        }),
+      );
+    });
+
+    it('should send a null search term when the term is blank', async () => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(true);
+      mockSupabaseClient.rpc.mockResolvedValue({ data: [], error: null });
+
+      await repository.getChatSessionPage({ ...query, search: '   ' });
+
+      expect(mockSupabaseClient.rpc).toHaveBeenCalledWith(
+        'get_chat_session_list',
+        expect.objectContaining({ p_search: null }),
+      );
+    });
+
+    it('should clamp the page size to the maximum', async () => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(true);
+      mockSupabaseClient.rpc.mockResolvedValue({ data: [], error: null });
+
+      await repository.getChatSessionPage({ ...query, limit: 100000 });
+
+      expect(mockSupabaseClient.rpc).toHaveBeenCalledWith(
+        'get_chat_session_list',
+        expect.objectContaining({ p_limit: 501 }),
+      );
+    });
+
+    it('should return an empty page when RPC returns null', async () => {
       mockSupabaseService.isClientInitialized.mockReturnValue(true);
 
       mockSupabaseClient.rpc.mockResolvedValue({ data: null, error: null });
 
-      const result = await repository.getChatSessionListByDateRange(new Date(), new Date());
+      const result = await repository.getChatSessionPage(query);
 
-      expect(result).toEqual([]);
+      expect(result).toEqual({ sessions: [], total: 0, nextCursor: null });
     });
   });
 

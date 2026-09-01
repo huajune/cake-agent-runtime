@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import type { ChatSession } from '@/hooks/chat/useChatSessions';
 import { formatLocaleDateTime } from '@/utils/format';
 import styles from './index.module.scss';
@@ -30,6 +31,11 @@ interface SessionListProps {
   timeRangeLabel: string;
   /** 刚收到新消息的会话（Realtime 推送），用于高亮闪烁 */
   activeChatIds?: Set<string>;
+  /** 时间窗内的会话总数（服务端返回，非已加载条数） */
+  total: number;
+  hasNextPage: boolean;
+  isFetchingNextPage: boolean;
+  onLoadMore: () => void;
 }
 
 export default function SessionList({
@@ -41,24 +47,41 @@ export default function SessionList({
   isLoading,
   timeRangeLabel,
   activeChatIds,
+  total,
+  hasNextPage,
+  isFetchingNextPage,
+  onLoadMore,
 }: SessionListProps) {
-  // 过滤会话（搜索）
-  const filteredSessions = sessions.filter((session) => {
-    if (!searchTerm) return true;
-    const term = searchTerm.toLowerCase();
-    return (
-      session.chatId.toLowerCase().includes(term) ||
-      session.candidateName?.toLowerCase().includes(term) ||
-      session.managerName?.toLowerCase().includes(term)
+  // 搜索已下推到服务端（命中整个时间窗，而不只是已加载的页），这里直接渲染
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
+
+  // 滚动到底部自动加载下一页。
+  // root 必须绑到列表容器：列表在自己的 overflow 容器里滚动，用默认的 viewport 作 root
+  // 在容器不可见 / 视口高度为 0 时永远不会触发。
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    const root = listRef.current;
+    if (!sentinel || !root || !hasNextPage || isFetchingNextPage) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) onLoadMore();
+      },
+      { root, rootMargin: '200px' },
     );
-  });
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasNextPage, isFetchingNextPage, onLoadMore, sessions.length]);
 
   return (
     <div className={styles.panel}>
       <div className={styles.header}>
         <div className={styles.headerTop}>
           <h3 className={styles.title}>会话列表</h3>
-          <span className={styles.count}>{filteredSessions.length}</span>
+          <span className={styles.count} title={`已加载 ${sessions.length} / 共 ${total}`}>
+            {sessions.length < total ? `${sessions.length} / ${total}` : total}
+          </span>
         </div>
 
         <div className={styles.searchWrapper}>
@@ -66,20 +89,20 @@ export default function SessionList({
           <input
             className={styles.searchInput}
             type="text"
-            placeholder="搜索候选人..."
+            placeholder="搜索候选人 / 招聘经理 / 消息..."
             value={searchTerm}
             onChange={(e) => onSearchChange(e.target.value)}
           />
         </div>
       </div>
 
-      <div className={styles.listContainer}>
+      <div className={styles.listContainer} ref={listRef}>
         {isLoading ? (
           <div className={styles.stateContainer}>
             <div className="loading-spinner"></div>
             加载中...
           </div>
-        ) : filteredSessions.length === 0 ? (
+        ) : sessions.length === 0 ? (
           <div className={styles.stateContainer}>
             <div className={styles.emptyIconWrapper}>
               <svg
@@ -106,10 +129,10 @@ export default function SessionList({
                 <circle cx="44" cy="22" r="3" fill="#FF7596" />
               </svg>
             </div>
-            <p>{timeRangeLabel}暂无会话记录</p>
+            <p>{searchTerm ? `没有匹配「${searchTerm}」的会话` : `${timeRangeLabel}暂无会话记录`}</p>
           </div>
         ) : (
-          filteredSessions.map((session) => {
+          sessions.map((session) => {
             const contactTypeInfo = CONTACT_TYPE_LABELS[session.contactType || 'UNKNOWN'];
             const avatarChar = (session.candidateName || session.chatId || '?')
               .charAt(0)
@@ -181,6 +204,24 @@ export default function SessionList({
               </div>
             );
           })
+        )}
+
+        {/* 触底自动加载下一页；到末页后展示收尾提示 */}
+        {!isLoading && sessions.length > 0 && (
+          <div ref={sentinelRef} className={styles.loadMore}>
+            {isFetchingNextPage ? (
+              <>
+                <div className="loading-spinner"></div>
+                加载中...
+              </>
+            ) : hasNextPage ? (
+              <button type="button" className={styles.loadMoreBtn} onClick={onLoadMore}>
+                加载更多
+              </button>
+            ) : (
+              <span className={styles.loadMoreEnd}>已显示全部 {total} 个会话</span>
+            )}
+          </div>
         )}
       </div>
     </div>

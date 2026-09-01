@@ -3,6 +3,8 @@ import type {
   ChatMessage,
   ChatMessagesResponse,
   ChatSession,
+  ChatSessionCursor,
+  ChatSessionPage,
   ChatDailyStatsItem,
   ChatSummaryStats,
   ChatTrendItem,
@@ -14,6 +16,8 @@ export type {
   ChatMessage,
   ChatMessagesResponse,
   ChatSession,
+  ChatSessionCursor,
+  ChatSessionPage,
   ChatDailyStatsItem,
   ChatSummaryStats,
   ChatTrendItem,
@@ -55,11 +59,22 @@ export async function getChatSummaryStats(startDate: string, endDate: string) {
   return unwrapResponse<ChatSummaryStats>(data);
 }
 
-export async function getChatSessionsOptimized(startDate: string, endDate: string) {
-  const params = new URLSearchParams({ startDate, endDate });
-  const { data } = await api.get(`/analytics/chat-sessions-optimized?${params.toString()}`);
-  const sessions = unwrapResponse<ChatSession[]>(data);
-  return { sessions };
+export async function getChatSessionsOptimized(params: {
+  startDate: string;
+  endDate: string;
+  limit?: number;
+  search?: string;
+  cursor?: ChatSessionCursor | null;
+}) {
+  const query = new URLSearchParams({ startDate: params.startDate, endDate: params.endDate });
+  if (params.limit) query.set('limit', String(params.limit));
+  if (params.search?.trim()) query.set('search', params.search.trim());
+  if (params.cursor) {
+    query.set('cursorTimestamp', params.cursor.timestamp);
+    query.set('cursorChatId', params.cursor.chatId);
+  }
+  const { data } = await api.get(`/analytics/chat-sessions-optimized?${query.toString()}`);
+  return unwrapResponse<ChatSessionPage>(data);
 }
 
 export async function getChatTrend(days: number = 7) {

@@ -18,9 +18,11 @@ import {
   useChatDailyStats,
   useChatSummaryStats,
 } from '@/hooks/chat/useChatSessions';
+import type { ChatSession } from '@/hooks/chat/useChatSessions';
 import { useRealtimeChatRecords } from '@/hooks/chat/useRealtimeChatRecords';
 import { THEME_COLORS } from '@/constants';
 import { formatLocaleDate } from '@/utils/format';
+import { isWeekendDate } from '@/utils/date-range';
 
 // 组件导入
 import HeaderBar from './components/HeaderBar';
@@ -51,6 +53,9 @@ const TIME_RANGE_OPTIONS = [
   { value: 3, label: '近 30 天', days: 30 },
 ];
 
+// 搜索防抖：搜索下推到服务端，避免每次击键都打一次库
+const SEARCH_DEBOUNCE_MS = 350;
+
 // 数据分析月度选项配置
 const ANALYTICS_MONTH_OPTIONS = [
   { value: 0, label: '近 1 月', months: 1 },
@@ -73,6 +78,13 @@ function getMonthDateRange(months: number): { startDate: string; endDate: string
 // 获取日期字符串 (YYYY-MM-DD)
 function getDateString(date: Date): string {
   return date.toISOString().split('T')[0];
+}
+
+// 把 'YYYY-MM-DD' 解析为本地时区当天零点。
+// 不能用 new Date(dateStr)：那会按 UTC 零点解析，在负时区偏移下判成前一天，周末会判错。
+function parseDateKey(dateStr: string): Date {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(year, month - 1, day);
 }
 
 // 计算时间范围
@@ -98,6 +110,8 @@ export default function ChatRecords() {
   // 用户尚未手动选择会话时，右侧默认联动「最新产生消息」的候选人（列表已按消息时间倒序，取第一条）
   const [autoFollowLatest, setAutoFollowLatest] = useState(!deepLinkChatId);
   const [searchTerm, setSearchTerm] = useState('');
+  // 搜索下推到服务端，防抖避免每次击键都打一次库
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [timeRangeIndex, setTimeRangeIndex] = useState<number>(0);
   const [analyticsMonthIndex, setAnalyticsMonthIndex] = useState<number>(0);
 
@@ -114,11 +128,14 @@ export default function ChatRecords() {
     currentMonthOption.months,
   );
 
-  // API 请求 - 会话列表（优化版，使用数据库聚合）
-  const { data: sessionsData, isLoading: sessionsLoading } = useChatSessionsOptimized(
-    startDate,
-    endDate,
-  );
+  // API 请求 - 会话列表（游标分页 + 服务端搜索）
+  const {
+    data: sessionsData,
+    isLoading: sessionsLoading,
+    hasNextPage,
+    isFetchingNextPage,
+    fetchNextPage,
+  } = useChatSessionsOptimized(startDate, endDate, true, debouncedSearchTerm);
 
   // API 请求 - 顶部统计数据（使用聚合查询，性能优化）
   const { data: summaryStatsData } = useChatSummaryStats(startDate, endDate);
@@ -130,7 +147,20 @@ export default function ChatRecords() {
   );
   const { data: messagesData, isLoading: messagesLoading } = useChatSessionMessages(selectedChatId);
 
-  const sessions = sessionsData?.sessions || [];
+  // 展平分页结果；会话上浮到列表头时可能与历史页重复，按 chatId 去重保留最靠前的一条
+  const sessions = useMemo(() => {
+    const seen = new Set<string>();
+    const flat: ChatSession[] = [];
+    for (const page of sessionsData?.pages ?? []) {
+      for (const session of page.sessions) {
+        if (seen.has(session.chatId)) continue;
+        seen.add(session.chatId);
+        flat.push(session);
+      }
+    }
+    return flat;
+  }, [sessionsData]);
+  const totalSessionCount = sessionsData?.pages?.[0]?.total ?? 0;
   const dailyStats = dailyStatsData || [];
   const messages = messagesData?.messages || [];
 
@@ -149,6 +179,11 @@ export default function ChatRecords() {
     setSelectedChatId(deepLinkChatId);
   }, [deepLinkChatId]);
 
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearchTerm(searchTerm), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
   // 首次打开 / 切换时间范围且用户未手动选择时，自动选中最新消息的候选人
   useEffect(() => {
     if (autoFollowLatest && latestChatId) {
@@ -163,22 +198,31 @@ export default function ChatRecords() {
     activeSessions: 0,
   };
 
+  // 只保留工作日：周六/周日几乎无招聘咨询，留在图上会把折线拉到零、淹没工作日趋势。
+  // 与「托管趋势」图口径一致——剔除后的数据同时用于折线和右上角汇总。
+  const businessDayStats = useMemo(
+    () => dailyStats.filter((stat) => !isWeekendDate(parseDateKey(stat.date))),
+    [dailyStats],
+  );
+
   // 计算数据分析统计数据（从聚合结果中计算）
   const analyticsStats = useMemo(() => {
     return {
-      totalSessions: dailyStats.reduce((acc, day) => acc + day.sessionCount, 0),
-      totalMessages: dailyStats.reduce((acc, day) => acc + day.messageCount, 0),
+      totalSessions: businessDayStats.reduce((acc, day) => acc + day.sessionCount, 0),
+      totalMessages: businessDayStats.reduce((acc, day) => acc + day.messageCount, 0),
     };
-  }, [dailyStats]);
+  }, [businessDayStats]);
 
   // 基于数据库聚合结果计算趋势图数据（会话数 / 消息数 拆成两张图）
   const trendCharts = useMemo(() => {
-    if (dailyStats.length === 0) return null;
+    if (businessDayStats.length === 0) return null;
 
     // 格式化日期为 "月/日" 格式
-    const formattedData = dailyStats.map((stat) => {
-      const date = new Date(stat.date);
-      const dateKey = formatLocaleDate(date, { month: 'numeric', day: 'numeric' });
+    const formattedData = businessDayStats.map((stat) => {
+      const dateKey = formatLocaleDate(parseDateKey(stat.date), {
+        month: 'numeric',
+        day: 'numeric',
+      });
       return {
         date: dateKey,
         messages: stat.messageCount,
@@ -217,7 +261,7 @@ export default function ChatRecords() {
         ],
       } as ChartData<'line'>,
     };
-  }, [dailyStats]);
+  }, [businessDayStats]);
 
   // Chart.js 配置
   const chartOptions = {
@@ -309,6 +353,10 @@ export default function ChatRecords() {
           isLoading={sessionsLoading}
           timeRangeLabel={currentRange.label}
           activeChatIds={activeChatIds}
+          total={totalSessionCount}
+          hasNextPage={hasNextPage}
+          isFetchingNextPage={isFetchingNextPage}
+          onLoadMore={fetchNextPage}
         />
 
         {/* 右侧消息详情 */}

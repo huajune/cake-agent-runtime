@@ -164,16 +164,43 @@ describe('MessageController (biz/message)', () => {
 
   describe('getChatSessionsOptimized', () => {
     it('should call chatSessionService with date range', async () => {
-      const mockResult = { data: [] };
+      const mockResult = { sessions: [], total: 0, nextCursor: null };
       mockChatSessionService.getChatSessionsOptimized.mockResolvedValue(mockResult);
 
       const result = await controller.getChatSessionsOptimized('2024-01-01', '2024-01-31');
 
-      expect(chatSessionService.getChatSessionsOptimized).toHaveBeenCalledWith(
+      expect(chatSessionService.getChatSessionsOptimized).toHaveBeenCalledWith({
+        startDate: '2024-01-01',
+        endDate: '2024-01-31',
+        limit: undefined,
+        search: undefined,
+        cursorTimestamp: undefined,
+        cursorChatId: undefined,
+      });
+      expect(result).toEqual(mockResult);
+    });
+
+    it('should forward pagination and search params', async () => {
+      const mockResult = { sessions: [], total: 0, nextCursor: null };
+      mockChatSessionService.getChatSessionsOptimized.mockResolvedValue(mockResult);
+
+      await controller.getChatSessionsOptimized(
         '2024-01-01',
         '2024-01-31',
+        '50',
+        'Alice',
+        '2026-09-01T09:00:00.000Z',
+        'chat_002',
       );
-      expect(result).toEqual(mockResult);
+
+      expect(chatSessionService.getChatSessionsOptimized).toHaveBeenCalledWith({
+        startDate: '2024-01-01',
+        endDate: '2024-01-31',
+        limit: '50',
+        search: 'Alice',
+        cursorTimestamp: '2026-09-01T09:00:00.000Z',
+        cursorChatId: 'chat_002',
+      });
     });
   });
 
