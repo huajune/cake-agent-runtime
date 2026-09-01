@@ -156,10 +156,10 @@ function formatRequirementSummary(job: BrandSummaryJobInput): string | null {
 /**
  * 同品牌"最近门店"汇总：候选人在某区域有 brand intent 时，
  * 如果同品牌返回多家门店，必须按品牌分组挑距离最近的 1-2 家展示，
- * 否则容易跳过更近的同品牌门店推荐更远的（badcase 70xxcmhy）。
+ * 否则容易跳过更近的同品牌门店推荐更远的。
  *
  * 每个 store 同时附带 `displayLine` 固定结构话术，LLM 必须按此转述同品牌多门店，
- * 禁止把多家门店压缩成"有 X 品牌"（badcase laybqxn4）。
+ * 禁止把多家门店压缩成"有 X 品牌"。
  */
 export function buildBrandNearestStoreSummary(
   jobs: BrandSummaryJobInput[],

@@ -22,8 +22,7 @@ export class ChatController {
   /**
    * 获取聊天历史
    * @description 获取指定日期的聊天历史记录
-   * @example GET /chat/history?token=xxx&pageSize=5&snapshotDay=2025-10-10
-   */
+   * @example GET /chat/history?token=xxx&pageSize=5&snapshotDay=   */
   @Get('history')
   async getMessageHistory(
     @Query('token') token: string,

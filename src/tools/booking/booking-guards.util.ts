@@ -93,7 +93,7 @@ function validateInterviewTimeAgainstSchedule(
   }
 
   // 时分必须落在匹配窗口的 [startTime, endTime] 内。窗口制岗位允许提交候选人在
-  // 窗口内约定的具体时刻（badcase chat 6a5f3080：候选人约 15:00、工单却落窗口起点
+  // 窗口内约定的具体时刻（候选人约 15:00、工单却落窗口起点
   // 10:00，下游按工单时间等人），但窗口外的时刻仍是臆造，照拦。
   // dateOnly / 起止时间不可解析的窗口没有时分校验源，跳过（这类 slot 由
   // bookingAllowed=false 在 prompt 层禁止自动提交）。

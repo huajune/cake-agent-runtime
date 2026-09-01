@@ -125,3 +125,23 @@ describe('buildNoMatchScript', () => {
     });
   });
 });
+
+describe('班次过滤致空的如实披露（badcase 1rl3z9ai）', () => {
+  it('有在招岗位被班次约束剔除时，话术说"有 N 家但排班对不上"而非"没找到岗位"', () => {
+    const script = buildNoMatchScript({
+      cityLabels: ['上海'],
+      maxKm: 10,
+      scheduleConstraintLabel: '只晚班',
+      scheduleExcludedCount: 8,
+    });
+    expect(script.candidateMessage).toContain('有 8 家在招');
+    expect(script.candidateMessage).toContain('只晚班');
+    expect(script.candidateMessage).not.toContain('暂时没找到合适的岗位');
+    expect(script.forbiddenActions.join('\n')).toContain('不得说成"附近没有岗位');
+  });
+
+  it('真无岗（零剔除）保持原话术', () => {
+    const script = buildNoMatchScript({ cityLabels: ['上海'], maxKm: 10 });
+    expect(script.candidateMessage).toContain('暂时没找到合适的岗位');
+  });
+});

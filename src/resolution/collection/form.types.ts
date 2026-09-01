@@ -22,7 +22,7 @@ import type { CandidateFactProducer } from '@resolution/candidate/types';
  * 这边是**判决用的域内型**，由 `fromContractField()` 单向映射。判决逻辑只认这一型——
  * 外部 DTO 改字段名不该让整个收资域返工。
  *
- * 形状依据：2026-08-20 生产实测 9 岗 27 标签，九项字段恒定齐全。
+ * 形状依据：9 岗 27 标签，九项字段恒定齐全。
  */
 export interface ContractFieldDef {
   /** 海绵侧标签主键。⚠️ D4：字面量只可出现在测试与文档，禁止进 src/ 代码作语义锚点。 */
@@ -158,7 +158,7 @@ export interface FormSlot {
   rejectedAttempts?: number;
   /**
    * 最近一次已入账拒收的候选人回复回合；防模型同回合重试工具（重投同一句话）把
-   * 「两次真实作答」的熔断配额一轮烧光（生产 chat 6a9117face406a6aee7f99c9：
+   * 「两次真实作答」的熔断配额一轮烧光（
    * 候选人只答了一次「上传简历」就被转人工）。与 lastAskCountedTurnId 同款账法。
    */
   lastRejectionCountedTurnId?: string;

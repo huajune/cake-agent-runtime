@@ -58,9 +58,7 @@ export interface PromptContext {
   sessionBrandState?: SessionBrandState | null;
   /**
    * 托管账号身份信息。IdentitySection 用它锚定"候选人看到的这个账号就是你本人"，
-   * 让模型确知自己的名字/性别，防止把账号主人说成"另一个真人"或另编姓名性别
-   * （badcase chat 6a5dedb2ce406a6aeee1ea62：自称"李娜"+"我是女生"，把账号主人
-   * "东升"说成"真人招募经理"）。
+   * 让模型确知自己的名字/性别，防止把账号主人说成"另一个真人"或另编姓名性别。
    */
   accountIdentity?: AccountIdentity;
 }

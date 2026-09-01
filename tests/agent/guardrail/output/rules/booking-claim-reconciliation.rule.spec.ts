@@ -1,8 +1,15 @@
 import type { AgentToolCall } from '@agent/generator/generator.types';
-import { detectBookingDoneClaimWithoutSubmission } from '@agent/guardrail/output/rules/booking-claim-reconciliation.rule';
+import {
+  detectBookingDoneClaimWithoutSubmission,
+  detectCancelDoneClaimWithoutSubmission,
+} from '@agent/guardrail/output/rules/booking-claim-reconciliation.rule';
 
 function call(toolName: string, result: Record<string, unknown> = {}): AgentToolCall {
   return { toolName, args: {}, result } as unknown as AgentToolCall;
+}
+
+function failedCall(toolName: string): AgentToolCall {
+  return { toolName, args: {}, result: {}, status: 'error' } as unknown as AgentToolCall;
 }
 
 describe('detectBookingDoneClaimWithoutSubmission', () => {
@@ -52,6 +59,52 @@ describe('detectBookingDoneClaimWithoutSubmission', () => {
   it('普通岗位介绍不命中', () => {
     expect(
       detectBookingDoneClaimWithoutSubmission('这家时薪24元，班次17:00-23:00，感兴趣可以帮你报名', []),
+    ).toBeNull();
+  });
+});
+
+describe('detectCancelDoneClaimWithoutSubmission', () => {
+  it('取消工具调用失败却宣称已取消 → revise（硬矛盾）', () => {
+    const hit = detectCancelDoneClaimWithoutSubmission('好的，收到，我帮你取消明天的面试预约', [
+      failedCall('duliday_cancel_work_order'),
+    ]);
+    expect(hit?.ruleId).toBe('cancel_done_claim_failed_tool');
+    expect(hit?.action).toBe('revise');
+  });
+
+  it('零取消调用却宣称"已经帮你取消了" → observe', () => {
+    const hit = detectCancelDoneClaimWithoutSubmission(
+      '你之前在西樵的面试我已经帮你取消了，九江附近暂时没有合适的岗位',
+      [call('save_image_description')],
+    );
+    expect(hit?.ruleId).toBe('cancel_done_claim_without_submission');
+    expect(hit?.action).toBe('observe');
+  });
+
+  it('取消成功后的完成时态是合法回执', () => {
+    expect(
+      detectCancelDoneClaimWithoutSubmission('已经帮你取消了，后续有合适的再联系你', [
+        call('duliday_cancel_work_order', { success: true }),
+      ]),
+    ).toBeNull();
+  });
+
+  it('一次失败一次成功时按成功放行', () => {
+    expect(
+      detectCancelDoneClaimWithoutSubmission('面试已取消', [
+        failedCall('duliday_cancel_work_order'),
+        call('duliday_cancel_work_order', { success: true }),
+      ]),
+    ).toBeNull();
+  });
+
+  it('将来时"我帮你取消"不在口径内', () => {
+    expect(detectCancelDoneClaimWithoutSubmission('我这就帮你取消，稍等哈', [])).toBeNull();
+  });
+
+  it('普通岗位介绍不命中', () => {
+    expect(
+      detectCancelDoneClaimWithoutSubmission('这家时薪24元，随时可以取消不用违约金', []),
     ).toBeNull();
   });
 });

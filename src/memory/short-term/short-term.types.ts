@@ -476,7 +476,7 @@ export type InterviewInfoFieldKey = (typeof INTERVIEW_INFO_FIELD_KEYS)[number];
 export type PreferenceFieldKey = (typeof PREFERENCE_FIELD_KEYS)[number];
 
 // 降序元组来自 confidence-rank（唯一权威），顺序沿用历史 high-first。
-// 2026-08-11 起 explicit_provenance 的逐字摘录契约已收紧，发给抽取模型的 JSON schema
+// 起 explicit_provenance 的逐字摘录契约已收紧，发给抽取模型的 JSON schema
 // 不再承诺跨版本逐字节不变；test-suite 旧批抽取结果跨此版本作废，必须重新执行。
 export const SessionFactConfidenceSchema = z.preprocess(
   (value) => (value === 'low' || value === 'unknown' ? 'medium' : value),
@@ -531,9 +531,8 @@ export interface SessionFactValue<T> {
  * evidence 入库前截断。
  *
  * evidence 只服务排障（memory_snapshot / Supabase 查询），不是给模型看的。
- * 历史问题：LLM 提取 reasoning 全文（600+ 字）被当 evidence 存进每个字段，
- * 再经沉淀永久写入长期画像，最终整段重复注入 system prompt（张漪 case，
- * chat 69a13e919d6d3a463b0a37c6，单轮 system prompt 被撑到 27K+ 字符）。
+ * 不截断时，LLM 提取 reasoning 全文会被当 evidence 存进每个字段，经沉淀永久写入长期画像，
+ * 最终整段重复注入 system prompt（badcase 张漪：单轮 prompt 被撑到 27K+ 字符）。
  */
 export const MAX_FACT_EVIDENCE_CHARS = 200;
 
@@ -609,16 +608,10 @@ const SessionFactValueSchema = <T extends z.ZodTypeAny>(valueSchema: T) =>
 /**
  * 旧 city 字符串的兼容信封。
  *
- * 这里原是**通用**裸值信封，任何字段的裸标量都能经它
- * 悄悄落成 unknown/archive。0817 复扫时数据侧已归零（443 份生产 factsv2、13733 个字段
- * 槽位，全是信封或 null），但当时删不掉——`saveFacts` 还收裸 `EntityExtractionResult`，
- * `MemoryFixtureService.seed()`（生产 Dashboard 在跑的 test-suite 种子）正是这么调的，
- * 那条路径就是靠本信封默默生成置信度签名的「无守卫写入」。
- *
- * saveFacts 入参收成 `SessionFacts` 单形态、夹具改经 `toSessionFacts` 显式署名后，
- * 通用裸值分支随之删除。**只剩 city 一路**：`NullableSessionCityFactSchema` 的
- * 字符串/CityFact 分支服务的是旧 Redis 记录（其存量计数尚未复扫归零，见 NullableCityFactSchema
- * 的拆除判据），不是活跃写入方——保留是为了不让一条陈年记录的 pref.city 被逐字段校验静默丢掉。
+ * 通用裸值信封（任何字段的裸标量都能经它悄悄落成 unknown/archive）已随 saveFacts 收成
+ * `SessionFacts` 单形态而删除。**只剩 city 一路**：`NullableSessionCityFactSchema` 的
+ * 字符串/CityFact 分支服务的是旧 Redis 记录（拆除判据见 NullableCityFactSchema），不是活跃
+ * 写入方——保留是为了不让陈年记录的 pref.city 被逐字段校验静默丢掉。
  */
 function legacyCityFactValue<T>(value: T, evidence: string): SessionFactValue<T> {
   return { value, confidence: 'medium', source: 'archive', evidence };

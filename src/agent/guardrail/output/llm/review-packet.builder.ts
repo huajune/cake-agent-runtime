@@ -78,7 +78,7 @@ export class GuardrailReviewPacketBuilder {
 
     // 优先取最后一次"可用"结果：Agent 常见动作链是"近查空→扩面有果→复核空"，
     // 岗位事实接地在中间那次；只看最后一次会让 reviewer 拿到空证据误判未接地
-    // （与 rule 档 2026-07-06 修复同口径）。全空时保留最后一次，让 reviewer 看到空态。
+    // （与 rule 档 修复同口径）。全空时保留最后一次，让 reviewer 看到空态。
     const usable = [...jobListCalls]
       .reverse()
       .find((item) => item.resultCount !== 0 && item.status !== 'error' && item.status !== 'empty');
@@ -239,7 +239,7 @@ export class GuardrailReviewPacketBuilder {
   }
 
   /**
-   * 群邀请证据（2026-08-04 审计 P1-6）：invite_to_group 的下发结果。缺了它，
+   * 群邀请证据（P1-6）：invite_to_group 的下发结果。缺了它，
    * `fact_asserted_without_any_evidence` 会把当轮 invite:ok 支撑的"群邀请已经发你了"
    * 判成零证据编造（trace …_1785451709779 硬假阳）。
    */
@@ -393,11 +393,9 @@ function readMarkdownExcerpt(result: unknown): string | undefined {
 }
 
 /**
- * 2026-08-04 badcase（trace batch_6a719fde…_1785831840599）：markdown 全长 7372，
- * 达美乐详情段起于 5380、「基础薪资: 13.8 元/时」在 6379——4000 字截断后 reviewer
- * 只剩顶部卡片的「0-110 元/天」（卡片综合薪资优先、从不显示 basicSalary），
- * 把模型正确投递的时薪判成编造并要求改写。截断时把被截岗位的「薪资信息」段
- * 原文补录回证据，薪资 ground truth 不再取决于岗位排在 markdown 的第几位。
+ * 截断会让 reviewer 只剩顶部卡片的综合薪资（卡片从不显示 basicSalary），把模型正确投递的
+ * 时薪判成编造并要求改写。截断时把被截岗位的「薪资信息」段原文补录回证据，薪资 ground truth
+ * 不再取决于岗位排在 markdown 的第几位。
  */
 function buildTruncatedSalaryAppendix(markdown: string, cutoff: number): string | undefined {
   const headings = [...markdown.matchAll(JOB_DETAIL_HEADING_PATTERN)];

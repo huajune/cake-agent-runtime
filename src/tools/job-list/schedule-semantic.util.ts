@@ -34,9 +34,9 @@ export type ScheduleSemantic =
 
 // 注意：「固定排班」不在此列——现网 dayWorkTime.arrangementType 的「固定排班」是
 // **时段固定**标签（相对自由排班/自定义工时），与每周出勤频次无关，可与
-// 「每周至少上岗 2 天」共存。badcase id4zx7q9（chat 6a6c14f0）：哈根达斯周末可做岗
-// （固定排班 + 每周至少 2 天）被该标签误判 requires_full_week，"只周末"候选人
-// 被谎称 10km 无岗；每周全勤判定交给结构化 weeklyWorkDays>=5 与显式文本信号。
+// 「每周至少上岗 2 天」共存。误收会把"固定排班 + 每周至少 2 天"的周末岗判成
+// requires_full_week，只能周末的候选人被谎称无岗。每周全勤判定交给结构化
+// weeklyWorkDays>=5 与显式文本信号。
 const FULL_WEEK_PATTERNS = [
   /每天/,
   /周一至周日/,
@@ -205,7 +205,7 @@ export function matchScheduleConstraint(
   if (constraint.onlyWeekends) {
     // 冲突语义必须先于宽松语义判定。海绵岗位可能同时标记“灵活排班”和
     // “做六休一/每周至少 5 天”；此时 flexible 只表示日内时段可协调，不能覆盖
-    // 每周出勤频次。历史 badcase 6a57332c：只做周末的候选人被推荐全周岗位。
+    // 每周出勤频次。历史 badcase：只做周末的候选人被推荐全周岗位。
     if (has('requires_full_week')) {
       return { matched: false, reason: '岗位是全周强排班，与"只做周末"冲突' };
     }

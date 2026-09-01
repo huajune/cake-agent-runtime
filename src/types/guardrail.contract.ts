@@ -148,12 +148,12 @@ export const INPUT_RISK_TYPE = {
   ABUSE: 'abuse',
   COMPLAINT_RISK: 'complaint_risk',
   INTERVIEW_RESULT_INQUIRY: 'interview_result_inquiry',
-  /** 候选人主动明确要求转人工（badcase 6a5df7e7：礼貌要人工无响应，升级辱骂才触发拦截）。 */
+  /** 候选人主动明确要求转人工（礼貌要人工无响应，升级辱骂才触发拦截）。 */
   HUMAN_HANDOFF_REQUEST: 'human_handoff_request',
   /**
-   * 候选人主动披露残障身份或询问残障者能否应聘（badcase gkaszeip/zmuhev8o 簇）。
-   * 产品+运营裁定（2026-07-28）：一律静默转人工，由真人判断沟通方式；
-   * Agent 不得输出任何自动话术——"委婉拒绝"属残障就业歧视，法律红线，绝不自动化。
+   * 候选人主动披露残障身份或询问残障者能否应聘。产品+运营裁定：一律静默转人工，
+   * 由真人判断沟通方式；Agent 不得输出任何自动话术——"委婉拒绝"属残障就业歧视，
+   * 法律红线，绝不自动化。
    */
   DISABILITY_DISCLOSURE: 'disability_disclosure',
 } as const;
@@ -226,9 +226,8 @@ export type GuardrailFeedbackPolicy = (typeof GUARDRAIL_FEEDBACK_POLICIES)[numbe
 /**
  * 修复方式：只有"纯文案重写"一档。
  *
- * 原 `replan`（重新规划并调用只读工具）2026-07-27 退役、2026-08-13 清理出类型层。
- * 保留单档枚举而不是删掉整个字段：repairMode 仍随每条 turn 落库/展示，且 §2.4 若
- * 重新申领"取数式修复"动手权时这里是唯一的加档处。
+ * `replan`（重新规划并调用只读工具）已退役。保留单档枚举而不是删掉整个字段：repairMode
+ * 仍随每条 turn 落库/展示，且 §2.4 若重新申领"取数式修复"动手权时这里是唯一的加档处。
  */
 export const GUARDRAIL_REPAIR_MODE = {
   REWRITE: 'rewrite',

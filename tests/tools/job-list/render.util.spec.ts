@@ -569,3 +569,64 @@ function makePolicy(input: {
     },
   };
 }
+
+describe('排班周期确定性语义（badcase lm28v8e6 / 3osd8so0 / do36addf 簇）', () => {
+  const flags: ProgressiveDisclosureFlags = {
+    includeBasicInfo: true,
+    includeJobSalary: false,
+    includeWelfare: false,
+    includeHiringRequirement: false,
+    includeWorkTime: true,
+    includeInterviewProcess: false,
+  };
+  const withWm = (wm: Record<string, unknown>) => {
+    const job = makeJob(1);
+    (job.workTime as Record<string, unknown>).weekAndMonthWorkTime = wm;
+    return formatJobsToMarkdown([job], 1, 1, 10, flags);
+  };
+
+  it('N+M=7：做六休一直出周频', () => {
+    const md = withWm({ perWeekWorkDays: 6, perWeekRestDays: 1 });
+    expect(md).toContain('做六休一（每周出勤 6 天）');
+  });
+
+  it('N+M≠7：做一休一按循环班型换算周频，明示不是每周休 1 天', () => {
+    const md = withWm({ perWeekWorkDays: 1, perWeekRestDays: 1 });
+    expect(md).toContain('上1休1循环班型');
+    expect(md).toContain('平均每周出勤约 3 天');
+    expect(md).toContain('不是每周休 1 天');
+  });
+
+  it('周中休语义直出：周末需出勤', () => {
+    const md = withWm({ perWeekWorkDays: 3, perWeekRestDays: 4, weekMonthRestMode: '周中休' });
+    expect(md).toContain('周中休（周内休息，**周末需出勤**）');
+  });
+
+  it('周末休语义直出：周中出勤', () => {
+    const md = withWm({ perWeekWorkDays: 5, perWeekRestDays: 2, weekMonthRestMode: '周末休' });
+    expect(md).toContain('周末休（周末休息，周一至周五出勤）');
+  });
+
+  it('「至少 N 天」大于「每周出勤 M 天」时输出数据冲突提示', () => {
+    const md = withWm({
+      perWeekWorkDays: 3,
+      perWeekRestDays: 4,
+      onWorkLimitType: '至少上岗',
+      onWorkTime: 6,
+      onWorkTimeUnit: '天',
+    });
+    expect(md).toContain('排班数据冲突提示');
+    expect(md).toContain('「至少 6 天」与「每周出勤 3 天」互相矛盾');
+  });
+
+  it('自洽数据（至少 3 天 ≤ 出勤 6 天）不出冲突提示', () => {
+    const md = withWm({
+      perWeekWorkDays: 6,
+      perWeekRestDays: 1,
+      onWorkLimitType: '至少上岗',
+      onWorkTime: 3,
+      onWorkTimeUnit: '天',
+    });
+    expect(md).not.toContain('排班数据冲突提示');
+  });
+});

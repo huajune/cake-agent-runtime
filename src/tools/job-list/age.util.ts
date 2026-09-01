@@ -4,11 +4,9 @@
  * - parseCandidateAge：从候选人输入（"24" / "24岁" 等）解析数字
  * - parseAgeRange：从岗位 ageRequirement（"25-50岁" / "不限"）解析数值上下限
  *
- * ⚠️ 判据函数 `detectAgeBoundary` 与三个弹性常量已于 2026-08-19 迁往
- * `@resolution/candidate/age`：收资表单状态机的身份槽写守卫要复用它，而
- * `.eslintrc.js` 禁止 resolution 依赖 @tools/*。「候选人年龄 vs 数值区间」是纯候选人
- * 字段判据，本就属 resolution/candidate；留在这里的是岗位自由文本解析——按 0818
- * 判决单源约定，岗位文本轨的职责已收窄为展示/话术。
+ * ⚠️ 判据函数 `detectAgeBoundary` 与三个弹性常量住在 `@resolution/candidate/age`：
+ * 「候选人年龄 vs 数值区间」是候选人字段判据，且 `.eslintrc.js` 禁止 resolution 依赖
+ * @tools/*。留在本文件的只有岗位自由文本解析——岗位文本轨的职责已收窄为展示/话术。
  */
 
 export function parseCandidateAge(ageText: string | null | undefined): number | null {

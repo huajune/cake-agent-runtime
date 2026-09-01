@@ -101,7 +101,7 @@ export class PreparationService {
   ) {}
 
   /**
-   * 定位分享轮内锚点（候选人资料证据化，badcase 6a6846e2）：候选人本轮发定位时，
+   * 定位分享轮内锚点（候选人资料证据化）：候选人本轮发定位时，
    * prep 阶段就逆解析坐标并 seed 进回合账本——A2 的落档在轮末，
    * 若本轮 job_list 直接吃坐标、不调 geocode，invite 城市门四档出处全空仍会误拒。
    * 逆解析走 30 天 Redis 缓存（与 extractFacts A2 同 key，全轮至多一次真实请求）；
@@ -587,7 +587,7 @@ export class PreparationService {
     try {
       const activeBookings = await this.longTermService.getActiveBookings(corpId, userId);
       if (activeBookings.length === 0) {
-        // B-5 报名空头宣称接地（badcase zvey1mg8/as1f14iz/5wglb8k7：零 booking 调用却对候选人
+        // B-5 报名空头宣称接地（零 booking 调用却对候选人
         // 宣称"已帮你报好/已登记好"）。无工单时明示 ground truth，让完成口径必须以本轮工具结果
         // 为据。注意段名必须区别于 [当前预约信息]——后者的**存在性**被多个工具指令当作"已有
         // 预约"信号（如 request_handoff "存在时必须调用"），空状态复用同名段会毒化这些判断。
@@ -683,7 +683,7 @@ export class PreparationService {
    * [预约状态] 空态接地块（active_booking 指针为空且带外核验也未发现在途工单时注入）。
    *
    * 两个方向都要接地：
-   * - 正向（badcase zvey1mg8）：禁止空头宣称"已帮你报名"；
+   * - 正向：禁止空头宣称"已帮你报名"；
    * - 反向（badcase 蒋强 8-31 到店扑空）：候选人声称/追问一个系统查不到的面试安排
    *   （典型为真人顾问带外口头约面）时，Agent 无从核实，严禁替系统背书。
    */
@@ -742,13 +742,13 @@ export class PreparationService {
   }
 
   /**
-   * 带外工单核验（badcase 蒋强 workOrderId=459783，2026-08-31 到店扑空）：
+   * 带外工单核验（badcase 蒋强）：
    *
-   * 真人顾问在海绵手工建单/改约不会写回 active_booking 指针，loadBookingContext
-   * 的指针路径对这类工单全盲——[预约状态] 会在候选人来确认面试的当口断言
-   * "没有任何进行中的工单"，模型只能在反事实系统块与聊天历史之间二选一。
-   * 复聊侧已有同源核验（follow-up.processor.checkOutOfBandWorkOrderAtFire），
-   * 本方法把同一 source of truth（海绵 signup/list 按手机号查询）接到主链路。
+   * 真人顾问在海绵手工建单/改约不会写回 active_booking 指针，loadBookingContext 的指针路径
+   * 对这类工单全盲——[预约状态] 会在候选人来确认面试的当口断言"没有进行中的工单"，模型只能
+   * 在反事实系统块与聊天历史之间二选一。复聊侧已有同源核验
+   * （follow-up.processor.checkOutOfBandWorkOrderAtFire），本方法把同一 source of truth
+   * （海绵 signup/list 按手机号查询）接到主链路。
    *
    * 触发条件（控制热路径成本，仅预约相关回合追加一次海绵查询）：
    * - 指针路径没有渲染出 [当前预约信息]（无指针或全部失效）；

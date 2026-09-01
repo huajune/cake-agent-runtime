@@ -1,14 +1,9 @@
 /**
  * 本地健康证资格状态机：把「有无健康证」与「是否为应聘城市本地证」收敛成稳定业务状态。
  *
- * 原居所 `tools/duliday/precheck/health-certificate-policy.util.ts`，2026-08-19 随收资
- * 表单状态机下沉到 resolution/candidate（CLAUDE.md：候选人字段解析唯一居所，含健康证）。
- * 搬家动机不是洁癖：`resolution/collection` 的健康证写入适配器要包装本函数，而
- * `.eslintrc.js` 禁止 resolution 依赖 @tools/*——判据留在 tools 层则适配器无法复用，
- * 只能另抄一份词表，那是「一处识别器多处消费」纪律明令禁止的。
- *
- * 判决逻辑一字未改，仅去掉对 `@tools/job-list/job-policy-parser` 的 `normalizePolicyText`
- * 依赖（其实现就是 `value.trim()`，见原文件）。
+ * 必须住在 resolution/candidate（候选人字段解析唯一居所）：`resolution/collection` 的健康证
+ * 写入适配器要包装本函数，而 `.eslintrc.js` 禁止 resolution 依赖 @tools/*——判据放 tools 层
+ * 则适配器只能另抄一份词表，违反「一处识别器多处消费」纪律。
  */
 
 export type LocalHealthCertificateEligibilityStatus =
@@ -58,7 +53,7 @@ function isNonLocalCertificate(text: string): boolean {
 /**
  * 「有本地健康证」的肯定判据。
  *
- * ⚠️ 否定前瞻不可省（2026-08-19 修复）：裸 `/本地.{0,4}健康证/` 会把「**没有**本地
+ * ⚠️ 否定前瞻不可省：裸 `/本地.{0,4}健康证/` 会把「**没有**本地
  * 健康证」判成持证——否定词与"本地健康证"之间隔着字，`(?<![没无不未非])` 这种紧邻
  * 前瞻够不着，必须显式排除句中出现的否定式。判反的代价是最高的那一档：健康证是
  * 有证约岗位的准入门，判成"有证"会让候选人一路走到真实建单才暴露。
@@ -136,7 +131,7 @@ export function resolveLocalHealthCertificateEligibility(params: {
     };
   }
   // `(?<![没无不未非])`：「**没**有健康证」逐字包含「有健康证」，无否定前瞻则最常见的
-  // 否定答法会被判成持证（2026-08-19 实测：'没有健康证' → local_valid/spongeValue=1，
+  // 否定答法会被判成持证（'没有健康证' → local_valid/spongeValue=1，
   // 而同义的 '无健康证' / '我没健康证' 却正确落 unknown——只有这一种写法翻车）。
   if (
     isExplicitLocalCertificate(effective) ||

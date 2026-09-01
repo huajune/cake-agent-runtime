@@ -378,7 +378,7 @@ describe('turn-hints rule track', () => {
 
     expect(
       readProjectedValue(extractTurnHints(['我只能做一休一'], brandData)?.preferences.schedule),
-    ).toBe('做一休一');
+    ).toBe('做一休一（隔天轮换，每周约3-4天）');
 
     expect(
       readProjectedValue(extractTurnHints(['有没有不上夜班的'], brandData)?.preferences.schedule),
@@ -403,10 +403,22 @@ describe('turn-hints rule track', () => {
       expect(readProjectedValue(constraint)?.onlyEvenings).toBe(true);
     });
 
-    it('extracts maxDaysPerWeek=1 from "做一休一"', () => {
+    it('「做一休一」是隔天轮换（≈每周3-4天），保守取 3——绝不是每周 1 天', () => {
       const constraint = extractTurnHints(['我只能做一休一'], brandData)?.preferences
         .schedule_constraint;
-      expect(readProjectedValue(constraint)?.maxDaysPerWeek).toBe(1);
+      expect(readProjectedValue(constraint)?.maxDaysPerWeek).toBe(3);
+    });
+
+    it('N+M=7 的「做三休四」周频恰为 N', () => {
+      const constraint = extractTurnHints(['我做三休四'], brandData)?.preferences
+        .schedule_constraint;
+      expect(readProjectedValue(constraint)?.maxDaysPerWeek).toBe(3);
+    });
+
+    it('N+M=7 的「做六休一」周频恰为 N', () => {
+      const constraint = extractTurnHints(['可以做六休一'], brandData)?.preferences
+        .schedule_constraint;
+      expect(readProjectedValue(constraint)?.maxDaysPerWeek).toBe(6);
     });
 
     it('extracts maxDaysPerWeek=2 from "每周最多两天"', () => {
@@ -415,10 +427,10 @@ describe('turn-hints rule track', () => {
       expect(readProjectedValue(constraint)?.maxDaysPerWeek).toBe(2);
     });
 
-    it('extracts maxDaysPerWeek=2 from "做二休一"', () => {
+    it('「做二休一」= 3 天循环，周频 7×2/3 ≈ 4 天（保守下取整）', () => {
       const constraint = extractTurnHints(['可以做二休一'], brandData)?.preferences
         .schedule_constraint;
-      expect(readProjectedValue(constraint)?.maxDaysPerWeek).toBe(2);
+      expect(readProjectedValue(constraint)?.maxDaysPerWeek).toBe(4);
     });
 
     it('combines multiple constraints in one message', () => {

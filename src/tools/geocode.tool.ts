@@ -130,7 +130,7 @@ function toResultPayload(c: GeocodeCandidate, queryAddress?: string) {
     longitude: c.longitude,
     latitude: c.latitude,
     // 区/城市级粗粒度查询标记：候选人只报了区名/市名时，锚点坐标是行政区代表点，
-    // 与候选人真实位置可能相差数公里——下游据此禁止输出精确距离（badcase recvjyv0SKiqe3）。
+    // 与候选人真实位置可能相差数公里——下游据此禁止输出精确距离。
     areaLevelQuery: isAreaLevelQuery(queryAddress, c),
   };
 }
@@ -176,11 +176,10 @@ function buildCityDisclosure(c: GeocodeCandidate, queryAddress: string | undefin
  * 会话记忆城市与本次解析城市冲突时的知情披露（方案 11.4：不静默覆盖，
  * 也不静默沿用旧城市——由模型向候选人做一句确认后再推进）。
  *
- * 会话侧城市过不了行政区认领时不提冲突（2026-08-06 生产观测）：当期 14 条冲突提示
- * 里 11 条的"会话意向城市"根本不是城市（`hello`/`null`/`只晚班`/整句），冲突是假的，
- * 而提示的后果是真的——候选人刚发完定位还要被反问一句"你现在是在上海市这边找工作吗"。
- * 写入侧已收紧（isPlausibleCityValue），这里再兜一道：存量脏值与未来新形态的污染
- * 都不该把多余反问推到候选人面前。
+ * 会话侧城市过不了行政区认领时不提冲突：脏写入（`hello`/`null`/整句）会制造假冲突，
+ * 而提示的后果是真的——候选人刚发完定位还要被反问一句城市。写入侧已收紧
+ * （isPlausibleCityValue），这里再兜一道：存量脏值与未来新形态都不该把多余反问推到
+ * 候选人面前。
  */
 function buildSessionCityConflictNotice(
   context: ToolBuildContext,
@@ -284,7 +283,7 @@ function recordResolvedAnchor(
 ): void {
   if (!Number.isFinite(c.longitude) || !Number.isFinite(c.latitude)) return;
   const { areaLevelQuery, areaName } = resolveAreaLevelAnchor(queryAddress, c);
-  // 城市确权穿线（badcase 6a671722：geocode 两次确认沈阳，invite 门仍报 city 无依据）：
+  // 城市确权穿线（geocode 两次确认沈阳，invite 门仍报 city 无依据）：
   // unique 解析即城市确认，暂存 ledger 供回合收尾写 pref.city，让 invite 城市门
   // 的 session_fact 档与 [兼职群资源] 段在后续轮直接可用。
   // anchor 与 attestation 的成对写入由 recordGeoResolution 统一维护。

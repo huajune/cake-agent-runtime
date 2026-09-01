@@ -47,8 +47,8 @@ export interface BrandResolution {
    * 触发该命中的**用户原始输入片段**（子句级，超长截断至 SOURCE_TEXT_MAX_LENGTH）。
    *
    * 存在理由：误命中归因只靠 matchType + matchedText 判不了——「六姐」既可能是候选人
-   * 打的真实简称，也可能是脏别名在无关语境里塌缩（2026-07-16「姐」P0 即此形态）。
-   * 少了原文，每次日检都要回查 chat_messages 才能分真假阳性（2026-07-21 观测实测）。
+   * 打的真实简称，也可能是脏别名在无关语境里塌缩（「姐」P0 即此形态）。
+   * 少了原文，每次日检都要回查 chat_messages 才能分真假阳性。
    */
   sourceText: string | null;
   source: BrandResolutionSource;
@@ -62,7 +62,7 @@ export interface BrandResolution {
    * 该命中处于确定性**履历/过往就职语境**（有限模式清单，见 polarity-rules.ts
    * isBrandSpanHistoryContext）。语义是"有证据表明这是记忆性提及"，缺省即无证据——
    * 只在判定为 true 时携带，跨轨去重按 OR 合并（确定性证据优先，不被裸品牌名条目冲掉）。
-   * reducer 对履历提及不解除排斥、不顶替已确立的 currentBrand（2026-07-27 审计）。
+   * reducer 对履历提及不解除排斥、不顶替已确立的 currentBrand。
    */
   historyContext?: true;
 

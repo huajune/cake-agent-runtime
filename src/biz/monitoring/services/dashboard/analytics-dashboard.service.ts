@@ -647,8 +647,7 @@ export class AnalyticsDashboardService {
 
     this.overviewCache.delete(key);
     // 冷路径 single-flight：同 key 并发请求共享一次 compute。没有这层去重，
-    // 发版后缓存全冷时 N 个访客 × 预取范围 = 并发全量聚合，正是 2026-06-04
-    // 连接池（max_conns=60）耗尽宕机的查询风暴形态。
+    // 发版后缓存全冷时 N 个访客 × 预取范围 = 并发全量聚合，正是     // 连接池（max_conns=60）耗尽宕机的查询风暴形态。
     const inflight = this.overviewInflight.get(key);
     if (inflight) {
       return inflight;

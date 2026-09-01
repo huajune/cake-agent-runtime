@@ -19,10 +19,9 @@ import { resolveFuzzyConfidence } from '@resolution/brand/fuzzy-recall';
  * 品牌归一化原语 import 自 resolution/brand（§5.1 单一居所），不再私有实现。
  *
  * 不负责：
- * - 不判断岗位是否真实存在（原 job-fact-hallucinations 规则族已于 2026-07-10 下线，
- *   接地治理交语义档）；
- * - 平台品牌错名（"独立日"）与岗位品牌改写（brand_name_violation）已于 2026-07-10
- *   用户裁定下线（勿修补勿重加）；工具层 duliday-job-list 输出仍走 sanitizeBrandName；
+ * - 不判断岗位是否真实存在（job-fact-hallucinations 规则族已下线，接地治理交语义档）；
+ * - 平台品牌错名（"独立日"）与岗位品牌改写（brand_name_violation）经用户裁定下线
+ *   （勿修补勿重加）；工具层 duliday-job-list 输出仍走 sanitizeBrandName；
  * - 不检查门店名、地址、岗位名的其它字段，目前只聚焦品牌字段。
  *
  * 维护边界：
@@ -200,7 +199,7 @@ function isGroundedBrandClaim(claimed: string, groundedBrands: Set<string>): boo
   const normalizedClaimed = normalizeForBrandMatch(claimed);
   if (!normalizedClaimed) return false;
   // 数字写法差异（「你6姐」vs「你六姐」）也算对上：两侧都已是品牌名，不涉及
-  // 手机号/时间段这类数字上下文，可以安全折叠。2026-07-29 假阳实证。
+  // 手机号/时间段这类数字上下文，可以安全折叠。假阳实证。
   const foldedClaimed = normalizeBrandNameForComparison(claimed);
   for (const grounded of groundedBrands) {
     const normalizedGrounded = normalizeForBrandMatch(grounded);
@@ -228,7 +227,7 @@ function isGroundedBrandClaim(claimed: string, groundedBrands: Set<string>): boo
 /**
  * 最后一次 duliday_job_list 调用（不问可用与否）：只用于读 queryMeta.brand 等
  * **错误侧**信号——这些信号恰恰长在空/错结果上，换成"可用"口径会读不到。
- * 原 job-list-call.util 共享原语；2026-07-10 该 util 随 job-fact 规则族下线后内联至此。
+ * 原 job-list-call.util 共享原语；该 util 随 job-fact 规则族下线后内联至此。
  */
 function readLatestJobListCall(toolCalls: AgentToolCall[]): AgentToolCall | null {
   return [...toolCalls].reverse().find((call) => call.toolName === 'duliday_job_list') ?? null;

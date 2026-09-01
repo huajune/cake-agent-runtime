@@ -31,7 +31,7 @@ export function isPlausibleAgeValue(value: unknown): boolean {
 
 // ==================== 年龄区间判据（岗位/契约要求 vs 候选人年龄） ====================
 //
-// 原居所 `tools/duliday/precheck/age.util.ts`，2026-08-19 随收资表单状态机迁入。
+// 原居所 `tools/duliday/precheck/age.util.ts` 随收资表单状态机迁入。
 // 判据逻辑一字未改；差别只在**上下限的来源**：旧路从岗位 ageRequirement 文本解析，
 // 新路由收资标签契约的 minAge/maxAge 直接给出（0818 判决单源约定——收资/筛选判决的
 // 唯一判据源是报名筛选标签接口，不读岗位数据补筛）。因此本族只收数值区间，

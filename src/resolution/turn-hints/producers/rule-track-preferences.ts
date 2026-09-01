@@ -172,14 +172,29 @@ function matchWorkRestSchedule(message: string): string | null {
   return matchWorkRestSignal(message)?.label ?? null;
 }
 
+/**
+ * 「做N休M」是**循环班型**（上 N 天休 M 天轮换），不是周频描述：换算周频 = 7N/(N+M)，
+ * 保守向下取整（候选人能保证的天数）。仅当 N+M=7（做六休一/做三休四）时它才恰好
+ * 等于每周出勤 N 天；做一休一 ≈ 每周 3-4 天，绝不是每周 1 天或每周休 1 天。
+ */
+function cycleWeeklyDays(workDays: number, restDays: number): number {
+  return Math.max(1, Math.floor((7 * workDays) / (workDays + restDays)));
+}
+
 function matchWorkRestSignal(message: string): { days: number; label: string } | null {
-  if (WORK_REST_PATTERN.test(message)) return { days: 1, label: '做一休一' };
+  if (WORK_REST_PATTERN.test(message)) {
+    return { days: 3, label: '做一休一（隔天轮换，每周约3-4天）' };
+  }
 
   const doRestMatch = message.match(DO_REST_PATTERN);
-  if (!doRestMatch?.[1]) return null;
-  const days = parseChineseOrArabicNumber(doRestMatch[1]);
-  if (days === null) return null;
-  return { days, label: doRestMatch[0].replace(/\s+/g, '') };
+  if (!doRestMatch?.[1] || !doRestMatch[2]) return null;
+  const workDays = parseChineseOrArabicNumber(doRestMatch[1]);
+  const restDays = parseChineseOrArabicNumber(doRestMatch[2]);
+  if (workDays === null || restDays === null) return null;
+  const raw = doRestMatch[0].replace(/\s+/g, '');
+  if (workDays + restDays === 7) return { days: workDays, label: raw };
+  const weekly = cycleWeeklyDays(workDays, restDays);
+  return { days: weekly, label: `${raw}（循环班型，每周约${weekly}天）` };
 }
 
 function matchWeeklyDayConstraint(message: string): {

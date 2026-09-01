@@ -43,6 +43,9 @@ SELECT count(*) AS turns, count(DISTINCT chat_id) AS chats,
        count(*) FILTER (WHERE status = 'timeout') AS timeout FROM w;
 ```
 
+**质量密度环比**：把同一条 turns 查询对**上一周窗口**再跑一次（只取 count），配合下面第 3 步
+上一周的 badcase 提交量，算「每千回合反馈数」的周环比。
+
 同样两段式再取：
 
 - `guardrail_review_records`：`count(*)` 审查数、`final_decision='block'` 拦截数、`repaired` 改写数（用 `created_at`）
@@ -55,6 +58,8 @@ node scripts/weekly-ops-report/collect-badcase-stats.js <since> <until>
 ```
 
 输出 JSON：全表总量 / 全表状态分布 / 窗口内提交量 / 窗口内状态与分类分布。凭证走 `.env.production`，只读。
+
+对**上一周窗口**再跑一次拿提交量，用于质量密度环比。
 
 ### 4. 交叉校验
 
@@ -70,6 +75,7 @@ node scripts/weekly-ops-report/collect-badcase-stats.js <since> <until>
 - 出站守卫：审查 X 条回复，改写 Y 条，拦截 Z 条
 - 二次触达：计划 X 条，实发 Y 条
 - BadCase：本周新提交 X 条（待分析 a / 处理中 b / 待验证 c / 已解决 d）；累计 M 条，已解决 N 条（P%）
+- 质量密度：每千回合反馈 X.X 条（上周 Y.Y，8 月基线 4.3）
 - 发布 K 个版本 vA → vB
 
 #### 🌆 <子领域 1>
@@ -81,6 +87,7 @@ node scripts/weekly-ops-report/collect-badcase-stats.js <since> <until>
 
 规则：
 
+- **质量密度 = 窗口内 badcase 提交量 ÷ 窗口内处理回合数 × 1000**，保留一位小数。它是抗业务量波动的质量北极星（历史：04 月 50.4 → 08 月 4.3）；绝对条数受量影响大，涨跌都不要脱离密度单独解读。基线随月度刷新，报告里写当前基线。
 - **只写业务段**。AI SDK 升级、Node 版本、架构重构、守卫内部分层、测试基建、文档整理——运营感知不到，一律不写。判断标准：这条改动能不能用「候选人/招募经理会看到什么不一样」说清楚。
 - 子领域用 emoji + 加粗标题，每段 3~6 条 bullet，短句。常见子领域：位置与城市识别 🌆、岗位推荐与事实口径 📋、身份与合规 🎓、面试预约与改约 📅、对话流程与收资 💬、二次触达 📣、告警与看板 🚨、质量治理机制 🔧。
 - **只写已上线的事**。写「已经做了 X」前确认 X 已经在本周发布的版本里；未发版的分支改动不写。

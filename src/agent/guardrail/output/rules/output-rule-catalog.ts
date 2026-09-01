@@ -13,7 +13,7 @@ import {
 
 /**
  * 登记当前实际运行的封闭确定性规则：执行档（revise/block）+ 少量 observe 哨兵。
- * observe 哨兵只落档不改变出站裁决（2026-08-26 数据复核恢复）；新规则一律 observe
+ * observe 哨兵只落档不改变出站裁决；新规则一律 observe
  * 入场，升档须 ≥2 周判例且精确率 ≥90%。
  */
 export interface OutputRuleCatalogMetadata extends OutputRulePolicy {
@@ -189,11 +189,11 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     residualRisk: '低置信或多候选不强行采用。',
     verification: V,
   },
-  // ——以下为 2026-08-26 数据复核恢复的规则（规则简化改造的定点回补，非整体回滚）——
+  // ——以下为 数据复核恢复的规则（规则简化改造的定点回补，非整体回滚）——
   {
     id: 'human_service_phrase_leak',
-    // 2026-07-07 observe 入场；2026-07-21 升 revise：两周 5 判例全真阳性零误报。
-    // 2026-08-26 恢复：简化改造误删后，近 7 天生产仍有 2 例真阳人设露馅直发前被拦，
+    // observe 入场；升 revise：两周 5 判例全真阳性零误报。
+    // 恢复：简化改造误删后，近 7 天生产仍有 2 例真阳人设露馅直发前被拦，
     // 封闭词形符合"只保留封闭词形"的保留标准。
     action: GUARDRAIL_ACTION.REVISE,
     priority: GUARDRAIL_PRIORITY.P2,
@@ -222,6 +222,34 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     verification: 'tests/agent/guardrail/output/rules/booking-claim-reconciliation.rule.spec.ts',
   },
   {
+    id: 'cancel_done_claim_without_submission',
+    // 与 booking_done_claim_without_submission 同族同风险：跨轮合法提醒会命中，observe 入场。
+    action: GUARDRAIL_ACTION.OBSERVE,
+    priority: GUARDRAIL_PRIORITY.P1,
+    description: '零 cancel/modify 调用却用完成时态宣称"面试已取消/已改期"。',
+    riskGoal: '发现取消从未提交却被宣称已办好的假回执，防候选人据此不到店。',
+    exogenousSignal: '本轮 duliday_cancel_work_order / duliday_modify_interview_time 调用存在性。',
+    residualRisk: '跨轮合法提醒（前几轮已真实取消）会命中，observe 期以判例分辨占比。',
+    verification: 'tests/agent/guardrail/output/rules/booking-claim-reconciliation.rule.spec.ts',
+    feedbackToGenerator:
+      '上一版回复宣称面试已取消/已改期，但本轮没有任何取消或改期工具调用。若确实已办好请复述工单事实，' +
+      '否则改成如实说明当前状态并说明下一步动作，不要用完成时态宣称未发生的操作。',
+  },
+  {
+    id: 'cancel_done_claim_failed_tool',
+    // 硬矛盾：本轮工具自证失败，不存在跨轮复述的解释空间，故直接 revise。
+    action: GUARDRAIL_ACTION.REVISE,
+    priority: GUARDRAIL_PRIORITY.P0,
+    description: '本轮取消/改期工具全部失败，回复却宣称已取消/已改期。',
+    riskGoal: '防候选人据假回执不到店而爽约（代价与到店扑空同级）。',
+    exogenousSignal: '本轮取消/改期工具调用的 status 全为 error。',
+    residualRisk: '无——本轮工具失败是自证事实，不依赖跨轮推断。',
+    verification: 'tests/agent/guardrail/output/rules/booking-claim-reconciliation.rule.spec.ts',
+    feedbackToGenerator:
+      '上一版回复宣称面试已取消/已改期，但本轮取消/改期工具全部调用失败，该操作并未发生。' +
+      '必须如实告知候选人当前预约仍然有效、正在安排人工跟进处理，不得保留任何"已取消/已改好"的表述。',
+  },
+  {
     id: 'dangling_reply_promise',
     action: GUARDRAIL_ACTION.OBSERVE,
     priority: GUARDRAIL_PRIORITY.P1,
@@ -236,7 +264,7 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'requested_brand_mismatch',
-    // 2026-07-27 降 observe：结构化标题解析可能把门店名当品牌名，确定性修复易改坏正确回复。
+    // 降 observe：结构化标题解析可能把门店名当品牌名，确定性修复易改坏正确回复。
     action: GUARDRAIL_ACTION.OBSERVE,
     priority: GUARDRAIL_PRIORITY.P1,
     description: '候选人/工具已指定品牌，回复却结构化推荐了其它品牌的岗位。',

@@ -1,10 +1,73 @@
 {
   "baseVersion": "11.1.0",
-  "nextVersion": "11.1.0",
-  "lastAnalyzedSha": null,
-  "updatedAt": "2026-08-31",
+  "nextVersion": "11.1.1",
+  "updatedAt": "2026-09-01",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "1122",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1122",
+      "title": "BadCase 积压清账批 + 核心链路注释精简",
+      "author": "huajune",
+      "mergedAt": "2026-09-01",
+      "businessUpdates": [
+        "飞书 BadCase 积压修复——取消假回执/控制标记泄漏/窗口可约时刻/场所名搜空"
+      ],
+      "summary": [
+        "核心链路注释按仓库风格全量精简",
+        "飞书 BadCase 积压修复——取消假回执/控制标记泄漏/窗口可约时刻/场所名搜空",
+        "排班语义确定性收敛——做N休M循环换算/休息模式直出/至少N天冲突对账",
+        "班次过滤致空时如实披露在招岗位数，不再说\"没找到岗位\"",
+        "BadCase 积压清账批 + 核心链路注释精简"
+      ],
+      "features": [],
+      "fixes": [
+        "飞书 BadCase 积压修复——取消假回执/控制标记泄漏/窗口可约时刻/场所名搜空"
+      ],
+      "optimizations": [],
+      "ops": [
+        "核心链路注释按仓库风格全量精简",
+        "排班语义确定性收敛——做N休M循环换算/休息模式直出/至少N天冲突对账",
+        "班次过滤致空时如实披露在招岗位数，不再说\"没找到岗位\""
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "守卫新规则以生产 badcase 原文写回归用例；登记 prompt-rule-ledger；catalog 快照同步",
+        "typecheck / lint / format 全绿；全量 6448 用例通过（第一批时点），排班批相关 2476 通过"
+      ],
+      "level": "patch"
+    },
+    {
+      "number": "1125",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1125",
+      "title": "v11.1.1 发版底账",
+      "author": "huajune",
+      "mergedAt": "2026-09-01",
+      "businessUpdates": [
+        "周报新增质量密度指标——每千回合 badcase 反馈数"
+      ],
+      "summary": [
+        "v11.1.1 发版底账",
+        "周报新增质量密度指标——每千回合 badcase 反馈数"
+      ],
+      "features": [
+        "周报新增质量密度指标——每千回合 badcase 反馈数"
+      ],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "v11.1.1 发版底账"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`pnpm run release:ledger:check` ✅",
+        "`npx prettier --check` ✅"
+      ],
+      "level": "patch"
+    }
+  ],
   "lastRelease": {
     "version": "11.1.0",
     "date": "2026-08-31",
@@ -144,5 +207,6 @@
         "level": "patch"
       }
     ]
-  }
+  },
+  "lastAnalyzedSha": "b6f8da168f49eed26cb2e27a6f7ddfd1a18343c1"
 }

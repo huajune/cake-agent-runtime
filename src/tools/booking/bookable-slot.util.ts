@@ -103,7 +103,17 @@ export interface BookableSlot {
   registrationDeadline: string | null;
   dateOnly: boolean;
   bookingAllowed: boolean;
+  /**
+   * 该 slot 的**默认**提交时刻（窗口起点）。窗口制岗位并非只能约这一刻——
+   * 候选人在 `[startTime, endTime]` 内约定的任何时刻都可提交（booking 侧
+   * validateInterviewTimeAgainstSchedule 按区间放行）。只带起点会让模型对候选人说
+   * "只能约起点这一个时间"，把候选人明说的时刻改写成起点。
+   */
   interviewTime?: string;
+  /** 窗口内可自由约定时刻时为 true，配合 interviewTimeHint 一起下发给模型。 */
+  interviewTimeFlexible?: boolean;
+  /** 给模型的口径提示：窗口内任意时刻可约，候选人说了具体时刻就用他说的。 */
+  interviewTimeHint?: string;
   requiresManualConfirmation?: boolean;
   reason?: string;
 }
@@ -182,6 +192,11 @@ export function buildBookableSlots(params: {
                 dateOnly: false,
                 bookingAllowed: true,
                 interviewTime: `${date} ${normalizedStart}:00`,
+                interviewTimeFlexible: true,
+                interviewTimeHint:
+                  `本时段是 ${window.startTime}-${window.endTime} 的面试窗口，窗口内任意时刻都可预约。` +
+                  '候选人说了窗口内的具体时刻就按他说的提交，不要改写成窗口起点，' +
+                  '也不要对候选人说"只能约某一个时间点"；候选人没说时刻时才用 interviewTime 默认值。',
               },
       );
     }

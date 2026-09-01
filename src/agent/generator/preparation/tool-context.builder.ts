@@ -166,7 +166,7 @@ const PREFILL_HINT_FIELDS: ReadonlyArray<[CandidatePrefillField, string]> = [
  * 提示；system+high 是报名办结确权，可进入 trustedSessionFacts。工具能减少重复盘问，
  * 却不会把弱来源升级成报名事实。
  *
- * **2026-08-12 工序 A3**：覆盖面从性别一个字段推广到全部收资字段。三禁令
+ * **工序 A3**：覆盖面从性别一个字段推广到全部收资字段。三禁令
  * （不得据此拒绝 / 提交 / 升级来源）由 CandidatePrefillHint 类型注释承载，
  * 消费端（precheck prefilledConfirmationFields）逐字继承。
  */

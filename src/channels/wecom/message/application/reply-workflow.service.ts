@@ -275,7 +275,7 @@ export class ReplyWorkflowService {
     } as const;
 
     // 读时懒补写：接管/非托管时段沉积的裸图片描述在回合开始时补上
-    //（fire-and-forget，本轮不阻塞；描述缺失归因 2026-08-05：90% 来自无回合时段）。
+    //（fire-and-forget，本轮不阻塞；描述缺失绝大多数来自无回合时段）。
     this.imageDescription.backfillBareDescriptionsForChat?.(chatId);
 
     // 每次运行都返回独立的 turn-end 闭包；先由 TurnFinalizer 持有，不在生成结束时执行。
@@ -1082,7 +1082,7 @@ export class ReplyWorkflowService {
    *
    * 正常多模态路径由主模型直接读取 image part，这里不会有 in-flight 描述任务。
    * 仅运行时降级路径调用（多模态调用失败 → 描述转文字重跑）；入站预描述分支已废弃
-   *（2026-08-05，主聊按输入换模型后该分支永久 no-op）。
+   *（主聊按输入换模型后该分支永久 no-op）。
    */
   private async ensureCompatibilityDescriptionsReady(
     visualMessageIds: string[],

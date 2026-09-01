@@ -19,7 +19,10 @@ import {
 } from './rules/brand-name-errors.rule';
 import { DISCRIMINATION_LEAK_RULES } from './rules/discrimination-leaks.rule';
 import { FALSE_PROMISE_RULES } from './rules/false-promises.rule';
-import { detectBookingDoneClaimWithoutSubmission } from './rules/booking-claim-reconciliation.rule';
+import {
+  detectBookingDoneClaimWithoutSubmission,
+  detectCancelDoneClaimWithoutSubmission,
+} from './rules/booking-claim-reconciliation.rule';
 import { detectDanglingReplyPromise } from './rules/dangling-promise.rule';
 import { detectExperienceFraudCoaching } from './rules/experience-fraud-coaching.rule';
 import { detectIdentityMisregistrationCoaching } from './rules/identity-fraud-coaching.rule';
@@ -52,8 +55,8 @@ export interface HardRuleOverrideHit {
 /**
  * Reply 后置确定性对账：只检查封闭高风险形态、格式泄漏和结构化工具回执冲突。
  * revise/block 命中后由 runner 最多进行一次受控重写；既有运行时 override 仍可把规则
- * 临时降为 observe 或关闭。除执行规则外，catalog 还登记少量 observe 哨兵
- * （2026-08-26 数据复核恢复：只记录不拦截，供 badcase 发现与升档判例累计）。
+ * 临时降为 observe 或关闭。除执行规则外，catalog 还登记少量 observe 哨兵：只记录不拦截，
+ * 供 badcase 发现与升档判例累计。
  *
  * 规则维护：确定性规则按领域拆在 `output/rules/*.rule.ts`，本 service 只负责调度和告警。
  */
@@ -79,7 +82,7 @@ export class HardRulesService {
    * 纯文本 + 简单工具存在性即可判断的规则集合。
    *
    * 这里刻意只放 FactRule：
-   * - false-promises 里的“名额承诺”（2026-07-10 批量下线后仅剩 quota_promise）；
+   * - false-promises 里的“名额承诺”（该族现仅剩 quota_promise）；
    * - discrimination-leaks 里的“敏感筛选条件外露”。
    *
    * 如果规则需要读取 tool.result 里的结构化字段，或需要生成动态 label，
@@ -229,13 +232,13 @@ export class HardRulesService {
       contradictions.push(this.withRulePolicy(brandAliasFuzzyMatchIgnored));
     }
 
-    // 人设露馅是封闭词表 REVISE：prompt 红线在产仍有说漏嘴真阳（2026-08-26 抽样），出站兜底。
+    // 人设露馅是封闭词表 REVISE：prompt 红线在产仍有说漏嘴真阳（抽样），出站兜底。
     const humanServicePhraseLeak = detectHumanServicePhraseLeak(text);
     if (humanServicePhraseLeak) {
       contradictions.push(this.withRulePolicy(humanServicePhraseLeak));
     }
 
-    // 以下为 observe 哨兵（2026-08-26 数据复核恢复）：只落档不改变出站裁决。
+    // 以下为 observe 哨兵：只落档不改变出站裁决。
     const settlementCycleMismatch = detectSettlementCycleMismatch(
       text,
       toolCalls,
@@ -270,6 +273,11 @@ export class HardRulesService {
     );
     if (bookingDoneClaimWithoutSubmission) {
       contradictions.push(this.withRulePolicy(bookingDoneClaimWithoutSubmission));
+    }
+
+    const cancelDoneClaim = detectCancelDoneClaimWithoutSubmission(text, toolCalls);
+    if (cancelDoneClaim) {
+      contradictions.push(this.withRulePolicy(cancelDoneClaim));
     }
 
     const { effectiveContradictions, overrideHits } = this.applyHardRuleOverrides(

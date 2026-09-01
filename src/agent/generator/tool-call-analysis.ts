@@ -13,9 +13,8 @@ import type { AgentToolCall } from './generator.types';
 /**
  * 单轮内同名工具调用上限。
  *
- * 排障来源：生产 batch_69e19d3e9d6d3a463b9523e8_1776396951802 中，模型对一个不稳定的
- * storeNameList 精确匹配查询失败后，连续调用 4 次 duliday_job_list 自行扩面，
- * 最终回复耗时 116s、消耗 36.9k tokens。Agent 层加硬上限避免类似失控循环。
+ * 模型在不稳定入参（如 storeNameList 精确匹配）查询失败后会连续多次调同一工具自行扩面，
+ * 把单轮拖到百秒级、token 翻数倍。Agent 层加硬上限阻断这类失控循环。
  */
 export const MAX_SAME_TOOL_CALLS_PER_TURN = 3;
 

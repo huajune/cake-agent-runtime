@@ -26,9 +26,9 @@ const UNDELIVERED_INVITE_HANDOFF_INSTRUCTION =
 const NO_GROUP_CONTINUE_INSTRUCTION =
   '该城市/平台本就没有可对接的兼职群（注意：这不是群满，而是没有群）。这种情况不要调用 request_handoff 转人工，也不要向候选人提及群相关内容。请自然收口：礼貌告知候选人当前暂时没有合适岗位、后续有匹配会主动联系，然后正常结束本轮、保持托管。';
 
-// 多步回合送达提醒（badcase recvqgsttbhyYq / chat 6a62f368，2026-07-24）：无岗→拉群链路里，
-// 模型在工具调用之间"计划说"的无岗承接句从未真正发出，最终只投递了拉群确认句，候选人
-// 收到"不说原因直接拉群"。工具成功结果里显式提醒：中间步骤文字不会送达，最终回复必须补上。
+// 多步回合送达提醒：模型在工具调用之间"计划说"的无岗承接句不会真正发出，候选人只收到
+// 拉群确认句（"不说原因直接拉群"）。工具成功结果里显式提醒：中间步骤文字不送达，最终
+// 回复必须补上。
 const UNDELIVERED_PRELUDE_REMINDER =
   '注意：本轮此前步骤里你写过/计划过的话（包括"附近暂无岗位"的无岗承接句）**并没有发给候选人**，候选人只会看到你本次的最终回复。若本次拉群源于查岗无结果（noMatchScript 场景）且对话历史里尚未出现无岗说明，最终回复必须先按 noMatchScript.candidateMessage 的口径说明无岗原因，再接入群确认句；不得只发一句入群确认。';
 
@@ -173,7 +173,7 @@ export function buildInviteToGroupTool(
             });
           }
 
-          // 前置已在群闸门（badcase batch_6a4790c7ce406a6aeee9c102）：候选人已在
+          // 前置已在群闸门：候选人已在
           // 目标城市兼职群时，业务目标已达成，直接短路成功——不再要求城市出处。
           // 本核验必须排在城市 provenance gate 之前，否则模型无视"已在群"注入调用本
           // 工具、city 又缺出处时，工具回 city_unverified 并引导模型追问城市继续
@@ -187,12 +187,11 @@ export function buildInviteToGroupTool(
             }
           }
 
-          // 城市 provenance gate（badcase recvk28F1xrsKj 拉错城市群）：
-          // city 入参必须能追溯到会话城市事实、候选人原文城市名、geo 地名白名单
-          // 推断（顺义→北京 等，见 @resolution/geo）或本轮 geocode 确权城市
-          //（ledger.geo.anchors 穿线，#765），模型自报不构成依据。
-          // 会话城市事实的合法来源含 rule/llm/derived 之外的 'tool'（geocode unique
-          // 确权、定位分享逆解析，2026-07-27 证据化穿线）——按置信度采信，不挑 source。
+          // 城市 provenance gate（防拉错城市群）：city 入参必须能追溯到会话城市事实、
+          // 候选人原文城市名、geo 地名白名单推断（顺义→北京 等，见 @resolution/geo）或
+          // 本轮 geocode 确权城市（ledger.geo.anchors 穿线），模型自报不构成依据。
+          // 会话城市事实的合法来源含 'tool'（geocode 确权、定位分享逆解析）——按置信度
+          // 采信，不挑 source。
           // 会话事实读取失败按 null 降级（gate 仍可凭候选人原文放行），不让 Redis 抖动挡住拉群。
           let sessionCity: string | null = null;
           if (sessionService) {
@@ -261,9 +260,8 @@ export function buildInviteToGroupTool(
             });
           }
 
-          // 时机 gate（badcase 63eefu6c / chat 6a68392b，2026-07-29）：同会话两次把要全职的
-          // 候选人拉进兼职群 —— 一次在查岗结论出来之前，一次在候选人问"直接去门店面试吗"
-          // （报名推进信号）时。三条禁止项都已写在工具描述里，模型照样不遵循，落成确定性闸门。
+          // 时机 gate：工具描述里的三条禁止项模型不遵循（查岗结论出来前拉群、报名推进信号
+          // 时拉群、要全职的人拉进兼职群），故落成确定性闸门。
           // invitedGroups 读取失败按空降级（不让 Redis 抖动挡住合法拉群）。
           let invitedGroups: { groupName?: string | null; city?: string | null }[] = [];
           if (sessionService) {

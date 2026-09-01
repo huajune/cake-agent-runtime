@@ -88,7 +88,7 @@ export function scanGeoSignalsFromText(message: string): GeoTextScanResult {
   const scannableMessage = maskSelfIntroductionValue(message);
   // 三轮串联扫描，covered 区间逐轮累积，避免后轮再去消费前轮已认领的字符
   // city / district 轮开启通名后缀拒绝："宝安公路"不再命中深圳宝安区、"上海路"不再
-  // 命中上海（2026-07-29 shadow 6/6 冲突样本的共同根因）。location 轮**不开**——
+  // 命中上海（shadow 6/6 冲突样本的共同根因）。location 轮**不开**——
   // 地标专名与通名天然共生（"陆家嘴"/"望京"后接 站/广场 属正常形态）。
   const cityScan = scanWhitelistKeysByLongest(scannableMessage, CITY_DICT, undefined, {
     rejectPlaceFeatureSuffix: true,
