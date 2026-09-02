@@ -1,594 +1,423 @@
 {
-  "baseVersion": "11.1.4",
+  "baseVersion": "11.2.0",
   "nextVersion": "11.2.0",
+  "lastAnalyzedSha": null,
   "updatedAt": "2026-09-02",
   "sourceBranch": "develop",
-  "entries": [
-    {
-      "number": "1158",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1158",
-      "title": "健康证两处误拒 + 「每天可工作时间段」条件型单选项——三处收资误拒修复",
-      "author": "huajune",
-      "mergedAt": "2026-09-02",
-      "businessUpdates": [
-        "健康证与条件型单选项收资更准确：正确识别模板回显、短答语境和字段简称，减少误拒与误收"
-      ],
-      "summary": [
-        "健康证收资两处误拒——冲突门剥模板回显、裸短答按绑定语境解、字段简称唯一包含可定位",
-        "条件型单选项按\"必须接受的条件\"处理——模板写明条件、只认接受、不记配置债",
-        "健康证两处误拒 + 「每天可工作时间段」条件型单选项——三处收资误拒修复"
-      ],
-      "features": [],
-      "fixes": [],
-      "optimizations": [],
-      "ops": [
-        "健康证收资两处误拒——冲突门剥模板回显、裸短答按绑定语境解、字段简称唯一包含可定位",
-        "条件型单选项按\"必须接受的条件\"处理——模板写明条件、只认接受、不记配置债"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "`typecheck` / `lint:check` / `format:check` 全绿",
-        "全量 jest：448 套件 / 6519 例通过；新增回归：冲突门剥回显（含\"剥完仍能拦真冲突\"对照）、裸答三态+四个不收、简称唯一/撞车/单字/反向、条件型模板首问/重问/敏感留空、条件适配器字面/绑定肯定/未绑定/回显/子区间/否定、表单行与回显忽略"
-      ],
-      "level": "patch"
-    },
-    {
-      "number": "1159",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1159",
-      "title": "守卫过程事件/工具空结果落库/主动回合去伪 TTFT；清理 todo 目录",
-      "author": "huajune",
-      "mergedAt": "2026-09-02",
-      "businessUpdates": [
-        "守卫命中、工具空结果与主动回合耗时记录更完整，便于运营定位对话异常"
-      ],
-      "summary": [
-        "清理 todo 目录——删已过期重放任务、结转已核验项、按代码现状刷新余项与索引",
-        "删除字段值提案收口对账单（用户 2026-09-02 授权）",
-        "关闭运行时改造发版后续（基线复测经用户裁定不跑）",
-        "守卫过程事件、工具 empty/narrow 落库、主动回合去伪 TTFT（观测 P1-2/P1…",
-        "守卫过程事件/工具空结果落库/主动回合去伪 TTFT；清理 todo 目录"
-      ],
-      "features": [],
-      "fixes": [],
-      "optimizations": [],
-      "ops": [
-        "清理 todo 目录——删已过期重放任务、结转已核验项、按代码现状刷新余项与索引",
-        "删除字段值提案收口对账单（用户 2026-09-02 授权）",
-        "关闭运行时改造发版后续（基线复测经用户裁定不跑）",
-        "守卫过程事件、工具 empty/narrow 落库、主动回合去伪 TTFT（观测 P1-2/P1…"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [],
-      "level": "minor"
-    },
-    {
-      "number": "1160",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1160",
-      "title": "删除 gender_source 兼容读 + 数值事实落库规范形（09-02 记忆精度审计）",
-      "author": "huajune",
-      "mergedAt": "2026-09-02",
-      "businessUpdates": [
-        "体重、年龄、区域等候选人资料统一按规范格式保存，降低后续理解和匹配偏差"
-      ],
-      "summary": [
-        "记录 gender_source 兼容读闸门 3 审计结果（09-02 未归零）",
-        "删除 interview_info.gender_source 兼容读 sibling",
-        "数值事实落库规范形——体重斤→kg、年龄去单位、区域否定词、空串信封",
-        "merge: origin/develop into chore/memory-compat-cleanup（docs/todo 索引取 …",
-        "删除 gender_source 兼容读 + 数值事实落库规范形（09-02 记忆精度审计）"
-      ],
-      "features": [],
-      "fixes": [],
-      "optimizations": [],
-      "ops": [
-        "记录 gender_source 兼容读闸门 3 审计结果（09-02 未归零）",
-        "删除 interview_info.gender_source 兼容读 sibling",
-        "数值事实落库规范形——体重斤→kg、年龄去单位、区域否定词、空串信封",
-        "merge: origin/develop into chore/memory-compat-cleanup（docs/todo 索引取 …"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [],
-      "level": "patch"
-    },
-    {
-      "number": "1168",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1168",
-      "title": "删除 LLM 相似度评分器，新增 Agent 质量评估体系口径页",
-      "author": "huajune",
-      "mergedAt": "2026-09-02",
-      "businessUpdates": [],
-      "summary": [
-        "删除 LLM 相似度评分器，新增 Agent 质量评估体系口径页"
-      ],
-      "features": [
-        "删除 LLM 相似度评分器，新增 Agent 质量评估体系口径页"
-      ],
-      "fixes": [],
-      "optimizations": [],
-      "ops": [],
-      "config": [],
-      "envFiles": [
-        ".env.example"
-      ],
-      "verification": [
-        "`tsc --noEmit` 后端 + web 均通过；eslint（--max-warnings=0）通过；prettier 通过",
-        "`jest tests/biz/test-suite tests/evaluation --watchman=false`：21 套件 / 309 用例通过"
-      ],
-      "level": "patch"
-    },
-    {
-      "number": "1165",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1165",
-      "title": "临时暂停托管改为次日零点自动恢复（原固定 3 天）",
-      "author": "huajune",
-      "mergedAt": "2026-09-02",
-      "businessUpdates": [
-        "临时暂停托管改为次日零点自动恢复，永久暂停规则保持不变"
-      ],
-      "summary": [
-        "临时暂停托管改为次日零点自动恢复（原固定 3 天）",
-        "`user-hosting.service.ts`：删掉硬编码 `PAUSE_DURATION_MS`，三处（pauseUser / loadPausedUsers 兜底 / 共享缓存快照）统一用 `resolveTemporaryPauseExpiresAt(pausedAt)` = `addLocalDays(getLocalDayStart(pausedAt), 1)`；永久暂停不变。",
-        "新增用例：解禁时刻在上海时区读数为 00:00:00，且距暂停不超过 24h，DB 写入值与缓存一致。",
-        "`docs/product/ops-data-and-sponge-integration.md` 同步口径。"
-      ],
-      "features": [
-        "新增用例：解禁时刻在上海时区读数为 00:00:00，且距暂停不超过 24h，DB 写入值与缓存一致。"
-      ],
-      "fixes": [
-        "`user-hosting.service.ts`：删掉硬编码 `PAUSE_DURATION_MS`，三处（pauseUser / loadPausedUsers 兜底 / 共享缓存快照）统一用 `resolveTemporaryPauseExpiresAt(pausedAt)` = `addLocalDays(getLocalDayStart(pausedAt), 1)`；永久暂停不变。",
-        "`docs/product/ops-data-and-sponge-integration.md` 同步口径。"
-      ],
-      "optimizations": [],
-      "ops": [
-        "临时暂停托管改为次日零点自动恢复（原固定 3 天）"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "`jest tests/biz/user/services/user-hosting.service.spec.ts tests/biz/user/repositories/user-hosting.repository.spec.ts --watchman=false`：57/57 通过"
-      ],
-      "level": "patch"
-    },
-    {
-      "number": "1166",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1166",
-      "title": "入站风险词表补残障自述漏网、剔除亲属词假阳、扫描前剥引用块",
-      "author": "huajune",
-      "mergedAt": "2026-09-02",
-      "businessUpdates": [
-        "入站风险识别补齐残障自述，并排除亲属描述和引用内容造成的误拦截"
-      ],
-      "summary": [
-        "入站风险词表补残障自述漏网句式、剔除亲属词假阳、扫描前剥引用块",
-        "入站风险词表补残障自述漏网、剔除亲属词假阳、扫描前剥引用块"
-      ],
-      "features": [],
-      "fixes": [],
-      "optimizations": [],
-      "ops": [
-        "入站风险词表补残障自述漏网句式、剔除亲属词假阳、扫描前剥引用块"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "`jest tests/agent/guardrail/input/ --watchman=false`：141/141 通过（新增 6 组正例 / 7 组反例 / 引用块 3 例）",
-        "`tsc --noEmit`、eslint（--max-warnings=0）、prettier 通过"
-      ],
-      "level": "patch"
-    },
-    {
-      "number": "1164",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1164",
-      "title": "判官标定首次完成，状态改为待用户裁定阈值并注册周任务",
-      "author": "huajune",
-      "mergedAt": "2026-09-02",
-      "businessUpdates": [],
-      "summary": [
-        "判官标定首次完成，任务书改为\"待用户裁定阈值并注册周任务\"",
-        "判官标定补记用户裁定与两个修复 PR",
-        "评估器已随 #1168 删除，清掉待裁定项",
-        "判官标定首次完成，状态改为待用户裁定阈值并注册周任务"
-      ],
-      "features": [],
-      "fixes": [
-        "判官标定补记用户裁定与两个修复 PR"
-      ],
-      "optimizations": [],
-      "ops": [
-        "判官标定首次完成，任务书改为\"待用户裁定阈值并注册周任务\"",
-        "评估器已随 #1168 删除，清掉待裁定项"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [],
-      "level": "patch"
-    },
-    {
-      "number": "1173",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1173",
-      "title": "\"XX附近\"地点抽取剥居住前缀并拒收整句噪音",
-      "author": "huajune",
-      "mergedAt": "2026-09-02",
-      "businessUpdates": [
-        "“XX附近”地点识别会剥离居住表达并拒收整句噪音，减少错误地点记忆"
-      ],
-      "summary": [
-        "\"XX附近\"地点抽取剥居住前缀并拒收整句噪音",
-        "动作前缀归一（\"帮我找一下\"）之后再剥一次居住/位置前缀：`我/我们/我家/人/家 + 现在/目前/平时/就 + 住/人/家 + 在`，**必须以\"在\"收尾**，不会吃掉\"人民广场\"\"家乐福\"的首字；另认\"就XX\"。",
-        "捕获段含句子词（这/那个/你/我/他/她/有没有/可以/不是/工作/吗/呢/吧/了/就/要/想/找/看/去/到/在/是）一律不认；刻意不收\"的\"（美的财富广场）。",
-        "剥完不足 2 字（\"这\"）丢弃。"
-      ],
-      "features": [],
-      "fixes": [
-        "捕获段含句子词（这/那个/你/我/他/她/有没有/可以/不是/工作/吗/呢/吧/了/就/要/想/找/看/去/到/在/是）一律不认；刻意不收\"的\"（美的财富广场）。",
-        "剥完不足 2 字（\"这\"）丢弃。"
-      ],
-      "optimizations": [
-        "动作前缀归一（\"帮我找一下\"）之后再剥一次居住/位置前缀：`我/我们/我家/人/家 + 现在/目前/平时/就 + 住/人/家 + 在`，**必须以\"在\"收尾**，不会吃掉\"人民广场\"\"家乐福\"的首字；另认\"就XX\"。",
-        "\"XX附近\"地点抽取剥居住前缀并拒收整句噪音"
-      ],
-      "ops": [],
-      "config": [],
-      "envFiles": [],
-      "verification": [],
-      "level": "patch"
-    },
-    {
-      "number": "1177",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1177",
-      "title": "会话列表页大小 200→600，头像改懒加载",
-      "author": "huajune",
-      "mergedAt": "2026-09-02",
-      "businessUpdates": [
-        "运营后台单次可查看 600 条会话，头像按需加载，减少列表截断与请求拥堵"
-      ],
-      "summary": [
-        "会话列表页大小 200→600，头像改懒加载",
-        "`web/src/hooks/chat/useChatSessions.ts`：`CHAT_SESSION_PAGE_SIZE` 200→600",
-        "`src/biz/message/services/chat-session.service.ts` / `repositories/chat-message.repository.ts`：默认页大小 200→600，上限 `MAX_SESSION_PAGE_SIZE` 500→600（注释标明 ≤999 硬边界，因为实际取 limit+1 且 PostgREST max_rows=1000）",
-        "`SessionList/index.tsx`：头像 `<img>` 加 `loading=\"lazy\"`——列表未虚拟化，600 行头像一次性发请求会排队",
-        "两个 spec 同步默认值/上限断言"
-      ],
-      "features": [],
-      "fixes": [],
-      "optimizations": [
-        "`web/src/hooks/chat/useChatSessions.ts`：`CHAT_SESSION_PAGE_SIZE` 200→600",
-        "`src/biz/message/services/chat-session.service.ts` / `repositories/chat-message.repository.ts`：默认页大小 200→600，上限 `MAX_SESSION_PAGE_SIZE` 500→600（注释标明 ≤999 硬边界，因为实际取 limit+1 且 PostgREST max_rows=1000）",
-        "`SessionList/index.tsx`：头像 `<img>` 加 `loading=\"lazy\"`——列表未虚拟化，600 行头像一次性发请求会排队",
-        "两个 spec 同步默认值/上限断言"
-      ],
-      "ops": [
-        "会话列表页大小 200→600，头像改懒加载"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "`pnpm run typecheck` 通过",
-        "`tests/biz/message/repositories/chat-message.repository.spec.ts` + `tests/biz/message/services/chat-session.service.spec.ts`：68/68 通过",
-        "ESLint / Prettier：`src/` 下两个改动文件通过；两个 spec 文件与两个 web 文件在 develop 上本就不过 prettier（CI 不覆盖 tests/ 与 web/），本 PR 未动格式",
-        "web：`tsc --noEmit` 与 eslint 通过"
-      ],
-      "level": "patch"
-    },
-    {
-      "number": "1176",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1176",
-      "title": "出站守卫拦截推理/自检段泄漏",
-      "author": "huajune",
-      "mergedAt": "2026-09-02",
-      "businessUpdates": [
-        "出站守卫会拦截 Agent 推理或自检内容泄漏，避免内部过程发送给候选人"
-      ],
-      "summary": [
-        "出站守卫拦截推理/自检段泄漏"
-      ],
-      "features": [],
-      "fixes": [],
-      "optimizations": [],
-      "ops": [
-        "出站守卫拦截推理/自检段泄漏"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "两例生产原文作为检测回归用例落在 `internal-info-leaks.rule.spec` / `hard-rules.service.spec`；runner spec 断言自检段命中后进一次 repair。",
-        "`lint:check` / `format:check` / `typecheck` 全绿；guardrail + runner + context 40 套件 686 用例通过。",
-        "无迁移，无配置变更。"
-      ],
-      "level": "patch"
-    },
-    {
-      "number": "1175",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1175",
-      "title": "新增质量指标台账与 CI 校验，定时任务结论统一落账",
-      "author": "huajune",
-      "mergedAt": "2026-09-02",
-      "businessUpdates": [],
-      "summary": [
-        "新增质量指标台账与 CI 校验，定时任务结论统一落账",
-        "判官降级阈值定稿进口径页，判官周任务已注册",
-        "merge origin/develop into docs/quality-metrics-ledger, resolve…",
-        "Merge remote-tracking branch 'origin/develop' into HEAD",
-        "**新增 `docs/quality-metrics-ledger.md`**：9 列（date / source_task / stage / metric / value / numerator / denominator / note / trace_ref）；阶段名与指标名以口径页 §1 为白名单（五阶段 + 硬错误率 / 转人工精确率 / 稳定率 / 判官精确率）；文首写清列定义、写入纪律、各任务落什么。种子行为 2026-09-02 首次判官标定的四个判官点精确率（J1 30/31、J2 20/28、J4 7/9 与 25/33）。",
-        "**新增 `scripts/quality/` 校验器 + 单测**：表头、白名单、`value = round(n/d, 4)`、分母非 0、note 长度与手机号脱敏、五元组去重；`pnpm run quality-ledger:validate [路径]` 挂进 `ci:check`（可传路径校验独立 worktree 里的副本）。",
-        "**口径页**：横切指标「稳定性」更名「稳定率」并标注无生产者；L2/L3「结论去哪」指向台账；§4 待办 3/4 改为「已裁定」。",
-        "`docs/README.md`、`docs/todo/README.md`、`docs/todo/judge-calibration.md`、`CLAUDE.md` 补台账入口与现状。"
-      ],
-      "features": [
-        "**新增 `docs/quality-metrics-ledger.md`**：9 列（date / source_task / stage / metric / value / numerator / denominator / note / trace_ref）；阶段名与指标名以口径页 §1 为白名单（五阶段 + 硬错误率 / 转人工精确率 / 稳定率 / 判官精确率）；文首写清列定义、写入纪律、各任务落什么。种子行为 2026-09-02 首次判官标定的四个判官点精确率（J1 30/31、J2 20/28、J4 7/9 与 25/33）。",
-        "**新增 `scripts/quality/` 校验器 + 单测**：表头、白名单、`value = round(n/d, 4)`、分母非 0、note 长度与手机号脱敏、五元组去重；`pnpm run quality-ledger:validate [路径]` 挂进 `ci:check`（可传路径校验独立 worktree 里的副本）。",
-        "**口径页**：横切指标「稳定性」更名「稳定率」并标注无生产者；L2/L3「结论去哪」指向台账；§4 待办 3/4 改为「已裁定」。",
-        "`docs/README.md`、`docs/todo/README.md`、`docs/todo/judge-calibration.md`、`CLAUDE.md` 补台账入口与现状。",
-        "新增质量指标台账与 CI 校验，定时任务结论统一落账"
-      ],
-      "fixes": [
-        "merge origin/develop into docs/quality-metrics-ledger, resolve…"
-      ],
-      "optimizations": [],
-      "ops": [
-        "判官降级阈值定稿进口径页，判官周任务已注册",
-        "Merge remote-tracking branch 'origin/develop' into HEAD"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "`pnpm run ci:check` 各段在 worktree 内全部通过（lint / format / typecheck / geo / vocab / quality-ledger / build:ci / test:ci 448 suites）。",
-        "`tests/scripts/quality-metrics-ledger.spec.ts` 9 用例通过，其中一条直接校验仓库内台账文件。"
-      ],
-      "level": "patch"
-    },
-    {
-      "number": "1167",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1167",
-      "title": "业务数据永久/观测 90d 统一 + 全部档 + 表结构审计修复",
-      "author": "huajune",
-      "mergedAt": "2026-09-02",
-      "businessUpdates": [
-        "候选人消息等业务数据改为长期保留，运行观测数据统一保留 90 天",
-        "运营报表新增“全部”时间范围，并优化会话趋势查询与数据筛选"
-      ],
-      "summary": [
-        "业务数据永久/观测 90d 统一 + 全部档 + 表结构审计修复",
-        "merge origin/develop into feat/data-retention-and-schema-audit…",
-        "Merge remote-tracking branch 'origin/develop' into HEAD",
-        "merge origin/develop (post #1175), resolve docs/todo/README.md"
-      ],
-      "features": [
-        "merge origin/develop into feat/data-retention-and-schema-audit…"
-      ],
-      "fixes": [
-        "业务数据永久/观测 90d 统一 + 全部档 + 表结构审计修复",
-        "merge origin/develop (post #1175), resolve docs/todo/README.md"
-      ],
-      "optimizations": [],
-      "ops": [
-        "Merge remote-tracking branch 'origin/develop' into HEAD"
-      ],
-      "config": [],
-      "envFiles": [
-        ".env.example"
-      ],
-      "verification": [
-        "`pnpm run ci:check` 全绿（lint / format / typecheck / build / 6540 tests）",
-        "新增单测：子表写读与兜底、统计表/转人工底账清理、`markResolvedByChat` / `sequence_no`、业务趋势 RPC 映射与默认窗口、`all` 档时间窗（dashboard util / conversion）、小组→bot 翻译与并集过滤",
-        "TEST 库烟测：4 个新 RPC 均正常；prod 只读核对新趋势 SQL 近 7 天数值合理"
-      ],
-      "level": "minor"
-    },
-    {
-      "number": "1182",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1182",
-      "title": "补 v11.2.0 发版底账",
-      "author": "huajune",
-      "mergedAt": "2026-09-02",
-      "businessUpdates": [],
-      "summary": [
-        "补 v11.2.0 发版底账",
-        "初稿由 `pnpm run release:ledger` 从 `.release/pending-release.json` 渲染（12 个实现 PR：#1158 #1159 #1160 #1164 #1165 #1166 #1167 #1168 #1173 #1175 #1176 #1177）",
-        "删除 auto-generated 标记后人工定稿，改写三节：",
-        "**高风险区域**：#1167 死列 DROP + `agent_invocation` 拆子表、保留策略切换、#1176 守卫新检测信号、#1177 会话列表页大小 200→600、#1165 暂停口径",
-        "**数据库动作**：两条迁移（`20260902073727_retention_schema_audit`、`20260902082559_ops_events_report_date_chat_index`）已推 TEST 并烟测，生产在镜像更新完成后立即 `db:push:prod`",
-        "**部署顺序**：定为「先镜像后迁移」——旧代码仍写 `ai_start_at/ai_end_at`，先推迁移会让旧实例回合流水写入失败；新代码写子表失败已被仓储层断路器兜住"
-      ],
-      "features": [],
-      "fixes": [],
-      "optimizations": [],
-      "ops": [
-        "初稿由 `pnpm run release:ledger` 从 `.release/pending-release.json` 渲染（12 个实现 PR：#1158 #1159 #1160 #1164 #1165 #1166 #1167 #1168 #1173 #1175 #1176 #1177）",
-        "删除 auto-generated 标记后人工定稿，改写三节：",
-        "**高风险区域**：#1167 死列 DROP + `agent_invocation` 拆子表、保留策略切换、#1176 守卫新检测信号、#1177 会话列表页大小 200→600、#1165 暂停口径",
-        "**数据库动作**：两条迁移（`20260902073727_retention_schema_audit`、`20260902082559_ops_events_report_date_chat_index`）已推 TEST 并烟测，生产在镜像更新完成后立即 `db:push:prod`",
-        "**部署顺序**：定为「先镜像后迁移」——旧代码仍写 `ai_start_at/ai_end_at`，先推迁移会让旧实例回合流水写入失败；新代码写子表失败已被仓储层断路器兜住",
-        "补 v11.2.0 发版底账"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "`pnpm run release:ledger:check` ✅（v11.2.0 -> docs/releases/2026/v11.2.0.md）",
-        "纯文档改动，无代码变更"
-      ],
-      "level": "patch"
-    }
-  ],
+  "entries": [],
   "lastRelease": {
-    "version": "11.1.4",
+    "version": "11.2.0",
     "date": "2026-09-02",
     "sourceBranch": "develop",
     "entries": [
       {
-        "number": "1143",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/1143",
-        "title": "修正复聊文档两处过时描述，对齐 develop 现状",
+        "number": "1158",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1158",
+        "title": "健康证两处误拒 + 「每天可工作时间段」条件型单选项——三处收资误拒修复",
         "author": "huajune",
         "mergedAt": "2026-09-02",
         "businessUpdates": [
-          "修正复聊文档两处过时描述，对齐 develop 现状"
+          "健康证与条件型单选项收资更准确：正确识别模板回显、短答语境和字段简称，减少误拒与误收"
         ],
         "summary": [
-          "修正复聊文档两处过时描述，对齐 develop 现状",
-          "删除 quiet-window 遗留的 rescheduled 死代码"
+          "健康证收资两处误拒——冲突门剥模板回显、裸短答按绑定语境解、字段简称唯一包含可定位",
+          "条件型单选项按\"必须接受的条件\"处理——模板写明条件、只认接受、不记配置债",
+          "健康证两处误拒 + 「每天可工作时间段」条件型单选项——三处收资误拒修复"
         ],
         "features": [],
-        "fixes": [
-          "修正复聊文档两处过时描述，对齐 develop 现状"
-        ],
+        "fixes": [],
         "optimizations": [],
         "ops": [
-          "删除 quiet-window 遗留的 rescheduled 死代码"
+          "健康证收资两处误拒——冲突门剥模板回显、裸短答按绑定语境解、字段简称唯一包含可定位",
+          "条件型单选项按\"必须接受的条件\"处理——模板写明条件、只认接受、不记配置债"
         ],
         "config": [],
         "envFiles": [],
         "verification": [
-          "`pnpm run typecheck` ✅",
-          "`pnpm run lint:check` ✅",
-          "`web npx tsc --noEmit` ✅",
-          "受影响测试套件 `follow-up.processor.spec.ts` + `reengagement-query.service.spec.ts`：101 passed ✅（含 22:00 上海时间照常生成的无窗口回归测试）"
+          "`typecheck` / `lint:check` / `format:check` 全绿",
+          "全量 jest：448 套件 / 6519 例通过；新增回归：冲突门剥回显（含\"剥完仍能拦真冲突\"对照）、裸答三态+四个不收、简称唯一/撞车/单字/反向、条件型模板首问/重问/敏感留空、条件适配器字面/绑定肯定/未绑定/回显/子区间/否定、表单行与回显忽略"
         ],
         "level": "patch"
       },
       {
-        "number": "1144",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/1144",
-        "title": "修复统计查询慢与会话列表静默截断",
+        "number": "1159",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1159",
+        "title": "守卫过程事件/工具空结果落库/主动回合去伪 TTFT；清理 todo 目录",
         "author": "huajune",
         "mergedAt": "2026-09-02",
         "businessUpdates": [
-          "聊天消息保留期 60 天放宽到 100 天",
-          "统计查询下沉 DB，消除全量拉取与落盘排序",
-          "概览缓存定时预热，把冷计算移出访客路径",
-          "会话列表改游标分页 + 服务端搜索，趋势图剔除周末",
-          "修复统计查询慢与会话列表静默截断"
+          "守卫命中、工具空结果与主动回合耗时记录更完整，便于运营定位对话异常"
         ],
         "summary": [
-          "聊天消息保留期 60 天放宽到 100 天",
-          "统计查询下沉 DB，消除全量拉取与落盘排序",
-          "概览缓存定时预热，把冷计算移出访客路径",
-          "会话列表改游标分页 + 服务端搜索，趋势图剔除周末",
-          "修复统计查询慢与会话列表静默截断"
+          "清理 todo 目录——删已过期重放任务、结转已核验项、按代码现状刷新余项与索引",
+          "删除字段值提案收口对账单（用户 2026-09-02 授权）",
+          "关闭运行时改造发版后续（基线复测经用户裁定不跑）",
+          "守卫过程事件、工具 empty/narrow 落库、主动回合去伪 TTFT（观测 P1-2/P1…",
+          "守卫过程事件/工具空结果落库/主动回合去伪 TTFT；清理 todo 目录"
+        ],
+        "features": [],
+        "fixes": [],
+        "optimizations": [],
+        "ops": [
+          "清理 todo 目录——删已过期重放任务、结转已核验项、按代码现状刷新余项与索引",
+          "删除字段值提案收口对账单（用户 2026-09-02 授权）",
+          "关闭运行时改造发版后续（基线复测经用户裁定不跑）",
+          "守卫过程事件、工具 empty/narrow 落库、主动回合去伪 TTFT（观测 P1-2/P1…"
+        ],
+        "config": [],
+        "envFiles": [],
+        "verification": [],
+        "level": "minor"
+      },
+      {
+        "number": "1160",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1160",
+        "title": "删除 gender_source 兼容读 + 数值事实落库规范形（09-02 记忆精度审计）",
+        "author": "huajune",
+        "mergedAt": "2026-09-02",
+        "businessUpdates": [
+          "体重、年龄、区域等候选人资料统一按规范格式保存，降低后续理解和匹配偏差"
+        ],
+        "summary": [
+          "记录 gender_source 兼容读闸门 3 审计结果（09-02 未归零）",
+          "删除 interview_info.gender_source 兼容读 sibling",
+          "数值事实落库规范形——体重斤→kg、年龄去单位、区域否定词、空串信封",
+          "merge: origin/develop into chore/memory-compat-cleanup（docs/todo 索引取 …",
+          "删除 gender_source 兼容读 + 数值事实落库规范形（09-02 记忆精度审计）"
+        ],
+        "features": [],
+        "fixes": [],
+        "optimizations": [],
+        "ops": [
+          "记录 gender_source 兼容读闸门 3 审计结果（09-02 未归零）",
+          "删除 interview_info.gender_source 兼容读 sibling",
+          "数值事实落库规范形——体重斤→kg、年龄去单位、区域否定词、空串信封",
+          "merge: origin/develop into chore/memory-compat-cleanup（docs/todo 索引取 …"
+        ],
+        "config": [],
+        "envFiles": [],
+        "verification": [],
+        "level": "patch"
+      },
+      {
+        "number": "1168",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1168",
+        "title": "删除 LLM 相似度评分器，新增 Agent 质量评估体系口径页",
+        "author": "huajune",
+        "mergedAt": "2026-09-02",
+        "businessUpdates": [],
+        "summary": [
+          "删除 LLM 相似度评分器，新增 Agent 质量评估体系口径页"
+        ],
+        "features": [
+          "删除 LLM 相似度评分器，新增 Agent 质量评估体系口径页"
+        ],
+        "fixes": [],
+        "optimizations": [],
+        "ops": [],
+        "config": [],
+        "envFiles": [
+          ".env.example"
+        ],
+        "verification": [
+          "`tsc --noEmit` 后端 + web 均通过；eslint（--max-warnings=0）通过；prettier 通过",
+          "`jest tests/biz/test-suite tests/evaluation --watchman=false`：21 套件 / 309 用例通过"
+        ],
+        "level": "patch"
+      },
+      {
+        "number": "1165",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1165",
+        "title": "临时暂停托管改为次日零点自动恢复（原固定 3 天）",
+        "author": "huajune",
+        "mergedAt": "2026-09-02",
+        "businessUpdates": [
+          "临时暂停托管改为次日零点自动恢复，永久暂停规则保持不变"
+        ],
+        "summary": [
+          "临时暂停托管改为次日零点自动恢复（原固定 3 天）",
+          "`user-hosting.service.ts`：删掉硬编码 `PAUSE_DURATION_MS`，三处（pauseUser / loadPausedUsers 兜底 / 共享缓存快照）统一用 `resolveTemporaryPauseExpiresAt(pausedAt)` = `addLocalDays(getLocalDayStart(pausedAt), 1)`；永久暂停不变。",
+          "新增用例：解禁时刻在上海时区读数为 00:00:00，且距暂停不超过 24h，DB 写入值与缓存一致。",
+          "`docs/product/ops-data-and-sponge-integration.md` 同步口径。"
+        ],
+        "features": [
+          "新增用例：解禁时刻在上海时区读数为 00:00:00，且距暂停不超过 24h，DB 写入值与缓存一致。"
+        ],
+        "fixes": [
+          "`user-hosting.service.ts`：删掉硬编码 `PAUSE_DURATION_MS`，三处（pauseUser / loadPausedUsers 兜底 / 共享缓存快照）统一用 `resolveTemporaryPauseExpiresAt(pausedAt)` = `addLocalDays(getLocalDayStart(pausedAt), 1)`；永久暂停不变。",
+          "`docs/product/ops-data-and-sponge-integration.md` 同步口径。"
+        ],
+        "optimizations": [],
+        "ops": [
+          "临时暂停托管改为次日零点自动恢复（原固定 3 天）"
+        ],
+        "config": [],
+        "envFiles": [],
+        "verification": [
+          "`jest tests/biz/user/services/user-hosting.service.spec.ts tests/biz/user/repositories/user-hosting.repository.spec.ts --watchman=false`：57/57 通过"
+        ],
+        "level": "patch"
+      },
+      {
+        "number": "1166",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1166",
+        "title": "入站风险词表补残障自述漏网、剔除亲属词假阳、扫描前剥引用块",
+        "author": "huajune",
+        "mergedAt": "2026-09-02",
+        "businessUpdates": [
+          "入站风险识别补齐残障自述，并排除亲属描述和引用内容造成的误拦截"
+        ],
+        "summary": [
+          "入站风险词表补残障自述漏网句式、剔除亲属词假阳、扫描前剥引用块",
+          "入站风险词表补残障自述漏网、剔除亲属词假阳、扫描前剥引用块"
+        ],
+        "features": [],
+        "fixes": [],
+        "optimizations": [],
+        "ops": [
+          "入站风险词表补残障自述漏网句式、剔除亲属词假阳、扫描前剥引用块"
+        ],
+        "config": [],
+        "envFiles": [],
+        "verification": [
+          "`jest tests/agent/guardrail/input/ --watchman=false`：141/141 通过（新增 6 组正例 / 7 组反例 / 引用块 3 例）",
+          "`tsc --noEmit`、eslint（--max-warnings=0）、prettier 通过"
+        ],
+        "level": "patch"
+      },
+      {
+        "number": "1164",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1164",
+        "title": "判官标定首次完成，状态改为待用户裁定阈值并注册周任务",
+        "author": "huajune",
+        "mergedAt": "2026-09-02",
+        "businessUpdates": [],
+        "summary": [
+          "判官标定首次完成，任务书改为\"待用户裁定阈值并注册周任务\"",
+          "判官标定补记用户裁定与两个修复 PR",
+          "评估器已随 #1168 删除，清掉待裁定项",
+          "判官标定首次完成，状态改为待用户裁定阈值并注册周任务"
+        ],
+        "features": [],
+        "fixes": [
+          "判官标定补记用户裁定与两个修复 PR"
+        ],
+        "optimizations": [],
+        "ops": [
+          "判官标定首次完成，任务书改为\"待用户裁定阈值并注册周任务\"",
+          "评估器已随 #1168 删除，清掉待裁定项"
+        ],
+        "config": [],
+        "envFiles": [],
+        "verification": [],
+        "level": "patch"
+      },
+      {
+        "number": "1173",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1173",
+        "title": "\"XX附近\"地点抽取剥居住前缀并拒收整句噪音",
+        "author": "huajune",
+        "mergedAt": "2026-09-02",
+        "businessUpdates": [
+          "“XX附近”地点识别会剥离居住表达并拒收整句噪音，减少错误地点记忆"
+        ],
+        "summary": [
+          "\"XX附近\"地点抽取剥居住前缀并拒收整句噪音",
+          "动作前缀归一（\"帮我找一下\"）之后再剥一次居住/位置前缀：`我/我们/我家/人/家 + 现在/目前/平时/就 + 住/人/家 + 在`，**必须以\"在\"收尾**，不会吃掉\"人民广场\"\"家乐福\"的首字；另认\"就XX\"。",
+          "捕获段含句子词（这/那个/你/我/他/她/有没有/可以/不是/工作/吗/呢/吧/了/就/要/想/找/看/去/到/在/是）一律不认；刻意不收\"的\"（美的财富广场）。",
+          "剥完不足 2 字（\"这\"）丢弃。"
+        ],
+        "features": [],
+        "fixes": [
+          "捕获段含句子词（这/那个/你/我/他/她/有没有/可以/不是/工作/吗/呢/吧/了/就/要/想/找/看/去/到/在/是）一律不认；刻意不收\"的\"（美的财富广场）。",
+          "剥完不足 2 字（\"这\"）丢弃。"
+        ],
+        "optimizations": [
+          "动作前缀归一（\"帮我找一下\"）之后再剥一次居住/位置前缀：`我/我们/我家/人/家 + 现在/目前/平时/就 + 住/人/家 + 在`，**必须以\"在\"收尾**，不会吃掉\"人民广场\"\"家乐福\"的首字；另认\"就XX\"。",
+          "\"XX附近\"地点抽取剥居住前缀并拒收整句噪音"
+        ],
+        "ops": [],
+        "config": [],
+        "envFiles": [],
+        "verification": [],
+        "level": "patch"
+      },
+      {
+        "number": "1177",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1177",
+        "title": "会话列表页大小 200→600，头像改懒加载",
+        "author": "huajune",
+        "mergedAt": "2026-09-02",
+        "businessUpdates": [
+          "运营后台单次可查看 600 条会话，头像按需加载，减少列表截断与请求拥堵"
+        ],
+        "summary": [
+          "会话列表页大小 200→600，头像改懒加载",
+          "`web/src/hooks/chat/useChatSessions.ts`：`CHAT_SESSION_PAGE_SIZE` 200→600",
+          "`src/biz/message/services/chat-session.service.ts` / `repositories/chat-message.repository.ts`：默认页大小 200→600，上限 `MAX_SESSION_PAGE_SIZE` 500→600（注释标明 ≤999 硬边界，因为实际取 limit+1 且 PostgREST max_rows=1000）",
+          "`SessionList/index.tsx`：头像 `<img>` 加 `loading=\"lazy\"`——列表未虚拟化，600 行头像一次性发请求会排队",
+          "两个 spec 同步默认值/上限断言"
         ],
         "features": [],
         "fixes": [],
         "optimizations": [
-          "统计查询下沉 DB，消除全量拉取与落盘排序"
+          "`web/src/hooks/chat/useChatSessions.ts`：`CHAT_SESSION_PAGE_SIZE` 200→600",
+          "`src/biz/message/services/chat-session.service.ts` / `repositories/chat-message.repository.ts`：默认页大小 200→600，上限 `MAX_SESSION_PAGE_SIZE` 500→600（注释标明 ≤999 硬边界，因为实际取 limit+1 且 PostgREST max_rows=1000）",
+          "`SessionList/index.tsx`：头像 `<img>` 加 `loading=\"lazy\"`——列表未虚拟化，600 行头像一次性发请求会排队",
+          "两个 spec 同步默认值/上限断言"
         ],
         "ops": [
-          "聊天消息保留期 60 天放宽到 100 天",
-          "概览缓存定时预热，把冷计算移出访客路径",
-          "会话列表改游标分页 + 服务端搜索，趋势图剔除周末"
+          "会话列表页大小 200→600，头像改懒加载"
+        ],
+        "config": [],
+        "envFiles": [],
+        "verification": [
+          "`pnpm run typecheck` 通过",
+          "`tests/biz/message/repositories/chat-message.repository.spec.ts` + `tests/biz/message/services/chat-session.service.spec.ts`：68/68 通过",
+          "ESLint / Prettier：`src/` 下两个改动文件通过；两个 spec 文件与两个 web 文件在 develop 上本就不过 prettier（CI 不覆盖 tests/ 与 web/），本 PR 未动格式",
+          "web：`tsc --noEmit` 与 eslint 通过"
+        ],
+        "level": "patch"
+      },
+      {
+        "number": "1176",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1176",
+        "title": "出站守卫拦截推理/自检段泄漏",
+        "author": "huajune",
+        "mergedAt": "2026-09-02",
+        "businessUpdates": [
+          "出站守卫会拦截 Agent 推理或自检内容泄漏，避免内部过程发送给候选人"
+        ],
+        "summary": [
+          "出站守卫拦截推理/自检段泄漏"
+        ],
+        "features": [],
+        "fixes": [],
+        "optimizations": [],
+        "ops": [
+          "出站守卫拦截推理/自检段泄漏"
+        ],
+        "config": [],
+        "envFiles": [],
+        "verification": [
+          "两例生产原文作为检测回归用例落在 `internal-info-leaks.rule.spec` / `hard-rules.service.spec`；runner spec 断言自检段命中后进一次 repair。",
+          "`lint:check` / `format:check` / `typecheck` 全绿；guardrail + runner + context 40 套件 686 用例通过。",
+          "无迁移，无配置变更。"
+        ],
+        "level": "patch"
+      },
+      {
+        "number": "1175",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1175",
+        "title": "新增质量指标台账与 CI 校验，定时任务结论统一落账",
+        "author": "huajune",
+        "mergedAt": "2026-09-02",
+        "businessUpdates": [],
+        "summary": [
+          "新增质量指标台账与 CI 校验，定时任务结论统一落账",
+          "判官降级阈值定稿进口径页，判官周任务已注册",
+          "merge origin/develop into docs/quality-metrics-ledger, resolve…",
+          "Merge remote-tracking branch 'origin/develop' into HEAD",
+          "**新增 `docs/quality-metrics-ledger.md`**：9 列（date / source_task / stage / metric / value / numerator / denominator / note / trace_ref）；阶段名与指标名以口径页 §1 为白名单（五阶段 + 硬错误率 / 转人工精确率 / 稳定率 / 判官精确率）；文首写清列定义、写入纪律、各任务落什么。种子行为 2026-09-02 首次判官标定的四个判官点精确率（J1 30/31、J2 20/28、J4 7/9 与 25/33）。",
+          "**新增 `scripts/quality/` 校验器 + 单测**：表头、白名单、`value = round(n/d, 4)`、分母非 0、note 长度与手机号脱敏、五元组去重；`pnpm run quality-ledger:validate [路径]` 挂进 `ci:check`（可传路径校验独立 worktree 里的副本）。",
+          "**口径页**：横切指标「稳定性」更名「稳定率」并标注无生产者；L2/L3「结论去哪」指向台账；§4 待办 3/4 改为「已裁定」。",
+          "`docs/README.md`、`docs/todo/README.md`、`docs/todo/judge-calibration.md`、`CLAUDE.md` 补台账入口与现状。"
+        ],
+        "features": [
+          "**新增 `docs/quality-metrics-ledger.md`**：9 列（date / source_task / stage / metric / value / numerator / denominator / note / trace_ref）；阶段名与指标名以口径页 §1 为白名单（五阶段 + 硬错误率 / 转人工精确率 / 稳定率 / 判官精确率）；文首写清列定义、写入纪律、各任务落什么。种子行为 2026-09-02 首次判官标定的四个判官点精确率（J1 30/31、J2 20/28、J4 7/9 与 25/33）。",
+          "**新增 `scripts/quality/` 校验器 + 单测**：表头、白名单、`value = round(n/d, 4)`、分母非 0、note 长度与手机号脱敏、五元组去重；`pnpm run quality-ledger:validate [路径]` 挂进 `ci:check`（可传路径校验独立 worktree 里的副本）。",
+          "**口径页**：横切指标「稳定性」更名「稳定率」并标注无生产者；L2/L3「结论去哪」指向台账；§4 待办 3/4 改为「已裁定」。",
+          "`docs/README.md`、`docs/todo/README.md`、`docs/todo/judge-calibration.md`、`CLAUDE.md` 补台账入口与现状。",
+          "新增质量指标台账与 CI 校验，定时任务结论统一落账"
+        ],
+        "fixes": [
+          "merge origin/develop into docs/quality-metrics-ledger, resolve…"
+        ],
+        "optimizations": [],
+        "ops": [
+          "判官降级阈值定稿进口径页，判官周任务已注册",
+          "Merge remote-tracking branch 'origin/develop' into HEAD"
+        ],
+        "config": [],
+        "envFiles": [],
+        "verification": [
+          "`pnpm run ci:check` 各段在 worktree 内全部通过（lint / format / typecheck / geo / vocab / quality-ledger / build:ci / test:ci 448 suites）。",
+          "`tests/scripts/quality-metrics-ledger.spec.ts` 9 用例通过，其中一条直接校验仓库内台账文件。"
+        ],
+        "level": "patch"
+      },
+      {
+        "number": "1167",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1167",
+        "title": "业务数据永久/观测 90d 统一 + 全部档 + 表结构审计修复",
+        "author": "huajune",
+        "mergedAt": "2026-09-02",
+        "businessUpdates": [
+          "候选人消息等业务数据改为长期保留，运行观测数据统一保留 90 天",
+          "运营报表新增“全部”时间范围，并优化会话趋势查询与数据筛选"
+        ],
+        "summary": [
+          "业务数据永久/观测 90d 统一 + 全部档 + 表结构审计修复",
+          "merge origin/develop into feat/data-retention-and-schema-audit…",
+          "Merge remote-tracking branch 'origin/develop' into HEAD",
+          "merge origin/develop (post #1175), resolve docs/todo/README.md"
+        ],
+        "features": [
+          "merge origin/develop into feat/data-retention-and-schema-audit…"
+        ],
+        "fixes": [
+          "业务数据永久/观测 90d 统一 + 全部档 + 表结构审计修复",
+          "merge origin/develop (post #1175), resolve docs/todo/README.md"
+        ],
+        "optimizations": [],
+        "ops": [
+          "Merge remote-tracking branch 'origin/develop' into HEAD"
         ],
         "config": [],
         "envFiles": [
           ".env.example"
         ],
         "verification": [
-          "`pnpm run ci:check` 全绿（447 套件 / 6494 测试）",
-          "**所有 SQL 改写都在生产数据上做过 `EXCEPT` 双向比对，逐行等价**（会话列表 1347 行、每日统计 62 行，两个方向差异均为 0）",
-          "游标分页正确性：page1=200 / page2=200 / **交集 0**，`total_count` 5591 = 实际 5591",
-          "本地连 TEST 库端到端跑过：计数显示 `200 / 855`（真实总数）、加载更多 200→400 且**重复行 0**、服务端搜索命中未加载页中的记录、周末剔除后汇总 `2562 / 27863` 对上工作日口径（全量口径是 `2571 / 27881`）"
+          "`pnpm run ci:check` 全绿（lint / format / typecheck / build / 6540 tests）",
+          "新增单测：子表写读与兜底、统计表/转人工底账清理、`markResolvedByChat` / `sequence_no`、业务趋势 RPC 映射与默认窗口、`all` 档时间窗（dashboard util / conversion）、小组→bot 翻译与并集过滤",
+          "TEST 库烟测：4 个新 RPC 均正常；prod 只读核对新趋势 SQL 近 7 天数值合理"
         ],
-        "level": "patch"
+        "level": "minor"
       },
       {
-        "number": "1146",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/1146",
-        "title": "按当前生产调用链复核运行时架构文档",
+        "number": "1182",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1182",
+        "title": "补 v11.2.0 发版底账",
         "author": "huajune",
         "mergedAt": "2026-09-02",
-        "businessUpdates": [
-          "按当前生产调用链复核运行时架构文档"
-        ],
+        "businessUpdates": [],
         "summary": [
-          "按当前生产调用链复核运行时架构文档"
+          "补 v11.2.0 发版底账",
+          "初稿由 `pnpm run release:ledger` 从 `.release/pending-release.json` 渲染（12 个实现 PR：#1158 #1159 #1160 #1164 #1165 #1166 #1167 #1168 #1173 #1175 #1176 #1177）",
+          "删除 auto-generated 标记后人工定稿，改写三节：",
+          "**高风险区域**：#1167 死列 DROP + `agent_invocation` 拆子表、保留策略切换、#1176 守卫新检测信号、#1177 会话列表页大小 200→600、#1165 暂停口径",
+          "**数据库动作**：两条迁移（`20260902073727_retention_schema_audit`、`20260902082559_ops_events_report_date_chat_index`）已推 TEST 并烟测，生产在镜像更新完成后立即 `db:push:prod`",
+          "**部署顺序**：定为「先镜像后迁移」——旧代码仍写 `ai_start_at/ai_end_at`，先推迁移会让旧实例回合流水写入失败；新代码写子表失败已被仓储层断路器兜住"
         ],
         "features": [],
         "fixes": [],
         "optimizations": [],
         "ops": [
-          "按当前生产调用链复核运行时架构文档"
-        ],
-        "config": [],
-        "envFiles": [],
-        "verification": [],
-        "level": "patch"
-      },
-      {
-        "number": "1145",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/1145",
-        "title": "报名/取消完成时态哨兵剔除条件从句，并修好在途工单豁免的判空",
-        "author": "ArielZhu",
-        "mergedAt": "2026-09-02",
-        "businessUpdates": [
-          "报名/取消完成时态哨兵剔除条件从句，并修好在途工单豁免的判空"
-        ],
-        "summary": [
-          "报名/取消完成时态哨兵剔除条件从句，并修好在途工单豁免的判空"
-        ],
-        "features": [],
-        "fixes": [],
-        "optimizations": [],
-        "ops": [
-          "报名/取消完成时态哨兵剔除条件从句，并修好在途工单豁免的判空"
+          "初稿由 `pnpm run release:ledger` 从 `.release/pending-release.json` 渲染（12 个实现 PR：#1158 #1159 #1160 #1164 #1165 #1166 #1167 #1168 #1173 #1175 #1176 #1177）",
+          "删除 auto-generated 标记后人工定稿，改写三节：",
+          "**高风险区域**：#1167 死列 DROP + `agent_invocation` 拆子表、保留策略切换、#1176 守卫新检测信号、#1177 会话列表页大小 200→600、#1165 暂停口径",
+          "**数据库动作**：两条迁移（`20260902073727_retention_schema_audit`、`20260902082559_ops_events_report_date_chat_index`）已推 TEST 并烟测，生产在镜像更新完成后立即 `db:push:prod`",
+          "**部署顺序**：定为「先镜像后迁移」——旧代码仍写 `ai_start_at/ai_end_at`，先推迁移会让旧实例回合流水写入失败；新代码写子表失败已被仓储层断路器兜住",
+          "补 v11.2.0 发版底账"
         ],
         "config": [],
         "envFiles": [],
         "verification": [
-          "新增 `tests/agent/guardrail/output/rules/badcase-0902-regression.spec.ts`，用例全部取生产原文",
-          "`npx jest tests/agent/guardrail --watchman=false` → 25 suites / 489 tests 全绿",
-          "`npx tsc --noEmit` 通过；改动文件 eslint `--max-warnings=0` 通过",
-          "口径变更已登记 `docs/prompt-rule-ledger.md`"
+          "`pnpm run release:ledger:check` ✅（v11.2.0 -> docs/releases/2026/v11.2.0.md）",
+          "纯文档改动，无代码变更"
         ],
-        "level": "patch"
-      },
-      {
-        "number": "1152",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/1152",
-        "title": "sync master into develop before v11.1.4",
-        "author": "huajune",
-        "mergedAt": "2026-09-02",
-        "businessUpdates": [
-          "sync master into develop before v11.1.4"
-        ],
-        "summary": [
-          "sync master into develop before v11.1.4"
-        ],
-        "features": [],
-        "fixes": [],
-        "optimizations": [],
-        "ops": [
-          "sync master into develop before v11.1.4"
-        ],
-        "config": [],
-        "envFiles": [],
-        "verification": [],
-        "level": "patch"
-      },
-      {
-        "number": "1154",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/1154",
-        "title": "补 v11.1.4 发版底账",
-        "author": "huajune",
-        "mergedAt": "2026-09-02",
-        "businessUpdates": [
-          "补 v11.1.4 发版底账"
-        ],
-        "summary": [
-          "补 v11.1.4 发版底账"
-        ],
-        "features": [],
-        "fixes": [],
-        "optimizations": [],
-        "ops": [
-          "补 v11.1.4 发版底账"
-        ],
-        "config": [],
-        "envFiles": [],
-        "verification": [],
         "level": "patch"
       }
     ]
-  },
-  "lastAnalyzedSha": "0035b5392732f0e9917590c4e12c66fd1e08e7b6"
+  }
 }
