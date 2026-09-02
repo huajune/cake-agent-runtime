@@ -93,6 +93,26 @@ export const HEIGHT_FIELD_GENDERED: ContractFieldDef = {
   },
 };
 
+/** 体重(kg)：与身高同形态的分性别值域（生产 labelId=50 标题「体重(kg)」）。 */
+export const WEIGHT_FIELD_GENDERED: ContractFieldDef = {
+  labelId: 50,
+  labelTitle: '体重(kg)',
+  fieldType: 'TEXT',
+  required: true,
+  acceptedOptions: [],
+  rejectedOptions: [],
+  valueSpec: {
+    kind: 'number',
+    min: null,
+    max: null,
+    unit: 'kg',
+    genderRanges: [
+      { gender: 'MALE', min: 50, max: 95 },
+      { gender: 'FEMALE', min: 40, max: 75 },
+    ],
+  },
+};
+
 /**
  * 基线实测社保缴纳情况(12)：5 个系统措辞选项（jobId 528762，2026-08-27 生产实拉）。
  * 选项 >4 → 模板普通档不渲染提示；候选人自然答案（「无」）逐字配不上任何标签——

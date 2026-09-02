@@ -10,6 +10,8 @@ import {
   parseWeight,
 } from '@resolution/candidate';
 import { classifyIdentityAnswerText } from '@resolution/candidate/student-identity';
+import { normalizeGenderValue } from '@resolution/candidate/gender';
+import { normalizeWeightToKg } from '@resolution/candidate/height-weight';
 import { isPlaceholderPhone, isStorableCandidatePhone } from '@resolution/candidate/phone';
 import { isPlausibleAgeValue } from '@resolution/candidate/age';
 import { hasHonorificSuffix, isDigitsOnlyName } from '@resolution/candidate/name';
@@ -165,6 +167,48 @@ export function deriveFieldValueFromQuote(
 }
 
 /**
+ * 数值类字段的落库规范形（封闭形态换算，不含任何"这段话在说什么"的语言判断）：
+ * - age：去"岁/周岁"，必须是 14–70 的整数；"75年""差不多50"这类不是年龄形态 → null；
+ * - height：去 cm/厘米/公分，或"1米75"口语，100–250；
+ * - weight：去 kg/公斤/千克；带"斤"或裸数 ≥100 按斤减半（口径见 normalizeWeightToKg），30–200；
+ * - 其余字段：去首尾空白原样返回；空串 → null。
+ *
+ * 返回 null 表示该值没有合法形态，调用方按"形态非法"处理；表单写槽与长期档案读边界
+ * 共用本函数，保证同一个值在两处落成同一个形。
+ */
+export function canonicalizeCandidateFieldValue(
+  field: CandidateFactField,
+  value: unknown,
+): string | null {
+  if (value === null || value === undefined) return null;
+  const text = String(value).trim();
+  if (!text) return null;
+  const compact = text.replace(/\s+/g, '').toLowerCase();
+  switch (field) {
+    case 'age': {
+      const digits = compact.replace(/周?岁$/u, '');
+      return /^\d{1,2}$/.test(digits) && isPlausibleAgeValue(digits)
+        ? String(Number(digits))
+        : null;
+    }
+    case 'height': {
+      const m = /^(\d{2,3}(?:\.\d+)?)(?:cm|厘米|公分)?$/u.exec(compact);
+      const cm = m ? Math.round(Number(m[1])) : parseSpokenHeightCm(compact);
+      return cm !== null && cm >= 100 && cm <= 250 ? String(cm) : null;
+    }
+    case 'weight': {
+      const m = /^(\d{2,3}(?:\.\d+)?)(kg|公斤|千克|斤)?$/u.exec(compact);
+      const kg = m
+        ? normalizeWeightToKg(Math.round(Number(m[1])), m[2])
+        : parseSpokenWeightKg(compact);
+      return kg !== null && kg >= 30 && kg <= 200 ? String(kg) : null;
+    }
+    default:
+      return text;
+  }
+}
+
+/**
  * 值形状合法性——公证第二问的唯一判据。判的是值本身的形态（可枚举、不随语言分布
  * 漂移），这是解析器转岗后保留下来的合法权力。
  *
@@ -181,15 +225,12 @@ export function isValidCandidateFieldShape(field: CandidateFactField, value: unk
       // 前的最后一道形态检查（gu2kra6p 族）。
       return isStorableCandidatePhone(text) && !isPlaceholderPhone(text);
     case 'age':
-      return isPlausibleAgeValue(text.replace(/岁$/, ''));
-    case 'height': {
-      const height = Number(normalizeCandidateFieldValue(field, value));
-      return Number.isFinite(height) && height >= 100 && height <= 250;
-    }
-    case 'weight': {
-      const weight = Number(normalizeCandidateFieldValue(field, value));
-      return Number.isFinite(weight) && weight >= 30 && weight <= 200;
-    }
+    case 'height':
+    case 'weight':
+      return canonicalizeCandidateFieldValue(field, value) !== null;
+    case 'gender':
+      // 性别只有男/女两个合法形态（含 1/2、male/female、"女生"类写法）；其余一律非法。
+      return normalizeGenderValue(text) !== null;
     case 'name':
       // 纯数字姓名（手机号错填）与称谓后缀都与长度/标点判据同族，统一收在这里。
       return (

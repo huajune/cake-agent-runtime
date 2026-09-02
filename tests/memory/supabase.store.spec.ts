@@ -147,6 +147,58 @@ describe('SupabaseStore', () => {
       expect(mockRedis.setex).toHaveBeenCalled();
     });
 
+    it('读边界规范形：年龄去"周岁"、斤当 kg 的体重减半、归不出形态的脏值丢弃', async () => {
+      mockRedis.get.mockResolvedValue(null);
+      mockMaybeSingle.mockResolvedValue({
+        data: {
+          semantic_profile: {
+            name: profileFact('张三'),
+            phone: null,
+            gender: null,
+            age: profileFact('38周岁'),
+            is_student: null,
+            education: profileFact(''),
+            has_health_certificate: null,
+            height: profileFact('170cm'),
+            weight: profileFact('180'),
+          },
+        },
+        error: null,
+      });
+
+      const result = await store.getProfile('corp1', 'user1', BOT_USER_ID);
+
+      expect(result?.age?.value).toBe('38');
+      expect(result?.height?.value).toBe('170');
+      expect(result?.weight?.value).toBe('90');
+      expect(result?.education).toBeNull();
+      expect(result?.name?.value).toBe('张三');
+    });
+
+    it('读边界：年龄是出生年/昵称串时整条事实丢弃而不是带脏值进 Prompt', async () => {
+      mockRedis.get.mockResolvedValue(null);
+      mockMaybeSingle.mockResolvedValue({
+        data: {
+          semantic_profile: {
+            name: null,
+            phone: null,
+            gender: null,
+            age: profileFact('75年'),
+            is_student: null,
+            education: null,
+            has_health_certificate: null,
+            height: null,
+            weight: null,
+          },
+        },
+        error: null,
+      });
+
+      const result = await store.getProfile('corp1', 'user1', BOT_USER_ID);
+
+      expect(result).toBeNull();
+    });
+
     it('should return null when Supabase unavailable', async () => {
       mockRedis.get.mockResolvedValue(null);
       mockSupabaseService.getSupabaseClient.mockReturnValue(null);
@@ -447,12 +499,8 @@ describe('SupabaseStore', () => {
         p_profile_facts: Record<string, unknown>;
       };
       expect(Object.keys(rpcPayload.p_profile_facts)).toEqual(USER_PROFILE_FIELD_KEYS);
-      expect(rpcPayload.p_profile_facts.height).toEqual(
-        expect.objectContaining({ value: '163' }),
-      );
-      expect(rpcPayload.p_profile_facts.weight).toEqual(
-        expect.objectContaining({ value: '46' }),
-      );
+      expect(rpcPayload.p_profile_facts.height).toEqual(expect.objectContaining({ value: '163' }));
+      expect(rpcPayload.p_profile_facts.weight).toEqual(expect.objectContaining({ value: '46' }));
     });
 
     it('should call RPC with profile facts and message_metadata', async () => {
