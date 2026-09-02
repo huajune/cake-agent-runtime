@@ -18,8 +18,6 @@ export type ConversationSnapshotStatus = 'pending' | 'running' | 'completed' | '
 /**
  * 相似度评级
  */
-export type SimilarityRating = 'excellent' | 'good' | 'fair' | 'poor';
-
 /**
  * 工具调用记录
  * 通用工具调用接口，支持多种命名约定
@@ -90,7 +88,6 @@ export interface ConversationExecutionResult {
   turns: Array<{
     turnNumber: number;
     similarityScore: number | null;
-    rating: SimilarityRating | null;
     executionStatus: string;
   }>;
 }

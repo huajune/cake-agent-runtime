@@ -390,7 +390,6 @@ Agent 产出 TurnOutcome + TurnFinalizer
   → Bull Queue (concurrency=3, attempts=2, timeout=120s)
   → TestExecutionService → AgentRunnerService(callerKind=TEST_SUITE)
   → AiStreamObservabilityService.startTrace() → AiStreamTrace
-  → LlmEvaluationService（仅回归验证打分）
   → TestWriteBackService → 飞书回写
   → CuratedDatasetImportService + LineageSyncService
 ```
@@ -632,7 +631,7 @@ Cron 触发 → GroupTaskScheduler.executeTask()
 | 新增场景             | `SCENARIO_SECTIONS` + `scenarioToolMap` 各加一行                               |
 | 新增渠道             | `src/channels/` 新建适配，构造 `TurnRequest` 调 `AgentRunnerService.runTurn()` |
 | 新增告警渠道         | 扩展 notification 模块，由 `AlertNotifierService` 统一路由                     |
-| 新增评估维度         | `LlmEvaluationService.generateStructured` + 自定义 schema                      |
+| 新增评估维度         | 见 `docs/architecture/agent-quality-evaluation.md`（评审口径与 checkpoint），不再有 LLM 打分器 |
 
 ---
 

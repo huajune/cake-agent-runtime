@@ -1,10 +1,8 @@
-import { z } from 'zod';
-
 /**
  * Evaluation 模块类型定义
  *
- * 所有纯 AI 评估相关的类型，供 evaluation/ 服务内部使用，
- * 以及供 biz/test-suite 通过 @evaluation 别名引用。
+ * 只保留对话解析（ConversationParserService）需要的结构；
+ * LLM 相似度评分器已于 2026-09-02 删除（口径见 docs/architecture/agent-quality-evaluation.md）。
  */
 
 /**
@@ -45,111 +43,4 @@ export interface ConversationParseResult {
   totalTurns: number;
   /** 错误信息（如果失败） */
   error?: string;
-}
-
-/**
- * LLM 评估结果
- */
-export interface EvaluationDimensionResult {
-  /** 维度分数 (0-100) */
-  score: number;
-  /** 维度简评 */
-  reason: string;
-}
-
-export interface EvaluationDimensions {
-  factualAccuracy: EvaluationDimensionResult;
-  responseEfficiency: EvaluationDimensionResult;
-  processCompliance: EvaluationDimensionResult;
-  toneNaturalness: EvaluationDimensionResult;
-}
-
-export interface LlmEvaluationResult {
-  /** 评估分数 (0-100) */
-  score: number;
-  /** 是否通过 (score >= 60) */
-  passed: boolean;
-  /** 评估摘要 */
-  summary: string;
-  /** 评估理由 */
-  reason: string;
-  /** 多维评分明细 */
-  dimensions: EvaluationDimensions;
-  /** 评估 ID（用于追踪） */
-  evaluationId: string;
-  /** Token 消耗 */
-  tokenUsage?: {
-    inputTokens: number;
-    outputTokens: number;
-    totalTokens: number;
-  };
-}
-
-/**
- * LLM 结构化评估输出。
- *
- * 只保留真正需要模型判断的字段：
- * - `summary`
- * - `dimensions`
- *
- * `score` 与 `passed` 由服务端根据维度权重统一推导，避免模型返回自相矛盾的数据。
- *
- * 范围/长度约束不能写进 schema：Anthropic 结构化输出不支持 integer 的
- * minimum/maximum 与字符串长度关键字，带上会被 API 整次拒绝；
- * score 的 0-100 范围由服务端 normalizeDimensions clamp 保证。
- */
-const EvaluationDimensionSchema = z.object({
-  score: z.number().int(),
-  reason: z.string(),
-});
-
-export const EvaluationStructuredOutputSchema = z.object({
-  summary: z.string(),
-  dimensions: z.object({
-    factualAccuracy: EvaluationDimensionSchema,
-    responseEfficiency: EvaluationDimensionSchema,
-    processCompliance: EvaluationDimensionSchema,
-    toneNaturalness: EvaluationDimensionSchema,
-  }),
-});
-
-export type EvaluationStructuredOutput = z.infer<typeof EvaluationStructuredOutputSchema>;
-
-export const DefaultEvaluationDimensions: EvaluationDimensions = {
-  factualAccuracy: { score: 0, reason: '评估失败' },
-  responseEfficiency: { score: 0, reason: '评估失败' },
-  processCompliance: { score: 0, reason: '评估失败' },
-  toneNaturalness: { score: 0, reason: '评估失败' },
-};
-
-/**
- * 评估输入参数
- */
-export interface EvaluationInput {
-  /** 用户消息 */
-  userMessage: string;
-  /** 参考回复；真实对话拆轮时为历史下一条真人回复 */
-  expectedOutput: string;
-  /** 实际回复（Agent 生成） */
-  actualOutput: string;
-  /** 对话历史（可选，提供上下文） */
-  history?: Array<{ role: 'user' | 'assistant'; content: string }>;
-  /** 评估模式：默认按真人参考回复评估；工具动态数据场景按工具结果评估 */
-  evaluationMode?: 'reference_reply' | 'tool_grounded';
-  /** 本轮工具调用；tool_grounded 模式下作为事实锚点 */
-  toolCalls?: unknown[];
-}
-
-/**
- * 相似度评级
- */
-export enum SimilarityRating {
-  /** 优秀 (80-100) */
-  EXCELLENT = 'excellent',
-  /** 良好 (60-79) */
-  GOOD = 'good',
-  /** 及格 (40-59) */
-  FAIR = 'fair',
-  /** 不及格 (0-39) */
-  POOR = 'poor',
 }
