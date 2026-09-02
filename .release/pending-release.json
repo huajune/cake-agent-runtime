@@ -407,6 +407,47 @@
         "TEST 库烟测：4 个新 RPC 均正常；prod 只读核对新趋势 SQL 近 7 天数值合理"
       ],
       "level": "minor"
+    },
+    {
+      "number": "1182",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1182",
+      "title": "补 v11.2.0 发版底账",
+      "author": "huajune",
+      "mergedAt": "2026-09-02",
+      "businessUpdates": [
+        "补 v11.2.0 发版底账",
+        "初稿由 `pnpm run release:ledger` 从 `.release/pending-release.json` 渲染（12 个实现 PR：#1158 #1159 #1160 #1164 #1165 #1166 #1167 #1168 #1173 #1175 #1176 #1177）",
+        "删除 auto-generated 标记后人工定稿，改写三节：",
+        "**高风险区域**：#1167 死列 DROP + `agent_invocation` 拆子表、保留策略切换、#1176 守卫新检测信号、#1177 会话列表页大小 200→600、#1165 暂停口径",
+        "**数据库动作**：两条迁移（`20260902073727_retention_schema_audit`、`20260902082559_ops_events_report_date_chat_index`）已推 TEST 并烟测，生产在镜像更新完成后立即 `db:push:prod`",
+        "**部署顺序**：定为「先镜像后迁移」——旧代码仍写 `ai_start_at/ai_end_at`，先推迁移会让旧实例回合流水写入失败；新代码写子表失败已被仓储层断路器兜住"
+      ],
+      "summary": [
+        "补 v11.2.0 发版底账",
+        "初稿由 `pnpm run release:ledger` 从 `.release/pending-release.json` 渲染（12 个实现 PR：#1158 #1159 #1160 #1164 #1165 #1166 #1167 #1168 #1173 #1175 #1176 #1177）",
+        "删除 auto-generated 标记后人工定稿，改写三节：",
+        "**高风险区域**：#1167 死列 DROP + `agent_invocation` 拆子表、保留策略切换、#1176 守卫新检测信号、#1177 会话列表页大小 200→600、#1165 暂停口径",
+        "**数据库动作**：两条迁移（`20260902073727_retention_schema_audit`、`20260902082559_ops_events_report_date_chat_index`）已推 TEST 并烟测，生产在镜像更新完成后立即 `db:push:prod`",
+        "**部署顺序**：定为「先镜像后迁移」——旧代码仍写 `ai_start_at/ai_end_at`，先推迁移会让旧实例回合流水写入失败；新代码写子表失败已被仓储层断路器兜住"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "初稿由 `pnpm run release:ledger` 从 `.release/pending-release.json` 渲染（12 个实现 PR：#1158 #1159 #1160 #1164 #1165 #1166 #1167 #1168 #1173 #1175 #1176 #1177）",
+        "删除 auto-generated 标记后人工定稿，改写三节：",
+        "**高风险区域**：#1167 死列 DROP + `agent_invocation` 拆子表、保留策略切换、#1176 守卫新检测信号、#1177 会话列表页大小 200→600、#1165 暂停口径",
+        "**数据库动作**：两条迁移（`20260902073727_retention_schema_audit`、`20260902082559_ops_events_report_date_chat_index`）已推 TEST 并烟测，生产在镜像更新完成后立即 `db:push:prod`",
+        "**部署顺序**：定为「先镜像后迁移」——旧代码仍写 `ai_start_at/ai_end_at`，先推迁移会让旧实例回合流水写入失败；新代码写子表失败已被仓储层断路器兜住",
+        "补 v11.2.0 发版底账"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`pnpm run release:ledger:check` ✅（v11.2.0 -> docs/releases/2026/v11.2.0.md）",
+        "纯文档改动，无代码变更"
+      ],
+      "level": "patch"
     }
   ],
   "lastRelease": {
@@ -586,5 +627,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "6b4099c5858108dcf755c37eeb5f0b1e527e4b67"
+  "lastAnalyzedSha": "0035b5392732f0e9917590c4e12c66fd1e08e7b6"
 }
