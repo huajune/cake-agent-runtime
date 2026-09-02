@@ -71,7 +71,7 @@ src/
 │   ├── runner/         #   回合入口 agent-runner + turn-finalizer(统一副作用出口) + reply-rewrite
 │   ├── generator/      #   preparation(召回/上下文准备) + generator(LLM 调用) + context/(Prompt Section 体系)
 │   ├── guardrail/      #   input(注入/风险拦截) / output(hard-rules + llm-reviewer + sanitizer) / tool(catalog)
-│   └── reengagement/   #   二次触发：anchor → follow-up-scheduler → processor → proactive-composer
+│   └── reengagement/   #   二次触发：anchor → follow-up-scheduler → processor → reengagement.agent
 ├── observability/      # AsyncLocalStorage 请求上下文 + AgentTracer → CompositeObserver
 │                       #   → PersistingObserver 落 agent_execution_events（与 message_processing_records 同 traceId 可 join）
 ├── mcp/                # MCP 客户端（动态工具扩展）
@@ -106,7 +106,7 @@ supabase/migrations/    # 120+ 迁移；baseline 是 20260310000000
 
 出站守卫（output guardrail）三档：确定性 hard-rules → LLM 语义审查（shadow/enforce 由 `system_config.agent_reply_config` 控制）→ sanitizer；审查全程档案落 `guardrail_review_records`。
 
-复聊（reengagement）是独立链路：**不复用主 generator**，走 ProactiveComposer（事实齐全场景用确定性模板，话术场景用一次性 completion 调用），全生命周期落 `reengagement_touch_records`。
+复聊（reengagement）是独立链路：**不复用主 generator**，走专用 ReengagementAgent（所有场景一次性结构化 LLM 调用，无工具无多步；blockReason fail-closed + 复读/姓名确定性兜底），全生命周期落 `reengagement_touch_records`。
 
 ## Configuration
 

@@ -74,7 +74,6 @@ const EVENT_LABELS: Record<string, string> = {
   fired_but_disabled: '到点时开关关闭',
   stopped: '到点时停止',
   frequency_blocked: '被频控拦截',
-  rescheduled_out_of_window: '不在可发送时段，已改期',
   shadow_generated: 'Shadow 回合完成（未投递）',
   reserve_duplicate: '撞重跳过',
   reserved: '已占用触达槽',
@@ -193,7 +192,7 @@ function getReadableStatus(record: ReengagementTouchRecord): SummaryInfo {
   const fireAt = formatMaybeTime(record.fire_at);
   const sentAt = formatMaybeTime(record.sent_at);
 
-  if (record.status === 'scheduled' || record.status === 'rescheduled') {
+  if (record.status === 'scheduled') {
     return {
       title: '等待触发',
       description:
@@ -311,7 +310,6 @@ function getEventSummary(event: ReengagementEvent): string {
   const reason = readString(event.detail, 'reason');
   const outcomeKind = readString(event.detail, 'outcomeKind');
   const fireAt = formatMaybeEpoch(readNumber(event.detail, 'fireAt'));
-  const nextFireAt = formatMaybeEpoch(readNumber(event.detail, 'nextFireAt'));
 
   if (event.event === 'scheduled') {
     return fireAt ? `系统创建了一次复聊任务，计划在 ${fireAt} 触发。` : '系统创建了一次复聊任务。';
@@ -319,12 +317,6 @@ function getEventSummary(event: ReengagementEvent): string {
 
   if (event.event === 'schedule_precheck_stopped') {
     return reason ? `创建任务前预检没通过：${formatReason(reason)}。` : '创建任务前预检没通过。';
-  }
-
-  if (event.event === 'rescheduled_out_of_window') {
-    return nextFireAt
-      ? `到点时不在 9:00-21:00 可发送时段，已改到 ${nextFireAt}。`
-      : '到点时不在 9:00-21:00 可发送时段，已改期。';
   }
 
   if (event.event === 'shadow_generated') {

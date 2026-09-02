@@ -17,8 +17,6 @@ export enum ReengagementTouchStatus {
   Stopped = 'stopped',
   /** 频控丢弃（24h 已达上限） */
   FrequencyBlocked = 'frequency_blocked',
-  /** 9-21 窗口外，改期等待新到点 */
-  Rescheduled = 'rescheduled',
   /** 未到点前被同会话更新的复聊任务替代 */
   Superseded = 'superseded',
   /** Redis 触达槽撞重（已发过/在途），跳过 */
@@ -41,7 +39,6 @@ export enum ReengagementTouchEventName {
   FiredButDisabled = 'fired_but_disabled',
   Stopped = 'stopped',
   FrequencyBlocked = 'frequency_blocked',
-  RescheduledOutOfWindow = 'rescheduled_out_of_window',
   Superseded = 'superseded',
   ShadowGenerated = 'shadow_generated',
   ReserveDuplicate = 'reserve_duplicate',
@@ -153,7 +150,7 @@ export interface ReengagementCandidateFilters {
   scenarioCode?: string;
   /** Session ID 或候选人昵称的包含式搜索关键词 */
   keyword?: string;
-  /** 只看有待发任务（scheduled/rescheduled 且 fire_at 未到）的候选人 */
+  /** 只看有待发任务（scheduled 且 fire_at 未到）的候选人 */
   pendingOnly?: boolean;
   limit?: number;
   offset?: number;
@@ -199,7 +196,7 @@ export interface ReengagementCandidateSummary {
   botImId: string | null;
   /** 全场景最新活动时间（ISO） */
   latestAt: string;
-  /** 最近的一个待发任务（scheduled/rescheduled 且 fire_at 未到）；无则 null */
+  /** 最近的一个待发任务（scheduled 且 fire_at 未到）；无则 null */
   nextTouch: { scenarioCode: string; touchKey: string; fireAt: string } | null;
   /** 各场景当前态（每场景最新一次触达），按场景 code 排序 */
   scenarios: Array<{
