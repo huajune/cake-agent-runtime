@@ -431,6 +431,8 @@ FC 编号保留为历史别名：
 
 **装配裁定（2026-08-26）：场景清单以 `final-check` 复合 section 收口。它在 `stage-strategy` 之后固定产出常驻 recitation 自检块；命中本轮规则时，同一 section 再追加 `critical-turn-guard` 动态子块。精简须按 recitation 视角，勿并入稳定前缀。**
 **P3-2 首批执行（2026-08-21，用户裁定跳过生产数据等待）**：✅ FC2 整条删除、FC5 完成时态前半删除——守卫 `booking_promise_without_booking`/`booking_receipt_mismatch`/拉群假宣称确定性拦侧在产 + 手册 F10 教侧仍在，三居所去其一（recitation 复核面）；context.service.spec 断言同步翻转。
+**2026-09-02 块首说明句追加**「自检只在内心完成，自检过程和结论不写进回复」：生产出现模型把逐条自检复盘随正文投递
+（batch …_1788340087325，候选人收到"---/自检说明：/1./2./3./4."六段）。拦侧配对：`internal_output_leak` 自检段形态（第七节）。
 
 ## 四、DB red-lines（strategy_config.red_lines，Dashboard 可改零 review）
 
@@ -508,6 +510,13 @@ JSON 文本时，该工具本轮并未执行，据此宣称的报名/预约/取�
 **判据一处、消费两处**：blob 进候选人可见正文由本规则 BLOCK；blob 只落 reasoning、正文干净时守卫看不到，
 改由 `GeneratorAgent.retryTextualToolCall` 在定稿前带工具重生成一次（前置条件本轮零工具调用 = 无既成副作用）。
 出站守卫治不了后者——入参无 reasoning，且 repair 只能改文本、变不出没发生过的工单。
+
+推理/自检段落泄漏（`internal_output_leak` 扩形态，2026-09-02，batch …_1788340087325 / …_1788316206463）：
+模型把「发送前自检」逐条复盘（`---` + `自检说明：` + 1/2/3/4）追加在正文之后，或以残缺推理标签
+`<antmlinking>` 起头、整段规则推演后才是正文——两例均穿透旧词库整段投递给候选人。词库新增两类信号：
+独占一行的自检/思考标题（封闭词形）与 `antml*` 残缺标签。**只检测不切段**（用户裁定）：命中即 block
+走既有 repair 链路，不为段落形态另写确定性剥离；`---` 在岗位卡之间是合法正文，不算信号。
+教侧配对：final-check 块首说明句（第三节）。
 
 取消/改期链路（2026-08-31 新增，badcase nrz6axmr / 4peya6s9）：
 - `cancel_done_claim_without_submission`（observe 哨兵）——零 cancel/modify 调用却用完成时态

@@ -44,6 +44,11 @@ describe('HardRulesService — 封闭确定性输出规则', () => {
   it.each([
     ['<think>先分析</think>你好', 'invalid_model_output'],
     ['现在调用 duliday_job_list 查一下', 'internal_output_leak'],
+    ['好的，明天见。\n\n---\n\n自检说明：\n1. 先回答了候选人当前问题', 'internal_output_leak'],
+    [
+      '<antmlinking>\n按规则要展示班次\n\n---\n\n三台子附近有一家必胜客在招',
+      'internal_output_leak',
+    ],
     ['（本轮为真人沟通，AI 保持静默，不插入回复）', 'meta_narration_reply'],
     ['名额放心，我已经帮你留好了', 'quota_promise'],
     ['这家不招外地户籍', 'discriminatory_screening_leak'],

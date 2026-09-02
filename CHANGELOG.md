@@ -14,7 +14,7 @@
 **预计版本**: `v11.2.0`
 **最近更新**: `2026-09-02`
 **来源分支**: `develop`
-**累计 PR**: 9
+**累计 PR**: 10
 
 ### 更新摘要
 - PR #1158 健康证收资两处误拒——冲突门剥模板回显、裸短答按绑定语境解、字段简称唯一包含可定位
@@ -50,6 +50,7 @@
 - PR #1177 `src/biz/message/services/chat-session.service.ts` / `repositories/chat-message.repository.ts`：默认页大小 200→600，上限 `MAX_SESSION_PAGE_SIZE` 500→600（注释标明 ≤999 硬边界，因为实际取 limit+1 且 PostgREST max_rows=1000）
 - PR #1177 `SessionList/index.tsx`：头像 `<img>` 加 `loading="lazy"`——列表未虚拟化，600 行头像一次性发请求会排队
 - PR #1177 两个 spec 同步默认值/上限断言
+- PR #1176 出站守卫拦截推理/自检段泄漏
 
 ### 新功能
 - PR #1168 删除 LLM 相似度评分器，新增 Agent 质量评估体系口径页
@@ -86,6 +87,7 @@
 - PR #1164 判官标定首次完成，任务书改为"待用户裁定阈值并注册周任务"
 - PR #1164 评估器已随 #1168 删除，清掉待裁定项
 - PR #1177 会话列表页大小 200→600，头像改懒加载
+- PR #1176 出站守卫拦截推理/自检段泄漏
 
 ### 配置变更
 - 无
@@ -105,6 +107,9 @@
 - PR #1177 `tests/biz/message/repositories/chat-message.repository.spec.ts` + `tests/biz/message/services/chat-session.service.spec.ts`：68/68 通过
 - PR #1177 ESLint / Prettier：`src/` 下两个改动文件通过；两个 spec 文件与两个 web 文件在 develop 上本就不过 prettier（CI 不覆盖 tests/ 与 web/），本 PR 未动格式
 - PR #1177 web：`tsc --noEmit` 与 eslint 通过
+- PR #1176 两例生产原文作为检测回归用例落在 `internal-info-leaks.rule.spec` / `hard-rules.service.spec`；runner spec 断言自检段命中后进一次 repair。
+- PR #1176 `lint:check` / `format:check` / `typecheck` 全绿；guardrail + runner + context 40 套件 686 用例通过。
+- PR #1176 无迁移，无配置变更。
 <!-- release:pending:end -->
 
 ## [11.1.4] - 2026-09-02

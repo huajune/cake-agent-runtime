@@ -255,7 +255,7 @@ const GROUP_ORDER: readonly FinalCheckGroup[] = ['meta', 'promise_tool_consisten
 function renderAlwaysChecklist(): string {
   const parts = [
     '# 发送前自检（全部需通过）',
-    '发出回复前按以下顺序自检；任一项未通过都需先修改再发。',
+    '发出回复前按以下顺序自检；任一项未通过都需先修改再发。自检只在内心完成，自检过程和结论不写进回复。',
   ];
   for (const group of GROUP_ORDER) {
     const bullets = FINAL_CHECK_RULES.filter(

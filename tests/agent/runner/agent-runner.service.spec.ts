@@ -553,6 +553,48 @@ describe('AgentRunnerService.runTurn', () => {
     );
   });
 
+  it('trailing self-check section goes through the existing repair path (batch …_1788340087325)', async () => {
+    generator.invoke.mockResolvedValueOnce(
+      makeResult({
+        text: '餐饮类工作都需要食品健康证，一般自费办理。\n\n你倾向哪家店？\n\n---\n\n自检说明：\n\n1. 先回答候选人当前问题：候选人问健康证怎么办，我如实说明。',
+      }),
+    );
+    replyRepairAgent.repair.mockResolvedValueOnce(
+      '餐饮类工作都需要食品健康证，一般自费办理。\n\n你倾向哪家店？',
+    );
+    outputGuard.check
+      .mockResolvedValueOnce({
+        decision: 'block',
+        riskLevel: 'high',
+        violations: [
+          {
+            type: 'internal_output_leak',
+            evidence: '回复疑似泄漏自检段',
+            suggestion: '删除泄漏内容',
+            recoverability: 'non_recoverable',
+            repairMode: 'rewrite',
+          },
+        ],
+        ruleIds: ['internal_output_leak'],
+        blockedRuleIds: ['internal_output_leak'],
+        repairMode: 'rewrite',
+      })
+      .mockResolvedValueOnce(passDecision);
+
+    const outcome = await service.runTurn({
+      sessionRef,
+      trigger: { kind: 'inbound', userMessage: '还是要我自己去办' },
+      context: { messageId: 'trace-self-check-repair-1' },
+    });
+
+    // 自检段不是单行独白，确定性剥离不适用，须进一次受控 repair。
+    expect(replyRepairAgent.repair).toHaveBeenCalledTimes(1);
+    expect(outcome.kind).toBe('reply');
+    expect(outcome.reply?.text).toBe(
+      '餐饮类工作都需要食品健康证，一般自费办理。\n\n你倾向哪家店？',
+    );
+  });
+
   it('reasoning-only leak converges to logged silence without repair', async () => {
     generator.invoke.mockResolvedValueOnce(makeResult({ text: '</antThinking>' }));
     outputGuard.check.mockResolvedValueOnce({
