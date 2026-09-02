@@ -68,7 +68,6 @@ describe('formatExtractionFactLines', () => {
         source: 'candidate_quote',
         evidence: '性别识别：女',
       }),
-      genderSource: null,
       tag: '（候选人自陈）',
     },
     {
@@ -78,7 +77,6 @@ describe('formatExtractionFactLines', () => {
         source: 'system',
         evidence: '企微客户详情',
       }),
-      genderSource: null,
       tag: '（系统标签，未经候选人自陈，不得用于直接排除候选人）',
     },
     {
@@ -88,24 +86,9 @@ describe('formatExtractionFactLines', () => {
         source: 'system',
         evidence: '收资表单办结：性别',
       }),
-      genderSource: null,
       tag: '（系统记录，报名办结已确认）',
     },
-    {
-      name: 'legacy candidate sibling fallback',
-      gender: sessionFactValue('女', {
-        confidence: 'high',
-        source: 'rule',
-        evidence: '旧规则轨',
-      }),
-      genderSource: sessionFactValue('candidate' as const, {
-        confidence: 'high',
-        source: 'rule',
-        evidence: '旧 gender_source',
-      }),
-      tag: '（候选人自陈）',
-    },
-  ])('renders gender provenance: $name', ({ gender, genderSource, tag }) => {
+  ])('renders gender provenance: $name', ({ gender, tag }) => {
     const base = toSessionFacts(FALLBACK_EXTRACTION, {
       confidence: 'medium',
       source: 'model',
@@ -116,7 +99,6 @@ describe('formatExtractionFactLines', () => {
       interview_info: {
         ...base.interview_info,
         gender,
-        gender_source: genderSource,
       },
     });
 

@@ -116,11 +116,6 @@ export const InterviewInfoSchema = z.object({
   name: z.string().nullable().describe('姓名'),
   phone: z.string().nullable().describe('联系方式'),
   gender: z.string().nullable().describe('性别'),
-  gender_source: z
-    .enum(['candidate', 'system'])
-    .nullable()
-    .optional()
-    .describe('性别来源：candidate=候选人自陈，system=企微系统兜底标签'),
   age: z.string().nullable().describe('年龄'),
   is_student: z.boolean().nullable().describe('是否学生'),
   education: z.string().nullable().describe('学历'),
@@ -443,7 +438,6 @@ export const INTERVIEW_INFO_FIELD_KEYS = [
   'name',
   'phone',
   'gender',
-  'gender_source',
   'age',
   'is_student',
   'education',
@@ -548,7 +542,6 @@ export interface SessionInterviewInfo {
   name: SessionFactMaybeValue<string>;
   phone: SessionFactMaybeValue<string>;
   gender: SessionFactMaybeValue<string>;
-  gender_source: SessionFactMaybeValue<'candidate' | 'system'>;
   age: SessionFactMaybeValue<string>;
   is_student: SessionFactMaybeValue<boolean>;
   education: SessionFactMaybeValue<string>;
@@ -668,7 +661,6 @@ export const SessionInterviewInfoSchema = z.object({
   name: NullableSessionFactSchema(z.string()),
   phone: NullableSessionFactSchema(z.string()),
   gender: NullableSessionFactSchema(z.string()),
-  gender_source: NullableSessionFactSchema(z.enum(['candidate', 'system'])),
   age: NullableSessionFactSchema(z.string()),
   is_student: NullableSessionFactSchema(z.boolean()),
   education: NullableSessionFactSchema(z.string()),

@@ -312,29 +312,16 @@ describe('PreparationService', () => {
     {
       confidence: 'low',
       source: 'system',
-      genderSource: null,
-      reason: 'system_source',
-    },
-    {
-      confidence: 'medium',
-      source: 'rule',
-      genderSource: {
-        value: 'system',
-        confidence: 'low',
-        source: 'system',
-        evidence: '旧 gender_source 系统标签',
-      },
       reason: 'system_source',
     },
     {
       confidence: 'medium',
       source: 'model',
-      genderSource: null,
       reason: 'medium_confidence',
     },
   ] as const)(
     'projects $reason gender into confirmation hints without admitting it to trusted session facts',
-    async ({ confidence, source, genderSource, reason }) => {
+    async ({ confidence, source, reason }) => {
       setRecallOnce({
         shortTerm: { messageWindow: [{ role: 'user', content: '我想报名' }] },
         sessionState: {
@@ -343,7 +330,6 @@ describe('PreparationService', () => {
             interview_info: {
               ...FALLBACK_EXTRACTION.interview_info,
               gender: { value: '男', confidence, source, evidence: '弱来源性别' },
-              gender_source: genderSource,
             },
           },
           lastCandidatePool: null,
@@ -384,24 +370,12 @@ describe('PreparationService', () => {
     {
       name: 'candidate self-report',
       source: 'candidate_quote',
-      genderSource: null,
     },
     {
       name: 'booking-confirmed system value',
       source: 'system',
-      genderSource: null,
     },
-    {
-      name: 'legacy candidate sibling',
-      source: 'rule',
-      genderSource: {
-        value: 'candidate',
-        confidence: 'high',
-        source: 'rule',
-        evidence: '旧 gender_source 候选人自陈',
-      },
-    },
-  ] as const)('admits high-confidence gender from $name', async ({ source, genderSource }) => {
+  ] as const)('admits high-confidence gender from $name', async ({ source }) => {
     setRecallOnce({
       shortTerm: { messageWindow: [{ role: 'user', content: '我想报名' }] },
       sessionState: {
@@ -410,7 +384,6 @@ describe('PreparationService', () => {
           interview_info: {
             ...FALLBACK_EXTRACTION.interview_info,
             gender: { value: '男', confidence: 'high', source, evidence: '可信性别' },
-            gender_source: genderSource,
           },
         },
         lastCandidatePool: null,
