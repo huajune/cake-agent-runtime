@@ -11,7 +11,13 @@
  */
 
 import type { BookingCollectionForm, ContractFieldDef } from '@resolution/collection';
-import { carriesScreening, filledSlotIds, orderForAsking } from '@resolution/collection';
+import {
+  carriesScreening,
+  filledSlotIds,
+  isConditionField,
+  isSensitiveAttribute,
+  orderForAsking,
+} from '@resolution/collection';
 
 const INTRO_LINE = '面试要求：先将以下资料补充下发给我，我来帮你约面试';
 
@@ -71,7 +77,10 @@ export function renderCollectionTemplate(
     requiredFields: ordered.filter((field) => field.required).map((field) => field.labelTitle),
     missingFields,
     knownFieldMap,
-    screeningFields: ordered.filter(carriesScreening).map((field) => field.labelTitle),
+    // 条件型单选项也是硬要求（不接受就别报名）——列进去让模型知道这一栏答不上来时该判合不合适。
+    screeningFields: ordered
+      .filter((field) => carriesScreening(field) || isConditionField(field))
+      .map((field) => field.labelTitle),
     templateText: [INTRO_LINE, ...lines].join('\n'),
   };
 }
@@ -90,6 +99,8 @@ export function renderCollectionTemplate(
  */
 export function optionPlaceholder(field: ContractFieldDef): string {
   if (field.fieldType !== 'SINGLE_OPTION' && field.fieldType !== 'MULTIPLE_OPTION') return '';
+  const condition = conditionPlaceholder(field);
+  if (condition) return condition;
   const options = [...field.acceptedOptions, ...field.rejectedOptions];
 
   // 少于 2 项不是选择题（"（社会人士）"只会让人困惑）。
@@ -110,9 +121,30 @@ export function optionPlaceholder(field: ContractFieldDef): string {
  */
 export function forcedOptionPlaceholder(field: ContractFieldDef): string {
   if (field.fieldType !== 'SINGLE_OPTION' && field.fieldType !== 'MULTIPLE_OPTION') return '';
+  const condition = conditionPlaceholder(field);
+  if (condition) return condition;
   const options = [...field.acceptedOptions, ...field.rejectedOptions];
   if (options.length === 0) return '';
   return `（${options.map((option) => option.optionLabel).join('/')}）`;
+}
+
+/**
+ * 条件型单选项（`isConditionField`）：唯一选项是报名条件不是备选项。以前按"少于 2 项不是
+ * 选择题"留空，候选人不知道唯一合法答案是那串字面，填自己的时段全部撞词表
+ * （0902 实测 741「每天可工作时间段」11 条拒收 + 当日全部熔断）。
+ * 提示让候选人**把条件本身抄回来**——回答自带信息；单独一句"可以"没法知道在确认哪一行。
+ * 首问/重问同一句。敏感属性（红线族）与契约明标 RESTRICTED 的仍留空——条件即筛选条件，
+ * 不能用提示泄露。判据用 isSensitiveAttribute 而非 disclosureLevelOf：后者把"未标记"也算受限，
+ * 排班窗口这类岗位卡上本来就印着的条件会被误遮（与 rejection-renderer 同一取舍）。
+ */
+function conditionPlaceholder(field: ContractFieldDef): string {
+  if (!isConditionField(field)) return '';
+  if (isSensitiveAttribute(field)) return '';
+  const label = field.acceptedOptions[0].optionLabel.trim();
+  const requirement = /^\d{1,2}:\d{2}\s*[-~—～至到]\s*\d{1,2}:\d{2}$/u.test(label)
+    ? `要求 ${label} 内都能排班`
+    : `要求 ${label}`;
+  return `（${requirement}，接受请填 ${label}）`;
 }
 
 /**

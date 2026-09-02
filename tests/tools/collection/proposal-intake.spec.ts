@@ -123,6 +123,34 @@ describe('proposal intake（统一 fieldValueProposals 运输）', () => {
     });
   });
 
+  it('条件型单选项：表单行抄回条件字面或整句肯定 → 选中；原样回显模板提示 → 忽略；子区间 → 无 optionCodes 交词表门', () => {
+    const WORK_WINDOW: ContractFieldDef = {
+      labelId: 741,
+      labelTitle: '每天可工作时间段',
+      fieldType: 'MULTIPLE_OPTION',
+      required: true,
+      acceptedOptions: [{ optionCode: '1', optionLabel: '09:30-22:30' }],
+      rejectedOptions: [],
+    };
+    const contract = [...CONTRACT, WORK_WINDOW];
+    const of = (candidateText: string) =>
+      collectFieldValueProposals(base({ contract, candidateTexts: [candidateText] })).find(
+        (proposal) => proposal.labelId === 741,
+      );
+
+    expect(of('每天可工作时间段：09:30-22:30')?.optionCodes).toEqual(['1']);
+    expect(of('每天可工作时间段：可以')?.optionCodes).toEqual(['1']);
+    expect(of('每天可工作时间段：可以')?.channel).toBe('form_line');
+    // 原样回显我们的提示不算接受（表单行按占位回显跳过；轮末扫描按 hasExactPlaceholderEcho 跳过）
+    expect(
+      of('每天可工作时间段：（要求 09:30-22:30 内都能排班，接受请填 09:30-22:30）'),
+    ).toBeUndefined();
+    // 子区间：提案仍生成（运输层不静默丢），无 optionCodes，由值词表门拒收并落审计
+    const subRange = of('每天可工作时间段：18:00-22:00');
+    expect(subRange?.value).toBe('18:00-22:00');
+    expect(subRange?.optionCodes).toBeUndefined();
+  });
+
   it('简称包含且契约内唯一时放行，撞车弃权，单字不算简称（0902：「健康证」丢 14 条）', () => {
     expect(findFieldByTitle(CONTRACT, '健康证')?.labelId).toBe(13);
     expect(findFieldByTitle(CONTRACT, '健康证（有/无）')?.labelId).toBe(13);

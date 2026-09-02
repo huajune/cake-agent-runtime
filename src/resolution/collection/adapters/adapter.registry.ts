@@ -8,7 +8,9 @@
  *    在标签系统内复发：学生/学信网语义分裂为 12 个 labelId（582/660/728/735/605/609/
  *    565/554/750/671/703/175），多为 TEXT 且标题里携带筛选指令。按 ID 精确表必漏，
  *    按标题语义族才兜得住；
- * 3. **fieldType 通用道** —— 上面都不认的走通用道（选项型走 optionLabel 直配，
+ * 3. **条件型单选项** —— 只有一个可接受项、没有拒绝项的选择题（`isConditionField`），
+ *    唯一选项是报名条件不是备选项，只认"接受"，不记 configDebt；
+ * 4. **fieldType 通用道** —— 上面都不认的走通用道（选项型走 optionLabel 直配，
  *    TEXT 型交模型作证），并记一条 configDebt。
  *
  * ⚠️ **代码里没有一个 labelId 字面量**（D4，0818 用户裁定）。确需 ID 锚点的加速表
@@ -17,7 +19,8 @@
  */
 
 import { matchOptionInText } from '../option-matching';
-import type { ContractFieldDef } from '../form.types';
+import { isConditionField, type ContractFieldDef } from '../form.types';
+import { proposeConditionOption } from './condition-option.adapter';
 import { proposeEducation } from './education.adapter';
 import { proposeHealthCertificate } from './health-certificate.adapter';
 import { proposeIdentityCore } from './identity-core.adapter';
@@ -58,12 +61,13 @@ export const genericAdapter: SlotAdapter = (input: AdapterInput): SlotProposal |
   };
 };
 
-export type AdapterRoute = 'identity_core' | 'title_family' | 'generic';
+export type AdapterRoute = 'identity_core' | 'title_family' | 'condition' | 'generic';
 
 /** 该字段由哪条道承接。通用道意味着"没有专用判据"，调用方据此记 configDebt。 */
 export function routeOf(field: ContractFieldDef): AdapterRoute {
   if (field.systemField) return 'identity_core';
   if (TITLE_FAMILIES.some((family) => family.test.test(field.labelTitle))) return 'title_family';
+  if (isConditionField(field)) return 'condition';
   return 'generic';
 }
 
@@ -71,7 +75,9 @@ export function routeOf(field: ContractFieldDef): AdapterRoute {
 export function adapterFor(field: ContractFieldDef): SlotAdapter {
   if (field.systemField) return proposeIdentityCore;
   const family = TITLE_FAMILIES.find((item) => item.test.test(field.labelTitle));
-  return family ? family.adapter : genericAdapter;
+  if (family) return family.adapter;
+  if (isConditionField(field)) return proposeConditionOption;
+  return genericAdapter;
 }
 
 /** 便捷入口：按契约字段解析本轮候选人原话，产出未公证的值提案。 */
