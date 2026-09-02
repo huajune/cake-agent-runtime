@@ -99,6 +99,34 @@
       "envFiles": [],
       "verification": [],
       "level": "patch"
+    },
+    {
+      "number": "1145",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1145",
+      "title": "报名/取消完成时态哨兵剔除条件从句，并修好在途工单豁免的判空",
+      "author": "ArielZhu",
+      "mergedAt": "2026-09-02",
+      "businessUpdates": [
+        "报名/取消完成时态哨兵剔除条件从句，并修好在途工单豁免的判空"
+      ],
+      "summary": [
+        "报名/取消完成时态哨兵剔除条件从句，并修好在途工单豁免的判空"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "报名/取消完成时态哨兵剔除条件从句，并修好在途工单豁免的判空"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "新增 `tests/agent/guardrail/output/rules/badcase-0902-regression.spec.ts`，用例全部取生产原文",
+        "`npx jest tests/agent/guardrail --watchman=false` → 25 suites / 489 tests 全绿",
+        "`npx tsc --noEmit` 通过；改动文件 eslint `--max-warnings=0` 通过",
+        "口径变更已登记 `docs/prompt-rule-ledger.md`"
+      ],
+      "level": "patch"
     }
   ],
   "lastRelease": {
@@ -160,5 +188,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "75179dd552d7ed326b4ec9e5faa5769035a67dfe"
+  "lastAnalyzedSha": "da0acb3de8b3e32752b211c8c02ca4f9689c37d9"
 }
