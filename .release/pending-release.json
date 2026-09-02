@@ -193,6 +193,35 @@
         "`tsc --noEmit`、eslint（--max-warnings=0）、prettier 通过"
       ],
       "level": "patch"
+    },
+    {
+      "number": "1164",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1164",
+      "title": "判官标定首次完成，状态改为待用户裁定阈值并注册周任务",
+      "author": "huajune",
+      "mergedAt": "2026-09-02",
+      "businessUpdates": [
+        "判官标定补记用户裁定与两个修复 PR"
+      ],
+      "summary": [
+        "判官标定首次完成，任务书改为\"待用户裁定阈值并注册周任务\"",
+        "判官标定补记用户裁定与两个修复 PR",
+        "评估器已随 #1168 删除，清掉待裁定项",
+        "判官标定首次完成，状态改为待用户裁定阈值并注册周任务"
+      ],
+      "features": [],
+      "fixes": [
+        "判官标定补记用户裁定与两个修复 PR"
+      ],
+      "optimizations": [],
+      "ops": [
+        "判官标定首次完成，任务书改为\"待用户裁定阈值并注册周任务\"",
+        "评估器已随 #1168 删除，清掉待裁定项"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [],
+      "level": "patch"
     }
   ],
   "lastRelease": {
@@ -372,5 +401,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "d5ef215407cbe4e80ffff84ff8b233db2c8fe975"
+  "lastAnalyzedSha": "49aedad0c0667c174de2c2549c8c357290cc6ef4"
 }

@@ -14,7 +14,7 @@
 **预计版本**: `v11.2.0`
 **最近更新**: `2026-09-02`
 **来源分支**: `develop`
-**累计 PR**: 6
+**累计 PR**: 7
 
 ### 更新摘要
 - PR #1158 健康证收资两处误拒——冲突门剥模板回显、裸短答按绑定语境解、字段简称唯一包含可定位
@@ -37,6 +37,10 @@
 - PR #1165 `docs/product/ops-data-and-sponge-integration.md` 同步口径。
 - PR #1166 入站风险词表补残障自述漏网句式、剔除亲属词假阳、扫描前剥引用块
 - PR #1166 入站风险词表补残障自述漏网、剔除亲属词假阳、扫描前剥引用块
+- PR #1164 判官标定首次完成，任务书改为"待用户裁定阈值并注册周任务"
+- PR #1164 判官标定补记用户裁定与两个修复 PR
+- PR #1164 评估器已随 #1168 删除，清掉待裁定项
+- PR #1164 判官标定首次完成，状态改为待用户裁定阈值并注册周任务
 
 ### 新功能
 - PR #1168 删除 LLM 相似度评分器，新增 Agent 质量评估体系口径页
@@ -45,6 +49,7 @@
 ### 问题修复
 - PR #1165 `user-hosting.service.ts`：删掉硬编码 `PAUSE_DURATION_MS`，三处（pauseUser / loadPausedUsers 兜底 / 共享缓存快照）统一用 `resolveTemporaryPauseExpiresAt(pausedAt)` = `addLocalDays(getLocalDayStart(pausedAt), 1)`；永久暂停不变。
 - PR #1165 `docs/product/ops-data-and-sponge-integration.md` 同步口径。
+- PR #1164 判官标定补记用户裁定与两个修复 PR
 
 ### 优化调整
 - 无
@@ -62,6 +67,8 @@
 - PR #1160 merge: origin/develop into chore/memory-compat-cleanup（docs/todo 索引取 …
 - PR #1165 临时暂停托管改为次日零点自动恢复（原固定 3 天）
 - PR #1166 入站风险词表补残障自述漏网句式、剔除亲属词假阳、扫描前剥引用块
+- PR #1164 判官标定首次完成，任务书改为"待用户裁定阈值并注册周任务"
+- PR #1164 评估器已随 #1168 删除，清掉待裁定项
 
 ### 配置变更
 - 无
