@@ -321,6 +321,53 @@
         "无迁移，无配置变更。"
       ],
       "level": "patch"
+    },
+    {
+      "number": "1175",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1175",
+      "title": "新增质量指标台账与 CI 校验，定时任务结论统一落账",
+      "author": "huajune",
+      "mergedAt": "2026-09-02",
+      "businessUpdates": [
+        "**新增 `docs/quality-metrics-ledger.md`**：9 列（date / source_task / stage / metric / value / numerator / denominator / note / trace_ref）；阶段名与指标名以口径页 §1 为白名单（五阶段 + 硬错误率 / 转人工精确率 / 稳定率 / 判官精确率）；文首写清列定义、写入纪律、各任务落什么。种子行为 2026-09-02 首次判官标定的四个判官点精确率（J1 30/31、J2 20/28、J4 7/9 与 25/33）。",
+        "**新增 `scripts/quality/` 校验器 + 单测**：表头、白名单、`value = round(n/d, 4)`、分母非 0、note 长度与手机号脱敏、五元组去重；`pnpm run quality-ledger:validate [路径]` 挂进 `ci:check`（可传路径校验独立 worktree 里的副本）。",
+        "**口径页**：横切指标「稳定性」更名「稳定率」并标注无生产者；L2/L3「结论去哪」指向台账；§4 待办 3/4 改为「已裁定」。",
+        "`docs/README.md`、`docs/todo/README.md`、`docs/todo/judge-calibration.md`、`CLAUDE.md` 补台账入口与现状。",
+        "新增质量指标台账与 CI 校验，定时任务结论统一落账",
+        "merge origin/develop into docs/quality-metrics-ledger, resolve…"
+      ],
+      "summary": [
+        "新增质量指标台账与 CI 校验，定时任务结论统一落账",
+        "判官降级阈值定稿进口径页，判官周任务已注册",
+        "merge origin/develop into docs/quality-metrics-ledger, resolve…",
+        "Merge remote-tracking branch 'origin/develop' into HEAD",
+        "**新增 `docs/quality-metrics-ledger.md`**：9 列（date / source_task / stage / metric / value / numerator / denominator / note / trace_ref）；阶段名与指标名以口径页 §1 为白名单（五阶段 + 硬错误率 / 转人工精确率 / 稳定率 / 判官精确率）；文首写清列定义、写入纪律、各任务落什么。种子行为 2026-09-02 首次判官标定的四个判官点精确率（J1 30/31、J2 20/28、J4 7/9 与 25/33）。",
+        "**新增 `scripts/quality/` 校验器 + 单测**：表头、白名单、`value = round(n/d, 4)`、分母非 0、note 长度与手机号脱敏、五元组去重；`pnpm run quality-ledger:validate [路径]` 挂进 `ci:check`（可传路径校验独立 worktree 里的副本）。",
+        "**口径页**：横切指标「稳定性」更名「稳定率」并标注无生产者；L2/L3「结论去哪」指向台账；§4 待办 3/4 改为「已裁定」。",
+        "`docs/README.md`、`docs/todo/README.md`、`docs/todo/judge-calibration.md`、`CLAUDE.md` 补台账入口与现状。"
+      ],
+      "features": [
+        "**新增 `docs/quality-metrics-ledger.md`**：9 列（date / source_task / stage / metric / value / numerator / denominator / note / trace_ref）；阶段名与指标名以口径页 §1 为白名单（五阶段 + 硬错误率 / 转人工精确率 / 稳定率 / 判官精确率）；文首写清列定义、写入纪律、各任务落什么。种子行为 2026-09-02 首次判官标定的四个判官点精确率（J1 30/31、J2 20/28、J4 7/9 与 25/33）。",
+        "**新增 `scripts/quality/` 校验器 + 单测**：表头、白名单、`value = round(n/d, 4)`、分母非 0、note 长度与手机号脱敏、五元组去重；`pnpm run quality-ledger:validate [路径]` 挂进 `ci:check`（可传路径校验独立 worktree 里的副本）。",
+        "**口径页**：横切指标「稳定性」更名「稳定率」并标注无生产者；L2/L3「结论去哪」指向台账；§4 待办 3/4 改为「已裁定」。",
+        "`docs/README.md`、`docs/todo/README.md`、`docs/todo/judge-calibration.md`、`CLAUDE.md` 补台账入口与现状。",
+        "新增质量指标台账与 CI 校验，定时任务结论统一落账"
+      ],
+      "fixes": [
+        "merge origin/develop into docs/quality-metrics-ledger, resolve…"
+      ],
+      "optimizations": [],
+      "ops": [
+        "判官降级阈值定稿进口径页，判官周任务已注册",
+        "Merge remote-tracking branch 'origin/develop' into HEAD"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`pnpm run ci:check` 各段在 worktree 内全部通过（lint / format / typecheck / geo / vocab / quality-ledger / build:ci / test:ci 448 suites）。",
+        "`tests/scripts/quality-metrics-ledger.spec.ts` 9 用例通过，其中一条直接校验仓库内台账文件。"
+      ],
+      "level": "patch"
     }
   ],
   "lastRelease": {
@@ -500,5 +547,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "c1a1850349d29cdfa29a7aff8b00f0b73c0408a1"
+  "lastAnalyzedSha": "2955d090495c43068f3556e2490b597c19ab74b4"
 }
