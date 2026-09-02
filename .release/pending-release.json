@@ -368,6 +368,45 @@
         "`tests/scripts/quality-metrics-ledger.spec.ts` 9 用例通过，其中一条直接校验仓库内台账文件。"
       ],
       "level": "patch"
+    },
+    {
+      "number": "1167",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1167",
+      "title": "业务数据永久/观测 90d 统一 + 全部档 + 表结构审计修复",
+      "author": "huajune",
+      "mergedAt": "2026-09-02",
+      "businessUpdates": [
+        "merge origin/develop into feat/data-retention-and-schema-audit…",
+        "业务数据永久/观测 90d 统一 + 全部档 + 表结构审计修复",
+        "merge origin/develop (post #1175), resolve docs/todo/README.md"
+      ],
+      "summary": [
+        "业务数据永久/观测 90d 统一 + 全部档 + 表结构审计修复",
+        "merge origin/develop into feat/data-retention-and-schema-audit…",
+        "Merge remote-tracking branch 'origin/develop' into HEAD",
+        "merge origin/develop (post #1175), resolve docs/todo/README.md"
+      ],
+      "features": [
+        "merge origin/develop into feat/data-retention-and-schema-audit…"
+      ],
+      "fixes": [
+        "业务数据永久/观测 90d 统一 + 全部档 + 表结构审计修复",
+        "merge origin/develop (post #1175), resolve docs/todo/README.md"
+      ],
+      "optimizations": [],
+      "ops": [
+        "Merge remote-tracking branch 'origin/develop' into HEAD"
+      ],
+      "config": [],
+      "envFiles": [
+        ".env.example"
+      ],
+      "verification": [
+        "`pnpm run ci:check` 全绿（lint / format / typecheck / build / 6540 tests）",
+        "新增单测：子表写读与兜底、统计表/转人工底账清理、`markResolvedByChat` / `sequence_no`、业务趋势 RPC 映射与默认窗口、`all` 档时间窗（dashboard util / conversion）、小组→bot 翻译与并集过滤",
+        "TEST 库烟测：4 个新 RPC 均正常；prod 只读核对新趋势 SQL 近 7 天数值合理"
+      ],
+      "level": "minor"
     }
   ],
   "lastRelease": {
@@ -547,5 +586,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "2955d090495c43068f3556e2490b597c19ab74b4"
+  "lastAnalyzedSha": "6b4099c5858108dcf755c37eeb5f0b1e527e4b67"
 }
