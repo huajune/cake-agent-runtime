@@ -294,6 +294,33 @@
         "web：`tsc --noEmit` 与 eslint 通过"
       ],
       "level": "patch"
+    },
+    {
+      "number": "1176",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1176",
+      "title": "出站守卫拦截推理/自检段泄漏",
+      "author": "huajune",
+      "mergedAt": "2026-09-02",
+      "businessUpdates": [
+        "出站守卫拦截推理/自检段泄漏"
+      ],
+      "summary": [
+        "出站守卫拦截推理/自检段泄漏"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "出站守卫拦截推理/自检段泄漏"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "两例生产原文作为检测回归用例落在 `internal-info-leaks.rule.spec` / `hard-rules.service.spec`；runner spec 断言自检段命中后进一次 repair。",
+        "`lint:check` / `format:check` / `typecheck` 全绿；guardrail + runner + context 40 套件 686 用例通过。",
+        "无迁移，无配置变更。"
+      ],
+      "level": "patch"
     }
   ],
   "lastRelease": {
@@ -473,5 +500,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "b348d63d7824c4b012b41f080ce81e718b58d1c8"
+  "lastAnalyzedSha": "c1a1850349d29cdfa29a7aff8b00f0b73c0408a1"
 }
