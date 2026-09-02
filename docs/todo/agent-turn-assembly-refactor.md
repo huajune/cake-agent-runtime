@@ -262,16 +262,18 @@ src/agent/
 │   └── turn-outcome.ts
 ├── generator/
 │   ├── preparation/
-│   │   ├── preparation.service.ts
-│   │   ├── turn-input-normalizer.ts
-│   │   ├── turn-data-loader.service.ts
-│   │   ├── turn-context-resolver.ts
-│   │   ├── tool-runtime-builder.service.ts
-│   │   └── preparation.types.ts
+│   │   ├── preparation.module.ts         # DI 接缝
+│   │   ├── preparation.service.ts        # 门面 + WorkingMemory
+│   │   ├── conversation-normalizer.ts   # 输入裁剪 + 消息/语料归一化
+│   │   ├── turn-data-loader.service.ts   # 外部源加载 + 源内补料实现
+│   │   ├── turn-context-resolver.ts      # Prompt/Tool/ledger 共享裁决与视图投影
+│   │   ├── prompt-memory-adjudicator.ts  # 记忆冲突裁决
+│   │   ├── tool-context.builder.ts       # 工具视图 + 发牌/计时运行时
+│   │   └── turn-ledger.ts                # 跨 Generator/Guardrail 的单轮账本
 │   └── context/
-│       ├── prompt-composer.service.ts
-│       ├── prompt-model.types.ts
-│       ├── prompt-manifest.ts
+│       ├── context.service.ts           # manifest + compiler + Section 注册/组装
+│       ├── context.types.ts             # PromptModel / PromptSlot / 编译结果契约
+│       ├── final-prompt-example.md      # 贴近实现的对账样例
 │       └── sections/
 ├── guardrail/input/
 │   ├── input-guard.service.ts
@@ -281,6 +283,8 @@ src/agent/
 ```
 
 纯计算优先使用普通函数；只有需要依赖注入的 IO、工具注册表和观测出口使用 Nest Service。
+内部步骤不再机械地“一职责一文件”：只被一个父流程消费的薄函数与类型和父模块共址，避免为了
+查看一次回合而在多个几十行文件间跳转。
 
 ## 6. 实施阶段
 

@@ -1,7 +1,7 @@
 // 知识归类：working —— 本段呈现随当前回合变化的时间上下文。
 import { formatCurrentTime, formatLocalDateWithWeekday } from '@infra/utils/date.util';
-import { buildTextPromptBlock, type PromptSection } from '../section.interface';
-import type { PromptModel } from '../../prompt-model.types';
+import { buildTextPromptBlock, type PromptSection } from '../section';
+import type { PromptModel } from '../../context.types';
 
 /**
  * 时间注入段落

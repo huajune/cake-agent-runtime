@@ -58,8 +58,8 @@ normalizeTurnInput()
 | 关键回合动态末位 |   15 | `critical-turn-guard` | procedural | teaching    | 同一规则表 trigger=turn 规则命中时才渲染 |
 
 这里有三根互不替代的轴：目录表达知识主类型；每个 Section 的 `domain` 表达
-teaching / evidence / tool_result 语料域；`slot` 表达编译位置。`static.section.ts` 和
-`section.interface.ts` 是根目录基础设施，不是知识 section。
+teaching / evidence / tool_result 语料域；`slot` 表达编译位置。`section.ts` 是根目录基础设施，
+不是知识 section。
 
 空 section 不生成 block，因此一个普通私聊示例常见的结构化顺序是：
 

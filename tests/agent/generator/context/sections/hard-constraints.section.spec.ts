@@ -1,5 +1,5 @@
 import { HardConstraintsSection } from '@agent/generator/context/sections/working/hard-constraints.section';
-import { resolveHardConstraintsPromptView } from '@agent/generator/preparation/prompt-view-resolver';
+import { resolveHardConstraintsPromptView } from '@agent/generator/preparation/turn-context-resolver';
 import type { SessionFacts } from '@memory/short-term/short-term.types';
 import type { TurnHints } from '@resolution/turn-hints/turn-hint.types';
 import type { LaborFormIntentDecision } from '@resolution/labor-form';

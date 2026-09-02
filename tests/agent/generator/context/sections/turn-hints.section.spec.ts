@@ -7,7 +7,7 @@ import type { TurnHints } from '@resolution/turn-hints/turn-hint.types';
 import type { SessionFacts } from '@memory/short-term/short-term.types';
 import { testTurnHint, testTurnHints } from '../../../../helpers/turn-hints.fixture';
 import { cityFixture, sessionFactsOf } from '../../../../helpers/session-facts.fixture';
-import { resolveTurnHintsPromptView } from '@agent/generator/preparation/prompt-view-resolver';
+import { resolveTurnHintsPromptView } from '@agent/generator/preparation/turn-context-resolver';
 import { promptModelOf, renderSection } from '../../../../helpers/prompt-model.fixture';
 
 interface TurnHintsInput {

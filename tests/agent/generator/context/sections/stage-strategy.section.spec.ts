@@ -3,7 +3,7 @@ import {
   StageStrategySection,
 } from '@agent/generator/context/sections/procedural/stage-strategy.section';
 import { StageGoalConfig } from '@biz/strategy/types/strategy.types';
-import type { PromptModel } from '@agent/generator/context/prompt-model.types';
+import type { PromptModel } from '@agent/generator/context/context.types';
 import { promptModelOf, renderSection } from '../../../../helpers/prompt-model.fixture';
 
 describe('StageStrategySection', () => {

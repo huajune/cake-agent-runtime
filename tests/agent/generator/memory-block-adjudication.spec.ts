@@ -9,7 +9,7 @@ import {
   type TurnStartMemory,
 } from '@agent/generator/preparation/prompt-memory-adjudicator';
 import { TurnHintsSection } from '@agent/generator/context/sections/working/turn-hints.section';
-import { resolveTurnHintsPromptView } from '@agent/generator/preparation/prompt-view-resolver';
+import { resolveTurnHintsPromptView } from '@agent/generator/preparation/turn-context-resolver';
 import {
   createEmptyUserProfileFacts,
   userProfileFactValue,

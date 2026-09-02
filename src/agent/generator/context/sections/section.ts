@@ -1,7 +1,7 @@
 // 归位依据：section 基础设施契约，不是模型可见 section，不参与知识分类。
 // prompt-rule-ledger: docs/prompt-rule-ledger.md（Prompt section 契约与语料域执法点）
 import type { CorpusDomain, PromptCorpusBlock } from '@shared-types/corpus.types';
-import type { PromptModel, PromptSlot } from '../prompt-model.types';
+import type { PromptModel, PromptSlot } from '../context.types';
 
 /** 同步纯渲染 Section；事实裁决、IO 与 block 排序均不属于这一层。 */
 export interface PromptSection {
@@ -35,4 +35,20 @@ export function renderPromptBlocks(blocks: readonly PromptCorpusBlock[]): string
     .map((block) => block.content.trim())
     .filter(Boolean)
     .join('\n\n');
+}
+
+/** 固定文本资产适配器，例如基础工作手册。 */
+export class StaticSection implements PromptSection {
+  constructor(
+    readonly id: string,
+    private readonly content: string,
+    readonly slot: PromptSlot = 'stable-instructions',
+  ) {}
+
+  readonly domain = 'teaching' as const;
+  readonly dynamic = false;
+
+  build(_model: PromptModel) {
+    return buildTextPromptBlock(this, this.content);
+  }
 }

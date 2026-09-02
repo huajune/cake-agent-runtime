@@ -1,7 +1,7 @@
 // 知识归类：procedural —— Prompt Injection 命中后的条件式模型防护上下文。
 // prompt-rule-ledger: docs/prompt-rule-ledger.md（input-guard 条件式 section）
-import { buildTextPromptBlock, type PromptSection } from '../section.interface';
-import type { PromptModel } from '../../prompt-model.types';
+import { buildTextPromptBlock, type PromptSection } from '../section';
+import type { PromptModel } from '../../context.types';
 
 /** 只渲染上游 Detector 已裁定的安全指令；不检测输入、不发送告警。 */
 export class InputSecuritySection implements PromptSection {

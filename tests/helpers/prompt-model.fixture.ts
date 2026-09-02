@@ -1,6 +1,6 @@
-import type { PromptModel } from '@agent/generator/context/prompt-model.types';
-import type { PromptSection } from '@agent/generator/context/sections/section.interface';
-import { renderPromptSection } from '@agent/generator/context/sections/section.interface';
+import type { PromptModel } from '@agent/generator/context/context.types';
+import type { PromptSection } from '@agent/generator/context/sections/section';
+import { renderPromptSection } from '@agent/generator/context/sections/section';
 
 export function promptModelOf(overrides: Partial<PromptModel> = {}): PromptModel {
   return {

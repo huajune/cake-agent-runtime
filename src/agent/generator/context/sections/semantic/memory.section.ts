@@ -23,8 +23,8 @@ import type {
   PromptMemoryConflict,
 } from '@agent/generator/preparation/prompt-memory-adjudicator';
 import type { PromptCorpusBlock } from '@shared-types/corpus.types';
-import type { PromptModel } from '../../prompt-model.types';
-import type { PromptSection } from '../section.interface';
+import type { PromptModel } from '../../context.types';
+import type { PromptSection } from '../section';
 
 export interface RealtimeGroupStatus {
   groupName: string;

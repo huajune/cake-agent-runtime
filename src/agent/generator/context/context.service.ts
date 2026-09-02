@@ -9,7 +9,8 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { readFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join } from 'path';
-import { type PromptSection } from './sections/section.interface';
+import { createHash } from 'node:crypto';
+import { renderPromptBlocks, type PromptSection } from './sections/section';
 import type { PromptCorpusBlock } from '@shared-types/corpus.types';
 import { IdentitySection } from './sections/procedural/identity.section';
 import { RedLinesSection } from './sections/procedural/red-lines.section';
@@ -24,27 +25,106 @@ import { MemorySection } from './sections/semantic/memory.section';
 import { TurnHintsSection } from './sections/working/turn-hints.section';
 import { HardConstraintsSection } from './sections/working/hard-constraints.section';
 import { GroupInventorySection } from './sections/working/group-inventory.section';
-import { StaticSection } from './sections/static.section';
+import { StaticSection } from './sections/section';
 import {
   CriticalTurnGuardSection,
   FinalCheckSection,
 } from './sections/procedural/final-check.section';
 import { InputSecuritySection } from './sections/procedural/input-security.section';
-import type { PromptModel } from './prompt-model.types';
-import {
-  compilePromptProgram,
-  DEFAULT_SCENARIO,
-  SCENARIO_PROMPT_MANIFEST,
-  type PromptBlockMetric,
-} from './prompt-manifest';
+import type {
+  ComposeResult,
+  PromptBlockMetric,
+  PromptModel,
+  PromptProgram,
+  PromptSlot,
+} from './context.types';
 
-export interface ComposeResult {
-  systemPrompt: string;
-  /** StruQ scaffold：降为 systemPrompt 前仍保留 teaching/evidence/tool_result 标签。 */
-  promptBlocks: PromptCorpusBlock[];
-  orderHash: string;
-  blockMetrics: PromptBlockMetric[];
-  dynamicBlockIds: string[];
+export const PROMPT_SLOT_ORDER: Readonly<Record<PromptSlot, number>> = {
+  'stable-instructions': 10,
+  strategy: 20,
+  evidence: 30,
+  'working-context': 40,
+  'final-recitation': 50,
+  'input-security': 60,
+  'critical-guard': 70,
+};
+
+export const SCENARIO_PROMPT_MANIFEST: Readonly<Record<string, readonly string[]>> = {
+  'candidate-consultation': [
+    'identity',
+    'base-manual',
+    'channel',
+    'stage-overview',
+    'red-lines',
+    'thresholds',
+    'memory',
+    'turn-hints',
+    'hard-constraints',
+    'datetime',
+    'group-inventory',
+    'stage-strategy',
+    'final-check',
+    'input-guard',
+    'critical-turn-guard',
+  ],
+  'group-operations': ['identity', 'datetime', 'channel'],
+  evaluation: ['identity'],
+};
+
+export const DEFAULT_SCENARIO = 'candidate-consultation';
+
+/** 确定性 Prompt 编译器：slot 排序、降维、顺序 hash 与逐块体积统一在这里。 */
+export function compilePromptProgram(input: {
+  model: PromptModel;
+  sections: ReadonlyMap<string, PromptSection>;
+  manifest?: Readonly<Record<string, readonly string[]>>;
+}): PromptProgram {
+  const manifest = input.manifest ?? SCENARIO_PROMPT_MANIFEST;
+  const requested = manifest[input.model.scenario] ?? manifest[DEFAULT_SCENARIO];
+  if (!requested) throw new Error(`Prompt manifest 缺少默认场景: ${DEFAULT_SCENARIO}`);
+
+  const orderedSections = requested
+    .map((id, manifestIndex) => {
+      const section = input.sections.get(id);
+      if (!section) throw new Error(`Prompt manifest 引用了未注册 section: ${id}`);
+      return { section, manifestIndex };
+    })
+    .sort(
+      (left, right) =>
+        PROMPT_SLOT_ORDER[left.section.slot] - PROMPT_SLOT_ORDER[right.section.slot] ||
+        left.manifestIndex - right.manifestIndex,
+    );
+
+  const blockMetrics: PromptBlockMetric[] = [];
+  const blocks: PromptCorpusBlock[] = [];
+  for (const { section } of orderedSections) {
+    for (const block of section.build(input.model)) {
+      const normalized = {
+        ...block,
+        content: block.content.replace(/\{\{CURRENT_TIME\}\}/g, input.model.currentTimeText).trim(),
+      };
+      if (!normalized.content) continue;
+      blocks.push(normalized);
+      blockMetrics.push({
+        id: normalized.id,
+        domain: normalized.domain,
+        slot: section.slot,
+        chars: normalized.content.length,
+        dynamic: section.dynamic,
+      });
+    }
+  }
+
+  const orderSignature = blockMetrics
+    .map((block) => `${block.slot}:${block.id}:${block.domain}`)
+    .join('|');
+  return {
+    blocks,
+    rendered: renderPromptBlocks(blocks),
+    orderHash: createHash('sha256').update(orderSignature).digest('hex'),
+    blockMetrics,
+    dynamicBlockIds: blockMetrics.filter((block) => block.dynamic).map((block) => block.id),
+  };
 }
 
 @Injectable()

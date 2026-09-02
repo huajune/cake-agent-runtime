@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { ContextService } from '@agent/generator/context/context.service';
-import { renderPromptBlocks } from '@agent/generator/context/sections/section.interface';
+import { renderPromptBlocks } from '@agent/generator/context/sections/section';
 import { PromptInjectionDetector } from '@agent/guardrail/input/prompt-injection-detector';
 import { promptModelOf } from '../../helpers/prompt-model.fixture';
 

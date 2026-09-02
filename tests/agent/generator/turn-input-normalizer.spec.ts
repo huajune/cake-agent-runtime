@@ -1,4 +1,4 @@
-import { normalizeTurnInput } from '@agent/generator/preparation/turn-input-normalizer';
+import { normalizeTurnInput } from '@agent/generator/preparation/conversation-normalizer';
 
 describe('normalizeTurnInput', () => {
   it('treats consecutive trailing user messages as one turn', () => {

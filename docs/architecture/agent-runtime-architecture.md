@@ -819,20 +819,19 @@ DuLiDay token；所选 provider 还必须有对应 API key。Supabase、飞书�
 
 ## 相关代码
 
-| 模块              | 入口                                                                                                  |
-| ----------------- | ----------------------------------------------------------------------------------------------------- |
-| Runner            | [`agent-runner.service.ts`](../../src/agent/runner/agent-runner.service.ts)                           |
-| Generator         | [`generator.agent.ts`](../../src/agent/generator/generator.agent.ts)                                  |
-| Preparation       | [`preparation.service.ts`](../../src/agent/generator/preparation/preparation.service.ts)              |
-| Context           | [`context.service.ts`](../../src/agent/generator/context/context.service.ts)                          |
-| Prompt compiler   | [`prompt-manifest.ts`](../../src/agent/generator/context/prompt-manifest.ts)                          |
-| Prompt model      | [`prompt-model.types.ts`](../../src/agent/generator/context/prompt-model.types.ts)                    |
-| LLM               | [`llm-executor.service.ts`](../../src/llm/llm-executor.service.ts)                                    |
-| Providers         | [`router.service.ts`](../../src/providers/router.service.ts)                                          |
-| Memory            | [`memory.service.ts`](../../src/memory/memory.service.ts)                                             |
-| Tools             | [`tool-registry.service.ts`](../../src/tools/tool-registry.service.ts)                                |
-| WeCom reply       | [`reply-workflow.service.ts`](../../src/channels/wecom/message/application/reply-workflow.service.ts) |
-| Reengagement flow | [`follow-up.processor.ts`](../../src/agent/reengagement/follow-up.processor.ts)                       |
-| Reengagement LLM  | [`reengagement.agent.ts`](../../src/agent/reengagement/reengagement.agent.ts)                         |
-| Evaluation        | [`llm-evaluation.service.ts`](../../src/evaluation/llm-evaluation.service.ts)                         |
-| Test Suite        | [`test-execution.service.ts`](../../src/biz/test-suite/services/test-execution.service.ts)            |
+| 模块              | 入口                                                                                                                   |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Runner            | [`agent-runner.service.ts`](../../src/agent/runner/agent-runner.service.ts)                                            |
+| Generator         | [`generator.agent.ts`](../../src/agent/generator/generator.agent.ts)                                                   |
+| Preparation       | [`preparation.service.ts`](../../src/agent/generator/preparation/preparation.service.ts)                               |
+| Prompt 上下文     | [`context.service.ts`](../../src/agent/generator/context/context.service.ts)（manifest、compiler 与 Section 组装入口） |
+| Context 类型      | [`context.types.ts`](../../src/agent/generator/context/context.types.ts)（PromptModel、PromptSlot 与编译结果契约）     |
+| LLM               | [`llm-executor.service.ts`](../../src/llm/llm-executor.service.ts)                                                     |
+| Providers         | [`router.service.ts`](../../src/providers/router.service.ts)                                                           |
+| Memory            | [`memory.service.ts`](../../src/memory/memory.service.ts)                                                              |
+| Tools             | [`tool-registry.service.ts`](../../src/tools/tool-registry.service.ts)                                                 |
+| WeCom reply       | [`reply-workflow.service.ts`](../../src/channels/wecom/message/application/reply-workflow.service.ts)                  |
+| Reengagement flow | [`follow-up.processor.ts`](../../src/agent/reengagement/follow-up.processor.ts)                                        |
+| Reengagement LLM  | [`reengagement.agent.ts`](../../src/agent/reengagement/reengagement.agent.ts)                                          |
+| Evaluation        | [`llm-evaluation.service.ts`](../../src/evaluation/llm-evaluation.service.ts)                                          |
+| Test Suite        | [`test-execution.service.ts`](../../src/biz/test-suite/services/test-execution.service.ts)                             |

@@ -1,8 +1,8 @@
 // 知识归类：working —— 本段呈现从候选人当前消息提取的临时线索。
 import { formatTurnHintLines } from '@memory/fact-lines.formatter';
 import type { TurnHints } from '@resolution/turn-hints/turn-hint.types';
-import { buildTextPromptBlock, type PromptSection } from '../section.interface';
-import type { PromptModel } from '../../prompt-model.types';
+import { buildTextPromptBlock, type PromptSection } from '../section';
+import type { PromptModel } from '../../context.types';
 
 /**
  * 本轮规则 claim 先由统一字段策略裁决，再按是否与会话记忆冲突拆成普通/待确认视图。

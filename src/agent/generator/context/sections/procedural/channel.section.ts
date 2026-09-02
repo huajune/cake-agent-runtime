@@ -1,7 +1,7 @@
 // 知识归类：procedural —— 本段定义不同消息通道下的行为规范。
 // prompt-rule-ledger: docs/prompt-rule-ledger.md（程序性通道规则总账）
-import { buildTextPromptBlock, type PromptSection } from '../section.interface';
-import type { PromptModel } from '../../prompt-model.types';
+import { buildTextPromptBlock, type PromptSection } from '../section';
+import type { PromptModel } from '../../context.types';
 
 /**
  * 通道行为段落 — 企微私聊 vs 群聊的差异行为规范

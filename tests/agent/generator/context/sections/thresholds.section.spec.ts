@@ -1,6 +1,6 @@
 import { ThresholdsSection } from '@agent/generator/context/sections/procedural/thresholds.section';
 import { StrategyConfigRecord } from '@biz/strategy/entities/strategy-config.entity';
-import type { PromptModel } from '@agent/generator/context/prompt-model.types';
+import type { PromptModel } from '@agent/generator/context/context.types';
 import { promptModelOf, renderSection } from '../../../../helpers/prompt-model.fixture';
 
 describe('ThresholdsSection', () => {

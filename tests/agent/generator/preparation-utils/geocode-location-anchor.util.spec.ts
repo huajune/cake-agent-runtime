@@ -1,4 +1,4 @@
-import { resolveGeocodeLocationAnchor } from '@agent/generator/preparation/geocode-location-anchor.util';
+import { resolveGeocodeLocationAnchor } from '@agent/generator/preparation/tool-context.builder';
 import { produceTurnHints } from '@resolution/turn-hints/producers/rule-track';
 import { StorageMessageSource, StorageMessageType } from '@enums/storage-message.enum';
 

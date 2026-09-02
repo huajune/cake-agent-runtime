@@ -1,6 +1,6 @@
 // 知识归类：working —— 平台资源数据非候选人事实，按本轮城市选取，属于轮作用域工作台资源。
-import { buildTextPromptBlock, type PromptSection } from '../section.interface';
-import type { PromptModel } from '../../prompt-model.types';
+import { buildTextPromptBlock, type PromptSection } from '../section';
+import type { PromptModel } from '../../context.types';
 
 export interface GroupInventoryPromptView {
   city: string;

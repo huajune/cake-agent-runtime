@@ -1,4 +1,4 @@
-import { BookingContextLoaderService } from '@agent/generator/preparation/booking-context-loader.service';
+import { BookingContextLoaderService } from '@agent/generator/preparation/turn-data-loader.service';
 import { renderBookingPrompt } from '@agent/generator/context/sections/semantic/memory.section';
 
 describe('BookingContextLoaderService', () => {

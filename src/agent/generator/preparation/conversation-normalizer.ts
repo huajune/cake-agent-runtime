@@ -8,6 +8,8 @@ import { formatImageCountPlaceholder } from '@resolution/signal/markers';
 import { buildConversationCorpus } from '@resolution/signal/corpus';
 import type { CorpusBlock } from '@shared-types/corpus.types';
 import { StorageMessageType } from '@enums/storage-message.enum';
+import { decideLaborFormIntent, type LaborFormIntentDecision } from '@resolution/labor-form';
+import type { GeneratorInvokeParams } from '../generator.types';
 
 /**
  * 对话消息归一化（PreparationService 的纯函数辅助层）：
@@ -15,6 +17,34 @@ import { StorageMessageType } from '@enums/storage-message.enum';
  * 多模态图片/表情注入。无 IO、无状态。
  */
 const logger = new Logger('ConversationNormalizer');
+
+/** 无 IO 的本轮输入视图；Loader、Resolver 与工具运行时共享同一份结果。 */
+export interface NormalizedTurnInput {
+  truncatedMessages: GeneratorInputMessage[];
+  currentUserMessage: string | undefined;
+  currentTurnTexts: string[];
+  laborFormIntent: LaborFormIntentDecision;
+}
+
+/**
+ * 统一完成字符预算和“当前轮”识别。
+ *
+ * 当前轮不是最后一条消息，而是上一条 assistant 之后连续出现的全部 user 消息；企微
+ * debounce/replay 与测试套件多条连发都依赖这个定义。
+ */
+export function normalizeTurnInput(
+  params: Pick<GeneratorInvokeParams, 'messages'>,
+  sessionWindowMaxChars: number,
+): NormalizedTurnInput {
+  const truncatedMessages = truncateToCharBudget(params.messages, sessionWindowMaxChars);
+  const currentUserMessage = trailingUserContent(truncatedMessages);
+  return {
+    truncatedMessages,
+    currentUserMessage,
+    currentTurnTexts: trailingUserMessages(truncatedMessages),
+    laborFormIntent: decideLaborFormIntent(currentUserMessage),
+  };
+}
 
 /**
  * 取本轮用户输入的**逐条**文本：末尾连续的 user 块（到上一条 assistant 为止）。

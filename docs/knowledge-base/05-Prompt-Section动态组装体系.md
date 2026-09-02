@@ -40,12 +40,10 @@ normalizeTurnInput()
 ```text
 src/agent/generator/context/
 ├── context.service.ts
-├── prompt-model.types.ts
-├── prompt-manifest.ts
+├── context.types.ts
 ├── final-prompt-example.md
 └── sections/
-    ├── section.interface.ts
-    ├── static.section.ts
+    ├── section.ts
     ├── procedural/
     ├── semantic/
     └── working/

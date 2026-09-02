@@ -1,4 +1,4 @@
-import { StaticSection } from '@agent/generator/context/sections/static.section';
+import { StaticSection } from '@agent/generator/context/sections/section';
 import { promptModelOf, renderSection } from '../../../../helpers/prompt-model.fixture';
 
 describe('StaticSection', () => {

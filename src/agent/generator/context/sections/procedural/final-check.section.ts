@@ -20,8 +20,8 @@
  */
 import { LOCATION_SHARE_MARKER_RE } from '@resolution/signal/markers';
 import { CANDIDATE_PHONE_RE } from '@resolution/candidate/phone';
-import { buildTextPromptBlock, type PromptSection } from '../section.interface';
-import type { PromptModel } from '../../prompt-model.types';
+import { buildTextPromptBlock, type PromptSection } from '../section';
+import type { PromptModel } from '../../context.types';
 
 const LOCATION_CONTEXT_PATTERN = new RegExp(
   `${LOCATION_SHARE_MARKER_RE.source}|这是我住的地方|住处|地址|附近`,

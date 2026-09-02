@@ -2,7 +2,7 @@ import { PreparationService } from '@agent/generator/preparation/preparation.ser
 import { PromptInjectionDetector } from '@agent/guardrail/input/prompt-injection-detector';
 import { CallerKind } from '@enums/agent.enum';
 import { createTurnLedger } from '@agent/generator/preparation/turn-ledger';
-import type { PromptModel } from '@agent/generator/context/prompt-model.types';
+import type { PromptModel } from '@agent/generator/context/context.types';
 import type { GeneratorInvokeParams } from '@agent/generator/generator.types';
 
 describe('PreparationService orchestration', () => {

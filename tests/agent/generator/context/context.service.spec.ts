@@ -1,10 +1,10 @@
 import { ContextService } from '@agent/generator/context/context.service';
 import { StrategyConfigRecord } from '@biz/strategy/entities/strategy-config.entity';
 import { CORPUS_DOMAINS } from '@shared-types/corpus.types';
-import type { PromptSection } from '@agent/generator/context/sections/section.interface';
-import { SCENARIO_PROMPT_MANIFEST } from '@agent/generator/context/prompt-manifest';
+import type { PromptSection } from '@agent/generator/context/sections/section';
+import { SCENARIO_PROMPT_MANIFEST } from '@agent/generator/context/context.service';
 import type { MemoryPromptView } from '@agent/generator/context/sections/semantic/memory.section';
-import type { PromptModel } from '@agent/generator/context/prompt-model.types';
+import type { PromptModel } from '@agent/generator/context/context.types';
 import type { GroupInventoryPromptView } from '@agent/generator/context/sections/working/group-inventory.section';
 import { resolveCriticalTurnInstructions } from '@agent/generator/preparation/turn-context-resolver';
 import { promptModelOf } from '../../../helpers/prompt-model.fixture';

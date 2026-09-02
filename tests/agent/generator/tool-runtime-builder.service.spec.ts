@@ -1,4 +1,4 @@
-import { ToolRuntimeBuilderService } from '@agent/generator/preparation/tool-runtime-builder.service';
+import { ToolRuntimeBuilderService } from '@agent/generator/preparation/tool-context.builder';
 
 describe('ToolRuntimeBuilderService', () => {
   it('records a preloaded location-share anchor before exposing tools', () => {

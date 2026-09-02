@@ -6,16 +6,39 @@ import { AlertNotifierService } from '@notification/services/alert-notifier.serv
 import { PromptInjectionDetector } from '../../guardrail/input/prompt-injection-detector';
 import { PromptSecurityObserverService } from '../../guardrail/input/prompt-security-observer.service';
 import { ContextService } from '../context/context.service';
-import { type GeneratorInvokeParams } from '../generator.types';
-import { normalizeConversationWithCorpus } from './conversation-normalizer';
-import { normalizeTurnInput } from './turn-input-normalizer';
+import type { ModelMessage, ToolSet } from 'ai';
+import type { TurnLedger } from '@shared-types/turn.types';
+import type { CorpusBlock, PromptCorpusBlock } from '@shared-types/corpus.types';
+import { type AgentMemorySnapshot, type GeneratorInvokeParams } from '../generator.types';
+import { normalizeConversationWithCorpus, normalizeTurnInput } from './conversation-normalizer';
 import { TurnDataLoaderService } from './turn-data-loader.service';
 import { resolveTurnContext } from './turn-context-resolver';
-import { ToolRuntimeBuilderService } from './tool-runtime-builder.service';
-import type { WorkingMemory } from './preparation.types';
+import { ToolRuntimeBuilderService } from './tool-context.builder';
 import { AgentTracerService } from '@observability/agent-tracer.service';
 
-export type { WorkingMemory } from './preparation.types';
+/**
+ * Working Memory（CoALA 语义）：prepare() 返回的单轮工作台，不是持久化记忆层。
+ */
+export interface WorkingMemory {
+  finalPrompt: string;
+  promptBlocks: PromptCorpusBlock[];
+  normalizedMessages: ModelMessage[];
+  conversationCorpusBlocks: CorpusBlock[];
+  memoryLoadWarning?: string;
+  tools: ToolSet;
+  corpId: string;
+  userId: string;
+  sessionId: string;
+  botUserId?: string;
+  botImId?: string;
+  maxSteps: number;
+  entryStage: string | null;
+  ledger: TurnLedger;
+  contactName?: string;
+  memorySnapshot?: AgentMemorySnapshot;
+  /** toolCallId → 工具 execute 的真实执行耗时（毫秒）。 */
+  toolExecutionTimings: Map<string, number>;
+}
 
 /**
  * 回合准备门面：输入归一化 → 外部源快照 → 对话归一化 → 事实裁决 → Prompt 编译 → 工具运行时。

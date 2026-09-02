@@ -1,4 +1,4 @@
-import { SnapshotEnrichmentService } from '@agent/generator/preparation/snapshot-enrichment.service';
+import { SnapshotEnrichmentService } from '@agent/generator/preparation/turn-data-loader.service';
 import { FALLBACK_EXTRACTION } from '@memory/short-term/short-term.types';
 import type { AgentMemoryContext } from '@memory/recall.types';
 import { getTurnHint } from '@resolution/turn-hints/reducer';

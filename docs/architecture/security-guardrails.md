@@ -86,7 +86,7 @@ TurnOutcome.guardrail.phase = inbound
 
 ## 4. Prompt 生成防线
 
-Prompt 由 `PreparationService` 编排、`context/sections/` 渲染并由 `prompt-manifest.ts` 编译；所有动态
+Prompt 由 `PreparationService` 编排、`context/sections/` 渲染并由 `ContextService` 编译；所有动态
 内容保持 system 语义，不进入 messages。`candidate-consultation` 的 manifest 声明 Section 集合，
 `PromptSlot` 固定跨类别顺序，末部自然形成
 `final-check → input-guard → critical-turn-guard`，后两者按条件省略。

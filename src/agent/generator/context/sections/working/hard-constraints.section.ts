@@ -1,8 +1,8 @@
 // 知识归类：working —— 本段呈现候选人本轮硬约束线索，属于 evidence 数据。
 // prompt-rule-ledger: docs/prompt-rule-ledger.md（本轮查询约束总账）
 import { isHardFilteredLaborForm, isValidLaborForm } from '@resolution/labor-form';
-import { buildTextPromptBlock, type PromptSection } from '../section.interface';
-import type { HardConstraintsPromptView, PromptModel } from '../../prompt-model.types';
+import { buildTextPromptBlock, type PromptSection } from '../section';
+import type { HardConstraintsPromptView, PromptModel } from '../../context.types';
 
 /**
  * 本轮查询约束段落（硬约束 + 软提示）

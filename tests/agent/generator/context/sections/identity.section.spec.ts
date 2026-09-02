@@ -1,5 +1,5 @@
 import { IdentitySection } from '@agent/generator/context/sections/procedural/identity.section';
-import type { PromptModel } from '@agent/generator/context/prompt-model.types';
+import type { PromptModel } from '@agent/generator/context/context.types';
 import { promptModelOf, renderSection } from '../../../../helpers/prompt-model.fixture';
 
 describe('IdentitySection', () => {

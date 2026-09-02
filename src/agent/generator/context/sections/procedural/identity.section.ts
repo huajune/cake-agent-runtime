@@ -1,7 +1,7 @@
 // 知识归类：procedural —— agent 人设与账号身份用于约束模型行为，不是候选人事实。
 // prompt-rule-ledger: docs/prompt-rule-ledger.md（身份与人格行为指令总账）
-import { buildTextPromptBlock, type PromptSection } from '../section.interface';
-import type { AccountIdentityPromptView, PromptModel } from '../../prompt-model.types';
+import { buildTextPromptBlock, type PromptSection } from '../section';
+import type { AccountIdentityPromptView, PromptModel } from '../../context.types';
 import { StrategyPersona, StrategyRoleSetting } from '@biz/strategy/types/strategy.types';
 
 /**
