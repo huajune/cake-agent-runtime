@@ -147,7 +147,7 @@ export interface RiskInterceptInput {
  * 确定性拦截。命中时产出 conversation_risk side-effect intent，由被采纳的 outcome
  * 统一出口执行。
  *
- * 本服务自身做 detect→decide；**是否短路** Agent 由 AgentRunner.runTurn 按 `hit`
+ * 本服务自身做 detect→decide；**是否短路** Agent 由 AgentRunner.runInboundTurn 按 `hit`
  * 统一收口成 guardrail_blocked/inbound outcome。当前 WeCom 入站命中即
  * 「确定性静默 + 转人工」，本轮不再跑 Agent 也不发安抚回复（旧版「不短路、仍发安抚话术」的
  * 设计会与投递前 isAnyPaused 检查竞态、回复大概率被丢弃，行为不确定，已废弃）。

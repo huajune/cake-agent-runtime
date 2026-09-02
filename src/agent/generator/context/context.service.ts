@@ -6,15 +6,10 @@
  */
 
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { readFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join } from 'path';
-import { StrategyConfigService as BizStrategyConfigService } from '@biz/strategy/services/strategy-config.service';
-import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
-import { GroupContext } from '@biz/group-task/group-task.types';
-import { normalizeCityName as normalizeCity } from '@resolution/geo';
-import { unwrapSessionFacts, type SessionFacts } from '@memory/short-term/short-term.types';
+import { type SessionFacts } from '@memory/short-term/short-term.types';
 import type { TurnHintFieldPath, TurnHints } from '@resolution/turn-hints/turn-hint.types';
 import type { LaborFormIntentDecision } from '@resolution/labor-form';
 import type { SessionBrandState } from '@resolution/brand/brand-resolution.types';
@@ -42,16 +37,25 @@ import { MemorySection } from './sections/semantic/memory.section';
 import { TurnHintsSection } from './sections/working/turn-hints.section';
 import { HardConstraintsSection } from './sections/working/hard-constraints.section';
 import { GroupInventorySection } from './sections/working/group-inventory.section';
+import type { GroupInventoryPromptView } from './sections/working/group-inventory.section';
 import { SCENARIO_SECTIONS, DEFAULT_SCENARIO } from './scenarios/scenario.registry';
 import { StaticSection } from './sections/static.section';
-import { FinalCheckSection } from './sections/procedural/final-check.section';
+import {
+  CriticalTurnGuardSection,
+  FinalCheckSection,
+} from './sections/procedural/final-check.section';
+import { InputSecuritySection } from './sections/procedural/input-security.section';
 import type { ModelMessage } from 'ai';
+import type { MemoryPromptView } from './sections/semantic/memory.section';
 
 export interface ComposeParams {
+  /** Loader 在每轮开始时读取的策略快照；Composer 本身不做外部 IO。 */
+  strategyConfig: StrategyConfigRecord;
   scenario?: string;
   channelType?: 'private' | 'group';
   currentStage?: string;
-  memoryBlock?: string;
+  memory?: MemoryPromptView;
+  groupInventory?: GroupInventoryPromptView;
   /** 会话记忆中的已确认提取结果（带信封的存储态）；供 TurnHintsSection 做冲突比对。 */
   sessionFacts?: SessionFacts | null;
   /** 本轮前置识别得到的高置信结果；由 TurnHintsSection 拆分/渲染。 */
@@ -66,14 +70,14 @@ export interface ComposeParams {
   currentUserMessage?: string;
   /** 含短期近邻窗口的归一化消息；critical-turn-guard combined 规则输入。 */
   normalizedMessages?: readonly ModelMessage[];
+  /** Prompt Injection 命中时的模型安全指令；由显式 input-guard section 渲染。 */
+  inputSecurityInstruction?: string;
   /** 当前消息对用工形式的确定性 set/clear/ignore 决策。 */
   currentLaborFormIntent?: LaborFormIntentDecision;
   /** 本轮生效的会话品牌状态；turn-hints / hard-constraints 的品牌口径数据源。 */
   sessionBrandState?: SessionBrandState | null;
   /** 托管账号身份（昵称/性别/内部标识）；IdentitySection 账号身份锚定用。 */
   accountIdentity?: AccountIdentity;
-  /** 策略来源：wecom 读 released，test 读 testing，默认 released */
-  strategySource?: 'released' | 'testing';
 }
 
 export interface ComposeResult {
@@ -90,20 +94,11 @@ export class ContextService implements OnModuleInit {
   private readonly sections = new Map<string, PromptSection>();
   private readonly promptAssets = new Map<string, string>();
   private readonly promptsBasePath: string;
-  private readonly groupMemberLimit: number;
 
-  constructor(
-    private readonly strategyConfigService: BizStrategyConfigService,
-    private readonly groupResolver: GroupResolverService,
-    private readonly configService: ConfigService,
-  ) {
+  constructor() {
     const devPath = join(__dirname, 'sections', 'procedural');
     const prodPath = join(__dirname, '..', '..', 'agent', 'context', 'sections', 'procedural');
     this.promptsBasePath = existsSync(devPath) ? devPath : prodPath;
-    this.groupMemberLimit = parseInt(
-      this.configService.get<string>('GROUP_MEMBER_LIMIT', '200'),
-      10,
-    );
   }
 
   async onModuleInit() {
@@ -117,12 +112,14 @@ export class ContextService implements OnModuleInit {
   /**
    * 组装系统提示词 + stageGoals
    */
-  async compose(params: ComposeParams = {}): Promise<ComposeResult> {
+  compose(params: ComposeParams): ComposeResult {
     const {
+      strategyConfig: config,
       scenario = DEFAULT_SCENARIO,
       channelType = 'private',
       currentStage,
-      memoryBlock,
+      memory,
+      groupInventory,
       sessionFacts,
       turnHints,
       displayTurnHints,
@@ -130,24 +127,20 @@ export class ContextService implements OnModuleInit {
       currentTurnTexts,
       currentUserMessage,
       normalizedMessages,
+      inputSecurityInstruction,
       currentLaborFormIntent,
       sessionBrandState,
       accountIdentity,
-      strategySource = 'released',
     } = params;
 
-    const config = await this.strategyConfigService.getActiveConfig(strategySource);
-
     const now = formatCurrentTime();
-
-    const groupInventoryBlock = await this.renderGroupInventoryBlock(sessionFacts);
 
     const ctx: PromptContext = {
       scenario,
       channelType,
       strategyConfig: config,
       currentStage,
-      memoryBlock,
+      memory,
       sessionFacts,
       turnHints,
       displayTurnHints,
@@ -155,11 +148,12 @@ export class ContextService implements OnModuleInit {
       currentTurnTexts,
       currentUserMessage,
       normalizedMessages,
+      inputSecurityInstruction,
       currentLaborFormIntent,
       sessionBrandState,
       accountIdentity,
       currentTimeText: now,
-      groupInventoryBlock,
+      groupInventory,
     };
 
     const sectionNames = SCENARIO_SECTIONS[scenario];
@@ -172,7 +166,7 @@ export class ContextService implements OnModuleInit {
     for (const name of sectionNames) {
       const section = this.sections.get(name);
       if (!section) continue;
-      rawBlocks.push(...(await buildPromptSectionBlocks(section, ctx)));
+      rawBlocks.push(...buildPromptSectionBlocks(section, ctx));
     }
 
     const promptBlocks = rawBlocks.map((block) => ({
@@ -204,6 +198,8 @@ export class ContextService implements OnModuleInit {
     this.sections.set('identity', new IdentitySection());
     this.sections.set('base-manual', new StaticSection('base-manual', baseManual));
     this.sections.set('final-check', new FinalCheckSection());
+    this.sections.set('input-guard', new InputSecuritySection());
+    this.sections.set('critical-turn-guard', new CriticalTurnGuardSection());
     this.sections.set('red-lines', new RedLinesSection());
     this.sections.set('thresholds', new ThresholdsSection());
     this.sections.set('stage-overview', new StageOverviewSection());
@@ -214,62 +210,6 @@ export class ContextService implements OnModuleInit {
     this.sections.set('datetime', new DateTimeSection());
     this.sections.set('channel', new ChannelSection());
     this.sections.set('group-inventory', new GroupInventorySection());
-  }
-
-  /**
-   * 根据 sessionFacts 中候选人意向城市，预渲染该城市兼职群资源概览。
-   *
-   * - 只渲染该城市群库数据；操作约束由 invite_to_group description 承载
-   * - 行为：无城市/无群数据/查询失败时返回空串，不影响 prompt 组装
-   *
-   * 城市取值必须与硬约束段同门（minConfidence='high'）：本块不只是“参考信息”，
-   * 群库数据会影响工具调用决策，城市取错两个方向都会错。
-   * 此前直读 `.value` 绕过置信度门——Redis 旧档归一化出的 confidence='unknown' 城市
-   * 会让 prompt 里出现「兼职群资源（南京）」而硬约束段根本没有该城市。
-   * 放宽的风险由 invite_to_group 自己的 invite-city-gate 兜底。
-   */
-  private async renderGroupInventoryBlock(sessionFacts?: SessionFacts | null): Promise<string> {
-    const city = unwrapSessionFacts(sessionFacts, {
-      minConfidence: 'high',
-    })?.preferences.city?.value?.trim();
-    if (!city) return '';
-
-    let cityGroups: GroupContext[];
-    try {
-      const allGroups = await this.groupResolver.resolveGroups('兼职群');
-      const normalizedTargetCity = normalizeCity(city);
-      cityGroups = allGroups.filter((group) => normalizeCity(group.city) === normalizedTargetCity);
-    } catch (error) {
-      this.logger.warn(`预渲染兼职群资源失败 (city=${city}): ${(error as Error).message}`);
-      return '';
-    }
-
-    if (cityGroups.length === 0) {
-      return [`## 兼职群资源（${city}）`, '- 该城市暂无可用兼职群'].join('\n');
-    }
-
-    const byIndustry = new Map<string, { groupCount: number; availableCount: number }>();
-    for (const group of cityGroups) {
-      const industry = group.industry ?? '未分类';
-      const entry = byIndustry.get(industry) ?? { groupCount: 0, availableCount: 0 };
-      entry.groupCount += 1;
-      const hasCapacity =
-        group.memberCount === undefined || group.memberCount < this.groupMemberLimit;
-      if (hasCapacity) entry.availableCount += 1;
-      byIndustry.set(industry, entry);
-    }
-
-    const lines = Array.from(byIndustry.entries())
-      .sort((left, right) => right[1].groupCount - left[1].groupCount)
-      .map(([industry, stats]) => {
-        const capacity =
-          stats.availableCount === stats.groupCount
-            ? '均有空位'
-            : `可用 ${stats.availableCount}/${stats.groupCount}`;
-        return `- ${industry}：${stats.groupCount} 个群（${capacity}）`;
-      });
-
-    return [`## 兼职群资源（${city}）`, ...lines].join('\n');
   }
 
   private async loadPromptAssets(): Promise<void> {

@@ -9,7 +9,7 @@ import type { OutputGuardDecision } from '../guardrail/output/output-guardrail.s
 import { OutboundReplySanitizer } from '../guardrail/output/outbound-reply-sanitizer';
 import { STALE_INPUT_REASON_CODE } from '@tools/shared/tool-error-types';
 import { buildHandoffIdempotencyKey } from './handoff-idempotency';
-import type { SessionRef, TurnOutcome, TurnTrigger } from './agent-runner.types';
+import type { SessionRef, TurnOutcome } from './agent-runner.types';
 import type {
   GeneralHandoffSideEffectIntent,
   TurnSideEffectIntent,
@@ -100,8 +100,7 @@ export function isCommittedRequestHandoffCall(call: AgentToolCall): boolean {
 /**
  * 把一次「已审生成」分类成渠道无关的 {@link TurnOutcome}（§7）。
  *
- * 纯函数、无副作用：runner 的 `runTurn`（主动复聊）与 WeCom 被动入站链路共享同一处分类逻辑，
- * 保证「同样的生成结果 → 同样的终态判定」，让 runner 的 outcome 测试同时守护真实入站路径。
+ * 纯函数、无副作用：把主 Runner 的被动入站生成结果收敛为统一终态。
  *
  * 优先级：出站 block → 转人工（committed request_handoff / booking 溯源 gate /
  * modify 工单归属 gate hard-reject）→
@@ -109,12 +108,10 @@ export function isCommittedRequestHandoffCall(call: AgentToolCall): boolean {
  */
 export function classifyReviewedOutcome(
   result: ReviewedResultLike,
-  trigger: TurnTrigger,
   sessionRef: SessionRef,
   messageId?: string,
 ): TurnOutcome {
   const toolCalls = result.toolCalls ?? [];
-  const scenarioCode = trigger.kind === 'proactive' ? trigger.scenarioCode : undefined;
   const text = OutboundReplySanitizer.sanitize(result.text ?? '').trim();
   const runTurnEnd = result.runTurnEnd;
   const toolSideEffects = collectToolSideEffectIntents(toolCalls);
@@ -142,7 +139,7 @@ export function classifyReviewedOutcome(
     const ruleIds = ruleBlocked
       ? result.outputDecision.blockedRuleIds
       : [result.outputDecision.reasonCode ?? 'output_blocked'];
-    const turnId = messageId ?? scenarioCode ?? sessionRef.sessionId;
+    const turnId = messageId ?? sessionRef.sessionId;
     // 元叙述旁白收敛（meta_narration_silenced）：模型本意就是本轮沉默，语义上等效
     // skip_reply，不派 general_handoff——该副作用会暂停托管 + 飞书告警，而此场景
     // 多为真人经理已在沟通（用户裁定：真人插话不自动暂停托管），且候选人下一轮
@@ -151,7 +148,6 @@ export function classifyReviewedOutcome(
     return {
       kind: 'guardrail_blocked',
       toolCalls,
-      scenarioCode,
       runTurnEnd,
       ...metadata,
       disposition: 'side_effects',
@@ -205,7 +201,7 @@ export function classifyReviewedOutcome(
       (typeof args?.reasonCode === 'string' && args.reasonCode) ||
       (typeof callResult?.reasonCode === 'string' && callResult.reasonCode) ||
       'other';
-    const turnId = messageId ?? scenarioCode ?? sessionRef.sessionId;
+    const turnId = messageId ?? sessionRef.sessionId;
     const alreadyDispatched = handoffCall.toolName === 'request_handoff' && !handoffToolSideEffect;
     const idempotencyKey = buildHandoffIdempotencyKey({
       chatId: sessionRef.sessionId,
@@ -252,7 +248,6 @@ export function classifyReviewedOutcome(
     return {
       kind: 'handoff',
       toolCalls,
-      scenarioCode,
       runTurnEnd,
       ...metadata,
       sideEffects: [
@@ -276,7 +271,6 @@ export function classifyReviewedOutcome(
     return {
       kind: 'skipped',
       toolCalls,
-      scenarioCode,
       runTurnEnd,
       ...metadata,
       sideEffects: toolSideEffects,
@@ -289,7 +283,7 @@ export function classifyReviewedOutcome(
   const promiseReconciliation = hasUnreconciledHandoffPromise(text, toolCalls)
     ? buildPromiseReconciliationSideEffect({
         sessionRef,
-        turnId: messageId ?? scenarioCode ?? sessionRef.sessionId,
+        turnId: messageId ?? sessionRef.sessionId,
       })
     : undefined;
 
@@ -297,7 +291,6 @@ export function classifyReviewedOutcome(
     kind: 'reply',
     reply: { text },
     toolCalls,
-    scenarioCode,
     runTurnEnd,
     ...metadata,
     sideEffects: promiseReconciliation

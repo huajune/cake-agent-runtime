@@ -6,7 +6,7 @@
 
 | 场景           | 入口                                              | callerKind   | 主要执行路径                                                  |
 | -------------- | ------------------------------------------------- | ------------ | ------------------------------------------------------------- |
-| 企微生产       | WeCom callback                                    | `WECOM`      | `ReplyWorkflowService → AgentRunner.runTurn()`                |
+| 企微生产       | WeCom callback                                    | `WECOM`      | `ReplyWorkflowService → AgentRunner.runInboundTurn()`         |
 | Agent 调试接口 | `POST /agent/debug-chat`                          | `DEBUG`      | `AgentRunner.invokeReviewed()`                                |
 | 单条测试       | `POST /test-suite/chat`                           | `TEST_SUITE` | `TestExecutionService.executeTest() → invokeReviewed()`       |
 | 流式测试       | `POST /test-suite/chat/stream` / `chat/ai-stream` | `TEST_SUITE` | `TestExecutionService.executeTestStreamWithMeta() → stream()` |
@@ -32,7 +32,7 @@ AgentRunner.invokeReviewed（非流式审查链）
   → 最多一次 ReplyRepairAgent
 ```
 
-Prompt section 终序、复合 `final-check` 和工具注册规则在所有场景中共用；`callerKind` 只决定历史来源、策略源、图片/外部补料等场景差异。
+Prompt section 终序、`FINAL_CHECK_RULES` 和工具注册规则在所有场景中共用；`callerKind` 只决定历史来源、策略源、图片/外部补料等场景差异。
 
 ## 3. 关键差异
 
@@ -41,7 +41,7 @@ Prompt section 终序、复合 `final-check` 和工具注册规则在所有场�
 | 历史来源      | `MessageWindowService`：7 天、最多 120 条、24,000 字符 | 请求 history + 可选 memory fixture       | 请求 messages，由前端会话维护                           | 数据集逐轮累积的 history     |
 | 策略源        | released                                               | 默认 testing，可显式选择                 | testing                                                 | testing                      |
 | 模型 fallback | 按生产角色路由                                         | `disableFallbacks: true`，让失败可见     | `disableFallbacks: true`                                | `disableFallbacks: true`     |
-| Output Guard  | `runTurn()` 内完整执行                                 | `invokeReviewed()` 完整执行              | stream 只走生成流；适合交互调试，不作为出站守卫验收替代 | 当前 `invoke()` 完整执行审查 |
+| Output Guard  | `runInboundTurn()` 内完整执行                          | `invokeReviewed()` 完整执行              | stream 只走生成流；适合交互调试，不作为出站守卫验收替代 | 当前 `invoke()` 完整执行审查 |
 | Replay        | 有，最多 3 次                                          | 无                                       | 无                                                      | 无                           |
 | 投递          | 企微分段与拟人延迟                                     | 返回 JSON / 写测试记录                   | SSE / AI SDK UI stream                                  | 写执行记录并评分             |
 | turn-end      | `TurnFinalizer` 按真实投递结局结算                     | 测试服务显式执行并读取 post-turn fixture | stream 完成时由 generator 自触发                        | 每轮显式执行                 |

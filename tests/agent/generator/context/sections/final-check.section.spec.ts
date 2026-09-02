@@ -1,8 +1,10 @@
 import { createHash } from 'node:crypto';
 import {
+  CriticalTurnGuardSection,
   FINAL_CHECK_RULES,
   FinalCheckSection,
 } from '@agent/generator/context/sections/procedural/final-check.section';
+import { buildPromptSectionBlocks } from '@agent/generator/context/sections/section.interface';
 
 /** 锁定 turn 规则的匹配语义：patterns 全部命中 target 文本。 */
 const matches = (ruleId: string, text: string): boolean => {
@@ -13,7 +15,7 @@ const matches = (ruleId: string, text: string): boolean => {
 
 describe('FinalCheckSection', () => {
   it('renders the always checklist as the first block with adjudicated group order', () => {
-    const blocks = new FinalCheckSection().buildBlocks({} as never);
+    const blocks = buildPromptSectionBlocks(new FinalCheckSection(), {} as never);
 
     expect(blocks).toHaveLength(1);
     expect(blocks[0]).toEqual(
@@ -38,28 +40,28 @@ describe('FinalCheckSection', () => {
 
   it('keeps the legacy injected bytes unchanged for a matched current-turn rule', () => {
     const rule = FINAL_CHECK_RULES.find((item) => item.id === 'interview_date_precheck_first');
-    const blocks = new FinalCheckSection().buildBlocks({
+    const blocks = buildPromptSectionBlocks(new CriticalTurnGuardSection(), {
       currentUserMessage: '我5月1号回来面试可以吗',
       normalizedMessages: [{ role: 'user', content: '我5月1号回来面试可以吗' }],
     } as never);
 
-    expect(blocks).toHaveLength(2);
-    expect(blocks[1]).toEqual(
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]).toEqual(
       expect.objectContaining({ id: 'critical-turn-guard', domain: 'teaching', role: 'system' }),
     );
-    expect(blocks[1].content).toBe(`# 本轮动态硬禁令\n- ${rule?.text}`);
-    expect(createHash('sha256').update(blocks[1].content).digest('hex')).toBe(
+    expect(blocks[0].content).toBe(`# 本轮动态硬禁令\n- ${rule?.text}`);
+    expect(createHash('sha256').update(blocks[0].content).digest('hex')).toBe(
       'bd598c8e0d9b387a08e87c5674a8830cba616e189dc3ec9a756c4594abfcf5e6',
     );
   });
 
   it('emits no critical-turn-guard block when nothing matches', () => {
-    const blocks = new FinalCheckSection().buildBlocks({
+    const blocks = buildPromptSectionBlocks(new CriticalTurnGuardSection(), {
       currentUserMessage: '你好',
       normalizedMessages: [{ role: 'user', content: '你好' }],
     } as never);
 
-    expect(blocks.map((block) => block.id)).toEqual(['final-check']);
+    expect(blocks).toEqual([]);
   });
 
   describe('interview_time_only_precheck_first（CUTOFF 缺口：裸钟点动身不重新 precheck）', () => {

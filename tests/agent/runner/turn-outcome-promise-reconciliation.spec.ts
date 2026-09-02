@@ -1,5 +1,5 @@
 import { classifyReviewedOutcome } from '@agent/runner/turn-outcome';
-import type { SessionRef, TurnTrigger } from '@agent/runner/agent-runner.types';
+import type { SessionRef } from '@agent/runner/agent-runner.types';
 import type { OutputGuardDecision } from '@agent/guardrail/output/output-guardrail.service';
 
 /**
@@ -9,7 +9,6 @@ import type { OutputGuardDecision } from '@agent/guardrail/output/output-guardra
  */
 describe('classifyReviewedOutcome — handoff 承诺补动作（议题 7-1）', () => {
   const sessionRef: SessionRef = { corpId: 'corp-1', userId: 'user-1', sessionId: 'chat-1' };
-  const trigger: TurnTrigger = { kind: 'inbound', userMessage: '这个薪资怎么算的' };
   const reply = '我让同事帮你确认下具体算法，稍后联系你哈';
 
   const decision = (ruleIds: string[]): OutputGuardDecision =>
@@ -32,7 +31,6 @@ describe('classifyReviewedOutcome — handoff 承诺补动作（议题 7-1）', 
         outputDecision: decision([]),
         revised: false,
       } as unknown as Parameters<typeof classifyReviewedOutcome>[0],
-      trigger,
       sessionRef,
       'msg-1',
     );

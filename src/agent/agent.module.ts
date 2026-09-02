@@ -20,6 +20,9 @@ import { ReplyRepairAgent } from './reply-repair/reply-repair.agent';
 import { ReplyRepairContextProvider } from './reply-repair/reply-repair-context.provider';
 import { TurnOutcomeInterventionService } from './runner/turn-outcome-intervention.service';
 import { PreparationService } from './generator/preparation/preparation.service';
+import { BookingContextLoaderService } from './generator/preparation/booking-context-loader.service';
+import { TurnDataLoaderService } from './generator/preparation/turn-data-loader.service';
+import { ToolRuntimeBuilderService } from './generator/preparation/tool-runtime-builder.service';
 import { PreparationModule } from './generator/preparation/preparation.module';
 import { ContextService } from './generator/context/context.service';
 import { AgentController } from './agent.controller';
@@ -68,6 +71,9 @@ import {
   controllers: [AgentController],
   providers: [
     ContextService,
+    BookingContextLoaderService,
+    TurnDataLoaderService,
+    ToolRuntimeBuilderService,
     PreparationService,
     GeneratorAgent,
     ReplyRepairAgent,

@@ -7,7 +7,8 @@ import { BizMessageModule } from '@biz/message/message.module';
 import { MemoryModule } from '@memory/memory.module';
 import { NotificationModule } from '@notification/notification.module';
 import { InputGuardrailService } from './input/input-guard.service';
-import { PromptInjectionService } from './input/prompt-injection.service';
+import { PromptInjectionDetector } from './input/prompt-injection-detector';
+import { PromptSecurityObserverService } from './input/prompt-security-observer.service';
 import { RiskInterceptService } from './input/risk-intercept.service';
 import { OutputGuardrailService } from './output/output-guardrail.service';
 import { HardRulesService } from './output/hard-rules.service';
@@ -25,7 +26,8 @@ import { GuardrailReviewPacketBuilder } from './output/llm/review-packet.builder
   ],
   providers: [
     InputGuardrailService,
-    PromptInjectionService,
+    PromptInjectionDetector,
+    PromptSecurityObserverService,
     RiskInterceptService,
     HardRulesService,
     GuardrailReviewPacketBuilder,
@@ -33,7 +35,8 @@ import { GuardrailReviewPacketBuilder } from './output/llm/review-packet.builder
   ],
   exports: [
     InputGuardrailService,
-    PromptInjectionService,
+    PromptInjectionDetector,
+    PromptSecurityObserverService,
     RiskInterceptService,
     HardRulesService,
     GuardrailReviewPacketBuilder,

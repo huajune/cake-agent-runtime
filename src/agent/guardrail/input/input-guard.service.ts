@@ -11,7 +11,7 @@ import type { InputGuardrailDecision, InputGuardrailRequest } from './types';
  * Input guardrail 编排入口。
  *
  * 这里不放具体检测规则；高置信业务风险由 RiskInterceptService 负责，
- * prompt injection 由 PromptInjectionService 在 preparation 阶段处理。
+ * prompt injection 由 PromptInjectionDetector + PromptSecurityObserverService 在 preparation 阶段处理。
  */
 @Injectable()
 export class InputGuardrailService {

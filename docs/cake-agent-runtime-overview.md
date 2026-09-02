@@ -66,8 +66,9 @@
                            ▼
 ┌─────────────────────────────────────────────────────────────────────┐
 │  Agent 编排层  AgentRunnerService                                   │
-│   ├─ PreparationService       prepare（拉记忆 / 装 prompt / 建工具） │
-│   ├─ ContextService           Section 化 Prompt 组装                │
+│   ├─ PreparationService       六阶段回合装配门面                 │
+│   ├─ TurnDataLoader/Resolver  外部快照 + 共享裁决                 │
+│   ├─ Context/ToolRuntime      typed sections + 工具运行时          │
 │   └─ LlmExecutorService       共享 LLM 入口                          │
 └─────────┬───────────┬───────────┬────────────┬───────────────────────┘
           ▼           ▼           ▼            ▼
@@ -109,13 +110,15 @@
 渠道：Replay → 副作用提交或回复投递 → TurnFinalizer → onTurnEnd ─┘
 ```
 
-| 职责        | 服务/对象              | 说明                                                                        |
-| ----------- | ---------------------- | --------------------------------------------------------------------------- |
-| 回合裁决    | `AgentRunnerService`   | Input/Output guard、生成/repair 编排与 `TurnOutcome` 分类；不负责渠道投递   |
-| 准备        | `PreparationService`   | 入参归一化、记忆备料、共享裁决视图、Context 组装、工具构建与记忆快照        |
-| Prompt 组装 | `ContextService`       | 按 `SCENARIO_SECTIONS` 顺序构建 system blocks（见 §4）                      |
-| LLM 执行    | `LlmExecutorService`   | 唯一调用 Vercel AI SDK 的入口                                               |
-| 采纳与收尾  | 渠道 + `TurnFinalizer` | 最多三次 Replay；按投递结局只触发一次 `onTurnEnd`，丢弃版本不写助手轮次记忆 |
+| 职责        | 服务/对象               | 说明                                                                        |
+| ----------- | ----------------------- | --------------------------------------------------------------------------- |
+| 回合裁决    | `AgentRunnerService`    | Input/Output guard、生成/repair 编排与 `TurnOutcome` 分类；不负责渠道投递   |
+| 准备        | `PreparationService`    | 串联归一化、Loader、Resolver、Context 与 ToolRuntime，不承载各域实现        |
+| 外部备料    | `TurnDataLoaderService` | 集中读取每轮外部源并记录 fail-open warning                                  |
+| 共享裁决    | `resolveTurnContext`    | 无 IO 产出 Prompt / Tool 共享的 typed 视图、entryStage、ledger seed 和快照  |
+| Prompt 组装 | `ContextService`        | 按 `SCENARIO_SECTIONS` 同步渲染 typed system blocks，每轮零 IO（见 §4）     |
+| LLM 执行    | `LlmExecutorService`    | 唯一调用 Vercel AI SDK 的入口                                               |
+| 采纳与收尾  | 渠道 + `TurnFinalizer`  | 最多三次 Replay；按投递结局只触发一次 `onTurnEnd`，丢弃版本不写助手轮次记忆 |
 
 ### 3.1 三种调用身份（callerKind）
 
@@ -150,11 +153,12 @@
 ```text
 identity → base-manual → channel → stage-overview → red-lines → thresholds
 → memory → turn-hints → hard-constraints → datetime → group-inventory
-→ stage-strategy → final-check
+→ stage-strategy → final-check → input-guard（按需）
+→ critical-turn-guard（按需）
 ```
 
-`final-check` 是复合 section：每轮固定产出同名的发送前自检块；本轮命中规则时，
-再在其后追加 block id 为 `critical-turn-guard` 的动态硬禁令。两者不是两个注册 section。
+`final-check` 与 `critical-turn-guard` 是两个显式注册的渲染落点，但共用唯一
+`FINAL_CHECK_RULES`；`input-guard` 也是场景 manifest 中的条件 section。
 
 **关键决策**：
 
@@ -622,15 +626,15 @@ Cron 触发 → GroupTaskScheduler.executeTask()
 
 ## 16. 可扩展点
 
-| 想做的事             | 入口                                                                           |
-| -------------------- | ------------------------------------------------------------------------------ |
-| 新增 Provider        | `RegistryService.onModuleInit()` 自动检测 / OAI-compatible 表                  |
-| 新增工具             | `src/tools/my-tool.ts` + `ToolRegistryService` 注册 + `scenarioToolMap`        |
-| 新增 Replay 阻断工具 | 同上，并仅在确有不可丢弃外部副作用时加入 `REPLAY_BLOCKING_TOOLS`               |
-| 新增 Prompt Section  | 实现 `PromptSection`，在 `ContextService` 注册，并加入目标 `SCENARIO_SECTIONS` |
-| 新增场景             | `SCENARIO_SECTIONS` + `scenarioToolMap` 各加一行                               |
-| 新增渠道             | `src/channels/` 新建适配，构造 `TurnRequest` 调 `AgentRunnerService.runTurn()` |
-| 新增告警渠道         | 扩展 notification 模块，由 `AlertNotifierService` 统一路由                     |
+| 想做的事             | 入口                                                                                           |
+| -------------------- | ---------------------------------------------------------------------------------------------- |
+| 新增 Provider        | `RegistryService.onModuleInit()` 自动检测 / OAI-compatible 表                                  |
+| 新增工具             | `src/tools/my-tool.ts` + `ToolRegistryService` 注册 + `scenarioToolMap`                        |
+| 新增 Replay 阻断工具 | 同上，并仅在确有不可丢弃外部副作用时加入 `REPLAY_BLOCKING_TOOLS`                               |
+| 新增 Prompt Section  | 实现 `PromptSection`，在 `ContextService` 注册，并加入目标 `SCENARIO_SECTIONS`                 |
+| 新增场景             | `SCENARIO_SECTIONS` + `scenarioToolMap` 各加一行                                               |
+| 新增渠道             | `src/channels/` 新建适配，构造 `InboundTurnRequest` 调 `AgentRunnerService.runInboundTurn()`   |
+| 新增告警渠道         | 扩展 notification 模块，由 `AlertNotifierService` 统一路由                                     |
 | 新增评估维度         | 见 `docs/architecture/agent-quality-evaluation.md`（评审口径与 checkpoint），不再有 LLM 打分器 |
 
 ---

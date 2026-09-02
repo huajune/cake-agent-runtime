@@ -1,0 +1,244 @@
+import { CallerKind } from '@enums/agent.enum';
+import {
+  buildGroupInventoryView,
+  TurnDataLoaderService,
+} from '@agent/generator/preparation/turn-data-loader.service';
+import { GroupInventorySection } from '@agent/generator/context/sections/working/group-inventory.section';
+import { sessionFactsOf } from '../../helpers/session-facts.fixture';
+
+describe('TurnDataLoaderService', () => {
+  it('builds a typed, high-confidence city inventory view for the rendering section', () => {
+    const memory = {
+      shortTerm: {
+        sessionState: {
+          facts: sessionFactsOf({
+            preferences: {
+              city: { value: '上海', confidence: 'high', evidence: 'explicit_city' },
+            },
+          }),
+        },
+      },
+    } as never;
+    const view = buildGroupInventoryView(
+      memory,
+      [
+        {
+          imRoomId: 'r1',
+          groupName: '上海餐饮群',
+          city: '上海市',
+          industry: '餐饮',
+          memberCount: 100,
+        },
+        {
+          imRoomId: 'r2',
+          groupName: '上海餐饮群2',
+          city: '上海',
+          industry: '餐饮',
+          memberCount: 250,
+        },
+      ] as never,
+      200,
+    );
+
+    expect(view).toEqual({
+      city: '上海',
+      industries: [{ industry: '餐饮', groupCount: 2, availableCount: 1 }],
+    });
+    expect(new GroupInventorySection().build({ groupInventory: view } as never)).toContain(
+      '可用 1/2',
+    );
+  });
+
+  it('does not turn a failed group source into a false empty-inventory claim', () => {
+    const memory = {
+      shortTerm: {
+        sessionState: {
+          facts: sessionFactsOf({
+            preferences: {
+              city: { value: '上海', confidence: 'high', evidence: 'explicit_city' },
+            },
+          }),
+        },
+      },
+    } as never;
+    expect(buildGroupInventoryView(memory, undefined, 200)).toBeUndefined();
+  });
+
+  it('loads one shared source snapshot and derives its dependent views from it', async () => {
+    const memory = buildMemory();
+    const groups = [
+      {
+        imRoomId: 'room-1',
+        groupName: '上海餐饮群',
+        city: '上海',
+        industry: '餐饮',
+        memberCount: 100,
+      },
+    ];
+    const booking = {
+      loadPointer: jest.fn().mockResolvedValue({ state: 'none' }),
+      enrichOutOfBand: jest.fn().mockResolvedValue({ state: 'none' }),
+    };
+    const memoryService = { onTurnStart: jest.fn().mockResolvedValue(memory) };
+    const sponge = { fetchBrandList: jest.fn().mockResolvedValue([]) };
+    const groupResolver = { resolveGroups: jest.fn().mockResolvedValue(groups) };
+    const groupMembership = { listUserRooms: jest.fn().mockResolvedValue(['room-1']) };
+    const accountIdentity = {
+      resolveAgentAccountIdentity: jest.fn().mockResolvedValue({ nickname: '小蛋', gender: '女' }),
+    };
+    const brand = {
+      deriveTurnBrandContext: jest.fn().mockResolvedValue({
+        state: { currentBrand: null, excludedBrands: [] },
+        persisted: false,
+        nicknameBrands: [],
+      }),
+    };
+    const enrichment = { enrich: jest.fn().mockImplementation(async (snapshot) => snapshot) };
+    const chatSession = { getVisualFacts: jest.fn().mockResolvedValue([]) };
+    const strategyRecord = { stage_goals: { stages: [] }, red_lines: { thresholds: [] } };
+    const strategy = { getActiveConfig: jest.fn().mockResolvedValue(strategyRecord) };
+    const config = { get: jest.fn().mockReturnValue('200') };
+    const service = new TurnDataLoaderService(
+      booking as never,
+      memoryService as never,
+      sponge as never,
+      groupResolver as never,
+      groupMembership as never,
+      accountIdentity as never,
+      brand as never,
+      enrichment as never,
+      chatSession as never,
+      strategy as never,
+      config as never,
+    );
+
+    const snapshot = await service.load(
+      {
+        callerKind: CallerKind.WECOM,
+        corpId: 'corp-1',
+        userId: 'user-1',
+        sessionId: 'session-1',
+        messages: [{ role: 'user', content: '上海有餐饮工作吗' }],
+        imContactId: 'contact-1',
+        botImId: 'bot-1',
+        contactName: '候选人',
+        strategySource: 'testing',
+      },
+      {
+        truncatedMessages: [{ role: 'user', content: '上海有餐饮工作吗' }],
+        currentUserMessage: '上海有餐饮工作吗',
+        currentTurnTexts: ['上海有餐饮工作吗'],
+        laborFormIntent: { kind: 'unknown' } as never,
+      },
+    );
+
+    expect(memoryService.onTurnStart).toHaveBeenCalledWith(
+      'corp-1',
+      'user-1',
+      'session-1',
+      '上海有餐饮工作吗',
+      expect.objectContaining({ includeShortTerm: true }),
+    );
+    expect(groupResolver.resolveGroups).toHaveBeenCalledTimes(1);
+    expect(groupMembership.listUserRooms).toHaveBeenCalledWith('contact-1', expect.anything());
+    expect(strategy.getActiveConfig).toHaveBeenCalledWith('testing');
+    expect(booking.enrichOutOfBand).toHaveBeenCalledWith(
+      { state: 'none' },
+      memory,
+      expect.objectContaining({ sessionId: 'session-1' }),
+      '上海有餐饮工作吗',
+    );
+    expect(snapshot).toEqual(
+      expect.objectContaining({
+        memory,
+        booking: { state: 'none' },
+        realtimeGroups: [{ groupName: '上海餐饮群', city: '上海' }],
+        groupInventory: {
+          city: '上海',
+          industries: [{ industry: '餐饮', groupCount: 1, availableCount: 1 }],
+        },
+        accountIdentity: { nickname: '小蛋', gender: '女' },
+        strategyConfig: strategyRecord,
+        warnings: [],
+      }),
+    );
+  });
+
+  it('keeps optional source failures explicit without rejecting the turn', async () => {
+    const memory = buildMemory();
+    const booking = {
+      loadPointer: jest.fn().mockResolvedValue({ state: 'none' }),
+      enrichOutOfBand: jest.fn().mockResolvedValue({ state: 'none' }),
+    };
+    const service = new TurnDataLoaderService(
+      booking as never,
+      { onTurnStart: jest.fn().mockResolvedValue(memory) } as never,
+      { fetchBrandList: jest.fn().mockResolvedValue([]) } as never,
+      { resolveGroups: jest.fn().mockRejectedValue(new Error('group source down')) } as never,
+      { listUserRooms: jest.fn() } as never,
+      {
+        resolveAgentAccountIdentity: jest.fn().mockRejectedValue(new Error('identity down')),
+      } as never,
+      {
+        deriveTurnBrandContext: jest.fn().mockRejectedValue(new Error('brand down')),
+      } as never,
+      { enrich: jest.fn().mockImplementation(async (snapshot) => snapshot) } as never,
+      { getVisualFacts: jest.fn().mockRejectedValue(new Error('visual source down')) } as never,
+      {
+        getActiveConfig: jest
+          .fn()
+          .mockResolvedValue({ stage_goals: { stages: [] }, red_lines: { thresholds: [] } }),
+      } as never,
+      { get: jest.fn().mockReturnValue('200') } as never,
+    );
+
+    const snapshot = await service.load(
+      {
+        callerKind: CallerKind.WECOM,
+        corpId: 'corp-1',
+        userId: 'user-1',
+        sessionId: 'session-1',
+        messages: [{ role: 'user', content: '你好' }],
+      },
+      {
+        truncatedMessages: [{ role: 'user', content: '你好' }],
+        currentUserMessage: '你好',
+        currentTurnTexts: ['你好'],
+        laborFormIntent: { kind: 'unknown' } as never,
+      },
+    );
+
+    expect(snapshot.groupInventory).toBeUndefined();
+    expect(snapshot.accountIdentity).toEqual({ nickname: null, gender: null });
+    expect(snapshot.turnBrandContext).toEqual({
+      state: { currentBrand: null, excludedBrands: [] },
+      persisted: false,
+      nicknameBrands: [],
+    });
+    expect(snapshot.visualSheetsByContent).toBeUndefined();
+    expect(snapshot.warnings.map((warning) => warning.source).sort()).toEqual([
+      'account_identity',
+      'brand',
+      'groups',
+      'visual_facts',
+    ]);
+  });
+});
+
+function buildMemory() {
+  return {
+    shortTerm: {
+      messageWindow: [],
+      sessionState: {
+        facts: sessionFactsOf({
+          preferences: {
+            city: { value: '上海', confidence: 'high', evidence: 'explicit_city' },
+          },
+        }),
+      },
+      stage: { currentStage: 'job_consultation' },
+    },
+    longTerm: { semantic: { profile: null } },
+    turnHints: null,
+  } as never;
+}

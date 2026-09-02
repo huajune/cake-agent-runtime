@@ -27,7 +27,7 @@ WeCom callback
   → pending list + delayed job
   → quiet-window worker 取得 chat 处理锁
   → 合并 pending，创建 batch trace，回收源流水
-  → AgentRunner.runTurn
+  → AgentRunner.runInboundTurn
       → Input Guard
       → Preparation（两层记忆召回、共享裁决、Prompt sections、tools）
       → Generator + Tool Guard
@@ -61,10 +61,10 @@ WeCom callback
 
 ### 2.3 Agent 回合
 
-`ReplyWorkflowService` 调用 `AgentRunnerService.runTurn()`：
+`ReplyWorkflowService` 调用 `AgentRunnerService.runInboundTurn()`：
 
 1. Input Guard 可在生成前短路高风险输入；
-2. `PreparationService.prepare()` 读取短期与长期两层记忆，补齐 snapshot，计算共享裁决视图，按终序渲染 system prompt，并为场景构造稳定工具集合；
+2. `PreparationService.prepare()` 按“输入归一化 → 集中外部快照 → 共享裁决 → typed sections → 工具运行时”组装 `WorkingMemory`；
 3. Generator 多步调用模型和工具，工具动作先过 Tool Guard；
 4. Output Guard 审查候选回复；需要时只进入一次受控 repair 并二审；
 5. runner 返回渠道无关的 `TurnOutcome`，同时携带本次版本的 `runTurnEnd` 闭包。
@@ -125,7 +125,8 @@ turn-end 更新短期 facts、工作台与阶段相关投影，并刷新同一 c
 
 ### `final-check` 与 `critical-turn-guard`
 
-场景只注册一个复合 `final-check` section。它常驻产出 `final-check` block，规则命中时再追加 `critical-turn-guard` block；后者是观测和模型可见 block id，不是第二个 section。
+场景显式注册 `final-check` 与 `critical-turn-guard` 两个 section，但它们共用唯一
+`FINAL_CHECK_RULES` 规则源。后者只在本轮规则命中时产出 block。
 
 ## 4. 关键代码
 

@@ -30,9 +30,12 @@ export const SCENARIO_SECTIONS: Record<string, string[]> = {
     'group-inventory',
     // procedural · 动态档（当前阶段策略）
     'stage-strategy',
-    // procedural · 复合档（发送前防线统一规则表：次末位常驻自检块 recitation 收口 +
-    // 末位命中才产出的本轮动态硬禁令块，块 id 仍为 final-check / critical-turn-guard）
+    // procedural · 常驻发送前自检（recitation 收口）
     'final-check',
+    // procedural · Prompt Injection 命中时才出现
+    'input-guard',
+    // procedural · 本轮关键规则命中时才出现；与 final-check 共用同一规则源
+    'critical-turn-guard',
   ],
   'group-operations': [
     // procedural · 配置档

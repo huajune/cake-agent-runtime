@@ -7,6 +7,8 @@ import { StrategyConfigRecord } from '@biz/strategy/entities/strategy-config.ent
 import type { LaborFormIntentDecision } from '@resolution/labor-form';
 import type { CorpusDomain, PromptCorpusBlock } from '@shared-types/corpus.types';
 import type { ModelMessage } from 'ai';
+import type { MemoryPromptView } from './semantic/memory.section';
+import type { GroupInventoryPromptView } from './working/group-inventory.section';
 
 /**
  * 提示词组装上下文 — 所有 section 共享
@@ -20,12 +22,12 @@ export interface PromptContext {
   strategyConfig: StrategyConfigRecord;
   /** 当前对话阶段标识（从 Redis 读取，默认第一阶段） */
   currentStage?: string;
-  /** 已渲染好的记忆块；由 PreparationService 提前格式化后注入。 */
-  memoryBlock?: string;
+  /** 已裁决的记忆/预约/实时群类型化视图；由 MemorySection 负责最终渲染。 */
+  memory?: MemoryPromptView;
   /** 当前时间文本；由 ContextService 统一生成，避免各 section 各算各的。 */
   currentTimeText?: string;
-  /** 候选人意向城市的兼职群资源块；由 ContextService 预渲染。 */
-  groupInventoryBlock?: string;
+  /** 候选人意向城市的兼职群资源快照；由 GroupInventorySection 渲染。 */
+  groupInventory?: GroupInventoryPromptView;
   /**
    * 会话记忆中的已确认提取结果（**带信封的存储态**）；供 TurnHintsSection 做冲突比对、
    * HardConstraintsSection 做置信度门取值。
@@ -46,6 +48,8 @@ export interface PromptContext {
   currentUserMessage?: string;
   /** 含短期近邻窗口的归一化消息；FinalCheckSection turn 规则的 combined 匹配输入。 */
   normalizedMessages?: readonly ModelMessage[];
+  /** Prompt Injection detector 命中时的模型安全指令；空值时不生成 input-guard block。 */
+  inputSecurityInstruction?: string;
   /**
    * 本轮候选人消息原文（逐条，与规则轨输入同源）。
    * TurnHintsSection 用它判定 claim 的 quote 是否"就是整条当轮消息"——是且本轮只有一条
@@ -85,16 +89,12 @@ export interface PromptSection {
   /** 测试/扩展 section 可显式覆盖；生产 section 统一由下方封闭注册表发牌。 */
   readonly domain?: CorpusDomain;
   /** 构建该段落的文本 */
-  build(ctx: PromptContext): Promise<string> | string;
+  build(ctx: PromptContext): string;
   /** 复合 section 展开子块，避免混合域在 join 后丢失标签。 */
-  buildBlocks?(ctx: PromptContext): Promise<PromptCorpusBlock[]> | PromptCorpusBlock[];
+  buildBlocks?(ctx: PromptContext): PromptCorpusBlock[];
 }
 
-/**
- * 生产 prompt 叶子块 id → 语料域的唯一封闭注册表。
- * final-check 复合 section 经 buildBlocks 产出 final-check / critical-turn-guard 两个块，
- * 其块级 domain 声明必须与此处一致（context.service.spec 对拍）。
- */
+/** 生产 prompt 叶子块 id → 语料域的唯一封闭注册表。 */
 const PROMPT_SECTION_DOMAIN_REGISTRY: Readonly<Record<string, CorpusDomain>> = {
   identity: 'teaching',
   'base-manual': 'teaching',
@@ -104,6 +104,7 @@ const PROMPT_SECTION_DOMAIN_REGISTRY: Readonly<Record<string, CorpusDomain>> = {
   'stage-overview': 'teaching',
   'stage-strategy': 'teaching',
   'critical-turn-guard': 'teaching',
+  'input-guard': 'teaching',
   channel: 'teaching',
   memory: 'evidence',
   'turn-hints': 'evidence',
@@ -113,12 +114,12 @@ const PROMPT_SECTION_DOMAIN_REGISTRY: Readonly<Record<string, CorpusDomain>> = {
 };
 
 /** 展开一个 section；叶子 section 由固定 domain 直接包装。 */
-export async function buildPromptSectionBlocks(
+export function buildPromptSectionBlocks(
   section: PromptSection,
   ctx: PromptContext,
-): Promise<PromptCorpusBlock[]> {
+): PromptCorpusBlock[] {
   if (section.buildBlocks) return section.buildBlocks(ctx);
-  const content = (await section.build(ctx)).trim();
+  const content = section.build(ctx).trim();
   if (!content) return [];
   const domain = section.domain ?? PROMPT_SECTION_DOMAIN_REGISTRY[section.name];
   if (!domain) throw new Error(`Prompt section 未登记语料域: ${section.name}`);

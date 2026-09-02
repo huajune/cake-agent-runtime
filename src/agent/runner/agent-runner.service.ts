@@ -44,7 +44,7 @@ import {
   type PreAgentRiskPrecheckResult,
 } from '../guardrail/input/risk-intercept.service';
 import { InputGuardrailService } from '../guardrail/input/input-guard.service';
-import type { SessionRef, TurnOutcome, TurnRequest, TurnTrigger } from './agent-runner.types';
+import type { InboundTurnRequest, SessionRef, TurnOutcome } from './agent-runner.types';
 import { TurnFinalizer } from './turn-finalizer';
 import { AgentTracerService } from '@observability/agent-tracer.service';
 import { RequestContextService } from '@observability/context/request-context.service';
@@ -57,17 +57,13 @@ import {
 export type {
   SessionRef,
   TurnContext,
+  InboundTurnRequest,
   TurnOutcome,
-  TurnRequest,
-  TurnTrigger,
 } from './agent-runner.types';
 export type {
   RiskInterceptInput,
   PreAgentRiskPrecheckResult,
 } from '../guardrail/input/risk-intercept.service';
-
-/** 主动回合的占位 user 文本：WECOM callerKind 下被 memory 历史覆盖，仅为满足非空入参。 */
-const PROACTIVE_TRIGGER_PLACEHOLDER = '[系统主动跟进]';
 
 /** 未过守卫（短路/空文本）时的默认放行裁决。 */
 const PASS_DECISION: OutputGuardDecision = {
@@ -101,7 +97,7 @@ export interface ReviewedTurnRunResult extends Omit<ReviewedRunResult, 'runTurnE
   runTurnEnd?: undefined;
 }
 
-/** 出站审查所需的接地/观测上下文（runner 从 TurnRequest 或调用方拼装）。 */
+/** 出站审查所需的接地/观测上下文（runner 从 InboundTurnRequest 或调用方拼装）。 */
 export interface ReviewContext {
   /** 红线（喂给 llm 档；缺省空）。 */
   redLines?: string[];
@@ -121,8 +117,9 @@ export interface ReviewContext {
  *
  * - `invoke`/`stream`：兼容旧调用方的薄委托，直接跑 generator。
  * - `invokeReviewed`：generator → output guardrail → 必要时一次受控 repair。
- * - `runTurn`：渠道无关回合编排入口。被动 inbound 与主动 reengagement 汇入同一处，
- *   产出 `TurnOutcome`，runner 不负责投递。
+ * - `runInboundTurn`：渠道无关的被动入站回合编排入口，产出 `TurnOutcome`，runner 不负责投递。
+ *
+ * 主动复聊由 reengagement 域的专用 Agent 承载，不进入本 Runner。
  */
 @Injectable()
 export class AgentRunnerService {
@@ -148,14 +145,15 @@ export class AgentRunnerService {
 
   /**
    * 入站风险预检（input guardrail）的薄封装：命中高置信度风险关键词即返回
-   * `{ hit: true }` + 风险归因。当前无生产调用方——渠道走 runTurn，内部经
+   * `{ hit: true }` + 风险归因。当前无生产调用方——渠道走 runInboundTurn，内部经
    * precheckInboundOutcome 完成入站预检。守卫本身**只判定不执行副作用**——人工介入
    * （暂停托管 + 飞书告警）以 sideEffect intent 挂在 outcome 上，由渠道在 replay 定局后
    * 经 TurnOutcomeInterventionService.commit 统一出口执行，避免被 replay 丢弃的首版
    * 误触发暂停/告警。
    *
    * 注意这只是 input 守卫的「pre-agent 拦截」一环；prompt-injection 硬化（扫注入→告警→
-   * 追加 system 防护 suffix）由 PromptInjectionService 在 preparation 阶段执行，不经此入口。
+   * 追加 system 防护 section）由 PromptInjectionDetector + PromptSecurityObserverService
+   * 在 preparation 阶段执行，不经此入口。
    *
    * 渠道侧只负责把入站 DTO 解析成中立 `RiskInterceptInput`（依赖倒置，DTO/parser 留渠道），
    * pre-agent 拦截的「何时调、调哪个守卫」编排权收敛在 runner，与出站守卫（invokeReviewed）
@@ -865,18 +863,12 @@ export class AgentRunnerService {
   async invokeReviewedTurn(params: {
     invoke: GeneratorInvokeParams;
     review: ReviewContext;
-    trigger: TurnTrigger;
     sessionRef: SessionRef;
     messageId?: string;
     onTurnEndError?: (error: unknown) => void;
   }): Promise<ReviewedTurnRunResult> {
     const result = await this.invokeReviewed(params.invoke, params.review);
-    const outcome = classifyReviewedOutcome(
-      result,
-      params.trigger,
-      params.sessionRef,
-      params.messageId,
-    );
+    const outcome = classifyReviewedOutcome(result, params.sessionRef, params.messageId);
     const turnFinalizer = TurnFinalizer.from(result.runTurnEnd, params.onTurnEndError);
     return {
       ...result,
@@ -997,39 +989,31 @@ export class AgentRunnerService {
     return this.generator.stream(params);
   }
 
-  /**
-   * 编排一个回合（渠道无关，不投递）。被动/主动复用同一接缝。
-   *
-   * 主动回合默认 `toolMode:'readonly'`（物理禁副作用工具）；记忆收尾统一由调用方在
-   * 投递成功后经 TurnFinalizer 触发。generator 抛错（含 memory 空历史）时：**主动**回合按 `skipped`
-   * 收敛（不让 reengagement 调度因单个会话失败而崩），**被动 inbound** 则抛回渠道由
-   * fallback 接管（不静默吞掉候选人正在等待的回复）。
-   */
-  async runTurn(req: TurnRequest): Promise<TurnOutcome> {
-    const { sessionRef, trigger, context } = req;
+  /** 编排一个被动入站回合（渠道无关、不投递）；异常抛回渠道，由渠道 fallback 接管。 */
+  async runInboundTurn(req: InboundTurnRequest): Promise<TurnOutcome> {
+    const { sessionRef, context } = req;
     const telemetryContext = {
       traceId: context?.messageId,
       chatId: sessionRef.sessionId,
       userId: sessionRef.userId,
       corpId: sessionRef.corpId,
-      scenario:
-        context?.scenario ?? (trigger.kind === 'proactive' ? trigger.scenarioCode : undefined),
+      scenario: context?.scenario,
       callerKind: context?.callerKind ?? CallerKind.WECOM,
     };
 
-    const run = () => this.runTurnObserved(req);
+    const run = () => this.runInboundTurnObserved(req);
     if (this.requestContext) {
       return this.requestContext.run(telemetryContext, run);
     }
     return run();
   }
 
-  private async runTurnObserved(req: TurnRequest): Promise<TurnOutcome> {
+  private async runInboundTurnObserved(req: InboundTurnRequest): Promise<TurnOutcome> {
     const startedAt = Date.now();
     this.tracer?.emit({ type: 'agent_start' });
 
     try {
-      const outcome = await this.runTurnInternal(req);
+      const outcome = await this.runInboundTurnInternal(req);
       this.tracer?.emit({
         type: 'agent_end',
         steps: outcome.agentSteps?.length,
@@ -1047,25 +1031,21 @@ export class AgentRunnerService {
     }
   }
 
-  private async runTurnInternal(req: TurnRequest): Promise<TurnOutcome> {
-    const { sessionRef, trigger, context } = req;
-    const isProactive = trigger.kind === 'proactive';
-    const scenarioCode = isProactive ? trigger.scenarioCode : undefined;
+  private async runInboundTurnInternal(req: InboundTurnRequest): Promise<TurnOutcome> {
+    const { sessionRef, input, context } = req;
 
-    if (trigger.kind === 'inbound') {
-      const guardrailBlocked = await this.precheckInboundOutcome({
-        corpId: sessionRef.corpId,
-        chatId: sessionRef.sessionId,
-        userId: sessionRef.userId,
-        pauseTargetId: sessionRef.sessionId || sessionRef.userId,
-        scanContent: this.buildInputGuardScanContent(trigger),
-        messageId: context?.messageId,
-        contactName: context?.contactName,
-        botImId: context?.botImId,
-        botUserName: context?.botUserId,
-      });
-      if (guardrailBlocked) return guardrailBlocked;
-    }
+    const guardrailBlocked = await this.precheckInboundOutcome({
+      corpId: sessionRef.corpId,
+      chatId: sessionRef.sessionId,
+      userId: sessionRef.userId,
+      pauseTargetId: sessionRef.sessionId || sessionRef.userId,
+      scanContent: this.buildInputGuardScanContent(input.text),
+      messageId: context?.messageId,
+      contactName: context?.contactName,
+      botImId: context?.botImId,
+      botUserName: context?.botUserId,
+    });
+    if (guardrailBlocked) return guardrailBlocked;
 
     const params: GeneratorInvokeParams = {
       callerKind: context?.callerKind ?? CallerKind.WECOM,
@@ -1073,21 +1053,17 @@ export class AgentRunnerService {
       corpId: sessionRef.corpId,
       sessionId: sessionRef.sessionId,
       messageId: context?.messageId,
-      messages:
-        trigger.kind === 'inbound'
-          ? [
-              {
-                role: 'user',
-                content: trigger.userMessage,
-                imageUrls: trigger.images,
-                imageMessageIds: context?.imageMessageIds,
-              },
-            ]
-          : [{ role: 'user', content: PROACTIVE_TRIGGER_PLACEHOLDER }],
-      toolMode: req.toolMode ?? (isProactive ? 'readonly' : 'scenario'),
-      proactiveDirective: isProactive ? trigger.directive : undefined,
+      messages: [
+        {
+          role: 'user',
+          content: input.text,
+          imageUrls: input.images,
+          imageMessageIds: context?.imageMessageIds,
+        },
+      ],
+      toolMode: req.toolMode ?? 'scenario',
       scenario: context?.scenario,
-      imageUrls: trigger.kind === 'inbound' ? trigger.images : undefined,
+      imageUrls: input.images,
       imageMessageIds: context?.imageMessageIds,
       visualMessageTypes: context?.visualMessageTypes,
       contactName: context?.contactName,
@@ -1106,43 +1082,24 @@ export class AgentRunnerService {
       onPreparedRequest: context?.onPreparedRequest,
     };
 
-    let result: ReviewedRunResult;
-    try {
-      result = await this.invokeReviewed(params, {
-        sessionRef,
-        userMessage: trigger.kind === 'inbound' ? trigger.userMessage : undefined,
-        chatId: sessionRef.sessionId,
-        userId: sessionRef.userId,
-        traceId: context?.messageId,
-        contactName: context?.contactName,
-        botImId: context?.botImId,
-        botUserName: context?.botUserId,
-        shortTermEndTimeInclusive: context?.shortTermEndTimeInclusive,
-      });
-    } catch (err) {
-      // 韧性收敛仅对**主动**回合成立：reengagement 调度不能因单个会话生成失败（含空历史）而崩，
-      // 静默放弃这一跳即可。被动 inbound 则相反——候选人正在等回复，静默吞掉 LLM/记忆故障会让
-      // 用户悬空且无人接手，必须把异常抛回渠道，由渠道 fallback/失败流水接管。
-      this.logger.warn(
-        `[runTurn] generation 失败: sessionId=${sessionRef.sessionId}, trigger=${trigger.kind}, ` +
-          `err=${toErrorMessage(err)}`,
-      );
-      if (isProactive) {
-        this.tracer?.emit({
-          type: 'agent_error',
-          error: toErrorMessage(err),
-        });
-        return { kind: 'skipped', toolCalls: [], scenarioCode };
-      }
-      throw err;
-    }
+    const result = await this.invokeReviewed(params, {
+      sessionRef,
+      userMessage: input.text,
+      chatId: sessionRef.sessionId,
+      userId: sessionRef.userId,
+      traceId: context?.messageId,
+      contactName: context?.contactName,
+      botImId: context?.botImId,
+      botUserName: context?.botUserId,
+      shortTermEndTimeInclusive: context?.shortTermEndTimeInclusive,
+    });
 
     // 终态分类与渠道共享同一处纯函数（classifyReviewedOutcome）：block→guardrail_blocked/outbound、
     // committed handoff / booking gate→handoff、短路/空文本→skipped、其余→reply。
-    const outcome = classifyReviewedOutcome(result, trigger, sessionRef, context?.messageId);
+    const outcome = classifyReviewedOutcome(result, sessionRef, context?.messageId);
     if (outcome.kind === 'guardrail_blocked' && outcome.guardrail?.phase === 'outbound') {
       this.logger.warn(
-        `[runTurn] 出站守卫拦截: sessionId=${sessionRef.sessionId}, ` +
+        `[runInboundTurn] 出站守卫拦截: sessionId=${sessionRef.sessionId}, ` +
           `rules=${result.outputDecision.blockedRuleIds.join(',') || '-'}, ` +
           `reason=${result.outputDecision.reasonCode ?? '-'}`,
       );
@@ -1150,9 +1107,8 @@ export class AgentRunnerService {
     return outcome;
   }
 
-  private buildInputGuardScanContent(trigger: TurnTrigger): string {
-    if (trigger.kind !== 'inbound') return '';
-    const content = trigger.userMessage?.trim() ?? '';
+  private buildInputGuardScanContent(userMessage: string): string {
+    const content = userMessage.trim();
     if (!content) return '';
 
     const textLines = content

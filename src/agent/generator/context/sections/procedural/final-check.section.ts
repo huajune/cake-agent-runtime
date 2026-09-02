@@ -1,7 +1,7 @@
 // 知识归类：procedural —— 发送前反幻觉防线：常驻自检 recitation + 本轮命中才注入的动态硬禁令。
 // prompt-rule-ledger: docs/prompt-rule-ledger.md（发送前自检 + 本轮动态硬禁令总账）
 /**
- * 发送前防线统一规则表：final-check 与 critical-turn-guard 的单一居所。
+ * 发送前防线统一规则表：final-check 与 critical-turn-guard 的单一规则源。
  *
  * 两类规则同表登记，靠 trigger 区分：
  * - trigger='always'：每轮常驻的发送前自检项，按分组渲染成「# 发送前自检」块
@@ -10,8 +10,9 @@
  *   「# 本轮动态硬禁令」块（场景末位、模型注意力最强的位置），避免模型在长上下文里
  *   先承认规则、最后又被阶段策略带回收资或预约。
  *
- * 装配不变量：本 section 产出至多两个 block（id 固定为 final-check / critical-turn-guard），
- * preparation 的 input-guard 依赖 critical-turn-guard 块 id 插缝。
+ * 装配不变量：场景 manifest 按 final-check → input-guard → critical-turn-guard 排列；
+ * 无需 preparation 按 block id 插缝。常驻/动态规则仍由本文件的同一张规则表驱动，
+ * input-guard 则由独立的 input-security.section.ts 承载。
  *
  * turn 规则匹配语义：
  * - target=current：只匹配本轮用户输入（末尾连续 user 块）；
@@ -21,7 +22,6 @@ import type { ModelMessage } from 'ai';
 import { LOCATION_SHARE_MARKER_RE } from '@resolution/signal/markers';
 import { CANDIDATE_PHONE_RE } from '@resolution/candidate/phone';
 import { extractTextFromContent } from '@agent/generator/preparation/conversation-normalizer';
-import type { PromptCorpusBlock } from '@shared-types/corpus.types';
 import type { PromptContext, PromptSection } from '../section.interface';
 
 const LOCATION_CONTEXT_PATTERN = new RegExp(
@@ -293,31 +293,21 @@ function renderTurnGuards(
 }
 
 /**
- * 发送前防线复合 section：次末位常驻自检块 + 末位命中才产出的动态硬禁令块。
- * 两块 id/domain 与 section.interface 封闭注册表一致（均为 teaching）。
+ * 常驻发送前自检（recitation）。动态输入安全和关键轮禁令由后续显式 section 承载。
  */
 export class FinalCheckSection implements PromptSection {
   readonly name = 'final-check';
 
-  build(ctx: PromptContext): string {
-    return this.buildBlocks(ctx)
-      .map((block) => block.content)
-      .join('\n\n');
+  build(): string {
+    return ALWAYS_CHECKLIST;
   }
+}
 
-  buildBlocks(ctx: PromptContext): PromptCorpusBlock[] {
-    const blocks: PromptCorpusBlock[] = [
-      { id: 'final-check', domain: 'teaching', role: 'system', content: ALWAYS_CHECKLIST },
-    ];
-    const guardText = renderTurnGuards(ctx.currentUserMessage, ctx.normalizedMessages ?? []);
-    if (guardText) {
-      blocks.push({
-        id: 'critical-turn-guard',
-        domain: 'teaching',
-        role: 'system',
-        content: guardText,
-      });
-    }
-    return blocks;
+/** 本轮规则命中才出现的动态硬禁令；与 FinalCheckSection 共用 FINAL_CHECK_RULES。 */
+export class CriticalTurnGuardSection implements PromptSection {
+  readonly name = 'critical-turn-guard';
+
+  build(ctx: PromptContext): string {
+    return renderTurnGuards(ctx.currentUserMessage, ctx.normalizedMessages ?? []);
   }
 }

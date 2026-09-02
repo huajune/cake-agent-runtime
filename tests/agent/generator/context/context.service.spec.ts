@@ -6,7 +6,7 @@ import {
   type PromptSection,
 } from '@agent/generator/context/sections/section.interface';
 import { SCENARIO_SECTIONS } from '@agent/generator/context/scenarios/scenario.registry';
-import { cityFixture, sessionFactsOf } from '../../../helpers/session-facts.fixture';
+import type { MemoryPromptView } from '@agent/generator/context/sections/semantic/memory.section';
 
 describe('ContextService', () => {
   const makeConfig = (): StrategyConfigRecord =>
@@ -71,35 +71,43 @@ describe('ContextService', () => {
       updated_at: '2026-04-01T00:00:00.000Z',
     }) as StrategyConfigRecord;
 
-  const mockStrategyConfigService = {
-    getActiveConfig: jest.fn().mockResolvedValue(makeConfig()),
-  };
-
-  const mockGroupResolver = {
-    resolveGroups: jest.fn().mockResolvedValue([]),
-  };
-
-  const mockConfigService = {
-    get: jest.fn((key: string, defaultValue?: string) => defaultValue),
-  };
-
   let service: ContextService;
-  const compose = (params: ComposeParams = {}) =>
+  const compose = (params: Omit<ComposeParams, 'strategyConfig'> = {}) =>
     service.compose({
+      strategyConfig: makeConfig(),
       displayTurnHints: null,
       pendingTurnHintFields: [],
       ...params,
     });
 
+  const profileMemory = (name: string): MemoryPromptView =>
+    ({
+      adjudication: {
+        profile: {
+          name: {
+            value: name,
+            confidence: 'high',
+            source: 'user',
+            evidence: '用户提供',
+            updatedAt: '2026-09-01T00:00:00.000Z',
+          },
+        },
+        jobIntent: null,
+        sessionState: null,
+        conflicts: [],
+        displayTurnHints: null,
+        pendingTurnHintFields: [],
+      },
+      booking: { state: 'hidden' },
+      realtimeGroups: [],
+      contactBrandAliases: [],
+      currentLaborFormIntent: { kind: 'ignore' },
+      activeLaborForm: null,
+    }) as unknown as MemoryPromptView;
+
   beforeEach(async () => {
     jest.clearAllMocks();
-    mockStrategyConfigService.getActiveConfig.mockResolvedValue(makeConfig());
-    mockGroupResolver.resolveGroups.mockResolvedValue([]);
-    service = new ContextService(
-      mockStrategyConfigService as never,
-      mockGroupResolver as never,
-      mockConfigService as never,
-    );
+    service = new ContextService();
     await service.onModuleInit();
   });
 
@@ -112,6 +120,7 @@ describe('ContextService', () => {
       thresholds: 'teaching',
       'stage-overview': 'teaching',
       'stage-strategy': 'teaching',
+      'input-guard': 'teaching',
       'critical-turn-guard': 'teaching',
       channel: 'teaching',
       memory: 'evidence',
@@ -130,17 +139,15 @@ describe('ContextService', () => {
 
     for (const [name, domain] of Object.entries(productionLeafDomains)) {
       const section: PromptSection = { name, build: () => productionShapedText };
-      await expect(
+      expect(
         buildPromptSectionBlocks(section, { scenario: 'candidate-consultation' } as never),
-      ).resolves.toEqual([{ id: name, domain, role: 'system', content: productionShapedText }]);
+      ).toEqual([{ id: name, domain, role: 'system', content: productionShapedText }]);
     }
 
     for (const scenario of Object.keys(SCENARIO_SECTIONS)) {
-      const result = await compose({
+      const result = compose({
         scenario,
         currentStage: 'trust_building',
-        memoryBlock: productionShapedText,
-        strategySource: 'testing',
       });
       expect(result.promptBlocks.every((block) => CORPUS_DOMAINS.includes(block.domain))).toBe(
         true,
@@ -163,12 +170,13 @@ describe('ContextService', () => {
       'group-inventory',
       'stage-strategy',
       'final-check',
+      'input-guard',
+      'critical-turn-guard',
     ]);
-    const result = await compose({
+    const result = compose({
       scenario: 'candidate-consultation',
       currentStage: 'trust_building',
-      memoryBlock: '[用户档案]\n- 姓名: 张三',
-      strategySource: 'testing',
+      memory: profileMemory('张三'),
     });
 
     const prompt = result.systemPrompt;
@@ -254,12 +262,11 @@ describe('ContextService', () => {
 
   it('keeps a matched critical-turn guard as the final scenario block and system suffix', async () => {
     const currentUserMessage = '我5月1号回来面试可以吗';
-    const result = await compose({
+    const result = compose({
       scenario: 'candidate-consultation',
       currentStage: 'job_consultation',
       currentUserMessage,
       normalizedMessages: [{ role: 'user', content: currentUserMessage }],
-      strategySource: 'testing',
     });
 
     const criticalBlock = result.promptBlocks.at(-1);
@@ -282,17 +289,13 @@ describe('ContextService', () => {
   });
 
   it('keeps stable leading blocks and the late static final-check byte-identical across turns', async () => {
-    const first = await compose({
+    const first = compose({
       scenario: 'candidate-consultation',
       currentStage: 'trust_building',
-      memoryBlock: '[会话记忆]\n- 唯一动态值: 第一轮',
-      strategySource: 'testing',
     });
-    const second = await compose({
+    const second = compose({
       scenario: 'candidate-consultation',
       currentStage: 'job_consultation',
-      memoryBlock: '[会话记忆]\n- 唯一动态值: 第二轮',
-      strategySource: 'testing',
     });
     const stableLeadingIds = new Set([
       'identity',
@@ -336,9 +339,8 @@ describe('ContextService', () => {
   });
 
   it('should thread accountIdentity (nickname/gender/botUserId) into the identity anchor', async () => {
-    const { systemPrompt } = await compose({
+    const { systemPrompt } = compose({
       scenario: 'candidate-consultation',
-      strategySource: 'testing',
       accountIdentity: { botUserId: 'ZhuDongSheng', nickname: '东升', gender: '男' },
     });
 
@@ -350,9 +352,8 @@ describe('ContextService', () => {
   });
 
   it('should still inject the account-identity anchor without accountIdentity', async () => {
-    const { systemPrompt } = await compose({
+    const { systemPrompt } = compose({
       scenario: 'candidate-consultation',
-      strategySource: 'testing',
     });
 
     expect(systemPrompt).toContain('# 账号身份');
@@ -361,9 +362,8 @@ describe('ContextService', () => {
   });
 
   it('should keep runtime time injection to a single rendered current time line', async () => {
-    const { systemPrompt } = await compose({
+    const { systemPrompt } = compose({
       scenario: 'candidate-consultation',
-      strategySource: 'testing',
     });
 
     const timeMatches = systemPrompt.match(/当前时间：/g) ?? [];
@@ -373,9 +373,8 @@ describe('ContextService', () => {
   });
 
   it('should not leak markdown front matter or html comments into prompt', async () => {
-    const { systemPrompt } = await compose({
+    const { systemPrompt } = compose({
       scenario: 'candidate-consultation',
-      strategySource: 'testing',
     });
 
     expect(systemPrompt).not.toContain('\n---\n');
@@ -385,43 +384,15 @@ describe('ContextService', () => {
   });
 
   it('should inject group inventory block when sessionFacts carries a city', async () => {
-    mockGroupResolver.resolveGroups.mockResolvedValue([
-      {
-        imRoomId: 'r1',
-        groupName: '上海餐饮兼职①群',
-        city: '上海',
-        industry: '餐饮',
-        tag: '兼职群',
-        imBotId: 'bot',
-        token: 'tok',
-        memberCount: 156,
-      },
-      {
-        imRoomId: 'r2',
-        groupName: '上海零售兼职③群',
-        city: '上海',
-        industry: '零售',
-        tag: '兼职群',
-        imBotId: 'bot',
-        token: 'tok',
-        memberCount: 15,
-      },
-      {
-        imRoomId: 'r3',
-        groupName: '北京餐饮兼职群',
-        city: '北京',
-        industry: '餐饮',
-        tag: '兼职群',
-        imBotId: 'bot',
-        token: 'tok',
-        memberCount: 50,
-      },
-    ]);
-
-    const { systemPrompt, promptBlocks } = await compose({
+    const { systemPrompt, promptBlocks } = compose({
       scenario: 'candidate-consultation',
-      strategySource: 'testing',
-      sessionFacts: sessionFactsOf({ preferences: { city: cityFixture('上海') } }),
+      groupInventory: {
+        city: '上海',
+        industries: [
+          { industry: '餐饮', groupCount: 1, availableCount: 1 },
+          { industry: '零售', groupCount: 1, availableCount: 1 },
+        ],
+      },
     });
 
     expect(systemPrompt).toContain('## 兼职群资源（上海）');
@@ -443,12 +414,9 @@ describe('ContextService', () => {
   });
 
   it('keeps the empty-city inventory data bytes unchanged without embedding instructions', async () => {
-    mockGroupResolver.resolveGroups.mockResolvedValue([]);
-
-    const { promptBlocks } = await compose({
+    const { promptBlocks } = compose({
       scenario: 'candidate-consultation',
-      strategySource: 'testing',
-      sessionFacts: sessionFactsOf({ preferences: { city: cityFixture('上海') } }),
+      groupInventory: { city: '上海', industries: [] },
     });
 
     expect(promptBlocks.find((block) => block.id === 'group-inventory')?.content).toBe(
@@ -457,26 +425,21 @@ describe('ContextService', () => {
   });
 
   it('should skip group inventory block when no city is known', async () => {
-    const { systemPrompt } = await compose({
+    const { systemPrompt } = compose({
       scenario: 'candidate-consultation',
-      strategySource: 'testing',
     });
 
     expect(systemPrompt).not.toContain('## 兼职群资源');
-    expect(mockGroupResolver.resolveGroups).not.toHaveBeenCalled();
   });
 
   // 议题 1-2：兼职群资源会影响工具调用决策，取值必须与硬约束段同门（high）。
   // 此前直读 .value 绕过置信度门，导致 prompt 里出现
   // 硬约束段根本没有的城市。
   it('should skip group inventory block when the city confidence is below the hard-constraint gate', async () => {
-    const { systemPrompt } = await compose({
+    const { systemPrompt } = compose({
       scenario: 'candidate-consultation',
-      strategySource: 'testing',
-      sessionFacts: sessionFactsOf({ preferences: { city: cityFixture('上海', 'medium') } }),
     });
 
     expect(systemPrompt).not.toContain('## 兼职群资源');
-    expect(mockGroupResolver.resolveGroups).not.toHaveBeenCalled();
   });
 });
