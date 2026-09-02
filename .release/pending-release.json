@@ -253,6 +253,47 @@
       "envFiles": [],
       "verification": [],
       "level": "patch"
+    },
+    {
+      "number": "1177",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1177",
+      "title": "会话列表页大小 200→600，头像改懒加载",
+      "author": "huajune",
+      "mergedAt": "2026-09-02",
+      "businessUpdates": [
+        "会话列表页大小 200→600，头像改懒加载",
+        "`web/src/hooks/chat/useChatSessions.ts`：`CHAT_SESSION_PAGE_SIZE` 200→600",
+        "`src/biz/message/services/chat-session.service.ts` / `repositories/chat-message.repository.ts`：默认页大小 200→600，上限 `MAX_SESSION_PAGE_SIZE` 500→600（注释标明 ≤999 硬边界，因为实际取 limit+1 且 PostgREST max_rows=1000）",
+        "`SessionList/index.tsx`：头像 `<img>` 加 `loading=\"lazy\"`——列表未虚拟化，600 行头像一次性发请求会排队",
+        "两个 spec 同步默认值/上限断言"
+      ],
+      "summary": [
+        "会话列表页大小 200→600，头像改懒加载",
+        "`web/src/hooks/chat/useChatSessions.ts`：`CHAT_SESSION_PAGE_SIZE` 200→600",
+        "`src/biz/message/services/chat-session.service.ts` / `repositories/chat-message.repository.ts`：默认页大小 200→600，上限 `MAX_SESSION_PAGE_SIZE` 500→600（注释标明 ≤999 硬边界，因为实际取 limit+1 且 PostgREST max_rows=1000）",
+        "`SessionList/index.tsx`：头像 `<img>` 加 `loading=\"lazy\"`——列表未虚拟化，600 行头像一次性发请求会排队",
+        "两个 spec 同步默认值/上限断言"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [
+        "`web/src/hooks/chat/useChatSessions.ts`：`CHAT_SESSION_PAGE_SIZE` 200→600",
+        "`src/biz/message/services/chat-session.service.ts` / `repositories/chat-message.repository.ts`：默认页大小 200→600，上限 `MAX_SESSION_PAGE_SIZE` 500→600（注释标明 ≤999 硬边界，因为实际取 limit+1 且 PostgREST max_rows=1000）",
+        "`SessionList/index.tsx`：头像 `<img>` 加 `loading=\"lazy\"`——列表未虚拟化，600 行头像一次性发请求会排队",
+        "两个 spec 同步默认值/上限断言"
+      ],
+      "ops": [
+        "会话列表页大小 200→600，头像改懒加载"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`pnpm run typecheck` 通过",
+        "`tests/biz/message/repositories/chat-message.repository.spec.ts` + `tests/biz/message/services/chat-session.service.spec.ts`：68/68 通过",
+        "ESLint / Prettier：`src/` 下两个改动文件通过；两个 spec 文件与两个 web 文件在 develop 上本就不过 prettier（CI 不覆盖 tests/ 与 web/），本 PR 未动格式",
+        "web：`tsc --noEmit` 与 eslint 通过"
+      ],
+      "level": "patch"
     }
   ],
   "lastRelease": {
@@ -432,5 +473,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "2a42ccd5f3ca7b84e1624810ee132220c0c2dcc5"
+  "lastAnalyzedSha": "b348d63d7824c4b012b41f080ce81e718b58d1c8"
 }
