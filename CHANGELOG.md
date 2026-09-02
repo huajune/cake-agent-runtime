@@ -14,7 +14,7 @@
 **预计版本**: `v11.2.0`
 **最近更新**: `2026-09-02`
 **来源分支**: `develop`
-**累计 PR**: 3
+**累计 PR**: 9
 
 ### 更新摘要
 - PR #1158 健康证收资两处误拒——冲突门剥模板回显、裸短答按绑定语境解、字段简称唯一包含可定位
@@ -30,15 +30,45 @@
 - PR #1160 数值事实落库规范形——体重斤→kg、年龄去单位、区域否定词、空串信封
 - PR #1160 merge: origin/develop into chore/memory-compat-cleanup（docs/todo 索引取 …
 - PR #1160 删除 gender_source 兼容读 + 数值事实落库规范形（09-02 记忆精度审计）
+- PR #1168 删除 LLM 相似度评分器，新增 Agent 质量评估体系口径页
+- PR #1165 临时暂停托管改为次日零点自动恢复（原固定 3 天）
+- PR #1165 `user-hosting.service.ts`：删掉硬编码 `PAUSE_DURATION_MS`，三处（pauseUser / loadPausedUsers 兜底 / 共享缓存快照）统一用 `resolveTemporaryPauseExpiresAt(pausedAt)` = `addLocalDays(getLocalDayStart(pausedAt), 1)`；永久暂停不变。
+- PR #1165 新增用例：解禁时刻在上海时区读数为 00:00:00，且距暂停不超过 24h，DB 写入值与缓存一致。
+- PR #1165 `docs/product/ops-data-and-sponge-integration.md` 同步口径。
+- PR #1166 入站风险词表补残障自述漏网句式、剔除亲属词假阳、扫描前剥引用块
+- PR #1166 入站风险词表补残障自述漏网、剔除亲属词假阳、扫描前剥引用块
+- PR #1164 判官标定首次完成，任务书改为"待用户裁定阈值并注册周任务"
+- PR #1164 判官标定补记用户裁定与两个修复 PR
+- PR #1164 评估器已随 #1168 删除，清掉待裁定项
+- PR #1164 判官标定首次完成，状态改为待用户裁定阈值并注册周任务
+- PR #1173 "XX附近"地点抽取剥居住前缀并拒收整句噪音
+- PR #1173 动作前缀归一（"帮我找一下"）之后再剥一次居住/位置前缀：`我/我们/我家/人/家 + 现在/目前/平时/就 + 住/人/家 + 在`，**必须以"在"收尾**，不会吃掉"人民广场""家乐福"的首字；另认"就XX"。
+- PR #1173 捕获段含句子词（这/那个/你/我/他/她/有没有/可以/不是/工作/吗/呢/吧/了/就/要/想/找/看/去/到/在/是）一律不认；刻意不收"的"（美的财富广场）。
+- PR #1173 剥完不足 2 字（"这"）丢弃。
+- PR #1177 会话列表页大小 200→600，头像改懒加载
+- PR #1177 `web/src/hooks/chat/useChatSessions.ts`：`CHAT_SESSION_PAGE_SIZE` 200→600
+- PR #1177 `src/biz/message/services/chat-session.service.ts` / `repositories/chat-message.repository.ts`：默认页大小 200→600，上限 `MAX_SESSION_PAGE_SIZE` 500→600（注释标明 ≤999 硬边界，因为实际取 limit+1 且 PostgREST max_rows=1000）
+- PR #1177 `SessionList/index.tsx`：头像 `<img>` 加 `loading="lazy"`——列表未虚拟化，600 行头像一次性发请求会排队
+- PR #1177 两个 spec 同步默认值/上限断言
 
 ### 新功能
-- 无
+- PR #1168 删除 LLM 相似度评分器，新增 Agent 质量评估体系口径页
+- PR #1165 新增用例：解禁时刻在上海时区读数为 00:00:00，且距暂停不超过 24h，DB 写入值与缓存一致。
 
 ### 问题修复
-- 无
+- PR #1165 `user-hosting.service.ts`：删掉硬编码 `PAUSE_DURATION_MS`，三处（pauseUser / loadPausedUsers 兜底 / 共享缓存快照）统一用 `resolveTemporaryPauseExpiresAt(pausedAt)` = `addLocalDays(getLocalDayStart(pausedAt), 1)`；永久暂停不变。
+- PR #1165 `docs/product/ops-data-and-sponge-integration.md` 同步口径。
+- PR #1164 判官标定补记用户裁定与两个修复 PR
+- PR #1173 捕获段含句子词（这/那个/你/我/他/她/有没有/可以/不是/工作/吗/呢/吧/了/就/要/想/找/看/去/到/在/是）一律不认；刻意不收"的"（美的财富广场）。
+- PR #1173 剥完不足 2 字（"这"）丢弃。
 
 ### 优化调整
-- 无
+- PR #1173 动作前缀归一（"帮我找一下"）之后再剥一次居住/位置前缀：`我/我们/我家/人/家 + 现在/目前/平时/就 + 住/人/家 + 在`，**必须以"在"收尾**，不会吃掉"人民广场""家乐福"的首字；另认"就XX"。
+- PR #1173 "XX附近"地点抽取剥居住前缀并拒收整句噪音
+- PR #1177 `web/src/hooks/chat/useChatSessions.ts`：`CHAT_SESSION_PAGE_SIZE` 200→600
+- PR #1177 `src/biz/message/services/chat-session.service.ts` / `repositories/chat-message.repository.ts`：默认页大小 200→600，上限 `MAX_SESSION_PAGE_SIZE` 500→600（注释标明 ≤999 硬边界，因为实际取 limit+1 且 PostgREST max_rows=1000）
+- PR #1177 `SessionList/index.tsx`：头像 `<img>` 加 `loading="lazy"`——列表未虚拟化，600 行头像一次性发请求会排队
+- PR #1177 两个 spec 同步默认值/上限断言
 
 ### 运维与流程
 - PR #1158 健康证收资两处误拒——冲突门剥模板回显、裸短答按绑定语境解、字段简称唯一包含可定位
@@ -51,16 +81,30 @@
 - PR #1160 删除 interview_info.gender_source 兼容读 sibling
 - PR #1160 数值事实落库规范形——体重斤→kg、年龄去单位、区域否定词、空串信封
 - PR #1160 merge: origin/develop into chore/memory-compat-cleanup（docs/todo 索引取 …
+- PR #1165 临时暂停托管改为次日零点自动恢复（原固定 3 天）
+- PR #1166 入站风险词表补残障自述漏网句式、剔除亲属词假阳、扫描前剥引用块
+- PR #1164 判官标定首次完成，任务书改为"待用户裁定阈值并注册周任务"
+- PR #1164 评估器已随 #1168 删除，清掉待裁定项
+- PR #1177 会话列表页大小 200→600，头像改懒加载
 
 ### 配置变更
 - 无
 
 ### 环境变量提醒
-- 无
+- PR #1168 检测到环境变量相关文件变更：`.env.example`。请手动同步远程服务器 `/data/cake/.env.production`。
 
 ### 验证记录
 - PR #1158 `typecheck` / `lint:check` / `format:check` 全绿
 - PR #1158 全量 jest：448 套件 / 6519 例通过；新增回归：冲突门剥回显（含"剥完仍能拦真冲突"对照）、裸答三态+四个不收、简称唯一/撞车/单字/反向、条件型模板首问/重问/敏感留空、条件适配器字面/绑定肯定/未绑定/回显/子区间/否定、表单行与回显忽略
+- PR #1168 `tsc --noEmit` 后端 + web 均通过；eslint（--max-warnings=0）通过；prettier 通过
+- PR #1168 `jest tests/biz/test-suite tests/evaluation --watchman=false`：21 套件 / 309 用例通过
+- PR #1165 `jest tests/biz/user/services/user-hosting.service.spec.ts tests/biz/user/repositories/user-hosting.repository.spec.ts --watchman=false`：57/57 通过
+- PR #1166 `jest tests/agent/guardrail/input/ --watchman=false`：141/141 通过（新增 6 组正例 / 7 组反例 / 引用块 3 例）
+- PR #1166 `tsc --noEmit`、eslint（--max-warnings=0）、prettier 通过
+- PR #1177 `pnpm run typecheck` 通过
+- PR #1177 `tests/biz/message/repositories/chat-message.repository.spec.ts` + `tests/biz/message/services/chat-session.service.spec.ts`：68/68 通过
+- PR #1177 ESLint / Prettier：`src/` 下两个改动文件通过；两个 spec 文件与两个 web 文件在 develop 上本就不过 prettier（CI 不覆盖 tests/ 与 web/），本 PR 未动格式
+- PR #1177 web：`tsc --noEmit` 与 eslint 通过
 <!-- release:pending:end -->
 
 ## [11.1.4] - 2026-09-02

@@ -102,6 +102,198 @@
       "envFiles": [],
       "verification": [],
       "level": "patch"
+    },
+    {
+      "number": "1168",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1168",
+      "title": "删除 LLM 相似度评分器，新增 Agent 质量评估体系口径页",
+      "author": "huajune",
+      "mergedAt": "2026-09-02",
+      "businessUpdates": [
+        "删除 LLM 相似度评分器，新增 Agent 质量评估体系口径页"
+      ],
+      "summary": [
+        "删除 LLM 相似度评分器，新增 Agent 质量评估体系口径页"
+      ],
+      "features": [
+        "删除 LLM 相似度评分器，新增 Agent 质量评估体系口径页"
+      ],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [],
+      "config": [],
+      "envFiles": [
+        ".env.example"
+      ],
+      "verification": [
+        "`tsc --noEmit` 后端 + web 均通过；eslint（--max-warnings=0）通过；prettier 通过",
+        "`jest tests/biz/test-suite tests/evaluation --watchman=false`：21 套件 / 309 用例通过"
+      ],
+      "level": "patch"
+    },
+    {
+      "number": "1165",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1165",
+      "title": "临时暂停托管改为次日零点自动恢复（原固定 3 天）",
+      "author": "huajune",
+      "mergedAt": "2026-09-02",
+      "businessUpdates": [
+        "新增用例：解禁时刻在上海时区读数为 00:00:00，且距暂停不超过 24h，DB 写入值与缓存一致。",
+        "`user-hosting.service.ts`：删掉硬编码 `PAUSE_DURATION_MS`，三处（pauseUser / loadPausedUsers 兜底 / 共享缓存快照）统一用 `resolveTemporaryPauseExpiresAt(pausedAt)` = `addLocalDays(getLocalDayStart(pausedAt), 1)`；永久暂停不变。",
+        "`docs/product/ops-data-and-sponge-integration.md` 同步口径。"
+      ],
+      "summary": [
+        "临时暂停托管改为次日零点自动恢复（原固定 3 天）",
+        "`user-hosting.service.ts`：删掉硬编码 `PAUSE_DURATION_MS`，三处（pauseUser / loadPausedUsers 兜底 / 共享缓存快照）统一用 `resolveTemporaryPauseExpiresAt(pausedAt)` = `addLocalDays(getLocalDayStart(pausedAt), 1)`；永久暂停不变。",
+        "新增用例：解禁时刻在上海时区读数为 00:00:00，且距暂停不超过 24h，DB 写入值与缓存一致。",
+        "`docs/product/ops-data-and-sponge-integration.md` 同步口径。"
+      ],
+      "features": [
+        "新增用例：解禁时刻在上海时区读数为 00:00:00，且距暂停不超过 24h，DB 写入值与缓存一致。"
+      ],
+      "fixes": [
+        "`user-hosting.service.ts`：删掉硬编码 `PAUSE_DURATION_MS`，三处（pauseUser / loadPausedUsers 兜底 / 共享缓存快照）统一用 `resolveTemporaryPauseExpiresAt(pausedAt)` = `addLocalDays(getLocalDayStart(pausedAt), 1)`；永久暂停不变。",
+        "`docs/product/ops-data-and-sponge-integration.md` 同步口径。"
+      ],
+      "optimizations": [],
+      "ops": [
+        "临时暂停托管改为次日零点自动恢复（原固定 3 天）"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`jest tests/biz/user/services/user-hosting.service.spec.ts tests/biz/user/repositories/user-hosting.repository.spec.ts --watchman=false`：57/57 通过"
+      ],
+      "level": "patch"
+    },
+    {
+      "number": "1166",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1166",
+      "title": "入站风险词表补残障自述漏网、剔除亲属词假阳、扫描前剥引用块",
+      "author": "huajune",
+      "mergedAt": "2026-09-02",
+      "businessUpdates": [
+        "入站风险词表补残障自述漏网句式、剔除亲属词假阳、扫描前剥引用块",
+        "入站风险词表补残障自述漏网、剔除亲属词假阳、扫描前剥引用块"
+      ],
+      "summary": [
+        "入站风险词表补残障自述漏网句式、剔除亲属词假阳、扫描前剥引用块",
+        "入站风险词表补残障自述漏网、剔除亲属词假阳、扫描前剥引用块"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "入站风险词表补残障自述漏网句式、剔除亲属词假阳、扫描前剥引用块"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`jest tests/agent/guardrail/input/ --watchman=false`：141/141 通过（新增 6 组正例 / 7 组反例 / 引用块 3 例）",
+        "`tsc --noEmit`、eslint（--max-warnings=0）、prettier 通过"
+      ],
+      "level": "patch"
+    },
+    {
+      "number": "1164",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1164",
+      "title": "判官标定首次完成，状态改为待用户裁定阈值并注册周任务",
+      "author": "huajune",
+      "mergedAt": "2026-09-02",
+      "businessUpdates": [
+        "判官标定补记用户裁定与两个修复 PR"
+      ],
+      "summary": [
+        "判官标定首次完成，任务书改为\"待用户裁定阈值并注册周任务\"",
+        "判官标定补记用户裁定与两个修复 PR",
+        "评估器已随 #1168 删除，清掉待裁定项",
+        "判官标定首次完成，状态改为待用户裁定阈值并注册周任务"
+      ],
+      "features": [],
+      "fixes": [
+        "判官标定补记用户裁定与两个修复 PR"
+      ],
+      "optimizations": [],
+      "ops": [
+        "判官标定首次完成，任务书改为\"待用户裁定阈值并注册周任务\"",
+        "评估器已随 #1168 删除，清掉待裁定项"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [],
+      "level": "patch"
+    },
+    {
+      "number": "1173",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1173",
+      "title": "\"XX附近\"地点抽取剥居住前缀并拒收整句噪音",
+      "author": "huajune",
+      "mergedAt": "2026-09-02",
+      "businessUpdates": [
+        "捕获段含句子词（这/那个/你/我/他/她/有没有/可以/不是/工作/吗/呢/吧/了/就/要/想/找/看/去/到/在/是）一律不认；刻意不收\"的\"（美的财富广场）。",
+        "剥完不足 2 字（\"这\"）丢弃。"
+      ],
+      "summary": [
+        "\"XX附近\"地点抽取剥居住前缀并拒收整句噪音",
+        "动作前缀归一（\"帮我找一下\"）之后再剥一次居住/位置前缀：`我/我们/我家/人/家 + 现在/目前/平时/就 + 住/人/家 + 在`，**必须以\"在\"收尾**，不会吃掉\"人民广场\"\"家乐福\"的首字；另认\"就XX\"。",
+        "捕获段含句子词（这/那个/你/我/他/她/有没有/可以/不是/工作/吗/呢/吧/了/就/要/想/找/看/去/到/在/是）一律不认；刻意不收\"的\"（美的财富广场）。",
+        "剥完不足 2 字（\"这\"）丢弃。"
+      ],
+      "features": [],
+      "fixes": [
+        "捕获段含句子词（这/那个/你/我/他/她/有没有/可以/不是/工作/吗/呢/吧/了/就/要/想/找/看/去/到/在/是）一律不认；刻意不收\"的\"（美的财富广场）。",
+        "剥完不足 2 字（\"这\"）丢弃。"
+      ],
+      "optimizations": [
+        "动作前缀归一（\"帮我找一下\"）之后再剥一次居住/位置前缀：`我/我们/我家/人/家 + 现在/目前/平时/就 + 住/人/家 + 在`，**必须以\"在\"收尾**，不会吃掉\"人民广场\"\"家乐福\"的首字；另认\"就XX\"。",
+        "\"XX附近\"地点抽取剥居住前缀并拒收整句噪音"
+      ],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": [],
+      "level": "patch"
+    },
+    {
+      "number": "1177",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1177",
+      "title": "会话列表页大小 200→600，头像改懒加载",
+      "author": "huajune",
+      "mergedAt": "2026-09-02",
+      "businessUpdates": [
+        "会话列表页大小 200→600，头像改懒加载",
+        "`web/src/hooks/chat/useChatSessions.ts`：`CHAT_SESSION_PAGE_SIZE` 200→600",
+        "`src/biz/message/services/chat-session.service.ts` / `repositories/chat-message.repository.ts`：默认页大小 200→600，上限 `MAX_SESSION_PAGE_SIZE` 500→600（注释标明 ≤999 硬边界，因为实际取 limit+1 且 PostgREST max_rows=1000）",
+        "`SessionList/index.tsx`：头像 `<img>` 加 `loading=\"lazy\"`——列表未虚拟化，600 行头像一次性发请求会排队",
+        "两个 spec 同步默认值/上限断言"
+      ],
+      "summary": [
+        "会话列表页大小 200→600，头像改懒加载",
+        "`web/src/hooks/chat/useChatSessions.ts`：`CHAT_SESSION_PAGE_SIZE` 200→600",
+        "`src/biz/message/services/chat-session.service.ts` / `repositories/chat-message.repository.ts`：默认页大小 200→600，上限 `MAX_SESSION_PAGE_SIZE` 500→600（注释标明 ≤999 硬边界，因为实际取 limit+1 且 PostgREST max_rows=1000）",
+        "`SessionList/index.tsx`：头像 `<img>` 加 `loading=\"lazy\"`——列表未虚拟化，600 行头像一次性发请求会排队",
+        "两个 spec 同步默认值/上限断言"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [
+        "`web/src/hooks/chat/useChatSessions.ts`：`CHAT_SESSION_PAGE_SIZE` 200→600",
+        "`src/biz/message/services/chat-session.service.ts` / `repositories/chat-message.repository.ts`：默认页大小 200→600，上限 `MAX_SESSION_PAGE_SIZE` 500→600（注释标明 ≤999 硬边界，因为实际取 limit+1 且 PostgREST max_rows=1000）",
+        "`SessionList/index.tsx`：头像 `<img>` 加 `loading=\"lazy\"`——列表未虚拟化，600 行头像一次性发请求会排队",
+        "两个 spec 同步默认值/上限断言"
+      ],
+      "ops": [
+        "会话列表页大小 200→600，头像改懒加载"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`pnpm run typecheck` 通过",
+        "`tests/biz/message/repositories/chat-message.repository.spec.ts` + `tests/biz/message/services/chat-session.service.spec.ts`：68/68 通过",
+        "ESLint / Prettier：`src/` 下两个改动文件通过；两个 spec 文件与两个 web 文件在 develop 上本就不过 prettier（CI 不覆盖 tests/ 与 web/），本 PR 未动格式",
+        "web：`tsc --noEmit` 与 eslint 通过"
+      ],
+      "level": "patch"
     }
   ],
   "lastRelease": {
@@ -281,5 +473,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "10c77852d2ab61feeeb6000f04f229a6b53d134f"
+  "lastAnalyzedSha": "b348d63d7824c4b012b41f080ce81e718b58d1c8"
 }

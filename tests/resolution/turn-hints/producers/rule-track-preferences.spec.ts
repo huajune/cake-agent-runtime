@@ -150,3 +150,31 @@ describe('extractLocation', () => {
     expect(extractLocation('有兼职吗')).toEqual({ city: null, district: [], location: [] });
   });
 });
+
+describe('extractLocation · "XX附近"前缀噪音（09-02 生产核对：3.8% 地点值是整句）', () => {
+  it.each([
+    ['我住在弘扬广场附近', '弘扬广场'],
+    ['就在青龙湖公园附近', '青龙湖公园'],
+    ['人在美的财富广场附近有岗吗', '美的财富广场'],
+    ['地铁1号线附近有吗', '地铁1号线'],
+  ])('%s → 只留地点本体 %s', (message, expected) => {
+    const { location } = extractLocation(message);
+    expect(location).toContain(expected);
+    expect(location.some((item) => /我|住在|人在/u.test(item))).toBe(false);
+  });
+
+  it.each([
+    '我在这附近',
+    '是的这附近',
+    '我家在这附近',
+    '如果工作合适可以搬去工作地附近',
+    '你在帮我看看有没有附近的',
+    '的工作不是陈翔公路附近',
+  ])('%s 不产地点', (message) => {
+    expect(extractLocation(message).location).toEqual([]);
+  });
+
+  it('动作前缀归一仍然有效（"帮我找一下"不吃进地点）', () => {
+    expect(extractLocation('帮我找一下弘扬广场附近的').location).toContain('弘扬广场');
+  });
+});
