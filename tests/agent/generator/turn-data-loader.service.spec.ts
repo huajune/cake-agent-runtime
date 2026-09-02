@@ -44,9 +44,9 @@ describe('TurnDataLoaderService', () => {
       city: '上海',
       industries: [{ industry: '餐饮', groupCount: 2, availableCount: 1 }],
     });
-    expect(new GroupInventorySection().build({ groupInventory: view } as never)).toContain(
-      '可用 1/2',
-    );
+    expect(
+      new GroupInventorySection().build({ groupInventory: view } as never)[0]?.content,
+    ).toContain('可用 1/2');
   });
 
   it('does not turn a failed group source into a false empty-inventory claim', () => {
@@ -98,6 +98,7 @@ describe('TurnDataLoaderService', () => {
     const strategyRecord = { stage_goals: { stages: [] }, red_lines: { thresholds: [] } };
     const strategy = { getActiveConfig: jest.fn().mockResolvedValue(strategyRecord) };
     const config = { get: jest.fn().mockReturnValue('200') };
+    const tracer = { emit: jest.fn() };
     const service = new TurnDataLoaderService(
       booking as never,
       memoryService as never,
@@ -110,6 +111,8 @@ describe('TurnDataLoaderService', () => {
       chatSession as never,
       strategy as never,
       config as never,
+      undefined,
+      tracer as never,
     );
 
     const snapshot = await service.load(
@@ -162,6 +165,25 @@ describe('TurnDataLoaderService', () => {
         warnings: [],
       }),
     );
+    expect(snapshot.sourceObservations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ source: 'memory', status: 'success' }),
+        expect.objectContaining({ source: 'strategy', status: 'success' }),
+        expect.objectContaining({ source: 'groups', status: 'success' }),
+      ]),
+    );
+    expect(
+      snapshot.sourceObservations.every(
+        (source) => source.durationMs >= 0 && Boolean(source.observedAt),
+      ),
+    ).toBe(true);
+    expect(tracer.emit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'turn_data_sources',
+        status: 'success',
+        sources: snapshot.sourceObservations,
+      }),
+    );
   });
 
   it('keeps optional source failures explicit without rejecting the turn', async () => {
@@ -170,6 +192,7 @@ describe('TurnDataLoaderService', () => {
       loadPointer: jest.fn().mockResolvedValue({ state: 'none' }),
       enrichOutOfBand: jest.fn().mockResolvedValue({ state: 'none' }),
     };
+    const tracer = { emit: jest.fn() };
     const service = new TurnDataLoaderService(
       booking as never,
       { onTurnStart: jest.fn().mockResolvedValue(memory) } as never,
@@ -190,6 +213,8 @@ describe('TurnDataLoaderService', () => {
           .mockResolvedValue({ stage_goals: { stages: [] }, red_lines: { thresholds: [] } }),
       } as never,
       { get: jest.fn().mockReturnValue('200') } as never,
+      undefined,
+      tracer as never,
     );
 
     const snapshot = await service.load(
@@ -222,6 +247,14 @@ describe('TurnDataLoaderService', () => {
       'groups',
       'visual_facts',
     ]);
+    expect(snapshot.sourceObservations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ source: 'groups', status: 'degraded' }),
+        expect.objectContaining({ source: 'account_identity', status: 'degraded' }),
+        expect.objectContaining({ source: 'brand', status: 'degraded' }),
+        expect.objectContaining({ source: 'visual_facts', status: 'degraded' }),
+      ]),
+    );
   });
 });
 

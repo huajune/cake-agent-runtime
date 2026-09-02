@@ -50,7 +50,7 @@ export interface TurnContext
  * 被动入站回合。
  *
  * 主动复聊由 reengagement 域的 ReengagementAgent 独立承载，不能伪装成 user message
- * 进入本协议。这里直接表达真实输入，避免 trigger.kind 分支扩散到 runner/generator。
+ * 进入本协议。这里直接表达真实输入，避免触发类型分支扩散到 runner/generator。
  */
 export interface InboundTurnRequest {
   sessionRef: SessionRef;

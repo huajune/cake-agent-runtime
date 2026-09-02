@@ -56,11 +56,24 @@ describe('resolveTurnContext', () => {
       } as never,
       normalizedMessages: [{ role: 'user', content: '还有岗位吗' }],
       conversationCorpusBlocks: [],
+      injectionAssessment: { safe: true, detected: false },
       nowMs: Date.parse('2026-09-02T00:00:00.000Z'),
     });
 
     expect(result.entryStage).toBe('job_consultation');
-    expect(result.composeParams.currentStage).toBe('job_consultation');
+    expect(result.promptModel.strategy.currentStage?.stage).toBe('job_consultation');
     expect(result.memorySnapshot.currentStage).toBe('job_consultation');
+    expect(result.toolModel.selection).toEqual({
+      scenario: 'candidate-consultation',
+      mode: 'scenario',
+      allowedToolNames: undefined,
+    });
+    expect(result.ledgerSeed).toEqual(
+      expect.objectContaining({
+        laborFormIntent: { kind: 'ignore' },
+        collectedFields: expect.any(Object),
+        geoSignalCities: new Set(),
+      }),
+    );
   });
 });

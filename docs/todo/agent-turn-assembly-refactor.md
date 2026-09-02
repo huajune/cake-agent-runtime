@@ -36,6 +36,9 @@
 
 同时遵守 YAGNI：不引入通用 DAG 引擎、事件总线、插件框架或“每个函数一个 Service”的过度抽象。
 
+运行协议裁定已固化为
+[ADR-0001](../architecture/adr/0001-separate-inbound-and-reengagement-turn-protocols.md)，避免未来再次把主动任务塞进入站 union。
+
 ## 3. 目标架构
 
 ```mermaid
@@ -135,6 +138,7 @@ interface TurnSourceSnapshot {
   turnBrandContext: TurnBrandContext;
   geoAnchor: GeoResolution | undefined;
   warnings: SourceWarning[];
+  sourceObservations: TurnSourceLoadTrace[];
 }
 ```
 
@@ -147,27 +151,34 @@ Loader 内部显式表达依赖图，并保持最大并发：`turnHints → memo
 ```ts
 interface ResolvedTurnContext {
   entryStage: string | null;
-  composeParams: ComposeParams;
-  ledgerSeed: TurnLedgerSeed;
-  bookingWorkOrderJobIds: number[];
+  promptModel: PromptModel;
+  toolModel: ToolContextModel;
+  ledgerSeed: CreateTurnLedgerInput;
+  initialGeoResolution?: LoadedGeoAnchor;
   memorySnapshot: AgentMemorySnapshot;
 }
 ```
 
-这里完成 memory adjudication、用工形式、品牌状态、返回用户阶段、候选人证据、字段收集、地理信号、Prompt Injection assessment 与 critical-turn signals。原始实体不会直接泄露给 Section。
+这里完成 memory adjudication、用工形式、品牌状态、返回用户阶段、候选人证据、字段收集、地理信号、Prompt Injection assessment 与 critical-turn signals。`promptModel` 与 `toolModel` 是两个明确投影：它们来自同一份裁决结果，但分别只暴露模型渲染和工具执行所需字段；Section 与 Tool Runtime 不再接触待裁决的原始输入。
 
 ### 4.5 Prompt 模型与 Section
 
-`PromptContext` 不再接收 `memoryBlock` / `groupInventoryBlock` 等预渲染大字符串，
-改为接收 `MemoryPromptView` / `GroupInventoryPromptView` 等类型化视图：
+`PromptModel` 不接收 `memoryBlock` / `groupInventoryBlock` 等预渲染大字符串，
+只接收 `MemoryPromptView` / `GroupInventoryPromptView` 等类型化视图：
 
 ```ts
-interface PromptContext {
-  strategyConfig: StrategyConfigRecord;
+interface PromptModel {
+  scenario: string;
+  channelType: 'private' | 'group';
+  currentTimeText: string;
+  identity: AccountIdentityPromptView;
+  strategy: StrategyPromptView;
   memory?: MemoryPromptView;
   groupInventory?: GroupInventoryPromptView;
-  inputSecurityInstruction?: string;
-  // 其余均为 Resolver 已裁决的本轮字段
+  turnHints: TurnHintsPromptView;
+  hardConstraints?: HardConstraintsPromptView;
+  security: PromptSecurityView;
+  criticalTurnInstructions: readonly string[];
 }
 ```
 
@@ -175,10 +186,11 @@ Section 是同步纯渲染器：
 
 ```ts
 interface PromptSection {
-  readonly name: string;
-  readonly domain?: CorpusDomain;
-  build(ctx: PromptContext): string;
-  buildBlocks?(ctx: PromptContext): PromptCorpusBlock[];
+  readonly id: string;
+  readonly domain: CorpusDomain;
+  readonly slot: PromptSlot;
+  readonly dynamic: boolean;
+  build(model: PromptModel): PromptCorpusBlock[];
 }
 ```
 
@@ -186,18 +198,23 @@ interface PromptSection {
 
 ### 4.6 Prompt 顺序
 
-用场景 manifest 的显式顺序替换数组插缝：
+场景 manifest 只声明包含哪些 Section；`PromptSlot` 表达粗粒度位置，compiler 统一排序：
 
 ```ts
-final-check
-→ input-guard
-→ critical-turn-guard
+type PromptSlot =
+  | 'stable-instructions'
+  | 'strategy'
+  | 'evidence'
+  | 'working-context'
+  | 'final-recitation'
+  | 'input-security'
+  | 'critical-guard';
 ```
 
-Composer 按 `SCENARIO_SECTIONS` 顺序稳定输出。`input-guard` 和
-`critical-turn-guard` 成为条件式 section，不再由 Preparation 使用
-`findIndex + slice` 插缝。这个表达已足以消除当前问题，本次不再叠加一层
-slot 排序器。
+`PROMPT_SLOT_ORDER` 是跨类别顺序的唯一权威；同 slot 内维持 manifest 顺序。compiler 同时产出
+`PromptCorpusBlock[]`、最终字符串、顺序 hash、逐块字符数与动态 block 列表。`input-guard` 和
+`critical-turn-guard` 是条件式 Section，固定落在 `final-recitation` 之后，不再由 Preparation
+使用 `findIndex + slice` 插缝。
 
 `final-check` 与 `critical-turn-guard` 是两个渲染落点，但消费同一份 `FINAL_CHECK_RULES`；单一权威指的是规则表，不要求两个 block 被迫存在于同一个类中。
 
@@ -299,7 +316,7 @@ src/agent/
 
 - 删除 `memoryBlock`、`groupInventoryBlock` 等预渲染字符串；
 - Section 直接渲染 typed view；
-- 用 manifest 显式表达条件 section 顺序；
+- 用 manifest + slot 显式表达 section 集合与跨类别顺序；
 - 删除 `findIndex + slice`；
 - 保持最终 Prompt 的稳定前缀、尾部顺序和字节兼容。
 
@@ -336,9 +353,18 @@ expect(renderPromptBlocks(promptBlocks)).toBe(expectedPrompt);
 
 ## 8. 观测边界
 
-本 PR 保持现有回合级 `prepMs`、tool timing、prompt bloat 告警和各外部源降级 warning，
-不在结构重构中同时扩展 MPR schema 或 AgentEvent 协议。分阶段耗时、block 顺序 hash
-与每源 status 是后续独立 observability PR，避免把数据契约变更混入本次行为等价改造。
+本次同步扩展现有 `AgentEvent`，不新增数据库 migration：
+
+- `turn_data_sources`：记录每个来源的 `durationMs`、`observedAt` 与
+  `success | empty | degraded | failed`；
+- `turn_preparation`：记录输入归一化、数据加载、对话归一化、裁决、Prompt 编译、工具构建的耗时，
+  以及 block 字符数、slot、domain、动态性、顺序 hash、总字符数、token 粗估和工具数量；
+- `prompt_injection_detected`：记录 rule/category、告警发送结果和最多 200 字的脱敏 preview，
+  不持久化完整候选人消息。
+
+事件继续经 `PersistingObserver` 落入现有 Agent event 持久化出口；告警和观测失败均 fail-open，但
+必须记录 warning。Prompt 正文仍只在既有 LLM 请求快照中保留，新增观测只记录结构元数据，避免复制
+敏感上下文。
 
 ## 9. 风险与控制
 
@@ -347,7 +373,7 @@ expect(renderPromptBlocks(promptBlocks)).toBe(expectedPrompt);
 | Prompt 顺序变化导致模型/缓存漂移      | 固化 block 顺序和代表性渲染结果，manifest 改造保持现有顺序                         |
 | 拆 Loader 后串行化导致延迟上升        | 保留显式 Promise 依赖图，增加阶段耗时断言/观测                                     |
 | 多个事实视图产生双权威                | Resolver 输出单一 `ResolvedTurnContext`，迁移后删除旧字段                          |
-| 大量测试 mock 因接口变化失效          | 先引入兼容适配，再分域迁移测试，最后删除适配                                       |
+| 大量测试 mock 因接口变化失效          | 按 Loader / Resolver / Composer / Tool Runtime 分域迁移测试，终态删除适配层        |
 | Prompt Injection 重构意外改变拦截语义 | 保持“检测 + 提示 + 告警、不阻断”基线，新增结构化对拍                               |
 | 抽象过度                              | 限定为一个 IO Service、一个工具 Builder、纯函数 Resolver/Normalizer、一个 Composer |
 
@@ -358,7 +384,7 @@ expect(renderPromptBlocks(promptBlocks)).toBe(expectedPrompt);
 - [x] Preparation 只负责编排，不包含外部数据实现或 Prompt 数组手术；
 - [x] 每轮外部 IO 集中在 Loader，Section 零 IO；
 - [x] Section 消费类型化裁决视图，不消费预渲染大字符串；
-- [x] Prompt block 位置由 manifest 确定；
+- [x] Prompt block 集合由 manifest、跨类别位置由 slot 确定；
 - [x] Prompt Injection 检测、渲染、观测职责分离；
 - [x] Prompt 字节、工具集合、entryStage、Ledger 与守卫终态无非预期变化；
 - [x] Reengagement 独立链路无行为变化；
@@ -370,8 +396,14 @@ expect(renderPromptBlocks(promptBlocks)).toBe(expectedPrompt);
 
 ## 11. 本地验证记录
 
-- 定向回归：18 个 suites、377 个 tests 全部通过；覆盖 Runner、ReplyWorkflow、Preparation、Context、Prompt Injection、关键轮规则和 Reengagement。
-- 完整门禁：`pnpm run ci:check` 通过；456 个 suites、6618 个 tests 通过，1 个 suite / 5 个 tests 按仓库既有配置跳过。
+- 定向回归：24 个 suites、357 个 tests 通过；覆盖 Runner、ReplyWorkflow、Preparation、Loader、
+  Resolver、Prompt Sections/Compiler、Tool Runtime、Prompt Injection、Observability 与 Reengagement。
+- 完整门禁：`pnpm run ci:check` 通过；457 个 suites、6572 个 tests 通过，1 个 suite / 5 个 tests 按仓库
+  既有配置跳过；lint、format、typecheck、geo/vocab/quality-ledger 校验和前后端 build 同步通过。
 - 依赖装配：`pnpm run test:di-smoke` 通过，完整 `AppModule` 可实例化。
-- 重复度：`pnpm run duplication:check` 通过，重复行率 0.8%，低于 2.06% 阈值。
-- 结构审计：旧 `TurnTrigger` / `TurnRequest` / placeholder / `PromptInjectionService` 无生产残留；`git diff --check` 通过。
+- 重复度：`pnpm run duplication:check` 通过，重复行率 0.79%，低于 2.06% 阈值。
+- 结构审计：Runner/Generator 不存在生产 `TurnTrigger` / placeholder / `trigger.kind`；旧
+  `PromptContext`、外部 `buildMemoryBlock()`、场景兼容 registry 与中央 domain registry 均已回收；
+  `git diff --check` 通过。
+- 文档同步：架构现状、Prompt 知识库、规则台账、最终 Prompt 示例、ADR 与个人 Obsidian
+  `Cake 回合装配边界与 Prompt 编译` 已更新。

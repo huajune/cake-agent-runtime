@@ -1,5 +1,6 @@
 // 知识归类：working —— 平台资源数据非候选人事实，按本轮城市选取，属于轮作用域工作台资源。
-import { PromptSection, PromptContext } from '../section.interface';
+import { buildTextPromptBlock, type PromptSection } from '../section.interface';
+import type { PromptModel } from '../../prompt-model.types';
 
 export interface GroupInventoryPromptView {
   city: string;
@@ -18,19 +19,25 @@ export interface GroupInventoryPromptView {
  * 操作约束统一归 invite_to_group description，本 section 不承载教学文本。
  */
 export class GroupInventorySection implements PromptSection {
-  readonly name = 'group-inventory';
+  readonly id = 'group-inventory';
+  readonly domain = 'tool_result' as const;
+  readonly slot = 'working-context' as const;
+  readonly dynamic = true;
 
-  build(ctx: PromptContext): string {
-    const view = ctx.groupInventory;
-    if (!view) return '';
+  build(model: PromptModel) {
+    const view = model.groupInventory;
+    if (!view) return [];
     if (view.industries.length === 0) {
-      return [`## 兼职群资源（${view.city}）`, '- 该城市暂无可用兼职群'].join('\n');
+      return buildTextPromptBlock(
+        this,
+        [`## 兼职群资源（${view.city}）`, '- 该城市暂无可用兼职群'].join('\n'),
+      );
     }
     const lines = view.industries.map(({ industry, groupCount, availableCount }) => {
       const capacity =
         availableCount === groupCount ? '均有空位' : `可用 ${availableCount}/${groupCount}`;
       return `- ${industry}：${groupCount} 个群（${capacity}）`;
     });
-    return [`## 兼职群资源（${view.city}）`, ...lines].join('\n');
+    return buildTextPromptBlock(this, [`## 兼职群资源（${view.city}）`, ...lines].join('\n'));
   }
 }

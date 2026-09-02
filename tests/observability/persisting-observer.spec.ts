@@ -58,6 +58,31 @@ describe('PersistingObserver', () => {
     expect(persister.persist).toHaveBeenCalledTimes(2);
   });
 
+  it('always persists preparation, source, and prompt-injection diagnostics', () => {
+    const observer = makeObserver();
+
+    observer.emit({
+      type: 'turn_data_sources',
+      status: 'success',
+      totalDurationMs: 10,
+      sources: [],
+    });
+    observer.emit({
+      type: 'turn_preparation',
+      status: 'success',
+      totalDurationMs: 12,
+      phaseDurationsMs: { load_sources: 10 },
+    });
+    observer.emit({
+      type: 'prompt_injection_detected',
+      ruleId: 'role_hijack_1',
+      alertStatus: 'sent',
+      evidencePreview: '[手机号已脱敏]',
+    });
+
+    expect(persister.persist).toHaveBeenCalledTimes(3);
+  });
+
   it('always persists llm_execution regardless of status or attempt count', () => {
     const observer = makeObserver();
 

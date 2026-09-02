@@ -1,13 +1,9 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
-import type { ModelMessage, ToolSet } from 'ai';
+import type { ToolSet } from 'ai';
 import { ToolRegistryService } from '@tools/tool-registry.service';
 import { AgentTracerService } from '@observability/agent-tracer.service';
-import type { CorpusBlock } from '@shared-types/corpus.types';
 import type { TurnLedger } from '@shared-types/turn.types';
-import type { GeneratorInvokeParams } from '../generator.types';
-import type { NormalizedTurnInput } from './turn-input-normalizer';
 import type { ResolvedTurnContext } from './turn-context-resolver';
-import type { TurnSourceSnapshot } from './turn-data-loader.service';
 import { createTurnLedger } from './turn-ledger';
 import { buildToolContext } from './tool-context.builder';
 import { resolveToolsForMode, wrapToolsWithTiming } from './tool-set.util';
@@ -16,6 +12,8 @@ export interface ToolRuntime {
   tools: ToolSet;
   ledger: TurnLedger;
   toolExecutionTimings: Map<string, number>;
+  availableToolCount: number;
+  activeToolCount: number;
 }
 
 /** 创建单轮可变运行时；只消费已加载、已裁决的数据，不执行新的外部读取。 */
@@ -28,18 +26,11 @@ export class ToolRuntimeBuilderService {
     @Optional() private readonly tracer?: AgentTracerService,
   ) {}
 
-  build(input: {
-    params: GeneratorInvokeParams;
-    normalizedInput: NormalizedTurnInput;
-    sources: TurnSourceSnapshot;
-    resolved: ResolvedTurnContext;
-    normalizedMessages: ModelMessage[];
-    conversationCorpusBlocks: CorpusBlock[];
-  }): ToolRuntime {
-    const { params, normalizedInput, sources, resolved } = input;
+  build(input: { resolved: ResolvedTurnContext }): ToolRuntime {
+    const { resolved } = input;
     const ledger = createTurnLedger(resolved.ledgerSeed);
-    if (sources.geoAnchor) {
-      const anchor = sources.geoAnchor;
+    if (resolved.initialGeoResolution) {
+      const anchor = resolved.initialGeoResolution;
       ledger.recordGeoResolution({
         longitude: anchor.longitude,
         latitude: anchor.latitude,
@@ -55,32 +46,18 @@ export class ToolRuntimeBuilderService {
       );
     }
 
-    const toolContext = buildToolContext({
-      params,
-      memory: sources.memory,
-      normalizedMessages: input.normalizedMessages,
-      conversationCorpusBlocks: input.conversationCorpusBlocks,
-      visualSheetsByContent: sources.visualSheetsByContent,
-      entryStage: resolved.entryStage,
-      stageGoals: Object.fromEntries(
-        sources.strategyConfig.stage_goals.stages.map((stage) => [stage.stage, stage]),
-      ),
-      thresholds: sources.strategyConfig.red_lines.thresholds ?? [],
-      ledger,
-      contactBrandAliases: sources.turnBrandContext.nicknameBrands,
-      sessionBrandState: sources.turnBrandContext.state,
-      currentUserMessage: normalizedInput.currentUserMessage,
-      currentLaborFormIntent: normalizedInput.laborFormIntent,
-      bookingWorkOrderJobIds: resolved.bookingWorkOrderJobIds,
-    });
+    const toolContext = buildToolContext(resolved.toolModel, ledger);
     const toolExecutionTimings = new Map<string, number>();
-    const scenario = params.scenario ?? 'candidate-consultation';
+    const { scenario, mode, allowedToolNames } = resolved.toolModel.selection;
     const scenarioTools = this.toolRegistry.buildForScenario(scenario, toolContext) as ToolSet;
-    const tools = wrapToolsWithTiming(
-      resolveToolsForMode(scenarioTools, params.toolMode ?? 'scenario', params.allowedToolNames),
+    const selectedTools = resolveToolsForMode(scenarioTools, mode, allowedToolNames);
+    const tools = wrapToolsWithTiming(selectedTools, toolExecutionTimings, this.tracer);
+    return {
+      tools,
+      ledger,
       toolExecutionTimings,
-      this.tracer,
-    );
-    return { tools, ledger, toolExecutionTimings };
+      availableToolCount: Object.keys(scenarioTools).length,
+      activeToolCount: Object.keys(selectedTools).length,
+    };
   }
 }

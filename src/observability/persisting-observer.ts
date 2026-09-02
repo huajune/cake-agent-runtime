@@ -10,6 +10,9 @@ import {
 const ALWAYS_PERSISTED_EVENT_TYPES = new Set<AgentEvent['type']>([
   'agent_end',
   'agent_error',
+  'turn_data_sources',
+  'turn_preparation',
+  'prompt_injection_detected',
   'model_fallback',
   'tool_error',
   // LLM 尝试轨迹：条件采样（下方 shouldPersist）会漏掉本事件要抓的重试与慢尝试

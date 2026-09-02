@@ -1,6 +1,7 @@
 // 知识归类：procedural —— 本段把业务阈值转成模型行为约束。
 // prompt-rule-ledger: docs/prompt-rule-ledger.md（程序性业务阈值总账）
-import { PromptSection, PromptContext } from '../section.interface';
+import { buildTextPromptBlock, type PromptSection } from '../section.interface';
+import type { PromptModel } from '../../prompt-model.types';
 import { Threshold } from '@biz/strategy/types/strategy.types';
 
 /**
@@ -10,10 +11,13 @@ import { Threshold } from '@biz/strategy/types/strategy.types';
  * 数值型阈值同时由工具层硬过滤，prompt 层作为二次保障。
  */
 export class ThresholdsSection implements PromptSection {
-  readonly name = 'thresholds';
+  readonly id = 'thresholds';
+  readonly domain = 'teaching' as const;
+  readonly slot = 'strategy' as const;
+  readonly dynamic = true;
 
-  build(ctx: PromptContext): string {
-    return this.buildThresholdsText(ctx.strategyConfig.red_lines.thresholds);
+  build(model: PromptModel) {
+    return buildTextPromptBlock(this, this.buildThresholdsText(model.strategy.thresholds));
   }
 
   private buildThresholdsText(thresholds?: Threshold[]): string {

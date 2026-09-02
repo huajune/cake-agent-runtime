@@ -32,6 +32,8 @@ import {
   type CandidateIdentityHint,
 } from './snapshot-enrichment.service';
 import { BookingContextLoaderService } from './booking-context-loader.service';
+import { AgentTracerService } from '@observability/agent-tracer.service';
+import type { TurnSourceLoadStatus, TurnSourceLoadTrace } from '@observability/observer.interface';
 
 export interface LoadedGeoAnchor {
   longitude: number;
@@ -58,6 +60,7 @@ export interface TurnSourceSnapshot {
   turnBrandContext: TurnBrandContext;
   geoAnchor: LoadedGeoAnchor | undefined;
   warnings: TurnSourceWarning[];
+  sourceObservations: TurnSourceLoadTrace[];
 }
 
 /** 每轮外部 IO 的唯一编排边界；返回结构化数据，不拼模型提示词。 */
@@ -79,6 +82,7 @@ export class TurnDataLoaderService {
     private readonly strategyConfig: StrategyConfigService,
     configService: ConfigService,
     @Optional() private readonly geocoding?: GeocodingService,
+    @Optional() private readonly tracer?: AgentTracerService,
   ) {
     this.groupMemberLimit = parseInt(configService.get<string>('GROUP_MEMBER_LIMIT', '200'), 10);
   }
@@ -87,66 +91,199 @@ export class TurnDataLoaderService {
     params: GeneratorInvokeParams,
     input: NormalizedTurnInput,
   ): Promise<TurnSourceSnapshot> {
+    const startedAt = Date.now();
     const warnings: TurnSourceWarning[] = [];
-    const turnHintsPromise = this.detectTurnHints(input.currentTurnTexts);
-    const memoryPromise = turnHintsPromise.then(async (turnHints) => {
-      const snapshot = await this.memoryService.onTurnStart(
-        params.corpId,
-        params.userId,
-        params.sessionId,
-        input.currentUserMessage,
-        {
-          includeShortTerm: params.callerKind === CallerKind.WECOM,
-          shortTermEndTimeInclusive: params.shortTermEndTimeInclusive,
-          turnHints,
-          botUserId: params.botUserId,
-        },
+    const sourceObservations: TurnSourceLoadTrace[] = [];
+    try {
+      const turnHintsPromise = this.observeSource(
+        'turn_hints',
+        () => this.detectTurnHints(input.currentTurnTexts),
+        warnings,
+        sourceObservations,
       );
-      const identity = buildEnrichmentIdentity(params);
-      return identity ? this.snapshotEnrichment.enrich(snapshot, identity) : snapshot;
+      const memoryPromise = turnHintsPromise.then((turnHints) =>
+        this.observeSource(
+          'memory',
+          async () => {
+            const snapshot = await this.memoryService.onTurnStart(
+              params.corpId,
+              params.userId,
+              params.sessionId,
+              input.currentUserMessage,
+              {
+                includeShortTerm: params.callerKind === CallerKind.WECOM,
+                shortTermEndTimeInclusive: params.shortTermEndTimeInclusive,
+                turnHints,
+                botUserId: params.botUserId,
+              },
+            );
+            const identity = buildEnrichmentIdentity(params);
+            return identity ? this.snapshotEnrichment.enrich(snapshot, identity) : snapshot;
+          },
+          warnings,
+          sourceObservations,
+        ),
+      );
+      const pointerBookingPromise = this.observeSource(
+        'booking_pointer',
+        () => this.bookingLoader.loadPointer(params, input.currentUserMessage),
+        warnings,
+        sourceObservations,
+      );
+      const groupsPromise = this.observeSource(
+        'groups',
+        () => this.loadGroups(warnings),
+        warnings,
+        sourceObservations,
+        ['groups'],
+      );
+      const realtimeGroupsPromise = groupsPromise.then((groups) =>
+        this.observeSource(
+          'group_membership',
+          () => this.loadRealtimeGroupStatus(params, groups, warnings),
+          warnings,
+          sourceObservations,
+          ['group_membership'],
+        ),
+      );
+
+      const [
+        memory,
+        pointerBooking,
+        realtimeGroups,
+        accountIdentity,
+        strategyConfig,
+        visualSheets,
+        geo,
+      ] = await Promise.all([
+        memoryPromise,
+        pointerBookingPromise,
+        realtimeGroupsPromise,
+        this.observeSource(
+          'account_identity',
+          () => this.loadAccountIdentity(params.botImId, warnings),
+          warnings,
+          sourceObservations,
+          ['account_identity'],
+        ),
+        this.observeSource(
+          'strategy',
+          () => this.strategyConfig.getActiveConfig(params.strategySource ?? 'released'),
+          warnings,
+          sourceObservations,
+        ),
+        this.observeSource(
+          'visual_facts',
+          () => this.loadVisualSheetIndex(params.sessionId, warnings),
+          warnings,
+          sourceObservations,
+          ['visual_facts'],
+        ),
+        this.observeSource(
+          'geocode',
+          () => this.loadLocationShareAnchor(input.currentUserMessage, warnings),
+          warnings,
+          sourceObservations,
+          ['geocode'],
+        ),
+      ]);
+
+      const [booking, groups, turnBrandContext] = await Promise.all([
+        this.observeSource(
+          'booking_enrichment',
+          () =>
+            this.bookingLoader.enrichOutOfBand(
+              pointerBooking,
+              memory,
+              params,
+              input.currentUserMessage,
+            ),
+          warnings,
+          sourceObservations,
+        ),
+        groupsPromise,
+        this.observeSource(
+          'brand',
+          () => this.deriveTurnBrandContext(params.contactName, memory, warnings),
+          warnings,
+          sourceObservations,
+          ['brand'],
+        ),
+      ]);
+
+      const snapshot: TurnSourceSnapshot = {
+        memory,
+        booking,
+        realtimeGroups,
+        groupInventory: buildGroupInventoryView(memory, groups, this.groupMemberLimit),
+        accountIdentity,
+        strategyConfig,
+        visualSheetsByContent: visualSheets,
+        turnBrandContext,
+        geoAnchor: geo,
+        warnings,
+        sourceObservations: sortSourceObservations(sourceObservations),
+      };
+      this.emitSourceTelemetry(params.userId, 'success', startedAt, snapshot.sourceObservations);
+      return snapshot;
+    } catch (error) {
+      this.emitSourceTelemetry(
+        params.userId,
+        'failure',
+        startedAt,
+        sortSourceObservations(sourceObservations),
+        toErrorMessage(error).slice(0, 300),
+      );
+      throw error;
+    }
+  }
+
+  private async observeSource<T>(
+    source: string,
+    load: () => Promise<T> | T,
+    warnings: TurnSourceWarning[],
+    observations: TurnSourceLoadTrace[],
+    warningSources: TurnSourceWarning['source'][] = [],
+  ): Promise<T> {
+    const startedAt = Date.now();
+    try {
+      const value = await load();
+      const degraded = warningSources.some((warningSource) =>
+        warnings.some((warning) => warning.source === warningSource),
+      );
+      observations.push({
+        source,
+        status: degraded ? 'degraded' : classifySourceValue(value),
+        durationMs: Date.now() - startedAt,
+        observedAt: new Date().toISOString(),
+      });
+      return value;
+    } catch (error) {
+      observations.push({
+        source,
+        status: 'failed',
+        durationMs: Date.now() - startedAt,
+        observedAt: new Date().toISOString(),
+      });
+      throw error;
+    }
+  }
+
+  private emitSourceTelemetry(
+    userId: string,
+    status: 'success' | 'failure',
+    startedAt: number,
+    sources: TurnSourceLoadTrace[],
+    error?: string,
+  ): void {
+    this.tracer?.emit({
+      type: 'turn_data_sources',
+      userId,
+      status,
+      totalDurationMs: Date.now() - startedAt,
+      sources,
+      error,
     });
-    const pointerBookingPromise = this.bookingLoader.loadPointer(params, input.currentUserMessage);
-    const groupsPromise = this.loadGroups(warnings);
-    const realtimeGroupsPromise = groupsPromise.then((groups) =>
-      this.loadRealtimeGroupStatus(params, groups, warnings),
-    );
-
-    const [
-      memory,
-      pointerBooking,
-      realtimeGroups,
-      accountIdentity,
-      strategyConfig,
-      visualSheets,
-      geo,
-    ] = await Promise.all([
-      memoryPromise,
-      pointerBookingPromise,
-      realtimeGroupsPromise,
-      this.loadAccountIdentity(params.botImId, warnings),
-      this.strategyConfig.getActiveConfig(params.strategySource ?? 'released'),
-      this.loadVisualSheetIndex(params.sessionId, warnings),
-      this.loadLocationShareAnchor(input.currentUserMessage, warnings),
-    ]);
-
-    const [booking, groups, turnBrandContext] = await Promise.all([
-      this.bookingLoader.enrichOutOfBand(pointerBooking, memory, params, input.currentUserMessage),
-      groupsPromise,
-      this.deriveTurnBrandContext(params.contactName, memory, warnings),
-    ]);
-
-    return {
-      memory,
-      booking,
-      realtimeGroups,
-      groupInventory: buildGroupInventoryView(memory, groups, this.groupMemberLimit),
-      accountIdentity,
-      strategyConfig,
-      visualSheetsByContent: visualSheets,
-      turnBrandContext,
-      geoAnchor: geo,
-      warnings,
-    };
   }
 
   private async detectTurnHints(currentTurnTexts: string[]) {
@@ -269,6 +406,22 @@ export class TurnDataLoaderService {
     warnings.push({ source, message: `${message}: ${detail}` });
     this.logger.warn(`${message}: ${detail}`);
   }
+}
+
+function classifySourceValue(value: unknown): TurnSourceLoadStatus {
+  if (value === null || value === undefined) return 'empty';
+  if (Array.isArray(value)) return value.length === 0 ? 'empty' : 'success';
+  if (value instanceof Map || value instanceof Set) return value.size === 0 ? 'empty' : 'success';
+  if (typeof value === 'object' && 'state' in value) {
+    const state = (value as { state?: unknown }).state;
+    if (state === 'none') return 'empty';
+    if (state === 'hidden') return 'degraded';
+  }
+  return 'success';
+}
+
+function sortSourceObservations(observations: TurnSourceLoadTrace[]): TurnSourceLoadTrace[] {
+  return [...observations].sort((left, right) => left.source.localeCompare(right.source));
 }
 
 function buildEnrichmentIdentity(params: GeneratorInvokeParams): CandidateIdentityHint | undefined {

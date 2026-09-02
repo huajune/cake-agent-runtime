@@ -18,11 +18,10 @@
  * - target=current：只匹配本轮用户输入（末尾连续 user 块）；
  * - target=combined：匹配近 12 条对话 + 本轮输入的拼接文本。
  */
-import type { ModelMessage } from 'ai';
 import { LOCATION_SHARE_MARKER_RE } from '@resolution/signal/markers';
 import { CANDIDATE_PHONE_RE } from '@resolution/candidate/phone';
-import { extractTextFromContent } from '@agent/generator/preparation/conversation-normalizer';
-import type { PromptContext, PromptSection } from '../section.interface';
+import { buildTextPromptBlock, type PromptSection } from '../section.interface';
+import type { PromptModel } from '../../prompt-model.types';
 
 const LOCATION_CONTEXT_PATTERN = new RegExp(
   `${LOCATION_SHARE_MARKER_RE.source}|这是我住的地方|住处|地址|附近`,
@@ -269,45 +268,34 @@ function renderAlwaysChecklist(): string {
 /** 常驻自检块是纯静态文本，模块加载时渲染一次（跨轮字节相等由 context.service.spec 断言）。 */
 const ALWAYS_CHECKLIST = renderAlwaysChecklist();
 
-/** 保留合并前 critical-turn-guard 的匹配语义与渲染字节。 */
-function renderTurnGuards(
-  currentUserMessage: string | undefined,
-  messages: readonly ModelMessage[],
-): string {
-  const current = currentUserMessage ?? '';
-  const recent = messages
-    .slice(-12)
-    .map((message) => `${message.role}: ${extractTextFromContent(message.content)}`)
-    .join('\n');
-  const combined = `${recent}\n${current}`;
-
-  const guards = FINAL_CHECK_RULES.filter((rule) => {
-    if (rule.trigger !== 'turn') return false;
-    const text = rule.target === 'current' ? current : combined;
-    return rule.patterns.every((pattern) => pattern.test(text));
-  }).map((rule) => rule.text);
-
-  if (guards.length === 0) return '';
-
-  return `# 本轮动态硬禁令\n${guards.map((guard) => `- ${guard}`).join('\n')}`;
-}
-
 /**
  * 常驻发送前自检（recitation）。动态输入安全和关键轮禁令由后续显式 section 承载。
  */
 export class FinalCheckSection implements PromptSection {
-  readonly name = 'final-check';
+  readonly id = 'final-check';
+  readonly domain = 'teaching' as const;
+  readonly slot = 'final-recitation' as const;
+  readonly dynamic = false;
 
-  build(): string {
-    return ALWAYS_CHECKLIST;
+  build() {
+    return buildTextPromptBlock(this, ALWAYS_CHECKLIST);
   }
 }
 
 /** 本轮规则命中才出现的动态硬禁令；与 FinalCheckSection 共用 FINAL_CHECK_RULES。 */
 export class CriticalTurnGuardSection implements PromptSection {
-  readonly name = 'critical-turn-guard';
+  readonly id = 'critical-turn-guard';
+  readonly domain = 'teaching' as const;
+  readonly slot = 'critical-guard' as const;
+  readonly dynamic = true;
 
-  build(ctx: PromptContext): string {
-    return renderTurnGuards(ctx.currentUserMessage, ctx.normalizedMessages ?? []);
+  build(model: PromptModel) {
+    const guards = model.criticalTurnInstructions;
+    return buildTextPromptBlock(
+      this,
+      guards.length > 0
+        ? `# 本轮动态硬禁令\n${guards.map((guard) => `- ${guard}`).join('\n')}`
+        : '',
+    );
   }
 }

@@ -1,6 +1,7 @@
 // 归位依据：内容无关的静态文本适配器，属于 section 基础设施，不参与知识分类。
 // prompt-rule-ledger: docs/prompt-rule-ledger.md（程序性静态手册/自检总账）
-import { PromptSection, PromptContext } from './section.interface';
+import { buildTextPromptBlock, type PromptSection } from './section.interface';
+import type { PromptModel, PromptSlot } from '../prompt-model.types';
 
 /**
  * 静态文本段落
@@ -9,11 +10,15 @@ import { PromptSection, PromptContext } from './section.interface';
  */
 export class StaticSection implements PromptSection {
   constructor(
-    readonly name: string,
+    readonly id: string,
     private readonly content: string,
+    readonly slot: PromptSlot = 'stable-instructions',
   ) {}
 
-  build(_ctx: PromptContext): string {
-    return this.content.trim();
+  readonly domain = 'teaching' as const;
+  readonly dynamic = false;
+
+  build(_model: PromptModel) {
+    return buildTextPromptBlock(this, this.content);
   }
 }

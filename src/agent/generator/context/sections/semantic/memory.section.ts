@@ -23,7 +23,8 @@ import type {
   PromptMemoryConflict,
 } from '@agent/generator/preparation/prompt-memory-adjudicator';
 import type { PromptCorpusBlock } from '@shared-types/corpus.types';
-import type { PromptContext, PromptSection } from '../section.interface';
+import type { PromptModel } from '../../prompt-model.types';
+import type { PromptSection } from '../section.interface';
 
 export interface RealtimeGroupStatus {
   groupName: string;
@@ -65,21 +66,18 @@ export interface MemoryPromptView {
 
 /** 记忆相关模型视图的唯一渲染入口；不做 IO 或事实裁决。 */
 export class MemorySection implements PromptSection {
-  readonly name = 'memory';
+  readonly id = 'memory';
+  readonly domain = 'evidence' as const;
+  readonly slot = 'evidence' as const;
+  readonly dynamic = true;
 
-  build(ctx: PromptContext): string {
-    return this.buildBlocks(ctx)
-      .map((block) => block.content)
-      .join('\n\n');
-  }
-
-  buildBlocks(ctx: PromptContext): PromptCorpusBlock[] {
-    if (!ctx.memory) return [];
-    const core = buildMemoryCoreBlock(ctx.memory);
-    const realtimeGroups = formatRealtimeGroups(ctx.memory.realtimeGroups);
-    const booking = renderBookingPrompt(ctx.memory.booking);
+  build(model: PromptModel): PromptCorpusBlock[] {
+    if (!model.memory) return [];
+    const core = buildMemoryCoreBlock(model.memory);
+    const realtimeGroups = formatRealtimeGroups(model.memory.realtimeGroups);
+    const booking = renderBookingPrompt(model.memory.booking);
     return [
-      promptEvidenceBlock('memory', core),
+      promptEvidenceBlock('candidate-memory', core),
       promptEvidenceBlock('realtime-group-status', realtimeGroups),
       promptEvidenceBlock('booking-context', booking),
     ].filter((block): block is PromptCorpusBlock => block !== null);
@@ -89,39 +87,6 @@ export class MemorySection implements PromptSection {
 function promptEvidenceBlock(id: string, content: string): PromptCorpusBlock | null {
   const normalized = content.trim();
   return normalized ? { id, domain: 'evidence', role: 'system', content: normalized } : null;
-}
-
-/**
- * 兼容旧测试辅助函数：把裁决后的记忆视图降维成单一字符串。
- *
- * 纯渲染层：所有数据由 PreparationService 召回后传入，本模块不做 IO。
- */
-export function buildMemoryBlock(
-  adjudication: PromptMemoryAdjudication,
-  bookingContext: string,
-  realtimeGroups: RealtimeGroupStatus[] = [],
-  contactName?: string,
-  contactBrandAliases: string[] = [],
-  currentLaborFormIntent: LaborFormIntentDecision = { kind: 'ignore' },
-  activeLaborForm: string | null = null,
-): string {
-  const memory: MemoryPromptView = {
-    adjudication,
-    booking: bookingContext
-      ? {
-          state: 'active',
-          source: 'active_booking',
-          entries: [],
-          syncing: false,
-        }
-      : { state: 'hidden' },
-    realtimeGroups,
-    contactName,
-    contactBrandAliases,
-    currentLaborFormIntent,
-    activeLaborForm,
-  };
-  return buildMemoryCoreBlock(memory) + formatRealtimeGroups(realtimeGroups) + bookingContext;
 }
 
 function buildMemoryCoreBlock(memory: MemoryPromptView): string {

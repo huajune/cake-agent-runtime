@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { redactCandidatePhones } from '@resolution/candidate/phone';
 
 export type PromptInjectionCategory = 'role_hijack' | 'prompt_leak' | 'system_marker';
 
@@ -8,6 +9,8 @@ export interface PromptInjectionAssessment {
   category?: PromptInjectionCategory;
   ruleId?: string;
   reason?: string;
+  /** 已脱敏且限长的命中消息摘要，可安全进入告警与结构化事件。 */
+  evidencePreview?: string;
 }
 
 interface DetectionRule {
@@ -77,6 +80,7 @@ export class PromptInjectionDetector {
           category: rule.category,
           ruleId: rule.id,
           reason: `${rule.label}: ${rule.pattern.source}`,
+          evidencePreview: redactPromptInjectionEvidence(text),
         };
       }
     }
@@ -91,6 +95,15 @@ export class PromptInjectionDetector {
     }
     return { safe: true, detected: false };
   }
+}
+
+export function redactPromptInjectionEvidence(text: string): string {
+  return redactCandidatePhones(text, '[手机号已脱敏]')
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[邮箱已脱敏]')
+    .replace(/\b\d{15,18}[0-9Xx]\b/g, '[证件号已脱敏]')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 200);
 }
 
 function extractText(content: unknown): string {

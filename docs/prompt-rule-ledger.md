@@ -39,8 +39,9 @@
 | 条件式规则块             | booking 共享规则 / input-guard / critical-turn-guard | 代码 PR                                      | 都留在 system；按上下文条件出现                                              |
 | 守卫 hard-rules（拦侧）  | `src/agent/guardrail/output/rules/`                  | 代码 PR                                      | 32 个 `ruleId`                                                               |
 
-`PROMPT_SECTION_DOMAIN_REGISTRY` 是 teaching/evidence/tool_result 的语料域轴，用于指令—数据分离；
-它与本台账的 procedural/semantic/working 知识类型轴正交，不合并、不互相替代。
+每个 `PromptSection.domain` 声明 teaching/evidence/tool_result 语料域，用于指令—数据分离；
+`PromptSection.slot` 另行声明编译位置。它们与本台账的 procedural/semantic/working 知识类型轴正交，
+不合并、不互相替代。
 
 ## 零、现行 procedural sections 与装配位
 
@@ -52,7 +53,7 @@
 
 末三个都是显式 section；后两个在条件未命中时返回空块。`final-check` 与
 `critical-turn-guard` 共用本文件中唯一 `FINAL_CHECK_RULES`，规则不复制，但渲染位置可由
-场景 manifest 显式表达。
+`PromptSlot` 显式表达，manifest 只声明场景包含的 Section 与同 slot 顺序。
 其中 `memory` 至 `group-inventory` 是 semantic/working 数据段，不是程序性规则的新居所；列在这里仅为说明
 完整装配相对位置。所有段仍渲染到 system，动态内容不进入 messages。准备阶段若命中输入注入风险，
 `input-guard` 在场景 manifest 中固定位于 `final-check` 和 `critical-turn-guard` 之间。

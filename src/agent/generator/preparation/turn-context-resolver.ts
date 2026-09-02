@@ -7,7 +7,11 @@ import type { RecommendedJobSummary } from '@resolution/job/types';
 import type { CorpusBlock } from '@shared-types/corpus.types';
 import type { ModelMessage } from 'ai';
 import type { AgentMemorySnapshot, GeneratorInvokeParams } from '../generator.types';
-import type { ComposeParams } from '../context/context.service';
+import type { PromptModel, PromptSecurityView } from '../context/prompt-model.types';
+import { FINAL_CHECK_RULES } from '../context/sections/procedural/final-check.section';
+import { formatCurrentTime } from '@infra/utils/date.util';
+import type { PromptInjectionAssessment } from '../../guardrail/input/prompt-injection-detector';
+import { PromptInjectionDetector } from '../../guardrail/input/prompt-injection-detector';
 import {
   visibleBookingJobIds,
   type MemoryPromptView,
@@ -16,14 +20,22 @@ import type { CreateTurnLedgerInput } from './turn-ledger';
 import type { NormalizedTurnInput } from './turn-input-normalizer';
 import type { TurnSourceSnapshot } from './turn-data-loader.service';
 import { adjudicatePromptMemory, resolveActiveLaborForm } from './prompt-memory-adjudicator';
+import {
+  resolveHardConstraintsPromptView,
+  resolveTurnHintsPromptView,
+} from './prompt-view-resolver';
+import { extractTextFromContent } from './conversation-normalizer';
+import { resolveToolContextModel, type ToolContextModel } from './tool-context.builder';
+import type { LoadedGeoAnchor } from './turn-data-loader.service';
 
 const RETURNING_USER_ENTRY_STAGE = 'job_consultation';
 
 export interface ResolvedTurnContext {
   entryStage: string | null;
-  composeParams: ComposeParams;
+  promptModel: PromptModel;
+  toolModel: ToolContextModel;
   ledgerSeed: CreateTurnLedgerInput;
-  bookingWorkOrderJobIds: number[];
+  initialGeoResolution?: LoadedGeoAnchor;
   memorySnapshot: AgentMemorySnapshot;
 }
 
@@ -38,11 +50,19 @@ export function resolveTurnContext(input: {
   sources: TurnSourceSnapshot;
   normalizedMessages: ModelMessage[];
   conversationCorpusBlocks: CorpusBlock[];
+  injectionAssessment: PromptInjectionAssessment;
   /** 本轮统一时间锚点，避免纯裁决函数内部读取系统时钟。 */
   nowMs: number;
 }): ResolvedTurnContext {
-  const { params, normalizedInput, sources, normalizedMessages, conversationCorpusBlocks, nowMs } =
-    input;
+  const {
+    params,
+    normalizedInput,
+    sources,
+    normalizedMessages,
+    conversationCorpusBlocks,
+    injectionAssessment,
+    nowMs,
+  } = input;
   const promptMemoryView = adjudicatePromptMemory(sources.memory);
   const activeLaborForm = resolveActiveLaborForm(sources.memory, normalizedInput.laborFormIntent);
   const memoryView: MemoryPromptView = {
@@ -67,6 +87,26 @@ export function resolveTurnContext(input: {
     (returningUserStage && stageGoals[returningUserStage] ? returningUserStage : undefined) ??
     Object.keys(stageGoals)[0] ??
     null;
+  const hardConstraints = resolveHardConstraintsPromptView({
+    sessionFacts: sources.memory.shortTerm.sessionState?.facts ?? null,
+    turnHints: sources.memory.turnHints,
+    laborFormIntent: normalizedInput.laborFormIntent,
+    brandState: sources.turnBrandContext.state,
+  });
+  const turnHintsView = resolveTurnHintsPromptView({
+    displayTurnHints: promptMemoryView.displayTurnHints,
+    pendingFields: promptMemoryView.pendingTurnHintFields,
+    currentTurnTexts: normalizedInput.currentTurnTexts,
+  });
+  const security: PromptSecurityView = injectionAssessment.detected
+    ? {
+        injectionWarning: {
+          ruleId: injectionAssessment.ruleId ?? 'prompt_injection.unknown',
+          category: injectionAssessment.category ?? 'system_marker',
+          instruction: PromptInjectionDetector.GUARD_INSTRUCTION,
+        },
+      }
+    : {};
 
   const candidateTexts = extractCandidateTextsFromCorpus(conversationCorpusBlocks, {
     visualSheetsByContent: sources.visualSheetsByContent,
@@ -82,32 +122,69 @@ export function resolveTurnContext(input: {
     geoSignalCities: inferCitiesFromGeoSignals(candidateTexts),
     currentFocusJob: sources.memory.shortTerm.sessionState?.currentFocusJob ?? null,
   };
+  // 历史阶段可能已从当前策略删除；保持旧 Context 行为：入口阶段继续写入工具/账本，
+  // Prompt 的阶段策略回落当前配置首阶段，避免整个策略块静默消失。
+  const currentStageConfig =
+    (entryStage ? (stageGoals[entryStage] ?? null) : null) ??
+    sources.strategyConfig.stage_goals.stages[0] ??
+    null;
+  const promptModel: PromptModel = {
+    scenario: params.scenario ?? 'candidate-consultation',
+    channelType: params.apiType === 'group' ? 'group' : 'private',
+    currentTimeText: formatCurrentTime(nowMs),
+    identity: {
+      botUserId: params.botUserId,
+      nickname: sources.accountIdentity.nickname ?? undefined,
+      gender: sources.accountIdentity.gender ?? undefined,
+    },
+    strategy: {
+      roleSetting: sources.strategyConfig.role_setting,
+      persona: sources.strategyConfig.persona,
+      redLines: sources.strategyConfig.red_lines,
+      thresholds: sources.strategyConfig.red_lines.thresholds ?? [],
+      stages: sources.strategyConfig.stage_goals.stages,
+      currentStage: currentStageConfig,
+    },
+    memory: memoryView,
+    groupInventory: sources.groupInventory,
+    turnHints: turnHintsView,
+    hardConstraints,
+    security,
+    criticalTurnInstructions: resolveCriticalTurnInstructions({
+      currentUserMessage: normalizedInput.currentUserMessage,
+      normalizedMessages,
+    }),
+  };
+  const resolvedSessionFacts = hardConstraints.facts
+    ? {
+        interview_info: hardConstraints.facts.interview,
+        preferences: hardConstraints.facts.preferences,
+        reasoning: 'resolved turn constraints',
+      }
+    : null;
+  const toolModel = resolveToolContextModel({
+    params,
+    memory: sources.memory,
+    normalizedMessages,
+    conversationCorpusBlocks,
+    entryStage,
+    stageGoals,
+    thresholds: sources.strategyConfig.red_lines.thresholds ?? [],
+    resolvedSessionFacts,
+    contactBrandAliases: sources.turnBrandContext.nicknameBrands,
+    sessionBrandState: sources.turnBrandContext.state,
+    currentUserMessage: normalizedInput.currentUserMessage,
+    currentLaborFormIntent: normalizedInput.laborFormIntent,
+    bookingWorkOrderJobIds,
+    visualSheetsByContent: sources.visualSheetsByContent,
+  });
 
   return {
     entryStage,
-    composeParams: {
-      strategyConfig: sources.strategyConfig,
-      scenario: params.scenario ?? 'candidate-consultation',
-      currentStage: persistedStage ?? returningUserStage,
-      memory: memoryView,
-      groupInventory: sources.groupInventory,
-      sessionFacts: sources.memory.shortTerm.sessionState?.facts ?? null,
-      turnHints: sources.memory.turnHints,
-      displayTurnHints: promptMemoryView.displayTurnHints,
-      pendingTurnHintFields: promptMemoryView.pendingTurnHintFields,
-      currentTurnTexts: normalizedInput.currentTurnTexts,
-      currentUserMessage: normalizedInput.currentUserMessage,
-      normalizedMessages,
-      currentLaborFormIntent: normalizedInput.laborFormIntent,
-      sessionBrandState: sources.turnBrandContext.state,
-      accountIdentity: {
-        botUserId: params.botUserId,
-        nickname: sources.accountIdentity.nickname ?? undefined,
-        gender: sources.accountIdentity.gender ?? undefined,
-      },
-    },
+    promptModel,
+    toolModel,
     ledgerSeed,
-    bookingWorkOrderJobIds,
+    initialGeoResolution: sources.geoAnchor,
     memorySnapshot: buildMemorySnapshot(sources.memory, entryStage),
   };
 }
@@ -115,6 +192,25 @@ export function resolveTurnContext(input: {
 function resolveReturningUserStage(profile: UserProfileFacts | null): string | undefined {
   if (!profile) return undefined;
   return profile.name?.value || profile.phone?.value ? RETURNING_USER_ENTRY_STAGE : undefined;
+}
+
+/** 关键轮规则裁决；Section 不读取原始消息或执行正则，只渲染确定性命中结果。 */
+export function resolveCriticalTurnInstructions(input: {
+  currentUserMessage?: string;
+  normalizedMessages: readonly ModelMessage[];
+}): string[] {
+  const current = input.currentUserMessage ?? '';
+  const recent = input.normalizedMessages
+    .slice(-12)
+    .map((message) => `${message.role}: ${extractTextFromContent(message.content)}`)
+    .join('\n');
+  const combined = `${recent}\n${current}`;
+
+  return FINAL_CHECK_RULES.filter((rule) => {
+    if (rule.trigger !== 'turn') return false;
+    const text = rule.target === 'current' ? current : combined;
+    return rule.patterns.every((pattern) => pattern.test(text));
+  }).map((rule) => rule.text);
 }
 
 function buildMemorySnapshot(

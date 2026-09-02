@@ -26,6 +26,16 @@ export interface LlmAttemptTrace {
   backoffMs?: number;
 }
 
+export type TurnSourceLoadStatus = 'success' | 'empty' | 'degraded' | 'failed';
+
+export interface TurnSourceLoadTrace {
+  source: string;
+  status: TurnSourceLoadStatus;
+  durationMs: number;
+  /** 该外部源完成观测的时间锚点；用于辨认陈旧快照，不承载业务正文。 */
+  observedAt: string;
+}
+
 /**
  * Agent 事件观测接口（对标 ZeroClaw Observer）。
  *
@@ -61,6 +71,55 @@ export type AgentEvent = AgentEventContext &
         durationMs: number;
       }
     | { type: 'agent_error'; userId?: string; error: string }
+    | {
+        type: 'turn_data_sources';
+        userId?: string;
+        status: 'success' | 'failure';
+        totalDurationMs: number;
+        sources: TurnSourceLoadTrace[];
+        error?: string;
+      }
+    | {
+        type: 'turn_preparation';
+        userId?: string;
+        status: 'success' | 'failure';
+        totalDurationMs: number;
+        phaseDurationsMs: Partial<
+          Record<
+            | 'normalize_input'
+            | 'load_sources'
+            | 'normalize_conversation'
+            | 'resolve'
+            | 'compile_prompt'
+            | 'build_tools',
+            number
+          >
+        >;
+        prompt?: {
+          totalChars: number;
+          estimatedTokens: number;
+          orderHash: string;
+          blocks: Array<{
+            id: string;
+            domain: string;
+            slot: string;
+            chars: number;
+            dynamic: boolean;
+          }>;
+          dynamicBlockIds: string[];
+        };
+        tools?: { available: number; active: number };
+        error?: string;
+      }
+    | {
+        type: 'prompt_injection_detected';
+        userId?: string;
+        category?: string;
+        ruleId?: string;
+        alertStatus: 'sent' | 'failed' | 'skipped';
+        /** 只允许写已脱敏、已限长的证据摘要。 */
+        evidencePreview?: string;
+      }
     | {
         type: 'agent_stream_timing';
         messageId: string;

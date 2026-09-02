@@ -1,11 +1,15 @@
 import { ModelMessage } from 'ai';
-import { ToolBuildContext } from '@shared-types/tool.types';
+import type {
+  ToolArchiveContext,
+  ToolBuildContext,
+  ToolRuntimeContext,
+  ToolSessionContext,
+  ToolTurnInputContext,
+} from '@shared-types/tool.types';
 import type { TurnLedger } from '@shared-types/turn.types';
 import type { SessionBrandState } from '@resolution/brand/brand-resolution.types';
 import { type LaborFormIntentDecision } from '@resolution/labor-form';
 import type { CandidatePrefillField, CandidatePrefillHints } from '@resolution/candidate/types';
-import { projectTurnHints } from '@resolution/turn-hints/reducer';
-import type { TurnHints } from '@resolution/turn-hints/turn-hint.types';
 import { unwrapUserProfileFacts } from '@memory/long-term/long-term.types';
 import {
   type EntityExtractionResult,
@@ -13,32 +17,42 @@ import {
   isSessionFactValue,
   unwrapSessionFacts,
 } from '@memory/short-term/short-term.types';
-import { ContextService } from '../context/context.service';
-import { type GeneratorInvokeParams } from '../generator.types';
+import { type GeneratorInvokeParams, type GeneratorToolMode } from '../generator.types';
 import { resolveGeocodeLocationAnchor } from './geocode-location-anchor.util';
 import { type TurnStartMemory } from './prompt-memory-adjudicator';
 import type { CorpusBlock } from '@shared-types/corpus.types';
 import type { FinalizedVisualFactSheet } from '@resolution/signal/visual';
+import type { StageGoalConfig, Threshold } from '@biz/strategy/types/strategy.types';
 
 /**
  * ToolBuildContext 组装（PreparationService 的纯函数辅助层）：
  * 记忆事实合并、品牌池/jobId provenance 集汇总，无 IO。
  */
 
-/**
- * 组装工具上下文。entryStage / availableStages 交给 advance_stage 使用；
- * 回合内产物统一写入 ledger，交给 onTurnEnd 落盘。
- */
-export function buildToolContext(input: {
+export interface ToolContextModel {
+  selection: {
+    scenario: string;
+    mode: GeneratorToolMode;
+    allowedToolNames?: string[];
+  };
+  session: ToolSessionContext;
+  archive: Omit<ToolArchiveContext, 'recalledJobIds' | 'isRecalledJobId'>;
+  turnInput: ToolTurnInputContext;
+  runtime: ToolRuntimeContext;
+  turnStartRecalledJobIds: readonly number[];
+}
+
+/** Resolver 阶段完成工具上下文的事实投影；不创建可变 Ledger，不执行 IO。 */
+export function resolveToolContextModel(input: {
   params: GeneratorInvokeParams;
   memory: TurnStartMemory;
   normalizedMessages: ModelMessage[];
   /** 与 transport messages 同批的结构化语料域；内部教学指令不会冒充 user evidence。 */
   conversationCorpusBlocks: CorpusBlock[];
   entryStage: string | null;
-  stageGoals: Awaited<ReturnType<ContextService['compose']>>['stageGoals'];
-  thresholds: Awaited<ReturnType<ContextService['compose']>>['thresholds'];
-  ledger: TurnLedger;
+  stageGoals: Record<string, StageGoalConfig>;
+  thresholds: Threshold[];
+  resolvedSessionFacts: EntityExtractionResult | null;
   contactBrandAliases: string[];
   /** 本轮生效的会话品牌状态（持久化状态或首轮 seed），透传给工具兜底。 */
   sessionBrandState: SessionBrandState | null;
@@ -48,7 +62,7 @@ export function buildToolContext(input: {
   bookingWorkOrderJobIds: number[];
   /** 剥时间后缀内容 → 视觉事实 sheet；出处公证据此认简历/证件类自陈材料。 */
   visualSheetsByContent?: ReadonlyMap<string, FinalizedVisualFactSheet>;
-}): ToolBuildContext {
+}): ToolContextModel {
   const {
     params,
     memory,
@@ -57,7 +71,6 @@ export function buildToolContext(input: {
     entryStage,
     stageGoals,
     thresholds,
-    ledger,
     contactBrandAliases,
     sessionBrandState,
     currentUserMessage,
@@ -78,11 +91,7 @@ export function buildToolContext(input: {
   const candidatePrefillHints = buildCandidatePrefillHints(
     memory.shortTerm.sessionState?.facts ?? null,
   );
-  const sessionFacts = mergeSessionFactsWithRuleClaims(
-    trustedSessionFacts,
-    memory.turnHints,
-    currentLaborFormIntent,
-  );
+  const sessionFacts = input.resolvedSessionFacts;
   const geocodeLocationAnchor = resolveGeocodeLocationAnchor({
     currentUserMessage,
     shortTermMessages: memory.shortTerm.messageWindow,
@@ -90,6 +99,11 @@ export function buildToolContext(input: {
     sessionFacts: trustedSessionFacts,
   });
   return {
+    selection: {
+      scenario: params.scenario ?? 'candidate-consultation',
+      mode: params.toolMode ?? 'scenario',
+      allowedToolNames: params.allowedToolNames,
+    },
     session: {
       userId: params.userId,
       corpId: params.corpId,
@@ -119,16 +133,6 @@ export function buildToolContext(input: {
       recentBrandPool,
       bookingCandidateFacts: sessionFacts?.interview_info ?? null,
       invitedGroups: memory.shortTerm.sessionState?.invitedGroups ?? [],
-      isRecalledJobId: (jobId: number) =>
-        turnStartRecalledJobIds.has(jobId) ||
-        ledger.jobs.fetchedJobs.some((job) => job.jobId === jobId),
-      // 闸门拒绝时把合法 jobId 一并告知模型；本轮新召回的排在前面。
-      get recalledJobIds() {
-        return [
-          ...ledger.jobs.fetchedJobs.map((job) => job.jobId),
-          ...turnStartRecalledJobIds,
-        ].filter((id, index, all) => all.indexOf(id) === index);
-      },
     },
     turnInput: {
       messages: normalizedMessages,
@@ -142,12 +146,34 @@ export function buildToolContext(input: {
       geocodeLocationAnchor,
       visualSheetsByContent: input.visualSheetsByContent,
     },
-    ledger,
     runtime: {
       hasNewerUserInput: params.hasNewerUserInput,
       strategySource: params.strategySource,
       thresholds,
     },
+    turnStartRecalledJobIds: [...turnStartRecalledJobIds],
+  };
+}
+
+/** Tool Runtime 阶段只把可变 Ledger 绑定到已经裁决好的工具模型。 */
+export function buildToolContext(model: ToolContextModel, ledger: TurnLedger): ToolBuildContext {
+  const turnStartIds = new Set(model.turnStartRecalledJobIds);
+  const archive: ToolArchiveContext = {
+    ...model.archive,
+    isRecalledJobId: (jobId: number) =>
+      turnStartIds.has(jobId) || ledger.jobs.fetchedJobs.some((job) => job.jobId === jobId),
+    get recalledJobIds() {
+      return [...ledger.jobs.fetchedJobs.map((job) => job.jobId), ...turnStartIds].filter(
+        (id, index, all) => all.indexOf(id) === index,
+      );
+    },
+  };
+  return {
+    session: model.session,
+    archive,
+    turnInput: model.turnInput,
+    runtime: model.runtime,
+    ledger,
   };
 }
 
@@ -208,58 +234,6 @@ function buildCandidatePrefillHints(
  * 让工具（如 precheck）能拿到当前消息里刚提供的候选人字段（年龄/姓名/电话等）。
  * 非 null 的高置信值覆盖旧值，null 不覆盖。
  */
-function mergeSessionFactsWithRuleClaims(
-  sessionFacts: EntityExtractionResult | null,
-  turnHints: TurnHints | null,
-  currentLaborFormIntent: LaborFormIntentDecision = { kind: 'ignore' },
-): EntityExtractionResult | null {
-  const currentRuleValues = projectTurnHints(turnHints, { minConfidence: 'high' });
-  let merged: EntityExtractionResult | null;
-  if (!currentRuleValues) {
-    merged = sessionFacts;
-  } else if (!sessionFacts) {
-    merged = currentRuleValues;
-  } else {
-    merged = { ...sessionFacts };
-
-    // interview_info: 非 null 的高置信值覆盖旧值
-    const baseInfo = { ...sessionFacts.interview_info };
-    const hcInfo = currentRuleValues.interview_info;
-    for (const key of Object.keys(hcInfo) as Array<keyof typeof hcInfo>) {
-      if (hcInfo[key] != null) {
-        (baseInfo as Record<string, unknown>)[key] = hcInfo[key];
-      }
-    }
-    merged.interview_info = baseInfo;
-
-    // preferences: 非 null 的高置信值覆盖旧值
-    const basePref = { ...sessionFacts.preferences };
-    const hcPref = currentRuleValues.preferences;
-    for (const key of Object.keys(hcPref) as Array<keyof typeof hcPref>) {
-      if (hcPref[key] != null) {
-        (basePref as Record<string, unknown>)[key] = hcPref[key];
-      }
-    }
-    merged.preferences = basePref;
-  }
-
-  if (!merged || currentLaborFormIntent.kind === 'ignore') return merged;
-
-  const previousLaborForm = merged.preferences.labor_form;
-  const activeLaborForm =
-    currentLaborFormIntent.kind === 'set'
-      ? currentLaborFormIntent.value
-      : previousLaborForm &&
-          currentLaborFormIntent.clearedValues.some((value) => value === previousLaborForm)
-        ? null
-        : previousLaborForm;
-
-  return {
-    ...merged,
-    preferences: { ...merged.preferences, labor_form: activeLaborForm },
-  };
-}
-
 /**
  * 汇总本会话最近推荐过的品牌名（去重，按出现顺序保留）。
  *

@@ -802,6 +802,7 @@ DuLiDay token；所选 provider 还必须有对应 API key。Supabase、飞书�
 
 ## 相关文档
 
+- [ADR-0001：被动入站与主动复聊使用不同运行协议](./adr/0001-separate-inbound-and-reengagement-turn-protocols.md)
 - [最终 Prompt 示例](../../src/agent/generator/context/final-prompt-example.md)
 - [Prompt 规则台账](../prompt-rule-ledger.md)
 - [记忆系统架构与数据流](./memory-architecture.md)
@@ -824,8 +825,8 @@ DuLiDay token；所选 provider 还必须有对应 API key。Supabase、飞书�
 | Generator         | [`generator.agent.ts`](../../src/agent/generator/generator.agent.ts)                                  |
 | Preparation       | [`preparation.service.ts`](../../src/agent/generator/preparation/preparation.service.ts)              |
 | Context           | [`context.service.ts`](../../src/agent/generator/context/context.service.ts)                          |
-| Prompt compiler   | [`prompt-manifest.ts`](../../src/agent/generator/context/prompt-manifest.ts)                            |
-| Prompt model      | [`prompt-model.types.ts`](../../src/agent/generator/context/prompt-model.types.ts)                     |
+| Prompt compiler   | [`prompt-manifest.ts`](../../src/agent/generator/context/prompt-manifest.ts)                          |
+| Prompt model      | [`prompt-model.types.ts`](../../src/agent/generator/context/prompt-model.types.ts)                    |
 | LLM               | [`llm-executor.service.ts`](../../src/llm/llm-executor.service.ts)                                    |
 | Providers         | [`router.service.ts`](../../src/providers/router.service.ts)                                          |
 | Memory            | [`memory.service.ts`](../../src/memory/memory.service.ts)                                             |

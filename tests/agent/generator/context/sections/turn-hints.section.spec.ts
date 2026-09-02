@@ -1,4 +1,3 @@
-import { PromptContext } from '@agent/generator/context/sections/section.interface';
 import { TurnHintsSection } from '@agent/generator/context/sections/working/turn-hints.section';
 import {
   adjudicatePromptMemory,
@@ -8,15 +7,34 @@ import type { TurnHints } from '@resolution/turn-hints/turn-hint.types';
 import type { SessionFacts } from '@memory/short-term/short-term.types';
 import { testTurnHint, testTurnHints } from '../../../../helpers/turn-hints.fixture';
 import { cityFixture, sessionFactsOf } from '../../../../helpers/session-facts.fixture';
+import { resolveTurnHintsPromptView } from '@agent/generator/preparation/prompt-view-resolver';
+import { promptModelOf, renderSection } from '../../../../helpers/prompt-model.fixture';
+
+interface TurnHintsInput {
+  displayTurnHints?: TurnHints | null;
+  pendingTurnHintFields?: readonly import('@resolution/turn-hints/turn-hint.types').TurnHintFieldPath[];
+  currentTurnTexts?: readonly string[];
+  sessionFacts?: SessionFacts | null;
+}
 
 describe('TurnHintsSection', () => {
-  const section = new TurnHintsSection();
-  const baseCtx: PromptContext = {
-    scenario: 'candidate-consultation',
-    channelType: 'private',
-    strategyConfig: {} as PromptContext['strategyConfig'],
+  const renderer = new TurnHintsSection();
+  const baseCtx: TurnHintsInput = {
     displayTurnHints: null,
     pendingTurnHintFields: [],
+  };
+  const section = {
+    build: (input: TurnHintsInput) =>
+      renderSection(
+        renderer,
+        promptModelOf({
+          turnHints: resolveTurnHintsPromptView({
+            displayTurnHints: input.displayTurnHints ?? null,
+            pendingFields: input.pendingTurnHintFields ?? [],
+            currentTurnTexts: input.currentTurnTexts ?? [],
+          }),
+        }),
+      ),
   };
 
   const sharedView = (turnHints: TurnHints | null, sessionFacts: SessionFacts | null = null) => {
@@ -240,13 +258,7 @@ describe('TurnHintsSection', () => {
     expect(output).not.toContain('[本轮解析线索]');
   });
 
-  it('throws when a caller bypasses the shared adjudication view', () => {
-    expect(() =>
-      section.build({
-        scenario: 'candidate-consultation',
-        channelType: 'private',
-        strategyConfig: {} as PromptContext['strategyConfig'],
-      }),
-    ).toThrow('adjudicatePromptMemory');
+  it('renders empty when the resolver supplied no adjudicated claims', () => {
+    expect(section.build({})).toBe('');
   });
 });

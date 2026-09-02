@@ -35,8 +35,8 @@ normalizeTurnInput()
 
 ## 场景 Section 顺序
 
-`SCENARIO_SECTIONS['candidate-consultation']` 当前包含 15 个 section。其中 `memory`
-可展开为 `memory` / `realtime-group-status` / `booking-context` 三个 evidence block；
+`SCENARIO_PROMPT_MANIFEST['candidate-consultation']` 当前包含 15 个 section。其中 `memory`
+可展开为 `candidate-memory` / `realtime-group-status` / `booking-context` 三个 evidence block；
 `input-guard` 和 `critical-turn-guard` 是显式的条件 section：
 
 | 段位             | 顺序 | Section               | 知识归类   | 语料域      | 稳定性 / 省略条件                        |
@@ -47,19 +47,19 @@ normalizeTurnInput()
 | 稳定前缀 · 静态  |    4 | `stage-overview`      | procedural | teaching    | 全阶段地图；不读取当前阶段               |
 | 稳定前缀 · 配置  |    5 | `red-lines`           | procedural | teaching    | 随策略配置版本变化                       |
 | 稳定前缀 · 配置  |    6 | `thresholds`          | procedural | teaching    | 随策略配置版本变化；无阈值时为空         |
-| 动态尾部         |    7 | `memory`              | semantic   | evidence    | 档案、会话事实、岗位/工单等均空时省略    |
+| 动态尾部         |    7 | `memory`              | semantic   | evidence    | 展开候选人记忆、群状态与预约上下文       |
 | 动态尾部         |    8 | `turn-hints`          | working    | evidence    | 本轮共享裁决增量为空时省略               |
 | 动态尾部         |    9 | `hard-constraints`    | working    | evidence    | 本轮查询约束为空时省略                   |
 | 动态尾部         |   10 | `datetime`            | working    | tool_result | 每轮当前时间                             |
 | 动态尾部         |   11 | `group-inventory`     | working    | tool_result | 无高置信城市或群库数据时省略             |
 | 动态尾部         |   12 | `stage-strategy`      | procedural | teaching    | 只渲染当前阶段策略                       |
 | recitation 收口  |   13 | `final-check`         | procedural | teaching    | 常驻自检块（trigger=always）；固定次末位 |
-| 输入安全块     |   14 | `input-guard`         | procedural | teaching    | Prompt Injection detector 命中时才渲染  |
+| 输入安全块       |   14 | `input-guard`         | procedural | teaching    | Prompt Injection detector 命中时才渲染   |
 | 关键回合动态末位 |   15 | `critical-turn-guard` | procedural | teaching    | 同一规则表 trigger=turn 规则命中时才渲染 |
 
-这里有两根互不替代的轴：目录表达知识主类型；`PROMPT_SECTION_DOMAIN_REGISTRY` 表达
-teaching / evidence / tool_result 语料域。`static.section.ts` 和 `section.interface.ts` 是根目录
-基础设施，不是知识 section。
+这里有三根互不替代的轴：目录表达知识主类型；每个 Section 的 `domain` 表达
+teaching / evidence / tool_result 语料域；`slot` 表达编译位置。`static.section.ts` 和
+`section.interface.ts` 是根目录基础设施，不是知识 section。
 
 空 section 不生成 block，因此一个普通私聊示例常见的结构化顺序是：
 
@@ -85,12 +85,11 @@ critical-turn-guard     （命中时）
 `ContextService.compose()` 按场景 manifest 一次产出最终 block 顺序：
 
 ```text
-finalPrompt = renderPromptBlocks(
-  SCENARIO_SECTIONS 逐个 section 产出的 promptBlocks
-)
+finalPrompt = compilePromptProgram({ model, sections }).rendered
 ```
 
-- `input-guard` 和 `critical-turn-guard` 的位置直接由 `SCENARIO_SECTIONS` 表达，
+- `SCENARIO_PROMPT_MANIFEST` 声明场景包含的 Section，`PROMPT_SLOT_ORDER` 决定跨类别位置；
+- `input-guard` 和 `critical-turn-guard` 的位置由各自 `PromptSlot` 表达，
   Preparation 不再使用 `findIndex + slice` 修改数组。
 - `final-check` 是常驻自检 section；`critical-turn-guard` 是独立渲染落点，
   二者仍共用唯一 `FINAL_CHECK_RULES` 规则源。
@@ -99,7 +98,8 @@ finalPrompt = renderPromptBlocks(
 - 已退役的 generator 重写回路不再产生额外尾块；修复由独立 `ReplyRepairAgent` 承担。
 
 所有上述 block 都是 `role: system`。最终文本仅在 `renderPromptBlocks()` 处按两个换行连接，
-但 `promptBlocks` 中的 `id / domain / role / content` 会保留给观测和审计。
+但 `promptBlocks` 中的 `id / domain / role / content` 会保留；编译器还产生 slot、dynamic、字符数、
+顺序 hash 和动态 block 列表供 `turn_preparation` 观测。
 
 ## 模型可见的大致形态
 

@@ -1,31 +1,27 @@
 // 知识归类：working —— 本段呈现从候选人当前消息提取的临时线索。
 import { formatTurnHintLines } from '@memory/fact-lines.formatter';
-import type { TurnHints, TurnHintFieldPath } from '@resolution/turn-hints/turn-hint.types';
-import { resolveTurnHints } from '@resolution/turn-hints/reducer';
-import { PromptContext, PromptSection } from '../section.interface';
+import type { TurnHints } from '@resolution/turn-hints/turn-hint.types';
+import { buildTextPromptBlock, type PromptSection } from '../section.interface';
+import type { PromptModel } from '../../prompt-model.types';
 
 /**
  * 本轮规则 claim 先由统一字段策略裁决，再按是否与会话记忆冲突拆成普通/待确认视图。
  * 本类只做展示分流，不再理解 first/last/union/composite，也不持有另一套事实包装。
  */
 export class TurnHintsSection implements PromptSection {
-  readonly name = 'turn-hints';
+  readonly id = 'turn-hints';
+  readonly domain = 'evidence' as const;
+  readonly slot = 'evidence' as const;
+  readonly dynamic = true;
 
-  build(ctx: PromptContext): string {
-    if (ctx.displayTurnHints === undefined || ctx.pendingTurnHintFields === undefined) {
-      throw new Error(
-        'TurnHintsSection 缺少共享裁决视图：请先调用 adjudicatePromptMemory，并显式传入 displayTurnHints 与 pendingTurnHintFields。',
-      );
-    }
-    const { normalHints, pendingHints } = this.partitionSharedView(
-      ctx.displayTurnHints,
-      new Set(ctx.pendingTurnHintFields),
-    );
+  build(model: PromptModel) {
     const parts: string[] = [];
-    const currentTurnTexts = ctx.currentTurnTexts;
-    if (normalHints) parts.push(this.renderCurrentHints(normalHints, currentTurnTexts));
-    if (pendingHints) parts.push(this.renderPendingConfirmation(pendingHints, currentTurnTexts));
-    return parts.join('\n\n');
+    const view = model.turnHints;
+    if (view.current) parts.push(this.renderCurrentHints(view.current, view.currentTurnTexts));
+    if (view.pendingConfirmation) {
+      parts.push(this.renderPendingConfirmation(view.pendingConfirmation, view.currentTurnTexts));
+    }
+    return buildTextPromptBlock(this, parts.join('\n\n'));
   }
 
   private renderCurrentHints(
@@ -83,28 +79,5 @@ export class TurnHintsSection implements PromptSection {
       '## 当前消息待确认结果',
       lines.join('\n'),
     ].join('\n');
-  }
-
-  /** preparation 已完成同值去重；渲染层只按共享视图的待确认标记分流。 */
-  private partitionSharedView(
-    turnHints: TurnHints | null,
-    pendingFields: ReadonlySet<TurnHintFieldPath>,
-  ): { normalHints: TurnHints | null; pendingHints: TurnHints | null } {
-    if (!turnHints) return { normalHints: null, pendingHints: null };
-    const normalFields = new Set<TurnHintFieldPath>();
-    for (const fact of resolveTurnHints(turnHints)) {
-      if (!pendingFields.has(fact.field)) normalFields.add(fact.field);
-    }
-    return {
-      normalHints: this.selectClaims(turnHints, normalFields),
-      pendingHints: this.selectClaims(turnHints, pendingFields),
-    };
-  }
-
-  private selectClaims(facts: TurnHints, fields: ReadonlySet<TurnHintFieldPath>): TurnHints | null {
-    const claims = facts.claims.filter((claim) => fields.has(claim.field));
-    if (claims.length === 0) return null;
-    const selected = { claims, reasoning: facts.reasoning };
-    return formatTurnHintLines(selected).length > 0 ? selected : null;
   }
 }

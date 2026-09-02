@@ -1,12 +1,13 @@
-import { ContextService, type ComposeParams } from '@agent/generator/context/context.service';
+import { ContextService } from '@agent/generator/context/context.service';
 import { StrategyConfigRecord } from '@biz/strategy/entities/strategy-config.entity';
 import { CORPUS_DOMAINS } from '@shared-types/corpus.types';
-import {
-  buildPromptSectionBlocks,
-  type PromptSection,
-} from '@agent/generator/context/sections/section.interface';
-import { SCENARIO_SECTIONS } from '@agent/generator/context/scenarios/scenario.registry';
+import type { PromptSection } from '@agent/generator/context/sections/section.interface';
+import { SCENARIO_PROMPT_MANIFEST } from '@agent/generator/context/prompt-manifest';
 import type { MemoryPromptView } from '@agent/generator/context/sections/semantic/memory.section';
+import type { PromptModel } from '@agent/generator/context/prompt-model.types';
+import type { GroupInventoryPromptView } from '@agent/generator/context/sections/working/group-inventory.section';
+import { resolveCriticalTurnInstructions } from '@agent/generator/preparation/turn-context-resolver';
+import { promptModelOf } from '../../../helpers/prompt-model.fixture';
 
 describe('ContextService', () => {
   const makeConfig = (): StrategyConfigRecord =>
@@ -72,13 +73,52 @@ describe('ContextService', () => {
     }) as StrategyConfigRecord;
 
   let service: ContextService;
-  const compose = (params: Omit<ComposeParams, 'strategyConfig'> = {}) =>
-    service.compose({
-      strategyConfig: makeConfig(),
-      displayTurnHints: null,
-      pendingTurnHintFields: [],
-      ...params,
-    });
+  interface ComposeFixtureInput {
+    scenario?: string;
+    currentStage?: string;
+    memory?: MemoryPromptView;
+    accountIdentity?: PromptModel['identity'];
+    groupInventory?: GroupInventoryPromptView;
+    currentUserMessage?: string;
+    normalizedMessages?: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>;
+    inputSecurityInstruction?: string;
+  }
+
+  const compose = (params: ComposeFixtureInput = {}) => {
+    const config = makeConfig();
+    const currentStage = params.currentStage
+      ? (config.stage_goals.stages.find((stage) => stage.stage === params.currentStage) ?? null)
+      : null;
+    return service.compose(
+      promptModelOf({
+        scenario: params.scenario ?? 'candidate-consultation',
+        identity: params.accountIdentity ?? {},
+        strategy: {
+          roleSetting: config.role_setting,
+          persona: config.persona,
+          redLines: config.red_lines,
+          thresholds: config.red_lines.thresholds ?? [],
+          stages: config.stage_goals.stages,
+          currentStage,
+        },
+        memory: params.memory,
+        groupInventory: params.groupInventory,
+        security: params.inputSecurityInstruction
+          ? {
+              injectionWarning: {
+                ruleId: 'test',
+                category: 'role_hijack',
+                instruction: params.inputSecurityInstruction,
+              },
+            }
+          : {},
+        criticalTurnInstructions: resolveCriticalTurnInstructions({
+          currentUserMessage: params.currentUserMessage,
+          normalizedMessages: params.normalizedMessages ?? [],
+        }),
+      }),
+    );
+  };
 
   const profileMemory = (name: string): MemoryPromptView =>
     ({
@@ -138,13 +178,19 @@ describe('ContextService', () => {
     ].join('\n');
 
     for (const [name, domain] of Object.entries(productionLeafDomains)) {
-      const section: PromptSection = { name, build: () => productionShapedText };
-      expect(
-        buildPromptSectionBlocks(section, { scenario: 'candidate-consultation' } as never),
-      ).toEqual([{ id: name, domain, role: 'system', content: productionShapedText }]);
+      const section: PromptSection = {
+        id: name,
+        domain,
+        slot: 'stable-instructions',
+        dynamic: false,
+        build: () => [{ id: name, domain, role: 'system', content: productionShapedText }],
+      };
+      expect(section.build(promptModelOf())).toEqual([
+        { id: name, domain, role: 'system', content: productionShapedText },
+      ]);
     }
 
-    for (const scenario of Object.keys(SCENARIO_SECTIONS)) {
+    for (const scenario of Object.keys(SCENARIO_PROMPT_MANIFEST)) {
       const result = compose({
         scenario,
         currentStage: 'trust_building',
@@ -156,7 +202,7 @@ describe('ContextService', () => {
   });
 
   it('composes candidate consultation in the adjudicated semantic order', async () => {
-    expect(SCENARIO_SECTIONS['candidate-consultation']).toEqual([
+    expect(SCENARIO_PROMPT_MANIFEST['candidate-consultation']).toEqual([
       'identity',
       'base-manual',
       'channel',
@@ -186,7 +232,7 @@ describe('ContextService', () => {
     expect(result.promptBlocks).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ id: 'base-manual', domain: 'teaching' }),
-        expect.objectContaining({ id: 'memory', domain: 'evidence' }),
+        expect.objectContaining({ id: 'candidate-memory', domain: 'evidence' }),
         expect.objectContaining({ id: 'datetime', domain: 'tool_result' }),
       ]),
     );
@@ -196,7 +242,7 @@ describe('ContextService', () => {
       'stage-overview',
       'red-lines',
       'thresholds',
-      'memory',
+      'candidate-memory',
       'datetime',
       'stage-strategy',
       'final-check',

@@ -1,14 +1,36 @@
 import { HardConstraintsSection } from '@agent/generator/context/sections/working/hard-constraints.section';
-import type { PromptContext } from '@agent/generator/context/sections/section.interface';
+import { resolveHardConstraintsPromptView } from '@agent/generator/preparation/prompt-view-resolver';
+import type { SessionFacts } from '@memory/short-term/short-term.types';
+import type { TurnHints } from '@resolution/turn-hints/turn-hint.types';
+import type { LaborFormIntentDecision } from '@resolution/labor-form';
+import type { SessionBrandState } from '@resolution/brand/brand-resolution.types';
 import { cityFixture, sessionFactsOf } from '../../../../helpers/session-facts.fixture';
 import { testTurnHint, testTurnHints } from '../../../../helpers/turn-hints.fixture';
+import { promptModelOf, renderSection } from '../../../../helpers/prompt-model.fixture';
+
+interface ConstraintInput {
+  sessionFacts?: SessionFacts | null;
+  turnHints?: TurnHints | null;
+  currentLaborFormIntent?: LaborFormIntentDecision;
+  sessionBrandState?: SessionBrandState | null;
+}
 
 describe('HardConstraintsSection', () => {
-  const section = new HardConstraintsSection();
-  const baseCtx: PromptContext = {
-    scenario: 'candidate-consultation',
-    channelType: 'private',
-    strategyConfig: {} as PromptContext['strategyConfig'],
+  const renderer = new HardConstraintsSection();
+  const baseCtx: ConstraintInput = {};
+  const section = {
+    build: (input: ConstraintInput) =>
+      renderSection(
+        renderer,
+        promptModelOf({
+          hardConstraints: resolveHardConstraintsPromptView({
+            sessionFacts: input.sessionFacts ?? null,
+            turnHints: input.turnHints ?? null,
+            laborFormIntent: input.currentLaborFormIntent ?? { kind: 'ignore' },
+            brandState: input.sessionBrandState ?? null,
+          }),
+        }),
+      ),
   };
 
   it('returns empty string when no facts available at all', () => {
