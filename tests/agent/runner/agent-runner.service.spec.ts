@@ -9,6 +9,7 @@ describe('AgentRunnerService.runTurn', () => {
   let guardrailReviews: { recordReview: jest.Mock };
   let replyRepairAgent: { repair: jest.Mock };
   let replyRepairContextProvider: { build: jest.Mock };
+  let tracer: { emit: jest.Mock };
   let service: AgentRunnerService;
 
   const passDecision = {
@@ -41,6 +42,7 @@ describe('AgentRunnerService.runTurn', () => {
     guardrailReviews = { recordReview: jest.fn().mockResolvedValue('inserted') };
     replyRepairAgent = { repair: jest.fn().mockResolvedValue('重写后的自然回复') };
     replyRepairContextProvider = { build: jest.fn().mockResolvedValue(undefined) };
+    tracer = { emit: jest.fn() };
     service = new AgentRunnerService(
       generator as never,
       outputGuard as never,
@@ -48,6 +50,8 @@ describe('AgentRunnerService.runTurn', () => {
       guardrailReviews as never,
       replyRepairAgent as never,
       replyRepairContextProvider as never,
+      undefined,
+      tracer as never,
     );
   });
 
@@ -250,6 +254,18 @@ describe('AgentRunnerService.runTurn', () => {
         riskType: 'abuse',
       }),
     ]);
+    // 观测 P1-2：入站拦截落事件，时间线能看出"这轮为什么没跑 Agent"；正文不进事件
+    expect(tracer.emit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'inbound_guardrail_block',
+        reasonCode: 'abuse',
+        riskType: 'abuse',
+        riskLabel: '辱骂',
+      }),
+    );
+    expect(tracer.emit).not.toHaveBeenCalledWith(
+      expect.objectContaining({ inspectedText: expect.anything() }),
+    );
     expect(inputGuard.evaluate).toHaveBeenCalledWith(
       expect.objectContaining({
         corpId: 'c1',
@@ -888,6 +904,15 @@ describe('AgentRunnerService.runTurn', () => {
       }),
     ]);
     expect(generator.invoke).toHaveBeenCalledTimes(1);
+    // 观测 P1-2：repair 终局事件——此前 repair_exhausted 只有 logger.warn
+    expect(tracer.emit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'guardrail_repair',
+        outcome: 'repair_exhausted',
+        finalDecision: 'block',
+        firstRuleIds: ['discriminatory_screening_leak'],
+      }),
+    );
   });
 
   it('output guard revise triggers one rewrite with reviseFeedback, then adopts revised reply', async () => {

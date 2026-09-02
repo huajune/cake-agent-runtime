@@ -980,10 +980,52 @@ function findDeterministicConflict(
   factField: CandidateFactField | null,
 ): string | null {
   if (proposal.producer !== 'model') return null;
-  const adapterInput = { field, candidateText: sourceText, answerBound: true };
+  const candidateText = bareAnswerForConflictCheck(field, sourceText);
+  if (!candidateText) return null;
+  const adapterInput = { field, candidateText, answerBound: true };
   const derived = adapterFor(field)(adapterInput) ?? genericAdapter(adapterInput);
   if (!derived || deterministicValuesAgree(derived, proposal, factField)) return null;
   return `确定性 parser/adapter 从候选人原话得出「${derived.value}」，与模型提案「${proposal.value}」冲突`;
+}
+
+/**
+ * 冲突门喂给适配器的文本要先剥掉**我们自己印上去的东西**。模型 quote 常是候选人整行
+ * 模板回填：`有无本地健康证：（有本地有效健康证/无本地有效健康证，接受办理/…）有`——
+ * 括号里是模板的选项枚举，不是候选人陈述。整行直接喂解析器，子句 latest-wins 会把
+ * 回显的「无…不接受办理」读成原话，否决掉模型正确的「有」，候选人白答一次再被重问。
+ *
+ * 剥两样：① 回显的契约选项枚举（≥2 项且每项都是本字段 optionLabel，出现在任何位置）；
+ * ② 本字段的「标签：」前缀，以及紧随其后的含 `/` 的括号组——模型转发模板时可能已把
+ * 选项缩写成「（有/无，接受办理/不接受办理）」，对不上 optionLabel，只能按结构剥。
+ * 剩下的才是候选人作答，按 answerBound 交给适配器。单项/无 `/` 的括号不动：
+ * 「性别：（女）」里的括号是候选人自己写的。
+ */
+function bareAnswerForConflictCheck(field: ContractFieldDef, text: string): string {
+  const labels = new Set(
+    [...field.acceptedOptions, ...field.rejectedOptions].map((option) =>
+      compactText(option.optionLabel),
+    ),
+  );
+  let stripped = text.replace(/[（(]([^（）()]*)[）)]/gu, (whole, inner: string) => {
+    const items = inner
+      .split(/[/／|｜、]/u)
+      .map(compactText)
+      .filter(Boolean);
+    return items.length >= 2 && items.every((item) => labels.has(item)) ? '' : whole;
+  });
+  const line = /^\s*([^：:\n]+?)\s*[：:]\s*([\s\S]*)$/u.exec(stripped);
+  if (line && stripParenthetical(line[1]) === stripParenthetical(field.labelTitle)) {
+    stripped = line[2].replace(/^\s*[（(][^（）()]*[/／|｜][^（）()]*[）)]/u, '');
+  }
+  return stripped.trim();
+}
+
+function compactText(text: string): string {
+  return text.normalize('NFKC').replace(/\s+/gu, '');
+}
+
+function stripParenthetical(text: string): string {
+  return compactText(text.replace(/[（(][^（）()]*[）)]/gu, ''));
 }
 
 function deterministicValuesAgree(
