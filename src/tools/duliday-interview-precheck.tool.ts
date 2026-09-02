@@ -51,6 +51,7 @@ import {
   type BookableSlot,
 } from '@tools/booking/bookable-slot.util';
 import { normalizeRequestedDate } from '@tools/booking/date.util';
+import { normalizeHm } from '@tools/booking/interview-window.util';
 import {
   buildJobPolicyAnalysis,
   isWaitNoticeInterview,
@@ -89,7 +90,7 @@ export const PRECHECK_DESCRIPTION = `面试前置校验。实时读取岗位收�
 
 参数纪律：
 - jobId 必须来自本会话最近一次 duliday_job_list 的真实召回。
-- requestedDate 只在候选人明确选择日期或 interview.bookableSlots 中的精确 interviewTime 时传；含糊就不传。面试时间不属于收资字段，不得写成 fieldValueProposals 条目。
+- requestedDate 只在候选人明确表达时传：可传日期、interview.bookableSlots 中的精确 interviewTime，或候选人约定的窗口内具体时刻（YYYY-MM-DD HH:mm）；含糊就不传。面试时间不属于收资字段，不得写成 fieldValueProposals 条目。
 - fieldValueProposals 是唯一收资字段入口。只在候选人原话明确支持最终契约值时提交；没提到、无法唯一映射、带保留或有歧义时不提交，让该槽位保持 empty。不得为了填满表单猜值，不得提交置信分、待复核标记或“先填后确认”值。
 - 每项 labelTitle 必须逐字取自 bookingChecklist.requiredFields，value 传规范值，quote 必须逐字取自候选人完整原话。一条消息明确支持多个字段时全部提交。纠正用 correct、清除用 clear；confirm 只用于候选人对真实相邻字段问句的短答确认，不得把 recap 拆成全部 filled 字段重投。
 - fieldValueProposals 只能填写实时契约已有槽位，不能增删字段，也不能控制 requiredFields 及其顺序。不得传岗位要求冒充候选人答案，不得补造字段或沿用旧 candidateXxx 裸参数。
@@ -111,7 +112,9 @@ export const PRECHECK_INPUT_SCHEMA = z.object({
   requestedDate: z
     .string()
     .optional()
-    .describe('候选人明确提出的日期，或上一轮 bookableSlots 中的精确 interviewTime'),
+    .describe(
+      '候选人明确提出的日期、上一轮 bookableSlots 中的精确 interviewTime，或候选人约定的窗口内具体时刻（YYYY-MM-DD HH:mm）',
+    ),
   fieldValueProposals: FieldValueProposalsInputSchema.optional().describe(
     '字段值提案：仅提交候选人原话明确支持的实时契约最终值；歧义、缺失或不能唯一映射时不提交',
   ),
@@ -825,7 +828,39 @@ function selectRequestedInterviewTime(
       slot.interviewTime &&
       (requested === slot.interviewTime || requested === slot.label),
   );
-  return matched.length === 1 ? matched[0].interviewTime : undefined;
+  if (matched.length > 0) {
+    return matched.length === 1 ? matched[0].interviewTime : undefined;
+  }
+  return selectSlotContainingRequestedTime(requested, slots);
+}
+
+/**
+ * 「窗口内时刻」→ 所在 slot 的窗口起点。
+ *
+ * slot 自带的 interviewTimeHint 教模型「候选人说了窗口内的具体时刻就按他说的提交，
+ * 不要改写成窗口起点」，于是 requestedDate 常以 `YYYY-MM-DD 15:00(:00)` 形态到达；
+ * 上面的逐字匹配只认窗口起点/label，而 reconcileScheduleDraft 的唯一 slot 兜底在
+ * 同日多窗口岗位失效——两头落空时草稿永远没有 selectedInterviewTime，nextAction 卡死
+ * select_interview_time、booking 永拒（chat 6a9679e2 同会话两次连环死锁）。
+ * 草稿仍锁窗口起点（v11.1.3 约定），候选人的具体时刻由 booking 侧按窗口区间独立放行。
+ */
+function selectSlotContainingRequestedTime(
+  requested: string,
+  slots: readonly BookableSlot[],
+): string | undefined {
+  const match = requested.match(/^(\d{4}-\d{2}-\d{2})[T ]+(\d{1,2}:\d{2})(?::\d{2})?$/u);
+  if (!match) return undefined;
+  const [, date, rawTime] = match;
+  const time = normalizeHm(rawTime);
+  if (!time) return undefined;
+  const containing = slots.filter((slot) => {
+    if (!slot.bookingAllowed || !slot.interviewTime || !slot.interviewTimeFlexible) return false;
+    if (slot.date !== date) return false;
+    const start = normalizeHm(slot.startTime);
+    const end = normalizeHm(slot.endTime);
+    return start !== null && end !== null && start <= time && time <= end;
+  });
+  return containing.length === 1 ? containing[0].interviewTime : undefined;
 }
 
 function emitAudits(
