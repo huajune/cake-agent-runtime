@@ -8,6 +8,43 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v11.1.4`
+**最近更新**: `2026-09-02`
+**来源分支**: `develop`
+**累计 PR**: 1
+
+### 更新摘要
+- PR #1143 修正复聊文档两处过时描述，对齐 develop 现状
+- PR #1143 删除 quiet-window 遗留的 rescheduled 死代码
+
+### 新功能
+- 无
+
+### 问题修复
+- PR #1143 修正复聊文档两处过时描述，对齐 develop 现状
+
+### 优化调整
+- 无
+
+### 运维与流程
+- PR #1143 删除 quiet-window 遗留的 rescheduled 死代码
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #1143 `pnpm run typecheck` ✅
+- PR #1143 `pnpm run lint:check` ✅
+- PR #1143 `web npx tsc --noEmit` ✅
+- PR #1143 受影响测试套件 `follow-up.processor.spec.ts` + `reengagement-query.service.spec.ts`：101 passed ✅（含 22:00 上海时间照常生成的无窗口回归测试）
+<!-- release:pending:end -->
+
 ## [11.1.3] - 2026-09-01
 
 **来源分支**: `develop`
