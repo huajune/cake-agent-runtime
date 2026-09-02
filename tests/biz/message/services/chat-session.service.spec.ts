@@ -31,6 +31,7 @@ describe('ChatSessionService', () => {
 
   const mockRedisService = {
     exists: jest.fn(),
+    eval: jest.fn(),
     rpush: jest.fn(),
     ltrim: jest.fn(),
     expire: jest.fn(),
@@ -81,20 +82,19 @@ describe('ChatSessionService', () => {
       });
 
       expect(ok).toBe(true);
-      expect(mockRedisService.rpush).toHaveBeenCalledWith(
-        buildChatHistoryCacheKey('chat-1'),
-        expect.any(String),
-      );
-      expect(mockRedisService.ltrim).toHaveBeenCalledWith(
-        buildChatHistoryCacheKey('chat-1'),
-        -60,
-        -1,
-      );
-      expect(mockRedisService.expire).toHaveBeenCalledWith(
-        buildChatHistoryCacheKey('chat-1'),
-        86400,
-      );
-      const cached = JSON.parse(mockRedisService.rpush.mock.calls[0][1] as string);
+      // 单脚本原子追加：ARGV = [maxMessages, ttlSeconds, payload]
+      expect(mockRedisService.eval).toHaveBeenCalledTimes(1);
+      const [script, keys, args] = mockRedisService.eval.mock.calls[0] as [
+        string,
+        string[],
+        (string | number)[],
+      ];
+      expect(keys).toEqual([buildChatHistoryCacheKey('chat-1')]);
+      expect(args.slice(0, 2)).toEqual([60, 86400]);
+      // 回归锁：写路径只能 RPUSHX（不建 key）——RPUSH 会在 DEL 作废后建出残缺 list
+      expect(script).toContain('RPUSHX');
+      expect(mockRedisService.rpush).not.toHaveBeenCalled();
+      const cached = JSON.parse(args[2] as string);
       expect(cached).toMatchObject({
         role: 'assistant',
         source: StorageMessageSource.AGGREGATED_CHAT_MANUAL,
@@ -137,10 +137,12 @@ describe('ChatSessionService', () => {
         isSelf: true,
       });
 
-      expect(mockRedisService.expire).toHaveBeenCalledWith(
-        buildChatHistoryCacheKey('chat-1'),
-        parseInt(MEMORY_SESSION_TTL_DAYS_DEFAULT, 10) * 24 * 60 * 60,
-      );
+      const [, , args] = mockRedisService.eval.mock.calls[0] as [
+        string,
+        string[],
+        (string | number)[],
+      ];
+      expect(args[1]).toBe(Number(MEMORY_SESSION_TTL_DAYS_DEFAULT) * 86400);
     });
 
     it('should skip cache mirror when DB reports the row already existed (UNIQUE conflict)', async () => {
@@ -156,6 +158,26 @@ describe('ChatSessionService', () => {
       });
 
       expect(ok).toBe(false);
+      expect(mockRedisService.eval).not.toHaveBeenCalled();
+    });
+
+    it('should not create the list when cache key is absent (RPUSHX no-op)', async () => {
+      // 场景：updateMessageContent 刚 DEL 了 list，或新会话尚无缓存。
+      // 写路径不得建 key，否则 list 只含本条却被读路径当成完整历史。
+      mockChatMessageRepository.saveChatMessage.mockResolvedValue({ inserted: true });
+      mockRedisService.eval.mockResolvedValue(0);
+
+      const ok = await service.saveMessage({
+        chatId: 'chat-1',
+        messageId: 'msg-after-del',
+        role: 'user',
+        content: '这个岗位怎么样',
+        timestamp: 1710900000000,
+        contactType: 1,
+      });
+
+      expect(ok).toBe(true);
+      expect(mockRedisService.eval).toHaveBeenCalledTimes(1);
       expect(mockRedisService.rpush).not.toHaveBeenCalled();
     });
 
@@ -169,7 +191,7 @@ describe('ChatSessionService', () => {
       // 直接作废 list，下次读取 cache miss 触发 DB backfill
       expect(mockRedisService.del).toHaveBeenCalledWith(buildChatHistoryCacheKey('chat-1'));
       expect(mockRedisService.lrange).not.toHaveBeenCalled();
-      expect(mockRedisService.rpush).not.toHaveBeenCalled();
+      expect(mockRedisService.eval).not.toHaveBeenCalled();
     });
 
     it('should not touch redis when messageId does not exist in DB', async () => {

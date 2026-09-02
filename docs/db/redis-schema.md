@@ -184,9 +184,13 @@
 | 存储内容 | JSON `{ chatId, messageId, role, content, timestamp }` |
 | TTL      | `MEMORY_SESSION_TTL_DAYS * 86400`（当前默认 3 天）     |
 
-**操作**：`RPUSH`（追加）/ `LRANGE 0 -1`（读取）/ `LTRIM`（控制窗口）/ `EXPIRE` / `DEL`
+**操作**：`RPUSHX`（写路径追加，只在 key 已存在时生效）/ `LRANGE 0 -1`（读取）/ `LTRIM`（控制窗口）/ `EXPIRE` / `DEL`（`updateMessageContent` 作废）
 
-**加载流程**：命中缓存直接返回；miss 时回源 `chat_messages`，写回缓存（backfill）。
+**加载流程**：命中缓存直接返回（同样套 7 天窗口）；miss 时回源 `chat_messages`，用一个 Lua 脚本原子重建
+（`DEL + RPUSH 全量 + LTRIM + EXPIRE`）。
+
+**创建约束**：key 只由回填创建。写路径用 `RPUSHX + LTRIM + EXPIRE` 单脚本追加，key 不存在即跳过；
+否则作废后到达的第一条消息会建出「只含自己」的 list，被读路径当成完整历史。
 
 注意：这个 TTL 只控制 Redis 短期缓存的存活时间；DB fallback 的回查范围由 `MEMORY_HISTORY_WINDOW_DAYS` 控制。
 

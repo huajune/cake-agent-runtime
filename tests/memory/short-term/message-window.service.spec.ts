@@ -3,6 +3,9 @@ import { buildChatHistoryCacheKey } from '@memory/short-term/chat-history-cache.
 import { StorageMessageSource, StorageMessageType } from '@enums/storage-message.enum';
 
 describe('MessageWindowService', () => {
+  /** 相对当前时间取基准：缓存命中路径套 7 天窗口，固定的历史时间戳会被当过期裁掉。 */
+  const BASE = Date.now() - 60_000;
+
   const mockRepo = {
     getChatHistory: jest.fn(),
   };
@@ -10,6 +13,7 @@ describe('MessageWindowService', () => {
   const mockRedis = {
     lrange: jest.fn(),
     del: jest.fn(),
+    eval: jest.fn(),
     rpush: jest.fn(),
     expire: jest.fn(),
     ltrim: jest.fn(),
@@ -20,6 +24,14 @@ describe('MessageWindowService', () => {
     sessionWindowMaxMessages: 60,
     sessionWindowMaxChars: 100, // small for testing trim
     sessionTtlDays: 1,
+    sessionTtl: 86400,
+    historyWindowSeconds: 7 * 86400,
+  };
+
+  /** 回填脚本 ARGV = [maxMessages, ttlSeconds, ...payloads]，取出 payload 段。 */
+  const rebuildPayloads = (): string[] => {
+    const [, , args] = mockRedis.eval.mock.calls[0] as [string, string[], (string | number)[]];
+    return args.slice(2) as string[];
   };
 
   let service: MessageWindowService;
@@ -46,7 +58,7 @@ describe('MessageWindowService', () => {
   it('should inject time context into messages', async () => {
     mockRedis.lrange.mockResolvedValue([]);
     mockRepo.getChatHistory.mockResolvedValue([
-      { messageId: 'm1', role: 'user', content: '你好', timestamp: 1710900000000 },
+      { messageId: 'm1', role: 'user', content: '你好', timestamp: BASE },
     ]);
 
     const result = await service.getMessages('chat_1');
@@ -60,14 +72,14 @@ describe('MessageWindowService', () => {
   it('should trim messages when exceeding char limit', async () => {
     mockRedis.lrange.mockResolvedValue([]);
     mockRepo.getChatHistory.mockResolvedValue([
-      { messageId: 'm1', role: 'user', content: 'A'.repeat(60), timestamp: 1710900000000 },
+      { messageId: 'm1', role: 'user', content: 'A'.repeat(60), timestamp: BASE },
       {
         messageId: 'm2',
         role: 'assistant',
         content: 'B'.repeat(60),
-        timestamp: 1710900001000,
+        timestamp: BASE + 1000,
       },
-      { messageId: 'm3', role: 'user', content: 'C'.repeat(30), timestamp: 1710900002000 },
+      { messageId: 'm3', role: 'user', content: 'C'.repeat(30), timestamp: BASE + 2000 },
     ]);
 
     const result = await service.getMessages('chat_1');
@@ -96,7 +108,7 @@ describe('MessageWindowService', () => {
         messageId: 'm1',
         role: 'user',
         content: '缓存消息',
-        timestamp: 1710900000000,
+        timestamp: BASE,
         provenanceVersion: 2,
       }),
     ]);
@@ -116,7 +128,7 @@ describe('MessageWindowService', () => {
         messageId: 'm1',
         role: 'user',
         content: '本批消息',
-        timestamp: 1710900000000,
+        timestamp: BASE,
         provenanceVersion: 2,
       }),
       JSON.stringify({
@@ -124,13 +136,13 @@ describe('MessageWindowService', () => {
         messageId: 'm2',
         role: 'user',
         content: '下一批 pending',
-        timestamp: 1710900001000,
+        timestamp: BASE + 1000,
         provenanceVersion: 2,
       }),
     ]);
 
     const result = await service.getMessages('chat_1', {
-      endTimeInclusive: 1710900000000,
+      endTimeInclusive: BASE,
     });
 
     expect(mockRepo.getChatHistory).not.toHaveBeenCalled();
@@ -147,13 +159,13 @@ describe('MessageWindowService', () => {
     );
     mockRedis.lrange.mockResolvedValue([]);
     mockRepo.getChatHistory.mockResolvedValue([
-      { messageId: 'u1', role: 'user', content: '好的', timestamp: 1710900001000 },
-      { messageId: 'a1', role: 'assistant', content: '岗位卡片已投递', timestamp: 1710900002000 },
-      { messageId: 'u2', role: 'user', content: '下一批 pending', timestamp: 1710900003000 },
+      { messageId: 'u1', role: 'user', content: '好的', timestamp: BASE + 1000 },
+      { messageId: 'a1', role: 'assistant', content: '岗位卡片已投递', timestamp: BASE + 2000 },
+      { messageId: 'u2', role: 'user', content: '下一批 pending', timestamp: BASE + 3000 },
     ]);
 
     const result = await customService.getMessages('chat_1', {
-      endTimeInclusive: 1710900001000,
+      endTimeInclusive: BASE + 1000,
     });
 
     // 边界不再下推到 SQL（SQL 无法区分角色），由内存统一应用
@@ -168,7 +180,7 @@ describe('MessageWindowService', () => {
     expect(result.some((m) => m.content.includes('下一批 pending'))).toBe(false);
 
     // 缓存回填保留未裁剪的完整窗口
-    expect(mockRedis.rpush.mock.calls[0].length - 1).toBe(3);
+    expect(rebuildPayloads()).toHaveLength(3);
   });
 
   it('should keep post-cutoff assistant messages from cache, reinserted before the trailing user block', async () => {
@@ -183,7 +195,7 @@ describe('MessageWindowService', () => {
         messageId: 'a1',
         role: 'assistant',
         content: '给你看最近的3家',
-        timestamp: 1710900000000,
+        timestamp: BASE,
         provenanceVersion: 2,
       }),
       JSON.stringify({
@@ -191,7 +203,7 @@ describe('MessageWindowService', () => {
         messageId: 'u1',
         role: 'user',
         content: '好的',
-        timestamp: 1710900001000,
+        timestamp: BASE + 1000,
         provenanceVersion: 2,
       }),
       JSON.stringify({
@@ -199,7 +211,7 @@ describe('MessageWindowService', () => {
         messageId: 'a2',
         role: 'assistant',
         content: '1. 必胜客岗位卡片',
-        timestamp: 1710900002000,
+        timestamp: BASE + 2000,
         provenanceVersion: 2,
       }),
       JSON.stringify({
@@ -207,13 +219,13 @@ describe('MessageWindowService', () => {
         messageId: 'u2',
         role: 'user',
         content: '下一批 pending',
-        timestamp: 1710900003000,
+        timestamp: BASE + 3000,
         provenanceVersion: 2,
       }),
     ]);
 
     const result = await customService.getMessages('chat_1', {
-      endTimeInclusive: 1710900001000,
+      endTimeInclusive: BASE + 1000,
     });
 
     expect(mockRepo.getChatHistory).not.toHaveBeenCalled();
@@ -270,7 +282,7 @@ describe('MessageWindowService', () => {
         messageId: 'manual-1',
         role: 'assistant',
         content: '上海嘉定同济园是吧',
-        timestamp: 1710900000000,
+        timestamp: BASE,
         source: StorageMessageSource.MOBILE_PUSH,
         messageType: StorageMessageType.TEXT,
         isSelf: true,
@@ -285,7 +297,7 @@ describe('MessageWindowService', () => {
       messageType: StorageMessageType.TEXT,
       isSelf: true,
     });
-    const serialized = mockRedis.rpush.mock.calls[0][1] as string;
+    const serialized = rebuildPayloads()[0];
     expect(JSON.parse(serialized)).toMatchObject({
       source: StorageMessageSource.MOBILE_PUSH,
       messageType: StorageMessageType.TEXT,
@@ -301,7 +313,7 @@ describe('MessageWindowService', () => {
         messageId: 'legacy-1',
         role: 'assistant',
         content: '旧缓存无来源',
-        timestamp: 1710900000000,
+        timestamp: BASE,
       }),
     ]);
     mockRepo.getChatHistory.mockResolvedValue([
@@ -309,7 +321,7 @@ describe('MessageWindowService', () => {
         messageId: 'manual-1',
         role: 'assistant',
         content: 'DB 人工消息',
-        timestamp: 1710900000000,
+        timestamp: BASE,
         source: StorageMessageSource.AGGREGATED_CHAT_MANUAL,
         messageType: StorageMessageType.TEXT,
         isSelf: true,
@@ -324,6 +336,89 @@ describe('MessageWindowService', () => {
       source: StorageMessageSource.AGGREGATED_CHAT_MANUAL,
       isSelf: true,
     });
+  });
+
+  it('should rebuild the cache with a single atomic script carrying limits and ttl', async () => {
+    mockRedis.lrange.mockResolvedValue([]);
+    mockRepo.getChatHistory.mockResolvedValue([
+      { messageId: 'u1', role: 'user', content: '你好', timestamp: Date.now() - 1000 },
+    ]);
+
+    await service.getMessages('chat_1');
+
+    // 不再是 del → rpush → expire → ltrim 四次往返，避免并发追加插进 DEL 与 RPUSH 之间
+    expect(mockRedis.rpush).not.toHaveBeenCalled();
+    expect(mockRedis.ltrim).not.toHaveBeenCalled();
+    expect(mockRedis.expire).not.toHaveBeenCalled();
+    expect(mockRedis.eval).toHaveBeenCalledTimes(1);
+    const [, keys, args] = mockRedis.eval.mock.calls[0] as [string, string[], (string | number)[]];
+    expect(keys).toEqual([buildChatHistoryCacheKey('chat_1')]);
+    expect(args.slice(0, 2)).toEqual([60, 86400]);
+    expect(args).toHaveLength(3);
+  });
+
+  it('should not create the cache key when DB history is empty', async () => {
+    mockRedis.lrange.mockResolvedValue([]);
+    mockRepo.getChatHistory.mockResolvedValue([]);
+
+    const result = await service.getMessages('chat_empty');
+
+    expect(result).toEqual([]);
+    expect(mockRedis.eval).not.toHaveBeenCalled();
+  });
+
+  it('should apply the history window to cache hits, same as the DB fallback', async () => {
+    const customService = new MessageWindowService(
+      mockRepo as never,
+      { ...mockConfig, sessionWindowMaxChars: 100000 } as never,
+      mockRedis as never,
+    );
+    const now = Date.now();
+    const stale = now - 8 * 86400 * 1000; // 8 天前，超出 7 天窗口
+    mockRedis.lrange.mockResolvedValue([
+      JSON.stringify({
+        chatId: 'chat_1',
+        messageId: 'old',
+        role: 'user',
+        content: '上周的消息',
+        timestamp: stale,
+        provenanceVersion: 2,
+      }),
+      JSON.stringify({
+        chatId: 'chat_1',
+        messageId: 'fresh',
+        role: 'user',
+        content: '今天的消息',
+        timestamp: now - 1000,
+        provenanceVersion: 2,
+      }),
+    ]);
+
+    const result = await customService.getMessages('chat_1');
+
+    expect(mockRepo.getChatHistory).not.toHaveBeenCalled();
+    expect(result).toHaveLength(1);
+    expect(result[0].content).toContain('今天的消息');
+  });
+
+  it('should fall back to DB when every cached entry is outside the history window', async () => {
+    const stale = Date.now() - 8 * 86400 * 1000;
+    mockRedis.lrange.mockResolvedValue([
+      JSON.stringify({
+        chatId: 'chat_1',
+        messageId: 'old',
+        role: 'user',
+        content: '上周的消息',
+        timestamp: stale,
+        provenanceVersion: 2,
+      }),
+    ]);
+    mockRepo.getChatHistory.mockResolvedValue([]);
+
+    const result = await service.getMessages('chat_1');
+
+    expect(mockRepo.getChatHistory).toHaveBeenCalled();
+    expect(result).toEqual([]);
   });
 
   it('should clear lastLoadError after a successful reload', async () => {

@@ -8,6 +8,7 @@ import type { ShortTermMessage } from './short-term.types';
 import {
   buildChatHistoryCacheKey,
   parseCachedChatHistoryMessages,
+  rebuildChatHistoryCache,
   serializeCachedChatHistoryMessage,
 } from './chat-history-cache.util';
 import { MEMORY_CHAT_SESSION_PORT, type MemoryChatSessionPort } from '../memory.ports';
@@ -47,7 +48,12 @@ export class MessageWindowService {
       const cached = await this.getCachedHistory(chatId);
       const cacheHasProvenance =
         cached.length > 0 && cached.every((message) => message.provenanceVersion === 2);
-      const cachedHistory = this.applyTimeBoundary(cached, options?.endTimeInclusive);
+      // 命中与 miss 同一口径：缓存按条数裁剪且被写路径持续续期，可能留着 7 天前的
+      // 消息；DB 回填只取 historyWindow 内，命中路径同样套这个下界。
+      const cachedHistory = this.applyTimeBoundary(
+        this.applyHistoryWindow(cached),
+        options?.endTimeInclusive,
+      );
       if (cacheHasProvenance && cachedHistory.length > 0) {
         return this.trimByChars(this.injectTimeContext(cachedHistory));
       }
@@ -136,6 +142,11 @@ export class MessageWindowService {
     ];
   }
 
+  private applyHistoryWindow<T extends { timestamp: number }>(messages: T[]): T[] {
+    const startTimeInclusive = Date.now() - this.config.historyWindowSeconds * 1000;
+    return messages.filter((message) => message.timestamp >= startTimeInclusive);
+  }
+
   private async getCachedHistory(
     chatId: string,
   ): Promise<ReturnType<typeof parseCachedChatHistoryMessages>> {
@@ -166,7 +177,6 @@ export class MessageWindowService {
   ): Promise<void> {
     if (!this.redisService || messages.length === 0) return;
 
-    const listKey = buildChatHistoryCacheKey(chatId);
     const serializedMessages = messages.map((message) =>
       serializeCachedChatHistoryMessage({
         chatId,
@@ -182,10 +192,11 @@ export class MessageWindowService {
       }),
     );
 
-    await this.redisService.del(listKey);
-    await this.redisService.rpush(listKey, ...serializedMessages);
-    await this.redisService.expire(listKey, this.config.sessionTtl);
-    await this.redisService.ltrim(listKey, -this.config.sessionWindowMaxMessages, -1);
+    // 这是 list 的唯一创建点（写路径 RPUSHX 只追加不建 key），整段原子重建。
+    await rebuildChatHistoryCache(this.redisService, chatId, serializedMessages, {
+      maxMessages: this.config.sessionWindowMaxMessages,
+      ttlSeconds: this.config.sessionTtl,
+    });
   }
 
   /**

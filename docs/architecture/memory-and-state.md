@@ -76,7 +76,9 @@
 workbench 一起享有 12 小时安全余量。`stage:` 和 collection form 严格按 3 天过期。
 
 消息热缓存也按 3 天过期，但它不是 7 天回看窗口的权威来源。缓存 miss 时，
-`MessageWindowService` 仍从 `chat_messages` 查询最近 7 天并回填。
+`MessageWindowService` 仍从 `chat_messages` 查询最近 7 天并原子回填；命中时同样只取 7 天内的条目。
+list 只由回填创建：`ChatSessionService` 的写路径用 `RPUSHX` 追加、key 不存在即跳过，
+保证任何非空 list 都是「完整快照 + 后续追加」，而不是作废后半路建出的残缺片段。
 
 collection form 已完整迁入 `src/tools/collection/`：TTL 常量、key builder、整实体写入和
 定位指针都由工具域维护，不依赖 `MemoryConfig`，也不再写进 `factsv2:`。
