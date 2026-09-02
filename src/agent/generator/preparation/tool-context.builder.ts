@@ -4,7 +4,6 @@ import type { TurnLedger } from '@shared-types/turn.types';
 import type { SessionBrandState } from '@resolution/brand/brand-resolution.types';
 import { type LaborFormIntentDecision } from '@resolution/labor-form';
 import type { CandidatePrefillField, CandidatePrefillHints } from '@resolution/candidate/types';
-import { readGenderProvenance } from '@resolution/candidate/gender';
 import { projectTurnHints } from '@resolution/turn-hints/reducer';
 import type { TurnHints } from '@resolution/turn-hints/turn-hint.types';
 import { unwrapUserProfileFacts } from '@memory/long-term/long-term.types';
@@ -187,14 +186,11 @@ function buildCandidatePrefillHints(
     const value = String(fact.value ?? '').trim();
     if (!value) continue;
 
-    // gender 自身的 source+confidence 是当前权威语义；旧 sibling 只在
-    // 存量记录缺少新来源章时做兼容回退，不得反向覆盖新信封。
+    // gender 的 source+confidence 是唯一来源语义：
     // booking 是 system+high，可程序化预填；企微标签是 system+非 high，仍被安全闸拦截。
-    const genderSource = hintField === 'gender' ? readGenderProvenance(info) : null;
     const isSystemSourced =
       hintField === 'gender'
-        ? genderSource?.source === 'system' &&
-          (genderSource.fromLegacySibling || fact.confidence !== 'high')
+        ? fact.source === 'system' && fact.confidence !== 'high'
         : fact.source === 'system';
     const reason = isSystemSourced
       ? 'system_source'

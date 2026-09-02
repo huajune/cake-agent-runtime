@@ -1,10 +1,55 @@
 import { candidateValuesEquivalent } from '@resolution/candidate/value-equivalence';
 import {
+  canonicalizeCandidateFieldValue,
   deriveFieldValueFromQuote,
+  isValidCandidateFieldShape,
   parseBirthYearAge,
   parseSpokenHeightCm,
   parseSpokenWeightKg,
 } from '@resolution/candidate/value-shape';
+
+describe('canonicalizeCandidateFieldValue（数值字段落库规范形）', () => {
+  it.each([
+    ['weight', '122', '61'],
+    ['weight', '130斤', '65'],
+    ['weight', '56kg', '56'],
+    ['weight', '56 公斤', '56'],
+    ['weight', '98', '98'],
+    ['weight', '110kg', '110'],
+    ['height', '170cm', '170'],
+    ['height', '1米75', '175'],
+    ['height', '165.0', '165'],
+    ['age', '38周岁', '38'],
+    ['age', '20岁', '20'],
+    ['age', '22', '22'],
+    ['name', ' 张三 ', '张三'],
+  ] as const)('%s %s → %s', (field, value, expected) => {
+    expect(canonicalizeCandidateFieldValue(field, value)).toBe(expected);
+  });
+
+  it.each([
+    ['weight', '20'],
+    ['weight', '无'],
+    ['height', '80'],
+    ['age', '75年'],
+    ['age', '差不多50'],
+    ['age', 'Zhanᴗg·ᰔᩚ'],
+    ['age', '99'],
+    ['name', '   '],
+  ] as const)('%s %s 没有合法形态 → null', (field, value) => {
+    expect(canonicalizeCandidateFieldValue(field, value)).toBeNull();
+  });
+
+  it('形态门复用规范形：斤当 kg 的 122 合法（落 61），性别只认男/女', () => {
+    expect(isValidCandidateFieldShape('weight', '122')).toBe(true);
+    expect(isValidCandidateFieldShape('weight', '20')).toBe(false);
+    expect(isValidCandidateFieldShape('age', '38周岁')).toBe(true);
+    expect(isValidCandidateFieldShape('age', '75年')).toBe(false);
+    expect(isValidCandidateFieldShape('gender', '女生')).toBe(true);
+    expect(isValidCandidateFieldShape('gender', '2')).toBe(true);
+    expect(isValidCandidateFieldShape('gender', '不确定')).toBe(false);
+  });
+});
 
 // 证据化方案 §12 条目 4：口语化表达的白名单归一化。
 describe('candidate-fact-normalizers 口语归一化（§12-4）', () => {

@@ -300,8 +300,6 @@ describe('duliday_interview_booking（form → labelList）', () => {
         gender: expect.objectContaining({ value: '女', confidence: 'high', source: 'system' }),
       }),
     );
-    const completedFacts = sessionFacts.saveCompletedCollectionFacts.mock.calls[0][3];
-    expect(completedFacts).not.toHaveProperty('gender_source');
     expect(longTerm.writeFromBooking).toHaveBeenCalledWith(
       'corp-1',
       'user-1',

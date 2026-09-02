@@ -17,7 +17,6 @@ export const TURN_HINT_FIELD_POLICIES = {
   'interview_info.name': { selection: 'first-scalar', allowedOperations: ['set'] },
   'interview_info.phone': { selection: 'first-scalar', allowedOperations: ['set'] },
   'interview_info.gender': { selection: 'first-scalar', allowedOperations: ['set'] },
-  'interview_info.gender_source': { selection: 'first-scalar', allowedOperations: ['set'] },
   'interview_info.age': { selection: 'first-scalar', allowedOperations: ['set'] },
   'interview_info.is_student': { selection: 'first-scalar', allowedOperations: ['set'] },
   'interview_info.education': { selection: 'first-scalar', allowedOperations: ['set'] },

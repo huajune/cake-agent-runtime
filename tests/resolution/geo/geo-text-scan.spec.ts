@@ -18,6 +18,15 @@ describe('scanGeoSignalsFromText（三轮扫描编排）', () => {
     expect(scan.districts).toEqual(['浦东']);
   });
 
+  it('正则兜底不把否定/泛指短语当区名（09-02 生产核对：没有固定 / 也可以跑其他）', () => {
+    expect(scanGeoSignalsFromText('没有固定区，都可以').districts).toEqual([]);
+    // 江宁不在白名单，正则兜底吃到的两段（"我主要在江宁""也可以跑其他"）都带虚词，一律不认；
+    // 宁可漏一个区，不写一个假区（LLM 轨仍可提"江宁"）。
+    const scan = scanGeoSignalsFromText('我主要在江宁区、也可以跑其他区');
+    expect(scan.districts).not.toContain('也可以跑其他');
+    expect(scan.districts.every((district) => !/可以|其他|在/u.test(district))).toBe(true);
+  });
+
   it('golden：我在青浦区 → unique_district_alias 推导上海', () => {
     const scan = scanGeoSignalsFromText('我在青浦区');
     expect(scan.city).toEqual({ value: '上海', evidence: 'unique_district_alias' });

@@ -30,6 +30,7 @@ import {
   AGE_FIELD,
   AGE_FIELD_18_40,
   HEIGHT_FIELD_GENDERED,
+  WEIGHT_FIELD_GENDERED,
   assistantMessage,
   GENDER_MALE_ONLY_FIELD,
   HEALTH_CERT_FIELD,
@@ -268,6 +269,55 @@ describe('棘轮：对系统单向、对本人双向（§3 0819 裁定）', () =
   });
 });
 
+describe('体重落槽规范形（09-02 生产核对：31 条体重 5 条斤当 kg、1 条 "56kg" 带单位）', () => {
+  const neutralGender: ContractFieldDef = {
+    ...GENDER_MALE_ONLY_FIELD,
+    acceptedOptions: [
+      { optionCode: '1', optionLabel: '男' },
+      { optionCode: '2', optionLabel: '女' },
+    ],
+    rejectedOptions: [],
+  };
+  const contract = [neutralGender, WEIGHT_FIELD_GENDERED];
+
+  function femaleForm(): BookingCollectionForm {
+    const source = '我是女的';
+    return applyFieldValueProposal(createForm({ jobId: 1, contract }), neutralGender, {
+      value: '女',
+      optionCodes: ['2'],
+      sourceText: source,
+      producer: 'candidate_quote',
+      candidateTexts: [source],
+    }).form;
+  }
+
+  function proposeWeight(value: string, source: string) {
+    return applyFieldValueProposal(femaleForm(), WEIGHT_FIELD_GENDERED, {
+      value,
+      sourceText: source,
+      producer: 'model',
+      candidateTexts: [source],
+    });
+  }
+
+  it.each([
+    ['122', '体重：122', '61'],
+    ['130斤', '我130斤', '65'],
+    ['56kg', '体重56kg', '56'],
+    ['58', '体重：58', '58'],
+  ] as const)('「%s」落槽为 %s kg 并按 kg 过值域筛', (value, source, expected) => {
+    const result = proposeWeight(value, source);
+    expect(result.outcome).toBe('accepted');
+    expect(result.form.slots[WEIGHT_FIELD_GENDERED.labelId].value?.value).toBe(expected);
+  });
+
+  it('归不出体重形态的值按形状非法拒收，不进槽位', () => {
+    const result = proposeWeight('20', '体重：20');
+    expect(result.outcome).toBe('rejected');
+    expect(result.reason).toBe(PROPOSAL_REJECTION_REASONS.invalidValueShape);
+  });
+});
+
 describe('分性别值域筛（实测 528995 身高/体重）', () => {
   const contract = [GENDER_MALE_ONLY_FIELD, HEIGHT_FIELD_GENDERED];
 
@@ -321,13 +371,17 @@ describe('分性别值域筛（实测 528995 身高/体重）', () => {
     };
     const neutral = [neutralGender, HEIGHT_FIELD_GENDERED];
     const source = '我是女的';
-    const base = applyFieldValueProposal(createForm({ jobId: 1, contract: neutral }), neutralGender, {
-      value: '女',
-      optionCodes: ['2'],
-      sourceText: source,
-      producer: 'candidate_quote',
-      candidateTexts: [source],
-    }).form;
+    const base = applyFieldValueProposal(
+      createForm({ jobId: 1, contract: neutral }),
+      neutralGender,
+      {
+        value: '女',
+        optionCodes: ['2'],
+        sourceText: source,
+        producer: 'candidate_quote',
+        candidateTexts: [source],
+      },
+    ).form;
     expect(proposeHeight(base, '155').outcome).toBe('accepted');
   });
 
@@ -530,7 +584,11 @@ describe('防线 4 · 臆造防线：sourceText 回查失败的提案零入账',
   });
 
   it('空 sourceText 直接拒收', () => {
-    const result = applyFieldValueProposal(form(), AGE_FIELD, proposal({ value: '26', sourceText: '  ' }));
+    const result = applyFieldValueProposal(
+      form(),
+      AGE_FIELD,
+      proposal({ value: '26', sourceText: '  ' }),
+    );
     expect(result.outcome).toBe('rejected');
     expect(result.reason).toBe(PROPOSAL_REJECTION_REASONS.sourceTextNotFound);
   });

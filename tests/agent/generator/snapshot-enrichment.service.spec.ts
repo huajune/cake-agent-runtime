@@ -114,7 +114,6 @@ describe('SnapshotEnrichmentService', () => {
         evidence: expect.objectContaining({ label: '客户详情接口补充性别：男' }),
       }),
     );
-    expect(getTurnHint(result.turnHints, 'interview_info.gender_source')).toBeNull();
     expect(result.turnHints?.reasoning).toContain('客户详情接口');
     expect(snapshot.turnHints).toBeNull(); // 原快照不被污染
   });
@@ -138,7 +137,6 @@ describe('SnapshotEnrichmentService', () => {
                 source: 'system',
                 evidence: '客户详情接口补充性别：男',
               },
-              gender_source: null,
             },
           },
           lastCandidatePool: null,

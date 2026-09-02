@@ -22,7 +22,6 @@ function buildSessionState(
         name: '张三',
         phone: '13800000000',
         gender: '男',
-        gender_source: null,
         age: '23',
         applied_store: null,
         applied_position: null,

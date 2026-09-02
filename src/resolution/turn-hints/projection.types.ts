@@ -24,7 +24,6 @@ export interface TurnHintProjection {
     name: string | null;
     phone: string | null;
     gender: string | null;
-    gender_source: 'candidate' | 'system' | null;
     age: string | null;
     is_student: boolean | null;
     education: string | null;

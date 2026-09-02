@@ -3,7 +3,6 @@ import { stripTimeContextSuffix } from '@resolution/candidate/name';
 import type { TurnHints, TurnHintFieldPath } from '@resolution/turn-hints/turn-hint.types';
 import { projectTurnHints, resolveTurnHints } from '@resolution/turn-hints/reducer';
 import { RULE_HINT_QUOTE_MAX_CHARS } from '@resolution/turn-hints/producers/rule-track';
-import { readGenderProvenance, type GenderProvenance } from '@resolution/candidate/gender';
 import { formatLocalMinute } from '@infra/utils/date.util';
 import type {
   EntityExtractionResult,
@@ -60,8 +59,7 @@ export function formatExtractionFactLines(
 
   const gender = readFactValue(info.gender);
   if (gender) {
-    const genderSource = readGenderProvenance(info);
-    const sourceTag = formatGenderSourceTag(info.gender, genderSource);
+    const sourceTag = formatGenderSourceTag(info.gender);
     lines.push(`- 性别: ${gender}${sourceTag}${meta(info.gender)}`);
   }
 
@@ -155,17 +153,25 @@ export function formatExtractionFactLines(
   return lines;
 }
 
-function formatGenderSourceTag(gender: unknown, resolved: GenderProvenance): string {
-  if (resolved?.source === 'candidate') return '（候选人自陈）';
-  if (
-    resolved?.source === 'system' &&
-    !resolved.fromLegacySibling &&
-    isSessionFactValue(gender) &&
-    gender.confidence === 'high'
-  ) {
-    return '（系统记录，报名办结已确认）';
-  }
-  return '（系统标签，未经候选人自陈，不得用于直接排除候选人）';
+const GENDER_SOURCE_TAGS = {
+  candidate: '（候选人自陈）',
+  booking: '（系统记录，报名办结已确认）',
+  system: '（系统标签，未经候选人自陈，不得用于直接排除候选人）',
+} as const;
+const GENDER_SOURCE_TAG_RE =
+  /（(?:候选人自陈|系统记录，报名办结已确认|系统标签，未经候选人自陈，不得用于直接排除候选人)）/u;
+
+/** gender 的 source + confidence 是唯一来源语义：自陈 / 报名办结 / 其余一律按系统标签提示。 */
+function genderSourceTag(source: unknown, confidence: unknown): string {
+  if (source === 'candidate_quote') return GENDER_SOURCE_TAGS.candidate;
+  if (source === 'system' && confidence === 'high') return GENDER_SOURCE_TAGS.booking;
+  return GENDER_SOURCE_TAGS.system;
+}
+
+function formatGenderSourceTag(gender: unknown): string {
+  return isSessionFactValue(gender)
+    ? genderSourceTag(gender.source, gender.confidence)
+    : GENDER_SOURCE_TAGS.system;
 }
 
 function readFactValue<T>(value: SessionFactValue<T> | T | null | undefined): T | null {
@@ -284,6 +290,11 @@ export function formatTurnHintLines(
     const field = label ? FACT_LINE_FIELD_BY_LABEL[label] : undefined;
     const fact = field ? resolved.get(field) : undefined;
     if (!fact) return line;
+    // 投影值是裸标量，性别来源章只能从获选 claim 的 producer/confidence 取。
+    const taggedLine =
+      field === 'interview_info.gender'
+        ? line.replace(GENDER_SOURCE_TAG_RE, genderSourceTag(fact.producer, fact.confidence))
+        : line;
     const parts = [`置信度: ${fact.confidence}`, `来源: ${fact.producer}`];
     if (options.includeEvidence) {
       parts.push(`证据: ${fact.evidence.code ?? fact.evidence.label}`);
@@ -294,8 +305,8 @@ export function formatTurnHintLines(
     }
     const meta = `（${parts.join('，')}）`;
     return field === 'preferences.city'
-      ? line.replace(/（置信度: (?:high|medium|low)）$/u, meta)
-      : `${line}${meta}`;
+      ? taggedLine.replace(/（置信度: (?:high|medium|low)）$/u, meta)
+      : `${taggedLine}${meta}`;
   });
 }
 
