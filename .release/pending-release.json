@@ -102,6 +102,69 @@
       "envFiles": [],
       "verification": [],
       "level": "patch"
+    },
+    {
+      "number": "1168",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1168",
+      "title": "删除 LLM 相似度评分器，新增 Agent 质量评估体系口径页",
+      "author": "huajune",
+      "mergedAt": "2026-09-02",
+      "businessUpdates": [
+        "删除 LLM 相似度评分器，新增 Agent 质量评估体系口径页"
+      ],
+      "summary": [
+        "删除 LLM 相似度评分器，新增 Agent 质量评估体系口径页"
+      ],
+      "features": [
+        "删除 LLM 相似度评分器，新增 Agent 质量评估体系口径页"
+      ],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [],
+      "config": [],
+      "envFiles": [
+        ".env.example"
+      ],
+      "verification": [
+        "`tsc --noEmit` 后端 + web 均通过；eslint（--max-warnings=0）通过；prettier 通过",
+        "`jest tests/biz/test-suite tests/evaluation --watchman=false`：21 套件 / 309 用例通过"
+      ],
+      "level": "patch"
+    },
+    {
+      "number": "1165",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1165",
+      "title": "临时暂停托管改为次日零点自动恢复（原固定 3 天）",
+      "author": "huajune",
+      "mergedAt": "2026-09-02",
+      "businessUpdates": [
+        "新增用例：解禁时刻在上海时区读数为 00:00:00，且距暂停不超过 24h，DB 写入值与缓存一致。",
+        "`user-hosting.service.ts`：删掉硬编码 `PAUSE_DURATION_MS`，三处（pauseUser / loadPausedUsers 兜底 / 共享缓存快照）统一用 `resolveTemporaryPauseExpiresAt(pausedAt)` = `addLocalDays(getLocalDayStart(pausedAt), 1)`；永久暂停不变。",
+        "`docs/product/ops-data-and-sponge-integration.md` 同步口径。"
+      ],
+      "summary": [
+        "临时暂停托管改为次日零点自动恢复（原固定 3 天）",
+        "`user-hosting.service.ts`：删掉硬编码 `PAUSE_DURATION_MS`，三处（pauseUser / loadPausedUsers 兜底 / 共享缓存快照）统一用 `resolveTemporaryPauseExpiresAt(pausedAt)` = `addLocalDays(getLocalDayStart(pausedAt), 1)`；永久暂停不变。",
+        "新增用例：解禁时刻在上海时区读数为 00:00:00，且距暂停不超过 24h，DB 写入值与缓存一致。",
+        "`docs/product/ops-data-and-sponge-integration.md` 同步口径。"
+      ],
+      "features": [
+        "新增用例：解禁时刻在上海时区读数为 00:00:00，且距暂停不超过 24h，DB 写入值与缓存一致。"
+      ],
+      "fixes": [
+        "`user-hosting.service.ts`：删掉硬编码 `PAUSE_DURATION_MS`，三处（pauseUser / loadPausedUsers 兜底 / 共享缓存快照）统一用 `resolveTemporaryPauseExpiresAt(pausedAt)` = `addLocalDays(getLocalDayStart(pausedAt), 1)`；永久暂停不变。",
+        "`docs/product/ops-data-and-sponge-integration.md` 同步口径。"
+      ],
+      "optimizations": [],
+      "ops": [
+        "临时暂停托管改为次日零点自动恢复（原固定 3 天）"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`jest tests/biz/user/services/user-hosting.service.spec.ts tests/biz/user/repositories/user-hosting.repository.spec.ts --watchman=false`：57/57 通过"
+      ],
+      "level": "patch"
     }
   ],
   "lastRelease": {
@@ -281,5 +344,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "10c77852d2ab61feeeb6000f04f229a6b53d134f"
+  "lastAnalyzedSha": "aaa5faac3a7c519cd86554aa4f3cd9da5fd219df"
 }
