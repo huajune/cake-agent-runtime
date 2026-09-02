@@ -127,6 +127,29 @@
         "口径变更已登记 `docs/prompt-rule-ledger.md`"
       ],
       "level": "patch"
+    },
+    {
+      "number": "1152",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1152",
+      "title": "sync master into develop before v11.1.4",
+      "author": "huajune",
+      "mergedAt": "2026-09-02",
+      "businessUpdates": [
+        "sync master into develop before v11.1.4"
+      ],
+      "summary": [
+        "sync master into develop before v11.1.4"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "sync master into develop before v11.1.4"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [],
+      "level": "patch"
     }
   ],
   "lastRelease": {
@@ -188,5 +211,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "da0acb3de8b3e32752b211c8c02ca4f9689c37d9"
+  "lastAnalyzedSha": "07f8862fa6cc13e30a545ac9d1d09889300e5339"
 }
