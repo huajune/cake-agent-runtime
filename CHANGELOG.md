@@ -14,7 +14,7 @@
 **预计版本**: `v11.2.0`
 **最近更新**: `2026-09-02`
 **来源分支**: `develop`
-**累计 PR**: 11
+**累计 PR**: 12
 
 ### 更新摘要
 - PR #1158 健康证收资两处误拒——冲突门剥模板回显、裸短答按绑定语境解、字段简称唯一包含可定位
@@ -59,6 +59,10 @@
 - PR #1175 **新增 `scripts/quality/` 校验器 + 单测**：表头、白名单、`value = round(n/d, 4)`、分母非 0、note 长度与手机号脱敏、五元组去重；`pnpm run quality-ledger:validate [路径]` 挂进 `ci:check`（可传路径校验独立 worktree 里的副本）。
 - PR #1175 **口径页**：横切指标「稳定性」更名「稳定率」并标注无生产者；L2/L3「结论去哪」指向台账；§4 待办 3/4 改为「已裁定」。
 - PR #1175 `docs/README.md`、`docs/todo/README.md`、`docs/todo/judge-calibration.md`、`CLAUDE.md` 补台账入口与现状。
+- PR #1167 业务数据永久/观测 90d 统一 + 全部档 + 表结构审计修复
+- PR #1167 merge origin/develop into feat/data-retention-and-schema-audit…
+- PR #1167 Merge remote-tracking branch 'origin/develop' into HEAD
+- PR #1167 merge origin/develop (post #1175), resolve docs/todo/README.md
 
 ### 新功能
 - PR #1168 删除 LLM 相似度评分器，新增 Agent 质量评估体系口径页
@@ -68,6 +72,7 @@
 - PR #1175 **口径页**：横切指标「稳定性」更名「稳定率」并标注无生产者；L2/L3「结论去哪」指向台账；§4 待办 3/4 改为「已裁定」。
 - PR #1175 `docs/README.md`、`docs/todo/README.md`、`docs/todo/judge-calibration.md`、`CLAUDE.md` 补台账入口与现状。
 - PR #1175 新增质量指标台账与 CI 校验，定时任务结论统一落账
+- PR #1167 merge origin/develop into feat/data-retention-and-schema-audit…
 
 ### 问题修复
 - PR #1165 `user-hosting.service.ts`：删掉硬编码 `PAUSE_DURATION_MS`，三处（pauseUser / loadPausedUsers 兜底 / 共享缓存快照）统一用 `resolveTemporaryPauseExpiresAt(pausedAt)` = `addLocalDays(getLocalDayStart(pausedAt), 1)`；永久暂停不变。
@@ -76,6 +81,8 @@
 - PR #1173 捕获段含句子词（这/那个/你/我/他/她/有没有/可以/不是/工作/吗/呢/吧/了/就/要/想/找/看/去/到/在/是）一律不认；刻意不收"的"（美的财富广场）。
 - PR #1173 剥完不足 2 字（"这"）丢弃。
 - PR #1175 merge origin/develop into docs/quality-metrics-ledger, resolve…
+- PR #1167 业务数据永久/观测 90d 统一 + 全部档 + 表结构审计修复
+- PR #1167 merge origin/develop (post #1175), resolve docs/todo/README.md
 
 ### 优化调整
 - PR #1173 动作前缀归一（"帮我找一下"）之后再剥一次居住/位置前缀：`我/我们/我家/人/家 + 现在/目前/平时/就 + 住/人/家 + 在`，**必须以"在"收尾**，不会吃掉"人民广场""家乐福"的首字；另认"就XX"。
@@ -104,12 +111,14 @@
 - PR #1176 出站守卫拦截推理/自检段泄漏
 - PR #1175 判官降级阈值定稿进口径页，判官周任务已注册
 - PR #1175 Merge remote-tracking branch 'origin/develop' into HEAD
+- PR #1167 Merge remote-tracking branch 'origin/develop' into HEAD
 
 ### 配置变更
 - 无
 
 ### 环境变量提醒
 - PR #1168 检测到环境变量相关文件变更：`.env.example`。请手动同步远程服务器 `/data/cake/.env.production`。
+- PR #1167 检测到环境变量相关文件变更：`.env.example`。请手动同步远程服务器 `/data/cake/.env.production`。
 
 ### 验证记录
 - PR #1158 `typecheck` / `lint:check` / `format:check` 全绿
@@ -128,6 +137,9 @@
 - PR #1176 无迁移，无配置变更。
 - PR #1175 `pnpm run ci:check` 各段在 worktree 内全部通过（lint / format / typecheck / geo / vocab / quality-ledger / build:ci / test:ci 448 suites）。
 - PR #1175 `tests/scripts/quality-metrics-ledger.spec.ts` 9 用例通过，其中一条直接校验仓库内台账文件。
+- PR #1167 `pnpm run ci:check` 全绿（lint / format / typecheck / build / 6540 tests）
+- PR #1167 新增单测：子表写读与兜底、统计表/转人工底账清理、`markResolvedByChat` / `sequence_no`、业务趋势 RPC 映射与默认窗口、`all` 档时间窗（dashboard util / conversion）、小组→bot 翻译与并集过滤
+- PR #1167 TEST 库烟测：4 个新 RPC 均正常；prod 只读核对新趋势 SQL 近 7 天数值合理
 <!-- release:pending:end -->
 
 ## [11.1.4] - 2026-09-02
