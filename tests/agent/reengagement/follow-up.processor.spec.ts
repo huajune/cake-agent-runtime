@@ -1177,6 +1177,16 @@ describe('FollowUpProcessor', () => {
           }),
         }),
       );
+      // 观测 P1-5：主动回合没有首字时刻，不得写伪 TTFT——ttftMs 列与仓储兜底读的
+      // timings.durations.requestToFirstTextDeltaMs 两处都必须缺席，否则 avg_ttft 被系统性拉高。
+      const proactiveRecord = messageTracking.recordProactiveTurn.mock.calls[0][0] as {
+        ttftMs?: number;
+        agentInvocation: { response: { timings: { durations: Record<string, unknown> } } };
+      };
+      expect(proactiveRecord.ttftMs).toBeUndefined();
+      expect(proactiveRecord.agentInvocation.response.timings.durations).not.toHaveProperty(
+        'requestToFirstTextDeltaMs',
+      );
     });
 
     it('tracks reserved → attempted → sent along the real delivery path', async () => {

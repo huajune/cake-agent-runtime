@@ -29,6 +29,10 @@ const ALWAYS_PERSISTED_EVENT_TYPES = new Set<AgentEvent['type']>([
   // 身份锚点断链与空标签岗：两者量级都应恒为零，非零即上游数据/配置出事。
   'collection_identity_anchor_mismatch',
   'collection_empty_contract',
+  // 守卫过程（观测 P1-2）：repair 四种终局与入站拦截此前只有 logger.warn，
+  // 每回合至多各一条，量级可控；正文不进事件。
+  'guardrail_repair',
+  'inbound_guardrail_block',
 ]);
 
 const SLOW_TOOL_THRESHOLD_MS = 3000;
@@ -62,9 +66,13 @@ export class PersistingObserver implements Observer, OnApplicationBootstrap {
     if (ALWAYS_PERSISTED_EVENT_TYPES.has(event.type)) return true;
     if (event.type !== 'tool_call') return false;
 
+    // empty / narrow（观测 P1-4）：假无岗与窄召回的历史趋势只有这里能留下来——
+    // mpr.tool_calls 七天后 NULL 化，事件表是唯一长期来源。量约 +250 条/天。
     return (
       event.sideEffect === true ||
       event.status === 'error' ||
+      event.status === 'empty' ||
+      event.status === 'narrow' ||
       (event.durationMs ?? 0) >= SLOW_TOOL_THRESHOLD_MS
     );
   }

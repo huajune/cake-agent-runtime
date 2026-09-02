@@ -219,6 +219,36 @@ export type AgentEvent = AgentEventContext &
         userId?: string;
         jobId: number;
       }
+    /**
+     * 出站守卫一次受控 repair 的终局（观测 P1-2）：四种终局此前只有 logger.warn，
+     * 「多少次修好了 / 放弃静默 / 放行了没修好的 / 修坏了回退」是 repair 链路复盘的唯一
+     * 量化来源。不带回复文本——正文在 guardrail_review_records，按 traceId join。
+     */
+    | {
+        type: 'guardrail_repair';
+        userId?: string;
+        /**
+         * 终局归因码：repair_exhausted / repair_exhausted_fail_open /
+         * repair_regression_blocked:* / repair_regression_reverted:* / repair_unusable_fail_open /
+         * revise_empty / revise_dangling；二审干净通过为 repaired。
+         */
+        outcome: string;
+        finalDecision: string;
+        riskLevel?: string;
+        firstRuleIds: string[];
+        finalRuleIds: string[];
+        repairMode?: string;
+      }
+    /**
+     * 入站守卫拦截（risk-intercept 命中，本轮不跑 Agent）。inspectedText 不进事件，避免 PII。
+     */
+    | {
+        type: 'inbound_guardrail_block';
+        userId?: string;
+        reasonCode: string;
+        riskType?: string;
+        riskLabel?: string;
+      }
   );
 
 export interface Observer {

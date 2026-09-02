@@ -106,6 +106,39 @@ describe('PersistingObserver', () => {
     );
   });
 
+  it('persists empty / narrow tool calls（观测 P1-4：假无岗与窄召回趋势的唯一长期来源）', () => {
+    const observer = makeObserver();
+
+    observer.emit({ type: 'tool_call', toolName: 'job-search', status: 'empty', durationMs: 800 });
+    observer.emit({ type: 'tool_call', toolName: 'job-search', status: 'narrow', durationMs: 900 });
+    observer.emit({ type: 'tool_call', toolName: 'job-search', status: 'ok', durationMs: 900 });
+
+    expect(persister.persist).toHaveBeenCalledTimes(2);
+    expect(persister.persist).toHaveBeenCalledWith(expect.objectContaining({ status: 'empty' }));
+    expect(persister.persist).toHaveBeenCalledWith(expect.objectContaining({ status: 'narrow' }));
+  });
+
+  it('always persists guardrail process events（观测 P1-2：repair 终局与入站拦截）', () => {
+    const observer = makeObserver();
+
+    observer.emit({
+      type: 'guardrail_repair',
+      outcome: 'repair_exhausted_fail_open',
+      finalDecision: 'pass',
+      riskLevel: 'medium',
+      firstRuleIds: ['schedule_window_claim'],
+      finalRuleIds: ['schedule_window_claim'],
+      repairMode: 'rewrite',
+    });
+    observer.emit({
+      type: 'inbound_guardrail_block',
+      reasonCode: 'risk_intercept',
+      riskType: 'self_harm',
+    });
+
+    expect(persister.persist).toHaveBeenCalledTimes(2);
+  });
+
   it('skips events when no persister is registered', () => {
     moduleRef.get.mockImplementationOnce(() => {
       throw new Error('not registered');
