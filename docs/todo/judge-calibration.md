@@ -30,5 +30,5 @@
 
 - 口径：首次标定报告 `logs/analysis/judge-calibration-2026-09-02.md` 附录 B（rubric R1 / R2 / R4）与附录 D（SQL）是唯一口径源，任务书只引用不复制。
 - 台账：精确率数字落 [docs/quality-metrics-ledger.md](../quality-metrics-ledger.md)（metric=`判官精确率`，每个判官点一行），首次标定四行已登记；样本明细留在报告。
-- 任务书：`~/.claude/scheduled-tasks/weekly-judge-calibration/SKILL.md` 已写好（周二 07:00），**未注册**，等降级阈值裁定（建议值：≥90% 正常 / 80%~90% 需人工复核 / <80% 停用自动消费）。
+- 任务：`weekly-judge-calibration` 已注册（每周二 07:00，任务书在 `~/.claude/scheduled-tasks/`）；降级阈值已裁定，正式居所在口径页 §2（≥90% 正常 / 80%~90% 需人工复核 / <80% 停用自动消费 / 残障召回 <80% 置顶）。等首次自动运行在台账落行后即可删除本 todo。
 - 回归验证评估器（原 J3）已删除，不再是判官点；test-suite Claude 评审（J2）用户裁定偏宽无妨、不降级。
