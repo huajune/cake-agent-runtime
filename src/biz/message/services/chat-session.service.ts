@@ -5,7 +5,7 @@ import { ChatMessageRepository } from '../repositories/chat-message.repository';
 import { ChatMessageInput, ChatSessionCursor } from '../types/message.types';
 
 /** 会话列表默认页大小，与仓储层保持一致。 */
-const DEFAULT_SESSION_PAGE_SIZE = 200;
+const DEFAULT_SESSION_PAGE_SIZE = 600;
 import { formatLocalDateTime } from '@infra/utils/date.util';
 import {
   toStorageMessageSource,
@@ -84,6 +84,23 @@ export class ChatSessionService {
       `获取每日聊天统计: ${formatLocalDateTime(start)} ~ ${formatLocalDateTime(end)}`,
     );
     return this.chatMessageRepository.getChatDailyStats(start, end);
+  }
+
+  /**
+   * 业务口径每日趋势（永久表：daily_ops_report + ops_events），供「消息趋势」面板 / 「全部」档。
+   * startDate 缺省 = 业务数据安全起点 2026-06-01（埋点齐全）；endDate 缺省 = 今天。
+   */
+  async getChatBusinessDailyTrend(startDate?: string, endDate?: string) {
+    const start = startDate && /^\d{4}-\d{2}-\d{2}$/.test(startDate) ? startDate : '2026-06-01';
+    const end =
+      endDate && /^\d{4}-\d{2}-\d{2}$/.test(endDate)
+        ? endDate
+        : new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const [trend, floor] = await Promise.all([
+      this.chatMessageRepository.getChatBusinessDailyTrend(start, end),
+      this.chatMessageRepository.getBusinessDataFloor(),
+    ]);
+    return { trend, floor, caliber: 'business' as const };
   }
 
   /**

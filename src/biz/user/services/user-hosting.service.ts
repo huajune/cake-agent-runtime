@@ -1,7 +1,10 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { RedisService } from '@infra/redis/redis.service';
+import { HandoffEventsRepository } from '@biz/handoff-events/handoff-events.repository';
+import { BotGroupResolverService } from '@biz/ops-events/services/bot-group-resolver.service';
+import { addLocalDays, getLocalDayStart } from '@infra/utils/date.util';
 import { UserHostingRepository } from '../repositories/user-hosting.repository';
 import { DailyUserActivityStats, UserActivityAggregate } from '../types/user.types';
 
@@ -46,9 +49,15 @@ export interface PauseUserOptions {
 }
 
 /**
- * 暂停托管的自动解禁期限：3 天（硬编码）
+ * 临时暂停的自动解禁时刻：暂停时刻之后的第一个 Asia/Shanghai 零点。
+ *
+ * 原为固定 3 天。转人工静默后若真人没有接续，候选人会被晾满三天；
+ * 改为次日零点后，真人当天不处理，机器人第二天一早自动接回（2026-09-02 裁定）。
+ * 永久暂停（permanent）不受影响。
  */
-const PAUSE_DURATION_MS = 3 * 24 * 60 * 60 * 1000;
+function resolveTemporaryPauseExpiresAt(pausedAtMs: number): number {
+  return addLocalDays(getLocalDayStart(new Date(pausedAtMs)), 1).getTime();
+}
 /**
  * 永久暂停在缓存中的解禁时间哨兵值：所有 expiresAt > now 的比较天然成立
  */
@@ -82,6 +91,10 @@ export class UserHostingService {
     private readonly repository: UserHostingRepository,
     private readonly redisService: RedisService,
     private readonly configService: ConfigService,
+    @Optional()
+    private readonly handoffEventsRepository?: HandoffEventsRepository,
+    @Optional()
+    private readonly botGroupResolver?: BotGroupResolverService,
   ) {}
 
   // ==================== 托管状态查询 ====================
@@ -133,7 +146,7 @@ export class UserHostingService {
   /**
    * 暂停用户托管
    *
-   * 默认 3 天后自动解禁；permanent=true 时永久暂停（不自动解禁），
+   * 默认次日零点（Asia/Shanghai）自动解禁；permanent=true 时永久暂停（不自动解禁），
    * 适用于店长微信、客户微信等永久禁止托管的联系人，以及黑名单候选人。
    *
    * 同步写入内存缓存，异步持久化到数据库。
@@ -144,7 +157,7 @@ export class UserHostingService {
 
     const now = Date.now();
     const permanent = options?.permanent === true;
-    const expiresAt = permanent ? PERMANENT_EXPIRES_AT : now + PAUSE_DURATION_MS;
+    const expiresAt = permanent ? PERMANENT_EXPIRES_AT : resolveTemporaryPauseExpiresAt(now);
 
     this.pausedUsersCache.set(userId, {
       isPaused: true,
@@ -197,7 +210,19 @@ export class UserHostingService {
       this.logger.error(`恢复用户 ${userId} 托管失败`, error);
     }
 
+    // 转人工闭环：恢复托管即视为人工处理结束，回填 handoff_events.outcome（userId 即 chatId）
+    await this.markHandoffResolved(userId, 'resumed');
+
     await this.persistSharedCache();
+  }
+
+  private async markHandoffResolved(chatId: string, outcome: 'resumed' | 'expired'): Promise<void> {
+    if (!this.handoffEventsRepository) return;
+    try {
+      await this.handoffEventsRepository.markResolvedByChat(chatId, outcome);
+    } catch (error) {
+      this.logger.warn(`[转人工闭环] 回填 outcome=${outcome} 失败 chat=${chatId}`, error);
+    }
   }
 
   // ==================== 暂停用户列表 ====================
@@ -208,7 +233,7 @@ export class UserHostingService {
    * 流程：
    * 1. 确保缓存有效（过期则从 DB 刷新）
    * 2. 从缓存中提取暂停用户的 ID 与暂停时间
-   * 3. 从 user_activity 批量查询 odName / groupName / 托管 bot 身份
+   * 3. 从 user_activity 批量查询 odName / 托管 bot 身份
    * 4. 合并返回
    *
    * 若 user_activity 查询失败，仅返回不含资料的基础列表。
@@ -223,7 +248,6 @@ export class UserHostingService {
       pauseOperator?: string;
       pauseSource?: string;
       odName?: string;
-      groupName?: string;
       botUserId?: string;
       imBotId?: string;
     }[]
@@ -243,13 +267,12 @@ export class UserHostingService {
 
       const profileMap = new Map<
         string,
-        { odName?: string; groupName?: string; botUserId?: string; imBotId?: string }
+        { odName?: string; botUserId?: string; imBotId?: string }
       >();
       for (const record of profiles) {
         if (!profileMap.has(record.chatId)) {
           profileMap.set(record.chatId, {
             odName: record.odName,
-            groupName: record.groupName,
             botUserId: record.botUserId,
             imBotId: record.imBotId,
           });
@@ -259,7 +282,6 @@ export class UserHostingService {
       return pausedEntries.map((entry) => ({
         ...entry,
         odName: profileMap.get(entry.userId)?.odName,
-        groupName: profileMap.get(entry.userId)?.groupName,
         botUserId: profileMap.get(entry.userId)?.botUserId,
         imBotId: profileMap.get(entry.userId)?.imBotId,
       }));
@@ -303,14 +325,25 @@ export class UserHostingService {
   /**
    * 按日期范围 + 小组过滤拉取去重活跃 chat_id 集合（DB 侧过滤 + 分页，避免列表 RPC 1000 行截断）。
    *
-   * 供 Dashboard 小组筛选用：替代「拉全量活跃列表再内存筛 group」，否则全量超 1000 时会被截断、小组指标低估。
+   * 小组先经 BotGroupResolverService 翻译成该组 bot 的 wxid / wecomUserId，再按
+   * user_activity.im_bot_id / bot_user_id 过滤——与转化分析页的小组口径同源（Stride 动态表优先）。
+   * 未注入 resolver（单测裸装）或小组无 bot 时返回空集。
    */
   async getActiveChatIdsByGroups(
     startDate: Date,
     endDate: Date,
     groups: string[],
   ): Promise<Set<string>> {
-    return this.repository.findActiveChatIdsByGroups(startDate, endDate, groups);
+    if (groups.length === 0 || !this.botGroupResolver) {
+      return new Set();
+    }
+    await this.botGroupResolver.warmUp();
+    const botKeys = this.botGroupResolver.listBotKeysByGroups(groups);
+    if (botKeys.length === 0) {
+      this.logger.warn(`小组筛选未解析到任何 bot，返回空集: groups=${groups.join(',')}`);
+      return new Set();
+    }
+    return this.repository.findActiveChatIdsByBots(startDate, endDate, botKeys);
   }
 
   /**
@@ -327,8 +360,6 @@ export class UserHostingService {
     chatId: string;
     odId?: string;
     odName?: string;
-    groupId?: string;
-    groupName?: string;
     botUserId?: string;
     imBotId?: string;
     messageCount?: number;
@@ -374,6 +405,7 @@ export class UserHostingService {
       this.logger.log(
         `[托管解禁·定时] 自动解禁 ${expired.length} 个到期用户: ${expired.join(',')}`,
       );
+      await Promise.all(expired.map((id) => this.markHandoffResolved(id, 'expired')));
       // 触发缓存重载，让本地/Redis 共享缓存与 DB 同步
       await this.refreshCache();
     } catch (error) {
@@ -429,7 +461,7 @@ export class UserHostingService {
           ? PERMANENT_EXPIRES_AT
           : row.pause_expires_at
             ? new Date(row.pause_expires_at).getTime()
-            : pausedAt + PAUSE_DURATION_MS;
+            : resolveTemporaryPauseExpiresAt(pausedAt);
         this.pausedUsersCache.set(row.user_id, {
           isPaused: true,
           pausedAt,
@@ -497,7 +529,7 @@ export class UserHostingService {
         // 兼容旧版 Redis 快照（无 expiresAt）：以 pausedAt + 3 天兜底
         expiresAt: entry.permanent
           ? PERMANENT_EXPIRES_AT
-          : (entry.expiresAt ?? entry.pausedAt + PAUSE_DURATION_MS),
+          : (entry.expiresAt ?? resolveTemporaryPauseExpiresAt(entry.pausedAt)),
         permanent: entry.permanent,
         reason: entry.reason,
         operator: entry.operator,

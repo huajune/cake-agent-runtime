@@ -28,9 +28,11 @@ import {
 } from '@resolution/candidate/identity-attribution';
 import { candidateValuesEquivalent } from '@resolution/candidate/value-equivalence';
 import {
+  canonicalizeCandidateFieldValue,
   deriveFieldValueFromQuote,
   isValidCandidateFieldShape,
 } from '@resolution/candidate/value-shape';
+import { numericFactFieldForTitle } from './contract-mapping';
 import type { CandidateFactField, CandidateFactProducer } from '@resolution/candidate/types';
 import { verifyCitation } from '@resolution/notary/citation-verifier';
 import { isAssistantQuestionConfirmedInDialogue } from '@resolution/notary/dialogue-confirmation';
@@ -287,13 +289,33 @@ export function applyFieldValueProposal(
   }
 
   // ── ② 形态门 ──
-  const contractValueRejection = validateContractValue(field, proposal.value, proposal.optionCodes);
+  // 数值族先落规范形（去 cm/kg/岁、斤→kg），再进契约词表与形态判据：身份四槽按
+  // systemField 认，身高/体重按标题词面认。归不出形态（"75年""20"）即形状非法。
+  const factField = identityKey ? IDENTITY_TO_FACT_FIELD[identityKey] : null;
+  const shapeField = factField ?? numericFactFieldForTitle(field.labelTitle);
+  const canonicalValue = shapeField
+    ? canonicalizeCandidateFieldValue(shapeField, proposal.value)
+    : proposal.value;
+  if (canonicalValue === null) {
+    return reject(
+      form,
+      PROPOSAL_REJECTION_REASONS.invalidValueShape,
+      `值形状非法: ${proposal.value}`,
+    );
+  }
+  const normalized: FieldValueProposal =
+    canonicalValue === proposal.value ? proposal : { ...proposal, value: canonicalValue };
+
+  const contractValueRejection = validateContractValue(
+    field,
+    normalized.value,
+    normalized.optionCodes,
+  );
   if (contractValueRejection) {
     return reject(form, contractValueRejection.reason, contractValueRejection.detail);
   }
 
-  const factField = identityKey ? IDENTITY_TO_FACT_FIELD[identityKey] : null;
-  if (factField && !isValidCandidateFieldShape(factField, proposal.value)) {
+  if (factField && !isValidCandidateFieldShape(factField, normalized.value)) {
     return reject(
       form,
       PROPOSAL_REJECTION_REASONS.invalidValueShape,
@@ -305,9 +327,9 @@ export function applyFieldValueProposal(
   // 没覆盖该表达时返回 null，不降级、不触发 recap，也不建立第二套开放语义判官。
   const deterministicConflict = findDeterministicConflict(
     field,
-    proposal,
+    normalized,
     valueBearingText,
-    factField,
+    shapeField,
   );
   if (deterministicConflict) {
     return reject(form, PROPOSAL_REJECTION_REASONS.deterministicConflict, deterministicConflict);
@@ -334,14 +356,14 @@ export function applyFieldValueProposal(
   }
 
   const value: SlotValue = {
-    value: proposal.value,
-    ...(proposal.optionCodes?.length ? { optionCodes: [...proposal.optionCodes] } : {}),
+    value: normalized.value,
+    ...(normalized.optionCodes?.length ? { optionCodes: [...normalized.optionCodes] } : {}),
     sourceText,
-    producer: proposal.producer,
+    producer: normalized.producer,
   };
 
   // ── ⑤ 先筛后收 ──
-  const screening = screenValue(field, proposal.value, proposal.optionCodes, genderOf(form));
+  const screening = screenValue(field, normalized.value, normalized.optionCodes, genderOf(form));
   if (screening) {
     return {
       form: withSlot(form, {
@@ -366,7 +388,7 @@ export function applyFieldValueProposal(
     }),
     outcome: wasFilled ? 'restated' : 'accepted',
     detail: wasFilled
-      ? `labelId ${field.labelId} 候选人显式改口：「${slot.value?.value ?? ''}」→「${proposal.value}」`
+      ? `labelId ${field.labelId} 候选人显式改口：「${slot.value?.value ?? ''}」→「${normalized.value}」`
       : undefined,
   };
 }
@@ -958,10 +980,52 @@ function findDeterministicConflict(
   factField: CandidateFactField | null,
 ): string | null {
   if (proposal.producer !== 'model') return null;
-  const adapterInput = { field, candidateText: sourceText, answerBound: true };
+  const candidateText = bareAnswerForConflictCheck(field, sourceText);
+  if (!candidateText) return null;
+  const adapterInput = { field, candidateText, answerBound: true };
   const derived = adapterFor(field)(adapterInput) ?? genericAdapter(adapterInput);
   if (!derived || deterministicValuesAgree(derived, proposal, factField)) return null;
   return `确定性 parser/adapter 从候选人原话得出「${derived.value}」，与模型提案「${proposal.value}」冲突`;
+}
+
+/**
+ * 冲突门喂给适配器的文本要先剥掉**我们自己印上去的东西**。模型 quote 常是候选人整行
+ * 模板回填：`有无本地健康证：（有本地有效健康证/无本地有效健康证，接受办理/…）有`——
+ * 括号里是模板的选项枚举，不是候选人陈述。整行直接喂解析器，子句 latest-wins 会把
+ * 回显的「无…不接受办理」读成原话，否决掉模型正确的「有」，候选人白答一次再被重问。
+ *
+ * 剥两样：① 回显的契约选项枚举（≥2 项且每项都是本字段 optionLabel，出现在任何位置）；
+ * ② 本字段的「标签：」前缀，以及紧随其后的含 `/` 的括号组——模型转发模板时可能已把
+ * 选项缩写成「（有/无，接受办理/不接受办理）」，对不上 optionLabel，只能按结构剥。
+ * 剩下的才是候选人作答，按 answerBound 交给适配器。单项/无 `/` 的括号不动：
+ * 「性别：（女）」里的括号是候选人自己写的。
+ */
+function bareAnswerForConflictCheck(field: ContractFieldDef, text: string): string {
+  const labels = new Set(
+    [...field.acceptedOptions, ...field.rejectedOptions].map((option) =>
+      compactText(option.optionLabel),
+    ),
+  );
+  let stripped = text.replace(/[（(]([^（）()]*)[）)]/gu, (whole, inner: string) => {
+    const items = inner
+      .split(/[/／|｜、]/u)
+      .map(compactText)
+      .filter(Boolean);
+    return items.length >= 2 && items.every((item) => labels.has(item)) ? '' : whole;
+  });
+  const line = /^\s*([^：:\n]+?)\s*[：:]\s*([\s\S]*)$/u.exec(stripped);
+  if (line && stripParenthetical(line[1]) === stripParenthetical(field.labelTitle)) {
+    stripped = line[2].replace(/^\s*[（(][^（）()]*[/／|｜][^（）()]*[）)]/u, '');
+  }
+  return stripped.trim();
+}
+
+function compactText(text: string): string {
+  return text.normalize('NFKC').replace(/\s+/gu, '');
+}
+
+function stripParenthetical(text: string): string {
+  return compactText(text.replace(/[（(][^（）()]*[）)]/gu, ''));
 }
 
 function deterministicValuesAgree(
@@ -970,7 +1034,9 @@ function deterministicValuesAgree(
   factField: CandidateFactField | null,
 ): boolean {
   if (factField) {
-    return candidateValuesEquivalent(factField, derived.value, proposal.value);
+    // 提案已是规范形，adapter 产物按同一规范形比对，"122"（斤）与 61 不构成冲突。
+    const derivedValue = canonicalizeCandidateFieldValue(factField, derived.value) ?? derived.value;
+    return candidateValuesEquivalent(factField, derivedValue, proposal.value);
   }
   if (derived.optionCodes?.length || proposal.optionCodes?.length) {
     const left = [...(derived.optionCodes ?? [])].sort();

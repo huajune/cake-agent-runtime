@@ -2,11 +2,14 @@ import { Injectable, Logger } from '@nestjs/common';
 import { SupabaseService } from '@infra/supabase/supabase.service';
 import { RedisService } from '@infra/redis/redis.service';
 import { MemoryConfig } from '../memory.config';
-import type { CandidateFactProducer } from '@resolution/candidate/types';
+import type { z } from 'zod';
+import type { CandidateFactField, CandidateFactProducer } from '@resolution/candidate/types';
+import { canonicalizeCandidateFieldValue } from '@resolution/candidate/value-shape';
 import type {
   UserProfile,
   UserProfileFactValue,
   UserProfileFacts,
+  UserProfileFieldKey,
   ProfileFactConfidence,
   SummaryEntry,
   ConsolidationWatermarks,
@@ -144,6 +147,13 @@ function normalizeEpisodicState(row: AgentLongTermMemoryRow): NormalizedEpisodic
   };
 }
 
+/** 长期档案里需要规范形的数值字段 → 候选人字段词汇。 */
+const PROFILE_NUMERIC_FIELDS: Partial<Record<UserProfileFieldKey, CandidateFactField>> = {
+  age: 'age',
+  height: 'height',
+  weight: 'weight',
+};
+
 function normalizeProfileFacts(data: UserProfileFacts | null | undefined): UserProfileFacts | null {
   if (!data) return null;
 
@@ -153,13 +163,31 @@ function normalizeProfileFacts(data: UserProfileFacts | null | undefined): UserP
 
   for (const key of USER_PROFILE_FIELD_KEYS) {
     const parsed = UserProfileFactValueSchema.safeParse(raw[key]);
-    if (parsed.success) {
-      (facts as Record<string, unknown>)[key] = parsed.data;
-      hasValue = true;
-    }
+    if (!parsed.success) continue;
+    const normalized = normalizeProfileFactValue(key, parsed.data);
+    if (!normalized) continue;
+    (facts as Record<string, unknown>)[key] = normalized;
+    hasValue = true;
   }
 
   return hasValue ? facts : null;
+}
+
+/**
+ * 读边界规范形：存量档案里有旧提取路径写下的 "20岁" / "38周岁" / "75年" / 昵称串 /
+ * 空串，以及斤当 kg 的体重（09-02 核对：994 条年龄 8 条脏值，13 条体重 4 条 ≥114）。
+ * 数值字段按 canonicalizeCandidateFieldValue 归一，归不出形态的直接丢弃；其余字段只拦空串。
+ */
+function normalizeProfileFactValue(
+  key: UserProfileFieldKey,
+  fact: z.infer<typeof UserProfileFactValueSchema>,
+): z.infer<typeof UserProfileFactValueSchema> | null {
+  if (typeof fact.value === 'string' && fact.value.trim() === '') return null;
+  const numericField = PROFILE_NUMERIC_FIELDS[key];
+  if (!numericField) return fact;
+  const canonical = canonicalizeCandidateFieldValue(numericField, fact.value);
+  if (canonical === null) return null;
+  return canonical === fact.value ? fact : { ...fact, value: canonical };
 }
 
 function normalizeJobIntentFacts(data: JobIntentFacts | null | undefined): JobIntentFacts | null {

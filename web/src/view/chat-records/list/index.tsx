@@ -15,7 +15,7 @@ import type { ChartData } from 'chart.js';
 import {
   useChatSessionsOptimized,
   useChatSessionMessages,
-  useChatDailyStats,
+  useChatBusinessDailyTrend,
   useChatSummaryStats,
 } from '@/hooks/chat/useChatSessions';
 import type { ChatSession } from '@/hooks/chat/useChatSessions';
@@ -61,6 +61,8 @@ const ANALYTICS_MONTH_OPTIONS = [
   { value: 0, label: '近 1 月', months: 1 },
   { value: 1, label: '近 2 月', months: 2 },
   { value: 2, label: '近 3 月', months: 3 },
+  // months=0 = 全部：业务表永久保留，后端从安全起点 2026-06-01 算起
+  { value: 3, label: '全部', months: 0 },
 ];
 
 // 获取月度日期范围
@@ -140,9 +142,11 @@ export default function ChatRecords() {
   // API 请求 - 顶部统计数据（使用聚合查询，性能优化）
   const { data: summaryStatsData } = useChatSummaryStats(startDate, endDate);
 
-  // API 请求 - 数据分析（使用聚合查询，性能优化）
-  const { data: dailyStatsData, isLoading: analyticsLoading } = useChatDailyStats(
-    analyticsStartDate,
+  // API 请求 - 消息趋势：改读永久业务表（daily_ops_report + ops_events）。
+  // 口径：消息数 = 候选人消息 + AI 回复（逻辑消息，不再重复计 AI 回复的投递分段）；
+  // 会话数 = 当日有业务事件的去重会话。不再依赖 chat_messages 保留期，因此可提供「全部」档。
+  const { data: businessTrendData, isLoading: analyticsLoading } = useChatBusinessDailyTrend(
+    currentMonthOption.months > 0 ? analyticsStartDate : undefined,
     analyticsEndDate,
   );
   const { data: messagesData, isLoading: messagesLoading } = useChatSessionMessages(selectedChatId);
@@ -161,7 +165,9 @@ export default function ChatRecords() {
     return flat;
   }, [sessionsData]);
   const totalSessionCount = sessionsData?.pages?.[0]?.total ?? 0;
-  const dailyStats = dailyStatsData || [];
+  // 稳定引用：作为下游 useMemo 依赖，避免每次渲染都产生新数组
+  const dailyStats = useMemo(() => businessTrendData?.trend ?? [], [businessTrendData]);
+  const businessDataFloor = businessTrendData?.floor?.dailyOpsReportFrom ?? null;
   const messages = messagesData?.messages || [];
 
   // 获取当前选中的会话详情
@@ -335,6 +341,7 @@ export default function ChatRecords() {
         monthIndex={analyticsMonthIndex}
         onMonthChange={setAnalyticsMonthIndex}
         stats={analyticsStats}
+        dataFloor={businessDataFloor}
         sessionsChartData={trendCharts?.sessions ?? null}
         messagesChartData={trendCharts?.messages ?? null}
         chartOptions={chartOptions}

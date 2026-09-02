@@ -546,7 +546,6 @@ describe('AnalyticsDashboardService', () => {
       expect(result).toHaveProperty('timeRange', 'today');
       expect(result).toHaveProperty('overview');
       expect(result).toHaveProperty('overviewDelta');
-      expect(result).toHaveProperty('dailyTrend');
       expect(result).toHaveProperty('tokenTrend');
       expect(result).toHaveProperty('businessTrend');
       expect(result).toHaveProperty('responseTrend');
@@ -678,32 +677,21 @@ describe('AnalyticsDashboardService', () => {
         })
         .mockResolvedValueOnce(defaultOverview);
 
-      mockMonitoringRecordRepository.getDashboardDailyTrend
-        .mockResolvedValueOnce([
-          {
-            date: '2026-04-10',
-            messageCount: 10,
-            successCount: 9,
-            avgDuration: 3000,
-            tokenUsage: 1000,
-            uniqueUsers: 3,
-          },
-        ])
-        .mockResolvedValueOnce([
-          {
-            date: '2026-04-13',
-            messageCount: 42,
-            successCount: 40,
-            avgDuration: 3500,
-            tokenUsage: 5000,
-            uniqueUsers: 8,
-          },
-        ]);
+      mockMonitoringRecordRepository.getDashboardDailyTrend.mockResolvedValueOnce([
+        {
+          date: '2026-04-13',
+          messageCount: 42,
+          successCount: 40,
+          avgDuration: 3500,
+          tokenUsage: 5000,
+          uniqueUsers: 8,
+        },
+      ]);
 
       const result = await service.getDashboardOverviewAsync('week');
 
       expect(dailyStatsAggregator.getDailyTrendFromDaily).not.toHaveBeenCalled();
-      expect(monitoringRepository.getDashboardDailyTrend).toHaveBeenCalledTimes(2);
+      expect(monitoringRepository.getDashboardDailyTrend).toHaveBeenCalledTimes(1);
       expect(result.overview.totalMessages).toBe(42);
       expect(result.responseTrend[0]).toMatchObject({
         minute: '2026-04-13',
@@ -738,7 +726,7 @@ describe('AnalyticsDashboardService', () => {
       expect(result.overviewDelta.successRate).toBe(10); // 90 - 80 = 10 percentage points
     });
 
-    it('should format daily trend from daily projection', async () => {
+    it('should not expose the retired dailyTrend field', async () => {
       mockDailyStatsAggregator.getDailyTrendFromDaily.mockResolvedValue([
         {
           date: '2026-03-11',
@@ -752,15 +740,8 @@ describe('AnalyticsDashboardService', () => {
 
       const result = await service.getDashboardOverviewAsync('today');
 
-      expect(result.dailyTrend).toHaveLength(1);
-      expect(result.dailyTrend[0]).toMatchObject({
-        date: '2026-03-11',
-        messageCount: 100,
-        successCount: 90,
-        avgDuration: 5000,
-        tokenUsage: 3000,
-        uniqueUsers: 20,
-      });
+      expect(result).not.toHaveProperty('dailyTrend');
+      expect(result.responseTrend).toBeDefined();
     });
 
     it('should format response trend from minute trend for today', async () => {
@@ -785,11 +766,9 @@ describe('AnalyticsDashboardService', () => {
       jest.useFakeTimers().setSystemTime(new Date('2026-05-13T12:00:00+08:00'));
       mockDailyStatsRepository.getLatestDailyStat.mockResolvedValue({ date: '2026-05-12' });
       try {
-        mockDailyStatsAggregator.getDailyTrendFromDaily
-          .mockResolvedValueOnce([]) // 7-day trend
-          .mockResolvedValueOnce([
-            { date: '2026-03-11', avgDuration: 5000, messageCount: 50, successCount: 45 },
-          ]); // current period
+        mockDailyStatsAggregator.getDailyTrendFromDaily.mockResolvedValueOnce([
+          { date: '2026-03-11', avgDuration: 5000, messageCount: 50, successCount: 45 },
+        ]); // current period
 
         const result = await service.getDashboardOverviewAsync('week');
 
@@ -819,7 +798,6 @@ describe('AnalyticsDashboardService', () => {
         .mockResolvedValueOnce(defaultOverview);
       mockMonitoringRecordRepository.getDashboardDailyTrend
         .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([])
         .mockResolvedValueOnce([
           {
             date: '2026-05-11',
@@ -834,7 +812,7 @@ describe('AnalyticsDashboardService', () => {
       try {
         const result = await service.getDashboardOverviewAsync('week');
 
-        expect(monitoringRepository.getDashboardDailyTrend).toHaveBeenCalledTimes(3);
+        expect(monitoringRepository.getDashboardDailyTrend).toHaveBeenCalledTimes(2);
         expect(result.responseTrend).toEqual([
           {
             minute: '2026-05-11',
@@ -1435,19 +1413,18 @@ describe('AnalyticsDashboardService', () => {
 
   describe('prewarmDashboardOverview', () => {
     it('should warm every dashboard range so visitors never hit the cold path', async () => {
-      const spy = jest
-        .spyOn(service, 'getDashboardOverviewAsync')
-        .mockResolvedValue({} as never);
+      const spy = jest.spyOn(service, 'getDashboardOverviewAsync').mockResolvedValue({} as never);
 
       await service.prewarmDashboardOverview();
 
-      // 5 个档位与前端 tab 一一对应，且都按「全部小组」默认视图预热
+      // 6 个档位与前端 tab 一一对应（含「全部」），且都按「全部小组」默认视图预热
       expect(spy.mock.calls.map((c) => c[0])).toEqual([
         'today',
         'week',
         'month',
         'twoMonths',
         'threeMonths',
+        'all',
       ]);
       expect(spy.mock.calls.every((c) => Array.isArray(c[1]) && c[1].length === 0)).toBe(true);
       spy.mockRestore();
@@ -1461,15 +1438,13 @@ describe('AnalyticsDashboardService', () => {
 
       await expect(service.prewarmDashboardOverview()).resolves.toBeUndefined();
 
-      expect(spy).toHaveBeenCalledTimes(5);
+      expect(spy).toHaveBeenCalledTimes(6);
       spy.mockRestore();
     });
 
     it('should not warm anything in read-only preview', async () => {
       mockConfigService.get.mockReturnValueOnce('true');
-      const spy = jest
-        .spyOn(service, 'getDashboardOverviewAsync')
-        .mockResolvedValue({} as never);
+      const spy = jest.spyOn(service, 'getDashboardOverviewAsync').mockResolvedValue({} as never);
 
       await service.prewarmDashboardOverview();
 

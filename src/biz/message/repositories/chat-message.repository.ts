@@ -21,10 +21,10 @@ import { EMOTION_MESSAGE_PREFIX, IMAGE_MESSAGE_PREFIX } from '@resolution/signal
  * - 获取会话列表
  * - 数据清理
  */
-/** 会话列表默认页大小：一屏够用，且单页往返稳定在亚秒级。 */
-const DEFAULT_SESSION_PAGE_SIZE = 200;
-/** 单页上限，防止调用方传入超大 limit 把 PostgREST 载荷打爆。 */
-const MAX_SESSION_PAGE_SIZE = 500;
+/** 会话列表默认页大小：DB 侧按整个时间窗聚合后再切片，页越大翻页越少。 */
+const DEFAULT_SESSION_PAGE_SIZE = 600;
+/** 单页上限，防止调用方传入超大 limit 把 PostgREST 载荷打爆；实际取 limit+1 行，须 ≤ 999 以避开 max_rows(1000) 静默截断。 */
+const MAX_SESSION_PAGE_SIZE = 600;
 
 @Injectable()
 export class ChatMessageRepository extends BaseRepository {
@@ -493,6 +493,61 @@ export class ChatMessageRepository extends BaseRepository {
   // ==================== 统计相关 ====================
 
   /**
+   * 业务口径的每日趋势（永久表来源，供「消息趋势」面板与「全部」档）：
+   * - message_count = 候选人消息 + AI 回复（daily_ops_report，逻辑消息，不计投递分段）
+   * - session_count = 当日有业务事件的去重会话（ops_events）
+   * 不受 chat_messages 保留期影响。
+   */
+  async getChatBusinessDailyTrend(
+    startDate: string,
+    endDate: string,
+  ): Promise<Array<{ date: string; messageCount: number; sessionCount: number }>> {
+    if (!this.isAvailable()) return [];
+    try {
+      const rows = await this.rpc<
+        Array<{ date: string; message_count: number | string; session_count: number | string }>
+      >('get_chat_business_daily_trend', { p_start_date: startDate, p_end_date: endDate });
+      return (rows ?? []).map((r) => ({
+        date: r.date,
+        messageCount: Number(r.message_count) || 0,
+        sessionCount: Number(r.session_count) || 0,
+      }));
+    } catch (error) {
+      this.logger.error('获取业务口径每日趋势失败:', error);
+      return [];
+    }
+  }
+
+  /** 各业务表的数据覆盖起点（「全部」档的真实起点）。 */
+  async getBusinessDataFloor(): Promise<{
+    opsEventsFrom: string | null;
+    dailyOpsReportFrom: string | null;
+    userActivityFrom: string | null;
+  }> {
+    if (!this.isAvailable()) {
+      return { opsEventsFrom: null, dailyOpsReportFrom: null, userActivityFrom: null };
+    }
+    try {
+      const rows = await this.rpc<
+        Array<{
+          ops_events_from: string | null;
+          daily_ops_report_from: string | null;
+          user_activity_from: string | null;
+        }>
+      >('get_business_data_floor', {});
+      const r = rows?.[0];
+      return {
+        opsEventsFrom: r?.ops_events_from ?? null,
+        dailyOpsReportFrom: r?.daily_ops_report_from ?? null,
+        userActivityFrom: r?.user_activity_from ?? null,
+      };
+    } catch (error) {
+      this.logger.error('获取业务数据覆盖起点失败:', error);
+      return { opsEventsFrom: null, dailyOpsReportFrom: null, userActivityFrom: null };
+    }
+  }
+
+  /**
    * 获取每日聊天统计数据
    */
   async getChatDailyStats(
@@ -804,8 +859,6 @@ export class ChatMessageRepository extends BaseRepository {
       timestamp: new Date(message.timestamp).toISOString(),
       candidate_name: message.candidateName,
       manager_name: message.managerName,
-      org_id: message.orgId,
-      bot_id: message.botId,
       message_type: toStorageMessageType(message.messageType),
       source: toStorageMessageSource(message.source),
       is_room: message.isRoom ?? false,

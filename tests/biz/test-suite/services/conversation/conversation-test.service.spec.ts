@@ -3,7 +3,6 @@ import { ConfigService } from '@nestjs/config';
 import { ConversationTestService } from '@biz/test-suite/services/conversation-test.service';
 import { GeneratorAgent } from '@agent/generator/generator.agent';
 import { ContextService } from '@agent/generator/context/context.service';
-import { LlmEvaluationService } from '@evaluation/llm-evaluation.service';
 import { ConversationParserService } from '@evaluation/conversation-parser.service';
 import { ConversationSnapshotRepository } from '@biz/test-suite/repositories/conversation-snapshot.repository';
 import { TestExecutionRepository } from '@biz/test-suite/repositories/test-execution.repository';
@@ -12,7 +11,6 @@ import {
   ExecutionStatus,
   ReviewStatus,
   ConversationSourceStatus,
-  SimilarityRating,
   FeishuTestStatus,
   ReviewerSource,
 } from '@biz/test-suite/enums/test.enum';
@@ -21,7 +19,6 @@ import { ConversationSnapshotRecord } from '@biz/test-suite/entities/conversatio
 describe('ConversationTestService', () => {
   let service: ConversationTestService;
   let orchestrator: jest.Mocked<GeneratorAgent>;
-  let llmEvaluationService: jest.Mocked<LlmEvaluationService>;
   let parserService: jest.Mocked<ConversationParserService>;
   let conversationSnapshotRepository: jest.Mocked<ConversationSnapshotRepository>;
   let executionRepository: jest.Mocked<TestExecutionRepository>;
@@ -36,11 +33,6 @@ describe('ConversationTestService', () => {
       systemPrompt: 'test system prompt',
       stageGoals: { initial: { description: 'test' } },
     }),
-  };
-
-  const mockLlmEvaluationService = {
-    evaluate: jest.fn(),
-    getRating: jest.fn(),
   };
 
   const mockParserService = {
@@ -112,7 +104,6 @@ describe('ConversationTestService', () => {
         ConversationTestService,
         { provide: GeneratorAgent, useValue: mockOrchestrator },
         { provide: ContextService, useValue: mockContext },
-        { provide: LlmEvaluationService, useValue: mockLlmEvaluationService },
         { provide: ConversationParserService, useValue: mockParserService },
         { provide: ConversationSnapshotRepository, useValue: mockConversationSnapshotRepository },
         { provide: TestExecutionRepository, useValue: mockExecutionRepository },
@@ -123,7 +114,6 @@ describe('ConversationTestService', () => {
 
     service = module.get<ConversationTestService>(ConversationTestService);
     orchestrator = module.get(GeneratorAgent);
-    llmEvaluationService = module.get(LlmEvaluationService);
     parserService = module.get(ConversationParserService);
     conversationSnapshotRepository = module.get(ConversationSnapshotRepository);
     executionRepository = module.get(TestExecutionRepository);
@@ -186,13 +176,6 @@ describe('ConversationTestService', () => {
       mockExecutionRepository.findByConversationSourceAndTurn.mockResolvedValue(null);
       mockExecutionRepository.create.mockResolvedValue({ id: 'exec-1' } as any);
       mockOrchestrator.invoke.mockResolvedValue(makeOrchestratorSuccess('您好，有什么可以帮您'));
-      mockLlmEvaluationService.evaluate.mockResolvedValue({
-        score: 85,
-        passed: true,
-        reason: '回复正确',
-        evaluationId: 'eval-1',
-      });
-      mockLlmEvaluationService.getRating.mockReturnValue(SimilarityRating.EXCELLENT);
     });
 
     it('should throw error when source not found', async () => {
@@ -207,7 +190,7 @@ describe('ConversationTestService', () => {
       expect(result.sourceId).toBe('source-1');
       expect(result.totalTurns).toBe(1);
       expect(result.executedTurns).toBe(1);
-      expect(result.avgSimilarityScore).toBe(85);
+      expect(result.avgSimilarityScore).toBeNull();
     });
 
     it('should update source status to RUNNING at start', async () => {
@@ -233,11 +216,11 @@ describe('ConversationTestService', () => {
 
       expect(writeBackService.writeBackSimilarityScore).toHaveBeenCalledWith(
         'rec-001',
-        85,
+        null,
         expect.objectContaining({
           batchId: 'batch-1',
-          minSimilarityScore: 85,
-          evaluationSummary: '回复正确',
+          minSimilarityScore: null,
+          evaluationSummary: null,
         }),
       );
     });
@@ -263,25 +246,7 @@ describe('ConversationTestService', () => {
       expect(result.turns[0].executionStatus).toBe(ExecutionStatus.FAILURE);
     });
 
-    it('should skip LLM evaluation when orchestrator throws', async () => {
-      mockOrchestrator.invoke.mockRejectedValue(new Error('Agent error'));
-
-      await service.executeConversation('source-1');
-
-      expect(llmEvaluationService.evaluate).not.toHaveBeenCalled();
-    });
-
-    it('should skip LLM evaluation when expectedOutput is empty', async () => {
-      mockParserService.splitIntoTurns.mockReturnValue([
-        { turnNumber: 1, userMessage: '你好', expectedOutput: '', history: [] },
-      ]);
-
-      await service.executeConversation('source-1');
-
-      expect(llmEvaluationService.evaluate).not.toHaveBeenCalled();
-    });
-
-    it('should use tool-grounded evaluation for dynamic tool data turns', async () => {
+    it('does not score turns: similarity/reason stay null and review stays pending', async () => {
       const toolCalls = [
         {
           toolName: 'duliday_job_list',
@@ -295,28 +260,17 @@ describe('ConversationTestService', () => {
         ...makeOrchestratorSuccess('南翔附近还有山姆岗位可看。'),
         toolCalls,
       });
-      mockLlmEvaluationService.evaluate.mockResolvedValue({
-        score: 88,
-        passed: true,
-        summary: '回复基于本轮工具结果',
-        reason: '工具结果一致',
-        evaluationId: 'eval-tool',
-      });
 
-      await service.executeConversation('source-1');
+      const result = await service.executeConversation('source-1');
 
-      expect(llmEvaluationService.evaluate).toHaveBeenCalledWith(
-        expect.objectContaining({
-          evaluationMode: 'tool_grounded',
-          toolCalls,
-          expectedOutput: '您好，有什么可以帮您？',
-        }),
-      );
+      expect(result.turns[0].similarityScore).toBeNull();
+      expect(result.minSimilarityScore).toBeNull();
       expect(executionRepository.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          similarityScore: 88,
-          reviewStatus: ReviewStatus.PASSED,
-          evaluationReason: expect.stringContaining('动态工具评审'),
+          similarityScore: null,
+          evaluationReason: null,
+          reviewStatus: ReviewStatus.PENDING,
+          toolCalls,
         }),
       );
     });
@@ -328,7 +282,6 @@ describe('ConversationTestService', () => {
         similarity_score: 75,
       } as any;
       mockExecutionRepository.findByConversationSourceAndTurn.mockResolvedValue(existingExec);
-      mockLlmEvaluationService.getRating.mockReturnValue(SimilarityRating.GOOD);
 
       const result = await service.executeConversation('source-1', false);
 
@@ -351,7 +304,6 @@ describe('ConversationTestService', () => {
       const result = await service.executeConversation('source-1');
 
       expect(result.turns[0].executionStatus).toBe(ExecutionStatus.TIMEOUT);
-      expect(mockLlmEvaluationService.evaluate).not.toHaveBeenCalled();
       expect(mockExecutionRepository.create).toHaveBeenCalledWith(
         expect.objectContaining({
           executionStatus: ExecutionStatus.TIMEOUT,
@@ -402,29 +354,18 @@ describe('ConversationTestService', () => {
       );
     });
 
-    it('should calculate minSimilarityScore correctly', async () => {
+    it('reports null avg/min when no turn carries a score', async () => {
       mockParserService.splitIntoTurns.mockReturnValue([
         { turnNumber: 1, userMessage: 'q1', expectedOutput: 'e1', history: [] },
         { turnNumber: 2, userMessage: 'q2', expectedOutput: 'e2', history: [] },
       ]);
       mockExecutionRepository.create.mockResolvedValue({ id: 'exec-x' } as any);
 
-      let callCount = 0;
-      mockLlmEvaluationService.evaluate.mockImplementation(() => {
-        callCount++;
-        return Promise.resolve({
-          score: callCount === 1 ? 70 : 90,
-          passed: true,
-          reason: 'ok',
-          evaluationId: `eval-${callCount}`,
-        });
-      });
-      mockLlmEvaluationService.getRating.mockReturnValue(SimilarityRating.GOOD);
-
       const result = await service.executeConversation('source-1');
 
-      expect(result.minSimilarityScore).toBe(70);
-      expect(result.avgSimilarityScore).toBe(80);
+      expect(result.executedTurns).toBe(2);
+      expect(result.minSimilarityScore).toBeNull();
+      expect(result.avgSimilarityScore).toBeNull();
     });
   });
 

@@ -14,7 +14,6 @@ import {
   parseName,
   parsePhone,
   parseWeight,
-  readGenderProvenance,
 } from '@resolution/candidate';
 import { PERSISTABLE_CANDIDATE_FIELD_PRODUCERS } from '@resolution/candidate/types';
 
@@ -55,38 +54,6 @@ describe('candidate-field-parser', () => {
     });
   });
 
-  describe('readGenderProvenance（gender_source 批 A 兼容边界）', () => {
-    it.each([
-      [
-        'candidate_quote 信封',
-        'candidate',
-        false,
-        { source: 'candidate_quote', value: '女' },
-        null,
-      ],
-      ['system 信封', 'system', false, { source: 'system', value: '女' }, null],
-      [
-        '旧 candidate sibling',
-        'candidate',
-        true,
-        { source: 'rule', value: '女' },
-        { source: 'rule', value: 'candidate' },
-      ],
-      [
-        '旧 system sibling',
-        'system',
-        true,
-        { source: 'rule', value: '女' },
-        { source: 'system', value: 'system' },
-      ],
-    ] as const)('%s', (_name, source, fromLegacySibling, gender, genderSource) => {
-      expect(readGenderProvenance({ gender, gender_source: genderSource })).toEqual({
-        source,
-        fromLegacySibling,
-      });
-    });
-  });
-
   describe('parseHouseholdProvince', () => {
     it('extracts province under a household anchor', () => {
       expect(parseHouseholdProvince('户籍是黑龙江')).toMatchObject({ value: '黑龙江' });
@@ -124,6 +91,12 @@ describe('candidate-field-parser', () => {
       expect(parseHeight('我身高165')).toEqual({ value: 165, excerpt: '身高165' });
       expect(parseHeight('身高:165')).toEqual({ value: 165, excerpt: '身高:165' });
       expect(parseWeight('我体重55公斤')).toEqual({ value: 55, excerpt: '体重55' });
+    });
+    it('体重：显式"斤"或裸数 ≥100 按斤减半落 kg，显式 kg 照收（09-02 生产核对 5/31 斤当 kg）', () => {
+      expect(parseWeight('体重：115')).toEqual({ value: 58, excerpt: '体重：115' });
+      expect(parseWeight('体重120斤')).toEqual({ value: 60, excerpt: '体重120' });
+      expect(parseWeight('体重 110kg')).toEqual({ value: 110, excerpt: '体重 110' });
+      expect(parseWeight('体重：98')).toEqual({ value: 98, excerpt: '体重：98' });
     });
   });
 

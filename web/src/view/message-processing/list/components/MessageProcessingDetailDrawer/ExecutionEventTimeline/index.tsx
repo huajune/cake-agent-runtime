@@ -64,6 +64,22 @@ function summarizeEvent(event: ExecutionEvent): string | undefined {
     }
     case 'brand_state_change':
       return `${getBrandStateLabel(payload.prev)} → ${getBrandStateLabel(payload.next)}`;
+    case 'guardrail_repair': {
+      const firstRuleIds = Array.isArray(payload.firstRuleIds)
+        ? payload.firstRuleIds.filter((item): item is string => typeof item === 'string')
+        : [];
+      return [
+        asString(payload.outcome),
+        asString(payload.finalDecision),
+        firstRuleIds.length > 0 ? `rules=${firstRuleIds.join(',')}` : undefined,
+      ]
+        .filter(Boolean)
+        .join(' · ');
+    }
+    case 'inbound_guardrail_block':
+      return [asString(payload.reasonCode), asString(payload.riskLabel) ?? asString(payload.riskType)]
+        .filter(Boolean)
+        .join(' · ');
     case 'semantic_review':
       return [asString(payload.mode), asString(payload.decision), asString(payload.confidence)]
         .filter(Boolean)

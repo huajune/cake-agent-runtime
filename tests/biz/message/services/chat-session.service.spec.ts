@@ -16,6 +16,8 @@ describe('ChatSessionService', () => {
     getChatSessionPage: jest.fn(),
     getChatSessionList: jest.fn(),
     getChatDailyStats: jest.fn(),
+    getChatBusinessDailyTrend: jest.fn(),
+    getBusinessDataFloor: jest.fn(),
     getChatSummaryStats: jest.fn(),
     getChatSessionListOptimized: jest.fn(),
     getChatHistoryDetail: jest.fn(),
@@ -242,7 +244,7 @@ describe('ChatSessionService', () => {
       const result = await service.getChatSessions({ days: '7' });
 
       expect(result).toEqual(mockPage);
-      expect(mockChatMessageRepository.getChatSessionList).toHaveBeenCalledWith(7, 200);
+      expect(mockChatMessageRepository.getChatSessionList).toHaveBeenCalledWith(7, 600);
       expect(mockChatMessageRepository.getChatSessionPage).not.toHaveBeenCalled();
     });
 
@@ -251,7 +253,7 @@ describe('ChatSessionService', () => {
 
       await service.getChatSessions({});
 
-      expect(mockChatMessageRepository.getChatSessionList).toHaveBeenCalledWith(1, 200);
+      expect(mockChatMessageRepository.getChatSessionList).toHaveBeenCalledWith(1, 600);
     });
 
     it('should use end of today when no endDate provided for date range', async () => {
@@ -331,7 +333,11 @@ describe('ChatSessionService', () => {
     const emptyPage = { sessions: [], total: 0, nextCursor: null };
 
     it('should call getChatSessionPage with 30-day range', async () => {
-      const mockPage = { sessions: [{ chatId: 'chat1', messageCount: 10 }], total: 1, nextCursor: null };
+      const mockPage = {
+        sessions: [{ chatId: 'chat1', messageCount: 10 }],
+        total: 1,
+        nextCursor: null,
+      };
       mockChatMessageRepository.getChatSessionPage.mockResolvedValue(mockPage);
 
       const result = await service.getChatSessionsOptimized({});
@@ -358,7 +364,7 @@ describe('ChatSessionService', () => {
       await service.getChatSessionsOptimized({ limit: 'abc' });
 
       const [query] = mockChatMessageRepository.getChatSessionPage.mock.calls[0];
-      expect(query.limit).toBe(200);
+      expect(query.limit).toBe(600);
     });
 
     it('should pass search and cursor through', async () => {
@@ -419,6 +425,54 @@ describe('ChatSessionService', () => {
       mockChatMessageRepository.getChatHistoryDetail.mockRejectedValue(new Error('DB error'));
 
       await expect(service.getChatSessionMessages('chat-123')).rejects.toThrow('DB error');
+    });
+  });
+
+  describe('getChatBusinessDailyTrend', () => {
+    beforeEach(() => {
+      mockChatMessageRepository.getChatBusinessDailyTrend.mockResolvedValue([]);
+      mockChatMessageRepository.getBusinessDataFloor.mockResolvedValue({
+        opsEventsFrom: '2026-02-12',
+        dailyOpsReportFrom: '2026-02-12',
+        userActivityFrom: '2026-06-12',
+      });
+    });
+
+    it('defaults to the safe start date and today (Asia/Shanghai) when no range is given', async () => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-09-02T20:30:00.000Z')); // 09-03 04:30 +08:00
+      try {
+        const result = await service.getChatBusinessDailyTrend();
+
+        expect(mockChatMessageRepository.getChatBusinessDailyTrend).toHaveBeenCalledWith(
+          '2026-06-01',
+          '2026-09-03',
+        );
+        expect(result).toEqual({
+          trend: [],
+          floor: {
+            opsEventsFrom: '2026-02-12',
+            dailyOpsReportFrom: '2026-02-12',
+            userActivityFrom: '2026-06-12',
+          },
+          caliber: 'business',
+        });
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('passes a well-formed explicit range through and rejects malformed dates', async () => {
+      await service.getChatBusinessDailyTrend('2026-01-01', '2026-01-31');
+      expect(mockChatMessageRepository.getChatBusinessDailyTrend).toHaveBeenLastCalledWith(
+        '2026-01-01',
+        '2026-01-31',
+      );
+
+      await service.getChatBusinessDailyTrend('not-a-date', '2026-01-31');
+      expect(mockChatMessageRepository.getChatBusinessDailyTrend).toHaveBeenLastCalledWith(
+        '2026-06-01',
+        '2026-01-31',
+      );
     });
   });
 });

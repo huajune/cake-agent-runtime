@@ -59,4 +59,16 @@ describe('analytics-dashboard.util', () => {
     expect(new Date(range.previousStart).toISOString()).toBe('2025-10-30T16:00:00.000Z');
     expect(new Date(range.previousEnd).toISOString()).toBe('2026-01-28T10:54:58.000Z');
   });
+
+  it('should calculate the all-time range from the business data start date with an equal-span previous window', () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-09-02T02:00:00Z'));
+
+    const range = calculateDashboardTimeRanges('all');
+
+    // 2026-01-01 00:00 +08:00
+    expect(new Date(range.currentStart).toISOString()).toBe('2025-12-31T16:00:00.000Z');
+    expect(new Date(range.currentEnd).toISOString()).toBe('2026-09-02T02:00:00.000Z');
+    expect(range.previousEnd).toBe(range.currentStart);
+    expect(range.currentStart - range.previousStart).toBe(range.currentEnd - range.currentStart);
+  });
 });

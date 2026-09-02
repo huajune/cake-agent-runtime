@@ -21,8 +21,6 @@ export interface MessageProcessingDbRecord {
   total_duration?: number;
   queue_duration?: number;
   prep_duration?: number;
-  ai_start_at?: number;
-  ai_end_at?: number;
   ai_duration?: number;
   ttft_ms?: number | string;
   send_duration?: number;
@@ -38,8 +36,8 @@ export interface MessageProcessingDbRecord {
   /** 异常信号数组 */
   anomaly_flags?: string[];
   /** 入站守卫拦截摘要 JSONB（仅拦截命中时非空） */
-  guardrail_input?: unknown;
   /** 出站守卫全程 trace JSONB（紧凑摘要，KB 级；独立列避免挤进 agent_invocation 大 blob） */
+  guardrail_input?: unknown;
   guardrail_output?: unknown;
   /** 记忆上下文快照 JSONB */
   memory_snapshot?: unknown;

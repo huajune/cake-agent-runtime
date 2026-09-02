@@ -13,7 +13,10 @@ import {
 // 基础类型
 // ========================================
 
-export type TimeRange = 'today' | 'week' | 'month' | 'twoMonths' | 'threeMonths';
+export type TimeRange = 'today' | 'week' | 'month' | 'twoMonths' | 'threeMonths' | 'all';
+
+/** 「全部」档的起点：业务表（ops_events / daily_ops_report / user_activity）自 2026 年起有数据。 */
+export const ALL_RANGE_START_DATE = '2026-01-01';
 
 // ========================================
 // Dashboard 概览
@@ -140,8 +143,6 @@ export interface DailyProjectionStats {
 export interface TodayUser {
   odId: string;
   odName: string;
-  groupId?: string;
-  groupName?: string;
   botUserId?: string;
   imBotId?: string;
   chatId: string;
@@ -277,7 +278,6 @@ export interface DashboardData {
  */
 export interface MetricsData {
   detailRecords: MessageProcessingRecord[];
-  hourlyStats: HourlyStats[];
   globalCounters: MonitoringGlobalCounters;
   percentiles: { p50: number; p95: number; p99: number; p999: number };
   slowestRecords: MessageProcessingRecord[];

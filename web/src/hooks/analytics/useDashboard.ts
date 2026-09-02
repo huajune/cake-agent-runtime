@@ -16,12 +16,12 @@ export type {
 function getOverviewRefetchInterval(timeRange: string): number {
   if (timeRange === 'today') return 15000;
   // 近2月/近3月几乎全是历史数据，与服务端 5 分钟缓存对齐，避免无意义的重查
-  if (timeRange === 'twoMonths' || timeRange === 'threeMonths') return 300000;
+  if (timeRange === 'twoMonths' || timeRange === 'threeMonths' || timeRange === 'all') return 300000;
   return 60000;
 }
 
 function getOverviewStaleTime(timeRange: string, autoRefresh: boolean): number {
-  if (timeRange === 'twoMonths' || timeRange === 'threeMonths') return 300000;
+  if (timeRange === 'twoMonths' || timeRange === 'threeMonths' || timeRange === 'all') return 300000;
   if (!autoRefresh) return 60000;
   return timeRange === 'today' ? 10000 : 60000;
 }

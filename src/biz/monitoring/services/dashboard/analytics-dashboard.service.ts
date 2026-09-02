@@ -72,7 +72,6 @@ type DashboardOverviewResponse = {
     successRate: number;
     avgDuration: number;
   };
-  dailyTrend: DailyStats[];
   tokenTrend: { time: string; tokenUsage: number; messageCount: number }[];
   businessTrend: BusinessMetricTrendPoint[];
   responseTrend: ResponseMinuteTrendPoint[];
@@ -96,6 +95,7 @@ const DETAIL_RECORD_LIMIT_BY_RANGE: Record<TimeRange, number> = {
   month: 10000,
   twoMonths: 20000,
   threeMonths: 30000,
+  all: 30000,
 };
 
 /**
@@ -274,8 +274,6 @@ export class AnalyticsDashboardService {
       const previousStartDate = new Date(previousStart);
       const previousEndDate = new Date(previousEnd);
       const managedUserCountCache = new Map<string, Promise<number>>();
-
-      const sevenDaysAgo = addLocalDays(getLocalDayStart(currentEndDate), -6);
       const currentHourStart = this.getHourStart(currentEndDate);
       const [hourlyProjectionFresh, dailyProjectionFresh] = await Promise.all([
         this.isHourlyProjectionFresh(currentEndDate),
@@ -337,17 +335,12 @@ export class AnalyticsDashboardService {
       // 仍保留给业务计算（咨询转化率分母 / 托管用户本日兜底）使用，避免被 1h 口径污染。
       const activeUsersLastHour = lastHourOverview.activeUsers;
 
-      let dailyTrend: DailyTrendData[];
       // minuteTrend / tokenTrendData 按 timeRange 分支承载不同形状（today=分钟/小时趋势，
       // 其它=日趋势），消费处按分支 as narrowing；故声明为 unknown[]（非 any），强制下游显式断言。
       let minuteTrend: unknown[];
       let tokenTrendData: unknown[];
 
       if (timeRange === 'today') {
-        dailyTrend = dailyProjectionFresh
-          ? await this.getDailyTrendFromProjectionRange(sevenDaysAgo, currentEndDate)
-          : await this.monitoringRepository.getDashboardDailyTrend(sevenDaysAgo, currentEndDate);
-
         minuteTrend = await this.monitoringRepository.getDashboardMinuteTrend(
           currentStartDate,
           currentEndDate,
@@ -374,21 +367,17 @@ export class AnalyticsDashboardService {
           `[Dashboard] 日聚合数据断更，回退到原始记录查询: range=${timeRange}, currentEnd=${currentEndDate.toISOString()}`,
         );
 
-        const [daily, currentPeriodDaily] = await Promise.all([
-          this.monitoringRepository.getDashboardDailyTrend(sevenDaysAgo, currentEndDate),
-          this.monitoringRepository.getDashboardDailyTrend(currentStartDate, currentEndDate),
-        ]);
-
-        dailyTrend = daily;
+        const currentPeriodDaily = await this.monitoringRepository.getDashboardDailyTrend(
+          currentStartDate,
+          currentEndDate,
+        );
         minuteTrend = currentPeriodDaily;
         tokenTrendData = currentPeriodDaily;
       } else {
-        const [daily, currentPeriodDaily] = await Promise.all([
-          this.getDailyTrendFromProjectionRange(sevenDaysAgo, currentEndDate),
-          this.getDailyTrendFromProjectionRange(currentStartDate, currentEndDate),
-        ]);
-
-        dailyTrend = daily;
+        const currentPeriodDaily = await this.getDailyTrendFromProjectionRange(
+          currentStartDate,
+          currentEndDate,
+        );
         minuteTrend = currentPeriodDaily;
         tokenTrendData = currentPeriodDaily;
       }
@@ -515,15 +504,6 @@ export class AnalyticsDashboardService {
       const previousBusiness = this.buildBusinessFromStats(previousManagedUsers, previousBookings);
       const businessDelta = this.calculateBusinessDelta(business, previousBusiness);
 
-      const formattedDailyTrend: DailyStats[] = dailyTrend.map((item) => ({
-        date: item.date,
-        messageCount: item.messageCount,
-        successCount: item.successCount,
-        avgDuration: item.avgDuration,
-        tokenUsage: item.tokenUsage,
-        uniqueUsers: item.uniqueUsers,
-      }));
-
       const rawResponseTrend =
         timeRange === 'today'
           ? (
@@ -604,7 +584,6 @@ export class AnalyticsDashboardService {
         timeRange,
         overview,
         overviewDelta,
-        dailyTrend: formattedDailyTrend,
         tokenTrend,
         businessTrend,
         responseTrend,
@@ -688,6 +667,7 @@ export class AnalyticsDashboardService {
     'month',
     'twoMonths',
     'threeMonths',
+    'all',
   ];
 
   /**
@@ -823,7 +803,6 @@ export class AnalyticsDashboardService {
           previousOverview.avgDuration,
         ),
       },
-      dailyTrend: this.buildDailyTrendFromRecords(currentRecords),
       tokenTrend: this.buildTokenTrendFromRecords(currentRecords, timeRange),
       businessTrend: rawBusinessTrend,
       responseTrend: this.analyticsTrendBuilder.buildResponseTrend(currentRecords, timeRange),
@@ -1071,7 +1050,7 @@ export class AnalyticsDashboardService {
       return 30_000;
     }
     // 近2月/近3月几乎全是历史数据，60s 缓存毫无意义且全量聚合要 2~10s，放宽到 5 分钟
-    if (timeRange === 'twoMonths' || timeRange === 'threeMonths') {
+    if (timeRange === 'twoMonths' || timeRange === 'threeMonths' || timeRange === 'all') {
       return 300_000;
     }
     return 60_000;
@@ -1563,8 +1542,6 @@ export class AnalyticsDashboardService {
         chatId: user.chatId,
         odId: user.odId || user.chatId,
         odName: user.odName || user.chatId,
-        groupId: user.groupId,
-        groupName: user.groupName,
         botUserId: user.botUserId,
         imBotId: user.imBotId,
         messageCount: user.messageCount,

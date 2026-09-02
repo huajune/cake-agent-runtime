@@ -292,6 +292,21 @@ export function carriesScreening(field: ContractFieldDef): boolean {
 }
 
 /**
+ * 条件型单选项字段：选项型、只有一个可接受项、没有拒绝项。它不是"请填你的值"，
+ * 而是"必须接受这个条件才能报名"（运营 2026-09-02 裁定；标本 741「每天可工作时间段」
+ * 唯一选项「09:30-22:30」= 门店营业窗口，答自己的时段全部撞词表）。
+ * 模板按条件呈现、适配器只认接受；不接受/答子区间不填不判——合不合适交模型与候选人对话决定。
+ */
+export function isConditionField(field: ContractFieldDef): boolean {
+  return (
+    (field.fieldType === 'SINGLE_OPTION' || field.fieldType === 'MULTIPLE_OPTION') &&
+    field.acceptedOptions.length === 1 &&
+    field.rejectedOptions.length === 0 &&
+    field.acceptedOptions[0].optionLabel.trim() !== ''
+  );
+}
+
+/**
  * 发问顺序：身份四槽 → 带筛选条件的 → 纯登记项。
  *
  * 身份核排头不是为了筛（它们通常不筛），是因为"你叫什么、电话多少"是收资最自然的

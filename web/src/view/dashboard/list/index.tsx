@@ -21,7 +21,11 @@ import { useHealthStatus } from '@/hooks/analytics/useMetrics';
 import { useWorkerStatus } from '@/hooks/config/useWorker';
 import type { DashboardTimeRange } from '@/api/types/analytics.types';
 import { formatDuration, formatMinuteLabel, formatDayLabel, formatHourLabel } from '@/utils/format';
-import { buildRecentBusinessDateRange, formatDateKey } from '@/utils/date-range';
+import {
+  buildRecentBusinessDateRange,
+  buildBusinessDateRangeBetween,
+  formatDateKey,
+} from '@/utils/date-range';
 import { THEME_COLORS } from '@/constants';
 
 // 组件导入
@@ -42,6 +46,7 @@ const TIME_RANGE_LABELS: Record<DashboardTimeRange, string> = {
   month: '近30天',
   twoMonths: '近2月',
   threeMonths: '近3月',
+  all: '全部',
 };
 
 const COMPARISON_LABELS: Record<DashboardTimeRange, string> = {
@@ -50,6 +55,7 @@ const COMPARISON_LABELS: Record<DashboardTimeRange, string> = {
   month: '较前30天同期',
   twoMonths: '较前2月同期',
   threeMonths: '较前3月同期',
+  all: '无同期对比',
 };
 
 const RANGE_DAYS: Record<DashboardTimeRange, number> = {
@@ -58,10 +64,15 @@ const RANGE_DAYS: Record<DashboardTimeRange, number> = {
   month: 30,
   twoMonths: 60,
   threeMonths: 90,
+  all: 0,
 };
 
 function buildDateRange(timeRange: DashboardTimeRange) {
   const days = RANGE_DAYS[timeRange];
+  // 「全部」：从业务数据起点到今天（业务表自 2026 年起有数据；观测卡覆盖由 dataCoverage 标注）
+  if (days === 0) {
+    return buildBusinessDateRangeBetween('2026-01-01', formatDateKey(new Date()));
+  }
   return buildRecentBusinessDateRange(days);
 }
 

@@ -340,8 +340,8 @@ export function produceTurnHints(
 
     // ── 以下为带字段间联动 / 自定义合并语义的特殊字段，保留在循环内手写 ──
 
-    // gender：候选人原话经确定性规则复算后，来源章直接记 candidate_quote。
-    // 批 A 起不再发布 gender_source sibling；岗位截图里的"仅限男"仍不是候选人性别。
+    // gender：候选人原话经确定性规则复算后，来源章直接记 candidate_quote；
+    // 岗位截图里的"仅限男"仍不是候选人性别。
     const gender = isSelfReported ? extractGender(message) : null;
     if (gender) {
       appendRuleClaim(sink, {

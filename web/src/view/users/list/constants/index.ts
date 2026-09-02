@@ -25,4 +25,6 @@ export const USER_RANGE_OPTIONS = [
   { days: 30, label: '近30天', totalLabel: '30天累计' },
   { days: 60, label: '近60天', totalLabel: '60天累计' },
   { days: 90, label: '近90天', totalLabel: '90天累计' },
+  // days=0 = 全部：user_activity 永久保留，后端从业务数据起点算起
+  { days: 0, label: '全部', totalLabel: '累计' },
 ] as const;

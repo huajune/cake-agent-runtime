@@ -17,9 +17,11 @@ function parseBodyMetric(
   unitPattern: string,
   min: number,
   max: number,
+  normalize: (value: number, unit: string | undefined) => number = (value) => value,
 ): CandidateParseResult<number> | null {
+  // 单位放在前瞻里捕获：excerpt 仍只到数字（"体重55"），但能知道候选人报的是 kg 还是斤。
   const pattern = new RegExp(
-    `${marker}\\s*[：:]?\\s*(\\d{2,3})(?=\\s*(?:左右|上下|多)?\\s*(?:${unitPattern})?(?:$|[，,。;；！!\\s]))`,
+    `${marker}\\s*[：:]?\\s*(\\d{2,3})(?=\\s*(?:左右|上下|多)?\\s*(${unitPattern})?(?:$|[，,。;；！!\\s]))`,
     'giu',
   );
   for (const match of text.matchAll(pattern)) {
@@ -40,7 +42,7 @@ function parseBodyMetric(
       Math.min(clauseEnd, index + marker.length + 24),
     );
     if (REQUIREMENT_CONTEXT_RE.test(window)) continue;
-    const value = Number(match[1]);
+    const value = normalize(Number(match[1]), match[2]?.toLowerCase());
     if (value >= min && value <= max) {
       return { value, excerpt: match[0].trim() };
     }
@@ -48,10 +50,22 @@ function parseBodyMetric(
   return null;
 }
 
+/**
+ * 体重口径：候选人口语里"体重 120"几乎总是斤（成年人 kg 极少 ≥100），落进 `体重(kg)`
+ * 字段前必须换算；显式带 kg/公斤 的照收。生产 09-02 核对：会话里 31 条体重有 5 条 ≥120，
+ * 长期档案 13 条有 4 条，全是斤当 kg。阈值与表单侧 canonicalizeCandidateFieldValue 共用。
+ */
+export const WEIGHT_JIN_THRESHOLD = 100;
+
+export function normalizeWeightToKg(value: number, unit: string | undefined): number {
+  if (unit === '斤' || (!unit && value >= WEIGHT_JIN_THRESHOLD)) return Math.round(value / 2);
+  return value;
+}
+
 export function parseHeight(text: string): CandidateParseResult<number> | null {
   return parseBodyMetric(text, '身高', 'cm|厘米|公分', 100, 250);
 }
 
 export function parseWeight(text: string): CandidateParseResult<number> | null {
-  return parseBodyMetric(text, '体重', 'kg|公斤|千克', 30, 200);
+  return parseBodyMetric(text, '体重', 'kg|公斤|千克|斤', 30, 200, normalizeWeightToKg);
 }

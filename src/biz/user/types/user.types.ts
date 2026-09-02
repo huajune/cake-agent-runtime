@@ -4,7 +4,6 @@
 export interface UserProfile {
   chatId: string;
   odName?: string;
-  groupName?: string;
   botUserId?: string;
   imBotId?: string;
 }
@@ -16,8 +15,6 @@ export interface UserActivityAggregate {
   chatId: string;
   odId?: string;
   odName?: string;
-  groupId?: string;
-  groupName?: string;
   botUserId?: string;
   imBotId?: string;
   messageCount: number;

@@ -8,6 +8,154 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v11.2.0`
+**最近更新**: `2026-09-02`
+**来源分支**: `develop`
+**累计 PR**: 13
+
+### 更新摘要
+- PR #1158 健康证收资两处误拒——冲突门剥模板回显、裸短答按绑定语境解、字段简称唯一包含可定位
+- PR #1158 条件型单选项按"必须接受的条件"处理——模板写明条件、只认接受、不记配置债
+- PR #1158 健康证两处误拒 + 「每天可工作时间段」条件型单选项——三处收资误拒修复
+- PR #1159 清理 todo 目录——删已过期重放任务、结转已核验项、按代码现状刷新余项与索引
+- PR #1159 删除字段值提案收口对账单（用户 2026-09-02 授权）
+- PR #1159 关闭运行时改造发版后续（基线复测经用户裁定不跑）
+- PR #1159 守卫过程事件、工具 empty/narrow 落库、主动回合去伪 TTFT（观测 P1-2/P1…
+- PR #1159 守卫过程事件/工具空结果落库/主动回合去伪 TTFT；清理 todo 目录
+- PR #1160 记录 gender_source 兼容读闸门 3 审计结果（09-02 未归零）
+- PR #1160 删除 interview_info.gender_source 兼容读 sibling
+- PR #1160 数值事实落库规范形——体重斤→kg、年龄去单位、区域否定词、空串信封
+- PR #1160 merge: origin/develop into chore/memory-compat-cleanup（docs/todo 索引取 …
+- PR #1160 删除 gender_source 兼容读 + 数值事实落库规范形（09-02 记忆精度审计）
+- PR #1168 删除 LLM 相似度评分器，新增 Agent 质量评估体系口径页
+- PR #1165 临时暂停托管改为次日零点自动恢复（原固定 3 天）
+- PR #1165 `user-hosting.service.ts`：删掉硬编码 `PAUSE_DURATION_MS`，三处（pauseUser / loadPausedUsers 兜底 / 共享缓存快照）统一用 `resolveTemporaryPauseExpiresAt(pausedAt)` = `addLocalDays(getLocalDayStart(pausedAt), 1)`；永久暂停不变。
+- PR #1165 新增用例：解禁时刻在上海时区读数为 00:00:00，且距暂停不超过 24h，DB 写入值与缓存一致。
+- PR #1165 `docs/product/ops-data-and-sponge-integration.md` 同步口径。
+- PR #1166 入站风险词表补残障自述漏网句式、剔除亲属词假阳、扫描前剥引用块
+- PR #1166 入站风险词表补残障自述漏网、剔除亲属词假阳、扫描前剥引用块
+- PR #1164 判官标定首次完成，任务书改为"待用户裁定阈值并注册周任务"
+- PR #1164 判官标定补记用户裁定与两个修复 PR
+- PR #1164 评估器已随 #1168 删除，清掉待裁定项
+- PR #1164 判官标定首次完成，状态改为待用户裁定阈值并注册周任务
+- PR #1173 "XX附近"地点抽取剥居住前缀并拒收整句噪音
+- PR #1173 动作前缀归一（"帮我找一下"）之后再剥一次居住/位置前缀：`我/我们/我家/人/家 + 现在/目前/平时/就 + 住/人/家 + 在`，**必须以"在"收尾**，不会吃掉"人民广场""家乐福"的首字；另认"就XX"。
+- PR #1173 捕获段含句子词（这/那个/你/我/他/她/有没有/可以/不是/工作/吗/呢/吧/了/就/要/想/找/看/去/到/在/是）一律不认；刻意不收"的"（美的财富广场）。
+- PR #1173 剥完不足 2 字（"这"）丢弃。
+- PR #1177 会话列表页大小 200→600，头像改懒加载
+- PR #1177 `web/src/hooks/chat/useChatSessions.ts`：`CHAT_SESSION_PAGE_SIZE` 200→600
+- PR #1177 `src/biz/message/services/chat-session.service.ts` / `repositories/chat-message.repository.ts`：默认页大小 200→600，上限 `MAX_SESSION_PAGE_SIZE` 500→600（注释标明 ≤999 硬边界，因为实际取 limit+1 且 PostgREST max_rows=1000）
+- PR #1177 `SessionList/index.tsx`：头像 `<img>` 加 `loading="lazy"`——列表未虚拟化，600 行头像一次性发请求会排队
+- PR #1177 两个 spec 同步默认值/上限断言
+- PR #1176 出站守卫拦截推理/自检段泄漏
+- PR #1175 新增质量指标台账与 CI 校验，定时任务结论统一落账
+- PR #1175 判官降级阈值定稿进口径页，判官周任务已注册
+- PR #1175 merge origin/develop into docs/quality-metrics-ledger, resolve…
+- PR #1175 Merge remote-tracking branch 'origin/develop' into HEAD
+- PR #1175 **新增 `docs/quality-metrics-ledger.md`**：9 列（date / source_task / stage / metric / value / numerator / denominator / note / trace_ref）；阶段名与指标名以口径页 §1 为白名单（五阶段 + 硬错误率 / 转人工精确率 / 稳定率 / 判官精确率）；文首写清列定义、写入纪律、各任务落什么。种子行为 2026-09-02 首次判官标定的四个判官点精确率（J1 30/31、J2 20/28、J4 7/9 与 25/33）。
+- PR #1175 **新增 `scripts/quality/` 校验器 + 单测**：表头、白名单、`value = round(n/d, 4)`、分母非 0、note 长度与手机号脱敏、五元组去重；`pnpm run quality-ledger:validate [路径]` 挂进 `ci:check`（可传路径校验独立 worktree 里的副本）。
+- PR #1175 **口径页**：横切指标「稳定性」更名「稳定率」并标注无生产者；L2/L3「结论去哪」指向台账；§4 待办 3/4 改为「已裁定」。
+- PR #1175 `docs/README.md`、`docs/todo/README.md`、`docs/todo/judge-calibration.md`、`CLAUDE.md` 补台账入口与现状。
+- PR #1167 业务数据永久/观测 90d 统一 + 全部档 + 表结构审计修复
+- PR #1167 merge origin/develop into feat/data-retention-and-schema-audit…
+- PR #1167 Merge remote-tracking branch 'origin/develop' into HEAD
+- PR #1167 merge origin/develop (post #1175), resolve docs/todo/README.md
+- PR #1182 补 v11.2.0 发版底账
+- PR #1182 初稿由 `pnpm run release:ledger` 从 `.release/pending-release.json` 渲染（12 个实现 PR：#1158 #1159 #1160 #1164 #1165 #1166 #1167 #1168 #1173 #1175 #1176 #1177）
+- PR #1182 删除 auto-generated 标记后人工定稿，改写三节：
+- PR #1182 **高风险区域**：#1167 死列 DROP + `agent_invocation` 拆子表、保留策略切换、#1176 守卫新检测信号、#1177 会话列表页大小 200→600、#1165 暂停口径
+- PR #1182 **数据库动作**：两条迁移（`20260902073727_retention_schema_audit`、`20260902082559_ops_events_report_date_chat_index`）已推 TEST 并烟测，生产在镜像更新完成后立即 `db:push:prod`
+- PR #1182 **部署顺序**：定为「先镜像后迁移」——旧代码仍写 `ai_start_at/ai_end_at`，先推迁移会让旧实例回合流水写入失败；新代码写子表失败已被仓储层断路器兜住
+
+### 新功能
+- PR #1168 删除 LLM 相似度评分器，新增 Agent 质量评估体系口径页
+- PR #1165 新增用例：解禁时刻在上海时区读数为 00:00:00，且距暂停不超过 24h，DB 写入值与缓存一致。
+- PR #1175 **新增 `docs/quality-metrics-ledger.md`**：9 列（date / source_task / stage / metric / value / numerator / denominator / note / trace_ref）；阶段名与指标名以口径页 §1 为白名单（五阶段 + 硬错误率 / 转人工精确率 / 稳定率 / 判官精确率）；文首写清列定义、写入纪律、各任务落什么。种子行为 2026-09-02 首次判官标定的四个判官点精确率（J1 30/31、J2 20/28、J4 7/9 与 25/33）。
+- PR #1175 **新增 `scripts/quality/` 校验器 + 单测**：表头、白名单、`value = round(n/d, 4)`、分母非 0、note 长度与手机号脱敏、五元组去重；`pnpm run quality-ledger:validate [路径]` 挂进 `ci:check`（可传路径校验独立 worktree 里的副本）。
+- PR #1175 **口径页**：横切指标「稳定性」更名「稳定率」并标注无生产者；L2/L3「结论去哪」指向台账；§4 待办 3/4 改为「已裁定」。
+- PR #1175 `docs/README.md`、`docs/todo/README.md`、`docs/todo/judge-calibration.md`、`CLAUDE.md` 补台账入口与现状。
+- PR #1175 新增质量指标台账与 CI 校验，定时任务结论统一落账
+- PR #1167 merge origin/develop into feat/data-retention-and-schema-audit…
+
+### 问题修复
+- PR #1165 `user-hosting.service.ts`：删掉硬编码 `PAUSE_DURATION_MS`，三处（pauseUser / loadPausedUsers 兜底 / 共享缓存快照）统一用 `resolveTemporaryPauseExpiresAt(pausedAt)` = `addLocalDays(getLocalDayStart(pausedAt), 1)`；永久暂停不变。
+- PR #1165 `docs/product/ops-data-and-sponge-integration.md` 同步口径。
+- PR #1164 判官标定补记用户裁定与两个修复 PR
+- PR #1173 捕获段含句子词（这/那个/你/我/他/她/有没有/可以/不是/工作/吗/呢/吧/了/就/要/想/找/看/去/到/在/是）一律不认；刻意不收"的"（美的财富广场）。
+- PR #1173 剥完不足 2 字（"这"）丢弃。
+- PR #1175 merge origin/develop into docs/quality-metrics-ledger, resolve…
+- PR #1167 业务数据永久/观测 90d 统一 + 全部档 + 表结构审计修复
+- PR #1167 merge origin/develop (post #1175), resolve docs/todo/README.md
+
+### 优化调整
+- PR #1173 动作前缀归一（"帮我找一下"）之后再剥一次居住/位置前缀：`我/我们/我家/人/家 + 现在/目前/平时/就 + 住/人/家 + 在`，**必须以"在"收尾**，不会吃掉"人民广场""家乐福"的首字；另认"就XX"。
+- PR #1173 "XX附近"地点抽取剥居住前缀并拒收整句噪音
+- PR #1177 `web/src/hooks/chat/useChatSessions.ts`：`CHAT_SESSION_PAGE_SIZE` 200→600
+- PR #1177 `src/biz/message/services/chat-session.service.ts` / `repositories/chat-message.repository.ts`：默认页大小 200→600，上限 `MAX_SESSION_PAGE_SIZE` 500→600（注释标明 ≤999 硬边界，因为实际取 limit+1 且 PostgREST max_rows=1000）
+- PR #1177 `SessionList/index.tsx`：头像 `<img>` 加 `loading="lazy"`——列表未虚拟化，600 行头像一次性发请求会排队
+- PR #1177 两个 spec 同步默认值/上限断言
+
+### 运维与流程
+- PR #1158 健康证收资两处误拒——冲突门剥模板回显、裸短答按绑定语境解、字段简称唯一包含可定位
+- PR #1158 条件型单选项按"必须接受的条件"处理——模板写明条件、只认接受、不记配置债
+- PR #1159 清理 todo 目录——删已过期重放任务、结转已核验项、按代码现状刷新余项与索引
+- PR #1159 删除字段值提案收口对账单（用户 2026-09-02 授权）
+- PR #1159 关闭运行时改造发版后续（基线复测经用户裁定不跑）
+- PR #1159 守卫过程事件、工具 empty/narrow 落库、主动回合去伪 TTFT（观测 P1-2/P1…
+- PR #1160 记录 gender_source 兼容读闸门 3 审计结果（09-02 未归零）
+- PR #1160 删除 interview_info.gender_source 兼容读 sibling
+- PR #1160 数值事实落库规范形——体重斤→kg、年龄去单位、区域否定词、空串信封
+- PR #1160 merge: origin/develop into chore/memory-compat-cleanup（docs/todo 索引取 …
+- PR #1165 临时暂停托管改为次日零点自动恢复（原固定 3 天）
+- PR #1166 入站风险词表补残障自述漏网句式、剔除亲属词假阳、扫描前剥引用块
+- PR #1164 判官标定首次完成，任务书改为"待用户裁定阈值并注册周任务"
+- PR #1164 评估器已随 #1168 删除，清掉待裁定项
+- PR #1177 会话列表页大小 200→600，头像改懒加载
+- PR #1176 出站守卫拦截推理/自检段泄漏
+- PR #1175 判官降级阈值定稿进口径页，判官周任务已注册
+- PR #1175 Merge remote-tracking branch 'origin/develop' into HEAD
+- PR #1167 Merge remote-tracking branch 'origin/develop' into HEAD
+- PR #1182 初稿由 `pnpm run release:ledger` 从 `.release/pending-release.json` 渲染（12 个实现 PR：#1158 #1159 #1160 #1164 #1165 #1166 #1167 #1168 #1173 #1175 #1176 #1177）
+- PR #1182 删除 auto-generated 标记后人工定稿，改写三节：
+- PR #1182 **高风险区域**：#1167 死列 DROP + `agent_invocation` 拆子表、保留策略切换、#1176 守卫新检测信号、#1177 会话列表页大小 200→600、#1165 暂停口径
+- PR #1182 **数据库动作**：两条迁移（`20260902073727_retention_schema_audit`、`20260902082559_ops_events_report_date_chat_index`）已推 TEST 并烟测，生产在镜像更新完成后立即 `db:push:prod`
+- PR #1182 **部署顺序**：定为「先镜像后迁移」——旧代码仍写 `ai_start_at/ai_end_at`，先推迁移会让旧实例回合流水写入失败；新代码写子表失败已被仓储层断路器兜住
+- PR #1182 补 v11.2.0 发版底账
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- PR #1168 检测到环境变量相关文件变更：`.env.example`。请手动同步远程服务器 `/data/cake/.env.production`。
+- PR #1167 检测到环境变量相关文件变更：`.env.example`。请手动同步远程服务器 `/data/cake/.env.production`。
+
+### 验证记录
+- PR #1158 `typecheck` / `lint:check` / `format:check` 全绿
+- PR #1158 全量 jest：448 套件 / 6519 例通过；新增回归：冲突门剥回显（含"剥完仍能拦真冲突"对照）、裸答三态+四个不收、简称唯一/撞车/单字/反向、条件型模板首问/重问/敏感留空、条件适配器字面/绑定肯定/未绑定/回显/子区间/否定、表单行与回显忽略
+- PR #1168 `tsc --noEmit` 后端 + web 均通过；eslint（--max-warnings=0）通过；prettier 通过
+- PR #1168 `jest tests/biz/test-suite tests/evaluation --watchman=false`：21 套件 / 309 用例通过
+- PR #1165 `jest tests/biz/user/services/user-hosting.service.spec.ts tests/biz/user/repositories/user-hosting.repository.spec.ts --watchman=false`：57/57 通过
+- PR #1166 `jest tests/agent/guardrail/input/ --watchman=false`：141/141 通过（新增 6 组正例 / 7 组反例 / 引用块 3 例）
+- PR #1166 `tsc --noEmit`、eslint（--max-warnings=0）、prettier 通过
+- PR #1177 `pnpm run typecheck` 通过
+- PR #1177 `tests/biz/message/repositories/chat-message.repository.spec.ts` + `tests/biz/message/services/chat-session.service.spec.ts`：68/68 通过
+- PR #1177 ESLint / Prettier：`src/` 下两个改动文件通过；两个 spec 文件与两个 web 文件在 develop 上本就不过 prettier（CI 不覆盖 tests/ 与 web/），本 PR 未动格式
+- PR #1177 web：`tsc --noEmit` 与 eslint 通过
+- PR #1176 两例生产原文作为检测回归用例落在 `internal-info-leaks.rule.spec` / `hard-rules.service.spec`；runner spec 断言自检段命中后进一次 repair。
+- PR #1176 `lint:check` / `format:check` / `typecheck` 全绿；guardrail + runner + context 40 套件 686 用例通过。
+- PR #1176 无迁移，无配置变更。
+- PR #1175 `pnpm run ci:check` 各段在 worktree 内全部通过（lint / format / typecheck / geo / vocab / quality-ledger / build:ci / test:ci 448 suites）。
+- PR #1175 `tests/scripts/quality-metrics-ledger.spec.ts` 9 用例通过，其中一条直接校验仓库内台账文件。
+- PR #1167 `pnpm run ci:check` 全绿（lint / format / typecheck / build / 6540 tests）
+- PR #1167 新增单测：子表写读与兜底、统计表/转人工底账清理、`markResolvedByChat` / `sequence_no`、业务趋势 RPC 映射与默认窗口、`all` 档时间窗（dashboard util / conversion）、小组→bot 翻译与并集过滤
+- PR #1167 TEST 库烟测：4 个新 RPC 均正常；prod 只读核对新趋势 SQL 近 7 天数值合理
+- PR #1182 `pnpm run release:ledger:check` ✅（v11.2.0 -> docs/releases/2026/v11.2.0.md）
+- PR #1182 纯文档改动，无代码变更
+<!-- release:pending:end -->
+
 ## [11.1.4] - 2026-09-02
 
 **来源分支**: `develop`

@@ -138,13 +138,9 @@ describe('turn-hints rule track', () => {
     expect(readProjectedValue(result?.preferences.position)).toEqual(['服务员']);
     expect(readProjectedValue(result?.preferences.schedule)).toBe('周末');
     expect(readProjectedValue(result?.interview_info.gender)).toBe('男');
-    expect(result?.interview_info.gender_source).toBe('candidate');
     expect(
       produced?.claims.find((claim) => claim.field === 'interview_info.gender'),
     ).toEqual(expect.objectContaining({ producer: 'candidate_quote', confidence: 'high' }));
-    expect(
-      produced?.claims.some((claim) => claim.field === 'interview_info.gender_source'),
-    ).toBe(false);
     expect(readProjectedValue(result?.interview_info.age)).toBe('25');
     expect(readProjectedValue(result?.interview_info.has_health_certificate)).toBe('有');
   });

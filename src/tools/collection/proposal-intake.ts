@@ -148,6 +148,20 @@ export function resolveFieldByTitle(
     // 同 systemField 多槽是契约异常态，与主干撞车同款处置：弃权不猜。
     if (byIdentity.length > 1) return { field: null, reason: 'label_title_ambiguous' };
   }
+
+  // 第四级：简称包含。模型把「有无本地健康证」写成「健康证」、「有无工作经验」写成「工作经验」
+  // （0902 实测 14 条/8 会话，该轮值整个丢失，1-2 轮后才用对名字补上）。只在契约内**唯一**
+  // 一个字段标题包含该简称时放行；两个以上撞车即弃权，与主干撞车同款处置。单字不算简称。
+  for (const shorthand of [target, targetTrunk]) {
+    if (shorthand.length < 2) continue;
+    const byContainment = contract.filter(
+      (field) =>
+        normalizeTitle(field.labelTitle).includes(shorthand) ||
+        stripParenthetical(field.labelTitle).includes(shorthand),
+    );
+    if (byContainment.length === 1) return { field: byContainment[0] };
+    if (byContainment.length > 1) return { field: null, reason: 'label_title_ambiguous' };
+  }
   return { field: null, reason: 'label_title_not_found' };
 }
 

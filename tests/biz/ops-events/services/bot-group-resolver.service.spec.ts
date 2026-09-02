@@ -84,4 +84,45 @@ describe('BotGroupResolverService', () => {
       groupName: '宇航组',
     });
   });
+
+  describe('listBotKeysByGroups', () => {
+    it('maps group names to every bot key of that group from the fallback table', () => {
+      const keys = service.listBotKeysByGroups(['琪琪组', '小祝组']);
+
+      expect(keys).toEqual(
+        expect.arrayContaining([
+          '1688855974513959',
+          '1688854363869800',
+          '1688857592548257',
+          '1688856098846503',
+        ]),
+      );
+      expect(keys).toHaveLength(4);
+    });
+
+    it('returns an empty list for unknown or blank groups', () => {
+      expect(service.listBotKeysByGroups(['不存在的组'])).toEqual([]);
+      expect(service.listBotKeysByGroups([' ', ''])).toEqual([]);
+      expect(service.listBotKeysByGroups([])).toEqual([]);
+    });
+
+    it('prefers the dynamic Stride mapping (both wxid and wecomUserId keys) and keeps fallback-only bots', async () => {
+      const fakeBotService = {
+        getConfiguredBotList: jest.fn(async () => [
+          { wxid: '9999999999', wecomUserId: 'newbot', name: '新人', groupName: '新组' },
+          // 同一 bot 在 Stride 上改了组：动态表覆盖兜底表里的 琪琪组
+          { wxid: '1688855974513959', wecomUserId: 'gaoyaqi', name: '高', groupName: '新组' },
+        ]),
+      } as unknown as BotService;
+      const dynamic = new BotGroupResolverService(fakeBotService);
+      await dynamic.warmUp();
+
+      expect(dynamic.listBotKeysByGroups(['新组'])).toEqual(
+        expect.arrayContaining(['9999999999', 'newbot', '1688855974513959', 'gaoyaqi']),
+      );
+      // 被动态表改组的 bot 不再算 琪琪组；动态表没有的 小祝组 仍从兜底表给出
+      expect(dynamic.listBotKeysByGroups(['琪琪组'])).toEqual([]);
+      expect(dynamic.listBotKeysByGroups(['小祝组'])).toHaveLength(3);
+    });
+  });
 });

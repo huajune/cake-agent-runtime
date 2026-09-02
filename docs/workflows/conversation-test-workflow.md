@@ -20,9 +20,9 @@
 
 - 从飞书多维表格 **validationSet 表** 导入真实客户对话记录
 - 将历史对话重放给 AI Agent,验证回复质量
-- 使用 LLM 自动评估 Agent 回复与真人回复的相似度
-- 提供可视化界面查看测试结果和评估详情
-- 将评估结果（相似度分数）回写到飞书
+- 由人工 / Claude 逐轮评审（不再自动打分，见下文「LLM 评估机制」）
+- 提供可视化界面查看测试结果和评审详情
+- 将评审结果回写到飞书
 
 > **注意**: 回归验证数据存储在独立的 `validationSet` 飞书表中,与用例测试的 `testSuite` 表分离。
 
@@ -33,7 +33,7 @@
 | **测试批次 (Batch)**   | 一次导入的完整测试/验证集 | "回归验证 2026/1/16" |
 | **对话源 (Source)**    | 单个完整对话记录          | Paidax 的 3 轮对话   |
 | **测试轮次 (Turn)**    | 对话中的单次交互          | 用户问 → Agent 答    |
-| **相似度评分 (Score)** | LLM 对回复质量的评分      | 0-100 分,60分及格    |
+| **相似度评分 (Score)** | 历史遗留列，2026-09-02 起不再写入 | 旧批次仍可查看 |
 
 ### 技术栈
 
@@ -572,87 +572,12 @@ GET /test-suite/conversation/turns?sourceId=source-001
 
 ## LLM 评估机制
 
-### 评估原理
-
-使用 LLM 作为评估器,对比 Agent 回复与真人回复的质量。
-
-**关键设计**:
-
-- **模型选择**: 由 `ModelRole.Evaluate` 路由（环境变量 `AGENT_EVALUATE_MODEL` 配置，当前 `openai/gpt-5-mini`）；下文代码/env 里出现的 `openai/gpt-4o-mini` 仅为历史示例，实际以角色路由为准
-- **禁用工具**: 评估时关闭所有工具,确保纯文本输出
-- **结构化输出**: 强制 JSON 格式输出评分和理由
-
-### 评估流程
-
-```typescript
-// llm-evaluation.service.ts
-async evaluate(input: {
-  userMessage: string;
-  expectedOutput: string;
-  actualOutput: string;
-  history?: Message[];
-}) {
-  // 1. 构建评估 prompt
-  const prompt = `
-你是 AI 客服回复评估专家,请对比以下两个回复的质量:
-
-【用户消息】
-${input.userMessage}
-
-${input.history?.length ? `【对话历史】\n${formatHistory(input.history)}` : ''}
-
-【参考回复 (真人客服)】
-${input.expectedOutput}
-
-【实际回复 (AI Agent)】
-${input.actualOutput}
-
-评估标准:
-1. 意图理解 (40%): 是否正确理解用户意图
-2. 信息完整性 (30%): 必要信息是否完整
-3. 语言表达 (20%): 表达是否清晰、专业
-4. 相关性 (10%): 是否与用户问题相关
-
-请严格按以下 JSON 格式输出:
-{
-  "score": 85,
-  "passed": true,
-  "reason": "回复正确理解了用户意图,信息完整,表达清晰"
-}
-`;
-
-  // 2. 调用 Agent API
-  const result = await this.agentService.chat({
-    conversationId: `eval-${uuid()}`,
-    userMessage: prompt,
-    model: 'openai/gpt-4o-mini',
-    allowedTools: [],  // 关键: 禁用所有工具
-    systemPrompt: '你是严格的评估专家,必须按 JSON 格式输出。',
-  });
-
-  // 3. 解析 JSON 响应
-  const text = this.extractText(result.data.messages);
-  const json = JSON.parse(text);
-
-  return {
-    score: json.score,  // 0-100
-    passed: json.score >= 60,
-    reason: json.reason,
-    evaluationId: result.data.conversationId,
-  };
-}
-```
-
-### 评分标准
-
-| 分数区间 | 等级 | 颜色    | 说明                     |
-| -------- | ---- | ------- | ------------------------ |
-| 80-100   | 优秀 | 🟢 绿色 | 回复质量与真人相当或更好 |
-| 60-79    | 良好 | 🔵 蓝色 | 回复基本正确,有改进空间  |
-| 40-59    | 一般 | 🟡 黄色 | 部分理解偏差或信息不完整 |
-| 0-39     | 较差 | 🔴 红色 | 理解错误或答非所问       |
-
-**及格线**: 60 分
+> **已退役（2026-09-02）**。原 `LlmEvaluationService` 用真人历史回复当标准答案给 Agent 回复打四维加权分，
+> 三条硬伤（岗位库存与状态已变、tool_grounded 看不见上游工具错、加权让流程停滞过线）在判官标定里实证，
+> 已随 PR 删除。回归验证现在只做重放，评审由人工 / Claude 走 `PATCH /test-suite/conversations/turns/:executionId/review`。
+> 评估体系口径见 [Agent 质量评估体系](../architecture/agent-quality-evaluation.md)。
+>
+> `similarity_score` / `evaluation_reason` 列保留用于展示历史批次，新执行一律为空；批次 `pass_rate` 对新批次无意义。
 
 ## 前端集成
 
@@ -713,29 +638,14 @@ const handleExecute = useCallback(
 ### 环境变量
 
 ```bash
-# 评估模型配置
-EVALUATION_MODEL=openai/gpt-4o-mini
-
 # 飞书 API (用于同步数据)
 FEISHU_APP_ID=cli_xxx
 FEISHU_APP_SECRET=xxx
+# 单轮执行超时（毫秒）
+TEST_SUITE_CONVERSATION_TURN_TIMEOUT_MS=120000
 ```
 
-### 代码常量
-
-```typescript
-// src/evaluation/llm-evaluation.service.ts
-const EVALUATION_MODEL = 'openai/gpt-4o-mini'; // 评估模型
-const PASS_THRESHOLD = 60; // 及格分数线
-
-// 评分标准权重
-const CRITERIA = {
-  INTENT_UNDERSTANDING: 0.4, // 意图理解 40%
-  INFORMATION_COMPLETENESS: 0.3, // 信息完整性 30%
-  LANGUAGE_EXPRESSION: 0.2, // 语言表达 20%
-  RELEVANCE: 0.1, // 相关性 10%
-};
-```
+> `AGENT_EVALUATE_MODEL` / `agent_reply_config.evaluateModelId` 曾供相似度评分器使用，评分器删除后无消费方，待随回归验证整线下线一并清理。
 
 ### 飞书表格格式
 
@@ -781,13 +691,9 @@ export const validationSetFieldNames = {
 
 ## 常见问题
 
-### Q1: 如何提高评估准确性?
+### Q1: 为什么没有自动评分了?
 
-**A**:
-
-1. 优化评估 prompt,明确评分标准
-2. 使用更强大的模型 (如 GPT-4)
-3. 增加人工复审机制 (review_status 字段)
+**A**: 见「LLM 评估机制」一节：拿真人历史回复当标准答案在动态岗位数据下不成立，评分器已删除；评审走人工 / Claude 逐轮评审接口。
 
 ### Q2: 执行失败如何处理?
 
@@ -797,10 +703,9 @@ export const validationSetFieldNames = {
 - 对话源状态标记为 `'failed'`
 - 前端显示错误提示,支持重试
 
-### Q3: 如何调整评分标准?
+### Q3: 评审口径在哪?
 
-**A**:
-修改 [llm-evaluation.service.ts](../../src/evaluation/llm-evaluation.service.ts) 的评估 prompt 和权重配置。
+**A**: [test-execution-fixtures.md §7](../../src/skills/analyze-chat-badcases/references/test-execution-fixtures.md)（passed / failed / skipped 三态）与 [Agent 质量评估体系](../architecture/agent-quality-evaluation.md)。
 
 ### Q4: 批次统计如何计算?
 
@@ -808,7 +713,7 @@ export const validationSetFieldNames = {
 
 - `totalCases`: `conversation_sources` 表记录数
 - `executedCount`: `status='completed'` 的记录数
-- `passRate`: 所有已完成对话的 `avg_similarity_score` 平均值
+- `passRate`: 所有已完成对话的 `avg_similarity_score` 平均值（新批次无分，恒为空）
 
 ## 相关文档
 

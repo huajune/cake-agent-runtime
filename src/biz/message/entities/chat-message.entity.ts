@@ -16,8 +16,6 @@ export interface ChatMessageRecord {
   timestamp: string;
   candidate_name?: string;
   manager_name?: string;
-  org_id?: string;
-  bot_id?: string;
   message_type?: StorageMessageType;
   source?: StorageMessageSource;
   is_room?: boolean;

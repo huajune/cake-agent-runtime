@@ -140,6 +140,26 @@ export class BotGroupResolverService {
     return Array.from(new Set(source));
   }
 
+  /**
+   * 小组名 → 该组全部 bot 的归一化 key（wxid 与 wecomUserId 两种落库形态都给）。
+   * 与 resolve() 同优先级：动态 Stride 表优先，兜底表补齐动态表没有的 bot。
+   * 供 Dashboard 小组筛选把「小组」翻译成 user_activity.im_bot_id / bot_user_id 过滤值。
+   */
+  listBotKeysByGroups(groups: readonly string[]): string[] {
+    const wanted = new Set(groups.map((g) => g.trim()).filter(Boolean));
+    if (wanted.size === 0) return [];
+    const keys = new Set<string>();
+    for (const [key, info] of this.dynamicMap) {
+      if (wanted.has(info.groupName)) keys.add(key);
+    }
+    for (const table of [BOT_GROUP_TABLE, BOT_GROUP_ALIASES]) {
+      for (const [key, info] of Object.entries(table)) {
+        if (!this.dynamicMap.has(key) && wanted.has(info.groupName)) keys.add(key);
+      }
+    }
+    return Array.from(keys);
+  }
+
   /** botImId → 花卷 agentId（`{manager_name}-cake-{index}`）；未知 bot 返回 null。 */
   resolveAgentId(botImId: string | null | undefined): string | null {
     if (!botImId) return null;

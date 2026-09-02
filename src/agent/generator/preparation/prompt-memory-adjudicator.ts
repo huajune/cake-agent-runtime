@@ -299,7 +299,6 @@ function adjudicateTurnHints(
     if (!hasMeaningfulValue(factValue) || !hasMeaningfulValue(hint.value)) continue;
     const target = isSameFactValue(factValue, hint.value) ? duplicateFields : pendingFields;
     target.add(hint.field);
-    if (hint.field === 'interview_info.gender') target.add('interview_info.gender_source');
   }
 
   const claims = turnHints.claims.filter((claim) => !duplicateFields.has(claim.field));

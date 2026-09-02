@@ -8,7 +8,6 @@ export interface TodayUserData {
   chatId: string;
   odId: string;
   odName: string;
-  groupName?: string;
   botUserId?: string;
   imBotId?: string;
   messageCount: number;
@@ -32,7 +31,6 @@ export interface PausedUserData {
   /** 暂停来源：manual / candidate_blacklist / interview_booking / intervention / human_intervention */
   pauseSource?: string;
   odName?: string;
-  groupName?: string;
   botUserId?: string;
   imBotId?: string;
 }

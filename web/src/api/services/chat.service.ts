@@ -53,6 +53,19 @@ export async function getChatDailyStats(startDate: string, endDate: string) {
   return unwrapResponse<ChatDailyStatsItem[]>(data);
 }
 
+/** 业务口径每日趋势：永久表来源（daily_ops_report + ops_events），不受 chat_messages 保留期影响。 */
+export async function getChatBusinessDailyTrend(startDate?: string, endDate?: string) {
+  const params = new URLSearchParams();
+  if (startDate) params.set('startDate', startDate);
+  if (endDate) params.set('endDate', endDate);
+  const { data } = await api.get(`/analytics/chat-business-daily-trend?${params.toString()}`);
+  return unwrapResponse<{
+    trend: ChatDailyStatsItem[];
+    floor: { opsEventsFrom: string | null; dailyOpsReportFrom: string | null; userActivityFrom: string | null };
+    caliber: 'business';
+  }>(data);
+}
+
 export async function getChatSummaryStats(startDate: string, endDate: string) {
   const params = new URLSearchParams({ startDate, endDate });
   const { data } = await api.get(`/analytics/chat-summary-stats?${params.toString()}`);

@@ -157,4 +157,5 @@ tail -f logs/combined-$(date +%Y-%m-%d).log   # 日志
 
 - **[.claude/agents/README.md](./.claude/agents/README.md)** — 规范文档中心：code-standards / architecture-principles / frontend-standards / commit-guidelines / documentation-standards / code-quality-guardian
 - **docs/** — 架构（architecture/）、生产实践原则（principles/：分工哲学 P1~P11、示教纪律等经验宪法）、产品方案（product/）、数据库（db/）、技术调研（technical/）
+- **[docs/quality-metrics-ledger.md](./docs/quality-metrics-ledger.md)** — 定时观测任务量化结论的唯一落点；阶段/指标名白名单来自 docs/architecture/agent-quality-evaluation.md §1，`pnpm run quality-ledger:validate` 校验（挂 ci:check）
 - **src/memory/README.md**、**src/agent/guardrail/tool/README.md** — 子系统内文档

@@ -28,7 +28,6 @@ export const FIELD_MERGE_POLICIES = {
   name: 'scalar-first',
   phone: 'scalar-first',
   gender: 'custom',
-  gender_source: 'custom',
   age: 'scalar-first',
   is_student: 'scalar-first',
   education: 'scalar-first',
@@ -63,7 +62,6 @@ export function fieldsWithMergePolicy(
     'name',
     'phone',
     'gender',
-    'gender_source',
     'age',
     'is_student',
     'education',
@@ -277,7 +275,6 @@ function createEmptyTurnHintProjection(reasoning: string): TurnHintProjection {
       name: null,
       phone: null,
       gender: null,
-      gender_source: null,
       age: null,
       is_student: null,
       education: null,
@@ -328,18 +325,6 @@ export function projectTurnHints(
           }
         : fact.value;
     (projected[group] as unknown as Record<string, unknown>)[field] = value;
-  }
-
-  // 批 A：新 claim 不再发布 gender_source sibling，消费视图从 gender 自身的来源章投影。
-  // 旧 claim 若仍携带 sibling，则保留其原值，直到短期存量 TTL 清零后的批 B 再删字段。
-  if (projected.interview_info.gender && !projected.interview_info.gender_source) {
-    const gender = resolved.find((fact) => fact.field === 'interview_info.gender');
-    projected.interview_info.gender_source =
-      gender?.producer === 'candidate_quote'
-        ? 'candidate'
-        : gender?.producer === 'system'
-          ? 'system'
-          : null;
   }
   return projected;
 }

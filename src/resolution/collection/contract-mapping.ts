@@ -11,7 +11,23 @@
  */
 
 import type { ContractField, JobCollectionContract } from '@sponge/collection-contract.types';
+import type { CandidateFactField } from '@resolution/candidate/types';
 import type { ContractFieldDef, IdentitySlotKey } from './form.types';
+
+/**
+ * 数值族标题判据（词面判定，不认 ID）：身高/体重不是身份槽，但值有单位与量纲，
+ * 落槽前要走同一套规范形（去 cm/kg、斤→kg），否则"体重 122"会原样进 `体重(kg)`。
+ * 只认标题开头，"体重要求"类说明列不会误命中。
+ */
+const NUMERIC_TITLE_PATTERNS: ReadonlyArray<{ field: CandidateFactField; test: RegExp }> = [
+  { field: 'height', test: /^身高/u },
+  { field: 'weight', test: /^体重/u },
+];
+
+export function numericFactFieldForTitle(title: string): CandidateFactField | null {
+  const trimmed = title.trim();
+  return NUMERIC_TITLE_PATTERNS.find((pattern) => pattern.test.test(trimmed))?.field ?? null;
+}
 
 /** 身份四槽的**标题语义判据**——核验 ID 锚点是否名副其实，也是无锚点时的唯一识别路径。 */
 const IDENTITY_TITLE_PATTERNS: ReadonlyArray<{ key: IdentitySlotKey; test: RegExp }> = [

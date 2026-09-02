@@ -100,7 +100,7 @@ Cake Agent Runtime 测试套件是一个 **AI Agent 质量评估平台**，用�
 │  │ (Supabase)   │  │  Processor   │  │ (Bitable)  │  │
 │  └──────────────┘  └──────────────┘  └────────────┘  │
 │  ┌──────────────────────────────────────────────┐    │
-│  │ AgentRunner / LlmEvaluation / Observer       │    │
+│  │ AgentRunner / ConversationParser / Observer  │    │
 │  │ （跨模块依赖：@agent @evaluation @observability）│  │
 │  └──────────────────────────────────────────────┘    │
 └───────────────────────────────────────────────────────┘
@@ -193,7 +193,6 @@ User Action (Dashboard / API)
       ├── AgentRunnerService (Provider Router → generateText / stream)
       ├── AiStreamObservabilityService.startTrace() → AiStreamTrace
       │     （记录首字节、工具调用、Reasoning、Token、阶段耗时）
-      ├── LlmEvaluationService（仅回归验证）
       └── Repositories → Supabase
   → Bull Queue (test-suite) → TestSuiteProcessor
       ├── execute-test job
@@ -213,11 +212,11 @@ User Action (Dashboard / API)
 | **飞书数据表** | testSuite 表 | validationSet 表（独立） |
 | **测试目标** | 验证特定场景处理能力 | 验证整体对话质量 |
 | **测试粒度** | 单轮问答 | 多轮对话（按 turn 拆分） |
-| **评估方式** | 人工评审（通过 / 失败） | LLM 自动评分（0–100） |
-| **评估标准** | 主观判断 + FailureReason 分类 | 客观评分 + 评估理由（EvaluationDimensions） |
+| **评估方式** | 人工 / Claude 评审（通过 / 失败 / 跳过） | 人工 / Claude 逐轮评审（相似度评分器 2026-09-02 已删） |
+| **评估标准** | checkpoint + FailureReason 分类 | 逐轮评审备注 |
 | **持久化** | `test_executions` | `test_conversation_snapshots` + `test_executions`（每轮一条） |
 | **典型用途** | 发版前场景回归 | 质量基线、真实对话回放 |
-| **执行效率** | 快（无 LLM 评估开销） | 慢（每轮 LLM 评分） |
+| **执行效率** | 快 | 快（不再逐轮打分） |
 | **回写飞书** | ✅ | ✅ |
 
 ### 使用场景建议
@@ -251,8 +250,8 @@ User Action (Dashboard / API)
 飞书 validationSet → TestImportService / ConversationTestService
   → ConversationParserService 解析 → splitIntoTurns 拆轮
   → 保存 test_conversation_snapshots + pending 轮次
-  → 逐轮 AgentRunner 执行 → LlmEvaluationService 评分
-  → 汇总 avg / min 相似度 → 状态流转（pending → running → completed）
+  → 逐轮 AgentRunner 执行（不打分，分数列留空）
+  → 状态流转（pending → running → completed）→ 人工 / Claude 逐轮评审
   → 回写飞书 + 前端展示
 ```
 
@@ -272,7 +271,7 @@ User Action (Dashboard / API)
 | `TestBatchService` | `createBatch` / `getBatchStats` / `getCategoryStats` / `getFailureStats` | `TestWriteBackService`、`TestExecutionService` |
 | `TestImportService` | `importFromFeishu` / `quickCreateBatch` | `FeishuBitableApiService`、`ConversationParserService` |
 | `TestWriteBackService` | `writeBackToFeishu` | `FeishuBitableApiService` |
-| `ConversationTestService` | `parseConversation` / `splitIntoTurns` / `executeConversation` | `LlmEvaluationService`、`ConversationParserService` |
+| `ConversationTestService` | `parseConversation` / `splitIntoTurns` / `executeConversation` | `ConversationParserService` |
 | `CuratedDatasetImportService` | `importScenarioDataset` / `importConversationDataset` | `FeishuBitableApiService`、`LineageSyncService` |
 | `CuratedDatasetPayloadBuilderService` | 字段别名解析、payload 构造 | - |
 | `LineageSyncService` | `loadLineageTableContext` / `syncScenarioLineageRelations` | `FeishuBitableApiService` |
@@ -344,7 +343,7 @@ TestSuiteController
    ├── TestExecutionService ── AgentRunnerService (@agent)
    ├── TestBatchService ── TestWriteBackService
    ├── TestImportService ── ConversationParserService (@evaluation)
-   ├── ConversationTestService ── LlmEvaluationService (@evaluation)
+   ├── ConversationTestService ── ConversationParserService (@evaluation)
    ├── CuratedDatasetImportService ── CuratedDatasetPayloadBuilderService
    │                              └── LineageSyncService
    ├── AiStreamObservabilityService ── Observer (@observability)
@@ -480,14 +479,9 @@ PENDING ──► RUNNING ──► COMPLETED
                   └─► FAILED
 ```
 
-#### 相似度评级 (`SimilarityRating`)
+#### 相似度评级
 
-| 评级 | 分数 | 含义 |
-|------|------|------|
-| `EXCELLENT` | 80–100 | 与真人高度一致 |
-| `GOOD` | 60–79 | 主要信息覆盖，表述有差异 |
-| `FAIR` | 40–59 | 部分信息一致，需要关注 |
-| `POOR` | 0–39 | 差异较大，需人工复核（及格线 60） |
+已随相似度评分器删除（2026-09-02）；`similarity_score` 仅展示历史批次。
 
 ## 可观测性与血缘
 
@@ -531,7 +525,6 @@ PENDING ──► RUNNING ──► COMPLETED
 |------|------|---------|
 | **飞书多维表格** | 测试用例 / 验证集 / 结果双向同步 | Bitable REST |
 | **多 Provider（Anthropic / OpenAI / DeepSeek）** | Agent 对话能力 | 通过 `@providers` 三层架构 |
-| **LLM 评估模型（Evaluate 角色路由）** | 回归验证打分 | `AGENT_EVALUATE_MODEL` 环境变量 + DB 运行时覆盖（`agent_reply_config.evaluateModelId`），经 `@providers` 路由 |
 
 ### 前端技术栈
 
@@ -596,11 +589,9 @@ CREATE INDEX idx_test_executions_conv_turn
 CREATE INDEX idx_conversation_snapshots_batch_id ON test_conversation_snapshots(batch_id);
 ```
 
-### LLM 评估优化
+### LLM 评估
 
-- **模型**：按 `ModelRole.Evaluate` 角色路由（env `AGENT_EVALUATE_MODEL`，可经 `agent_reply_config` 运行时覆盖），不在评估服务内硬编码
-- **输出约束**：走 `LlmExecutorService.generateStructured`，用 Zod schema 约束四维评分结构（factualAccuracy / responseEfficiency / processCompliance / toneNaturalness，各含 score + reason），无自由文本解析
-- **并发**：对单条对话的多轮评估可以 `Promise.all` 并行；跨对话仍走 Bull Queue
+相似度评分器已于 2026-09-02 删除，原因与替代口径见 [Agent 质量评估体系](agent-quality-evaluation.md) §4。
 
 ## 架构演进路径
 
@@ -609,7 +600,7 @@ CREATE INDEX idx_conversation_snapshots_batch_id ON test_conversation_snapshots(
 ```
 评估平台 MVP
 ├── 2 种测试类型（场景 / 回归）
-├── 1 种评估方法（LLM 相似度）
+├── 评审方法：人工 / Claude 评审（LLM 相似度评分已删）
 ├── 半自动化（飞书导入 + 手动执行 + 回写）
 ├── 血缘追踪 + AI 流追踪
 └── 基础统计

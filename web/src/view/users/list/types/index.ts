@@ -8,7 +8,6 @@
 export interface UserData {
   chatId: string;
   odName?: string;
-  groupName?: string;
   botUserId?: string;
   imBotId?: string;
   messageCount: number;

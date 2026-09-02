@@ -517,28 +517,28 @@ describe('ChatMessageRepository', () => {
 
       mockSupabaseClient.rpc.mockResolvedValue({
         data: [
-        {
-          chat_id: 'chat_001',
-          candidate_name: 'Alice',
-          manager_name: 'Bob',
-          message_count: '2',
-          last_message: 'I am fine',
-          last_timestamp: '2026-09-01T10:00:00.000Z',
-          avatar: null,
-          contact_type: '1',
-          total_count: '2',
-        },
-        {
-          chat_id: 'chat_002',
-          candidate_name: 'Carol',
-          manager_name: 'Dave',
-          message_count: '1',
-          last_message: 'Another session',
-          last_timestamp: '2026-09-01T09:00:00.000Z',
-          avatar: null,
-          contact_type: '1',
-          total_count: '2',
-        },
+          {
+            chat_id: 'chat_001',
+            candidate_name: 'Alice',
+            manager_name: 'Bob',
+            message_count: '2',
+            last_message: 'I am fine',
+            last_timestamp: '2026-09-01T10:00:00.000Z',
+            avatar: null,
+            contact_type: '1',
+            total_count: '2',
+          },
+          {
+            chat_id: 'chat_002',
+            candidate_name: 'Carol',
+            manager_name: 'Dave',
+            message_count: '1',
+            last_message: 'Another session',
+            last_timestamp: '2026-09-01T09:00:00.000Z',
+            avatar: null,
+            contact_type: '1',
+            total_count: '2',
+          },
         ],
         error: null,
       });
@@ -571,17 +571,17 @@ describe('ChatMessageRepository', () => {
 
       mockSupabaseClient.rpc.mockResolvedValue({
         data: [
-        {
-          chat_id: 'chat_001',
-          candidate_name: 'Alice',
-          manager_name: 'Bob',
-          message_count: '5',
-          last_message: 'Goodbye',
-          last_timestamp: '2026-09-01T10:00:00.000Z',
-          avatar: null,
-          contact_type: '1',
-          total_count: '37',
-        },
+          {
+            chat_id: 'chat_001',
+            candidate_name: 'Alice',
+            manager_name: 'Bob',
+            message_count: '5',
+            last_message: 'Goodbye',
+            last_timestamp: '2026-09-01T10:00:00.000Z',
+            avatar: null,
+            contact_type: '1',
+            total_count: '37',
+          },
         ],
         error: null,
       });
@@ -602,39 +602,39 @@ describe('ChatMessageRepository', () => {
 
       mockSupabaseClient.rpc.mockResolvedValue({
         data: [
-        {
-          chat_id: 'chat_001',
-          candidate_name: 'Alice',
-          manager_name: 'Bob',
-          message_count: '5',
-          last_message: 'a',
-          last_timestamp: '2026-09-01T10:00:00.000Z',
-          avatar: null,
-          contact_type: '1',
-          total_count: '9',
-        },
-        {
-          chat_id: 'chat_002',
-          candidate_name: 'Carol',
-          manager_name: 'Dave',
-          message_count: '3',
-          last_message: 'b',
-          last_timestamp: '2026-09-01T09:00:00.000Z',
-          avatar: null,
-          contact_type: '1',
-          total_count: '9',
-        },
-        {
-          chat_id: 'chat_003',
-          candidate_name: 'Eve',
-          manager_name: 'Frank',
-          message_count: '1',
-          last_message: 'c',
-          last_timestamp: '2026-09-01T08:00:00.000Z',
-          avatar: null,
-          contact_type: '1',
-          total_count: '9',
-        },
+          {
+            chat_id: 'chat_001',
+            candidate_name: 'Alice',
+            manager_name: 'Bob',
+            message_count: '5',
+            last_message: 'a',
+            last_timestamp: '2026-09-01T10:00:00.000Z',
+            avatar: null,
+            contact_type: '1',
+            total_count: '9',
+          },
+          {
+            chat_id: 'chat_002',
+            candidate_name: 'Carol',
+            manager_name: 'Dave',
+            message_count: '3',
+            last_message: 'b',
+            last_timestamp: '2026-09-01T09:00:00.000Z',
+            avatar: null,
+            contact_type: '1',
+            total_count: '9',
+          },
+          {
+            chat_id: 'chat_003',
+            candidate_name: 'Eve',
+            manager_name: 'Frank',
+            message_count: '1',
+            last_message: 'c',
+            last_timestamp: '2026-09-01T08:00:00.000Z',
+            avatar: null,
+            contact_type: '1',
+            total_count: '9',
+          },
         ],
         error: null,
       });
@@ -694,7 +694,7 @@ describe('ChatMessageRepository', () => {
 
       expect(mockSupabaseClient.rpc).toHaveBeenCalledWith(
         'get_chat_session_list',
-        expect.objectContaining({ p_limit: 501 }),
+        expect.objectContaining({ p_limit: 601 }),
       );
     });
 
@@ -861,6 +861,68 @@ describe('ChatMessageRepository', () => {
       expect(chat001?.messages).toHaveLength(2);
       const chat002 = result.find((g) => g.chatId === 'chat_002');
       expect(chat002?.messages).toHaveLength(1);
+    });
+  });
+
+  describe('getChatBusinessDailyTrend / getBusinessDataFloor', () => {
+    it('maps the business-trend RPC rows and coerces bigint strings to numbers', async () => {
+      mockSupabaseClient.rpc.mockResolvedValue({
+        data: [
+          { date: '2026-08-31', message_count: '3788', session_count: 367 },
+          { date: '2026-09-01', message_count: null, session_count: 'abc' },
+        ],
+        error: null,
+      });
+
+      const result = await repository.getChatBusinessDailyTrend('2026-08-31', '2026-09-01');
+
+      expect(mockSupabaseClient.rpc).toHaveBeenCalledWith('get_chat_business_daily_trend', {
+        p_start_date: '2026-08-31',
+        p_end_date: '2026-09-01',
+      });
+      expect(result).toEqual([
+        { date: '2026-08-31', messageCount: 3788, sessionCount: 367 },
+        { date: '2026-09-01', messageCount: 0, sessionCount: 0 },
+      ]);
+    });
+
+    it('maps the data-floor RPC row and nulls when empty', async () => {
+      mockSupabaseClient.rpc.mockResolvedValueOnce({
+        data: [
+          {
+            ops_events_from: '2026-02-12',
+            daily_ops_report_from: '2026-02-12',
+            user_activity_from: null,
+          },
+        ],
+        error: null,
+      });
+      await expect(repository.getBusinessDataFloor()).resolves.toEqual({
+        opsEventsFrom: '2026-02-12',
+        dailyOpsReportFrom: '2026-02-12',
+        userActivityFrom: null,
+      });
+
+      mockSupabaseClient.rpc.mockResolvedValueOnce({ data: [], error: null });
+      await expect(repository.getBusinessDataFloor()).resolves.toEqual({
+        opsEventsFrom: null,
+        dailyOpsReportFrom: null,
+        userActivityFrom: null,
+      });
+    });
+
+    it('returns empty results without calling the RPC when supabase is unavailable', async () => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(false);
+
+      await expect(
+        repository.getChatBusinessDailyTrend('2026-08-01', '2026-08-02'),
+      ).resolves.toEqual([]);
+      await expect(repository.getBusinessDataFloor()).resolves.toEqual({
+        opsEventsFrom: null,
+        dailyOpsReportFrom: null,
+        userActivityFrom: null,
+      });
+      expect(mockSupabaseClient.rpc).not.toHaveBeenCalled();
     });
   });
 });

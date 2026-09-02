@@ -1,6 +1,6 @@
 import { MessageProcessingRecord, MonitoringErrorLog } from '@shared-types/tracking.types';
 
-export type AnalyticsTimeRange = 'today' | 'week' | 'month' | 'twoMonths' | 'threeMonths';
+export type AnalyticsTimeRange = 'today' | 'week' | 'month' | 'twoMonths' | 'threeMonths' | 'all';
 
 export interface ResponseMinuteTrendPoint {
   minute: string;

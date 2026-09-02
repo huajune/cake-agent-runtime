@@ -3,6 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { UserHostingRepository } from '@biz/user/repositories/user-hosting.repository';
 import { RedisService } from '@infra/redis/redis.service';
+import { HandoffEventsRepository } from '@biz/handoff-events/handoff-events.repository';
+import { BotGroupResolverService } from '@biz/ops-events/services/bot-group-resolver.service';
 
 describe('UserHostingService', () => {
   let service: UserHostingService;
@@ -13,11 +15,21 @@ describe('UserHostingService', () => {
     updateResume: jest.fn(),
     findUserProfiles: jest.fn(),
     expirePausedUsers: jest.fn(),
+    findActiveChatIdsByBots: jest.fn(),
   };
 
   const mockRedisService = {
     get: jest.fn(),
     set: jest.fn(),
+  };
+
+  const mockHandoffEventsRepository = {
+    markResolvedByChat: jest.fn(),
+  };
+
+  const mockBotGroupResolver = {
+    warmUp: jest.fn(),
+    listBotKeysByGroups: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -27,6 +39,8 @@ describe('UserHostingService', () => {
         UserHostingService,
         { provide: UserHostingRepository, useValue: mockUserHostingRepository },
         { provide: RedisService, useValue: mockRedisService },
+        { provide: HandoffEventsRepository, useValue: mockHandoffEventsRepository },
+        { provide: BotGroupResolverService, useValue: mockBotGroupResolver },
       ],
     }).compile();
 
@@ -37,6 +51,9 @@ describe('UserHostingService', () => {
     mockRedisService.set.mockResolvedValue(undefined);
     mockUserHostingRepository.findPausedUserIds.mockResolvedValue([]);
     mockUserHostingRepository.expirePausedUsers.mockResolvedValue([]);
+    mockHandoffEventsRepository.markResolvedByChat.mockResolvedValue(undefined);
+    mockBotGroupResolver.warmUp.mockResolvedValue(undefined);
+    mockBotGroupResolver.listBotKeysByGroups.mockReturnValue([]);
 
     // Reset cache
     (service as any).pausedUsersCache.clear();
@@ -217,6 +234,28 @@ describe('UserHostingService', () => {
       });
     });
 
+    it('temporary pause expires at the next Asia/Shanghai midnight, not 3 days later', async () => {
+      mockUserHostingRepository.upsertPause.mockResolvedValue(undefined);
+      const before = Date.now();
+
+      await service.pauseUser('user1');
+
+      const entry = (service as any).pausedUsersCache.get('user1');
+      expect(entry.expiresAt).toBeGreaterThan(before);
+      expect(entry.expiresAt - before).toBeLessThanOrEqual(24 * 60 * 60 * 1000);
+      const shanghaiClock = new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Asia/Shanghai',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+      }).format(new Date(entry.expiresAt));
+      expect(shanghaiClock).toBe('00:00:00');
+
+      const persisted = mockUserHostingRepository.upsertPause.mock.calls[0][1];
+      expect(new Date(persisted.pauseExpiresAt).getTime()).toBe(entry.expiresAt);
+    });
+
     it('should persist permanent pause with null expiry, reason and audit fields', async () => {
       mockUserHostingRepository.upsertPause.mockResolvedValue(undefined);
 
@@ -289,6 +328,25 @@ describe('UserHostingService', () => {
 
       expect(mockUserHostingRepository.updateResume).toHaveBeenCalledWith('nonexistent');
     });
+
+    it('closes the handoff loop by marking handoff_events outcome=resumed', async () => {
+      mockUserHostingRepository.updateResume.mockResolvedValue(undefined);
+
+      await service.resumeUser('user1');
+
+      expect(mockHandoffEventsRepository.markResolvedByChat).toHaveBeenCalledWith(
+        'user1',
+        'resumed',
+      );
+    });
+
+    it('does not fail resume when the handoff outcome backfill throws', async () => {
+      mockUserHostingRepository.updateResume.mockResolvedValue(undefined);
+      mockHandoffEventsRepository.markResolvedByChat.mockRejectedValue(new Error('boom'));
+
+      await expect(service.resumeUser('user1')).resolves.not.toThrow();
+      expect(mockUserHostingRepository.updateResume).toHaveBeenCalledWith('user1');
+    });
   });
 
   // ==================== getPausedUsersWithProfiles ====================
@@ -318,8 +376,8 @@ describe('UserHostingService', () => {
         },
       ]);
       mockUserHostingRepository.findUserProfiles.mockResolvedValue([
-        { chatId: 'user1', odName: 'Alice', groupName: 'GroupA', botUserId: 'bot-a' },
-        { chatId: 'user2', odName: 'Bob', groupName: 'GroupB' },
+        { chatId: 'user1', odName: 'Alice', botUserId: 'bot-a' },
+        { chatId: 'user2', odName: 'Bob' },
       ]);
 
       const result = await service.getPausedUsersWithProfiles();
@@ -328,8 +386,8 @@ describe('UserHostingService', () => {
       expect(result.map((r) => r.userId).sort()).toEqual(['user1', 'user2']);
       const user1 = result.find((r) => r.userId === 'user1');
       const user2 = result.find((r) => r.userId === 'user2');
-      expect(user1).toMatchObject({ odName: 'Alice', groupName: 'GroupA', botUserId: 'bot-a' });
-      expect(user2).toMatchObject({ odName: 'Bob', groupName: 'GroupB' });
+      expect(user1).toMatchObject({ odName: 'Alice', botUserId: 'bot-a' });
+      expect(user2).toMatchObject({ odName: 'Bob' });
     });
 
     it('should return paused users without profiles when profile query fails', async () => {
@@ -360,7 +418,7 @@ describe('UserHostingService', () => {
       (service as any).cacheExpiry = now + 60_000;
 
       mockUserHostingRepository.findUserProfiles.mockResolvedValue([
-        { chatId: 'user1', odName: 'Alice', groupName: 'GroupA' },
+        { chatId: 'user1', odName: 'Alice' },
       ]);
 
       const result = await service.getPausedUsersWithProfiles();
@@ -409,14 +467,13 @@ describe('UserHostingService', () => {
       ]);
       // Only user1 has a profile
       mockUserHostingRepository.findUserProfiles.mockResolvedValue([
-        { chatId: 'user1', odName: 'Alice', groupName: 'GroupA' },
+        { chatId: 'user1', odName: 'Alice' },
       ]);
 
       const result = await service.getPausedUsersWithProfiles();
 
       const user2 = result.find((r) => r.userId === 'user2');
       expect(user2?.odName).toBeUndefined();
-      expect(user2?.groupName).toBeUndefined();
     });
   });
 
@@ -433,6 +490,44 @@ describe('UserHostingService', () => {
 
       expect(mockUserHostingRepository.findPausedUserIds).toHaveBeenCalledTimes(1);
       expect((service as any).pausedUsersCache.size).toBe(0);
+    });
+  });
+
+  // ==================== getActiveChatIdsByGroups ====================
+
+  describe('getActiveChatIdsByGroups', () => {
+    const start = new Date('2026-08-01T00:00:00+08:00');
+    const end = new Date('2026-08-31T23:59:59+08:00');
+
+    it('translates group names to bot keys via the resolver before querying user_activity', async () => {
+      mockBotGroupResolver.listBotKeysByGroups.mockReturnValue(['1688855974513959', 'gaoyaqi']);
+      mockUserHostingRepository.findActiveChatIdsByBots.mockResolvedValue(new Set(['chat-1']));
+
+      const result = await service.getActiveChatIdsByGroups(start, end, ['琪琪组']);
+
+      expect(mockBotGroupResolver.warmUp).toHaveBeenCalledTimes(1);
+      expect(mockBotGroupResolver.listBotKeysByGroups).toHaveBeenCalledWith(['琪琪组']);
+      expect(mockUserHostingRepository.findActiveChatIdsByBots).toHaveBeenCalledWith(start, end, [
+        '1688855974513959',
+        'gaoyaqi',
+      ]);
+      expect(result).toEqual(new Set(['chat-1']));
+    });
+
+    it('returns an empty set without hitting the database when no bot belongs to the groups', async () => {
+      mockBotGroupResolver.listBotKeysByGroups.mockReturnValue([]);
+
+      const result = await service.getActiveChatIdsByGroups(start, end, ['不存在的组']);
+
+      expect(result.size).toBe(0);
+      expect(mockUserHostingRepository.findActiveChatIdsByBots).not.toHaveBeenCalled();
+    });
+
+    it('returns an empty set for an empty group filter', async () => {
+      const result = await service.getActiveChatIdsByGroups(start, end, []);
+
+      expect(result.size).toBe(0);
+      expect(mockBotGroupResolver.warmUp).not.toHaveBeenCalled();
     });
   });
 });

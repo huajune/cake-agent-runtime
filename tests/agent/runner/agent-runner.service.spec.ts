@@ -9,6 +9,7 @@ describe('AgentRunnerService.runTurn', () => {
   let guardrailReviews: { recordReview: jest.Mock };
   let replyRepairAgent: { repair: jest.Mock };
   let replyRepairContextProvider: { build: jest.Mock };
+  let tracer: { emit: jest.Mock };
   let service: AgentRunnerService;
 
   const passDecision = {
@@ -41,6 +42,7 @@ describe('AgentRunnerService.runTurn', () => {
     guardrailReviews = { recordReview: jest.fn().mockResolvedValue('inserted') };
     replyRepairAgent = { repair: jest.fn().mockResolvedValue('重写后的自然回复') };
     replyRepairContextProvider = { build: jest.fn().mockResolvedValue(undefined) };
+    tracer = { emit: jest.fn() };
     service = new AgentRunnerService(
       generator as never,
       outputGuard as never,
@@ -48,6 +50,8 @@ describe('AgentRunnerService.runTurn', () => {
       guardrailReviews as never,
       replyRepairAgent as never,
       replyRepairContextProvider as never,
+      undefined,
+      tracer as never,
     );
   });
 
@@ -250,6 +254,18 @@ describe('AgentRunnerService.runTurn', () => {
         riskType: 'abuse',
       }),
     ]);
+    // 观测 P1-2：入站拦截落事件，时间线能看出"这轮为什么没跑 Agent"；正文不进事件
+    expect(tracer.emit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'inbound_guardrail_block',
+        reasonCode: 'abuse',
+        riskType: 'abuse',
+        riskLabel: '辱骂',
+      }),
+    );
+    expect(tracer.emit).not.toHaveBeenCalledWith(
+      expect.objectContaining({ inspectedText: expect.anything() }),
+    );
     expect(inputGuard.evaluate).toHaveBeenCalledWith(
       expect.objectContaining({
         corpId: 'c1',
@@ -534,6 +550,48 @@ describe('AgentRunnerService.runTurn', () => {
         reasonCode: 'internal_reasoning_stripped',
         repaired: true,
       }),
+    );
+  });
+
+  it('trailing self-check section goes through the existing repair path (batch …_1788340087325)', async () => {
+    generator.invoke.mockResolvedValueOnce(
+      makeResult({
+        text: '餐饮类工作都需要食品健康证，一般自费办理。\n\n你倾向哪家店？\n\n---\n\n自检说明：\n\n1. 先回答候选人当前问题：候选人问健康证怎么办，我如实说明。',
+      }),
+    );
+    replyRepairAgent.repair.mockResolvedValueOnce(
+      '餐饮类工作都需要食品健康证，一般自费办理。\n\n你倾向哪家店？',
+    );
+    outputGuard.check
+      .mockResolvedValueOnce({
+        decision: 'block',
+        riskLevel: 'high',
+        violations: [
+          {
+            type: 'internal_output_leak',
+            evidence: '回复疑似泄漏自检段',
+            suggestion: '删除泄漏内容',
+            recoverability: 'non_recoverable',
+            repairMode: 'rewrite',
+          },
+        ],
+        ruleIds: ['internal_output_leak'],
+        blockedRuleIds: ['internal_output_leak'],
+        repairMode: 'rewrite',
+      })
+      .mockResolvedValueOnce(passDecision);
+
+    const outcome = await service.runTurn({
+      sessionRef,
+      trigger: { kind: 'inbound', userMessage: '还是要我自己去办' },
+      context: { messageId: 'trace-self-check-repair-1' },
+    });
+
+    // 自检段不是单行独白，确定性剥离不适用，须进一次受控 repair。
+    expect(replyRepairAgent.repair).toHaveBeenCalledTimes(1);
+    expect(outcome.kind).toBe('reply');
+    expect(outcome.reply?.text).toBe(
+      '餐饮类工作都需要食品健康证，一般自费办理。\n\n你倾向哪家店？',
     );
   });
 
@@ -888,6 +946,15 @@ describe('AgentRunnerService.runTurn', () => {
       }),
     ]);
     expect(generator.invoke).toHaveBeenCalledTimes(1);
+    // 观测 P1-2：repair 终局事件——此前 repair_exhausted 只有 logger.warn
+    expect(tracer.emit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'guardrail_repair',
+        outcome: 'repair_exhausted',
+        finalDecision: 'block',
+        firstRuleIds: ['discriminatory_screening_leak'],
+      }),
+    );
   });
 
   it('output guard revise triggers one rewrite with reviseFeedback, then adopts revised reply', async () => {

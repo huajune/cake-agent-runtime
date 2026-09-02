@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { InputRiskType } from '@shared-types/guardrail.contract';
 import type { TurnSideEffectIntent } from '@agent/runner/turn-side-effect.types';
+import { stripQuotedBlocks } from '@resolution/signal/markers';
 
 interface InputRiskDetectionResult {
   hit: boolean;
@@ -99,6 +100,16 @@ const DISABILITY_DISCLOSURE_PATTERNS: readonly RegExp[] = [
     `${DISABILITY_TERM}(?:人|人士)?[^，。！？!?\\n]{0,6}(?:招|收|要)(?:的|得)?(?:吗|嘛|么|不|\\?|？)`,
   ),
   new RegExp(`(?:招|收|要)(?:不(?:招|收|要))?[^，。！？!?\\n]{0,4}${DISABILITY_TERM}`),
+  // 2026-09-02 标定实证 4 例漏网，全是自述句式：系动词省略（"我聋哑人""本人听力残疾"）、
+  // 系动词与残障词之间夹修饰（"我是左手先天性残疾"）。间隔里不得出现亲属/他人字眼，
+  // 仍排除"我爸是残疾人 / 我妈妈有残疾证 / 我们店有残疾人通道 / 我对象是残疾人"。
+  new RegExp(
+    `(?:我|本人)(?:是|有|也是|就是|属于)?[^，。！？!?\\n爸妈父母哥姐弟妹儿女公婆家人们朋友对象爱亲戚同学事认识]{0,6}${DISABILITY_TERM}`,
+  ),
+  // 资格询问的动词表补"接受/接收/录用/接纳"（标定实证"请问接受听障人吗"漏网）。
+  new RegExp(
+    `(?:接受|接收|录用|接纳)(?:不(?:接受|接收|录用|接纳))?[^，。！？!?\\n]{0,4}${DISABILITY_TERM}`,
+  ),
 ];
 /** 表情占位（[强]/[微笑]…）与标点，短消息长度判定前剥除。 */
 const EMOJI_PLACEHOLDER_RE = /\[[^\]]{1,8}\]/g;
@@ -155,7 +166,14 @@ export class RiskInterceptService {
       return { hit: false };
     }
 
-    const detection = this.detectHighConfidenceRisk(content);
+    // 引用气泡 `[引用 XXX：…]` 里是对方原话（多为招募经理），剥掉后只扫候选人自己敲的字：
+    // 曾把经理引用句里的"面试没通过"当成候选人在追问结果、把"去劳动局…仲裁"当成投诉威胁。
+    const scanText = stripQuotedBlocks(content, ' ').trim();
+    if (!scanText) {
+      return { hit: false };
+    }
+
+    const detection = this.detectHighConfidenceRisk(scanText);
     if (!detection.hit) {
       return { hit: false };
     }
@@ -358,12 +376,33 @@ export class RiskInterceptService {
       if (normalizedKeyword === '滚') {
         return this.matchesAbusiveGun(normalized);
       }
+      if (normalizedKeyword === '妈的' || normalizedKeyword === '他妈') {
+        return this.matchesAbusiveMa(normalized, normalizedKeyword);
+      }
       return normalized.includes(normalizedKeyword);
     });
   }
 
   private normalize(content: string): string {
     return content.trim().toLowerCase();
+  }
+
+  /**
+   * "妈的 / 他妈" 是子串型脏词，但 "宝妈的上午时间 / 这个是他妈妈的" 是正常称呼
+   * （2026-08-17 生产实锤：宝妈求职者被静默暂停）。命中位置紧邻"妈 / 宝"字的不算。
+   */
+  private matchesAbusiveMa(content: string, keyword: string): boolean {
+    let from = 0;
+    while (from < content.length) {
+      const index = content.indexOf(keyword, from);
+      if (index < 0) return false;
+      const previous = content[index - 1] ?? '';
+      const next = content[index + keyword.length] ?? '';
+      const isKinshipWord = previous === '妈' || previous === '宝' || next === '妈';
+      if (!isKinshipWord) return true;
+      from = index + 1;
+    }
+    return false;
   }
 
   private matchesAbusiveGun(content: string): boolean {

@@ -5,7 +5,6 @@ export const TURN_HINT_FIELD_PATHS = [
   'interview_info.name',
   'interview_info.phone',
   'interview_info.gender',
-  'interview_info.gender_source',
   'interview_info.age',
   'interview_info.is_student',
   'interview_info.education',
