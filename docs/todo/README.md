@@ -10,7 +10,6 @@
 | [观测链路 P1 采集补洞](./observability-p0-p1-checklist.md)                   | P1-1/P1-3 已完成，余 3 项  | P1-2 / P1-4 / P1-5 落码并通过全库测试                                       |
 | [Memory 兼容字段清理](./memory-compatibility-cleanup.md)                     | 闸门 ①② 已过，等 ③ 命中归零 | Redis 样本审计确认 `gender_source` sibling 命中为 0 后一次性删除            |
 | [LLM 判官标定](./judge-calibration.md)                                       | 未制度化                   | 周频抽检口径、台账和降级阈值投入运行                                        |
-| [字段值提案收口与条件式 recap](./field-value-proposal-recap-confirmation.md) | 实施完成，待用户对账       | A–N 与 §9 已逐项勾选并回填证据；未经用户明确授权不得归档或删除              |
 | [数据保留策略统一 + 消息趋势换源](./data-retention-policy-unification.md)   | 已裁定，未实施             | A–D 落码通过 ci:check，迁移随发版推生产，清理任务按新阈值跑过一轮           |
 
 ## 发版与生产验证
