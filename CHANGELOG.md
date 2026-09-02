@@ -14,7 +14,7 @@
 **预计版本**: `v11.2.0`
 **最近更新**: `2026-09-02`
 **来源分支**: `develop`
-**累计 PR**: 12
+**累计 PR**: 13
 
 ### 更新摘要
 - PR #1158 健康证收资两处误拒——冲突门剥模板回显、裸短答按绑定语境解、字段简称唯一包含可定位
@@ -63,6 +63,12 @@
 - PR #1167 merge origin/develop into feat/data-retention-and-schema-audit…
 - PR #1167 Merge remote-tracking branch 'origin/develop' into HEAD
 - PR #1167 merge origin/develop (post #1175), resolve docs/todo/README.md
+- PR #1182 补 v11.2.0 发版底账
+- PR #1182 初稿由 `pnpm run release:ledger` 从 `.release/pending-release.json` 渲染（12 个实现 PR：#1158 #1159 #1160 #1164 #1165 #1166 #1167 #1168 #1173 #1175 #1176 #1177）
+- PR #1182 删除 auto-generated 标记后人工定稿，改写三节：
+- PR #1182 **高风险区域**：#1167 死列 DROP + `agent_invocation` 拆子表、保留策略切换、#1176 守卫新检测信号、#1177 会话列表页大小 200→600、#1165 暂停口径
+- PR #1182 **数据库动作**：两条迁移（`20260902073727_retention_schema_audit`、`20260902082559_ops_events_report_date_chat_index`）已推 TEST 并烟测，生产在镜像更新完成后立即 `db:push:prod`
+- PR #1182 **部署顺序**：定为「先镜像后迁移」——旧代码仍写 `ai_start_at/ai_end_at`，先推迁移会让旧实例回合流水写入失败；新代码写子表失败已被仓储层断路器兜住
 
 ### 新功能
 - PR #1168 删除 LLM 相似度评分器，新增 Agent 质量评估体系口径页
@@ -112,6 +118,12 @@
 - PR #1175 判官降级阈值定稿进口径页，判官周任务已注册
 - PR #1175 Merge remote-tracking branch 'origin/develop' into HEAD
 - PR #1167 Merge remote-tracking branch 'origin/develop' into HEAD
+- PR #1182 初稿由 `pnpm run release:ledger` 从 `.release/pending-release.json` 渲染（12 个实现 PR：#1158 #1159 #1160 #1164 #1165 #1166 #1167 #1168 #1173 #1175 #1176 #1177）
+- PR #1182 删除 auto-generated 标记后人工定稿，改写三节：
+- PR #1182 **高风险区域**：#1167 死列 DROP + `agent_invocation` 拆子表、保留策略切换、#1176 守卫新检测信号、#1177 会话列表页大小 200→600、#1165 暂停口径
+- PR #1182 **数据库动作**：两条迁移（`20260902073727_retention_schema_audit`、`20260902082559_ops_events_report_date_chat_index`）已推 TEST 并烟测，生产在镜像更新完成后立即 `db:push:prod`
+- PR #1182 **部署顺序**：定为「先镜像后迁移」——旧代码仍写 `ai_start_at/ai_end_at`，先推迁移会让旧实例回合流水写入失败；新代码写子表失败已被仓储层断路器兜住
+- PR #1182 补 v11.2.0 发版底账
 
 ### 配置变更
 - 无
@@ -140,6 +152,8 @@
 - PR #1167 `pnpm run ci:check` 全绿（lint / format / typecheck / build / 6540 tests）
 - PR #1167 新增单测：子表写读与兜底、统计表/转人工底账清理、`markResolvedByChat` / `sequence_no`、业务趋势 RPC 映射与默认窗口、`all` 档时间窗（dashboard util / conversion）、小组→bot 翻译与并集过滤
 - PR #1167 TEST 库烟测：4 个新 RPC 均正常；prod 只读核对新趋势 SQL 近 7 天数值合理
+- PR #1182 `pnpm run release:ledger:check` ✅（v11.2.0 -> docs/releases/2026/v11.2.0.md）
+- PR #1182 纯文档改动，无代码变更
 <!-- release:pending:end -->
 
 ## [11.1.4] - 2026-09-02
