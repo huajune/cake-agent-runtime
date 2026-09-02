@@ -316,12 +316,6 @@ export class TestWriteBackService {
       testStatus?: FeishuTestStatus;
       minSimilarityScore?: number | null;
       evaluationSummary?: string | null;
-      dimensionScores?: {
-        factualAccuracy: number | null;
-        responseEfficiency: number | null;
-        processCompliance: number | null;
-        toneNaturalness: number | null;
-      };
     },
   ): Promise<{ success: boolean; error?: string }> {
     const recordId = await this.resolveFeishuRecordId(recordIdOrValidationId, 'validationSet');
@@ -354,39 +348,6 @@ export class TestWriteBackService {
 
       if (options?.evaluationSummary && resolvedFields.evaluationSummary) {
         updateFields[resolvedFields.evaluationSummary] = options.evaluationSummary;
-      }
-
-      if (
-        options?.dimensionScores?.factualAccuracy !== null &&
-        options?.dimensionScores?.factualAccuracy !== undefined &&
-        resolvedFields.factualAccuracy
-      ) {
-        updateFields[resolvedFields.factualAccuracy] = options.dimensionScores.factualAccuracy;
-      }
-
-      if (
-        options?.dimensionScores?.responseEfficiency !== null &&
-        options?.dimensionScores?.responseEfficiency !== undefined &&
-        resolvedFields.responseEfficiency
-      ) {
-        updateFields[resolvedFields.responseEfficiency] =
-          options.dimensionScores.responseEfficiency;
-      }
-
-      if (
-        options?.dimensionScores?.processCompliance !== null &&
-        options?.dimensionScores?.processCompliance !== undefined &&
-        resolvedFields.processCompliance
-      ) {
-        updateFields[resolvedFields.processCompliance] = options.dimensionScores.processCompliance;
-      }
-
-      if (
-        options?.dimensionScores?.toneNaturalness !== null &&
-        options?.dimensionScores?.toneNaturalness !== undefined &&
-        resolvedFields.toneNaturalness
-      ) {
-        updateFields[resolvedFields.toneNaturalness] = options.dimensionScores.toneNaturalness;
       }
 
       if (resolvedFields.lastTestTime) {

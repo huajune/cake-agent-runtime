@@ -1,11 +1,6 @@
 import { IsString, IsOptional, IsNumber, IsEnum, Min, Max } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import {
-  ConversationSourceStatus,
-  SimilarityRating,
-  ReviewStatus,
-  ReviewerSource,
-} from '../enums/test.enum';
+import { ConversationSourceStatus, ReviewStatus, ReviewerSource } from '../enums/test.enum';
 
 /**
  * 解析后的对话消息
@@ -113,22 +108,6 @@ export interface TurnListResponse {
     totalTurns: number;
     avgSimilarityScore: number | null;
   };
-}
-
-/**
- * 相似度评估结果
- */
-export interface SimilarityResult {
-  /** 相似度分数 (0-100) */
-  score: number;
-  /** 评级 */
-  rating: SimilarityRating;
-  /** 真人回复分词结果 */
-  expectedTokens: string[];
-  /** Agent回复分词结果 */
-  actualTokens: string[];
-  /** 共同词汇数 */
-  commonTokenCount: number;
 }
 
 /**
@@ -276,16 +255,9 @@ export interface ConversationExecutionResult {
   avgSimilarityScore: number | null;
   minSimilarityScore: number | null;
   evaluationSummary: string | null;
-  dimensionScores: {
-    factualAccuracy: number | null;
-    responseEfficiency: number | null;
-    processCompliance: number | null;
-    toneNaturalness: number | null;
-  };
   turns: Array<{
     turnNumber: number;
     similarityScore: number | null;
-    rating: SimilarityRating | null;
     executionStatus: string;
   }>;
 }

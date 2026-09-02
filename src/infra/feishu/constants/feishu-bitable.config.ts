@@ -91,10 +91,6 @@ export interface ValidationSetFieldNames {
   similarityScore: string[]; // 相似度分数（数字）
   minSimilarityScore?: string[]; // 最低分（数字）
   evaluationSummary?: string[]; // 评估摘要（文本）
-  factualAccuracy?: string[]; // 事实正确（数字）
-  responseEfficiency?: string[]; // 提问效率（数字）
-  processCompliance?: string[]; // 流程合规（数字）
-  toneNaturalness?: string[]; // 话术自然（数字）
   lastTestTime: string[]; // 最近测试时间（日期时间）
   testBatch: string[]; // 测试批次（文本）
   testStatus?: string[]; // 测试状态（单选，可选）
@@ -107,10 +103,6 @@ export const validationSetFieldNames: ValidationSetFieldNames = {
   similarityScore: ['相似度分数', '平均相似度'],
   minSimilarityScore: ['最低分'],
   evaluationSummary: ['评估摘要'],
-  factualAccuracy: ['事实正确'],
-  responseEfficiency: ['提问效率'],
-  processCompliance: ['流程合规'],
-  toneNaturalness: ['话术自然'],
   lastTestTime: ['最近测试时间', '最近测试时间 (1)'],
   testBatch: ['测试批次'],
   testStatus: ['测试状态'],
