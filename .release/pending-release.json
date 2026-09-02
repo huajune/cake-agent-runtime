@@ -150,6 +150,29 @@
       "envFiles": [],
       "verification": [],
       "level": "patch"
+    },
+    {
+      "number": "1154",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1154",
+      "title": "补 v11.1.4 发版底账",
+      "author": "huajune",
+      "mergedAt": "2026-09-02",
+      "businessUpdates": [
+        "补 v11.1.4 发版底账"
+      ],
+      "summary": [
+        "补 v11.1.4 发版底账"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "补 v11.1.4 发版底账"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [],
+      "level": "patch"
     }
   ],
   "lastRelease": {
@@ -211,5 +234,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "07f8862fa6cc13e30a545ac9d1d09889300e5339"
+  "lastAnalyzedSha": "96fa48de8f26db754042b9d5627275040f79a66a"
 }
