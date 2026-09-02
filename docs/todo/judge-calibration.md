@@ -33,14 +33,14 @@
 ## 用户裁定（2026-09-02 下午，报告附录 H）
 
 - test-suite Claude 评审偏宽：**无妨，维持现状，不降级**。
-- 回归验证评估器（`src/evaluation/`）：用户判"废的"；删除范围见报告附录 H2 与最终回复，待拍板后另开 PR。
+- 回归验证评估器（`src/evaluation/`）：用户判"废的"，已随 PR #1168 删除（回归验证只剩重放 + 人工/Claude 评审）；评估体系口径页 `docs/architecture/agent-quality-evaluation.md` 同 PR 新增，整线下线另开任务。
 - 入站词表：确定性修法已落 PR `fix/risk-intercept-wordlist`（残障自述句式补召回、"宝妈的/他妈妈的"不算骂人、扫描前剥引用块）。"给主聊模型拦截能力"另议。
 - 复聊样本里"候选人提问无人回"经核实**不是候选人停托管**，是机器人转人工后的设计性静默（request_handoff / 守卫拦下改约回复）+ 暂停托管固定 3 天；用户裁定临时暂停改**次日零点自动恢复**，已落 PR `fix/hosting-pause-resume-at-midnight`。
 
 ## 剩什么（按顺序）
 
-1. **用户裁定**：① 阈值取值；② 台账放 `logs/observability/`（易丢）还是 `docs/observability/`（每周一个 PR）；③ 注册周二 07:00 任务（草稿在报告附录 E5）；④ 报告附录 F 的 10 条拿不准样本亲自复核；⑤ 评估器是否删除。
-2. **待合入**：PR `fix/hosting-pause-resume-at-midnight`、PR `fix/risk-intercept-wordlist`。
+1. **用户裁定**：① 阈值取值；② 台账放 `logs/observability/`（易丢）还是 `docs/observability/`（每周一个 PR）；③ 注册周二 07:00 任务（草稿在报告附录 E5）；④ 报告附录 F 的 10 条拿不准样本亲自复核。
+2. **待合入**：PR #1165 `fix/hosting-pause-resume-at-midnight`、PR #1166 `fix/risk-intercept-wordlist`、PR #1168 `refactor/remove-llm-similarity-scorer`。
 3. **管道观察项（非判官，报告附录 C1/H1）**：复聊发送与候选人来消息同分钟撞车 3 例；守卫 `interview_time_change_unconfirmed` 两次把改约回复整条拦成静默（交 weekly-guardrail-analysis 复核真假阳）；入职跟进缺"真人已问过"停止条件。
 
 ## 与现有机制的衔接
