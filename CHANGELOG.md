@@ -14,7 +14,7 @@
 **预计版本**: `v11.2.0`
 **最近更新**: `2026-09-02`
 **来源分支**: `develop`
-**累计 PR**: 10
+**累计 PR**: 11
 
 ### 更新摘要
 - PR #1158 健康证收资两处误拒——冲突门剥模板回显、裸短答按绑定语境解、字段简称唯一包含可定位
@@ -51,10 +51,23 @@
 - PR #1177 `SessionList/index.tsx`：头像 `<img>` 加 `loading="lazy"`——列表未虚拟化，600 行头像一次性发请求会排队
 - PR #1177 两个 spec 同步默认值/上限断言
 - PR #1176 出站守卫拦截推理/自检段泄漏
+- PR #1175 新增质量指标台账与 CI 校验，定时任务结论统一落账
+- PR #1175 判官降级阈值定稿进口径页，判官周任务已注册
+- PR #1175 merge origin/develop into docs/quality-metrics-ledger, resolve…
+- PR #1175 Merge remote-tracking branch 'origin/develop' into HEAD
+- PR #1175 **新增 `docs/quality-metrics-ledger.md`**：9 列（date / source_task / stage / metric / value / numerator / denominator / note / trace_ref）；阶段名与指标名以口径页 §1 为白名单（五阶段 + 硬错误率 / 转人工精确率 / 稳定率 / 判官精确率）；文首写清列定义、写入纪律、各任务落什么。种子行为 2026-09-02 首次判官标定的四个判官点精确率（J1 30/31、J2 20/28、J4 7/9 与 25/33）。
+- PR #1175 **新增 `scripts/quality/` 校验器 + 单测**：表头、白名单、`value = round(n/d, 4)`、分母非 0、note 长度与手机号脱敏、五元组去重；`pnpm run quality-ledger:validate [路径]` 挂进 `ci:check`（可传路径校验独立 worktree 里的副本）。
+- PR #1175 **口径页**：横切指标「稳定性」更名「稳定率」并标注无生产者；L2/L3「结论去哪」指向台账；§4 待办 3/4 改为「已裁定」。
+- PR #1175 `docs/README.md`、`docs/todo/README.md`、`docs/todo/judge-calibration.md`、`CLAUDE.md` 补台账入口与现状。
 
 ### 新功能
 - PR #1168 删除 LLM 相似度评分器，新增 Agent 质量评估体系口径页
 - PR #1165 新增用例：解禁时刻在上海时区读数为 00:00:00，且距暂停不超过 24h，DB 写入值与缓存一致。
+- PR #1175 **新增 `docs/quality-metrics-ledger.md`**：9 列（date / source_task / stage / metric / value / numerator / denominator / note / trace_ref）；阶段名与指标名以口径页 §1 为白名单（五阶段 + 硬错误率 / 转人工精确率 / 稳定率 / 判官精确率）；文首写清列定义、写入纪律、各任务落什么。种子行为 2026-09-02 首次判官标定的四个判官点精确率（J1 30/31、J2 20/28、J4 7/9 与 25/33）。
+- PR #1175 **新增 `scripts/quality/` 校验器 + 单测**：表头、白名单、`value = round(n/d, 4)`、分母非 0、note 长度与手机号脱敏、五元组去重；`pnpm run quality-ledger:validate [路径]` 挂进 `ci:check`（可传路径校验独立 worktree 里的副本）。
+- PR #1175 **口径页**：横切指标「稳定性」更名「稳定率」并标注无生产者；L2/L3「结论去哪」指向台账；§4 待办 3/4 改为「已裁定」。
+- PR #1175 `docs/README.md`、`docs/todo/README.md`、`docs/todo/judge-calibration.md`、`CLAUDE.md` 补台账入口与现状。
+- PR #1175 新增质量指标台账与 CI 校验，定时任务结论统一落账
 
 ### 问题修复
 - PR #1165 `user-hosting.service.ts`：删掉硬编码 `PAUSE_DURATION_MS`，三处（pauseUser / loadPausedUsers 兜底 / 共享缓存快照）统一用 `resolveTemporaryPauseExpiresAt(pausedAt)` = `addLocalDays(getLocalDayStart(pausedAt), 1)`；永久暂停不变。
@@ -62,6 +75,7 @@
 - PR #1164 判官标定补记用户裁定与两个修复 PR
 - PR #1173 捕获段含句子词（这/那个/你/我/他/她/有没有/可以/不是/工作/吗/呢/吧/了/就/要/想/找/看/去/到/在/是）一律不认；刻意不收"的"（美的财富广场）。
 - PR #1173 剥完不足 2 字（"这"）丢弃。
+- PR #1175 merge origin/develop into docs/quality-metrics-ledger, resolve…
 
 ### 优化调整
 - PR #1173 动作前缀归一（"帮我找一下"）之后再剥一次居住/位置前缀：`我/我们/我家/人/家 + 现在/目前/平时/就 + 住/人/家 + 在`，**必须以"在"收尾**，不会吃掉"人民广场""家乐福"的首字；另认"就XX"。
@@ -88,6 +102,8 @@
 - PR #1164 评估器已随 #1168 删除，清掉待裁定项
 - PR #1177 会话列表页大小 200→600，头像改懒加载
 - PR #1176 出站守卫拦截推理/自检段泄漏
+- PR #1175 判官降级阈值定稿进口径页，判官周任务已注册
+- PR #1175 Merge remote-tracking branch 'origin/develop' into HEAD
 
 ### 配置变更
 - 无
@@ -110,6 +126,8 @@
 - PR #1176 两例生产原文作为检测回归用例落在 `internal-info-leaks.rule.spec` / `hard-rules.service.spec`；runner spec 断言自检段命中后进一次 repair。
 - PR #1176 `lint:check` / `format:check` / `typecheck` 全绿；guardrail + runner + context 40 套件 686 用例通过。
 - PR #1176 无迁移，无配置变更。
+- PR #1175 `pnpm run ci:check` 各段在 worktree 内全部通过（lint / format / typecheck / geo / vocab / quality-ledger / build:ci / test:ci 448 suites）。
+- PR #1175 `tests/scripts/quality-metrics-ledger.spec.ts` 9 用例通过，其中一条直接校验仓库内台账文件。
 <!-- release:pending:end -->
 
 ## [11.1.4] - 2026-09-02
