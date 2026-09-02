@@ -25,3 +25,10 @@
 - **input 词表精确率补票**：risk-intercept 关键词命中已落观测但从未算过精确率——
   补一条统计 SQL + 首次人工抽标（≥30 例），结论记入台账。这是发牌制扩展到全部
   裁决点的第一站；与本文档的判官周频抽检共用抽标流程。
+
+## 现状（2026-09-02）
+
+- 口径：首次标定报告 `logs/analysis/judge-calibration-2026-09-02.md` 附录 B（rubric R1 / R2 / R4）与附录 D（SQL）是唯一口径源，任务书只引用不复制。
+- 台账：精确率数字落 [docs/quality-metrics-ledger.md](../quality-metrics-ledger.md)（metric=`判官精确率`，每个判官点一行），首次标定四行已登记；样本明细留在报告。
+- 任务书：`~/.claude/scheduled-tasks/weekly-judge-calibration/SKILL.md` 已写好（周二 07:00），**未注册**，等降级阈值裁定（建议值：≥90% 正常 / 80%~90% 需人工复核 / <80% 停用自动消费）。
+- 回归验证评估器（原 J3）已删除，不再是判官点；test-suite Claude 评审（J2）用户裁定偏宽无妨、不降级。
