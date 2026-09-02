@@ -2,7 +2,7 @@
 
 > Cake Agent Runtime — 技术文档导航
 
-**最后更新**：2026-08-26
+**最后更新**：2026-09-02
 
 ---
 
@@ -15,7 +15,7 @@
 | 新人研发入门        | [开发指南](guides/development-guide.md) → [Agent 运行时架构](architecture/agent-runtime-architecture.md) → [记忆系统](architecture/memory-architecture.md) |
 | 做可靠性 / 守卫改进 | [安全护栏说明](architecture/security-guardrails.md) + [Guardrail 质量体系](architecture/guardrail-quality-system.md)                                       |
 | 改候选人事实链路    | [候选人档案域架构](architecture/candidate-profile-domain.md)（域宪法）→ [记忆系统](architecture/memory-architecture.md)                                    |
-| 质量评测 / 回归     | [Agent 质量评估体系](architecture/agent-quality-evaluation.md)（口径页）→ [测试套件架构](architecture/test-suite-architecture.md) + [质量评测指南](guides/test-suite-guide.md) |
+| 质量评测 / 回归     | [Agent 质量评估体系](architecture/agent-quality-evaluation.md)（口径页）→ [质量指标台账](quality-metrics-ledger.md) → [测试套件架构](architecture/test-suite-architecture.md) + [质量评测指南](guides/test-suite-guide.md) |
 | 发版 / 部署         | [版本发布指南](workflows/version-release-guide.md) → [构建与部署指南](workflows/deploy-guide.md)；按需维护[可选发版底账](releases/README.md)               |
 
 ---
@@ -48,6 +48,7 @@
 - **[安全护栏说明](architecture/security-guardrails.md)** ⭐ — 防线现状总览：基础设施 + Input / Prompt / Tool / Output 四个作用位
 - **[语义判定三分法](architecture/semantic-decision-taxonomy.md)** — 正则、LLM 标签位与向量判定的准入边界
 - **[Agent 质量评估体系](architecture/agent-quality-evaluation.md)** — 口径页：阶段任务目标指标、三层评估（确定性断言 / 校准判官 / 生产抽样）、轻闸门、已退役项
+- **[质量指标台账](quality-metrics-ledger.md)** — 定时观测任务量化结论的唯一落点；阶段/指标名白名单来自口径页 §1，`quality-ledger:validate` 挂在 ci:check
 - **[Guardrail 质量体系](architecture/guardrail-quality-system.md)** — Output 实时裁决、一次有界修复与快/慢质量闭环；慢环为仓外流程，`src/**` 无自动执行器
 
 ### 平台系统与规范

@@ -51,3 +51,10 @@
 ## 同族欠账收编（2026-08-17，自 prompt-guardrail-and-naming-alignment.md C3 移入，原文档已完结删除）
 
 - **input 词表精确率补票**：本次已补（报告附录 C4 + SQL-E/F）：生产口径 7/9、离线口径 25/33、残障自述召回约 6/10；结论已入台账。后续随周任务 J4 一栏滚动。
+
+## 现状（2026-09-02）
+
+- 口径：首次标定报告 `logs/analysis/judge-calibration-2026-09-02.md` 附录 B（rubric R1 / R2 / R4）与附录 D（SQL）是唯一口径源，任务书只引用不复制。
+- 台账：精确率数字落 [docs/quality-metrics-ledger.md](../quality-metrics-ledger.md)（metric=`判官精确率`，每个判官点一行），首次标定四行已登记；样本明细留在报告。
+- 任务：`weekly-judge-calibration` 已注册（每周二 07:00，任务书在 `~/.claude/scheduled-tasks/`）；降级阈值已裁定，正式居所在口径页 §2（≥90% 正常 / 80%~90% 需人工复核 / <80% 停用自动消费 / 残障召回 <80% 置顶）。等首次自动运行在台账落行后即可删除本 todo。
+- 回归验证评估器（原 J3）已删除，不再是判官点；test-suite Claude 评审（J2）用户裁定偏宽无妨、不降级。
