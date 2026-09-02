@@ -21,10 +21,10 @@ import { EMOTION_MESSAGE_PREFIX, IMAGE_MESSAGE_PREFIX } from '@resolution/signal
  * - 获取会话列表
  * - 数据清理
  */
-/** 会话列表默认页大小：一屏够用，且单页往返稳定在亚秒级。 */
-const DEFAULT_SESSION_PAGE_SIZE = 200;
-/** 单页上限，防止调用方传入超大 limit 把 PostgREST 载荷打爆。 */
-const MAX_SESSION_PAGE_SIZE = 500;
+/** 会话列表默认页大小：DB 侧按整个时间窗聚合后再切片，页越大翻页越少。 */
+const DEFAULT_SESSION_PAGE_SIZE = 600;
+/** 单页上限，防止调用方传入超大 limit 把 PostgREST 载荷打爆；实际取 limit+1 行，须 ≤ 999 以避开 max_rows(1000) 静默截断。 */
+const MAX_SESSION_PAGE_SIZE = 600;
 
 @Injectable()
 export class ChatMessageRepository extends BaseRepository {
