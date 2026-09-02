@@ -149,8 +149,8 @@ describe('DataCleanupService', () => {
 
       // 1. NULL agent_invocation (>7 天)
       expect(messageProcessingService.nullAgentInvocations).toHaveBeenCalledWith(7);
-      // 2. DELETE chat_messages (>60 天)
-      expect(chatSessionService.cleanupChatMessages).toHaveBeenCalledWith(60);
+      // 2. DELETE chat_messages (>100 天，覆盖消息趋势「近 3 月」视图)
+      expect(chatSessionService.cleanupChatMessages).toHaveBeenCalledWith(100);
       // 3. DELETE guardrail_review_records (>60 天，默认跟随 DATA_CLEANUP_PROCESSING_DAYS)
       expect(mockGuardrailReviewService.cleanupExpiredReviews).toHaveBeenCalledWith(60);
       // 4. DELETE agent_execution_events (>60 天，默认跟随 DATA_CLEANUP_PROCESSING_DAYS)

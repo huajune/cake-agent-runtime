@@ -98,6 +98,24 @@ const JOB_WITH_WINDOWS = {
   },
 };
 
+// 同日双窗口（上午 10:00-11:00 + 下午 13:00-16:00）：唯一 slot 兜底失效的形态。
+const JOB_WITH_TWO_WINDOWS = {
+  ...JOB,
+  interviewProcess: {
+    firstInterview: {
+      firstInterviewWay: '门店面试',
+      periodicInterviewTimes: ['一', '二', '三', '四', '五', '六', '日'].map((day) => ({
+        interviewWeekday: `每周${day}`,
+        interviewTimes: [
+          { interviewStartTime: '10:00', interviewEndTime: '11:00' },
+          { interviewStartTime: '13:00', interviewEndTime: '16:00' },
+        ],
+      })),
+      fixedInterviewTimes: [],
+    },
+  },
+};
+
 function filledForm(contract = CONTRACT): BookingCollectionForm {
   const form = createForm({ jobId: 100, contract });
   for (const field of contract) {
@@ -851,6 +869,61 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
     expect(JOB.hiringRequirement.basicPersonalRequirements.maxAge).toBe(20);
     expect(currentForm?.slots[103].value?.value).toBe('25');
     expect(result.nextAction).toBe('ready_to_book');
+  });
+
+  describe('同日多窗口岗位的窗口内时刻映射（badcase chat 6a9679e2ce406a6aee6ef96b）', () => {
+    const tomorrow = getTomorrowDate();
+
+    // 全部候选人自答（无外部预填）：不触发 recap，聚焦时间闸门。
+    function authorizedForm(): BookingCollectionForm {
+      const form = filledForm();
+      for (const slot of Object.values(form.slots)) {
+        if (slot.value) slot.value = { ...slot.value, producer: 'candidate_quote' };
+      }
+      return form;
+    }
+
+    beforeEach(() => {
+      sponge.fetchJobs.mockResolvedValue({ jobs: [JOB_WITH_TWO_WINDOWS] });
+    });
+
+    it('requestedDate 带窗口内时刻时映射到所在窗口，放行 ready_to_book', async () => {
+      currentForm = authorizedForm();
+      context.turnInput.messages = [{ role: 'user', content: '明天下午三点也可以' }];
+      const result = await execute({ jobId: 100, requestedDate: `${tomorrow} 15:00:00` });
+      expect(result.nextAction).toBe('ready_to_book');
+      expect(currentForm?.scheduleDraft).toEqual(
+        expect.objectContaining({
+          requestedDate: tomorrow,
+          selectedInterviewTime: `${tomorrow} 13:00:00`,
+        }),
+      );
+      expect(context.ledger.jobs.collectionReadyJobId).toBe(100);
+    });
+
+    it('不带秒的窗口内时刻同样命中', async () => {
+      currentForm = authorizedForm();
+      context.turnInput.messages = [{ role: 'user', content: '明天上午十点半' }];
+      const result = await execute({ jobId: 100, requestedDate: `${tomorrow} 10:30` });
+      expect(result.nextAction).toBe('ready_to_book');
+      expect(currentForm?.scheduleDraft?.selectedInterviewTime).toBe(`${tomorrow} 10:00:00`);
+    });
+
+    it('窗口外时刻不映射，维持 select_interview_time', async () => {
+      currentForm = authorizedForm();
+      context.turnInput.messages = [{ role: 'user', content: '明天中午12点行吗' }];
+      const result = await execute({ jobId: 100, requestedDate: `${tomorrow} 12:00:00` });
+      expect(result.nextAction).toBe('select_interview_time');
+      expect(currentForm?.scheduleDraft?.selectedInterviewTime).toBeUndefined();
+    });
+
+    it('只给日期时多窗口不自动落时间（既有行为不回归）', async () => {
+      currentForm = authorizedForm();
+      context.turnInput.messages = [{ role: 'user', content: '明天可以' }];
+      const result = await execute({ jobId: 100, requestedDate: tomorrow });
+      expect(result.nextAction).toBe('select_interview_time');
+      expect(currentForm?.scheduleDraft?.selectedInterviewTime).toBeUndefined();
+    });
   });
 });
 

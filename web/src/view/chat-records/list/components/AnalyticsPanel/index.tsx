@@ -79,6 +79,9 @@ export default function AnalyticsPanel({
           </div>
         </div>
 
+        {/* 口径说明：与「托管趋势」一致，折线与汇总都只统计工作日 */}
+        <div className={styles.hint}>趋势图与汇总均已剔除周六、周日，仅统计工作日。</div>
+
         {/* 图表：会话数 / 消息数 分开两张 */}
         <div className={styles.chartsRow}>
           <div className={styles.chartItem}>

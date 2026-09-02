@@ -575,6 +575,39 @@ export class MessageProcessingRepository extends BaseRepository {
     }
   }
 
+  /**
+   * 队列耗时聚合（DB 侧 AVG）。
+   *
+   * System 面板只需要一个 avgQueueDuration，先前却按 listSelectedColumns 拉 2000 行明细，
+   * 其中 guardrail_input / memory_snapshot 等 jsonb 列会触发 TOAST detoast（实测 6.5s）。
+   * 顺带去掉 2000 行截断——均值现在覆盖窗口内全部样本。
+   */
+  async getQueueDurationStats(
+    startTime: number,
+    endTime: number,
+  ): Promise<{ sampleCount: number; avgQueueDuration: number }> {
+    if (!this.isAvailable()) {
+      return { sampleCount: 0, avgQueueDuration: 0 };
+    }
+
+    const rows = await this.rpc<
+      Array<{ sample_count: number | string | null; avg_queue_duration: number | string | null }>
+    >('get_queue_duration_stats', {
+      p_start_date: new Date(startTime).toISOString(),
+      p_end_date: new Date(endTime).toISOString(),
+    });
+
+    const row = rows?.[0];
+    if (!row) {
+      return { sampleCount: 0, avgQueueDuration: 0 };
+    }
+
+    return {
+      sampleCount: Number(row.sample_count ?? 0) || 0,
+      avgQueueDuration: Number(row.avg_queue_duration ?? 0) || 0,
+    };
+  }
+
   // ==================== 清理方法 ====================
 
   /**

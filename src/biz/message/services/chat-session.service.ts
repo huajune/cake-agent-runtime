@@ -2,7 +2,10 @@ import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { RedisService } from '@infra/redis/redis.service';
 import { ChatMessageRepository } from '../repositories/chat-message.repository';
-import { ChatMessageInput } from '../types/message.types';
+import { ChatMessageInput, ChatSessionCursor } from '../types/message.types';
+
+/** 会话列表默认页大小，与仓储层保持一致。 */
+const DEFAULT_SESSION_PAGE_SIZE = 200;
 import { formatLocalDateTime } from '@infra/utils/date.util';
 import {
   toStorageMessageSource,
@@ -45,18 +48,30 @@ export class ChatSessionService {
   /**
    * 获取会话列表（按天数或日期范围）
    */
-  async getChatSessions(options: { days?: string; startDate?: string; endDate?: string }) {
+  async getChatSessions(options: {
+    days?: string;
+    startDate?: string;
+    endDate?: string;
+    limit?: string;
+    search?: string;
+    cursorTimestamp?: string;
+    cursorChatId?: string;
+  }) {
     if (options.startDate) {
       const start = this.startOfDay(options.startDate);
       const end = this.endOfDay(options.endDate);
       this.logger.debug(`获取会话列表: ${start.toISOString()} ~ ${end.toISOString()}`);
-      const sessions = await this.chatMessageRepository.getChatSessionListByDateRange(start, end);
-      return { sessions };
+      return this.chatMessageRepository.getChatSessionPage({
+        startDate: start,
+        endDate: end,
+        limit: this.parseLimit(options.limit),
+        search: options.search,
+        cursor: this.parseCursor(options.cursorTimestamp, options.cursorChatId),
+      });
     }
     const days = parseInt(options.days || '1', 10);
     this.logger.debug(`获取会话列表: 最近 ${days} 天`);
-    const sessions = await this.chatMessageRepository.getChatSessionList(days);
-    return { sessions };
+    return this.chatMessageRepository.getChatSessionList(days, this.parseLimit(options.limit));
   }
 
   /**
@@ -86,13 +101,38 @@ export class ChatSessionService {
   /**
    * 获取聊天会话列表（优化版，数据库聚合）
    */
-  async getChatSessionsOptimized(startDate?: string, endDate?: string) {
-    const start = this.startOfDay(startDate, 30);
-    const end = this.endOfDay(endDate);
+  async getChatSessionsOptimized(options: {
+    startDate?: string;
+    endDate?: string;
+    limit?: string;
+    search?: string;
+    cursorTimestamp?: string;
+    cursorChatId?: string;
+  }) {
+    const start = this.startOfDay(options.startDate, 30);
+    const end = this.endOfDay(options.endDate);
     this.logger.debug(
       `获取聊天会话列表（优化版）: ${formatLocalDateTime(start)} ~ ${formatLocalDateTime(end)}`,
     );
-    return this.chatMessageRepository.getChatSessionListByDateRange(start, end);
+    return this.chatMessageRepository.getChatSessionPage({
+      startDate: start,
+      endDate: end,
+      limit: this.parseLimit(options.limit),
+      search: options.search,
+      cursor: this.parseCursor(options.cursorTimestamp, options.cursorChatId),
+    });
+  }
+
+  /** 页大小解析：非法值回落默认，上限由仓储层再夹一次。 */
+  private parseLimit(limit?: string): number {
+    const parsed = parseInt(limit || '', 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_SESSION_PAGE_SIZE;
+  }
+
+  /** 游标需要时间戳与 chatId 成对出现，缺一即视为从头开始。 */
+  private parseCursor(timestamp?: string, chatId?: string): ChatSessionCursor | undefined {
+    if (!timestamp || !chatId) return undefined;
+    return { timestamp, chatId };
   }
 
   /**

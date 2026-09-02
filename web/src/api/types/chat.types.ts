@@ -36,6 +36,24 @@ export interface ChatSession {
   contactType?: string;
 }
 
+/**
+ * 会话列表游标。
+ * 列表按 (lastTimestamp DESC, chatId DESC) 排序，新消息会把会话顶到列表头；
+ * offset 分页会整体漂移导致翻页重复/漏项，所以锚在排序键本身上。
+ */
+export interface ChatSessionCursor {
+  timestamp: string;
+  chatId: string;
+}
+
+export interface ChatSessionPage {
+  sessions: ChatSession[];
+  /** 时间窗（叠加搜索条件）内的会话总数，与已加载条数无关 */
+  total: number;
+  /** 为 null 表示已到末页 */
+  nextCursor: ChatSessionCursor | null;
+}
+
 export interface ChatDailyStatsItem {
   date: string;
   messageCount: number;

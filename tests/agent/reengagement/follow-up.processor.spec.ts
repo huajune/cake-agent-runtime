@@ -125,7 +125,6 @@ describe('FollowUpProcessor', () => {
       trackScheduleSkipped: jest.fn(),
       trackStopped: jest.fn(),
       trackFrequencyBlocked: jest.fn(),
-      trackRescheduled: jest.fn(),
       trackShadow: jest.fn(),
       trackDuplicate: jest.fn(),
       trackReserved: jest.fn(),
@@ -792,7 +791,6 @@ describe('FollowUpProcessor', () => {
 
     expect(reengagementAgent.compose).toHaveBeenCalledTimes(1);
     expect(queue.add).not.toHaveBeenCalled();
-    expect(tracking.trackRescheduled).not.toHaveBeenCalled();
   });
 
   describe('store presentation group invite escalation', () => {

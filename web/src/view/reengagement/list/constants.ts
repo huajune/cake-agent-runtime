@@ -15,7 +15,6 @@ export interface StatusMeta {
 
 export const STATUS_META: Record<string, StatusMeta> = {
   scheduled: { label: '已排程', tone: 'info' },
-  rescheduled: { label: '已改期', tone: 'info' },
   superseded: { label: '已被新任务替代', tone: 'muted' },
   sent: { label: '已投递', tone: 'success' },
   shadow: { label: 'Shadow', tone: 'neutral' },

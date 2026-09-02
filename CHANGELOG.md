@@ -8,6 +8,67 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v11.1.4`
+**最近更新**: `2026-09-02`
+**来源分支**: `develop`
+**累计 PR**: 6
+
+### 更新摘要
+- PR #1143 修正复聊文档两处过时描述，对齐 develop 现状
+- PR #1143 删除 quiet-window 遗留的 rescheduled 死代码
+- PR #1144 聊天消息保留期 60 天放宽到 100 天
+- PR #1144 统计查询下沉 DB，消除全量拉取与落盘排序
+- PR #1144 概览缓存定时预热，把冷计算移出访客路径
+- PR #1144 会话列表改游标分页 + 服务端搜索，趋势图剔除周末
+- PR #1144 修复统计查询慢与会话列表静默截断
+- PR #1146 按当前生产调用链复核运行时架构文档
+- PR #1145 报名/取消完成时态哨兵剔除条件从句，并修好在途工单豁免的判空
+- PR #1152 sync master into develop before v11.1.4
+- PR #1154 补 v11.1.4 发版底账
+
+### 新功能
+- 无
+
+### 问题修复
+- PR #1143 修正复聊文档两处过时描述，对齐 develop 现状
+
+### 优化调整
+- PR #1144 统计查询下沉 DB，消除全量拉取与落盘排序
+
+### 运维与流程
+- PR #1143 删除 quiet-window 遗留的 rescheduled 死代码
+- PR #1144 聊天消息保留期 60 天放宽到 100 天
+- PR #1144 概览缓存定时预热，把冷计算移出访客路径
+- PR #1144 会话列表改游标分页 + 服务端搜索，趋势图剔除周末
+- PR #1146 按当前生产调用链复核运行时架构文档
+- PR #1145 报名/取消完成时态哨兵剔除条件从句，并修好在途工单豁免的判空
+- PR #1152 sync master into develop before v11.1.4
+- PR #1154 补 v11.1.4 发版底账
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- PR #1144 检测到环境变量相关文件变更：`.env.example`。请手动同步远程服务器 `/data/cake/.env.production`。
+
+### 验证记录
+- PR #1143 `pnpm run typecheck` ✅
+- PR #1143 `pnpm run lint:check` ✅
+- PR #1143 `web npx tsc --noEmit` ✅
+- PR #1143 受影响测试套件 `follow-up.processor.spec.ts` + `reengagement-query.service.spec.ts`：101 passed ✅（含 22:00 上海时间照常生成的无窗口回归测试）
+- PR #1144 `pnpm run ci:check` 全绿（447 套件 / 6494 测试）
+- PR #1144 **所有 SQL 改写都在生产数据上做过 `EXCEPT` 双向比对，逐行等价**（会话列表 1347 行、每日统计 62 行，两个方向差异均为 0）
+- PR #1144 游标分页正确性：page1=200 / page2=200 / **交集 0**，`total_count` 5591 = 实际 5591
+- PR #1144 本地连 TEST 库端到端跑过：计数显示 `200 / 855`（真实总数）、加载更多 200→400 且**重复行 0**、服务端搜索命中未加载页中的记录、周末剔除后汇总 `2562 / 27863` 对上工作日口径（全量口径是 `2571 / 27881`）
+- PR #1145 新增 `tests/agent/guardrail/output/rules/badcase-0902-regression.spec.ts`，用例全部取生产原文
+- PR #1145 `npx jest tests/agent/guardrail --watchman=false` → 25 suites / 489 tests 全绿
+- PR #1145 `npx tsc --noEmit` 通过；改动文件 eslint `--max-warnings=0` 通过
+- PR #1145 口径变更已登记 `docs/prompt-rule-ledger.md`
+<!-- release:pending:end -->
+
 ## [11.1.3] - 2026-09-01
 
 **来源分支**: `develop`

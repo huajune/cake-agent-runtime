@@ -164,24 +164,6 @@ export class ReengagementTrackingService {
     );
   }
 
-  /** 9-21 窗口外改期 */
-  trackRescheduled(
-    identity: ReengagementTouchIdentity,
-    nextFireAt: number,
-    rescheduledJobId: string,
-  ): void {
-    this.persist({
-      ...this.base(identity),
-      status: ReengagementTouchStatus.Rescheduled,
-      fireAt: nextFireAt,
-      firedAt: Date.now(),
-      event: {
-        event: ReengagementTouchEventName.RescheduledOutOfWindow,
-        detail: { nextFireAt, rescheduledJobId },
-      },
-    });
-  }
-
   /** 未到点任务被同会话新任务替代，Bull job 已移除 */
   trackSuperseded(
     identity: ReengagementTouchIdentity,

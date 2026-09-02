@@ -5,6 +5,12 @@ import { formatLocalDate } from '@infra/utils/date.util';
 import { UserHostingStatus } from '../entities/user-hosting-status.entity';
 import { DailyUserActivityStats, UserActivityAggregate, UserProfile } from '../types/user.types';
 
+/** PostgREST 会把 bigint 序列化为字符串，这里统一收敛为数字并兜住 null。 */
+function toCount(value: number | string | null | undefined): number {
+  const parsed = typeof value === 'string' ? Number(value) : (value ?? 0);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 /**
  * 用户托管状态 Repository
  *
@@ -330,7 +336,10 @@ export class UserHostingRepository extends BaseRepository {
    * 按天聚合 user_activity。
    *
    * Dashboard / users 页面展示的是长期趋势；message_processing_records 只保留短期流水，
-   * 所以这里直接读按天保留的活跃表，并用分页避开 PostgREST 默认 1000 行限制。
+   * 所以这里直接读按天保留的活跃表。
+   *
+   * 聚合下沉到 DB（RPC get_user_activity_daily_stats）：先前按 1000 行分页把明细全量拉到
+   * Node 再归并，近 90 天需十余次串行往返（实测 11s）。DB 侧 GROUP BY 只回传每天一行。
    */
   async findDailyActivityStatsByDateRange(
     startDate: Date,
@@ -340,41 +349,29 @@ export class UserHostingRepository extends BaseRepository {
       return [];
     }
 
-    const start = formatLocalDate(startDate);
-    const end = formatLocalDate(endDate);
-    const buckets = new Map<string, DailyUserActivityStats>();
+    const rows = await this.rpc<
+      Array<{
+        activity_date: string;
+        user_count: number | string | null;
+        message_count: number | string | null;
+        token_usage: number | string | null;
+      }>
+    >('get_user_activity_daily_stats', {
+      p_start_date: formatLocalDate(startDate),
+      p_end_date: formatLocalDate(endDate),
+    });
 
-    const rows = await this.selectAllPaged<{
-      activity_date: string;
-      chat_id: string;
-      message_count: number | null;
-      token_usage: number | null;
-    }>('user_activity', 'activity_date,chat_id,message_count,token_usage', (q) =>
-      q
-        .gte('activity_date', start)
-        .lte('activity_date', end)
-        .order('activity_date', { ascending: true })
-        .order('chat_id', { ascending: true }),
-    );
-
-    for (const row of rows) {
-      const date = row.activity_date;
-      const bucket =
-        buckets.get(date) ??
-        ({
-          date,
-          userCount: 0,
-          messageCount: 0,
-          tokenUsage: 0,
-        } satisfies DailyUserActivityStats);
-
-      bucket.userCount += 1;
-      bucket.messageCount += row.message_count ?? 0;
-      bucket.tokenUsage += row.token_usage ?? 0;
-      buckets.set(date, bucket);
+    if (!rows) {
+      return [];
     }
 
-    return Array.from(buckets.values()).sort((a, b) => a.date.localeCompare(b.date));
+    // RPC 已按 activity_date 升序返回，且 bigint 经 PostgREST 序列化后可能是字符串。
+    return rows.map((row) => ({
+      date: row.activity_date,
+      userCount: toCount(row.user_count),
+      messageCount: toCount(row.message_count),
+      tokenUsage: toCount(row.token_usage),
+    }));
   }
 
   /**

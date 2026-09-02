@@ -1,6 +1,6 @@
 # 二次主动回复流水线（reengagement / 复聊）
 
-**最后更新**：2026-08-20
+**最后更新**：2026-09-01
 **代码居所**：`src/agent/reengagement/`
 
 > 复聊是**独立链路**：系统决定何时主动找候选人，话术由 LLM 实时生成。
@@ -26,7 +26,7 @@ Bull delayed job（jobId 幂等：sessionId:scenarioCode:anchorEventId）
 FollowUpTaskProcessor
     ├─ ① 停止条件 shouldStop（读复聊会话快照，调 LLM 之前）
     ├─ ② 频控：24h 内 sent 状态 ≤ 2
-    ├─ ③ 9–21 窗口二次确认（防 delay 漂移）→ 越界则 reschedule
+    ├─ ③ 托管状态核验：重查接客 bot 托管账号列表，查询失败 fail closed；已暂停/取消托管则跳过
     ├─ ④ ReengagementAgent.compose()  ← 不开放工具
     ├─ ⑤ 投递 + 触达底账 outbox 状态机
     └─ ⑥ 推店升档：仅 markSent 成功后确定性调用 GroupInviteService
@@ -42,7 +42,7 @@ FollowUpTaskProcessor
 **不轮询全量会话**，而是在锚点事件发生时排一个 Bull delayed job：
 
 ```ts
-const fireAt = computeFireAt(scenario, anchorAt); // 绝对时间戳，已对齐 9–21 窗口
+const fireAt = computeFireAt(scenario, anchorAt); // 绝对时间戳，不做发送时段对齐
 await reengagementQueue.add(
   'follow-up',
   { sessionRef, scenarioCode, anchorEventId, anchorAt },
@@ -57,7 +57,7 @@ await reengagementQueue.add(
 
 唯一的短窗 sweep 是入职跟进：`OnboardingSweepCronService` 每 15 分钟查询近 48 小时的 `ops_events(interview.passed)`，按事件的 `occurred_at` 排 `post_interview_onboarding` D+3 任务。稳定锚点 `wo{workOrderId}:pass` 使同一事件跨轮扫描只产生一个 Bull job；`READ_ONLY_PREVIEW=true` 时不扫描、不排程。该 sweep 只消费已存在的业务事件，不轮询全量会话。
 
-**窗口对齐**：先算 `anchorAt + resolveDelay(...)`，落在 <9:00 推到当日 9:00、>21:00 推到次日 9:00（时区 `Asia/Shanghai`，与 group-task cron 一致）。fire 时再 `inWindow(now)` 二次确认。
+**发送时段**：`computeFireAt` 只按场景延迟算 `anchorAt + resolveDelay(...)` 的绝对时间戳，**不限制发送时段**（无 9–21 窗口对齐）；发送资格由到点时的托管状态决定——processor 重查接客 bot 托管账号列表（查询失败 fail closed），已暂停/取消托管则跳过。统一静默时段（quiet-window）是**未合入的归档功能**，仅存在于 `origin/feat/reengagement-quiet-window` 分支。
 
 ---
 
