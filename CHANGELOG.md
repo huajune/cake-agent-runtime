@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [11.1.4] - 2026-09-02
 
-**预计版本**: `v11.1.4`
-**最近更新**: `2026-09-02`
 **来源分支**: `develop`
-**累计 PR**: 6
 
 ### 更新摘要
 - PR #1143 修正复聊文档两处过时描述，对齐 develop 现状
@@ -67,7 +63,6 @@
 - PR #1145 `npx jest tests/agent/guardrail --watchman=false` → 25 suites / 489 tests 全绿
 - PR #1145 `npx tsc --noEmit` 通过；改动文件 eslint `--max-warnings=0` 通过
 - PR #1145 口径变更已登记 `docs/prompt-rule-ledger.md`
-<!-- release:pending:end -->
 
 ## [11.1.3] - 2026-09-01
 
