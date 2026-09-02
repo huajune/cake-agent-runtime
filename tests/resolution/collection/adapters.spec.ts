@@ -147,6 +147,28 @@ describe('health-certificate.adapter', () => {
     expect(proposeHealthCertificate(input(HEALTH_CERT_FIELD, '健康证在哪里办呀'))).toBeNull();
   });
 
+  it('answerBound 下裸短答可解释（0902：「有」「有本地」「无,接受办理」被值词表门拒 8 条）', () => {
+    const bound = (text: string) =>
+      proposeHealthCertificate({ ...input(HEALTH_CERT_FIELD, text), answerBound: true });
+    expect(bound('有')?.optionCodes).toEqual(['1']);
+    expect(bound('有本地')?.optionCodes).toEqual(['1']);
+    expect(bound('🈶')?.optionCodes).toEqual(['1']);
+    expect(bound('无,接受办理')?.optionCodes).toEqual(['2']);
+    expect(bound('接受办理')?.optionCodes).toEqual(['2']);
+    expect(bound('没有，可以办')?.optionCodes).toEqual(['2']);
+    expect(bound('没有，不接受办理')?.optionCodes).toEqual(['3']);
+    expect(bound('不办')?.optionCodes).toEqual(['3']);
+    // 出处如实：裸答本身就是原话
+    expect(bound('无,接受办理')?.sourceText).toBe('无,接受办理');
+    // 「无」单独出现未表态是否办 → 留空追问（两不定态纪律不变）
+    expect(bound('无')).toBeNull();
+    // 歧义短答不收：「可以」「不」在健康证槽位上答不出三态
+    expect(bound('可以')).toBeNull();
+    expect(bound('不')).toBeNull();
+    // 未绑定的自由语料不解释裸答
+    expect(proposeHealthCertificate(input(HEALTH_CERT_FIELD, '有'))).toBeNull();
+  });
+
   it('契约改了标签措辞 → 退化成追问，不按 ID 硬猜（D4）', () => {
     const renamed: ContractFieldDef = {
       ...HEALTH_CERT_FIELD,

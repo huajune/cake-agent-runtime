@@ -123,6 +123,35 @@ describe('proposal intake（统一 fieldValueProposals 运输）', () => {
     });
   });
 
+  it('简称包含且契约内唯一时放行，撞车弃权，单字不算简称（0902：「健康证」丢 14 条）', () => {
+    expect(findFieldByTitle(CONTRACT, '健康证')?.labelId).toBe(13);
+    expect(findFieldByTitle(CONTRACT, '健康证（有/无）')?.labelId).toBe(13);
+    const experience: ContractFieldDef = {
+      labelId: 753,
+      labelTitle: '有无工作经验',
+      fieldType: 'TEXT',
+      required: true,
+      acceptedOptions: [],
+      rejectedOptions: [],
+    };
+    expect(findFieldByTitle([...CONTRACT, experience], '工作经验')?.labelId).toBe(753);
+
+    const twoHealth = [...CONTRACT, { ...RESUME, labelId: 901, labelTitle: '健康证照片' }];
+    expect(resolveFieldByTitle(twoHealth, '健康证')).toEqual({
+      field: null,
+      reason: 'label_title_ambiguous',
+    });
+    expect(resolveFieldByTitle(CONTRACT, '证')).toEqual({
+      field: null,
+      reason: 'label_title_not_found',
+    });
+    // 契约里根本没有的字段照旧不找：不做反向包含（模型写得比契约长）
+    expect(resolveFieldByTitle(CONTRACT, '是否有食品健康证')).toEqual({
+      field: null,
+      reason: 'label_title_not_found',
+    });
+  });
+
   it('标准语义字段与动态字段都从 fieldValueProposals 携带 value + quote，correct 标为改口', () => {
     const proposals = collectFieldValueProposals(
       base({

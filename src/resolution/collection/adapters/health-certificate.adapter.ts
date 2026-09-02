@@ -43,19 +43,28 @@ const LABEL_MATCHERS: Record<
 };
 
 export function proposeHealthCertificate(input: AdapterInput): SlotProposal | null {
-  const { field, candidateText, historicalValues } = input;
+  const { field, candidateText, historicalValues, answerBound } = input;
 
   const eligibility = resolveLocalHealthCertificateEligibility({
     latestAnswer: candidateText,
     historicalValues: historicalValues ? [...historicalValues] : undefined,
   });
-  const option = resolveOption(field, eligibility.status);
-  if (!option) return null;
-
   // sourceText 取健康证识别器命中的原话片段；识别器认不出（值由历史二次确认推出）
   // 时不产提案——出处门无论如何都会拒收无出处的值，这里提前退出省一次审计噪音。
-  const excerpt = parseHealthCertificateMatch(candidateText)?.excerpt;
-  if (!excerpt) return null;
+  let status: LocalHealthCertificateEligibilityStatus = eligibility.status;
+  let excerpt = parseHealthCertificateMatch(candidateText)?.excerpt ?? null;
+  if (!excerpt && answerBound) {
+    // 值已绑定到本槽位（表单行「有无本地健康证：有」拆行后、fieldValueProposals 定位后）：
+    // 裸短答不带「健康证」三个字也能读——绑定关系就是语境。未绑定的自由语料不走这里，
+    // 脱离语境的「有」能回答任何一问。「无」单独出现仍留空追问（未表态是否接受办理）。
+    const bare = matchBareAnswer(candidateText);
+    if (bare) {
+      status = bare;
+      excerpt = candidateText.trim();
+    }
+  }
+  const option = resolveOption(field, status);
+  if (!option || !excerpt) return null;
 
   return {
     labelId: field.labelId,
@@ -64,6 +73,31 @@ export function proposeHealthCertificate(input: AdapterInput): SlotProposal | nu
     sourceText: excerpt,
     producer: 'candidate_quote',
   };
+}
+
+type DeterminateStatus = keyof typeof LABEL_MATCHERS;
+
+/**
+ * 绑定语境下的裸短答（0902 实测被值词表门拒收 8 条：「有」「有本地」「无,接受办理」）。
+ * 只认封闭句形：肯定必须带「有」，表态必须带「办」或「接受/愿意」——裸「可以」「不」不收，
+ * 那两个在健康证槽位上仍是歧义答（可以什么？不什么？）。先拒后收：「不接受办理」逐字含「接受办理」。
+ */
+const BARE_ANSWER_MATCHERS: ReadonlyArray<{ test: RegExp; status: DeterminateStatus }> = [
+  {
+    test: /^(?:无|没有?|没办过?|还没办?|没证|无证)?[，,、。\s]*(?:不接受(?:办理?)?|不愿意?办(?:理)?|不想办(?:理)?|不能办(?:理)?|不可以办(?:理)?|不去办(?:理)?|不办(?:理)?)$/u,
+    status: 'rejects_local_application',
+  },
+  {
+    test: /^(?:无|没有?|没办过?|还没办?|没证|无证)?[，,、。\s]*(?:接受(?:办理?)?|愿意(?:办理?)?|可以办(?:理)?|能办(?:理)?|可办(?:理)?)$/u,
+    status: 'accepts_local_application',
+  },
+  { test: /^(?:有|有的|有证|有本地|本地有|🈶)$/u, status: 'local_valid' },
+];
+
+function matchBareAnswer(text: string): DeterminateStatus | null {
+  const compact = text.normalize('NFKC').trim();
+  if (!compact) return null;
+  return BARE_ANSWER_MATCHERS.find(({ test }) => test.test(compact))?.status ?? null;
 }
 
 function resolveOption(
