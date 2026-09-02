@@ -1,6 +1,6 @@
 # Agent 运行时架构
 
-**最后更新**：2026-08-26（按当前 `develop` 代码全局复核）
+**最后更新**：2026-09-01（按当前工作区生产调用链复核）
 
 **面向**：研发、测试与运行时排障
 
@@ -23,24 +23,25 @@ Cake Agent Runtime 是面向招聘咨询的 NestJS Agent 服务。生产主链�
 ```mermaid
 flowchart TD
     A["企业微信回调"] --> B["Channels · 接入、聚合、Replay、投递"]
-    A2["主动复聊调度"] --> C["AgentRunnerService.runTurn"]
-    A3["Test Suite / Debug"] --> C
+    A2["主动复聊调度"] --> R["ReengagementAgent.compose"]
     B --> C
-    C --> D["Input guardrail"]
+    C["AgentRunnerService.runTurn"] --> D["Input guardrail"]
     D --> E["GeneratorAgent"]
     E --> F["PreparationService"]
     F --> G["Memory recall / Prompt Context / Tools"]
     E --> H["LlmExecutorService"]
+    R --> H
     H --> I["Router → Reliable → Registry"]
     E --> J["Output guardrail → ReplyRepairAgent"]
     J --> K["TurnOutcome"]
     K --> B
-    K --> A2
     B --> L["Delivery + side-effect commit + TurnFinalizer"]
     L --> M["Memory onTurnEnd + Observability"]
+    R --> K2["TurnOutcome-compatible result"]
+    K2 --> R2["Shadow / Delivery + touch ledger"]
 ```
 
-一轮的核心模型是：
+企业微信 inbound 主链的一轮核心模型是：
 
 ```text
 触发 → 入站预检 → prepare → LLM/Tools → 出站审查/一次修复 → TurnOutcome
@@ -52,6 +53,12 @@ flowchart TD
 - `AgentRunnerService` 负责渠道无关的回合判定，但不发送消息。
 - `GeneratorAgent` 负责 prepare、模型工具循环和生成结果归一化，不决定最终投递。
 - 渠道在 Replay 和投递结局确定后才提交 outcome 副作用、结算记忆并确认 pending 消息。
+
+当前并非所有调用方都经过完整 `runTurn`：
+
+- WeCom 生产入站调用 `AgentRunnerService.runTurn()`，执行完整的输入守卫、生成、输出守卫和终态分类。
+- Test Suite / Debug 直接调用 `invokeReviewed()`（流式测试调用 `stream()`），复用生成与输出审查，但不自动获得 `runTurn` 的输入预检、统一 `TurnOutcome` 分类和渠道 Replay / 投递语义。
+- 主动复聊使用独立的 `ReengagementAgent.compose()` + `generateStructured()`，不复用主链 Generator、Preparation、Output Guardrail 或 `TurnFinalizer`；它只复用 LLM 执行层、部分记忆读取能力和 `TurnOutcome` 数据契约。
 
 Runner 的接口已经渠道中立；Nest 模块依赖尚未完全端口化：`AgentModule` 仍引用 WeCom 的
 `CustomerModule` / `MessageModule`，`ToolModule` 仍引用 `RoomModule` / `MessageSenderModule`。
@@ -72,6 +79,7 @@ Runner 的接口已经渠道中立；Nest 模块依赖尚未完全端口化：`A
 | Memory             | 两层召回、会话状态收尾、闲置沉淀                      | `src/memory/`                                     |
 | Tools              | 工具注册、工具业务流程、动作门禁、收资单据            | `src/tools/`                                      |
 | LLM / Providers    | 统一执行、角色路由、重试/降级、SDK 实例               | `src/llm/`、`src/providers/`                      |
+| Reengagement       | 主动调度、专用结构化生成、频控、shadow/outbox 与底账  | `src/agent/reengagement/`                         |
 | Biz                | 策略、托管、监控、人工介入、测试套件等业务域          | `src/biz/`                                        |
 | Infrastructure     | Redis、Supabase、Bull、HTTP、飞书、地理编码、Web      | `src/infra/`                                      |
 | Observability      | 请求上下文、Agent 事件、incident 与组合 observer      | `src/observability/`                              |
@@ -82,7 +90,7 @@ Runner 的接口已经渠道中立；Nest 模块依赖尚未完全端口化：`A
 - `tools/` 拥有工具调用期动作与业务单据；收资表单不属于 memory。
 - `memory/` 只拥有消息窗口、session hash 和候选人 × bot 长期关系档。
 - `sections/` 负责模型可见呈现与排布，不直接写存储。
-- Agent、Memory、Evaluation、Guardrail 需要模型能力时统一调用 `LlmExecutorService`，不直接操作 provider SDK。
+- Agent、Memory、Evaluation、Reply Repair 需要模型能力时统一调用 `LlmExecutorService`，不直接操作 provider SDK。
 - `biz/**` 的 Controller / Service / Repository 纪律见 [Biz 分层边界规范](./biz-layer-boundaries.md)。
 
 ---
@@ -91,7 +99,8 @@ Runner 的接口已经渠道中立；Nest 模块依赖尚未完全端口化：`A
 
 ### 3.1 TurnRequest
 
-`AgentRunnerService.runTurn(req)` 同时承接被动消息和主动复聊：
+`AgentRunnerService.runTurn(req)` 的类型契约同时支持被动消息和主动触发；当前生产调用者是 WeCom
+被动消息链路，主动复聊生产链使用独立的 `ReengagementAgent`（见第 10 节）：
 
 ```typescript
 type TurnTrigger =
@@ -110,7 +119,9 @@ interface TurnRequest {
 `sessionId` 在生产链路中就是 `chatId`。稳定的 `botUserId` 用于长期关系档隔离；可能轮换的
 `botImId` 用于渠道调用和血缘排障，不能替代长期主键。
 
-`callerKind` 与 trigger 是两根轴：
+完整 `runTurn` 契约里，`callerKind` 与 trigger 是两根独立的语义轴。直接调用
+`invokeReviewed()` 时只有 `callerKind` 和 Generator messages，并不存在 `TurnTrigger`；后两行当前
+就是这种直接调用路径：
 
 | callerKind   | `messages` 的含义 | short-term 消息窗口                  |
 | ------------ | ----------------- | ------------------------------------ |
@@ -129,7 +140,7 @@ Runner 不返回“随便一段文本”，而是返回明确终态：
 | `guardrail_blocked` | 不投递；按 `sideEffects` / `disposition` 处置 | 入站风险或出站 veto                |
 | `handoff`           | 不投递；统一执行暂停、告警和底账              | `request_handoff` 或工具 hard gate |
 
-`TurnOutcome` 还携带 `toolCalls`、usage、step、memory snapshot、guardrail trace、
+`TurnOutcome` 还携带 `toolCalls`、usage、`agentSteps`、memory snapshot、guardrail trace、
 `sideEffects` 和 `runTurnEnd`。副作用意图与副作用执行分离：守卫和分类器只声明，渠道在 Replay
 定局后调用 `TurnOutcomeInterventionService.commit()`，防止被丢弃的首版误触发暂停或告警。
 
@@ -137,20 +148,31 @@ Runner 不返回“随便一段文本”，而是返回明确终态：
 
 ```text
 runTurn
-  ├─ 建立 RequestContext + agent_start 事件
-  ├─ inbound：InputGuardrailService.evaluate()
-  │    └─ 命中 → guardrail_blocked（不进入 Generator）
-  ├─ proactive：默认 toolMode=readonly
-  ├─ invokeReviewedTurn()
-  │    ├─ GeneratorAgent.invoke()
-  │    ├─ OutputGuardrailService.check()
-  │    ├─ 必要时 ReplyRepairAgent 修复一次并二审
-  │    └─ classifyReviewedOutcome()
-  └─ agent_end / agent_error 事件
+  ├─ 建立 RequestContext
+  └─ runTurnObserved()
+       ├─ agent_start 事件
+       ├─ runTurnInternal()
+       │    ├─ inbound：precheckInboundOutcome()
+       │    │    └─ InputGuardrailService.evaluate()
+       │    │         └─ 命中 → guardrail_blocked（不进入 Generator）
+       │    ├─ proactive trigger：默认 toolMode=readonly
+       │    ├─ 构造 GeneratorInvokeParams + ReviewContext
+       │    ├─ invokeReviewed()
+       │    │    ├─ GeneratorAgent.invoke()
+       │    │    ├─ OutputGuardrailService.check()
+       │    │    └─ 必要时 ReplyRepairAgent 修复一次并二审
+       │    └─ classifyReviewedOutcome()
+       └─ agent_end / agent_error 事件
 ```
 
-主动回合发生生成异常时收敛为 `skipped`，避免单个复聊任务拖垮调度；被动 inbound 异常会抛回
-WeCom 链路，由消息失败处理器给出降级回复并告警。
+`invokeReviewedTurn()` 仍保留为“已审生成 + 终态分类 + `TurnFinalizer` 包装”的便利入口，但当前
+`src/` 内没有生产调用方；WeCom 主链直接调用 `runTurn()`，再在 `ReplyWorkflowService.callAgent()`
+中把 outcome 上的 `runTurnEnd` 接管为 `TurnFinalizer`。因此不能把 `invokeReviewedTurn()` 画进
+`runTurn()` 的内部生产时序。
+
+`runTurn` 的 proactive 分支发生生成异常时收敛为 `skipped`；当前独立复聊 Agent 也按自己的协议将
+单会话生成失败收敛为 `skipped`。被动 inbound 异常则抛回 WeCom 链路，由消息失败处理器给出
+降级回复并告警。
 
 ---
 
@@ -168,6 +190,7 @@ GeneratorAgent.invoke(params)
   │    tools       = workingMemory.tools
   │    stopWhen    = 步数上限 / skip_reply / 任一 shortCircuited tool result
   │    prepareStep = 每步动态收紧 activeTools
+  ├─ retryTextualToolCall()（模型把工具调用写成文本时，仅纠正重试一次）
   ├─ recoverEmptyTextResult()（仅兜底一次、禁用工具）
   └─ attachTurnEnd()（总是挂载 runTurnEnd）
 ```
@@ -180,8 +203,8 @@ GeneratorAgent.invoke(params)
 - `agentRequest`、`memorySnapshot`、`turnLedger`；
 - `runTurnEnd({ includeAssistantText, assistantTextOverride })`。
 
-`runTurnEnd` 是硬契约，不再有“生成结束即 fire-and-forget”的默认分支。生产调用方必须让
-`TurnFinalizer` 在结局确定后执行或丢弃它。
+`runTurnEnd` 是硬契约，不再有“生成结束即 fire-and-forget”的默认分支。非流式生产入站必须让
+`TurnFinalizer` 在结局确定后执行或丢弃它；`stream()` 则在 `onFinish` 内自行触发。
 
 ### 4.2 每步工具收紧
 
@@ -197,8 +220,9 @@ GeneratorAgent.invoke(params)
 
 ### 4.3 出站审查与修复
 
-`invokeReviewed()` 执行确定性规则和可配置的语义 reviewer，裁决为
-`pass | observe | revise | block`。`revise` / `block` 最多进入一次受控修复：
+`invokeReviewed()` 调用当前只含确定性规则的 `OutputGuardrailService`，裁决为
+`pass | observe | revise | block`。出站审查不调用第二个模型，也不运行 shadow reviewer；只有
+`revise` / `block` 需要改写时，才最多调用一次 `ReplyRepairAgent`：
 
 - 唯一写手是 `ReplyRepairAgent`，不重新取数、不重进 Generator；
 - 代码围栏、内部 reasoning、JSON 信封等封闭形态优先确定性剥壳；
@@ -221,11 +245,18 @@ interface WorkingMemory {
   promptBlocks: PromptCorpusBlock[];
   normalizedMessages: ModelMessage[];
   conversationCorpusBlocks: CorpusBlock[];
+  memoryLoadWarning?: string;
   tools: ToolSet;
+  corpId: string;
+  userId: string;
+  sessionId: string;
+  botUserId?: string;
+  botImId?: string;
+  maxSteps: number;
   entryStage: string | null;
   ledger: TurnLedger;
   memorySnapshot?: AgentMemorySnapshot;
-  memoryLoadWarning?: string;
+  contactName?: string;
   toolExecutionTimings: Map<string, number>;
 }
 ```
@@ -418,8 +449,9 @@ generateSimple(options);
 supportsVisionInput(options);
 ```
 
-模型角色为：`chat`、`extract`、`vision`、`evaluate`、`review`、`repair`。Memory 的事实抽取和
-摘要、Evaluation 的评分、Guardrail 的语义审查都可以调用模型，但必须经过这个入口。
+当前 `ModelRole` 为：`chat`、`extract`、`vision`、`evaluate`、`repair`。Memory 的事实抽取和
+摘要、Evaluation 的评分、`ReplyRepairAgent` 的受控改写都必须经过这个入口。当前 Output
+Guardrail 不调用模型，因此没有 `review` 角色的线上审查调用。
 
 ### 8.2 路由、可靠性、注册
 
@@ -472,7 +504,8 @@ MessageIngressController
 供 stalled retry / 新实例接管。SIGTERM 会停止领取新任务并等待 in-flight，默认最多 60 秒。
 
 合并窗口、AI 开关、分段发送、模型和 thinking 均从托管运行时配置读取；读取失败才使用环境默认。
-`initialMergeWindowMs` 当前缺省回落为 2,000ms，不再存在“最大合并条数”口径。
+`initialMergeWindowMs` 的托管配置默认值为 3,000ms；运行时配置应用器还保留 2,000ms 的防御性
+空值回落。不再存在“最大合并条数”口径。
 
 ### 9.2 Reply workflow 与 Replay
 
@@ -516,19 +549,28 @@ TurnFinalizer 共同保证“快速 ACK 不丢消息、Replay 不写幽灵记忆
   → FollowUpSchedulerService
   → Bull reengagement queue
   → FollowUpProcessor
-  → ReengagementAgent
-  → AgentRunnerService.runTurn(trigger=proactive, toolMode=readonly)
-  → TurnOutcome
-  → shadow 或真实投递
-  → TurnFinalizer + touch ledger
+  → 确定性停止条件 / 冷却 / 频控 / 投递窗口复检
+  → ReengagementAgent.compose()
+      ├─ MemoryService.recallForProactiveFollowUp()
+      ├─ 构造复聊专用 system prompt + 原生对话 messages
+      ├─ LlmExecutorService.generateStructured(zod schema，无工具)
+      ├─ 协议不一致时最多纠正重试一次
+      └─ 时间事实 / 重复回复 / 候选人姓名等确定性校验
+  → TurnOutcome-compatible reply / skipped
+  → shadow 观测，或 outbox reserve → 真实投递 → touch ledger
 ```
 
-主动和被动共享 prepare、记忆、上下文、出站守卫及终态分类。差异是主动回合：
+主动复聊不复用主链 `GeneratorAgent`、`PreparationService`、Prompt sections、Output Guardrail、
+`AgentRunnerService.runTurn()` 或 `TurnFinalizer`。它与被动链路当前共享的是
+`LlmExecutorService`、主动复聊专用记忆读取、`TurnOutcome` 数据形态和部分投递基础设施；等价保障由
+复聊侧显式实现：
 
-- 追加 `proactive-directive` system 尾块；
-- 默认使用 `readonly` 工具模式，物理禁用副作用工具；
-- 调度、幂等触达、静默/真实投递由 reengagement processor 管理；
-- 单会话失败收敛为 skipped，不让队列批次整体失败。
+- `ReengagementAgent` 完全不注册工具，报名、改约、拉群等动作在模型侧物理不可达；
+- 结构化 schema 同时返回 `reason / blockReason / decision / message`，协议冲突时只允许一次纠正重试；
+- `FollowUpProcessor` 在模型前执行停止条件、真人介入、候选人待答、冷却、频控和投递窗口复检；
+- shadow 只记录本应发送的结果；真实投递走 reserve / sent / failed / unknown 触达底账；
+- 单会话生成失败收敛为 `skipped`，不让队列批次整体失败；
+- 该链路不创建 `runTurnEnd`，也不通过主链 `onTurnEnd` 投影生成文本。
 
 具体场景、锚点、停止条件和 shadow 开关见
 [主动复聊与二次触达流水线](./reengagement-pipeline.md)。
@@ -545,11 +587,14 @@ TurnFinalizer 共同保证“快速 ACK 不丢消息、Replay 不写幽灵记忆
 | Input  | Generator 前 / prepare 内 | 高危风险短路；Prompt Injection 追加 system 防护                                    | 可阻断整轮或硬化 system，不决定工具准入 |
 | Prompt | prepare / 模型生成前      | 用 identity、手册、渠道规范、策略红线、阶段策略、证据块和 final-check 引导首版生成 | 负责“教”和预防，不作为最终放行依据      |
 | Tool   | 工具执行前                | jobId provenance、precheck、身份、硬筛、拉群城市/时机等确定性门禁                  | 可拒绝动作或短路 loop，不审查最终文案   |
-| Output | 生成后、投递前            | 确定性规则 + 语义 reviewer + 一次受控 repair                                       | 最终出站验收，可 revise / block         |
+| Output | 生成后、投递前            | 确定性规则 + 必要时一次受控 repair                                                 | 最终出站验收，可 revise / block         |
 
 四个作用位不是“都写一遍同一条规则”。Prompt 负责降低首次违规率，Tool 负责守住业务动作，Output 只拦
 可从生成结果与证据确定性判断的错误；同一约束若存在教/拦配对，必须在
 [Prompt 规则台账](../prompt-rule-ledger.md) 中互链，禁止多处漂移。
+
+本表描述 WeCom 主 Generator 链。独立主动复聊不自动继承这四层实现，必须在复聊 pipeline 中逐项
+提供等价的确定性停止条件、无工具物理边界、结构化输出协议和投递底账。
 
 运行时必须保持以下不变量：
 
@@ -575,7 +620,7 @@ TurnFinalizer 共同保证“快速 ACK 不丢消息、Replay 不写幽灵记忆
 | ---------------------------- | --------------------------------------------------------------------------------------------------------------- |
 | `message_processing_records` | 入站/AI/投递阶段、agent request（含降维 instructions）、memory snapshot、tool calls、guardrail、post-processing |
 | `agent_execution_events`     | `agent_start/end/error`、model call/fallback、tool call/error、缓存 token 等细粒度事件                          |
-| `guardrail_review_records`   | 规则证据、首版/修复版、语义 reviewer findings                                                                   |
+| `guardrail_review_records`   | 确定性规则证据、首版/修复版、首审/二审决策与 override 标记                                                      |
 | `AgentTracerService`         | 用 request context 把 Agent、模型、工具事件关联到 trace                                                         |
 | `IncidentReporterService`    | memory consolidation 等跨模块失败事件                                                                           |
 
@@ -587,9 +632,11 @@ TurnFinalizer 共同保证“快速 ACK 不丢消息、Replay 不写幽灵记忆
 
 - `src/evaluation/` 只提供通用 LLM 评分和对话解析，无 DB / HTTP。
 - `src/biz/test-suite/` 负责单条、多轮、批次、Bull 执行、fixture、导入回写、lineage 和流式观测。
-- test-suite 通过 `callerKind=TEST_SUITE` 复用 Agent；可指定模型并
-  `disableFallbacks=true` 保证模型保真。
-- 流式调试可以使用 output guardrail advisory，不应污染生产告警和守卫档案。
+- 非流式 test-suite 通过 `callerKind=TEST_SUITE` 调用 `runner.invokeReviewed()`；可指定模型并
+  `disableFallbacks=true` 保证模型保真。它不自动执行 `runTurn` 的 input guard / outcome 分类，也不
+  经过 WeCom Replay 与真实投递。
+- 流式 test-suite 调用 `runner.stream()`；Debug Controller 调用 `runner.invokeReviewed()` 并手动挂
+  `agent_start/end` 观测。调试结果不能当作完整生产消息闭环的等价验证。
 
 详见 [测试套件架构](./test-suite-architecture.md)。
 
@@ -659,7 +706,7 @@ Evaluation、Memory、Tool 和 Feishu Sync。
        │   └─ 构建场景工具
        ├─ LLM step 1：geocode / duliday_job_list
        ├─ LLM step 2：生成候选人回复
-       ├─ output guardrail；必要时一次文本修复并二审
+       ├─ 确定性 output guardrail；必要时一次文本修复并二审
        └─ 返回 reply / skipped / guardrail_blocked / handoff
 
 5. Replay 定局
@@ -790,6 +837,7 @@ DuLiDay token；所选 provider 还必须有对应 API key。Supabase、飞书�
 | Memory            | [`memory.service.ts`](../../src/memory/memory.service.ts)                                             |
 | Tools             | [`tool-registry.service.ts`](../../src/tools/tool-registry.service.ts)                                |
 | WeCom reply       | [`reply-workflow.service.ts`](../../src/channels/wecom/message/application/reply-workflow.service.ts) |
-| Reengagement      | [`follow-up.processor.ts`](../../src/agent/reengagement/follow-up.processor.ts)                       |
+| Reengagement flow | [`follow-up.processor.ts`](../../src/agent/reengagement/follow-up.processor.ts)                       |
+| Reengagement LLM  | [`reengagement.agent.ts`](../../src/agent/reengagement/reengagement.agent.ts)                         |
 | Evaluation        | [`llm-evaluation.service.ts`](../../src/evaluation/llm-evaluation.service.ts)                         |
 | Test Suite        | [`test-execution.service.ts`](../../src/biz/test-suite/services/test-execution.service.ts)            |
