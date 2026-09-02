@@ -95,20 +95,23 @@ export class AnalyticsQueryService {
     alertTrend: AlertTrendPoint[];
   }> {
     try {
-      const [currentRecords, errorLogs, activeRequests, peakActiveRequests, queueStatus] =
+      const now = Date.now();
+      const [queueDurationStats, errorLogs, activeRequests, peakActiveRequests, queueStatus] =
         await Promise.all([
-          this.getRecordsByTimeRange(Date.now() - 24 * 60 * 60 * 1000, Date.now()),
+          // 只要一个均值，交给 DB 聚合；拉明细会因 jsonb 列 detoast 拖到数秒
+          this.messageProcessingService.getQueueDurationStats(now - 24 * 60 * 60 * 1000, now),
           this.getErrorLogsByTimeRange('today'),
           this.messageTrackingService.getActiveRequests(),
           this.messageTrackingService.getPeakActiveRequests(),
           this.messageProcessor.getQueueStatus(),
         ]);
 
-      const queue = this.analyticsMetricsService.calculateQueueMetrics(currentRecords, {
+      const queue = {
         activeRequests,
         peakActiveRequests,
         queueWaitingJobs: queueStatus.waiting,
-      });
+        avgQueueDuration: Math.round(queueDurationStats.avgQueueDuration),
+      };
       const alertsSummary = this.analyticsMetricsService.calculateAlertsSummary(errorLogs);
       const alertTrend = this.analyticsTrendBuilder.buildAlertTrend(errorLogs, 'today');
 
@@ -357,7 +360,15 @@ export class AnalyticsQueryService {
 
   public async getRecentDetailRecords(limit: number = 50): Promise<MessageProcessingRecord[]> {
     try {
-      const result = await this.messageProcessingService.getRecordsByTimestamps({ limit });
+      const result = await this.messageProcessingService.getRecordsByTimestamps({
+        limit,
+        // 不带 includeTotal:false 时会对整表做一次无 WHERE 的 count(*)（6.2 万行，实测 1.5s），
+        // 而调用方只要这 50 行本身，从不读 total。
+        includeTotal: false,
+        // summary 投影去掉 memory_snapshot / tool_calls / agent_steps 等大 jsonb：
+        // 宽投影下 50 行要传 1.56MB（单行 31KB），detoast 实测 3.0s。
+        projection: 'summary',
+      });
       return toMessageProcessingRecords(result.records);
     } catch (error) {
       this.logger.error('查询最近消息记录异常:', error);

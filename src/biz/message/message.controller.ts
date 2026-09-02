@@ -34,8 +34,20 @@ export class MessageController {
     @Query('days') days?: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+    @Query('cursorTimestamp') cursorTimestamp?: string,
+    @Query('cursorChatId') cursorChatId?: string,
   ) {
-    return this.chatSessionService.getChatSessions({ days, startDate, endDate });
+    return this.chatSessionService.getChatSessions({
+      days,
+      startDate,
+      endDate,
+      limit,
+      search,
+      cursorTimestamp,
+      cursorChatId,
+    });
   }
 
   @Get('chat-daily-stats')
@@ -58,8 +70,19 @@ export class MessageController {
   async getChatSessionsOptimized(
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+    @Query('cursorTimestamp') cursorTimestamp?: string,
+    @Query('cursorChatId') cursorChatId?: string,
   ) {
-    return this.chatSessionService.getChatSessionsOptimized(startDate, endDate);
+    return this.chatSessionService.getChatSessionsOptimized({
+      startDate,
+      endDate,
+      limit,
+      search,
+      cursorTimestamp,
+      cursorChatId,
+    });
   }
 
   @Get('chat-trend')

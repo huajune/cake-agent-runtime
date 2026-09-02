@@ -81,6 +81,13 @@
   }
 }
 
+// 口径说明
+.hint {
+  margin: -4px 0 $spacing-md;
+  font-size: $font-size-xs;
+  color: $text-muted;
+}
+
 // 两张图并排：会话数 / 消息数
 .chartsRow {
   display: flex;

@@ -2,10 +2,17 @@
  * 聊天会话相关 Hooks
  */
 
-import { useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import * as chatService from '@/api/services/chat.service';
 
-export type { ChatMessage, ChatMessagesResponse, ChatSession } from '@/api/services/chat.service';
+export type {
+  ChatMessage,
+  ChatMessagesResponse,
+  ChatSession,
+  ChatSessionCursor,
+  ChatSessionPage,
+} from '@/api/services/chat.service';
+import type { ChatSessionCursor } from '@/api/services/chat.service';
 
 export function useChatMessages(date?: string, page = 1, pageSize = 50) {
   return useQuery({
@@ -35,10 +42,35 @@ export function useChatSummaryStats(startDate: string, endDate: string) {
   });
 }
 
-export function useChatSessionsOptimized(startDate: string, endDate: string, enabled = true) {
-  return useQuery({
-    queryKey: ['chat-sessions-optimized', startDate, endDate],
-    queryFn: () => chatService.getChatSessionsOptimized(startDate, endDate),
+/** 会话列表页大小：一屏够用，单页往返稳定在亚秒级。 */
+export const CHAT_SESSION_PAGE_SIZE = 200;
+
+/**
+ * 会话列表（游标分页 + 服务端搜索）。
+ *
+ * 用游标而非 offset：列表按最后消息时间倒序，新消息会把会话顶到列表头，
+ * offset 会整体漂移导致翻页重复/漏项。
+ *
+ * 搜索下推到服务端，命中范围是整个时间窗，而不只是已加载的那几页。
+ */
+export function useChatSessionsOptimized(
+  startDate: string,
+  endDate: string,
+  enabled = true,
+  search = '',
+) {
+  return useInfiniteQuery({
+    queryKey: ['chat-sessions-optimized', startDate, endDate, search],
+    queryFn: ({ pageParam }) =>
+      chatService.getChatSessionsOptimized({
+        startDate,
+        endDate,
+        limit: CHAT_SESSION_PAGE_SIZE,
+        search,
+        cursor: pageParam,
+      }),
+    initialPageParam: null as ChatSessionCursor | null,
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
     enabled,
   });
 }

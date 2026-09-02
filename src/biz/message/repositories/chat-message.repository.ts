@@ -9,7 +9,7 @@ import {
   type StorageMessageType,
 } from '@enums/storage-message.enum';
 import { ChatMessageRecord } from '../entities/chat-message.entity';
-import { ChatMessageInput, ChatSessionSummary } from '../types/message.types';
+import { ChatMessageInput, ChatSessionPage, ChatSessionPageQuery } from '../types/message.types';
 import { EMOTION_MESSAGE_PREFIX, IMAGE_MESSAGE_PREFIX } from '@resolution/signal/markers';
 
 /**
@@ -21,6 +21,11 @@ import { EMOTION_MESSAGE_PREFIX, IMAGE_MESSAGE_PREFIX } from '@resolution/signal
  * - 获取会话列表
  * - 数据清理
  */
+/** 会话列表默认页大小：一屏够用，且单页往返稳定在亚秒级。 */
+const DEFAULT_SESSION_PAGE_SIZE = 200;
+/** 单页上限，防止调用方传入超大 limit 把 PostgREST 载荷打爆。 */
+const MAX_SESSION_PAGE_SIZE = 500;
+
 @Injectable()
 export class ChatMessageRepository extends BaseRepository {
   protected readonly tableName = 'chat_messages';
@@ -401,33 +406,34 @@ export class ChatMessageRepository extends BaseRepository {
 
   /**
    * 获取会话列表（用于 Dashboard 展示）
-   * 委托给 getChatSessionListOptimized（使用 RPC，DB 侧 DISTINCT ON 聚合）。
    */
-  async getChatSessionList(days: number = 1): Promise<ChatSessionSummary[]> {
-    if (!this.isAvailable()) {
-      return [];
-    }
-
+  async getChatSessionList(
+    days: number = 1,
+    limit = DEFAULT_SESSION_PAGE_SIZE,
+  ): Promise<ChatSessionPage> {
     const endDate = new Date();
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
     startDate.setHours(0, 0, 0, 0);
 
-    return this.getChatSessionListByDateRange(startDate, endDate);
+    return this.getChatSessionPage({ startDate, endDate, limit });
   }
 
   /**
-   * 获取指定时间范围内的会话列表
-   * 使用 RPC get_chat_session_list，在数据库侧通过 DISTINCT ON 完成聚合，
-   * 避免拉取千行数据到内存再做 JS 分组。
+   * 按时间范围分页查询会话列表（RPC get_chat_session_list，DB 侧聚合 + 搜索 + 游标裁剪）。
+   *
+   * 分页必须走游标而非 offset：会话按最后消息时间倒序，新消息会把会话顶到列表头，
+   * offset 会整体漂移导致翻页出现重复/漏项。游标锚在 (lastTimestamp, chatId) 上不受影响。
+   *
+   * 同时避开了 PostgREST 的 max_rows(1000) 静默截断——先前一次性取全量，
+   * 「近 30 天」实际有 5000+ 会话却只返回 1000 条且不报错。
    */
-  async getChatSessionListByDateRange(
-    startDate: Date,
-    endDate: Date,
-  ): Promise<ChatSessionSummary[]> {
+  async getChatSessionPage(query: ChatSessionPageQuery): Promise<ChatSessionPage> {
     if (!this.isAvailable()) {
-      return [];
+      return { sessions: [], total: 0, nextCursor: null };
     }
+
+    const limit = Math.max(1, Math.min(query.limit, MAX_SESSION_PAGE_SIZE));
 
     try {
       const result = await this.rpc<
@@ -440,15 +446,27 @@ export class ChatMessageRepository extends BaseRepository {
           last_timestamp?: string;
           avatar?: string;
           contact_type?: string;
+          total_count: string;
         }>
       >('get_chat_session_list', {
-        p_start_date: startDate.toISOString(),
-        p_end_date: endDate.toISOString(),
+        p_start_date: query.startDate.toISOString(),
+        p_end_date: query.endDate.toISOString(),
+        // 多取一条用于判断是否还有下一页，返回前裁掉
+        p_limit: limit + 1,
+        p_search: query.search?.trim() || null,
+        p_cursor_timestamp: query.cursor?.timestamp ?? null,
+        p_cursor_chat_id: query.cursor?.chatId ?? null,
       });
 
-      if (!result) return [];
+      if (!result || result.length === 0) {
+        return { sessions: [], total: 0, nextCursor: null };
+      }
 
-      return result.map((item) => ({
+      const total = parseInt(result[0].total_count, 10) || 0;
+      const hasMore = result.length > limit;
+      const pageRows = hasMore ? result.slice(0, limit) : result;
+
+      const sessions = pageRows.map((item) => ({
         chatId: item.chat_id,
         candidateName: item.candidate_name,
         managerName: item.manager_name,
@@ -458,9 +476,17 @@ export class ChatMessageRepository extends BaseRepository {
         avatar: item.avatar,
         contactType: item.contact_type,
       }));
+
+      const lastRow = pageRows[pageRows.length - 1];
+      const nextCursor =
+        hasMore && lastRow?.last_timestamp
+          ? { timestamp: lastRow.last_timestamp, chatId: lastRow.chat_id }
+          : null;
+
+      return { sessions, total, nextCursor };
     } catch (error) {
       this.logger.error('获取会话列表(时间范围)失败:', error);
-      return [];
+      return { sessions: [], total: 0, nextCursor: null };
     }
   }
 

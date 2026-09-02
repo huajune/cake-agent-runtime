@@ -9,6 +9,9 @@ import {
 } from '@/hooks/chat/useChatSessions';
 import styles from './index.module.scss';
 
+// 搜索防抖：搜索下推到服务端，避免每次击键都打一次库
+const SEARCH_DEBOUNCE_MS = 350;
+
 export interface CandidateSelectorProps {
   onSelectHistory: (historyText: string) => void;
 }
@@ -80,29 +83,40 @@ export function CandidateSelector({ onSelectHistory }: CandidateSelectorProps) {
     }
   }, [isOpen, updateDropdownPosition]);
 
-  // 获取近7天会话列表
+  // 获取近7天会话列表（游标分页 + 服务端搜索）
+  // 搜索必须走服务端：近 7 天已有 1300+ 会话，只在首页里做客户端过滤会漏掉大半
   const { startDate, endDate } = getLast7DaysRange();
-  const { data: sessionsData, isLoading: sessionsLoading } = useChatSessionsOptimized(
-    startDate,
-    endDate,
-    isOpen,
-  );
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearchTerm(searchTerm), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  const {
+    data: sessionsData,
+    isLoading: sessionsLoading,
+    hasNextPage,
+    isFetchingNextPage,
+    fetchNextPage,
+  } = useChatSessionsOptimized(startDate, endDate, isOpen, debouncedSearchTerm);
 
   // 获取选中会话的消息
   const { data: messagesData, isLoading: messagesLoading } = useChatSessionMessages(selectedChatId);
 
-  // 过滤会话列表
+  // 展平分页结果并按 chatId 去重（会话上浮时可能与历史页重复）
   const filteredSessions = useMemo(() => {
-    const sessions = sessionsData?.sessions || [];
-    if (!searchTerm.trim()) return sessions;
-    const term = searchTerm.toLowerCase();
-    return sessions.filter(
-      (s) =>
-        s.candidateName?.toLowerCase().includes(term) ||
-        s.managerName?.toLowerCase().includes(term) ||
-        s.lastMessage?.toLowerCase().includes(term)
-    );
-  }, [sessionsData?.sessions, searchTerm]);
+    const seen = new Set<string>();
+    const flat: ChatSession[] = [];
+    for (const page of sessionsData?.pages ?? []) {
+      for (const session of page.sessions) {
+        if (seen.has(session.chatId)) continue;
+        seen.add(session.chatId);
+        flat.push(session);
+      }
+    }
+    return flat;
+  }, [sessionsData]);
 
   // 处理会话选择
   const handleSelectSession = async (session: ChatSession) => {
@@ -231,6 +245,17 @@ export function CandidateSelector({ onSelectHistory }: CandidateSelectorProps) {
                     )}
                   </button>
                 ))
+              )}
+
+              {hasNextPage && filteredSessions.length > 0 && (
+                <button
+                  type="button"
+                  className={styles.loadMoreItem}
+                  onClick={() => fetchNextPage()}
+                  disabled={isFetchingNextPage}
+                >
+                  {isFetchingNextPage ? '加载中...' : '加载更多'}
+                </button>
               )}
             </div>
           </div>

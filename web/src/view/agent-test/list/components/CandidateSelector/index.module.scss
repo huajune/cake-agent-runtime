@@ -269,3 +269,22 @@
   color: $accent;
   font-weight: $font-weight-medium;
 }
+
+// 下拉列表触底加载
+.loadMoreItem {
+  width: 100%;
+  padding: 10px 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 12px;
+  color: #6b7280;
+
+  &:hover:not(:disabled) {
+    color: #4b5563;
+  }
+
+  &:disabled {
+    cursor: default;
+  }
+}
