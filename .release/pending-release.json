@@ -68,6 +68,40 @@
       "envFiles": [],
       "verification": [],
       "level": "minor"
+    },
+    {
+      "number": "1160",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1160",
+      "title": "删除 gender_source 兼容读 + 数值事实落库规范形（09-02 记忆精度审计）",
+      "author": "huajune",
+      "mergedAt": "2026-09-02",
+      "businessUpdates": [
+        "记录 gender_source 兼容读闸门 3 审计结果（09-02 未归零）",
+        "删除 interview_info.gender_source 兼容读 sibling",
+        "数值事实落库规范形——体重斤→kg、年龄去单位、区域否定词、空串信封",
+        "merge: origin/develop into chore/memory-compat-cleanup（docs/todo 索引取 …",
+        "删除 gender_source 兼容读 + 数值事实落库规范形（09-02 记忆精度审计）"
+      ],
+      "summary": [
+        "记录 gender_source 兼容读闸门 3 审计结果（09-02 未归零）",
+        "删除 interview_info.gender_source 兼容读 sibling",
+        "数值事实落库规范形——体重斤→kg、年龄去单位、区域否定词、空串信封",
+        "merge: origin/develop into chore/memory-compat-cleanup（docs/todo 索引取 …",
+        "删除 gender_source 兼容读 + 数值事实落库规范形（09-02 记忆精度审计）"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "记录 gender_source 兼容读闸门 3 审计结果（09-02 未归零）",
+        "删除 interview_info.gender_source 兼容读 sibling",
+        "数值事实落库规范形——体重斤→kg、年龄去单位、区域否定词、空串信封",
+        "merge: origin/develop into chore/memory-compat-cleanup（docs/todo 索引取 …"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [],
+      "level": "patch"
     }
   ],
   "lastRelease": {
@@ -247,5 +281,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "2b241152570b5ffe04aac63e57d0d32d30c91ee0"
+  "lastAnalyzedSha": "10c77852d2ab61feeeb6000f04f229a6b53d134f"
 }

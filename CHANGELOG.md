@@ -14,7 +14,7 @@
 **预计版本**: `v11.2.0`
 **最近更新**: `2026-09-02`
 **来源分支**: `develop`
-**累计 PR**: 2
+**累计 PR**: 3
 
 ### 更新摘要
 - PR #1158 健康证收资两处误拒——冲突门剥模板回显、裸短答按绑定语境解、字段简称唯一包含可定位
@@ -25,6 +25,11 @@
 - PR #1159 关闭运行时改造发版后续（基线复测经用户裁定不跑）
 - PR #1159 守卫过程事件、工具 empty/narrow 落库、主动回合去伪 TTFT（观测 P1-2/P1…
 - PR #1159 守卫过程事件/工具空结果落库/主动回合去伪 TTFT；清理 todo 目录
+- PR #1160 记录 gender_source 兼容读闸门 3 审计结果（09-02 未归零）
+- PR #1160 删除 interview_info.gender_source 兼容读 sibling
+- PR #1160 数值事实落库规范形——体重斤→kg、年龄去单位、区域否定词、空串信封
+- PR #1160 merge: origin/develop into chore/memory-compat-cleanup（docs/todo 索引取 …
+- PR #1160 删除 gender_source 兼容读 + 数值事实落库规范形（09-02 记忆精度审计）
 
 ### 新功能
 - 无
@@ -42,6 +47,10 @@
 - PR #1159 删除字段值提案收口对账单（用户 2026-09-02 授权）
 - PR #1159 关闭运行时改造发版后续（基线复测经用户裁定不跑）
 - PR #1159 守卫过程事件、工具 empty/narrow 落库、主动回合去伪 TTFT（观测 P1-2/P1…
+- PR #1160 记录 gender_source 兼容读闸门 3 审计结果（09-02 未归零）
+- PR #1160 删除 interview_info.gender_source 兼容读 sibling
+- PR #1160 数值事实落库规范形——体重斤→kg、年龄去单位、区域否定词、空串信封
+- PR #1160 merge: origin/develop into chore/memory-compat-cleanup（docs/todo 索引取 …
 
 ### 配置变更
 - 无
