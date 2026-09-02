@@ -142,6 +142,46 @@ describe('RiskInterceptService', () => {
     ).resolves.toEqual({ hit: false });
   });
 
+  // 2026-08-17 生产实锤：宝妈求职者的"适合宝妈的上午时间"被当骂人静默暂停
+  it.each([
+    '江北新区 沿江街道 适合宝妈的上午时间 九月份以后',
+    '这个是他妈妈的',
+    '我妈妈的电话是这个',
+  ])('does NOT flag kinship words containing 妈的/他妈 as abuse: %s', async (scanContent) => {
+    await expect(service.precheck(baseInput({ scanContent }))).resolves.toEqual({ hit: false });
+  });
+
+  it.each(['滚你妈的', '你他妈的你傻逼吧！', '妈的，一直不回'])(
+    'still flags real 妈的/他妈 abuse: %s',
+    async (scanContent) => {
+      await expect(service.precheck(baseInput({ scanContent }))).resolves.toMatchObject({
+        hit: true,
+        riskType: 'abuse',
+      });
+    },
+  );
+
+  describe('quoted blocks are stripped before scanning（引用块是对方原话，不是候选人自陈）', () => {
+    it.each([
+      '[引用 经理：亲，面试没通过，说是之前没做过重体力劳动的经验] 确实没做过，我也编不了',
+      '[引用 经理：去劳动局干啥] 仲裁前个公司老板',
+    ])('does NOT hit on keywords that only appear inside the quote: %s', async (scanContent) => {
+      await expect(service.precheck(baseInput({ scanContent }))).resolves.toEqual({ hit: false });
+    });
+
+    it('still hits on the candidate own words after the quote', async () => {
+      await expect(
+        service.precheck(baseInput({ scanContent: '[引用 经理：面试安排在周三] 我要投诉你们' })),
+      ).resolves.toMatchObject({ hit: true, riskType: 'complaint_risk' });
+    });
+
+    it('keeps the original message in the side-effect intent for the alert', async () => {
+      const raw = '[引用 经理：面试安排在周三] 我要投诉你们';
+      const evaluation = await service.evaluate(baseInput({ scanContent: raw }));
+      expect(evaluation.sideEffect).toMatchObject({ currentMessageContent: raw });
+    });
+  });
+
   it('does NOT flag ordinary rolling words as abuse', async () => {
     await expect(
       service.precheck(baseInput({ scanContent: '麻烦把页面滚动一下，我看不到下面' })),
@@ -244,11 +284,29 @@ describe('RiskInterceptService', () => {
       });
     });
 
+    // 2026-09-02 标定实证：4 个候选人明确自述残障却漏网，Agent 直答"没有身体条件限制，可以报名"
+    it.each([
+      '我聋哑人',
+      '本人听力残疾，想做点力所能及的周日兼职',
+      '我是左手先天性残疾，就是有些精细的活还是做不了的',
+      '请问接受听障人吗',
+      '我是一个聋哑人',
+      '我这边有残疾证的',
+    ])('detects copula-less / modifier-gapped self-disclosure: %s', async (scanContent) => {
+      await expect(service.precheck(baseInput({ scanContent }))).resolves.toMatchObject({
+        hit: true,
+        riskType: 'disability_disclosure',
+      });
+    });
+
     it.each([
       '我爸是残疾人，平时要照顾他，只能做白班',
       '我妈妈有残疾证，家里离不开人',
       '之前在残联做过志愿者',
       '门店有残疾人通道吗',
+      '我们店有残疾人通道吗',
+      '我对象是残疾人，我自己没问题',
+      '我认识的残疾人朋友也想找工作',
     ])('does NOT hit third-party/incidental mentions (防画像误伤): %s', async (scanContent) => {
       await expect(service.precheck(baseInput({ scanContent }))).resolves.toEqual({
         hit: false,
