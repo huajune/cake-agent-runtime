@@ -17,6 +17,7 @@ interface HandoffEventRow {
   missing_job_info: string[] | null;
   idempotency_key: string;
   created_at: string;
+  sequence_no: number | null;
 }
 
 /**
@@ -53,6 +54,7 @@ export class HandoffEventsRepository extends BaseRepository {
       missing_job_info: input.missingJobInfo?.length ? input.missingJobInfo : null,
       idempotency_key: input.idempotencyKey,
       created_at: input.occurredAt.toISOString(),
+      sequence_no: null,
     };
 
     if (!this.isAvailable()) {
@@ -64,6 +66,9 @@ export class HandoffEventsRepository extends BaseRepository {
     }
 
     try {
+      // 会话内序号（区分"反复转"与"新问题"）：DB 侧取 MAX+1，取不到不阻断写入
+      payload.sequence_no = await this.nextSequenceNo(input.corpId, input.chatId);
+
       // BaseRepository.upsert() returns null for both conflict and failures. This path needs to
       // preserve that distinction for outcome-layer handoff idempotency.
       const { data, error } = await this.getClient()
@@ -84,6 +89,60 @@ export class HandoffEventsRepository extends BaseRepository {
     } catch (error) {
       this.handleError('UPSERT', error);
       return 'failed';
+    }
+  }
+
+  /**
+   * 删除超过保留期的转人工底账（观测数据统一 90 天）。
+   * 业务事实与全部字段永久留在 ops_events(handoff.triggered).payload。
+   */
+  async cleanupExpiredEvents(retentionDays: number): Promise<number> {
+    if (!this.isAvailable()) return 0;
+    const cutoffIso = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000).toISOString();
+    const deleted = await this.delete<{ id: number }>((q) => q.lt('created_at', cutoffIso), true);
+    if (deleted.length > 0) {
+      this.logger.log(
+        `[转人工底账] 清理完成: 删除 ${deleted.length} 行 ${retentionDays} 天前的记录`,
+      );
+    }
+    return deleted.length;
+  }
+
+  /**
+   * 回填结果：把该会话所有尚未闭环的转人工记录标记为 outcome（resumed / expired / manual_closed …）。
+   * 由托管恢复路径调用；写失败只 warn，不阻断恢复。
+   */
+  async markResolvedByChat(chatId: string, outcome: string): Promise<number> {
+    if (!this.isAvailable()) return 0;
+    if (this.circuitBlocked('UPDATE')) return 0;
+    try {
+      const { data, error } = await this.getClient()
+        .from(this.tableName)
+        .update({ outcome, resolved_at: new Date().toISOString() })
+        .eq('chat_id', chatId)
+        .is('outcome', null)
+        .select('id');
+      if (error) {
+        this.handleError('UPDATE', error);
+        return 0;
+      }
+      return (data as Array<{ id: number }> | null)?.length ?? 0;
+    } catch (error) {
+      this.handleError('UPDATE', error);
+      return 0;
+    }
+  }
+
+  private async nextSequenceNo(corpId: string, chatId: string): Promise<number | null> {
+    try {
+      const result = await this.rpc<number | string>('next_handoff_sequence_no', {
+        p_corp_id: corpId,
+        p_chat_id: chatId,
+      });
+      const n = Number(result);
+      return Number.isFinite(n) && n > 0 ? n : null;
+    } catch {
+      return null;
     }
   }
 }

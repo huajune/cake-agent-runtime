@@ -748,8 +748,6 @@ export class TestExecutionService {
       timestamp,
       candidateName: request.userId,
       managerName: request.botUserId,
-      orgId: TEST_CORP_ID,
-      botId: TEST_BOT_ID,
       messageType,
       source,
       isRoom: false,
@@ -778,8 +776,8 @@ export class TestExecutionService {
         : { text: trimmedMessage || '', pureText: trimmedMessage || '' };
 
     return {
-      orgId: TEST_CORP_ID,
       token: 'test-suite',
+      orgId: TEST_CORP_ID,
       botId: TEST_BOT_ID,
       botUserId: request.botUserId,
       imBotId: request.botImId || TEST_BOT_ID,
@@ -841,8 +839,6 @@ export class TestExecutionService {
       timestamp: Number(messageData.timestamp),
       candidateName: request.userId,
       managerName: request.botUserId,
-      orgId: TEST_CORP_ID,
-      botId: TEST_BOT_ID,
       messageType: messageData.messageType,
       source: messageData.source,
       isRoom: false,

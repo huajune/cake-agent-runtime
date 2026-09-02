@@ -23,8 +23,6 @@ export interface ChatMessageInput {
   timestamp: number;
   candidateName?: string;
   managerName?: string;
-  orgId?: string;
-  botId?: string;
   messageType?: number;
   source?: number;
   isRoom?: boolean;
@@ -100,8 +98,6 @@ export interface MessageProcessingRecordInput {
   totalDuration?: number;
   queueDuration?: number;
   prepDuration?: number;
-  aiStartAt?: number;
-  aiEndAt?: number;
   aiDuration?: number;
   ttftMs?: number;
   sendDuration?: number;
@@ -117,8 +113,8 @@ export interface MessageProcessingRecordInput {
   /** 异常信号标签（由 tracking 自动计算） */
   anomalyFlags?: AnomalyFlag[];
   /** 入站守卫拦截摘要（仅拦截命中时非空） */
-  guardrailInput?: GuardrailInputTrace;
   /** 出站守卫全程 trace（首审→repair→二审，紧凑摘要） */
+  guardrailInput?: GuardrailInputTrace;
   guardrailOutput?: GuardrailTurnTrace;
   /** 本轮触发时的记忆上下文快照 */
   memorySnapshot?: AgentMemorySnapshot;

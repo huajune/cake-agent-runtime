@@ -15,6 +15,7 @@ const TREND_HOURS_BY_RANGE: Record<TimeRange, number> = {
   month: 720,
   twoMonths: 1440,
   threeMonths: 2160,
+  all: 2160,
 };
 
 export function getTrendHours(timeRange: TimeRange): number {

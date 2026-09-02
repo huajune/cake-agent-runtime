@@ -82,6 +82,21 @@ export class MonitoringHourlyStatsRepository extends BaseRepository {
   /**
    * 清空统计数据
    */
+  /**
+   * 删除超过保留期的聚合行（观测数据统一 90 天）。
+   * 原始流水本就 90 天滚删，聚合表不再永久保留；仪表盘业务卡不依赖本表。
+   */
+  async cleanupExpiredStats(retentionDays: number): Promise<number> {
+    if (!this.isAvailable()) return 0;
+    const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000);
+    const cutoffValue = cutoff.toISOString();
+    const deleted = await this.delete<{ hour: string }>((q) => q.lt('hour', cutoffValue), true);
+    if (deleted.length > 0) {
+      this.logger.log(`[小时统计] 清理完成: 删除 ${deleted.length} 行 ${retentionDays} 天前的记录`);
+    }
+    return deleted.length;
+  }
+
   async clearAllRecords(): Promise<void> {
     if (!this.isAvailable()) return;
     await this.delete((q) => q.gte('hour', '1970-01-01'));

@@ -108,7 +108,7 @@ function filterUsersByControls(
       return true;
     }
 
-    return [user.odName, user.groupName, user.chatId].some((value) =>
+    return [user.odName, user.chatId].some((value) =>
       normalizeText(value).includes(keyword),
     );
   });

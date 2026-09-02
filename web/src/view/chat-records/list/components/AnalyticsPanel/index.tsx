@@ -21,6 +21,8 @@ interface AnalyticsPanelProps {
   messagesChartData: ChartData<'line'> | null;
   chartOptions: ChartOptions<'line'>;
   isLoading: boolean;
+  /** 业务数据覆盖起点（YYYY-MM-DD），「全部」档展示用 */
+  dataFloor?: string | null;
 }
 
 export default function AnalyticsPanel({
@@ -33,6 +35,7 @@ export default function AnalyticsPanel({
   messagesChartData,
   chartOptions,
   isLoading,
+  dataFloor,
 }: AnalyticsPanelProps) {
   const renderChart = (chartData: ChartData<'line'> | null) =>
     chartData ? (
@@ -80,7 +83,11 @@ export default function AnalyticsPanel({
         </div>
 
         {/* 口径说明：与「托管趋势」一致，折线与汇总都只统计工作日 */}
-        <div className={styles.hint}>趋势图与汇总均已剔除周六、周日，仅统计工作日。</div>
+        <div className={styles.hint}>
+          趋势图与汇总均已剔除周六、周日，仅统计工作日。口径：消息数 = 候选人消息 + AI
+          回复（按逻辑消息计，不重复计分段），会话数 = 当日有业务往来的会话；数据来自永久业务表
+          {dataFloor ? `，自 ${dataFloor} 起` : ''}。
+        </div>
 
         {/* 图表：会话数 / 消息数 分开两张 */}
         <div className={styles.chartsRow}>

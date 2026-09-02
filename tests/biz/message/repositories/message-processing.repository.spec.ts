@@ -119,6 +119,46 @@ describe('MessageProcessingRepository', () => {
     });
   });
 
+  describe('saveMessageProcessingRecord → message_processing_invocations 子表', () => {
+    beforeEach(() => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(true);
+    });
+
+    it('writes the invocation snapshot to the child table instead of the main row', async () => {
+      const mainUpsert = makeQueryMock({ data: null, error: null });
+      const childUpsert = makeQueryMock({ data: null, error: null });
+      mockSupabaseClient.from.mockImplementation((table: string) =>
+        table === 'message_processing_invocations' ? childUpsert : mainUpsert,
+      );
+      const invocation = { request: { agentRequest: 'prompt' }, response: { text: 'hi' } };
+
+      const result = await repository.saveMessageProcessingRecord({
+        ...baseRecord,
+        agentInvocation: invocation,
+      });
+
+      expect(result).toBe(true);
+      expect(mockSupabaseClient.from).toHaveBeenCalledWith('message_processing_invocations');
+      expect(childUpsert.upsert).toHaveBeenCalledWith(
+        { message_id: baseRecord.messageId, agent_invocation: invocation },
+        { onConflict: 'message_id' },
+      );
+      // 主表不再落 agent_invocation（59 KB/行的快照与高频更新的标量分开住）
+      const mainPayload = mainUpsert.upsert.mock.calls[0][0] as Record<string, unknown>;
+      expect(mainPayload).not.toHaveProperty('agent_invocation');
+      expect(mainPayload).not.toHaveProperty('ai_start_at');
+    });
+
+    it('skips the child table when the record carries no invocation', async () => {
+      const mainUpsert = makeQueryMock({ data: null, error: null });
+      mockSupabaseClient.from.mockReturnValue(mainUpsert);
+
+      await repository.saveMessageProcessingRecord(baseRecord);
+
+      expect(mockSupabaseClient.from).not.toHaveBeenCalledWith('message_processing_invocations');
+    });
+  });
+
   // ==================== getSlowestMessages ====================
 
   describe('getSlowestMessages', () => {
@@ -386,6 +426,42 @@ describe('MessageProcessingRepository', () => {
       expect(result?.chatId).toBe('chat_001');
       expect(result?.scenario).toBe('interview');
       expect(result?.batchId).toBe('batch_001');
+    });
+
+    it('prefers the embedded child-table invocation over the legacy column', async () => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(true);
+      const dbRow = {
+        message_id: 'msg_002',
+        chat_id: 'chat_001',
+        user_id: 'user_001',
+        received_at: new Date().toISOString(),
+        status: 'success',
+        agent_invocation: { legacy: true },
+        message_processing_invocations: [{ agent_invocation: { fromChild: true } }],
+      };
+      mockSupabaseClient.from.mockReturnValue(makeQueryMock({ data: [dbRow], error: null }));
+
+      const result = await repository.getMessageProcessingRecordById('msg_002');
+
+      expect(result?.agentInvocation).toEqual({ fromChild: true });
+    });
+
+    it('falls back to the legacy agent_invocation column for rows written before the split', async () => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(true);
+      const dbRow = {
+        message_id: 'msg_003',
+        chat_id: 'chat_001',
+        user_id: 'user_001',
+        received_at: new Date().toISOString(),
+        status: 'success',
+        agent_invocation: { legacy: true },
+        message_processing_invocations: [],
+      };
+      mockSupabaseClient.from.mockReturnValue(makeQueryMock({ data: [dbRow], error: null }));
+
+      const result = await repository.getMessageProcessingRecordById('msg_003');
+
+      expect(result?.agentInvocation).toEqual({ legacy: true });
     });
   });
 
@@ -676,16 +752,23 @@ describe('MessageProcessingRepository', () => {
     it('should loop batches until a batch returns less than the limit', async () => {
       mockSupabaseService.isClientInitialized.mockReturnValue(true);
 
-      // returns integer 的函数 supabase-js 返回裸数字
-      mockSupabaseClient.rpc
-        .mockResolvedValueOnce({ data: 200, error: null })
-        .mockResolvedValueOnce({ data: 200, error: null })
-        .mockResolvedValueOnce({ data: 35, error: null });
+      // 两条并行清理：子表 delete_expired_agent_invocations 分批删，主表 null_agent_invocation 置空存量。
+      // returns integer 的函数 supabase-js 返回裸数字；按函数名分别计数。
+      const calls: Record<string, number> = {};
+      mockSupabaseClient.rpc.mockImplementation((fn: string) => {
+        calls[fn] = (calls[fn] ?? 0) + 1;
+        if (fn === 'delete_expired_agent_invocations') {
+          return Promise.resolve({ data: calls[fn] <= 2 ? 200 : 35, error: null });
+        }
+        return Promise.resolve({ data: calls[fn] === 1 ? 20 : 0, error: null });
+      });
 
       const result = await repository.nullAgentInvocations(7);
 
-      expect(result).toBe(435);
-      expect(mockSupabaseClient.rpc).toHaveBeenCalledTimes(3);
+      // 子表 200+200+35 = 435（第 3 批 < limit 停止），主表 20（< limit 停止）
+      expect(result).toBe(455);
+      expect(calls['delete_expired_agent_invocations']).toBe(3);
+      expect(calls['null_agent_invocation']).toBe(1);
     });
 
     it('should use default daysOld of 7 and pass batch limit', async () => {

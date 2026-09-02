@@ -35,6 +35,14 @@ export function useChatDailyStats(startDate: string, endDate: string) {
   });
 }
 
+/** 业务口径每日趋势（永久表），供消息趋势面板；startDate 为 undefined 表示「全部」（后端取安全起点 2026-06-01）。 */
+export function useChatBusinessDailyTrend(startDate: string | undefined, endDate: string) {
+  return useQuery({
+    queryKey: ['chat-business-daily-trend', startDate ?? 'all', endDate],
+    queryFn: () => chatService.getChatBusinessDailyTrend(startDate, endDate),
+  });
+}
+
 export function useChatSummaryStats(startDate: string, endDate: string) {
   return useQuery({
     queryKey: ['chat-summary-stats', startDate, endDate],

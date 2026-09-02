@@ -11,6 +11,6 @@ import { HandoffEventsRepository } from './handoff-events.repository';
 @Global()
 @Module({
   providers: [HandoffEventsRepository, HandoffRecorderService],
-  exports: [HandoffRecorderService],
+  exports: [HandoffRecorderService, HandoffEventsRepository],
 })
 export class HandoffEventsModule {}

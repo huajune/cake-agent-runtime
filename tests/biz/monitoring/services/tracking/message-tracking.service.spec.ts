@@ -241,8 +241,6 @@ describe('MessageTrackingService', () => {
         totalDuration: 8500,
         queueDuration: 1500,
         prepDuration: 500,
-        aiStartAt: 3000,
-        aiEndAt: 7000,
         aiDuration: 4000,
         sendDuration: 1200,
         tokenUsage: 200,

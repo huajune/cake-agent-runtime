@@ -87,6 +87,23 @@ export class ChatSessionService {
   }
 
   /**
+   * 业务口径每日趋势（永久表：daily_ops_report + ops_events），供「消息趋势」面板 / 「全部」档。
+   * startDate 缺省 = 业务数据安全起点 2026-06-01（埋点齐全）；endDate 缺省 = 今天。
+   */
+  async getChatBusinessDailyTrend(startDate?: string, endDate?: string) {
+    const start = startDate && /^\d{4}-\d{2}-\d{2}$/.test(startDate) ? startDate : '2026-06-01';
+    const end =
+      endDate && /^\d{4}-\d{2}-\d{2}$/.test(endDate)
+        ? endDate
+        : new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const [trend, floor] = await Promise.all([
+      this.chatMessageRepository.getChatBusinessDailyTrend(start, end),
+      this.chatMessageRepository.getBusinessDataFloor(),
+    ]);
+    return { trend, floor, caliber: 'business' as const };
+  }
+
+  /**
    * 获取聊天汇总统计
    */
   async getChatSummaryStats(startDate?: string, endDate?: string) {

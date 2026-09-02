@@ -410,4 +410,30 @@ describe('MonitoringHourlyStatsRepository', () => {
       expect(mockSupabaseClient.from).toHaveBeenCalledWith('monitoring_hourly_stats');
     });
   });
+
+  describe('cleanupExpiredStats', () => {
+    it('deletes hourly rows older than the retention cutoff and returns the deleted count', async () => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-09-02T00:00:00.000Z'));
+      try {
+        const deleteResult = makeQueryMock({ data: [{ hour: 'a' }, { hour: 'b' }], error: null });
+        mockSupabaseClient.from.mockReturnValue(deleteResult);
+
+        const deleted = await repository.cleanupExpiredStats(90);
+
+        expect(deleted).toBe(2);
+        expect(mockSupabaseClient.from).toHaveBeenCalledWith('monitoring_hourly_stats');
+        expect(deleteResult.delete).toHaveBeenCalled();
+        expect(deleteResult.lt).toHaveBeenCalledWith('hour', '2026-06-04T00:00:00.000Z');
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('returns 0 without touching the database when supabase is unavailable', async () => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(false);
+
+      await expect(repository.cleanupExpiredStats(90)).resolves.toBe(0);
+      expect(mockSupabaseClient.from).not.toHaveBeenCalled();
+    });
+  });
 });

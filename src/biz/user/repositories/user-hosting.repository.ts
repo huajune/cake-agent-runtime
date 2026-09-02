@@ -146,7 +146,7 @@ export class UserHostingRepository extends BaseRepository {
   // ==================== user_activity 操作 ====================
 
   /**
-   * 查询指定用户 ID 列表的资料（od_name、group_name、托管 bot 身份）
+   * 查询指定用户 ID 列表的资料（od_name、托管 bot 身份）
    */
   async findUserProfiles(userIds: string[]): Promise<UserProfile[]> {
     if (userIds.length === 0) {
@@ -155,7 +155,7 @@ export class UserHostingRepository extends BaseRepository {
 
     const { data, error } = await this.getClient()
       .from('user_activity')
-      .select('chat_id,od_name,group_name,bot_user_id,im_bot_id')
+      .select('chat_id,od_name,bot_user_id,im_bot_id')
       .in('chat_id', userIds)
       .order('last_active_at', { ascending: false });
 
@@ -168,14 +168,12 @@ export class UserHostingRepository extends BaseRepository {
       (data as {
         chat_id: string;
         od_name?: string;
-        group_name?: string;
         bot_user_id?: string;
         im_bot_id?: string;
       }[]) ?? [];
     return rows.map((row) => ({
       chatId: row.chat_id,
       odName: row.od_name,
-      groupName: row.group_name,
       botUserId: row.bot_user_id,
       imBotId: row.im_bot_id,
     }));
@@ -198,8 +196,6 @@ export class UserHostingRepository extends BaseRepository {
       chat_id: string;
       od_id: string | null;
       od_name: string | null;
-      group_id: string | null;
-      group_name: string | null;
       bot_user_id: string | null;
       im_bot_id: string | null;
       message_count: string;
@@ -215,8 +211,6 @@ export class UserHostingRepository extends BaseRepository {
       chatId: row.chat_id,
       odId: row.od_id ?? undefined,
       odName: row.od_name ?? undefined,
-      groupId: row.group_id ?? undefined,
-      groupName: row.group_name ?? undefined,
       botUserId: row.bot_user_id ?? undefined,
       imBotId: row.im_bot_id ?? undefined,
       messageCount: parseInt(row.message_count, 10),
@@ -227,43 +221,42 @@ export class UserHostingRepository extends BaseRepository {
   }
 
   /**
-   * 按日期范围 + 小组过滤，分页拉取去重 chat_id 集合（Dashboard 小组筛选用）。
+   * 按日期范围 + 托管 bot 过滤，分页拉取去重 chat_id 集合（Dashboard 小组筛选用）。
    *
-   * 直接把 group_name 过滤下推到 DB 并分页，避开列表型 RPC 的 PostgREST max_rows(默认 1000)
-   * 截断——否则活跃用户超 1000 时本小组靠后的 chat_id 会被丢掉，导致小组活跃数 / chatIds /
-   * 后续消息统计被低估。一个 chat_id 在多天会有多行，靠 Set 去重；按 (activity_date, chat_id)
-   * 稳定排序分页，不会漏行。
+   * 小组 → bot 的翻译在 BotGroupResolverService（user_activity 从不落 group_name，历史上按该列
+   * 过滤永远为空集）。bot 落库有 wxid（im_bot_id）与 wecomUserId（bot_user_id）两种形态，
+   * 两列各查一遍取并集。经 selectAllPaged 分页拉全量避开 PostgREST max_rows(默认 1000) 截断；
+   * 一个 chat_id 多天多行靠 Set 去重；按 (activity_date, chat_id) 稳定排序分页不漏行。
    */
-  async findActiveChatIdsByGroups(
+  async findActiveChatIdsByBots(
     startDate: Date,
     endDate: Date,
-    groups: string[],
+    botKeys: string[],
   ): Promise<Set<string>> {
     const chatIds = new Set<string>();
-    if (groups.length === 0) {
+    if (botKeys.length === 0) {
       return chatIds;
     }
 
     const start = formatLocalDate(startDate);
     const end = formatLocalDate(endDate);
 
-    // 经 selectAllPaged 分页拉全量（统一受熔断器保护），避免活跃用户超 max_rows 时本小组靠后的
-    // chat_id 被截断；一个 chat_id 多天多行靠 Set 去重；按 (activity_date, chat_id) 稳定排序分页。
-    const rows = await this.selectAllPaged<{ chat_id: string | null }>(
-      'user_activity',
-      'chat_id',
-      (q) =>
-        q
-          .in('group_name', groups)
-          .gte('activity_date', start)
-          .lte('activity_date', end)
-          .order('activity_date', { ascending: true })
-          .order('chat_id', { ascending: true }),
-    );
-
-    for (const row of rows) {
-      if (row.chat_id) {
-        chatIds.add(row.chat_id);
+    for (const column of ['im_bot_id', 'bot_user_id'] as const) {
+      const rows = await this.selectAllPaged<{ chat_id: string | null }>(
+        'user_activity',
+        'chat_id',
+        (q) =>
+          q
+            .in(column, botKeys)
+            .gte('activity_date', start)
+            .lte('activity_date', end)
+            .order('activity_date', { ascending: true })
+            .order('chat_id', { ascending: true }),
+      );
+      for (const row of rows) {
+        if (row.chat_id) {
+          chatIds.add(row.chat_id);
+        }
       }
     }
 
@@ -381,8 +374,6 @@ export class UserHostingRepository extends BaseRepository {
     chatId: string;
     odId?: string;
     odName?: string;
-    groupId?: string;
-    groupName?: string;
     botUserId?: string;
     imBotId?: string;
     messageCount?: number;
@@ -398,8 +389,6 @@ export class UserHostingRepository extends BaseRepository {
         p_chat_id: data.chatId,
         p_od_id: data.odId || null,
         p_od_name: data.odName || null,
-        p_group_id: data.groupId || null,
-        p_group_name: data.groupName || null,
         p_message_count: data.messageCount ?? 1,
         p_token_usage: data.totalTokens ?? 0,
         p_active_at: (data.activeAt ?? new Date()).toISOString(),

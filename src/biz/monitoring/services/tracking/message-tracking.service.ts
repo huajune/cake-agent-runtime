@@ -21,8 +21,6 @@ import { UserHostingService } from '@biz/user/services/user-hosting.service';
 interface InvocationTimingSummary {
   timestamps: {
     acceptedAt?: number;
-    aiStartAt?: number;
-    aiEndAt?: number;
   };
   durations: {
     acceptedToWorkerStartMs?: number;
@@ -413,8 +411,6 @@ export class MessageTrackingService {
       queueDuration:
         timings.durations.acceptedToWorkerStartMs ?? params.existingRecord?.queueDuration,
       prepDuration: timings.durations.workerStartToAiStartMs ?? params.existingRecord?.prepDuration,
-      aiStartAt: timings.timestamps.aiStartAt ?? params.existingRecord?.aiStartAt,
-      aiEndAt: timings.timestamps.aiEndAt ?? params.existingRecord?.aiEndAt,
       aiDuration: timings.durations.aiStartToAiEndMs ?? params.existingRecord?.aiDuration,
       sendDuration: timings.durations.deliveryDurationMs ?? params.existingRecord?.sendDuration,
       toolCalls:
@@ -503,8 +499,6 @@ export class MessageTrackingService {
     chatId: string;
     userId?: string;
     userName?: string;
-    groupId?: string;
-    groupName?: string;
     botUserId?: string;
     imBotId?: string;
     messageCount: number;
@@ -516,8 +510,6 @@ export class MessageTrackingService {
         chatId: data.chatId,
         odId: data.userId,
         odName: data.userName,
-        groupId: data.groupId,
-        groupName: data.groupName,
         botUserId: data.botUserId,
         imBotId: data.imBotId,
         messageCount: data.messageCount,
@@ -685,8 +677,6 @@ export class MessageTrackingService {
     return {
       timestamps: {
         acceptedAt: this.asNumber(timestamps?.acceptedAt),
-        aiStartAt: this.asNumber(timestamps?.aiStartAt),
-        aiEndAt: this.asNumber(timestamps?.aiEndAt),
       },
       durations: {
         acceptedToWorkerStartMs: this.asNumber(durations?.acceptedToWorkerStartMs),

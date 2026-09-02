@@ -367,7 +367,6 @@ describe('AnalyticsQueryService', () => {
       const result = await service.getMetricsDataAsync();
 
       expect(result).toHaveProperty('detailRecords');
-      expect(result).toHaveProperty('hourlyStats');
       expect(result).toHaveProperty('globalCounters');
       expect(result).toHaveProperty('percentiles');
       expect(result).toHaveProperty('slowestRecords');
@@ -518,8 +517,6 @@ describe('AnalyticsQueryService', () => {
           chatId: 'chat-1',
           odId: 'user-1',
           odName: 'User One',
-          groupId: 'group-1',
-          groupName: 'Group One',
           botUserId: 'bot-a',
           imBotId: 'im-bot-a',
           messageCount: 5,
@@ -537,8 +534,6 @@ describe('AnalyticsQueryService', () => {
         chatId: 'chat-1',
         odId: 'user-1',
         odName: 'User One',
-        groupId: 'group-1',
-        groupName: 'Group One',
         botUserId: 'bot-a',
         imBotId: 'im-bot-a',
         messageCount: 5,
@@ -708,7 +703,7 @@ describe('AnalyticsQueryService', () => {
       );
     });
 
-    it('should cap user trend queries at one year', async () => {
+    it('should cap user trend queries at two years', async () => {
       mockUserHostingService.getDailyActivityStats.mockResolvedValue([]);
 
       await service.getUserTrend(999);
@@ -717,7 +712,7 @@ describe('AnalyticsQueryService', () => {
         .calls[0];
 
       expect(startDate.toISOString()).toBe(
-        addLocalDays(getLocalDayStart(endDate), -364).toISOString(),
+        addLocalDays(getLocalDayStart(endDate), -729).toISOString(),
       );
     });
   });

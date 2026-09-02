@@ -9,9 +9,10 @@ import {
   ResponseMinuteTrendPoint,
   AlertTrendPoint,
   AlertTypeMetric,
-  TimeRange,
   TodayUser,
   BusinessMetricTrendPoint,
+  TimeRange,
+  ALL_RANGE_START_DATE,
 } from '../../types/analytics.types';
 import { MonitoringCacheService } from '../tracking/monitoring-cache.service';
 import { MessageProcessingService } from '@biz/message/services/message-processing.service';
@@ -31,10 +32,19 @@ import {
 import { getTrendHours } from './analytics-calc.util';
 
 const DEFAULT_USER_TREND_DAYS = 30;
-const MAX_USER_TREND_DAYS = 365;
+const MAX_USER_TREND_DAYS = 730;
 
 function normalizeUserTrendDays(days?: number): number {
-  if (!Number.isFinite(days) || days === undefined || days < 1) {
+  if (!Number.isFinite(days) || days === undefined) {
+    return DEFAULT_USER_TREND_DAYS;
+  }
+  // days=0 表示「全部」：user_activity 永久保留，从业务数据起点算到今天
+  if (days === 0) {
+    const start = new Date(`${ALL_RANGE_START_DATE}T00:00:00+08:00`);
+    const elapsed = Math.floor((Date.now() - start.getTime()) / (24 * 60 * 60 * 1000)) + 1;
+    return Math.max(1, Math.min(elapsed, MAX_USER_TREND_DAYS));
+  }
+  if (days < 1) {
     return DEFAULT_USER_TREND_DAYS;
   }
 
@@ -42,6 +52,7 @@ function normalizeUserTrendDays(days?: number): number {
 }
 
 const DETAIL_RECORD_LIMIT_BY_RANGE: Record<TimeRange, number> = {
+  all: 2000,
   today: 2000,
   week: 5000,
   month: 10000,
@@ -158,9 +169,9 @@ export class AnalyticsQueryService {
    */
   async getMetricsDataAsync(): Promise<MetricsData> {
     try {
-      const [detailRecords, hourlyStats, globalCounters, recentErrors] = await Promise.all([
+      // hourlyStats 曾随 metrics 每 5 秒拉 72 行，唯一消费方（系统监控页）只读 percentiles.p95，已移除
+      const [detailRecords, globalCounters, recentErrors] = await Promise.all([
         this.getRecentDetailRecords(50),
-        this.getHourlyStats(72),
         this.cacheService.getCounters(),
         this.getRecentErrors(20),
       ]);
@@ -184,7 +195,6 @@ export class AnalyticsQueryService {
 
       return {
         detailRecords,
-        hourlyStats,
         globalCounters,
         percentiles,
         slowestRecords,
@@ -194,7 +204,6 @@ export class AnalyticsQueryService {
       this.logger.error('获取指标数据失败:', error);
       return {
         detailRecords: [],
-        hourlyStats: [],
         globalCounters: {
           totalMessages: 0,
           totalSuccess: 0,
@@ -315,8 +324,6 @@ export class AnalyticsQueryService {
       chatId: user.chatId,
       odId: user.odId || user.chatId,
       odName: user.odName || user.chatId,
-      groupId: user.groupId,
-      groupName: user.groupName,
       botUserId: user.botUserId,
       imBotId: user.imBotId,
       messageCount: user.messageCount,

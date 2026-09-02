@@ -24,6 +24,7 @@ const TIME_RANGE_OPTIONS: Array<AnalyticsRangeOption<DashboardTimeRange>> = [
   { key: 'month', label: '近30天' },
   { key: 'twoMonths', label: '近2月' },
   { key: 'threeMonths', label: '近3月' },
+  { key: 'all', label: '全部' },
 ];
 
 export default function ControlPanel({

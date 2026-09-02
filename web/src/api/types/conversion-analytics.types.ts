@@ -5,7 +5,8 @@ export type ConversionRange =
   | 'month'
   | 'twoMonths'
   | 'threeMonths'
-  | 'sixMonths';
+  | 'sixMonths'
+  | 'all';
 
 export type ConversionCohort = 'friend_added' | 'booking';
 export type ConversionMetricMode = 'period' | 'cohort';

@@ -10,6 +10,9 @@ import { AgentExecutionEventRepository } from '@biz/monitoring/repositories/agen
 import { MonitoringErrorLogRepository } from '@biz/monitoring/repositories/error-log.repository';
 import { ReengagementTouchRepository } from '@biz/monitoring/repositories/reengagement-touch.repository';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
+import { MonitoringHourlyStatsRepository } from '@biz/monitoring/repositories/hourly-stats.repository';
+import { MonitoringDailyStatsRepository } from '@biz/monitoring/repositories/daily-stats.repository';
+import { HandoffEventsRepository } from '@biz/handoff-events/handoff-events.repository';
 
 describe('DataCleanupService', () => {
   let service: DataCleanupService;
@@ -59,6 +62,10 @@ describe('DataCleanupService', () => {
     cleanupExpiredRecords: jest.fn().mockResolvedValue(0),
   };
 
+  const mockHourlyStatsRepository = { cleanupExpiredStats: jest.fn().mockResolvedValue(0) };
+  const mockDailyStatsRepository = { cleanupExpiredStats: jest.fn().mockResolvedValue(0) };
+  const mockHandoffEventsRepository = { cleanupExpiredEvents: jest.fn().mockResolvedValue(0) };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -103,6 +110,9 @@ describe('DataCleanupService', () => {
           provide: ReengagementTouchRepository,
           useValue: mockReengagementTouchRepository,
         },
+        { provide: MonitoringHourlyStatsRepository, useValue: mockHourlyStatsRepository },
+        { provide: MonitoringDailyStatsRepository, useValue: mockDailyStatsRepository },
+        { provide: HandoffEventsRepository, useValue: mockHandoffEventsRepository },
       ],
     }).compile();
 
@@ -138,29 +148,30 @@ describe('DataCleanupService', () => {
     it('should run tiered cleanup when Supabase is available', async () => {
       mockSupabaseService.isAvailable.mockReturnValue(true);
       mockMessageProcessingService.nullAgentInvocations.mockResolvedValue(20);
-      mockChatSessionService.cleanupChatMessages.mockResolvedValue(10);
       mockGuardrailReviewService.cleanupExpiredReviews.mockResolvedValue(4);
       mockAgentExecutionEventRepository.cleanupExpiredEvents.mockResolvedValue(6);
       mockMessageProcessingService.cleanupRecords.mockResolvedValue(5);
       mockErrorLogRepository.cleanupErrorLogs.mockResolvedValue(3);
-      mockUserHostingService.cleanupActivity.mockResolvedValue(2);
+      mockHourlyStatsRepository.cleanupExpiredStats.mockResolvedValue(11);
+      mockDailyStatsRepository.cleanupExpiredStats.mockResolvedValue(1);
+      mockHandoffEventsRepository.cleanupExpiredEvents.mockResolvedValue(2);
 
       await service.cleanupExpiredData();
 
       // 1. NULL agent_invocation (>7 天)
       expect(messageProcessingService.nullAgentInvocations).toHaveBeenCalledWith(7);
-      // 2. DELETE chat_messages (>100 天，覆盖消息趋势「近 3 月」视图)
-      expect(chatSessionService.cleanupChatMessages).toHaveBeenCalledWith(100);
-      // 3. DELETE guardrail_review_records (>60 天，默认跟随 DATA_CLEANUP_PROCESSING_DAYS)
-      expect(mockGuardrailReviewService.cleanupExpiredReviews).toHaveBeenCalledWith(60);
-      // 4. DELETE agent_execution_events (>60 天，默认跟随 DATA_CLEANUP_PROCESSING_DAYS)
-      expect(mockAgentExecutionEventRepository.cleanupExpiredEvents).toHaveBeenCalledWith(60);
-      // 5. DELETE message_processing_records (>60 天，默认 DATA_CLEANUP_PROCESSING_DAYS)
-      expect(messageProcessingService.cleanupRecords).toHaveBeenCalledWith(60);
-      // 6. DELETE monitoring_error_logs (>30 天)
-      expect(mockErrorLogRepository.cleanupErrorLogs).toHaveBeenCalledWith(30);
-      // 7. DELETE user_activity (>365 天)
-      expect(mockUserHostingService.cleanupActivity).toHaveBeenCalledWith(365);
+      // 2. chat_messages 属业务 / 不可再生数据：永久保留，不再进入清理
+      expect(chatSessionService.cleanupChatMessages).not.toHaveBeenCalled();
+      // 3–6. Agent 观测数据统一 90 天（默认 DATA_CLEANUP_PROCESSING_DAYS=90）
+      expect(mockGuardrailReviewService.cleanupExpiredReviews).toHaveBeenCalledWith(90);
+      expect(mockAgentExecutionEventRepository.cleanupExpiredEvents).toHaveBeenCalledWith(90);
+      expect(messageProcessingService.cleanupRecords).toHaveBeenCalledWith(90);
+      expect(mockErrorLogRepository.cleanupErrorLogs).toHaveBeenCalledWith(90);
+      // 7. 观测聚合 + 转人工底账：同 90 天；user_activity 属业务，永久保留
+      expect(mockHourlyStatsRepository.cleanupExpiredStats).toHaveBeenCalledWith(90);
+      expect(mockDailyStatsRepository.cleanupExpiredStats).toHaveBeenCalledWith(90);
+      expect(mockHandoffEventsRepository.cleanupExpiredEvents).toHaveBeenCalledWith(90);
+      expect(mockUserHostingService.cleanupActivity).not.toHaveBeenCalled();
       // 8. reengagement_touch_records: NULL generated_text (>30 天) + DELETE (>90 天)
       expect(mockReengagementTouchRepository.nullExpiredGeneratedText).toHaveBeenCalledWith(30);
       expect(mockReengagementTouchRepository.cleanupExpiredRecords).toHaveBeenCalledWith(90);
@@ -196,7 +207,7 @@ describe('DataCleanupService', () => {
       // Should not throw
       await expect(service.cleanupExpiredData()).resolves.not.toThrow();
       // Should continue to next steps even after error
-      expect(chatSessionService.cleanupChatMessages).toHaveBeenCalled();
+      expect(chatSessionService.cleanupChatMessages).not.toHaveBeenCalled();
     });
 
     it('should continue deleting expired touch rows when generated_text nulling fails', async () => {
@@ -269,11 +280,12 @@ describe('DataCleanupService', () => {
     it('should return cleanup counts when Supabase is available', async () => {
       mockSupabaseService.isAvailable.mockReturnValue(true);
       mockMessageProcessingService.nullAgentInvocations.mockResolvedValue(20);
-      mockChatSessionService.cleanupChatMessages.mockResolvedValue(15);
+      mockHourlyStatsRepository.cleanupExpiredStats.mockResolvedValue(11);
+      mockDailyStatsRepository.cleanupExpiredStats.mockResolvedValue(1);
+      mockHandoffEventsRepository.cleanupExpiredEvents.mockResolvedValue(2);
       mockGuardrailReviewService.cleanupExpiredReviews.mockResolvedValue(7);
       mockAgentExecutionEventRepository.cleanupExpiredEvents.mockResolvedValue(9);
       mockMessageProcessingService.cleanupRecords.mockResolvedValue(8);
-      mockUserHostingService.cleanupActivity.mockResolvedValue(3);
       mockErrorLogRepository.cleanupErrorLogs.mockResolvedValue(5);
       mockReengagementTouchRepository.nullExpiredGeneratedText.mockResolvedValueOnce(6);
       mockReengagementTouchRepository.cleanupExpiredRecords.mockResolvedValueOnce(2);
@@ -282,12 +294,13 @@ describe('DataCleanupService', () => {
 
       expect(result).toEqual({
         agentInvocations: 20,
-        chatMessages: 15,
         guardrailReviewRecords: 7,
         agentExecutionEvents: 9,
         processingRecords: 8,
-        userActivity: 3,
         errorLogs: 5,
+        monitoringHourlyStats: 11,
+        monitoringDailyStats: 1,
+        handoffEvents: 2,
         reengagementTouchTexts: 6,
         reengagementTouchRecords: 2,
       });
@@ -300,12 +313,13 @@ describe('DataCleanupService', () => {
 
       expect(result).toEqual({
         agentInvocations: 0,
-        chatMessages: 0,
         guardrailReviewRecords: 0,
         agentExecutionEvents: 0,
         processingRecords: 0,
-        userActivity: 0,
         errorLogs: 0,
+        monitoringHourlyStats: 0,
+        monitoringDailyStats: 0,
+        handoffEvents: 0,
         reengagementTouchTexts: 0,
         reengagementTouchRecords: 0,
       });
@@ -318,12 +332,13 @@ describe('DataCleanupService', () => {
 
     it('should handle partial failures gracefully', async () => {
       mockSupabaseService.isAvailable.mockReturnValue(true);
+      mockHourlyStatsRepository.cleanupExpiredStats.mockResolvedValue(0);
+      mockDailyStatsRepository.cleanupExpiredStats.mockResolvedValue(0);
+      mockHandoffEventsRepository.cleanupExpiredEvents.mockResolvedValue(0);
       mockMessageProcessingService.nullAgentInvocations.mockResolvedValue(10);
-      mockChatSessionService.cleanupChatMessages.mockRejectedValue(new Error('Error'));
       mockGuardrailReviewService.cleanupExpiredReviews.mockRejectedValue(new Error('Error'));
       mockAgentExecutionEventRepository.cleanupExpiredEvents.mockRejectedValue(new Error('Error'));
       mockMessageProcessingService.cleanupRecords.mockResolvedValue(4);
-      mockUserHostingService.cleanupActivity.mockResolvedValue(2);
       mockErrorLogRepository.cleanupErrorLogs.mockResolvedValue(1);
       mockReengagementTouchRepository.nullExpiredGeneratedText.mockRejectedValueOnce(
         new Error('Error'),
@@ -334,12 +349,13 @@ describe('DataCleanupService', () => {
 
       expect(result).toEqual({
         agentInvocations: 10,
-        chatMessages: 0,
         guardrailReviewRecords: 0,
         agentExecutionEvents: 0,
         processingRecords: 4,
-        userActivity: 2,
         errorLogs: 1,
+        monitoringHourlyStats: 0,
+        monitoringDailyStats: 0,
+        handoffEvents: 0,
         reengagementTouchTexts: 0,
         reengagementTouchRecords: 3,
       });

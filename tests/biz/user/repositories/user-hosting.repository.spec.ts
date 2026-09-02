@@ -258,11 +258,10 @@ describe('UserHostingRepository', () => {
         {
           chat_id: 'user_001',
           od_name: 'Alice',
-          group_name: 'Team A',
           bot_user_id: 'bot-a',
           im_bot_id: 'im-bot-a',
         },
-        { chat_id: 'user_002', od_name: 'Bob', group_name: 'Team B' },
+        { chat_id: 'user_002', od_name: 'Bob' },
       ];
 
       const selectChain = {
@@ -277,7 +276,6 @@ describe('UserHostingRepository', () => {
       expect(result).toHaveLength(2);
       expect(result[0].chatId).toBe('user_001');
       expect(result[0].odName).toBe('Alice');
-      expect(result[0].groupName).toBe('Team A');
       expect(result[0].botUserId).toBe('bot-a');
       expect(result[0].imBotId).toBe('im-bot-a');
       expect(result[1].chatId).toBe('user_002');
@@ -304,7 +302,7 @@ describe('UserHostingRepository', () => {
     it('should handle users with missing optional profile fields', async () => {
       mockSupabaseService.isClientInitialized.mockReturnValue(true);
 
-      const dbRows = [{ chat_id: 'user_001', od_name: undefined, group_name: undefined }];
+      const dbRows = [{ chat_id: 'user_001', od_name: undefined }];
 
       const selectChain = {
         select: jest.fn().mockReturnThis(),
@@ -317,7 +315,6 @@ describe('UserHostingRepository', () => {
 
       expect(result).toHaveLength(1);
       expect(result[0].odName).toBeUndefined();
-      expect(result[0].groupName).toBeUndefined();
     });
   });
 
@@ -471,8 +468,6 @@ describe('UserHostingRepository', () => {
         chatId: 'user_001',
         odId: 'od_001',
         odName: 'Alice',
-        groupId: 'group_001',
-        groupName: 'Team A',
         botUserId: 'bot-a',
         imBotId: 'im-bot-a',
         messageCount: 5,
@@ -484,8 +479,6 @@ describe('UserHostingRepository', () => {
         p_chat_id: 'user_001',
         p_od_id: 'od_001',
         p_od_name: 'Alice',
-        p_group_id: 'group_001',
-        p_group_name: 'Team A',
         p_message_count: 5,
         p_token_usage: 500,
         p_active_at: activeAt.toISOString(),
@@ -507,8 +500,6 @@ describe('UserHostingRepository', () => {
           p_chat_id: 'user_001',
           p_od_id: null,
           p_od_name: null,
-          p_group_id: null,
-          p_group_name: null,
           p_bot_user_id: null,
           p_im_bot_id: null,
           p_message_count: 1,
@@ -580,6 +571,41 @@ describe('UserHostingRepository', () => {
       const result = await repository.cleanupUserActivity(14);
 
       expect(result).toBe(0);
+    });
+  });
+
+  describe('findActiveChatIdsByBots', () => {
+    it('queries both bot id forms and unions the chat ids', async () => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(true);
+      const queryMock = makeQueryMock({
+        data: [{ chat_id: 'chat-1' }, { chat_id: 'chat-2' }, { chat_id: null }],
+        error: null,
+      });
+      mockSupabaseClient.from.mockReturnValue(queryMock);
+
+      const result = await repository.findActiveChatIdsByBots(
+        new Date('2026-08-01T00:00:00+08:00'),
+        new Date('2026-08-31T00:00:00+08:00'),
+        ['1688855974513959', 'gaoyaqi'],
+      );
+
+      expect(result).toEqual(new Set(['chat-1', 'chat-2']));
+      expect(mockSupabaseClient.from).toHaveBeenCalledWith('user_activity');
+      expect(queryMock.in).toHaveBeenCalledWith('im_bot_id', ['1688855974513959', 'gaoyaqi']);
+      expect(queryMock.in).toHaveBeenCalledWith('bot_user_id', ['1688855974513959', 'gaoyaqi']);
+      expect(queryMock.gte).toHaveBeenCalledWith('activity_date', '2026-08-01');
+      expect(queryMock.lte).toHaveBeenCalledWith('activity_date', '2026-08-31');
+      // 分页拉全量：每列一次 range 翻页（结果不足一页即停）
+      expect(queryMock.range).toHaveBeenCalledTimes(2);
+    });
+
+    it('returns an empty set without querying when no bot keys are given', async () => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(true);
+
+      const result = await repository.findActiveChatIdsByBots(new Date(), new Date(), []);
+
+      expect(result.size).toBe(0);
+      expect(mockSupabaseClient.from).not.toHaveBeenCalled();
     });
   });
 });
