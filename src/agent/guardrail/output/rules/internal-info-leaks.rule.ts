@@ -59,7 +59,7 @@ const TOOL_NAMES = [
  * `isToolCallArtifactOnly` 会在检测前置闸直接短路，导致裸 XML 残文既未拦截也未剥离。
  */
 const TOOL_CALL_XML_TAG_SOURCE =
-  '<\\/?(?:tool_call|tool_use|invoke|parameter|function(?:_calls?)?|thinking|antthinking)\\b[^>]*>';
+  '<\\/?(?:tool_call|tool_use|invoke|parameter|function(?:_calls?)?|thinking|antthinking|antml[\\w:-]*)\\b[^>]*>';
 
 /**
  * Provider 降级时可能把推理独白混入候选人可见文本。每条模式只锚定已知形态，
@@ -71,6 +71,15 @@ const INTERNAL_REASONING_PATTERNS: readonly RegExp[] = [
   /^(?:我(?:现在)?(?:应该|需要)|接下来(?:应该|需要))(?:简洁地|直接|先)?(?:回答|回复|询问|说明|告诉|确认|处理)[^\n]*$/m,
   /^根据(?:本轮)?工具查询结果[，,:：]?[^\n]*(?:应该|需要|接下来|先|回答|回复|推荐|询问|告诉候选人)[^\n]*$/m,
 ];
+
+/**
+ * 自检/思考段标题行（2026-09-02 生产两例：正文后追加「---/自检说明：/1./2./3./4.」逐条复盘，
+ * 以及残缺推理标签 `<antmlinking>` 起头整段推演后才是正文，均穿透旧词库整段投递）。
+ * 只认独占一行的封闭标题词形；正文里的"说明："、"分析："等通用词不入表。
+ * 命中即 block 走常规 repair，不做段落切割。
+ */
+const SELF_CHECK_HEADING_PATTERN =
+  /^[ \t]*(?:#{1,6}[ \t]*)?(?:\*{1,2})?[【\[（(]?[ \t]*(?:自检(?:说明|清单|结果|记录|过程|项|通过|完成)?|自我(?:检查|核对|审查)|发送前(?:自检|检查|核对)|思考过程|内部(?:说明|思考|检查)|回复思路|self[- ]?check(?:list)?|reasoning|thinking|analysis)[ \t]*[】\]）)]?(?:\*{1,2})?[ \t]*[:：]?[ \t]*$/imu;
 
 const PATTERNS: RegExp[] = [
   // 模型把阶段术语 / 内部状态字段直接说出来
@@ -96,6 +105,7 @@ const PATTERNS: RegExp[] = [
   new RegExp(TOOL_CALL_XML_TAG_SOURCE, 'i'),
   // 推理/自我指令自然语言泄漏（只收已实证形态）
   ...INTERNAL_REASONING_PATTERNS,
+  SELF_CHECK_HEADING_PATTERN,
   /["']name["']\s*:\s*["'][\w-]+["']\s*,\s*["']arguments["']\s*:/,
   /["']arguments["']\s*:\s*\{/,
   // 整条回复以 JSON 开头（`{"`、`[{`、`["`）——自然语言回复不存在这种开头
@@ -174,7 +184,7 @@ export function stripMarkdownCodeFences(content: string): string {
  * 工具调用骨架：XML 标签、`toolName(args)` 调用式、字面量与括号。
  *
  * 修正：
- * - XML 交替组补 `function(?:_calls?)?` 与 `thinking`——生产实测漏杀
+ * - XML 交替组补 `function(?:_calls?)?`、`thinking` 与残缺 `antml*` 标签——生产实测漏杀
  *   `<function invite_to_group>`（rewrite 编出"已经拉你进群了"并投递）与
  *   `</thinking>\n<function=skip_reply>`（旧组只匹配 function_call/s）；
  * - 补 `<parameter…>值` 剥除——XML 形态的参数值不带引号（`<parameter=city>上海`），

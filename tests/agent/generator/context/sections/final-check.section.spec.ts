@@ -30,9 +30,9 @@ describe('FinalCheckSection', () => {
     );
     const alwaysCount = FINAL_CHECK_RULES.filter((rule) => rule.trigger === 'always').length;
     expect(content.match(/^- /gmu)).toHaveLength(alwaysCount);
-    expect(Buffer.byteLength(content)).toBe(5864);
+    expect(Buffer.byteLength(content)).toBe(5930);
     expect(createHash('sha256').update(content).digest('hex')).toBe(
-      'a0f8ada526503469ac694a957a7680873ae9abdee8058f44b3dd1f30144e13d8',
+      '891892434a8ea0be1cbbca057148530e36f5d14470dd5df5352e4c6ae273a811',
     );
   });
 

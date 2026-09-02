@@ -300,3 +300,74 @@ describe('detectOutputLeak — 工具调用 XML 标签', () => {
     expect(detectOutputLeak('面试时间 10:00 <到> 12:00 之间都可以')).toBeNull();
   });
 });
+
+/**
+ * 2026-09-02 生产两例：推理/自检以段落形态混进正文，旧词库（标签/独白整行）全部穿透。
+ * 只补检测信号，命中走既有 repair；不做段落切割。
+ */
+describe('reasoning / self-check sections — 2026-09-02 production pair', () => {
+  // batch_6a97e69dce406a6aeeff0260_1788340087325
+  const TRAILING_SELF_CHECK = [
+    '餐饮类工作都需要食品健康证，具体办理方式以门店要求为准，一般自费办理，费用100元左右。',
+    '',
+    '你倾向哪家店？我帮你确认下具体流程。',
+    '',
+    '---',
+    '',
+    '自检说明：',
+    '',
+    '1. 先回答候选人当前问题：候选人问健康证是门店提供还是自己办，我如实说明"以门店要求为准"。',
+    '',
+    '4. 简洁表达：控制在120字内，没有冗余信息。',
+  ].join('\n');
+  // batch_6a9789a5ce406a6aee533105_1788316206463
+  const LEADING_REASONING = [
+    '<antmlinking>',
+    '查到了附近只有1个岗位：',
+    '',
+    '按规则，推荐时要把班次、薪资、要求、距离都展示出来。',
+    '',
+    '---',
+    '',
+    '三台子附近目前有一家必胜客在招小时工，离你大概1.6公里。',
+  ].join('\n');
+
+  it('trailing self-check section is a leak signal, not an artifact-only reply', () => {
+    expect(detectOutputLeak(TRAILING_SELF_CHECK)).not.toBeNull();
+    expect(isInternalReasoningArtifactOnly(TRAILING_SELF_CHECK)).toBe(false);
+    expect(isToolCallArtifactOnly(TRAILING_SELF_CHECK)).toBe(false);
+  });
+
+  it('malformed antml reasoning tag is a leak signal, not an artifact-only reply', () => {
+    expect(detectOutputLeak(LEADING_REASONING)).not.toBeNull();
+    expect(isInternalReasoningArtifactOnly(LEADING_REASONING)).toBe(false);
+    expect(isToolCallArtifactOnly(LEADING_REASONING)).toBe(false);
+  });
+
+  it('a lone antml tag is still an artifact-only reply', () => {
+    expect(isToolCallArtifactOnly('<antmlinking>')).toBe(true);
+  });
+
+  it.each([
+    '自检说明：',
+    '自检',
+    '自检通过',
+    '【自检】',
+    '## 自检清单',
+    '**自我检查**',
+    '发送前自检：',
+    '思考过程：',
+    'Self-check:',
+  ])('heading line form is a leak signal: %s', (heading) => {
+    expect(detectOutputLeak(`好的，我帮你看下。\n\n${heading}\n1. 已回答问题`)).not.toBeNull();
+  });
+
+  it('generic "说明：/分析：" lines, inline 自检 wording and job-card rule lines are not signals', () => {
+    expect(detectOutputLeak('说明：\n面试当天带身份证')).toBeNull();
+    expect(detectOutputLeak('分析：这家店离你 2km')).toBeNull();
+    expect(detectOutputLeak('入职前门店会自检一遍资料，你不用担心')).toBeNull();
+    expect(
+      detectOutputLeak('松江印象城店\n班次：11:00-15:00\n\n---\n\n松江大学城店\n班次：13:00-15:00'),
+    ).toBeNull();
+  });
+});
