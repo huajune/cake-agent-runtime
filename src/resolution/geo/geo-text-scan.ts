@@ -31,6 +31,15 @@ const CITY_DICT: Record<string, true> = Object.fromEntries(
 /** 正则兜底：在白名单未覆盖区间识别"白名单外的 raw district"（不补 city）。 */
 const RAW_DISTRICT_PATTERN = /([一-龥]{2,10}(?:区|县|镇|街道|新区|开发区))/g;
 
+/**
+ * 正则兜底吃到的"区名"里含这些字/词就不是地名：候选人说"没有固定区，都可以"
+ * "也可以跑其他区"，兜底会把"区"前整段话截成区名写进 preferences.district
+ * （生产 09-02 核对到 2 例）。这里只列地名里绝不出现的虚词、否定词与泛指词；
+ * "都/有/无"等在真实区县名里会出现（花都、都昌、有…），只以短语形式收。
+ */
+const RAW_DISTRICT_STOP_WORDS =
+  /没有|没固定|不固定|不限|都可以|都行|都能|可以|随便|其他|其它|任何|哪里|哪儿|哪个|什么|这个|那个|固定|方便|就近|附近|周边|以外|之外|所有|每个|各个|[的吗呢吧了也还就要想找去到在是]/u;
+
 const SELF_INTRO_PREFIXES = [
   '你好，我是',
   '您好，我是',
@@ -196,5 +205,6 @@ function normalizeRawDistrict(candidate: string): string {
     .replace(/^[\u4e00-\u9fa5]{2,12}市/, '')
     .replace(/^(?:你好|您好|哈喽|嗨)/, '')
     .replace(/^(?:我在|人在|住在|我住|目前在|现在在|今天在|平时在|在)/, '');
+  if (RAW_DISTRICT_STOP_WORDS.test(withoutPrefix)) return '';
   return normalizeDistrictForLookup(withoutPrefix);
 }

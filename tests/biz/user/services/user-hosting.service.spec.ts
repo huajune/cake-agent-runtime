@@ -234,6 +234,28 @@ describe('UserHostingService', () => {
       });
     });
 
+    it('temporary pause expires at the next Asia/Shanghai midnight, not 3 days later', async () => {
+      mockUserHostingRepository.upsertPause.mockResolvedValue(undefined);
+      const before = Date.now();
+
+      await service.pauseUser('user1');
+
+      const entry = (service as any).pausedUsersCache.get('user1');
+      expect(entry.expiresAt).toBeGreaterThan(before);
+      expect(entry.expiresAt - before).toBeLessThanOrEqual(24 * 60 * 60 * 1000);
+      const shanghaiClock = new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Asia/Shanghai',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+      }).format(new Date(entry.expiresAt));
+      expect(shanghaiClock).toBe('00:00:00');
+
+      const persisted = mockUserHostingRepository.upsertPause.mock.calls[0][1];
+      expect(new Date(persisted.pauseExpiresAt).getTime()).toBe(entry.expiresAt);
+    });
+
     it('should persist permanent pause with null expiry, reason and audit fields', async () => {
       mockUserHostingRepository.upsertPause.mockResolvedValue(undefined);
 

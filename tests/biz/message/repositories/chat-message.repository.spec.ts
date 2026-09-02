@@ -694,7 +694,7 @@ describe('ChatMessageRepository', () => {
 
       expect(mockSupabaseClient.rpc).toHaveBeenCalledWith(
         'get_chat_session_list',
-        expect.objectContaining({ p_limit: 501 }),
+        expect.objectContaining({ p_limit: 601 }),
       );
     });
 

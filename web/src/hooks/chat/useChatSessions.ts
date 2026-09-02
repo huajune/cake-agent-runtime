@@ -50,8 +50,8 @@ export function useChatSummaryStats(startDate: string, endDate: string) {
   });
 }
 
-/** 会话列表页大小：一屏够用，单页往返稳定在亚秒级。 */
-export const CHAT_SESSION_PAGE_SIZE = 200;
+/** 会话列表页大小：DB 侧按整个时间窗聚合后再切片，页越大翻页越少；须 ≤ 后端 MAX_SESSION_PAGE_SIZE。 */
+export const CHAT_SESSION_PAGE_SIZE = 600;
 
 /**
  * 会话列表（游标分页 + 服务端搜索）。

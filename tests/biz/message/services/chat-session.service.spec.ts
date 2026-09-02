@@ -244,7 +244,7 @@ describe('ChatSessionService', () => {
       const result = await service.getChatSessions({ days: '7' });
 
       expect(result).toEqual(mockPage);
-      expect(mockChatMessageRepository.getChatSessionList).toHaveBeenCalledWith(7, 200);
+      expect(mockChatMessageRepository.getChatSessionList).toHaveBeenCalledWith(7, 600);
       expect(mockChatMessageRepository.getChatSessionPage).not.toHaveBeenCalled();
     });
 
@@ -253,7 +253,7 @@ describe('ChatSessionService', () => {
 
       await service.getChatSessions({});
 
-      expect(mockChatMessageRepository.getChatSessionList).toHaveBeenCalledWith(1, 200);
+      expect(mockChatMessageRepository.getChatSessionList).toHaveBeenCalledWith(1, 600);
     });
 
     it('should use end of today when no endDate provided for date range', async () => {
@@ -364,7 +364,7 @@ describe('ChatSessionService', () => {
       await service.getChatSessionsOptimized({ limit: 'abc' });
 
       const [query] = mockChatMessageRepository.getChatSessionPage.mock.calls[0];
-      expect(query.limit).toBe(200);
+      expect(query.limit).toBe(600);
     });
 
     it('should pass search and cursor through', async () => {

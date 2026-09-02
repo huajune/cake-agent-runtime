@@ -4,6 +4,7 @@ import {
   proposeForField,
   routeOf,
 } from '@resolution/collection/adapters/adapter.registry';
+import { proposeConditionOption } from '@resolution/collection/adapters/condition-option.adapter';
 import { proposeEducation } from '@resolution/collection/adapters/education.adapter';
 import { proposeHealthCertificate } from '@resolution/collection/adapters/health-certificate.adapter';
 import { proposeIdentityCore } from '@resolution/collection/adapters/identity-core.adapter';
@@ -147,6 +148,28 @@ describe('health-certificate.adapter', () => {
     expect(proposeHealthCertificate(input(HEALTH_CERT_FIELD, '健康证在哪里办呀'))).toBeNull();
   });
 
+  it('answerBound 下裸短答可解释（0902：「有」「有本地」「无,接受办理」被值词表门拒 8 条）', () => {
+    const bound = (text: string) =>
+      proposeHealthCertificate({ ...input(HEALTH_CERT_FIELD, text), answerBound: true });
+    expect(bound('有')?.optionCodes).toEqual(['1']);
+    expect(bound('有本地')?.optionCodes).toEqual(['1']);
+    expect(bound('🈶')?.optionCodes).toEqual(['1']);
+    expect(bound('无,接受办理')?.optionCodes).toEqual(['2']);
+    expect(bound('接受办理')?.optionCodes).toEqual(['2']);
+    expect(bound('没有，可以办')?.optionCodes).toEqual(['2']);
+    expect(bound('没有，不接受办理')?.optionCodes).toEqual(['3']);
+    expect(bound('不办')?.optionCodes).toEqual(['3']);
+    // 出处如实：裸答本身就是原话
+    expect(bound('无,接受办理')?.sourceText).toBe('无,接受办理');
+    // 「无」单独出现未表态是否办 → 留空追问（两不定态纪律不变）
+    expect(bound('无')).toBeNull();
+    // 歧义短答不收：「可以」「不」在健康证槽位上答不出三态
+    expect(bound('可以')).toBeNull();
+    expect(bound('不')).toBeNull();
+    // 未绑定的自由语料不解释裸答
+    expect(proposeHealthCertificate(input(HEALTH_CERT_FIELD, '有'))).toBeNull();
+  });
+
   it('契约改了标签措辞 → 退化成追问，不按 ID 硬猜（D4）', () => {
     const renamed: ContractFieldDef = {
       ...HEALTH_CERT_FIELD,
@@ -154,6 +177,58 @@ describe('health-certificate.adapter', () => {
       rejectedOptions: [],
     };
     expect(proposeHealthCertificate(input(renamed, '我有上海本地健康证'))).toBeNull();
+  });
+});
+
+describe('condition-option.adapter（条件型单选项：唯一选项=必须接受，运营 0902 裁定）', () => {
+  const WORK_WINDOW: ContractFieldDef = {
+    labelId: 741,
+    labelTitle: '每天可工作时间段',
+    fieldType: 'MULTIPLE_OPTION',
+    required: true,
+    acceptedOptions: [{ optionCode: '1', optionLabel: '09:30-22:30' }],
+    rejectedOptions: [],
+  };
+
+  it('路由：单选项且无拒绝项走条件道（不记通用道配置债）；两个以上选项仍走通用道', () => {
+    expect(routeOf(WORK_WINDOW)).toBe('condition');
+    expect(adapterFor(WORK_WINDOW)).toBe(proposeConditionOption);
+    const twoShifts: ContractFieldDef = {
+      ...WORK_WINDOW,
+      acceptedOptions: [
+        { optionCode: '1', optionLabel: '早班' },
+        { optionCode: '2', optionLabel: '晚班' },
+      ],
+    };
+    expect(routeOf(twoShifts)).toBe('generic');
+  });
+
+  it('抄回条件字面任何语境都认；绑定行上的整句肯定才认；子区间/否定/闲聊不填不判', () => {
+    expect(proposeConditionOption(input(WORK_WINDOW, '09:30-22:30'))?.optionCodes).toEqual(['1']);
+    expect(
+      proposeConditionOption(input(WORK_WINDOW, '我 09:30-22:30 都可以'))?.optionCodes,
+    ).toEqual(['1']);
+
+    const bound = (text: string) =>
+      proposeConditionOption({ ...input(WORK_WINDOW, text), answerBound: true });
+    expect(bound('可以')?.optionCodes).toEqual(['1']);
+    expect(bound('可以')?.sourceText).toBe('可以');
+    expect(bound('都可以')?.optionCodes).toEqual(['1']);
+    expect(bound('门店排')?.optionCodes).toEqual(['1']);
+    expect(bound('没问题！')?.optionCodes).toEqual(['1']);
+    // 未绑定的一句"可以"不知道在答哪一行
+    expect(proposeConditionOption(input(WORK_WINDOW, '可以'))).toBeNull();
+    // 回显我们的提示（哪怕稍有改动）不算接受：括号里的字面是我们印的
+    expect(
+      proposeConditionOption(
+        input(WORK_WINDOW, '每天可工作时间段：（要求 09:30-22:30 内都能排班，接受请填 09:30-22:30）好的'),
+      ),
+    ).toBeNull();
+    // 子区间 = 没接受完整窗口；否定；问句；别的话——全部 null，合不合适交模型对话判
+    expect(bound('18:00-22:00')).toBeNull();
+    expect(bound('周一到周五晚上6-10点，周末白天')).toBeNull();
+    expect(bound('不行，接受不了')).toBeNull();
+    expect(bound('可以吗')).toBeNull();
   });
 });
 

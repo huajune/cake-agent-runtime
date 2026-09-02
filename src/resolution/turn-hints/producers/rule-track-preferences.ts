@@ -369,14 +369,32 @@ function normalizeNearbyLocationCandidate(candidate: string): string | null {
   return normalized || null;
 }
 
+/**
+ * "XX附近"捕获段开头的居住/位置前缀。正则里的可选前缀组在"我住在虹桥火车站附近"上会
+ * 回退成不吃前缀、把整段"我住在虹桥火车站"当地点（09-02 生产核对：当前 session 里 3.8%
+ * 的地点值是这类整句，且 v11 后仍在产生）。这里在动作前缀归一之后再剥一次。
+ */
+const NEARBY_LOCATION_LEADING_NOISE =
+  /^(?:(?:我们?|我家|人|家)?(?:现在|目前|平时|大概|应该|就)?(?:住|人|家)?(?:就)?在|就(?=[\u4e00-\u9fa5]{2}))/u;
+
+/**
+ * 地名里不会出现的词：出现即说明捕获的是半句话而非地点（"是的这""你在帮我看看有没有"）。
+ * 刻意不收"的"（美的财富广场）与单字"人/家"（人民广场、家乐福）。
+ */
+const NEARBY_LOCATION_SENTENCE_WORDS =
+  /这|那个|那边|那里|那儿|你|我|他|她|有没有|可以|不是|工作|吗|呢|吧|了|就|要|想|找|看|去|到|在|是/u;
+
 function extractNearbyLocations(message: string, districts: string[]): string[] {
   const nearbyMatch = message.match(
     /(?:我在|人在|在|住在)?([\u4e00-\u9fa5A-Za-z0-9]{2,20})(?:附近|旁边)/,
   );
   if (!nearbyMatch?.[1]) return [];
 
-  const location = normalizeNearbyLocationCandidate(nearbyMatch[1].trim());
-  if (!location) return [];
+  const normalized = normalizeNearbyLocationCandidate(nearbyMatch[1].trim());
+  if (!normalized) return [];
+  const location = normalized.replace(NEARBY_LOCATION_LEADING_NOISE, '').trim();
+  if (location.length < 2) return [];
+  if (NEARBY_LOCATION_SENTENCE_WORDS.test(location)) return [];
   if (NEARBY_LOCATION_STOPWORDS.has(location)) return [];
   if ([...NEARBY_LOCATION_STOPWORDS].some((word) => location.endsWith(word))) return [];
   if (NON_LOCATION_NEARBY_ACTION_TAIL_PATTERN.test(location)) return [];

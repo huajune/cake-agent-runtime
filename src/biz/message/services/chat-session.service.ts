@@ -5,7 +5,7 @@ import { ChatMessageRepository } from '../repositories/chat-message.repository';
 import { ChatMessageInput, ChatSessionCursor } from '../types/message.types';
 
 /** 会话列表默认页大小，与仓储层保持一致。 */
-const DEFAULT_SESSION_PAGE_SIZE = 200;
+const DEFAULT_SESSION_PAGE_SIZE = 600;
 import { formatLocalDateTime } from '@infra/utils/date.util';
 import {
   toStorageMessageSource,

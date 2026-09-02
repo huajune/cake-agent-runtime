@@ -4,6 +4,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { RedisService } from '@infra/redis/redis.service';
 import { HandoffEventsRepository } from '@biz/handoff-events/handoff-events.repository';
 import { BotGroupResolverService } from '@biz/ops-events/services/bot-group-resolver.service';
+import { addLocalDays, getLocalDayStart } from '@infra/utils/date.util';
 import { UserHostingRepository } from '../repositories/user-hosting.repository';
 import { DailyUserActivityStats, UserActivityAggregate } from '../types/user.types';
 
@@ -48,9 +49,15 @@ export interface PauseUserOptions {
 }
 
 /**
- * 暂停托管的自动解禁期限：3 天（硬编码）
+ * 临时暂停的自动解禁时刻：暂停时刻之后的第一个 Asia/Shanghai 零点。
+ *
+ * 原为固定 3 天。转人工静默后若真人没有接续，候选人会被晾满三天；
+ * 改为次日零点后，真人当天不处理，机器人第二天一早自动接回（2026-09-02 裁定）。
+ * 永久暂停（permanent）不受影响。
  */
-const PAUSE_DURATION_MS = 3 * 24 * 60 * 60 * 1000;
+function resolveTemporaryPauseExpiresAt(pausedAtMs: number): number {
+  return addLocalDays(getLocalDayStart(new Date(pausedAtMs)), 1).getTime();
+}
 /**
  * 永久暂停在缓存中的解禁时间哨兵值：所有 expiresAt > now 的比较天然成立
  */
@@ -139,7 +146,7 @@ export class UserHostingService {
   /**
    * 暂停用户托管
    *
-   * 默认 3 天后自动解禁；permanent=true 时永久暂停（不自动解禁），
+   * 默认次日零点（Asia/Shanghai）自动解禁；permanent=true 时永久暂停（不自动解禁），
    * 适用于店长微信、客户微信等永久禁止托管的联系人，以及黑名单候选人。
    *
    * 同步写入内存缓存，异步持久化到数据库。
@@ -150,7 +157,7 @@ export class UserHostingService {
 
     const now = Date.now();
     const permanent = options?.permanent === true;
-    const expiresAt = permanent ? PERMANENT_EXPIRES_AT : now + PAUSE_DURATION_MS;
+    const expiresAt = permanent ? PERMANENT_EXPIRES_AT : resolveTemporaryPauseExpiresAt(now);
 
     this.pausedUsersCache.set(userId, {
       isPaused: true,
@@ -454,7 +461,7 @@ export class UserHostingService {
           ? PERMANENT_EXPIRES_AT
           : row.pause_expires_at
             ? new Date(row.pause_expires_at).getTime()
-            : pausedAt + PAUSE_DURATION_MS;
+            : resolveTemporaryPauseExpiresAt(pausedAt);
         this.pausedUsersCache.set(row.user_id, {
           isPaused: true,
           pausedAt,
@@ -522,7 +529,7 @@ export class UserHostingService {
         // 兼容旧版 Redis 快照（无 expiresAt）：以 pausedAt + 3 天兜底
         expiresAt: entry.permanent
           ? PERMANENT_EXPIRES_AT
-          : (entry.expiresAt ?? entry.pausedAt + PAUSE_DURATION_MS),
+          : (entry.expiresAt ?? resolveTemporaryPauseExpiresAt(entry.pausedAt)),
         permanent: entry.permanent,
         reason: entry.reason,
         operator: entry.operator,

@@ -116,11 +116,6 @@ export const InterviewInfoSchema = z.object({
   name: z.string().nullable().describe('姓名'),
   phone: z.string().nullable().describe('联系方式'),
   gender: z.string().nullable().describe('性别'),
-  gender_source: z
-    .enum(['candidate', 'system'])
-    .nullable()
-    .optional()
-    .describe('性别来源：candidate=候选人自陈，system=企微系统兜底标签'),
   age: z.string().nullable().describe('年龄'),
   is_student: z.boolean().nullable().describe('是否学生'),
   education: z.string().nullable().describe('学历'),
@@ -443,7 +438,6 @@ export const INTERVIEW_INFO_FIELD_KEYS = [
   'name',
   'phone',
   'gender',
-  'gender_source',
   'age',
   'is_student',
   'education',
@@ -548,7 +542,6 @@ export interface SessionInterviewInfo {
   name: SessionFactMaybeValue<string>;
   phone: SessionFactMaybeValue<string>;
   gender: SessionFactMaybeValue<string>;
-  gender_source: SessionFactMaybeValue<'candidate' | 'system'>;
   age: SessionFactMaybeValue<string>;
   is_student: SessionFactMaybeValue<boolean>;
   education: SessionFactMaybeValue<string>;
@@ -627,8 +620,16 @@ const NullableSessionFactSchema = <T extends z.ZodTypeAny>(valueSchema: T) =>
   z
     .union([SessionFactValueSchema(valueSchema), z.null()])
     .transform((value): SessionFactValue<z.infer<T>> | null =>
-      value === null ? null : (value as SessionFactValue<z.infer<T>>),
+      // 空串不是事实：旧提取路径曾把 value:"" 连信封一起落库（09-02 核对 3 例籍贯），
+      // 读写都经本 schema，统一在这里归 null，避免"有值"的假象进 Prompt/预填。
+      value === null || isBlankStringValue((value as SessionFactValue<z.infer<T>>).value)
+        ? null
+        : (value as SessionFactValue<z.infer<T>>),
     );
+
+function isBlankStringValue(value: unknown): boolean {
+  return typeof value === 'string' && value.trim() === '';
+}
 
 /** preferences 的信封允许 value=null，作为显式清空墓碑；外层 null 仍表示本轮缺席。 */
 const NullableSessionPreferenceFactSchema = <T extends z.ZodTypeAny>(valueSchema: T) =>
@@ -668,7 +669,6 @@ export const SessionInterviewInfoSchema = z.object({
   name: NullableSessionFactSchema(z.string()),
   phone: NullableSessionFactSchema(z.string()),
   gender: NullableSessionFactSchema(z.string()),
-  gender_source: NullableSessionFactSchema(z.enum(['candidate', 'system'])),
   age: NullableSessionFactSchema(z.string()),
   is_student: NullableSessionFactSchema(z.boolean()),
   education: NullableSessionFactSchema(z.string()),

@@ -178,6 +178,14 @@ export class AgentRunnerService {
     const decision = await this.inputGuard.evaluate(input);
     if (decision.decision === 'pass') return null;
 
+    // 观测 P1-2：入站拦截此前零事件，时间线上看不出"这轮为什么没跑 Agent"。
+    this.tracer?.emit({
+      type: 'inbound_guardrail_block',
+      reasonCode: decision.reasonCode,
+      riskType: decision.riskType,
+      riskLabel: decision.riskLabel,
+    });
+
     return {
       kind: 'guardrail_blocked',
       toolCalls: [],
@@ -575,7 +583,6 @@ export class AgentRunnerService {
       committedSideEffects?: string;
     },
   ): void {
-    if (!ctx.traceId) return;
     const overrideMarkers = Array.from(
       new Set([
         ...(data.firstDecision.overrideMarkers ?? []),
@@ -587,6 +594,23 @@ export class AgentRunnerService {
       data.firstDecision.ruleIds.length > 0 ||
       overrideMarkers.length > 0;
     if (!hasSignal) return;
+    // 观测 P1-2：repair 终局事件落在归档口而非各分支——六个调用点一处不漏，
+    // 含下方"修复内容缺失跳过落库"的 revise_empty（档案没有、事件必须有）。
+    // 放在 traceId 早退之前：事件的 traceId 由 tracer 从请求上下文补齐，不依赖档案能否落库。
+    if (data.repaired) {
+      this.tracer?.emit({
+        type: 'guardrail_repair',
+        outcome:
+          data.finalDecision.reasonCode ??
+          (data.finalDecision.decision === 'pass' ? 'repaired' : data.finalDecision.decision),
+        finalDecision: data.finalDecision.decision,
+        riskLevel: data.finalDecision.riskLevel,
+        firstRuleIds: [...data.firstDecision.ruleIds],
+        finalRuleIds: [...data.finalDecision.ruleIds],
+        repairMode: data.firstDecision.repairMode,
+      });
+    }
+    if (!ctx.traceId) return;
     if (data.repaired && (data.revisedReply === undefined || !data.revisedDecision)) {
       this.logger.warn(`[invokeReviewed] 审查档案缺少修复后内容，跳过落库: traceId=${ctx.traceId}`);
       return;

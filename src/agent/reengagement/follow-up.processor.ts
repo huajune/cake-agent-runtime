@@ -968,7 +968,9 @@ export class FollowUpProcessor implements OnModuleInit {
               deliveryStartAt !== undefined
                 ? Math.max(deliveryStartAt - execution.aiEndAt, 0)
                 : undefined,
-            requestToFirstTextDeltaMs: Math.max(execution.aiEndAt - params.receivedAt, 0),
+            // 观测 P1-5：主动回合是一次性 generate，没有首字时刻；此前用"整轮生成耗时"
+            // 冒充 TTFT，把仪表盘 avg_ttft 系统性拉高。不写即 NULL，聚合自动排除。
+            // （仓储层 ttft_ms 兜底读的就是这个键，两处必须一起不写。）
             deliveryDurationMs: deliveryDuration,
             totalMs: totalDuration,
           },
@@ -994,7 +996,6 @@ export class FollowUpProcessor implements OnModuleInit {
       queueDuration: 0,
       prepDuration: Math.max(execution.aiStartAt - params.receivedAt, 0),
       aiDuration,
-      ttftMs: Math.max(execution.aiEndAt - params.receivedAt, 0),
       sendDuration: deliveryDuration,
       toolCalls: outcome.toolCalls,
       agentSteps: outcome.agentSteps,
