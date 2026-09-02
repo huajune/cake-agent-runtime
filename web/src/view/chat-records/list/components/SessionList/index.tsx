@@ -147,6 +147,7 @@ export default function SessionList({
                 {session.avatar ? (
                   <img
                     src={session.avatar}
+                    loading="lazy"
                     alt={session.candidateName || '头像'}
                     className={styles.avatar}
                     onError={(e) => {
