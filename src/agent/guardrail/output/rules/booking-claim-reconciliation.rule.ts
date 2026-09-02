@@ -17,25 +17,32 @@ import { asRecord } from '../output-rule.types';
  *   booking_receipt_mismatch，绝不双记账；
  * - 本轮成功改约（duliday_modify_interview_time）→"已帮你约到/改到"是合法回执；
  * - precheck 返回在途工单（duplicateBookingGuard）→ 完成时态是对既有工单的合法复述；
- * - 将来时（"我帮你约"）、征询（"要帮你约吗"）不在口径内。
+ * - 将来时（"我帮你约"）、征询（"要帮你约吗"）不在口径内；条件从句（"报名成功**后**会发你
+ *   面试码"）同样不在口径内——"成功"在这里是尚未发生的前提而非回执，故 `成功` 后紧跟
+ *   `后/之后/以后/後/的话` 时不判命中。
  *
  * 已知残余风险：跨轮提醒（前几轮已真实建单，本轮零工具复述"已帮你约好"）会命中。
  * 因此按目录发牌纪律 OBSERVE 入场，先落档累计判例分辨"假宣称 vs 合法提醒"的占比，
  * 满足升档门槛（≥2 周判例、精确率 ≥90%）再申请动手权。
  */
 const BOOKING_DONE_CLAIM_PATTERN =
-  /已(?:经)?(?:帮你|给你|替你)(?:报好名?|报上名?|提交(?:了)?(?:报名|预约)|报名|预约|登记好|约好)|(?:报名|预约)(?:已(?:经)?)?(?:成功|提交成功)|已(?:经)?(?:报好名|登记好)/u;
+  /已(?:经)?(?:帮你|给你|替你)(?:报好名?|报上名?|提交(?:了)?(?:报名|预约)|报名|预约|登记好|约好)|(?:报名|预约)(?:已(?:经)?)?(?:提交成功|成功)(?!后|之后|以后|後|的话)|已(?:经)?(?:报好名|登记好)/u;
 
 const BOOKING_FAMILY_TOOL_NAMES: ReadonlySet<string> = new Set([
   'duliday_interview_booking',
   'duliday_modify_interview_time',
 ]);
 
-/** precheck 是否返回在途工单——完成时态此时是对既有工单的复述，不是假宣称。 */
+/**
+ * precheck 是否返回在途工单——完成时态此时是对既有工单的复述，不是假宣称。
+ *
+ * `asRecord` 收窄失败时返回 `null` 而非 `undefined`，所以判空必须比 `null`：
+ * 比 `undefined` 会让**任何**带 precheck 的回合都被豁免，等于把哨兵对整条预约主链路关掉。
+ */
 function hasActiveWorkOrderEvidence(toolCalls: readonly AgentToolCall[]): boolean {
   return toolCalls.some((call) => {
     if (call.toolName !== 'duliday_interview_precheck') return false;
-    return asRecord(asRecord(call.result)?.duplicateBookingGuard) !== undefined;
+    return asRecord(asRecord(call.result)?.duplicateBookingGuard) !== null;
   });
 }
 
@@ -73,7 +80,7 @@ export function detectBookingDoneClaimWithoutSubmission(
  *   先累计判例再议升档。
  */
 const CANCEL_DONE_CLAIM_PATTERN =
-  /已(?:经)?(?:帮你|给你|替你)?(?:取消|退掉|撤销)(?:了|好了|掉了|成功)?|(?:取消|改期|改约)(?:已(?:经)?)?成功|(?:面试|预约|报名|工单)(?:已(?:经)?)(?:取消|撤销)/u;
+  /已(?:经)?(?:帮你|给你|替你)?(?:取消|退掉|撤销)(?:了|好了|掉了|成功)?|(?:取消|改期|改约)(?:已(?:经)?)?成功(?!后|之后|以后|後|的话)|(?:面试|预约|报名|工单)(?:已(?:经)?)(?:取消|撤销)/u;
 
 /** 失败轮专用的宽口径：完成时态之外，"我帮你取消/这就取消"的将来时安抚同样不可发送。 */
 const CANCEL_REASSURANCE_PATTERN =
