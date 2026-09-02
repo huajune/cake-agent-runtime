@@ -165,6 +165,34 @@
         "`jest tests/biz/user/services/user-hosting.service.spec.ts tests/biz/user/repositories/user-hosting.repository.spec.ts --watchman=false`：57/57 通过"
       ],
       "level": "patch"
+    },
+    {
+      "number": "1166",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1166",
+      "title": "入站风险词表补残障自述漏网、剔除亲属词假阳、扫描前剥引用块",
+      "author": "huajune",
+      "mergedAt": "2026-09-02",
+      "businessUpdates": [
+        "入站风险词表补残障自述漏网句式、剔除亲属词假阳、扫描前剥引用块",
+        "入站风险词表补残障自述漏网、剔除亲属词假阳、扫描前剥引用块"
+      ],
+      "summary": [
+        "入站风险词表补残障自述漏网句式、剔除亲属词假阳、扫描前剥引用块",
+        "入站风险词表补残障自述漏网、剔除亲属词假阳、扫描前剥引用块"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "入站风险词表补残障自述漏网句式、剔除亲属词假阳、扫描前剥引用块"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`jest tests/agent/guardrail/input/ --watchman=false`：141/141 通过（新增 6 组正例 / 7 组反例 / 引用块 3 例）",
+        "`tsc --noEmit`、eslint（--max-warnings=0）、prettier 通过"
+      ],
+      "level": "patch"
     }
   ],
   "lastRelease": {
@@ -344,5 +372,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "aaa5faac3a7c519cd86554aa4f3cd9da5fd219df"
+  "lastAnalyzedSha": "d5ef215407cbe4e80ffff84ff8b233db2c8fe975"
 }

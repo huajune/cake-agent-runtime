@@ -14,7 +14,7 @@
 **预计版本**: `v11.2.0`
 **最近更新**: `2026-09-02`
 **来源分支**: `develop`
-**累计 PR**: 5
+**累计 PR**: 6
 
 ### 更新摘要
 - PR #1158 健康证收资两处误拒——冲突门剥模板回显、裸短答按绑定语境解、字段简称唯一包含可定位
@@ -35,6 +35,8 @@
 - PR #1165 `user-hosting.service.ts`：删掉硬编码 `PAUSE_DURATION_MS`，三处（pauseUser / loadPausedUsers 兜底 / 共享缓存快照）统一用 `resolveTemporaryPauseExpiresAt(pausedAt)` = `addLocalDays(getLocalDayStart(pausedAt), 1)`；永久暂停不变。
 - PR #1165 新增用例：解禁时刻在上海时区读数为 00:00:00，且距暂停不超过 24h，DB 写入值与缓存一致。
 - PR #1165 `docs/product/ops-data-and-sponge-integration.md` 同步口径。
+- PR #1166 入站风险词表补残障自述漏网句式、剔除亲属词假阳、扫描前剥引用块
+- PR #1166 入站风险词表补残障自述漏网、剔除亲属词假阳、扫描前剥引用块
 
 ### 新功能
 - PR #1168 删除 LLM 相似度评分器，新增 Agent 质量评估体系口径页
@@ -59,6 +61,7 @@
 - PR #1160 数值事实落库规范形——体重斤→kg、年龄去单位、区域否定词、空串信封
 - PR #1160 merge: origin/develop into chore/memory-compat-cleanup（docs/todo 索引取 …
 - PR #1165 临时暂停托管改为次日零点自动恢复（原固定 3 天）
+- PR #1166 入站风险词表补残障自述漏网句式、剔除亲属词假阳、扫描前剥引用块
 
 ### 配置变更
 - 无
@@ -72,6 +75,8 @@
 - PR #1168 `tsc --noEmit` 后端 + web 均通过；eslint（--max-warnings=0）通过；prettier 通过
 - PR #1168 `jest tests/biz/test-suite tests/evaluation --watchman=false`：21 套件 / 309 用例通过
 - PR #1165 `jest tests/biz/user/services/user-hosting.service.spec.ts tests/biz/user/repositories/user-hosting.repository.spec.ts --watchman=false`：57/57 通过
+- PR #1166 `jest tests/agent/guardrail/input/ --watchman=false`：141/141 通过（新增 6 组正例 / 7 组反例 / 引用块 3 例）
+- PR #1166 `tsc --noEmit`、eslint（--max-warnings=0）、prettier 通过
 <!-- release:pending:end -->
 
 ## [11.1.4] - 2026-09-02
