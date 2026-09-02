@@ -381,12 +381,12 @@ new Set(['invite_to_group', 'duliday_interview_booking']);
 
 运行时记忆只有 short-term 和 long-term 两层：
 
-| 作用域              | 当前内容                            | 生命周期 / 边界                              | 存储                     |
-| ------------------- | ----------------------------------- | -------------------------------------------- | ------------------------ |
-| short-term 消息窗口 | 原始对话                            | 查询最近 7 天，再按 120 条 / 24,000 字符裁剪 | Supabase；Redis 热缓存   |
-| short-term 会话状态 | facts、岗位工作台、阶段指针         | 3 天；facts hash 多 12 小时沉淀余量          | Redis                    |
-| episode             | 连续咨询切片                        | 闲置 3 天划界，不是独立层                    | 无独立 key/表            |
-| long-term 关系档    | profile、job intent、最多 20 段摘要 | 持久；候选人 × bot 隔离                      | Supabase + 2h Redis 缓存 |
+| 作用域              | 当前内容                            | 生命周期 / 边界                                                                                | 存储                     |
+| ------------------- | ----------------------------------- | ---------------------------------------------------------------------------------------------- | ------------------------ |
+| short-term 消息窗口 | 原始对话                            | 滚动 7 天（锚点 = 本批之前候选人最后一次开口），再按 24,000 字符预算裁剪；300 条只是物理硬上限 | Supabase；Redis 热缓存   |
+| short-term 会话状态 | facts、岗位工作台、阶段指针         | 3 天；facts hash 多 12 小时沉淀余量                                                            | Redis                    |
+| episode             | 连续咨询切片                        | 闲置 3 天划界，不是独立层                                                                      | 无独立 key/表            |
+| long-term 关系档    | profile、job intent、最多 20 段摘要 | 持久；候选人 × bot 隔离                                                                        | Supabase + 2h Redis 缓存 |
 
 `turnHints`、snapshot enrichment、Prompt 裁决视图和 ledger 都是当轮 sidecar，不是额外记忆层。
 
@@ -394,7 +394,7 @@ new Set(['invite_to_group', 'duliday_interview_booking']);
 
 `MemoryLifecycleService.onTurnStart()` 并行读：
 
-- 最近 7 天消息窗口；
+- 滚动 7 天消息窗口（锚点 = 本批之前候选人最后一次开口）；
 - `factsv2:{corpId}:{userId}:{sessionId}`；
 - 独立 `stage:{corpId}:{userId}:{sessionId}`；
 - `long-term:{corpId}:{userId}:{botUserId}` 对应的 profile / job intent。
@@ -776,19 +776,19 @@ Evaluation、Memory、Tool 和 Feishu Sync。
 下表只列运行时架构会直接用到的默认值；必填项以
 `src/infra/config/env.validation.ts` 和部署配置为准。
 
-| 配置                                      | 当前默认 | 作用                                            |
-| ----------------------------------------- | -------- | ----------------------------------------------- |
-| `AGENT_MAX_OUTPUT_TOKENS`                 | `4096`   | 单次模型输出上限                                |
-| `AGENT_THINKING_BUDGET_TOKENS`            | `0`      | 环境默认关闭；WeCom deep 模式可由运行时配置开启 |
-| `AGENT_MAX_INPUT_CHARS`                   | `24000`  | 消息窗口字符预算                                |
-| `MAX_HISTORY_PER_CHAT`                    | `300`    | 单轮历史条数硬上限（语义窗口是滚动 7 天）       |
-| `MEMORY_SESSION_TTL_DAYS`                 | `3`      | session stage / 状态业务生命周期                |
-| `MEMORY_SETTLEMENT_GAP_DAYS`              | `3`      | episode 闲置边界和 consolidation delay          |
-| `MEMORY_HISTORY_WINDOW_DAYS`              | `7`      | DB 消息回看窗口                                 |
-| `SESSION_EXTRACTION_INCREMENTAL_MESSAGES` | `10`     | 已有 facts 时的增量提取窗口                     |
-| `GROUP_MEMBER_LIMIT`                      | `200`    | 群容量判断                                      |
-| `MESSAGE_DEDUP_TTL_SECONDS`               | `300`    | 回调 messageId 去重 TTL                         |
-| `SHUTDOWN_DRAIN_TIMEOUT_MS`               | `60000`  | SIGTERM 等待 in-flight 上限                     |
+| 配置                                      | 当前默认 | 作用                                               |
+| ----------------------------------------- | -------- | -------------------------------------------------- |
+| `AGENT_MAX_OUTPUT_TOKENS`                 | `4096`   | 单次模型输出上限                                   |
+| `AGENT_THINKING_BUDGET_TOKENS`            | `0`      | 环境默认关闭；WeCom deep 模式可由运行时配置开启    |
+| `AGENT_MAX_INPUT_CHARS`                   | `24000`  | 消息窗口字符预算                                   |
+| `MAX_HISTORY_PER_CHAT`                    | `300`    | 单轮历史条数硬上限（语义窗口是滚动 7 天）          |
+| `MEMORY_SESSION_TTL_DAYS`                 | `3`      | session stage / 状态业务生命周期                   |
+| `MEMORY_SETTLEMENT_GAP_DAYS`              | `3`      | episode 闲置边界和 consolidation delay             |
+| `MEMORY_HISTORY_WINDOW_DAYS`              | `7`      | 滚动历史窗口：从本批之前候选人最后一次开口往前回看 |
+| `SESSION_EXTRACTION_INCREMENTAL_MESSAGES` | `10`     | 已有 facts 时的增量提取窗口                        |
+| `GROUP_MEMBER_LIMIT`                      | `200`    | 群容量判断                                         |
+| `MESSAGE_DEDUP_TTL_SECONDS`               | `300`    | 回调 messageId 去重 TTL                            |
+| `SHUTDOWN_DRAIN_TIMEOUT_MS`               | `60000`  | SIGTERM 等待 in-flight 上限                        |
 
 托管 `agent_reply_config` / system config 动态控制：AI 回复开关、消息聚合开关、
 `initialMergeWindowMs`、分段/打字策略、WeCom 模型、thinking、角色模型覆盖、fallback 链以及部分

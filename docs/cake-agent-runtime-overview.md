@@ -209,7 +209,7 @@ CoALA 在本项目中用于解释内容类型，不等于建立四套存储。�
 
 ```text
 短期（Redis + chat_messages）
-├─ 7 天消息窗口：最近最多 120 条、最多 24000 字符，Redis 缺失时由 DB 回填
+├─ 滚动 7 天消息窗口：锚点 = 本批之前候选人最后一次开口，最多 24000 字符；300 条为物理硬上限，Redis 缺失时由 DB 回填
 ├─ 3 天会话事实：factsv2:{corp}:{user}:{session} Hash
 └─ 3 天阶段状态：stage:{corp}:{user}:{session}
 
@@ -620,7 +620,7 @@ Cron 触发 → GroupTaskScheduler.executeTask()
 | `MAX_HISTORY_PER_CHAT`         | 300    | 短期窗口硬上限条数（非语义窗口） |
 | `MEMORY_SESSION_TTL_DAYS`      | 3      | 会话级 Redis TTL                 |
 | `MEMORY_SETTLEMENT_GAP_DAYS`   | 3      | 跨会话 consolidation 间隔阈值    |
-| `MEMORY_HISTORY_WINDOW_DAYS`   | 7      | 短期记忆 DB fallback 回查窗口    |
+| `MEMORY_HISTORY_WINDOW_DAYS` | 7 | 滚动历史窗口（锚点 = 上次开口，非当前时间） |
 | `MESSAGE_DEDUP_TTL_SECONDS`    | 300    | 去重 TTL                         |
 
 ---

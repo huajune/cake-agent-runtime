@@ -192,7 +192,7 @@
 **创建约束**：key 只由回填创建。写路径用 `RPUSHX + LTRIM + EXPIRE` 单脚本追加，key 不存在即跳过；
 否则作废后到达的第一条消息会建出「只含自己」的 list，被读路径当成完整历史。
 
-注意：这个 TTL 只控制 Redis 短期缓存的存活时间；DB fallback 的回查范围由 `MEMORY_HISTORY_WINDOW_DAYS` 控制。
+注意：这个 TTL 只控制 Redis 短期缓存的存活时间；DB 回源只按 `MAX_HISTORY_PER_CHAT` 条数封顶，`MEMORY_HISTORY_WINDOW_DAYS` 的滚动窗口在内存里对命中与回源统一套用。
 
 ## 会话状态、长期缓存与工具单据
 
