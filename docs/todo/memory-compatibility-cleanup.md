@@ -1,6 +1,6 @@
 # Memory 兼容字段清理
 
-**最后核对**：2026-08-26
+**最后核对**：2026-09-02
 
 记忆结构重构已经完成；当前只剩 `interview_info.gender_source` 的兼容读边界需要在存量自然
 过期后删除。`preferences.brand_ids` 已确认仍有 Prompt 与工具参数候选用途，不是待删除字段。
@@ -27,6 +27,8 @@
 - `evidence/types.ts`、`policies.ts`、`merge.ts` 中的 sibling 投影；
 - `prompt-memory-adjudicator.ts` 的关联字段处理；
 - `readGenderProvenance()` 对 sibling 的 fallback 与相应兼容测试/fixture。
+
+闸门核对（2026-09-02）：① 批 A 随 v11.0.0 于 08-27 上线，已满 3 天 ✅；② 全仓无写路径——`rule-track` 已停发 sibling，`turn-hints/reducer` 仅置 null ✅；③ **未核**，需 Redis 样本审计或临时兼容命中计数（当前唯一阻断项）；④ 待 ③ 通过后一并做。
 
 在没有命中数据前不要仅按日期删除；否则旧 Redis session 可能把系统标签误当候选人自陈。
 
