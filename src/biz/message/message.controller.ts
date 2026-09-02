@@ -58,6 +58,18 @@ export class MessageController {
     return this.chatSessionService.getChatDailyStats(startDate, endDate);
   }
 
+  /**
+   * 业务口径每日趋势（永久表来源，不受 chat_messages 保留期影响）。
+   * GET /analytics/chat-business-daily-trend?startDate=&endDate=
+   */
+  @Get('chat-business-daily-trend')
+  async getChatBusinessDailyTrend(
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    return this.chatSessionService.getChatBusinessDailyTrend(startDate, endDate);
+  }
+
   @Get('chat-summary-stats')
   async getChatSummaryStats(
     @Query('startDate') startDate?: string,

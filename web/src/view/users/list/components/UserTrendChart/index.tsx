@@ -12,7 +12,11 @@ import {
 import { IconUsers, IconBarChart, IconFlame, IconTrend, IconEmpty, IconInfo } from '../Icons';
 import { THEME_COLORS } from '@/constants';
 import { USER_RANGE_OPTIONS } from '../../constants';
-import { buildRecentBusinessDateRange } from '@/utils/date-range';
+import {
+  buildRecentBusinessDateRange,
+  buildBusinessDateRangeBetween,
+  formatDateKey,
+} from '@/utils/date-range';
 import { formatLocaleNumber } from '@/utils/format';
 import styles from './index.module.scss';
 
@@ -68,7 +72,15 @@ export default function UserTrendChart({
   const trendDataByDate = new Map(trendData.map((item) => [item.date, item]));
 
   // 准备图表数据
-  const chartData: ChartDataItem[] = buildRecentBusinessDateRange(selectedDays).map((date) => {
+  // 「全部」（days=0）：日期轴取后端返回的实际区间（起点=业务数据起点），不再按"最近 N 天"构造
+  const dateKeys =
+    selectedDays > 0
+      ? buildRecentBusinessDateRange(selectedDays)
+      : buildBusinessDateRangeBetween(
+          trendData.length > 0 ? trendData[0].date : formatDateKey(new Date()),
+          formatDateKey(new Date()),
+        );
+  const chartData: ChartDataItem[] = dateKeys.map((date) => {
     const item = trendDataByDate.get(date);
     return {
       date: formatDate(date),

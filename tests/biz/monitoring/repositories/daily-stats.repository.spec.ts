@@ -214,4 +214,30 @@ describe('MonitoringDailyStatsRepository', () => {
       expect(result).toEqual([sampleDailyStats]);
     });
   });
+
+  describe('cleanupExpiredStats', () => {
+    it('deletes daily rows older than the retention cutoff (date granularity) and returns the count', async () => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-09-02T00:00:00.000Z'));
+      try {
+        const deleteResult = makeQueryMock({ data: [{ stat_date: '2026-05-01' }], error: null });
+        mockSupabaseClient.from.mockReturnValue(deleteResult);
+
+        const deleted = await repository.cleanupExpiredStats(90);
+
+        expect(deleted).toBe(1);
+        expect(mockSupabaseClient.from).toHaveBeenCalledWith('monitoring_daily_stats');
+        expect(deleteResult.delete).toHaveBeenCalled();
+        expect(deleteResult.lt).toHaveBeenCalledWith('stat_date', '2026-06-04');
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('returns 0 without touching the database when supabase is unavailable', async () => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(false);
+
+      await expect(repository.cleanupExpiredStats(90)).resolves.toBe(0);
+      expect(mockSupabaseClient.from).not.toHaveBeenCalled();
+    });
+  });
 });

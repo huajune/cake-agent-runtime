@@ -10,6 +10,7 @@ import { api, unwrapResponse } from '../client';
 export type { UserTrendData, TodayUserData, PausedUserData } from '../types/user.types';
 
 export async function getUserTrend(days = 30) {
+  // days=0 表示「全部」，必须显式传 0（不能被当作缺省 30）
   const params = new URLSearchParams({ days: String(days) });
   const { data } = await api.get(`/analytics/user-trend?${params.toString()}`);
   return unwrapResponse<UserTrendData[]>(data);

@@ -17,7 +17,6 @@ export interface PausedUserRaw {
   pauseOperator?: string;
   pauseSource?: string;
   odName?: string;
-  groupName?: string;
   botUserId?: string;
   imBotId?: string;
 }
@@ -31,7 +30,6 @@ export function transformPausedUsers(pausedUsers: PausedUserRaw[]): UserData[] {
   return pausedUsers.map((user) => ({
     chatId: user.chatId,
     odName: user.odName,
-    groupName: user.groupName,
     botUserId: user.botUserId,
     imBotId: user.imBotId,
     messageCount: 0,

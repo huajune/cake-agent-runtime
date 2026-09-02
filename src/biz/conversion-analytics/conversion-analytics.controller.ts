@@ -13,6 +13,7 @@ const RANGE_VALUES = new Set<ConversionRange>([
   'twoMonths',
   'threeMonths',
   'sixMonths',
+  'all',
 ]);
 
 @Controller('analytics/conversion')

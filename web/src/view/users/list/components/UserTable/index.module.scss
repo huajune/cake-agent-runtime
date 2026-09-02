@@ -260,19 +260,6 @@
   white-space: nowrap;
 }
 
-.groupBadge {
-  display: inline-block;
-  margin-left: 8px;
-  padding: 2px 8px;
-  font-size: 10px;
-  font-weight: 600;
-  border-radius: 10px;
-  background: rgba($warning, 0.1);
-  color: $warning;
-  border: 1px solid rgba($warning, 0.2);
-  letter-spacing: 0.5px;
-}
-
 .toggleSwitch {
   display: flex;
   align-items: center;

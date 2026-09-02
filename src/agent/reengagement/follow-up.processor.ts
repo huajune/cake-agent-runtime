@@ -993,8 +993,6 @@ export class FollowUpProcessor implements OnModuleInit {
       totalDuration,
       queueDuration: 0,
       prepDuration: Math.max(execution.aiStartAt - params.receivedAt, 0),
-      aiStartAt: execution.aiStartAt,
-      aiEndAt: execution.aiEndAt,
       aiDuration,
       ttftMs: Math.max(execution.aiEndAt - params.receivedAt, 0),
       sendDuration: deliveryDuration,

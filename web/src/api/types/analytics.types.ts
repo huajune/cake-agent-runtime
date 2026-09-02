@@ -96,7 +96,7 @@ export interface TodayUser {
 
 // ==================== 聚合数据 ====================
 
-export type DashboardTimeRange = 'today' | 'week' | 'month' | 'twoMonths' | 'threeMonths';
+export type DashboardTimeRange = 'today' | 'week' | 'month' | 'twoMonths' | 'threeMonths' | 'all';
 
 export interface DashboardData {
   timeRange: DashboardTimeRange;
@@ -123,7 +123,6 @@ export interface DashboardData {
 
 export interface MetricsData {
   detailRecords: MessageRecord[];
-  hourlyStats: any[];
   globalCounters: any;
   percentiles: {
     p50: number;
@@ -141,7 +140,6 @@ export interface DashboardOverviewData {
   timeRange: string;
   overview: any;
   overviewDelta: any;
-  dailyTrend: any[];
   tokenTrend: any[];
   businessTrend: any[];
   responseTrend: any[];

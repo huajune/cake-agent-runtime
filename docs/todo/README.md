@@ -11,6 +11,7 @@
 | [Memory 兼容字段清理](./memory-compatibility-cleanup.md)                     | 等生产存量归零       | `gender_source` 兼容命中为 0 后删除 sibling                    |
 | [LLM 判官标定](./judge-calibration.md)                                       | 未制度化             | 周频抽检口径、台账和降级阈值投入运行                           |
 | [字段值提案收口与条件式 recap](./field-value-proposal-recap-confirmation.md) | 实施完成，待用户对账 | A–N 与 §9 已逐项勾选并回填证据；未经用户明确授权不得归档或删除 |
+| [数据保留策略统一 + 消息趋势换源](./data-retention-policy-unification.md)   | 已落码（分支待合并） | 发版时 `db:push:prod` 两条迁移；清理任务按新阈值跑过一轮；D 与 E1/E5 余项另行处理 |
 
 ## 发版与生产验证
 

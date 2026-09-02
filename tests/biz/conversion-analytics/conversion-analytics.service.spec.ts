@@ -489,4 +489,28 @@ describe('ConversionAnalyticsService — conversion analysis', () => {
     expect(handoff.reasons[0]).toMatchObject({ reasonCode: 'no_reception', count: 2 });
     expect(handoff.reasons.find((r) => r.reasonCode === 'booking_conflict')?.count).toBe(1);
   });
+
+  it('「全部」档从业务数据起点 2026-01-01 起算，不受固定天数档位限制', async () => {
+    const withReason = (event: TestEvent, reasonCode: string): TestEvent => ({
+      ...event,
+      payload: { reason_code: reasonCode },
+    });
+    const events: TestEvent[] = [
+      withReason(ev('handoff.triggered', 'H-jan', '2026-01-05', 1), 'no_reception'),
+      withReason(ev('handoff.triggered', 'H-dec', '2025-12-20', 1), 'no_reception'),
+      withReason(ev('handoff.triggered', 'H-now', today, 1), 'booking_conflict'),
+    ];
+    const service = new ConversionAnalyticsService(
+      fakeOpsRepo(events),
+      new BotGroupResolverService(),
+      fakeSystemConfig(),
+    );
+
+    const all = await service.getHandoff({ range: 'all', groups: [] });
+    // 2026-01-05 计入，2025-12-20 早于起点被排除
+    expect(all.total).toBe(2);
+
+    const month = await service.getHandoff({ range: 'month', groups: [] });
+    expect(month.total).toBe(1);
+  });
 });

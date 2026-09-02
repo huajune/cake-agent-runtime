@@ -55,7 +55,7 @@ export default function PermanentPause({
 
   const handleResume = (user: UserData) => {
     const confirmed = window.confirm(
-      `确定恢复 ${user.odName || user.groupName || user.chatId} 的托管？\n恢复后该会话将重新由 AI 接管。`,
+      `确定恢复 ${user.odName || user.chatId} 的托管？\n恢复后该会话将重新由 AI 接管。`,
     );
     if (confirmed) {
       onResume(user.chatId);
@@ -137,7 +137,7 @@ export default function PermanentPause({
                   <tr key={user.chatId}>
                     <td>
                       <div className={styles.targetName}>
-                        {user.odName || user.groupName || user.chatId}
+                        {user.odName || user.chatId}
                         {sourceLabel && <span className={styles.sourceTag}>{sourceLabel}</span>}
                       </div>
                       <div className={styles.targetId} title={user.chatId}>

@@ -11,6 +11,7 @@ export const TIME_RANGE_OPTIONS: Array<AnalyticsRangeOption<ConversionRange>> = 
   { key: 'month', label: '近30天' },
   { key: 'twoMonths', label: '近2月' },
   { key: 'threeMonths', label: '近3月' },
+  { key: 'all', label: '全部' },
 ];
 
 // 运营名片 KPI：破冰、加群、报名、面试通过、整体转化。

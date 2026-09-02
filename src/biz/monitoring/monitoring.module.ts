@@ -1,4 +1,5 @@
 import { Module, Global, forwardRef } from '@nestjs/common';
+import { HandoffEventsModule } from '@biz/handoff-events/handoff-events.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { MessageModule } from '@wecom/message/message.module';
 import { BizMessageModule } from '@biz/message/message.module';
@@ -57,6 +58,7 @@ import { AGENT_EVENT_PERSISTER } from '@observability/persistence/agent-event-pe
 @Global()
 @Module({
   imports: [
+    HandoffEventsModule,
     ScheduleModule.forRoot(),
     forwardRef(() => MessageModule),
     BizMessageModule,

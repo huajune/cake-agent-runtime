@@ -88,7 +88,9 @@ export class MessageProcessingRepository extends BaseRepository {
 
   // 详情接口投影：在列表列基础上多带 agent_invocation，前端详情抽屉的时延分解、
   // 工具执行、Trace、Delivery、Fallback 等富字段全部依赖该 jsonb。
-  private readonly detailSelectedColumns = `${this.listSelectedColumns},agent_invocation`;
+  // 详情投影：主表列 + 子表 embed。agent_invocation 已拆到 message_processing_invocations（1:0..1）；
+  // 主表同名列仅存量兼容（7d 置空任务耗尽后可删），读时两处取其一。
+  private readonly detailSelectedColumns = `${this.listSelectedColumns},agent_invocation,message_processing_invocations(agent_invocation)`;
 
   // Dashboard 业务趋势只需要时间、用户和预约工具调用结果，避免为图表拉取大块快照字段。
   private readonly businessTrendSelectedColumns = [
@@ -115,11 +117,15 @@ export class MessageProcessingRepository extends BaseRepository {
 
     try {
       const dbRecord = this.toDbRecord(record);
+      const invocation = record.agentInvocation;
 
       await this.upsert(dbRecord, {
         onConflict: 'message_id',
         returnData: false,
       });
+      if (invocation !== undefined && invocation !== null) {
+        await this.upsertInvocation(record.messageId, invocation);
+      }
 
       this.logger.debug(`[消息处理记录] 已保存: ${record.messageId}`);
       return true;
@@ -656,6 +662,17 @@ export class MessageProcessingRepository extends BaseRepository {
     let total = 0;
     let lastBatchCount = 0;
     try {
+      // 新表：按 created_at 删整行
+      for (let batch = 0; batch < maxBatches; batch += 1) {
+        const deleted = await this.rpc<number>('delete_expired_agent_invocations', {
+          p_days_old: daysOld,
+          p_limit: batchLimit,
+        });
+        const n = this.asRpcCount(deleted, 'delete_expired_agent_invocations');
+        total += n;
+        if (n < batchLimit) break;
+      }
+      // 主表存量列：继续置空直到耗尽
       for (let batch = 0; batch < maxBatches; batch += 1) {
         const result = await this.rpc<number>('null_agent_invocation', {
           p_days_old: daysOld,
@@ -1048,15 +1065,12 @@ export class MessageProcessingRepository extends BaseRepository {
       total_duration: record.totalDuration,
       queue_duration: record.queueDuration,
       prep_duration: record.prepDuration,
-      ai_start_at: record.aiStartAt,
-      ai_end_at: record.aiEndAt,
       ai_duration: record.aiDuration,
       ttft_ms: record.ttftMs ?? this.extractTtftFromInvocation(record.agentInvocation),
       send_duration: record.sendDuration,
       token_usage: record.tokenUsage,
       is_fallback: record.isFallback,
       fallback_success: record.fallbackSuccess,
-      agent_invocation: record.agentInvocation,
       batch_id: record.batchId,
       tool_calls: record.toolCalls,
       agent_steps: record.agentSteps,
@@ -1092,15 +1106,13 @@ export class MessageProcessingRepository extends BaseRepository {
       totalDuration: record.total_duration,
       queueDuration: record.queue_duration,
       prepDuration: record.prep_duration,
-      aiStartAt: record.ai_start_at,
-      aiEndAt: record.ai_end_at,
       aiDuration: record.ai_duration,
       ttftMs,
       sendDuration: record.send_duration,
       tokenUsage: record.token_usage,
       isFallback: record.is_fallback,
       fallbackSuccess: record.fallback_success,
-      agentInvocation: record.agent_invocation,
+      agentInvocation: this.pickInvocation(record),
       batchId: record.batch_id,
       toolCalls: record.tool_calls as MessageProcessingRecordInput['toolCalls'],
       agentSteps: record.agent_steps as MessageProcessingRecordInput['agentSteps'],
@@ -1118,7 +1130,35 @@ export class MessageProcessingRepository extends BaseRepository {
     if (fromColumn !== undefined) return fromColumn;
 
     // 兼容存量未回填 ttft_ms 的记录：详情查询带 agent_invocation 时仍可现场提取
-    return this.extractTtftFromInvocation(record.agent_invocation);
+    return this.extractTtftFromInvocation(this.pickInvocation(record));
+  }
+
+  /** 详情行：优先子表 embed，其次主表存量列。 */
+  private pickInvocation(record: MessageProcessingDbRecord): unknown {
+    const embedded = (record as { message_processing_invocations?: unknown })
+      .message_processing_invocations;
+    if (Array.isArray(embedded)) {
+      const first = embedded[0] as { agent_invocation?: unknown } | undefined;
+      if (first?.agent_invocation) return first.agent_invocation;
+    } else if (embedded && typeof embedded === 'object') {
+      const single = embedded as { agent_invocation?: unknown };
+      if (single.agent_invocation) return single.agent_invocation;
+    }
+    return record.agent_invocation ?? undefined;
+  }
+
+  /** 回合快照写子表（59 KB/行，与主表高频更新的标量分开住）。 */
+  private async upsertInvocation(messageId: string, invocation: unknown): Promise<void> {
+    if (this.circuitBlocked('UPSERT:message_processing_invocations')) return;
+    const { error } = await this.getClient()
+      .from('message_processing_invocations')
+      .upsert(
+        { message_id: messageId, agent_invocation: invocation as Record<string, unknown> },
+        { onConflict: 'message_id' },
+      );
+    if (error) {
+      this.handleError('UPSERT:message_processing_invocations', error);
+    }
   }
 
   private extractTtftFromInvocation(invocation: unknown): number | undefined {

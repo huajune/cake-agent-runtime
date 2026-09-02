@@ -81,6 +81,8 @@ const RANGE_DAYS: Record<ConversionRange, number> = {
   twoMonths: 60,
   threeMonths: 90,
   sixMonths: 180,
+  // 「全部」按业务数据起点动态算，见 getPeriod
+  all: 0,
 };
 
 const OPS_EVENT_COLUMNS = [
@@ -1086,8 +1088,16 @@ export class ConversionAnalyticsService {
   }
 
   private getPeriod(range: ConversionRange): ConversionPeriod {
-    const days = RANGE_DAYS[range] ?? RANGE_DAYS.week;
     const todayStart = getLocalDayStart(new Date());
+    // 「全部」：业务表（ops_events / daily_ops_report）自 2026-01-01 起有数据，起点固定；
+    // 等长的前一段必然无数据，环比由前端按覆盖标注隐藏。
+    const days =
+      range === 'all'
+        ? Math.floor(
+            (todayStart.getTime() - new Date('2026-01-01T00:00:00+08:00').getTime()) /
+              (24 * 60 * 60 * 1000),
+          ) + 1
+        : (RANGE_DAYS[range] ?? RANGE_DAYS.week);
     const start = addLocalDays(todayStart, -(days - 1));
     const previousStart = addLocalDays(start, -days);
     const previousEnd = addLocalDays(start, -1);

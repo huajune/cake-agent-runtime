@@ -9,6 +9,9 @@ import { MessageProcessingService } from '@biz/message/services/message-processi
 import { AgentExecutionEventRepository } from '../../repositories/agent-execution-event.repository';
 import { MonitoringErrorLogRepository } from '../../repositories/error-log.repository';
 import { ReengagementTouchRepository } from '../../repositories/reengagement-touch.repository';
+import { MonitoringHourlyStatsRepository } from '../../repositories/hourly-stats.repository';
+import { MonitoringDailyStatsRepository } from '../../repositories/daily-stats.repository';
+import { HandoffEventsRepository } from '@biz/handoff-events/handoff-events.repository';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { AlertLevel } from '@enums/alert.enum';
 import { IncidentReporterService } from '@observability/incidents/incident-reporter.service';
@@ -50,9 +53,9 @@ export class DataCleanupService implements OnModuleInit {
   private readonly processingRetentionDays: number;
   private readonly guardrailReviewRetentionDays: number;
   private readonly agentExecutionEventsRetentionDays: number;
-  private readonly chatRetentionDays: number;
-  private readonly userActivityRetentionDays: number;
   private readonly errorLogsRetentionDays: number;
+  private readonly monitoringStatsRetentionDays: number;
+  private readonly handoffEventsRetentionDays: number;
   private readonly touchTextRetentionDays: number;
   private readonly touchRecordsRetentionDays: number;
 
@@ -66,6 +69,9 @@ export class DataCleanupService implements OnModuleInit {
     private readonly agentExecutionEventRepository: AgentExecutionEventRepository,
     private readonly errorLogRepository: MonitoringErrorLogRepository,
     private readonly reengagementTouchRepository: ReengagementTouchRepository,
+    private readonly hourlyStatsRepository: MonitoringHourlyStatsRepository,
+    private readonly dailyStatsRepository: MonitoringDailyStatsRepository,
+    private readonly handoffEventsRepository: HandoffEventsRepository,
     @Optional()
     private readonly exceptionNotifier?: IncidentReporterService,
   ) {
@@ -73,8 +79,9 @@ export class DataCleanupService implements OnModuleInit {
       this.configService.get('DATA_CLEANUP_AGENT_INVOCATION_DAYS', '7'),
       10,
     );
+    // 观测数据统一 90 天（2026-09-02 裁定）：流水 / 执行事件 / 守卫档案 / 错误日志 / 小时日聚合 / 转人工底账
     this.processingRetentionDays = parseInt(
-      this.configService.get('DATA_CLEANUP_PROCESSING_DAYS', '60'),
+      this.configService.get('DATA_CLEANUP_PROCESSING_DAYS', '90'),
       10,
     );
     this.guardrailReviewRetentionDays = parseInt(
@@ -91,15 +98,23 @@ export class DataCleanupService implements OnModuleInit {
       ),
       10,
     );
-    // 100 天：消息趋势面板最长档是「近 3 月」（约 92 天），留 8 天余量。
-    // 曾配 60 天，导致「近 3 月」实际只有 60 天数据且无任何提示。
-    this.chatRetentionDays = parseInt(this.configService.get('DATA_CLEANUP_CHAT_DAYS', '100'), 10);
-    this.userActivityRetentionDays = parseInt(
-      this.configService.get('DATA_CLEANUP_USER_ACTIVITY_DAYS', '365'),
+    // chat_messages / user_activity 属业务 / 不可再生数据，永久保留，不再进入清理任务。
+    this.errorLogsRetentionDays = parseInt(
+      this.configService.get('DATA_CLEANUP_ERROR_LOGS_DAYS', String(this.processingRetentionDays)),
       10,
     );
-    this.errorLogsRetentionDays = parseInt(
-      this.configService.get('DATA_CLEANUP_ERROR_LOGS_DAYS', '30'),
+    this.monitoringStatsRetentionDays = parseInt(
+      this.configService.get(
+        'DATA_CLEANUP_MONITORING_STATS_DAYS',
+        String(this.processingRetentionDays),
+      ),
+      10,
+    );
+    this.handoffEventsRetentionDays = parseInt(
+      this.configService.get(
+        'DATA_CLEANUP_HANDOFF_EVENTS_DAYS',
+        String(this.processingRetentionDays),
+      ),
       10,
     );
     this.touchTextRetentionDays = parseInt(
@@ -126,7 +141,6 @@ export class DataCleanupService implements OnModuleInit {
     this.logger.log(
       `✅ 数据清理服务已启动 (agent_invocation ${this.agentInvocationRetentionDays}天NULL, ` +
         `处理记录 ${this.processingRetentionDays}天DELETE, ` +
-        `聊天消息 ${this.chatRetentionDays}天DELETE, ` +
         `小时聚合永久保留)`,
     );
 
@@ -156,9 +170,6 @@ export class DataCleanupService implements OnModuleInit {
     //    agent_steps/tool_calls 随消息处理行删除回收（处理链窗口消费方依赖）
     await this.nullAgentInvocations();
 
-    // 2. 清理过期聊天消息（>60 天）
-    await this.cleanupChatMessages();
-
     // 3. 清理过期守卫审查档案（处理链附属证据，先删附属再删主流水）
     await this.cleanupGuardrailReviewRecords();
 
@@ -171,8 +182,9 @@ export class DataCleanupService implements OnModuleInit {
     // 6. 清理过期错误日志（>30 天）
     await this.cleanupErrorLogs();
 
-    // 7. 清理过期用户活跃记录（默认 >365 天）
-    await this.cleanupUserActivity();
+    // 7. 观测聚合表（小时 / 日）与转人工底账：观测数据统一 90 天
+    await this.cleanupMonitoringStats();
+    await this.cleanupHandoffEvents();
 
     // 8. 二次触发触达底账：NULL generated_text（>30 天）+ DELETE 整行（>90 天）
     await this.cleanupReengagementTouches();
@@ -215,26 +227,6 @@ export class DataCleanupService implements OnModuleInit {
       const message = toErrorMessage(error);
       this.logger.error(`[数据清理] 清理 agent_invocation 失败: ${message}`);
       this.notifyCleanupFailure('null-agent-invocations', '清理 agent_invocation 失败', error);
-    }
-  }
-
-  /**
-   * 清理过期聊天消息
-   */
-  private async cleanupChatMessages(): Promise<void> {
-    try {
-      const deletedCount = await this.chatSessionService.cleanupChatMessages(
-        this.chatRetentionDays,
-      );
-      if (deletedCount > 0) {
-        this.logger.log(
-          `[数据清理] 已清理 ${deletedCount} 条过期聊天消息 (${this.chatRetentionDays} 天前)`,
-        );
-      }
-    } catch (error: unknown) {
-      const message = toErrorMessage(error);
-      this.logger.error(`[数据清理] 清理聊天消息失败: ${message}`);
-      this.notifyCleanupFailure('cleanup-chat-messages', '清理聊天消息失败', error);
     }
   }
 
@@ -323,22 +315,48 @@ export class DataCleanupService implements OnModuleInit {
   }
 
   /**
-   * 清理过期用户活跃记录
+   * 清理过期观测聚合（monitoring_hourly_stats / monitoring_daily_stats）
+   *
+   * 两张表曾永久保留；仪表盘长范围的业务卡走 user_activity / daily_ops_report / ops_events，
+   * 观测卡少于 90 天就少，前端覆盖起点提示如实显示即可。
    */
-  private async cleanupUserActivity(): Promise<void> {
+  private async cleanupMonitoringStats(): Promise<void> {
     try {
-      const deletedCount = await this.userHostingService.cleanupActivity(
-        this.userActivityRetentionDays,
-      );
-      if (deletedCount > 0) {
+      const [hourly, daily] = await Promise.all([
+        this.hourlyStatsRepository.cleanupExpiredStats(this.monitoringStatsRetentionDays),
+        this.dailyStatsRepository.cleanupExpiredStats(this.monitoringStatsRetentionDays),
+      ]);
+      if (hourly + daily > 0) {
         this.logger.log(
-          `[数据清理] 已清理 ${deletedCount} 条过期用户活跃记录 (${this.userActivityRetentionDays} 天前)`,
+          `[数据清理] 已清理观测聚合 小时=${hourly} 日=${daily} (${this.monitoringStatsRetentionDays} 天前)`,
         );
       }
     } catch (error: unknown) {
       const message = toErrorMessage(error);
-      this.logger.error(`[数据清理] 清理用户活跃记录失败: ${message}`);
-      this.notifyCleanupFailure('cleanup-user-activity', '清理用户活跃记录失败', error);
+      this.logger.error(`[数据清理] 清理观测聚合失败: ${message}`);
+      this.notifyCleanupFailure('cleanup-monitoring-stats', '清理观测聚合失败', error);
+    }
+  }
+
+  /**
+   * 清理过期转人工底账（handoff_events）
+   *
+   * 业务事实（handoff.triggered 及全部字段）永久留在 ops_events.payload；本表是 Agent 决策诊断，属观测。
+   */
+  private async cleanupHandoffEvents(): Promise<void> {
+    try {
+      const deletedCount = await this.handoffEventsRepository.cleanupExpiredEvents(
+        this.handoffEventsRetentionDays,
+      );
+      if (deletedCount > 0) {
+        this.logger.log(
+          `[数据清理] 已清理 ${deletedCount} 条过期转人工底账 (${this.handoffEventsRetentionDays} 天前)`,
+        );
+      }
+    } catch (error: unknown) {
+      const message = toErrorMessage(error);
+      this.logger.error(`[数据清理] 清理转人工底账失败: ${message}`);
+      this.notifyCleanupFailure('cleanup-handoff-events', '清理转人工底账失败', error);
     }
   }
 
@@ -449,21 +467,23 @@ export class DataCleanupService implements OnModuleInit {
    */
   async triggerCleanup(): Promise<{
     agentInvocations: number;
-    chatMessages: number;
     guardrailReviewRecords: number;
     agentExecutionEvents: number;
     processingRecords: number;
-    userActivity: number;
     errorLogs: number;
+    monitoringHourlyStats: number;
+    monitoringDailyStats: number;
+    handoffEvents: number;
     reengagementTouchTexts: number;
     reengagementTouchRecords: number;
   }> {
     let agentInvocations = 0;
-    let chatMessages = 0;
     let guardrailReviewRecords = 0;
     let agentExecutionEvents = 0;
     let processingRecords = 0;
-    let userActivity = 0;
+    let monitoringHourlyStats = 0;
+    let monitoringDailyStats = 0;
+    let handoffEvents = 0;
     let errorLogs = 0;
     let reengagementTouchTexts = 0;
     let reengagementTouchRecords = 0;
@@ -472,12 +492,13 @@ export class DataCleanupService implements OnModuleInit {
       this.logger.warn('[数据清理] READ_ONLY_PREVIEW=true，跳过手动清理');
       return {
         agentInvocations,
-        chatMessages,
         guardrailReviewRecords,
         agentExecutionEvents,
         processingRecords,
-        userActivity,
         errorLogs,
+        monitoringHourlyStats,
+        monitoringDailyStats,
+        handoffEvents,
         reengagementTouchTexts,
         reengagementTouchRecords,
       };
@@ -487,12 +508,13 @@ export class DataCleanupService implements OnModuleInit {
       this.logger.warn('[数据清理] Supabase 不可用，跳过清理');
       return {
         agentInvocations,
-        chatMessages,
         guardrailReviewRecords,
         agentExecutionEvents,
         processingRecords,
-        userActivity,
         errorLogs,
+        monitoringHourlyStats,
+        monitoringDailyStats,
+        handoffEvents,
         reengagementTouchTexts,
         reengagementTouchRecords,
       };
@@ -504,12 +526,6 @@ export class DataCleanupService implements OnModuleInit {
       );
     } catch (error: unknown) {
       this.logger.warn(`[数据清理] 手动清理 agent_invocation 失败: ${String(error)}`);
-    }
-
-    try {
-      chatMessages = await this.chatSessionService.cleanupChatMessages(this.chatRetentionDays);
-    } catch (error: unknown) {
-      this.logger.warn(`[数据清理] 手动清理聊天消息失败: ${String(error)}`);
     }
 
     try {
@@ -537,9 +553,20 @@ export class DataCleanupService implements OnModuleInit {
     }
 
     try {
-      userActivity = await this.userHostingService.cleanupActivity(this.userActivityRetentionDays);
+      [monitoringHourlyStats, monitoringDailyStats] = await Promise.all([
+        this.hourlyStatsRepository.cleanupExpiredStats(this.monitoringStatsRetentionDays),
+        this.dailyStatsRepository.cleanupExpiredStats(this.monitoringStatsRetentionDays),
+      ]);
     } catch (error: unknown) {
-      this.logger.warn(`[数据清理] 手动清理用户活跃记录失败: ${String(error)}`);
+      this.logger.warn(`[数据清理] 手动清理观测聚合失败: ${String(error)}`);
+    }
+
+    try {
+      handoffEvents = await this.handoffEventsRepository.cleanupExpiredEvents(
+        this.handoffEventsRetentionDays,
+      );
+    } catch (error: unknown) {
+      this.logger.warn(`[数据清理] 手动清理转人工底账失败: ${String(error)}`);
     }
 
     try {
@@ -554,17 +581,18 @@ export class DataCleanupService implements OnModuleInit {
     reengagementTouchRecords = touches.recordsDeleted;
 
     this.logger.log(
-      `[数据清理] 手动清理完成: agent_invocation ${agentInvocations} 条, 聊天消息 ${chatMessages} 条, 守卫审查档案 ${guardrailReviewRecords} 条, Agent 执行事件 ${agentExecutionEvents} 条, 处理记录 ${processingRecords} 条, 用户活跃记录 ${userActivity} 条, 错误日志 ${errorLogs} 条, 触达文案 ${reengagementTouchTexts} 条, 触达记录 ${reengagementTouchRecords} 条`,
+      `[数据清理] 手动清理完成: agent_invocation ${agentInvocations} 条, 守卫审查档案 ${guardrailReviewRecords} 条, Agent 执行事件 ${agentExecutionEvents} 条, 处理记录 ${processingRecords} 条, 观测聚合 小时=${monitoringHourlyStats} 日=${monitoringDailyStats} 条, 转人工底账 ${handoffEvents} 条, 错误日志 ${errorLogs} 条, 触达文案 ${reengagementTouchTexts} 条, 触达记录 ${reengagementTouchRecords} 条`,
     );
 
     return {
       agentInvocations,
-      chatMessages,
       guardrailReviewRecords,
       agentExecutionEvents,
       processingRecords,
-      userActivity,
       errorLogs,
+      monitoringHourlyStats,
+      monitoringDailyStats,
+      handoffEvents,
       reengagementTouchTexts,
       reengagementTouchRecords,
     };

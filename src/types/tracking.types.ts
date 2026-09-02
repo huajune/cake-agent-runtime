@@ -74,7 +74,7 @@ export interface MonitoringMetadata {
   toolCalls?: AgentToolCall[];
   /** 每步循环快照（写入 message_processing_records.agent_steps 列） */
   agentSteps?: AgentStepDetail[];
-  /** 入站守卫拦截摘要（写入 message_processing_records.guardrail_input 列，仅拦截时非空） */
+  /** 入站守卫拦截摘要（写入 message_processing_records.guardrail_input 列；仅 inbound block 时有值） */
   guardrailInput?: GuardrailInputTrace;
   /** 出站守卫全程 trace（写入 message_processing_records.guardrail_output 列，紧凑 KB 级） */
   guardrailOutput?: GuardrailTurnTrace;
@@ -112,8 +112,6 @@ export interface MessageProcessingRecord {
 
   // 时间戳
   receivedAt: number;
-  aiStartAt?: number;
-  aiEndAt?: number;
   sendStartAt?: number;
   sendEndAt?: number;
 

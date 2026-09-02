@@ -103,7 +103,6 @@ export default function UserTable({
                   </td>
                   <td className={styles.chatIdCell} title={user.chatId}>
                     {user.chatId}
-                    {user.groupName && <span className={styles.groupBadge}>群</span>}
                   </td>
                   {!isPausedTab && (
                     <td>
