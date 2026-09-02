@@ -1,6 +1,6 @@
 # Agent 回合装配边界重构方案
 
-> 状态：代码实施与本地验证完成，待提交 PR
+> 状态：已完成，PR [#1190](https://github.com/huajune/cake-agent-runtime/pull/1190)
 >
 > 建立日期：2026-09-02
 >
@@ -366,7 +366,7 @@ expect(renderPromptBlocks(promptBlocks)).toBe(expectedPrompt);
 - [x] 相关文档与代码同步更新；
 - [x] 定向测试和 `pnpm run ci:check` 通过；
 - [x] 最终 diff 无数据库 migration、环境变量或部署顺序变化；
-- [ ] PR 指向 `develop`，正文包含根因、边界变化、风险和真实验证证据。
+- [x] PR [#1190](https://github.com/huajune/cake-agent-runtime/pull/1190) 指向 `develop`，正文包含根因、边界变化、风险和真实验证证据。
 
 ## 11. 本地验证记录
 
