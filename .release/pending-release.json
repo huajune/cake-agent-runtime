@@ -76,6 +76,29 @@
         "本地连 TEST 库端到端跑过：计数显示 `200 / 855`（真实总数）、加载更多 200→400 且**重复行 0**、服务端搜索命中未加载页中的记录、周末剔除后汇总 `2562 / 27863` 对上工作日口径（全量口径是 `2571 / 27881`）"
       ],
       "level": "patch"
+    },
+    {
+      "number": "1146",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1146",
+      "title": "按当前生产调用链复核运行时架构文档",
+      "author": "huajune",
+      "mergedAt": "2026-09-02",
+      "businessUpdates": [
+        "按当前生产调用链复核运行时架构文档"
+      ],
+      "summary": [
+        "按当前生产调用链复核运行时架构文档"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "按当前生产调用链复核运行时架构文档"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [],
+      "level": "patch"
     }
   ],
   "lastRelease": {
@@ -137,5 +160,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "ab210c742ffba5c3dc669e23293d8dc17d77732d"
+  "lastAnalyzedSha": "75179dd552d7ed326b4ec9e5faa5769035a67dfe"
 }
