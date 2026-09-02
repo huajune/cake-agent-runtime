@@ -702,6 +702,42 @@ describe('防线 4 · 臆造防线：sourceText 回查失败的提案零入账',
     expect(result.reason).toBe(PROPOSAL_REJECTION_REASONS.deterministicConflict);
   });
 
+  it('模型 quote 是整行模板回填时，先剥回显的选项枚举再判冲突（0902 假阳：候选人答「有」被判「不接受办理」）', () => {
+    const line =
+      '有无本地健康证：（有本地有效健康证/无本地有效健康证，接受办理/无本地有效健康证，不接受办理）有';
+    const result = applyFieldValueProposal(form(), HEALTH_CERT_FIELD, {
+      value: '有本地有效健康证',
+      optionCodes: ['1'],
+      sourceText: line,
+      producer: 'model',
+      candidateTexts: [line],
+    });
+    expect(result.outcome).toBe('accepted');
+
+    // 模型转发模板时把选项缩写了，对不上 optionLabel——按「标签：（a/b/c）」结构剥
+    const abbreviated = '有无本地健康证：（有/无，接受办理/不接受办理）接受办理';
+    const accepts = applyFieldValueProposal(form(), HEALTH_CERT_FIELD, {
+      value: '无本地有效健康证，接受办理',
+      optionCodes: ['2'],
+      sourceText: abbreviated,
+      producer: 'model',
+      candidateTexts: [abbreviated],
+    });
+    expect(accepts.outcome).toBe('accepted');
+
+    // 剥完之后冲突门照常工作：候选人整行里真说了「不办」，模型报「有」仍拒
+    const truthful = '有无本地健康证：（有本地有效健康证/无本地有效健康证，接受办理）没有，不办';
+    const conflict = applyFieldValueProposal(form(), HEALTH_CERT_FIELD, {
+      value: '有本地有效健康证',
+      optionCodes: ['1'],
+      sourceText: truthful,
+      producer: 'model',
+      candidateTexts: [truthful],
+    });
+    expect(conflict.outcome).toBe('rejected');
+    expect(conflict.reason).toBe(PROPOSAL_REJECTION_REASONS.deterministicConflict);
+  });
+
   it('「93 年的」与「还在读书」可由模型映射为规范值后通过封闭公证', () => {
     const age = applyFieldValueProposal(
       form(),

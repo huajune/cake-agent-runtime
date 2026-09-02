@@ -96,6 +96,67 @@ describe('拒收重问档 · 强制枚举占位', () => {
   });
 });
 
+describe('条件型单选项 · 按条件呈现（运营 0902 裁定：唯一选项=必须接受，不是让候选人填时段）', () => {
+  const WORK_WINDOW: ContractFieldDef = {
+    labelId: 741,
+    labelTitle: '每天可工作时间段',
+    fieldType: 'MULTIPLE_OPTION',
+    required: true,
+    acceptedOptions: [{ optionCode: '1', optionLabel: '09:30-22:30' }],
+    rejectedOptions: [],
+  };
+
+  it('首问就写明条件并要求抄回条件字面，不再按"少于 2 项"留空；列进 screeningFields', () => {
+    const result = renderCollectionTemplate(
+      createForm({ jobId: 1, contract: [WORK_WINDOW] }),
+      [WORK_WINDOW],
+    );
+    expect(result.templateText).toContain(
+      '每天可工作时间段：（要求 09:30-22:30 内都能排班，接受请填 09:30-22:30）',
+    );
+    expect(result.screeningFields).toEqual(['每天可工作时间段']);
+  });
+
+  it('重问档同一句；非时间形态的条件用通用措辞', () => {
+    const attempted = createForm({ jobId: 1, contract: [WORK_WINDOW] });
+    attempted.slots[741].rejectedAttempts = 1;
+    expect(renderCollectionTemplate(attempted, [WORK_WINDOW]).templateText).toContain(
+      '每天可工作时间段：（要求 09:30-22:30 内都能排班，接受请填 09:30-22:30）',
+    );
+
+    const relocate: ContractFieldDef = {
+      ...WORK_WINDOW,
+      labelId: 628,
+      labelTitle: '是否接受一定范围内门店调度',
+      fieldType: 'SINGLE_OPTION',
+      acceptedOptions: [{ optionCode: '1', optionLabel: '接受调度' }],
+    };
+    expect(
+      renderCollectionTemplate(createForm({ jobId: 1, contract: [relocate] }), [relocate])
+        .templateText,
+    ).toContain('是否接受一定范围内门店调度：（要求 接受调度，接受请填 接受调度）');
+  });
+
+  it('敏感属性 / 契约明标 RESTRICTED 的单选项仍留空——条件即筛选条件，不能用提示泄露', () => {
+    const hometown: ContractFieldDef = {
+      ...WORK_WINDOW,
+      labelId: 3,
+      labelTitle: '籍贯',
+      fieldType: 'SINGLE_OPTION',
+      acceptedOptions: [{ optionCode: '1', optionLabel: '上海市' }],
+    };
+    expect(
+      renderCollectionTemplate(createForm({ jobId: 1, contract: [hometown] }), [hometown])
+        .templateText.endsWith('籍贯：'),
+    ).toBe(true);
+    const marked: ContractFieldDef = { ...WORK_WINDOW, disclosure: 'RESTRICTED' };
+    expect(
+      renderCollectionTemplate(createForm({ jobId: 1, contract: [marked] }), [marked])
+        .templateText.endsWith('每天可工作时间段：'),
+    ).toBe(true);
+  });
+});
+
 describe('FILE 字段 · 发文件占位提示（生产 chat 6a9117face406a6aee7f99c9）', () => {
   const RESUME_FILE: ContractFieldDef = {
     labelId: 49,
