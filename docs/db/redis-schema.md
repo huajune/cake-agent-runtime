@@ -38,7 +38,7 @@
 | 3   | `wecom:message:last-message-at:{chatId}`                               | String        | 5 min                      | wecom/message   | 最近消息到达时间（静默窗口）        |
 | 4   | `wecom:message:lock:{chatId}`                                          | String        | 90 s 租约（30 s 心跳续期） | wecom/message   | 处理分布式锁（Lua 条件续期/释放）   |
 | 5   | `wecom:message:trace:{messageId}:v2`                                   | Hash          | 24 h                       | wecom/message   | 消息 trace 上下文（字段级增量更新） |
-| 6   | `memory:short_term:chat:{chatId}`                                      | List          | 3 天                       | memory          | 消息热缓存；DB 回看窗口仍为 7 天    |
+| 6   | `memory:short_term:chat:{chatId}`                                      | List          | 3 天                       | memory          | 消息热缓存；滚动 7 天窗口在内存套用 |
 | 7   | `factsv2:{corpId}:{userId}:{sessionId}`                                | Hash          | 3 天 + 12 小时             | memory          | 会话 facts + 工作台                 |
 | 8   | `stage:{corpId}:{userId}:{sessionId}`                                  | String (JSON) | 3 天                       | memory          | short-term 阶段指针                 |
 | 9   | `long-term:{corpId}:{userId}:{botUserId}`                              | String (JSON) | 2 小时                     | memory          | 长期关系档缓存                      |
@@ -186,7 +186,7 @@
 
 **操作**：`RPUSHX`（写路径追加，只在 key 已存在时生效）/ `LRANGE 0 -1`（读取）/ `LTRIM`（控制窗口）/ `EXPIRE` / `DEL`（`updateMessageContent` 作废）
 
-**加载流程**：命中缓存直接返回（同样套 7 天窗口）；miss 时回源 `chat_messages`，用一个 Lua 脚本原子重建
+**加载流程**：命中缓存直接返回（同样套滚动 7 天窗口，锚点 = 本批之前候选人最后一次开口）；miss 时回源 `chat_messages`，用一个 Lua 脚本原子重建
 （`DEL + RPUSH 全量 + LTRIM + EXPIRE`）。
 
 **创建约束**：key 只由回填创建。写路径用 `RPUSHX + LTRIM + EXPIRE` 单脚本追加，key 不存在即跳过；
@@ -446,24 +446,24 @@ bull:{env}:test-suite:{waiting|active|completed|failed|delayed|{jobId}}
 
 ## 数据生命周期
 
-| 数据类型                       | TTL                                        | 清理方式                         |
-| ------------------------------ | ------------------------------------------ | -------------------------------- |
-| 消息去重                       | 5 min                                      | Redis 自动过期                   |
-| 消息聚合队列 / last-message-at | 5 min（兜底）                              | Worker 主动裁剪 / 自动过期       |
-| 处理锁                         | 90 s 单次租约，30 s 心跳续期               | Lua 条件续期 / 释放              |
-| 消息 trace                     | 24 h                                       | 自动过期                         |
-| 消息热缓存                     | `MEMORY_SESSION_TTL_DAYS`（当前默认 3 天） | 自动过期；DB 回看窗口独立为 7 天 |
-| Session facts + workbench      | 3 天 + 12 小时安全余量                     | 自动过期                         |
-| 阶段指针                       | 3 天                                       | 自动过期                         |
-| 长期关系档缓存                 | 2 小时                                     | 自动过期；Supabase 为权威源      |
-| 收资表单与定位指针             | 3 天                                       | tools 域自动过期或办结后主动删除 |
-| 托管共享缓存                   | 无                                         | 观察者 / 定期同步                |
-| 监控实时计数                   | 无                                         | 持续累计                         |
-| 群成员缓存                     | 10 min                                     | 自动过期 + 定期 hydrate          |
-| 群任务锁                       | 15 min                                     | Lua 条件释放                     |
-| 品牌轮转历史                   | 7 天                                       | 自动过期或业务重置               |
-| 地理编码缓存                   | 30 天                                      | 自动过期                         |
-| 测试批次进度                   | 1 h（兜底）                                | 批次完成后主动 DEL               |
+| 数据类型                       | TTL                                        | 清理方式                          |
+| ------------------------------ | ------------------------------------------ | --------------------------------- |
+| 消息去重                       | 5 min                                      | Redis 自动过期                    |
+| 消息聚合队列 / last-message-at | 5 min（兜底）                              | Worker 主动裁剪 / 自动过期        |
+| 处理锁                         | 90 s 单次租约，30 s 心跳续期               | Lua 条件续期 / 释放               |
+| 消息 trace                     | 24 h                                       | 自动过期                          |
+| 消息热缓存                     | `MEMORY_SESSION_TTL_DAYS`（当前默认 3 天） | 自动过期；滚动 7 天窗口独立于 TTL |
+| Session facts + workbench      | 3 天 + 12 小时安全余量                     | 自动过期                          |
+| 阶段指针                       | 3 天                                       | 自动过期                          |
+| 长期关系档缓存                 | 2 小时                                     | 自动过期；Supabase 为权威源       |
+| 收资表单与定位指针             | 3 天                                       | tools 域自动过期或办结后主动删除  |
+| 托管共享缓存                   | 无                                         | 观察者 / 定期同步                 |
+| 监控实时计数                   | 无                                         | 持续累计                          |
+| 群成员缓存                     | 10 min                                     | 自动过期 + 定期 hydrate           |
+| 群任务锁                       | 15 min                                     | Lua 条件释放                      |
+| 品牌轮转历史                   | 7 天                                       | 自动过期或业务重置                |
+| 地理编码缓存                   | 30 天                                      | 自动过期                          |
+| 测试批次进度                   | 1 h（兜底）                                | 批次完成后主动 DEL                |
 
 **消息处理 Redis 时序（简版）**：
 

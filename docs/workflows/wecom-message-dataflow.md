@@ -6,16 +6,16 @@
 
 ## 1. 数据落点
 
-| 位置                                  | 用途                                           | 当前标识                                             |
-| ------------------------------------- | ---------------------------------------------- | ---------------------------------------------------- |
-| Supabase `chat_messages`              | 对话底仓；短期窗口从这里回看最近 7 天          | `chatId`                                             |
-| Supabase `message_processing_records` | 消息处理流水与 Agent 观测                      | `messageId` / `batchId`                              |
-| Redis pending list                    | debounce 期间和 Agent 运行期间到达的待处理消息 | `wecom:message:pending:{chatId}`                     |
-| Redis last-message-at                 | 静默窗口判定                                   | `wecom:message:last-message-at:{chatId}`             |
-| Redis trace hash                      | 当前请求的增量 timings、Agent 请求与结果       | `wecom:message:trace:{messageId}:v2`                 |
-| Redis short-term                      | 消息热缓存、facts、工作台、阶段指针            | `memory:short_term:chat:*` / `factsv2:*` / `stage:*` |
-| Supabase + Redis long-term            | 候选人 × bot 关系档与 2 小时读缓存             | DB `agent_long_term_memories` / `long-term:*`        |
-| Bull `message-merge`                  | 静默窗口 delayed job                           | 每条入站消息一个 job                                 |
+| 位置                                  | 用途                                               | 当前标识                                             |
+| ------------------------------------- | -------------------------------------------------- | ---------------------------------------------------- |
+| Supabase `chat_messages`              | 对话底仓；短期窗口从这里取最近 N 条再套滚动 7 天窗 | `chatId`                                             |
+| Supabase `message_processing_records` | 消息处理流水与 Agent 观测                          | `messageId` / `batchId`                              |
+| Redis pending list                    | debounce 期间和 Agent 运行期间到达的待处理消息     | `wecom:message:pending:{chatId}`                     |
+| Redis last-message-at                 | 静默窗口判定                                       | `wecom:message:last-message-at:{chatId}`             |
+| Redis trace hash                      | 当前请求的增量 timings、Agent 请求与结果           | `wecom:message:trace:{messageId}:v2`                 |
+| Redis short-term                      | 消息热缓存、facts、工作台、阶段指针                | `memory:short_term:chat:*` / `factsv2:*` / `stage:*` |
+| Supabase + Redis long-term            | 候选人 × bot 关系档与 2 小时读缓存                 | DB `agent_long_term_memories` / `long-term:*`        |
+| Bull `message-merge`                  | 静默窗口 delayed job                               | 每条入站消息一个 job                                 |
 
 Redis key 的完整字段、TTL 和所有者见 [Redis 数据模型](../db/redis-schema.md)。
 

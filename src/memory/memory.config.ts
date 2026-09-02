@@ -12,6 +12,15 @@ import { ConfigService } from '@nestjs/config';
 export const MEMORY_SESSION_TTL_DAYS_DEFAULT = '3';
 
 /**
+ * `MAX_HISTORY_PER_CHAT` 未配置时的默认条数：短期 list 缓存与 DB 单次回查共用的硬上限。
+ *
+ * 这是物理封顶不是语义窗口——语义窗口是滚动 7 天（historyWindowSeconds）与字符预算
+ * （sessionWindowMaxChars）。取值须远高于窗口内的真实条数（生产 7 天内 p99≈90、峰值 <200），
+ * 让它永远不先于窗口生效；两条读写路径必须引用同一常量，否则 list 裁剪与回查条数漂移。
+ */
+export const MEMORY_WINDOW_MAX_MESSAGES_DEFAULT = '300';
+
+/**
  * 记忆模块配置
  *
  * 统一管理记忆相关的时间、窗口和缓存参数。
@@ -57,17 +66,18 @@ export class MemoryConfig {
   readonly consolidationGapSeconds: number;
 
   /**
-   * 从 Supabase 回查历史消息的时间窗口（秒）。
+   * 滚动历史窗口（秒）：从「本批之前候选人最后一次开口」往前回看多久。
    *
-   * 与 `sessionTtl` 分离的原因：会话状态（Redis facts）过期是正常的，
-   * 但过期后用户回来续聊时，Agent 仍需要看到此前的对话历史来重建上下文。
-   * 若两者共用同一个 TTL，会导致"跨天回来的用户被当新用户对待"的问题。
+   * 锚点不是当前时间：候选人隔半月回访时，按 now 回看 7 天必然为空、只剩长期记忆；
+   * 锚在上一次开口，回访能捡回上一段咨询的最后 7 天原文，连续咨询时两者等价。
+   * 与 `sessionTtl` 分离：会话状态（Redis facts）过期是正常的，原文仍要能追溯。
+   * 锚点在 MessageWindowService 内推导，调用方不传批次边界。
    *
    * 默认 7 天（MEMORY_HISTORY_WINDOW_DAYS）。
    */
   readonly historyWindowSeconds: number;
 
-  /** 单轮会话窗口最多读取多少条历史消息。 */
+  /** 短期窗口单次读取 / 缓存的硬上限条数（物理封顶，非语义窗口；见 MEMORY_WINDOW_MAX_MESSAGES_DEFAULT）。 */
   readonly sessionWindowMaxMessages: number;
 
   /** 单轮会话窗口最多保留多少字符。超过后从最早消息开始裁剪。 */
@@ -97,7 +107,7 @@ export class MemoryConfig {
     this.historyWindowSeconds = historyDays * 24 * 60 * 60;
 
     this.sessionWindowMaxMessages = parseInt(
-      this.configService.get('MAX_HISTORY_PER_CHAT', '120'),
+      this.configService.get('MAX_HISTORY_PER_CHAT', MEMORY_WINDOW_MAX_MESSAGES_DEFAULT),
       10,
     );
     this.sessionWindowMaxChars = parseInt(

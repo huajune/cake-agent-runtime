@@ -19,7 +19,10 @@ import {
   type CachedChatHistoryMessage,
   serializeCachedChatHistoryMessage,
 } from '@memory/short-term/chat-history-cache.util';
-import { MEMORY_SESSION_TTL_DAYS_DEFAULT } from '@memory/memory.config';
+import {
+  MEMORY_SESSION_TTL_DAYS_DEFAULT,
+  MEMORY_WINDOW_MAX_MESSAGES_DEFAULT,
+} from '@memory/memory.config';
 
 /**
  * 聊天会话服务
@@ -356,7 +359,12 @@ export class ChatSessionService {
   }
 
   private get shortTermCacheMaxMessages(): number {
-    return parseInt(this.configService?.get('MAX_HISTORY_PER_CHAT', '120') ?? '120', 10);
+    // 与 MemoryConfig.sessionWindowMaxMessages 同源：list 裁剪条数与 DB 回查条数必须一致。
+    return parseInt(
+      this.configService?.get('MAX_HISTORY_PER_CHAT', MEMORY_WINDOW_MAX_MESSAGES_DEFAULT) ??
+        MEMORY_WINDOW_MAX_MESSAGES_DEFAULT,
+      10,
+    );
   }
 
   private get shortTermCacheTtlSeconds(): number {

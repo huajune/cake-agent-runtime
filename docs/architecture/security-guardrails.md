@@ -44,7 +44,7 @@ HTTP 请求
 | API Token        | `src/infra/server/guards/api-token.guard.ts`；全局 Bearer Token，`@Public()` 端点豁免 |
 | DTO 校验         | Nest 全局 `ValidationPipe`                                                            |
 | Provider 韧性    | `src/providers/reliable.service.ts`；错误分类、同模型重试、fallback 链                |
-| 消息窗口         | `MAX_HISTORY_PER_CHAT` 默认 120；`AGENT_MAX_INPUT_CHARS` 默认 24000                   |
+| 消息窗口         | `MAX_HISTORY_PER_CHAT` 默认 300（硬上限）；`AGENT_MAX_INPUT_CHARS` 默认 24000         |
 | 输出预算         | `AGENT_MAX_OUTPUT_TOKENS` 默认 4096                                                   |
 | 告警节流         | `AlertNotifierService`；同类事件按 dedupe / throttle 约束，避免告警风暴               |
 
@@ -86,8 +86,9 @@ TurnOutcome.guardrail.phase = inbound
 
 ## 4. Prompt 生成防线
 
-Prompt 由 `PreparationService` 和 `context/sections/` 编译，所有动态内容保持 system 语义，不进入
-messages。`candidate-consultation` 的 section 顺序以 `scenario.registry.ts` 为准；清单末部显式排列
+Prompt 由 `PreparationService` 编排、`context/sections/` 渲染并由 `prompt-manifest.ts` 编译；所有动态
+内容保持 system 语义，不进入 messages。`candidate-consultation` 的 manifest 声明 Section 集合，
+`PromptSlot` 固定跨类别顺序，末部自然形成
 `final-check → input-guard → critical-turn-guard`，后两者按条件省略。
 
 Prompt 防线包括：
@@ -190,7 +191,7 @@ Output guard 只读、不直接改文案。Runner 持有修复编排权：
 | 配置                      | 代码默认值 | 说明                   |
 | ------------------------- | ---------: | ---------------------- |
 | `AGENT_MAX_INPUT_CHARS`   |    `24000` | prepare 的消息字符预算 |
-| `MAX_HISTORY_PER_CHAT`    |      `120` | 单会话历史消息上限     |
+| `MAX_HISTORY_PER_CHAT`    |      `300` | 单会话历史条数硬上限   |
 | `AGENT_MAX_OUTPUT_TOKENS` |     `4096` | 单次模型输出上限       |
 
 验证入口：

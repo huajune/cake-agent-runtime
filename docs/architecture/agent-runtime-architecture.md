@@ -290,8 +290,9 @@ identity
 → critical-turn-guard（命中时）
 ```
 
-`input-guard` 与 `critical-turn-guard` 都是显式条件 section。它们的顺序由场景 manifest
-直接表达，不再由 Preparation 数组插缝。
+`input-guard` 与 `critical-turn-guard` 都是显式条件 section。场景 manifest 声明包含哪些
+Section，`PromptSlot` 决定跨类别位置，同 slot 内才沿用 manifest 顺序；因此不再由
+Preparation 数组插缝。
 
 | 区段          | 内容                                                                          | 稳定性                           |
 | ------------- | ----------------------------------------------------------------------------- | -------------------------------- |
@@ -311,14 +312,14 @@ identity
 
 ### 5.3 结构化语料与缓存
 
-`promptBlocks` 在 `WorkingMemory` 降维前保留 `id / domain / role / content`。封闭的
-`PROMPT_SECTION_DOMAIN_REGISTRY` 把叶子块标为 `teaching | evidence | tool_result`，用于审计
-指令与数据边界；这根轴与 procedural / semantic / working 的知识类型轴正交。
+`promptBlocks` 在 `WorkingMemory` 降维前保留 `id / domain / role / content`。每个 Section
+在自己的类型契约中声明 `domain: teaching | evidence | tool_result`，compiler 同时保留它的
+`slot` 与 `dynamic` 元数据，用于审计指令、证据、工具结果和动态边界；这根轴与
+procedural / semantic / working 的知识类型轴正交。
 
-当前生产观测尚未把 `promptBlocks` 作为独立字段持久化：Agent 的 LLM 请求快照记录的是降维后的
-`agentRequest.instructions`、messages 和 tool names。结构化 blocks 目前主要由 compose/preparation 测试和
-进程内调试消费；若要在 MPR 中逐块检索，需要另行把该字段从 `WorkingMemory` 透传到观测层，不能把
-“进程内保留”误写成“已经落库”。
+生产观测不持久化每块正文：Agent 的 LLM 请求快照记录降维后的 `agentRequest.instructions`、
+messages 和 tool names；`turn_preparation` 只持久化逐块 id/domain/slot/字符数/dynamic、顺序 hash、
+总字符数与 token 粗估。这样可以定位“哪块缺失或膨胀”，又不复制敏感 Prompt 正文。
 
 当前没有 Anthropic `cacheControl` 等显式缓存断点，也没有 provider 缓存适配层。稳定前缀和稳定的
 tools 序列用于获得 Qwen 的隐式前缀缓存；命中量从 AI SDK
@@ -609,14 +610,15 @@ TurnFinalizer 共同保证“快速 ACK 不丢消息、Replay 不写幽灵记忆
 | 观测载体                     | 主要内容                                                                                                        |
 | ---------------------------- | --------------------------------------------------------------------------------------------------------------- |
 | `message_processing_records` | 入站/AI/投递阶段、agent request（含降维 instructions）、memory snapshot、tool calls、guardrail、post-processing |
-| `agent_execution_events`     | `agent_start/end/error`、model call/fallback、tool call/error、缓存 token 等细粒度事件                          |
+| `agent_execution_events`     | Agent/model/tool 事件，以及 `turn_data_sources`、`turn_preparation`、`prompt_injection_detected`                |
 | `guardrail_review_records`   | 确定性规则证据、首版/修复版、首审/二审决策与 override 标记                                                      |
 | `AgentTracerService`         | 用 request context 把 Agent、模型、工具事件关联到 trace                                                         |
 | `IncidentReporterService`    | memory consolidation 等跨模块失败事件                                                                           |
 
-生产排查 Prompt 先看 `agent_invocation.request.agentRequest.instructions`；若需要 section 级归因，再用同轮
-输入复现 `ContextService.compose()` 或查看 compose/preparation 测试中的 `promptBlocks`。排查成本与缓存时
-同时看 `inputTokens` 和 `cachedInputTokens`；排查工具延迟要区分 step 墙钟与 tool execute 的真实耗时。
+生产排查 Prompt 先看 `agent_invocation.request.agentRequest.instructions`；section 级归因看同轮
+`turn_preparation.prompt.blocks`、`dynamicBlockIds` 与 `orderHash`，需要正文时再用同轮输入复现
+`ContextService.compose()`。外部源问题看 `turn_data_sources` 的逐源状态、耗时与观测时间。排查成本与
+缓存时同时看 `inputTokens` 和 `cachedInputTokens`；排查工具延迟要区分 step 墙钟与 tool execute 的真实耗时。
 
 ### 12.2 Test Suite 与 Evaluation
 
@@ -740,15 +742,16 @@ Evaluation、Memory、Tool 和 Feishu Sync。
 ### 15.3 新增 Prompt section
 
 1. 放到 `sections/procedural|semantic|working/` 的主类型目录；基础设施接口留根目录。
-2. 实现 `PromptSection`，procedural 内容添加 `prompt-rule-ledger` 锚点。
+2. 实现同步 `PromptSection`，声明 `id / domain / slot / dynamic`；procedural 内容添加
+   `prompt-rule-ledger` 锚点。
 3. 在 `ContextService.registerSections()` 注册。
-4. 在 `SCENARIO_SECTIONS` 指定精确顺序。
-5. 在 `PROMPT_SECTION_DOMAIN_REGISTRY` 登记 teaching/evidence/tool_result。
-6. 补 block 顺序、模型可见标签和静态纯净性测试。
+4. 在 `SCENARIO_PROMPT_MANIFEST` 加入目标场景；跨类别位置只通过 `slot` 表达，同 slot 顺序才由
+   manifest 决定。
+5. 补 block id/domain/slot 顺序、模型可见标签和静态纯净性测试。
 
 ### 15.4 新增场景
 
-1. 在 `SCENARIO_SECTIONS` 定义 Prompt 组合。
+1. 在 `SCENARIO_PROMPT_MANIFEST` 定义 Prompt 组合。
 2. 在 `scenarioToolMap` 定义物理工具集。
 3. 明确调用协议、callerKind、toolMode 和 strategySource。
 4. 用 `promptBlocks`、tool list、TurnOutcome 和 turn-end 结局测试锁定契约。
@@ -778,7 +781,7 @@ Evaluation、Memory、Tool 和 Feishu Sync。
 | `AGENT_MAX_OUTPUT_TOKENS`                 | `4096`   | 单次模型输出上限                                |
 | `AGENT_THINKING_BUDGET_TOKENS`            | `0`      | 环境默认关闭；WeCom deep 模式可由运行时配置开启 |
 | `AGENT_MAX_INPUT_CHARS`                   | `24000`  | 消息窗口字符预算                                |
-| `MAX_HISTORY_PER_CHAT`                    | `120`    | 单轮历史消息上限                                |
+| `MAX_HISTORY_PER_CHAT`                    | `300`    | 单轮历史条数硬上限（语义窗口是滚动 7 天）       |
 | `MEMORY_SESSION_TTL_DAYS`                 | `3`      | session stage / 状态业务生命周期                |
 | `MEMORY_SETTLEMENT_GAP_DAYS`              | `3`      | episode 闲置边界和 consolidation delay          |
 | `MEMORY_HISTORY_WINDOW_DAYS`              | `7`      | DB 消息回看窗口                                 |
@@ -821,7 +824,8 @@ DuLiDay token；所选 provider 还必须有对应 API key。Supabase、飞书�
 | Generator         | [`generator.agent.ts`](../../src/agent/generator/generator.agent.ts)                                  |
 | Preparation       | [`preparation.service.ts`](../../src/agent/generator/preparation/preparation.service.ts)              |
 | Context           | [`context.service.ts`](../../src/agent/generator/context/context.service.ts)                          |
-| Scenario sections | [`scenario.registry.ts`](../../src/agent/generator/context/scenarios/scenario.registry.ts)            |
+| Prompt compiler   | [`prompt-manifest.ts`](../../src/agent/generator/context/prompt-manifest.ts)                            |
+| Prompt model      | [`prompt-model.types.ts`](../../src/agent/generator/context/prompt-model.types.ts)                     |
 | LLM               | [`llm-executor.service.ts`](../../src/llm/llm-executor.service.ts)                                    |
 | Providers         | [`router.service.ts`](../../src/providers/router.service.ts)                                          |
 | Memory            | [`memory.service.ts`](../../src/memory/memory.service.ts)                                             |
