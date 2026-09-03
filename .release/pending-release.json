@@ -30,6 +30,49 @@
         "变异验证：摘掉 `injectImageParts` 的占位符定位后，占位符那一例即红，确认它守的是真不变量。"
       ],
       "level": "patch"
+    },
+    {
+      "number": "1204",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1204",
+      "title": "收紧消息处理调用表访问权限",
+      "author": "huajune",
+      "mergedAt": "2026-09-03",
+      "businessUpdates": [
+        "修复 `20260902073727_retention_schema_audit.sql` 创建 `message_processing_invocations` 时遗漏 RLS，导致 public schema 默认授权下 Data API 客户端角色可能访问整表的问题",
+        "为 `public.message_processing_invocations` 启用 RLS，修复 Supabase Security Advisor 的 `RLS Disabled in Public` 错误",
+        "撤销 `PUBLIC`、`anon`、`authenticated` 的表权限，仅保留后端 `service_role` 的显式 CRUD 权限和全量策略",
+        "增加迁移契约测试，防止后续重新开放保存完整 Agent 请求/响应快照的敏感表"
+      ],
+      "summary": [
+        "收紧消息处理调用表访问权限",
+        "为 `public.message_processing_invocations` 启用 RLS，修复 Supabase Security Advisor 的 `RLS Disabled in Public` 错误",
+        "撤销 `PUBLIC`、`anon`、`authenticated` 的表权限，仅保留后端 `service_role` 的显式 CRUD 权限和全量策略",
+        "增加迁移契约测试，防止后续重新开放保存完整 Agent 请求/响应快照的敏感表"
+      ],
+      "features": [],
+      "fixes": [
+        "修复 `20260902073727_retention_schema_audit.sql` 创建 `message_processing_invocations` 时遗漏 RLS，导致 public schema 默认授权下 Data API 客户端角色可能访问整表的问题",
+        "为 `public.message_processing_invocations` 启用 RLS，修复 Supabase Security Advisor 的 `RLS Disabled in Public` 错误",
+        "撤销 `PUBLIC`、`anon`、`authenticated` 的表权限，仅保留后端 `service_role` 的显式 CRUD 权限和全量策略",
+        "增加迁移契约测试，防止后续重新开放保存完整 Agent 请求/响应快照的敏感表"
+      ],
+      "optimizations": [],
+      "ops": [
+        "TEST 与 PROD 的迁移状态均已登记 `20260903130000`；数据库侧修复此前已经执行，本 PR 补回缺失的 Git 源码和审计记录，不需要再次推送迁移",
+        "迁移只修改权限和 RLS 元数据，不扫描或回填业务数据",
+        "收紧消息处理调用表访问权限"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`pnpm run ci:check`（459/459 个测试套件通过，6597 个测试通过，仓库原有 1 套件/5 测试跳过）",
+        "`pnpm test -- --watchman=false --runInBand tests/supabase/message-processing-invocations-rls.spec.ts`（3/3 通过）",
+        "`pnpm run db:status:test` 与 `pnpm run db:status:prod` 均确认本地/远端存在 `20260903130000`",
+        "关键链路已人工核对：后端仓储使用 `service_role`，迁移保留显式 CRUD 授权与 `FOR ALL` 策略",
+        "未新增对开放自然语言直接 reject/覆盖/判缺的正则分支；本 PR 仅包含 SQL 权限迁移与迁移契约测试",
+        "未新增 prompt 示例值"
+      ],
+      "level": "patch"
     }
   ],
   "lastRelease": {
@@ -245,5 +288,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "85305969dcd695d2a65ebca7773a6ed16972419c"
+  "lastAnalyzedSha": "cc816d4654b4dd8f22eb5f1c33bddc5112dee200"
 }
