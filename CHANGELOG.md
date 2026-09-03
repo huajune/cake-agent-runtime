@@ -14,13 +14,19 @@
 **预计版本**: `v11.2.1`
 **最近更新**: `2026-09-03`
 **来源分支**: `develop`
-**累计 PR**: 1
+**累计 PR**: 2
 
 ### 更新摘要
 - PR #1191 预热 cron 默认关闭 + 删除 tool_calls 裸扫回退，止住生产库过载
 - PR #1191 `prewarmDashboardOverview` 加 `DASHBOARD_PREWARM_ENABLED` 门，**默认关闭**。
 - PR #1191 `getDashboardToolStats`：RPC 失败直接返回空 + warn；**删除** `getDashboardToolStatsFromToolCalls` 及 `countToolCalls` / `formatToolStats` / `ToolCallsProjectionRow`。
 - PR #1191 注释回收「回退路径」表述；`.env.example` / `env.validation.ts` 登记开关。
+- PR #1192 修复活跃用户 RPC 结构漂移
+- PR #1192 修复 user_activity 写入 RPC 与当前 NOT NULL 时间字段不一致导致的 23502 错误。
+- PR #1192 重建实际被应用调用的 get_active_users_from_user_activity_by_range，移除已删除的 group_id/group_name 引用。
+- PR #1192 从保留的 chat_messages 与 message_processing_records 幂等回补 2026-09-02 起的事故窗口数据。
+- PR #1192 增加迁移级回归测试，防止 RPC 再次与表结构漂移。
+- PR #1192 修复用户活跃列表空白
 
 ### 新功能
 - 无
@@ -29,6 +35,11 @@
 - PR #1191 `prewarmDashboardOverview` 加 `DASHBOARD_PREWARM_ENABLED` 门，**默认关闭**。
 - PR #1191 `getDashboardToolStats`：RPC 失败直接返回空 + warn；**删除** `getDashboardToolStatsFromToolCalls` 及 `countToolCalls` / `formatToolStats` / `ToolCallsProjectionRow`。
 - PR #1191 注释回收「回退路径」表述；`.env.example` / `env.validation.ts` 登记开关。
+- PR #1192 修复 user_activity 写入 RPC 与当前 NOT NULL 时间字段不一致导致的 23502 错误。
+- PR #1192 重建实际被应用调用的 get_active_users_from_user_activity_by_range，移除已删除的 group_id/group_name 引用。
+- PR #1192 从保留的 chat_messages 与 message_processing_records 幂等回补 2026-09-02 起的事故窗口数据。
+- PR #1192 增加迁移级回归测试，防止 RPC 再次与表结构漂移。
+- PR #1192 修复活跃用户 RPC 结构漂移
 
 ### 优化调整
 - 无
@@ -45,6 +56,11 @@
 ### 验证记录
 - PR #1191 `record.repository.spec` + `analytics-dashboard.service.spec`：83/83 通过（新增「默认关」与「RPC 失败不回退」两条断言）
 - PR #1191 `eslint --max-warnings=0` 通过；`tsc --noEmit` 通过
+- PR #1192 pnpm run ci:check：450 个测试套件通过，6621 个测试通过
+- PR #1192 定向 Jest：2 个套件、36 个测试通过
+- PR #1192 pnpm run typecheck
+- PR #1192 测试库迁移成功
+- PR #1192 测试库真实 RPC 冒烟：写入、范围查询、时间字段及 token 聚合通过；测试数据已清理
 <!-- release:pending:end -->
 
 ## [11.2.0] - 2026-09-02

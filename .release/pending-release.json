@@ -41,6 +41,48 @@
         "`eslint --max-warnings=0` 通过；`tsc --noEmit` 通过"
       ],
       "level": "patch"
+    },
+    {
+      "number": "1192",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1192",
+      "title": "修复用户活跃列表空白",
+      "author": "huajune",
+      "mergedAt": "2026-09-03",
+      "businessUpdates": [
+        "修复 user_activity 写入 RPC 与当前 NOT NULL 时间字段不一致导致的 23502 错误。",
+        "重建实际被应用调用的 get_active_users_from_user_activity_by_range，移除已删除的 group_id/group_name 引用。",
+        "从保留的 chat_messages 与 message_processing_records 幂等回补 2026-09-02 起的事故窗口数据。",
+        "增加迁移级回归测试，防止 RPC 再次与表结构漂移。",
+        "修复活跃用户 RPC 结构漂移"
+      ],
+      "summary": [
+        "修复活跃用户 RPC 结构漂移",
+        "修复 user_activity 写入 RPC 与当前 NOT NULL 时间字段不一致导致的 23502 错误。",
+        "重建实际被应用调用的 get_active_users_from_user_activity_by_range，移除已删除的 group_id/group_name 引用。",
+        "从保留的 chat_messages 与 message_processing_records 幂等回补 2026-09-02 起的事故窗口数据。",
+        "增加迁移级回归测试，防止 RPC 再次与表结构漂移。",
+        "修复用户活跃列表空白"
+      ],
+      "features": [],
+      "fixes": [
+        "修复 user_activity 写入 RPC 与当前 NOT NULL 时间字段不一致导致的 23502 错误。",
+        "重建实际被应用调用的 get_active_users_from_user_activity_by_range，移除已删除的 group_id/group_name 引用。",
+        "从保留的 chat_messages 与 message_processing_records 幂等回补 2026-09-02 起的事故窗口数据。",
+        "增加迁移级回归测试，防止 RPC 再次与表结构漂移。",
+        "修复活跃用户 RPC 结构漂移"
+      ],
+      "optimizations": [],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "pnpm run ci:check：450 个测试套件通过，6621 个测试通过",
+        "定向 Jest：2 个套件、36 个测试通过",
+        "pnpm run typecheck",
+        "测试库迁移成功",
+        "测试库真实 RPC 冒烟：写入、范围查询、时间字段及 token 聚合通过；测试数据已清理"
+      ],
+      "level": "patch"
     }
   ],
   "lastRelease": {
@@ -458,5 +500,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "5264da83dedadd1d172a73b7d975110a4b6ef5d9"
+  "lastAnalyzedSha": "dcc716fcad2eadf41233c474b061c3bca902f70b"
 }
