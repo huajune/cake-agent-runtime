@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [11.2.1] - 2026-09-03
 
-**预计版本**: `v11.2.1`
-**最近更新**: `2026-09-03`
 **来源分支**: `develop`
-**累计 PR**: 5
 
 ### 更新摘要
 - PR #1191 预热 cron 默认关闭 + 删除 tool_calls 裸扫回退，止住生产库过载
@@ -113,7 +109,6 @@
 - PR #1193 pnpm run test:di-smoke：AppModule 完整装配通过
 - PR #1193 git diff --check
 - PR #1193 push 前完整 CI 再次通过
-<!-- release:pending:end -->
 
 ## [11.2.0] - 2026-09-02
 
