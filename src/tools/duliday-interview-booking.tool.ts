@@ -61,6 +61,7 @@ const DESCRIPTION = `提交面试报名。候选人资料全部来自已授权�
 - 有面试时段的岗位：interviewTime 必须逐字取自 precheck 的 bookableSlots，格式 YYYY-MM-DD HH:mm:ss。
 - wait_notice 岗位：不要传 interviewTime。
 - 不得传姓名、手机号、年龄、性别或补充标签；这些值只能由持久表单生成 labelList。
+- 同一会话代多人报名时必须严格串行：当前人的 precheck ready_to_book 后立即调用本工具，成功后才能 precheck 下一人；不得并行办理多人。
 - booking success=true 前禁止声称已报名。`;
 
 const inputSchema = z.object({
@@ -195,6 +196,7 @@ export function buildInterviewBookingTool(
           const rawContract = await spongeService.fetchJobCollectionContract(jobId, tokenContext);
           const mapped = mapContractFields(rawContract, parseIdentityAnchors(deps.identityAnchors));
           const form = await deps.collectionForms.loadOrCreate(scope, mapped.fields);
+          const isAdditionalCandidate = form.candidateScope === 'additional';
           const verdict = verdictOf(form);
           if (verdict !== 'ready') {
             return fail(
@@ -317,9 +319,13 @@ export function buildInterviewBookingTool(
             );
           }
 
-          const duplicate = (
-            await longTermService.getActiveBookings(scope.corpId, scope.userId)
-          ).find((entry) => isRecentSameJobBooking(entry, jobId));
+          // active booking 属于当前聊天联系人，不能拿它拦截同一会话中朋友/家人的独立报名。
+          // 追加候选人的去重由其手机号表单与上游报名接口负责。
+          const duplicate = isAdditionalCandidate
+            ? undefined
+            : (await longTermService.getActiveBookings(scope.corpId, scope.userId)).find((entry) =>
+                isRecentSameJobBooking(entry, jobId),
+              );
           if (duplicate) {
             context.ledger.jobs.bookingSucceeded = true;
             return buildToolError({
@@ -393,6 +399,7 @@ export function buildInterviewBookingTool(
               interviewTime: interviewTime ?? null,
               labelIds: payload.labelList.map((item) => item.labelId),
             },
+            candidateScope: isAdditionalCandidate ? 'additional' : 'primary',
             collectionConfigDebts: form.configDebts ?? [],
           };
           if (result.success) {
@@ -457,14 +464,16 @@ export function buildInterviewBookingTool(
           let submitted: BookingCollectionForm;
           if (result.workOrderId != null) {
             submitted = markSubmitted(form, result.workOrderId);
-            await runPostBookingWrite('active booking 指针写入', () =>
-              longTermService.setActiveBooking(
-                scope.corpId,
-                scope.userId,
-                result.workOrderId as number,
-                { job_id: jobId },
-              ),
-            );
+            if (!isAdditionalCandidate) {
+              await runPostBookingWrite('active booking 指针写入', () =>
+                longTermService.setActiveBooking(
+                  scope.corpId,
+                  scope.userId,
+                  result.workOrderId as number,
+                  { job_id: jobId },
+                ),
+              );
+            }
           } else {
             submitted = escalate(form, 'booking_success_missing_work_order_id');
             logger.warn('[booking] 预约成功但缺少 workOrderId，表单转人工以阻止重复提交');
@@ -473,7 +482,7 @@ export function buildInterviewBookingTool(
             deps.collectionForms!.persist(scope, submitted),
           );
 
-          if (result.workOrderId != null) {
+          if (result.workOrderId != null && !isAdditionalCandidate) {
             await runPostBookingWrite('会话身份事实写入', async () => {
               const formFact = (value: string, evidence: string) =>
                 sessionFactValue(value, {
@@ -550,8 +559,9 @@ export function buildInterviewBookingTool(
           const toolResult = {
             ...baseToolOutput,
             _outcome: '预约成功，可以告知候选人面试安排',
-            _replyInstruction:
-              '本轮必须明确告诉候选人报名成功，并照实复述面试安排；不得静默或只回答其它问题。',
+            _replyInstruction: isAdditionalCandidate
+              ? '本轮必须明确告诉用户当前这位候选人报名成功，并照实复述面试安排；只有告知成功后才能处理下一位候选人。'
+              : '本轮必须明确告诉候选人报名成功，并照实复述面试安排；不得静默或只回答其它问题。',
             _confirmedInterviewTimeHuman: interviewTime
               ? formatInterviewTimeForReply(interviewTime)
               : '未指定面试时间：面试官会直接电话联系候选人确认',

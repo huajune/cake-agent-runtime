@@ -151,6 +151,59 @@ describe('CollectionFormService', () => {
       expect(form.candidateRef).toBe('session');
     });
 
+    it('当前指针已有另一手机号时，为显式新手机号创建 additional 独立表单', async () => {
+      const secondPhone = '18271421691';
+      const first = createForm({
+        candidateRef: TEST_PHONE,
+        jobId: 528962,
+        contract: [NAME_FIELD],
+      });
+      first.slots[NAME_FIELD.labelId] = {
+        labelId: NAME_FIELD.labelId,
+        state: 'filled',
+        askCount: 0,
+        value: {
+          value: '第一位候选人',
+          sourceText: '姓名：第一位候选人',
+          producer: 'candidate_quote',
+        },
+      };
+      store.readCurrentCandidateRef.mockResolvedValue(TEST_PHONE);
+      store.read.mockImplementation(async ({ candidateRef }: { candidateRef: string }) =>
+        candidateRef === TEST_PHONE ? first : null,
+      );
+
+      const form = await service.loadOrCreate(SCOPE, [NAME_FIELD], secondPhone);
+
+      expect(form).toMatchObject({
+        candidateRef: secondPhone,
+        candidateScope: 'additional',
+      });
+      expect(form.slots[NAME_FIELD.labelId].state).toBe('empty');
+      expect(store.read).toHaveBeenCalledWith(
+        expect.objectContaining({ candidateRef: secondPhone }),
+      );
+      expect(store.read).not.toHaveBeenCalledWith(
+        expect.objectContaining({ candidateRef: TEST_PHONE }),
+      );
+    });
+
+    it('显式手机号可解除旧版 suspected_multi_person 熔断，恢复对应候选人表单', async () => {
+      const stored = createForm({
+        candidateRef: TEST_PHONE,
+        jobId: 528962,
+        contract: [NAME_FIELD],
+      });
+      stored.escalatedReason = 'suspected_multi_person';
+      store.readCurrentCandidateRef.mockResolvedValue(TEST_PHONE);
+      store.read.mockResolvedValue(stored);
+
+      const form = await service.loadOrCreate(SCOPE, [NAME_FIELD], TEST_PHONE);
+
+      expect(form.candidateRef).toBe(TEST_PHONE);
+      expect(form.escalatedReason).toBeUndefined();
+    });
+
     it('契约新增槽位补入；已有槽位一格不动（含候选人原话）', async () => {
       const text = '姓名：兮兮';
       const filled = applyFieldValueProposal(

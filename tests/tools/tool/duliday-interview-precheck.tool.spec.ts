@@ -170,7 +170,7 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
   let currentForm: BookingCollectionForm | null;
   let context: ToolBuildContext;
   const collectionForms = {
-    loadOrCreate: jest.fn(async (_scope, contract) => {
+    loadOrCreate: jest.fn(async (_scope, contract, _candidatePhone?: string) => {
       currentForm ??= createForm({ jobId: 100, contract });
       return currentForm;
     }),
@@ -219,6 +219,7 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
   it('公开工具 Schema 只保留 fieldValueProposals 一个收资入口，并提供 recapConfirmation', () => {
     expect(Object.keys(PRECHECK_INPUT_SCHEMA.shape)).toEqual([
       'jobId',
+      'candidatePhone',
       'requestedDate',
       'fieldValueProposals',
       'recapConfirmation',
@@ -231,6 +232,44 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
         fieldValueProposals: [{ labelTitle: '年龄', value: false, quote: '不是学生' }],
       }).success,
     ).toBe(false);
+  });
+
+  it('多人报名显式指定本轮手机号时使用独立 additional 表单并禁止污染主联系人事实', async () => {
+    const candidatePhone = '18271421691';
+    const text = [
+      '第二位候选人',
+      '姓名：小李',
+      `联系电话：${candidatePhone}`,
+      '年龄：19',
+      '性别：男',
+    ].join('\n');
+    context.turnInput.messages = [{ role: 'user', content: text }];
+    collectionForms.loadOrCreate.mockImplementationOnce(async (_scope, contract, phone?: string) => {
+      expect(phone).toBe(candidatePhone);
+      return {
+        ...createForm({ candidateRef: candidatePhone, jobId: 100, contract }),
+        candidateScope: 'additional' as const,
+      };
+    });
+
+    const result = await execute({
+      jobId: 100,
+      candidatePhone,
+      fieldValueProposals: [
+        { labelTitle: '姓名', value: '小李', quote: '姓名：小李' },
+        { labelTitle: '联系电话', value: candidatePhone, quote: `联系电话：${candidatePhone}` },
+        { labelTitle: '年龄', value: '19', quote: '年龄：19' },
+        { labelTitle: '性别', value: '男', quote: '性别：男' },
+      ],
+    });
+
+    expect(result).toMatchObject({
+      candidateScope: 'additional',
+      collectionVerdict: 'ready',
+      nextAction: 'ready_to_book',
+    });
+    expect(result._replyInstruction).toContain('只有 booking success=true 后才能处理下一人');
+    expect(collectionForms.saveFinalizedProgressFacts).not.toHaveBeenCalled();
   });
 
   it('无答案时字段全集、展示顺序和模板全部只来自实时岗位契约', async () => {

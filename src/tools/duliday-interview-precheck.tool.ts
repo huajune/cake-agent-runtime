@@ -20,6 +20,7 @@ import {
   type RecapConfirmationRejectionReason,
 } from '@resolution/notary/recap-confirmation';
 import { normalizedIncludes } from '@resolution/notary/text-normalization';
+import { isStorableCandidatePhone } from '@resolution/candidate/phone';
 import { selectEvidenceDialogueMessages } from '@resolution/signal/corpus';
 import { extractCandidateTexts } from '@resolution/signal/self-report';
 import { EMPTY_CONTRACT_ESCALATION_REASON } from '@sponge/collection-contract.types';
@@ -90,6 +91,7 @@ export const PRECHECK_DESCRIPTION = `面试前置校验。实时读取岗位收�
 
 参数纪律：
 - jobId 必须来自本会话最近一次 duliday_job_list 的真实召回。
+- candidatePhone 仅用于**同一会话代多人报名**：逐人传入当前正在办理者原话中的 11 位手机号，用它选择独立表单；单人报名不传。多人时严格按一人一条链路串行处理：本工具返回 ready_to_book 后立即 booking，booking 成功后才能 precheck 下一人；禁止并行调用多个 precheck。
 - requestedDate 只在候选人明确表达时传：可传日期、interview.bookableSlots 中的精确 interviewTime，或候选人约定的窗口内具体时刻（YYYY-MM-DD HH:mm）；含糊就不传。面试时间不属于收资字段，不得写成 fieldValueProposals 条目。
 - fieldValueProposals 是唯一收资字段入口。只在候选人原话明确支持最终契约值时提交；没提到、无法唯一映射、带保留或有歧义时不提交，让该槽位保持 empty。不得为了填满表单猜值，不得提交置信分、待复核标记或“先填后确认”值。
 - 每项 labelTitle 必须逐字取自 bookingChecklist.requiredFields，value 传规范值，quote 必须逐字取自候选人完整原话。一条消息明确支持多个字段时全部提交。纠正用 correct、清除用 clear；confirm 只用于候选人对真实相邻字段问句的短答确认，不得把 recap 拆成全部 filled 字段重投。
@@ -109,6 +111,12 @@ export const PRECHECK_DESCRIPTION = `面试前置校验。实时读取岗位收�
 
 export const PRECHECK_INPUT_SCHEMA = z.object({
   jobId: z.coerce.number().int().positive().describe('岗位 ID，必须来自本会话真实召回'),
+  candidatePhone: z
+    .string()
+    .trim()
+    .refine(isStorableCandidatePhone, '必须是候选人原话中的 11 位大陆手机号')
+    .optional()
+    .describe('仅多人代报时传：当前正在办理的候选人手机号，用于选择其独立表单'),
   requestedDate: z
     .string()
     .optional()
@@ -325,7 +333,13 @@ export function buildInterviewPrecheckTool(
     tool({
       description: PRECHECK_DESCRIPTION,
       inputSchema: PRECHECK_INPUT_SCHEMA,
-      execute: async ({ jobId, requestedDate, fieldValueProposals, recapConfirmation }) => {
+      execute: async ({
+        jobId,
+        candidatePhone,
+        requestedDate,
+        fieldValueProposals,
+        recapConfirmation,
+      }) => {
         if (!deps?.collectionForms) {
           return buildToolError({
             errorType: TOOL_ERROR_TYPES.PRECHECK_FAILED,
@@ -387,6 +401,7 @@ export function buildInterviewPrecheckTool(
             spongeService,
             context,
             jobId,
+            candidatePhone,
             fieldValueProposals,
             recapConfirmation,
             hasExplicitRequestedDate: Boolean(requestedDate?.trim()),
@@ -484,6 +499,7 @@ export function buildInterviewPrecheckTool(
             success: true,
             nextAction,
             collectionVerdict: formRun.verdict,
+            candidateScope: formRun.form.candidateScope ?? 'primary',
             _replyInstruction: replyInstruction(nextAction, formRun),
             job: {
               jobId,
@@ -580,6 +596,7 @@ async function runForm(params: {
   spongeService: SpongeService;
   context: Parameters<ToolBuilder>[0];
   jobId: number;
+  candidatePhone?: string;
   fieldValueProposals?: readonly FieldValueProposalInput[];
   recapConfirmation?: RecapConfirmationInput;
   hasExplicitRequestedDate: boolean;
@@ -613,7 +630,24 @@ async function runForm(params: {
     botUserId,
     jobId: params.jobId,
   };
-  let form = await params.deps.collectionForms.loadOrCreate(scope, mapped.fields);
+  const candidateTexts = extractCandidateTexts(params.messages, {
+    visualSheetsByContent: params.context.turnInput.visualSheetsByContent,
+  });
+  const groundedCandidatePhone =
+    params.candidatePhone &&
+    candidateTexts.some((text) => normalizedIncludes(text, params.candidatePhone!))
+      ? params.candidatePhone
+      : undefined;
+  if (params.candidatePhone && !groundedCandidatePhone) {
+    logger.warn(
+      `[precheck] candidatePhone 在候选人原话中无出处，忽略多人表单路由: jobId=${params.jobId}`,
+    );
+  }
+  let form = await params.deps.collectionForms.loadOrCreate(
+    scope,
+    mapped.fields,
+    groundedCandidatePhone,
+  );
   if (mapped.fields.length === 0) {
     form = escalate(form, EMPTY_CONTRACT_ESCALATION_REASON);
     logger.warn(`[precheck] 岗位返回空标签契约，按数据异常转人工: jobId=${params.jobId}`);
@@ -624,9 +658,6 @@ async function runForm(params: {
     });
   }
 
-  const candidateTexts = extractCandidateTexts(params.messages, {
-    visualSheetsByContent: params.context.turnInput.visualSheetsByContent,
-  });
   const corrections = intake.proposals
     .filter((answer) => answer.operation === 'correct' || answer.operation === 'clear')
     .filter(
@@ -687,12 +718,14 @@ async function runForm(params: {
     askReceiptTurnId: params.context.session.turnId,
   });
 
-  await params.deps.collectionForms.saveFinalizedProgressFacts(
-    { ...scope, sessionId: params.context.session.sessionId },
-    result.form,
-    mapped.fields,
-    result.answeredThisTurn,
-  );
+  if (result.form.candidateScope !== 'additional') {
+    await params.deps.collectionForms.saveFinalizedProgressFacts(
+      { ...scope, sessionId: params.context.session.sessionId },
+      result.form,
+      mapped.fields,
+      result.answeredThisTurn,
+    );
+  }
 
   const phoneField = mapped.fields.find((field) => field.systemField === 'phone');
   const phoneValue = phoneField ? result.form.slots[phoneField.labelId]?.value?.value : null;
@@ -810,7 +843,9 @@ function replyInstruction(action: PrecheckAction, run: FormRun): string {
     case 'handoff':
       return `表单已转人工：${run.form.escalatedReason ?? 'unknown'}。停止发问并调用 request_handoff。`;
     case 'ready_to_book':
-      return '候选人资料已授权，且非 wait_notice 岗位的预约草稿已通过本轮实时复验。可以调用 duliday_interview_booking；只有 booking success=true 后才能说已报名。';
+      return run.form.candidateScope === 'additional'
+        ? '当前这位追加候选人的独立表单已授权。立即调用 duliday_interview_booking 完成这一人；只有 booking success=true 后才能处理下一人，不得并行 precheck/booking。'
+        : '候选人资料已授权，且非 wait_notice 岗位的预约草稿已通过本轮实时复验。可以调用 duliday_interview_booking；只有 booking success=true 后才能说已报名。';
     case 'already_submitted':
       return `当前表单已提交（工单 ${run.form.workOrderId ?? 'unknown'}），禁止重复 booking。`;
   }

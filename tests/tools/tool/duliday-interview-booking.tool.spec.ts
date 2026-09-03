@@ -316,6 +316,49 @@ describe('duliday_interview_booking（form → labelList）', () => {
     );
   });
 
+  it('追加候选人可独立报名，不受主联系人同岗查重拦截且不覆盖主联系人记忆', async () => {
+    currentForm = { ...readyForm(), candidateRef: '18271421691', candidateScope: 'additional' };
+    currentForm.slots[101].value = {
+      value: '小李',
+      sourceText: '姓名：小李',
+      producer: 'candidate_quote',
+    };
+    currentForm.slots[102].value = {
+      value: '18271421691',
+      sourceText: '联系电话：18271421691',
+      producer: 'candidate_quote',
+    };
+    longTerm.getActiveBookings.mockResolvedValue([
+      { work_order_id: 8001, job_id: 100, linked_at: new Date().toISOString() },
+    ]);
+
+    const result = await execute({ jobId: 100 });
+
+    expect(result).toMatchObject({ success: true, candidateScope: 'additional' });
+    expect(result._replyInstruction).toContain('只有告知成功后才能处理下一位候选人');
+    expect(sponge.bookInterview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        labelList: expect.arrayContaining([
+          { labelId: 101, value: '小李' },
+          { labelId: 102, value: '18271421691' },
+        ]),
+      }),
+      expect.any(Object),
+    );
+    expect(longTerm.getActiveBookings).not.toHaveBeenCalled();
+    expect(longTerm.setActiveBooking).not.toHaveBeenCalled();
+    expect(sessionFacts.saveCompletedCollectionFacts).not.toHaveBeenCalled();
+    expect(longTerm.writeFromBooking).not.toHaveBeenCalled();
+    expect(collectionForms.persist).toHaveBeenCalledWith(
+      expect.objectContaining({ jobId: 100 }),
+      expect.objectContaining({
+        candidateRef: '18271421691',
+        candidateScope: 'additional',
+        workOrderId: 9001,
+      }),
+    );
+  });
+
   it('外部工单成功后的表单/记忆写入失败不反向改口为预约失败', async () => {
     longTerm.setActiveBooking.mockRejectedValueOnce(new Error('active booking write failed'));
     collectionForms.persist.mockRejectedValueOnce(new Error('form persist failed'));

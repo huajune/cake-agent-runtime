@@ -211,6 +211,13 @@ export interface BookingCollectionForm {
    * 手机号未知期取 `SESSION_CANDIDATE_REF`，到达时由 service 层 rebind。
    */
   candidateRef: string;
+  /**
+   * 同一会话代多人报名时，非首个候选人的表单标记。
+   *
+   * 该表单仍可独立提交，但不得回写会话用户的 sessionFacts、长期画像或
+   * active booking 指针，避免把朋友/家人的资料覆盖到当前联系人身上。
+   */
+  candidateScope?: 'additional';
   jobId: number;
   /** 以 labelId 为键的槽位表。 */
   slots: Record<number, FormSlot>;

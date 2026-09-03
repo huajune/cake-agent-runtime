@@ -73,7 +73,7 @@ export const ESCALATION_REASONS = {
   unparseableAnswer: 'unparseable_answer',
   /** applyErrorList 的字段定位不到槽位（D2：失配不静默）。 */
   errorListUnmapped: 'error_list_unmapped',
-  /** 疑似多人会话（新姓名 + 新手机号成对出现，D1 v1 不建自动化协议）。 */
+  /** 疑似多人会话未被上层按候选人手机号路由（新姓名 + 新手机号成对冲突）。 */
   suspectedMultiPerson: 'suspected_multi_person',
 } as const;
 
@@ -645,6 +645,18 @@ export function reconcileAskLimitEscalation(form: BookingCollectionForm): Bookin
 }
 
 /**
+ * 上层已用候选人原话中的手机号显式选中这张表单时，旧版“疑似多人”熔断可安全解除。
+ * 其它人工原因仍不可恢复；若这次路由仍选错人，后续姓名 + 手机号冲突检测会再次熔断。
+ */
+export function reconcileExplicitCandidateRouting(
+  form: BookingCollectionForm,
+): BookingCollectionForm {
+  if (form.escalatedReason !== ESCALATION_REASONS.suspectedMultiPerson) return form;
+  const { escalatedReason: _legacyMultiPersonEscalation, ...rest } = form;
+  return rest;
+}
+
+/**
  * 筛选终局优先：表内已有 disqualified 槽位时，可恢复型收资熔断（同槽问满/读不懂）
  * 让位，使 verdict 落到 disqualified → 拒绝话术 + 转岗，而不是把一个已确定不合格的
  * 候选人转给人工去"继续收资"：年龄已被值域正确筛掉的人若因另一槽熔断走 handoff，
@@ -858,7 +870,8 @@ export function escalate(form: BookingCollectionForm, reason: string): BookingCo
  * 疑似多人会话检测：本轮提案里**同时**出现与在案值不同的新姓名与新手机号。
  *
  * 单个身份字段变更不算——候选人纠正自己的错别字、换个号码都是正常的；成对更换才是
- * 中介替第二个人报名的形态。生产频率暂无可靠数据，当前只转人工、不自动化。
+ * 中介替第二个人报名的形态。上层若已用原话手机号选中独立表单，就不会与在案身份冲突；
+ * 未显式路由或路由错误时仍在这里转人工，禁止覆盖当前候选人。
  */
 export function detectSuspectedMultiPerson(
   form: BookingCollectionForm,

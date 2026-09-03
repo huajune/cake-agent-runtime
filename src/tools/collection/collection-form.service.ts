@@ -13,6 +13,7 @@ import {
   createForm,
   migrateAskTracking,
   reconcileAskLimitEscalation,
+  reconcileExplicitCandidateRouting,
   SESSION_CANDIDATE_REF,
   type BookingCollectionForm,
   type ContractFieldDef,
@@ -92,20 +93,36 @@ export class CollectionFormService {
     candidatePhone?: string | null,
   ): Promise<BookingCollectionForm> {
     const candidateRef = normalizeCandidateRef(candidatePhone);
-
     const currentRef = await this.store.readCurrentCandidateRef(scope);
 
-    const existing =
-      (candidateRef !== SESSION_CANDIDATE_REF
-        ? await this.store.read({ ...scope, candidateRef })
-        : null) ??
-      (currentRef ? await this.store.read({ ...scope, candidateRef: currentRef }) : null) ??
-      (await this.store.read({ ...scope, candidateRef: SESSION_CANDIDATE_REF }));
+    let existing: BookingCollectionForm | null = null;
+    if (candidateRef !== SESSION_CANDIDATE_REF) {
+      existing = await this.store.read({ ...scope, candidateRef });
+      if (!existing && (!currentRef || currentRef === SESSION_CANDIDATE_REF)) {
+        // 第一个候选人往往先填姓名/年龄、后给手机号；此时延续 session
+        // 默认表单，后续 rebind 到手机号，不丢已收资料。
+        existing = await this.store.read({ ...scope, candidateRef: SESSION_CANDIDATE_REF });
+      }
+    } else {
+      existing =
+        (currentRef ? await this.store.read({ ...scope, candidateRef: currentRef }) : null) ??
+        (await this.store.read({ ...scope, candidateRef: SESSION_CANDIDATE_REF }));
+    }
 
     if (!existing) {
-      return createForm({ candidateRef, jobId: scope.jobId, contract });
+      const created = createForm({ candidateRef, jobId: scope.jobId, contract });
+      const isAdditionalCandidate =
+        candidateRef !== SESSION_CANDIDATE_REF &&
+        currentRef != null &&
+        currentRef !== SESSION_CANDIDATE_REF &&
+        currentRef !== candidateRef;
+      return isAdditionalCandidate ? { ...created, candidateScope: 'additional' } : created;
     }
-    return this.syncContractSlots(migrateAskTracking(existing), contract);
+    const routed =
+      candidateRef !== SESSION_CANDIDATE_REF
+        ? reconcileExplicitCandidateRouting(existing)
+        : existing;
+    return this.syncContractSlots(migrateAskTracking(routed), contract);
   }
 
   async persist(scope: CollectionFormScope, form: BookingCollectionForm): Promise<void> {

@@ -88,6 +88,7 @@ import {
   detectAgeBoundary,
   type AgeScreeningSignal,
 } from '@resolution/candidate/age';
+import { normalizeCitationText, normalizedIncludes } from '@resolution/notary/text-normalization';
 
 // ==================== 常量 ====================
 
@@ -117,6 +118,28 @@ const MODEL_SUPPLIED_COORD_DEVIATION_KM = 1;
  * range=20000 实际仍按 10km 过滤，模型据此对候选人谎称"扩到 20 公里查了没有"。
  */
 const EXPLICIT_RANGE_CAP_KM = 30;
+
+/**
+ * 拉群后的查岗只禁止 Agent 主动续推，不得吞掉候选人新发起的岗位咨询。
+ *
+ * invitedGroups 只记录“已拉群”，无法区分无岗承接与预约成功后的附加兼职群；把它当
+ * 永久终态会误伤“已经约面后追问另一家门店要求”等正常咨询。放行时不做开放语义
+ * 分类，只验证模型传入的岗位/门店查询词确实出现在候选人当前原文里，避免 Agent
+ * 用历史助手话术或自编参数绕过收口。
+ */
+function hasCandidateGroundedPostInviteLookup(params: {
+  currentUserMessage?: string;
+  searchJobName?: string;
+  storeNameList: string[];
+}): boolean {
+  const currentUserMessage = params.currentUserMessage?.trim();
+  if (!currentUserMessage) return false;
+
+  return [params.searchJobName, ...params.storeNameList].some((queryTerm) => {
+    if (!queryTerm || Array.from(normalizeCitationText(queryTerm)).length < 2) return false;
+    return normalizedIncludes(currentUserMessage, queryTerm);
+  });
+}
 
 /**
  * 模型品牌入参全部被拒（未命中品牌库/冲突别名）时的结构化结果（§8.2.5）。
@@ -633,7 +656,7 @@ const DESCRIPTION = `查询在招岗位列表。支持渐进式数据返回，�
    1. 首次 0 条 → 本轮直接放宽一次（同城邻区 / 同品牌邻店 / 放宽距离），不向候选人多问一句
    2. 放宽仍 0 条 = **真实无岗** → 直接告知"暂时没有合适岗位"结束本轮，不拉群替代岗位供给
    3. 你根据完整对话确认候选人连续否定两轮具体推荐 → 停止第三轮，只征询进群意愿；下轮明确同意后才实调 invite_to_group（工具不做文本轮次计数）
-   4. 已成功拉群 → 永久停止查岗、推荐及"看其他区域"类追问，只提示留意既有群消息
+   4. 已成功拉群 → 停止 Agent 主动查岗、推荐及"看其他区域"类追问，只提示留意既有群消息；**但候选人当前消息明确点名岗位/门店并询问详情时，必须按原文传入 searchJobName/storeNameList 重新调用本工具实时回答，不得用群承接状态回避问题**
    5. **历史轨迹打破**：即使自己上轮提议过"换品牌/换城市"，本轮工具证实无岗就直接收口，不顺承旧反问思路
    6. **结果非空但全部与硬约束冲突** = 视同 0 条有效，先放宽一维重查；仍无匹配才按真实无岗收口。年龄判断必须沿用 precheck 弹性口径：候选人 52 岁遇到 20-50 岁 / 40-50 岁岗位属上限边界，用 duliday_interview_precheck 复核，不得直接判无岗
    7. 新搜索无匹配时回看 [会话记忆]「上轮候选岗位池」，有潜在匹配用 jobIdList 精查后再推荐
@@ -712,7 +735,12 @@ export function buildJobListTool(
           .map((region) => region.trim())
           .filter(Boolean);
         const invitedGroup = context.archive.invitedGroups?.[0];
-        if (invitedGroup) {
+        const candidateGroundedPostInviteLookup = hasCandidateGroundedPostInviteLookup({
+          currentUserMessage: context.turnInput.currentUserMessage,
+          searchJobName,
+          storeNameList,
+        });
+        if (invitedGroup && !candidateGroundedPostInviteLookup) {
           const noMatchScript = buildPostInviteClosureScript({
             groupName: invitedGroup.groupName,
             city: invitedGroup.city,
@@ -725,6 +753,11 @@ export function buildJobListTool(
               '也不得重复调用 invite_to_group。',
             details: { noMatchScript },
           });
+        }
+        if (invitedGroup) {
+          logger.log(
+            `候选人原文已点名查询对象，放行群承接后的实时查询 (user=${context.session.userId})`,
+          );
         }
 
         // jobIdList provenance 闸门（候选人全程只聊东莞长安晚班兼职，
