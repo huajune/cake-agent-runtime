@@ -1,9 +1,37 @@
 {
   "baseVersion": "11.2.1",
-  "nextVersion": "11.2.1",
+  "nextVersion": "11.2.2",
   "updatedAt": "2026-09-03",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "1202",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1202",
+      "title": "补回回合装配重构删掉的预约、视觉与回放覆盖",
+      "author": "huajune",
+      "mergedAt": "2026-09-03",
+      "businessUpdates": [
+        "补回回合装配重构删掉的预约、视觉与回放覆盖"
+      ],
+      "summary": [
+        "补回回合装配重构删掉的预约、视觉与回放覆盖"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [
+        "补回回合装配重构删掉的预约、视觉与回放覆盖"
+      ],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "只加测试，不改任何生产代码。",
+        "`pnpm run test:ci`：458 套件 / 6624 用例通过（较基线 +34）。",
+        "变异验证：摘掉 `injectImageParts` 的占位符定位后，占位符那一例即红，确认它守的是真不变量。"
+      ],
+      "level": "patch"
+    }
+  ],
   "lastRelease": {
     "version": "11.2.1",
     "date": "2026-09-03",
@@ -217,5 +245,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "00c653528283bd5fed72eadcfb9adae9641b7666"
+  "lastAnalyzedSha": "85305969dcd695d2a65ebca7773a6ed16972419c"
 }
