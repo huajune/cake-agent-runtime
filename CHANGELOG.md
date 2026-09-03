@@ -14,7 +14,7 @@
 **预计版本**: `v11.2.1`
 **最近更新**: `2026-09-03`
 **来源分支**: `develop`
-**累计 PR**: 2
+**累计 PR**: 3
 
 ### 更新摘要
 - PR #1191 预热 cron 默认关闭 + 删除 tool_calls 裸扫回退，止住生产库过载
@@ -27,6 +27,16 @@
 - PR #1192 从保留的 chat_messages 与 message_processing_records 幂等回补 2026-09-02 起的事故窗口数据。
 - PR #1192 增加迁移级回归测试，防止 RPC 再次与表结构漂移。
 - PR #1192 修复用户活跃列表空白
+- PR #1190 收窄入站回合并重构装配边界
+- PR #1190 Merge remote-tracking branch 'origin/develop' into codex/refactor-age…
+- PR #1190 回填重构 PR 与完成状态
+- PR #1190 短期消息缓存只由回填创建，写路径 RPUSHX 追加、回填单脚本原子重建
+- PR #1190 短期窗口改为滚动 7 天（锚点=本批之前候选人最后一次开口），条数上限收拢为硬上限 300
+- PR #1190 完成回合装配与 Prompt 编译终态
+- PR #1190 补齐滚动窗口 / 硬上限口径漏改的 6 份文档
+- PR #1190 收拢回合准备内部实现
+- PR #1190 修复回合装配评审发现的通道判据、观测降级与场景门控问题
+- PR #1190 补齐查询与后台任务红线及 0902 事故复盘
 
 ### 新功能
 - 无
@@ -40,18 +50,28 @@
 - PR #1192 从保留的 chat_messages 与 message_processing_records 幂等回补 2026-09-02 起的事故窗口数据。
 - PR #1192 增加迁移级回归测试，防止 RPC 再次与表结构漂移。
 - PR #1192 修复活跃用户 RPC 结构漂移
+- PR #1190 修复回合装配评审发现的通道判据、观测降级与场景门控问题
 
 ### 优化调整
-- 无
+- PR #1190 收窄入站回合并重构装配边界
+- PR #1190 Merge remote-tracking branch 'origin/develop' into codex/refactor-age…
+- PR #1190 回填重构 PR 与完成状态
 
 ### 运维与流程
 - PR #1191 预热 cron 默认关闭 + 删除 tool_calls 裸扫回退，止住生产库过载
+- PR #1190 短期消息缓存只由回填创建，写路径 RPUSHX 追加、回填单脚本原子重建
+- PR #1190 短期窗口改为滚动 7 天（锚点=本批之前候选人最后一次开口），条数上限收拢为硬上限 300
+- PR #1190 完成回合装配与 Prompt 编译终态
+- PR #1190 补齐滚动窗口 / 硬上限口径漏改的 6 份文档
+- PR #1190 收拢回合准备内部实现
+- PR #1190 补齐查询与后台任务红线及 0902 事故复盘
 
 ### 配置变更
 - 无
 
 ### 环境变量提醒
 - PR #1191 检测到环境变量相关文件变更：`.env.example`、`src/infra/config/env.validation.ts`。请手动同步远程服务器 `/data/cake/.env.production`。
+- PR #1190 检测到环境变量相关文件变更：`.env.example`。请手动同步远程服务器 `/data/cake/.env.production`。
 
 ### 验证记录
 - PR #1191 `record.repository.spec` + `analytics-dashboard.service.spec`：83/83 通过（新增「默认关」与「RPC 失败不回退」两条断言）
@@ -61,6 +81,15 @@
 - PR #1192 pnpm run typecheck
 - PR #1192 测试库迁移成功
 - PR #1192 测试库真实 RPC 冒烟：写入、范围查询、时间字段及 token 聚合通过；测试数据已清理
+- PR #1190 `pnpm run ci:check`：通过
+- PR #1190 456 suites passed（1 skipped）
+- PR #1190 6618 tests passed（5 skipped）
+- PR #1190 lint、format、typecheck、geo/vocab/quality-ledger、前后端 build 全部通过
+- PR #1190 定向回归：18 suites / 377 tests 通过
+- PR #1190 合入最新 develop 后复验：typecheck + 7 suites / 309 tests 通过
+- PR #1190 `pnpm run test:di-smoke`：通过
+- PR #1190 `pnpm run duplication:check`：通过（0.8%，阈值 2.06%）
+- PR #1190 `git diff --check`：通过
 <!-- release:pending:end -->
 
 ## [11.2.0] - 2026-09-02

@@ -83,6 +83,61 @@
         "测试库真实 RPC 冒烟：写入、范围查询、时间字段及 token 聚合通过；测试数据已清理"
       ],
       "level": "patch"
+    },
+    {
+      "number": "1190",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1190",
+      "title": "收窄入站回合并重构装配边界",
+      "author": "huajune",
+      "mergedAt": "2026-09-03",
+      "businessUpdates": [
+        "修复回合装配评审发现的通道判据、观测降级与场景门控问题"
+      ],
+      "summary": [
+        "收窄入站回合并重构装配边界",
+        "Merge remote-tracking branch 'origin/develop' into codex/refactor-age…",
+        "回填重构 PR 与完成状态",
+        "短期消息缓存只由回填创建，写路径 RPUSHX 追加、回填单脚本原子重建",
+        "短期窗口改为滚动 7 天（锚点=本批之前候选人最后一次开口），条数上限收拢为硬上限 300",
+        "完成回合装配与 Prompt 编译终态",
+        "补齐滚动窗口 / 硬上限口径漏改的 6 份文档",
+        "收拢回合准备内部实现",
+        "修复回合装配评审发现的通道判据、观测降级与场景门控问题",
+        "补齐查询与后台任务红线及 0902 事故复盘"
+      ],
+      "features": [],
+      "fixes": [
+        "修复回合装配评审发现的通道判据、观测降级与场景门控问题"
+      ],
+      "optimizations": [
+        "收窄入站回合并重构装配边界",
+        "Merge remote-tracking branch 'origin/develop' into codex/refactor-age…",
+        "回填重构 PR 与完成状态"
+      ],
+      "ops": [
+        "短期消息缓存只由回填创建，写路径 RPUSHX 追加、回填单脚本原子重建",
+        "短期窗口改为滚动 7 天（锚点=本批之前候选人最后一次开口），条数上限收拢为硬上限 300",
+        "完成回合装配与 Prompt 编译终态",
+        "补齐滚动窗口 / 硬上限口径漏改的 6 份文档",
+        "收拢回合准备内部实现",
+        "补齐查询与后台任务红线及 0902 事故复盘"
+      ],
+      "config": [],
+      "envFiles": [
+        ".env.example"
+      ],
+      "verification": [
+        "`pnpm run ci:check`：通过",
+        "456 suites passed（1 skipped）",
+        "6618 tests passed（5 skipped）",
+        "lint、format、typecheck、geo/vocab/quality-ledger、前后端 build 全部通过",
+        "定向回归：18 suites / 377 tests 通过",
+        "合入最新 develop 后复验：typecheck + 7 suites / 309 tests 通过",
+        "`pnpm run test:di-smoke`：通过",
+        "`pnpm run duplication:check`：通过（0.8%，阈值 2.06%）",
+        "`git diff --check`：通过"
+      ],
+      "level": "patch"
     }
   ],
   "lastRelease": {
@@ -500,5 +555,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "dcc716fcad2eadf41233c474b061c3bca902f70b"
+  "lastAnalyzedSha": "df063a13301bf87155e38dc1226e1afc10670343"
 }
