@@ -12,7 +12,7 @@
 
 **场景驱动的 LLM 智能复聊**——系统决定何时主动发起，话术不固化模板。
 
-⚠️ **复聊不复用主链路 generator**：早期设计曾计划复用 `runner.runTurn`，现行实现是专用的 `ReengagementAgent`（`reengagement.agent.ts`，`LlmExecutorService` + zod schema 的一次性 completion 调用）。因此主链路的 guardrail / 记忆 / 观测**不是自动继承的**，复聊侧的等价保障各自显式实现。
+⚠️ **复聊不复用主链路 generator**：早期设计曾计划复用主 Runner，现行实现是专用的 `ReengagementAgent`（`reengagement.agent.ts`，`LlmExecutorService` + zod schema 的一次性 completion 调用）。主 Runner 也已收窄为 `runInboundTurn`，不再声明 proactive 协议。因此主链路的 guardrail / 记忆 / 观测**不是自动继承的**，复聊侧的等价保障各自显式实现。
 
 ```
 锚点事件（turn-end / ops-events 写入点）
@@ -63,16 +63,16 @@ await reengagementQueue.add(
 
 ## 3. 场景注册表
 
-| code                       | 锚点事件                               | 延迟                    | 目标                                                        |
-| -------------------------- | -------------------------------------- | ----------------------- | ----------------------------------------------------------- |
-| `opening_no_reply`         | `agent.opening_sent`                   | +15min                  | 轻量确认是否还在看机会，并继续询问所在位置                  |
-| `address_missing`          | 最终回复已投递且请求位置/地址          | +30min                  | 提醒发定位以便就近推荐                                      |
-| `store_presented_no_reply` | 最终回复已投递且展示岗位               | +30min                  | 承接该岗位询问考虑得如何                                    |
-| `booking_incomplete`       | 最终采纳回合 precheck `collect_fields` | +30min                  | 提醒补齐剩余资料                                            |
-| `interview_reminder`       | `booking.succeeded`                    | 依 `interviewTime` 计算 | 按面试形式提醒；**AI 面试提醒在线完成，线下面试才提醒到店** |
-| `post_interview_followup`  | `booking.succeeded`                    | 依 `interviewTime` 计算 | 面试后回访                                                  |
-| `post_interview_onboarding` | `interview.passed`                    | +3d                     | 面试后回访家族的入职跟进；未入职时确定性转人工              |
-| `new_job_for_waiting`      | 岗位上线事件（**外部**）               | 事件驱动                | 暂无岗位的候选人有新岗位时主动告知                          |
+| code                        | 锚点事件                               | 延迟                    | 目标                                                        |
+| --------------------------- | -------------------------------------- | ----------------------- | ----------------------------------------------------------- |
+| `opening_no_reply`          | `agent.opening_sent`                   | +15min                  | 轻量确认是否还在看机会，并继续询问所在位置                  |
+| `address_missing`           | 最终回复已投递且请求位置/地址          | +30min                  | 提醒发定位以便就近推荐                                      |
+| `store_presented_no_reply`  | 最终回复已投递且展示岗位               | +30min                  | 承接该岗位询问考虑得如何                                    |
+| `booking_incomplete`        | 最终采纳回合 precheck `collect_fields` | +30min                  | 提醒补齐剩余资料                                            |
+| `interview_reminder`        | `booking.succeeded`                    | 依 `interviewTime` 计算 | 按面试形式提醒；**AI 面试提醒在线完成，线下面试才提醒到店** |
+| `post_interview_followup`   | `booking.succeeded`                    | 依 `interviewTime` 计算 | 面试后回访                                                  |
+| `post_interview_onboarding` | `interview.passed`                     | +3d                     | 面试后回访家族的入职跟进；未入职时确定性转人工              |
+| `new_job_for_waiting`       | 岗位上线事件（**外部**）               | 事件驱动                | 暂无岗位的候选人有新岗位时主动告知                          |
 
 ⚠️ `new_job_for_waiting` 的外部事件源尚未接入——该场景保留在 registry 中，事件源就绪后只需调用 scheduler。
 

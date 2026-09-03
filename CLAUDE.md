@@ -40,6 +40,17 @@ pnpm run db:status:test      # / db:status:prod 查看迁移状态
 
 **流程：先测试后生产**。SQL 用 `IF NOT EXISTS` / `ON CONFLICT` 保证幂等；但**修改既有索引/函数定义时不要依赖 IF NOT EXISTS**（只查名字不查定义，会静默跳过），用 `DROP IF EXISTS + CREATE`。**生产 push 必须与代码发版同步**——只发代码不推迁移（或反之）是本仓库反复出现过的事故源。上线新表后用一条真实写入验证落库，别只看部署成功。
 
+### Database Query Safety（硬规则）
+
+修改 Dashboard、统计 RPC、清理/聚合 cron 或大表查询前，必须先读
+[数据库工程实践·查询与后台任务红线](./docs/knowledge-base/15-数据库工程实践.md#查询与后台任务红线)。最低要求：
+
+- 禁止在定时预热中扫描 `all`/全历史明细，尤其禁止展开 JSONB/TOAST；长范围只读预聚合，或由用户按需触发并缓存。
+- 主查询超时、RPC 缺失或熔断时，禁止回退到更重的全表/分页裸扫；返回旧缓存、空统计并告警。
+- 重 cron 必须有整轮互斥、硬时间窗/行数上限和超时；聚合断更只补缺失 bucket，不得全窗重算。
+- 重试必须指数退避；熔断按操作隔离，其他查询成功不得清零当前失败操作的计数。
+- 合入前必须用生产量级数据验证 `EXPLAIN (ANALYZE, BUFFERS)`，并持续观测连接数、总执行时间和调用频率；只看单次接口变快不算通过。
+
 ## Architecture
 
 ### Layering Rule
@@ -100,7 +111,7 @@ supabase/migrations/    # 120+ 迁移；baseline 是 20260310000000
   → application：接收 → 过滤规则 → 存历史 → 立即返回 200
   → runtime：每条消息注册 delay=静默窗口 的 Bull job（debounce），
              Worker 触发时距最后一条消息静默足够久才处理（simple-merge，90s 租约锁+心跳续期）
-  → agent/runner：runTurn（记忆召回 → prompt 组装 → 多步工具调用 → 出站守卫审查 → turn-finalizer 沉淀副作用）
+  → agent/runner：runInboundTurn（记忆召回 → prompt 组装 → 多步工具调用 → 出站守卫审查 → turn-finalizer 沉淀副作用）
   → delivery：分段（\n\n + ~）+ 打字延迟拟人化发送
 ```
 

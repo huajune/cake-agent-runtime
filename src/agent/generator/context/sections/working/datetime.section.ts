@@ -1,6 +1,7 @@
 // 知识归类：working —— 本段呈现随当前回合变化的时间上下文。
 import { formatCurrentTime, formatLocalDateWithWeekday } from '@infra/utils/date.util';
-import { PromptContext, PromptSection } from '../section.interface';
+import { buildTextPromptBlock, type PromptSection } from '../section';
+import type { PromptModel } from '../../context.types';
 
 /**
  * 时间注入段落
@@ -14,10 +15,16 @@ import { PromptContext, PromptSection } from '../section.interface';
  * 自己做太容易出错，由系统侧 grounding 才能保证准确。
  */
 export class DateTimeSection implements PromptSection {
-  readonly name = 'datetime';
+  readonly id = 'datetime';
+  readonly domain = 'tool_result' as const;
+  readonly slot = 'working-context' as const;
+  readonly dynamic = true;
 
-  build(ctx: PromptContext): string {
-    return buildDateTimeGroundingLines(new Date(), ctx.currentTimeText).join('\n');
+  build(model: PromptModel) {
+    return buildTextPromptBlock(
+      this,
+      buildDateTimeGroundingLines(new Date(), model.currentTimeText).join('\n'),
+    );
   }
 }
 

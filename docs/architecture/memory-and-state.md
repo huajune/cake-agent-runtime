@@ -12,7 +12,7 @@
 ├─ 原始消息
 │   ├─ Supabase chat_messages                         长期事实源
 │   └─ Redis memory:short_term:chat:{chatId}          3d 热缓存
-│        └─ 每轮投影为 shortTerm.messageWindow        查询窗 7d
+│        └─ 每轮投影为 shortTerm.messageWindow        滚动窗 7d
 │
 ├─ Short-term 会话状态
 │   ├─ Redis factsv2:{corpId}:{userId}:{sessionId}    3d + 12h
@@ -75,23 +75,27 @@
 `factsv2:` 使用 hash 字段级原子写，但 Redis 不支持 hash field TTL，所以同一 key 内的 facts 与
 workbench 一起享有 12 小时安全余量。`stage:` 和 collection form 严格按 3 天过期。
 
-消息热缓存也按 3 天过期，但它不是 7 天回看窗口的权威来源。缓存 miss 时，
-`MessageWindowService` 仍从 `chat_messages` 查询最近 7 天并回填。
+消息热缓存也按 3 天过期，但它不是回看窗口的权威来源。缓存 miss 时，
+`MessageWindowService` 从 `chat_messages` 取最近 N 条（硬上限 300）原子回填；命中与 miss 都在内存里
+套同一个滚动 7 天窗口——锚点是本批之前候选人最后一次开口，回访时捡回上一段咨询的最后 7 天，
+而不是按当前时间回看得到空窗口。
+list 只由回填创建：`ChatSessionService` 的写路径用 `RPUSHX` 追加、key 不存在即跳过，
+保证任何非空 list 都是「完整快照 + 后续追加」，而不是作废后半路建出的残缺片段。
 
 collection form 已完整迁入 `src/tools/collection/`：TTL 常量、key builder、整实体写入和
 定位指针都由工具域维护，不依赖 `MemoryConfig`，也不再写进 `factsv2:`。
 
 ## 4. Supabase 持久状态
 
-| 表 / 列                                               | 主维度                                               | 作用                       | 读取方式                                               |
-| ----------------------------------------------------- | ---------------------------------------------------- | -------------------------- | ------------------------------------------------------ |
-| `chat_messages`                                       | `chatId` + message                                   | 原始聊天事实源             | short-term 每轮查询最近 7 天；consolidation 按水位扫描 |
-| `agent_long_term_memories.semantic_profile`           | `(corp_id, user_id, bot_user_id)`                    | 9 字段候选人身份档案       | 每轮默认召回                                           |
-| `agent_long_term_memories.semantic_job_intent`        | 同上                                                 | 最新求职意向快照           | 每轮默认召回                                           |
-| `agent_long_term_memories.episodic_session_summaries` | 同上                                                 | 咨询段摘要数组，最多 20 段 | 仅 `recall_history` 显式读取                           |
-| `agent_long_term_memories.consolidation_watermarks`   | 同上，内部再按 `sessionId`                           | 已处理消息边界             | 只供 consolidation 幂等控制                            |
-| `agent_long_term_memories.active_booking`             | `(corp_id, user_id)` 的 `bot_user_id IS NULL` 兼容行 | 当前工单定位指针           | preparation 结合业务系统实时状态生成预约上下文         |
-| `message_processing_records.post_processing_status`   | message / processing record                          | 回合末各写入步骤状态       | 排障与告警                                             |
+| 表 / 列                                               | 主维度                                               | 作用                       | 读取方式                                                            |
+| ----------------------------------------------------- | ---------------------------------------------------- | -------------------------- | ------------------------------------------------------------------- |
+| `chat_messages`                                       | `chatId` + message                                   | 原始聊天事实源             | short-term 每轮取最近 N 条再套滚动 7 天窗；consolidation 按水位扫描 |
+| `agent_long_term_memories.semantic_profile`           | `(corp_id, user_id, bot_user_id)`                    | 9 字段候选人身份档案       | 每轮默认召回                                                        |
+| `agent_long_term_memories.semantic_job_intent`        | 同上                                                 | 最新求职意向快照           | 每轮默认召回                                                        |
+| `agent_long_term_memories.episodic_session_summaries` | 同上                                                 | 咨询段摘要数组，最多 20 段 | 仅 `recall_history` 显式读取                                        |
+| `agent_long_term_memories.consolidation_watermarks`   | 同上，内部再按 `sessionId`                           | 已处理消息边界             | 只供 consolidation 幂等控制                                         |
+| `agent_long_term_memories.active_booking`             | `(corp_id, user_id)` 的 `bot_user_id IS NULL` 兼容行 | 当前工单定位指针           | preparation 结合业务系统实时状态生成预约上下文                      |
+| `message_processing_records.post_processing_status`   | message / processing record                          | 回合末各写入步骤状态       | 排障与告警                                                          |
 
 `consolidation_watermarks` 与咨询摘要是独立列：摘要因 20 段上限淘汰旧条目时，工作水位仍保留，
 不会导致旧消息被重新处理。
@@ -136,7 +140,7 @@ Prompt 上下文。收资表单仍由 tools 独立持有。
 
 | 症状                      | 先查                                         | 再查                                                         |
 | ------------------------- | -------------------------------------------- | ------------------------------------------------------------ |
-| 7 天内历史消息缺失        | `memory:short_term:chat:{chatId}` provenance | `chat_messages` 时间边界、120 条 / 24,000 字符裁剪           |
+| 滚动 7 天窗内历史缺失     | `memory:short_term:chat:{chatId}` provenance | 锚点（上次开口）、300 条硬上限 / 24,000 字符裁剪             |
 | 候选人事实或岗位状态丢失  | `factsv2:` 对应 hash 字段                    | `post_processing_status` 的具体步骤与 TTL                    |
 | 当前阶段不对              | 独立 `stage:` key                            | `advance_stage` ledger、阶段过期后的老用户兜底               |
 | 品牌反复或串值            | `facts.brand`                                | `apply_brand_state` trace、三条品牌解析输入                  |
@@ -149,7 +153,7 @@ Prompt 上下文。收资表单仍由 tools 独立持有。
 
 ## 8. 边界不变量
 
-- short-term 由 7 天消息窗口与 3 天会话状态组成；长期是候选人 × bot 的持久关系档。
+- short-term 由滚动 7 天消息窗口与 3 天会话状态组成；长期是候选人 × bot 的持久关系档。
 - `turnHints`、快照补料、共享裁决和 ledger 都是回合内状态，不升级为存储层。
 - `facts.brand` 位于 session facts 内，品牌 reducer 是唯一持久写者。
 - episodic summaries 是最多 20 段的单层数组，新增后不再由 LLM 改写。

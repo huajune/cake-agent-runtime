@@ -1,11 +1,19 @@
-import { ModelMessage } from 'ai';
-import { ToolBuildContext } from '@shared-types/tool.types';
-import type { TurnLedger } from '@shared-types/turn.types';
+import type { ModelMessage, ToolSet } from 'ai';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import { toErrorMessage } from '@infra/utils/error.util';
+import { AgentTracerService } from '@observability/agent-tracer.service';
+import { ToolRegistryService } from '@tools/tool-registry.service';
+import type {
+  ToolArchiveContext,
+  ToolBuildContext,
+  ToolRuntimeContext,
+  ToolSessionContext,
+  ToolTurnInputContext,
+} from '@shared-types/tool.types';
+import type { GeocodeLocationAnchor, TurnLedger } from '@shared-types/turn.types';
 import type { SessionBrandState } from '@resolution/brand/brand-resolution.types';
 import { type LaborFormIntentDecision } from '@resolution/labor-form';
 import type { CandidatePrefillField, CandidatePrefillHints } from '@resolution/candidate/types';
-import { projectTurnHints } from '@resolution/turn-hints/reducer';
-import type { TurnHints } from '@resolution/turn-hints/turn-hint.types';
 import { unwrapUserProfileFacts } from '@memory/long-term/long-term.types';
 import {
   type EntityExtractionResult,
@@ -13,32 +21,154 @@ import {
   isSessionFactValue,
   unwrapSessionFacts,
 } from '@memory/short-term/short-term.types';
-import { ContextService } from '../context/context.service';
-import { type GeneratorInvokeParams } from '../generator.types';
-import { resolveGeocodeLocationAnchor } from './geocode-location-anchor.util';
+import { type GeneratorInvokeParams, type GeneratorToolMode } from '../generator.types';
 import { type TurnStartMemory } from './prompt-memory-adjudicator';
+import { createTurnLedger } from './turn-ledger';
 import type { CorpusBlock } from '@shared-types/corpus.types';
 import type { FinalizedVisualFactSheet } from '@resolution/signal/visual';
+import type { StageGoalConfig, Threshold } from '@biz/strategy/types/strategy.types';
+import { isHumanAgentTextMessage } from '@biz/message/utils/message-provenance.util';
+import { produceTurnHints } from '@resolution/turn-hints/producers/rule-track';
+import { projectTurnHints } from '@resolution/turn-hints/reducer';
+import type { TurnHints } from '@resolution/turn-hints/turn-hint.types';
+import { resolveCityFromDistrict } from '@resolution/geo';
+import type {
+  CityFact,
+  EntityExtractionResult as GeocodeEntityExtractionResult,
+  ShortTermMessage,
+} from '@memory/short-term/short-term.types';
+import { stripTimeContext } from '@resolution/signal/markers';
+import {
+  computeResultCount,
+  computeToolCallStatus,
+  extractToolApiCode,
+  extractToolErrorType,
+  SIDE_EFFECT_TOOLS,
+} from '../tool-call-analysis';
+import type { ResolvedTurnContext } from './turn-context-resolver';
 
 /**
  * ToolBuildContext 组装（PreparationService 的纯函数辅助层）：
  * 记忆事实合并、品牌池/jobId provenance 集汇总，无 IO。
  */
 
-/**
- * 组装工具上下文。entryStage / availableStages 交给 advance_stage 使用；
- * 回合内产物统一写入 ledger，交给 onTurnEnd 落盘。
- */
-export function buildToolContext(input: {
+export interface ToolContextModel {
+  selection: {
+    scenario: string;
+    mode: GeneratorToolMode;
+    allowedToolNames?: string[];
+  };
+  session: ToolSessionContext;
+  archive: Omit<ToolArchiveContext, 'recalledJobIds' | 'isRecalledJobId'>;
+  turnInput: ToolTurnInputContext;
+  runtime: ToolRuntimeContext;
+  turnStartRecalledJobIds: readonly number[];
+}
+
+const LOCATION_CONTINUATION_PATTERN =
+  /(?:附近|周边|旁边|周围|这边|那边|这里|那里|近一点|近点|离这|离那)/;
+
+interface ResolveGeocodeLocationAnchorInput {
+  currentUserMessage?: string;
+  shortTermMessages: ShortTermMessage[];
+  currentFacts?: TurnHints | null;
+  sessionFacts?: GeocodeEntityExtractionResult | null;
+}
+
+/** 解析本轮 geocode 的可信位置锚点。 */
+export function resolveGeocodeLocationAnchor(
+  input: ResolveGeocodeLocationAnchorInput,
+): GeocodeLocationAnchor | undefined {
+  const currentAnchor = anchorFromTurnHints(
+    input.currentFacts,
+    'current_user',
+    `当前候选人消息：${input.currentUserMessage ?? ''}`,
+    input.currentUserMessage,
+  );
+  if (currentAnchor) return currentAnchor;
+
+  const current = input.currentUserMessage?.trim() ?? '';
+  if (!LOCATION_CONTINUATION_PATTERN.test(current)) return undefined;
+
+  let index = input.shortTermMessages.length - 1;
+  while (index >= 0 && input.shortTermMessages[index].role === 'user') index -= 1;
+  while (index >= 0 && input.shortTermMessages[index].role === 'assistant') {
+    const message = input.shortTermMessages[index];
+    if (!isHumanAgentTextMessage(message)) break;
+    const text = stripTimeContext(message.content).trim();
+    const manualAnchor = anchorFromTurnHints(
+      produceTurnHints([text], []),
+      'human_agent',
+      `人工招募经理消息：${text}`,
+      text,
+    );
+    if (manualAnchor) return manualAnchor;
+    index -= 1;
+  }
+
+  const sessionReference = [
+    cityValue(input.sessionFacts?.preferences.city),
+    ...(input.sessionFacts?.preferences.district ?? []),
+    ...(input.sessionFacts?.preferences.location ?? []),
+  ]
+    .filter(Boolean)
+    .join('');
+  return (
+    toGeocodeAnchor(
+      input.sessionFacts,
+      'session_memory',
+      '高置信会话位置事实',
+      sessionReference || undefined,
+    ) ?? undefined
+  );
+}
+
+function cityValue(city: CityFact | string | null | undefined): string | undefined {
+  if (!city) return undefined;
+  return typeof city === 'string' ? city : city.value;
+}
+
+function toGeocodeAnchor(
+  facts: GeocodeEntityExtractionResult | null | undefined,
+  source: GeocodeLocationAnchor['source'],
+  evidence: string,
+  referenceText?: string,
+): GeocodeLocationAnchor | null {
+  if (!facts) return null;
+  const rawDistricts = Array.from(
+    new Set((facts.preferences.district ?? []).map((item) => item.trim()).filter(Boolean)),
+  );
+  const districts = rawDistricts.length === 1 ? rawDistricts : [];
+  const city = cityValue(facts.preferences.city) ?? resolveCityFromDistrict(districts[0] ?? '');
+  if (!city && districts.length === 0) return null;
+  return { city, districts, source, referenceText, evidence: evidence.slice(0, 200) };
+}
+
+function anchorFromTurnHints(
+  facts: TurnHints | null | undefined,
+  source: GeocodeLocationAnchor['source'],
+  evidence: string,
+  referenceText?: string,
+): GeocodeLocationAnchor | null {
+  return toGeocodeAnchor(
+    projectTurnHints(facts, { minConfidence: 'high' }),
+    source,
+    evidence,
+    referenceText,
+  );
+}
+
+/** Resolver 阶段完成工具上下文的事实投影；不创建可变 Ledger，不执行 IO。 */
+export function resolveToolContextModel(input: {
   params: GeneratorInvokeParams;
   memory: TurnStartMemory;
   normalizedMessages: ModelMessage[];
   /** 与 transport messages 同批的结构化语料域；内部教学指令不会冒充 user evidence。 */
   conversationCorpusBlocks: CorpusBlock[];
   entryStage: string | null;
-  stageGoals: Awaited<ReturnType<ContextService['compose']>>['stageGoals'];
-  thresholds: Awaited<ReturnType<ContextService['compose']>>['thresholds'];
-  ledger: TurnLedger;
+  stageGoals: Record<string, StageGoalConfig>;
+  thresholds: Threshold[];
+  resolvedSessionFacts: EntityExtractionResult | null;
   contactBrandAliases: string[];
   /** 本轮生效的会话品牌状态（持久化状态或首轮 seed），透传给工具兜底。 */
   sessionBrandState: SessionBrandState | null;
@@ -48,7 +178,7 @@ export function buildToolContext(input: {
   bookingWorkOrderJobIds: number[];
   /** 剥时间后缀内容 → 视觉事实 sheet；出处公证据此认简历/证件类自陈材料。 */
   visualSheetsByContent?: ReadonlyMap<string, FinalizedVisualFactSheet>;
-}): ToolBuildContext {
+}): ToolContextModel {
   const {
     params,
     memory,
@@ -57,7 +187,6 @@ export function buildToolContext(input: {
     entryStage,
     stageGoals,
     thresholds,
-    ledger,
     contactBrandAliases,
     sessionBrandState,
     currentUserMessage,
@@ -78,11 +207,7 @@ export function buildToolContext(input: {
   const candidatePrefillHints = buildCandidatePrefillHints(
     memory.shortTerm.sessionState?.facts ?? null,
   );
-  const sessionFacts = mergeSessionFactsWithRuleClaims(
-    trustedSessionFacts,
-    memory.turnHints,
-    currentLaborFormIntent,
-  );
+  const sessionFacts = input.resolvedSessionFacts;
   const geocodeLocationAnchor = resolveGeocodeLocationAnchor({
     currentUserMessage,
     shortTermMessages: memory.shortTerm.messageWindow,
@@ -90,6 +215,11 @@ export function buildToolContext(input: {
     sessionFacts: trustedSessionFacts,
   });
   return {
+    selection: {
+      scenario: params.scenario ?? 'candidate-consultation',
+      mode: params.toolMode ?? 'scenario',
+      allowedToolNames: params.allowedToolNames,
+    },
     session: {
       userId: params.userId,
       corpId: params.corpId,
@@ -119,16 +249,6 @@ export function buildToolContext(input: {
       recentBrandPool,
       bookingCandidateFacts: sessionFacts?.interview_info ?? null,
       invitedGroups: memory.shortTerm.sessionState?.invitedGroups ?? [],
-      isRecalledJobId: (jobId: number) =>
-        turnStartRecalledJobIds.has(jobId) ||
-        ledger.jobs.fetchedJobs.some((job) => job.jobId === jobId),
-      // 闸门拒绝时把合法 jobId 一并告知模型；本轮新召回的排在前面。
-      get recalledJobIds() {
-        return [
-          ...ledger.jobs.fetchedJobs.map((job) => job.jobId),
-          ...turnStartRecalledJobIds,
-        ].filter((id, index, all) => all.indexOf(id) === index);
-      },
     },
     turnInput: {
       messages: normalizedMessages,
@@ -142,12 +262,34 @@ export function buildToolContext(input: {
       geocodeLocationAnchor,
       visualSheetsByContent: input.visualSheetsByContent,
     },
-    ledger,
     runtime: {
       hasNewerUserInput: params.hasNewerUserInput,
       strategySource: params.strategySource,
       thresholds,
     },
+    turnStartRecalledJobIds: [...turnStartRecalledJobIds],
+  };
+}
+
+/** Tool Runtime 阶段只把可变 Ledger 绑定到已经裁决好的工具模型。 */
+export function buildToolContext(model: ToolContextModel, ledger: TurnLedger): ToolBuildContext {
+  const turnStartIds = new Set(model.turnStartRecalledJobIds);
+  const archive: ToolArchiveContext = {
+    ...model.archive,
+    isRecalledJobId: (jobId: number) =>
+      turnStartIds.has(jobId) || ledger.jobs.fetchedJobs.some((job) => job.jobId === jobId),
+    get recalledJobIds() {
+      return [...ledger.jobs.fetchedJobs.map((job) => job.jobId), ...turnStartIds].filter(
+        (id, index, all) => all.indexOf(id) === index,
+      );
+    },
+  };
+  return {
+    session: model.session,
+    archive,
+    turnInput: model.turnInput,
+    runtime: model.runtime,
+    ledger,
   };
 }
 
@@ -208,58 +350,6 @@ function buildCandidatePrefillHints(
  * 让工具（如 precheck）能拿到当前消息里刚提供的候选人字段（年龄/姓名/电话等）。
  * 非 null 的高置信值覆盖旧值，null 不覆盖。
  */
-function mergeSessionFactsWithRuleClaims(
-  sessionFacts: EntityExtractionResult | null,
-  turnHints: TurnHints | null,
-  currentLaborFormIntent: LaborFormIntentDecision = { kind: 'ignore' },
-): EntityExtractionResult | null {
-  const currentRuleValues = projectTurnHints(turnHints, { minConfidence: 'high' });
-  let merged: EntityExtractionResult | null;
-  if (!currentRuleValues) {
-    merged = sessionFacts;
-  } else if (!sessionFacts) {
-    merged = currentRuleValues;
-  } else {
-    merged = { ...sessionFacts };
-
-    // interview_info: 非 null 的高置信值覆盖旧值
-    const baseInfo = { ...sessionFacts.interview_info };
-    const hcInfo = currentRuleValues.interview_info;
-    for (const key of Object.keys(hcInfo) as Array<keyof typeof hcInfo>) {
-      if (hcInfo[key] != null) {
-        (baseInfo as Record<string, unknown>)[key] = hcInfo[key];
-      }
-    }
-    merged.interview_info = baseInfo;
-
-    // preferences: 非 null 的高置信值覆盖旧值
-    const basePref = { ...sessionFacts.preferences };
-    const hcPref = currentRuleValues.preferences;
-    for (const key of Object.keys(hcPref) as Array<keyof typeof hcPref>) {
-      if (hcPref[key] != null) {
-        (basePref as Record<string, unknown>)[key] = hcPref[key];
-      }
-    }
-    merged.preferences = basePref;
-  }
-
-  if (!merged || currentLaborFormIntent.kind === 'ignore') return merged;
-
-  const previousLaborForm = merged.preferences.labor_form;
-  const activeLaborForm =
-    currentLaborFormIntent.kind === 'set'
-      ? currentLaborFormIntent.value
-      : previousLaborForm &&
-          currentLaborFormIntent.clearedValues.some((value) => value === previousLaborForm)
-        ? null
-        : previousLaborForm;
-
-  return {
-    ...merged,
-    preferences: { ...merged.preferences, labor_form: activeLaborForm },
-  };
-}
-
 /**
  * 汇总本会话最近推荐过的品牌名（去重，按出现顺序保留）。
  *
@@ -302,4 +392,143 @@ function collectRecentJobIds(session: TurnStartMemory['shortTerm']['sessionState
     if (typeof job?.jobId === 'number') ids.add(job.jobId);
   }
   return ids;
+}
+
+const toolRuntimeLogger = new Logger('ToolRuntime');
+
+/** 给工具 execute 包装真实耗时与统一观测。 */
+export function wrapToolsWithTiming(
+  tools: ToolSet,
+  timings: Map<string, number>,
+  tracer?: AgentTracerService,
+): ToolSet {
+  const wrapped: ToolSet = {};
+  for (const [name, toolDef] of Object.entries(tools)) {
+    const execute = (toolDef as { execute?: unknown }).execute;
+    if (typeof execute !== 'function') {
+      wrapped[name] = toolDef;
+      continue;
+    }
+    wrapped[name] = {
+      ...toolDef,
+      execute: async (...args: unknown[]) => {
+        const startedAt = Date.now();
+        const options = args[1] as { toolCallId?: string } | undefined;
+        try {
+          const result = await (execute as (...callArgs: unknown[]) => unknown).apply(
+            toolDef,
+            args,
+          );
+          const durationMs = Date.now() - startedAt;
+          recordToolTiming(name, timings, options, durationMs);
+          const resultCount = computeResultCount(result);
+          tracer?.emit({
+            type: 'tool_call',
+            toolName: name,
+            durationMs,
+            resultCount,
+            status: computeToolCallStatus(result, resultCount, undefined, undefined, name),
+            sideEffect: SIDE_EFFECT_TOOLS.has(name),
+            errorType: extractToolErrorType(result),
+            apiCode: extractToolApiCode(result),
+          });
+          return result;
+        } catch (error) {
+          const durationMs = Date.now() - startedAt;
+          recordToolTiming(name, timings, options, durationMs);
+          tracer?.emit({
+            type: 'tool_error',
+            toolName: name,
+            durationMs,
+            error: toErrorMessage(error),
+          });
+          throw error;
+        }
+      },
+    } as ToolSet[string];
+  }
+  return wrapped;
+}
+
+function recordToolTiming(
+  name: string,
+  timings: Map<string, number>,
+  options: { toolCallId?: string } | undefined,
+  durationMs: number,
+): void {
+  if (options?.toolCallId) {
+    timings.set(options.toolCallId, durationMs);
+    return;
+  }
+  toolRuntimeLogger.warn(`[tool-timing] 工具 ${name} 执行选项缺少 toolCallId，真实计时未记录`);
+}
+
+/** 按 toolMode 与显式白名单过滤工具。 */
+export function resolveToolsForMode(
+  tools: ToolSet,
+  mode: GeneratorToolMode,
+  allowedToolNames?: string[],
+): ToolSet {
+  if (mode === 'none') return {};
+  const modeTools: ToolSet = {};
+  for (const [name, toolDef] of Object.entries(tools)) {
+    if (mode === 'scenario' || !SIDE_EFFECT_TOOLS.has(name)) modeTools[name] = toolDef;
+  }
+  if (allowedToolNames === undefined) return modeTools;
+  const allowed = new Set(allowedToolNames);
+  return Object.fromEntries(Object.entries(modeTools).filter(([name]) => allowed.has(name)));
+}
+
+export interface ToolRuntime {
+  tools: ToolSet;
+  ledger: TurnLedger;
+  toolExecutionTimings: Map<string, number>;
+  availableToolCount: number;
+  activeToolCount: number;
+}
+
+/** 把已裁决的工具模型绑定到单轮账本与实际工具集。 */
+@Injectable()
+export class ToolRuntimeBuilderService {
+  private readonly logger = new Logger(ToolRuntimeBuilderService.name);
+
+  constructor(
+    private readonly toolRegistry: ToolRegistryService,
+    @Optional() private readonly tracer?: AgentTracerService,
+  ) {}
+
+  build(input: { resolved: ResolvedTurnContext }): ToolRuntime {
+    const { resolved } = input;
+    const ledger = createTurnLedger(resolved.ledgerSeed);
+    if (resolved.initialGeoResolution) {
+      const anchor = resolved.initialGeoResolution;
+      ledger.recordGeoResolution({
+        longitude: anchor.longitude,
+        latitude: anchor.latitude,
+        areaLevelQuery: false,
+        areaName: null,
+        city: anchor.city,
+        district: anchor.district,
+        evidence: anchor.evidence,
+        source: 'location_share',
+      });
+      this.logger.log(
+        `[prepare] 定位分享轮内锚点: city=${anchor.city}（invite 城市门 turn_geocode 档可用）`,
+      );
+    }
+
+    const toolContext = buildToolContext(resolved.toolModel, ledger);
+    const toolExecutionTimings = new Map<string, number>();
+    const { scenario, mode, allowedToolNames } = resolved.toolModel.selection;
+    const scenarioTools = this.toolRegistry.buildForScenario(scenario, toolContext) as ToolSet;
+    const selectedTools = resolveToolsForMode(scenarioTools, mode, allowedToolNames);
+    const tools = wrapToolsWithTiming(selectedTools, toolExecutionTimings, this.tracer);
+    return {
+      tools,
+      ledger,
+      toolExecutionTimings,
+      availableToolCount: Object.keys(scenarioTools).length,
+      activeToolCount: Object.keys(selectedTools).length,
+    };
+  }
 }

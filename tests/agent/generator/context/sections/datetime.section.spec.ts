@@ -2,6 +2,7 @@ import {
   buildDateTimeGroundingLines,
   DateTimeSection,
 } from '@/agent/generator/context/sections/working/datetime.section';
+import { promptModelOf, renderSection } from '../../../../helpers/prompt-model.fixture';
 
 describe('DateTimeSection', () => {
   beforeEach(() => {
@@ -15,7 +16,7 @@ describe('DateTimeSection', () => {
 
   it('renders relative date table grounded on system time', () => {
     const section = new DateTimeSection();
-    const output = section.build({ scenario: 'candidate-consultation' } as never);
+    const output = renderSection(section, promptModelOf());
 
     const lines = output.split('\n');
     expect(lines[0].startsWith('当前时间：')).toBe(true);
@@ -36,10 +37,10 @@ describe('DateTimeSection', () => {
 
   it('uses provided currentTimeText when available without changing relative dates', () => {
     const section = new DateTimeSection();
-    const output = section.build({
-      scenario: 'candidate-consultation',
-      currentTimeText: '2026/04/29 星期三 16:02',
-    } as never);
+    const output = renderSection(
+      section,
+      promptModelOf({ currentTimeText: '2026/04/29 星期三 16:02' }),
+    );
 
     expect(output.split('\n')[0]).toBe('当前时间：2026/04/29 星期三 16:02');
     expect(output).toContain('今天：2026-04-29 星期三');

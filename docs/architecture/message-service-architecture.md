@@ -11,7 +11,7 @@ Stride Callback
   → Ingress：回调 DTO 归一化，立即 ACK
   → Application：过滤、去重、历史/图片准备、回复主编排
   → Runtime：debounce、Bull worker、chat 租约锁、动态配置、并发槽
-  → AgentRunner.runTurn：Input / Prompt / Tool / Output 四个作用位
+  → AgentRunner.runInboundTurn：Input / Prompt / Tool / Output 四个作用位
   → Delivery：分段、拟人延迟、渠道发送
   → Telemetry：trace、流水、token、工具与投递状态
 ```
@@ -26,16 +26,16 @@ Stride Callback
 
 ## 2. 核心服务
 
-| 服务                                                                                                                  | 当前职责                                                     |
-| --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| [MessageService](../../src/channels/wecom/message/message.service.ts)                                                 | 回调入口协调；立即 ACK 后异步分派                            |
-| [AcceptInboundMessageService](../../src/channels/wecom/message/application/accept-inbound-message.service.ts)         | self 消息归档、过滤、去重、历史和图片准备                    |
-| [ReplyWorkflowService](../../src/channels/wecom/message/application/reply-workflow.service.ts)                        | `runTurn`、有界 replay、最终副作用、投递、TurnFinalizer      |
-| [SimpleMergeService](../../src/channels/wecom/message/runtime/simple-merge.service.ts)                                | Redis pending list、静默窗口 delayed job、租约锁与 follow-up |
-| [MessageProcessor](../../src/channels/wecom/message/runtime/message.processor.ts)                                     | Bull worker、应用层并发槽、chat 串行、锁心跳                 |
-| [MessageRuntimeConfigService](../../src/channels/wecom/message/runtime/message-runtime-config.service.ts)             | 托管配置快照与聚合/投递/模型选择                             |
-| [MessageDeliveryService](../../src/channels/wecom/message/delivery/delivery.service.ts)                               | 最终文本分段、延迟和发送失败聚合                             |
-| [WecomMessageObservabilityService](../../src/channels/wecom/message/telemetry/wecom-message-observability.service.ts) | batch trace 与消息流水的阶段打点                             |
+| 服务                                                                                                                  | 当前职责                                                       |
+| --------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| [MessageService](../../src/channels/wecom/message/message.service.ts)                                                 | 回调入口协调；立即 ACK 后异步分派                              |
+| [AcceptInboundMessageService](../../src/channels/wecom/message/application/accept-inbound-message.service.ts)         | self 消息归档、过滤、去重、历史和图片准备                      |
+| [ReplyWorkflowService](../../src/channels/wecom/message/application/reply-workflow.service.ts)                        | `runInboundTurn`、有界 replay、最终副作用、投递、TurnFinalizer |
+| [SimpleMergeService](../../src/channels/wecom/message/runtime/simple-merge.service.ts)                                | Redis pending list、静默窗口 delayed job、租约锁与 follow-up   |
+| [MessageProcessor](../../src/channels/wecom/message/runtime/message.processor.ts)                                     | Bull worker、应用层并发槽、chat 串行、锁心跳                   |
+| [MessageRuntimeConfigService](../../src/channels/wecom/message/runtime/message-runtime-config.service.ts)             | 托管配置快照与聚合/投递/模型选择                               |
+| [MessageDeliveryService](../../src/channels/wecom/message/delivery/delivery.service.ts)                               | 最终文本分段、延迟和发送失败聚合                               |
+| [WecomMessageObservabilityService](../../src/channels/wecom/message/telemetry/wecom-message-observability.service.ts) | batch trace 与消息流水的阶段打点                               |
 
 ## 3. 入站与快速 ACK
 
@@ -79,7 +79,7 @@ Bull 注册并发上限为 20，使到期 delayed job 能及时出队；真正�
 
 ## 5. Agent、Outcome 与 replay
 
-`ReplyWorkflowService` 调用 `AgentRunnerService.runTurn()`，得到渠道无关的 `TurnOutcome`。每个生成版本都带一个 `runTurnEnd` 闭包，渠道立即包装为 `TurnFinalizer`，但直到投递结局已知才结算。
+`ReplyWorkflowService` 调用 `AgentRunnerService.runInboundTurn()`，得到渠道无关的 `TurnOutcome`。每个生成版本都带一个 `runTurnEnd` 闭包，渠道立即包装为 `TurnFinalizer`，但直到投递结局已知才结算。
 
 生成期间的新消息仍可进入 pending。每次生成完成后：
 

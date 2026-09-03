@@ -58,6 +58,79 @@ describe('PersistingObserver', () => {
     expect(persister.persist).toHaveBeenCalledTimes(2);
   });
 
+  it('always persists prompt-injection hits（一次入侵一条，detectTexts 不回扫历史）', () => {
+    const observer = makeObserver();
+
+    observer.emit({
+      type: 'prompt_injection_detected',
+      ruleId: 'role_hijack_1',
+      alertStatus: 'sent',
+      evidencePreview: '[手机号已脱敏]',
+    });
+
+    expect(persister.persist).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips turn assembly diagnostics on a clean fast turn（顺利回合可由同轮输入复现）', () => {
+    const observer = makeObserver();
+
+    observer.emit({
+      type: 'turn_data_sources',
+      status: 'success',
+      totalDurationMs: 10,
+      sources: [{ source: 'memory', status: 'success', durationMs: 5, observedAt: 'now' }],
+    });
+    observer.emit({
+      type: 'turn_preparation',
+      status: 'success',
+      totalDurationMs: 12,
+      phaseDurationsMs: { load_sources: 10 },
+      prompt: {
+        totalChars: 1000,
+        estimatedTokens: 250,
+        orderHash: 'hash',
+        blocks: [],
+        dynamicBlockIds: [],
+      },
+    });
+
+    expect(persister.persist).not.toHaveBeenCalled();
+  });
+
+  it('persists turn assembly diagnostics when a source degraded, it failed, or it ran slow', () => {
+    const observer = makeObserver();
+
+    // 源降级：正是「读取失败被当成空结果」要靠事件表回溯的那一类回合。
+    observer.emit({
+      type: 'turn_data_sources',
+      status: 'success',
+      totalDurationMs: 10,
+      sources: [{ source: 'memory', status: 'degraded', durationMs: 5, observedAt: 'now' }],
+    });
+    observer.emit({
+      type: 'turn_data_sources',
+      status: 'failure',
+      totalDurationMs: 8,
+      sources: [],
+      error: 'boom',
+    });
+    observer.emit({
+      type: 'turn_preparation',
+      status: 'failure',
+      totalDurationMs: 12,
+      phaseDurationsMs: {},
+      error: 'boom',
+    });
+    observer.emit({
+      type: 'turn_preparation',
+      status: 'success',
+      totalDurationMs: 9000,
+      phaseDurationsMs: {},
+    });
+
+    expect(persister.persist).toHaveBeenCalledTimes(4);
+  });
+
   it('always persists llm_execution regardless of status or attempt count', () => {
     const observer = makeObserver();
 

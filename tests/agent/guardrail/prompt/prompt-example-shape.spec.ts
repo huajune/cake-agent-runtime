@@ -36,7 +36,7 @@ const PROMPT_SECTION_BUILDERS: readonly PromptSurface[] = [
   },
   {
     id: 'base-manual',
-    source: 'src/agent/generator/context/sections/static.section.ts',
+    source: 'src/agent/generator/context/sections/section.ts',
   },
   {
     id: 'final-check',

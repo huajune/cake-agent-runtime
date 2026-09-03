@@ -17,51 +17,93 @@ import {
   unwrapSessionFacts,
 } from '@memory/short-term/short-term.types';
 import type { RecommendedJobSummary } from '@resolution/job/types';
+import { normalizeJobId } from '@resolution/job';
 import type { SignupWorkOrderItem } from '@sponge/sponge.types';
 import type {
   PromptMemoryAdjudication,
   PromptMemoryConflict,
 } from '@agent/generator/preparation/prompt-memory-adjudicator';
-import type { PromptContext, PromptSection } from '../section.interface';
+import type { PromptCorpusBlock } from '@shared-types/corpus.types';
+import type { PromptModel } from '../../context.types';
+import type { PromptSection } from '../section';
 
 export interface RealtimeGroupStatus {
   groupName: string;
   city: string;
 }
 
-/** 记忆 section 壳体；渲染器与模型可见落点同处 semantic 目录。 */
-export class MemorySection implements PromptSection {
-  readonly name = 'memory';
+export interface BookingLocationDetails {
+  storeAddress?: string;
+  interviewMethod?: string;
+  interviewAddress?: string;
+}
 
-  build(ctx: PromptContext): string {
-    return ctx.memoryBlock?.trim() ?? '';
+export interface BookingPromptEntry {
+  workOrder: SignupWorkOrderItem;
+  location?: BookingLocationDetails;
+}
+
+/** 预约读取结果；hidden 表示源异常，none 表示权威源明确无进行中预约。 */
+export type BookingPromptSnapshot =
+  | { state: 'hidden' }
+  | { state: 'none' }
+  | {
+      state: 'active';
+      source: 'active_booking' | 'out_of_band';
+      entries: BookingPromptEntry[];
+      syncing: boolean;
+    };
+
+/** MemorySection 消费的类型化视图；所有事实已经在 preparation/resolution 层裁决。 */
+export interface MemoryPromptView {
+  adjudication: PromptMemoryAdjudication;
+  booking: BookingPromptSnapshot;
+  realtimeGroups: RealtimeGroupStatus[];
+  contactName?: string;
+  contactBrandAliases: string[];
+  currentLaborFormIntent: LaborFormIntentDecision;
+  activeLaborForm: string | null;
+}
+
+/** 记忆相关模型视图的唯一渲染入口；不做 IO 或事实裁决。 */
+export class MemorySection implements PromptSection {
+  readonly id = 'memory';
+  readonly domain = 'evidence' as const;
+  readonly slot = 'evidence' as const;
+  readonly dynamic = true;
+
+  build(model: PromptModel): PromptCorpusBlock[] {
+    if (!model.memory) return [];
+    const core = buildMemoryCoreBlock(model.memory);
+    const realtimeGroups = formatRealtimeGroups(model.memory.realtimeGroups);
+    const booking = renderBookingPrompt(model.memory.booking);
+    return [
+      promptEvidenceBlock('candidate-memory', core),
+      promptEvidenceBlock('realtime-group-status', realtimeGroups),
+      promptEvidenceBlock('booking-context', booking),
+    ].filter((block): block is PromptCorpusBlock => block !== null);
   }
 }
 
-/**
- * 把本轮相关记忆渲染成 ContextService.compose 能直接消费的 memoryBlock 字符串。
- *
- * 纯渲染层：所有数据由 PreparationService 召回后传入，本模块不做 IO。
- */
-export function buildMemoryBlock(
-  adjudication: PromptMemoryAdjudication,
-  bookingContext: string,
-  realtimeGroups: RealtimeGroupStatus[] = [],
-  contactName?: string,
-  contactBrandAliases: string[] = [],
-  currentLaborFormIntent: LaborFormIntentDecision = { kind: 'ignore' },
-  activeLaborForm: string | null = null,
-): string {
+function promptEvidenceBlock(id: string, content: string): PromptCorpusBlock | null {
+  const normalized = content.trim();
+  return normalized ? { id, domain: 'evidence', role: 'system', content: normalized } : null;
+}
+
+function buildMemoryCoreBlock(memory: MemoryPromptView): string {
+  const { adjudication } = memory;
   return (
-    formatContactNamePreferenceHint(contactName, contactBrandAliases) +
+    formatContactNamePreferenceHint(memory.contactName, memory.contactBrandAliases) +
     formatProfile(adjudication.profile) +
     formatLongTermJobIntent(adjudication.jobIntent) +
     formatConflictAnnotations(adjudication.conflicts) +
     (adjudication.sessionState
-      ? formatSessionFacts(adjudication.sessionState, activeLaborForm, currentLaborFormIntent)
-      : '') +
-    formatRealtimeGroups(realtimeGroups) +
-    bookingContext
+      ? formatSessionFacts(
+          adjudication.sessionState,
+          memory.activeLaborForm,
+          memory.currentLaborFormIntent,
+        )
+      : '')
   );
 }
 
@@ -135,6 +177,72 @@ function formatRealtimeGroups(groups: RealtimeGroupStatus[]): string {
     `也不要承诺"拉你进群"；候选人问群相关问题时直接按"你已经在 X 群里了"口径回应。_\n` +
     lines.join('\n')
   );
+}
+
+/** [预约状态] 空态接地块；与“源读取失败所以隐藏”严格区分。 */
+export const NO_BOOKING_STATUS_BLOCK =
+  '\n\n[预约状态]\n\n当前候选人没有任何进行中的报名/预约工单。' +
+  '严禁使用"已帮你报名/已报名成功/已登记好/已提交预约"等完成口径描述报名状态；' +
+  '只有本轮 duliday_interview_booking 返回 success 后，才能向候选人确认报名成功。\n' +
+  '若候选人声称已约好面试、或追问某场面试是否有变动/怎么走/找谁（该安排可能由人工顾问' +
+  '带外沟通产生，系统查不到），你无法核实其真实性：严禁替系统确认"没有变动/已安排好/' +
+  '到店会有人接待"等口径，也严禁编造面试时间、门店或接待流程；应自然回复"我帮你确认一下"，' +
+  '并调用 request_handoff(reasonCode="other", reason=说明候选人声称的面试安排详情) 转人工核实。';
+
+const BOOKING_SYNCING_BLOCK = [
+  '预约信息同步中：候选人存在进行中的预约工单，但暂时查询不到最新详情。',
+  '禁止使用历史记忆猜测该预约的品牌、门店、岗位、面试时间、地址或状态；禁止对同一工单/同一岗位重复提交报名（候选人报名其它岗位不受影响，正常推进）。',
+  '候选人询问该预约、要求改约或取消时，只能自然说明“我正在确认最新预约信息，稍等一下”；不得提及工单、海绵、缓存或系统同步。',
+].join('\n');
+
+/**
+ * 可见预约条目：单一判据，渲染、带外核验闸门与 jobId provenance 都从这里派生。
+ *
+ * 三者过去各自「渲染一遍再看字符串空不空」，等于把「有没有预约」这件事寄存在文案的
+ * 空串上——改一句 Prompt 文案就会顺带改掉带外查询是否触发、以及闸门放行哪些 jobId。
+ * 编号也在这里定：按**渲染后**的序号连续编号，工单缺展示字段被跳过时不留空号。
+ */
+export function visibleBookingEntries(
+  snapshot: BookingPromptSnapshot,
+): Array<{ entry: BookingPromptEntry; rendered: string }> {
+  if (snapshot.state !== 'active') return [];
+  const visible: Array<{ entry: BookingPromptEntry; rendered: string }> = [];
+  for (const entry of snapshot.entries) {
+    const rendered = formatBookingContext(entry.workOrder, visible.length + 1, entry.location);
+    if (rendered) visible.push({ entry, rendered });
+  }
+  return visible;
+}
+
+/** 把类型化预约快照渲染成模型证据，不在加载层拼 Prompt 文案。 */
+export function renderBookingPrompt(snapshot: BookingPromptSnapshot): string {
+  if (snapshot.state === 'hidden') return '';
+  if (snapshot.state === 'none') return NO_BOOKING_STATUS_BLOCK;
+
+  const visible = visibleBookingEntries(snapshot);
+  const parts = [
+    ...(snapshot.source === 'out_of_band' && visible.length > 0
+      ? ['_以下预约按候选人手机号从工单系统实时查得，非本会话提交（多为人工顾问或其它渠道登记）。_']
+      : []),
+    ...visible.map(({ rendered }) => rendered),
+    ...(visible.length > 0 ? [BOOKING_CONTEXT_SHARED_RULES] : []),
+    ...(snapshot.syncing ? [BOOKING_SYNCING_BLOCK] : []),
+  ];
+  return parts.length > 0 ? `\n\n[当前预约信息]\n\n${parts.join('\n\n')}` : '';
+}
+
+/** 当前快照是否真的会向模型暴露 [当前预约信息]。 */
+export function hasCurrentBookingInformation(snapshot: BookingPromptSnapshot): boolean {
+  return (
+    snapshot.state === 'active' && (visibleBookingEntries(snapshot).length > 0 || snapshot.syncing)
+  );
+}
+
+/** 与 Prompt 可见性同门的预约岗位 provenance。 */
+export function visibleBookingJobIds(snapshot: BookingPromptSnapshot): number[] {
+  return visibleBookingEntries(snapshot)
+    .map(({ entry }) => normalizeJobId(entry.workOrder.jobId))
+    .filter((jobId): jobId is number => jobId !== null);
 }
 
 /**
@@ -342,7 +450,7 @@ function formatSessionFacts(
   const candidatePool = visibleJobs(state.lastCandidatePool);
   if (candidatePool.length > 0) {
     // 渲染上限对齐 presentedJobs 的 slice(0,10)：候选池是唯一写入端无 cap 的池子
-    // （工具单页 20 条且可能放宽），全量渲染会让 memoryBlock 无界膨胀。
+    // （工具单页 20 条且可能放宽），全量渲染会让模型记忆上下文无界膨胀。
     // Redis 中仍保留全量池供 jobId 复用/品牌回指匹配。
     const MAX_POOL_LINES = 10;
     const pool = candidatePool.slice(0, MAX_POOL_LINES);

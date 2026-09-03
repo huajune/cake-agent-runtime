@@ -8,6 +8,7 @@ import type { ShortTermMessage } from './short-term.types';
 import {
   buildChatHistoryCacheKey,
   parseCachedChatHistoryMessages,
+  rebuildChatHistoryCache,
   serializeCachedChatHistoryMessage,
 } from './chat-history-cache.util';
 import { MEMORY_CHAT_SESSION_PORT, type MemoryChatSessionPort } from '../memory.ports';
@@ -16,7 +17,8 @@ import { MEMORY_CHAT_SESSION_PORT, type MemoryChatSessionPort } from '../memory.
  * 短期记忆服务 — 对话窗口管理
  *
  * 热路径读 Redis 窗口缓存（provenance 版本校验），miss/降版本回退 chat_messages
- * （Supabase 永久存储）并回填缓存；按窗口策略（条数 + 时间 + 字符上限）裁剪后输出给 Agent。
+ * （Supabase 永久存储）最近 N 条并回填缓存；两条路径都在内存里套同一个滚动历史窗口
+ * （见 applyRollingWindow），再按本批上界与字符上限裁剪后输出给 Agent。
  */
 @Injectable()
 export class MessageWindowService {
@@ -33,9 +35,9 @@ export class MessageWindowService {
   /**
    * 获取会话的短期记忆（裁剪后的消息窗口）
    *
-   * 1. 优先读 Redis 窗口缓存；miss/降版本回退 chat_messages（最近 N 条 + 时间窗口）并回填缓存
-   * 2. 注入时间上下文
-   * 3. 按字符上限裁剪
+   * 1. 优先读 Redis 窗口缓存；miss/降版本回退 chat_messages（最近 N 条硬上限）并回填缓存
+   * 2. 本批上界裁剪 + 滚动历史窗口（锚点 = 本批之前候选人最后一次开口）
+   * 3. 注入时间上下文，按字符上限裁剪
    */
   async getMessages(
     chatId: string,
@@ -47,7 +49,10 @@ export class MessageWindowService {
       const cached = await this.getCachedHistory(chatId);
       const cacheHasProvenance =
         cached.length > 0 && cached.every((message) => message.provenanceVersion === 2);
-      const cachedHistory = this.applyTimeBoundary(cached, options?.endTimeInclusive);
+      // 命中与 miss 同一口径：缓存与 DB 都只按条数封顶，语义窗口统一在内存里套。
+      const cachedHistory = this.applyRollingWindow(
+        this.applyTimeBoundary(cached, options?.endTimeInclusive),
+      );
       if (cacheHasProvenance && cachedHistory.length > 0) {
         return this.trimByChars(this.injectTimeContext(cachedHistory));
       }
@@ -57,22 +62,19 @@ export class MessageWindowService {
         await this.redisService?.del(buildChatHistoryCacheKey(chatId));
       }
 
+      // DB 只按条数封顶，不带时间谓词：滚动窗口的锚点是上一次开口而非当前时间，
+      // 按 now 过滤会让隔半月回访的候选人拿到空窗口。endTimeInclusive 也不下推 SQL：
+      // 边界要区分角色（见 applyTimeBoundary），且缓存回填须保留完整快照——裁剪只是读取时的视图。
       const rawHistory = await this.chatSession.getChatHistory(
         chatId,
         this.config.sessionWindowMaxMessages,
-        {
-          // 使用独立的历史回查窗口（historyWindowSeconds），而非 sessionTtl。
-          // sessionTtl 只控制 Redis 会话状态的生命周期；用户跨天回来续聊时，
-          // Redis facts 可能已过期，但 Supabase 历史依然要能追溯，避免被当新用户对待。
-          startTimeInclusive: Date.now() - this.config.historyWindowSeconds * 1000,
-          // endTimeInclusive 不下推 SQL：边界要区分角色（见 applyTimeBoundary），
-          // 且缓存回填须保留完整窗口——边界只是读取时的视图。
-        },
       );
       await this.backfillCache(chatId, rawHistory);
 
       return this.trimByChars(
-        this.injectTimeContext(this.applyTimeBoundary(rawHistory, options?.endTimeInclusive)),
+        this.injectTimeContext(
+          this.applyRollingWindow(this.applyTimeBoundary(rawHistory, options?.endTimeInclusive)),
+        ),
       );
     } catch (error) {
       this.lastLoadError = toErrorMessage(error);
@@ -136,6 +138,27 @@ export class MessageWindowService {
     ];
   }
 
+  /**
+   * 滚动历史窗口：锚点 = 本批之前候选人最后一次开口，保留 [锚点 − historyWindow, ∞)。
+   *
+   * 「本批」不需要调用方告知——上界裁剪后窗口末尾的连续 user 块就是本轮输入（与
+   * conversation-normalizer 的 trailingUserMessages 同一定义）；跳过这块再往前遇到的
+   * 第一条 user 就是锚点。于是：连续咨询与按当前时间回看等价；隔半月回访捡回上一段
+   * 咨询的最后 7 天而不是空窗口；沉默期间的复聊触达 / 真人消息比锚点新，自然带上。
+   * 首次咨询（没有更早的 user）不裁。
+   */
+  private applyRollingWindow<T extends { timestamp: number; role: 'user' | 'assistant' }>(
+    messages: T[],
+  ): T[] {
+    let index = messages.length - 1;
+    while (index >= 0 && messages[index].role === 'user') index -= 1;
+    while (index >= 0 && messages[index].role !== 'user') index -= 1;
+    if (index < 0) return messages;
+
+    const startTimeInclusive = messages[index].timestamp - this.config.historyWindowSeconds * 1000;
+    return messages.filter((message) => message.timestamp >= startTimeInclusive);
+  }
+
   private async getCachedHistory(
     chatId: string,
   ): Promise<ReturnType<typeof parseCachedChatHistoryMessages>> {
@@ -166,7 +189,6 @@ export class MessageWindowService {
   ): Promise<void> {
     if (!this.redisService || messages.length === 0) return;
 
-    const listKey = buildChatHistoryCacheKey(chatId);
     const serializedMessages = messages.map((message) =>
       serializeCachedChatHistoryMessage({
         chatId,
@@ -182,10 +204,11 @@ export class MessageWindowService {
       }),
     );
 
-    await this.redisService.del(listKey);
-    await this.redisService.rpush(listKey, ...serializedMessages);
-    await this.redisService.expire(listKey, this.config.sessionTtl);
-    await this.redisService.ltrim(listKey, -this.config.sessionWindowMaxMessages, -1);
+    // 这是 list 的唯一创建点（写路径 RPUSHX 只追加不建 key），整段原子重建。
+    await rebuildChatHistoryCache(this.redisService, chatId, serializedMessages, {
+      maxMessages: this.config.sessionWindowMaxMessages,
+      ttlSeconds: this.config.sessionTtl,
+    });
   }
 
   /**

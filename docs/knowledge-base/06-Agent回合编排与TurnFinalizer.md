@@ -5,7 +5,7 @@ source: src/agent/runner/
 
 # Agent 回合编排与 TurnFinalizer 统一副作用出口
 
-## 回合闭环（`agent-runner.service.ts` runTurn）
+## 回合闭环（`agent-runner.service.ts` runInboundTurn）
 
 ```
 Recall（记忆召回+上下文准备 preparation）

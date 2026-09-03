@@ -1,6 +1,7 @@
 // 知识归类：procedural —— agent 人设与账号身份用于约束模型行为，不是候选人事实。
 // prompt-rule-ledger: docs/prompt-rule-ledger.md（身份与人格行为指令总账）
-import { PromptSection, PromptContext, AccountIdentity } from '../section.interface';
+import { buildTextPromptBlock, type PromptSection } from '../section';
+import type { AccountIdentityPromptView, PromptModel } from '../../context.types';
 import { StrategyPersona, StrategyRoleSetting } from '@biz/strategy/types/strategy.types';
 
 /**
@@ -13,17 +14,20 @@ import { StrategyPersona, StrategyRoleSetting } from '@biz/strategy/types/strate
  * 不再把整份工作手册混进 identity，避免“身份设定”和“操作说明”边界不清。
  */
 export class IdentitySection implements PromptSection {
-  readonly name = 'identity';
+  readonly id = 'identity';
+  readonly domain = 'teaching' as const;
+  readonly slot = 'stable-instructions' as const;
+  readonly dynamic = false;
 
-  build(ctx: PromptContext): string {
-    const roleText = this.buildRoleText(ctx.strategyConfig.role_setting);
-    const accountIdentityText = this.buildAccountIdentityText(ctx.accountIdentity);
-    const personaText = this.buildPersonaText(ctx.strategyConfig.persona);
+  build(model: PromptModel) {
+    const roleText = this.buildRoleText(model.strategy.roleSetting);
+    const accountIdentityText = this.buildAccountIdentityText(model.identity);
+    const personaText = this.buildPersonaText(model.strategy.persona);
     const parts: string[] = [];
     if (roleText) parts.push(roleText);
     if (accountIdentityText) parts.push(accountIdentityText);
     if (personaText) parts.push(personaText);
-    return parts.join('\n\n');
+    return buildTextPromptBlock(this, parts.join('\n\n'));
   }
 
   /**
@@ -36,7 +40,7 @@ export class IdentitySection implements PromptSection {
    * "你叫什么、你是男是女"；未配置时降级为"不认不否认、不编造"的保守口径。
    * 此段无论有无账号信息都注入（debug-chat/测试流同样受行为规则约束）。
    */
-  private buildAccountIdentityText(identity: AccountIdentity | undefined): string {
+  private buildAccountIdentityText(identity: AccountIdentityPromptView): string {
     const nickname = identity?.nickname?.trim();
     const gender = identity?.gender?.trim();
     const botUserId = identity?.botUserId?.trim();
