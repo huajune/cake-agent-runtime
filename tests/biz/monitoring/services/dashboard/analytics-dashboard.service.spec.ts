@@ -138,8 +138,12 @@ describe('AnalyticsDashboardService', () => {
   };
 
   // 默认 getEarliestReportDate→null：daily_ops_report 尚无覆盖时预约数返回 0。
-  // 预热 cron 需要 READ_ONLY_PREVIEW 开关
-  const mockConfigService = { get: jest.fn().mockReturnValue('false') };
+  // 预热 cron 读 READ_ONLY_PREVIEW / DASHBOARD_PREWARM_ENABLED 两个开关：测试默认「非预览 + 预热开」
+  const mockConfigService = {
+    get: jest.fn((key: string, fallback?: string) =>
+      key === 'DASHBOARD_PREWARM_ENABLED' ? 'true' : (fallback ?? 'false'),
+    ),
+  };
 
   const mockDailyOpsReportService = {
     getEarliestReportDate: jest.fn().mockResolvedValue(null),
@@ -1439,6 +1443,17 @@ describe('AnalyticsDashboardService', () => {
       await expect(service.prewarmDashboardOverview()).resolves.toBeUndefined();
 
       expect(spy).toHaveBeenCalledTimes(6);
+      spy.mockRestore();
+    });
+
+    it('should not warm anything unless DASHBOARD_PREWARM_ENABLED=true (default off)', async () => {
+      // 第 1 次读 READ_ONLY_PREVIEW=false，第 2 次读 DASHBOARD_PREWARM_ENABLED=false
+      mockConfigService.get.mockReturnValueOnce('false').mockReturnValueOnce('false');
+      const spy = jest.spyOn(service, 'getDashboardOverviewAsync').mockResolvedValue({} as never);
+
+      await service.prewarmDashboardOverview();
+
+      expect(spy).not.toHaveBeenCalled();
       spy.mockRestore();
     });
 

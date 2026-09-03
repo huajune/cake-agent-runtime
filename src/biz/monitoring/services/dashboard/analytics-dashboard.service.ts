@@ -682,10 +682,14 @@ export class AnalyticsDashboardService {
    *
    * 串行而非并行遍历：并发全量聚合正是 2026-06-04 连接池耗尽宕机的形态；
    * 逐个预热配合 resolveOverviewWithCache 的 single-flight 去重，峰值压力可控。
+   *
+   * 默认关闭（DASHBOARD_PREWARM_ENABLED=true 才启用）：预热把含 twoMonths/threeMonths/all 的
+   * 全量聚合从「有人看才算」变成「每 2 分钟无条件算」，小时聚合一旦断更就退化为对数万行
+   * tool_calls jsonb 的全窗口解压，小规格实例扛不住（见 2026-09-02 生产库过载）。
    */
   @Cron('*/2 * * * *', { name: 'prewarmDashboardOverview', timeZone: 'Asia/Shanghai' })
   async prewarmDashboardOverview(): Promise<void> {
-    if (this.isReadOnlyPreview()) return;
+    if (this.isReadOnlyPreview() || !this.isPrewarmEnabled()) return;
 
     for (const range of AnalyticsDashboardService.PREWARM_RANGES) {
       try {
@@ -698,6 +702,10 @@ export class AnalyticsDashboardService {
 
   private isReadOnlyPreview(): boolean {
     return this.configService.get<string>('READ_ONLY_PREVIEW', 'false') === 'true';
+  }
+
+  private isPrewarmEnabled(): boolean {
+    return this.configService.get<string>('DASHBOARD_PREWARM_ENABLED', 'false') === 'true';
   }
 
   private setCachedDashboardOverview(
