@@ -388,6 +388,25 @@ describe('MonitoringHourlyStatsRepository', () => {
     });
   });
 
+  describe('getStoredHourKeysByDateRange', () => {
+    it('selects only hour keys for gap detection', async () => {
+      const queryMock = makeQueryMock({
+        data: [{ hour: '2026-03-10T10:00:00Z' }, { hour: '2026-03-10T12:00:00Z' }],
+        error: null,
+      });
+      mockSupabaseClient.from.mockReturnValue(queryMock);
+      const startDate = new Date('2026-03-10T00:00:00Z');
+      const endDate = new Date('2026-03-11T00:00:00Z');
+
+      const result = await repository.getStoredHourKeysByDateRange(startDate, endDate);
+
+      expect(result).toEqual(['2026-03-10T10:00:00Z', '2026-03-10T12:00:00Z']);
+      expect(queryMock.select).toHaveBeenCalledWith('hour');
+      expect(queryMock.gte).toHaveBeenCalledWith('hour', startDate.toISOString());
+      expect(queryMock.lt).toHaveBeenCalledWith('hour', endDate.toISOString());
+    });
+  });
+
   // ==================== clearAllRecords ====================
 
   describe('clearAllRecords', () => {

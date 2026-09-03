@@ -1412,19 +1412,18 @@ describe('AnalyticsDashboardService', () => {
   // ========================================
 
   describe('prewarmDashboardOverview', () => {
-    it('should warm every dashboard range so visitors never hit the cold path', async () => {
+    it('should warm bounded dashboard ranges and leave the all-history range on demand', async () => {
       const spy = jest.spyOn(service, 'getDashboardOverviewAsync').mockResolvedValue({} as never);
 
       await service.prewarmDashboardOverview();
 
-      // 6 个档位与前端 tab 一一对应（含「全部」），且都按「全部小组」默认视图预热
+      // 全历史档成本随保留期增长，不进入每 2 分钟的固定预热轮次。
       expect(spy.mock.calls.map((c) => c[0])).toEqual([
         'today',
         'week',
         'month',
         'twoMonths',
         'threeMonths',
-        'all',
       ]);
       expect(spy.mock.calls.every((c) => Array.isArray(c[1]) && c[1].length === 0)).toBe(true);
       spy.mockRestore();
@@ -1438,7 +1437,32 @@ describe('AnalyticsDashboardService', () => {
 
       await expect(service.prewarmDashboardOverview()).resolves.toBeUndefined();
 
-      expect(spy).toHaveBeenCalledTimes(6);
+      expect(spy).toHaveBeenCalledTimes(5);
+      spy.mockRestore();
+    });
+
+    it('should skip a new tick while the previous prewarm round is still running', async () => {
+      let releaseFirstRange!: () => void;
+      const firstRangePending = new Promise<never>((resolve) => {
+        releaseFirstRange = () => resolve({} as never);
+      });
+      const spy = jest
+        .spyOn(service, 'getDashboardOverviewAsync')
+        .mockReturnValueOnce(firstRangePending)
+        .mockResolvedValue({} as never);
+
+      const firstTick = service.prewarmDashboardOverview();
+      await Promise.resolve();
+      await service.prewarmDashboardOverview();
+
+      expect(spy).toHaveBeenCalledTimes(1);
+
+      releaseFirstRange();
+      await firstTick;
+      expect(spy).toHaveBeenCalledTimes(5);
+
+      await service.prewarmDashboardOverview();
+      expect(spy).toHaveBeenCalledTimes(10);
       spy.mockRestore();
     });
 

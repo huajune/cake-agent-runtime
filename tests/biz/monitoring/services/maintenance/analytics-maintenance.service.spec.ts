@@ -88,6 +88,7 @@ describe('AnalyticsMaintenanceService', () => {
   const mockHourlyStatsRepository = {
     clearAllRecords: jest.fn(),
     getLatestHourlyStat: jest.fn(),
+    getStoredHourKeysByDateRange: jest.fn(),
     saveHourlyStats: jest.fn(),
   };
 
@@ -113,6 +114,25 @@ describe('AnalyticsMaintenanceService', () => {
 
   const mockIncidentReporterService = {
     notifyAsync: jest.fn(),
+  };
+
+  const mockStoredHoursExcept = (...missingHours: Date[]) => {
+    const missingTimestamps = new Set(missingHours.map((hour) => hour.getTime()));
+    mockHourlyStatsRepository.getStoredHourKeysByDateRange.mockImplementation(
+      async (startDate: Date, endDate: Date) => {
+        const stored: string[] = [];
+        for (
+          let timestamp = startDate.getTime();
+          timestamp < endDate.getTime();
+          timestamp += HOUR_MS
+        ) {
+          if (!missingTimestamps.has(timestamp)) {
+            stored.push(new Date(timestamp).toISOString());
+          }
+        }
+        return stored;
+      },
+    );
   };
 
   beforeEach(async () => {
@@ -171,6 +191,7 @@ describe('AnalyticsMaintenanceService', () => {
     mockHourlyStatsRepository.getLatestHourlyStat.mockResolvedValue(
       buildHourlyStatsRow(new Date(lastCompletedHour.getTime() - HOUR_MS)),
     );
+    mockHourlyStatsRepository.getStoredHourKeysByDateRange.mockResolvedValue([]);
     mockHourlyStatsRepository.saveHourlyStats.mockResolvedValue(undefined);
     mockErrorLogRepository.clearAllRecords.mockResolvedValue(undefined);
     mockCacheService.resetCounters.mockResolvedValue(undefined);
@@ -265,6 +286,8 @@ describe('AnalyticsMaintenanceService', () => {
   describe('aggregateHourlyStats', () => {
     beforeEach(() => {
       jest.useFakeTimers().setSystemTime(new Date('2026-04-13T15:41:00.000Z'));
+      const lastCompletedHour = new Date('2026-04-13T14:00:00.000Z');
+      mockStoredHoursExcept(lastCompletedHour);
     });
 
     afterEach(() => {
@@ -363,7 +386,7 @@ describe('AnalyticsMaintenanceService', () => {
       );
     });
 
-    it('should skip saving when aggregated data has zero messages', async () => {
+    it('should save an empty-hour marker so the same gap is not recomputed forever', async () => {
       const lastCompletedHour = new Date('2026-04-13T14:00:00.000Z');
       mockHourlyStatsRepository.getLatestHourlyStat.mockResolvedValue(
         buildHourlyStatsRow(new Date(lastCompletedHour.getTime() - HOUR_MS)),
@@ -374,7 +397,12 @@ describe('AnalyticsMaintenanceService', () => {
 
       await service.aggregateHourlyStats();
 
-      expect(hourlyStatsRepository.saveHourlyStats).not.toHaveBeenCalled();
+      expect(hourlyStatsRepository.saveHourlyStats).toHaveBeenCalledWith(
+        expect.objectContaining({
+          hour: '2026-04-13T14:00:00.000Z',
+          messageCount: 0,
+        }),
+      );
     });
 
     it('should skip saving when aggregated data is null', async () => {
@@ -401,6 +429,7 @@ describe('AnalyticsMaintenanceService', () => {
 
     it('should stop backfill when aggregate rpc returns null', async () => {
       const lastCompletedHour = new Date('2026-04-13T14:00:00.000Z');
+      mockStoredHoursExcept(new Date(lastCompletedHour.getTime() - HOUR_MS), lastCompletedHour);
       mockHourlyStatsRepository.getLatestHourlyStat.mockResolvedValue(
         buildHourlyStatsRow(new Date(lastCompletedHour.getTime() - 2 * HOUR_MS)),
       );
@@ -456,6 +485,7 @@ describe('AnalyticsMaintenanceService', () => {
 
     it('should catch up multiple missing hours when projection is stale', async () => {
       const lastCompletedHour = new Date('2026-04-13T14:00:00.000Z');
+      mockStoredHoursExcept(new Date(lastCompletedHour.getTime() - HOUR_MS), lastCompletedHour);
       mockHourlyStatsRepository.getLatestHourlyStat.mockResolvedValue(
         buildHourlyStatsRow(new Date(lastCompletedHour.getTime() - 2 * HOUR_MS)),
       );
@@ -497,22 +527,22 @@ describe('AnalyticsMaintenanceService', () => {
       expect(hourlyStatsRepository.saveHourlyStats).toHaveBeenCalledTimes(2);
     });
 
-    it('should resume from the latest stored hour even when it is older than one hour', async () => {
-      mockHourlyStatsRepository.getLatestHourlyStat.mockResolvedValue(
-        buildHourlyStatsRow(new Date('2026-04-12T10:00:00.000Z')),
-      );
+    it('should fill an interior missing hour without recomputing stored hours around it', async () => {
+      const interiorGap = new Date('2026-04-13T12:00:00.000Z');
+      mockStoredHoursExcept(interiorGap);
       mockMonitoringRecordRepository.aggregateHourlyStats.mockResolvedValue(buildHourlyAggregate());
 
       await service.aggregateHourlyStats();
 
-      expect(monitoringRepository.aggregateHourlyStats).toHaveBeenNthCalledWith(
-        1,
-        new Date('2026-04-12T11:00:00.000Z'),
-        new Date('2026-04-12T12:00:00.000Z'),
+      expect(monitoringRepository.aggregateHourlyStats).toHaveBeenCalledTimes(1);
+      expect(monitoringRepository.aggregateHourlyStats).toHaveBeenCalledWith(
+        interiorGap,
+        new Date('2026-04-13T13:00:00.000Z'),
       );
     });
 
     it('should skip aggregation when projection is already up to date', async () => {
+      mockStoredHoursExcept();
       mockHourlyStatsRepository.getLatestHourlyStat.mockResolvedValue(
         buildHourlyStatsRow(new Date('2026-04-13T14:00:00.000Z')),
       );
@@ -521,6 +551,34 @@ describe('AnalyticsMaintenanceService', () => {
 
       expect(monitoringRepository.aggregateHourlyStats).not.toHaveBeenCalled();
       expect(hourlyStatsRepository.saveHourlyStats).not.toHaveBeenCalled();
+    });
+
+    it('should skip an overlapping hourly tick and release the guard afterward', async () => {
+      let markStarted!: () => void;
+      let releaseAggregation!: (value: ReturnType<typeof buildHourlyAggregate>) => void;
+      const started = new Promise<void>((resolve) => {
+        markStarted = resolve;
+      });
+      const pendingAggregation = new Promise<ReturnType<typeof buildHourlyAggregate>>((resolve) => {
+        releaseAggregation = resolve;
+      });
+      mockMonitoringRecordRepository.aggregateHourlyStats
+        .mockImplementationOnce(async () => {
+          markStarted();
+          return pendingAggregation;
+        })
+        .mockResolvedValue(buildHourlyAggregate({ messageCount: 1 }));
+
+      const firstTick = service.aggregateHourlyStats();
+      await started;
+      await service.aggregateHourlyStats();
+
+      expect(monitoringRepository.aggregateHourlyStats).toHaveBeenCalledTimes(1);
+
+      releaseAggregation(buildHourlyAggregate({ messageCount: 1 }));
+      await firstTick;
+      await service.aggregateHourlyStats();
+      expect(monitoringRepository.aggregateHourlyStats).toHaveBeenCalledTimes(2);
     });
 
     it('should report startup failures with the correct trigger', async () => {
@@ -588,6 +646,52 @@ describe('AnalyticsMaintenanceService', () => {
           errorTypeStats: { delivery: 1, timeout: 2 },
         }),
       );
+    });
+
+    it('should skip an overlapping daily tick and release the guard afterward', async () => {
+      const dailyAggregate = {
+        messageCount: 1,
+        successCount: 1,
+        failureCount: 0,
+        timeoutCount: 0,
+        successRate: 100,
+        avgDuration: 100,
+        tokenUsage: 1,
+        uniqueUsers: 1,
+        uniqueChats: 1,
+        fallbackCount: 0,
+        fallbackSuccessCount: 0,
+        fallbackAffectedUsers: 0,
+        avgQueueDuration: 0,
+        avgPrepDuration: 0,
+        errorTypeStats: {},
+      };
+      let markStarted!: () => void;
+      let releaseAggregation!: (value: typeof dailyAggregate) => void;
+      const started = new Promise<void>((resolve) => {
+        markStarted = resolve;
+      });
+      const pendingAggregation = new Promise<typeof dailyAggregate>((resolve) => {
+        releaseAggregation = resolve;
+      });
+      mockDailyStatsRepository.getLatestDailyStat.mockResolvedValue({ date: '2026-04-14' });
+      mockMonitoringRecordRepository.aggregateDailyStats
+        .mockImplementationOnce(async () => {
+          markStarted();
+          return pendingAggregation;
+        })
+        .mockResolvedValue(dailyAggregate);
+
+      const firstTick = service.aggregateDailyStats();
+      await started;
+      await service.aggregateDailyStats();
+
+      expect(monitoringRepository.aggregateDailyStats).toHaveBeenCalledTimes(1);
+
+      releaseAggregation(dailyAggregate);
+      await firstTick;
+      await service.aggregateDailyStats();
+      expect(monitoringRepository.aggregateDailyStats).toHaveBeenCalledTimes(2);
     });
   });
 });
