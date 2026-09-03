@@ -14,22 +14,31 @@
 **预计版本**: `v11.2.2`
 **最近更新**: `2026-09-03`
 **来源分支**: `develop`
-**累计 PR**: 1
+**累计 PR**: 2
 
 ### 更新摘要
 - PR #1202 补回回合装配重构删掉的预约、视觉与回放覆盖
+- PR #1204 收紧消息处理调用表访问权限
+- PR #1204 为 `public.message_processing_invocations` 启用 RLS，修复 Supabase Security Advisor 的 `RLS Disabled in Public` 错误
+- PR #1204 撤销 `PUBLIC`、`anon`、`authenticated` 的表权限，仅保留后端 `service_role` 的显式 CRUD 权限和全量策略
+- PR #1204 增加迁移契约测试，防止后续重新开放保存完整 Agent 请求/响应快照的敏感表
 
 ### 新功能
 - 无
 
 ### 问题修复
-- 无
+- PR #1204 修复 `20260902073727_retention_schema_audit.sql` 创建 `message_processing_invocations` 时遗漏 RLS，导致 public schema 默认授权下 Data API 客户端角色可能访问整表的问题
+- PR #1204 为 `public.message_processing_invocations` 启用 RLS，修复 Supabase Security Advisor 的 `RLS Disabled in Public` 错误
+- PR #1204 撤销 `PUBLIC`、`anon`、`authenticated` 的表权限，仅保留后端 `service_role` 的显式 CRUD 权限和全量策略
+- PR #1204 增加迁移契约测试，防止后续重新开放保存完整 Agent 请求/响应快照的敏感表
 
 ### 优化调整
 - PR #1202 补回回合装配重构删掉的预约、视觉与回放覆盖
 
 ### 运维与流程
-- 无
+- PR #1204 TEST 与 PROD 的迁移状态均已登记 `20260903130000`；数据库侧修复此前已经执行，本 PR 补回缺失的 Git 源码和审计记录，不需要再次推送迁移
+- PR #1204 迁移只修改权限和 RLS 元数据，不扫描或回填业务数据
+- PR #1204 收紧消息处理调用表访问权限
 
 ### 配置变更
 - 无
@@ -41,6 +50,12 @@
 - PR #1202 只加测试，不改任何生产代码。
 - PR #1202 `pnpm run test:ci`：458 套件 / 6624 用例通过（较基线 +34）。
 - PR #1202 变异验证：摘掉 `injectImageParts` 的占位符定位后，占位符那一例即红，确认它守的是真不变量。
+- PR #1204 `pnpm run ci:check`（459/459 个测试套件通过，6597 个测试通过，仓库原有 1 套件/5 测试跳过）
+- PR #1204 `pnpm test -- --watchman=false --runInBand tests/supabase/message-processing-invocations-rls.spec.ts`（3/3 通过）
+- PR #1204 `pnpm run db:status:test` 与 `pnpm run db:status:prod` 均确认本地/远端存在 `20260903130000`
+- PR #1204 关键链路已人工核对：后端仓储使用 `service_role`，迁移保留显式 CRUD 授权与 `FOR ALL` 策略
+- PR #1204 未新增对开放自然语言直接 reject/覆盖/判缺的正则分支；本 PR 仅包含 SQL 权限迁移与迁移契约测试
+- PR #1204 未新增 prompt 示例值
 <!-- release:pending:end -->
 
 ## [11.2.1] - 2026-09-03
