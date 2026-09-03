@@ -21,10 +21,8 @@ import { ReplyRepairContextProvider } from './reply-repair/reply-repair-context.
 import { TurnOutcomeInterventionService } from './runner/turn-outcome-intervention.service';
 import { PreparationService } from './generator/preparation/preparation.service';
 import { ToolRuntimeBuilderService } from './generator/preparation/tool-context.builder';
-import {
-  BookingContextLoaderService,
-  TurnDataLoaderService,
-} from './generator/preparation/turn-data-loader.service';
+import { TurnDataLoaderService } from './generator/preparation/turn-data-loader.service';
+import { BookingContextLoaderService } from './generator/preparation/booking-context-loader.service';
 import { PreparationModule } from './generator/preparation/preparation.module';
 import { ContextService } from './generator/context/context.service';
 import { AgentController } from './agent.controller';

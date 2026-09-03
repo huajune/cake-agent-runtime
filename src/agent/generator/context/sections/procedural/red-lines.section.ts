@@ -11,7 +11,7 @@ export class RedLinesSection implements PromptSection {
   readonly id = 'red-lines';
   readonly domain = 'teaching' as const;
   readonly slot = 'strategy' as const;
-  readonly dynamic = true;
+  readonly dynamic = false;
 
   build(model: PromptModel) {
     return buildTextPromptBlock(this, this.buildRedLinesText(model.strategy.redLines));

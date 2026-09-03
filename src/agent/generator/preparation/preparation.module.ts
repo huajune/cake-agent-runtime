@@ -10,7 +10,7 @@ import {
   MEMORY_MESSAGE_PROCESSING_PORT,
   MEMORY_SYSTEM_CONFIG_PORT,
 } from '@memory/memory.ports';
-import { SnapshotEnrichmentService } from './turn-data-loader.service';
+import { SnapshotEnrichmentService } from './snapshot-enrichment.service';
 
 /** generator 备料车间的 DI 接缝：快照装饰 + memory 对业务服务的窄端口绑定。 */
 @Module({

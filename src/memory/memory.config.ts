@@ -73,6 +73,11 @@ export class MemoryConfig {
    * 与 `sessionTtl` 分离：会话状态（Redis facts）过期是正常的，原文仍要能追溯。
    * 锚点在 MessageWindowService 内推导，调用方不传批次边界。
    *
+   * ⚠️ 这不是「距今 7 天」的硬上界：锚点会随连续未获回复的候选人消息一起后滑
+   * （skip_reply / 守卫静默 / 投递失败都不落 assistant 行），首次咨询（找不到更早的
+   * 开口）则完全不裁。此时真正的封顶是 `sessionWindowMaxMessages`（300 条）与
+   * `sessionWindowMaxChars`（字符预算），窗口跨度可以远超 7 天。
+   *
    * 默认 7 天（MEMORY_HISTORY_WINDOW_DAYS）。
    */
   readonly historyWindowSeconds: number;

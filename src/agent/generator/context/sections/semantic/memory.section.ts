@@ -17,6 +17,7 @@ import {
   unwrapSessionFacts,
 } from '@memory/short-term/short-term.types';
 import type { RecommendedJobSummary } from '@resolution/job/types';
+import { normalizeJobId } from '@resolution/job';
 import type { SignupWorkOrderItem } from '@sponge/sponge.types';
 import type {
   PromptMemoryAdjudication,
@@ -194,20 +195,37 @@ const BOOKING_SYNCING_BLOCK = [
   '候选人询问该预约、要求改约或取消时，只能自然说明“我正在确认最新预约信息，稍等一下”；不得提及工单、海绵、缓存或系统同步。',
 ].join('\n');
 
+/**
+ * 可见预约条目：单一判据，渲染、带外核验闸门与 jobId provenance 都从这里派生。
+ *
+ * 三者过去各自「渲染一遍再看字符串空不空」，等于把「有没有预约」这件事寄存在文案的
+ * 空串上——改一句 Prompt 文案就会顺带改掉带外查询是否触发、以及闸门放行哪些 jobId。
+ * 编号也在这里定：按**渲染后**的序号连续编号，工单缺展示字段被跳过时不留空号。
+ */
+export function visibleBookingEntries(
+  snapshot: BookingPromptSnapshot,
+): Array<{ entry: BookingPromptEntry; rendered: string }> {
+  if (snapshot.state !== 'active') return [];
+  const visible: Array<{ entry: BookingPromptEntry; rendered: string }> = [];
+  for (const entry of snapshot.entries) {
+    const rendered = formatBookingContext(entry.workOrder, visible.length + 1, entry.location);
+    if (rendered) visible.push({ entry, rendered });
+  }
+  return visible;
+}
+
 /** 把类型化预约快照渲染成模型证据，不在加载层拼 Prompt 文案。 */
 export function renderBookingPrompt(snapshot: BookingPromptSnapshot): string {
   if (snapshot.state === 'hidden') return '';
   if (snapshot.state === 'none') return NO_BOOKING_STATUS_BLOCK;
 
-  const renderedEntries = snapshot.entries
-    .map((entry, index) => formatBookingContext(entry.workOrder, index + 1, entry.location))
-    .filter(Boolean);
+  const visible = visibleBookingEntries(snapshot);
   const parts = [
-    ...(snapshot.source === 'out_of_band' && renderedEntries.length > 0
+    ...(snapshot.source === 'out_of_band' && visible.length > 0
       ? ['_以下预约按候选人手机号从工单系统实时查得，非本会话提交（多为人工顾问或其它渠道登记）。_']
       : []),
-    ...renderedEntries,
-    ...(renderedEntries.length > 0 ? [BOOKING_CONTEXT_SHARED_RULES] : []),
+    ...visible.map(({ rendered }) => rendered),
+    ...(visible.length > 0 ? [BOOKING_CONTEXT_SHARED_RULES] : []),
     ...(snapshot.syncing ? [BOOKING_SYNCING_BLOCK] : []),
   ];
   return parts.length > 0 ? `\n\n[当前预约信息]\n\n${parts.join('\n\n')}` : '';
@@ -215,22 +233,16 @@ export function renderBookingPrompt(snapshot: BookingPromptSnapshot): string {
 
 /** 当前快照是否真的会向模型暴露 [当前预约信息]。 */
 export function hasCurrentBookingInformation(snapshot: BookingPromptSnapshot): boolean {
-  return snapshot.state === 'active' && Boolean(renderBookingPrompt(snapshot));
+  return (
+    snapshot.state === 'active' && (visibleBookingEntries(snapshot).length > 0 || snapshot.syncing)
+  );
 }
 
 /** 与 Prompt 可见性同门的预约岗位 provenance。 */
 export function visibleBookingJobIds(snapshot: BookingPromptSnapshot): number[] {
-  if (snapshot.state !== 'active' || !renderBookingPrompt(snapshot)) return [];
-  return snapshot.entries
-    .filter((entry) => Boolean(formatBookingContext(entry.workOrder, 1, entry.location)))
-    .map((entry) => normalizeBookingJobId(entry.workOrder.jobId))
+  return visibleBookingEntries(snapshot)
+    .map(({ entry }) => normalizeJobId(entry.workOrder.jobId))
     .filter((jobId): jobId is number => jobId !== null);
-}
-
-function normalizeBookingJobId(value: unknown): number | null {
-  if (typeof value === 'number' && Number.isInteger(value) && value > 0) return value;
-  if (typeof value === 'string' && /^\d+$/.test(value)) return Number(value);
-  return null;
 }
 
 /**

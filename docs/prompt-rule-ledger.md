@@ -383,7 +383,7 @@
 
 ### [预约状态] 空态接地块（无在途工单轮次的条件式片段）
 
-载体：`src/agent/generator/preparation/preparation.service.ts` `NO_BOOKING_STATUS_BLOCK`
+载体：`src/agent/generator/context/sections/semantic/memory.section.ts` `NO_BOOKING_STATUS_BLOCK`
 （active_booking 指针为空、且带外工单核验也未命中时注入；与 [当前预约信息] 互斥出现）。
 
 - `BS1` — 正向接地：零工单时严禁"已帮你报名/已报名成功"等完成口径（badcase zvey1mg8/as1f14iz/5wglb8k7，

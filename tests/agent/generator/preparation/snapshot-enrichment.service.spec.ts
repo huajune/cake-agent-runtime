@@ -1,8 +1,8 @@
-import { SnapshotEnrichmentService } from '@agent/generator/preparation/turn-data-loader.service';
+import { SnapshotEnrichmentService } from '@agent/generator/preparation/snapshot-enrichment.service';
 import { FALLBACK_EXTRACTION } from '@memory/short-term/short-term.types';
 import type { AgentMemoryContext } from '@memory/recall.types';
 import { getTurnHint } from '@resolution/turn-hints/reducer';
-import { testTurnHint, testTurnHints } from '../../helpers/turn-hints.fixture';
+import { testTurnHint, testTurnHints } from '../../../helpers/turn-hints.fixture';
 
 describe('SnapshotEnrichmentService', () => {
   const mockCandidate = {

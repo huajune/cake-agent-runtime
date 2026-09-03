@@ -103,13 +103,17 @@ describe('Prompt compiler compatibility contract', () => {
       '53b48c26824818b0302a788da50b4c00184b84422bb4ae81fcad8ffcfe13ff54',
     );
     expect(result.orderHash).toMatch(/^[a-f0-9]{64}$/);
-    expect(result.dynamicBlockIds).toEqual(
-      expect.arrayContaining([
-        'identity',
-        'candidate-memory',
-        'input-guard',
-        'critical-turn-guard',
-      ]),
-    );
+    // dynamic 的口径是「随回合变化」：身份/红线/阈值/全阶段一览/通道规范只随配置变，
+    // 归进动态块会让这份列表覆盖整个稳定前缀，缓存分析就失去意义。
+    expect(result.dynamicBlockIds).toEqual([
+      'candidate-memory',
+      'booking-context',
+      'datetime',
+      'group-inventory',
+      'stage-strategy',
+      'input-guard',
+      'critical-turn-guard',
+    ]);
+    expect(result.dynamicBlockIds).not.toContain('identity');
   });
 });

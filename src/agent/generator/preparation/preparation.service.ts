@@ -95,7 +95,7 @@ export class PreparationService {
           }),
       );
 
-      const injectionAssessment = this.injectionDetector.detectMessages(normalizedMessages);
+      const injectionAssessment = this.injectionDetector.detectTexts(input.currentTurnTexts);
       if (injectionAssessment.detected) {
         void this.securityObserver.record(params.userId, injectionAssessment);
       }

@@ -1,5 +1,49 @@
 import { resolveTurnContext } from '@agent/generator/preparation/turn-context-resolver';
 
+/** 最小可解析回合；只用来断言单个投影，其余字段保持无害缺省。 */
+function buildResolverInput(paramsOverride: Record<string, unknown> = {}) {
+  return {
+    params: { scenario: 'candidate-consultation', ...paramsOverride } as never,
+    normalizedInput: {
+      truncatedMessages: [{ role: 'user', content: '你好' }],
+      currentUserMessage: '你好',
+      currentTurnTexts: ['你好'],
+      laborFormIntent: { kind: 'ignore' as const },
+    },
+    sources: {
+      memory: {
+        shortTerm: {
+          stage: { currentStage: 'trust_building' },
+          sessionState: null,
+          messageWindow: [],
+        },
+        longTerm: { semantic: { profile: null } },
+        turnHints: null,
+      },
+      booking: { state: 'none' },
+      realtimeGroups: [],
+      groupInventory: undefined,
+      accountIdentity: { nickname: null, gender: null },
+      strategyConfig: {
+        stage_goals: { stages: [{ stage: 'trust_building' }] },
+        red_lines: { thresholds: [] },
+      },
+      visualSheetsByContent: undefined,
+      turnBrandContext: {
+        state: { currentBrand: null, excludedBrands: [] },
+        nicknameBrands: [],
+        persisted: false,
+      },
+      geoAnchor: undefined,
+      warnings: [],
+    } as never,
+    normalizedMessages: [{ role: 'user' as const, content: '你好' }],
+    conversationCorpusBlocks: [],
+    injectionAssessment: { safe: true, detected: false },
+    nowMs: Date.parse('2026-09-02T00:00:00.000Z'),
+  };
+}
+
 describe('resolveTurnContext', () => {
   it('uses the returning-user stage when the short-term stage expired', () => {
     const result = resolveTurnContext({
@@ -75,5 +119,20 @@ describe('resolveTurnContext', () => {
         geoSignalCities: new Set(),
       }),
     );
+  });
+
+  /** 通道判据回归：小组级 API 的 1:1 私聊不得拿到群聊规范。 */
+  it.each([
+    { label: '小组级 API 的私聊', params: { apiType: 'group' as const }, expected: 'private' },
+    { label: '企业级 API 的私聊', params: { apiType: 'enterprise' as const }, expected: 'private' },
+    { label: '真实群会话', params: { imRoomId: 'room-1' }, expected: 'group' },
+    {
+      label: '小组级 API 的群会话',
+      params: { apiType: 'group' as const, imRoomId: 'room-1' },
+      expected: 'group',
+    },
+  ])('derives channelType from imRoomId, not apiType（$label）', ({ params, expected }) => {
+    const result = resolveTurnContext(buildResolverInput(params));
+    expect(result.promptModel.channelType).toBe(expected);
   });
 });

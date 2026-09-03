@@ -60,7 +60,7 @@ export class StageOverviewSection implements PromptSection {
   readonly id = 'stage-overview';
   readonly domain = 'teaching' as const;
   readonly slot = 'stable-instructions' as const;
-  readonly dynamic = true;
+  readonly dynamic = false;
 
   build(model: PromptModel) {
     const stages = model.strategy.stages;

@@ -4,7 +4,7 @@ import {
   TurnDataLoaderService,
 } from '@agent/generator/preparation/turn-data-loader.service';
 import { GroupInventorySection } from '@agent/generator/context/sections/working/group-inventory.section';
-import { sessionFactsOf } from '../../helpers/session-facts.fixture';
+import { sessionFactsOf } from '../../../helpers/session-facts.fixture';
 
 describe('TurnDataLoaderService', () => {
   it('builds a typed, high-confidence city inventory view for the rendering section', () => {
@@ -253,7 +253,130 @@ describe('TurnDataLoaderService', () => {
         expect.objectContaining({ source: 'account_identity', status: 'degraded' }),
         expect.objectContaining({ source: 'brand', status: 'degraded' }),
         expect.objectContaining({ source: 'visual_facts', status: 'degraded' }),
+        // 上游群资源失败 ⇒ 成员核验根本没跑过，不能落成「已核验：不在任何群」。
+        expect.objectContaining({ source: 'group_membership', status: 'degraded' }),
       ]),
+    );
+  });
+
+  it('marks the memory source degraded when the short-term window failed to load', async () => {
+    const memory = {
+      ...(buildMemory() as Record<string, unknown>),
+      _warnings: ['shortTerm: redis timeout'],
+    };
+    const tracer = { emit: jest.fn() };
+    const service = new TurnDataLoaderService(
+      {
+        loadPointer: jest.fn().mockResolvedValue({ state: 'none' }),
+        enrichOutOfBand: jest.fn().mockResolvedValue({ state: 'none' }),
+      } as never,
+      { onTurnStart: jest.fn().mockResolvedValue(memory) } as never,
+      { fetchBrandList: jest.fn().mockResolvedValue([]) } as never,
+      { resolveGroups: jest.fn().mockResolvedValue([]) } as never,
+      { listUserRooms: jest.fn().mockResolvedValue([]) } as never,
+      {
+        resolveAgentAccountIdentity: jest.fn().mockResolvedValue({ nickname: null, gender: null }),
+      } as never,
+      {
+        deriveTurnBrandContext: jest.fn().mockResolvedValue({
+          state: { currentBrand: null, excludedBrands: [] },
+          persisted: false,
+          nicknameBrands: [],
+        }),
+      } as never,
+      { enrich: jest.fn().mockImplementation(async (snapshot) => snapshot) } as never,
+      { getVisualFacts: jest.fn().mockResolvedValue([]) } as never,
+      {
+        getActiveConfig: jest
+          .fn()
+          .mockResolvedValue({ stage_goals: { stages: [] }, red_lines: { thresholds: [] } }),
+      } as never,
+      { get: jest.fn().mockReturnValue('200') } as never,
+      undefined,
+      tracer as never,
+    );
+
+    const snapshot = await service.load(
+      {
+        callerKind: CallerKind.WECOM,
+        corpId: 'corp-1',
+        userId: 'user-1',
+        sessionId: 'session-1',
+        messages: [{ role: 'user', content: '你好' }],
+      } as never,
+      {
+        truncatedMessages: [{ role: 'user', content: '你好' }],
+        currentUserMessage: '你好',
+        currentTurnTexts: ['你好'],
+        laborFormIntent: { kind: 'ignore' } as never,
+      },
+    );
+
+    // 记忆域的失败既不抛错也不记 warning，只挂 `_warnings`；不显式认领就会被当成 success，
+    // 「Agent 零历史作答」这类事故在档案里将完全看不出来。
+    expect(snapshot.sourceObservations).toEqual(
+      expect.arrayContaining([expect.objectContaining({ source: 'memory', status: 'degraded' })]),
+    );
+  });
+
+  it('waits for in-flight sources before emitting the failure event', async () => {
+    const tracer = { emit: jest.fn() };
+    let resolveSlowMemory: (value: unknown) => void = () => {};
+    const slowMemory = new Promise((resolve) => {
+      resolveSlowMemory = resolve;
+    });
+    const service = new TurnDataLoaderService(
+      {
+        loadPointer: jest.fn().mockResolvedValue({ state: 'none' }),
+        enrichOutOfBand: jest.fn().mockResolvedValue({ state: 'none' }),
+      } as never,
+      { onTurnStart: jest.fn().mockReturnValue(slowMemory) } as never,
+      { fetchBrandList: jest.fn().mockResolvedValue([]) } as never,
+      { resolveGroups: jest.fn().mockResolvedValue([]) } as never,
+      { listUserRooms: jest.fn().mockResolvedValue([]) } as never,
+      {
+        resolveAgentAccountIdentity: jest.fn().mockResolvedValue({ nickname: null, gender: null }),
+      } as never,
+      {
+        deriveTurnBrandContext: jest.fn().mockResolvedValue({
+          state: { currentBrand: null, excludedBrands: [] },
+          persisted: false,
+          nicknameBrands: [],
+        }),
+      } as never,
+      { enrich: jest.fn().mockImplementation(async (snapshot) => snapshot) } as never,
+      { getVisualFacts: jest.fn().mockResolvedValue([]) } as never,
+      // 策略先崩，memory 还挂着——档案必须两个源都有，否则排障会把慢源读成「没参与本轮」。
+      { getActiveConfig: jest.fn().mockRejectedValue(new Error('strategy down')) } as never,
+      { get: jest.fn().mockReturnValue('200') } as never,
+      undefined,
+      tracer as never,
+    );
+
+    const load = service.load(
+      {
+        callerKind: CallerKind.WECOM,
+        corpId: 'corp-1',
+        userId: 'user-1',
+        sessionId: 'session-1',
+        messages: [{ role: 'user', content: '你好' }],
+      } as never,
+      {
+        truncatedMessages: [{ role: 'user', content: '你好' }],
+        currentUserMessage: '你好',
+        currentTurnTexts: ['你好'],
+        laborFormIntent: { kind: 'ignore' } as never,
+      },
+    );
+    const assertion = expect(load).rejects.toThrow('strategy down');
+    resolveSlowMemory(buildMemory());
+    await assertion;
+
+    const failureEvent = tracer.emit.mock.calls
+      .map(([event]) => event)
+      .find((event) => event.type === 'turn_data_sources' && event.status === 'failure');
+    expect(failureEvent.sources.map((source: { source: string }) => source.source)).toEqual(
+      expect.arrayContaining(['memory', 'strategy']),
     );
   });
 });

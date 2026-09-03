@@ -3,55 +3,35 @@ import { ConfigService } from '@nestjs/config';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { CallerKind } from '@/enums/agent.enum';
 import { MemoryService } from '@memory/memory.service';
-import { LongTermService } from '@memory/long-term/long-term.service';
-import {
-  isUserProfileFactValue,
-  unwrapUserProfileFactValue,
-} from '@memory/long-term/long-term.types';
-import type { AgentMemoryContext } from '@memory/recall.types';
-import { SpongeService } from '@sponge/sponge.service';
-import {
-  ACTIVE_INTERVIEW_WORK_ORDER_STATUSES,
-  type SignupWorkOrderItem,
-} from '@sponge/sponge.types';
 import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
 import { GroupMembershipService } from '@biz/group-task/services/group-membership.service';
 import type { GroupContext } from '@biz/group-task/group-task.types';
 import { HostingMemberConfigService } from '@biz/hosting-config/services/hosting-member-config.service';
 import { BrandStateService, type TurnBrandContext } from '@memory/short-term/brand-state.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
+import { SpongeService } from '@sponge/sponge.service';
 import { StrategyConfigService } from '@biz/strategy/services/strategy-config.service';
 import type { StrategyConfigRecord } from '@biz/strategy/entities/strategy-config.entity';
 import { GeocodingService } from '@infra/geocoding/geocoding.service';
 import { normalizeCityName as normalizeCity } from '@resolution/geo';
 import { parseLocationShareCoordinates } from '@resolution/signal/markers';
 import { produceTurnHints } from '@resolution/turn-hints/producers/rule-track';
-import {
-  mergeSupplementalGenderClaims,
-  normalizeGenderValue,
-} from '@resolution/turn-hints/producers/rule-track';
-import { getTurnHintValue } from '@resolution/turn-hints/reducer';
 import { buildVisualSheetIndex } from '@resolution/signal/self-report';
 import type { FinalizedVisualFactSheet } from '@resolution/signal/visual';
-import { unwrapSessionFacts, unwrapSessionFactValue } from '@memory/short-term/short-term.types';
-import { CandidateProfileEnrichmentService } from '@biz/user/services/candidate-profile-enrichment.service';
-import {
-  buildJobPolicyAnalysis,
-  isOfflineInterviewMethod,
-} from '@tools/job-list/job-policy-parser';
+import { unwrapSessionFacts } from '@memory/short-term/short-term.types';
 import type { GeneratorInvokeParams } from '../generator.types';
 import type {
-  BookingLocationDetails,
   BookingPromptSnapshot,
   RealtimeGroupStatus,
-} from '../context/sections/semantic/memory.section';
-import {
-  hasCurrentBookingInformation,
-  renderBookingPrompt,
 } from '../context/sections/semantic/memory.section';
 import type { GroupInventoryPromptView } from '../context/sections/working/group-inventory.section';
 import type { NormalizedTurnInput } from './conversation-normalizer';
 import type { TurnStartMemory } from './prompt-memory-adjudicator';
+import { BookingContextLoaderService } from './booking-context-loader.service';
+import {
+  SnapshotEnrichmentService,
+  type CandidateIdentityHint,
+} from './snapshot-enrichment.service';
 import { AgentTracerService } from '@observability/agent-tracer.service';
 import type { TurnSourceLoadStatus, TurnSourceLoadTrace } from '@observability/observer.interface';
 
@@ -63,9 +43,23 @@ export interface LoadedGeoAnchor {
   evidence: string;
 }
 
+/** 会以 fail-open 方式自记 warning 的源；与 observeSource 的源名同名，降级判定据此自动生效。 */
+const TURN_SOURCE_WARNING_SOURCES = [
+  'groups',
+  'group_membership',
+  'account_identity',
+  'brand',
+  'visual_facts',
+  'geocode',
+] as const;
+
 export interface TurnSourceWarning {
-  source: 'groups' | 'group_membership' | 'account_identity' | 'brand' | 'visual_facts' | 'geocode';
+  source: (typeof TURN_SOURCE_WARNING_SOURCES)[number];
   message: string;
+}
+
+function isSelfWarningSource(source: string): source is TurnSourceWarning['source'] {
+  return (TURN_SOURCE_WARNING_SOURCES as readonly string[]).includes(source);
 }
 
 /** 本轮所有外部源的同一份快照；下游 Resolver/Sections/Tools 不再自行读取。 */
@@ -81,213 +75,6 @@ export interface TurnSourceSnapshot {
   geoAnchor: LoadedGeoAnchor | undefined;
   warnings: TurnSourceWarning[];
   sourceObservations: TurnSourceLoadTrace[];
-}
-
-type SpongeTokenContext = {
-  botImId?: string;
-  botUserId?: string;
-  groupId?: string;
-};
-
-/** 预约源读取器；模型文案仍由 MemorySection 渲染。 */
-@Injectable()
-export class BookingContextLoaderService {
-  private readonly logger = new Logger(BookingContextLoaderService.name);
-
-  constructor(
-    private readonly longTermService: LongTermService,
-    private readonly spongeService: SpongeService,
-  ) {}
-
-  async loadPointer(
-    params: GeneratorInvokeParams,
-    currentUserMessage: string | undefined,
-  ): Promise<BookingPromptSnapshot> {
-    const tokenContext = buildSpongeTokenContext(params);
-    try {
-      const activeBookings = await this.longTermService.getActiveBookings(
-        params.corpId,
-        params.userId,
-      );
-      if (activeBookings.length === 0) return { state: 'none' };
-
-      const requiresFreshLookup = requiresFreshBookingContext(currentUserMessage);
-      const requiresLocationDetails = needsBookingLocationDetails(currentUserMessage);
-      const lookups = await Promise.all(
-        activeBookings.map(async ({ work_order_id: workOrderId }) => {
-          try {
-            const workOrder = requiresFreshLookup
-              ? await this.spongeService.getWorkOrderById(workOrderId, tokenContext, {
-                  throwOnFetchError: true,
-                })
-              : await this.spongeService.getCachedWorkOrderById(workOrderId, tokenContext);
-            const jobId = normalizeJobId(workOrder?.jobId);
-            const location =
-              requiresLocationDetails && jobId !== null
-                ? await this.loadJobLocationDetails(jobId, workOrderId, tokenContext)
-                : undefined;
-            return { workOrderId, workOrder, location, fetchFailed: false };
-          } catch (error) {
-            this.logger.warn(
-              `加载单个预约工单上下文失败 workOrderId=${workOrderId}: ${toErrorMessage(error)}`,
-            );
-            return { workOrderId, workOrder: null, location: undefined, fetchFailed: true };
-          }
-        }),
-      );
-
-      const entries = lookups
-        .filter((lookup): lookup is typeof lookup & { workOrder: SignupWorkOrderItem } =>
-          Boolean(lookup.workOrder),
-        )
-        .map(({ workOrder, location }) => ({ workOrder, location }));
-
-      for (const lookup of lookups) {
-        if (!lookup.fetchFailed && !lookup.workOrder) {
-          this.logger.warn(
-            `active_booking 指向的工单海绵查不到（指针可能已失效，按无此预约跳过）workOrderId=${lookup.workOrderId}`,
-          );
-        }
-      }
-
-      return {
-        state: 'active',
-        source: 'active_booking',
-        entries,
-        syncing: requiresFreshLookup && lookups.some((lookup) => lookup.fetchFailed),
-      };
-    } catch (error) {
-      this.logger.warn(`加载预约上下文失败: ${toErrorMessage(error)}`);
-      return { state: 'hidden' };
-    }
-  }
-
-  async enrichOutOfBand(
-    base: BookingPromptSnapshot,
-    memory: TurnStartMemory,
-    params: GeneratorInvokeParams,
-    currentUserMessage: string | undefined,
-  ): Promise<BookingPromptSnapshot> {
-    if (hasCurrentBookingInformation(base)) return base;
-    if (!requiresFreshBookingContext(currentUserMessage)) return base;
-    const phone = resolveCandidatePhone(memory);
-    if (!phone) return base;
-
-    const tokenContext = buildSpongeTokenContext(params);
-    try {
-      const result = await this.spongeService.fetchSignupWorkOrders({ phone }, tokenContext);
-      const activeOrders = (result.workOrders ?? []).filter((order: SignupWorkOrderItem) =>
-        ACTIVE_INTERVIEW_WORK_ORDER_STATUSES.has(order.currentStatus?.trim() ?? ''),
-      );
-      if (activeOrders.length === 0) return base;
-
-      const requiresLocationDetails = needsBookingLocationDetails(currentUserMessage);
-      const entries = await Promise.all(
-        activeOrders.map(async (workOrder) => {
-          const jobId = normalizeJobId(workOrder.jobId);
-          const location =
-            requiresLocationDetails && jobId !== null
-              ? await this.loadJobLocationDetails(jobId, workOrder.workOrderId, tokenContext)
-              : undefined;
-          return { workOrder, location };
-        }),
-      );
-      const snapshot: BookingPromptSnapshot = {
-        state: 'active',
-        source: 'out_of_band',
-        entries,
-        syncing: false,
-      };
-      if (!renderBookingPrompt(snapshot)) return base;
-
-      this.logger.log(
-        `[prepare] 带外工单核验命中：phone 尾号${phone.slice(-4)} 在途工单 ${entries.length} 个（active_booking 指针为空）`,
-      );
-      return snapshot;
-    } catch (error) {
-      this.logger.warn(`带外工单核验失败（fail open 维持指针路径结果）: ${toErrorMessage(error)}`);
-      return base;
-    }
-  }
-
-  private async loadJobLocationDetails(
-    jobId: number,
-    workOrderId: number,
-    tokenContext?: SpongeTokenContext,
-  ): Promise<BookingLocationDetails | undefined> {
-    try {
-      const detail = await this.spongeService.fetchJobs(
-        {
-          jobIdList: [jobId],
-          pageNum: 1,
-          pageSize: 1,
-          onlySignableJobs: false,
-          options: { includeBasicInfo: true, includeInterviewProcess: true },
-        },
-        tokenContext,
-      );
-      const job = detail.jobs[0];
-      if (!job) return undefined;
-      const storeAddress =
-        typeof job.basicInfo?.storeInfo?.storeAddress === 'string'
-          ? job.basicInfo.storeInfo.storeAddress.trim()
-          : undefined;
-      const interviewMeta = buildJobPolicyAnalysis(job).interviewMeta;
-      const interviewMethod = interviewMeta.method ?? undefined;
-      const interviewAddress = isOfflineInterviewMethod(interviewMethod)
-        ? (interviewMeta.address ?? undefined)
-        : undefined;
-      return { storeAddress, interviewMethod, interviewAddress };
-    } catch (error) {
-      this.logger.warn(`加载预约地址详情失败 workOrderId=${workOrderId}: ${toErrorMessage(error)}`);
-      return undefined;
-    }
-  }
-}
-
-export interface CandidateIdentityHint {
-  token?: string;
-  imBotId?: string;
-  imContactId?: string;
-  wecomUserId?: string;
-  externalUserId?: string;
-}
-
-/** 外部候选人详情只补快照空位，失败时 fail-open。 */
-@Injectable()
-export class SnapshotEnrichmentService {
-  private readonly logger = new Logger(SnapshotEnrichmentService.name);
-
-  constructor(private readonly candidateProfile: CandidateProfileEnrichmentService) {}
-
-  async enrich(
-    snapshot: AgentMemoryContext,
-    identity: CandidateIdentityHint,
-  ): Promise<AgentMemoryContext> {
-    if (this.resolveKnownGender(snapshot)) return snapshot;
-    try {
-      const gender = await this.candidateProfile.lookupGenderFromCustomerDetail(identity);
-      if (!gender) return snapshot;
-      const turnHints = mergeSupplementalGenderClaims(snapshot.turnHints, gender, '客户详情接口');
-      this.logger.log(`客户详情补充性别成功: gender=${gender}`);
-      return { ...snapshot, turnHints };
-    } catch (error) {
-      this.logger.warn(`客户详情补充性别失败: ${toErrorMessage(error)}`);
-      return snapshot;
-    }
-  }
-
-  private resolveKnownGender(snapshot: AgentMemoryContext): '男' | '女' | null {
-    return (
-      normalizeGenderValue(
-        unwrapUserProfileFactValue(snapshot.longTerm.semantic.profile?.gender),
-      ) ??
-      normalizeGenderValue(
-        unwrapSessionFactValue(snapshot.shortTerm.sessionState?.facts?.interview_info.gender),
-      ) ??
-      normalizeGenderValue(getTurnHintValue(snapshot.turnHints, 'interview_info.gender'))
-    );
-  }
 }
 
 /** 每轮外部 IO 的唯一编排边界；返回结构化数据，不拼模型提示词。 */
@@ -321,15 +108,23 @@ export class TurnDataLoaderService {
     const startedAt = Date.now();
     const warnings: TurnSourceWarning[] = [];
     const sourceObservations: TurnSourceLoadTrace[] = [];
+    // 失败时要等所有兄弟源落地再发观测事件，否则先拒绝的那个源会把还在飞的源从档案里抹掉。
+    const pending: Promise<unknown>[] = [];
+    const observe = <T>(
+      source: string,
+      load: () => Promise<T> | T,
+      classify?: (value: T) => TurnSourceLoadStatus | undefined,
+    ): Promise<T> => {
+      const promise = this.observeSource(source, load, warnings, sourceObservations, classify);
+      pending.push(promise.catch(() => undefined));
+      return promise;
+    };
     try {
-      const turnHintsPromise = this.observeSource(
-        'turn_hints',
-        () => this.detectTurnHints(input.currentTurnTexts),
-        warnings,
-        sourceObservations,
+      const turnHintsPromise = observe('turn_hints', () =>
+        this.detectTurnHints(input.currentTurnTexts),
       );
       const memoryPromise = turnHintsPromise.then((turnHints) =>
-        this.observeSource(
+        observe(
           'memory',
           async () => {
             const snapshot = await this.memoryService.onTurnStart(
@@ -347,95 +142,64 @@ export class TurnDataLoaderService {
             const identity = buildEnrichmentIdentity(params);
             return identity ? this.snapshotEnrichment.enrich(snapshot, identity) : snapshot;
           },
-          warnings,
-          sourceObservations,
+          // 记忆域的降级不抛错也不记 warning，只在快照里挂 `_warnings`（短期窗口读失败会
+          // 静默回落成「只有当前这条消息」）；不显式认领就会被当成 success 落档。
+          (snapshot) => (snapshot._warnings?.length ? 'degraded' : undefined),
         ),
       );
-      const pointerBookingPromise = this.observeSource(
-        'booking_pointer',
-        () => this.bookingLoader.loadPointer(params, input.currentUserMessage),
-        warnings,
-        sourceObservations,
+      const pointerBookingPromise = observe('booking_pointer', () =>
+        this.bookingLoader.loadPointer(params, input.currentUserMessage),
       );
-      const groupsPromise = this.observeSource(
-        'groups',
-        () => this.loadGroups(warnings),
-        warnings,
-        sourceObservations,
-        ['groups'],
-      );
+      const groupsPromise = observe('groups', () => this.loadGroups(warnings));
       const realtimeGroupsPromise = groupsPromise.then((groups) =>
-        this.observeSource(
+        observe(
           'group_membership',
           () => this.loadRealtimeGroupStatus(params, groups, warnings),
-          warnings,
-          sourceObservations,
-          ['group_membership'],
+          // 上游群资源失败时本源直接短路返回 []，自己不记 warning——不认领就会落成
+          // 「已核验：不在任何群」，与真正核验过的空结果无法区分。
+          () => (groups === undefined ? 'degraded' : undefined),
         ),
       );
 
-      const [
-        memory,
-        pointerBooking,
-        realtimeGroups,
-        accountIdentity,
-        strategyConfig,
-        visualSheets,
-        geo,
-      ] = await Promise.all([
-        memoryPromise,
-        pointerBookingPromise,
-        realtimeGroupsPromise,
-        this.observeSource(
-          'account_identity',
-          () => this.loadAccountIdentity(params.botImId, warnings),
-          warnings,
-          sourceObservations,
-          ['account_identity'],
-        ),
-        this.observeSource(
-          'strategy',
-          () => this.strategyConfig.getActiveConfig(params.strategySource ?? 'released'),
-          warnings,
-          sourceObservations,
-        ),
-        this.observeSource(
-          'visual_facts',
-          () => this.loadVisualSheetIndex(params.sessionId, warnings),
-          warnings,
-          sourceObservations,
-          ['visual_facts'],
-        ),
-        this.observeSource(
-          'geocode',
-          () => this.loadLocationShareAnchor(input.currentUserMessage, warnings),
-          warnings,
-          sourceObservations,
-          ['geocode'],
-        ),
-      ]);
-
-      const [booking, groups, turnBrandContext] = await Promise.all([
-        this.observeSource(
-          'booking_enrichment',
-          () =>
+      // 依赖链直接挂在各自的前置上，不设第二道全量屏障：带外预约只等 memory + 指针，
+      // 品牌只等 memory，否则它们会被最慢的无关源（逆地理编码、视觉事实）拖住。
+      const bookingPromise = Promise.all([memoryPromise, pointerBookingPromise]).then(
+        ([memory, pointerBooking]) =>
+          observe('booking_enrichment', () =>
             this.bookingLoader.enrichOutOfBand(
               pointerBooking,
               memory,
               params,
               input.currentUserMessage,
             ),
-          warnings,
-          sourceObservations,
+          ),
+      );
+      const brandPromise = memoryPromise.then((memory) =>
+        observe('brand', () => this.deriveTurnBrandContext(params.contactName, memory, warnings)),
+      );
+
+      const [
+        memory,
+        realtimeGroups,
+        accountIdentity,
+        strategyConfig,
+        visualSheets,
+        geo,
+        booking,
+        groups,
+        turnBrandContext,
+      ] = await Promise.all([
+        memoryPromise,
+        realtimeGroupsPromise,
+        observe('account_identity', () => this.loadAccountIdentity(params.botImId, warnings)),
+        observe('strategy', () =>
+          this.strategyConfig.getActiveConfig(params.strategySource ?? 'released'),
         ),
+        observe('visual_facts', () => this.loadVisualSheetIndex(params.sessionId, warnings)),
+        observe('geocode', () => this.loadLocationShareAnchor(input.currentUserMessage, warnings)),
+        bookingPromise,
         groupsPromise,
-        this.observeSource(
-          'brand',
-          () => this.deriveTurnBrandContext(params.contactName, memory, warnings),
-          warnings,
-          sourceObservations,
-          ['brand'],
-        ),
+        brandPromise,
       ]);
 
       const snapshot: TurnSourceSnapshot = {
@@ -454,6 +218,9 @@ export class TurnDataLoaderService {
       this.emitSourceTelemetry(params.userId, 'success', startedAt, snapshot.sourceObservations);
       return snapshot;
     } catch (error) {
+      // 先让还在飞的源落地，再发失败事件：否则档案里只有最先拒绝的那个源，
+      // 排障时会把真正卡住的慢源（例如 Redis 停顿中的 memory）读成「没参与本轮」。
+      await Promise.allSettled(pending);
       this.emitSourceTelemetry(
         params.userId,
         'failure',
@@ -465,22 +232,27 @@ export class TurnDataLoaderService {
     }
   }
 
+  /**
+   * 单个外部源的观测包装。
+   *
+   * 降级判定优先级：调用方显式认领（`classify`）> 本源自己记过 warning > 值形态推断。
+   * 只有前两档能表达「读取失败所以为空」，值形态推断分不出空结果与失败降级。
+   */
   private async observeSource<T>(
     source: string,
     load: () => Promise<T> | T,
     warnings: TurnSourceWarning[],
     observations: TurnSourceLoadTrace[],
-    warningSources: TurnSourceWarning['source'][] = [],
+    classify?: (value: T) => TurnSourceLoadStatus | undefined,
   ): Promise<T> {
     const startedAt = Date.now();
     try {
       const value = await load();
-      const degraded = warningSources.some((warningSource) =>
-        warnings.some((warning) => warning.source === warningSource),
-      );
+      const selfDegraded =
+        isSelfWarningSource(source) && warnings.some((warning) => warning.source === source);
       observations.push({
         source,
-        status: degraded ? 'degraded' : classifySourceValue(value),
+        status: classify?.(value) ?? (selfDegraded ? 'degraded' : classifySourceValue(value)),
         durationMs: Date.now() - startedAt,
         observedAt: new Date().toISOString(),
       });
@@ -645,47 +417,6 @@ function classifySourceValue(value: unknown): TurnSourceLoadStatus {
     if (state === 'hidden') return 'degraded';
   }
   return 'success';
-}
-
-export function requiresFreshBookingContext(currentUserMessage: string | undefined): boolean {
-  if (!currentUserMessage) return false;
-  return /面试|预约|报名|改约|改期|改到|换(?:个|一)?时间|取消|不去|去不了|来不了|推迟|延期|迟到|到店|报到|入职|地址|位置|定位|导航|怎么走|找不到|搞错/u.test(
-    currentUserMessage,
-  );
-}
-
-function needsBookingLocationDetails(currentUserMessage: string | undefined): boolean {
-  return Boolean(
-    currentUserMessage &&
-      /面试|到店|报到|地址|位置|定位|导航|怎么走|找不到|搞错/u.test(currentUserMessage),
-  );
-}
-
-function resolveCandidatePhone(memory: TurnStartMemory): string | null {
-  const sessionPhone = memory.shortTerm.sessionState?.facts?.interview_info?.phone?.value;
-  const profileFact = memory.longTerm.semantic.profile?.phone;
-  const profilePhone = isUserProfileFactValue(profileFact) ? profileFact.value : undefined;
-  for (const candidate of [sessionPhone, profilePhone]) {
-    if (typeof candidate === 'string' && /^1\d{10}$/.test(candidate.trim())) {
-      return candidate.trim();
-    }
-  }
-  return null;
-}
-
-function buildSpongeTokenContext(params: GeneratorInvokeParams): SpongeTokenContext | undefined {
-  if (!params.botImId && !params.botUserId && !params.groupId) return undefined;
-  return {
-    botImId: params.botImId,
-    botUserId: params.botUserId,
-    groupId: params.groupId,
-  };
-}
-
-function normalizeJobId(value: unknown): number | null {
-  if (typeof value === 'number' && Number.isInteger(value) && value > 0) return value;
-  if (typeof value === 'string' && /^\d+$/.test(value)) return Number(value);
-  return null;
 }
 
 function sortSourceObservations(observations: TurnSourceLoadTrace[]): TurnSourceLoadTrace[] {

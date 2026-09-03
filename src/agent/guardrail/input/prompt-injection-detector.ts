@@ -87,13 +87,26 @@ export class PromptInjectionDetector {
     return { safe: true, detected: false };
   }
 
-  detectMessages(messages: { role: string; content: unknown }[]): PromptInjectionAssessment {
-    for (const message of messages) {
-      if (message.role !== 'user') continue;
-      const result = this.detect(extractText(message.content));
+  /**
+   * 扫本轮候选人原话（逐条）。
+   *
+   * 只认本批输入，不回扫历史窗口：同一条注入消息会在滚动窗口里停留数天，逐轮重扫
+   * 会把一次入侵放大成每轮一次告警 + 一行永久落库事件，且防护块在此期间一直挂着。
+   */
+  detectTexts(texts: readonly string[]): PromptInjectionAssessment {
+    for (const text of texts) {
+      const result = this.detect(text);
       if (result.detected) return result;
     }
     return { safe: true, detected: false };
+  }
+
+  detectMessages(messages: { role: string; content: unknown }[]): PromptInjectionAssessment {
+    return this.detectTexts(
+      messages
+        .filter((message) => message.role === 'user')
+        .map((message) => extractText(message.content)),
+    );
   }
 }
 

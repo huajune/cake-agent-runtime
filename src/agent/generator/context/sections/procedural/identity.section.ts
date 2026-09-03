@@ -17,7 +17,7 @@ export class IdentitySection implements PromptSection {
   readonly id = 'identity';
   readonly domain = 'teaching' as const;
   readonly slot = 'stable-instructions' as const;
-  readonly dynamic = true;
+  readonly dynamic = false;
 
   build(model: PromptModel) {
     const roleText = this.buildRoleText(model.strategy.roleSetting);

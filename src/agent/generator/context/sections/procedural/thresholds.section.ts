@@ -14,7 +14,7 @@ export class ThresholdsSection implements PromptSection {
   readonly id = 'thresholds';
   readonly domain = 'teaching' as const;
   readonly slot = 'strategy' as const;
-  readonly dynamic = true;
+  readonly dynamic = false;
 
   build(model: PromptModel) {
     return buildTextPromptBlock(this, this.buildThresholdsText(model.strategy.thresholds));

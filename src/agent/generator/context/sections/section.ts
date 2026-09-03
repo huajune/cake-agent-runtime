@@ -8,7 +8,12 @@ export interface PromptSection {
   readonly id: string;
   readonly domain: CorpusDomain;
   readonly slot: PromptSlot;
-  /** true 表示内容随回合变化，供 Prompt 观测列出动态块。 */
+  /**
+   * true 表示内容**随回合**变化，供 Prompt 观测区分稳定前缀与每轮增量（缓存分析口径）。
+   *
+   * 随策略配置或账号变化但跨轮字节稳定的段（身份、红线、阈值、全阶段一览、通道规范）
+   * 算 false——把它们标成 dynamic 会让「动态块」列表囊括整个前缀，指标就失去意义。
+   */
   readonly dynamic: boolean;
   /** 空数组表示本轮不生成该 Section。 */
   build(model: PromptModel): PromptCorpusBlock[];

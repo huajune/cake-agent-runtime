@@ -10,7 +10,7 @@ export class ChannelSection implements PromptSection {
   readonly id = 'channel';
   readonly domain = 'teaching' as const;
   readonly slot = 'stable-instructions' as const;
-  readonly dynamic = true;
+  readonly dynamic = false;
 
   build(model: PromptModel) {
     if (model.channelType === 'group') {

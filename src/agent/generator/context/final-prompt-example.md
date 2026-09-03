@@ -22,7 +22,7 @@ normalizeTurnInput()
       → memory.onTurnStart() + SnapshotEnrichmentService.enrich()
       → 策略 / 预约 / 群库 / 账号身份 / 视觉事实 / 定位并行读取
   → normalizeConversationWithCorpus()
-  → PromptInjectionDetector.detectMessages()
+  → PromptInjectionDetector.detectTexts()（只扫本批输入，不回扫历史窗口）
   → resolveTurnContext()（一次生成 Prompt / Tool 共享裁决视图）
   → ContextService.compose()（Section 渲染类型化视图）
   → ToolRuntimeBuilderService.build()
@@ -168,7 +168,7 @@ finalPrompt = compilePromptProgram({ model, sections }).rendered
 - 置信度和 `updatedAt` / `extractedAt` 归一时间键只在同一作用域内比较；时间缺失时保守保持。
 - 跨层同值只保留权威一处；异值保留胜者，并在 `[记忆冲突裁决]` 显示“档案记 X，本次称 Y”。
 - `turnHints` 与权威 facts 同值时去重，异值进入 `[本轮待确认线索]` 并标为“待确认更新”。
-- `TurnHintsSection` 缺少共享裁决视图时直接抛错，不允许渲染层另算一份裁决。
+- `TurnHintsSection` 只消费 Resolver 给的 `TurnHintsPromptView`（`current` / `pendingConfirmation` 两档），渲染层不再另算一份裁决。
 
 `MemorySection` 从类型化 `MemoryPromptView` 渲染的可能顺序是：
 

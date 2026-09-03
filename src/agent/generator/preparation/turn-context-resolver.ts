@@ -141,7 +141,10 @@ export function resolveTurnContext(input: {
     null;
   const promptModel: PromptModel = {
     scenario: params.scenario ?? 'candidate-consultation',
-    channelType: params.apiType === 'group' ? 'group' : 'private',
+    // 群聊判据只认 imRoomId（与渠道层 isGroupChat 同源）。apiType 是托管平台的
+    // 企业级/小组级 API 档位，小组级账号的 1:1 私聊同样带 apiType='group'——
+    // 用它判通道会给私聊注入「被 @ 才回复、隐私信息引导私聊」的群聊规范。
+    channelType: params.imRoomId ? 'group' : 'private',
     currentTimeText: formatCurrentTime(nowMs),
     identity: {
       botUserId: params.botUserId,

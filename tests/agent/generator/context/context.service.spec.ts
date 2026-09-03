@@ -201,6 +201,26 @@ describe('ContextService', () => {
     }
   });
 
+  it('keeps every scenario manifest already sorted by slot（manifest 即顺序真相）', () => {
+    // slot 排序只作恒等兜底：manifest 顺序一旦与 slot 顺序冲突，块会被静默挪位，
+    // 正是本次重构要消灭的那类问题。冲突时 compose 直接抛错。
+    for (const scenario of Object.keys(SCENARIO_PROMPT_MANIFEST)) {
+      expect(() => compose({ scenario, currentStage: 'trust_building' })).not.toThrow();
+    }
+  });
+
+  it('ships the input security block in every scenario（检测是场景无关的）', () => {
+    for (const [scenario, ids] of Object.entries(SCENARIO_PROMPT_MANIFEST)) {
+      expect(ids).toContain('input-guard');
+      const result = compose({
+        scenario,
+        currentStage: 'trust_building',
+        inputSecurityInstruction: '⚠️ 安全提示：测试防护指令。',
+      });
+      expect(result.promptBlocks.map((block) => block.id)).toContain('input-guard');
+    }
+  });
+
   it('composes candidate consultation in the adjudicated semantic order', async () => {
     expect(SCENARIO_PROMPT_MANIFEST['candidate-consultation']).toEqual([
       'identity',

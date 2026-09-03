@@ -67,11 +67,34 @@ export const SCENARIO_PROMPT_MANIFEST: Readonly<Record<string, readonly string[]
     'input-guard',
     'critical-turn-guard',
   ],
-  'group-operations': ['identity', 'datetime', 'channel'],
-  evaluation: ['identity'],
+  // 非默认场景同样要带输入安全块：检测/告警是场景无关的，只有防护指令按 manifest 发牌，
+  // 漏发等于「告警说已加固、模型没收到指令」。顺序与 slot 一致（见 assertManifestSlotOrder）。
+  'group-operations': ['identity', 'channel', 'datetime', 'input-guard'],
+  evaluation: ['identity', 'input-guard'],
 };
 
 export const DEFAULT_SCENARIO = 'candidate-consultation';
+
+/**
+ * manifest 顺序必须已经是 slot 顺序，排序只作恒等兜底。
+ *
+ * 否则「manifest 声明场景包含哪些 Section 且按此渲染」是假的：新 Section 填错 slot
+ * 会被静默挪走，正是本次重构要消灭的「块被悄悄移位」那一类问题。
+ */
+function assertOrderedBySlot(
+  ordered: readonly { section: PromptSection; manifestIndex: number }[],
+  scenario: string,
+): void {
+  for (let index = 1; index < ordered.length; index += 1) {
+    if (ordered[index].manifestIndex < ordered[index - 1].manifestIndex) {
+      throw new Error(
+        `Prompt manifest 顺序与 slot 顺序冲突（scenario=${scenario}）：` +
+          `${ordered[index].section.id}(slot=${ordered[index].section.slot}) 被 slot 排序挪到了 ` +
+          `${ordered[index - 1].section.id}(slot=${ordered[index - 1].section.slot}) 之后；请直接调整 manifest 顺序。`,
+      );
+    }
+  }
+}
 
 /** 确定性 Prompt 编译器：slot 排序、降维、顺序 hash 与逐块体积统一在这里。 */
 export function compilePromptProgram(input: {
@@ -94,6 +117,8 @@ export function compilePromptProgram(input: {
         PROMPT_SLOT_ORDER[left.section.slot] - PROMPT_SLOT_ORDER[right.section.slot] ||
         left.manifestIndex - right.manifestIndex,
     );
+
+  assertOrderedBySlot(orderedSections, input.model.scenario);
 
   const blockMetrics: PromptBlockMetric[] = [];
   const blocks: PromptCorpusBlock[] = [];
