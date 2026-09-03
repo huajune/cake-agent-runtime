@@ -2,9 +2,9 @@ import {
   StageOverviewSection,
   StageStrategySection,
 } from '@agent/generator/context/sections/procedural/stage-strategy.section';
-import { PromptContext } from '@agent/generator/context/sections/section.interface';
-import { StrategyConfigRecord } from '@biz/strategy/entities/strategy-config.entity';
 import { StageGoalConfig } from '@biz/strategy/types/strategy.types';
+import type { PromptModel } from '@agent/generator/context/context.types';
+import { promptModelOf, renderSection } from '../../../../helpers/prompt-model.fixture';
 
 describe('StageStrategySection', () => {
   const section = new StageStrategySection();
@@ -21,27 +21,31 @@ describe('StageStrategySection', () => {
     ...overrides,
   });
 
-  const makeCtx = (currentStage?: string): PromptContext => ({
-    scenario: 'candidate-consultation',
-    channelType: 'private',
-    currentStage,
-    strategyConfig: {
-      stage_goals: {
-        stages: [
-          makeStage(),
-          makeStage({
-            stage: 'job_consultation',
-            label: '岗位咨询',
-            description: '根据候选人意向匹配岗位',
-            primaryGoal: '回答岗位问题',
-          }),
-        ],
+  const makeCtx = (currentStage?: string): PromptModel => {
+    const stages = [
+      makeStage(),
+      makeStage({
+        stage: 'job_consultation',
+        label: '岗位咨询',
+        description: '根据候选人意向匹配岗位',
+        primaryGoal: '回答岗位问题',
+      }),
+    ];
+    return promptModelOf({
+      strategy: {
+        ...promptModelOf().strategy,
+        stages,
+        currentStage: currentStage
+          ? (stages.find((stage) => stage.stage === currentStage) ?? null)
+          : null,
       },
-    } as StrategyConfigRecord,
-  });
+    });
+  };
+  const build = (sectionToBuild: StageStrategySection | StageOverviewSection, model: PromptModel) =>
+    renderSection(sectionToBuild, model);
 
   it('should format current stage strategy with all fields', () => {
-    const block = section.build(makeCtx('trust_building'));
+    const block = build(section, makeCtx('trust_building'));
 
     expect(block).toContain('[当前阶段策略]');
     expect(block).toContain('trust_building — 建立信任');
@@ -52,8 +56,8 @@ describe('StageStrategySection', () => {
   });
 
   it('keeps the all-stage overview byte-stable across current stages', () => {
-    const trustBlock = overviewSection.build(makeCtx('trust_building'));
-    const consultationBlock = overviewSection.build(makeCtx('job_consultation'));
+    const trustBlock = build(overviewSection, makeCtx('trust_building'));
+    const consultationBlock = build(overviewSection, makeCtx('job_consultation'));
 
     expect(trustBlock).toBe(consultationBlock);
     expect(trustBlock).toContain('[所有阶段概览]');
@@ -65,21 +69,19 @@ describe('StageStrategySection', () => {
   });
 
   it('should include advance stage hint', () => {
-    const block = overviewSection.build(makeCtx());
+    const block = build(overviewSection, makeCtx());
 
     expect(block).toContain('advance_stage');
     expect(block).toContain('先单独调用');
     expect(block).toContain('effectiveStageStrategy');
   });
 
-  it('should default to first stage when currentStage is undefined', () => {
-    const block = section.build(makeCtx());
-
-    expect(block).toContain('阶段: trust_building');
+  it('renders no current-stage block when the resolver supplied no stage', () => {
+    expect(build(section, makeCtx())).toBe('');
   });
 
   it('should render the correct current stage without duplicating the static overview', () => {
-    const block = section.build(makeCtx('job_consultation'));
+    const block = build(section, makeCtx('job_consultation'));
 
     expect(block).toContain('阶段: job_consultation');
     expect(block).not.toContain('[所有阶段概览]');
@@ -88,10 +90,10 @@ describe('StageStrategySection', () => {
 
   it('should handle string ctaStrategy', () => {
     const ctx = makeCtx();
-    (ctx.strategyConfig.stage_goals.stages[0] as StageGoalConfig).ctaStrategy =
-      '单条策略' as unknown as string[];
+    (ctx.strategy.stages[0] as StageGoalConfig).ctaStrategy = '单条策略' as unknown as string[];
+    ctx.strategy.currentStage = ctx.strategy.stages[0];
 
-    const block = section.build(ctx);
+    const block = build(section, ctx);
 
     expect(block).toContain('单条策略');
   });

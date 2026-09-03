@@ -47,18 +47,19 @@ export interface TurnContext
 }
 
 /**
- * 触发源：被动（候选人消息）/ 主动（reengagement 复聊）。
- * 两者汇入同一个 runTurn（渠道无关）。
+ * 被动入站回合。
+ *
+ * 主动复聊由 reengagement 域的 ReengagementAgent 独立承载，不能伪装成 user message
+ * 进入本协议。这里直接表达真实输入，避免触发类型分支扩散到 runner/generator。
  */
-export type TurnTrigger =
-  | { kind: 'inbound'; userMessage: string; images?: string[] }
-  | { kind: 'proactive'; directive: string; scenarioCode: string };
-
-export interface TurnRequest {
+export interface InboundTurnRequest {
   sessionRef: SessionRef;
-  trigger: TurnTrigger;
+  input: {
+    text: string;
+    images?: string[];
+  };
   context?: TurnContext;
-  /** 物理工具集模式；主动回合默认 readonly（禁副作用工具）。 */
+  /** 物理工具集模式；生产入站默认使用场景工具集。 */
   toolMode?: GeneratorToolMode;
   modelId?: string;
 }
@@ -88,7 +89,7 @@ export interface TurnOutcome {
    * meta_narration 静默（真人插话场景不自动派人工，仅落审查档案）。
    */
   disposition?: 'side_effects' | 'silent';
-  /** reengagement/观测用：本回合命中的主动场景码。 */
+  /** reengagement 独立链路的观测字段；主 Runner 不写入。 */
   scenarioCode?: string;
   /** kind==='guardrail_blocked' 时携带守卫归因，phase 区分入站/出站。 */
   guardrail?: {

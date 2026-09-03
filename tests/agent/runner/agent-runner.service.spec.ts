@@ -2,7 +2,7 @@ import { AgentRunnerService } from '@agent/runner/agent-runner.service';
 import type { GeneratorRunResult } from '@agent/generator/generator.types';
 import { CallerKind } from '@enums/agent.enum';
 
-describe('AgentRunnerService.runTurn', () => {
+describe('AgentRunnerService.runInboundTurn', () => {
   let generator: { invoke: jest.Mock };
   let outputGuard: { check: jest.Mock };
   let inputGuard: { precheckInputRisk: jest.Mock; evaluate: jest.Mock };
@@ -55,26 +55,6 @@ describe('AgentRunnerService.runTurn', () => {
     );
   });
 
-  it('proactive turn injects directive + readonly toolMode and returns a reply outcome', async () => {
-    generator.invoke.mockResolvedValue(makeResult({ text: '在吗，之前看的岗位还考虑吗？' }));
-
-    const outcome = await service.runTurn({
-      sessionRef,
-      trigger: {
-        kind: 'proactive',
-        directive: '提醒候选人开场未回复',
-        scenarioCode: 'opening_no_reply',
-      },
-    });
-
-    const params = generator.invoke.mock.calls[0][0];
-    expect(params.toolMode).toBe('readonly');
-    expect(params.proactiveDirective).toBe('提醒候选人开场未回复');
-    expect(outcome.kind).toBe('reply');
-    expect(outcome.reply?.text).toContain('考虑');
-    expect(outcome.scenarioCode).toBe('opening_no_reply');
-  });
-
   it('sanitizes outbound reply text in runner outcome before any channel delivery', async () => {
     const rawText = `<think>内部推理</think>
 **收到**，[表情消息] 好的
@@ -94,9 +74,9 @@ describe('AgentRunnerService.runTurn', () => {
       }),
     );
 
-    const outcome = await service.runTurn({
+    const outcome = await service.runInboundTurn({
       sessionRef,
-      trigger: { kind: 'inbound', userMessage: '资料发你了' },
+      input: { text: '资料发你了' },
     });
 
     const expected = `收到，好的
@@ -126,12 +106,10 @@ describe('AgentRunnerService.runTurn', () => {
       deterministicReply: '徐汇区还有一家，我继续帮你核实',
     });
 
-    const outcome = await service.runTurn({
+    const outcome = await service.runInboundTurn({
       sessionRef,
-      trigger: {
-        kind: 'inbound',
-        userMessage:
-          '[图片消息]\n[引用 招聘经理：这家排不上]\n那徐汇呢\n[消息发送时间：2026-08-13 10:24:32]',
+      input: {
+        text: '[图片消息]\n[引用 招聘经理：这家排不上]\n那徐汇呢\n[消息发送时间：2026-08-13 10:24:32]',
       },
     });
 
@@ -151,9 +129,9 @@ describe('AgentRunnerService.runTurn', () => {
       }),
     );
 
-    const outcome = await service.runTurn({
+    const outcome = await service.runInboundTurn({
       sessionRef,
-      trigger: { kind: 'proactive', directive: 'x', scenarioCode: 'opening_no_reply' },
+      input: { text: '先不用回复' },
     });
 
     expect(outcome.kind).toBe('skipped');
@@ -184,9 +162,9 @@ describe('AgentRunnerService.runTurn', () => {
       }),
     );
 
-    const outcome = await service.runTurn({
+    const outcome = await service.runInboundTurn({
       sessionRef,
-      trigger: { kind: 'inbound', userMessage: '帮我改约' },
+      input: { text: '帮我改约' },
       context: { messageId: 'm1' },
     });
 
@@ -226,9 +204,9 @@ describe('AgentRunnerService.runTurn', () => {
       ],
     });
 
-    const outcome = await service.runTurn({
+    const outcome = await service.runInboundTurn({
       sessionRef,
-      trigger: { kind: 'inbound', userMessage: '你们就是骗子' },
+      input: { text: '你们就是骗子' },
       context: {
         messageId: 'm-risk',
         contactName: '张三',
@@ -285,9 +263,9 @@ describe('AgentRunnerService.runTurn', () => {
   it('inbound input guard scan text filters visual placeholder lines inside runner', async () => {
     generator.invoke.mockResolvedValue(makeResult({ text: '收到' }));
 
-    await service.runTurn({
+    await service.runInboundTurn({
       sessionRef,
-      trigger: { kind: 'inbound', userMessage: '[图片消息]\n你好\n[表情消息]' },
+      input: { text: '[图片消息]\n你好\n[表情消息]' },
     });
 
     expect(inputGuard.evaluate).toHaveBeenCalledWith(
@@ -314,9 +292,9 @@ describe('AgentRunnerService.runTurn', () => {
       }),
     );
 
-    const outcome = await service.runTurn({
+    const outcome = await service.runInboundTurn({
       sessionRef,
-      trigger: { kind: 'inbound', userMessage: '明天去不了，帮我改一下' },
+      input: { text: '明天去不了，帮我改一下' },
       context: { messageId: 'm1' },
     });
 
@@ -338,9 +316,9 @@ describe('AgentRunnerService.runTurn', () => {
       }),
     );
 
-    const outcome = await service.runTurn({
+    const outcome = await service.runInboundTurn({
       sessionRef,
-      trigger: { kind: 'inbound', userMessage: '约面试' },
+      input: { text: '约面试' },
     });
 
     expect(outcome.kind).toBe('handoff');
@@ -372,9 +350,9 @@ describe('AgentRunnerService.runTurn', () => {
       }),
     );
 
-    const outcome = await service.runTurn({
+    const outcome = await service.runInboundTurn({
       sessionRef,
-      trigger: { kind: 'inbound', userMessage: '确定改到明天上午10点' },
+      input: { text: '确定改到明天上午10点' },
       context: { messageId: 'm-modify-owner-gate' },
     });
 
@@ -391,26 +369,14 @@ describe('AgentRunnerService.runTurn', () => {
     ]);
   });
 
-  it('generator failure collapses to skipped (reengagement resilience)', async () => {
-    generator.invoke.mockRejectedValue(new Error('messages 为空'));
-
-    const outcome = await service.runTurn({
-      sessionRef,
-      trigger: { kind: 'proactive', directive: 'x', scenarioCode: 'opening_no_reply' },
-    });
-
-    expect(outcome.kind).toBe('skipped');
-    expect(outcome.scenarioCode).toBe('opening_no_reply');
-  });
-
   it('inbound generator failure rethrows (channel fallback owns it, no silent skip)', async () => {
     const boom = new Error('llm down');
     generator.invoke.mockRejectedValue(boom);
 
     await expect(
-      service.runTurn({
+      service.runInboundTurn({
         sessionRef,
-        trigger: { kind: 'inbound', userMessage: '你好' },
+        input: { text: '你好' },
       }),
     ).rejects.toThrow('llm down');
   });
@@ -437,9 +403,9 @@ describe('AgentRunnerService.runTurn', () => {
       })
       .mockResolvedValueOnce(passDecision);
 
-    const outcome = await service.runTurn({
+    const outcome = await service.runInboundTurn({
       sessionRef,
-      trigger: { kind: 'inbound', userMessage: '有什么岗位' },
+      input: { text: '有什么岗位' },
     });
 
     expect(outcome.kind).toBe('reply');
@@ -486,9 +452,9 @@ describe('AgentRunnerService.runTurn', () => {
       })
       .mockResolvedValueOnce(passDecision);
 
-    const outcome = await service.runTurn({
+    const outcome = await service.runInboundTurn({
       sessionRef,
-      trigger: { kind: 'inbound', userMessage: '这是周接?' },
+      input: { text: '这是周接?' },
       context: { messageId: 'trace-fence-strip-1' },
     });
 
@@ -536,9 +502,9 @@ describe('AgentRunnerService.runTurn', () => {
       })
       .mockResolvedValueOnce(passDecision);
 
-    const outcome = await service.runTurn({
+    const outcome = await service.runInboundTurn({
       sessionRef,
-      trigger: { kind: 'inbound', userMessage: '附近有岗位吗' },
+      input: { text: '附近有岗位吗' },
       context: { messageId: 'trace-reasoning-strip-1' },
     });
 
@@ -581,9 +547,9 @@ describe('AgentRunnerService.runTurn', () => {
       })
       .mockResolvedValueOnce(passDecision);
 
-    const outcome = await service.runTurn({
+    const outcome = await service.runInboundTurn({
       sessionRef,
-      trigger: { kind: 'inbound', userMessage: '还是要我自己去办' },
+      input: { text: '还是要我自己去办' },
       context: { messageId: 'trace-self-check-repair-1' },
     });
 
@@ -614,9 +580,9 @@ describe('AgentRunnerService.runTurn', () => {
       repairMode: 'rewrite',
     });
 
-    const outcome = await service.runTurn({
+    const outcome = await service.runInboundTurn({
       sessionRef,
-      trigger: { kind: 'inbound', userMessage: '在吗' },
+      input: { text: '在吗' },
       context: { messageId: 'trace-reasoning-silence-1' },
     });
 
@@ -660,9 +626,9 @@ describe('AgentRunnerService.runTurn', () => {
       })
       .mockResolvedValueOnce(passDecision);
 
-    const outcome = await service.runTurn({
+    const outcome = await service.runInboundTurn({
       sessionRef,
-      trigger: { kind: 'inbound', userMessage: '罗湖谢谢' },
+      input: { text: '罗湖谢谢' },
       context: { messageId: 'trace-envelope-unwrap-1' },
     });
 
@@ -703,9 +669,9 @@ describe('AgentRunnerService.runTurn', () => {
       repairMode: 'rewrite',
     });
 
-    const outcome = await service.runTurn({
+    const outcome = await service.runInboundTurn({
       sessionRef,
-      trigger: { kind: 'inbound', userMessage: '培训几天' },
+      input: { text: '培训几天' },
       context: { messageId: 'trace-envelope-tooluse-1' },
     });
 
@@ -743,9 +709,9 @@ describe('AgentRunnerService.runTurn', () => {
       })
       .mockResolvedValueOnce(passDecision);
 
-    const outcome = await service.runTurn({
+    const outcome = await service.runInboundTurn({
       sessionRef,
-      trigger: { kind: 'inbound', userMessage: '有岗位吗' },
+      input: { text: '有岗位吗' },
       context: { messageId: 'trace-fence-mixed-1' },
     });
 
@@ -778,9 +744,9 @@ describe('AgentRunnerService.runTurn', () => {
       repairMode: 'rewrite',
     });
 
-    const outcome = await service.runTurn({
+    const outcome = await service.runInboundTurn({
       sessionRef,
-      trigger: { kind: 'inbound', userMessage: '广东省佛山市顺德区大良' },
+      input: { text: '广东省佛山市顺德区大良' },
       context: { messageId: 'trace-tool-artifact-1' },
     });
 
@@ -841,9 +807,9 @@ describe('AgentRunnerService.runTurn', () => {
       })
       .mockResolvedValueOnce(passDecision);
 
-    const outcome = await service.runTurn({
+    const outcome = await service.runInboundTurn({
       sessionRef,
-      trigger: { kind: 'inbound', userMessage: '那有日结的岗吗' },
+      input: { text: '那有日结的岗吗' },
       context: { messageId: 'trace-fence-techdoc-1' },
     });
 
@@ -873,9 +839,9 @@ describe('AgentRunnerService.runTurn', () => {
       repairMode: 'rewrite',
     });
 
-    const outcome = await service.runTurn({
+    const outcome = await service.runInboundTurn({
       sessionRef,
-      trigger: { kind: 'inbound', userMessage: '有的' },
+      input: { text: '有的' },
       context: { messageId: 'trace-meta-narration-1' },
     });
 
@@ -923,9 +889,9 @@ describe('AgentRunnerService.runTurn', () => {
       repairMode: 'rewrite',
     });
 
-    const outcome = await service.runTurn({
+    const outcome = await service.runInboundTurn({
       sessionRef,
-      trigger: { kind: 'inbound', userMessage: '有什么岗位' },
+      input: { text: '有什么岗位' },
     });
 
     expect(outcome.kind).toBe('guardrail_blocked');
@@ -984,9 +950,9 @@ describe('AgentRunnerService.runTurn', () => {
       })
       .mockResolvedValueOnce(passDecision);
 
-    const outcome = await service.runTurn({
+    const outcome = await service.runInboundTurn({
       sessionRef,
-      trigger: { kind: 'inbound', userMessage: '你好' },
+      input: { text: '你好' },
     });
 
     expect(outcome.kind).toBe('reply');
@@ -1043,9 +1009,9 @@ describe('AgentRunnerService.runTurn', () => {
       })
       .mockResolvedValueOnce(passDecision);
 
-    const outcome = await service.runTurn({
+    const outcome = await service.runInboundTurn({
       sessionRef,
-      trigger: { kind: 'inbound', userMessage: '我能报名吗' },
+      input: { text: '我能报名吗' },
     });
 
     expect(outcome.kind).toBe('reply');
@@ -1090,9 +1056,9 @@ describe('AgentRunnerService.runTurn', () => {
       })
       .mockResolvedValueOnce(passDecision);
 
-    const outcome = await service.runTurn({
+    const outcome = await service.runInboundTurn({
       sessionRef,
-      trigger: { kind: 'inbound', userMessage: '附近有什么岗位' },
+      input: { text: '附近有什么岗位' },
     });
 
     expect(outcome.kind).toBe('reply');
@@ -1139,9 +1105,9 @@ describe('AgentRunnerService.runTurn', () => {
         repairToolNames: [],
       });
 
-    const outcome = await service.runTurn({
+    const outcome = await service.runInboundTurn({
       sessionRef,
-      trigger: { kind: 'inbound', userMessage: '专业：医学' },
+      input: { text: '专业：医学' },
     });
 
     expect(outcome.kind).toBe('guardrail_blocked');
@@ -1172,9 +1138,9 @@ describe('AgentRunnerService.runTurn', () => {
       })
       .mockResolvedValueOnce(passDecision);
 
-    const outcome = await service.runTurn({
+    const outcome = await service.runInboundTurn({
       sessionRef,
-      trigger: { kind: 'inbound', userMessage: '[图片 messageId=img-1]' },
+      input: { text: '[图片 messageId=img-1]' },
       context: { imageMessageIds: ['img-1'] },
     });
 
@@ -1204,9 +1170,9 @@ describe('AgentRunnerService.runTurn', () => {
       })
       .mockResolvedValueOnce(passDecision);
 
-    const outcome = await service.runTurn({
+    const outcome = await service.runInboundTurn({
       sessionRef,
-      trigger: { kind: 'inbound', userMessage: '帮我约面试' },
+      input: { text: '帮我约面试' },
     });
 
     expect(outcome.kind).toBe('reply');
@@ -1235,7 +1201,6 @@ describe('AgentRunnerService.runTurn', () => {
         sessionId: 's1',
       },
       review: { userMessage: '你好', chatId: 's1', userId: 'u1' },
-      trigger: { kind: 'inbound', userMessage: '你好' },
       sessionRef,
       messageId: 'm1',
     });
@@ -1319,9 +1284,9 @@ describe('AgentRunnerService.runTurn', () => {
     };
     outputGuard.check.mockResolvedValue(reviseDecision);
 
-    const outcome = await service.runTurn({
+    const outcome = await service.runInboundTurn({
       sessionRef,
-      trigger: { kind: 'inbound', userMessage: '约面试' },
+      input: { text: '约面试' },
     });
 
     expect(outcome.kind).toBe('guardrail_blocked');
@@ -1357,9 +1322,9 @@ describe('AgentRunnerService.runTurn', () => {
     };
     outputGuard.check.mockResolvedValue(p1ReviseDecision);
 
-    const outcome = await service.runTurn({
+    const outcome = await service.runInboundTurn({
       sessionRef,
-      trigger: { kind: 'inbound', userMessage: '我在江宁区' },
+      input: { text: '我在江宁区' },
       context: { messageId: 'msg-failopen' },
     });
 
@@ -1398,9 +1363,9 @@ describe('AgentRunnerService.runTurn', () => {
       .mockResolvedValueOnce(makeDecision(['booking_receipt_mismatch']))
       .mockResolvedValueOnce(makeDecision(['brand_alias_fuzzy_match_ignored']));
 
-    const outcome = await service.runTurn({
+    const outcome = await service.runInboundTurn({
       sessionRef,
-      trigger: { kind: 'inbound', userMessage: '我在江宁区' },
+      input: { text: '我在江宁区' },
       context: { messageId: 'msg-failopen-worse' },
     });
 
@@ -1461,9 +1426,9 @@ describe('AgentRunnerService.runTurn', () => {
         repairMode: 'rewrite' as const,
       });
 
-    const outcome = await service.runTurn({
+    const outcome = await service.runInboundTurn({
       sessionRef,
-      trigger: { kind: 'inbound', userMessage: '怎么报名' },
+      input: { text: '怎么报名' },
       context: { messageId: 'msg-regression' },
     });
 
@@ -1513,9 +1478,9 @@ describe('AgentRunnerService.runTurn', () => {
       })
       .mockResolvedValueOnce(passDecision);
 
-    const outcome = await service.runTurn({
+    const outcome = await service.runInboundTurn({
       sessionRef,
-      trigger: { kind: 'inbound', userMessage: '怎么报名' },
+      input: { text: '怎么报名' },
       context: { messageId: 'msg-non-sendable-regression' },
     });
 
@@ -1567,9 +1532,9 @@ describe('AgentRunnerService.runTurn', () => {
       })
       .mockResolvedValueOnce(passDecision);
 
-    const outcome = await service.runTurn({
+    const outcome = await service.runInboundTurn({
       sessionRef,
-      trigger: { kind: 'inbound', userMessage: '有没有白天班' },
+      input: { text: '有没有白天班' },
       context: { messageId: 'msg-leak-rewrite-delivered' },
     });
 
@@ -1603,9 +1568,9 @@ describe('AgentRunnerService.runTurn', () => {
       repairMode: 'rewrite' as const,
     });
 
-    const outcome = await service.runTurn({
+    const outcome = await service.runInboundTurn({
       sessionRef,
-      trigger: { kind: 'inbound', userMessage: '约面试' },
+      input: { text: '约面试' },
     });
 
     expect(outcome.kind).toBe('guardrail_blocked');
@@ -1634,9 +1599,9 @@ describe('AgentRunnerService.runTurn', () => {
       repairMode: 'rewrite',
     });
 
-    const outcome = await service.runTurn({
+    const outcome = await service.runInboundTurn({
       sessionRef,
-      trigger: { kind: 'inbound', userMessage: '花桥中骏有岗位吗' },
+      input: { text: '花桥中骏有岗位吗' },
       context: { messageId: 'msg-dangling' },
     });
 
@@ -1675,9 +1640,9 @@ describe('AgentRunnerService.runTurn', () => {
       repairMode: 'rewrite',
     });
 
-    const outcome = await service.runTurn({
+    const outcome = await service.runInboundTurn({
       sessionRef,
-      trigger: { kind: 'inbound', userMessage: '我能报名吗' },
+      input: { text: '我能报名吗' },
       context: { messageId: 'msg-high-dangling' },
     });
 
@@ -1722,9 +1687,9 @@ describe('AgentRunnerService.runTurn', () => {
         repairMode: 'rewrite',
       });
 
-    const outcome = await service.runTurn({
+    const outcome = await service.runInboundTurn({
       sessionRef,
-      trigger: { kind: 'inbound', userMessage: '松江这边有吗' },
+      input: { text: '松江这边有吗' },
       context: { messageId: 'msg-leak-failopen' },
     });
 
@@ -1763,9 +1728,9 @@ describe('AgentRunnerService.runTurn', () => {
         overrideMarkers: ['override:off:quota_promise'],
       });
 
-      await service.runTurn({
+      await service.runInboundTurn({
         sessionRef,
-        trigger: { kind: 'inbound', userMessage: '现在还能报吗' },
+        input: { text: '现在还能报吗' },
         context: { messageId: 'msg-hard-rule-override' },
       });
 
@@ -1783,9 +1748,9 @@ describe('AgentRunnerService.runTurn', () => {
       replyRepairAgent.repair.mockResolvedValueOnce('重写后的回复');
       outputGuard.check.mockResolvedValueOnce(reviseDecision).mockResolvedValueOnce(passDecision);
 
-      await service.runTurn({
+      await service.runInboundTurn({
         sessionRef,
-        trigger: { kind: 'inbound', userMessage: '西城区' },
+        input: { text: '西城区' },
         context: { messageId: 'msg-1' },
       });
 
@@ -1822,9 +1787,9 @@ describe('AgentRunnerService.runTurn', () => {
         })
         .mockResolvedValueOnce(passDecision);
 
-      await service.runTurn({
+      await service.runInboundTurn({
         sessionRef,
-        trigger: { kind: 'inbound', userMessage: 'hi' },
+        input: { text: 'hi' },
         context: { messageId: 'msg-2' },
       });
 
@@ -1843,9 +1808,9 @@ describe('AgentRunnerService.runTurn', () => {
       // pass 且无 rule 命中：不写档案
       generator.invoke.mockResolvedValueOnce(makeResult({ text: '正常回复' }));
       outputGuard.check.mockResolvedValueOnce(passDecision);
-      await service.runTurn({
+      await service.runInboundTurn({
         sessionRef,
-        trigger: { kind: 'inbound', userMessage: 'hi' },
+        input: { text: 'hi' },
         context: { messageId: 'msg-3' },
       });
       expect(guardrailReviews.recordReview).not.toHaveBeenCalled();
@@ -1854,7 +1819,7 @@ describe('AgentRunnerService.runTurn', () => {
       generator.invoke.mockResolvedValueOnce(makeResult({ text: '首版' }));
       replyRepairAgent.repair.mockResolvedValueOnce('重写版');
       outputGuard.check.mockResolvedValueOnce(reviseDecision).mockResolvedValueOnce(passDecision);
-      await service.runTurn({ sessionRef, trigger: { kind: 'inbound', userMessage: 'hi' } });
+      await service.runInboundTurn({ sessionRef, input: { text: 'hi' } });
       expect(guardrailReviews.recordReview).not.toHaveBeenCalled();
     });
 
@@ -1863,9 +1828,9 @@ describe('AgentRunnerService.runTurn', () => {
       replyRepairAgent.repair.mockResolvedValueOnce('v2 仍有问题');
       outputGuard.check.mockResolvedValue({ ...reviseDecision, riskLevel: 'high' as const });
 
-      await service.runTurn({
+      await service.runInboundTurn({
         sessionRef,
-        trigger: { kind: 'inbound', userMessage: '约面试' },
+        input: { text: '约面试' },
         context: { messageId: 'msg-4' },
       });
 

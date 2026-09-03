@@ -6,28 +6,11 @@
  */
 
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { readFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join } from 'path';
-import { StrategyConfigService as BizStrategyConfigService } from '@biz/strategy/services/strategy-config.service';
-import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
-import { GroupContext } from '@biz/group-task/group-task.types';
-import { normalizeCityName as normalizeCity } from '@resolution/geo';
-import { unwrapSessionFacts, type SessionFacts } from '@memory/short-term/short-term.types';
-import type { TurnHintFieldPath, TurnHints } from '@resolution/turn-hints/turn-hint.types';
-import type { LaborFormIntentDecision } from '@resolution/labor-form';
-import type { SessionBrandState } from '@resolution/brand/brand-resolution.types';
-import { StrategyConfigRecord } from '@biz/strategy/entities/strategy-config.entity';
-import { StageGoalConfig, Threshold } from '@biz/strategy/types/strategy.types';
-import { formatCurrentTime } from '@infra/utils/date.util';
-import {
-  buildPromptSectionBlocks,
-  PromptSection,
-  PromptContext,
-  AccountIdentity,
-  renderPromptBlocks,
-} from './sections/section.interface';
+import { createHash } from 'node:crypto';
+import { renderPromptBlocks, type PromptSection } from './sections/section';
 import type { PromptCorpusBlock } from '@shared-types/corpus.types';
 import { IdentitySection } from './sections/procedural/identity.section';
 import { RedLinesSection } from './sections/procedural/red-lines.section';
@@ -42,46 +25,131 @@ import { MemorySection } from './sections/semantic/memory.section';
 import { TurnHintsSection } from './sections/working/turn-hints.section';
 import { HardConstraintsSection } from './sections/working/hard-constraints.section';
 import { GroupInventorySection } from './sections/working/group-inventory.section';
-import { SCENARIO_SECTIONS, DEFAULT_SCENARIO } from './scenarios/scenario.registry';
-import { StaticSection } from './sections/static.section';
-import { FinalCheckSection } from './sections/procedural/final-check.section';
-import type { ModelMessage } from 'ai';
+import { StaticSection } from './sections/section';
+import {
+  CriticalTurnGuardSection,
+  FinalCheckSection,
+} from './sections/procedural/final-check.section';
+import { InputSecuritySection } from './sections/procedural/input-security.section';
+import type {
+  ComposeResult,
+  PromptBlockMetric,
+  PromptModel,
+  PromptProgram,
+  PromptSlot,
+} from './context.types';
 
-export interface ComposeParams {
-  scenario?: string;
-  channelType?: 'private' | 'group';
-  currentStage?: string;
-  memoryBlock?: string;
-  /** 会话记忆中的已确认提取结果（带信封的存储态）；供 TurnHintsSection 做冲突比对。 */
-  sessionFacts?: SessionFacts | null;
-  /** 本轮前置识别得到的高置信结果；由 TurnHintsSection 拆分/渲染。 */
-  turnHints?: TurnHints | null;
-  /** 渲染层裁决后的本轮增量提示；不影响工具/台账消费的原 turnHints。 */
-  displayTurnHints?: TurnHints | null;
-  /** 与跨层权威 facts 异值、需进入待确认块的字段。 */
-  pendingTurnHintFields?: readonly TurnHintFieldPath[];
-  /** 本轮候选人消息原文（逐条，与规则轨输入同源）；turn-hints 的原话渲染判据。 */
-  currentTurnTexts?: readonly string[];
-  /** 本轮合并后的候选人消息；critical-turn-guard current 规则输入。 */
-  currentUserMessage?: string;
-  /** 含短期近邻窗口的归一化消息；critical-turn-guard combined 规则输入。 */
-  normalizedMessages?: readonly ModelMessage[];
-  /** 当前消息对用工形式的确定性 set/clear/ignore 决策。 */
-  currentLaborFormIntent?: LaborFormIntentDecision;
-  /** 本轮生效的会话品牌状态；turn-hints / hard-constraints 的品牌口径数据源。 */
-  sessionBrandState?: SessionBrandState | null;
-  /** 托管账号身份（昵称/性别/内部标识）；IdentitySection 账号身份锚定用。 */
-  accountIdentity?: AccountIdentity;
-  /** 策略来源：wecom 读 released，test 读 testing，默认 released */
-  strategySource?: 'released' | 'testing';
+export const PROMPT_SLOT_ORDER: Readonly<Record<PromptSlot, number>> = {
+  'stable-instructions': 10,
+  strategy: 20,
+  evidence: 30,
+  'working-context': 40,
+  'final-recitation': 50,
+  'input-security': 60,
+  'critical-guard': 70,
+};
+
+export const SCENARIO_PROMPT_MANIFEST: Readonly<Record<string, readonly string[]>> = {
+  'candidate-consultation': [
+    'identity',
+    'base-manual',
+    'channel',
+    'stage-overview',
+    'red-lines',
+    'thresholds',
+    'memory',
+    'turn-hints',
+    'hard-constraints',
+    'datetime',
+    'group-inventory',
+    'stage-strategy',
+    'final-check',
+    'input-guard',
+    'critical-turn-guard',
+  ],
+  // 非默认场景同样要带输入安全块：检测/告警是场景无关的，只有防护指令按 manifest 发牌，
+  // 漏发等于「告警说已加固、模型没收到指令」。顺序与 slot 一致（见 assertManifestSlotOrder）。
+  'group-operations': ['identity', 'channel', 'datetime', 'input-guard'],
+  evaluation: ['identity', 'input-guard'],
+};
+
+export const DEFAULT_SCENARIO = 'candidate-consultation';
+
+/**
+ * manifest 顺序必须已经是 slot 顺序，排序只作恒等兜底。
+ *
+ * 否则「manifest 声明场景包含哪些 Section 且按此渲染」是假的：新 Section 填错 slot
+ * 会被静默挪走，正是本次重构要消灭的「块被悄悄移位」那一类问题。
+ */
+function assertOrderedBySlot(
+  ordered: readonly { section: PromptSection; manifestIndex: number }[],
+  scenario: string,
+): void {
+  for (let index = 1; index < ordered.length; index += 1) {
+    if (ordered[index].manifestIndex < ordered[index - 1].manifestIndex) {
+      throw new Error(
+        `Prompt manifest 顺序与 slot 顺序冲突（scenario=${scenario}）：` +
+          `${ordered[index].section.id}(slot=${ordered[index].section.slot}) 被 slot 排序挪到了 ` +
+          `${ordered[index - 1].section.id}(slot=${ordered[index - 1].section.slot}) 之后；请直接调整 manifest 顺序。`,
+      );
+    }
+  }
 }
 
-export interface ComposeResult {
-  systemPrompt: string;
-  /** StruQ scaffold：降为 systemPrompt 前仍保留 teaching/evidence/tool_result 标签。 */
-  promptBlocks: PromptCorpusBlock[];
-  stageGoals: Record<string, StageGoalConfig>;
-  thresholds: Threshold[];
+/** 确定性 Prompt 编译器：slot 排序、降维、顺序 hash 与逐块体积统一在这里。 */
+export function compilePromptProgram(input: {
+  model: PromptModel;
+  sections: ReadonlyMap<string, PromptSection>;
+  manifest?: Readonly<Record<string, readonly string[]>>;
+}): PromptProgram {
+  const manifest = input.manifest ?? SCENARIO_PROMPT_MANIFEST;
+  const requested = manifest[input.model.scenario] ?? manifest[DEFAULT_SCENARIO];
+  if (!requested) throw new Error(`Prompt manifest 缺少默认场景: ${DEFAULT_SCENARIO}`);
+
+  const orderedSections = requested
+    .map((id, manifestIndex) => {
+      const section = input.sections.get(id);
+      if (!section) throw new Error(`Prompt manifest 引用了未注册 section: ${id}`);
+      return { section, manifestIndex };
+    })
+    .sort(
+      (left, right) =>
+        PROMPT_SLOT_ORDER[left.section.slot] - PROMPT_SLOT_ORDER[right.section.slot] ||
+        left.manifestIndex - right.manifestIndex,
+    );
+
+  assertOrderedBySlot(orderedSections, input.model.scenario);
+
+  const blockMetrics: PromptBlockMetric[] = [];
+  const blocks: PromptCorpusBlock[] = [];
+  for (const { section } of orderedSections) {
+    for (const block of section.build(input.model)) {
+      const normalized = {
+        ...block,
+        content: block.content.replace(/\{\{CURRENT_TIME\}\}/g, input.model.currentTimeText).trim(),
+      };
+      if (!normalized.content) continue;
+      blocks.push(normalized);
+      blockMetrics.push({
+        id: normalized.id,
+        domain: normalized.domain,
+        slot: section.slot,
+        chars: normalized.content.length,
+        dynamic: section.dynamic,
+      });
+    }
+  }
+
+  const orderSignature = blockMetrics
+    .map((block) => `${block.slot}:${block.id}:${block.domain}`)
+    .join('|');
+  return {
+    blocks,
+    rendered: renderPromptBlocks(blocks),
+    orderHash: createHash('sha256').update(orderSignature).digest('hex'),
+    blockMetrics,
+    dynamicBlockIds: blockMetrics.filter((block) => block.dynamic).map((block) => block.id),
+  };
 }
 
 @Injectable()
@@ -90,20 +158,11 @@ export class ContextService implements OnModuleInit {
   private readonly sections = new Map<string, PromptSection>();
   private readonly promptAssets = new Map<string, string>();
   private readonly promptsBasePath: string;
-  private readonly groupMemberLimit: number;
 
-  constructor(
-    private readonly strategyConfigService: BizStrategyConfigService,
-    private readonly groupResolver: GroupResolverService,
-    private readonly configService: ConfigService,
-  ) {
+  constructor() {
     const devPath = join(__dirname, 'sections', 'procedural');
     const prodPath = join(__dirname, '..', '..', 'agent', 'context', 'sections', 'procedural');
     this.promptsBasePath = existsSync(devPath) ? devPath : prodPath;
-    this.groupMemberLimit = parseInt(
-      this.configService.get<string>('GROUP_MEMBER_LIMIT', '200'),
-      10,
-    );
   }
 
   async onModuleInit() {
@@ -117,75 +176,18 @@ export class ContextService implements OnModuleInit {
   /**
    * 组装系统提示词 + stageGoals
    */
-  async compose(params: ComposeParams = {}): Promise<ComposeResult> {
-    const {
-      scenario = DEFAULT_SCENARIO,
-      channelType = 'private',
-      currentStage,
-      memoryBlock,
-      sessionFacts,
-      turnHints,
-      displayTurnHints,
-      pendingTurnHintFields,
-      currentTurnTexts,
-      currentUserMessage,
-      normalizedMessages,
-      currentLaborFormIntent,
-      sessionBrandState,
-      accountIdentity,
-      strategySource = 'released',
-    } = params;
-
-    const config = await this.strategyConfigService.getActiveConfig(strategySource);
-
-    const now = formatCurrentTime();
-
-    const groupInventoryBlock = await this.renderGroupInventoryBlock(sessionFacts);
-
-    const ctx: PromptContext = {
-      scenario,
-      channelType,
-      strategyConfig: config,
-      currentStage,
-      memoryBlock,
-      sessionFacts,
-      turnHints,
-      displayTurnHints,
-      pendingTurnHintFields,
-      currentTurnTexts,
-      currentUserMessage,
-      normalizedMessages,
-      currentLaborFormIntent,
-      sessionBrandState,
-      accountIdentity,
-      currentTimeText: now,
-      groupInventoryBlock,
-    };
-
-    const sectionNames = SCENARIO_SECTIONS[scenario];
-    if (!sectionNames) {
-      this.logger.warn(`未知场景: ${scenario}，使用默认场景`);
-      return this.compose({ ...params, scenario: DEFAULT_SCENARIO });
+  compose(model: PromptModel): ComposeResult {
+    if (!SCENARIO_PROMPT_MANIFEST[model.scenario]) {
+      this.logger.warn(`未知场景: ${model.scenario}，使用默认场景`);
+      return this.compose({ ...model, scenario: DEFAULT_SCENARIO });
     }
-
-    const rawBlocks: PromptCorpusBlock[] = [];
-    for (const name of sectionNames) {
-      const section = this.sections.get(name);
-      if (!section) continue;
-      rawBlocks.push(...(await buildPromptSectionBlocks(section, ctx)));
-    }
-
-    const promptBlocks = rawBlocks.map((block) => ({
-      ...block,
-      content: block.content.replace(/\{\{CURRENT_TIME\}\}/g, now),
-    }));
-    const systemPrompt = renderPromptBlocks(promptBlocks);
-
+    const program = compilePromptProgram({ model, sections: this.sections });
     return {
-      systemPrompt,
-      promptBlocks,
-      stageGoals: this.buildStageGoalsMap(config),
-      thresholds: config.red_lines.thresholds ?? [],
+      systemPrompt: program.rendered,
+      promptBlocks: program.blocks,
+      orderHash: program.orderHash,
+      blockMetrics: program.blockMetrics,
+      dynamicBlockIds: program.dynamicBlockIds,
     };
   }
 
@@ -193,7 +195,7 @@ export class ContextService implements OnModuleInit {
    * 获取已加载的场景列表（调试用）
    */
   getLoadedScenarios(): string[] {
-    return Object.keys(SCENARIO_SECTIONS);
+    return Object.keys(SCENARIO_PROMPT_MANIFEST);
   }
 
   // ==================== 私有方法 ====================
@@ -204,6 +206,8 @@ export class ContextService implements OnModuleInit {
     this.sections.set('identity', new IdentitySection());
     this.sections.set('base-manual', new StaticSection('base-manual', baseManual));
     this.sections.set('final-check', new FinalCheckSection());
+    this.sections.set('input-guard', new InputSecuritySection());
+    this.sections.set('critical-turn-guard', new CriticalTurnGuardSection());
     this.sections.set('red-lines', new RedLinesSection());
     this.sections.set('thresholds', new ThresholdsSection());
     this.sections.set('stage-overview', new StageOverviewSection());
@@ -214,62 +218,6 @@ export class ContextService implements OnModuleInit {
     this.sections.set('datetime', new DateTimeSection());
     this.sections.set('channel', new ChannelSection());
     this.sections.set('group-inventory', new GroupInventorySection());
-  }
-
-  /**
-   * 根据 sessionFacts 中候选人意向城市，预渲染该城市兼职群资源概览。
-   *
-   * - 只渲染该城市群库数据；操作约束由 invite_to_group description 承载
-   * - 行为：无城市/无群数据/查询失败时返回空串，不影响 prompt 组装
-   *
-   * 城市取值必须与硬约束段同门（minConfidence='high'）：本块不只是“参考信息”，
-   * 群库数据会影响工具调用决策，城市取错两个方向都会错。
-   * 此前直读 `.value` 绕过置信度门——Redis 旧档归一化出的 confidence='unknown' 城市
-   * 会让 prompt 里出现「兼职群资源（南京）」而硬约束段根本没有该城市。
-   * 放宽的风险由 invite_to_group 自己的 invite-city-gate 兜底。
-   */
-  private async renderGroupInventoryBlock(sessionFacts?: SessionFacts | null): Promise<string> {
-    const city = unwrapSessionFacts(sessionFacts, {
-      minConfidence: 'high',
-    })?.preferences.city?.value?.trim();
-    if (!city) return '';
-
-    let cityGroups: GroupContext[];
-    try {
-      const allGroups = await this.groupResolver.resolveGroups('兼职群');
-      const normalizedTargetCity = normalizeCity(city);
-      cityGroups = allGroups.filter((group) => normalizeCity(group.city) === normalizedTargetCity);
-    } catch (error) {
-      this.logger.warn(`预渲染兼职群资源失败 (city=${city}): ${(error as Error).message}`);
-      return '';
-    }
-
-    if (cityGroups.length === 0) {
-      return [`## 兼职群资源（${city}）`, '- 该城市暂无可用兼职群'].join('\n');
-    }
-
-    const byIndustry = new Map<string, { groupCount: number; availableCount: number }>();
-    for (const group of cityGroups) {
-      const industry = group.industry ?? '未分类';
-      const entry = byIndustry.get(industry) ?? { groupCount: 0, availableCount: 0 };
-      entry.groupCount += 1;
-      const hasCapacity =
-        group.memberCount === undefined || group.memberCount < this.groupMemberLimit;
-      if (hasCapacity) entry.availableCount += 1;
-      byIndustry.set(industry, entry);
-    }
-
-    const lines = Array.from(byIndustry.entries())
-      .sort((left, right) => right[1].groupCount - left[1].groupCount)
-      .map(([industry, stats]) => {
-        const capacity =
-          stats.availableCount === stats.groupCount
-            ? '均有空位'
-            : `可用 ${stats.availableCount}/${stats.groupCount}`;
-        return `- ${industry}：${stats.groupCount} 个群（${capacity}）`;
-      });
-
-    return [`## 兼职群资源（${city}）`, ...lines].join('\n');
   }
 
   private async loadPromptAssets(): Promise<void> {
@@ -293,14 +241,6 @@ export class ContextService implements OnModuleInit {
       .replace(/<!--[\s\S]*?-->/g, '')
       .replace(/[ \t]+$/gm, '')
       .replace(/\n{3,}/g, '\n\n');
-  }
-
-  private buildStageGoalsMap(config: StrategyConfigRecord): Record<string, StageGoalConfig> {
-    const result: Record<string, StageGoalConfig> = {};
-    for (const stage of config.stage_goals.stages) {
-      result[stage.stage] = stage;
-    }
-    return result;
   }
 
   private async readTextFile(filePath: string): Promise<string | undefined> {

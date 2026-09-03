@@ -1,22 +1,22 @@
 // 知识归类：procedural —— 本段定义各对话阶段的推进策略。
 // prompt-rule-ledger: docs/prompt-rule-ledger.md（程序性阶段策略总账）
-import { PromptSection, PromptContext } from '../section.interface';
+import { buildTextPromptBlock, type PromptSection } from '../section';
+import type { PromptModel } from '../../context.types';
 import { StageGoalConfig } from '@biz/strategy/types/strategy.types';
 
 /**
  * 当前阶段策略段落 — 只渲染随当前阶段变化的策略，固定置于 system 动态尾部。
  */
 export class StageStrategySection implements PromptSection {
-  readonly name = 'stage-strategy';
+  readonly id = 'stage-strategy';
+  readonly domain = 'teaching' as const;
+  readonly slot = 'working-context' as const;
+  readonly dynamic = true;
 
-  build(ctx: PromptContext): string {
-    const stageGoals = this.buildStageGoalsMap(ctx);
-    const currentStageKey = ctx.currentStage ?? Object.keys(stageGoals)[0] ?? 'trust_building';
-    const stageConfig = stageGoals[currentStageKey] ?? Object.values(stageGoals)[0];
-
-    if (!stageConfig) return '';
-
-    return this.buildCurrentStage(stageConfig).join('\n');
+  build(model: PromptModel) {
+    const stageConfig = model.strategy.currentStage;
+    if (!stageConfig) return [];
+    return buildTextPromptBlock(this, this.buildCurrentStage(stageConfig).join('\n'));
   }
 
   private buildCurrentStage(config: StageGoalConfig): string[] {
@@ -53,22 +53,17 @@ export class StageStrategySection implements PromptSection {
 
     return lines;
   }
-
-  private buildStageGoalsMap(ctx: PromptContext): Record<string, StageGoalConfig> {
-    const result: Record<string, StageGoalConfig> = {};
-    for (const stage of ctx.strategyConfig.stage_goals.stages) {
-      result[stage.stage] = stage;
-    }
-    return result;
-  }
 }
 
 /** 全阶段静态地图；不读取 currentStage，保证跨轮渲染逐字节稳定。 */
 export class StageOverviewSection implements PromptSection {
-  readonly name = 'stage-overview';
+  readonly id = 'stage-overview';
+  readonly domain = 'teaching' as const;
+  readonly slot = 'stable-instructions' as const;
+  readonly dynamic = false;
 
-  build(ctx: PromptContext): string {
-    const stages = ctx.strategyConfig.stage_goals.stages;
+  build(model: PromptModel) {
+    const stages = model.strategy.stages;
     const lines: string[] = [];
 
     if (stages.length > 1) {
@@ -85,6 +80,6 @@ export class StageOverviewSection implements PromptSection {
       '当你判断需要切换阶段时，下一步必须先单独调用 advance_stage：调用前不输出候选人文本，也不并行调用其他工具；收到 effectiveStageStrategy 后再继续业务工具和完整回复。',
     );
 
-    return lines.join('\n');
+    return buildTextPromptBlock(this, lines.join('\n'));
   }
 }

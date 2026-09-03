@@ -55,13 +55,16 @@ export class GuardrailReviewRepository extends BaseRepository {
         .select('trace_id');
 
       if (error) {
+        this.noteOutcome('UPSERT', error);
         this.handleError('UPSERT', error);
         return 'failed';
       }
 
       const rows = (data as Array<Pick<GuardrailReviewDbRecord, 'trace_id'>> | null) ?? [];
+      this.recordCircuitSuccess('UPSERT');
       return rows.length > 0 ? 'inserted' : 'failed';
     } catch (error) {
+      this.noteOutcome('UPSERT', error);
       this.handleError('UPSERT', error);
       return 'failed';
     }

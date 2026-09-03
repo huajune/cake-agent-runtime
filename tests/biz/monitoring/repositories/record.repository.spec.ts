@@ -439,51 +439,20 @@ describe('MonitoringRecordRepository', () => {
       expect(fromSpy).not.toHaveBeenCalled();
     });
 
-    it('should fall back to reading tool_calls when RPC is unavailable (function missing)', async () => {
+    it('should return empty and never scan tool_calls when RPC is unavailable', async () => {
       mockSupabaseService.isClientInitialized.mockReturnValue(true);
 
-      // RPC 缺失（PostgREST 42883）→ rpc() 返回 null → 触发 tool_calls 全表扫描回退。
+      // RPC 失败（缺失/超时都让 rpc() 返回 null）→ 直接返回空，绝不回退到 tool_calls 分页扫描。
       mockSupabaseClient.rpc.mockResolvedValue({
         data: null,
         error: { code: '42883', message: 'function get_dashboard_tool_stats does not exist' },
       });
-
-      const query = {
-        select: jest.fn(),
-        gte: jest.fn(),
-        lt: jest.fn(),
-        not: jest.fn(),
-        order: jest.fn(),
-        range: jest.fn(),
-      };
-      query.select.mockReturnValue(query);
-      query.gte.mockReturnValue(query);
-      query.lt.mockReturnValue(query);
-      query.not.mockReturnValue(query);
-      query.order.mockReturnValue(query);
-      query.range.mockResolvedValue({
-        data: [
-          {
-            tool_calls: [{ toolName: 'request_handoff' }, { toolName: 'raise_risk_alert' }],
-          },
-          {
-            tool_calls: [
-              { toolName: 'request_handoff' },
-              { toolName: '' },
-              { name: 'legacy-shape' },
-            ],
-          },
-        ],
-        error: null,
-      });
-      mockSupabaseClient.from.mockReturnValue(query);
+      mockSupabaseClient.from.mockClear();
 
       const result = await repository.getDashboardToolStats(new Date(), new Date());
 
-      expect(result).toEqual([
-        { toolName: 'request_handoff', useCount: 2 },
-        { toolName: 'raise_risk_alert', useCount: 1 },
-      ]);
+      expect(result).toEqual([]);
+      expect(mockSupabaseClient.from).not.toHaveBeenCalled();
     });
   });
 

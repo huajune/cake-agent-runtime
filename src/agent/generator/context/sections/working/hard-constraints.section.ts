@@ -1,15 +1,8 @@
 // 知识归类：working —— 本段呈现候选人本轮硬约束线索，属于 evidence 数据。
 // prompt-rule-ledger: docs/prompt-rule-ledger.md（本轮查询约束总账）
-import {
-  type EntityExtractionResult,
-  type Preferences,
-  type SessionFacts,
-  unwrapSessionFacts,
-} from '@memory/short-term/short-term.types';
-import { projectTurnHints } from '@resolution/turn-hints/reducer';
-import type { TurnHints } from '@resolution/turn-hints/turn-hint.types';
 import { isHardFilteredLaborForm, isValidLaborForm } from '@resolution/labor-form';
-import { PromptContext, PromptSection } from '../section.interface';
+import { buildTextPromptBlock, type PromptSection } from '../section';
+import type { HardConstraintsPromptView, PromptModel } from '../../context.types';
 
 /**
  * 本轮查询约束段落（硬约束 + 软提示）
@@ -29,17 +22,16 @@ import { PromptContext, PromptSection } from '../section.interface';
  * 时模型被锁死无法自救。
  */
 export class HardConstraintsSection implements PromptSection {
-  readonly name = 'hard-constraints';
+  readonly id = 'hard-constraints';
+  readonly domain = 'evidence' as const;
+  readonly slot = 'evidence' as const;
+  readonly dynamic = true;
 
-  build(ctx: PromptContext): string {
-    const merged = this.mergeFacts(
-      ctx.sessionFacts ?? null,
-      ctx.turnHints ?? null,
-      ctx.currentLaborFormIntent,
-    );
-    const hardLines = this.collectHardConstraintLines(merged);
-    const softLines = this.collectSoftHintLines(merged, ctx.sessionBrandState ?? null);
-    if (hardLines.length === 0 && softLines.length === 0) return '';
+  build(model: PromptModel) {
+    const view = model.hardConstraints;
+    const hardLines = this.collectHardConstraintLines(view?.facts ?? null);
+    const softLines = this.collectSoftHintLines(view?.facts ?? null, view?.brandState ?? null);
+    if (hardLines.length === 0 && softLines.length === 0) return [];
 
     const sections: string[] = [];
 
@@ -68,104 +60,7 @@ export class HardConstraintsSection implements PromptSection {
       );
     }
 
-    return sections.join('\n');
-  }
-
-  /**
-   * 合并 sessionFacts（已确认）与 turnHints（本轮新增）。
-   *
-   * 取并集，**本轮高置信值优先覆盖旧 session 值**：
-   * 工具层 tool-context.builder 的 mergeSessionFactsWithRuleClaims 一直是"本轮非 null
-   * 高置信覆盖旧值"，本段若取"旧值优先、本轮仅补缺"——prompt 与工具就会对同一字段
-   * 展示不同值（候选人刚改口的年龄/城市，硬约束段仍念旧值）。此处与工具层统一口径。
-   * labor_form 走独立分支：除覆盖外还承担 clear（明确不要某形式）语义。
-   *
-   * 入参只接受 SessionFacts（带信封的存储态）：裸 EntityExtractionResult 会绕过
-   * unwrapSessionFacts 的 minConfidence 比较，下面这道 high 门会对它形同虚设。
-   */
-  private mergeFacts(
-    sessionFacts: SessionFacts | null,
-    turnHints: TurnHints | null,
-    currentLaborFormIntent: PromptContext['currentLaborFormIntent'],
-  ): { interview: EntityExtractionResult['interview_info']; pref: Preferences } | null {
-    const trustedSessionFacts = unwrapSessionFacts(sessionFacts, { minConfidence: 'high' });
-    const currentRuleValues = projectTurnHints(turnHints, { minConfidence: 'high' });
-    if (!trustedSessionFacts && !currentRuleValues && currentLaborFormIntent?.kind !== 'set') {
-      return null;
-    }
-
-    const interview = {
-      ...this.emptyInterviewInfo(),
-      ...this.dropNulls(trustedSessionFacts?.interview_info),
-      ...this.dropNulls(currentRuleValues?.interview_info),
-    };
-
-    const currentRuleLaborForm = currentRuleValues?.preferences.labor_form ?? null;
-    const sessionLaborForm = trustedSessionFacts?.preferences.labor_form ?? null;
-    const previousLaborForm = currentRuleLaborForm ?? sessionLaborForm;
-    const activeLaborForm =
-      currentLaborFormIntent?.kind === 'set'
-        ? currentLaborFormIntent.value
-        : currentLaborFormIntent?.kind === 'clear' &&
-            previousLaborForm &&
-            currentLaborFormIntent.clearedValues.some((value) => value === previousLaborForm)
-          ? null
-          : previousLaborForm;
-
-    const pref: Preferences = {
-      // 品牌不进 Preferences（brands 字段已删除）；
-      // 软提示行直读 sessionBrandState，品牌唯一真相是 facts.brand。
-      brand_ids:
-        currentRuleValues?.preferences.brand_ids ??
-        trustedSessionFacts?.preferences.brand_ids ??
-        null,
-      salary:
-        currentRuleValues?.preferences.salary ?? trustedSessionFacts?.preferences.salary ?? null,
-      position:
-        currentRuleValues?.preferences.position ??
-        trustedSessionFacts?.preferences.position ??
-        null,
-      schedule:
-        currentRuleValues?.preferences.schedule ??
-        trustedSessionFacts?.preferences.schedule ??
-        null,
-      city: currentRuleValues?.preferences.city ?? trustedSessionFacts?.preferences.city ?? null,
-      district:
-        currentRuleValues?.preferences.district ??
-        trustedSessionFacts?.preferences.district ??
-        null,
-      location:
-        currentRuleValues?.preferences.location ??
-        trustedSessionFacts?.preferences.location ??
-        null,
-      labor_form: activeLaborForm,
-      delayed_intent:
-        currentRuleValues?.preferences.delayed_intent ??
-        trustedSessionFacts?.preferences.delayed_intent ??
-        null,
-      short_term:
-        currentRuleValues?.preferences.short_term ??
-        trustedSessionFacts?.preferences.short_term ??
-        null,
-      open_position:
-        currentRuleValues?.preferences.open_position ??
-        trustedSessionFacts?.preferences.open_position ??
-        null,
-      time_windows:
-        currentRuleValues?.preferences.time_windows ??
-        trustedSessionFacts?.preferences.time_windows ??
-        null,
-      schedule_constraint:
-        currentRuleValues?.preferences.schedule_constraint ??
-        trustedSessionFacts?.preferences.schedule_constraint ??
-        null,
-      available_after:
-        currentRuleValues?.preferences.available_after ??
-        trustedSessionFacts?.preferences.available_after ??
-        null,
-    };
-
-    return { interview, pref };
+    return buildTextPromptBlock(this, sections.join('\n'));
   }
 
   /**
@@ -174,12 +69,10 @@ export class HardConstraintsSection implements PromptSection {
    * 这些字段如果模型"忘了"，搜索结果要么完全无效（跨城/跨区），
    * 要么严重不匹配（年龄差太大/班次冲突/薪资远低于预期）。
    */
-  private collectHardConstraintLines(
-    merged: { interview: EntityExtractionResult['interview_info']; pref: Preferences } | null,
-  ): string[] {
+  private collectHardConstraintLines(merged: HardConstraintsPromptView['facts']): string[] {
     if (!merged) return [];
 
-    const { interview, pref } = merged;
+    const { interview, preferences: pref } = merged;
     const lines: string[] = [];
 
     if (pref.city?.value) {
@@ -227,8 +120,8 @@ export class HardConstraintsSection implements PromptSection {
    * 模型有权根据上下文判断是否采纳——避免提取错误时被锁死无法自救。
    */
   private collectSoftHintLines(
-    merged: { interview: EntityExtractionResult['interview_info']; pref: Preferences } | null,
-    sessionBrandState: PromptContext['sessionBrandState'] = null,
+    merged: HardConstraintsPromptView['facts'],
+    sessionBrandState: HardConstraintsPromptView['brandState'] = null,
   ): string[] {
     const lines: string[] = [];
 
@@ -251,7 +144,7 @@ export class HardConstraintsSection implements PromptSection {
 
     if (!merged) return lines;
 
-    const { interview, pref } = merged;
+    const { interview, preferences: pref } = merged;
 
     if (interview.gender) {
       lines.push(
@@ -331,31 +224,5 @@ export class HardConstraintsSection implements PromptSection {
     }
 
     return lines;
-  }
-
-  private dropNulls(
-    obj: EntityExtractionResult['interview_info'] | undefined,
-  ): Partial<EntityExtractionResult['interview_info']> {
-    if (!obj) return {};
-    const result: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(obj)) {
-      if (value === null || value === undefined) continue;
-      if (typeof value === 'string' && value.trim() === '') continue;
-      result[key] = value;
-    }
-    return result as Partial<EntityExtractionResult['interview_info']>;
-  }
-
-  private emptyInterviewInfo(): EntityExtractionResult['interview_info'] {
-    return {
-      name: null,
-      phone: null,
-      gender: null,
-      age: null,
-      is_student: null,
-      education: null,
-      has_health_certificate: null,
-      upload_resume: null,
-    };
   }
 }

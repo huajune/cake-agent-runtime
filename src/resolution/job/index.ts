@@ -184,3 +184,18 @@ function normalizeForMatch(value: string | null | undefined): string {
   if (!value) return '';
   return value.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]/g, '');
 }
+
+/**
+ * 岗位 ID 归一：只接受正整数或纯数字串，其余（0、负数、小数、含空白或非数字）一律 null。
+ *
+ * 岗位 ID 从海绵工单/岗位接口进来时形态不定（number 或 string），而它同时是 provenance
+ * 闸门的钥匙——两处各写一份判据就会出现「Prompt 里看得见、闸门不认」的错位。
+ */
+export function normalizeJobId(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isInteger(value) && value > 0) return value;
+  if (typeof value === 'string' && /^\d+$/.test(value)) {
+    const parsed = Number(value);
+    return parsed > 0 ? parsed : null;
+  }
+  return null;
+}

@@ -33,11 +33,6 @@ export const TYPING_MIN_DELAY_MS = 800; // 最小延迟
 export const TYPING_MAX_DELAY_MS = 8000; // 最大延迟
 export const TYPING_RANDOM_VARIATION = 0.2; // 随机波动比例 (±20%)
 
-// ==================== 消息历史配置 ====================
-
-// 每会话最大消息数（历史按条数封顶；短期 Redis 缓存另叠加 TTL，见 chat-session.service.ts）
-export const MAX_HISTORY_PER_CHAT = 120;
-
 // ==================== HTTP 配置 ====================
 
 export const HTTP_CLIENT_TIMEOUT = 30000; // HTTP 超时（30 秒）

@@ -14,11 +14,15 @@ import {
   type StorageMessageType,
 } from '@enums/storage-message.enum';
 import {
+  appendChatHistoryCacheEntry,
   buildChatHistoryCacheKey,
   type CachedChatHistoryMessage,
   serializeCachedChatHistoryMessage,
 } from '@memory/short-term/chat-history-cache.util';
-import { MEMORY_SESSION_TTL_DAYS_DEFAULT } from '@memory/memory.config';
+import {
+  MEMORY_SESSION_TTL_DAYS_DEFAULT,
+  MEMORY_WINDOW_MAX_MESSAGES_DEFAULT,
+} from '@memory/memory.config';
 
 /**
  * 聊天会话服务
@@ -320,11 +324,15 @@ export class ChatSessionService {
    *
    * 幂等性由 DB 的 `chat_messages.message_id` UNIQUE 约束兜底：调用方只在
    * `saveChatMessage` 返回 `inserted=true` 时才调这里，所以不需要额外去重 key。
+   *
+   * 只追加、不建 key（RPUSHX）：list 只能由 MessageWindowService 的 DB 完整回填创建。
+   * key 不存在（新会话 / 刚被 updateMessageContent 作废）时本条不进缓存，下次读取
+   * cache miss 会连同本条一起从 DB 回填——否则这里会建出「只含本条」的残缺 list，
+   * 被读路径当成完整历史。
    */
   private async appendToShortTermCache(message: ChatMessageInput): Promise<void> {
     if (!this.redisService || !this.shouldMirrorToShortTermCache(message)) return;
 
-    const listKey = buildChatHistoryCacheKey(message.chatId);
     const cacheMessage: CachedChatHistoryMessage = {
       chatId: message.chatId,
       messageId: message.messageId,
@@ -339,13 +347,24 @@ export class ChatSessionService {
       provenanceVersion: 2,
     };
 
-    await this.redisService.rpush(listKey, serializeCachedChatHistoryMessage(cacheMessage));
-    await this.redisService.ltrim(listKey, -this.shortTermCacheMaxMessages, -1);
-    await this.redisService.expire(listKey, this.shortTermCacheTtlSeconds);
+    const appended = await appendChatHistoryCacheEntry(
+      this.redisService,
+      message.chatId,
+      serializeCachedChatHistoryMessage(cacheMessage),
+      { maxMessages: this.shortTermCacheMaxMessages, ttlSeconds: this.shortTermCacheTtlSeconds },
+    );
+    if (!appended) {
+      this.logger.debug(`短期记忆缓存不存在，跳过追加，待下次读取回填 [${message.messageId}]`);
+    }
   }
 
   private get shortTermCacheMaxMessages(): number {
-    return parseInt(this.configService?.get('MAX_HISTORY_PER_CHAT', '120') ?? '120', 10);
+    // 与 MemoryConfig.sessionWindowMaxMessages 同源：list 裁剪条数与 DB 回查条数必须一致。
+    return parseInt(
+      this.configService?.get('MAX_HISTORY_PER_CHAT', MEMORY_WINDOW_MAX_MESSAGES_DEFAULT) ??
+        MEMORY_WINDOW_MAX_MESSAGES_DEFAULT,
+      10,
+    );
   }
 
   private get shortTermCacheTtlSeconds(): number {

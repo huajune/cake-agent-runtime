@@ -23,7 +23,7 @@ export interface SessionFactsFixtureMeta {
 /**
  * 带信封的 SessionFacts fixture（存储态，= 生产唯一形态）。
  *
- * 提示词侧（PromptContext.sessionFacts / ComposeParams.sessionFacts）只接受
+ * 提示词侧（PromptModel.hardConstraints）只接受
  * SessionFacts：裸 EntityExtractionResult 在 unwrapSessionFacts 里会**绕过**
  * minConfidence 比较原样透传，用裸态造 fixture 等于让置信度门在测试里恒为空操作
  * （core-flow-review 议题 1-1）。所有 prompt section 的 spec 一律经本 helper 构造。

@@ -138,8 +138,12 @@ describe('AnalyticsDashboardService', () => {
   };
 
   // 默认 getEarliestReportDate→null：daily_ops_report 尚无覆盖时预约数返回 0。
-  // 预热 cron 需要 READ_ONLY_PREVIEW 开关
-  const mockConfigService = { get: jest.fn().mockReturnValue('false') };
+  // 预热 cron 读 READ_ONLY_PREVIEW / DASHBOARD_PREWARM_ENABLED 两个开关：测试默认「非预览 + 预热开」
+  const mockConfigService = {
+    get: jest.fn((key: string, fallback?: string) =>
+      key === 'DASHBOARD_PREWARM_ENABLED' ? 'true' : (fallback ?? 'false'),
+    ),
+  };
 
   const mockDailyOpsReportService = {
     getEarliestReportDate: jest.fn().mockResolvedValue(null),
@@ -1412,19 +1416,18 @@ describe('AnalyticsDashboardService', () => {
   // ========================================
 
   describe('prewarmDashboardOverview', () => {
-    it('should warm every dashboard range so visitors never hit the cold path', async () => {
+    it('should warm bounded dashboard ranges and leave the all-history range on demand', async () => {
       const spy = jest.spyOn(service, 'getDashboardOverviewAsync').mockResolvedValue({} as never);
 
       await service.prewarmDashboardOverview();
 
-      // 6 个档位与前端 tab 一一对应（含「全部」），且都按「全部小组」默认视图预热
+      // 全历史档成本随保留期增长，不进入每 2 分钟的固定预热轮次。
       expect(spy.mock.calls.map((c) => c[0])).toEqual([
         'today',
         'week',
         'month',
         'twoMonths',
         'threeMonths',
-        'all',
       ]);
       expect(spy.mock.calls.every((c) => Array.isArray(c[1]) && c[1].length === 0)).toBe(true);
       spy.mockRestore();
@@ -1438,7 +1441,43 @@ describe('AnalyticsDashboardService', () => {
 
       await expect(service.prewarmDashboardOverview()).resolves.toBeUndefined();
 
-      expect(spy).toHaveBeenCalledTimes(6);
+      expect(spy).toHaveBeenCalledTimes(5);
+      spy.mockRestore();
+    });
+
+    it('should skip a new tick while the previous prewarm round is still running', async () => {
+      let releaseFirstRange!: () => void;
+      const firstRangePending = new Promise<never>((resolve) => {
+        releaseFirstRange = () => resolve({} as never);
+      });
+      const spy = jest
+        .spyOn(service, 'getDashboardOverviewAsync')
+        .mockReturnValueOnce(firstRangePending)
+        .mockResolvedValue({} as never);
+
+      const firstTick = service.prewarmDashboardOverview();
+      await Promise.resolve();
+      await service.prewarmDashboardOverview();
+
+      expect(spy).toHaveBeenCalledTimes(1);
+
+      releaseFirstRange();
+      await firstTick;
+      expect(spy).toHaveBeenCalledTimes(5);
+
+      await service.prewarmDashboardOverview();
+      expect(spy).toHaveBeenCalledTimes(10);
+      spy.mockRestore();
+    });
+
+    it('should not warm anything unless DASHBOARD_PREWARM_ENABLED=true (default off)', async () => {
+      // 第 1 次读 READ_ONLY_PREVIEW=false，第 2 次读 DASHBOARD_PREWARM_ENABLED=false
+      mockConfigService.get.mockReturnValueOnce('false').mockReturnValueOnce('false');
+      const spy = jest.spyOn(service, 'getDashboardOverviewAsync').mockResolvedValue({} as never);
+
+      await service.prewarmDashboardOverview();
+
+      expect(spy).not.toHaveBeenCalled();
       spy.mockRestore();
     });
 

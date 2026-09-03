@@ -1,448 +1,195 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
-import type { WorkingMemory } from './preparation.types';
-import { ModelMessage, ToolSet } from 'ai';
-import { CallerKind } from '@/enums/agent.enum';
-import { ToolRegistryService } from '@tools/tool-registry.service';
-import { decideLaborFormIntent } from '@resolution/labor-form';
-import { parseLocationShareCoordinates } from '@resolution/signal/markers';
-import { inferCitiesFromGeoSignals } from '@resolution/geo/city-adjudicator';
-import { produceTurnHints } from '@resolution/turn-hints/producers/rule-track';
-import {
-  buildVisualSheetIndex,
-  extractCandidateTextsFromCorpus,
-} from '@resolution/signal/self-report';
-import { parseCandidateFieldsFromText } from '@resolution/candidate';
-import { GeocodingService } from '@infra/geocoding/geocoding.service';
-import { MemoryService } from '@memory/memory.service';
 import { MemoryConfig } from '@memory/memory.config';
-import { BrandStateService, type TurnBrandContext } from '@memory/short-term/brand-state.service';
-import { LongTermService } from '@memory/long-term/long-term.service';
-import { GroupMembershipService } from '@biz/group-task/services/group-membership.service';
-import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
-import { HostingMemberConfigService } from '@biz/hosting-config/services/hosting-member-config.service';
-import { ChatSessionService } from '@biz/message/services/chat-session.service';
-import { SpongeService } from '@sponge/sponge.service';
-import {
-  ACTIVE_INTERVIEW_WORK_ORDER_STATUSES,
-  type SignupWorkOrderItem,
-} from '@sponge/sponge.types';
-import {
-  buildJobPolicyAnalysis,
-  isOfflineInterviewMethod,
-} from '@tools/job-list/job-policy-parser';
-import { isUserProfileFactValue, type UserProfileFacts } from '@memory/long-term/long-term.types';
-import type { WeworkSessionState } from '@memory/short-term/short-term.types';
-import type { RecommendedJobSummary } from '@resolution/job/types';
 import { AlertLevel } from '@enums/alert.enum';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { AlertNotifierService } from '@notification/services/alert-notifier.service';
+import { PromptInjectionDetector } from '../../guardrail/input/prompt-injection-detector';
+import { PromptSecurityObserverService } from '../../guardrail/input/prompt-security-observer.service';
 import { ContextService } from '../context/context.service';
-import { PromptInjectionService } from '../../guardrail/input/prompt-injection.service';
-import { type GeneratorInvokeParams, type AgentMemorySnapshot } from '../generator.types';
+import type { ModelMessage, ToolSet } from 'ai';
+import type { TurnLedger } from '@shared-types/turn.types';
+import type { CorpusBlock, PromptCorpusBlock } from '@shared-types/corpus.types';
+import { type AgentMemorySnapshot, type GeneratorInvokeParams } from '../generator.types';
+import { normalizeConversationWithCorpus, normalizeTurnInput } from './conversation-normalizer';
+import { TurnDataLoaderService } from './turn-data-loader.service';
+import { resolveTurnContext } from './turn-context-resolver';
+import { ToolRuntimeBuilderService } from './tool-context.builder';
 import { AgentTracerService } from '@observability/agent-tracer.service';
-import {
-  BOOKING_CONTEXT_SHARED_RULES,
-  buildMemoryBlock,
-  formatBookingContext,
-  type RealtimeGroupStatus,
-} from '../context/sections/semantic/memory.section';
-import {
-  adjudicatePromptMemory,
-  resolveActiveLaborForm,
-  type TurnStartMemory,
-} from './prompt-memory-adjudicator';
-import {
-  normalizeConversationWithCorpus,
-  trailingUserContent,
-  trailingUserMessages,
-  truncateToCharBudget,
-} from './conversation-normalizer';
-import { buildProactiveDirective } from './revise-directives';
-import { resolveToolsForMode, wrapToolsWithTiming } from './tool-set.util';
-import { buildToolContext } from './tool-context.builder';
-import { createTurnLedger } from './turn-ledger';
-import { renderPromptBlocks } from '../context/sections/section.interface';
-import type { PromptCorpusBlock } from '@shared-types/corpus.types';
-import {
-  SnapshotEnrichmentService,
-  type CandidateIdentityHint,
-} from './snapshot-enrichment.service';
-
-export type { WorkingMemory } from './preparation.types';
 
 /**
- * 回合准备编排：记忆召回 → 消息归一化 → memoryBlock/system prompt 组装 →
- * 工具集构建 → 观测快照。
+ * Working Memory（CoALA 语义）：prepare() 返回的单轮工作台，不是持久化记忆层。
+ */
+export interface WorkingMemory {
+  finalPrompt: string;
+  promptBlocks: PromptCorpusBlock[];
+  normalizedMessages: ModelMessage[];
+  conversationCorpusBlocks: CorpusBlock[];
+  memoryLoadWarning?: string;
+  tools: ToolSet;
+  corpId: string;
+  userId: string;
+  sessionId: string;
+  botUserId?: string;
+  botImId?: string;
+  maxSteps: number;
+  entryStage: string | null;
+  ledger: TurnLedger;
+  contactName?: string;
+  memorySnapshot?: AgentMemorySnapshot;
+  /** toolCallId → 工具 execute 的真实执行耗时（毫秒）。 */
+  toolExecutionTimings: Map<string, number>;
+}
+
+/**
+ * 回合准备门面：输入归一化 → 外部源快照 → 对话归一化 → 事实裁决 → Prompt 编译 → 工具运行时。
  *
- * 纯函数辅助层按职责拆在 preparation：prompt-memory-adjudicator（共享裁决视图）、
- * conversation-normalizer（消息归一化）、revise-directives（主动回合指令）、
- * tool-set.util（工具计时/过滤）、tool-context.builder（工具上下文组装）。
- * 模型可见渲染与排布统一由 context/sections 负责。
+ * 具体 IO、事实规则、Prompt 渲染和工具装配分别由专属组件承担；本类只维持阶段顺序、
+ * WorkingMemory 契约与出口级观测。
  */
 @Injectable()
 export class PreparationService {
   private readonly logger = new Logger(PreparationService.name);
 
   constructor(
-    private readonly toolRegistry: ToolRegistryService,
-    private readonly memoryService: MemoryService,
     private readonly memoryConfig: MemoryConfig,
+    private readonly dataLoader: TurnDataLoaderService,
     private readonly context: ContextService,
-    private readonly promptInjection: PromptInjectionService,
-    private readonly longTermService: LongTermService,
-    private readonly spongeService: SpongeService,
-    private readonly groupResolver: GroupResolverService,
-    private readonly groupMembership: GroupMembershipService,
-    private readonly brandStateService: BrandStateService,
-    private readonly hostingMemberConfig: HostingMemberConfigService,
-    private readonly snapshotEnrichment: SnapshotEnrichmentService,
-    private readonly chatSession: ChatSessionService,
-    @Optional()
-    private readonly tracer?: AgentTracerService,
-    @Optional()
-    private readonly geocoding?: GeocodingService,
-    @Optional()
-    private readonly alertNotifier?: AlertNotifierService,
+    private readonly injectionDetector: PromptInjectionDetector,
+    private readonly securityObserver: PromptSecurityObserverService,
+    private readonly toolRuntimeBuilder: ToolRuntimeBuilderService,
+    @Optional() private readonly alertNotifier?: AlertNotifierService,
+    @Optional() private readonly tracer?: AgentTracerService,
   ) {}
-
-  /**
-   * 定位分享轮内锚点（候选人资料证据化）：候选人本轮发定位时，
-   * prep 阶段就逆解析坐标并 seed 进回合账本——A2 的落档在轮末，
-   * 若本轮 job_list 直接吃坐标、不调 geocode，invite 城市门四档出处全空仍会误拒。
-   * 逆解析走 30 天 Redis 缓存（与 extractFacts A2 同 key，全轮至多一次真实请求）；
-   * 失败/服务缺失静默跳过，仅维持既有行为。
-   */
-  private async seedLocationShareAnchor(
-    toolContext: ReturnType<typeof buildToolContext>,
-    currentUserMessage: string | undefined,
-  ): Promise<void> {
-    if (!this.geocoding || !currentUserMessage) return;
-    const coords = parseLocationShareCoordinates([currentUserMessage]);
-    if (!coords) return;
-    try {
-      const regeo = await this.geocoding.reverseGeocode(coords.longitude, coords.latitude);
-      if (!regeo?.city?.trim()) return;
-      toolContext.ledger.recordGeoResolution({
-        longitude: coords.longitude,
-        latitude: coords.latitude,
-        areaLevelQuery: false,
-        areaName: null,
-        city: regeo.city.trim(),
-        district: regeo.district?.trim() || null,
-        evidence: `定位分享逆解析：${regeo.formattedAddress || `${regeo.province}${regeo.city}${regeo.district}`}`,
-        source: 'location_share',
-      });
-      this.logger.log(
-        `[prepare] 定位分享轮内锚点: city=${regeo.city}（invite 城市门 turn_geocode 档可用）`,
-      );
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.logger.warn(`[prepare] 定位分享逆解析失败（跳过轮内锚点）: ${message}`);
-    }
-  }
 
   async prepare(
     params: GeneratorInvokeParams,
     mode: 'invoke' | 'stream',
     options?: { enableVision?: boolean },
   ): Promise<WorkingMemory> {
-    const {
-      callerKind,
-      userId,
-      corpId,
-      sessionId,
-      scenario = 'candidate-consultation',
-      maxSteps = 10,
-    } = params;
-
+    const scenario = params.scenario ?? 'candidate-consultation';
+    const maxSteps = params.maxSteps ?? 10;
     this.logger.log(
-      `Agent ${mode}: callerKind=${callerKind}, userId=${userId}, corpId=${corpId}, sessionId=${sessionId}, scenario=${scenario}`,
+      `Agent ${mode}: callerKind=${params.callerKind}, userId=${params.userId}, corpId=${params.corpId}, sessionId=${params.sessionId}, scenario=${scenario}`,
     );
+    const startedAt = Date.now();
+    const phaseDurationsMs: Record<string, number> = {};
+    try {
+      const input = measurePhase(phaseDurationsMs, 'normalize_input', () =>
+        normalizeTurnInput(params, this.memoryConfig.sessionWindowMaxChars),
+      );
+      const sources = await measureAsyncPhase(phaseDurationsMs, 'load_sources', () =>
+        this.dataLoader.load(params, input),
+      );
+      const { messages: normalizedMessages, corpusBlocks: conversationCorpusBlocks } = measurePhase(
+        phaseDurationsMs,
+        'normalize_conversation',
+        () =>
+          normalizeConversationWithCorpus({
+            callerKind: params.callerKind,
+            memoryWindow: sources.memory.shortTerm.messageWindow,
+            passedMessages: input.truncatedMessages,
+            enableVision: options?.enableVision ?? false,
+            imageUrls: params.imageUrls,
+            imageMessageIds: params.imageMessageIds,
+            visualMessageTypes: params.visualMessageTypes,
+          }),
+      );
 
-    // 入参归一化：只认 messages[]。本轮的 user 文本 = 末尾连续的 user 块（上一条 assistant 之后的所有 user）。
-    // 这样不管上层是否已把多条消息合并成单条 user，都能覆盖本轮全部用户输入——
-    // 合并场景（WeCom replay、test-suite 多条连发）下后续事实提取/阶段推断才不会漏内容。
-    const truncatedMessages = truncateToCharBudget(
-      params.messages,
-      this.memoryConfig.sessionWindowMaxChars,
-    );
-    const currentUserMessage = trailingUserContent(truncatedMessages);
-    const currentLaborFormIntent = decideLaborFormIntent(currentUserMessage);
+      const injectionAssessment = this.injectionDetector.detectTexts(input.currentTurnTexts);
+      if (injectionAssessment.detected) {
+        void this.securityObserver.record(params.userId, injectionAssessment);
+      }
 
-    // 规则轨在 prep 时刻运行一次，供轮内工具与提取闸门消费（轮末落档前 extractFacts
-    // 会带视觉 sheet 对会话段重扫）。输入必须是逐条消息数组（PR #1000 评审 P0-1）：
-    // 预 join 会让 `[图片消息]` 占位把整批消息拖进 identity:false 授权域、并击穿
-    // 疑问号门等逐消息锚定判据。
-    const currentTurnTexts = trailingUserMessages(truncatedMessages);
-    const turnHintsPromise = this.detectTurnHints(currentTurnTexts);
-
-    // 并行拉取本轮依赖：两层记忆快照 + 当前预约工单上下文 + 实时群状态 + 账号身份配置。
-    const enrichmentIdentity = this.buildEnrichmentIdentity(params);
-    const [memory, pointerBookingContext, realtimeGroups, accountIdentityConfig] =
-      await Promise.all([
-        turnHintsPromise.then(async (turnHints) => {
-          const snapshot = await this.memoryService.onTurnStart(
-            corpId,
-            userId,
-            sessionId,
-            currentUserMessage,
-            {
-              includeShortTerm: callerKind === CallerKind.WECOM,
-              shortTermEndTimeInclusive: params.shortTermEndTimeInclusive,
-              turnHints,
-              botUserId: params.botUserId,
-            },
-          );
-          return enrichmentIdentity
-            ? this.snapshotEnrichment.enrich(snapshot, enrichmentIdentity)
-            : snapshot;
+      const resolved = measurePhase(phaseDurationsMs, 'resolve', () =>
+        resolveTurnContext({
+          params,
+          normalizedInput: input,
+          sources,
+          normalizedMessages,
+          conversationCorpusBlocks,
+          injectionAssessment,
+          nowMs: Date.now(),
         }),
-        // [当前预约信息] 由 active_booking 指针 + 海绵工单实时状态渲染（理由见 loadBookingContext）。
-        this.loadBookingContext(
-          corpId,
-          userId,
-          currentUserMessage,
-          this.buildSpongeTokenContext(params),
-        ),
-        this.loadRealtimeGroupStatus(params),
-        this.loadAccountIdentity(params.botImId),
-      ]);
+      );
+      const composed = measurePhase(phaseDurationsMs, 'compile_prompt', () =>
+        this.context.compose(resolved.promptModel),
+      );
+      const runtime = measurePhase(phaseDurationsMs, 'build_tools', () =>
+        this.toolRuntimeBuilder.build({ resolved }),
+      );
 
-    // 指针路径没有在途预约时，按记忆里的手机号补一道带外工单核验（人工建单对指针全盲，
-    // 详见 maybeLoadOutOfBandBookingContext）。依赖 memory 里的手机号，须在 Promise.all 之后。
-    const bookingContext = await this.maybeLoadOutOfBandBookingContext(
-      pointerBookingContext,
-      memory,
-      currentUserMessage,
-      this.buildSpongeTokenContext(params),
-    );
-
-    // 对话消息归一化为 AI SDK ModelMessage[]（含多模态图片/表情注入）。
-    const { messages: normalizedMessages, corpusBlocks: conversationCorpusBlocks } =
-      normalizeConversationWithCorpus({
-        callerKind,
-        memoryWindow: memory.shortTerm.messageWindow,
-        passedMessages: truncatedMessages,
-        enableVision: options?.enableVision ?? false,
-        imageUrls: params.imageUrls,
-        imageMessageIds: params.imageMessageIds,
-        visualMessageTypes: params.visualMessageTypes,
+      const finalPrompt = composed.systemPrompt;
+      this.checkFinalPromptBloat(finalPrompt, {
+        sessionId: params.sessionId,
+        userId: params.userId,
+        scenario,
+      });
+      this.tracer?.emit({
+        type: 'turn_preparation',
+        userId: params.userId,
+        status: 'success',
+        totalDurationMs: Date.now() - startedAt,
+        phaseDurationsMs,
+        prompt: {
+          totalChars: finalPrompt.length,
+          estimatedTokens: Math.ceil(finalPrompt.length / 4),
+          orderHash: composed.orderHash,
+          blocks: composed.blockMetrics,
+          dynamicBlockIds: composed.dynamicBlockIds,
+        },
+        tools: {
+          available: runtime.availableToolCount,
+          active: runtime.activeToolCount,
+        },
       });
 
-    // 输入安全检查：扫 prompt injection → 异步告警 → 返回需要追加到 system prompt 的 guard suffix。
-    const guardSuffix = this.applyInputGuard(normalizedMessages, currentUserMessage, userId);
-
-    // 品牌上下文（§5.3 锚点一）：读 SessionBrandState；facts.brand 不存在时按
-    // 「旧并集末位 > 已验证昵称品牌 seed > 空」构造本轮生效的初始状态（首轮推荐即按
-    // 该品牌启动），持久化仍随收尾 reducer 统一落盘。昵称品牌必须先经品牌库确定性
-    // 命中——未命中的昵称（如 Gattouzo）不产生任何品牌线索。
-    const turnBrandContext = await this.deriveTurnBrandContext(params.contactName, memory);
-    const contactBrandAliases = turnBrandContext.nicknameBrands;
-
-    // Compose 的输入：memoryBlock 渲染 + 当前阶段指针（直接取 short-term working state；
-    // 不由任何本地 case 状态推导 onboard_followup）。
-    const promptMemoryView = adjudicatePromptMemory(memory);
-    const activeLaborForm = resolveActiveLaborForm(memory, currentLaborFormIntent);
-    const memoryBlock = buildMemoryBlock(
-      promptMemoryView,
-      bookingContext.block,
-      realtimeGroups,
-      params.contactName,
-      contactBrandAliases,
-      currentLaborFormIntent,
-      activeLaborForm,
-    );
-    const persistedStage = memory.shortTerm.stage.currentStage ?? undefined;
-    // 当前阶段存独立 `stage:` key，TTL 与咨询生命周期配置对齐。过期后若
-    // 直接兜底到策略第一个阶段——
-    // 已服务过的老候选人回访会被当新客从 trust_building 重走（张漪 case：6-03 已
-    // 约面，6-08/6-10 回访都从信任建立重来）。长期画像已有身份字段即视为老用户，
-    // 回访直接进入岗位咨询阶段。
-    const returningUserStage = persistedStage
-      ? undefined
-      : this.resolveReturningUserStage(memory.longTerm.semantic.profile);
-    const stageFromResolver = persistedStage ?? returningUserStage;
-
-    // System prompt 组装（委托 ContextService.compose）
-    const {
-      systemPrompt,
-      promptBlocks: composedPromptBlocks,
-      stageGoals,
-      thresholds,
-    } = await this.context.compose({
-      scenario,
-      currentStage: stageFromResolver ?? undefined,
-      memoryBlock,
-      sessionFacts: memory.shortTerm.sessionState?.facts ?? null,
-      turnHints: memory.turnHints,
-      displayTurnHints: promptMemoryView.displayTurnHints,
-      pendingTurnHintFields: promptMemoryView.pendingTurnHintFields,
-      currentTurnTexts,
-      currentUserMessage,
-      normalizedMessages,
-      currentLaborFormIntent,
-      sessionBrandState: turnBrandContext.state,
-      accountIdentity: {
+      return {
+        finalPrompt,
+        promptBlocks: composed.promptBlocks,
+        normalizedMessages,
+        conversationCorpusBlocks,
+        memoryLoadWarning: sources.memory._warnings?.join('; '),
+        tools: runtime.tools,
+        corpId: params.corpId,
+        userId: params.userId,
+        sessionId: params.sessionId,
         botUserId: params.botUserId,
-        nickname: accountIdentityConfig.nickname ?? undefined,
-        gender: accountIdentityConfig.gender ?? undefined,
-      },
-      strategySource: params.strategySource,
-    });
-
-    // 本轮入口阶段：持久化阶段优先；老用户兜底阶段需在策略阶段表中存在才采用；
-    // 都没有则回到策略第一个 stage（"新会话的起点"）。
-    const entryStage =
-      persistedStage ??
-      (returningUserStage && stageGoals[returningUserStage] ? returningUserStage : undefined) ??
-      Object.keys(stageGoals)[0] ??
-      null;
-    if (!persistedStage && returningUserStage && stageGoals[returningUserStage]) {
-      this.logger.log(
-        `[prepare] 老用户回访阶段兜底: userId=${params.userId}, entryStage=${returningUserStage}（程序性阶段已过期，长期画像存在）`,
-      );
+        botImId: params.botImId,
+        maxSteps,
+        entryStage: resolved.entryStage,
+        ledger: runtime.ledger,
+        contactName: params.contactName,
+        memorySnapshot: resolved.memorySnapshot,
+        toolExecutionTimings: runtime.toolExecutionTimings,
+      };
+    } catch (error) {
+      this.tracer?.emit({
+        type: 'turn_preparation',
+        userId: params.userId,
+        status: 'failure',
+        totalDurationMs: Date.now() - startedAt,
+        phaseDurationsMs,
+        error: toErrorMessage(error).slice(0, 300),
+      });
+      throw error;
     }
-
-    // 视觉事实 sheet 索引（每轮一次读）：出处公证按 sheet kind 认候选人自陈材料。
-    // 缺它则证件类（健康证/学生证）自陈原话被排除出出处池——模型引用其中的姓名/性别/年龄
-    // 会被判 source_text_not_found，进而重复追问已答字段。降级/异常一律回落空索引，
-    // 即恢复到无 sheet 的文本兜底行为，不阻断回合。
-    const visualSheetsByContent = await this.loadVisualSheetIndex(sessionId);
-
-    // 工具上下文 + 观测快照（都消费 entryStage）。
-    const candidateTexts = extractCandidateTextsFromCorpus(conversationCorpusBlocks, {
-      visualSheetsByContent,
-    });
-    const ledger = createTurnLedger({
-      turnHints: memory.turnHints,
-      laborFormIntent: currentLaborFormIntent,
-      collectedFields: parseCandidateFieldsFromText(
-        currentUserMessage ? [currentUserMessage] : [],
-        Date.now(),
-      ),
-      geoSignalCities: inferCitiesFromGeoSignals(candidateTexts),
-      currentFocusJob: memory.shortTerm.sessionState?.currentFocusJob ?? null,
-    });
-    const toolContext = buildToolContext({
-      params,
-      memory,
-      normalizedMessages,
-      conversationCorpusBlocks,
-      visualSheetsByContent,
-      entryStage,
-      stageGoals,
-      thresholds,
-      ledger,
-      contactBrandAliases,
-      sessionBrandState: turnBrandContext.state,
-      currentUserMessage,
-      currentLaborFormIntent,
-      bookingWorkOrderJobIds: bookingContext.jobIds,
-    });
-    await this.seedLocationShareAnchor(toolContext, currentUserMessage);
-    const toolExecutionTimings = new Map<string, number>();
-    const scenarioTools = this.toolRegistry.buildForScenario(scenario, toolContext) as ToolSet;
-    const tools = wrapToolsWithTiming(
-      resolveToolsForMode(scenarioTools, params.toolMode ?? 'scenario', params.allowedToolNames),
-      toolExecutionTimings,
-      this.tracer,
-    );
-    const memorySnapshot = this.buildMemorySnapshot(memory, entryStage);
-
-    const proactiveDirective = buildProactiveDirective(params);
-
-    // 测试替身/旧调用方可能只返回 systemPrompt；生产 ContextService 始终给出逐块标签。
-    const basePromptBlocks =
-      composedPromptBlocks?.length > 0
-        ? composedPromptBlocks
-        : [
-            {
-              id: 'system-prompt',
-              domain: 'teaching' as const,
-              role: 'system' as const,
-              content: systemPrompt.trim(),
-            },
-          ];
-    // input-guard 既有位置在 critical-turn-guard 块之前；该块由 final-check 复合 section
-    // 在命中 turn 规则时产出，仅把独立输入防护块插回该边界，保持最终 system 字节顺序不变。
-    const criticalBlockIndex = basePromptBlocks.findIndex(
-      (block) => block.id === 'critical-turn-guard',
-    );
-    const blocksBeforeInputGuard =
-      criticalBlockIndex >= 0 ? basePromptBlocks.slice(0, criticalBlockIndex) : basePromptBlocks;
-    const blocksAfterInputGuard =
-      criticalBlockIndex >= 0 ? basePromptBlocks.slice(criticalBlockIndex) : [];
-    const promptBlocks: PromptCorpusBlock[] = [
-      ...blocksBeforeInputGuard,
-      ...(guardSuffix
-        ? [
-            {
-              id: 'input-guard',
-              domain: 'teaching' as const,
-              role: 'system' as const,
-              content: guardSuffix.trim(),
-            },
-          ]
-        : []),
-      ...blocksAfterInputGuard,
-      ...(proactiveDirective
-        ? [
-            {
-              id: 'proactive-directive',
-              domain: 'teaching' as const,
-              role: 'system' as const,
-              content: proactiveDirective.trim(),
-            },
-          ]
-        : []),
-    ];
-
-    const finalPrompt = renderPromptBlocks(promptBlocks);
-    this.checkFinalPromptBloat(finalPrompt, { sessionId, userId, scenario });
-
-    return {
-      finalPrompt,
-      promptBlocks,
-      normalizedMessages,
-      conversationCorpusBlocks,
-      memoryLoadWarning: memory._warnings?.join('; '),
-      tools,
-      corpId,
-      userId,
-      sessionId,
-      botUserId: params.botUserId,
-      botImId: params.botImId,
-      maxSteps,
-      entryStage,
-      ledger,
-      contactName: params.contactName,
-      memorySnapshot,
-      toolExecutionTimings,
-    };
   }
 
-  /**
-   * finalPrompt 膨胀哨兵：出口测长，超阈值飞书告警。
-   *
-   * 历史上"张漪 case"的 27K evidence 膨胀靠 badcase 反查才发现——组装出口此前
-   * 无测长、无告警，任何一处渲染失控都只能等对话质量劣化后倒查。阈值取实测
-   * p-max（~43K 字符）上浮：超过 60K 即说明某个 section/记忆块渲染跑飞。
-   * 告警自带节流（AlertNotifier throttle + dedupe），不会刷屏；发送失败不影响主链路。
-   */
+  /** finalPrompt 出口膨胀哨兵；发送告警失败不影响主回合。 */
   private checkFinalPromptBloat(
     finalPrompt: string,
     scope: { sessionId: string; userId: string; scenario: string },
   ): void {
-    const FINAL_PROMPT_BLOAT_THRESHOLD_CHARS = 60_000;
-    if (finalPrompt.length <= FINAL_PROMPT_BLOAT_THRESHOLD_CHARS) return;
+    const thresholdChars = 60_000;
+    if (finalPrompt.length <= thresholdChars) return;
     this.logger.warn(
-      `[prepare] finalPrompt 膨胀: length=${finalPrompt.length} > ${FINAL_PROMPT_BLOAT_THRESHOLD_CHARS}, sessionId=${scope.sessionId}`,
+      `[prepare] finalPrompt 膨胀: length=${finalPrompt.length} > ${thresholdChars}, sessionId=${scope.sessionId}`,
     );
     void this.alertNotifier
       ?.sendAlert({
         code: 'agent.prompt_bloat',
         severity: AlertLevel.WARNING,
-        summary: `finalPrompt 长度 ${finalPrompt.length} 字符，超过 ${FINAL_PROMPT_BLOAT_THRESHOLD_CHARS} 阈值（正常 p-max ~43K）`,
+        summary: `finalPrompt 长度 ${finalPrompt.length} 字符，超过 ${thresholdChars} 阈值（正常 p-max ~43K）`,
         source: { subsystem: 'agent', component: 'preparation', action: 'prepare' },
         scope: { sessionId: scope.sessionId, userId: scope.userId, scenario: scope.scenario },
         dedupe: { key: 'agent.prompt_bloat' },
@@ -451,529 +198,26 @@ export class PreparationService {
         this.logger.warn(`[prepare] finalPrompt 膨胀告警发送失败: ${toErrorMessage(error)}`);
       });
   }
+}
 
-  /**
-   * 视觉事实索引装配：读会话内带 sheet 的视觉消息，按「剥时间后缀的内容」建索引。
-   * 读失败不阻断回合——返回空索引即回落文本兜底（降级不是失败）。
-   */
-  private async loadVisualSheetIndex(sessionId: string) {
-    try {
-      const rows = await this.chatSession.getVisualFacts(sessionId);
-      return buildVisualSheetIndex(rows);
-    } catch (error) {
-      this.logger.warn(`视觉事实索引装配失败，回落文本兜底: ${toErrorMessage(error)}`);
-      return undefined;
-    }
+function measurePhase<T>(durations: Record<string, number>, phase: string, run: () => T): T {
+  const startedAt = Date.now();
+  try {
+    return run();
+  } finally {
+    durations[phase] = Date.now() - startedAt;
   }
+}
 
-  /** 当前轮规则 producer（prep 运行点）：产物随 ledger 穿过工具与轮末收编。 */
-  private async detectTurnHints(currentUserMessages: string[]) {
-    const texts = currentUserMessages.map((text) => text.trim()).filter(Boolean);
-    if (texts.length === 0) return null;
-    const brandData = await this.spongeService.fetchBrandList();
-    const facts = produceTurnHints(texts, brandData);
-    if (facts) this.logger.debug(`前置规则识别命中: ${facts.reasoning}`);
-    return facts;
-  }
-
-  /**
-   * 装配候选人画像富化所需的身份标识。
-   * 仅在 candidate-consultation 场景 + 有 token 时触发外部补全。
-   */
-  private buildEnrichmentIdentity(
-    params: GeneratorInvokeParams,
-  ): CandidateIdentityHint | undefined {
-    const scenario = params.scenario ?? 'candidate-consultation';
-    if (scenario !== 'candidate-consultation' || !params.token) return undefined;
-    return {
-      token: params.token,
-      imBotId: params.botImId,
-      imContactId: params.imContactId,
-      wecomUserId: params.botUserId,
-      externalUserId: params.externalUserId,
-    };
-  }
-
-  private buildSpongeTokenContext(
-    params: GeneratorInvokeParams,
-  ): { botImId?: string; botUserId?: string; groupId?: string } | undefined {
-    if (!params.botImId && !params.botUserId && !params.groupId) return undefined;
-    return {
-      botImId: params.botImId,
-      botUserId: params.botUserId,
-      groupId: params.groupId,
-    };
-  }
-
-  /**
-   * 输入安全检查闭环：扫描 prompt injection → 异步告警 → 返回需要追加到 system prompt 的防护 suffix。
-   * 命中注入时返回 GUARD_SUFFIX，否则返回空字符串。
-   */
-  private applyInputGuard(
-    normalizedMessages: ModelMessage[],
-    currentUserMessage: string | undefined,
-    userId: string,
-  ): string {
-    const guardResult = this.promptInjection.detectMessages(normalizedMessages);
-    if (guardResult.safe) return '';
-    this.promptInjection
-      .alertInjection(userId, guardResult.reason!, currentUserMessage ?? '')
-      .catch(() => {});
-    return PromptInjectionService.GUARD_SUFFIX;
-  }
-
-  /**
-   * 派生本轮品牌上下文（§5.3 锚点一）：SessionBrandState + 昵称品牌线索。
-   *
-   * 昵称品牌统一经 BrandResolutionService 的目录验证（resolve(contact_name)）：
-   * facts.brand 不存在时唯一命中的昵称品牌 seed 为 currentBrand 初始值（仅此一次），
-   * 首轮推荐即按该品牌启动；状态一旦存在永不重新 seed。
-   * 失败一律降级为空状态（不阻断主流程）。
-   */
-  private async deriveTurnBrandContext(
-    contactName: string | undefined,
-    memory: TurnStartMemory,
-  ): Promise<TurnBrandContext> {
-    try {
-      return await this.brandStateService.deriveTurnBrandContext({
-        persisted: memory.shortTerm.sessionState?.facts?.brand ?? null,
-        contactName,
-      });
-    } catch (error) {
-      this.logger.warn('品牌上下文派生失败（按空状态降级）', error);
-      return {
-        state: { currentBrand: null, excludedBrands: [] },
-        persisted: false,
-        nicknameBrands: [],
-      };
-    }
-  }
-
-  /**
-   * 实时核验候选人当前在哪些兼职群。
-   *
-   * 拉群记忆存会话层（TTL 2 天）：过期后 Agent 不知道候选人已在群，可能重复
-   * 邀请/重复承诺；候选人也可能自行退群，记忆会反向过期。实时成员关系
-   * （GroupMembershipService，10 分钟缓存）是唯一可靠事实源——这里与记忆召回
-   * 并行加载，失败返回空（按"未知"降级，不阻断主流程）。
-   */
-  private async loadRealtimeGroupStatus(
-    params: GeneratorInvokeParams,
-  ): Promise<RealtimeGroupStatus[]> {
-    const contactId = params.imContactId || params.userId;
-    if (!contactId || params.callerKind !== CallerKind.WECOM) return [];
-
-    try {
-      const groups = await this.groupResolver.resolveGroups('兼职群');
-      if (groups.length === 0) return [];
-      const idToGroup = new Map(groups.map((group) => [group.imRoomId, group]));
-      const roomIds = await this.groupMembership.listUserRooms(contactId, idToGroup.keys());
-      return roomIds
-        .map((roomId) => idToGroup.get(roomId))
-        .filter((group): group is NonNullable<typeof group> => Boolean(group))
-        .map((group) => ({ groupName: group.groupName, city: group.city }));
-    } catch (error) {
-      this.logger.warn('实时群状态核验失败（按未知降级）', error);
-      return [];
-    }
-  }
-
-  /**
-   * 账号身份配置（企微昵称/性别，hosting_member_config 按 botImId 索引）：
-   * 供 IdentitySection 锚定"你就是这个账号本人"。读失败按未配置降级，不阻断回合。
-   */
-  private async loadAccountIdentity(
-    botImId: string | undefined,
-  ): Promise<{ nickname: string | null; gender: string | null }> {
-    try {
-      return await this.hostingMemberConfig.resolveAgentAccountIdentity(botImId);
-    } catch (error) {
-      this.logger.warn(
-        `账号身份配置读取失败（按未配置降级）: ${error instanceof Error ? error.message : String(error)}`,
-      );
-      return { nickname: null, gender: null };
-    }
-  }
-
-  /**
-   * 渲染 [当前预约信息]：active_booking 指针 + 海绵工单实时状态。
-   *
-   * 不再读 recruitment_cases 本地字段（历史 booking_id 全 NULL、状态与海绵脱节）。
-   * 非预约回合允许使用短缓存；预约相关回合强制直查海绵，并区分两种「拿不到工单」：
-   * - 查询失败（网络/海绵抖动）：注入「最新预约信息确认中」的封闭提示，不使用本地
-   *   业务快照，也不阻断本轮；
-   * - 海绵明确查不到（指针已失效，active_booking 无过期机制、只有取消工具会清）：
-   *   按无此预约静默跳过——若也走「确认中」，失效指针会让每个预约回合永久停留在
-   *   「稍等一下」。
-   */
-  private async loadBookingContext(
-    corpId: string,
-    userId: string,
-    currentUserMessage: string | undefined,
-    tokenContext?: { botImId?: string; botUserId?: string; groupId?: string },
-  ): Promise<{ block: string; jobIds: number[] }> {
-    try {
-      const activeBookings = await this.longTermService.getActiveBookings(corpId, userId);
-      if (activeBookings.length === 0) {
-        // B-5 报名空头宣称接地（零 booking 调用却对候选人
-        // 宣称"已帮你报好/已登记好"）。无工单时明示 ground truth，让完成口径必须以本轮工具结果
-        // 为据。注意段名必须区别于 [当前预约信息]——后者的**存在性**被多个工具指令当作"已有
-        // 预约"信号（如 request_handoff "存在时必须调用"），空状态复用同名段会毒化这些判断。
-        return { block: PreparationService.NO_BOOKING_STATUS_BLOCK, jobIds: [] };
-      }
-
-      const requiresFreshLookup = this.requiresFreshBookingContext(currentUserMessage);
-      const requiresLocationDetails = this.requiresBookingLocationDetails(currentUserMessage);
-      // 并行查询：直查路径下多工单串行会把多次海绵 API 耗时叠加进 prepare 热路径。
-      const lookups = await Promise.all(
-        activeBookings.map(async (activeBooking) => {
-          const workOrderId = activeBooking.work_order_id;
-          try {
-            const workOrder = requiresFreshLookup
-              ? await this.spongeService.getWorkOrderById(workOrderId, tokenContext, {
-                  throwOnFetchError: true,
-                })
-              : await this.spongeService.getCachedWorkOrderById(workOrderId, tokenContext);
-            const normalizedJobId = this.normalizeJobId(workOrder?.jobId);
-            const location =
-              requiresLocationDetails && normalizedJobId != null
-                ? await this.loadJobLocationDetails(normalizedJobId, workOrderId, tokenContext)
-                : undefined;
-            return { workOrderId, workOrder, location, fetchFailed: false };
-          } catch (error) {
-            this.logger.warn(
-              `加载单个预约工单上下文失败 workOrderId=${workOrderId}: ${
-                error instanceof Error ? error.message : String(error)
-              }`,
-            );
-            return { workOrderId, workOrder: null, location: undefined, fetchFailed: true };
-          }
-        }),
-      );
-
-      const contexts: Array<{ block: string; jobId: number | null }> = [];
-      let fetchFailedCount = 0;
-      for (const { workOrderId, workOrder, location, fetchFailed } of lookups) {
-        if (fetchFailed) {
-          fetchFailedCount += 1;
-          continue;
-        }
-        if (!workOrder) {
-          this.logger.warn(
-            `active_booking 指向的工单海绵查不到（指针可能已失效，按无此预约跳过）workOrderId=${workOrderId}`,
-          );
-          continue;
-        }
-
-        // workOrder.jobId 也是 provenance 合法来源：改约场景下 system prompt 把它作为「岗位ID」
-        // 暴露给模型并指示先 precheck 校验新日期，但改约不调 job_list，故必须并入召回集。
-        const block = formatBookingContext(workOrder, contexts.length + 1, location);
-        const normalizedJobId = this.normalizeJobId(workOrder.jobId);
-        if (block) contexts.push({ block, jobId: normalizedJobId });
-      }
-
-      const syncingBlock =
-        requiresFreshLookup && fetchFailedCount > 0
-          ? [
-              '预约信息同步中：候选人存在进行中的预约工单，但暂时查询不到最新详情。',
-              '禁止使用历史记忆猜测该预约的品牌、门店、岗位、面试时间、地址或状态；禁止对同一工单/同一岗位重复提交报名（候选人报名其它岗位不受影响，正常推进）。',
-              '候选人询问该预约、要求改约或取消时，只能自然说明“我正在确认最新预约信息，稍等一下”；不得提及工单、海绵、缓存或系统同步。',
-            ].join('\n')
-          : '';
-      // 通用处理规则只渲染一次（P1-2）：有 ≥1 个预约块时才附加；仅剩同步中提示
-      // （contexts 为空）时规则引用的「岗位ID」「面试时间」都不存在，维持原先不渲染的行为。
-      const renderedContexts = [
-        ...contexts.map((context) => context.block),
-        ...(contexts.length > 0 ? [BOOKING_CONTEXT_SHARED_RULES] : []),
-        ...(syncingBlock ? [syncingBlock] : []),
-      ];
-      const block =
-        renderedContexts.length > 0 ? `\n\n[当前预约信息]\n\n${renderedContexts.join('\n\n')}` : '';
-      return {
-        block,
-        // 仅当 block 非空（[当前预约信息] 真进了 system prompt、模型能看到「岗位ID」）才把 jobId
-        // 当 provenance：block 为空（工单展示字段全缺）时模型根本看不到该 jobId。
-        jobIds: block
-          ? contexts
-              .map((context) => context.jobId)
-              .filter((jobId): jobId is number => jobId != null)
-          : [],
-      };
-    } catch (error) {
-      this.logger.warn(
-        `加载预约上下文失败: ${error instanceof Error ? error.message : String(error)}`,
-      );
-      return { block: '', jobIds: [] };
-    }
-  }
-
-  /**
-   * [预约状态] 空态接地块（active_booking 指针为空且带外核验也未发现在途工单时注入）。
-   *
-   * 两个方向都要接地：
-   * - 正向：禁止空头宣称"已帮你报名"；
-   * - 反向（badcase 蒋强 8-31 到店扑空）：候选人声称/追问一个系统查不到的面试安排
-   *   （典型为真人顾问带外口头约面）时，Agent 无从核实，严禁替系统背书。
-   */
-  // 程序记忆层·预约状态空态规则（代码动态注入居所）；总目录：docs/prompt-rule-ledger.md
-  private static readonly NO_BOOKING_STATUS_BLOCK =
-    '\n\n[预约状态]\n\n当前候选人没有任何进行中的报名/预约工单。' +
-    '严禁使用"已帮你报名/已报名成功/已登记好/已提交预约"等完成口径描述报名状态；' +
-    '只有本轮 duliday_interview_booking 返回 success 后，才能向候选人确认报名成功。\n' +
-    '若候选人声称已约好面试、或追问某场面试是否有变动/怎么走/找谁（该安排可能由人工顾问' +
-    '带外沟通产生，系统查不到），你无法核实其真实性：严禁替系统确认"没有变动/已安排好/' +
-    '到店会有人接待"等口径，也严禁编造面试时间、门店或接待流程；应自然回复"我帮你确认一下"，' +
-    '并调用 request_handoff(reasonCode="other", reason=说明候选人声称的面试安排详情) 转人工核实。';
-
-  /**
-   * 按 jobId 补查门店地址与面试形式/地址（线下面试才允许下发面试地址）。
-   * 失败按无详情降级：预约块仍渲染业务字段，只是缺地址行。
-   */
-  private async loadJobLocationDetails(
-    jobId: number,
-    workOrderId: number,
-    tokenContext?: { botImId?: string; botUserId?: string; groupId?: string },
-  ): Promise<
-    { storeAddress?: string; interviewMethod?: string; interviewAddress?: string } | undefined
-  > {
-    try {
-      const detail = await this.spongeService.fetchJobs(
-        {
-          jobIdList: [jobId],
-          pageNum: 1,
-          pageSize: 1,
-          onlySignableJobs: false,
-          options: { includeBasicInfo: true, includeInterviewProcess: true },
-        },
-        tokenContext,
-      );
-      const job = detail.jobs[0];
-      if (!job) return undefined;
-      const storeAddress =
-        typeof job.basicInfo?.storeInfo?.storeAddress === 'string'
-          ? job.basicInfo.storeInfo.storeAddress.trim()
-          : undefined;
-      const interviewMeta = buildJobPolicyAnalysis(job).interviewMeta;
-      const interviewMethod = interviewMeta.method ?? undefined;
-      const interviewAddress = isOfflineInterviewMethod(interviewMethod)
-        ? (interviewMeta.address ?? undefined)
-        : undefined;
-      return { storeAddress, interviewMethod, interviewAddress };
-    } catch (error) {
-      this.logger.warn(
-        `加载预约地址详情失败 workOrderId=${workOrderId}: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-      return undefined;
-    }
-  }
-
-  /**
-   * 带外工单核验（badcase 蒋强）：
-   *
-   * 真人顾问在海绵手工建单/改约不会写回 active_booking 指针，loadBookingContext 的指针路径
-   * 对这类工单全盲——[预约状态] 会在候选人来确认面试的当口断言"没有进行中的工单"，模型只能
-   * 在反事实系统块与聊天历史之间二选一。复聊侧已有同源核验
-   * （follow-up.processor.checkOutOfBandWorkOrderAtFire），本方法把同一 source of truth
-   * （海绵 signup/list 按手机号查询）接到主链路。
-   *
-   * 触发条件（控制热路径成本，仅预约相关回合追加一次海绵查询）：
-   * - 指针路径没有渲染出 [当前预约信息]（无指针或全部失效）；
-   * - 本轮消息命中面试/预约词面（requiresFreshBookingContext）；
-   * - 记忆里有可信手机号（会话收资 or 长期档案）。
-   * fail open：查询失败/无工单时原样返回指针路径结果（空态块）。
-   */
-  private async maybeLoadOutOfBandBookingContext(
-    base: { block: string; jobIds: number[] },
-    memory: TurnStartMemory,
-    currentUserMessage: string | undefined,
-    tokenContext?: { botImId?: string; botUserId?: string; groupId?: string },
-  ): Promise<{ block: string; jobIds: number[] }> {
-    if (base.block.includes('[当前预约信息]')) return base;
-    if (!this.requiresFreshBookingContext(currentUserMessage)) return base;
-    const phone = this.resolveCandidatePhone(memory);
-    if (!phone) return base;
-
-    try {
-      const result = await this.spongeService.fetchSignupWorkOrders({ phone }, tokenContext);
-      const activeOrders = (result.workOrders ?? []).filter((order: SignupWorkOrderItem) =>
-        ACTIVE_INTERVIEW_WORK_ORDER_STATUSES.has(order.currentStatus?.trim() ?? ''),
-      );
-      if (activeOrders.length === 0) return base;
-
-      const requiresLocationDetails = this.requiresBookingLocationDetails(currentUserMessage);
-      const contexts: Array<{ block: string; jobId: number | null }> = [];
-      for (const order of activeOrders) {
-        const normalizedJobId = this.normalizeJobId(order.jobId);
-        const location =
-          requiresLocationDetails && normalizedJobId != null
-            ? await this.loadJobLocationDetails(normalizedJobId, order.workOrderId, tokenContext)
-            : undefined;
-        const block = formatBookingContext(order, contexts.length + 1, location);
-        if (block) contexts.push({ block, jobId: normalizedJobId });
-      }
-      if (contexts.length === 0) return base;
-
-      this.logger.log(
-        `[prepare] 带外工单核验命中：phone 尾号${phone.slice(-4)} 在途工单 ${contexts.length} 个（active_booking 指针为空）`,
-      );
-      const oobNote =
-        '_以下预约按候选人手机号从工单系统实时查得，非本会话提交（多为人工顾问或其它渠道登记）。_';
-      const renderedContexts = [
-        oobNote,
-        ...contexts.map((context) => context.block),
-        BOOKING_CONTEXT_SHARED_RULES,
-      ];
-      return {
-        block: `\n\n[当前预约信息]\n\n${renderedContexts.join('\n\n')}`,
-        jobIds: contexts
-          .map((context) => context.jobId)
-          .filter((jobId): jobId is number => jobId != null),
-      };
-    } catch (error) {
-      this.logger.warn(
-        `带外工单核验失败（fail open 维持指针路径结果）: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-      return base;
-    }
-  }
-
-  /** 从会话收资/长期档案取可信手机号；两处都拿不到视为候选人未走过报名流程。 */
-  private resolveCandidatePhone(memory: TurnStartMemory): string | null {
-    const sessionPhone = memory.shortTerm.sessionState?.facts?.interview_info?.phone?.value;
-    const profileFact = memory.longTerm.semantic.profile?.phone;
-    const profilePhone = isUserProfileFactValue(profileFact) ? profileFact.value : undefined;
-    for (const candidate of [sessionPhone, profilePhone]) {
-      if (typeof candidate === 'string' && /^1\d{10}$/.test(candidate.trim())) {
-        return candidate.trim();
-      }
-    }
-    return null;
-  }
-
-  /**
-   * 预约事实会发生改约、取消和状态推进；相关回合必须绕过 5 分钟缓存读取海绵。
-   * currentUserMessage 为空（如主动跟进回合、消息以 assistant 收尾）时走缓存路径。
-   */
-  private requiresFreshBookingContext(currentUserMessage: string | undefined): boolean {
-    if (!currentUserMessage) return false;
-    return /面试|预约|报名|改约|改期|改到|换(?:个|一)?时间|取消|不去|去不了|来不了|推迟|延期|迟到|到店|报到|入职|地址|位置|定位|导航|怎么走|找不到|搞错/u.test(
-      currentUserMessage,
-    );
-  }
-
-  private requiresBookingLocationDetails(currentUserMessage: string | undefined): boolean {
-    return Boolean(
-      currentUserMessage &&
-        /面试|到店|报到|地址|位置|定位|导航|怎么走|找不到|搞错/u.test(currentUserMessage),
-    );
-  }
-
-  private normalizeJobId(value: unknown): number | null {
-    if (typeof value === 'number' && Number.isInteger(value) && value > 0) return value;
-    if (typeof value === 'string' && /^\d+$/.test(value)) return Number(value);
-    return null;
-  }
-
-  /** 老用户回访的入口阶段（需在场景策略阶段表中存在才生效）。 */
-  private static readonly RETURNING_USER_ENTRY_STAGE = 'job_consultation';
-
-  /**
-   * 老用户回访的入口阶段兜底。
-   *
-   * 长期画像里有身份字段（姓名/电话，主要来自报名成功或会话沉淀写入）即视为
-   * 服务过的老用户——回访时跳过信任建立，直接进入岗位咨询。
-   * 返回 undefined 表示按新用户处理（兜底到策略第一个阶段）。
-   */
-  private resolveReturningUserStage(profile: UserProfileFacts | null): string | undefined {
-    if (!profile) return undefined;
-    const hasIdentity = Boolean(profile.name?.value || profile.phone?.value);
-    return hasIdentity ? PreparationService.RETURNING_USER_ENTRY_STAGE : undefined;
-  }
-
-  /**
-   * 基于 memory recall 构造 memory_snapshot。
-   *
-   * 字段设计：
-   * - currentStage: 本轮入口阶段，用于判定"阶段机器是否走到预期位置"
-   * - presentedJobIds / recommendedJobIds: 让排障能看出"模型本轮是否遗忘了上轮推荐过的岗位"
-   * - sessionFacts: 扁平化的硬约束（时间/性别/区域等）——Case 2 排障的关键
-   * - profileKeys: 长期档案已填字段（不落值避免 PII）
-   */
-  private buildMemorySnapshot(
-    memory: TurnStartMemory,
-    entryStage: string | null,
-  ): AgentMemorySnapshot {
-    const session = memory.shortTerm.sessionState;
-    const presentedJobIds =
-      session?.presentedJobs?.map((j) => j.jobId).filter((id): id is number => id != null) ?? null;
-    const recommendedJobIds =
-      session?.lastCandidatePool?.map((j) => j.jobId).filter((id): id is number => id != null) ??
-      null;
-
-    const sessionFacts = this.flattenSessionFacts(session?.facts ?? null);
-
-    const profile = memory.longTerm.semantic.profile;
-    const profileKeys = profile
-      ? Object.entries(profile)
-          .filter(([, value]) => isUserProfileFactValue(value))
-          .map(([key]) => key)
-      : null;
-
-    return {
-      currentStage: entryStage,
-      presentedJobIds: presentedJobIds && presentedJobIds.length > 0 ? presentedJobIds : null,
-      recommendedJobIds:
-        recommendedJobIds && recommendedJobIds.length > 0 ? recommendedJobIds : null,
-      sessionFacts,
-      profileKeys: profileKeys && profileKeys.length > 0 ? profileKeys : null,
-      currentFocusJob: this.buildFocusJobSnapshot(session?.currentFocusJob ?? null),
-    };
-  }
-
-  private buildFocusJobSnapshot(
-    job: RecommendedJobSummary | null,
-  ): AgentMemorySnapshot['currentFocusJob'] {
-    if (!job) return null;
-
-    const availableDetailFields: NonNullable<
-      AgentMemorySnapshot['currentFocusJob']
-    >['availableDetailFields'] = [];
-    if (job.salaryDesc) availableDetailFields.push('salary');
-    if (job.settlementSummary) availableDetailFields.push('settlement');
-    if (job.shiftSummary) availableDetailFields.push('shift');
-    if (job.welfareFacts) availableDetailFields.push('welfare');
-    if (job.ageRequirement) availableDetailFields.push('age_requirement');
-    if (job.educationRequirement) availableDetailFields.push('education_requirement');
-    if (job.healthCertificateRequirement) {
-      availableDetailFields.push('health_certificate_requirement');
-    }
-    if (job.studentRequirement) availableDetailFields.push('student_requirement');
-    if (job.storeAddress) availableDetailFields.push('address');
-    if (job.laborForm || job.partTimeJobType) availableDetailFields.push('employment');
-    return { jobId: job.jobId, availableDetailFields };
-  }
-
-  /** 扁平化 facts.interview_info + facts.preferences，只保留非空字段。 */
-  private flattenSessionFacts(
-    facts: WeworkSessionState['facts'] | null,
-  ): Record<string, unknown> | null {
-    if (!facts) return null;
-    const flat: Record<string, unknown> = {};
-    const collect = (group: Record<string, unknown> | null | undefined, prefix: string) => {
-      if (!group) return;
-      for (const [key, value] of Object.entries(group)) {
-        if (value === null || value === undefined) continue;
-        if (typeof value === 'string' && value.trim() === '') continue;
-        if (Array.isArray(value) && value.length === 0) continue;
-        flat[`${prefix}.${key}`] = value;
-      }
-    };
-    collect(facts.interview_info as unknown as Record<string, unknown>, 'interview');
-    collect(facts.preferences as unknown as Record<string, unknown>, 'pref');
-    return Object.keys(flat).length > 0 ? flat : null;
+async function measureAsyncPhase<T>(
+  durations: Record<string, number>,
+  phase: string,
+  run: () => Promise<T>,
+): Promise<T> {
+  const startedAt = Date.now();
+  try {
+    return await run();
+  } finally {
+    durations[phase] = Date.now() - startedAt;
   }
 }

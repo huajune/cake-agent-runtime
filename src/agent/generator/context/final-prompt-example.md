@@ -1,6 +1,6 @@
 # `candidate-consultation` 最终 Prompt 装配示例
 
-本文按 2026-08-26 的真实代码路径重生成，描述 `PreparationService.prepare()` 交给
+本文按 2026-09-02 的真实代码路径重生成，描述 `PreparationService.prepare()` 交给
 AI SDK 的三份模型输入：`instructions`、`messages` 与 `tools`。
 
 ## 三条输入通道
@@ -17,47 +17,49 @@ Section 的动态内容仍属于 `instructions`（system 语义）。记忆、�
 ## prepare() 装配链
 
 ```text
-memory.onTurnStart()
-  → SnapshotEnrichmentService.enrich()（有身份锚时，紧接召回）
+normalizeTurnInput()
+  → TurnDataLoaderService.load()
+      → memory.onTurnStart() + SnapshotEnrichmentService.enrich()
+      → 策略 / 预约 / 群库 / 账号身份 / 视觉事实 / 定位并行读取
   → normalizeConversationWithCorpus()
-  → adjudicatePromptMemory()（一次生成共享裁决视图）
-  → buildMemoryBlock()（只负责呈现共享视图）
-  → ContextService.compose()（按场景清单生成 system promptBlocks）
-  → 构建本轮 tools
-  → 插入 input-guard / proactive-directive（按需）
+  → PromptInjectionDetector.detectTexts()（只扫本批输入，不回扫历史窗口）
+  → resolveTurnContext()（一次生成 Prompt / Tool 共享裁决视图）
+  → ContextService.compose()（Section 渲染类型化视图）
+  → ToolRuntimeBuilderService.build()
   → renderPromptBlocks()（唯一降维点）
   → WorkingMemory
 ```
 
-`SnapshotEnrichmentService` 是 generator 的备料步骤，不属于 memory lifecycle；
-`prompt-memory-adjudicator` 负责计算，`sections/` 负责模型可见呈现与排布。
+`TurnDataLoaderService` 是每轮外部 IO 边界；`turn-context-resolver` 负责裁决，
+`sections/` 只负责模型可见呈现与排布。
 
 ## 场景 Section 顺序
 
-`SCENARIO_SECTIONS['candidate-consultation']` 当前包含 13 个模型可见 section，产出至多 14 个
-block——末两行的 `final-check` / `critical-turn-guard` 两个块由 `final-check` 复合 section
-（发送前防线统一规则表）经 `buildBlocks` 一并产出：
+`SCENARIO_PROMPT_MANIFEST['candidate-consultation']` 当前包含 15 个 section。其中 `memory`
+可展开为 `candidate-memory` / `realtime-group-status` / `booking-context` 三个 evidence block；
+`input-guard` 和 `critical-turn-guard` 是显式的条件 section：
 
-| 段位             | 顺序 | Section               | 知识归类   | 语料域      | 稳定性 / 省略条件                     |
-| ---------------- | ---: | --------------------- | ---------- | ----------- | ------------------------------------- |
-| 稳定前缀 · 开篇  |    1 | `identity`            | procedural | teaching    | 开篇人设；配置变更极低频              |
-| 稳定前缀 · 静态  |    2 | `base-manual`         | procedural | teaching    | 固定手册                              |
-| 稳定前缀 · 静态  |    3 | `channel`             | procedural | teaching    | 渠道固定；私聊为空                    |
-| 稳定前缀 · 静态  |    4 | `stage-overview`      | procedural | teaching    | 全阶段地图；不读取当前阶段            |
-| 稳定前缀 · 配置  |    5 | `red-lines`           | procedural | teaching    | 随策略配置版本变化                    |
-| 稳定前缀 · 配置  |    6 | `thresholds`          | procedural | teaching    | 随策略配置版本变化；无阈值时为空      |
-| 动态尾部         |    7 | `memory`              | semantic   | evidence    | 档案、会话事实、岗位/工单等均空时省略 |
-| 动态尾部         |    8 | `turn-hints`          | working    | evidence    | 本轮共享裁决增量为空时省略            |
-| 动态尾部         |    9 | `hard-constraints`    | working    | evidence    | 本轮查询约束为空时省略                |
-| 动态尾部         |   10 | `datetime`            | working    | tool_result | 每轮当前时间                          |
-| 动态尾部         |   11 | `group-inventory`     | working    | tool_result | 无高置信城市或群库数据时省略          |
-| 动态尾部         |   12 | `stage-strategy`      | procedural | teaching    | 只渲染当前阶段策略                    |
+| 段位             | 顺序 | Section               | 知识归类   | 语料域      | 稳定性 / 省略条件                        |
+| ---------------- | ---: | --------------------- | ---------- | ----------- | ---------------------------------------- |
+| 稳定前缀 · 开篇  |    1 | `identity`            | procedural | teaching    | 开篇人设；配置变更极低频                 |
+| 稳定前缀 · 静态  |    2 | `base-manual`         | procedural | teaching    | 固定手册                                 |
+| 稳定前缀 · 静态  |    3 | `channel`             | procedural | teaching    | 渠道固定；私聊为空                       |
+| 稳定前缀 · 静态  |    4 | `stage-overview`      | procedural | teaching    | 全阶段地图；不读取当前阶段               |
+| 稳定前缀 · 配置  |    5 | `red-lines`           | procedural | teaching    | 随策略配置版本变化                       |
+| 稳定前缀 · 配置  |    6 | `thresholds`          | procedural | teaching    | 随策略配置版本变化；无阈值时为空         |
+| 动态尾部         |    7 | `memory`              | semantic   | evidence    | 展开候选人记忆、群状态与预约上下文       |
+| 动态尾部         |    8 | `turn-hints`          | working    | evidence    | 本轮共享裁决增量为空时省略               |
+| 动态尾部         |    9 | `hard-constraints`    | working    | evidence    | 本轮查询约束为空时省略                   |
+| 动态尾部         |   10 | `datetime`            | working    | tool_result | 每轮当前时间                             |
+| 动态尾部         |   11 | `group-inventory`     | working    | tool_result | 无高置信城市或群库数据时省略             |
+| 动态尾部         |   12 | `stage-strategy`      | procedural | teaching    | 只渲染当前阶段策略                       |
 | recitation 收口  |   13 | `final-check`         | procedural | teaching    | 常驻自检块（trigger=always）；固定次末位 |
-| 关键回合动态末位 |   14 | `critical-turn-guard` | procedural | teaching    | 同一规则表 trigger=turn 规则命中时才渲染 |
+| 输入安全块       |   14 | `input-guard`         | procedural | teaching    | Prompt Injection detector 命中时才渲染   |
+| 关键回合动态末位 |   15 | `critical-turn-guard` | procedural | teaching    | 同一规则表 trigger=turn 规则命中时才渲染 |
 
-这里有两根互不替代的轴：目录表达知识主类型；`PROMPT_SECTION_DOMAIN_REGISTRY` 表达
-teaching / evidence / tool_result 语料域。`static.section.ts` 和 `section.interface.ts` 是根目录
-基础设施，不是知识 section。
+这里有三根互不替代的轴：目录表达知识主类型；每个 Section 的 `domain` 表达
+teaching / evidence / tool_result 语料域；`slot` 表达编译位置。`section.ts` 是根目录基础设施，
+不是知识 section。
 
 空 section 不生成 block，因此一个普通私聊示例常见的结构化顺序是：
 
@@ -74,32 +76,30 @@ datetime
 group-inventory         （有城市群库数据时）
 stage-strategy
 final-check
+input-guard             （注入检测命中时）
 critical-turn-guard     （命中时）
 ```
 
 ## 回合级尾块与最终顺序
 
-`ContextService.compose()` 先产出场景 block。`PreparationService` 再按下式完成最终装配：
+`ContextService.compose()` 按场景 manifest 一次产出最终 block 顺序：
 
 ```text
-finalPrompt = renderPromptBlocks(
-  scenario blocks before critical-turn-guard
-  + input-guard（输入安全检查未通过时）
-  + critical-turn-guard（命中时）
-  + proactive-directive（主动跟进回合时）
-)
+finalPrompt = compilePromptProgram({ model, sections }).rendered
 ```
 
-- `input-guard` 固定插在 `critical-turn-guard` 块前，保持既有最终字节顺序。
-- `final-check` 常驻自检块固定次末位，以 recitation 在发送前收口；输入安全 guard 按需插在它与
-  `critical-turn-guard` 块之间。
-- `critical-turn-guard` 块是场景块末位，由 `final-check` 复合 section 在 turn 规则命中时产出；
-  未命中时不产生该块，此时常驻自检块成为场景尾块。
-- `proactive-directive` 不属于场景 section，只在主动/复聊回合追加到最终 system 尾部。
+- `SCENARIO_PROMPT_MANIFEST` 声明场景包含的 Section，`PROMPT_SLOT_ORDER` 决定跨类别位置；
+- `input-guard` 和 `critical-turn-guard` 的位置由各自 `PromptSlot` 表达，
+  Preparation 不再使用 `findIndex + slice` 修改数组。
+- `final-check` 是常驻自检 section；`critical-turn-guard` 是独立渲染落点，
+  二者仍共用唯一 `FINAL_CHECK_RULES` 规则源。
+- 主动复聊使用独立 `ReengagementAgent`，不向本 Generator Prompt 追加
+  `proactive-directive`。
 - 已退役的 generator 重写回路不再产生额外尾块；修复由独立 `ReplyRepairAgent` 承担。
 
 所有上述 block 都是 `role: system`。最终文本仅在 `renderPromptBlocks()` 处按两个换行连接，
-但 `promptBlocks` 中的 `id / domain / role / content` 会保留给观测和审计。
+但 `promptBlocks` 中的 `id / domain / role / content` 会保留；编译器还产生 slot、dynamic、字符数、
+顺序 hash 和动态 block 列表供 `turn_preparation` 观测。
 
 ## 模型可见的大致形态
 
@@ -156,8 +156,6 @@ finalPrompt = renderPromptBlocks(
 # 本轮动态硬禁令（按需）
 ...
 
-# 主动跟进回合（reengagement，按需）
-...
 ```
 
 这是形态示意，不保证所有条件块同时出现；真实顺序以场景注册表与 `promptBlocks` 为准。
@@ -170,9 +168,9 @@ finalPrompt = renderPromptBlocks(
 - 置信度和 `updatedAt` / `extractedAt` 归一时间键只在同一作用域内比较；时间缺失时保守保持。
 - 跨层同值只保留权威一处；异值保留胜者，并在 `[记忆冲突裁决]` 显示“档案记 X，本次称 Y”。
 - `turnHints` 与权威 facts 同值时去重，异值进入 `[本轮待确认线索]` 并标为“待确认更新”。
-- `TurnHintsSection` 缺少共享裁决视图时直接抛错，不允许渲染层另算一份裁决。
+- `TurnHintsSection` 只消费 Resolver 给的 `TurnHintsPromptView`（`current` / `pendingConfirmation` 两档），渲染层不再另算一份裁决。
 
-`buildMemoryBlock()` 的可能顺序是：
+`MemorySection` 从类型化 `MemoryPromptView` 渲染的可能顺序是：
 
 1. 经品牌库核验的企微名称备注（按需）；
 2. `[用户档案]`；
@@ -182,7 +180,7 @@ finalPrompt = renderPromptBlocks(
 6. `[候选人当前所在兼职群]`（实时核验结果）；
 7. `[当前预约信息]` 或 `[预约状态]`。
 
-`[本轮解析线索]` 与 `[本轮待确认线索]` 不属于 `memoryBlock`，由独立的
+`[本轮解析线索]` 与 `[本轮待确认线索]` 不属于 `MemorySection`，由独立的
 `turn-hints` section 渲染。存储侧不消费裁决后的展示副本。
 
 ## 当前时间

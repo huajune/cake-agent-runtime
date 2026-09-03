@@ -645,7 +645,7 @@ export class MessageProcessingRepository extends BaseRepository {
    * 将过期的 agent_invocation 置为 NULL（释放 TOAST 空间）
    *
    * 仅清理 agent_invocation 一列（20260706171000）：agent_steps/tool_calls 有处理链窗口
-   * 消费方（get_dashboard_tool_stats 回退路径、badcase 分析证据），随消息处理行删除一并清理。
+   * 消费方（get_dashboard_tool_stats RPC、badcase 分析证据），随消息处理行删除一并清理。
    * 分批执行：PostgREST 连接角色 authenticator 有 statement_timeout=8s，
    * 单次全量 UPDATE 数千行 TOAST 大字段必然超时（生产曾因此积压数周未清理）。
    * 每批 p_limit 行，循环到一批不满即清完；maxBatches 防御 RPC 异常时死循环。
@@ -1149,15 +1149,25 @@ export class MessageProcessingRepository extends BaseRepository {
 
   /** 回合快照写子表（59 KB/行，与主表高频更新的标量分开住）。 */
   private async upsertInvocation(messageId: string, invocation: unknown): Promise<void> {
-    if (this.circuitBlocked('UPSERT:message_processing_invocations')) return;
-    const { error } = await this.getClient()
-      .from('message_processing_invocations')
-      .upsert(
-        { message_id: messageId, agent_invocation: invocation as Record<string, unknown> },
-        { onConflict: 'message_id' },
-      );
-    if (error) {
-      this.handleError('UPSERT:message_processing_invocations', error);
+    const operation = 'UPSERT:message_processing_invocations';
+    if (this.circuitBlocked(operation)) return;
+
+    try {
+      const { error } = await this.getClient()
+        .from('message_processing_invocations')
+        .upsert(
+          { message_id: messageId, agent_invocation: invocation as Record<string, unknown> },
+          { onConflict: 'message_id' },
+        );
+      if (error) {
+        this.noteOutcome(operation, error);
+        this.handleError(operation, error);
+        return;
+      }
+      this.recordCircuitSuccess(operation);
+    } catch (error) {
+      this.noteOutcome(operation, error);
+      this.handleError(operation, error);
     }
   }
 

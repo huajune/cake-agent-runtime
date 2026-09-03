@@ -44,7 +44,7 @@ HTTP 请求
 | API Token        | `src/infra/server/guards/api-token.guard.ts`；全局 Bearer Token，`@Public()` 端点豁免 |
 | DTO 校验         | Nest 全局 `ValidationPipe`                                                            |
 | Provider 韧性    | `src/providers/reliable.service.ts`；错误分类、同模型重试、fallback 链                |
-| 消息窗口         | `MAX_HISTORY_PER_CHAT` 默认 120；`AGENT_MAX_INPUT_CHARS` 默认 24000                   |
+| 消息窗口         | `MAX_HISTORY_PER_CHAT` 默认 300（硬上限）；`AGENT_MAX_INPUT_CHARS` 默认 24000         |
 | 输出预算         | `AGENT_MAX_OUTPUT_TOKENS` 默认 4096                                                   |
 | 告警节流         | `AlertNotifierService`；同类事件按 dedupe / throttle 约束，避免告警风暴               |
 
@@ -73,10 +73,11 @@ TurnOutcome.guardrail.phase = inbound
 
 ### 3.2 Prompt Injection 检测与硬化
 
-`PromptInjectionService` 检测角色劫持、提示词泄露和指令注入模式。当前策略是：
+`PromptInjectionDetector` 纯检测角色劫持、提示词泄露和指令注入模式，
+`PromptSecurityObserverService` 负责观测与告警。当前策略是：
 
 - 不直接拦截候选人消息；
-- 在本轮 system prompt 追加防护 suffix；
+- 由显式 `InputSecuritySection` 在本轮 system prompt 生成防护 block；
 - 异步发送 `prompt_injection` 安全告警。
 
 检测属于 Input，追加的 system 内容属于 Prompt 防线；这是跨作用位协作，不是把 Prompt 层省略掉。
@@ -85,17 +86,17 @@ TurnOutcome.guardrail.phase = inbound
 
 ## 4. Prompt 生成防线
 
-Prompt 由 `PreparationService` 和 `context/sections/` 编译，所有动态内容保持 system 语义，不进入
-messages。`candidate-consultation` 的 section 顺序以 `scenario.registry.ts` 为准；清单末位只有
-`final-check` 复合 section。它负责发送前 recitation，条件命中时在内部附加
-`critical-turn-guard` 子块。
+Prompt 由 `PreparationService` 编排、`context/sections/` 渲染并由 `ContextService` 编译；所有动态
+内容保持 system 语义，不进入 messages。`candidate-consultation` 的 manifest 声明 Section 集合，
+`PromptSlot` 固定跨类别顺序，末部自然形成
+`final-check → input-guard → critical-turn-guard`，后两者按条件省略。
 
 Prompt 防线包括：
 
 - identity、手册和渠道规范，约束角色与基本工作法；
 - red-lines、thresholds 和 stage strategy，提供当前账号与阶段策略；
 - memory、turn hints、hard constraints 等证据/本轮信号；
-- final-check 复合 section（含命中时追加的 critical-turn-guard 子块），降低已知 badcase 在首版复现的概率；
+- final-check 与 critical-turn-guard 两个渲染落点共用唯一 `FINAL_CHECK_RULES`，降低已知 badcase 在首版复现的概率；
 - teaching / evidence / tool_result 语料域标签，防止教学示例取得事实出处资格。
 
 Prompt 只能降低首次违规率。jobId 来源、真实姓名、工具动作是否允许、回复能否发送，仍必须由
@@ -187,11 +188,11 @@ Output guard 只读、不直接改文案。Runner 持有修复编排权：
 
 ## 8. 配置与验证
 
-| 配置 | 代码默认值 | 说明 |
-| --- | ---: | --- |
-| `AGENT_MAX_INPUT_CHARS` | `24000` | prepare 的消息字符预算 |
-| `MAX_HISTORY_PER_CHAT` | `120` | 单会话历史消息上限 |
-| `AGENT_MAX_OUTPUT_TOKENS` | `4096` | 单次模型输出上限 |
+| 配置                      | 代码默认值 | 说明                   |
+| ------------------------- | ---------: | ---------------------- |
+| `AGENT_MAX_INPUT_CHARS`   |    `24000` | prepare 的消息字符预算 |
+| `MAX_HISTORY_PER_CHAT`    |      `300` | 单会话历史条数硬上限   |
+| `AGENT_MAX_OUTPUT_TOKENS` |     `4096` | 单次模型输出上限       |
 
 验证入口：
 

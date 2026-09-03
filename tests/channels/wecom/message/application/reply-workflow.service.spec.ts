@@ -4,7 +4,7 @@ import { ContactType, MessageSource, MessageType } from '@enums/message-callback
 import { CallerKind } from '@enums/agent.enum';
 import { ReengagementAnchorService } from '@agent/reengagement/anchor.service';
 import type { GeneratorInvokeParams } from '@agent/generator/generator.types';
-import type { SessionRef, TurnRequest, TurnTrigger } from '@agent/runner/agent-runner.types';
+import type { InboundTurnRequest, SessionRef } from '@agent/runner/agent-runner.types';
 import { classifyReviewedOutcome } from '@agent/runner/turn-outcome';
 import { STALE_INPUT_SHORT_CIRCUIT } from '@tools/shared/tool-error-types';
 import { TurnFinalizer } from '@agent/runner/turn-finalizer';
@@ -21,7 +21,7 @@ describe('ReplyWorkflowService', () => {
     invoke: jest.fn(),
     invokeReviewed: jest.fn(),
     invokeReviewedTurn: jest.fn(),
-    runTurn: jest.fn(),
+    runInboundTurn: jest.fn(),
     precheckInboundOutcome: jest.fn(),
   };
   // 出站守卫裁决（reply-workflow 读 result.outputDecision）；默认 pass，个别用例改写。
@@ -41,7 +41,7 @@ describe('ReplyWorkflowService', () => {
     blockedRuleIds: [],
   };
   let currentOutputDecision: OutputDecisionLike = passOutputDecision;
-  type RunTurnMockParams = TurnRequest;
+  type RunTurnMockParams = InboundTurnRequest;
   const monitoringService = {
     recordSuccess: jest.fn(),
   };
@@ -130,7 +130,6 @@ describe('ReplyWorkflowService', () => {
     });
     type ReviewedTurnMockParams = {
       invoke: GeneratorInvokeParams;
-      trigger: TurnTrigger;
       sessionRef: SessionRef;
       messageId?: string;
       onTurnEndError?: (error: unknown) => void;
@@ -143,8 +142,7 @@ describe('ReplyWorkflowService', () => {
         revised: raw.revised ?? false,
       };
       const outcome =
-        raw.outcome ??
-        classifyReviewedOutcome(reviewed, params.trigger, params.sessionRef, params.messageId);
+        raw.outcome ?? classifyReviewedOutcome(reviewed, params.sessionRef, params.messageId);
       return {
         ...reviewed,
         runTurnEnd: undefined,
@@ -153,28 +151,24 @@ describe('ReplyWorkflowService', () => {
           raw.turnFinalizer ?? TurnFinalizer.from(raw.runTurnEnd, params.onTurnEndError),
       };
     });
-    runner.runTurn.mockImplementation(async (req: RunTurnMockParams) => {
+    runner.runInboundTurn.mockImplementation(async (req: RunTurnMockParams) => {
       const invokeParams: GeneratorInvokeParams = {
         callerKind: req.context?.callerKind ?? CallerKind.WECOM,
         userId: req.sessionRef.userId,
         corpId: req.sessionRef.corpId,
         sessionId: req.sessionRef.sessionId,
         messageId: req.context?.messageId,
-        messages:
-          req.trigger.kind === 'inbound'
-            ? [
-                {
-                  role: 'user',
-                  content: req.trigger.userMessage,
-                  imageUrls: req.trigger.images,
-                  imageMessageIds: req.context?.imageMessageIds,
-                },
-              ]
-            : [{ role: 'user', content: '[系统主动跟进]' }],
-        toolMode: req.toolMode ?? (req.trigger.kind === 'proactive' ? 'readonly' : 'scenario'),
-        proactiveDirective: req.trigger.kind === 'proactive' ? req.trigger.directive : undefined,
+        messages: [
+          {
+            role: 'user',
+            content: req.input.text,
+            imageUrls: req.input.images,
+            imageMessageIds: req.context?.imageMessageIds,
+          },
+        ],
+        toolMode: req.toolMode ?? 'scenario',
         scenario: req.context?.scenario,
-        imageUrls: req.trigger.kind === 'inbound' ? req.trigger.images : undefined,
+        imageUrls: req.input.images,
         imageMessageIds: req.context?.imageMessageIds,
         visualMessageTypes: req.context?.visualMessageTypes,
         contactName: req.context?.contactName,
@@ -199,8 +193,7 @@ describe('ReplyWorkflowService', () => {
         revised: raw.revised ?? false,
       };
       const outcome =
-        raw.outcome ??
-        classifyReviewedOutcome(reviewed, req.trigger, req.sessionRef, req.context?.messageId);
+        raw.outcome ?? classifyReviewedOutcome(reviewed, req.sessionRef, req.context?.messageId);
       return outcome;
     });
     deduplicationService.markMessageAsProcessedAsync.mockResolvedValue(undefined);
@@ -1048,7 +1041,7 @@ describe('ReplyWorkflowService', () => {
         snapshotSize: 1,
         batchId: 'batch-late',
       });
-      runner.runTurn.mockResolvedValueOnce({
+      runner.runInboundTurn.mockResolvedValueOnce({
         kind: 'guardrail_blocked',
         toolCalls: [],
         disposition: 'side_effects',

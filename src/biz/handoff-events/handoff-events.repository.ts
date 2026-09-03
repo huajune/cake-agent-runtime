@@ -80,13 +80,16 @@ export class HandoffEventsRepository extends BaseRepository {
         .select('idempotency_key');
 
       if (error) {
+        this.noteOutcome('UPSERT', error);
         this.handleError('UPSERT', error);
         return 'failed';
       }
 
       const insertedRows = (data as Array<Pick<HandoffEventRow, 'idempotency_key'>> | null) ?? [];
+      this.recordCircuitSuccess('UPSERT');
       return insertedRows.length > 0 ? 'inserted' : 'duplicate';
     } catch (error) {
+      this.noteOutcome('UPSERT', error);
       this.handleError('UPSERT', error);
       return 'failed';
     }
@@ -123,11 +126,14 @@ export class HandoffEventsRepository extends BaseRepository {
         .is('outcome', null)
         .select('id');
       if (error) {
+        this.noteOutcome('UPDATE', error);
         this.handleError('UPDATE', error);
         return 0;
       }
+      this.recordCircuitSuccess('UPDATE');
       return (data as Array<{ id: number }> | null)?.length ?? 0;
     } catch (error) {
+      this.noteOutcome('UPDATE', error);
       this.handleError('UPDATE', error);
       return 0;
     }

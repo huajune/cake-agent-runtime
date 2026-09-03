@@ -9,14 +9,14 @@
 记忆系统只有 `short-term` 与 `long-term` 两层。`turnHints` 是当前轮 sidecar，
 episode 是连续咨询段的计算边界，二者都不是额外记忆层。
 
-| 作用域              | 内容                         | 生命周期 / 边界                       | 权威存储                            |
-| ------------------- | ---------------------------- | ------------------------------------- | ----------------------------------- |
-| short-term 消息窗口 | 候选人与助手原始对话         | 查询最近 7 天，并受条数与字符预算裁剪 | `chat_messages`；Redis 仅作窗口缓存 |
-| short-term 会话状态 | facts、岗位工作台、阶段指针  | 业务口径 3 天                         | Redis                               |
-| episode             | 一段连续咨询的消息切片       | 闲置 3 天划界                         | 无独立 key、表或目录                |
-| long-term 关系档    | 身份档案、求职意向、咨询摘要 | 持久                                  | Supabase；Redis 作 2 小时缓存       |
+| 作用域              | 内容                         | 生命周期 / 边界                                                                   | 权威存储                            |
+| ------------------- | ---------------------------- | --------------------------------------------------------------------------------- | ----------------------------------- |
+| short-term 消息窗口 | 候选人与助手原始对话         | 取最近 N 条并套滚动 7 天窗（锚点 = 本批之前候选人最后一次开口），再受字符预算裁剪 | `chat_messages`；Redis 仅作窗口缓存 |
+| short-term 会话状态 | facts、岗位工作台、阶段指针  | 业务口径 3 天                                                                     | Redis                               |
+| episode             | 一段连续咨询的消息切片       | 闲置 3 天划界                                                                     | 无独立 key、表或目录                |
+| long-term 关系档    | 身份档案、求职意向、咨询摘要 | 持久                                                                              | Supabase；Redis 作 2 小时缓存       |
 
-对外时间口径固定为 **7d / 3d / 3d**：消息回看窗口 7 天、会话状态 3 天、
+对外时间口径固定为 **7d / 3d / 3d**：消息回看窗口滚动 7 天、会话状态 3 天、
 咨询段闲置划界 3 天。`factsv2:` 实际比 3 天多保留 12 小时，只为保证延迟任务先读取事实再过期，
 不构成第四个业务时间口径。
 
@@ -27,7 +27,7 @@ episode 是连续咨询段的计算边界，二者都不是额外记忆层。
 ```text
 候选人输入
   │
-  ├─ short-term：7 天消息窗口 + 3 天会话状态
+  ├─ short-term：滚动 7 天消息窗口 + 3 天会话状态
   │       │
   │       └─ preparation：快照补料 → 共享裁决 → Prompt / 工具投影
   │
@@ -52,11 +52,11 @@ episode 是连续咨询段的计算边界，二者都不是额外记忆层。
 `MemoryLifecycleService.onTurnStart()` 读取三项 short-term 部件：
 
 1. `MessageWindowService` 先读 `memory:short_term:chat:{chatId}` 热缓存；缓存缺失或
-   provenance 版本过旧时，回退 `chat_messages` 的最近 7 天原文并回填。
+   provenance 版本过旧时，回退 `chat_messages` 最近 N 条原文并回填；两条路径都在内存里套滚动 7 天窗口。
 2. `SessionStateService` 从 `factsv2:{corpId}:{userId}:{sessionId}` 读取 facts 与 workbench。
 3. `SessionWorkbenchService` 从独立的 `stage:{corpId}:{userId}:{sessionId}` 读取阶段指针。
 
-窗口默认最多 120 条、24,000 字符；超限时从最早消息开始裁剪。Redis 窗口缓存的 3 天 TTL
+硬上限默认 300 条（物理封顶，生产 7 天内 p99≈90）、字符预算 24,000；超限时从最早消息开始裁剪。Redis 窗口缓存的 3 天 TTL
 不改变 7 天源数据窗口：缓存失效后仍可从数据库重建。
 
 `factsv2:` 是 Redis hash，主要分为两类数据：
@@ -150,22 +150,25 @@ Memory 只负责召回；模型可见呈现与工具投影在 generator preparat
 
 ```text
 提取本轮连续 user 文本并生成 turnHints
-  → memory.onTurnStart()
-  → SnapshotEnrichmentService.enrich()（有身份锚时）
+  → TurnDataLoaderService.load()
+      → memory.onTurnStart()
+      → SnapshotEnrichmentService.enrich()（有身份锚时）
+      → 预约 / 群 / 身份 / 策略 / 视觉 / 地理等源并发读取
   → normalizeConversationWithCorpus()
-  → adjudicatePromptMemory()（一次生成共享裁决视图）
-  → buildMemoryBlock()
-  → ContextService.compose()（sections 产出 system promptBlocks）
-  → buildToolContext() + 场景工具集
-  → input guard / 主动回合尾块
-  → renderPromptBlocks()
+  → resolveTurnContext()
+      → adjudicatePromptMemory()（一次生成共享裁决视图）
+      → PromptModel + ToolContextModel + ledgerSeed
+  → ContextService.compose()（typed sections + manifest/slot compiler）
+  → ToolRuntimeBuilderService.build()
+  → WorkingMemory
 ```
 
 `SnapshotEnrichmentService` 紧接召回，用外部候选人详情补齐当轮快照中缺失的可靠线索；当前主要是
 身份锚存在时的 gender 补料。它只返回 enriched snapshot / turnHints，不写 Redis 或 Supabase，
 也不属于 memory lifecycle。
 
-`adjudicatePromptMemory()` 只计算一次共享视图，`memory` 与 `turn-hints` sections 共同消费：
+`adjudicatePromptMemory()` 只计算一次共享视图，再分别投影到 `MemoryPromptView` 与
+`TurnHintsPromptView`：
 
 - 权威链：本轮 accepted > 当前会话 accepted > 历史档案 historical_unconfirmed；
 - 置信度与归一后的 `updatedAt / extractedAt` 只在同一作用域内比较；
@@ -285,8 +288,8 @@ Memory 只负责召回；模型可见呈现与工具投影在 generator preparat
 
 1. 检查 Redis list `memory:short_term:chat:{chatId}` 是否含 provenance v2 条目。
 2. 缓存异常时检查 `chat_messages` 的 `chatId`、查询时间边界与消息来源元数据。
-3. 区分缓存 3 天 TTL 与源数据 7 天查询窗口；缓存过期不应导致数据库回查窗口缩短。
-4. 再核对 120 条 / 24,000 字符裁剪是否符合预期。
+3. 区分缓存 3 天 TTL 与滚动 7 天窗口（锚点是上次开口，不是当前时间）；缓存过期不应导致回查窗口缩短。
+4. 再核对 300 条硬上限 / 24,000 字符裁剪是否符合预期。
 
 ### 8.3 会话事实、岗位工作台或阶段丢失
 

@@ -8,6 +8,113 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v11.2.1`
+**最近更新**: `2026-09-03`
+**来源分支**: `develop`
+**累计 PR**: 5
+
+### 更新摘要
+- PR #1191 预热 cron 默认关闭 + 删除 tool_calls 裸扫回退，止住生产库过载
+- PR #1191 `prewarmDashboardOverview` 加 `DASHBOARD_PREWARM_ENABLED` 门，**默认关闭**。
+- PR #1191 `getDashboardToolStats`：RPC 失败直接返回空 + warn；**删除** `getDashboardToolStatsFromToolCalls` 及 `countToolCalls` / `formatToolStats` / `ToolCallsProjectionRow`。
+- PR #1191 注释回收「回退路径」表述；`.env.example` / `env.validation.ts` 登记开关。
+- PR #1192 修复活跃用户 RPC 结构漂移
+- PR #1192 修复 user_activity 写入 RPC 与当前 NOT NULL 时间字段不一致导致的 23502 错误。
+- PR #1192 重建实际被应用调用的 get_active_users_from_user_activity_by_range，移除已删除的 group_id/group_name 引用。
+- PR #1192 从保留的 chat_messages 与 message_processing_records 幂等回补 2026-09-02 起的事故窗口数据。
+- PR #1192 增加迁移级回归测试，防止 RPC 再次与表结构漂移。
+- PR #1192 修复用户活跃列表空白
+- PR #1190 收窄入站回合并重构装配边界
+- PR #1190 Merge remote-tracking branch 'origin/develop' into codex/refactor-age…
+- PR #1190 回填重构 PR 与完成状态
+- PR #1190 短期消息缓存只由回填创建，写路径 RPUSHX 追加、回填单脚本原子重建
+- PR #1190 短期窗口改为滚动 7 天（锚点=本批之前候选人最后一次开口），条数上限收拢为硬上限 300
+- PR #1190 完成回合装配与 Prompt 编译终态
+- PR #1190 补齐滚动窗口 / 硬上限口径漏改的 6 份文档
+- PR #1190 收拢回合准备内部实现
+- PR #1190 修复回合装配评审发现的通道判据、观测降级与场景门控问题
+- PR #1190 补齐查询与后台任务红线及 0902 事故复盘
+- PR #1189 补记 v11.2.0 发布结果
+- PR #1193 收敛后台任务与熔断范围
+- PR #1193 合并数据库止血与活跃用户修复
+- PR #1193 Merge remote-tracking branch 'origin/develop' into codex/harden-analy…
+- PR #1193 将全历史 all 档移出每 2 分钟的概览预热，保留按需计算与现有缓存，避免周期性全量扫描。
+- PR #1193 为概览预热、小时聚合和日聚合增加进程内整轮互斥，上一轮未完成时跳过新 tick。
+- PR #1193 小时聚合在最近 14 天窗口内查询已存小时键，只回补缺失小时；零消息小时写入零值标记，避免反复重算。
+- PR #1193 Supabase 熔断器改为按表操作或 RPC 函数隔离，并让直连写路径同步记录操作成败。
+- PR #1193 收敛后台任务重叠与故障范围
+
+### 新功能
+- 无
+
+### 问题修复
+- PR #1191 `prewarmDashboardOverview` 加 `DASHBOARD_PREWARM_ENABLED` 门，**默认关闭**。
+- PR #1191 `getDashboardToolStats`：RPC 失败直接返回空 + warn；**删除** `getDashboardToolStatsFromToolCalls` 及 `countToolCalls` / `formatToolStats` / `ToolCallsProjectionRow`。
+- PR #1191 注释回收「回退路径」表述；`.env.example` / `env.validation.ts` 登记开关。
+- PR #1192 修复 user_activity 写入 RPC 与当前 NOT NULL 时间字段不一致导致的 23502 错误。
+- PR #1192 重建实际被应用调用的 get_active_users_from_user_activity_by_range，移除已删除的 group_id/group_name 引用。
+- PR #1192 从保留的 chat_messages 与 message_processing_records 幂等回补 2026-09-02 起的事故窗口数据。
+- PR #1192 增加迁移级回归测试，防止 RPC 再次与表结构漂移。
+- PR #1192 修复活跃用户 RPC 结构漂移
+- PR #1190 修复回合装配评审发现的通道判据、观测降级与场景门控问题
+- PR #1193 将全历史 all 档移出每 2 分钟的概览预热，保留按需计算与现有缓存，避免周期性全量扫描。
+- PR #1193 为概览预热、小时聚合和日聚合增加进程内整轮互斥，上一轮未完成时跳过新 tick。
+- PR #1193 小时聚合在最近 14 天窗口内查询已存小时键，只回补缺失小时；零消息小时写入零值标记，避免反复重算。
+- PR #1193 Supabase 熔断器改为按表操作或 RPC 函数隔离，并让直连写路径同步记录操作成败。
+- PR #1193 合并数据库止血与活跃用户修复
+
+### 优化调整
+- PR #1190 收窄入站回合并重构装配边界
+- PR #1190 Merge remote-tracking branch 'origin/develop' into codex/refactor-age…
+- PR #1190 回填重构 PR 与完成状态
+
+### 运维与流程
+- PR #1191 预热 cron 默认关闭 + 删除 tool_calls 裸扫回退，止住生产库过载
+- PR #1190 短期消息缓存只由回填创建，写路径 RPUSHX 追加、回填单脚本原子重建
+- PR #1190 短期窗口改为滚动 7 天（锚点=本批之前候选人最后一次开口），条数上限收拢为硬上限 300
+- PR #1190 完成回合装配与 Prompt 编译终态
+- PR #1190 补齐滚动窗口 / 硬上限口径漏改的 6 份文档
+- PR #1190 收拢回合准备内部实现
+- PR #1190 补齐查询与后台任务红线及 0902 事故复盘
+- PR #1189 补记 v11.2.0 发布结果
+- PR #1193 收敛后台任务与熔断范围
+- PR #1193 Merge remote-tracking branch 'origin/develop' into codex/harden-analy…
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- PR #1191 检测到环境变量相关文件变更：`.env.example`、`src/infra/config/env.validation.ts`。请手动同步远程服务器 `/data/cake/.env.production`。
+- PR #1190 检测到环境变量相关文件变更：`.env.example`。请手动同步远程服务器 `/data/cake/.env.production`。
+
+### 验证记录
+- PR #1191 `record.repository.spec` + `analytics-dashboard.service.spec`：83/83 通过（新增「默认关」与「RPC 失败不回退」两条断言）
+- PR #1191 `eslint --max-warnings=0` 通过；`tsc --noEmit` 通过
+- PR #1192 pnpm run ci:check：450 个测试套件通过，6621 个测试通过
+- PR #1192 定向 Jest：2 个套件、36 个测试通过
+- PR #1192 pnpm run typecheck
+- PR #1192 测试库迁移成功
+- PR #1192 测试库真实 RPC 冒烟：写入、范围查询、时间字段及 token 聚合通过；测试数据已清理
+- PR #1190 `pnpm run ci:check`：通过
+- PR #1190 456 suites passed（1 skipped）
+- PR #1190 6618 tests passed（5 skipped）
+- PR #1190 lint、format、typecheck、geo/vocab/quality-ledger、前后端 build 全部通过
+- PR #1190 定向回归：18 suites / 377 tests 通过
+- PR #1190 合入最新 develop 后复验：typecheck + 7 suites / 309 tests 通过
+- PR #1190 `pnpm run test:di-smoke`：通过
+- PR #1190 `pnpm run duplication:check`：通过（0.8%，阈值 2.06%）
+- PR #1190 `git diff --check`：通过
+- PR #1193 定向测试：8 个套件、177 个测试通过
+- PR #1193 pnpm run ci:check：449 个套件、6623 个测试通过
+- PR #1193 pnpm run duplication:check：重复率 0.81%，低于 2.06% 阈值
+- PR #1193 pnpm run test:di-smoke：AppModule 完整装配通过
+- PR #1193 git diff --check
+- PR #1193 push 前完整 CI 再次通过
+<!-- release:pending:end -->
+
 ## [11.2.0] - 2026-09-02
 
 **来源分支**: `develop`
