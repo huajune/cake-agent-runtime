@@ -1,9 +1,48 @@
 {
   "baseVersion": "11.2.0",
-  "nextVersion": "11.2.0",
-  "updatedAt": "2026-09-02",
+  "nextVersion": "11.2.1",
+  "updatedAt": "2026-09-03",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "1191",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1191",
+      "title": "预热 cron 默认关闭 + 删除 tool_calls 裸扫回退，止住生产库过载",
+      "author": "huajune",
+      "mergedAt": "2026-09-03",
+      "businessUpdates": [
+        "`prewarmDashboardOverview` 加 `DASHBOARD_PREWARM_ENABLED` 门，**默认关闭**。",
+        "`getDashboardToolStats`：RPC 失败直接返回空 + warn；**删除** `getDashboardToolStatsFromToolCalls` 及 `countToolCalls` / `formatToolStats` / `ToolCallsProjectionRow`。",
+        "注释回收「回退路径」表述；`.env.example` / `env.validation.ts` 登记开关。"
+      ],
+      "summary": [
+        "预热 cron 默认关闭 + 删除 tool_calls 裸扫回退，止住生产库过载",
+        "`prewarmDashboardOverview` 加 `DASHBOARD_PREWARM_ENABLED` 门，**默认关闭**。",
+        "`getDashboardToolStats`：RPC 失败直接返回空 + warn；**删除** `getDashboardToolStatsFromToolCalls` 及 `countToolCalls` / `formatToolStats` / `ToolCallsProjectionRow`。",
+        "注释回收「回退路径」表述；`.env.example` / `env.validation.ts` 登记开关。"
+      ],
+      "features": [],
+      "fixes": [
+        "`prewarmDashboardOverview` 加 `DASHBOARD_PREWARM_ENABLED` 门，**默认关闭**。",
+        "`getDashboardToolStats`：RPC 失败直接返回空 + warn；**删除** `getDashboardToolStatsFromToolCalls` 及 `countToolCalls` / `formatToolStats` / `ToolCallsProjectionRow`。",
+        "注释回收「回退路径」表述；`.env.example` / `env.validation.ts` 登记开关。"
+      ],
+      "optimizations": [],
+      "ops": [
+        "预热 cron 默认关闭 + 删除 tool_calls 裸扫回退，止住生产库过载"
+      ],
+      "config": [],
+      "envFiles": [
+        ".env.example",
+        "src/infra/config/env.validation.ts"
+      ],
+      "verification": [
+        "`record.repository.spec` + `analytics-dashboard.service.spec`：83/83 通过（新增「默认关」与「RPC 失败不回退」两条断言）",
+        "`eslint --max-warnings=0` 通过；`tsc --noEmit` 通过"
+      ],
+      "level": "patch"
+    }
+  ],
   "lastRelease": {
     "version": "11.2.0",
     "date": "2026-09-02",
@@ -419,5 +458,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "69254a5e58a53cffe4dc48da8788099d3a1a5597"
+  "lastAnalyzedSha": "5264da83dedadd1d172a73b7d975110a4b6ef5d9"
 }
