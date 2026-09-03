@@ -8,6 +8,45 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v11.2.1`
+**最近更新**: `2026-09-03`
+**来源分支**: `develop`
+**累计 PR**: 1
+
+### 更新摘要
+- PR #1191 预热 cron 默认关闭 + 删除 tool_calls 裸扫回退，止住生产库过载
+- PR #1191 `prewarmDashboardOverview` 加 `DASHBOARD_PREWARM_ENABLED` 门，**默认关闭**。
+- PR #1191 `getDashboardToolStats`：RPC 失败直接返回空 + warn；**删除** `getDashboardToolStatsFromToolCalls` 及 `countToolCalls` / `formatToolStats` / `ToolCallsProjectionRow`。
+- PR #1191 注释回收「回退路径」表述；`.env.example` / `env.validation.ts` 登记开关。
+
+### 新功能
+- 无
+
+### 问题修复
+- PR #1191 `prewarmDashboardOverview` 加 `DASHBOARD_PREWARM_ENABLED` 门，**默认关闭**。
+- PR #1191 `getDashboardToolStats`：RPC 失败直接返回空 + warn；**删除** `getDashboardToolStatsFromToolCalls` 及 `countToolCalls` / `formatToolStats` / `ToolCallsProjectionRow`。
+- PR #1191 注释回收「回退路径」表述；`.env.example` / `env.validation.ts` 登记开关。
+
+### 优化调整
+- 无
+
+### 运维与流程
+- PR #1191 预热 cron 默认关闭 + 删除 tool_calls 裸扫回退，止住生产库过载
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- PR #1191 检测到环境变量相关文件变更：`.env.example`、`src/infra/config/env.validation.ts`。请手动同步远程服务器 `/data/cake/.env.production`。
+
+### 验证记录
+- PR #1191 `record.repository.spec` + `analytics-dashboard.service.spec`：83/83 通过（新增「默认关」与「RPC 失败不回退」两条断言）
+- PR #1191 `eslint --max-warnings=0` 通过；`tsc --noEmit` 通过
+<!-- release:pending:end -->
+
 ## [11.2.0] - 2026-09-02
 
 **来源分支**: `develop`
