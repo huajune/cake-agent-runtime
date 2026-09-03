@@ -161,6 +161,54 @@
       "envFiles": [],
       "verification": [],
       "level": "patch"
+    },
+    {
+      "number": "1193",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1193",
+      "title": "收敛后台任务重叠与故障范围",
+      "author": "huajune",
+      "mergedAt": "2026-09-03",
+      "businessUpdates": [
+        "将全历史 all 档移出每 2 分钟的概览预热，保留按需计算与现有缓存，避免周期性全量扫描。",
+        "为概览预热、小时聚合和日聚合增加进程内整轮互斥，上一轮未完成时跳过新 tick。",
+        "小时聚合在最近 14 天窗口内查询已存小时键，只回补缺失小时；零消息小时写入零值标记，避免反复重算。",
+        "Supabase 熔断器改为按表操作或 RPC 函数隔离，并让直连写路径同步记录操作成败。",
+        "合并数据库止血与活跃用户修复"
+      ],
+      "summary": [
+        "收敛后台任务与熔断范围",
+        "合并数据库止血与活跃用户修复",
+        "Merge remote-tracking branch 'origin/develop' into codex/harden-analy…",
+        "将全历史 all 档移出每 2 分钟的概览预热，保留按需计算与现有缓存，避免周期性全量扫描。",
+        "为概览预热、小时聚合和日聚合增加进程内整轮互斥，上一轮未完成时跳过新 tick。",
+        "小时聚合在最近 14 天窗口内查询已存小时键，只回补缺失小时；零消息小时写入零值标记，避免反复重算。",
+        "Supabase 熔断器改为按表操作或 RPC 函数隔离，并让直连写路径同步记录操作成败。",
+        "收敛后台任务重叠与故障范围"
+      ],
+      "features": [],
+      "fixes": [
+        "将全历史 all 档移出每 2 分钟的概览预热，保留按需计算与现有缓存，避免周期性全量扫描。",
+        "为概览预热、小时聚合和日聚合增加进程内整轮互斥，上一轮未完成时跳过新 tick。",
+        "小时聚合在最近 14 天窗口内查询已存小时键，只回补缺失小时；零消息小时写入零值标记，避免反复重算。",
+        "Supabase 熔断器改为按表操作或 RPC 函数隔离，并让直连写路径同步记录操作成败。",
+        "合并数据库止血与活跃用户修复"
+      ],
+      "optimizations": [],
+      "ops": [
+        "收敛后台任务与熔断范围",
+        "Merge remote-tracking branch 'origin/develop' into codex/harden-analy…"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "定向测试：8 个套件、177 个测试通过",
+        "pnpm run ci:check：449 个套件、6623 个测试通过",
+        "pnpm run duplication:check：重复率 0.81%，低于 2.06% 阈值",
+        "pnpm run test:di-smoke：AppModule 完整装配通过",
+        "git diff --check",
+        "push 前完整 CI 再次通过"
+      ],
+      "level": "patch"
     }
   ],
   "lastRelease": {
@@ -578,5 +626,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "8d5379bb57a6e8692899cc04833e2b80332460db"
+  "lastAnalyzedSha": "c55c5bbeb8243dfaaccb7e7d9984059827f83d2d"
 }
