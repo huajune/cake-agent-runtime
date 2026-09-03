@@ -80,6 +80,20 @@ export class MonitoringHourlyStatsRepository extends BaseRepository {
   }
 
   /**
+   * 查询窗口内已落库的小时键。补洞任务只需要存在性，不拉取整行 JSON 聚合字段。
+   */
+  async getStoredHourKeysByDateRange(startDate: Date, endDate: Date): Promise<string[]> {
+    const results = await this.select<Pick<HourlyStatsDbRecord, 'hour'>>('hour', (q) =>
+      q
+        .gte('hour', startDate.toISOString())
+        .lt('hour', endDate.toISOString())
+        .order('hour', { ascending: true }),
+    );
+
+    return results.map((row) => row.hour);
+  }
+
+  /**
    * 清空统计数据
    */
   /**

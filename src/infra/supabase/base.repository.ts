@@ -43,9 +43,8 @@ export interface UpsertOptions {
  * 韧性：
  * - 瞬时网关错误（522/503/cloudflare/fetch failed…）重试时加「指数退避 + 抖动」，
  *   不再零间隔疯狂重打。
- * - 所有调用前经过「进程级共享熔断器」：任一 Repository 连续观察到瞬时故障即跳闸，
- *   冷却窗口内所有 Repository 快速失败、停止打 DB，从根上阻断重试风暴；DB 恢复后
- *   自动半开试探恢复。详见 supabase-circuit-breaker.ts。
+ * - 所有调用前经过「按操作隔离的进程级熔断器」：同一张表的 CRUD 或同一个 RPC 连续
+ *   观察到瞬时故障才会单独跳闸，不连带阻断其他健康操作；冷却后自动半开试探恢复。
  */
 export abstract class BaseRepository {
   protected readonly logger: Logger;
@@ -86,10 +85,11 @@ export abstract class BaseRepository {
    * 「客户端未初始化」等同 —— 返回各方法的空值兜底，避免对濒死的 DB 继续施压。
    */
   protected circuitBlocked(operation: string): boolean {
-    if (supabaseCircuitBreaker.canRequest()) {
+    const circuitOperation = this.getCircuitOperation(operation);
+    if (supabaseCircuitBreaker.canRequest(circuitOperation)) {
       return false;
     }
-    if (supabaseCircuitBreaker.shouldLogRejection()) {
+    if (supabaseCircuitBreaker.shouldLogRejection(circuitOperation)) {
       this.logger.warn(`[${this.tableName}] Supabase 熔断器 OPEN，快速跳过 ${operation}`);
     }
     return true;
@@ -99,12 +99,21 @@ export abstract class BaseRepository {
    * 根据错误类型更新熔断器：瞬时/连接类故障记失败（可能跳闸），
    * 其余（业务错误，说明 DB 可达）记成功。
    */
-  private noteOutcome(error: unknown): void {
+  protected noteOutcome(operation: string, error: unknown): void {
+    const circuitOperation = this.getCircuitOperation(operation);
     if (this.isTransientReadError(error)) {
-      supabaseCircuitBreaker.recordFailure();
+      supabaseCircuitBreaker.recordFailure(circuitOperation);
     } else {
-      supabaseCircuitBreaker.recordSuccess();
+      supabaseCircuitBreaker.recordSuccess(circuitOperation);
     }
+  }
+
+  protected recordCircuitSuccess(operation: string): void {
+    supabaseCircuitBreaker.recordSuccess(this.getCircuitOperation(operation));
+  }
+
+  private getCircuitOperation(operation: string): string {
+    return operation.includes(':') ? operation : `${operation}:${this.tableName}`;
   }
 
   /** 指数退避（含抖动）：150ms、300ms…，上限 1s，用于瞬时网关错误的重试间隔 */
@@ -138,11 +147,12 @@ export abstract class BaseRepository {
     columns: string = '*',
     modifier?: QueryModifier,
   ): Promise<T[]> {
+    const operation = `SELECT:${table}`;
     if (!this.isAvailable()) {
       this.logger.warn(`Supabase 未初始化，跳过 ${table} 查询`);
       return [];
     }
-    if (this.circuitBlocked(`SELECT:${table}`)) {
+    if (this.circuitBlocked(operation)) {
       return [];
     }
 
@@ -153,24 +163,24 @@ export abstract class BaseRepository {
 
         const { data, error } = await query;
         if (error) {
-          if (this.shouldRetryReadError(`SELECT:${table}`, error, attempt)) {
+          if (this.shouldRetryReadError(operation, error, attempt)) {
             await sleep(this.getBackoffMs(attempt));
             continue;
           }
-          this.noteOutcome(error);
-          this.handleError(`SELECT:${table}`, error);
+          this.noteOutcome(operation, error);
+          this.handleError(operation, error);
           return [];
         }
 
-        supabaseCircuitBreaker.recordSuccess();
+        this.recordCircuitSuccess(operation);
         return (data as T[]) ?? [];
       } catch (error) {
-        if (this.shouldRetryReadError(`SELECT:${table}`, error, attempt)) {
+        if (this.shouldRetryReadError(operation, error, attempt)) {
           await sleep(this.getBackoffMs(attempt));
           continue;
         }
-        this.noteOutcome(error);
-        this.handleError(`SELECT:${table}`, error);
+        this.noteOutcome(operation, error);
+        this.handleError(operation, error);
         return [];
       }
     }
@@ -215,11 +225,12 @@ export abstract class BaseRepository {
     params?: Record<string, unknown>,
     pageSize = 1000,
   ): Promise<T[]> {
+    const operation = `RPC:${functionName}`;
     if (!this.isAvailable()) {
       this.logger.warn(`Supabase 未初始化，跳过 RPC 分页调用 ${functionName}`);
       return [];
     }
-    if (this.circuitBlocked(`RPC:${functionName}`)) {
+    if (this.circuitBlocked(operation)) {
       return [];
     }
 
@@ -231,18 +242,18 @@ export abstract class BaseRepository {
           .range(from, from + pageSize - 1);
 
         if (error) {
-          this.noteOutcome(error);
-          this.handleError(`RPC:${functionName}`, error);
+          this.noteOutcome(operation, error);
+          this.handleError(operation, error);
           break;
         }
 
-        supabaseCircuitBreaker.recordSuccess();
+        this.recordCircuitSuccess(operation);
         const page = (data as T[]) ?? [];
         rows.push(...page);
         if (page.length < pageSize) break;
       } catch (error) {
-        this.noteOutcome(error);
-        this.handleError(`RPC:${functionName}`, error);
+        this.noteOutcome(operation, error);
+        this.handleError(operation, error);
         break;
       }
     }
@@ -268,11 +279,12 @@ export abstract class BaseRepository {
    * @param options 额外配置
    */
   protected async insert<T>(data: Partial<T>, options?: InsertOptions): Promise<T | null> {
+    const operation = 'INSERT';
     if (!this.isAvailable()) {
       this.logger.warn(`Supabase 未初始化，跳过 ${this.tableName} 插入`);
       return null;
     }
-    if (this.circuitBlocked('INSERT')) {
+    if (this.circuitBlocked(operation)) {
       return null;
     }
 
@@ -286,25 +298,25 @@ export abstract class BaseRepository {
 
       if (error) {
         if (this.isConflictError(error)) {
-          supabaseCircuitBreaker.recordSuccess();
+          this.recordCircuitSuccess(operation);
           this.logger.debug(`${this.tableName} 记录已存在，跳过插入`);
           return null;
         }
-        this.noteOutcome(error);
-        this.handleError('INSERT', error);
+        this.noteOutcome(operation, error);
+        this.handleError(operation, error);
         return null;
       }
 
-      supabaseCircuitBreaker.recordSuccess();
+      this.recordCircuitSuccess(operation);
       return returnData ? ((result as T[])?.[0] ?? null) : null;
     } catch (error) {
       if (this.isConflictError(error)) {
-        supabaseCircuitBreaker.recordSuccess();
+        this.recordCircuitSuccess(operation);
         this.logger.debug(`${this.tableName} 记录已存在，跳过插入`);
         return null;
       }
-      this.noteOutcome(error);
-      this.handleError('INSERT', error);
+      this.noteOutcome(operation, error);
+      this.handleError(operation, error);
       return null;
     }
   }
@@ -314,10 +326,11 @@ export abstract class BaseRepository {
    * @param data 要插入的数据数组
    */
   protected async insertBatch<T>(data: Partial<T>[]): Promise<number> {
+    const operation = 'INSERT_BATCH';
     if (!this.isAvailable() || data.length === 0) {
       return 0;
     }
-    if (this.circuitBlocked('INSERT_BATCH')) {
+    if (this.circuitBlocked(operation)) {
       return 0;
     }
 
@@ -328,20 +341,20 @@ export abstract class BaseRepository {
 
       if (error) {
         if (this.isConflictError(error)) {
-          supabaseCircuitBreaker.recordSuccess();
+          this.recordCircuitSuccess(operation);
           this.logger.debug(`${this.tableName} 批量插入部分记录已存在`);
           return data.length;
         }
-        this.noteOutcome(error);
-        this.handleError('INSERT_BATCH', error);
+        this.noteOutcome(operation, error);
+        this.handleError(operation, error);
         return 0;
       }
 
-      supabaseCircuitBreaker.recordSuccess();
+      this.recordCircuitSuccess(operation);
       return data.length;
     } catch (error) {
-      this.noteOutcome(error);
-      this.handleError('INSERT_BATCH', error);
+      this.noteOutcome(operation, error);
+      this.handleError(operation, error);
       return 0;
     }
   }
@@ -352,11 +365,12 @@ export abstract class BaseRepository {
    * @param modifier 筛选条件回调
    */
   protected async update<T>(data: Partial<T>, modifier: QueryModifier): Promise<T[]> {
+    const operation = 'UPDATE';
     if (!this.isAvailable()) {
       this.logger.warn(`Supabase 未初始化，跳过 ${this.tableName} 更新`);
       return [];
     }
-    if (this.circuitBlocked('UPDATE')) {
+    if (this.circuitBlocked(operation)) {
       return [];
     }
 
@@ -368,16 +382,16 @@ export abstract class BaseRepository {
 
       const { data: result, error } = await query.select();
       if (error) {
-        this.noteOutcome(error);
-        this.handleError('UPDATE', error);
+        this.noteOutcome(operation, error);
+        this.handleError(operation, error);
         return [];
       }
 
-      supabaseCircuitBreaker.recordSuccess();
+      this.recordCircuitSuccess(operation);
       return (result as T[]) ?? [];
     } catch (error) {
-      this.noteOutcome(error);
-      this.handleError('UPDATE', error);
+      this.noteOutcome(operation, error);
+      this.handleError(operation, error);
       return [];
     }
   }
@@ -388,11 +402,12 @@ export abstract class BaseRepository {
    * @param options upsert 配置
    */
   protected async upsert<T>(data: Partial<T>, options?: UpsertOptions): Promise<T | null> {
+    const operation = 'UPSERT';
     if (!this.isAvailable()) {
       this.logger.warn(`Supabase 未初始化，跳过 ${this.tableName} upsert`);
       return null;
     }
-    if (this.circuitBlocked('UPSERT')) {
+    if (this.circuitBlocked(operation)) {
       return null;
     }
 
@@ -409,16 +424,16 @@ export abstract class BaseRepository {
       const { data: result, error } = returnData ? await query.select() : await query;
 
       if (error) {
-        this.noteOutcome(error);
-        this.handleError('UPSERT', error);
+        this.noteOutcome(operation, error);
+        this.handleError(operation, error);
         return null;
       }
 
-      supabaseCircuitBreaker.recordSuccess();
+      this.recordCircuitSuccess(operation);
       return returnData ? ((result as T[])?.[0] ?? null) : null;
     } catch (error) {
-      this.noteOutcome(error);
-      this.handleError('UPSERT', error);
+      this.noteOutcome(operation, error);
+      this.handleError(operation, error);
       return null;
     }
   }
@@ -429,10 +444,11 @@ export abstract class BaseRepository {
    * @param options upsert 配置
    */
   protected async upsertBatch<T>(data: Partial<T>[], options?: UpsertOptions): Promise<number> {
+    const operation = 'UPSERT_BATCH';
     if (!this.isAvailable() || data.length === 0) {
       return 0;
     }
-    if (this.circuitBlocked('UPSERT_BATCH')) {
+    if (this.circuitBlocked(operation)) {
       return 0;
     }
 
@@ -446,16 +462,16 @@ export abstract class BaseRepository {
         .upsert(data as Record<string, unknown>[], upsertOpts);
 
       if (error) {
-        this.noteOutcome(error);
-        this.handleError('UPSERT_BATCH', error);
+        this.noteOutcome(operation, error);
+        this.handleError(operation, error);
         return 0;
       }
 
-      supabaseCircuitBreaker.recordSuccess();
+      this.recordCircuitSuccess(operation);
       return data.length;
     } catch (error) {
-      this.noteOutcome(error);
-      this.handleError('UPSERT_BATCH', error);
+      this.noteOutcome(operation, error);
+      this.handleError(operation, error);
       return 0;
     }
   }
@@ -469,11 +485,12 @@ export abstract class BaseRepository {
     modifier: QueryModifier,
     returnDeleted: boolean = false,
   ): Promise<T[]> {
+    const operation = 'DELETE';
     if (!this.isAvailable()) {
       this.logger.warn(`Supabase 未初始化，跳过 ${this.tableName} 删除`);
       return [];
     }
-    if (this.circuitBlocked('DELETE')) {
+    if (this.circuitBlocked(operation)) {
       return [];
     }
 
@@ -483,25 +500,25 @@ export abstract class BaseRepository {
       if (returnDeleted) {
         const { data, error } = await base.select();
         if (error) {
-          this.noteOutcome(error);
-          this.handleError('DELETE', error);
+          this.noteOutcome(operation, error);
+          this.handleError(operation, error);
           return [];
         }
-        supabaseCircuitBreaker.recordSuccess();
+        this.recordCircuitSuccess(operation);
         return (data as T[]) ?? [];
       }
 
       const { error } = await base;
       if (error) {
-        this.noteOutcome(error);
-        this.handleError('DELETE', error);
+        this.noteOutcome(operation, error);
+        this.handleError(operation, error);
         return [];
       }
-      supabaseCircuitBreaker.recordSuccess();
+      this.recordCircuitSuccess(operation);
       return [];
     } catch (error) {
-      this.noteOutcome(error);
-      this.handleError('DELETE', error);
+      this.noteOutcome(operation, error);
+      this.handleError(operation, error);
       return [];
     }
   }
@@ -515,11 +532,12 @@ export abstract class BaseRepository {
     functionName: string,
     params?: Record<string, unknown>,
   ): Promise<T | null> {
+    const operation = `RPC:${functionName}`;
     if (!this.isAvailable()) {
       this.logger.warn(`Supabase 未初始化，跳过 RPC 调用 ${functionName}`);
       return null;
     }
-    if (this.circuitBlocked(`RPC:${functionName}`)) {
+    if (this.circuitBlocked(operation)) {
       return null;
     }
 
@@ -529,28 +547,28 @@ export abstract class BaseRepository {
 
         if (error) {
           if (this.isNotFoundError(error)) {
-            supabaseCircuitBreaker.recordSuccess();
+            this.recordCircuitSuccess(operation);
             this.logger.warn(`RPC 函数 ${functionName} 不存在，请检查数据库迁移`);
             return null;
           }
-          if (this.shouldRetryReadError(`RPC:${functionName}`, error, attempt)) {
+          if (this.shouldRetryReadError(operation, error, attempt)) {
             await sleep(this.getBackoffMs(attempt));
             continue;
           }
-          this.noteOutcome(error);
-          this.handleError(`RPC:${functionName}`, error);
+          this.noteOutcome(operation, error);
+          this.handleError(operation, error);
           return null;
         }
 
-        supabaseCircuitBreaker.recordSuccess();
+        this.recordCircuitSuccess(operation);
         return data as T;
       } catch (error) {
-        if (this.shouldRetryReadError(`RPC:${functionName}`, error, attempt)) {
+        if (this.shouldRetryReadError(operation, error, attempt)) {
           await sleep(this.getBackoffMs(attempt));
           continue;
         }
-        this.noteOutcome(error);
-        this.handleError(`RPC:${functionName}`, error);
+        this.noteOutcome(operation, error);
+        this.handleError(operation, error);
         return null;
       }
     }
@@ -563,10 +581,11 @@ export abstract class BaseRepository {
    * @param modifier 筛选条件回调
    */
   protected async count(modifier?: QueryModifier): Promise<number> {
+    const operation = 'COUNT';
     if (!this.isAvailable()) {
       return 0;
     }
-    if (this.circuitBlocked('COUNT')) {
+    if (this.circuitBlocked(operation)) {
       return 0;
     }
 
@@ -579,24 +598,24 @@ export abstract class BaseRepository {
 
         const { count, error } = await query;
         if (error) {
-          if (this.shouldRetryReadError('COUNT', error, attempt)) {
+          if (this.shouldRetryReadError(operation, error, attempt)) {
             await sleep(this.getBackoffMs(attempt));
             continue;
           }
-          this.noteOutcome(error);
-          this.handleError('COUNT', error);
+          this.noteOutcome(operation, error);
+          this.handleError(operation, error);
           return 0;
         }
 
-        supabaseCircuitBreaker.recordSuccess();
+        this.recordCircuitSuccess(operation);
         return count ?? 0;
       } catch (error) {
-        if (this.shouldRetryReadError('COUNT', error, attempt)) {
+        if (this.shouldRetryReadError(operation, error, attempt)) {
           await sleep(this.getBackoffMs(attempt));
           continue;
         }
-        this.noteOutcome(error);
-        this.handleError('COUNT', error);
+        this.noteOutcome(operation, error);
+        this.handleError(operation, error);
         return 0;
       }
     }

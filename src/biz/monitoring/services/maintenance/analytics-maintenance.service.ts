@@ -33,6 +33,8 @@ export class AnalyticsMaintenanceService implements OnModuleInit {
   /** cron 触发：最多回填 30 天；startup 触发：只补最近 7 天 */
   private readonly MAX_BACKFILL_DAYS_CRON = 30;
   private readonly MAX_BACKFILL_DAYS_STARTUP = 7;
+  private hourlyAggregationRunning = false;
+  private dailyAggregationRunning = false;
 
   constructor(
     private readonly messageProcessingService: MessageProcessingService,
@@ -137,36 +139,58 @@ export class AnalyticsMaintenanceService implements OnModuleInit {
   }
 
   private async catchUpHourlyStats(trigger: 'startup' | 'cron'): Promise<void> {
+    if (this.hourlyAggregationRunning) {
+      this.logger.warn(`[小时聚合] 上一轮仍在执行，跳过本次 tick trigger=${trigger}`);
+      return;
+    }
+
+    this.hourlyAggregationRunning = true;
     try {
       const startTime = Date.now();
       this.logger.log(`开始执行小时统计聚合任务... trigger=${trigger}`);
 
       const now = new Date();
-      const latestStored = await this.hourlyStatsRepository.getLatestHourlyStat();
       const maxHours =
         trigger === 'startup' ? this.MAX_BACKFILL_HOURS_STARTUP : this.MAX_BACKFILL_HOURS_CRON;
-      const window = this.resolveBackfillWindow(now, latestStored?.hour, maxHours);
-
-      if (!window) {
-        this.logger.debug(`[小时聚合] 无需补齐，投影已是最新状态 trigger=${trigger}`);
-        return;
-      }
-
-      let processedHours = 0;
-      let savedHours = 0;
-      let emptyHours = 0;
+      const window = this.resolveBackfillWindow(now, maxHours);
+      const windowEnd = new Date(window.lastHourStart.getTime() + this.HOUR_MS);
+      const storedHourKeys = await this.hourlyStatsRepository.getStoredHourKeysByDateRange(
+        window.firstHourStart,
+        windowEnd,
+      );
+      const storedHours = new Set(
+        storedHourKeys
+          .map((hour) => new Date(hour).getTime())
+          .filter((hour) => Number.isFinite(hour)),
+      );
+      const missingHourStarts: Date[] = [];
 
       for (
         let hourStart = new Date(window.firstHourStart);
         hourStart.getTime() <= window.lastHourStart.getTime();
         hourStart = new Date(hourStart.getTime() + this.HOUR_MS)
       ) {
+        if (!storedHours.has(hourStart.getTime())) {
+          missingHourStarts.push(hourStart);
+        }
+      }
+
+      if (missingHourStarts.length === 0) {
+        this.logger.debug(`[小时聚合] 无缺失小时，投影已是最新状态 trigger=${trigger}`);
+        return;
+      }
+
+      let processedHours = 0;
+      let nonEmptyHours = 0;
+      let emptyHours = 0;
+
+      for (const hourStart of missingHourStarts) {
         processedHours += 1;
         const hourEnd = new Date(hourStart.getTime() + this.HOUR_MS);
-        const saved = await this.aggregateSingleHour(hourStart, hourEnd);
+        const hasMessages = await this.aggregateSingleHour(hourStart, hourEnd);
 
-        if (saved) {
-          savedHours += 1;
+        if (hasMessages) {
+          nonEmptyHours += 1;
         } else {
           emptyHours += 1;
         }
@@ -176,7 +200,8 @@ export class AnalyticsMaintenanceService implements OnModuleInit {
       this.logger.log(
         `小时统计聚合完成: trigger=${trigger}, ` +
           `范围=${window.firstHourStart.toISOString()} ~ ${window.lastHourStart.toISOString()}, ` +
-          `处理=${processedHours}h, 写入=${savedHours}h, 空窗=${emptyHours}h, 耗时=${elapsed}ms`,
+          `缺失=${missingHourStarts.length}h, 处理=${processedHours}h, ` +
+          `有数据=${nonEmptyHours}h, 空窗标记=${emptyHours}h, 耗时=${elapsed}ms`,
       );
     } catch (error) {
       this.logger.error('小时统计聚合任务失败:', error);
@@ -192,6 +217,8 @@ export class AnalyticsMaintenanceService implements OnModuleInit {
         error,
         severity: AlertLevel.ERROR,
       });
+    } finally {
+      this.hourlyAggregationRunning = false;
     }
   }
 
@@ -203,10 +230,6 @@ export class AnalyticsMaintenanceService implements OnModuleInit {
 
     if (!aggregated) {
       throw new Error(`aggregate_hourly_stats returned null for hour ${hourKey}`);
-    }
-
-    if (aggregated.messageCount === 0) {
-      return false;
     }
 
     const hourlyStats: HourlyStats = {
@@ -237,31 +260,16 @@ export class AnalyticsMaintenanceService implements OnModuleInit {
     };
 
     await this.hourlyStatsRepository.saveHourlyStats(hourlyStats);
-    return true;
+    return aggregated.messageCount > 0;
   }
 
   private resolveBackfillWindow(
     now: Date,
-    latestStoredHour?: string,
     maxHours: number = this.MAX_BACKFILL_HOURS_CRON,
-  ): { firstHourStart: Date; lastHourStart: Date } | null {
+  ): { firstHourStart: Date; lastHourStart: Date } {
     const currentHourStart = this.getHourStart(now);
     const lastHourStart = new Date(currentHourStart.getTime() - this.HOUR_MS);
-
-    let firstHourStart = latestStoredHour
-      ? new Date(new Date(latestStoredHour).getTime() + this.HOUR_MS)
-      : new Date(lastHourStart.getTime() - (maxHours - 1) * this.HOUR_MS);
-
-    const earliestAllowedHour = new Date(lastHourStart.getTime() - (maxHours - 1) * this.HOUR_MS);
-
-    if (firstHourStart.getTime() < earliestAllowedHour.getTime()) {
-      this.logger.warn(`[小时聚合] 回填窗口裁剪为最近 ${maxHours} 小时`);
-      firstHourStart = earliestAllowedHour;
-    }
-
-    if (firstHourStart.getTime() > lastHourStart.getTime()) {
-      return null;
-    }
+    const firstHourStart = new Date(lastHourStart.getTime() - (maxHours - 1) * this.HOUR_MS);
 
     return { firstHourStart, lastHourStart };
   }
@@ -271,6 +279,12 @@ export class AnalyticsMaintenanceService implements OnModuleInit {
   }
 
   private async catchUpDailyStats(trigger: 'startup' | 'cron'): Promise<void> {
+    if (this.dailyAggregationRunning) {
+      this.logger.warn(`[日聚合] 上一轮仍在执行，跳过本次 tick trigger=${trigger}`);
+      return;
+    }
+
+    this.dailyAggregationRunning = true;
     try {
       const startTime = Date.now();
       this.logger.log(`开始执行日统计聚合任务... trigger=${trigger}`);
@@ -326,6 +340,8 @@ export class AnalyticsMaintenanceService implements OnModuleInit {
         error,
         severity: AlertLevel.ERROR,
       });
+    } finally {
+      this.dailyAggregationRunning = false;
     }
   }
 

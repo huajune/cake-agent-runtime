@@ -116,6 +116,8 @@ export class AnalyticsDashboardService {
   private readonly overviewRefreshing = new Set<string>();
   /** 冷路径 in-flight 去重：发版后缓存全空时并发访客共享同一次计算，防查询风暴打满连接池 */
   private readonly overviewInflight = new Map<string, Promise<DashboardOverviewResponse>>();
+  /** cron 整轮互斥：上一轮尚未结束时跳过新 tick，避免不同 range 的预热轮次交叠。 */
+  private overviewPrewarmRunning = false;
   /** 缓存过期后仍可返回旧值（同时触发后台刷新）的窗口 = TTL × 该倍数 */
   private static readonly OVERVIEW_STALE_MULTIPLIER = 10;
   private readonly projectionFreshCache = new Map<string, { expireAt: number; value: boolean }>();
@@ -660,14 +662,13 @@ export class AnalyticsDashboardService {
       .finally(() => this.overviewRefreshing.delete(key));
   }
 
-  /** 预热覆盖的时间范围：与前端 tab 一一对应（均为「全部小组」这一默认视图）。 */
+  /** 预热有界时间范围；全历史档仅按需计算，避免每 2 分钟重复扫描完整保留期。 */
   private static readonly PREWARM_RANGES: TimeRange[] = [
     'today',
     'week',
     'month',
     'twoMonths',
     'threeMonths',
-    'all',
   ];
 
   /**
@@ -683,20 +684,29 @@ export class AnalyticsDashboardService {
    * 串行而非并行遍历：并发全量聚合正是 2026-06-04 连接池耗尽宕机的形态；
    * 逐个预热配合 resolveOverviewWithCache 的 single-flight 去重，峰值压力可控。
    *
-   * 默认关闭（DASHBOARD_PREWARM_ENABLED=true 才启用）：预热把含 twoMonths/threeMonths/all 的
+   * 默认关闭（DASHBOARD_PREWARM_ENABLED=true 才启用）：预热把含 twoMonths/threeMonths 等长档的
    * 全量聚合从「有人看才算」变成「每 2 分钟无条件算」，小时聚合一旦断更就退化为对数万行
    * tool_calls jsonb 的全窗口解压，小规格实例扛不住（见 2026-09-02 生产库过载）。
    */
   @Cron('*/2 * * * *', { name: 'prewarmDashboardOverview', timeZone: 'Asia/Shanghai' })
   async prewarmDashboardOverview(): Promise<void> {
     if (this.isReadOnlyPreview() || !this.isPrewarmEnabled()) return;
+    if (this.overviewPrewarmRunning) {
+      this.logger.warn('[Dashboard] 上一轮概览缓存预热仍在执行，跳过本次 tick');
+      return;
+    }
 
-    for (const range of AnalyticsDashboardService.PREWARM_RANGES) {
-      try {
-        await this.getDashboardOverviewAsync(range, []);
-      } catch (error) {
-        this.logger.warn(`[Dashboard] 概览缓存预热失败 [${range}]:`, error);
+    this.overviewPrewarmRunning = true;
+    try {
+      for (const range of AnalyticsDashboardService.PREWARM_RANGES) {
+        try {
+          await this.getDashboardOverviewAsync(range, []);
+        } catch (error) {
+          this.logger.warn(`[Dashboard] 概览缓存预热失败 [${range}]:`, error);
+        }
       }
+    } finally {
+      this.overviewPrewarmRunning = false;
     }
   }
 
