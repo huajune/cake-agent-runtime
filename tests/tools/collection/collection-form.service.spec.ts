@@ -151,6 +151,41 @@ describe('CollectionFormService', () => {
       expect(form.candidateRef).toBe('session');
     });
 
+    it('主候选人手机号未填时，显式 additional 路由也不得复用 session 表', async () => {
+      const secondPhone = '18271421691';
+      const primary = createForm({ jobId: 528962, contract: [NAME_FIELD] });
+      primary.slots[NAME_FIELD.labelId] = {
+        labelId: NAME_FIELD.labelId,
+        state: 'filled',
+        askCount: 0,
+        value: {
+          value: '主候选人',
+          sourceText: '姓名：主候选人',
+          producer: 'candidate_quote',
+        },
+      };
+      store.readCurrentCandidateRef.mockResolvedValue('session');
+      store.read.mockImplementation(async ({ candidateRef }: { candidateRef: string }) =>
+        candidateRef === 'session' ? primary : null,
+      );
+
+      const form = await service.loadOrCreate(SCOPE, [NAME_FIELD], secondPhone, {
+        candidateScope: 'additional',
+      });
+
+      expect(form).toMatchObject({
+        candidateRef: secondPhone,
+        candidateScope: 'additional',
+      });
+      expect(form.slots[NAME_FIELD.labelId].state).toBe('empty');
+      expect(store.read).toHaveBeenCalledWith(
+        expect.objectContaining({ candidateRef: secondPhone }),
+      );
+      expect(store.read).not.toHaveBeenCalledWith(
+        expect.objectContaining({ candidateRef: 'session' }),
+      );
+    });
+
     it('当前指针已有另一手机号时，为显式新手机号创建 additional 独立表单', async () => {
       const secondPhone = '18271421691';
       const first = createForm({

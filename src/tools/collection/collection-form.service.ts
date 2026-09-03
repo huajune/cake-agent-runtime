@@ -32,6 +32,14 @@ export interface CollectionFormScope {
   jobId: number;
 }
 
+export interface CollectionFormLoadOptions {
+  /**
+   * 上层已确认本次是代他人报名时显式标记。此时即使主候选人的手机号仍未知，
+   * 也绝不能复用 session 默认表单；否则追加候选人的资料会污染当前联系人。
+   */
+  candidateScope?: 'additional';
+}
+
 type ProgressCandidateField = Exclude<CandidateFieldKey, 'supplementAnswers'>;
 type ProgressInterviewField = Extract<
   keyof SessionInterviewInfo,
@@ -91,14 +99,21 @@ export class CollectionFormService {
     scope: CollectionFormScope,
     contract: readonly ContractFieldDef[],
     candidatePhone?: string | null,
+    options?: CollectionFormLoadOptions,
   ): Promise<BookingCollectionForm> {
     const candidateRef = normalizeCandidateRef(candidatePhone);
     const currentRef = await this.store.readCurrentCandidateRef(scope);
+    const explicitlyAdditional =
+      options?.candidateScope === 'additional' && candidateRef !== SESSION_CANDIDATE_REF;
 
     let existing: BookingCollectionForm | null = null;
     if (candidateRef !== SESSION_CANDIDATE_REF) {
       existing = await this.store.read({ ...scope, candidateRef });
-      if (!existing && (!currentRef || currentRef === SESSION_CANDIDATE_REF)) {
+      if (
+        !existing &&
+        !explicitlyAdditional &&
+        (!currentRef || currentRef === SESSION_CANDIDATE_REF)
+      ) {
         // 第一个候选人往往先填姓名/年龄、后给手机号；此时延续 session
         // 默认表单，后续 rebind 到手机号，不丢已收资料。
         existing = await this.store.read({ ...scope, candidateRef: SESSION_CANDIDATE_REF });
@@ -112,16 +127,20 @@ export class CollectionFormService {
     if (!existing) {
       const created = createForm({ candidateRef, jobId: scope.jobId, contract });
       const isAdditionalCandidate =
-        candidateRef !== SESSION_CANDIDATE_REF &&
-        currentRef != null &&
-        currentRef !== SESSION_CANDIDATE_REF &&
-        currentRef !== candidateRef;
+        explicitlyAdditional ||
+        (candidateRef !== SESSION_CANDIDATE_REF &&
+          currentRef != null &&
+          currentRef !== SESSION_CANDIDATE_REF &&
+          currentRef !== candidateRef);
       return isAdditionalCandidate ? { ...created, candidateScope: 'additional' } : created;
     }
-    const routed =
+    let routed =
       candidateRef !== SESSION_CANDIDATE_REF
         ? reconcileExplicitCandidateRouting(existing)
         : existing;
+    if (explicitlyAdditional && routed.candidateScope !== 'additional') {
+      routed = { ...routed, candidateScope: 'additional' };
+    }
     return this.syncContractSlots(migrateAskTracking(routed), contract);
   }
 

@@ -647,6 +647,7 @@ async function runForm(params: {
     scope,
     mapped.fields,
     groundedCandidatePhone,
+    groundedCandidatePhone ? { candidateScope: 'additional' } : undefined,
   );
   if (mapped.fields.length === 0) {
     form = escalate(form, EMPTY_CONTRACT_ESCALATION_REASON);

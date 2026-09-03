@@ -244,13 +244,16 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
       '性别：男',
     ].join('\n');
     context.turnInput.messages = [{ role: 'user', content: text }];
-    collectionForms.loadOrCreate.mockImplementationOnce(async (_scope, contract, phone?: string) => {
-      expect(phone).toBe(candidatePhone);
-      return {
-        ...createForm({ candidateRef: candidatePhone, jobId: 100, contract }),
-        candidateScope: 'additional' as const,
-      };
-    });
+    collectionForms.loadOrCreate.mockImplementationOnce(
+      async (_scope, contract, phone?: string, options?: { candidateScope?: 'additional' }) => {
+        expect(phone).toBe(candidatePhone);
+        expect(options).toEqual({ candidateScope: 'additional' });
+        return {
+          ...createForm({ candidateRef: candidatePhone, jobId: 100, contract }),
+          candidateScope: 'additional' as const,
+        };
+      },
+    );
 
     const result = await execute({
       jobId: 100,
