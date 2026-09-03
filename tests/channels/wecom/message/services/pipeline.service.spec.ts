@@ -36,7 +36,7 @@ import { InterventionService } from '@biz/intervention/intervention.service';
 import { HandoffRecorderService } from '@biz/handoff-events/handoff-recorder.service';
 import { GeneralHandoffNotifierService } from '@notification/services/general-handoff-notifier.service';
 import type { GeneratorInvokeParams } from '@agent/generator/generator.types';
-import type { SessionRef, TurnRequest, TurnTrigger } from '@agent/runner/agent-runner.types';
+import type { InboundTurnRequest, SessionRef } from '@agent/runner/agent-runner.types';
 import { classifyReviewedOutcome } from '@agent/runner/turn-outcome';
 import { TurnFinalizer } from '@agent/runner/turn-finalizer';
 import { TurnOutcomeInterventionService } from '@agent/runner/turn-outcome-intervention.service';
@@ -77,7 +77,7 @@ describe('MessagePipelineService', () => {
     invoke: jest.fn(),
     invokeReviewed: jest.fn(),
     invokeReviewedTurn: jest.fn(),
-    runTurn: jest.fn(),
+    runInboundTurn: jest.fn(),
     precheckInboundOutcome: jest.fn().mockResolvedValue(null),
   };
 
@@ -310,7 +310,7 @@ describe('MessagePipelineService', () => {
       usage: { inputTokens: 10, outputTokens: 20, totalTokens: 30 },
       toolCalls: [],
     });
-    // ReplyWorkflowService 现走 runner.runTurn；mock 内部委托给 invoke，保留既有参数断言。
+    // ReplyWorkflowService 现走 runner.runInboundTurn；mock 内部委托给 invoke。
     mockRunnerService.invokeReviewed.mockImplementation(async (params: unknown) => ({
       ...(await mockRunnerService.invoke(params)),
       outputDecision: {
@@ -324,7 +324,6 @@ describe('MessagePipelineService', () => {
     }));
     type ReviewedTurnMockParams = {
       invoke: GeneratorInvokeParams;
-      trigger: TurnTrigger;
       sessionRef: SessionRef;
       messageId?: string;
       onTurnEndError?: (error: unknown) => void;
@@ -344,8 +343,7 @@ describe('MessagePipelineService', () => {
           revised: raw.revised ?? false,
         };
         const outcome =
-          raw.outcome ??
-          classifyReviewedOutcome(reviewed, params.trigger, params.sessionRef, params.messageId);
+          raw.outcome ?? classifyReviewedOutcome(reviewed, params.sessionRef, params.messageId);
         return {
           ...reviewed,
           runTurnEnd: undefined,
@@ -355,28 +353,24 @@ describe('MessagePipelineService', () => {
         };
       },
     );
-    mockRunnerService.runTurn.mockImplementation(async (req: TurnRequest) => {
+    mockRunnerService.runInboundTurn.mockImplementation(async (req: InboundTurnRequest) => {
       const invokeParams: GeneratorInvokeParams = {
         callerKind: req.context?.callerKind ?? CallerKind.WECOM,
         userId: req.sessionRef.userId,
         corpId: req.sessionRef.corpId,
         sessionId: req.sessionRef.sessionId,
         messageId: req.context?.messageId,
-        messages:
-          req.trigger.kind === 'inbound'
-            ? [
-                {
-                  role: 'user',
-                  content: req.trigger.userMessage,
-                  imageUrls: req.trigger.images,
-                  imageMessageIds: req.context?.imageMessageIds,
-                },
-              ]
-            : [{ role: 'user', content: '[系统主动跟进]' }],
-        toolMode: req.toolMode ?? (req.trigger.kind === 'proactive' ? 'readonly' : 'scenario'),
-        proactiveDirective: req.trigger.kind === 'proactive' ? req.trigger.directive : undefined,
+        messages: [
+          {
+            role: 'user',
+            content: req.input.text,
+            imageUrls: req.input.images,
+            imageMessageIds: req.context?.imageMessageIds,
+          },
+        ],
+        toolMode: req.toolMode ?? 'scenario',
         scenario: req.context?.scenario,
-        imageUrls: req.trigger.kind === 'inbound' ? req.trigger.images : undefined,
+        imageUrls: req.input.images,
         imageMessageIds: req.context?.imageMessageIds,
         visualMessageTypes: req.context?.visualMessageTypes,
         contactName: req.context?.contactName,
@@ -406,8 +400,7 @@ describe('MessagePipelineService', () => {
         revised: raw.revised ?? false,
       };
       return (
-        raw.outcome ??
-        classifyReviewedOutcome(reviewed, req.trigger, req.sessionRef, req.context?.messageId)
+        raw.outcome ?? classifyReviewedOutcome(reviewed, req.sessionRef, req.context?.messageId)
       );
     });
     mockAlertService.sendAlert.mockResolvedValue(undefined);
@@ -466,9 +459,9 @@ describe('MessagePipelineService', () => {
         response: { success: true, message: 'Message received' },
         content: 'Hello!',
       });
-      // Pre-Agent 风险预检已收进 AgentRunner.runTurn；execute() 阶段只做入站分发准备。
+      // Pre-Agent 风险预检已收进 AgentRunner.runInboundTurn；execute() 阶段只做入站分发准备。
       expect(mockRunnerService.precheckInboundOutcome).not.toHaveBeenCalled();
-      expect(mockRunnerService.runTurn).not.toHaveBeenCalled();
+      expect(mockRunnerService.runInboundTurn).not.toHaveBeenCalled();
       expect(mockImageDescriptionService.describeAndUpdateAsync).not.toHaveBeenCalled();
       expect(mockRunnerService.invoke).not.toHaveBeenCalled();
     });

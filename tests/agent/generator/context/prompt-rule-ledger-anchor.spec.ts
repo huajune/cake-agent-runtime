@@ -23,7 +23,7 @@ describe('context section knowledge classification', () => {
         .filter((entry) => entry.isFile())
         .map((entry) => entry.name)
         .sort(),
-    ).toEqual(['section.interface.ts', 'static.section.ts']);
+    ).toEqual(['section.ts']);
     expect(
       entries
         .filter((entry) => entry.isDirectory())

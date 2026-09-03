@@ -1,20 +1,16 @@
-import { StaticSection } from '@agent/generator/context/sections/static.section';
-import { PromptContext } from '@agent/generator/context/sections/section.interface';
+import { StaticSection } from '@agent/generator/context/sections/section';
+import { promptModelOf, renderSection } from '../../../../helpers/prompt-model.fixture';
 
 describe('StaticSection', () => {
-  const ctx: PromptContext = {
-    scenario: 'candidate-consultation',
-    channelType: 'private',
-    strategyConfig: {} as PromptContext['strategyConfig'],
-  };
+  const ctx = promptModelOf();
 
   it('should expose its configured name', () => {
     const section = new StaticSection('base-manual', 'content');
-    expect(section.name).toBe('base-manual');
+    expect(section.id).toBe('base-manual');
   });
 
   it('should return trimmed static content', () => {
     const section = new StaticSection('base-manual', '  hello world  ');
-    expect(section.build(ctx)).toBe('hello world');
+    expect(renderSection(section, ctx)).toBe('hello world');
   });
 });

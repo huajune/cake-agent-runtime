@@ -10,6 +10,8 @@ import {
 const ALWAYS_PERSISTED_EVENT_TYPES = new Set<AgentEvent['type']>([
   'agent_end',
   'agent_error',
+  // 注入命中：只在本批输入命中时发射（detectTexts 不回扫历史），一次入侵一条。
+  'prompt_injection_detected',
   'model_fallback',
   'tool_error',
   // LLM 尝试轨迹：条件采样（下方 shouldPersist）会漏掉本事件要抓的重试与慢尝试
@@ -36,6 +38,18 @@ const ALWAYS_PERSISTED_EVENT_TYPES = new Set<AgentEvent['type']>([
 ]);
 
 const SLOW_TOOL_THRESHOLD_MS = 3000;
+
+/**
+ * 回合装配观测（turn_data_sources / turn_preparation）的落库门槛。
+ *
+ * 这两类事件每回合各一条、体积是其余回合事件的数倍，无条件落库会让事件表按回合数
+ * 翻倍增长；而顺利回合的内容可以用同轮输入复现（ContextService.compose）。
+ * 因此只在「本来就要排障」的回合落档：失败、有源降级/失败、耗时异常、Prompt 逼近膨胀阈值。
+ */
+const SLOW_TURN_SOURCES_MS = 3000;
+const SLOW_PREPARATION_MS = 5000;
+/** 与 preparation 的膨胀告警阈值（60K）同源，留一半余量提前建档。 */
+const LARGE_PROMPT_CHARS = 30_000;
 
 @Injectable()
 export class PersistingObserver implements Observer, OnApplicationBootstrap {
@@ -64,6 +78,23 @@ export class PersistingObserver implements Observer, OnApplicationBootstrap {
 
   private shouldPersist(event: AgentEvent): boolean {
     if (ALWAYS_PERSISTED_EVENT_TYPES.has(event.type)) return true;
+
+    if (event.type === 'turn_data_sources') {
+      return (
+        event.status === 'failure' ||
+        event.totalDurationMs >= SLOW_TURN_SOURCES_MS ||
+        event.sources.some((source) => source.status === 'degraded' || source.status === 'failed')
+      );
+    }
+
+    if (event.type === 'turn_preparation') {
+      return (
+        event.status === 'failure' ||
+        event.totalDurationMs >= SLOW_PREPARATION_MS ||
+        (event.prompt?.totalChars ?? 0) >= LARGE_PROMPT_CHARS
+      );
+    }
+
     if (event.type !== 'tool_call') return false;
 
     // empty / narrow（观测 P1-4）：假无岗与窄召回的历史趋势只有这里能留下来——

@@ -41,7 +41,7 @@ tags: [MOC, 学习]
 
 **故障与复盘（senior 信号最强）**
 
-- [[14-生产事故复盘集]] — 6 个真实事故：连接池 522、发版丢消息、IF NOT EXISTS 静默跳过、TOAST 52s、TTL 死锁、恒 100% 指标
+- [[14-生产事故复盘集]] — 7 个真实事故：连接池 522、Dashboard 预热打挂 Postgres、发版丢消息、IF NOT EXISTS 静默跳过、TOAST 52s、TTL 死锁、恒 100% 指标
 
 **软实力**
 

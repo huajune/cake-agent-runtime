@@ -1,25 +1,19 @@
 import { ThresholdsSection } from '@agent/generator/context/sections/procedural/thresholds.section';
-import { PromptContext } from '@agent/generator/context/sections/section.interface';
 import { StrategyConfigRecord } from '@biz/strategy/entities/strategy-config.entity';
+import type { PromptModel } from '@agent/generator/context/context.types';
+import { promptModelOf, renderSection } from '../../../../helpers/prompt-model.fixture';
 
 describe('ThresholdsSection', () => {
   const section = new ThresholdsSection();
 
-  const makeCtx = (
-    thresholds?: StrategyConfigRecord['red_lines']['thresholds'],
-  ): PromptContext => ({
-    scenario: 'candidate-consultation',
-    channelType: 'private',
-    strategyConfig: {
-      red_lines: {
-        rules: ['禁止编造数据'],
-        thresholds,
-      },
-    } as StrategyConfigRecord,
-  });
+  const makeCtx = (thresholds?: StrategyConfigRecord['red_lines']['thresholds']): PromptModel =>
+    promptModelOf({
+      strategy: { ...promptModelOf().strategy, thresholds: thresholds ?? [] },
+    });
+  const build = (model: PromptModel) => renderSection(section, model);
 
   it('should format thresholds from config', () => {
-    const block = section.build(
+    const block = build(
       makeCtx([
         {
           flag: 'max_recommend_distance_km',
@@ -39,12 +33,12 @@ describe('ThresholdsSection', () => {
   });
 
   it('should return empty when no thresholds configured', () => {
-    expect(section.build(makeCtx())).toBe('');
-    expect(section.build(makeCtx([]))).toBe('');
+    expect(build(makeCtx())).toBe('');
+    expect(build(makeCtx([]))).toBe('');
   });
 
   it('should format thresholds without numeric values', () => {
-    const block = section.build(
+    const block = build(
       makeCtx([
         {
           flag: 'age_sensitive',
@@ -61,7 +55,7 @@ describe('ThresholdsSection', () => {
   });
 
   it('should format thresholds with min and max', () => {
-    const block = section.build(
+    const block = build(
       makeCtx([
         {
           flag: 'age_requirement',

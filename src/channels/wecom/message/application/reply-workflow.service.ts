@@ -827,8 +827,8 @@ export class ReplyWorkflowService {
         shouldRecordAiEnd = true;
       }
 
-      const outcome = await this.runner.runTurn({
-        trigger: { kind: 'inbound', userMessage: params.userMessage, images: params.imageUrls },
+      const outcome = await this.runner.runInboundTurn({
+        input: { text: params.userMessage, images: params.imageUrls },
         sessionRef: { corpId, userId, sessionId: params.sessionId },
         context: {
           callerKind: CallerKind.WECOM,

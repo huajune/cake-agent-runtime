@@ -1,4 +1,7 @@
-import { buildMemoryBlock } from '@agent/generator/context/sections/semantic/memory.section';
+import {
+  MemorySection,
+  type MemoryPromptView,
+} from '@agent/generator/context/sections/semantic/memory.section';
 import {
   adjudicatePromptMemory,
   normalizeFactTimeKey,
@@ -6,7 +9,7 @@ import {
   type TurnStartMemory,
 } from '@agent/generator/preparation/prompt-memory-adjudicator';
 import { TurnHintsSection } from '@agent/generator/context/sections/working/turn-hints.section';
-import type { PromptContext } from '@agent/generator/context/sections/section.interface';
+import { resolveTurnHintsPromptView } from '@agent/generator/preparation/turn-context-resolver';
 import {
   createEmptyUserProfileFacts,
   userProfileFactValue,
@@ -15,15 +18,10 @@ import {
 } from '@memory/long-term/long-term.types';
 import type { SessionFacts } from '@memory/short-term/short-term.types';
 import { cityFixture, sessionFactsOf } from '../../helpers/session-facts.fixture';
+import { promptModelOf, renderSection } from '../../helpers/prompt-model.fixture';
 import { testTurnHint, testTurnHints } from '../../helpers/turn-hints.fixture';
 
 describe('memory block deterministic adjudication', () => {
-  const baseCtx: PromptContext = {
-    scenario: 'candidate-consultation',
-    channelType: 'private',
-    strategyConfig: {} as PromptContext['strategyConfig'],
-  };
-
   it('deduplicates the same cross-layer value at the current-session authority', () => {
     const profile = profileWithName('张三', 'medium', '2026-08-25T12:00:00.000Z');
     const sessionFacts = sessionFactsOf(
@@ -120,8 +118,6 @@ describe('memory block deterministic adjudication', () => {
 
     expect(memoryBlock).toBe(
       [
-        '',
-        '',
         '[用户档案]',
         '',
         '_以下字段来自**历史会话沉淀**，未经本次会话确认。使用规则：',
@@ -154,12 +150,10 @@ describe('memory block deterministic adjudication', () => {
     const differentView = adjudicatePromptMemory(
       memoryOf({ sessionFacts, turnHints: differentHints }),
     );
-    const output = new TurnHintsSection().build({
-      ...baseCtx,
-      sessionFacts,
-      displayTurnHints: differentView.displayTurnHints,
-      pendingTurnHintFields: differentView.pendingTurnHintFields,
-    });
+    const output = renderTurnHints(
+      differentView.displayTurnHints,
+      differentView.pendingTurnHintFields,
+    );
 
     expect(differentView.pendingTurnHintFields).toEqual(['preferences.city']);
     expect(output).toContain('[本轮解析线索]');
@@ -220,18 +214,48 @@ describe('memory block deterministic adjudication', () => {
     const turnHints = testTurnHints(testTurnHint('preferences.city', '北京', 'explicit_city'));
 
     const view = adjudicatePromptMemory(memoryOf({ jobIntent, turnHints }));
-    const output = new TurnHintsSection().build({
-      ...baseCtx,
-      sessionFacts: null,
-      displayTurnHints: view.displayTurnHints,
-      pendingTurnHintFields: view.pendingTurnHintFields,
-    });
+    const output = renderTurnHints(view.displayTurnHints, view.pendingTurnHintFields);
 
     expect(view.pendingTurnHintFields).toEqual(['preferences.city']);
     expect(output).toContain('[本轮待确认线索]');
     expect(output).toContain('意向城市: 北京');
   });
 });
+
+function buildMemoryBlock(
+  adjudication: MemoryPromptView['adjudication'],
+  _legacyBookingContext: string,
+): string {
+  return renderSection(
+    new MemorySection(),
+    promptModelOf({
+      memory: {
+        adjudication,
+        booking: { state: 'hidden' },
+        realtimeGroups: [],
+        contactBrandAliases: [],
+        currentLaborFormIntent: { kind: 'ignore' },
+        activeLaborForm: null,
+      },
+    }),
+  );
+}
+
+function renderTurnHints(
+  displayTurnHints: TurnStartMemory['turnHints'],
+  pendingFields: Parameters<typeof resolveTurnHintsPromptView>[0]['pendingFields'],
+): string {
+  return renderSection(
+    new TurnHintsSection(),
+    promptModelOf({
+      turnHints: resolveTurnHintsPromptView({
+        displayTurnHints,
+        pendingFields,
+        currentTurnTexts: [],
+      }),
+    }),
+  );
+}
 
 function profileWithName(
   name: string,
