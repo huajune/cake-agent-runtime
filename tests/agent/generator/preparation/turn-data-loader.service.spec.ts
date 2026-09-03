@@ -379,6 +379,58 @@ describe('TurnDataLoaderService', () => {
       expect.arrayContaining(['memory', 'strategy']),
     );
   });
+
+  it('forwards the replay cutoff and enrichment identity to memory.onTurnStart', async () => {
+    const onTurnStart = jest.fn().mockResolvedValue(buildMemory());
+    const enrich = jest.fn().mockImplementation(async (snapshot) => snapshot);
+    const service = buildLoader({ onTurnStart, enrich });
+
+    await service.load(
+      {
+        callerKind: CallerKind.WECOM,
+        corpId: 'corp-1',
+        userId: 'user-1',
+        sessionId: 'session-1',
+        token: 'token-1',
+        botImId: 'bot-im-1',
+        shortTermEndTimeInclusive: 1710900000000,
+        messages: [{ role: 'user', content: '你好' }],
+      } as never,
+      baseInput(),
+    );
+
+    // 回放定局依赖这个上界：漏传会让本轮之后到达的消息漏进被重放的那一回合。
+    expect(onTurnStart).toHaveBeenCalledWith(
+      'corp-1',
+      'user-1',
+      'session-1',
+      '你好',
+      expect.objectContaining({ shortTermEndTimeInclusive: 1710900000000 }),
+    );
+    expect(enrich).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ token: 'token-1', imBotId: 'bot-im-1' }),
+    );
+  });
+
+  it('skips snapshot enrichment when no token is available', async () => {
+    const enrich = jest.fn();
+    const service = buildLoader({ enrich });
+
+    await service.load(
+      {
+        callerKind: CallerKind.WECOM,
+        corpId: 'corp-1',
+        userId: 'user-1',
+        sessionId: 'session-1',
+        messages: [{ role: 'user', content: '你好' }],
+      } as never,
+      baseInput(),
+    );
+
+    // 无 token 时补全接口必然失败，跑一次只是白付一次外部调用。
+    expect(enrich).not.toHaveBeenCalled();
+  });
 });
 
 function buildMemory() {
@@ -397,4 +449,49 @@ function buildMemory() {
     longTerm: { semantic: { profile: null } },
     turnHints: null,
   } as never;
+}
+
+function baseInput() {
+  return {
+    truncatedMessages: [{ role: 'user' as const, content: '你好' }],
+    currentUserMessage: '你好',
+    currentTurnTexts: ['你好'],
+    laborFormIntent: { kind: 'ignore' } as never,
+  };
+}
+
+/** 最小 loader；只覆盖被测那一两个协作者，其余给无害缺省。 */
+function buildLoader(overrides: { onTurnStart?: jest.Mock; enrich?: jest.Mock } = {}) {
+  return new TurnDataLoaderService(
+    {
+      loadPointer: jest.fn().mockResolvedValue({ state: 'none' }),
+      enrichOutOfBand: jest.fn().mockResolvedValue({ state: 'none' }),
+    } as never,
+    { onTurnStart: overrides.onTurnStart ?? jest.fn().mockResolvedValue(buildMemory()) } as never,
+    { fetchBrandList: jest.fn().mockResolvedValue([]) } as never,
+    { resolveGroups: jest.fn().mockResolvedValue([]) } as never,
+    { listUserRooms: jest.fn().mockResolvedValue([]) } as never,
+    {
+      resolveAgentAccountIdentity: jest.fn().mockResolvedValue({ nickname: null, gender: null }),
+    } as never,
+    {
+      deriveTurnBrandContext: jest.fn().mockResolvedValue({
+        state: { currentBrand: null, excludedBrands: [] },
+        persisted: false,
+        nicknameBrands: [],
+      }),
+    } as never,
+    {
+      enrich: overrides.enrich ?? jest.fn().mockImplementation(async (snapshot) => snapshot),
+    } as never,
+    { getVisualFacts: jest.fn().mockResolvedValue([]) } as never,
+    {
+      getActiveConfig: jest
+        .fn()
+        .mockResolvedValue({ stage_goals: { stages: [] }, red_lines: { thresholds: [] } }),
+    } as never,
+    { get: jest.fn().mockReturnValue('200') } as never,
+    undefined,
+    { emit: jest.fn() } as never,
+  );
 }

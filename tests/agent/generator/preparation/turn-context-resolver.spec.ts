@@ -1,4 +1,7 @@
-import { resolveTurnContext } from '@agent/generator/preparation/turn-context-resolver';
+import {
+  resolveCriticalTurnInstructions,
+  resolveTurnContext,
+} from '@agent/generator/preparation/turn-context-resolver';
 
 /** 最小可解析回合；只用来断言单个投影，其余字段保持无害缺省。 */
 function buildResolverInput(paramsOverride: Record<string, unknown> = {}) {
@@ -134,5 +137,47 @@ describe('resolveTurnContext', () => {
   ])('derives channelType from imRoomId, not apiType（$label）', ({ params, expected }) => {
     const result = resolveTurnContext(buildResolverInput(params));
     expect(result.promptModel.channelType).toBe(expected);
+  });
+
+  it('keeps the first-stage fallback for a brand-new user when the stage expired', () => {
+    // 老用户回访兜底到 job_consultation 有测试守着；新用户不能被同一条兜底带走。
+    const input = buildResolverInput();
+    (
+      input.sources as never as {
+        memory: { shortTerm: { stage: { currentStage: string | null } } };
+      }
+    ).memory.shortTerm.stage.currentStage = null;
+
+    const result = resolveTurnContext(input);
+
+    expect(result.entryStage).toBe('trust_building');
+  });
+
+  describe('resolveCriticalTurnInstructions 的 combined 近邻窗口（议题 6-1）', () => {
+    // 生产形态：runner 只构造当前这一条 user 消息，历史全在 memory 窗口里，
+    // 所以 combined 规则必须吃 normalizedMessages 而不是本批 truncatedMessages。
+    const withWindow = (window: Array<{ role: 'user' | 'assistant'; content: string }>) =>
+      resolveCriticalTurnInstructions({
+        currentUserMessage: '再帮我约一次',
+        normalizedMessages: window,
+      });
+
+    it('triggers post_interview_no_rebook from short-term history', () => {
+      const guards = withWindow([
+        { role: 'assistant', content: '恭喜你面试通过了，门店那边会联系你安排入职' },
+        { role: 'user', content: '再帮我约一次' },
+      ]);
+
+      expect(guards.join('\n')).toContain('近邻上下文显示候选人已在面试/入职');
+    });
+
+    it('does not trigger it when the history carries no such state', () => {
+      const guards = withWindow([
+        { role: 'assistant', content: '你好，想找哪一类岗位？' },
+        { role: 'user', content: '再帮我约一次' },
+      ]);
+
+      expect(guards.join('\n')).not.toContain('近邻上下文显示候选人已在面试/入职');
+    });
   });
 });
