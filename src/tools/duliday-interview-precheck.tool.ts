@@ -97,8 +97,10 @@ export const PRECHECK_DESCRIPTION = `面试前置校验。实时读取岗位收�
 
 参数纪律：
 - jobId 必须来自本会话最近一次 duliday_job_list 的真实召回。
-- 首次办理先做“查询报名表单”：只传 jobId（多人代报可同时传 candidatePhone），取得并照发 bookingChecklist.templateText；这一步会把当时的完整契约写入持久表单。
-- 候选人回复后再做“校验报名表单”：带 fieldValueProposals、recapConfirmation 或 requestedDate 调用；校验只使用此前持久化的契约快照。若返回 collection_form_not_presented，先只传 jobId 查询表单；若返回 contract_changed，先只传 jobId 刷新表单并按新的 bookingChecklist 补收，禁止继续提交旧表。
+- mode 必须显式传，禁止靠是否携带其它参数猜调用意图：
+  - mode="query"：查询/刷新岗位报名表单与预约时段。本轮没有候选人报名资料需要校验时使用；多人代报可带 candidatePhone，查询指定日期可带 requestedDate。
+  - mode="validate"：校验候选人报名资料。本轮候选人已经明确给出任何报名字段答案时必须使用，并携带非空 fieldValueProposals；登记报名信息确认时携带 recapConfirmation=true。新表单会在同一次调用中建立实时契约快照并校验，禁止为了查询契约而丢掉本轮答案。
+- validate 使用持久化契约快照；若返回 contract_changed，先用 mode="query" 刷新表单，再根据新 bookingChecklist 在同一轮用 mode="validate" 重投仍有原话依据的 fieldValueProposals。
 - 如果 jobId 因无召回出处被拒，禁止把该数字放进 jobIdList 继续查。只从历史原话提取城市、品牌、门店、岗位，单次调用 duliday_job_list：cityNameList=城市、brandAliasList=品牌、searchJobName="门店关键词+岗位关键词"；用唯一返回的真实 jobId 重试本工具。
 - candidatePhone 仅用于**同一会话代多人报名**：逐人传入当前正在办理者原话中的 11 位手机号，用它选择独立表单；单人报名不传。多人时严格按一人一条链路串行处理：本工具返回 ready_to_book 后立即 booking，booking 成功后才能 precheck 下一人；禁止并行调用多个 precheck。
 - requestedDate 只在候选人明确表达时传：可传日期、interview.bookableSlots 中的精确 interviewTime，或候选人约定的窗口内具体时刻（YYYY-MM-DD HH:mm）；含糊就不传。面试时间不属于收资字段，不得写成 fieldValueProposals 条目。
@@ -118,28 +120,59 @@ export const PRECHECK_DESCRIPTION = `面试前置校验。实时读取岗位收�
 - ready_to_book：才允许调用 duliday_interview_booking；booking 成功前禁止声称已报名。
 - already_submitted：停止重复提交。`;
 
-export const PRECHECK_INPUT_SCHEMA = z.object({
-  jobId: z.coerce.number().int().positive().describe('岗位 ID，必须来自本会话真实召回'),
-  candidatePhone: z
-    .string()
-    .trim()
-    .refine(isStorableCandidatePhone, '必须是候选人原话中的 11 位大陆手机号')
-    .optional()
-    .describe('仅多人代报时传：当前正在办理的候选人手机号，用于选择其独立表单'),
-  requestedDate: z
-    .string()
-    .optional()
-    .describe(
-      '候选人明确提出的日期、上一轮 bookableSlots 中的精确 interviewTime，或候选人约定的窗口内具体时刻（YYYY-MM-DD HH:mm）',
+export const PRECHECK_INPUT_SCHEMA = z
+  .object({
+    mode: z
+      .enum(['query', 'validate'])
+      .describe('query=查询岗位报名表单/预约时段；validate=提交并校验候选人报名资料'),
+    jobId: z.coerce.number().int().positive().describe('岗位 ID，必须来自本会话真实召回'),
+    candidatePhone: z
+      .string()
+      .trim()
+      .refine(isStorableCandidatePhone, '必须是候选人原话中的 11 位大陆手机号')
+      .optional()
+      .describe('仅多人代报时传：当前正在办理的候选人手机号，用于选择其独立表单'),
+    requestedDate: z
+      .string()
+      .optional()
+      .describe(
+        '候选人明确提出的日期、上一轮 bookableSlots 中的精确 interviewTime，或候选人约定的窗口内具体时刻（YYYY-MM-DD HH:mm）',
+      ),
+    fieldValueProposals: FieldValueProposalsInputSchema.optional().describe(
+      'mode=validate 的字段值提案：仅提交候选人原话明确支持的实时契约最终值；歧义、缺失或不能唯一映射时不提交',
     ),
-  fieldValueProposals: FieldValueProposalsInputSchema.optional().describe(
-    '字段值提案：仅提交候选人原话明确支持的实时契约最终值；歧义、缺失或不能唯一映射时不提交',
-  ),
-  recapConfirmation: z
-    .literal(true)
-    .optional()
-    .describe('报名信息确认的唯一入账入口；候选人最新回复明确确认报名信息无误时传 true，否则不传'),
-});
+    recapConfirmation: z
+      .literal(true)
+      .optional()
+      .describe('mode=validate 的报名信息确认入口；候选人最新回复明确确认报名信息无误时传 true'),
+  })
+  .superRefine((input, ctx) => {
+    if (input.mode === 'query') {
+      if (input.fieldValueProposals !== undefined) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['fieldValueProposals'],
+          message: 'fieldValueProposals 属于收资校验，请改用 mode=validate',
+        });
+      }
+      if (input.recapConfirmation !== undefined) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['recapConfirmation'],
+          message: 'recapConfirmation 属于资料确认，请改用 mode=validate',
+        });
+      }
+      return;
+    }
+
+    if (!(input.fieldValueProposals?.length || input.recapConfirmation === true)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['mode'],
+        message: 'mode=validate 必须携带非空 fieldValueProposals 或 recapConfirmation=true',
+      });
+    }
+  });
 
 export interface PrecheckAdjudicationDeps {
   observer?: { emit: (event: AgentEvent) => void };
@@ -161,13 +194,13 @@ interface FormRun {
   rejectedAnswers: RejectedAnswer[];
   /** 本轮 recapConfirmation 被公证拒收的原因——模型可见的纠错回执 + 审计落账。 */
   recapConfirmationRejection?: RecapConfirmationRejectionReason;
+  /** true 表示本次没有提交任何候选人值，只读取/刷新表单契约。 */
+  queryOnly: boolean;
 }
-
-type ContractStateErrorCode = 'collection_form_not_presented' | 'contract_changed';
 
 class ContractStateError extends Error {
   constructor(
-    readonly code: ContractStateErrorCode,
+    readonly code: 'contract_changed',
     readonly details: Record<string, unknown>,
   ) {
     super(code);
@@ -415,6 +448,7 @@ export function buildInterviewPrecheckTool(
       description: PRECHECK_DESCRIPTION,
       inputSchema: PRECHECK_INPUT_SCHEMA,
       execute: async ({
+        mode,
         jobId,
         candidatePhone,
         requestedDate,
@@ -486,12 +520,7 @@ export function buildInterviewPrecheckTool(
             fieldValueProposals,
             recapConfirmation,
             hasExplicitRequestedDate: Boolean(requestedDate?.trim()),
-            contractAccess:
-              (fieldValueProposals?.length ?? 0) > 0 ||
-              recapConfirmation === true ||
-              Boolean(requestedDate?.trim())
-                ? 'validate'
-                : 'query',
+            contractAccess: mode,
             messages: evidenceMessages,
           });
 
@@ -688,17 +717,11 @@ export function buildInterviewPrecheckTool(
           });
         } catch (error) {
           if (error instanceof ContractStateError) {
-            const contractChanged = error.code === 'contract_changed';
             return buildToolError({
-              errorType: contractChanged
-                ? TOOL_ERROR_TYPES.PRECHECK_CONTRACT_CHANGED
-                : TOOL_ERROR_TYPES.PRECHECK_COLLECTION_FORM_NOT_PRESENTED,
-              outcome: contractChanged
-                ? '报名表单契约已变化，旧表未校验'
-                : '报名表单尚未查询，当前校验未执行',
-              replyInstruction: contractChanged
-                ? '先仅传 jobId（多人代报保留 candidatePhone）重新调用本工具，刷新并取得最新 bookingChecklist；只按新表补收变化或新增的字段，禁止继续提交旧表。'
-                : '先仅传 jobId（多人代报保留 candidatePhone）调用本工具取得 bookingChecklist，并照发 templateText；不要丢失候选人已经说过的原话，建立表单后再按原话提交 fieldValueProposals。',
+              errorType: TOOL_ERROR_TYPES.PRECHECK_CONTRACT_CHANGED,
+              outcome: '报名表单契约已变化，旧表未校验',
+              replyInstruction:
+                '改用 mode=query 刷新并取得最新 bookingChecklist；再按新表用 mode=validate 重投仍有候选人原话依据的 fieldValueProposals，禁止继续提交旧表。',
               details: error.details,
             });
           }
@@ -766,7 +789,9 @@ async function runForm(params: {
   if (params.contractAccess === 'query') {
     form = params.deps.collectionForms.refreshContractSnapshot(form, mapped.fields);
   } else if (!form.contractSnapshot) {
-    throw new ContractStateError('collection_form_not_presented', { jobId: params.jobId });
+    // validate 不依赖一次预先的空 query：本轮已经有候选人答案时，同次建立实时
+    // 契约快照并校验，避免模型为了“先查表”把 fieldValueProposals 丢掉。
+    form = params.deps.collectionForms.refreshContractSnapshot(form, mapped.fields);
   } else if (!contractFieldsEqual(form.contractSnapshot.fields, mapped.fields)) {
     throw new ContractStateError('contract_changed', {
       jobId: params.jobId,
@@ -775,10 +800,11 @@ async function runForm(params: {
     });
   }
   const contract = form.contractSnapshot?.fields ?? mapped.fields;
+  const isValidation = params.contractAccess === 'validate';
 
   const intake = intakeFieldValueProposals({
     contract,
-    fieldValueProposals: params.fieldValueProposals,
+    fieldValueProposals: isValidation ? params.fieldValueProposals : undefined,
     hasExplicitRequestedDate: params.hasExplicitRequestedDate,
   });
   if (intake.divertedRequestedDate) {
@@ -813,15 +839,16 @@ async function runForm(params: {
     form = applyRecapResult(form, { corrections });
   }
 
-  const recapBinding = params.recapConfirmation
-    ? verifyRecapConfirmationBinding({
-        form,
-        contract,
-        recapRequired: needsRecap(form),
-        messages: params.messages,
-        hasValidatedCorrection: corrections.length > 0,
-      })
-    : undefined;
+  const recapBinding =
+    isValidation && params.recapConfirmation
+      ? verifyRecapConfirmationBinding({
+          form,
+          contract,
+          recapRequired: needsRecap(form),
+          messages: params.messages,
+          hasValidatedCorrection: corrections.length > 0,
+        })
+      : undefined;
   const affirmedThisTurn = recapBinding?.accepted === true;
   const recapConfirmationRejection =
     recapBinding && !recapBinding.accepted
@@ -847,16 +874,18 @@ async function runForm(params: {
   const result = runCollectionCore({
     form,
     contract,
-    candidateTexts,
-    messages: params.messages,
-    fieldValueProposals: proposals,
+    // query 是读/刷新协议，不消费自由聊天或字段提案；否则“查一下预约信息”仍会
+    // 触发 adapter_sweep，把不属于本字段的裸“不是”写成身份拒绝。已经过公证的
+    // 档案事实仍可安全预填，并由 recap 让候选人确认，避免跨岗位重复询问。
+    candidateTexts: isValidation ? candidateTexts : [],
+    messages: isValidation ? params.messages : [],
+    fieldValueProposals: isValidation ? proposals : [],
     archiveFacts: selectArchiveFacts(
       params.context.archive.sessionFacts?.interview_info as Record<string, unknown> | null,
     ),
     askThisTurn: !recapAffirmed,
     askReceiptTurnId: params.context.session.turnId,
   });
-
   if (result.form.candidateScope !== 'additional') {
     await params.deps.collectionForms.saveFinalizedProgressFacts(
       { ...scope, sessionId: params.context.session.sessionId },
@@ -904,6 +933,7 @@ async function runForm(params: {
     unmatchedAnswers: intake.unmatched,
     rejectedAnswers: collectRejectedAnswers(result.audits, contract),
     recapConfirmationRejection,
+    queryOnly: !isValidation,
   };
 }
 
@@ -977,7 +1007,10 @@ function replyInstruction(action: PrecheckAction, run: FormRun): string {
           ? ` 注意：${askCandidate.map((item) => item.labelTitle).join('、')} 必须向候选人补问；禁止原值重投，按 rejectedAnswers.hint 提问并等待新回复后再提交。`
           : '',
       ].join('');
-      return `${COLLECTION_TEMPLATE_SEND_INSTRUCTION} 只缺：${run.result.askableFields.join('、') || run.result.template.missingFields.join('、')}；已 filled 字段禁止重复问。${rejectedNote}`;
+      const modeNote = run.queryOnly
+        ? ' 本次为 mode=query 回执；若当前候选人消息已经包含任何报名答案，立即改用 mode=validate 并携带对应 fieldValueProposals 校验，禁止丢弃答案后直接发问。'
+        : '';
+      return `${COLLECTION_TEMPLATE_SEND_INSTRUCTION} 只缺：${run.result.askableFields.join('、') || run.result.template.missingFields.join('、')}；已 filled 字段禁止重复问。${rejectedNote}${modeNote}`;
     }
     case 'confirm_collection': {
       if (run.recapConfirmationRejection === 'recap_snapshot_mismatch' && run.recapText) {

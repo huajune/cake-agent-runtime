@@ -514,7 +514,7 @@ describe('proposal intake（统一 fieldValueProposals 运输）', () => {
 
 describe('adapter_sweep 逐条喂适配器（0828 提出 / 0831 复发的确定性假阳）', () => {
   // 生产形态：证据窗里有多条候选人消息，社会身份的答案只在其中一条里。
-  const TEXTS = ['奥乐齐吧', '工作了', '有健康证'];
+  const TEXTS = ['奥乐齐吧', '我已经工作了', '有健康证'];
 
   it('sourceText 必须逐字落在**某一条**消息内——拼接语料会让出处门必然判假阳', () => {
     const [proposal] = collectFieldValueProposals(
