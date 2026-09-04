@@ -89,12 +89,20 @@ scripts/geo/                                # data/ 数据集快照 + 生成/校
 
 ```ts
 export type AdministrativeLevel =
-  | 'municipality' | 'prefecture' | 'county_level_city'
-  | 'district' | 'county' | 'township' | 'place';
+  | 'municipality'
+  | 'prefecture'
+  | 'county_level_city'
+  | 'district'
+  | 'county'
+  | 'township'
+  | 'place';
 
 export type GeoResolutionEvidence =
-  | 'explicit_city_name' | 'unique_district_alias' | 'county_parent_relation'
-  | 'hotspot_alias' | 'geocode_resolved';
+  | 'explicit_city_name'
+  | 'unique_district_alias'
+  | 'county_parent_relation'
+  | 'hotspot_alias'
+  | 'geocode_resolved';
 
 export interface GeoResolution {
   status: 'resolved' | 'ambiguous' | 'unresolved';
@@ -117,9 +125,12 @@ export interface GeoResolution {
 ### 3.2 行政区解析
 
 ```ts
-resolveParentAdministrativeArea('延吉')
+resolveParentAdministrativeArea('延吉');
 // => { input: '延吉', canonicalName: '延吉市',
 //      level: 'county_level_city', parentCity: '延边朝鲜族自治州' }
+
+resolveProvinceFromAdministrativeArea('江苏泰州');
+// => '江苏省'（只供已绑定语义的结构化籍贯值，不参与自由文本扫描）
 ```
 
 允许兼容裸名称，是因为调用方（工具的 `cityNameList` 参数）已在结构化字段中表达了明确语义；**自由文本扫描仍只命中「延吉市」这种显式后缀**，避免把道路名、门店名中的「延吉」误识别为城市。
@@ -152,17 +163,17 @@ scanGeoSignalsFromText(message: string): GeoTextScanResult
 
 ### 5.1 三类数据分离
 
-| 类别 | 内容 | 性质 |
-| --- | --- | --- |
-| **行政区基础数据** | 城市、县级市、区县、父子关系 | 客观行政区事实，脚本生成 |
-| **业务高置信别名** | `光谷 → 武汉`、`陆家嘴 → 上海` | 业务运营决策，人工维护 |
-| **歧义策略数据** | `万达广场`、`人民广场` 等跨城通用后缀 | 防误判策略 |
+| 类别               | 内容                                  | 性质                     |
+| ------------------ | ------------------------------------- | ------------------------ |
+| **行政区基础数据** | 城市、县级市、区县、父子关系          | 客观行政区事实，脚本生成 |
+| **业务高置信别名** | `光谷 → 武汉`、`陆家嘴 → 上海`        | 业务运营决策，人工维护   |
+| **歧义策略数据**   | `万达广场`、`人民广场` 等跨城通用后缀 | 防误判策略               |
 
 三类数据来源、更新频率和置信原则不同，**不放在同一个大对象中**。
 
 ### 5.2 生成数据与 override 分离
 
-- 行政区基础数据由 `geo:generate` 脚本生成（china-division 2.7.0 快照落盘 `scripts/geo/data/`，含来源 / sha256 / 更新流程）；
+- 行政区基础数据由 `geo:generate` 脚本生成（china-division 2.7.0 快照落盘 `scripts/geo/data/`，含来源 / sha256 / 更新流程）；生成产物同时包含县级市→地级行政区、地级行政区→省级行政区两张关系表；
 - **生成产物只接受代码生成更新，不接受零散手改**；
 - 供应商口径差异与业务偏置分别记录在 `administrative-division.overrides.ts`，**不污染生成数据**。
 
@@ -249,16 +260,18 @@ interface GeoQueryMeta {
   requestedLocations: string[];
   normalizedLocations: string[];
   administrativeMappings: Array<{
-    input: string; canonical: string;
-    parentCity: string | null; evidence: string | null;
+    input: string;
+    canonical: string;
+    parentCity: string | null;
+    evidence: string | null;
   }>;
   anchor: {
     source: 'geocode' | 'model_supplied' | null;
-    precision: 'poi' | 'area_level' | null;   // area_level = 行政区代表点
+    precision: 'poi' | 'area_level' | null; // area_level = 行政区代表点
     areaLevelQuery: boolean;
-    areaName: string | null;                   // 区级锚点的行政区名，用于「按XX估算」话术回填
+    areaName: string | null; // 区级锚点的行政区名，用于「按XX估算」话术回填
     coordsProvenance: 'turn_geocode' | 'model_supplied' | 'unreferenced' | null;
-    coordsDeviationKm: number | null;          // 仅 model_supplied 时有值
+    coordsDeviationKm: number | null; // 仅 model_supplied 时有值
   };
   providerFilters: { cityNameList: string[]; regionNameList: string[] };
   fallbackTriggered: boolean;
@@ -286,11 +299,11 @@ interface GeoQueryMeta {
 
 **`DEFERRED_COUNTY_BACKFILL` 与 `geo:validate` 原检查项 7「余姚防线」已于 2026-08-14 一并移除。** 那 23 条（余姚 / 慈溪 / 太仓 / 常熟 / 张家港 / 胶州 / 宜都 / 松滋 / 麻城 / 枣阳 / 瑞金 / 新民…）不再是待办清单。三条理由：
 
-| 理由 | 依据 |
-| --- | --- |
+| 理由                   | 依据                                                                                                                                                                                                                             |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **登记表与生成表重复** | 23 条在 `NATIONAL_COUNTY_LEVEL_CITY_TO_PREFECTURE` 里本来就全有正确父级（见 §9.2 对照表）。真正的闸门是单个开关 `GEO_NATIONAL_COUNTY_MAPPING_ENABLED`，一开全覆盖——把一件事拆成 23 条待办 + 一条 CI 检查去守这张待办表，是纯仪式 |
-| **三周生产零命中** | 2026-07-22~08-13 观测（约 22,800 回合）中这 23 个县级市**一次都没被查询过**，无真实需求信号 |
-| **阻塞条件是外部的** | 补录前置的口径验证卡在"宁波/苏州全城 0 在库岗位"（2026-07-30 真实海绵只读实测），属数据侧条件，不是地理域工程债 |
+| **三周生产零命中**     | 2026-07-22~08-13 观测（约 22,800 回合）中这 23 个县级市**一次都没被查询过**，无真实需求信号                                                                                                                                      |
+| **阻塞条件是外部的**   | 补录前置的口径验证卡在"宁波/苏州全城 0 在库岗位"（2026-07-30 真实海绵只读实测），属数据侧条件，不是地理域工程债                                                                                                                  |
 
 **处置改为纯触发式**：某县级市出现真实查询且解析失败时，按昆山法（真实海绵只读查询确认 `storeCityName`/`storeRegionName` 口径）单条补录进 `COUNTY_LEVEL_CITY_TO_PREFECTURE`，或直接评估开启上述开关。已补录的昆山市映射不受 0 库存影响，无需回滚。开关覆盖面样本固化在 `tests/resolution/geo/national-county-mapping-diff.spec.ts`。
 
@@ -310,36 +323,36 @@ interface GeoQueryMeta {
 <details>
 <summary>对照表全 28 行（由 <code>tests/resolution/geo/national-county-mapping-diff.spec.ts</code> 逐行校验，改动须同步）</summary>
 
-| 输入 | 开关关闭 | 开关开启 |
-|---|---|---|
-| 余姚市 | unresolved | 宁波市 |
-| 慈溪市 | unresolved | 宁波市 |
-| 太仓市 | unresolved | 苏州市 |
-| 常熟市 | unresolved | 苏州市 |
-| 张家港市 | unresolved | 苏州市 |
-| 胶州市 | unresolved | 青岛市 |
-| 莱西市 | unresolved | 青岛市 |
-| 平度市 | unresolved | 青岛市 |
-| 宜都市 | unresolved | 宜昌市 |
-| 当阳市 | unresolved | 宜昌市 |
-| 枝江市 | unresolved | 宜昌市 |
-| 松滋市 | unresolved | 荆州市 |
-| 洪湖市 | unresolved | 荆州市 |
-| 石首市 | unresolved | 荆州市 |
-| 监利市 | unresolved | 荆州市 |
-| 麻城市 | unresolved | 黄冈市 |
-| 武穴市 | unresolved | 黄冈市 |
-| 新民市 | unresolved | 沈阳市 |
-| 枣阳市 | unresolved | 襄阳市 |
-| 宜城市 | unresolved | 襄阳市 |
-| 老河口市 | unresolved | 襄阳市 |
-| 瑞金市 | unresolved | 赣州市 |
-| 龙南市 | unresolved | 赣州市 |
-| 昆山市 | 苏州市 | 苏州市 |
-| 延吉市 | 延边朝鲜族自治州 | 延边朝鲜族自治州 |
-| 义乌市 | unresolved | 金华市 |
-| 上海市 | unresolved | unresolved |
-| 火星市 | unresolved | unresolved |
+| 输入     | 开关关闭         | 开关开启         |
+| -------- | ---------------- | ---------------- |
+| 余姚市   | unresolved       | 宁波市           |
+| 慈溪市   | unresolved       | 宁波市           |
+| 太仓市   | unresolved       | 苏州市           |
+| 常熟市   | unresolved       | 苏州市           |
+| 张家港市 | unresolved       | 苏州市           |
+| 胶州市   | unresolved       | 青岛市           |
+| 莱西市   | unresolved       | 青岛市           |
+| 平度市   | unresolved       | 青岛市           |
+| 宜都市   | unresolved       | 宜昌市           |
+| 当阳市   | unresolved       | 宜昌市           |
+| 枝江市   | unresolved       | 宜昌市           |
+| 松滋市   | unresolved       | 荆州市           |
+| 洪湖市   | unresolved       | 荆州市           |
+| 石首市   | unresolved       | 荆州市           |
+| 监利市   | unresolved       | 荆州市           |
+| 麻城市   | unresolved       | 黄冈市           |
+| 武穴市   | unresolved       | 黄冈市           |
+| 新民市   | unresolved       | 沈阳市           |
+| 枣阳市   | unresolved       | 襄阳市           |
+| 宜城市   | unresolved       | 襄阳市           |
+| 老河口市 | unresolved       | 襄阳市           |
+| 瑞金市   | unresolved       | 赣州市           |
+| 龙南市   | unresolved       | 赣州市           |
+| 昆山市   | 苏州市           | 苏州市           |
+| 延吉市   | 延边朝鲜族自治州 | 延边朝鲜族自治州 |
+| 义乌市   | unresolved       | 金华市           |
+| 上海市   | unresolved       | unresolved       |
+| 火星市   | unresolved       | unresolved       |
 
 复现：`pnpm exec jest tests/resolution/geo/national-county-mapping-diff.spec.ts --runInBand --no-watchman`
 
@@ -351,11 +364,11 @@ interface GeoQueryMeta {
 
 **结案依据（2026-08-14）**：生产 shadow 观测 2026-07-22 ~ 08-13 共 3 周，扫描约 22,800 个 success 回合，累计 **25 起冲突样本，逐条分类后真冲突 0 起**——没有任何一起是候选人先后自陈了两个不同城市。噪音构成：
 
-| 类别 | 条数 | 代表样本 |
-| --- | --- | --- |
-| `hotspot_alias` 地标误命中 | 10 | 五道口×3、王家湾×3、国贸×3、瑶湖 |
-| 街道/镇级跨层级同形 | 4 | 长阳（宜昌县 vs 北京房山镇）×3；**宝山中街**（北京海淀街名 → 误判上海宝山） |
-| 区名别名残留（本轮消息无地名，来自历史/岗位文案） | 11 | 宝安、洪湖、东湖、江北、昌平、镇海、海淀 |
+| 类别                                              | 条数 | 代表样本                                                                    |
+| ------------------------------------------------- | ---- | --------------------------------------------------------------------------- |
+| `hotspot_alias` 地标误命中                        | 10   | 五道口×3、王家湾×3、国贸×3、瑶湖                                            |
+| 街道/镇级跨层级同形                               | 4    | 长阳（宜昌县 vs 北京房山镇）×3；**宝山中街**（北京海淀街名 → 误判上海宝山） |
+| 区名别名残留（本轮消息无地名，来自历史/岗位文案） | 11   | 宝安、洪湖、东湖、江北、昌平、镇海、海淀                                    |
 
 **为何终审 no-go**：按 enforce 语义（冲突非 null → 跳过城市回填、留 `city=null` 让 Agent 反问），噪音样本会让 Agent 对信息最充分的输入反问城市——净误伤。决策日样本（id 225908，「北京市房山区长阳镇…」）与三周后的 id 223843（`[位置分享]` 海淀区…**宝山中街**北，自带精确经纬度）是同一形态，且后者证明该形态**可稳定复现**而非孤例。**零正样本 + 可复现误伤形态 = 收益侧不存在**，故不再保留"攒够证据就重开"的口子。
 
@@ -380,11 +393,11 @@ interface GeoQueryMeta {
 
 1. **数据侧移出 11 条**（69 → 58），全部登记进 `DIRTY_ALIAS_EXCLUSIONS`，由检查项 7 防回填：
 
-| 类别 | 条目 | 依据 |
-| --- | --- | --- |
-| 生产实证误命中 | 国贸、五道口、王家湾、瑶湖 | 三周 shadow 共 10 起，如「国贸」让上海会话误加北京候选（mpr 237500/237178/237152） |
-| 通名 | 世纪公园、临港、东部新城、万寿宫、南门口 | 全国遍地同名，无法指向唯一城市 |
-| 全国连锁商业品牌 | 水悦城、九方 | 同名项目遍布多城。对比保留的「万达广场宜昌」「万象城赣州」——带城市名即唯一串 |
+| 类别             | 条目                                     | 依据                                                                               |
+| ---------------- | ---------------------------------------- | ---------------------------------------------------------------------------------- |
+| 生产实证误命中   | 国贸、五道口、王家湾、瑶湖               | 三周 shadow 共 10 起，如「国贸」让上海会话误加北京候选（mpr 237500/237178/237152） |
+| 通名             | 世纪公园、临港、东部新城、万寿宫、南门口 | 全国遍地同名，无法指向唯一城市                                                     |
+| 全国连锁商业品牌 | 水悦城、九方                             | 同名项目遍布多城。对比保留的「万达广场宜昌」「万象城赣州」——带城市名即唯一串       |
 
 2. **机制侧新增 `geo:validate` 检查项 8**：把区名表的全国唯一性校验（检查项 6）同样量到地标表上，跨城重名须登记 `BUSINESS_BIASED_SUBDIVISION_ALIASES`。此前只有区名表受保护，「襄城」（许昌襄城县 vs 襄阳襄城区）纯属因为它恰好也在区名表里才被拦下。
 

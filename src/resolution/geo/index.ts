@@ -26,6 +26,7 @@ export {
   resolveCityFromDistrict,
   resolveCityFromGeoSignals,
   resolveParentAdministrativeArea,
+  resolveProvinceFromAdministrativeArea,
 } from './administrative-area.resolver';
 export { resolveCityFromLocation } from './place-alias.resolver';
 export { scanWhitelistKeysByLongest, matchInUncoveredSegments } from './whitelist-scanner';

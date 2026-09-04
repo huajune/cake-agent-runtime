@@ -41,6 +41,7 @@ describe('CollectionFormService', () => {
   const store = {
     read: jest.fn(),
     readCurrentCandidateRef: jest.fn(),
+    readPrimaryCandidateRef: jest.fn(),
     write: jest.fn().mockResolvedValue(undefined),
     remove: jest.fn().mockResolvedValue(undefined),
   };
@@ -53,6 +54,7 @@ describe('CollectionFormService', () => {
     jest.clearAllMocks();
     store.read.mockResolvedValue(null);
     store.readCurrentCandidateRef.mockResolvedValue(null);
+    store.readPrimaryCandidateRef.mockResolvedValue(null);
     sessionState.saveCollectionProgressFact.mockResolvedValue(undefined);
     service = new CollectionFormService(store as never, sessionState as never);
   });
@@ -151,6 +153,94 @@ describe('CollectionFormService', () => {
       expect(form.candidateRef).toBe('session');
     });
 
+    it('主候选人手机号未填时，显式 additional 路由也不得复用 session 表', async () => {
+      const secondPhone = '18271421691';
+      const primary = createForm({ jobId: 528962, contract: [NAME_FIELD] });
+      primary.slots[NAME_FIELD.labelId] = {
+        labelId: NAME_FIELD.labelId,
+        state: 'filled',
+        askCount: 0,
+        value: {
+          value: '主候选人',
+          sourceText: '姓名：主候选人',
+          producer: 'candidate_quote',
+        },
+      };
+      store.readCurrentCandidateRef.mockResolvedValue('session');
+      store.read.mockImplementation(async ({ candidateRef }: { candidateRef: string }) =>
+        candidateRef === 'session' ? primary : null,
+      );
+
+      const form = await service.loadOrCreate(SCOPE, [NAME_FIELD], secondPhone, {
+        candidateScope: 'additional',
+      });
+
+      expect(form).toMatchObject({
+        candidateRef: secondPhone,
+        candidateScope: 'additional',
+      });
+      expect(form.slots[NAME_FIELD.labelId].state).toBe('empty');
+      expect(store.read).toHaveBeenCalledWith(
+        expect.objectContaining({ candidateRef: secondPhone }),
+      );
+      expect(store.read).not.toHaveBeenCalledWith(
+        expect.objectContaining({ candidateRef: 'session' }),
+      );
+    });
+
+    it('当前指针已有另一手机号时，为显式新手机号创建 additional 独立表单', async () => {
+      const secondPhone = '18271421691';
+      const first = createForm({
+        candidateRef: TEST_PHONE,
+        jobId: 528962,
+        contract: [NAME_FIELD],
+      });
+      first.slots[NAME_FIELD.labelId] = {
+        labelId: NAME_FIELD.labelId,
+        state: 'filled',
+        askCount: 0,
+        value: {
+          value: '第一位候选人',
+          sourceText: '姓名：第一位候选人',
+          producer: 'candidate_quote',
+        },
+      };
+      store.readCurrentCandidateRef.mockResolvedValue(TEST_PHONE);
+      store.read.mockImplementation(async ({ candidateRef }: { candidateRef: string }) =>
+        candidateRef === TEST_PHONE ? first : null,
+      );
+
+      const form = await service.loadOrCreate(SCOPE, [NAME_FIELD], secondPhone);
+
+      expect(form).toMatchObject({
+        candidateRef: secondPhone,
+        candidateScope: 'additional',
+      });
+      expect(form.slots[NAME_FIELD.labelId].state).toBe('empty');
+      expect(store.read).toHaveBeenCalledWith(
+        expect.objectContaining({ candidateRef: secondPhone }),
+      );
+      expect(store.read).not.toHaveBeenCalledWith(
+        expect.objectContaining({ candidateRef: TEST_PHONE }),
+      );
+    });
+
+    it('显式手机号可解除旧版 suspected_multi_person 熔断，恢复对应候选人表单', async () => {
+      const stored = createForm({
+        candidateRef: TEST_PHONE,
+        jobId: 528962,
+        contract: [NAME_FIELD],
+      });
+      stored.escalatedReason = 'suspected_multi_person';
+      store.readCurrentCandidateRef.mockResolvedValue(TEST_PHONE);
+      store.read.mockResolvedValue(stored);
+
+      const form = await service.loadOrCreate(SCOPE, [NAME_FIELD], TEST_PHONE);
+
+      expect(form.candidateRef).toBe(TEST_PHONE);
+      expect(form.escalatedReason).toBeUndefined();
+    });
+
     it('契约新增槽位补入；已有槽位一格不动（含候选人原话）', async () => {
       const text = '姓名：兮兮';
       const filled = applyFieldValueProposal(
@@ -169,6 +259,61 @@ describe('CollectionFormService', () => {
       expect(form.slots[756].state).toBe('empty');
       expect(form.slots[769].state).toBe('filled');
       expect(form.slots[769].value?.value).toBe('兮兮');
+    });
+
+    it('已有契约快照时 loadOrCreate 不用实时契约偷偷改槽位', async () => {
+      const stored = createForm({ jobId: 528962, contract: [NAME_FIELD] });
+      stored.contractSnapshot = { fields: [NAME_FIELD] };
+      store.read.mockResolvedValue(stored);
+
+      const form = await service.loadOrCreate(SCOPE, [NAME_FIELD, ADDRESS_FIELD]);
+
+      expect(form.contractSnapshot?.fields).toEqual([NAME_FIELD]);
+      expect(form.slots[ADDRESS_FIELD.labelId]).toBeUndefined();
+    });
+
+    it('纯查询刷新契约快照时只补新槽，保留未变化字段的进度', async () => {
+      const text = '姓名：兮兮';
+      const stored = applyFieldValueProposal(
+        createForm({ jobId: 528962, contract: [NAME_FIELD] }),
+        NAME_FIELD,
+        {
+          value: '兮兮',
+          sourceText: text,
+          producer: 'candidate_quote',
+        },
+        { candidateTexts: [text], messages: [{ role: 'user', content: text }] },
+      ).form;
+      stored.contractSnapshot = { fields: [NAME_FIELD] };
+
+      const refreshed = service.refreshContractSnapshot(stored, [NAME_FIELD, ADDRESS_FIELD]);
+
+      expect(refreshed.contractSnapshot?.fields).toEqual([NAME_FIELD, ADDRESS_FIELD]);
+      expect(refreshed.slots[NAME_FIELD.labelId].value?.value).toBe('兮兮');
+      expect(refreshed.slots[ADDRESS_FIELD.labelId].state).toBe('empty');
+    });
+
+    it('同 labelId 的契约定义变化时重开该槽并作废旧复述', () => {
+      const text = '姓名：兮兮';
+      let stored = applyFieldValueProposal(
+        createForm({ jobId: 528962, contract: [NAME_FIELD] }),
+        NAME_FIELD,
+        {
+          value: '兮兮',
+          sourceText: text,
+          producer: 'candidate_quote',
+        },
+        { candidateTexts: [text], messages: [{ role: 'user', content: text }] },
+      ).form;
+      stored.contractSnapshot = { fields: [NAME_FIELD] };
+      stored = markRecapSent(stored, [NAME_FIELD.labelId]);
+
+      const renamed = { ...NAME_FIELD, labelTitle: '候选人姓名' };
+      const refreshed = service.refreshContractSnapshot(stored, [renamed]);
+
+      expect(refreshed.contractSnapshot?.fields).toEqual([renamed]);
+      expect(refreshed.slots[NAME_FIELD.labelId].state).toBe('empty');
+      expect(refreshed.lastRecap).toBeUndefined();
     });
 
     it('契约变更时作废已确认的复述快照', async () => {
@@ -203,19 +348,47 @@ describe('CollectionFormService', () => {
       expect(cleared.slots[756].systemField).toBeUndefined();
     });
 
-    it('调用方不再传手机号时，经当前指针读回 rebind 后的人键表', async () => {
+    it('调用方不再传手机号时，经主候选人指针读回 rebind 后的人键表', async () => {
       const stored = createForm({
         candidateRef: TEST_PHONE,
         jobId: 528962,
         contract: [NAME_FIELD],
       });
       store.readCurrentCandidateRef.mockResolvedValue(TEST_PHONE);
+      store.readPrimaryCandidateRef.mockResolvedValue(TEST_PHONE);
       store.read.mockImplementation(async ({ candidateRef }: { candidateRef: string }) =>
         candidateRef === TEST_PHONE ? stored : null,
       );
 
       const form = await service.loadOrCreate(SCOPE, [NAME_FIELD]);
       expect(form.candidateRef).toBe(TEST_PHONE);
+    });
+
+    it('追加候选人成为活动表单后，普通 precheck 仍读主表，booking active 模式读追加表', async () => {
+      const secondPhone = '18271421691';
+      const primary = createForm({
+        candidateRef: TEST_PHONE,
+        jobId: SCOPE.jobId,
+        contract: [NAME_FIELD],
+      });
+      const additional = {
+        ...createForm({
+          candidateRef: secondPhone,
+          jobId: SCOPE.jobId,
+          contract: [NAME_FIELD],
+        }),
+        candidateScope: 'additional' as const,
+      };
+      store.readCurrentCandidateRef.mockResolvedValue(secondPhone);
+      store.readPrimaryCandidateRef.mockResolvedValue(TEST_PHONE);
+      store.read.mockImplementation(async ({ candidateRef }: { candidateRef: string }) =>
+        candidateRef === TEST_PHONE ? primary : candidateRef === secondPhone ? additional : null,
+      );
+
+      await expect(service.loadOrCreate(SCOPE, [NAME_FIELD])).resolves.toBe(primary);
+      await expect(
+        service.loadOrCreate(SCOPE, [NAME_FIELD], undefined, { locatorMode: 'active' }),
+      ).resolves.toBe(additional);
     });
   });
 

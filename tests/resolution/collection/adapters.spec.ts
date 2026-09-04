@@ -4,13 +4,17 @@ import {
   proposeForField,
   routeOf,
 } from '@resolution/collection/adapters/adapter.registry';
+import { proposeAccommodation } from '@resolution/collection/adapters/accommodation.adapter';
 import { proposeConditionOption } from '@resolution/collection/adapters/condition-option.adapter';
 import { proposeEducation } from '@resolution/collection/adapters/education.adapter';
 import { proposeHealthCertificate } from '@resolution/collection/adapters/health-certificate.adapter';
 import { proposeIdentityCore } from '@resolution/collection/adapters/identity-core.adapter';
 import { proposeIdentityStatus } from '@resolution/collection/adapters/identity-status.adapter';
 import { proposeHouseholdRegister } from '@resolution/collection/adapters/household-register.adapter';
-import { proposeSocialInsurance } from '@resolution/collection/adapters/social-insurance.adapter';
+import {
+  proposeSocialInsurance,
+  socialInsuranceMissingDimensions,
+} from '@resolution/collection/adapters/social-insurance.adapter';
 import { createForm, type ContractFieldDef } from '@resolution/collection/form.types';
 import { applyFieldValueProposal } from '@resolution/collection/form-writes';
 import {
@@ -136,6 +140,17 @@ describe('health-certificate.adapter', () => {
     expect(proposeHealthCertificate(input(HEALTH_CERT_FIELD, '还没办'))).toBeNull();
   });
 
+  it('回归：缺少“有/无”的「本地有效健康证，接受办理」保持空槽，不替候选人猜', () => {
+    expect(
+      proposeHealthCertificate(
+        input(HEALTH_CERT_FIELD, '有无本地健康证：本地有效健康证，接受办理'),
+      ),
+    ).toBeNull();
+    expect(
+      proposeHealthCertificate(input(HEALTH_CERT_FIELD, '本地有效健康证，接受办理')),
+    ).toBeNull();
+  });
+
   it('否定答法不被判成持证（2026-08-19 修复的判反 bug 的适配器侧回归）', () => {
     for (const text of ['没有健康证', '没有本地健康证', '我没有本地有效健康证']) {
       expect(
@@ -221,7 +236,10 @@ describe('condition-option.adapter（条件型单选项：唯一选项=必须接
     // 回显我们的提示（哪怕稍有改动）不算接受：括号里的字面是我们印的
     expect(
       proposeConditionOption(
-        input(WORK_WINDOW, '每天可工作时间段：（要求 09:30-22:30 内都能排班，接受请填 09:30-22:30）好的'),
+        input(
+          WORK_WINDOW,
+          '每天可工作时间段：（要求 09:30-22:30 内都能排班，接受请填 09:30-22:30）好的',
+        ),
       ),
     ).toBeNull();
     // 子区间 = 没接受完整窗口；否定；问句；别的话——全部 null，合不合适交模型对话判
@@ -276,18 +294,28 @@ describe('适配器 → 公证 端到端', () => {
   it('适配器产的提案能过公证入账', () => {
     const text = `姓名：${TEST_CANDIDATE_NAME}`;
     const proposal = proposeForField(input(NAME_FIELD, text));
-    const result = applyFieldValueProposal(createForm({ jobId: 1, contract }), NAME_FIELD, {
-      ...proposal!,
-    }, { candidateTexts: [text], messages: [userMessage(text)] });
+    const result = applyFieldValueProposal(
+      createForm({ jobId: 1, contract }),
+      NAME_FIELD,
+      {
+        ...proposal!,
+      },
+      { candidateTexts: [text], messages: [userMessage(text)] },
+    );
     expect(result.outcome).toBe('accepted');
   });
 
   it('适配器不做公证——命中 rejectedOption 的提案由公证判不合格', () => {
     const text = '没有健康证，我不愿意办';
     const proposal = proposeForField(input(HEALTH_CERT_FIELD, text));
-    const result = applyFieldValueProposal(createForm({ jobId: 1, contract }), HEALTH_CERT_FIELD, {
-      ...proposal!,
-    }, { candidateTexts: [text], messages: [] });
+    const result = applyFieldValueProposal(
+      createForm({ jobId: 1, contract }),
+      HEALTH_CERT_FIELD,
+      {
+        ...proposal!,
+      },
+      { candidateTexts: [text], messages: [] },
+    );
     expect(result.outcome).toBe('disqualified');
   });
 
@@ -355,6 +383,30 @@ describe('social-insurance.adapter（badcase batch_6a8fec04ce406a6aee03d65f_*）
         }),
       ).toBeNull();
     }
+  });
+
+  it('肯定答案只报告缺失维度：个人灵活社保只缺参保地，在缴则两项都缺', () => {
+    expect(
+      socialInsuranceMissingDimensions({
+        field: SOCIAL_INSURANCE_FIELD,
+        candidateText: '个人灵活社保',
+        answerBound: true,
+      }),
+    ).toEqual(['location']);
+    expect(
+      socialInsuranceMissingDimensions({
+        field: SOCIAL_INSURANCE_FIELD,
+        candidateText: '在缴',
+        answerBound: true,
+      }),
+    ).toEqual(['payer', 'location']);
+    expect(
+      socialInsuranceMissingDimensions({
+        field: SOCIAL_INSURANCE_FIELD,
+        candidateText: '公司缴纳外地社保',
+        answerBound: true,
+      }),
+    ).toBeNull();
   });
 
   it('疑问句与岗位咨询语境不解释', () => {
@@ -463,14 +515,21 @@ describe('household-register.adapter · 籍贯省级选项的行政后缀容差'
     ).toBeNull();
   });
 
-  it('市→省推导刻意不做：「南京」不猜成「江苏省」（那需要 geo 的省级映射表）', () => {
+  it('全国行政区映射：市级籍贯归一到契约省级选项', () => {
     expect(
       proposeHouseholdRegister({
         field: PROVINCE_FIELD,
         candidateText: '南京',
         answerBound: true,
-      }),
-    ).toBeNull();
+      })?.value,
+    ).toBe('江苏省');
+    expect(
+      proposeHouseholdRegister({
+        field: PROVINCE_FIELD,
+        candidateText: '江苏泰州',
+        answerBound: true,
+      })?.value,
+    ).toBe('江苏省');
   });
 
   it('籍贯/户籍走标题语义族路由，不再是通用道', () => {
@@ -478,6 +537,55 @@ describe('household-register.adapter · 籍贯省级选项的行政后缀容差'
     expect(adapterFor(PROVINCE_FIELD)).toBe(proposeHouseholdRegister);
     expect(adapterFor({ ...PROVINCE_FIELD, labelTitle: '户籍所在地' })).toBe(
       proposeHouseholdRegister,
+    );
+  });
+});
+
+describe('accommodation.adapter · 住宿需求肯否归一', () => {
+  const ACCOMMODATION_FIELD: ContractFieldDef = {
+    labelId: 109,
+    labelTitle: '住宿需求',
+    fieldType: 'SINGLE_OPTION',
+    required: true,
+    acceptedOptions: [
+      { optionCode: '1', optionLabel: '需要住宿' },
+      { optionCode: '2', optionLabel: '不需要住宿' },
+    ],
+    rejectedOptions: [],
+  };
+
+  it('绑定短答「不需要」归一为契约否定选项', () => {
+    expect(
+      proposeAccommodation({
+        field: ACCOMMODATION_FIELD,
+        candidateText: '不需要',
+        answerBound: true,
+      }),
+    ).toEqual({
+      labelId: 109,
+      value: '不需要住宿',
+      optionCodes: ['2'],
+      sourceText: '不需要',
+      producer: 'candidate_quote',
+    });
+  });
+
+  it('自由语料必须显式带住宿语境；疑问句不解释', () => {
+    expect(
+      proposeAccommodation({ field: ACCOMMODATION_FIELD, candidateText: '我不需要住宿' })?.value,
+    ).toBe('不需要住宿');
+    expect(
+      proposeAccommodation({ field: ACCOMMODATION_FIELD, candidateText: '不需要' }),
+    ).toBeNull();
+    expect(
+      proposeAccommodation({ field: ACCOMMODATION_FIELD, candidateText: '需要住宿吗？' }),
+    ).toBeNull();
+  });
+
+  it('住宿族走专用标题路由', () => {
+    expect(routeOf(ACCOMMODATION_FIELD)).toBe('title_family');
+    expect(adapterFor({ ...ACCOMMODATION_FIELD, labelTitle: '是否需要住宿' })).toBe(
+      proposeAccommodation,
     );
   });
 });

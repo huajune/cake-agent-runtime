@@ -29,24 +29,57 @@
   gap: $spacing-md;
 }
 
+// 头部胶囊语言与顶栏一致：纯白胶囊 + 淡丁香细边、主题渐变紫激活态、不加粗
+$pill-track: #fff;
+$pill-ring: rgba(212, 208, 255, 0.55);
+$ink-2: #3b3a55;
+
 .title {
-  font-size: $font-size-sm;
-  font-weight: $font-weight-semibold;
-  color: $text-primary;
+  font-size: 16px;
+  font-weight: $font-weight-medium;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  color: #14132b;
+  white-space: nowrap;
 }
 
 .filters {
-  display: flex;
-  gap: $spacing-xs;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  background: $pill-track;
+  box-shadow: inset 0 0 0 1px $pill-ring;
+  border-radius: $radius-full;
 }
 
 .filterBtn {
-  @include button-secondary;
-  padding: 6px 12px;
-  font-size: $font-size-xs;
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: $radius-full;
+  background: transparent;
+  color: $ink-2;
+  font-size: 12px;
+  font-weight: $font-weight-normal;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    color $transition-fast,
+    background $transition-fast,
+    box-shadow $transition-fast;
+
+  &:hover:not(.active) {
+    color: $text-primary;
+  }
 
   &.active {
-    @include button-primary;
+    color: #fff;
+    background: $gradient-primary;
+    font-weight: $font-weight-medium;
+    box-shadow: 0 2px 6px rgba($primary, 0.28);
   }
 }
 
@@ -59,24 +92,37 @@
 .stats {
   display: flex;
   align-items: center;
-  gap: $spacing-md;
-  font-size: $font-size-sm;
+  gap: 4px;
 }
 
+// 汇总小胶囊：标签灰、数值带语义色
 .statItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: $radius-full;
+  background: $pill-track;
+  box-shadow: inset 0 0 0 1px $pill-ring;
+  white-space: nowrap;
+
   span:first-child {
-    color: $text-muted;
+    font-size: 11.5px;
+    color: #5b5a86;
   }
 
   span:last-child {
-    font-weight: $font-weight-bold;
+    font-size: 12px;
+    font-weight: $font-weight-medium;
+    font-variant-numeric: tabular-nums;
 
     &.primary {
-      color: $primary;
+      color: #4f46e5;
     }
 
     &.success {
-      color: $success;
+      color: #15803d;
     }
   }
 }

@@ -29,6 +29,21 @@ export function hasHealthCertificateTopic(text: string): boolean {
   );
 }
 
+/**
+ * 生产实测的歧义回填：`本地有效健康证，接受办理` 缺少决定状态的「有/无」。
+ * 前半句像持证，后半句又像无证但愿意办理；任何一边都不能替候选人补字。
+ * 只封这一个已观测句形，不扩大成通用健康证语义判官。
+ */
+export function isAmbiguousHealthCertificateAnswer(text: string): boolean {
+  return text
+    .normalize('NFKC')
+    .split(/\r?\n/u)
+    .some((line) => {
+      const answer = line.replace(/^\s*有无本地健康证\s*[：:]\s*/u, '').trim();
+      return /^(?:本地)?有效健康证[，,、\s]*(?:接受|愿意|可以|能)办(?:理)?[。！!]?$/u.test(answer);
+    });
+}
+
 function splitClauses(message: string): string[] {
   return message
     .split(/(?<=[，,。！？?!；;\n])/u)

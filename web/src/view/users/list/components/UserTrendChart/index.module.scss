@@ -19,7 +19,7 @@
 }
 
 .sectionHeader {
-  padding: $spacing-lg;
+  padding: 16px 20px;
   cursor: pointer;
   user-select: none;
   transition: background $transition-fast;
@@ -44,23 +44,13 @@
     flex-wrap: wrap;
   }
 
-  .headerIcon {
-    width: 32px;
-    height: 32px;
-    border-radius: 10px;
-    background: linear-gradient(135deg, rgba($primary, 0.1) 0%, rgba($primary, 0.2) 100%);
-    color: $primary;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    box-shadow: inset 0 0 0 1px rgba($primary, 0.1);
-  }
-
   h3 {
     margin: 0;
-    font-size: $font-size-lg;
-    font-weight: $font-weight-semibold;
-    color: $text-primary;
+    font-size: 16px;
+    font-weight: $font-weight-medium;
+    line-height: 1.2;
+    letter-spacing: -0.01em;
+    color: #14132b;
     display: flex;
     align-items: center;
     gap: 12px;
@@ -73,19 +63,28 @@
     flex-wrap: wrap;
   }
 
+  // 折叠态的两枚汇总小胶囊：标签灰、数值紫
   .stat {
-    display: flex;
+    display: inline-flex;
     align-items: center;
-    gap: 6px;
-    font-size: $font-size-sm;
+    gap: 4px;
+    height: 26px;
+    padding: 0 8px;
+    border-radius: $radius-full;
+    background: #fff;
+    box-shadow: inset 0 0 0 1px rgba(212, 208, 255, 0.55);
+    white-space: nowrap;
 
     .label {
-      color: $text-muted;
+      font-size: 11.5px;
+      color: #5b5a86;
     }
 
     .value {
-      color: $primary;
-      font-weight: $font-weight-semibold;
+      font-size: 12px;
+      font-weight: $font-weight-medium;
+      font-variant-numeric: tabular-nums;
+      color: #4f46e5;
     }
   }
 
@@ -98,29 +97,33 @@
 
   &.expanded {
     border-bottom: 1px solid rgba($border, 0.6);
-    background: linear-gradient(to bottom, #fff, #f8fafc);
+    background: linear-gradient(to bottom, #fff, #fbfbff);
   }
 }
 
+// 时间范围：胶囊分段，与全站同款
 .rangeSelector {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px;
-  border: 1px solid rgba($border, 0.8);
+  gap: 2px;
+  padding: 3px;
+  border: 0;
   border-radius: $radius-full;
-  background: rgba($bg-secondary, 0.8);
+  background: #fff;
+  box-shadow: inset 0 0 0 1px rgba(212, 208, 255, 0.55);
   flex-shrink: 0;
 
   button {
-    min-height: 44px;
-    padding: 0 14px;
+    display: inline-flex;
+    align-items: center;
+    height: 26px;
+    padding: 0 10px;
     border: none;
     border-radius: $radius-full;
     background: transparent;
-    color: $text-secondary;
-    font-size: $font-size-sm;
-    font-weight: $font-weight-medium;
+    color: #3b3a55;
+    font-size: 12px;
+    font-weight: $font-weight-normal;
     cursor: pointer;
     transition:
       background $transition-fast,
@@ -128,20 +131,24 @@
       box-shadow $transition-fast;
 
     &:hover {
-      color: $primary;
-      background: $primary-05;
+      color: #14132b;
     }
 
     &:focus-visible {
-      outline: 2px solid rgba($primary, 0.35);
-      outline-offset: 2px;
+      outline: 2px solid rgba($primary, 0.5);
+      outline-offset: 1px;
     }
   }
 
   .activeRange {
-    color: $primary;
-    background: $bg-card;
-    box-shadow: 0 4px 12px rgba($primary, 0.14);
+    color: #fff;
+    font-weight: $font-weight-medium;
+    background: $gradient-primary;
+    box-shadow: 0 2px 6px rgba($primary, 0.28);
+
+    &:hover {
+      color: #fff;
+    }
   }
 }
 
@@ -150,8 +157,9 @@
   height: 32px;
   border-radius: $radius-full;
   border: none;
-  background: $bg-secondary;
-  color: $text-secondary;
+  background: #fff;
+  box-shadow: inset 0 0 0 1px rgba(212, 208, 255, 0.55);
+  color: #5b5a86;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -160,8 +168,8 @@
   flex-shrink: 0;
 
   &:hover {
-    background: $border;
-    color: $text-primary;
+    box-shadow: inset 0 0 0 1px rgba(212, 208, 255, 0.9);
+    color: #14132b;
   }
 
   svg {

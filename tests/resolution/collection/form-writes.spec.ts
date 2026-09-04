@@ -760,6 +760,24 @@ describe('防线 4 · 臆造防线：sourceText 回查失败的提案零入账',
     expect(result.reason).toBe(PROPOSAL_REJECTION_REASONS.deterministicConflict);
   });
 
+  it('回归：健康证原话缺少“有/无”时，模型提交任一确定值都拒收并保持空槽', () => {
+    const text = '有无本地健康证：本地有效健康证，接受办理';
+    for (const proposalValue of [
+      { value: '有本地有效健康证', optionCodes: ['1'] },
+      { value: '无本地有效健康证，接受办理', optionCodes: ['2'] },
+    ]) {
+      const result = applyFieldValueProposal(form(), HEALTH_CERT_FIELD, {
+        ...proposalValue,
+        sourceText: text,
+        producer: 'model',
+        candidateTexts: [text],
+      });
+      expect(result.outcome).toBe('rejected');
+      expect(result.reason).toBe(PROPOSAL_REJECTION_REASONS.deterministicConflict);
+      expect(result.form.slots[HEALTH_CERT_FIELD.labelId].state).toBe('empty');
+    }
+  });
+
   it('模型 quote 是整行模板回填时，先剥回显的选项枚举再判冲突（0902 假阳：候选人答「有」被判「不接受办理」）', () => {
     const line =
       '有无本地健康证：（有本地有效健康证/无本地有效健康证，接受办理/无本地有效健康证，不接受办理）有';

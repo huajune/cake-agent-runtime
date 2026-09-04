@@ -796,6 +796,61 @@ describe('buildJobListTool', () => {
     expect(mockSpongeService.fetchJobs).not.toHaveBeenCalled();
   });
 
+  it('allows a candidate-initiated store detail query after group handoff', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJobData()], total: 1 });
+
+    const result = await executeTool(
+      {
+        ...mockContext,
+        currentUserMessage: '朝阳店入职有什么要求吗',
+        invitedGroups: [
+          {
+            groupName: '北京餐饮兼职群',
+            city: '北京',
+            industry: '餐饮',
+            invitedAt: '2026-09-03T05:00:00.000Z',
+          },
+        ],
+      },
+      {
+        ...defaultInput,
+        cityNameList: ['北京'],
+        brandAliasList: ['KFC'],
+        searchJobName: '朝阳店',
+        includeHiringRequirement: true,
+      } as never,
+    );
+
+    expect(result.errorType).toBeUndefined();
+    expect(mockSpongeService.fetchJobs).toHaveBeenCalledTimes(1);
+  });
+
+  it('blocks a post-handoff lookup when its store selector is not grounded in the candidate message', async () => {
+    const result = await executeTool(
+      {
+        ...mockContext,
+        currentUserMessage: '谢谢，我知道了',
+        invitedGroups: [
+          {
+            groupName: '北京餐饮兼职群',
+            city: '北京',
+            industry: '餐饮',
+            invitedAt: '2026-09-03T05:00:00.000Z',
+          },
+        ],
+      },
+      {
+        ...defaultInput,
+        cityNameList: ['北京'],
+        brandAliasList: ['KFC'],
+        searchJobName: '朝阳店',
+      } as never,
+    );
+
+    expect(result.errorType).toBe('job_list.group_handoff_complete');
+    expect(mockSpongeService.fetchJobs).not.toHaveBeenCalled();
+  });
+
   it('should block region-only queries when city is missing', async () => {
     const result = await executeTool(mockContext, {
       ...defaultInput,

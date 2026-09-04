@@ -5,6 +5,7 @@ import {
   resolveCityFromDistrict,
   resolveCityFromGeoSignals,
   resolveParentAdministrativeArea,
+  resolveProvinceFromAdministrativeArea,
 } from '@resolution/geo';
 // 数据表不是公共 API（Phase 5 过渡期导出已收口）；域内测试断言数据现状时直连数据模块。
 import {
@@ -16,6 +17,16 @@ import { NATIONAL_CITY_SUFFIX_TO_CITY } from '@resolution/geo/explicit-city.data
 import { UNIQUE_PLACE_ALIAS_TO_CITY } from '@resolution/geo/place-alias.data';
 
 describe('resolution/geo admin（Phase 0 golden cases 平移 + §8.3 resolver）', () => {
+  describe('resolveProvinceFromAdministrativeArea（结构化市→省）', () => {
+    it('兼容市后缀省略与省市连写，不把省名「海南」错当自治州', () => {
+      expect(resolveProvinceFromAdministrativeArea('泰州')).toBe('江苏省');
+      expect(resolveProvinceFromAdministrativeArea('江苏泰州')).toBe('江苏省');
+      expect(resolveProvinceFromAdministrativeArea('吉林市')).toBe('吉林省');
+      expect(resolveProvinceFromAdministrativeArea('海南藏族自治州')).toBe('青海省');
+      expect(resolveProvinceFromAdministrativeArea('海南')).toBeNull();
+    });
+  });
+
   describe('resolveCityFromDistrict（唯一区县白名单）', () => {
     it(
       'golden：朝阳区 → 北京（刻意业务偏置：北京/长春朝阳区、辽宁朝阳市均不在业务区域，' +

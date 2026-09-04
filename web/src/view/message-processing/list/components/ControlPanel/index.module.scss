@@ -1,274 +1,395 @@
-/* ControlPanel — single-row compact toolbar */
+// ControlPanel — 单行工具卡：标题 / 胶囊控件 / 四枚统计胶囊 / 视图切换
+// 配色：主题渐变紫做激活态，薰衣草浅填充做控件，统计胶囊各带一抹语义色
+@use '@/assets/styles/variables' as *;
 
+$font-ui: -apple-system, BlinkMacSystemFont, 'Inter', 'PingFang SC', 'Segoe UI', sans-serif;
+
+$ink: #14132b;
+$ink-2: #3b3a55;
+$gray: #75748c;
+$gray-2: #a3a2b8;
+// 底色语言：梦幻粉紫蓝——丁香紫 → 兰花粉 → 婴儿蓝 → 白，高明度、带暖调；卡上的控件是亮白玻璃
+$dream-1: #f0efff;
+$dream-2: #faf4fe;
+$dream-3: #f2f7ff;
+$dream-4: #fdfdff;
+$fill: #fff;
+$fill-hover: #fff;
+$tint-line: rgba(212, 208, 255, 0.55);
+$hairline: #e9e9f2;
+
+// 顶部工具卡：首行标题，次行一整行控件
 .panel {
-  margin-bottom: 12px;
-  padding: 10px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 14px 14px 12px;
+  border-radius: 16px;
+  background:
+    radial-gradient(70% 90% at 18% 0%, rgba(255, 255, 255, 0.55) 0%, transparent 60%),
+    linear-gradient(118deg, $dream-1 0%, $dream-2 36%, $dream-3 70%, $dream-4 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.7),
+    0 10px 30px rgba(150, 140, 255, 0.08);
+  font-family: $font-ui;
 }
 
-/* ── Main row: everything in one line ── */
-.row {
+.heading {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  align-items: baseline;
+  gap: 12px;
   flex-wrap: wrap;
+  padding-left: 2px;
 }
 
 .title {
   margin: 0;
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--text-primary);
+  font-size: 16px;
+  font-weight: $font-weight-medium;
+  line-height: 1.2;
   letter-spacing: -0.01em;
+  color: $ink;
   white-space: nowrap;
-  flex-shrink: 0;
 }
 
-/* ── Segmented button groups (time range & tabs) ── */
-.timeRangeGroup,
-.tabGroup {
+// 标题旁的一句链路说明：灰色小字，前面一道细分隔线
+.tagline {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
-  padding: 2px;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.7);
-  border: 1px solid rgba(161, 173, 255, 0.18);
-  flex-shrink: 0;
-}
-
-.segBtn {
-  height: 28px;
-  padding: 0 10px;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text-muted);
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.15s ease;
+  gap: 12px;
+  margin: 0;
+  font-size: $font-size-xs;
+  color: #5b5a86;
   white-space: nowrap;
-  display: inline-flex;
-  align-items: center;
 
-  &:hover {
-    color: var(--text-primary);
-    background: rgba(99, 102, 241, 0.04);
+  &::before {
+    content: '';
+    width: 1px;
+    height: 12px;
+    background: rgba(91, 90, 134, 0.3);
   }
 }
 
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap; // 控件先收缩，只有极窄视口才折行
+}
+
+// ── 胶囊分段：激活态深靛墨底白字 ──
+%pillGroup {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: $radius-full;
+  background: $fill;
+  box-shadow: inset 0 0 0 1px $tint-line;
+  flex-shrink: 0;
+}
+
+%pillBtn {
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: $radius-full;
+  background: transparent;
+  color: $ink-2;
+  font-size: 12px;
+  font-weight: $font-weight-normal;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    color $transition-fast,
+    background $transition-fast,
+    box-shadow $transition-fast;
+
+  &:hover {
+    color: $ink;
+  }
+
+  &:focus-visible {
+    outline: 2px solid rgba($primary, 0.5);
+    outline-offset: 1px;
+  }
+}
+
+%pillBtnActive {
+  background: $gradient-primary;
+  color: #fff;
+  font-weight: $font-weight-medium;
+  box-shadow: 0 2px 6px rgba($primary, 0.28);
+
+  &:hover {
+    color: #fff;
+  }
+}
+
+.segment {
+  @extend %pillGroup;
+}
+
+.segBtn {
+  @extend %pillBtn;
+}
+
 .segBtnActive {
-  background: #fff;
-  color: var(--primary);
-  box-shadow: 0 1px 3px rgba(91, 87, 255, 0.14);
+  @extend %pillBtnActive;
 }
 
-.segBtnDangerActive {
-  color: var(--danger);
-  box-shadow: 0 1px 3px rgba(239, 68, 68, 0.12);
+.viewSwitch {
+  @extend %pillGroup;
+  margin-left: auto;
 }
 
-.tabCount {
-  margin-left: 4px;
-  font-weight: 700;
+.viewBtn {
+  @extend %pillBtn;
+  gap: 6px;
+}
+
+.viewBtnActive {
+  @extend %pillBtnActive;
+}
+
+.viewCount {
+  display: inline-flex;
+  align-items: center;
+  height: 17px;
+  padding: 0 5px;
+  border-radius: $radius-full;
+  background: rgba(255, 255, 255, 0.6);
+  color: $ink-2;
+  font-size: 11px;
+  font-weight: $font-weight-medium;
   font-variant-numeric: tabular-nums;
+
+  .viewBtnActive & {
+    background: rgba(255, 255, 255, 0.18);
+    color: #fff;
+  }
 }
 
-/* ── Search ── */
-.searchWrap {
+// ── 输入类控件 ──
+%field {
   position: relative;
-  width: 160px;
+  display: flex;
+  align-items: center;
+  height: 32px;
+  border-radius: $radius-full;
+  background: $fill;
+  box-shadow: inset 0 0 0 1px $tint-line;
+  transition:
+    background $transition-fast,
+    box-shadow $transition-fast;
+
+  &:hover {
+    background: $fill-hover;
+    box-shadow: inset 0 0 0 1px rgba(212, 208, 255, 0.9);
+  }
+
+  &:focus-within {
+    background: #fff;
+    box-shadow:
+      0 0 0 1px rgba($primary, 0.5),
+      0 0 0 4px rgba($primary, 0.1);
+  }
+}
+
+.search {
+  @extend %field;
+  width: 150px;
+  min-width: 96px;
   flex-shrink: 1;
-  min-width: 120px;
+}
+
+.searchIcon {
+  position: absolute;
+  left: 10px;
+  color: $gray-2;
+  pointer-events: none;
 }
 
 .searchInput {
   width: 100%;
-  height: 28px;
-  padding: 0 26px 0 8px;
-  border: 1px solid rgba(161, 173, 255, 0.2);
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.76);
-  color: var(--text-primary);
+  height: 100%;
+  padding: 0 26px 0 30px;
+  border: 0;
+  background: transparent;
+  font-family: inherit;
   font-size: 12px;
+  color: $ink;
   outline: none;
-  transition:
-    border-color 0.15s ease,
-    box-shadow 0.15s ease;
 
-  &:focus {
-    border-color: rgba(91, 87, 255, 0.4);
-    box-shadow: 0 0 0 2px rgba(91, 87, 255, 0.06);
+  &::placeholder {
+    color: #7c7b9c;
   }
 }
 
 .clearBtn {
   position: absolute;
-  right: 4px;
-  top: 50%;
-  transform: translateY(-50%);
+  right: 7px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
-  height: 16px;
-  border: none;
-  border-radius: 999px;
-  background: rgba(99, 102, 241, 0.08);
-  color: var(--text-muted);
-  font-size: 11px;
-  line-height: 1;
+  width: 18px;
+  height: 18px;
+  border: 0;
+  border-radius: $radius-full;
+  background: rgba(99, 102, 241, 0.14);
+  color: $primary-dark;
   cursor: pointer;
+  transition:
+    background $transition-fast,
+    color $transition-fast;
+
+  &:hover {
+    background: rgba(99, 102, 241, 0.24);
+    color: $primary-dark;
+  }
 }
 
-/* ── Bot select ── */
-.selectWrap {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  width: 200px;
-  height: 28px;
-  padding: 0 8px;
-  border: 1px solid rgba(161, 173, 255, 0.2);
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.76);
-  color: #64748b;
+.select {
+  @extend %field;
+  gap: 7px;
+  width: 170px;
+  min-width: 110px;
+  padding: 0 26px 0 10px;
+  cursor: pointer;
   flex-shrink: 1;
-  min-width: 150px;
-  transition:
-    border-color 0.15s ease,
-    box-shadow 0.15s ease;
+}
 
-  &:focus-within {
-    border-color: rgba(91, 87, 255, 0.4);
-    box-shadow: 0 0 0 2px rgba(91, 87, 255, 0.06);
-  }
-
-  svg {
-    flex: 0 0 auto;
-    color: #64748b;
-  }
+.selectIcon {
+  flex-shrink: 0;
+  color: $gray-2;
 }
 
 .selectInput {
+  flex: 1;
   min-width: 0;
-  width: 100%;
-  border: none;
-  outline: none;
+  appearance: none;
+  -webkit-appearance: none;
+  border: 0;
   background: transparent;
-  color: var(--text-primary);
+  outline: none;
+  font-family: inherit;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: $font-weight-normal;
+  color: $ink;
+  text-overflow: ellipsis;
   cursor: pointer;
 
   &:disabled {
-    color: #94a3b8;
+    color: $gray-2;
     cursor: not-allowed;
   }
 }
 
-/* ── Stat badges: compact inline metrics ── */
-.statsGroup {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin-left: auto;
-  flex-shrink: 0;
+.selectChevron {
+  position: absolute;
+  right: 9px;
+  color: $gray-2;
+  pointer-events: none;
 }
 
-.statBadge {
+// ── 统计胶囊：语义色只落在数字与极淡底色上 ──
+.stats {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+// 首行从右往左：视图切换贴最右，统计紧挨其左；宽度不够时统计整体退到第二行靠右
+.stats {
+  order: 1;
+}
+
+.viewSwitch {
+  order: 2;
+  margin-left: 0;
+}
+
+// 统计胶囊：统一半透明白底，只让数值带语义色
+.chip {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   height: 26px;
   padding: 0 8px;
-  border-radius: 6px;
-  background: rgba(99, 102, 241, 0.06);
-  font-size: 12px;
+  border-radius: $radius-full;
+  background: #fff;
+  box-shadow: inset 0 0 0 1px $tint-line;
   white-space: nowrap;
-  transition: background 0.15s ease;
 }
 
-.statBadgeLabel {
-  color: var(--text-muted);
-  font-weight: 500;
+.chipLabel {
+  font-size: 11.5px;
+  color: #5b5a86;
 }
 
-.statBadgeValue {
-  font-weight: 700;
+.chipValue {
+  font-size: 12px;
+  font-weight: $font-weight-medium;
+  color: var(--chip-color);
   font-variant-numeric: tabular-nums;
-  color: var(--text-primary);
 }
 
-/* Badge color variants */
-.badgePrimary {
-  background: rgba(99, 102, 241, 0.07);
-  .statBadgeValue {
-    color: var(--primary);
-  }
+.chipPrimary {
+  --chip-color: #4f46e5;
 }
 
-.badgeSuccess {
-  background: rgba(16, 185, 129, 0.07);
-  .statBadgeValue {
-    color: var(--success);
-  }
+.chipSuccess {
+  --chip-color: #15803d;
 }
 
-.badgeDanger {
-  background: rgba(239, 68, 68, 0.07);
-  .statBadgeValue {
-    color: var(--danger);
-  }
+.chipDanger {
+  --chip-color: #b91c1c;
 }
 
-.badgeWarning {
-  background: rgba(245, 158, 11, 0.07);
-  .statBadgeValue {
-    color: var(--warning);
-  }
+.chipWarning {
+  --chip-color: #b45309;
 }
 
-/* ── Responsive ── */
+.chipNeutral {
+  --chip-color: #{$gray};
+}
+
+// ── 响应式 ──
+// 只有真正窄的视口才让统计退到第二行；常规宽度靠紧凑尺寸保证一行放下
 @media (max-width: 1100px) {
-  .statsGroup {
-    margin-left: 0;
-    order: 10;
+  .row {
+    flex-wrap: wrap;
+  }
+
+  .stats {
+    order: 3;
     flex-basis: 100%;
+    margin-left: 0;
+  }
+
+  .viewSwitch {
+    margin-left: auto;
   }
 }
 
 @media (max-width: 720px) {
-  .row {
-    gap: 8px;
-  }
-
-  .title {
+  .segment,
+  .viewSwitch {
     width: 100%;
   }
 
-  .timeRangeGroup,
-  .tabGroup {
-    flex: 1 1 auto;
-  }
-
-  .segBtn {
-    flex: 1 1 0;
+  .segBtn,
+  .viewBtn {
+    flex: 1;
     justify-content: center;
-    padding: 0 6px;
   }
 
-  .searchWrap {
+  .search,
+  .select {
     width: 100%;
-    flex-basis: 100%;
-  }
-
-  .selectWrap {
-    width: 100%;
-    flex-basis: 100%;
-  }
-
-  .statsGroup {
-    flex-wrap: wrap;
   }
 }

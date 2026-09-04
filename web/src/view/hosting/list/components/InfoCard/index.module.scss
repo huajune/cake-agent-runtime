@@ -2,24 +2,26 @@
 @use '@/assets/styles/variables' as *;
 
 .card {
-  @include glass-panel;
-  padding: $spacing-lg;
-  border-radius: $radius-xl;
+  padding: 16px 20px;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow:
+    0 0 0 1px #e9e9f2,
+    0 8px 24px rgba(20, 19, 43, 0.045);
   margin-bottom: $spacing-xl;
 }
 
 .title {
   margin: 0 0 $spacing-md 0;
-  color: $text-primary;
+  color: #14132b;
   font-size: $font-size-base;
-  font-weight: $font-weight-semibold;
+  font-weight: $font-weight-medium;
   display: flex;
   align-items: center;
   gap: $spacing-sm;
 
-  &::before {
-    content: 'ℹ️';
-    font-size: 18px;
+  svg {
+    color: $primary;
   }
 }
 
@@ -56,5 +58,9 @@
   display: flex;
   align-items: center;
   gap: $spacing-sm;
-  font-weight: $font-weight-medium;
+  font-weight: $font-weight-normal;
+
+  svg {
+    flex-shrink: 0;
+  }
 }

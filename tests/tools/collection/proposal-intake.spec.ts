@@ -61,6 +61,18 @@ const PHONE: ContractFieldDef = {
   rejectedOptions: [],
   systemField: 'phone',
 };
+const GENDER: ContractFieldDef = {
+  labelId: 771,
+  labelTitle: '性别',
+  fieldType: 'SINGLE_OPTION',
+  required: true,
+  acceptedOptions: [
+    { optionCode: 'm', optionLabel: '男' },
+    { optionCode: 'f', optionLabel: '女' },
+  ],
+  rejectedOptions: [],
+  systemField: 'gender',
+};
 const CONTRACT = [NAME, AGE, HEALTH, STUDENT, RESUME];
 const PHONE_CONTRACT = [NAME, AGE, PHONE, HEALTH, STUDENT];
 
@@ -76,11 +88,15 @@ function base(overrides: Partial<Parameters<typeof collectFieldValueProposals>[0
 describe('FieldValueProposalInputSchema', () => {
   it('只收统一数组项协议，不收 boolean', () => {
     expect(
-      FieldValueProposalInputSchema.safeParse({ labelTitle: '年龄', value: false, quote: '不是学生' })
-        .success,
+      FieldValueProposalInputSchema.safeParse({
+        labelTitle: '年龄',
+        value: false,
+        quote: '不是学生',
+      }).success,
     ).toBe(false);
     expect(
-      FieldValueProposalInputSchema.safeParse({ labelTitle: '年龄', value: '26', quote: '我26岁' }).success,
+      FieldValueProposalInputSchema.safeParse({ labelTitle: '年龄', value: '26', quote: '我26岁' })
+        .success,
     ).toBe(true);
   });
 
@@ -121,6 +137,38 @@ describe('proposal intake（统一 fieldValueProposals 运输）', () => {
       field: null,
       reason: 'label_title_ambiguous',
     });
+  });
+
+  it('动态标签错名不做语义别名兼容，必须暴露 label_title_not_found', () => {
+    expect(resolveFieldByTitle([STUDENT], '社会身份')).toEqual({
+      field: null,
+      reason: 'label_title_not_found',
+    });
+
+    const accommodation: ContractFieldDef = {
+      ...STUDENT,
+      labelId: 109,
+      labelTitle: '住宿需求',
+    };
+    expect(resolveFieldByTitle([accommodation], '是否需要住宿')).toEqual({
+      field: null,
+      reason: 'label_title_not_found',
+    });
+
+    const audits: Array<{ reason: string }> = [];
+    expect(
+      collectFieldValueProposals(
+        base({
+          contract: [STUDENT],
+          fieldValueProposals: [
+            { labelTitle: '社会身份', value: '社会人士', quote: '我是社会人士' },
+          ],
+          candidateTexts: [],
+          onAudit: (audit) => audits.push(audit),
+        }),
+      ),
+    ).toEqual([]);
+    expect(audits).toContainEqual(expect.objectContaining({ reason: 'label_title_not_found' }));
   });
 
   it('条件型单选项：表单行抄回条件字面或整句肯定 → 选中；原样回显模板提示 → 忽略；子区间 → 无 optionCodes 交词表门', () => {
@@ -331,6 +379,29 @@ describe('proposal intake（统一 fieldValueProposals 运输）', () => {
     ).toEqual([]);
   });
 
+  it('回归：误填在性别行的 11 位手机号改投手机号槽，不污染性别槽', () => {
+    const proposals = collectFieldValueProposals(
+      base({
+        contract: [PHONE, GENDER],
+        candidateTexts: ['手机号：\n性别：13250103788\n性别女'],
+      }),
+    );
+
+    expect(proposals).toContainEqual(
+      expect.objectContaining({
+        labelId: PHONE.labelId,
+        value: '13250103788',
+        sourceText: '性别：13250103788',
+        channel: 'form_line',
+      }),
+    );
+    expect(
+      proposals.some(
+        (proposal) => proposal.labelId === GENDER.labelId && proposal.value === '13250103788',
+      ),
+    ).toBe(false);
+  });
+
   it('主模型漏作证时确定性扫描只补 empty 槽；同槽命中时 fieldValueProposals 胜出', () => {
     expect(collectFieldValueProposals(base({ candidateTexts: ['我今年26岁'] }))).toEqual([
       expect.objectContaining({ labelId: 687, value: '26', channel: 'adapter_sweep' }),
@@ -433,12 +504,10 @@ describe('proposal intake（统一 fieldValueProposals 运输）', () => {
       channel: 'form_answer',
     });
     expect(
-      applyFieldValueProposal(
-        createForm({ jobId: 1, contract: [shifts] }),
-        shifts,
-        proposal,
-        { candidateTexts: ['早晚班都可以'], messages: [] },
-      ).outcome,
+      applyFieldValueProposal(createForm({ jobId: 1, contract: [shifts] }), shifts, proposal, {
+        candidateTexts: ['早晚班都可以'],
+        messages: [],
+      }).outcome,
     ).toBe('accepted');
   });
 });

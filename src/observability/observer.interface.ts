@@ -253,6 +253,9 @@ export type AgentEvent = AgentEventContext &
         jobId: number;
         kind: string;
         labelId?: number;
+        /** 标签文本随事件固化，日报按 labelId 归因时无需再跨岗位回查易漂移的契约。 */
+        labelTitle?: string;
+        fieldType?: string;
         reason?: string;
         channel?: string;
         detail?: string;

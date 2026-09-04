@@ -28,6 +28,7 @@ import { detectExperienceFraudCoaching } from './rules/experience-fraud-coaching
 import { detectIdentityMisregistrationCoaching } from './rules/identity-fraud-coaching.rule';
 import { detectInvalidModelOutput } from './rules/invalid-model-output.rule';
 import { detectOnlineInterviewLocationClaim } from './rules/online-interview-location.rule';
+import { detectInterviewSlotAvailabilityMismatch } from './rules/interview-slot-availability.rule';
 import { detectProactiveInsurancePolicyMention } from './rules/insurance-policy-claims.rule';
 import {
   detectHumanServicePhraseLeak,
@@ -208,6 +209,15 @@ export class HardRulesService {
     const onlineInterviewLocationClaim = detectOnlineInterviewLocationClaim(text, toolCalls);
     if (onlineInterviewLocationClaim) {
       contradictions.push(this.withRulePolicy(onlineInterviewLocationClaim));
+    }
+
+    // precheck 的 bookableSlots 已按完整日期时间裁决，生成模型只能渲染，不得二次算错。
+    const interviewSlotAvailabilityMismatch = detectInterviewSlotAvailabilityMismatch(
+      text,
+      toolCalls,
+    );
+    if (interviewSlotAvailabilityMismatch) {
+      contradictions.push(this.withRulePolicy(interviewSlotAvailabilityMismatch));
     }
 
     const unsupportedStoreStatusSpeculation = detectUnsupportedStoreStatusSpeculation(

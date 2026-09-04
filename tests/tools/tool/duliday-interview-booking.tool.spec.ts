@@ -89,6 +89,7 @@ const JOB_WITH_WINDOWS = {
 
 function readyForm(contract: readonly ContractFieldDef[] = CONTRACT): BookingCollectionForm {
   const form = createForm({ jobId: 100, contract });
+  form.contractSnapshot = { fields: [...contract] };
   const values: Record<number, { value: string; optionCodes?: string[] }> = {
     101: { value: '兮兮' },
     102: { value: '18271421690' },
@@ -215,6 +216,28 @@ describe('duliday_interview_booking（form → labelList）', () => {
     expect(sponge.fetchJobCollectionContract).not.toHaveBeenCalled();
   });
 
+  it('没有持久契约快照时拒绝 booking，不能临时拿实时契约提交', async () => {
+    delete currentForm.contractSnapshot;
+
+    const result = await execute({ jobId: 100 });
+
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_REJECTED);
+    expect(result._outcome).toContain('尚未查询');
+    expect(sponge.bookInterview).not.toHaveBeenCalled();
+  });
+
+  it('实时契约不同于持久快照时拒绝 booking', async () => {
+    currentForm.contractSnapshot = {
+      fields: [{ ...CONTRACT[0], labelTitle: '旧版姓名' }, ...CONTRACT.slice(1)],
+    };
+
+    const result = await execute({ jobId: 100 });
+
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_REJECTED);
+    expect(result._outcome).toContain('契约已变化');
+    expect(sponge.bookInterview).not.toHaveBeenCalled();
+  });
+
   it('只向 entryUser 发送 jobId + labelList，wait_notice 不带 interviewTime', async () => {
     const result = await execute({ jobId: 100 });
     expect(result.success).toBe(true);
@@ -280,6 +303,8 @@ describe('duliday_interview_booking（form → labelList）', () => {
         jobId: 100,
       },
       expect.any(Array),
+      undefined,
+      { locatorMode: 'active' },
     );
     expect(collectionForms.persist).toHaveBeenLastCalledWith(
       expect.objectContaining({ botUserId: 'wecom-user-A', jobId: 100 }),
@@ -313,6 +338,49 @@ describe('duliday_interview_booking（form → labelList）', () => {
         workOrderId: 9001,
       },
       { sessionId: 'session-1', botImId: 'bot-A' },
+    );
+  });
+
+  it('追加候选人可独立报名，不受主联系人同岗查重拦截且不覆盖主联系人记忆', async () => {
+    currentForm = { ...readyForm(), candidateRef: '18271421691', candidateScope: 'additional' };
+    currentForm.slots[101].value = {
+      value: '小李',
+      sourceText: '姓名：小李',
+      producer: 'candidate_quote',
+    };
+    currentForm.slots[102].value = {
+      value: '18271421691',
+      sourceText: '联系电话：18271421691',
+      producer: 'candidate_quote',
+    };
+    longTerm.getActiveBookings.mockResolvedValue([
+      { work_order_id: 8001, job_id: 100, linked_at: new Date().toISOString() },
+    ]);
+
+    const result = await execute({ jobId: 100 });
+
+    expect(result).toMatchObject({ success: true, candidateScope: 'additional' });
+    expect(result._replyInstruction).toContain('只有告知成功后才能处理下一位候选人');
+    expect(sponge.bookInterview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        labelList: expect.arrayContaining([
+          { labelId: 101, value: '小李' },
+          { labelId: 102, value: '18271421691' },
+        ]),
+      }),
+      expect.any(Object),
+    );
+    expect(longTerm.getActiveBookings).not.toHaveBeenCalled();
+    expect(longTerm.setActiveBooking).not.toHaveBeenCalled();
+    expect(sessionFacts.saveCompletedCollectionFacts).not.toHaveBeenCalled();
+    expect(longTerm.writeFromBooking).not.toHaveBeenCalled();
+    expect(collectionForms.persist).toHaveBeenCalledWith(
+      expect.objectContaining({ jobId: 100 }),
+      expect.objectContaining({
+        candidateRef: '18271421691',
+        candidateScope: 'additional',
+        workOrderId: 9001,
+      }),
     );
   });
 

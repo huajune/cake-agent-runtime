@@ -10,9 +10,11 @@ import { Injectable, Logger } from '@nestjs/common';
 import { SessionStateService } from '@memory/short-term/session-state.service';
 import { sessionFactValue, type SessionInterviewInfo } from '@memory/short-term/short-term.types';
 import {
+  contractFieldsEqual,
   createForm,
   migrateAskTracking,
   reconcileAskLimitEscalation,
+  reconcileExplicitCandidateRouting,
   SESSION_CANDIDATE_REF,
   type BookingCollectionForm,
   type ContractFieldDef,
@@ -29,6 +31,16 @@ export interface CollectionFormScope {
   /** 当前托管账号的稳定企微身份（wecomUserId）；收资单据隔离维度。 */
   botUserId: string;
   jobId: number;
+}
+
+export interface CollectionFormLoadOptions {
+  /**
+   * 上层已确认本次是代他人报名时显式标记。此时即使主候选人的手机号仍未知，
+   * 也绝不能复用 session 默认表单；否则追加候选人的资料会污染当前联系人。
+   */
+  candidateScope?: 'additional';
+  /** booking 专用：沿用刚通过 precheck 的活动表单；普通 precheck 默认读取主候选人表单。 */
+  locatorMode?: 'active';
 }
 
 type ProgressCandidateField = Exclude<CandidateFieldKey, 'supplementAnswers'>;
@@ -90,22 +102,90 @@ export class CollectionFormService {
     scope: CollectionFormScope,
     contract: readonly ContractFieldDef[],
     candidatePhone?: string | null,
+    options?: CollectionFormLoadOptions,
   ): Promise<BookingCollectionForm> {
     const candidateRef = normalizeCandidateRef(candidatePhone);
+    const [currentRef, primaryRef] = await Promise.all([
+      this.store.readCurrentCandidateRef(scope),
+      this.store.readPrimaryCandidateRef(scope),
+    ]);
+    const defaultRef = options?.locatorMode === 'active' ? currentRef : (primaryRef ?? currentRef);
+    const explicitlyAdditional =
+      options?.candidateScope === 'additional' && candidateRef !== SESSION_CANDIDATE_REF;
 
-    const currentRef = await this.store.readCurrentCandidateRef(scope);
-
-    const existing =
-      (candidateRef !== SESSION_CANDIDATE_REF
-        ? await this.store.read({ ...scope, candidateRef })
-        : null) ??
-      (currentRef ? await this.store.read({ ...scope, candidateRef: currentRef }) : null) ??
-      (await this.store.read({ ...scope, candidateRef: SESSION_CANDIDATE_REF }));
+    let existing: BookingCollectionForm | null = null;
+    if (candidateRef !== SESSION_CANDIDATE_REF) {
+      existing = await this.store.read({ ...scope, candidateRef });
+      if (
+        !existing &&
+        !explicitlyAdditional &&
+        (!defaultRef || defaultRef === SESSION_CANDIDATE_REF)
+      ) {
+        // 第一个候选人往往先填姓名/年龄、后给手机号；此时延续 session
+        // 默认表单，后续 rebind 到手机号，不丢已收资料。
+        existing = await this.store.read({ ...scope, candidateRef: SESSION_CANDIDATE_REF });
+      }
+    } else {
+      existing = defaultRef ? await this.store.read({ ...scope, candidateRef: defaultRef }) : null;
+      // 兼容尚未写 primary locator 的旧快照：若旧 current 已被 additional 占用，
+      // 普通 precheck 不能沿它读，回落 session 主表；booking 的 active 模式仍照常读取。
+      if (
+        options?.locatorMode !== 'active' &&
+        !primaryRef &&
+        existing?.candidateScope === 'additional'
+      ) {
+        existing = null;
+      }
+      existing ??= await this.store.read({ ...scope, candidateRef: SESSION_CANDIDATE_REF });
+    }
 
     if (!existing) {
-      return createForm({ candidateRef, jobId: scope.jobId, contract });
+      const created = createForm({ candidateRef, jobId: scope.jobId, contract });
+      const isAdditionalCandidate =
+        explicitlyAdditional ||
+        (candidateRef !== SESSION_CANDIDATE_REF &&
+          defaultRef != null &&
+          defaultRef !== SESSION_CANDIDATE_REF &&
+          defaultRef !== candidateRef);
+      return isAdditionalCandidate ? { ...created, candidateScope: 'additional' } : created;
     }
-    return this.syncContractSlots(migrateAskTracking(existing), contract);
+    let routed =
+      candidateRef !== SESSION_CANDIDATE_REF
+        ? reconcileExplicitCandidateRouting(existing)
+        : existing;
+    if (explicitlyAdditional && routed.candidateScope !== 'additional') {
+      routed = { ...routed, candidateScope: 'additional' };
+    }
+    const persistedContract = routed.contractSnapshot?.fields;
+    return this.syncContractSlots(
+      migrateAskTracking(routed),
+      persistedContract ?? contract,
+      persistedContract,
+    );
+  }
+
+  /**
+   * 纯“查询报名表单”路径更新契约快照。
+   *
+   * 同 labelId 的定义发生变化时也要重开该槽，避免把旧选项下的答案带进新契约；
+   * 未变化的槽位保留，候选人不必重填整张表。
+   */
+  refreshContractSnapshot(
+    form: BookingCollectionForm,
+    contract: readonly ContractFieldDef[],
+  ): BookingCollectionForm {
+    const previousContract = form.contractSnapshot?.fields;
+    if (previousContract && contractFieldsEqual(previousContract, contract)) return form;
+
+    let synced = this.syncContractSlots(form, contract, previousContract);
+    if (!previousContract && synced.lastRecap) {
+      const { lastRecap: _legacyRecap, ...withoutLegacyRecap } = synced;
+      synced = withoutLegacyRecap;
+    }
+    return {
+      ...synced,
+      contractSnapshot: { fields: cloneContractFields(contract) },
+    };
   }
 
   async persist(scope: CollectionFormScope, form: BookingCollectionForm): Promise<void> {
@@ -182,20 +262,43 @@ export class CollectionFormService {
   private syncContractSlots(
     form: BookingCollectionForm,
     contract: readonly ContractFieldDef[],
+    previousContract?: readonly ContractFieldDef[],
   ): BookingCollectionForm {
     const currentIds = new Set(contract.map((field) => field.labelId));
     const previousIds = Object.keys(form.slots).map(Number);
     const added = contract.filter((field) => !form.slots[field.labelId]);
     const removed = previousIds.filter((labelId) => !currentIds.has(labelId));
+    const previousFieldsById = new Map(
+      (previousContract ?? []).map((field) => [field.labelId, field]),
+    );
+    const changed = previousContract
+      ? contract.filter((field) => {
+          const previous = previousFieldsById.get(field.labelId);
+          return previous ? !contractFieldsEqual([previous], [field]) : false;
+        })
+      : [];
+    const changedIds = new Set(changed.map((field) => field.labelId));
+    const contractOrderChanged = previousContract
+      ? previousContract.map((field) => field.labelId).join(',') !==
+        contract.map((field) => field.labelId).join(',')
+      : false;
     const semanticMarkerChanged = contract.some(
       (field) => form.slots[field.labelId]?.systemField !== field.systemField,
     );
-    if (added.length === 0 && removed.length === 0 && !semanticMarkerChanged) return form;
+    if (
+      added.length === 0 &&
+      removed.length === 0 &&
+      changed.length === 0 &&
+      !contractOrderChanged &&
+      !semanticMarkerChanged
+    ) {
+      return form;
+    }
 
     const slots: BookingCollectionForm['slots'] = {};
     for (const field of contract) {
       const existing = form.slots[field.labelId];
-      if (!existing) {
+      if (!existing || changedIds.has(field.labelId)) {
         slots[field.labelId] = {
           labelId: field.labelId,
           ...(field.systemField ? { systemField: field.systemField } : {}),
@@ -213,17 +316,37 @@ export class CollectionFormService {
     this.logger.log(
       `[collection-form] 契约槽位对齐: added=[${added
         .map((field) => field.labelId)
-        .join(',')}], removed=[${removed.join(',')}]`,
+        .join(',')}], changed=[${changed
+        .map((field) => field.labelId)
+        .join(',')}], removed=[${removed.join(',')}], reordered=${contractOrderChanged}`,
     );
     const { lastRecap: _staleRecap, ...formWithoutRecap } = form;
     return reconcileAskLimitEscalation({
       ...formWithoutRecap,
       slots,
       ...(form.configDebts
-        ? { configDebts: form.configDebts.filter((debt) => currentIds.has(debt.labelId)) }
+        ? {
+            configDebts: form.configDebts.filter(
+              (debt) => currentIds.has(debt.labelId) && !changedIds.has(debt.labelId),
+            ),
+          }
         : {}),
     });
   }
+}
+
+function cloneContractFields(contract: readonly ContractFieldDef[]): ContractFieldDef[] {
+  return contract.map((field) => ({
+    ...field,
+    acceptedOptions: field.acceptedOptions.map((option) => ({ ...option })),
+    rejectedOptions: field.rejectedOptions.map((option) => ({ ...option })),
+    valueSpec: field.valueSpec
+      ? {
+          ...field.valueSpec,
+          genderRanges: field.valueSpec.genderRanges.map((range) => ({ ...range })),
+        }
+      : field.valueSpec,
+  }));
 }
 
 /** 人键归一：11 位可存手机号才作人键，否则回落会话默认表。 */

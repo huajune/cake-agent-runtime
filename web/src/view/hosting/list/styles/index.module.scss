@@ -11,19 +11,17 @@
 
 .pageTitle {
   margin: 0;
-  color: $text-primary;
-  font-size: $font-size-2xl;
-  font-weight: $font-weight-bold;
-  background: linear-gradient(135deg, $primary-dark 0%, $primary 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
+  color: #14132b;
+  font-size: 18px;
+  font-weight: $font-weight-medium;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
 }
 
 .pageDesc {
-  margin: $spacing-xs 0 0 0;
-  font-size: $font-size-base;
-  color: $text-secondary;
+  margin: 6px 0 0 0;
+  font-size: $font-size-xs;
+  color: #5b5a86;
   max-width: 600px;
 }
 

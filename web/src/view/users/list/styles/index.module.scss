@@ -46,35 +46,36 @@
   background: #ffffff;
 }
 
+// 工具条控件：32px 纯白胶囊 + 淡丁香细边，与全站同款
 .searchControl,
 .selectControl {
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 38px;
-  border: 1px solid transparent;
-  border-radius: 10px;
-  background: #f5f7fa;
-  color: #64748b;
+  min-height: 32px;
+  border: 0;
+  border-radius: $radius-full;
+  background: #fff;
+  box-shadow: inset 0 0 0 1px rgba(212, 208, 255, 0.55);
+  color: #5b5a86;
   transition:
     background 0.2s ease,
-    border-color 0.2s ease,
     box-shadow 0.2s ease;
 
   &:hover {
-    background: #eff2f6;
+    box-shadow: inset 0 0 0 1px rgba(212, 208, 255, 0.9);
   }
 
   &:focus-within {
-    background: #ffffff;
-    border-color: $primary;
-    box-shadow: 0 0 0 3px $primary-10;
+    box-shadow:
+      0 0 0 1px rgba($primary, 0.5),
+      0 0 0 4px rgba($primary, 0.1);
   }
 
   svg {
     flex: 0 0 auto;
     margin-left: 12px;
-    color: #94a3b8;
+    color: #a3a2b8;
     transition: color 0.2s ease;
   }
 
@@ -90,11 +91,11 @@
     border: none;
     outline: none;
     background: transparent;
-    color: #0f172a;
-    font-size: 13px;
+    color: #14132b;
+    font-size: 12.5px;
 
     &::placeholder {
-      color: #94a3b8;
+      color: #a3a2b8;
     }
   }
 }
@@ -103,21 +104,20 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
-  margin-right: 6px;
+  width: 18px;
+  height: 18px;
+  margin-right: 8px;
   border: none;
-  border-radius: 8px;
-  background: transparent;
-  color: #94a3b8;
+  border-radius: $radius-full;
+  background: rgba(99, 102, 241, 0.14);
+  color: $primary-dark;
   cursor: pointer;
   transition:
     background 0.15s ease,
     color 0.15s ease;
 
   &:hover {
-    background: #e2e8f0;
-    color: #475569;
+    background: rgba(99, 102, 241, 0.24);
   }
 }
 
@@ -127,12 +127,12 @@
     border: none;
     outline: none;
     background: transparent;
-    color: #334155;
-    font-size: 13px;
+    color: #14132b;
+    font-size: 12.5px;
     cursor: pointer;
 
     &:disabled {
-      color: #94a3b8;
+      color: #a3a2b8;
       cursor: not-allowed;
     }
   }

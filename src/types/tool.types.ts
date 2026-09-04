@@ -49,7 +49,7 @@ export interface ToolArchiveContext {
   currentFocusJob?: RecommendedJobSummary | null;
   recentBrandPool?: string[];
   bookingCandidateFacts?: EntityExtractionResult['interview_info'] | null;
-  /** 已成功拉群事实；岗位工具据此永久关闭后续推荐查询。 */
+  /** 已成功拉群事实；用于阻止重复拉群及 Agent 主动续推，候选人明确点名详情时不作永久封口。 */
   invitedGroups?: InvitedGroupRecord[];
 }
 
