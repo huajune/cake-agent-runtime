@@ -1,362 +1,193 @@
 {
-  "baseVersion": "11.3.0",
+  "baseVersion": "11.4.0",
   "nextVersion": "11.4.0",
+  "lastAnalyzedSha": null,
   "updatedAt": "2026-09-04",
   "sourceBranch": "develop",
-  "entries": [
-    {
-      "number": "1211",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1211",
-      "title": "流水表恢复行分隔线并让两个摘要列等宽",
-      "author": "huajune",
-      "mergedAt": "2026-09-04",
-      "businessUpdates": [
-        "**恢复行分隔线**：`tbody td` 加回 `1px solid #f0f0f6`，末行不画线。悬停整行圆角高亮保留。",
-        "**两个摘要列等宽**：输入摘要此前固定 `max-width: 105px`，响应摘要用 `width:100% + max-width:0` 吃掉全部剩余；现改为两格共用 `.previewCell`（`width: 50%; max-width: 0; min-width: 100px`），剩余宽度对半分。"
-      ],
-      "summary": [
-        "流水表恢复行分隔线并让两个摘要列等宽",
-        "流水表处理状态恢复胶囊徽标",
-        "**恢复行分隔线**：`tbody td` 加回 `1px solid #f0f0f6`，末行不画线。悬停整行圆角高亮保留。",
-        "**两个摘要列等宽**：输入摘要此前固定 `max-width: 105px`，响应摘要用 `width:100% + max-width:0` 吃掉全部剩余；现改为两格共用 `.previewCell`（`width: 50%; max-width: 0; min-width: 100px`），剩余宽度对半分。"
-      ],
-      "features": [],
-      "fixes": [
-        "**恢复行分隔线**：`tbody td` 加回 `1px solid #f0f0f6`，末行不画线。悬停整行圆角高亮保留。",
-        "**两个摘要列等宽**：输入摘要此前固定 `max-width: 105px`，响应摘要用 `width:100% + max-width:0` 吃掉全部剩余；现改为两格共用 `.previewCell`（`width: 50%; max-width: 0; min-width: 100px`），剩余宽度对半分。"
-      ],
-      "optimizations": [],
-      "ops": [
-        "流水表恢复行分隔线并让两个摘要列等宽",
-        "流水表处理状态恢复胶囊徽标"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [],
-      "level": "patch"
-    },
-    {
-      "number": "1212",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1212",
-      "title": "拉群时机闸门收敛为仅校验重复邀请",
-      "author": "huajune",
-      "mergedAt": "2026-09-04",
-      "businessUpdates": [
-        "拉群时机闸门收敛为仅校验重复邀请",
-        "同批回收拉群闸门收敛后的过期描述",
-        "`no_job_result_this_turn` → `invite.no_job_result`",
-        "`group_consent_required` → `invite.group_consent_required`",
-        "`booking_progress_signal` → `invite.booking_in_progress`"
-      ],
-      "summary": [
-        "拉群时机闸门收敛为仅校验重复邀请",
-        "同批回收拉群闸门收敛后的过期描述",
-        "`no_job_result_this_turn` → `invite.no_job_result`",
-        "`group_consent_required` → `invite.group_consent_required`",
-        "`booking_progress_signal` → `invite.booking_in_progress`"
-      ],
-      "features": [],
-      "fixes": [],
-      "optimizations": [
-        "`no_job_result_this_turn` → `invite.no_job_result`",
-        "`group_consent_required` → `invite.group_consent_required`",
-        "`booking_progress_signal` → `invite.booking_in_progress`"
-      ],
-      "ops": [
-        "拉群时机闸门收敛为仅校验重复邀请",
-        "同批回收拉群闸门收敛后的过期描述"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "`invite-timing-gate.spec.ts` + `invite-to-group.tool.spec.ts`：52 passed",
-        "全量 `ci:check` 通过"
-      ],
-      "level": "patch"
-    },
-    {
-      "number": "1216",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1216",
-      "title": "周报运行数据自动投递飞书卡片",
-      "author": "huajune",
-      "mergedAt": "2026-09-04",
-      "businessUpdates": [
-        "新增 `scripts/weekly-ops-report/send-weekly-card.js`：读一个 payload JSON（`windowLabel` / `summary` / `metrics`），渲染成飞书交互卡片并投递。带 HMAC 签名、10s 超时、飞书 `code` 校验，支持 `--dry-run` 先看渲染。",
-        "卡片只带运行数据，不带系统改动条目——改动明细留在会话正文与 `docs/releases` 存档里。",
-        "webhook 凭证读 `.env.production` 的 `PRIVATE_CHAT_MONITOR_WEBHOOK_URL/SECRET`，目标群写死在脚本里，不接受运行时改群。",
-        "周报生成后，把「📊 本周运行数据」自动发成飞书卡片到**蛋糕私聊监控群**（与发版通知同群），标题固定「🍰 蛋糕私域托管 · 本周运行同步」，带 @所有人。",
-        "skill 第四节由「不要自动发企微/飞书」改为存档后自动投递飞书；**企微仍不自动发**。",
-        "顺带校正两处会让下一轮周报写错的统计口径。",
-        "`guardrail_review_records` 的口径写错了：它是**单写入者稀疏表**，放行回合根本不写行，所以 `count(*)` 不是「审查了多少条回复」。原 SKILL 让周报写成「审查 X 条回复」，是错的。",
-        "实测：08-24 周 1932 行里 1896 行是 `first_decision='pass'` 的仅观察命中；08-31 周降到 81 行，而 revise 25→31、block 11→8 基本持平。行数波动反映的是命中结构（误报被清掉），不是流量。",
-        "改成报「改写 / 拦截 / 仅观察命中」三档，并要求单独报 pass 行的环比。",
-        "转人工分组必须用 `payload->>'reason_code'`（结构化枚举），**不能**用 `payload->>'reason'`——后者是自由文本，且含候选人姓名与手机号，不得进入报告。原 SKILL 未作区分。"
-      ],
-      "summary": [
-        "周报运行数据自动投递飞书卡片",
-        "周报生成后，把「📊 本周运行数据」自动发成飞书卡片到**蛋糕私聊监控群**（与发版通知同群），标题固定「🍰 蛋糕私域托管 · 本周运行同步」，带 @所有人。",
-        "skill 第四节由「不要自动发企微/飞书」改为存档后自动投递飞书；**企微仍不自动发**。",
-        "顺带校正两处会让下一轮周报写错的统计口径。"
-      ],
-      "features": [
-        "新增 `scripts/weekly-ops-report/send-weekly-card.js`：读一个 payload JSON（`windowLabel` / `summary` / `metrics`），渲染成飞书交互卡片并投递。带 HMAC 签名、10s 超时、飞书 `code` 校验，支持 `--dry-run` 先看渲染。",
-        "卡片只带运行数据，不带系统改动条目——改动明细留在会话正文与 `docs/releases` 存档里。",
-        "webhook 凭证读 `.env.production` 的 `PRIVATE_CHAT_MONITOR_WEBHOOK_URL/SECRET`，目标群写死在脚本里，不接受运行时改群。",
-        "周报生成后，把「📊 本周运行数据」自动发成飞书卡片到**蛋糕私聊监控群**（与发版通知同群），标题固定「🍰 蛋糕私域托管 · 本周运行同步」，带 @所有人。",
-        "skill 第四节由「不要自动发企微/飞书」改为存档后自动投递飞书；**企微仍不自动发**。",
-        "顺带校正两处会让下一轮周报写错的统计口径。"
-      ],
-      "fixes": [
-        "`guardrail_review_records` 的口径写错了：它是**单写入者稀疏表**，放行回合根本不写行，所以 `count(*)` 不是「审查了多少条回复」。原 SKILL 让周报写成「审查 X 条回复」，是错的。",
-        "实测：08-24 周 1932 行里 1896 行是 `first_decision='pass'` 的仅观察命中；08-31 周降到 81 行，而 revise 25→31、block 11→8 基本持平。行数波动反映的是命中结构（误报被清掉），不是流量。",
-        "改成报「改写 / 拦截 / 仅观察命中」三档，并要求单独报 pass 行的环比。",
-        "转人工分组必须用 `payload->>'reason_code'`（结构化枚举），**不能**用 `payload->>'reason'`——后者是自由文本，且含候选人姓名与手机号，不得进入报告。原 SKILL 未作区分。"
-      ],
-      "optimizations": [
-        "输出模板补齐实际在用的「招聘漏斗（ops_events）」与「转人工」两段。",
-        "归档 2026-09-04 周报到 `docs/releases/2026/weekly-2026-09-04.md`。"
-      ],
-      "ops": [
-        "周报运行数据自动投递飞书卡片"
-      ],
-      "config": [
-        "无数据库 migration、无新增环境变量（复用已有的 `PRIVATE_CHAT_MONITOR_WEBHOOK_URL/SECRET`）。"
-      ],
-      "envFiles": [],
-      "verification": [
-        "`--dry-run` 渲染核对通过（卡头、markdown、@all、note 四个块齐全）",
-        "用本周真实数据实弹发送到私聊监控群，用户已在群里确认收到",
-        "`npx prettier --check` 通过",
-        "`lint:check` 只扫 `src/**/*.ts`，`scripts/*.js` 不在范围内（与现有 `send-deploy-notification.js` 一致）"
-      ],
-      "level": "minor"
-    },
-    {
-      "number": "1217",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1217",
-      "title": "明确查询与收资校验模式",
-      "author": "huajune",
-      "mergedAt": "2026-09-04",
-      "businessUpdates": [
-        "**答案丢失**：旧契约要求校验前必须先做一次纯 jobId 查询建立快照。模型拿到候选人答案后为了满足这个前置，会先空跑一次查询，本轮 `fieldValueProposals` 随之丢弃，候选人被重复追问。现在 `validate` 自带建快照，答案当轮入账。",
-        "**裸否定误判身份**：`proposeIdentityStatus` 此前对 `adapter_sweep` 扫来的自由聊天也走 `classifyIdentityAnswerText`，把任意裸「是/否/不是」当成身份作答——而前一句可能问的是第二职业、健康证或排班。现在只有答案已绑定到本槽位（表单行或 `fieldValueProposals`）时才用宽松分类，否则要求 `matchIdentityStatement` 的显式陈述。",
-        "配合 `query` 不再消费自由聊天，同一误判的两条入口一并封死。",
-        "`duliday_interview_precheck` 增加必填 `mode` 枚举（`query` / `validate`），调用意图不再由「是否携带 fieldValueProposals / recapConfirmation / requestedDate」反推。",
-        "`validate` 遇到无契约快照时同次原子建快照后校验，取消 `collection_form_not_presented` 回执——此前模型为了「先查表」会把本轮候选人答案丢掉。",
-        "`query` 收敛为只读协议，不再消费自由聊天，杜绝「查一下预约信息」触发 `adapter_sweep` 把裸「不是」写成身份拒绝。"
-      ],
-      "summary": [
-        "明确查询与收资校验模式",
-        "回收 mode 二分后的残留错误类型与过期文档",
-        "`duliday_interview_precheck` 增加必填 `mode` 枚举（`query` / `validate`），调用意图不再由「是否携带 fieldValueProposals / recapConfirmation / requestedDate」反推。",
-        "`validate` 遇到无契约快照时同次原子建快照后校验，取消 `collection_form_not_presented` 回执——此前模型为了「先查表」会把本轮候选人答案丢掉。",
-        "`query` 收敛为只读协议，不再消费自由聊天，杜绝「查一下预约信息」触发 `adapter_sweep` 把裸「不是」写成身份拒绝。"
-      ],
-      "features": [],
-      "fixes": [
-        "**答案丢失**：旧契约要求校验前必须先做一次纯 jobId 查询建立快照。模型拿到候选人答案后为了满足这个前置，会先空跑一次查询，本轮 `fieldValueProposals` 随之丢弃，候选人被重复追问。现在 `validate` 自带建快照，答案当轮入账。",
-        "**裸否定误判身份**：`proposeIdentityStatus` 此前对 `adapter_sweep` 扫来的自由聊天也走 `classifyIdentityAnswerText`，把任意裸「是/否/不是」当成身份作答——而前一句可能问的是第二职业、健康证或排班。现在只有答案已绑定到本槽位（表单行或 `fieldValueProposals`）时才用宽松分类，否则要求 `matchIdentityStatement` 的显式陈述。",
-        "配合 `query` 不再消费自由聊天，同一误判的两条入口一并封死。",
-        "`duliday_interview_precheck` 增加必填 `mode` 枚举（`query` / `validate`），调用意图不再由「是否携带 fieldValueProposals / recapConfirmation / requestedDate」反推。",
-        "`validate` 遇到无契约快照时同次原子建快照后校验，取消 `collection_form_not_presented` 回执——此前模型为了「先查表」会把本轮候选人答案丢掉。",
-        "`query` 收敛为只读协议，不再消费自由聊天，杜绝「查一下预约信息」触发 `adapter_sweep` 把裸「不是」写成身份拒绝。"
-      ],
-      "optimizations": [
-        "`mode` 的两条约束由 zod `superRefine` 硬拦：`query` 禁带字段提案与 recap；`validate` 必须携带非空 `fieldValueProposals` 或 `recapConfirmation=true`。错误信息直接指向应改用的 mode。",
-        "`collect_fields` 回执在 `mode=query` 时追加提示：本轮若已含报名答案，立即改用 `validate` 重投，禁止丢答案后直接发问。",
-        "同批回收被取代的产物：删除已无写入者的 `PRECHECK_COLLECTION_FORM_NOT_PRESENTED`；`collection-form-machine.md` 一轮数据流按 query/validate 重写；`prompt-rule-ledger.md` 登记 mode 显式二分（CLAUDE.md 要求 prompt 侧规则增删改同批入账）。"
-      ],
-      "ops": [
-        "明确查询与收资校验模式",
-        "回收 mode 二分后的残留错误类型与过期文档"
-      ],
-      "config": [
-        "无数据库 migration、无新增环境变量。"
-      ],
-      "envFiles": [],
-      "verification": [
-        "`typecheck` 通过",
-        "`lint:check` 通过（`--max-warnings=0`）",
-        "`duliday-interview-precheck.tool.spec.ts` 53 passed",
-        "`adapters.spec.ts` + `proposal-intake.spec.ts` 72 passed"
-      ],
-      "level": "patch"
-    }
-  ],
+  "entries": [],
   "lastRelease": {
-    "version": "11.3.0",
+    "version": "11.4.0",
     "date": "2026-09-04",
     "sourceBranch": "develop",
     "entries": [
       {
-        "number": "1202",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/1202",
-        "title": "补回回合装配重构删掉的预约、视觉与回放覆盖",
+        "number": "1211",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1211",
+        "title": "流水表恢复行分隔线并让两个摘要列等宽",
         "author": "huajune",
-        "mergedAt": "2026-09-03",
+        "mergedAt": "2026-09-04",
         "businessUpdates": [
-          "补回回合装配重构删掉的预约、视觉与回放覆盖"
+          "**恢复行分隔线**：`tbody td` 加回 `1px solid #f0f0f6`，末行不画线。悬停整行圆角高亮保留。",
+          "**两个摘要列等宽**：输入摘要此前固定 `max-width: 105px`，响应摘要用 `width:100% + max-width:0` 吃掉全部剩余；现改为两格共用 `.previewCell`（`width: 50%; max-width: 0; min-width: 100px`），剩余宽度对半分。"
         ],
         "summary": [
-          "补回回合装配重构删掉的预约、视觉与回放覆盖"
+          "流水表恢复行分隔线并让两个摘要列等宽",
+          "流水表处理状态恢复胶囊徽标",
+          "**恢复行分隔线**：`tbody td` 加回 `1px solid #f0f0f6`，末行不画线。悬停整行圆角高亮保留。",
+          "**两个摘要列等宽**：输入摘要此前固定 `max-width: 105px`，响应摘要用 `width:100% + max-width:0` 吃掉全部剩余；现改为两格共用 `.previewCell`（`width: 50%; max-width: 0; min-width: 100px`），剩余宽度对半分。"
+        ],
+        "features": [],
+        "fixes": [
+          "**恢复行分隔线**：`tbody td` 加回 `1px solid #f0f0f6`，末行不画线。悬停整行圆角高亮保留。",
+          "**两个摘要列等宽**：输入摘要此前固定 `max-width: 105px`，响应摘要用 `width:100% + max-width:0` 吃掉全部剩余；现改为两格共用 `.previewCell`（`width: 50%; max-width: 0; min-width: 100px`），剩余宽度对半分。"
+        ],
+        "optimizations": [],
+        "ops": [
+          "流水表恢复行分隔线并让两个摘要列等宽",
+          "流水表处理状态恢复胶囊徽标"
+        ],
+        "config": [],
+        "envFiles": [],
+        "verification": [],
+        "level": "patch"
+      },
+      {
+        "number": "1212",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1212",
+        "title": "拉群时机闸门收敛为仅校验重复邀请",
+        "author": "huajune",
+        "mergedAt": "2026-09-04",
+        "businessUpdates": [
+          "拉群时机闸门收敛为仅校验重复邀请",
+          "同批回收拉群闸门收敛后的过期描述",
+          "`no_job_result_this_turn` → `invite.no_job_result`",
+          "`group_consent_required` → `invite.group_consent_required`",
+          "`booking_progress_signal` → `invite.booking_in_progress`"
+        ],
+        "summary": [
+          "拉群时机闸门收敛为仅校验重复邀请",
+          "同批回收拉群闸门收敛后的过期描述",
+          "`no_job_result_this_turn` → `invite.no_job_result`",
+          "`group_consent_required` → `invite.group_consent_required`",
+          "`booking_progress_signal` → `invite.booking_in_progress`"
         ],
         "features": [],
         "fixes": [],
         "optimizations": [
-          "补回回合装配重构删掉的预约、视觉与回放覆盖"
+          "`no_job_result_this_turn` → `invite.no_job_result`",
+          "`group_consent_required` → `invite.group_consent_required`",
+          "`booking_progress_signal` → `invite.booking_in_progress`"
         ],
-        "ops": [],
-        "config": [],
-        "envFiles": [],
-        "verification": [
-          "只加测试，不改任何生产代码。",
-          "`pnpm run test:ci`：458 套件 / 6624 用例通过（较基线 +34）。",
-          "变异验证：摘掉 `injectImageParts` 的占位符定位后，占位符那一例即红，确认它守的是真不变量。"
-        ],
-        "level": "patch"
-      },
-      {
-        "number": "1204",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/1204",
-        "title": "收紧消息处理调用表访问权限",
-        "author": "huajune",
-        "mergedAt": "2026-09-03",
-        "businessUpdates": [
-          "修复 `20260902073727_retention_schema_audit.sql` 创建 `message_processing_invocations` 时遗漏 RLS，导致 public schema 默认授权下 Data API 客户端角色可能访问整表的问题",
-          "为 `public.message_processing_invocations` 启用 RLS，修复 Supabase Security Advisor 的 `RLS Disabled in Public` 错误",
-          "撤销 `PUBLIC`、`anon`、`authenticated` 的表权限，仅保留后端 `service_role` 的显式 CRUD 权限和全量策略",
-          "增加迁移契约测试，防止后续重新开放保存完整 Agent 请求/响应快照的敏感表"
-        ],
-        "summary": [
-          "收紧消息处理调用表访问权限",
-          "为 `public.message_processing_invocations` 启用 RLS，修复 Supabase Security Advisor 的 `RLS Disabled in Public` 错误",
-          "撤销 `PUBLIC`、`anon`、`authenticated` 的表权限，仅保留后端 `service_role` 的显式 CRUD 权限和全量策略",
-          "增加迁移契约测试，防止后续重新开放保存完整 Agent 请求/响应快照的敏感表"
-        ],
-        "features": [],
-        "fixes": [
-          "修复 `20260902073727_retention_schema_audit.sql` 创建 `message_processing_invocations` 时遗漏 RLS，导致 public schema 默认授权下 Data API 客户端角色可能访问整表的问题",
-          "为 `public.message_processing_invocations` 启用 RLS，修复 Supabase Security Advisor 的 `RLS Disabled in Public` 错误",
-          "撤销 `PUBLIC`、`anon`、`authenticated` 的表权限，仅保留后端 `service_role` 的显式 CRUD 权限和全量策略",
-          "增加迁移契约测试，防止后续重新开放保存完整 Agent 请求/响应快照的敏感表"
-        ],
-        "optimizations": [],
         "ops": [
-          "TEST 与 PROD 的迁移状态均已登记 `20260903130000`；数据库侧修复此前已经执行，本 PR 补回缺失的 Git 源码和审计记录，不需要再次推送迁移",
-          "迁移只修改权限和 RLS 元数据，不扫描或回填业务数据",
-          "收紧消息处理调用表访问权限"
+          "拉群时机闸门收敛为仅校验重复邀请",
+          "同批回收拉群闸门收敛后的过期描述"
         ],
         "config": [],
         "envFiles": [],
         "verification": [
-          "`pnpm run ci:check`（459/459 个测试套件通过，6597 个测试通过，仓库原有 1 套件/5 测试跳过）",
-          "`pnpm test -- --watchman=false --runInBand tests/supabase/message-processing-invocations-rls.spec.ts`（3/3 通过）",
-          "`pnpm run db:status:test` 与 `pnpm run db:status:prod` 均确认本地/远端存在 `20260903130000`",
-          "关键链路已人工核对：后端仓储使用 `service_role`，迁移保留显式 CRUD 授权与 `FOR ALL` 策略",
-          "未新增对开放自然语言直接 reject/覆盖/判缺的正则分支；本 PR 仅包含 SQL 权限迁移与迁移契约测试",
-          "未新增 prompt 示例值"
+          "`invite-timing-gate.spec.ts` + `invite-to-group.tool.spec.ts`：52 passed",
+          "全量 `ci:check` 通过"
         ],
         "level": "patch"
       },
       {
-        "number": "1203",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/1203",
-        "title": "Dashboard 胶囊设计语言统一；fix(agent): 收敛收资确认、动态字段与预约守卫",
+        "number": "1216",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1216",
+        "title": "周报运行数据自动投递飞书卡片",
         "author": "huajune",
         "mergedAt": "2026-09-04",
         "businessUpdates": [
-          "新增共享开关组件 `web/src/components/Switch`：药丸轨道加白色旋钮，开启态使用主题渐变紫，按下时旋钮拉长，处理中轨道呼吸，支持键盘聚焦与两档尺寸。托管开关页与托管用户页的原生 checkbox 全部替换为该组件。",
-          "收敛收资确认契约：模型只提交 `recapConfirmation: true`，候选人回复与官方复述由 Notary 从聊天历史自动绑定。",
-          "补齐动态收资字段与预约守卫：实时契约快照、籍贯市到省、住宿、社保澄清、健康证歧义、错位手机号及可预约时间一致性。",
-          "Dashboard 视觉统一：消息处理流水、聊天记录、托管开关、托管用户、仪表盘改用同一套胶囊设计语言，并新增自绘 Switch 开关组件。",
-          "运行时配置页的 Worker 并发补充「修改后需重启才生效」提醒，避免误以为改完即生效。",
-          "统一胶囊语言精修消息流水/聊天记录/托管/仪表盘并新增自绘开关",
-          "Revert \"feat(web): 统一胶囊语言精修消息流水/聊天记录/托管/仪表盘并新增自绘开关\"",
-          "无合法拉群授权时不再进入企微成员预检；群承接后，候选人主动追问具体岗位或门店时仍允许实时查岗。",
-          "多人报名通过手机号隔离持久表单；追加候选人不覆盖当前联系人的 sessionFacts、长期画像或 active booking。",
-          "`recapConfirmation` 改为布尔确认回执，移除由模型复制 `candidateQuote` / `recapQuote` 的易错契约。",
-          "身份闸门拒收返回明确后续动作，区分“修正提案”和“向候选人询问真名”，避免原昵称反复重投。",
-          "表单持久化当前 `contractSnapshot`，后续 precheck / booking 复用同一份岗位契约，避免重复拉取和契约漂移。",
-          "动态字段补齐住宿肯否适配、籍贯市到省映射、社保维度缺失澄清；动态标签错名仍显式返回 `label_title_not_found`，不增加语义别名兼容。",
-          "11 位手机号误填在性别行时，仅在表单存在唯一手机号槽的前提下改投手机号；否则继续拒收，不做泛化猜测。",
-          "健康证回答缺少明确“有/无”时保持空槽并继续询问；候选人明确作答时仍以确定性解析结果为准。",
-          "新增预约时间输出守卫，阻止回复漏掉最早可约日期、把可约日期说成已截止或篡改报名截止口径。",
-          "修正拉群授权、群承接后查岗与多人报名的状态边界，避免重复调用、永久禁查和候选人资料串用。",
-          "修正群承接与多人报名状态边界",
-          "修正收资确认与动态字段判定"
+          "新增 `scripts/weekly-ops-report/send-weekly-card.js`：读一个 payload JSON（`windowLabel` / `summary` / `metrics`），渲染成飞书交互卡片并投递。带 HMAC 签名、10s 超时、飞书 `code` 校验，支持 `--dry-run` 先看渲染。",
+          "卡片只带运行数据，不带系统改动条目——改动明细留在会话正文与 `docs/releases` 存档里。",
+          "webhook 凭证读 `.env.production` 的 `PRIVATE_CHAT_MONITOR_WEBHOOK_URL/SECRET`，目标群写死在脚本里，不接受运行时改群。",
+          "周报生成后，把「📊 本周运行数据」自动发成飞书卡片到**蛋糕私聊监控群**（与发版通知同群），标题固定「🍰 蛋糕私域托管 · 本周运行同步」，带 @所有人。",
+          "skill 第四节由「不要自动发企微/飞书」改为存档后自动投递飞书；**企微仍不自动发**。",
+          "顺带校正两处会让下一轮周报写错的统计口径。",
+          "`guardrail_review_records` 的口径写错了：它是**单写入者稀疏表**，放行回合根本不写行，所以 `count(*)` 不是「审查了多少条回复」。原 SKILL 让周报写成「审查 X 条回复」，是错的。",
+          "实测：08-24 周 1932 行里 1896 行是 `first_decision='pass'` 的仅观察命中；08-31 周降到 81 行，而 revise 25→31、block 11→8 基本持平。行数波动反映的是命中结构（误报被清掉），不是流量。",
+          "改成报「改写 / 拦截 / 仅观察命中」三档，并要求单独报 pass 行的环比。",
+          "转人工分组必须用 `payload->>'reason_code'`（结构化枚举），**不能**用 `payload->>'reason'`——后者是自由文本，且含候选人姓名与手机号，不得进入报告。原 SKILL 未作区分。"
         ],
         "summary": [
-          "修正群承接与多人报名状态边界",
-          "隔离追加候选人未绑定表单",
-          "修正收资确认与动态字段判定",
-          "隔离主候选人与活动表单指针",
-          "统一胶囊语言精修消息流水/聊天记录/托管/仪表盘并新增自绘开关",
-          "Revert \"feat(web): 统一胶囊语言精修消息流水/聊天记录/托管/仪表盘并新增自绘开关\"",
-          "恢复 Dashboard 胶囊语言 UI 改动",
-          "Worker 并发配置补充重启生效提醒",
-          "修正拉群授权、群承接后查岗与多人报名的状态边界，避免重复调用、永久禁查和候选人资料串用。",
-          "收敛收资确认契约：模型只提交 `recapConfirmation: true`，候选人回复与官方复述由 Notary 从聊天历史自动绑定。",
-          "补齐动态收资字段与预约守卫：实时契约快照、籍贯市到省、住宿、社保澄清、健康证歧义、错位手机号及可预约时间一致性。",
-          "Dashboard 视觉统一：消息处理流水、聊天记录、托管开关、托管用户、仪表盘改用同一套胶囊设计语言，并新增自绘 Switch 开关组件。",
-          "运行时配置页的 Worker 并发补充「修改后需重启才生效」提醒，避免误以为改完即生效。",
-          "Dashboard 胶囊设计语言统一；fix(agent): 收敛收资确认、动态字段与预约守卫"
+          "周报运行数据自动投递飞书卡片",
+          "周报生成后，把「📊 本周运行数据」自动发成飞书卡片到**蛋糕私聊监控群**（与发版通知同群），标题固定「🍰 蛋糕私域托管 · 本周运行同步」，带 @所有人。",
+          "skill 第四节由「不要自动发企微/飞书」改为存档后自动投递飞书；**企微仍不自动发**。",
+          "顺带校正两处会让下一轮周报写错的统计口径。"
         ],
         "features": [
-          "新增共享开关组件 `web/src/components/Switch`：药丸轨道加白色旋钮，开启态使用主题渐变紫，按下时旋钮拉长，处理中轨道呼吸，支持键盘聚焦与两档尺寸。托管开关页与托管用户页的原生 checkbox 全部替换为该组件。",
-          "收敛收资确认契约：模型只提交 `recapConfirmation: true`，候选人回复与官方复述由 Notary 从聊天历史自动绑定。",
-          "补齐动态收资字段与预约守卫：实时契约快照、籍贯市到省、住宿、社保澄清、健康证歧义、错位手机号及可预约时间一致性。",
-          "Dashboard 视觉统一：消息处理流水、聊天记录、托管开关、托管用户、仪表盘改用同一套胶囊设计语言，并新增自绘 Switch 开关组件。",
-          "运行时配置页的 Worker 并发补充「修改后需重启才生效」提醒，避免误以为改完即生效。",
-          "统一胶囊语言精修消息流水/聊天记录/托管/仪表盘并新增自绘开关",
-          "Revert \"feat(web): 统一胶囊语言精修消息流水/聊天记录/托管/仪表盘并新增自绘开关\""
+          "新增 `scripts/weekly-ops-report/send-weekly-card.js`：读一个 payload JSON（`windowLabel` / `summary` / `metrics`），渲染成飞书交互卡片并投递。带 HMAC 签名、10s 超时、飞书 `code` 校验，支持 `--dry-run` 先看渲染。",
+          "卡片只带运行数据，不带系统改动条目——改动明细留在会话正文与 `docs/releases` 存档里。",
+          "webhook 凭证读 `.env.production` 的 `PRIVATE_CHAT_MONITOR_WEBHOOK_URL/SECRET`，目标群写死在脚本里，不接受运行时改群。",
+          "周报生成后，把「📊 本周运行数据」自动发成飞书卡片到**蛋糕私聊监控群**（与发版通知同群），标题固定「🍰 蛋糕私域托管 · 本周运行同步」，带 @所有人。",
+          "skill 第四节由「不要自动发企微/飞书」改为存档后自动投递飞书；**企微仍不自动发**。",
+          "顺带校正两处会让下一轮周报写错的统计口径。"
         ],
         "fixes": [
-          "无合法拉群授权时不再进入企微成员预检；群承接后，候选人主动追问具体岗位或门店时仍允许实时查岗。",
-          "多人报名通过手机号隔离持久表单；追加候选人不覆盖当前联系人的 sessionFacts、长期画像或 active booking。",
-          "`recapConfirmation` 改为布尔确认回执，移除由模型复制 `candidateQuote` / `recapQuote` 的易错契约。",
-          "身份闸门拒收返回明确后续动作，区分“修正提案”和“向候选人询问真名”，避免原昵称反复重投。",
-          "表单持久化当前 `contractSnapshot`，后续 precheck / booking 复用同一份岗位契约，避免重复拉取和契约漂移。",
-          "动态字段补齐住宿肯否适配、籍贯市到省映射、社保维度缺失澄清；动态标签错名仍显式返回 `label_title_not_found`，不增加语义别名兼容。",
-          "11 位手机号误填在性别行时，仅在表单存在唯一手机号槽的前提下改投手机号；否则继续拒收，不做泛化猜测。",
-          "健康证回答缺少明确“有/无”时保持空槽并继续询问；候选人明确作答时仍以确定性解析结果为准。",
-          "新增预约时间输出守卫，阻止回复漏掉最早可约日期、把可约日期说成已截止或篡改报名截止口径。",
-          "修正拉群授权、群承接后查岗与多人报名的状态边界，避免重复调用、永久禁查和候选人资料串用。",
-          "修正群承接与多人报名状态边界",
-          "修正收资确认与动态字段判定"
+          "`guardrail_review_records` 的口径写错了：它是**单写入者稀疏表**，放行回合根本不写行，所以 `count(*)` 不是「审查了多少条回复」。原 SKILL 让周报写成「审查 X 条回复」，是错的。",
+          "实测：08-24 周 1932 行里 1896 行是 `first_decision='pass'` 的仅观察命中；08-31 周降到 81 行，而 revise 25→31、block 11→8 基本持平。行数波动反映的是命中结构（误报被清掉），不是流量。",
+          "改成报「改写 / 拦截 / 仅观察命中」三档，并要求单独报 pass 行的环比。",
+          "转人工分组必须用 `payload->>'reason_code'`（结构化枚举），**不能**用 `payload->>'reason'`——后者是自由文本，且含候选人姓名与手机号，不得进入报告。原 SKILL 未作区分。"
         ],
         "optimizations": [
-          "收资审计事件补充字段元数据，并同步收资、地理解析与提示词规则台账文档。",
-          "消息处理流水页：顶部工具卡改为标题行加单行控件，统计改为四枚胶囊；表格保持原有十列与行高，去掉行分隔线，改用淡色表头带、圆角悬停高亮与右对齐数字，加载态改为骨架屏。",
-          "聊天记录页：顶栏与消息趋势面板改用胶囊分段和统计小胶囊，标题独立成行并补充链路说明；原有绿色实时脉冲、极光光晕与顶部流光线保持不变。",
-          "托管用户页：标签页、时间范围与工具条控件统一为胶囊，表格改用与流水页一致的表头带和悬停高亮。",
-          "托管开关页：标题去掉渐变描边与加粗，卡片改为白底细描边，emoji 图标替换为线性图标，小组表对齐同一套表头样式。",
-          "仪表盘：全局分段按钮与小组下拉改为胶囊语言，健康卡 emoji 替换为线性图标，指标字重整体降档。",
-          "全站字重收敛到常规与中等两档，去除页面内联样式。",
-          "运行时配置页 Worker 并发说明下方新增告警样式提醒条，明确修改并发数后需手动执行优雅重启并验证实际并发已生效。"
+          "输出模板补齐实际在用的「招聘漏斗（ops_events）」与「转人工」两段。",
+          "归档 2026-09-04 周报到 `docs/releases/2026/weekly-2026-09-04.md`。"
         ],
         "ops": [
-          "隔离追加候选人未绑定表单",
-          "隔离主候选人与活动表单指针",
-          "恢复 Dashboard 胶囊语言 UI 改动",
-          "Worker 并发配置补充重启生效提醒"
+          "周报运行数据自动投递飞书卡片"
         ],
         "config": [
-          "无数据库 migration、环境变量或密钥变更。"
+          "无数据库 migration、无新增环境变量（复用已有的 `PRIVATE_CHAT_MONITOR_WEBHOOK_URL/SECRET`）。"
         ],
         "envFiles": [],
         "verification": [
-          "`pnpm run ci:check`",
-          "lint / format / typecheck / geo / vocab / quality ledger 全绿",
-          "Web 与 Nest 构建通过",
-          "459 个测试套件通过，6628 条测试通过；1 个套件 / 5 条测试按仓库配置跳过",
-          "提交前及推送前 hook 均再次执行校验并通过",
-          "前端改动在本地 dev server 逐页人工核对：消息流水、聊天记录、托管开关、托管用户、仪表盘均渲染正常，无横向滚动，控件与表格交互可用",
-          "未新增对开放自然语言直接 reject/覆盖/判缺的正则分支：本 PR 仅针对已观测健康证歧义增加窄判据，双向拒收已有回归测试",
-          "未新增虚构 prompt 示例值；无需登记 example registry"
+          "`--dry-run` 渲染核对通过（卡头、markdown、@all、note 四个块齐全）",
+          "用本周真实数据实弹发送到私聊监控群，用户已在群里确认收到",
+          "`npx prettier --check` 通过",
+          "`lint:check` 只扫 `src/**/*.ts`，`scripts/*.js` 不在范围内（与现有 `send-deploy-notification.js` 一致）"
         ],
         "level": "minor"
+      },
+      {
+        "number": "1217",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1217",
+        "title": "明确查询与收资校验模式",
+        "author": "huajune",
+        "mergedAt": "2026-09-04",
+        "businessUpdates": [
+          "**答案丢失**：旧契约要求校验前必须先做一次纯 jobId 查询建立快照。模型拿到候选人答案后为了满足这个前置，会先空跑一次查询，本轮 `fieldValueProposals` 随之丢弃，候选人被重复追问。现在 `validate` 自带建快照，答案当轮入账。",
+          "**裸否定误判身份**：`proposeIdentityStatus` 此前对 `adapter_sweep` 扫来的自由聊天也走 `classifyIdentityAnswerText`，把任意裸「是/否/不是」当成身份作答——而前一句可能问的是第二职业、健康证或排班。现在只有答案已绑定到本槽位（表单行或 `fieldValueProposals`）时才用宽松分类，否则要求 `matchIdentityStatement` 的显式陈述。",
+          "配合 `query` 不再消费自由聊天，同一误判的两条入口一并封死。",
+          "`duliday_interview_precheck` 增加必填 `mode` 枚举（`query` / `validate`），调用意图不再由「是否携带 fieldValueProposals / recapConfirmation / requestedDate」反推。",
+          "`validate` 遇到无契约快照时同次原子建快照后校验，取消 `collection_form_not_presented` 回执——此前模型为了「先查表」会把本轮候选人答案丢掉。",
+          "`query` 收敛为只读协议，不再消费自由聊天，杜绝「查一下预约信息」触发 `adapter_sweep` 把裸「不是」写成身份拒绝。"
+        ],
+        "summary": [
+          "明确查询与收资校验模式",
+          "回收 mode 二分后的残留错误类型与过期文档",
+          "`duliday_interview_precheck` 增加必填 `mode` 枚举（`query` / `validate`），调用意图不再由「是否携带 fieldValueProposals / recapConfirmation / requestedDate」反推。",
+          "`validate` 遇到无契约快照时同次原子建快照后校验，取消 `collection_form_not_presented` 回执——此前模型为了「先查表」会把本轮候选人答案丢掉。",
+          "`query` 收敛为只读协议，不再消费自由聊天，杜绝「查一下预约信息」触发 `adapter_sweep` 把裸「不是」写成身份拒绝。"
+        ],
+        "features": [],
+        "fixes": [
+          "**答案丢失**：旧契约要求校验前必须先做一次纯 jobId 查询建立快照。模型拿到候选人答案后为了满足这个前置，会先空跑一次查询，本轮 `fieldValueProposals` 随之丢弃，候选人被重复追问。现在 `validate` 自带建快照，答案当轮入账。",
+          "**裸否定误判身份**：`proposeIdentityStatus` 此前对 `adapter_sweep` 扫来的自由聊天也走 `classifyIdentityAnswerText`，把任意裸「是/否/不是」当成身份作答——而前一句可能问的是第二职业、健康证或排班。现在只有答案已绑定到本槽位（表单行或 `fieldValueProposals`）时才用宽松分类，否则要求 `matchIdentityStatement` 的显式陈述。",
+          "配合 `query` 不再消费自由聊天，同一误判的两条入口一并封死。",
+          "`duliday_interview_precheck` 增加必填 `mode` 枚举（`query` / `validate`），调用意图不再由「是否携带 fieldValueProposals / recapConfirmation / requestedDate」反推。",
+          "`validate` 遇到无契约快照时同次原子建快照后校验，取消 `collection_form_not_presented` 回执——此前模型为了「先查表」会把本轮候选人答案丢掉。",
+          "`query` 收敛为只读协议，不再消费自由聊天，杜绝「查一下预约信息」触发 `adapter_sweep` 把裸「不是」写成身份拒绝。"
+        ],
+        "optimizations": [
+          "`mode` 的两条约束由 zod `superRefine` 硬拦：`query` 禁带字段提案与 recap；`validate` 必须携带非空 `fieldValueProposals` 或 `recapConfirmation=true`。错误信息直接指向应改用的 mode。",
+          "`collect_fields` 回执在 `mode=query` 时追加提示：本轮若已含报名答案，立即改用 `validate` 重投，禁止丢答案后直接发问。",
+          "同批回收被取代的产物：删除已无写入者的 `PRECHECK_COLLECTION_FORM_NOT_PRESENTED`；`collection-form-machine.md` 一轮数据流按 query/validate 重写；`prompt-rule-ledger.md` 登记 mode 显式二分（CLAUDE.md 要求 prompt 侧规则增删改同批入账）。"
+        ],
+        "ops": [
+          "明确查询与收资校验模式",
+          "回收 mode 二分后的残留错误类型与过期文档"
+        ],
+        "config": [
+          "无数据库 migration、无新增环境变量。"
+        ],
+        "envFiles": [],
+        "verification": [
+          "`typecheck` 通过",
+          "`lint:check` 通过（`--max-warnings=0`）",
+          "`duliday-interview-precheck.tool.spec.ts` 53 passed",
+          "`adapters.spec.ts` + `proposal-intake.spec.ts` 72 passed"
+        ],
+        "level": "patch"
       }
     ]
-  },
-  "lastAnalyzedSha": "ca9b3f7a118465b67f63b18d125b5145584f87f6"
+  }
 }
