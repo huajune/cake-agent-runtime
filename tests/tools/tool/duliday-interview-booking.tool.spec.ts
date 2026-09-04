@@ -89,6 +89,7 @@ const JOB_WITH_WINDOWS = {
 
 function readyForm(contract: readonly ContractFieldDef[] = CONTRACT): BookingCollectionForm {
   const form = createForm({ jobId: 100, contract });
+  form.contractSnapshot = { fields: [...contract] };
   const values: Record<number, { value: string; optionCodes?: string[] }> = {
     101: { value: '兮兮' },
     102: { value: '18271421690' },
@@ -213,6 +214,28 @@ describe('duliday_interview_booking（form → labelList）', () => {
     });
     expect(context.ledger.jobs.bookingSucceeded).toBe(false);
     expect(sponge.fetchJobCollectionContract).not.toHaveBeenCalled();
+  });
+
+  it('没有持久契约快照时拒绝 booking，不能临时拿实时契约提交', async () => {
+    delete currentForm.contractSnapshot;
+
+    const result = await execute({ jobId: 100 });
+
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_REJECTED);
+    expect(result._outcome).toContain('尚未查询');
+    expect(sponge.bookInterview).not.toHaveBeenCalled();
+  });
+
+  it('实时契约不同于持久快照时拒绝 booking', async () => {
+    currentForm.contractSnapshot = {
+      fields: [{ ...CONTRACT[0], labelTitle: '旧版姓名' }, ...CONTRACT.slice(1)],
+    };
+
+    const result = await execute({ jobId: 100 });
+
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_REJECTED);
+    expect(result._outcome).toContain('契约已变化');
+    expect(sponge.bookInterview).not.toHaveBeenCalled();
   });
 
   it('只向 entryUser 发送 jobId + labelList，wait_notice 不带 interviewTime', async () => {

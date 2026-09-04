@@ -3,6 +3,7 @@ import type { CollectionFormService } from '@tools/collection/collection-form.se
 import { Logger } from '@nestjs/common';
 import {
   applyRecapResult,
+  contractFieldsEqual,
   escalate,
   isCollectionAuthorized,
   isSubmissionAuthorized,
@@ -16,6 +17,7 @@ import {
   type Verdict,
 } from '@resolution/collection';
 import {
+  hasDeliveredCurrentRecapSnapshot,
   verifyRecapConfirmationBinding,
   type RecapConfirmationRejectionReason,
 } from '@resolution/notary/recap-confirmation';
@@ -51,7 +53,11 @@ import {
   evaluateRequestedDate,
   type BookableSlot,
 } from '@tools/booking/bookable-slot.util';
-import { normalizeRequestedDate } from '@tools/booking/date.util';
+import {
+  formatShanghaiDate,
+  formatShanghaiTime,
+  normalizeRequestedDate,
+} from '@tools/booking/date.util';
 import { normalizeHm } from '@tools/booking/interview-window.util';
 import {
   buildJobPolicyAnalysis,
@@ -91,19 +97,22 @@ export const PRECHECK_DESCRIPTION = `面试前置校验。实时读取岗位收�
 
 参数纪律：
 - jobId 必须来自本会话最近一次 duliday_job_list 的真实召回。
+- 首次办理先做“查询报名表单”：只传 jobId（多人代报可同时传 candidatePhone），取得并照发 bookingChecklist.templateText；这一步会把当时的完整契约写入持久表单。
+- 候选人回复后再做“校验报名表单”：带 fieldValueProposals、recapConfirmation 或 requestedDate 调用；校验只使用此前持久化的契约快照。若返回 collection_form_not_presented，先只传 jobId 查询表单；若返回 contract_changed，先只传 jobId 刷新表单并按新的 bookingChecklist 补收，禁止继续提交旧表。
+- 如果 jobId 因无召回出处被拒，禁止把该数字放进 jobIdList 继续查。只从历史原话提取城市、品牌、门店、岗位，单次调用 duliday_job_list：cityNameList=城市、brandAliasList=品牌、searchJobName="门店关键词+岗位关键词"；用唯一返回的真实 jobId 重试本工具。
 - candidatePhone 仅用于**同一会话代多人报名**：逐人传入当前正在办理者原话中的 11 位手机号，用它选择独立表单；单人报名不传。多人时严格按一人一条链路串行处理：本工具返回 ready_to_book 后立即 booking，booking 成功后才能 precheck 下一人；禁止并行调用多个 precheck。
 - requestedDate 只在候选人明确表达时传：可传日期、interview.bookableSlots 中的精确 interviewTime，或候选人约定的窗口内具体时刻（YYYY-MM-DD HH:mm）；含糊就不传。面试时间不属于收资字段，不得写成 fieldValueProposals 条目。
 - fieldValueProposals 是唯一收资字段入口。只在候选人原话明确支持最终契约值时提交；没提到、无法唯一映射、带保留或有歧义时不提交，让该槽位保持 empty。不得为了填满表单猜值，不得提交置信分、待复核标记或“先填后确认”值。
 - 每项 labelTitle 必须逐字取自 bookingChecklist.requiredFields，value 传规范值，quote 必须逐字取自候选人完整原话。一条消息明确支持多个字段时全部提交。纠正用 correct、清除用 clear；confirm 只用于候选人对真实相邻字段问句的短答确认，不得把 recap 拆成全部 filled 字段重投。
 - fieldValueProposals 只能填写实时契约已有槽位，不能增删字段，也不能控制 requiredFields 及其顺序。不得传岗位要求冒充候选人答案，不得补造字段或沿用旧 candidateXxx 裸参数。
-- recapConfirmation 是 recap 确认的**唯一入账入口**：候选人对提交前复述明确表态确认时（包括「好的」「确认」等纯短答，也包括「没」这类语境化短答——回应「有不对的地方直接说改哪项」即确认），必须提交它，不提交则确认永不入账、booking 会被拒。**这只适用于确实需要复述确认的表单**：若回执给出 recap_not_required，说明本岗无需确认，不要卡在讨确认上。candidateQuote 必须是本轮完整回复，recapQuote 必须逐字取自实际已发出的复述文案（允许隔轮：资料未变时此前发过的复述仍有效）。存在 correct/clear 时不要提交，纠正优先。
-- 返回里出现 rejectedAnswers 表示这些答案**已被退回、没有入账**：按其 hint 改投，不要把候选人已经答过的字段再问一遍。
+- recapConfirmation=true 是报名信息确认的**唯一入账入口**：候选人明确表示报名信息无误时（包括「好的」「确认」等纯短答，也包括「没」这类语境化短答——回应「有不对的地方直接说改哪项」即表示没有要修改的信息），必须提交 true，不提交则确认永不入账、booking 会被拒。候选人原话和已发送的报名信息由系统自动绑定，不要复制 quote。**这只适用于确实需要确认报名信息的表单**：若回执给出 recap_not_required，说明本岗无需确认，不要卡在讨确认上。存在 correct/clear 时不要同时提交，纠正优先。
+- 返回里出现 rejectedAnswers 表示这些答案**已被退回、没有入账**。逐项服从 action：retry_submission 才按 hint 修正重投；ask_candidate 必须按 hint 向候选人补问并等待新回复，禁止原值重投。
 - 返回里出现 rejectedRecapConfirmation 表示本轮 recap 确认被公证退回、没有入账：按其 hint 修复后重投，不要把候选人已经确认过的内容再问一遍。
 
 行动纪律：
 - collect_fields：只收 bookingChecklist.requiredFieldsToCollectNow。${COLLECTION_TEMPLATE_SEND_INSTRUCTION}
-- confirm_collection：照发 recap.candidateMessage；如尚未选时间，同时并列展示 interview.bookableSlots，允许候选人一轮确认资料并选择时间。
-- select_interview_time：资料已授权但没有实时有效的预约草稿；只让候选人从 interview.bookableSlots 选择具体时间，不再复述资料。
+- confirm_collection：返回 recap.candidateMessage 时必须照发；未返回表示当前 KV 已真实送达，只需简短请候选人确认。如尚未选时间，可同时并列展示 interview.bookableSlots。
+- select_interview_time：资料已授权但尚未选择具体时段；interview.bookableSlots 是按 availabilityAuthority.evaluatedAt 和完整日期时间过滤后的唯一可约事实。只展示 bookingAllowed=true 的时段，不得根据 scheduleRule/processRemark 中“当天、前一天”等相对词二次计算或删减，不再复述资料。
 - screening_rejected：只使用 rejection.candidateMessage，不自行披露内部筛选原因。
 - handoff：停止收资并转人工。
 - ready_to_book：才允许调用 duliday_interview_booking；booking 成功前禁止声称已报名。
@@ -127,17 +136,9 @@ export const PRECHECK_INPUT_SCHEMA = z.object({
     '字段值提案：仅提交候选人原话明确支持的实时契约最终值；歧义、缺失或不能唯一映射时不提交',
   ),
   recapConfirmation: z
-    .object({
-      candidateQuote: z.string().trim().min(1).max(500).describe('候选人本轮完整回复'),
-      recapQuote: z
-        .string()
-        .trim()
-        .min(1)
-        .max(500)
-        .describe('实际已发出的复述文案中的逐字片段（资料未变时允许隔轮引用）'),
-    })
+    .literal(true)
     .optional()
-    .describe('recap 确认的唯一入账入口；候选人明确表态确认时必须提交，否则确认不入账'),
+    .describe('报名信息确认的唯一入账入口；候选人最新回复明确确认报名信息无误时传 true，否则不传'),
 });
 
 export interface PrecheckAdjudicationDeps {
@@ -162,9 +163,16 @@ interface FormRun {
   recapConfirmationRejection?: RecapConfirmationRejectionReason;
 }
 
-interface RecapConfirmationInput {
-  candidateQuote: string;
-  recapQuote: string;
+type ContractStateErrorCode = 'collection_form_not_presented' | 'contract_changed';
+
+class ContractStateError extends Error {
+  constructor(
+    readonly code: ContractStateErrorCode,
+    readonly details: Record<string, unknown>,
+  ) {
+    super(code);
+    this.name = 'ContractStateError';
+  }
 }
 
 interface UnmatchedAnswer {
@@ -182,10 +190,6 @@ const RECAP_CONFIRMATION_REJECTION_HINTS: Record<RecapConfirmationRejectionReaso
     '本岗表单无外部预填，**本就不需要复述确认**——资料不是「还没最终确认」。不要再向候选人讨确认，也不要重复提交 recapConfirmation；直接按本次 nextAction 行动（ready_to_book 即立刻调用 duliday_interview_booking）。',
   recap_missing_or_already_affirmed:
     '没有待确认的复述在案（尚未发出或已确认过），按本次 nextAction 行动即可。',
-  candidate_quote_not_full_latest_reply:
-    'candidateQuote 必须逐字等于候选人本轮完整回复，不得截取、拼接或改写后重投。',
-  recap_quote_not_delivered:
-    'recapQuote 在实际发出的消息里找不到，必须逐字取自真实发出的复述文案。',
   recap_snapshot_mismatch:
     '此前复述没有按官方文本完整送达候选人。照发本次返回的 recap.candidateMessage 重新复述，候选人确认后再带 recapConfirmation 重调。',
   correction_takes_precedence:
@@ -204,25 +208,48 @@ interface RejectedAnswer {
   labelTitle: string;
   reason: string;
   hint: string;
+  action: 'retry_submission' | 'ask_candidate';
 }
 
 /** 拒收原因 → 模型可执行的下一步。措辞只讲"怎么办"，不复述候选人隐私值。 */
-const REJECTION_HINTS: Readonly<Record<string, string>> = {
-  source_text_not_found: 'quote 必须是候选人原话里逐字存在的片段；请改用候选人真实说过的原文重投。',
-  value_not_in_source_text:
-    '身份字段的值必须能在候选人原话里逐字找到、或由确定性解析器从原话复算出来。不要提交自行加工过的值；按候选人原话提交，或先问一句、等候选人自己说出该值再提交。',
-  invalid_value_shape:
-    '值形状不合法（如手机号非 11 位、年龄超出 14-70）；核对后重投或向候选人澄清。',
-  value_not_in_contract_vocabulary:
-    '值不在本岗契约的选项集内；必须逐字使用 enumHints/契约选项原文，不要自造同义表述。',
-  unknown_option_code: 'optionCode 不属于本岗契约；改用契约返回的选项原文。',
-  confirmation_evidence_rejected:
-    'confirm 操作要求 agentQuestionQuote 是你真实问过的那句话、且候选人紧接着作了肯定应答；两段证据对不上时改用候选人原话走 set。',
-  missing_attribution_corpus: '缺少可归属的对话语料，无法核验该值出自候选人本人。',
-  identity_gate_rejected:
-    '姓名/手机号未通过归属核验（可能取自昵称、引用块里的经理、或第三方截图）；请让候选人本人再说一遍。',
-  deterministic_conflict:
-    '确定性 parser/adapter 从原话明确得出了另一个值；不要覆盖候选人原话，核对规范值后重投，仍有歧义就保持该槽位 empty 并定向追问。',
+interface RejectionGuidance {
+  hint: string;
+  action: RejectedAnswer['action'];
+}
+
+const REJECTION_HINTS: Readonly<Record<string, RejectionGuidance>> = {
+  source_text_not_found: {
+    hint: 'quote 必须是候选人原话里逐字存在的片段；请改用候选人真实说过的原文重投。',
+    action: 'retry_submission',
+  },
+  value_not_in_source_text: {
+    hint: '身份字段的值必须能在候选人原话里逐字找到、或由确定性解析器从原话复算出来。不要提交自行加工过的值；有真实原文就按原文重投，否则向候选人询问后等待新回复。',
+    action: 'retry_submission',
+  },
+  invalid_value_shape: {
+    hint: '值形状不合法（如手机号非 11 位、年龄超出 14-70）；核对后重投或向候选人澄清。',
+    action: 'retry_submission',
+  },
+  value_not_in_contract_vocabulary: {
+    hint: '值不在本岗契约的选项集内；必须逐字使用 enumHints/契约选项原文，不要自造同义表述。',
+    action: 'retry_submission',
+  },
+  unknown_option_code: {
+    hint: 'optionCode 不属于本岗契约；改用契约返回的选项原文。',
+    action: 'retry_submission',
+  },
+  confirmation_evidence_rejected: {
+    hint: 'confirm 操作要求 agentQuestionQuote 是你真实问过的那句话、且候选人紧接着作了肯定应答；两段证据对不上时改用候选人原话走 set。',
+    action: 'retry_submission',
+  },
+  missing_attribution_corpus: {
+    hint: '缺少可归属的对话语料，无法核验该值出自候选人本人；等待候选人本人提供后再提交。',
+    action: 'ask_candidate',
+  },
+  deterministic_conflict: {
+    hint: '确定性 parser/adapter 从原话明确得出了另一个值；不要覆盖候选人原话，核对规范值后重投，仍有歧义就保持该槽位 empty 并定向追问。',
+    action: 'retry_submission',
+  },
 };
 
 /**
@@ -234,6 +261,45 @@ const REJECTION_HINTS: Readonly<Record<string, string>> = {
 const FILE_SHAPE_HINT =
   '该字段是文件字段，只能录入候选人真实发来的附件链接（候选人发文件/图片后，消息里会出现「简历附件：URL」标注行，用那个 URL 提交）。' +
   '文字描述无法作为它的值，不要原样重投；请明确告诉候选人：这一项需要直接把简历文件或简历截图/照片发过来，打字发文字没法录入。';
+
+function rejectionGuidance(
+  audit: CollectionAuditEvent,
+  field: ContractFieldDef,
+): RejectionGuidance | undefined {
+  if (field.fieldType === 'FILE' && audit.reason === 'invalid_value_shape') {
+    return { hint: FILE_SHAPE_HINT, action: 'ask_candidate' };
+  }
+  if (audit.reason === 'identity_gate_rejected') {
+    if (audit.detail?.includes('自动打招呼昵称')) {
+      return {
+        hint: '该值只是自动打招呼里的昵称，不是真实姓名。不要原值重投；请说明“门店登记需要真实姓名”并询问本人，收到候选人的新回复后再提交姓名。',
+        action: 'ask_candidate',
+      };
+    }
+    if (audit.detail?.includes('引用前缀')) {
+      return {
+        hint: '该姓名只来自引用消息中的他人署名。不要原值重投；请向候选人本人询问真实姓名，收到新回复后再提交。',
+        action: 'ask_candidate',
+      };
+    }
+    return {
+      hint: '姓名/手机号没有候选人本人提供的证据。不要原值重投；请向候选人本人询问，收到新回复后再提交。',
+      action: 'ask_candidate',
+    };
+  }
+  if (audit.reason === 'social_insurance_dimensions_missing') {
+    const missing = audit.detail?.replace(/^missing_dimensions:/u, '').split(',') ?? [];
+    const labels = [
+      ...(missing.includes('payer') ? ['由本人还是公司缴纳'] : []),
+      ...(missing.includes('location') ? ['参保地是本地还是外地'] : []),
+    ];
+    return {
+      hint: `社保答案还不能唯一落到契约选项。不要猜或原值重投；只向候选人补问：${labels.join('、') || '缴纳方和参保地'}。`,
+      action: 'ask_candidate',
+    };
+  }
+  return audit.reason ? REJECTION_HINTS[audit.reason] : undefined;
+}
 
 /**
  * 面试时间语义族封闭词表（NFKC + 去空白后整串匹配）。模型会把候选人期望面试时间误投成
@@ -315,6 +381,21 @@ function intakeFieldValueProposals(params: {
   return { proposals, divertedRequestedDate, unmatched };
 }
 
+/** 模型把当前值再次标成 correct 时视为 no-op，避免无变化也作废 lastRecap。 */
+function isSameValueCorrection(
+  answer: FieldValueProposalInput,
+  form: BookingCollectionForm,
+  contract: readonly ContractFieldDef[],
+): boolean {
+  if (answer.operation !== 'correct' || answer.value === null) return false;
+  const field = findFieldByTitle(contract, answer.labelTitle);
+  const current = field ? form.slots[field.labelId]?.value?.value : undefined;
+  if (current === undefined) return false;
+  const normalize = (value: string | number): string =>
+    String(value).normalize('NFKC').replace(/\s+/gu, '');
+  return normalize(answer.value) === normalize(current);
+}
+
 type PrecheckAction =
   | 'collect_fields'
   | 'confirm_collection'
@@ -356,8 +437,8 @@ export function buildInterviewPrecheckTool(
             outcome: '前置校验拦截（jobId 无召回出处）',
             replyInstruction:
               recalled.length === 0
-                ? '先调用 duliday_job_list 召回真实岗位，再用返回的 jobId 调本工具。'
-                : `只能使用本会话召回过的 jobId：${recalled.join('、')}；都不合适就重新召回，禁止猜数字。`,
+                ? '不要把这个无出处 jobId 放进 jobIdList。根据历史原话中的城市＋品牌＋门店＋岗位，单次调用 duliday_job_list：cityNameList=城市、brandAliasList=品牌、searchJobName="门店关键词+岗位关键词"；再用唯一返回的真实 jobId 调本工具。'
+                : `只能使用本会话召回过的 jobId：${recalled.join('、')}。若都不符合历史岗位，禁止查询这个被拒数字；按历史城市＋品牌＋门店＋岗位单次调用 duliday_job_list（cityNameList＋brandAliasList＋searchJobName="门店关键词+岗位关键词"）精确召回。`,
             details: { jobId, recalledJobIds: recalled },
           });
         }
@@ -405,6 +486,12 @@ export function buildInterviewPrecheckTool(
             fieldValueProposals,
             recapConfirmation,
             hasExplicitRequestedDate: Boolean(requestedDate?.trim()),
+            contractAccess:
+              (fieldValueProposals?.length ?? 0) > 0 ||
+              recapConfirmation === true ||
+              Boolean(requestedDate?.trim())
+                ? 'validate'
+                : 'query',
             messages: evidenceMessages,
           });
 
@@ -415,9 +502,15 @@ export function buildInterviewPrecheckTool(
             normalizedScheduleRequest.date ?? requestedDateFromExactTime ?? undefined;
           const effectiveRequestedDate =
             explicitRequestedDate ?? formRun.form.scheduleDraft?.requestedDate ?? null;
+          // 本轮所有时段、截止时间与请求日期都基于同一上海时区时刻裁决，避免跨边界漂移。
+          const availabilityEvaluatedAt = new Date();
           const bookableSlots = interviewTimeWaitNotice
             ? []
-            : buildBookableSlots({ windows, requestedDate: effectiveRequestedDate });
+            : buildBookableSlots({
+                windows,
+                requestedDate: effectiveRequestedDate,
+                now: availabilityEvaluatedAt,
+              });
           const candidateTexts = extractCandidateTexts(evidenceMessages, {
             visualSheetsByContent: context.turnInput.visualSheetsByContent,
           });
@@ -467,7 +560,11 @@ export function buildInterviewPrecheckTool(
 
           const requestedDateCheck =
             !interviewTimeWaitNotice && effectiveRequestedDate
-              ? evaluateRequestedDate({ date: effectiveRequestedDate, windows })
+              ? evaluateRequestedDate({
+                  date: effectiveRequestedDate,
+                  windows,
+                  now: availabilityEvaluatedAt,
+                })
               : null;
           const rejection = renderRejection({
             form: formRun.form,
@@ -477,7 +574,7 @@ export function buildInterviewPrecheckTool(
           const scheduleRule = interviewTimeWaitNotice ? '' : buildScheduleRule(windows);
           const upcomingTimeOptions = interviewTimeWaitNotice
             ? []
-            : buildUpcomingTimeOptions(windows);
+            : buildUpcomingTimeOptions(windows, 7, 10, availabilityEvaluatedAt);
 
           if (nextAction === 'ready_to_book') {
             context.ledger.jobs.collectionReadyJobId = jobId;
@@ -519,6 +616,17 @@ export function buildInterviewPrecheckTool(
                 ? '该岗位提交时不选面试时间；资料确认后 booking 不传 interviewTime，面试官会电话联系。'
                 : undefined,
               scheduleRule: scheduleRule || undefined,
+              availabilityAuthority: interviewTimeWaitNotice
+                ? undefined
+                : {
+                    evaluatedAt:
+                      `${formatShanghaiDate(availabilityEvaluatedAt)} ` +
+                      formatShanghaiTime(availabilityEvaluatedAt),
+                    timezone: 'Asia/Shanghai',
+                    authoritativeField: 'bookableSlots',
+                    instruction:
+                      'bookableSlots 已按完整日期时间与报名截止时间过滤。bookingAllowed=true 即表示在 evaluatedAt 时刻可约；禁止再用 scheduleRule/processRemark 的“当天、前一天”或当前钟点二次计算、删除时段。',
+                  },
               upcomingTimeOptions: upcomingTimeOptions.length > 0 ? upcomingTimeOptions : undefined,
               bookableSlots,
               flowDescription: analysis.interviewMeta.demand,
@@ -560,8 +668,9 @@ export function buildInterviewPrecheckTool(
               nextAction === 'confirm_collection'
                 ? {
                     candidateMessage: formRun.recapText,
-                    instruction:
-                      '只发 candidateMessage，不自行增删字段；候选人确认或纠正后重新调用 precheck。',
+                    instruction: formRun.recapText
+                      ? '只发 candidateMessage，不自行增删字段；候选人确认或纠正后重新调用 precheck。'
+                      : '当前资料复述已真实送达，不要重发整张收资表；只需简短请候选人确认或指出要改的字段。',
                   }
                 : undefined,
             rejection:
@@ -578,6 +687,21 @@ export function buildInterviewPrecheckTool(
                 : undefined,
           });
         } catch (error) {
+          if (error instanceof ContractStateError) {
+            const contractChanged = error.code === 'contract_changed';
+            return buildToolError({
+              errorType: contractChanged
+                ? TOOL_ERROR_TYPES.PRECHECK_CONTRACT_CHANGED
+                : TOOL_ERROR_TYPES.PRECHECK_COLLECTION_FORM_NOT_PRESENTED,
+              outcome: contractChanged
+                ? '报名表单契约已变化，旧表未校验'
+                : '报名表单尚未查询，当前校验未执行',
+              replyInstruction: contractChanged
+                ? '先仅传 jobId（多人代报保留 candidatePhone）重新调用本工具，刷新并取得最新 bookingChecklist；只按新表补收变化或新增的字段，禁止继续提交旧表。'
+                : '先仅传 jobId（多人代报保留 candidatePhone）调用本工具取得 bookingChecklist，并照发 templateText；不要丢失候选人已经说过的原话，建立表单后再按原话提交 fieldValueProposals。',
+              details: error.details,
+            });
+          }
           logger.error(`面试前置校验失败: ${toErrorMessage(error)}`);
           return buildToolError({
             errorType: TOOL_ERROR_TYPES.PRECHECK_FAILED,
@@ -598,8 +722,9 @@ async function runForm(params: {
   jobId: number;
   candidatePhone?: string;
   fieldValueProposals?: readonly FieldValueProposalInput[];
-  recapConfirmation?: RecapConfirmationInput;
+  recapConfirmation?: true;
   hasExplicitRequestedDate: boolean;
+  contractAccess: 'query' | 'validate';
   messages: readonly unknown[];
 }): Promise<FormRun> {
   const botUserId = params.context.session.botUserId?.trim();
@@ -612,17 +737,6 @@ async function runForm(params: {
   );
   const mapped = mapContractFields(rawContract, parseIdentityAnchors(params.deps.identityAnchors));
   emitAnchorMismatches(params, mapped.anchorMismatches);
-
-  const intake = intakeFieldValueProposals({
-    contract: mapped.fields,
-    fieldValueProposals: params.fieldValueProposals,
-    hasExplicitRequestedDate: params.hasExplicitRequestedDate,
-  });
-  if (intake.divertedRequestedDate) {
-    logger.log(
-      `[precheck] 字段值提案中的面试时间条目转运为 requestedDate=${intake.divertedRequestedDate}: jobId=${params.jobId}`,
-    );
-  }
 
   const scope = {
     corpId: params.context.session.corpId,
@@ -649,7 +763,31 @@ async function runForm(params: {
     groundedCandidatePhone,
     groundedCandidatePhone ? { candidateScope: 'additional' } : undefined,
   );
-  if (mapped.fields.length === 0) {
+  if (params.contractAccess === 'query') {
+    form = params.deps.collectionForms.refreshContractSnapshot(form, mapped.fields);
+  } else if (!form.contractSnapshot) {
+    throw new ContractStateError('collection_form_not_presented', { jobId: params.jobId });
+  } else if (!contractFieldsEqual(form.contractSnapshot.fields, mapped.fields)) {
+    throw new ContractStateError('contract_changed', {
+      jobId: params.jobId,
+      previousLabelIds: form.contractSnapshot.fields.map((field) => field.labelId),
+      currentLabelIds: mapped.fields.map((field) => field.labelId),
+    });
+  }
+  const contract = form.contractSnapshot?.fields ?? mapped.fields;
+
+  const intake = intakeFieldValueProposals({
+    contract,
+    fieldValueProposals: params.fieldValueProposals,
+    hasExplicitRequestedDate: params.hasExplicitRequestedDate,
+  });
+  if (intake.divertedRequestedDate) {
+    logger.log(
+      `[precheck] 字段值提案中的面试时间条目转运为 requestedDate=${intake.divertedRequestedDate}: jobId=${params.jobId}`,
+    );
+  }
+
+  if (contract.length === 0) {
     form = escalate(form, EMPTY_CONTRACT_ESCALATION_REASON);
     logger.warn(`[precheck] 岗位返回空标签契约，按数据异常转人工: jobId=${params.jobId}`);
     params.deps.observer?.emit({
@@ -659,14 +797,17 @@ async function runForm(params: {
     });
   }
 
-  const corrections = intake.proposals
+  const proposals = intake.proposals.filter(
+    (answer) => !isSameValueCorrection(answer, form, contract),
+  );
+  const corrections = proposals
     .filter((answer) => answer.operation === 'correct' || answer.operation === 'clear')
     .filter(
       (answer) =>
         Boolean(answer.quote) &&
         candidateTexts.some((text) => normalizedIncludes(text, answer.quote ?? '')),
     )
-    .map((answer) => findFieldByTitle(mapped.fields, answer.labelTitle)?.labelId)
+    .map((answer) => findFieldByTitle(contract, answer.labelTitle)?.labelId)
     .filter((labelId): labelId is number => labelId !== undefined);
   if (corrections.length > 0 && form.lastRecap) {
     form = applyRecapResult(form, { corrections });
@@ -675,12 +816,9 @@ async function runForm(params: {
   const recapBinding = params.recapConfirmation
     ? verifyRecapConfirmationBinding({
         form,
-        contract: mapped.fields,
+        contract,
         recapRequired: needsRecap(form),
-        candidateTexts,
         messages: params.messages,
-        candidateQuote: params.recapConfirmation.candidateQuote,
-        recapQuote: params.recapConfirmation.recapQuote,
         hasValidatedCorrection: corrections.length > 0,
       })
     : undefined;
@@ -708,10 +846,10 @@ async function runForm(params: {
 
   const result = runCollectionCore({
     form,
-    contract: mapped.fields,
+    contract,
     candidateTexts,
     messages: params.messages,
-    fieldValueProposals: intake.proposals,
+    fieldValueProposals: proposals,
     archiveFacts: selectArchiveFacts(
       params.context.archive.sessionFacts?.interview_info as Record<string, unknown> | null,
     ),
@@ -723,12 +861,12 @@ async function runForm(params: {
     await params.deps.collectionForms.saveFinalizedProgressFacts(
       { ...scope, sessionId: params.context.session.sessionId },
       result.form,
-      mapped.fields,
+      contract,
       result.answeredThisTurn,
     );
   }
 
-  const phoneField = mapped.fields.find((field) => field.systemField === 'phone');
+  const phoneField = contract.find((field) => field.systemField === 'phone');
   const phoneValue = phoneField ? result.form.slots[phoneField.labelId]?.value?.value : null;
   let persisted = phoneValue
     ? await params.deps.collectionForms.rebindToPhone(scope, result.form, phoneValue)
@@ -736,28 +874,35 @@ async function runForm(params: {
 
   let recapText: string | undefined;
   if (verdictOf(persisted) === 'ready' && needsRecap(persisted) && !persisted.lastRecap) {
-    const recap = renderRecap(persisted, mapped.fields);
+    const recap = renderRecap(persisted, contract);
     persisted = recap.form;
     recapText = recap.text ?? undefined;
   } else if (
-    recapConfirmationRejection === 'recap_snapshot_mismatch' &&
-    verdictOf(persisted) === 'ready'
+    verdictOf(persisted) === 'ready' &&
+    needsRecap(persisted) &&
+    persisted.lastRecap &&
+    !persisted.lastRecap.affirmed &&
+    !hasDeliveredCurrentRecapSnapshot({
+      form: persisted,
+      contract,
+      messages: params.messages,
+    })
   ) {
-    // 在案复述从未按官方文本送达——给出同一快照的官方文案供照发重投，走出确认死锁。
-    recapText = renderRecapRedeliveryText(persisted, mapped.fields) ?? undefined;
+    // lastRecap 只证明工具生成过复述；聊天历史里没有当前 KV 才补发官方文案。
+    recapText = renderRecapRedeliveryText(persisted, contract) ?? undefined;
   }
   await params.deps.collectionForms.persist(scope, persisted);
-  emitAudits(params.deps, params.context, params.jobId, result.audits);
+  emitAudits(params.deps, params.context, params.jobId, result.audits, contract);
 
   return {
     form: persisted,
-    contract: mapped.fields,
+    contract,
     result: { ...result, form: persisted, verdict: verdictOf(persisted) },
     recapText,
     verdict: verdictOf(persisted),
     divertedRequestedDate: intake.divertedRequestedDate,
     unmatchedAnswers: intake.unmatched,
-    rejectedAnswers: collectRejectedAnswers(result.audits, mapped.fields),
+    rejectedAnswers: collectRejectedAnswers(result.audits, contract),
     recapConfirmationRejection,
   };
 }
@@ -774,15 +919,18 @@ function collectRejectedAnswers(
     if (audit.kind !== 'proposal_rejected' || audit.labelId === undefined || !audit.reason)
       continue;
     const field = fieldById.get(audit.labelId);
-    const hint =
-      field?.fieldType === 'FILE' && audit.reason === 'invalid_value_shape'
-        ? FILE_SHAPE_HINT
-        : REJECTION_HINTS[audit.reason];
-    if (!field || !hint) continue;
+    if (!field) continue;
+    const guidance = rejectionGuidance(audit, field);
+    if (!guidance) continue;
     const key = `${field.labelTitle}:${audit.reason}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    rejected.push({ labelTitle: field.labelTitle, reason: audit.reason, hint });
+    rejected.push({
+      labelTitle: field.labelTitle,
+      reason: audit.reason,
+      hint: guidance.hint,
+      action: guidance.action,
+    });
   }
   return rejected;
 }
@@ -819,10 +967,16 @@ function replyInstruction(action: PrecheckAction, run: FormRun): string {
     case 'collect_fields': {
       // 有拒收时先讲清楚"你提交的被退回了、按 hint 改"，否则模型只看到字段还缺、
       // 会把已经答过的字段再问候选人一遍。
-      const rejectedNote =
-        run.rejectedAnswers.length > 0
-          ? ` 注意：${run.rejectedAnswers.map((item) => item.labelTitle).join('、')} 这几项你提交的答案被公证退回了，原因与改法见 rejectedAnswers——先按 hint 改投，候选人已经答过的不要再问一遍。`
-          : '';
+      const retryable = run.rejectedAnswers.filter((item) => item.action === 'retry_submission');
+      const askCandidate = run.rejectedAnswers.filter((item) => item.action === 'ask_candidate');
+      const rejectedNote = [
+        retryable.length > 0
+          ? ` 注意：${retryable.map((item) => item.labelTitle).join('、')} 的提交被公证退回；按 rejectedAnswers.hint 修正后重投，已有真实答案不要重复询问。`
+          : '',
+        askCandidate.length > 0
+          ? ` 注意：${askCandidate.map((item) => item.labelTitle).join('、')} 必须向候选人补问；禁止原值重投，按 rejectedAnswers.hint 提问并等待新回复后再提交。`
+          : '',
+      ].join('');
       return `${COLLECTION_TEMPLATE_SEND_INSTRUCTION} 只缺：${run.result.askableFields.join('、') || run.result.template.missingFields.join('、')}；已 filled 字段禁止重复问。${rejectedNote}`;
     }
     case 'confirm_collection': {
@@ -838,7 +992,7 @@ function replyInstruction(action: PrecheckAction, run: FormRun): string {
       return `已发过提交前复述但尚未得到明确确认。候选人本轮已明确表态确认的，立即带 recapConfirmation 重调本工具登记确认——不登记则确认永不入账；候选人尚未表态的才简短请他确认或指出哪项要改；若尚未选时间可同时给出真实 bookableSlots，禁止重发整张收资表。${rejectionNote}`;
     }
     case 'select_interview_time':
-      return '候选人资料已经授权，但当前没有实时有效的预约时段。只让候选人从 interview.bookableSlots 选择具体时间；保留已收资料，不得重新收资或签发 booking。';
+      return '候选人资料已经授权，但尚未选择具体预约时段。interview.bookableSlots 已按 availabilityAuthority.evaluatedAt 和完整报名截止时间过滤；只展示 bookingAllowed=true 的时段，严禁根据“当天”或当前钟点二次计算、删除时段。保留已收资料，不得重新收资或签发 booking。';
     case 'screening_rejected':
       return '停止收资与 booking，只按 rejection.candidateMessage 承接；不得披露内部受限原因。';
     case 'handoff':
@@ -904,14 +1058,19 @@ function emitAudits(
   context: Parameters<ToolBuilder>[0],
   jobId: number,
   audits: readonly CollectionAuditEvent[],
+  contract: readonly ContractFieldDef[],
 ): void {
+  const fieldById = new Map(contract.map((field) => [field.labelId, field]));
   for (const audit of audits) {
+    const field = audit.labelId === undefined ? undefined : fieldById.get(audit.labelId);
     deps.observer?.emit({
       type: 'collection_form_audit',
       userId: context.session.userId,
       jobId,
       kind: audit.kind,
       labelId: audit.labelId,
+      labelTitle: field?.labelTitle,
+      fieldType: field?.fieldType,
       reason: audit.reason,
       channel: audit.channel,
       detail: audit.detail,

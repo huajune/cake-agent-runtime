@@ -10,6 +10,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { SessionStateService } from '@memory/short-term/session-state.service';
 import { sessionFactValue, type SessionInterviewInfo } from '@memory/short-term/short-term.types';
 import {
+  contractFieldsEqual,
   createForm,
   migrateAskTracking,
   reconcileAskLimitEscalation,
@@ -141,7 +142,36 @@ export class CollectionFormService {
     if (explicitlyAdditional && routed.candidateScope !== 'additional') {
       routed = { ...routed, candidateScope: 'additional' };
     }
-    return this.syncContractSlots(migrateAskTracking(routed), contract);
+    const persistedContract = routed.contractSnapshot?.fields;
+    return this.syncContractSlots(
+      migrateAskTracking(routed),
+      persistedContract ?? contract,
+      persistedContract,
+    );
+  }
+
+  /**
+   * 纯“查询报名表单”路径更新契约快照。
+   *
+   * 同 labelId 的定义发生变化时也要重开该槽，避免把旧选项下的答案带进新契约；
+   * 未变化的槽位保留，候选人不必重填整张表。
+   */
+  refreshContractSnapshot(
+    form: BookingCollectionForm,
+    contract: readonly ContractFieldDef[],
+  ): BookingCollectionForm {
+    const previousContract = form.contractSnapshot?.fields;
+    if (previousContract && contractFieldsEqual(previousContract, contract)) return form;
+
+    let synced = this.syncContractSlots(form, contract, previousContract);
+    if (!previousContract && synced.lastRecap) {
+      const { lastRecap: _legacyRecap, ...withoutLegacyRecap } = synced;
+      synced = withoutLegacyRecap;
+    }
+    return {
+      ...synced,
+      contractSnapshot: { fields: cloneContractFields(contract) },
+    };
   }
 
   async persist(scope: CollectionFormScope, form: BookingCollectionForm): Promise<void> {
@@ -218,20 +248,43 @@ export class CollectionFormService {
   private syncContractSlots(
     form: BookingCollectionForm,
     contract: readonly ContractFieldDef[],
+    previousContract?: readonly ContractFieldDef[],
   ): BookingCollectionForm {
     const currentIds = new Set(contract.map((field) => field.labelId));
     const previousIds = Object.keys(form.slots).map(Number);
     const added = contract.filter((field) => !form.slots[field.labelId]);
     const removed = previousIds.filter((labelId) => !currentIds.has(labelId));
+    const previousFieldsById = new Map(
+      (previousContract ?? []).map((field) => [field.labelId, field]),
+    );
+    const changed = previousContract
+      ? contract.filter((field) => {
+          const previous = previousFieldsById.get(field.labelId);
+          return previous ? !contractFieldsEqual([previous], [field]) : false;
+        })
+      : [];
+    const changedIds = new Set(changed.map((field) => field.labelId));
+    const contractOrderChanged = previousContract
+      ? previousContract.map((field) => field.labelId).join(',') !==
+        contract.map((field) => field.labelId).join(',')
+      : false;
     const semanticMarkerChanged = contract.some(
       (field) => form.slots[field.labelId]?.systemField !== field.systemField,
     );
-    if (added.length === 0 && removed.length === 0 && !semanticMarkerChanged) return form;
+    if (
+      added.length === 0 &&
+      removed.length === 0 &&
+      changed.length === 0 &&
+      !contractOrderChanged &&
+      !semanticMarkerChanged
+    ) {
+      return form;
+    }
 
     const slots: BookingCollectionForm['slots'] = {};
     for (const field of contract) {
       const existing = form.slots[field.labelId];
-      if (!existing) {
+      if (!existing || changedIds.has(field.labelId)) {
         slots[field.labelId] = {
           labelId: field.labelId,
           ...(field.systemField ? { systemField: field.systemField } : {}),
@@ -249,17 +302,37 @@ export class CollectionFormService {
     this.logger.log(
       `[collection-form] 契约槽位对齐: added=[${added
         .map((field) => field.labelId)
-        .join(',')}], removed=[${removed.join(',')}]`,
+        .join(',')}], changed=[${changed
+        .map((field) => field.labelId)
+        .join(',')}], removed=[${removed.join(',')}], reordered=${contractOrderChanged}`,
     );
     const { lastRecap: _staleRecap, ...formWithoutRecap } = form;
     return reconcileAskLimitEscalation({
       ...formWithoutRecap,
       slots,
       ...(form.configDebts
-        ? { configDebts: form.configDebts.filter((debt) => currentIds.has(debt.labelId)) }
+        ? {
+            configDebts: form.configDebts.filter(
+              (debt) => currentIds.has(debt.labelId) && !changedIds.has(debt.labelId),
+            ),
+          }
         : {}),
     });
   }
+}
+
+function cloneContractFields(contract: readonly ContractFieldDef[]): ContractFieldDef[] {
+  return contract.map((field) => ({
+    ...field,
+    acceptedOptions: field.acceptedOptions.map((option) => ({ ...option })),
+    rejectedOptions: field.rejectedOptions.map((option) => ({ ...option })),
+    valueSpec: field.valueSpec
+      ? {
+          ...field.valueSpec,
+          genderRanges: field.valueSpec.genderRanges.map((range) => ({ ...range })),
+        }
+      : field.valueSpec,
+  }));
 }
 
 /** 人键归一：11 位可存手机号才作人键，否则回落会话默认表。 */

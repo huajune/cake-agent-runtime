@@ -176,6 +176,18 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     verification: V,
   },
   {
+    id: 'interview_slot_availability_mismatch',
+    action: GUARDRAIL_ACTION.REVISE,
+    priority: GUARDRAIL_PRIORITY.P1,
+    description: '候选人未指定日期时，回复漏掉最早可约时段、误报截止，或篡改截止日口径。',
+    riskGoal: '防止模型绕过 precheck 的完整日期时间裁决，让候选人错失实际可约时段。',
+    exogenousSignal: 'duliday_interview_precheck 返回的 bookableSlots 与 registrationDeadline。',
+    residualRisk: '只检查回复明确提到的日期和封闭截止话术；相对日期与开放语义仍交给主 Agent。',
+    verification: 'tests/agent/guardrail/output/rules/interview-slot-availability.rule.spec.ts',
+    feedbackToGenerator:
+      '上一版回复与 duliday_interview_precheck 的权威可约时段矛盾。bookableSlots 已按完整日期时间和报名截止过滤；恢复被漏掉的最早可约日期，bookingAllowed=true 的日期不得说成已过截止，并按 registrationDeadline 的实际日期表述“当天/前一天”。只输出候选人可见回复。',
+  },
+  {
     id: 'interview_time_change_unconfirmed',
     action: GUARDRAIL_ACTION.REVISE,
     priority: GUARDRAIL_PRIORITY.P0,

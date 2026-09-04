@@ -16,11 +16,13 @@ import {
   adapterFor,
   genericAdapter,
   identitySlotKeyForTitle,
+  socialInsuranceMissingDimensions,
   type ContractFieldDef,
   type SlotProposal,
   type FieldValueProposal,
 } from '@resolution/collection';
 import type { CandidateFactField } from '@resolution/candidate/types';
+import { parsePhone } from '@resolution/candidate/phone';
 import { normalizedIncludes } from '@resolution/notary/text-normalization';
 import type { FieldValueProposalInput } from './field-value-proposal-input';
 import {
@@ -46,7 +48,7 @@ export interface IntakeAudit {
   labelId?: number;
   reason: string;
   detail?: string;
-  channel: 'form_answer';
+  channel: 'form_answer' | 'form_line';
 }
 
 /** 候选事实字段名 → 契约字段：身份四槽走 systemField，其余按标题语义族。 */
@@ -177,13 +179,25 @@ export interface RoutedFieldValueProposal extends FieldValueProposal {
  */
 export function collectFieldValueProposals(input: IntakeInput): RoutedFieldValueProposal[] {
   const byLabel = new Map<number, RoutedFieldValueProposal>();
+  const seenAudits = new Set<string>();
+  const routedInput: IntakeInput = {
+    ...input,
+    onAudit: input.onAudit
+      ? (audit) => {
+          const key = `${audit.kind}:${audit.labelId ?? '-'}:${audit.reason}:${audit.detail ?? '-'}`;
+          if (seenAudits.has(key)) return;
+          seenAudits.add(key);
+          input.onAudit?.(audit);
+        }
+      : undefined,
+  };
   const put = (proposal: RoutedFieldValueProposal): void => {
     if (!byLabel.has(proposal.labelId)) byLabel.set(proposal.labelId, proposal);
   };
 
-  for (const proposal of fromModelFieldValueProposals(input)) put(proposal);
-  for (const proposal of fromFormLines(input)) put(proposal);
-  for (const proposal of fromAdapterSweep(input)) put(proposal);
+  for (const proposal of fromModelFieldValueProposals(routedInput)) put(proposal);
+  for (const proposal of fromFormLines(routedInput)) put(proposal);
+  for (const proposal of fromAdapterSweep(routedInput)) put(proposal);
 
   return [...byLabel.values()];
 }
@@ -204,13 +218,19 @@ function fromFormLines(input: IntakeInput): RoutedFieldValueProposal[] {
   const proposals: RoutedFieldValueProposal[] = [];
   for (const text of input.candidateTexts) {
     for (const line of parseTemplateLines(text, input.contract)) {
+      const routedLine = rerouteMisplacedPhoneLine(line, input.contract);
       // 只把值交给适配器。选项型认不出也生成提案，统一由值词表门拒收并落审计，
       // 不再在运输层静默丢弃。
-      const adapted = adaptAnswerValue(line.field, line.value);
+      const adapted = adaptAnswerValue(routedLine.field, routedLine.value);
+      if (
+        !adapted &&
+        emitSocialInsuranceClarification(input, routedLine.field, routedLine.value, 'form_line')
+      )
+        continue;
 
       proposals.push({
-        labelId: line.field.labelId,
-        value: adapted?.value ?? line.value,
+        labelId: routedLine.field.labelId,
+        value: adapted?.value ?? routedLine.value,
         optionCodes: adapted?.optionCodes,
         // sourceText 取**整行**：整行才是候选人原文里逐字存在的东西，公证回查按它对。
         sourceText: line.rawLine,
@@ -220,6 +240,22 @@ function fromFormLines(input: IntakeInput): RoutedFieldValueProposal[] {
     }
   }
   return proposals;
+}
+
+/**
+ * 候选人回填模板时偶尔会把手机号写到紧邻的性别行，再另起一句补「性别女」。
+ * 11 位大陆手机号形态足够封闭：只修这个生产已见错位，并且仅在契约里恰有一个手机号槽
+ * 时改投；不做其它跨字段猜测。原始整行仍作为出处交给手机号公证闸门复核。
+ */
+function rerouteMisplacedPhoneLine(
+  line: TemplateLine,
+  contract: readonly ContractFieldDef[],
+): Pick<TemplateLine, 'field' | 'value'> {
+  if (line.field.systemField !== 'gender') return line;
+  const parsed = parsePhone(line.value);
+  if (!parsed || parsed.excerpt !== line.value.trim()) return line;
+  const phoneFields = contract.filter((field) => field.systemField === 'phone');
+  return phoneFields.length === 1 ? { field: phoneFields[0], value: parsed.value } : line;
 }
 
 /** 一条成功定位到契约槽位的模板回填行。 */
@@ -290,6 +326,7 @@ function fromModelFieldValueProposals(input: IntakeInput): RoutedFieldValuePropo
     if (!value) continue;
 
     const adapted = adaptAnswerValue(field, value);
+    if (!adapted && emitSocialInsuranceClarification(input, field, value, 'form_answer')) continue;
     proposals.push({
       labelId: field.labelId,
       value: adapted?.value ?? value,
@@ -303,6 +340,28 @@ function fromModelFieldValueProposals(input: IntakeInput): RoutedFieldValuePropo
     });
   }
   return proposals;
+}
+
+function emitSocialInsuranceClarification(
+  input: IntakeInput,
+  field: ContractFieldDef,
+  value: string,
+  channel: IntakeAudit['channel'],
+): boolean {
+  const missing = socialInsuranceMissingDimensions({
+    field,
+    candidateText: value,
+    answerBound: true,
+  });
+  if (!missing) return false;
+  input.onAudit?.({
+    kind: 'proposal_rejected',
+    labelId: field.labelId,
+    reason: 'social_insurance_dimensions_missing',
+    detail: `missing_dimensions:${missing.join(',')}`,
+    channel,
+  });
+  return true;
 }
 
 /** 语义适配器优先；规范值恰为 optionLabel 时再走契约字面直配。 */

@@ -259,6 +259,61 @@ describe('CollectionFormService', () => {
       expect(form.slots[769].value?.value).toBe('兮兮');
     });
 
+    it('已有契约快照时 loadOrCreate 不用实时契约偷偷改槽位', async () => {
+      const stored = createForm({ jobId: 528962, contract: [NAME_FIELD] });
+      stored.contractSnapshot = { fields: [NAME_FIELD] };
+      store.read.mockResolvedValue(stored);
+
+      const form = await service.loadOrCreate(SCOPE, [NAME_FIELD, ADDRESS_FIELD]);
+
+      expect(form.contractSnapshot?.fields).toEqual([NAME_FIELD]);
+      expect(form.slots[ADDRESS_FIELD.labelId]).toBeUndefined();
+    });
+
+    it('纯查询刷新契约快照时只补新槽，保留未变化字段的进度', async () => {
+      const text = '姓名：兮兮';
+      const stored = applyFieldValueProposal(
+        createForm({ jobId: 528962, contract: [NAME_FIELD] }),
+        NAME_FIELD,
+        {
+          value: '兮兮',
+          sourceText: text,
+          producer: 'candidate_quote',
+        },
+        { candidateTexts: [text], messages: [{ role: 'user', content: text }] },
+      ).form;
+      stored.contractSnapshot = { fields: [NAME_FIELD] };
+
+      const refreshed = service.refreshContractSnapshot(stored, [NAME_FIELD, ADDRESS_FIELD]);
+
+      expect(refreshed.contractSnapshot?.fields).toEqual([NAME_FIELD, ADDRESS_FIELD]);
+      expect(refreshed.slots[NAME_FIELD.labelId].value?.value).toBe('兮兮');
+      expect(refreshed.slots[ADDRESS_FIELD.labelId].state).toBe('empty');
+    });
+
+    it('同 labelId 的契约定义变化时重开该槽并作废旧复述', () => {
+      const text = '姓名：兮兮';
+      let stored = applyFieldValueProposal(
+        createForm({ jobId: 528962, contract: [NAME_FIELD] }),
+        NAME_FIELD,
+        {
+          value: '兮兮',
+          sourceText: text,
+          producer: 'candidate_quote',
+        },
+        { candidateTexts: [text], messages: [{ role: 'user', content: text }] },
+      ).form;
+      stored.contractSnapshot = { fields: [NAME_FIELD] };
+      stored = markRecapSent(stored, [NAME_FIELD.labelId]);
+
+      const renamed = { ...NAME_FIELD, labelTitle: '候选人姓名' };
+      const refreshed = service.refreshContractSnapshot(stored, [renamed]);
+
+      expect(refreshed.contractSnapshot?.fields).toEqual([renamed]);
+      expect(refreshed.slots[NAME_FIELD.labelId].state).toBe('empty');
+      expect(refreshed.lastRecap).toBeUndefined();
+    });
+
     it('契约变更时作废已确认的复述快照', async () => {
       const recapped = markRecapSent(createForm({ jobId: 528962, contract: [NAME_FIELD] }), [
         NAME_FIELD.labelId,

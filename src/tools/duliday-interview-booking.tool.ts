@@ -17,6 +17,7 @@ import { Logger } from '@nestjs/common';
 import type { PrivateChatMonitorNotifierService } from '@notification/services/private-chat-monitor-notifier.service';
 import {
   applyErrorList,
+  contractFieldsEqual,
   escalate,
   ESCALATION_REASONS,
   isSubmissionAuthorized,
@@ -163,7 +164,7 @@ export function buildInterviewBookingTool(
               errorType: TOOL_ERROR_TYPES.BOOKING_REJECTED,
               outcome: '预约未提交（本轮没有已确认的 precheck 凭据）',
               replyInstruction:
-                '先调用 duliday_interview_precheck。只有资料已授权、非 wait_notice 岗位的时间草稿实时可约且工具返回 ready_to_book 后，才能在同一轮调用 booking。候选人已明确确认过提交前复述的，重调 precheck 时必须带上 recapConfirmation 登记确认——缺了它会一直停在 confirm_collection。',
+                '先调用 duliday_interview_precheck。只有资料已授权、非 wait_notice 岗位的时间草稿实时可约且工具返回 ready_to_book 后，才能在同一轮调用 booking。候选人已明确确认报名信息无误的，重调 precheck 时必须传 recapConfirmation=true 登记确认——缺了它会一直停在 confirm_collection。',
               details: { jobId },
             }),
           );
@@ -196,6 +197,20 @@ export function buildInterviewBookingTool(
           const rawContract = await spongeService.fetchJobCollectionContract(jobId, tokenContext);
           const mapped = mapContractFields(rawContract, parseIdentityAnchors(deps.identityAnchors));
           const form = await deps.collectionForms.loadOrCreate(scope, mapped.fields);
+          const contract = form.contractSnapshot?.fields;
+          if (!contract || !contractFieldsEqual(contract, mapped.fields)) {
+            return fail(
+              buildToolError({
+                errorType: TOOL_ERROR_TYPES.BOOKING_REJECTED,
+                outcome: contract
+                  ? '预约未提交（报名表单契约已变化）'
+                  : '预约未提交（报名表单尚未查询）',
+                replyInstruction:
+                  '回到 duliday_interview_precheck，仅传 jobId 刷新并取得 bookingChecklist；按持久表单完成校验并再次得到 ready_to_book 后再提交。',
+                details: { jobId },
+              }),
+            );
+          }
           const isAdditionalCandidate = form.candidateScope === 'additional';
           const verdict = verdictOf(form);
           if (verdict !== 'ready') {
@@ -210,7 +225,7 @@ export function buildInterviewBookingTool(
             );
           }
 
-          const identity = readIdentity(form, mapped.fields);
+          const identity = readIdentity(form, contract);
           if (!identity.name || !identity.phone || !identity.age || !identity.gender) {
             const blocked = escalate(form, 'booking_identity_anchor_unavailable');
             await deps.collectionForms.persist(scope, blocked);
@@ -351,7 +366,7 @@ export function buildInterviewBookingTool(
 
           const payload = await buildLabelList({
             form,
-            contract: mapped.fields,
+            contract,
             spongeService,
             tokenContext,
           });
@@ -365,7 +380,7 @@ export function buildInterviewBookingTool(
                   msg: payload.message,
                 },
               ],
-              mapped.fields,
+              contract,
             );
             emitErrorListEscalation({
               deps,
@@ -417,7 +432,7 @@ export function buildInterviewBookingTool(
           const interviewType = resolveInterviewType(job);
 
           if (!result.success) {
-            const rewritten = applyErrorList(form, result.applyErrorList ?? [], mapped.fields);
+            const rewritten = applyErrorList(form, result.applyErrorList ?? [], contract);
             emitErrorListEscalation({
               deps,
               context,

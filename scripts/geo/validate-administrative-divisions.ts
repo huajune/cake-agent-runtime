@@ -25,7 +25,10 @@ import {
   COUNTY_LEVEL_CITY_TO_PREFECTURE,
   UNIQUE_SUBDIVISION_TO_CITY,
 } from '../../src/resolution/geo/administrative-division.data';
-import { NATIONAL_COUNTY_LEVEL_CITY_TO_PREFECTURE } from '../../src/resolution/geo/administrative-division.generated';
+import {
+  NATIONAL_COUNTY_LEVEL_CITY_TO_PREFECTURE,
+  NATIONAL_PREFECTURE_TO_PROVINCE,
+} from '../../src/resolution/geo/administrative-division.generated';
 import {
   BUSINESS_BIASED_SUBDIVISION_ALIASES,
   DIRTY_ALIAS_EXCLUSIONS,
@@ -109,6 +112,17 @@ for (const [county, prefecture] of generatedEntries) {
   check(
     rebuilt.mapping[county] === prefecture,
     `生成表漂移：「${county}」提交产物→${prefecture}，重算→${rebuilt.mapping[county] ?? '(无)'}——请 pnpm run geo:generate`,
+  );
+}
+const generatedProvinceEntries = Object.entries(NATIONAL_PREFECTURE_TO_PROVINCE);
+check(
+  generatedProvinceEntries.length === Object.keys(rebuilt.prefectureToProvince).length,
+  `地级→省级生成表漂移：提交产物 ${generatedProvinceEntries.length} 条，按数据集重算 ${Object.keys(rebuilt.prefectureToProvince).length} 条——请 pnpm run geo:generate`,
+);
+for (const [prefecture, province] of generatedProvinceEntries) {
+  check(
+    rebuilt.prefectureToProvince[prefecture] === province,
+    `地级→省级生成表漂移：「${prefecture}」提交产物→${province}，重算→${rebuilt.prefectureToProvince[prefecture] ?? '(无)'}——请 pnpm run geo:generate`,
   );
 }
 

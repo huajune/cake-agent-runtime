@@ -13,7 +13,10 @@ import {
   HIGH_CONFIDENCE_BARE_LOCATION_ALIASES,
 } from './administrative-division.data';
 import { NATIONAL_CITY_SUFFIX_TO_CITY } from './explicit-city.data';
-import { NATIONAL_COUNTY_LEVEL_CITY_TO_PREFECTURE } from './administrative-division.generated';
+import {
+  NATIONAL_COUNTY_LEVEL_CITY_TO_PREFECTURE,
+  NATIONAL_PREFECTURE_TO_PROVINCE,
+} from './administrative-division.generated';
 import { normalizeCityName, normalizeDistrictForLookup } from './geo-name.normalizer';
 import { resolveCityFromLocation } from './place-alias.resolver';
 
@@ -201,6 +204,37 @@ export function resolveParentAdministrativeArea(input: string): ParentAdministra
     }
   }
   return null;
+}
+
+/**
+ * 结构化地级行政区值 → 省级行政区。
+ *
+ * 只为已经绑定语义的字段服务，不用于自由文本抽取。地级市兼容省略「市」以及
+ * 「江苏泰州」这类省市连写；自治州/盟/地区必须写完整，避免把「海南」误判成
+ * 青海省的「海南藏族自治州」。多项命中且不属于同一省时弃权。
+ */
+export function resolveProvinceFromAdministrativeArea(input: string): string | null {
+  const text = input.normalize('NFKC').replace(/\s+/gu, '').trim();
+  if (!text) return null;
+
+  const hits: Array<{ aliasLength: number; province: string }> = [];
+  for (const [prefecture, province] of Object.entries(NATIONAL_PREFECTURE_TO_PROVINCE)) {
+    const aliases = prefecture.endsWith('市')
+      ? [prefecture, prefecture.slice(0, -1)]
+      : [prefecture];
+    for (const alias of aliases) {
+      if (alias.length >= 2 && text.includes(alias)) {
+        hits.push({ aliasLength: alias.length, province });
+        break;
+      }
+    }
+  }
+  if (hits.length === 0) return null;
+  const longest = Math.max(...hits.map((hit) => hit.aliasLength));
+  const provinces = new Set(
+    hits.filter((hit) => hit.aliasLength === longest).map((hit) => hit.province),
+  );
+  return provinces.size === 1 ? [...provinces][0] : null;
 }
 
 /**

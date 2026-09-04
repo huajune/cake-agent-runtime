@@ -1,6 +1,6 @@
 # 收资表单域架构（collection form machine）
 
-**最后更新**：2026-08-28
+**最后更新**：2026-09-04
 **代码居所**：`src/resolution/collection/`（纯逻辑，零 LLM 零 IO）+
 `src/tools/collection/`（编排、渲染与 Redis 存储）
 
@@ -26,7 +26,8 @@
 
 - `BookingCollectionForm`：per（candidateRef × jobId）。资料槽位旁可持久化岗位级
   `scheduleDraft`，不把面试时间伪造成契约槽位；`workOrderId / escalatedReason / lastRecap`
-  继续只保存不可推导事实。
+  继续只保存不可推导事实。`contractSnapshot.fields` 保存最近一次“查询报名表单”取得的
+  完整契约；不另存可由 fields 推导的 fingerprint。
 - `FormSlot`：键＝契约 `labelId`（槽位宇宙＝每轮实时拉的契约字段集，系统内无第二套字段命名）。
   `SlotState` 封闭三值 `empty | filled | disqualified`；filled 槽位携带
   `{ value, optionCodes?, sourceText, producer }`——`sourceText` 负责出处回查，`producer`
@@ -40,8 +41,12 @@
 ## 3. 一轮数据流
 
 ```
-契约实时查询（零缓存；空标签岗=数据异常→escalated+告警，禁按「无筛」放行）
-  → loadOrCreate 表单（Redis 快照；phone 到达即 rebind）
+纯 jobId 查询：实时取契约 → loadOrCreate → refreshContractSnapshot → persist
+  → 按持久快照返回 bookingChecklist（空标签岗=数据异常→escalated+告警）
+候选人回复后的校验：实时契约只作漂移比对 → loadOrCreate 持久表单
+  → 无 contractSnapshot 返回 collection_form_not_presented
+  → 实时契约 != contractSnapshot 返回 contract_changed，禁止混版校验
+  → 相等时只消费 contractSnapshot（phone 到达即 rebind）
   → collectFieldValueProposals 汇总三通道提案（只对 empty 槽位）：
       fieldValueProposals（主聊模型唯一作证入口，labelTitle + value + quote + operation）
       > form_line（模板行回捞） > adapter_sweep（确定性判据收网）
@@ -88,6 +93,9 @@
 此前拒收只落 `collection_form_audit` 给我们看，模型只看得到"这个字段还缺"——于是原样
 重投或回头再问候选人一遍（chat `6a8d583b` 年龄被连问两遍）。与 0826 给 labelTitle
 定位失败补 `unmatchedAnswers` 是同一类修法：**判据可以严，但不能静默**。
+回执另带 `action`：`retry_submission` 才允许按原有证据改投；`ask_candidate`（昵称不是真名、
+社保缺缴纳方/参保地、文件未发送等）必须先向候选人澄清并等待新回复。两类不能共用
+“候选人已答过、不要再问”的总指令，否则会把身份闸门推成原值重投循环。
 
 **棘轮对系统单向、对本人双向**：filled 重开仅三条路径——复述 corrections /
 applyErrorList / 候选人显式改口（`proposal.restatement`，同套公证，通过即替换，
@@ -101,9 +109,9 @@ outcome=`restated` 落审计；askCount 不清零防刷熔断配额）。系统/
   完整自然语言、多轮零散作答与逐行填表完全同路。
 - 含外部预填的 ready 表单才渲染 `lastRecap`。任一槽位改值、清除、契约变更或
   errorList 重开都作废快照；候选人纠正最后一个预填值后可重新派生为无 recap。
-- 所有明确确认表达走同一个生产入口：模型提交 `recapConfirmation`，
-  `recap-confirmation` notary 只机械核验完整最新回复、紧邻连续 assistant 消息组、
-  当前槽位快照和纠正优先级。「好的」与「没问题，麻烦老师了」没有不同的放行路径，
+- 所有明确确认表达走同一个生产入口：模型提交 `recapConfirmation=true`，
+  `recap-confirmation` notary 自动绑定最新候选人回复，只机械核验历史 assistant 消息中
+  真实送达的当前槽位快照和纠正优先级。「好的」与「没问题，麻烦老师了」没有不同的放行路径，
   `isAffirmativeAnswerSequence()` 不再承担 recap 授权职责。
 - 首次 `collect_fields` 同时返回实时 `bookableSlots`。候选人可同轮提供资料和时间；
   资料未齐不丢 schedule draft，recap 与选时间也可同轮完成。
@@ -130,9 +138,9 @@ outcome=`restated` 落审计；askCount 不清零防刷熔断配额）。系统/
 - **`labelInstructions` 不被执行也不被渲染**：候选人模板与模型可见输出只用
   `labelTitle`，instructions 仅进披露红线的敏感词扫描。运营认知规则：**筛选必须配
   `rejectedOptions` / `valueSpec`**，写进说明字段的筛选意图不会生效（判决单源）。
-- **`fieldType` 同 id 分裂可容忍**：判决与提交每轮实时拉契约、按岗执行，单岗自洽；
-  代价是跨岗复用退化（文本值对不上新岗选项集 → 重问一遍）与迁移窗口的
-  errorList 往返，均有自愈，不产生数据错误。
+- **`fieldType` 同 id 分裂按持久快照隔离**：候选人填写期间只消费查询时的契约；实时契约
+  发生变化则先返回 `contract_changed`。下一次纯 jobId 查询刷新快照，同 id 定义有变化的
+  槽位精确重开，未变化槽位保留，禁止拿旧值按新类型直接提交。
 - **`optionCode` 语义漂移低危**：跨岗/跨轮复用走**文本值回流 + 每轮重配选项**
   （sessionFacts 存 optionLabel 文本不存 code），code 只在单次提交的实时契约内使用；
   analytics 亦不按 code 聚合。后端自律「发布后不改语义」即可，AI 侧无需防护。
@@ -152,11 +160,16 @@ outcome=`restated` 落审计；askCount 不清零防刷熔断配额）。系统/
 
 - Redis 快照 `collection-form:{corpId}:{userId}:{botUserId}:{candidateRef}:{jobId}`，
   `botUserId` 取稳定企微 `wecomUserId`；整实体读写，回合租约（90s 心跳）单写者，无 CAS；
-  列入「丢了算事故」key 清单。旧 key 不迁移，随 3 天 TTL 自然过期；兼容窗内旧槽位
-  `confidence:'medium'` 保守触发 recap，窗口结束后临时兼容失效。
-- 审计：labelTitle 定位失败、值适配/公证拒收 / slot_restated / slot_disqualified / escalated / config_debt /
-  submitted 各落一条 `agent_execution_events`（同 traceId 可 join）；配置债经
-  booking-card「收资配置备注」段披露给运营。
+  列入「丢了算事故」key 清单。契约快照与 slots 同实体原子落盘；旧表单没有
+  `contractSnapshot` 时不得直接校验，先走纯 jobId 查询建立快照。旧 key 不迁移，随 3 天 TTL
+  自然过期；兼容窗内旧槽位 `confidence:'medium'` 保守触发 recap，窗口结束后临时兼容失效。
+- 审计：labelTitle 定位失败、值适配/公证拒收 / slot_restated / slot_disqualified /
+  escalated / config_debt / recap_confirmation_rejected 等落 `agent_execution_events`。
+  `collection_form_audit` 固化 `jobId + labelId + labelTitle + fieldType`，配置债必须按标签
+  聚合并附横跨岗位数，不能按单岗拆工单。`message_processing_records` 无 `trace_id` 列；
+  钻取先以事件 `trace_id` 对流水 `message_id/batch_id`，对不上时用 `chat_id + 时间窗`
+  （debounce 会使 `received_at` 与审计时刻错开）。配置债仍经 booking-card
+  「收资配置备注」段披露给运营。
 
 ## 9. 红线（长期有效裁定）
 

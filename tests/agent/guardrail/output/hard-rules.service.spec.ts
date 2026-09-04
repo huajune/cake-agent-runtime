@@ -27,6 +27,7 @@ describe('HardRulesService — 封闭确定性输出规则', () => {
       'online_interview_location_claim',
       'unsupported_store_status_speculation',
       'booking_receipt_mismatch',
+      'interview_slot_availability_mismatch',
       'interview_time_change_unconfirmed',
       'brand_alias_fuzzy_match_ignored',
       // —— 数据复核后恢复的哨兵 ——
@@ -129,6 +130,38 @@ describe('HardRulesService — 封闭确定性输出规则', () => {
         ],
       }),
     ).toContain('booking_receipt_mismatch');
+  });
+
+  it('precheck 返回可约日期后，拦截漏掉最早日期并误报截止的回复', () => {
+    expect(
+      ids('9月4日报名已经截止了，可以选9月7日。', {
+        toolCalls: [
+          {
+            toolName: 'duliday_interview_precheck',
+            args: {},
+            status: 'ok',
+            result: {
+              success: true,
+              nextAction: 'select_interview_time',
+              interview: {
+                bookableSlots: [
+                  {
+                    date: '2026-09-04',
+                    registrationDeadline: '2026-09-04 10:00',
+                    bookingAllowed: true,
+                  },
+                  {
+                    date: '2026-09-07',
+                    registrationDeadline: '2026-09-07 10:00',
+                    bookingAllowed: true,
+                  },
+                ],
+              },
+            },
+          },
+        ],
+      }),
+    ).toContain('interview_slot_availability_mismatch');
   });
 
   it('高置信品牌目录回指与无品牌回复矛盾时命中', () => {

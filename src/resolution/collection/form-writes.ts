@@ -22,6 +22,7 @@
 
 import { detectAgeBoundary } from '@resolution/candidate/age';
 import { normalizeGenderValue } from '@resolution/candidate/gender';
+import { isAmbiguousHealthCertificateAnswer } from '@resolution/candidate/health-cert';
 import {
   evaluateBookingNameGate,
   evaluateBookingPhoneGate,
@@ -995,6 +996,9 @@ function findDeterministicConflict(
   if (proposal.producer !== 'model') return null;
   const candidateText = bareAnswerForConflictCheck(field, sourceText);
   if (!candidateText) return null;
+  if (field.labelTitle.includes('健康证') && isAmbiguousHealthCertificateAnswer(candidateText)) {
+    return '候选人原话缺少“有/无”，无法唯一确定本地健康证状态；不得替候选人补字';
+  }
   const adapterInput = { field, candidateText, answerBound: true };
   const derived = adapterFor(field)(adapterInput) ?? genericAdapter(adapterInput);
   if (!derived || deterministicValuesAgree(derived, proposal, factField)) return null;

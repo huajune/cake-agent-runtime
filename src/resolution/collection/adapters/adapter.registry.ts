@@ -27,6 +27,7 @@ import { proposeIdentityCore } from './identity-core.adapter';
 import { proposeIdentityStatus } from './identity-status.adapter';
 import { proposeSocialInsurance } from './social-insurance.adapter';
 import { proposeHouseholdRegister } from './household-register.adapter';
+import { proposeAccommodation } from './accommodation.adapter';
 import type { AdapterInput, SlotAdapter, SlotProposal } from './adapter.types';
 
 /** 标题语义族判据（词面判定，不认 ID）。 */
@@ -38,6 +39,7 @@ const TITLE_FAMILIES: ReadonlyArray<{ test: RegExp; adapter: SlotAdapter }> = [
   { test: /社会身份|是否学生|学生|学信网|在籍|身份/u, adapter: proposeIdentityStatus },
   // 社保族排在身份族之后：「社保缴纳情况」标题不含身份词，不会互相截胡。
   { test: /社保/u, adapter: proposeSocialInsurance },
+  { test: /住宿需求|是否需要住宿/u, adapter: proposeAccommodation },
   // 籍贯族排在身份族之后：「户籍」不含身份词表任一项，不会互相截胡；
   //「籍贯」同理。省级选项集的行政后缀容差见适配器注释。
   { test: /籍贯|户籍/u, adapter: proposeHouseholdRegister },

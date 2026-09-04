@@ -203,6 +203,16 @@ export interface BookingScheduleDraft {
   sourceText: string;
 }
 
+/**
+ * 最近一次“查询报名表单”时取得的完整岗位收资契约。
+ *
+ * 校验与提交必须消费这份持久快照，不能在候选人填写过程中悄悄切到另一版海绵配置。
+ * 不单存 fingerprint：它可由 fields 确定性计算，双写反而可能产生漂移。
+ */
+export interface CollectionContractSnapshot {
+  fields: ContractFieldDef[];
+}
+
 export interface BookingCollectionForm {
   /** 问询计数口径版本：v2 起只认真实送达的 assistant 问句。 */
   askTrackingVersion: 2;
@@ -219,6 +229,8 @@ export interface BookingCollectionForm {
    */
   candidateScope?: 'additional';
   jobId: number;
+  /** 只由“查询报名表单”路径建立或刷新；旧存量表单可能暂时缺失。 */
+  contractSnapshot?: CollectionContractSnapshot;
   /** 以 labelId 为键的槽位表。 */
   slots: Record<number, FormSlot>;
   /** 提交成功的外部事实（不可由槽位推导，故落盘）。 */
@@ -234,6 +246,45 @@ export interface BookingCollectionForm {
 
 /** 手机号到达前的默认表单人键。 */
 export const SESSION_CANDIDATE_REF = 'session';
+
+/** 完整契约等价判定；字段及选项顺序都属于候选人实际看到的表单契约。 */
+export function contractFieldsEqual(
+  left: readonly ContractFieldDef[],
+  right: readonly ContractFieldDef[],
+): boolean {
+  const canonicalize = (fields: readonly ContractFieldDef[]) =>
+    fields.map((field) => ({
+      labelId: field.labelId,
+      labelTitle: field.labelTitle,
+      labelInstructions: field.labelInstructions ?? null,
+      fieldType: field.fieldType,
+      disclosure: field.disclosure ?? null,
+      required: field.required,
+      acceptedOptions: field.acceptedOptions.map((option) => ({
+        optionCode: option.optionCode,
+        optionLabel: option.optionLabel,
+      })),
+      rejectedOptions: field.rejectedOptions.map((option) => ({
+        optionCode: option.optionCode,
+        optionLabel: option.optionLabel,
+      })),
+      valueSpec: field.valueSpec
+        ? {
+            kind: field.valueSpec.kind,
+            min: field.valueSpec.min ?? null,
+            max: field.valueSpec.max ?? null,
+            unit: field.valueSpec.unit ?? null,
+            genderRanges: field.valueSpec.genderRanges.map((range) => ({
+              gender: range.gender,
+              min: range.min ?? null,
+              max: range.max ?? null,
+            })),
+          }
+        : null,
+      systemField: field.systemField ?? null,
+    }));
+  return JSON.stringify(canonicalize(left)) === JSON.stringify(canonicalize(right));
+}
 
 // ==================== 总评（现算，不落盘） ====================
 

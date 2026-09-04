@@ -43,19 +43,15 @@ function recappedForm(): BookingCollectionForm {
 }
 
 function verify(overrides: Partial<Parameters<typeof verifyRecapConfirmationBinding>[0]> = {}) {
-  const candidateQuote = '可以的，麻烦了';
   return verifyRecapConfirmationBinding({
     form: recappedForm(),
     contract: CONTRACT,
     recapRequired: true,
-    candidateTexts: [candidateQuote],
     messages: [
       { role: 'assistant', content: '帮你核对一下报名信息：\n姓名：兮兮\n年龄：25' },
       { role: 'assistant', content: RECAP_TAIL },
-      { role: 'user', content: candidateQuote },
+      { role: 'user', content: '可以的，麻烦了' },
     ],
-    candidateQuote,
-    recapQuote: RECAP_TAIL,
     hasValidatedCorrection: false,
     ...overrides,
   });
@@ -66,25 +62,12 @@ describe('recap confirmation notary', () => {
     expect(verify()).toEqual({ accepted: true });
   });
 
-  it('候选人引用必须等于最新完整回复，不得截取肯定子串', () => {
-    expect(
-      verify({
-        candidateTexts: ['没问题，但是电话错了'],
-        candidateQuote: '没问题',
-        messages: [
-          { role: 'assistant', content: `姓名：兮兮\n年龄：25\n${RECAP_TAIL}` },
-          { role: 'user', content: '没问题，但是电话错了' },
-        ],
-      }),
-    ).toEqual({ accepted: false, reason: 'candidate_quote_not_full_latest_reply' });
-  });
-
-  it('复述从未真实发出（引用凭空文案）不放行', () => {
+  it('复述从未真实发出时不放行', () => {
     expect(
       verify({
         messages: [{ role: 'user', content: '可以的，麻烦了' }],
       }),
-    ).toEqual({ accepted: false, reason: 'recap_quote_not_delivered' });
+    ).toEqual({ accepted: false, reason: 'recap_snapshot_mismatch' });
 
     expect(
       verify({
@@ -93,7 +76,7 @@ describe('recap confirmation notary', () => {
           { role: 'user', content: '可以的，麻烦了' },
         ],
       }),
-    ).toEqual({ accepted: false, reason: 'recap_quote_not_delivered' });
+    ).toEqual({ accepted: false, reason: 'recap_snapshot_mismatch' });
   });
 
   it('隔轮追认可绑定：首轮未确认、简短追问后候选人再确认（死锁回归）', () => {
@@ -101,7 +84,6 @@ describe('recap confirmation notary', () => {
     // 紧邻 assistant 组不再含「标签：值」行；快照未变时在案复述仍是有效锚点。
     expect(
       verify({
-        candidateTexts: ['稍等', '可以的，麻烦了'],
         messages: [
           { role: 'assistant', content: `帮你核对一下报名信息：\n姓名：兮兮\n年龄：25` },
           { role: 'assistant', content: RECAP_TAIL },
