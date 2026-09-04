@@ -94,7 +94,7 @@ Agent 在对话中根据候选人情况，自动将其拉入匹配的企微兼�
 
 ## 确定性闸门
 
-工具描述里的前置条件屡被模型击穿（badcase 63eefu6c：同会话两次违规拉群），因此全部关键前置已落成**工具运行时确定性闸门**，拒绝均为可恢复（reject_collect 语义），执行顺序如下：
+工具运行时只校验结构化、可客观判定的状态；候选人是否同意入群、是否已完成推荐、是否正在推进岗位等对话语义，由主 Agent 根据完整上下文判断，工具层不再通过关键词或正则二次裁决。确定性校验执行顺序如下：
 
 ### 0. 区县误传纠正
 
@@ -118,18 +118,11 @@ Agent 在对话中根据候选人情况，自动将其拉入匹配的企微兼�
 
 拒绝两分支：`invite.city_conflict`（与会话城市事实不一致，返回 `expectedCity`）/ `invite.city_unverified`（任何出处都找不到，先向候选人确认城市）。
 
-### 3. 时机 gate（`invite-timing-gate.ts`）
+### 3. 重复邀请 gate（`invite-timing-gate.ts`）
 
-四档判定（顺序即优先级）：
+会话记忆 `invitedGroups` 已有同城市记录时返回 `invite.already_invited`，换城市放行。该 gate 不接收聊天文本，也不校验查岗轮次或候选人同意句式。
 
-| 拒绝原因                  | 判据                                                               | errorType                       |
-| ------------------------- | ------------------------------------------------------------------ | ------------------------------- |
-| `already_invited_city`    | 会话记忆 `invitedGroups` 已有同城市记录（换城市放行）              | `invite.already_invited`        |
-| `no_job_result_this_turn` | 本轮没跑过 `duliday_job_list`（突兀拉群）                          | `invite.no_job_result`          |
-| `group_consent_required`  | 本轮查过岗但没有合法入群授权——既非预约成功首拉、亦非两轮协议第二轮 | `invite.group_consent_required` |
-| `booking_progress_signal` | 候选人本轮原话命中报名/约面推进词表（打断成单）                    | `invite.booking_in_progress`    |
-
-豁免：`bookingSucceeded === true`（场景 1）与 `groupOfferAccepted === true`（两轮协议第二轮，由"上一轮 assistant 征询 + 本轮 user 同意词"消息序列确定性识别）豁免后三档。`group_consent_required` 拒绝时，若已累计两轮推荐不满意，返回值内嵌 noMatchScript 指导模型本轮征询入群（进入两轮协议第一轮）。
+同轮预约工具明确返回 `success: false` 时，`invite_to_group` 仍以结构化的 `bookingSucceeded === false` 返回 `invite.booking_not_success`；这不是自然语言意图识别。
 
 ### 复聊触发来源
 
@@ -261,7 +254,7 @@ errcode=-12 表示平台已实际下发邀请卡片，**按投递成功处理**�
 
 ### 可恢复拒绝（模型按指令纠偏，不转人工）
 
-`invite.invalid_city_scope`（用 expectedCity 重调）/ `invite.city_conflict` / `invite.city_unverified`（先确认城市）/ `invite.no_job_result`（先查岗）/ `invite.booking_in_progress`（先推进这单约面）/ `invite.already_invited`（据实回应"邀请已发过"）/ `invite.group_consent_required`（按 noMatchScript 征询或继续正常推荐）/ `invite.booking_not_success`。
+`invite.invalid_city_scope`（用 expectedCity 重调）/ `invite.city_conflict` / `invite.city_unverified`（先确认城市）/ `invite.already_invited`（据实回应"邀请已发过"）/ `invite.booking_not_success`。
 
 所有失败场景共同底线：不向候选人提及群相关内容；**只有 `success: true` 才能用完成口径**声称群动作已发生。
 
