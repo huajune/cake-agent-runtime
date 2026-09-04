@@ -127,14 +127,13 @@ export const TOOL_GUARDRAIL_CATALOG = [
     coverage: GUARDRAIL_COVERAGE.CODE,
     priority: GUARDRAIL_PRIORITY.P1,
     description:
-      '拉群时机三档确定性闸门：本会话已给同城市拉过群 / 本轮还没跑过 duliday_job_list（突兀拉群）/ 候选人本轮正在推进报名约面（打断成单）→ 拒绝调用。预约成功后拉群（场景 1）豁免后两档。',
+      '拉群重复邀请闸门：本会话已给同城市拉过群 → 拒绝调用；换城市放行。是否已完成推荐、候选人是否同意入群等对话语义由主 Agent 判断，工具层不做文本二次裁决。',
     riskGoal:
-      '工具描述里的三条前置条件与禁止项只靠提示词约束，模型不遵循时会重复骚扰候选人、在查岗结论前突兀拉群、或在成单临门时打断（badcase 63eefu6c 同会话连犯两条）。',
+      '重复拉群只靠提示词约束时，模型会对同一候选人反复发同城群邀请造成骚扰（badcase 63eefu6c 同会话两次违规拉群）。',
     source: 'tools/invite/invite-timing-gate.ts + tools/invite-to-group.tool.ts',
-    exogenousSignal:
-      '会话记忆 invitedGroups（已拉群事实）+ 回合账本 jobListExecuted 标记 + 候选人本轮原话',
+    exogenousSignal: '会话记忆 invitedGroups（已拉群事实）',
     residualRisk:
-      '推进信号靠词表识别，口语变体（"那我明天过去吧"）仍会漏；候选人换城市时按放行处理，不拦跨城重复拉群。',
+      '候选人换城市时按放行处理，不拦跨城重复拉群；查岗轮次与入群同意的判断已交回主 Agent，模型不遵循时工具层不再兜底。',
     verification: 'tests/tools/invite/invite-timing-gate.spec.ts',
     owner: 'tools-runtime',
     status: 'active',
