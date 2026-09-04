@@ -13,13 +13,21 @@
  * 不按位置硬猜。
  */
 
-import { classifyIdentityAnswerText } from '@resolution/candidate/student-identity';
+import {
+  classifyIdentityAnswerText,
+  matchIdentityStatement,
+} from '@resolution/candidate/student-identity';
 import { findOptionBySemantics } from '../option-matching';
 import type { AdapterInput, SlotProposal } from './adapter.types';
 
 export function proposeIdentityStatus(input: AdapterInput): SlotProposal | null {
   const { field, candidateText } = input;
-  const identity = classifyIdentityAnswerText(candidateText);
+  // 裸「是/否/不是」只有在表单行或 fieldValueProposals 已经把答案绑定到本槽位时
+  // 才有确定语义。adapter_sweep 扫的是自由聊天历史，前一句可能问的是第二职业、
+  // 健康证或排班，不能把所有裸否定都解释成「不是学生＝社会人士」。
+  const identity = input.answerBound
+    ? classifyIdentityAnswerText(candidateText)
+    : matchIdentityStatement(candidateText);
   if (!identity) return null;
 
   // 学生档要认「全日制在校学生」「学生」「在籍」；社会档要认「社会人士」「社会」。
