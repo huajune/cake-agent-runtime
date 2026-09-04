@@ -1,6 +1,6 @@
 {
   "baseVersion": "11.3.0",
-  "nextVersion": "11.3.1",
+  "nextVersion": "11.4.0",
   "updatedAt": "2026-09-04",
   "sourceBranch": "develop",
   "entries": [
@@ -73,6 +73,63 @@
         "全量 `ci:check` 通过"
       ],
       "level": "patch"
+    },
+    {
+      "number": "1216",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1216",
+      "title": "周报运行数据自动投递飞书卡片",
+      "author": "huajune",
+      "mergedAt": "2026-09-04",
+      "businessUpdates": [
+        "新增 `scripts/weekly-ops-report/send-weekly-card.js`：读一个 payload JSON（`windowLabel` / `summary` / `metrics`），渲染成飞书交互卡片并投递。带 HMAC 签名、10s 超时、飞书 `code` 校验，支持 `--dry-run` 先看渲染。",
+        "卡片只带运行数据，不带系统改动条目——改动明细留在会话正文与 `docs/releases` 存档里。",
+        "webhook 凭证读 `.env.production` 的 `PRIVATE_CHAT_MONITOR_WEBHOOK_URL/SECRET`，目标群写死在脚本里，不接受运行时改群。",
+        "周报生成后，把「📊 本周运行数据」自动发成飞书卡片到**蛋糕私聊监控群**（与发版通知同群），标题固定「🍰 蛋糕私域托管 · 本周运行同步」，带 @所有人。",
+        "skill 第四节由「不要自动发企微/飞书」改为存档后自动投递飞书；**企微仍不自动发**。",
+        "顺带校正两处会让下一轮周报写错的统计口径。",
+        "`guardrail_review_records` 的口径写错了：它是**单写入者稀疏表**，放行回合根本不写行，所以 `count(*)` 不是「审查了多少条回复」。原 SKILL 让周报写成「审查 X 条回复」，是错的。",
+        "实测：08-24 周 1932 行里 1896 行是 `first_decision='pass'` 的仅观察命中；08-31 周降到 81 行，而 revise 25→31、block 11→8 基本持平。行数波动反映的是命中结构（误报被清掉），不是流量。",
+        "改成报「改写 / 拦截 / 仅观察命中」三档，并要求单独报 pass 行的环比。",
+        "转人工分组必须用 `payload->>'reason_code'`（结构化枚举），**不能**用 `payload->>'reason'`——后者是自由文本，且含候选人姓名与手机号，不得进入报告。原 SKILL 未作区分。"
+      ],
+      "summary": [
+        "周报运行数据自动投递飞书卡片",
+        "周报生成后，把「📊 本周运行数据」自动发成飞书卡片到**蛋糕私聊监控群**（与发版通知同群），标题固定「🍰 蛋糕私域托管 · 本周运行同步」，带 @所有人。",
+        "skill 第四节由「不要自动发企微/飞书」改为存档后自动投递飞书；**企微仍不自动发**。",
+        "顺带校正两处会让下一轮周报写错的统计口径。"
+      ],
+      "features": [
+        "新增 `scripts/weekly-ops-report/send-weekly-card.js`：读一个 payload JSON（`windowLabel` / `summary` / `metrics`），渲染成飞书交互卡片并投递。带 HMAC 签名、10s 超时、飞书 `code` 校验，支持 `--dry-run` 先看渲染。",
+        "卡片只带运行数据，不带系统改动条目——改动明细留在会话正文与 `docs/releases` 存档里。",
+        "webhook 凭证读 `.env.production` 的 `PRIVATE_CHAT_MONITOR_WEBHOOK_URL/SECRET`，目标群写死在脚本里，不接受运行时改群。",
+        "周报生成后，把「📊 本周运行数据」自动发成飞书卡片到**蛋糕私聊监控群**（与发版通知同群），标题固定「🍰 蛋糕私域托管 · 本周运行同步」，带 @所有人。",
+        "skill 第四节由「不要自动发企微/飞书」改为存档后自动投递飞书；**企微仍不自动发**。",
+        "顺带校正两处会让下一轮周报写错的统计口径。"
+      ],
+      "fixes": [
+        "`guardrail_review_records` 的口径写错了：它是**单写入者稀疏表**，放行回合根本不写行，所以 `count(*)` 不是「审查了多少条回复」。原 SKILL 让周报写成「审查 X 条回复」，是错的。",
+        "实测：08-24 周 1932 行里 1896 行是 `first_decision='pass'` 的仅观察命中；08-31 周降到 81 行，而 revise 25→31、block 11→8 基本持平。行数波动反映的是命中结构（误报被清掉），不是流量。",
+        "改成报「改写 / 拦截 / 仅观察命中」三档，并要求单独报 pass 行的环比。",
+        "转人工分组必须用 `payload->>'reason_code'`（结构化枚举），**不能**用 `payload->>'reason'`——后者是自由文本，且含候选人姓名与手机号，不得进入报告。原 SKILL 未作区分。"
+      ],
+      "optimizations": [
+        "输出模板补齐实际在用的「招聘漏斗（ops_events）」与「转人工」两段。",
+        "归档 2026-09-04 周报到 `docs/releases/2026/weekly-2026-09-04.md`。"
+      ],
+      "ops": [
+        "周报运行数据自动投递飞书卡片"
+      ],
+      "config": [
+        "无数据库 migration、无新增环境变量（复用已有的 `PRIVATE_CHAT_MONITOR_WEBHOOK_URL/SECRET`）。"
+      ],
+      "envFiles": [],
+      "verification": [
+        "`--dry-run` 渲染核对通过（卡头、markdown、@all、note 四个块齐全）",
+        "用本周真实数据实弹发送到私聊监控群，用户已在群里确认收到",
+        "`npx prettier --check` 通过",
+        "`lint:check` 只扫 `src/**/*.ts`，`scripts/*.js` 不在范围内（与现有 `send-deploy-notification.js` 一致）"
+      ],
+      "level": "minor"
     }
   ],
   "lastRelease": {
@@ -250,5 +307,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "8ab833bf957b0a595a1e568f6b475fb57faad6f6"
+  "lastAnalyzedSha": "ee450a4748ac61fc8af91d130ea2a7d0f3b35890"
 }
