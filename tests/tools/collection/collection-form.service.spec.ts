@@ -41,6 +41,7 @@ describe('CollectionFormService', () => {
   const store = {
     read: jest.fn(),
     readCurrentCandidateRef: jest.fn(),
+    readPrimaryCandidateRef: jest.fn(),
     write: jest.fn().mockResolvedValue(undefined),
     remove: jest.fn().mockResolvedValue(undefined),
   };
@@ -53,6 +54,7 @@ describe('CollectionFormService', () => {
     jest.clearAllMocks();
     store.read.mockResolvedValue(null);
     store.readCurrentCandidateRef.mockResolvedValue(null);
+    store.readPrimaryCandidateRef.mockResolvedValue(null);
     sessionState.saveCollectionProgressFact.mockResolvedValue(undefined);
     service = new CollectionFormService(store as never, sessionState as never);
   });
@@ -346,19 +348,47 @@ describe('CollectionFormService', () => {
       expect(cleared.slots[756].systemField).toBeUndefined();
     });
 
-    it('调用方不再传手机号时，经当前指针读回 rebind 后的人键表', async () => {
+    it('调用方不再传手机号时，经主候选人指针读回 rebind 后的人键表', async () => {
       const stored = createForm({
         candidateRef: TEST_PHONE,
         jobId: 528962,
         contract: [NAME_FIELD],
       });
       store.readCurrentCandidateRef.mockResolvedValue(TEST_PHONE);
+      store.readPrimaryCandidateRef.mockResolvedValue(TEST_PHONE);
       store.read.mockImplementation(async ({ candidateRef }: { candidateRef: string }) =>
         candidateRef === TEST_PHONE ? stored : null,
       );
 
       const form = await service.loadOrCreate(SCOPE, [NAME_FIELD]);
       expect(form.candidateRef).toBe(TEST_PHONE);
+    });
+
+    it('追加候选人成为活动表单后，普通 precheck 仍读主表，booking active 模式读追加表', async () => {
+      const secondPhone = '18271421691';
+      const primary = createForm({
+        candidateRef: TEST_PHONE,
+        jobId: SCOPE.jobId,
+        contract: [NAME_FIELD],
+      });
+      const additional = {
+        ...createForm({
+          candidateRef: secondPhone,
+          jobId: SCOPE.jobId,
+          contract: [NAME_FIELD],
+        }),
+        candidateScope: 'additional' as const,
+      };
+      store.readCurrentCandidateRef.mockResolvedValue(secondPhone);
+      store.readPrimaryCandidateRef.mockResolvedValue(TEST_PHONE);
+      store.read.mockImplementation(async ({ candidateRef }: { candidateRef: string }) =>
+        candidateRef === TEST_PHONE ? primary : candidateRef === secondPhone ? additional : null,
+      );
+
+      await expect(service.loadOrCreate(SCOPE, [NAME_FIELD])).resolves.toBe(primary);
+      await expect(
+        service.loadOrCreate(SCOPE, [NAME_FIELD], undefined, { locatorMode: 'active' }),
+      ).resolves.toBe(additional);
     });
   });
 

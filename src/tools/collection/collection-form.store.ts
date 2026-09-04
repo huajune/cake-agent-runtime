@@ -35,10 +35,10 @@ export function buildCollectionFormKey(params: {
 }
 
 /**
- * 当前会话/岗位正在办理的人键指针。
+ * 当前会话/岗位最近一次推进的人键指针。
  *
- * 手机号写进表单后实体会从 `session` 搬到手机号 key；后续 booking 工具不再接收
- * candidatePhone，因此必须有一个同会话、同岗位的稳定定位入口，不能靠调用方重复传 PII。
+ * booking 工具不接收 candidatePhone，必须沿用刚刚通过 precheck 的活动表单；多人代报时
+ * 这里可以短暂指向 additional 候选人。
  */
 export function buildCollectionFormLocatorKey(params: {
   corpId: string;
@@ -47,6 +47,21 @@ export function buildCollectionFormLocatorKey(params: {
   jobId: number;
 }): string {
   return `collection-form-current:${params.corpId}:${params.userId}:${params.botUserId}:${params.jobId}`;
+}
+
+/**
+ * 当前联系人的主表单指针。
+ *
+ * 与活动指针分开：additional 候选人需要成为 booking 的活动表单，但不能把后续“不传手机号”
+ * 的主候选人 precheck 路由到 additional 表单。
+ */
+export function buildCollectionFormPrimaryLocatorKey(params: {
+  corpId: string;
+  userId: string;
+  botUserId: string;
+  jobId: number;
+}): string {
+  return `collection-form-primary:${params.corpId}:${params.userId}:${params.botUserId}:${params.jobId}`;
 }
 
 @Injectable()
@@ -74,9 +89,20 @@ export class CollectionFormStore {
     botUserId: string;
     jobId: number;
   }): Promise<string | null> {
-    const entry = await this.redis.get<CollectionFormStoreEntry>(
-      buildCollectionFormLocatorKey(params),
-    );
+    return this.readLocatorCandidateRef(buildCollectionFormLocatorKey(params));
+  }
+
+  async readPrimaryCandidateRef(params: {
+    corpId: string;
+    userId: string;
+    botUserId: string;
+    jobId: number;
+  }): Promise<string | null> {
+    return this.readLocatorCandidateRef(buildCollectionFormPrimaryLocatorKey(params));
+  }
+
+  private async readLocatorCandidateRef(key: string): Promise<string | null> {
+    const entry = await this.redis.get<CollectionFormStoreEntry>(key);
     const content = entry?.content;
     if (!content || typeof content !== 'object') return null;
     const candidateRef = (content as { candidateRef?: unknown }).candidateRef;
@@ -103,6 +129,12 @@ export class CollectionFormStore {
     });
     await this.writeSnapshot(formKey, form as unknown as Record<string, unknown>);
     await this.writeSnapshot(locatorKey, { candidateRef: form.candidateRef });
+    if (form.candidateScope !== 'additional') {
+      await this.writeSnapshot(
+        buildCollectionFormPrimaryLocatorKey({ ...params, jobId: form.jobId }),
+        { candidateRef: form.candidateRef },
+      );
+    }
   }
 
   async remove(params: {
@@ -113,9 +145,15 @@ export class CollectionFormStore {
     jobId: number;
   }): Promise<void> {
     await this.redis.del(buildCollectionFormKey(params));
-    const currentRef = await this.readCurrentCandidateRef(params);
+    const [currentRef, primaryRef] = await Promise.all([
+      this.readCurrentCandidateRef(params),
+      this.readPrimaryCandidateRef(params),
+    ]);
     if (currentRef === params.candidateRef) {
       await this.redis.del(buildCollectionFormLocatorKey(params));
+    }
+    if (primaryRef === params.candidateRef) {
+      await this.redis.del(buildCollectionFormPrimaryLocatorKey(params));
     }
   }
 

@@ -303,6 +303,8 @@ describe('duliday_interview_booking（form → labelList）', () => {
         jobId: 100,
       },
       expect.any(Array),
+      undefined,
+      { locatorMode: 'active' },
     );
     expect(collectionForms.persist).toHaveBeenLastCalledWith(
       expect.objectContaining({ botUserId: 'wecom-user-A', jobId: 100 }),

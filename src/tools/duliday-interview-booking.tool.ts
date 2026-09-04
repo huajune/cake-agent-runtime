@@ -196,7 +196,9 @@ export function buildInterviewBookingTool(
         try {
           const rawContract = await spongeService.fetchJobCollectionContract(jobId, tokenContext);
           const mapped = mapContractFields(rawContract, parseIdentityAnchors(deps.identityAnchors));
-          const form = await deps.collectionForms.loadOrCreate(scope, mapped.fields);
+          const form = await deps.collectionForms.loadOrCreate(scope, mapped.fields, undefined, {
+            locatorMode: 'active',
+          });
           const contract = form.contractSnapshot?.fields;
           if (!contract || !contractFieldsEqual(contract, mapped.fields)) {
             return fail(

@@ -1,6 +1,7 @@
 import {
   buildCollectionFormKey,
   buildCollectionFormLocatorKey,
+  buildCollectionFormPrimaryLocatorKey,
   COLLECTION_FORM_TTL_SECONDS,
   CollectionFormStore,
 } from '@tools/collection/collection-form.store';
@@ -45,16 +46,20 @@ describe('CollectionFormStore', () => {
     await expect(store.read({ ...SCOPE, candidateRef: 'session' })).resolves.toBeNull();
   });
 
-  it('当前人键指针只接受非空字符串', async () => {
+  it('活动/主候选人指针只接受非空字符串', async () => {
     redis.get.mockResolvedValueOnce({ content: { candidateRef: '18271421690' } });
     await expect(store.readCurrentCandidateRef(SCOPE)).resolves.toBe('18271421690');
     expect(redis.get).toHaveBeenCalledWith(buildCollectionFormLocatorKey(SCOPE));
 
     redis.get.mockResolvedValueOnce({ content: { candidateRef: '' } });
     await expect(store.readCurrentCandidateRef(SCOPE)).resolves.toBeNull();
+
+    redis.get.mockResolvedValueOnce({ content: { candidateRef: '18271421690' } });
+    await expect(store.readPrimaryCandidateRef(SCOPE)).resolves.toBe('18271421690');
+    expect(redis.get).toHaveBeenLastCalledWith(buildCollectionFormPrimaryLocatorKey(SCOPE));
   });
 
-  it('整实体与当前人键指针均按收资域 3 天 TTL 覆盖写', async () => {
+  it('主候选人整实体、活动指针与主指针均按收资域 3 天 TTL 覆盖写', async () => {
     const form = createForm({
       candidateRef: '18271421690',
       jobId: SCOPE.jobId,
@@ -73,6 +78,37 @@ describe('CollectionFormStore', () => {
       buildCollectionFormLocatorKey(SCOPE),
       COLLECTION_FORM_TTL_SECONDS,
       expect.objectContaining({ content: { candidateRef: form.candidateRef } }),
+    );
+    expect(redis.setex).toHaveBeenNthCalledWith(
+      3,
+      buildCollectionFormPrimaryLocatorKey(SCOPE),
+      COLLECTION_FORM_TTL_SECONDS,
+      expect.objectContaining({ content: { candidateRef: form.candidateRef } }),
+    );
+  });
+
+  it('追加候选人只切换活动指针，不覆盖主候选人指针', async () => {
+    const form = {
+      ...createForm({
+        candidateRef: '18271421691',
+        jobId: SCOPE.jobId,
+        contract: [FIELD],
+      }),
+      candidateScope: 'additional' as const,
+    };
+    await store.write(SCOPE, form);
+
+    expect(redis.setex).toHaveBeenCalledTimes(2);
+    expect(redis.setex).toHaveBeenNthCalledWith(
+      2,
+      buildCollectionFormLocatorKey(SCOPE),
+      COLLECTION_FORM_TTL_SECONDS,
+      expect.objectContaining({ content: { candidateRef: form.candidateRef } }),
+    );
+    expect(redis.setex).not.toHaveBeenCalledWith(
+      buildCollectionFormPrimaryLocatorKey(SCOPE),
+      expect.anything(),
+      expect.anything(),
     );
   });
 
@@ -107,20 +143,22 @@ describe('CollectionFormStore', () => {
     expect(buildCollectionFormKey({ ...shared, botUserId: 'wecom-user-A' })).not.toBe(
       buildCollectionFormKey({ ...shared, botUserId: 'wecom-user-B' }),
     );
-    expect(
-      buildCollectionFormLocatorKey({ ...SCOPE, botUserId: 'wecom-user-A' }),
-    ).not.toBe(buildCollectionFormLocatorKey({ ...SCOPE, botUserId: 'wecom-user-B' }));
-    await expect(
-      store.read({ ...shared, botUserId: 'wecom-user-A' }),
-    ).resolves.toEqual(formA);
-    await expect(
-      store.read({ ...shared, botUserId: 'wecom-user-B' }),
-    ).resolves.toEqual(formB);
+    expect(buildCollectionFormLocatorKey({ ...SCOPE, botUserId: 'wecom-user-A' })).not.toBe(
+      buildCollectionFormLocatorKey({ ...SCOPE, botUserId: 'wecom-user-B' }),
+    );
+    await expect(store.read({ ...shared, botUserId: 'wecom-user-A' })).resolves.toEqual(formA);
+    await expect(store.read({ ...shared, botUserId: 'wecom-user-B' })).resolves.toEqual(formB);
     await expect(
       store.readCurrentCandidateRef({ ...SCOPE, botUserId: 'wecom-user-A' }),
     ).resolves.toBe(shared.candidateRef);
     await expect(
       store.readCurrentCandidateRef({ ...SCOPE, botUserId: 'wecom-user-B' }),
+    ).resolves.toBe(shared.candidateRef);
+    await expect(
+      store.readPrimaryCandidateRef({ ...SCOPE, botUserId: 'wecom-user-A' }),
+    ).resolves.toBe(shared.candidateRef);
+    await expect(
+      store.readPrimaryCandidateRef({ ...SCOPE, botUserId: 'wecom-user-B' }),
     ).resolves.toBe(shared.candidateRef);
   });
 

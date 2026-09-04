@@ -160,6 +160,8 @@ outcome=`restated` 落审计；askCount 不清零防刷熔断配额）。系统/
 
 - Redis 快照 `collection-form:{corpId}:{userId}:{botUserId}:{candidateRef}:{jobId}`，
   `botUserId` 取稳定企微 `wecomUserId`；整实体读写，回合租约（90s 心跳）单写者，无 CAS；
+  `collection-form-primary:*` 固定主候选人默认入口，`collection-form-current:*` 只表示刚通过
+  precheck、供同轮 booking 消费的活动表单；additional 表单可切换活动指针，但不得覆盖主指针。
   列入「丢了算事故」key 清单。契约快照与 slots 同实体原子落盘；旧表单没有
   `contractSnapshot` 时不得直接校验，先走纯 jobId 查询建立快照。旧 key 不迁移，随 3 天 TTL
   自然过期；兼容窗内旧槽位 `confidence:'medium'` 保守触发 recap，窗口结束后临时兼容失效。

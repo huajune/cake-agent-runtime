@@ -39,6 +39,8 @@ export interface CollectionFormLoadOptions {
    * 也绝不能复用 session 默认表单；否则追加候选人的资料会污染当前联系人。
    */
   candidateScope?: 'additional';
+  /** booking 专用：沿用刚通过 precheck 的活动表单；普通 precheck 默认读取主候选人表单。 */
+  locatorMode?: 'active';
 }
 
 type ProgressCandidateField = Exclude<CandidateFieldKey, 'supplementAnswers'>;
@@ -103,7 +105,11 @@ export class CollectionFormService {
     options?: CollectionFormLoadOptions,
   ): Promise<BookingCollectionForm> {
     const candidateRef = normalizeCandidateRef(candidatePhone);
-    const currentRef = await this.store.readCurrentCandidateRef(scope);
+    const [currentRef, primaryRef] = await Promise.all([
+      this.store.readCurrentCandidateRef(scope),
+      this.store.readPrimaryCandidateRef(scope),
+    ]);
+    const defaultRef = options?.locatorMode === 'active' ? currentRef : (primaryRef ?? currentRef);
     const explicitlyAdditional =
       options?.candidateScope === 'additional' && candidateRef !== SESSION_CANDIDATE_REF;
 
@@ -113,16 +119,24 @@ export class CollectionFormService {
       if (
         !existing &&
         !explicitlyAdditional &&
-        (!currentRef || currentRef === SESSION_CANDIDATE_REF)
+        (!defaultRef || defaultRef === SESSION_CANDIDATE_REF)
       ) {
         // 第一个候选人往往先填姓名/年龄、后给手机号；此时延续 session
         // 默认表单，后续 rebind 到手机号，不丢已收资料。
         existing = await this.store.read({ ...scope, candidateRef: SESSION_CANDIDATE_REF });
       }
     } else {
-      existing =
-        (currentRef ? await this.store.read({ ...scope, candidateRef: currentRef }) : null) ??
-        (await this.store.read({ ...scope, candidateRef: SESSION_CANDIDATE_REF }));
+      existing = defaultRef ? await this.store.read({ ...scope, candidateRef: defaultRef }) : null;
+      // 兼容尚未写 primary locator 的旧快照：若旧 current 已被 additional 占用，
+      // 普通 precheck 不能沿它读，回落 session 主表；booking 的 active 模式仍照常读取。
+      if (
+        options?.locatorMode !== 'active' &&
+        !primaryRef &&
+        existing?.candidateScope === 'additional'
+      ) {
+        existing = null;
+      }
+      existing ??= await this.store.read({ ...scope, candidateRef: SESSION_CANDIDATE_REF });
     }
 
     if (!existing) {
@@ -130,9 +144,9 @@ export class CollectionFormService {
       const isAdditionalCandidate =
         explicitlyAdditional ||
         (candidateRef !== SESSION_CANDIDATE_REF &&
-          currentRef != null &&
-          currentRef !== SESSION_CANDIDATE_REF &&
-          currentRef !== candidateRef);
+          defaultRef != null &&
+          defaultRef !== SESSION_CANDIDATE_REF &&
+          defaultRef !== candidateRef);
       return isAdditionalCandidate ? { ...created, candidateScope: 'additional' } : created;
     }
     let routed =
