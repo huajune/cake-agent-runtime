@@ -243,12 +243,12 @@ export default function MessageProcessingTable({
                         {botLabel}
                       </span>
                     </td>
-                    <td>
+                    <td className={styles.previewCell}>
                       <span className={styles.preview} title={record.messagePreview}>
                         {record.messagePreview || '–'}
                       </span>
                     </td>
-                    <td className={styles.previewFlexCell}>
+                    <td className={styles.previewCell}>
                       <span
                         className={`${styles.preview} ${styles.previewReply}`}
                         title={record.replyPreview}

@@ -15,6 +15,7 @@ $dream-3: #f2f7ff;
 $fill: rgba($dream-1, 0.7);
 $hover: rgba($dream-1, 0.65);
 $hairline: #e9e9f2;
+$row-line: #f0f0f6;
 $header-height: 38px;
 
 @keyframes shimmer {
@@ -85,10 +86,9 @@ $header-height: 38px;
     white-space: nowrap;
   }
 
-  // 不画行线：靠留白分行，悬停时整行圆角浅紫高亮
   tbody td {
     padding: 12px 8px;
-    border-bottom: 0;
+    border-bottom: 1px solid $row-line;
     vertical-align: middle;
     white-space: nowrap;
     font-variant-numeric: tabular-nums;
@@ -97,6 +97,10 @@ $header-height: 38px;
 
   tbody tr:first-child td {
     padding-top: 14px;
+  }
+
+  tbody tr:last-child td {
+    border-bottom: 0;
   }
 }
 
@@ -183,19 +187,17 @@ $header-height: 38px;
 .preview {
   @include text-ellipsis;
   display: block;
-  max-width: 105px;
   color: $ink-2;
 }
 
-// 响应摘要列吃掉剩余宽度：width:100% + max-width:0 让它不再按内容撑开，min-width 兜底不塌
-.previewFlexCell {
-  width: 100%;
+// 输入/响应摘要等宽：两格各要 50%，max-width:0 让它们不按内容撑开，剩余宽度对半分
+.previewCell {
+  width: 50%;
   max-width: 0;
   min-width: 100px;
 }
 
 .previewReply {
-  max-width: none;
   color: $gray;
 }
 
