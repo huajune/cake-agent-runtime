@@ -185,7 +185,7 @@ LLM 决定拉群（city 必填, industry 强烈建议）
   ├─ 0. 本轮 booking 失败短路 / 区县误传纠正（expectedCity）
   ├─ 1. 前置已在群闸门（缓存群列表 + 实时成员关系）→ 已在群直接 success
   ├─ 2. 城市 provenance gate（五档出处）→ conflict/unverified 拒绝
-  ├─ 3. 时机 gate（already_invited / no_job_result / consent / progress）
+  ├─ 3. 重复邀请 gate（already_invited；换城市放行）
   ├─ 4. testing 链路（test-suite 重放）在此返回模拟成功，不触达企业接口
   │
   ├─ 5. 获取兼职群列表（forceRefresh）→ 城市过滤 → 行业精筛（可回退）
