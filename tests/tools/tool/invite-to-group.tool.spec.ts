@@ -213,106 +213,8 @@ describe('buildInviteToGroupTool', () => {
     expect(mockMemoryService.saveInvitedGroup).toHaveBeenCalled();
   });
 
-  // badcase 63eefu6c / chat 6a68392bce406a6aee39dd0a（2026-07-29）：同会话两次拉群 ——
-  // 一次在查岗结论出来前，一次在候选人问"直接去门店面试吗还是怎么样"时。
-  describe('时机 gate 端到端（badcase 63eefu6c）', () => {
-    it.each([
-      [false, TOOL_ERROR_TYPES.INVITE_NO_JOB_RESULT],
-      [true, TOOL_ERROR_TYPES.INVITE_GROUP_CONSENT_REQUIRED],
-    ] as const)(
-      '同一步重复拉群（jobListExecuted=%s）应在企微成员预检前快速拒绝',
-      async (jobListExecuted, expectedErrorType) => {
-        const preflightExistingMembership = jest.fn().mockResolvedValue(null);
-        const invite = jest.fn();
-        const builder = buildInviteToGroupTool({
-          preflightExistingMembership,
-          invite,
-        } as unknown as GroupInviteService);
-        const builtTool = builder(buildContext({ jobListExecuted, bookingSucceeded: undefined }));
-
-        const execute = (toolCallId: string) =>
-          builtTool.execute!(
-            { city: '上海', industry: '餐饮' },
-            {
-              toolCallId,
-              context: {},
-              messages: [],
-              abortSignal: undefined as never,
-            },
-          );
-        const results = await Promise.all([execute('duplicate-1'), execute('duplicate-2')]);
-
-        expect(results).toEqual([
-          expect.objectContaining({ success: false, errorType: expectedErrorType }),
-          expect.objectContaining({ success: false, errorType: expectedErrorType }),
-        ]);
-        expect(preflightExistingMembership).not.toHaveBeenCalled();
-        expect(invite).not.toHaveBeenCalled();
-      },
-    );
-
-    it('本轮未查岗就拉群：拒绝且不触达企业接口', async () => {
-      const result = await executeTool(
-        { city: '上海' },
-        { jobListExecuted: false, bookingSucceeded: undefined },
-      );
-
-      expect(result.success).toBe(false);
-      expect(result.errorType).toBe(TOOL_ERROR_TYPES.INVITE_NO_JOB_RESULT);
-      expect(result._replyInstruction).toContain('duliday_job_list');
-      expect(result._replyInstruction).toContain('不要调用 request_handoff');
-      expect(mockGroupResolver.resolveGroups).not.toHaveBeenCalled();
-      expect(mockRoomService.addMemberEnterprise).not.toHaveBeenCalled();
-    });
-
-    it('本轮查过岗位但没有两轮协议同意：拒绝且不触达企业接口', async () => {
-      const result = await executeTool(
-        { city: '上海' },
-        { jobListExecuted: true, bookingSucceeded: undefined },
-      );
-
-      expect(result.success).toBe(false);
-      expect(result.errorType).toBe(TOOL_ERROR_TYPES.INVITE_GROUP_CONSENT_REQUIRED);
-      expect(result._replyInstruction).toContain('真实无岗');
-      expect(mockGroupResolver.resolveGroups).not.toHaveBeenCalled();
-      expect(mockRoomService.addMemberEnterprise).not.toHaveBeenCalled();
-    });
-
-    it('历史文本看似两轮否定也只按当前同意工具闸门拒绝，不做正则轮次裁决', async () => {
-      const result = await executeTool(
-        { city: '上海' },
-        {
-          jobListExecuted: true,
-          bookingSucceeded: undefined,
-          currentUserMessage: '没有近的，都有点远',
-          messages: [
-            { role: 'user', content: '我在上海找兼职' },
-            {
-              role: 'assistant',
-              content: '必胜客（A店）2km，班次09:00-18:00，薪资22元/时',
-            },
-            { role: 'assistant', content: '你看这家方便吗' },
-            { role: 'user', content: '时间太长了，不合适' },
-            {
-              role: 'assistant',
-              content: '成都你六姐（B店）8km，班次18:00-22:00，薪资24元/时',
-            },
-            { role: 'assistant', content: '你看这家方便吗' },
-            { role: 'user', content: '没有近的，都有点远' },
-          ],
-        },
-      );
-
-      expect(result.success).toBe(false);
-      expect(result.errorType).toBe(TOOL_ERROR_TYPES.INVITE_GROUP_CONSENT_REQUIRED);
-      expect(result.noMatchScript).toBeUndefined();
-      expect(result.dissatisfiedRecommendationRounds).toBeUndefined();
-      expect(result._replyInstruction).toContain('主 Agent 根据完整对话确认');
-      expect(result._replyInstruction).toContain('不要再次调用 invite_to_group');
-      expect(mockRoomService.addMemberEnterprise).not.toHaveBeenCalled();
-    });
-
-    it('两轮协议第二轮：上一轮已征询且本轮同意时无需重复查岗即可实调邀请', async () => {
+  describe('时机 gate 端到端', () => {
+    it('主 Agent 已判断候选人同意时，工具层不再用查岗轮次或同意句式二次拒绝', async () => {
       mockGroupResolver.resolveGroups.mockResolvedValue([makeGroup({ memberCount: 10 })]);
       mockRoomService.addMemberEnterprise.mockResolvedValue({ errcode: 0 });
 
@@ -321,14 +223,11 @@ describe('buildInviteToGroupTool', () => {
         {
           jobListExecuted: false,
           bookingSucceeded: undefined,
-          currentUserMessage: '可以',
+          currentUserMessage: '好的，那麻烦你给我拉群里吧[呲牙]',
           messages: [
             { role: 'user', content: '我在上海找兼职' },
-            {
-              role: 'assistant',
-              content: '可以邀请你进上海兼职岗位信息群，你愿意的话回复我“可以”',
-            },
-            { role: 'user', content: '可以' },
+            { role: 'assistant', content: '我拉你进个兼职群，后面有岗位会通知你' },
+            { role: 'user', content: '好的，那麻烦你给我拉群里吧[呲牙]' },
           ],
         },
       );
@@ -336,18 +235,6 @@ describe('buildInviteToGroupTool', () => {
 
       expect(result.success).toBe(true);
       expect(mockRoomService.addMemberEnterprise).toHaveBeenCalledTimes(1);
-    });
-
-    it('候选人正在追问报名/面试怎么走：拒绝拉群，指令回到约面收尾', async () => {
-      const result = await executeTool(
-        { city: '上海' },
-        { currentUserMessage: '直接去门店面试吗还是怎么样', bookingSucceeded: undefined },
-      );
-
-      expect(result.success).toBe(false);
-      expect(result.errorType).toBe(TOOL_ERROR_TYPES.INVITE_BOOKING_IN_PROGRESS);
-      expect(result._replyInstruction).toContain('打断成单');
-      expect(mockRoomService.addMemberEnterprise).not.toHaveBeenCalled();
     });
 
     it('本会话已给同城市拉过群：拒绝重复邀请并带出群名', async () => {

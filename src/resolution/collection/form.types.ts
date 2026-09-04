@@ -204,7 +204,7 @@ export interface BookingScheduleDraft {
 }
 
 /**
- * 最近一次“查询报名表单”时取得的完整岗位收资契约。
+ * 最近一次 query，或首次 validate 时取得的完整岗位收资契约。
  *
  * 校验与提交必须消费这份持久快照，不能在候选人填写过程中悄悄切到另一版海绵配置。
  * 不单存 fingerprint：它可由 fields 确定性计算，双写反而可能产生漂移。
@@ -229,7 +229,7 @@ export interface BookingCollectionForm {
    */
   candidateScope?: 'additional';
   jobId: number;
-  /** 只由“查询报名表单”路径建立或刷新；旧存量表单可能暂时缺失。 */
+  /** 由 query 刷新，或在首次 validate 时建立；旧存量表单可能暂时缺失。 */
   contractSnapshot?: CollectionContractSnapshot;
   /** 以 labelId 为键的槽位表。 */
   slots: Record<number, FormSlot>;

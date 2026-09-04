@@ -41,10 +41,11 @@
 ## 3. 一轮数据流
 
 ```
-纯 jobId 查询：实时取契约 → loadOrCreate → refreshContractSnapshot → persist
+mode=query（查询/刷新）：实时取契约 → loadOrCreate → refreshContractSnapshot → persist
   → 按持久快照返回 bookingChecklist（空标签岗=数据异常→escalated+告警）
-候选人回复后的校验：实时契约只作漂移比对 → loadOrCreate 持久表单
-  → 无 contractSnapshot 返回 collection_form_not_presented
+  → 只读协议：不消费 candidateTexts/messages/fieldValueProposals，不触发 adapter_sweep
+mode=validate（校验候选人资料）：实时契约只作漂移比对 → loadOrCreate 持久表单
+  → 无 contractSnapshot 则同次 refreshContractSnapshot 原子建快照后校验（不再要求先空跑一次 query）
   → 实时契约 != contractSnapshot 返回 contract_changed，禁止混版校验
   → 相等时只消费 contractSnapshot（phone 到达即 rebind）
   → collectFieldValueProposals 汇总三通道提案（只对 empty 槽位）：

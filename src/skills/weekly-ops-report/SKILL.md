@@ -48,7 +48,7 @@ SELECT count(*) AS turns, count(DISTINCT chat_id) AS chats,
 
 同样两段式再取：
 
-- `guardrail_review_records`：`count(*)` 审查数、`final_decision='block'` 拦截数、`repaired` 改写数（用 `created_at`）
+- `guardrail_review_records`：`count(*)` 写入行数、`final_decision='block'` 拦截数、`repaired` 改写数，再按 `first_decision` 分组（用 `created_at`）。**这是单写入者稀疏表——放行回合不写行，行数≠审查量**，不要写成「审查 X 条回复」；`first_decision='pass'` 的行是仅观察命中（误报的主要去处），单独报它的环比更有信息量。
 - `reengagement_touch_records`：`count(*)` 计划数、`status='sent'` 实发数（用 `created_at`）
 
 ### 3. BadCase 治理台账（飞书表）
@@ -72,7 +72,9 @@ node scripts/weekly-ops-report/collect-badcase-stats.js <since> <until>
 
 #### 📊 本周运行数据
 - 对话：X 轮 / Y 位候选人，处理成功率 Z%
-- 出站守卫：审查 X 条回复，改写 Y 条，拦截 Z 条
+- 招聘漏斗（ops_events）：新增好友 / 破冰 / 岗位推荐 / 拉群邀请 / 预检通过 / 报名成功（失败）/ 改约 / 取消 / 面试通过
+- 转人工：X 次，按 `payload->>'reason_code'` 分组（**不是** `payload->>'reason'`，那列是自由文本且含候选人 PII，不要入报告）
+- 出站守卫：改写 X 条，拦截 Y 条；仅观察命中 Z 次（环比）
 - 二次触达：计划 X 条，实发 Y 条
 - BadCase：本周新提交 X 条（待分析 a / 处理中 b / 待验证 c / 已解决 d）；累计 M 条，已解决 N 条（P%）
 - 质量密度：每千回合反馈 X.X 条（上周 Y.Y，8 月基线 4.3）
@@ -96,4 +98,32 @@ node scripts/weekly-ops-report/collect-badcase-stats.js <since> <until>
 
 ## 四、交付
 
-生成后直接在会话里输出全文，并写一份到 `docs/releases/<年>/weekly-YYYY-MM-DD.md` 存档。**不要**自动发企微/飞书——外发由人决定。
+生成后直接在会话里输出全文，并写一份到 `docs/releases/<年>/weekly-YYYY-MM-DD.md` 存档。
+
+### 自动投递运行数据卡片（飞书 · 蛋糕私聊监控群）
+
+存档写完后，**把「📊 本周运行数据」那一段发成飞书卡片**（用户 2026-09-04 授权的常规动作，无需再逐次确认）：
+
+```bash
+node scripts/weekly-ops-report/send-weekly-card.js <payload.json> --dry-run   # 先看渲染
+node scripts/weekly-ops-report/send-weekly-card.js <payload.json>             # 确认无误再发
+```
+
+payload 写到会话 scratchpad（不要提交进仓库），结构：
+
+```json
+{
+  "windowLabel": "08/31 ~ 09/04",
+  "summary": "一句话业务概述，与周报开头的引言同文",
+  "metrics": ["运行数据段的每条 bullet，去掉行首的 - "]
+}
+```
+
+规则：
+
+- 卡片标题固定 `🍰 蛋糕私域托管 · 本周运行同步`，目标群固定蛋糕私聊监控群（`PRIVATE_CHAT_MONITOR_WEBHOOK_URL`，与发版通知同群），脚本已写死，不要改成别的群。
+- **卡片只带运行数据**，不带系统改动条目——改动明细留在会话正文与 `docs/releases` 存档里。
+- 卡片带 `<at id=all></at>` @所有人（与发版通知一致，用户 2026-09-04 要求），不要去掉。
+- 先跑一次 `--dry-run` 核对渲染，再真发；发完在会话里说明已发送。
+- 发送失败不要重试超过一次，把错误原样报给用户即可。
+- **企微仍然不自动发**——外发企微由人决定。

@@ -97,6 +97,33 @@ describe('identity-core.adapter', () => {
   });
 });
 
+describe('identity-status.adapter', () => {
+  const field: ContractFieldDef = {
+    labelId: 606,
+    labelTitle: '社会身份',
+    fieldType: 'SINGLE_OPTION',
+    required: true,
+    acceptedOptions: [
+      { optionCode: '1', optionLabel: '学生' },
+      { optionCode: '2', optionLabel: '社会人士' },
+    ],
+    rejectedOptions: [],
+  };
+
+  it('自由聊天里的裸否定不映射身份；绑定到身份槽位后才按否=社会人士解释', () => {
+    expect(proposeIdentityStatus(input(field, '不是'))).toBeNull();
+    expect(proposeIdentityStatus({ ...input(field, '不是'), answerBound: true })).toEqual(
+      expect.objectContaining({ value: '社会人士', optionCodes: ['2'] }),
+    );
+  });
+
+  it('自由聊天里的明确身份自陈仍可识别', () => {
+    expect(proposeIdentityStatus(input(field, '我不是学生'))).toEqual(
+      expect.objectContaining({ value: '社会人士', optionCodes: ['2'] }),
+    );
+  });
+});
+
 describe('education.adapter', () => {
   it('解析器 → 海绵学历 id → 契约选项成员判定', () => {
     const proposal = proposeEducation(input(EDUCATION_FIELD, '我是大专毕业的'));
