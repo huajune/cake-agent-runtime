@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [11.4.0] - 2026-09-04
 
-**预计版本**: `v11.4.0`
-**最近更新**: `2026-09-04`
 **来源分支**: `develop`
-**累计 PR**: 4
 
 ### 更新摘要
 - PR #1211 流水表恢复行分隔线并让两个摘要列等宽
@@ -95,7 +91,6 @@
 - PR #1217 `lint:check` 通过（`--max-warnings=0`）
 - PR #1217 `duliday-interview-precheck.tool.spec.ts` 53 passed
 - PR #1217 `adapters.spec.ts` + `proposal-intake.spec.ts` 72 passed
-<!-- release:pending:end -->
 
 ## [11.3.0] - 2026-09-04
 
