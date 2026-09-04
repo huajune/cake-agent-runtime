@@ -1,390 +1,183 @@
 {
-  "baseVersion": "11.2.1",
+  "baseVersion": "11.3.0",
   "nextVersion": "11.3.0",
+  "lastAnalyzedSha": null,
   "updatedAt": "2026-09-04",
   "sourceBranch": "develop",
-  "entries": [
-    {
-      "number": "1202",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1202",
-      "title": "补回回合装配重构删掉的预约、视觉与回放覆盖",
-      "author": "huajune",
-      "mergedAt": "2026-09-03",
-      "businessUpdates": [
-        "补回回合装配重构删掉的预约、视觉与回放覆盖"
-      ],
-      "summary": [
-        "补回回合装配重构删掉的预约、视觉与回放覆盖"
-      ],
-      "features": [],
-      "fixes": [],
-      "optimizations": [
-        "补回回合装配重构删掉的预约、视觉与回放覆盖"
-      ],
-      "ops": [],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "只加测试，不改任何生产代码。",
-        "`pnpm run test:ci`：458 套件 / 6624 用例通过（较基线 +34）。",
-        "变异验证：摘掉 `injectImageParts` 的占位符定位后，占位符那一例即红，确认它守的是真不变量。"
-      ],
-      "level": "patch"
-    },
-    {
-      "number": "1204",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1204",
-      "title": "收紧消息处理调用表访问权限",
-      "author": "huajune",
-      "mergedAt": "2026-09-03",
-      "businessUpdates": [
-        "修复 `20260902073727_retention_schema_audit.sql` 创建 `message_processing_invocations` 时遗漏 RLS，导致 public schema 默认授权下 Data API 客户端角色可能访问整表的问题",
-        "为 `public.message_processing_invocations` 启用 RLS，修复 Supabase Security Advisor 的 `RLS Disabled in Public` 错误",
-        "撤销 `PUBLIC`、`anon`、`authenticated` 的表权限，仅保留后端 `service_role` 的显式 CRUD 权限和全量策略",
-        "增加迁移契约测试，防止后续重新开放保存完整 Agent 请求/响应快照的敏感表"
-      ],
-      "summary": [
-        "收紧消息处理调用表访问权限",
-        "为 `public.message_processing_invocations` 启用 RLS，修复 Supabase Security Advisor 的 `RLS Disabled in Public` 错误",
-        "撤销 `PUBLIC`、`anon`、`authenticated` 的表权限，仅保留后端 `service_role` 的显式 CRUD 权限和全量策略",
-        "增加迁移契约测试，防止后续重新开放保存完整 Agent 请求/响应快照的敏感表"
-      ],
-      "features": [],
-      "fixes": [
-        "修复 `20260902073727_retention_schema_audit.sql` 创建 `message_processing_invocations` 时遗漏 RLS，导致 public schema 默认授权下 Data API 客户端角色可能访问整表的问题",
-        "为 `public.message_processing_invocations` 启用 RLS，修复 Supabase Security Advisor 的 `RLS Disabled in Public` 错误",
-        "撤销 `PUBLIC`、`anon`、`authenticated` 的表权限，仅保留后端 `service_role` 的显式 CRUD 权限和全量策略",
-        "增加迁移契约测试，防止后续重新开放保存完整 Agent 请求/响应快照的敏感表"
-      ],
-      "optimizations": [],
-      "ops": [
-        "TEST 与 PROD 的迁移状态均已登记 `20260903130000`；数据库侧修复此前已经执行，本 PR 补回缺失的 Git 源码和审计记录，不需要再次推送迁移",
-        "迁移只修改权限和 RLS 元数据，不扫描或回填业务数据",
-        "收紧消息处理调用表访问权限"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "`pnpm run ci:check`（459/459 个测试套件通过，6597 个测试通过，仓库原有 1 套件/5 测试跳过）",
-        "`pnpm test -- --watchman=false --runInBand tests/supabase/message-processing-invocations-rls.spec.ts`（3/3 通过）",
-        "`pnpm run db:status:test` 与 `pnpm run db:status:prod` 均确认本地/远端存在 `20260903130000`",
-        "关键链路已人工核对：后端仓储使用 `service_role`，迁移保留显式 CRUD 授权与 `FOR ALL` 策略",
-        "未新增对开放自然语言直接 reject/覆盖/判缺的正则分支；本 PR 仅包含 SQL 权限迁移与迁移契约测试",
-        "未新增 prompt 示例值"
-      ],
-      "level": "patch"
-    },
-    {
-      "number": "1203",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1203",
-      "title": "Dashboard 胶囊设计语言统一；fix(agent): 收敛收资确认、动态字段与预约守卫",
-      "author": "huajune",
-      "mergedAt": "2026-09-04",
-      "businessUpdates": [
-        "新增共享开关组件 `web/src/components/Switch`：药丸轨道加白色旋钮，开启态使用主题渐变紫，按下时旋钮拉长，处理中轨道呼吸，支持键盘聚焦与两档尺寸。托管开关页与托管用户页的原生 checkbox 全部替换为该组件。",
-        "收敛收资确认契约：模型只提交 `recapConfirmation: true`，候选人回复与官方复述由 Notary 从聊天历史自动绑定。",
-        "补齐动态收资字段与预约守卫：实时契约快照、籍贯市到省、住宿、社保澄清、健康证歧义、错位手机号及可预约时间一致性。",
-        "Dashboard 视觉统一：消息处理流水、聊天记录、托管开关、托管用户、仪表盘改用同一套胶囊设计语言，并新增自绘 Switch 开关组件。",
-        "运行时配置页的 Worker 并发补充「修改后需重启才生效」提醒，避免误以为改完即生效。",
-        "统一胶囊语言精修消息流水/聊天记录/托管/仪表盘并新增自绘开关",
-        "Revert \"feat(web): 统一胶囊语言精修消息流水/聊天记录/托管/仪表盘并新增自绘开关\"",
-        "无合法拉群授权时不再进入企微成员预检；群承接后，候选人主动追问具体岗位或门店时仍允许实时查岗。",
-        "多人报名通过手机号隔离持久表单；追加候选人不覆盖当前联系人的 sessionFacts、长期画像或 active booking。",
-        "`recapConfirmation` 改为布尔确认回执，移除由模型复制 `candidateQuote` / `recapQuote` 的易错契约。",
-        "身份闸门拒收返回明确后续动作，区分“修正提案”和“向候选人询问真名”，避免原昵称反复重投。",
-        "表单持久化当前 `contractSnapshot`，后续 precheck / booking 复用同一份岗位契约，避免重复拉取和契约漂移。",
-        "动态字段补齐住宿肯否适配、籍贯市到省映射、社保维度缺失澄清；动态标签错名仍显式返回 `label_title_not_found`，不增加语义别名兼容。",
-        "11 位手机号误填在性别行时，仅在表单存在唯一手机号槽的前提下改投手机号；否则继续拒收，不做泛化猜测。",
-        "健康证回答缺少明确“有/无”时保持空槽并继续询问；候选人明确作答时仍以确定性解析结果为准。",
-        "新增预约时间输出守卫，阻止回复漏掉最早可约日期、把可约日期说成已截止或篡改报名截止口径。",
-        "修正拉群授权、群承接后查岗与多人报名的状态边界，避免重复调用、永久禁查和候选人资料串用。",
-        "修正群承接与多人报名状态边界",
-        "修正收资确认与动态字段判定"
-      ],
-      "summary": [
-        "修正群承接与多人报名状态边界",
-        "隔离追加候选人未绑定表单",
-        "修正收资确认与动态字段判定",
-        "隔离主候选人与活动表单指针",
-        "统一胶囊语言精修消息流水/聊天记录/托管/仪表盘并新增自绘开关",
-        "Revert \"feat(web): 统一胶囊语言精修消息流水/聊天记录/托管/仪表盘并新增自绘开关\"",
-        "恢复 Dashboard 胶囊语言 UI 改动",
-        "Worker 并发配置补充重启生效提醒",
-        "修正拉群授权、群承接后查岗与多人报名的状态边界，避免重复调用、永久禁查和候选人资料串用。",
-        "收敛收资确认契约：模型只提交 `recapConfirmation: true`，候选人回复与官方复述由 Notary 从聊天历史自动绑定。",
-        "补齐动态收资字段与预约守卫：实时契约快照、籍贯市到省、住宿、社保澄清、健康证歧义、错位手机号及可预约时间一致性。",
-        "Dashboard 视觉统一：消息处理流水、聊天记录、托管开关、托管用户、仪表盘改用同一套胶囊设计语言，并新增自绘 Switch 开关组件。",
-        "运行时配置页的 Worker 并发补充「修改后需重启才生效」提醒，避免误以为改完即生效。",
-        "Dashboard 胶囊设计语言统一；fix(agent): 收敛收资确认、动态字段与预约守卫"
-      ],
-      "features": [
-        "新增共享开关组件 `web/src/components/Switch`：药丸轨道加白色旋钮，开启态使用主题渐变紫，按下时旋钮拉长，处理中轨道呼吸，支持键盘聚焦与两档尺寸。托管开关页与托管用户页的原生 checkbox 全部替换为该组件。",
-        "收敛收资确认契约：模型只提交 `recapConfirmation: true`，候选人回复与官方复述由 Notary 从聊天历史自动绑定。",
-        "补齐动态收资字段与预约守卫：实时契约快照、籍贯市到省、住宿、社保澄清、健康证歧义、错位手机号及可预约时间一致性。",
-        "Dashboard 视觉统一：消息处理流水、聊天记录、托管开关、托管用户、仪表盘改用同一套胶囊设计语言，并新增自绘 Switch 开关组件。",
-        "运行时配置页的 Worker 并发补充「修改后需重启才生效」提醒，避免误以为改完即生效。",
-        "统一胶囊语言精修消息流水/聊天记录/托管/仪表盘并新增自绘开关",
-        "Revert \"feat(web): 统一胶囊语言精修消息流水/聊天记录/托管/仪表盘并新增自绘开关\""
-      ],
-      "fixes": [
-        "无合法拉群授权时不再进入企微成员预检；群承接后，候选人主动追问具体岗位或门店时仍允许实时查岗。",
-        "多人报名通过手机号隔离持久表单；追加候选人不覆盖当前联系人的 sessionFacts、长期画像或 active booking。",
-        "`recapConfirmation` 改为布尔确认回执，移除由模型复制 `candidateQuote` / `recapQuote` 的易错契约。",
-        "身份闸门拒收返回明确后续动作，区分“修正提案”和“向候选人询问真名”，避免原昵称反复重投。",
-        "表单持久化当前 `contractSnapshot`，后续 precheck / booking 复用同一份岗位契约，避免重复拉取和契约漂移。",
-        "动态字段补齐住宿肯否适配、籍贯市到省映射、社保维度缺失澄清；动态标签错名仍显式返回 `label_title_not_found`，不增加语义别名兼容。",
-        "11 位手机号误填在性别行时，仅在表单存在唯一手机号槽的前提下改投手机号；否则继续拒收，不做泛化猜测。",
-        "健康证回答缺少明确“有/无”时保持空槽并继续询问；候选人明确作答时仍以确定性解析结果为准。",
-        "新增预约时间输出守卫，阻止回复漏掉最早可约日期、把可约日期说成已截止或篡改报名截止口径。",
-        "修正拉群授权、群承接后查岗与多人报名的状态边界，避免重复调用、永久禁查和候选人资料串用。",
-        "修正群承接与多人报名状态边界",
-        "修正收资确认与动态字段判定"
-      ],
-      "optimizations": [
-        "收资审计事件补充字段元数据，并同步收资、地理解析与提示词规则台账文档。",
-        "消息处理流水页：顶部工具卡改为标题行加单行控件，统计改为四枚胶囊；表格保持原有十列与行高，去掉行分隔线，改用淡色表头带、圆角悬停高亮与右对齐数字，加载态改为骨架屏。",
-        "聊天记录页：顶栏与消息趋势面板改用胶囊分段和统计小胶囊，标题独立成行并补充链路说明；原有绿色实时脉冲、极光光晕与顶部流光线保持不变。",
-        "托管用户页：标签页、时间范围与工具条控件统一为胶囊，表格改用与流水页一致的表头带和悬停高亮。",
-        "托管开关页：标题去掉渐变描边与加粗，卡片改为白底细描边，emoji 图标替换为线性图标，小组表对齐同一套表头样式。",
-        "仪表盘：全局分段按钮与小组下拉改为胶囊语言，健康卡 emoji 替换为线性图标，指标字重整体降档。",
-        "全站字重收敛到常规与中等两档，去除页面内联样式。",
-        "运行时配置页 Worker 并发说明下方新增告警样式提醒条，明确修改并发数后需手动执行优雅重启并验证实际并发已生效。"
-      ],
-      "ops": [
-        "隔离追加候选人未绑定表单",
-        "隔离主候选人与活动表单指针",
-        "恢复 Dashboard 胶囊语言 UI 改动",
-        "Worker 并发配置补充重启生效提醒"
-      ],
-      "config": [
-        "无数据库 migration、环境变量或密钥变更。"
-      ],
-      "envFiles": [],
-      "verification": [
-        "`pnpm run ci:check`",
-        "lint / format / typecheck / geo / vocab / quality ledger 全绿",
-        "Web 与 Nest 构建通过",
-        "459 个测试套件通过，6628 条测试通过；1 个套件 / 5 条测试按仓库配置跳过",
-        "提交前及推送前 hook 均再次执行校验并通过",
-        "前端改动在本地 dev server 逐页人工核对：消息流水、聊天记录、托管开关、托管用户、仪表盘均渲染正常，无横向滚动，控件与表格交互可用",
-        "未新增对开放自然语言直接 reject/覆盖/判缺的正则分支：本 PR 仅针对已观测健康证歧义增加窄判据，双向拒收已有回归测试",
-        "未新增虚构 prompt 示例值；无需登记 example registry"
-      ],
-      "level": "minor"
-    }
-  ],
+  "entries": [],
   "lastRelease": {
-    "version": "11.2.1",
-    "date": "2026-09-03",
+    "version": "11.3.0",
+    "date": "2026-09-04",
     "sourceBranch": "develop",
     "entries": [
       {
-        "number": "1191",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/1191",
-        "title": "预热 cron 默认关闭 + 删除 tool_calls 裸扫回退，止住生产库过载",
+        "number": "1202",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1202",
+        "title": "补回回合装配重构删掉的预约、视觉与回放覆盖",
         "author": "huajune",
         "mergedAt": "2026-09-03",
         "businessUpdates": [
-          "`prewarmDashboardOverview` 加 `DASHBOARD_PREWARM_ENABLED` 门，**默认关闭**。",
-          "`getDashboardToolStats`：RPC 失败直接返回空 + warn；**删除** `getDashboardToolStatsFromToolCalls` 及 `countToolCalls` / `formatToolStats` / `ToolCallsProjectionRow`。",
-          "注释回收「回退路径」表述；`.env.example` / `env.validation.ts` 登记开关。"
+          "补回回合装配重构删掉的预约、视觉与回放覆盖"
         ],
         "summary": [
-          "预热 cron 默认关闭 + 删除 tool_calls 裸扫回退，止住生产库过载",
-          "`prewarmDashboardOverview` 加 `DASHBOARD_PREWARM_ENABLED` 门，**默认关闭**。",
-          "`getDashboardToolStats`：RPC 失败直接返回空 + warn；**删除** `getDashboardToolStatsFromToolCalls` 及 `countToolCalls` / `formatToolStats` / `ToolCallsProjectionRow`。",
-          "注释回收「回退路径」表述；`.env.example` / `env.validation.ts` 登记开关。"
+          "补回回合装配重构删掉的预约、视觉与回放覆盖"
         ],
         "features": [],
-        "fixes": [
-          "`prewarmDashboardOverview` 加 `DASHBOARD_PREWARM_ENABLED` 门，**默认关闭**。",
-          "`getDashboardToolStats`：RPC 失败直接返回空 + warn；**删除** `getDashboardToolStatsFromToolCalls` 及 `countToolCalls` / `formatToolStats` / `ToolCallsProjectionRow`。",
-          "注释回收「回退路径」表述；`.env.example` / `env.validation.ts` 登记开关。"
+        "fixes": [],
+        "optimizations": [
+          "补回回合装配重构删掉的预约、视觉与回放覆盖"
         ],
-        "optimizations": [],
-        "ops": [
-          "预热 cron 默认关闭 + 删除 tool_calls 裸扫回退，止住生产库过载"
-        ],
-        "config": [],
-        "envFiles": [
-          ".env.example",
-          "src/infra/config/env.validation.ts"
-        ],
-        "verification": [
-          "`record.repository.spec` + `analytics-dashboard.service.spec`：83/83 通过（新增「默认关」与「RPC 失败不回退」两条断言）",
-          "`eslint --max-warnings=0` 通过；`tsc --noEmit` 通过"
-        ],
-        "level": "patch"
-      },
-      {
-        "number": "1192",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/1192",
-        "title": "修复用户活跃列表空白",
-        "author": "huajune",
-        "mergedAt": "2026-09-03",
-        "businessUpdates": [
-          "修复 user_activity 写入 RPC 与当前 NOT NULL 时间字段不一致导致的 23502 错误。",
-          "重建实际被应用调用的 get_active_users_from_user_activity_by_range，移除已删除的 group_id/group_name 引用。",
-          "从保留的 chat_messages 与 message_processing_records 幂等回补 2026-09-02 起的事故窗口数据。",
-          "增加迁移级回归测试，防止 RPC 再次与表结构漂移。",
-          "修复活跃用户 RPC 结构漂移"
-        ],
-        "summary": [
-          "修复活跃用户 RPC 结构漂移",
-          "修复 user_activity 写入 RPC 与当前 NOT NULL 时间字段不一致导致的 23502 错误。",
-          "重建实际被应用调用的 get_active_users_from_user_activity_by_range，移除已删除的 group_id/group_name 引用。",
-          "从保留的 chat_messages 与 message_processing_records 幂等回补 2026-09-02 起的事故窗口数据。",
-          "增加迁移级回归测试，防止 RPC 再次与表结构漂移。",
-          "修复用户活跃列表空白"
-        ],
-        "features": [],
-        "fixes": [
-          "修复 user_activity 写入 RPC 与当前 NOT NULL 时间字段不一致导致的 23502 错误。",
-          "重建实际被应用调用的 get_active_users_from_user_activity_by_range，移除已删除的 group_id/group_name 引用。",
-          "从保留的 chat_messages 与 message_processing_records 幂等回补 2026-09-02 起的事故窗口数据。",
-          "增加迁移级回归测试，防止 RPC 再次与表结构漂移。",
-          "修复活跃用户 RPC 结构漂移"
-        ],
-        "optimizations": [],
         "ops": [],
         "config": [],
         "envFiles": [],
         "verification": [
-          "pnpm run ci:check：450 个测试套件通过，6621 个测试通过",
-          "定向 Jest：2 个套件、36 个测试通过",
-          "pnpm run typecheck",
-          "测试库迁移成功",
-          "测试库真实 RPC 冒烟：写入、范围查询、时间字段及 token 聚合通过；测试数据已清理"
+          "只加测试，不改任何生产代码。",
+          "`pnpm run test:ci`：458 套件 / 6624 用例通过（较基线 +34）。",
+          "变异验证：摘掉 `injectImageParts` 的占位符定位后，占位符那一例即红，确认它守的是真不变量。"
         ],
         "level": "patch"
       },
       {
-        "number": "1190",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/1190",
-        "title": "收窄入站回合并重构装配边界",
+        "number": "1204",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1204",
+        "title": "收紧消息处理调用表访问权限",
         "author": "huajune",
         "mergedAt": "2026-09-03",
         "businessUpdates": [
-          "修复回合装配评审发现的通道判据、观测降级与场景门控问题"
+          "修复 `20260902073727_retention_schema_audit.sql` 创建 `message_processing_invocations` 时遗漏 RLS，导致 public schema 默认授权下 Data API 客户端角色可能访问整表的问题",
+          "为 `public.message_processing_invocations` 启用 RLS，修复 Supabase Security Advisor 的 `RLS Disabled in Public` 错误",
+          "撤销 `PUBLIC`、`anon`、`authenticated` 的表权限，仅保留后端 `service_role` 的显式 CRUD 权限和全量策略",
+          "增加迁移契约测试，防止后续重新开放保存完整 Agent 请求/响应快照的敏感表"
         ],
         "summary": [
-          "收窄入站回合并重构装配边界",
-          "Merge remote-tracking branch 'origin/develop' into codex/refactor-age…",
-          "回填重构 PR 与完成状态",
-          "短期消息缓存只由回填创建，写路径 RPUSHX 追加、回填单脚本原子重建",
-          "短期窗口改为滚动 7 天（锚点=本批之前候选人最后一次开口），条数上限收拢为硬上限 300",
-          "完成回合装配与 Prompt 编译终态",
-          "补齐滚动窗口 / 硬上限口径漏改的 6 份文档",
-          "收拢回合准备内部实现",
-          "修复回合装配评审发现的通道判据、观测降级与场景门控问题",
-          "补齐查询与后台任务红线及 0902 事故复盘"
+          "收紧消息处理调用表访问权限",
+          "为 `public.message_processing_invocations` 启用 RLS，修复 Supabase Security Advisor 的 `RLS Disabled in Public` 错误",
+          "撤销 `PUBLIC`、`anon`、`authenticated` 的表权限，仅保留后端 `service_role` 的显式 CRUD 权限和全量策略",
+          "增加迁移契约测试，防止后续重新开放保存完整 Agent 请求/响应快照的敏感表"
         ],
         "features": [],
         "fixes": [
-          "修复回合装配评审发现的通道判据、观测降级与场景门控问题"
+          "修复 `20260902073727_retention_schema_audit.sql` 创建 `message_processing_invocations` 时遗漏 RLS，导致 public schema 默认授权下 Data API 客户端角色可能访问整表的问题",
+          "为 `public.message_processing_invocations` 启用 RLS，修复 Supabase Security Advisor 的 `RLS Disabled in Public` 错误",
+          "撤销 `PUBLIC`、`anon`、`authenticated` 的表权限，仅保留后端 `service_role` 的显式 CRUD 权限和全量策略",
+          "增加迁移契约测试，防止后续重新开放保存完整 Agent 请求/响应快照的敏感表"
+        ],
+        "optimizations": [],
+        "ops": [
+          "TEST 与 PROD 的迁移状态均已登记 `20260903130000`；数据库侧修复此前已经执行，本 PR 补回缺失的 Git 源码和审计记录，不需要再次推送迁移",
+          "迁移只修改权限和 RLS 元数据，不扫描或回填业务数据",
+          "收紧消息处理调用表访问权限"
+        ],
+        "config": [],
+        "envFiles": [],
+        "verification": [
+          "`pnpm run ci:check`（459/459 个测试套件通过，6597 个测试通过，仓库原有 1 套件/5 测试跳过）",
+          "`pnpm test -- --watchman=false --runInBand tests/supabase/message-processing-invocations-rls.spec.ts`（3/3 通过）",
+          "`pnpm run db:status:test` 与 `pnpm run db:status:prod` 均确认本地/远端存在 `20260903130000`",
+          "关键链路已人工核对：后端仓储使用 `service_role`，迁移保留显式 CRUD 授权与 `FOR ALL` 策略",
+          "未新增对开放自然语言直接 reject/覆盖/判缺的正则分支；本 PR 仅包含 SQL 权限迁移与迁移契约测试",
+          "未新增 prompt 示例值"
+        ],
+        "level": "patch"
+      },
+      {
+        "number": "1203",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1203",
+        "title": "Dashboard 胶囊设计语言统一；fix(agent): 收敛收资确认、动态字段与预约守卫",
+        "author": "huajune",
+        "mergedAt": "2026-09-04",
+        "businessUpdates": [
+          "新增共享开关组件 `web/src/components/Switch`：药丸轨道加白色旋钮，开启态使用主题渐变紫，按下时旋钮拉长，处理中轨道呼吸，支持键盘聚焦与两档尺寸。托管开关页与托管用户页的原生 checkbox 全部替换为该组件。",
+          "收敛收资确认契约：模型只提交 `recapConfirmation: true`，候选人回复与官方复述由 Notary 从聊天历史自动绑定。",
+          "补齐动态收资字段与预约守卫：实时契约快照、籍贯市到省、住宿、社保澄清、健康证歧义、错位手机号及可预约时间一致性。",
+          "Dashboard 视觉统一：消息处理流水、聊天记录、托管开关、托管用户、仪表盘改用同一套胶囊设计语言，并新增自绘 Switch 开关组件。",
+          "运行时配置页的 Worker 并发补充「修改后需重启才生效」提醒，避免误以为改完即生效。",
+          "统一胶囊语言精修消息流水/聊天记录/托管/仪表盘并新增自绘开关",
+          "Revert \"feat(web): 统一胶囊语言精修消息流水/聊天记录/托管/仪表盘并新增自绘开关\"",
+          "无合法拉群授权时不再进入企微成员预检；群承接后，候选人主动追问具体岗位或门店时仍允许实时查岗。",
+          "多人报名通过手机号隔离持久表单；追加候选人不覆盖当前联系人的 sessionFacts、长期画像或 active booking。",
+          "`recapConfirmation` 改为布尔确认回执，移除由模型复制 `candidateQuote` / `recapQuote` 的易错契约。",
+          "身份闸门拒收返回明确后续动作，区分“修正提案”和“向候选人询问真名”，避免原昵称反复重投。",
+          "表单持久化当前 `contractSnapshot`，后续 precheck / booking 复用同一份岗位契约，避免重复拉取和契约漂移。",
+          "动态字段补齐住宿肯否适配、籍贯市到省映射、社保维度缺失澄清；动态标签错名仍显式返回 `label_title_not_found`，不增加语义别名兼容。",
+          "11 位手机号误填在性别行时，仅在表单存在唯一手机号槽的前提下改投手机号；否则继续拒收，不做泛化猜测。",
+          "健康证回答缺少明确“有/无”时保持空槽并继续询问；候选人明确作答时仍以确定性解析结果为准。",
+          "新增预约时间输出守卫，阻止回复漏掉最早可约日期、把可约日期说成已截止或篡改报名截止口径。",
+          "修正拉群授权、群承接后查岗与多人报名的状态边界，避免重复调用、永久禁查和候选人资料串用。",
+          "修正群承接与多人报名状态边界",
+          "修正收资确认与动态字段判定"
+        ],
+        "summary": [
+          "修正群承接与多人报名状态边界",
+          "隔离追加候选人未绑定表单",
+          "修正收资确认与动态字段判定",
+          "隔离主候选人与活动表单指针",
+          "统一胶囊语言精修消息流水/聊天记录/托管/仪表盘并新增自绘开关",
+          "Revert \"feat(web): 统一胶囊语言精修消息流水/聊天记录/托管/仪表盘并新增自绘开关\"",
+          "恢复 Dashboard 胶囊语言 UI 改动",
+          "Worker 并发配置补充重启生效提醒",
+          "修正拉群授权、群承接后查岗与多人报名的状态边界，避免重复调用、永久禁查和候选人资料串用。",
+          "收敛收资确认契约：模型只提交 `recapConfirmation: true`，候选人回复与官方复述由 Notary 从聊天历史自动绑定。",
+          "补齐动态收资字段与预约守卫：实时契约快照、籍贯市到省、住宿、社保澄清、健康证歧义、错位手机号及可预约时间一致性。",
+          "Dashboard 视觉统一：消息处理流水、聊天记录、托管开关、托管用户、仪表盘改用同一套胶囊设计语言，并新增自绘 Switch 开关组件。",
+          "运行时配置页的 Worker 并发补充「修改后需重启才生效」提醒，避免误以为改完即生效。",
+          "Dashboard 胶囊设计语言统一；fix(agent): 收敛收资确认、动态字段与预约守卫"
+        ],
+        "features": [
+          "新增共享开关组件 `web/src/components/Switch`：药丸轨道加白色旋钮，开启态使用主题渐变紫，按下时旋钮拉长，处理中轨道呼吸，支持键盘聚焦与两档尺寸。托管开关页与托管用户页的原生 checkbox 全部替换为该组件。",
+          "收敛收资确认契约：模型只提交 `recapConfirmation: true`，候选人回复与官方复述由 Notary 从聊天历史自动绑定。",
+          "补齐动态收资字段与预约守卫：实时契约快照、籍贯市到省、住宿、社保澄清、健康证歧义、错位手机号及可预约时间一致性。",
+          "Dashboard 视觉统一：消息处理流水、聊天记录、托管开关、托管用户、仪表盘改用同一套胶囊设计语言，并新增自绘 Switch 开关组件。",
+          "运行时配置页的 Worker 并发补充「修改后需重启才生效」提醒，避免误以为改完即生效。",
+          "统一胶囊语言精修消息流水/聊天记录/托管/仪表盘并新增自绘开关",
+          "Revert \"feat(web): 统一胶囊语言精修消息流水/聊天记录/托管/仪表盘并新增自绘开关\""
+        ],
+        "fixes": [
+          "无合法拉群授权时不再进入企微成员预检；群承接后，候选人主动追问具体岗位或门店时仍允许实时查岗。",
+          "多人报名通过手机号隔离持久表单；追加候选人不覆盖当前联系人的 sessionFacts、长期画像或 active booking。",
+          "`recapConfirmation` 改为布尔确认回执，移除由模型复制 `candidateQuote` / `recapQuote` 的易错契约。",
+          "身份闸门拒收返回明确后续动作，区分“修正提案”和“向候选人询问真名”，避免原昵称反复重投。",
+          "表单持久化当前 `contractSnapshot`，后续 precheck / booking 复用同一份岗位契约，避免重复拉取和契约漂移。",
+          "动态字段补齐住宿肯否适配、籍贯市到省映射、社保维度缺失澄清；动态标签错名仍显式返回 `label_title_not_found`，不增加语义别名兼容。",
+          "11 位手机号误填在性别行时，仅在表单存在唯一手机号槽的前提下改投手机号；否则继续拒收，不做泛化猜测。",
+          "健康证回答缺少明确“有/无”时保持空槽并继续询问；候选人明确作答时仍以确定性解析结果为准。",
+          "新增预约时间输出守卫，阻止回复漏掉最早可约日期、把可约日期说成已截止或篡改报名截止口径。",
+          "修正拉群授权、群承接后查岗与多人报名的状态边界，避免重复调用、永久禁查和候选人资料串用。",
+          "修正群承接与多人报名状态边界",
+          "修正收资确认与动态字段判定"
         ],
         "optimizations": [
-          "收窄入站回合并重构装配边界",
-          "Merge remote-tracking branch 'origin/develop' into codex/refactor-age…",
-          "回填重构 PR 与完成状态"
+          "收资审计事件补充字段元数据，并同步收资、地理解析与提示词规则台账文档。",
+          "消息处理流水页：顶部工具卡改为标题行加单行控件，统计改为四枚胶囊；表格保持原有十列与行高，去掉行分隔线，改用淡色表头带、圆角悬停高亮与右对齐数字，加载态改为骨架屏。",
+          "聊天记录页：顶栏与消息趋势面板改用胶囊分段和统计小胶囊，标题独立成行并补充链路说明；原有绿色实时脉冲、极光光晕与顶部流光线保持不变。",
+          "托管用户页：标签页、时间范围与工具条控件统一为胶囊，表格改用与流水页一致的表头带和悬停高亮。",
+          "托管开关页：标题去掉渐变描边与加粗，卡片改为白底细描边，emoji 图标替换为线性图标，小组表对齐同一套表头样式。",
+          "仪表盘：全局分段按钮与小组下拉改为胶囊语言，健康卡 emoji 替换为线性图标，指标字重整体降档。",
+          "全站字重收敛到常规与中等两档，去除页面内联样式。",
+          "运行时配置页 Worker 并发说明下方新增告警样式提醒条，明确修改并发数后需手动执行优雅重启并验证实际并发已生效。"
         ],
         "ops": [
-          "短期消息缓存只由回填创建，写路径 RPUSHX 追加、回填单脚本原子重建",
-          "短期窗口改为滚动 7 天（锚点=本批之前候选人最后一次开口），条数上限收拢为硬上限 300",
-          "完成回合装配与 Prompt 编译终态",
-          "补齐滚动窗口 / 硬上限口径漏改的 6 份文档",
-          "收拢回合准备内部实现",
-          "补齐查询与后台任务红线及 0902 事故复盘"
+          "隔离追加候选人未绑定表单",
+          "隔离主候选人与活动表单指针",
+          "恢复 Dashboard 胶囊语言 UI 改动",
+          "Worker 并发配置补充重启生效提醒"
         ],
-        "config": [],
-        "envFiles": [
-          ".env.example"
+        "config": [
+          "无数据库 migration、环境变量或密钥变更。"
         ],
-        "verification": [
-          "`pnpm run ci:check`：通过",
-          "456 suites passed（1 skipped）",
-          "6618 tests passed（5 skipped）",
-          "lint、format、typecheck、geo/vocab/quality-ledger、前后端 build 全部通过",
-          "定向回归：18 suites / 377 tests 通过",
-          "合入最新 develop 后复验：typecheck + 7 suites / 309 tests 通过",
-          "`pnpm run test:di-smoke`：通过",
-          "`pnpm run duplication:check`：通过（0.8%，阈值 2.06%）",
-          "`git diff --check`：通过"
-        ],
-        "level": "patch"
-      },
-      {
-        "number": "1189",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/1189",
-        "title": "补记 v11.2.0 发布结果",
-        "author": "huajune",
-        "mergedAt": "2026-09-03",
-        "businessUpdates": [
-          "补记 v11.2.0 发布结果"
-        ],
-        "summary": [
-          "补记 v11.2.0 发布结果"
-        ],
-        "features": [],
-        "fixes": [],
-        "optimizations": [],
-        "ops": [
-          "补记 v11.2.0 发布结果"
-        ],
-        "config": [],
-        "envFiles": [],
-        "verification": [],
-        "level": "patch"
-      },
-      {
-        "number": "1193",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/1193",
-        "title": "收敛后台任务重叠与故障范围",
-        "author": "huajune",
-        "mergedAt": "2026-09-03",
-        "businessUpdates": [
-          "将全历史 all 档移出每 2 分钟的概览预热，保留按需计算与现有缓存，避免周期性全量扫描。",
-          "为概览预热、小时聚合和日聚合增加进程内整轮互斥，上一轮未完成时跳过新 tick。",
-          "小时聚合在最近 14 天窗口内查询已存小时键，只回补缺失小时；零消息小时写入零值标记，避免反复重算。",
-          "Supabase 熔断器改为按表操作或 RPC 函数隔离，并让直连写路径同步记录操作成败。",
-          "合并数据库止血与活跃用户修复"
-        ],
-        "summary": [
-          "收敛后台任务与熔断范围",
-          "合并数据库止血与活跃用户修复",
-          "Merge remote-tracking branch 'origin/develop' into codex/harden-analy…",
-          "将全历史 all 档移出每 2 分钟的概览预热，保留按需计算与现有缓存，避免周期性全量扫描。",
-          "为概览预热、小时聚合和日聚合增加进程内整轮互斥，上一轮未完成时跳过新 tick。",
-          "小时聚合在最近 14 天窗口内查询已存小时键，只回补缺失小时；零消息小时写入零值标记，避免反复重算。",
-          "Supabase 熔断器改为按表操作或 RPC 函数隔离，并让直连写路径同步记录操作成败。",
-          "收敛后台任务重叠与故障范围"
-        ],
-        "features": [],
-        "fixes": [
-          "将全历史 all 档移出每 2 分钟的概览预热，保留按需计算与现有缓存，避免周期性全量扫描。",
-          "为概览预热、小时聚合和日聚合增加进程内整轮互斥，上一轮未完成时跳过新 tick。",
-          "小时聚合在最近 14 天窗口内查询已存小时键，只回补缺失小时；零消息小时写入零值标记，避免反复重算。",
-          "Supabase 熔断器改为按表操作或 RPC 函数隔离，并让直连写路径同步记录操作成败。",
-          "合并数据库止血与活跃用户修复"
-        ],
-        "optimizations": [],
-        "ops": [
-          "收敛后台任务与熔断范围",
-          "Merge remote-tracking branch 'origin/develop' into codex/harden-analy…"
-        ],
-        "config": [],
         "envFiles": [],
         "verification": [
-          "定向测试：8 个套件、177 个测试通过",
-          "pnpm run ci:check：449 个套件、6623 个测试通过",
-          "pnpm run duplication:check：重复率 0.81%，低于 2.06% 阈值",
-          "pnpm run test:di-smoke：AppModule 完整装配通过",
-          "git diff --check",
-          "push 前完整 CI 再次通过"
+          "`pnpm run ci:check`",
+          "lint / format / typecheck / geo / vocab / quality ledger 全绿",
+          "Web 与 Nest 构建通过",
+          "459 个测试套件通过，6628 条测试通过；1 个套件 / 5 条测试按仓库配置跳过",
+          "提交前及推送前 hook 均再次执行校验并通过",
+          "前端改动在本地 dev server 逐页人工核对：消息流水、聊天记录、托管开关、托管用户、仪表盘均渲染正常，无横向滚动，控件与表格交互可用",
+          "未新增对开放自然语言直接 reject/覆盖/判缺的正则分支：本 PR 仅针对已观测健康证歧义增加窄判据，双向拒收已有回归测试",
+          "未新增虚构 prompt 示例值；无需登记 example registry"
         ],
-        "level": "patch"
+        "level": "minor"
       }
     ]
-  },
-  "lastAnalyzedSha": "c1390af25a41cc5946dbc054219cd20294de6b3c"
+  }
 }
