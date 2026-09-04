@@ -7,10 +7,11 @@
  * 2. 直配不中且值已绑定本槽位（`answerBound`）时剥后缀再比——绑定关系即语境。
  *
  * 未绑定的自由语料只走第 1 级：长句裸扫省名会把「我在浙江打过工」当籍贯。
- * 刻意不做市→省推导，那需要全国市级→省级映射，落点在 `resolution/geo`（当前只到地级市）。
+ * 3. 值仍未命中时，通过 geo 域的全国地级行政区表做市→省推导；只对已绑定值开放。
  */
 
 import { findOptionBySemantics, matchOptionInText } from '../option-matching';
+import { resolveProvinceFromAdministrativeArea } from '@resolution/geo';
 import type { AdapterInput, SlotProposal } from './adapter.types';
 
 /**
@@ -46,15 +47,27 @@ export function proposeHouseholdRegister(input: AdapterInput): SlotProposal | nu
     field,
     (label) => stripAdministrativeSuffix(label) === answer,
   );
-  // 契约没有这一档 → 留空追问；不塞近似值（宁可多问一句，不可报错籍贯）。
-  if (!option) return null;
+  if (option) return proposalForOption(input, option.optionLabel, option.optionCode);
 
+  // ③ 结构化籍贯值允许市→省。数据来自 geo 域 vendored 全国行政区表，不在收资域
+  // 另造城市词表；映射不到或契约没有对应省份时仍留空追问。
+  const province = resolveProvinceFromAdministrativeArea(candidateText);
+  if (!province) return null;
+  const provinceOption = findOptionBySemantics(
+    field,
+    (label) => stripAdministrativeSuffix(label) === stripAdministrativeSuffix(province),
+  );
+  if (!provinceOption) return null;
+  return proposalForOption(input, provinceOption.optionLabel, provinceOption.optionCode);
+}
+
+function proposalForOption(input: AdapterInput, value: string, optionCode: string): SlotProposal {
   return {
-    labelId: field.labelId,
-    value: option.optionLabel,
-    optionCodes: [option.optionCode],
+    labelId: input.field.labelId,
+    value,
+    optionCodes: [optionCode],
     // 出处仍是候选人原话本身——它就是这一格的完整作答。
-    sourceText: candidateText.trim(),
+    sourceText: input.candidateText.trim(),
     producer: 'candidate_quote',
   };
 }

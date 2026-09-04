@@ -1,3 +1,4 @@
+import { TriangleAlert } from 'lucide-react';
 import styles from './index.module.scss';
 
 interface WorkerStatus {
@@ -60,6 +61,14 @@ export default function WorkerPanel({
       <p className={styles.description}>
         控制同时处理消息请求的 Worker 数量。提高并发能放大吞吐，但也会提升 Agent API 和队列压力。
       </p>
+
+      <div className={styles.restartNotice} role="note">
+        <TriangleAlert className={styles.restartNoticeIcon} size={16} aria-hidden="true" />
+        <span>
+          <strong>修改后需重启：</strong>
+          页面修改 Worker 数后，需要手动执行优雅重启，并验证实际并发已生效。
+        </span>
+      </div>
 
       <div className={styles.formula}>
         <div>理论吞吐量 = 并发数 × (时间 / 平均 E2E 时延)</div>

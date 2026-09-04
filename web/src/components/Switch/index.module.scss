@@ -1,0 +1,160 @@
+// Switch — 自绘开关
+@use '@/assets/styles/variables' as *;
+
+$track-off: #f3f2ff;
+$ring-off: rgba(212, 208, 255, 0.9);
+$knob-shadow:
+  0 1px 2px rgba(20, 19, 43, 0.18),
+  0 2px 6px rgba(20, 19, 43, 0.12),
+  0 0 0 1px rgba(20, 19, 43, 0.04);
+$ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+@keyframes switchPulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+.switch {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  width: 38px;
+  height: 22px;
+  vertical-align: middle;
+}
+
+// 真正的 checkbox 铺满并透明：保留原生可访问性与点击区域
+.input {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+
+  &:disabled {
+    cursor: not-allowed;
+  }
+}
+
+.track {
+  position: absolute;
+  inset: 0;
+  border-radius: $radius-full;
+  background: $track-off;
+  box-shadow:
+    inset 0 0 0 1px $ring-off,
+    inset 0 1px 2px rgba(20, 19, 43, 0.05);
+  transition:
+    background 0.2s ease,
+    box-shadow 0.2s ease,
+    opacity 0.2s ease;
+}
+
+.knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: $radius-full;
+  background: #fff;
+  box-shadow: $knob-shadow;
+  transition:
+    transform 0.22s $ease,
+    width 0.18s $ease,
+    box-shadow 0.2s ease;
+}
+
+// ── 状态 ──
+.input:hover:not(:disabled) + .track {
+  box-shadow:
+    inset 0 0 0 1px rgba(190, 185, 255, 1),
+    inset 0 1px 2px rgba(20, 19, 43, 0.05);
+}
+
+.input:checked + .track {
+  background: $gradient-primary;
+  box-shadow:
+    inset 0 0 0 1px rgba(99, 102, 241, 0.25),
+    0 2px 8px rgba(99, 102, 241, 0.28);
+
+  .knob {
+    transform: translateX(16px);
+    box-shadow:
+      0 1px 2px rgba(20, 19, 43, 0.2),
+      0 2px 6px rgba(79, 70, 229, 0.3);
+  }
+}
+
+.input:checked:hover:not(:disabled) + .track {
+  box-shadow:
+    inset 0 0 0 1px rgba(99, 102, 241, 0.3),
+    0 2px 10px rgba(99, 102, 241, 0.36);
+}
+
+// 按下：旋钮沿运动方向拉长
+.input:active:not(:disabled) + .track .knob {
+  width: 20px;
+}
+
+.input:checked:active:not(:disabled) + .track .knob {
+  transform: translateX(12px);
+}
+
+.input:focus-visible + .track {
+  outline: 2px solid rgba($primary, 0.45);
+  outline-offset: 2px;
+}
+
+.input:disabled + .track {
+  opacity: 0.55;
+}
+
+// ── 尺寸 ──
+.sm {
+  width: 32px;
+  height: 18px;
+
+  .knob {
+    top: 2px;
+    left: 2px;
+    width: 14px;
+    height: 14px;
+  }
+
+  .input:checked + .track .knob {
+    transform: translateX(14px);
+  }
+
+  .input:active:not(:disabled) + .track .knob {
+    width: 17px;
+  }
+
+  .input:checked:active:not(:disabled) + .track .knob {
+    transform: translateX(11px);
+  }
+}
+
+// ── 处理中 ──
+.pending .track {
+  animation: switchPulse 1.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .track,
+  .knob {
+    transition: none;
+  }
+
+  .pending .track {
+    animation: none;
+  }
+}

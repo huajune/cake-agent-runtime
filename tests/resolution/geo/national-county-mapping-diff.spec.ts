@@ -128,8 +128,9 @@ describe('全国县级市映射开关对照（报告证据，不修改默认开�
 
   it('对照报告逐行覆盖本 spec 的同一批输入与结果', () => {
     const report = readFileSync(REPORT_PATH, 'utf8');
+    const normalizedReport = report.replace(/[ \t]+/gu, ' ');
     for (const row of buildDiffRows()) {
-      expect(report).toContain(`| ${row.input} | ${row.disabled} | ${row.enabled} |`);
+      expect(normalizedReport).toContain(`| ${row.input} | ${row.disabled} | ${row.enabled} |`);
     }
   });
 });

@@ -9,7 +9,7 @@ import {
   Area,
   AreaChart,
 } from 'recharts';
-import { IconUsers, IconBarChart, IconFlame, IconTrend, IconEmpty, IconInfo } from '../Icons';
+import { IconUsers, IconBarChart, IconFlame, IconEmpty, IconInfo } from '../Icons';
 import { THEME_COLORS } from '@/constants';
 import { USER_RANGE_OPTIONS } from '../../constants';
 import {
@@ -134,19 +134,16 @@ export default function UserTrendChart({
         <div className={styles.titleRow}>
           <div className={styles.titleGroup}>
             <h3>
-              <div className={styles.headerIcon}>
-                <IconTrend />
-              </div>
               <span>{selectedRange.label}托管趋势</span>
             </h3>
             {!isExpanded && (
               <div className={styles.statsPreview}>
                 <span className={styles.stat}>
-                  <span className={styles.label}>平均:</span>
+                  <span className={styles.label}>平均</span>
                   <span className={styles.value}>{avgUsers}人/天</span>
                 </span>
                 <span className={styles.stat}>
-                  <span className={styles.label}>消息:</span>
+                  <span className={styles.label}>消息</span>
                   <span className={styles.value}>{totalMessages}条</span>
                 </span>
               </div>

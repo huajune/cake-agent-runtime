@@ -62,6 +62,10 @@ export const TOOL_ERROR_TYPES = {
    * 与 job_not_found 区别开：后者"未找到岗位"措辞会被模型脑补成"岗位下架了"，本类型明确要求先走 job_list。
    */
   PRECHECK_JOB_NOT_PROVIDED: 'precheck.job_not_provided',
+  /** 校验型调用发生前没有通过纯 jobId 查询建立持久契约快照。 */
+  PRECHECK_COLLECTION_FORM_NOT_PRESENTED: 'precheck.collection_form_not_presented',
+  /** 海绵实时契约已不同于候选人当前填写的持久契约快照。 */
+  PRECHECK_CONTRACT_CHANGED: 'precheck.contract_changed',
   PRECHECK_FAILED: 'precheck.failed',
 
   // ============================================================

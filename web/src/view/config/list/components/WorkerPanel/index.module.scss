@@ -48,6 +48,31 @@
   line-height: 1.6;
 }
 
+.restartNotice {
+  display: flex;
+  align-items: flex-start;
+  gap: $spacing-sm;
+  padding: $spacing-sm $spacing-md;
+  margin-bottom: $spacing-md;
+  border: 1px solid rgba($warning, 0.25);
+  border-radius: $radius-lg;
+  background: $warning-soft;
+  color: $text-secondary;
+  font-size: $font-size-sm;
+  line-height: $line-height-normal;
+
+  strong {
+    color: $text-primary;
+    font-weight: $font-weight-semibold;
+  }
+}
+
+.restartNoticeIcon {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: $warning;
+}
+
 // 吞吐量计算公式
 .formula {
   font-size: 11px;

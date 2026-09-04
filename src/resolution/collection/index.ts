@@ -19,7 +19,12 @@ export { proposeConditionOption } from './adapters/condition-option.adapter';
 export { proposeEducation } from './adapters/education.adapter';
 export { proposeIdentityStatus } from './adapters/identity-status.adapter';
 export { proposeHealthCertificate } from './adapters/health-certificate.adapter';
-export { proposeSocialInsurance } from './adapters/social-insurance.adapter';
+export {
+  proposeSocialInsurance,
+  socialInsuranceMissingDimensions,
+  type SocialInsuranceDimension,
+} from './adapters/social-insurance.adapter';
+export { proposeAccommodation } from './adapters/accommodation.adapter';
 export {
   containsSensitiveScreeningText,
   SENSITIVE_SCREENING_CRITERIA_NOTICE,

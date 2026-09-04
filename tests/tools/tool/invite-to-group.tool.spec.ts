@@ -216,6 +216,41 @@ describe('buildInviteToGroupTool', () => {
   // badcase 63eefu6c / chat 6a68392bce406a6aee39dd0a（2026-07-29）：同会话两次拉群 ——
   // 一次在查岗结论出来前，一次在候选人问"直接去门店面试吗还是怎么样"时。
   describe('时机 gate 端到端（badcase 63eefu6c）', () => {
+    it.each([
+      [false, TOOL_ERROR_TYPES.INVITE_NO_JOB_RESULT],
+      [true, TOOL_ERROR_TYPES.INVITE_GROUP_CONSENT_REQUIRED],
+    ] as const)(
+      '同一步重复拉群（jobListExecuted=%s）应在企微成员预检前快速拒绝',
+      async (jobListExecuted, expectedErrorType) => {
+        const preflightExistingMembership = jest.fn().mockResolvedValue(null);
+        const invite = jest.fn();
+        const builder = buildInviteToGroupTool({
+          preflightExistingMembership,
+          invite,
+        } as unknown as GroupInviteService);
+        const builtTool = builder(buildContext({ jobListExecuted, bookingSucceeded: undefined }));
+
+        const execute = (toolCallId: string) =>
+          builtTool.execute!(
+            { city: '上海', industry: '餐饮' },
+            {
+              toolCallId,
+              context: {},
+              messages: [],
+              abortSignal: undefined as never,
+            },
+          );
+        const results = await Promise.all([execute('duplicate-1'), execute('duplicate-2')]);
+
+        expect(results).toEqual([
+          expect.objectContaining({ success: false, errorType: expectedErrorType }),
+          expect.objectContaining({ success: false, errorType: expectedErrorType }),
+        ]);
+        expect(preflightExistingMembership).not.toHaveBeenCalled();
+        expect(invite).not.toHaveBeenCalled();
+      },
+    );
+
     it('本轮未查岗就拉群：拒绝且不触达企业接口', async () => {
       const result = await executeTool(
         { city: '上海' },

@@ -23,7 +23,10 @@ import {
   resolveLocalHealthCertificateEligibility,
   type LocalHealthCertificateEligibilityStatus,
 } from '@resolution/candidate/health-cert-eligibility';
-import { parseHealthCertificateMatch } from '@resolution/candidate/health-cert';
+import {
+  isAmbiguousHealthCertificateAnswer,
+  parseHealthCertificateMatch,
+} from '@resolution/candidate/health-cert';
 import { findOptionBySemantics } from '../option-matching';
 import type { ContractOption } from '../form.types';
 import type { AdapterInput, SlotProposal } from './adapter.types';
@@ -44,6 +47,10 @@ const LABEL_MATCHERS: Record<
 
 export function proposeHealthCertificate(input: AdapterInput): SlotProposal | null {
   const { field, candidateText, historicalValues, answerBound } = input;
+
+  // 缺少「有/无」却同时出现「本地有效健康证 + 接受办理」时，两种契约值都说得通。
+  // 保持空槽交上层定向追问，禁止适配器用后半句替候选人补成「无」。
+  if (isAmbiguousHealthCertificateAnswer(candidateText)) return null;
 
   const eligibility = resolveLocalHealthCertificateEligibility({
     latestAnswer: candidateText,

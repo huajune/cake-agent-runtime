@@ -65,6 +65,34 @@ describe('bookable-slot.util', () => {
   });
 
   describe('buildBookableSlots', () => {
+    it('uses the full future deadline date instead of comparing only the clock time', () => {
+      const decisionNow = new Date('2026-09-03T19:47:00+08:00');
+      const windows: InterviewWindow[] = [
+        {
+          weekday: '每周五',
+          startTime: '13:30',
+          endTime: '16:30',
+          cycleDeadlineDay: '当天',
+          cycleDeadlineEnd: '10:00',
+        },
+      ];
+
+      const slots = buildBookableSlots({ windows, now: decisionNow });
+
+      expect(slots).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            date: '2026-09-04',
+            registrationDeadline: '2026-09-04 10:00',
+            bookingAllowed: true,
+          }),
+        ]),
+      );
+      expect(evaluateRequestedDate({ date: '2026-09-04', windows, now: decisionNow })).toEqual(
+        expect.objectContaining({ status: 'available', canSchedule: true }),
+      );
+    });
+
     it('marks normal weekday windows as bookingAllowed', () => {
       const windows: InterviewWindow[] = [
         { weekday: '每周三', startTime: '13:30', endTime: '16:30' },

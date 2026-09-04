@@ -8,7 +8,6 @@
  * - evaluateRequestedDate：候选人指定日期 → available / unavailable / needs_confirmation
  */
 
-import { formatLocalDate } from '@infra/utils/date.util';
 import { normalizePolicyText, type InterviewWindow } from '@tools/job-list/job-policy-parser';
 import {
   compareTime,
@@ -32,11 +31,11 @@ export function buildUpcomingTimeOptions(
   windows: InterviewWindow[],
   horizonDays = 7,
   maxOptions = 10,
+  now: Date = new Date(),
 ): string[] {
   if (windows.length === 0) return [];
 
-  const now = new Date();
-  const today = formatLocalDate(now);
+  const today = formatShanghaiDate(now);
   const nowTime = formatShanghaiTime(now);
   const nowDateTime = `${today} ${nowTime}`;
 
@@ -123,12 +122,19 @@ export function buildBookableSlots(params: {
   requestedDate?: string | null;
   horizonDays?: number;
   maxOptions?: number;
+  /** 同一轮调用应传入同一个时刻，避免多个派生字段跨秒/跨日产生不一致。 */
+  now?: Date;
 }): BookableSlot[] {
-  const { windows, requestedDate = null, horizonDays = 7, maxOptions = 10 } = params;
+  const {
+    windows,
+    requestedDate = null,
+    horizonDays = 7,
+    maxOptions = 10,
+    now = new Date(),
+  } = params;
   if (windows.length === 0) return [];
 
-  const now = new Date();
-  const today = formatLocalDate(now);
+  const today = formatShanghaiDate(now);
   const nowTime = formatShanghaiTime(now);
   const nowDateTime = `${today} ${nowTime}`;
   const dates = new Set<string>();
@@ -296,6 +302,8 @@ export function evaluateRequestedDate(params: {
   date: string;
   windows: InterviewWindow[];
   basePolicyNotes?: string[];
+  /** 与 bookableSlots 共用的裁决时刻。 */
+  now?: Date;
 }): {
   status: 'available' | 'unavailable' | 'needs_confirmation';
   canSchedule: boolean | null;
@@ -310,9 +318,8 @@ export function evaluateRequestedDate(params: {
     | 'same_day_after_latest_window'
     | 'same_day_window_requires_confirmation';
 } {
-  const { date, windows, basePolicyNotes = [] } = params;
+  const { date, windows, basePolicyNotes = [], now = new Date() } = params;
   const weekday = getShanghaiWeekday(date);
-  const now = new Date();
   const today = formatShanghaiDate(now);
   const nowTime = formatShanghaiTime(now);
   const nowDateTime = `${today} ${nowTime}`;

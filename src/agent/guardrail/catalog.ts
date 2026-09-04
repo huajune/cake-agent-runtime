@@ -45,6 +45,8 @@ const OUTPUT_RULE_SOURCE_BY_ID: Record<string, string> = {
     'agent/guardrail/output/rules/store-status-speculation.rule.ts（HardRulesService 调度）',
   booking_receipt_mismatch:
     'agent/guardrail/output/rules/booking-receipt.rule.ts（HardRulesService 调度）',
+  interview_slot_availability_mismatch:
+    'agent/guardrail/output/rules/interview-slot-availability.rule.ts（HardRulesService 调度）',
   interview_time_change_unconfirmed:
     'agent/guardrail/output/rules/booking-receipt.rule.ts（HardRulesService 调度）',
   // ---- 数据复核恢复（1 条 revise + 5 条 observe 哨兵）----

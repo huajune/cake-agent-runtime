@@ -5,6 +5,7 @@ import remarkBreaks from 'remark-breaks';
 import {
   Zap,
   CheckCircle2,
+  XCircle,
   Loader2,
   ArrowRight,
   ArrowLeft,
@@ -86,7 +87,7 @@ function extractMarkdown(result: unknown): string | null {
 interface ToolInvocationProps {
   toolName: string;
   args: unknown;
-  state: string;
+  state: 'call' | 'success' | 'error';
   result?: unknown;
   defaultExpanded?: boolean;
 }
@@ -99,15 +100,18 @@ function ToolInvocation({
   defaultExpanded = false,
 }: ToolInvocationProps) {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
-  const isCompleted = state === 'result';
-  const isCalling = state !== 'result';
+  const isCalling = state === 'call';
+  const isError = state === 'error';
+  const isCompleted = !isCalling;
 
   const hasContent =
     (args !== undefined && args !== null) ||
     (isCompleted && result !== undefined && result !== null);
 
   return (
-    <div className={`${styles.toolCallItem} ${isCalling ? styles.toolCalling : ''}`}>
+    <div
+      className={`${styles.toolCallItem} ${isCalling ? styles.toolCalling : ''} ${isError ? styles.toolFailed : ''}`}
+    >
       <div
         className={`${styles.toolHeader} ${hasContent ? styles.toolHeaderClickable : ''}`}
         onClick={() => hasContent && setIsExpanded(!isExpanded)}
@@ -118,11 +122,17 @@ function ToolInvocation({
         </div>
         <div className={styles.toolHeaderRight}>
           <div
-            className={`${styles.toolStatus} ${isCalling ? styles.statusCalling : styles.statusSuccess}`}
+            className={`${styles.toolStatus} ${
+              isCalling ? styles.statusCalling : isError ? styles.statusError : styles.statusSuccess
+            }`}
           >
             {isCalling ? (
               <>
                 <Loader2 size={12} className={styles.toolSpinnerIcon} /> 调用中
+              </>
+            ) : isError ? (
+              <>
+                <XCircle size={12} /> 失败
               </>
             ) : (
               <>
@@ -174,8 +184,20 @@ interface ExtractedToolCall {
   toolCallId: string;
   toolName: string;
   args: unknown;
-  state: string;
+  state: 'call' | 'success' | 'error';
   result?: unknown;
+}
+
+function isFailedToolResult(result: unknown): boolean {
+  if (!result || typeof result !== 'object' || Array.isArray(result)) return false;
+  const value = result as Record<string, unknown>;
+  return (
+    value.success === false ||
+    value.accepted === false ||
+    value.dispatched === false ||
+    (typeof value.errorType === 'string' && value.errorType.length > 0) ||
+    (value.error !== undefined && value.error !== null && value.error !== false)
+  );
 }
 
 type Segment =
@@ -221,12 +243,17 @@ function buildSegments(parts: UIMessage['parts']): Segment[] {
         toolPart.state === 'output-available' ||
         toolPart.state === 'output-error' ||
         toolPart.output !== undefined;
+      const isError =
+        toolPart.state === 'output-error' ||
+        toolPart.state === 'input-error' ||
+        toolPart.state === 'output-denied' ||
+        isFailedToolResult(toolPart.output);
 
       const tool: ExtractedToolCall = {
         toolCallId: toolPart.toolCallId || `${extractedToolName}-${segments.length}`,
         toolName: extractedToolName,
         args: toolPart.input,
-        state: isCompleted ? 'result' : 'call',
+        state: isError ? 'error' : isCompleted ? 'success' : 'call',
         result: toolPart.output,
       };
 
