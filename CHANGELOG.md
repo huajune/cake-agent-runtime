@@ -14,13 +14,18 @@
 **预计版本**: `v11.3.1`
 **最近更新**: `2026-09-04`
 **来源分支**: `develop`
-**累计 PR**: 1
+**累计 PR**: 2
 
 ### 更新摘要
 - PR #1211 流水表恢复行分隔线并让两个摘要列等宽
 - PR #1211 流水表处理状态恢复胶囊徽标
 - PR #1211 **恢复行分隔线**：`tbody td` 加回 `1px solid #f0f0f6`，末行不画线。悬停整行圆角高亮保留。
 - PR #1211 **两个摘要列等宽**：输入摘要此前固定 `max-width: 105px`，响应摘要用 `width:100% + max-width:0` 吃掉全部剩余；现改为两格共用 `.previewCell`（`width: 50%; max-width: 0; min-width: 100px`），剩余宽度对半分。
+- PR #1212 拉群时机闸门收敛为仅校验重复邀请
+- PR #1212 同批回收拉群闸门收敛后的过期描述
+- PR #1212 `no_job_result_this_turn` → `invite.no_job_result`
+- PR #1212 `group_consent_required` → `invite.group_consent_required`
+- PR #1212 `booking_progress_signal` → `invite.booking_in_progress`
 
 ### 新功能
 - 无
@@ -30,11 +35,15 @@
 - PR #1211 **两个摘要列等宽**：输入摘要此前固定 `max-width: 105px`，响应摘要用 `width:100% + max-width:0` 吃掉全部剩余；现改为两格共用 `.previewCell`（`width: 50%; max-width: 0; min-width: 100px`），剩余宽度对半分。
 
 ### 优化调整
-- 无
+- PR #1212 `no_job_result_this_turn` → `invite.no_job_result`
+- PR #1212 `group_consent_required` → `invite.group_consent_required`
+- PR #1212 `booking_progress_signal` → `invite.booking_in_progress`
 
 ### 运维与流程
 - PR #1211 流水表恢复行分隔线并让两个摘要列等宽
 - PR #1211 流水表处理状态恢复胶囊徽标
+- PR #1212 拉群时机闸门收敛为仅校验重复邀请
+- PR #1212 同批回收拉群闸门收敛后的过期描述
 
 ### 配置变更
 - 无
@@ -43,7 +52,8 @@
 - 无
 
 ### 验证记录
-- 无
+- PR #1212 `invite-timing-gate.spec.ts` + `invite-to-group.tool.spec.ts`：52 passed
+- PR #1212 全量 `ci:check` 通过
 <!-- release:pending:end -->
 
 ## [11.3.0] - 2026-09-04

@@ -34,6 +34,45 @@
       "envFiles": [],
       "verification": [],
       "level": "patch"
+    },
+    {
+      "number": "1212",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1212",
+      "title": "拉群时机闸门收敛为仅校验重复邀请",
+      "author": "huajune",
+      "mergedAt": "2026-09-04",
+      "businessUpdates": [
+        "拉群时机闸门收敛为仅校验重复邀请",
+        "同批回收拉群闸门收敛后的过期描述",
+        "`no_job_result_this_turn` → `invite.no_job_result`",
+        "`group_consent_required` → `invite.group_consent_required`",
+        "`booking_progress_signal` → `invite.booking_in_progress`"
+      ],
+      "summary": [
+        "拉群时机闸门收敛为仅校验重复邀请",
+        "同批回收拉群闸门收敛后的过期描述",
+        "`no_job_result_this_turn` → `invite.no_job_result`",
+        "`group_consent_required` → `invite.group_consent_required`",
+        "`booking_progress_signal` → `invite.booking_in_progress`"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [
+        "`no_job_result_this_turn` → `invite.no_job_result`",
+        "`group_consent_required` → `invite.group_consent_required`",
+        "`booking_progress_signal` → `invite.booking_in_progress`"
+      ],
+      "ops": [
+        "拉群时机闸门收敛为仅校验重复邀请",
+        "同批回收拉群闸门收敛后的过期描述"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`invite-timing-gate.spec.ts` + `invite-to-group.tool.spec.ts`：52 passed",
+        "全量 `ci:check` 通过"
+      ],
+      "level": "patch"
     }
   ],
   "lastRelease": {
@@ -211,5 +250,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "e264a5b149a6260166f78d5a744f8edd99dd9f9e"
+  "lastAnalyzedSha": "8ab833bf957b0a595a1e568f6b475fb57faad6f6"
 }
