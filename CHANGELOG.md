@@ -11,10 +11,10 @@
 <!-- release:pending:start -->
 ## 待发布
 
-**预计版本**: `v11.3.1`
+**预计版本**: `v11.4.0`
 **最近更新**: `2026-09-04`
 **来源分支**: `develop`
-**累计 PR**: 2
+**累计 PR**: 3
 
 ### 更新摘要
 - PR #1211 流水表恢复行分隔线并让两个摘要列等宽
@@ -26,27 +26,43 @@
 - PR #1212 `no_job_result_this_turn` → `invite.no_job_result`
 - PR #1212 `group_consent_required` → `invite.group_consent_required`
 - PR #1212 `booking_progress_signal` → `invite.booking_in_progress`
+- PR #1216 周报运行数据自动投递飞书卡片
+- PR #1216 周报生成后，把「📊 本周运行数据」自动发成飞书卡片到**蛋糕私聊监控群**（与发版通知同群），标题固定「🍰 蛋糕私域托管 · 本周运行同步」，带 @所有人。
+- PR #1216 skill 第四节由「不要自动发企微/飞书」改为存档后自动投递飞书；**企微仍不自动发**。
+- PR #1216 顺带校正两处会让下一轮周报写错的统计口径。
 
 ### 新功能
-- 无
+- PR #1216 新增 `scripts/weekly-ops-report/send-weekly-card.js`：读一个 payload JSON（`windowLabel` / `summary` / `metrics`），渲染成飞书交互卡片并投递。带 HMAC 签名、10s 超时、飞书 `code` 校验，支持 `--dry-run` 先看渲染。
+- PR #1216 卡片只带运行数据，不带系统改动条目——改动明细留在会话正文与 `docs/releases` 存档里。
+- PR #1216 webhook 凭证读 `.env.production` 的 `PRIVATE_CHAT_MONITOR_WEBHOOK_URL/SECRET`，目标群写死在脚本里，不接受运行时改群。
+- PR #1216 周报生成后，把「📊 本周运行数据」自动发成飞书卡片到**蛋糕私聊监控群**（与发版通知同群），标题固定「🍰 蛋糕私域托管 · 本周运行同步」，带 @所有人。
+- PR #1216 skill 第四节由「不要自动发企微/飞书」改为存档后自动投递飞书；**企微仍不自动发**。
+- PR #1216 顺带校正两处会让下一轮周报写错的统计口径。
 
 ### 问题修复
 - PR #1211 **恢复行分隔线**：`tbody td` 加回 `1px solid #f0f0f6`，末行不画线。悬停整行圆角高亮保留。
 - PR #1211 **两个摘要列等宽**：输入摘要此前固定 `max-width: 105px`，响应摘要用 `width:100% + max-width:0` 吃掉全部剩余；现改为两格共用 `.previewCell`（`width: 50%; max-width: 0; min-width: 100px`），剩余宽度对半分。
+- PR #1216 `guardrail_review_records` 的口径写错了：它是**单写入者稀疏表**，放行回合根本不写行，所以 `count(*)` 不是「审查了多少条回复」。原 SKILL 让周报写成「审查 X 条回复」，是错的。
+- PR #1216 实测：08-24 周 1932 行里 1896 行是 `first_decision='pass'` 的仅观察命中；08-31 周降到 81 行，而 revise 25→31、block 11→8 基本持平。行数波动反映的是命中结构（误报被清掉），不是流量。
+- PR #1216 改成报「改写 / 拦截 / 仅观察命中」三档，并要求单独报 pass 行的环比。
+- PR #1216 转人工分组必须用 `payload->>'reason_code'`（结构化枚举），**不能**用 `payload->>'reason'`——后者是自由文本，且含候选人姓名与手机号，不得进入报告。原 SKILL 未作区分。
 
 ### 优化调整
 - PR #1212 `no_job_result_this_turn` → `invite.no_job_result`
 - PR #1212 `group_consent_required` → `invite.group_consent_required`
 - PR #1212 `booking_progress_signal` → `invite.booking_in_progress`
+- PR #1216 输出模板补齐实际在用的「招聘漏斗（ops_events）」与「转人工」两段。
+- PR #1216 归档 2026-09-04 周报到 `docs/releases/2026/weekly-2026-09-04.md`。
 
 ### 运维与流程
 - PR #1211 流水表恢复行分隔线并让两个摘要列等宽
 - PR #1211 流水表处理状态恢复胶囊徽标
 - PR #1212 拉群时机闸门收敛为仅校验重复邀请
 - PR #1212 同批回收拉群闸门收敛后的过期描述
+- PR #1216 周报运行数据自动投递飞书卡片
 
 ### 配置变更
-- 无
+- PR #1216 无数据库 migration、无新增环境变量（复用已有的 `PRIVATE_CHAT_MONITOR_WEBHOOK_URL/SECRET`）。
 
 ### 环境变量提醒
 - 无
@@ -54,6 +70,10 @@
 ### 验证记录
 - PR #1212 `invite-timing-gate.spec.ts` + `invite-to-group.tool.spec.ts`：52 passed
 - PR #1212 全量 `ci:check` 通过
+- PR #1216 `--dry-run` 渲染核对通过（卡头、markdown、@all、note 四个块齐全）
+- PR #1216 用本周真实数据实弹发送到私聊监控群，用户已在群里确认收到
+- PR #1216 `npx prettier --check` 通过
+- PR #1216 `lint:check` 只扫 `src/**/*.ts`，`scripts/*.js` 不在范围内（与现有 `send-deploy-notification.js` 一致）
 <!-- release:pending:end -->
 
 ## [11.3.0] - 2026-09-04
