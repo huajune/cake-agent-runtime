@@ -1,4 +1,3 @@
-import Switch from '@/components/Switch';
 import styles from './index.module.scss';
 
 interface GroupWithStatus {
@@ -66,14 +65,16 @@ export default function GroupTable({
                     <div className={styles.groupName}>{group.name}</div>
                     <div className={styles.groupId}>{group.id}</div>
                   </td>
-                  <td className={styles.groupDesc}>{group.description || '-'}</td>
+                  <td className={styles.groupDesc}>
+                    {group.description || '-'}
+                  </td>
                   <td>
                     <label className={styles.toggleSwitch}>
-                      <Switch
-                        size="sm"
+                      <input
+                        type="checkbox"
                         checked={!group.isBlacklisted}
-                        onChange={(checked) => onToggleBlacklist(group.id, checked)}
-                        pending={isPending}
+                        onChange={(e) => onToggleBlacklist(group.id, e.target.checked)}
+                        disabled={isPending}
                       />
                       <span
                         className={`${styles.statusText} ${!group.isBlacklisted ? styles.enabled : styles.disabled}`}

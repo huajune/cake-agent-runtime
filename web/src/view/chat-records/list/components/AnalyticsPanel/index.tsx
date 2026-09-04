@@ -71,11 +71,11 @@ export default function AnalyticsPanel({
           <div className={styles.rightSection}>
             <div className={styles.stats}>
               <span className={styles.statItem}>
-                <span>会话</span>
+                <span>会话 </span>
                 <span className={styles.success}>{stats.totalSessions}</span>
               </span>
               <span className={styles.statItem}>
-                <span>消息</span>
+                <span>消息 </span>
                 <span className={styles.primary}>{stats.totalMessages}</span>
               </span>
             </div>

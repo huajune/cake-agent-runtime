@@ -1,4 +1,3 @@
-import { Bot, Inbox, Radio, Wrench } from 'lucide-react';
 import type { HealthStatus } from '@/api/types/agent.types';
 import type { WorkerStatus } from '@/api/types/monitoring.types';
 import styles from './index.module.scss';
@@ -21,9 +20,7 @@ export default function HealthGrid({ health, workerStatus }: HealthGridProps) {
         className={`health-item ${styles.healthItem}`}
         data-state={getHealthState(health?.status === 'healthy')}
       >
-        <div className={styles.healthIcon}>
-          <Radio size={20} strokeWidth={1.75} aria-hidden="true" />
-        </div>
+        <div className={styles.healthIcon}>🛰️</div>
         <div className={styles.healthInfo}>
           <div className={styles.healthTitle}>Agent 服务</div>
           <div className={styles.healthStatus}>
@@ -44,9 +41,7 @@ export default function HealthGrid({ health, workerStatus }: HealthGridProps) {
         className={`health-item ${styles.healthItem}`}
         data-state={getHealthState(health?.providers && health.providers.count > 0)}
       >
-        <div className={styles.healthIcon}>
-          <Bot size={20} strokeWidth={1.75} aria-hidden="true" />
-        </div>
+        <div className={styles.healthIcon}>🤖</div>
         <div className={styles.healthInfo}>
           <div className={styles.healthTitle}>AI 模型</div>
           <div className={styles.healthStatus}>
@@ -65,9 +60,7 @@ export default function HealthGrid({ health, workerStatus }: HealthGridProps) {
         className={`health-item ${styles.healthItem}`}
         data-state={getHealthState(health?.tools && health.tools.total > 0)}
       >
-        <div className={styles.healthIcon}>
-          <Wrench size={20} strokeWidth={1.75} aria-hidden="true" />
-        </div>
+        <div className={styles.healthIcon}>🧰</div>
         <div className={styles.healthInfo}>
           <div className={styles.healthTitle}>工具服务</div>
           <div className={styles.healthStatus}>
@@ -86,9 +79,7 @@ export default function HealthGrid({ health, workerStatus }: HealthGridProps) {
         className={`health-item ${styles.healthItem}`}
         data-state={getHealthState(workerStatus !== undefined)}
       >
-        <div className={styles.healthIcon}>
-          <Inbox size={20} strokeWidth={1.75} aria-hidden="true" />
-        </div>
+        <div className={styles.healthIcon}>📨</div>
         <div className={styles.healthInfo}>
           <div className={styles.healthTitle}>消息队列</div>
           <div className={styles.healthStatus}>

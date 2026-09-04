@@ -30,7 +30,7 @@ export default function UserTabNav({
         onClick={() => onTabChange('today')}
       >
         <span className={styles.tabLabel}>今日托管会话</span>
-        <span className={styles.tabCount}>{todayCount}</span>
+        <span className={styles.tabCount}>({todayCount})</span>
       </button>
       <button
         type="button"
@@ -38,7 +38,7 @@ export default function UserTabNav({
         onClick={() => onTabChange('paused')}
       >
         <span className={styles.tabLabel}>临时禁止托管</span>
-        <span className={styles.tabCount}>{pausedCount}</span>
+        <span className={styles.tabCount}>({pausedCount})</span>
       </button>
       <button
         type="button"
@@ -46,7 +46,7 @@ export default function UserTabNav({
         onClick={() => onTabChange('permanent')}
       >
         <span className={styles.tabLabel}>永久禁止托管</span>
-        <span className={styles.tabCount}>{permanentCount}</span>
+        <span className={styles.tabCount}>({permanentCount})</span>
       </button>
       <button
         type="button"
@@ -54,7 +54,7 @@ export default function UserTabNav({
         onClick={() => onTabChange('blacklist')}
       >
         <span className={styles.tabLabel}>候选人黑名单</span>
-        <span className={styles.tabCount}>{blacklistCount}</span>
+        <span className={styles.tabCount}>({blacklistCount})</span>
       </button>
     </div>
   );

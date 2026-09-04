@@ -1,62 +1,58 @@
 @use '@/assets/styles/variables' as *;
 
-// UserTabNav — 胶囊分段切换器：纯白轨道 + 淡丁香细边，激活态主题渐变紫
-$pill-ring: rgba(212, 208, 255, 0.55);
-$ink: #14132b;
-$ink-2: #3b3a55;
-
+// UserTabNav 组件样式：分段式胶囊切换器
 .tabNav {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
-  margin: 16px 24px 0;
-  padding: 3px;
-  background: #fff;
-  border-radius: $radius-full;
-  box-shadow: inset 0 0 0 1px $pill-ring;
+  gap: 4px;
+  margin: 20px 24px 0;
+  padding: 4px;
+  background: #f1f5f9;
+  border-radius: 12px;
   max-width: calc(100% - 48px);
   overflow-x: auto;
 }
 
 .tab {
   position: relative;
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 6px;
-  height: 28px;
-  padding: 0 12px;
+  gap: 8px;
+  padding: 9px 18px;
   background: transparent;
   border: none;
-  border-radius: $radius-full;
+  border-radius: 9px;
   cursor: pointer;
-  font-size: 12.5px;
-  font-weight: $font-weight-normal;
-  color: $ink-2;
+  font-size: 14px;
+  font-weight: 500;
+  color: #64748b;
   white-space: nowrap;
   transition:
-    color $transition-fast,
-    background $transition-fast,
-    box-shadow $transition-fast;
+    color 0.2s ease,
+    background 0.25s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.25s ease;
 
   &:hover {
-    color: $ink;
+    color: #334155;
   }
 
   &.active {
-    color: #fff;
-    font-weight: $font-weight-medium;
-    background: $gradient-primary;
-    box-shadow: 0 2px 6px rgba($primary, 0.28);
+    color: $primary;
+    font-weight: 600;
+    background: #ffffff;
+    box-shadow:
+      0 1px 2px rgba(15, 23, 42, 0.06),
+      0 4px 12px -4px rgba(15, 23, 42, 0.1);
 
     .tabCount {
-      background: rgba(255, 255, 255, 0.18);
-      color: #fff;
+      background: $primary-10;
+      color: $primary;
     }
   }
 
   &:focus-visible {
-    outline: 2px solid rgba($primary, 0.5);
-    outline-offset: 1px;
+    outline: 2px solid $primary;
+    outline-offset: 2px;
   }
 }
 
@@ -65,17 +61,14 @@ $ink-2: #3b3a55;
 }
 
 .tabCount {
-  display: inline-flex;
-  align-items: center;
-  height: 17px;
-  padding: 0 6px;
-  border-radius: $radius-full;
-  font-size: 11px;
-  font-weight: $font-weight-medium;
+  font-size: 12px;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
-  color: #5b5a86;
-  background: rgba(212, 208, 255, 0.35);
+  color: #94a3b8;
+  background: rgba(148, 163, 184, 0.14);
+  padding: 1px 8px;
+  border-radius: 999px;
   transition:
-    background $transition-fast,
-    color $transition-fast;
+    background 0.2s ease,
+    color 0.2s ease;
 }

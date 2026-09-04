@@ -7,43 +7,44 @@
   padding: 20px 24px 24px;
 }
 
-// 表格语言与「处理请求流水」一致：淡粉紫蓝表头带画在 table 背景上、不画行线、悬停整行圆角高亮
-$header-height: 38px;
-
 .table {
   width: 100%;
   min-width: 960px;
   border-collapse: separate;
   border-spacing: 0;
-  border-radius: 10px;
-  background: linear-gradient(
-      90deg,
-      rgba(240, 239, 255, 0.9) 0%,
-      rgba(250, 244, 254, 0.8) 50%,
-      rgba(242, 247, 255, 0.8) 100%
-    )
-    top / 100% $header-height no-repeat;
-  font-size: 13px;
+  font-size: 14px;
+  background: #fff;
 
   th {
-    box-sizing: border-box;
-    height: $header-height;
-    padding: 0 12px;
+    padding: 14px 16px;
     text-align: left;
-    vertical-align: middle;
-    background: transparent;
-    color: #4f4e7a;
-    font-weight: $font-weight-medium;
-    font-size: 11.5px;
-    letter-spacing: 0.02em;
+    background: #f8fafc;
+    color: #94a3b8;
+    font-weight: 600;
+    font-size: 12px;
+    letter-spacing: 0.03em;
+    border-top: 1px solid #eef2f7;
+    border-bottom: 1px solid #eef2f7;
     white-space: nowrap;
+
+    &:first-child {
+      border-top-left-radius: 10px;
+      border-bottom-left-radius: 10px;
+      border-left: 1px solid #eef2f7;
+    }
+
+    &:last-child {
+      border-top-right-radius: 10px;
+      border-bottom-right-radius: 10px;
+      border-right: 1px solid #eef2f7;
+    }
   }
 
   td {
-    padding: 12px;
+    padding: 14px 16px;
     text-align: left;
-    border-bottom: 0;
-    color: #3b3a55;
+    border-bottom: 1px solid #f1f5f9;
+    color: #334155;
     transition: background 0.15s ease;
     font-variant-numeric: tabular-nums;
   }
@@ -64,18 +65,23 @@ $header-height: 38px;
 .dataRow {
   animation: rowIn 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
 
-  &:hover td {
-    background: rgba(240, 239, 255, 0.65);
+  td:first-child {
+    transition: padding-left 0.2s ease;
   }
 
-  &:hover td:first-child {
-    border-top-left-radius: 10px;
-    border-bottom-left-radius: 10px;
-  }
+  &:hover {
+    background: linear-gradient(
+      90deg,
+      rgba($primary, 0.05),
+      rgba($primary, 0.015) 45%,
+      transparent
+    );
+    box-shadow: inset 3px 0 0 $primary;
 
-  &:hover td:last-child {
-    border-top-right-radius: 10px;
-    border-bottom-right-radius: 10px;
+    td:first-child {
+      // 悬停时左侧光标条占位，内容轻微右移制造"被点亮"的动感
+      padding-left: 19px;
+    }
   }
 }
 
@@ -171,9 +177,9 @@ $header-height: 38px;
   gap: 12px;
 
   span {
-    font-weight: $font-weight-medium;
-    color: #14132b;
-    font-size: 13px;
+    font-weight: 600;
+    color: $text-primary;
+    font-size: 14px;
   }
 }
 
@@ -187,7 +193,7 @@ $header-height: 38px;
   align-items: center;
   justify-content: center;
   font-size: $font-size-sm;
-  font-weight: $font-weight-medium;
+  font-weight: $font-weight-bold;
   box-shadow:
     0 0 0 2px #fff,
     0 2px 6px rgba(15, 23, 42, 0.12);
@@ -210,9 +216,9 @@ $header-height: 38px;
 .botCell {
   max-width: 180px;
   overflow: hidden;
-  color: #5b5a86;
+  color: #334155;
   font-size: 13px;
-  font-weight: $font-weight-normal;
+  font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -236,10 +242,10 @@ $header-height: 38px;
   padding: 3px 10px;
   text-align: center;
   font-size: 12px;
-  font-weight: $font-weight-medium;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
-  color: #4f46e5;
-  background: rgba(212, 208, 255, 0.35);
+  color: $primary;
+  background: rgba($primary, 0.08);
   border-radius: 999px;
 }
 
@@ -260,6 +266,44 @@ $header-height: 38px;
   gap: 8px;
   cursor: pointer;
   white-space: nowrap;
+
+  input[type='checkbox'] {
+    position: relative;
+    width: 40px;
+    height: 22px;
+    appearance: none;
+    background: #e2e8f0;
+    border-radius: 11px;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
+
+    &::before {
+      content: '';
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 18px;
+      height: 18px;
+      background: #fff;
+      border-radius: 50%;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+
+    &:checked {
+      background: $success;
+
+      &::before {
+        transform: translateX(18px);
+      }
+    }
+
+    &:disabled {
+      cursor: wait;
+      opacity: 0.75;
+    }
+  }
 }
 
 .togglePending {

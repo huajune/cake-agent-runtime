@@ -13,7 +13,6 @@ import MessageProcessingTable from './components/MessageProcessingTable';
 import MessageProcessingDetailDrawer from './components/MessageProcessingDetailDrawer';
 import type { MessageRecord } from '@/api/types/chat.types';
 import type { BotAccount } from '@/api/types/bot.types';
-import styles from './styles/index.module.scss';
 
 const ALL_BOTS = '__all_bots__';
 
@@ -314,15 +313,53 @@ export default function MessageProcessingPage() {
           hasMore={hasMore}
           loader={
             isLoadingMore ? (
-              <div className={styles.loadMore}>
-                <span className={styles.spinner} aria-hidden="true" />
+              <div
+                style={{
+                  padding: '24px 20px',
+                  textAlign: 'center',
+                  color: '#94a3b8',
+                  fontSize: '13px',
+                  fontWeight: 500,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                }}
+              >
+                <span
+                  style={{
+                    display: 'inline-block',
+                    width: '16px',
+                    height: '16px',
+                    border: '2px solid rgba(99, 102, 241, 0.15)',
+                    borderTopColor: '#6366f1',
+                    borderRadius: '50%',
+                    animation: 'spin 0.6s linear infinite',
+                  }}
+                />
                 加载更多...
               </div>
             ) : null
           }
           endMessage={
             realtimeMessages.length > 0 ? (
-              <div className={styles.endMessage}>已加载全部 {stats.total} 条请求</div>
+              <div
+                style={{
+                  padding: '24px 20px',
+                  textAlign: 'center',
+                  color: '#94a3b8',
+                  fontSize: '13px',
+                  fontWeight: 500,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px',
+                }}
+              >
+                <span style={{ color: '#c7d2fe' }}>—</span>
+                已加载全部 {stats.total} 条请求
+                <span style={{ color: '#c7d2fe' }}>—</span>
+              </div>
             ) : null
           }
         >

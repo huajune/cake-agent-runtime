@@ -1,381 +1,161 @@
-// MessageProcessingTable — 白色大圆角卡片：原 10 列、原行高；薰衣草表头带、细线分隔、深靛墨层级、数字右对齐
+// MessageProcessingTable 组件样式 - CSS Modules
 @use '@/assets/styles/variables' as *;
 
-$font-ui: -apple-system, BlinkMacSystemFont, 'Inter', 'PingFang SC', 'Segoe UI', sans-serif;
-
-$ink: #14132b;
-$ink-2: #3b3a55;
-$gray: #75748c;
-$gray-2: #a3a2b8;
-$gray-3: #c9c8d8;
-// 底色语言与顶部一致：梦幻粉紫蓝；行悬停是丁香紫的淡叠色
-$dream-1: #f0efff;
-$dream-2: #faf4fe;
-$dream-3: #f2f7ff;
-$fill: rgba($dream-1, 0.7);
-$hover: rgba($dream-1, 0.65);
-$hairline: #e9e9f2;
-$header-height: 38px;
-
-@keyframes shimmer {
-  0% {
-    background-position: 200% 0;
-  }
-  100% {
-    background-position: -200% 0;
-  }
-}
-
-@keyframes breathe {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.35;
-  }
-}
-
-// ── 卡片 ──
-.card {
-  padding: 8px;
-  border-radius: 16px;
-  background: #fff;
-  box-shadow:
-    0 0 0 1px $hairline,
-    0 8px 24px rgba(20, 19, 43, 0.045);
-  font-family: $font-ui;
+.section {
+  @include monitoring-table-section;
 }
 
 .tableWrapper {
-  overflow-x: auto;
-  border-radius: 10px;
-  @include custom-scrollbar(6px, transparent, rgba(20, 19, 43, 0.12));
+  @include monitoring-table-wrapper;
 }
 
 .table {
-  width: 100%;
-  min-width: 900px;
-  border-collapse: separate;
-  border-spacing: 0;
-  border-radius: 10px;
-  // 表头带画在 table 背景上（单元格透明）：渐变才能横贯整行而不是按格重复
-  background: linear-gradient(
-      90deg,
-      rgba($dream-1, 0.9) 0%,
-      rgba($dream-2, 0.8) 50%,
-      rgba($dream-3, 0.8) 100%
-    )
-    top / 100% $header-height no-repeat;
-  font-size: $font-size-sm;
-  color: $ink-2;
-
-  thead th {
-    box-sizing: border-box;
-    height: $header-height;
-    padding: 0 8px;
-    text-align: left;
-    vertical-align: middle;
-    font-size: $font-size-xs;
-    font-weight: $font-weight-medium;
-    letter-spacing: 0.02em;
-    text-transform: none;
-    color: #4f4e7a;
-    background: transparent;
-    white-space: nowrap;
-  }
-
-  // 不画行线：靠留白分行，悬停时整行圆角浅紫高亮
-  tbody td {
-    padding: 12px 8px;
-    border-bottom: 0;
-    vertical-align: middle;
-    white-space: nowrap;
-    font-variant-numeric: tabular-nums;
-    transition: background $transition-fast;
-  }
-
-  tbody tr:first-child td {
-    padding-top: 14px;
-  }
+  @include monitoring-processing-table;
 }
 
-.thCenter {
-  text-align: center !important;
-}
-
-.thRight {
-  text-align: right !important;
-}
-
-.center {
-  text-align: center;
-}
-
-.right {
-  text-align: right;
-}
-
-// ── 数据行 ──
-.row {
+.clickableRow {
   cursor: pointer;
-  outline: none;
+  transition: all 0.15s ease;
 
-  &:hover td,
-  &:focus-visible td {
-    background: $hover;
+  &:hover {
+    td {
+      background: rgba(99, 102, 241, 0.03);
+    }
+
+    td:first-child {
+      box-shadow: inset 3px 0 0 0 $primary;
+    }
   }
 
-  &:hover td:first-child,
-  &:focus-visible td:first-child {
-    border-top-left-radius: 10px;
-    border-bottom-left-radius: 10px;
-  }
-
-  &:hover td:last-child,
-  &:focus-visible td:last-child {
-    border-top-right-radius: 10px;
-    border-bottom-right-radius: 10px;
-  }
-
-  &:hover .rowChevron,
-  &:focus-visible .rowChevron {
-    opacity: 1;
-    transform: translateX(0);
-  }
-
-  &:active td {
-    background: $fill;
+  &:active {
+    td {
+      background: rgba(99, 102, 241, 0.06);
+    }
   }
 }
 
-.timeCell {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 6px;
+td.loading {
+  text-align: center;
+  vertical-align: middle;
+  padding: 80px 0;
+  color: $text-muted;
+  background: transparent;
+
+  .emptyStateContainer {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+
+    .emptyIconWrapper {
+      width: 88px;
+      height: 88px;
+      margin-bottom: 20px;
+      animation: float 4s ease-in-out infinite;
+      filter: drop-shadow(0 8px 16px rgba(99, 102, 241, 0.08));
+
+      .emptyIcon {
+        width: 100%;
+        height: 100%;
+      }
+    }
+
+    @keyframes float {
+      0%,
+      100% {
+        transform: translateY(0);
+      }
+      50% {
+        transform: translateY(-10px);
+      }
+    }
+
+    p {
+      margin: 0;
+      font-size: 14px;
+      color: #94a3b8;
+      font-weight: 500;
+      letter-spacing: 0.02em;
+    }
+  }
 }
 
-.date {
-  font-size: 11.5px;
-  color: $gray-2;
-}
-
-.time {
-  font-size: $font-size-sm;
-  color: $ink;
-}
-
-.subject {
-  @include text-ellipsis;
-  display: block;
+// 单元格样式
+.cellTruncate {
   max-width: 120px;
-  font-weight: $font-weight-medium;
-  color: $ink;
-}
-
-.bot {
-  @include text-ellipsis;
-  display: block;
-  max-width: 120px;
-  color: $gray;
-}
-
-.preview {
-  @include text-ellipsis;
-  display: block;
-  max-width: 105px;
-  color: $ink-2;
-}
-
-// 响应摘要列吃掉剩余宽度：width:100% + max-width:0 让它不再按内容撑开，min-width 兜底不塌
-.previewFlexCell {
-  width: 100%;
-  max-width: 0;
-  min-width: 100px;
-}
-
-.previewReply {
-  max-width: none;
-  color: $gray;
-}
-
-.number {
-  color: $ink-2;
-}
-
-.unit {
-  margin-left: 2px;
-  font-size: 11px;
-  color: $gray-2;
-}
-
-.muted {
-  color: $gray-3;
-}
-
-// ── 状态 ──
-// 行尾箭头绝对定位，不占列宽
-.statusWrap {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding-right: 10px;
-}
-
-.status {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 12.5px;
-  color: $ink-2;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  flex-shrink: 0;
+.cellTruncateLarge {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.dotSuccess {
-  background: #22c55e;
+.botCell {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #475569;
+  font-weight: 600;
 }
 
-.dotDanger {
-  background: #ef4444;
-}
-
-.dotWarning {
-  background: #f59e0b;
-  animation: breathe 1.8s ease-in-out infinite;
-}
-
-.dotInfo {
-  background: #3b82f6;
-}
-
-.flag {
-  display: inline-flex;
-  align-items: center;
-  cursor: help;
-}
-
-.flagWarning {
-  color: #b54708;
-}
-
-.flagDanger {
-  color: #d92d20;
-}
-
-.rowChevron {
-  position: absolute;
-  right: 0;
-  top: 50%;
-  margin-top: -7px;
-  color: $gray-2;
-  opacity: 0;
-  transform: translateX(-3px);
-  transition:
-    opacity $transition-fast,
-    transform $transition-fast;
-}
-
-// ── 骨架屏 / 空态 ──
-.skeletonRow td {
-  padding: 15px 8px;
-}
-
-.skeleton {
-  display: block;
-  width: 96px;
-  height: 11px;
-  border-radius: 6px;
-  background: linear-gradient(
-    90deg,
-    rgba($primary, 0.07) 25%,
-    rgba($primary, 0.12) 50%,
-    rgba($primary, 0.07) 75%
-  );
-  background-size: 200% 100%;
-  animation: shimmer 1.6s linear infinite;
-}
-
-.skeletonRow td:nth-child(2) .skeleton,
-.skeletonRow td:nth-child(3) .skeleton {
-  width: 110px;
-}
-
-.skeletonRow td:nth-child(4) .skeleton {
-  width: 140px;
-}
-
-.skeletonRow td:nth-child(5) .skeleton {
-  width: 60%;
-}
-
-.skeletonRow td:nth-child(6) .skeleton {
-  width: 18px;
-  margin: 0 auto;
-}
-
-.skeletonRow td:nth-child(7) .skeleton,
-.skeletonRow td:nth-child(8) .skeleton,
-.skeletonRow td:nth-child(9) .skeleton {
-  width: 56px;
-  margin-left: auto;
-}
-
-.skeletonRow td:nth-child(10) .skeleton {
-  width: 48px;
-}
-
-.stateCell {
-  padding: 72px 0 !important;
+.cellCenter {
   text-align: center;
 }
 
-.empty {
+.cellMono {
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+    monospace;
+  font-size: 11px;
+  color: #64748b;
+  white-space: nowrap;
+}
+
+.cellHighlight {
+  color: $danger;
+  font-weight: 700;
+}
+
+// 状态单元格
+.statusCell {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
 }
 
-.emptyIcon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 44px;
-  height: 44px;
-  margin-bottom: 10px;
-  border-radius: 50%;
-  background: $fill;
-  color: $gray;
-}
+// 降级图标
+.fallbackIcon {
+  font-size: 14px;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.1));
 
-.emptyTitle {
-  margin: 0;
-  font-size: $font-size-base;
-  font-weight: $font-weight-medium;
-  color: $ink;
-}
-
-.emptyHint {
-  margin: 0;
-  font-size: $font-size-xs;
-  color: $gray-2;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .skeleton,
-  .dotWarning {
-    animation: none;
+  &.success {
+    color: #f59e0b;
   }
 
-  .rowChevron {
-    transition: none;
+  &.failed {
+    color: #ef4444;
+  }
+}
+
+.guardrailIcon {
+  font-size: 13px;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.1));
+
+  &.blocked {
+    color: #ef4444;
+  }
+
+  &.repaired {
+    color: #f59e0b;
+  }
+
+  &.intercepted {
+    color: #8b5cf6;
   }
 }

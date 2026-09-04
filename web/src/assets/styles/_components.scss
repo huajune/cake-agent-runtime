@@ -49,49 +49,32 @@
 }
 
 // ========== 筛选器 ==========
-// 分段胶囊：纯白轨道 + 淡丁香细边，激活态主题渐变紫（全站同款）
 .filters {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  padding: 3px;
-  border-radius: 999px;
-  background: #fff;
-  box-shadow: inset 0 0 0 1px rgba(212, 208, 255, 0.55);
+  display: flex;
+  gap: 8px;
   flex-wrap: wrap;
 
   button {
-    display: inline-flex;
-    align-items: center;
-    height: 26px;
-    padding: 0 10px;
-    border: 0;
+    background: rgba(255, 255, 255, 0.6);
+    border: 1px solid $border;
+    color: $text-secondary;
     border-radius: 999px;
-    background: transparent;
-    color: #3b3a55;
-    font-size: 12px;
-    font-weight: 400;
-    white-space: nowrap;
+    padding: 6px 14px;
+    font-size: 13px;
     cursor: pointer;
-    transition:
-      color 0.15s ease,
-      background 0.15s ease,
-      box-shadow 0.15s ease;
+    transition: all 0.2s ease;
 
     &:hover {
-      color: #14132b;
-    }
-
-    &:focus-visible {
-      outline: 2px solid rgba($primary, 0.5);
-      outline-offset: 1px;
+      border-color: $primary;
+      background: $accent-08;
+      color: $primary;
     }
 
     &.active {
       background: $gradient-primary;
+      border-color: transparent;
       color: #fff;
-      font-weight: 500;
-      box-shadow: 0 2px 6px rgba($primary, 0.28);
+      box-shadow: 0 2px 8px $primary-30;
     }
   }
 }
@@ -656,9 +639,11 @@
   z-index: $z-dropdown + 20;
 
   &[open] summary {
+    border-color: rgba($primary, 0.78);
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba($primary, 0.045));
     box-shadow:
-      0 0 0 1px rgba($primary, 0.5),
-      0 0 0 4px rgba($primary, 0.1);
+      0 0 0 3px rgba($primary, 0.1),
+      0 14px 26px rgba($primary, 0.12);
   }
 
   &[open] summary svg {
@@ -666,20 +651,20 @@
   }
 
   summary {
-    min-height: 32px;
+    min-height: 44px;
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
-    gap: 8px;
-    border: 0;
-    border-radius: 999px;
-    background: #fff;
-    color: #5b5a86;
+    gap: 10px;
+    border: 1px solid rgba($border, 0.95);
+    border-radius: 14px;
+    background: rgba($bg-card, 0.88);
+    color: $text-muted;
     cursor: pointer;
     list-style: none;
-    padding: 0 12px;
-    font-size: 12px;
-    box-shadow: inset 0 0 0 1px rgba(212, 208, 255, 0.55);
+    padding: 0 14px;
+    font-size: 13px;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
     transition:
       border-color 0.2s ease,
       background 0.2s ease,
@@ -691,24 +676,28 @@
     }
 
     &:hover {
-      box-shadow: inset 0 0 0 1px rgba(212, 208, 255, 0.9);
+      border-color: rgba($primary, 0.42);
+      background: rgba(255, 255, 255, 0.94);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.9),
+        0 10px 22px rgba(15, 23, 42, 0.08);
     }
 
     &:focus-visible {
-      outline: 2px solid rgba($primary, 0.5);
-      outline-offset: 1px;
+      outline: 3px solid rgba($primary, 0.18);
+      outline-offset: 3px;
     }
 
     > span {
-      font-weight: 400;
+      font-weight: 600;
       letter-spacing: 0;
     }
 
     strong {
       overflow: hidden;
-      color: #14132b;
-      font-size: 12.5px;
-      font-weight: 500;
+      color: $text-primary;
+      font-size: 15px;
+      font-weight: 700;
       text-overflow: ellipsis;
       white-space: nowrap;
     }
@@ -858,16 +847,19 @@
 }
 
 .control-panel-title {
-  font-size: 16px;
-  font-weight: 500;
-  line-height: 1.2;
-  letter-spacing: -0.01em;
-  color: #14132b;
+  font-size: 15px;
+  font-weight: 600;
+  color: $text-primary;
   display: flex;
   align-items: center;
   gap: 8px;
   padding-right: 20px;
-  border-right: 1px solid rgba(20, 19, 43, 0.08);
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+
+  &::before {
+    content: '⚡';
+    font-size: 16px;
+  }
 }
 
 // ========== 告警控制面板 ==========
