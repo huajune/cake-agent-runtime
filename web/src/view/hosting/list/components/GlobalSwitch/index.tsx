@@ -1,3 +1,5 @@
+import { Bot, BotOff } from 'lucide-react';
+import Switch from '@/components/Switch';
 import styles from './index.module.scss';
 
 interface GlobalSwitchProps {
@@ -18,26 +20,21 @@ export default function GlobalSwitch({ enabled, isPending, onToggle }: GlobalSwi
       <div className={styles.switchBox}>
         <div className={styles.switchInfo}>
           <div className={`${styles.iconBox} ${enabled ? styles.enabled : styles.disabled}`}>
-            {enabled ? '🤖' : '🔇'}
+            {enabled ? (
+              <Bot size={22} strokeWidth={1.75} aria-hidden="true" />
+            ) : (
+              <BotOff size={22} strokeWidth={1.75} aria-hidden="true" />
+            )}
           </div>
           <div className={styles.statusInfo}>
-            <div className={styles.statusTitle}>
-              智能回复 {enabled ? '已启用' : '已禁用'}
-            </div>
+            <div className={styles.statusTitle}>智能回复 {enabled ? '已启用' : '已禁用'}</div>
             <div className={styles.statusDesc}>
-              {enabled
-                ? '所有用户消息将触发 AI 自动回复'
-                : '所有用户消息将被忽略，不触发 AI 回复'}
+              {enabled ? '所有用户消息将触发 AI 自动回复' : '所有用户消息将被忽略，不触发 AI 回复'}
             </div>
           </div>
         </div>
         <label className={styles.toggleSwitch}>
-          <input
-            type="checkbox"
-            checked={enabled}
-            onChange={(e) => onToggle(e.target.checked)}
-            disabled={isPending}
-          />
+          <Switch checked={enabled} onChange={onToggle} pending={isPending} />
           <span className={`${styles.statusText} ${enabled ? styles.enabled : styles.disabled}`}>
             {enabled ? '开启' : '关闭'}
           </span>

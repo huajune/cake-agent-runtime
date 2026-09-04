@@ -3,6 +3,7 @@ import { formatDateTime, formatLocaleNumber } from '@/utils/format';
 import type { UserTableProps } from '../../types';
 import { AVATAR_GRADIENTS } from '../../constants';
 import { getAvatarStyle, getUserInitial } from '../../utils/helpers';
+import Switch from '@/components/Switch';
 import styles from './index.module.scss';
 
 function getBotLabel(user: { botUserId?: string; imBotId?: string }) {
@@ -169,11 +170,11 @@ export default function UserTable({
                     <label
                       className={`${styles.toggleSwitch} ${isUpdating ? styles.togglePending : ''}`}
                     >
-                      <input
-                        type="checkbox"
+                      <Switch
+                        size="sm"
                         checked={!user.isPaused}
-                        disabled={isUpdating}
-                        onChange={(e) => onToggleHosting(user.chatId, e.target.checked)}
+                        pending={isUpdating}
+                        onChange={(checked) => onToggleHosting(user.chatId, checked)}
                       />
                       <span
                         className={`${styles.statusText} ${
