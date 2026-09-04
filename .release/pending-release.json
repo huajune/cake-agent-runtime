@@ -130,6 +130,57 @@
         "`lint:check` 只扫 `src/**/*.ts`，`scripts/*.js` 不在范围内（与现有 `send-deploy-notification.js` 一致）"
       ],
       "level": "minor"
+    },
+    {
+      "number": "1217",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1217",
+      "title": "明确查询与收资校验模式",
+      "author": "huajune",
+      "mergedAt": "2026-09-04",
+      "businessUpdates": [
+        "**答案丢失**：旧契约要求校验前必须先做一次纯 jobId 查询建立快照。模型拿到候选人答案后为了满足这个前置，会先空跑一次查询，本轮 `fieldValueProposals` 随之丢弃，候选人被重复追问。现在 `validate` 自带建快照，答案当轮入账。",
+        "**裸否定误判身份**：`proposeIdentityStatus` 此前对 `adapter_sweep` 扫来的自由聊天也走 `classifyIdentityAnswerText`，把任意裸「是/否/不是」当成身份作答——而前一句可能问的是第二职业、健康证或排班。现在只有答案已绑定到本槽位（表单行或 `fieldValueProposals`）时才用宽松分类，否则要求 `matchIdentityStatement` 的显式陈述。",
+        "配合 `query` 不再消费自由聊天，同一误判的两条入口一并封死。",
+        "`duliday_interview_precheck` 增加必填 `mode` 枚举（`query` / `validate`），调用意图不再由「是否携带 fieldValueProposals / recapConfirmation / requestedDate」反推。",
+        "`validate` 遇到无契约快照时同次原子建快照后校验，取消 `collection_form_not_presented` 回执——此前模型为了「先查表」会把本轮候选人答案丢掉。",
+        "`query` 收敛为只读协议，不再消费自由聊天，杜绝「查一下预约信息」触发 `adapter_sweep` 把裸「不是」写成身份拒绝。"
+      ],
+      "summary": [
+        "明确查询与收资校验模式",
+        "回收 mode 二分后的残留错误类型与过期文档",
+        "`duliday_interview_precheck` 增加必填 `mode` 枚举（`query` / `validate`），调用意图不再由「是否携带 fieldValueProposals / recapConfirmation / requestedDate」反推。",
+        "`validate` 遇到无契约快照时同次原子建快照后校验，取消 `collection_form_not_presented` 回执——此前模型为了「先查表」会把本轮候选人答案丢掉。",
+        "`query` 收敛为只读协议，不再消费自由聊天，杜绝「查一下预约信息」触发 `adapter_sweep` 把裸「不是」写成身份拒绝。"
+      ],
+      "features": [],
+      "fixes": [
+        "**答案丢失**：旧契约要求校验前必须先做一次纯 jobId 查询建立快照。模型拿到候选人答案后为了满足这个前置，会先空跑一次查询，本轮 `fieldValueProposals` 随之丢弃，候选人被重复追问。现在 `validate` 自带建快照，答案当轮入账。",
+        "**裸否定误判身份**：`proposeIdentityStatus` 此前对 `adapter_sweep` 扫来的自由聊天也走 `classifyIdentityAnswerText`，把任意裸「是/否/不是」当成身份作答——而前一句可能问的是第二职业、健康证或排班。现在只有答案已绑定到本槽位（表单行或 `fieldValueProposals`）时才用宽松分类，否则要求 `matchIdentityStatement` 的显式陈述。",
+        "配合 `query` 不再消费自由聊天，同一误判的两条入口一并封死。",
+        "`duliday_interview_precheck` 增加必填 `mode` 枚举（`query` / `validate`），调用意图不再由「是否携带 fieldValueProposals / recapConfirmation / requestedDate」反推。",
+        "`validate` 遇到无契约快照时同次原子建快照后校验，取消 `collection_form_not_presented` 回执——此前模型为了「先查表」会把本轮候选人答案丢掉。",
+        "`query` 收敛为只读协议，不再消费自由聊天，杜绝「查一下预约信息」触发 `adapter_sweep` 把裸「不是」写成身份拒绝。"
+      ],
+      "optimizations": [
+        "`mode` 的两条约束由 zod `superRefine` 硬拦：`query` 禁带字段提案与 recap；`validate` 必须携带非空 `fieldValueProposals` 或 `recapConfirmation=true`。错误信息直接指向应改用的 mode。",
+        "`collect_fields` 回执在 `mode=query` 时追加提示：本轮若已含报名答案，立即改用 `validate` 重投，禁止丢答案后直接发问。",
+        "同批回收被取代的产物：删除已无写入者的 `PRECHECK_COLLECTION_FORM_NOT_PRESENTED`；`collection-form-machine.md` 一轮数据流按 query/validate 重写；`prompt-rule-ledger.md` 登记 mode 显式二分（CLAUDE.md 要求 prompt 侧规则增删改同批入账）。"
+      ],
+      "ops": [
+        "明确查询与收资校验模式",
+        "回收 mode 二分后的残留错误类型与过期文档"
+      ],
+      "config": [
+        "无数据库 migration、无新增环境变量。"
+      ],
+      "envFiles": [],
+      "verification": [
+        "`typecheck` 通过",
+        "`lint:check` 通过（`--max-warnings=0`）",
+        "`duliday-interview-precheck.tool.spec.ts` 53 passed",
+        "`adapters.spec.ts` + `proposal-intake.spec.ts` 72 passed"
+      ],
+      "level": "patch"
     }
   ],
   "lastRelease": {
@@ -307,5 +358,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "ee450a4748ac61fc8af91d130ea2a7d0f3b35890"
+  "lastAnalyzedSha": "ca9b3f7a118465b67f63b18d125b5145584f87f6"
 }
