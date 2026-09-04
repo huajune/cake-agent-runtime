@@ -2,11 +2,16 @@
 @use '@/assets/styles/variables' as *;
 
 // 干净白卡：与「托管用户」页同一套设计语言（纯白底 + 极淡描边 + 柔和双层投影）
+// 胶囊语言与「处理请求流水」bar 一致：全圆角、26px 分段、32px 按钮、淡丁香轨道 + 亮白细边
+$pill-track: #fff;
+$pill-ring: rgba(212, 208, 255, 0.55);
+$ink-2: #3b3a55;
+
 .headerBar {
-  padding: 24px;
+  padding: 14px 14px 12px;
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  flex-direction: column;
+  gap: 16px;
   position: relative;
   overflow: hidden;
   margin-bottom: $spacing-lg;
@@ -102,44 +107,60 @@
   }
 }
 
-.leftSection {
+// 首行：标题 + 实时脉冲 + 装饰文案
+.heading {
   display: flex;
   align-items: center;
-  gap: 20px;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-left: 2px;
   position: relative;
   z-index: 1;
 }
 
-.titleWrapper {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-// 标题图标块：紫色渐变方块 + 同色线性图标（对齐托管用户页风格）
-.titleIcon {
-  width: 32px;
-  height: 32px;
-  border-radius: 10px;
+.tagline {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  color: $primary;
-  background: linear-gradient(135deg, rgba($primary, 0.1) 0%, rgba($primary, 0.2) 100%);
-  box-shadow: inset 0 0 0 1px rgba($primary, 0.1);
+  gap: 12px;
+  margin: 0 0 0 2px;
+  font-size: $font-size-xs;
+  color: #5b5a86;
+  white-space: nowrap;
 
-  svg {
-    display: block;
+  &::before {
+    content: '';
+    width: 1px;
+    height: 12px;
+    background: rgba(91, 90, 134, 0.3);
   }
 }
 
+// 次行：左筛选、右统计与趋势按钮
+.row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  position: relative;
+  z-index: 1;
+}
+
+.leftSection {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+// 标题与流水页 bar 同款：16px 中等字重、深靛墨、不加粗
 .title {
   margin: 0;
-  font-size: $font-size-lg;
-  font-weight: $font-weight-bold;
-  letter-spacing: 0.01em;
-  color: $text-primary;
+  font-size: 16px;
+  font-weight: $font-weight-medium;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  color: #14132b;
+  white-space: nowrap;
 }
 
 // 实时状态标签
@@ -188,32 +209,33 @@
   }
 }
 
-.divider {
-  width: 1px;
-  height: 24px;
-  background: linear-gradient(180deg, transparent, $border, transparent);
-}
-
-// 时间筛选：分段控件（浅灰轨道 + 白色活动块），统一克制
+// 时间筛选：胶囊分段（淡丁香轨道 + 主题渐变紫活动块），与流水页 bar 同款
 .filters {
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  padding: 4px;
-  background: #f1f5f9;
+  padding: 3px;
+  background: $pill-track;
+  box-shadow: inset 0 0 0 1px $pill-ring;
   border-radius: $radius-full;
 }
 
 .filterBtn {
-  padding: 8px 18px;
-  font-size: $font-size-base;
-  font-weight: $font-weight-medium;
-  color: $text-secondary;
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: $font-weight-normal;
+  color: $ink-2;
   background: transparent;
   border: none;
   border-radius: $radius-full;
   cursor: pointer;
-  transition: all 0.2s $transition-timing;
+  transition:
+    color $transition-fast,
+    background $transition-fast,
+    box-shadow $transition-fast;
   white-space: nowrap;
 
   &:hover:not(.active) {
@@ -221,86 +243,62 @@
   }
 
   &.active {
-    color: $primary;
-    background: #fff;
-    font-weight: $font-weight-semibold;
-    box-shadow: 0 1px 3px rgba(17, 24, 39, 0.1);
+    color: #fff;
+    background: $gradient-primary;
+    font-weight: $font-weight-medium;
+    box-shadow: 0 2px 6px rgba($primary, 0.28);
   }
 }
 
 .rightSection {
   display: flex;
   align-items: center;
-  gap: 16px;
-  position: relative;
-  z-index: 1;
+  gap: 8px;
 }
 
-// 统计卡片：干净白卡，与筛选/趋势按钮共用同一套描边与圆角；紧凑
+// 统计胶囊：与流水页 bar 同款——淡丁香底 + 亮白细边，标签灰、数值带语义色
 .statsGroup {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 5px 8px;
-  background: #fff;
-  border-radius: $radius-lg;
-  border: 1px solid rgba(17, 24, 39, 0.06);
-  box-shadow: 0 1px 3px rgba(17, 24, 39, 0.05);
 }
 
 .statItem {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 3px 13px 3px 3px;
-  border-radius: 9px;
+  gap: 4px;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: $radius-full;
+  background: $pill-track;
+  box-shadow: inset 0 0 0 1px $pill-ring;
+  white-space: nowrap;
 
-  // 图标块：低饱和淡色底 + 同色线性图标，素雅克制
-  .statIcon {
-    width: 28px;
-    height: 28px;
-    border-radius: 8px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-
-    svg {
-      display: block;
-      width: 15px;
-      height: 15px;
-    }
+  &.sessions {
+    --chip-color: #4f46e5;
   }
 
-  &.sessions .statIcon {
-    color: $primary;
-    background: $primary-10;
+  &.messages {
+    --chip-color: #15803d;
   }
 
-  &.messages .statIcon {
-    color: #059669;
-    background: rgba(16, 185, 129, 0.1);
-  }
-
-  &.active .statIcon {
-    color: #d97706;
-    background: rgba(245, 158, 11, 0.1);
+  &.active {
+    --chip-color: #b45309;
   }
 }
 
 .statLabel {
-  font-size: 12px;
-  color: $text-muted;
-  font-weight: $font-weight-medium;
+  font-size: 11.5px;
+  color: #5b5a86;
+  font-weight: $font-weight-normal;
 }
 
 .statValue {
   display: inline-block; // 让 transform 动画生效
-  font-size: 15px;
-  font-weight: $font-weight-bold;
-  letter-spacing: 0.01em;
+  font-size: 12px;
+  font-weight: $font-weight-medium;
   font-variant-numeric: tabular-nums;
-  color: $text-primary; // 统一深色，素雅高级
+  color: var(--chip-color);
   // 数值变化时（key 重挂载）触发轻微跳动
   animation: statPop 0.4s $transition-timing;
 }
@@ -317,31 +315,31 @@
   }
 }
 
-// 消息趋势：幽灵按钮，与统计卡/分段控件统一的白色表面 + 描边语言
+// 消息趋势：32px 胶囊按钮，与流水页 bar 的输入类控件同高
 .analyticsBtn {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 18px;
-  font-size: $font-size-base;
-  font-weight: $font-weight-semibold;
+  gap: 6px;
+  height: 32px;
+  padding: 0 14px;
+  font-size: 12.5px;
+  font-weight: $font-weight-medium;
   color: $primary;
-  background: #fff;
-  border: 1px solid rgba(17, 24, 39, 0.08);
+  background: $pill-track;
+  border: 0;
+  box-shadow: inset 0 0 0 1px $pill-ring;
   border-radius: $radius-full;
   cursor: pointer;
   transition: all 0.2s $transition-timing;
   letter-spacing: 0.01em;
 
   &:hover {
-    border-color: $primary-30;
-    background: $primary-04;
+    box-shadow: inset 0 0 0 1px rgba(212, 208, 255, 0.9);
   }
 
   &.active {
-    color: $primary;
-    background: $primary-08;
-    border-color: $primary-25;
+    color: $primary-dark;
+    box-shadow: inset 0 0 0 1px rgba($primary, 0.35);
   }
 }
 

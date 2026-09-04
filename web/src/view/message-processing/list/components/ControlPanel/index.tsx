@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
-import { Bot } from 'lucide-react';
-import { formatDuration } from '@/utils/format';
+import { Bot, ChevronDown, Search, X } from 'lucide-react';
+import { formatLocaleNumber } from '@/utils/format';
 import styles from './index.module.scss';
 
 interface Stats {
@@ -11,14 +11,17 @@ interface Stats {
   avgTtft?: number;
 }
 
+type TimeRange = 'today' | 'week' | 'month';
+type ViewTab = 'realtime' | 'slowest';
+
 interface ControlPanelProps {
   stats: Stats;
-  activeTab: 'realtime' | 'slowest';
-  onTabChange: (tab: 'realtime' | 'slowest') => void;
+  activeTab: ViewTab;
+  onTabChange: (tab: ViewTab) => void;
   realtimeCount: number;
   slowestCount: number;
-  timeRange: 'today' | 'week' | 'month';
-  onTimeRangeChange: (range: 'today' | 'week' | 'month') => void;
+  timeRange: TimeRange;
+  onTimeRangeChange: (range: TimeRange) => void;
   searchUserName?: string;
   onSearchUserNameChange?: (userName: string) => void;
   botFilter: string;
@@ -28,16 +31,57 @@ interface ControlPanelProps {
   onBotFilterChange: (value: string) => void;
 }
 
-const TIME_RANGE_OPTIONS = [
-  { key: 'today' as const, label: '今天' },
-  { key: 'week' as const, label: '近7天' },
-  { key: 'month' as const, label: '近30天' },
+interface StatChip {
+  key: string;
+  label: string;
+  value: string;
+  toneClass: string;
+}
+
+const TIME_RANGE_OPTIONS: Array<{ key: TimeRange; label: string }> = [
+  { key: 'today', label: '今天' },
+  { key: 'week', label: '近7天' },
+  { key: 'month', label: '近30天' },
 ];
 
-const TAB_OPTIONS = [
-  { key: 'realtime' as const, label: '实时请求' },
-  { key: 'slowest' as const, label: '高时延 Top' },
+const TAB_OPTIONS: Array<{ key: ViewTab; label: string }> = [
+  { key: 'realtime', label: '实时请求' },
+  { key: 'slowest', label: '高时延 Top' },
 ];
+
+function formatSeconds(ms?: number): string {
+  if (ms == null || !Number.isFinite(ms) || ms <= 0) return '—';
+  return `${(ms / 1000).toFixed(2)} 秒`;
+}
+
+function buildStatChips(stats: Stats): StatChip[] {
+  return [
+    {
+      key: 'total',
+      label: '请求数',
+      value: formatLocaleNumber(stats.total),
+      toneClass: styles.chipPrimary,
+    },
+    {
+      key: 'success',
+      label: '成功',
+      value: formatLocaleNumber(stats.success),
+      toneClass: styles.chipSuccess,
+    },
+    {
+      key: 'failed',
+      label: '异常',
+      value: formatLocaleNumber(stats.failed),
+      toneClass: stats.failed > 0 ? styles.chipDanger : styles.chipNeutral,
+    },
+    {
+      key: 'ttft',
+      label: 'TTFT',
+      value: formatSeconds(stats.avgTtft),
+      toneClass: styles.chipWarning,
+    },
+  ];
+}
 
 export default function ControlPanel({
   stats,
@@ -86,23 +130,25 @@ export default function ControlPanel({
     onSearchUserNameChange?.('');
   }, [onSearchUserNameChange]);
 
-  const statBadges = [
-    { label: '请求数', value: String(stats.total), toneClass: styles.badgePrimary },
-    { label: '成功', value: String(stats.success), toneClass: styles.badgeSuccess },
-    {
-      label: '异常',
-      value: String(stats.failed),
-      toneClass: stats.failed > 0 ? styles.badgeDanger : '',
-    },
-    { label: 'TTFT', value: formatDuration(stats.avgTtft ?? 0), toneClass: styles.badgeWarning },
-  ];
+  const statChips = buildStatChips(stats);
+
+  const selectPlaceholder = isBotsLoading
+    ? '正在加载托管账号'
+    : botOptions.length === 0
+      ? '暂无托管账号'
+      : '全部托管账号';
 
   return (
-    <section className={`control-panel ${styles.panel}`}>
-      <div className={styles.row}>
-        <h3 className={styles.title}>处理请求流水</h3>
+    <section className={styles.panel}>
+      <div className={styles.heading}>
+        <h2 className={styles.title}>处理请求流水</h2>
+        <p className={styles.tagline}>
+          企微入站 → Agent 处理 → 出站投递，全链路回合 Realtime 自动刷新
+        </p>
+      </div>
 
-        <div className={styles.timeRangeGroup}>
+      <div className={styles.row}>
+        <div className={styles.segment} role="group" aria-label="时间范围">
           {TIME_RANGE_OPTIONS.map((option) => (
             <button
               key={option.key}
@@ -115,15 +161,17 @@ export default function ControlPanel({
           ))}
         </div>
 
-        <div className={styles.searchWrap}>
+        <div className={styles.search}>
+          <Search size={14} strokeWidth={2} aria-hidden="true" className={styles.searchIcon} />
           <input
             type="text"
-            placeholder="检索会话主体..."
+            placeholder="检索会话主体"
             value={inputValue}
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
             onBlur={handleBlur}
             className={styles.searchInput}
+            aria-label="检索会话主体"
           />
           {inputValue && (
             <button
@@ -133,13 +181,13 @@ export default function ControlPanel({
               aria-label="清空搜索"
               title="清空搜索"
             >
-              ×
+              <X size={11} strokeWidth={2.5} aria-hidden="true" />
             </button>
           )}
         </div>
 
-        <label className={styles.selectWrap}>
-          <Bot aria-hidden="true" size={14} />
+        <label className={styles.select}>
+          <Bot size={14} strokeWidth={2} aria-hidden="true" className={styles.selectIcon} />
           <select
             value={botFilter}
             onChange={(event) => onBotFilterChange(event.target.value)}
@@ -147,45 +195,46 @@ export default function ControlPanel({
             aria-label="托管 BOT 筛选"
             disabled={isBotsLoading || botOptions.length === 0}
           >
-            <option value={allBotsValue}>
-              {isBotsLoading
-                ? '正在加载托管账号'
-                : botOptions.length === 0
-                  ? '暂无托管账号'
-                  : '全部托管账号'}
-            </option>
+            <option value={allBotsValue}>{selectPlaceholder}</option>
             {botOptions.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}
               </option>
             ))}
           </select>
+          <ChevronDown
+            size={14}
+            strokeWidth={2}
+            aria-hidden="true"
+            className={styles.selectChevron}
+          />
         </label>
 
-        <div className={styles.statsGroup}>
-          {statBadges.map((item) => (
-            <span key={item.label} className={`${styles.statBadge} ${item.toneClass}`}>
-              <span className={styles.statBadgeLabel}>{item.label}</span>
-              <span className={styles.statBadgeValue}>{item.value}</span>
+        <div className={styles.stats}>
+          {statChips.map((chip) => (
+            <span key={chip.key} className={`${styles.chip} ${chip.toneClass}`}>
+              <span className={styles.chipLabel}>{chip.label}</span>
+              <span className={styles.chipValue}>{chip.value}</span>
             </span>
           ))}
         </div>
 
-        <div className={styles.tabGroup}>
+        <div className={styles.viewSwitch} role="tablist" aria-label="视图切换">
           {TAB_OPTIONS.map((option) => {
             const isActive = activeTab === option.key;
             const count = option.key === 'realtime' ? realtimeCount : slowestCount;
+            const showCount = option.key === 'realtime' || count > 0;
             return (
               <button
                 key={option.key}
                 type="button"
+                role="tab"
+                aria-selected={isActive}
                 onClick={() => onTabChange(option.key)}
-                className={`${styles.segBtn} ${
-                  isActive ? styles.segBtnActive : ''
-                } ${isActive && option.key === 'slowest' ? styles.segBtnDangerActive : ''}`}
+                className={`${styles.viewBtn} ${isActive ? styles.viewBtnActive : ''}`}
               >
                 {option.label}
-                <span className={styles.tabCount}>{count}</span>
+                {showCount && <span className={styles.viewCount}>{formatLocaleNumber(count)}</span>}
               </button>
             );
           })}
