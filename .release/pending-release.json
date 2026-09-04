@@ -1,9 +1,41 @@
 {
   "baseVersion": "11.3.0",
-  "nextVersion": "11.3.0",
+  "nextVersion": "11.3.1",
   "updatedAt": "2026-09-04",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "1211",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1211",
+      "title": "流水表恢复行分隔线并让两个摘要列等宽",
+      "author": "huajune",
+      "mergedAt": "2026-09-04",
+      "businessUpdates": [
+        "**恢复行分隔线**：`tbody td` 加回 `1px solid #f0f0f6`，末行不画线。悬停整行圆角高亮保留。",
+        "**两个摘要列等宽**：输入摘要此前固定 `max-width: 105px`，响应摘要用 `width:100% + max-width:0` 吃掉全部剩余；现改为两格共用 `.previewCell`（`width: 50%; max-width: 0; min-width: 100px`），剩余宽度对半分。"
+      ],
+      "summary": [
+        "流水表恢复行分隔线并让两个摘要列等宽",
+        "流水表处理状态恢复胶囊徽标",
+        "**恢复行分隔线**：`tbody td` 加回 `1px solid #f0f0f6`，末行不画线。悬停整行圆角高亮保留。",
+        "**两个摘要列等宽**：输入摘要此前固定 `max-width: 105px`，响应摘要用 `width:100% + max-width:0` 吃掉全部剩余；现改为两格共用 `.previewCell`（`width: 50%; max-width: 0; min-width: 100px`），剩余宽度对半分。"
+      ],
+      "features": [],
+      "fixes": [
+        "**恢复行分隔线**：`tbody td` 加回 `1px solid #f0f0f6`，末行不画线。悬停整行圆角高亮保留。",
+        "**两个摘要列等宽**：输入摘要此前固定 `max-width: 105px`，响应摘要用 `width:100% + max-width:0` 吃掉全部剩余；现改为两格共用 `.previewCell`（`width: 50%; max-width: 0; min-width: 100px`），剩余宽度对半分。"
+      ],
+      "optimizations": [],
+      "ops": [
+        "流水表恢复行分隔线并让两个摘要列等宽",
+        "流水表处理状态恢复胶囊徽标"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [],
+      "level": "patch"
+    }
+  ],
   "lastRelease": {
     "version": "11.3.0",
     "date": "2026-09-04",
@@ -179,5 +211,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "099f7755ae02d882947464df68faed9c018363bf"
+  "lastAnalyzedSha": "e264a5b149a6260166f78d5a744f8edd99dd9f9e"
 }
