@@ -30,10 +30,10 @@ const COLUMNS: TableColumn[] = [
 ];
 
 const STATUS_TONE_CLASS: Record<StatusTone, string> = {
-  success: styles.dotSuccess,
-  danger: styles.dotDanger,
-  warning: styles.dotWarning,
-  info: styles.dotInfo,
+  success: styles.toneSuccess,
+  danger: styles.toneDanger,
+  warning: styles.toneWarning,
+  info: styles.toneInfo,
 };
 
 const GUARDRAIL_FLAG_CLASS: Record<GuardrailTone, string> = {
@@ -280,11 +280,10 @@ export default function MessageProcessingTable({
                     </td>
                     <td>
                       <div className={styles.statusWrap}>
-                        <span className={styles.status} title={statusTitle}>
-                          <span
-                            className={`${styles.dot} ${STATUS_TONE_CLASS[statusTone]}`}
-                            aria-hidden="true"
-                          />
+                        <span
+                          className={`${styles.status} ${STATUS_TONE_CLASS[statusTone]}`}
+                          title={statusTitle}
+                        >
                           {statusLabel}
                         </span>
                         {record.isFallback && (
