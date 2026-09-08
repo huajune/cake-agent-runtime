@@ -945,6 +945,98 @@ describe('buildJobListTool', () => {
     );
   });
 
+  describe('requireAccommodation：包住诉求解除距离锚 + 住宿福利筛（badcase 9d0o1dfi）', () => {
+    const thresholds = [
+      {
+        flag: 'max_recommend_distance_km',
+        label: '推荐距离上限',
+        rule: '仅推荐距离范围内门店',
+        max: 10,
+        unit: 'km',
+      },
+    ];
+    // 用户坐标 (121.0, 31.0)；纬度 +0.45° ≈ 50km 远
+    const userCoords = { longitude: 121.0, latitude: 31.0 };
+    const makeAccommodationJob = (
+      id: number,
+      latitude: number,
+      accommodation: string | null,
+      accommodationAllowance?: number,
+    ) =>
+      makeJobData({
+        basicInfo: {
+          jobId: id,
+          brandName: 'KFC',
+          storeInfo: {
+            storeId: id,
+            storeName: `门店${id}`,
+            storeAddress: `上海市测试路${id}号`,
+            storeCityName: '上海',
+            storeRegionName: '浦东新区',
+            latitude,
+            longitude: 121.0,
+          },
+        },
+        welfare: {
+          accommodation,
+          ...(accommodationAllowance != null ? { accommodationAllowance } : {}),
+        },
+      });
+
+    it('全城召回（请求不带坐标）、不按半径过滤、只留包住/房补岗位并披露 queryMeta', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [
+          makeAccommodationJob(1, 31.01, '不包住'),
+          makeAccommodationJob(2, 31.45, '包住'),
+          makeAccommodationJob(3, 31.45, '员工自理', 500),
+        ],
+        total: 3,
+      });
+
+      const result = await executeTool({ ...mockContext, thresholds }, {
+        ...defaultInput,
+        cityNameList: ['上海'],
+        location: userCoords,
+        requireAccommodation: true,
+      } as typeof defaultInput);
+
+      expect(mockSpongeService.fetchJobs).toHaveBeenCalledWith(
+        expect.objectContaining({ location: undefined }),
+      );
+      expect(result.queryMeta.accommodationFilter).toEqual(
+        expect.objectContaining({
+          applied: true,
+          distanceAnchorReleased: true,
+          keptCount: 2,
+          allowanceOnlyCount: 1,
+          excludedCount: 1,
+        }),
+      );
+      expect(result.queryMeta.distanceThresholdKm).toBeNull();
+      expect(String(result.markdown)).toContain('门店2');
+      expect(String(result.markdown)).toContain('门店3');
+      expect(String(result.markdown)).not.toContain('门店1');
+    });
+
+    it('全城都没有包住岗位时报真实无岗，指令禁止拿不包住岗位硬推', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [makeAccommodationJob(1, 31.01, '不包住'), makeAccommodationJob(2, 31.02, null)],
+        total: 2,
+      });
+
+      const result = await executeTool({ ...mockContext, thresholds }, {
+        ...defaultInput,
+        cityNameList: ['上海'],
+        location: userCoords,
+        requireAccommodation: true,
+      } as typeof defaultInput);
+
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_NO_RESULTS);
+      expect(String(result._outcome)).toContain('包住');
+      expect(String(result._replyInstruction)).toContain('不得把不包住的岗位当替代硬推');
+    });
+  });
+
   describe('显式 location.range 在本地距离过滤生效（badcase batch_6a850deece406a6aee24c149）', () => {
     // 用户坐标 (121.0, 31.0)，门店纬度 +0.135° ≈ 15km
     const userCoords = { longitude: 121.0, latitude: 31.0 };
