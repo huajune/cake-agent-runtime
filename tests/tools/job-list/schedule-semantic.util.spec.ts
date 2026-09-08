@@ -1,5 +1,6 @@
 import {
   classifyScheduleSemantic,
+  matchAvailableWindow,
   matchScheduleConstraint,
   ScheduleSemantic,
 } from '@tools/job-list/schedule-semantic.util';
@@ -268,5 +269,61 @@ describe('matchScheduleConstraint', () => {
         }
       },
     );
+  });
+});
+
+describe('matchAvailableWindow（候选人可上班时段包含判定，badcase j4kb5ijm）', () => {
+  const window = { start: '18:30', end: '24:00' };
+  const pick = (slots: Array<{ start: string; end: string }>) =>
+    matchAvailableWindow({ slots, arrangement: 'pick_one', perDayMinHours: null }, window);
+
+  it('pick_one：任一班次整段落在窗口内即匹配', () => {
+    expect(pick([{ start: '19:00', end: '23:30' }]).matched).toBe(true);
+    expect(
+      pick([
+        { start: '15:00', end: '23:00' },
+        { start: '19:00', end: '22:00' },
+      ]).matched,
+    ).toBe(true);
+  });
+
+  it('pick_one：夜班跨午夜与下午班都不在窗口内 → 剔除并给原因', () => {
+    const result = pick([
+      { start: '22:00', end: '07:00' },
+      { start: '15:00', end: '23:00' },
+    ]);
+    expect(result.matched).toBe(false);
+    expect(result.reason).toContain('18:30-24:00');
+  });
+
+  it('all_required：全部班次都要落在窗口内', () => {
+    const shifts = {
+      slots: [
+        { start: '19:00', end: '22:00' },
+        { start: '07:00', end: '14:00' },
+      ],
+      arrangement: 'all_required' as const,
+      perDayMinHours: null,
+    };
+    expect(matchAvailableWindow(shifts, window).matched).toBe(false);
+  });
+
+  it('flexible：排班窗口与候选人时段重叠 ≥ 每日最少工时即匹配', () => {
+    const shifts = {
+      slots: [{ start: '07:00', end: '22:00' }],
+      arrangement: 'flexible' as const,
+      perDayMinHours: 3,
+    };
+    expect(matchAvailableWindow(shifts, window).matched).toBe(true);
+    expect(matchAvailableWindow({ ...shifts, perDayMinHours: 4 }, window).matched).toBe(false);
+  });
+
+  it('无具体时段 → 未知不剔除', () => {
+    expect(
+      matchAvailableWindow({ slots: [], arrangement: 'unknown', perDayMinHours: null }, window),
+    ).toEqual({
+      matched: true,
+      unknown: true,
+    });
   });
 });

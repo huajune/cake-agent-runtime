@@ -213,6 +213,10 @@ export class HardConstraintsSection implements PromptSection {
       if (pref.schedule_constraint.onlyMornings) parts.push('只早班');
       if (pref.schedule_constraint.maxDaysPerWeek)
         parts.push(`每周最多${pref.schedule_constraint.maxDaysPerWeek}天`);
+      if (pref.schedule_constraint.availableWindow)
+        parts.push(
+          `可上班时段${pref.schedule_constraint.availableWindow.start}-${pref.schedule_constraint.availableWindow.end}（查岗必须传 candidateScheduleConstraint.availableWindow）`,
+        );
       if (parts.length > 0) {
         lines.push(`- 结构化排班约束: ${parts.join('、')}（建议结合 includeWorkTime 校验匹配度）`);
       }

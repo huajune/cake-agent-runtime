@@ -23,6 +23,10 @@ import {
   detectBookingDoneClaimWithoutSubmission,
   detectCancelDoneClaimWithoutSubmission,
 } from './rules/booking-claim-reconciliation.rule';
+import {
+  detectJobFactWithoutProvenance,
+  detectJobQueryClaimWithoutQuery,
+} from './rules/job-fact-reconciliation.rule';
 import { detectDanglingReplyPromise } from './rules/dangling-promise.rule';
 import { detectExperienceFraudCoaching } from './rules/experience-fraud-coaching.rule';
 import { detectIdentityMisregistrationCoaching } from './rules/identity-fraud-coaching.rule';
@@ -125,6 +129,13 @@ export class HardRulesService {
     recentMessages?: unknown[];
     /** 本轮入口记忆事实，用于跨轮身份红线对账。 */
     memorySnapshot?: AgentMemorySnapshot;
+    /** 会话内历史助手回复（不含本轮），供“无来源岗位事实”对账。 */
+    priorAssistantTexts?: readonly string[];
+    /**
+     * 候选人名下是否有在途工单（长期记忆 active_booking）。undefined=未知（只落 observe），
+     * false=确证没有任何工单——完成时态的“已帮你约好”此时是假回执，升 revise。
+     */
+    hasActiveBooking?: boolean;
     /** 静默模式（advisory）：只返回裁决，由调用方避免写生产守卫日志。 */
     silent?: boolean;
     /** 兼容既有托管配置的运行时降档；只允许 off/observe。 */
@@ -280,6 +291,7 @@ export class HardRulesService {
     const bookingDoneClaimWithoutSubmission = detectBookingDoneClaimWithoutSubmission(
       text,
       toolCalls,
+      params.hasActiveBooking,
     );
     if (bookingDoneClaimWithoutSubmission) {
       contradictions.push(this.withRulePolicy(bookingDoneClaimWithoutSubmission));
@@ -288,6 +300,20 @@ export class HardRulesService {
     const cancelDoneClaim = detectCancelDoneClaimWithoutSubmission(text, toolCalls);
     if (cancelDoneClaim) {
       contradictions.push(this.withRulePolicy(cancelDoneClaim));
+    }
+
+    // 零工具轮的岗位事实对账：宣称查过 / 报出无来源数字，两条各取高置信形态。
+    const jobQueryClaim = detectJobQueryClaimWithoutQuery(text, toolCalls);
+    if (jobQueryClaim) {
+      contradictions.push(this.withRulePolicy(jobQueryClaim));
+    }
+    const jobFactWithoutProvenance = detectJobFactWithoutProvenance(
+      text,
+      toolCalls,
+      params.priorAssistantTexts ?? [],
+    );
+    if (jobFactWithoutProvenance) {
+      contradictions.push(this.withRulePolicy(jobFactWithoutProvenance));
     }
 
     const { effectiveContradictions, overrideHits } = this.applyHardRuleOverrides(

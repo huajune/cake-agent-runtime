@@ -893,6 +893,7 @@ export class AgentRunnerService {
       userMessage: ctx.userMessage,
       chatId: ctx.chatId,
       userId: ctx.userId,
+      corpId: ctx.sessionRef?.corpId,
       traceId: ctx.traceId,
       contactName: ctx.contactName,
       botImId: ctx.botImId,

@@ -33,6 +33,9 @@ describe('HardRulesService — 封闭确定性输出规则', () => {
       // —— 数据复核后恢复的哨兵 ——
       'human_service_phrase_leak',
       'booking_done_claim_without_submission',
+      'booking_done_claim_no_work_order',
+      'job_query_claim_without_query',
+      'job_fact_without_provenance',
       'cancel_done_claim_without_submission',
       'cancel_done_claim_failed_tool',
       'dangling_reply_promise',

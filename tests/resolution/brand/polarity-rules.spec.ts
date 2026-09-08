@@ -52,6 +52,12 @@ describe('isBrandSpanHistoryContext（2026-07-27 履历语境，三例生产实�
     expect(isBrandSpanHistoryContext('之前在肯德基上过班', 3, 3)).toBe(true);
   });
 
+  it('现职语境："现在在做麦当劳" / "目前在肯德基上班"（badcase 1ptrzpwk）', () => {
+    expect(isBrandSpanHistoryContext('现在在做麦当劳', 4, 3)).toBe(true);
+    expect(isBrandSpanHistoryContext('目前在肯德基上班', 3, 3)).toBe(true);
+    expect(isBrandSpanHistoryContext('我一直在必胜客干着呢', 4, 3)).toBe(true);
+  });
+
   it('求职表达不误伤："肯德基做兼职可以吗" / "想去必胜客上班"', () => {
     expect(isBrandSpanHistoryContext('肯德基做兼职可以吗', 0, 3)).toBe(false);
     expect(isBrandSpanHistoryContext('想去必胜客上班', 2, 3)).toBe(false);

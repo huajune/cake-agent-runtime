@@ -213,6 +213,22 @@ function buildBrandRejectedResult(params: {
 
 // ==================== 输入 Schema ====================
 
+/** 场所名通用后缀：剥掉后剩下的词头才是库内岗位名里可能出现的简名。 */
+const SEARCH_NAME_GENERIC_SUFFIX =
+  /(?:乐园|度假区|主题公园|购物中心|购物公园|商业中心|商业广场|生活广场|国际广场|广场|中心|商场|百货|大厦|大楼|写字楼|商城|商厦|MALL|Mall|mall|门店|旗舰店|餐厅|店)$/u;
+
+/**
+ * searchJobName 查空时的简名派生：先剥通用后缀，剥不动且 ≥4 字时取前两字。
+ * 结果与原名相同或短于 2 字则放弃（返回 null）。
+ */
+export function shortenSearchJobName(name: string): string | null {
+  const trimmed = name.trim();
+  const stripped = trimmed.replace(SEARCH_NAME_GENERIC_SUFFIX, '').trim();
+  if (stripped.length >= 2 && stripped !== trimmed) return stripped;
+  if (stripped === trimmed && /^[\u4e00-\u9fff]{4,}$/u.test(trimmed)) return trimmed.slice(0, 2);
+  return null;
+}
+
 /**
  * 包住硬需求过滤：福利 accommodation 为公司提供（company）或住宿补贴（allowance）的岗位保留，
  * 其余剔除。补贴单独计数，便于回复时说清"仅房补"。
@@ -352,6 +368,13 @@ const inputSchema = z.object({
       onlyEvenings: z.boolean().optional().describe('候选人只做晚班/晚上有空'),
       onlyMornings: z.boolean().optional().describe('候选人只做早班'),
       maxDaysPerWeek: z.number().int().min(1).max(7).optional().describe('候选人每周最多 N 天'),
+      availableWindow: z
+        .object({ start: z.string(), end: z.string() })
+        .nullable()
+        .optional()
+        .describe(
+          '候选人可上班的具体时段（HH:MM，如"晚上6点半到24点"→{start:"18:30",end:"24:00"}）。传入后班次必须整段落在该时段内才保留（组合班次需全部落入；窗口式排班按重叠时长判）。候选人给了具体钟点区间时必须传，不要降级成 onlyEvenings。',
+        ),
     })
     .optional()
     .describe(
@@ -905,6 +928,9 @@ export function buildJobListTool(
             ...(persistedConstraint.maxDaysPerWeek !== null && {
               maxDaysPerWeek: persistedConstraint.maxDaysPerWeek,
             }),
+            ...(persistedConstraint.availableWindow && {
+              availableWindow: persistedConstraint.availableWindow,
+            }),
           };
           if (Object.keys(persistedInput).length > 0) {
             const modelInput = candidateScheduleConstraint ?? {};
@@ -1066,6 +1092,8 @@ export function buildJobListTool(
             recoveredCount: number;
           } = null;
           let searchNameRelaxed = false;
+          // searchJobName 全名查空、按简名重试命中时记录（乐高乐园→乐高，badcase o33c79xe）。
+          let searchNameShortened: null | { from: string; to: string } = null;
 
           // 跨轮重复查询检测：归一化后的实质过滤条件
           // 与上一轮完全一致时，结果必然相同——结果头部注入提醒，要求模型实质调整查询
@@ -1171,6 +1199,29 @@ export function buildJobListTool(
               }
             } catch (error: unknown) {
               logger.warn(`场所名模糊查兜底失败，保留原始 0 条结果: ${toErrorMessage(error)}`);
+            }
+          }
+
+          // 全名查空的简名重试：候选人说的"乐高乐园/长泰广场/万辉国际大厦"往往比库内岗位名里的
+          // 简名长（库内是"乐高-…"），子串匹配整条 jobName 必然 0 条。剥掉通用后缀（乐园/广场/
+          // 中心/店…）或取词头再查一次，命中即披露 searchNameShortened 让模型核对是否同一主体。
+          if (jobs.length === 0 && !searchNameRelaxed && searchJobName?.trim()) {
+            const shortened = shortenSearchJobName(searchJobName.trim());
+            if (shortened) {
+              try {
+                const retried = await fetchJobs({ ...fetchBaseParams, searchJobName: shortened });
+                if (retried.jobs.length > 0) {
+                  jobs = retried.jobs;
+                  total = retried.total ?? retried.jobs.length;
+                  fetchBaseParams = { ...fetchBaseParams, searchJobName: shortened };
+                  searchNameShortened = { from: searchJobName.trim(), to: shortened };
+                  logger.warn(
+                    `岗位名简名重试命中：searchJobName="${searchJobName.trim()}" 0 条，按"${shortened}"召回 ${retried.jobs.length} 条`,
+                  );
+                }
+              } catch (error: unknown) {
+                logger.warn(`岗位名简名重试失败，保留原始 0 条结果: ${toErrorMessage(error)}`);
+              }
             }
           }
 
@@ -1906,6 +1957,12 @@ export function buildJobListTool(
             // 场所名兜底：true 表示按候选人口述的场所名查为 0，已改用坐标做距离召回。
             // 结果是"你附近的岗位"而非"该场所内的岗位"，回复时不得把它说成那个楼里的岗位。
             searchNameRelaxed,
+            searchNameShortened,
+            ...(searchNameShortened
+              ? {
+                  searchNameShortenedInstruction: `候选人说的"${searchNameShortened.from}"按全名查不到，本次是按简名"${searchNameShortened.to}"召回的：介绍前先核对岗位名/门店是否就是候选人指的那家，不是同一主体不得当作该品牌岗位推荐。`,
+                }
+              : {}),
             usedDistanceFiltering: hasUserCoords,
             // 距离锚点精度（方案 16.1 GeoQueryMeta.anchor 的 B-1 先行子集）：
             // 区级锚点查询占比的观测口径。⚠️ 原设计的对账对象是守卫规则，但那条规则

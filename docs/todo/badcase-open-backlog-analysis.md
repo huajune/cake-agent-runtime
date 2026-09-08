@@ -183,8 +183,8 @@
 ## 2026-09-08 巡检增量（65 条未解决全量复核）
 
 飞书表 806 条，非「已解决」88 条（待分析 38 / 处理中 22 / 待验证 5 / 暂搁置 23）。逐条对照 develop 现状 + 生产 trace 后：
-**40 条转已解决**（17 条本批修复、20 条被 v11.1.x~v11.4.0 机制覆盖、3 条复核非缺陷或观察窗到期无复发）、
-**23 条维持处理中**（每条已写根因与待做项）、**2 条转暂搁置**（t9pfuo4y 面试形式无字段、321y0own 渠道文件地址为空）。
+**49 条转已解决**（26 条本批修复、20 条被 v11.1.x~v11.4.0 机制覆盖、3 条复核非缺陷或观察窗到期无复发）、
+**14 条维持处理中**（每条已写根因与待做项）、**2 条转暂搁置**（t9pfuo4y 面试形式无字段、321y0own 渠道文件地址为空）。
 逐条结论以飞书「修复说明」为准，本节只记本批修的机制：
 
 | 修复 | 触发 badcase | 落点 |
@@ -202,7 +202,12 @@
 | 动态硬禁令：裸两位数优先按年龄、性别自陈对照岗位要求 | q6a8yvdy、l98sbqws、g4lc5u0q | final-check.section |
 | 手册：被问中介/收费的标准直答 | tlqjy9it | candidate-consultation.md |
 | 候选人明确要包住 → `requireAccommodation` 解除距离锚全城召回 + 住宿福利筛（产品裁定） | 9d0o1dfi | duliday-job-list.tool |
+| 守卫：零工具轮宣称"查了/没查到"（`job_query_claim_without_query`）、报出会话内无来源的薪资/距离/班次数字（`job_fact_without_provenance`）→ revise | 5j1mbgi8、kwxk74gn、kb629uko | guardrail/output/rules/job-fact-reconciliation.rule |
+| 守卫：长期记忆确证无在途工单时"已帮你约好"升 revise（`booking_done_claim_no_work_order`） | wvr7pejq | booking-claim-reconciliation.rule + OutputGuardrailService 读 active_booking |
+| `searchJobName` 全名查空按简名重试（乐高乐园→乐高） | o33c79xe、chtzvn4j、5vot5uuh | duliday-job-list.tool |
+| 候选人具体可上班时段结构化（`availableWindow`）+ 班次包含判定 | j4kb5ijm | rule-track-preferences / schedule-semantic / search.util |
+| 品牌现职语境（"现在在做麦当劳"）不写求职意向 | 1ptrzpwk | brand/polarity-rules |
 
-仍待实现的簇（已写进对应 badcase 的修复说明）：A3/D 组「岗位事实与排班数字执行档对账」（p43zzrtc、5j1mbgi8、kwxk74gn、kb629uko）、
-`searchJobName` 查空词头截短重试（o33c79xe、chtzvn4j、5vot5uuh）、候选人时段窗口结构化（j4kb5ijm）、
-booking 完成宣称哨兵改按会话累计工单对账后升档（wvr7pejq，当前 observe 精确率约 30-40%）、B 组薪资口径配置化（9 条）。
+仍待实现的簇（已写进对应 badcase 的修复说明）：排班承诺 vs 岗位出勤要求的执行档对账（p43zzrtc）、
+"复述候选人说过的话须有原文"哨兵（5abz1b8m）、海绵组合班次字段语义确认（8j7btoh7）、B 组薪资口径配置化（9 条）、
+昵称=普通短语的验证语误读（r3tv7205，观察）。

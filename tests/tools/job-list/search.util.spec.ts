@@ -310,6 +310,43 @@ describe('job-list search util', () => {
     });
   });
 
+  it('applies the candidate availableWindow as a shift containment check (badcase j4kb5ijm)', () => {
+    const nightJob = {
+      basicInfo: { jobId: 11, brandName: '奥乐齐' },
+      workTime: {
+        dayWorkTime: {
+          arrangementType: '固定排班',
+          combinedArrangement: [
+            { combinedArrangementStartTime: '22:00', combinedArrangementEndTime: '07:00' },
+          ],
+        },
+      },
+    };
+    const eveningJob = {
+      basicInfo: { jobId: 12, brandName: '成都你六姐' },
+      workTime: {
+        dayWorkTime: {
+          arrangementType: '固定排班',
+          combinedArrangement: [
+            { combinedArrangementStartTime: '19:00', combinedArrangementEndTime: '22:00' },
+          ],
+        },
+      },
+    };
+
+    const result = applyScheduleConstraint([nightJob, eveningJob] as never, {
+      availableWindow: { start: '18:30', end: '24:00' },
+    });
+
+    expect(result.jobs.map((job) => job.basicInfo?.jobId)).toEqual([12]);
+    expect(result.excluded).toEqual([
+      expect.objectContaining({ jobId: 11, reason: expect.stringContaining('18:30-24:00') }),
+    ]);
+    expect(
+      formatScheduleConstraintLabel({ availableWindow: { start: '18:30', end: '24:00' } }),
+    ).toBe('可上班时段 18:30-24:00');
+  });
+
   it('applies schedule constraints and records semantic exclusions', () => {
     const weekendJob = makeJob(1, '服务员', '周末短班', '餐饮', '可只做周末');
     const fullWeekJob = makeJob(2, '服务员', '全周排班', '餐饮', '每天 05:00-23:00 固定排班');

@@ -1,4 +1,4 @@
-import { buildJobListTool } from '@tools/duliday-job-list.tool';
+import { buildJobListTool, shortenSearchJobName } from '@tools/duliday-job-list.tool';
 import { ToolBuildContext } from '@shared-types/tool.types';
 import { TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
 import type { TurnLedger } from '@shared-types/turn.types';
@@ -943,6 +943,39 @@ describe('buildJobListTool', () => {
         location: { longitude: 121.46, latitude: 31.18, range: 3000 },
       }),
     );
+  });
+
+  describe('searchJobName 全名查空的简名重试（badcase o33c79xe 乐高乐园→乐高）', () => {
+    it('shortenSearchJobName 剥通用后缀或取词头', () => {
+      expect(shortenSearchJobName('乐高乐园')).toBe('乐高');
+      expect(shortenSearchJobName('长泰广场')).toBe('长泰');
+      expect(shortenSearchJobName('万辉国际大厦')).toBe('万辉国际');
+      expect(shortenSearchJobName('哈根达斯')).toBe('哈根');
+      expect(shortenSearchJobName('乐高')).toBeNull();
+      expect(shortenSearchJobName('店')).toBeNull();
+    });
+
+    it('全名 0 条 → 按简名重试命中并披露 searchNameShortened', async () => {
+      mockSpongeService.fetchJobs
+        .mockResolvedValueOnce({ jobs: [], total: 0 })
+        .mockResolvedValueOnce({
+          jobs: [makeJobData({ basicInfo: { jobId: 77, jobName: '乐高-金山-服务员-小时工' } })],
+          total: 1,
+        });
+
+      const result = await executeTool(mockContext, {
+        ...defaultInput,
+        cityNameList: ['上海'],
+        searchJobName: '乐高乐园',
+      } as typeof defaultInput);
+
+      expect(mockSpongeService.fetchJobs).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({ searchJobName: '乐高' }),
+      );
+      expect(result.queryMeta.searchNameShortened).toEqual({ from: '乐高乐园', to: '乐高' });
+      expect(String(result.queryMeta.searchNameShortenedInstruction)).toContain('核对');
+    });
   });
 
   describe('requireAccommodation：包住诉求解除距离锚 + 住宿福利筛（badcase 9d0o1dfi）', () => {

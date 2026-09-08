@@ -54,6 +54,12 @@ const OUTPUT_RULE_SOURCE_BY_ID: Record<string, string> = {
     'agent/guardrail/output/rules/internal-info-leaks.rule.ts（HardRulesService 调度）',
   booking_done_claim_without_submission:
     'agent/guardrail/output/rules/booking-claim-reconciliation.rule.ts（HardRulesService 调度）',
+  booking_done_claim_no_work_order:
+    'agent/guardrail/output/rules/booking-claim-reconciliation.rule.ts（HardRulesService 调度，OutputGuardrailService 读 active_booking）',
+  job_query_claim_without_query:
+    'agent/guardrail/output/rules/job-fact-reconciliation.rule.ts（HardRulesService 调度）',
+  job_fact_without_provenance:
+    'agent/guardrail/output/rules/job-fact-reconciliation.rule.ts（HardRulesService 调度）',
   cancel_done_claim_without_submission:
     'agent/guardrail/output/rules/booking-claim-reconciliation.rule.ts（HardRulesService 调度）',
   cancel_done_claim_failed_tool:

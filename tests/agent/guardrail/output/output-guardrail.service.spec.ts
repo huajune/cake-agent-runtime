@@ -24,6 +24,61 @@ describe('OutputGuardrailService', () => {
     );
   });
 
+  it('带会话身份时读取在途工单并把 hasActiveBooking / 历史助手文本传给规则层', async () => {
+    const longTerm = { getActiveBookings: jest.fn().mockResolvedValue([]) };
+    const withLongTerm = new OutputGuardrailService(
+      systemConfig as never,
+      ruleGuard as never,
+      shortTerm as never,
+      longTerm as never,
+    );
+    shortTerm.getMessages.mockResolvedValue([{ role: 'assistant', content: '肯德基 2.7km' }]);
+
+    await withLongTerm.check({
+      reply: '已经帮你约好了',
+      toolCalls: [],
+      chatId: 'chat-1',
+      userId: 'user-1',
+      corpId: 'corp-1',
+    });
+
+    expect(longTerm.getActiveBookings).toHaveBeenCalledWith('corp-1', 'user-1');
+    expect(ruleGuard.check).toHaveBeenCalledWith(
+      expect.objectContaining({
+        hasActiveBooking: false,
+        priorAssistantTexts: ['肯德基 2.7km'],
+      }),
+    );
+  });
+
+  it('缺会话身份或长期记忆读失败时 hasActiveBooking 为 undefined（保持 observe）', async () => {
+    const longTerm = { getActiveBookings: jest.fn().mockRejectedValue(new Error('db down')) };
+    const withLongTerm = new OutputGuardrailService(
+      systemConfig as never,
+      ruleGuard as never,
+      shortTerm as never,
+      longTerm as never,
+    );
+
+    await withLongTerm.check({ reply: '已经帮你约好了', toolCalls: [], chatId: 'chat-1' });
+    await withLongTerm.check({
+      reply: '已经帮你约好了',
+      toolCalls: [],
+      chatId: 'chat-1',
+      userId: 'user-1',
+      corpId: 'corp-1',
+    });
+
+    expect(ruleGuard.check).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ hasActiveBooking: undefined }),
+    );
+    expect(ruleGuard.check).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ hasActiveBooking: undefined }),
+    );
+  });
+
   it('只运行确定性规则并透传历史、记忆和工具回执', async () => {
     shortTerm.getMessages.mockResolvedValue([
       { role: 'user', content: '我是学生' },

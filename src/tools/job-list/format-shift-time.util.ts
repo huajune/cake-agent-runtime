@@ -57,6 +57,30 @@ interface WeekAndMonthWorkTimeInput {
   perWeekWorkDays?: unknown;
 }
 
+/**
+ * 岗位班次时段的结构化视图（供候选人可上班时段硬约束匹配）：
+ * - slots：HH:MM 起止；跨午夜的 end 小于 start；
+ * - arrangement：pick_one=选其一 / all_required=全部要上 / flexible=窗口内排班 / unknown。
+ * 无具体时段返回 slots=[]，调用方按“未知”处理（不剔除）。
+ */
+export function extractShiftSlots(workTime: unknown): {
+  slots: Array<{ start: string; end: string }>;
+  arrangement: ArrangementKind;
+  perDayMinHours: number | null;
+} {
+  if (!isNonEmpty(workTime)) return { slots: [], arrangement: 'unknown', perDayMinHours: null };
+  const input = workTime as WorkTimeInput;
+  const slots = collectShiftSlots(input).map((slot) => ({ start: slot.start, end: slot.end }));
+  const arrangement = looksLikeFlexibleArrangement(input)
+    ? 'flexible'
+    : slots.length <= 1
+      ? classifyArrangementType(arrangementTypeOf(input))
+      : inferSelectionMode(input, collectShiftSlots(input)) === 'all_required'
+        ? 'all_required'
+        : 'pick_one';
+  return { slots, arrangement, perDayMinHours: dayMinHours(input) };
+}
+
 /** 主入口：从 workTime 产出可对外展示的班次文案。null = 没有具体班次。 */
 export function composeShiftTimeText(workTime: unknown): string | null {
   if (!isNonEmpty(workTime)) return null;
