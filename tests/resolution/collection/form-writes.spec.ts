@@ -24,6 +24,8 @@ import {
   recordUnansweredAsks,
   recordConfigDebt,
   yieldRecoverableEscalationToScreening,
+  ageBoundarySignalOf,
+  seedArchiveValue,
   type FieldValueProposal,
 } from '@resolution/collection/form-writes';
 import {
@@ -1148,5 +1150,82 @@ describe('yieldRecoverableEscalationToScreening · 筛选终局优先', () => {
     expect(yieldRecoverableEscalationToScreening(form).escalatedReason).toBe(
       'ask_limit_exhausted: 769',
     );
+  });
+});
+
+describe('seedArchiveValue · 档案预填必过先筛后收（2026-09-08 近 3 天实测 47 岁进 23-40 岗）', () => {
+  const contract = [NAME_FIELD, PHONE_FIELD, AGE_FIELD_18_40, GENDER_MALE_ONLY_FIELD];
+
+  it('值域内的档案年龄预填成 filled，署名 archive、出处带「档案：」前缀', () => {
+    const seeded = seedArchiveValue(form(contract), AGE_FIELD_18_40, {
+      value: '30',
+      evidence: '我今年30岁',
+    });
+    expect(seeded.slots[AGE_FIELD_18_40.labelId]).toMatchObject({
+      state: 'filled',
+      value: { value: '30', producer: 'archive', sourceText: '档案：我今年30岁' },
+    });
+  });
+
+  it('值域硬越界的档案年龄不预填、留空——判不合格必须由本人本轮亲口说的值触发', () => {
+    const base = form(contract);
+    for (const value of ['47', '17']) {
+      const seeded = seedArchiveValue(base, AGE_FIELD_18_40, { value, evidence: `年龄：${value}` });
+      expect(seeded).toBe(base);
+      expect(seeded.slots[AGE_FIELD_18_40.labelId].state).toBe('empty');
+    }
+  });
+
+  it('弹性带（超上限 ≤3 岁）的档案年龄照常落槽，由 ageBoundarySignalOf 在 ready 前截住', () => {
+    const seeded = seedArchiveValue(form(contract), AGE_FIELD_18_40, { value: '42' });
+    expect(seeded.slots[AGE_FIELD_18_40.labelId].state).toBe('filled');
+    expect(ageBoundarySignalOf(seeded, contract)).toMatchObject({
+      severity: 'boundary',
+      candidateAge: 42,
+      requiredMax: 40,
+    });
+  });
+
+  it('命中 rejectedOptions 的档案值不预填（男性岗不把档案里的「女」填进去）', () => {
+    const base = form(contract);
+    const seeded = seedArchiveValue(base, GENDER_MALE_ONLY_FIELD, {
+      value: '女',
+      optionCodes: ['2'],
+    });
+    expect(seeded).toBe(base);
+  });
+});
+
+describe('ageBoundarySignalOf · 已填年龄相对契约值域的边界信号', () => {
+  const contract = [NAME_FIELD, PHONE_FIELD, AGE_FIELD_18_40, GENDER_MALE_ONLY_FIELD];
+
+  function withAge(value: string, ageField: ContractFieldDef = AGE_FIELD_18_40) {
+    const fields = [NAME_FIELD, PHONE_FIELD, ageField, GENDER_MALE_ONLY_FIELD];
+    const result = applyFieldValueProposal(
+      form(fields),
+      ageField,
+      proposal({ value, sourceText: `我今年${value}岁`, producer: 'model' }),
+    );
+    return { form: result.form, fields };
+  }
+  const signalOf = (value: string, ageField?: ContractFieldDef) => {
+    const { form: target, fields } = withAge(value, ageField);
+    return ageBoundarySignalOf(target, fields);
+  };
+
+  it('年龄未填 / 契约无值域 → null（不判）', () => {
+    expect(ageBoundarySignalOf(form(contract), contract)).toBeNull();
+    expect(signalOf('36', AGE_FIELD)).toBeNull();
+  });
+
+  it('区间内 pass；超上限 1 岁 boundary；硬越界的值根本进不了槽（先筛后收已判不合格）', () => {
+    expect(signalOf('30')?.severity).toBe('pass');
+    expect(signalOf('41')?.severity).toBe('boundary');
+    const rejected = applyFieldValueProposal(
+      form(contract),
+      AGE_FIELD_18_40,
+      proposal({ value: '47', sourceText: '我今年47岁', producer: 'model' }),
+    );
+    expect(rejected.outcome).toBe('disqualified');
   });
 });

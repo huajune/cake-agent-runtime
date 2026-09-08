@@ -2,6 +2,7 @@ import { toErrorMessage } from '@infra/utils/error.util';
 import type { CollectionFormService } from '@tools/collection/collection-form.service';
 import { Logger } from '@nestjs/common';
 import {
+  ageBoundarySignalOf,
   applyRecapResult,
   contractFieldsEqual,
   escalate,
@@ -117,6 +118,7 @@ export const PRECHECK_DESCRIPTION = `面试前置校验。实时读取岗位收�
 - select_interview_time：资料已授权但尚未选择具体时段；interview.bookableSlots 是按 availabilityAuthority.evaluatedAt 和完整日期时间过滤后的唯一可约事实。只展示 bookingAllowed=true 的时段，不得根据 scheduleRule/processRemark 中“当天、前一天”等相对词二次计算或删减，不再复述资料。
 - screening_rejected：只使用 rejection.candidateMessage，不自行披露内部筛选原因。
 - handoff：停止收资并转人工。
+- age_boundary_handoff：候选人年龄在岗位要求的弹性带内，报名接口必拒；资料不重问、禁止 booking，调用 request_handoff（identity_age_exception）交人工裁量。
 - ready_to_book：才允许调用 duliday_interview_booking；booking 成功前禁止声称已报名。
 - already_submitted：停止重复提交。`;
 
@@ -264,7 +266,7 @@ const REJECTION_HINTS: Readonly<Record<string, RejectionGuidance>> = {
     action: 'retry_submission',
   },
   value_not_in_contract_vocabulary: {
-    hint: '值不在本岗契约的选项集内；必须逐字使用 enumHints/契约选项原文，不要自造同义表述。',
+    hint: '值不在本岗契约的选项集内；必须逐字使用契约选项原文，不要自造同义表述。',
     action: 'retry_submission',
   },
   unknown_option_code: {
@@ -320,16 +322,22 @@ function rejectionGuidance(
       action: 'ask_candidate',
     };
   }
-  if (audit.reason === 'social_insurance_dimensions_missing') {
-    const missing = audit.detail?.replace(/^missing_dimensions:/u, '').split(',') ?? [];
-    const labels = [
-      ...(missing.includes('payer') ? ['由本人还是公司缴纳'] : []),
-      ...(missing.includes('location') ? ['参保地是本地还是外地'] : []),
-    ];
-    return {
-      hint: `社保答案还不能唯一落到契约选项。不要猜或原值重投；只向候选人补问：${labels.join('、') || '缴纳方和参保地'}。`,
-      action: 'ask_candidate',
-    };
+  // 词表拒收把本槽全部合法选项原文列进回执：模型作证的受控词表必须可见（P7），否则它只能
+  // 猜同义表述，反复撞词表。列全 accepted+rejected——只列 accepted 等于用省略泄露筛选条件。
+  if (
+    (audit.reason === 'value_not_in_contract_vocabulary' ||
+      audit.reason === 'unknown_option_code') &&
+    (field.fieldType === 'SINGLE_OPTION' || field.fieldType === 'MULTIPLE_OPTION')
+  ) {
+    const options = [...field.acceptedOptions, ...field.rejectedOptions]
+      .map((option) => option.optionLabel.trim())
+      .filter(Boolean);
+    if (options.length > 0) {
+      return {
+        hint: `值不在本岗契约的选项集内。该槽位合法选项原文：${options.join(' / ')}。候选人原话能唯一对应其中一项时逐字用该项重投（quote 仍取候选人原话）；对应不唯一（如社保只说了「有」没说由谁缴、在哪缴）就向候选人补问，禁止猜选项。`,
+        action: 'retry_submission',
+      };
+    }
   }
   return audit.reason ? REJECTION_HINTS[audit.reason] : undefined;
 }
@@ -435,6 +443,7 @@ type PrecheckAction =
   | 'select_interview_time'
   | 'screening_rejected'
   | 'handoff'
+  | 'age_boundary_handoff'
   | 'ready_to_book'
   | 'already_submitted';
 
@@ -996,6 +1005,11 @@ function actionForForm(
     case 'submitted':
       return 'already_submitted';
     case 'ready':
+      // 年龄弹性带（screenValue 放行、海绵硬区间必拒）在 ready 处截住：转人工裁量能否破例，
+      // 不送一次注定失败的 booking。排在 recap 之前——弹性带表单连复述都不必发。
+      if (ageBoundarySignalOf(run.form, run.contract)?.severity === 'boundary') {
+        return 'age_boundary_handoff';
+      }
       if (!isCollectionAuthorized(run.form)) return 'confirm_collection';
       return isSubmissionAuthorized({
         form: run.form,
@@ -1046,6 +1060,10 @@ function replyInstruction(action: PrecheckAction, run: FormRun): string {
       return '停止收资与 booking，只按 rejection.candidateMessage 承接；不得披露内部受限原因。';
     case 'handoff':
       return `表单已转人工：${run.form.escalatedReason ?? 'unknown'}。停止发问并调用 request_handoff。`;
+    case 'age_boundary_handoff': {
+      const signal = ageBoundarySignalOf(run.form, run.contract);
+      return `候选人年龄 ${signal?.candidateAge ?? '?'} 岁在岗位年龄要求（${signal?.requiredMin ?? '-'}~${signal?.requiredMax ?? '-'} 岁）的弹性带内：系统报名接口按硬区间会直接拒绝，禁止调用 duliday_interview_booking。资料已收齐，不要重问；调用 request_handoff（reasonCode=identity_age_exception）交人工裁量能否破例，并告知候选人年龄需要门店确认、稍后答复。`;
+    }
     case 'ready_to_book':
       return run.form.candidateScope === 'additional'
         ? '当前这位追加候选人的独立表单已授权。立即调用 duliday_interview_booking 完成这一人；只有 booking success=true 后才能处理下一人，不得并行 precheck/booking。'
