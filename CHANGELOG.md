@@ -14,18 +14,24 @@
 **预计版本**: `v11.4.1`
 **最近更新**: `2026-09-08`
 **来源分支**: `develop`
-**累计 PR**: 2
+**累计 PR**: 3
 
 ### 更新摘要
 - PR #1222 fact-adjudication-shadow-daily 2026-09-07 结论落账
 - PR #1223 weekly-judge-calibration 2026-09-08 结论落账
 - PR #1223 Merge remote-tracking branch 'origin/develop' into docs/quality-ledge…
+- PR #1224 BadCase 全量清账批修 + 纹身默认门槛 + 复聊入职告警补候选人信息
+- PR #1224 知识库新增分布式系统设计与一致性边界篇，刷新周报与总览
+- PR #1224 查岗新增 requireAccommodation——候选人要包住时解除距离锚全城召回并按住宿福利筛
+- PR #1224 岗位事实对账守卫 + 可上班时段结构化 + 简名重试 + 现职品牌语境
+- PR #1224 评审整改——时段抽取误判、守卫读失败降档、包住模式过滤器与断言、纹身/性别规则边界
 
 ### 新功能
-- 无
+- PR #1224 知识库新增分布式系统设计与一致性边界篇，刷新周报与总览
+- PR #1224 查岗新增 requireAccommodation——候选人要包住时解除距离锚全城召回并按住宿福利筛
 
 ### 问题修复
-- 无
+- PR #1224 评审整改——时段抽取误判、守卫读失败降档、包住模式过滤器与断言、纹身/性别规则边界
 
 ### 优化调整
 - 无
@@ -34,6 +40,8 @@
 - PR #1222 fact-adjudication-shadow-daily 2026-09-07 结论落账
 - PR #1223 weekly-judge-calibration 2026-09-08 结论落账
 - PR #1223 Merge remote-tracking branch 'origin/develop' into docs/quality-ledge…
+- PR #1224 BadCase 全量清账批修 + 纹身默认门槛 + 复聊入职告警补候选人信息
+- PR #1224 岗位事实对账守卫 + 可上班时段结构化 + 简名重试 + 现职品牌语境
 
 ### 配置变更
 - 无
@@ -42,7 +50,9 @@
 - 无
 
 ### 验证记录
-- 无
+- PR #1224 `pnpm run ci:check` 全绿（460 suites / 6678 tests）
+- PR #1224 新增/调整 spec：schedule-semantic、precheck 无直接 spec（指令文本）、cancel、booking 无新 spec（结果字段）、anchor/agent/processor、brand-matcher、ambiguous-place、geocode、message-splitter、final-check、discrimination-leaks、sensitive-screening、disclosure-policy、rejection-renderer、render.util、prompt-compatibility（手册变更更新锁定 hash）
+- PR #1224 飞书回写：65 条 dry-run 全部匹配后 apply，内容级回读校验
 <!-- release:pending:end -->
 
 ## [11.4.0] - 2026-09-04
