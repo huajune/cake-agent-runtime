@@ -38,7 +38,6 @@ describe('HardRulesService — 封闭确定性输出规则', () => {
       'job_fact_without_provenance',
       'cancel_done_claim_without_submission',
       'cancel_done_claim_failed_tool',
-      'dangling_reply_promise',
       'requested_brand_mismatch',
       'settlement_cycle_mismatch',
       'proactive_insurance_policy_mention',

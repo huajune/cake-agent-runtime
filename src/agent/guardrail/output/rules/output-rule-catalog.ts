@@ -309,19 +309,6 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
       '必须如实告知候选人当前预约仍然有效、正在安排人工跟进处理，不得保留任何"已取消/已改好"的表述。',
   },
   {
-    id: 'dangling_reply_promise',
-    action: GUARDRAIL_ACTION.OBSERVE,
-    priority: GUARDRAIL_PRIORITY.P1,
-    description: '观察首版回复只给将来时查询承诺（"我帮你查下X"）、没有任何结果性内容的样本。',
-    riskGoal: '候选人收到承诺后再无下文会一直空等——量化首版悬空规模，供升档决策。',
-    exogenousSignal:
-      '复用 runner 的 isDanglingCheckReply 纯谓词（短文本+将来时承诺+无结果性标记）。',
-    residualRisk:
-      '刻意不升 REVISE：改写只会把承诺改成"暂时没岗位"的编造，根治在生成侧；' +
-      '退场条件：累计两周精确率 <70% 则删除。',
-    verification: 'tests/agent/guardrail/output/rules/dangling-promise.rule.spec.ts',
-  },
-  {
     id: 'requested_brand_mismatch',
     // 降 observe：结构化标题解析可能把门店名当品牌名，确定性修复易改坏正确回复。
     action: GUARDRAIL_ACTION.OBSERVE,

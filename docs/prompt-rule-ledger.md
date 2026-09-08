@@ -365,7 +365,7 @@
 
 | #   | 规则摘要                                                | 来源                      | 加入       | 备注                                                                |
 | --- | ------------------------------------------------------- | ------------------------- | ---------- | ------------------------------------------------------------------- |
-| Z1  | 禁"我帮你查下"将来时单独成回复；完成时态+实质内容才合法 | badcase 6a69ba9f/6a69be5c | 2026-07-29 | 拦侧配对：`dangling_reply_promise`（observe 哨兵，2026-08-26 恢复） |
+| Z1  | 禁"我帮你查下"将来时单独成回复；完成时态+实质内容才合法 | badcase 6a69ba9f/6a69be5c | 2026-07-29 | 生成侧规则本体仍在；拦侧哨兵 `dangling_reply_promise` 已于 2026-09-07 按退场条件删除（精确率 16.7%），判别改由离线扫描承接 |
 
 ### 结构件（不逐条登记）
 
@@ -501,10 +501,10 @@ FC 编号保留为历史别名：
 | duliday_interview_precheck                     | 以源码常量为准                               | 字段值提案、统一 recap 确认、时间并行行动纪律 | **唯一 `fieldValueProposals` 字段值入口与照发模板（标签/行结构逐字）的公开契约**。**mode 显式二分（2026-09-04）**：`mode` 为必填枚举 `query`/`validate`，调用意图不再由「是否携带 fieldValueProposals/recapConfirmation/requestedDate」反推。`query` 只读/刷新契约与时段，禁带字段提案与 recap；`validate` 必须携带非空 `fieldValueProposals` 或 `recapConfirmation=true`，两条约束由 schema superRefine 硬拦。`validate` 遇无快照时同次原子建快照后校验，`collection_form_not_presented` 回执随之取消——此前模型为「先查表」而丢弃本轮候选人答案。`query` 不再消费自由聊天，杜绝「查一下预约信息」触发 adapter_sweep 把裸「不是」写成身份拒绝。模型只提交候选人原话明确支持的最终值，歧义不猜；公证拒收通过 `rejectedAnswers` 回显。面试时间只走 `requestedDate`，不进字段提案；`requestedDate` 接受日期、`bookableSlots` 精确 interviewTime，以及窗口内具体时刻 `YYYY-MM-DD HH:mm`（**2026-09-02** 起精确映射到所在窗口、草稿仍锁窗口起点——此前同日多窗口岗位只认窗口起点，与 slot「不要改写成窗口起点」提示相撞致 select_interview_time 死锁，生产 chat 6a9679e2ce406a6aee6ef96b）；首次收资并行展示 `bookableSlots`。只有外部预填触发 recap，所有明确确认表达（含「没」这类语境化短答）均提交 `recapConfirmation=true`——它是确认的唯一入账入口，不提交则确认永不入账；候选人最新回复和历史已送达复述由系统自动绑定，不再让模型复制 `candidateQuote/recapQuote`。资料未变时此前发过的复述仍是有效锚点（生产 chat 6a951ac7ce406a6aeea1338c），correct/clear 优先，同值 correct 为 no-op、不作废 recap。公证拒收通过 `rejectedRecapConfirmation` 回执（reason+hint）回显并落 `collection_form_audit`；聊天中缺少当前 KV 快照或复述被改写送达（chat 6a951cadce406a6aeed925e7）时返回官方文案供照发重投。booking 凭据闸拒绝回执同步指引补带 `recapConfirmation=true` 重调。`ready_to_book` 只在资料授权且时间闸门通过后返回；答案到达当轮提交，禁止自行复述资料讨确认。**FILE 字段（2026-08-31，生产 chat 6a9117face406a6aee7f99c9）**：文件字段只收候选人真实附件 URL，文字作答的拒收提示（`FILE_SHAPE_HINT`）指示模型让候选人直接发文件/截图而非重投；收资模板对 FILE 字段常驻「直接发文件或截图，不用打字填写」占位；引导后下一轮仍失败才转人工（拒收账本按候选人回合去重）。；2026-09-08：结果新增 `interview.nearestBookableSlot`（报最近可约必须用它，禁改口「提前一天」，badcase inz7mjil/cthequif）；job_not_found 指令要求替代召回沿用候选人坐标（badcase cl6y1la7）；booking 成功结果新增 `otherActiveBookings`+`_otherBookingsGuide`（换店报名当轮问清是否取消旧单，badcase 9m5exulb） |
 | risk_alert / advance_stage / recall_history 等 | ≤620                                         | —                                             | 健康                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 
-## 七、守卫 hard-rules（拦侧，25 ruleId）
+## 七、守卫 hard-rules（拦侧，24 ruleId）
 
 本节是 Prompt 教侧与 Output 拦侧的**配对索引**，不是把 hard-rules 算进 Prompt 执行器。
-完整防线有 Input / Prompt / Tool / Output 四个作用位：本台账治理 Prompt，下面 25 个 ruleId
+完整防线有 Input / Prompt / Tool / Output 四个作用位：本台账治理 Prompt，下面 24 个 ruleId
 由 `OutputGuardrailService` 执行；教/拦可以配对，但权限与唯一权威各自独立。
 
 执行档（revise/block，19 条）：`invalid_model_output`、`internal_output_leak`、`meta_narration_reply`、
@@ -519,10 +519,16 @@ badcase 5j1mbgi8 / kwxk74gn / kb629uko / wvr7pejq；教侧配对手册"岗位事
 
 其中 `cancel_done_claim_failed_tool` 同属执行档（见下文取消/改期链路）。
 
-observe 哨兵（只落档不拦截，6 条，2026-08-26 数据复核恢复）：`dangling_reply_promise`、
-`requested_brand_mismatch`、`settlement_cycle_mismatch`、`proactive_insurance_policy_mention`、
-`booking_done_claim_without_submission`、`cancel_done_claim_without_submission`。其中预约完成态哨兵接替 `booking_promise_without_booking`
+observe 哨兵（只落档不拦截，5 条）：`requested_brand_mismatch`、`settlement_cycle_mismatch`、
+`proactive_insurance_policy_mention`、`booking_done_claim_without_submission`、
+`cancel_done_claim_without_submission`。其中预约完成态哨兵接替 `booking_promise_without_booking`
 的完成时态缺口；将来时口径经生产抽样证实几乎全命中合法收资话术，不恢复）。
+
+`dangling_reply_promise` 于 2026-09-07 按 catalog 自带退场条件（累计两周精确率 <70%）删除：
+12 天 42 次命中中 35 次在下一轮已兑现承诺，精确率 16.7%。单轮谓词无法区分"承诺后空等"与
+"承诺后下一轮兑现"，该判别需要延迟回看，inline 守卫在结构上做不到；改由检测环离线回扫承接
+（判据＝该 chat 此后有无后续 assistant 投递）。runner 侧对 **repair 产物** 的
+`isDanglingCheckReply` 收敛（revise_dangling）不在本次删除范围，保持不变。
 
 工具调用文本化泄漏（`invalid_model_output` 扩形态）：模型不走 tool-call 通道、把调用写成
 JSON 文本时，该工具本轮并未执行，据此宣称的报名/预约/取消/拉群全是空的。判据 `containsLeakedToolCallBlob`
