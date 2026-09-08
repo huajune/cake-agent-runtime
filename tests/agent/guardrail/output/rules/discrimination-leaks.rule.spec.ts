@@ -9,12 +9,16 @@ function ruleById(ruleId: string) {
 describe('discriminatory_screening_leak', () => {
   const rule = ruleById('discriminatory_screening_leak');
 
-  it.each(['这家不招外地户籍', '这个岗位只招食品专业', '少数民族有限制', '方便问下你结婚了吗'])(
-    '拦截封闭的敏感属性限招/拒收形态：%s',
-    (reply) => {
-      expect(rule.keywords.test(reply)).toBe(true);
-    },
-  );
+  it.each([
+    '这家不招外地户籍',
+    '这个岗位只招食品专业',
+    '少数民族有限制',
+    '方便问下你结婚了吗',
+    '这家不接受有纹身的',
+    '纹身这块有硬性要求',
+  ])('拦截封闭的敏感属性限招/拒收形态：%s', (reply) => {
+    expect(rule.keywords.test(reply)).toBe(true);
+  });
 
   it.each([
     '户籍没有要求，哪里人都能报',
@@ -28,10 +32,13 @@ describe('discriminatory_screening_leak', () => {
 describe('sensitive_origin_probe', () => {
   const rule = ruleById('sensitive_origin_probe');
 
-  it.each(['方便问下你老家是哪里？', '你是哪边人呀？', '你是本地人吗？'])(
-    '拦截封闭的籍贯探问：%s',
-    (reply) => expect(rule.keywords.test(reply)).toBe(true),
-  );
+  it.each([
+    '方便问下你老家是哪里？',
+    '你是哪边人呀？',
+    '你是本地人吗？',
+    '你有没有纹身呀？',
+    '纹身在哪个位置，能遮住吗',
+  ])('拦截封闭的籍贯探问：%s', (reply) => expect(rule.keywords.test(reply)).toBe(true));
 
   it.each([
     '方便问一下你常驻在哪个城市吗？',

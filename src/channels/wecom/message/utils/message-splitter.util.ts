@@ -76,6 +76,9 @@ export class MessageSplitter {
 
     if (lines.length === 0) return false;
     if (this.findFormBlockEnd(lines, 0) === lines.length) return true;
+    // 编号岗位条目（"1. 哈根达斯…"起头）整段原子：压缩段数时不得把它粘到上一条尾巴上，
+    // 否则上一家的"⚠️ 要求第二职业"会跟下一家的标题发在同一条消息里（badcase q4f9va90）。
+    if (this.isListItemLine(lines[0])) return true;
 
     return (
       lines.length > 1 &&
@@ -121,6 +124,12 @@ export class MessageSplitter {
         return [segment];
       }
       return this.splitBySentenceBoundaries(segment);
+    }
+
+    // 编号岗位条目内部不拆：条目里的补充行（"⚠️ 要求第二职业…"这类自然句）都属于该岗位，
+    // 拆成独立消息后再被压缩合并会串到下一家（badcase q4f9va90）。
+    if (this.isListItemLine(lines[0])) {
+      return [lines.join('\n')];
     }
 
     const result: string[] = [];
@@ -272,7 +281,10 @@ export class MessageSplitter {
     if (this.isListItemLine(normalized)) return true;
 
     const hasDistance = /\d+(?:\.\d+)?\s*(?:km|公里)/i.test(normalized);
-    const hasWorkTime = /\d{1,2}[:：]\d{2}\s*(?:-|~|—|到|至)\s*\d{1,2}[:：]\d{2}/.test(normalized);
+    const hasWorkTime =
+      /\d{1,2}[:：]\d{2}\s*(?:-|~|—|到|至)\s*(?:次日|凌晨|第二天|翌日)?\s*\d{1,2}[:：]\d{2}/.test(
+        normalized,
+      );
     const hasSalary =
       /\d+(?:\.\d+)?(?:\s*(?:-|~|—|到|至)\s*\d+(?:\.\d+)?)?\s*元\s*\/?\s*(?:时|小时|月|天|日)/.test(
         normalized,
@@ -316,11 +328,13 @@ export class MessageSplitter {
       /^(?:距离|离你|离您)(?:约|大概|大约|是|为|在|\s)*\d+(?:\.\d+)?\s*(?:km|公里)/i.test(
         normalized,
       ) ||
-      /^(?:早班|中班|晚班|夜班|白班|午班).*\d{1,2}[:：]\d{2}\s*(?:-|~|—|到|至)\s*\d{1,2}[:：]\d{2}/.test(
+      /^(?:早班|中班|晚班|夜班|白班|午班).*\d{1,2}[:：]\d{2}\s*(?:-|~|—|到|至)\s*(?:次日|凌晨|第二天|翌日)?\s*\d{1,2}[:：]\d{2}/.test(
         normalized,
       ) ||
-      /^\d{1,2}[:：]\d{2}\s*(?:-|~|—|到|至)\s*\d{1,2}[:：]\d{2}/.test(normalized) ||
-      /^(?:班次|上班时间|时间)(?:是|为|\s).*\d{1,2}[:：]\d{2}\s*(?:-|~|—|到|至)\s*\d{1,2}[:：]\d{2}/.test(
+      /^\d{1,2}[:：]\d{2}\s*(?:-|~|—|到|至)\s*(?:次日|凌晨|第二天|翌日)?\s*\d{1,2}[:：]\d{2}/.test(
+        normalized,
+      ) ||
+      /^(?:班次|上班时间|时间)(?:是|为|\s).*\d{1,2}[:：]\d{2}\s*(?:-|~|—|到|至)\s*(?:次日|凌晨|第二天|翌日)?\s*\d{1,2}[:：]\d{2}/.test(
         normalized,
       ) ||
       /^薪资(?:是|为|\s).*\d+(?:\.\d+)?(?:\s*(?:-|~|—|到|至)\s*\d+(?:\.\d+)?)?\s*元\s*\/?\s*(?:时|小时|月|天|日)/.test(

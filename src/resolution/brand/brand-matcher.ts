@@ -292,6 +292,9 @@ function isLowInformationShortLatinMatch(params: {
   source: BrandResolutionSource;
 }): boolean {
   if (params.source === 'contact_name') {
+    // 昵称轨的 1-2 字中文别名（阳光/星星/美好）几乎全是日常词，命中即把候选人昵称当品牌
+    // （badcase fhae8r60：昵称「阳光」→ Sunflour阳光粮品，候选人答"浦东张江"被回"阳光粮品附近无岗"）。
+    if (/^[\u4e00-\u9fff]{1,2}$/u.test(params.normalizedAlias)) return true;
     return (
       params.normalizedAlias.length >= 1 &&
       params.normalizedAlias.length <= 3 &&

@@ -247,6 +247,19 @@ describe('geocode tool', () => {
     });
   });
 
+  describe('非地名词碎片（badcase 6k394ya0："有我附近" 被当成地名 "有我"）', () => {
+    it.each(['有我', '我这边', '家里', '附近', '我住的地方'])(
+      'address=%s 不打高德直接报错',
+      async (address) => {
+        const result = (await execute({ address })) as Record<string, unknown>;
+
+        expect(result.errorType).toBe(TOOL_ERROR_TYPES.GEOCODE_UNRESOLVED_ADDRESS);
+        expect(String(result._replyInstruction)).toContain('不是地名');
+        expect(mockGeocodingService.searchCandidates).not.toHaveBeenCalled();
+      },
+    );
+  });
+
   describe('GEOCODE_AMBIGUOUS_SUFFIX（命中通用后缀黑名单）', () => {
     it('未传 city + 万达广场 → 直接报黑名单错误，不打高德', async () => {
       const result = (await execute({ address: '万达广场' })) as Record<string, unknown>;

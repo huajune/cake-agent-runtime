@@ -2005,13 +2005,10 @@ describe('FollowUpProcessor', () => {
       const candidateAt = Date.now() - 30 * 60_000;
       sponge.getWorkOrderById.mockResolvedValue({ workOrderId: 901, currentStatus: '面试成功' });
       session.getReengagementState.mockResolvedValue(baseState({ terminal: 'booked' }));
-      chatSession.getChatHistory.mockImplementation(
-        (_chatId: string, limit: number) =>
-          Promise.resolve(
-            limit === 200
-              ? []
-              : [{ role: 'user', content: '我还有个问题', timestamp: candidateAt }],
-          ),
+      chatSession.getChatHistory.mockImplementation((_chatId: string, limit: number) =>
+        Promise.resolve(
+          limit === 200 ? [] : [{ role: 'user', content: '我还有个问题', timestamp: candidateAt }],
+        ),
       );
       messageProcessing.getLatestReceivedAtByChatId.mockResolvedValue(candidateAt - 10 * 60_000);
 
@@ -2070,8 +2067,7 @@ describe('FollowUpProcessor', () => {
         expect.objectContaining({
           reasonCode: 'onboarding_follow_up_required',
           workOrderId: 901,
-          idempotencyKey:
-            'sess-1:post_interview_onboarding:wo901:onboarding_follow_up_required',
+          idempotencyKey: 'sess-1:post_interview_onboarding:wo901:onboarding_follow_up_required',
         }),
       );
       expect(handoffNotifier.notify).toHaveBeenCalledWith(
@@ -2085,6 +2081,63 @@ describe('FollowUpProcessor', () => {
         'onboarding_intervention_dispatched',
       );
       expect(reengagementAgent.compose).not.toHaveBeenCalled();
+    });
+
+    it('carries the resolved channel identity and work-order context into the onboarding alert', async () => {
+      // 入职巡检排程只带 botImId：昵称/托管账号必须来自 process() 的兜底身份，不能直接读 job.data
+      tracking.resolveChannelIdentity.mockResolvedValue({
+        candidateName: '兜底昵称',
+        managerName: '兜底经理',
+        botImId: 'bot-1',
+        imContactId: 'contact-db',
+        externalUserId: 'wx-ext-1',
+      });
+      sponge.getWorkOrderById.mockResolvedValue({
+        workOrderId: 901,
+        currentStatus: '上岗失败',
+        brandName: '成都你六姐',
+        jobName: '前厅服务员',
+      });
+      session.getReengagementState.mockResolvedValue(baseState({ terminal: 'booked' }));
+
+      await buildProcessor().process(onboardingJob({ channelIdentity: { botImId: 'bot-1' } }));
+
+      expect(handoffNotifier.notify).toHaveBeenCalledWith(
+        expect.objectContaining({
+          contactName: '兜底昵称',
+          botUserName: '兜底经理',
+          botImId: 'bot-1',
+          currentMessageContent: expect.stringContaining('工单 901（成都你六姐 · 前厅服务员）'),
+          diagnostics: expect.objectContaining({
+            imContactId: 'contact-db',
+            externalUserId: 'wx-ext-1',
+            brandName: '成都你六姐',
+            jobName: '前厅服务员',
+          }),
+        }),
+      );
+    });
+
+    it('falls back to the candidate nickname from chat history when identity has none', async () => {
+      sponge.getWorkOrderById.mockResolvedValue({ workOrderId: 901, currentStatus: '上岗失败' });
+      session.getReengagementState.mockResolvedValue(baseState({ terminal: 'booked' }));
+      chatSession.getChatHistory.mockResolvedValue([
+        {
+          role: 'assistant',
+          content: '你好',
+          timestamp: passedAt - 2000,
+          candidateName: '历史昵称',
+        },
+        { role: 'user', content: '在', timestamp: passedAt - 1000, candidateName: '历史昵称' },
+      ]);
+
+      await buildProcessor().process(
+        onboardingJob({ channelIdentity: { botImId: 'bot-1', imContactId: 'contact-1' } }),
+      );
+
+      expect(handoffNotifier.notify).toHaveBeenCalledWith(
+        expect.objectContaining({ contactName: '历史昵称' }),
+      );
     });
 
     it('uses the handoff write outcome to suppress duplicate notifications for one work order', async () => {

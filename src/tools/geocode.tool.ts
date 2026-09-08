@@ -200,6 +200,13 @@ function buildSessionCityConflictNotice(
 }
 
 /**
+ * 代词/方位词碎片，不是地名：整串等于这些词（或仅由它们拼成）时不打高德。
+ * 只收"绝不可能是地名"的日常词，避免误伤真实短地名（"南澳""吴中"照常查）。
+ */
+const NON_PLACE_ADDRESS_PATTERN =
+  /^(?:有我|我|我在|我这|我这边|我这里|这边|这里|那边|那里|附近|我附近|附近的|我家|家里|家附近|住处|我住的地方|住的地方|我住这|我住这里|我住的附近|周边|周围|本地|当地|这附近)(?:附近|这边|这里|周边)?$/u;
+
+/**
  * geocode.city 与 invite.city 共用一套出处门：模型参数本身不构成城市证据。
  * 无出处/与会话事实冲突时不报错、不采信，降级为 city=null 让 geocode 三态裁决。
  */
@@ -406,6 +413,18 @@ export function buildGeocodeTool(geocodingService: GeocodingService): ToolBuilde
             errorType: TOOL_ERROR_TYPES.GEOCODE_UNRESOLVED_ADDRESS,
             replyInstruction: 'address 不能为空。向候选人确认更具体的地名/地址后再调用本工具。',
             details: { address, city: normalizedCity },
+          });
+        }
+
+        // 非地名词兜底：模型把"有我附近/我这边/家里"里的代词碎片当地址传进来（badcase 6k394ya0：
+        // address="有我"，回复里还把它当地名复述"有我这个地方没定位到"）。
+        if (NON_PLACE_ADDRESS_PATTERN.test(trimmedAddress)) {
+          return buildToolError({
+            errorType: TOOL_ERROR_TYPES.GEOCODE_UNRESOLVED_ADDRESS,
+            replyInstruction:
+              `"${trimmedAddress}" 不是地名，是候选人句子里的代词/方位词碎片，禁止向候选人复述它、` +
+              '也禁止说"这个地方没定位到"。候选人尚未给出可定位的地点：直接请候选人发一个定位或说商圈/地铁站/详细地址。',
+            details: { address: trimmedAddress, city: normalizedCity, reason: 'not_a_place_name' },
           });
         }
 

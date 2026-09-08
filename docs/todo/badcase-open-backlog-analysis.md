@@ -177,3 +177,31 @@
 3. **B 薪资口径配置化**：需产品先出口径表，再动代码。
 4. **C/D**：运营核数据 + 批量回放，不预先改代码。
 5. **F**：等 `llm_execution` 数据。
+
+---
+
+## 2026-09-08 巡检增量（65 条未解决全量复核）
+
+飞书表 806 条，非「已解决」88 条（待分析 38 / 处理中 22 / 待验证 5 / 暂搁置 23）。逐条对照 develop 现状 + 生产 trace 后：
+**39 条转已解决**（16 条本批修复、20 条被 v11.1.x~v11.4.0 机制覆盖、3 条复核非缺陷或观察窗到期无复发）、
+**24 条维持处理中**（每条已写根因与待做项）、**2 条转暂搁置**（t9pfuo4y 面试形式无字段、321y0own 渠道文件地址为空）。
+逐条结论以飞书「修复说明」为准，本节只记本批修的机制：
+
+| 修复 | 触发 badcase | 落点 |
+| --- | --- | --- |
+| 「只做晚班」不再被「全周强排班」剔除 | ce20d0l8 | job-list/schedule-semantic.util |
+| precheck 输出 `nearestBookableSlot`，禁止把「当天 10:00 前报名」改口成「提前一天」 | inz7mjil、cthequif | duliday-interview-precheck.tool |
+| 岗位失效后替代召回必须带候选人坐标 | cl6y1la7 | duliday-interview-precheck.tool（job_not_found 指令） |
+| 系统无工单 ≠ 无预约：真人带外约面时转人工取消，禁说「没有预约记录」 | a9jahy31 | duliday-cancel-work-order.tool |
+| 复聊「收资未完成」增加「资料已齐待确认」子态 | 0iepqqf5 | reengagement anchor/scheduler/agent |
+| 昵称轨 1-2 字中文别名不写品牌 | fhae8r60 | brand-matcher |
+| 凯德/来福士等跨城连锁进 geocode 歧义黑名单 | tqljowg0 | geo/ambiguous-place.policy |
+| geocode 拒绝「有我/我这边」等非地名碎片 | 6k394ya0 | geocode.tool |
+| booking 成功后亮出其他在途工单、当轮问清是否取消 | 9m5exulb | duliday-interview-booking.tool |
+| 编号岗位条目整段原子、不与相邻段合并 | q4f9va90 | message-splitter.util |
+| 动态硬禁令：裸两位数优先按年龄、性别自陈对照岗位要求 | q6a8yvdy、l98sbqws、g4lc5u0q | final-check.section |
+| 手册：被问中介/收费的标准直答 | tlqjy9it | candidate-consultation.md |
+
+仍待实现的簇（已写进对应 badcase 的修复说明）：A3/D 组「岗位事实与排班数字执行档对账」（p43zzrtc、5j1mbgi8、kwxk74gn、kb629uko）、
+`searchJobName` 查空词头截短重试（o33c79xe、chtzvn4j、5vot5uuh）、候选人时段窗口结构化（j4kb5ijm）、
+booking 完成宣称哨兵改按会话累计工单对账后升档（wvr7pejq，当前 observe 精确率约 30-40%）、B 组薪资口径配置化（9 条）。

@@ -14,6 +14,44 @@ const matches = (ruleId: string, text: string): boolean => {
   return rule.patterns.every((pattern) => pattern.test(text));
 };
 
+describe('tattoo_self_report_soft_decline (default tattoo gate)', () => {
+  it.each(['我有纹身', '胳膊上纹了个纹身能做吗', '有文身要不要', '身上有刺青，介意吗'])(
+    'triggers on candidate self-report: %s',
+    (text) => expect(matches('tattoo_self_report_soft_decline', text)).toBe(true),
+  );
+
+  it.each(['你们这要求不能有纹身吗', '纹身店在附近', '我朋友有纹身'])(
+    'does not trigger on generic mention without self-report: %s',
+    (text) => expect(matches('tattoo_self_report_soft_decline', text)).toBe(false),
+  );
+
+  it('injects the shared restricted rejection wording', () => {
+    const rule = FINAL_CHECK_RULES.find((item) => item.id === 'tattoo_self_report_soft_decline');
+    expect(rule?.text).toContain('这家的岗位跟你这边暂时没太对上');
+    expect(rule?.text).toContain('不得追问纹身位置');
+  });
+});
+
+describe('bare_number_reply_is_age_first / gender_self_report_check', () => {
+  it.each(['17', '19 的不要？', '45可以吗', '我38'])(
+    'bare two-digit reply triggers age-first: %s',
+    (text) => expect(matches('bare_number_reply_is_age_first', text)).toBe(true),
+  );
+  it.each(['17点可以吗', '我要19元', '明天下午三点', '17:30'])(
+    'does not trigger on non-bare numbers: %s',
+    (text) => expect(matches('bare_number_reply_is_age_first', text)).toBe(false),
+  );
+
+  it.each(['我是男生', '本人女', '我女的', '我是男的可以吗'])(
+    'gender self-report triggers: %s',
+    (text) => expect(matches('gender_self_report_check', text)).toBe(true),
+  );
+  it.each(['我是男朋友推荐来的', '我女儿想找工作', '男女不限吗'])(
+    'does not trigger on relatives/questions: %s',
+    (text) => expect(matches('gender_self_report_check', text)).toBe(false),
+  );
+});
+
 describe('FinalCheckSection', () => {
   it('renders the always checklist as the first block with adjudicated group order', () => {
     const blocks = new FinalCheckSection().build();

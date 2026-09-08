@@ -36,6 +36,12 @@ describe('sensitive-screening util', () => {
     expect(containsSensitiveScreeningText('已结婚且有孩子')).toBe(true);
   });
 
+  it('detects tattoo screening conditions (default sensitive gate, 2026-09-08)', () => {
+    expect(containsSensitiveScreeningText('不接受有纹身')).toBe(true);
+    expect(containsSensitiveScreeningText('无文身、无刺青')).toBe(true);
+    expect(containsSensitiveScreeningText('是否有纹身')).toBe(true);
+  });
+
   it('does not flag ordinary job text', () => {
     expect(containsSensitiveScreeningText('18-45岁，有健康证优先，排班灵活')).toBe(false);
     expect(containsSensitiveScreeningText('需要长期稳定，能上晚班')).toBe(false);

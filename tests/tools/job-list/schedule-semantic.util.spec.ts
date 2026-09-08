@@ -201,7 +201,8 @@ describe('matchScheduleConstraint', () => {
       [['flexible'], true, undefined],
       [['low_weekly_frequency'], false, '岗位排班未明确含晚班'],
       [['morning_compatible'], false, '岗位仅安排早班，与"只做晚班"冲突'],
-      [['requires_full_week'], false, '岗位是全周强排班，与"只做晚班"可能冲突，需进一步确认'],
+      [['requires_full_week'], false, '岗位排班未明确含晚班'],
+      [['requires_full_week', 'evening_compatible'], true, undefined],
       [['unknown'], false, '岗位排班未明确含晚班'],
     ] satisfies Array<[ScheduleSemantic[], boolean, string | undefined]>)(
       'handles semantics=%j',
@@ -213,15 +214,13 @@ describe('matchScheduleConstraint', () => {
       },
     );
 
-    it('lets full-week semantics override flexible', () => {
+    it('keeps full-week evening shifts matched: weekly frequency is orthogonal to evenings-only', () => {
+      // badcase ce20d0l8：做六休一的 18:00-22:00 晚班对「只做晚班」候选人是匹配的
       expect(
         matchScheduleConstraint(['requires_full_week', 'flexible', 'evening_compatible'], {
           onlyEvenings: true,
         }),
-      ).toEqual({
-        matched: false,
-        reason: '岗位是全周强排班，与"只做晚班"可能冲突，需进一步确认',
-      });
+      ).toEqual({ matched: true });
     });
 
     it('does not let a low weekly signal mask a concurrent evening constraint', () => {

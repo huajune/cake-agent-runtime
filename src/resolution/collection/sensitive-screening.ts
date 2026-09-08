@@ -1,5 +1,10 @@
 /**
- * 敏感筛选信息检测（户籍/籍贯/民族/地域/专业/婚育类歧视性条件）。
+ * 敏感筛选信息检测（户籍/籍贯/民族/地域/专业/婚育/纹身类歧视性条件）。
+ *
+ * 纹身（2026-09-08 运营裁定）：岗位数据没有承载字段，按**默认知识**处理——默认所有岗位不接受
+ * 有纹身的候选人；不主动问，候选人自陈有纹身时走禁明说档统一婉拒（见 disclosure-policy 的
+ * RESTRICTED_REJECTION_* 与 final-check 的 tattoo_self_report_soft_decline）。词表收纹身是为了
+ * 岗位自由文本/未来收资标签一旦出现纹身条件时，渲染 🔒、因果隔离与拒因禁明说三处自动生效。
  *
  * 岗位自由文本（remark / interviewRemark / 面试补充项 / 面试描述）可能内嵌"仅限本地户口 /
  * 限汉族 / 专业（非新媒、食品）/ 已婚已育"等歧视性筛选条件。结构化字段（hometown 块、
@@ -35,6 +40,10 @@ const SENSITIVE_SCREENING_PATTERN = new RegExp(
     '民族',
     '本地人',
     '外地人',
+    // 纹身/文身/刺青：身体特征类门槛，条件本身不得对外展示或作为拒因说出
+    '纹身',
+    '文身',
+    '刺青',
     // 婚育类字段和状态均只能留在内部筛选链路，不能进入对外展示文案
     '婚育',
     '婚姻(?:状况|状态|要求|限制)',
@@ -53,7 +62,7 @@ const SENSITIVE_SCREENING_PATTERN = new RegExp(
   ].join('|'),
 );
 
-/** 文本中是否含户籍/籍贯/民族/地域/专业/婚育类敏感筛选信息（宽口径，供岗位数据侧使用）。 */
+/** 文本中是否含户籍/籍贯/民族/地域/专业/婚育/纹身类敏感筛选信息（宽口径，供岗位数据侧使用）。 */
 export function containsSensitiveScreeningText(text: string | null | undefined): boolean {
   if (!text) return false;
   return SENSITIVE_SCREENING_PATTERN.test(text);
@@ -61,8 +70,8 @@ export function containsSensitiveScreeningText(text: string | null | undefined):
 
 /** 渲染层 section 级标注：追加在命中敏感词的 section 行尾。 */
 export const SENSITIVE_SCREENING_RENDER_NOTICE =
-  '- ⚠️ 本节文本含户籍/籍贯/民族/专业/婚育等敏感筛选信息，🔒 仅供内部筛选，**严禁向候选人展示或转述**（涉地域/民族/专业/婚育歧视与隐私风险，易起纠纷）；判断不符时以排班/距离等中性理由转推其他岗位';
+  '- ⚠️ 本节文本含户籍/籍贯/民族/专业/婚育/纹身等敏感筛选信息，🔒 仅供内部筛选，**严禁向候选人展示或转述**（涉地域/民族/专业/婚育/身体特征歧视与隐私风险，易起纠纷）；判断不符时以排班/距离等中性理由转推其他岗位';
 
 /** precheck 结果级提示：screeningCriteria / screeningChecks 命中敏感词时回传。 */
 export const SENSITIVE_SCREENING_CRITERIA_NOTICE =
-  '🔒 本岗位筛选条件含户籍/籍贯/民族/专业/婚育等敏感信息：仅供内部筛选，严禁把条件本身告诉候选人或写进岗位介绍/拒绝理由（核对专业只能开放式问"你学的什么专业"；婚育信息禁止询问、复述或确认）；判断不符时以排班/距离/已招满等中性理由转推其他岗位';
+  '🔒 本岗位筛选条件含户籍/籍贯/民族/专业/婚育/纹身等敏感信息：仅供内部筛选，严禁把条件本身告诉候选人或写进岗位介绍/拒绝理由（核对专业只能开放式问"你学的什么专业"；婚育、纹身信息禁止询问、复述或确认）；判断不符时以排班/距离/已招满等中性理由转推其他岗位';

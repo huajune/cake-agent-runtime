@@ -219,10 +219,11 @@ export function matchScheduleConstraint(
   }
 
   if (constraint.onlyEvenings) {
-    // “灵活排班”同样不能覆盖全周/全天强排班事实。
-    if (has('requires_full_week')) {
-      return { matched: false, reason: '岗位是全周强排班，与"只做晚班"可能冲突，需进一步确认' };
-    }
+    // 「只做晚班」是日内时段约束，与每周出勤频次正交：做六休一的 18:00-22:00 晚班对
+    // 只能晚上来的候选人恰恰是匹配的。此前把 requires_full_week 也算冲突，会把候选人
+    // 点名的晚班岗整批剔除并回"排班对不上"（badcase ce20d0l8：候选人「只做晚班 18-22」，
+    // 岗位 18:00-22:00 后厨晚班被以全周强排班为由剔除）。频次冲突只由 onlyWeekends /
+    // maxDaysPerWeek 判定。
     if (has('morning_compatible') && !has('evening_compatible')) {
       return { matched: false, reason: '岗位仅安排早班，与"只做晚班"冲突' };
     }

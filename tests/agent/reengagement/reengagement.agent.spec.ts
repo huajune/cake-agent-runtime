@@ -684,6 +684,34 @@ describe('ReengagementAgent', () => {
     });
   });
 
+  it('tells the model the form is complete and only awaits confirmation when the anchor says so', async () => {
+    llm.generateStructured.mockResolvedValue({
+      output: {
+        decision: 'send',
+        blockReason: 'none',
+        message: '报名信息我都记下了，没问题的话回我一句，我马上帮你提交',
+        reason: 'awaiting confirmation',
+      },
+      usage: { inputTokens: 10, outputTokens: 8, totalTokens: 18 },
+    });
+
+    await reengagementAgent.compose({
+      sessionRef,
+      scenario: getScenario('booking_incomplete')!,
+      jobData: job('booking_incomplete', { collectionAwaitingConfirmation: true }),
+      state: baseState({
+        collectedFields: {
+          name: { value: '张三', producer: 'candidate_quote', at: Date.now() },
+        },
+      }),
+    });
+
+    const prompt = llm.generateStructured.mock.calls[0][0].system;
+    expect(prompt).toContain('资料已全部收齐');
+    expect(prompt).toContain('严禁说"还差/还缺/需要补充资料"');
+    expect(prompt).not.toContain('收资状态：已开始但未完成');
+  });
+
   it('uses LLM for booking_incomplete instead of hard-coding missing fields', async () => {
     llm.generateStructured.mockResolvedValue({
       output: {
