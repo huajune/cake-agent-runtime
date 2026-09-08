@@ -58,8 +58,6 @@ const OUTPUT_RULE_SOURCE_BY_ID: Record<string, string> = {
     'agent/guardrail/output/rules/booking-claim-reconciliation.rule.ts（HardRulesService 调度）',
   cancel_done_claim_failed_tool:
     'agent/guardrail/output/rules/booking-claim-reconciliation.rule.ts（HardRulesService 调度）',
-  dangling_reply_promise:
-    'agent/guardrail/output/rules/dangling-promise.rule.ts（HardRulesService 调度）',
   requested_brand_mismatch:
     'agent/guardrail/output/rules/brand-name-errors.rule.ts（HardRulesService 调度）',
   settlement_cycle_mismatch:

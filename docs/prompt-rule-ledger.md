@@ -352,7 +352,7 @@
 
 | #   | 规则摘要                                                | 来源                      | 加入       | 备注                                                                |
 | --- | ------------------------------------------------------- | ------------------------- | ---------- | ------------------------------------------------------------------- |
-| Z1  | 禁"我帮你查下"将来时单独成回复；完成时态+实质内容才合法 | badcase 6a69ba9f/6a69be5c | 2026-07-29 | 拦侧配对：`dangling_reply_promise`（observe 哨兵，2026-08-26 恢复） |
+| Z1  | 禁"我帮你查下"将来时单独成回复；完成时态+实质内容才合法 | badcase 6a69ba9f/6a69be5c | 2026-07-29 | 生成侧规则本体仍在；拦侧哨兵 `dangling_reply_promise` 已于 2026-09-07 按退场条件删除（精确率 16.7%），判别改由离线扫描承接 |
 
 ### 结构件（不逐条登记）
 
@@ -503,10 +503,16 @@ FC 编号保留为历史别名：
 
 其中 `cancel_done_claim_failed_tool` 同属执行档（见下文取消/改期链路）。
 
-observe 哨兵（只落档不拦截，6 条，2026-08-26 数据复核恢复）：`dangling_reply_promise`、
-`requested_brand_mismatch`、`settlement_cycle_mismatch`、`proactive_insurance_policy_mention`、
-`booking_done_claim_without_submission`、`cancel_done_claim_without_submission`。其中预约完成态哨兵接替 `booking_promise_without_booking`
+observe 哨兵（只落档不拦截，5 条）：`requested_brand_mismatch`、`settlement_cycle_mismatch`、
+`proactive_insurance_policy_mention`、`booking_done_claim_without_submission`、
+`cancel_done_claim_without_submission`。其中预约完成态哨兵接替 `booking_promise_without_booking`
 的完成时态缺口；将来时口径经生产抽样证实几乎全命中合法收资话术，不恢复）。
+
+`dangling_reply_promise` 于 2026-09-07 按 catalog 自带退场条件（累计两周精确率 <70%）删除：
+12 天 42 次命中中 35 次在下一轮已兑现承诺，精确率 16.7%。单轮谓词无法区分"承诺后空等"与
+"承诺后下一轮兑现"，该判别需要延迟回看，inline 守卫在结构上做不到；改由检测环离线回扫承接
+（判据＝该 chat 此后有无后续 assistant 投递）。runner 侧对 **repair 产物** 的
+`isDanglingCheckReply` 收敛（revise_dangling）不在本次删除范围，保持不变。
 
 工具调用文本化泄漏（`invalid_model_output` 扩形态）：模型不走 tool-call 通道、把调用写成
 JSON 文本时，该工具本轮并未执行，据此宣称的报名/预约/取消/拉群全是空的。判据 `containsLeakedToolCallBlob`

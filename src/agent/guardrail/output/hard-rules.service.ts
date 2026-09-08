@@ -23,7 +23,6 @@ import {
   detectBookingDoneClaimWithoutSubmission,
   detectCancelDoneClaimWithoutSubmission,
 } from './rules/booking-claim-reconciliation.rule';
-import { detectDanglingReplyPromise } from './rules/dangling-promise.rule';
 import { detectExperienceFraudCoaching } from './rules/experience-fraud-coaching.rule';
 import { detectIdentityMisregistrationCoaching } from './rules/identity-fraud-coaching.rule';
 import { detectInvalidModelOutput } from './rules/invalid-model-output.rule';
@@ -263,10 +262,6 @@ export class HardRulesService {
       contradictions.push(this.withRulePolicy(requestedBrandMismatch));
     }
 
-    const danglingReplyPromise = detectDanglingReplyPromise(text, toolCalls);
-    if (danglingReplyPromise) {
-      contradictions.push(this.withRulePolicy(danglingReplyPromise));
-    }
 
     const proactiveInsuranceMention = detectProactiveInsurancePolicyMention(
       text,
