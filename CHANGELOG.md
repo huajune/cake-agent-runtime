@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [11.4.1] - 2026-09-08
 
-**预计版本**: `v11.4.1`
-**最近更新**: `2026-09-08`
 **来源分支**: `develop`
-**累计 PR**: 4
 
 ### 更新摘要
 - PR #1222 fact-adjudication-shadow-daily 2026-09-07 结论落账
@@ -62,7 +58,6 @@
 - PR #1224 `pnpm run ci:check` 全绿（460 suites / 6678 tests）
 - PR #1224 新增/调整 spec：schedule-semantic、precheck 无直接 spec（指令文本）、cancel、booking 无新 spec（结果字段）、anchor/agent/processor、brand-matcher、ambiguous-place、geocode、message-splitter、final-check、discrimination-leaks、sensitive-screening、disclosure-policy、rejection-renderer、render.util、prompt-compatibility（手册变更更新锁定 hash）
 - PR #1224 飞书回写：65 条 dry-run 全部匹配后 apply，内容级回读校验
-<!-- release:pending:end -->
 
 ## [11.4.0] - 2026-09-04
 
