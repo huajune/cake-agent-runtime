@@ -91,6 +91,39 @@
         "飞书回写：65 条 dry-run 全部匹配后 apply，内容级回读校验"
       ],
       "level": "patch"
+    },
+    {
+      "number": "1225",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1225",
+      "title": "按退场条件删除 dangling_reply_promise observe 哨兵",
+      "author": "huajune",
+      "mergedAt": "2026-09-08",
+      "businessUpdates": [
+        "Merge remote-tracking branch 'origin/develop' into fix/badcase-202609…"
+      ],
+      "summary": [
+        "按退场条件删除 dangling_reply_promise observe 哨兵",
+        "删除哨兵后清理多余空行",
+        "Merge remote-tracking branch 'origin/develop' into fix/badcase-202609…",
+        "删除 `dangling-promise.rule.ts` 与其 spec；hard-rules 调度、output-rule-catalog、guardrail catalog 源映射、hard-rules spec 同步",
+        "台账 Z1 行与拦侧 observe 哨兵清单、架构文档 guardrail-quality-system 同步"
+      ],
+      "features": [],
+      "fixes": [
+        "Merge remote-tracking branch 'origin/develop' into fix/badcase-202609…"
+      ],
+      "optimizations": [
+        "删除 `dangling-promise.rule.ts` 与其 spec；hard-rules 调度、output-rule-catalog、guardrail catalog 源映射、hard-rules spec 同步",
+        "台账 Z1 行与拦侧 observe 哨兵清单、架构文档 guardrail-quality-system 同步"
+      ],
+      "ops": [
+        "按退场条件删除 dangling_reply_promise observe 哨兵",
+        "删除哨兵后清理多余空行"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [],
+      "level": "patch"
     }
   ],
   "lastRelease": {
@@ -278,5 +311,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "8d1a19401d686a4739eb0c62b171434d5671f63a"
+  "lastAnalyzedSha": "7c575fd690ed60e06a9634c53dbb67392229b70c"
 }

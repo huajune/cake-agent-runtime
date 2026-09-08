@@ -14,7 +14,7 @@
 **预计版本**: `v11.4.1`
 **最近更新**: `2026-09-08`
 **来源分支**: `develop`
-**累计 PR**: 3
+**累计 PR**: 4
 
 ### 更新摘要
 - PR #1222 fact-adjudication-shadow-daily 2026-09-07 结论落账
@@ -25,6 +25,11 @@
 - PR #1224 查岗新增 requireAccommodation——候选人要包住时解除距离锚全城召回并按住宿福利筛
 - PR #1224 岗位事实对账守卫 + 可上班时段结构化 + 简名重试 + 现职品牌语境
 - PR #1224 评审整改——时段抽取误判、守卫读失败降档、包住模式过滤器与断言、纹身/性别规则边界
+- PR #1225 按退场条件删除 dangling_reply_promise observe 哨兵
+- PR #1225 删除哨兵后清理多余空行
+- PR #1225 Merge remote-tracking branch 'origin/develop' into fix/badcase-202609…
+- PR #1225 删除 `dangling-promise.rule.ts` 与其 spec；hard-rules 调度、output-rule-catalog、guardrail catalog 源映射、hard-rules spec 同步
+- PR #1225 台账 Z1 行与拦侧 observe 哨兵清单、架构文档 guardrail-quality-system 同步
 
 ### 新功能
 - PR #1224 知识库新增分布式系统设计与一致性边界篇，刷新周报与总览
@@ -32,9 +37,11 @@
 
 ### 问题修复
 - PR #1224 评审整改——时段抽取误判、守卫读失败降档、包住模式过滤器与断言、纹身/性别规则边界
+- PR #1225 Merge remote-tracking branch 'origin/develop' into fix/badcase-202609…
 
 ### 优化调整
-- 无
+- PR #1225 删除 `dangling-promise.rule.ts` 与其 spec；hard-rules 调度、output-rule-catalog、guardrail catalog 源映射、hard-rules spec 同步
+- PR #1225 台账 Z1 行与拦侧 observe 哨兵清单、架构文档 guardrail-quality-system 同步
 
 ### 运维与流程
 - PR #1222 fact-adjudication-shadow-daily 2026-09-07 结论落账
@@ -42,6 +49,8 @@
 - PR #1223 Merge remote-tracking branch 'origin/develop' into docs/quality-ledge…
 - PR #1224 BadCase 全量清账批修 + 纹身默认门槛 + 复聊入职告警补候选人信息
 - PR #1224 岗位事实对账守卫 + 可上班时段结构化 + 简名重试 + 现职品牌语境
+- PR #1225 按退场条件删除 dangling_reply_promise observe 哨兵
+- PR #1225 删除哨兵后清理多余空行
 
 ### 配置变更
 - 无
