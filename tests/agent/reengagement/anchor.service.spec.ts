@@ -84,6 +84,32 @@ describe('ReengagementAnchorService', () => {
     });
   });
 
+  it('refreshes the collection anchor as awaiting-confirmation once precheck reaches confirm_collection', async () => {
+    // badcase 0iepqqf5：复述已发出后主动跟进仍说"还有几项资料需要补充"
+    buildService().handleToolAnchors(
+      {
+        text: '帮你核对一下报名信息：姓名：张三\n没问题的话我这就帮你提交',
+        toolCalls: [
+          {
+            toolName: 'duliday_interview_precheck',
+            args: { jobId: 528760 },
+            result: { success: true, nextAction: 'confirm_collection' },
+          },
+        ],
+      },
+      context,
+    );
+    await flush();
+
+    expect(scheduler.scheduleFollowUp).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scenarioCode: 'booking_incomplete',
+        anchorEventId: 'trace-1:collection_awaiting_confirmation',
+        collectionAwaitingConfirmation: true,
+      }),
+    );
+  });
+
   it('does not stop store follow-ups when a group invite fails', async () => {
     buildService().handleToolAnchors(
       {
@@ -394,9 +420,7 @@ describe('ReengagementAnchorService', () => {
         scenarioCode: 'store_presented_no_reply',
       }),
     );
-    expect(scheduler.scheduleFollowUp.mock.calls[0][0]).not.toHaveProperty(
-      'escalateToGroupInvite',
-    );
+    expect(scheduler.scheduleFollowUp.mock.calls[0][0]).not.toHaveProperty('escalateToGroupInvite');
   });
 
   it('marks a second direct store presentation for deterministic group invite escalation', async () => {

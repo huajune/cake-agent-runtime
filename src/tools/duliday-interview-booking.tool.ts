@@ -338,11 +338,16 @@ export function buildInterviewBookingTool(
 
           // active booking 属于当前聊天联系人，不能拿它拦截同一会话中朋友/家人的独立报名。
           // 追加候选人的去重由其手机号表单与上游报名接口负责。
-          const duplicate = isAdditionalCandidate
-            ? undefined
-            : (await longTermService.getActiveBookings(scope.corpId, scope.userId)).find((entry) =>
-                isRecentSameJobBooking(entry, jobId),
-              );
+          const activeBookings = isAdditionalCandidate
+            ? []
+            : await longTermService.getActiveBookings(scope.corpId, scope.userId);
+          const duplicate = activeBookings.find((entry) => isRecentSameJobBooking(entry, jobId));
+          // 换店报名不自动取消旧工单（是否保留两家由候选人决定），但必须把在途的另一家亮出来让
+          // 模型当轮问清，不得默默双报（badcase 9m5exulb：换到大学城店报名成功后，世纪联华店旧工单
+          // 一直挂着，真人只能事后追问"是只报大学城吗"）。
+          const otherActiveBookings = activeBookings
+            .filter((entry) => entry.job_id != null && entry.job_id !== jobId)
+            .map((entry) => ({ workOrderId: entry.work_order_id, jobId: entry.job_id }));
           if (duplicate) {
             context.ledger.jobs.bookingSucceeded = true;
             return buildToolError({
@@ -576,6 +581,16 @@ export function buildInterviewBookingTool(
           const toolResult = {
             ...baseToolOutput,
             _outcome: '预约成功，可以告知候选人面试安排',
+            ...(otherActiveBookings.length > 0
+              ? {
+                  otherActiveBookings,
+                  _otherBookingsGuide: `候选人名下还有 ${otherActiveBookings.length} 个其他岗位的在途预约（工单 ${otherActiveBookings
+                    .map((entry) => entry.workOrderId)
+                    .join(
+                      '、',
+                    )}）。本轮告知报名成功后，必须紧接着问一句是两家都去还是只保留这家；候选人说只保留新的一家时，当轮用 duliday_cancel_work_order 取消旧工单。不得默默双报，也不得替候选人决定。`,
+                }
+              : {}),
             _replyInstruction: isAdditionalCandidate
               ? '本轮必须明确告诉用户当前这位候选人报名成功，并照实复述面试安排；只有告知成功后才能处理下一位候选人。'
               : '本轮必须明确告诉候选人报名成功，并照实复述面试安排；不得静默或只回答其它问题。',

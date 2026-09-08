@@ -29,6 +29,7 @@ export type ScheduleSemantic =
   | 'evening_compatible'
   | 'morning_compatible'
   | 'low_weekly_frequency'
+  | 'shift_rotation'
   | 'flexible'
   | 'unknown';
 
@@ -78,6 +79,9 @@ const MORNING_PATTERNS = [
 
 const FLEXIBLE_PATTERNS = [/自定义工时/, /可选时段/, /灵活排班/, /短班/, /午高峰/];
 
+/** 早晚班轮排/轮班：候选人只做某一时段时，轮排岗位会把他排进另一时段，不能当"含晚班"就放行。 */
+const SHIFT_ROTATION_PATTERNS = [/早晚班/, /轮排/, /轮班/, /轮流上/, /倒班/, /早开晚结/];
+
 /**
  * 根据 workTime 段落 + interview/requirement 备注文本，分类岗位排班语义。
  */
@@ -100,6 +104,7 @@ export function classifyScheduleSemantic(input: {
   if (EVENING_PATTERNS.some((p) => p.test(haystack))) out.add('evening_compatible');
   if (MORNING_PATTERNS.some((p) => p.test(haystack))) out.add('morning_compatible');
   if (FLEXIBLE_PATTERNS.some((p) => p.test(haystack))) out.add('flexible');
+  if (SHIFT_ROTATION_PATTERNS.some((p) => p.test(haystack))) out.add('shift_rotation');
 
   // 海绵2.0 结构化补充：从 weekAndMonthWorkTime 派生"全周强排班"等无法靠文本识别的语义。
   for (const semantic of deriveStructuredScheduleSemantics(input.workTimeText)) {
@@ -180,6 +185,92 @@ export interface CandidateScheduleConstraint {
   onlyEvenings?: boolean;
   onlyMornings?: boolean;
   maxDaysPerWeek?: number;
+  /**
+   * 候选人可上班的具体时段（HH:MM，end 可为 24:00 或跨午夜小于 start）。
+   * 与 onlyEvenings 这类粗粒度标签不同，它是包含关系判定：班次必须整段落在窗口内。
+   */
+  availableWindow?: { start: string; end: string } | null;
+}
+
+function toMinutes(hm: string): number | null {
+  const match = hm.match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return null;
+  const h = Number(match[1]);
+  const m = Number(match[2]);
+  if (h > 24 || m > 59) return null;
+  return h * 60 + m;
+}
+
+/** 把 [start,end] 展开成分钟区间；跨午夜或 end≤start 时 end 补 24h。 */
+function toRange(start: string, end: string): [number, number] | null {
+  const s = toMinutes(start);
+  let e = toMinutes(end);
+  if (s === null || e === null) return null;
+  if (e <= s) e += 24 * 60;
+  return [s, e];
+}
+
+/**
+ * 候选人可上班时段 ↔ 岗位班次的包含判定（badcase j4kb5ijm：候选人「晚上 6 点半到 24 点」，
+ * 22:00-次日 07:00 夜班与 15:00-23:00 班次都被当成"晚班兼容"推了出去）。
+ *
+ * - pick_one：任一班次整段落在窗口内即匹配；
+ * - all_required：全部班次都要落在窗口内；
+ * - flexible（窗口式排班）：岗位窗口与候选人窗口的交集 ≥ 每日最少工时（缺省 2h）即匹配；
+ * - 无具体时段：未知，不剔除（返回 matched=true, unknown=true）。
+ */
+export function matchAvailableWindow(
+  shifts: {
+    slots: Array<{ start: string; end: string }>;
+    arrangement: 'pick_one' | 'all_required' | 'flexible' | 'unknown';
+    perDayMinHours: number | null;
+  },
+  window: { start: string; end: string },
+): { matched: boolean; unknown?: boolean; reason?: string } {
+  const win = toRange(window.start, window.end);
+  if (!win) return { matched: true, unknown: true };
+  if (shifts.slots.length === 0) return { matched: true, unknown: true };
+  const label = `${window.start}-${window.end}`;
+  // 候选人窗口跨午夜（22:00-06:00 → [1320,1800]）时，落在后半夜的班次（00:00-06:00 → [0,360]）
+  // 要平移一天再比，否则整段在窗口内的班次会被误判为不匹配。
+  const DAY = 24 * 60;
+  const contained = (range: [number, number]): boolean =>
+    (range[0] >= win[0] && range[1] <= win[1]) ||
+    (range[0] + DAY >= win[0] && range[1] + DAY <= win[1]);
+  const overlapOf = (range: [number, number]): number =>
+    Math.max(
+      Math.min(range[1], win[1]) - Math.max(range[0], win[0]),
+      Math.min(range[1] + DAY, win[1]) - Math.max(range[0] + DAY, win[0]),
+    );
+  const fits = (slot: { start: string; end: string }): boolean => {
+    const range = toRange(slot.start, slot.end);
+    if (!range) return false;
+    return contained(range);
+  };
+  if (shifts.arrangement === 'flexible') {
+    const slot = shifts.slots[0];
+    const range = toRange(slot.start, slot.end);
+    if (!range) return { matched: true, unknown: true };
+    const overlap = overlapOf(range);
+    const need = Math.max(shifts.perDayMinHours ?? 2, 1) * 60;
+    return overlap >= need
+      ? { matched: true }
+      : {
+          matched: false,
+          reason: `岗位排班窗口 ${slot.start}-${slot.end} 与候选人可上班时段 ${label} 重叠不足`,
+        };
+  }
+  if (shifts.arrangement === 'all_required') {
+    return shifts.slots.every(fits)
+      ? { matched: true }
+      : { matched: false, reason: `岗位班次需全部出勤，有班次不在候选人可上班时段 ${label} 内` };
+  }
+  return shifts.slots.some(fits)
+    ? { matched: true }
+    : {
+        matched: false,
+        reason: `岗位班次 ${shifts.slots.map((s) => `${s.start}-${s.end}`).join(' / ')} 都不在候选人可上班时段 ${label} 内`,
+      };
 }
 
 /**
@@ -219,9 +310,13 @@ export function matchScheduleConstraint(
   }
 
   if (constraint.onlyEvenings) {
-    // “灵活排班”同样不能覆盖全周/全天强排班事实。
-    if (has('requires_full_week')) {
-      return { matched: false, reason: '岗位是全周强排班，与"只做晚班"可能冲突，需进一步确认' };
+    // 「只做晚班」是日内时段约束，与每周出勤频次正交：做六休一的 18:00-22:00 晚班对
+    // 只能晚上来的候选人恰恰是匹配的。此前把 requires_full_week 也算冲突，会把候选人
+    // 点名的晚班岗整批剔除并回"排班对不上"（badcase ce20d0l8：候选人「只做晚班 18-22」，
+    // 岗位 18:00-22:00 后厨晚班被以全周强排班为由剔除）。频次冲突只由 onlyWeekends /
+    // maxDaysPerWeek 判定。
+    if (has('shift_rotation')) {
+      return { matched: false, reason: '岗位早晚班轮排，与"只做晚班"冲突' };
     }
     if (has('morning_compatible') && !has('evening_compatible')) {
       return { matched: false, reason: '岗位仅安排早班，与"只做晚班"冲突' };
@@ -232,6 +327,9 @@ export function matchScheduleConstraint(
   }
 
   if (constraint.onlyMornings) {
+    if (has('shift_rotation')) {
+      return { matched: false, reason: '岗位早晚班轮排，与"只做早班"冲突' };
+    }
     if (has('evening_compatible') && !has('morning_compatible')) {
       return { matched: false, reason: '岗位仅安排晚班，与"只做早班"冲突' };
     }

@@ -10,7 +10,7 @@ describe('HardRulesService — 封闭确定性输出规则', () => {
   });
 
   const check = (replyText: string, extra: Record<string, unknown> = {}) =>
-    service.check({ replyText, toolCalls: [], silent: true, ...extra } as never);
+    service.check({ replyText, toolCalls: [], silent: true, chatId: 'chat-1', ...extra } as never);
   const ids = (replyText: string, extra: Record<string, unknown> = {}) =>
     check(replyText, extra).contradictions.map((item) => item.ruleId);
 
@@ -33,9 +33,11 @@ describe('HardRulesService — 封闭确定性输出规则', () => {
       // —— 数据复核后恢复的哨兵 ——
       'human_service_phrase_leak',
       'booking_done_claim_without_submission',
+      'booking_done_claim_no_work_order',
+      'job_query_claim_without_query',
+      'job_fact_without_provenance',
       'cancel_done_claim_without_submission',
       'cancel_done_claim_failed_tool',
-      'dangling_reply_promise',
       'requested_brand_mismatch',
       'settlement_cycle_mismatch',
       'proactive_insurance_policy_mention',

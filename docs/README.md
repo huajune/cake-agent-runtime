@@ -2,7 +2,7 @@
 
 > Cake Agent Runtime — 技术文档导航
 
-**最后更新**：2026-09-02
+**最后更新**：2026-09-06
 
 ---
 
@@ -55,6 +55,7 @@
 
 - **[测试套件架构](architecture/test-suite-architecture.md)** — LLM 评分对话质量评估框架（单轮 + 多轮 + 批量 + 飞书同步）
 - **[监控系统架构](architecture/monitoring-system-architecture.md)** — 消息追踪、小时级聚合、Dashboard
+- **[分布式系统设计与一致性边界](knowledge-base/18-分布式系统设计与一致性边界.md)** — 知识库专题：部署事实、租约锁、故障恢复、幂等与多副本保证边界
 - **[Biz 分层边界规范](architecture/biz-layer-boundaries.md)** — `src/biz/**` 的 Controller / Service / Repository 分层约束
 
 ---

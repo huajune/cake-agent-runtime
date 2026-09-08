@@ -100,7 +100,7 @@ describe('Prompt compiler compatibility contract', () => {
     expect(result.promptBlocks.at(-1)?.id).toBe('critical-turn-guard');
     expect(renderPromptBlocks(result.promptBlocks)).toBe(result.systemPrompt);
     expect(createHash('sha256').update(result.systemPrompt).digest('hex')).toBe(
-      '53b48c26824818b0302a788da50b4c00184b84422bb4ae81fcad8ffcfe13ff54',
+      'ad9312973d2a6824a6a9299a713a3a996028564ff71eea11330e881efdd8ff04',
     );
     expect(result.orderHash).toMatch(/^[a-f0-9]{64}$/);
     // dynamic 的口径是「随回合变化」：身份/红线/阈值/全阶段一览/通道规范只随配置变，

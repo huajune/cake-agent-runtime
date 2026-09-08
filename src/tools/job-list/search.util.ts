@@ -9,8 +9,10 @@
  * - applyScheduleConstraint：按候选人班次硬约束过滤岗位并标记 _scheduleSemantic
  */
 
+import { extractShiftSlots } from './format-shift-time.util';
 import {
   classifyScheduleSemantic,
+  matchAvailableWindow,
   matchScheduleConstraint,
   type CandidateScheduleConstraint,
   type ScheduleSemantic,
@@ -141,6 +143,8 @@ export function formatScheduleConstraintLabel(c: CandidateScheduleConstraint): s
   if (c.onlyEvenings) parts.push('只晚班');
   if (c.onlyMornings) parts.push('只早班');
   if (typeof c.maxDaysPerWeek === 'number') parts.push(`每周最多 ${c.maxDaysPerWeek} 天`);
+  if (c.availableWindow)
+    parts.push(`可上班时段 ${c.availableWindow.start}-${c.availableWindow.end}`);
   return parts.join(' / ') || '未明确';
 }
 
@@ -172,8 +176,18 @@ export function applyScheduleConstraint(
       continue;
     }
     const result = matchScheduleConstraint(semantics, constraint);
-    if (result.matched) {
+    const windowResult =
+      result.matched && constraint.availableWindow
+        ? matchAvailableWindow(extractShiftSlots(job.workTime), constraint.availableWindow)
+        : { matched: true };
+    if (result.matched && windowResult.matched) {
       kept.push(job);
+    } else if (result.matched) {
+      excluded.push({
+        jobId: typeof job.basicInfo?.jobId === 'number' ? job.basicInfo.jobId : null,
+        brandName: typeof job.basicInfo?.brandName === 'string' ? job.basicInfo.brandName : null,
+        reason: windowResult.reason || '班次不在候选人可上班时段内',
+      });
     } else {
       excluded.push({
         jobId: typeof job.basicInfo?.jobId === 'number' ? job.basicInfo.jobId : null,

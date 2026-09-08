@@ -127,9 +127,9 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     id: 'sensitive_origin_probe',
     action: GUARDRAIL_ACTION.BLOCK,
     priority: GUARDRAIL_PRIORITY.P0,
-    description: '主动打听籍贯、老家或是否本地人。',
-    riskGoal: '防止反向索取敏感出身属性。',
-    exogenousSignal: '封闭籍贯疑问句。',
+    description: '主动打听籍贯、老家、是否本地人或有无纹身。',
+    riskGoal: '防止反向索取敏感出身属性或身体特征。',
+    exogenousSignal: '封闭籍贯/纹身疑问句。',
     residualRisk: '常驻城市和工作地点询问不在本规则内。',
     verification: V,
     dataSensitivity: GUARDRAIL_DATA_SENSITIVITY.HIGH,
@@ -240,6 +240,47 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     verification: 'tests/agent/guardrail/output/rules/booking-claim-reconciliation.rule.spec.ts',
   },
   {
+    id: 'booking_done_claim_no_work_order',
+    action: GUARDRAIL_ACTION.REVISE,
+    priority: GUARDRAIL_PRIORITY.P0,
+    description: '零 booking 调用、无在途工单却宣称"已帮你报好/报名成功"。',
+    riskGoal: '堵住 observe 哨兵管不了的假回执：候选人据此等面试，工单根本不存在。',
+    exogenousSignal: '本轮 booking 调用存在性 + precheck 在途工单 + 长期记忆 active_booking 为空。',
+    residualRisk: '长期记忆读失败时降级为 observe 档（hasActiveBooking=undefined），不误拦。',
+    verification: 'tests/agent/guardrail/output/rules/booking-claim-reconciliation.rule.spec.ts',
+    feedbackToGenerator:
+      '上一版回复宣称已帮候选人报好名/预约成功，但预约从未提交（本轮无 booking，候选人名下也没有工单）。' +
+      '改成如实说明当前进度（资料已收/还差什么/这就提交），需要提交就本轮调用 duliday_interview_booking，' +
+      '不得用完成时态宣称未发生的预约。',
+  },
+  {
+    id: 'job_query_claim_without_query',
+    action: GUARDRAIL_ACTION.REVISE,
+    priority: GUARDRAIL_PRIORITY.P1,
+    description: '零查岗工具却用完成时态宣称本轮"帮你查了下/没查到/系统里没有"。',
+    riskGoal: '查询从未发生时不得谎称查过，防止"没查到"直接把候选人送去拉群或流失。',
+    exogenousSignal: '本轮 duliday_job_list / precheck / geocode 调用存在性。',
+    residualRisk: '"刚才/之前查的"回指历史不判；将来时"我帮你查下"不在口径内。',
+    verification: 'tests/agent/guardrail/output/rules/job-fact-reconciliation.rule.spec.ts',
+    feedbackToGenerator:
+      '上一版回复说"帮你查了/没查到"，但本轮没有调用任何查岗工具。要么本轮真的调用 duliday_job_list 后再答，' +
+      '要么只基于已展示过的岗位如实表述，不得使用"查了/没查到/系统里没有"这类宣称本轮查询过的说法。',
+  },
+  {
+    id: 'job_fact_without_provenance',
+    action: GUARDRAIL_ACTION.REVISE,
+    priority: GUARDRAIL_PRIORITY.P1,
+    description: '零查岗工具轮报出会话内从未出现过的岗位薪资/距离/班次数字。',
+    riskGoal: '岗位量化事实必须有来源（本轮工具或自己说过的话），杜绝凭空编门店薪资。',
+    exogenousSignal: '本轮查岗工具存在性 + 会话历史助手消息是否出现过同一数字。',
+    residualRisk:
+      '模型凭上一轮工具结果补报未介绍过的岗位会命中（应重查后再介绍）；回指历史的句子豁免。',
+    verification: 'tests/agent/guardrail/output/rules/job-fact-reconciliation.rule.spec.ts',
+    feedbackToGenerator:
+      '上一版回复里的岗位薪资/距离/班次数字既不是本轮工具返回的，历史回复里也从未说过。' +
+      '删掉这些没有来源的数字，或本轮先调用 duliday_job_list 查实后再按工具结果介绍。',
+  },
+  {
     id: 'cancel_done_claim_without_submission',
     // 与 booking_done_claim_without_submission 同族同风险：跨轮合法提醒会命中，observe 入场。
     action: GUARDRAIL_ACTION.OBSERVE,
@@ -266,19 +307,6 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     feedbackToGenerator:
       '上一版回复宣称面试已取消/已改期，但本轮取消/改期工具全部调用失败，该操作并未发生。' +
       '必须如实告知候选人当前预约仍然有效、正在安排人工跟进处理，不得保留任何"已取消/已改好"的表述。',
-  },
-  {
-    id: 'dangling_reply_promise',
-    action: GUARDRAIL_ACTION.OBSERVE,
-    priority: GUARDRAIL_PRIORITY.P1,
-    description: '观察首版回复只给将来时查询承诺（"我帮你查下X"）、没有任何结果性内容的样本。',
-    riskGoal: '候选人收到承诺后再无下文会一直空等——量化首版悬空规模，供升档决策。',
-    exogenousSignal:
-      '复用 runner 的 isDanglingCheckReply 纯谓词（短文本+将来时承诺+无结果性标记）。',
-    residualRisk:
-      '刻意不升 REVISE：改写只会把承诺改成"暂时没岗位"的编造，根治在生成侧；' +
-      '退场条件：累计两周精确率 <70% 则删除。',
-    verification: 'tests/agent/guardrail/output/rules/dangling-promise.rule.spec.ts',
   },
   {
     id: 'requested_brand_mismatch',

@@ -230,7 +230,11 @@ export class FollowUpProcessor implements OnModuleInit {
         return;
       }
 
-      const onboardingVerdict = await this.handleOnboardingAtFire(job.data, bookingContext);
+      const onboardingVerdict = await this.handleOnboardingAtFire(
+        job.data,
+        identity,
+        bookingContext,
+      );
       if (onboardingVerdict) {
         this.tracking.trackStopped(identity, onboardingVerdict);
         return;
@@ -1199,6 +1203,7 @@ export class FollowUpProcessor implements OnModuleInit {
   /** D+3 工单状态分派；返回非空即停止本次候选人触达。 */
   private async handleOnboardingAtFire(
     jobData: FollowUpJob,
+    identity: ReengagementTouchIdentity,
     bookingContext: ReengagementBookingContext,
   ): Promise<string | null> {
     switch (bookingContext.currentStatus) {
@@ -1208,7 +1213,12 @@ export class FollowUpProcessor implements OnModuleInit {
         return 'already_onboarded';
       case '上岗失败':
       case '已离职':
-        await this.dispatchOnboardingHandoff(jobData, bookingContext, 'onboarding_failed');
+        await this.dispatchOnboardingHandoff(
+          jobData,
+          identity,
+          bookingContext,
+          'onboarding_failed',
+        );
         return 'onboarding_intervention_dispatched';
       default:
         return 'work_order_regressed';
@@ -1225,18 +1235,31 @@ export class FollowUpProcessor implements OnModuleInit {
       this.tracking.trackStopped(identity, 'already_onboarded');
       return;
     }
-    await this.dispatchOnboardingHandoff(jobData, bookingContext, 'onboarding_follow_up_required');
+    await this.dispatchOnboardingHandoff(
+      jobData,
+      identity,
+      bookingContext,
+      'onboarding_follow_up_required',
+    );
     this.tracking.trackStopped(identity, 'onboarding_intervention_dispatched');
   }
 
-  /** 入职异常统一出口：幂等底账 + 告警，不调用 InterventionService，保持托管可应答。 */
+  /**
+   * 入职异常统一出口：幂等底账 + 告警，不调用 InterventionService，保持托管可应答。
+   *
+   * 候选人身份取 process() 已兜底的 identity（含 chat_messages 回填），不直接读 job.data：
+   * 入职巡检排程只带 botImId，直接读 payload 会让卡片没有昵称/托管账号，运营无法定位候选人。
+   * 昵称仍缺时再从最近聊天记录取候选人侧的昵称兜底。
+   */
   private async dispatchOnboardingHandoff(
     jobData: FollowUpJob,
+    identity: ReengagementTouchIdentity,
     bookingContext: ReengagementBookingContext,
     reasonCode: 'onboarding_failed' | 'onboarding_follow_up_required',
   ): Promise<void> {
     const { sessionRef, workOrderId } = jobData;
     if (workOrderId == null) return;
+    const botImId = identity.botImId ?? jobData.channelIdentity?.botImId;
     const reason =
       reasonCode === 'onboarding_failed'
         ? `面试通过后工单已变为${bookingContext.currentStatus ?? '上岗失败'}，需要人工确认候选人后续安排`
@@ -1250,7 +1273,7 @@ export class FollowUpProcessor implements OnModuleInit {
       reason,
       actionAdvice: '请核实候选人是否已入职及遇到的问题；本告警不会暂停 AI 托管',
       stage: 'post_interview_onboarding',
-      botImId: jobData.channelIdentity?.botImId,
+      botImId,
       workOrderId,
       jobId: bookingContext.jobId ?? null,
       idempotencyKey,
@@ -1271,6 +1294,16 @@ export class FollowUpProcessor implements OnModuleInit {
         .getSessionState(sessionRef.corpId, sessionRef.userId, sessionRef.sessionId)
         .catch(() => null),
     ]);
+    const contactName =
+      identity.candidateName?.trim() ||
+      recentMessages
+        .find((message) => message.role === 'user' && message.candidateName?.trim())
+        ?.candidateName?.trim() ||
+      undefined;
+    const jobLabel = [bookingContext.brandName, bookingContext.storeName, bookingContext.jobName]
+      .map((part) => part?.trim())
+      .filter((part): part is string => Boolean(part))
+      .join(' · ');
     try {
       const notified = await this.handoffNotifier.notify({
         alertLabel: '面试后回访 · 入职跟进',
@@ -1279,12 +1312,12 @@ export class FollowUpProcessor implements OnModuleInit {
         actionAdvice: '请核实候选人是否已入职及遇到的问题；本告警不会暂停 AI 托管',
         workOrderId,
         corpId: sessionRef.corpId,
-        botImId: jobData.channelIdentity?.botImId,
-        botUserName: jobData.channelIdentity?.managerName,
-        contactName: jobData.channelIdentity?.candidateName,
+        botImId,
+        botUserName: identity.managerName ?? jobData.channelIdentity?.managerName,
+        contactName,
         chatId: sessionRef.sessionId,
         pausedUserId: sessionRef.sessionId,
-        currentMessageContent: `入职跟进巡检：工单 ${workOrderId} 当前状态 ${bookingContext.currentStatus ?? '未知'}`,
+        currentMessageContent: `入职跟进巡检：工单 ${workOrderId}${jobLabel ? `（${jobLabel}）` : ''} 当前状态 ${bookingContext.currentStatus ?? '未知'}`,
         recentMessages: recentMessages.map((message) => ({
           role: message.role,
           content: message.content,
@@ -1295,6 +1328,13 @@ export class FollowUpProcessor implements OnModuleInit {
         diagnostics: {
           workOrderId,
           currentStatus: bookingContext.currentStatus ?? null,
+          jobId: bookingContext.jobId ?? null,
+          brandName: bookingContext.brandName ?? null,
+          storeName: bookingContext.storeName ?? null,
+          jobName: bookingContext.jobName ?? null,
+          interviewAt: bookingContext.interviewAt ?? null,
+          imContactId: identity.imContactId ?? null,
+          externalUserId: identity.externalUserId ?? null,
           hostingPaused: false,
         },
       });

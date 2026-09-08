@@ -37,7 +37,7 @@ Output 只对可复算信号裁决。
 | 格式/内部泄漏                | `invalid_model_output`、`internal_output_leak`、`meta_narration_reply`、`human_service_phrase_leak`                                                                           |
 | 封闭高风险                   | `identity_misregistration_coaching`、`experience_fraud_coaching`、`discriminatory_screening_leak`、`sensitive_origin_probe`、`quota_promise`                                  |
 | 工具回执对账                 | `online_interview_location_claim`、`unsupported_store_status_speculation`、`booking_receipt_mismatch`、`interview_time_change_unconfirmed`、`brand_alias_fuzzy_match_ignored` |
-| observe 哨兵（只落档不拦截） | `dangling_reply_promise`、`requested_brand_mismatch`、`settlement_cycle_mismatch`、`proactive_insurance_policy_mention`、`booking_done_claim_without_submission`              |
+| observe 哨兵（只落档不拦截） | `requested_brand_mismatch`、`settlement_cycle_mismatch`、`proactive_insurance_policy_mention`、`booking_done_claim_without_submission`（`dangling_reply_promise` 已于 2026-09-07 按退场条件删除，判别改由离线回扫承接） |
 
 observe 哨兵是 2026-08-26 数据复核恢复的定点回补（人设露馅升执行档、四族有信号量的哨兵
 落档），不是开放语义规则的整体回归；新规则仍一律 observe 入场，升档须 ≥2 周判例且精确率
