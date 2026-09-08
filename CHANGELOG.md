@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [11.4.2] - 2026-09-08
 
-**预计版本**: `v11.4.2`
-**最近更新**: `2026-09-08`
 **来源分支**: `develop`
-**累计 PR**: 1
 
 ### 更新摘要
 - PR #1233 档案预填过先筛后收，年龄弹性带在 precheck 截停转人工
@@ -44,7 +40,6 @@
 - PR #1233 `pnpm run typecheck` / `pnpm run lint:check` 通过
 - PR #1233 `tests/resolution/collection` + `tests/tools/collection` + precheck spec：17 suites / 372 tests 通过
 - PR #1233 新增用例：seedArchiveValue 越界不预填、ageBoundarySignalOf 三态、precheck 弹性带 → `age_boundary_handoff`、社保「无」不再由正则猜档而是词表拒收 + 强制枚举
-<!-- release:pending:end -->
 
 ## [11.4.1] - 2026-09-08
 

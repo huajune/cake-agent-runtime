@@ -1,169 +1,47 @@
 {
-  "baseVersion": "11.4.1",
+  "baseVersion": "11.4.2",
   "nextVersion": "11.4.2",
+  "lastAnalyzedSha": null,
   "updatedAt": "2026-09-08",
   "sourceBranch": "develop",
-  "entries": [
-    {
-      "number": "1233",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1233",
-      "title": "收资表近 3 天复盘——档案预填过筛、年龄弹性带截停、拆除社保正则适配器",
-      "author": "huajune",
-      "mergedAt": "2026-09-08",
-      "businessUpdates": [
-        "档案预填过先筛后收，年龄弹性带在 precheck 截停转人工",
-        "拆除社保正则语义适配器，社保族走通用道",
-        "收资表近 3 天复盘——档案预填过筛、年龄弹性带截停、拆除社保正则适配器"
-      ],
-      "summary": [
-        "档案预填过先筛后收，年龄弹性带在 precheck 截停转人工",
-        "拆除社保正则语义适配器，社保族走通用道",
-        "收资表近 3 天复盘——档案预填过筛、年龄弹性带截停、拆除社保正则适配器"
-      ],
-      "features": [],
-      "fixes": [],
-      "optimizations": [],
-      "ops": [
-        "档案预填过先筛后收，年龄弹性带在 precheck 截停转人工",
-        "拆除社保正则语义适配器，社保族走通用道"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "`pnpm run typecheck` / `pnpm run lint:check` 通过",
-        "`tests/resolution/collection` + `tests/tools/collection` + precheck spec：17 suites / 372 tests 通过",
-        "新增用例：seedArchiveValue 越界不预填、ageBoundarySignalOf 三态、precheck 弹性带 → `age_boundary_handoff`、社保「无」不再由正则猜档而是词表拒收 + 强制枚举"
-      ],
-      "level": "patch"
-    }
-  ],
+  "entries": [],
   "lastRelease": {
-    "version": "11.4.1",
+    "version": "11.4.2",
     "date": "2026-09-08",
     "sourceBranch": "develop",
     "entries": [
       {
-        "number": "1222",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/1222",
-        "title": "fact-adjudication-shadow-daily 2026-09-07 结论落账",
+        "number": "1233",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1233",
+        "title": "收资表近 3 天复盘——档案预填过筛、年龄弹性带截停、拆除社保正则适配器",
         "author": "huajune",
         "mergedAt": "2026-09-08",
         "businessUpdates": [
-          "fact-adjudication-shadow-daily 2026-09-07 结论落账"
+          "档案预填过先筛后收，年龄弹性带在 precheck 截停转人工",
+          "拆除社保正则语义适配器，社保族走通用道",
+          "收资表近 3 天复盘——档案预填过筛、年龄弹性带截停、拆除社保正则适配器"
         ],
         "summary": [
-          "fact-adjudication-shadow-daily 2026-09-07 结论落账"
+          "档案预填过先筛后收，年龄弹性带在 precheck 截停转人工",
+          "拆除社保正则语义适配器，社保族走通用道",
+          "收资表近 3 天复盘——档案预填过筛、年龄弹性带截停、拆除社保正则适配器"
         ],
         "features": [],
         "fixes": [],
         "optimizations": [],
         "ops": [
-          "fact-adjudication-shadow-daily 2026-09-07 结论落账"
-        ],
-        "config": [],
-        "envFiles": [],
-        "verification": [],
-        "level": "patch"
-      },
-      {
-        "number": "1223",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/1223",
-        "title": "weekly-judge-calibration 2026-09-08 结论落账",
-        "author": "huajune",
-        "mergedAt": "2026-09-08",
-        "businessUpdates": [
-          "weekly-judge-calibration 2026-09-08 结论落账",
-          "Merge remote-tracking branch 'origin/develop' into docs/quality-ledge…"
-        ],
-        "summary": [
-          "weekly-judge-calibration 2026-09-08 结论落账",
-          "Merge remote-tracking branch 'origin/develop' into docs/quality-ledge…"
-        ],
-        "features": [],
-        "fixes": [],
-        "optimizations": [],
-        "ops": [
-          "weekly-judge-calibration 2026-09-08 结论落账",
-          "Merge remote-tracking branch 'origin/develop' into docs/quality-ledge…"
-        ],
-        "config": [],
-        "envFiles": [],
-        "verification": [],
-        "level": "patch"
-      },
-      {
-        "number": "1224",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/1224",
-        "title": "BadCase 全量清账批修 + 纹身默认门槛 + 复聊入职告警补候选人信息",
-        "author": "huajune",
-        "mergedAt": "2026-09-08",
-        "businessUpdates": [
-          "知识库新增分布式系统设计与一致性边界篇，刷新周报与总览",
-          "查岗新增 requireAccommodation——候选人要包住时解除距离锚全城召回并按住宿福利筛",
-          "PR #1224 评审整改——时段抽取误判、守卫读失败降档、包住模式过滤器与断言、纹身/性别规则边界"
-        ],
-        "summary": [
-          "BadCase 全量清账批修 + 纹身默认门槛 + 复聊入职告警补候选人信息",
-          "知识库新增分布式系统设计与一致性边界篇，刷新周报与总览",
-          "查岗新增 requireAccommodation——候选人要包住时解除距离锚全城召回并按住宿福利筛",
-          "岗位事实对账守卫 + 可上班时段结构化 + 简名重试 + 现职品牌语境",
-          "PR #1224 评审整改——时段抽取误判、守卫读失败降档、包住模式过滤器与断言、纹身/性别规则边界"
-        ],
-        "features": [
-          "知识库新增分布式系统设计与一致性边界篇，刷新周报与总览",
-          "查岗新增 requireAccommodation——候选人要包住时解除距离锚全城召回并按住宿福利筛"
-        ],
-        "fixes": [
-          "PR #1224 评审整改——时段抽取误判、守卫读失败降档、包住模式过滤器与断言、纹身/性别规则边界"
-        ],
-        "optimizations": [],
-        "ops": [
-          "BadCase 全量清账批修 + 纹身默认门槛 + 复聊入职告警补候选人信息",
-          "岗位事实对账守卫 + 可上班时段结构化 + 简名重试 + 现职品牌语境"
+          "档案预填过先筛后收，年龄弹性带在 precheck 截停转人工",
+          "拆除社保正则语义适配器，社保族走通用道"
         ],
         "config": [],
         "envFiles": [],
         "verification": [
-          "`pnpm run ci:check` 全绿（460 suites / 6678 tests）",
-          "新增/调整 spec：schedule-semantic、precheck 无直接 spec（指令文本）、cancel、booking 无新 spec（结果字段）、anchor/agent/processor、brand-matcher、ambiguous-place、geocode、message-splitter、final-check、discrimination-leaks、sensitive-screening、disclosure-policy、rejection-renderer、render.util、prompt-compatibility（手册变更更新锁定 hash）",
-          "飞书回写：65 条 dry-run 全部匹配后 apply，内容级回读校验"
+          "`pnpm run typecheck` / `pnpm run lint:check` 通过",
+          "`tests/resolution/collection` + `tests/tools/collection` + precheck spec：17 suites / 372 tests 通过",
+          "新增用例：seedArchiveValue 越界不预填、ageBoundarySignalOf 三态、precheck 弹性带 → `age_boundary_handoff`、社保「无」不再由正则猜档而是词表拒收 + 强制枚举"
         ],
-        "level": "patch"
-      },
-      {
-        "number": "1225",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/1225",
-        "title": "按退场条件删除 dangling_reply_promise observe 哨兵",
-        "author": "huajune",
-        "mergedAt": "2026-09-08",
-        "businessUpdates": [
-          "Merge remote-tracking branch 'origin/develop' into fix/badcase-202609…"
-        ],
-        "summary": [
-          "按退场条件删除 dangling_reply_promise observe 哨兵",
-          "删除哨兵后清理多余空行",
-          "Merge remote-tracking branch 'origin/develop' into fix/badcase-202609…",
-          "删除 `dangling-promise.rule.ts` 与其 spec；hard-rules 调度、output-rule-catalog、guardrail catalog 源映射、hard-rules spec 同步",
-          "台账 Z1 行与拦侧 observe 哨兵清单、架构文档 guardrail-quality-system 同步"
-        ],
-        "features": [],
-        "fixes": [
-          "Merge remote-tracking branch 'origin/develop' into fix/badcase-202609…"
-        ],
-        "optimizations": [
-          "删除 `dangling-promise.rule.ts` 与其 spec；hard-rules 调度、output-rule-catalog、guardrail catalog 源映射、hard-rules spec 同步",
-          "台账 Z1 行与拦侧 observe 哨兵清单、架构文档 guardrail-quality-system 同步"
-        ],
-        "ops": [
-          "按退场条件删除 dangling_reply_promise observe 哨兵",
-          "删除哨兵后清理多余空行"
-        ],
-        "config": [],
-        "envFiles": [],
-        "verification": [],
         "level": "patch"
       }
     ]
-  },
-  "lastAnalyzedSha": "401f0aeeab80217052f8ba124e39a4d37f51e6cc"
+  }
 }
