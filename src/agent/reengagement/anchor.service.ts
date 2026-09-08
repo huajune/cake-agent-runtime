@@ -49,6 +49,21 @@ export class ReengagementAnchorService {
     const deliverable = this.isDeliverable(result);
     if (deliverable && toolCalls.some((call) => this.isCollectionStarted(call))) {
       void this.schedule('booking_incomplete', `${context.traceId}:collection_started`, context);
+    } else if (
+      deliverable &&
+      toolCalls.some((call) => this.isCollectionAwaitingConfirmation(call))
+    ) {
+      // 资料已收齐、复述已发出：收资锚点刷新为"待确认"子态，到点只请候选人确认，
+      // 不能再按"还缺资料"催填（badcase 0iepqqf5：复述发出 30 分钟后主动跟进说"还有几项资料
+      // 需要再补充"，候选人反问"还要补什么"，随后又被完整复述一遍）。
+      void this.schedule(
+        'booking_incomplete',
+        `${context.traceId}:collection_awaiting_confirmation`,
+        context,
+        undefined,
+        undefined,
+        { collectionAwaitingConfirmation: true },
+      );
     }
 
     // 取消工单成功：booked 终态回退（候选人回到求职中，报名前场景恢复可排程）。
@@ -209,6 +224,7 @@ export class ReengagementAnchorService {
       workOrderId?: number;
       expectedInterviewAt?: number;
     },
+    extras?: { collectionAwaitingConfirmation?: boolean },
   ): Promise<void> {
     try {
       const state = await this.loadState(context);
@@ -225,6 +241,7 @@ export class ReengagementAnchorService {
         workOrderId: verification?.workOrderId,
         expectedInterviewAt: verification?.expectedInterviewAt,
         channelIdentity: context.channelIdentity,
+        ...(extras?.collectionAwaitingConfirmation ? { collectionAwaitingConfirmation: true } : {}),
       });
     } catch (error) {
       this.logFailure(`schedule ${scenarioCode}`, context, error);
@@ -285,6 +302,16 @@ export class ReengagementAnchorService {
     if (result.nextAction === 'collect_fields') return true;
     const checklist = this.asRecord(result.bookingChecklist);
     return Array.isArray(checklist?.missingFields) && checklist.missingFields.length > 0;
+  }
+
+  /** precheck 已进入"资料齐全、待候选人确认复述或选时段"的子态。 */
+  private isCollectionAwaitingConfirmation(call: AgentToolCall): boolean {
+    if (call.toolName !== 'duliday_interview_precheck') return false;
+    const result = this.asRecord(call.result);
+    if (!result || result.success !== true) return false;
+    return (
+      result.nextAction === 'confirm_collection' || result.nextAction === 'select_interview_time'
+    );
   }
 
   private isBookingSucceeded(call: AgentToolCall): boolean {

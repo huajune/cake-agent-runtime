@@ -47,6 +47,7 @@ export const TURN_HINT_FIELD_POLICIES = {
       onlyEvenings: null,
       onlyMornings: null,
       maxDaysPerWeek: null,
+      availableWindow: null,
     },
   },
   'preferences.available_after': {

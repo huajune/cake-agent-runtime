@@ -142,6 +142,28 @@ describe('resolveBrands - 微信昵称（contact_name，§14.1）', () => {
     expect(resolveBrands('M', 'contact_name', catalog)).toEqual([]);
   });
 
+  it('1-2 字中文别名在昵称轨不产生品牌（badcase fhae8r60：昵称「阳光」被当成阳光粮品）', () => {
+    const withShortAlias: BrandItem[] = [
+      ...catalog,
+      { id: 10999, name: 'Sunflour阳光粮品', aliases: ['阳光粮品', '阳光'] },
+    ];
+    expect(resolveBrands('阳光', 'contact_name', withShortAlias)).toEqual([]);
+    expect(resolveBrands('阳光上海', 'contact_name', withShortAlias)).toEqual([]);
+    expect(names(resolveBrands('阳光粮品-浦东', 'contact_name', withShortAlias))).toEqual([
+      'Sunflour阳光粮品',
+    ]);
+  });
+
+  it('标准名词头式短别名在昵称轨仍算品牌信号（盒马→盒马鲜生、瑞幸→瑞幸咖啡）', () => {
+    const withPrefixAlias: BrandItem[] = [
+      ...catalog,
+      { id: 10998, name: '盒马鲜生', aliases: ['盒马'] },
+    ];
+    // 2 字别名本就只走整词等值匹配（不做子串包含），昵称恰为该词时是真实品牌信号
+    expect(names(resolveBrands('盒马', 'contact_name', withPrefixAlias))).toEqual(['盒马鲜生']);
+    expect(names(resolveBrands('瑞幸', 'contact_name', withPrefixAlias))).toEqual(['瑞幸咖啡']);
+  });
+
   it('"肯德基-上海" 微信昵称产生高置信品牌', () => {
     const results = resolveBrands('肯德基-上海', 'contact_name', catalog);
     expect(names(results)).toEqual(['肯德基']);

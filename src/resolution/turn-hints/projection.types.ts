@@ -17,6 +17,7 @@ export interface TurnHintScheduleConstraint {
   onlyEvenings: boolean | null;
   onlyMornings: boolean | null;
   maxDaysPerWeek: number | null;
+  availableWindow: { start: string; end: string } | null;
 }
 
 export interface TurnHintProjection {

@@ -1,3 +1,5 @@
+import { parseChineseNumberUnder100 } from '@resolution/candidate/value-shape';
+import { stripQuotedBlocks } from '@resolution/signal/markers';
 import { scanGeoSignalsFromText } from '@resolution/geo';
 import { decideLaborFormIntent } from '@resolution/labor-form';
 import { extractLocationShareLabels } from '@resolution/signal/markers';
@@ -212,18 +214,100 @@ function matchWeeklyDayConstraint(message: string): {
   };
 }
 
+/** 钟点/分钟数字：复用 candidate 域的中文数字解析（0-99），另认「〇」。 */
+function parseClockNumber(token: string): number | null {
+  return parseChineseNumberUnder100(token.replace(/〇/g, '零'));
+}
+
+/** 中文/阿拉伯钟点 → 24 小时分钟数；qualifier 决定上下午。 */
+function clockToMinutes(
+  qualifier: string,
+  hourToken: string,
+  minuteToken: string | undefined,
+  halfToken: string | undefined,
+): number | null {
+  let hour = parseClockNumber(hourToken);
+  if (hour === null || hour > 24) return null;
+  const minute = halfToken ? 30 : minuteToken ? (parseClockNumber(minuteToken) ?? 0) : 0;
+  if (minute > 59) return null;
+  if (/晚上|晚|傍晚|下午|中午|午后/.test(qualifier) && hour < 12) hour += 12;
+  if (/凌晨/.test(qualifier) && hour === 12) hour = 0;
+  if (hour === 24 && minute > 0) return null;
+  return hour * 60 + minute;
+}
+
+function minutesToHm(total: number): string {
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+const CLOCK =
+  '([0-9一二两三四五六七八九十]{1,3})(?:[:：点]([0-5]?[0-9]|[一二三四五六七八九十]{1,3})分?|点(半)?)?(?:[:：]([0-5][0-9]))?';
+const AVAILABLE_WINDOW_PATTERN = new RegExp(
+  `(?:有没有|有无|能不能|可以|只能|只有|想找|想做|要|做|上|排|空|时间|时段|班|从)?[^，。！？\\n]{0,6}?(晚上|晚|傍晚|下午|中午|午后|上午|早上|早|凌晨)?${CLOCK}\\s*(?:到|至|-|~|—|–)\\s*(晚上|晚|傍晚|下午|中午|午后|上午|早上|早|凌晨|次日)?${CLOCK}`,
+  'u',
+);
+/** 岗位/薪资语境不算候选人自陈可上班时段。 */
+const WINDOW_EXCLUSION_PATTERN = /班次[:：]|薪资|元\/|面试|报名|截止/u;
+
+/**
+ * 候选人可上班的具体时段："晚上6点半到24点""18:30-24:00""下午5点到10点"。
+ * 只认起止都能解析成钟点、且跨度 ≥1h ≤16h 的表达；钟点后带"分/半"的才算分钟。
+ */
+export function extractAvailableWindow(message: string): { start: string; end: string } | null {
+  const text = stripQuotedBlocks(message);
+  if (WINDOW_EXCLUSION_PATTERN.test(text)) return null;
+  const match = text.match(AVAILABLE_WINDOW_PATTERN);
+  if (!match) return null;
+  const [, q1, h1, m1, half1, mm1, q2, h2, m2, half2, mm2] = match;
+  // 裸数字区间（"一周做2到3天""3到4个小时""18-22元"）不是钟点：至少一侧带 点/:/时 或时段限定词，
+  // 且右邻不能是 天/个/月/小时/块/元/岁/周/年/号 这类量词。
+  const matchEnd = (match.index ?? 0) + match[0].length;
+  const hasClockMarker = /[点:：时]/.test(match[0]) || Boolean(q1) || Boolean(q2);
+  const after = text.slice(matchEnd, matchEnd + 3);
+  if (
+    !hasClockMarker ||
+    /^(?:天|个|月|号|日|小时|钟头|块|元|岁|周|年|次|人|k|K|w|W|万|千|百)/.test(after)
+  ) {
+    return null;
+  }
+  // "下午两点到五点要上课/有事/不行" 是不可用时段，不是可上班时段
+  const afterClause = text.slice(matchEnd, matchEnd + 10);
+  if (
+    /^[^，。！？\n]{0,4}(?:上课|上班|有事|要忙|忙|不行|不能|不方便|走不开|没空|要接)/.test(
+      afterClause,
+    )
+  ) {
+    return null;
+  }
+  const start = clockToMinutes(q1 ?? '', h1, m1 ?? mm1, half1);
+  const qualifierEnd = q2 && q2 !== '次日' ? q2 : (q1 ?? '');
+  let end = clockToMinutes(qualifierEnd, h2, m2 ?? mm2, half2);
+  if (start === null || end === null) return null;
+  // "6点到10点"这类只有前一个限定词的，结束钟点小于开始时按同一半天顺延
+  if (end <= start && end + 12 * 60 <= 24 * 60 && !q2) end += 12 * 60;
+  if (end <= start) end += 24 * 60;
+  const span = end - start;
+  if (span < 60 || span > 16 * 60) return null;
+  return { start: minutesToHm(start), end: minutesToHm(end > 24 * 60 ? end - 24 * 60 : end) };
+}
+
 export function extractScheduleConstraintStructured(message: string): {
   onlyWeekends: boolean | null;
   onlyEvenings: boolean | null;
   onlyMornings: boolean | null;
   maxDaysPerWeek: number | null;
+  availableWindow: { start: string; end: string } | null;
 } | null {
   const result = {
     onlyWeekends: null as boolean | null,
     onlyEvenings: null as boolean | null,
     onlyMornings: null as boolean | null,
     maxDaysPerWeek: null as number | null,
+    availableWindow: null as { start: string; end: string } | null,
   };
+  result.availableWindow = extractAvailableWindow(message);
 
   const onlyShiftTargets = matchOnlyShiftTargets(message);
   if (onlyShiftTargets.includes('周末')) result.onlyWeekends = true;
@@ -248,7 +332,8 @@ export function extractScheduleConstraintStructured(message: string): {
     result.onlyWeekends !== null ||
     result.onlyEvenings !== null ||
     result.onlyMornings !== null ||
-    result.maxDaysPerWeek !== null;
+    result.maxDaysPerWeek !== null ||
+    result.availableWindow !== null;
   return hasAny ? result : null;
 }
 

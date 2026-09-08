@@ -305,11 +305,20 @@ export class LongTermService {
    * Agent 上下文渲染 / request_handoff(modify_appointment) 守卫使用。
    */
   async getActiveBookings(corpId: string, userId: string): Promise<ActiveBookingEntry[]> {
+    const bookings = await this.tryGetActiveBookings(corpId, userId);
+    return bookings ?? [];
+  }
+
+  /**
+   * 同 getActiveBookings，但读失败返回 null 而不是空数组——出站守卫据此区分
+   * "确证没有工单"与"读不到"，后者不得升档误拦。
+   */
+  async tryGetActiveBookings(corpId: string, userId: string): Promise<ActiveBookingEntry[] | null> {
     try {
       return await this.supabaseStore.getActiveBookings(corpId, userId);
     } catch (error) {
       this.logger.warn('获取 active_bookings 失败', error);
-      return [];
+      return null;
     }
   }
 

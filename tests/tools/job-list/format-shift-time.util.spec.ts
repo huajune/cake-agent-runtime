@@ -1,4 +1,8 @@
-import { classifyArrangementType, composeShiftTimeText } from '@tools/job-list/format-shift-time.util';
+import {
+  classifyArrangementType,
+  composeShiftTimeText,
+  extractShiftSlots,
+} from '@tools/job-list/format-shift-time.util';
 
 /**
  * 海绵2.0 workTime 结构（dayWorkTime + weekAndMonthWorkTime）下的班次文案组合。
@@ -217,6 +221,67 @@ describe('composeShiftTimeText (海绵2.0 dayWorkTime/weekAndMonthWorkTime)', ()
           weekAndMonthWorkTime: { perMonthMinWorkTime: 80 },
         }),
       ).toBeNull();
+    });
+  });
+});
+
+describe('extractShiftSlots（候选人时段硬约束的结构化视图）', () => {
+  it('固定排班多时段 → pick_one', () => {
+    expect(
+      extractShiftSlots({
+        dayWorkTime: {
+          arrangementType: '固定排班',
+          combinedArrangement: [
+            { combinedArrangementStartTime: '15:00', combinedArrangementEndTime: '23:00' },
+            { combinedArrangementStartTime: '22:00', combinedArrangementEndTime: '07:00' },
+          ],
+        },
+      }),
+    ).toEqual({
+      slots: [
+        { start: '15:00', end: '23:00' },
+        { start: '22:00', end: '07:00' },
+      ],
+      arrangement: 'pick_one',
+      perDayMinHours: null,
+    });
+  });
+
+  it('组合排班制 → all_required；灵活排班 fixedTime → flexible + 每日最少工时', () => {
+    expect(
+      extractShiftSlots({
+        dayWorkTime: {
+          arrangementType: '组合排班制',
+          combinedArrangement: [
+            { combinedArrangementStartTime: '07:00', combinedArrangementEndTime: '14:00' },
+            { combinedArrangementStartTime: '16:00', combinedArrangementEndTime: '23:00' },
+          ],
+        },
+      }).arrangement,
+    ).toBe('all_required');
+    expect(
+      extractShiftSlots({
+        dayWorkTime: {
+          arrangementType: '灵活排班',
+          fixedTime: {
+            goToWorkStartTime: '07:00',
+            goOffWorkEndTime: '22:00',
+            perDayMinWorkHours: '4',
+          },
+        },
+      }),
+    ).toEqual({
+      slots: [{ start: '07:00', end: '22:00' }],
+      arrangement: 'flexible',
+      perDayMinHours: 4,
+    });
+  });
+
+  it('无班次数据 → 空 slots / unknown', () => {
+    expect(extractShiftSlots(null)).toEqual({
+      slots: [],
+      arrangement: 'unknown',
+      perDayMinHours: null,
     });
   });
 });

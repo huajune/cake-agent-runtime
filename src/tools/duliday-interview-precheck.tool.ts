@@ -502,7 +502,7 @@ export function buildInterviewPrecheckTool(
               errorType: TOOL_ERROR_TYPES.PRECHECK_JOB_NOT_FOUND,
               outcome: '前置校验失败（岗位已失效）',
               replyInstruction:
-                '不要重试同一 jobId；重新调用 duliday_job_list 查在招岗位。对候选人只说这家目前排不上。',
+                '不要重试同一 jobId；重新调用 duliday_job_list 查在招岗位时必须沿用候选人已确认的坐标/位置（带 location 按距离召回），不得去掉坐标改成全城查后推荐远门店；替代门店要先报距离让候选人决定。对候选人只说这家目前排不上。',
               details: { jobId },
             });
           }
@@ -601,6 +601,12 @@ export function buildInterviewPrecheckTool(
             fieldsAnsweredThisTurn: formRun.result.answeredThisTurn,
           });
           const scheduleRule = interviewTimeWaitNotice ? '' : buildScheduleRule(windows);
+          // bookableSlots 在候选人指定日期时会把该日排到最前，"最近可约"必须按日期时间重新取最早一场。
+          const nearestBookableSlot = [...bookableSlots]
+            .filter((slot) => slot.bookingAllowed)
+            .sort((a, b) =>
+              `${a.date} ${a.startTime}`.localeCompare(`${b.date} ${b.startTime}`),
+            )[0];
           const upcomingTimeOptions = interviewTimeWaitNotice
             ? []
             : buildUpcomingTimeOptions(windows, 7, 10, availabilityEvaluatedAt);
@@ -654,10 +660,20 @@ export function buildInterviewPrecheckTool(
                     timezone: 'Asia/Shanghai',
                     authoritativeField: 'bookableSlots',
                     instruction:
-                      'bookableSlots 已按完整日期时间与报名截止时间过滤。bookingAllowed=true 即表示在 evaluatedAt 时刻可约；禁止再用 scheduleRule/processRemark 的“当天、前一天”或当前钟点二次计算、删除时段。',
+                      'bookableSlots 已按完整日期时间与报名截止时间过滤。bookingAllowed=true 即表示在 evaluatedAt 时刻可约；禁止再用 scheduleRule/processRemark 的“当天、前一天”或当前钟点二次计算、删除时段；报"最近可约"必须用 nearestBookableSlot，不得自行改口成"需提前一天报名"而跳过次日时段。',
                   },
               upcomingTimeOptions: upcomingTimeOptions.length > 0 ? upcomingTimeOptions : undefined,
               bookableSlots,
+              // 最近可约时段由工具确定性给出：模型曾把「当天 10:00 前报名」误读成「需提前一天报名」，
+              // 跳过截止未过的次日时段只报下周（badcase inz7mjil / cthequif）。
+              nearestBookableSlot: nearestBookableSlot
+                ? {
+                    label: nearestBookableSlot.label,
+                    registrationDeadline: nearestBookableSlot.registrationDeadline,
+                    instruction:
+                      '告知候选人"最近可约"时必须以此为准，不得跳过；registrationDeadline 是该场面试自己的报名截止时刻（如"当天 10:00 前报名"指面试当天 10:00），截止未过即可约，不存在"需要提前一天报名"的默认规则。',
+                  }
+                : undefined,
               flowDescription: analysis.interviewMeta.demand,
               processRemark: analysis.normalizedRequirements.interviewRemark,
               timingHighlights:

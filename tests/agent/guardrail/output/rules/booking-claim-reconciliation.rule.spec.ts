@@ -58,7 +58,10 @@ describe('detectBookingDoneClaimWithoutSubmission', () => {
 
   it('普通岗位介绍不命中', () => {
     expect(
-      detectBookingDoneClaimWithoutSubmission('这家时薪24元，班次17:00-23:00，感兴趣可以帮你报名', []),
+      detectBookingDoneClaimWithoutSubmission(
+        '这家时薪24元，班次17:00-23:00，感兴趣可以帮你报名',
+        [],
+      ),
     ).toBeNull();
   });
 });
@@ -106,5 +109,26 @@ describe('detectCancelDoneClaimWithoutSubmission', () => {
     expect(
       detectCancelDoneClaimWithoutSubmission('这家时薪24元，随时可以取消不用违约金', []),
     ).toBeNull();
+  });
+});
+
+describe('booking_done_claim_no_work_order（长期记忆确证无在途工单时升 revise）', () => {
+  it('零 booking + 无在途工单 → revise（badcase wvr7pejq）', () => {
+    const hit = detectBookingDoneClaimWithoutSubmission(
+      '预约成功\n\n面试地址：勤奋路103号',
+      [],
+      false,
+    );
+    expect(hit?.ruleId).toBe('booking_done_claim_no_work_order');
+    expect(hit?.action).toBe('revise');
+  });
+
+  it('在途工单存在或未知时保持 observe', () => {
+    expect(detectBookingDoneClaimWithoutSubmission('已经帮你约好了', [], true)?.ruleId).toBe(
+      'booking_done_claim_without_submission',
+    );
+    expect(detectBookingDoneClaimWithoutSubmission('已经帮你约好了', [], undefined)?.ruleId).toBe(
+      'booking_done_claim_without_submission',
+    );
   });
 });
