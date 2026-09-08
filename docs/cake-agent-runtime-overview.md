@@ -3,7 +3,7 @@
 > **一句话定位**：DuLiDay 旗下专为餐饮连锁招聘场景打造的 AI Agent 运行时，
 > 通过企业微信渠道，把"招呼-咨询-推荐-面试-入职"的全链路服务交给 AI 自动完成。
 
-**最后更新**：2026-08-26 ｜ **维护者**：DuLiDay Team
+**最后更新**：2026-09-04 ｜ **维护者**：DuLiDay Team
 
 > 本文是**工程视角**的系统宣讲（怎么构建）。产品视角（做什么、给谁、价值）见 [产品定义](product/product-definition.md)。
 
@@ -22,6 +22,7 @@
 | 5   | [test-suite-architecture.md](./architecture/test-suite-architecture.md)               | §9              |
 | 6   | [security-guardrails.md](./architecture/security-guardrails.md)                       | §11             |
 | 7   | [group-task-pipeline.md](./architecture/group-task-pipeline.md)                       | §12             |
+| 8   | [reengagement-pipeline.md](./architecture/reengagement-pipeline.md)                   | §13             |
 
 需要进一步深入某个领域时，按章节末尾的"延伸阅读"跳到原文档。
 
@@ -530,7 +531,45 @@ Cron 触发 → GroupTaskScheduler.executeTask()
 
 ---
 
-## 13. 端到端：一条消息的完整旅程
+## 13. 复聊流水线 — 一对一主动触达
+
+入口：[`src/agent/reengagement/`](../src/agent/reengagement/)
+
+> 复聊是**独立链路**：系统决定何时主动找候选人，话术由 LLM 实时生成，但**不复用主链路 generator**——
+> 专用 `ReengagementAgent` 做一次性结构化 completion（无工具、无多步）。主链路的守卫/记忆/观测
+> 不自动继承，等价保障在复聊侧各自显式实现。
+
+```
+锚点事件（turn-end / ops-events 写入点）
+    │  computeFireAt(scenario, anchorAt) → 绝对时间戳
+    ├─ OnboardingSweepCron（每 15 分钟扫近 48h interview.passed）
+    ▼
+Bull delayed job（jobId 幂等：sessionId:scenarioCode:anchorEventId）
+    ▼  到点
+FollowUpTaskProcessor
+    ├─ ① 停止条件 shouldStop（读复聊会话快照，调 LLM 之前）
+    ├─ ② 频控：24h 内 sent 状态 ≤ 2
+    ├─ ③ 托管状态核验（查询失败 fail closed；已暂停/取消托管则跳过）
+    ├─ ④ pre_booking 带外工单核验（真人手工约面/拒面只存在于海绵工单，不核验则对其全盲）
+    ├─ ⑤ ReengagementAgent.compose()（不开放工具；blockReason 即终局）
+    ├─ ⑥ 投递 + 触达底账 outbox 状态机
+    └─ ⑦ 推店升档：仅 markSent 成功后确定性调用 GroupInviteService
+              ▼
+        reengagement_touch_records（全生命周期落库）
+```
+
+**关键决策**：
+
+- **事件锚点为主、cron sweep 为辅**：不轮询全量会话；唯一短窗 sweep 是入职跟进（近 48h `interview.passed`），稳定锚点保证同事件只排一个 job。
+- **fail-closed 优先不打扰**：托管状态查询失败即跳过；LLM 产出 `blockReason` 即终局，另有复读/姓名等确定性兜底再把关一层。
+- **LLM 产文案、代码扣扳机**：发不发、何时发、发给谁全部由确定性代码裁决，LLM 只负责这一条话术怎么写。
+
+> **延伸阅读**：[reengagement-pipeline.md](./architecture/reengagement-pipeline.md) ·
+> 产品视角见 [复聊功能产品说明](./product/reengagement.md)
+
+---
+
+## 14. 端到端：一条消息的完整旅程
 
 以候选人发送 _"你们招收银员吗？工资多少？"_ 为例：
 
@@ -570,7 +609,7 @@ Cron 触发 → GroupTaskScheduler.executeTask()
 
 ---
 
-## 14. 核心能力总结 — 一张表带走
+## 15. 核心能力总结 — 一张表带走
 
 | 能力                  | 实现                                             | 价值                                       |
 | --------------------- | ------------------------------------------------ | ------------------------------------------ |
@@ -584,12 +623,13 @@ Cron 触发 → GroupTaskScheduler.executeTask()
 | **告警限流聚合**      | 5min 窗口 + 恢复检测                             | 一次故障一条告警，不刷屏                   |
 | **数据三段式**        | Supabase SoT + 投影表 + Redis 实时               | 重启不丢数据，热路径走原表，长期趋势走投影 |
 | **测试 + 血缘**       | Bull Queue 异步执行 + LineageSync                | 真实 badcase 反向溯源到对应用例            |
+| **复聊独立链路**      | 锚点事件 + Bull delayed job + 专用 ReengagementAgent | 主动触达 fail-closed，不复用主 generator，全程可审计 |
 
 ---
 
-## 15. 关键配置速查
+## 16. 关键配置速查
 
-### 15.1 必填环境变量（缺失即启动失败）
+### 16.1 必填环境变量（缺失即启动失败）
 
 | 变量                                                     | 说明                                |
 | -------------------------------------------------------- | ----------------------------------- |
@@ -601,7 +641,7 @@ Cron 触发 → GroupTaskScheduler.executeTask()
 | `STRIDE_API_BASE_URL`                                    | 托管平台 API                        |
 | `FEISHU_ALERT_WEBHOOK_URL` / `FEISHU_ALERT_SECRET`       | 飞书告警                            |
 
-### 15.2 由 Supabase `hosting_config` 动态下发
+### 16.2 由 Supabase `hosting_config` 动态下发
 
 | 键                                                   | 默认值 | 说明                   |
 | ---------------------------------------------------- | ------ | ---------------------- |
@@ -610,7 +650,7 @@ Cron 触发 → GroupTaskScheduler.executeTask()
 | `workerConcurrency`                                  | 4      | 实际执行并发           |
 | `wecomCallbackModelId` / `wecomCallbackThinkingMode` | -      | 渠道侧模型选择         |
 
-### 15.3 关键 Agent 行为变量
+### 16.3 关键 Agent 行为变量
 
 | 变量                           | 默认值 | 说明                             |
 | ------------------------------ | ------ | -------------------------------- |
@@ -625,7 +665,7 @@ Cron 触发 → GroupTaskScheduler.executeTask()
 
 ---
 
-## 16. 可扩展点
+## 17. 可扩展点
 
 | 想做的事             | 入口                                                                                           |
 | -------------------- | ---------------------------------------------------------------------------------------------- |
@@ -640,7 +680,7 @@ Cron 触发 → GroupTaskScheduler.executeTask()
 
 ---
 
-## 17. 演进与未完成事项
+## 18. 演进与未完成事项
 
 本文件只陈述已经落地的能力，不再维护未经代码或任务单确认的路线图。当前工程、外部协作与
 上线后验证事项统一收口到 [`docs/todo/README.md`](./todo/README.md)；已完成方案保留在 Git 历史，
@@ -648,7 +688,7 @@ Cron 触发 → GroupTaskScheduler.executeTask()
 
 ---
 
-## 18. 团队与文档维护
+## 19. 团队与文档维护
 
 - **维护团队**：DuLiDay
 - **架构文档目录**：[`docs/architecture/`](./architecture/)

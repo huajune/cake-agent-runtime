@@ -63,6 +63,11 @@ export interface FollowUpJob {
   escalateToGroupInvite?: boolean;
   /** 入职跟进触达后 +48h 的纯复核任务；只查工单并按需告警，不生成或投递消息。 */
   onboardingCheck?: boolean;
+  /**
+   * 收资未完成场景的子态：资料已收齐、复述已发出、只差候选人确认（或选面试时间）。
+   * 到点文案必须改成"请回一句确认"，不得再说"还缺资料"。
+   */
+  collectionAwaitingConfirmation?: boolean;
 }
 
 /** 触达底账 outbox 状态机。 */
@@ -94,6 +99,8 @@ export interface ScheduleFollowUpInput {
   touchVariant?: FollowUpTouchVariant;
   /** 推店未回的第二轮起升级标记。 */
   escalateToGroupInvite?: boolean;
+  /** 收资已齐、待候选人确认的子态标记（booking_incomplete 专用）。 */
+  collectionAwaitingConfirmation?: boolean;
 }
 
 function createEmptyState(): ReengagementSessionState {
@@ -254,6 +261,7 @@ export class FollowUpSchedulerService {
           ...(input.channelIdentity ? { channelIdentity: input.channelIdentity } : {}),
           ...(input.touchVariant ? { touchVariant: input.touchVariant } : {}),
           ...(input.escalateToGroupInvite ? { escalateToGroupInvite: true } : {}),
+          ...(input.collectionAwaitingConfirmation ? { collectionAwaitingConfirmation: true } : {}),
         },
         {
           jobId,

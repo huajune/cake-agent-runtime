@@ -377,12 +377,15 @@ function renderPreferenceValue(key: string, value: unknown): string | null {
       onlyEvenings?: boolean | null;
       onlyMornings?: boolean | null;
       maxDaysPerWeek?: number | null;
+      availableWindow?: { start: string; end: string } | null;
     };
     const parts: string[] = [];
     if (c.onlyWeekends) parts.push('只周末');
     if (c.onlyEvenings) parts.push('只晚班');
     if (c.onlyMornings) parts.push('只早班');
     if (c.maxDaysPerWeek) parts.push(`每周最多${c.maxDaysPerWeek}天`);
+    if (c.availableWindow)
+      parts.push(`可上班时段${c.availableWindow.start}-${c.availableWindow.end}`);
     return parts.length > 0 ? parts.join('、') : null;
   }
   if (typeof value === 'string') return value.trim() || null;

@@ -520,6 +520,9 @@ export class ReengagementAgent {
   }
 
   private resolveObjective(ctx: ReengagementComposeContext): string {
+    if (ctx.scenario.code === 'booking_incomplete' && ctx.jobData.collectionAwaitingConfirmation) {
+      return '资料已收齐、复述已发出，只差候选人确认：提醒候选人回一句确认（或指出要改的项），以便提交预约';
+    }
     if (ctx.jobData.escalateToGroupInvite === true) {
       return '承接本轮新推荐岗位，确认候选人是否对这些机会不感兴趣，并预告稍后邀请进入兼职岗位信息群继续扩面';
     }
@@ -529,6 +532,9 @@ export class ReengagementAgent {
   }
 
   private resolveGenerationPolicy(ctx: ReengagementComposeContext): string {
+    if (ctx.scenario.code === 'booking_incomplete' && ctx.jobData.collectionAwaitingConfirmation) {
+      return '只请候选人回复"没问题"或指出要改哪项；严禁说"还差/还缺/需要补充资料"，不重发资料，不催填，不施压';
+    }
     if (ctx.jobData.escalateToGroupInvite === true) {
       return '先简短承接本轮新推荐的岗位或门店，询问候选人是否对这些机会不感兴趣，再预告稍后会邀请进入兼职岗位信息群，方便继续查看更多机会。拉群只能用将来或待执行时态，禁止使用“已拉”“已经进群”“已加入”等完成时态，也不得承诺具体群名或入群结果';
     }
@@ -592,9 +598,19 @@ export class ReengagementAgent {
       const collected = Object.keys(ctx.state.collectedFields)
         .map((key) => COLLECTED_FIELD_LABELS[key as CandidateFieldKey])
         .filter(Boolean);
-      lines.push('- 收资状态：已开始但未完成');
-      lines.push(`- 已收集资料项：${collected.length > 0 ? collected.join('、') : '暂无'}`);
-      lines.push('- 提醒原则：只提醒继续补充，不猜测具体缺少哪些字段');
+      if (ctx.jobData.collectionAwaitingConfirmation === true) {
+        lines.push(
+          '- 收资状态：资料已全部收齐，已把报名信息复述给候选人，只差候选人回一句确认（或选面试时间）',
+        );
+        lines.push(`- 已收集资料项：${collected.length > 0 ? collected.join('、') : '暂无'}`);
+        lines.push(
+          '- 提醒原则：只请候选人回复"没问题"或指出要改哪项；严禁说"还差/还缺/需要补充资料"，也不要重发整份资料',
+        );
+      } else {
+        lines.push('- 收资状态：已开始但未完成');
+        lines.push(`- 已收集资料项：${collected.length > 0 ? collected.join('、') : '暂无'}`);
+        lines.push('- 提醒原则：只提醒继续补充，不猜测具体缺少哪些字段');
+      }
     }
     if (ctx.scenario.phase === 'post_booking') {
       const booking = ctx.bookingContext;

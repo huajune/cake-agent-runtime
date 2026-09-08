@@ -1,9 +1,59 @@
 {
   "baseVersion": "11.4.0",
-  "nextVersion": "11.4.0",
-  "updatedAt": "2026-09-04",
+  "nextVersion": "11.4.1",
+  "updatedAt": "2026-09-08",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "1222",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1222",
+      "title": "fact-adjudication-shadow-daily 2026-09-07 结论落账",
+      "author": "huajune",
+      "mergedAt": "2026-09-08",
+      "businessUpdates": [
+        "fact-adjudication-shadow-daily 2026-09-07 结论落账"
+      ],
+      "summary": [
+        "fact-adjudication-shadow-daily 2026-09-07 结论落账"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "fact-adjudication-shadow-daily 2026-09-07 结论落账"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [],
+      "level": "patch"
+    },
+    {
+      "number": "1223",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1223",
+      "title": "weekly-judge-calibration 2026-09-08 结论落账",
+      "author": "huajune",
+      "mergedAt": "2026-09-08",
+      "businessUpdates": [
+        "weekly-judge-calibration 2026-09-08 结论落账",
+        "Merge remote-tracking branch 'origin/develop' into docs/quality-ledge…"
+      ],
+      "summary": [
+        "weekly-judge-calibration 2026-09-08 结论落账",
+        "Merge remote-tracking branch 'origin/develop' into docs/quality-ledge…"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "weekly-judge-calibration 2026-09-08 结论落账",
+        "Merge remote-tracking branch 'origin/develop' into docs/quality-ledge…"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [],
+      "level": "patch"
+    }
+  ],
   "lastRelease": {
     "version": "11.4.0",
     "date": "2026-09-04",
@@ -189,5 +239,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "44880e3f027006b7fea3d66a85c4625cba13bdbc"
+  "lastAnalyzedSha": "764acf505114531fc2581dbc2208563b38a060cc"
 }

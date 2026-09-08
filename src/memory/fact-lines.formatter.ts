@@ -141,6 +141,10 @@ export function formatExtractionFactLines(
     if (scheduleConstraint.onlyMornings) parts.push('只早班');
     if (scheduleConstraint.maxDaysPerWeek)
       parts.push(`每周最多${scheduleConstraint.maxDaysPerWeek}天`);
+    if (scheduleConstraint.availableWindow)
+      parts.push(
+        `可上班时段${scheduleConstraint.availableWindow.start}-${scheduleConstraint.availableWindow.end}`,
+      );
     if (parts.length)
       lines.push(`- 结构化排班约束: ${parts.join('、')}${meta(pref.schedule_constraint)}`);
   }

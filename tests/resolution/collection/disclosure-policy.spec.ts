@@ -37,8 +37,15 @@ describe('disclosureLevelOf', () => {
   });
 
   it('默认档是禁明说——未知新标签不做可说的赌博', () => {
-    expect(disclosureLevelOf(field('是否有纹身'))).toBe('restricted');
+    expect(disclosureLevelOf(field('是否接受调岗'))).toBe('restricted');
     expect(disclosureLevelOf(field('需要中餐厅服务员经验'))).toBe('restricted');
+  });
+
+  it('纹身是确凿敏感属性（默认门槛，2026-09-08）：禁明说且触发因果隔离', () => {
+    for (const title of ['是否有纹身', '有无文身', '纹身情况']) {
+      expect(disclosureLevelOf(field(title))).toBe('restricted');
+      expect(isSensitiveAttribute(field(title))).toBe(true);
+    }
   });
 
   it('红线压过可明说白名单：标题混进敏感词也不放行', () => {

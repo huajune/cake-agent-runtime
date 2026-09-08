@@ -41,6 +41,8 @@ export interface JobListQuerySignatureInput {
   candidateScheduleConstraint?: Record<string, unknown> | null;
   /** 候选人用工形式意向（本地过滤生效维度）。 */
   candidateLaborForm?: string | null;
+  /** 包住模式（解除距离锚 + 住宿福利筛）：与同城普通查询结果集不同，必须入签名。 */
+  requireAccommodation?: boolean | null;
 }
 
 function normalizeStrings(values: string[]): string[] {
@@ -89,6 +91,8 @@ export function buildJobListQuerySignature(input: JobListQuerySignatureInput): s
     searchJobName: input.searchJobName?.trim() || null,
     category: normalizeStrings(input.jobCategoryList),
     jobId: normalizeNumbers(input.jobIdList),
+    // 只在包住模式下入签名，普通查询的签名字符串与存量落库值保持逐字一致
+    ...(input.requireAccommodation === true ? { requireAccommodation: true } : {}),
     settlement: normalizeStrings(input.salaryPeriodNameList),
     location: hasLocationFilter ? normalizedLocation : null,
     schedule: normalizedConstraint,

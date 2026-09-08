@@ -2,6 +2,7 @@ import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 import { MessageWindowService } from '@memory/short-term/message-window.service';
+import { LongTermService } from '@memory/long-term/long-term.service';
 import type { AgentMemorySnapshot, AgentToolCall } from '@agent/generator/generator.types';
 import type {
   GuardViolation,
@@ -34,6 +35,7 @@ export class OutputGuardrailService {
     private readonly systemConfig: SystemConfigService,
     private readonly ruleGuard: HardRulesService,
     private readonly shortTerm: MessageWindowService,
+    private readonly longTerm?: LongTermService,
   ) {}
 
   private async readRecentTexts(
@@ -60,12 +62,34 @@ export class OutputGuardrailService {
     }
   }
 
+  /**
+   * 候选人名下是否有在途工单。读不到（无会话身份 / 长期记忆不可用 / 读失败）返回 undefined，
+   * 让 booking 完成态哨兵保持 observe 档，不因基础设施抖动误拦。
+   */
+  private async readHasActiveBooking(
+    corpId: string | undefined,
+    userId: string | undefined,
+  ): Promise<boolean | undefined> {
+    if (!this.longTerm || !corpId || !userId) return undefined;
+    try {
+      const bookings = await this.longTerm.tryGetActiveBookings(corpId, userId);
+      if (bookings === null) return undefined;
+      return bookings.length > 0;
+    } catch (error: unknown) {
+      this.logger.warn(`[OutputGuardrail] 读取在途工单失败，按未知处理: ${toErrorMessage(error)}`);
+      return undefined;
+    }
+  }
+
   async check(input: OutputGuardInput): Promise<OutputGuardDecision> {
     const reply = input.reply?.trim() ?? '';
     if (!reply) return this.passDecision([], []);
 
-    const recent = await this.readRecentTexts(input.chatId);
-    const runtimeConfig = await this.systemConfig.getAgentReplyConfig();
+    const [recent, runtimeConfig, hasActiveBooking] = await Promise.all([
+      this.readRecentTexts(input.chatId),
+      this.systemConfig.getAgentReplyConfig(),
+      this.readHasActiveBooking(input.corpId, input.userId),
+    ]);
     const pruned = OutboundReplySanitizer.pruneRepeatedSegments(
       reply,
       recent.assistantTexts,
@@ -85,6 +109,8 @@ export class OutputGuardrailService {
       recentUserTexts: recent.userTexts,
       recentMessages: recent.messages,
       memorySnapshot: input.memorySnapshot,
+      priorAssistantTexts: recent.assistantTexts,
+      hasActiveBooking,
       silent: input.silent,
       hardRuleOverrides: runtimeConfig.hardRuleOverrides ?? {},
     });
@@ -192,6 +218,8 @@ export interface OutputGuardInput {
   userMessage?: string;
   chatId?: string;
   userId?: string;
+  /** 与 userId 一起定位长期记忆（在途工单对账）；缺省时不查。 */
+  corpId?: string;
   traceId?: string;
   contactName?: string;
   botImId?: string;

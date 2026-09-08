@@ -17,6 +17,8 @@ import { normalizeGenderValue } from '@resolution/candidate/gender';
 import {
   disclosureLevelOf,
   isSensitiveAttribute,
+  RESTRICTED_REJECTION_FORBIDDEN,
+  RESTRICTED_REJECTION_MESSAGE,
   resolveValueRange,
   verdictOf,
   type BookingCollectionForm,
@@ -38,20 +40,15 @@ export interface RejectionScript {
   deferred: boolean;
 }
 
-/** 禁明说档统一话术：不点名字段、不给可推理的因果，接换岗/拉群。 */
-const RESTRICTED_MESSAGE =
-  '这家的岗位跟你这边暂时没太对上，我再帮你找找其他合适的，有匹配的第一时间告诉你';
+/** 禁明说档统一话术：居所在 @resolution/collection（与纹身默认门槛共用同一句）。 */
+const RESTRICTED_MESSAGE = RESTRICTED_REJECTION_MESSAGE;
 
 const COMMON_FORBIDDEN = [
   '不得把不合格原因说成"系统判定/后台筛掉"等推卸表述——对候选人只讲岗位条件，不讲内部机制',
   '不得承诺"下次一定能过/我帮你改一下就行"等无法兑现的话',
 ];
 
-const RESTRICTED_FORBIDDEN = [
-  '**绝不披露真实不合格原因**：不得点名字段、不得复述候选人刚才的回答、不得暗示"因为你刚说的那个"',
-  '不得反问该敏感属性的任何细节（问回来与说出去是同一风险的一进一出）',
-  '不得跨品牌硬推：按换岗/拉群承接口径收口',
-];
+const RESTRICTED_FORBIDDEN = [...RESTRICTED_REJECTION_FORBIDDEN];
 
 export function renderRejection(params: {
   form: BookingCollectionForm;

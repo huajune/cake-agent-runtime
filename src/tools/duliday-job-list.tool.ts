@@ -213,6 +213,56 @@ function buildBrandRejectedResult(params: {
 
 // ==================== 输入 Schema ====================
 
+/** 会话已确认城市（sessionFacts.preferences.city，带来源包装）。 */
+function readSessionCity(context: ToolBuildContext): string | null {
+  const value = readFactValue(context.archive.sessionFacts?.preferences?.city);
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+/** 场所名通用后缀：剥掉后剩下的词头才是库内岗位名里可能出现的简名。 */
+const SEARCH_NAME_GENERIC_SUFFIX =
+  /(?:乐园|度假区|主题公园|购物中心|购物公园|商业中心|商业广场|生活广场|国际广场|广场|中心|商场|百货|大厦|大楼|写字楼|商城|商厦|MALL|Mall|mall|门店|旗舰店|餐厅|店)$/u;
+
+/**
+ * searchJobName 查空时的简名派生：先剥通用后缀，剥不动且 ≥4 字时取前两字。
+ * 结果与原名相同或短于 2 字则放弃（返回 null）。
+ */
+export function shortenSearchJobName(name: string): string | null {
+  const trimmed = name.trim();
+  const stripped = trimmed.replace(SEARCH_NAME_GENERIC_SUFFIX, '').trim();
+  if (stripped.length >= 2 && stripped !== trimmed) return stripped;
+  if (stripped === trimmed && /^[\u4e00-\u9fff]{4,}$/u.test(trimmed)) return trimmed.slice(0, 2);
+  return null;
+}
+
+/**
+ * 包住硬需求过滤：福利 accommodation 为公司提供（company）或住宿补贴（allowance）的岗位保留，
+ * 其余剔除。补贴单独计数，便于回复时说清"仅房补"。
+ */
+function applyAccommodationRequirement(jobs: JobDetail[]): {
+  jobs: JobDetail[];
+  allowanceOnlyCount: number;
+  excluded: Array<{ jobId: number | null; brandName: string | null; reason: string }>;
+} {
+  const kept: JobDetail[] = [];
+  const excluded: Array<{ jobId: number | null; brandName: string | null; reason: string }> = [];
+  let allowanceOnlyCount = 0;
+  for (const job of jobs) {
+    const kind = extractWelfareFacts(job.welfare).accommodation;
+    if (kind === 'company' || kind === 'allowance') {
+      if (kind === 'allowance') allowanceOnlyCount += 1;
+      kept.push(job);
+      continue;
+    }
+    excluded.push({
+      jobId: typeof job.basicInfo?.jobId === 'number' ? job.basicInfo.jobId : null,
+      brandName: job.basicInfo?.brandName ?? null,
+      reason: kind === 'self_or_none' ? '岗位福利明确不包住' : '岗位福利未写明提供住宿',
+    });
+  }
+  return { jobs: kept, allowanceOnlyCount, excluded };
+}
+
 const inputSchema = z.object({
   cityNameList: z.array(z.string()).optional().default([]).describe('城市列表'),
   regionNameList: z.array(z.string()).optional().default([]).describe('区域列表'),
@@ -312,12 +362,25 @@ const inputSchema = z.object({
   includeWorkTime: z.boolean().optional().default(true).describe('返回工作时间/班次 - 默认true'),
   includeInterviewProcess: z.boolean().optional().default(false).describe('返回面试流程'),
 
+  requireAccommodation: z
+    .boolean()
+    .optional()
+    .describe(
+      '候选人明确要「包住/提供住宿/有宿舍」的岗位时传 true（如"我想找住宿的""有没有包住的""家远想住店里"）。传入后工具自动：①解除距离上限改全城召回（通勤距离对包住岗位不成立，坐标只用于显示距离）；②只保留福利里公司提供住宿或有住宿补贴的岗位，其余剔除并在 queryMeta.accommodationFilter 说明。候选人只是随口问"包不包住"不算硬需求，不要传。',
+    ),
   candidateScheduleConstraint: z
     .object({
       onlyWeekends: z.boolean().optional().describe('候选人只能周末上班'),
       onlyEvenings: z.boolean().optional().describe('候选人只做晚班/晚上有空'),
       onlyMornings: z.boolean().optional().describe('候选人只做早班'),
       maxDaysPerWeek: z.number().int().min(1).max(7).optional().describe('候选人每周最多 N 天'),
+      availableWindow: z
+        .object({ start: z.string(), end: z.string() })
+        .nullable()
+        .optional()
+        .describe(
+          '候选人可上班的具体时段（HH:MM，如"晚上6点半到24点"→{start:"18:30",end:"24:00"}）。传入后班次必须整段落在该时段内才保留（组合班次需全部落入；窗口式排班按重叠时长判）。候选人给了具体钟点区间时必须传，不要降级成 onlyEvenings。',
+        ),
     })
     .optional()
     .describe(
@@ -643,6 +706,7 @@ const DESCRIPTION = `查询在招岗位列表。支持渐进式数据返回，�
 - **区级定位下距离必须按估算口径转述**：结果头部声明"定位精度：区级代表点"时，距离已渲染成"约 X.Xkm（按 XX 估算）"，转述**必须保留"约 / 按 XX 估算"口径**（或请候选人发定位重查后再给精确距离）；**严禁**去掉估算说明包装成精确距离——区级锚点与真实位置可能差数公里
 - **同品牌按距离最近优先**：有 brand intent 时按 queryMeta.brandNearestStores 的距离升序展示，不得跳过更近的同品牌门店转推更远的
 - **明确品牌意向时不静默换品牌**：候选人明确点名品牌时 brand 必须进 brandIdList/brandAliasList（非空即硬过滤到该品牌），**不得**反问"看看其他品牌吗"或默默换牌推荐；想跨品牌推才省略品牌参数，明确意向下禁止省略
+- **候选人明确要包住/住宿 → 传 requireAccommodation=true**：通勤距离对包住岗位不成立，工具会自动解除距离上限改全城召回、只留提供住宿或有房补的岗位，距离照常显示由候选人决定；**不得**再按"附近 10 公里"回"附近岗位都不提供住宿"。全城仍为空才如实说没有包住岗，并问是否接受不包住再走常规召回
 - **点名品牌豁免距离上限——0 条先放宽复查再下结论**：候选人点名的品牌不受 max_recommend_distance_km（约 10km）约束（阈值只管 Agent 主动推荐）。距离内查得 0 条时必须放宽再查一次：location.range 放大到 30000 并保留品牌 + 城市/坐标（**不要只去掉 range**——保留坐标缺省 range 会被阈值兜底拉回；全城查则去掉整个 location）。放宽后查到较远门店 → 如实告知距离让候选人决定，**严禁**把"超距离"说成"没有/暂无在招"（候选人常已在 BOSS 见过该品牌，谎称没有直接流失）；整城仍 0 条才说"该品牌你所在城市暂无在招"，再按无岗动作链收口
 - **缺位置不要直接当无岗**：调用前须有 cityNameList 或 location 坐标；没有位置上下文时先中性问一句城市/区域，**禁止**把"还没给位置的 0 条"当"无岗"收口拉群
 - **跨城市无岗禁反问扩张**：候选人所在城市 0 条时按 noMatchScript 原文照念，**严禁**反问"看看其他城市吗"等扩张式追问；候选人主动提其他城市才重查，否则收口等待新库存，不拉群
@@ -710,6 +774,7 @@ export function buildJobListTool(
         includeHiringRequirement = true,
         includeWorkTime = false,
         includeInterviewProcess = false,
+        requireAccommodation = false,
         candidateScheduleConstraint,
       }) => {
         // 经纬度对调确定性纠偏（模型 reasoning 绑定正确、发射的
@@ -729,6 +794,11 @@ export function buildJobListTool(
               `location 经纬度对调已自动纠偏：入参 (lat=${coordSwapOriginal.latitude}, lng=${coordSwapOriginal.longitude}) → (lat=${corrected.latitude}, lng=${corrected.longitude})`,
             );
           }
+        }
+        // 包住模式会去掉坐标做全城召回，上游至少要留一个筛选条件：没传城市时先用会话已确认城市兜底。
+        if (requireAccommodation && cityNameList.length === 0) {
+          const sessionCity = readSessionCity(context);
+          if (sessionCity) cityNameList = [sessionCity];
         }
         const normalizedCityNameList = cityNameList.map((city) => city.trim()).filter(Boolean);
         const normalizedRegionNameList = regionNameList
@@ -869,6 +939,9 @@ export function buildJobListTool(
             ...(persistedConstraint.maxDaysPerWeek !== null && {
               maxDaysPerWeek: persistedConstraint.maxDaysPerWeek,
             }),
+            ...(persistedConstraint.availableWindow && {
+              availableWindow: persistedConstraint.availableWindow,
+            }),
           };
           if (Object.keys(persistedInput).length > 0) {
             const modelInput = candidateScheduleConstraint ?? {};
@@ -933,7 +1006,8 @@ export function buildJobListTool(
         const options = {
           includeBasicInfo,
           includeJobSalary,
-          includeWelfare,
+          // 包住筛选读的是福利字段，没有福利块会把所有岗位判成"未写明"整批剔除。
+          includeWelfare: includeWelfare || requireAccommodation,
           includeHiringRequirement,
           includeWorkTime,
           includeInterviewProcess,
@@ -949,8 +1023,16 @@ export function buildJobListTool(
         const maxKmThreshold = context.runtime.thresholds?.find(
           (t) => t.flag === 'max_recommend_distance_km',
         );
-        const effectiveLocation =
-          location?.longitude != null && location?.latitude != null && location.range == null
+        // 包住诉求解除距离锚（badcase 9d0o1dfi，2026-09-08 产品裁定）：请求不带坐标做全城召回，
+        // 本地坐标只用于显示距离，不再做半径过滤。
+        // 连会话城市都没有时不能把 location 也去掉（上游拒绝无筛选请求），退而按硬上限 30km 召回。
+        const effectiveLocation = requireAccommodation
+          ? normalizedCityNameList.length > 0
+            ? undefined
+            : location?.longitude != null && location?.latitude != null
+              ? { ...location, range: EXPLICIT_RANGE_CAP_KM * 1000 }
+              : location
+          : location?.longitude != null && location?.latitude != null && location.range == null
             ? {
                 ...location,
                 range:
@@ -1027,6 +1109,8 @@ export function buildJobListTool(
             recoveredCount: number;
           } = null;
           let searchNameRelaxed = false;
+          // searchJobName 全名查空、按简名重试命中时记录（乐高乐园→乐高，badcase o33c79xe）。
+          let searchNameShortened: null | { from: string; to: string } = null;
 
           // 跨轮重复查询检测：归一化后的实质过滤条件
           // 与上一轮完全一致时，结果必然相同——结果头部注入提醒，要求模型实质调整查询
@@ -1057,6 +1141,7 @@ export function buildJobListTool(
             location: fetchBaseParams.location ?? null,
             candidateScheduleConstraint: candidateScheduleConstraint ?? null,
             candidateLaborForm,
+            requireAccommodation,
           });
           const previousQuery = context.archive.lastJobListQuery ?? null;
           const isRepeatQuery = Boolean(
@@ -1132,6 +1217,29 @@ export function buildJobListTool(
               }
             } catch (error: unknown) {
               logger.warn(`场所名模糊查兜底失败，保留原始 0 条结果: ${toErrorMessage(error)}`);
+            }
+          }
+
+          // 全名查空的简名重试：候选人说的"乐高乐园/长泰广场/万辉国际大厦"往往比库内岗位名里的
+          // 简名长（库内是"乐高-…"），子串匹配整条 jobName 必然 0 条。剥掉通用后缀（乐园/广场/
+          // 中心/店…）或取词头再查一次，命中即披露 searchNameShortened 让模型核对是否同一主体。
+          if (jobs.length === 0 && !searchNameRelaxed && searchJobName?.trim()) {
+            const shortened = shortenSearchJobName(searchJobName.trim());
+            if (shortened) {
+              try {
+                const retried = await fetchJobs({ ...fetchBaseParams, searchJobName: shortened });
+                if (retried.jobs.length > 0) {
+                  jobs = retried.jobs;
+                  total = retried.total ?? retried.jobs.length;
+                  fetchBaseParams = { ...fetchBaseParams, searchJobName: shortened };
+                  searchNameShortened = { from: searchJobName.trim(), to: shortened };
+                  logger.warn(
+                    `岗位名简名重试命中：searchJobName="${searchJobName.trim()}" 0 条，按"${shortened}"召回 ${retried.jobs.length} 条`,
+                  );
+                }
+              } catch (error: unknown) {
+                logger.warn(`岗位名简名重试失败，保留原始 0 条结果: ${toErrorMessage(error)}`);
+              }
             }
           }
 
@@ -1296,13 +1404,15 @@ export function buildJobListTool(
             location?.range != null && location.range > 0 ? location.range / 1000 : null;
           const rangeClampedByCap =
             requestedRangeKm != null && requestedRangeKm > EXPLICIT_RANGE_CAP_KM;
-          const maxKm =
-            requestedRangeKm != null
+          const maxKm = requireAccommodation
+            ? undefined
+            : requestedRangeKm != null
               ? Math.min(requestedRangeKm, EXPLICIT_RANGE_CAP_KM)
               : distanceThreshold?.max;
 
-          // 关键优化：在距离过滤前补抓后续页，避免“第一页只有1条近距离岗位”
-          if (hasUserCoords && maxKm != null && total > jobs.length) {
+          // 关键优化：在距离过滤前补抓后续页，避免“第一页只有1条近距离岗位”；
+          // 包住模式全城召回后还要按福利筛，同样需要看到第一页之外的岗位。
+          if (((hasUserCoords && maxKm != null) || requireAccommodation) && total > jobs.length) {
             const totalPages = Math.ceil(total / DEFAULT_PAGE_SIZE);
             const maxPagesToScan = Math.min(totalPages, DISTANCE_SCAN_MAX_PAGES);
             distanceScanTruncated = maxPagesToScan < totalPages;
@@ -1604,6 +1714,44 @@ export function buildJobListTool(
             });
           }
 
+          // 包住硬需求过滤：只留公司提供住宿或有住宿补贴的岗位。全城召回后为空即真实无包住岗，
+          // 不得把不包住的岗位当替代硬推（badcase 9d0o1dfi）。
+          const accommodationFilterResult = requireAccommodation
+            ? applyAccommodationRequirement(jobs)
+            : null;
+          if (accommodationFilterResult) {
+            jobs = accommodationFilterResult.jobs;
+            total = jobs.length;
+            if (jobs.length === 0) {
+              // 全城扫描有页数上限：截断时只能说"查到的这批里没有"，不能断言全城没有。
+              const scope = distanceScanTruncated
+                ? `已查的前 ${accommodationFilterResult.excluded.length} 个在招岗位里没有包住/提供住宿的`
+                : '目前全城暂时没有包住/提供住宿的岗位';
+              return buildToolError({
+                errorType: TOOL_ERROR_TYPES.JOB_LIST_NO_RESULTS,
+                outcome: distanceScanTruncated
+                  ? '已扫描的在招岗位里没有包住/提供住宿的（全城未扫完）'
+                  : '全城范围内没有包住/提供住宿的岗位',
+                replyInstruction:
+                  '本轮已解除距离限制按全城查询，并按候选人「要包住」的硬需求过滤后为空。' +
+                  `如实告诉候选人${scope}；**不得把不包住的岗位当替代硬推**，` +
+                  '可以问一句是否也考虑不包住但离住处近的岗位，候选人同意后再按常规距离召回。' +
+                  '真实无岗不得调用 invite_to_group，不要跨城市推荐。',
+                details: {
+                  queryMeta: {
+                    distanceScanTruncated,
+                    accommodationFilter: {
+                      applied: true,
+                      distanceAnchorReleased: true,
+                      excludedCount: accommodationFilterResult.excluded.length,
+                      excludedExamples: accommodationFilterResult.excluded.slice(0, 3),
+                    },
+                  },
+                },
+              });
+            }
+          }
+
           // 契约异常暴露：laborForm/partTimeJobType 不符合新契约的岗位数据不做兼容兜底，
           // 记 warn 并随 queryMeta 落库（message_processing_records），推动上游改数据本身。
           const laborFormAnomalies = collectLaborFormAnomalies(jobs);
@@ -1834,6 +1982,12 @@ export function buildJobListTool(
             // 场所名兜底：true 表示按候选人口述的场所名查为 0，已改用坐标做距离召回。
             // 结果是"你附近的岗位"而非"该场所内的岗位"，回复时不得把它说成那个楼里的岗位。
             searchNameRelaxed,
+            searchNameShortened,
+            ...(searchNameShortened
+              ? {
+                  searchNameShortenedInstruction: `候选人说的"${searchNameShortened.from}"按全名查不到，本次是按简名"${searchNameShortened.to}"召回的：介绍前先核对岗位名/门店是否就是候选人指的那家，不是同一主体不得当作该品牌岗位推荐。`,
+                }
+              : {}),
             usedDistanceFiltering: hasUserCoords,
             // 距离锚点精度（方案 16.1 GeoQueryMeta.anchor 的 B-1 先行子集）：
             // 区级锚点查询占比的观测口径。⚠️ 原设计的对账对象是守卫规则，但那条规则
@@ -1881,6 +2035,18 @@ export function buildJobListTool(
                   candidateConstraint: candidateScheduleConstraint,
                   excludedCount: scheduleFilterResult.excluded.length,
                   excludedExamples: scheduleFilterResult.excluded.slice(0, 5),
+                }
+              : { applied: false },
+            accommodationFilter: accommodationFilterResult
+              ? {
+                  applied: true,
+                  distanceAnchorReleased: true,
+                  keptCount: accommodationFilterResult.jobs.length,
+                  allowanceOnlyCount: accommodationFilterResult.allowanceOnlyCount,
+                  excludedCount: accommodationFilterResult.excluded.length,
+                  excludedExamples: accommodationFilterResult.excluded.slice(0, 5),
+                  instruction:
+                    '本轮是按「要包住」硬需求做的全城召回：介绍时先说明住宿福利（包住 / 仅住宿补贴要说清是补贴），距离照实报让候选人自己决定，不得再以"太远"替候选人过滤。',
                 }
               : { applied: false },
             laborFormFilter: laborFormFilterResult.applied

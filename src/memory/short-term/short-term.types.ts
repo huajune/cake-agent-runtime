@@ -217,6 +217,11 @@ export const ScheduleConstraintFactSchema = z.object({
     .nullable()
     .default(null)
     .describe('每周最多上班 N 天（"做一休一"→1，"做二休一"→2，"每周最多两天"→2）'),
+  availableWindow: z
+    .object({ start: z.string(), end: z.string() })
+    .nullable()
+    .default(null)
+    .describe('候选人可上班的具体时段 HH:MM（"晚上6点半到24点"→18:30-24:00），班次须整段落在其内'),
 });
 export type ScheduleConstraintFact = z.infer<typeof ScheduleConstraintFactSchema>;
 

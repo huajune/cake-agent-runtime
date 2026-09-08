@@ -8,6 +8,43 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v11.4.1`
+**最近更新**: `2026-09-08`
+**来源分支**: `develop`
+**累计 PR**: 2
+
+### 更新摘要
+- PR #1222 fact-adjudication-shadow-daily 2026-09-07 结论落账
+- PR #1223 weekly-judge-calibration 2026-09-08 结论落账
+- PR #1223 Merge remote-tracking branch 'origin/develop' into docs/quality-ledge…
+
+### 新功能
+- 无
+
+### 问题修复
+- 无
+
+### 优化调整
+- 无
+
+### 运维与流程
+- PR #1222 fact-adjudication-shadow-daily 2026-09-07 结论落账
+- PR #1223 weekly-judge-calibration 2026-09-08 结论落账
+- PR #1223 Merge remote-tracking branch 'origin/develop' into docs/quality-ledge…
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- 无
+<!-- release:pending:end -->
+
 ## [11.4.0] - 2026-09-04
 
 **来源分支**: `develop`

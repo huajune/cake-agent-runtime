@@ -8,6 +8,14 @@ describe('resolution/geo policy（Phase 0 golden cases 平移）', () => {
       expect(hasGenericAmbiguousSuffix('人民广场')).toBe(true);
     });
 
+    it('凯德系与其他跨城连锁商业体命中（badcase tqljowg0：青岛"凯德"被定位到北京）', () => {
+      expect(hasGenericAmbiguousSuffix('凯德')).toBe(true);
+      expect(hasGenericAmbiguousSuffix('凯德MALL')).toBe(true);
+      expect(hasGenericAmbiguousSuffix('西直门凯德mall')).toBe(true);
+      expect(hasGenericAmbiguousSuffix('来福士')).toBe(true);
+      expect(hasGenericAmbiguousSuffix('永旺梦乐城')).toBe(true);
+    });
+
     it('以黑名单条目结尾时命中（连锁商业体/公共设施）', () => {
       expect(hasGenericAmbiguousSuffix('合肥万达广场')).toBe(true);
       expect(hasGenericAmbiguousSuffix('龙湖天街')).toBe(true);

@@ -401,6 +401,11 @@ export function produceTurnHints(
       if (scheduleConstraint.maxDaysPerWeek !== null) {
         labelParts.push(`每周≤${scheduleConstraint.maxDaysPerWeek}天`);
       }
+      if (scheduleConstraint.availableWindow) {
+        labelParts.push(
+          `可上班时段${scheduleConstraint.availableWindow.start}-${scheduleConstraint.availableWindow.end}`,
+        );
+      }
       const label = `班次硬约束（结构化）：${labelParts.join('、') || '空'}`;
       appendRuleClaim(sink, {
         field: 'preferences.schedule_constraint',

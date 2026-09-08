@@ -49,11 +49,24 @@ function hasActiveWorkOrderEvidence(toolCalls: readonly AgentToolCall[]): boolea
 export function detectBookingDoneClaimWithoutSubmission(
   text: string,
   toolCalls: AgentToolCall[] = [],
+  hasActiveBooking?: boolean,
 ): RuleContradiction | null {
   if (!text.trim()) return null;
   if (!BOOKING_DONE_CLAIM_PATTERN.test(text)) return null;
   if (toolCalls.some((call) => BOOKING_FAMILY_TOOL_NAMES.has(call.toolName))) return null;
   if (hasActiveWorkOrderEvidence(toolCalls)) return null;
+
+  // 观察期数据（09-02 起 8 例）证实 observe 档的假阳几乎全是跨轮复述真实工单。长期记忆里
+  // 确证没有任何在途工单时，这种解释不成立——完成时态就是假回执（badcase wvr7pejq），升执行档。
+  if (hasActiveBooking === false) {
+    return {
+      ruleId: 'booking_done_claim_no_work_order',
+      label:
+        '回复用完成时态宣称报名/预约已办好（"已帮你报好/报名成功"），但本轮没有 booking 调用、' +
+        'precheck 未返回在途工单、候选人名下也没有任何在途工单——预约从未提交',
+      action: GUARDRAIL_ACTION.REVISE,
+    };
+  }
 
   return {
     ruleId: 'booking_done_claim_without_submission',

@@ -290,8 +290,20 @@ function isLowInformationShortLatinMatch(params: {
   normalizedClause: string;
   normalizedAlias: string;
   source: BrandResolutionSource;
+  /** 该别名所属品牌标准名的归一化形态（昵称轨短中文别名豁免判据）。 */
+  canonicalNormalized?: string;
 }): boolean {
   if (params.source === 'contact_name') {
+    // 昵称轨的 1-2 字中文别名（阳光/星星/美好）几乎全是日常词，命中即把候选人昵称当品牌
+    // （badcase fhae8r60：昵称「阳光」→ Sunflour阳光粮品，候选人答"浦东张江"被回"阳光粮品附近无岗"）。
+    // 例外：别名本身就是标准名或标准名词头（盒马→盒马鲜生、瑞幸→瑞幸咖啡、喜茶），
+    // 这类短名在"盒马-李四"式昵称里是真实品牌信号，不能一刀切压掉。
+    if (
+      /^[\u4e00-\u9fff]{1,2}$/u.test(params.normalizedAlias) &&
+      !(params.canonicalNormalized ?? '').startsWith(params.normalizedAlias)
+    ) {
+      return true;
+    }
     return (
       params.normalizedAlias.length >= 1 &&
       params.normalizedAlias.length <= 3 &&
@@ -485,6 +497,7 @@ function matchClause(
         normalizedClause,
         normalizedAlias: candidate.normalized,
         source,
+        canonicalNormalized: normalizeForBrandMatch(candidate.brandName),
       }) ||
       isGeographicNameMatch(normalizedClause, spanStart, candidate.normalized.length) ||
       isCityHomographGeographicMatch(
