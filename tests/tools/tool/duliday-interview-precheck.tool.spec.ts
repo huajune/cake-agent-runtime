@@ -604,7 +604,8 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
     expect(result._replyInstruction).not.toContain('已有真实答案不要重复询问');
   });
 
-  it('社保肯定答案缺维度时只澄清缺项，并把标签文本与类型写入审计', async () => {
+  it('选项型字段词表拒收：回执列全本槽合法选项原文（accepted+rejected），审计落 value_not_in_contract_vocabulary', async () => {
+    // 社保族已无确定性适配器（2026-09-08 拆除）：模型作证给契约选项原文，代码只核词表。
     const socialInsuranceField = {
       labelId: 12,
       labelTitle: '社保缴纳情况',
@@ -613,11 +614,12 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
       acceptedOptions: [
         { optionCode: '1', optionLabel: '本人缴纳本地社保' },
         { optionCode: '2', optionLabel: '无公司在缴社保流水' },
-        { optionCode: '3', optionLabel: '公司缴纳本地社保' },
         { optionCode: '4', optionLabel: '本人缴纳外地社保' },
+      ],
+      rejectedOptions: [
+        { optionCode: '3', optionLabel: '公司缴纳本地社保' },
         { optionCode: '5', optionLabel: '公司缴纳外地社保' },
       ],
-      rejectedOptions: [],
     };
     sponge.fetchJobCollectionContract.mockResolvedValue({
       jobId: 100,
@@ -639,12 +641,22 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
     expect(result.rejectedAnswers).toEqual([
       expect.objectContaining({
         labelTitle: '社保缴纳情况',
-        reason: 'social_insurance_dimensions_missing',
-        action: 'ask_candidate',
-        hint: expect.stringContaining('参保地是本地还是外地'),
+        reason: 'value_not_in_contract_vocabulary',
+        action: 'retry_submission',
       }),
     ]);
-    expect(result.rejectedAnswers[0].hint).not.toContain('本人还是公司');
+    const hint: string = result.rejectedAnswers[0].hint;
+    for (const label of [
+      '本人缴纳本地社保',
+      '无公司在缴社保流水',
+      '本人缴纳外地社保',
+      '公司缴纳本地社保',
+      '公司缴纳外地社保',
+    ]) {
+      expect(hint).toContain(label);
+    }
+    expect(hint).toContain('禁止猜选项');
+    expect(currentForm?.slots[12]?.state).toBe('empty');
     expect(observer.emit).toHaveBeenCalledWith(
       expect.objectContaining({
         type: 'collection_form_audit',
@@ -652,9 +664,42 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
         labelId: 12,
         labelTitle: '社保缴纳情况',
         fieldType: 'SINGLE_OPTION',
-        reason: 'social_insurance_dimensions_missing',
+        reason: 'value_not_in_contract_vocabulary',
       }),
     );
+  });
+
+  it('年龄落在岗位弹性带内：资料齐全也不给 ready_to_book，改 age_boundary_handoff 转人工裁量', async () => {
+    // screenValue 对 boundary（超上限 ≤3 岁）放行落槽，但海绵报名接口按硬区间必拒（2026-09-08 实测）。
+    const agedContract = CONTRACT.map((field) =>
+      field.labelId === 103
+        ? {
+            ...field,
+            valueSpec: { kind: 'number' as const, min: 18, max: 35, unit: '岁', genderRanges: [] },
+          }
+        : field,
+    );
+    sponge.fetchJobCollectionContract.mockResolvedValue({ jobId: 100, fields: agedContract });
+    sponge.fetchJobs.mockResolvedValue({ jobs: [JOB_WITH_WINDOWS] });
+    context.turnInput.messages = [
+      { role: 'user', content: '我叫兮兮，电话18271421690，我今年36岁，我是女的，明天面试' },
+    ];
+    const result = await execute({
+      jobId: 100,
+      requestedDate: '明天',
+      fieldValueProposals: [
+        { labelTitle: '姓名', value: '兮兮', quote: '我叫兮兮' },
+        { labelTitle: '联系电话', value: '18271421690', quote: '电话18271421690' },
+        { labelTitle: '年龄', value: '36', quote: '我今年36岁' },
+        { labelTitle: '性别', value: '女', quote: '我是女的' },
+      ],
+    });
+    expect(currentForm?.slots[103]?.state).toBe('filled');
+    expect(result.collectionVerdict).toBe('ready');
+    expect(result.nextAction).toBe('age_boundary_handoff');
+    expect(result._replyInstruction).toContain('identity_age_exception');
+    expect(result._replyInstruction).toContain('禁止调用 duliday_interview_booking');
+    expect(context.ledger.jobs.collectionReadyJobId).toBeUndefined();
   });
 
   it('没有拒收时不返回 rejectedAnswers，收资指令保持原样', async () => {
