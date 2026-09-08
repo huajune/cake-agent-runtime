@@ -16,7 +16,6 @@ import {
   adapterFor,
   genericAdapter,
   identitySlotKeyForTitle,
-  socialInsuranceMissingDimensions,
   type ContractFieldDef,
   type SlotProposal,
   type FieldValueProposal,
@@ -222,12 +221,6 @@ function fromFormLines(input: IntakeInput): RoutedFieldValueProposal[] {
       // 只把值交给适配器。选项型认不出也生成提案，统一由值词表门拒收并落审计，
       // 不再在运输层静默丢弃。
       const adapted = adaptAnswerValue(routedLine.field, routedLine.value);
-      if (
-        !adapted &&
-        emitSocialInsuranceClarification(input, routedLine.field, routedLine.value, 'form_line')
-      )
-        continue;
-
       proposals.push({
         labelId: routedLine.field.labelId,
         value: adapted?.value ?? routedLine.value,
@@ -326,7 +319,6 @@ function fromModelFieldValueProposals(input: IntakeInput): RoutedFieldValuePropo
     if (!value) continue;
 
     const adapted = adaptAnswerValue(field, value);
-    if (!adapted && emitSocialInsuranceClarification(input, field, value, 'form_answer')) continue;
     proposals.push({
       labelId: field.labelId,
       value: adapted?.value ?? value,
@@ -340,28 +332,6 @@ function fromModelFieldValueProposals(input: IntakeInput): RoutedFieldValuePropo
     });
   }
   return proposals;
-}
-
-function emitSocialInsuranceClarification(
-  input: IntakeInput,
-  field: ContractFieldDef,
-  value: string,
-  channel: IntakeAudit['channel'],
-): boolean {
-  const missing = socialInsuranceMissingDimensions({
-    field,
-    candidateText: value,
-    answerBound: true,
-  });
-  if (!missing) return false;
-  input.onAudit?.({
-    kind: 'proposal_rejected',
-    labelId: field.labelId,
-    reason: 'social_insurance_dimensions_missing',
-    detail: `missing_dimensions:${missing.join(',')}`,
-    channel,
-  });
-  return true;
 }
 
 /** 语义适配器优先；规范值恰为 optionLabel 时再走契约字面直配。 */

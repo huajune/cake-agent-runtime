@@ -20,7 +20,7 @@
  *    labelTitle 匹配，没有契约就匹配不了，只能一律转人工（比 D2 更粗暴）。
  */
 
-import { detectAgeBoundary } from '@resolution/candidate/age';
+import { detectAgeBoundary, type AgeScreeningSignal } from '@resolution/candidate/age';
 import { normalizeGenderValue } from '@resolution/candidate/gender';
 import { isAmbiguousHealthCertificateAnswer } from '@resolution/candidate/health-cert';
 import {
@@ -710,6 +710,10 @@ export function migrateAskTracking(form: BookingCollectionForm): BookingCollecti
  * 4. **不覆盖任何已有值**：只填空槽。本轮亲口说的、已判不合格的都不动。
  * 5. **同账号内**（§11 红线）：作用域由表单 key 的 corpId 保证，跨托管账号是另一张表，
  *    档案带不过去——跨账号接触天然视为首次接触。
+ * 6. **过先筛后收**：档案值同样要过 `screenValue`（值域 / rejectedOptions）。命中即**不预填、留空**，
+ *    而不是直接判不合格——档案是上周的话，判人不合格必须由本人本轮亲口说的值触发。
+ *    不筛的后果已实测：上个岗位的 47 岁直接填进 23-40 岗、17 岁填进 18-50 岗，槽位 filled、
+ *    表单 ready、booking 送出被海绵拒「年龄不符」（2026-09-08 近 3 天 5 张海绵拒年龄里 3 张归此）。
  */
 export function seedArchiveValue(
   form: BookingCollectionForm,
@@ -721,6 +725,7 @@ export function seedArchiveValue(
   const value = archived.value.trim();
   if (!value) return form;
   if (validateContractValue(field, value, archived.optionCodes)) return form;
+  if (screenValue(field, value, archived.optionCodes, genderOf(form))) return form;
 
   return withSlot(form, {
     labelId: field.labelId,
@@ -738,6 +743,31 @@ export function seedArchiveValue(
 /** 该槽位的值是否来自档案预填（复述话术可据此加「如有误请改」语气）。 */
 export function isArchiveSeeded(form: BookingCollectionForm, labelId: number): boolean {
   return form.slots[labelId]?.value?.producer === 'archive';
+}
+
+/**
+ * 已填年龄相对岗位值域的边界信号（`detectAgeBoundary` 的表单版）。
+ *
+ * `screenValue` 只在 `hard_reject` 时判不合格，`boundary`（超上限 ≤3 岁 / 低下限 ≤2 岁且 ≥23 岁）
+ * 照常落槽——这是刻意的弹性，留给人工裁量破例。但海绵报名接口按硬区间拒，弹性带的表单
+ * 送去 booking 必败（2026-09-08 实测：36 岁 / 18-35 两个岗位各败一次）。precheck 用本函数
+ * 在 ready 之前把弹性带截住转人工，而不是让它流到一次注定失败的 API 调用。
+ *
+ * 返回 null = 年龄未填 / 契约无值域 / 分性别值域但性别未知（与 `resolveValueRange` 同一取舍）。
+ * 契约由调用方传入（precheck 持有本轮实时契约），不读 `contractSnapshot`——旧存量表单可能缺它。
+ */
+export function ageBoundarySignalOf(
+  form: BookingCollectionForm,
+  contract: readonly ContractFieldDef[],
+): AgeScreeningSignal | null {
+  const field = contract.find((item) => item.systemField === 'age');
+  const slot = field ? form.slots[field.labelId] : undefined;
+  if (!field || !slot || slot.state !== 'filled' || !slot.value) return null;
+  const range = resolveValueRange(field.valueSpec, genderOf(form));
+  if (!range) return null;
+  const candidateAge = parseLeadingNumber(slot.value.value);
+  if (candidateAge === null) return null;
+  return detectAgeBoundary({ candidateAge, range });
 }
 
 /** 提交前复述落账——「不对」才能定位改哪格。 */
