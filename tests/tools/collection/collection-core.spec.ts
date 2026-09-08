@@ -322,9 +322,7 @@ describe('runCollectionCore · FILE 字段（生产 chat 6a9117face406a6aee7f99c
 
   it('模板对 FILE 字段常驻「发文件别打字」占位提示', () => {
     const result = runResume(createForm({ jobId: 529091, contract }), 'turn-1');
-    expect(result.template.templateText).toContain(
-      '上传简历：（直接发文件或截图，不用打字填写）',
-    );
+    expect(result.template.templateText).toContain('上传简历：（直接发文件或截图，不用打字填写）');
   });
 });
 
@@ -759,17 +757,44 @@ const AGE_24_38: ContractFieldDef = {
 };
 
 describe('badcase 6a8fec04 · 社保自然答案与作答轮记账', () => {
-  it('「社保缴纳情况：无」经语义适配落定为契约否定选项（首恶根治）', () => {
+  it('「社保缴纳情况：无公司在缴社保流水」逐字直配契约选项落定（通用道，2026-09-08 拆除语义适配器）', () => {
     const result = runCollectionCore({
       form: createForm({ jobId: 528762, contract: [SOCIAL] }),
       contract: [SOCIAL],
-      candidateTexts: ['社保缴纳情况：无'],
-      messages: [{ role: 'user', content: '社保缴纳情况：无' }],
+      candidateTexts: ['社保缴纳情况：无公司在缴社保流水'],
+      messages: [{ role: 'user', content: '社保缴纳情况：无公司在缴社保流水' }],
     });
     expect(result.form.slots[12].state).toBe('filled');
     expect(result.form.slots[12].value?.value).toBe('无公司在缴社保流水');
     expect(result.form.slots[12].value?.optionCodes).toEqual(['2']);
     expect(result.action).toBe('ready_to_book');
+  });
+
+  it('「社保缴纳情况：无」不再由正则替候选人猜档：留空、词表拒收落审计、模板强制枚举全部选项', () => {
+    const result = runCollectionCore({
+      form: createForm({ jobId: 528762, contract: [SOCIAL] }),
+      contract: [SOCIAL],
+      candidateTexts: ['社保缴纳情况：无'],
+      messages: [
+        { role: 'assistant', content: '请补充：\n社保缴纳情况：' },
+        { role: 'user', content: '社保缴纳情况：无' },
+      ],
+      askReceiptTurnId: 'turn-bare-none',
+    });
+    expect(result.form.slots[12].state).toBe('empty');
+    expect(result.form.slots[12].rejectedAttempts).toBe(1);
+    expect(
+      result.audits.some(
+        (audit) =>
+          audit.kind === 'proposal_rejected' &&
+          audit.reason === 'value_not_in_contract_vocabulary' &&
+          audit.labelId === 12,
+      ),
+    ).toBe(true);
+    expect(result.action).toBe('collect_fields');
+    expect(result.template.templateText).toContain(
+      '社保缴纳情况：（本人缴纳本地社保/无公司在缴社保流水/公司缴纳本地社保/本人缴纳外地社保/公司缴纳外地社保）',
+    );
   });
 
   it('真实作答被词表门拒收：不烧发问配额、记 rejectedAttempts、模板强制枚举重问', () => {
