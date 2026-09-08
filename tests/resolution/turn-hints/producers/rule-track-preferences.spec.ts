@@ -96,6 +96,12 @@ describe('extractAvailableWindow（候选人可上班时段，badcase j4kb5ijm�
     '2000-3000元',
     '我5月1号回来',
     '17点半下班，之后都可以',
+    '我一周能做2到3天',
+    '能做3到4个小时',
+    '想找18-22元一小时的兼职',
+    '我18到20号有时间',
+    '我离你们店大概3到5公里',
+    '下午两点到五点要上课，其他时间都行',
   ])('ignores non-window text: %s', (text) => expect(extractAvailableWindow(text)).toBeNull());
 
   it('folds into the structured constraint and strips quoted job cards', () => {

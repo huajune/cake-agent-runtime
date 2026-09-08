@@ -72,7 +72,8 @@ export class OutputGuardrailService {
   ): Promise<boolean | undefined> {
     if (!this.longTerm || !corpId || !userId) return undefined;
     try {
-      const bookings = await this.longTerm.getActiveBookings(corpId, userId);
+      const bookings = await this.longTerm.tryGetActiveBookings(corpId, userId);
+      if (bookings === null) return undefined;
       return bookings.length > 0;
     } catch (error: unknown) {
       this.logger.warn(`[OutputGuardrail] 读取在途工单失败，按未知处理: ${toErrorMessage(error)}`);

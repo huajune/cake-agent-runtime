@@ -70,12 +70,13 @@ export function extractShiftSlots(workTime: unknown): {
 } {
   if (!isNonEmpty(workTime)) return { slots: [], arrangement: 'unknown', perDayMinHours: null };
   const input = workTime as WorkTimeInput;
-  const slots = collectShiftSlots(input).map((slot) => ({ start: slot.start, end: slot.end }));
+  const rawSlots = collectShiftSlots(input);
+  const slots = rawSlots.map((slot) => ({ start: slot.start, end: slot.end }));
   const arrangement = looksLikeFlexibleArrangement(input)
     ? 'flexible'
     : slots.length <= 1
       ? classifyArrangementType(arrangementTypeOf(input))
-      : inferSelectionMode(input, collectShiftSlots(input)) === 'all_required'
+      : inferSelectionMode(input, rawSlots) === 'all_required'
         ? 'all_required'
         : 'pick_one';
   return { slots, arrangement, perDayMinHours: dayMinHours(input) };

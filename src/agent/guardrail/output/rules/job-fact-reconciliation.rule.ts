@@ -1,6 +1,7 @@
 import type { AgentToolCall } from '@agent/generator/generator.types';
 import { GUARDRAIL_ACTION } from '@shared-types/guardrail.contract';
 import type { RuleContradiction } from '../output-rule.types';
+import { QUANTIFIED_JOB_FACT_PATTERN } from '../job-fact-signals.util';
 
 /**
  * 岗位事实 ↔ 查询动作对账（零工具轮的两种假事实）。
@@ -15,24 +16,29 @@ import type { RuleContradiction } from '../output-rule.types';
  *   本轮零查岗工具，且该数字在会话内任何一条历史助手消息里都没出现过——既不是本轮工具给的，
  *   也不是复述自己说过的话。回指历史（"刚才那家/上面那个"）的句子豁免。
  */
+// 「看了下」泛用（看健康证/看定位），只有后面跟岗位类宾语才算查岗宣称；「查/搜了下」本身就是查岗动作。
 const QUERY_DONE_CLAIM_PATTERN =
-  /(?:帮你|给你|替你|我)(?:重新|再|又)?(?:查|看|搜)(?:了(?:一)?下|了下|到了|过了)|(?:系统|平台|后台)(?:里|上)?(?:目前|暂时|现在)?(?:没(?:有)?|无)(?:查到|找到|看到|搜到)|(?:目前|暂时|现在)?(?:没(?:有)?|未)(?:查到|搜到)[^，。！？!?\n]{0,12}(?:岗位|门店|工作|兼职|职位)/u;
+  /(?:帮你|给你|替你|我)(?:重新|再|又)?(?:查|搜)(?:了(?:一)?下|了下|到了|过了)|(?:帮你|给你|替你|我)(?:重新|再|又)?看(?:了(?:一)?下|了下)(?!你)[^。！？!?\n]{0,14}(?:岗位|门店|工作|兼职|职位|附近|系统)|(?:系统|平台|后台)(?:里|上)?(?:目前|暂时|现在)?(?:没(?:有)?|无)(?:查到|找到|看到|搜到)|(?:目前|暂时|现在)?(?:没(?:有)?|未)(?:查到|搜到)[^，。！？!?\n]{0,12}(?:岗位|门店|工作|兼职|职位)/u;
 
 const HISTORY_REFERENCE_PATTERN = /刚才|刚刚|之前|上次|上回|前面|上面|早上|昨天|先前|开始/u;
 
+/** 本轮任一“查过系统”的工具（查岗/预检/定位/工单三件套）都算真实查询，规则只盯零工具轮。 */
 const JOB_QUERY_TOOL_NAMES: ReadonlySet<string> = new Set([
   'duliday_job_list',
   'duliday_interview_precheck',
   'geocode',
+  'duliday_interview_booking',
+  'duliday_cancel_work_order',
+  'duliday_modify_interview_time',
 ]);
 
-/** 量化岗位事实：单位薪资、距离、班次时段。与 job-fact-signals 同口径，另加“元/月·天”。 */
-const QUANTIFIED_FACT_PATTERN =
-  /\d+(?:\.\d+)?(?:\s*[-~—至到]\s*\d+(?:\.\d+)?)?\s*元\s*\/?\s*(?:小?时|天|月)|\d+(?:\.\d+)?\s*(?:公里|km)|\d{1,2}[:：]\d{2}\s*(?:-|~|—|到|至)\s*(?:次日|凌晨)?\s*\d{1,2}[:：]\d{2}/giu;
+/** 量化岗位事实：与 repair 回归闸共用 job-fact-signals 的唯一定义。 */
+const QUANTIFIED_FACT_PATTERN = new RegExp(QUANTIFIED_JOB_FACT_PATTERN.source, 'giu');
 
 function normalizeFact(text: string): string {
   return text
     .replace(/\s+/g, '')
+    .replace(/(^|[^\d])(\d)(?=[:：]\d{2})/g, '$10$2')
     .replace(/公里/g, 'km')
     .replace(/KM/g, 'km')
     .replace(/：/g, ':')
@@ -76,13 +82,18 @@ export function detectJobQueryClaimWithoutQuery(
   return null;
 }
 
+/**
+ * @param priorTexts 会话内的历史助手回复 + 候选人消息（含本轮）。候选人自己刚说的数字
+ *   （"那个 25 元/时的还在招吗"）被复述回去不是编造。调用方拿不到会话历史时不要调本函数
+ *   （无法判出处 ≠ 无出处）。已知残余：同一事实换表述（"下午5点到11点"↔"17:00-23:00"）仍会命中。
+ */
 export function detectJobFactWithoutProvenance(
   text: string,
   toolCalls: AgentToolCall[] = [],
-  priorAssistantTexts: readonly string[] = [],
+  priorTexts: readonly string[] = [],
 ): RuleContradiction | null {
   if (!text.trim() || hasJobQueryTool(toolCalls)) return null;
-  const history = normalizeFact(priorAssistantTexts.join('\n'));
+  const history = normalizeFact(priorTexts.join('\n'));
   const pattern = new RegExp(QUANTIFIED_FACT_PATTERN.source, 'giu');
   const orphanFacts: string[] = [];
   let match: RegExpExecArray | null;

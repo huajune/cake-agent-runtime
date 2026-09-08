@@ -1,3 +1,4 @@
+import { parseChineseNumberUnder100 } from '@resolution/candidate/value-shape';
 import { stripQuotedBlocks } from '@resolution/signal/markers';
 import { scanGeoSignalsFromText } from '@resolution/geo';
 import { decideLaborFormIntent } from '@resolution/labor-form';
@@ -213,28 +214,9 @@ function matchWeeklyDayConstraint(message: string): {
   };
 }
 
-/** 钟点/分钟数字：阿拉伯数字或中文数字（〇..二十四），不受每周天数 1-7 上限约束。 */
+/** 钟点/分钟数字：复用 candidate 域的中文数字解析（0-99），另认「〇」。 */
 function parseClockNumber(token: string): number | null {
-  if (/^\d{1,2}$/.test(token)) return Number(token);
-  const digits: Record<string, number> = {
-    零: 0,
-    〇: 0,
-    一: 1,
-    二: 2,
-    两: 2,
-    三: 3,
-    四: 4,
-    五: 5,
-    六: 6,
-    七: 7,
-    八: 8,
-    九: 9,
-  };
-  if (token === '十') return 10;
-  const tenMatch = token.match(/^([一二两三四五六七八九])?十([一二三四五六七八九])?$/);
-  if (tenMatch)
-    return (tenMatch[1] ? digits[tenMatch[1]] : 1) * 10 + (tenMatch[2] ? digits[tenMatch[2]] : 0);
-  return token.length === 1 && token in digits ? digits[token] : null;
+  return parseChineseNumberUnder100(token.replace(/〇/g, '零'));
 }
 
 /** 中文/阿拉伯钟点 → 24 小时分钟数；qualifier 决定上下午。 */
@@ -279,6 +261,26 @@ export function extractAvailableWindow(message: string): { start: string; end: s
   const match = text.match(AVAILABLE_WINDOW_PATTERN);
   if (!match) return null;
   const [, q1, h1, m1, half1, mm1, q2, h2, m2, half2, mm2] = match;
+  // 裸数字区间（"一周做2到3天""3到4个小时""18-22元"）不是钟点：至少一侧带 点/:/时 或时段限定词，
+  // 且右邻不能是 天/个/月/小时/块/元/岁/周/年/号 这类量词。
+  const matchEnd = (match.index ?? 0) + match[0].length;
+  const hasClockMarker = /[点:：时]/.test(match[0]) || Boolean(q1) || Boolean(q2);
+  const after = text.slice(matchEnd, matchEnd + 3);
+  if (
+    !hasClockMarker ||
+    /^(?:天|个|月|号|日|小时|钟头|块|元|岁|周|年|次|人|k|K|w|W|万|千|百)/.test(after)
+  ) {
+    return null;
+  }
+  // "下午两点到五点要上课/有事/不行" 是不可用时段，不是可上班时段
+  const afterClause = text.slice(matchEnd, matchEnd + 10);
+  if (
+    /^[^，。！？\n]{0,4}(?:上课|上班|有事|要忙|忙|不行|不能|不方便|走不开|没空|要接)/.test(
+      afterClause,
+    )
+  ) {
+    return null;
+  }
   const start = clockToMinutes(q1 ?? '', h1, m1 ?? mm1, half1);
   const qualifierEnd = q2 && q2 !== '次日' ? q2 : (q1 ?? '');
   let end = clockToMinutes(qualifierEnd, h2, m2 ?? mm2, half2);

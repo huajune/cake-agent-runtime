@@ -307,11 +307,15 @@ export class HardRulesService {
     if (jobQueryClaim) {
       contradictions.push(this.withRulePolicy(jobQueryClaim));
     }
-    const jobFactWithoutProvenance = detectJobFactWithoutProvenance(
-      text,
-      toolCalls,
-      params.priorAssistantTexts ?? [],
-    );
+    // 出处对账依赖会话历史：调用方没带 chatId（advisory 流、debug）时读不到历史，
+    // "无法判出处"不等于"无出处"，跳过而不是误拦。
+    const jobFactWithoutProvenance = params.chatId
+      ? detectJobFactWithoutProvenance(text, toolCalls, [
+          ...(params.priorAssistantTexts ?? []),
+          ...(params.recentUserTexts ?? []),
+          ...(params.userMessage ? [params.userMessage] : []),
+        ])
+      : null;
     if (jobFactWithoutProvenance) {
       contradictions.push(this.withRulePolicy(jobFactWithoutProvenance));
     }

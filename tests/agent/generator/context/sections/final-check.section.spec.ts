@@ -20,9 +20,15 @@ describe('tattoo_self_report_soft_decline (default tattoo gate)', () => {
     (text) => expect(matches('tattoo_self_report_soft_decline', text)).toBe(true),
   );
 
-  it.each(['你们这要求不能有纹身吗', '纹身店在附近', '我朋友有纹身'])(
-    'does not trigger on generic mention without self-report: %s',
-    (text) => expect(matches('tattoo_self_report_soft_decline', text)).toBe(false),
+  it.each([
+    '你们这要求不能有纹身吗',
+    '纹身店在附近',
+    '我朋友有纹身',
+    '我没有纹身',
+    '我身上没有纹身',
+    '我不接受有纹身的岗位',
+  ])('does not trigger on generic mention without self-report: %s', (text) =>
+    expect(matches('tattoo_self_report_soft_decline', text)).toBe(false),
   );
 
   it('injects the shared restricted rejection wording', () => {
@@ -42,9 +48,15 @@ describe('bare_number_reply_is_age_first / gender_self_report_check', () => {
     (text) => expect(matches('bare_number_reply_is_age_first', text)).toBe(false),
   );
 
-  it.each(['我是男生', '本人女', '我女的', '我是男的可以吗'])(
-    'gender self-report triggers: %s',
-    (text) => expect(matches('gender_self_report_check', text)).toBe(true),
+  it.each([
+    '我是男生',
+    '本人女',
+    '我女的',
+    '我是男的可以吗',
+    '你好我是男的',
+    '请问我是男生可以做吗',
+  ])('gender self-report triggers: %s', (text) =>
+    expect(matches('gender_self_report_check', text)).toBe(true),
   );
   it.each(['我是男朋友推荐来的', '我女儿想找工作', '男女不限吗'])(
     'does not trigger on relatives/questions: %s',

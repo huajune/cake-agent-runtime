@@ -7,6 +7,18 @@
  *
  * 岗位/表单等结构化块会保留完整；最终发送片段会去掉末尾标点。
  */
+/** 班次时段字面（HH:MM-HH:MM，含"次日/凌晨"跨午夜）——四处识别共用一份定义。 */
+const SHIFT_TIME_RANGE =
+  '\\d{1,2}[:：]\\d{2}\\s*(?:-|~|—|到|至)\\s*(?:次日|凌晨|第二天|翌日)?\\s*\\d{1,2}[:：]\\d{2}';
+const SHIFT_TIME_RANGE_RE = new RegExp(SHIFT_TIME_RANGE);
+const SHIFT_LABEL_TIME_RANGE_RE = new RegExp(
+  `^(?:早班|中班|晚班|夜班|白班|午班).*${SHIFT_TIME_RANGE}`,
+);
+const LEADING_TIME_RANGE_RE = new RegExp(`^${SHIFT_TIME_RANGE}`);
+const SHIFT_FIELD_TIME_RANGE_RE = new RegExp(
+  `^(?:班次|上班时间|时间)(?:是|为|\\s).*${SHIFT_TIME_RANGE}`,
+);
+
 export class MessageSplitter {
   /**
    * 将消息文本拆分成多个发送片段。
@@ -129,7 +141,11 @@ export class MessageSplitter {
     // 编号岗位条目内部不拆：条目里的补充行（"⚠️ 要求第二职业…"这类自然句）都属于该岗位，
     // 拆成独立消息后再被压缩合并会串到下一家（badcase q4f9va90）。
     if (this.isListItemLine(lines[0])) {
-      return [lines.join('\n')];
+      // 条目块之后紧跟的收尾问句（"你看哪个方便？"）不属于任何条目，仍要单独成一条消息。
+      const tailStart = this.findListTailStart(lines);
+      const block = lines.slice(0, tailStart).join('\n');
+      const tail = lines.slice(tailStart).flatMap((line) => this.splitBySentenceBoundaries(line));
+      return [block, ...tail];
     }
 
     const result: string[] = [];
@@ -190,6 +206,26 @@ export class MessageSplitter {
     }
 
     return result;
+  }
+
+  /**
+   * 编号条目块的收尾起点：从末尾往前，连续的"会话收尾行"（非条目、非结构化、非 ⚠️/注/备注/要求/福利
+   * 补充行，且像问句/引导）都算尾巴；至少保留首行（条目本身）。
+   */
+  private static findListTailStart(lines: string[]): number {
+    let tailStart = lines.length;
+    for (let i = lines.length - 1; i > 0; i -= 1) {
+      const line = lines[i];
+      const isCardLine =
+        this.isListItemLine(line) ||
+        this.isStructuredLine(line) ||
+        this.isFormLine(line) ||
+        /^(?:⚠️|⚠|注[:：]|注意|备注|要求|福利|薪资|班次|地址)/.test(line);
+      const looksLikeClosing = /[？?]$|你看|方便|哪个|哪家|要不要|考虑|感兴趣|合适/.test(line);
+      if (isCardLine || !looksLikeClosing) break;
+      tailStart = i;
+    }
+    return tailStart;
   }
 
   private static splitBySentenceBoundaries(segment: string): string[] {
@@ -281,10 +317,7 @@ export class MessageSplitter {
     if (this.isListItemLine(normalized)) return true;
 
     const hasDistance = /\d+(?:\.\d+)?\s*(?:km|公里)/i.test(normalized);
-    const hasWorkTime =
-      /\d{1,2}[:：]\d{2}\s*(?:-|~|—|到|至)\s*(?:次日|凌晨|第二天|翌日)?\s*\d{1,2}[:：]\d{2}/.test(
-        normalized,
-      );
+    const hasWorkTime = SHIFT_TIME_RANGE_RE.test(normalized);
     const hasSalary =
       /\d+(?:\.\d+)?(?:\s*(?:-|~|—|到|至)\s*\d+(?:\.\d+)?)?\s*元\s*\/?\s*(?:时|小时|月|天|日)/.test(
         normalized,
@@ -328,15 +361,9 @@ export class MessageSplitter {
       /^(?:距离|离你|离您)(?:约|大概|大约|是|为|在|\s)*\d+(?:\.\d+)?\s*(?:km|公里)/i.test(
         normalized,
       ) ||
-      /^(?:早班|中班|晚班|夜班|白班|午班).*\d{1,2}[:：]\d{2}\s*(?:-|~|—|到|至)\s*(?:次日|凌晨|第二天|翌日)?\s*\d{1,2}[:：]\d{2}/.test(
-        normalized,
-      ) ||
-      /^\d{1,2}[:：]\d{2}\s*(?:-|~|—|到|至)\s*(?:次日|凌晨|第二天|翌日)?\s*\d{1,2}[:：]\d{2}/.test(
-        normalized,
-      ) ||
-      /^(?:班次|上班时间|时间)(?:是|为|\s).*\d{1,2}[:：]\d{2}\s*(?:-|~|—|到|至)\s*(?:次日|凌晨|第二天|翌日)?\s*\d{1,2}[:：]\d{2}/.test(
-        normalized,
-      ) ||
+      SHIFT_LABEL_TIME_RANGE_RE.test(normalized) ||
+      LEADING_TIME_RANGE_RE.test(normalized) ||
+      SHIFT_FIELD_TIME_RANGE_RE.test(normalized) ||
       /^薪资(?:是|为|\s).*\d+(?:\.\d+)?(?:\s*(?:-|~|—|到|至)\s*\d+(?:\.\d+)?)?\s*元\s*\/?\s*(?:时|小时|月|天|日)/.test(
         normalized,
       ) ||

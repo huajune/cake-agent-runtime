@@ -204,6 +204,7 @@ describe('matchScheduleConstraint', () => {
       [['morning_compatible'], false, '岗位仅安排早班，与"只做晚班"冲突'],
       [['requires_full_week'], false, '岗位排班未明确含晚班'],
       [['requires_full_week', 'evening_compatible'], true, undefined],
+      [['shift_rotation', 'evening_compatible'], false, '岗位早晚班轮排，与"只做晚班"冲突'],
       [['unknown'], false, '岗位排班未明确含晚班'],
     ] satisfies Array<[ScheduleSemantic[], boolean, string | undefined]>)(
       'handles semantics=%j',

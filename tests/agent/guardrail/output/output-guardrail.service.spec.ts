@@ -25,7 +25,7 @@ describe('OutputGuardrailService', () => {
   });
 
   it('带会话身份时读取在途工单并把 hasActiveBooking / 历史助手文本传给规则层', async () => {
-    const longTerm = { getActiveBookings: jest.fn().mockResolvedValue([]) };
+    const longTerm = { tryGetActiveBookings: jest.fn().mockResolvedValue([]) };
     const withLongTerm = new OutputGuardrailService(
       systemConfig as never,
       ruleGuard as never,
@@ -42,7 +42,7 @@ describe('OutputGuardrailService', () => {
       corpId: 'corp-1',
     });
 
-    expect(longTerm.getActiveBookings).toHaveBeenCalledWith('corp-1', 'user-1');
+    expect(longTerm.tryGetActiveBookings).toHaveBeenCalledWith('corp-1', 'user-1');
     expect(ruleGuard.check).toHaveBeenCalledWith(
       expect.objectContaining({
         hasActiveBooking: false,
@@ -52,7 +52,8 @@ describe('OutputGuardrailService', () => {
   });
 
   it('缺会话身份或长期记忆读失败时 hasActiveBooking 为 undefined（保持 observe）', async () => {
-    const longTerm = { getActiveBookings: jest.fn().mockRejectedValue(new Error('db down')) };
+    // 长期记忆读失败在 LongTermService 内被吞成 null（不是 []），守卫必须把它当未知
+    const longTerm = { tryGetActiveBookings: jest.fn().mockResolvedValue(null) };
     const withLongTerm = new OutputGuardrailService(
       systemConfig as never,
       ruleGuard as never,

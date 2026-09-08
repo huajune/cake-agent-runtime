@@ -710,6 +710,9 @@ describe('ReengagementAgent', () => {
     expect(prompt).toContain('资料已全部收齐');
     expect(prompt).toContain('严禁说"还差/还缺/需要补充资料"');
     expect(prompt).not.toContain('收资状态：已开始但未完成');
+    // 场景默认的目标/生成策略也要跟着子态走，否则 prompt 内部自相矛盾
+    expect(prompt).not.toContain('提醒候选人补齐剩余资料');
+    expect(prompt).toContain('只差候选人确认');
   });
 
   it('uses LLM for booking_incomplete instead of hard-coding missing fields', async () => {

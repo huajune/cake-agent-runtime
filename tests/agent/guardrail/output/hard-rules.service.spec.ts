@@ -10,7 +10,7 @@ describe('HardRulesService — 封闭确定性输出规则', () => {
   });
 
   const check = (replyText: string, extra: Record<string, unknown> = {}) =>
-    service.check({ replyText, toolCalls: [], silent: true, ...extra } as never);
+    service.check({ replyText, toolCalls: [], silent: true, chatId: 'chat-1', ...extra } as never);
   const ids = (replyText: string, extra: Record<string, unknown> = {}) =>
     check(replyText, extra).contradictions.map((item) => item.ruleId);
 

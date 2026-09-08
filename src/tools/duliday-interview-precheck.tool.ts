@@ -601,6 +601,12 @@ export function buildInterviewPrecheckTool(
             fieldsAnsweredThisTurn: formRun.result.answeredThisTurn,
           });
           const scheduleRule = interviewTimeWaitNotice ? '' : buildScheduleRule(windows);
+          // bookableSlots 在候选人指定日期时会把该日排到最前，"最近可约"必须按日期时间重新取最早一场。
+          const nearestBookableSlot = [...bookableSlots]
+            .filter((slot) => slot.bookingAllowed)
+            .sort((a, b) =>
+              `${a.date} ${a.startTime}`.localeCompare(`${b.date} ${b.startTime}`),
+            )[0];
           const upcomingTimeOptions = interviewTimeWaitNotice
             ? []
             : buildUpcomingTimeOptions(windows, 7, 10, availabilityEvaluatedAt);
@@ -660,11 +666,10 @@ export function buildInterviewPrecheckTool(
               bookableSlots,
               // 最近可约时段由工具确定性给出：模型曾把「当天 10:00 前报名」误读成「需提前一天报名」，
               // 跳过截止未过的次日时段只报下周（badcase inz7mjil / cthequif）。
-              nearestBookableSlot: bookableSlots.find((slot) => slot.bookingAllowed)
+              nearestBookableSlot: nearestBookableSlot
                 ? {
-                    label: bookableSlots.find((slot) => slot.bookingAllowed)?.label,
-                    registrationDeadline: bookableSlots.find((slot) => slot.bookingAllowed)
-                      ?.registrationDeadline,
+                    label: nearestBookableSlot.label,
+                    registrationDeadline: nearestBookableSlot.registrationDeadline,
                     instruction:
                       '告知候选人"最近可约"时必须以此为准，不得跳过；registrationDeadline 是该场面试自己的报名截止时刻（如"当天 10:00 前报名"指面试当天 10:00），截止未过即可约，不存在"需要提前一天报名"的默认规则。',
                   }

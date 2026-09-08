@@ -213,6 +213,12 @@ function buildBrandRejectedResult(params: {
 
 // ==================== 输入 Schema ====================
 
+/** 会话已确认城市（sessionFacts.preferences.city，带来源包装）。 */
+function readSessionCity(context: ToolBuildContext): string | null {
+  const value = readFactValue(context.archive.sessionFacts?.preferences?.city);
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
 /** 场所名通用后缀：剥掉后剩下的词头才是库内岗位名里可能出现的简名。 */
 const SEARCH_NAME_GENERIC_SUFFIX =
   /(?:乐园|度假区|主题公园|购物中心|购物公园|商业中心|商业广场|生活广场|国际广场|广场|中心|商场|百货|大厦|大楼|写字楼|商城|商厦|MALL|Mall|mall|门店|旗舰店|餐厅|店)$/u;
@@ -789,6 +795,11 @@ export function buildJobListTool(
             );
           }
         }
+        // 包住模式会去掉坐标做全城召回，上游至少要留一个筛选条件：没传城市时先用会话已确认城市兜底。
+        if (requireAccommodation && cityNameList.length === 0) {
+          const sessionCity = readSessionCity(context);
+          if (sessionCity) cityNameList = [sessionCity];
+        }
         const normalizedCityNameList = cityNameList.map((city) => city.trim()).filter(Boolean);
         const normalizedRegionNameList = regionNameList
           .map((region) => region.trim())
@@ -995,7 +1006,8 @@ export function buildJobListTool(
         const options = {
           includeBasicInfo,
           includeJobSalary,
-          includeWelfare,
+          // 包住筛选读的是福利字段，没有福利块会把所有岗位判成"未写明"整批剔除。
+          includeWelfare: includeWelfare || requireAccommodation,
           includeHiringRequirement,
           includeWorkTime,
           includeInterviewProcess,
@@ -1013,8 +1025,13 @@ export function buildJobListTool(
         );
         // 包住诉求解除距离锚（badcase 9d0o1dfi，2026-09-08 产品裁定）：请求不带坐标做全城召回，
         // 本地坐标只用于显示距离，不再做半径过滤。
+        // 连会话城市都没有时不能把 location 也去掉（上游拒绝无筛选请求），退而按硬上限 30km 召回。
         const effectiveLocation = requireAccommodation
-          ? undefined
+          ? normalizedCityNameList.length > 0
+            ? undefined
+            : location?.longitude != null && location?.latitude != null
+              ? { ...location, range: EXPLICIT_RANGE_CAP_KM * 1000 }
+              : location
           : location?.longitude != null && location?.latitude != null && location.range == null
             ? {
                 ...location,
@@ -1124,6 +1141,7 @@ export function buildJobListTool(
             location: fetchBaseParams.location ?? null,
             candidateScheduleConstraint: candidateScheduleConstraint ?? null,
             candidateLaborForm,
+            requireAccommodation,
           });
           const previousQuery = context.archive.lastJobListQuery ?? null;
           const isRepeatQuery = Boolean(
@@ -1705,16 +1723,23 @@ export function buildJobListTool(
             jobs = accommodationFilterResult.jobs;
             total = jobs.length;
             if (jobs.length === 0) {
+              // 全城扫描有页数上限：截断时只能说"查到的这批里没有"，不能断言全城没有。
+              const scope = distanceScanTruncated
+                ? `已查的前 ${accommodationFilterResult.excluded.length} 个在招岗位里没有包住/提供住宿的`
+                : '目前全城暂时没有包住/提供住宿的岗位';
               return buildToolError({
                 errorType: TOOL_ERROR_TYPES.JOB_LIST_NO_RESULTS,
-                outcome: '全城范围内没有包住/提供住宿的岗位',
+                outcome: distanceScanTruncated
+                  ? '已扫描的在招岗位里没有包住/提供住宿的（全城未扫完）'
+                  : '全城范围内没有包住/提供住宿的岗位',
                 replyInstruction:
                   '本轮已解除距离限制按全城查询，并按候选人「要包住」的硬需求过滤后为空。' +
-                  '如实告诉候选人目前全城暂时没有包住/提供住宿的岗位；**不得把不包住的岗位当替代硬推**，' +
+                  `如实告诉候选人${scope}；**不得把不包住的岗位当替代硬推**，` +
                   '可以问一句是否也考虑不包住但离住处近的岗位，候选人同意后再按常规距离召回。' +
                   '真实无岗不得调用 invite_to_group，不要跨城市推荐。',
                 details: {
                   queryMeta: {
+                    distanceScanTruncated,
                     accommodationFilter: {
                       applied: true,
                       distanceAnchorReleased: true,

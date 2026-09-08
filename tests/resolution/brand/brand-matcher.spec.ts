@@ -154,6 +154,16 @@ describe('resolveBrands - 微信昵称（contact_name，§14.1）', () => {
     ]);
   });
 
+  it('标准名词头式短别名在昵称轨仍算品牌信号（盒马→盒马鲜生、瑞幸→瑞幸咖啡）', () => {
+    const withPrefixAlias: BrandItem[] = [
+      ...catalog,
+      { id: 10998, name: '盒马鲜生', aliases: ['盒马'] },
+    ];
+    // 2 字别名本就只走整词等值匹配（不做子串包含），昵称恰为该词时是真实品牌信号
+    expect(names(resolveBrands('盒马', 'contact_name', withPrefixAlias))).toEqual(['盒马鲜生']);
+    expect(names(resolveBrands('瑞幸', 'contact_name', withPrefixAlias))).toEqual(['瑞幸咖啡']);
+  });
+
   it('"肯德基-上海" 微信昵称产生高置信品牌', () => {
     const results = resolveBrands('肯德基-上海', 'contact_name', catalog);
     expect(names(results)).toEqual(['肯德基']);

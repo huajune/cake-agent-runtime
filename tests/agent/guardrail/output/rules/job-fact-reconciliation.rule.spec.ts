@@ -24,7 +24,9 @@ describe('job_query_claim_without_query（零工具轮宣称查过）', () => {
     '之前查到的那家肯德基还在招',
     '你发个定位我帮你查下附近的岗位',
     '我再帮你看看其他合适的',
-  ])('回指历史与将来时不判：%s', (reply) => {
+    '我看了下你的健康证，日期还在有效期内',
+    '我看了下你发的定位，离门店不远',
+  ])('回指历史、将来时与非查岗的"看了下"不判：%s', (reply) => {
     expect(detectJobQueryClaimWithoutQuery(reply, [])).toBeNull();
   });
 });
@@ -57,6 +59,26 @@ describe('job_fact_without_provenance（零工具轮的无来源岗位数字）'
   it('本轮有查岗工具即放行', () => {
     expect(
       detectJobFactWithoutProvenance('长风大悦城 M Stand，22-28 元/时', [jobListCall], history),
+    ).toBeNull();
+  });
+
+  it('本轮调了工单类工具（取消/改约）时"帮你查了下工单"是真查询', () => {
+    const cancelCall = { toolName: 'duliday_cancel_work_order', args: {}, result: {} } as never;
+    expect(
+      detectJobQueryClaimWithoutQuery('我帮你查了下工单，已经取消了', [cancelCall]),
+    ).toBeNull();
+  });
+
+  it('候选人自己刚说的数字复述回去不算编造；小时数零填充后同一时段视为同一事实', () => {
+    expect(
+      detectJobFactWithoutProvenance(
+        '25元/时那家我记着呢，等下帮你确认',
+        [],
+        [...history, '那个25元/时的还在招吗'],
+      ),
+    ).toBeNull();
+    expect(
+      detectJobFactWithoutProvenance('班次 09:00-18:00', [], ['班次是 9:00-18:00']),
     ).toBeNull();
   });
 
