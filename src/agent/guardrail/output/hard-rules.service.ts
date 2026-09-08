@@ -262,7 +262,6 @@ export class HardRulesService {
       contradictions.push(this.withRulePolicy(requestedBrandMismatch));
     }
 
-
     const proactiveInsuranceMention = detectProactiveInsurancePolicyMention(
       text,
       params.userMessage,
