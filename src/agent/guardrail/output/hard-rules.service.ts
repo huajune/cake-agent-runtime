@@ -2,6 +2,7 @@ import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { AlertLevel } from '@enums/alert.enum';
 import type { AgentMemorySnapshot, AgentToolCall } from '@agent/generator/generator.types';
+import type { ActiveBookingEntry } from '@memory/long-term/long-term.types';
 import { AlertNotifierService } from '@notification/services/alert-notifier.service';
 import type {
   HardRuleOverrideMode,
@@ -131,10 +132,11 @@ export class HardRulesService {
     /** 会话内历史助手回复（不含本轮），供“无来源岗位事实”对账。 */
     priorAssistantTexts?: readonly string[];
     /**
-     * 候选人名下是否有在途工单（长期记忆 active_booking）。undefined=未知（只落 observe），
-     * false=确证没有任何工单——完成时态的“已帮你约好”此时是假回执，升 revise。
+     * 候选人名下在途工单（长期记忆 active_booking）。undefined=未知（只落 observe），
+     * []=确证没有任何工单——完成时态的“已帮你约好”此时是假回执，升 revise；有工单但都不是
+     * 本轮焦点岗位时同样升 revise。
      */
-    hasActiveBooking?: boolean;
+    activeBookings?: readonly ActiveBookingEntry[];
     /** 静默模式（advisory）：只返回裁决，由调用方避免写生产守卫日志。 */
     silent?: boolean;
     /** 兼容既有托管配置的运行时降档；只允许 off/observe。 */
@@ -285,7 +287,10 @@ export class HardRulesService {
     const bookingDoneClaimWithoutSubmission = detectBookingDoneClaimWithoutSubmission(
       text,
       toolCalls,
-      params.hasActiveBooking,
+      {
+        activeBookings: params.activeBookings,
+        focusJobId: params.memorySnapshot?.currentFocusJob?.jobId,
+      },
     );
     if (bookingDoneClaimWithoutSubmission) {
       contradictions.push(this.withRulePolicy(bookingDoneClaimWithoutSubmission));

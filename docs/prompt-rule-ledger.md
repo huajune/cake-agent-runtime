@@ -516,6 +516,9 @@ FC 编号保留为历史别名：
 `booking_done_claim_no_work_order`、`job_query_claim_without_query`、`job_fact_without_provenance`（2026-09-08 岗位事实对账批：
 零工具轮宣称"查了/没查到"、报出会话内无来源的薪资/距离/班次数字、长期记忆确证无在途工单却宣称"已帮你约好"——
 badcase 5j1mbgi8 / kwxk74gn / kb629uko / wvr7pejq；教侧配对手册"岗位事实以本轮工具结果为准"与 final-check 常驻自检）。
+其中 `booking_done_claim_no_work_order` 于 2026-09-09 扩一档判据：名下有在途工单、但每张工单的 `job_id` 都 ≠ 本轮焦点岗位
+`currentFocusJob.jobId` 时，"跨轮复述真实工单"的解释不成立，同样 revise（chat 6a97b336：09-02 真约 A 店、09-07 换店后零工具连发
+"李霄/周建青的报名已提交成功"，武进万达店从未建单，候选人空等两天）。焦点岗位未知或老行 `job_id` 为空时不升档。
 
 其中 `cancel_done_claim_failed_tool` 同属执行档（见下文取消/改期链路）。
 
@@ -533,9 +536,18 @@ observe 哨兵（只落档不拦截，5 条）：`requested_brand_mismatch`、`s
 工具调用文本化泄漏（`invalid_model_output` 扩形态）：模型不走 tool-call 通道、把调用写成
 JSON 文本时，该工具本轮并未执行，据此宣称的报名/预约/取消/拉群全是空的。判据 `containsLeakedToolCallBlob`
 取协议专属键名对（名字键 + 入参键同处一个 blob），不取工具名清单（清单会漂移，MCP 动态工具也不在表内）。
-**判据一处、消费两处**：blob 进候选人可见正文由本规则 BLOCK；blob 只落 reasoning、正文干净时守卫看不到，
+**正文与 reasoning 分两套判据**：blob 进候选人可见正文由本规则 BLOCK；只落 reasoning、正文干净时守卫看不到，
 改由 `GeneratorAgent.retryTextualToolCall` 在定稿前带工具重生成一次（前置条件本轮零工具调用 = 无既成副作用）。
 出站守卫治不了后者——入参无 reasoning，且 repair 只能改文本、变不出没发生过的工单。
+
+> **2026-09-09 reasoning 侧判据拓宽**：生产 14 天零工具轮里模型把工具往返演在 reasoning 的形态，JSON 调用只占
+> 1/8，其余是 XML/方括号调用（`<function_calls><invoke name=…>`、`[API 调用: geocode]…[API 返回:…]`）与整份假回执
+> （`{"jobList":[…]}`），后两类全部投递了假预约/编造门店（chat 6aa0cf1e / 6a97b336 / 6a978813）。generator 消费点改用
+> `containsSimulatedToolExchange` ⊇ 旧判据：另认调用标记、回执标记，以及结构性的"同构记录表 JSON"（数组内 ≥2 个对象
+> 共享 ≥3 个相同顶层键——思考不会长成记录表，只有回执会；不猜 `jobList`/`results` 键名，单键 proposal 数组不命中）。
+> 正文 BLOCK 判据不动（XML 标记进正文已由 `internal_output_leak` 管）。守卫 `replan` 档只兜岗位事实这一种下游症状，
+> 假预约它够不到，所以修复点必须留在定稿前。纯叙述型（reasoning 白话"先调用 booking…"后直接写回执）不进本判据——
+> 那是语义判断，靠 `booking_done_claim_no_work_order` 的焦点岗位对账兜。
 
 推理/自检段落泄漏（`internal_output_leak` 扩形态，2026-09-02，batch …\_1788340087325 / …\_1788316206463）：
 模型把「发送前自检」逐条复盘（`---` + `自检说明：` + 1/2/3/4）追加在正文之后，或以残缺推理标签

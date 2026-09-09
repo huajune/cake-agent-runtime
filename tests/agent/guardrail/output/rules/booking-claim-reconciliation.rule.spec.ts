@@ -113,22 +113,61 @@ describe('detectCancelDoneClaimWithoutSubmission', () => {
 });
 
 describe('booking_done_claim_no_work_order（长期记忆确证无在途工单时升 revise）', () => {
+  const booking = (job_id: number | null | undefined) => ({
+    work_order_id: 1,
+    linked_at: '2026-09-02',
+    job_id,
+  });
+
   it('零 booking + 无在途工单 → revise（badcase wvr7pejq）', () => {
-    const hit = detectBookingDoneClaimWithoutSubmission(
-      '预约成功\n\n面试地址：勤奋路103号',
-      [],
-      false,
-    );
+    const hit = detectBookingDoneClaimWithoutSubmission('预约成功\n\n面试地址：勤奋路103号', [], {
+      activeBookings: [],
+    });
     expect(hit?.ruleId).toBe('booking_done_claim_no_work_order');
     expect(hit?.action).toBe('revise');
   });
 
   it('在途工单存在或未知时保持 observe', () => {
-    expect(detectBookingDoneClaimWithoutSubmission('已经帮你约好了', [], true)?.ruleId).toBe(
+    expect(
+      detectBookingDoneClaimWithoutSubmission('已经帮你约好了', [], {
+        activeBookings: [booking(528334)],
+      })?.ruleId,
+    ).toBe('booking_done_claim_without_submission');
+    expect(detectBookingDoneClaimWithoutSubmission('已经帮你约好了', [], {})?.ruleId).toBe(
       'booking_done_claim_without_submission',
     );
-    expect(detectBookingDoneClaimWithoutSubmission('已经帮你约好了', [], undefined)?.ruleId).toBe(
-      'booking_done_claim_without_submission',
+  });
+
+  it('在途工单都不是本轮焦点岗位 → revise（chat 6a97b336 换店重约后零工具宣称"报名已提交成功"）', () => {
+    const hit = detectBookingDoneClaimWithoutSubmission(
+      '李霄的报名已提交成功\n\n面试时间：明天（9月8日）下午 2 点\n门店：必胜客武进万达店',
+      [],
+      { activeBookings: [booking(529171)], focusJobId: 528334 },
     );
+    expect(hit?.ruleId).toBe('booking_done_claim_no_work_order');
+    expect(hit?.action).toBe('revise');
+  });
+
+  it('在途工单就是焦点岗位 → 跨轮复述，保持 observe', () => {
+    expect(
+      detectBookingDoneClaimWithoutSubmission('之前已帮你约好了，明天下午两点', [], {
+        activeBookings: [booking(529171), booking(528334)],
+        focusJobId: 528334,
+      })?.ruleId,
+    ).toBe('booking_done_claim_without_submission');
+  });
+
+  it('焦点岗位未知或老行 job_id 为空时不升档', () => {
+    expect(
+      detectBookingDoneClaimWithoutSubmission('已经帮你约好了', [], {
+        activeBookings: [booking(529171)],
+      })?.ruleId,
+    ).toBe('booking_done_claim_without_submission');
+    expect(
+      detectBookingDoneClaimWithoutSubmission('已经帮你约好了', [], {
+        activeBookings: [booking(null), booking(529171)],
+        focusJobId: 528334,
+      })?.ruleId,
+    ).toBe('booking_done_claim_without_submission');
   });
 });

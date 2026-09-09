@@ -67,8 +67,9 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
       '<think> 标签、[NO_REPLY] 类控制标记、纯数字输出，或协议名字键（tool_name/toolName/tool_use 等）' +
       '与入参键同处一个 JSON blob。',
     residualRisk:
-      '不对一般语言质量做语义判断。工具调用泄漏进 reasoning（正文干净）时守卫看不到——' +
-      '那一路由 GeneratorAgent 在定稿前带工具重生成一次，判据同源 containsLeakedToolCallBlob。',
+      '不对一般语言质量做语义判断。模型把工具往返演进 reasoning（正文干净）时守卫看不到——' +
+      '那一路由 GeneratorAgent 在定稿前带工具重生成一次，判据 containsSimulatedToolExchange ⊇ 本规则的' +
+      'containsLeakedToolCallBlob，另认 XML/方括号调用标记、回执标记与同构记录表 JSON 假回执。',
     verification: V,
   },
   {
@@ -243,10 +244,13 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     id: 'booking_done_claim_no_work_order',
     action: GUARDRAIL_ACTION.REVISE,
     priority: GUARDRAIL_PRIORITY.P0,
-    description: '零 booking 调用、无在途工单却宣称"已帮你报好/报名成功"。',
-    riskGoal: '堵住 observe 哨兵管不了的假回执：候选人据此等面试，工单根本不存在。',
-    exogenousSignal: '本轮 booking 调用存在性 + precheck 在途工单 + 长期记忆 active_booking 为空。',
-    residualRisk: '长期记忆读失败时降级为 observe 档（hasActiveBooking=undefined），不误拦。',
+    description:
+      '零 booking 调用、无在途工单（或在途工单都不是本轮焦点岗位）却宣称"已帮你报好/报名成功"。',
+    riskGoal: '堵住 observe 哨兵管不了的假回执：候选人据此等面试，这家店的工单根本不存在。',
+    exogenousSignal:
+      '本轮 booking 调用存在性 + precheck 在途工单 + 长期记忆 active_booking（为空，或每张 job_id 都≠焦点岗位 jobId）。',
+    residualRisk:
+      '长期记忆读失败时降级为 observe 档（activeBookings=undefined），不误拦；焦点岗位未知或老行 job_id 为空时同样只落 observe。',
     verification: 'tests/agent/guardrail/output/rules/booking-claim-reconciliation.rule.spec.ts',
     feedbackToGenerator:
       '上一版回复宣称已帮候选人报好名/预约成功，但预约从未提交（本轮无 booking，候选人名下也没有工单）。' +

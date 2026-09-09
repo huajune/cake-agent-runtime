@@ -1,4 +1,5 @@
 import type { AgentToolCall } from '@agent/generator/generator.types';
+import type { ActiveBookingEntry } from '@memory/long-term/long-term.types';
 import { GUARDRAIL_ACTION } from '@shared-types/guardrail.contract';
 import type { RuleContradiction } from '../output-rule.types';
 import { asRecord } from '../output-rule.types';
@@ -24,6 +25,10 @@ import { asRecord } from '../output-rule.types';
  * 已知残余风险：跨轮提醒（前几轮已真实建单，本轮零工具复述"已帮你约好"）会命中。
  * 因此按目录发牌纪律 OBSERVE 入场，先落档累计判例分辨"假宣称 vs 合法提醒"的占比，
  * 满足升档门槛（≥2 周判例、精确率 ≥90%）再申请动手权。
+ *
+ * "跨轮复述"这个解释只在宣称的岗位就是在途工单那个岗位时成立：候选人名下有工单、但本轮焦点
+ * 岗位与所有在途工单的 job_id 都不同时（换店重约，chat 6a97b336：09-02 真约 A 店，09-07
+ * 零工具宣称 B 店"报名已提交成功"），完成时态同样是假回执，与"名下无工单"同档处理。
  */
 const BOOKING_DONE_CLAIM_PATTERN =
   /已(?:经)?(?:帮你|给你|替你)(?:报好名?|报上名?|提交(?:了)?(?:报名|预约)|报名|预约|登记好|约好)|(?:报名|预约)(?:已(?:经)?)?(?:提交成功|成功)(?!后|之后|以后|後|的话)|已(?:经)?(?:报好名|登记好)/u;
@@ -46,10 +51,28 @@ function hasActiveWorkOrderEvidence(toolCalls: readonly AgentToolCall[]): boolea
   });
 }
 
+export interface BookingClaimContext {
+  /** 候选人名下在途工单（长期记忆 active_booking）。undefined=读失败/未知，[]=确证没有。 */
+  activeBookings?: readonly ActiveBookingEntry[];
+  /** 本轮焦点岗位 jobId（会话工作台 currentFocusJob）。 */
+  focusJobId?: number;
+}
+
+/**
+ * 在途工单能否解释本轮的完成时态：名下有工单、焦点岗位已知、且每张工单都带 job_id 却没有一张
+ * 等于焦点岗位 → 不能解释。任一信息缺失时按"能解释"处理（老行 job_id 可能为空，不得升档误拦）。
+ */
+function activeBookingsCoverFocusJob(context: BookingClaimContext): boolean {
+  const bookings = context.activeBookings ?? [];
+  if (bookings.length === 0 || context.focusJobId === undefined) return true;
+  if (bookings.some((entry) => typeof entry.job_id !== 'number')) return true;
+  return bookings.some((entry) => entry.job_id === context.focusJobId);
+}
+
 export function detectBookingDoneClaimWithoutSubmission(
   text: string,
   toolCalls: AgentToolCall[] = [],
-  hasActiveBooking?: boolean,
+  context: BookingClaimContext = {},
 ): RuleContradiction | null {
   if (!text.trim()) return null;
   if (!BOOKING_DONE_CLAIM_PATTERN.test(text)) return null;
@@ -58,12 +81,22 @@ export function detectBookingDoneClaimWithoutSubmission(
 
   // 观察期数据（09-02 起 8 例）证实 observe 档的假阳几乎全是跨轮复述真实工单。长期记忆里
   // 确证没有任何在途工单时，这种解释不成立——完成时态就是假回执（badcase wvr7pejq），升执行档。
-  if (hasActiveBooking === false) {
+  if (context.activeBookings !== undefined && context.activeBookings.length === 0) {
     return {
       ruleId: 'booking_done_claim_no_work_order',
       label:
         '回复用完成时态宣称报名/预约已办好（"已帮你报好/报名成功"），但本轮没有 booking 调用、' +
         'precheck 未返回在途工单、候选人名下也没有任何在途工单——预约从未提交',
+      action: GUARDRAIL_ACTION.REVISE,
+    };
+  }
+
+  if (!activeBookingsCoverFocusJob(context)) {
+    return {
+      ruleId: 'booking_done_claim_no_work_order',
+      label:
+        '回复用完成时态宣称报名/预约已办好（"已帮你报好/报名成功"），但本轮没有 booking 调用、' +
+        'precheck 未返回在途工单，候选人名下的在途工单也都不是本轮焦点岗位——这家店的预约从未提交',
       action: GUARDRAIL_ACTION.REVISE,
     };
   }

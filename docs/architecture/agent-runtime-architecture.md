@@ -181,7 +181,7 @@ GeneratorAgent.invoke(params)
   │    tools       = workingMemory.tools
   │    stopWhen    = 步数上限 / skip_reply / 任一 shortCircuited tool result
   │    prepareStep = 每步动态收紧 activeTools
-  ├─ retryTextualToolCall()（模型把工具调用写成文本时，仅纠正重试一次）
+  ├─ retryTextualToolCall()（零工具轮 reasoning 模拟了工具调用/回执时，带工具纠正重试一次）
   ├─ recoverEmptyTextResult()（仅兜底一次、禁用工具）
   └─ attachTurnEnd()（总是挂载 runTurnEnd）
 ```

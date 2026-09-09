@@ -3,6 +3,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 import { MessageWindowService } from '@memory/short-term/message-window.service';
 import { LongTermService } from '@memory/long-term/long-term.service';
+import type { ActiveBookingEntry } from '@memory/long-term/long-term.types';
 import type { AgentMemorySnapshot, AgentToolCall } from '@agent/generator/generator.types';
 import type {
   GuardViolation,
@@ -66,15 +67,14 @@ export class OutputGuardrailService {
    * 候选人名下是否有在途工单。读不到（无会话身份 / 长期记忆不可用 / 读失败）返回 undefined，
    * 让 booking 完成态哨兵保持 observe 档，不因基础设施抖动误拦。
    */
-  private async readHasActiveBooking(
+  private async readActiveBookings(
     corpId: string | undefined,
     userId: string | undefined,
-  ): Promise<boolean | undefined> {
+  ): Promise<readonly ActiveBookingEntry[] | undefined> {
     if (!this.longTerm || !corpId || !userId) return undefined;
     try {
       const bookings = await this.longTerm.tryGetActiveBookings(corpId, userId);
-      if (bookings === null) return undefined;
-      return bookings.length > 0;
+      return bookings ?? undefined;
     } catch (error: unknown) {
       this.logger.warn(`[OutputGuardrail] 读取在途工单失败，按未知处理: ${toErrorMessage(error)}`);
       return undefined;
@@ -85,10 +85,10 @@ export class OutputGuardrailService {
     const reply = input.reply?.trim() ?? '';
     if (!reply) return this.passDecision([], []);
 
-    const [recent, runtimeConfig, hasActiveBooking] = await Promise.all([
+    const [recent, runtimeConfig, activeBookings] = await Promise.all([
       this.readRecentTexts(input.chatId),
       this.systemConfig.getAgentReplyConfig(),
-      this.readHasActiveBooking(input.corpId, input.userId),
+      this.readActiveBookings(input.corpId, input.userId),
     ]);
     const pruned = OutboundReplySanitizer.pruneRepeatedSegments(
       reply,
@@ -110,7 +110,7 @@ export class OutputGuardrailService {
       recentMessages: recent.messages,
       memorySnapshot: input.memorySnapshot,
       priorAssistantTexts: recent.assistantTexts,
-      hasActiveBooking,
+      activeBookings,
       silent: input.silent,
       hardRuleOverrides: runtimeConfig.hardRuleOverrides ?? {},
     });

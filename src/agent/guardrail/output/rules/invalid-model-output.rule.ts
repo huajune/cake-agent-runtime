@@ -46,6 +46,87 @@ export function containsLeakedToolCallBlob(content: string): boolean {
 }
 
 /**
+ * 模拟工具往返的其余形态——只供 generator 零工具重生成消费，不进正文 BLOCK 判据
+ * （XML 标记进正文已由 internal_output_leak 管）。
+ *
+ * 生产里模型把工具往返演在 reasoning 里的形态远不止 JSON 调用一种（14 天零工具轮：
+ * JSON 调用 1 例、XML/方括号调用 4 例、回执形 JSON 3 例，后两类全部投递了假预约/假岗位）：
+ * - 调用标记：`<function_calls>` / `<tool_calls>` / `<invoke name=` / `<function=…>` /
+ *   `<tool_call>` / `[API 调用: geocode]`；
+ * - 回执标记：`<function result>` / `</tool_response>` / `<tool_result` / `[API 返回:`；
+ * - 回执形 JSON：数组内 ≥2 个对象共享 ≥3 个相同顶层键（chat 6aa0cf1e 的 `{"jobList":[…]}`）。
+ *   思考不会长成同构记录表，只有工具回执会；不猜 `jobList`/`results` 之类键名。
+ */
+const SIMULATED_TOOL_CALL_MARKUP_PATTERN =
+  /<function_calls>|<tool_calls>|<invoke\s+name=|<function[=\s][A-Za-z_]|<tool_call>|\[API 调用/u;
+const SIMULATED_TOOL_RESULT_MARKUP_PATTERN =
+  /<function result>|<\/tool_response>|<tool_result|\[API 返回/u;
+
+/** 同构记录表：数组元素数与共享键数的下限。候选人贴的 proposal 数组只有单键 `properties`，不命中。 */
+const RECORD_ARRAY_MIN_ITEMS = 2;
+const RECORD_ARRAY_MIN_SHARED_KEYS = 3;
+
+export function containsSimulatedToolExchange(content: string): boolean {
+  const text = content?.trim() ?? '';
+  if (!text) return false;
+  if (containsLeakedToolCallBlob(text)) return true;
+  if (SIMULATED_TOOL_CALL_MARKUP_PATTERN.test(text)) return true;
+  if (SIMULATED_TOOL_RESULT_MARKUP_PATTERN.test(text)) return true;
+  return containsHomogeneousRecordArray(text);
+}
+
+function containsHomogeneousRecordArray(text: string): boolean {
+  const arrayStart = /\[\s*\{/gu;
+  for (const match of text.matchAll(arrayStart)) {
+    const start = match.index ?? 0;
+    const end = findBalancedArrayEnd(text, start);
+    if (end < 0) continue;
+    if (isHomogeneousRecordArray(text.slice(start, end + 1))) return true;
+  }
+  return false;
+}
+
+/** 从 `[` 起按括号深度找到配对的 `]`（跳过字符串字面量）；不配对返回 -1。 */
+function findBalancedArrayEnd(text: string, start: number): number {
+  let depth = 0;
+  let inString = false;
+  for (let i = start; i < text.length; i += 1) {
+    const ch = text[i];
+    if (inString) {
+      if (ch === '\\') i += 1;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    else if (ch === '[' || ch === '{') depth += 1;
+    else if (ch === ']' || ch === '}') {
+      depth -= 1;
+      if (depth === 0) return ch === ']' ? i : -1;
+    }
+  }
+  return -1;
+}
+
+function isHomogeneousRecordArray(slice: string): boolean {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(slice);
+  } catch {
+    return false;
+  }
+  if (!Array.isArray(parsed) || parsed.length < RECORD_ARRAY_MIN_ITEMS) return false;
+  const records = parsed.filter(
+    (item): item is Record<string, unknown> =>
+      typeof item === 'object' && item !== null && !Array.isArray(item),
+  );
+  if (records.length !== parsed.length) return false;
+  const shared = records
+    .map((record) => new Set(Object.keys(record)))
+    .reduce((acc, keys) => new Set([...acc].filter((key) => keys.has(key))));
+  return shared.size >= RECORD_ARRAY_MIN_SHARED_KEYS;
+}
+
+/**
  * Detect malformed model output before the outbound sanitizer removes evidence.
  *
  * `reasoning_content` is separated by the AI SDK. A `<think>` tag in visible text therefore
