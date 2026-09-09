@@ -8,6 +8,51 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v11.5.0`
+**最近更新**: `2026-09-09`
+**来源分支**: `develop`
+**累计 PR**: 1
+
+### 更新摘要
+- PR #1238 表单行剥回抄占位符前缀 + 年龄认中文数字
+- PR #1238 守卫新增 replan 档同参重生成
+- PR #1238 **规则动作加第四档 `replan`**：`GUARDRAIL_ACTION` / `GUARDRAIL_DECISION` / `GUARDRAIL_REPAIR_MODE` 同名同义，出站裁决 pass < observe < revise < replan < block。`deriveRulePolicy` 派生 `repairMode='replan'`。
+- PR #1238 **两条零工具编造规则改 replan 档**（catalog + rule 文件），catalog.spec 锁死名单，任何规则不得声明 `repairToolNames`。
+- PR #1238 **runner 只执行不识别规则**：`decision.repairMode === 'replan'` 时用完全相同的 params 重进一次 generator（不注入守卫反馈、不裁工具集），reviewedToolCalls 取重生成轨迹，首版永不回退、二审不 fail-open，仍不过则 `replan_exhausted` 静默；干净通过 reasonCode `replanned`。执行层唯一守门：首版已提交副作用时降级 rewrite 并告警。
+- PR #1238 **回归闸**：`firstRepairMode='replan'` 时跳过 structure_collapsed / polarity_reversed（首版岗位事实本身就是违规内容）。
+- PR #1238 前端 `GuardrailDecision` / 修复方式 / reasonCode 词表同步；文档（guardrail-quality-system §2/§3、KB06、KB07、security-guardrails、bitter-lessons L3、rules-vs-semantics）改口为"旧实现已删、原意重新占位"。
+
+### 新功能
+- PR #1238 **规则动作加第四档 `replan`**：`GUARDRAIL_ACTION` / `GUARDRAIL_DECISION` / `GUARDRAIL_REPAIR_MODE` 同名同义，出站裁决 pass < observe < revise < replan < block。`deriveRulePolicy` 派生 `repairMode='replan'`。
+- PR #1238 **两条零工具编造规则改 replan 档**（catalog + rule 文件），catalog.spec 锁死名单，任何规则不得声明 `repairToolNames`。
+- PR #1238 **runner 只执行不识别规则**：`decision.repairMode === 'replan'` 时用完全相同的 params 重进一次 generator（不注入守卫反馈、不裁工具集），reviewedToolCalls 取重生成轨迹，首版永不回退、二审不 fail-open，仍不过则 `replan_exhausted` 静默；干净通过 reasonCode `replanned`。执行层唯一守门：首版已提交副作用时降级 rewrite 并告警。
+- PR #1238 **回归闸**：`firstRepairMode='replan'` 时跳过 structure_collapsed / polarity_reversed（首版岗位事实本身就是违规内容）。
+- PR #1238 守卫新增 replan 档同参重生成
+
+### 问题修复
+- PR #1238 前端 `GuardrailDecision` / 修复方式 / reasonCode 词表同步；文档（guardrail-quality-system §2/§3、KB06、KB07、security-guardrails、bitter-lessons L3、rules-vs-semantics）改口为"旧实现已删、原意重新占位"。
+
+### 优化调整
+- 无
+
+### 运维与流程
+- PR #1238 表单行剥回抄占位符前缀 + 年龄认中文数字
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #1238 `pnpm run ci:check` 全绿：6748 passed / 5 skipped。
+- PR #1238 新增测试：回归闸 2 例、runner 4 例（同参重进并采纳 / 重生成仍违规 block 不回退 / 已提交副作用降级 rewrite / 遗留 repairToolNames 不注入 params）、catalog 名单 1 例；词表五档、规则 action 断言已更新。
+- PR #1238 无 DB 迁移，无 prompt 侧规则变更（不涉及 prompt-rule-ledger）。
+<!-- release:pending:end -->
+
 ## [11.4.2] - 2026-09-08
 
 **来源分支**: `develop`
