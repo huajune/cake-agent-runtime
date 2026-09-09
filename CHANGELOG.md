@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [11.5.0] - 2026-09-09
 
-**预计版本**: `v11.5.0`
-**最近更新**: `2026-09-09`
 **来源分支**: `develop`
-**累计 PR**: 1
 
 ### 更新摘要
 - PR #1238 表单行剥回抄占位符前缀 + 年龄认中文数字
@@ -51,7 +47,6 @@
 - PR #1238 `pnpm run ci:check` 全绿：6748 passed / 5 skipped。
 - PR #1238 新增测试：回归闸 2 例、runner 4 例（同参重进并采纳 / 重生成仍违规 block 不回退 / 已提交副作用降级 rewrite / 遗留 repairToolNames 不注入 params）、catalog 名单 1 例；词表五档、规则 action 断言已更新。
 - PR #1238 无 DB 迁移，无 prompt 侧规则变更（不涉及 prompt-rule-ledger）。
-<!-- release:pending:end -->
 
 ## [11.4.2] - 2026-09-08
 
