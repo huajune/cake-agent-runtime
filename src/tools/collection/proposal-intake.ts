@@ -272,13 +272,39 @@ export function parseTemplateLines(
   for (const rawLine of text.split(/\r?\n/u)) {
     const matched = /^\s*([^：:\n]+?)\s*[：:]\s*(.+?)\s*$/u.exec(rawLine);
     if (!matched) continue;
-    const [, label, value] = matched;
+    const [, label, rawValue] = matched;
     const field = findFieldByTitle(contract, label);
     if (!field) continue;
-    if (isPlaceholderEcho(field, value)) continue;
+    const value = stripEchoedPlaceholderPrefix(field, rawValue);
+    // 剥完为空 = 原样回抄了占位提示，不是答案。
+    if (!value) continue;
     lines.push({ field, value, rawLine: rawLine.trim() });
   }
   return lines;
+}
+
+/**
+ * 候选人在占位提示后面直接追加答案（「社会身份：（第二职业/全日制在校学生/社会人士）：社会人士」）
+ * 时，冒号右侧仍带着我们印的选项列表。不剥掉就等于把三个选项连同答案一起喂给适配器——
+ * 身份识别器先读到「在校学生」就判成学生（生产实测判反，候选人确认了错值后报名被退回）。
+ *
+ * 只剥**逐字等于本字段占位符**的前缀，随后吃掉候选人补的那个冒号；不做任何括号语义猜测，
+ * 候选人自己写的括号原样保留交给适配器。
+ */
+function stripEchoedPlaceholderPrefix(field: ContractFieldDef, value: string): string {
+  const trimmed = value.trim();
+  for (const placeholder of [
+    optionPlaceholder(field),
+    forcedOptionPlaceholder(field),
+    filePlaceholder(field),
+  ]) {
+    if (!placeholder || !trimmed.startsWith(placeholder)) continue;
+    return trimmed
+      .slice(placeholder.length)
+      .replace(/^\s*[：:]?\s*/u, '')
+      .trim();
+  }
+  return trimmed;
 }
 
 /**

@@ -623,6 +623,30 @@ describe('防线 4 · 臆造防线：sourceText 回查失败的提案零入账',
     expect(result.outcome).toBe('accepted');
   });
 
+  // 生产 chat 6a9fc327：候选人说「二十六岁」，模型作证 26 被判"原话未逐字含该值"，
+  // 改投「二十六」又被形态门拒；候选人直到自己贴表单行写了 26 才过。中文数字是封闭换算。
+  it('中文数字年龄：「二十六岁」→ 26 放行，「二十六」也落成规范形 26', () => {
+    const text = '二十六岁';
+    const numeric = applyFieldValueProposal(form(), AGE_FIELD, {
+      value: '26',
+      sourceText: text,
+      producer: 'model',
+      candidateTexts: [text],
+      messages: [userMessage(text)],
+    });
+    expect(numeric.outcome).toBe('accepted');
+
+    const spoken = applyFieldValueProposal(form(), AGE_FIELD, {
+      value: '二十六',
+      sourceText: text,
+      producer: 'model',
+      candidateTexts: [text],
+      messages: [userMessage(text)],
+    });
+    expect(spoken.outcome).toBe('accepted');
+    expect(spoken.form.slots[AGE_FIELD.labelId].value?.value).toBe('26');
+  });
+
   it('复算不出等价值时仍然拒收——放宽的只是"逐字"，不是反臆造本身', () => {
     const text = '我今年不太想说年龄';
     const result = applyFieldValueProposal(form(), AGE_FIELD, {
