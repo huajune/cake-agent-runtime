@@ -255,7 +255,7 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'job_query_claim_without_query',
-    action: GUARDRAIL_ACTION.REVISE,
+    action: GUARDRAIL_ACTION.REPLAN,
     priority: GUARDRAIL_PRIORITY.P1,
     description: '零查岗工具却用完成时态宣称本轮"帮你查了下/没查到/系统里没有"。',
     riskGoal: '查询从未发生时不得谎称查过，防止"没查到"直接把候选人送去拉群或流失。',
@@ -268,7 +268,7 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'job_fact_without_provenance',
-    action: GUARDRAIL_ACTION.REVISE,
+    action: GUARDRAIL_ACTION.REPLAN,
     priority: GUARDRAIL_PRIORITY.P1,
     description: '零查岗工具轮报出会话内从未出现过的岗位薪资/距离/班次数字。',
     riskGoal: '岗位量化事实必须有来源（本轮工具或自己说过的话），杜绝凭空编门店薪资。',

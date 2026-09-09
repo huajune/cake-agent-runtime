@@ -419,6 +419,147 @@ describe('AgentRunnerService.runInboundTurn', () => {
     );
   });
 
+  describe('replan-tier repair (same-params regeneration)', () => {
+    // trace batch_6aa0cf1e…：首版零工具却报出五家不存在的门店，rewrite 删数字留假门店，
+    // 回归闸又把编造原文回退投递。守卫对这类规则派生 repairMode=replan，runner 只执行：
+    // 同参数重进 generator 一次。
+    const fabricated = [
+      '帮你查了下，北滘公园附近有几家在招',
+      '瑞幸咖啡（佛山北滘公园店），离你0.8公里，20元/时，早中晚班可选',
+      '奈雪的茶（佛山北滘店），0.9公里，19-22元/时，早晚班可选',
+      'M Stand（佛山北滘店），1公里，20-23元/时，早晚班可选',
+    ].join('\n');
+    const fabricationDecision = {
+      decision: 'replan' as const,
+      riskLevel: 'medium' as const,
+      violations: [
+        {
+          type: 'job_fact_without_provenance',
+          evidence: '本轮零查岗工具，岗位数字无出处',
+          suggestion: '先调用 duliday_job_list 查实后再答',
+          recoverability: 'recoverable' as const,
+          repairMode: 'replan' as const,
+        },
+      ],
+      ruleIds: ['job_query_claim_without_query', 'job_fact_without_provenance'],
+      blockedRuleIds: ['job_query_claim_without_query', 'job_fact_without_provenance'],
+      repairMode: 'replan' as const,
+    };
+    const groundedToolCalls = [
+      {
+        toolName: 'duliday_job_list',
+        args: {},
+        result: { success: true },
+        resultCount: 1,
+        status: 'ok',
+      },
+    ];
+
+    it('re-enters the generator with identical params instead of rewriting, and adopts the grounded reply', async () => {
+      const seen: unknown[] = [];
+      generator.invoke.mockImplementation(async (p: unknown) => {
+        seen.push(p);
+        return seen.length === 1
+          ? makeResult({ text: fabricated, toolCalls: [] })
+          : makeResult({
+              text: '离你最近的是达美乐（北滘诚德路），1.6公里，班次 16:00-00:00。',
+              toolCalls: groundedToolCalls as never,
+            });
+      });
+      outputGuard.check
+        .mockResolvedValueOnce(fabricationDecision)
+        .mockResolvedValueOnce(passDecision);
+
+      const outcome = await service.runInboundTurn({
+        sessionRef,
+        input: { text: '[位置分享] 北滘公园' },
+        context: { messageId: 'msg-regen' },
+      });
+
+      expect(outcome.kind).toBe('reply');
+      expect(outcome.reply?.text).toBe(
+        '离你最近的是达美乐（北滘诚德路），1.6公里，班次 16:00-00:00。',
+      );
+      expect(generator.invoke).toHaveBeenCalledTimes(2);
+      expect(seen[1]).toEqual(seen[0]); // 同上下文：不注入反馈、不裁工具
+      expect(replyRepairAgent.repair).not.toHaveBeenCalled();
+      // 二审对账的是重生成的工具轨迹，不是首版的零工具轨迹
+      expect(outputGuard.check.mock.calls[1][0]).toEqual(
+        expect.objectContaining({ toolCalls: groundedToolCalls }),
+      );
+      expect(guardrailReviews.recordReview).toHaveBeenCalledWith(
+        expect.objectContaining({
+          traceId: 'msg-regen',
+          repaired: true,
+          repairMode: 'replan',
+          firstReply: fabricated,
+          finalDecision: 'pass',
+          reasonCode: 'replanned',
+        }),
+      );
+      expect(tracer.emit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'guardrail_repair',
+          outcome: 'replanned',
+          repairMode: 'replan',
+        }),
+      );
+    });
+
+    it('never falls back to the fabricated first reply and does not fail open when regeneration still violates', async () => {
+      generator.invoke
+        .mockResolvedValueOnce(makeResult({ text: fabricated, toolCalls: [] }))
+        .mockResolvedValueOnce(
+          makeResult({ text: '帮你查了下，附近有星巴克 22元/时', toolCalls: [] }),
+        );
+      outputGuard.check.mockResolvedValue(fabricationDecision);
+
+      const outcome = await service.runInboundTurn({
+        sessionRef,
+        input: { text: '[位置分享] 北滘公园' },
+        context: { messageId: 'msg-regen-exhausted' },
+      });
+
+      expect(outcome.kind).toBe('guardrail_blocked');
+      expect(outcome.guardrail).toEqual(
+        expect.objectContaining({ phase: 'outbound', reasonCode: 'replan_exhausted' }),
+      );
+      expect(generator.invoke).toHaveBeenCalledTimes(2); // hard cap 1
+      expect(replyRepairAgent.repair).not.toHaveBeenCalled();
+    });
+
+    it('downgrades to rewrite when the first reply already committed a side effect', async () => {
+      // replan 档规则按定义只在零工具轮命中；万一规则漂移到已 booking 的回合，
+      // 重进 generator 会重复提交副作用，执行层必须拒绝。
+      generator.invoke.mockResolvedValueOnce(
+        makeResult({
+          text: fabricated,
+          toolCalls: [
+            {
+              toolName: 'duliday_interview_booking',
+              args: {},
+              result: { success: true },
+              status: 'ok',
+            },
+          ] as never,
+        }),
+      );
+      replyRepairAgent.repair.mockResolvedValueOnce('重写版');
+      outputGuard.check
+        .mockResolvedValueOnce(fabricationDecision)
+        .mockResolvedValueOnce(passDecision);
+
+      const outcome = await service.runInboundTurn({
+        sessionRef,
+        input: { text: '[位置分享] 北滘公园' },
+      });
+
+      expect(outcome.kind).toBe('reply');
+      expect(generator.invoke).toHaveBeenCalledTimes(1);
+      expect(replyRepairAgent.repair).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it('fence-only internal_output_leak strips code fences deterministically without LLM repair', async () => {
     const draft = [
       '是的，这岗是周结，每周三发上周的工资。',
@@ -1028,29 +1169,35 @@ describe('AgentRunnerService.runInboundTurn', () => {
     });
   });
 
-  // 2026-07-27 replan 退役（评估文档 §2.4）：以下四条原为 replan 流程测试，改写为
-  // "遗留 replan 裁决统一走 ReplyRepairAgent 受约束重写"的新契约——generator 只被
-  // 调用一次（首版），修复不再重进 generator、不再持有任何工具白名单。
+  // 2026-07-27 旧 replan（带反馈 + 只读工具白名单重进 generator）删除；2026-09-09 replan 以
+  // 同参数重生成的原意重新占位。裁决即使带着遗留 repairToolNames，也只能原样重进 generator，
+  // 不得把白名单注入 params。
 
-  it('repairs a legacy replan decision via ReplyRepairAgent without re-invoking the generator', async () => {
-    generator.invoke.mockResolvedValueOnce(makeResult({ text: '推荐静安门店，距离 1.2km' }));
+  it('re-invokes the generator with identical params even when a replan decision carries legacy tool fields', async () => {
+    const seen: unknown[] = [];
+    generator.invoke.mockImplementation(async (p: unknown) => {
+      seen.push(p);
+      return seen.length === 1
+        ? makeResult({ text: '推荐静安门店，距离 1.2km' })
+        : makeResult({ text: '附近在招的有肯德基静安店，离你 1.2km，22 元/时。' });
+    });
     outputGuard.check
       .mockResolvedValueOnce({
         decision: 'replan',
         riskLevel: 'medium',
         violations: [
           {
-            type: 'job_recommendation_not_best_supported',
+            type: 'job_fact_without_provenance',
             evidence: '未接地岗位事实',
-            suggestion: '只能按已有事实修正表述，或先中性追问。',
+            suggestion: '先调用 duliday_job_list 查实后再答',
             severity: 'P1',
             recoverability: 'recoverable',
             currentReplySendable: false,
             repairMode: 'replan',
           },
         ],
-        ruleIds: [],
-        blockedRuleIds: ['job_recommendation_not_best_supported'],
+        ruleIds: ['job_fact_without_provenance'],
+        blockedRuleIds: ['job_fact_without_provenance'],
         repairMode: 'replan',
         repairToolNames: ['geocode', 'duliday_job_list'],
       })
@@ -1062,11 +1209,10 @@ describe('AgentRunnerService.runInboundTurn', () => {
     });
 
     expect(outcome.kind).toBe('reply');
-    expect(generator.invoke).toHaveBeenCalledTimes(1);
-    expect(replyRepairAgent.repair).toHaveBeenCalledTimes(1);
-    expect(replyRepairAgent.repair.mock.calls[0][0]).toMatchObject({
-      originalReply: '推荐静安门店，距离 1.2km',
-    });
+    expect(generator.invoke).toHaveBeenCalledTimes(2);
+    expect(seen[1]).toEqual(seen[0]);
+    expect((seen[1] as { allowedToolNames?: unknown }).allowedToolNames).toBeUndefined();
+    expect(replyRepairAgent.repair).not.toHaveBeenCalled();
   });
 
   it('does not fail open a P0 violation when the rewrite repair stays in violation', async () => {
@@ -1112,41 +1258,6 @@ describe('AgentRunnerService.runInboundTurn', () => {
 
     expect(outcome.kind).toBe('guardrail_blocked');
     expect(outcome.reply).toBeUndefined();
-  });
-
-  it('never grants business tool access to output repair even if a decision carries legacy tool fields', async () => {
-    generator.invoke.mockResolvedValueOnce(makeResult({ text: '图片里是健康证，可以继续报名。' }));
-    outputGuard.check
-      .mockResolvedValueOnce({
-        decision: 'replan',
-        riskLevel: 'medium',
-        violations: [
-          {
-            type: 'booking_receipt_mismatch',
-            evidence: '预约回执不一致',
-            suggestion: '按已确认回执修正表述',
-            severity: 'P1',
-            recoverability: 'recoverable',
-            currentReplySendable: false,
-            repairMode: 'replan',
-          },
-        ],
-        ruleIds: ['booking_receipt_mismatch'],
-        blockedRuleIds: ['booking_receipt_mismatch'],
-        repairMode: 'replan',
-        repairToolNames: ['save_image_description'],
-      })
-      .mockResolvedValueOnce(passDecision);
-
-    const outcome = await service.runInboundTurn({
-      sessionRef,
-      input: { text: '[图片 messageId=img-1]' },
-      context: { imageMessageIds: ['img-1'] },
-    });
-
-    expect(outcome.kind).toBe('reply');
-    expect(generator.invoke).toHaveBeenCalledTimes(1);
-    expect(replyRepairAgent.repair).toHaveBeenCalledTimes(1);
   });
 
   it('keeps draft side-effect toolCalls when reviewing and returning a revised reply', async () => {

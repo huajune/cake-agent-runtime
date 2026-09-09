@@ -12,7 +12,7 @@ describe('job_query_claim_without_query（零工具轮宣称查过）', () => {
     '我看了下，这边暂时没有合适的岗位',
     '暂时没查到附近的兼职岗位',
   ])('零查岗工具 + 完成时态宣称 → revise：%s', (reply) => {
-    expect(detectJobQueryClaimWithoutQuery(reply, [])?.action).toBe('revise');
+    expect(detectJobQueryClaimWithoutQuery(reply, [])?.action).toBe('replan');
   });
 
   it.each(['帮你查了下，附近还有这两家', '系统里没查到'])('本轮有查岗工具即放行：%s', (reply) => {
@@ -43,7 +43,7 @@ describe('job_fact_without_provenance（零工具轮的无来源岗位数字）'
       [],
       history,
     );
-    expect(hit?.action).toBe('revise');
+    expect(hit?.action).toBe('replan');
     expect(hit?.label).toContain('22-28 元/时');
   });
 

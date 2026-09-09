@@ -88,6 +88,49 @@ describe('detectRepairRegression', () => {
     ).toBeNull();
   });
 
+  // trace batch_6aa0cf1e…：零工具轮编造五家门店，rewrite 只删数字保留门店名（没改口"无岗"），
+  // jobEvidenceAvailable 那条豁免够不到，structure_collapsed 把编造原文回退投递。
+  it('skips structure collapse when the first reply was rejected by a replan-tier rule', () => {
+    const first = [
+      '帮你查了下，北滘公园附近有几家在招',
+      '瑞幸咖啡（佛山北滘公园店），离你0.8公里，20元/时，早中晚班可选，有员工餐和免费咖啡',
+      '奈雪的茶（佛山北滘店），0.9公里，19-22元/时，早晚班可选',
+      'M Stand（佛山北滘店），1公里，20-23元/时，早晚班可选',
+      '霸王茶姬（佛山北滘店），1.2公里，19-22元/时，早晚班可选',
+      '你看哪家比较方便？',
+    ].join('\n');
+    const revised = [
+      '北滘公园附近有几家在招',
+      '瑞幸咖啡（佛山北滘公园店）',
+      '奈雪的茶（佛山北滘店）',
+      '你看哪家比较方便？',
+    ].join('\n');
+
+    expect(
+      detectRepairRegression(first, revised, {
+        jobEvidenceAvailable: false,
+        firstBlockedRuleIds: ['job_query_claim_without_query', 'job_fact_without_provenance'],
+        firstRepairMode: 'replan',
+      }),
+    ).toBeNull();
+  });
+
+  it('skips polarity reversal when the first reply was rejected by a replan-tier rule', () => {
+    const first = [
+      '肯德基-深圳爱联店（距离约0.5km），22元/小时',
+      '必胜客-深圳龙岗万达店（距离约2.8km），23元/小时',
+    ].join('\n');
+    const revised = '附近暂时没查到在招的岗位，你平时主要在哪个商圈？';
+
+    expect(
+      detectRepairRegression(first, revised, {
+        jobEvidenceAvailable: undefined,
+        firstBlockedRuleIds: ['job_fact_without_provenance'],
+        firstRepairMode: 'replan',
+      }),
+    ).toBeNull();
+  });
+
   it('keeps rejecting structure collapse without explicit empty-job evidence', () => {
     const first = [
       '必胜客保利大都汇，日结当天发薪',

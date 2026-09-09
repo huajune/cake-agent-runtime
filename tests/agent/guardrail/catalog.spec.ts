@@ -87,13 +87,23 @@ describe('guardrail catalog', () => {
     }
   });
 
-  it('keeps REPLAN retired: no rule declares it and no non-replan rule carries repair tools', () => {
-    // 2026-07-27 发牌切换收尾：GuardrailRuleAction 已删 REPLAN（类型层保险栓），
-    // 本用例守住"零雇主"状态——恢复取数式修复须先修订评估文档 §2.4 并走两步拆解。
+  it('no rule carries repair tools: replan is same-params regeneration, not a tool whitelist', () => {
+    // 2026-07-27 发牌切换删掉了旧 replan（带反馈 + 只读工具白名单）；2026-09-09 replan 以
+    // 同参数重进 generator 的原意重新占位。任何规则都不得再声明 repairToolNames。
     for (const rule of OUTPUT_RULE_CATALOG) {
-      expect(['observe', 'revise', 'block']).toContain(rule.action);
+      expect(['observe', 'revise', 'replan', 'block']).toContain(rule.action);
       expect(rule.repairToolNames).toEqual([]);
     }
+  });
+
+  it('only the two zero-tool job-fact rules sit in the replan tier', () => {
+    const replanRules = OUTPUT_RULE_CATALOG.filter((rule) => rule.action === 'replan').map(
+      (rule) => rule.id,
+    );
+    expect(replanRules.sort()).toEqual([
+      'job_fact_without_provenance',
+      'job_query_claim_without_query',
+    ]);
   });
 
   it('points each deterministic output rule to a domain rule file', () => {

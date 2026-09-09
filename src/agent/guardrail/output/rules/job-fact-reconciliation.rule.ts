@@ -10,9 +10,12 @@ import { QUANTIFIED_JOB_FACT_PATTERN } from '../job-fact-signals.util';
  * 要么宣称"帮你查了下 / 系统里没查到"，要么直接报出会话里从未出现过的门店薪资/距离。
  * 单轮 requiredTool 判据会误伤合法的跨轮复述，所以两条规则各自只取一个高置信形态：
  *
- * - `job_query_claim_without_query`（REVISE）：回复用**完成时态**宣称本轮查过（"帮你查了下""没查到"
+ * 两条都是 REPLAN 档：问题不在文案而在"该发生的查询没发生"，文本重写修不出来，
+ * runner 用相同参数重进一次 generator（见 output-rule.types GuardrailRuleAction）。
+ *
+ * - `job_query_claim_without_query`（REPLAN）：回复用**完成时态**宣称本轮查过（"帮你查了下""没查到"
  *   "系统里暂时没有"），而本轮零查岗/预检/定位工具。"刚才/之前/上次查的"这类回指历史的说法不算。
- * - `job_fact_without_provenance`（REVISE）：回复出现量化岗位事实（元/时·天·月、km、HH:MM-HH:MM）、
+ * - `job_fact_without_provenance`（REPLAN）：回复出现量化岗位事实（元/时·天·月、km、HH:MM-HH:MM）、
  *   本轮零查岗工具，且该数字在会话内任何一条历史助手消息里都没出现过——既不是本轮工具给的，
  *   也不是复述自己说过的话。回指历史（"刚才那家/上面那个"）的句子豁免。
  */
@@ -76,7 +79,7 @@ export function detectJobQueryClaimWithoutQuery(
       label:
         '回复用完成时态宣称本轮查过岗位（"帮你查了下/没查到/系统里没有"），但本轮没有任何 ' +
         'duliday_job_list / duliday_interview_precheck / geocode 调用——查询从未发生',
-      action: GUARDRAIL_ACTION.REVISE,
+      action: GUARDRAIL_ACTION.REPLAN,
     };
   }
   return null;
@@ -109,6 +112,6 @@ export function detectJobFactWithoutProvenance(
     label:
       `回复给出岗位量化事实「${orphanFacts.slice(0, 3).join('、')}」，但本轮没有查岗工具调用，` +
       '会话内历史回复也从未出现过这些数字——没有任何来源的岗位事实',
-    action: GUARDRAIL_ACTION.REVISE,
+    action: GUARDRAIL_ACTION.REPLAN,
   };
 }

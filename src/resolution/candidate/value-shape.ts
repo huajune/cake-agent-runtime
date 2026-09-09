@@ -78,6 +78,17 @@ export function parseSpokenHeightCm(text: string): number | null {
   return cm >= 100 && cm <= 250 ? cm : null;
 }
 
+/**
+ * "二十六岁"/"二十六" → 年龄；解析不出返回 null。只收整段就是一个中文数字（可带"岁/周岁"）的
+ * 封闭形态，不在长句里找——长句里的年龄召回归 `parseAge`。
+ */
+export function parseSpokenAge(text: string): number | null {
+  const m = /^([一二两三四五六七八九十]{1,3})\s*(?:周?岁)?$/u.exec(text.trim());
+  if (!m) return null;
+  const age = parseChineseNumberUnder100(m[1]);
+  return age !== null && age >= 14 && age <= 70 ? age : null;
+}
+
 /** "九十二斤"/"92斤" → 体重 kg（斤→kg 减半，四舍五入）；"60公斤/60kg" 直读。 */
 export function parseSpokenWeightKg(text: string): number | null {
   const jin = /([零一二两三四五六七八九十\d]{1,3})\s*斤/u.exec(text);
@@ -148,7 +159,7 @@ export function deriveFieldValueFromQuote(
     case 'gender':
       return parseGender(text)?.value ?? null;
     case 'age':
-      return parseAge(text)?.value ?? parseBirthYearAge(text, now);
+      return parseAge(text)?.value ?? parseBirthYearAge(text, now) ?? parseSpokenAge(text);
     case 'isStudent': {
       const identity = classifyIdentityAnswerText(text);
       return identity === null ? null : identity === '学生';
@@ -168,7 +179,8 @@ export function deriveFieldValueFromQuote(
 
 /**
  * 数值类字段的落库规范形（封闭形态换算，不含任何"这段话在说什么"的语言判断）：
- * - age：去"岁/周岁"，必须是 14–70 的整数；"75年""差不多50"这类不是年龄形态 → null；
+ * - age：去"岁/周岁"，必须是 14–70 的整数，中文数字（"二十六岁"）按封闭读法换算；
+ *   "75年""差不多50"这类不是年龄形态 → null；
  * - height：去 cm/厘米/公分，或"1米75"口语，100–250；
  * - weight：去 kg/公斤/千克；带"斤"或裸数 ≥100 按斤减半（口径见 normalizeWeightToKg），30–200；
  * - 其余字段：去首尾空白原样返回；空串 → null。
@@ -187,9 +199,11 @@ export function canonicalizeCandidateFieldValue(
   switch (field) {
     case 'age': {
       const digits = compact.replace(/周?岁$/u, '');
-      return /^\d{1,2}$/.test(digits) && isPlausibleAgeValue(digits)
-        ? String(Number(digits))
-        : null;
+      if (/^\d{1,2}$/.test(digits)) {
+        return isPlausibleAgeValue(digits) ? String(Number(digits)) : null;
+      }
+      const spoken = parseSpokenAge(compact);
+      return spoken !== null ? String(spoken) : null;
     }
     case 'height': {
       const m = /^(\d{2,3}(?:\.\d+)?)(?:cm|厘米|公分)?$/u.exec(compact);

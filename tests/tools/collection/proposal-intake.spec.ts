@@ -379,6 +379,60 @@ describe('proposal intake（统一 fieldValueProposals 运输）', () => {
     ).toEqual([]);
   });
 
+  // 生产 chat 6aa0c566：候选人没删占位提示，直接在后面追加「：社会人士」。整段值连同
+  // 三个选项一起进身份识别器，先读到「在校学生」判成学生；模型的正确提案又因引文不逐字被
+  // 出处门拒收，正确值没有任何通道能进，候选人最终确认了错值、报名被退回。
+  it('候选人在占位提示后追加答案：剥掉回抄的选项列表，只把答案交给适配器', () => {
+    const IDENTITY: ContractFieldDef = {
+      labelId: 1,
+      labelTitle: '社会身份',
+      fieldType: 'SINGLE_OPTION',
+      required: true,
+      acceptedOptions: [
+        { optionCode: 'i1', optionLabel: '第二职业' },
+        { optionCode: 'i2', optionLabel: '全日制在校学生' },
+        { optionCode: 'i3', optionLabel: '社会人士' },
+      ],
+      rejectedOptions: [],
+    };
+    const line = '社会身份：（第二职业/全日制在校学生/社会人士）：社会人士';
+    const [identity] = collectFieldValueProposals(
+      base({ contract: [IDENTITY], candidateTexts: [line] }),
+    );
+    expect(identity).toMatchObject({
+      labelId: 1,
+      value: '社会人士',
+      optionCodes: ['i3'],
+      sourceText: line,
+      channel: 'form_line',
+    });
+
+    // 健康证同形：占位符自带逗号也要整段剥掉，剩下的裸「有」由适配器按绑定语境解释。
+    const healthLine = '有无本地健康证：（有本地有效健康证/无本地有效健康证，接受办理）：有';
+    const [health] = collectFieldValueProposals(base({ candidateTexts: [healthLine] }));
+    expect(health).toMatchObject({
+      labelId: 13,
+      value: '有本地有效健康证',
+      optionCodes: ['1'],
+      sourceText: healthLine,
+      channel: 'form_line',
+    });
+
+    // 候选人自己写的括号不是占位符，原样保留（TEXT 字段无适配器，值直出）。
+    const EXPERIENCE: ContractFieldDef = {
+      labelId: 265,
+      labelTitle: '工作过的公司及岗位',
+      fieldType: 'TEXT',
+      required: true,
+      acceptedOptions: [],
+      rejectedOptions: [],
+    };
+    const [own] = collectFieldValueProposals(
+      base({ contract: [EXPERIENCE], candidateTexts: ['工作过的公司及岗位：奶茶店（两年）'] }),
+    );
+    expect(own?.value).toBe('奶茶店（两年）');
+  });
+
   it('回归：误填在性别行的 11 位手机号改投手机号槽，不污染性别槽', () => {
     const proposals = collectFieldValueProposals(
       base({
