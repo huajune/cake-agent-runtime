@@ -42,7 +42,9 @@ Output 只对可复算信号裁决。
 observe 哨兵是 2026-08-26 数据复核恢复的定点回补（人设露馅升执行档、四族有信号量的哨兵
 落档），不是开放语义规则的整体回归；新规则仍一律 observe 入场，升档须 ≥2 周判例且精确率
 ≥90%。既有运行时 override 仅兼容 `off | observe` 降档；它不允许增加规则或提高权限。
-聚合顺序仍为 `block > revise > observe > pass`。
+聚合顺序为 `block > replan > revise > observe > pass`。规则动作四档：observe / revise /
+replan / block；`job_query_claim_without_query`、`job_fact_without_provenance` 是当前仅有的
+replan 档——它们的问题不是文案而是"该发生的查询没发生"。
 
 精确重复不登记 ruleId：`OutboundReplySanitizer.pruneRepeatedSegments()` 只删除与近期真实投递
 段落在去空白标点后全等的长段落；候选人明确要求重发时不删，不做相似度判断。
@@ -62,7 +64,19 @@ repair 是 Output 裁决后的有界收敛，不是新的 guardrail 层：
 - regression gate 保留结构坍缩、岗位极性反转、日期星期改错和已完成 booking 被降级为待办的检查；
 - P0/不可恢复问题仍不合格时 block；只剩可恢复 P1/P2 时按既有规则留档 fail-open。
 
-`replan` 已退役；修复不得重进 Generator 或重新执行副作用。
+修复方式由规则 action 派生，runner 只执行，不识别规则：
+
+- rewrite（observe/revise/block 派生）：ReplyRepairAgent 无工具局部重写；
+- replan（replan 档派生）：首版整体作废，用**完全相同的参数**再调一次 Generator——
+  不注入守卫反馈、不裁工具集；重生成结果按修复版走二审与 regression gate，首版永不回退，
+  二审不 fail-open，仍不过则 `replan_exhausted` 静默。regression gate 对 replan 档首版
+  跳过结构坍缩与极性反转检查（首版的岗位事实本身就是违规内容）。执行层唯一守门：首版已提交
+  副作用时拒绝重进 Generator，降级 rewrite 并告警。
+
+replan 的语义自 2026-07-03 契约首版起就是"重走工具再生成"。2026-07-03～07-27 的旧实现走偏成
+带守卫反馈重进 Generator 并裁工具集（改目标函数、砍事实来源，叠加即"更合规外观的更糟输出"），
+07-27 物理删除；2026-09-09 以原意重新占位。规则不得再声明 `repairToolNames`；修复不得重新
+执行副作用。档案里 2026-07-27 之前 `repair_mode='replan'` 的行属于旧实现。
 
 ## 4. 组件所有权
 
@@ -70,7 +84,7 @@ repair 是 Output 裁决后的有界收敛，不是新的 guardrail 层：
 | -------------------------------- | ----------------------------------------------------- | -------------------------- |
 | `HardRulesService`               | 读取回复、memory 和工具回执，产出确定性 contradiction | 改文案、调工具、猜开放语义 |
 | `OutputGuardrailService`         | 精确去重、运行规则并形成 pass/revise/block            | 调第二个模型、提交副作用   |
-| `AgentRunnerService`             | 选择一次确定性/LLM 局部修复，二审并收敛 outcome       | 在 repair 中重跑业务工具   |
+| `AgentRunnerService`             | 按守卫派生的 repairMode 执行一次修复（rewrite / replan），二审并收敛 outcome | 在 rewrite 中重跑业务工具、带反馈重进 Generator |
 | `TurnOutcomeInterventionService` | Replay 定局后提交暂停托管、handoff 和告警             | 重新解释回复语义           |
 
 ## 5. 记录面

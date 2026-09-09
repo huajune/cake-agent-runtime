@@ -1,7 +1,12 @@
 import { Fragment } from 'react';
 import type { GuardrailTurnTrace } from '@/api/types/chat.types';
 import { decisionBadge } from './decision';
-import { guardrailReasonLabel, guardrailRuleLabel, guardrailRuleListTitle } from './labels';
+import {
+  guardrailReasonLabel,
+  guardrailRuleLabel,
+  guardrailRuleListTitle,
+  repairModeLabel,
+} from './labels';
 import styles from './index.module.scss';
 
 export interface GuardrailTraceProps {
@@ -47,7 +52,7 @@ export default function GuardrailTrace({ trace, advisory }: GuardrailTraceProps)
             {index === 0 && trace.repaired && (
               <div className={styles.repairNote}>
                 ↳ 首版丢弃，按{' '}
-                {trace.steps[0]?.repairMode === 'replan' ? '重查（只读工具）' : '无工具重写'}{' '}
+                {repairModeLabel(trace.steps[0]?.repairMode)}{' '}
                 受控修复
               </div>
             )}

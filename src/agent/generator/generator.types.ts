@@ -84,7 +84,7 @@ export interface GeneratorInvokeParams {
   toolMode?: GeneratorToolMode;
   /**
    * 精确工具授权。提供时在 toolMode 的基础工具集上再取白名单交集。
-   * 当前生产消费方是 test-suite 保真链路（replan 退役后守卫不再传工具白名单）。
+   * 当前生产消费方是 test-suite 保真链路（守卫不传工具白名单：replan 是同参重生成，不裁工具）。
    */
   allowedToolNames?: string[];
   /** 图片/表情 URL 列表（多模态消息，传入 Agent 做 vision 识别） */

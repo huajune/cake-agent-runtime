@@ -123,7 +123,11 @@ export class OutputGuardrailService {
     const overrideMarkers = this.buildHardRuleOverrideMarkers(ruleResult.overrideHits);
 
     let output: OutputGuardDecision;
-    if (decision === GUARDRAIL_DECISION.BLOCK || decision === GUARDRAIL_DECISION.REVISE) {
+    if (
+      decision === GUARDRAIL_DECISION.BLOCK ||
+      decision === GUARDRAIL_DECISION.REPLAN ||
+      decision === GUARDRAIL_DECISION.REVISE
+    ) {
       const actionable = contradictions.filter((rule) => rule.currentReplySendable === false);
       output = {
         decision,
@@ -134,7 +138,10 @@ export class OutputGuardrailService {
         violations: actionable.map((rule) => this.ruleToViolation(rule)),
         ruleIds,
         blockedRuleIds,
-        repairMode: GUARDRAIL_REPAIR_MODE.REWRITE,
+        // 任一不可发送命中声明 replan，本轮修复即为同参重生成：首版整体作废，局部重写没有意义。
+        repairMode: actionable.some((rule) => rule.repairMode === GUARDRAIL_REPAIR_MODE.REPLAN)
+          ? GUARDRAIL_REPAIR_MODE.REPLAN
+          : GUARDRAIL_REPAIR_MODE.REWRITE,
         repairToolNames: [],
         feedbackToGenerator: this.buildFeedbackToGenerator(actionable) || undefined,
       };
@@ -163,6 +170,7 @@ export class OutputGuardrailService {
   private mergeRuleDecision(contradictions: RuleContradiction[]): OutputDecision {
     const actions = contradictions.map((rule) => rule.action);
     if (actions.includes('block')) return GUARDRAIL_DECISION.BLOCK;
+    if (actions.includes('replan')) return GUARDRAIL_DECISION.REPLAN;
     if (actions.includes('revise')) return GUARDRAIL_DECISION.REVISE;
     if (actions.includes('observe')) return GUARDRAIL_DECISION.OBSERVE;
     return GUARDRAIL_DECISION.PASS;

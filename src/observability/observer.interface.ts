@@ -293,6 +293,8 @@ export type AgentEvent = AgentEventContext &
          * 终局归因码：repair_exhausted / repair_exhausted_fail_open /
          * repair_regression_blocked:* / repair_regression_reverted:* / repair_unusable_fail_open /
          * revise_empty / revise_dangling；二审干净通过为 repaired。
+         * repairMode=replan（同参重生成）时：干净通过为 replanned，仍不过为
+         * replan_exhausted（不 fail-open）。
          */
         outcome: string;
         finalDecision: string;

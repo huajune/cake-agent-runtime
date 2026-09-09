@@ -226,8 +226,9 @@ export interface MessageRecordMemorySnapshot {
 // ==================== 出站/入站守卫 trace ====================
 
 /**
- * `replan` 仅为历史档案取值（2026-07-27 退役、2026-08-13 从后端删除，新流水不会产出）；
- * 老行仍在库，翻旧流水要能渲染，故前端词表保留。详见 GuardrailTrace/decision.tsx。
+ * `replan`：2026-09-09 起为同参数重生成档（首版作废、相同参数重进 generator）。
+ * 2026-07-27 之前的老行也叫 replan，但是已删除的旧实现（带反馈 + 只读工具重写）——
+ * 按 created_at 区分，新实现的行 reason_code 为 replanned / replan_exhausted。
  */
 export type GuardrailDecision = 'pass' | 'observe' | 'revise' | 'replan' | 'block';
 

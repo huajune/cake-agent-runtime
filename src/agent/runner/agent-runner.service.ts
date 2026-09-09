@@ -13,9 +13,10 @@ import {
   isSideEffectTool,
   isToolSuccess,
 } from '../generator/tool-call-analysis';
-import type {
-  GuardrailReviewStepTrace,
-  GuardrailTurnTrace,
+import {
+  GUARDRAIL_REPAIR_MODE,
+  type GuardrailReviewStepTrace,
+  type GuardrailTurnTrace,
 } from '@shared-types/guardrail.contract';
 import { GuardrailReviewService } from '@biz/message/services/guardrail-review.service';
 import type {
@@ -207,6 +208,9 @@ export class AgentRunnerService {
    * - 短路/空文本：不过守卫，原样返回（decision='pass'）。
    * - decision='revise'：丢弃首版，交给独立 ReplyRepairAgent 按 violations + 已知事实做文本修复；
    *   再审一次；二次仍不过按 §9「repair 死循环硬上限 1」分级收敛。
+   * - decision='replan'（守卫派生 repairMode=replan）：首版整体作废，用完全相同的参数
+   *   重进一次 generator，重生成结果按修复版走二审与回归闸；首版永不回退、二审不 fail-open，
+   *   仍不过则 `replan_exhausted` 静默。runner 不识别规则，只执行守卫派生的修复方式。
    * - decision='block'：先进入一次受控修复；二审仍不通过才不投递。
    *
    * turn-end 语义：生成结果上的 `runTurnEnd` 一律原样透传给调用方（repair 产物复用首版的
@@ -292,18 +296,41 @@ export class AgentRunnerService {
       );
     }
 
+    // 修复方式由守卫按规则 action 派生，runner 只执行：
+    // - rewrite：ReplyRepairAgent 无工具局部重写；
+    // - replan：首版整体作废，用完全相同的 params 重进一次 generator——不注入守卫反馈、
+    //   不裁工具集（2026-07 旧实现的两处要害偏差，07-27 已删，不得复活），重生成结果按修复版
+    //   走二审与回归闸。
+    // 执行层唯一的守门：首版已提交副作用（booking/拉群等）时不得重进 generator，否则会重复
+    // 执行；此时降级为 rewrite 并告警——replan 档规则按定义只在零工具轮命中，走到这里即规则漂移。
+    const committed = this.summarizeCommittedSideEffects(first.toolCalls ?? []);
+    const replanRequested = decision.repairMode === GUARDRAIL_REPAIR_MODE.REPLAN;
+    const replan = replanRequested && committed === '';
+    if (replanRequested && !replan) {
+      this.logger.warn(
+        `[invokeReviewed] 守卫要求 replan 但首版已提交副作用，降级为 rewrite: ` +
+          `rules=${decision.ruleIds.join(',') || '-'}, committed="${committed}", traceId=${ctx.traceId ?? '-'}`,
+      );
+    }
+    // 首版可否 fail-open（回退首版/放行首版）：replan 档的首版整体作废，一律不可。
+    const firstFailOpenEligible = !replan && this.isFirstReplyFailOpenEligible(decision);
+
     // 确定性修复快通道：仅命中 internal_output_leak 且剥掉代码围栏标记后不再有任何
     // 泄漏形态时，剥离本身就是完整修复——围栏内正文（报名表模板等结构化内容）逐字保留，
     // 跳过 LLM 重写，避免结构化正文被压缩成一句话。
-    // 剥离产物仍走下方二审，二审才是放行依据。
-    const reasoningStrippedText = this.tryStripInternalReasoningLeak(decision, firstText);
+    // 剥离产物仍走下方二审，二审才是放行依据。replan 轮不走任何剥离快通道。
+    const reasoningStrippedText = replan
+      ? null
+      : this.tryStripInternalReasoningLeak(decision, firstText);
     const fenceStrippedText =
-      reasoningStrippedText === null ? this.tryStripFenceOnlyLeak(decision, firstText) : null;
+      reasoningStrippedText === null && !replan
+        ? this.tryStripFenceOnlyLeak(decision, firstText)
+        : null;
     // 第二条确定性快通道：JSON 信封拆封。模型把完整正文包进
     // `{"agent_response":"…"}` 类信封时，直接拆封可避免把合法正文当成残文静默。拆封
     // 产物与剥围栏同样走二审 + 悬空检测。
     const envelopeUnwrappedText =
-      reasoningStrippedText === null && fenceStrippedText === null
+      reasoningStrippedText === null && fenceStrippedText === null && !replan
         ? this.tryUnwrapEnvelopeLeak(decision, firstText)
         : null;
     const deterministicRepairText =
@@ -317,19 +344,19 @@ export class AgentRunnerService {
             ? 'envelope_unwrapped'
             : null;
 
-    // repair（hard cap 1）：统一走独立 ReplyRepairAgent 受约束重写——replan（重进
-    // generator 重取数+重写全文）已于 发牌切换整体退役（评估文档 §2.4），
-    // 全链路只剩一个能改候选人可见文本的写手。
-    const committed = this.summarizeCommittedSideEffects(first.toolCalls ?? []);
+    // repair（hard cap 1）：rewrite 走独立 ReplyRepairAgent 受约束重写；replan 同参重进 generator。
+    // 两条路都不带守卫反馈进 generator、不裁工具集。
     this.logger.log(
       `[invokeReviewed] output=${decision.decision}，触发一次受控修复: rules=${decision.ruleIds.join(',') || '-'}, ` +
         `violations=${decision.violations.map((v) => v.type).join(',') || '-'}` +
+        (replan ? '，replan 档：同参数重进 generator 重生成一次' : '') +
         (fenceStrippedText !== null ? '，fence-only 命中走确定性剥围栏，跳过 LLM 重写' : '') +
         (reasoningStrippedText !== null ? '，推理独白命中走确定性剥离，跳过 LLM 重写' : '') +
         (envelopeUnwrappedText !== null ? '，JSON 信封命中走确定性拆封，跳过 LLM 重写' : ''),
     );
-    const revised =
-      deterministicRepairText !== null
+    const revised = replan
+      ? await this.generator.invoke(params)
+      : deterministicRepairText !== null
         ? this.buildRepairedResult(first, deterministicRepairText)
         : this.buildRepairedResult(
             first,
@@ -374,7 +401,7 @@ export class AgentRunnerService {
         repairMode: decision.repairMode,
         reasonCode: danglingRepair ? 'revise_dangling' : 'revise_empty',
       };
-      if (this.isFirstReplyFailOpenEligible(decision)) {
+      if (firstFailOpenEligible) {
         const failOpenDecision: OutputGuardDecision = {
           ...decision,
           decision: 'pass',
@@ -425,15 +452,16 @@ export class AgentRunnerService {
       );
     }
 
-    // rewrite/剥围栏均不产生新工具调用，二审对账对象就是首版工具轨迹。
-    const reviewedToolCalls = first.toolCalls ?? [];
+    // rewrite/剥围栏均不产生新工具调用，二审对账对象就是首版工具轨迹；
+    // replan 有自己的工具轨迹（真实查岗后再答），二审与回归闸都以它为准。
+    const reviewedToolCalls = replan ? (revised.toolCalls ?? []) : (first.toolCalls ?? []);
     const decision2 = await this.outputGuard.check(
       this.buildGuardInput(revised, ctx, reviewedToolCalls),
     );
     if (
       decision2.decision === 'block' &&
       this.isOnlyInternalOutputLeakBlock(decision2) &&
-      this.isFirstReplyFailOpenEligible(decision)
+      firstFailOpenEligible
     ) {
       const failOpenDecision: OutputGuardDecision = {
         ...decision,
@@ -468,8 +496,10 @@ export class AgentRunnerService {
     //   注意 revise 档规则本就定义为"可改写修复"的口径问题，修复版即使仍有残留，
     //   其风险也低于关键转化节点的整轮静默。
     const wantsRepairAgain = decision2.decision !== 'pass' && decision2.decision !== 'observe';
+    // replan 档不 fail-open：重生成后仍被守卫否决的文本没有任何一版可信，静默优于投递。
     const failOpenEligible =
       wantsRepairAgain &&
+      !replan &&
       decision2.riskLevel !== 'high' &&
       decision2.violations.every((v) => v.recoverability !== 'non_recoverable');
     if (failOpenEligible) {
@@ -489,6 +519,7 @@ export class AgentRunnerService {
             committedSideEffects: committed || undefined,
             jobEvidenceAvailable: this.resolveJobEvidenceAvailability(reviewedToolCalls),
             firstBlockedRuleIds: decision.blockedRuleIds,
+            firstRepairMode: decision.repairMode,
           })
         : null;
     // 检出回归后的收敛对齐 guardrail-quality-system.md §2.3 ④：
@@ -497,7 +528,7 @@ export class AgentRunnerService {
     // 修复版已证明退化，首版又是守卫明确否决的泄漏/红线内容，谁都不能进投递链。
     // 注意不能用 violation.currentReplySendable 判定：revise 档一律派生为 false，会把
     // "P1/P2 回退首版"整条路径变成不可达。
-    const regressionBlock = regression !== null && !this.isFirstReplyFailOpenEligible(decision);
+    const regressionBlock = regression !== null && !firstFailOpenEligible;
     const regressionRevert = regression !== null && !regressionBlock;
     if (regressionBlock) {
       this.logger.warn(
@@ -521,13 +552,19 @@ export class AgentRunnerService {
       : wantsRepairAgain
         ? failOpenEligible
           ? { ...decision2, decision: 'pass', reasonCode: 'repair_exhausted_fail_open' }
-          : { ...decision2, decision: 'block', reasonCode: 'repair_exhausted' }
+          : {
+              ...decision2,
+              decision: 'block',
+              reasonCode: replan ? 'replan_exhausted' : 'repair_exhausted',
+            }
         : regressionRevert
           ? { ...decision2, reasonCode: `repair_regression_reverted:${regression}` }
           : deterministicReasonCode !== null
             ? // 确定性剥围栏/拆信封放行：档案标注归因码，供守卫审计区分"LLM 重写"与"机械剥离"两类修复
               { ...decision2, reasonCode: decision2.reasonCode ?? deterministicReasonCode }
-            : decision2;
+            : replan
+              ? { ...decision2, reasonCode: decision2.reasonCode ?? 'replanned' }
+              : decision2;
     const finalResult = regressionBlock
       ? { ...revised, toolCalls: reviewedToolCalls }
       : wantsRepairAgain
