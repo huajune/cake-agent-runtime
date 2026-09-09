@@ -29,7 +29,7 @@ HTTP 请求
 | Prompt | 用人设、手册、渠道规范、策略、证据块和发送前自检降低首版违规率 | 负责教与预防，不是最终放行依据                  | `src/agent/generator/context/` + `docs/prompt-rule-ledger.md` |
 | Input  | 生成前识别确定性高危入站；识别并硬化注入尝试                   | 可短路整轮或追加 system 防护，不决定工具准入    | `src/agent/guardrail/input/`                                  |
 | Tool   | 用真实业务信号守住副作用动作                                   | 可拒绝动作、要求补收资或短路 loop，不审最终文案 | `src/agent/guardrail/tool/tool-guardrail.catalog.ts`          |
-| Output | 审查候选回复与本轮证据是否一致                                 | 最终出站验收，可 observe / revise / block       | `src/agent/guardrail/output/rules/output-rule-catalog.ts`     |
+| Output | 审查候选回复与本轮证据是否一致                                 | 最终出站验收，可 observe / revise / replan / block       | `src/agent/guardrail/output/rules/output-rule-catalog.ts`     |
 
 同一条业务约束可以有“Prompt 教 + Tool/Output 拦”的配对，但必须在 Prompt 规则台账互链；
 不能把同一份规则文本复制到多个居所后各自演化。
@@ -155,7 +155,7 @@ Output guard 只读、不直接改文案。Runner 持有修复编排权：
 5. P0 / 不可恢复问题仍不合格时收敛为 `guardrail_blocked/outbound`；仅剩可恢复 P1/P2 时按
    既定 fail-open 规则收敛并完整留档。
 
-`replan` 已退役：修复不能重进 Generator、不能重新调用工具，也不能重做已经提交的副作用。
+`replan` 档是同参数重进 Generator（不注入反馈、不裁工具，2026-09-09 以原意重新占位）；rewrite 不能重进 Generator、不能调用工具。任何修复都不能重做已经提交的副作用。
 直达静默、悬空承接句等特例同样由 Runner 显式给出 `reasonCode`，不允许裸静默。
 
 ### 6.3 最终清洗

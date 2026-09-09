@@ -22,6 +22,9 @@ describe('canonicalizeCandidateFieldValue（数值字段落库规范形）', () 
     ['age', '38周岁', '38'],
     ['age', '20岁', '20'],
     ['age', '22', '22'],
+    ['age', '二十六岁', '26'],
+    ['age', '二十六', '26'],
+    ['age', '十八周岁', '18'],
     ['name', ' 张三 ', '张三'],
   ] as const)('%s %s → %s', (field, value, expected) => {
     expect(canonicalizeCandidateFieldValue(field, value)).toBe(expected);
@@ -35,6 +38,8 @@ describe('canonicalizeCandidateFieldValue（数值字段落库规范形）', () 
     ['age', '差不多50'],
     ['age', 'Zhanᴗg·ᰔᩚ'],
     ['age', '99'],
+    ['age', '九十九岁'],
+    ['age', '二十六个月'],
     ['name', '   '],
   ] as const)('%s %s 没有合法形态 → null', (field, value) => {
     expect(canonicalizeCandidateFieldValue(field, value)).toBeNull();

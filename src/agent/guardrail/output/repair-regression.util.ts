@@ -1,4 +1,5 @@
 import { CHINESE_WEEKDAY_ISO, isoWeekdayToJsDay } from '@infra/utils/chinese-numeral.util';
+import type { GuardrailRepairMode } from '@shared-types/guardrail.contract';
 import { QUANTIFIED_JOB_FACT_PATTERN } from './job-fact-signals.util';
 
 /**
@@ -42,6 +43,13 @@ export interface RepairRegressionContext {
    * 目标而非退化。其余三个检测器不受影响。
    */
   firstBlockedRuleIds?: readonly string[];
+  /**
+   * 首审派生的修复方式。`replan` 时首版被 replan 档规则否决（零工具轮编造岗位事实），
+   * 首版的岗位事实本身就是违规内容——structure_collapsed / polarity_reversed 对它必然误报：
+   * 修复版只删数字保留门店名（不改口"无岗"）时 jobEvidenceAvailable 那条豁免够不到，编造原文
+   * 曾因此被回退投递（trace batch_6aa0cf1e…）。
+   */
+  firstRepairMode?: GuardrailRepairMode;
   /** 仅测试注入；生产走系统时钟。用于把"M月D日"推断到最近的完整年份以计算真实星期。 */
   now?: Date;
 }
@@ -141,7 +149,8 @@ const BOOKING_PENDING_PATTERN =
  *
  * - structure_collapsed：首版含 ≥3 行结构化内容（表单字段/岗位事实），修复版结构化行数
  *   掉到首版 1/3 以下且总长缩水到 60% 以下。单独的长度缩水不算——精简是合法修复。
- *   首版命中泄漏类封禁规则时豁免（见 STRUCTURE_IS_VIOLATION_RULE_IDS）。
+ *   首版命中泄漏类封禁规则时豁免（见 STRUCTURE_IS_VIOLATION_RULE_IDS）；首版被 replan 档
+ *   否决（firstRepairMode='replan'）时同样豁免，polarity_reversed 一并豁免。
  * - polarity_reversed：首版含 ≥2 处岗位事实（正在展示具体岗位）且自身没有无岗断言，
  *   修复版新增了"附近没有岗位"类断言。首版本来就说无岗时不判（无极性变化）。
  * - fact_mutated：首版与修复版对同一个"M月D日"标注了不同星期，且首版星期与真实
@@ -166,12 +175,19 @@ export function detectRepairRegression(
     !NO_JOB_CLAIM_PATTERN.test(first) &&
     NO_JOB_CLAIM_PATTERN.test(revised);
 
-  const firstStructureIsViolation = (context?.firstBlockedRuleIds ?? []).some((ruleId) =>
+  const firstBlockedRuleIds = context?.firstBlockedRuleIds ?? [];
+  const firstStructureIsViolation = firstBlockedRuleIds.some((ruleId) =>
     STRUCTURE_IS_VIOLATION_RULE_IDS.has(ruleId),
   );
+  const firstJobFactsAreViolation = context?.firstRepairMode === 'replan';
 
   const firstStructured = countStructuredLines(first);
-  if (!removesUngroundedJobClaims && !firstStructureIsViolation && firstStructured >= 3) {
+  if (
+    !removesUngroundedJobClaims &&
+    !firstStructureIsViolation &&
+    !firstJobFactsAreViolation &&
+    firstStructured >= 3
+  ) {
     const revisedStructured = countStructuredLines(revised);
     const collapsed =
       revisedStructured * 3 < firstStructured && revised.length < first.length * 0.6;
@@ -180,6 +196,7 @@ export function detectRepairRegression(
 
   if (
     !removesUngroundedJobClaims &&
+    !firstJobFactsAreViolation &&
     firstJobFacts >= 2 &&
     !NO_JOB_CLAIM_PATTERN.test(first) &&
     NO_JOB_CLAIM_PATTERN.test(revised)

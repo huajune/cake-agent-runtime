@@ -45,8 +45,19 @@ const GUARDRAIL_RULE_LABELS: Record<string, string> = {
 
 const REASON_CODE_LABELS: Record<string, string> = {
   repair_exhausted: '修复后仍未通过',
+  replan_exhausted: '重生成后仍未通过',
+  replanned: '重生成后通过',
   risk_intercept: '风险拦截',
 };
+
+const REPAIR_MODE_LABELS: Record<string, string> = {
+  rewrite: '无工具重写',
+  replan: '同参数重生成',
+};
+
+export function repairModeLabel(repairMode: string | undefined): string {
+  return (repairMode && REPAIR_MODE_LABELS[repairMode]) || REPAIR_MODE_LABELS.rewrite;
+}
 
 export function guardrailRuleLabel(ruleId: string): string {
   return GUARDRAIL_RULE_LABELS[ruleId] ?? ruleId;

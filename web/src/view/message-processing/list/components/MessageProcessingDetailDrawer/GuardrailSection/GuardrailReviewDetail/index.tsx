@@ -3,6 +3,7 @@ import {
   guardrailReasonLabel,
   guardrailRuleLabel,
   guardrailRuleTitle,
+  repairModeLabel,
 } from '@/components/GuardrailTrace/labels';
 import type {
   GuardrailReviewRecord,
@@ -185,7 +186,7 @@ export default function GuardrailReviewDetail({ review }: { review: GuardrailRev
 
       {review.repaired && (
         <div className={styles.repairNote}>
-          ↳ 按 {review.repairMode === 'replan' ? '重查（只读工具）' : '无工具重写'} 受控修复
+          ↳ 按 {repairModeLabel(review.repairMode)} 受控修复
           {review.committedSideEffects && (
             <div className={styles.sideEffectNote}>{review.committedSideEffects}</div>
           )}
