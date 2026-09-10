@@ -1,124 +1,77 @@
 {
-  "baseVersion": "11.5.0",
+  "baseVersion": "11.6.0",
   "nextVersion": "11.6.0",
   "updatedAt": "2026-09-10",
   "sourceBranch": "develop",
-  "entries": [
-    {
-      "number": "1244",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1244",
-      "title": "出站守卫规则化重组 + Runner 三态 outcome + 品牌提及溯源 + 转化分析 RPC 下沉",
-      "author": "huajune",
-      "mergedAt": "2026-09-10",
-      "businessUpdates": [
-        "岗位推荐前会先核对品牌确实出现在对话里，候选人从没提过的品牌不再被拿去查岗",
-        "消息处理详情页新增「当时的工具说明」快照，排查历史对话不会再被现在的版本误导",
-        "Agent 偶尔在回复里编出「正在查询…已查到…」这类假的系统往返内容，现在能识别更多写法并重新生成",
-        "候选人已约过一个岗位后再问另一个岗位的报名进度，会被误当成「这个岗也约好了」，现在按当前正在聊的岗位核对",
-        "Agent 交代自己在做什么的旁白（不是给候选人的正文）会误触发人工介入、把托管暂停掉，现在只当作本轮不回复，下一轮仍由 Agent 正常接管",
-        "回复前的准备环节会被群成员核验拖住，最慢接近两分钟，现在最多等 10 秒，超时按「没核验到」处理，候选人等待明显缩短",
-        "转化分析页要串行发几十次请求才能算完，时间范围一长就容易超时，现在一次算完",
-        "排查对话时，记忆收尾、复聊、图片识别这三条链路的运行记录关联不回原对话，现在都能按对话追溯",
-        "消息流水的最终状态写库失败时只写日志，会有对话一直卡在「处理中」没人发现，现在改为飞书告警"
-      ],
-      "summary": [
-        "岗位推荐前先核对品牌确实在对话里出现过，避免把工具说明里的示例品牌当成候选人说过的去查岗",
-        "修掉三类候选人可感知的回复问题：编造系统往返内容、报名进度串岗、旁白误暂停托管",
-        "回复准备环节不再被群成员核验拖住（最慢曾近两分钟），转化分析页从几十次串行请求降为一次算完"
-      ],
-      "features": [
-        "岗位推荐前会先核对品牌确实出现在对话里，候选人从没提过的品牌不再被拿去查岗",
-        "消息处理详情页新增「当时的工具说明」快照，排查历史对话不会再被现在的版本误导"
-      ],
-      "fixes": [
-        "Agent 偶尔在回复里编出「正在查询…已查到…」这类假的系统往返内容，现在能识别更多写法并重新生成",
-        "候选人已约过一个岗位后再问另一个岗位的报名进度，会被误当成「这个岗也约好了」，现在按当前正在聊的岗位核对",
-        "Agent 交代自己在做什么的旁白（不是给候选人的正文）会误触发人工介入、把托管暂停掉，现在只当作本轮不回复，下一轮仍由 Agent 正常接管",
-        "回复前的准备环节会被群成员核验拖住，最慢接近两分钟，现在最多等 10 秒，超时按「没核验到」处理，候选人等待明显缩短",
-        "转化分析页要串行发几十次请求才能算完，时间范围一长就容易超时，现在一次算完",
-        "排查对话时，记忆收尾、复聊、图片识别这三条链路的运行记录关联不回原对话，现在都能按对话追溯",
-        "消息流水的最终状态写库失败时只写日志，会有对话一直卡在「处理中」没人发现，现在改为飞书告警"
-      ],
-      "optimizations": [
-        "出站守卫按规则重组目录，审查结论收敛为四档，修复方式由规则档位派生，Runner 只执行不识别规则",
-        "Runner 终态统一为回复 / 转人工 / 本轮不回复三态，入站风险命中同样走转人工，不再新增普通转人工意图",
-        "清理工具说明里的具体门店、ID、日期、坐标和仿会话记忆格式示例，业务规则与必要地理映射保留",
-        "企微 trace 只留一种存储结构，时长折算抽成独立纯函数，删除消息追踪服务里已成空实现的五个埋点方法"
-      ],
-      "ops": [
-        "回合装配观测事件的落库门槛按生产基线上调（15s / 20s / 50K 字符），此前 3s/5s/30K 低于中位值，导致这两类大事件 100% 落库、事件表按回合数翻倍增长",
-        "群成员核验失败与预热超时在装配档案里落「未核验」，不再和「核验过不在群」混为一谈",
-        "新增时长折算与群成员预热的行为测试，锁死静默窗口不计入排队、预热超时不阻塞回合"
-      ],
-      "config": [
-        "新增可选环境变量 `GROUP_MEMBERSHIP_HYDRATE_WAIT_MS`（默认 10000ms），控制等待群成员缓存预热的上限；不配置即用默认值",
-        "⚠️ **发版协同**：迁移 `20260910025705_conversion_analytics_rpcs.sql` 已推 TEST，**生产必须与本次代码发版同步 `db:push:prod`**，否则转化分析页面全零。该迁移为 5 个 `CREATE OR REPLACE FUNCTION`，无表结构变更、无数据改写"
-      ],
-      "envFiles": [
-        ".env.example"
-      ],
-      "verification": [
-        "`pnpm run ci:check` 全绿：**466 suites / 6891 tests passed, 5 skipped**",
-        "关键链路已人工验证：生产库实证三项口径（收尾 extract 事件 1699/1699 缺对话标识、装配事件 100% 落库、群成员核验 p90 117 秒）",
-        "未新增对开放自然语言直接 reject/覆盖/判缺的正则分支",
-        "新增虚构 prompt 示例值均来自 `example-registry.ts`",
-        "其他说明：本批新增 5 个群成员预热用例、8 个时长折算用例"
-      ],
-      "level": "minor"
-    }
-  ],
+  "entries": [],
   "lastRelease": {
-    "version": "11.5.0",
-    "date": "2026-09-09",
+    "version": "11.6.0",
+    "date": "2026-09-10",
     "sourceBranch": "develop",
     "entries": [
       {
-        "number": "1238",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/1238",
-        "title": "守卫新增 replan 档同参重生成",
+        "number": "1244",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1244",
+        "title": "出站守卫规则化重组 + Runner 三态 outcome + 品牌提及溯源 + 转化分析 RPC 下沉",
         "author": "huajune",
-        "mergedAt": "2026-09-09",
+        "mergedAt": "2026-09-10",
         "businessUpdates": [
-          "**规则动作加第四档 `replan`**：`GUARDRAIL_ACTION` / `GUARDRAIL_DECISION` / `GUARDRAIL_REPAIR_MODE` 同名同义，出站裁决 pass < observe < revise < replan < block。`deriveRulePolicy` 派生 `repairMode='replan'`。",
-          "**两条零工具编造规则改 replan 档**（catalog + rule 文件），catalog.spec 锁死名单，任何规则不得声明 `repairToolNames`。",
-          "**runner 只执行不识别规则**：`decision.repairMode === 'replan'` 时用完全相同的 params 重进一次 generator（不注入守卫反馈、不裁工具集），reviewedToolCalls 取重生成轨迹，首版永不回退、二审不 fail-open，仍不过则 `replan_exhausted` 静默；干净通过 reasonCode `replanned`。执行层唯一守门：首版已提交副作用时降级 rewrite 并告警。",
-          "**回归闸**：`firstRepairMode='replan'` 时跳过 structure_collapsed / polarity_reversed（首版岗位事实本身就是违规内容）。",
-          "守卫新增 replan 档同参重生成",
-          "前端 `GuardrailDecision` / 修复方式 / reasonCode 词表同步；文档（guardrail-quality-system §2/§3、KB06、KB07、security-guardrails、bitter-lessons L3、rules-vs-semantics）改口为\"旧实现已删、原意重新占位\"。"
+          "岗位推荐前会先核对品牌确实出现在对话里，候选人从没提过的品牌不再被拿去查岗",
+          "消息处理详情页新增「当时的工具说明」快照，排查历史对话不会再被现在的版本误导",
+          "Agent 偶尔在回复里编出「正在查询…已查到…」这类假的系统往返内容，现在能识别更多写法并重新生成",
+          "候选人已约过一个岗位后再问另一个岗位的报名进度，会被误当成「这个岗也约好了」，现在按当前正在聊的岗位核对",
+          "Agent 交代自己在做什么的旁白（不是给候选人的正文）会误触发人工介入、把托管暂停掉，现在只当作本轮不回复，下一轮仍由 Agent 正常接管",
+          "回复前的准备环节会被群成员核验拖住，最慢接近两分钟，现在最多等 10 秒，超时按「没核验到」处理，候选人等待明显缩短",
+          "转化分析页要串行发几十次请求才能算完，时间范围一长就容易超时，现在一次算完",
+          "排查对话时，记忆收尾、复聊、图片识别这三条链路的运行记录关联不回原对话，现在都能按对话追溯",
+          "消息流水的最终状态写库失败时只写日志，会有对话一直卡在「处理中」没人发现，现在改为飞书告警"
         ],
         "summary": [
-          "表单行剥回抄占位符前缀 + 年龄认中文数字",
-          "守卫新增 replan 档同参重生成",
-          "**规则动作加第四档 `replan`**：`GUARDRAIL_ACTION` / `GUARDRAIL_DECISION` / `GUARDRAIL_REPAIR_MODE` 同名同义，出站裁决 pass < observe < revise < replan < block。`deriveRulePolicy` 派生 `repairMode='replan'`。",
-          "**两条零工具编造规则改 replan 档**（catalog + rule 文件），catalog.spec 锁死名单，任何规则不得声明 `repairToolNames`。",
-          "**runner 只执行不识别规则**：`decision.repairMode === 'replan'` 时用完全相同的 params 重进一次 generator（不注入守卫反馈、不裁工具集），reviewedToolCalls 取重生成轨迹，首版永不回退、二审不 fail-open，仍不过则 `replan_exhausted` 静默；干净通过 reasonCode `replanned`。执行层唯一守门：首版已提交副作用时降级 rewrite 并告警。",
-          "**回归闸**：`firstRepairMode='replan'` 时跳过 structure_collapsed / polarity_reversed（首版岗位事实本身就是违规内容）。",
-          "前端 `GuardrailDecision` / 修复方式 / reasonCode 词表同步；文档（guardrail-quality-system §2/§3、KB06、KB07、security-guardrails、bitter-lessons L3、rules-vs-semantics）改口为\"旧实现已删、原意重新占位\"。"
+          "岗位推荐前先核对品牌确实在对话里出现过，避免把工具说明里的示例品牌当成候选人说过的去查岗",
+          "修掉三类候选人可感知的回复问题：编造系统往返内容、报名进度串岗、旁白误暂停托管",
+          "回复准备环节不再被群成员核验拖住（最慢曾近两分钟），转化分析页从几十次串行请求降为一次算完"
         ],
         "features": [
-          "**规则动作加第四档 `replan`**：`GUARDRAIL_ACTION` / `GUARDRAIL_DECISION` / `GUARDRAIL_REPAIR_MODE` 同名同义，出站裁决 pass < observe < revise < replan < block。`deriveRulePolicy` 派生 `repairMode='replan'`。",
-          "**两条零工具编造规则改 replan 档**（catalog + rule 文件），catalog.spec 锁死名单，任何规则不得声明 `repairToolNames`。",
-          "**runner 只执行不识别规则**：`decision.repairMode === 'replan'` 时用完全相同的 params 重进一次 generator（不注入守卫反馈、不裁工具集），reviewedToolCalls 取重生成轨迹，首版永不回退、二审不 fail-open，仍不过则 `replan_exhausted` 静默；干净通过 reasonCode `replanned`。执行层唯一守门：首版已提交副作用时降级 rewrite 并告警。",
-          "**回归闸**：`firstRepairMode='replan'` 时跳过 structure_collapsed / polarity_reversed（首版岗位事实本身就是违规内容）。",
-          "守卫新增 replan 档同参重生成"
+          "岗位推荐前会先核对品牌确实出现在对话里，候选人从没提过的品牌不再被拿去查岗",
+          "消息处理详情页新增「当时的工具说明」快照，排查历史对话不会再被现在的版本误导"
         ],
         "fixes": [
-          "前端 `GuardrailDecision` / 修复方式 / reasonCode 词表同步；文档（guardrail-quality-system §2/§3、KB06、KB07、security-guardrails、bitter-lessons L3、rules-vs-semantics）改口为\"旧实现已删、原意重新占位\"。"
+          "Agent 偶尔在回复里编出「正在查询…已查到…」这类假的系统往返内容，现在能识别更多写法并重新生成",
+          "候选人已约过一个岗位后再问另一个岗位的报名进度，会被误当成「这个岗也约好了」，现在按当前正在聊的岗位核对",
+          "Agent 交代自己在做什么的旁白（不是给候选人的正文）会误触发人工介入、把托管暂停掉，现在只当作本轮不回复，下一轮仍由 Agent 正常接管",
+          "回复前的准备环节会被群成员核验拖住，最慢接近两分钟，现在最多等 10 秒，超时按「没核验到」处理，候选人等待明显缩短",
+          "转化分析页要串行发几十次请求才能算完，时间范围一长就容易超时，现在一次算完",
+          "排查对话时，记忆收尾、复聊、图片识别这三条链路的运行记录关联不回原对话，现在都能按对话追溯",
+          "消息流水的最终状态写库失败时只写日志，会有对话一直卡在「处理中」没人发现，现在改为飞书告警"
         ],
-        "optimizations": [],
+        "optimizations": [
+          "出站守卫按规则重组目录，审查结论收敛为四档，修复方式由规则档位派生，Runner 只执行不识别规则",
+          "Runner 终态统一为回复 / 转人工 / 本轮不回复三态，入站风险命中同样走转人工，不再新增普通转人工意图",
+          "清理工具说明里的具体门店、ID、日期、坐标和仿会话记忆格式示例，业务规则与必要地理映射保留",
+          "企微 trace 只留一种存储结构，时长折算抽成独立纯函数，删除消息追踪服务里已成空实现的五个埋点方法"
+        ],
         "ops": [
-          "表单行剥回抄占位符前缀 + 年龄认中文数字"
+          "回合装配观测事件的落库门槛按生产基线上调（15s / 20s / 50K 字符），此前 3s/5s/30K 低于中位值，导致这两类大事件 100% 落库、事件表按回合数翻倍增长",
+          "群成员核验失败与预热超时在装配档案里落「未核验」，不再和「核验过不在群」混为一谈",
+          "新增时长折算与群成员预热的行为测试，锁死静默窗口不计入排队、预热超时不阻塞回合"
         ],
-        "config": [],
-        "envFiles": [],
+        "config": [
+          "新增可选环境变量 `GROUP_MEMBERSHIP_HYDRATE_WAIT_MS`（默认 10000ms），控制等待群成员缓存预热的上限；不配置即用默认值",
+          "⚠️ **发版协同**：迁移 `20260910025705_conversion_analytics_rpcs.sql` 已推 TEST，**生产必须与本次代码发版同步 `db:push:prod`**，否则转化分析页面全零。该迁移为 5 个 `CREATE OR REPLACE FUNCTION`，无表结构变更、无数据改写"
+        ],
+        "envFiles": [
+          ".env.example"
+        ],
         "verification": [
-          "`pnpm run ci:check` 全绿：6748 passed / 5 skipped。",
-          "新增测试：回归闸 2 例、runner 4 例（同参重进并采纳 / 重生成仍违规 block 不回退 / 已提交副作用降级 rewrite / 遗留 repairToolNames 不注入 params）、catalog 名单 1 例；词表五档、规则 action 断言已更新。",
-          "无 DB 迁移，无 prompt 侧规则变更（不涉及 prompt-rule-ledger）。"
+          "`pnpm run ci:check` 全绿：**466 suites / 6891 tests passed, 5 skipped**",
+          "关键链路已人工验证：生产库实证三项口径（收尾 extract 事件 1699/1699 缺对话标识、装配事件 100% 落库、群成员核验 p90 117 秒）",
+          "未新增对开放自然语言直接 reject/覆盖/判缺的正则分支",
+          "新增虚构 prompt 示例值均来自 `example-registry.ts`",
+          "其他说明：本批新增 5 个群成员预热用例、8 个时长折算用例"
         ],
         "level": "minor"
       }
     ]
   },
-  "lastAnalyzedSha": "f2c6e96e30bbea2eef5416fe8b0c5b94831cec7a"
+  "lastAnalyzedSha": "10f9bba3e677a1c3316a68a5fcc377c0d9257c6a"
 }
