@@ -283,7 +283,7 @@ export type AgentEvent = AgentEventContext &
       }
     /**
      * 出站守卫一次受控 repair 的终局（观测 P1-2）：四种终局此前只有 logger.warn，
-     * 「多少次修好了 / 放弃静默 / 放行了没修好的 / 修坏了回退」是 repair 链路复盘的唯一
+     * 「多少次修好了 / 转人工 / 放行了没修好的 / 修坏了回退」是 repair 链路复盘的唯一
      * 量化来源。不带回复文本——正文在 guardrail_review_records，按 traceId join。
      */
     | {
@@ -297,17 +297,17 @@ export type AgentEvent = AgentEventContext &
          * replan_exhausted（不 fail-open）。
          */
         outcome: string;
-        finalDecision: string;
+        finalOutcome: 'reply' | 'handoff' | 'skipped';
         riskLevel?: string;
         firstRuleIds: string[];
         finalRuleIds: string[];
         repairMode?: string;
       }
     /**
-     * 入站守卫拦截（risk-intercept 命中，本轮不跑 Agent）。inspectedText 不进事件，避免 PII。
+     * 入站守卫转人工意图（risk-intercept 命中，本轮不跑 Agent）。inspectedText 不进事件，避免 PII。
      */
     | {
-        type: 'inbound_guardrail_block';
+        type: 'inbound_guardrail_handoff';
         userId?: string;
         reasonCode: string;
         riskType?: string;

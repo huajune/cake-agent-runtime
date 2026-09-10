@@ -297,7 +297,7 @@ export default function MessageProcessingDetailDrawer({
               ))}
             </div>
 
-            {/* Guardrail runtime（入站拦截 / 出站首审→修复→二审） */}
+            {/* Guardrail runtime（入站转人工 / 出站首审→修复→二审） */}
             <GuardrailSection message={message} />
 
             {/* Latency breakdown */}
@@ -372,39 +372,52 @@ export default function MessageProcessingDetailDrawer({
                 <div className={styles.postProcessingPanel}>
                   <div className={styles.postProcessingSummary}>
                     <span
-                      className={`${styles.postStatus} ${
+                      className={`status-badge ${
                         message.postProcessingStatus.status === 'completed'
-                          ? styles.postStatusSuccess
+                          ? 'success'
                           : message.postProcessingStatus.status === 'completed_with_errors' ||
                               message.postProcessingStatus.status === 'interrupted'
-                            ? styles.postStatusError
-                            : styles.postStatusNeutral
+                            ? 'danger'
+                            : 'info'
                       }`}
                     >
                       {POST_PROCESSING_STATUS_LABELS[message.postProcessingStatus.status]}
                     </span>
-                    <span>
-                      {message.postProcessingStatus.counts.succeeded}/
-                      {message.postProcessingStatus.counts.total} 成功
+                    <span className={styles.postSummaryMeta}>
+                      <span className={styles.postSummaryValue}>
+                        {message.postProcessingStatus.counts.succeeded}/
+                        {message.postProcessingStatus.counts.total}
+                      </span>
+                      成功
                     </span>
                     {message.postProcessingStatus.durationMs !== undefined && (
-                      <span>{formatDuration(message.postProcessingStatus.durationMs)}</span>
+                      <span className={styles.postSummaryMeta}>
+                        {formatDuration(message.postProcessingStatus.durationMs)}
+                      </span>
                     )}
                   </div>
-                  {message.postProcessingStatus.steps.map((step, index) => (
-                    <div key={`${step.name}-${index}`} className={styles.postProcessingStep}>
-                      <div className={styles.postStepHeader}>
-                        <code>{step.name}</code>
-                        <span className={styles[`postStep${step.status}`]}>
-                          {POST_PROCESSING_STEP_LABELS[step.status]}
-                        </span>
-                        <span>{formatDuration(step.durationMs)}</span>
+                  <div className={styles.postStepList}>
+                    {message.postProcessingStatus.steps.map((step, index) => (
+                      <div
+                        key={`${step.name}-${index}`}
+                        className={`${styles.postProcessingStep} ${styles[`postStep_${step.status}`]}`}
+                      >
+                        <div className={styles.postStepHeader}>
+                          <i className={styles.postStepDot} />
+                          <code className={styles.postStepName}>{step.name}</code>
+                          <span className={styles.postStepStatus}>
+                            {POST_PROCESSING_STEP_LABELS[step.status]}
+                          </span>
+                          <span className={styles.postStepDuration}>
+                            {step.status === 'skipped' ? '—' : formatDuration(step.durationMs)}
+                          </span>
+                        </div>
+                        {(step.error || step.reason) && (
+                          <div className={styles.postStepMessage}>{step.error || step.reason}</div>
+                        )}
                       </div>
-                      {(step.error || step.reason) && (
-                        <div className={styles.postStepMessage}>{step.error || step.reason}</div>
-                      )}
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
               </>
             )}

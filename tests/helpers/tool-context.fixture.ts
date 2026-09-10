@@ -7,8 +7,12 @@ import type {
   ToolTurnInputContext,
 } from '@shared-types/tool.types';
 import type { TurnLedger } from '@shared-types/turn.types';
+import type { BrandItem } from '@sponge/sponge.types';
 
 export interface TurnLedgerOverrides {
+  brandCatalog?: readonly BrandItem[];
+  mentionedBrands?: TurnLedger['mentionedBrands'];
+  recordMentionedBrands?: TurnLedger['recordMentionedBrands'];
   visual?: Partial<TurnLedger['visual']>;
   geo?: Partial<TurnLedger['geo']>;
   jobs?: Partial<TurnLedger['jobs']>;
@@ -33,6 +37,8 @@ export interface ToolContextOverrides {
 /** 测试专用五组化上下文；默认值只负责消除与用例无关的装配噪声。 */
 export function createToolContext(overrides: ToolContextOverrides = {}): ToolBuildContext {
   const ledger = createTurnLedger({
+    mentionedBrands: overrides.ledger?.mentionedBrands,
+    brandCatalog: overrides.ledger?.brandCatalog,
     turnHints: overrides.ledger?.facts?.turnHints ?? null,
     laborFormIntent: overrides.ledger?.facts?.laborFormIntent,
     collectedFields: overrides.ledger?.facts?.collectedFields,
@@ -62,6 +68,11 @@ export function mergeToolContext(
   let ledger = base.ledger;
   if (overrides.ledger) {
     ledger = createTurnLedger({
+      brandCatalog: overrides.ledger.brandCatalog,
+      mentionedBrands:
+        overrides.ledger.mentionedBrands === undefined
+          ? base.ledger.mentionedBrands
+          : overrides.ledger.mentionedBrands,
       turnHints: overrides.ledger.facts?.turnHints ?? base.ledger.facts.turnHints,
       laborFormIntent: overrides.ledger.facts?.laborFormIntent ?? base.ledger.facts.laborFormIntent,
       collectedFields: overrides.ledger.facts?.collectedFields ?? base.ledger.facts.collectedFields,
@@ -112,6 +123,8 @@ function applyLedgerOverrides(ledger: TurnLedger, overrides?: TurnLedgerOverride
     ledger.jobs.resolvedWorkOrderId = overrides.jobs.resolvedWorkOrderId;
   }
   if (overrides.recordVisualFacts) ledger.recordVisualFacts = overrides.recordVisualFacts;
+  if (overrides.recordMentionedBrands)
+    ledger.recordMentionedBrands = overrides.recordMentionedBrands;
   if (overrides.recordImageBrands) ledger.recordImageBrands = overrides.recordImageBrands;
   if (overrides.recordGeocodeAnchor) ledger.recordGeocodeAnchor = overrides.recordGeocodeAnchor;
   if (overrides.recordCityAttestation) {

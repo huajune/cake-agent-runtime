@@ -4,6 +4,7 @@ import { MonitoringCacheService } from '@biz/monitoring/services/tracking/monito
 import { MessageProcessingService } from '@biz/message/services/message-processing.service';
 import { MonitoringErrorLogRepository } from '@biz/monitoring/repositories/error-log.repository';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
+import { AlertNotifierService } from '@notification/services/alert-notifier.service';
 import { ScenarioType } from '@enums/agent.enum';
 
 const flushPromises = () => new Promise<void>((resolve) => setImmediate(resolve));
@@ -29,6 +30,10 @@ describe('MessageTrackingService', () => {
 
   const mockUserHostingService = {
     upsertActivity: jest.fn().mockResolvedValue(undefined),
+  };
+
+  const mockAlertNotifier = {
+    sendAlert: jest.fn().mockResolvedValue(undefined),
   };
 
   const mockCacheService = {
@@ -59,6 +64,10 @@ describe('MessageTrackingService', () => {
           provide: MonitoringCacheService,
           useValue: mockCacheService,
         },
+        {
+          provide: AlertNotifierService,
+          useValue: mockAlertNotifier,
+        },
       ],
     }).compile();
 
@@ -76,6 +85,7 @@ describe('MessageTrackingService', () => {
     mockMessageProcessingService.markSupersededProcessingRecords.mockResolvedValue(0);
     mockErrorLogRepository.saveErrorLog.mockResolvedValue(undefined);
     mockUserHostingService.upsertActivity.mockResolvedValue(undefined);
+    mockAlertNotifier.sendAlert.mockResolvedValue(undefined);
     mockCacheService.incrementCounter.mockResolvedValue(undefined);
     mockCacheService.incrementCounters.mockResolvedValue(undefined);
     mockCacheService.incrementActiveRequests.mockImplementation(async (delta: number = 1) => {
@@ -159,6 +169,42 @@ describe('MessageTrackingService', () => {
         chatId: 'chat-bot',
         botUserId: 'bot-a',
         imBotId: 'im-bot-a',
+      }),
+    );
+  });
+
+  it('keeps inbound handoff attribution on a successful turn with no reply segments', async () => {
+    mockMessageProcessingService.getMessageProcessingRecordById.mockResolvedValue({
+      messageId: 'msg-risk',
+      chatId: 'chat-risk',
+      receivedAt: 1000,
+      status: 'processing',
+    });
+    const guardrailInput = {
+      decision: 'handoff' as const,
+      riskType: 'abuse',
+      riskLabel: '辱骂',
+      reasonCode: 'risk_intercept',
+      reason: '命中辱骂关键词',
+    };
+
+    service.recordSuccess('msg-risk', {
+      guardrailInput,
+      replyPreview: '[入站转人工意图] 辱骂',
+      replySegments: 0,
+      isFallback: false,
+    });
+    await flushPromises();
+
+    expect(messageProcessingService.saveRecord).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messageId: 'msg-risk',
+        status: 'success',
+        guardrailInput,
+        guardrailOutput: undefined,
+        replyPreview: '[入站转人工意图] 辱骂',
+        replySegments: 0,
+        isFallback: false,
       }),
     );
   });

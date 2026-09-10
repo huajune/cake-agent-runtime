@@ -10,6 +10,7 @@ import { HostingMemberConfigService } from '@biz/hosting-config/services/hosting
 import { BrandStateService, type TurnBrandContext } from '@memory/short-term/brand-state.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { SpongeService } from '@sponge/sponge.service';
+import type { BrandItem } from '@sponge/sponge.types';
 import { StrategyConfigService } from '@biz/strategy/services/strategy-config.service';
 import type { StrategyConfigRecord } from '@biz/strategy/entities/strategy-config.entity';
 import { GeocodingService } from '@infra/geocoding/geocoding.service';
@@ -49,6 +50,7 @@ const TURN_SOURCE_WARNING_SOURCES = [
   'group_membership',
   'account_identity',
   'brand',
+  'brand_catalog',
   'visual_facts',
   'geocode',
 ] as const;
@@ -72,6 +74,8 @@ export interface TurnSourceSnapshot {
   strategyConfig: StrategyConfigRecord;
   visualSheetsByContent: ReadonlyMap<string, FinalizedVisualFactSheet> | undefined;
   turnBrandContext: TurnBrandContext;
+  /** 前置解析与品牌提及集合共用；null 表示目录加载失败。 */
+  brandCatalog: readonly BrandItem[] | null;
   geoAnchor: LoadedGeoAnchor | undefined;
   warnings: TurnSourceWarning[];
   sourceObservations: TurnSourceLoadTrace[];
@@ -120,8 +124,9 @@ export class TurnDataLoaderService {
       return promise;
     };
     try {
-      const turnHintsPromise = observe('turn_hints', () =>
-        this.detectTurnHints(input.currentTurnTexts),
+      const brandCatalogPromise = observe('brand_catalog', () => this.loadBrandCatalog(warnings));
+      const turnHintsPromise = observe('turn_hints', async () =>
+        this.detectTurnHints(input.currentTurnTexts, (await brandCatalogPromise) ?? []),
       );
       const memoryPromise = turnHintsPromise.then((turnHints) =>
         observe(
@@ -188,6 +193,7 @@ export class TurnDataLoaderService {
         booking,
         groups,
         turnBrandContext,
+        brandCatalog,
       ] = await Promise.all([
         memoryPromise,
         realtimeGroupsPromise,
@@ -200,6 +206,7 @@ export class TurnDataLoaderService {
         bookingPromise,
         groupsPromise,
         brandPromise,
+        brandCatalogPromise,
       ]);
 
       const snapshot: TurnSourceSnapshot = {
@@ -211,6 +218,7 @@ export class TurnDataLoaderService {
         strategyConfig,
         visualSheetsByContent: visualSheets,
         turnBrandContext,
+        brandCatalog,
         geoAnchor: geo,
         warnings,
         sourceObservations: sortSourceObservations(sourceObservations),
@@ -285,10 +293,18 @@ export class TurnDataLoaderService {
     });
   }
 
-  private async detectTurnHints(currentTurnTexts: string[]) {
+  private async loadBrandCatalog(warnings: TurnSourceWarning[]): Promise<BrandItem[] | null> {
+    try {
+      return await this.spongeService.fetchBrandList();
+    } catch (error) {
+      this.recordWarning(warnings, 'brand_catalog', '品牌目录读取失败，提及集合按未知处理', error);
+      return null;
+    }
+  }
+
+  private detectTurnHints(currentTurnTexts: string[], brandData: BrandItem[]) {
     const texts = currentTurnTexts.map((text) => text.trim()).filter(Boolean);
     if (texts.length === 0) return null;
-    const brandData = await this.spongeService.fetchBrandList();
     const facts = produceTurnHints(texts, brandData);
     if (facts) this.logger.debug(`前置规则识别命中: ${facts.reasoning}`);
     return facts;
@@ -312,8 +328,18 @@ export class TurnDataLoaderService {
     if (!contactId || params.callerKind !== CallerKind.WECOM || !groups?.length) return [];
     try {
       const idToGroup = new Map(groups.map((group) => [group.imRoomId, group]));
-      const roomIds = await this.groupMembership.listUserRooms(contactId, idToGroup.keys());
-      return roomIds
+      const lookup = await this.groupMembership.lookupUserRooms(contactId, idToGroup.keys());
+      if (!lookup.verified) {
+        // 预热超时/缓存故障：空结果不是「核验过不在群」，必须认领为 degraded 留在装配档案里。
+        this.recordWarning(
+          warnings,
+          'group_membership',
+          '实时群状态未核验（按未知降级）',
+          lookup.reason ?? 'unknown',
+        );
+        return [];
+      }
+      return lookup.rooms
         .map((roomId) => idToGroup.get(roomId))
         .filter((group): group is GroupContext => Boolean(group))
         .map((group) => ({ groupName: group.groupName, city: group.city }));

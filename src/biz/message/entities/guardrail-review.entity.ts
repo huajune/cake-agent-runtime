@@ -30,6 +30,7 @@ export interface GuardrailReviewDbRecord {
   revised_blocked_rule_ids: string[] | null;
   revised_violations: GuardViolation[] | null;
   committed_side_effects: string | null;
+  /** 物理列保留：新行写 reply/handoff/skipped，旧行可能是 pass/observe/block。 */
   final_decision: string;
   reason_code: string | null;
   semantic_reviews: GuardrailSemanticReview[] | null;

@@ -21,6 +21,22 @@ interface EnterpriseRoomItem {
   memberList?: EnterpriseRoomMember[];
 }
 
+/** 候选人在白名单群内的实际归属；`verified=false` 表示本次没能核验（缓存故障/预热超时），rooms 必为空。 */
+export interface UserRoomsLookup {
+  rooms: string[];
+  verified: boolean;
+  /** 未核验原因（hydrate_timeout / redis_error …），仅供观测与日志。 */
+  reason?: string;
+}
+
+/** 群成员缓存预热超过等待上限：预热继续在后台进行，本次调用按「未核验」处理。 */
+export class GroupMembershipHydrateTimeoutError extends Error {
+  constructor(waitMs: number) {
+    super(`群成员缓存预热超过 ${waitMs}ms 未完成`);
+    this.name = 'GroupMembershipHydrateTimeoutError';
+  }
+}
+
 /**
  * 群成员关系服务
  *
@@ -33,6 +49,8 @@ interface EnterpriseRoomItem {
  * - Redis Set 结构：key = `room:members:{imRoomId}`，value = 成员 imContactId 集合
  * - TTL 10 分钟，与 `GroupResolverService` 的群列表缓存对齐
  * - 并发请求通过 in-flight Promise 防止缓存击穿
+ * - 预热是全量分页拉企业群列表，生产 p90 曾超过 100 秒；调用方只等 `GROUP_MEMBERSHIP_HYDRATE_WAIT_MS`
+ *   （默认 10s），超时按「未核验」降级，预热本身继续在后台跑完供后续回合复用
  */
 @Injectable()
 export class GroupMembershipService {
@@ -40,8 +58,11 @@ export class GroupMembershipService {
 
   private static readonly CACHE_KEY_PREFIX = 'room:members';
   private static readonly CACHE_TTL_SECONDS = 10 * 60;
+  private static readonly DEFAULT_HYDRATE_WAIT_MS = 10_000;
 
   private readonly enterpriseToken: string | null;
+  /** 单次调用等待预热的上限（ms）；0 或负数表示不等待，直接按未核验处理。 */
+  private readonly hydrateWaitMs: number;
 
   /** 防止并发 hydrate 重复请求 API */
   private hydratePromise: Promise<void> | null = null;
@@ -54,6 +75,10 @@ export class GroupMembershipService {
     configService: ConfigService,
   ) {
     this.enterpriseToken = configService.get<string>('STRIDE_ENTERPRISE_TOKEN')?.trim() || null;
+    const configuredWait = Number(configService.get<string>('GROUP_MEMBERSHIP_HYDRATE_WAIT_MS'));
+    this.hydrateWaitMs = Number.isFinite(configuredWait)
+      ? configuredWait
+      : GroupMembershipService.DEFAULT_HYDRATE_WAIT_MS;
   }
 
   /**
@@ -101,29 +126,48 @@ export class GroupMembershipService {
   }
 
   /**
-   * 反查候选人当前实际在哪些群（relevantRoomIds 范围内）。
+   * 反查候选人当前实际在哪些群（relevantRoomIds 范围内），失败时返回空数组。
    *
-   * 供回合开始时注入"实时群状态"：拉群记忆只存会话层（TTL 2 天），过期后
-   * Agent 不知道候选人已在群、可能重复邀请；且候选人可能自行退群，记忆会反向
-   * 过期。实时成员关系（10 分钟缓存）是唯一可靠事实源。
-   *
-   * 任何一步失败返回空数组（调用方按"未知"降级，不阻断主流程）。
+   * 拉群链路用：宁可重复调用拉人 API，也不要因为缓存问题漏拉，所以未核验等同「不在群」。
+   * 需要区分「核验过不在群」与「没核验成」的调用方（回合装配）走 {@link lookupUserRooms}。
    */
   async listUserRooms(
     userImContactId: string,
     relevantRoomIds: Iterable<string>,
   ): Promise<string[]> {
-    if (!userImContactId) return [];
+    return (await this.lookupUserRooms(userImContactId, relevantRoomIds)).rooms;
+  }
+
+  /**
+   * 反查候选人当前实际在哪些群，并说明本次是否真的核验过。
+   *
+   * 供回合开始时注入"实时群状态"：拉群记忆只存会话层（TTL 2 天），过期后
+   * Agent 不知道候选人已在群、可能重复邀请；且候选人可能自行退群，记忆会反向
+   * 过期。实时成员关系（10 分钟缓存）是唯一可靠事实源。
+   *
+   * 缓存故障或预热超时不抛错：返回 `verified=false` + 原因，由调用方按「未知」降级并留观测痕迹，
+   * 否则空结果会被当成「已核验：不在任何群」。
+   */
+  async lookupUserRooms(
+    userImContactId: string,
+    relevantRoomIds: Iterable<string>,
+  ): Promise<UserRoomsLookup> {
+    if (!userImContactId) return { rooms: [], verified: true };
     const whitelist = new Set(relevantRoomIds);
-    if (whitelist.size === 0) return [];
+    if (whitelist.size === 0) return { rooms: [], verified: true };
 
     try {
-      // 任一目标群缓存缺失 → 预热（一次 API 调用填充全部白名单群）
-      for (const roomId of whitelist) {
-        if ((await this.redisService.exists(this.buildKey(roomId))) === 0) {
-          await this.hydrateCache(whitelist, roomId);
-          break;
-        }
+      // 任一目标群缓存缺失 → 预热（一次 API 调用填充全部白名单群）。
+      // Upstash 是 REST 往返，逐群串行 exists 曾让本步在回合装配里占中位 8 秒；并行探测只付一次往返。
+      const presence = await Promise.all(
+        Array.from(whitelist, async (roomId) => ({
+          roomId,
+          exists: (await this.redisService.exists(this.buildKey(roomId))) !== 0,
+        })),
+      );
+      const missing = presence.find((entry) => !entry.exists);
+      if (missing) {
+        await this.hydrateCache(whitelist, missing.roomId);
       }
 
       const checks = await Promise.all(
@@ -133,11 +177,13 @@ export class GroupMembershipService {
             (await this.redisService.sismember(this.buildKey(roomId), userImContactId)) === 1,
         })),
       );
-      return checks.filter((c) => c.isMember).map((c) => c.roomId);
+      return { rooms: checks.filter((c) => c.isMember).map((c) => c.roomId), verified: true };
     } catch (error: unknown) {
       const message = toErrorMessage(error);
-      this.logger.warn(`反查候选人群状态失败 (user=${userImContactId}): ${message}`);
-      return [];
+      const reason =
+        error instanceof GroupMembershipHydrateTimeoutError ? 'hydrate_timeout' : 'redis_error';
+      this.logger.warn(`反查候选人群状态失败 (user=${userImContactId}, ${reason}): ${message}`);
+      return { rooms: [], verified: false, reason };
     }
   }
 
@@ -192,12 +238,36 @@ export class GroupMembershipService {
       if (targetExists !== 0) return;
     }
 
-    if (this.hydratePromise) return this.hydratePromise;
+    if (!this.hydratePromise) {
+      this.hydratePromise = this.doHydrate(relevantRoomIds).finally(() => {
+        this.hydratePromise = null;
+      });
+      // 等待方可能先超时离场；共享 Promise 的拒绝必须有人接住，否则成为 unhandledRejection。
+      this.hydratePromise.catch(() => undefined);
+    }
+    return this.awaitHydrateBounded(this.hydratePromise);
+  }
 
-    this.hydratePromise = this.doHydrate(relevantRoomIds).finally(() => {
-      this.hydratePromise = null;
+  /**
+   * 只等待预热到 hydrateWaitMs：超时抛 {@link GroupMembershipHydrateTimeoutError}，预热本身不中断，
+   * 后续调用继续复用同一个 in-flight Promise / 已落 Redis 的结果。
+   */
+  private async awaitHydrateBounded(hydrate: Promise<void>): Promise<void> {
+    if (this.hydrateWaitMs <= 0) {
+      throw new GroupMembershipHydrateTimeoutError(this.hydrateWaitMs);
+    }
+    let timer: NodeJS.Timeout | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new GroupMembershipHydrateTimeoutError(this.hydrateWaitMs)),
+        this.hydrateWaitMs,
+      );
     });
-    return this.hydratePromise;
+    try {
+      await Promise.race([hydrate, timeout]);
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   private async doHydrate(relevantRoomIds: Set<string>): Promise<void> {

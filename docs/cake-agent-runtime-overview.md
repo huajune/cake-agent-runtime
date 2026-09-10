@@ -298,7 +298,7 @@ Agent 产出 TurnOutcome + TurnFinalizer
 
 最终采用结果
   ├─ reply：先投递，再 settle({ delivered })
-  └─ skipped / blocked / handoff：提交相应副作用，再 settle({ delivered: false })
+  └─ skipped / handoff：提交相应副作用，再 settle({ delivered: false })
 ```
 
 `TurnFinalizer` 把“采纳后才落地”固化为一次性契约，避免被 Replay 丢弃、被出站守卫拦截
@@ -471,10 +471,10 @@ REPLAY_BLOCKING_TOOLS = new Set([
 ```
 HTTP 请求
   → [基础设施] 启动校验 / Token / DTO / 输入输出预算 / Provider 重试降级
-  → [Input]      高危入站短路为 guardrail_blocked；Prompt Injection 检测
+  → [Input]      高危入站短路为 handoff；Prompt Injection 检测
   → [Prompt]     system sections + final-check；注入命中时追加防护 suffix
   → [Tool]       jobId、precheck、身份、拉群城市/时机等动作门禁
-  → [Output]     确定性规则 + 可选语义 reviewer + 一次有界修复 + 最终清洗
+  → [Output]     确定性规则裁决 → Runner 一次有界 rewrite / replan → 二审与最终清洗
 ```
 
 这是 **Input / Prompt / Tool / Output 四个防线作用位**。Prompt 负责生成前预防，不拥有最终 veto；
@@ -582,7 +582,7 @@ FollowUpTaskProcessor
 
 3. 入站防线
    → PreAgentRiskInterceptService 处理需暂停/告警的业务风险
-   → AgentRunnerService 执行 input guard；阻断时直接产出 guardrail_blocked
+   → AgentRunnerService 执行 input guard；风险命中时直接产出 handoff（guardrail.phase=inbound/source=input_guardrail）
 
 4. PreparationService.prepare()
    → MemoryService.onTurnStart() 拉取短期窗口、会话事实、阶段与长期档案
@@ -593,8 +593,8 @@ FollowUpTaskProcessor
 
 5. GeneratorAgent / LlmExecutorService
    → AI SDK 多步工具循环，例如 duliday_job_list
-   → Runner 执行出站确定性审查、可选语义 reviewer 与最多一次 repair
-   → 归一化为 reply / skipped / guardrail_blocked / handoff
+   → Runner 执行出站确定性审查与最多一次 rewrite / replan，修复版再过确定性二审
+   → 归一化为 reply / handoff / skipped
 
 6. ReplyWorkflowService
    → 普通 reply 生成期间若有新消息，丢弃当前 finalizer 后合并 Replay（最多 3 次）

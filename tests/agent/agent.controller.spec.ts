@@ -167,8 +167,9 @@ describe('AgentController', () => {
         steps: 1,
         usage: { inputTokens: 10, outputTokens: 20, totalTokens: 30 },
         outputDecision: passDecision,
+        resolution: { outcome: 'reply' },
         revised: false,
-        guardrailTrace: { steps: [], repaired: false, finalDecision: 'pass' },
+        guardrailTrace: { steps: [], repaired: false, finalOutcome: 'reply' },
       });
 
       const result = await controller.debugChat({
@@ -199,7 +200,8 @@ describe('AgentController', () => {
       expect(result.text).toBe('你好！');
       expect(result.usage).toEqual({ inputTokens: 10, outputTokens: 20, totalTokens: 30 });
       expect(result.guardrail.decision).toEqual(passDecision);
-      expect(result.guardrail.trace).toEqual({ steps: [], repaired: false, finalDecision: 'pass' });
+      expect(result.guardrail.resolution).toEqual({ outcome: 'reply' });
+      expect(result.guardrail.trace).toEqual({ steps: [], repaired: false, finalOutcome: 'reply' });
     });
 
     it('should use defaults when optional params not provided', async () => {
@@ -208,6 +210,7 @@ describe('AgentController', () => {
         steps: 1,
         usage: { inputTokens: 10, outputTokens: 20, totalTokens: 30 },
         outputDecision: passDecision,
+        resolution: { outcome: 'reply' },
         revised: false,
       });
 

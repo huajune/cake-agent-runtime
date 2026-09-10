@@ -165,12 +165,13 @@ describe('ReengagementTrackingService', () => {
     },
   );
 
-  it.each(['guardrail_blocked', 'handoff', 'delivery_skipped'])(
+  it.each(['handoff', 'delivery_skipped'] as const)(
     'records expected no-send outcome %s as skipped',
     (outcomeKind) => {
       service.trackOutcomeNotReply(identity, outcomeKind, 'batch-1', outcomeKind);
 
       expect(lastInput().status).toBe('skipped');
+      expect(lastInput().outcomeKind).toBe(outcomeKind);
     },
   );
 

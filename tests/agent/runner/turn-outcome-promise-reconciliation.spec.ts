@@ -1,6 +1,7 @@
 import { classifyReviewedOutcome } from '@agent/runner/turn-outcome';
 import type { SessionRef } from '@agent/runner/agent-runner.types';
 import type { OutputGuardDecision } from '@agent/guardrail/output/output-guardrail.service';
+import type { AgentToolCall } from '@agent/generator/generator.types';
 
 /**
  * 终态 side-effect 对账验收：回复明确承诺人工跟进时
@@ -11,16 +12,17 @@ describe('classifyReviewedOutcome — handoff 承诺补动作（议题 7-1）', 
   const sessionRef: SessionRef = { corpId: 'corp-1', userId: 'user-1', sessionId: 'chat-1' };
   const reply = '我让同事帮你确认下具体算法，稍后联系你哈';
 
-  const decision = (ruleIds: string[]): OutputGuardDecision =>
-    ({
-      decision: 'pass',
-      riskLevel: 'low',
-      ruleIds,
-      blockedRuleIds: [],
-      reasonCode: undefined,
-    }) as unknown as OutputGuardDecision;
+  const decision = (ruleIds: string[]): OutputGuardDecision => ({
+    decision: 'pass',
+    riskLevel: 'low',
+    violations: [],
+    ruleIds,
+    blockedRuleIds: [],
+    repairMode: 'rewrite',
+    reasonCode: undefined,
+  });
 
-  const classify = (toolCalls: unknown[] = []) =>
+  const classify = (toolCalls: AgentToolCall[] = []) =>
     classifyReviewedOutcome(
       {
         text: reply,
@@ -29,8 +31,9 @@ describe('classifyReviewedOutcome — handoff 承诺补动作（议题 7-1）', 
         toolCalls,
         usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
         outputDecision: decision([]),
+        resolution: { outcome: 'reply' },
         revised: false,
-      } as unknown as Parameters<typeof classifyReviewedOutcome>[0],
+      },
       sessionRef,
       'msg-1',
     );

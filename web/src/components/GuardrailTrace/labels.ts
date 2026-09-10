@@ -37,7 +37,7 @@ const GUARDRAIL_RULE_LABELS: Record<string, string> = {
   system_status_fabrication: '编造系统状态',
   work_content_generalization: '工作内容泛化脑补',
 
-  // LLM reviewer / compact violation types may use semantic finding codes instead of rule ids.
+  // Historical LLM reviewer records may use semantic finding codes instead of rule ids.
   active_booking_state_conflict: '预约状态冲突',
   false_promises: '虚假承诺',
   job_fact_value_mismatch: '岗位事实数值不一致',
@@ -45,6 +45,13 @@ const GUARDRAIL_RULE_LABELS: Record<string, string> = {
 
 const REASON_CODE_LABELS: Record<string, string> = {
   repair_exhausted: '修复后仍未通过',
+  meta_narration_silenced: '元叙述无需回复',
+  internal_reasoning_artifact_silenced: '推理残文无可用正文',
+  tool_call_artifact_silenced: '工具残文无可用正文',
+  revise_empty: '修复产物为空',
+  revise_dangling: '修复产物是悬空承诺',
+  repair_unusable_fail_open: '修复不可用，采用可降级首版',
+  repair_exhausted_fail_open: '修复预算耗尽后降级放行',
   replan_exhausted: '重生成后仍未通过',
   replanned: '重生成后通过',
   risk_intercept: '风险拦截',

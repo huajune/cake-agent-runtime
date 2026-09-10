@@ -2,10 +2,9 @@ import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { AlertLevel } from '@enums/alert.enum';
 import { AlertNotifierService } from '@notification/services/alert-notifier.service';
-import type {
-  AgentEventPersister,
-  AgentExecutionEvent,
-} from '@observability/persistence/agent-event-persister.interface';
+import type { AgentEvent } from '@observability/observer.interface';
+import type { AgentEventPersister } from '@observability/persistence/agent-event-persister.interface';
+
 import { AgentExecutionEventRepository } from '../../repositories/agent-execution-event.repository';
 
 @Injectable()
@@ -17,7 +16,7 @@ export class AgentExecutionEventPersisterService implements AgentEventPersister 
     private readonly alertNotifier: AlertNotifierService,
   ) {}
 
-  async persist(event: AgentExecutionEvent): Promise<void> {
+  async persist(event: AgentEvent): Promise<void> {
     try {
       await this.repository.saveEvent(event);
     } catch (error) {
@@ -26,7 +25,7 @@ export class AgentExecutionEventPersisterService implements AgentEventPersister 
     }
   }
 
-  private alertPersistFailure(event: AgentExecutionEvent, error: unknown): void {
+  private alertPersistFailure(event: AgentEvent, error: unknown): void {
     void this.alertNotifier
       .sendAlert({
         code: 'agent_execution_event_persist_failed',

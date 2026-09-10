@@ -17,13 +17,14 @@ import {
   GUARDRAIL_REPAIR_MODE,
   type GuardrailReviewStepTrace,
   type GuardrailTurnTrace,
+  type OutputResolution,
 } from '@shared-types/guardrail.contract';
 import { GuardrailReviewService } from '@biz/message/services/guardrail-review.service';
 import type {
   GuardrailReviewInsertInput,
   GuardrailReviewStepDetail,
 } from '@biz/message/types/guardrail-review.types';
-import { classifyReviewedOutcome } from './turn-outcome';
+import { classifyReviewedOutcome, resolveReviewedResolution } from './turn-outcome';
 import { isDanglingCheckReply } from './dangling-reply';
 import {
   detectOutputLeak,
@@ -34,8 +35,8 @@ import {
   stripMarkdownCodeFences,
   tryUnwrapEnvelopeReply,
 } from '../guardrail/output/rules/internal-info-leaks.rule';
-import { OutboundReplySanitizer } from '../guardrail/output/outbound-reply-sanitizer';
-import { detectRepairRegression } from '../guardrail/output/repair-regression.util';
+import { OutboundReplySanitizer } from '../guardrail/output/sanitizer/outbound-reply-sanitizer';
+import { detectRepairRegression } from '../reply-repair/repair-regression.util';
 import {
   OutputGuardrailService,
   type OutputGuardDecision,
@@ -78,10 +79,12 @@ const PASS_DECISION: OutputGuardDecision = {
 
 const VISUAL_GENERATED_CONTENT_PATTERN = /^\s*\[(?:图片|表情)消息\]/;
 
-/** 一次「已审生成」的结果：在 GeneratorRunResult 上叠加出站裁决与是否经过 revise 重写。 */
+/** 一次「已审生成」的结果：在 GeneratorRunResult 上叠加出站裁决与是否经过 repair 重写。 */
 export interface ReviewedRunResult extends GeneratorRunResult {
+  /** 被采用文本所对应的真实审查意见，不用最终处置覆盖它。 */
   outputDecision: OutputGuardDecision;
-  /** 是否经过一次 revise 重写（true 时 text/toolCalls 来自重写版）。 */
+  resolution: OutputResolution;
+  /** 是否经过一次 repair 重写（true 时 text/toolCalls 来自重写版）。 */
   revised: boolean;
   /**
    * 出站守卫全程 trace（首审→repair→二审），供流水落库与调试页展示。
@@ -165,10 +168,10 @@ export class AgentRunnerService {
   }
 
   /**
-   * 入站风险预检 → 收口成 `TurnOutcome`（input guardrail 的**短路决策**归位到 runner，与出站
-   * 守卫统一产出 `guardrail_blocked`）。
+   * 入站风险预检 → 收口成 `handoff`；来源和风险原因保留在 guardrail，
+   * 继续沿用 conversation_risk 意图，不再生成普通转人工意图。
    *
-   * - 命中：这里收成 `guardrail_blocked/inbound` 终态并携带 sideEffects（本轮不跑 Agent），
+   * - 命中：这里收成 `handoff` 终态并携带 sideEffects（本轮不跑 Agent），
    *   由渠道在 replay 定局后经 TurnOutcomeInterventionService.commit 统一执行副作用。
    *   渠道只负责静默收尾（commit 副作用/记跳过观测/去重/ack）。
    * - 未命中：返回 `null`，调用方继续走正常生成。
@@ -179,14 +182,14 @@ export class AgentRunnerService {
 
     // 观测 P1-2：入站拦截此前零事件，时间线上看不出"这轮为什么没跑 Agent"。
     this.tracer?.emit({
-      type: 'inbound_guardrail_block',
+      type: 'inbound_guardrail_handoff',
       reasonCode: decision.reasonCode,
       riskType: decision.riskType,
       riskLabel: decision.riskLabel,
     });
 
     return {
-      kind: 'guardrail_blocked',
+      kind: 'handoff',
       toolCalls: [],
       disposition: decision.disposition,
       guardrail: {
@@ -206,12 +209,12 @@ export class AgentRunnerService {
    * 已审生成：generator.invoke → 出站守卫 → 需要时一次受控 repair（§5.3 / §7）。
    *
    * - 短路/空文本：不过守卫，原样返回（decision='pass'）。
-   * - decision='revise'：丢弃首版，交给独立 ReplyRepairAgent 按 violations + 已知事实做文本修复；
+   * - decision='repair'：丢弃首版，交给独立 ReplyRepairAgent 按 violations + 已知事实做文本修复；
    *   再审一次；二次仍不过按 §9「repair 死循环硬上限 1」分级收敛。
    * - decision='replan'（守卫派生 repairMode=replan）：首版整体作废，用完全相同的参数
    *   重进一次 generator，重生成结果按修复版走二审与回归闸；首版永不回退、二审不 fail-open，
-   *   仍不过则 `replan_exhausted` 静默。runner 不识别规则，只执行守卫派生的修复方式。
-   * - decision='block'：先进入一次受控修复；二审仍不通过才不投递。
+   *   仍不过则 `replan_exhausted` 转人工。
+   * - 无法安全放行：Runner 产出 handoff；有意静默产出 skipped，审查意见保持原样。
    *
    * turn-end 语义：生成结果上的 `runTurnEnd` 一律原样透传给调用方（repair 产物复用首版的
    * 闭包），由调用方在投递结局已知后触发一次——被丢弃的首版因此不会写记忆。
@@ -230,7 +233,7 @@ export class AgentRunnerService {
     let firstText = OutboundReplySanitizer.stripTimeMarkers((first.text ?? '').trim());
     const firstSkipped = (first.toolCalls ?? []).some(isShortCircuitedToolCall);
     if (!firstText || firstSkipped) {
-      return this.finalizeReviewed(first, PASS_DECISION, false);
+      return this.finalizeReviewed(first, PASS_DECISION, { outcome: 'skipped' }, false);
     }
 
     const decision = await this.outputGuard.check(this.buildGuardInput(first, ctx));
@@ -251,48 +254,50 @@ export class AgentRunnerService {
     }
     const firstStep = this.toGuardrailStep('first', decision);
 
-    // 直达静默：这两类首版重写只会产出"另一条不该发的文本"，与悬空承接句同理
-    // 收敛为 block（沉默 + 落审查档案），不进 repair、不送二审。
+    // 首版无可采用正文：元叙述保留有意静默；纯内部产物直接转人工，不进入修复。
     const silenceReason = this.resolveDirectSilenceReason(decision, firstText);
     if (silenceReason) {
-      const silencedDecision: OutputGuardDecision = {
-        ...decision,
-        // handoff_promise_only_reply_silenced 的首审是 revise 档，静默收敛必须显式压成
-        // block——沿用 revise 会让 finalize 把首版当可投递文本发出去。
-        decision: 'block',
+      const resolution: OutputResolution = {
+        outcome: silenceReason === 'meta_narration_silenced' ? 'skipped' : 'handoff',
+        source: 'output_guardrail',
         reasonCode: silenceReason,
       };
       this.logger.warn(
-        `[invokeReviewed] 首版命中直达静默（${silenceReason}），收敛为 block（整轮静默）: ` +
+        `[invokeReviewed] 首版命中直达静默（${silenceReason}），结束自动回复（${resolution.outcome}）: ` +
           `text="${firstText.slice(0, 80)}"`,
       );
       this.persistReviewRecord(ctx, {
+        result: first,
         firstReply: firstText,
         firstDecision: decision,
-        finalDecision: silencedDecision,
-        repaired: false,
-      });
-      return this.finalizeReviewed(
-        first,
-        silencedDecision,
-        false,
-        this.buildGuardrailTrace([firstStep], false, silencedDecision),
-      );
-    }
-
-    const shouldRepair = decision.decision !== 'pass' && decision.decision !== 'observe';
-    if (!shouldRepair) {
-      this.persistReviewRecord(ctx, {
-        firstReply: firstText,
-        firstDecision: decision,
-        finalDecision: decision,
+        resolution,
         repaired: false,
       });
       return this.finalizeReviewed(
         first,
         decision,
+        resolution,
         false,
-        this.buildGuardrailTrace([firstStep], false, decision),
+        this.buildGuardrailTrace([firstStep], false, resolution),
+      );
+    }
+
+    const shouldRepair = decision.decision !== 'pass' && decision.decision !== 'observe';
+    if (!shouldRepair) {
+      const resolution: OutputResolution = { outcome: 'reply', reasonCode: decision.reasonCode };
+      this.persistReviewRecord(ctx, {
+        result: first,
+        firstReply: firstText,
+        firstDecision: decision,
+        resolution,
+        repaired: false,
+      });
+      return this.finalizeReviewed(
+        first,
+        decision,
+        resolution,
+        false,
+        this.buildGuardrailTrace([firstStep], false, resolution),
       );
     }
 
@@ -374,81 +379,64 @@ export class AgentRunnerService {
           );
 
     const revisedText = OutboundReplySanitizer.stripTimeMarkers((revised.text ?? '').trim());
+    // replan 是完整 Agent 回合，可能已通过工具转人工或主动跳过回复。
+    // 这些终态不需要可投递正文，也不能把它们误作空修复再追加守卫介入。
+    if (replan) {
+      const resolution = resolveReviewedResolution(revised, { outcome: 'reply' });
+      const toolEnded =
+        resolution.outcome === 'handoff' ||
+        (revised.toolCalls ?? []).some(isShortCircuitedToolCall);
+      if (toolEnded) {
+        this.persistReviewRecord(ctx, {
+          result: revised,
+          firstReply: firstText,
+          firstDecision: decision,
+          resolution,
+          repaired: true,
+          revisedReply: revisedText,
+        });
+        return this.finalizeReviewed(
+          revised,
+          decision,
+          resolution,
+          true,
+          this.buildGuardrailTrace([firstStep], true, resolution),
+        );
+      }
+    }
     // 悬空承接句 = repair 失败：repair 是本轮最后一次生成，"我帮你查下 X"式的将来时
-    // 承诺不可能兑现，投递即空头承诺。与空文本同样收敛为 block（沉默 + 落审查档案），
+    // 承诺不可能兑现，投递即空头承诺。与空文本同样由 Runner 决定回退或转人工，
     // 不送二审——二审只查规则违规，会放行。
     const danglingRepair = revisedText !== '' && isDanglingCheckReply(revisedText);
     if (!revisedText || danglingRepair) {
       if (danglingRepair) {
         this.logger.warn(
-          `[invokeReviewed] repair 产物为悬空承接句，收敛为 block: text="${revisedText}"`,
+          `[invokeReviewed] repair 产物为悬空承接句，不能采用: text="${revisedText}"`,
         );
       }
-      const emptyDecision: OutputGuardDecision = {
-        ...decision,
-        decision: 'block',
-        reasonCode: danglingRepair ? 'revise_dangling' : 'revise_empty',
-      };
-      // 悬空文本刻意不送二审，没有针对修复文本的真实裁决——revised 步骤必须用
-      // 干净的 decision 归档，不能 spread 首审对象：否则首版回复的 ruleIds/
-      // violations 会被错误归到重写文本名下，污染守卫档案的取证价值。
-      const danglingStepDecision: OutputGuardDecision = {
-        decision: 'block',
-        riskLevel: 'low',
-        violations: [],
-        ruleIds: [],
-        blockedRuleIds: [],
-        repairMode: decision.repairMode,
-        reasonCode: danglingRepair ? 'revise_dangling' : 'revise_empty',
-      };
-      if (firstFailOpenEligible) {
-        const failOpenDecision: OutputGuardDecision = {
-          ...decision,
-          decision: 'pass',
-          reasonCode: 'repair_unusable_fail_open',
-        };
-        this.persistReviewRecord(ctx, {
-          firstReply: firstText,
-          firstDecision: decision,
-          finalDecision: failOpenDecision,
-          repaired: true,
-          revisedReply: revisedText,
-          revisedDecision: danglingStepDecision,
-          committedSideEffects: committed || undefined,
-        });
-        return this.finalizeReviewed(
-          first,
-          failOpenDecision,
-          false,
-          this.buildGuardrailTrace(
-            [firstStep, this.toGuardrailStep('revised', danglingStepDecision)],
-            true,
-            failOpenDecision,
-          ),
-        );
-      }
+      const resolution: OutputResolution = firstFailOpenEligible
+        ? { outcome: 'reply', reasonCode: 'repair_unusable_fail_open' }
+        : {
+            outcome: 'handoff',
+            source: 'output_guardrail',
+            reasonCode: danglingRepair ? 'revise_dangling' : 'revise_empty',
+          };
+      // 空文本/悬空话术由 Runner 判定不可采用，未调用守卫二审，不能伪造审查步骤。
       this.persistReviewRecord(ctx, {
+        result: firstFailOpenEligible ? first : revised,
         firstReply: firstText,
         firstDecision: decision,
-        finalDecision: emptyDecision,
+        resolution,
         repaired: true,
         revisedReply: revisedText,
-        // 悬空场景有真实修复文本，补 revisedDecision 让档案落库（空文本场景
-        // 维持原跳过行为：无修复内容可归档）。
-        revisedDecision: danglingRepair ? danglingStepDecision : undefined,
         committedSideEffects: committed || undefined,
       });
       return this.finalizeReviewed(
-        revised,
-        emptyDecision,
-        true,
-        this.buildGuardrailTrace(
-          danglingRepair
-            ? [firstStep, this.toGuardrailStep('revised', danglingStepDecision)]
-            : [firstStep],
-          true,
-          emptyDecision,
-        ),
+        firstFailOpenEligible ? first : revised,
+        decision,
+        resolution,
+        !firstFailOpenEligible,
+        this.buildGuardrailTrace([firstStep], true, resolution),
       );
     }
 
@@ -459,19 +447,19 @@ export class AgentRunnerService {
       this.buildGuardInput(revised, ctx, reviewedToolCalls),
     );
     if (
-      decision2.decision === 'block' &&
-      this.isOnlyInternalOutputLeakBlock(decision2) &&
+      decision2.decision === 'repair' &&
+      this.isOnlyInternalOutputLeak(decision2) &&
       firstFailOpenEligible
     ) {
-      const failOpenDecision: OutputGuardDecision = {
-        ...decision,
-        decision: 'pass',
+      const resolution: OutputResolution = {
+        outcome: 'reply',
         reasonCode: 'repair_unusable_fail_open',
       };
       this.persistReviewRecord(ctx, {
+        result: first,
         firstReply: firstText,
         firstDecision: decision,
-        finalDecision: failOpenDecision,
+        resolution,
         repaired: true,
         revisedReply: revisedText,
         revisedDecision: decision2,
@@ -479,29 +467,31 @@ export class AgentRunnerService {
       });
       return this.finalizeReviewed(
         first,
-        failOpenDecision,
+        decision,
+        resolution,
         false,
         this.buildGuardrailTrace(
           [firstStep, this.toGuardrailStep('revised', decision2)],
           true,
-          failOpenDecision,
+          resolution,
         ),
       );
     }
-    // §9：repair 死循环硬上限 1 —— 二次仍 revise 时按风险分级收敛：
-    // - P0（riskLevel=high）或含不可恢复违规：block（静默 + 档案），发出去即不可挽回；
+    // §9：repair 死循环硬上限 1 —— 二次仍需修复 时按风险分级收敛：
+    // - P0（riskLevel=high）或含不可恢复违规：handoff（不发送 + 人工介入），发出去即不可挽回；
     // - 仅 P1/P2 可恢复违规：fail-open 投递修复版 + 档案标注 repair_exhausted_fail_open。
     //   依据：假阳 × repair_exhausted 静默的组合杀伤最大（候选人在约面/收资节点整轮收不到
     //   回复），P1 级假阳的代价应是"多一条告警"而不是丢单。
-    //   注意 revise 档规则本就定义为"可改写修复"的口径问题，修复版即使仍有残留，
+    //   注意 repair 档规则本就定义为"可改写修复"的口径问题，修复版即使仍有残留，
     //   其风险也低于关键转化节点的整轮静默。
     const wantsRepairAgain = decision2.decision !== 'pass' && decision2.decision !== 'observe';
-    // replan 档不 fail-open：重生成后仍被守卫否决的文本没有任何一版可信，静默优于投递。
+    // replan 档不 fail-open：重生成后仍不通过，或二审新要求查证，都不能作为低风险残留放行。
     const failOpenEligible =
       wantsRepairAgain &&
       !replan &&
+      decision2.repairMode !== GUARDRAIL_REPAIR_MODE.REPLAN &&
       decision2.riskLevel !== 'high' &&
-      decision2.violations.every((v) => v.recoverability !== 'non_recoverable');
+      decision2.violations.every((v) => v.allowFailOpen !== false);
     if (failOpenEligible) {
       this.logger.warn(
         `[invokeReviewed] repair 上限用尽但仅剩 P1/P2 可恢复违规，fail-open 投递修复版: ` +
@@ -524,9 +514,9 @@ export class AgentRunnerService {
         : null;
     // 检出回归后的收敛对齐 guardrail-quality-system.md §2.3 ④：
     // 首版可 fail-open（P1/P2 全部可恢复且非高风险）→ 回退首版；
-    // 首版不可 fail-open（P0/泄漏类/高风险）→ 两版都不投，静默 block 并留档——
+    // 首版不可 fail-open（P0/泄漏类/高风险）→ 两版都不投，转人工并留档——
     // 修复版已证明退化，首版又是守卫明确否决的泄漏/红线内容，谁都不能进投递链。
-    // 注意不能用 violation.currentReplySendable 判定：revise 档一律派生为 false，会把
+    // 注意不能用 violation.currentReplySendable 判定：repair 档一律派生为 false，会把
     // "P1/P2 回退首版"整条路径变成不可达。
     const regressionBlock = regression !== null && !firstFailOpenEligible;
     const regressionRevert = regression !== null && !regressionBlock;
@@ -542,33 +532,34 @@ export class AgentRunnerService {
           `rules=${decision.ruleIds.join(',') || '-'}, traceId=${ctx.traceId ?? '-'}`,
       );
     }
-    const finalDecision: OutputGuardDecision = regressionBlock
+    const resolution: OutputResolution = regressionBlock
       ? {
-          ...decision2,
-          decision: 'block',
-          riskLevel: decision.riskLevel,
+          outcome: 'handoff',
+          source: 'output_guardrail',
           reasonCode: `repair_regression_blocked:${regression}`,
         }
       : wantsRepairAgain
         ? failOpenEligible
-          ? { ...decision2, decision: 'pass', reasonCode: 'repair_exhausted_fail_open' }
+          ? { outcome: 'reply', reasonCode: 'repair_exhausted_fail_open' }
           : {
-              ...decision2,
-              decision: 'block',
+              outcome: 'handoff',
+              source: 'output_guardrail',
               reasonCode: replan ? 'replan_exhausted' : 'repair_exhausted',
             }
-        : regressionRevert
-          ? { ...decision2, reasonCode: `repair_regression_reverted:${regression}` }
-          : deterministicReasonCode !== null
-            ? // 确定性剥围栏/拆信封放行：档案标注归因码，供守卫审计区分"LLM 重写"与"机械剥离"两类修复
-              { ...decision2, reasonCode: decision2.reasonCode ?? deterministicReasonCode }
-            : replan
-              ? { ...decision2, reasonCode: decision2.reasonCode ?? 'replanned' }
-              : decision2;
+        : {
+            outcome: 'reply',
+            reasonCode: regressionRevert
+              ? `repair_regression_reverted:${regression}`
+              : (decision2.reasonCode ??
+                deterministicReasonCode ??
+                (replan ? 'replanned' : undefined)),
+          };
     const finalResult = regressionBlock
       ? { ...revised, toolCalls: reviewedToolCalls }
       : wantsRepairAgain
-        ? failOpenEligible && (this.isSecondDecisionWorse(decision, decision2) || regressionRevert)
+        ? failOpenEligible &&
+          firstFailOpenEligible &&
+          (this.isSecondDecisionWorse(decision, decision2) || regressionRevert)
           ? first
           : { ...revised, toolCalls: reviewedToolCalls }
         : regressionRevert
@@ -576,9 +567,10 @@ export class AgentRunnerService {
           : { ...revised, toolCalls: reviewedToolCalls };
     const finalRevised = finalResult !== first;
     this.persistReviewRecord(ctx, {
+      result: finalResult,
       firstReply: firstText,
       firstDecision: decision,
-      finalDecision,
+      resolution,
       repaired: true,
       revisedReply: revisedText,
       revisedDecision: decision2,
@@ -586,12 +578,13 @@ export class AgentRunnerService {
     });
     return this.finalizeReviewed(
       finalResult,
-      finalDecision,
+      finalResult === first ? decision : decision2,
+      resolution,
       finalRevised,
       this.buildGuardrailTrace(
         [firstStep, this.toGuardrailStep('revised', decision2)],
         true,
-        finalDecision,
+        resolution,
       ),
     );
   }
@@ -609,15 +602,17 @@ export class AgentRunnerService {
   private persistReviewRecord(
     ctx: ReviewContext,
     data: {
+      result: GeneratorRunResult;
       firstReply: string;
       firstDecision: OutputGuardDecision;
-      finalDecision: OutputGuardDecision;
+      resolution: OutputResolution;
       repaired: boolean;
       revisedReply?: string;
       revisedDecision?: OutputGuardDecision;
       committedSideEffects?: string;
     },
   ): void {
+    const resolution = resolveReviewedResolution(data.result, data.resolution);
     const overrideMarkers = Array.from(
       new Set([
         ...(data.firstDecision.overrideMarkers ?? []),
@@ -630,36 +625,26 @@ export class AgentRunnerService {
       overrideMarkers.length > 0;
     if (!hasSignal) return;
     // 观测 P1-2：repair 终局事件落在归档口而非各分支——六个调用点一处不漏，
-    // 含下方"修复内容缺失跳过落库"的 revise_empty（档案没有、事件必须有）。
+    // 包含空修复与悬空话术；未发生二审时保留修复事实，不伪造审查步骤。
     // 放在 traceId 早退之前：事件的 traceId 由 tracer 从请求上下文补齐，不依赖档案能否落库。
     if (data.repaired) {
       this.tracer?.emit({
         type: 'guardrail_repair',
         outcome:
-          data.finalDecision.reasonCode ??
-          (data.finalDecision.decision === 'pass' ? 'repaired' : data.finalDecision.decision),
-        finalDecision: data.finalDecision.decision,
-        riskLevel: data.finalDecision.riskLevel,
+          resolution.reasonCode ??
+          (resolution.outcome === 'reply' ? 'repaired' : resolution.outcome),
+        finalOutcome: resolution.outcome,
+        riskLevel: (data.revisedDecision ?? data.firstDecision).riskLevel,
         firstRuleIds: [...data.firstDecision.ruleIds],
-        finalRuleIds: [...data.finalDecision.ruleIds],
+        finalRuleIds: [...(data.revisedDecision ?? data.firstDecision).ruleIds],
         repairMode: data.firstDecision.repairMode,
       });
     }
     if (!ctx.traceId) return;
-    if (data.repaired && (data.revisedReply === undefined || !data.revisedDecision)) {
-      this.logger.warn(`[invokeReviewed] 审查档案缺少修复后内容，跳过落库: traceId=${ctx.traceId}`);
-      return;
-    }
-
-    // block 档案必须可归因：所有 block 分支都应显式携带 reasonCode。
-    // 这里对遗漏值兜底并告警，让回归在观测中现形，而不是沉默落 null。
-    let reasonCode = data.finalDecision.reasonCode;
-    if (!reasonCode && data.finalDecision.decision === 'block') {
-      reasonCode = 'unattributed_block';
-      this.logger.warn(
-        `[invokeReviewed] block 档案缺少 reasonCode，已兜底为 unattributed_block: ` +
-          `traceId=${ctx.traceId}, rules=${data.finalDecision.blockedRuleIds.join(',') || '-'}`,
-      );
+    let reasonCode = resolution.reasonCode;
+    if (!reasonCode && resolution.outcome === 'handoff') {
+      reasonCode = 'unattributed_handoff';
+      this.logger.warn(`[invokeReviewed] 人工介入缺少 reasonCode: traceId=${ctx.traceId}`);
     }
     if (overrideMarkers.length > 0) {
       reasonCode = [reasonCode, ...overrideMarkers].filter(Boolean).join('|');
@@ -674,7 +659,7 @@ export class AgentRunnerService {
       userMessage: ctx.userMessage,
       firstReply: data.firstReply,
       first: this.toReviewStepDetail(data.firstDecision),
-      finalDecision: data.finalDecision.decision,
+      finalOutcome: resolution.outcome,
       reasonCode,
     };
     const reviewRecord: GuardrailReviewInsertInput = data.repaired
@@ -682,8 +667,8 @@ export class AgentRunnerService {
           ...baseRecord,
           repairMode: data.firstDecision.repairMode,
           repaired: true,
-          revisedReply: data.revisedReply,
-          revised: this.toReviewStepDetail(data.revisedDecision),
+          revisedReply: data.revisedReply ?? '',
+          revised: data.revisedDecision ? this.toReviewStepDetail(data.revisedDecision) : undefined,
           committedSideEffects: data.committedSideEffects,
         }
       : {
@@ -738,20 +723,20 @@ export class AgentRunnerService {
   private buildGuardrailTrace(
     steps: GuardrailReviewStepTrace[],
     repaired: boolean,
-    finalDecision: OutputGuardDecision,
+    resolution: OutputResolution,
   ): GuardrailTurnTrace {
     return {
       steps,
       repaired,
-      finalDecision: finalDecision.decision,
-      reasonCode: finalDecision.reasonCode,
+      finalOutcome: resolution.outcome,
+      reasonCode: resolution.reasonCode,
     };
   }
 
   private isFirstReplyFailOpenEligible(decision: OutputGuardDecision): boolean {
     return (
       decision.riskLevel !== 'high' &&
-      decision.violations.every((violation) => violation.recoverability !== 'non_recoverable')
+      decision.violations.every((violation) => violation.allowFailOpen !== false)
     );
   }
 
@@ -777,7 +762,7 @@ export class AgentRunnerService {
     );
   }
 
-  private isOnlyInternalOutputLeakBlock(decision: OutputGuardDecision): boolean {
+  private isOnlyInternalOutputLeak(decision: OutputGuardDecision): boolean {
     return (
       decision.blockedRuleIds.length > 0 &&
       decision.blockedRuleIds.every((ruleId) => ruleId === 'internal_output_leak')
@@ -794,7 +779,7 @@ export class AgentRunnerService {
    * 快通道，交给常规 repair（该路径还会过回归闸）。
    */
   private tryStripFenceOnlyLeak(decision: OutputGuardDecision, text: string): string | null {
-    if (!this.isOnlyInternalOutputLeakBlock(decision)) return null;
+    if (!this.isOnlyInternalOutputLeak(decision)) return null;
     const stripped = stripMarkdownCodeFences(text);
     if (!stripped || stripped === text) return null;
     if (detectOutputLeak(stripped)) return null;
@@ -813,7 +798,7 @@ export class AgentRunnerService {
     decision: OutputGuardDecision,
     text: string,
   ): string | null {
-    if (!this.isOnlyInternalOutputLeakBlock(decision)) return null;
+    if (!this.isOnlyInternalOutputLeak(decision)) return null;
     const stripped = stripInternalReasoningArtifacts(text);
     if (!stripped || stripped === text) return null;
     if (detectOutputLeak(stripped)) return null;
@@ -829,7 +814,7 @@ export class AgentRunnerService {
    * 收敛在 tryUnwrapEnvelopeReply；拆封产物仍走二审 + 悬空承接句检测，二审才是放行依据。
    */
   private tryUnwrapEnvelopeLeak(decision: OutputGuardDecision, text: string): string | null {
-    if (!this.isOnlyInternalOutputLeakBlock(decision)) return null;
+    if (!this.isOnlyInternalOutputLeak(decision)) return null;
     const unwrapped = tryUnwrapEnvelopeReply(text);
     if (unwrapped === null) return null;
     this.logger.warn(
@@ -850,15 +835,12 @@ export class AgentRunnerService {
     decision: OutputGuardDecision,
     firstText: string,
   ): string | null {
-    if (decision.decision === 'block') {
-      if (this.isOnlyMetaNarrationBlock(decision)) return 'meta_narration_silenced';
-      if (
-        this.isOnlyInternalOutputLeakBlock(decision) &&
-        isInternalReasoningArtifactOnly(firstText)
-      ) {
+    if (decision.decision === 'repair') {
+      if (this.isOnlyMetaNarration(decision)) return 'meta_narration_silenced';
+      if (this.isOnlyInternalOutputLeak(decision) && isInternalReasoningArtifactOnly(firstText)) {
         return 'internal_reasoning_artifact_silenced';
       }
-      if (this.isOnlyInternalOutputLeakBlock(decision) && isToolCallArtifactOnly(firstText)) {
+      if (this.isOnlyInternalOutputLeak(decision) && isToolCallArtifactOnly(firstText)) {
         return 'tool_call_artifact_silenced';
       }
       return null;
@@ -866,7 +848,7 @@ export class AgentRunnerService {
     return null;
   }
 
-  private isOnlyMetaNarrationBlock(decision: OutputGuardDecision): boolean {
+  private isOnlyMetaNarration(decision: OutputGuardDecision): boolean {
     return (
       decision.blockedRuleIds.length > 0 &&
       decision.blockedRuleIds.every((ruleId) => ruleId === 'meta_narration_reply')
@@ -995,7 +977,7 @@ export class AgentRunnerService {
     });
   }
 
-  /** 把本轮已成功的副作用工具压成一句既成事实提示（喂给 revise 重写，防"声称未发生/重复执行"）。 */
+  /** 把本轮已成功的副作用工具压成一句既成事实提示（喂给 repair 重写，防"声称未发生/重复执行"）。 */
   private summarizeCommittedSideEffects(toolCalls: AgentToolCall[]): string {
     const names = [
       ...new Set(
@@ -1011,12 +993,44 @@ export class AgentRunnerService {
   private finalizeReviewed(
     result: GeneratorRunResult,
     decision: OutputGuardDecision,
+    resolution: OutputResolution,
     revised: boolean,
     guardrailTrace?: GuardrailTurnTrace,
   ): ReviewedRunResult {
-    // runTurnEnd 一律透传：触发时机（含 block 时的 includeAssistantText=false）由
+    // runTurnEnd 一律透传：触发时机（含 handoff/skipped 时的 includeAssistantText=false）由
     // TurnFinalizer 在投递结局已知后统一决定，runner 不再代为触发。
-    return { ...result, outputDecision: decision, revised, guardrailTrace };
+    const finalResolution = resolveReviewedResolution(result, resolution);
+    return {
+      ...result,
+      runTurnEnd: this.bindTurnEndContext(result.runTurnEnd),
+      outputDecision: decision,
+
+      resolution: finalResolution,
+      revised,
+      guardrailTrace: guardrailTrace
+        ? {
+            ...guardrailTrace,
+            finalOutcome: finalResolution.outcome,
+            reasonCode: finalResolution.reasonCode,
+          }
+        : undefined,
+    };
+  }
+
+  /**
+   * 记忆收尾闭包由渠道在投递结局已知后才触发，那时 AsyncLocalStorage 里已经没有本回合的
+   * 请求上下文：收尾期间发射的事件（extract 的 llm_execution、brand_state_change、
+   * session_state_field_dropped）会整批丢掉 trace 维度。创建闭包时捕获上下文，触发时再进入。
+   */
+  private bindTurnEndContext(
+    runTurnEnd: GeneratorRunResult['runTurnEnd'],
+  ): GeneratorRunResult['runTurnEnd'] {
+    const requestContext = this.requestContext;
+    const context = requestContext?.get();
+    if (!runTurnEnd || !requestContext || !context || Object.keys(context).length === 0) {
+      return runTurnEnd;
+    }
+    return (options) => requestContext.run(context, () => runTurnEnd(options));
   }
 
   stream(
@@ -1072,7 +1086,7 @@ export class AgentRunnerService {
   private async runInboundTurnInternal(req: InboundTurnRequest): Promise<TurnOutcome> {
     const { sessionRef, input, context } = req;
 
-    const guardrailBlocked = await this.precheckInboundOutcome({
+    const inboundOutcome = await this.precheckInboundOutcome({
       corpId: sessionRef.corpId,
       chatId: sessionRef.sessionId,
       userId: sessionRef.userId,
@@ -1083,7 +1097,7 @@ export class AgentRunnerService {
       botImId: context?.botImId,
       botUserName: context?.botUserId,
     });
-    if (guardrailBlocked) return guardrailBlocked;
+    if (inboundOutcome) return inboundOutcome;
 
     const params: GeneratorInvokeParams = {
       callerKind: context?.callerKind ?? CallerKind.WECOM,
@@ -1132,14 +1146,14 @@ export class AgentRunnerService {
       shortTermEndTimeInclusive: context?.shortTermEndTimeInclusive,
     });
 
-    // 终态分类与渠道共享同一处纯函数（classifyReviewedOutcome）：block→guardrail_blocked/outbound、
+    // 终态分类与渠道共享同一处纯函数（classifyReviewedOutcome）：无法安全放行→handoff/outbound、
     // committed handoff / booking gate→handoff、短路/空文本→skipped、其余→reply。
     const outcome = classifyReviewedOutcome(result, sessionRef, context?.messageId);
-    if (outcome.kind === 'guardrail_blocked' && outcome.guardrail?.phase === 'outbound') {
+    if (outcome.kind === 'handoff' && outcome.guardrail?.phase === 'outbound') {
       this.logger.warn(
         `[runInboundTurn] 出站守卫拦截: sessionId=${sessionRef.sessionId}, ` +
           `rules=${result.outputDecision.blockedRuleIds.join(',') || '-'}, ` +
-          `reason=${result.outputDecision.reasonCode ?? '-'}`,
+          `reason=${result.resolution.reasonCode ?? '-'}`,
       );
     }
     return outcome;

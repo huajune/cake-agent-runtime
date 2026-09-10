@@ -1,7 +1,7 @@
+import { createOutputRuleFinding } from '../output-rule-catalog';
 import type { AgentToolCall } from '@agent/generator/generator.types';
-import { GUARDRAIL_ACTION } from '@shared-types/guardrail.contract';
 import type { RuleContradiction } from '../output-rule.types';
-import { QUANTIFIED_JOB_FACT_PATTERN } from '../job-fact-signals.util';
+import { QUANTIFIED_JOB_FACT_PATTERN } from './job-fact-signals.util';
 
 /**
  * 岗位事实 ↔ 查询动作对账（零工具轮的两种假事实）。
@@ -74,13 +74,11 @@ export function detectJobQueryClaimWithoutQuery(
   while ((match = pattern.exec(text)) !== null) {
     const before = text.slice(Math.max(0, match.index - 8), match.index);
     if (HISTORY_REFERENCE_PATTERN.test(before)) continue;
-    return {
-      ruleId: 'job_query_claim_without_query',
-      label:
-        '回复用完成时态宣称本轮查过岗位（"帮你查了下/没查到/系统里没有"），但本轮没有任何 ' +
+    return createOutputRuleFinding(
+      'job_query_claim_without_query',
+      '回复用完成时态宣称本轮查过岗位（"帮你查了下/没查到/系统里没有"），但本轮没有任何 ' +
         'duliday_job_list / duliday_interview_precheck / geocode 调用——查询从未发生',
-      action: GUARDRAIL_ACTION.REPLAN,
-    };
+    );
   }
   return null;
 }
@@ -107,11 +105,9 @@ export function detectJobFactWithoutProvenance(
     if (!history.includes(fact)) orphanFacts.push(match[0].trim());
   }
   if (orphanFacts.length === 0) return null;
-  return {
-    ruleId: 'job_fact_without_provenance',
-    label:
-      `回复给出岗位量化事实「${orphanFacts.slice(0, 3).join('、')}」，但本轮没有查岗工具调用，` +
+  return createOutputRuleFinding(
+    'job_fact_without_provenance',
+    `回复给出岗位量化事实「${orphanFacts.slice(0, 3).join('、')}」，但本轮没有查岗工具调用，` +
       '会话内历史回复也从未出现过这些数字——没有任何来源的岗位事实',
-    action: GUARDRAIL_ACTION.REPLAN,
-  };
+  );
 }

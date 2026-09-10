@@ -3,11 +3,6 @@ import { AiStreamTrace } from '@biz/test-suite/services/ai-stream-trace';
 describe('AiStreamTrace', () => {
   const mockTrackingService = {
     recordMessageReceived: jest.fn(),
-    recordWorkerStart: jest.fn(),
-    recordAiStart: jest.fn(),
-    recordAiEnd: jest.fn(),
-    recordSendStart: jest.fn(),
-    recordSendEnd: jest.fn(),
     recordSuccess: jest.fn(),
     recordFailure: jest.fn(),
   };
@@ -45,11 +40,6 @@ describe('AiStreamTrace', () => {
     trace.finalizeSuccess();
 
     expect(mockTrackingService.recordMessageReceived).toHaveBeenCalledTimes(1);
-    expect(mockTrackingService.recordWorkerStart).toHaveBeenCalledTimes(1);
-    expect(mockTrackingService.recordAiStart).toHaveBeenCalledTimes(1);
-    expect(mockTrackingService.recordAiEnd).toHaveBeenCalledTimes(1);
-    expect(mockTrackingService.recordSendStart).toHaveBeenCalledTimes(1);
-    expect(mockTrackingService.recordSendEnd).toHaveBeenCalledTimes(1);
     expect(mockTrackingService.recordSuccess).toHaveBeenCalledTimes(1);
 
     expect(mockObserver.emit).toHaveBeenCalledWith(
@@ -64,6 +54,9 @@ describe('AiStreamTrace', () => {
         type: 'agent_stream_timing',
         status: 'success',
         sessionId: 'session-success',
+        timeToStreamReadyMs: expect.any(Number),
+        timeToFirstTextMs: expect.any(Number),
+        totalDurationMs: expect.any(Number),
       }),
     );
     expect(mockObserver.emit).toHaveBeenCalledWith(
@@ -149,11 +142,6 @@ describe('AiStreamTrace', () => {
     trace.finalizeSuccess();
 
     expect(mockTrackingService.recordMessageReceived).not.toHaveBeenCalled();
-    expect(mockTrackingService.recordWorkerStart).not.toHaveBeenCalled();
-    expect(mockTrackingService.recordAiStart).not.toHaveBeenCalled();
-    expect(mockTrackingService.recordAiEnd).not.toHaveBeenCalled();
-    expect(mockTrackingService.recordSendStart).not.toHaveBeenCalled();
-    expect(mockTrackingService.recordSendEnd).not.toHaveBeenCalled();
     expect(mockTrackingService.recordSuccess).not.toHaveBeenCalled();
 
     // Observer 事件仍应照常下发，供 agent-test UI / 实时调试链路消费

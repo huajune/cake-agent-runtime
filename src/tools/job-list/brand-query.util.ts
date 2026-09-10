@@ -14,6 +14,7 @@
 
 import type { BrandItem } from '@/sponge/sponge.types';
 import { resolveBrandAliasInputs } from '@resolution/brand/brand-matcher';
+import { normalizeBrandNameForComparison } from '@resolution/brand/brand-normalize';
 import type {
   BrandCandidate,
   BrandFilterMode,
@@ -48,6 +49,24 @@ export interface BrandQueryPlan {
 function isSameBrand(a: { canonicalName: string; brandId: number | null }, b: SessionBrandRef) {
   if (a.brandId != null && b.brandId != null) return a.brandId === b.brandId;
   return a.canonicalName === b.canonicalName;
+}
+
+/**
+ * 只校验模型显式品牌是否曾被提及，不裁决意向、极性或历史状态。
+ * null 表示提及集合不可用；目录无法确认的 ID/品牌不新增出处拦截。
+ */
+export function findUnmentionedQueryBrands(
+  plan: BrandQueryPlan,
+  mentionedBrands: ReadonlySet<string> | null | undefined,
+  catalog: readonly BrandItem[],
+): BrandCandidate[] {
+  if (mentionedBrands == null || plan.brandSource !== 'model_input') return [];
+  const knownNames = new Set(catalog.map((brand) => normalizeBrandNameForComparison(brand.name)));
+  return plan.applied.filter((brand) => {
+    if (brand.brandId != null && !catalog.some((item) => item.id === brand.brandId)) return false;
+    const name = normalizeBrandNameForComparison(brand.canonicalName);
+    return name.length > 0 && knownNames.has(name) && !mentionedBrands.has(name);
+  });
 }
 
 /** 组装 queryMeta.brand 小节（§9 类型化接口）。 */

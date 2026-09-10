@@ -102,7 +102,7 @@ replay 定局后，渠道才通过 `TurnOutcomeInterventionService` 提交最终
 
 - `reply`：经过 Delivery 分段发送；
 - `skipped`：不发送文本；
-- `guardrail_blocked` / `handoff`：执行对应人工兜底，不作为普通回复发送。
+- `handoff`：按入站风险、出站守卫或工具来源执行对应人工兜底，不作为普通回复发送。
 
 `TurnFinalizer` 收口记忆与真实世界一致性：
 

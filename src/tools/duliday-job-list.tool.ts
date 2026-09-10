@@ -59,6 +59,7 @@ import {
 } from '@tools/job-list/search.util';
 import {
   buildBrandQueryPlan,
+  findUnmentionedQueryBrands,
   toBrandQueryMeta,
   type BrandQueryPlan,
 } from '@tools/job-list/brand-query.util';
@@ -278,7 +279,7 @@ const inputSchema = z.object({
     .string()
     .optional()
     .describe(
-      '岗位名称模糊匹配（子串匹配整条 jobName，jobName 形如「品牌-门店-工种-用工形式」，如「M Stand-上海长泰广场店-店员-小时工」）。**想按门店/地标找岗位时填这里**（如候选人说"想去长泰广场那家"就填"长泰广场"），比 storeNameList（精确匹配易落空）宽容得多。建议配合 cityNameList/brandIdList 收窄；不要把工种/用工形式词塞进来（那些用 jobCategoryList）。\n**也不要把品类/行业词（"咖啡""奶茶""茶饮""火锅"等）塞进来**。未指定品牌的"咖啡兼职/咖啡店岗位"当前默认按 M Stand 走 brandIdList/brandAliasList；只有"其他咖啡品牌/除了 M Stand"才扩张到其他咖啡品牌。其他品类按对应品牌解析结果召回。',
+      '岗位名称模糊匹配（子串匹配整条 jobName，格式为「品牌-门店-工种-用工形式」）。**想按门店/地标找岗位时填这里**，填入候选人提到的门店或地标关键词，比 storeNameList（精确匹配易落空）宽容得多。建议配合 cityNameList/brandIdList 收窄；不要把工种/用工形式词塞进来（那些用 jobCategoryList）。\n**也不要把品类/行业词（"咖啡""奶茶""茶饮""火锅"等）塞进来**。未指定品牌的"咖啡兼职/咖啡店岗位"当前默认按 M Stand 走 brandIdList/brandAliasList；只有"其他咖啡品牌/除了 M Stand"才扩张到其他咖啡品牌。其他品类按对应品牌解析结果召回。',
     ),
   jobCategoryList: z
     .array(z.string())
@@ -292,7 +293,7 @@ const inputSchema = z.object({
     .optional()
     .default([])
     .describe(
-      '品牌ID列表；Boss直聘岗位标题中形如 "[10239]" 的方括号纯数字是品牌ID，应填为 brandIdList=[10239]，不要当作 jobId/薪资/编号',
+      '品牌ID列表；Boss直聘岗位标题中方括号内的纯数字是品牌ID，将原始标题中的实际数字填入此列表，不要当作 jobId/薪资/编号',
     ),
   brandFilterMode: z
     .enum(BRAND_FILTER_MODES)
@@ -644,7 +645,7 @@ const DESCRIPTION = `查询在招岗位列表。支持渐进式数据返回，�
 ## 检索机制（必读）
 - 后端只做关键字精确匹配，**不做语义理解、不做拼写纠正、不做模糊改写**
 - 传入的字段值必须命中数据库真实字符串，否则直接返回 0 条；与"该候选人意向不存在"完全不是一回事
-- "上海大宁音乐广场店" 这种带城市前缀的口语化门店名很可能匹配不上真实门店名
+- 带额外城市前缀的口语化门店名很可能匹配不上真实门店名
 
 ## 筛选字段稳定性分级（决定该选哪个 filter）
 - **高稳定（首选）**：jobIdList / brandIdList / projectIdList（数字主键，命中率最高）
@@ -676,12 +677,12 @@ const DESCRIPTION = `查询在招岗位列表。支持渐进式数据返回，�
 ## 参数要点
 - 至少提供一个有效筛选条件：城市、区域、品牌、门店、岗位类型、项目ID、岗位ID。根据 [会话记忆] 中候选人意向填入
 - responseFormat 只能用 ["markdown"]，禁止 rawData
-- 传 regionNameList 时必须同时传 cityNameList；系统已有高置信城市时直接使用，否则先追问城市。候选人只说"房山/合川/某区县附近"时，不能凭通识补"北京/重庆"等城市
+- 传 regionNameList 时必须同时传 cityNameList；系统已有高置信城市时直接使用，否则先追问城市。候选人只说某区县附近时，不能凭通识补城市
 - **regionNameList = 区级行政区名的精确过滤，不是就近召回**（后端对库里的区级 storeRegionName 做精确字符串匹配）。三条推论：
   - 候选人说"我在某区/某区这边"是**就近信号**：geocode 成坐标走 location——精确过滤会把隔壁区更近的店整批漏掉（badcase 6a3356e2）。regionNameList 仅用于 ① 候选人明确"只在某区内"的硬约束，② 从已知门店扩展回它所在区重查
-  - **只接受区/县级行政区全称**（浦东新区、朝阳区等）：乡镇/街道/片区名（川沙、九亭、安亭等）与商圈/地标/详细地址精确匹配必然 0 条、且绝不代表该片区没岗，必须先 geocode 解析成"区级 district + 坐标"再查
-  - 区名简称（"浦东""静安"）也先 geocode 拿规范全称，避免对不上后端区级实名
-- **未确认城市禁默认**：[本轮解析线索] 与 [会话记忆] 都未给出城市时，禁止默认任何城市做查岗或品牌承诺；候选人明确品牌但未给城市时，必须先简短确认"您想找哪个城市的岗位"，避免出现把"北京必胜客"默认按上海查的事故
+  - **只接受区/县级行政区全称**：乡镇/街道/片区名与商圈/地标/详细地址精确匹配必然 0 条、且绝不代表该片区没岗，必须先 geocode 解析成"区级 district + 坐标"再查
+  - 区名简称也先 geocode 拿规范全称，避免对不上后端区级实名
+- **未确认城市禁默认**：[本轮解析线索] 与 [会话记忆] 都未给出城市时，禁止默认任何城市做查岗或品牌承诺；候选人明确品牌但未给城市时，必须先简短确认"您想找哪个城市的岗位"
 
 ## 数据开关
 - 薪资/班次/要求/福利开关**默认全开**、随结果自动返回，无需显式传；仅 \`includeInterviewProcess\` 默认关——候选人问"怎么面试/面试流程"时开启
@@ -904,6 +905,26 @@ export function buildJobListTool(
                 ? formatScheduleConstraintLabel(candidateScheduleConstraint)
                 : null,
             }),
+          });
+        }
+
+        const unmentionedBrands = findUnmentionedQueryBrands(
+          brandPlan,
+          context.ledger.mentionedBrands,
+          brandCatalog,
+        );
+        if (unmentionedBrands.length > 0) {
+          return buildToolError({
+            errorType: TOOL_ERROR_TYPES.JOB_LIST_BRAND_NO_PROVENANCE,
+            outcome: '品牌参数缺少会话提及依据，未执行岗位查询',
+            replyInstruction:
+              '请使用当前会话业务上下文中已提及的品牌重试；若本轮没有品牌要求，' +
+              "清空 brandAliasList 和 brandIdList，并传 brandFilterMode='clear'，按其他真实条件查询。" +
+              '本次未执行岗位查询，不能据此宣称该品牌无岗，也不要把被拒绝的品牌当作候选人意向。',
+            details: {
+              unmentionedBrands: unmentionedBrands.map((brand) => brand.canonicalName),
+              queryMeta: { brand: toBrandQueryMeta(brandPlan) },
+            },
           });
         }
 

@@ -292,7 +292,7 @@ describe('buildInviteToGroupTool', () => {
 
     expect(builtTool.description).toContain('候选人所在**城市级**名称');
     expect(builtTool.description).toContain('严禁把区域/区县/镇/街道/商圈/门店地址传给 city');
-    expect(builtTool.description).toContain('city="上海"');
+    expect(builtTool.description).toContain('取城市字段，不取区域字段');
   });
 
   it('should return invite_card delivery for group with 40+ members', async () => {

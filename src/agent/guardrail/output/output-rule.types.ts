@@ -1,64 +1,54 @@
 import type { AgentToolCall } from '@agent/generator/generator.types';
+import type { OutputRuleId } from './output-rule-catalog';
 import type {
   GuardrailAction,
   GUARDRAIL_ACTION,
   GuardrailDataSensitivity,
   GuardrailFeedbackPolicy,
   GuardrailPriority,
-  GuardrailRecoverability,
   GuardrailRepairMode,
 } from '@shared-types/guardrail.contract';
 
 /**
- * 由 action 派生 recoverability / currentReplySendable / repairMode。
- * catalog 和 withRulePolicy 统一调用，消除三个派生字段的手动维护。
+ * 由草稿处理动作派生 currentReplySendable / repairMode。
+ * allowFailOpen 由目录独立声明，不随 repair 动作放松。
  */
 export function deriveRulePolicy(action: GuardrailRuleAction): {
   currentReplySendable: boolean;
-  recoverability: GuardrailRecoverability;
   repairMode: GuardrailRepairMode;
 } {
   switch (action) {
     case 'observe':
-      return { currentReplySendable: true, recoverability: 'recoverable', repairMode: 'rewrite' };
-    case 'revise':
-      return { currentReplySendable: false, recoverability: 'recoverable', repairMode: 'rewrite' };
+      return { currentReplySendable: true, repairMode: 'rewrite' };
+    case 'repair':
+      return { currentReplySendable: false, repairMode: 'rewrite' };
     case 'replan':
-      return { currentReplySendable: false, recoverability: 'recoverable', repairMode: 'replan' };
-    case 'block':
-      return {
-        currentReplySendable: false,
-        recoverability: 'non_recoverable',
-        repairMode: 'rewrite',
-      };
+      return { currentReplySendable: false, repairMode: 'replan' };
   }
 }
 
 /**
  * 确定性规则命中后的处理语义（`GuardrailAction` 的输出层子集）。
  *
- * 优先级（严重度递增）：observe < revise < replan < block
+ * 处理优先级：observe < repair < replan；风险等级和 fail-open 资格独立于处理方式。
  * - observe：发现软性问题，内容仍可发，只记录告警（发牌制缺省档，评估文档 §2.2）；
- * - revise：内容不可发，文案层问题，ReplyRepairAgent 无工具重写被点名句即可修复；
+ * - repair：当前草稿不可发，由 Runner 选择机械清理或无工具改写；
  * - replan：内容不可发，且问题不在文案而在"该发生的查询没发生"（零工具轮编造岗位事实）；
  *   文本层修不出没发生过的查询，runner 用相同参数重进一次 generator；
- * - block：内容不可发，高风险且不可 fail-open；runner 仍先尝试一次受控修复，救不活才硬拦。
  *
  * replan 档不带 repairToolNames：2026-07 的旧实现是"带守卫反馈 + 只读工具白名单"的重写器，改目标
  * 函数又裁工具，07-27 删除；现行实现只是同参重掷，规则不得再声明工具白名单。
  *
- * `recoverability`、`currentReplySendable`、`repairMode` 均由 action 派生，
- * 不再作为 catalog 字段手动维护。
+ * `currentReplySendable`、`repairMode` 由 action 派生，
+ * `allowFailOpen` 独立描述未消除该违规时是否允许有条件放行。
  */
 export type GuardrailRuleAction = Extract<
   GuardrailAction,
-  | typeof GUARDRAIL_ACTION.OBSERVE
-  | typeof GUARDRAIL_ACTION.REVISE
-  | typeof GUARDRAIL_ACTION.REPLAN
-  | typeof GUARDRAIL_ACTION.BLOCK
+  typeof GUARDRAIL_ACTION.OBSERVE | typeof GUARDRAIL_ACTION.REPAIR | typeof GUARDRAIL_ACTION.REPLAN
 >;
 
 export interface OutputRulePolicy {
+  allowFailOpen: boolean;
   severity: GuardrailPriority;
   dataSensitivity: GuardrailDataSensitivity;
   feedbackPolicy: GuardrailFeedbackPolicy;
@@ -71,15 +61,15 @@ export interface OutputRulePolicy {
  * 单条规则命中结果。
  *
  * label 面向研发/运营告警，应该写清楚“为什么命中”和“应改成什么口径”；
- * action 面向机器决策，决定 OutputGuardrail 最终 pass/revise/block。
+ * action 面向草稿处理；最终投递、静默或人工介入由 Runner 决定。
  */
 export interface RuleContradiction {
-  ruleId: string;
+  ruleId: OutputRuleId;
   label: string;
   action: GuardrailRuleAction;
   severity?: GuardrailPriority;
   dataSensitivity?: GuardrailDataSensitivity;
-  recoverability?: GuardrailRecoverability;
+  allowFailOpen?: boolean;
   currentReplySendable?: boolean;
   feedbackPolicy?: GuardrailFeedbackPolicy;
   repairMode?: GuardrailRepairMode;
@@ -101,12 +91,11 @@ export interface RuleContradiction {
  * 那些复杂规则应写成独立 detectXxx 函数，并由 hard-rules.service 显式调度。
  */
 export interface FactRule {
-  ruleId: string;
+  ruleId: OutputRuleId;
   label: string;
   keywords: RegExp;
   ignorePredicate?: (text: string, toolCalls: AgentToolCall[]) => boolean;
   requiredToolPredicate: (toolCalls: AgentToolCall[]) => boolean;
-  action: GuardrailRuleAction;
 }
 
 /**

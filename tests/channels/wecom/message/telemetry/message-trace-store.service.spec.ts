@@ -21,14 +21,19 @@ describe('MessageTraceStoreService', () => {
     service = new MessageTraceStoreService(redisService as never);
   });
 
-  it('should parse serialized traces from redis', async () => {
-    redisService.get.mockResolvedValueOnce(JSON.stringify({ phase: 'worker', ok: true }));
+  it('should return undefined without falling back to the legacy JSON key', async () => {
+    redisService.hgetall.mockResolvedValueOnce(null);
 
-    await expect(service.get<{ phase: string; ok: boolean }>('msg-1')).resolves.toEqual({
-      phase: 'worker',
-      ok: true,
-    });
-    expect(redisService.get).toHaveBeenCalledWith(RedisKeyBuilder.trace('msg-1'));
+    await expect(service.get('msg-1')).resolves.toBeUndefined();
+    expect(redisService.hgetall).toHaveBeenCalledWith(`${RedisKeyBuilder.trace('msg-1')}:v2`);
+    expect(redisService.get).not.toHaveBeenCalled();
+  });
+
+  it('should reject a hash whose schema field does not match', async () => {
+    redisService.hgetall.mockResolvedValueOnce({ request: { chatId: 'chat-1' } });
+
+    await expect(service.get('msg-1b')).resolves.toBeUndefined();
+    expect(redisService.get).not.toHaveBeenCalled();
   });
 
   it('should persist traces as a field-level V2 hash with the expected ttl', async () => {
@@ -60,12 +65,10 @@ describe('MessageTraceStoreService', () => {
     expect(redisService.get).not.toHaveBeenCalled();
   });
 
-  it('should delete trace keys from redis', async () => {
+  it('should delete the trace hash key from redis', async () => {
     await service.delete('msg-3');
 
-    expect(redisService.del).toHaveBeenCalledWith(
-      `${RedisKeyBuilder.trace('msg-3')}:v2`,
-      RedisKeyBuilder.trace('msg-3'),
-    );
+    expect(redisService.del).toHaveBeenCalledWith(`${RedisKeyBuilder.trace('msg-3')}:v2`);
+    expect(redisService.del).toHaveBeenCalledTimes(1);
   });
 });

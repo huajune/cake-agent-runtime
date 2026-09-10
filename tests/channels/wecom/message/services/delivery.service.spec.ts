@@ -17,8 +17,6 @@ describe('MessageDeliveryService', () => {
   };
 
   const mockMonitoringService = {
-    recordSendStart: jest.fn(),
-    recordSendEnd: jest.fn(),
     recordReplySkipped: jest.fn(),
   };
 
@@ -64,8 +62,6 @@ describe('MessageDeliveryService', () => {
     jest.clearAllMocks();
 
     mockMessageSenderService.sendMessage.mockResolvedValue({ success: true });
-    mockMonitoringService.recordSendStart.mockReturnValue(undefined);
-    mockMonitoringService.recordSendEnd.mockReturnValue(undefined);
     mockTypingPolicyService.shouldSplit.mockImplementation((content: string) =>
       MessageSplitter.needsSplit(content),
     );
@@ -101,8 +97,11 @@ describe('MessageDeliveryService', () => {
       expect(mockMessageSenderService.sendMessage).toHaveBeenCalledWith(
         expect.objectContaining({ payload: { text: 'Short message' } }),
       );
-      expect(mockMonitoringService.recordSendStart).toHaveBeenCalledWith('msg-123');
-      expect(mockMonitoringService.recordSendEnd).toHaveBeenCalledWith('msg-123');
+      expect(mockWecomObservabilityService.markDeliveryStart).toHaveBeenCalledWith('msg-123');
+      expect(mockWecomObservabilityService.markDeliveryEnd).toHaveBeenCalledWith(
+        'msg-123',
+        expect.objectContaining({ success: true }),
+      );
       expect(mockWecomObservabilityService.markFirstSegmentSent).toHaveBeenCalledWith('msg-123');
     });
 
@@ -277,8 +276,8 @@ describe('MessageDeliveryService', () => {
     it('should skip monitoring when recordMonitoring=false', async () => {
       await service.deliverReply({ content: 'Hello' }, deliveryContext, false);
 
-      expect(mockMonitoringService.recordSendStart).not.toHaveBeenCalled();
-      expect(mockMonitoringService.recordSendEnd).not.toHaveBeenCalled();
+      expect(mockWecomObservabilityService.markDeliveryStart).not.toHaveBeenCalled();
+      expect(mockWecomObservabilityService.markDeliveryEnd).not.toHaveBeenCalled();
       expect(mockWecomObservabilityService.markFirstSegmentSent).toHaveBeenCalledWith('msg-123');
     });
 

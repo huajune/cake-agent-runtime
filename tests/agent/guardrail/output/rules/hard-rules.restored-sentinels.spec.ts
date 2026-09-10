@@ -1,4 +1,4 @@
-import { HardRulesService } from '@agent/guardrail/output/hard-rules.service';
+import { HardRulesService } from '@agent/guardrail/output/rules/hard-rules.service';
 import { GUARDRAIL_ACTION } from '@shared-types/guardrail.contract';
 
 /**
@@ -484,11 +484,10 @@ describe('HardRulesService restored sentinels', () => {
           ?.action,
       ).toBe(GUARDRAIL_ACTION.OBSERVE);
     });
-
   });
 
   describe('human_service_phrase_leak (badcase recvjXBkmV6idz / recvnV3iYGZnBJ)', () => {
-    it('revises when reply mentions 转人工', () => {
+    it('requires repair when reply mentions 转人工', () => {
       const result = service.check({
         replyText: '这个问题我给你转人工处理下哈。',
         toolCalls: [],
@@ -497,7 +496,7 @@ describe('HardRulesService restored sentinels', () => {
 
       const hit = result.contradictions.find((c) => c.ruleId === 'human_service_phrase_leak');
       expect(hit).toBeDefined();
-      expect(hit?.action).toBe('revise');
+      expect(hit?.action).toBe('repair');
       expect(hit?.currentReplySendable).toBe(false);
     });
 
@@ -527,7 +526,7 @@ describe('HardRulesService restored sentinels', () => {
 
     // 2026-07-22 扩词（badcase chat 6a5dedb2ce406a6aeee1ea62：Agent 自称"李娜"，
     // 把账号主人"东升"说成"真人招募经理"，原词表未覆盖直发未拦）
-    it('revises 真人招募经理 self-splitting statement (badcase 6a5dedb2)', () => {
+    it('requires repair for 真人招募经理 self-splitting statement (badcase 6a5dedb2)', () => {
       const result = service.check({
         replyText: '东升是真人招募经理哈，我是李娜，负责前期咨询和报名的',
         toolCalls: [],
@@ -536,10 +535,10 @@ describe('HardRulesService restored sentinels', () => {
 
       const hit = result.contradictions.find((c) => c.ruleId === 'human_service_phrase_leak');
       expect(hit).toBeDefined();
-      expect(hit?.action).toBe('revise');
+      expect(hit?.action).toBe('repair');
     });
 
-    it('revises 人工登记 / 门店人工确认 action variants', () => {
+    it('requires repair for 人工登记 / 门店人工确认 action variants', () => {
       for (const replyText of ['资料我帮你人工登记一下哈', '这个班次需要门店人工确认下']) {
         const result = service.check({ replyText, toolCalls: [], chatId: 'chat-1' });
         expect(
@@ -548,7 +547,7 @@ describe('HardRulesService restored sentinels', () => {
       }
     });
 
-    it('revises 专人联系 third-party phrasing', () => {
+    it('requires repair for 专人联系 third-party phrasing', () => {
       const result = service.check({
         replyText: '后续会有专人联系你安排面试哈。',
         toolCalls: [],

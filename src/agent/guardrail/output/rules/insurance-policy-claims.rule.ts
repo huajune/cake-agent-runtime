@@ -1,4 +1,4 @@
-import { GUARDRAIL_ACTION } from '@shared-types/guardrail.contract';
+import { createOutputRuleFinding } from '../output-rule-catalog';
 
 const INSURANCE_POLICY_TERM_PATTERN = /保险|社保|五险(?:一金)?|意外险|雇主责任险/;
 const INSURANCE_POLICY_PROMISE_PATTERN =
@@ -78,10 +78,8 @@ export function detectProactiveInsurancePolicyMention(
   }
   if (!policySentences.some((s) => INSURANCE_POLICY_PROMISE_PATTERN.test(s))) return null;
 
-  return {
-    ruleId: 'proactive_insurance_policy_mention',
-    label:
-      '候选人本轮未主动询问保险/社保，但回复主动给出保险/社保/五险承诺式口径（兼职保险易被误解为社保/五险，观察后交由 LLM 层治理）',
-    action: GUARDRAIL_ACTION.OBSERVE,
-  };
+  return createOutputRuleFinding(
+    'proactive_insurance_policy_mention',
+    '候选人本轮未主动询问保险/社保，但回复主动给出保险/社保/五险承诺式口径（兼职保险易被误解为社保/五险，观察后交由 LLM 层治理）',
+  );
 }

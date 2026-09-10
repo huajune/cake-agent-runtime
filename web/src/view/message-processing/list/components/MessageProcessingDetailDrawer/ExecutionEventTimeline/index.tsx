@@ -1,4 +1,5 @@
 import type { ExecutionEvent } from '@/api/types/chat.types';
+import { guardrailInputDisplay } from '@/components/GuardrailTrace/outcome';
 import { formatDuration } from '@/utils/format';
 import styles from './index.module.scss';
 
@@ -50,7 +51,8 @@ function summarizeEvent(event: ExecutionEvent): string | undefined {
     }
     case 'llm_execution': {
       const model = asString(payload.finalModelId) ?? asString(payload.primaryModelId);
-      const attemptCount = typeof payload.attemptCount === 'number' ? payload.attemptCount : undefined;
+      const attemptCount =
+        typeof payload.attemptCount === 'number' ? payload.attemptCount : undefined;
       const totalDurationMs =
         typeof payload.totalDurationMs === 'number' ? payload.totalDurationMs : undefined;
       return [
@@ -70,14 +72,21 @@ function summarizeEvent(event: ExecutionEvent): string | undefined {
         : [];
       return [
         asString(payload.outcome),
-        asString(payload.finalDecision),
+        asString(payload.finalOutcome) ?? asString(payload.finalDecision),
         firstRuleIds.length > 0 ? `rules=${firstRuleIds.join(',')}` : undefined,
       ]
         .filter(Boolean)
         .join(' · ');
     }
+    case 'inbound_guardrail_handoff':
+    // 只读兼容旧持久事件；现役 Observer 不再接受此类型。
     case 'inbound_guardrail_block':
-      return [asString(payload.reasonCode), asString(payload.riskLabel) ?? asString(payload.riskType)]
+      return [
+        guardrailInputDisplay(event.type === 'inbound_guardrail_handoff' ? 'handoff' : 'block')
+          .label,
+        asString(payload.reasonCode),
+        asString(payload.riskLabel) ?? asString(payload.riskType),
+      ]
         .filter(Boolean)
         .join(' · ');
     case 'semantic_review':

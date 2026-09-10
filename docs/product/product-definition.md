@@ -121,7 +121,7 @@ Cake Agent Runtime 是一个基于企业微信的**智能招聘自动化系统**
 - 会话管理
   - 两层记忆（短期消息/会话态 + 候选人 × bot 长期关系档）
   - 图片与简历结构化（健康证等截图识别、PDF/图片简历读取）
-  - Input / Prompt / Tool / Output 四个防线作用位；Output 内含硬规则、语义 reviewer、一次 repair 与清洗
+  - Input / Prompt / Tool / Output 四个防线作用位；出站确定性审查、Runner 一次有界 rewrite / replan、二审与清洗
   - 转人工（15 类原因）+ 飞书告警闭环
 
 **场景 B: 群聊管理**
@@ -151,7 +151,7 @@ Cake Agent Runtime 是一个基于企业微信的**智能招聘自动化系统**
 |                  | 面试预约（precheck + booking）、候选人自助改约 / 取消工单                                                          |
 |                  | 两层记忆（短期消息/会话态 + 候选人 × bot 长期关系档，跨会话 consolidation）                                        |
 |                  | 图片识别与简历结构化（截图/健康证/表情描述、PDF/docx/图片简历读取）                                                |
-|                  | 四个防线作用位（Input / Prompt / Tool / Output）；Output 内含确定性规则、可选语义 reviewer、一次有界 repair 与清洗 |
+|                  | 四个防线作用位（Input / Prompt / Tool / Output）；出站确定性审查、Runner 一次有界 rewrite / replan、二审与清洗 |
 |                  | 复聊二次触发（7 场景、场景级开关与延迟 Dashboard 可配）                                                            |
 |                  | 转人工（15 类原因）与风险告警、拟人化投递、多模型容错降级                                                          |
 | **群聊管理**     | 拉群 / 入群邀请卡（阈值 40 人自动切换）、兼职群定时岗位推送                                                        |

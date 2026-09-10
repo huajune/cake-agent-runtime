@@ -1,6 +1,7 @@
 import { Fragment } from 'react';
 import type { GuardrailTurnTrace } from '@/api/types/chat.types';
 import { decisionBadge } from './decision';
+import { guardrailOutcomeDisplay } from './outcome';
 import {
   guardrailReasonLabel,
   guardrailRuleLabel,
@@ -11,15 +12,16 @@ import styles from './index.module.scss';
 
 export interface GuardrailTraceProps {
   trace: GuardrailTurnTrace;
-  /** advisory=调试页流末只读审查（token 已发出，仅展示"守卫会怎么判"，不代表真实拦截）。 */
+  /** advisory=调试页流末只读审查（token 已发出，仅展示审查建议，不产生最终处置）。 */
   advisory?: boolean;
 }
 
 /**
  * 出站守卫全程 trace 视图（首审→受控修复→二审）。
- * 生产流水页详情抽屉与调试页共用；advisory 时加提示区分"会怎么判"与"真实拦截"。
+ * 生产流水页详情抽屉与调试页共用；advisory 时区分审查建议与已执行回合的最终处置。
  */
 export default function GuardrailTrace({ trace, advisory }: GuardrailTraceProps) {
+  const final = guardrailOutcomeDisplay(trace, advisory);
   return (
     <div className={styles.container}>
       {trace.steps.map((step, index) => {
@@ -28,9 +30,7 @@ export default function GuardrailTrace({ trace, advisory }: GuardrailTraceProps)
           <Fragment key={`${step.stage}-${index}`}>
             <div className={styles.stepRow}>
               <div className={styles.stepHeader}>
-                <span className={styles.stepStage}>
-                  {step.stage === 'first' ? '首审' : '二审'}
-                </span>
+                <span className={styles.stepStage}>{step.stage === 'first' ? '首审' : '二审'}</span>
                 {decisionBadge(step.decision)}
                 {step.reasonCode && (
                   <span className={styles.reasonCode} title={step.reasonCode}>
@@ -51,9 +51,7 @@ export default function GuardrailTrace({ trace, advisory }: GuardrailTraceProps)
             {/* 受控修复发生在首审与二审之间，插在时间线对应位置 */}
             {index === 0 && trace.repaired && (
               <div className={styles.repairNote}>
-                ↳ 首版丢弃，按{' '}
-                {repairModeLabel(trace.steps[0]?.repairMode)}{' '}
-                受控修复
+                ↳ 按 {repairModeLabel(trace.steps[0]?.repairMode)} 受控修复
               </div>
             )}
           </Fragment>
@@ -62,16 +60,15 @@ export default function GuardrailTrace({ trace, advisory }: GuardrailTraceProps)
 
       <div className={styles.finalRow}>
         <span className={styles.stepStage}>最终</span>
-        {decisionBadge(trace.finalDecision)}
+        <span className={`status-badge ${final.tone}`}>{final.label}</span>
         {trace.reasonCode && (
           <span className={styles.reasonCode} title={trace.reasonCode}>
             {guardrailReasonLabel(trace.reasonCode)}
           </span>
         )}
-        {advisory ? (
-          <span className={styles.advisoryHint}>advisory（不代表真实拦截）</span>
-        ) : (
-          trace.finalDecision === 'block' && <span className={styles.blockHint}>本轮回复未发送</span>
+        {final.kind === 'advisory' && <span className={styles.advisoryHint}>未执行最终处置</span>}
+        {final.kind === 'handoff' && (
+          <span className={styles.blockHint}>本轮不自动回复；介入派发状态以执行记录为准</span>
         )}
       </div>
     </div>

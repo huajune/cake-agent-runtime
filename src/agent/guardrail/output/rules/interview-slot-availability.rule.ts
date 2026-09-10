@@ -1,5 +1,5 @@
+import { createOutputRuleFinding } from '../output-rule-catalog';
 import type { AgentToolCall } from '@shared-types/agent-telemetry.types';
-import { GUARDRAIL_ACTION } from '@shared-types/guardrail.contract';
 import { asRecord, type RuleContradiction } from '../output-rule.types';
 
 type AuthoritativeSlot = {
@@ -87,21 +87,19 @@ export function detectInterviewSlotAvailabilityMismatch(
   for (const slot of authority.slots) {
     const clause = clauseContainingDate(replyText, slot.date);
     if (clause && EXPIRED_CLAIM_PATTERN.test(clause)) {
-      return {
-        ruleId: 'interview_slot_availability_mismatch',
-        label: `precheck 判定 ${slot.date} 可约，回复却在同一分句声称已过截止或不可约`,
-        action: GUARDRAIL_ACTION.REVISE,
-      };
+      return createOutputRuleFinding(
+        'interview_slot_availability_mismatch',
+        `precheck 判定 ${slot.date} 可约，回复却在同一分句声称已过截止或不可约`,
+      );
     }
   }
 
   const mentionedSlots = authority.slots.filter((slot) => mentionsDate(replyText, slot.date));
   if (PREVIOUS_DAY_DEADLINE_PATTERN.test(replyText) && mentionedSlots.some(isSameDayDeadline)) {
-    return {
-      ruleId: 'interview_slot_availability_mismatch',
-      label: 'precheck 返回的报名截止日在面试当天，回复却改写为“提前一天报名”',
-      action: GUARDRAIL_ACTION.REVISE,
-    };
+    return createOutputRuleFinding(
+      'interview_slot_availability_mismatch',
+      'precheck 返回的报名截止日在面试当天，回复却改写为“提前一天报名”',
+    );
   }
 
   const earliest = authority.slots[0];
@@ -111,11 +109,10 @@ export function detectInterviewSlotAvailabilityMismatch(
     !mentionsDate(replyText, earliest.date) &&
     authority.slots.slice(1).some((slot) => mentionsDate(replyText, slot.date))
   ) {
-    return {
-      ruleId: 'interview_slot_availability_mismatch',
-      label: `候选人未指定日期，回复展示了后续时段却漏掉 precheck 返回的最早可约日期 ${earliest.date}`,
-      action: GUARDRAIL_ACTION.REVISE,
-    };
+    return createOutputRuleFinding(
+      'interview_slot_availability_mismatch',
+      `候选人未指定日期，回复展示了后续时段却漏掉 precheck 返回的最早可约日期 ${earliest.date}`,
+    );
   }
 
   return null;

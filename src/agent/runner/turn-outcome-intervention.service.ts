@@ -65,7 +65,8 @@ export class TurnOutcomeInterventionService {
     outcome: TurnOutcome,
     context: TurnOutcomeCommitContext,
   ): TurnSideEffectIntent[] {
-    // 守卫显式声明的意图优先（如入站拦截的 conversation_risk 暂停/告警）。
+    // 守卫显式声明的意图优先。入站 handoff 仅携带 conversation_risk，
+    // 不带普通介入 metadata，沿原风险出口暂停/告警，不额外补 general_handoff。
     const declared = outcome.sideEffects ?? [];
 
     if (outcome.kind !== 'handoff' || !outcome.handoff) return declared;
@@ -81,7 +82,7 @@ export class TurnOutcomeInterventionService {
       ...declared,
       {
         kind: 'general_handoff',
-        source: 'agent_tool',
+        source: outcome.handoff.source,
         alertLabel: 'Agent 转人工',
         reasonCode: outcome.handoff.reasonCode,
         reason: outcome.handoff.reason ?? outcome.handoff.reasonCode,

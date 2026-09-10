@@ -40,9 +40,9 @@ export type GuardrailStage = (typeof GUARDRAIL_STAGES)[number];
 export const GUARDRAIL_ACTION = {
   PROMPT_ONLY: 'prompt_only',
   OBSERVE: 'observe',
-  REVISE: 'revise',
+  REPAIR: 'repair',
   REPLAN: 'replan',
-  BLOCK: 'block',
+  HANDOFF: 'handoff',
   PAUSE_HOSTING: 'pause_hosting',
   REJECT_COLLECT: 'reject_collect',
   REJECT_HARD: 'reject_hard',
@@ -77,17 +77,17 @@ export type GuardrailCoverage = (typeof GUARDRAIL_COVERAGES)[number];
 
 /**
  * 统一决策枚举（按层取子集）：
- * - input：`pass | block`
+ * - input：`pass | handoff`
  * - tool ：`allow | reject_collect | reject_hard`
- * - output：`pass | observe | revise | replan | block`
+ * - output：`pass | observe | repair | replan`（审查意见，不包含 Runner 最终处置）
  *
- * output 层优先级（严重度递增）：pass < observe < revise < replan < block
+ * output 处理优先级：pass < observe < repair < replan；风险与允许降级放行独立表达。
  * - pass：无违规，内容可发
  * - observe：发现软性问题，内容仍可发，打标记录
- * - revise：内容不可发，文案层问题，ReplyRepairAgent 无工具局部重写
+ * - repair：内容需要修复，由 Runner 选择确定性清理或 ReplyRepairAgent 无工具重写
  * - replan：内容不可发，且不是文案问题而是"该做的查询没发生"——首版整体作废，
  *   runner 用完全相同的参数重进一次 generator（不注入守卫反馈、不裁工具集），重生成结果走二审
- * - block：内容不可发；runner 先做一次受控修复自救，二审仍违规才硬拦
+ * Runner 根据修复预算、审查与回归结果决定 reply / handoff / skipped；Input handoff 在生成前声明人工介入。
  *
  * replan 的语义自 2026-07-03 契约首版起就是"重走工具再生成"。2026-07-03～07-27 的旧实现走偏成
  * "注入守卫反馈 + 只读工具白名单 + 注入首版原文"的重写器，07-27 物理删除；2026-09-09 以原意
@@ -97,9 +97,9 @@ export type GuardrailCoverage = (typeof GUARDRAIL_COVERAGES)[number];
 export const GUARDRAIL_DECISION = {
   PASS: 'pass',
   OBSERVE: 'observe',
-  REVISE: 'revise',
+  REPAIR: 'repair',
   REPLAN: 'replan',
-  BLOCK: 'block',
+  HANDOFF: 'handoff',
   ALLOW: 'allow',
   REJECT_COLLECT: 'reject_collect',
   REJECT_HARD: 'reject_hard',
@@ -112,7 +112,7 @@ export type GuardrailDecision = (typeof GUARDRAIL_DECISIONS)[number];
 /** Input 层决策子集。 */
 export type InputDecision = Extract<
   GuardrailDecision,
-  typeof GUARDRAIL_DECISION.PASS | typeof GUARDRAIL_DECISION.BLOCK
+  typeof GUARDRAIL_DECISION.PASS | typeof GUARDRAIL_DECISION.HANDOFF
 >;
 
 /** Output 层决策子集。 */
@@ -120,24 +120,29 @@ export type OutputDecision = Extract<
   GuardrailDecision,
   | typeof GUARDRAIL_DECISION.PASS
   | typeof GUARDRAIL_DECISION.OBSERVE
-  | typeof GUARDRAIL_DECISION.REVISE
+  | typeof GUARDRAIL_DECISION.REPAIR
   | typeof GUARDRAIL_DECISION.REPLAN
-  | typeof GUARDRAIL_DECISION.BLOCK
 >;
 
+/** Runner 对出站生成的最终处置；与单次审查意见分开。handoff 只声明介入意图。 */
+export interface OutputResolution {
+  outcome: 'reply' | 'handoff' | 'skipped';
+  reasonCode?: string;
+  /** 工具已请求介入时保留来源，避免最终分类器重复追加守卫介入。 */
+  source?: 'output_guardrail' | 'agent_tool';
+}
+
 /**
- * OutputDecision 的**有序**元组。语义严重度升序（pass → block），语义审查的
- * z.enum 与优先级合并都以此为准。
+ * 单次出站审查的有序取值；表示处理要求，不表示风险严重度或最终处置。
  *
- * 为什么单列而不用 GUARDRAIL_DECISIONS：后者混了 input 层的 allow/reject_*，
+ * 为什么单列而不用 GUARDRAIL_DECISIONS：后者混了 input 层的 handoff 与 tool 层的 allow/reject_*，
  * 不是 output 层的合法取值集。
  */
 export const OUTPUT_DECISIONS = [
   GUARDRAIL_DECISION.PASS,
   GUARDRAIL_DECISION.OBSERVE,
-  GUARDRAIL_DECISION.REVISE,
+  GUARDRAIL_DECISION.REPAIR,
   GUARDRAIL_DECISION.REPLAN,
-  GUARDRAIL_DECISION.BLOCK,
 ] as const;
 
 // 元组与 OutputDecision 成员集合恒等的编译期证明（任一方增删档位即报错）。
@@ -210,16 +215,6 @@ export const GUARDRAIL_DATA_SENSITIVITIES = Object.values(GUARDRAIL_DATA_SENSITI
 
 export type GuardrailDataSensitivity = (typeof GUARDRAIL_DATA_SENSITIVITIES)[number];
 
-/** 命中后是否能通过受控修复继续本回合。 */
-export const GUARDRAIL_RECOVERABILITY = {
-  RECOVERABLE: 'recoverable',
-  NON_RECOVERABLE: 'non_recoverable',
-} as const;
-
-export const GUARDRAIL_RECOVERABILITIES = Object.values(GUARDRAIL_RECOVERABILITY);
-
-export type GuardrailRecoverability = (typeof GUARDRAIL_RECOVERABILITIES)[number];
-
 /** 反馈给 generator 时的脱敏策略。 */
 export const GUARDRAIL_FEEDBACK_POLICY = {
   NONE: 'none',
@@ -234,7 +229,7 @@ export type GuardrailFeedbackPolicy = (typeof GUARDRAIL_FEEDBACK_POLICIES)[numbe
 /**
  * 修复方式。
  *
- * - `rewrite`：无工具的 ReplyRepairAgent 局部重写（observe/revise/block 的派生值）；
+ * - `rewrite`：确定性清理或无工具的 ReplyRepairAgent 局部重写；
  * - `replan`：replan 档规则的派生值——同参数重进一次 generator（不注入守卫反馈、不裁工具集），
  *   重生成结果按修复版走二审。旧实现（带反馈 + 只读工具白名单）已于 2026-07-27 删除，不得复活。
  */
@@ -261,7 +256,7 @@ type _AssertRepairModesCover =
 const _repairModeParity: _AssertRepairModesCover = true;
 void _repairModeParity;
 
-/** 单条违规意见（HC-1 revise 回路注入用）。 */
+/** 单条违规意见，供受控修复及 Runner 放行判断使用。 */
 export interface GuardViolation {
   type:
     | 'hallucinated_fact'
@@ -276,7 +271,8 @@ export interface GuardViolation {
   suggestion: string;
   severity?: GuardrailPriority;
   dataSensitivity?: GuardrailDataSensitivity;
-  recoverability?: GuardrailRecoverability;
+  /** false 表示该违规不可降级放行；仍允许尝试修复。高风险另由 riskLevel 限制。 */
+  allowFailOpen?: boolean;
   currentReplySendable?: boolean;
   feedbackPolicy?: GuardrailFeedbackPolicy;
   repairMode?: GuardrailRepairMode;
@@ -320,16 +316,16 @@ export interface GuardrailReviewStepTrace {
  */
 export interface GuardrailTurnTrace {
   steps: GuardrailReviewStepTrace[];
-  /** 是否触发过一次受控修复（revise/block 后的重写）。 */
+  /** 是否触发过一次受控修复或重生成。 */
   repaired: boolean;
-  /** 最终裁决（可能被 repair 上限收敛覆盖，如 repair_exhausted → block）。 */
-  finalDecision: OutputDecision;
+  /** Runner 最终处置；只读 advisory 未执行完整回合时不提供此字段。 */
+  finalOutcome?: OutputResolution['outcome'];
   reasonCode?: string;
 }
 
 /**
- * 入站守卫拦截摘要（写入 `message_processing_records.guardrail_input`，仅拦截命中时非空）。
- * 与 runner `TurnOutcome.kind==='guardrail_blocked'`（phase='inbound'）对应：本轮不跑 Agent；
+ * 入站守卫介入摘要（写入 `message_processing_records.guardrail_input`，仅风险命中时非空）。
+ * 与 runner `TurnOutcome.kind==='handoff'`（source='input_guardrail'）对应：本轮不跑 Agent；
  * guardrail 只声明 sideEffects 意图，人工介入由渠道侧 TurnOutcomeInterventionService.commit 执行。
  */
 export interface GuardrailInputTrace {

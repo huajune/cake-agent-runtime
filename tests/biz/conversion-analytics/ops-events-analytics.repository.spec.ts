@@ -67,3 +67,71 @@ describe('OpsEventsAnalyticsRepository', () => {
     expect(query.order).toHaveBeenCalledWith('id', { ascending: true });
   });
 });
+
+type RepositoryWithRpcAllPaged = OpsEventsAnalyticsRepository & {
+  rpcAllPaged<T>(functionName: string, params?: Record<string, unknown>): Promise<T[]>;
+};
+
+describe('OpsEventsAnalyticsRepository — 聚合 RPC', () => {
+  const repository = new OpsEventsAnalyticsRepository({
+    getSupabaseClient: jest.fn(),
+    isClientInitialized: jest.fn().mockReturnValue(true),
+  } as unknown as SupabaseService);
+
+  beforeEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('period 统计走 conversion_period_stats，未选小组时小组参数传 null', async () => {
+    const rpcSpy = jest
+      .spyOn(repository as RepositoryWithRpcAllPaged, 'rpcAllPaged')
+      .mockResolvedValue([]);
+
+    await repository.findPeriodStats({
+      startDate: '2026-09-01',
+      endDate: '2026-09-07',
+      groups: [],
+    });
+
+    expect(rpcSpy).toHaveBeenCalledWith('conversion_period_stats', {
+      p_start_date: '2026-09-01',
+      p_end_date: '2026-09-07',
+      p_corp_id: null,
+      p_groups: null,
+      p_group_bot_ids: null,
+    });
+  });
+
+  it('cohort 统计带观察截止日与小组 bot 归属', async () => {
+    const rpcSpy = jest
+      .spyOn(repository as RepositoryWithRpcAllPaged, 'rpcAllPaged')
+      .mockResolvedValue([]);
+
+    await repository.findCohortStats({
+      startDate: '2026-08-25',
+      endDate: '2026-08-31',
+      observeEndDate: '2026-09-07',
+      groups: ['小祝组'],
+      groupBotIds: ['bot-a'],
+    });
+
+    expect(rpcSpy).toHaveBeenCalledWith('conversion_cohort_stats', {
+      p_base_start: '2026-08-25',
+      p_base_end: '2026-08-31',
+      p_observe_end: '2026-09-07',
+      p_corp_id: null,
+      p_groups: ['小祝组'],
+      p_group_bot_ids: ['bot-a'],
+    });
+  });
+
+  it('RPC 失败时返回空数组，不回退到明细翻页', async () => {
+    jest.spyOn(repository as RepositoryWithRpcAllPaged, 'rpcAllPaged').mockResolvedValue([]);
+    const pagedSpy = jest.spyOn(repository as RepositoryWithSelectAllPaged, 'selectAllPaged');
+
+    await expect(
+      repository.findHandoffReasons({ startDate: '2026-09-01', endDate: '2026-09-07' }),
+    ).resolves.toEqual([]);
+    expect(pagedSpy).not.toHaveBeenCalled();
+  });
+});

@@ -307,7 +307,7 @@ export class ReplyWorkflowService {
       // follow-up，导致两批高度相似的回复紧挨着投递。
       let replayAttempt = 0;
       while (replayAttempt < MAX_REPLAY_ATTEMPTS) {
-        // 非 reply outcome（skipped/guardrail_blocked/handoff）与已固化副作用工具均是
+        // 非 reply outcome（skipped/handoff）与已固化副作用工具均是
         // agent/outcome 层给出的终态：不再拿通道 pending 变化重写这类结果。未抓取的新消息
         // 仍留在 Redis pending list，由 MessageProcessor 末尾补建 follow-up job 处理。
         const replaySkip = resolveReplaySkipDecision(agentResult.outcome, agentResult.toolCalls);
@@ -429,15 +429,17 @@ export class ReplyWorkflowService {
         ),
       });
 
-      // 非 reply 终态（skipped 沉默 / guardrail_blocked 守卫拦截 / handoff 转人工）：跳过 WeCom 发送，
+      // 非 reply 终态（skipped 静默 / handoff 人工介入意图）：跳过 WeCom 发送，
       // 但仍完成本轮流水与观测。终态由 runner 共享分类器给出（agentResult.outcome），与主动复聊同源；
-      // 守卫拦截（如歧视性筛选条件外露）宁可本轮沉默也不可泄漏。
+      // 入站风险或出站无法安全放行时转人工，本轮不自动回复。
       if (agentResult.outcome?.kind !== 'reply') {
-        if (agentResult.guardrailBlocked) {
-          const guardrail = agentResult.guardrailBlocked;
+        if (agentResult.guardrail) {
+          const guardrail = agentResult.guardrail;
           const phaseLabel = guardrail.phase === 'inbound' ? '入站' : '出站';
+          const dispositionLabel =
+            agentResult.outcome?.kind === 'handoff' ? '转人工意图' : '有意静默';
           this.logger.warn(
-            `${logPrefix}[${contactName}] ${phaseLabel}守卫拦截，跳过消息发送 (rules=${guardrail.ruleIds?.join(',') || '-'})`,
+            `${logPrefix}[${contactName}] ${phaseLabel}守卫${dispositionLabel}，跳过消息发送 (rules=${guardrail.ruleIds?.join(',') || '-'})`,
           );
         } else {
           const skipReason = this.extractSkipReason(agentResult) || '本轮无需回复';
@@ -454,7 +456,7 @@ export class ReplyWorkflowService {
         this.monitoringService.recordSuccess(traceId, skippedMetadata);
         // 回复未送达给候选人：记用户侧记忆但不投影助手轮次，避免下一轮幽灵复聊。
         agentResult.turnFinalizer?.settle({ delivered: false });
-        // 有意沉默也是成功处理：推进复聊「已处理」水位，与旧的回话即停行为保持一致。
+        // 转人工或有意沉默也是成功处理：推进复聊「已处理」水位，与旧的回话即停行为保持一致。
         this.advanceProcessedCandidateWatermark(
           params.primaryMessage,
           agentCallParams,
@@ -614,19 +616,21 @@ export class ReplyWorkflowService {
     scenario: ScenarioType,
     batchId?: string,
   ): Promise<MonitoringMetadata & { fallbackSuccess?: boolean; batchId?: string }> {
-    const replyPreview = agentResult.guardrailBlocked
-      ? this.buildGuardrailBlockedPreview(agentResult)
-      : agentResult.isSkipped
-        ? `[主动沉默] ${this.extractSkipReason(agentResult) || '本轮无需回复'}`
-        : agentResult.reply.content;
+    const replyPreview = agentResult.guardrail
+      ? this.buildGuardrailPreview(agentResult)
+      : agentResult.outcome?.kind === 'handoff'
+        ? `[转人工意图] ${this.extractSkipReason(agentResult) || '本轮要求人工处理'}`
+        : agentResult.isSkipped
+          ? `[主动沉默] ${this.extractSkipReason(agentResult) || '本轮无需回复'}`
+          : agentResult.reply.content;
     const guardrailInput: MonitoringMetadata['guardrailInput'] =
-      agentResult.guardrailBlocked?.phase === 'inbound'
+      agentResult.guardrail?.phase === 'inbound'
         ? {
-            decision: 'block',
-            riskType: agentResult.guardrailBlocked.riskType,
-            riskLabel: agentResult.guardrailBlocked.riskLabel,
-            reasonCode: agentResult.guardrailBlocked.reasonCode,
-            reason: agentResult.guardrailBlocked.reason,
+            decision: 'handoff',
+            riskType: agentResult.guardrail.riskType,
+            riskLabel: agentResult.guardrail.riskLabel,
+            reasonCode: agentResult.guardrail.reasonCode,
+            reason: agentResult.guardrail.reason,
           }
         : undefined;
     const guardrailOutput = agentResult.outcome?.guardrailTrace;
@@ -643,14 +647,15 @@ export class ReplyWorkflowService {
     });
   }
 
-  private buildGuardrailBlockedPreview(agentResult: AgentInvokeResult): string {
-    const guardrail = agentResult.guardrailBlocked;
+  private buildGuardrailPreview(agentResult: AgentInvokeResult): string {
+    const guardrail = agentResult.guardrail;
     if (!guardrail) return agentResult.reply.content;
     if (guardrail.phase === 'inbound') {
-      return `[入站守卫拦截] ${guardrail.riskLabel ?? guardrail.reason ?? '命中风险规则'}`;
+      return `[入站转人工意图] ${guardrail.riskLabel ?? guardrail.reason ?? '命中风险规则'}`;
     }
     const ruleText = guardrail.ruleIds?.join(',') || guardrail.reasonCode || 'output_guardrail';
-    return `[出站守卫拦截 ${ruleText}] ${agentResult.reply.content}`;
+    const label = agentResult.outcome?.kind === 'handoff' ? '出站转人工意图' : '出站有意静默';
+    return `[${label} ${ruleText}] ${agentResult.reply.content}`;
   }
 
   private extractSkipReason(agentResult: AgentInvokeResult): string | undefined {
@@ -860,8 +865,7 @@ export class ReplyWorkflowService {
       const processingTime = Date.now() - startTime;
       const content = outcome.reply?.text ?? outcome.generatedText ?? '';
       const isSkipped = outcome.kind !== 'reply';
-      const guardrailBlocked: AgentInvokeResult['guardrailBlocked'] =
-        outcome.kind === 'guardrail_blocked' ? outcome.guardrail : undefined;
+      const guardrail: AgentInvokeResult['guardrail'] = outcome.guardrail;
       const turnFinalizer = TurnFinalizer.from(outcome.runTurnEnd, (err) => {
         const errorMessage = toErrorMessage(err);
         this.logger.warn(`[${params.contactName}] turn-end lifecycle 执行失败: ${errorMessage}`);
@@ -871,7 +875,7 @@ export class ReplyWorkflowService {
         reply: { content, reasoning: outcome.reasoning, usage: outcome.usage },
         isFallback: false,
         isSkipped,
-        guardrailBlocked,
+        guardrail,
         outcome: { ...outcome, runTurnEnd: undefined },
         processingTime,
         toolCalls: outcome.toolCalls,
@@ -886,7 +890,9 @@ export class ReplyWorkflowService {
       }
 
       const shortCircuitedByTool = (outcome.toolCalls ?? []).some(isShortCircuitedToolCall);
-      if (!content && outcome.kind === 'skipped' && !shortCircuitedByTool) {
+      const intentionalSilence =
+        outcome.guardrail?.phase === 'outbound' && Boolean(outcome.guardrail.reasonCode);
+      if (!content && outcome.kind === 'skipped' && !shortCircuitedByTool && !intentionalSilence) {
         const emptyResponseError = new Error('Agent 返回空响应') as AgentError;
         emptyResponseError.isAgentError = true;
         emptyResponseError.agentMeta = {
@@ -900,7 +906,7 @@ export class ReplyWorkflowService {
 
       this.logger.log(
         `Agent 调用成功，耗时 ${processingTime}ms，tokens=${outcome.usage?.totalTokens || 'N/A'}${
-          isSkipped ? '，本轮主动沉默' : ''
+          outcome.kind === 'handoff' ? '，本轮转人工意图' : isSkipped ? '，本轮主动沉默' : ''
         }`,
       );
 

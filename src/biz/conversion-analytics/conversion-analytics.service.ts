@@ -8,7 +8,13 @@ import {
   getLocalDayStart,
   parseLocalDateStart,
 } from '@infra/utils/date.util';
-import { OpsEventsAnalyticsRepository } from './repositories/ops-events-analytics.repository';
+import {
+  ConversionCohortStatsRow,
+  ConversionHandoffReasonRow,
+  ConversionPeriodStatsRow,
+  ConversionStatsParams,
+  OpsEventsAnalyticsRepository,
+} from './repositories/ops-events-analytics.repository';
 import {
   ConversionBotCounts,
   ConversionBotRow,
@@ -43,27 +49,12 @@ interface OpsEventRow {
   payload: JsonPayload;
 }
 
+/** booking cohort 成员（按 身份:工单 去重）；friend_added cohort 已下沉到 RPC，不再在 Node 建模。 */
 interface CohortMember {
   key: string;
   identityKey: string | null;
-  // userId / chatId 分开保留：friend_added cohort 的下游事件可能只带其中之一
-  // （如 candidate.engaged 常缺 user_id、interview.passed 的 user/chat 来自工单可空），
-  // 匹配时需要按 user_id 或 chat_id 任一命中，避免漏算（见 matchFriendAddedCohortMembers）。
-  userId: string | null;
-  chatId: string | null;
-  workOrderId: string | null;
+  workOrderId: string;
   occurredAt: number;
-  botImId: string | null;
-  managerName: string | null;
-  groupName: string | null;
-}
-
-interface PeriodCountSets {
-  friendAdded: Set<string>;
-  breakIce: Set<string>;
-  booking: Set<string>;
-  interviewPass: Set<string>;
-  groupInvite: Set<string>;
 }
 
 interface RowCacheEntry {
@@ -119,7 +110,6 @@ const BOOKING_STAGE_DEFS: StageDef[] = [
 ];
 
 // 加群是运营动作，不进线性漏斗：作为破冰后的侧支单独度量（分母=破冰人数）。
-const GROUP_INVITE_EVENT = 'group.invited';
 const GROUP_INVITE_STAGE = 'group_invite';
 
 // 工单自助变更（取消 / 改约）是运营侧支动作，不进漏斗：在 bot 表里作为原始计数列单独展示。
@@ -154,6 +144,15 @@ const HANDOFF_REASON_LABELS: Record<string, string> = {
   other: '其他原因',
 };
 
+/**
+ * 转化分析：KPI 名片 / 漏斗 / 趋势 / 账号对比 / 转人工原因。
+ *
+ * 主口径（同一时段 period、同批追踪 cohort）的去重计数与 cohort 匹配全部由数据库 RPC
+ * （conversion_period_stats / conversion_cohort_stats / conversion_handoff_reasons）一次往返算好，
+ * 本服务只做窗口换算、小组 → bot 归属翻译、bot 名称解析补全与响应拼装。
+ * 仅两条小体量侧支仍拉明细：booking cohort 漏斗、取消/改约计数。
+ * RPC 失败/缺失时按空统计降级，不回退到翻页拉明细（数据库红线：降级成本单调下降）。
+ */
 @Injectable()
 export class ConversionAnalyticsService {
   private readonly logger = new Logger(ConversionAnalyticsService.name);
@@ -246,26 +245,8 @@ export class ConversionAnalyticsService {
     period: ConversionPeriod,
     scope: 'current' | 'previous',
   ): Promise<ConversionTrendCounts> {
-    const events = await this.fetchOpsEvents(
-      filter,
-      period,
-      [
-        'friend.added',
-        'candidate.engaged',
-        'booking.succeeded',
-        'group.invited',
-        'interview.passed',
-      ],
-      scope,
-      { applyGroupFilter: true },
-    );
-
-    const sets = this.createPeriodCountSets();
-    for (const event of events) {
-      this.addPeriodEventToSets(sets, event);
-    }
-
-    return this.toPeriodCounts(sets);
+    const stats = await this.fetchPeriodStats(filter, this.getDateBounds(period, scope));
+    return this.periodTotal(stats);
   }
 
   async getFunnel(
@@ -279,17 +260,18 @@ export class ConversionAnalyticsService {
       return this.getPeriodFunnel(cohort, filter, period);
     }
 
-    const stageDefs = this.getStageDefs(cohort);
     // cohort：严格单调子集的漏斗（按人去重，逐级 ⊆ 上一级）。
-    const stageSets = await this.computeStageSets(cohort, filter, period, 'current');
-
     // 加群是破冰后的运营侧支，不进漏斗：仅作为独立 KPI 展示，不在漏斗里占一层。
-    const displayDefs: StageDef[] = stageDefs;
+    const displayDefs = this.getStageDefs(cohort);
+    const stageCounts =
+      cohort === 'booking'
+        ? this.countsFromStageSets(await this.computeBookingStageSets(filter, period, 'current'))
+        : await this.computeFriendAddedCohortCounts(filter, period, 'current');
 
-    const totalCohort = stageSets.get(displayDefs[0].stage)?.size ?? 0;
+    const totalCohort = this.countForStage(displayDefs[0].stage, stageCounts);
     let previousCount = totalCohort;
     const stages = displayDefs.map((def, index) => {
-      const count = stageSets.get(def.stage)?.size ?? 0;
+      const count = this.countForStage(def.stage, stageCounts);
       const stageRate = index === 0 ? 1 : this.ratio(count, previousCount);
       previousCount = count;
       return {
@@ -311,8 +293,7 @@ export class ConversionAnalyticsService {
   ): Promise<ConversionFunnelResponse> {
     const counts = await this.computePeriodCounts(filter, period, 'current');
     // 加群是破冰后的运营侧支，不进漏斗：仅作为独立 KPI 展示，不在漏斗里占一层。
-    const displayDefs: StageDef[] =
-      cohort === 'friend_added' ? FRIEND_ADDED_STAGE_DEFS : BOOKING_STAGE_DEFS;
+    const displayDefs = this.getStageDefs(cohort);
     const totalCohort = cohort === 'booking' ? counts.booking : counts.friendAdded;
     const stages = displayDefs.map((def, index) => {
       const count = this.countForStage(def.stage, counts);
@@ -335,123 +316,65 @@ export class ConversionAnalyticsService {
   }
 
   /**
-   * 计算 cohort 各级去重人数集合（严格单调子集）。
-   * - 基级集合 = cohort 成员 key（friend_added 按身份去重；booking 按 身份:工单 去重）。
-   * - 每个下游级：匹配 cohort 成员 + 时序检查（事件晚于成员入列），再与上一级取交集，
-   *   保证分子 ⊆ 分母，所有转化率天然 ≤100%。
-   * - friend_added cohort 额外产出加群侧支（group_invite）：破冰后被加群的人 ∩ 破冰集合。
+   * booking cohort（按 身份:工单 去重）各级去重集合（严格单调子集）：
+   * 基级 = 本期报名工单；面试通过按工单号匹配且事件晚于入列，再与基级取交集。
+   * 体量小（月级数百行），仍走明细；friend_added cohort 由 conversion_cohort_stats 承担。
    */
-  private async computeStageSets(
-    cohort: ConversionCohort,
+  private async computeBookingStageSets(
     filter: ConversionFilter,
     period: ConversionPeriod,
     scope: 'current' | 'previous',
   ): Promise<Map<string, Set<string>>> {
-    const { cohortMembers, rawSets } = await this.computeCohortRawSets(
-      cohort,
-      filter,
-      period,
-      scope,
-    );
-    return this.constrainStageSets(cohort, cohortMembers, rawSets);
-  }
-
-  private constrainStageSets(
-    cohort: ConversionCohort,
-    cohortMembers: Map<string, CohortMember>,
-    rawSets: Map<string, Set<string>>,
-  ): Map<string, Set<string>> {
-    const stageDefs = this.getStageDefs(cohort);
-    const baseStage = stageDefs[0].stage;
+    const stageDefs = BOOKING_STAGE_DEFS;
+    const baseEvents = await this.fetchOpsEvents(filter, period, [stageDefs[0].eventName], scope, {
+      applyGroupFilter: true,
+    });
+    const cohortMembers = this.buildBookingCohort(baseEvents);
     const cohortKeys = new Set(cohortMembers.keys());
 
-    // 严格单调子集：线性链上 S[i] = rawSet[i] ∩ S[i-1]，基级 = cohort 全体。
+    const rawSets = new Map<string, Set<string>>();
+    for (const def of stageDefs) rawSets.set(def.stage, new Set<string>());
+
+    if (cohortKeys.size > 0) {
+      const cohortsByIdentity = this.groupCohorts(cohortMembers, 'identityKey');
+      const cohortsByWorkOrder = this.groupCohorts(cohortMembers, 'workOrderId');
+      const stageByEvent = new Map(stageDefs.map((def) => [def.eventName, def.stage] as const));
+      const stageEvents = await this.fetchOpsEvents(
+        filter,
+        period,
+        stageDefs.slice(1).map((def) => def.eventName),
+        scope,
+        {
+          applyGroupFilter: true,
+          dateBounds: this.getCohortObservationBounds(period, scope, filter.maturityDays ?? 0),
+        },
+      );
+
+      for (const event of stageEvents) {
+        const stage = stageByEvent.get(event.event_name);
+        if (!stage || stage === stageDefs[0].stage) continue;
+        const occurredAt = new Date(event.occurred_at).getTime();
+        for (const member of this.matchBookingCohortMembers(
+          event,
+          cohortsByIdentity,
+          cohortsByWorkOrder,
+        )) {
+          if (occurredAt < member.occurredAt) continue;
+          rawSets.get(stage)?.add(member.key);
+        }
+      }
+    }
+
+    // 严格单调子集：S[i] = rawSet[i] ∩ S[i-1]，基级 = cohort 全体。
     const result = new Map<string, Set<string>>();
-    result.set(baseStage, cohortKeys);
+    result.set(stageDefs[0].stage, cohortKeys);
     let prevSet = cohortKeys;
     for (let i = 1; i < stageDefs.length; i++) {
       const constrained = this.intersect(rawSets.get(stageDefs[i].stage), prevSet);
       result.set(stageDefs[i].stage, constrained);
       prevSet = constrained;
     }
-
-    // 加群侧支：与破冰集合取交集（不进线性链，分母为破冰人数）。
-    if (cohort === 'friend_added') {
-      const breakIceSet = result.get('break_ice');
-      result.set(GROUP_INVITE_STAGE, this.intersect(rawSets.get(GROUP_INVITE_STAGE), breakIceSet));
-    }
-
     return result;
-  }
-
-  /**
-   * cohort 计算引擎：拉取基级 + 下游事件，产出 cohort 成员（含入列时刻）与各级原始命中集合
-   * （rawSets：未做单调约束的「命中某级的 cohort 成员」）。computeStageSets 与
-   * cohort 趋势共用此引擎，保证同批追踪口径完全一致。
-   */
-  private async computeCohortRawSets(
-    cohort: ConversionCohort,
-    filter: ConversionFilter,
-    period: ConversionPeriod,
-    scope: 'current' | 'previous',
-  ): Promise<{ cohortMembers: Map<string, CohortMember>; rawSets: Map<string, Set<string>> }> {
-    const stageDefs = this.getStageDefs(cohort);
-    const baseStage = stageDefs[0].stage;
-
-    // 基级与下游事件均按各自 group_name 过滤（口径与 period 一致）。
-    const baseEvents = await this.fetchOpsEvents(filter, period, [stageDefs[0].eventName], scope, {
-      applyGroupFilter: true,
-    });
-    const cohortMembers =
-      cohort === 'booking'
-        ? this.buildBookingCohort(baseEvents)
-        : this.buildFriendAddedCohort(baseEvents);
-    const cohortKeys = new Set(cohortMembers.keys());
-
-    const includeGroupInvite = cohort === 'friend_added';
-    const rawSets = new Map<string, Set<string>>();
-    for (const def of stageDefs) rawSets.set(def.stage, new Set<string>());
-    if (includeGroupInvite) rawSets.set(GROUP_INVITE_STAGE, new Set<string>());
-
-    if (cohortKeys.size > 0) {
-      const cohortsByIdentity = this.groupCohorts(cohortMembers, 'identityKey');
-      const cohortsByWorkOrder = this.groupCohorts(cohortMembers, 'workOrderId');
-      // friend_added：按 user_id / chat_id 双索引，下游事件任一命中即归属（§3）。
-      const { byUser, byChat } = this.indexFriendAddedMembers(cohortMembers);
-      const downstreamEventNames = stageDefs.slice(1).map((def) => def.eventName);
-      const eventNames = includeGroupInvite
-        ? [...downstreamEventNames, GROUP_INVITE_EVENT]
-        : downstreamEventNames;
-
-      if (eventNames.length > 0) {
-        const stageByEvent = new Map(stageDefs.map((def) => [def.eventName, def.stage] as const));
-        const stageEvents = await this.fetchOpsEvents(filter, period, eventNames, scope, {
-          applyGroupFilter: true,
-          dateBounds: this.getCohortObservationBounds(period, scope, filter.maturityDays ?? 0),
-        });
-
-        for (const event of stageEvents) {
-          const stage =
-            event.event_name === GROUP_INVITE_EVENT
-              ? GROUP_INVITE_STAGE
-              : stageByEvent.get(event.event_name);
-          if (!stage || stage === baseStage) continue;
-
-          const matchedMembers =
-            cohort === 'booking'
-              ? this.matchBookingCohortMembers(event, cohortsByIdentity, cohortsByWorkOrder)
-              : this.matchFriendAddedCohortMembers(event, byUser, byChat);
-
-          const occurredAt = new Date(event.occurred_at).getTime();
-          for (const member of matchedMembers) {
-            if (occurredAt < member.occurredAt) continue;
-            rawSets.get(stage)?.add(member.key);
-          }
-        }
-      }
-    }
-
-    return { cohortMembers, rawSets };
   }
 
   async getTrends(
@@ -467,145 +390,45 @@ export class ConversionAnalyticsService {
    */
   private async getPeriodTrends(filter: ConversionFilter): Promise<ConversionTrendResponse> {
     const period = this.getPeriod(filter.range);
-    const events = await this.fetchOpsEvents(
-      filter,
-      period,
-      [
-        'friend.added',
-        'candidate.engaged',
-        'booking.succeeded',
-        'group.invited',
-        'interview.passed',
-      ],
-      'current',
-      { applyGroupFilter: true },
+    const stats = await this.fetchPeriodStats(filter, this.getDateBounds(period, 'current'));
+    const byDay = new Map(
+      stats.filter((row) => row.scope === 'day' && row.bucket).map((row) => [row.bucket, row]),
     );
-    const summarySets = this.createPeriodCountSets();
-    const buckets = new Map<string, PeriodCountSets>();
-
-    for (const event of events) {
-      this.addPeriodEventToSets(summarySets, event);
-      const date = event.report_date || formatLocalDate(new Date(event.occurred_at));
-      const bucket = buckets.get(date) ?? this.createPeriodCountSets();
-      this.addPeriodEventToSets(bucket, event);
-      buckets.set(date, bucket);
-    }
 
     const points: ConversionTrendPoint[] = this.enumerateDates(
       period.startInstant,
       period.endInstant,
-    ).map((date) => {
-      const counts = this.toPeriodCounts(buckets.get(date) ?? this.createPeriodCountSets());
-      return this.toTrendPoint(date, counts);
-    });
+    ).map((date) => this.toTrendPoint(date, this.toCounts(byDay.get(date))));
 
-    return { mode: 'period', summary: this.toPeriodCounts(summarySets), points };
+    return { mode: 'period', summary: this.periodTotal(stats), points };
   }
 
   /**
    * cohort 趋势：每个点 = 当天新增好友这批人的后续转化。
    * 当 maturityDays > 0 时，入列窗口整体前移，并观察到其成熟截止日。
+   * RPC 已按「入列日 × bot」返回单调约束后的成员计数，逐日/总量直接求和即可。
    */
   private async getCohortTrends(filter: ConversionFilter): Promise<ConversionTrendResponse> {
     const period = this.getMetricPeriod(filter, 'cohort');
-    const { cohortMembers, rawSets } = await this.computeCohortRawSets(
-      'friend_added',
-      filter,
-      period,
-      'current',
-    );
+    const rows = await this.fetchCohortStats(filter, period, 'current');
 
-    // 基级 cohort 按「新增好友当日」分桶（成员 occurredAt = 最早 friend.added 时刻）。
-    const friendByDay = new Map<string, Set<string>>();
-    for (const member of cohortMembers.values()) {
-      const date = formatLocalDate(new Date(member.occurredAt));
-      const bucket = friendByDay.get(date) ?? new Set<string>();
-      bucket.add(member.key);
-      friendByDay.set(date, bucket);
+    const byDay = new Map<string, ConversionCohortStatsRow[]>();
+    for (const row of rows) {
+      const bucket = byDay.get(row.cohort_date) ?? [];
+      bucket.push(row);
+      byDay.set(row.cohort_date, bucket);
     }
-
-    const breakIceRaw = rawSets.get('break_ice');
-    const bookingRaw = rawSets.get('booking');
-    const interviewRaw = rawSets.get('interview_pass');
-    const groupInviteRaw = rawSets.get(GROUP_INVITE_STAGE);
-    const summary = this.countsFromStageSets(
-      this.constrainStageSets('friend_added', cohortMembers, rawSets),
-    );
 
     const points: ConversionTrendPoint[] = this.enumerateDates(
       period.startInstant,
       period.endInstant,
-    ).map((date) => {
-      // 逐日单调子集：以当日新增好友这批人为分母基级，下游逐级取交集（与周期口径一致）。
-      const friendSet = friendByDay.get(date) ?? new Set<string>();
-      const breakIce = this.intersect(breakIceRaw, friendSet);
-      const booking = this.intersect(bookingRaw, breakIce);
-      const interviewPass = this.intersect(interviewRaw, booking);
-      const groupInvite = this.intersect(groupInviteRaw, breakIce);
-
-      const counts: ConversionTrendCounts = {
-        friendAdded: friendSet.size,
-        breakIce: breakIce.size,
-        booking: booking.size,
-        interviewPass: interviewPass.size,
-        groupInvite: groupInvite.size,
-      };
+    ).map((date) =>
       // 分母为 0（当日无对应 cohort / 无数据）时返回 null，前端渲染为断点而非 0%，
       // 避免「无数据日」被误读成「转化率 0%」。真实 0%（分母>0 但无转化）仍照常展示。
-      return this.toTrendPoint(date, counts);
-    });
+      this.toTrendPoint(date, this.sumCounts(byDay.get(date) ?? [])),
+    );
 
-    return { mode: 'cohort', summary, points };
-  }
-
-  private createPeriodCountSets(): PeriodCountSets {
-    return {
-      friendAdded: new Set<string>(),
-      breakIce: new Set<string>(),
-      booking: new Set<string>(),
-      interviewPass: new Set<string>(),
-      groupInvite: new Set<string>(),
-    };
-  }
-
-  private addPeriodEventToSets(sets: PeriodCountSets, event: OpsEventRow): void {
-    switch (event.event_name) {
-      case 'friend.added':
-        this.addIfPresent(sets.friendAdded, this.getIdentityKey(event) ?? event.idempotency_key);
-        break;
-      case 'candidate.engaged':
-        this.addIfPresent(sets.breakIce, this.getIdentityKey(event) ?? event.idempotency_key);
-        break;
-      case 'booking.succeeded':
-        // 转化分析统一按候选人计数；同一人重复预约只算 1 人。
-        this.addIfPresent(
-          sets.booking,
-          this.getIdentityKey(event) ?? this.getWorkOrderId(event) ?? event.idempotency_key,
-        );
-        break;
-      case 'group.invited':
-        this.addIfPresent(sets.groupInvite, this.getIdentityKey(event) ?? event.idempotency_key);
-        break;
-      case 'interview.passed':
-        // 同上按「人」去重（§2）：与报名口径一致，面试通过率/整体转化率不再混用工单与人。
-        this.addIfPresent(
-          sets.interviewPass,
-          this.getIdentityKey(event) ?? this.getWorkOrderId(event) ?? event.idempotency_key,
-        );
-        break;
-      default:
-        break;
-    }
-  }
-
-  private toPeriodCounts(sets: PeriodCountSets): ConversionTrendCounts {
-    return {
-      friendAdded: sets.friendAdded.size,
-      breakIce: sets.breakIce.size,
-      booking: sets.booking.size,
-      interviewPass: sets.interviewPass.size,
-      groupInvite: sets.groupInvite.size,
-    };
+    return { mode: 'cohort', summary: this.sumCounts(rows), points };
   }
 
   private async computeFriendAddedCohortCounts(
@@ -613,9 +436,7 @@ export class ConversionAnalyticsService {
     period: ConversionPeriod,
     scope: 'current' | 'previous',
   ): Promise<ConversionTrendCounts> {
-    return this.countsFromStageSets(
-      await this.computeStageSets('friend_added', filter, period, scope),
-    );
+    return this.sumCounts(await this.fetchCohortStats(filter, period, scope));
   }
 
   private countsFromStageSets(stageSets: Map<string, Set<string>>): ConversionTrendCounts {
@@ -710,11 +531,6 @@ export class ConversionAnalyticsService {
     return out;
   }
 
-  private addIfPresent(target: Set<string>, value: string | null | undefined): void {
-    const normalized = value?.trim();
-    if (normalized) target.add(normalized);
-  }
-
   async getBots(
     filter: ConversionFilter,
     mode: ConversionMetricMode = 'period',
@@ -723,8 +539,8 @@ export class ConversionAnalyticsService {
     const period = this.getMetricPeriod(filter, mode);
     const rows =
       mode === 'cohort'
-        ? await this.getBotRowsFromCohort(filter, period)
-        : await this.getBotRowsFromPeriodEvents(filter, period);
+        ? await this.getBotRowsFromCohortStats(filter, period)
+        : await this.getBotRowsFromPeriodStats(filter, period);
 
     // 工单自助变更（取消/改约）按 period 直接计数 ops_events，合并到各 bot 行（不参与 cohort/漏斗）。
     const withMutations = await this.applyMutationCounts(
@@ -875,20 +691,18 @@ export class ConversionAnalyticsService {
   async getHandoff(filter: ConversionFilter): Promise<ConversionHandoffResponse> {
     await this.botGroupResolver.warmUp();
     const period = this.getPeriod(filter.range);
-    // 转人工原因改读 ops_events(handoff.triggered)：与其余指标同一 report_date 切窗、
-    // 同一 group_name 分组过滤口径，且与 daily_ops_report.handoff_count 同源——
-    // 取代旧的 handoff_events.created_at 切窗 + bot_im_id 白名单（会漏算空 bot 的转人工，§9）。
-    const events = await this.fetchOpsEvents(filter, period, ['handoff.triggered'], 'current', {
-      applyGroupFilter: true,
-    });
+    // 转人工原因读 ops_events(handoff.triggered)：与其余指标同一 report_date 切窗、
+    // 同一 group_name 分组过滤口径，且与 daily_ops_report.handoff_count 同源。
+    const rows = await this.fetchHandoffReasons(filter, this.getDateBounds(period, 'current'));
 
     const reasonCounts = new Map<string, number>();
-    for (const event of events) {
-      const reason = this.getHandoffReasonCode(event);
-      reasonCounts.set(reason, (reasonCounts.get(reason) ?? 0) + 1);
+    let total = 0;
+    for (const row of rows) {
+      const count = Number(row.event_count) || 0;
+      reasonCounts.set(row.reason_code, (reasonCounts.get(row.reason_code) ?? 0) + count);
+      total += count;
     }
 
-    const total = events.length;
     return {
       total,
       reasons: this.toBuckets(reasonCounts, total, HANDOFF_REASON_LABELS).map((item) => ({
@@ -900,86 +714,143 @@ export class ConversionAnalyticsService {
     };
   }
 
-  private getHandoffReasonCode(event: OpsEventRow): string {
-    const raw = event.payload?.reason_code;
-    const code = typeof raw === 'string' ? raw.trim() : '';
-    return code || 'other';
-  }
-
-  private async getBotRowsFromPeriodEvents(
+  private async getBotRowsFromPeriodStats(
     filter: ConversionFilter,
     period: ConversionPeriod,
   ): Promise<ConversionBotRow[]> {
-    const events = await this.fetchOpsEvents(
-      filter,
-      period,
-      [
-        'friend.added',
-        'candidate.engaged',
-        'booking.succeeded',
-        'group.invited',
-        'interview.passed',
-      ],
-      'current',
-      { applyGroupFilter: true },
-    );
-    const byBot = new Map<string, { row: ConversionBotRow; sets: PeriodCountSets }>();
-
-    for (const event of events) {
-      const botImId = event.bot_im_id || 'unknown';
-      const bucket = byBot.get(botImId) ?? {
-        row: this.createBotRow(botImId, event.manager_name, event.group_name),
-        sets: this.createPeriodCountSets(),
-      };
-      const row = bucket.row;
-      this.addPeriodEventToSets(bucket.sets, event);
-      row.managerName = row.managerName || event.manager_name || '未知账号';
-      row.groupName = row.groupName || event.group_name || '未分组';
-      byBot.set(botImId, bucket);
-    }
-
-    return Array.from(byBot.values()).map(({ row, sets }) =>
-      this.finalizeBotRow({
-        ...row,
-        eventCounts: this.toBotCounts(this.toPeriodCounts(sets)),
-      }),
-    );
+    const stats = await this.fetchPeriodStats(filter, this.getDateBounds(period, 'current'));
+    return stats
+      .filter((row) => row.scope === 'bot')
+      .map((row) => {
+        const botImId = row.bot_im_id || 'unknown';
+        const identity = this.resolveBotIdentity(row.bot_im_id, row.manager_name, row.group_name);
+        return this.finalizeBotRow({
+          ...this.createBotRow(botImId, identity.managerName, identity.groupName),
+          eventCounts: this.toBotCounts(this.toCounts(row)),
+        });
+      });
   }
 
-  private async getBotRowsFromCohort(
+  private async getBotRowsFromCohortStats(
     filter: ConversionFilter,
     period: ConversionPeriod,
   ): Promise<ConversionBotRow[]> {
-    const { cohortMembers, rawSets } = await this.computeCohortRawSets(
-      'friend_added',
-      filter,
-      period,
-      'current',
-    );
-    const stageSets = this.constrainStageSets('friend_added', cohortMembers, rawSets);
-    const friendAdded = stageSets.get('friend_added') ?? new Set<string>();
-    const breakIce = stageSets.get('break_ice') ?? new Set<string>();
-    const booking = stageSets.get('booking') ?? new Set<string>();
-    const groupInvite = stageSets.get(GROUP_INVITE_STAGE) ?? new Set<string>();
-    const interviewPass = stageSets.get('interview_pass') ?? new Set<string>();
+    const rows = await this.fetchCohortStats(filter, period, 'current');
+    // 同一 bot 跨多个入列日：名称取最早入列成员那一行（与按事件顺序首次建行的语义一致）。
+    const sorted = [...rows].sort((a, b) => a.first_occurred_at.localeCompare(b.first_occurred_at));
     const byBot = new Map<string, ConversionBotRow>();
-
-    for (const member of cohortMembers.values()) {
-      const botImId = member.botImId || 'unknown';
-      const row =
-        byBot.get(botImId) ?? this.createBotRow(botImId, member.managerName, member.groupName);
-      row.managerName = row.managerName || member.managerName || '未知账号';
-      row.groupName = row.groupName || member.groupName || '未分组';
-      if (friendAdded.has(member.key)) row.eventCounts.friends_added += 1;
-      if (breakIce.has(member.key)) row.eventCounts.break_ice += 1;
-      if (booking.has(member.key)) row.eventCounts.booking_success += 1;
-      if (groupInvite.has(member.key)) row.eventCounts.group_invite += 1;
-      if (interviewPass.has(member.key)) row.eventCounts.interview_pass += 1;
-      byBot.set(botImId, row);
+    for (const row of sorted) {
+      const botImId = row.bot_im_id || 'unknown';
+      const existing = byBot.get(botImId);
+      if (!existing) {
+        const identity = this.resolveBotIdentity(row.bot_im_id, row.manager_name, row.group_name);
+        byBot.set(botImId, {
+          ...this.createBotRow(botImId, identity.managerName, identity.groupName),
+          eventCounts: this.toBotCounts(this.toCounts(row)),
+        });
+        continue;
+      }
+      existing.eventCounts.friends_added += Number(row.friend_added) || 0;
+      existing.eventCounts.break_ice += Number(row.break_ice) || 0;
+      existing.eventCounts.booking_success += Number(row.booking) || 0;
+      existing.eventCounts.group_invite += Number(row.group_invite) || 0;
+      existing.eventCounts.interview_pass += Number(row.interview_pass) || 0;
     }
-
     return Array.from(byBot.values()).map((row) => this.finalizeBotRow(row));
   }
+
+  // ==================== 数据源：RPC 聚合 ====================
+
+  private fetchPeriodStats(
+    filter: ConversionFilter,
+    bounds: { startDate: string; endDate: string },
+  ): Promise<ConversionPeriodStatsRow[]> {
+    const params = this.toStatsParams(filter, bounds);
+    return this.getCachedRows(this.createRowsCacheKey('conversion_period_stats', params), () =>
+      this.opsEventsRepository.findPeriodStats(params),
+    );
+  }
+
+  private fetchCohortStats(
+    filter: ConversionFilter,
+    period: ConversionPeriod,
+    scope: 'current' | 'previous',
+  ): Promise<ConversionCohortStatsRow[]> {
+    const base = this.getDateBounds(period, scope);
+    const observe = this.getCohortObservationBounds(period, scope, filter.maturityDays ?? 0);
+    const params = { ...this.toStatsParams(filter, base), observeEndDate: observe.endDate };
+    return this.getCachedRows(this.createRowsCacheKey('conversion_cohort_stats', params), () =>
+      this.opsEventsRepository.findCohortStats(params),
+    );
+  }
+
+  private fetchHandoffReasons(
+    filter: ConversionFilter,
+    bounds: { startDate: string; endDate: string },
+  ): Promise<ConversionHandoffReasonRow[]> {
+    const params = this.toStatsParams(filter, bounds);
+    return this.getCachedRows(this.createRowsCacheKey('conversion_handoff_reasons', params), () =>
+      this.opsEventsRepository.findHandoffReasons(params),
+    );
+  }
+
+  /** 小组筛选翻译：小组名 + 解析到这些小组的 bot 归一化 key（事件 group_name 缺失时按 bot 归属）。 */
+  private toStatsParams(
+    filter: ConversionFilter,
+    bounds: { startDate: string; endDate: string },
+  ): ConversionStatsParams {
+    const groups = this.normalizeListForCache(filter.groups);
+    return {
+      startDate: bounds.startDate,
+      endDate: bounds.endDate,
+      corpId: filter.corpId,
+      groups,
+      groupBotIds:
+        groups.length > 0
+          ? this.normalizeListForCache(this.botGroupResolver.listBotKeysByGroups(groups))
+          : [],
+    };
+  }
+
+  private periodTotal(stats: ConversionPeriodStatsRow[]): ConversionTrendCounts {
+    return this.toCounts(stats.find((row) => row.scope === 'total'));
+  }
+
+  private toCounts(
+    row?: Pick<
+      ConversionPeriodStatsRow,
+      'friend_added' | 'break_ice' | 'booking' | 'group_invite' | 'interview_pass'
+    >,
+  ): ConversionTrendCounts {
+    return {
+      friendAdded: Number(row?.friend_added) || 0,
+      breakIce: Number(row?.break_ice) || 0,
+      booking: Number(row?.booking) || 0,
+      interviewPass: Number(row?.interview_pass) || 0,
+      groupInvite: Number(row?.group_invite) || 0,
+    };
+  }
+
+  private sumCounts(rows: ConversionCohortStatsRow[]): ConversionTrendCounts {
+    const total: ConversionTrendCounts = {
+      friendAdded: 0,
+      breakIce: 0,
+      booking: 0,
+      interviewPass: 0,
+      groupInvite: 0,
+    };
+    for (const row of rows) {
+      const counts = this.toCounts(row);
+      total.friendAdded += counts.friendAdded;
+      total.breakIce += counts.breakIce;
+      total.booking += counts.booking;
+      total.interviewPass += counts.interviewPass;
+      total.groupInvite += counts.groupInvite;
+    }
+    return total;
+  }
+
+  // ==================== 数据源：小体量明细侧支 ====================
 
   private async fetchOpsEvents(
     filter: ConversionFilter,
@@ -1044,8 +915,8 @@ export class ConversionAnalyticsService {
     return promise;
   }
 
-  private createRowsCacheKey(table: string, params: Record<string, unknown>): string {
-    return JSON.stringify({ table, ...params });
+  private createRowsCacheKey(source: string, params: object): string {
+    return JSON.stringify({ source, ...params });
   }
 
   private normalizeListForCache(values: string[]): string[] {
@@ -1067,12 +938,21 @@ export class ConversionAnalyticsService {
   }
 
   private enrichOpsEvent(row: OpsEventRow): OpsEventRow {
-    const resolved = this.botGroupResolver.resolve(row.bot_im_id);
-    if (!resolved) return row;
+    const identity = this.resolveBotIdentity(row.bot_im_id, row.manager_name, row.group_name);
+    return { ...row, manager_name: identity.managerName, group_name: identity.groupName };
+  }
+
+  /** bot 名称/小组补全：事件自带值优先，缺失（或小组为「未分组」占位）时用 BotGroupResolver 解析结果。 */
+  private resolveBotIdentity(
+    botImId: string | null,
+    rawManagerName: string | null,
+    rawGroupName: string | null,
+  ): { managerName: string | null; groupName: string | null } {
+    const resolved = this.botGroupResolver.resolve(botImId);
+    if (!resolved) return { managerName: rawManagerName, groupName: rawGroupName };
     return {
-      ...row,
-      manager_name: row.manager_name || resolved.managerName,
-      group_name: this.shouldUseResolvedGroup(row.group_name) ? resolved.groupName : row.group_name,
+      managerName: rawManagerName || resolved.managerName,
+      groupName: this.shouldUseResolvedGroup(rawGroupName) ? resolved.groupName : rawGroupName,
     };
   }
 
@@ -1184,33 +1064,6 @@ export class ConversionAnalyticsService {
     };
   }
 
-  private buildFriendAddedCohort(events: OpsEventRow[]): Map<string, CohortMember> {
-    const cohort = new Map<string, CohortMember>();
-
-    for (const event of events) {
-      const identityKey = this.getIdentityKey(event);
-      if (!identityKey) continue;
-
-      const occurredAt = new Date(event.occurred_at).getTime();
-      const existing = cohort.get(identityKey);
-      if (!existing || occurredAt < existing.occurredAt) {
-        cohort.set(identityKey, {
-          key: identityKey,
-          identityKey,
-          userId: event.user_id,
-          chatId: event.chat_id,
-          workOrderId: null,
-          occurredAt,
-          botImId: event.bot_im_id,
-          managerName: event.manager_name,
-          groupName: event.group_name,
-        });
-      }
-    }
-
-    return cohort;
-  }
-
   private buildBookingCohort(events: OpsEventRow[]): Map<string, CohortMember> {
     const cohort = new Map<string, CohortMember>();
 
@@ -1223,17 +1076,7 @@ export class ConversionAnalyticsService {
       const occurredAt = new Date(event.occurred_at).getTime();
       const existing = cohort.get(cohortKey);
       if (!existing || occurredAt < existing.occurredAt) {
-        cohort.set(cohortKey, {
-          key: cohortKey,
-          identityKey,
-          userId: event.user_id,
-          chatId: event.chat_id,
-          workOrderId,
-          occurredAt,
-          botImId: event.bot_im_id,
-          managerName: event.manager_name,
-          groupName: event.group_name,
-        });
+        cohort.set(cohortKey, { key: cohortKey, identityKey, workOrderId, occurredAt });
       }
     }
 
@@ -1253,31 +1096,6 @@ export class ConversionAnalyticsService {
       grouped.set(value, bucket);
     }
     return grouped;
-  }
-
-  private indexFriendAddedMembers(members: Map<string, CohortMember>): {
-    byUser: Map<string, CohortMember>;
-    byChat: Map<string, CohortMember>;
-  } {
-    const byUser = new Map<string, CohortMember>();
-    const byChat = new Map<string, CohortMember>();
-    for (const member of members.values()) {
-      if (member.userId) byUser.set(member.userId, member);
-      if (member.chatId) byChat.set(member.chatId, member);
-    }
-    return { byUser, byChat };
-  }
-
-  private matchFriendAddedCohortMembers(
-    event: OpsEventRow,
-    byUser: Map<string, CohortMember>,
-    byChat: Map<string, CohortMember>,
-  ): CohortMember[] {
-    // user_id 优先；缺失或未命中时回退 chat_id —— 下游事件（破冰/面试通过）常只带其中之一（§3）。
-    const byUserHit = event.user_id ? byUser.get(event.user_id) : undefined;
-    if (byUserHit) return [byUserHit];
-    const byChatHit = event.chat_id ? byChat.get(event.chat_id) : undefined;
-    return byChatHit ? [byChatHit] : [];
   }
 
   private matchBookingCohortMembers(

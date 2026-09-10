@@ -221,7 +221,6 @@ export class TestSuiteStreamingService {
           },
         ],
         repaired: false,
-        finalDecision: decision.decision,
         reasonCode: decision.reasonCode,
       };
     } catch (error) {

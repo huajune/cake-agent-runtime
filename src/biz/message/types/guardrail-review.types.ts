@@ -3,9 +3,10 @@ import type {
   GuardrailRiskLevel,
   GuardViolation,
   OutputDecision,
+  OutputResolution,
 } from '@shared-types/guardrail.contract';
 
-/** 出站守卫单次审查的全文详情（首审必有；二审仅 repaired 时存在）。 */
+/** 出站守卫单次真实审查的全文详情（首审必有；修复后可能未进入二审）。 */
 export interface GuardrailReviewStepDetail {
   decision: OutputDecision;
   riskLevel: GuardrailRiskLevel;
@@ -13,7 +14,7 @@ export interface GuardrailReviewStepDetail {
   blockedRuleIds: string[];
   /** 违规意见全文（type/evidence/suggestion/severity...），紧凑摘要里被裁掉的部分。 */
   violations: GuardViolation[];
-  /** feedbackToGenerator 聚合文本，即注入重写 prompt 的违规反馈。 */
+  /** 汇总给受控修复的违规反馈，不表示重新调用 Generator。 */
   feedback?: string;
 }
 
@@ -45,7 +46,7 @@ export interface GuardrailReviewRecord {
   botUserName?: string;
   contactName?: string;
   userMessage?: string;
-  /** 首版回复全文（触发 revise/replan 时被丢弃重写的那一版）。 */
+  /** 首审对应的回复全文；是否采用由 Runner 最终处置决定。 */
   firstReply: string;
   first: GuardrailReviewStepDetail;
   repairMode?: GuardrailRepairMode;
@@ -55,7 +56,9 @@ export interface GuardrailReviewRecord {
   revised?: GuardrailReviewStepDetail;
   /** 重写时注入的既成副作用提示。 */
   committedSideEffects?: string;
-  finalDecision: OutputDecision;
+  finalOutcome?: OutputResolution['outcome'];
+  /** 历史 block 只能确认未发送，无法回溯证明是否介入。只在读取旧档案时提供。 */
+  legacyFinalDecision?: 'block';
   reasonCode?: string;
   /** 升级前 Semantic Reviewer 的历史判例；当前链路不再写入。 */
   semanticReviews: GuardrailSemanticReview[];
@@ -64,8 +67,15 @@ export interface GuardrailReviewRecord {
 
 type GuardrailReviewInsertBase = Omit<
   GuardrailReviewRecord,
-  'createdAt' | 'semanticReviews' | 'repairMode' | 'repaired' | 'revisedReply' | 'revised'
->;
+  | 'createdAt'
+  | 'semanticReviews'
+  | 'repairMode'
+  | 'repaired'
+  | 'revisedReply'
+  | 'revised'
+  | 'finalOutcome'
+  | 'legacyFinalDecision'
+> & { finalOutcome: OutputResolution['outcome'] };
 
 export type GuardrailReviewInsertInput =
   | (GuardrailReviewInsertBase & {
@@ -77,8 +87,8 @@ export type GuardrailReviewInsertInput =
   | (GuardrailReviewInsertBase & {
       repaired: true;
       repairMode: GuardrailRepairMode;
-      revisedReply: string;
-      revised: GuardrailReviewStepDetail;
+      revisedReply?: string;
+      revised?: GuardrailReviewStepDetail;
     });
 
 export type GuardrailReviewWriteOutcome = 'inserted' | 'duplicate' | 'failed';

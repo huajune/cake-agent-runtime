@@ -23,14 +23,14 @@
 
 ## 一、对话风险类（人工接管会话）
 
-> 路径：Runner 声明 side-effect intent → 渠道确认最终回合 → `TurnOutcomeInterventionService.commit` → 底账判重 → `InterventionService.dispatch` → 暂停托管 + 飞书人工介入卡。
+> 路径：Runner 声明 side-effect intent → 渠道确认最终回合 → `TurnOutcomeInterventionService.commit` → 按意图执行既有判重/冷却 → `InterventionService.dispatch` → 暂停托管 + 飞书人工介入卡。
 
 ### 1. Input 守卫前置拦截
 
 - **位置**：[risk-intercept.service.ts](../../src/agent/guardrail/input/risk-intercept.service.ts)
-- **来源**：`source=regex_intercept`
+- **来源**：`guardrail.source=input_guardrail`；既有风险意图仍为 `source=regex_intercept`
 - **条件**：用户消息命中高置信关键词正则（包括辱骂、投诉/举报、历史面试结果追问、明确转人工请求等）
-- **效果**：Runner 收敛为 `guardrail_blocked/inbound`；Replay 定局后通过统一出口暂停托管 + 发卡
+- **效果**：Runner 收敛为 `handoff`（`guardrail.phase=inbound`）；Replay 定局后通过既有 `conversation_risk` 意图暂停托管 + 发卡，不另加 `general_handoff`。现役事件为 `inbound_guardrail_handoff`，旧 `inbound_guardrail_block` 仅历史读取兼容
 
 ### 2. Agent 主动告警（`raise_risk_alert` 工具）
 
@@ -97,7 +97,7 @@
 
 ### 9. Output P0 确定性规则命中
 
-- **位置**：[hard-rules.service.ts](../../src/agent/guardrail/output/hard-rules.service.ts)
+- **位置**：[hard-rules.service.ts](../../src/agent/guardrail/output/rules/hard-rules.service.ts)
 - **code**：`output_guardrail_p0_intercepted`
 - **条件**：P0 hard rule 命中；首版不可发送，Runner 可能经一次有界修复后放行，也可能最终拦截
 

@@ -28,7 +28,7 @@ export interface ReengagementTouchRecord {
   scheduled_at?: string | null;
   fired_at?: string | null;
   sent_at?: string | null;
-  /** reply / skipped / guardrail_blocked / handoff */
+  /** 现役 reply / skipped / handoff；guardrail_blocked 仅为历史记录。 */
   outcome_kind?: string | null;
   reserve_result?: string | null;
   error?: string | null;

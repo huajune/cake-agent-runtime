@@ -26,7 +26,7 @@ import { CallerKind } from '@enums/agent.enum';
 import { AlertLevel } from '@enums/alert.enum';
 import { FilterReason } from '@wecom/message/application/filter.service';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
-import { HardRulesService } from '@agent/guardrail/output/hard-rules.service';
+import { HardRulesService } from '@agent/guardrail/output/rules/hard-rules.service';
 import { LongTermService } from '@memory/long-term/long-term.service';
 import { SessionStateService } from '@memory/short-term/session-state.service';
 import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
@@ -340,6 +340,7 @@ describe('MessagePipelineService', () => {
             ruleIds: [],
             blockedRuleIds: [],
           },
+          resolution: raw.resolution ?? { outcome: 'reply' },
           revised: raw.revised ?? false,
         };
         const outcome =
@@ -397,6 +398,7 @@ describe('MessagePipelineService', () => {
           ruleIds: [],
           blockedRuleIds: [],
         },
+        resolution: raw.resolution ?? { outcome: 'reply' },
         revised: raw.revised ?? false,
       };
       return (

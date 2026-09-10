@@ -95,7 +95,7 @@ replay 定局后，`TurnOutcomeInterventionService` 才提交最终 outcome 声�
 
 - `reply`：分段投递候选人可见回复；
 - `skipped`：不发送文本；
-- `guardrail_blocked` / `handoff`：按终态执行人工兜底，不把受控文本当正常回复投递。
+- `handoff`：按入站风险、出站守卫或工具来源携带的既有意图执行人工兜底，不把受控文本当正常回复投递。
 
 流水记录最终状态、token、工具调用和耗时；assistant 对话历史主要由发送后的 `isSelf=true` 企微回调写入，而不是主投递函数直接补写。
 

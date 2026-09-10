@@ -1,17 +1,18 @@
 import { Injectable } from '@nestjs/common';
 import { BaseRepository } from '@infra/supabase/base.repository';
 import { SupabaseService } from '@infra/supabase/supabase.service';
-import type {
-  GuardrailRepairMode,
-  GuardrailRiskLevel,
-  OutputDecision,
-} from '@shared-types/guardrail.contract';
+import type { GuardrailRepairMode, GuardrailRiskLevel } from '@shared-types/guardrail.contract';
 import type { GuardrailReviewDbRecord } from '../entities/guardrail-review.entity';
 import type {
   GuardrailReviewInsertInput,
   GuardrailReviewRecord,
   GuardrailReviewWriteOutcome,
 } from '../types/guardrail-review.types';
+import {
+  readGuardViolations,
+  readOutputDecision,
+  readOutputOutcome,
+} from './guardrail-review-read.util';
 
 /**
  * 出站守卫审查档案 Repository。
@@ -126,12 +127,13 @@ export class GuardrailReviewRepository extends BaseRepository {
       revised_blocked_rule_ids: input.revised?.blockedRuleIds ?? null,
       revised_violations: input.revised?.violations ?? null,
       committed_side_effects: input.committedSideEffects ?? null,
-      final_decision: input.finalDecision,
+      final_decision: input.finalOutcome,
       reason_code: input.reasonCode ?? null,
     };
   }
 
   private fromDbRecord(row: GuardrailReviewDbRecord): GuardrailReviewRecord {
+    const finalOutcome = readOutputOutcome(row.final_decision, row.reason_code ?? undefined);
     return {
       traceId: row.trace_id,
       chatId: row.chat_id ?? undefined,
@@ -142,11 +144,11 @@ export class GuardrailReviewRepository extends BaseRepository {
       userMessage: row.user_message ?? undefined,
       firstReply: row.first_reply,
       first: {
-        decision: row.first_decision as OutputDecision,
+        decision: readOutputDecision(row.first_decision),
         riskLevel: (row.first_risk_level ?? 'low') as GuardrailRiskLevel,
         ruleIds: row.first_rule_ids ?? [],
         blockedRuleIds: row.first_blocked_rule_ids ?? [],
-        violations: row.first_violations ?? [],
+        violations: readGuardViolations(row.first_violations),
         feedback: row.first_feedback ?? undefined,
       },
       repairMode: (row.repair_mode as GuardrailRepairMode) ?? undefined,
@@ -154,17 +156,23 @@ export class GuardrailReviewRepository extends BaseRepository {
       revisedReply: row.revised_reply ?? undefined,
       revised: row.revised_decision
         ? {
-            decision: row.revised_decision as OutputDecision,
+            decision: readOutputDecision(row.revised_decision),
             riskLevel: (row.revised_risk_level ?? 'low') as GuardrailRiskLevel,
             ruleIds: row.revised_rule_ids ?? [],
             blockedRuleIds: row.revised_blocked_rule_ids ?? [],
-            violations: row.revised_violations ?? [],
+            violations: readGuardViolations(row.revised_violations),
           }
         : undefined,
       committedSideEffects: row.committed_side_effects ?? undefined,
-      finalDecision: row.final_decision as OutputDecision,
+      finalOutcome,
+      ...(row.final_decision === 'block' && !finalOutcome
+        ? { legacyFinalDecision: 'block' as const }
+        : {}),
       reasonCode: row.reason_code ?? undefined,
-      semanticReviews: row.semantic_reviews ?? [],
+      semanticReviews: (row.semantic_reviews ?? []).map((review) => ({
+        ...review,
+        decision: readOutputDecision(review.decision),
+      })),
       createdAt: row.created_at,
     };
   }

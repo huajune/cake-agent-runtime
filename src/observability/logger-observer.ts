@@ -54,7 +54,8 @@ export class LoggerObserver implements Observer {
         );
         break;
       default:
-        this.logger.debug(`事件: ${JSON.stringify(event)}`);
+        // 不整包序列化：brand/prompt_injection 事件带用户原文与证据片段，正文归事件表。
+        this.logger.debug(`事件: ${event.type} (trace=${event.traceId ?? '-'})`);
     }
   }
 }

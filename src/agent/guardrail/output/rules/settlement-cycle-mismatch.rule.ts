@@ -1,5 +1,5 @@
+import { createOutputRuleFinding } from '../output-rule-catalog';
 import type { AgentToolCall } from '@shared-types/agent-telemetry.types';
-import { GUARDRAIL_ACTION } from '@shared-types/guardrail.contract';
 import type { RuleContradiction } from '../output-rule.types';
 
 type SettlementCycle = '日结' | '周结' | '月结';
@@ -164,15 +164,12 @@ export function detectSettlementCycleMismatch(
       // 岗位数据未必编码培训/阶梯方案，因此不要求 supplemental 也命中同一周期；
       // 否则「基础日结、阶梯差价月结」这类明确分开结算范围的正确写法会被误拦。
       if (SUPPLEMENTAL_CONTEXT_PATTERN.test(sentence)) continue;
-      return {
-        ruleId: 'settlement_cycle_mismatch',
-        label: `回复声称“${cycle}”，但本轮岗位正式工资结算口径是“${[...truth.primary].join(
+      return createOutputRuleFinding(
+        'settlement_cycle_mismatch',
+        `回复声称“${cycle}”，但本轮岗位正式工资结算口径是“${[...truth.primary].join(
           '/',
         )}”；培训/阶梯等补充结算不能改写成整份工资的结算周期`,
-        // 否定语序和补充结算语境容易产生假阳，故按目录治理条款保持 observe。
-        // 只有重新满足 revise 准入门槛才能申请动手权。
-        action: GUARDRAIL_ACTION.OBSERVE,
-      };
+      );
     }
   }
   return null;

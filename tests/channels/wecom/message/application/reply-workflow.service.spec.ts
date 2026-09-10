@@ -8,6 +8,7 @@ import type { InboundTurnRequest, SessionRef } from '@agent/runner/agent-runner.
 import { classifyReviewedOutcome } from '@agent/runner/turn-outcome';
 import { STALE_INPUT_SHORT_CIRCUIT } from '@tools/shared/tool-error-types';
 import { TurnFinalizer } from '@agent/runner/turn-finalizer';
+import type { OutputResolution } from '@shared-types/guardrail.contract';
 import { TurnOutcomeInterventionService } from '@agent/runner/turn-outcome-intervention.service';
 
 describe('ReplyWorkflowService', () => {
@@ -26,7 +27,7 @@ describe('ReplyWorkflowService', () => {
   };
   // 出站守卫裁决（reply-workflow 读 result.outputDecision）；默认 pass，个别用例改写。
   type OutputDecisionLike = {
-    decision: 'pass' | 'revise' | 'block';
+    decision: 'pass' | 'observe' | 'repair' | 'replan';
     riskLevel: 'low' | 'medium' | 'high';
     violations: unknown[];
     ruleIds: string[];
@@ -41,6 +42,7 @@ describe('ReplyWorkflowService', () => {
     blockedRuleIds: [],
   };
   let currentOutputDecision: OutputDecisionLike = passOutputDecision;
+  let currentResolution: OutputResolution = { outcome: 'reply' };
   type RunTurnMockParams = InboundTurnRequest;
   const monitoringService = {
     recordSuccess: jest.fn(),
@@ -120,11 +122,16 @@ describe('ReplyWorkflowService', () => {
     jest.clearAllMocks();
     // invokeReviewedTurn 委托给 invoke（保留既有 runner.invoke 断言），并叠加统一 outcome/finalizer。
     currentOutputDecision = passOutputDecision;
+    currentResolution = { outcome: 'reply' };
     runner.invokeReviewed.mockImplementation(async (params: GeneratorInvokeParams) => {
       const raw = await runner.invoke(params);
       return {
         ...raw,
         outputDecision: raw.outputDecision ?? currentOutputDecision,
+        resolution: raw.resolution ?? {
+          ...currentResolution,
+          reasonCode: currentResolution.reasonCode ?? currentOutputDecision.reasonCode,
+        },
         revised: raw.revised ?? false,
       };
     });
@@ -139,6 +146,10 @@ describe('ReplyWorkflowService', () => {
       const reviewed = {
         ...raw,
         outputDecision: raw.outputDecision ?? currentOutputDecision,
+        resolution: raw.resolution ?? {
+          ...currentResolution,
+          reasonCode: currentResolution.reasonCode ?? currentOutputDecision.reasonCode,
+        },
         revised: raw.revised ?? false,
       };
       const outcome =
@@ -190,6 +201,10 @@ describe('ReplyWorkflowService', () => {
       const reviewed = {
         ...raw,
         outputDecision: raw.outputDecision ?? currentOutputDecision,
+        resolution: raw.resolution ?? {
+          ...currentResolution,
+          reasonCode: currentResolution.reasonCode ?? currentOutputDecision.reasonCode,
+        },
         revised: raw.revised ?? false,
       };
       const outcome =
@@ -934,9 +949,10 @@ describe('ReplyWorkflowService', () => {
     expect(followUpScheduler.scheduleFollowUp).not.toHaveBeenCalled();
   });
 
-  it('出站守卫 block（歧视性筛选条件外露）→ 拦截回复不投递，仍完成本轮流水', async () => {
+  it('出站守卫 handoff（歧视性筛选条件外露）→ 不投递，仍完成本轮流水', async () => {
+    currentResolution = { outcome: 'handoff' };
     currentOutputDecision = {
-      decision: 'block',
+      decision: 'repair',
       riskLevel: 'high',
       violations: [],
       ruleIds: ['discriminatory_screening_leak'],
@@ -949,6 +965,49 @@ describe('ReplyWorkflowService', () => {
     expect(wecomObservability.markReplySkipped).toHaveBeenCalledWith('msg-1');
     expect(monitoringService.recordSuccess).toHaveBeenCalled();
     expect(deduplicationService.markMessageAsProcessedAsync).toHaveBeenCalledWith('msg-1');
+    expect(wecomObservability.recordAgentResult).toHaveBeenCalledWith(
+      'msg-1',
+      expect.objectContaining({
+        guardrail: expect.objectContaining({ phase: 'outbound', source: 'output_guardrail' }),
+        outcome: expect.objectContaining({ kind: 'handoff' }),
+      }),
+    );
+  });
+
+  it('explicit empty meta narration silence keeps attribution, ACK and user memory without fallback or handoff', async () => {
+    const runTurnEnd = jest.fn().mockResolvedValue(undefined);
+    runner.invoke.mockResolvedValueOnce({
+      text: '',
+      toolCalls: [],
+      resolution: { outcome: 'skipped', reasonCode: 'meta_narration_silenced' },
+      outputDecision: {
+        ...passOutputDecision,
+        decision: 'repair',
+        ruleIds: ['meta_narration_reply'],
+        blockedRuleIds: ['meta_narration_reply'],
+      },
+      runTurnEnd,
+    });
+
+    await service.processMergedMessages([createMessage()], 'batch-silence', 1);
+
+    expect(deliveryService.deliverReply).not.toHaveBeenCalled();
+    expect(interventionService.dispatch).not.toHaveBeenCalled();
+    expect(processingFailureService.handleProcessingError).not.toHaveBeenCalled();
+    expect(simpleMergeService.claimPendingSnapshot).not.toHaveBeenCalled();
+    expect(simpleMergeService.ackPendingMessages).toHaveBeenCalledWith('chat-1', 1);
+    expect(runTurnEnd).toHaveBeenCalledWith({ includeAssistantText: false });
+    expect(wecomObservability.recordAgentResult).toHaveBeenCalledWith(
+      'batch-silence',
+      expect.objectContaining({
+        isSkipped: true,
+        guardrail: expect.objectContaining({
+          phase: 'outbound',
+          reasonCode: 'meta_narration_silenced',
+        }),
+        outcome: expect.objectContaining({ kind: 'skipped' }),
+      }),
+    );
   });
 
   describe('turn-end 投影闸门（仅真实送达才写助手轮次）', () => {
@@ -991,8 +1050,9 @@ describe('ReplyWorkflowService', () => {
     });
 
     it('出站守卫拦截 → turn-end 只记用户侧（includeAssistantText:false），不投递', async () => {
+      currentResolution = { outcome: 'handoff' };
       currentOutputDecision = {
-        decision: 'block',
+        decision: 'repair',
         riskLevel: 'high',
         violations: [],
         ruleIds: ['discriminatory_screening_leak'],
@@ -1029,8 +1089,8 @@ describe('ReplyWorkflowService', () => {
     });
   });
 
-  describe('前置风险预检命中 → 确定性静默 + 暂停', () => {
-    it('命中即跳过 Agent 与投递，仍标记已处理与跳过观测', async () => {
+  describe('前置风险预检命中 → 转人工意图 + 暂停', () => {
+    it('保留入站归因，只提交一次风险介入，不发送或降级，仍完成观测与 ACK', async () => {
       simpleMergeService.claimPendingSnapshot.mockResolvedValueOnce({
         messages: [
           createMessage({
@@ -1042,12 +1102,13 @@ describe('ReplyWorkflowService', () => {
         batchId: 'batch-late',
       });
       runner.runInboundTurn.mockResolvedValueOnce({
-        kind: 'guardrail_blocked',
+        kind: 'handoff',
         toolCalls: [],
         disposition: 'side_effects',
         guardrail: {
           phase: 'inbound',
           source: 'input_guardrail',
+          reasonCode: 'risk_intercept',
           riskType: 'abuse',
           riskLabel: '辱骂',
           reason: '命中辱骂关键词',
@@ -1068,12 +1129,15 @@ describe('ReplyWorkflowService', () => {
         ],
       });
 
-      await service.processSingleMessage(createMessage());
+      await service.processMergedMessages([createMessage()], 'batch-risk', 1);
 
       expect(runner.invoke).not.toHaveBeenCalled();
       expect(runner.precheckInboundOutcome).not.toHaveBeenCalled();
       expect(simpleMergeService.claimPendingSnapshot).not.toHaveBeenCalled();
       expect(deliveryService.deliverReply).not.toHaveBeenCalled();
+      expect(processingFailureService.handleProcessingError).not.toHaveBeenCalled();
+      expect(processingFailureService.sendFallbackAlert).not.toHaveBeenCalled();
+      expect(interventionService.dispatch).toHaveBeenCalledTimes(1);
       expect(interventionService.dispatch).toHaveBeenCalledWith(
         expect.objectContaining({
           kind: 'conversation_risk',
@@ -1083,8 +1147,31 @@ describe('ReplyWorkflowService', () => {
           pauseTargetId: 'chat-1',
         }),
       );
-      expect(wecomObservability.markReplySkipped).toHaveBeenCalledWith('msg-1');
-      expect(monitoringService.recordSuccess).toHaveBeenCalledWith('msg-1', { ok: true });
+      expect(handoffRecorder.record).not.toHaveBeenCalled();
+      expect(wecomObservability.recordAgentResult).toHaveBeenCalledWith(
+        'batch-risk',
+        expect.objectContaining({
+          outcome: expect.objectContaining({ kind: 'handoff' }),
+          guardrail: expect.objectContaining({ phase: 'inbound', source: 'input_guardrail' }),
+        }),
+      );
+      expect(wecomObservability.buildSuccessMetadata).toHaveBeenCalledWith(
+        'batch-risk',
+        expect.objectContaining({
+          replyPreview: '[入站转人工意图] 辱骂',
+          replySegments: 0,
+          guardrailInput: {
+            decision: 'handoff',
+            riskType: 'abuse',
+            riskLabel: '辱骂',
+            reasonCode: 'risk_intercept',
+            reason: '命中辱骂关键词',
+          },
+        }),
+      );
+      expect(wecomObservability.markReplySkipped).toHaveBeenCalledWith('batch-risk');
+      expect(monitoringService.recordSuccess).toHaveBeenCalledWith('batch-risk', { ok: true });
+      expect(simpleMergeService.ackPendingMessages).toHaveBeenCalledWith('chat-1', 1);
       expect(deduplicationService.markMessageAsProcessedAsync).toHaveBeenCalledWith('msg-1');
       expect(deduplicationService.markMessageAsProcessedAsync).not.toHaveBeenCalledWith(
         'msg-late-risk',
@@ -1093,9 +1180,10 @@ describe('ReplyWorkflowService', () => {
   });
 
   describe('出站拦截 → 转人工兜底', () => {
-    it('llm/降级 block（无 blockedRuleIds）→ dispatch general_handoff + 写 handoff 底账', async () => {
+    it('无安全放行结果（无 blockedRuleIds）→ dispatch general_handoff + 写 handoff 底账', async () => {
+      currentResolution = { outcome: 'handoff' };
       currentOutputDecision = {
-        decision: 'block',
+        decision: 'repair',
         riskLevel: 'high',
         violations: [],
         ruleIds: [],
@@ -1113,13 +1201,14 @@ describe('ReplyWorkflowService', () => {
       expect(deliveryService.deliverReply).not.toHaveBeenCalled();
       expect(handoffRecorder.record).toHaveBeenCalledTimes(1);
       expect(interventionService.dispatch).toHaveBeenCalledWith(
-        expect.objectContaining({ kind: 'general_handoff', source: 'agent_tool' }),
+        expect.objectContaining({ kind: 'general_handoff', source: 'output_guardrail' }),
       );
     });
 
-    it('rule 档 block → 不投递 + dispatch general_handoff + 写 handoff 底账', async () => {
+    it('rule 档 handoff → 不投递 + dispatch general_handoff + 写 handoff 底账', async () => {
+      currentResolution = { outcome: 'handoff' };
       currentOutputDecision = {
-        decision: 'block',
+        decision: 'repair',
         riskLevel: 'high',
         violations: [],
         ruleIds: ['discriminatory_screening_leak'],
@@ -1138,16 +1227,17 @@ describe('ReplyWorkflowService', () => {
       expect(interventionService.dispatch).toHaveBeenCalledWith(
         expect.objectContaining({
           kind: 'general_handoff',
-          source: 'agent_tool',
+          source: 'output_guardrail',
           alertLabel: '出站守卫拦截（rule 档）',
         }),
       );
     });
   });
 
-  it('booking succeeds but output is blocked → persists booked terminal without scheduling reminders', async () => {
+  it('booking succeeds but output requires handoff → persists booked terminal without scheduling reminders', async () => {
+    currentResolution = { outcome: 'handoff' };
     currentOutputDecision = {
-      decision: 'block',
+      decision: 'repair',
       riskLevel: 'high',
       violations: [],
       ruleIds: ['quota_promise'],
