@@ -328,8 +328,18 @@ export class TurnDataLoaderService {
     if (!contactId || params.callerKind !== CallerKind.WECOM || !groups?.length) return [];
     try {
       const idToGroup = new Map(groups.map((group) => [group.imRoomId, group]));
-      const roomIds = await this.groupMembership.listUserRooms(contactId, idToGroup.keys());
-      return roomIds
+      const lookup = await this.groupMembership.lookupUserRooms(contactId, idToGroup.keys());
+      if (!lookup.verified) {
+        // 预热超时/缓存故障：空结果不是「核验过不在群」，必须认领为 degraded 留在装配档案里。
+        this.recordWarning(
+          warnings,
+          'group_membership',
+          '实时群状态未核验（按未知降级）',
+          lookup.reason ?? 'unknown',
+        );
+        return [];
+      }
+      return lookup.rooms
         .map((roomId) => idToGroup.get(roomId))
         .filter((group): group is GroupContext => Boolean(group))
         .map((group) => ({ groupName: group.groupName, city: group.city }));

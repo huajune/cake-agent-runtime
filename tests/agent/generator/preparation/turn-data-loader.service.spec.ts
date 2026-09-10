@@ -103,7 +103,7 @@ describe('TurnDataLoaderService', () => {
     const memoryService = { onTurnStart: jest.fn().mockResolvedValue(memory) };
     const sponge = { fetchBrandList: jest.fn().mockResolvedValue([]) };
     const groupResolver = { resolveGroups: jest.fn().mockResolvedValue(groups) };
-    const groupMembership = { listUserRooms: jest.fn().mockResolvedValue(['room-1']) };
+    const groupMembership = { lookupUserRooms: jest.fn().mockResolvedValue({ rooms: ['room-1'], verified: true }) };
     const accountIdentity = {
       resolveAgentAccountIdentity: jest.fn().mockResolvedValue({ nickname: '小蛋', gender: '女' }),
     };
@@ -164,7 +164,7 @@ describe('TurnDataLoaderService', () => {
       expect.objectContaining({ includeShortTerm: true }),
     );
     expect(groupResolver.resolveGroups).toHaveBeenCalledTimes(1);
-    expect(groupMembership.listUserRooms).toHaveBeenCalledWith('contact-1', expect.anything());
+    expect(groupMembership.lookupUserRooms).toHaveBeenCalledWith('contact-1', expect.anything());
     expect(strategy.getActiveConfig).toHaveBeenCalledWith('testing');
     expect(booking.enrichOutOfBand).toHaveBeenCalledWith(
       { state: 'none' },
@@ -219,7 +219,7 @@ describe('TurnDataLoaderService', () => {
       { onTurnStart: jest.fn().mockResolvedValue(memory) } as never,
       { fetchBrandList: jest.fn().mockResolvedValue([]) } as never,
       { resolveGroups: jest.fn().mockRejectedValue(new Error('group source down')) } as never,
-      { listUserRooms: jest.fn() } as never,
+      { lookupUserRooms: jest.fn() } as never,
       {
         resolveAgentAccountIdentity: jest.fn().mockRejectedValue(new Error('identity down')),
       } as never,
@@ -294,7 +294,7 @@ describe('TurnDataLoaderService', () => {
       { onTurnStart: jest.fn().mockResolvedValue(memory) } as never,
       { fetchBrandList: jest.fn().mockResolvedValue([]) } as never,
       { resolveGroups: jest.fn().mockResolvedValue([]) } as never,
-      { listUserRooms: jest.fn().mockResolvedValue([]) } as never,
+      { lookupUserRooms: jest.fn().mockResolvedValue({ rooms: [], verified: true }) } as never,
       {
         resolveAgentAccountIdentity: jest.fn().mockResolvedValue({ nickname: null, gender: null }),
       } as never,
@@ -354,7 +354,7 @@ describe('TurnDataLoaderService', () => {
       { onTurnStart: jest.fn().mockReturnValue(slowMemory) } as never,
       { fetchBrandList: jest.fn().mockResolvedValue([]) } as never,
       { resolveGroups: jest.fn().mockResolvedValue([]) } as never,
-      { listUserRooms: jest.fn().mockResolvedValue([]) } as never,
+      { lookupUserRooms: jest.fn().mockResolvedValue({ rooms: [], verified: true }) } as never,
       {
         resolveAgentAccountIdentity: jest.fn().mockResolvedValue({ nickname: null, gender: null }),
       } as never,
@@ -493,7 +493,7 @@ function buildLoader(
     { onTurnStart: overrides.onTurnStart ?? jest.fn().mockResolvedValue(buildMemory()) } as never,
     { fetchBrandList: overrides.fetchBrandList ?? jest.fn().mockResolvedValue([]) } as never,
     { resolveGroups: jest.fn().mockResolvedValue([]) } as never,
-    { listUserRooms: jest.fn().mockResolvedValue([]) } as never,
+    { lookupUserRooms: jest.fn().mockResolvedValue({ rooms: [], verified: true }) } as never,
     {
       resolveAgentAccountIdentity: jest.fn().mockResolvedValue({ nickname: null, gender: null }),
     } as never,
