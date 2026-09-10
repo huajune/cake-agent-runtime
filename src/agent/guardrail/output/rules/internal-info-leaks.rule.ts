@@ -1,4 +1,4 @@
-import { GUARDRAIL_ACTION } from '@shared-types/guardrail.contract';
+import { createOutputRuleFinding } from '../output-rule-catalog';
 import type { RuleContradiction } from '../output-rule.types';
 
 /**
@@ -11,7 +11,7 @@ import type { RuleContradiction } from '../output-rule.types';
  * 职责：
  * - 管阶段名、工具名、内部策略字段、JSON/代码块等“实现细节被发给候选人”的问题；
  * - 这些内容不依赖业务工具是否成功，只要出现在最终 reply 就应拦截；
- * - 命中后 block，因为用户看到内部状态会破坏产品可信度，也可能泄露策略。
+ * - 命中后要求 repair 且禁止 fail-open，因为用户看到内部状态会破坏产品可信度，也可能泄露策略。
  *
  * 不负责：
  * - 不管候选人是否问到了业务事实；
@@ -76,7 +76,7 @@ const INTERNAL_REASONING_PATTERNS: readonly RegExp[] = [
  * 自检/思考段标题行（2026-09-02 生产两例：正文后追加「---/自检说明：/1./2./3./4.」逐条复盘，
  * 以及残缺推理标签 `<antmlinking>` 起头整段推演后才是正文，均穿透旧词库整段投递）。
  * 只认独占一行的封闭标题词形；正文里的"说明："、"分析："等通用词不入表。
- * 命中即 block 走常规 repair，不做段落切割。
+ * 命中后走常规 repair 且禁止 fail-open，不做段落切割。
  */
 const SELF_CHECK_HEADING_PATTERN =
   /^[ \t]*(?:#{1,6}[ \t]*)?(?:\*{1,2})?[【\[（(]?[ \t]*(?:自检(?:说明|清单|结果|记录|过程|项|通过|完成)?|自我(?:检查|核对|审查)|发送前(?:自检|检查|核对)|思考过程|内部(?:说明|思考|检查)|回复思路|self[- ]?check(?:list)?|reasoning|thinking|analysis)[ \t]*[】\]）)]?(?:\*{1,2})?[ \t]*[:：]?[ \t]*$/imu;
@@ -123,7 +123,7 @@ function escapeRegex(input: string): string {
 
 /**
  * 返回命中的 pattern，方便告警里展示具体泄漏形态。
- * 这里不返回 RuleContradiction，是为了让 hard-rules.service 统一决定 action 和告警格式。
+ * 底层词形匹配也供 sanitizer 复用；出站命中由 detectInternalOutputLeak 绑定目录策略。
  */
 export function detectOutputLeak(content: string): RegExp | null {
   if (!content) return null;
@@ -315,8 +315,8 @@ export function hasTechnicalDocumentationShape(content: string): boolean {
  * - 且含自我指涉元词（真人/AI/静默/不插入回复 等）。
  * 两个条件叠加，正文里合法使用括号（如"到店说（独立客介绍来的）"）不会命中。
  *
- * 命中处理：block，且 runner 对本规则直达静默不进 repair——本该沉默的轮次，
- * 重写产物仍是不该发的插话（见 agent-runner isOnlyMetaNarrationBlock）。
+ * 草稿处理意见为 repair；若仅命中本规则，Runner 直接静默，不调用改写 Agent。
+ * 本该沉默的轮次，重写产物仍是不该发的插话。
  */
 const META_NARRATION_WRAPPED_PATTERN = /^[（(][^（()）]*[）)]$/;
 const META_NARRATION_TERM_PATTERN =
@@ -327,12 +327,10 @@ export function detectMetaNarrationReply(content: string): RuleContradiction | n
   if (!text) return null;
   if (!META_NARRATION_WRAPPED_PATTERN.test(text)) return null;
   if (!META_NARRATION_TERM_PATTERN.test(text)) return null;
-  return {
-    ruleId: 'meta_narration_reply',
-    label:
-      '整条回复是描述 Agent 自身行为的括号旁白（如"AI 保持静默，不插入回复"），属内心独白外发，必须拦截并整轮静默（badcase chat 6a5740ff）',
-    action: GUARDRAIL_ACTION.BLOCK,
-  };
+  return createOutputRuleFinding(
+    'meta_narration_reply',
+    '整条回复是描述 Agent 自身行为的括号旁白（如"AI 保持静默，不插入回复"），属内心独白外发，必须拦截并整轮静默（badcase chat 6a5740ff）',
+  );
 }
 
 /**
@@ -354,13 +352,21 @@ const HUMAN_SERVICE_PHRASE_PATTERN =
 export function detectHumanServicePhraseLeak(content: string): RuleContradiction | null {
   if (!content) return null;
   if (!HUMAN_SERVICE_PHRASE_PATTERN.test(content)) return null;
-  return {
-    ruleId: 'human_service_phrase_leak',
-    label:
-      '回复出现"转人工/人工客服/真人经理/专人联系"等表述，把自己与"人工/真人"割裂、与账号本人人设冲突（badcase recvjXBkmV6idz / recvnV3iYGZnBJ / chat 6a5dedb2ce406a6aeee1ea62），应改为"帮你问下同事"类口径',
-    action: GUARDRAIL_ACTION.REVISE,
-    feedbackToGenerator:
-      '上一版回复出现"转人工/人工客服/真人经理/专人联系"类表述，与"候选人看到的这个账号就是你本人"的身份设定冲突，当前文本不可发送。' +
-      '只把露馅措辞改成人设内口径（如"我帮你问下同事""让负责的同事联系你"），其余内容原样保留，不要改变承诺的事实和后续动作。',
-  };
+  return createOutputRuleFinding(
+    'human_service_phrase_leak',
+    '回复出现"转人工/人工客服/真人经理/专人联系"等表述，把自己与"人工/真人"割裂、与账号本人人设冲突（badcase recvjXBkmV6idz / recvnV3iYGZnBJ / chat 6a5dedb2ce406a6aeee1ea62），应改为"帮你问下同事"类口径',
+  );
+}
+
+/**
+ * 内部实现泄漏（阶段名、工具名、JSON/代码块）属于出站内容安全问题，不应留到投递层静默吞掉。
+ * 命中后要求 repair 且禁止 fail-open，由 Runner 尝试修复并决定最终处置。
+ */
+export function detectInternalOutputLeak(text: string): RuleContradiction | null {
+  const leakedPattern = detectOutputLeak(text);
+  if (!leakedPattern) return null;
+  return createOutputRuleFinding(
+    'internal_output_leak',
+    `回复疑似泄漏 Agent 内部状态/工具实现（pattern=${leakedPattern.source}），必须拦截不发送`,
+  );
 }

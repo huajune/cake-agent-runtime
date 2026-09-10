@@ -1,5 +1,5 @@
+import { createOutputRuleFinding } from '../output-rule-catalog';
 import type { AgentToolCall } from '@shared-types/agent-telemetry.types';
-import { GUARDRAIL_ACTION } from '@shared-types/guardrail.contract';
 import { asRecord, type RuleContradiction } from '../output-rule.types';
 
 /**
@@ -7,11 +7,11 @@ import { asRecord, type RuleContradiction } from '../output-rule.types';
  *
  * 本轮 duliday_interview_booking 的结果是不可逆副作用的真值，回复必须与它一致：
  *
- * - 形态 A（REVISE，近零假阳）：预约已提交却仍在向候选人征询日期/时刻
+ * - 形态 A（REPAIR，近零假阳）：预约已提交却仍在向候选人征询日期/时刻
  *   （「你定哪天/几号方便/什么时候有空」）——直接与已提交的工单矛盾；
- * - 形态 B（REVISE）：booking **失败**却宣称正在/已经提交——
+ * - 形态 B（REPAIR）：booking **失败**却宣称正在/已经提交——
  *   与形态 A 镜像，对账的是失败路径。
- * - 形态 C（REVISE）：候选人本轮明确说“先别报名/预约”，
+ * - 形态 C（REPAIR）：候选人本轮明确说“先别报名/预约”，
  *   回复却仍催其登记或直接承诺安排面试时间——即使没有真实调用工具，也违背了
  *   候选人的当前明确指令；候选人同时想自行到店时，也不得在提示流程后又附和
  *   “那你先自己看看”。
@@ -372,7 +372,7 @@ export function detectBookingReceiptMismatch(
   if (!replyText.trim()) return null;
 
   // 形态 F：precheck 返回在途工单后，未成功调用 duliday_modify_interview_time
-  // 却确认了不同时间。这会让候选人按错误时间到店，故 REVISE 而非 OBSERVE。
+  // 却确认了不同时间。这会让候选人按错误时间到店，故 REPAIR 而非 OBSERVE。
   // 本规则覆盖首版就直接确认的路径；repair 中的承诺升级由回归闸并联防护。
   const activeGuard = findActiveWorkOrderGuard(toolCalls);
   if (activeGuard && !hasSuccessfulModify(toolCalls) && TIME_CONFIRMATION_PATTERN.test(replyText)) {
@@ -384,21 +384,18 @@ export function detectBookingReceiptMismatch(
         ? confirmedMinutes.length > 0
         : confirmedMinutes.some((minutes) => minutes !== workOrderMinutes);
     if (confirmsDifferentTime) {
-      return {
-        ruleId: 'interview_time_change_unconfirmed',
-        label:
-          `本轮 precheck 返回在途工单${activeGuard.workOrderId ? `（${activeGuard.workOrderId}）` : ''}` +
+      return createOutputRuleFinding(
+        'interview_time_change_unconfirmed',
+        `本轮 precheck 返回在途工单${activeGuard.workOrderId ? `（${activeGuard.workOrderId}）` : ''}` +
           `约面时间为 ${activeGuard.interviewTime ?? '既有时间'}，回复却确认了另一个时间，` +
           '但本轮没有成功的 duliday_modify_interview_time——工单未改，候选人会按错误时间到店',
-        action: GUARDRAIL_ACTION.REVISE,
-        feedbackToGenerator:
-          '本轮预检返回候选人在该岗位已有在途工单，约面时间是 ' +
+        '本轮预检返回候选人在该岗位已有在途工单，约面时间是 ' +
           `${activeGuard.interviewTime ?? '工单上的既有时间'}，而本轮并没有成功调用 duliday_modify_interview_time 改约。` +
           '上一版回复却确认了另一个面试时间，当前文本不可发送——工单没改，候选人会按你确认的时间白跑一趟。' +
           '请删除对新时间的任何确认、应允或"没问题/可以"类表述，改为如实告知工单上现在的时间，' +
           '并说明改时间需要重新处理。严禁新增本轮工具结果之外的任何时间事实，也不得承诺由自己或同事稍后确认；' +
           '其余未被点名的内容逐字保留。',
-      };
+      );
     }
   }
 
@@ -409,28 +406,22 @@ export function detectBookingReceiptMismatch(
     DIRECT_VISIT_INTENT_PATTERN.test(userMessage) &&
     containsDirectVisitEncouragement(replyText)
   ) {
-    return {
-      ruleId: 'booking_receipt_mismatch',
-      label:
-        '候选人明确暂不报名且想自行到店，回复在提示流程后仍附和其“先自己看看”，变相鼓励未预约到店',
-      action: GUARDRAIL_ACTION.REVISE,
-      feedbackToGenerator:
-        '候选人本轮明确暂不报名，上一版虽然说明未报名到店可能无法接待，却又用“那你先自己看看/先过去了解下”等话术附和其自行到店，当前文本不可发送。' +
+    return createOutputRuleFinding(
+      'booking_receipt_mismatch',
+      '候选人明确暂不报名且想自行到店，回复在提示流程后仍附和其“先自己看看”，变相鼓励未预约到店',
+      '候选人本轮明确暂不报名，上一版虽然说明未报名到店可能无法接待，却又用“那你先自己看看/先过去了解下”等话术附和其自行到店，当前文本不可发送。' +
         '请删除该附和，只保留“到店前需要先报名约面，否则门店无法接待”的流程说明，并以“既然暂不报名，这轮先不推进”收口；不得提供定位或到店指引。',
-    };
+    );
   }
 
   if (latestBookingIntent === 'opt_out' && containsBookingAdvance(replyText)) {
-    return {
-      ruleId: 'booking_receipt_mismatch',
-      label:
-        '候选人本轮明确要求先别报名/预约，回复却仍催其登记或承诺安排面试时间，违背当前明确指令',
-      action: GUARDRAIL_ACTION.REVISE,
-      feedbackToGenerator:
-        '候选人本轮已经明确说先别报名/预约。上一版在解释到店流程后仍催候选人登记或承诺安排面试时间，当前文本不可发送。' +
+    return createOutputRuleFinding(
+      'booking_receipt_mismatch',
+      '候选人本轮明确要求先别报名/预约，回复却仍催其登记或承诺安排面试时间，违背当前明确指令',
+      '候选人本轮已经明确说先别报名/预约。上一版在解释到店流程后仍催候选人登记或承诺安排面试时间，当前文本不可发送。' +
         '请只说明“未报名约面时不建议直接到店，否则门店无法接待”，并尊重候选人暂不报名的决定；等候选人主动同意后再推进。' +
         '不得催其登记，也不得声称或承诺已经/将要安排面试时间；其余未被点名的内容逐字保留。',
-    };
+    );
   }
 
   const booking = findSuccessfulBooking(toolCalls);
@@ -443,42 +434,33 @@ export function detectBookingReceiptMismatch(
         CONFIRMATION_PATTERN.test(replyText) ||
         BOOKING_SETTLED_CLAIM_PATTERN.test(replyText))
     ) {
-      return {
-        ruleId: 'booking_receipt_mismatch',
-        label:
-          '本轮 duliday_interview_booking 调用失败，回复却宣称正在提交或已提交面试预约' +
+      return createOutputRuleFinding(
+        'booking_receipt_mismatch',
+        '本轮 duliday_interview_booking 调用失败，回复却宣称正在提交或已提交面试预约' +
           '——回执永远不会来，候选人会一直空等（badcase …_1785332310556）',
-        action: GUARDRAIL_ACTION.REVISE,
-        // 目录里的 feedback 是为成功路径写的（"本轮预约已真实提交成功"），直接复用会
-        // 指示重写者把失败说成成功。失败路径必须带自己的口径。
-        feedbackToGenerator:
-          '本轮 duliday_interview_booking 调用失败，预约并未提交成功。上一版回复把提交说成正在进行或已经完成，当前文本不可发送。' +
+        '本轮 duliday_interview_booking 调用失败，预约并未提交成功。上一版回复把提交说成正在进行或已经完成，当前文本不可发送。' +
           '请如实告知候选人这次没有提交成功；可以自然承接后续（比如稍后再帮你提交一次），' +
           '但不得把提交说成已完成或正在进行；回复中与预约状态无关的内容（岗位信息、候选人问题的回答等）逐字保留。',
-      };
+      );
     }
     return null;
   }
 
   if (requiresManualInterviewGroup(booking)) {
     if (INTERVIEW_GROUP_IDENTITY_SPLIT_PATTERN.test(replyText)) {
-      return {
-        ruleId: 'booking_receipt_mismatch',
-        label:
-          '面试群补发由当前企微账号无感承接，回复却出现工作人员/运营/人工/同事接手等身份切换表述，' +
+      return createOutputRuleFinding(
+        'booking_receipt_mismatch',
+        '面试群补发由当前企微账号无感承接，回复却出现工作人员/运营/人工/同事接手等身份切换表述，' +
           '会暴露账号背后的执行切换',
-        action: GUARDRAIL_ACTION.REVISE,
-      };
+      );
     }
 
     if (INTERVIEW_GROUP_COMPLETION_CLAIM_PATTERN.test(replyText)) {
-      return {
-        ruleId: 'booking_receipt_mismatch',
-        label:
-          '本岗位面试群只能由当前企微账号随后手动发送，回复却声称面试群已经发送/已拉入；' +
+      return createOutputRuleFinding(
+        'booking_receipt_mismatch',
+        '本岗位面试群只能由当前企微账号随后手动发送，回复却声称面试群已经发送/已拉入；' +
           '这会把未来动作说成已完成',
-        action: GUARDRAIL_ACTION.REVISE,
-      };
+      );
     }
 
     const jobPoolInvite = findSuccessfulJobPoolInvite(toolCalls);
@@ -487,40 +469,33 @@ export function detectBookingReceiptMismatch(
       MEETING_GROUP_PROMISE_PATTERN.test(replyText) &&
       !GROUP_PURPOSE_DISTINCTION_PATTERN.test(replyText)
     ) {
-      return {
-        ruleId: 'booking_receipt_mismatch',
-        label:
-          '本轮 invite_to_group 发送的是兼职岗位信息群，回复却没有把它与待手动发送的面试群区分，' +
+      return createOutputRuleFinding(
+        'booking_receipt_mismatch',
+        '本轮 invite_to_group 发送的是兼职岗位信息群，回复却没有把它与待手动发送的面试群区分，' +
           '容易让候选人误以为兼职群会发送腾讯会议链接',
-        action: GUARDRAIL_ACTION.REVISE,
-      };
+      );
     }
   }
 
   if (DATE_ASK_PATTERN.test(replyText) && !CONFIRMATION_PATTERN.test(replyText)) {
-    return {
-      ruleId: 'booking_receipt_mismatch',
-      label:
-        '本轮 duliday_interview_booking 已成功提交工单，回复却仍在向候选人征询面试日期/时间' +
+    return createOutputRuleFinding(
+      'booking_receipt_mismatch',
+      '本轮 duliday_interview_booking 已成功提交工单，回复却仍在向候选人征询面试日期/时间' +
         '——与已提交的预约直接矛盾，候选人会以为没约上而重复提交或流失',
-      action: GUARDRAIL_ACTION.REVISE,
-    };
+    );
   }
 
   // 形态 E：工单已按某个具体日期建单，回复却没把这个日期告诉候选人。
   const confirmedTime = readConfirmedInterviewTimeHuman(booking);
   if (confirmedTime && !replyStatesBookedDate(replyText, confirmedTime)) {
-    return {
-      ruleId: 'booking_receipt_mismatch',
-      label:
-        `本轮 duliday_interview_booking 已按「${confirmedTime}」建单，回复却没有把这个日期告诉候选人` +
+    return createOutputRuleFinding(
+      'booking_receipt_mismatch',
+      `本轮 duliday_interview_booking 已按「${confirmedTime}」建单，回复却没有把这个日期告诉候选人` +
         '——候选人无从发现日期被约错（badcase 0091mnfr：候选人选周三、工单落周四，次日到店下车才发现）',
-      action: GUARDRAIL_ACTION.REVISE,
-      feedbackToGenerator:
-        `本轮预约已真实提交成功，工单登记的面试时间是「${confirmedTime}」。上一版回复没有把这个日期原样告诉候选人，当前文本不可发送。` +
+      `本轮预约已真实提交成功，工单登记的面试时间是「${confirmedTime}」。上一版回复没有把这个日期原样告诉候选人，当前文本不可发送。` +
         `请在回复中**逐字**给出「${confirmedTime}」（含月日与括号里的星期），让候选人能立刻核对是不是他要的那天；` +
         '其余未被点名的内容逐字保留，不要改变已确认的事实，也不要再向候选人征询日期。',
-    };
+    );
   }
 
   return null;

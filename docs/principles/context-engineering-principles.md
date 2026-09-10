@@ -85,7 +85,7 @@ Agent = Model + Harness，而 bitter lesson 正在 harness 上应验：模型持
 | 干什么 | 替模型思考：SOP、强制流程、二次审查模型输出的链路                                                       | 维护业务事实与安全：校验、公证、事务、去重、管道                                                                        |
 | 折旧   | 随模型能力折旧，模型越强越碍事                                                                          | **不随模型折旧**（编码业务不变量，非模型弱点补丁）                                                                      |
 | 处置   | 松绑对象，须自带退场机制                                                                                | 保留甚至加强                                                                                                            |
-| 本库   | 手册 SOP 规则群、守卫 LLM 语义审查（默认关闭/可 shadow）、历史 replan 与宽泛 rewrite、turn-hints 教学块 | 收资状态机、P11 裁决权、booking guards、debounce 管道、记忆 pipeline、完成时态假宣称类确定性拦截、当前一次有界窄 repair |
+| 本库   | 手册 SOP 规则群、已退役的守卫 LLM 语义审查、历史带反馈 replan 与宽泛 rewrite、turn-hints 教学块 | 收资状态机、P11 裁决权、booking guards、debounce 管道、记忆 pipeline、完成时态假宣称类确定性拦截、当前一次有界 repair（局部 rewrite / 同参 replan） |
 
 三条纪律：
 

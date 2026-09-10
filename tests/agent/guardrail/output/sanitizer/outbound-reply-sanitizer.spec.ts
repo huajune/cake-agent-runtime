@@ -1,4 +1,4 @@
-import { OutboundReplySanitizer } from '@agent/guardrail/output/outbound-reply-sanitizer';
+import { OutboundReplySanitizer } from '@agent/guardrail/output/sanitizer/outbound-reply-sanitizer';
 
 describe('OutboundReplySanitizer', () => {
   describe('pruneRepeatedSegments - 精确分段去重', () => {

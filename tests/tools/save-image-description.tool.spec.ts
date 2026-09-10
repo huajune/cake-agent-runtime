@@ -66,7 +66,7 @@ describe('buildSaveImageDescriptionTool', () => {
     expect((builtTool as any).description).toContain('id-a, id-b');
     expect((builtTool as any).description).toContain('4-12 个字');
     expect((builtTool as any).description).toContain('不要描述角色外观');
-    expect((builtTool as any).description).toContain('品牌ID：10239');
+    expect((builtTool as any).description).toContain('"品牌ID：" 加原始标题中的实际数字');
     expect((builtTool as any).description).toContain('薪资及阶梯规则');
     expect((builtTool as any).description).toContain('班次时间');
   });

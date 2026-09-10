@@ -1,5 +1,5 @@
+import { createOutputRuleFinding } from '../output-rule-catalog';
 import type { AgentToolCall } from '@shared-types/agent-telemetry.types';
-import { GUARDRAIL_ACTION } from '@shared-types/guardrail.contract';
 import type { RuleContradiction } from '../output-rule.types';
 
 const UNSUPPORTED_STORE_STATUS_PATTERN =
@@ -30,11 +30,9 @@ export function detectUnsupportedStoreStatusSpeculation(
   if (!UNSUPPORTED_STORE_STATUS_PATTERN.test(replyText)) return null;
   if (!toolCalls.some(hasNoMatchScript)) return null;
 
-  return {
-    ruleId: 'unsupported_store_status_speculation',
-    label:
-      '岗位工具只返回了 noMatchScript，无法证明门店已招满、关店、搬迁或装修；' +
+  return createOutputRuleFinding(
+    'unsupported_store_status_speculation',
+    '岗位工具只返回了 noMatchScript，无法证明门店已招满、关店、搬迁或装修；' +
       '只能说明当前暂时没查到匹配的在招岗位',
-    action: GUARDRAIL_ACTION.REVISE,
-  };
+  );
 }

@@ -636,13 +636,13 @@ describe('FollowUpProcessor', () => {
     const sideEffect = {
       kind: 'general_handoff',
       source: 'agent_tool',
-      alertLabel: '出站守卫拦截（rule 档）',
+      alertLabel: '出站守卫转人工（rule 档）',
       reasonCode: 'system_blocked',
-      reason: '出站守卫拦截',
+      reason: '出站守卫转人工',
       recordHandoff: true,
     };
     const outcome = {
-      kind: 'guardrail_blocked',
+      kind: 'handoff',
       toolCalls: [],
       scenarioCode: 'opening_no_reply',
       disposition: 'side_effects',

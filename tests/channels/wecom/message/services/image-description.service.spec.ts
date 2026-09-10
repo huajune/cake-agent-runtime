@@ -66,7 +66,7 @@ describe('ImageDescriptionService', () => {
       expect(mockLlm.generate).toHaveBeenCalledWith(
         expect.objectContaining({
           role: ModelRole.Vision,
-          system: expect.stringContaining('品牌ID：10239'),
+          system: expect.stringContaining('"品牌ID："加原始标题中的实际数字'),
           maxOutputTokens: 256,
           messages: expect.arrayContaining([
             expect.objectContaining({

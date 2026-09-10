@@ -1,4 +1,5 @@
 import { AgentRunnerService } from '@agent/runner/agent-runner.service';
+import { TurnOutcomeInterventionService } from '@agent/runner/turn-outcome-intervention.service';
 import type { GeneratorRunResult } from '@agent/generator/generator.types';
 import { CallerKind } from '@enums/agent.enum';
 
@@ -169,6 +170,7 @@ describe('AgentRunnerService.runInboundTurn', () => {
     });
 
     expect(outcome.kind).toBe('handoff');
+    expect(outcome.handoff?.source).toBe('agent_tool');
     expect(outcome.handoff?.sourceToolCall).toBe('request_handoff');
     expect(outcome.handoff?.reasonCode).toBe('modify_appointment');
     expect(outcome.handoff?.alreadyDispatched).toBe(false);
@@ -182,9 +184,9 @@ describe('AgentRunnerService.runInboundTurn', () => {
     ]);
   });
 
-  it('inbound input guard hit returns guardrail_blocked before generator runs', async () => {
+  it('inbound input guard hit returns handoff before generator runs', async () => {
     inputGuard.evaluate.mockResolvedValue({
-      decision: 'block',
+      decision: 'handoff',
       source: 'input_risk',
       disposition: 'side_effects',
       reasonCode: 'abuse',
@@ -215,7 +217,7 @@ describe('AgentRunnerService.runInboundTurn', () => {
       },
     });
 
-    expect(outcome.kind).toBe('guardrail_blocked');
+    expect(outcome.kind).toBe('handoff');
     expect(outcome.guardrail).toEqual({
       phase: 'inbound',
       source: 'input_guardrail',
@@ -235,7 +237,7 @@ describe('AgentRunnerService.runInboundTurn', () => {
     // 观测 P1-2：入站拦截落事件，时间线能看出"这轮为什么没跑 Agent"；正文不进事件
     expect(tracer.emit).toHaveBeenCalledWith(
       expect.objectContaining({
-        type: 'inbound_guardrail_block',
+        type: 'inbound_guardrail_handoff',
         reasonCode: 'abuse',
         riskType: 'abuse',
         riskLabel: '辱骂',
@@ -258,7 +260,153 @@ describe('AgentRunnerService.runInboundTurn', () => {
       }),
     );
     expect(generator.invoke).not.toHaveBeenCalled();
+    expect(outputGuard.check).not.toHaveBeenCalled();
+    expect(replyRepairAgent.repair).not.toHaveBeenCalled();
+    expect(outcome.runTurnEnd).toBeUndefined();
+    expect(outcome.outputGuardrail).toBeUndefined();
+    expect(outcome.handoff).toBeUndefined();
+
+    // 入站终态更名后依然只提交原风险意图，不补普通转人工、不重复通知或记普通底账。
+    const intervention = {
+      dispatch: jest.fn().mockResolvedValue({ paused: true, alerted: true }),
+    };
+    const handoffRecorder = { record: jest.fn() };
+    const finalizer = new TurnOutcomeInterventionService(
+      intervention as never,
+      handoffRecorder as never,
+    );
+    await finalizer.commit(outcome, {
+      traceId: 'trace-input-risk',
+      chatId: 's1',
+      userId: 'u1',
+      corpId: 'c1',
+      userMessage: '你们就是骗子',
+    });
+    expect(intervention.dispatch).toHaveBeenCalledTimes(1);
+    expect(intervention.dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'conversation_risk',
+        source: 'regex_intercept',
+        riskType: 'abuse',
+        reason: '命中辱骂关键词',
+        pauseTargetId: 's1',
+      }),
+    );
+    expect(handoffRecorder.record).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ['modify_appointment', 'other', 'modify_appointment'],
+    [undefined, 'salary_admin_inquiry', 'salary_admin_inquiry'],
+    [undefined, undefined, 'other'],
+  ] as const)(
+    'aligns observed tool handoff reason args=%s / result=%s to %s everywhere',
+    async (argsReason, resultReason, expectedReason) => {
+      const toolIntent = {
+        kind: 'general_handoff' as const,
+        source: 'agent_tool' as const,
+        alertLabel: '候选人要求修改预约',
+        reasonCode: expectedReason,
+        reason: '候选人希望调整时间',
+        recordHandoff: true,
+      };
+      generator.invoke.mockResolvedValueOnce(
+        makeResult({
+          text: '好的，我帮你处理改约。',
+          toolCalls: [
+            {
+              toolName: 'request_handoff',
+              args: { reasonCode: argsReason, reason: '候选人希望调整时间' },
+              result: {
+                dispatched: true,
+                shortCircuited: false,
+                reasonCode: resultReason,
+                sideEffect: toolIntent,
+              },
+            },
+          ],
+        }),
+      );
+      outputGuard.check.mockResolvedValueOnce({
+        ...passDecision,
+        ruleIds: ['booking_done_claim_no_receipt'],
+      });
+
+      const result = await service.invokeReviewedTurn({
+        invoke: {
+          callerKind: CallerKind.WECOM,
+          messages: [{ role: 'user', content: '帮我改约' }],
+          userId: 'u1',
+          corpId: 'c1',
+          sessionId: 's1',
+        },
+        review: {
+          userMessage: '帮我改约',
+          chatId: 's1',
+          userId: 'u1',
+          traceId: 'msg-observed-handoff',
+        },
+        sessionRef,
+        messageId: 'msg-observed-handoff',
+      });
+
+      expect(outputGuard.check).toHaveBeenCalledTimes(1);
+      expect(replyRepairAgent.repair).not.toHaveBeenCalled();
+      expect(result.outputDecision).toMatchObject({
+        decision: 'pass',
+        ruleIds: ['booking_done_claim_no_receipt'],
+      });
+      expect(result.resolution).toMatchObject({
+        outcome: 'handoff',
+        source: 'agent_tool',
+        reasonCode: expectedReason,
+      });
+      expect(result.guardrailTrace).toMatchObject({
+        finalOutcome: 'handoff',
+        reasonCode: expectedReason,
+        repaired: false,
+        steps: [
+          expect.objectContaining({
+            stage: 'first',
+            decision: 'pass',
+            ruleIds: ['booking_done_claim_no_receipt'],
+          }),
+        ],
+      });
+      expect(guardrailReviews.recordReview).toHaveBeenCalledTimes(1);
+      expect(guardrailReviews.recordReview).toHaveBeenCalledWith(
+        expect.objectContaining({
+          traceId: 'msg-observed-handoff',
+          finalOutcome: 'handoff',
+          reasonCode: expectedReason,
+          repaired: false,
+          first: expect.objectContaining({
+            decision: 'pass',
+            ruleIds: ['booking_done_claim_no_receipt'],
+          }),
+        }),
+      );
+      expect(result.outcome.kind).toBe('handoff');
+      expect(result.outcome.guardrailTrace?.finalOutcome).toBe('handoff');
+      expect(result.outcome.guardrailTrace?.reasonCode).toBe(expectedReason);
+      expect(result.outcome.outputGuardrail).toMatchObject({
+        decision: 'pass',
+        finalOutcome: 'handoff',
+        reasonCode: expectedReason,
+      });
+      expect(result.outcome.handoff).toMatchObject({
+        source: 'agent_tool',
+        sourceToolCall: 'request_handoff',
+        reasonCode: expectedReason,
+        idempotencyKey: 's1:handoff:msg-observed-handoff',
+        alreadyDispatched: false,
+      });
+      expect(result.outcome.sideEffects).toEqual([
+        { ...toolIntent, idempotencyKey: 's1:handoff:msg-observed-handoff' },
+      ]);
+      expect(result.outcome.guardrail).toBeUndefined();
+    },
+  );
 
   it('inbound input guard scan text filters visual placeholder lines inside runner', async () => {
     generator.invoke.mockResolvedValue(makeResult({ text: '收到' }));
@@ -381,19 +529,19 @@ describe('AgentRunnerService.runInboundTurn', () => {
     ).rejects.toThrow('llm down');
   });
 
-  it('output guard block enters one rewrite and adopts the clean revised reply', async () => {
+  it('strict output repair enters one rewrite and adopts the clean revised reply', async () => {
     generator.invoke.mockResolvedValueOnce(makeResult({ text: '不要新疆户籍的' }));
     replyRepairAgent.repair.mockResolvedValueOnce('这个岗位暂时不合适，我们可以看其他岗位。');
     outputGuard.check
       .mockResolvedValueOnce({
-        decision: 'block',
+        decision: 'repair',
         riskLevel: 'high',
         violations: [
           {
             type: 'discriminatory_screening_leak',
             evidence: '命中高敏感规则',
             suggestion: '删除敏感条件',
-            recoverability: 'non_recoverable',
+            allowFailOpen: false,
             repairMode: 'rewrite',
           },
         ],
@@ -437,7 +585,7 @@ describe('AgentRunnerService.runInboundTurn', () => {
           type: 'job_fact_without_provenance',
           evidence: '本轮零查岗工具，岗位数字无出处',
           suggestion: '先调用 duliday_job_list 查实后再答',
-          recoverability: 'recoverable' as const,
+          allowFailOpen: true as const,
           repairMode: 'replan' as const,
         },
       ],
@@ -493,7 +641,7 @@ describe('AgentRunnerService.runInboundTurn', () => {
           repaired: true,
           repairMode: 'replan',
           firstReply: fabricated,
-          finalDecision: 'pass',
+          finalOutcome: 'reply',
           reasonCode: 'replanned',
         }),
       );
@@ -505,6 +653,105 @@ describe('AgentRunnerService.runInboundTurn', () => {
         }),
       );
     });
+
+    it.each([
+      ['request_handoff', 'handoff', 'modify_appointment'],
+      ['skip_reply', 'skipped', undefined],
+    ] as const)(
+      'adopts replan tool terminal %s as %s without treating empty text as a failed repair',
+      async (toolName, expectedKind, expectedReason) => {
+        const firstRunTurnEnd = jest.fn().mockResolvedValue(undefined);
+        const replannedRunTurnEnd = jest.fn().mockResolvedValue(undefined);
+        const handoffIntent = {
+          kind: 'general_handoff' as const,
+          source: 'agent_tool' as const,
+          alertLabel: '候选人请求改约',
+          reasonCode: 'modify_appointment',
+          reason: '本轮重规划后确认需要人工改约',
+          recordHandoff: true,
+        };
+        const toolCalls: GeneratorRunResult['toolCalls'] = [
+          {
+            toolName,
+            args: toolName === 'request_handoff' ? { reasonCode: 'modify_appointment' } : {},
+            result:
+              toolName === 'request_handoff'
+                ? { dispatched: true, shortCircuited: true, sideEffect: handoffIntent }
+                : { skipped: true, shortCircuited: true },
+          },
+        ];
+        generator.invoke
+          .mockResolvedValueOnce(
+            makeResult({ text: fabricated, toolCalls: [], runTurnEnd: firstRunTurnEnd }),
+          )
+          .mockResolvedValueOnce(
+            makeResult({ text: '', toolCalls, runTurnEnd: replannedRunTurnEnd }),
+          );
+        outputGuard.check.mockResolvedValue(fabricationDecision);
+
+        const messageId = `msg-replan-${toolName}`;
+        const result = await service.invokeReviewedTurn({
+          invoke: {
+            callerKind: CallerKind.WECOM,
+            messages: [{ role: 'user', content: '帮我确认下' }],
+            userId: 'u1',
+            corpId: 'c1',
+            sessionId: 's1',
+          },
+          review: { userMessage: '帮我确认下', chatId: 's1', userId: 'u1', traceId: messageId },
+          sessionRef,
+          messageId,
+        });
+
+        expect(generator.invoke).toHaveBeenCalledTimes(2);
+        expect(replyRepairAgent.repair).not.toHaveBeenCalled();
+        expect(outputGuard.check).toHaveBeenCalledTimes(1);
+        expect(result.resolution).toMatchObject({ outcome: expectedKind });
+        expect(result.resolution.reasonCode).toBe(expectedReason);
+        expect(result.outputDecision).toEqual(fabricationDecision);
+        expect(result.revised).toBe(true);
+        expect(result.toolCalls).toEqual(toolCalls);
+        expect(result.guardrailTrace).toMatchObject({
+          repaired: true,
+          finalOutcome: expectedKind,
+          steps: [expect.objectContaining({ stage: 'first', decision: 'replan' })],
+        });
+        expect(result.guardrailTrace?.reasonCode).toBe(expectedReason);
+        expect(guardrailReviews.recordReview).toHaveBeenCalledWith(
+          expect.objectContaining({
+            traceId: messageId,
+            repaired: true,
+            repairMode: 'replan',
+            revisedReply: '',
+            revised: undefined,
+            finalOutcome: expectedKind,
+            reasonCode: expectedReason,
+          }),
+        );
+        expect(result.outcome.kind).toBe(expectedKind);
+        expect(result.outcome.reply).toBeUndefined();
+        expect(result.outcome.toolCalls).toEqual(toolCalls);
+        expect(result.outcome.guardrail).toBeUndefined();
+        expect(result.outcome.sideEffects).toEqual(
+          expectedKind === 'handoff'
+            ? [{ ...handoffIntent, idempotencyKey: `s1:handoff:${messageId}` }]
+            : [],
+        );
+        if (expectedKind === 'handoff') {
+          expect(result.resolution.source).toBe('agent_tool');
+          expect(result.outcome.handoff).toMatchObject({
+            source: 'agent_tool',
+            sourceToolCall: 'request_handoff',
+            reasonCode: expectedReason,
+            idempotencyKey: `s1:handoff:${messageId}`,
+          });
+        }
+        result.turnFinalizer.settle({ delivered: false });
+        await result.turnFinalizer.whenSettled();
+        expect(replannedRunTurnEnd).toHaveBeenCalledWith({ includeAssistantText: false });
+        expect(firstRunTurnEnd).not.toHaveBeenCalled();
+      },
+    );
 
     it('never falls back to the fabricated first reply and does not fail open when regeneration still violates', async () => {
       generator.invoke
@@ -520,7 +767,7 @@ describe('AgentRunnerService.runInboundTurn', () => {
         context: { messageId: 'msg-regen-exhausted' },
       });
 
-      expect(outcome.kind).toBe('guardrail_blocked');
+      expect(outcome.kind).toBe('handoff');
       expect(outcome.guardrail).toEqual(
         expect.objectContaining({ phase: 'outbound', reasonCode: 'replan_exhausted' }),
       );
@@ -576,14 +823,14 @@ describe('AgentRunnerService.runInboundTurn', () => {
     generator.invoke.mockResolvedValueOnce(makeResult({ text: draft }));
     outputGuard.check
       .mockResolvedValueOnce({
-        decision: 'block',
+        decision: 'repair',
         riskLevel: 'high',
         violations: [
           {
             type: 'internal_output_leak',
             evidence: '回复疑似泄漏 Agent 内部状态/工具实现（pattern=^```）',
             suggestion: '删除泄漏内容',
-            recoverability: 'non_recoverable',
+            allowFailOpen: false,
             repairMode: 'rewrite',
           },
         ],
@@ -610,7 +857,7 @@ describe('AgentRunnerService.runInboundTurn', () => {
     expect(outputGuard.check).toHaveBeenCalledTimes(2);
     expect(guardrailReviews.recordReview).toHaveBeenCalledWith(
       expect.objectContaining({
-        finalDecision: 'pass',
+        finalOutcome: 'reply',
         reasonCode: 'fence_stripped',
         repaired: true,
         revisedReply: expect.stringContaining('姓名：'),
@@ -626,14 +873,14 @@ describe('AgentRunnerService.runInboundTurn', () => {
     generator.invoke.mockResolvedValueOnce(makeResult({ text: draft }));
     outputGuard.check
       .mockResolvedValueOnce({
-        decision: 'block',
+        decision: 'repair',
         riskLevel: 'high',
         violations: [
           {
             type: 'internal_output_leak',
             evidence: '回复疑似泄漏推理独白',
             suggestion: '删除泄漏内容',
-            recoverability: 'non_recoverable',
+            allowFailOpen: false,
             repairMode: 'rewrite',
           },
         ],
@@ -653,7 +900,7 @@ describe('AgentRunnerService.runInboundTurn', () => {
     expect(outcome.reply?.text).toBe('附近暂时没有合适岗位，有新岗位我及时告诉你。');
     expect(guardrailReviews.recordReview).toHaveBeenCalledWith(
       expect.objectContaining({
-        finalDecision: 'pass',
+        finalOutcome: 'reply',
         reasonCode: 'internal_reasoning_stripped',
         repaired: true,
       }),
@@ -671,14 +918,14 @@ describe('AgentRunnerService.runInboundTurn', () => {
     );
     outputGuard.check
       .mockResolvedValueOnce({
-        decision: 'block',
+        decision: 'repair',
         riskLevel: 'high',
         violations: [
           {
             type: 'internal_output_leak',
             evidence: '回复疑似泄漏自检段',
             suggestion: '删除泄漏内容',
-            recoverability: 'non_recoverable',
+            allowFailOpen: false,
             repairMode: 'rewrite',
           },
         ],
@@ -705,14 +952,14 @@ describe('AgentRunnerService.runInboundTurn', () => {
   it('reasoning-only leak converges to logged silence without repair', async () => {
     generator.invoke.mockResolvedValueOnce(makeResult({ text: '</antThinking>' }));
     outputGuard.check.mockResolvedValueOnce({
-      decision: 'block',
+      decision: 'repair',
       riskLevel: 'high',
       violations: [
         {
           type: 'internal_output_leak',
           evidence: '回复疑似泄漏推理残标',
           suggestion: '删除泄漏内容',
-          recoverability: 'non_recoverable',
+          allowFailOpen: false,
           repairMode: 'rewrite',
         },
       ],
@@ -727,11 +974,11 @@ describe('AgentRunnerService.runInboundTurn', () => {
       context: { messageId: 'trace-reasoning-silence-1' },
     });
 
-    expect(outcome.kind).toBe('guardrail_blocked');
+    expect(outcome.kind).toBe('handoff');
     expect(replyRepairAgent.repair).not.toHaveBeenCalled();
     expect(guardrailReviews.recordReview).toHaveBeenCalledWith(
       expect.objectContaining({
-        finalDecision: 'block',
+        finalOutcome: 'handoff',
         reasonCode: 'internal_reasoning_artifact_silenced',
         repaired: false,
       }),
@@ -750,14 +997,14 @@ describe('AgentRunnerService.runInboundTurn', () => {
     generator.invoke.mockResolvedValueOnce(makeResult({ text: draft }));
     outputGuard.check
       .mockResolvedValueOnce({
-        decision: 'block',
+        decision: 'repair',
         riskLevel: 'high',
         violations: [
           {
             type: 'internal_output_leak',
             evidence: '回复疑似泄漏 Agent 内部状态/工具实现（pattern=json）',
             suggestion: '删除泄漏内容',
-            recoverability: 'non_recoverable',
+            allowFailOpen: false,
             repairMode: 'rewrite',
           },
         ],
@@ -780,7 +1027,7 @@ describe('AgentRunnerService.runInboundTurn', () => {
     );
     expect(guardrailReviews.recordReview).toHaveBeenCalledWith(
       expect.objectContaining({
-        finalDecision: 'pass',
+        finalOutcome: 'reply',
         reasonCode: 'envelope_unwrapped',
         repaired: true,
       }),
@@ -794,14 +1041,14 @@ describe('AgentRunnerService.runInboundTurn', () => {
       '{"type":"tool_use","id":"toolu_x","name":"request_handoff","input":{"reason":"候选人追问必胜客十里河店培训期具体天数，岗位数据未明确该信息"}}';
     generator.invoke.mockResolvedValueOnce(makeResult({ text: draft }));
     outputGuard.check.mockResolvedValueOnce({
-      decision: 'block',
+      decision: 'repair',
       riskLevel: 'high',
       violations: [
         {
           type: 'internal_output_leak',
           evidence: '回复疑似泄漏 Agent 内部状态/工具实现',
           suggestion: '删除泄漏内容',
-          recoverability: 'non_recoverable',
+          allowFailOpen: false,
           repairMode: 'rewrite',
         },
       ],
@@ -820,7 +1067,7 @@ describe('AgentRunnerService.runInboundTurn', () => {
     expect(outcome.kind).not.toBe('reply');
     expect(guardrailReviews.recordReview).toHaveBeenCalledWith(
       expect.objectContaining({
-        finalDecision: 'block',
+        finalOutcome: 'handoff',
         reasonCode: 'tool_call_artifact_silenced',
         repaired: false,
       }),
@@ -833,14 +1080,14 @@ describe('AgentRunnerService.runInboundTurn', () => {
     replyRepairAgent.repair.mockResolvedValueOnce('帮你看了下附近的岗位，稍后发你详情。');
     outputGuard.check
       .mockResolvedValueOnce({
-        decision: 'block',
+        decision: 'repair',
         riskLevel: 'high',
         violations: [
           {
             type: 'internal_output_leak',
             evidence: '回复疑似泄漏 Agent 内部状态/工具实现',
             suggestion: '删除泄漏内容',
-            recoverability: 'non_recoverable',
+            allowFailOpen: false,
             repairMode: 'rewrite',
           },
         ],
@@ -869,14 +1116,14 @@ describe('AgentRunnerService.runInboundTurn', () => {
       makeResult({ text: 'geocode(address="大良", city="佛山")' }),
     );
     outputGuard.check.mockResolvedValueOnce({
-      decision: 'block',
+      decision: 'repair',
       riskLevel: 'high',
       violations: [
         {
           type: 'internal_output_leak',
           evidence: '回复疑似泄漏 Agent 内部状态/工具实现（pattern=geocode）',
           suggestion: '删除泄漏内容',
-          recoverability: 'non_recoverable',
+          allowFailOpen: false,
           repairMode: 'rewrite',
         },
       ],
@@ -894,7 +1141,7 @@ describe('AgentRunnerService.runInboundTurn', () => {
     // 残文剥完无一字可留，"其余内容逐字保留"退化成自由创作——不进 repair、不送二审。
     expect(replyRepairAgent.repair).not.toHaveBeenCalled();
     expect(outputGuard.check).toHaveBeenCalledTimes(1);
-    expect(outcome.kind).toBe('guardrail_blocked');
+    expect(outcome.kind).toBe('handoff');
     expect(outcome.guardrail).toEqual(
       expect.objectContaining({
         reasonCode: 'tool_call_artifact_silenced',
@@ -903,7 +1150,7 @@ describe('AgentRunnerService.runInboundTurn', () => {
     );
     expect(guardrailReviews.recordReview).toHaveBeenCalledWith(
       expect.objectContaining({
-        finalDecision: 'block',
+        finalOutcome: 'handoff',
         reasonCode: 'tool_call_artifact_silenced',
         repaired: false,
       }),
@@ -931,14 +1178,14 @@ describe('AgentRunnerService.runInboundTurn', () => {
     replyRepairAgent.repair.mockResolvedValueOnce('日结的岗位我帮你留意下，你在哪个区呀？');
     outputGuard.check
       .mockResolvedValueOnce({
-        decision: 'block',
+        decision: 'repair',
         riskLevel: 'high',
         violations: [
           {
             type: 'internal_output_leak',
             evidence: '回复疑似泄漏 Agent 内部状态/工具实现（pattern=^```）',
             suggestion: '删除泄漏内容',
-            recoverability: 'non_recoverable',
+            allowFailOpen: false,
             repairMode: 'rewrite',
           },
         ],
@@ -959,69 +1206,97 @@ describe('AgentRunnerService.runInboundTurn', () => {
     expect(outcome.reply?.text).not.toContain('TjybappHousingConfirm');
   });
 
-  it('meta narration block converges to silence without repair or handoff side effect', async () => {
-    generator.invoke.mockResolvedValueOnce(
-      makeResult({ text: '（本轮为真人招募经理与候选人直接沟通，AI 保持静默，不插入回复）' }),
-    );
-    outputGuard.check.mockResolvedValueOnce({
-      decision: 'block',
-      riskLevel: 'high',
-      violations: [
-        {
-          type: 'meta_narration_reply',
-          evidence: '整条回复是描述 Agent 自身行为的括号旁白',
-          suggestion: '本轮应调用 skip_reply',
-          recoverability: 'non_recoverable',
-          repairMode: 'rewrite',
-        },
-      ],
-      ruleIds: ['meta_narration_reply'],
-      blockedRuleIds: ['meta_narration_reply'],
-      repairMode: 'rewrite',
-    });
-
-    const outcome = await service.runInboundTurn({
-      sessionRef,
-      input: { text: '有的' },
-      context: { messageId: 'trace-meta-narration-1' },
-    });
-
-    // 不进 repair、不送二审：本该沉默的轮次重写出来仍是不该发的插话。
-    expect(replyRepairAgent.repair).not.toHaveBeenCalled();
-    expect(outputGuard.check).toHaveBeenCalledTimes(1);
-    expect(outcome.kind).toBe('guardrail_blocked');
-    expect(outcome.guardrail).toEqual(
-      expect.objectContaining({
+  it.each([false, true])(
+    'meta narration stays skipped and preserves existing tool intent=%s',
+    async (withToolIntent) => {
+      const toolIntent = {
+        kind: 'conversation_risk' as const,
+        source: 'agent_tool' as const,
+        riskType: 'abuse' as const,
+        riskLabel: '辱骂',
+        summary: '工具已声明需关注该会话',
+        reason: '既有工具意图须在静默时保留',
+      };
+      generator.invoke.mockResolvedValueOnce(
+        makeResult({
+          text: '（本轮为真人招募经理与候选人直接沟通，AI 保持静默，不插入回复）',
+          toolCalls: withToolIntent
+            ? [
+                {
+                  toolName: 'raise_risk_alert',
+                  args: {},
+                  result: { success: true, sideEffect: toolIntent },
+                },
+              ]
+            : [],
+        }),
+      );
+      outputGuard.check.mockResolvedValueOnce({
+        decision: 'repair',
+        riskLevel: 'high',
+        violations: [
+          {
+            type: 'meta_narration_reply',
+            evidence: '整条回复是描述 Agent 自身行为的括号旁白',
+            suggestion: '本轮应调用 skip_reply',
+            allowFailOpen: false,
+            repairMode: 'rewrite',
+          },
+        ],
         ruleIds: ['meta_narration_reply'],
-        reasonCode: 'meta_narration_silenced',
-        ruleBlocked: true,
-      }),
-    );
-    // 等效 skip_reply 的安静静默：不派 general_handoff（那会暂停托管+飞书告警，
-    // 而该场景多为真人经理已在沟通，用户裁定真人插话不自动暂停）。
-    expect(outcome.sideEffects ?? []).toEqual([]);
-    // 守卫档案照常落库，观测不丢。
-    expect(guardrailReviews.recordReview).toHaveBeenCalledWith(
-      expect.objectContaining({
-        finalDecision: 'block',
-        reasonCode: 'meta_narration_silenced',
-        repaired: false,
-      }),
-    );
-  });
+        blockedRuleIds: ['meta_narration_reply'],
+        repairMode: 'rewrite',
+      });
 
-  it('output guard block stays blocked when the rewrite still violates guardrails', async () => {
+      const outcome = await service.runInboundTurn({
+        sessionRef,
+        input: { text: '有的' },
+        context: { messageId: 'trace-meta-narration-1' },
+      });
+
+      // 不进 repair、不送二审：本该沉默的轮次重写出来仍是不该发的插话。
+      expect(replyRepairAgent.repair).not.toHaveBeenCalled();
+      expect(outputGuard.check).toHaveBeenCalledTimes(1);
+      expect(outcome.kind).toBe('skipped');
+      expect(outcome.outputGuardrail).toMatchObject({
+        decision: 'repair',
+        finalOutcome: 'skipped',
+        reasonCode: 'meta_narration_silenced',
+      });
+      expect(outcome.handoff).toBeUndefined();
+      expect(outcome.guardrail).toEqual(
+        expect.objectContaining({
+          ruleIds: ['meta_narration_reply'],
+          reasonCode: 'meta_narration_silenced',
+          ruleBlocked: true,
+        }),
+      );
+      // 等效 skip_reply 的安静静默：不派 general_handoff（那会暂停托管+飞书告警，
+      // 而该场景多为真人经理已在沟通，用户裁定真人插话不自动暂停）。
+      expect(outcome.sideEffects ?? []).toEqual(withToolIntent ? [toolIntent] : []);
+      // 守卫档案照常落库，观测不丢。
+      expect(guardrailReviews.recordReview).toHaveBeenCalledWith(
+        expect.objectContaining({
+          finalOutcome: 'skipped',
+          reasonCode: 'meta_narration_silenced',
+          repaired: false,
+        }),
+      );
+    },
+  );
+
+  it('strict output repair hands off when the rewrite still violates guardrails', async () => {
     generator.invoke.mockResolvedValueOnce(makeResult({ text: '不要新疆户籍的' }));
     replyRepairAgent.repair.mockResolvedValueOnce('还是不要新疆户籍的');
     outputGuard.check.mockResolvedValue({
-      decision: 'block',
+      decision: 'repair',
       riskLevel: 'high',
       violations: [
         {
           type: 'discriminatory_screening_leak',
           evidence: '命中高敏感规则',
           suggestion: '删除敏感条件',
-          recoverability: 'non_recoverable',
+          allowFailOpen: false,
           repairMode: 'rewrite',
         },
       ],
@@ -1030,12 +1305,48 @@ describe('AgentRunnerService.runInboundTurn', () => {
       repairMode: 'rewrite',
     });
 
-    const outcome = await service.runInboundTurn({
+    const result = await service.invokeReviewedTurn({
+      invoke: {
+        callerKind: CallerKind.WECOM,
+        messages: [{ role: 'user', content: '有什么岗位' }],
+        userId: 'u1',
+        corpId: 'c1',
+        sessionId: 's1',
+      },
+      review: {
+        userMessage: '有什么岗位',
+        chatId: 's1',
+        userId: 'u1',
+        traceId: 'msg-strict-repair-exhausted',
+      },
       sessionRef,
-      input: { text: '有什么岗位' },
+      messageId: 'msg-strict-repair-exhausted',
     });
+    const outcome = result.outcome;
 
-    expect(outcome.kind).toBe('guardrail_blocked');
+    expect(result.resolution).toMatchObject({
+      outcome: 'handoff',
+      source: 'output_guardrail',
+      reasonCode: 'repair_exhausted',
+    });
+    expect(outcome.kind).toBe('handoff');
+    expect(outcome.reply).toBeUndefined();
+    expect(outcome.outputGuardrail).toMatchObject({
+      decision: 'repair',
+      finalOutcome: 'handoff',
+      reasonCode: 'repair_exhausted',
+    });
+    expect(outcome.guardrailTrace?.steps.map((step) => step.decision)).toEqual([
+      'repair',
+      'repair',
+    ]);
+    expect(outcome.guardrailTrace?.finalOutcome).toBe('handoff');
+    expect(outcome.handoff).toMatchObject({
+      source: 'output_guardrail',
+      reasonCode: 'system_blocked',
+      idempotencyKey: 's1:handoff:msg-strict-repair-exhausted:output_guard',
+    });
+    expect(outcome.handoff?.sourceToolCall).toBeUndefined();
     expect(outcome.guardrail).toEqual(
       expect.objectContaining({
         ruleIds: ['discriminatory_screening_leak'],
@@ -1047,8 +1358,10 @@ describe('AgentRunnerService.runInboundTurn', () => {
     expect(outcome.sideEffects).toEqual([
       expect.objectContaining({
         kind: 'general_handoff',
+        source: 'output_guardrail',
         alertLabel: '出站守卫拦截（rule 档）',
         reasonCode: 'system_blocked',
+        idempotencyKey: 's1:handoff:msg-strict-repair-exhausted:output_guard',
         recordHandoff: true,
       }),
     ]);
@@ -1058,13 +1371,13 @@ describe('AgentRunnerService.runInboundTurn', () => {
       expect.objectContaining({
         type: 'guardrail_repair',
         outcome: 'repair_exhausted',
-        finalDecision: 'block',
+        finalOutcome: 'handoff',
         firstRuleIds: ['discriminatory_screening_leak'],
       }),
     );
   });
 
-  it('output guard revise triggers one rewrite with reviseFeedback, then adopts revised reply', async () => {
+  it('output guard repair triggers one rewrite with feedback, then adopts revised reply', async () => {
     generator.invoke.mockResolvedValueOnce(makeResult({ text: '原始回复（语气僵硬）' }));
     replyRepairContextProvider.build.mockResolvedValueOnce({
       recentMessages: [{ role: 'user', content: '你好' }],
@@ -1082,7 +1395,7 @@ describe('AgentRunnerService.runInboundTurn', () => {
     replyRepairAgent.repair.mockResolvedValueOnce('重写后的自然回复');
     outputGuard.check
       .mockResolvedValueOnce({
-        decision: 'revise',
+        decision: 'repair',
         riskLevel: 'medium',
         violations: [{ type: 'bad_tone', evidence: '僵硬', suggestion: '更自然' }],
         ruleIds: [],
@@ -1129,7 +1442,7 @@ describe('AgentRunnerService.runInboundTurn', () => {
     );
     outputGuard.check
       .mockResolvedValueOnce({
-        decision: 'revise',
+        decision: 'repair',
         riskLevel: 'high',
         violations: [
           {
@@ -1138,7 +1451,7 @@ describe('AgentRunnerService.runInboundTurn', () => {
             suggestion: '不要提及户籍、籍贯、民族等门槛，改为中性承接。',
             severity: 'P0',
             dataSensitivity: 'high',
-            recoverability: 'recoverable',
+            allowFailOpen: true,
             currentReplySendable: false,
             feedbackPolicy: 'redacted',
             repairMode: 'rewrite',
@@ -1191,7 +1504,7 @@ describe('AgentRunnerService.runInboundTurn', () => {
             evidence: '未接地岗位事实',
             suggestion: '先调用 duliday_job_list 查实后再答',
             severity: 'P1',
-            recoverability: 'recoverable',
+            allowFailOpen: true,
             currentReplySendable: false,
             repairMode: 'replan',
           },
@@ -1227,13 +1540,13 @@ describe('AgentRunnerService.runInboundTurn', () => {
       evidence: '教唆以不实身份登记',
       suggestion: '删除不实身份登记建议',
       severity: 'P0',
-      recoverability: 'recoverable',
+      allowFailOpen: true,
       currentReplySendable: false,
       repairMode: 'rewrite',
     };
     outputGuard.check
       .mockResolvedValueOnce({
-        decision: 'revise',
+        decision: 'repair',
         riskLevel: 'high',
         violations: [p0Violation],
         ruleIds: ['identity_misregistration_coaching'],
@@ -1242,7 +1555,7 @@ describe('AgentRunnerService.runInboundTurn', () => {
         repairToolNames: [],
       })
       .mockResolvedValueOnce({
-        decision: 'revise',
+        decision: 'repair',
         riskLevel: 'high',
         violations: [p0Violation],
         ruleIds: ['identity_misregistration_coaching'],
@@ -1256,7 +1569,7 @@ describe('AgentRunnerService.runInboundTurn', () => {
       input: { text: '专业：医学' },
     });
 
-    expect(outcome.kind).toBe('guardrail_blocked');
+    expect(outcome.kind).toBe('handoff');
     expect(outcome.reply).toBeUndefined();
   });
 
@@ -1272,7 +1585,7 @@ describe('AgentRunnerService.runInboundTurn', () => {
     replyRepairAgent.repair.mockResolvedValueOnce('已帮你约好面试，稍后按通知到店就行');
     outputGuard.check
       .mockResolvedValueOnce({
-        decision: 'revise',
+        decision: 'repair',
         riskLevel: 'medium',
         violations: [{ type: 'bad_tone', evidence: '需要修', suggestion: '改自然' }],
         ruleIds: [],
@@ -1333,9 +1646,9 @@ describe('AgentRunnerService.runInboundTurn', () => {
       scanContent: '你们就是骗子',
     };
 
-    it('hit maps to an inbound guardrail_blocked outcome carrying the risk attribution', async () => {
+    it('hit maps to an inbound handoff outcome carrying the risk attribution', async () => {
       inputGuard.evaluate.mockResolvedValue({
-        decision: 'block',
+        decision: 'handoff',
         source: 'input_risk',
         disposition: 'side_effects',
         reasonCode: 'abuse',
@@ -1358,7 +1671,7 @@ describe('AgentRunnerService.runInboundTurn', () => {
       const outcome = await service.precheckInboundOutcome(riskInput);
 
       expect(outcome).not.toBeNull();
-      expect(outcome?.kind).toBe('guardrail_blocked');
+      expect(outcome?.kind).toBe('handoff');
       expect(outcome?.guardrail).toEqual({
         phase: 'inbound',
         source: 'input_guardrail',
@@ -1382,25 +1695,25 @@ describe('AgentRunnerService.runInboundTurn', () => {
     });
   });
 
-  it('revise still failing after the hard cap collapses to outbound guardrail_blocked', async () => {
+  it('high-risk repair still failing after the hard cap requires an output guard handoff', async () => {
     generator.invoke.mockResolvedValueOnce(makeResult({ text: 'v1' }));
     replyRepairAgent.repair.mockResolvedValueOnce('v2 仍有问题');
-    const reviseDecision = {
-      decision: 'revise' as const,
+    const repairDecision = {
+      decision: 'repair' as const,
       riskLevel: 'high' as const,
       violations: [{ type: 'hallucinated_fact', evidence: 'x', suggestion: 'y' }],
       ruleIds: [],
       blockedRuleIds: [],
       repairMode: 'rewrite' as const,
     };
-    outputGuard.check.mockResolvedValue(reviseDecision);
+    outputGuard.check.mockResolvedValue(repairDecision);
 
     const outcome = await service.runInboundTurn({
       sessionRef,
       input: { text: '约面试' },
     });
 
-    expect(outcome.kind).toBe('guardrail_blocked');
+    expect(outcome.kind).toBe('handoff');
     expect(outcome.guardrail).toEqual(
       expect.objectContaining({
         phase: 'outbound',
@@ -1409,6 +1722,8 @@ describe('AgentRunnerService.runInboundTurn', () => {
       }),
     );
     expect(generator.invoke).toHaveBeenCalledTimes(1); // hard cap 1, rewrite 不复用 generator
+    expect(replyRepairAgent.repair).toHaveBeenCalledTimes(1);
+    expect(outputGuard.check).toHaveBeenCalledTimes(2);
   });
 
   it('repair exhausted with the same recurring P1 violation fails open to the revised reply', async () => {
@@ -1416,22 +1731,22 @@ describe('AgentRunnerService.runInboundTurn', () => {
     // 反馈与二审，默认胜出（旧策略投首版曾致更优修复被弃、洗身份文本实际投递）。
     generator.invoke.mockResolvedValueOnce(makeResult({ text: 'v1' }));
     replyRepairAgent.repair.mockResolvedValueOnce('v2 修复版（仍有 P1 残留）');
-    const p1ReviseDecision = {
-      decision: 'revise' as const,
+    const p1RepairDecision = {
+      decision: 'repair' as const,
       riskLevel: 'medium' as const,
       violations: [
         {
           type: 'booking_receipt_mismatch',
           evidence: '预约回执不一致',
           suggestion: '按回执修正',
-          recoverability: 'recoverable' as const,
+          allowFailOpen: true as const,
         },
       ],
       ruleIds: ['booking_receipt_mismatch'],
       blockedRuleIds: ['booking_receipt_mismatch'],
       repairMode: 'rewrite' as const,
     };
-    outputGuard.check.mockResolvedValue(p1ReviseDecision);
+    outputGuard.check.mockResolvedValue(p1RepairDecision);
 
     const outcome = await service.runInboundTurn({
       sessionRef,
@@ -1441,14 +1756,116 @@ describe('AgentRunnerService.runInboundTurn', () => {
 
     expect(outcome.kind).toBe('reply');
     expect(outcome.reply?.text).toBe('v2 修复版（仍有 P1 残留）');
+    expect(outcome.outputGuardrail).toMatchObject({
+      decision: 'repair',
+      finalOutcome: 'reply',
+      reasonCode: 'repair_exhausted_fail_open',
+    });
+    expect(outcome.guardrailTrace?.steps.map((step) => step.decision)).toEqual([
+      'repair',
+      'repair',
+    ]);
+    expect(outcome.guardrailTrace?.finalOutcome).toBe('reply');
     expect(generator.invoke).toHaveBeenCalledTimes(1); // hard cap 不变，rewrite 不复用 generator
     expect(guardrailReviews.recordReview).toHaveBeenCalledWith(
       expect.objectContaining({
         traceId: 'msg-failopen',
         repaired: true,
         revisedReply: 'v2 修复版（仍有 P1 残留）',
-        finalDecision: 'pass',
+        finalOutcome: 'reply',
         reasonCode: 'repair_exhausted_fail_open',
+      }),
+    );
+  });
+
+  it('can fail open a low-risk residual after the strict first violation was actually removed', async () => {
+    generator.invoke.mockResolvedValueOnce(makeResult({ text: '名额放心，我已经帮你留好了' }));
+    replyRepairAgent.repair.mockResolvedValueOnce('我帮你问下人工客服具体情况。');
+    outputGuard.check
+      .mockResolvedValueOnce({
+        decision: 'repair',
+        riskLevel: 'high',
+        violations: [{ type: 'quota_promise', severity: 'P0', allowFailOpen: false }],
+        ruleIds: ['quota_promise'],
+        blockedRuleIds: ['quota_promise'],
+        repairMode: 'rewrite',
+      })
+      .mockResolvedValueOnce({
+        decision: 'repair',
+        riskLevel: 'low',
+        violations: [{ type: 'human_service_phrase_leak', severity: 'P2', allowFailOpen: true }],
+        ruleIds: ['human_service_phrase_leak'],
+        blockedRuleIds: ['human_service_phrase_leak'],
+        repairMode: 'rewrite',
+      });
+
+    const outcome = await service.runInboundTurn({ sessionRef, input: { text: '还能报名吗' } });
+
+    expect(outcome.kind).toBe('reply');
+    expect(outcome.reply?.text).toBe('我帮你问下人工客服具体情况。');
+    expect(outcome.outputGuardrail).toMatchObject({
+      decision: 'repair',
+      finalOutcome: 'reply',
+      riskLevel: 'low',
+      ruleIds: ['human_service_phrase_leak'],
+      revised: true,
+      reasonCode: 'repair_exhausted_fail_open',
+    });
+  });
+
+  it('hands off when rewriting a strict first draft produces a second review requiring replan', async () => {
+    generator.invoke.mockResolvedValueOnce(makeResult({ text: '名额放心，我已经帮你留好了' }));
+    replyRepairAgent.repair.mockResolvedValueOnce('帮你查了下，附近门店20元/时。');
+    outputGuard.check
+      .mockResolvedValueOnce({
+        decision: 'repair',
+        riskLevel: 'high',
+        violations: [{ type: 'quota_promise', severity: 'P0', allowFailOpen: false }],
+        ruleIds: ['quota_promise'],
+        blockedRuleIds: ['quota_promise'],
+        repairMode: 'rewrite',
+      })
+      .mockResolvedValueOnce({
+        decision: 'replan',
+        riskLevel: 'medium',
+        violations: [{ type: 'job_fact_without_provenance', severity: 'P1', allowFailOpen: true }],
+        ruleIds: ['job_fact_without_provenance'],
+        blockedRuleIds: ['job_fact_without_provenance'],
+        repairMode: 'replan',
+      });
+
+    const outcome = await service.runInboundTurn({
+      sessionRef,
+      input: { text: '还能报名吗' },
+      context: { messageId: 'msg-repair-then-replan' },
+    });
+
+    expect(outcome.kind).toBe('handoff');
+    expect(outcome.reply).toBeUndefined();
+    expect(outcome.handoff?.source).toBe('output_guardrail');
+    expect(generator.invoke).toHaveBeenCalledTimes(1);
+    expect(replyRepairAgent.repair).toHaveBeenCalledTimes(1);
+    expect(outputGuard.check).toHaveBeenCalledTimes(2);
+    expect(outcome.outputGuardrail).toMatchObject({
+      decision: 'replan',
+      finalOutcome: 'handoff',
+      riskLevel: 'medium',
+      ruleIds: ['job_fact_without_provenance'],
+      revised: true,
+      reasonCode: 'repair_exhausted',
+    });
+    expect(outcome.guardrailTrace?.steps.map((step) => step.decision)).toEqual([
+      'repair',
+      'replan',
+    ]);
+    expect(outcome.guardrailTrace?.steps[1]?.repairMode).toBe('replan');
+    expect(guardrailReviews.recordReview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        traceId: 'msg-repair-then-replan',
+        repaired: true,
+        first: expect.objectContaining({ decision: 'repair' }),
+        revised: expect.objectContaining({ decision: 'replan' }),
+        finalOutcome: 'handoff',
       }),
     );
   });
@@ -1458,13 +1875,13 @@ describe('AgentRunnerService.runInboundTurn', () => {
     generator.invoke.mockResolvedValueOnce(makeResult({ text: 'v1' }));
     replyRepairAgent.repair.mockResolvedValueOnce('v2 修复版（引入新违规）');
     const makeDecision = (blockedRuleIds: string[]) => ({
-      decision: 'revise' as const,
+      decision: 'repair' as const,
       riskLevel: 'medium' as const,
       violations: blockedRuleIds.map((ruleId) => ({
         type: ruleId,
         evidence: '证据',
         suggestion: '修复建议',
-        recoverability: 'recoverable' as const,
+        allowFailOpen: true as const,
       })),
       ruleIds: blockedRuleIds,
       blockedRuleIds,
@@ -1482,6 +1899,12 @@ describe('AgentRunnerService.runInboundTurn', () => {
 
     expect(outcome.kind).toBe('reply');
     expect(outcome.reply?.text).toBe('v1');
+    expect(outcome.outputGuardrail).toMatchObject({
+      decision: 'repair',
+      finalOutcome: 'reply',
+      ruleIds: ['booking_receipt_mismatch'],
+      revised: false,
+    });
     expect(guardrailReviews.recordReview).toHaveBeenCalledWith(
       expect.objectContaining({
         traceId: 'msg-failopen-worse',
@@ -1511,15 +1934,15 @@ describe('AgentRunnerService.runInboundTurn', () => {
     replyRepairAgent.repair.mockResolvedValueOnce('你看方便的话，发下姓名、电话和年龄就行。');
     outputGuard.check
       .mockResolvedValueOnce({
-        decision: 'revise' as const,
+        decision: 'repair' as const,
         riskLevel: 'medium' as const,
         violations: [
           {
             type: 'booking_receipt_mismatch',
             evidence: '预约回执不一致',
             suggestion: '按回执修正后回答',
-            recoverability: 'recoverable' as const,
-            // 生产上 revise 档一律派生 currentReplySendable=false（deriveRulePolicy）；
+            allowFailOpen: true as const,
+            // 生产上 repair 档一律派生 currentReplySendable=false（deriveRulePolicy）；
             // mock 保持同形态，防止"用该字段判定禁回退"的恒真条件回潮（2026-07-29）。
             currentReplySendable: false,
           },
@@ -1545,6 +1968,13 @@ describe('AgentRunnerService.runInboundTurn', () => {
 
     expect(outcome.kind).toBe('reply');
     expect(outcome.reply?.text).toBe(firstReply);
+    // 二审 pass 与最终回退是不同事实：采用首版时仍关联首版的真实 repair 意见。
+    expect(outcome.outputGuardrail).toMatchObject({
+      decision: 'repair',
+      finalOutcome: 'reply',
+      revised: false,
+    });
+    expect(outcome.guardrailTrace?.steps.map((step) => step.decision)).toEqual(['repair', 'pass']);
     expect(guardrailReviews.recordReview).toHaveBeenCalledWith(
       expect.objectContaining({
         traceId: 'msg-regression',
@@ -1572,14 +2002,14 @@ describe('AgentRunnerService.runInboundTurn', () => {
     replyRepairAgent.repair.mockResolvedValueOnce('你把姓名和电话发我就行。');
     outputGuard.check
       .mockResolvedValueOnce({
-        decision: 'revise' as const,
+        decision: 'repair' as const,
         riskLevel: 'medium' as const,
         violations: [
           {
             type: 'discriminatory_screening_leak',
             evidence: '外发了歧视性筛选条件',
             suggestion: '删除歧视性内容',
-            recoverability: 'non_recoverable' as const,
+            allowFailOpen: false as const,
             currentReplySendable: false,
           },
         ],
@@ -1595,13 +2025,16 @@ describe('AgentRunnerService.runInboundTurn', () => {
       context: { messageId: 'msg-non-sendable-regression' },
     });
 
-    expect(outcome.kind).toBe('guardrail_blocked');
+    expect(outcome.kind).toBe('handoff');
     expect(outcome.reply).toBeUndefined();
+    // 规则二审已经通过，但 Runner 的回归闸拒绝投递；不能把 pass 伪造为审查拦截。
+    expect(outcome.outputGuardrail).toMatchObject({ decision: 'pass', finalOutcome: 'handoff' });
+    expect(outcome.guardrailTrace?.steps.map((step) => step.decision)).toEqual(['repair', 'pass']);
     expect(guardrailReviews.recordReview).toHaveBeenCalledWith(
       expect.objectContaining({
         traceId: 'msg-non-sendable-regression',
         repaired: true,
-        finalDecision: 'block',
+        finalOutcome: 'handoff',
         reasonCode: 'repair_regression_blocked:structure_collapsed',
       }),
     );
@@ -1609,7 +2042,7 @@ describe('AgentRunnerService.runInboundTurn', () => {
 
   it('delivers a passing rewrite of a leaked internal analysis without tripping the structure gate', async () => {
     // 2026-08-27 生产案 batch_6a8faabb…：首版把内部分析当回复输出（internal_output_leak
-    // 正确 block），repair 重写合格且二审 pass，却被 structure_collapsed 判退化、两版
+    // 正确要求 repair 且禁止 fail-open），repair 重写合格且二审 pass，却被 structure_collapsed 判退化、两版
     // 都不投——候选人整轮静默。首版即违规结构时豁免结构坍缩，修复版应正常投递。
     const leakedAnalysis = [
       '根据查询结果，我来分析一下符合候选人要求的岗位：',
@@ -1626,14 +2059,14 @@ describe('AgentRunnerService.runInboundTurn', () => {
     replyRepairAgent.repair.mockResolvedValueOnce(goodRepair);
     outputGuard.check
       .mockResolvedValueOnce({
-        decision: 'revise' as const,
+        decision: 'repair' as const,
         riskLevel: 'high' as const,
         violations: [
           {
             type: 'internal_output_leak',
             evidence: '泄漏内部实现',
             suggestion: '只输出候选人可见回复',
-            recoverability: 'non_recoverable' as const,
+            allowFailOpen: false as const,
             currentReplySendable: false,
           },
         ],
@@ -1655,23 +2088,23 @@ describe('AgentRunnerService.runInboundTurn', () => {
       expect.objectContaining({
         traceId: 'msg-leak-rewrite-delivered',
         repaired: true,
-        finalDecision: 'pass',
+        finalOutcome: 'reply',
       }),
     );
   });
 
-  it('repair exhausted with a non-recoverable violation still blocks even at medium risk', async () => {
+  it('repair exhausted with a violation with allowFailOpen=false still hands off even at medium risk', async () => {
     generator.invoke.mockResolvedValueOnce(makeResult({ text: 'v1' }));
     replyRepairAgent.repair.mockResolvedValueOnce('v2 仍有问题');
     outputGuard.check.mockResolvedValue({
-      decision: 'revise' as const,
+      decision: 'repair' as const,
       riskLevel: 'medium' as const,
       violations: [
         {
           type: 'internal_output_leak',
           evidence: '泄漏内部实现',
           suggestion: '删除内部内容',
-          recoverability: 'non_recoverable' as const,
+          allowFailOpen: false as const,
         },
       ],
       ruleIds: ['internal_output_leak'],
@@ -1684,7 +2117,7 @@ describe('AgentRunnerService.runInboundTurn', () => {
       input: { text: '约面试' },
     });
 
-    expect(outcome.kind).toBe('guardrail_blocked');
+    expect(outcome.kind).toBe('handoff');
     expect(outcome.guardrail).toEqual(expect.objectContaining({ reasonCode: 'repair_exhausted' }));
   });
 
@@ -1696,7 +2129,7 @@ describe('AgentRunnerService.runInboundTurn', () => {
     );
     replyRepairAgent.repair.mockResolvedValueOnce('我帮你查下花桥中骏附近的岗位');
     outputGuard.check.mockResolvedValueOnce({
-      decision: 'revise',
+      decision: 'repair',
       riskLevel: 'medium',
       violations: [
         {
@@ -1718,6 +2151,11 @@ describe('AgentRunnerService.runInboundTurn', () => {
 
     expect(outcome.kind).toBe('reply');
     expect(outcome.reply?.text).toBe('花桥附近没岗哈，我拉你进餐饮兼职群');
+    expect(outcome.outputGuardrail).toMatchObject({
+      decision: 'repair',
+      finalOutcome: 'reply',
+      revised: false,
+    });
     // 悬空产物不送二审（二审只查规则违规，会误放行）
     expect(outputGuard.check).toHaveBeenCalledTimes(1);
     // 审查档案落库，留存悬空文本供观测
@@ -1726,24 +2164,25 @@ describe('AgentRunnerService.runInboundTurn', () => {
         traceId: 'msg-dangling',
         repaired: true,
         revisedReply: '我帮你查下花桥中骏附近的岗位',
-        finalDecision: 'pass',
+        revised: undefined,
+        finalOutcome: 'reply',
         reasonCode: 'repair_unusable_fail_open',
       }),
     );
   });
 
-  it('dangling repair reply still blocks when the first violation is high risk', async () => {
+  it('dangling repair reply still hands off when the first violation is high risk', async () => {
     generator.invoke.mockResolvedValueOnce(makeResult({ text: '这个岗位不要某地户籍' }));
     replyRepairAgent.repair.mockResolvedValueOnce('我帮你查下其他岗位');
     outputGuard.check.mockResolvedValueOnce({
-      decision: 'revise',
+      decision: 'repair',
       riskLevel: 'high',
       violations: [
         {
           type: 'discriminatory_screening_leak',
           evidence: '命中高敏感规则',
           suggestion: '删除敏感条件',
-          recoverability: 'recoverable',
+          allowFailOpen: true,
         },
       ],
       ruleIds: ['discriminatory_screening_leak'],
@@ -1757,25 +2196,36 @@ describe('AgentRunnerService.runInboundTurn', () => {
       context: { messageId: 'msg-high-dangling' },
     });
 
-    expect(outcome.kind).toBe('guardrail_blocked');
+    expect(outcome.kind).toBe('handoff');
     expect(outcome.guardrail).toEqual(expect.objectContaining({ reasonCode: 'revise_dangling' }));
+    expect(outcome.outputGuardrail).toMatchObject({ decision: 'repair', finalOutcome: 'handoff' });
+    expect(outputGuard.check).toHaveBeenCalledTimes(1);
+    expect(outcome.guardrailTrace?.steps).toHaveLength(1);
+    expect(guardrailReviews.recordReview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        repaired: true,
+        revisedReply: '我帮你查下其他岗位',
+        revised: undefined,
+        finalOutcome: 'handoff',
+      }),
+    );
   });
 
-  it('repair-created internal_output_leak block fails open to the first reply for recoverable P1 violations', async () => {
+  it('repair-created internal_output_leak fails open to the first reply for recoverable P1 violations', async () => {
     generator.invoke.mockResolvedValueOnce(
       makeResult({ text: '这边暂无合适岗位，我先帮你拉进兼职群。' }),
     );
     replyRepairAgent.repair.mockResolvedValueOnce('geocode(address="花桥")');
     outputGuard.check
       .mockResolvedValueOnce({
-        decision: 'revise',
+        decision: 'repair',
         riskLevel: 'medium',
         violations: [
           {
             type: 'group_promise_without_invite',
             evidence: '未调用拉群却承诺拉群',
             suggestion: '删除拉群承诺',
-            recoverability: 'recoverable',
+            allowFailOpen: true,
           },
         ],
         ruleIds: ['group_promise_without_invite'],
@@ -1783,14 +2233,14 @@ describe('AgentRunnerService.runInboundTurn', () => {
         repairMode: 'rewrite',
       })
       .mockResolvedValueOnce({
-        decision: 'block',
+        decision: 'repair',
         riskLevel: 'high',
         violations: [
           {
             type: 'internal_output_leak',
             evidence: '工具调用文本',
             suggestion: '删除内部输出',
-            recoverability: 'non_recoverable',
+            allowFailOpen: false,
           },
         ],
         ruleIds: ['internal_output_leak'],
@@ -1811,15 +2261,70 @@ describe('AgentRunnerService.runInboundTurn', () => {
         traceId: 'msg-leak-failopen',
         repaired: true,
         revisedReply: 'geocode(address="花桥")',
-        finalDecision: 'pass',
+        finalOutcome: 'reply',
         reasonCode: 'repair_unusable_fail_open',
       }),
     );
   });
 
+  it.each([
+    ['medium', true, 'rewrite', 'reply', 'repair_unusable_fail_open'],
+    ['high', true, 'rewrite', 'handoff', 'revise_empty'],
+    ['medium', false, 'rewrite', 'handoff', 'revise_empty'],
+    ['medium', true, 'replan', 'handoff', 'revise_empty'],
+  ] as const)(
+    'empty repair respects %s risk / allowFailOpen=%s / %s mode',
+    async (riskLevel, allowFailOpen, repairMode, expectedKind, reasonCode) => {
+      generator.invoke
+        .mockResolvedValueOnce(makeResult({ text: '首版仍有可恢复措辞问题' }))
+        .mockResolvedValueOnce(makeResult({ text: '' }));
+      replyRepairAgent.repair.mockResolvedValueOnce('');
+      outputGuard.check.mockResolvedValue({
+        decision: repairMode === 'replan' ? 'replan' : 'repair',
+        riskLevel,
+        violations: [{ type: 'booking_receipt_mismatch', allowFailOpen }],
+        ruleIds: ['booking_receipt_mismatch'],
+        blockedRuleIds: ['booking_receipt_mismatch'],
+        repairMode,
+      });
+
+      const outcome = await service.runInboundTurn({
+        sessionRef,
+        input: { text: '报名回执呢' },
+        context: { messageId: 'msg-empty-recovery' },
+      });
+
+      expect(outcome.kind).toBe(expectedKind);
+      expect(outcome.outputGuardrail).toMatchObject({
+        decision: repairMode === 'replan' ? 'replan' : 'repair',
+        finalOutcome: expectedKind,
+      });
+      if (expectedKind === 'reply') {
+        expect(outcome.reply?.text).toBe('首版仍有可恢复措辞问题');
+      }
+      expect(outputGuard.check).toHaveBeenCalledTimes(1);
+      expect(generator.invoke).toHaveBeenCalledTimes(repairMode === 'replan' ? 2 : 1);
+      expect(replyRepairAgent.repair).toHaveBeenCalledTimes(repairMode === 'replan' ? 0 : 1);
+      if (expectedKind !== 'reply') {
+        expect(outcome.guardrail).toEqual(expect.objectContaining({ reasonCode }));
+      }
+      // 修复事实与空产物必须留档，但没有真正二审时不能伪造 revised 步骤。
+      expect(guardrailReviews.recordReview).toHaveBeenCalledWith(
+        expect.objectContaining({
+          reasonCode,
+          repaired: true,
+          revisedReply: '',
+          revised: undefined,
+          finalOutcome: expectedKind,
+        }),
+      );
+      expect(outcome.guardrailTrace?.steps).toHaveLength(1);
+    },
+  );
+
   describe('guardrail review record persistence (guardrail_review_records)', () => {
-    const reviseDecision = {
-      decision: 'revise' as const,
+    const repairDecision = {
+      decision: 'repair' as const,
       riskLevel: 'medium' as const,
       violations: [{ type: 'bad_tone', evidence: '僵硬', suggestion: '更自然' }],
       ruleIds: ['booking_receipt_mismatch'],
@@ -1848,16 +2353,16 @@ describe('AgentRunnerService.runInboundTurn', () => {
       expect(guardrailReviews.recordReview).toHaveBeenCalledWith(
         expect.objectContaining({
           traceId: 'msg-hard-rule-override',
-          finalDecision: 'pass',
+          finalOutcome: 'reply',
           reasonCode: 'override:off:quota_promise',
         }),
       );
     });
 
-    it('revise flow persists first draft full text, violations and revised reply', async () => {
+    it('repair flow persists first draft full text, violations and revised reply', async () => {
       generator.invoke.mockResolvedValueOnce(makeResult({ text: '首版（含区级距离断言）' }));
       replyRepairAgent.repair.mockResolvedValueOnce('重写后的回复');
-      outputGuard.check.mockResolvedValueOnce(reviseDecision).mockResolvedValueOnce(passDecision);
+      outputGuard.check.mockResolvedValueOnce(repairDecision).mockResolvedValueOnce(passDecision);
 
       await service.runInboundTurn({
         sessionRef,
@@ -1873,27 +2378,27 @@ describe('AgentRunnerService.runInboundTurn', () => {
           userMessage: '西城区',
           firstReply: '首版（含区级距离断言）',
           first: expect.objectContaining({
-            decision: 'revise',
+            decision: 'repair',
             ruleIds: ['booking_receipt_mismatch'],
-            violations: reviseDecision.violations,
+            violations: repairDecision.violations,
             feedback: '不要给区级距离结论',
           }),
           repaired: true,
           repairMode: 'rewrite',
           revisedReply: '重写后的回复',
           revised: expect.objectContaining({ decision: 'pass' }),
-          finalDecision: 'pass',
+          finalOutcome: 'reply',
         }),
       );
     });
 
-    it('first-review block persists both first and rewritten replies when repair succeeds', async () => {
+    it('strict first-review repair persists both first and rewritten replies when repair succeeds', async () => {
       generator.invoke.mockResolvedValueOnce(makeResult({ text: '违规首版' }));
       replyRepairAgent.repair.mockResolvedValueOnce('干净重写版');
       outputGuard.check
         .mockResolvedValueOnce({
-          ...reviseDecision,
-          decision: 'block' as const,
+          ...repairDecision,
+          decision: 'repair' as const,
           riskLevel: 'high' as const,
         })
         .mockResolvedValueOnce(passDecision);
@@ -1910,7 +2415,7 @@ describe('AgentRunnerService.runInboundTurn', () => {
           firstReply: '违规首版',
           repaired: true,
           revisedReply: '干净重写版',
-          finalDecision: 'pass',
+          finalOutcome: 'reply',
         }),
       );
     });
@@ -1929,15 +2434,15 @@ describe('AgentRunnerService.runInboundTurn', () => {
       // 守卫命中但无 traceId（debug-chat / test-suite）：不写档案
       generator.invoke.mockResolvedValueOnce(makeResult({ text: '首版' }));
       replyRepairAgent.repair.mockResolvedValueOnce('重写版');
-      outputGuard.check.mockResolvedValueOnce(reviseDecision).mockResolvedValueOnce(passDecision);
+      outputGuard.check.mockResolvedValueOnce(repairDecision).mockResolvedValueOnce(passDecision);
       await service.runInboundTurn({ sessionRef, input: { text: 'hi' } });
       expect(guardrailReviews.recordReview).not.toHaveBeenCalled();
     });
 
-    it('repair exhausted persists both steps with the collapsed block verdict (P0 高风险不 fail-open)', async () => {
+    it('repair exhausted persists both steps with the separate handoff outcome (P0 高风险不 fail-open)', async () => {
       generator.invoke.mockResolvedValueOnce(makeResult({ text: 'v1' }));
       replyRepairAgent.repair.mockResolvedValueOnce('v2 仍有问题');
-      outputGuard.check.mockResolvedValue({ ...reviseDecision, riskLevel: 'high' as const });
+      outputGuard.check.mockResolvedValue({ ...repairDecision, riskLevel: 'high' as const });
 
       await service.runInboundTurn({
         sessionRef,
@@ -1951,8 +2456,8 @@ describe('AgentRunnerService.runInboundTurn', () => {
           firstReply: 'v1',
           repaired: true,
           revisedReply: 'v2 仍有问题',
-          revised: expect.objectContaining({ decision: 'revise' }),
-          finalDecision: 'block',
+          revised: expect.objectContaining({ decision: 'repair' }),
+          finalOutcome: 'handoff',
           reasonCode: 'repair_exhausted',
         }),
       );

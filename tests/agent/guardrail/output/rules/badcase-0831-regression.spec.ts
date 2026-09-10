@@ -6,7 +6,7 @@ const tc = (toolName: string, status?: string): AgentToolCall =>
   ({ toolName, args: {}, result: {}, status }) as unknown as AgentToolCall;
 
 describe('生产 badcase 原文回验', () => {
-  it('4peya6s9：cancel 失败却承诺取消 → revise', () => {
+  it('4peya6s9：cancel 失败却承诺取消 → repair', () => {
     const hit = detectCancelDoneClaimWithoutSubmission('好的，收到，我帮你取消明天的面试预约', [
       tc('duliday_cancel_work_order', 'error'),
     ]);
@@ -21,7 +21,7 @@ describe('生产 badcase 原文回验', () => {
     expect(hit?.ruleId).toBe('cancel_done_claim_without_submission');
   });
 
-  it('2m09fyio：[NO_REPLY] 整条投递 → block', () => {
-    expect(detectInvalidModelOutput('[NO_REPLY]')?.action).toBe('block');
+  it('2m09fyio：[NO_REPLY] 整条投递 → repair（禁止 fail-open）', () => {
+    expect(detectInvalidModelOutput('[NO_REPLY]')?.action).toBe('repair');
   });
 });

@@ -131,9 +131,9 @@ TurnOutcomeInterventionService.commit
 
 ---
 
-## 5. 两类 handoff 来源
+## 5. handoff 来源
 
-Runner 当前统一处理两类来源：
+Runner 统一处理模型请求、工具门禁拒绝、输出无法安全放行和入站风险四类来源：
 
 ### 5.1 模型显式调用 `request_handoff`
 
@@ -148,16 +148,25 @@ Runner 当前统一处理两类来源：
 - `duliday_interview_booking` 的 booking provenance/runtime gate；
 - `duliday_modify_interview_time` 的工单归属 gate。
 
-Runner 的分类优先级为：
+### 5.3 出站无法安全放行
+
+Runner 在有界修复后仍无法安全放行时，或首审发现纯推理/工具残文时，产生携带 guardrail 原因的 `handoff`。元叙述旁白的 `skipped` 保留已有工具意图，不新增人工介入。
+
+### 5.4 入站风险
+
+Input 审查只返回 `pass | handoff`。风险命中在进入 Generator 前直接形成 handoff，以 `guardrail.phase=inbound`、`guardrail.source=input_guardrail` 标明来源，原 `conversation_risk` 意图由既有出口暂停托管与通知；不新增一份 `general_handoff`，也不新建普通 handoff 元数据、底账或精确幂等键；保留原风险冷却、暂停与通知策略。
+
+生成后的分类优先级为：
 
 ```text
-出站 block
+出站 resolution（无法安全放行 → handoff；元叙述旁白 → skipped）
   → committed request_handoff / handoff gate reject
   → 普通短路或空文本
   → 正常回复
 ```
 
-因此 handoff gate 不会被后面的通用 `skipped` 分支吞掉。
+因此 handoff gate 不会被后面的通用 `skipped` 分支吞掉。出站 handoff 携带 guardrail 原因；
+元叙述旁白保留既有工具意图、不新增介入。Input 风险以 `handoff` 在 Agent 进入前短路；Runner 仅有 reply / handoff / skipped 三种终态。
 
 ---
 

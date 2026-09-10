@@ -67,12 +67,12 @@ describe('detectBookingDoneClaimWithoutSubmission', () => {
 });
 
 describe('detectCancelDoneClaimWithoutSubmission', () => {
-  it('取消工具调用失败却宣称已取消 → revise（硬矛盾）', () => {
+  it('取消工具调用失败却宣称已取消 → repair（硬矛盾）', () => {
     const hit = detectCancelDoneClaimWithoutSubmission('好的，收到，我帮你取消明天的面试预约', [
       failedCall('duliday_cancel_work_order'),
     ]);
     expect(hit?.ruleId).toBe('cancel_done_claim_failed_tool');
-    expect(hit?.action).toBe('revise');
+    expect(hit?.action).toBe('repair');
   });
 
   it('零取消调用却宣称"已经帮你取消了" → observe', () => {
@@ -112,19 +112,19 @@ describe('detectCancelDoneClaimWithoutSubmission', () => {
   });
 });
 
-describe('booking_done_claim_no_work_order（长期记忆确证无在途工单时升 revise）', () => {
+describe('booking_done_claim_no_work_order（长期记忆确证无在途工单时要求 repair）', () => {
   const booking = (job_id: number | null | undefined) => ({
     work_order_id: 1,
     linked_at: '2026-09-02',
     job_id,
   });
 
-  it('零 booking + 无在途工单 → revise（badcase wvr7pejq）', () => {
+  it('零 booking + 无在途工单 → repair（badcase wvr7pejq）', () => {
     const hit = detectBookingDoneClaimWithoutSubmission('预约成功\n\n面试地址：勤奋路103号', [], {
       activeBookings: [],
     });
     expect(hit?.ruleId).toBe('booking_done_claim_no_work_order');
-    expect(hit?.action).toBe('revise');
+    expect(hit?.action).toBe('repair');
   });
 
   it('在途工单存在或未知时保持 observe', () => {
@@ -138,14 +138,14 @@ describe('booking_done_claim_no_work_order（长期记忆确证无在途工单�
     );
   });
 
-  it('在途工单都不是本轮焦点岗位 → revise（chat 6a97b336 换店重约后零工具宣称"报名已提交成功"）', () => {
+  it('在途工单都不是本轮焦点岗位 → repair（chat 6a97b336 换店重约后零工具宣称"报名已提交成功"）', () => {
     const hit = detectBookingDoneClaimWithoutSubmission(
       '李霄的报名已提交成功\n\n面试时间：明天（9月8日）下午 2 点\n门店：必胜客武进万达店',
       [],
       { activeBookings: [booking(529171)], focusJobId: 528334 },
     );
     expect(hit?.ruleId).toBe('booking_done_claim_no_work_order');
-    expect(hit?.action).toBe('revise');
+    expect(hit?.action).toBe('repair');
   });
 
   it('在途工单就是焦点岗位 → 跨轮复述，保持 observe', () => {

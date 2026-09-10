@@ -75,7 +75,7 @@ src/resolution/brand/
 【出站守卫】guardrail（§9）
   只对账高置信 fuzzySuggestions 与回复，不做开放式品牌抽取
         ↓
-【turn-finalizer / memory.onTurnEnd】统一副作用出口    ← 锚点二
+【turn-finalizer / memory.onTurnEnd】记忆收尾入口      ← 锚点二
   extract_facts（LLM 轨）  极性判断 + 指代链接，品牌名回目录验证
   复用回合上下文中的图片品牌解析结果  缺描述→异步补写（§8.3）
   汇总本轮全部结果 → brand-policy 批量应用（先 positive 后 negative）

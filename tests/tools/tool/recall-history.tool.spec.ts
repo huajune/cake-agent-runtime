@@ -1,6 +1,7 @@
 import { buildRecallHistoryTool } from '@tools/recall-history.tool';
 import { ToolBuildContext } from '@shared-types/tool.types';
 import { createToolContext } from '../../helpers/tool-context.fixture';
+import { createTurnLedger } from '@agent/generator/preparation/turn-ledger';
 
 describe('buildRecallHistoryTool', () => {
   const mockMemoryService = {
@@ -22,6 +23,20 @@ describe('buildRecallHistoryTool', () => {
     const builder = buildRecallHistoryTool(mockMemoryService as never);
     const builtTool = builder(mockContext);
     expect(builtTool).toBeDefined();
+  });
+
+  it('历史工具新召回的品牌追加到集合，后续可使用标准名查询', async () => {
+    mockMemoryService.getSessionSummaries.mockResolvedValue([
+      { summary: '此前咨询过 KFC 的岗位', sessionId: 'previous', startTime: '', endTime: '' },
+    ]);
+    const context = createToolContext({ session: { botUserId: 'wecom-user-1' } });
+    context.ledger = createTurnLedger({
+      mentionedBrands: [],
+      brandCatalog: [{ id: 1, name: '肯德基', aliases: ['KFC'] }],
+    });
+    const built = buildRecallHistoryTool(mockMemoryService as never)(context);
+    await built.execute({}, { toolCallId: 'recall', messages: [], context: {} });
+    expect(context.ledger.mentionedBrands).toEqual(new Set(['肯德基']));
   });
 
   it('should return not found when no summaries', async () => {

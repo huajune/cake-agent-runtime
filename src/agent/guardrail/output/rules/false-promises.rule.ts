@@ -1,4 +1,3 @@
-import { GUARDRAIL_ACTION } from '@shared-types/guardrail.contract';
 import type { FactRule } from '../output-rule.types';
 
 /**
@@ -9,8 +8,8 @@ import type { FactRule } from '../output-rule.types';
  * - 目前只剩名额承诺：这类承诺一旦发出即成证据，风险不可逆。
  *
  * 动作策略：
- * - quota_promise 用 block：名额承诺没有任何工具能正当化，发出去风险不可逆；
- *   runner 会先尝试一次重写，二审仍违规才静默。
+ * - quota_promise 用 repair 且禁止 fail-open：名额承诺没有任何工具能正当化，
+ *   发出去风险不可逆；Runner 会先尝试修复，仍无法安全放行时转人工介入。
  *
  * 用户裁定批量下线（勿修补勿重加）：group_full_without_invite（未拉群编造群满）、
  * system_status_fabrication（系统状态甩锅观察）、tool_failure_success_claim（副作用工具失败
@@ -31,6 +30,5 @@ export const FALSE_PROMISE_RULES: FactRule[] = [
       '回复向候选人承诺名额不会满或已保留（承诺一旦发出即成证据，岗位状态可能随时变化，候选人有前置成本时需提示不确定性）',
     keywords: QUOTA_PROMISE_PATTERN,
     requiredToolPredicate: () => false,
-    action: GUARDRAIL_ACTION.BLOCK,
   },
 ];

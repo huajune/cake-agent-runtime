@@ -1,5 +1,5 @@
+import { createOutputRuleFinding } from '../output-rule-catalog';
 import type { AgentToolCall } from '@agent/generator/generator.types';
-import { GUARDRAIL_ACTION } from '@shared-types/guardrail.contract';
 import {
   normalizeBrandNameForComparison,
   normalizeForBrandMatch,
@@ -39,13 +39,10 @@ export function detectRequestedBrandMismatch(text: string, toolCalls: AgentToolC
   const claimedBrands = extractStructuredJobTitleBrands(text);
   for (const claimed of claimedBrands) {
     if (isGroundedBrandClaim(claimed, appliedBrands)) continue;
-    return {
-      ruleId: 'requested_brand_mismatch',
-      label: `工具实际应用品牌为"${[...appliedBrands].join('/')}"，但回复结构化推荐了其它品牌"${claimed}"`,
-      // 结构化标题解析可能把门店名当成品牌名，确定性修复容易改坏正确回复。
-      // 因此只保留 observe 供事后识别真跨品牌串台。
-      action: GUARDRAIL_ACTION.OBSERVE,
-    };
+    return createOutputRuleFinding(
+      'requested_brand_mismatch',
+      `工具实际应用品牌为"${[...appliedBrands].join('/')}"，但回复结构化推荐了其它品牌"${claimed}"`,
+    );
   }
 
   return null;
@@ -58,11 +55,10 @@ export function detectBrandAliasFuzzyMatchIgnored(text: string, toolCalls: Agent
   if (!suggestion) return null;
   if (text.includes(suggestion) && !isNoMatchClaimAboutBrand(text, suggestion)) return null;
 
-  return {
-    ruleId: 'brand_alias_fuzzy_match_ignored',
-    label: `duliday_job_list 返回高置信品牌回指"${suggestion}"，但回复仍声称品牌/岗位未找到`,
-    action: GUARDRAIL_ACTION.REVISE,
-  };
+  return createOutputRuleFinding(
+    'brand_alias_fuzzy_match_ignored',
+    `duliday_job_list 返回高置信品牌回指"${suggestion}"，但回复仍声称品牌/岗位未找到`,
+  );
 }
 
 /** 读工具实际应用的品牌（enforce 生效条件；exclude 的排除目标不是"推荐来源"，不对账）。 */

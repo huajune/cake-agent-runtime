@@ -183,7 +183,7 @@ export const SIDE_EFFECT_TOOLS = new Set([
 /** 成功提交后会产生不可逆外部动作，本轮 replay 必须跳过的工具。 */
 export const REPLAY_BLOCKING_TOOLS = new Set(['invite_to_group', 'duliday_interview_booking']);
 
-/** revise 是纯文本修复阶段：这些工具绝不允许在 revise 中暴露。 */
+/** repair 是纯文本修复阶段：这些工具绝不允许在 repair 中暴露。 */
 export const REVISION_FORBIDDEN_TOOLS = new Set([...SIDE_EFFECT_TOOLS]);
 
 /** 主动复聊默认只读；这些工具在 proactive 触发源下默认禁用。 */

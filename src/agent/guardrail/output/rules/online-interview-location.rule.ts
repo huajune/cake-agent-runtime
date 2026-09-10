@@ -1,5 +1,5 @@
+import { createOutputRuleFinding } from '../output-rule-catalog';
 import type { AgentToolCall } from '@shared-types/agent-telemetry.types';
-import { GUARDRAIL_ACTION } from '@shared-types/guardrail.contract';
 import type { RuleContradiction } from '../output-rule.types';
 
 /**
@@ -88,13 +88,11 @@ export function detectOnlineInterviewLocationClaim(
   for (const { kind, pattern } of INTERVIEW_LOCATION_CLAIM_PATTERNS) {
     if (!pattern.test(replyText)) continue;
     const method = interviewMethod || '无需到店';
-    return {
-      ruleId: 'online_interview_location_claim',
-      label:
-        `本次面试方式为“${method}”、无需到店，回复却出现${kind}` +
+    return createOutputRuleFinding(
+      'online_interview_location_claim',
+      `本次面试方式为“${method}”、无需到店，回复却出现${kind}` +
         '——候选人会为一场线上面试白跑一趟门店',
-      action: GUARDRAIL_ACTION.REVISE,
-    };
+    );
   }
   return null;
 }

@@ -193,8 +193,6 @@ export class AiStreamTrace {
           scenario: this.scenario as MonitoringMetadata['scenario'],
         },
       );
-
-      this.messageTrackingService.recordWorkerStart(this.traceId);
     }
     this.timing.markWorkerStart();
 
@@ -218,10 +216,7 @@ export class AiStreamTrace {
   }
 
   markAiStart(): void {
-    if (!this.timing.markAiStart()) return;
-    if (!this.skipTrackingPersistence) {
-      this.messageTrackingService.recordAiStart(this.traceId);
-    }
+    this.timing.markAiStart();
   }
 
   markStreamReady(entryStage: string | null): void {
@@ -230,10 +225,7 @@ export class AiStreamTrace {
   }
 
   markResponsePipeStart(): void {
-    if (!this.timing.markResponsePipeStart()) return;
-    if (!this.skipTrackingPersistence) {
-      this.messageTrackingService.recordSendStart(this.traceId);
-    }
+    this.timing.markResponsePipeStart();
   }
 
   observeChunk(chunk: UIMessageChunk): void {
@@ -496,15 +488,6 @@ export class AiStreamTrace {
 
   private completeLifecycle(): void {
     this.timing.markCompleted();
-
-    if (this.skipTrackingPersistence) return;
-
-    if (this.timing.marks.aiStartAt) {
-      this.messageTrackingService.recordAiEnd(this.traceId);
-    }
-    if (this.timing.marks.responsePipeStartAt) {
-      this.messageTrackingService.recordSendEnd(this.traceId);
-    }
   }
 
   private toErrorMessage(error: unknown): string {

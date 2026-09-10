@@ -79,9 +79,10 @@ src/
 ├── memory/             # 两层记忆：short-term（7d 消息窗口 + 3d session 状态）/ long-term（候选人×bot 关系档）
 │                       #   lifecycle 编排 + 3d delayed consolidation + 自用 Redis/Supabase stores；episode 仅是计算边界
 ├── agent/              # Agent 编排
-│   ├── runner/         #   回合入口 agent-runner + turn-finalizer(统一副作用出口) + reply-rewrite
+│   ├── runner/         #   回合入口 agent-runner + outcome/人工介入提交 + turn-finalizer(记忆收尾)
 │   ├── generator/      #   preparation(召回/上下文准备) + generator(LLM 调用) + context/(Prompt Section 体系)
-│   ├── guardrail/      #   input(注入/风险拦截) / output(hard-rules + llm-reviewer + sanitizer) / tool(catalog)
+│   ├── guardrail/      #   input(注入/风险拦截) / output(门面/types/catalog + rules/ + sanitizer/) / tool(catalog)
+│   ├── reply-repair/   #   无工具改写 + 修复上下文/证据包 + repair regression；由 Runner 编排一次修复
 │   └── reengagement/   #   二次触发：anchor → follow-up-scheduler → processor → reengagement.agent
 ├── observability/      # AsyncLocalStorage 请求上下文 + AgentTracer → CompositeObserver
 │                       #   → PersistingObserver 落 agent_execution_events（与 message_processing_records 同 traceId 可 join）
@@ -111,11 +112,31 @@ supabase/migrations/    # 120+ 迁移；baseline 是 20260310000000
   → application：接收 → 过滤规则 → 存历史 → 立即返回 200
   → runtime：每条消息注册 delay=静默窗口 的 Bull job（debounce），
              Worker 触发时距最后一条消息静默足够久才处理（simple-merge，90s 租约锁+心跳续期）
-  → agent/runner：runInboundTurn（记忆召回 → prompt 组装 → 多步工具调用 → 出站守卫审查 → turn-finalizer 沉淀副作用）
-  → delivery：分段（\n\n + ~）+ 打字延迟拟人化发送
+  → agent/runner：runInboundTurn（记忆召回 → prompt 组装 → 多步工具调用 → 确定性出站审查/一次修复 → outcome）
+  → Replay 定局 → delivery 分段（\n\n + ~）+ 打字延迟拟人化发送 / 独立提交人工介入
+  → turn-finalizer 按投递结局收尾记忆
 ```
 
-出站守卫（output guardrail）三档：确定性 hard-rules → LLM 语义审查（shadow/enforce 由 `system_config.agent_reply_config` 控制）→ sanitizer；审查全程档案落 `guardrail_review_records`。
+出站守卫根目录 `output/` 保留门面、公共类型与 `output-rule-catalog.ts`；`output/rules/` 负责
+具体规则与调度，对格式、封闭词形与工具/状态证据做确定性裁决；`output/sanitizer/`
+做确定性清洗；不运行 LLM reviewer 或 semantic shadow。Output 单次审查只返回 pass / observe / repair / replan；
+旧 revise 与 block 都映射为 repair，原严格拒发规则保留 `allowFailOpen: false`，不再用 recoverability 表达运行时权限。Runner 根据守卫派生的 repairMode 最多
+修复一次：rewrite 走机械清理或无工具 `ReplyRepairAgent`；replan 用同参数重进 Generator，首版
+已有已提交副作用时禁止重进并降级 rewrite。重生成若由真实工具明确短路为 `handoff/skipped`，优先保留工具终态，不伪造二审；纯无工具空产物仍按修复失败处理。其余产物二审并做适用的回归检查，档案落
+`guardrail_review_records`。`reply-repair/` 拥有 `RepairEvidenceBuilder` / `RepairEvidencePacket`
+和回归闸，Builder 由 `AgentModule` 注册；GuardrailModule 不导出修复证据。
+Runner 用 `resolution: { outcome: reply | handoff | skipped, reasonCode? }` 表达最终处置，保留真实首审/二审；
+Trace 使用 `finalOutcome`，advisory 只审查、不产生最终处置。出站无法安全放行时转人工；元叙述旁白为
+`skipped`，保留已有工具意图、不新增介入；纯推理/工具残文直接转人工。Input 审查仅为 `pass | handoff`；风险命中时不进入 Agent，Runner 同样返回 handoff，以 `guardrail.phase=inbound`、`guardrail.source=input_guardrail` 标明来源。既有 `conversation_risk` 意图仍由统一出口暂停/通知，不新增 `general_handoff`；Runner 终态统一为 reply / handoff / skipped。
+Catalog 仅管理可独立识别与治理的规则：Input、Tool、Output 各持一份子目录，
+`guardrail/catalog.ts` 仅聚合这三份目录。Input 与 Output 执行器直接引用规则定义；Tool 目录
+用于审计登记，执行仍在工具域。Output 检测器经 `createOutputRuleFinding` 引用目录默认动作；
+未知 ID 拒绝，动态反馈仅限显式 per-hit 规则。Output 源码/调度与目录双向校验，不能用两个
+同源 ID 列表互相比对替代执行覆盖测试。修复回归、Runner 恢复分支与确定性清洗直接阅读各自
+实现和行为测试；理由码、恢复判据与清洗步骤留在所属实现中。
+
+`TurnFinalizer` 只负责 `runTurnEnd` 记忆收尾；人工介入由 Replay 定局后的
+`TurnOutcomeInterventionService.commit()` 独立提交。报名、拉群等已提交业务动作不能在修复中重做。
 
 复聊（reengagement）是独立链路：**不复用主 generator**，走专用 ReengagementAgent（所有场景一次性结构化 LLM 调用，无工具无多步；blockReason fail-closed + 复读/姓名确定性兜底），全生命周期落 `reengagement_touch_records`。
 

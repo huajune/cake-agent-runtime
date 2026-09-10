@@ -5,11 +5,11 @@ import {
 
 describe('detectInvalidModelOutput - 控制标记', () => {
   it.each(['[NO_REPLY]', '[no_reply]', '[NO REPLY]', '【skip】', '（silence）', '[SKIP_REPLY]'])(
-    '整条回复只是控制标记 %s → block',
+    '整条回复只是控制标记 %s → repair（禁止 fail-open）',
     (text) => {
       const hit = detectInvalidModelOutput(text);
       expect(hit?.ruleId).toBe('invalid_model_output');
-      expect(hit?.action).toBe('block');
+      expect(hit?.action).toBe('repair');
     },
   );
 
@@ -32,15 +32,15 @@ describe('detectInvalidModelOutput - 工具调用文本化泄漏', () => {
   }
 }`;
 
-  it('正文含协议名字键 + 入参键 → block', () => {
+  it('正文含协议名字键 + 入参键 → repair（禁止 fail-open）', () => {
     const hit = detectInvalidModelOutput(LEAKED_BLOB);
     expect(hit?.ruleId).toBe('invalid_model_output');
-    expect(hit?.action).toBe('block');
+    expect(hit?.action).toBe('repair');
   });
 
   it('blob 混在候选人可见文本中间同样命中', () => {
     const hit = detectInvalidModelOutput(`好的，我这就帮你提交\n${LEAKED_BLOB}\n稍等一下`);
-    expect(hit?.action).toBe('block');
+    expect(hit?.action).toBe('repair');
   });
 
   it.each([
@@ -48,7 +48,7 @@ describe('detectInvalidModelOutput - 工具调用文本化泄漏', () => {
     ['驼峰名字键', '{"toolName": "invite_to_group", "args": {"chatId": "abc"}}'],
     ['tool_use 形态', '{"tool_use": "geocode", "tool_input": {"address": "浦东"}}'],
   ])('%s 命中', (_label, text) => {
-    expect(detectInvalidModelOutput(text)?.action).toBe('block');
+    expect(detectInvalidModelOutput(text)?.action).toBe('repair');
   });
 
   it('裸 name 键不命中——普通 JSON 里太常见', () => {

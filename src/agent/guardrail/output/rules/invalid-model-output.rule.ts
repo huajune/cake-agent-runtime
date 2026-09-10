@@ -1,4 +1,4 @@
-import { GUARDRAIL_ACTION } from '@shared-types/guardrail.contract';
+import { createOutputRuleFinding } from '../output-rule-catalog';
 import type { RuleContradiction } from '../output-rule.types';
 
 /** Provider/model artifacts that can never be a valid candidate-facing reply. */
@@ -138,39 +138,33 @@ export function detectInvalidModelOutput(content: string): RuleContradiction | n
   if (!text) return null;
 
   if (THINK_TAG_PATTERN.test(text)) {
-    return {
-      ruleId: 'invalid_model_output',
-      label: '回复正文含 <think> 推理标签，属于模型/Provider 输出格式异常，必须拦截',
-      action: GUARDRAIL_ACTION.BLOCK,
-    };
+    return createOutputRuleFinding(
+      'invalid_model_output',
+      '回复正文含 <think> 推理标签，属于模型/Provider 输出格式异常，必须拦截',
+    );
   }
 
   if (containsLeakedToolCallBlob(text)) {
-    return {
-      ruleId: 'invalid_model_output',
-      label:
-        '回复正文含工具调用 JSON（协议名字键 + 入参键），说明模型把 tool-call 当文本输出；' +
+    return createOutputRuleFinding(
+      'invalid_model_output',
+      '回复正文含工具调用 JSON（协议名字键 + 入参键），说明模型把 tool-call 当文本输出；' +
         '它既不是候选人可读文本，也意味着该工具本轮并未真正执行',
-      action: GUARDRAIL_ACTION.BLOCK,
-    };
+    );
   }
 
   if (CONTROL_MARKER_ONLY_PATTERN.test(text)) {
-    return {
-      ruleId: 'invalid_model_output',
-      label:
-        '整条回复只是模型自造的「本轮不回复」控制标记（如 [NO_REPLY]），不是候选人可读文本；' +
+    return createOutputRuleFinding(
+      'invalid_model_output',
+      '整条回复只是模型自造的「本轮不回复」控制标记（如 [NO_REPLY]），不是候选人可读文本；' +
         '沉默必须走 skip_reply 工具，标记本身绝不能投递',
-      action: GUARDRAIL_ACTION.BLOCK,
-    };
+    );
   }
 
   if (OPAQUE_NUMERIC_REPLY_PATTERN.test(text)) {
-    return {
-      ruleId: 'invalid_model_output',
-      label: '回复只有 12 位以上数字标识符，不构成可发送的候选人回复，必须拦截',
-      action: GUARDRAIL_ACTION.BLOCK,
-    };
+    return createOutputRuleFinding(
+      'invalid_model_output',
+      '回复只有 12 位以上数字标识符，不构成可发送的候选人回复，必须拦截',
+    );
   }
 
   return null;

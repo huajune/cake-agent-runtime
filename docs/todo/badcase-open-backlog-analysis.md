@@ -1,5 +1,7 @@
 # BadCase 未解决积压全量分析（飞书 BadCase 表）
 
+本文保留各期积压裁定的原动作名称。当前 Output 单次审查为 pass / observe / repair / replan，旧 revise / block 对应 repair，严格拒发由独立的 `allowFailOpen: false` 保留；当前最终处置与历史统计口径见 [守卫治理体系](../architecture/guardrail-quality-system.md)。
+
 ## 结论速览
 
 飞书表 790 条记录中未解决 117 条（待分析 97 / 处理中 15 / 待验证 5；「暂搁置」12 条按既有裁定不计）。

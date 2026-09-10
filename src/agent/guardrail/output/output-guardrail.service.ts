@@ -18,9 +18,9 @@ import {
   GUARDRAIL_REPAIR_MODE,
   GUARDRAIL_RISK_LEVEL,
 } from '@shared-types/guardrail.contract';
-import { HardRulesService, type HardRuleOverrideHit } from './hard-rules.service';
+import { HardRulesService, type HardRuleOverrideHit } from './rules/hard-rules.service';
 import type { RuleContradiction } from './output-rule.types';
-import { OutboundReplySanitizer } from './outbound-reply-sanitizer';
+import { OutboundReplySanitizer } from './sanitizer/outbound-reply-sanitizer';
 
 const RECENT_USER_TEXTS_LIMIT = 8;
 
@@ -123,18 +123,11 @@ export class OutputGuardrailService {
     const overrideMarkers = this.buildHardRuleOverrideMarkers(ruleResult.overrideHits);
 
     let output: OutputGuardDecision;
-    if (
-      decision === GUARDRAIL_DECISION.BLOCK ||
-      decision === GUARDRAIL_DECISION.REPLAN ||
-      decision === GUARDRAIL_DECISION.REVISE
-    ) {
+    if (decision === GUARDRAIL_DECISION.REPLAN || decision === GUARDRAIL_DECISION.REPAIR) {
       const actionable = contradictions.filter((rule) => rule.currentReplySendable === false);
       output = {
         decision,
-        riskLevel:
-          decision === GUARDRAIL_DECISION.BLOCK
-            ? GUARDRAIL_RISK_LEVEL.HIGH
-            : this.resolveRuleRiskLevel(actionable),
+        riskLevel: this.resolveRuleRiskLevel(actionable),
         violations: actionable.map((rule) => this.ruleToViolation(rule)),
         ruleIds,
         blockedRuleIds,
@@ -169,9 +162,8 @@ export class OutputGuardrailService {
 
   private mergeRuleDecision(contradictions: RuleContradiction[]): OutputDecision {
     const actions = contradictions.map((rule) => rule.action);
-    if (actions.includes('block')) return GUARDRAIL_DECISION.BLOCK;
     if (actions.includes('replan')) return GUARDRAIL_DECISION.REPLAN;
-    if (actions.includes('revise')) return GUARDRAIL_DECISION.REVISE;
+    if (actions.includes('repair')) return GUARDRAIL_DECISION.REPAIR;
     if (actions.includes('observe')) return GUARDRAIL_DECISION.OBSERVE;
     return GUARDRAIL_DECISION.PASS;
   }
@@ -198,7 +190,7 @@ export class OutputGuardrailService {
         `修正以消除「${rule.ruleId}」命中的问题，只输出候选人可见回复`,
       severity: rule.severity,
       dataSensitivity: rule.dataSensitivity,
-      recoverability: rule.recoverability,
+      allowFailOpen: rule.allowFailOpen,
       currentReplySendable: rule.currentReplySendable,
       feedbackPolicy: rule.feedbackPolicy,
       repairMode: rule.repairMode,

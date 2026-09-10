@@ -33,7 +33,7 @@ describe('InputGuardrailService', () => {
     });
   });
 
-  it('returns block decision when high-confidence input risk hits', async () => {
+  it('returns handoff decision when high-confidence input risk hits', async () => {
     riskIntercept.evaluate.mockResolvedValue({
       hit: true,
       riskType: 'complaint_risk',
@@ -58,7 +58,7 @@ describe('InputGuardrailService', () => {
         scanContent: '我要投诉',
       }),
     ).resolves.toEqual({
-      decision: 'block',
+      decision: 'handoff',
       source: 'input_risk',
       disposition: 'side_effects',
       reasonCode: 'complaint_risk',

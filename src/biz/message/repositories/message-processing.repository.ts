@@ -1,3 +1,4 @@
+import { readGuardrailTrace } from './guardrail-review-read.util';
 import { Injectable } from '@nestjs/common';
 import { BaseRepository } from '@infra/supabase/base.repository';
 import { SupabaseService } from '@infra/supabase/supabase.service';
@@ -1118,7 +1119,7 @@ export class MessageProcessingRepository extends BaseRepository {
       agentSteps: record.agent_steps as MessageProcessingRecordInput['agentSteps'],
       anomalyFlags: record.anomaly_flags as MessageProcessingRecordInput['anomalyFlags'],
       guardrailInput: record.guardrail_input as MessageProcessingRecordInput['guardrailInput'],
-      guardrailOutput: record.guardrail_output as MessageProcessingRecordInput['guardrailOutput'],
+      guardrailOutput: readGuardrailTrace(record.guardrail_output),
       memorySnapshot: record.memory_snapshot as MessageProcessingRecordInput['memorySnapshot'],
       postProcessingStatus:
         record.post_processing_status as MessageProcessingRecordInput['postProcessingStatus'],

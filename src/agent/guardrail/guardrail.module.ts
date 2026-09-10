@@ -11,8 +11,7 @@ import { PromptInjectionDetector } from './input/prompt-injection-detector';
 import { PromptSecurityObserverService } from './input/prompt-security-observer.service';
 import { RiskInterceptService } from './input/risk-intercept.service';
 import { OutputGuardrailService } from './output/output-guardrail.service';
-import { HardRulesService } from './output/hard-rules.service';
-import { GuardrailReviewPacketBuilder } from './output/llm/review-packet.builder';
+import { HardRulesService } from './output/rules/hard-rules.service';
 
 @Module({
   imports: [
@@ -30,7 +29,6 @@ import { GuardrailReviewPacketBuilder } from './output/llm/review-packet.builder
     PromptSecurityObserverService,
     RiskInterceptService,
     HardRulesService,
-    GuardrailReviewPacketBuilder,
     OutputGuardrailService,
   ],
   exports: [
@@ -39,7 +37,6 @@ import { GuardrailReviewPacketBuilder } from './output/llm/review-packet.builder
     PromptSecurityObserverService,
     RiskInterceptService,
     HardRulesService,
-    GuardrailReviewPacketBuilder,
     OutputGuardrailService,
   ],
 })

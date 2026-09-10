@@ -9,17 +9,24 @@ import {
   deriveRulePolicy,
   type GuardrailRuleAction,
   type OutputRulePolicy,
-} from '../output-rule.types';
+  type RuleContradiction,
+} from './output-rule.types';
 
 /**
- * 登记当前实际运行的封闭确定性规则：执行档（revise/block）+ 少量 observe 哨兵。
+ * 登记当前实际运行的封闭确定性规则：草稿处理档（repair/replan）+ 少量 observe 哨兵。
  * observe 哨兵只落档不改变出站裁决；新规则一律 observe
  * 入场，升档须 ≥2 周判例且精确率 ≥90%。
  */
-export interface OutputRuleCatalogMetadata extends OutputRulePolicy {
-  id: string;
+interface OutputRuleCatalogDefinition<Id extends string> extends OutputRulePolicy {
+  id: Id;
   action: GuardrailRuleAction;
   priority: GuardrailPriority;
+  /** 相对 src/ 的实际执行文件；聚合目录直接复用，不再维护第二张映射。 */
+  source: string;
+  /** HardRulesService 实际调度的 detector 或 FactRule 集合导出。 */
+  entrypoint: string;
+  /** 仅结构化回执的具体时间/场景允许逐次命中提供反馈，其余反馈统一来自目录。 */
+  feedbackSource: 'catalog' | 'per_hit';
   description: string;
   riskGoal: string;
   exogenousSignal: string;
@@ -28,13 +35,19 @@ export interface OutputRuleCatalogMetadata extends OutputRulePolicy {
   repairToolNames: readonly string[];
 }
 
-type OutputRuleCatalogSeed = Omit<OutputRuleCatalogMetadata, keyof OutputRulePolicy | 'action'> &
-  Partial<OutputRulePolicy> & { action: GuardrailRuleAction };
+type OutputRuleCatalogSeed = Omit<
+  OutputRuleCatalogDefinition<string>,
+  keyof OutputRulePolicy | 'feedbackSource'
+> &
+  Partial<OutputRulePolicy> & { feedbackSource?: 'per_hit' };
 
-function applyPolicy(rule: OutputRuleCatalogSeed): OutputRuleCatalogMetadata {
+function applyPolicy<Id extends string>(
+  rule: OutputRuleCatalogSeed & { id: Id },
+): OutputRuleCatalogDefinition<Id> {
   const derived = deriveRulePolicy(rule.action);
   return {
     ...derived,
+    allowFailOpen: rule.allowFailOpen ?? true,
     severity: rule.severity ?? rule.priority,
     dataSensitivity: rule.dataSensitivity ?? GUARDRAIL_DATA_SENSITIVITY.NONE,
     feedbackPolicy:
@@ -48,16 +61,20 @@ function applyPolicy(rule: OutputRuleCatalogSeed): OutputRuleCatalogMetadata {
         ? ''
         : '上一版回复命中封闭确定性规则。只删除或修正违规部分，保留工具已确认事实，只输出候选人可见回复。'),
     repairToolNames: [],
+    feedbackSource: 'catalog',
     ...rule,
   };
 }
 
-const V = 'tests/agent/guardrail/output/hard-rules.service.spec.ts';
+const V = 'tests/agent/guardrail/output/rules/hard-rules.service.spec.ts';
 
 const OUTPUT_RULE_CATALOG_SEEDS = [
   {
     id: 'invalid_model_output',
-    action: GUARDRAIL_ACTION.BLOCK,
+    source: 'agent/guardrail/output/rules/invalid-model-output.rule.ts',
+    entrypoint: 'detectInvalidModelOutput',
+    action: GUARDRAIL_ACTION.REPAIR,
+    allowFailOpen: false,
     priority: GUARDRAIL_PRIORITY.P0,
     description: '模型输出含推理标签、控制标记、工具调用 JSON，或整条仅为长数字标识符。',
     riskGoal:
@@ -74,7 +91,10 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'internal_output_leak',
-    action: GUARDRAIL_ACTION.BLOCK,
+    source: 'agent/guardrail/output/rules/internal-info-leaks.rule.ts',
+    entrypoint: 'detectInternalOutputLeak',
+    action: GUARDRAIL_ACTION.REPAIR,
+    allowFailOpen: false,
     priority: GUARDRAIL_PRIORITY.P0,
     description: '内部阶段、工具、JSON、代码围栏或推理/自检段落泄漏。',
     riskGoal: '避免内部实现暴露给候选人。',
@@ -84,7 +104,10 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'meta_narration_reply',
-    action: GUARDRAIL_ACTION.BLOCK,
+    source: 'agent/guardrail/output/rules/internal-info-leaks.rule.ts',
+    entrypoint: 'detectMetaNarrationReply',
+    action: GUARDRAIL_ACTION.REPAIR,
+    allowFailOpen: false,
     priority: GUARDRAIL_PRIORITY.P0,
     description: '整条回复是括号包裹的 Agent 自我旁白。',
     riskGoal: '防止静默意图或内心独白外发。',
@@ -94,7 +117,9 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'identity_misregistration_coaching',
-    action: GUARDRAIL_ACTION.REVISE,
+    source: 'agent/guardrail/output/rules/identity-fraud-coaching.rule.ts',
+    entrypoint: 'detectIdentityMisregistrationCoaching',
+    action: GUARDRAIL_ACTION.REPAIR,
     priority: GUARDRAIL_PRIORITY.P0,
     description: '教唆以不实学生/暑假工身份登记或隐瞒身份。',
     riskGoal: '阻止身份造假指导。',
@@ -104,7 +129,9 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'experience_fraud_coaching',
-    action: GUARDRAIL_ACTION.REVISE,
+    source: 'agent/guardrail/output/rules/experience-fraud-coaching.rule.ts',
+    entrypoint: 'detectExperienceFraudCoaching',
+    action: GUARDRAIL_ACTION.REPAIR,
     priority: GUARDRAIL_PRIORITY.P0,
     description: '候选人自曝经历造假后，教其继续声称有相关经历。',
     riskGoal: '阻止经历造假指导。',
@@ -114,7 +141,10 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'discriminatory_screening_leak',
-    action: GUARDRAIL_ACTION.BLOCK,
+    source: 'agent/guardrail/output/rules/discrimination-leaks.rule.ts',
+    entrypoint: 'DISCRIMINATION_LEAK_RULES',
+    action: GUARDRAIL_ACTION.REPAIR,
+    allowFailOpen: false,
     priority: GUARDRAIL_PRIORITY.P0,
     description: '对外泄漏或用敏感属性拒绝候选人。',
     riskGoal: '防止形成歧视性筛选聊天证据。',
@@ -126,7 +156,10 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'sensitive_origin_probe',
-    action: GUARDRAIL_ACTION.BLOCK,
+    source: 'agent/guardrail/output/rules/discrimination-leaks.rule.ts',
+    entrypoint: 'DISCRIMINATION_LEAK_RULES',
+    action: GUARDRAIL_ACTION.REPAIR,
+    allowFailOpen: false,
     priority: GUARDRAIL_PRIORITY.P0,
     description: '主动打听籍贯、老家、是否本地人或有无纹身。',
     riskGoal: '防止反向索取敏感出身属性或身体特征。',
@@ -138,7 +171,10 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'quota_promise',
-    action: GUARDRAIL_ACTION.BLOCK,
+    source: 'agent/guardrail/output/rules/false-promises.rule.ts',
+    entrypoint: 'FALSE_PROMISE_RULES',
+    action: GUARDRAIL_ACTION.REPAIR,
+    allowFailOpen: false,
     priority: GUARDRAIL_PRIORITY.P0,
     description: '承诺名额不会满或已经替候选人保留。',
     riskGoal: '阻止无工具可兑现的名额保证。',
@@ -148,17 +184,22 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'online_interview_location_claim',
-    action: GUARDRAIL_ACTION.REVISE,
+    source: 'agent/guardrail/output/rules/online-interview-location.rule.ts',
+    entrypoint: 'detectOnlineInterviewLocationClaim',
+    action: GUARDRAIL_ACTION.REPAIR,
     priority: GUARDRAIL_PRIORITY.P0,
     description: '线上面试回执却引导候选人到店面试。',
     riskGoal: '避免候选人因面试形式错配白跑。',
-    exogenousSignal: '预检/预约结构化面试形式与到店话术。',
+    exogenousSignal:
+      'send_store_location 返回的 interviewMethod、locationNotRequired、destination 与到店话术。',
     residualRisk: '不推断缺少结构化形式的面试。',
     verification: V,
   },
   {
     id: 'unsupported_store_status_speculation',
-    action: GUARDRAIL_ACTION.REVISE,
+    source: 'agent/guardrail/output/rules/store-status-speculation.rule.ts',
+    entrypoint: 'detectUnsupportedStoreStatusSpeculation',
+    action: GUARDRAIL_ACTION.REPAIR,
     priority: GUARDRAIL_PRIORITY.P1,
     description: '明确无匹配工具事实被扩写为招满、关店、搬迁或装修。',
     riskGoal: '防止把无匹配查询结果升级成门店运营结论。',
@@ -168,7 +209,10 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'booking_receipt_mismatch',
-    action: GUARDRAIL_ACTION.REVISE,
+    source: 'agent/guardrail/output/rules/booking-receipt.rule.ts',
+    entrypoint: 'detectBookingReceiptMismatch',
+    feedbackSource: 'per_hit',
+    action: GUARDRAIL_ACTION.REPAIR,
     priority: GUARDRAIL_PRIORITY.P1,
     description: '预约成功/失败、日期与群用途等结构化回执不一致。',
     riskGoal: '确保不可逆预约动作与候选人收到的回执一致。',
@@ -178,7 +222,9 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'interview_slot_availability_mismatch',
-    action: GUARDRAIL_ACTION.REVISE,
+    source: 'agent/guardrail/output/rules/interview-slot-availability.rule.ts',
+    entrypoint: 'detectInterviewSlotAvailabilityMismatch',
+    action: GUARDRAIL_ACTION.REPAIR,
     priority: GUARDRAIL_PRIORITY.P1,
     description: '候选人未指定日期时，回复漏掉最早可约时段、误报截止，或篡改截止日口径。',
     riskGoal: '防止模型绕过 precheck 的完整日期时间裁决，让候选人错失实际可约时段。',
@@ -190,7 +236,10 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'interview_time_change_unconfirmed',
-    action: GUARDRAIL_ACTION.REVISE,
+    source: 'agent/guardrail/output/rules/booking-receipt.rule.ts',
+    entrypoint: 'detectBookingReceiptMismatch',
+    feedbackSource: 'per_hit',
+    action: GUARDRAIL_ACTION.REPAIR,
     priority: GUARDRAIL_PRIORITY.P0,
     description: '未成功改约却确认了与在途工单不同的钟点。',
     riskGoal: '避免候选人按未落单时间到店。',
@@ -200,7 +249,9 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'brand_alias_fuzzy_match_ignored',
-    action: GUARDRAIL_ACTION.REVISE,
+    source: 'agent/guardrail/output/rules/brand-name-errors.rule.ts',
+    entrypoint: 'detectBrandAliasFuzzyMatchIgnored',
+    action: GUARDRAIL_ACTION.REPAIR,
     priority: GUARDRAIL_PRIORITY.P1,
     description: '工具已高置信回指品牌，回复仍声称该品牌未找到。',
     riskGoal: '让品牌目录高置信回执得到一致使用。',
@@ -211,10 +262,12 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   // ——以下为 数据复核恢复的规则（规则简化改造的定点回补，非整体回滚）——
   {
     id: 'human_service_phrase_leak',
-    // observe 入场；升 revise：两周 5 判例全真阳性零误报。
+    source: 'agent/guardrail/output/rules/internal-info-leaks.rule.ts',
+    entrypoint: 'detectHumanServicePhraseLeak',
+    // observe 入场；升 repair：两周 5 判例全真阳性零误报。
     // 恢复：简化改造误删后，近 7 天生产仍有 2 例真阳人设露馅直发前被拦，
     // 封闭词形符合"只保留封闭词形"的保留标准。
-    action: GUARDRAIL_ACTION.REVISE,
+    action: GUARDRAIL_ACTION.REPAIR,
     priority: GUARDRAIL_PRIORITY.P2,
     description: '打回重写出现"转人工/人工客服/真人经理/专人联系"等与账号本人人设冲突表述的回复。',
     riskGoal: '防止"转人工/真人/专人"类客服话术自曝机器人身份，破坏"账号即本人"人设。',
@@ -222,13 +275,15 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     residualRisk:
       '隐性人机暗示（"系统显示"、"机器人"自嘲等）不在封闭词表内，需随判例补词；' +
       '重写只修正人设露馅措辞，不推断承诺是否具备外部动作支撑。',
-    verification: 'tests/agent/guardrail/output/hard-rules.restored-sentinels.spec.ts',
+    verification: 'tests/agent/guardrail/output/rules/hard-rules.restored-sentinels.spec.ts',
     feedbackToGenerator:
       '上一版回复出现"转人工/人工客服/真人经理/专人联系"类表述，与"候选人看到的这个账号就是你本人"的身份设定冲突，当前文本不可发送。' +
       '只把露馅措辞改成人设内口径（如"我帮你问下同事""让负责的同事联系你"），其余内容原样保留，不要改变承诺的事实和后续动作。',
   },
   {
     id: 'booking_done_claim_without_submission',
+    source: 'agent/guardrail/output/rules/booking-claim-reconciliation.rule.ts',
+    entrypoint: 'detectBookingDoneClaimWithoutSubmission',
     // 新哨兵：接替已删 booking_promise_without_booking 的完成时态缺口（将来时口径
     // 经生产抽样证实几乎全命中合法收资话术，不恢复）。按发牌纪律 observe 入场，
     // 已知残余风险=跨轮合法提醒会命中，须先累计判例再议升档。
@@ -242,7 +297,9 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'booking_done_claim_no_work_order',
-    action: GUARDRAIL_ACTION.REVISE,
+    source: 'agent/guardrail/output/rules/booking-claim-reconciliation.rule.ts',
+    entrypoint: 'detectBookingDoneClaimWithoutSubmission',
+    action: GUARDRAIL_ACTION.REPAIR,
     priority: GUARDRAIL_PRIORITY.P0,
     description:
       '零 booking 调用、无在途工单（或在途工单都不是本轮焦点岗位）却宣称"已帮你报好/报名成功"。',
@@ -259,6 +316,8 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'job_query_claim_without_query',
+    source: 'agent/guardrail/output/rules/job-fact-reconciliation.rule.ts',
+    entrypoint: 'detectJobQueryClaimWithoutQuery',
     action: GUARDRAIL_ACTION.REPLAN,
     priority: GUARDRAIL_PRIORITY.P1,
     description: '零查岗工具却用完成时态宣称本轮"帮你查了下/没查到/系统里没有"。',
@@ -272,6 +331,8 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'job_fact_without_provenance',
+    source: 'agent/guardrail/output/rules/job-fact-reconciliation.rule.ts',
+    entrypoint: 'detectJobFactWithoutProvenance',
     action: GUARDRAIL_ACTION.REPLAN,
     priority: GUARDRAIL_PRIORITY.P1,
     description: '零查岗工具轮报出会话内从未出现过的岗位薪资/距离/班次数字。',
@@ -286,6 +347,8 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'cancel_done_claim_without_submission',
+    source: 'agent/guardrail/output/rules/booking-claim-reconciliation.rule.ts',
+    entrypoint: 'detectCancelDoneClaimWithoutSubmission',
     // 与 booking_done_claim_without_submission 同族同风险：跨轮合法提醒会命中，observe 入场。
     action: GUARDRAIL_ACTION.OBSERVE,
     priority: GUARDRAIL_PRIORITY.P1,
@@ -300,8 +363,10 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'cancel_done_claim_failed_tool',
-    // 硬矛盾：本轮工具自证失败，不存在跨轮复述的解释空间，故直接 revise。
-    action: GUARDRAIL_ACTION.REVISE,
+    source: 'agent/guardrail/output/rules/booking-claim-reconciliation.rule.ts',
+    entrypoint: 'detectCancelDoneClaimWithoutSubmission',
+    // 硬矛盾：本轮工具自证失败，不存在跨轮复述的解释空间，故直接 repair。
+    action: GUARDRAIL_ACTION.REPAIR,
     priority: GUARDRAIL_PRIORITY.P0,
     description: '本轮取消/改期工具全部失败，回复却宣称已取消/已改期。',
     riskGoal: '防候选人据假回执不到店而爽约（代价与到店扑空同级）。',
@@ -314,6 +379,8 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'requested_brand_mismatch',
+    source: 'agent/guardrail/output/rules/brand-name-errors.rule.ts',
+    entrypoint: 'detectRequestedBrandMismatch',
     // 降 observe：结构化标题解析可能把门店名当品牌名，确定性修复易改坏正确回复。
     action: GUARDRAIL_ACTION.OBSERVE,
     priority: GUARDRAIL_PRIORITY.P1,
@@ -325,6 +392,8 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'settlement_cycle_mismatch',
+    source: 'agent/guardrail/output/rules/settlement-cycle-mismatch.rule.ts',
+    entrypoint: 'detectSettlementCycleMismatch',
     // 否定语序和补充结算语境会制造假阳，保持 observe；重新满足准入门槛才能申请动手权。
     action: GUARDRAIL_ACTION.OBSERVE,
     priority: GUARDRAIL_PRIORITY.P1,
@@ -336,15 +405,64 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
   },
   {
     id: 'proactive_insurance_policy_mention',
+    source: 'agent/guardrail/output/rules/insurance-policy-claims.rule.ts',
+    entrypoint: 'detectProactiveInsurancePolicyMention',
     action: GUARDRAIL_ACTION.OBSERVE,
     priority: GUARDRAIL_PRIORITY.P1,
     description: '候选人没问保险时，主动给出保险、社保、五险等承诺式口径。',
     riskGoal: '观察准不可逆承诺样本，供运营复盘是否需要收窄成可执行契约。',
     exogenousSignal: '候选人本轮 userMessage 与近几轮消息（recentUserTexts）是否主动询问保险。',
     residualRisk: '任职要求豁免（第二职业社保证明等资格预筛）会放行岗位硬性要求转述。',
-    verification: 'tests/agent/guardrail/output/hard-rules.restored-sentinels.spec.ts',
+    verification: 'tests/agent/guardrail/output/rules/hard-rules.restored-sentinels.spec.ts',
   },
 ] as const satisfies readonly OutputRuleCatalogSeed[];
 
+export type OutputRuleId = (typeof OUTPUT_RULE_CATALOG_SEEDS)[number]['id'];
+export type OutputRuleCatalogMetadata = OutputRuleCatalogDefinition<OutputRuleId>;
+type PerHitFeedbackRuleId = Extract<
+  (typeof OUTPUT_RULE_CATALOG_SEEDS)[number],
+  { feedbackSource: 'per_hit' }
+>['id'];
+
 export const OUTPUT_RULE_CATALOG = OUTPUT_RULE_CATALOG_SEEDS.map(applyPolicy);
 export const OUTPUT_RULE_IDS = OUTPUT_RULE_CATALOG.map((rule) => rule.id);
+
+const OUTPUT_RULE_BY_ID = new Map<string, OutputRuleCatalogMetadata>(
+  OUTPUT_RULE_CATALOG.map((rule) => [rule.id, rule]),
+);
+
+/** 外部 runtime override 的未知配置仍由调用方忽略；规则执行不能静默使用缺省策略。 */
+export function isOutputRuleId(id: string): id is OutputRuleId {
+  return OUTPUT_RULE_BY_ID.has(id);
+}
+
+export function getOutputRule(id: OutputRuleId): OutputRuleCatalogMetadata {
+  const rule = OUTPUT_RULE_BY_ID.get(id);
+  if (!rule) throw new Error(`Unregistered output rule: ${id}`);
+  return rule;
+}
+
+/** detector 只提供命中事实，默认动作与反馈只能由登记目录决定。 */
+export function createOutputRuleFinding<Id extends OutputRuleId>(
+  id: Id,
+  label: string,
+  ...feedback: Id extends PerHitFeedbackRuleId ? [feedbackToGenerator?: string] : []
+): RuleContradiction {
+  const rule = getOutputRule(id);
+  const feedbackToGenerator = feedback[0];
+  if (feedbackToGenerator !== undefined && rule.feedbackSource !== 'per_hit') {
+    throw new Error(`Output rule does not allow per-hit feedback: ${id}`);
+  }
+  return {
+    ruleId: rule.id,
+    label,
+    action: rule.action,
+    ...deriveRulePolicy(rule.action),
+    allowFailOpen: rule.allowFailOpen,
+    severity: rule.severity,
+    dataSensitivity: rule.dataSensitivity,
+    feedbackPolicy: rule.feedbackPolicy,
+    feedbackToGenerator: feedbackToGenerator ?? rule.feedbackToGenerator,
+    repairToolNames: rule.repairToolNames,
+  };
+}

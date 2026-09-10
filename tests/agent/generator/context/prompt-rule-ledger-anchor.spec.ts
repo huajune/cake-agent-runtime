@@ -1,6 +1,6 @@
 import { readFileSync, readdirSync } from 'fs';
 import { join, relative } from 'path';
-import { OUTPUT_RULE_IDS } from '@agent/guardrail/output/rules/output-rule-catalog';
+import { OUTPUT_RULE_IDS } from '@agent/guardrail/output/output-rule-catalog';
 import { FINAL_CHECK_RULES } from '@agent/generator/context/sections/procedural/final-check.section';
 
 const REPO_ROOT = process.cwd();

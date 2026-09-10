@@ -321,7 +321,7 @@ describe('ReengagementAnchorService', () => {
   it('skips modify-anchored scheduling when the turn is not deliverable', async () => {
     buildService().handleToolAnchors(
       {
-        outcome: { kind: 'guardrail_blocked' },
+        outcome: { kind: 'handoff' },
         toolCalls: [
           {
             toolName: 'duliday_modify_interview_time',

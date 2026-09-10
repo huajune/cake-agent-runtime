@@ -129,6 +129,7 @@ export class AgentController {
         // 调试专用：完整出站裁决（含 violations 证据/建议全文）+ 全程 trace。
         guardrail: {
           decision: result.outputDecision,
+          resolution: result.resolution,
           revised: result.revised,
           trace: result.guardrailTrace,
         },

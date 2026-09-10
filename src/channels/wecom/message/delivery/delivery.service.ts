@@ -58,7 +58,6 @@ export class MessageDeliveryService implements OnModuleInit {
 
     try {
       if (recordMonitoring) {
-        this.monitoringService.recordSendStart(messageId);
         await this.wecomObservability.markDeliveryStart(messageId);
       }
 
@@ -78,7 +77,6 @@ export class MessageDeliveryService implements OnModuleInit {
         };
         if (recordMonitoring) {
           this.monitoringService.recordReplySkipped(messageId, 'hosting_paused');
-          this.monitoringService.recordSendEnd(messageId);
           await this.wecomObservability.markDeliveryEnd(messageId, skippedResult);
         }
         this.logger.warn(
@@ -95,7 +93,6 @@ export class MessageDeliveryService implements OnModuleInit {
       const totalTime = Date.now() - startTime;
 
       if (recordMonitoring) {
-        this.monitoringService.recordSendEnd(messageId);
         await this.wecomObservability.markDeliveryEnd(messageId, { ...result, totalTime });
       }
       this.logger.log(
@@ -119,7 +116,6 @@ export class MessageDeliveryService implements OnModuleInit {
             };
 
       if (recordMonitoring) {
-        this.monitoringService.recordSendEnd(messageId);
         await this.wecomObservability.markDeliveryEnd(messageId, failureResult);
       }
 

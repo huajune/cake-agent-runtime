@@ -118,12 +118,17 @@ export class GroupMembershipService {
     if (whitelist.size === 0) return [];
 
     try {
-      // 任一目标群缓存缺失 → 预热（一次 API 调用填充全部白名单群）
-      for (const roomId of whitelist) {
-        if ((await this.redisService.exists(this.buildKey(roomId))) === 0) {
-          await this.hydrateCache(whitelist, roomId);
-          break;
-        }
+      // 任一目标群缓存缺失 → 预热（一次 API 调用填充全部白名单群）。
+      // Upstash 是 REST 往返，逐群串行 exists 曾让本步在回合装配里占中位 8 秒；并行探测只付一次往返。
+      const presence = await Promise.all(
+        Array.from(whitelist, async (roomId) => ({
+          roomId,
+          exists: (await this.redisService.exists(this.buildKey(roomId))) !== 0,
+        })),
+      );
+      const missing = presence.find((entry) => !entry.exists);
+      if (missing) {
+        await this.hydrateCache(whitelist, missing.roomId);
       }
 
       const checks = await Promise.all(

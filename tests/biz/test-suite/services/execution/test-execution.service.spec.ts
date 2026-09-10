@@ -46,6 +46,7 @@ describe('TestExecutionService', () => {
       blockedRuleIds: [],
       repairMode: 'rewrite',
     },
+    resolution: { outcome: 'reply' },
     revised: false,
   });
 
@@ -284,6 +285,41 @@ describe('TestExecutionService', () => {
       expect(result.actualOutput).toBe('');
       expect(result.response.statusCode).toBe(200);
     });
+
+    it.each([
+      ['skipped', 'meta_narration_silenced', 'output_guardrail'],
+      ['handoff', 'repair_exhausted', 'output_guardrail'],
+      ['handoff', 'system_blocked', 'agent_tool'],
+    ] as const)(
+      'treats explicit %s as a completed non-reply turn and preserves its review evidence',
+      async (outcome, reasonCode, source) => {
+        const runTurnEnd = jest.fn().mockResolvedValue(undefined);
+        mockLoop.invokeReviewed.mockResolvedValue({
+          ...makeSuccessResult('审查未通过的草稿'),
+          outputDecision: {
+            ...makeSuccessResult().outputDecision,
+            decision: source === 'agent_tool' ? 'pass' : 'repair',
+          },
+          resolution: { outcome, reasonCode, source },
+          runTurnEnd,
+        });
+
+        const result = await service.executeTest(baseRequest);
+
+        expect(result.status).toBe(ExecutionStatus.SUCCESS);
+        expect(result.actualOutput).toBe('');
+        expect(result.response.body).toEqual(expect.objectContaining({ text: '审查未通过的草稿' }));
+        expect(result.trace?.executionTrace.agent).toEqual(
+          expect.objectContaining({
+            outputDecision: expect.objectContaining({
+              decision: source === 'agent_tool' ? 'pass' : 'repair',
+            }),
+            resolution: { outcome, reasonCode, source },
+          }),
+        );
+        expect(runTurnEnd).toHaveBeenCalledWith({ includeAssistantText: false });
+      },
+    );
 
     it('should save execution record when saveExecution is true', async () => {
       mockLoop.invokeReviewed.mockResolvedValue(makeSuccessResult());

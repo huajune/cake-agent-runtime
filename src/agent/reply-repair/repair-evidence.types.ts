@@ -1,4 +1,5 @@
-export interface GuardrailReviewPacket {
+/** 回复修复专用的工具与视觉证据投影；保留既有 packet 形状，具体 Prompt 由 ReplyRepairAgent 渲染。 */
+export interface RepairEvidencePacket {
   draftReply: string;
   latestUserMessages: Array<{
     role: 'user';
@@ -8,13 +9,7 @@ export interface GuardrailReviewPacket {
   }>;
   /**
    * 往轮助手已发出的候选人可见回复（正序，最近在最后；条数与单条长度均截断）。
-   *
-   * evidence 只有回合作用域，而跨轮复述需要看到往轮已发送的回复。
-   * 本字段专门向 reviewer 提供该信号，用于区分忠实复述与本轮新编造。
-   *
-   * ⚠️ 它不是工具证据：不进 evidence、不参与"证据是否为空"的判定（EVIDENCE_KEYS
-   * 编译期穷尽断言强制了这一边界），只用于区分「跨轮复述」与「本轮新编造」；
-   * 往轮表述本身的真假交跨轮编造治理。
+   * 保留已有 packet 字段，它不属于工具 evidence；目前修复 Agent 的对话历史另走 messages。
    */
   recentAssistantMessages: string[];
   evidence: {
@@ -49,8 +44,7 @@ export interface JobListEvidence {
   /**
    * 岗位工具 markdown 原文摘录（截断）。duliday_job_list 默认只返回 markdown
    * （rawData 需显式请求），此时结构化 jobs 解析为空，本字段就是岗位事实的
-   * ground truth——没有它 reviewer 会把已接地的推荐误判成无证据。结构化 jobs 可用时不带，
-   * 避免证据重复烧 token。
+   * 事实依据。结构化 jobs 可用时不带，避免重复传入证据。
    */
   markdownExcerpt?: string;
   markdownExcerptChars?: number;
@@ -109,11 +103,8 @@ export interface GroupInviteEvidence {
 }
 
 /**
- * 视觉事实证据。截图中落档的预约、岗位等事实可支撑助手回复，
- * reviewer 必须看到它们；否则会把有视觉证据的表述误判为零证据编造。
- *
- * ownership 必须原样带上：截图里的字段分候选人自陈与发布方标注两类，
- * 混为一谈正是"发布方品牌劫持"类误判的温床，reviewer 需要自行区分。
+ * 视觉事实证据：保留截图中落档的预约、岗位等事实。
+ * ownership 原样保留，用于区分候选人自陈与发布方标注。
  */
 export interface VisualFactsEvidence {
   sheets: Array<{

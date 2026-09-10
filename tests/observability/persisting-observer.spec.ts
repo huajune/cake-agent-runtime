@@ -124,11 +124,32 @@ describe('PersistingObserver', () => {
     observer.emit({
       type: 'turn_preparation',
       status: 'success',
-      totalDurationMs: 9000,
+      totalDurationMs: 20_000,
       phaseDurationsMs: {},
     });
+    // 装配总耗时超阈值：源本身没降级，只有耗时把这一轮抬进档案。
+    observer.emit({
+      type: 'turn_data_sources',
+      status: 'success',
+      totalDurationMs: 15_000,
+      sources: [{ source: 'memory', status: 'success', durationMs: 15_000, observedAt: 'now' }],
+    });
+    // Prompt 逼近膨胀阈值：同样只靠体积入档。
+    observer.emit({
+      type: 'turn_preparation',
+      status: 'success',
+      totalDurationMs: 12,
+      phaseDurationsMs: {},
+      prompt: {
+        totalChars: 50_000,
+        estimatedTokens: 12_500,
+        orderHash: 'hash',
+        blocks: [],
+        dynamicBlockIds: [],
+      },
+    });
 
-    expect(persister.persist).toHaveBeenCalledTimes(4);
+    expect(persister.persist).toHaveBeenCalledTimes(6);
   });
 
   it('always persists llm_execution regardless of status or attempt count', () => {
@@ -191,20 +212,20 @@ describe('PersistingObserver', () => {
     expect(persister.persist).toHaveBeenCalledWith(expect.objectContaining({ status: 'narrow' }));
   });
 
-  it('always persists guardrail process events（观测 P1-2：repair 终局与入站拦截）', () => {
+  it('always persists guardrail process events（观测 P1-2：repair 终局与入站转人工）', () => {
     const observer = makeObserver();
 
     observer.emit({
       type: 'guardrail_repair',
       outcome: 'repair_exhausted_fail_open',
-      finalDecision: 'pass',
+      finalOutcome: 'reply',
       riskLevel: 'medium',
       firstRuleIds: ['schedule_window_claim'],
       finalRuleIds: ['schedule_window_claim'],
       repairMode: 'rewrite',
     });
     observer.emit({
-      type: 'inbound_guardrail_block',
+      type: 'inbound_guardrail_handoff',
       reasonCode: 'risk_intercept',
       riskType: 'self_harm',
     });

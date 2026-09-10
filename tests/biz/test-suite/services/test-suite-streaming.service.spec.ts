@@ -1,3 +1,4 @@
+import type { GuardrailTurnTrace } from '@shared-types/guardrail.contract';
 import { EventEmitter } from 'node:events';
 import { TestSuiteStreamingService } from '@biz/test-suite/services/test-suite-streaming.service';
 
@@ -52,7 +53,7 @@ describe('TestSuiteStreamingService', () => {
 
   it('builds advisory guardrail trace from the accumulated review input', async () => {
     outputGuard.check.mockResolvedValue({
-      decision: 'revise',
+      decision: 'repair',
       riskLevel: 'medium',
       ruleIds: ['salary_fabrication'],
       blockedRuleIds: ['salary_fabrication'],
@@ -64,20 +65,27 @@ describe('TestSuiteStreamingService', () => {
       getReviewInput: () => ({ reply: '错误回复', toolCalls: [{ toolName: 'duliday_job_list' }] }),
     };
 
-    await expect((service as any).buildAdvisoryGuardrail(trace, '用户消息')).resolves.toMatchObject(
-      {
-        finalDecision: 'revise',
-        reasonCode: 'rule_hit',
-        steps: [
-          expect.objectContaining({
-            decision: 'revise',
-            riskLevel: 'medium',
-            ruleIds: ['salary_fabrication'],
-            violationTypes: ['bad_fact'],
-          }),
-        ],
-      },
-    );
+    const advisory = await (
+      service as unknown as {
+        buildAdvisoryGuardrail(
+          input: typeof trace,
+          userMessage: string,
+        ): Promise<GuardrailTurnTrace | null>;
+      }
+    ).buildAdvisoryGuardrail(trace, '用户消息');
+    expect(advisory).toMatchObject({
+      reasonCode: 'rule_hit',
+      steps: [
+        expect.objectContaining({
+          decision: 'repair',
+          riskLevel: 'medium',
+          ruleIds: ['salary_fabrication'],
+          violationTypes: ['bad_fact'],
+        }),
+      ],
+    });
+    expect(advisory).not.toHaveProperty('finalOutcome');
+    expect(advisory).not.toHaveProperty('finalDecision');
     expect(outputGuard.check).toHaveBeenCalledWith(
       expect.objectContaining({
         reply: '错误回复',

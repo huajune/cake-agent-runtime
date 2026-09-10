@@ -95,6 +95,8 @@ export interface TurnFactsSnapshot {
 }
 
 export interface TurnLedgerSnapshot {
+  /** 标准品牌名经 normalizeBrandNameForComparison 归一的提及集合；null 表示来源不完整。 */
+  readonly mentionedBrands: ReadonlySet<string> | null;
   readonly visual: TurnVisualSnapshot;
   readonly geo: TurnGeoSnapshot;
   readonly jobs: TurnJobsSnapshot;
@@ -106,6 +108,8 @@ export interface TurnLedgerSnapshot {
  * 列表没有可写出口；所有变更都经 record* / mark*，轮末以 drain() 快照交档。
  */
 export interface TurnLedger extends TurnLedgerSnapshot {
+  /** 只接收本会话新召回的真实业务文本；工具参数、教学及错误回显不得登记。 */
+  recordMentionedBrands(texts: readonly string[]): void;
   recordVisualFacts(sheet: FinalizedVisualFactSheet, meta: { messageId: string }): void;
   recordImageBrands(resolutions: BrandResolution[], meta: { messageId: string }): void;
   /**

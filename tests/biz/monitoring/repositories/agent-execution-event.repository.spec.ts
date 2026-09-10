@@ -130,6 +130,32 @@ describe('AgentExecutionEventRepository', () => {
     );
   });
 
+  it.each(['inbound_guardrail_handoff', 'inbound_guardrail_block'])(
+    'preserves %s and its risk evidence when reading persisted events',
+    async (eventType) => {
+      const payload = { reasonCode: 'risk_intercept', riskType: 'abuse', riskLabel: '辱骂' };
+      limitMock.mockResolvedValueOnce({
+        data: [
+          {
+            id: 12,
+            trace_id: 'trace-risk',
+            event_type: eventType,
+            payload,
+            created_at: '2026-09-09T01:02:03.000Z',
+          },
+        ],
+        error: null,
+      });
+
+      const events = await repository.findByTraceId('trace-risk');
+
+      expect(events).toEqual([
+        expect.objectContaining({ type: eventType, traceId: 'trace-risk', payload }),
+      ]);
+      expect(insertMock).not.toHaveBeenCalled();
+    },
+  );
+
   it('cleans up expired events through the retention RPC', async () => {
     await expect(repository.cleanupExpiredEvents(60)).resolves.toBe(7);
 

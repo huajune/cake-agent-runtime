@@ -1,4 +1,4 @@
-import { QUANTIFIED_JOB_FACT_PATTERN } from '@/agent/guardrail/output/job-fact-signals.util';
+import { QUANTIFIED_JOB_FACT_PATTERN } from '@/agent/guardrail/output/rules/job-fact-signals.util';
 
 describe('job-fact-signals.util', () => {
   describe('QUANTIFIED_JOB_FACT_PATTERN', () => {

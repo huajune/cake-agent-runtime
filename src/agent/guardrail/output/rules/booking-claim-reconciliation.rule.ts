@@ -1,6 +1,6 @@
+import { createOutputRuleFinding } from '../output-rule-catalog';
 import type { AgentToolCall } from '@agent/generator/generator.types';
 import type { ActiveBookingEntry } from '@memory/long-term/long-term.types';
-import { GUARDRAIL_ACTION } from '@shared-types/guardrail.contract';
 import type { RuleContradiction } from '../output-rule.types';
 import { asRecord } from '../output-rule.types';
 
@@ -82,32 +82,26 @@ export function detectBookingDoneClaimWithoutSubmission(
   // 观察期数据（09-02 起 8 例）证实 observe 档的假阳几乎全是跨轮复述真实工单。长期记忆里
   // 确证没有任何在途工单时，这种解释不成立——完成时态就是假回执（badcase wvr7pejq），升执行档。
   if (context.activeBookings !== undefined && context.activeBookings.length === 0) {
-    return {
-      ruleId: 'booking_done_claim_no_work_order',
-      label:
-        '回复用完成时态宣称报名/预约已办好（"已帮你报好/报名成功"），但本轮没有 booking 调用、' +
+    return createOutputRuleFinding(
+      'booking_done_claim_no_work_order',
+      '回复用完成时态宣称报名/预约已办好（"已帮你报好/报名成功"），但本轮没有 booking 调用、' +
         'precheck 未返回在途工单、候选人名下也没有任何在途工单——预约从未提交',
-      action: GUARDRAIL_ACTION.REVISE,
-    };
+    );
   }
 
   if (!activeBookingsCoverFocusJob(context)) {
-    return {
-      ruleId: 'booking_done_claim_no_work_order',
-      label:
-        '回复用完成时态宣称报名/预约已办好（"已帮你报好/报名成功"），但本轮没有 booking 调用、' +
+    return createOutputRuleFinding(
+      'booking_done_claim_no_work_order',
+      '回复用完成时态宣称报名/预约已办好（"已帮你报好/报名成功"），但本轮没有 booking 调用、' +
         'precheck 未返回在途工单，候选人名下的在途工单也都不是本轮焦点岗位——这家店的预约从未提交',
-      action: GUARDRAIL_ACTION.REVISE,
-    };
+    );
   }
 
-  return {
-    ruleId: 'booking_done_claim_without_submission',
-    label:
-      '回复用完成时态宣称报名/预约已办好（"已帮你报好/报名成功"），但本轮没有任何 ' +
+  return createOutputRuleFinding(
+    'booking_done_claim_without_submission',
+    '回复用完成时态宣称报名/预约已办好（"已帮你报好/报名成功"），但本轮没有任何 ' +
       'duliday_interview_booking / duliday_modify_interview_time 调用，precheck 也未返回在途工单',
-    action: GUARDRAIL_ACTION.OBSERVE,
-  };
+  );
 }
 
 /**
@@ -118,7 +112,7 @@ export function detectBookingDoneClaimWithoutSubmission(
  * 硬矛盾处理。
  *
  * 两档判据：
- * - **REVISE（硬矛盾）**：本轮调了 cancel/modify 且**全部失败**，回复却给出任何"取消已办/这就
+ * - **REPAIR（硬矛盾）**：本轮调了 cancel/modify 且**全部失败**，回复却给出任何"取消已办/这就
  *   帮你取消"的安抚。失败轮里将来时同样是谎——候选人照样不会到店，故此档口径比下面宽。
  *   本轮自证工具没成功，不存在"跨轮复述"的解释空间，误判面接近零。
  * - **OBSERVE（弱信号）**：本轮零 cancel/modify 调用却宣称已取消。与
@@ -149,23 +143,19 @@ export function detectCancelDoneClaimWithoutSubmission(
   if (cancelCalls.length > 0) {
     if (cancelCalls.some((call) => call.status !== 'error')) return null;
     if (!CANCEL_REASSURANCE_PATTERN.test(text)) return null;
-    return {
-      ruleId: 'cancel_done_claim_failed_tool',
-      label:
-        '本轮 duliday_cancel_work_order / duliday_modify_interview_time 全部调用失败，回复却宣称' +
+    return createOutputRuleFinding(
+      'cancel_done_claim_failed_tool',
+      '本轮 duliday_cancel_work_order / duliday_modify_interview_time 全部调用失败，回复却宣称' +
         '已取消/已改期或承诺这就取消——候选人据此不到店即爽约，必须改成如实告知并转人工',
-      action: GUARDRAIL_ACTION.REVISE,
-    };
+    );
   }
 
   if (CANCEL_DONE_CLAIM_PATTERN.test(text)) {
-    return {
-      ruleId: 'cancel_done_claim_without_submission',
-      label:
-        '回复用完成时态宣称面试已取消/已改期，但本轮没有任何 duliday_cancel_work_order / ' +
+    return createOutputRuleFinding(
+      'cancel_done_claim_without_submission',
+      '回复用完成时态宣称面试已取消/已改期，但本轮没有任何 duliday_cancel_work_order / ' +
         'duliday_modify_interview_time 调用',
-      action: GUARDRAIL_ACTION.OBSERVE,
-    };
+    );
   }
 
   return null;

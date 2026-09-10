@@ -1,4 +1,4 @@
-import { GuardrailReviewPacketBuilder } from '@agent/guardrail/output/llm/review-packet.builder';
+import { RepairEvidenceBuilder } from '@agent/reply-repair/repair-evidence.builder';
 import { createTurnLedger } from '@agent/generator/preparation/turn-ledger';
 import { finalizeVisualFactSheet } from '@resolution/signal/visual';
 
@@ -10,8 +10,8 @@ function visualLedger(raw: { description?: string } & Record<string, unknown>) {
   return ledger;
 }
 
-describe('GuardrailReviewPacketBuilder', () => {
-  const builder = new GuardrailReviewPacketBuilder();
+describe('RepairEvidenceBuilder', () => {
+  const builder = new RepairEvidenceBuilder();
 
   it('extracts job/precheck/booking/geocode evidence from tool calls', () => {
     const packet = builder.build({
@@ -555,7 +555,7 @@ describe('GuardrailReviewPacketBuilder', () => {
     expect(last.endsWith('…')).toBe(true);
   });
 
-  it('defaults recentAssistantMessages to empty array when not provided (repair 等旁路调用方)', () => {
+  it('defaults recentAssistantMessages to empty array when not provided', () => {
     const packet = builder.build({ reply: '你好', toolCalls: [] });
 
     expect(packet.recentAssistantMessages).toEqual([]);

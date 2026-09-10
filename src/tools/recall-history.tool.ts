@@ -67,6 +67,7 @@ export function buildRecallHistoryTool(memoryService: MemoryService): ToolBuilde
         }
 
         const formatted = formatSummaryForTool(sessionSummaries);
+        context.ledger.recordMentionedBrands(sessionSummaries.map((entry) => entry.summary));
         logger.debug(
           `返回历史摘要: userId=${context.session.userId}, count=${sessionSummaries.length}`,
         );

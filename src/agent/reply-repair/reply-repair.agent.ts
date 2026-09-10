@@ -4,8 +4,8 @@ import { ModelRole } from '@/llm/llm.types';
 import type { AgentToolCall } from '@agent/generator/generator.types';
 import { buildDateTimeGroundingLines } from '@agent/generator/context/sections/working/datetime.section';
 import type { GuardViolation } from '@shared-types/guardrail.contract';
-import { GuardrailReviewPacketBuilder } from '../guardrail/output/llm/review-packet.builder';
-import type { GuardrailReviewPacket } from '../guardrail/output/llm/review-packet.types';
+import { RepairEvidenceBuilder } from './repair-evidence.builder';
+import type { RepairEvidencePacket } from './repair-evidence.types';
 import type { ReplyRepairContext } from './reply-repair-context.provider';
 
 export interface ReplyRepairInput {
@@ -24,7 +24,7 @@ export interface ReplyRepairInput {
 export class ReplyRepairAgent {
   constructor(
     private readonly llm: LlmExecutorService,
-    private readonly packetBuilder: GuardrailReviewPacketBuilder,
+    private readonly packetBuilder: RepairEvidenceBuilder,
   ) {}
 
   async repair(input: ReplyRepairInput): Promise<string> {
@@ -141,7 +141,7 @@ export class ReplyRepairAgent {
     return sections.length > 0 ? sections.join('\n\n') : '（无可用上下文）';
   }
 
-  private formatEvidence(evidence: GuardrailReviewPacket['evidence']): string {
+  private formatEvidence(evidence: RepairEvidencePacket['evidence']): string {
     const blocks: string[] = [];
     const { jobList, precheck, booking, geocode } = evidence;
 
@@ -206,7 +206,7 @@ export class ReplyRepairAgent {
     return blocks.length > 0 ? blocks.join('\n\n') : '（本轮无工具事实）';
   }
 
-  private formatPolicies(policies: GuardrailReviewPacket['policies']): string {
+  private formatPolicies(policies: RepairEvidencePacket['policies']): string {
     const blocks: string[] = [];
     if (policies.redLines.length > 0) {
       blocks.push(`红线：\n${policies.redLines.map((line) => `- ${line}`).join('\n')}`);

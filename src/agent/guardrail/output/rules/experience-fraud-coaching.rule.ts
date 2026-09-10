@@ -1,4 +1,4 @@
-import { GUARDRAIL_ACTION } from '@shared-types/guardrail.contract';
+import { createOutputRuleFinding } from '../output-rule-catalog';
 import type { RuleContradiction } from '../output-rule.types';
 
 const FABRICATION_ADMISSION_PATTERN =
@@ -28,9 +28,8 @@ export function detectExperienceFraudCoaching(
     return !NEGATED_PREFIX_PATTERN.test(prefix);
   });
   if (!coaching) return null;
-  return {
-    ruleId: 'experience_fraud_coaching',
-    label: '候选人已自曝报名经历造假，回复仍教其在面试时声称做过/有经验或以不查记录背书',
-    action: GUARDRAIL_ACTION.REVISE,
-  };
+  return createOutputRuleFinding(
+    'experience_fraud_coaching',
+    '候选人已自曝报名经历造假，回复仍教其在面试时声称做过/有经验或以不查记录背书',
+  );
 }

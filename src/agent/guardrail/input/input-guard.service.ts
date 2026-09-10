@@ -24,7 +24,7 @@ export class InputGuardrailService {
     }
 
     return {
-      decision: 'block',
+      decision: 'handoff',
       source: 'input_risk',
       disposition: 'side_effects',
       reasonCode: risk.riskType ?? 'input_risk',

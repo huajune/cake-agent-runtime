@@ -3,7 +3,12 @@
  */
 
 import type { BrandItem } from '@/sponge/sponge.types';
-import { buildBrandQueryPlan, toBrandQueryMeta } from '@tools/job-list/brand-query.util';
+import {
+  buildBrandQueryPlan,
+  findUnmentionedQueryBrands,
+  toBrandQueryMeta,
+} from '@tools/job-list/brand-query.util';
+import { normalizeBrandNameForComparison } from '@resolution/brand/brand-normalize';
 import type { SessionBrandState } from '@resolution/brand/brand-resolution.types';
 
 const catalog: BrandItem[] = [
@@ -21,6 +26,69 @@ const stateWith = (
   current: { canonicalName: string; brandId: number | null } | null,
   excluded: Array<{ canonicalName: string; brandId: number | null }> = [],
 ): SessionBrandState => ({ currentBrand: current, excludedBrands: excluded });
+
+describe('品牌提及集合校验', () => {
+  const mentioned = (...names: string[]) => new Set(names.map(normalizeBrandNameForComparison));
+  const planFor = (brandAliasList: string[], brandIdList: number[] = []) =>
+    buildBrandQueryPlan({ brandAliasList, brandIdList, catalog });
+
+  it('可靠空集合拦截真实存在但上下文未提及的品牌', () => {
+    expect(findUnmentionedQueryBrands(planFor(['KFC']), mentioned(), catalog)).toEqual([
+      expect.objectContaining({ canonicalName: '肯德基', brandId: 10001 }),
+    ]);
+  });
+
+  it('别名与全半角/空格写法归一化后匹配同一品牌', () => {
+    expect(findUnmentionedQueryBrands(planFor(['KFC']), mentioned('肯德基'), catalog)).toEqual([]);
+    expect(
+      findUnmentionedQueryBrands(planFor(['mstand']), mentioned('Ｍ Ｓｔａｎｄ'), catalog),
+    ).toEqual([]);
+  });
+
+  it('可映射 ID 与品牌名遵守同一个集合，未知 ID 不新增出处拦截', () => {
+    expect(findUnmentionedQueryBrands(planFor([], [10001]), mentioned(), catalog)).toHaveLength(1);
+    expect(findUnmentionedQueryBrands(planFor([], [10001]), mentioned('肯德基'), catalog)).toEqual(
+      [],
+    );
+    expect(findUnmentionedQueryBrands(planFor([], [99999]), mentioned(), catalog)).toEqual([]);
+  });
+
+  it.each([null, undefined])('提及集合不可用（%s）时放行', (brands) => {
+    expect(findUnmentionedQueryBrands(planFor(['KFC']), brands, catalog)).toEqual([]);
+  });
+
+  it('目录不可用不新增出处拦截', () => {
+    expect(findUnmentionedQueryBrands(planFor(['KFC']), mentioned(), [])).toEqual([]);
+  });
+
+  it('多个品牌逐一核验，不静默删除未提及的筛选条件', () => {
+    expect(
+      findUnmentionedQueryBrands(planFor(['KFC', '金拱门']), mentioned('肯德基'), catalog),
+    ).toEqual([expect.objectContaining({ canonicalName: '麦当劳', brandId: 10002 })]);
+  });
+
+  it('只核验提及，不改变 exclude 极性或会话兜底', () => {
+    const exclusion = buildBrandQueryPlan({
+      brandAliasList: ['KFC'],
+      brandIdList: [],
+      brandFilterMode: 'exclude',
+      catalog,
+    });
+    expect(findUnmentionedQueryBrands(exclusion, mentioned('肯德基'), catalog)).toEqual([]);
+    const fallback = buildBrandQueryPlan({
+      brandAliasList: [],
+      brandIdList: [],
+      catalog,
+      sessionBrandState: stateWith({ canonicalName: '肯德基', brandId: 10001 }),
+    });
+    expect(findUnmentionedQueryBrands(fallback, mentioned(), catalog)).toEqual([]);
+  });
+
+  it('不把未知或歧义品牌的原有解析结果改成无出处错误', () => {
+    expect(findUnmentionedQueryBrands(planFor(['小龙']), mentioned(), catalog)).toEqual([]);
+    expect(findUnmentionedQueryBrands(planFor(['未知品牌']), mentioned(), catalog)).toEqual([]);
+  });
+});
 
 describe('buildBrandQueryPlan（§8.1 组合规则）', () => {
   it('所有别名统一转标准品牌，可用时优先使用品牌 ID', () => {

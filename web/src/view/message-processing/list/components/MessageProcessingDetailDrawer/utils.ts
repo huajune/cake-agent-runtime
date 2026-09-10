@@ -6,6 +6,7 @@ import type {
 } from '@/api/types/chat.types';
 import { asRecord } from '@/utils/object';
 import { buildAgentResponseTimeline, type AgentTimelinePart } from './agent-response-timeline';
+import { renderToolDefinitionPrompt } from './tool-definition-prompt';
 
 type AnyRecord = Record<string, unknown>;
 
@@ -571,6 +572,9 @@ function buildFinalPromptText(agentRequest?: AnyRecord): string | undefined {
     sections.push(`━━━━━━━━━━ Messages（${messages.length} 条） ━━━━━━━━━━\n\n${rendered}`);
   }
 
+  const toolDefinitions = renderToolDefinitionPrompt(agentRequest);
+  if (toolDefinitions) sections.push(toolDefinitions);
+
   return sections.length > 0 ? sections.join('\n\n') : undefined;
 }
 
@@ -601,7 +605,7 @@ export function getRawPayloadPanels(message: MessageRecord): RawPayloadPanel[] {
       key: 'final-prompt',
       label: '最终提示词',
       description:
-        '发往大模型的完整 instructions（兼容旧记录的 system，含 [用户档案]/[会话记忆]/[历史求职意向] 等注入的记忆段）与消息序列，纯文本可读视图',
+        '执行时的 instructions（兼容旧记录的 system）、消息序列及工具定义（description 与输入 JSON schema），纯文本可读视图；旧记录可能缺少工具定义',
       data: finalPromptText,
     });
   }

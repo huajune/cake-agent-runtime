@@ -230,11 +230,12 @@ export interface MessageRecordMemorySnapshot {
  * 2026-07-27 之前的老行也叫 replan，但是已删除的旧实现（带反馈 + 只读工具重写）——
  * 按 created_at 区分，新实现的行 reason_code 为 replanned / replan_exhausted。
  */
-export type GuardrailDecision = 'pass' | 'observe' | 'revise' | 'replan' | 'block';
+/** API 读取模型保留旧 revise/block 展示；运行时仅使用 pass/observe/repair/replan。 */
+export type GuardrailDecision = 'pass' | 'observe' | 'repair' | 'replan' | 'revise' | 'block';
 
-/** 入站守卫拦截摘要（guardrail_input 列，仅拦截命中时非空） */
+/** 入站守卫转人工摘要；block 仅兼容 guardrail_input 列的历史记录 */
 export interface GuardrailInputTrace {
-  decision: 'pass' | 'block';
+  decision: 'pass' | 'handoff' | 'block';
   riskType?: string;
   riskLabel?: string;
   reason?: string;
@@ -257,7 +258,10 @@ export interface GuardrailReviewStepTrace {
 export interface GuardrailTurnTrace {
   steps: GuardrailReviewStepTrace[];
   repaired: boolean;
-  finalDecision: GuardrailDecision;
+  finalOutcome?: 'reply' | 'handoff' | 'skipped';
+  /** 只读兼容升级前 JSONB/API；不据此宣称人工已介入。 */
+  finalDecision?: GuardrailDecision;
+  legacyFinalDecision?: 'block';
   reasonCode?: string;
 }
 
@@ -267,6 +271,7 @@ export interface GuardrailReviewViolation {
   evidence: string;
   suggestion: string;
   severity?: string;
+  allowFailOpen?: boolean;
 }
 
 /** 出站守卫单次审查全文详情（档案版，含紧凑摘要裁掉的证据/反馈全文） */
@@ -303,7 +308,7 @@ export interface GuardrailSemanticReview {
 export interface GuardrailReviewRecord {
   traceId: string;
   userMessage?: string;
-  /** 首版回复全文（触发 revise/replan 时被丢弃重写的那一版） */
+  /** 首审对应的回复全文；是否采用由 Runner 最终处置决定 */
   firstReply: string;
   first: GuardrailReviewStepDetail;
   repairMode?: 'rewrite' | 'replan';
@@ -313,7 +318,10 @@ export interface GuardrailReviewRecord {
   revised?: GuardrailReviewStepDetail;
   /** 重写时注入的既成副作用提示 */
   committedSideEffects?: string;
-  finalDecision: GuardrailDecision;
+  finalOutcome?: 'reply' | 'handoff' | 'skipped';
+  /** 只读兼容升级前 JSONB/API；不据此宣称人工已介入。 */
+  finalDecision?: GuardrailDecision;
+  legacyFinalDecision?: 'block';
   reasonCode?: string;
   semanticReviews: GuardrailSemanticReview[];
   createdAt?: string;
@@ -355,7 +363,7 @@ export interface MessageRecord {
   memorySnapshot?: MessageRecordMemorySnapshot;
   /** turn-end 后处理状态 */
   postProcessingStatus?: MessageRecordPostProcessingStatus;
-  /** 入站守卫拦截摘要（仅拦截命中时非空） */
+  /** 入站守卫转人工摘要（旧 block 记录只读兼容，仅风险命中时非空） */
   guardrailInput?: GuardrailInputTrace;
   /** 出站守卫全程 trace（首审→repair→二审） */
   guardrailOutput?: GuardrailTurnTrace;

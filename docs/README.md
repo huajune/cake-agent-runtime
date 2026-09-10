@@ -2,7 +2,7 @@
 
 > Cake Agent Runtime — 技术文档导航
 
-**最后更新**：2026-09-06
+**最后更新**：2026-09-10
 
 ---
 
@@ -49,7 +49,7 @@
 - **[语义判定三分法](architecture/semantic-decision-taxonomy.md)** — 正则、LLM 标签位与向量判定的准入边界
 - **[Agent 质量评估体系](architecture/agent-quality-evaluation.md)** — 口径页：阶段任务目标指标、三层评估（确定性断言 / 校准判官 / 生产抽样）、轻闸门、已退役项
 - **[质量指标台账](quality-metrics-ledger.md)** — 定时观测任务量化结论的唯一落点；阶段/指标名白名单来自口径页 §1，`quality-ledger:validate` 挂在 ci:check
-- **[Guardrail 质量体系](architecture/guardrail-quality-system.md)** — Output 实时裁决、一次有界修复与快/慢质量闭环；慢环为仓外流程，`src/**` 无自动执行器
+- **[Guardrail 质量体系](architecture/guardrail-quality-system.md)** — Output 确定性裁决、Runner 一次 rewrite / replan、修复证据与回归闸的所有权及代码入口
 
 ### 平台系统与规范
 
