@@ -1,4 +1,7 @@
-import { HardRulesService, OUTPUT_RULE_IDS } from '@agent/guardrail/output/hard-rules.service';
+import {
+  HardRulesService,
+  OUTPUT_RULE_IDS,
+} from '@agent/guardrail/output/rules/hard-rules.service';
 
 describe('HardRulesService — 封闭确定性输出规则', () => {
   const alertNotifier = { sendAlert: jest.fn().mockResolvedValue(undefined) };
@@ -201,6 +204,7 @@ describe('HardRulesService — 封闭确定性输出规则', () => {
         ruleId: 'quota_promise',
         action: 'observe',
         currentReplySendable: true,
+        allowFailOpen: true,
       }),
     );
 
@@ -209,5 +213,48 @@ describe('HardRulesService — 封闭确定性输出规则', () => {
     });
     expect(disabled.contradictions).toEqual([]);
     expect(disabled.overrideHits).toEqual([{ ruleId: 'quota_promise', mode: 'off' }]);
+  });
+
+  it.each([
+    ['[NO_REPLY]', 'invalid_model_output'],
+    ['调用 duliday_job_list', 'internal_output_leak'],
+    ['（本轮为真人沟通，AI 保持静默，不插入回复）', 'meta_narration_reply'],
+    ['这家不招外地户籍', 'discriminatory_screening_leak'],
+    ['方便问下你老家是哪里？', 'sensitive_origin_probe'],
+    ['名额放心，我已经帮你留好了', 'quota_promise'],
+  ])('实际命中 %s 保留 %s 的 P0 与禁止 fail-open 约束', (replyText, expectedRuleId) => {
+    const result = check(replyText, { silent: false });
+    expect(result.contradictions.find((rule) => rule.ruleId === expectedRuleId)).toMatchObject({
+      action: 'repair',
+      severity: 'P0',
+      allowFailOpen: false,
+      currentReplySendable: false,
+      repairMode: 'rewrite',
+    });
+    expect(alertNotifier.sendAlert).toHaveBeenCalledWith(
+      expect.objectContaining({ code: 'output_guardrail_p0_intercepted' }),
+    );
+  });
+
+  it('observe/off 覆盖继续抑制 P0 告警且不修改目录默认策略', () => {
+    const text = '名额放心，我已经帮你留好了';
+    for (const mode of ['observe', 'off']) {
+      check(text, { silent: false, hardRuleOverrides: { quota_promise: mode } });
+    }
+    expect(alertNotifier.sendAlert).not.toHaveBeenCalled();
+    expect(check(text).contradictions[0]).toMatchObject({
+      action: 'repair',
+      allowFailOpen: false,
+    });
+  });
+
+  it('纯 replan 命中仍不新增 P0 告警', () => {
+    const result = check('我帮你查了下，时薪25元', { silent: false });
+    expect(result.contradictions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ ruleId: 'job_query_claim_without_query', action: 'replan' }),
+      ]),
+    );
+    expect(alertNotifier.sendAlert).not.toHaveBeenCalled();
   });
 });

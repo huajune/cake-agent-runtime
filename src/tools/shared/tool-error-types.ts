@@ -109,6 +109,8 @@ export const TOOL_ERROR_TYPES = {
   JOB_LIST_SCHEDULE_FILTER_EMPTY: 'job_list.schedule_filter_empty',
   JOB_LIST_STUDENT_FILTER_EMPTY: 'job_list.student_filter_empty',
   JOB_LIST_JOBID_NO_PROVENANCE: 'job_list.jobid_no_provenance',
+  /** 明确归一化的模型品牌未出现在已完整构建的回合品牌提及集合中。 */
+  JOB_LIST_BRAND_NO_PROVENANCE: 'job_list.brand_no_provenance',
   /** 品牌列表为空却传了 enforce/exclude：矛盾组合，引导补品牌或改 mode（§8.1）。 */
   JOB_LIST_BRAND_MODE_CONFLICT: 'job_list.brand_mode_conflict',
   /**

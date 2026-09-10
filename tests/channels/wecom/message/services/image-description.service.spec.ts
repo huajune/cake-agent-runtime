@@ -6,6 +6,7 @@ import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { ModelRole } from '@/llm/llm.types';
 import { AlertNotifierService } from '@notification/services/alert-notifier.service';
 import { MessageType } from '@enums/message-callback.enum';
+import { RequestContextService } from '@observability/context/request-context.service';
 
 describe('ImageDescriptionService', () => {
   let service: ImageDescriptionService;
@@ -16,6 +17,11 @@ describe('ImageDescriptionService', () => {
 
   const mockChatSessionService = {
     updateMessageContent: jest.fn(),
+  };
+
+  const mockRequestContext = {
+    get: jest.fn().mockReturnValue({}),
+    run: jest.fn((_ctx: unknown, fn: () => unknown) => fn()),
   };
 
   const mockAlertService = {
@@ -38,6 +44,7 @@ describe('ImageDescriptionService', () => {
         { provide: ChatSessionService, useValue: mockChatSessionService },
         { provide: AlertNotifierService, useValue: mockAlertService },
         { provide: ConfigService, useValue: mockConfigService },
+        { provide: RequestContextService, useValue: mockRequestContext },
       ],
     }).compile();
 
@@ -66,7 +73,7 @@ describe('ImageDescriptionService', () => {
       expect(mockLlm.generate).toHaveBeenCalledWith(
         expect.objectContaining({
           role: ModelRole.Vision,
-          system: expect.stringContaining('品牌ID：10239'),
+          system: expect.stringContaining('"品牌ID："加原始标题中的实际数字'),
           maxOutputTokens: 256,
           messages: expect.arrayContaining([
             expect.objectContaining({
@@ -84,6 +91,29 @@ describe('ImageDescriptionService', () => {
         `[图片消息] ${description}`,
         undefined,
       );
+    });
+
+    it('runs the vision call inside a trace context keyed by the image messageId', async () => {
+      mockLlm.generate.mockResolvedValue({ text: '一张岗位截图', usage: { totalTokens: 10 } });
+      mockChatSessionService.updateMessageContent.mockResolvedValue(true);
+
+      service.describeAndUpdateAsync('msg-trace', 'https://example.com/image.jpg');
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      expect(mockRequestContext.run).toHaveBeenCalledWith(
+        { traceId: 'msg-trace', scenario: 'image-description' },
+        expect.any(Function),
+      );
+    });
+
+    it('keeps the caller trace when already inside a request context', async () => {
+      mockRequestContext.get.mockReturnValueOnce({ traceId: 'turn-1' });
+      mockLlm.generate.mockResolvedValue({ text: '一张岗位截图', usage: { totalTokens: 10 } });
+      mockChatSessionService.updateMessageContent.mockResolvedValue(true);
+
+      await service.describeForBackfill('msg-backfill', 'https://example.com/image.jpg');
+
+      expect(mockRequestContext.run).not.toHaveBeenCalled();
     });
 
     it('should not update content when description is empty', async () => {

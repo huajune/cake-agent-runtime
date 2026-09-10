@@ -2,10 +2,9 @@ import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Readable } from 'stream';
 import { createHash } from 'node:crypto';
-import { AgentRunnerService } from '@agent/runner/agent-runner.service';
+import { AgentRunnerService, type ReviewedRunResult } from '@agent/runner/agent-runner.service';
 import type {
   GeneratorInputMessage,
-  GeneratorRunResult,
   GeneratorStreamResult,
 } from '@agent/generator/generator.types';
 import { CallerKind } from '@enums/agent.enum';
@@ -122,7 +121,7 @@ export class TestExecutionService {
       `执行测试: ${request.caseName || this.buildInputPreview(request.message, request.imageUrls)}...`,
     );
 
-    let agentResult: GeneratorRunResult | null = null;
+    let agentResult: ReviewedRunResult | null = null;
     let executionStatus: ExecutionStatus = ExecutionStatus.SUCCESS;
     let errorMessage: string | null = null;
     const sessionId = request.sessionId ?? `test-${Date.now()}`;
@@ -212,7 +211,7 @@ export class TestExecutionService {
       !this.isIntentionalNoReply(agentResult)
     ) {
       executionStatus = ExecutionStatus.FAILURE;
-      errorMessage = 'Agent returned empty output without an intentional no-reply tool';
+      errorMessage = 'Agent returned empty output without an intentional no-reply outcome';
     }
 
     const executionTrace = this.buildExecutionTrace({
@@ -513,14 +512,17 @@ export class TestExecutionService {
     return { testRequest, messageText };
   }
 
-  private async runDeferredTurnEnd(agentResult: GeneratorRunResult | null): Promise<TurnEndTrace> {
+  private async runDeferredTurnEnd(agentResult: ReviewedRunResult | null): Promise<TurnEndTrace> {
     if (!agentResult?.runTurnEnd) {
       return { status: 'skipped' };
     }
 
     const startedAt = Date.now();
     try {
-      await agentResult.runTurnEnd();
+      await agentResult.runTurnEnd({
+        includeAssistantText:
+          agentResult.resolution.outcome === 'reply' && Boolean(agentResult.text?.trim()),
+      });
       return { status: 'completed', durationMs: Date.now() - startedAt };
     } catch (error: unknown) {
       return {
@@ -547,7 +549,7 @@ export class TestExecutionService {
     sourceTrace: TestSourceTrace | null;
     runtimeScope: TestRuntimeScope;
     monitoringInfo: MonitoringContextInfo | null;
-    agentResult: GeneratorRunResult | null;
+    agentResult: ReviewedRunResult | null;
     extracted: ExtractedResult;
     startedAt: number;
     completedAt: number;
@@ -580,6 +582,10 @@ export class TestExecutionService {
           params.agentResult && 'outputDecision' in params.agentResult
             ? params.agentResult.outputDecision
             : undefined,
+        resolution:
+          params.agentResult && 'resolution' in params.agentResult
+            ? params.agentResult.resolution
+            : undefined,
         revised:
           params.agentResult && 'revised' in params.agentResult
             ? params.agentResult.revised === true
@@ -596,7 +602,7 @@ export class TestExecutionService {
     runtimeScope: TestRuntimeScope;
     memorySetup: MemoryFixtureSetup | null;
     memoryAssertions: MemoryAssertions | null;
-    agentResult: GeneratorRunResult | null;
+    agentResult: ReviewedRunResult | null;
     postTurnState: unknown;
     turnEnd: TurnEndTrace;
   }): TestMemoryTraceBundle {
@@ -918,7 +924,7 @@ export class TestExecutionService {
     return `[图片消息${imageUrls?.length ? ` x${imageUrls.length}` : ''}]`;
   }
 
-  private extractResult(result: GeneratorRunResult | null): ExtractedResult {
+  private extractResult(result: ReviewedRunResult | null): ExtractedResult {
     if (!result) {
       return {
         actualOutput: '',
@@ -928,7 +934,7 @@ export class TestExecutionService {
     }
 
     return {
-      actualOutput: result.text || '',
+      actualOutput: result.resolution.outcome === 'reply' ? result.text || '' : '',
       toolCalls: (result.toolCalls || []).map((toolCall) => ({
         toolName: toolCall.toolName,
         input: toolCall.args,
@@ -938,7 +944,9 @@ export class TestExecutionService {
     };
   }
 
-  private isIntentionalNoReply(result: GeneratorRunResult | null): boolean {
+  private isIntentionalNoReply(result: ReviewedRunResult | null): boolean {
+    if (result?.resolution.outcome === 'handoff') return true;
+    if (result?.resolution.outcome === 'skipped' && result.resolution.reasonCode) return true;
     return Boolean(
       result?.toolCalls?.some((toolCall) =>
         ['skip_reply', 'request_handoff'].includes(toolCall.toolName),

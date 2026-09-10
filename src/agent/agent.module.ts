@@ -17,6 +17,7 @@ import { HandoffEventsModule } from '@biz/handoff-events/handoff-events.module';
 import { GeneratorAgent } from './generator/generator.agent';
 import { AgentRunnerService } from './runner/agent-runner.service';
 import { ReplyRepairAgent } from './reply-repair/reply-repair.agent';
+import { RepairEvidenceBuilder } from './reply-repair/repair-evidence.builder';
 import { ReplyRepairContextProvider } from './reply-repair/reply-repair-context.provider';
 import { TurnOutcomeInterventionService } from './runner/turn-outcome-intervention.service';
 import { PreparationService } from './generator/preparation/preparation.service';
@@ -76,6 +77,7 @@ import {
     ToolRuntimeBuilderService,
     PreparationService,
     GeneratorAgent,
+    RepairEvidenceBuilder,
     ReplyRepairAgent,
     ReplyRepairContextProvider,
     AgentRunnerService,

@@ -3,14 +3,28 @@ import { createTurnLedger } from '@agent/generator/preparation/turn-ledger';
 import { CallerKind } from '@/enums/agent.enum';
 
 /**
- * 模型偶发不走 tool-call 通道，把调用写成 JSON 文本（thinking 模式下落在 reasoning，
- * 正文只留一句想当然的回执）。零工具调用 = 无既成副作用，故带工具重跑一次是安全的。
+ * 模型偶发不走 tool-call 通道，把工具往返演在文本里（thinking 模式下落在 reasoning，
+ * 正文只留一句想当然的回执或一串编造的岗位）。零工具调用 = 无既成副作用，故带工具重跑一次是安全的。
  */
 describe('GeneratorAgent 工具调用文本化重生成', () => {
   const LEAKED_REASONING = `{
   "tool_name": "duliday_interview_booking",
   "arguments": { "jobId": 529147, "interviewTime": "2026-09-02 13:30:00" }
 }`;
+  /** chat 6aa0cf1e 09-09：reasoning 里一整份假查岗回执，零工具，正文编了 5 家门店。 */
+  const FAKE_RESULT_REASONING = `{
+  "jobList": [
+    { "jobId": 432206, "jobName": "瑞幸咖啡-佛山北滘公园店-店员-小时工", "distanceKm": 0.8, "salary": "20元/小时" },
+    { "jobId": 431895, "jobName": "奈雪的茶-佛山北滘店-店员-小时工", "distanceKm": 0.9, "salary": "19-22元/小时" }
+  ]
+}`;
+  /** chat 6a97b336 09-07：reasoning 里 XML 形态的假 precheck 调用，零工具，正文宣称报名已提交。 */
+  const XML_CALL_REASONING = `<function_calls>
+<invoke name="duliday_interview_precheck">
+<parameter name="mode">validate</parameter>
+<parameter name="jobId">528334</parameter>
+</invoke>
+</function_calls>`;
 
   const makeCtx = () => ({
     corpId: 'c1',
@@ -94,6 +108,64 @@ describe('GeneratorAgent 工具调用文本化重生成', () => {
     expect(result.agentSteps[0].reasoning).toContain('duliday_interview_booking');
     expect(result.agentSteps.map((s) => s.stepIndex)).toEqual([0, 1]);
     expect(result.usage.totalTokens).toBe(30);
+  });
+
+  it.each([
+    [
+      '假回执 JSON（同构记录表）',
+      FAKE_RESULT_REASONING,
+      '帮你查了下，北滘公园附近有几家在招\n\n瑞幸咖啡（佛山北滘公园店），离你0.8公里，20元/时',
+    ],
+    ['XML 形态假调用', XML_CALL_REASONING, '周建青的报名也提交成功了'],
+  ])('零工具调用 + reasoning 含%s → 同样带工具重生成', async (_label, reasoning, firstText) => {
+    const generate = jest
+      .fn()
+      .mockResolvedValueOnce({
+        text: firstText,
+        reasoningText: reasoning,
+        steps: [{ text: firstText, reasoningText: reasoning, finishReason: 'stop' }],
+        usage,
+        response: { messages: [] },
+      })
+      .mockResolvedValueOnce({
+        text: '我帮你查下附近的岗位',
+        reasoningText: undefined,
+        steps: [
+          {
+            text: '我帮你查下附近的岗位',
+            finishReason: 'stop',
+            toolCalls: [{ toolCallId: 't1', toolName: 'duliday_job_list', input: {} }],
+            toolResults: [{ toolCallId: 't1', output: { items: [] } }],
+          },
+        ],
+        usage,
+        response: { messages: [] },
+      });
+
+    const result = await invoke(buildService(generate));
+
+    expect(generate).toHaveBeenCalledTimes(2);
+    expect(generate.mock.calls[1][0].instructions).toContain('模拟了工具的调用或返回结果');
+    expect(generate.mock.calls[1][0].tools).toBeDefined();
+    expect(result.text).toBe('我帮你查下附近的岗位');
+    expect(result.toolCalls).toHaveLength(1);
+    expect(result.agentSteps).toHaveLength(2);
+  });
+
+  it('reasoning 里的单键对象数组（候选人贴的表单结构）不触发重试', async () => {
+    const generate = jest.fn().mockResolvedValue({
+      text: '收到，社会身份和年龄都记下了',
+      reasoningText:
+        '候选人回了表单：[{"properties":{"labelTitle":"社会身份","value":"社会人士"}},{"properties":{"labelTitle":"年龄","value":"26"}}]',
+      steps: [{ text: '收到，社会身份和年龄都记下了', finishReason: 'stop' }],
+      usage,
+      response: { messages: [] },
+    });
+
+    const result = await invoke(buildService(generate));
+
+    expect(generate).toHaveBeenCalledTimes(1);
+    expect(result.text).toBe('收到，社会身份和年龄都记下了');
   });
 
   it('本轮已有工具调用时不重试——已有副作用，重跑会重复提交', async () => {

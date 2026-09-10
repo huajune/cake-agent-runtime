@@ -132,15 +132,22 @@ describe('ReengagementTouchRepository', () => {
     expect(queryMock.range).toHaveBeenCalledWith(20, 219);
   });
 
-  it('fetches detail records by touch key including the full projection', async () => {
-    const queryMock = makeQueryMock({ data: [{ touch_key: 'touch-1', events: [] }], error: null });
+  it('reads a historical guardrail outcome and events without rewriting its projection', async () => {
+    const historicalRow = {
+      touch_key: 'touch-1',
+      status: 'skipped',
+      outcome_kind: 'guardrail_blocked',
+      events: [{ event: 'outcome_not_reply', detail: { outcomeKind: 'guardrail_blocked' } }],
+    };
+    const queryMock = makeQueryMock({ data: [historicalRow], error: null });
     mockSupabaseClient.from.mockReturnValue(queryMock);
 
     const row = await repository.getRecordByTouchKey('touch-1');
 
-    expect(row).toEqual({ touch_key: 'touch-1', events: [] });
+    expect(row).toEqual(historicalRow);
     expect(queryMock.select).toHaveBeenCalledWith('*');
     expect(queryMock.eq).toHaveBeenCalledWith('touch_key', 'touch-1');
+    expect(mockSupabaseClient.rpc).not.toHaveBeenCalled();
   });
 
   it('resolves runtime channel identity from recent chat messages without taking bot-side contact id', async () => {

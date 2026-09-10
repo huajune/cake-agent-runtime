@@ -1,4 +1,4 @@
-import { stripInternalReasoningArtifacts } from './rules/internal-info-leaks.rule';
+import { stripInternalReasoningArtifacts } from '../rules/internal-info-leaks.rule';
 
 /**
  * 确定性出站回复清洗。

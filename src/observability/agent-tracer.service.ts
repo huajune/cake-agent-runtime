@@ -17,10 +17,14 @@ export class AgentTracerService {
   emit(event: AgentEvent): void {
     if (!this.observer) return;
 
+    // 事件显式写 `userId: undefined` 不得盖掉请求上下文里的值：先剔除 undefined 再合并。
+    const explicit = Object.fromEntries(
+      Object.entries(event).filter(([, value]) => value !== undefined),
+    ) as AgentEvent;
     const enriched = {
       ...this.requestContext.get(),
       timestamp: Date.now(),
-      ...event,
+      ...explicit,
     };
 
     try {

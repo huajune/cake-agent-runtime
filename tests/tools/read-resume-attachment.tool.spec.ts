@@ -10,6 +10,7 @@ import { transcribeResumeImage, transcribeScannedPdf } from '@tools/resume/resum
 import { TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
 import { strToU8, zipSync } from 'fflate';
 import { createToolContext } from '../helpers/tool-context.fixture';
+import { createTurnLedger } from '@agent/generator/preparation/turn-ledger';
 
 jest.mock('@tools/resume/pdf-text.util', () => ({
   extractPdfText: jest.fn(),
@@ -97,6 +98,7 @@ describe('buildReadResumeAttachmentTool', () => {
     input?: Record<string, unknown>;
     attachments?: ResumeAttachment[];
     resumeRequired?: boolean;
+    mentionedBrands?: string[];
   }) {
     const attachments = options?.attachments ?? [
       { fileUrl: resumeUrl, fileName: '兮兮简历.pdf', messageId: 'message-1' },
@@ -116,6 +118,10 @@ describe('buildReadResumeAttachmentTool', () => {
           resumeRequired: options?.resumeRequired ?? true,
         },
       },
+    });
+    context.ledger = createTurnLedger({
+      mentionedBrands: options?.mentionedBrands,
+      brandCatalog: [{ id: 1, name: '肯德基', aliases: ['KFC'] }],
     });
     const built = buildReadResumeAttachmentTool(attachments, {
       llm,
@@ -176,6 +182,22 @@ describe('buildReadResumeAttachmentTool', () => {
     });
     expect(context.ledger.visual.factSheets).toHaveLength(0);
     expect(messageWriteback).not.toHaveBeenCalled();
+  });
+
+  it('无 messageId 的成功简历输出也能提供品牌提及', async () => {
+    mockExtractPdfText.mockResolvedValue({
+      text: `${resumeText}\n曾在KFC工作`,
+      totalPages: 1,
+      pagesParsed: 1,
+      thin: false,
+      charsPerPage: resumeText.length + 10,
+    });
+    const { result, context } = await executeTool({
+      attachments: [{ fileUrl: resumeUrl, fileName: '兮兮简历.pdf' }],
+      mentionedBrands: [],
+    });
+    expect(result).toMatchObject({ success: true, sheetRecorded: false });
+    expect(context.ledger.mentionedBrands).toEqual(new Set(['肯德基']));
   });
 
   it('dispatches a real docx archive and returns extracted text', async () => {

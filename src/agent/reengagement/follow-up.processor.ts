@@ -53,6 +53,8 @@ import {
   type ReengagementBookingContext,
 } from './booking-context';
 import { BotService } from '@wecom/bot/bot.service';
+import { CallerKind } from '@enums/agent.enum';
+import { RequestContextService } from '@observability/context/request-context.service';
 import { shanghaiDayNumber } from './reengagement-datetime.util';
 
 export const REENGAGEMENT_DELIVERY_PORT = Symbol('REENGAGEMENT_DELIVERY_PORT');
@@ -170,6 +172,8 @@ export class FollowUpProcessor implements OnModuleInit {
     @Optional()
     @Inject(REENGAGEMENT_DELIVERY_PORT)
     private readonly delivery?: ReengagementDeliveryPort<TurnOutcome>,
+    @Optional()
+    private readonly requestContext?: RequestContextService,
   ) {}
 
   onModuleInit(): void {
@@ -859,17 +863,34 @@ export class FollowUpProcessor implements OnModuleInit {
     options?: { rolloutEnabled?: boolean; shadow?: boolean },
     bookingContext?: ReengagementBookingContext,
   ): Promise<ProactiveTurnExecution> {
-    const result = await this.reengagementAgent.compose({
-      sessionRef: jobData.sessionRef,
-      scenario,
-      jobData,
-      state,
-      messageId,
-      rolloutEnabled: options?.rolloutEnabled,
-      shadow: options?.shadow,
-      bookingContext,
-    });
+    const compose = () =>
+      this.reengagementAgent.compose({
+        sessionRef: jobData.sessionRef,
+        scenario,
+        jobData,
+        state,
+        messageId,
+        rolloutEnabled: options?.rolloutEnabled,
+        shadow: options?.shadow,
+        bookingContext,
+      });
+    // 主动回合不经 Runner，没有人替它进请求上下文：复聊的 llm_execution 等事件此前
+    // trace/chat/user 三维全空。traceId = batchId，与主动回合流水行（message_id = batchId）同源。
+    const result = this.requestContext
+      ? await this.requestContext.run(
+          {
+            traceId: messageId,
+            chatId: jobData.sessionRef.sessionId,
+            userId: jobData.sessionRef.userId,
+            corpId: jobData.sessionRef.corpId,
+            scenario: scenario.code,
+            callerKind: CallerKind.REENGAGEMENT,
+          },
+          compose,
+        )
+      : await compose();
     if ((result as ProactiveTurnExecution).outcome) return result;
+
     return {
       outcome: result as unknown as TurnOutcome,
       aiStartAt: Date.now(),

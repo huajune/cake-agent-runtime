@@ -45,10 +45,10 @@ export interface AgentReply {
 export interface AgentInvokeResult {
   reply: AgentReply;
   isFallback: boolean;
-  /** 本轮为非 reply 终态（skip_reply 主动沉默/守卫拦截/handoff/工具短路），reply.content 可能为空 */
+  /** 本轮为非 reply 终态（skip_reply 主动沉默/handoff/工具短路），reply.content 可能为空 */
   isSkipped?: boolean;
-  /** guardrail_blocked 终态的归因；reply.content 仅供观测留痕，不得发送给候选人。 */
-  guardrailBlocked?: TurnOutcome['guardrail'];
+  /** 守卫入站 handoff、出站 handoff 或 skipped 的归因；reply.content 仅供观测留痕，不得发送给候选人。 */
+  guardrail?: TurnOutcome['guardrail'];
   processingTime: number;
   /** 扁平化的工具调用序列（含 resultCount/status/durationMs） */
   toolCalls?: AgentToolCall[];
@@ -61,7 +61,7 @@ export interface AgentInvokeResult {
   responseMessages?: Array<Record<string, unknown>>;
   /**
    * 渠道无关的回合终态（由 runner 共享分类器 classifyReviewedOutcome 计算）：
-   * reply→可投递，skipped/guardrail_blocked/handoff→不投递。投递/沉默分支据此判定，与 runner 主动链路同源。
+   * reply→可投递，skipped/handoff→不投递。投递/沉默分支据此判定，与 runner 主动链路同源。
    */
   outcome?: TurnOutcome;
   /**

@@ -2,6 +2,10 @@ import type { LucideIcon } from 'lucide-react';
 import { ChevronRight, Inbox, ShieldAlert, ShieldOff, ShieldX, Zap } from 'lucide-react';
 import { formatDateTime, formatLocaleNumber } from '@/utils/format';
 import { guardrailReasonLabel, guardrailRuleListLabel } from '@/components/GuardrailTrace/labels';
+import {
+  guardrailInputDisplay,
+  guardrailOutcomeDisplay,
+} from '@/components/GuardrailTrace/outcome';
 import type { MessageRecord } from '@/api/types/chat.types';
 import styles from './index.module.scss';
 
@@ -83,27 +87,30 @@ function getStatusTone(record: MessageRecord): StatusTone {
   return 'warning';
 }
 
-/** 守卫徽标：入站拦截 / 出站拦截 / 经受控修复后放行，其余（pass/observe）不加噪音。 */
+/** 守卫徽标分别展示入站转人工意图、出站最终处置、历史未发送或修复后可回复；仅审查建议不生成处置徽标。 */
 function getGuardrailBadge(record: MessageRecord): { tone: GuardrailTone; title: string } | null {
-  if (record.guardrailInput) {
+  if (record.guardrailInput && record.guardrailInput.decision !== 'pass') {
     const label = record.guardrailInput.riskLabel || record.guardrailInput.riskType || '风险命中';
-    return { tone: 'intercepted', title: `入站守卫拦截：${label}（本轮未跑 Agent）` };
+    const input = guardrailInputDisplay(record.guardrailInput.decision);
+    return { tone: 'intercepted', title: `${input.label}：${label}（本轮未跑 Agent）` };
   }
   const output = record.guardrailOutput;
   if (!output) return null;
-  if (output.finalDecision === 'block') {
+  const final = guardrailOutcomeDisplay(output);
+  if (final.kind === 'advisory') return null;
+  if (final.kind !== 'reply') {
     const rules = output.steps.flatMap((s) => s.blockedRuleIds);
     const reason = output.reasonCode ? `（${guardrailReasonLabel(output.reasonCode)}）` : '';
     return {
       tone: 'blocked',
-      title: `出站守卫拦截，未发送${reason}：${guardrailRuleListLabel(rules)}`,
+      title: `${final.label}${reason}：${guardrailRuleListLabel(rules)}`,
     };
   }
   if (output.repaired) {
     const rules = output.steps[0]?.ruleIds ?? [];
     return {
       tone: 'repaired',
-      title: `首版被守卫要求修复，修复后已发送：${guardrailRuleListLabel(rules)}`,
+      title: `首版被守卫要求修复，已尝试修复，最终可回复：${guardrailRuleListLabel(rules)}`,
     };
   }
   return null;

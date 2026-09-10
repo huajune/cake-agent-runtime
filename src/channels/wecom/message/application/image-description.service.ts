@@ -1,6 +1,8 @@
 import { toErrorMessage } from '@infra/utils/error.util';
 import { sleep } from '@infra/utils/async.util';
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import { RequestContextService } from '@observability/context/request-context.service';
+
 import { ConfigService } from '@nestjs/config';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
@@ -97,7 +99,7 @@ export class ImageDescriptionService {
     '\n- 简历（手写简历 / 简历文档拍照 / 简历截图，图片本身就是一份简历时）：描述必须以"简历图片："开头，再逐项提取姓名、手机号、年龄、籍贯、身高体重、学历、工作经历等图片上可见的信息；看不清的字段写"看不清"，不要猜测。注意：招聘平台的简历列表/岗位页截图不算简历，按截图类处理。',
     '\n- 健康证 / 食品健康证 / 餐饮健康证：必须按"证件类型 / 持有人 / 发证机构 / 有效期至 YYYY-MM-DD（若图片只写到月份则照写到月份）"四个字段逐项输出。日期请按图片上印刷字面照抄，不要凭印象重写月份；多次出现日期时以"有效期至"或"valid until"标注的为准；看不清时写"看不清"。不要判断证件是否过期。',
     '\n- 招聘海报 / 招聘传单 / 含二维码的招聘截图：必须明确指出"含面试二维码 / 含报名二维码 / 含进群二维码"；同时提取品牌、门店、岗位、薪资、地址等关键信息。即使二维码本身无法解码，也要在描述里写"图片含二维码"，不要回复"没有"。',
-    '\n- 招聘平台截图（无二维码）：提取岗位名称、薪资、门店/公司、距离、工作要求等关键信息。Boss直聘岗位页/岗位卡片的标题里若出现形如"[10239]"的方括号纯数字，这是品牌ID；必须逐字保留完整岗位标题，并额外写一项"品牌ID：10239"，不要改写、丢弃或当成岗位ID。',
+    '\n- 招聘平台截图（无二维码）：提取岗位名称、薪资、门店/公司、距离、工作要求等关键信息。Boss直聘岗位页/岗位卡片的标题里若出现方括号内的纯数字，这是品牌ID；必须逐字保留完整岗位标题，并额外用"品牌ID："加原始标题中的实际数字记录，不要改写、丢弃或当成岗位ID。',
     '\n- 地图/位置截图：提取地点名称和位置信息',
     '\n- 聊天截图：提取关键对话内容',
     '\n- 表情包/表情贴图：只输出表情传达的情绪或动作，控制在 4-12 个字，如"思考"、"微笑"、"比心"、"点头OK"；不要描述角色外观、颜色、姿势细节，也不要猜测台词或意图（如"我懂了"、"我在想主意"）',
@@ -117,6 +119,7 @@ export class ImageDescriptionService {
     private readonly chatSession: ChatSessionService,
     private readonly alertService: AlertNotifierService,
     configService: ConfigService,
+    @Optional() private readonly requestContext?: RequestContextService,
   ) {
     const baseUrl = configService.get<string>('STRIDE_ENTERPRISE_API_BASE_URL')!;
     this.artworkApiUrl = `${baseUrl}/api/v2/message/loadArtWorkImage`;
@@ -144,8 +147,11 @@ export class ImageDescriptionService {
       `[触发] 开始${label}描述(异步) [${messageId}], url=${imageUrl.substring(0, 80)}...`,
     );
 
-    const task = this.describeAndUpdate(messageId, imageUrl, kind)
+    const task = this.inTraceContext(messageId, () =>
+      this.describeAndUpdate(messageId, imageUrl, kind),
+    )
       .then(() => undefined)
+
       .catch((error) => {
         this.consecutiveFailures++;
         let err: Error;
@@ -177,7 +183,18 @@ export class ImageDescriptionService {
   }
 
   /**
+   * 图片描述在消息主链路之外异步执行，没有人替它进请求上下文：vision 的 llm_execution
+   * 事件此前 trace/chat/user 三维全空。这里以图片消息 id 作 traceId（可回查 chat_messages）；
+   * 若调用方本就带着回合上下文（turn 收尾补写），沿用外层 trace 不覆盖。
+   */
+  private inTraceContext<T>(messageId: string, run: () => Promise<T>): Promise<T> {
+    if (!this.requestContext || this.requestContext.get().traceId) return run();
+    return this.requestContext.run({ traceId: messageId, scenario: 'image-description' }, run);
+  }
+
+  /**
    * 描述缺失的异步补写（§10.3）：主路径模型漏调 save_image_description 时，
+
    * turn 收尾后由补写链路调用。返回描述文本供品牌解析；失败/并行任务已在跑时返回 null。
    */
   async describeForBackfill(messageId: string, imageUrl: string): Promise<string | null> {
@@ -188,7 +205,9 @@ export class ImageDescriptionService {
       return null;
     }
 
-    const run = this.describeAndUpdate(messageId, imageUrl, MessageType.IMAGE);
+    const run = this.inTraceContext(messageId, () =>
+      this.describeAndUpdate(messageId, imageUrl, MessageType.IMAGE),
+    );
     this.inFlight.set(
       messageId,
       run.then(() => undefined).catch(() => undefined),

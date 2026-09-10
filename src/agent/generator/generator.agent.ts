@@ -12,7 +12,7 @@ import { hasToolCall, stepCountIs, type generateText } from 'ai';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
 import { ModelRole } from '@/llm/llm.types';
 import { MemoryService } from '@memory/memory.service';
-import { containsLeakedToolCallBlob } from '@agent/guardrail/output/rules/invalid-model-output.rule';
+import { containsSimulatedToolExchange } from '@agent/guardrail/output/rules/invalid-model-output.rule';
 import { PreparationService, type WorkingMemory } from './preparation/preparation.service';
 import type { AgentError } from '@shared-types/agent-error.types';
 import type { TurnLedger } from '@shared-types/turn.types';
@@ -39,14 +39,15 @@ import {
 const SKIP_REPLY_TOOL_NAME = 'skip_reply';
 
 /**
- * 工具调用被写成文本后的纠正指令（追加在 system prompt 末尾，只用于重生成那一次）。
+ * 模型把工具往返演在文本里之后的纠正指令（追加在 system prompt 末尾，只用于重生成那一次）。
  *
  * 只说明协议事实与后果，不教具体该调哪个工具——该调什么由本轮上下文自行决定。
  */
 const TEXTUAL_TOOL_CALL_RETRY_NOTICE =
-  '⚠️ 系统拦截：上一次生成把工具调用写成了 JSON 文本，没有真正执行。工具只能通过 tool call 通道发起，' +
-  '写在正文或思考里的调用一律不会执行，对应的动作没有发生。请重新作答：需要执行动作就真正发起 tool call，' +
-  '不需要就直接写候选人可见回复。严禁在工具未执行的情况下宣称报名/预约/取消/拉群等动作已完成。';
+  '⚠️ 系统拦截：上一次生成在思考或正文里模拟了工具的调用或返回结果，没有任何工具真正执行。' +
+  '工具只能通过 tool call 通道发起，写在正文或思考里的调用、回执一律不算数，对应的动作没有发生、' +
+  '数据没有查到。请重新作答：需要执行动作或查询就真正发起 tool call，不需要就直接写候选人可见回复。' +
+  '严禁在工具未执行的情况下宣称报名/预约/取消/拉群已完成或报出岗位薪资/距离/班次。';
 
 /**
  * stopWhen 条件：当任意工具的 toolResult 标记 `shortCircuited: true` 时结束本轮 loop。
@@ -587,14 +588,16 @@ export class GeneratorAgent {
   }
 
   /**
-   * 工具调用文本化泄漏的一次带工具重生成（hard cap 1）。
+   * 模型在文本里模拟工具往返后的一次带工具重生成（hard cap 1）。
    *
-   * 模型偶发不走 tool-call 通道，把调用写成 JSON 文本（thinking 模式下 blob 落在 reasoning、
-   * 正文只留一句想当然的回执），结果是零工具调用 + 一条凭空的成功宣称。
+   * 模型偶发不走 tool-call 通道，把整段工具往返演在 reasoning 里——JSON/XML 调用、
+   * `[API 调用…][API 返回…]`、乃至一整份 `{"jobList":[…]}` 假回执——正文只留一句想当然的
+   * 回执或一串编造的岗位，结果是零工具调用 + 凭空的成功宣称/岗位事实。判据
+   * containsSimulatedToolExchange 同时认调用与回执形态。
    *
    * 前置条件是**本轮零工具调用**：此时不存在任何已提交的副作用，带工具重跑不会重复
    * 预约/拉群。出站守卫治不了这一形态——它的入参里没有 reasoning，且 repair 只能改文本、
-   * 变不出没发生过的工单，所以修复点必须落在定稿之前。
+   * 变不出没发生过的工单，所以修复点必须落在定稿之前（守卫 replan 档只兜岗位事实这一种症状）。
    *
    * 重试产物一律取代首版（更新的一次尝试），首版 steps 前置保留，让泄漏在流水里可见。
    */
@@ -607,11 +610,11 @@ export class GeneratorAgent {
 
     const leaked = [result.text, result.reasoning, ...result.agentSteps.map((s) => s.reasoning)]
       .filter((value): value is string => typeof value === 'string' && value.length > 0)
-      .some((value) => containsLeakedToolCallBlob(value));
+      .some((value) => containsSimulatedToolExchange(value));
     if (!leaked) return result;
 
     this.logger.warn(
-      `模型把工具调用写成了文本且本轮零工具调用，带工具重生成一次: sessionId=${ctx.sessionId}`,
+      `模型在文本里模拟了工具往返且本轮零工具调用，带工具重生成一次: sessionId=${ctx.sessionId}`,
     );
 
     try {
@@ -620,7 +623,7 @@ export class GeneratorAgent {
         emitPreparedRequest: false,
       });
 
-      if (retry.toolCalls.length === 0 && containsLeakedToolCallBlob(retry.reasoning ?? '')) {
+      if (retry.toolCalls.length === 0 && containsSimulatedToolExchange(retry.reasoning ?? '')) {
         this.logger.warn(
           `重生成后工具调用仍为文本形态: sessionId=${ctx.sessionId}——回复交出站守卫与哨兵接手`,
         );

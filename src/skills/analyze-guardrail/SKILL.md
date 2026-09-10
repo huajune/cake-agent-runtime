@@ -9,7 +9,7 @@ description: 分析出站守卫（output guardrail）的生产效果，产出一
 
 ## 为什么必须用本 skill 的口径
 
-历史上守卫分析反复出错，根因是口径每次重新推导。以下口径全部经生产数据验证（2026-08-20 校准），**不要凭表名和列名望文生义**。
+历史上守卫分析反复出错，根因是口径每次重新推导。稀疏表口径经生产数据校准（2026-08-20）；以下审查与最终处置口径兼容后续 Output resolution 改造，**不要凭表名和列名望文生义**。
 
 ### 数据源真相
 
@@ -27,20 +27,26 @@ description: 分析出站守卫（output guardrail）的生产效果，产出一
 | 字段/值 | 含义 | 分析时怎么算 |
 |---|---|---|
 | `first_decision='pass'` + rules 非空 | observe 档命中（原生 observe 哨兵，或 runtime override 降档） | 不是拦截；哨兵 vs override 看 catalog 登记档位 |
-| `first_decision='revise'/'block'` | enforce 档首审命中 | 拦截尝试 |
-| `revised_decision <> 'pass'` | **二审复燃**：修复版仍命中 | 假阳嫌疑 or repair 无效，须抽样分辨 |
-| `final_decision='block'` | 整轮静默，候选人收不到回复 | 杀伤最大，最优先人工核查 |
-| `reason_code='repair_exhausted_fail_open'` | 复燃但 P1/P2 可恢复 → 投递修复版 | 复燃即假阳嫌疑重灾区 |
-| `reason_code='repair_exhausted'` | 复燃且高风险/不可恢复 → 静默 | 真事故或高杀伤假阳 |
+| `first_decision='repair'/'replan'`；旧值 `revise`/`block` | enforce 档首审命中 | 草稿处理要求，不是最终处置 |
+| `revised_decision IN ('repair','replan','revise','block')` | **二审复燃**：修复版仍命中执行档 | 须确认确有二审，再分辨假阳或 repair 无效 |
+| `final_decision='reply'/'handoff'/'skipped'` | 物理列名保留，当前写入 Runner `resolution.outcome` | 分别统计允许回复、转人工、有意不回复；实际送达另查渠道记录 |
+| 旧 `final_decision='pass'/'observe'` | 旧版允许回复 | 归入 `reply`，保留原值便于核查 |
+| 旧 `final_decision='block'` | 历史拦截未发送；仅 `meta_narration_silenced` 可归入 `skipped` | 其他旧 block 单列 `legacy_block`，不能推断已经人工介入 |
+| `reason_code='repair_exhausted_fail_open'` | 二审仍命中，但低风险且全部 `allowFailOpen` 允许 → 投递修复版 | 复燃即假阳嫌疑重灾区；首版或二审要求 replan 都不走此分支 |
+| `reason_code='repair_exhausted'/'replan_exhausted'` | 修复耗尽且无法安全放行 → `handoff` | 真事故或高影响假阳，携带 guardrail 原因 |
 | `repair_regression_*` | 修复版退化被回归闸拦下 | repair 质量问题 |
 | `fence_stripped` / `envelope_unwrapped` | 确定性机械剥离修复 | 不是 LLM 重写，单独归类 |
 | `semantic_reviews` | 历史兼容字段 | 不纳入当前窗口规则效果统计 |
 
+单次 Output 审查只有 `pass/observe/repair/replan`；旧 `revise` 和旧 `block` 都归入 `repair`，原严格规则的 `allowFailOpen:false` 独立保留，不能从 `repair` 推断可放行。首审、二审保留真实审查结果，Trace 的 `finalOutcome` 单独记录最终处置，advisory 没有最终处置。历史记录可能以空修复或残句合成二审值，不能把所有 `revised_decision <> 'pass'` 都算作真实复燃。`meta_narration_silenced` 有意跳过且保留已有工具意图、不新增人工介入；纯推理/工具残文则转人工。
+
+`reason_code` 可能带 `|override...` 后缀；所有原因分类都取 `split_part(coalesce(reason_code,''),'|',1)`，保留原字段供追溯。重生成若由真实工具明确短路为 handoff/skipped，按工具终态统计，不算空修复失败或一次二审；纯无工具空产物仍按修复失败处理。
+
 ### 判真假阳的铁律
 
-`first_violations` 里的 `evidence`/`suggestion` 是 **output-rule-catalog 的静态文案**（规则命中就原样落档），不是逐案证据。判断一条命中是真阳还是假阳，必须读 `user_message` + `first_reply` + `revised_reply` 原文，必要时 join mpr 取 `tool_calls`（同名 `batch_id`）。
+`first_violations` 里的 `evidence`/`suggestion` 是规则标签和反馈，可能来自 catalog 静态文案，也可能含本次预约时间或场景；它们不是完整逐案证据。判断一条命中是真阳还是假阳，必须读 `user_message` + `first_reply` + `revised_reply` 原文，必要时 join mpr 取 `tool_calls`（同名 `batch_id`）。
 
-**复燃行的分辨法**：读 `revised_reply`——修复版业务上已正确（如实拒绝/如实转述）却仍被拦 → 规则假阳（典型：不理解否定/复述语境，见 trace `batch_6a86626bce406a6aee0e0aa0`，已修 PR#1021）；修复版确实还违规 → repair 反馈质量问题（`feedbackToGenerator` 静态文案不够具体）。
+**复燃行的分辨法**：读 `revised_reply`——修复版业务上已正确（如实拒绝/如实转述）却仍被拦 → 规则假阳（典型：不理解否定/复述语境，见 trace `batch_6a86626bce406a6aee0e0aa0`，已修 PR#1021）；修复版确实还违规 → 检查 repair 的反馈和生成质量。
 
 ## 安全纪律（生产库）
 
@@ -70,14 +76,22 @@ COMMIT;
 
 ```sql
 BEGIN; SET LOCAL statement_timeout = '25s';
-SELECT first_decision, final_decision, coalesce(reason_code,'-') AS reason_code, count(*) AS n
+SELECT first_decision, final_decision AS raw_final_decision,
+       CASE
+         WHEN final_decision IN ('reply','handoff','skipped') THEN final_decision
+         WHEN final_decision IN ('pass','observe') THEN 'reply'
+         WHEN final_decision = 'block' AND split_part(coalesce(reason_code,''),'|',1) = 'meta_narration_silenced' THEN 'skipped'
+         WHEN final_decision = 'block' THEN 'legacy_block'
+         ELSE 'unknown'
+       END AS final_outcome,
+       coalesce(reason_code,'-') AS reason_code, count(*) AS n
 FROM guardrail_review_records
 WHERE created_at >= now() - interval '7 days'
-GROUP BY 1,2,3 ORDER BY n DESC;
+GROUP BY 1,2,3,4 ORDER BY n DESC;
 COMMIT;
 ```
 
-解读要点：`revise→pass` 无 reason_code = repair 一次成功（健康主流）；`repair_exhausted_fail_open` 与 `final=block` 两桶是后续抽样重点。
+解读要点：当前 `repair→reply` 还需看真实二审和 reason_code，区分修复成功、机械修复、回退首版与 fail-open；旧 `revise→pass` 按旧版本解释。`handoff`、`legacy_block` 和 fail-open 是后续抽样重点；`unknown` 保留待核查，不强行映射。
 
 ### Step 3 — 规则效能榜（优化清单的骨架）
 
@@ -85,28 +99,34 @@ COMMIT;
 BEGIN; SET LOCAL statement_timeout = '25s';
 WITH hits AS (
   SELECT unnest(first_blocked_rule_ids) AS rule_id,
-         (revised_decision IS NOT NULL AND revised_decision <> 'pass') AS reflagged,
+         (revised_decision IN ('repair','replan','revise','block')
+          AND coalesce(revised_reply,'') <> ''
+          AND split_part(coalesce(reason_code,''),'|',1) NOT IN ('revise_empty','revise_dangling')) AS reflagged,
          final_decision, reason_code
   FROM guardrail_review_records
   WHERE created_at >= now() - interval '7 days'
-    AND first_decision <> 'pass'
+    AND first_decision IN ('repair','replan','revise','block')
 )
 SELECT rule_id, count(*) AS hits,
        count(*) FILTER (WHERE reflagged) AS second_review_reflagged,
-       count(*) FILTER (WHERE reason_code LIKE 'repair_exhausted_fail_open%') AS fail_open,
-       count(*) FILTER (WHERE final_decision = 'block') AS silenced
+       count(*) FILTER (WHERE split_part(coalesce(reason_code,''),'|',1) = 'repair_exhausted_fail_open') AS fail_open,
+       count(*) FILTER (WHERE final_decision = 'handoff') AS handoff,
+       count(*) FILTER (WHERE final_decision = 'skipped'
+         OR (final_decision = 'block' AND split_part(coalesce(reason_code,''),'|',1) = 'meta_narration_silenced')) AS skipped,
+       count(*) FILTER (WHERE final_decision = 'block'
+         AND split_part(coalesce(reason_code,''),'|',1) <> 'meta_narration_silenced') AS legacy_block
 FROM hits GROUP BY 1 ORDER BY hits DESC LIMIT 20;
 COMMIT;
 ```
 
 排查优先级（不是按 hits 排，按杀伤×嫌疑排）：
-1. `silenced > 0` 的规则——静默丢单，每条都值得看原文；
+1. `handoff > 0` 或 `legacy_block > 0` 的规则——未自动回复，每条都值得看原文；`skipped` 另查是否符合有意不回复的场景；
 2. 复燃率（reflagged/hits）> 20% 的规则——假阳或 repair 失效；
 3. hits 断崖式高于其他规则的——口径过宽嫌疑。
 
 **立案前必须过存续期核验**（2026-08-20 首跑实战教训：榜首 `job_facts_without_any_lookup`
 97 次命中，实为 8-11 已下线、随 v10.44.0 于 8-19 才部署的僵尸规则）：
-- 对每条候选规则先 `grep -rn "<rule_id>" src/agent/guardrail`——查无此 id 即已删；
+- 对每条候选规则先 `rg -n "<rule_id>" src/agent/guardrail`——查无此 id 即已删；
 - 再按天分布对照最近发版日（`git tag` / releases）——命中在发版日归零的，属旧版遗产，
   只做"确认已终结"结论，禁止立为优化目标；
 - 窗口横跨发版日时，报告必须按发版日分段陈述，当前结论只能基于发版后数据。
@@ -117,7 +137,7 @@ observe 档单独看（升档候选池）：
 BEGIN; SET LOCAL statement_timeout = '25s';
 SELECT unnest(first_rule_ids) AS rule_id, count(*) AS observe_hits
 FROM guardrail_review_records
-WHERE created_at >= now() - interval '7 days' AND first_decision = 'pass'
+WHERE created_at >= now() - interval '7 days' AND first_decision IN ('pass','observe')
 GROUP BY 1 ORDER BY observe_hits DESC LIMIT 12;
 COMMIT;
 ```
@@ -146,9 +166,13 @@ COMMIT;
 ```sql
 BEGIN; SET LOCAL statement_timeout = '25s';
 SELECT (created_at AT TIME ZONE 'Asia/Shanghai')::date AS day,
-       count(*) FILTER (WHERE first_decision <> 'pass') AS enforce_hits,
-       count(*) FILTER (WHERE final_decision = 'block') AS silenced,
-       count(*) FILTER (WHERE reason_code LIKE 'repair_exhausted_fail_open%') AS fail_open
+       count(*) FILTER (WHERE first_decision IN ('repair','replan','revise','block')) AS enforce_hits,
+       count(*) FILTER (WHERE final_decision = 'handoff') AS handoff,
+       count(*) FILTER (WHERE final_decision = 'skipped'
+         OR (final_decision = 'block' AND split_part(coalesce(reason_code,''),'|',1) = 'meta_narration_silenced')) AS skipped,
+       count(*) FILTER (WHERE final_decision = 'block'
+         AND split_part(coalesce(reason_code,''),'|',1) <> 'meta_narration_silenced') AS legacy_block,
+       count(*) FILTER (WHERE split_part(coalesce(reason_code,''),'|',1) = 'repair_exhausted_fail_open') AS fail_open
 FROM guardrail_review_records
 WHERE created_at >= now() - interval '7 days'
 GROUP BY 1 ORDER BY 1;
@@ -164,12 +188,12 @@ COMMIT;
 
 ## 总览
 回合 N，硬规则信号 N（enforce N / observe N），repair 一次成功 N，
-fail-open N，静默 N。一句话定性。
+fail-open N，handoff N，skipped N，历史拦截未发送 N。一句话定性。
 
 ## 优化清单（按优先级）
 | # | 规则/簇 | 证据 | 建议动作 | 置信度 |
 证据必须含数字 + 至少 1 个 trace_id；建议动作限于：
-收窄口径（修 regex/加豁免）｜降档 observe｜升档 revise｜下线｜
+收窄口径（修 regex/加豁免）｜降档 observe｜升档 repair/replan｜下线｜
 改 repair 反馈（feedbackToGenerator）｜孵化新硬规则｜保持观察。
 
 ## 健康项（简短）

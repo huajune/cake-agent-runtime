@@ -1,34 +1,69 @@
-/* 与共享 GuardrailTrace 同一浅色奶油视觉；在时间线骨架上增加全文块（首版/重写版/证据） */
+/* 出站守卫全程档案：左侧时间线轨道串起 用户消息/首版/首审/(受控修复)/重写版/二审/最终。
+   胶囊设计语言：白底 + 丁香细边、字重 ≤500、不用中性灰底、渐变紫只用于轨道当前节点。 */
+@use '@/assets/styles/variables' as *;
+
+$rail-x: 16px; // 轨道中心线距左边距
+$rail-line: rgba(212, 208, 255, 0.75);
+$lilac-edge: rgba(212, 208, 255, 0.55);
+$ink: #14132b;
+$body: #3b3a55;
+$muted: #5b5a86;
+$faint: #8a89ad;
 
 .container {
   display: flex;
   flex-direction: column;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(250, 249, 255, 0.94) 100%);
-  border: 1px solid rgba(139, 92, 246, 0.14);
-  border-radius: 12px;
+  background: #fff;
+  border-radius: 14px;
   overflow: hidden;
   box-shadow:
-    0 10px 24px rgba(31, 41, 55, 0.04),
-    0 0 18px rgba(139, 92, 246, 0.04);
+    inset 0 0 0 1px $lilac-edge,
+    0 10px 24px rgba(31, 41, 55, 0.04);
+}
+
+/* ── 时间线骨架 ── */
+.stepRow,
+.repairNote,
+.finalRow {
+  position: relative;
+  padding-left: $rail-x + 16px;
+
+  &::before {
+    content: '';
+    position: absolute;
+    left: $rail-x - 1px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: $rail-line;
+  }
+}
+
+.stepRow,
+.finalRow {
+  &::after {
+    content: '';
+    position: absolute;
+    left: $rail-x - 5px;
+    top: 15px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.45);
+  }
 }
 
 .stepRow {
-  padding: 11px 12px;
-  border-bottom: 1px solid rgba(139, 92, 246, 0.09);
   display: flex;
   flex-direction: column;
   gap: 8px;
-}
+  padding-top: 11px;
+  padding-bottom: 12px;
+  padding-right: 14px;
 
-.userMessage {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 11px 12px;
-  border-bottom: 1px solid rgba(139, 92, 246, 0.09);
-
-  .replyText {
-    background: rgba(239, 246, 255, 0.82);
+  &:first-child::before {
+    top: 19px;
   }
 }
 
@@ -37,44 +72,51 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
+  min-height: 20px;
 }
 
 .stepStage {
-  font-size: 12px;
-  font-weight: 700;
-  color: #64748b;
-  min-width: 40px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: $ink;
+  letter-spacing: -0.01em;
 }
 
-.discardHint {
+.discardHint,
+.reasonCode {
   font-size: 11px;
-  color: #94a3b8;
+  color: $faint;
 }
 
+/* ── 全文块 ── */
 .replyText {
   font-size: 12px;
   line-height: 1.75;
-  color: #334155;
+  color: $body;
   white-space: pre-wrap;
   word-break: break-word;
-  background: rgba(248, 250, 252, 0.9);
-  border: 1px solid rgba(139, 92, 246, 0.09);
-  border-radius: 8px;
-  padding: 9px 10px;
+  background: #fff;
+  box-shadow: inset 0 0 0 1px $lilac-edge;
+  border-radius: 10px;
+  padding: 9px 11px;
   max-height: 220px;
   overflow-y: auto;
 }
 
+.userText {
+  background: linear-gradient(118deg, #f2f7ff 0%, #fdfdff 100%);
+}
+
+.discardedText {
+  color: $muted;
+  background: linear-gradient(118deg, #fbfbfe 0%, #fff 100%);
+}
+
 .emptyReply {
-  color: #94a3b8;
+  color: $faint;
 }
 
-.ruleList {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
+/* ── 裁决元信息 ── */
 .verdictMeta {
   display: flex;
   flex-wrap: wrap;
@@ -82,55 +124,90 @@
   gap: 6px;
 }
 
-.riskBadge,
-.blockedRuleTag,
-.semanticMode,
-.findingCode {
-  padding: 2px 7px;
-  border-radius: 6px;
+.riskBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   font-size: 11px;
-  line-height: 1.45;
+  line-height: 20px;
+  padding: 0 8px 0 7px;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: inset 0 0 0 1px $lilac-edge;
+  color: $muted;
 }
 
-.riskBadge {
-  font-weight: 700;
-  text-transform: uppercase;
+.riskDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: 0 0 auto;
 }
 
 .risklow {
-  background: rgba(34, 197, 94, 0.1);
   color: #15803d;
 }
 
 .riskmedium {
-  background: rgba(245, 158, 11, 0.12);
   color: #b45309;
 }
 
-.riskhigh,
-.blockedRuleTag {
-  background: rgba(239, 68, 68, 0.1);
+.riskhigh {
   color: #dc2626;
 }
 
-.blockedRuleTag {
-  border: 1px solid rgba(239, 68, 68, 0.18);
-  overflow-wrap: anywhere;
-}
-
-.ruleTag {
+.ruleTag,
+.blockedRuleTag,
+.severity,
+.blockedMark,
+.semanticMode,
+.findingCode {
+  display: inline-flex;
+  align-items: center;
   max-width: 100%;
-  font-size: 11.5px;
-  line-height: 1.45;
-  color: #7c3aed;
-  background: rgba(139, 92, 246, 0.08);
-  border: 1px solid rgba(139, 92, 246, 0.16);
-  border-radius: 6px;
-  padding: 2px 7px;
+  font-size: 11px;
+  line-height: 20px;
+  padding: 0 8px;
+  border-radius: 999px;
   overflow-wrap: anywhere;
   word-break: normal;
 }
 
+.ruleTag {
+  color: #6d5bd0;
+  background: linear-gradient(118deg, #f0efff 0%, #faf4fe 100%);
+  box-shadow: inset 0 0 0 1px rgba(212, 208, 255, 0.7);
+}
+
+.blockedRuleTag,
+.blockedMark {
+  color: #dc2626;
+  background: rgba(254, 242, 242, 0.9);
+  box-shadow: inset 0 0 0 1px rgba(239, 68, 68, 0.22);
+}
+
+.blockedMark {
+  flex: 0 0 auto;
+}
+
+.severity {
+  flex: 0 0 auto;
+  padding: 0 7px;
+  background: #fff;
+}
+
+.severityHigh {
+  color: #b45309;
+  box-shadow: inset 0 0 0 1px rgba(245, 158, 11, 0.35);
+}
+
+.severityLow {
+  color: $muted;
+  box-shadow: inset 0 0 0 1px $lilac-edge;
+}
+
+/* ── 违规卡片 ── */
 .violationList {
   display: flex;
   flex-direction: column;
@@ -140,47 +217,42 @@
 .violation {
   display: flex;
   flex-direction: column;
-  gap: 7px;
-  padding: 10px 11px;
-  background: rgba(255, 251, 235, 0.78);
-  border: 1px solid rgba(245, 158, 11, 0.14);
+  gap: 8px;
+  padding: 10px 12px 11px;
+  background: linear-gradient(180deg, #fffaf0 0%, #fffdf8 100%);
+  box-shadow: inset 0 0 0 1px rgba(245, 158, 11, 0.2);
   border-radius: 10px;
 }
 
 .violationHead {
   display: flex;
   align-items: center;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 6px;
 
   .ruleTag {
-    flex: 1 1 auto;
+    flex: 0 1 auto;
     min-width: 0;
+    background: #fff;
   }
-}
-
-.severity {
-  font-size: 11px;
-  font-weight: 700;
-  color: #b45309;
-  flex: 0 0 auto;
 }
 
 .violationLine {
   display: grid;
-  grid-template-columns: 42px minmax(0, 1fr);
-  column-gap: 8px;
+  grid-template-columns: 30px minmax(0, 1fr);
+  column-gap: 10px;
   font-size: 12px;
-  line-height: 1.65;
-  color: #334155;
+  line-height: 1.7;
+  color: $body;
 }
 
 .violationLabel {
   display: inline-block;
   font-size: 11px;
-  font-weight: 700;
-  color: #94a3b8;
-  line-height: 1.65;
+  color: $faint;
+  line-height: 1.7;
   white-space: nowrap;
+  padding-top: 1px;
 }
 
 .violationContent {
@@ -191,51 +263,64 @@
 
 .feedback {
   display: grid;
-  grid-template-columns: 58px minmax(0, 1fr);
-  column-gap: 8px;
+  grid-template-columns: 52px minmax(0, 1fr);
+  column-gap: 10px;
   font-size: 12px;
-  line-height: 1.65;
-  color: #334155;
+  line-height: 1.7;
+  color: $body;
   white-space: pre-wrap;
 }
 
+/* ── 受控修复连接段 ── */
 .repairNote {
-  padding: 8px 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  padding-top: 8px;
+  padding-bottom: 9px;
+  padding-right: 14px;
+  background: linear-gradient(90deg, rgba(255, 247, 237, 0.85) 0%, rgba(255, 255, 255, 0) 78%);
+}
+
+.repairIcon {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: #d97706;
+}
+
+.repairBody {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.repairTitle {
   font-size: 12px;
   line-height: 1.5;
-  color: #b45309;
-  background: rgba(245, 158, 11, 0.08);
-  border-bottom: 1px solid rgba(139, 92, 246, 0.09);
+  color: #9a5b12;
 }
 
 .sideEffectNote {
-  margin-top: 4px;
-  color: #92400e;
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: $muted;
+  overflow-wrap: anywhere;
 }
 
+/* ── 语义审查 ── */
 .semanticSection {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 11px 12px;
-  border-bottom: 1px solid rgba(139, 92, 246, 0.09);
-  background: rgba(237, 233, 254, 0.18);
-}
-
-.semanticTitle {
-  color: #5b21b6;
-  font-size: 12px;
-  font-weight: 700;
+  background: linear-gradient(118deg, rgba(240, 239, 255, 0.35) 0%, rgba(253, 253, 255, 0) 100%);
 }
 
 .semanticReview {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 9px 10px;
-  border: 1px solid rgba(139, 92, 246, 0.14);
-  border-radius: 9px;
-  background: rgba(255, 255, 255, 0.86);
+  padding: 9px 11px;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: inset 0 0 0 1px $lilac-edge;
 }
 
 .semanticHeader {
@@ -246,19 +331,19 @@
 }
 
 .semanticIndex {
-  color: #64748b;
-  font-size: 11px;
-  font-weight: 700;
+  color: $ink;
+  font-size: 12px;
+  font-weight: 500;
 }
 
 .semanticMode {
-  background: rgba(139, 92, 246, 0.1);
-  color: #7c3aed;
+  color: #6d5bd0;
+  background: linear-gradient(118deg, #f0efff 0%, #faf4fe 100%);
 }
 
 .confidence,
 .noFindings {
-  color: #64748b;
+  color: $faint;
   font-size: 11px;
 }
 
@@ -272,29 +357,29 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 8px;
+  padding: 8px 10px;
   border-radius: 8px;
-  background: rgba(248, 250, 252, 0.92);
+  background: linear-gradient(118deg, #f7f6ff 0%, #fdfdff 100%);
 }
 
 .findingCode {
   align-self: flex-start;
-  background: rgba(99, 102, 241, 0.1);
   color: #4f46e5;
+  background: #fff;
+  box-shadow: inset 0 0 0 1px $lilac-edge;
 }
 
 .findingLine {
   display: grid;
-  grid-template-columns: 36px minmax(0, 1fr);
-  gap: 8px;
-  color: #334155;
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 10px;
+  color: $body;
   font-size: 12px;
-  line-height: 1.6;
+  line-height: 1.65;
 
   > span {
-    color: #94a3b8;
+    color: $faint;
     font-size: 11px;
-    font-weight: 700;
   }
 
   > div {
@@ -305,7 +390,7 @@
 }
 
 .draftReply {
-  color: #64748b;
+  color: $muted;
   font-size: 11px;
 
   summary {
@@ -314,7 +399,7 @@
 
   div {
     margin-top: 6px;
-    color: #334155;
+    color: $body;
     font-size: 12px;
     line-height: 1.65;
     white-space: pre-wrap;
@@ -322,18 +407,29 @@
   }
 }
 
+/* ── 最终 ── */
 .finalRow {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  padding: 10px 12px;
-  background: rgba(139, 92, 246, 0.04);
-}
+  padding-top: 10px;
+  padding-bottom: 11px;
+  padding-right: 14px;
+  background: linear-gradient(118deg, #f0efff 0%, #faf4fe 45%, #f2f7ff 80%, #fdfdff 100%);
 
-.reasonCode {
-  font-size: 11px;
-  color: #94a3b8;
+  &::before {
+    bottom: auto;
+    height: 19px;
+  }
+
+  &::after {
+    top: 16px;
+    background: $gradient-primary;
+    box-shadow:
+      0 0 0 2px #fff,
+      0 2px 6px rgba($primary, 0.28);
+  }
 }
 
 .blockHint {

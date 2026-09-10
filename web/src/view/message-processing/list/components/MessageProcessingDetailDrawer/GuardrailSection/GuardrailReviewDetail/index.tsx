@@ -1,4 +1,6 @@
+import { CornerDownRight } from 'lucide-react';
 import { decisionBadge } from '@/components/GuardrailTrace/decision';
+import { guardrailOutcomeDisplay } from '@/components/GuardrailTrace/outcome';
 import {
   guardrailReasonLabel,
   guardrailRuleLabel,
@@ -11,6 +13,12 @@ import type {
   GuardrailSemanticReview,
 } from '@/api/types/chat.types';
 import styles from './index.module.scss';
+
+const RISK_LABELS: Record<GuardrailReviewStepDetail['riskLevel'], string> = {
+  low: '低',
+  medium: '中',
+  high: '高',
+};
 
 function normalizeReviewText(text: string) {
   return text.trim().replace(/\s+/g, ' ');
@@ -45,26 +53,39 @@ function shouldShowStepFeedback(step: GuardrailReviewStepDetail) {
   );
 }
 
+function severityClass(severity: string) {
+  return /^p[01]$/i.test(severity.trim()) ? styles.severityHigh : styles.severityLow;
+}
+
+/**
+ * 首审/二审裁决：命中规则、风险、阻断与逐条违规（证据/建议全文）。
+ * 同一规则只露一次——已有违规卡片的规则不再重复渲染成独立标签，阻断标记并入卡片头部。
+ */
 function StepVerdict({ step }: { step: GuardrailReviewStepDetail }) {
   const showFeedback = shouldShowStepFeedback(step);
+  const violationTypes = new Set(step.violations.map((violation) => violation.type));
+  const blockedSet = new Set(step.blockedRuleIds);
+  const standaloneRules = step.ruleIds.filter((rule) => !violationTypes.has(rule));
+  const standaloneBlocked = step.blockedRuleIds.filter((rule) => !violationTypes.has(rule));
 
   return (
     <>
-      {step.ruleIds.length > 0 && (
-        <div className={styles.ruleList}>
-          {step.ruleIds.map((rule) => (
-            <code key={rule} className={styles.ruleTag} title={guardrailRuleTitle(rule)}>
-              {guardrailRuleLabel(rule)}
-            </code>
-          ))}
-        </div>
-      )}
       <div className={styles.verdictMeta}>
         <span className={`${styles.riskBadge} ${styles[`risk${step.riskLevel}`]}`}>
-          风险 {step.riskLevel}
+          <i className={styles.riskDot} />
+          风险 {RISK_LABELS[step.riskLevel]}
         </span>
-        {step.blockedRuleIds.map((rule) => (
-          <code key={rule} className={styles.blockedRuleTag} title={guardrailRuleTitle(rule)}>
+        {standaloneRules.map((rule) => (
+          <code key={rule} className={styles.ruleTag} title={guardrailRuleTitle(rule)}>
+            {guardrailRuleLabel(rule)}
+          </code>
+        ))}
+        {standaloneBlocked.map((rule) => (
+          <code
+            key={`blocked-${rule}`}
+            className={styles.blockedRuleTag}
+            title={guardrailRuleTitle(rule)}
+          >
             阻断 · {guardrailRuleLabel(rule)}
           </code>
         ))}
@@ -77,7 +98,12 @@ function StepVerdict({ step }: { step: GuardrailReviewStepDetail }) {
                 <code className={styles.ruleTag} title={guardrailRuleTitle(v.type)}>
                   {guardrailRuleLabel(v.type)}
                 </code>
-                {v.severity && <span className={styles.severity}>{v.severity}</span>}
+                {v.severity && (
+                  <span className={`${styles.severity} ${severityClass(v.severity)}`}>
+                    {v.severity}
+                  </span>
+                )}
+                {blockedSet.has(v.type) && <span className={styles.blockedMark}>阻断</span>}
               </div>
               {v.evidence && (
                 <div className={styles.violationLine}>
@@ -154,26 +180,32 @@ function SemanticReview({ review, index }: { review: GuardrailSemanticReview; in
 }
 
 /**
- * 出站守卫审查全程档案视图：首版全文 → 首审意见（证据/建议全文）→ 重写版全文 → 二审 → 最终。
+ * 出站守卫档案：首版全文 → 首审意见 → 可选修复全文与真实二审 → Runner 最终处置。
  * 数据来自 guardrail_review_records（详情接口 guardrailReview 字段），仅守卫命中回合存在；
  * 历史数据没有档案时详情抽屉回退到紧凑 GuardrailTrace。
+ * 视觉：左侧时间线轨道串起各阶段，受控修复以连接线形式挂在首审与重写版之间。
  */
 export default function GuardrailReviewDetail({ review }: { review: GuardrailReviewRecord }) {
+  const final = guardrailOutcomeDisplay(review);
   return (
     <div className={styles.container}>
       {review.userMessage && (
-        <div className={styles.userMessage}>
-          <span className={styles.stepStage}>用户消息</span>
-          <div className={styles.replyText}>{review.userMessage}</div>
+        <div className={styles.stepRow}>
+          <div className={styles.stepHeader}>
+            <span className={styles.stepStage}>用户消息</span>
+          </div>
+          <div className={`${styles.replyText} ${styles.userText}`}>{review.userMessage}</div>
         </div>
       )}
 
       <div className={styles.stepRow}>
         <div className={styles.stepHeader}>
           <span className={styles.stepStage}>首版</span>
-          {review.repaired && <span className={styles.discardHint}>已丢弃未发送</span>}
+          {review.repaired && <span className={styles.discardHint}>已尝试修复</span>}
         </div>
-        <div className={styles.replyText}>{review.firstReply}</div>
+        <div className={`${styles.replyText} ${review.repaired ? styles.discardedText : ''}`}>
+          {review.firstReply}
+        </div>
       </div>
 
       <div className={styles.stepRow}>
@@ -186,10 +218,15 @@ export default function GuardrailReviewDetail({ review }: { review: GuardrailRev
 
       {review.repaired && (
         <div className={styles.repairNote}>
-          ↳ 按 {repairModeLabel(review.repairMode)} 受控修复
-          {review.committedSideEffects && (
-            <div className={styles.sideEffectNote}>{review.committedSideEffects}</div>
-          )}
+          <CornerDownRight size={13} strokeWidth={1.75} className={styles.repairIcon} />
+          <div className={styles.repairBody}>
+            <div className={styles.repairTitle}>
+              按「{repairModeLabel(review.repairMode)}」受控修复
+            </div>
+            {review.committedSideEffects && (
+              <div className={styles.sideEffectNote}>{review.committedSideEffects}</div>
+            )}
+          </div>
         </div>
       )}
 
@@ -214,9 +251,15 @@ export default function GuardrailReviewDetail({ review }: { review: GuardrailRev
         </div>
       )}
 
+      {review.repaired && !review.revised && (
+        <div className={styles.repairNote}>修复后未进入二审，保留首审证据</div>
+      )}
+
       {review.semanticReviews.length > 0 && (
-        <div className={styles.semanticSection}>
-          <div className={styles.semanticTitle}>语义审查</div>
+        <div className={`${styles.stepRow} ${styles.semanticSection}`}>
+          <div className={styles.stepHeader}>
+            <span className={styles.stepStage}>语义审查</span>
+          </div>
           {review.semanticReviews.map((semanticReview, index) => (
             <SemanticReview
               key={`${semanticReview.reviewedAt ?? semanticReview.mode}-${index}`}
@@ -229,14 +272,14 @@ export default function GuardrailReviewDetail({ review }: { review: GuardrailRev
 
       <div className={styles.finalRow}>
         <span className={styles.stepStage}>最终</span>
-        {decisionBadge(review.finalDecision)}
+        <span className={`status-badge ${final.tone}`}>{final.label}</span>
         {review.reasonCode && (
           <span className={styles.reasonCode} title={review.reasonCode}>
             {guardrailReasonLabel(review.reasonCode)}
           </span>
         )}
-        {review.finalDecision === 'block' && (
-          <span className={styles.blockHint}>本轮回复未发送</span>
+        {final.kind === 'handoff' && (
+          <span className={styles.blockHint}>本轮不自动回复；介入派发状态以执行记录为准</span>
         )}
       </div>
     </div>

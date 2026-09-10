@@ -1470,6 +1470,58 @@ describe('buildJobListTool', () => {
     ]);
   });
 
+  describe('品牌提及出处门', () => {
+    it('首轮未提及肯德基时，在外部查询和无岗话术生成前拒绝', async () => {
+      const context = createToolContext({
+        turnInput: { currentUserMessage: '我是朱振亿\n日结的\n还有吗' },
+        ledger: { mentionedBrands: new Set() },
+      });
+      context.ledger.recordGeoResolution({
+        city: '上海',
+        longitude: 121.69,
+        latitude: 31.18,
+        areaLevelQuery: false,
+        areaName: null,
+        source: 'geocode_unique',
+      });
+      const result = await executeTool(context, {
+        ...defaultInput,
+        cityNameList: ['上海'],
+        brandAliasList: ['肯德基'],
+      });
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_BRAND_NO_PROVENANCE);
+      expect(mockSpongeService.fetchJobs).not.toHaveBeenCalled();
+      expect(result.noMatchScript).toBeUndefined();
+      expect(result._replyInstruction).toContain("brandFilterMode='clear'");
+      expect(context.ledger.mentionedBrands?.size).toBe(0);
+      expect(context.ledger.jobs.fetchedJobs).toEqual([]);
+    });
+
+    it.each([new Set(['肯德基']), null])('提及过或来源不可用时正常查岗（%s）', async (brands) => {
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [], total: 0 });
+      const result = await executeTool(createToolContext({ ledger: { mentionedBrands: brands } }), {
+        ...defaultInput,
+        cityNameList: ['上海'],
+        brandAliasList: ['肯德基'],
+      });
+      expect(result.errorType).not.toBe(TOOL_ERROR_TYPES.JOB_LIST_BRAND_NO_PROVENANCE);
+      expect(mockSpongeService.fetchJobs).toHaveBeenCalled();
+    });
+
+    it('可靠空集合允许不指定品牌的查询', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [], total: 0 });
+      const result = await executeTool(
+        createToolContext({ ledger: { mentionedBrands: new Set() } }),
+        {
+          ...defaultInput,
+          cityNameList: ['上海'],
+        },
+      );
+      expect(result.errorType).not.toBe(TOOL_ERROR_TYPES.JOB_LIST_BRAND_NO_PROVENANCE);
+      expect(mockSpongeService.fetchJobs).toHaveBeenCalled();
+    });
+  });
+
   describe('jobIdList provenance gate (badcase 6a6c4c13 幻觉参数查询)', () => {
     it('blocks jobIdList entries never recalled in this session', async () => {
       const gatedContext: JobListTestContext = {

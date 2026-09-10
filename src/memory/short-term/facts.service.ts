@@ -254,8 +254,11 @@ export class SessionFactsService {
     for (const field of droppedFields) {
       this.tracer?.emit({
         type: 'session_state_field_dropped',
+        corpId: scope.corpId,
         userId: scope.userId,
+        chatId: scope.sessionId,
         field,
+
         // 只带 zod 的字段路径与原因，不带值本体——观测事件不进 PII。
         issues: invalidIssues.filter((issue) => issue.startsWith(`${field}.`)),
       });

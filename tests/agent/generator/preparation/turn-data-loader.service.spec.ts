@@ -7,6 +7,27 @@ import { GroupInventorySection } from '@agent/generator/context/sections/working
 import { sessionFactsOf } from '../../../helpers/session-facts.fixture';
 
 describe('TurnDataLoaderService', () => {
+  it('shares the loaded brand catalog and keeps catalog failures distinct from an empty mention set', async () => {
+    const fetchBrandList = jest.fn().mockRejectedValue(new Error('brand catalog down'));
+    const service = buildLoader({ fetchBrandList });
+    const snapshot = await service.load(
+      {
+        callerKind: CallerKind.WECOM,
+        corpId: 'corp',
+        userId: 'user',
+        sessionId: 'session',
+        messages: [],
+      } as never,
+      baseInput(),
+    );
+    expect(snapshot.brandCatalog).toBeNull();
+    expect(snapshot.warnings).toContainEqual(expect.objectContaining({ source: 'brand_catalog' }));
+    expect(snapshot.sourceObservations).toContainEqual(
+      expect.objectContaining({ source: 'brand_catalog', status: 'degraded' }),
+    );
+    expect(fetchBrandList).toHaveBeenCalledTimes(1);
+  });
+
   it('builds a typed, high-confidence city inventory view for the rendering section', () => {
     const memory = {
       shortTerm: {
@@ -82,7 +103,7 @@ describe('TurnDataLoaderService', () => {
     const memoryService = { onTurnStart: jest.fn().mockResolvedValue(memory) };
     const sponge = { fetchBrandList: jest.fn().mockResolvedValue([]) };
     const groupResolver = { resolveGroups: jest.fn().mockResolvedValue(groups) };
-    const groupMembership = { listUserRooms: jest.fn().mockResolvedValue(['room-1']) };
+    const groupMembership = { lookupUserRooms: jest.fn().mockResolvedValue({ rooms: ['room-1'], verified: true }) };
     const accountIdentity = {
       resolveAgentAccountIdentity: jest.fn().mockResolvedValue({ nickname: '小蛋', gender: '女' }),
     };
@@ -143,7 +164,7 @@ describe('TurnDataLoaderService', () => {
       expect.objectContaining({ includeShortTerm: true }),
     );
     expect(groupResolver.resolveGroups).toHaveBeenCalledTimes(1);
-    expect(groupMembership.listUserRooms).toHaveBeenCalledWith('contact-1', expect.anything());
+    expect(groupMembership.lookupUserRooms).toHaveBeenCalledWith('contact-1', expect.anything());
     expect(strategy.getActiveConfig).toHaveBeenCalledWith('testing');
     expect(booking.enrichOutOfBand).toHaveBeenCalledWith(
       { state: 'none' },
@@ -198,7 +219,7 @@ describe('TurnDataLoaderService', () => {
       { onTurnStart: jest.fn().mockResolvedValue(memory) } as never,
       { fetchBrandList: jest.fn().mockResolvedValue([]) } as never,
       { resolveGroups: jest.fn().mockRejectedValue(new Error('group source down')) } as never,
-      { listUserRooms: jest.fn() } as never,
+      { lookupUserRooms: jest.fn() } as never,
       {
         resolveAgentAccountIdentity: jest.fn().mockRejectedValue(new Error('identity down')),
       } as never,
@@ -273,7 +294,7 @@ describe('TurnDataLoaderService', () => {
       { onTurnStart: jest.fn().mockResolvedValue(memory) } as never,
       { fetchBrandList: jest.fn().mockResolvedValue([]) } as never,
       { resolveGroups: jest.fn().mockResolvedValue([]) } as never,
-      { listUserRooms: jest.fn().mockResolvedValue([]) } as never,
+      { lookupUserRooms: jest.fn().mockResolvedValue({ rooms: [], verified: true }) } as never,
       {
         resolveAgentAccountIdentity: jest.fn().mockResolvedValue({ nickname: null, gender: null }),
       } as never,
@@ -333,7 +354,7 @@ describe('TurnDataLoaderService', () => {
       { onTurnStart: jest.fn().mockReturnValue(slowMemory) } as never,
       { fetchBrandList: jest.fn().mockResolvedValue([]) } as never,
       { resolveGroups: jest.fn().mockResolvedValue([]) } as never,
-      { listUserRooms: jest.fn().mockResolvedValue([]) } as never,
+      { lookupUserRooms: jest.fn().mockResolvedValue({ rooms: [], verified: true }) } as never,
       {
         resolveAgentAccountIdentity: jest.fn().mockResolvedValue({ nickname: null, gender: null }),
       } as never,
@@ -461,16 +482,18 @@ function baseInput() {
 }
 
 /** 最小 loader；只覆盖被测那一两个协作者，其余给无害缺省。 */
-function buildLoader(overrides: { onTurnStart?: jest.Mock; enrich?: jest.Mock } = {}) {
+function buildLoader(
+  overrides: { onTurnStart?: jest.Mock; enrich?: jest.Mock; fetchBrandList?: jest.Mock } = {},
+) {
   return new TurnDataLoaderService(
     {
       loadPointer: jest.fn().mockResolvedValue({ state: 'none' }),
       enrichOutOfBand: jest.fn().mockResolvedValue({ state: 'none' }),
     } as never,
     { onTurnStart: overrides.onTurnStart ?? jest.fn().mockResolvedValue(buildMemory()) } as never,
-    { fetchBrandList: jest.fn().mockResolvedValue([]) } as never,
+    { fetchBrandList: overrides.fetchBrandList ?? jest.fn().mockResolvedValue([]) } as never,
     { resolveGroups: jest.fn().mockResolvedValue([]) } as never,
-    { listUserRooms: jest.fn().mockResolvedValue([]) } as never,
+    { lookupUserRooms: jest.fn().mockResolvedValue({ rooms: [], verified: true }) } as never,
     {
       resolveAgentAccountIdentity: jest.fn().mockResolvedValue({ nickname: null, gender: null }),
     } as never,

@@ -2,6 +2,7 @@ import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { AlertLevel } from '@enums/alert.enum';
 import { AlertNotifierService } from '@notification/services/alert-notifier.service';
+import { OUTPUT_DECISIONS } from '@shared-types/guardrail.contract';
 import { GuardrailReviewRepository } from '../repositories/guardrail-review.repository';
 import type {
   GuardrailReviewInsertInput,
@@ -71,7 +72,7 @@ export class GuardrailReviewService {
           category: reason,
           payload: {
             firstDecision: input.first?.decision,
-            finalDecision: input.finalDecision,
+            finalOutcome: input.finalOutcome,
             ruleIds: input.first?.ruleIds,
             repaired: input.repaired,
           },
@@ -85,9 +86,21 @@ export class GuardrailReviewService {
 
   private isWritableReview(input: GuardrailReviewInsertInput): boolean {
     if (!input.traceId || !input.firstReply || !input.first) return false;
+    if (!OUTPUT_DECISIONS.some((decision) => decision === input.first.decision)) return false;
+    if (input.revised && !OUTPUT_DECISIONS.some((decision) => decision === input.revised.decision))
+      return false;
+    if (
+      input.finalOutcome !== 'reply' &&
+      input.finalOutcome !== 'handoff' &&
+      input.finalOutcome !== 'skipped'
+    )
+      return false;
     if (!input.repaired) {
       return input.repairMode == null && input.revisedReply == null && input.revised == null;
     }
-    return Boolean(input.repairMode && input.revisedReply && input.revised);
+    // 空/悬空修复可以没有真实二审，但仍保留首审证据与 repaired=true。
+    return (
+      Boolean(input.repairMode) && (input.revised == null || typeof input.revisedReply === 'string')
+    );
   }
 }

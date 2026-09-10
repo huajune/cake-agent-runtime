@@ -1,4 +1,3 @@
-import { GUARDRAIL_ACTION } from '@shared-types/guardrail.contract';
 import type { FactRule } from '../output-rule.types';
 
 const SENSITIVE_ATTRIBUTE =
@@ -16,13 +15,11 @@ export const DISCRIMINATION_LEAK_RULES: FactRule[] = [
     label: '回复以户籍、民族、专业或婚育等敏感属性限招、拒收或解释不匹配',
     keywords: DISCRIMINATORY_LEAK_PATTERN,
     requiredToolPredicate: () => false,
-    action: GUARDRAIL_ACTION.BLOCK,
   },
   {
     ruleId: 'sensitive_origin_probe',
     label: '回复主动打听候选人的籍贯、老家、是否本地人或有无纹身',
     keywords: ORIGIN_PROBE_PATTERN,
     requiredToolPredicate: () => false,
-    action: GUARDRAIL_ACTION.BLOCK,
   },
 ];

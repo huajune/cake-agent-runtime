@@ -23,7 +23,11 @@ import {
   type BrandResolution,
   type BrandResolutionSource,
 } from './brand-resolution.types';
-import { buildExactMatchTokens, normalizeForBrandMatch } from './brand-normalize';
+import {
+  buildExactMatchTokens,
+  normalizeBrandNameForComparison,
+  normalizeForBrandMatch,
+} from './brand-normalize';
 import {
   buildBrandCatalogIndex,
   distinctBrandsOf,
@@ -38,6 +42,43 @@ import {
   splitClauses,
   stripPolarityControlWords,
 } from './polarity-rules';
+
+/** 提及集合不选择意向：负向/履历照收，歧义词形的所有目录候选均有出处。 */
+export function brandMentionKeys(resolutions: readonly BrandResolution[]): string[] {
+  return resolutions.flatMap((resolution) =>
+    [resolution.canonicalName, ...(resolution.candidates ?? []).map((brand) => brand.canonicalName)]
+      .map(normalizeBrandNameForComparison)
+      .filter(Boolean),
+  );
+}
+
+export function resolveBrandMentionKeys(
+  text: string,
+  source: BrandResolutionSource,
+  catalog: readonly BrandItem[],
+): string[] {
+  const normalized = normalizeForBrandMatch(text);
+  if (!normalized || catalog.length === 0) return [];
+  // ID 继续复用既有契约；词形提及不消费意向解析器的否定/地理/短名过滤。
+  const keys = new Set(
+    brandMentionKeys(
+      resolveBrands(text, source, catalog).filter((item) => item.matchType === 'brand_id'),
+    ),
+  );
+  const index = buildBrandCatalogIndex(catalog);
+  for (const candidate of index.candidates) {
+    if (normalized.includes(candidate.normalized)) {
+      keys.add(normalizeBrandNameForComparison(candidate.brandName));
+    }
+  }
+  // 品类提及独立展开，不因同段已出现某个具体品牌而跳过，也不裁定意向极性。
+  for (const category of index.categories) {
+    if (category.keywords.some((keyword) => normalized.includes(keyword))) {
+      for (const brand of category.brands) keys.add(normalizeBrandNameForComparison(brand));
+    }
+  }
+  return [...keys];
+}
 
 /** 匹配方式的优先级（越小越优先，§4.2）。 */
 const MATCH_TYPE_PRIORITY: Record<BrandMatchType, number> = {

@@ -31,10 +31,10 @@ const ALWAYS_PERSISTED_EVENT_TYPES = new Set<AgentEvent['type']>([
   // 身份锚点断链与空标签岗：两者量级都应恒为零，非零即上游数据/配置出事。
   'collection_identity_anchor_mismatch',
   'collection_empty_contract',
-  // 守卫过程（观测 P1-2）：repair 四种终局与入站拦截此前只有 logger.warn，
+  // 守卫过程（观测 P1-2）：repair 四种终局与入站转人工此前只有 logger.warn，
   // 每回合至多各一条，量级可控；正文不进事件。
   'guardrail_repair',
-  'inbound_guardrail_block',
+  'inbound_guardrail_handoff',
 ]);
 
 const SLOW_TOOL_THRESHOLD_MS = 3000;
@@ -45,11 +45,14 @@ const SLOW_TOOL_THRESHOLD_MS = 3000;
  * 这两类事件每回合各一条、体积是其余回合事件的数倍，无条件落库会让事件表按回合数
  * 翻倍增长；而顺利回合的内容可以用同轮输入复现（ContextService.compose）。
  * 因此只在「本来就要排障」的回合落档：失败、有源降级/失败、耗时异常、Prompt 逼近膨胀阈值。
+ *
+ * 阈值必须高于生产基线，否则采样退化成全量：装配总耗时 p50 约 8s（group_membership
+ * 串行 Redis 往返所致）、Prompt p50 约 37K 字符，旧阈值 3s/5s/30K 曾让两类事件 100% 落库。
  */
-const SLOW_TURN_SOURCES_MS = 3000;
-const SLOW_PREPARATION_MS = 5000;
-/** 与 preparation 的膨胀告警阈值（60K）同源，留一半余量提前建档。 */
-const LARGE_PROMPT_CHARS = 30_000;
+const SLOW_TURN_SOURCES_MS = 15_000;
+const SLOW_PREPARATION_MS = 20_000;
+/** 与 preparation 的膨胀告警阈值（60K）同源，留余量提前建档。 */
+const LARGE_PROMPT_CHARS = 50_000;
 
 @Injectable()
 export class PersistingObserver implements Observer, OnApplicationBootstrap {

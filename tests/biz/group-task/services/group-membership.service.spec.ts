@@ -179,6 +179,26 @@ describe('GroupMembershipService', () => {
       expect(setStore.get('room:members:room-2')).toEqual(new Set(['user-1', 'user-2']));
     });
 
+    it('should report verified=false with redis_error when redis throws', async () => {
+      redisService.exists.mockRejectedValue(new Error('redis down'));
+
+      await expect(service.lookupUserRooms('user-1', ['room-1'])).resolves.toEqual({
+        rooms: [],
+        verified: false,
+        reason: 'redis_error',
+      });
+    });
+
+    it('should report verified=true with the rooms the user is in', async () => {
+      setStore.set('room:members:room-1', new Set(['user-1']));
+      setStore.set('room:members:room-2', new Set(['user-2']));
+
+      await expect(service.lookupUserRooms('user-1', ['room-1', 'room-2'])).resolves.toEqual({
+        rooms: ['room-1'],
+        verified: true,
+      });
+    });
+
     it('should degrade to empty array when redis throws', async () => {
       redisService.exists.mockRejectedValue(new Error('redis down'));
 
@@ -195,4 +215,79 @@ describe('GroupMembershipService', () => {
       expect(redisService.expire).toHaveBeenCalledWith('room:members:room-1', 600);
     });
   });
+  describe('bounded hydrate wait', () => {
+    const buildService = (waitMs: string) =>
+      new GroupMembershipService(
+        redisService,
+        roomService,
+        {
+          get: jest.fn((key: string) => {
+            if (key === 'STRIDE_ENTERPRISE_TOKEN') return 'enterprise-token';
+            if (key === 'GROUP_MEMBERSHIP_HYDRATE_WAIT_MS') return waitMs;
+            return undefined;
+          }),
+        } as unknown as jest.Mocked<ConfigService>,
+      );
+
+    beforeEach(() => {
+      jest.useFakeTimers();
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('should give up waiting after the bound, keep hydrating in background, then reuse the warm cache', async () => {
+      let finishHydrate!: () => void;
+      roomService.getEnterpriseGroupChatList.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            finishHydrate = () =>
+              resolve({ data: [{ imRoomId: 'room-1', memberList: [{ imContactId: 'user-1' }] }] });
+          }),
+      );
+      const bounded = buildService('50');
+
+      const pending = bounded.lookupUserRooms('user-1', ['room-1']);
+      await jest.advanceTimersByTimeAsync(50);
+
+      await expect(pending).resolves.toEqual({
+        rooms: [],
+        verified: false,
+        reason: 'hydrate_timeout',
+      });
+      expect(roomService.getEnterpriseGroupChatList).toHaveBeenCalledTimes(1);
+
+      // 预热没有被超时中断：API 返回后缓存落地，下一次查询不再触发预热。
+      finishHydrate();
+      await jest.advanceTimersByTimeAsync(0);
+      await expect(bounded.lookupUserRooms('user-1', ['room-1'])).resolves.toEqual({
+        rooms: ['room-1'],
+        verified: true,
+      });
+      expect(roomService.getEnterpriseGroupChatList).toHaveBeenCalledTimes(1);
+    });
+
+    it('should fail open in isUserInRoom when hydrate exceeds the wait bound', async () => {
+      roomService.getEnterpriseGroupChatList.mockImplementation(() => new Promise(() => undefined));
+      const bounded = buildService('50');
+
+      const pending = bounded.isUserInRoom('room-1', 'user-1', ['room-1']);
+      await jest.advanceTimersByTimeAsync(50);
+
+      await expect(pending).resolves.toBe(false);
+    });
+
+    it('should treat a non-positive wait as never blocking on hydrate', async () => {
+      roomService.getEnterpriseGroupChatList.mockImplementation(() => new Promise(() => undefined));
+      const bounded = buildService('0');
+
+      await expect(bounded.lookupUserRooms('user-1', ['room-1'])).resolves.toEqual({
+        rooms: [],
+        verified: false,
+        reason: 'hydrate_timeout',
+      });
+    });
+  });
+
 });

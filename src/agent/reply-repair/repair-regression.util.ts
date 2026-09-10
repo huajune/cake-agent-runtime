@@ -1,6 +1,6 @@
 import { CHINESE_WEEKDAY_ISO, isoWeekdayToJsDay } from '@infra/utils/chinese-numeral.util';
 import type { GuardrailRepairMode } from '@shared-types/guardrail.contract';
-import { QUANTIFIED_JOB_FACT_PATTERN } from './job-fact-signals.util';
+import { QUANTIFIED_JOB_FACT_PATTERN } from '../guardrail/output/rules/job-fact-signals.util';
 
 /**
  * 确定性 repair 回归检测（纯函数，零 LLM）。

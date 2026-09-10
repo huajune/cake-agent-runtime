@@ -9,6 +9,7 @@ import { RouterService } from '@providers/router.service';
 import { ModelRole, supportsVision } from '@providers/types';
 
 jest.mock('ai', () => ({
+  asSchema: jest.requireActual('ai').asSchema,
   generateText: jest.fn(),
   streamText: jest.fn(),
   Output: {
@@ -136,6 +137,34 @@ describe('LlmExecutorService', () => {
   }
 
   describe('generate', () => {
+    it('includes serializable tool definitions in the prepared request without changing execution tools', async () => {
+      mockGenerateText.mockResolvedValueOnce(makeGenerateResult());
+      const onPreparedRequest = jest.fn();
+      const tools = {
+        geocode: {
+          description: '执行时地理工具说明',
+          inputSchema: z.object({ address: z.string().describe('地址原文') }),
+          execute: jest.fn(),
+        },
+      };
+      await service.generate({
+        prompt: 'hello',
+        tools,
+        disableFallbacks: true,
+        onPreparedRequest,
+      });
+
+      const request = onPreparedRequest.mock.calls[0][0];
+      expect(request.toolNames).toEqual(['geocode']);
+      expect(request.toolDefinitions[0]).toMatchObject({
+        name: 'geocode',
+        description: '执行时地理工具说明',
+        inputSchema: { properties: { address: { description: '地址原文' } } },
+      });
+      expect(request.toolDefinitions[0]).not.toHaveProperty('execute');
+      expect(mockGenerateText.mock.calls[0][0].tools).toBe(tools);
+    });
+
     it('passes instructions through to AI SDK and the prepared request snapshot', async () => {
       mockGenerateText.mockResolvedValueOnce(makeGenerateResult());
       const onPreparedRequest = jest.fn();

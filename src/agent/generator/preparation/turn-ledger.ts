@@ -3,6 +3,10 @@ import type { CandidateCollectedField, CandidateFieldKey } from '@resolution/can
 import type { TurnHints } from '@resolution/turn-hints/turn-hint.types';
 import type { LaborFormIntentDecision } from '@resolution/labor-form';
 import type { RecommendedJobSummary } from '@resolution/job/types';
+import { normalizeBrandNameForComparison } from '@resolution/brand/brand-normalize';
+import { brandMentionKeys, resolveBrandMentionKeys } from '@resolution/brand/brand-matcher';
+import type { BrandItem } from '@sponge/sponge.types';
+import type { BrandResolutionSource } from '@resolution/brand/brand-resolution.types';
 import type {
   CityAttestation,
   GeocodeResolvedAnchor,
@@ -14,6 +18,10 @@ import type {
 const logger = new Logger('TurnLedger');
 
 export interface CreateTurnLedgerInput {
+  /** 已完成来源装配的标准品牌；省略/null 按未知处理，空集合是有效的无提及结果。 */
+  mentionedBrands?: Iterable<string> | null;
+  /** 与开轮解析共用目录，只用于真实工具结果的品牌标准化。 */
+  brandCatalog?: readonly BrandItem[] | null;
   turnHints?: TurnHints | null;
   laborFormIntent?: LaborFormIntentDecision;
   collectedFields?: Partial<Record<CandidateFieldKey, CandidateCollectedField>>;
@@ -23,6 +31,22 @@ export interface CreateTurnLedgerInput {
 
 /** 创建本轮唯一账本实例；内部集合不向消费者暴露可写引用。 */
 export function createTurnLedger(input: CreateTurnLedgerInput = {}): TurnLedger {
+  const mentionedBrands =
+    input.mentionedBrands == null
+      ? null
+      : new Set(Array.from(input.mentionedBrands, normalizeBrandNameForComparison).filter(Boolean));
+  const recordBrandMentions = (
+    names: readonly (string | null | undefined)[],
+    source: BrandResolutionSource = 'user_text',
+  ) => {
+    for (const name of names) {
+      if (!name?.trim()) continue;
+      const keys = input.brandCatalog?.length
+        ? resolveBrandMentionKeys(name, source, input.brandCatalog)
+        : [normalizeBrandNameForComparison(name)];
+      for (const key of keys) if (key) mentionedBrands?.add(key);
+    }
+  };
   const visualFactSheets: TurnLedgerSnapshot['visual']['factSheets'][number][] = [];
   const imageBrandResolutions: TurnLedgerSnapshot['visual']['brandResolutions'][number][] = [];
   const geocodeAnchors: GeocodeResolvedAnchor[] = [];
@@ -35,6 +59,12 @@ export function createTurnLedger(input: CreateTurnLedgerInput = {}): TurnLedger 
   let jobListQuerySignature: string | undefined;
 
   const ledger: TurnLedger = {
+    get mentionedBrands() {
+      return mentionedBrands;
+    },
+    recordMentionedBrands(texts) {
+      recordBrandMentions(texts);
+    },
     visual: {
       get factSheets() {
         return visualFactSheets;
@@ -74,9 +104,16 @@ export function createTurnLedger(input: CreateTurnLedgerInput = {}): TurnLedger 
     },
     recordVisualFacts(sheet, meta) {
       visualFactSheets.push({ messageId: meta.messageId, sheet });
+      if (input.brandCatalog?.length) {
+        recordBrandMentions(
+          [sheet.rawDescription, ...sheet.fields.map((field) => field.value)],
+          'image_description',
+        );
+      }
     },
     recordImageBrands(resolutions, meta) {
       imageBrandResolutions.push({ messageId: meta.messageId, resolutions: [...resolutions] });
+      for (const key of brandMentionKeys(resolutions)) mentionedBrands?.add(key);
     },
     recordGeoResolution(input) {
       ledger.recordGeocodeAnchor({
@@ -117,6 +154,7 @@ export function createTurnLedger(input: CreateTurnLedgerInput = {}): TurnLedger 
     },
     recordFetchedJobs(jobs) {
       fetchedJobs.splice(0, fetchedJobs.length, ...jobs);
+      recordBrandMentions(jobs.flatMap((job) => [job.brandName, job.jobName]));
     },
     recordJobListQuery(query) {
       jobListQuerySignature = query.signature;
@@ -126,6 +164,7 @@ export function createTurnLedger(input: CreateTurnLedgerInput = {}): TurnLedger 
     },
     drain() {
       return {
+        mentionedBrands: mentionedBrands ? new Set(mentionedBrands) : null,
         visual: {
           factSheets: [...visualFactSheets],
           brandResolutions: imageBrandResolutions.map((entry) => ({

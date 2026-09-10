@@ -12,6 +12,7 @@ import type { LlmAttemptTrace } from '@observability/observer.interface';
 import { z } from 'zod';
 import { type LlmThinkingConfig, ModelRole } from './llm.types';
 import { ROLE_MODEL_OVERRIDES, type RoleModelOverridesProvider } from './role-model-overrides';
+import { snapshotToolDefinitions } from './tool-definition-snapshot';
 
 export interface LlmGenerateOptions extends Omit<Parameters<typeof generateText>[0], 'model'> {
   role?: ModelRole | string;
@@ -627,6 +628,7 @@ export class LlmExecutorService {
             messages: options.messages,
             maxOutputTokens: options.maxOutputTokens,
             toolNames: Object.keys(options.tools),
+            toolDefinitions: await snapshotToolDefinitions(options.tools, options),
           }
         : {
             ...instructionSnapshot,

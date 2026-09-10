@@ -24,7 +24,7 @@ describe('detectBookingReceiptMismatch — 形态 E：已建单但未告知日�
       successBooking('8月6日（周四）14:00'),
     );
     expect(found?.ruleId).toBe('booking_receipt_mismatch');
-    expect(found?.action).toBe('revise');
+    expect(found?.action).toBe('repair');
     expect(found?.label).toContain('8月6日（周四）14:00');
     expect(found?.feedbackToGenerator).toContain('8月6日（周四）14:00');
   });
@@ -100,7 +100,7 @@ describe('detectBookingReceiptMismatch — 形态 F：在途工单未改约却�
       precheckWithActiveOrder(),
     );
     expect(found?.ruleId).toBe('interview_time_change_unconfirmed');
-    expect(found?.action).toBe('revise');
+    expect(found?.action).toBe('repair');
     expect(found?.label).toContain('455384');
     expect(found?.feedbackToGenerator).toContain('2026-08-06 15:00');
   });

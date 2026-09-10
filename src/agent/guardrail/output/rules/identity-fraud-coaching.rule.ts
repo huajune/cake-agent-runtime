@@ -1,5 +1,5 @@
+import { createOutputRuleFinding } from '../output-rule-catalog';
 import type { AgentMemorySnapshot, AgentToolCall } from '@agent/generator/generator.types';
-import { GUARDRAIL_ACTION } from '@shared-types/guardrail.contract';
 import { matchIdentityEvidence } from '@resolution/candidate/student-identity';
 import type { RuleContradiction } from '../output-rule.types';
 
@@ -33,11 +33,10 @@ export function detectIdentityMisregistrationCoaching(
     (readKnownStudent(memorySnapshot) || hasIdentityGuard(toolCalls));
   if (!unconditional && !contradictedIdentity) return null;
 
-  return {
-    ruleId: 'identity_misregistration_coaching',
-    label: '回复教唆候选人隐瞒或改写学生/暑假工身份以完成审核、登记或预约',
-    action: GUARDRAIL_ACTION.REVISE,
-  };
+  return createOutputRuleFinding(
+    'identity_misregistration_coaching',
+    '回复教唆候选人隐瞒或改写学生/暑假工身份以完成审核、登记或预约',
+  );
 }
 
 function readKnownStudent(memorySnapshot: AgentMemorySnapshot | undefined): boolean {

@@ -1,4 +1,7 @@
 import { OutputGuardrailService } from '@agent/guardrail/output/output-guardrail.service';
+import { HardRulesService } from '@agent/guardrail/output/rules/hard-rules.service';
+import { AlertNotifierService } from '@notification/services/alert-notifier.service';
+import { Test, type TestingModule } from '@nestjs/testing';
 
 describe('OutputGuardrailService', () => {
   const systemConfig = {
@@ -11,6 +14,27 @@ describe('OutputGuardrailService', () => {
     getMessages: jest.fn().mockResolvedValue([]),
   };
   let service: OutputGuardrailService;
+  let rulesModule: TestingModule;
+  let actualRules: HardRulesService;
+
+  beforeAll(async () => {
+    rulesModule = await Test.createTestingModule({
+      providers: [
+        HardRulesService,
+        {
+          provide: AlertNotifierService,
+          useValue: { sendAlert: jest.fn().mockResolvedValue(undefined) },
+        },
+      ],
+    }).compile();
+    actualRules = rulesModule.get(HardRulesService);
+  });
+
+  afterAll(() => rulesModule.close());
+
+  function useActualRules() {
+    ruleGuard.check.mockImplementation((input) => actualRules.check({ ...input, silent: true }));
+  }
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -24,7 +48,7 @@ describe('OutputGuardrailService', () => {
     );
   });
 
-  it('带会话身份时读取在途工单并把 hasActiveBooking / 历史助手文本传给规则层', async () => {
+  it('带会话身份时读取在途工单并把 activeBookings / 历史助手文本传给规则层', async () => {
     const longTerm = { tryGetActiveBookings: jest.fn().mockResolvedValue([]) };
     const withLongTerm = new OutputGuardrailService(
       systemConfig as never,
@@ -45,13 +69,13 @@ describe('OutputGuardrailService', () => {
     expect(longTerm.tryGetActiveBookings).toHaveBeenCalledWith('corp-1', 'user-1');
     expect(ruleGuard.check).toHaveBeenCalledWith(
       expect.objectContaining({
-        hasActiveBooking: false,
+        activeBookings: [],
         priorAssistantTexts: ['肯德基 2.7km'],
       }),
     );
   });
 
-  it('缺会话身份或长期记忆读失败时 hasActiveBooking 为 undefined（保持 observe）', async () => {
+  it('缺会话身份或长期记忆读失败时 activeBookings 为 undefined（保持 observe）', async () => {
     // 长期记忆读失败在 LongTermService 内被吞成 null（不是 []），守卫必须把它当未知
     const longTerm = { tryGetActiveBookings: jest.fn().mockResolvedValue(null) };
     const withLongTerm = new OutputGuardrailService(
@@ -72,11 +96,11 @@ describe('OutputGuardrailService', () => {
 
     expect(ruleGuard.check).toHaveBeenNthCalledWith(
       1,
-      expect.objectContaining({ hasActiveBooking: undefined }),
+      expect.objectContaining({ activeBookings: undefined }),
     );
     expect(ruleGuard.check).toHaveBeenNthCalledWith(
       2,
-      expect.objectContaining({ hasActiveBooking: undefined }),
+      expect.objectContaining({ activeBookings: undefined }),
     );
   });
 
@@ -142,17 +166,17 @@ describe('OutputGuardrailService', () => {
     expect(ruleGuard.check).toHaveBeenCalledWith(expect.objectContaining({ replyText: delivered }));
   });
 
-  it('revise 规则产生一次受控 rewrite 决策，不请求补调工具', async () => {
+  it('repair 规则产生一次受控 rewrite 决策，不请求补调工具', async () => {
     ruleGuard.check.mockReturnValue({
       hit: true,
       contradictions: [
         {
           ruleId: 'booking_receipt_mismatch',
           label: '预约回执未播报日期',
-          action: 'revise',
+          action: 'repair',
           severity: 'P1',
           dataSensitivity: 'none',
-          recoverability: 'recoverable',
+          allowFailOpen: true,
           currentReplySendable: false,
           feedbackPolicy: 'plain_policy',
           repairMode: 'rewrite',
@@ -165,7 +189,7 @@ describe('OutputGuardrailService', () => {
 
     expect(decision).toEqual(
       expect.objectContaining({
-        decision: 'revise',
+        decision: 'repair',
         riskLevel: 'medium',
         ruleIds: ['booking_receipt_mismatch'],
         blockedRuleIds: ['booking_receipt_mismatch'],
@@ -176,17 +200,17 @@ describe('OutputGuardrailService', () => {
     );
   });
 
-  it('block 规则保持 fail-close', async () => {
+  it('严格 repair 规则保留禁止 fail-open 策略', async () => {
     ruleGuard.check.mockReturnValue({
       hit: true,
       contradictions: [
         {
           ruleId: 'internal_output_leak',
           label: '工具名泄漏',
-          action: 'block',
+          action: 'repair',
           severity: 'P0',
           dataSensitivity: 'none',
-          recoverability: 'non_recoverable',
+          allowFailOpen: false,
           currentReplySendable: false,
           feedbackPolicy: 'plain_policy',
           repairMode: 'rewrite',
@@ -197,8 +221,110 @@ describe('OutputGuardrailService', () => {
 
     const decision = await service.check({ reply: '调用 duliday_job_list', toolCalls: [] });
 
-    expect(decision.decision).toBe('block');
+    expect(decision.decision).toBe('repair');
     expect(decision.riskLevel).toBe('high');
+    expect(decision.violations).toEqual([
+      expect.objectContaining({ type: 'internal_output_leak', allowFailOpen: false }),
+    ]);
+  });
+
+  it('真实 replan 与严格 repair 混合时选择重生成，保留高风险和禁止 fail-open 的违规', async () => {
+    useActualRules();
+    const decision = await service.check({
+      reply: '调用 duliday_job_list。我帮你查了下，时薪25元',
+      toolCalls: [],
+      chatId: 'chat-1',
+    });
+    expect(decision).toMatchObject({ decision: 'replan', repairMode: 'replan', riskLevel: 'high' });
+    expect(decision.violations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'internal_output_leak',
+          allowFailOpen: false,
+          severity: 'P0',
+        }),
+        expect.objectContaining({ type: 'job_query_claim_without_query', repairMode: 'replan' }),
+      ]),
+    );
+  });
+
+  it('真实普通 repair 与 replan 混合时重生成，单独 repair 仍走 rewrite', async () => {
+    useActualRules();
+    const mixed = await service.check({
+      reply: '我帮你查了下，我帮你转人工',
+      toolCalls: [],
+    });
+    expect(mixed).toMatchObject({ decision: 'replan', repairMode: 'replan', riskLevel: 'medium' });
+    expect(mixed.blockedRuleIds).toEqual(
+      expect.arrayContaining(['human_service_phrase_leak', 'job_query_claim_without_query']),
+    );
+
+    const repair = await service.check({ reply: '我帮你转人工', toolCalls: [] });
+    expect(repair).toMatchObject({ decision: 'repair', repairMode: 'rewrite', riskLevel: 'low' });
+  });
+
+  it('实际 observe 命中单独放行；与 repair 混合时仅保留 ID，不进入修改要求', async () => {
+    useActualRules();
+    const observed = await service.check({ reply: '已经帮你报好了', toolCalls: [] });
+    expect(observed).toMatchObject({
+      decision: 'pass',
+      ruleIds: ['booking_done_claim_without_submission'],
+      blockedRuleIds: [],
+      violations: [],
+    });
+    expect(observed.feedbackToGenerator).toBeUndefined();
+
+    const mixed = await service.check({ reply: '已经帮你报好了，我帮你转人工', toolCalls: [] });
+    expect(mixed.ruleIds).toEqual(
+      expect.arrayContaining([
+        'booking_done_claim_without_submission',
+        'human_service_phrase_leak',
+      ]),
+    );
+    expect(mixed.blockedRuleIds).toEqual(['human_service_phrase_leak']);
+    expect(mixed.violations.map((violation) => violation.type)).toEqual([
+      'human_service_phrase_leak',
+    ]);
+    expect(mixed.feedbackToGenerator).toBe(mixed.violations[0].suggestion);
+  });
+
+  it('实际 P0 观察降档不抬高另一个 repair 的风险，也不污染反馈', async () => {
+    useActualRules();
+    systemConfig.getAgentReplyConfig.mockResolvedValue({
+      hardRuleOverrides: { quota_promise: 'observe' },
+    });
+    const decision = await service.check({
+      reply: '名额放心，我已经帮你留好了，我帮你转人工',
+      toolCalls: [],
+    });
+    expect(decision).toMatchObject({ decision: 'repair', riskLevel: 'low', repairMode: 'rewrite' });
+    expect(decision.ruleIds).toEqual(
+      expect.arrayContaining(['quota_promise', 'human_service_phrase_leak']),
+    );
+    expect(decision.blockedRuleIds).toEqual(['human_service_phrase_leak']);
+    expect(decision.violations).toEqual([
+      expect.objectContaining({ type: 'human_service_phrase_leak', allowFailOpen: true }),
+    ]);
+    expect(decision.feedbackToGenerator).toBe(decision.violations[0].suggestion);
+    expect(decision.overrideMarkers).toEqual(['override:observe:quota_promise']);
+  });
+
+  it('实际 P0 repair 的高风险不依赖禁止 fail-open 字段的默认值', async () => {
+    useActualRules();
+    const decision = await service.check({
+      reply: '身份帮你登记成社会人士了',
+      toolCalls: [],
+      userMessage: '那怎么办',
+      memorySnapshot: { sessionFacts: { 'interview.is_student': true } } as never,
+    });
+    expect(decision).toMatchObject({ decision: 'repair', riskLevel: 'high' });
+    expect(decision.violations).toEqual([
+      expect.objectContaining({
+        type: 'identity_misregistration_coaching',
+        severity: 'P0',
+        allowFailOpen: true,
+      }),
+    ]);
   });
 
   it('历史读取失败时按无历史继续，不引入额外评审路径', async () => {

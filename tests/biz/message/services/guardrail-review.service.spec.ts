@@ -25,7 +25,7 @@ describe('GuardrailReviewService', () => {
     traceId: 'msg-1',
     firstReply: '首版',
     first: {
-      decision: 'revise',
+      decision: 'repair',
       riskLevel: 'medium',
       ruleIds: ['rule-1'],
       blockedRuleIds: ['rule-1'],
@@ -41,7 +41,7 @@ describe('GuardrailReviewService', () => {
       blockedRuleIds: [],
       violations: [],
     },
-    finalDecision: 'pass',
+    finalOutcome: 'reply',
   };
 
   it('delegates valid review writes to the repository', async () => {
@@ -53,7 +53,7 @@ describe('GuardrailReviewService', () => {
     expect(alertNotifier.sendAlert).not.toHaveBeenCalled();
   });
 
-  it('rejects repaired writes that do not include revised review content', async () => {
+  it('rejects a claimed second review without its revised text', async () => {
     const invalid = {
       ...validRecord,
       revisedReply: undefined,
@@ -70,6 +70,23 @@ describe('GuardrailReviewService', () => {
     );
   });
 
+  it.each([undefined, ''])(
+    'persists repaired=true without inventing a second review (text=%s)',
+    async (revisedReply) => {
+      repository.insertReviewRecord.mockResolvedValueOnce('inserted');
+      const input = {
+        ...validRecord,
+        revisedReply,
+        revised: undefined,
+      } as GuardrailReviewInsertInput;
+      await expect(service.recordReview(input)).resolves.toBe('inserted');
+      expect(repository.insertReviewRecord).toHaveBeenCalledWith(
+        expect.objectContaining({ repaired: true, revisedReply, revised: undefined }),
+      );
+      expect(alertNotifier.sendAlert).not.toHaveBeenCalled();
+    },
+  );
+
   it('alerts when the repository write fails', async () => {
     repository.insertReviewRecord.mockResolvedValueOnce('failed');
 
@@ -82,6 +99,15 @@ describe('GuardrailReviewService', () => {
         diagnostics: expect.objectContaining({ category: 'db_write_failed' }),
       }),
     );
+  });
+
+  it('accepts legacy enums only on read, never as a current review write', async () => {
+    const legacy = {
+      ...validRecord,
+      first: { ...validRecord.first, decision: 'block' },
+    } as unknown as GuardrailReviewInsertInput;
+    await expect(service.recordReview(legacy)).resolves.toBe('failed');
+    expect(repository.insertReviewRecord).not.toHaveBeenCalled();
   });
 
   it('does not alert on duplicate writes and swallows alert failures', async () => {

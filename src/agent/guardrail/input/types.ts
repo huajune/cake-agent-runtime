@@ -22,7 +22,7 @@ export type InputGuardrailDecision =
       decision: Extract<InputDecision, typeof GUARDRAIL_DECISION.PASS>;
     }
   | {
-      decision: Extract<InputDecision, typeof GUARDRAIL_DECISION.BLOCK>;
+      decision: Extract<InputDecision, typeof GUARDRAIL_DECISION.HANDOFF>;
       source: 'input_risk';
       disposition: 'side_effects';
       reasonCode: string;

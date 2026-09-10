@@ -1,15 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
-import type { InputRiskType } from '@shared-types/guardrail.contract';
+import { INPUT_RISK_TYPE, type InputRiskType } from '@shared-types/guardrail.contract';
 import type { TurnSideEffectIntent } from '@agent/runner/turn-side-effect.types';
 import { stripQuotedBlocks } from '@resolution/signal/markers';
+import { INPUT_RISK_RULE_ORDER, type InputRiskRule } from './input-rule-catalog';
 
-interface InputRiskDetectionResult {
-  hit: boolean;
-  riskType?: InputRiskType;
-  riskLabel?: string;
-  summary?: string;
-  reason?: string;
-}
+type InputRiskDetectionResult = { hit: false } | { hit: true; rule: InputRiskRule; reason: string };
 
 const ABUSE_KEYWORDS = [
   '傻逼',
@@ -148,7 +143,7 @@ export interface RiskInterceptInput {
  * 统一出口执行。
  *
  * 本服务自身做 detect→decide；**是否短路** Agent 由 AgentRunner.runInboundTurn 按 `hit`
- * 统一收口成 guardrail_blocked/inbound outcome。当前 WeCom 入站命中即
+ * 统一收口成 source=input_guardrail 的 handoff outcome。当前 WeCom 入站命中即
  * 「确定性静默 + 转人工」，本轮不再跑 Agent 也不发安抚回复（旧版「不短路、仍发安抚话术」的
  * 设计会与投递前 isAnyPaused 检查竞态、回复大概率被丢弃，行为不确定，已废弃）。
  * 分层：detect（本服务内部关键词检测）→ **decide（本守卫）** → outcome sideEffects →
@@ -174,26 +169,26 @@ export class RiskInterceptService {
     }
 
     const detection = this.detectHighConfidenceRisk(scanText);
-    if (!detection.hit) {
+    if (detection.hit === false) {
       return { hit: false };
     }
 
     this.logger.warn(
-      `[PreAgentRiskPrecheck] 命中规则: chatId=${input.chatId}, type=${detection.riskType}, reason=${detection.reason}`,
+      `[PreAgentRiskPrecheck] 命中规则: chatId=${input.chatId}, type=${detection.rule.riskType}, reason=${detection.reason}`,
     );
 
     return {
       hit: true,
-      riskType: detection.riskType,
+      riskType: detection.rule.riskType,
       reason: detection.reason,
-      label: detection.riskLabel,
+      label: detection.rule.riskLabel,
       sideEffect: {
         kind: 'conversation_risk',
         source: 'regex_intercept',
-        riskType: detection.riskType ?? 'abuse',
-        riskLabel: detection.riskLabel ?? '交流异常',
-        summary: detection.summary ?? '候选人消息命中高置信度风险关键词',
-        reason: detection.reason ?? '命中规则',
+        riskType: detection.rule.riskType,
+        riskLabel: detection.rule.riskLabel,
+        summary: detection.rule.summary,
+        reason: detection.reason,
         currentMessageContent: content,
       },
     };
@@ -214,70 +209,45 @@ export class RiskInterceptService {
   }
 
   private detectHighConfidenceRisk(content: string): InputRiskDetectionResult {
-    const abuseResult = this.detectKeywordRisk(
-      content,
-      ABUSE_KEYWORDS,
-      'abuse',
-      '辱骂/攻击',
-      '候选人出现明显辱骂或攻击性表达',
-    );
-    if (abuseResult.hit) {
-      return abuseResult;
+    for (const rule of INPUT_RISK_RULE_ORDER) {
+      let result: InputRiskDetectionResult;
+      switch (rule.riskType) {
+        case INPUT_RISK_TYPE.ABUSE:
+          result = this.detectKeywordRisk(content, ABUSE_KEYWORDS, rule);
+          if (!result.hit) {
+            result = this.detectPatternRisk(content, ABUSE_CLOSED_PATTERNS, rule);
+          }
+          break;
+        case INPUT_RISK_TYPE.COMPLAINT_RISK:
+          result = this.detectKeywordRisk(content, COMPLAINT_RISK_KEYWORDS, rule);
+          if (!result.hit) {
+            result = this.detectPatternRisk(content, COMPLAINT_ACTION_PATTERNS, rule);
+          }
+          break;
+        case INPUT_RISK_TYPE.INTERVIEW_RESULT_INQUIRY:
+          result = this.detectKeywordRisk(content, INTERVIEW_RESULT_INQUIRY_KEYWORDS, rule);
+          break;
+        case INPUT_RISK_TYPE.HUMAN_HANDOFF_REQUEST:
+          result = this.detectHumanHandoffRequest(content, rule);
+          break;
+        case INPUT_RISK_TYPE.DISABILITY_DISCLOSURE:
+          result = this.detectDisabilityDisclosure(content, rule);
+          break;
+        default: {
+          const unhandledRisk: never = rule;
+          return unhandledRisk;
+        }
+      }
+      if (result.hit) return result;
     }
-    const closedAbuse = this.detectPatternRisk(
-      content,
-      ABUSE_CLOSED_PATTERNS,
-      'abuse',
-      '辱骂/攻击',
-      '候选人出现明显辱骂或攻击性表达',
-    );
-    if (closedAbuse.hit) return closedAbuse;
-
-    const complaintResult = this.detectKeywordRisk(
-      content,
-      COMPLAINT_RISK_KEYWORDS,
-      'complaint_risk',
-      '投诉/举报风险',
-      '候选人出现明确投诉、举报或欺骗风险表达',
-    );
-    if (complaintResult.hit) {
-      return complaintResult;
-    }
-    const complaintAction = this.detectPatternRisk(
-      content,
-      COMPLAINT_ACTION_PATTERNS,
-      'complaint_risk',
-      '投诉/举报风险',
-      '候选人出现明确投诉、举报或欺骗风险表达',
-    );
-    if (complaintAction.hit) return complaintAction;
-
-    const interviewResult = this.detectKeywordRisk(
-      content,
-      INTERVIEW_RESULT_INQUIRY_KEYWORDS,
-      'interview_result_inquiry',
-      '历史面试结果追问',
-      '候选人询问历史面试结果，Agent 无权限获取该信息，需立即转人工处理',
-    );
-    if (interviewResult.hit) {
-      return interviewResult;
-    }
-
-    const humanHandoffResult = this.detectHumanHandoffRequest(content);
-    if (humanHandoffResult.hit) {
-      return humanHandoffResult;
-    }
-
-    const disabilityResult = this.detectDisabilityDisclosure(content);
-    if (disabilityResult.hit) {
-      return disabilityResult;
-    }
-
     return { hit: false };
   }
 
   /** 残障身份主动披露：见 DISABILITY_* 常量注释（只认明确自述/资格询问，禁推断）。 */
-  private detectDisabilityDisclosure(content: string): InputRiskDetectionResult {
+  private detectDisabilityDisclosure(
+    content: string,
+    rule: InputRiskRule<typeof INPUT_RISK_TYPE.DISABILITY_DISCLOSURE>,
+  ): InputRiskDetectionResult {
     const normalized = this.normalize(content);
     const matched = DISABILITY_DISCLOSURE_PATTERNS.find((pattern) => pattern.test(normalized));
     if (!matched) {
@@ -286,18 +256,16 @@ export class RiskInterceptService {
 
     return {
       hit: true,
-      riskType: 'disability_disclosure',
-      riskLabel: '候选人披露残障身份',
-      summary:
-        '候选人主动披露残障身份或询问残障者能否应聘，已静默暂停托管。合规敏感（残障就业受法律保护）：' +
-        '请真人尽快用同一账号自然接续，按岗位实际情况人工判断与沟通；不要使用任何模板式拒绝话术，' +
-        '不要提及 AI、机器人或转接。',
+      rule,
       reason: `命中残障身份披露模式：${matched.source}`,
     };
   }
 
   /** 候选人主动要求转人工：见 HUMAN_HANDOFF_* 常量注释（词表边界 + 短消息防误伤）。 */
-  private detectHumanHandoffRequest(content: string): InputRiskDetectionResult {
+  private detectHumanHandoffRequest(
+    content: string,
+    rule: InputRiskRule<typeof INPUT_RISK_TYPE.HUMAN_HANDOFF_REQUEST>,
+  ): InputRiskDetectionResult {
     const normalized = this.normalize(content);
     const matched: string[] = [];
 
@@ -320,11 +288,7 @@ export class RiskInterceptService {
 
     return {
       hit: true,
-      riskType: 'human_handoff_request',
-      riskLabel: '候选人主动要求人工',
-      summary:
-        '候选人明确要求转人工，已静默暂停托管。候选人正在等待，请尽快用同一账号自然接续' +
-        '（首句如"刚在忙，你说"），不要提及 AI、机器人或转接。',
+      rule,
       reason: `命中转人工请求关键词：${matched.join('、')}`,
     };
   }
@@ -332,9 +296,7 @@ export class RiskInterceptService {
   private detectKeywordRisk(
     content: string,
     keywords: readonly string[],
-    riskType: InputRiskType,
-    riskLabel: string,
-    summary: string,
+    rule: InputRiskRule,
   ): InputRiskDetectionResult {
     const matchedKeywords = this.findMatchedKeywords(content, keywords);
     if (matchedKeywords.length === 0) {
@@ -343,9 +305,7 @@ export class RiskInterceptService {
 
     return {
       hit: true,
-      riskType,
-      riskLabel,
-      summary,
+      rule,
       reason: `命中关键词：${matchedKeywords.join('、')}`,
     };
   }
@@ -353,18 +313,14 @@ export class RiskInterceptService {
   private detectPatternRisk(
     content: string,
     patterns: readonly RegExp[],
-    riskType: InputRiskType,
-    riskLabel: string,
-    summary: string,
+    rule: InputRiskRule,
   ): InputRiskDetectionResult {
     const normalized = this.normalize(content);
     const matched = patterns.find((pattern) => pattern.test(normalized));
     if (!matched) return { hit: false };
     return {
       hit: true,
-      riskType,
-      riskLabel,
-      summary,
+      rule,
       reason: `命中封闭句式：${matched.source}`,
     };
   }

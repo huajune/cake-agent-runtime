@@ -18,6 +18,7 @@ import {
   toStorageMessageType,
 } from '../types';
 import { MessageTraceStoreService } from './message-trace-store.service';
+import { buildWecomTimingSummary, type WecomTraceTimings } from './wecom-trace-timing.util';
 
 type DispatchMode = 'direct' | 'merged' | 'disabled';
 
@@ -54,34 +55,40 @@ interface WecomTraceRequestContext {
   quietWindowEligibleAt?: number;
 }
 
-interface WecomTraceTimings {
-  acceptedAt: number;
-  historyStoredAt?: number;
-  imagePreparedAt?: number;
-  queueAddAt?: number;
-  workerStartAt?: number;
-  aiStartAt?: number;
-  aiEndAt?: number;
-  deliveryStartAt?: number;
-  firstSegmentSentAt?: number;
-  deliveryEndAt?: number;
-  fallbackStartAt?: number;
-  fallbackEndAt?: number;
-  /** 非 reply 终态时间戳（skip_reply 主动沉默/守卫拦截/handoff/工具短路 → 跳过投递） */
-  replySkippedAt?: number;
-  completedAt?: number;
-}
-
 interface WecomTraceContext {
   request: WecomTraceRequestContext;
   timings: WecomTraceTimings;
   agentRequest?: Record<string, unknown>;
   agentResult?: AgentInvokeResult;
   deliveryResult?: DeliveryResult;
-  errorMessage?: string;
-  errorType?: AlertErrorType;
   fallbackDelivery?: FallbackDeliverySummary;
 }
+
+interface SuccessMetadataOptions {
+  scenario: ScenarioType;
+  batchId?: string;
+  replySegments?: number;
+  replyPreview?: string;
+  extraResponse?: Record<string, unknown>;
+  /** 入站守卫转人工摘要（handoff 收尾时由渠道传入，写 guardrail_input 列）。 */
+  guardrailInput?: GuardrailInputTrace;
+  /** 出站守卫全程 trace（渠道显式传入时优先；否则回退 agentResult.guardrailOutput）。 */
+  guardrailOutput?: GuardrailTurnTrace;
+}
+
+interface FailureMetadataOptions {
+  scenario: ScenarioType;
+  errorType: AlertErrorType;
+  errorMessage: string;
+  batchId?: string;
+  extraResponse?: Record<string, unknown>;
+}
+
+type TerminalMetadata = MonitoringMetadata & {
+  alertType?: AlertErrorType;
+  fallbackSuccess?: boolean;
+  batchId?: string;
+};
 
 interface StartMessageTraceParams {
   traceId: string;
@@ -250,9 +257,7 @@ export class WecomMessageObservabilityService {
   }
 
   async markWorkerStart(messageId: string): Promise<void> {
-    if (await this.markTiming(messageId, 'workerStartAt', true)) {
-      this.trackingService.recordWorkerStart(messageId);
-    }
+    await this.markTiming(messageId, 'workerStartAt', true);
   }
 
   /**
@@ -325,15 +330,11 @@ export class WecomMessageObservabilityService {
   }
 
   async markAiStart(messageId: string): Promise<void> {
-    if (await this.markTiming(messageId, 'aiStartAt', true)) {
-      this.trackingService.recordAiStart(messageId);
-    }
+    await this.markTiming(messageId, 'aiStartAt', true);
   }
 
   async markAiEnd(messageId: string): Promise<void> {
-    if (await this.markTiming(messageId, 'aiEndAt')) {
-      this.trackingService.recordAiEnd(messageId);
-    }
+    await this.markTiming(messageId, 'aiEndAt');
   }
 
   async recordAgentResult(messageId: string, agentResult: AgentInvokeResult): Promise<void> {
@@ -425,40 +426,52 @@ export class WecomMessageObservabilityService {
     });
   }
 
-  async buildSuccessMetadata(
+  buildSuccessMetadata(
     messageId: string,
-    options: {
-      scenario: ScenarioType;
-      batchId?: string;
-      replySegments?: number;
-      replyPreview?: string;
-      extraResponse?: Record<string, unknown>;
-      /** 入站守卫拦截摘要（guardrail_blocked 静默收尾时由渠道传入，写 guardrail_input 列）。 */
-      guardrailInput?: GuardrailInputTrace;
-      /** 出站守卫全程 trace（渠道显式传入时优先；否则回退 agentResult.guardrailOutput）。 */
-      guardrailOutput?: GuardrailTurnTrace;
-    },
-  ): Promise<MonitoringMetadata & { fallbackSuccess?: boolean; batchId?: string }> {
+    options: SuccessMetadataOptions,
+  ): Promise<TerminalMetadata> {
+    return this.buildTerminalMetadata(messageId, { status: 'success', ...options });
+  }
+
+  buildFailureMetadata(
+    messageId: string,
+    options: FailureMetadataOptions,
+  ): Promise<TerminalMetadata> {
+    return this.buildTerminalMetadata(messageId, { status: 'failure', ...options });
+  }
+
+  /**
+   * 终态 metadata 的唯一组装点：成功/失败只在「回复摘要取自渠道还是取自 agentResult」、
+   * 「fallback 结论」与 response 的 status/error 三处分叉，其余字段同源。读完即清理 Redis trace。
+   */
+  private async buildTerminalMetadata(
+    messageId: string,
+    options:
+      | ({ status: 'success' } & SuccessMetadataOptions)
+      | ({ status: 'failure' } & FailureMetadataOptions),
+  ): Promise<TerminalMetadata> {
     const trace = await this.traceStore.get<WecomTraceContext>(messageId);
     const completedAt = Date.now();
     const agentResult = trace?.agentResult;
+    const failure = options.status === 'failure' ? options : undefined;
+    const success = options.status === 'success' ? options : undefined;
+    const isFallback =
+      agentResult?.isFallback ?? (failure ? Boolean(trace?.fallbackDelivery) : false);
 
-    const metadata: MonitoringMetadata & {
-      fallbackSuccess?: boolean;
-      batchId?: string;
-    } = {
+    const metadata: TerminalMetadata = {
       scenario: options.scenario,
       batchId: options.batchId,
-      replyPreview: options.replyPreview,
-      replySegments: options.replySegments,
+      alertType: failure?.errorType,
+      replyPreview: failure ? agentResult?.reply.content : success?.replyPreview,
+      replySegments: failure ? trace?.deliveryResult?.segmentCount : success?.replySegments,
       tokenUsage: agentResult?.reply.usage?.totalTokens ?? 0,
       toolCalls: agentResult?.toolCalls,
       agentSteps: agentResult?.agentSteps,
-      guardrailInput: options.guardrailInput,
-      guardrailOutput: options.guardrailOutput ?? agentResult?.guardrailOutput,
+      guardrailInput: success?.guardrailInput,
+      guardrailOutput: success?.guardrailOutput ?? agentResult?.guardrailOutput,
       memorySnapshot: agentResult?.memorySnapshot,
-      isFallback: agentResult?.isFallback ?? false,
-      fallbackSuccess: agentResult?.isFallback ? true : undefined,
+      isFallback,
+      fallbackSuccess: failure ? trace?.fallbackDelivery?.success : isFallback ? true : undefined,
       agentInvocation: trace
         ? {
             request: {
@@ -466,7 +479,8 @@ export class WecomMessageObservabilityService {
               agentRequest: trace.agentRequest,
             },
             response: {
-              status: 'success',
+              status: options.status,
+              ...(failure ? { error: failure.errorMessage, errorType: failure.errorType } : {}),
               reply: {
                 content: agentResult?.reply.content,
                 reasoning: agentResult?.reply.reasoning,
@@ -478,84 +492,14 @@ export class WecomMessageObservabilityService {
               // 不再嵌入 agent_invocation.response 避免每行 jsonb 体积翻倍。
               delivery: trace.deliveryResult,
               fallback: trace.fallbackDelivery,
-              timings: this.buildTimingSummary(trace, completedAt),
+              timings: buildWecomTimingSummary(
+                trace.timings,
+                trace.request.quietWindowEligibleAt,
+                completedAt,
+              ),
               ...options.extraResponse,
             },
-            isFallback: agentResult?.isFallback ?? false,
-          }
-        : undefined,
-    };
-
-    await this.cleanup(messageId);
-    return metadata;
-  }
-
-  async buildFailureMetadata(
-    messageId: string,
-    options: {
-      scenario: ScenarioType;
-      errorType: AlertErrorType;
-      errorMessage: string;
-      batchId?: string;
-      extraResponse?: Record<string, unknown>;
-    },
-  ): Promise<
-    MonitoringMetadata & {
-      alertType?: AlertErrorType;
-      fallbackSuccess?: boolean;
-      batchId?: string;
-    }
-  > {
-    const trace = await this.traceStore.get<WecomTraceContext>(messageId);
-    const completedAt = Date.now();
-
-    if (trace) {
-      trace.errorMessage = options.errorMessage;
-      trace.errorType = options.errorType;
-    }
-
-    const agentResult = trace?.agentResult;
-    const metadata: MonitoringMetadata & {
-      alertType?: AlertErrorType;
-      fallbackSuccess?: boolean;
-      batchId?: string;
-    } = {
-      scenario: options.scenario,
-      alertType: options.errorType,
-      batchId: options.batchId,
-      replyPreview: agentResult?.reply.content,
-      replySegments: trace?.deliveryResult?.segmentCount,
-      tokenUsage: agentResult?.reply.usage?.totalTokens ?? 0,
-      toolCalls: agentResult?.toolCalls,
-      agentSteps: agentResult?.agentSteps,
-      guardrailOutput: agentResult?.guardrailOutput,
-      memorySnapshot: agentResult?.memorySnapshot,
-      isFallback: agentResult?.isFallback ?? Boolean(trace?.fallbackDelivery),
-      fallbackSuccess: trace?.fallbackDelivery?.success,
-      agentInvocation: trace
-        ? {
-            request: {
-              ...trace.request,
-              agentRequest: trace.agentRequest,
-            },
-            response: {
-              status: 'failure',
-              error: options.errorMessage,
-              errorType: options.errorType,
-              reply: {
-                content: agentResult?.reply.content,
-                reasoning: agentResult?.reply.reasoning,
-                usage: agentResult?.reply.usage,
-              },
-              messages: agentResult?.responseMessages,
-              toolCalls: agentResult?.toolCalls,
-              // agentSteps / memorySnapshot 作为顶层字段写入独立列，不再嵌入。
-              delivery: trace.deliveryResult,
-              fallback: trace.fallbackDelivery,
-              timings: this.buildTimingSummary(trace, completedAt),
-              ...options.extraResponse,
-            },
-            isFallback: agentResult?.isFallback ?? Boolean(trace.fallbackDelivery),
+            isFallback,
           }
         : undefined,
     };
@@ -592,103 +536,13 @@ export class WecomMessageObservabilityService {
     return Math.max(...candidates);
   }
 
-  private buildTimingSummary(trace: WecomTraceContext, completedAt: number) {
-    const timings = {
-      ...trace.timings,
-      completedAt,
-    };
-    const acceptedToFirstSegmentSentMs = this.diff(timings.firstSegmentSentAt, timings.acceptedAt);
-    const acceptedToWorkerStartMs = this.diff(timings.workerStartAt, timings.acceptedAt);
-    const quietWindowWaitMs = this.computeQuietWindowWaitMs(
-      trace.request.quietWindowEligibleAt,
-      timings.acceptedAt,
-      timings.workerStartAt,
-    );
-    const acceptedToQueueAddMs = this.diff(timings.queueAddAt, timings.acceptedAt);
-    const queueAddToWorkerStartMs = this.diff(timings.workerStartAt, timings.queueAddAt);
-    const prepMs = acceptedToQueueAddMs;
-    const queueMs =
-      queueAddToWorkerStartMs !== undefined && quietWindowWaitMs !== undefined
-        ? Math.max(
-            queueAddToWorkerStartMs - Math.max(quietWindowWaitMs - (acceptedToQueueAddMs ?? 0), 0),
-            0,
-          )
-        : queueAddToWorkerStartMs;
-    const queueWaitMs =
-      acceptedToWorkerStartMs !== undefined
-        ? Math.max(acceptedToWorkerStartMs - (quietWindowWaitMs ?? 0), 0)
-        : undefined;
-
-    return {
-      timestamps: timings,
-      durations: {
-        acceptedToHistoryStoredMs: this.diff(timings.historyStoredAt, timings.acceptedAt),
-        acceptedToImagePreparedMs: this.diff(timings.imagePreparedAt, timings.acceptedAt),
-        acceptedToQueueAddMs,
-        queueAddToWorkerStartMs,
-        acceptedToWorkerStartMs,
-        quietWindowWaitMs,
-        prepMs,
-        queueMs,
-        queueWaitMs,
-        acceptedToAiStartMs: this.diff(timings.aiStartAt, timings.acceptedAt),
-        acceptedToAiEndMs: this.diff(timings.aiEndAt, timings.acceptedAt),
-        acceptedToFirstSegmentSentMs,
-        acceptedToDeliveryStartMs: this.diff(timings.deliveryStartAt, timings.acceptedAt),
-        acceptedToDeliveryEndMs: this.diff(timings.deliveryEndAt, timings.acceptedAt),
-        workerStartToAiStartMs: this.diff(timings.aiStartAt, timings.workerStartAt),
-        aiStartToAiEndMs: this.diff(timings.aiEndAt, timings.aiStartAt),
-        aiEndToDeliveryStartMs: this.diff(timings.deliveryStartAt, timings.aiEndAt),
-        requestToFirstTextDeltaMs: acceptedToFirstSegmentSentMs,
-        deliveryDurationMs: this.diff(timings.deliveryEndAt, timings.deliveryStartAt),
-        fallbackDurationMs: this.diff(timings.fallbackEndAt, timings.fallbackStartAt),
-        totalMs: this.diff(completedAt, timings.acceptedAt) ?? 0,
-      },
-    };
-  }
-
-  private computeQuietWindowWaitMs(
-    quietWindowEligibleAt?: number,
-    acceptedAt?: number,
-    workerStartAt?: number,
-  ): number | undefined {
-    if (
-      quietWindowEligibleAt === undefined ||
-      acceptedAt === undefined ||
-      workerStartAt === undefined
-    ) {
-      return undefined;
-    }
-
-    const effectiveQuietWindowEnd = Math.min(quietWindowEligibleAt, workerStartAt);
-    return Math.max(effectiveQuietWindowEnd - acceptedAt, 0);
-  }
-
-  private diff(to?: number, from?: number): number | undefined {
-    if (to === undefined || from === undefined) return undefined;
-    return Math.max(to - from, 0);
-  }
-
-  /**
-   * V2 Trace 直接原子更新单个 timing field，不再读取/回写整份 Agent Trace。
-   * 返回 true 表示本次确实写入；NX 字段已存在时返回 false。
-   */
-  private async markTiming(
+  /** 原子更新单个 timing field；返回 true 表示本次确实写入（trace 不存在或 NX 已有值时 false）。 */
+  private markTiming(
     messageId: string,
     field: keyof WecomTraceTimings,
     onlyIfAbsent = false,
   ): Promise<boolean> {
-    const now = Date.now();
-    const status = await this.traceStore.setTiming(messageId, field, now, onlyIfAbsent);
-    if (status >= 0) return status === 1;
-
-    // 滚动发布兼容：V2 Hash 不存在时，读取旧 JSON 一次并升级成完整 V2。
-    const legacy = await this.traceStore.get<WecomTraceContext>(messageId);
-    if (!legacy) return false;
-    if (onlyIfAbsent && legacy.timings[field] !== undefined) return false;
-    legacy.timings[field] = now;
-    await this.traceStore.set(messageId, legacy);
-    return true;
+    return this.traceStore.setTiming(messageId, field, Date.now(), onlyIfAbsent);
   }
 
   private async cleanup(messageId: string): Promise<void> {

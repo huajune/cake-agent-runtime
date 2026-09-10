@@ -118,8 +118,9 @@ const DETAIL_REASON_LABELS: Record<string, string> = {
 const OUTCOME_LABELS: Record<string, string> = {
   reply: '生成了可发送回复',
   skipped: '未产出可发送回复',
-  guardrail_blocked: '被安全规则拦截',
-  handoff: '转人工',
+  // 旧持久记录的结果码；现役回合使用 handoff。
+  guardrail_blocked: '历史安全拦截／未发送',
+  handoff: '转人工意图',
 };
 
 type AnyRecord = Record<string, unknown>;
@@ -248,7 +249,7 @@ function getReadableStatus(record: ReengagementTouchRecord): SummaryInfo {
   }
   if (record.status === 'skipped' && record.outcome_kind === 'guardrail_blocked') {
     return {
-      title: '安全拦截，未发送',
+      title: '历史安全拦截，未发送',
       description: reason === '-' ? '生成内容未通过发送前安全检查。' : reason,
       tone: 'warning',
       icon: 'stop',
@@ -256,8 +257,8 @@ function getReadableStatus(record: ReengagementTouchRecord): SummaryInfo {
   }
   if (record.status === 'skipped' && record.outcome_kind === 'handoff') {
     return {
-      title: '已转人工，未自动发送',
-      description: reason === '-' ? '这次对话已交给人工处理。' : reason,
+      title: '转人工意图，未自动发送',
+      description: reason === '-' ? '本轮要求人工处理；实际派发状态以介入执行记录为准。' : reason,
       tone: 'muted',
       icon: 'info',
     };

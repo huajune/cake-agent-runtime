@@ -70,19 +70,28 @@ export class AgentController {
     const sessionId = body.sessionId || `debug-${Date.now()}`;
     const scenario = body.scenario || 'candidate-consultation';
     const traceId = `${sessionId}:${Date.now()}`;
+    const telemetryContext = {
+      traceId,
+      chatId: sessionId,
+      userId: body.userId || 'debug-user',
+      corpId: 'debug',
+      scenario,
+      callerKind: CallerKind.DEBUG,
+    };
 
-    try {
+    // try/catch 放在请求上下文之内：agent_error 事件与其余事件一样由 tracer 补齐 trace 维度。
+    const runDebugChat = async () => {
       const startedAt = Date.now();
-      // 走 invokeReviewed 而非裸 generator：调试页需要看到与生产一致的
-      // guardrail runtime 过程（rule/llm 裁决 → 受控 repair → 最终 veto）。
-      const runDebugTurn = async () => {
+      try {
         this.tracer?.emit({ type: 'agent_start' });
+        // 走 invokeReviewed 而非裸 generator：调试页需要看到与生产一致的
+        // guardrail runtime 过程（rule 裁决 → 受控 repair → 最终处置）。
         const result = await this.runner.invokeReviewed(
           {
             callerKind: CallerKind.DEBUG,
             messages: [{ role: 'user', content: body.message }],
-            userId: body.userId || 'debug-user',
-            corpId: 'debug',
+            userId: telemetryContext.userId,
+            corpId: telemetryContext.corpId,
             sessionId,
             scenario,
             strategySource: 'testing',
@@ -91,7 +100,7 @@ export class AgentController {
           {
             userMessage: body.message,
             chatId: sessionId,
-            userId: body.userId || 'debug-user',
+            userId: telemetryContext.userId,
             traceId,
             contactName: body.contactName,
           },
@@ -102,82 +111,64 @@ export class AgentController {
           totalTokens: result.usage.totalTokens,
           durationMs: Date.now() - startedAt,
         });
-        return result;
-      };
-      const result = this.requestContext
-        ? await this.requestContext.run(
-            {
-              traceId,
-              chatId: sessionId,
-              userId: body.userId || 'debug-user',
-              corpId: 'debug',
-              scenario,
-              callerKind: CallerKind.DEBUG,
+
+        return {
+          success: true,
+          sessionId,
+          scenario,
+          reasoning: result.reasoning,
+          text: result.text,
+          usage: result.usage,
+          steps: result.steps,
+          // 调试专用：完整出站裁决（含 violations 证据/建议全文）+ 全程 trace。
+          guardrail: {
+            decision: result.outputDecision,
+            resolution: result.resolution,
+            revised: result.revised,
+            trace: result.guardrailTrace,
+          },
+        };
+      } catch (error) {
+        this.tracer?.emit({ type: 'agent_error', error: toErrorMessage(error) });
+        this.logger.error('调试聊天失败:', error);
+
+        this.alertService
+          .sendAlert({
+            code: 'agent.debug_chat_failed',
+            summary: 'Agent 调试聊天失败',
+            source: {
+              subsystem: 'agent',
+              component: 'AgentController',
+              action: 'debugChat',
+              trigger: 'http',
             },
-            runDebugTurn,
-          )
-        : await runDebugTurn();
+            scope: {
+              scenario,
+            },
+            diagnostics: {
+              error,
+            },
+            dedupe: {
+              key: `agent.debug_chat_failed:${scenario}`,
+            },
+          })
+          .catch((alertError: Error) => {
+            this.logger.error(`飞书告警发送失败: ${alertError.message}`);
+          });
 
-      return {
-        success: true,
-        sessionId,
-        scenario,
-        reasoning: result.reasoning,
-        text: result.text,
-        usage: result.usage,
-        steps: result.steps,
-        // 调试专用：完整出站裁决（含 violations 证据/建议全文）+ 全程 trace。
-        guardrail: {
-          decision: result.outputDecision,
-          revised: result.revised,
-          trace: result.guardrailTrace,
-        },
-      };
-    } catch (error) {
-      this.tracer?.emit({
-        type: 'agent_error',
-        traceId,
-        chatId: sessionId,
-        userId: body.userId || 'debug-user',
-        corpId: 'debug',
-        scenario,
-        callerKind: CallerKind.DEBUG,
-        error: toErrorMessage(error),
-      });
-      this.logger.error('调试聊天失败:', error);
+        throw new HttpException(
+          {
+            success: false,
+            message: 'Agent 调用失败',
+            error: toErrorMessage(error),
+          },
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
+      }
+    };
 
-      this.alertService
-        .sendAlert({
-          code: 'agent.debug_chat_failed',
-          summary: 'Agent 调试聊天失败',
-          source: {
-            subsystem: 'agent',
-            component: 'AgentController',
-            action: 'debugChat',
-            trigger: 'http',
-          },
-          scope: {
-            scenario,
-          },
-          diagnostics: {
-            error,
-          },
-          dedupe: {
-            key: `agent.debug_chat_failed:${scenario}`,
-          },
-        })
-        .catch((alertError: Error) => {
-          this.logger.error(`飞书告警发送失败: ${alertError.message}`);
-        });
-
-      throw new HttpException(
-        {
-          success: false,
-          message: 'Agent 调用失败',
-          error: toErrorMessage(error),
-        },
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
-    }
+    return this.requestContext
+      ? this.requestContext.run(telemetryContext, runDebugChat)
+      : runDebugChat();
   }
 }

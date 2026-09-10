@@ -1,5 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { AlertLevel } from '@enums/alert.enum';
+import { exponentialBackoffMs, sleep } from '@infra/utils/async.util';
+import { toErrorMessage } from '@infra/utils/error.util';
+import { AlertNotifierService } from '@notification/services/alert-notifier.service';
 import type { MessageProcessingRecordInput } from '@biz/message/types/message.types';
+
 import type {
   AgentMemorySnapshot,
   AgentStepDetail,
@@ -59,6 +64,7 @@ export class MessageTrackingService {
     private readonly errorLogRepository: MonitoringErrorLogRepository,
     private readonly userHostingService: UserHostingService,
     private readonly cacheService: MonitoringCacheService,
+    private readonly alertNotifier: AlertNotifierService,
   ) {}
 
   onModuleInit(): void {
@@ -142,20 +148,6 @@ export class MessageTrackingService {
   }
 
   /**
-   * 生命周期阶段埋点由 Redis trace 维护。
-   * 这些方法保留是为了兼容现有调用方，不再依赖进程内状态做拼装。
-   */
-  recordWorkerStart(_messageId: string): void {}
-
-  recordAiStart(_messageId: string): void {}
-
-  recordAiEnd(_messageId: string): void {}
-
-  recordSendStart(_messageId: string): void {}
-
-  recordSendEnd(_messageId: string): void {}
-
-  /**
    * 投递层主动丢弃回复时累计计数器。配合 DeliveryResult.skipReason 写库，
    * 用于排障 / 回归测试断言。
    */
@@ -182,6 +174,7 @@ export class MessageTrackingService {
       metadata,
     }).catch((err) => {
       this.logger.error(`保存消息处理记录到数据库失败 [${messageId}]:`, err);
+      this.alertTerminalPersistFailure(messageId, 'success', 'db_write_failed', err);
     });
   }
 
@@ -247,6 +240,7 @@ export class MessageTrackingService {
       metadata,
     }).catch((err) => {
       this.logger.error(`保存失败消息处理记录到数据库失败 [${messageId}]:`, err);
+      this.alertTerminalPersistFailure(messageId, 'failure', 'db_write_failed', err);
     });
   }
 
@@ -269,9 +263,11 @@ export class MessageTrackingService {
       });
 
       if (!finalRecord) {
+        // 跳过回写意味着该行永远停在 processing：这是主账本丢终态，不能只留一行 warn。
         this.logger.warn(
           `[record${params.status === 'success' ? 'Success' : 'Failure'}] 无法还原终态记录 [${params.messageId}]，跳过回写`,
         );
+        this.alertTerminalPersistFailure(params.messageId, params.status, 'terminal_unrecoverable');
         return;
       }
 
@@ -451,21 +447,56 @@ export class MessageTrackingService {
     };
   }
 
-  /**
-   * 带指数退避重试的包装器（最多 retries 次，初始延迟 delayMs）
-   */
+  /** 带指数退避重试（最多 retries 次重试，退避 baseDelayMs × 2^(n-1)）。 */
   private async withRetry<T>(
     fn: () => Promise<T>,
     retries: number = 2,
-    delayMs: number = 500,
+    baseDelayMs: number = 500,
   ): Promise<T> {
-    try {
-      return await fn();
-    } catch (error) {
-      if (retries <= 0) throw error;
-      await new Promise((r) => setTimeout(r, delayMs));
-      return this.withRetry(fn, retries - 1, delayMs * 2);
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        return await fn();
+      } catch (error) {
+        if (attempt > retries) throw error;
+        await sleep(exponentialBackoffMs(attempt, baseDelayMs, 10_000));
+      }
     }
+  }
+
+  /**
+   * 主账本终态丢失告警：message_processing_records 是所有排障 join 的根，终态写不进去
+   * 等于这一轮在 Dashboard 上永远「处理中」。与 agent_execution_events / guardrail 档案
+   * 的落库失败告警同规格，按失败类别去重。
+   */
+  private alertTerminalPersistFailure(
+    messageId: string,
+    status: 'success' | 'failure',
+    reason: 'db_write_failed' | 'terminal_unrecoverable',
+    error?: unknown,
+  ): void {
+    void this.alertNotifier
+      .sendAlert({
+        code: 'message_processing_terminal_persist_failed',
+        severity: AlertLevel.ERROR,
+        summary: '消息处理流水终态回写失败，该回合将停留在 processing',
+        source: {
+          subsystem: 'monitoring',
+          component: 'message-tracking',
+          action: 'persist_terminal_state',
+        },
+        scope: { messageId },
+        diagnostics: {
+          category: reason,
+          error,
+          payload: { status },
+        },
+        dedupe: { key: `message_processing_terminal_persist_failed:${reason}` },
+      })
+      .catch((alertError: unknown) => {
+        this.logger.warn(
+          `[Monitoring] 终态回写失败告警发送异常 [${messageId}]: ${toErrorMessage(alertError)}`,
+        );
+      });
   }
 
   /**

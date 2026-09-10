@@ -65,9 +65,15 @@ describe('FollowUpProcessor', () => {
   let handoffNotifier: { notify: jest.Mock };
   let configService: { get: jest.Mock };
   let delivery: { deliver: jest.Mock };
+  let requestContext: { get: jest.Mock; run: jest.Mock };
 
   beforeEach(() => {
     jest.useRealTimers();
+    requestContext = {
+      get: jest.fn().mockReturnValue({}),
+      run: jest.fn((_ctx: unknown, fn: () => unknown) => fn()),
+    };
+
     queue = { process: jest.fn(), add: jest.fn().mockResolvedValue(undefined) };
     session = {
       getReengagementState: jest.fn().mockResolvedValue(baseState()),
@@ -174,6 +180,7 @@ describe('FollowUpProcessor', () => {
       handoffNotifier as never,
       configService as never,
       withDelivery ? (delivery as never) : undefined,
+      requestContext as never,
     );
 
   it('registers the configured follow-up job name', () => {
@@ -348,6 +355,45 @@ describe('FollowUpProcessor', () => {
       'human_intervention_after_candidate',
     );
     expect(reengagementAgent.compose).toHaveBeenCalled();
+  });
+
+  it('主动回合在请求上下文内执行：traceId = batchId，与主动回合流水行同源', async () => {
+    const anchorAt = Date.UTC(2026, 6, 22, 8, 20, 0);
+    const now = Date.UTC(2026, 6, 23, 5, 0, 0);
+    jest.spyOn(Date, 'now').mockReturnValue(now);
+    sponge.getWorkOrderById.mockResolvedValue({
+      workOrderId: 555,
+      currentStatus: '约面成功',
+      interviewTime: '2026-07-23 14:00',
+    });
+    session.getReengagementState.mockResolvedValue(baseState({ terminal: 'booked' }));
+    chatSession.getChatHistory.mockResolvedValue([]);
+
+    await buildProcessor().process(
+      makeJob({
+        data: {
+          sessionRef,
+          scenarioCode: 'interview_reminder',
+          anchorEventId: 'wo555:iv1784786400000',
+          anchorAt,
+          workOrderId: 555,
+          expectedInterviewAt: Date.UTC(2026, 6, 23, 6, 0, 0),
+        },
+      }),
+    );
+
+    expect(reengagementAgent.compose).toHaveBeenCalled();
+    expect(requestContext.run).toHaveBeenCalledWith(
+      expect.objectContaining({
+        traceId: `batch_${sessionRef.sessionId}_${now}`,
+        chatId: sessionRef.sessionId,
+        userId: sessionRef.userId,
+        corpId: sessionRef.corpId,
+        scenario: 'interview_reminder',
+        callerKind: 'reengagement',
+      }),
+      expect.any(Function),
+    );
   });
 
   it('真人介入闸：API_SEND 或非文本自发消息不算真人手打', async () => {
@@ -636,13 +682,13 @@ describe('FollowUpProcessor', () => {
     const sideEffect = {
       kind: 'general_handoff',
       source: 'agent_tool',
-      alertLabel: '出站守卫拦截（rule 档）',
+      alertLabel: '出站守卫转人工（rule 档）',
       reasonCode: 'system_blocked',
-      reason: '出站守卫拦截',
+      reason: '出站守卫转人工',
       recordHandoff: true,
     };
     const outcome = {
-      kind: 'guardrail_blocked',
+      kind: 'handoff',
       toolCalls: [],
       scenarioCode: 'opening_no_reply',
       disposition: 'side_effects',

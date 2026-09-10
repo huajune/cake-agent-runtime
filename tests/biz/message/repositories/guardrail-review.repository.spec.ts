@@ -40,7 +40,7 @@ describe('GuardrailReviewRepository', () => {
     chatId: 'chat-1',
     firstReply: '首版回复',
     first: {
-      decision: 'revise' as const,
+      decision: 'repair' as const,
       riskLevel: 'medium' as const,
       ruleIds: ['job_detail_lookup_required'],
       blockedRuleIds: ['job_detail_lookup_required'],
@@ -57,7 +57,7 @@ describe('GuardrailReviewRepository', () => {
       blockedRuleIds: [],
       violations: [],
     },
-    finalDecision: 'pass' as const,
+    finalOutcome: 'reply' as const,
   };
 
   it('upserts review records by trace_id and returns inserted', async () => {
@@ -70,17 +70,71 @@ describe('GuardrailReviewRepository', () => {
         trace_id: 'msg-1',
         chat_id: 'chat-1',
         first_reply: '首版回复',
-        first_decision: 'revise',
+        first_decision: 'repair',
         first_rule_ids: ['job_detail_lookup_required'],
         first_feedback: '不要给区级距离结论',
         repaired: true,
         revised_reply: '重写回复',
         revised_decision: 'pass',
-        final_decision: 'pass',
+        final_decision: 'reply',
       }),
       { onConflict: 'trace_id', ignoreDuplicates: false },
     );
+    expect(upsert.mock.calls[0][0]).not.toHaveProperty('semantic_reviews');
   });
+
+  it('persists an empty repair without fabricating a second review or overwriting semantic history', async () => {
+    const { upsert } = mockClient({ data: [{ trace_id: 'msg-1' }], error: null });
+    await repository.insertReviewRecord({
+      ...baseRecord,
+      finalOutcome: 'handoff',
+      revisedReply: '',
+      revised: undefined,
+    });
+    expect(upsert.mock.calls[0][0]).toMatchObject({
+      repaired: true,
+      revised_reply: '',
+      revised_decision: null,
+      final_decision: 'handoff',
+      first_decision: 'repair',
+    });
+    expect(upsert.mock.calls[0][0]).not.toHaveProperty('semantic_reviews');
+  });
+
+  it.each([
+    ['repair_exhausted', undefined, 'block'],
+    ['meta_narration_silenced', 'skipped', undefined],
+    ['meta_narration_silenced|override:meta_narration_reply:repair', 'skipped', undefined],
+  ])(
+    'keeps historical block attribution distinct for %s, even after repair',
+    async (reasonCode, finalOutcome, legacyFinalDecision) => {
+      jest.spyOn(repository as unknown as RepositoryWithSelectOne, 'selectOne').mockResolvedValue({
+        trace_id: 'legacy',
+        first_reply: '首版',
+        first_decision: 'block',
+        repaired: true,
+        revised_reply: '',
+        revised_decision: null,
+        final_decision: 'block',
+        reason_code: reasonCode,
+        semantic_reviews: [
+          {
+            mode: 'shadow',
+            decision: 'block',
+            findings: [],
+            draftReply: '历史语义草稿',
+            confidence: 'high',
+          },
+        ],
+      });
+      const review = await repository.findByTraceId('legacy');
+      expect(review).toMatchObject({ repaired: true, revisedReply: '', finalOutcome });
+      expect(review?.legacyFinalDecision).toBe(legacyFinalDecision);
+      expect(review?.semanticReviews).toEqual([
+        expect.objectContaining({ draftReply: '历史语义草稿', decision: 'repair' }),
+      ]);
+    },
+  );
 
   it('returns failed when an upsert unexpectedly returns no row', async () => {
     mockClient({ data: [], error: null });
@@ -143,7 +197,7 @@ describe('GuardrailReviewRepository', () => {
         userId: 'user-1',
         firstReply: '首版回复',
         first: expect.objectContaining({
-          decision: 'revise',
+          decision: 'repair',
           riskLevel: 'medium',
           ruleIds: ['job_detail_lookup_required'],
           feedback: '不要给区级距离结论',
@@ -153,9 +207,9 @@ describe('GuardrailReviewRepository', () => {
         revisedReply: '重写回复',
         revised: expect.objectContaining({ decision: 'pass', riskLevel: 'low' }),
         committedSideEffects: '已成功报名',
-        finalDecision: 'pass',
+        finalOutcome: 'reply',
         reasonCode: 'repair_ok',
-        semanticReviews: [expect.objectContaining({ mode: 'enforce', decision: 'revise' })],
+        semanticReviews: [expect.objectContaining({ mode: 'enforce', decision: 'repair' })],
         createdAt: '2026-07-03T09:00:00.000Z',
       }),
     );

@@ -236,7 +236,7 @@ interface ToolRuntime {
 
 区分两种输入机制：
 
-- `InputGuardrailService` 决定消息是否允许进入 Agent，可形成 block/handoff；
+- `InputGuardrailService` 决定消息是否允许进入 Agent，审查只返回 pass/handoff；
 - `PromptInjectionDetector` 识别角色劫持、提示词泄露和系统标记，默认不阻断，而是形成模型安全上下文和观测事件。
 
 检测器返回结构化结果且不发送告警：

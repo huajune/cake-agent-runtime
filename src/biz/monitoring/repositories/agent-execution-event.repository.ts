@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { BaseRepository } from '@infra/supabase/base.repository';
 import { SupabaseService } from '@infra/supabase/supabase.service';
-import type { AgentExecutionEvent } from '@observability/persistence/agent-event-persister.interface';
+import type { AgentEvent } from '@observability/observer.interface';
 
 interface AgentExecutionEventDbRecord {
   id: number;
@@ -37,7 +37,7 @@ export class AgentExecutionEventRepository extends BaseRepository {
     super(supabaseService);
   }
 
-  async saveEvent(event: AgentExecutionEvent): Promise<void> {
+  async saveEvent(event: AgentEvent): Promise<void> {
     if (!this.isAvailable()) return;
 
     const inserted = await this.insert<AgentExecutionEventDbRecord>(this.toDbRecord(event), {
@@ -70,23 +70,7 @@ export class AgentExecutionEventRepository extends BaseRepository {
     }
   }
 
-  /** 按完整时间窗统计指定事件；分页只取 id，避免 PostgREST 1000 行上限低估日量。 */
-  async countEventsByTypeBetween(eventType: string, from: Date, to: Date): Promise<number> {
-    const rows = await this.selectAllPaged<Pick<AgentExecutionEventDbRecord, 'id'>>(
-      this.tableName,
-      'id',
-      (query) =>
-        query
-          .eq('event_type', eventType)
-          .gte('created_at', from.toISOString())
-          .lt('created_at', to.toISOString())
-          .order('id', { ascending: true }),
-      1000,
-    );
-    return rows.length;
-  }
-
-  private toDbRecord(event: AgentExecutionEvent): Partial<AgentExecutionEventDbRecord> {
+  private toDbRecord(event: AgentEvent): Partial<AgentExecutionEventDbRecord> {
     const { type, traceId, chatId, userId, corpId, scenario, callerKind, timestamp, ...payload } =
       event;
 

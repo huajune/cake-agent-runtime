@@ -1,12 +1,12 @@
 import type { AgentToolCall, GeneratorRunResult } from '../generator/generator.types';
-import type { GuardrailTurnTrace } from '@shared-types/guardrail.contract';
+import type { GuardrailTurnTrace, OutputResolution } from '@shared-types/guardrail.contract';
 import {
   blocksReplay,
   isHandoffGateRejectedToolCall,
   isShortCircuitedToolCall,
 } from '../generator/tool-call-analysis';
 import type { OutputGuardDecision } from '../guardrail/output/output-guardrail.service';
-import { OutboundReplySanitizer } from '../guardrail/output/outbound-reply-sanitizer';
+import { OutboundReplySanitizer } from '../guardrail/output/sanitizer/outbound-reply-sanitizer';
 import { STALE_INPUT_REASON_CODE } from '@tools/shared/tool-error-types';
 import { buildHandoffIdempotencyKey } from './handoff-idempotency';
 import type { SessionRef, TurnOutcome } from './agent-runner.types';
@@ -27,11 +27,40 @@ const NEGATED_HANDOFF_PROMISE_PATTERN =
 /** 已审生成结果的最小投入：生成结果 + 出站裁决（runner.invokeReviewed 的产物子集）。 */
 export type ReviewedResultLike = GeneratorRunResult & {
   outputDecision: OutputGuardDecision;
-  /** invokeReviewed 是否触发了 revise 重写（pass 也会携带 false）。 */
+  resolution: OutputResolution;
+  /** 是否采用了修复后的生成结果。 */
   revised: boolean;
   /** 出站守卫全程 trace（invokeReviewed 产物）；守卫未运行（短路/空文本）时为空。 */
   guardrailTrace?: GuardrailTurnTrace;
 };
+
+/** 对齐审查后的处置与已发生的工具终态；归档和渠道分类共用，不执行副作用。 */
+export function resolveReviewedResolution(
+  result: Pick<GeneratorRunResult, 'text' | 'toolCalls'>,
+  resolution: OutputResolution,
+): OutputResolution {
+  if (resolution.outcome === 'handoff' || resolution.reasonCode === 'meta_narration_silenced') {
+    return resolution;
+  }
+  const toolCalls = result.toolCalls ?? [];
+  const handoffCall =
+    toolCalls.find(isCommittedRequestHandoffCall) ?? toolCalls.find(isHandoffGateRejectedToolCall);
+  if (handoffCall) {
+    return {
+      ...resolution,
+      outcome: 'handoff',
+      source: 'agent_tool',
+      reasonCode: resolveToolHandoffReasonCode(handoffCall),
+    };
+  }
+  if (
+    toolCalls.some(isShortCircuitedToolCall) ||
+    !OutboundReplySanitizer.sanitize(result.text ?? '').trim()
+  ) {
+    return { ...resolution, outcome: 'skipped' };
+  }
+  return { ...resolution, outcome: 'reply' };
+}
 
 export interface ReplaySkipDecision {
   skip: boolean;
@@ -97,12 +126,23 @@ export function isCommittedRequestHandoffCall(call: AgentToolCall): boolean {
   return result?.dispatched === true;
 }
 
+/** 归档与终态使用同一工具转人工原因，避免把已有业务归因记为未知守卫失败。 */
+function resolveToolHandoffReasonCode(call: AgentToolCall): string {
+  const args = call.args as { reasonCode?: unknown } | undefined;
+  const result = call.result as { reasonCode?: unknown } | undefined;
+  return (
+    (typeof args?.reasonCode === 'string' && args.reasonCode) ||
+    (typeof result?.reasonCode === 'string' && result.reasonCode) ||
+    'other'
+  );
+}
+
 /**
  * 把一次「已审生成」分类成渠道无关的 {@link TurnOutcome}（§7）。
  *
  * 纯函数、无副作用：把主 Runner 的被动入站生成结果收敛为统一终态。
  *
- * 优先级：出站 block → 转人工（committed request_handoff / booking 溯源 gate /
+ * 优先级：Runner 出站处置 → 转人工（committed request_handoff / booking 溯源 gate /
  * modify 工单归属 gate hard-reject）→
  * 沉默（短路 / 空文本）→ 可投递回复。
  */
@@ -126,48 +166,57 @@ export function classifyReviewedOutcome(
   };
   const outputGuardrail: TurnOutcome['outputGuardrail'] = {
     decision: result.outputDecision.decision,
+    finalOutcome: result.resolution.outcome,
     riskLevel: result.outputDecision.riskLevel,
     ruleIds: result.outputDecision.ruleIds,
     blockedRuleIds: result.outputDecision.blockedRuleIds,
-    reasonCode: result.outputDecision.reasonCode,
+    reasonCode: result.resolution.reasonCode,
     revised: result.revised,
   };
 
-  // 出站守卫 block（rule 硬拦 / llm 严重违规 / 降级）：不投递，并交给人工兜底。
-  if (result.outputDecision.decision === 'block') {
+  // Runner 已完成有界修复与放行判断；这里仅把处置投影成渠道可提交的回合结果。
+  if (
+    (result.resolution.outcome === 'handoff' && result.resolution.source !== 'agent_tool') ||
+    result.resolution.reasonCode === 'meta_narration_silenced'
+  ) {
     const ruleBlocked = result.outputDecision.blockedRuleIds.length > 0;
     const ruleIds = ruleBlocked
       ? result.outputDecision.blockedRuleIds
-      : [result.outputDecision.reasonCode ?? 'output_blocked'];
+      : [result.resolution.reasonCode ?? 'output_review_failed'];
     const turnId = messageId ?? sessionRef.sessionId;
     // 元叙述旁白收敛（meta_narration_silenced）：模型本意就是本轮沉默，语义上等效
     // skip_reply，不派 general_handoff——该副作用会暂停托管 + 飞书告警，而此场景
     // 多为真人经理已在沟通（用户裁定：真人插话不自动暂停托管），且候选人下一轮
     // 的新诉求仍应由 Agent 正常接管。守卫档案照常落库，不丢观测。
-    const intentionalSilence = result.outputDecision.reasonCode === 'meta_narration_silenced';
+    const intentionalSilence = result.resolution.outcome === 'skipped';
+    const guardHandoff = intentionalSilence
+      ? undefined
+      : buildOutputGuardHandoffSideEffect({
+          sessionRef,
+          turnId,
+          ruleBlocked,
+          reasonCode: result.resolution.reasonCode ?? ruleIds.join(','),
+          replyPreview: text,
+        });
     return {
-      kind: 'guardrail_blocked',
+      kind: intentionalSilence ? 'skipped' : 'handoff',
       toolCalls,
       runTurnEnd,
       ...metadata,
-      disposition: 'side_effects',
-      sideEffects: intentionalSilence
-        ? toolSideEffects
-        : [
-            ...toolSideEffects,
-            buildOutputGuardHandoffSideEffect({
-              sessionRef,
-              turnId,
-              ruleBlocked,
-              reasonCode: result.outputDecision.reasonCode ?? ruleIds.join(','),
-              replyPreview: text,
-            }),
-          ],
+      sideEffects: guardHandoff ? [...toolSideEffects, guardHandoff] : toolSideEffects,
+      handoff: guardHandoff
+        ? {
+            source: 'output_guardrail',
+            reasonCode: guardHandoff.reasonCode,
+            reason: guardHandoff.reason,
+            idempotencyKey: guardHandoff.idempotencyKey,
+          }
+        : undefined,
       guardrail: {
         phase: 'outbound',
         source: 'output_guardrail',
         ruleIds,
-        reasonCode: result.outputDecision.reasonCode,
+        reasonCode: result.resolution.reasonCode,
         ruleBlocked,
         inspectedText: text,
       },
@@ -197,10 +246,7 @@ export function classifyReviewedOutcome(
     const collectedToolSideEffect = collectToolSideEffectIntents([handoffCall])[0];
     const handoffToolSideEffect =
       collectedToolSideEffect?.kind === 'general_handoff' ? collectedToolSideEffect : undefined;
-    const reasonCode =
-      (typeof args?.reasonCode === 'string' && args.reasonCode) ||
-      (typeof callResult?.reasonCode === 'string' && callResult.reasonCode) ||
-      'other';
+    const reasonCode = resolveToolHandoffReasonCode(handoffCall);
     const turnId = messageId ?? sessionRef.sessionId;
     const alreadyDispatched = handoffCall.toolName === 'request_handoff' && !handoffToolSideEffect;
     const idempotencyKey = buildHandoffIdempotencyKey({
@@ -256,13 +302,14 @@ export function classifyReviewedOutcome(
           : fallbackHandoffSideEffect,
       ],
       handoff: {
+        source: 'agent_tool',
         reasonCode,
         reason: typeof args?.reason === 'string' ? args.reason : undefined,
         sourceToolCall: handoffCall.toolName,
         idempotencyKey,
         alreadyDispatched,
       },
-      outputGuardrail,
+      outputGuardrail: { ...outputGuardrail, finalOutcome: 'handoff' },
     };
   }
 
@@ -274,7 +321,7 @@ export function classifyReviewedOutcome(
       runTurnEnd,
       ...metadata,
       sideEffects: toolSideEffects,
-      outputGuardrail,
+      outputGuardrail: { ...outputGuardrail, finalOutcome: 'skipped' },
     };
   }
 
@@ -414,12 +461,12 @@ function buildOutputGuardHandoffSideEffect(params: {
   ruleBlocked: boolean;
   reasonCode: string;
   replyPreview: string;
-}): GeneralHandoffSideEffectIntent {
+}): GeneralHandoffSideEffectIntent & { idempotencyKey: string } {
   const guardType = params.ruleBlocked ? 'rule 档' : '非 rule 档';
   const reason = `出站守卫拦截（${guardType}）：${params.reasonCode}`;
   return {
     kind: 'general_handoff',
-    source: 'agent_tool',
+    source: 'output_guardrail',
     alertLabel: `出站守卫拦截（${guardType}）`,
     reasonCode: 'system_blocked',
     reason: `${reason}；replyPreview="${params.replyPreview.slice(0, 400)}"`,

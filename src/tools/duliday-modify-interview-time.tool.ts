@@ -46,7 +46,7 @@ const DESCRIPTION = `修改约面时间。候选人**主动**要求把一个**�
 
 ## 参数
 - workOrderId：必填，取自 [当前预约信息] 的「工单号」
-- newInterviewTime：必填，新约面时间，格式必须为 YYYY-MM-DD HH:mm（不含秒），例如 2026-06-20 14:00。必须是已被 precheck 判为可约的日期上的具体时段
+- newInterviewTime：必填，新约面时间，格式必须为 YYYY-MM-DD HH:mm（不含秒）。必须是已被 precheck 判为可约的日期上的具体时段
 
 ## 成功/失败处理硬规则
 - **只有当本工具返回 success 后**，才能向候选人确认改约成功并复述新的面试时间
@@ -58,9 +58,7 @@ const inputSchema = z.object({
     .int()
     .positive()
     .describe('工单 ID，取自 [当前预约信息] 或本轮 precheck 实时返回的真实工单号'),
-  newInterviewTime: z
-    .string()
-    .describe('新约面时间，格式必须为 YYYY-MM-DD HH:mm（不含秒），例如 2026-06-20 14:00'),
+  newInterviewTime: z.string().describe('新约面时间，格式必须为 YYYY-MM-DD HH:mm（不含秒）'),
 });
 
 /**

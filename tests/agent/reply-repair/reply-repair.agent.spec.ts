@@ -1,5 +1,5 @@
 import { ReplyRepairAgent } from '@agent/reply-repair/reply-repair.agent';
-import { GuardrailReviewPacketBuilder } from '@agent/guardrail/output/llm/review-packet.builder';
+import { RepairEvidenceBuilder } from '@agent/reply-repair/repair-evidence.builder';
 import { ModelRole } from '@/llm/llm.types';
 
 describe('ReplyRepairAgent', () => {
@@ -12,7 +12,7 @@ describe('ReplyRepairAgent', () => {
         text: '已帮你约好明天 14:00 面试，到店说独立客介绍就行。',
       }),
     };
-    service = new ReplyRepairAgent(llm as never, new GuardrailReviewPacketBuilder());
+    service = new ReplyRepairAgent(llm as never, new RepairEvidenceBuilder());
   });
 
   it('uses the repair role with a focused text repair prompt and grounded evidence', async () => {

@@ -53,7 +53,7 @@ export interface GeneralHandoffInterventionPayload extends InterventionBase {
   workOrderId?: number | null;
   /** 岗位数据缺口（salary_admin_inquiry）：卡片展示给运营补录。 */
   missingJobInfo?: string[];
-  source: 'agent_tool';
+  source: 'agent_tool' | 'output_guardrail';
 }
 
 export type InterventionPayload = RiskInterventionPayload | GeneralHandoffInterventionPayload;

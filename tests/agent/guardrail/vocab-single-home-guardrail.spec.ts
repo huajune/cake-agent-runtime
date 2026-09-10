@@ -1,10 +1,12 @@
 import {
   GUARDRAIL_DECISION,
+  GUARDRAIL_ACTION,
   GUARDRAIL_REPAIR_MODE,
   GUARDRAIL_REPAIR_MODES,
   GUARDRAIL_RISK_LEVEL,
   GUARDRAIL_RISK_LEVELS,
   OUTPUT_DECISIONS,
+  type InputDecision,
 } from '@/types/guardrail.contract';
 import { GENERATOR_TOOL_MODES } from '@/agent/generator/generator.types';
 import { LLM_THINKING_EFFORTS } from '@/llm/llm.types';
@@ -22,8 +24,8 @@ import {
  */
 describe('词表单一居所 · 期 1', () => {
   describe('发给审查模型的 schema 取值与顺序不得漂移', () => {
-    it('OUTPUT_DECISIONS 保持严重度升序五档', () => {
-      expect([...OUTPUT_DECISIONS]).toEqual(['pass', 'observe', 'revise', 'replan', 'block']);
+    it('OUTPUT_DECISIONS 只保留四档草稿处理意见', () => {
+      expect([...OUTPUT_DECISIONS]).toEqual(['pass', 'observe', 'repair', 'replan']);
     });
 
     it('GUARDRAIL_RISK_LEVELS 保持 low→high', () => {
@@ -78,32 +80,20 @@ describe('词表单一居所 · 期 1', () => {
     });
   });
 
-  describe('裁决合并：新表在 4 个在产档位上与旧有序数组等价', () => {
-    // 旧实现（origin/develop）：PRIORITY.find(d => d === a || d === b) ?? PASS
-    const legacyMerge = (a: string, b: string): string =>
-      ['block', 'revise', 'observe', 'pass'].find((d) => d === a || d === b) ?? 'pass';
-    // 新实现的等价形式（output-guardrail.service.ts mergeByPriority）
-    const rank: Record<string, number> = {
-      block: 4,
-      revise: 3,
-      observe: 2,
-      pass: 1,
-    };
-    const newMerge = (a: string, b: string): string => (rank[a] >= rank[b] ? a : b);
+  it('Input 拦截与最终处置不能重新混入草稿处理词表', () => {
+    expect(OUTPUT_DECISIONS).not.toContain('block');
+    expect(OUTPUT_DECISIONS).not.toContain('revise');
+    expect(OUTPUT_DECISIONS).not.toContain('handoff');
+    expect(GUARDRAIL_DECISION.HANDOFF).toBe('handoff');
+  });
 
-    const LIVE = ['block', 'revise', 'observe', 'pass'];
-    const pairs = LIVE.flatMap((a) => LIVE.map((b) => [a, b] as const));
-
-    it.each(pairs)('merge(%s, %s) 与旧实现一致', (a, b) => {
-      expect(newMerge(a, b)).toBe(legacyMerge(a, b));
-    });
-
-    // 下面这条不是"期望行为"，而是把危险**钉在案发现场**：任何未登记的裁决在优先级合并
-    // 里都会静默 fail-open 成放行。所以新档位必须同时登记进 mergeRuleDecision 的优先级序
-    // （2026-09-09 replan 回归词表时即如此登记：block > replan > revise > observe > pass）。
-    it('未登记的裁决在优先级合并里会 fail-open——故新档位必须登记优先级', () => {
-      expect(newMerge('unregistered_tier', 'pass')).toBe('pass');
-      expect(legacyMerge('unregistered_tier', 'pass')).toBe('pass');
-    });
+  it('Input 只保留 pass/handoff，统一动作与决策枚举不再包含 block', () => {
+    const inputDecisions: Record<InputDecision, true> = { pass: true, handoff: true };
+    expect(Object.keys(inputDecisions)).toEqual(['pass', 'handoff']);
+    expect(GUARDRAIL_ACTION.HANDOFF).toBe('handoff');
+    expect(GUARDRAIL_ACTION).not.toHaveProperty('BLOCK');
+    expect(GUARDRAIL_DECISION).not.toHaveProperty('BLOCK');
+    expect(Object.values(GUARDRAIL_ACTION)).not.toContain('block');
+    expect(Object.values(GUARDRAIL_DECISION)).not.toContain('block');
   });
 });

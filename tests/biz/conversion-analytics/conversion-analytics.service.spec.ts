@@ -66,9 +66,211 @@ const botStageEvents = (
     forBot(ev(eventName, `${prefix}-${index}`, today), botImId, managerName, groupName),
   );
 
+const FUNNEL_EVENTS = [
+  'friend.added',
+  'candidate.engaged',
+  'booking.succeeded',
+  'group.invited',
+  'interview.passed',
+];
+
+const trimOrNull = (value: string | null | undefined): string | null => {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+};
+
+const normalizeBot = (botImId: string): string => {
+  const trimmed = botImId.trim();
+  return trimmed.startsWith('prod-sync:') ? trimmed.slice('prod-sync:'.length).trim() : trimmed;
+};
+
+/** 对齐 SQL conversion_event_matches_groups：有效 group_name 按名字，空/未分组按 bot 归属。 */
+function matchesGroups(event: TestEvent, groups?: string[], groupBotIds?: string[]): boolean {
+  if (!groups || groups.length === 0) return true;
+  const groupName = event.group_name;
+  if (!groupName || groupName === '未分组') {
+    return !!event.bot_im_id && (groupBotIds ?? []).includes(normalizeBot(event.bot_im_id));
+  }
+  return groups.includes(groupName);
+}
+
+function workOrderKey(event: TestEvent): string | null {
+  const payload = event.payload ?? {};
+  for (const field of [
+    'work_order_id',
+    'workOrderId',
+    'latest_work_order_id',
+    'latestWorkOrderId',
+  ]) {
+    const raw = payload[field];
+    const text = raw === undefined || raw === null ? null : trimOrNull(String(raw));
+    if (text) return text;
+  }
+  const prefix = event.idempotency_key?.trim().split(':')[0];
+  return prefix ? prefix : null;
+}
+
+/** 对齐 SQL conversion_period_stats 的去重键。 */
+function dedupKey(event: TestEvent): string | null {
+  const identity = trimOrNull(event.user_id) ?? trimOrNull(event.chat_id);
+  const idempotency = trimOrNull(event.idempotency_key);
+  if (event.event_name === 'booking.succeeded' || event.event_name === 'interview.passed') {
+    return identity ?? workOrderKey(event) ?? idempotency;
+  }
+  return identity ?? idempotency;
+}
+
+interface StatsParams {
+  startDate: string;
+  endDate: string;
+  groups?: string[];
+  groupBotIds?: string[];
+}
+
+const byOccurrence = (a: TestEvent, b: TestEvent) => a.occurred_at.localeCompare(b.occurred_at);
+
+function countStages(subset: TestEvent[]) {
+  const distinct = (eventName: string) =>
+    new Set(
+      subset
+        .filter((e) => e.event_name === eventName)
+        .map(dedupKey)
+        .filter((key): key is string => Boolean(key)),
+    ).size;
+  return {
+    friend_added: distinct('friend.added'),
+    break_ice: distinct('candidate.engaged'),
+    booking: distinct('booking.succeeded'),
+    group_invite: distinct('group.invited'),
+    interview_pass: distinct('interview.passed'),
+  };
+}
+
+/** SQL conversion_period_stats 的内存参考实现（总量 / 逐日 / 逐 bot 去重计数）。 */
+function periodStats(events: TestEvent[], params: StatsParams) {
+  const rows = events
+    .filter(
+      (e) =>
+        FUNNEL_EVENTS.includes(e.event_name) &&
+        e.report_date >= params.startDate &&
+        e.report_date <= params.endDate &&
+        matchesGroups(e, params.groups, params.groupBotIds),
+    )
+    .sort(byOccurrence);
+  const empty = { bot_im_id: null, manager_name: null, group_name: null };
+  const result = [{ scope: 'total', bucket: null, ...empty, ...countStages(rows) }];
+  for (const date of new Set(rows.map((e) => e.report_date))) {
+    result.push({
+      scope: 'day',
+      bucket: date,
+      ...empty,
+      ...countStages(rows.filter((e) => e.report_date === date)),
+    });
+  }
+  for (const botImId of new Set(rows.map((e) => e.bot_im_id ?? 'unknown'))) {
+    const subset = rows.filter((e) => (e.bot_im_id ?? 'unknown') === botImId);
+    result.push({
+      scope: 'bot',
+      bucket: botImId,
+      bot_im_id: subset[0].bot_im_id,
+      manager_name: subset[0].manager_name,
+      group_name: subset[0].group_name,
+      ...countStages(subset),
+    });
+  }
+  return result;
+}
+
+/** SQL conversion_cohort_stats 的内存参考实现（friend_added cohort，按 入列日 × bot 汇总）。 */
+function cohortStats(events: TestEvent[], params: StatsParams & { observeEndDate: string }) {
+  const base = events
+    .filter(
+      (e) =>
+        e.event_name === 'friend.added' &&
+        e.report_date >= params.startDate &&
+        e.report_date <= params.endDate &&
+        matchesGroups(e, params.groups, params.groupBotIds),
+    )
+    .sort(byOccurrence);
+  interface Member {
+    identity: string;
+    event: TestEvent;
+    flags: Set<string>;
+  }
+  const members = new Map<string, Member>();
+  for (const event of base) {
+    const identity = trimOrNull(event.user_id) ?? trimOrNull(event.chat_id);
+    if (!identity || members.has(identity)) continue;
+    members.set(identity, { identity, event, flags: new Set() });
+  }
+  const byUser = new Map<string, Member>();
+  const byChat = new Map<string, Member>();
+  for (const member of members.values()) {
+    const userId = trimOrNull(member.event.user_id);
+    const chatId = trimOrNull(member.event.chat_id);
+    if (userId) byUser.set(userId, member);
+    if (chatId) byChat.set(chatId, member);
+  }
+  const downstream = events.filter(
+    (e) =>
+      ['candidate.engaged', 'booking.succeeded', 'interview.passed', 'group.invited'].includes(
+        e.event_name,
+      ) &&
+      e.report_date >= params.startDate &&
+      e.report_date <= params.observeEndDate &&
+      matchesGroups(e, params.groups, params.groupBotIds),
+  );
+  for (const event of downstream) {
+    const userId = trimOrNull(event.user_id);
+    const chatId = trimOrNull(event.chat_id);
+    const member = (userId && byUser.get(userId)) || (chatId && byChat.get(chatId)) || null;
+    if (!member || event.occurred_at < member.event.occurred_at) continue;
+    member.flags.add(event.event_name);
+  }
+  const groups = new Map<string, Member[]>();
+  for (const member of members.values()) {
+    const key = `${formatLocalDate(new Date(member.event.occurred_at))}|${member.event.bot_im_id ?? ''}`;
+    groups.set(key, [...(groups.get(key) ?? []), member]);
+  }
+  return Array.from(groups.values()).map((bucket) => {
+    const sorted = [...bucket].sort((a, b) => byOccurrence(a.event, b.event));
+    const has = (member: Member, ...names: string[]) => names.every((n) => member.flags.has(n));
+    return {
+      cohort_date: formatLocalDate(new Date(sorted[0].event.occurred_at)),
+      bot_im_id: sorted[0].event.bot_im_id,
+      manager_name: sorted[0].event.manager_name,
+      group_name: sorted[0].event.group_name,
+      first_occurred_at: sorted[0].event.occurred_at,
+      friend_added: sorted.length,
+      break_ice: sorted.filter((m) => has(m, 'candidate.engaged')).length,
+      booking: sorted.filter((m) => has(m, 'candidate.engaged', 'booking.succeeded')).length,
+      group_invite: sorted.filter((m) => has(m, 'candidate.engaged', 'group.invited')).length,
+      interview_pass: sorted.filter((m) =>
+        has(m, 'candidate.engaged', 'booking.succeeded', 'interview.passed'),
+      ).length,
+    };
+  });
+}
+
+/** SQL conversion_handoff_reasons 的内存参考实现。 */
+function handoffReasons(events: TestEvent[], params: StatsParams) {
+  const counts = new Map<string, number>();
+  for (const event of events) {
+    if (event.event_name !== 'handoff.triggered') continue;
+    if (event.report_date < params.startDate || event.report_date > params.endDate) continue;
+    if (!matchesGroups(event, params.groups, params.groupBotIds)) continue;
+    const raw = event.payload?.reason_code;
+    const code = (typeof raw === 'string' ? raw.trim() : '') || 'other';
+    counts.set(code, (counts.get(code) ?? 0) + 1);
+  }
+  return Array.from(counts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .map(([reason_code, event_count]) => ({ reason_code, event_count }));
+}
+
 /**
- * 用假 query-builder 模拟 ops_events 仓储：按 modifier 捕获的 event_name 与 report_date 区间过滤事件，
- * 从而真实驱动 service 的 current/previous 取数路径。
+ * 假仓储：三个聚合 RPC 用与 SQL 同语义的内存参考实现驱动（覆盖 RPC 之上的 Node 拼装逻辑），
+ * 明细侧支（booking cohort / 取消改约）仍用假 query-builder 按 modifier 捕获的条件过滤。
  */
 function fakeOpsRepo(events: TestEvent[]): OpsEventsAnalyticsRepository {
   const findOpsEvents = jest.fn((_columns: string, modifier: (q: unknown) => unknown) => {
@@ -104,6 +306,13 @@ function fakeOpsRepo(events: TestEvent[]): OpsEventsAnalyticsRepository {
   return {
     findOpsEvents,
     findDailyOpsReportRows: jest.fn(() => Promise.resolve([])),
+    findPeriodStats: jest.fn((params: StatsParams) => Promise.resolve(periodStats(events, params))),
+    findCohortStats: jest.fn((params: StatsParams & { observeEndDate: string }) =>
+      Promise.resolve(cohortStats(events, params)),
+    ),
+    findHandoffReasons: jest.fn((params: StatsParams) =>
+      Promise.resolve(handoffReasons(events, params)),
+    ),
   } as unknown as OpsEventsAnalyticsRepository;
 }
 

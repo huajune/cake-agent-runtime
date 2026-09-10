@@ -1,3 +1,9 @@
+import type { TurnSourceSnapshot } from '@agent/generator/preparation/turn-data-loader.service';
+import type { BrandItem } from '@sponge/sponge.types';
+import type { CorpusBlock } from '@shared-types/corpus.types';
+import type { RecommendedJobSummary } from '@resolution/job/types';
+import { finalizeVisualFactSheet } from '@resolution/signal/visual';
+import { sessionFactsOf } from '../../../helpers/session-facts.fixture';
 import {
   resolveCriticalTurnInstructions,
   resolveTurnContext,
@@ -48,6 +54,15 @@ function buildResolverInput(paramsOverride: Record<string, unknown> = {}) {
 }
 
 describe('resolveTurnContext', () => {
+  it('seeds current literal brand mentions even when the session brand state is empty', () => {
+    const input = buildResolverInput();
+    Object.assign(input.sources, { brandCatalog: [{ id: 1, name: '肯德基', aliases: ['KFC'] }] });
+    input.conversationCorpusBlocks = [
+      { id: 'current', domain: 'evidence', role: 'user', content: 'KFC' },
+    ];
+    expect(resolveTurnContext(input).ledgerSeed.mentionedBrands).toEqual(new Set(['肯德基']));
+  });
+
   it('uses the returning-user stage when the short-term stage expired', () => {
     const result = resolveTurnContext({
       params: {
@@ -180,4 +195,175 @@ describe('resolveTurnContext', () => {
       expect(guards.join('\n')).not.toContain('近邻上下文显示候选人已在面试/入职');
     });
   });
+});
+
+const catalog: BrandItem[] = [
+  { id: 1, name: '肯德基', aliases: ['KFC'] },
+  { id: 2, name: '麦当劳', aliases: ['金拱门'] },
+  { id: 3, name: 'M Stand', aliases: ['mstand'] },
+  { id: 4, name: '瑞幸咖啡', aliases: ['瑞幸'] },
+  { id: 5, name: '小龙坎', aliases: ['小龙'] },
+  { id: 6, name: '小龙翻大江', aliases: ['小龙'] },
+  { id: 7, name: '全家', aliases: [] },
+];
+
+function sources(): TurnSourceSnapshot {
+  return {
+    brandCatalog: catalog,
+    memory: {
+      shortTerm: { sessionState: null, messageWindow: [], stage: { currentStage: null } },
+      longTerm: { semantic: { profile: null } },
+      turnHints: null,
+    },
+    turnBrandContext: {
+      state: { currentBrand: null, excludedBrands: [] },
+      nicknameBrands: [],
+      persisted: false,
+    },
+    booking: { state: 'none' },
+    warnings: [],
+    visualSheetsByContent: new Map(),
+  } as unknown as TurnSourceSnapshot;
+}
+
+function job(brandName: string, jobId = 1): RecommendedJobSummary {
+  return { jobId, brandName } as RecommendedJobSummary;
+}
+
+function collect(
+  snapshot: TurnSourceSnapshot,
+  blocks: CorpusBlock[] = [],
+  contactName?: string,
+): ReadonlySet<string> | null {
+  const input = buildResolverInput({ contactName });
+  return resolveTurnContext({
+    ...input,
+    sources: { ...(input.sources as TurnSourceSnapshot), ...snapshot },
+    conversationCorpusBlocks: blocks,
+  }).ledgerSeed.mentionedBrands as ReadonlySet<string> | null;
+}
+
+function message(content: string, role: 'user' | 'assistant' = 'user'): CorpusBlock {
+  return { id: 'message', domain: 'evidence', role, content };
+}
+
+describe('mentioned brands at turn start', () => {
+  it('has a reliable empty set for the first-contact incident, excluding teaching/tool echoes', () => {
+    expect(
+      collect(sources(), [
+        message('我是朱振亿'),
+        message('日结的'),
+        message('还有吗'),
+        { id: 'rules', domain: 'teaching', role: 'system', content: '示例：肯德基' },
+        { id: 'error', domain: 'tool_result', role: 'tool', content: '查询参数：麦当劳' },
+      ]),
+    ).toEqual(new Set());
+  });
+
+  it.each(['想找KFC', '不要肯德基', '以前在肯德基上班'])(
+    'keeps literal mention %s with empty state',
+    (text) => {
+      expect(collect(sources(), [message(text)])).toEqual(new Set(['肯德基']));
+    },
+  );
+
+  it('includes assistant/human recommendations and quoted messages', () => {
+    expect(
+      collect(sources(), [
+        message('可以看看麦当劳', 'assistant'),
+        message('引用：\n> 肯德基还在招\n还有吗'),
+      ]),
+    ).toEqual(new Set(['麦当劳', '肯德基']));
+  });
+
+  it('keeps every ambiguous catalog candidate without choosing an intent', () => {
+    expect(collect(sources(), [message('小龙')])).toEqual(new Set(['小龙坎', '小龙翻大江']));
+  });
+
+  it('uses the existing category expansion for coffee', () => {
+    const brands = collect(sources(), [message('咖啡兼职')]);
+    expect(brands?.has('mstand')).toBe(true);
+    expect(brands?.has('瑞幸咖啡')).toBe(true);
+  });
+
+  it('expands categories independently of another mentioned brand', () => {
+    expect(collect(sources(), [message('肯德基不要了，我想找咖啡')])).toEqual(
+      new Set(['肯德基', 'mstand', '瑞幸咖啡']),
+    );
+  });
+
+  it('keeps short canonical names embedded in a real message', () => {
+    expect(collect(sources(), [message('想去全家上班')])).toEqual(new Set(['全家']));
+  });
+
+  it('keeps location-share brand mentions without interpreting them as preference', () => {
+    expect(
+      collect(sources(), [message('[位置分享] 肯德基（中心店） [经纬度:121.1,31.1]')]),
+    ).toEqual(new Set(['肯德基']));
+  });
+
+  it('includes the raw nickname and both current and excluded session brands', () => {
+    const snapshot = sources();
+    snapshot.turnBrandContext.state = {
+      currentBrand: { canonicalName: '麦当劳', brandId: 2 },
+      excludedBrands: [{ canonicalName: 'M Stand', brandId: 3 }],
+    };
+    expect(collect(snapshot, [], '肯德基-小朱')).toEqual(new Set(['肯德基', '麦当劳', 'mstand']));
+  });
+
+  it('includes short-term brand IDs and archived long-term brand values', () => {
+    const snapshot = sources();
+    snapshot.memory.shortTerm.sessionState = {
+      facts: sessionFactsOf({ preferences: { brand_ids: [1] } }),
+    } as typeof snapshot.memory.shortTerm.sessionState;
+    snapshot.memory.longTerm.semantic.jobIntent = {
+      brands: {
+        value: ['金拱门'],
+        confidence: 'medium',
+        source: 'archive',
+        evidence: '历史意向',
+        updatedAt: '',
+      },
+    };
+    expect(collect(snapshot)).toEqual(new Set(['肯德基', '麦当劳']));
+  });
+
+  it('includes all three historical job pools used by archive.recentBrandPool', () => {
+    const snapshot = sources();
+    snapshot.memory.shortTerm.sessionState = {
+      presentedJobs: [job('KFC')],
+      lastCandidatePool: [job('麦当劳')],
+      currentFocusJob: job('M Stand'),
+    } as typeof snapshot.memory.shortTerm.sessionState;
+    expect(collect(snapshot)).toEqual(new Set(['肯德基', '麦当劳', 'mstand']));
+  });
+
+  it('includes valid visual fields even when the description omitted the brand', () => {
+    const snapshot = sources();
+    snapshot.visualSheetsByContent = new Map([
+      [
+        '截图',
+        finalizeVisualFactSheet(
+          { kind: 'job_posting', fields: [{ key: 'brand', value: 'KFC' }] },
+          '招聘岗位',
+        ),
+      ],
+    ]);
+    expect(collect(snapshot)).toEqual(new Set(['肯德基']));
+  });
+
+  it.each(['memory', 'brand', 'visual_facts', 'brand_catalog', 'missing_catalog', 'empty_catalog'])(
+    'returns unknown for unavailable source %s',
+    (source) => {
+      const snapshot = sources();
+      if (source === 'memory') snapshot.memory._warnings = ['short-term load failed'];
+      else if (source === 'missing_catalog') snapshot.brandCatalog = null;
+      else if (source === 'empty_catalog') snapshot.brandCatalog = [];
+      else
+        snapshot.warnings = [
+          { source, message: 'failed' } as TurnSourceSnapshot['warnings'][number],
+        ];
+      expect(collect(snapshot, [message('肯德基')])).toBeNull();
+    },
+  );
 });

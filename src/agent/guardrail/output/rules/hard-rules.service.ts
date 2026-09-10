@@ -2,64 +2,60 @@ import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { AlertLevel } from '@enums/alert.enum';
 import type { AgentMemorySnapshot, AgentToolCall } from '@agent/generator/generator.types';
+import type { ActiveBookingEntry } from '@memory/long-term/long-term.types';
 import { AlertNotifierService } from '@notification/services/alert-notifier.service';
 import type {
   HardRuleOverrideMode,
   HardRuleOverrides,
 } from '@biz/hosting-config/types/hosting-config.types';
-import {
-  GUARDRAIL_ACTION,
-  GUARDRAIL_DATA_SENSITIVITY,
-  GUARDRAIL_FEEDBACK_POLICY,
-  GUARDRAIL_PRIORITY,
-} from '@shared-types/guardrail.contract';
+import { GUARDRAIL_ACTION, GUARDRAIL_PRIORITY } from '@shared-types/guardrail.contract';
 import {
   detectBrandAliasFuzzyMatchIgnored,
   detectRequestedBrandMismatch,
-} from './rules/brand-name-errors.rule';
-import { DISCRIMINATION_LEAK_RULES } from './rules/discrimination-leaks.rule';
-import { FALSE_PROMISE_RULES } from './rules/false-promises.rule';
+} from './brand-name-errors.rule';
+import { DISCRIMINATION_LEAK_RULES } from './discrimination-leaks.rule';
+import { FALSE_PROMISE_RULES } from './false-promises.rule';
 import {
   detectBookingDoneClaimWithoutSubmission,
   detectCancelDoneClaimWithoutSubmission,
-} from './rules/booking-claim-reconciliation.rule';
+} from './booking-claim-reconciliation.rule';
 import {
   detectJobFactWithoutProvenance,
   detectJobQueryClaimWithoutQuery,
-} from './rules/job-fact-reconciliation.rule';
-import { detectExperienceFraudCoaching } from './rules/experience-fraud-coaching.rule';
-import { detectIdentityMisregistrationCoaching } from './rules/identity-fraud-coaching.rule';
-import { detectInvalidModelOutput } from './rules/invalid-model-output.rule';
-import { detectOnlineInterviewLocationClaim } from './rules/online-interview-location.rule';
-import { detectInterviewSlotAvailabilityMismatch } from './rules/interview-slot-availability.rule';
-import { detectProactiveInsurancePolicyMention } from './rules/insurance-policy-claims.rule';
+} from './job-fact-reconciliation.rule';
+import { detectExperienceFraudCoaching } from './experience-fraud-coaching.rule';
+import { detectIdentityMisregistrationCoaching } from './identity-fraud-coaching.rule';
+import { detectInvalidModelOutput } from './invalid-model-output.rule';
+import { detectOnlineInterviewLocationClaim } from './online-interview-location.rule';
+import { detectInterviewSlotAvailabilityMismatch } from './interview-slot-availability.rule';
+import { detectProactiveInsurancePolicyMention } from './insurance-policy-claims.rule';
 import {
   detectHumanServicePhraseLeak,
   detectMetaNarrationReply,
-  detectOutputLeak,
-} from './rules/internal-info-leaks.rule';
-import { detectBookingReceiptMismatch } from './rules/booking-receipt.rule';
-import { detectSettlementCycleMismatch } from './rules/settlement-cycle-mismatch.rule';
-import { detectUnsupportedStoreStatusSpeculation } from './rules/store-status-speculation.rule';
-import { deriveRulePolicy, type FactRule, type RuleContradiction } from './output-rule.types';
-import { OUTPUT_RULE_CATALOG, type OutputRuleCatalogMetadata } from './rules/output-rule-catalog';
+  detectInternalOutputLeak,
+} from './internal-info-leaks.rule';
+import { detectBookingReceiptMismatch } from './booking-receipt.rule';
+import { detectSettlementCycleMismatch } from './settlement-cycle-mismatch.rule';
+import { detectUnsupportedStoreStatusSpeculation } from './store-status-speculation.rule';
+import { deriveRulePolicy, type FactRule, type RuleContradiction } from '../output-rule.types';
+import { createOutputRuleFinding, isOutputRuleId, type OutputRuleId } from '../output-rule-catalog';
 
-export type { GuardrailRuleAction } from './output-rule.types';
+export type { GuardrailRuleAction } from '../output-rule.types';
 export {
   OUTPUT_RULE_CATALOG,
   OUTPUT_RULE_IDS,
   type OutputRuleCatalogMetadata,
-} from './rules/output-rule-catalog';
+} from '../output-rule-catalog';
 
 export interface HardRuleOverrideHit {
-  ruleId: string;
+  ruleId: OutputRuleId;
   mode: HardRuleOverrideMode;
 }
 
 /**
  * Reply 后置确定性对账：只检查封闭高风险形态、格式泄漏和结构化工具回执冲突。
- * revise/block 命中后由 runner 最多进行一次受控重写；既有运行时 override 仍可把规则
- * 临时降为 observe 或关闭。除执行规则外，catalog 还登记少量 observe 哨兵：只记录不拦截，
+ * 命中结果交由 OutputGuardrailService 聚合，再由 runner 决定静默、重写或同参重生成；
+ * 既有运行时 override 仍可把规则临时降为 observe 或关闭。catalog 还登记少量 observe 哨兵：只记录不拦截，
  * 供 badcase 发现与升档判例累计。
  *
  * 规则维护：确定性规则按领域拆在 `output/rules/*.rule.ts`，本 service 只负责调度和告警。
@@ -67,20 +63,6 @@ export interface HardRuleOverrideHit {
 @Injectable()
 export class HardRulesService {
   private readonly logger = new Logger(HardRulesService.name);
-
-  /**
-   * 内部实现泄漏（阶段名、工具名、JSON/代码块）属于出站内容安全问题，不应留到投递层静默吞掉。
-   * 命中即 block，交由 runner/outcome 统一走“守卫拦截，不投递”分支。
-   */
-  private static detectInternalOutputLeak(text: string): RuleContradiction | null {
-    const leakedPattern = detectOutputLeak(text);
-    if (!leakedPattern) return null;
-    return {
-      ruleId: 'internal_output_leak',
-      label: `回复疑似泄漏 Agent 内部状态/工具实现（pattern=${leakedPattern.source}），必须拦截不发送`,
-      action: GUARDRAIL_ACTION.BLOCK,
-    };
-  }
 
   /**
    * 纯文本 + 简单工具存在性即可判断的规则集合。
@@ -94,9 +76,6 @@ export class HardRulesService {
    */
   private readonly rules: FactRule[] = [...FALSE_PROMISE_RULES, ...DISCRIMINATION_LEAK_RULES];
 
-  private readonly rulePolicyById = new Map<string, OutputRuleCatalogMetadata>(
-    OUTPUT_RULE_CATALOG.map((rule) => [rule.id, rule]),
-  );
   /** 同一脏 ruleId 每进程只告警一次，避免运行时配置在热路径持续刷屏。 */
   private readonly warnedUnknownOverrideRuleIds = new Set<string>();
 
@@ -105,9 +84,9 @@ export class HardRulesService {
   /**
    * 检查 reply 是否与本轮 tool 调用矛盾。
    *
-   * - observe：仅可能来自既有 runtime override，内容仍可发送并保留审计结果
-   * - revise 规则：当前回复不可发送，由 OutputGuardrail/runner 进入受控修复
-   * - block 规则：当前回复不可发送；runner 仍先尝试一次受控重写，二审仍违规才静默丢弃
+   * - observe：观察规则或 runtime override，内容仍可发送并保留审计结果
+   * - repair：当前草稿不可发送，由 Runner 选择机械清理或无工具修复
+   * - replan：当前草稿不可发送，按同参数重进 Generator；独立策略保留 fail-open 约束
    *
    * @returns 命中的规则与是否需要出站短路；调用方可记 anomaly_flag
    */
@@ -131,10 +110,11 @@ export class HardRulesService {
     /** 会话内历史助手回复（不含本轮），供“无来源岗位事实”对账。 */
     priorAssistantTexts?: readonly string[];
     /**
-     * 候选人名下是否有在途工单（长期记忆 active_booking）。undefined=未知（只落 observe），
-     * false=确证没有任何工单——完成时态的“已帮你约好”此时是假回执，升 revise。
+     * 候选人名下在途工单（长期记忆 active_booking）。undefined=未知（只落 observe），
+     * []=确证没有任何工单——完成时态的“已帮你约好”此时是假回执，升 repair；有工单但都不是
+     * 本轮焦点岗位时同样升 repair。
      */
-    hasActiveBooking?: boolean;
+    activeBookings?: readonly ActiveBookingEntry[];
     /** 静默模式（advisory）：只返回裁决，由调用方避免写生产守卫日志。 */
     silent?: boolean;
     /** 兼容既有托管配置的运行时降档；只允许 off/observe。 */
@@ -158,7 +138,7 @@ export class HardRulesService {
      * 3. 最后跑工具回执对账规则。
      *
      * 顺序不用于短路：同一条 reply 可能同时命中多条规则，全部收集后统一告警。
-     * 只有最终 blocked=true 才由 OutputGuardrail/runner 丢弃回复。
+     * OutputGuardrail 汇总草稿处理意见，Runner 决定最终投递、静默或人工介入。
      *
      * 岗位、预约和位置事实的宽泛语义判定由主 Agent 的对话理解承担，不得重新堆回规则。
      * 这里只保留可由结构化工具结果稳定公证的窄契约。
@@ -168,19 +148,19 @@ export class HardRulesService {
     // 被清洗成一串看似普通、实则无语义的字符后穿透出站链路。
     const invalidModelOutput = detectInvalidModelOutput(text);
     if (invalidModelOutput) {
-      contradictions.push(this.withRulePolicy(invalidModelOutput));
+      contradictions.push(invalidModelOutput);
     }
 
-    const internalOutputLeak = HardRulesService.detectInternalOutputLeak(text);
+    const internalOutputLeak = detectInternalOutputLeak(text);
     if (internalOutputLeak) {
-      contradictions.push(this.withRulePolicy(internalOutputLeak));
+      contradictions.push(internalOutputLeak);
     }
 
     // 元叙述旁白与阶段/工具名泄漏同族（内部视角文本外发），但形态是自然语言，
     // 词库 PATTERNS 覆盖不到，须单独形态检测；命中后 runner 直达静默不进 repair。
     const metaNarrationReply = detectMetaNarrationReply(text);
     if (metaNarrationReply) {
-      contradictions.push(this.withRulePolicy(metaNarrationReply));
+      contradictions.push(metaNarrationReply);
     }
 
     const identityMisregistrationCoaching = detectIdentityMisregistrationCoaching(
@@ -192,7 +172,7 @@ export class HardRulesService {
       params.recentUserTexts,
     );
     if (identityMisregistrationCoaching) {
-      contradictions.push(this.withRulePolicy(identityMisregistrationCoaching));
+      contradictions.push(identityMisregistrationCoaching);
     }
 
     // 经历轴诚信红线：仅在候选人自曝造假后触发，与身份轴规则同族分治。
@@ -202,7 +182,7 @@ export class HardRulesService {
       params.recentUserTexts,
     );
     if (experienceFraudCoaching) {
-      contradictions.push(this.withRulePolicy(experienceFraudCoaching));
+      contradictions.push(experienceFraudCoaching);
     }
 
     // booking 成功后的回执对账：不可逆副作用与回复中的日期、状态必须一致。
@@ -212,13 +192,13 @@ export class HardRulesService {
       params.userMessage,
     );
     if (bookingReceiptMismatch) {
-      contradictions.push(this.withRulePolicy(bookingReceiptMismatch));
+      contradictions.push(bookingReceiptMismatch);
     }
 
     // 线上/AI/视频/电话面试却给到店指引——候选人会白跑一趟门店。
     const onlineInterviewLocationClaim = detectOnlineInterviewLocationClaim(text, toolCalls);
     if (onlineInterviewLocationClaim) {
-      contradictions.push(this.withRulePolicy(onlineInterviewLocationClaim));
+      contradictions.push(onlineInterviewLocationClaim);
     }
 
     // precheck 的 bookableSlots 已按完整日期时间裁决，生成模型只能渲染，不得二次算错。
@@ -227,7 +207,7 @@ export class HardRulesService {
       toolCalls,
     );
     if (interviewSlotAvailabilityMismatch) {
-      contradictions.push(this.withRulePolicy(interviewSlotAvailabilityMismatch));
+      contradictions.push(interviewSlotAvailabilityMismatch);
     }
 
     const unsupportedStoreStatusSpeculation = detectUnsupportedStoreStatusSpeculation(
@@ -235,27 +215,25 @@ export class HardRulesService {
       toolCalls,
     );
     if (unsupportedStoreStatusSpeculation) {
-      contradictions.push(this.withRulePolicy(unsupportedStoreStatusSpeculation));
+      contradictions.push(unsupportedStoreStatusSpeculation);
     }
 
     for (const rule of this.rules) {
       if (!rule.keywords.test(text)) continue;
       if (rule.ignorePredicate?.(text, toolCalls)) continue;
       if (rule.requiredToolPredicate(toolCalls)) continue;
-      contradictions.push(
-        this.withRulePolicy({ ruleId: rule.ruleId, label: rule.label, action: rule.action }),
-      );
+      contradictions.push(createOutputRuleFinding(rule.ruleId, rule.label));
     }
 
     const brandAliasFuzzyMatchIgnored = detectBrandAliasFuzzyMatchIgnored(text, toolCalls);
     if (brandAliasFuzzyMatchIgnored) {
-      contradictions.push(this.withRulePolicy(brandAliasFuzzyMatchIgnored));
+      contradictions.push(brandAliasFuzzyMatchIgnored);
     }
 
-    // 人设露馅是封闭词表 REVISE：prompt 红线在产仍有说漏嘴真阳（抽样），出站兜底。
+    // 人设露馅是封闭词表 REPAIR：prompt 红线在产仍有说漏嘴真阳（抽样），出站兜底。
     const humanServicePhraseLeak = detectHumanServicePhraseLeak(text);
     if (humanServicePhraseLeak) {
-      contradictions.push(this.withRulePolicy(humanServicePhraseLeak));
+      contradictions.push(humanServicePhraseLeak);
     }
 
     // 以下为 observe 哨兵：只落档不改变出站裁决。
@@ -265,12 +243,12 @@ export class HardRulesService {
       params.memorySnapshot?.currentFocusJob?.jobId,
     );
     if (settlementCycleMismatch) {
-      contradictions.push(this.withRulePolicy(settlementCycleMismatch));
+      contradictions.push(settlementCycleMismatch);
     }
 
     const requestedBrandMismatch = detectRequestedBrandMismatch(text, toolCalls);
     if (requestedBrandMismatch) {
-      contradictions.push(this.withRulePolicy(requestedBrandMismatch));
+      contradictions.push(requestedBrandMismatch);
     }
 
     const proactiveInsuranceMention = detectProactiveInsurancePolicyMention(
@@ -279,27 +257,30 @@ export class HardRulesService {
       params.recentUserTexts,
     );
     if (proactiveInsuranceMention) {
-      contradictions.push(this.withRulePolicy(proactiveInsuranceMention));
+      contradictions.push(proactiveInsuranceMention);
     }
 
     const bookingDoneClaimWithoutSubmission = detectBookingDoneClaimWithoutSubmission(
       text,
       toolCalls,
-      params.hasActiveBooking,
+      {
+        activeBookings: params.activeBookings,
+        focusJobId: params.memorySnapshot?.currentFocusJob?.jobId,
+      },
     );
     if (bookingDoneClaimWithoutSubmission) {
-      contradictions.push(this.withRulePolicy(bookingDoneClaimWithoutSubmission));
+      contradictions.push(bookingDoneClaimWithoutSubmission);
     }
 
     const cancelDoneClaim = detectCancelDoneClaimWithoutSubmission(text, toolCalls);
     if (cancelDoneClaim) {
-      contradictions.push(this.withRulePolicy(cancelDoneClaim));
+      contradictions.push(cancelDoneClaim);
     }
 
     // 零工具轮的岗位事实对账：宣称查过 / 报出无来源数字，两条各取高置信形态。
     const jobQueryClaim = detectJobQueryClaimWithoutQuery(text, toolCalls);
     if (jobQueryClaim) {
-      contradictions.push(this.withRulePolicy(jobQueryClaim));
+      contradictions.push(jobQueryClaim);
     }
     // 出处对账依赖会话历史：调用方没带 chatId（advisory 流、debug）时读不到历史，
     // "无法判出处"不等于"无出处"，跳过而不是误拦。
@@ -311,7 +292,7 @@ export class HardRulesService {
         ])
       : null;
     if (jobFactWithoutProvenance) {
-      contradictions.push(this.withRulePolicy(jobFactWithoutProvenance));
+      contradictions.push(jobFactWithoutProvenance);
     }
 
     const { effectiveContradictions, overrideHits } = this.applyHardRuleOverrides(
@@ -325,9 +306,7 @@ export class HardRulesService {
     }
 
     const hasNonSendable = effectiveContradictions.some((c) => c.currentReplySendable === false);
-    const hasRepair = effectiveContradictions.some(
-      (c) => c.action === GUARDRAIL_ACTION.REVISE || c.action === GUARDRAIL_ACTION.BLOCK,
-    );
+    const hasRepair = effectiveContradictions.some((c) => c.action === GUARDRAIL_ACTION.REPAIR);
     const actionLabel = hasNonSendable ? 'veto_current_reply' : hasRepair ? 'repair' : 'warn';
 
     this.logger.warn(
@@ -411,7 +390,7 @@ export class HardRulesService {
 
     const overrides: HardRuleOverrides = {};
     for (const [ruleId, mode] of Object.entries(configuredOverrides)) {
-      if (!this.rulePolicyById.has(ruleId)) {
+      if (!isOutputRuleId(ruleId)) {
         if (!this.warnedUnknownOverrideRuleIds.has(ruleId)) {
           this.warnedUnknownOverrideRuleIds.add(ruleId);
           this.logger.warn(`[ReplyFactGuard] 忽略未知 hardRuleOverrides ruleId: ${ruleId}`);
@@ -431,49 +410,18 @@ export class HardRulesService {
       if (mode === 'off') return [];
 
       return [
-        this.withRulePolicy({
+        {
           ...contradiction,
           action: GUARDRAIL_ACTION.OBSERVE,
-        }),
+          ...deriveRulePolicy(GUARDRAIL_ACTION.OBSERVE),
+          allowFailOpen: true,
+        },
       ];
     });
 
     return {
       effectiveContradictions,
       overrideHits: Array.from(overrideHitsByKey.values()),
-    };
-  }
-
-  private withRulePolicy(contradiction: RuleContradiction): RuleContradiction {
-    const action = contradiction.action;
-    const derived = deriveRulePolicy(action);
-    const policy = this.rulePolicyById.get(contradiction.ruleId);
-
-    if (!policy) {
-      const sendable = derived.currentReplySendable;
-      return {
-        ...contradiction,
-        ...derived,
-        severity: sendable ? GUARDRAIL_PRIORITY.P2 : GUARDRAIL_PRIORITY.P1,
-        dataSensitivity: GUARDRAIL_DATA_SENSITIVITY.NONE,
-        feedbackPolicy: sendable
-          ? GUARDRAIL_FEEDBACK_POLICY.NONE
-          : GUARDRAIL_FEEDBACK_POLICY.PLAIN_POLICY,
-        feedbackToGenerator: sendable
-          ? ''
-          : `上一版回复命中 ${contradiction.ruleId}，当前文本不可发送。请按业务事实重写，只输出候选人可见回复。`,
-        repairToolNames: [],
-      };
-    }
-
-    return {
-      ...contradiction,
-      ...derived,
-      severity: contradiction.severity ?? policy.severity,
-      dataSensitivity: contradiction.dataSensitivity ?? policy.dataSensitivity,
-      feedbackPolicy: contradiction.feedbackPolicy ?? policy.feedbackPolicy,
-      feedbackToGenerator: contradiction.feedbackToGenerator ?? policy.feedbackToGenerator,
-      repairToolNames: contradiction.repairToolNames ?? policy.repairToolNames,
     };
   }
 }

@@ -1,4 +1,4 @@
-import { detectRepairRegression } from '@agent/guardrail/output/repair-regression.util';
+import { detectRepairRegression } from '@agent/reply-repair/repair-regression.util';
 
 /**
  * 回归闸门用例全部取自 2026-07-24 守卫审计的生产 trace（文本节选）。

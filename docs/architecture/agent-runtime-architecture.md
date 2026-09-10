@@ -1,6 +1,6 @@
 # Agent 运行时架构
 
-**最后更新**：2026-09-02（按当前工作区生产调用链复核）
+**最后更新**：2026-09-10（按当前工作区生产调用链与修复所有权复核）
 
 **面向**：研发、测试与运行时排障
 
@@ -32,7 +32,7 @@ flowchart TD
     E --> H["LlmExecutorService"]
     R --> H
     H --> I["Router → Reliable → Registry"]
-    E --> J["Output guardrail → ReplyRepairAgent"]
+    E --> J["确定性 Output → Runner 有界 rewrite / replan → 二审"]
     J --> K["TurnOutcome"]
     K --> B
     B --> L["Delivery + side-effect commit + TurnFinalizer"]
@@ -75,7 +75,8 @@ Runner 的接口已经渠道中立；Nest 模块依赖尚未完全端口化：`A
 | Agent generator    | prepare、AI SDK 多步循环、空文本恢复、turn-end 闭包   | `src/agent/generator/generator.agent.ts`          |
 | Preparation        | 六阶段门面：归一化、外部快照、裁决、Prompt 与工具装配 | `src/agent/generator/preparation/`                |
 | Prompt / Context   | 同步纯渲染 typed sections，不做每轮 IO                | `src/agent/generator/context/`                    |
-| Guardrail / Repair | input、tool、output 执行守卫；受控文本修复            | `src/agent/guardrail/`、`src/agent/reply-repair/` |
+| Guardrail          | input、tool、output 执行守卫；确定性裁决与最终清洗   | `src/agent/guardrail/`                           |
+| Reply repair       | 无工具局部改写、修复证据与上下文、修复回归比较       | `src/agent/reply-repair/`                        |
 | Memory             | 两层召回、会话状态收尾、闲置沉淀                      | `src/memory/`                                     |
 | Tools              | 工具注册、工具业务流程、动作门禁、收资单据            | `src/tools/`                                      |
 | LLM / Providers    | 统一执行、角色路由、重试/降级、SDK 实例               | `src/llm/`、`src/providers/`                      |
@@ -131,9 +132,10 @@ Runner 不返回“随便一段文本”，而是返回明确终态：
 | kind                | 渠道动作                                      | 典型来源                           |
 | ------------------- | --------------------------------------------- | ---------------------------------- |
 | `reply`             | 可进入投递；投递后提交随 reply 携带的副作用   | 正常生成或修复后通过               |
-| `skipped`           | 不投递、不告警                                | `skip_reply`、无文本、普通短路     |
-| `guardrail_blocked` | 不投递；按 `sideEffects` / `disposition` 处置 | 入站风险或出站 veto                |
-| `handoff`           | 不投递；统一执行暂停、告警和底账              | `request_handoff` 或工具 hard gate |
+| `skipped`           | 不投递；不因跳过新增告警                      | `skip_reply`、无文本、普通短路、元叙述旁白 |
+| `handoff`           | 不投递；按来源提交既有介入意图                | 入站风险、无法安全放行的输出、`request_handoff` 或工具 hard gate |
+
+入站审查为 `pass | handoff`；风险 handoff 用 `guardrail.phase=inbound`、`guardrail.source=input_guardrail` 标明来源，沿既有 `conversation_risk` 意图暂停/通知，不额外生成 `general_handoff`。
 
 `TurnOutcome` 还携带 `toolCalls`、usage、`agentSteps`、memory snapshot、guardrail trace、
 `sideEffects` 和 `runTurnEnd`。副作用意图与副作用执行分离：守卫和分类器只声明，渠道在 Replay
@@ -149,12 +151,12 @@ runInboundTurn
        ├─ runInboundTurnInternal()
        │    ├─ precheckInboundOutcome()
        │    │    └─ InputGuardrailService.evaluate()
-       │    │         └─ 命中 → guardrail_blocked（不进入 Generator）
+       │    │         └─ 命中 → handoff（不进入 Generator）
        │    ├─ 构造 GeneratorInvokeParams + ReviewContext
        │    ├─ invokeReviewed()
        │    │    ├─ GeneratorAgent.invoke()
        │    │    ├─ OutputGuardrailService.check()
-       │    │    └─ 必要时 ReplyRepairAgent 修复一次并二审
+       │    │    └─ 必要时按 repairMode 执行一次 rewrite / replan，再二审与回归检查
        │    └─ classifyReviewedOutcome()
        └─ agent_end / agent_error 事件
 ```
@@ -181,7 +183,7 @@ GeneratorAgent.invoke(params)
   │    tools       = workingMemory.tools
   │    stopWhen    = 步数上限 / skip_reply / 任一 shortCircuited tool result
   │    prepareStep = 每步动态收紧 activeTools
-  ├─ retryTextualToolCall()（模型把工具调用写成文本时，仅纠正重试一次）
+  ├─ retryTextualToolCall()（零工具轮 reasoning 模拟了工具调用/回执时，带工具纠正重试一次）
   ├─ recoverEmptyTextResult()（仅兜底一次、禁用工具）
   └─ attachTurnEnd()（总是挂载 runTurnEnd）
 ```
@@ -211,15 +213,38 @@ GeneratorAgent.invoke(params)
 
 ### 4.3 出站审查与修复
 
-`invokeReviewed()` 调用当前只含确定性规则的 `OutputGuardrailService`，裁决为
-`pass | observe | revise | block`。出站审查不调用第二个模型，也不运行 shadow reviewer；只有
-`revise` / `block` 需要改写时，才最多调用一次 `ReplyRepairAgent`：
+`invokeReviewed()` 调用只含确定性规则的 `OutputGuardrailService`。规则按
+`replan > repair > observe > pass` 聚合；只有 observe 命中时，返回 `pass` 并保留
+命中记录。Output 只产出真实草稿审查、派生的 `repairMode` 和可选精确去重文本，不调用评审模型。
+旧 revise / block 都映射为 repair，原严格拒发属性由 `allowFailOpen: false` 独立保留。Runner 的
+`resolution: { outcome: reply | handoff | skipped, reasonCode? }` 表达处置，Trace 用 `finalOutcome`；
+advisory 不产生最终处置，旧记录按原阶段兼容读取。
+Runner 根据这些结果决定是否执行最多一次修复：
 
-- 唯一写手是 `ReplyRepairAgent`，不重新取数、不重进 Generator；
-- 代码围栏、内部 reasoning、JSON 信封等封闭形态优先确定性剥壳；
-- 修复后必须二审；repair 硬上限为 1；
-- 已提交的工具副作用被保留，修复阶段不再暴露副作用工具；
+- rewrite：代码围栏、内部 reasoning、JSON 信封等封闭形态优先确定性剥离/拆封，其余交给
+  无工具的 `ReplyRepairAgent` 局部重写；
+- replan：首版没有已提交副作用时，用完全相同参数再调一次 Generator，不注入守卫反馈、
+  不裁工具集；已有副作用则拒绝重进、降级 rewrite 并告警；
+- 重生成若由真实工具明确短路为 `handoff/skipped`，优先保留工具终态，不伪造二审；纯无工具空产物仍按修复失败处理。其余产物接受确定性二审：rewrite 对账首版工具轨迹，replan 对账重生成版自己的工具轨迹；
+- 二审后比较结构、岗位极性、日期与已完成 booking 状态是否退化；机械剥离/拆封跳过比较，
+  replan 首版的违规岗位内容豁免结构与极性比较；
+- replan 首版不回退、二审不 fail-open，仍不过以 `replan_exhausted` 转人工；rewrite 按既有
+  风险分级收敛，已提交的工具副作用不重复执行；
+- 仅元叙述旁白时 skipped，保留已有工具意图、不新增介入；纯推理/工具残文直接 handoff；
 - 最终投递文本还会经过 `OutboundReplySanitizer`。
+
+`guardrail/output/` 根目录保留审查门面、`output-rule.types.ts` 与 `output-rule-catalog.ts`，
+具体规则、调度及信号辅助函数位于 `rules/`，确定性清洗位于 `sanitizer/`。
+`reply-repair/` 拥有修复模型、上下文 provider、
+`RepairEvidenceBuilder` / `RepairEvidencePacket` 和 `repair-regression.util.ts`；
+证据构建器的输入契约为 `BuildRepairEvidenceInput`，由 `AgentModule` 注册，
+`GuardrailModule` 不提供或导出它。证据包服务于修复模型输入，不参与 Output 审查裁决。
+
+代码入口：[Output 门面](../../src/agent/guardrail/output/output-guardrail.service.ts)、
+[规则编排](../../src/agent/guardrail/output/rules/hard-rules.service.ts)、
+[最终清洗](../../src/agent/guardrail/output/sanitizer/outbound-reply-sanitizer.ts)、
+[修复证据构建](../../src/agent/reply-repair/repair-evidence.builder.ts)、
+[回归闸](../../src/agent/reply-repair/repair-regression.util.ts)。
 
 完整规则和 fail-open / fail-close 策略见
 [Guardrail 质量体系](./guardrail-quality-system.md)。
@@ -413,6 +438,9 @@ episodic summaries 不进默认 Prompt，只允许 `recall_history` 显式读取
 | 守卫拦截、沉默、暂停或投递失败 | `settle({ delivered: false })` | 记 user 侧，不投影未送达回复        |
 
 `whenSettled()` 必须在释放 per-chat 锁前完成，保证相邻 job 的 session 读写串行。
+`TurnFinalizer` 只持有记忆收尾句柄；暂停托管、handoff 与告警由独立的
+`TurnOutcomeInterventionService.commit()` 在 Replay 定局后提交，业务工具的已提交动作也不由
+Finalizer 执行或回滚。
 
 回合末依次保存岗位池、查询签名、助手投影、失效岗位、确权城市、事实提取和品牌 reducer；同时刷新
 闲置 3 天后的 consolidation job。consolidation 分别以守卫合并、整组覆盖、追加淘汰写入
@@ -578,7 +606,7 @@ TurnFinalizer 共同保证“快速 ACK 不丢消息、Replay 不写幽灵记忆
 | Input  | Generator 前 / prepare 内 | 高危风险短路；Prompt Injection 追加 system 防护                                    | 可阻断整轮或硬化 system，不决定工具准入 |
 | Prompt | prepare / 模型生成前      | 用 identity、手册、渠道规范、策略红线、阶段策略、证据块和 final-check 引导首版生成 | 负责“教”和预防，不作为最终放行依据      |
 | Tool   | 工具执行前                | jobId provenance、precheck、身份、硬筛、拉群城市/时机等确定性门禁                  | 可拒绝动作或短路 loop，不审查最终文案   |
-| Output | 生成后、投递前            | 确定性规则 + 必要时一次受控 repair                                                 | 最终出站验收，可 revise / block         |
+| Output | 生成后、投递前            | 确定性规则裁决；Runner 执行必要的一次 repair                                        | 草稿验收，可 observe / repair / replan |
 
 四个作用位不是“都写一遍同一条规则”。Prompt 负责降低首次违规率，Tool 负责守住业务动作，Output 只拦
 可从生成结果与证据确定性判断的错误；同一约束若存在教/拦配对，必须在
@@ -651,7 +679,8 @@ AppModule
 ├─ AgentModule
 │  ├─ AgentRunnerService / GeneratorAgent
 │  ├─ PreparationModule / ContextService
-│  ├─ GuardrailModule / ReplyRepairAgent
+│  ├─ GuardrailModule
+│  ├─ ReplyRepairAgent / ReplyRepairContextProvider / RepairEvidenceBuilder
 │  └─ reengagement scheduler / processor / agent
 ├─ WecomModule
 │  └─ MessageModule + Bot/Chat/Contact/Customer/Group/Room/Sender
@@ -698,8 +727,8 @@ Evaluation、Memory、Tool 和 Feishu Sync。
        │   └─ ToolRuntimeBuilder 创建 TurnLedger 与场景工具
        ├─ LLM step 1：geocode / duliday_job_list
        ├─ LLM step 2：生成候选人回复
-       ├─ 确定性 output guardrail；必要时一次文本修复并二审
-       └─ 返回 reply / skipped / guardrail_blocked / handoff
+       ├─ 确定性 output guardrail；必要时一次 rewrite / replan 并二审
+       └─ 返回 reply / handoff / skipped
 
 5. Replay 定局
    ├─ Agent 运行中无新消息：采用本版

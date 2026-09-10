@@ -47,6 +47,16 @@ describe('AgentTracerService', () => {
     });
   });
 
+  it('does not let an explicit undefined field on the event erase request context', () => {
+    const service = new AgentTracerService(requestContext as never, observer);
+
+    service.emit({ type: 'agent_end', userId: undefined, durationMs: 5 });
+
+    expect(observer.emit).toHaveBeenCalledWith(
+      expect.objectContaining({ traceId: 'trace-1', userId: 'ctx-user', durationMs: 5 }),
+    );
+  });
+
   it('does nothing when no observer is registered', () => {
     const service = new AgentTracerService(requestContext as never as RequestContextService);
 

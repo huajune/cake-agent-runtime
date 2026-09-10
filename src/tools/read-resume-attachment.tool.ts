@@ -204,6 +204,8 @@ export function buildReadResumeAttachmentTool(
               `chars=${normalizedText.length}, fallback=${modelResult.fallbackUsed}, ` +
               `messageId=${resolvedAttachment.messageId ?? 'missing'}`,
           );
+          // 无 messageId 时也会把真实简历文本交给模型，品牌提及不能因未写视觉 sheet 而丢失。
+          context.ledger.recordMentionedBrands([returnedText]);
           return {
             success: true,
             fileUrl: resolvedAttachment.fileUrl,

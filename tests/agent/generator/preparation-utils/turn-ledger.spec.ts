@@ -1,3 +1,8 @@
+import { resolveBrands } from '@resolution/brand/brand-matcher';
+import type { BrandItem } from '@sponge/sponge.types';
+import type { RecommendedJobSummary } from '@resolution/job/types';
+import { finalizeVisualFactSheet } from '@resolution/signal/visual';
+import { createToolContext, mergeToolContext } from '../../../helpers/tool-context.fixture';
 import { createTurnLedger } from '@agent/generator/preparation/turn-ledger';
 
 describe('createTurnLedger — geo 双记录（议题 4）', () => {
@@ -109,5 +114,86 @@ describe('createTurnLedger — geo 双记录（议题 4）', () => {
       city: '上海市',
       source: 'location_share',
     });
+  });
+});
+
+const catalog: BrandItem[] = [
+  { id: 1, name: '肯德基', aliases: ['KFC'] },
+  { id: 2, name: '麦当劳', aliases: ['金拱门'] },
+  { id: 3, name: 'M Stand', aliases: ['mstand'] },
+  { id: 4, name: '瑞幸咖啡', aliases: ['瑞幸'] },
+  { id: 5, name: '小龙坎', aliases: ['小龙'] },
+  { id: 6, name: '小龙翻大江', aliases: ['小龙'] },
+  { id: 7, name: '全家', aliases: [] },
+];
+
+function job(brandName: string, jobId = 1): RecommendedJobSummary {
+  return { jobId, brandName } as RecommendedJobSummary;
+}
+
+describe('mentioned brands accumulated by the ledger', () => {
+  it('normalizes returned aliases and retains earlier brands when latest jobs are replaced', () => {
+    const ledger = createTurnLedger({ mentionedBrands: [], brandCatalog: catalog });
+    ledger.recordFetchedJobs([job('KFC', 1)]);
+    const firstSnapshot = ledger.drain();
+    ledger.recordFetchedJobs([job('麦当劳', 2)]);
+    expect(ledger.jobs.fetchedJobs).toEqual([job('麦当劳', 2)]);
+    expect(ledger.mentionedBrands).toEqual(new Set(['肯德基', '麦当劳']));
+    expect(firstSnapshot.mentionedBrands).toEqual(new Set(['肯德基']));
+  });
+
+  it('accumulates image resolutions including negative and ambiguous mentions', () => {
+    const ledger = createTurnLedger({ mentionedBrands: [] });
+    const resolutions = [
+      ...resolveBrands('不要肯德基', 'image_description', catalog),
+      ...resolveBrands('小龙', 'image_description', catalog),
+    ];
+    ledger.recordImageBrands(resolutions, { messageId: 'image-1' });
+    expect(ledger.mentionedBrands).toEqual(new Set(['肯德基', '小龙坎', '小龙翻大江']));
+    expect(ledger.visual.brandResolutions[0].resolutions).toEqual(resolutions);
+  });
+
+  it('finds a returned brand in jobName when brandName is absent', () => {
+    const ledger = createTurnLedger({ mentionedBrands: [], brandCatalog: catalog });
+    ledger.recordFetchedJobs([{ ...job(null), jobName: '肯德基-中心店-店员' }]);
+    expect(ledger.mentionedBrands).toEqual(new Set(['肯德基']));
+  });
+
+  it('records current visual facts from either image or resume producers', () => {
+    const ledger = createTurnLedger({ mentionedBrands: [], brandCatalog: catalog });
+    ledger.recordVisualFacts(
+      finalizeVisualFactSheet({ kind: 'resume', fields: [] }, '以前在肯德基工作'),
+      { messageId: 'resume-1' },
+    );
+    expect(ledger.mentionedBrands).toEqual(new Set(['肯德基']));
+  });
+
+  it('accumulates newly recalled business text through the shared directory matcher', () => {
+    const context = createToolContext({
+      ledger: { mentionedBrands: new Set(), brandCatalog: catalog },
+    });
+    context.ledger.recordMentionedBrands(['历史摘要：之前在KFC上班，后来去了全家']);
+    expect(context.ledger.mentionedBrands).toEqual(new Set(['肯德基', '全家']));
+  });
+
+  it('keeps an incomplete seed unknown after a successful tool result', () => {
+    const ledger = createTurnLedger({ mentionedBrands: null, brandCatalog: catalog });
+    ledger.recordFetchedJobs([job('KFC')]);
+    expect(ledger.mentionedBrands).toBeNull();
+    expect(ledger.drain().mentionedBrands).toBeNull();
+  });
+
+  it('preserves null versus empty sets in tool context overrides and merges', () => {
+    const original = createToolContext({ ledger: { mentionedBrands: new Set(['肯德基']) } });
+    expect(
+      mergeToolContext(original, { ledger: { mentionedBrands: null } }).ledger.mentionedBrands,
+    ).toBeNull();
+    expect(
+      mergeToolContext(original, { ledger: { mentionedBrands: new Set() } }).ledger.mentionedBrands,
+    ).toEqual(new Set());
+    expect(
+      mergeToolContext(original, { ledger: { jobs: { jobListExecuted: true } } }).ledger
+        .mentionedBrands,
+    ).toEqual(new Set(['肯德基']));
   });
 });

@@ -96,6 +96,15 @@ describe('WecomMessageObservabilityService', () => {
     });
     await service.markWorkerStart(messageId);
     await service.markAiStart(messageId);
+    const toolDefinitions = [
+      {
+        name: 'book_interview',
+        type: 'function',
+        description: '执行时预约说明',
+        inputSchema: { type: 'object', properties: { time: { description: '预约时间' } } },
+      },
+    ];
+    await service.recordAgentRequest(messageId, { toolDefinitions });
     await service.recordAgentResult(messageId, {
       reply: {
         content: '已帮你安排面试',
@@ -172,6 +181,7 @@ describe('WecomMessageObservabilityService', () => {
     expect(metadata.tokenUsage).toBe(384);
     expect(metadata.toolCalls?.map((call) => call.toolName)).toEqual(['book_interview']);
     expect(metadata.agentInvocation).toBeDefined();
+    expect(metadata.agentInvocation?.request?.agentRequest).toEqual({ toolDefinitions });
     expect(metadata.agentInvocation?.response?.timings?.durations?.totalMs).toBeGreaterThanOrEqual(
       0,
     );

@@ -5,18 +5,18 @@ import type {
   BookingEvidence,
   GeocodeEvidence,
   GroupInviteEvidence,
-  GuardrailReviewPacket,
+  RepairEvidencePacket,
   JobListEvidence,
   JobListEvidenceItem,
   PrecheckEvidence,
-} from './review-packet.types';
+} from './repair-evidence.types';
 
-export interface BuildReviewPacketInput {
+export interface BuildRepairEvidenceInput {
   reply: string;
   toolCalls: AgentToolCall[];
   turnLedger?: Pick<TurnLedger, 'visual'>;
   userMessage?: string;
-  /** 短期记忆里的往轮助手文本（正序）。缺省为空——repair 等旁路调用方无需提供。 */
+  /** 短期记忆里的往轮助手文本（正序），缺省为空；修复 Agent 的对话历史另走 messages。 */
   recentAssistantTexts?: string[];
   redLines?: string[];
   outputRuleHits?: string[];
@@ -30,8 +30,8 @@ const VISUAL_SHEETS_LIMIT = 4;
 const VISUAL_DESCRIPTION_MAX_CHARS = 400;
 
 @Injectable()
-export class GuardrailReviewPacketBuilder {
-  build(input: BuildReviewPacketInput): GuardrailReviewPacket {
+export class RepairEvidenceBuilder {
+  build(input: BuildRepairEvidenceInput): RepairEvidencePacket {
     return {
       draftReply: input.reply,
       latestUserMessages: input.userMessage
@@ -77,8 +77,8 @@ export class GuardrailReviewPacketBuilder {
     if (jobListCalls.length === 0) return undefined;
 
     // 优先取最后一次"可用"结果：Agent 常见动作链是"近查空→扩面有果→复核空"，
-    // 岗位事实接地在中间那次；只看最后一次会让 reviewer 拿到空证据误判未接地
-    // （与 rule 档 修复同口径）。全空时保留最后一次，让 reviewer 看到空态。
+    // 岗位事实接地在中间那次；只看最后一次会遗漏修复所需的岗位证据。
+    // 全空时保留最后一次，让证据包保留查询空态。
     const usable = [...jobListCalls]
       .reverse()
       .find((item) => item.resultCount !== 0 && item.status !== 'error' && item.status !== 'empty');
@@ -86,7 +86,7 @@ export class GuardrailReviewPacketBuilder {
 
     // §11 第三切换点：品牌意图改读工具入口标准化后的 queryMeta.brand，
     // 并按 filterMode 区分正向查询与排除。exclude 的 appliedCanonicalNames 是
-    // 候选人拒绝的品牌，绝不能放进 requestedBrands 误导 reviewer。
+    // 候选人拒绝的品牌，绝不能放进 requestedBrands 混淆正向查询意图。
     const brandMeta = readBrandQueryMeta(call.result);
     const appliedBrands = brandMeta?.appliedCanonicalNames ?? [];
     const isExcludeMode = brandMeta?.filterMode === 'exclude';
@@ -239,9 +239,7 @@ export class GuardrailReviewPacketBuilder {
   }
 
   /**
-   * 群邀请证据（P1-6）：invite_to_group 的下发结果。缺了它，
-   * `fact_asserted_without_any_evidence` 会把当轮 invite:ok 支撑的"群邀请已经发你了"
-   * 判成零证据编造（trace …_1785451709779 硬假阳）。
+   * 群邀请证据：保留 invite_to_group 的下发结果，记录本轮是否已经发送群邀请。
    */
   private buildGroupInviteEvidence(toolCalls: AgentToolCall[]): GroupInviteEvidence | undefined {
     const call = [...toolCalls]
@@ -260,12 +258,12 @@ export class GuardrailReviewPacketBuilder {
 
   /**
    * 视觉事实证据以回合账本为准；账本没有的（降级 sheet 不进 ledger）从
-   * save_image_description 入参回退重建，确保回复修复 Agent 能读取降级图片描述。
+   * save_image_description 入参回退重建，保留降级图片描述。
    */
   private buildVisualFactsEvidence(
     visualFactSheets: TurnLedger['visual']['factSheets'],
     toolCalls: AgentToolCall[],
-  ): GuardrailReviewPacket['evidence']['visualFacts'] {
+  ): RepairEvidencePacket['evidence']['visualFacts'] {
     const truncate = (description: string | undefined): string | undefined =>
       description && description.length > VISUAL_DESCRIPTION_MAX_CHARS
         ? `${description.slice(0, VISUAL_DESCRIPTION_MAX_CHARS)}…`
@@ -300,7 +298,7 @@ export class GuardrailReviewPacketBuilder {
 
   private buildSentLocationEvidence(
     toolCalls: AgentToolCall[],
-  ): GuardrailReviewPacket['evidence']['sentLocation'] {
+  ): RepairEvidencePacket['evidence']['sentLocation'] {
     const call = [...toolCalls]
       .reverse()
       .find((item) => item.toolName === 'send_store_location' && item.result);
@@ -322,7 +320,7 @@ export class GuardrailReviewPacketBuilder {
   }
 }
 
-/** reviewer 对账"候选人要的 vs 推荐的"所需的查询意图字段；分页/半径等执行参数不进证据包。 */
+/** 回复修复所需的岗位查询意图字段；分页/半径等执行参数不进证据包。 */
 const JOB_LIST_QUERY_INTENT_KEYS = [
   'cityNameList',
   'regionNameList',
@@ -345,7 +343,7 @@ function pickJobListQueryIntent(args: Record<string, unknown>): Record<string, u
     if (typeof value === 'string' && !value.trim()) continue;
     picked[key] = value;
   }
-  // 坐标本身对 reviewer 无意义，但"是否按距离召回"影响 job_recommendation 对账。
+  // 不传原始坐标，只保留是否按距离召回的查询意图。
   if (readRecord(args.location)) picked.locationBasedRecall = true;
   return picked;
 }
@@ -393,9 +391,8 @@ function readMarkdownExcerpt(result: unknown): string | undefined {
 }
 
 /**
- * 截断会让 reviewer 只剩顶部卡片的综合薪资（卡片从不显示 basicSalary），把模型正确投递的
- * 时薪判成编造并要求改写。截断时把被截岗位的「薪资信息」段原文补录回证据，薪资 ground truth
- * 不再取决于岗位排在 markdown 的第几位。
+ * 截断后可能只剩顶部卡片的综合薪资（卡片从不显示 basicSalary），丢失修复所需的基础时薪。
+ * 将被截岗位的「薪资信息」段原文补录回证据，薪资事实不再取决于岗位在 markdown 中的顺序。
  */
 function buildTruncatedSalaryAppendix(markdown: string, cutoff: number): string | undefined {
   const headings = [...markdown.matchAll(JOB_DETAIL_HEADING_PATTERN)];

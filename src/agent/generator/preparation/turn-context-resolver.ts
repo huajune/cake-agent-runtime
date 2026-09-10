@@ -1,16 +1,23 @@
 import { inferCitiesFromGeoSignals } from '@resolution/geo/city-adjudicator';
 import { parseCandidateFieldsFromText } from '@resolution/candidate';
 import { extractCandidateTextsFromCorpus } from '@resolution/signal/self-report';
-import { isUserProfileFactValue, type UserProfileFacts } from '@memory/long-term/long-term.types';
+import {
+  isUserProfileFactValue,
+  unwrapUserProfileFactValue,
+  type UserProfileFacts,
+} from '@memory/long-term/long-term.types';
 import type {
   EntityExtractionResult,
   Preferences,
   SessionFacts,
   WeworkSessionState,
 } from '@memory/short-term/short-term.types';
-import { unwrapSessionFacts } from '@memory/short-term/short-term.types';
+import { unwrapSessionFacts, unwrapSessionFactValue } from '@memory/short-term/short-term.types';
 import type { RecommendedJobSummary } from '@resolution/job/types';
-import type { SessionBrandState } from '@resolution/brand/brand-resolution.types';
+import type {
+  BrandResolutionSource,
+  SessionBrandState,
+} from '@resolution/brand/brand-resolution.types';
 import { isValidLaborForm, type LaborFormIntentDecision } from '@resolution/labor-form';
 import { projectTurnHints, resolveTurnHints } from '@resolution/turn-hints/reducer';
 import type { TurnHintFieldPath, TurnHints } from '@resolution/turn-hints/turn-hint.types';
@@ -38,6 +45,8 @@ import { adjudicatePromptMemory, resolveActiveLaborForm } from './prompt-memory-
 import { extractTextFromContent } from './conversation-normalizer';
 import { resolveToolContextModel, type ToolContextModel } from './tool-context.builder';
 import type { LoadedGeoAnchor } from './turn-data-loader.service';
+import { resolveBrandMentionKeys } from '@resolution/brand/brand-matcher';
+import { selectEvidenceDialogueMessages } from '@resolution/signal/corpus';
 
 const RETURNING_USER_ENTRY_STAGE = 'job_consultation';
 
@@ -124,6 +133,12 @@ export function resolveTurnContext(input: {
   });
   const bookingWorkOrderJobIds = visibleBookingJobIds(sources.booking);
   const ledgerSeed: CreateTurnLedgerInput = {
+    brandCatalog: sources.brandCatalog,
+    mentionedBrands: collectMentionedBrands({
+      sources,
+      conversationCorpusBlocks,
+      contactName: params.contactName,
+    }),
     turnHints: sources.memory.turnHints,
     laborFormIntent: normalizedInput.laborFormIntent,
     collectedFields: parseCandidateFieldsFromText(
@@ -201,6 +216,86 @@ export function resolveTurnContext(input: {
     initialGeoResolution: sources.geoAnchor,
     memorySnapshot: buildMemorySnapshot(sources.memory, entryStage),
   };
+}
+
+/**
+ * 只汇总本次业务上下文提及过的品牌，不裁定意向、不更新品牌状态。
+ * 复用品牌域目录、词形归一与品类配置；负向/履历照收，教学与工具参数不入语料。
+ */
+function collectMentionedBrands(input: {
+  sources: TurnSourceSnapshot;
+  conversationCorpusBlocks: readonly CorpusBlock[];
+  contactName?: string;
+}): ReadonlySet<string> | null {
+  const { sources } = input;
+  const catalog = sources.brandCatalog;
+  if (
+    !catalog?.length ||
+    sources.memory._warnings?.length ||
+    sources.booking.state === 'hidden' ||
+    sources.warnings.some((warning) =>
+      ['brand', 'brand_catalog', 'visual_facts'].includes(warning.source),
+    )
+  ) {
+    return null;
+  }
+
+  const mentioned = new Set<string>();
+  const collect = (value: unknown, source: BrandResolutionSource = 'user_text') => {
+    const texts = Array.isArray(value) ? value : [value];
+    for (const text of texts) {
+      if (typeof text !== 'string' || !text.trim()) continue;
+      for (const key of resolveBrandMentionKeys(text, source, catalog)) mentioned.add(key);
+    }
+  };
+  const collectIds = (value: unknown) => {
+    if (!Array.isArray(value)) return;
+    for (const id of value) {
+      const brand = catalog.find((item) => item.id === id);
+      if (brand) collect(brand.name);
+    }
+  };
+
+  // 不剥引用块、不只选候选人自陈：本集合只回答“是否提及”，不负责归属或极性。
+  for (const message of selectEvidenceDialogueMessages(input.conversationCorpusBlocks)) {
+    collect(extractTextFromContent(message.content));
+  }
+  collect(input.contactName, 'contact_name');
+  collect(sources.turnBrandContext.nicknameBrands, 'contact_name');
+
+  const session = sources.memory.shortTerm.sessionState;
+  for (const state of [session?.facts?.brand, sources.turnBrandContext.state]) {
+    collect(state?.currentBrand?.canonicalName);
+    collect(state?.excludedBrands?.map((brand) => brand.canonicalName));
+  }
+  collectIds(unwrapSessionFactValue(session?.facts?.preferences?.brand_ids));
+  collect(unwrapUserProfileFactValue(sources.memory.longTerm.semantic.jobIntent?.brands));
+
+  // 与工具 archive.recentBrandPool 相同的三个历史岗位来源，额外承接岗位名中的品牌。
+  const jobs = [
+    ...(session?.presentedJobs ?? []),
+    ...(session?.lastCandidatePool ?? []),
+    ...(session?.currentFocusJob ? [session.currentFocusJob] : []),
+  ];
+  for (const job of jobs) {
+    collect(job.brandName);
+    collect(job.jobName);
+  }
+  if (sources.booking.state === 'active') {
+    for (const { workOrder } of sources.booking.entries) {
+      collect(workOrder.brandName);
+      collect(workOrder.jobName);
+      collectIds([workOrder.brandId]);
+    }
+  }
+  for (const sheet of sources.visualSheetsByContent?.values() ?? []) {
+    collect(sheet.rawDescription, 'image_description');
+    collect(
+      sheet.fields.map((field) => field.value),
+      'image_description',
+    );
+  }
+  return mentioned;
 }
 
 function resolveReturningUserStage(profile: UserProfileFacts | null): string | undefined {

@@ -11,7 +11,7 @@ describe('job_query_claim_without_query（零工具轮宣称查过）', () => {
     '目前系统里暂时没查到香樟苑附近具体的门店岗位信息',
     '我看了下，这边暂时没有合适的岗位',
     '暂时没查到附近的兼职岗位',
-  ])('零查岗工具 + 完成时态宣称 → revise：%s', (reply) => {
+  ])('零查岗工具 + 完成时态宣称 → repair：%s', (reply) => {
     expect(detectJobQueryClaimWithoutQuery(reply, [])?.action).toBe('replan');
   });
 
@@ -37,7 +37,7 @@ describe('job_fact_without_provenance（零工具轮的无来源岗位数字）'
     '面试时间是 13:30-16:30',
   ];
 
-  it('历史从未出现的薪资/距离 → revise（badcase kwxk74gn）', () => {
+  it('历史从未出现的薪资/距离 → repair（badcase kwxk74gn）', () => {
     const hit = detectJobFactWithoutProvenance(
       '普陀这边全职岗不多，长风大悦城有家 M Stand 全职店员，薪资 22-28 元/时。',
       [],
