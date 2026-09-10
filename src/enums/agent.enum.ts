@@ -24,4 +24,6 @@ export enum CallerKind {
   TEST_SUITE = 'test-suite',
   /** Controller 调试端点；直传 messages[]，历史不加载。 */
   DEBUG = 'debug',
+  /** 复聊主动回合（ReengagementAgent，不经 Generator）；只用于观测事件的请求上下文。 */
+  REENGAGEMENT = 'reengagement',
 }

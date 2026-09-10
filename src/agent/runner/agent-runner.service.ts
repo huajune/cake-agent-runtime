@@ -1002,7 +1002,9 @@ export class AgentRunnerService {
     const finalResolution = resolveReviewedResolution(result, resolution);
     return {
       ...result,
+      runTurnEnd: this.bindTurnEndContext(result.runTurnEnd),
       outputDecision: decision,
+
       resolution: finalResolution,
       revised,
       guardrailTrace: guardrailTrace
@@ -1013,6 +1015,22 @@ export class AgentRunnerService {
           }
         : undefined,
     };
+  }
+
+  /**
+   * 记忆收尾闭包由渠道在投递结局已知后才触发，那时 AsyncLocalStorage 里已经没有本回合的
+   * 请求上下文：收尾期间发射的事件（extract 的 llm_execution、brand_state_change、
+   * session_state_field_dropped）会整批丢掉 trace 维度。创建闭包时捕获上下文，触发时再进入。
+   */
+  private bindTurnEndContext(
+    runTurnEnd: GeneratorRunResult['runTurnEnd'],
+  ): GeneratorRunResult['runTurnEnd'] {
+    const requestContext = this.requestContext;
+    const context = requestContext?.get();
+    if (!runTurnEnd || !requestContext || !context || Object.keys(context).length === 0) {
+      return runTurnEnd;
+    }
+    return (options) => requestContext.run(context, () => runTurnEnd(options));
   }
 
   stream(

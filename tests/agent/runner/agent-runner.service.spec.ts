@@ -122,6 +122,39 @@ describe('AgentRunnerService.runInboundTurn', () => {
     });
   });
 
+  it('re-enters the captured request context when runTurnEnd fires after the turn', async () => {
+    const captured = { traceId: 'msg-1', chatId: 's1', userId: 'u1', corpId: 'c1' };
+    const requestContext = {
+      get: jest.fn().mockReturnValue(captured),
+      run: jest.fn((_ctx: unknown, fn: () => unknown) => fn()),
+    };
+    const contextAware = new AgentRunnerService(
+      generator as never,
+      outputGuard as never,
+      inputGuard as never,
+      guardrailReviews as never,
+      replyRepairAgent as never,
+      replyRepairContextProvider as never,
+      requestContext as never,
+      tracer as never,
+    );
+    const runTurnEnd = jest.fn().mockResolvedValue(undefined);
+    generator.invoke.mockResolvedValue(makeResult({ text: '好的，帮你看下', runTurnEnd }));
+
+    const outcome = await contextAware.runInboundTurn({
+      sessionRef,
+      input: { text: '你好' },
+      context: { messageId: 'msg-1' },
+    });
+    requestContext.run.mockClear();
+
+    // 渠道在投递后才触发收尾：此时已在请求上下文之外，闭包必须自带回合上下文。
+    await outcome.runTurnEnd?.({ includeAssistantText: true });
+
+    expect(requestContext.run).toHaveBeenCalledWith(captured, expect.any(Function));
+    expect(runTurnEnd).toHaveBeenCalledWith({ includeAssistantText: true });
+  });
+
   it('empty text or skip_reply short-circuit maps to skipped', async () => {
     generator.invoke.mockResolvedValue(
       makeResult({

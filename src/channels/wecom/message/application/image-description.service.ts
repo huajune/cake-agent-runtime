@@ -1,6 +1,8 @@
 import { toErrorMessage } from '@infra/utils/error.util';
 import { sleep } from '@infra/utils/async.util';
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import { RequestContextService } from '@observability/context/request-context.service';
+
 import { ConfigService } from '@nestjs/config';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
@@ -117,6 +119,7 @@ export class ImageDescriptionService {
     private readonly chatSession: ChatSessionService,
     private readonly alertService: AlertNotifierService,
     configService: ConfigService,
+    @Optional() private readonly requestContext?: RequestContextService,
   ) {
     const baseUrl = configService.get<string>('STRIDE_ENTERPRISE_API_BASE_URL')!;
     this.artworkApiUrl = `${baseUrl}/api/v2/message/loadArtWorkImage`;
@@ -144,8 +147,11 @@ export class ImageDescriptionService {
       `[触发] 开始${label}描述(异步) [${messageId}], url=${imageUrl.substring(0, 80)}...`,
     );
 
-    const task = this.describeAndUpdate(messageId, imageUrl, kind)
+    const task = this.inTraceContext(messageId, () =>
+      this.describeAndUpdate(messageId, imageUrl, kind),
+    )
       .then(() => undefined)
+
       .catch((error) => {
         this.consecutiveFailures++;
         let err: Error;
@@ -177,7 +183,18 @@ export class ImageDescriptionService {
   }
 
   /**
+   * 图片描述在消息主链路之外异步执行，没有人替它进请求上下文：vision 的 llm_execution
+   * 事件此前 trace/chat/user 三维全空。这里以图片消息 id 作 traceId（可回查 chat_messages）；
+   * 若调用方本就带着回合上下文（turn 收尾补写），沿用外层 trace 不覆盖。
+   */
+  private inTraceContext<T>(messageId: string, run: () => Promise<T>): Promise<T> {
+    if (!this.requestContext || this.requestContext.get().traceId) return run();
+    return this.requestContext.run({ traceId: messageId, scenario: 'image-description' }, run);
+  }
+
+  /**
    * 描述缺失的异步补写（§10.3）：主路径模型漏调 save_image_description 时，
+
    * turn 收尾后由补写链路调用。返回描述文本供品牌解析；失败/并行任务已在跑时返回 null。
    */
   async describeForBackfill(messageId: string, imageUrl: string): Promise<string | null> {
@@ -188,7 +205,9 @@ export class ImageDescriptionService {
       return null;
     }
 
-    const run = this.describeAndUpdate(messageId, imageUrl, MessageType.IMAGE);
+    const run = this.inTraceContext(messageId, () =>
+      this.describeAndUpdate(messageId, imageUrl, MessageType.IMAGE),
+    );
     this.inFlight.set(
       messageId,
       run.then(() => undefined).catch(() => undefined),
