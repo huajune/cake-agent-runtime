@@ -337,7 +337,7 @@ function RankIcon({ rank }: { rank: 1 | 2 | 3 }) {
     : {
         fillStops: ['#fdf6ec', '#efc27a', '#efc27a'],
         rimStops: ['#fdf6ec', '#efc27a', '#e8b08a'],
-        ribbonStops: ['#818cf8', '#e9c46a'],
+        ribbonStops: ['#a48ae8', '#e9c46a'],
         text: '#d8966c',
         star: '#e2a37a',
       };

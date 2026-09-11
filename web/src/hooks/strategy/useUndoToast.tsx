@@ -45,8 +45,8 @@ export function showUndoToast(
           }}
           style={{
             background: 'none',
-            border: '1px solid #6366f1',
-            color: '#6366f1',
+            border: '1px solid #6d5bd0',
+            color: '#6d5bd0',
             borderRadius: '6px',
             padding: '4px 10px',
             cursor: 'pointer',

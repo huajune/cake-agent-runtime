@@ -188,7 +188,7 @@ export default function UserTrendChart({
             <div className={`${styles.statCard} ${styles.cardPrimary}`}>
               <div
                 className={styles.statIcon}
-                style={{ background: 'linear-gradient(135deg, #667eea 0%, #4f46e5 100%)' }}
+                style={{ background: 'linear-gradient(135deg, #667eea 0%, #5b4de6 100%)' }}
               >
                 <IconUsers style={{ color: 'white' }} />
               </div>
