@@ -114,6 +114,49 @@
       "envFiles": [],
       "verification": [],
       "level": "minor"
+    },
+    {
+      "number": "1256",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1256",
+      "title": "booking 查重命中 already_booked 视为预约已存在，不再当失败改写",
+      "author": "huajune",
+      "mergedAt": "2026-09-11",
+      "businessUpdates": [
+        "**守卫** `booking-receipt.rule.ts`：新增形态 G，`already_booked` 先于失败路径判定。回复说「没提交成功/系统故障/稍后再提交」或重新征询日期 → repair，指令要求如实说「已约上」并按工单登记时间播报；如实播报已约上放行。真实失败（`rejected` 等）仍按 2026-08-27 口径放行「稍后再帮你提交」。",
+        "**长期记忆** `ActiveBookingEntry` 新增 `interview_time`（JSONB 内字段，无迁移），建单时随 `job_id` 写入；存量行为空时回执不编造时间。",
+        "**booking 工具**查重回执：`_outcome` / `_replyInstruction` 改为「预约已存在、不是失败」，明令禁止系统故障/稍后重提口径；带出 `existingWorkOrderId`、`existingInterviewTime`、`_existingInterviewTimeHuman`。",
+        "**修复证据包** `BookingEvidence` 加 `alreadyBooked / outcome / existingWorkOrderId / existingInterviewTimeHuman`，`ReplyRepairAgent` 渲染为「预约已经存在，本轮未重复提交——这不是失败」。",
+        "`docs/prompt-rule-ledger.md` 登记形态 G 与工具回执改口径。"
+      ],
+      "summary": [
+        "booking 查重命中 already_booked 视为预约已存在，不再当失败改写",
+        "**守卫** `booking-receipt.rule.ts`：新增形态 G，`already_booked` 先于失败路径判定。回复说「没提交成功/系统故障/稍后再提交」或重新征询日期 → repair，指令要求如实说「已约上」并按工单登记时间播报；如实播报已约上放行。真实失败（`rejected` 等）仍按 2026-08-27 口径放行「稍后再帮你提交」。",
+        "**booking 工具**查重回执：`_outcome` / `_replyInstruction` 改为「预约已存在、不是失败」，明令禁止系统故障/稍后重提口径；带出 `existingWorkOrderId`、`existingInterviewTime`、`_existingInterviewTimeHuman`。",
+        "**长期记忆** `ActiveBookingEntry` 新增 `interview_time`（JSONB 内字段，无迁移），建单时随 `job_id` 写入；存量行为空时回执不编造时间。",
+        "**修复证据包** `BookingEvidence` 加 `alreadyBooked / outcome / existingWorkOrderId / existingInterviewTimeHuman`，`ReplyRepairAgent` 渲染为「预约已经存在，本轮未重复提交——这不是失败」。",
+        "`docs/prompt-rule-ledger.md` 登记形态 G 与工具回执改口径。"
+      ],
+      "features": [
+        "**守卫** `booking-receipt.rule.ts`：新增形态 G，`already_booked` 先于失败路径判定。回复说「没提交成功/系统故障/稍后再提交」或重新征询日期 → repair，指令要求如实说「已约上」并按工单登记时间播报；如实播报已约上放行。真实失败（`rejected` 等）仍按 2026-08-27 口径放行「稍后再帮你提交」。",
+        "**长期记忆** `ActiveBookingEntry` 新增 `interview_time`（JSONB 内字段，无迁移），建单时随 `job_id` 写入；存量行为空时回执不编造时间。"
+      ],
+      "fixes": [
+        "**booking 工具**查重回执：`_outcome` / `_replyInstruction` 改为「预约已存在、不是失败」，明令禁止系统故障/稍后重提口径；带出 `existingWorkOrderId`、`existingInterviewTime`、`_existingInterviewTimeHuman`。",
+        "**修复证据包** `BookingEvidence` 加 `alreadyBooked / outcome / existingWorkOrderId / existingInterviewTimeHuman`，`ReplyRepairAgent` 渲染为「预约已经存在，本轮未重复提交——这不是失败」。",
+        "`docs/prompt-rule-ledger.md` 登记形态 G 与工具回执改口径。"
+      ],
+      "optimizations": [],
+      "ops": [
+        "booking 查重命中 already_booked 视为预约已存在，不再当失败改写"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`tsc --noEmit` 通过；改动文件 eslint / prettier 通过",
+        "全量 Jest：469 suites / 6898 tests 全绿（含 `output-rule-catalog.spec` 执行覆盖校验）",
+        "新增用例：形态 G 四种否认口径拦截、如实播报放行、重新征询日期拦截、真实失败不受影响；booking 工具查重回执字段；证据包 already_booked 投影；store `interview_time` 透传"
+      ],
+      "level": "patch"
     }
   ],
   "lastRelease": {
@@ -185,5 +228,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "bc4b8efdaab592ae4fbb0b9b4c54eec7fbf4082e"
+  "lastAnalyzedSha": "71b7a445a90772e6c3264fcd1c2f5f8f918b1221"
 }
