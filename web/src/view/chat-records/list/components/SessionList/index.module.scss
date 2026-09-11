@@ -65,7 +65,7 @@
   font-size: 14px;
   border: 1px solid transparent;
   border-radius: 20px;
-  background: #f1f5f9;
+  background: $bg-tint;
   transition: all 0.2s ease;
   color: $text-primary;
 
@@ -77,7 +77,7 @@
   }
 
   &::placeholder {
-    color: #94a3b8;
+    color: $text-muted;
   }
 }
 
@@ -99,7 +99,7 @@
   p {
     margin: 0;
     font-size: 14px;
-    color: #64748b;
+    color: $text-secondary;
     font-weight: 500;
   }
 }
@@ -146,7 +146,7 @@
     // 数字徽标是独立效果：新消息到达「跳一下」（transform 单次）+ 持续光环脉冲（box-shadow，与顶部实时圆点同款）
     // 配合 tsx 中 badge 的 key={chatId-messageCount}：消息数变化→重挂载→重放跳动；光环随 .flashing(3s) 循环后停止
     .msgCountBadge {
-      background: #10b981;
+      background: $success;
       animation:
         badgeBounce 0.6s ease-out,
         badgePulseRing 2s ease-in-out infinite;
@@ -157,10 +157,10 @@
 @keyframes newMessagePulse {
   0%,
   100% {
-    background: rgba(16, 185, 129, 0.05);
+    background: rgba($success, 0.05);
   }
   50% {
-    background: rgba(16, 185, 129, 0.16);
+    background: rgba($success, 0.16);
   }
 }
 
@@ -182,11 +182,11 @@
 @keyframes badgePulseRing {
   0%,
   100% {
-    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.5);
+    box-shadow: 0 0 0 0 rgba($success, 0.5);
     opacity: 1;
   }
   50% {
-    box-shadow: 0 0 0 6px rgba(16, 185, 129, 0);
+    box-shadow: 0 0 0 6px rgba($success, 0);
     opacity: 0.85;
   }
 }
@@ -201,7 +201,7 @@
   font-size: $font-size-base;
   font-weight: $font-weight-semibold;
   color: #fff;
-  background: linear-gradient(135deg, #60a5fa, #3b82f6);
+  background: linear-gradient(135deg, $info, $info);
   flex-shrink: 0;
   object-fit: cover;
 

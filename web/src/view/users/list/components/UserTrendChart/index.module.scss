@@ -5,16 +5,16 @@
   border-radius: 16px;
   margin-bottom: $spacing-lg;
   box-shadow:
-    0 1px 2px rgba(15, 23, 42, 0.04),
-    0 12px 32px -16px rgba(15, 23, 42, 0.1);
-  border: 1px solid #eef2f7;
+    0 1px 2px rgba($text-primary, 0.04),
+    0 12px 32px -16px rgba($text-primary, 0.1);
+  border: 1px solid $bg-tint;
   overflow: hidden;
   transition: box-shadow $transition-normal;
 
   &:hover {
     box-shadow:
-      0 2px 4px rgba(15, 23, 42, 0.05),
-      0 16px 40px -16px rgba(15, 23, 42, 0.14);
+      0 2px 4px rgba($text-primary, 0.05),
+      0 16px 40px -16px rgba($text-primary, 0.14);
   }
 }
 
@@ -84,7 +84,7 @@
       font-size: 12px;
       font-weight: $font-weight-medium;
       font-variant-numeric: tabular-nums;
-      color: #4f46e5;
+      color: $primary-dark;
     }
   }
 
@@ -239,7 +239,7 @@
   &.cardPrimary {
     background: linear-gradient(135deg, rgba(255, 255, 255, 1) 0%, rgba(118, 75, 162, 0.05) 100%);
     &::before {
-      background: #764ba2;
+      background: $primary-dark;
     }
     &:hover {
       border-color: rgba(118, 75, 162, 0.3);
@@ -247,12 +247,12 @@
   }
 
   &.cardSecondary {
-    background: linear-gradient(135deg, rgba(255, 255, 255, 1) 0%, rgba(245, 87, 108, 0.05) 100%);
+    background: linear-gradient(135deg, rgba(255, 255, 255, 1) 0%, rgba($danger, 0.05) 100%);
     &::before {
-      background: #f5576c;
+      background: $danger;
     }
     &:hover {
-      border-color: rgba(245, 87, 108, 0.3);
+      border-color: rgba($danger, 0.3);
     }
   }
 
@@ -330,7 +330,7 @@
 
 .statLabel {
   font-size: 13px;
-  color: #94a3b8;
+  color: $text-muted;
   margin-bottom: 6px;
   font-weight: 500;
   text-transform: uppercase;
@@ -340,7 +340,7 @@
 .statValue {
   font-size: 32px;
   font-weight: 700;
-  color: #1e293b;
+  color: $text-primary;
   line-height: 1.1;
   letter-spacing: 0;
   overflow-wrap: anywhere;
@@ -348,7 +348,7 @@
   .unit {
     font-size: 14px;
     font-weight: 500;
-    color: #64748b;
+    color: $text-secondary;
     margin-left: 4px;
     vertical-align: baseline;
   }
@@ -395,7 +395,7 @@
   border-radius: $radius-lg;
   padding: $spacing-md;
   min-width: 0;
-  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.04);
+  box-shadow: 0 8px 18px rgba($text-primary, 0.04);
 }
 
 .chartBoardHeader {

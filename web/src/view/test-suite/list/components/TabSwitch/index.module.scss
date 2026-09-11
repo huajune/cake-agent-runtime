@@ -5,7 +5,7 @@
   display: inline-flex;
   gap: 2px;
   padding: 3px;
-  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  background: linear-gradient(135deg, $bg-secondary 0%, $border 100%);
   border-radius: 10px;
   box-shadow:
     inset 0 1px 2px rgba(0, 0, 0, 0.08),
@@ -21,7 +21,7 @@
   padding: 6px 14px;
   border: none;
   background: transparent;
-  color: #6b7280;
+  color: $text-secondary;
   font-size: 14px;
   font-weight: 500;
   border-radius: 8px;
@@ -33,20 +33,20 @@
 
   // 未激活状态的悬浮效果
   &:hover:not(.active) {
-    color: #374151;
+    color: $text-body;
     background: rgba(255, 255, 255, 0.4);
   }
 
   // 激活状态
   &.active {
     background: linear-gradient(135deg, #ffffff 0%, #fefefe 100%);
-    color: #ec4899;
+    color: $rose;
     font-weight: 600;
     box-shadow:
-      0 2px 8px rgba(236, 72, 153, 0.15),
+      0 2px 8px rgba($rose, 0.15),
       0 1px 3px rgba(0, 0, 0, 0.1),
       inset 0 1px 0 rgba(255, 255, 255, 0.8);
-    border: 1px solid rgba(236, 72, 153, 0.1);
+    border: 1px solid rgba($rose, 0.1);
 
     // 激活状态的微妙渐变光泽
     &::before {
@@ -84,10 +84,10 @@
   font-size: 12px;
   font-weight: 700;
   color: #fff;
-  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  background: linear-gradient(135deg, $info 0%, $info-text 100%);
   border-radius: 11px;
   box-shadow:
-    0 2px 4px rgba(37, 99, 235, 0.3),
+    0 2px 4px rgba($info-text, 0.3),
     inset 0 1px 0 rgba(255, 255, 255, 0.3);
   position: relative;
   z-index: 1;
@@ -109,9 +109,9 @@
 }
 
 .tab.active .badge {
-  background: linear-gradient(135deg, #ec4899 0%, #db2777 100%);
+  background: linear-gradient(135deg, $rose 0%, $rose-text 100%);
   box-shadow:
-    0 2px 6px rgba(236, 72, 153, 0.4),
+    0 2px 6px rgba($rose, 0.4),
     inset 0 1px 0 rgba(255, 255, 255, 0.3);
   animation: badgePulse 2s ease-in-out infinite;
 }
@@ -120,13 +120,13 @@
 @keyframes badgePulse {
   0%, 100% {
     box-shadow:
-      0 2px 6px rgba(236, 72, 153, 0.4),
+      0 2px 6px rgba($rose, 0.4),
       inset 0 1px 0 rgba(255, 255, 255, 0.3);
   }
   50% {
     box-shadow:
-      0 2px 8px rgba(236, 72, 153, 0.5),
-      0 0 0 2px rgba(236, 72, 153, 0.1),
+      0 2px 8px rgba($rose, 0.5),
+      0 0 0 2px rgba($rose, 0.1),
       inset 0 1px 0 rgba(255, 255, 255, 0.3);
   }
 }

@@ -74,7 +74,7 @@
 
   code {
     padding: 1px 5px;
-    background: rgba(99, 102, 241, 0.08);
+    background: rgba($primary, 0.08);
     border-radius: 3px;
     font-family: 'JetBrains Mono', monospace;
     font-size: 0.9em;
@@ -152,7 +152,7 @@
     align-items: center;
     gap: 6px;
     padding: 5px 10px;
-    background: linear-gradient(135deg, $accent-12 0%, rgba(236, 72, 153, 0.12) 100%);
+    background: linear-gradient(135deg, $accent-12 0%, rgba($rose, 0.12) 100%);
     color: $accent;
     border: 1px solid $accent-15;
     border-radius: $radius-md;
@@ -214,11 +214,11 @@
   .toolDetail {
     margin: 0;
     padding: 12px;
-    background: #0f172a;
+    background: $text-primary;
     border-radius: $radius-md;
     font-size: 11px;
     font-family: 'JetBrains Mono', monospace;
-    color: #e2e8f0;
+    color: $border;
     overflow-x: auto;
     white-space: pre-wrap;
     word-break: break-all;
@@ -239,7 +239,7 @@
 
   .toolResultMarkdown {
     padding: 12px;
-    background: rgba(248, 250, 252, 0.8);
+    background: rgba($bg-secondary, 0.8);
     border-radius: $radius-md;
     border: 1px solid $accent-08;
     font-size: $font-size-xs;
@@ -293,7 +293,7 @@
 
     code {
       padding: 1px 5px;
-      background: rgba(99, 102, 241, 0.08);
+      background: rgba($primary, 0.08);
       border-radius: 3px;
       font-family: 'JetBrains Mono', monospace;
       font-size: 0.9em;
@@ -325,8 +325,8 @@
 }
 
 .reasoningActive {
-  border-color: rgba(99, 102, 241, 0.2);
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.03) 0%, rgba(139, 92, 246, 0.03) 100%);
+  border-color: rgba($primary, 0.2);
+  background: linear-gradient(135deg, rgba($primary, 0.03) 0%, rgba($primary, 0.03) 100%);
 }
 
 .reasoningHeader {
@@ -354,9 +354,9 @@
   align-items: center;
   gap: 6px;
   padding: 4px 10px;
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(139, 92, 246, 0.08) 100%);
+  background: linear-gradient(135deg, rgba($primary, 0.08) 0%, rgba($primary, 0.08) 100%);
   color: $primary;
-  border: 1px solid rgba(99, 102, 241, 0.12);
+  border: 1px solid rgba($primary, 0.12);
   border-radius: $radius-md;
   font-size: $font-size-xs;
   font-weight: $font-weight-medium;
@@ -391,7 +391,7 @@
 
   code {
     padding: 1px 5px;
-    background: rgba(99, 102, 241, 0.08);
+    background: rgba($primary, 0.08);
     border-radius: 3px;
     font-family: 'JetBrains Mono', monospace;
     font-size: 0.9em;
@@ -419,7 +419,7 @@
 
   hr {
     border: none;
-    border-top: 1px solid rgba(99, 102, 241, 0.08);
+    border-top: 1px solid rgba($primary, 0.08);
     margin: 0.3em 0;
   }
 }
@@ -435,7 +435,7 @@
 // ==================== 流式输出样式 ====================
 .streamCursor {
   display: inline-block;
-  color: #ec4899;
+  color: $rose;
   font-weight: bold;
   animation: blink 1s step-end infinite;
   margin-left: 2px;

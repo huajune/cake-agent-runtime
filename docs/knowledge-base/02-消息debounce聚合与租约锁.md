@@ -5,6 +5,8 @@ source: src/channels/wecom/message/runtime/simple-merge.service.ts
 
 # 消息 Debounce 聚合与租约锁（SimpleMerge）
 
+> 最后更新：2026-09-11。依据当前仓库代码核对。
+
 ## 解决什么问题
 
 微信用户打字习惯是把一句话拆成 3~5 条短消息连发（"你好" / "我想找工作" / "在杭州"）。如果每条消息都触发一次 Agent 回合：贵、慢、回复互相打架。需要把一轮"连发"聚合成一次 Agent 调用。
@@ -18,8 +20,10 @@ source: src/channels/wecom/message/runtime/simple-merge.service.ts
 1. 每条消息 RPUSH 进 `pending` Redis List（TTL 300s 兜底）
 2. **每条消息都**注册一个 Bull 延迟任务，`delay = 静默窗口`（窗口值存 `hosting_config` 表，Dashboard 可调，不用发版）
 3. Worker 触发时检查"距最后一条消息是否已静默足够久"：
-   - 不够久（说明后面又来了新消息）→ 直接退出，交给更晚的那个任务
-   - 够久 → 取出整个 List，合并为一轮，调 Agent
+   - 不够久（说明后面又来了新消息）→ 显式补建静默窗口重检任务，再退出
+   - 够久 → 读取 pending 快照但不清空，合并为一轮，调 Agent；处理到可确认路径后按消费数量 ack，保留期间追加的消息
+
+快照与确认不是一笔跨渠道事务：ack 表示该批消息已消费，不等于一定投递成功。相关故障窗口见 [[18-分布式系统设计与一致性边界]]。
 
 ## 租约锁三时长模型（这是学习重点）
 
@@ -36,6 +40,16 @@ Agent 一轮要跑几十秒到几分钟，处理期间必须防止并发 worker 
 早期实现里锁冲突时 worker **静默跳过**（假设"下一条消息会再建任务"）。但如果用户不再发消息：持锁进程被发版 SIGTERM 杀死 → 锁孤悬到 TTL → 期间所有检查任务都跳过了 → pending List 等到自己 300s TTL 过期 → **消息永久丢失，无任何报错**。修复：锁冲突时不再裸跳过，而是给 pending 续期 + 按 30s 桶补建重检任务（桶化防止重检任务风暴）。
 
 队列任务创建本身也有本地重试（200ms * attempt 退避），失败上抛而非静默丢——原则是**宁可报错也不静默丢消息**。
+
+## 观测口径：主动等待不能算成队列拥塞
+
+`buildWecomTimingSummary()` 根据 Redis Trace 的阶段时间点计算流水耗时。`queueMs`（入队到 Worker）和 `queueWaitMs`（接收到 Worker）都会扣除实际静默窗口等待；否则用户连续发消息产生的主动等待会被误判为处理积压。
+
+- 静默等待只计算到窗口到期与 Worker 起跑两者中较早的时刻，不能扣掉尚未发生的等待。
+- 缺少阶段时间点时，对应耗时保留 `undefined`，不能把未执行或未观测到的阶段写成 0。
+- 时间差因时钟回拨变成负数时钳制为 0；窗口信息缺失时，净排队列退化为未扣减的原始等待。
+
+代码入口：[wecom-trace-timing.util.ts](../../src/channels/wecom/message/telemetry/wecom-trace-timing.util.ts)。展示和排障动线见 [[10-可观测性体系]]。
 
 ## 关联
 

@@ -43,7 +43,7 @@
     left: -100px;
     width: 600px;
     height: 600px;
-    background: radial-gradient(circle, rgba(219, 234, 254, 0.4) 0%, rgba(219, 234, 254, 0.05) 70%, transparent 100%);
+    background: radial-gradient(circle, rgba($info-bg, 0.4) 0%, rgba($info-bg, 0.05) 70%, transparent 100%);
     border-radius: 50%;
     filter: blur(60px);
     z-index: 0;
@@ -58,7 +58,7 @@
     right: -100px;
     width: 600px;
     height: 600px;
-    background: radial-gradient(circle, rgba(252, 231, 243, 0.5) 0%, rgba(252, 231, 243, 0.1) 70%, transparent 100%);
+    background: radial-gradient(circle, rgba($rose-bg, 0.5) 0%, rgba($rose-bg, 0.1) 70%, transparent 100%);
     border-radius: 50%;
     filter: blur(60px);
     z-index: 0;
@@ -104,7 +104,7 @@
   padding: 10px 18px;
   border-radius: $radius-lg;
   border: none;
-  background: linear-gradient(135deg, $accent 0%, #ec4899 100%);
+  background: linear-gradient(135deg, $accent 0%, $rose 100%);
   color: $text-on-primary;
   font-size: $font-size-sm;
   font-weight: $font-weight-medium;
@@ -200,7 +200,7 @@
     position: absolute;
     width: 180px;
     height: 180px;
-    background: radial-gradient(circle, $accent-12 0%, rgba(236, 72, 153, 0.06) 50%, transparent 70%);
+    background: radial-gradient(circle, $accent-12 0%, rgba($rose, 0.06) 50%, transparent 70%);
     border-radius: 50%;
     pointer-events: none;
     animation: pulse 4s ease-in-out infinite;

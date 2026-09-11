@@ -84,7 +84,7 @@
     &:focus {
       outline: none;
       border-color: $primary;
-      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+      box-shadow: 0 0 0 3px rgba($info, 0.12);
     }
   }
 }
@@ -122,5 +122,5 @@
 .saveBtn {
   border: none;
   color: $text-on-primary;
-  background: linear-gradient(135deg, $accent 0%, #ec4899 100%);
+  background: linear-gradient(135deg, $accent 0%, $rose 100%);
 }

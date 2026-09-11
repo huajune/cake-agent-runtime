@@ -105,7 +105,7 @@ export default function ReengagementTable({
                           r="35"
                           stroke="url(#reengagementEmptyGrad)"
                           strokeWidth="1.5"
-                          fill="rgba(99,102,241,0.03)"
+                          fill="rgba(134, 116, 255, 0.03)"
                         />
                         <path
                           d="M24 22H48C50.2 22 52 23.8 52 26V50H20V26C20 23.8 21.8 22 24 22Z"
@@ -133,7 +133,7 @@ export default function ReengagementTable({
                           strokeWidth="2"
                           strokeLinecap="round"
                         />
-                        <circle cx="48" cy="26" r="3" fill="#818cf8" opacity="0.6" />
+                        <circle cx="48" cy="26" r="3" fill="#b9a6ff" opacity="0.6" />
                         <defs>
                           <linearGradient id="reengagementEmptyGrad" x1="0" y1="0" x2="72" y2="72">
                             <stop offset="0%" stopColor="#c7d2fe" />

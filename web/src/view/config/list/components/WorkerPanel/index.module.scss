@@ -6,7 +6,7 @@
   background: $bg-card;
   border-radius: 20px;
   border: 1px solid $border;
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
+  box-shadow: 0 10px 24px rgba($text-primary, 0.05);
 }
 
 .header {
@@ -28,9 +28,9 @@
 
 .activeJobs {
   font-size: 11px;
-  color: #4fae87;
+  color: #3fb58c;
   padding: 4px 8px;
-  background: rgba(95, 184, 148, 0.12);
+  background: rgba(94, 201, 160, 0.12);
   border-radius: $radius-full;
 }
 
@@ -70,7 +70,7 @@
 .restartNoticeIcon {
   flex: 0 0 auto;
   margin-top: 2px;
-  color: #c9964e;
+  color: #d4903a;
 }
 
 // 吞吐量计算公式

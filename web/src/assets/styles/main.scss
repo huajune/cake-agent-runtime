@@ -28,7 +28,7 @@
 @use './utilities';
 
 // ========== CSS 变量 (用于运行时主题) ==========
-// 默认主题 - 梦幻蓝紫
+// 默认主题 - 梦幻蓝紫（值来自 _variables.scss，此处只做运行时暴露）
 :root {
   // 主色调
   --primary: #{$primary};
@@ -38,13 +38,26 @@
 
   // 辅助色
   --accent: #{$accent};
+  --accent-light: #{$accent-light};
+  --lilac: #{$lilac};
   --success: #{$success};
+  --success-text: #{$success-text};
+  --success-soft: #{$success-soft};
   --warning: #{$warning};
+  --warning-text: #{$warning-text};
+  --warning-soft: #{$warning-soft};
   --danger: #{$danger};
+  --danger-text: #{$danger-text};
+  --danger-soft: #{$danger-soft};
   --info: #{$info};
+  --info-text: #{$info-text};
+  --info-soft: #{$info-soft};
+  --rose: #{$rose};
+  --rose-text: #{$rose-text};
 
   // 文字颜色
   --text-primary: #{$text-primary};
+  --text-body: #{$text-body};
   --text-secondary: #{$text-secondary};
   --text-muted: #{$text-muted};
   --text-on-primary: #{$text-on-primary};
@@ -54,13 +67,18 @@
   --bg-sidebar: #{$bg-sidebar};
   --bg-card: #{$bg-card};
   --border: #{$border};
+  --border-strong: #{$border-strong};
   --border-hover: #{$border-hover};
   --bg-secondary: #{$bg-secondary};
+  --bg-tint: #{$bg-tint};
+  --bg-hover: #{$bg-hover};
 
   // 渐变
   --gradient-primary: #{$gradient-primary};
   --gradient-card: #{$gradient-card};
   --gradient-hover: #{$gradient-hover};
+  --gradient-dream: #{$gradient-dream};
+  --gradient-page: #{$gradient-page};
 
   // 阴影
   --shadow-sm: #{$shadow-sm};

@@ -16,17 +16,17 @@ $ink-2: #3b3a55;
   overflow: hidden;
   margin-bottom: $spacing-lg;
   background: $bg-card;
-  border: 1px solid #eef2f7;
+  border: 1px solid $bg-tint;
   border-radius: 16px;
   box-shadow:
-    0 1px 2px rgba(15, 23, 42, 0.04),
-    0 12px 32px -16px rgba(15, 23, 42, 0.1);
+    0 1px 2px rgba($text-primary, 0.04),
+    0 12px 32px -16px rgba($text-primary, 0.1);
   transition: box-shadow $transition-normal;
 
   &:hover {
     box-shadow:
-      0 2px 4px rgba(15, 23, 42, 0.05),
-      0 16px 40px -16px rgba(15, 23, 42, 0.14);
+      0 2px 4px rgba($text-primary, 0.05),
+      0 16px 40px -16px rgba($text-primary, 0.14);
   }
 
   // 顶部流光高亮线（克制，缓慢扫过）
@@ -40,8 +40,8 @@ $ink-2: #3b3a55;
     background: linear-gradient(
       90deg,
       transparent,
-      rgba(16, 185, 129, 0.5),
-      rgba(52, 211, 153, 0.6),
+      rgba($success, 0.5),
+      rgba($success, 0.6),
       transparent
     );
     background-size: 200% 100%;
@@ -73,14 +73,14 @@ $ink-2: #3b3a55;
   background-repeat: no-repeat;
   // 8 团光晕，元素坐标 6/19/31/44 + 镜像 56/69/81/94（颜色对位一致以保证无缝）
   background-image:
-    radial-gradient(15% 60% at 6% 50%, rgba(16, 185, 129, 0.1) 0%, transparent 70%),
-    radial-gradient(15% 60% at 19% 50%, rgba(34, 197, 94, 0.09) 0%, transparent 70%),
-    radial-gradient(15% 60% at 31% 50%, rgba(52, 211, 153, 0.1) 0%, transparent 70%),
-    radial-gradient(15% 60% at 44% 50%, rgba(16, 185, 129, 0.09) 0%, transparent 70%),
-    radial-gradient(15% 60% at 56% 50%, rgba(16, 185, 129, 0.1) 0%, transparent 70%),
-    radial-gradient(15% 60% at 69% 50%, rgba(34, 197, 94, 0.09) 0%, transparent 70%),
-    radial-gradient(15% 60% at 81% 50%, rgba(52, 211, 153, 0.1) 0%, transparent 70%),
-    radial-gradient(15% 60% at 94% 50%, rgba(16, 185, 129, 0.09) 0%, transparent 70%);
+    radial-gradient(15% 60% at 6% 50%, rgba($success, 0.1) 0%, transparent 70%),
+    radial-gradient(15% 60% at 19% 50%, rgba($success, 0.09) 0%, transparent 70%),
+    radial-gradient(15% 60% at 31% 50%, rgba($success, 0.1) 0%, transparent 70%),
+    radial-gradient(15% 60% at 44% 50%, rgba($success, 0.09) 0%, transparent 70%),
+    radial-gradient(15% 60% at 56% 50%, rgba($success, 0.1) 0%, transparent 70%),
+    radial-gradient(15% 60% at 69% 50%, rgba($success, 0.09) 0%, transparent 70%),
+    radial-gradient(15% 60% at 81% 50%, rgba($success, 0.1) 0%, transparent 70%),
+    radial-gradient(15% 60% at 94% 50%, rgba($success, 0.09) 0%, transparent 70%);
   // 横向无缝平移 + 整体明暗呼吸（不同周期错开），制造若隐若现的流动感
   animation:
     auroraFlow 14s linear infinite,
@@ -131,7 +131,7 @@ $ink-2: #3b3a55;
     content: '';
     width: 1px;
     height: 12px;
-    background: rgba(91, 90, 134, 0.3);
+    background: rgba($text-secondary, 0.3);
   }
 }
 
@@ -182,16 +182,16 @@ $ink-2: #3b3a55;
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: #94a3b8;
+    background: $text-muted;
   }
 
   &.connected {
-    color: #059669;
-    background: rgba(16, 185, 129, 0.1);
-    border-color: rgba(16, 185, 129, 0.18);
+    color: $success-text;
+    background: rgba($success, 0.1);
+    border-color: rgba($success, 0.18);
 
     .liveDot {
-      background: #10b981;
+      background: $success;
       animation: liveBreathe 2s ease-in-out infinite;
     }
   }
@@ -200,11 +200,11 @@ $ink-2: #3b3a55;
 @keyframes liveBreathe {
   0%,
   100% {
-    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.5);
+    box-shadow: 0 0 0 0 rgba($success, 0.5);
     opacity: 1;
   }
   50% {
-    box-shadow: 0 0 0 5px rgba(16, 185, 129, 0);
+    box-shadow: 0 0 0 5px rgba($success, 0);
     opacity: 0.7;
   }
 }
@@ -275,15 +275,15 @@ $ink-2: #3b3a55;
   white-space: nowrap;
 
   &.sessions {
-    --chip-color: #4f46e5;
+    --chip-color: $primary-dark;
   }
 
   &.messages {
-    --chip-color: #15803d;
+    --chip-color: $success-text;
   }
 
   &.active {
-    --chip-color: #b45309;
+    --chip-color: $warning-text;
   }
 }
 

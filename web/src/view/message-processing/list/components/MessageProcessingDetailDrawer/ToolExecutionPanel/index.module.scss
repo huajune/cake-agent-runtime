@@ -115,8 +115,8 @@
     padding: $spacing-sm;
     overflow: auto;
     border-radius: $radius-md;
-    background: #0f172a;
-    color: #e2e8f0;
+    background: $text-primary;
+    color: $border;
     font-family: $font-family-mono;
     font-size: $font-size-xs;
     white-space: pre-wrap;
