@@ -314,6 +314,7 @@ describe('duliday_interview_booking（form → labelList）', () => {
     expect(currentForm.workOrderId).toBe(9001);
     expect(longTerm.setActiveBooking).toHaveBeenCalledWith('corp-1', 'user-1', 9001, {
       job_id: 100,
+      interview_time: null,
     });
     expect(sessionFacts.saveCompletedCollectionFacts).toHaveBeenCalledWith(
       'corp-1',
@@ -520,6 +521,30 @@ describe('duliday_interview_booking（form → labelList）', () => {
     const result = await execute({ jobId: 100 });
     expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_ALREADY_BOOKED);
     expect(sponge.bookInterview).not.toHaveBeenCalled();
+    expect(result.existingWorkOrderId).toBe(8001);
+    expect(result._existingInterviewTimeHuman).toBeUndefined();
+    // 查重 ≠ 失败：指令必须说"已约上"，并明令禁止系统故障/稍后重提口径
+    //（生产 batch …_1789111221226 把它改写成"系统有点问题，稍后再帮你提交"）。
+    expect(result._replyInstruction).toContain('已经约上');
+    expect(result._replyInstruction).toContain('禁止说"系统有问题/没提交成功/稍后再帮你提交"');
+    expect(result._replyInstruction).toContain('不要编造时间');
+  });
+
+  it('在途工单记录了面试时间时，查重回执带人类可读时间供回复播报', async () => {
+    longTerm.getActiveBookings.mockResolvedValue([
+      {
+        work_order_id: 8002,
+        job_id: 100,
+        linked_at: new Date().toISOString(),
+        interview_time: '2026-09-14 13:30:00',
+      },
+    ]);
+    const result = await execute({ jobId: 100 });
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_ALREADY_BOOKED);
+    expect(result.existingWorkOrderId).toBe(8002);
+    expect(result.existingInterviewTime).toBe('2026-09-14 13:30:00');
+    expect(result._existingInterviewTimeHuman).toBe('9月14日（周一）13:30');
+    expect(result._replyInstruction).toContain('9月14日（周一）13:30');
   });
 
   it('成功但缺 workOrderId 时表单转人工，阻止重复提交', async () => {

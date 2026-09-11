@@ -177,10 +177,14 @@ function normalizeActiveBookingEntry(value: unknown): ActiveBookingEntry | null 
         ? Number(raw.job_id)
         : null;
 
+  const interviewTime =
+    typeof raw.interview_time === 'string' && raw.interview_time.trim() ? raw.interview_time : null;
+
   return {
     work_order_id: workOrderId,
     linked_at: linkedAt,
     job_id: jobId,
+    ...(interviewTime ? { interview_time: interviewTime } : {}),
   };
 }
 
@@ -414,13 +418,14 @@ export class SupabaseStore implements MemoryStore {
     corpId: string,
     userId: string,
     workOrderId: number,
-    metadata?: Pick<ActiveBookingEntry, 'job_id'>,
+    metadata?: Pick<ActiveBookingEntry, 'job_id' | 'interview_time'>,
   ): Promise<void> {
     const existing = await this.getActiveBookings(corpId, userId);
     const activeBooking: ActiveBookingEntry = {
       work_order_id: workOrderId,
       linked_at: new Date().toISOString(),
       job_id: metadata?.job_id ?? null,
+      ...(metadata?.interview_time ? { interview_time: metadata.interview_time } : {}),
     };
     const bookings = [
       activeBooking,

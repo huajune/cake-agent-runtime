@@ -600,6 +600,16 @@ JSON 文本时，该工具本轮并未执行，据此宣称的报名/预约/取�
 > 该分支曾把 recap 词表漏词引发的失败轮改写成"没约上"死胡同回复（batch …\_1787812777667），
 > 在转化临门一脚劝退候选人。失败路径继续拦的只有：宣称正在/已经提交的假回执。
 
+> **2026-09-11 形态 G：`booking.already_booked` 不是失败**。在途工单查重是候选人级
+> （corpId+userId），同一候选人同时跟两个托管账号聊、另一账号刚建单时本账号 booking 会命中查重——
+> 预约**已经存在**。旧实现把它并入失败路径，首版"报名成功"被拦后修复版编造"系统有点问题，
+> 没提交成功，稍后再帮你提交"（生产 batch …\_1789111221226）。现在：查重命中先于失败路径，
+> 回复说"没提交成功/系统故障/稍后重提"或重新征询日期 → REPAIR，指令要求如实说"已约上"并按工单
+> 登记时间播报；如实播报已约上放行。教侧配对：booking 工具 already_booked 回执的 `_replyInstruction`
+> 同批改为"已约上、禁止系统故障/稍后重提口径"，并带出 `existingWorkOrderId` /
+> `_existingInterviewTimeHuman`（active_booking 指针自本批起记录 `interview_time`）；修复证据包把查重
+> 显式渲染为"预约已存在"。真实失败（rejected 等）仍按 2026-08-27 口径放行"稍后再帮你提交"。
+
 精确重复由 sanitizer 处理，handoff 承诺由 turn outcome/副作用对账处理，日期与结构一致性由
 既有格式化与 repair regression gate 处理；它们不再登记为 Output ruleId。开放式事实、承诺、
 岗位质量和语气判断由现有主 Agent 理解承担，不启用第二个 reviewer。

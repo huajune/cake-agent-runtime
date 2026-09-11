@@ -316,7 +316,7 @@ export class LongTermService {
     corpId: string,
     userId: string,
     workOrderId: number,
-    metadata?: Pick<ActiveBookingEntry, 'job_id'>,
+    metadata?: Pick<ActiveBookingEntry, 'job_id' | 'interview_time'>,
   ): Promise<void> {
     try {
       await this.supabaseStore.setActiveBooking(corpId, userId, workOrderId, metadata);

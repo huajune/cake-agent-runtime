@@ -191,3 +191,74 @@ describe('detectBookingReceiptMismatch — 失败路径：只拦假宣称，放�
     ).toBeNull();
   });
 });
+
+/**
+ * 形态 G（2026-09-11 生产 batch …_1789111221226）：同一候选人同时跟两个托管账号聊，
+ * 另一账号 47 秒前刚建单，本账号 booking 命中在途工单查重（booking.already_booked）。
+ * 预约已经存在，但旧实现把 success:false 一律当失败，首版"报名成功"被拦后修复版改成
+ * "刚才系统有点问题，面试预约没提交成功，我稍后再帮你提交一次"——编造故障 + 承诺一个
+ * 永远不会成功的重提。already_booked 必须走独立形态：如实说"已约上"才放行。
+ */
+describe('detectBookingReceiptMismatch — 形态 G：already_booked 查重不是失败', () => {
+  const alreadyBooked = (extra: Record<string, unknown> = {}) => [
+    {
+      toolName: 'duliday_interview_booking',
+      status: 'error',
+      result: {
+        success: false,
+        errorType: 'booking.already_booked',
+        existingWorkOrderId: 464336,
+        ...extra,
+      },
+    } as never,
+  ];
+
+  it.each([
+    '不好意思，刚才系统有点问题，面试预约没提交成功，我稍后再帮你提交一次。\n\n9月14日 周一 13:30 面试',
+    '这次没有提交成功，我稍后再帮你提交一次',
+    '系统出了点问题，我等下再帮你约',
+    '刚才没约上，明天我再重新帮你报名',
+  ])('查重命中却说没提交成功/系统故障/稍后重提 → REPAIR：%s', (reply) => {
+    const found = detectBookingReceiptMismatch(reply, alreadyBooked());
+    expect(found?.ruleId).toBe('booking_receipt_mismatch');
+    expect(found?.action).toBe('repair');
+    expect(found?.label).toContain('工单 464336');
+    expect(found?.feedbackToGenerator).toContain('已经约上');
+    expect(found?.feedbackToGenerator).toContain('不得承诺稍后再提交');
+  });
+
+  it('查重命中却重新征询日期 → REPAIR', () => {
+    const found = detectBookingReceiptMismatch('你定哪天方便面试？', alreadyBooked());
+    expect(found?.ruleId).toBe('booking_receipt_mismatch');
+    expect(found?.label).toContain('征询面试日期');
+  });
+
+  it.each([
+    '报名成功\n\n9月14日 周一 13:30 面试，地址是上海市徐汇区华泾路459号华泾龙湖店\n\n记得带好健康证截图，周一见',
+    '这个岗位你已经约上了，不用再提交，周一 13:30 直接到店就行',
+    '之前已经帮你约好了华泾龙湖店，周一见',
+  ])('查重命中 + 如实播报已约上 → 放行：%s', (reply) => {
+    expect(detectBookingReceiptMismatch(reply, alreadyBooked())).toBeNull();
+  });
+
+  it('工单记录了面试时间时，修复指令按工单时间播报', () => {
+    const found = detectBookingReceiptMismatch(
+      '刚才系统有点问题，没提交成功，我稍后再帮你提交一次',
+      alreadyBooked({ _existingInterviewTimeHuman: '9月14日（周一）13:30' }),
+    );
+    expect(found?.feedbackToGenerator).toContain('「9月14日（周一）13:30」');
+  });
+
+  it('already_booked 不进失败路径：真实失败仍按形态 B 放行"稍后再帮你提交"', () => {
+    const rejected = [
+      {
+        toolName: 'duliday_interview_booking',
+        status: 'ok',
+        result: { success: false, errorType: 'booking.rejected' },
+      } as never,
+    ];
+    expect(
+      detectBookingReceiptMismatch('这次没有提交成功，我稍后再帮你提交一次', rejected),
+    ).toBeNull();
+  });
+});
