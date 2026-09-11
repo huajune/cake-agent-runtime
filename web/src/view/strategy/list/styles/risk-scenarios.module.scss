@@ -1,11 +1,11 @@
 @use 'sass:color';
 @use '@/assets/styles/variables' as *;
 
-$_amber: #f59e0b;
-$_amber-06: rgba(245, 158, 11, 0.06);
-$_amber-10: rgba(245, 158, 11, 0.1);
-$_amber-15: rgba(245, 158, 11, 0.15);
-$_amber-25: rgba(245, 158, 11, 0.25);
+$_amber: $warning;
+$_amber-06: rgba($warning, 0.06);
+$_amber-10: rgba($warning, 0.1);
+$_amber-15: rgba($warning, 0.15);
+$_amber-25: rgba($warning, 0.25);
 
 // ==================== 标签列表 ====================
 .tagList {

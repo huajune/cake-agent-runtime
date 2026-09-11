@@ -41,6 +41,10 @@ Runner 用 `resolution` 单列最终 reply / handoff / skipped；真实审查保
 `finalOutcome` 记录处置，advisory 不提供最终处置。严格规则以 `allowFailOpen: false` 禁止违规放行；
 无法安全收敛则转人工，元叙述旁白跳过且不新增介入，纯推理/工具残文直接转人工。Input 审查为 pass / handoff，风险命中同样形成 handoff，以 guardrail.phase=inbound/source=input_guardrail 区分来源，保留既有 conversation_risk 意图。
 
+Input 还有一条不同的 prompt-injection 硬化路径：`PromptInjectionDetector` 只扫描本批候选人输入，
+命中后由 observer 告警并给 preparation 追加安全 section，消息仍进入 Generator；它不修改输入，
+也不等同于上述 pre-agent 风险规则的静默 handoff。
+
 ## TurnFinalizer：按投递结局收尾记忆（`turn-finalizer.ts`）
 
 一个回合需要将候选人事实、已推荐岗位、助手回复等投影进记忆。若生成后直接收尾，就会出现
@@ -55,6 +59,11 @@ finalizer.settle({ delivered }); // delivered=false 时只记用户侧记忆，
 
 Replay 丢弃首版时调用 `discard()`，丢弃后 settle/whenSettled 都变成空操作。正常结算后在
 释放聊天处理锁前等待 `whenSettled()`，避免相邻回合覆盖记忆。
+
+`runTurnEnd` 会晚于 Runner 的主调用触发。Runner 在返回闭包时捕获当前
+`RequestContextService` 上下文，TurnFinalizer 结算时重新进入该上下文，使事实抽取和状态写回期间
+产生的 `llm_execution`、状态变化等事件仍携带本回合 trace。主动复聊不经过 Runner/TurnFinalizer，
+由 `FollowUpProcessor` 在调用 `ReengagementAgent` 前单独建立请求上下文。
 
 人工介入有独立出口：渠道在 Replay 定局后调用 `TurnOutcomeInterventionService.commit()`，
 执行暂停托管、handoff 与告警。报名、拉群等业务工具动作在工具执行期就可能已经提交；

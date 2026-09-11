@@ -46,11 +46,11 @@ const TREND_EXTRA: Record<
   keyof ConversionKpisResponse,
   { color: string; numeratorKey: CountKey; denominatorKey: CountKey }
 > = {
-  breakIceRate: { color: '#8fc7a0', numeratorKey: 'breakIce', denominatorKey: 'friendAdded' },
-  bookingRate: { color: '#9ea9e0', numeratorKey: 'booking', denominatorKey: 'breakIce' },
-  groupInviteRate: { color: '#e59fbc', numeratorKey: 'groupInvite', denominatorKey: 'breakIce' },
-  passRate: { color: '#e6b487', numeratorKey: 'interviewPass', denominatorKey: 'booking' },
-  overallRate: { color: '#ad8fd0', numeratorKey: 'interviewPass', denominatorKey: 'friendAdded' },
+  breakIceRate: { color: '#7ed8a4', numeratorKey: 'breakIce', denominatorKey: 'friendAdded' },
+  bookingRate: { color: '#97a5f5', numeratorKey: 'booking', denominatorKey: 'breakIce' },
+  groupInviteRate: { color: '#f59bc5', numeratorKey: 'groupInvite', denominatorKey: 'breakIce' },
+  passRate: { color: '#f5b878', numeratorKey: 'interviewPass', denominatorKey: 'booking' },
+  overallRate: { color: '#b892f0', numeratorKey: 'interviewPass', denominatorKey: 'friendAdded' },
 };
 
 const TREND_METRICS = KPI_DEFS.map((def) => ({
@@ -132,19 +132,19 @@ export default function KpiTrendChart({
                 <div className={styles.trendChartBox}>
                   <ResponsiveContainer width="100%" height={180}>
                     <LineChart data={chartData} margin={{ top: 8, right: 16, left: -8, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#eef0f5" vertical={false} />
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
                       <XAxis
                         dataKey="label"
-                        stroke="#9ca3af"
-                        tick={{ fontSize: 11, fill: '#6b7280' }}
+                        stroke="#8a89ad"
+                        tick={{ fontSize: 11, fill: '#5b5a86' }}
                         tickLine={false}
                         axisLine={{ stroke: '#e5e7eb' }}
                         interval={xAxisInterval}
                         minTickGap={8}
                       />
                       <YAxis
-                        stroke="#9ca3af"
-                        tick={{ fontSize: 11, fill: '#6b7280' }}
+                        stroke="#8a89ad"
+                        tick={{ fontSize: 11, fill: '#5b5a86' }}
                         tickLine={false}
                         axisLine={{ stroke: '#e5e7eb' }}
                         width={44}

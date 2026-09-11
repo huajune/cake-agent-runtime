@@ -4,38 +4,38 @@
 $surface-page: #ffffff;
 $surface-card: #ffffff;
 $surface-muted: #faf8ff;
-$surface-inverse: #0c111d;
+$surface-inverse: $text-primary;
 
 $border-subtle: $accent-08;
 $border-default: $accent-15;
 
-$ink-900: #101828;
-$ink-700: #344054;
-$ink-500: #667085;
-$ink-400: #98a2b3;
-$ink-300: #d0d5dd;
+$ink-900: $text-primary;
+$ink-700: $text-primary;
+$ink-500: $text-secondary;
+$ink-400: $text-muted;
+$ink-300: $border-hover;
 
 $accent-user: $primary;
 $accent-expected: $accent;
 $accent-actual: $success;
 
-$feedback-success-bg: #ecfdf3;
-$feedback-success-fg: #067647;
-$feedback-success-line: #abefc6;
-$feedback-danger-bg: #fef3f2;
-$feedback-danger-fg: #b42318;
-$feedback-danger-line: #fecdca;
-$feedback-warn-bg: #fffaeb;
-$feedback-warn-fg: #b54708;
-$feedback-warn-line: #fedf89;
+$feedback-success-bg: $success-bg;
+$feedback-success-fg: $success-text;
+$feedback-success-line: $success-light;
+$feedback-danger-bg: $danger-bg;
+$feedback-danger-fg: $danger-text;
+$feedback-danger-line: $danger-light;
+$feedback-warn-bg: $warning-bg;
+$feedback-warn-fg: $warning-text;
+$feedback-warn-line: $warning-light;
 $feedback-info-bg: #f4ebff;
-$feedback-info-fg: #6941c6;
+$feedback-info-fg: $primary-dark;
 $feedback-info-line: #e9d7fe;
 
-$shadow-xs: 0 1px 2px rgba(16, 24, 40, 0.05);
+$shadow-xs: 0 1px 2px rgba($text-primary, 0.05);
 $shadow-sm:
-  0 1px 3px rgba(16, 24, 40, 0.08),
-  0 1px 2px rgba(16, 24, 40, 0.04);
+  0 1px 3px rgba($text-primary, 0.08),
+  0 1px 2px rgba($text-primary, 0.04);
 
 $detail-content-font-size: 15px;
 $detail-content-line-height: 1.78;
@@ -226,7 +226,7 @@ $radius-lg: 10px;
     0 16px 36px $accent-04,
     $shadow-xs;
   scrollbar-width: thin;
-  scrollbar-color: rgba(139, 92, 246, 0.24) transparent;
+  scrollbar-color: rgba($primary, 0.24) transparent;
   scrollbar-gutter: stable;
 
   &::-webkit-scrollbar {
@@ -236,11 +236,11 @@ $radius-lg: 10px;
     background: transparent;
   }
   &::-webkit-scrollbar-thumb {
-    background: rgba(139, 92, 246, 0.24);
+    background: rgba($primary, 0.24);
     border-radius: 999px;
   }
   &::-webkit-scrollbar-thumb:hover {
-    background: rgba(139, 92, 246, 0.36);
+    background: rgba($primary, 0.36);
   }
 }
 
@@ -333,10 +333,10 @@ $radius-lg: 10px;
   min-height: 74px;
   padding: 20px 24px;
   background: linear-gradient(135deg, #ffffff 0%, #f8fbff 100%);
-  border: 1px solid rgba(99, 102, 241, 0.14);
+  border: 1px solid rgba($primary, 0.14);
   border-radius: 18px;
   box-shadow:
-    0 14px 28px rgba(99, 102, 241, 0.05),
+    0 14px 28px rgba($primary, 0.05),
     $shadow-xs;
   color: $ink-900;
   font-size: $detail-content-font-size;
@@ -356,7 +356,7 @@ $radius-lg: 10px;
   border: 1px solid $accent-10;
   border-radius: 18px;
   box-shadow:
-    0 16px 32px rgba(15, 23, 42, 0.06),
+    0 16px 32px rgba($text-primary, 0.06),
     $shadow-xs;
   color: $ink-900;
   font-size: $detail-content-font-size;
@@ -369,15 +369,15 @@ $radius-lg: 10px;
 .expectationBox {
   background:
     radial-gradient(circle at 88% 10%, rgba(253, 186, 116, 0.14), transparent 34%),
-    linear-gradient(135deg, #ffffff 0%, #fffdf4 54%, #fff8e1 100%);
-  border-color: rgba(251, 191, 36, 0.26);
+    linear-gradient(135deg, #ffffff 0%, $warning-bg 54%, $warning-bg 100%);
+  border-color: rgba($warning, 0.26);
   box-shadow:
-    0 18px 34px rgba(245, 158, 11, 0.07),
+    0 18px 34px rgba($warning, 0.07),
     $shadow-xs;
   max-height: 280px;
   overflow-y: auto;
   scrollbar-width: thin;
-  scrollbar-color: rgba(245, 158, 11, 0.2) transparent;
+  scrollbar-color: rgba($warning, 0.2) transparent;
 
   &::-webkit-scrollbar {
     width: 3px;
@@ -386,16 +386,16 @@ $radius-lg: 10px;
     background: transparent;
   }
   &::-webkit-scrollbar-thumb {
-    background: rgba(245, 158, 11, 0.2);
+    background: rgba($warning, 0.2);
     border-radius: 999px;
   }
 }
 
 .replyContent {
-  background: linear-gradient(135deg, #ffffff 0%, #f6fffb 100%);
-  border-color: rgba(16, 185, 129, 0.22);
+  background: linear-gradient(135deg, #ffffff 0%, $success-bg 100%);
+  border-color: rgba($success, 0.22);
   box-shadow:
-    0 16px 32px rgba(16, 185, 129, 0.08),
+    0 16px 32px rgba($success, 0.08),
     $shadow-xs;
   flex: 0 0 auto;
   min-height: 180px;
@@ -417,7 +417,7 @@ $radius-lg: 10px;
     0 14px 28px $accent-04,
     $shadow-xs;
   scrollbar-width: thin;
-  scrollbar-color: rgba(139, 92, 246, 0.24) transparent;
+  scrollbar-color: rgba($primary, 0.24) transparent;
 
   &::-webkit-scrollbar {
     width: 3px;
@@ -426,7 +426,7 @@ $radius-lg: 10px;
     background: transparent;
   }
   &::-webkit-scrollbar-thumb {
-    background: rgba(139, 92, 246, 0.24);
+    background: rgba($primary, 0.24);
     border-radius: 999px;
   }
 }
@@ -463,7 +463,7 @@ $radius-lg: 10px;
 .messageContent {
   flex: 1;
   min-width: 0;
-  color: #334155;
+  color: $text-body;
   font-size: $detail-content-font-size;
   line-height: $detail-content-line-height;
   white-space: pre-wrap;
@@ -485,7 +485,7 @@ $radius-lg: 10px;
   text-align: left;
 
   &:hover {
-    background: #e4e7ec;
+    background: $border;
     border-color: $ink-400;
     color: $ink-700;
   }
@@ -552,9 +552,9 @@ $radius-lg: 10px;
   }
 
   &.failed {
-    background: #fdf2f8;
-    color: #db2777;
-    box-shadow: inset 0 0 0 1px #fbcfe8;
+    background: $rose-bg;
+    color: $rose-text;
+    box-shadow: inset 0 0 0 1px $rose-light;
   }
 
   &.skipped {
@@ -590,15 +590,15 @@ $radius-lg: 10px;
   align-items: center;
   gap: 6px;
   padding: 6px 10px;
-  background: #fdf2f8;
+  background: $rose-bg;
   border-radius: $radius-sm;
-  color: #be185d;
+  color: $rose-text;
   font-size: 12px;
   font-weight: 500;
   line-height: 1.5;
   align-self: flex-start;
   max-width: 100%;
-  box-shadow: inset 0 0 0 1px #fbcfe8;
+  box-shadow: inset 0 0 0 1px $rose-light;
 
   svg {
     flex-shrink: 0;
@@ -667,7 +667,7 @@ $radius-lg: 10px;
   overflow: hidden;
   background: #fff;
   box-shadow:
-    0 8px 18px rgba(15, 23, 42, 0.04),
+    0 8px 18px rgba($text-primary, 0.04),
     $shadow-xs;
 }
 
@@ -678,7 +678,7 @@ $radius-lg: 10px;
   min-height: 42px;
   padding: 10px 16px;
   border-bottom: 1px solid rgba(234, 236, 240, 0.72);
-  background: rgba(248, 250, 252, 0.72);
+  background: rgba($bg-secondary, 0.72);
 }
 
 .agentRoleTag {
@@ -779,7 +779,7 @@ $radius-lg: 10px;
   padding: 5px 10px;
   border-radius: $radius-md;
   border: 1px solid $accent-15;
-  background: linear-gradient(135deg, $accent-10 0%, rgba(236, 72, 153, 0.1) 100%);
+  background: linear-gradient(135deg, $accent-10 0%, rgba($rose, 0.1) 100%);
   color: $accent;
   font-size: 12px;
   font-weight: 600;
@@ -924,7 +924,7 @@ $radius-lg: 10px;
   gap: 6px;
   min-width: 0;
   padding: 5px 10px;
-  background: linear-gradient(135deg, $accent-12 0%, rgba(236, 72, 153, 0.12) 100%);
+  background: linear-gradient(135deg, $accent-12 0%, rgba($rose, 0.12) 100%);
   color: $accent;
   border: 1px solid $accent-15;
   border-radius: $radius-md;
@@ -972,7 +972,7 @@ $radius-lg: 10px;
   padding: 10px 12px;
   background: $surface-inverse;
   border-radius: $radius-sm;
-  color: #e4e7ec;
+  color: $border;
   font-family: $font-family-mono;
   font-size: 11px;
   line-height: 1.7;
@@ -985,7 +985,7 @@ $radius-lg: 10px;
   }
 
   &::-webkit-scrollbar-thumb {
-    background: #475467;
+    background: $text-body;
     border-radius: 999px;
   }
 }

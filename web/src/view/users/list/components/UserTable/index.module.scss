@@ -32,7 +32,7 @@ $header-height: 38px;
     text-align: left;
     vertical-align: middle;
     background: transparent;
-    color: #4f4e7a;
+    color: $text-body;
     font-weight: $font-weight-medium;
     font-size: 11.5px;
     letter-spacing: 0.02em;
@@ -97,7 +97,7 @@ $header-height: 38px;
 }
 
 .updatingRow {
-  background: #f8fafc;
+  background: $bg-secondary;
   opacity: 0.72;
 }
 
@@ -105,7 +105,7 @@ $header-height: 38px;
   text-align: center;
   vertical-align: middle;
   padding: 120px 0 !important;
-  color: #94a3b8;
+  color: $text-muted;
 
   .emptyStateContainer {
     display: flex;
@@ -115,7 +115,7 @@ $header-height: 38px;
     p {
       margin: 0;
       font-size: 14px;
-      color: #64748b;
+      color: $text-secondary;
       font-weight: 500;
     }
   }
@@ -190,7 +190,7 @@ $header-height: 38px;
   font-weight: $font-weight-medium;
   box-shadow:
     0 0 0 2px #fff,
-    0 2px 6px rgba(15, 23, 42, 0.12);
+    0 2px 6px rgba($text-primary, 0.12);
   flex-shrink: 0;
   transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
 
@@ -222,7 +222,7 @@ $header-height: 38px;
     ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
     monospace;
   font-size: 11px;
-  color: #94a3b8;
+  color: $text-muted;
   letter-spacing: 0.02em;
   max-width: 200px;
   overflow: hidden;
@@ -238,18 +238,18 @@ $header-height: 38px;
   font-size: 12px;
   font-weight: $font-weight-medium;
   font-variant-numeric: tabular-nums;
-  color: #4f46e5;
+  color: $primary-dark;
   background: rgba(212, 208, 255, 0.35);
   border-radius: 999px;
 }
 
 .tokenText {
-  color: #64748b;
+  color: $text-secondary;
   font-size: 13px;
 }
 
 .timeCell {
-  color: #64748b;
+  color: $text-secondary;
   font-size: 13px;
   white-space: nowrap;
 }
@@ -298,8 +298,8 @@ $header-height: 38px;
   }
 
   &.disabled {
-    color: #94a3b8;
-    background: #f1f5f9;
+    color: $text-muted;
+    background: $bg-tint;
   }
 }
 
@@ -384,9 +384,9 @@ $header-height: 38px;
   font-size: 10px;
   font-weight: 600;
   border-radius: 10px;
-  background: rgba(100, 116, 139, 0.1);
-  color: #64748b;
-  border: 1px solid rgba(100, 116, 139, 0.2);
+  background: rgba($text-secondary, 0.1);
+  color: $text-secondary;
+  border: 1px solid rgba($text-secondary, 0.2);
   white-space: nowrap;
 }
 
@@ -403,6 +403,6 @@ $header-height: 38px;
   text-overflow: ellipsis;
   white-space: nowrap;
   vertical-align: bottom;
-  color: #64748b;
+  color: $text-secondary;
   font-size: 13px;
 }

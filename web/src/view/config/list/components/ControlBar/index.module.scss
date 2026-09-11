@@ -58,7 +58,7 @@ $dream-4: #fdfdff;
     flex: 0 0 auto;
     width: 1px;
     height: 12px;
-    background: rgba(91, 90, 134, 0.3);
+    background: rgba($text-secondary, 0.3);
   }
 }
 
@@ -72,7 +72,7 @@ $dream-4: #fdfdff;
   background: #fff;
   box-shadow: inset 0 0 0 1px rgba(233, 181, 110, 0.5);
   font-size: 11px;
-  color: #c9964e;
+  color: #d4903a;
   white-space: nowrap;
 }
 

@@ -20,7 +20,7 @@
 
   &:hover {
     td {
-      background: rgba(99, 102, 241, 0.03);
+      background: rgba($primary, 0.03);
     }
 
     td:first-child {
@@ -30,7 +30,7 @@
 
   &:active {
     td {
-      background: rgba(99, 102, 241, 0.06);
+      background: rgba($primary, 0.06);
     }
   }
 }
@@ -86,7 +86,7 @@ td.loading {
       height: 88px;
       margin-bottom: 20px;
       animation: float 4s ease-in-out infinite;
-      filter: drop-shadow(0 8px 16px rgba(99, 102, 241, 0.08));
+      filter: drop-shadow(0 8px 16px rgba($primary, 0.08));
 
       .emptyIcon {
         width: 100%;
@@ -147,8 +147,8 @@ td.loading {
   align-items: center;
   padding: 1px 8px;
   border-radius: 999px;
-  border: 1px solid rgba(100, 116, 139, 0.3);
-  background: rgba(100, 116, 139, 0.06);
+  border: 1px solid rgba($text-secondary, 0.3);
+  background: rgba($text-secondary, 0.06);
   color: #5b5a86;
   font-size: 11px;
   font-weight: 500;

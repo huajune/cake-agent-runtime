@@ -9,8 +9,8 @@ $header-height: 38px;
   border-radius: 16px;
   background: #fff;
   box-shadow:
-    0 0 0 1px #e9e9f2,
-    0 8px 24px rgba(20, 19, 43, 0.045);
+    0 0 0 1px $border,
+    0 8px 24px rgba($text-primary, 0.045);
   margin-bottom: $spacing-lg;
 }
 
@@ -83,7 +83,7 @@ $header-height: 38px;
     vertical-align: middle;
     font-size: 11.5px;
     font-weight: $font-weight-medium;
-    color: #4f4e7a;
+    color: $text-body;
     text-transform: none;
     letter-spacing: 0.02em;
     background: transparent;

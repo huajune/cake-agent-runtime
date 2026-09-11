@@ -6,8 +6,8 @@
   border-radius: 16px;
   background: #fff;
   box-shadow:
-    0 0 0 1px #e9e9f2,
-    0 8px 24px rgba(20, 19, 43, 0.045);
+    0 0 0 1px $border,
+    0 8px 24px rgba($text-primary, 0.045);
   margin-bottom: $spacing-xl;
 }
 

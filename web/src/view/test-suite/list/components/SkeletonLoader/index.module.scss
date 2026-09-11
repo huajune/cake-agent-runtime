@@ -39,7 +39,7 @@
   display: flex;
   gap: $spacing-sm;
   padding: $spacing-md;
-  background: linear-gradient(135deg, $accent-02 0%, rgba(236, 72, 153, 0.01) 100%);
+  background: linear-gradient(135deg, $accent-02 0%, rgba($rose, 0.01) 100%);
   border: 1px solid $accent-06;
   border-radius: $radius-lg;
   animation: fadeIn 0.3s ease;

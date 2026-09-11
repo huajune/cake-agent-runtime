@@ -8,90 +8,85 @@
 
 ---
 
-## [11.7.0] - 2026-09-11
+<!-- release:pending:start -->
+## 待发布
 
+**预计版本**: `v11.8.0`
+**最近更新**: `2026-09-11`
 **来源分支**: `develop`
+**累计 PR**: 2
 
 ### 更新摘要
-- PR #1250 会话状态 TTL 与沉淀间隙统一为 7 天，收资单据同步对齐
-- PR #1250 `MEMORY_SESSION_TTL_DAYS` / `MEMORY_SETTLEMENT_GAP_DAYS` 默认 3 → 7；消息回看窗口维持 7 天；间隙 ≥ TTL 的不变式保持，factsv2 12 小时沉淀余量不变
-- PR #1250 `COLLECTION_FORM_TTL_SECONDS` 3 → 7 天，避免事实仍在而收资单据先失效
-- PR #1250 README、`.env.example`、redis-schema、架构与术语文档口径同步
-- PR #1251 记忆值质量修复四项 + 下线已耗尽的旧数据兼容
-- PR #1251 长期记忆存量形态一次性归一，删除读边界懒迁移与旧 source 映射
-- PR #1254 转化分析/运行时配置/二次触发追溯与守卫弹窗收进丁香紫单色系
-- PR #1254 系统监控页三项失真指标改为真实口径
-- PR #1254 数据色改淡雅粉彩（保留各指标色相），运行时配置页按胶囊语言重做
-- PR #1254 运行时配置页说明文案精简为一句
-- PR #1254 转化分析页按作品页配色重调底色与插画
-- PR #1254 转化分析页去掉降饱和滤镜，只用色值与白罩提亮
-- PR #1254 转化分析页改淡雅暖色；运行时配置页说明压成一句
-- PR #1254 转化分析页去掉自带的页面底色与色块，改走全站统一背景
-- PR #1254 转化分析 KPI 卡改纯白纸面：去图标大阴影与整面淡色渐变，环比胶囊实白细边
-- PR #1254 转化分析 KPI 区提亮：卡片下垫白色托盘，卡片改白边，图标色阶调亮
-- PR #1254 转化分析等四页视觉调淡雅 + 系统监控页失真指标改真实口径
-- PR #1256 booking 查重命中 already_booked 视为预约已存在，不再当失败改写
-- PR #1256 **守卫** `booking-receipt.rule.ts`：新增形态 G，`already_booked` 先于失败路径判定。回复说「没提交成功/系统故障/稍后再提交」或重新征询日期 → repair，指令要求如实说「已约上」并按工单登记时间播报；如实播报已约上放行。真实失败（`rejected` 等）仍按 2026-08-27 口径放行「稍后再帮你提交」。
-- PR #1256 **booking 工具**查重回执：`_outcome` / `_replyInstruction` 改为「预约已存在、不是失败」，明令禁止系统故障/稍后重提口径；带出 `existingWorkOrderId`、`existingInterviewTime`、`_existingInterviewTimeHuman`。
-- PR #1256 **长期记忆** `ActiveBookingEntry` 新增 `interview_time`（JSONB 内字段，无迁移），建单时随 `job_id` 写入；存量行为空时回执不编造时间。
-- PR #1256 **修复证据包** `BookingEvidence` 加 `alreadyBooked / outcome / existingWorkOrderId / existingInterviewTimeHuman`，`ReplyRepairAgent` 渲染为「预约已经存在，本轮未重复提交——这不是失败」。
-- PR #1256 `docs/prompt-rule-ledger.md` 登记形态 G 与工具回执改口径。
-- PR #1257 候选人级在途工单查重前移到 precheck，恢复 duplicateBookingGuard 守卫接线
-- PR #1257 **查重前移到 precheck**：注入 `LongTermService`，按 booking 同一判据读 `active_booking`；命中即 `nextAction=already_booked` + `duplicateBookingGuard { workOrderId, interviewTime?, interviewTimeHuman?, note }`。指令：如实说已约上、按工单登记时间播报，禁止 booking / 再收资 / 征询日期，禁止"系统故障 / 稍后重提"口径，改时间 modify、取消 cancel。本表单自身已提交仍优先 `already_submitted`；追加候选人（代报）表单与 booking 同口径豁免；不发 `precheck.passed`。
-- PR #1257 **共享判据**：30 分钟同岗位查重抽成 `src/tools/booking/active-booking-dedup.util.ts`，booking 改为共用（语义不变：`job_id` 为空存量行按命中）。
-- PR #1257 **守卫接线恢复**：`duplicateBookingGuard` 随 #1023 收资切换消失后，`interview_time_change_unconfirmed`（形态 F，P0 repair）与 `booking_done_claim_*` 的在途工单豁免一直空转。字段按守卫读取口径恢复，新增 precheck 真实回执 → 两个检测器的契约配对测试。
-- PR #1257 **`interview_time` 随工单指针落库**：`ActiveBookingEntry` 新增可选 `interview_time`，建单时写入；booking `already_booked` 回执改为"预约已存在"口径并带 `existingWorkOrderId` / `_existingInterviewTimeHuman`。⚠️ 这部分与 booking 侧 already_booked 修复（另一会话，含守卫形态 G / 修复证据包）**同批镜像、hunk 逐字一致**，两个 PR 任一先合都不冲突。
-- PR #1257 `duliday_modify_interview_time` 描述删除已不存在的 `existingRegistrations` 来源，改指向 `duplicateBookingGuard.workOrderId`；badcase skill fixture 说明同步；`docs/prompt-rule-ledger.md` precheck / modify 行登记。
+- PR #1263 v11.7.0 发版日志改写为业务语言
+- PR #1266 全站配色升格为丁香墨色 token 层，语义色保留色相降饱和
+- PR #1266 配色收窄为文字灰阶 + 语义色，主色/底色/边框还原原值
+- PR #1266 主色与激活态渐变改丁香紫系，页面底色与边框保持原值
+- PR #1266 主色提亮为亮丁香、语义色与转化页数据色提亮、大背景改近白粉紫渐变
+- PR #1266 新增收资与预约事务状态机专题，架构知识库对齐 0911 现状
+- PR #1266 `_variables.scss` 成为唯一色源；`main.scss` 暴露新增 token 为 CSS 变量；`THEME_COLORS` 同步（新春注释块保持原值）。
+- PR #1266 全站扫描：78 个 scss/ts(x) 文件、629 处 hex + 724 处 rgba 旧色 → `$token` / `rgba($token, α)`。红包雨、节日挂饰不在范围。
+- PR #1266 文字灰阶改墨色、主色亮丁香、语义色淡雅化、大背景近白粉紫渐变，色值收拢进 token 层
 
 ### 新功能
-- PR #1256 **守卫** `booking-receipt.rule.ts`：新增形态 G，`already_booked` 先于失败路径判定。回复说「没提交成功/系统故障/稍后再提交」或重新征询日期 → repair，指令要求如实说「已约上」并按工单登记时间播报；如实播报已约上放行。真实失败（`rejected` 等）仍按 2026-08-27 口径放行「稍后再帮你提交」。
-- PR #1256 **长期记忆** `ActiveBookingEntry` 新增 `interview_time`（JSONB 内字段，无迁移），建单时随 `job_id` 写入；存量行为空时回执不编造时间。
-- PR #1257 **守卫接线恢复**：`duplicateBookingGuard` 随 #1023 收资切换消失后，`interview_time_change_unconfirmed`（形态 F，P0 repair）与 `booking_done_claim_*` 的在途工单豁免一直空转。字段按守卫读取口径恢复，新增 precheck 真实回执 → 两个检测器的契约配对测试。
+- PR #1266 `_variables.scss` 成为唯一色源；`main.scss` 暴露新增 token 为 CSS 变量；`THEME_COLORS` 同步（新春注释块保持原值）。
+- PR #1266 全站扫描：78 个 scss/ts(x) 文件、629 处 hex + 724 处 rgba 旧色 → `$token` / `rgba($token, α)`。红包雨、节日挂饰不在范围。
+- PR #1266 新增收资与预约事务状态机专题，架构知识库对齐 0911 现状
 
 ### 问题修复
-- PR #1250 `MEMORY_SESSION_TTL_DAYS` / `MEMORY_SETTLEMENT_GAP_DAYS` 默认 3 → 7；消息回看窗口维持 7 天；间隙 ≥ TTL 的不变式保持，factsv2 12 小时沉淀余量不变
-- PR #1250 `COLLECTION_FORM_TTL_SECONDS` 3 → 7 天，避免事实仍在而收资单据先失效
-- PR #1250 README、`.env.example`、redis-schema、架构与术语文档口径同步
-- PR #1251 记忆值质量修复四项 + 下线已耗尽的旧数据兼容
-- PR #1256 **booking 工具**查重回执：`_outcome` / `_replyInstruction` 改为「预约已存在、不是失败」，明令禁止系统故障/稍后重提口径；带出 `existingWorkOrderId`、`existingInterviewTime`、`_existingInterviewTimeHuman`。
-- PR #1256 **修复证据包** `BookingEvidence` 加 `alreadyBooked / outcome / existingWorkOrderId / existingInterviewTimeHuman`，`ReplyRepairAgent` 渲染为「预约已经存在，本轮未重复提交——这不是失败」。
-- PR #1256 `docs/prompt-rule-ledger.md` 登记形态 G 与工具回执改口径。
-- PR #1257 **查重前移到 precheck**：注入 `LongTermService`，按 booking 同一判据读 `active_booking`；命中即 `nextAction=already_booked` + `duplicateBookingGuard { workOrderId, interviewTime?, interviewTimeHuman?, note }`。指令：如实说已约上、按工单登记时间播报，禁止 booking / 再收资 / 征询日期，禁止"系统故障 / 稍后重提"口径，改时间 modify、取消 cancel。本表单自身已提交仍优先 `already_submitted`；追加候选人（代报）表单与 booking 同口径豁免；不发 `precheck.passed`。
-- PR #1257 **共享判据**：30 分钟同岗位查重抽成 `src/tools/booking/active-booking-dedup.util.ts`，booking 改为共用（语义不变：`job_id` 为空存量行按命中）。
-- PR #1257 **`interview_time` 随工单指针落库**：`ActiveBookingEntry` 新增可选 `interview_time`，建单时写入；booking `already_booked` 回执改为"预约已存在"口径并带 `existingWorkOrderId` / `_existingInterviewTimeHuman`。⚠️ 这部分与 booking 侧 already_booked 修复（另一会话，含守卫形态 G / 修复证据包）**同批镜像、hunk 逐字一致**，两个 PR 任一先合都不冲突。
-- PR #1257 `duliday_modify_interview_time` 描述删除已不存在的 `existingRegistrations` 来源，改指向 `duplicateBookingGuard.workOrderId`；badcase skill fixture 说明同步；`docs/prompt-rule-ledger.md` precheck / modify 行登记。
+- 无
 
 ### 优化调整
-- PR #1251 长期记忆存量形态一次性归一，删除读边界懒迁移与旧 source 映射
+- 无
 
 ### 运维与流程
-- PR #1250 会话状态 TTL 与沉淀间隙统一为 7 天，收资单据同步对齐
-- PR #1254 转化分析/运行时配置/二次触发追溯与守卫弹窗收进丁香紫单色系
-- PR #1254 系统监控页三项失真指标改为真实口径
-- PR #1254 数据色改淡雅粉彩（保留各指标色相），运行时配置页按胶囊语言重做
-- PR #1254 运行时配置页说明文案精简为一句
-- PR #1254 转化分析页按作品页配色重调底色与插画
-- PR #1254 转化分析页去掉降饱和滤镜，只用色值与白罩提亮
-- PR #1254 转化分析页改淡雅暖色；运行时配置页说明压成一句
-- PR #1254 转化分析页去掉自带的页面底色与色块，改走全站统一背景
-- PR #1254 转化分析 KPI 卡改纯白纸面：去图标大阴影与整面淡色渐变，环比胶囊实白细边
-- PR #1254 转化分析 KPI 区提亮：卡片下垫白色托盘，卡片改白边，图标色阶调亮
-- PR #1256 booking 查重命中 already_booked 视为预约已存在，不再当失败改写
-- PR #1257 候选人级在途工单查重前移到 precheck，恢复 duplicateBookingGuard 守卫接线
+- PR #1263 v11.7.0 发版日志改写为业务语言
+- PR #1266 全站配色升格为丁香墨色 token 层，语义色保留色相降饱和
+- PR #1266 配色收窄为文字灰阶 + 语义色，主色/底色/边框还原原值
+- PR #1266 主色与激活态渐变改丁香紫系，页面底色与边框保持原值
+- PR #1266 主色提亮为亮丁香、语义色与转化页数据色提亮、大背景改近白粉紫渐变
 
 ### 配置变更
 - 无
 
 ### 环境变量提醒
-- PR #1250 检测到环境变量相关文件变更：`.env.example`。请手动同步远程服务器 `/data/cake/.env.production`。
+- 无
 
 ### 验证记录
-- PR #1256 `tsc --noEmit` 通过；改动文件 eslint / prettier 通过
-- PR #1256 全量 Jest：469 suites / 6898 tests 全绿（含 `output-rule-catalog.spec` 执行覆盖校验）
-- PR #1256 新增用例：形态 G 四种否认口径拦截、如实播报放行、重新征询日期拦截、真实失败不受影响；booking 工具查重回执字段；证据包 already_booked 投影；store `interview_time` 透传
-- PR #1257 `lint:check` / `format:check` / `typecheck` / `geo:validate` / `vocab:validate` / `quality-ledger:validate` 通过
-- PR #1257 全量 jest：470 套件 6900 用例通过（`ci:check` 的 `build:ci` 在本 worktree 因 `web/node_modules` 未安装失败，与本 PR 无关，未动 web）
-- PR #1257 新增用例：窗口边界 / 不同岗位 / 存量空 `job_id` / 无 `interview_time` / 收资中截住 / 已提交优先 / 代报豁免 / 未注入依赖跳过 / 守卫契约配对
+- PR #1266 `pnpm run build`（tsc + vite）通过；`pnpm run lint` 0 error（6 条既有 warning 与本次无关）。
+- PR #1266 本地 dev + 只读生产预览后端逐页看过：流水页 + 详情抽屉、转化分析、聊天记录、二次触发追溯；大背景计算样式核对为定稿渐变。
+<!-- release:pending:end -->
+
+## [11.7.0] - 2026-09-11
+
+**来源分支**: `develop`
+
+### 更新摘要
+
+#### 🧠 隔几天回来，还记得聊到哪一步
+
+- 候选人隔 3 到 7 天再来，以前 Agent 已经忘了上次聊到哪：推过哪些岗、有没有拉群、报名表填了一半，全都没了，只能从头再问一遍。现在 7 天内回来都还记得。（#1250）
+- 报名表单也跟着保留 7 天，不会再出现「信息还在、表单先过期」，让候选人重填一遍。（#1250）
+- 候选人换了城市，旧城市的区域偏好会自动清掉。以前会出现「人在北京，却还按上次的江宁在找岗」。（#1251）
+- 修掉一批区域识别的脏值。以前会把「这三个区都行」「意向工作地区」这类话当成区名记下来，约 12% 的会话有这个问题。（#1251）
+- 只加了好友没聊过的候选人，不再给他建一份空白档案；跨段摘要也不再把在职员工的工资、排班对话记成求职经历。（#1251）
+
+#### 📅 已经约上的岗位，不再说「提交失败」
+
+- 候选人对已经约上的岗位又问一次，以前 Agent 会说「没提交成功」「系统故障，稍后再帮你提交」。现在会如实说已经约上了，并报出工单上的面试时间。（#1256）
+- 重复报名的检查提前到问答阶段，不会再让候选人填完一整张表才发现早就约过了。（#1257）
+- 要改时间走改约、要取消走取消，不再重复提交同一个岗位。（#1256 #1257）
+
+#### 📊 Dashboard 看得更清楚
+
+- 转化分析、运行时配置、二次触发追溯三页配色调淡雅，去掉发灰的叠层。（#1254）
+- 运行时配置页重新排版：分区导航一行放得下，模型路由表格右侧不再被截断，每项说明压成一句话。（#1254）
+- 消息处理流水的详情弹窗，守卫那段每个阶段只留一个状态标签，不再一堆气泡挤在一起。（#1254）
+- 系统监控页三个数字以前不准，现在改对了：在途请求（以前显示 410，实际只有 4）、耗时 P95（以前被 60 秒截断恒显示 57 秒，实际约 211 秒）、「今日错误」改名「今日告警」，因为它统计的本来就是告警而不是消息处理失败。（#1254）
+
+### 配置变更
+
+- 生产环境变量 `MEMORY_SESSION_TTL_DAYS` / `MEMORY_SETTLEMENT_GAP_DAYS` 由 3 改为 7。
+- 生产迁移 `20260911120000_flatten_legacy_long_term_shapes`：长期记忆存量形态归一。执行后核对旧形态行 24,310 → 0，旧来源标记 8,886 / 4,134 → 0，摘要与会话水位完整保留。
 
 ## [11.6.0] - 2026-09-10
 

@@ -48,23 +48,23 @@
 
   // 变体样式 - 渐变背景
   &.primary::after {
-    background: radial-gradient(circle at top right, rgba(59, 130, 246, 0.15), transparent 70%);
+    background: radial-gradient(circle at top right, rgba($info, 0.15), transparent 70%);
   }
 
   &.success::after {
-    background: radial-gradient(circle at top right, rgba(16, 185, 129, 0.15), transparent 70%);
+    background: radial-gradient(circle at top right, rgba($success, 0.15), transparent 70%);
   }
 
   &.warning::after {
-    background: radial-gradient(circle at top right, rgba(245, 158, 11, 0.15), transparent 70%);
+    background: radial-gradient(circle at top right, rgba($warning, 0.15), transparent 70%);
   }
 
   &.danger::after {
-    background: radial-gradient(circle at top right, rgba(239, 68, 68, 0.15), transparent 70%);
+    background: radial-gradient(circle at top right, rgba($danger, 0.15), transparent 70%);
   }
 
   &.info::after {
-    background: radial-gradient(circle at top right, rgba(6, 182, 212, 0.15), transparent 70%);
+    background: radial-gradient(circle at top right, rgba($info, 0.15), transparent 70%);
   }
 
   // 圣诞装饰
@@ -75,7 +75,7 @@
     left: 0;
     right: 0;
     height: 3px;
-    background: linear-gradient(90deg, #f9a8d4 0%, #86efac 50%, #f9a8d4 100%);
+    background: linear-gradient(90deg, $rose-light 0%, $success-light 50%, $rose-light 100%);
     border-radius: 20px 20px 0 0;
     opacity: 0.8;
   }

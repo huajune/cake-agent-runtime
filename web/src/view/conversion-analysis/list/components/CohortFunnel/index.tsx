@@ -35,12 +35,12 @@ interface FunnelChartDatum extends ConversionFunnelStage {
 
 // 柔和马卡龙渐变：紫 → 蓝 → 青绿 → 粉 → 桃（参考玻璃碗漏斗）。
 const FUNNEL_PALETTE = [
-  { color: '#ad8fd0', accent: '#cdb6e3' },
-  { color: '#9ea9e0', accent: '#c3c9ef' },
-  { color: '#8fc7a0', accent: '#b8ddc2' },
-  { color: '#e59fbc', accent: '#f3c4d6' },
-  { color: '#e6b487', accent: '#f2d2b3' },
-  { color: '#cdb6e3', accent: '#e4d6ef' },
+  { color: '#b892f0', accent: '#d3bdf5' },
+  { color: '#97a5f5', accent: '#c9cffb' },
+  { color: '#7ed8a4', accent: '#b6ecc9' },
+  { color: '#f59bc5', accent: '#fbc6dc' },
+  { color: '#f5b878', accent: '#ffd9b8' },
+  { color: '#d3bdf5', accent: '#e9dcfb' },
 ];
 
 // 小人占比图的图标个数（参考信息图：填充个数 = 占总数比例）。
@@ -81,7 +81,7 @@ const SPRINKLES: Array<[number, number, number, number]> = [
   [0.32, -0.45, -12, 5],
   [-0.18, -0.05, 40, 4],
 ];
-const SPRINKLE_COLORS = ['#f9a8d4', '#fcd34d', '#86efac', '#93c5fd', '#fda4af', '#c4b5fd'];
+const SPRINKLE_COLORS = ['#f5c6da', '#f5c878', '#a6e6cc', '#aacbfa', '#f7bcd3', '#b9a6ff'];
 
 export default function CohortFunnel({
   data,
@@ -169,9 +169,9 @@ export default function CohortFunnel({
                     <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
                   </linearGradient>
                   <radialGradient id="funnelGround" cx="0.5" cy="0.5" r="0.5">
-                    <stop offset="0%" stopColor="#0f172a" stopOpacity="0.16" />
-                    <stop offset="70%" stopColor="#0f172a" stopOpacity="0.05" />
-                    <stop offset="100%" stopColor="#0f172a" stopOpacity="0" />
+                    <stop offset="0%" stopColor="#14132b" stopOpacity="0.16" />
+                    <stop offset="70%" stopColor="#14132b" stopOpacity="0.05" />
+                    <stop offset="100%" stopColor="#14132b" stopOpacity="0" />
                   </radialGradient>
                   <linearGradient id="funnelPedestal" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor="#ffffff" />
@@ -199,7 +199,7 @@ export default function CohortFunnel({
                     markerHeight="7"
                     orient="auto-start-reverse"
                   >
-                    <path d="M0 0 L8 4 L0 8 z" fill="#a5b4fc" />
+                    <path d="M0 0 L8 4 L0 8 z" fill="#b9a6ff" />
                   </marker>
                   <clipPath id="funnelCavityClip">
                     <ellipse
@@ -235,7 +235,7 @@ export default function CohortFunnel({
                 <path
                   d={`M 42 ${layout[Math.min(1, n - 1)].topY + 6} C 10 ${layout[Math.min(1, n - 1)].topY + 86}, 12 ${funnelBottom - 96}, 48 ${funnelBottom - 18}`}
                   fill="none"
-                  stroke="#a5b4fc"
+                  stroke="#b9a6ff"
                   strokeWidth={1.6}
                   strokeDasharray="5 6"
                   markerEnd="url(#funnelArrowHead)"
@@ -255,7 +255,7 @@ export default function CohortFunnel({
                   rx={boundaries[n] * 2.6}
                   ry={12}
                   fill="url(#funnelPedestal)"
-                  stroke="rgba(15, 23, 42, 0.06)"
+                  stroke="rgba(20, 19, 43, 0.06)"
                   strokeWidth={1}
                 />
                 {/* 底座上的撒糖点缀 */}
@@ -379,7 +379,7 @@ export default function CohortFunnel({
                             cy={topY + OVERLAP + 3}
                             rx={topR * 0.92}
                             ry={6.5}
-                            fill="rgba(15, 23, 42, 0.85)"
+                            fill="rgba(20, 19, 43, 0.85)"
                             opacity={0.14}
                             filter="url(#funnelSeam)"
                           />

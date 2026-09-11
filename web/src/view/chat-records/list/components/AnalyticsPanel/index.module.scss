@@ -118,11 +118,11 @@ $ink-2: #3b3a55;
     font-variant-numeric: tabular-nums;
 
     &.primary {
-      color: #4f46e5;
+      color: $primary-dark;
     }
 
     &.success {
-      color: #15803d;
+      color: $success-text;
     }
   }
 }
@@ -168,7 +168,7 @@ $ink-2: #3b3a55;
   }
 
   &.success {
-    background: #10b981;
+    background: $success;
   }
 }
 

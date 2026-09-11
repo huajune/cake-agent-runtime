@@ -50,7 +50,7 @@
   align-items: center;
   padding: $spacing-md $spacing-lg;
   border-bottom: 1px solid $accent-10;
-  background: linear-gradient(135deg, $accent-08 0%, rgba(236, 72, 153, 0.05) 100%);
+  background: linear-gradient(135deg, $accent-08 0%, rgba($rose, 0.05) 100%);
   flex-shrink: 0;
   position: relative;
   overflow: hidden;
@@ -108,7 +108,7 @@
     width: 6px;
   }
   &::-webkit-scrollbar-thumb {
-    background: rgba(148, 163, 184, 0.3);
+    background: rgba($text-muted, 0.3);
     border-radius: 3px;
   }
 }
@@ -152,12 +152,12 @@
   }
 
   &.selected {
-    background: linear-gradient(135deg, $accent-10 0%, rgba(236, 72, 153, 0.06) 100%);
+    background: linear-gradient(135deg, $accent-10 0%, rgba($rose, 0.06) 100%);
     border-color: $accent-35;
     box-shadow: 0 4px 16px $accent-15;
 
     &::before {
-      background: linear-gradient(180deg, #ec4899 0%, $accent 100%);
+      background: linear-gradient(180deg, $rose 0%, $accent 100%);
       width: 4px;
     }
 
@@ -204,7 +204,7 @@
 
   .sep {
     margin: 0 2px;
-    color: rgba(148, 163, 184, 0.5);
+    color: rgba($text-muted, 0.5);
   }
 }
 
@@ -259,7 +259,7 @@
   transition: all 0.2s;
   
   // 基础样式 - 会被下面的具体颜色覆盖背景
-  background: #f1f5f9;
+  background: $bg-tint;
   
   &::before {
     content: '';
@@ -284,22 +284,22 @@
 }
 
 .completed {
-  color: #10b981; // 稍微亮一点的绿色
-  background: rgba(16, 185, 129, 0.1);
-  border: 1px solid rgba(16, 185, 129, 0.2);
+  color: $success; // 稍微亮一点的绿色
+  background: rgba($success, 0.1);
+  border: 1px solid rgba($success, 0.2);
 }
 
 .created {
-  color: #f59e0b;
-  background: rgba(245, 158, 11, 0.1);
-  border: 1px solid rgba(245, 158, 11, 0.2);
+  color: $warning;
+  background: rgba($warning, 0.1);
+  border: 1px solid rgba($warning, 0.2);
 }
 
 // 已取消：中性灰蓝，与其余四档同构（浅底 + 同色描边），不抢眼但可辨识
 .cancelled {
-  color: #64748b;
-  background: rgba(100, 116, 139, 0.1);
-  border: 1px solid rgba(100, 116, 139, 0.2);
+  color: $text-secondary;
+  background: rgba($text-secondary, 0.1);
+  border: 1px solid rgba($text-secondary, 0.2);
 }
 
 .batchStats {
@@ -312,22 +312,22 @@
 }
 
 .reviewProgress {
-  color: #94a3b8;
+  color: $text-muted;
 }
 
 .passRate {
   font-weight: 600;
 
   &.high {
-    color: #10b981;
+    color: $success;
   }
 
   &.medium {
-    color: #f59e0b;
+    color: $warning;
   }
 
   &.low {
-    color: #ef4444;
+    color: $danger;
   }
 }
 
@@ -370,7 +370,7 @@
     position: absolute;
     width: 140px;
     height: 140px;
-    background: radial-gradient(circle, $accent-10 0%, rgba(236, 72, 153, 0.05) 50%, transparent 70%);
+    background: radial-gradient(circle, $accent-10 0%, rgba($rose, 0.05) 50%, transparent 70%);
     border-radius: 50%;
     pointer-events: none;
     animation: pulse 3s ease-in-out infinite;

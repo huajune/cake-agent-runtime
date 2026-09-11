@@ -43,7 +43,7 @@
 
     &:hover {
       color: $danger;
-      border-color: rgba(239, 68, 68, 0.3);
+      border-color: rgba($danger, 0.3);
     }
   }
 }
@@ -108,7 +108,7 @@
     appearance: none;
     width: 44px;
     height: 24px;
-    background: rgba(148, 163, 184, 0.2);
+    background: rgba($text-muted, 0.2);
     border: 1px solid $border;
     border-radius: 12px;
     position: relative;
@@ -189,19 +189,19 @@
   }
 
   &.success::after {
-    background: radial-gradient(circle at top right, rgba(16, 185, 129, 0.15), transparent 70%);
+    background: radial-gradient(circle at top right, rgba($success, 0.15), transparent 70%);
   }
 
   &.warning::after {
-    background: radial-gradient(circle at top right, rgba(245, 158, 11, 0.15), transparent 70%);
+    background: radial-gradient(circle at top right, rgba($warning, 0.15), transparent 70%);
   }
 
   &.danger::after {
-    background: radial-gradient(circle at top right, rgba(239, 68, 68, 0.15), transparent 70%);
+    background: radial-gradient(circle at top right, rgba($danger, 0.15), transparent 70%);
   }
 
   &.info::after {
-    background: radial-gradient(circle at top right, rgba(6, 182, 212, 0.15), transparent 70%);
+    background: radial-gradient(circle at top right, rgba($info, 0.15), transparent 70%);
   }
 
   // Spring Festival decoration
@@ -212,7 +212,7 @@
     left: 0;
     right: 0;
     height: 3px;
-    background: linear-gradient(90deg, #f9a8d4 0%, #86efac 50%, #f9a8d4 100%);
+    background: linear-gradient(90deg, $rose-light 0%, $success-light 50%, $rose-light 100%);
     z-index: 10;
     opacity: 0.8;
   }
@@ -269,7 +269,7 @@
     left: 0;
     right: 0;
     height: 3px;
-    background: linear-gradient(90deg, #f9a8d4 0%, #86efac 50%, #f9a8d4 100%);
+    background: linear-gradient(90deg, $rose-light 0%, $success-light 50%, $rose-light 100%);
     z-index: 10;
     opacity: 0.8;
   }
@@ -440,17 +440,17 @@
   font-size: 11px;
   padding: 4px 10px;
   border-radius: 12px;
-  background: rgba(34, 197, 94, 0.15);
+  background: rgba($success, 0.15);
   color: $success;
   font-weight: 500;
 
   &.warning {
-    background: rgba(245, 158, 11, 0.15);
+    background: rgba($warning, 0.15);
     color: $warning;
   }
 
   &.error {
-    background: rgba(239, 68, 68, 0.15);
+    background: rgba($danger, 0.15);
     color: $danger;
   }
 }
@@ -462,24 +462,24 @@
   padding: 12px;
   background: rgba(255, 255, 255, 0.5);
   border-radius: 12px;
-  border: 1px solid rgba(148, 163, 184, 0.15);
+  border: 1px solid rgba($text-muted, 0.15);
   transition: all 0.2s ease;
 
   &:hover {
     background: rgba(255, 255, 255, 0.8);
-    border-color: rgba(148, 163, 184, 0.25);
+    border-color: rgba($text-muted, 0.25);
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(148, 163, 184, 0.15);
+    box-shadow: 0 4px 12px rgba($text-muted, 0.15);
   }
 
   &[data-state='error'] {
-    border-color: rgba(239, 68, 68, 0.3);
-    background: rgba(239, 68, 68, 0.06);
+    border-color: rgba($danger, 0.3);
+    background: rgba($danger, 0.06);
   }
 
   &[data-state='warning'] {
-    border-color: rgba(245, 158, 11, 0.3);
-    background: rgba(245, 158, 11, 0.06);
+    border-color: rgba($warning, 0.3);
+    background: rgba($warning, 0.06);
   }
 }
 
@@ -522,7 +522,7 @@
     135deg,
     $primary-06 0%,
     $accent-06 50%,
-    rgba(236, 72, 153, 0.04) 100%
+    rgba($rose, 0.04) 100%
   );
   border: 1px solid $border;
   border-radius: 20px;
@@ -567,17 +567,17 @@
     font-size: 11px;
     padding: 4px 10px;
     border-radius: 12px;
-    background: rgba(34, 197, 94, 0.15);
+    background: rgba($success, 0.15);
     color: $success;
     font-weight: 500;
 
     &.warning {
-      background: rgba(245, 158, 11, 0.15);
+      background: rgba($warning, 0.15);
       color: $warning;
     }
 
     &.error {
-      background: rgba(239, 68, 68, 0.15);
+      background: rgba($danger, 0.15);
       color: $danger;
     }
   }
@@ -735,7 +735,7 @@
     background:
       linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 255, 0.94)), $bg-card;
     box-shadow:
-      0 22px 50px rgba(15, 23, 42, 0.15),
+      0 22px 50px rgba($text-primary, 0.15),
       0 6px 16px rgba($primary, 0.08),
       inset 0 1px 0 rgba(255, 255, 255, 0.92);
     backdrop-filter: blur(16px);
@@ -867,7 +867,7 @@
   align-items: center;
   gap: 8px;
   padding-right: 20px;
-  border-right: 1px solid rgba(20, 19, 43, 0.08);
+  border-right: 1px solid rgba($text-primary, 0.08);
 }
 
 // ========== 告警控制面板 ==========
@@ -889,8 +889,8 @@
   justify-content: center;
 
   &.active {
-    background: linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(16, 185, 129, 0.05));
-    border-color: rgba(16, 185, 129, 0.3);
+    background: linear-gradient(135deg, rgba($success, 0.15), rgba($success, 0.05));
+    border-color: rgba($success, 0.3);
   }
 
   &.toggle-card {
@@ -942,7 +942,7 @@
   background: $border;
 
   &.active {
-    background: #10b981;
+    background: $success;
   }
 
   &:disabled {
@@ -1093,7 +1093,7 @@
   padding: 24px;
   overflow-y: auto;
   flex: 1;
-  background: #fcfcfd;
+  background: $bg-secondary;
 }
 
 .modal-section {
@@ -1139,19 +1139,19 @@
   }
 
   &.danger {
-    background: rgba(239, 68, 68, 0.04);
-    border-color: rgba(239, 68, 68, 0.15);
+    background: rgba($danger, 0.04);
+    border-color: rgba($danger, 0.15);
     color: $danger;
     font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
     font-size: 13px;
   }
 
   &.code {
-    background: #1e293b;
-    color: #e2e8f0;
+    background: $text-primary;
+    color: $border;
     font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
     font-size: 12px;
-    border: 1px solid #334155;
+    border: 1px solid $text-body;
   }
 }
 
@@ -1190,12 +1190,12 @@
   color: $text-secondary;
 
   &.success {
-    background: rgba(16, 185, 129, 0.1);
+    background: rgba($success, 0.1);
     color: $success;
   }
 
   &.warning {
-    background: rgba(245, 158, 11, 0.1);
+    background: rgba($warning, 0.1);
     color: $warning;
   }
 }
@@ -1203,7 +1203,7 @@
 .modal-footer {
   padding: 16px 24px;
   border-top: 1px solid $border;
-  background: #f9fafb;
+  background: $bg-secondary;
   display: flex;
   justify-content: flex-end;
   gap: 12px;
@@ -1289,22 +1289,22 @@ tbody tr:hover {
   border: 1px solid transparent;
 
   &.success {
-    border-color: rgba(16, 185, 129, 0.4);
+    border-color: rgba($success, 0.4);
     color: $success;
   }
 
   &.warning {
-    border-color: rgba(245, 158, 11, 0.4);
+    border-color: rgba($warning, 0.4);
     color: $warning;
   }
 
   &.info {
-    border-color: rgba(59, 130, 246, 0.4);
-    color: #2563eb;
+    border-color: rgba($info, 0.4);
+    color: $info-text;
   }
 
   &.danger {
-    border-color: rgba(239, 68, 68, 0.4);
+    border-color: rgba($danger, 0.4);
     color: $danger;
   }
 }
@@ -1527,11 +1527,11 @@ tbody tr:hover {
     color: $primary;
   }
   &.success-bg {
-    background: rgba(16, 185, 129, 0.1);
+    background: rgba($success, 0.1);
     color: $success;
   }
   &.warning-bg {
-    background: rgba(245, 158, 11, 0.1);
+    background: rgba($warning, 0.1);
     color: $warning;
   }
   &.info-bg {
@@ -1584,7 +1584,7 @@ tbody tr:hover {
 .panel-header {
   padding: 16px 20px;
   border-bottom: 1px solid $border;
-  background: rgba(249, 250, 251, 0.5);
+  background: rgba($bg-secondary, 0.5);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -1636,12 +1636,12 @@ tbody tr:hover {
   font-size: 11px;
 
   &.agent {
-    background: rgba(239, 68, 68, 0.2);
+    background: rgba($danger, 0.2);
     color: $danger;
   }
 
   &.message {
-    background: rgba(245, 158, 11, 0.2);
+    background: rgba($warning, 0.2);
     color: $warning;
   }
 
@@ -1651,8 +1651,8 @@ tbody tr:hover {
   }
 
   &.merge {
-    background: rgba(168, 85, 247, 0.2);
-    color: #a855f7;
+    background: rgba($accent, 0.2);
+    color: $accent;
   }
 
   &.unknown {
@@ -1664,7 +1664,7 @@ tbody tr:hover {
 .alert-type-bar {
   flex: 1;
   height: 6px;
-  background: rgba(148, 163, 184, 0.15);
+  background: rgba($text-muted, 0.15);
   border-radius: 3px;
   overflow: hidden;
   position: relative;
@@ -1685,7 +1685,7 @@ tbody tr:hover {
     background: $primary;
   }
   &.merge {
-    background: #a855f7;
+    background: $accent;
   }
   &.unknown {
     background: $text-muted;
@@ -1720,7 +1720,7 @@ tbody tr:hover {
     @extend .control-panel-header;
     margin-bottom: 16px;
     padding-bottom: 16px;
-    border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+    border-bottom: 1px solid rgba($text-muted, 0.15);
   }
 
   .toolbar-title {
@@ -1744,8 +1744,8 @@ tbody tr:hover {
     transition: all 0.3s ease;
 
     &.connected {
-      background: rgba(16, 185, 129, 0.12);
-      border-color: rgba(16, 185, 129, 0.3);
+      background: rgba($success, 0.12);
+      border-color: rgba($success, 0.3);
 
       .dot {
         background: $success;
@@ -1759,8 +1759,8 @@ tbody tr:hover {
     }
 
     &.disconnected {
-      background: rgba(239, 68, 68, 0.12);
-      border-color: rgba(239, 68, 68, 0.3);
+      background: rgba($danger, 0.12);
+      border-color: rgba($danger, 0.3);
 
       .dot {
         background: $danger;
@@ -1894,10 +1894,10 @@ tbody tr:hover {
       color: $text-primary;
 
       &.paused {
-        background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+        background: linear-gradient(135deg, $warning 0%, $warning-text 100%);
         border: none;
         color: #fff;
-        box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
+        box-shadow: 0 4px 12px rgba($warning, 0.3);
       }
     }
 
@@ -1909,7 +1909,7 @@ tbody tr:hover {
       &:hover {
         background: #fff;
         color: $danger;
-        border-color: rgba(239, 68, 68, 0.3);
+        border-color: rgba($danger, 0.3);
       }
     }
   }
@@ -1926,19 +1926,19 @@ tbody tr:hover {
   font-weight: 500;
 
   &.personal {
-    color: #16a34a;
+    color: $success-text;
     background: rgba(22, 163, 74, 0.1);
   }
   &.enterprise {
-    color: #2563eb;
-    background: rgba(37, 99, 235, 0.1);
+    color: $info-text;
+    background: rgba($info-text, 0.1);
   }
   &.official {
     color: $accent;
     background: $accent-10;
   }
   &.unknown {
-    color: #6b7280;
+    color: $text-secondary;
     background: rgba(107, 114, 128, 0.1);
   }
 }

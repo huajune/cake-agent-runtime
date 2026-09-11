@@ -5,17 +5,17 @@ $font-ui: -apple-system, BlinkMacSystemFont, 'Inter', 'PingFang SC', 'Segoe UI',
 
 $ink: #14132b;
 $ink-2: #3b3a55;
-$gray: #75748c;
+$gray: $text-secondary;
 $gray-2: #a3a2b8;
-$gray-3: #c9c8d8;
+$gray-3: $border-hover;
 // 底色语言与顶部一致：梦幻粉紫蓝；行悬停是丁香紫的淡叠色
 $dream-1: #f0efff;
 $dream-2: #faf4fe;
 $dream-3: #f2f7ff;
 $fill: rgba($dream-1, 0.7);
 $hover: rgba($dream-1, 0.65);
-$hairline: #e9e9f2;
-$row-line: #f0f0f6;
+$hairline: $border;
+$row-line: $bg-tint;
 $header-height: 38px;
 
 @keyframes shimmer {
@@ -34,14 +34,14 @@ $header-height: 38px;
   background: #fff;
   box-shadow:
     0 0 0 1px $hairline,
-    0 8px 24px rgba(20, 19, 43, 0.045);
+    0 8px 24px rgba($text-primary, 0.045);
   font-family: $font-ui;
 }
 
 .tableWrapper {
   overflow-x: auto;
   border-radius: 10px;
-  @include custom-scrollbar(6px, transparent, rgba(20, 19, 43, 0.12));
+  @include custom-scrollbar(6px, transparent, rgba($text-primary, 0.12));
 }
 
 .table {
@@ -71,7 +71,7 @@ $header-height: 38px;
     font-weight: $font-weight-medium;
     letter-spacing: 0.02em;
     text-transform: none;
-    color: #4f4e7a;
+    color: $text-body;
     background: transparent;
     white-space: nowrap;
   }
@@ -227,23 +227,23 @@ $header-height: 38px;
 }
 
 .toneSuccess {
-  border-color: rgba(16, 185, 129, 0.4);
-  color: #10b981;
+  border-color: rgba($success, 0.4);
+  color: $success;
 }
 
 .toneDanger {
-  border-color: rgba(239, 68, 68, 0.4);
-  color: #ef4444;
+  border-color: rgba($danger, 0.4);
+  color: $danger;
 }
 
 .toneWarning {
-  border-color: rgba(245, 158, 11, 0.4);
-  color: #f59e0b;
+  border-color: rgba($warning, 0.4);
+  color: $warning;
 }
 
 .toneInfo {
-  border-color: rgba(59, 130, 246, 0.4);
-  color: #2563eb;
+  border-color: rgba($info, 0.4);
+  color: $info-text;
 }
 
 .flag {
@@ -253,11 +253,11 @@ $header-height: 38px;
 }
 
 .flagWarning {
-  color: #b54708;
+  color: $warning-text;
 }
 
 .flagDanger {
-  color: #d92d20;
+  color: $danger-text;
 }
 
 .rowChevron {

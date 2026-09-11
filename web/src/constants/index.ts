@@ -15,24 +15,24 @@ export const OPERATION_METRICS_FEISHU_URL =
  * 节日期间切换新春主题时，注释掉紫色主题并取消下方新春主题的注释
  */
 
-// === 💜 紫色主题 (当前启用) ===
+// === 💜 丁香紫主题 (当前启用；与 _variables.scss 同源，改色两处同步) ===
 export const THEME_COLORS = {
-  // 主色 - 靛蓝紫
-  primary: '#6366f1',
-  primaryLight: '#818cf8',
-  primaryDark: '#4f46e5',
-  // 强调色 - 紫罗兰
-  accent: '#8b5cf6',
-  accentLight: '#a78bfa',
+  // 主色 - 丁香紫
+  primary: '#8674ff',
+  primaryLight: '#b9a6ff',
+  primaryDark: '#5b4de6',
+  // 强调色 - 藕紫
+  accent: '#b985f5',
+  accentLight: '#dabff8',
   // 透明度变体
-  primary02: 'rgba(99, 102, 241, 0.02)',
-  primary10: 'rgba(99, 102, 241, 0.1)',
-  primary20: 'rgba(99, 102, 241, 0.2)',
-  primary30: 'rgba(99, 102, 241, 0.3)',
-  accent02: 'rgba(139, 92, 246, 0.02)',
-  accent10: 'rgba(139, 92, 246, 0.1)',
-  accent20: 'rgba(139, 92, 246, 0.2)',
-  accent30: 'rgba(139, 92, 246, 0.3)',
+  primary02: 'rgba(134, 116, 255, 0.02)',
+  primary10: 'rgba(134, 116, 255, 0.1)',
+  primary20: 'rgba(134, 116, 255, 0.2)',
+  primary30: 'rgba(134, 116, 255, 0.3)',
+  accent02: 'rgba(185, 133, 245, 0.02)',
+  accent10: 'rgba(185, 133, 245, 0.1)',
+  accent20: 'rgba(185, 133, 245, 0.2)',
+  accent30: 'rgba(185, 133, 245, 0.3)',
 } as const;
 
 // === 🧧 新春主题 (节日期间启用) ===

@@ -6,7 +6,7 @@ $font-ui: -apple-system, BlinkMacSystemFont, 'Inter', 'PingFang SC', 'Segoe UI',
 
 $ink: #14132b;
 $ink-2: #3b3a55;
-$gray: #75748c;
+$gray: $text-secondary;
 $gray-2: #a3a2b8;
 // 底色语言：梦幻粉紫蓝——丁香紫 → 兰花粉 → 婴儿蓝 → 白，高明度、带暖调；卡上的控件是亮白玻璃
 $dream-1: #f0efff;
@@ -16,7 +16,7 @@ $dream-4: #fdfdff;
 $fill: #fff;
 $fill-hover: #fff;
 $tint-line: rgba(212, 208, 255, 0.55);
-$hairline: #e9e9f2;
+$hairline: $border;
 
 // 顶部工具卡：首行标题，次行一整行控件
 .panel {
@@ -66,7 +66,7 @@ $hairline: #e9e9f2;
     content: '';
     width: 1px;
     height: 12px;
-    background: rgba(91, 90, 134, 0.3);
+    background: rgba($text-secondary, 0.3);
   }
 }
 
@@ -223,7 +223,7 @@ $hairline: #e9e9f2;
   outline: none;
 
   &::placeholder {
-    color: #7c7b9c;
+    color: $text-secondary;
   }
 }
 
@@ -237,7 +237,7 @@ $hairline: #e9e9f2;
   height: 18px;
   border: 0;
   border-radius: $radius-full;
-  background: rgba(99, 102, 241, 0.14);
+  background: rgba($primary, 0.14);
   color: $primary-dark;
   cursor: pointer;
   transition:
@@ -245,7 +245,7 @@ $hairline: #e9e9f2;
     color $transition-fast;
 
   &:hover {
-    background: rgba(99, 102, 241, 0.24);
+    background: rgba($primary, 0.24);
     color: $primary-dark;
   }
 }
@@ -339,19 +339,19 @@ $hairline: #e9e9f2;
 }
 
 .chipPrimary {
-  --chip-color: #4f46e5;
+  --chip-color: $primary-dark;
 }
 
 .chipSuccess {
-  --chip-color: #15803d;
+  --chip-color: $success-text;
 }
 
 .chipDanger {
-  --chip-color: #b91c1c;
+  --chip-color: $danger-text;
 }
 
 .chipWarning {
-  --chip-color: #b45309;
+  --chip-color: $warning-text;
 }
 
 .chipNeutral {

@@ -39,11 +39,11 @@
   align-items: center;
   gap: $spacing-sm;
   padding: 16px 20px;
-  border-top: 1px solid rgba(99, 102, 241, 0.1);
+  border-top: 1px solid rgba($primary, 0.1);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.75) 0%, rgba(255, 255, 255, 0.96) 100%),
-    radial-gradient(circle at top left, rgba(99, 102, 241, 0.06), transparent 55%);
-  box-shadow: 0 -10px 24px rgba(15, 23, 42, 0.03);
+    radial-gradient(circle at top left, rgba($primary, 0.06), transparent 55%);
+  box-shadow: 0 -10px 24px rgba($text-primary, 0.03);
 }
 
 .feedbackGroup {
@@ -110,13 +110,13 @@
   object-fit: cover;
 
   &.user {
-    background: linear-gradient(135deg, #60a5fa, #3b82f6);
-    box-shadow: 0 4px 10px rgba(59, 130, 246, 0.2);
+    background: linear-gradient(135deg, $info, $info);
+    box-shadow: 0 4px 10px rgba($info, 0.2);
   }
 
   &.assistant {
-    background: linear-gradient(135deg, #f59e0b, #d97706);
-    box-shadow: 0 4px 10px rgba(245, 158, 11, 0.2);
+    background: linear-gradient(135deg, $warning, $warning-text);
+    box-shadow: 0 4px 10px rgba($warning, 0.2);
   }
 }
 
@@ -148,23 +148,23 @@
 
 .processingLink {
   padding: 2px 7px;
-  border: 1px solid rgba(99, 102, 241, 0.18);
+  border: 1px solid rgba($primary, 0.18);
   border-radius: 999px;
-  background: rgba(99, 102, 241, 0.07);
-  color: #4f46e5;
+  background: rgba($primary, 0.07);
+  color: $primary-dark;
   cursor: pointer;
   font-size: 10px;
   line-height: 1.4;
 
   &:hover:not(:disabled) {
-    border-color: rgba(99, 102, 241, 0.34);
-    background: rgba(99, 102, 241, 0.12);
+    border-color: rgba($primary, 0.34);
+    background: rgba($primary, 0.12);
   }
 
   &:disabled {
-    border-color: rgba(148, 163, 184, 0.14);
-    background: rgba(148, 163, 184, 0.06);
-    color: #94a3b8;
+    border-color: rgba($text-muted, 0.14);
+    background: rgba($text-muted, 0.06);
+    color: $text-muted;
     cursor: not-allowed;
   }
 }
@@ -177,16 +177,16 @@
   word-break: break-word;
 
   &.user {
-    background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(96, 165, 250, 0.1));
-    border: 1px solid rgba(59, 130, 246, 0.15);
+    background: linear-gradient(135deg, rgba($info, 0.1), rgba(96, 165, 250, 0.1));
+    border: 1px solid rgba($info, 0.15);
     color: $text-primary;
     border-bottom-left-radius: $radius-xs;
   }
 
   &.assistant {
-    background: linear-gradient(135deg, rgba(254, 243, 199, 0.5), rgba(253, 230, 138, 0.3));
-    border: 1px solid rgba(251, 191, 36, 0.2);
-    color: #92400e;
+    background: linear-gradient(135deg, rgba($warning-bg, 0.5), rgba(253, 230, 138, 0.3));
+    border: 1px solid rgba($warning, 0.2);
+    color: $warning-text;
     border-bottom-right-radius: $radius-xs;
   }
 }
