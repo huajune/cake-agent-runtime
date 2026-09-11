@@ -167,10 +167,12 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
 .kpiCell {
   position: relative;
   overflow: hidden;
-  border: 1px solid $border;
+  border: 1px solid #e6dff3;
   border-radius: $panel-radius;
-  background: $bg-card;
-  box-shadow: $shadow-sm;
+  background: #fff;
+  box-shadow:
+    0 12px 36px rgba(112, 92, 176, 0.08),
+    0 2px 6px rgba(112, 92, 176, 0.05);
   transition:
     border-color $transition-normal,
     box-shadow $transition-normal,
@@ -206,8 +208,8 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
     linear-gradient(
       90deg,
       rgba(255, 255, 255, 0.98) 0%,
-      rgba(255, 255, 255, 0.9) 48%,
-      rgba(255, 255, 255, 0.5) 100%
+      rgba(255, 255, 255, 0.92) 48%,
+      rgba(255, 255, 255, 0.66) 100%
     ),
     linear-gradient(180deg, #ffffff 0%, #fbfcff 100%),
     radial-gradient(circle at right top, $primary-08, transparent 42%);
@@ -223,21 +225,21 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
   height: 100%;
   object-fit: cover;
   object-position: right center;
-  opacity: 0.78;
-  filter: saturate(0.82) hue-rotate(8deg) brightness(1.07);
+  opacity: 0.5;
+  filter: saturate(0.58) hue-rotate(8deg) brightness(1.1) contrast(0.94);
   mask-image: linear-gradient(
     90deg,
-    rgba(0, 0, 0, 0.26) 0%,
-    rgba(0, 0, 0, 0.46) 18%,
-    rgba(0, 0, 0, 0.88) 42%,
-    #000 100%
+    rgba(0, 0, 0, 0.14) 0%,
+    rgba(0, 0, 0, 0.3) 18%,
+    rgba(0, 0, 0, 0.72) 42%,
+    rgba(0, 0, 0, 0.9) 100%
   );
   -webkit-mask-image: linear-gradient(
     90deg,
-    rgba(0, 0, 0, 0.26) 0%,
-    rgba(0, 0, 0, 0.46) 18%,
-    rgba(0, 0, 0, 0.88) 42%,
-    #000 100%
+    rgba(0, 0, 0, 0.14) 0%,
+    rgba(0, 0, 0, 0.3) 18%,
+    rgba(0, 0, 0, 0.72) 42%,
+    rgba(0, 0, 0, 0.9) 100%
   );
   border-radius: inherit;
   pointer-events: none;
@@ -483,38 +485,38 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
   }
 
   &.teal {
-    --kpi-tone: #6cc4a1;
-    --kpi-next: #8fd6c6;
-    --kpi-soft: rgba(108, 196, 161, 0.14);
-    background: linear-gradient(135deg, #ffffff 0%, rgba(108, 196, 161, 0.05) 100%);
+    --kpi-tone: #8cc9a1;
+    --kpi-next: #b4dfc0;
+    --kpi-soft: rgba(169, 215, 179, 0.18);
+    background: linear-gradient(135deg, #ffffff 0%, #eef8f0 100%);
   }
 
   &.sky {
-    --kpi-tone: #7ab8e6;
-    --kpi-next: #a4c8f2;
-    --kpi-soft: rgba(122, 184, 230, 0.14);
-    background: linear-gradient(135deg, #ffffff 0%, rgba(122, 184, 230, 0.05) 100%);
+    --kpi-tone: #8fb2e0;
+    --kpi-next: #b9cff0;
+    --kpi-soft: rgba(169, 196, 232, 0.18);
+    background: linear-gradient(135deg, #ffffff 0%, #eef3fb 100%);
   }
 
   &.rose {
-    --kpi-tone: #ec9ec0;
-    --kpi-next: #f5b3c4;
-    --kpi-soft: rgba(236, 158, 192, 0.14);
-    background: linear-gradient(135deg, #ffffff 0%, rgba(236, 158, 192, 0.05) 100%);
+    --kpi-tone: #e3a3bf;
+    --kpi-next: #f2c3d6;
+    --kpi-soft: rgba(242, 183, 205, 0.18);
+    background: linear-gradient(135deg, #ffffff 0%, #fbeef3 100%);
   }
 
   &.amber {
-    --kpi-tone: #e9b56e;
-    --kpi-next: #f2c39a;
-    --kpi-soft: rgba(233, 181, 110, 0.14);
-    background: linear-gradient(135deg, #ffffff 0%, rgba(233, 181, 110, 0.05) 100%);
+    --kpi-tone: #e2b98a;
+    --kpi-next: #f0d3b3;
+    --kpi-soft: rgba(240, 201, 160, 0.18);
+    background: linear-gradient(135deg, #ffffff 0%, #fbf3ea 100%);
   }
 
   &.purple {
-    --kpi-tone: #a996f2;
-    --kpi-next: #bfb3f6;
-    --kpi-soft: rgba(169, 150, 242, 0.14);
-    background: linear-gradient(135deg, #ffffff 0%, rgba(169, 150, 242, 0.05) 100%);
+    --kpi-tone: #8f82d6;
+    --kpi-next: #b3a9e6;
+    --kpi-soft: rgba(123, 108, 208, 0.16);
+    background: linear-gradient(135deg, #ffffff 0%, #f1edfa 100%);
   }
 }
 
@@ -611,11 +613,11 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
 }
 
 .up {
-  color: #5fb894;
+  color: #7fbf93;
 }
 
 .down {
-  color: #e07a9a;
+  color: #d98aa7;
 }
 
 .neutral {
@@ -938,8 +940,8 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
   height: calc(100% - 16px);
   object-fit: cover;
   object-position: right center;
-  opacity: 0.23;
-  filter: saturate(0.98) hue-rotate(8deg) brightness(1.06);
+  opacity: 0.15;
+  filter: saturate(0.7) hue-rotate(8deg) brightness(1.08);
   mask-image:
     linear-gradient(90deg, transparent 0%, rgba(0, 0, 0, 0.42) 20%, #000 56%, #000 100%),
     linear-gradient(180deg, #000 0%, #000 72%, transparent 100%);
@@ -1216,8 +1218,8 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
   height: 210px;
   object-fit: cover;
   object-position: right center;
-  opacity: 0.13;
-  filter: saturate(0.96) hue-rotate(8deg) brightness(1.05);
+  opacity: 0.09;
+  filter: saturate(0.7) hue-rotate(8deg) brightness(1.06);
   mask-image:
     linear-gradient(90deg, transparent 0%, #000 32%, #000 100%),
     linear-gradient(180deg, #000 0%, #000 54%, transparent 100%);
@@ -2262,33 +2264,33 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
 // ── 页面底座：浅色底 + 粉彩流动极光 + 极淡网格 ──
 .page {
   isolation: isolate;
-  overflow: clip; // 极光层 inset 为负值，不收口会撑出横向滚动
+  overflow: clip; // 色块层 inset 为负值，不收口会撑出横向滚动
+  border-radius: 20px;
 
-  // 网格层（极淡，营造"数据空间"感）
+  // 底色：淡紫白纸面（参考作品页 --bg / --bg-2）
   &::before {
     content: '';
     position: absolute;
     inset: 0;
-    z-index: -1;
-    background:
-      repeating-linear-gradient(90deg, rgba(99, 102, 241, 0.035) 0 1px, transparent 1px 56px),
-      repeating-linear-gradient(0deg, rgba(99, 102, 241, 0.03) 0 1px, transparent 1px 56px);
-    mask-image: radial-gradient(ellipse 100% 60% at 50% 0%, #000 0%, transparent 80%);
-    -webkit-mask-image: radial-gradient(ellipse 100% 60% at 50% 0%, #000 0%, transparent 80%);
+    z-index: -2;
+    background: linear-gradient(180deg, #fbf9fd 0%, #f6f2fa 100%);
     pointer-events: none;
   }
 
-  // 粉彩极光层（缓慢漂移）
+  // 三个大模糊色块：粉（右上）/ 丁香（中左）/ 叶绿（左下），缓慢漂移
   &::after {
     content: '';
     position: absolute;
     inset: -10%;
-    z-index: -2;
+    z-index: -1;
     background:
-      radial-gradient(circle at 16% 10%, rgba(99, 102, 241, 0.1), transparent 32%),
-      radial-gradient(circle at 82% 6%, rgba(34, 211, 238, 0.08), transparent 30%),
-      radial-gradient(circle at 64% 78%, rgba(192, 132, 252, 0.08), transparent 34%),
-      radial-gradient(circle at 12% 88%, rgba(244, 114, 182, 0.06), transparent 30%);
+      radial-gradient(closest-side at 86% 8%, #fbdce8, rgba(251, 220, 232, 0) 100%) 0 0 / 60% 42%
+        no-repeat,
+      radial-gradient(closest-side at 22% 30%, #e6ddf8, rgba(230, 221, 248, 0) 100%) 0 0 / 100% 100%
+        no-repeat,
+      radial-gradient(closest-side at 8% 92%, #e3f3e6, rgba(227, 243, 230, 0) 100%) 0 0 / 100% 100%
+        no-repeat;
+    opacity: 0.55;
     filter: blur(56px);
     animation: holoAurora 26s ease-in-out infinite alternate;
     pointer-events: none;
