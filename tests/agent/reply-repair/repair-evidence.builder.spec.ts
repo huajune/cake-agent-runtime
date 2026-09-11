@@ -561,3 +561,62 @@ describe('RepairEvidenceBuilder', () => {
     expect(packet.recentAssistantMessages).toEqual([]);
   });
 });
+
+describe('RepairEvidenceBuilder — booking already_booked 查重证据', () => {
+  const builder = new RepairEvidenceBuilder();
+
+  // 生产 batch …_1789111221226：证据包只写"未成功（booking.already_booked）"，修复 Agent
+  // 据此编造"系统有点问题，稍后再帮你提交"。查重必须显式表达为"预约已存在"。
+  it('already_booked 标记为预约已存在，并带出在途工单号与工单面试时间', () => {
+    const packet = builder.build({
+      reply: '不好意思，刚才系统有点问题，面试预约没提交成功',
+      toolCalls: [
+        {
+          toolName: 'duliday_interview_booking',
+          args: { jobId: 528902, interviewTime: '2026-09-14 13:30:00' },
+          status: 'error',
+          result: {
+            success: false,
+            errorType: 'booking.already_booked',
+            _outcome: '当前岗位已有在途预约工单，本次未重复提交；预约已存在，不是失败',
+            existingWorkOrderId: 464336,
+            _existingInterviewTimeHuman: '9月14日（周一）13:30',
+          },
+        } as never,
+      ],
+    });
+
+    expect(packet.evidence.booking).toMatchObject({
+      success: false,
+      errorType: 'booking.already_booked',
+      alreadyBooked: true,
+      existingWorkOrderId: 464336,
+      existingInterviewTimeHuman: '9月14日（周一）13:30',
+      outcome: '当前岗位已有在途预约工单，本次未重复提交；预约已存在，不是失败',
+    });
+  });
+
+  it('真实失败不带 alreadyBooked，但保留工具的一句话结论', () => {
+    const packet = builder.build({
+      reply: '稍后再帮你提交',
+      toolCalls: [
+        {
+          toolName: 'duliday_interview_booking',
+          args: { jobId: 1 },
+          status: 'ok',
+          result: {
+            success: false,
+            errorType: 'booking.rejected',
+            _outcome: '预约未提交（缺少面试时间）',
+          },
+        } as never,
+      ],
+    });
+    expect(packet.evidence.booking).toMatchObject({
+      success: false,
+      errorType: 'booking.rejected',
+      outcome: '预约未提交（缺少面试时间）',
+    });
+    expect(packet.evidence.booking?.alreadyBooked).toBeUndefined();
+  });
+});

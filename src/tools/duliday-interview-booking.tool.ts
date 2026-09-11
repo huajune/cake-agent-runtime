@@ -349,13 +349,31 @@ export function buildInterviewBookingTool(
             .filter((entry) => entry.job_id != null && entry.job_id !== jobId)
             .map((entry) => ({ workOrderId: entry.work_order_id, jobId: entry.job_id }));
           if (duplicate) {
+            // 在途工单是候选人级（corpId+userId）而非会话级：同一候选人同时跟两个托管账号聊、
+            // 另一账号刚建单时，这里也会命中。此时预约**已经存在**，不是"没提交成功"——
+            // 回复必须如实说已约上，不得编造系统故障或承诺稍后重提（生产 batch …_1789111221226）。
             context.ledger.jobs.bookingSucceeded = true;
+            const existingInterviewTimeHuman = duplicate.interview_time
+              ? formatInterviewTimeForReply(duplicate.interview_time)
+              : undefined;
             return buildToolError({
               errorType: TOOL_ERROR_TYPES.BOOKING_ALREADY_BOOKED,
-              outcome: '近期已有当前岗位的预约工单，跳过重复提交',
+              outcome: '当前岗位已有在途预约工单，本次未重复提交；预约已存在，不是失败',
               replyInstruction:
-                '不要重复 booking。改时间用 duliday_modify_interview_time，取消用 duliday_cancel_work_order。',
-              details: { existingWorkOrderId: duplicate.work_order_id },
+                '该岗位的面试预约已经存在（可能刚由同事/另一账号提交），如实告诉候选人已经约上、不用再提交；' +
+                (existingInterviewTimeHuman
+                  ? `工单上的面试时间是 ${existingInterviewTimeHuman}，按此播报。`
+                  : '工单未记录面试时间时不要编造时间，按 [当前预约信息] 或本轮已确认的时间播报。') +
+                '禁止说"系统有问题/没提交成功/稍后再帮你提交"。改时间用 duliday_modify_interview_time，取消用 duliday_cancel_work_order。',
+              details: {
+                existingWorkOrderId: duplicate.work_order_id,
+                ...(duplicate.interview_time
+                  ? { existingInterviewTime: duplicate.interview_time }
+                  : {}),
+                ...(existingInterviewTimeHuman
+                  ? { _existingInterviewTimeHuman: existingInterviewTimeHuman }
+                  : {}),
+              },
             });
           }
 
@@ -492,7 +510,7 @@ export function buildInterviewBookingTool(
                   scope.corpId,
                   scope.userId,
                   result.workOrderId as number,
-                  { job_id: jobId },
+                  { job_id: jobId, interview_time: interviewTime ?? null },
                 ),
               );
             }

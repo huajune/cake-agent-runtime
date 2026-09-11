@@ -11,10 +11,14 @@ import { asRecord, type RuleContradiction } from '../output-rule.types';
  *   （「你定哪天/几号方便/什么时候有空」）——直接与已提交的工单矛盾；
  * - 形态 B（REPAIR）：booking **失败**却宣称正在/已经提交——
  *   与形态 A 镜像，对账的是失败路径。
- * - 形态 C（REPAIR）：候选人本轮明确说“先别报名/预约”，
+ * - 形态 C（REPAIR）：候选人本轮明确说”先别报名/预约”，
  *   回复却仍催其登记或直接承诺安排面试时间——即使没有真实调用工具，也违背了
  *   候选人的当前明确指令；候选人同时想自行到店时，也不得在提示流程后又附和
  *   “那你先自己看看”。
+ * - 形态 G（REPAIR）：booking 命中在途工单查重（`booking.already_booked`）——预约**已经存在**
+ *   （常见于同一候选人同时跟两个托管账号聊、另一账号刚建单），不是失败；回复却说
+ *   “没提交成功/系统有问题/稍后再帮你提交”，候选人会以为没约上，而重提永远不会成功
+ *   （生产 batch …_1789111221226）。该形态与形态 B 互斥：already_booked 不进失败路径。
  */
 const DATE_ASK_PATTERN =
   /(?:你|您)(?:定|看|选|挑)[^，。！？!?\n]{0,6}(?:哪一?天|几号|几点|什么时候|时间)|(?:哪一?天|几号|几点|什么时候)[^，。！？!?\n]{0,4}(?:方便|有空|合适|可以|行)[^，。！？!?\n]{0,4}[？?]?|(?:选|挑|定)(?:个|一个)[^，。！？!?\n]{0,4}(?:时间|日子|时段)/u;
@@ -210,9 +214,29 @@ function containsDirectVisitEncouragement(replyText: string): boolean {
   );
 }
 
+/** booking 工具在途工单查重回执：预约已存在、本轮未重复提交（与 tool-error-types 同字面）。 */
+const BOOKING_ALREADY_BOOKED_ERROR_TYPE = 'booking.already_booked';
+
+function isAlreadyBookedResult(call: AgentToolCall): boolean {
+  return asRecord(call.result)?.errorType === BOOKING_ALREADY_BOOKED_ERROR_TYPE;
+}
+
+/**
+ * 本轮 booking 命中在途工单查重的调用。它的 `success:false` 只表示"没有重复提交"，
+ * 预约本身已经存在，因此不算失败路径。
+ */
+function findAlreadyBookedBooking(toolCalls: AgentToolCall[]): AgentToolCall | null {
+  return (
+    toolCalls.find(
+      (call) => call.toolName === 'duliday_interview_booking' && isAlreadyBookedResult(call),
+    ) ?? null
+  );
+}
+
 function findFailedBooking(toolCalls: AgentToolCall[]): AgentToolCall | null {
   for (const call of toolCalls) {
     if (call.toolName !== 'duliday_interview_booking') continue;
+    if (isAlreadyBookedResult(call)) continue;
     if (call.status === 'error') return call;
     const result =
       call.result && typeof call.result === 'object' && !Array.isArray(call.result)
@@ -221,6 +245,59 @@ function findFailedBooking(toolCalls: AgentToolCall[]): AgentToolCall | null {
     if (result?.success === false) return call;
   }
   return null;
+}
+
+/** 回复把预约说成系统故障："系统有点问题/出了点问题/系统异常/系统故障"。 */
+const SYSTEM_FAULT_CLAIM_PATTERN = /系统[^。！？!?\n]{0,6}(?:问题|故障|异常|抽风|卡)/u;
+
+/** 回复承诺稍后重提："稍后/等下/一会/回头/明天 … 再帮你提交/报名/预约/约一次"。 */
+const RESUBMIT_PROMISE_PATTERN =
+  /(?:稍后|等下|等会|一会儿?|回头|晚点|待会儿?|明天|之后)[^。！？!?\n]{0,10}(?:再|重新)[^。！？!?\n]{0,6}(?:帮你|给你)?[^。！？!?\n]{0,4}(?:提交|报名|预约|约)/u;
+
+function readExistingWorkOrderId(booking: AgentToolCall): number | string | null {
+  const value = asRecord(booking.result)?.existingWorkOrderId;
+  return typeof value === 'number' || (typeof value === 'string' && value.trim()) ? value : null;
+}
+
+function readExistingInterviewTimeHuman(booking: AgentToolCall): string | null {
+  const value = asRecord(booking.result)?._existingInterviewTimeHuman;
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+/**
+ * 形态 G 的裁决文案。只产出 label/suggestion，`createOutputRuleFinding` 必须由入口函数
+ * 调用——目录执行覆盖测试按"入口函数内的字面 ID 调用"登记规则，放在私有 helper 里会被判未接线。
+ */
+function describeAlreadyBookedDenial(
+  replyText: string,
+  alreadyBooked: AgentToolCall,
+): { label: string; suggestion: string } | null {
+  const deniesBooking =
+    BOOKING_FAILURE_ACKNOWLEDGED_PATTERN.test(replyText) ||
+    SYSTEM_FAULT_CLAIM_PATTERN.test(replyText) ||
+    RESUBMIT_PROMISE_PATTERN.test(replyText);
+  const asksDateAgain = DATE_ASK_PATTERN.test(replyText) && !CONFIRMATION_PATTERN.test(replyText);
+  if (!deniesBooking && !asksDateAgain) return null;
+
+  const workOrderId = readExistingWorkOrderId(alreadyBooked);
+  const workOrderLabel = workOrderId != null ? `（工单 ${workOrderId}）` : '';
+  const existingTime = readExistingInterviewTimeHuman(alreadyBooked);
+  return {
+    label:
+      `本轮 duliday_interview_booking 命中在途工单查重${workOrderLabel}：预约已经存在、本轮只是没有重复提交，` +
+      (deniesBooking
+        ? '回复却告诉候选人没提交成功/系统有问题/稍后再提交——候选人会以为没约上，而重提永远不会成功'
+        : '回复却仍在向候选人征询面试日期——与已存在的预约直接矛盾') +
+      '（生产 batch …_1789111221226：同一候选人两个托管账号并聊，另一账号刚建单）',
+    suggestion:
+      `本轮 booking 返回 already_booked：候选人在该岗位已有在途工单${workOrderLabel}，预约已经存在，本轮只是没有重复提交，这不是失败。` +
+      '上一版回复把它说成没提交成功/系统故障、承诺稍后再提交，或重新征询日期，当前文本不可发送。' +
+      '请改为如实告知候选人这个岗位已经约上、不用再提交；' +
+      (existingTime
+        ? `面试时间按工单登记的「${existingTime}」播报；`
+        : '面试时间只复述本轮已经确认过的那一个，不得新增工具结果之外的时间事实；') +
+      '不得提系统问题，不得承诺稍后再提交，也不得再向候选人征询日期；其余与预约状态无关的内容逐字保留。',
+  };
 }
 
 function findSuccessfulBooking(toolCalls: AgentToolCall[]): AgentToolCall | null {
@@ -426,6 +503,15 @@ export function detectBookingReceiptMismatch(
 
   const booking = findSuccessfulBooking(toolCalls);
   if (!booking) {
+    // 形态 G：在途工单查重先于失败路径——already_booked 的 success:false 不是失败。
+    const alreadyBooked = findAlreadyBookedBooking(toolCalls);
+    if (alreadyBooked) {
+      const denial = describeAlreadyBookedDenial(replyText, alreadyBooked);
+      return denial
+        ? createOutputRuleFinding('booking_receipt_mismatch', denial.label, denial.suggestion)
+        : null;
+    }
+
     const failedBooking = findFailedBooking(toolCalls);
     if (
       failedBooking &&
