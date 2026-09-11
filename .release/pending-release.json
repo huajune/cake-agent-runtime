@@ -1,6 +1,6 @@
 {
   "baseVersion": "11.7.0",
-  "nextVersion": "11.7.1",
+  "nextVersion": "11.8.0",
   "updatedAt": "2026-09-11",
   "sourceBranch": "develop",
   "entries": [
@@ -26,6 +26,48 @@
       "envFiles": [],
       "verification": [],
       "level": "patch"
+    },
+    {
+      "number": "1266",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1266",
+      "title": "文字灰阶改墨色、主色亮丁香、语义色淡雅化、大背景近白粉紫渐变，色值收拢进 token 层",
+      "author": "huajune",
+      "mergedAt": "2026-09-11",
+      "businessUpdates": [
+        "`_variables.scss` 成为唯一色源；`main.scss` 暴露新增 token 为 CSS 变量；`THEME_COLORS` 同步（新春注释块保持原值）。",
+        "全站扫描：78 个 scss/ts(x) 文件、629 处 hex + 724 处 rgba 旧色 → `$token` / `rgba($token, α)`。红包雨、节日挂饰不在范围。",
+        "新增收资与预约事务状态机专题，架构知识库对齐 0911 现状"
+      ],
+      "summary": [
+        "全站配色升格为丁香墨色 token 层，语义色保留色相降饱和",
+        "配色收窄为文字灰阶 + 语义色，主色/底色/边框还原原值",
+        "主色与激活态渐变改丁香紫系，页面底色与边框保持原值",
+        "主色提亮为亮丁香、语义色与转化页数据色提亮、大背景改近白粉紫渐变",
+        "新增收资与预约事务状态机专题，架构知识库对齐 0911 现状",
+        "`_variables.scss` 成为唯一色源；`main.scss` 暴露新增 token 为 CSS 变量；`THEME_COLORS` 同步（新春注释块保持原值）。",
+        "全站扫描：78 个 scss/ts(x) 文件、629 处 hex + 724 处 rgba 旧色 → `$token` / `rgba($token, α)`。红包雨、节日挂饰不在范围。",
+        "文字灰阶改墨色、主色亮丁香、语义色淡雅化、大背景近白粉紫渐变，色值收拢进 token 层"
+      ],
+      "features": [
+        "`_variables.scss` 成为唯一色源；`main.scss` 暴露新增 token 为 CSS 变量；`THEME_COLORS` 同步（新春注释块保持原值）。",
+        "全站扫描：78 个 scss/ts(x) 文件、629 处 hex + 724 处 rgba 旧色 → `$token` / `rgba($token, α)`。红包雨、节日挂饰不在范围。",
+        "新增收资与预约事务状态机专题，架构知识库对齐 0911 现状"
+      ],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "全站配色升格为丁香墨色 token 层，语义色保留色相降饱和",
+        "配色收窄为文字灰阶 + 语义色，主色/底色/边框还原原值",
+        "主色与激活态渐变改丁香紫系，页面底色与边框保持原值",
+        "主色提亮为亮丁香、语义色与转化页数据色提亮、大背景改近白粉紫渐变"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`pnpm run build`（tsc + vite）通过；`pnpm run lint` 0 error（6 条既有 warning 与本次无关）。",
+        "本地 dev + 只读生产预览后端逐页看过：流水页 + 详情抽屉、转化分析、聊天记录、二次触发追溯；大背景计算样式核对为定稿渐变。"
+      ],
+      "level": "minor"
     }
   ],
   "lastRelease": {
@@ -232,5 +274,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "74ada4b6c3b5358731d5e8fd90a5a8d2422d186c"
+  "lastAnalyzedSha": "cb12f20a06884498cb935e83f0934e33871ad60d"
 }
