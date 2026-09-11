@@ -2217,60 +2217,12 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
   }
 }
 
-@keyframes holoAurora {
-  0% {
-    transform: translate3d(-3%, -2%, 0) scale(1);
-  }
-  50% {
-    transform: translate3d(4%, 3%, 0) scale(1.1);
-  }
-  100% {
-    transform: translate3d(-2%, 2%, 0) scale(1.04);
-  }
-}
-
 @keyframes holoTitlePan {
   0% {
     background-position: 0% 50%;
   }
   100% {
     background-position: 100% 50%;
-  }
-}
-
-// ── 页面底座：浅色底 + 粉彩流动极光 + 极淡网格 ──
-.page {
-  isolation: isolate;
-  overflow: clip; // 色块层 inset 为负值，不收口会撑出横向滚动
-  border-radius: 20px;
-
-  // 底色：淡紫白纸面（参考作品页 --bg / --bg-2）
-  &::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    z-index: -2;
-    background: linear-gradient(180deg, #fdf8fa 0%, #fbf5f9 100%);
-    pointer-events: none;
-  }
-
-  // 三个大模糊色块：粉（右上）/ 丁香（中左）/ 叶绿（左下），缓慢漂移
-  &::after {
-    content: '';
-    position: absolute;
-    inset: -10%;
-    z-index: -1;
-    background:
-      radial-gradient(closest-side at 84% 6%, #fadbe6, rgba(250, 219, 230, 0) 100%) 0 0 / 60% 44%
-        no-repeat,
-      radial-gradient(closest-side at 20% 28%, #fde9dd, rgba(253, 233, 221, 0) 100%) 0 0 / 100% 100%
-        no-repeat,
-      radial-gradient(closest-side at 10% 92%, #f1e4f5, rgba(241, 228, 245, 0) 100%) 0 0 / 100% 100%
-        no-repeat;
-    opacity: 0.9;
-    filter: blur(18px);
-    animation: holoAurora 26s ease-in-out infinite alternate;
-    pointer-events: none;
   }
 }
 
@@ -2287,7 +2239,6 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .page::after,
   .heroContent h1 {
     animation: none !important;
   }
