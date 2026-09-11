@@ -12,7 +12,6 @@ import type { CollectionFormService } from '@tools/collection/collection-form.se
 import type { LongTermService } from '@memory/long-term/long-term.service';
 import type { SessionStateService } from '@memory/short-term/session-state.service';
 import { sessionFactValue } from '@memory/short-term/short-term.types';
-import type { ActiveBookingEntry } from '@memory/long-term/long-term.types';
 import { Logger } from '@nestjs/common';
 import type { PrivateChatMonitorNotifierService } from '@notification/services/private-chat-monitor-notifier.service';
 import {
@@ -39,6 +38,7 @@ import {
   resolveManualInterviewGroupHandling,
 } from '@tools/booking/booking-reply-format.util';
 import { runBookingScheduleAndNameGuards } from '@tools/booking/booking-guards.util';
+import { findRecentSameJobBooking } from '@tools/booking/active-booking-dedup.util';
 import { isTestPiiPhoneAllowed, maskPhoneForDetails } from '@tools/shared/test-pii-gate';
 import { buildJobPolicyAnalysis, isWaitNoticeInterview } from '@tools/job-list/job-policy-parser';
 import { buildBookableSlots } from '@tools/booking/bookable-slot.util';
@@ -53,7 +53,6 @@ import { z } from 'zod';
 
 const logger = new Logger('duliday_interview_booking');
 const INTERVIEW_TIME_REGEX = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/u;
-const BOOKING_DEDUP_WINDOW_MS = 30 * 60 * 1000;
 
 // 程序记忆层（procedural memory）工具绑定规则；总目录：docs/prompt-rule-ledger.md
 const DESCRIPTION = `提交面试报名。候选人资料全部来自已授权的收资表单，本工具只接收 jobId 与可选 interviewTime。
@@ -341,7 +340,7 @@ export function buildInterviewBookingTool(
           const activeBookings = isAdditionalCandidate
             ? []
             : await longTermService.getActiveBookings(scope.corpId, scope.userId);
-          const duplicate = activeBookings.find((entry) => isRecentSameJobBooking(entry, jobId));
+          const duplicate = findRecentSameJobBooking(activeBookings, jobId);
           // 换店报名不自动取消旧工单（是否保留两家由候选人决定），但必须把在途的另一家亮出来让
           // 模型当轮问清，不得默默双报（badcase 9m5exulb：换到大学城店报名成功后，世纪联华店旧工单
           // 一直挂着，真人只能事后追问"是只报大学城吗"）。
@@ -761,15 +760,6 @@ async function buildLabelList(params: {
     labelList.push({ labelId: field.labelId, value });
   }
   return { labelList };
-}
-
-function isRecentSameJobBooking(entry: ActiveBookingEntry, jobId: number): boolean {
-  const linkedAt = Date.parse(entry.linked_at);
-  return (
-    Number.isFinite(linkedAt) &&
-    Date.now() - linkedAt < BOOKING_DEDUP_WINDOW_MS &&
-    (entry.job_id == null || entry.job_id === jobId)
-  );
 }
 
 function pauseUserHostingAsync(service: UserHostingService, chatId: string, reason: string): void {

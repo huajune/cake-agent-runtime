@@ -387,8 +387,10 @@ const GROUP_PURPOSE_DISTINCTION_PATTERN =
 /**
  * 本轮 precheck 返回的在途工单（duplicateBookingGuard）。
  *
- * precheck 命中它时会在 _replyInstruction 里点名"改时间用 duliday_modify_interview_time
- * （传该工单号）"；模型不照做时，工单时间与回复口径就会分叉。
+ * precheck 从候选人级 active_booking（跨托管账号共享）按 booking 同一查重窗口取同岗位在途
+ * 工单，`interviewTime` 是建单时提交的 `YYYY-MM-DD HH:mm:ss`（存量行可能没有）。命中时
+ * _replyInstruction 已点名"改时间用 duliday_modify_interview_time（传该工单号）"；模型不
+ * 照做时，工单时间与回复口径就会分叉。
  */
 function findActiveWorkOrderGuard(
   toolCalls: AgentToolCall[],

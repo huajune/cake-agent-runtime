@@ -37,12 +37,11 @@
 
 ## 4. 在途工单与防重复报名
 
-`existingRegistrations / duplicateBookingGuard` 依赖手机号对应的真实或受控活跃工单。没有可控工单时，将 case 标成 `skipped / 测试资产不可评估`，不要把“系统没有返回工单”判成修复失败，也不要为了测试在生产创建报名。
+`duplicateBookingGuard` 取自候选人级 `active_booking`（corpId+userId，跨托管账号共享）在 30 分钟查重窗口内的同岗位工单，与 booking 的 `already_booked` 同一判据。没有可控工单时，将 case 标成 `skipped / 测试资产不可评估`，不要把“系统没有返回工单”判成修复失败，也不要为了测试在生产创建报名。
 
 断言至少包含：
 
-- precheck 返回 `existingRegistrations`
-- 同岗位存在 `duplicateBookingGuard`
+- 同岗位存在 `duplicateBookingGuard` 且 precheck 返回 `nextAction=already_booked`
 - 本轮没有调用重复 booking
 - 改约/取消只使用工具返回的真实工单号
 

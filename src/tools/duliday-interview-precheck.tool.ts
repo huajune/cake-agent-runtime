@@ -1,5 +1,6 @@
 import { toErrorMessage } from '@infra/utils/error.util';
 import type { CollectionFormService } from '@tools/collection/collection-form.service';
+import type { LongTermService } from '@memory/long-term/long-term.service';
 import { Logger } from '@nestjs/common';
 import {
   ageBoundarySignalOf,
@@ -47,6 +48,8 @@ import {
 } from '@tools/collection/field-value-proposal-input';
 import { renderRecap, renderRecapRedeliveryText } from '@tools/collection/recap-renderer';
 import { renderRejection } from '@tools/collection/rejection-renderer';
+import { findRecentSameJobBooking } from '@tools/booking/active-booking-dedup.util';
+import { formatInterviewTimeForReply } from '@tools/booking/booking-reply-format.util';
 import {
   buildBookableSlots,
   buildScheduleRule,
@@ -120,7 +123,8 @@ export const PRECHECK_DESCRIPTION = `面试前置校验。实时读取岗位收�
 - handoff：停止收资并转人工。
 - age_boundary_handoff：候选人年龄在岗位要求的弹性带内，报名接口必拒；资料不重问、禁止 booking，调用 request_handoff（identity_age_exception）交人工裁量。
 - ready_to_book：才允许调用 duliday_interview_booking；booking 成功前禁止声称已报名。
-- already_submitted：停止重复提交。`;
+- already_submitted：停止重复提交。
+- already_booked：候选人在该岗位已有在途工单（见 duplicateBookingGuard，可能刚由同事/另一账号提交），预约已经存在；禁止 booking、不再收资或征询日期，如实告知已约上并按工单登记的面试时间播报。改时间用 duliday_modify_interview_time（传 duplicateBookingGuard.workOrderId），取消用 duliday_cancel_work_order。`;
 
 export const PRECHECK_INPUT_SCHEMA = z
   .object({
@@ -180,6 +184,22 @@ export interface PrecheckAdjudicationDeps {
   observer?: { emit: (event: AgentEvent) => void };
   collectionForms?: CollectionFormService;
   identityAnchors?: string;
+  /**
+   * 候选人级在途工单（active_booking，跨托管账号共享）。缺省时跳过同岗位查重——
+   * 生产注册必须注入，否则另一账号刚建的单只能等 booking 被查重打回才暴露。
+   */
+  longTermService?: Pick<LongTermService, 'getActiveBookings'>;
+}
+
+/**
+ * precheck 侧的在途工单回执。与出站守卫（booking-receipt / booking-claim-reconciliation）
+ * 读取的字段名成对：`workOrderId`、`interviewTime`（`YYYY-MM-DD HH:mm:ss`，守卫按钟点对账）。
+ */
+interface DuplicateBookingGuard {
+  workOrderId: number;
+  interviewTime?: string;
+  interviewTimeHuman?: string;
+  note: string;
 }
 
 interface FormRun {
@@ -445,7 +465,8 @@ type PrecheckAction =
   | 'handoff'
   | 'age_boundary_handoff'
   | 'ready_to_book'
-  | 'already_submitted';
+  | 'already_submitted'
+  | 'already_booked';
 
 export function buildInterviewPrecheckTool(
   spongeService: SpongeService,
@@ -589,10 +610,17 @@ export function buildInterviewPrecheckTool(
                 (slot) => slot.bookingAllowed && slot.interviewTime === selectedDraftTime,
               ),
           );
+          const duplicateBookingGuard = await resolveDuplicateBookingGuard({
+            deps,
+            context,
+            jobId,
+            form: formRun.form,
+          });
           const nextAction = actionForForm(
             formRun,
             interviewTimeWaitNotice,
             selectedTimeBookingAllowed,
+            duplicateBookingGuard,
           );
           context.ledger.jobs.collectionReadyJobId = undefined;
 
@@ -641,7 +669,8 @@ export function buildInterviewPrecheckTool(
             nextAction,
             collectionVerdict: formRun.verdict,
             candidateScope: formRun.form.candidateScope ?? 'primary',
-            _replyInstruction: replyInstruction(nextAction, formRun),
+            _replyInstruction: replyInstruction(nextAction, formRun, duplicateBookingGuard),
+            duplicateBookingGuard,
             job: {
               jobId,
               brandName: normalizePolicyText(job.basicInfo.brandName),
@@ -994,7 +1023,12 @@ function actionForForm(
   run: FormRun,
   waitNotice: boolean,
   selectedTimeBookingAllowed: boolean,
+  duplicateBookingGuard?: DuplicateBookingGuard,
 ): PrecheckAction {
+  // 本表单自己已提交的工单优先（它知道自己的 workOrderId）；其余任何状态下，候选人名下
+  // 查重窗口内的同岗位在途工单都是既成事实——继续收资/筛退/ready_to_book 都会引向一次
+  // 注定被查重打回的 booking，或让候选人被重复索要资料。
+  if (run.verdict !== 'submitted' && duplicateBookingGuard) return 'already_booked';
   switch (run.verdict) {
     case 'collecting':
       return 'collect_fields';
@@ -1022,7 +1056,11 @@ function actionForForm(
   }
 }
 
-function replyInstruction(action: PrecheckAction, run: FormRun): string {
+function replyInstruction(
+  action: PrecheckAction,
+  run: FormRun,
+  duplicateBookingGuard?: DuplicateBookingGuard,
+): string {
   switch (action) {
     case 'collect_fields': {
       // 有拒收时先讲清楚"你提交的被退回了、按 hint 改"，否则模型只看到字段还缺、
@@ -1070,7 +1108,55 @@ function replyInstruction(action: PrecheckAction, run: FormRun): string {
         : '候选人资料已授权，且非 wait_notice 岗位的预约草稿已通过本轮实时复验。可以调用 duliday_interview_booking；只有 booking success=true 后才能说已报名。';
     case 'already_submitted':
       return `当前表单已提交（工单 ${run.form.workOrderId ?? 'unknown'}），禁止重复 booking。`;
+    case 'already_booked': {
+      const workOrderId = duplicateBookingGuard?.workOrderId ?? 'unknown';
+      const timeHuman = duplicateBookingGuard?.interviewTimeHuman;
+      return (
+        `候选人在该岗位已有在途预约工单（工单 ${workOrderId}${timeHuman ? `，面试时间 ${timeHuman}` : ''}），可能刚由同事/另一账号提交：预约已经存在，` +
+        '禁止调用 duliday_interview_booking，也不要再收资或征询日期。如实告诉候选人已经约上、不用再提交；' +
+        (timeHuman
+          ? '面试时间按上述工单登记时间播报。'
+          : '工单未记录面试时间，不要编造时间，只复述本轮已确认过的时间。') +
+        '禁止说"系统有问题/没提交成功/稍后再帮你提交"。' +
+        `改时间用 duliday_modify_interview_time（workOrderId=${workOrderId}），取消用 duliday_cancel_work_order。`
+      );
+    }
   }
+}
+
+/**
+ * 候选人名下查重窗口内的同岗位在途工单 → 模型可见回执。
+ *
+ * 判据与 booking 工具共用 `findRecentSameJobBooking`；追加候选人（朋友/家人代报）的表单
+ * 与 booking 同口径豁免——active_booking 属于当前聊天联系人，不能拿它拦截他人的独立报名。
+ * 读失败由 LongTermService 吞成空列表，这里不再兜底。
+ */
+async function resolveDuplicateBookingGuard(params: {
+  deps: PrecheckAdjudicationDeps;
+  context: Parameters<ToolBuilder>[0];
+  jobId: number;
+  form: BookingCollectionForm;
+}): Promise<DuplicateBookingGuard | undefined> {
+  if (!params.deps.longTermService || params.form.candidateScope === 'additional') {
+    return undefined;
+  }
+  const activeBookings = await params.deps.longTermService.getActiveBookings(
+    params.context.session.corpId,
+    params.context.session.userId,
+  );
+  const duplicate = findRecentSameJobBooking(activeBookings, params.jobId);
+  if (!duplicate) return undefined;
+
+  const interviewTime = duplicate.interview_time ?? undefined;
+  logger.log(
+    `[precheck] 命中候选人名下同岗位在途工单: jobId=${params.jobId} workOrderId=${duplicate.work_order_id}`,
+  );
+  return {
+    workOrderId: duplicate.work_order_id,
+    interviewTime,
+    interviewTimeHuman: interviewTime ? formatInterviewTimeForReply(interviewTime) : undefined,
+    note: '候选人在当前岗位已有在途工单，预约已经存在；严禁再次 booking 重复报名，改时间用 duliday_modify_interview_time，取消用 duliday_cancel_work_order。',
+  };
 }
 
 function selectRequestedInterviewTime(
