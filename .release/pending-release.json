@@ -37,6 +37,32 @@
       ],
       "verification": [],
       "level": "patch"
+    },
+    {
+      "number": "1251",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1251",
+      "title": "记忆值质量修复四项 + 下线已耗尽的旧数据兼容",
+      "author": "huajune",
+      "mergedAt": "2026-09-11",
+      "businessUpdates": [
+        "记忆值质量修复四项 + 下线已耗尽的旧数据兼容"
+      ],
+      "summary": [
+        "记忆值质量修复四项 + 下线已耗尽的旧数据兼容",
+        "长期记忆存量形态一次性归一，删除读边界懒迁移与旧 source 映射"
+      ],
+      "features": [],
+      "fixes": [
+        "记忆值质量修复四项 + 下线已耗尽的旧数据兼容"
+      ],
+      "optimizations": [
+        "长期记忆存量形态一次性归一，删除读边界懒迁移与旧 source 映射"
+      ],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": [],
+      "level": "patch"
     }
   ],
   "lastRelease": {
@@ -108,5 +134,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "9cbd0b261f7daac9589520d1cfe8418dfe36fa53"
+  "lastAnalyzedSha": "559f0abf346f7d66f9816b137af244245fe1099c"
 }
