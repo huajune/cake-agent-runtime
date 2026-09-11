@@ -621,7 +621,7 @@ export default function Config() {
     <div className={styles.page}>
       <ControlBar
         title="运行时配置"
-        subtitle="统一管理企微回调模型、消息节奏和运行开关，只放真正影响当前运行方式的配置"
+        subtitle="模型、节奏与开关"
         hints={[{ label: '表单项需保存' }, { label: '开关即时生效' }]}
         hasChanges={hasChanges}
         pendingChangeCount={pendingChangeCount}
@@ -657,8 +657,7 @@ export default function Config() {
                   {renderSectionModeBadge('save')}
                 </h3>
                 <p className={styles.moduleDescription}>
-                  七个 Agent 角色各用哪个模型。留空走后端环境变量的默认路由，改动保存后约 5
-                  秒内全实例生效，无需发版。
+                  各角色用哪个模型，留空走默认路由，保存后 5 秒生效。
                 </p>
               </div>
             </div>
@@ -791,9 +790,7 @@ export default function Config() {
                   回复节奏
                   {renderSectionModeBadge('save')}
                 </h3>
-                <p className={styles.moduleDescription}>
-                  决定回复偏速度还是偏推理，以及消息发出时表现出来的拟人节奏。
-                </p>
+                <p className={styles.moduleDescription}>回复偏速度还是偏推理，以及发送节奏。</p>
               </div>
             </div>
 
@@ -896,9 +893,7 @@ export default function Config() {
                   消息处理与调度
                   {renderSectionModeBadge('mixed')}
                 </h3>
-                <p className={styles.moduleDescription}>
-                  用来控制消息何时触发一轮新请求，以及 Worker 如何消化这些请求。
-                </p>
+                <p className={styles.moduleDescription}>消息何时触发请求，Worker 如何消化。</p>
               </div>
             </div>
 
@@ -968,8 +963,7 @@ export default function Config() {
                   {renderSectionModeBadge('instant')}
                 </h3>
                 <p className={styles.moduleDescription}>
-                  回复发出前只检查格式、封闭高风险词形和结构化工具回执。开放对话语义由主 Agent
-                  承担；这里不运行第二个模型。
+                  发送前的格式与工具回执检查，不跑第二个模型。
                 </p>
               </div>
             </div>
@@ -1067,9 +1061,7 @@ export default function Config() {
                   {renderSectionModeBadge('instant')}
                 </h3>
                 <p className={styles.moduleDescription}>
-                  候选人沉默后由 Agent
-                  主动跟进：开场未回、报名未完成、面试提醒等场景到点生成跟进消息。
-                  开关即时生效；灰度期先开 Shadow 观测看"本应发什么"，达标后再切真实发送。
+                  候选人沉默后按场景到点跟进；Shadow 只观测不发送。
                 </p>
               </div>
             </div>
@@ -1195,9 +1187,7 @@ export default function Config() {
                   群任务通知
                   {renderSectionModeBadge('instant')}
                 </h3>
-                <p className={styles.moduleDescription}>
-                  管理 Cron 自动推送与手动触发入口。这里的开关都是即时生效，不需要额外保存。
-                </p>
+                <p className={styles.moduleDescription}>Cron 自动推送与手动触发入口。</p>
               </div>
             </div>
 
