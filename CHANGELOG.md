@@ -14,7 +14,7 @@
 **预计版本**: `v11.7.0`
 **最近更新**: `2026-09-11`
 **来源分支**: `develop`
-**累计 PR**: 4
+**累计 PR**: 5
 
 ### 更新摘要
 - PR #1250 会话状态 TTL 与沉淀间隙统一为 7 天，收资单据同步对齐
@@ -40,10 +40,17 @@
 - PR #1256 **长期记忆** `ActiveBookingEntry` 新增 `interview_time`（JSONB 内字段，无迁移），建单时随 `job_id` 写入；存量行为空时回执不编造时间。
 - PR #1256 **修复证据包** `BookingEvidence` 加 `alreadyBooked / outcome / existingWorkOrderId / existingInterviewTimeHuman`，`ReplyRepairAgent` 渲染为「预约已经存在，本轮未重复提交——这不是失败」。
 - PR #1256 `docs/prompt-rule-ledger.md` 登记形态 G 与工具回执改口径。
+- PR #1257 候选人级在途工单查重前移到 precheck，恢复 duplicateBookingGuard 守卫接线
+- PR #1257 **查重前移到 precheck**：注入 `LongTermService`，按 booking 同一判据读 `active_booking`；命中即 `nextAction=already_booked` + `duplicateBookingGuard { workOrderId, interviewTime?, interviewTimeHuman?, note }`。指令：如实说已约上、按工单登记时间播报，禁止 booking / 再收资 / 征询日期，禁止"系统故障 / 稍后重提"口径，改时间 modify、取消 cancel。本表单自身已提交仍优先 `already_submitted`；追加候选人（代报）表单与 booking 同口径豁免；不发 `precheck.passed`。
+- PR #1257 **共享判据**：30 分钟同岗位查重抽成 `src/tools/booking/active-booking-dedup.util.ts`，booking 改为共用（语义不变：`job_id` 为空存量行按命中）。
+- PR #1257 **守卫接线恢复**：`duplicateBookingGuard` 随 #1023 收资切换消失后，`interview_time_change_unconfirmed`（形态 F，P0 repair）与 `booking_done_claim_*` 的在途工单豁免一直空转。字段按守卫读取口径恢复，新增 precheck 真实回执 → 两个检测器的契约配对测试。
+- PR #1257 **`interview_time` 随工单指针落库**：`ActiveBookingEntry` 新增可选 `interview_time`，建单时写入；booking `already_booked` 回执改为"预约已存在"口径并带 `existingWorkOrderId` / `_existingInterviewTimeHuman`。⚠️ 这部分与 booking 侧 already_booked 修复（另一会话，含守卫形态 G / 修复证据包）**同批镜像、hunk 逐字一致**，两个 PR 任一先合都不冲突。
+- PR #1257 `duliday_modify_interview_time` 描述删除已不存在的 `existingRegistrations` 来源，改指向 `duplicateBookingGuard.workOrderId`；badcase skill fixture 说明同步；`docs/prompt-rule-ledger.md` precheck / modify 行登记。
 
 ### 新功能
 - PR #1256 **守卫** `booking-receipt.rule.ts`：新增形态 G，`already_booked` 先于失败路径判定。回复说「没提交成功/系统故障/稍后再提交」或重新征询日期 → repair，指令要求如实说「已约上」并按工单登记时间播报；如实播报已约上放行。真实失败（`rejected` 等）仍按 2026-08-27 口径放行「稍后再帮你提交」。
 - PR #1256 **长期记忆** `ActiveBookingEntry` 新增 `interview_time`（JSONB 内字段，无迁移），建单时随 `job_id` 写入；存量行为空时回执不编造时间。
+- PR #1257 **守卫接线恢复**：`duplicateBookingGuard` 随 #1023 收资切换消失后，`interview_time_change_unconfirmed`（形态 F，P0 repair）与 `booking_done_claim_*` 的在途工单豁免一直空转。字段按守卫读取口径恢复，新增 precheck 真实回执 → 两个检测器的契约配对测试。
 
 ### 问题修复
 - PR #1250 `MEMORY_SESSION_TTL_DAYS` / `MEMORY_SETTLEMENT_GAP_DAYS` 默认 3 → 7；消息回看窗口维持 7 天；间隙 ≥ TTL 的不变式保持，factsv2 12 小时沉淀余量不变
@@ -53,6 +60,10 @@
 - PR #1256 **booking 工具**查重回执：`_outcome` / `_replyInstruction` 改为「预约已存在、不是失败」，明令禁止系统故障/稍后重提口径；带出 `existingWorkOrderId`、`existingInterviewTime`、`_existingInterviewTimeHuman`。
 - PR #1256 **修复证据包** `BookingEvidence` 加 `alreadyBooked / outcome / existingWorkOrderId / existingInterviewTimeHuman`，`ReplyRepairAgent` 渲染为「预约已经存在，本轮未重复提交——这不是失败」。
 - PR #1256 `docs/prompt-rule-ledger.md` 登记形态 G 与工具回执改口径。
+- PR #1257 **查重前移到 precheck**：注入 `LongTermService`，按 booking 同一判据读 `active_booking`；命中即 `nextAction=already_booked` + `duplicateBookingGuard { workOrderId, interviewTime?, interviewTimeHuman?, note }`。指令：如实说已约上、按工单登记时间播报，禁止 booking / 再收资 / 征询日期，禁止"系统故障 / 稍后重提"口径，改时间 modify、取消 cancel。本表单自身已提交仍优先 `already_submitted`；追加候选人（代报）表单与 booking 同口径豁免；不发 `precheck.passed`。
+- PR #1257 **共享判据**：30 分钟同岗位查重抽成 `src/tools/booking/active-booking-dedup.util.ts`，booking 改为共用（语义不变：`job_id` 为空存量行按命中）。
+- PR #1257 **`interview_time` 随工单指针落库**：`ActiveBookingEntry` 新增可选 `interview_time`，建单时写入；booking `already_booked` 回执改为"预约已存在"口径并带 `existingWorkOrderId` / `_existingInterviewTimeHuman`。⚠️ 这部分与 booking 侧 already_booked 修复（另一会话，含守卫形态 G / 修复证据包）**同批镜像、hunk 逐字一致**，两个 PR 任一先合都不冲突。
+- PR #1257 `duliday_modify_interview_time` 描述删除已不存在的 `existingRegistrations` 来源，改指向 `duplicateBookingGuard.workOrderId`；badcase skill fixture 说明同步；`docs/prompt-rule-ledger.md` precheck / modify 行登记。
 
 ### 优化调整
 - PR #1251 长期记忆存量形态一次性归一，删除读边界懒迁移与旧 source 映射
@@ -70,6 +81,7 @@
 - PR #1254 转化分析 KPI 卡改纯白纸面：去图标大阴影与整面淡色渐变，环比胶囊实白细边
 - PR #1254 转化分析 KPI 区提亮：卡片下垫白色托盘，卡片改白边，图标色阶调亮
 - PR #1256 booking 查重命中 already_booked 视为预约已存在，不再当失败改写
+- PR #1257 候选人级在途工单查重前移到 precheck，恢复 duplicateBookingGuard 守卫接线
 
 ### 配置变更
 - 无
@@ -81,6 +93,9 @@
 - PR #1256 `tsc --noEmit` 通过；改动文件 eslint / prettier 通过
 - PR #1256 全量 Jest：469 suites / 6898 tests 全绿（含 `output-rule-catalog.spec` 执行覆盖校验）
 - PR #1256 新增用例：形态 G 四种否认口径拦截、如实播报放行、重新征询日期拦截、真实失败不受影响；booking 工具查重回执字段；证据包 already_booked 投影；store `interview_time` 透传
+- PR #1257 `lint:check` / `format:check` / `typecheck` / `geo:validate` / `vocab:validate` / `quality-ledger:validate` 通过
+- PR #1257 全量 jest：470 套件 6900 用例通过（`ci:check` 的 `build:ci` 在本 worktree 因 `web/node_modules` 未安装失败，与本 PR 无关，未动 web）
+- PR #1257 新增用例：窗口边界 / 不同岗位 / 存量空 `job_id` / 无 `interview_time` / 收资中截住 / 已提交优先 / 代报豁免 / 未注入依赖跳过 / 守卫契约配对
 <!-- release:pending:end -->
 
 ## [11.6.0] - 2026-09-10
