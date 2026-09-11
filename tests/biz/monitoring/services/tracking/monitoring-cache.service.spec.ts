@@ -40,6 +40,58 @@ describe('MonitoringCacheService', () => {
     expect(service).toBeDefined();
   });
 
+  describe('resyncActiveRequests', () => {
+    const ACTIVE_KEY = 'monitoring:active_requests';
+    const PEAK_KEY = 'monitoring:peak_active_requests';
+
+    it('should overwrite the active counter with the DB truth', async () => {
+      redisStore.set(ACTIVE_KEY, 410);
+      redisStore.set(PEAK_KEY, 420);
+
+      await service.resyncActiveRequests(4);
+
+      expect(await service.getActiveRequests()).toBe(4);
+    });
+
+    it('should reset the peak to current when the stored counter leaked above the truth', async () => {
+      redisStore.set(ACTIVE_KEY, 410);
+      redisStore.set(PEAK_KEY, 420);
+
+      await service.resyncActiveRequests(4);
+
+      expect(await service.getPeakActiveRequests()).toBe(4);
+    });
+
+    it('should keep the higher peak when the counter had not leaked', async () => {
+      redisStore.set(ACTIVE_KEY, 3);
+      redisStore.set(PEAK_KEY, 9);
+
+      await service.resyncActiveRequests(5);
+
+      expect(await service.getActiveRequests()).toBe(5);
+      expect(await service.getPeakActiveRequests()).toBe(9);
+    });
+
+    it('should raise the peak when the truth exceeds the stored peak', async () => {
+      redisStore.set(ACTIVE_KEY, 3);
+      redisStore.set(PEAK_KEY, 4);
+
+      await service.resyncActiveRequests(7);
+
+      expect(await service.getPeakActiveRequests()).toBe(7);
+    });
+
+    it('should normalize negative or non-finite input to zero', async () => {
+      redisStore.set(ACTIVE_KEY, 2);
+      redisStore.set(PEAK_KEY, 2);
+
+      await service.resyncActiveRequests(-3);
+
+      expect(await service.getActiveRequests()).toBe(0);
+      expect(await service.getPeakActiveRequests()).toBe(0);
+    });
+  });
+
   describe('incrementCounter', () => {
     it('should increment the specified counter field', async () => {
       await service.incrementCounter('totalMessages', 1);

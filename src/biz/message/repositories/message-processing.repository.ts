@@ -162,6 +162,49 @@ export class MessageProcessingRepository extends BaseRepository {
   }
 
   /**
+   * 自 sinceTime 起仍处于 processing 的记录数（DB 侧 count，head-only 不拉行）。
+   * 在途请求的唯一真相源：Redis 计数器会因超时回收 / 进程重启漏减而漂移。
+   */
+  async countProcessingSince(sinceTime: number): Promise<number> {
+    return this.count((q) =>
+      q.eq('status', 'processing').gte('received_at', new Date(sinceTime).toISOString()),
+    );
+  }
+
+  /**
+   * 自 sinceTime 起成功回合的 total_duration（只投影一列，按 received_at 倒序取最近 limit 条）。
+   */
+  async getSuccessDurationsSince(sinceTime: number, limit: number): Promise<number[]> {
+    if (!this.isAvailable()) {
+      return [];
+    }
+
+    try {
+      const rows = await this.select<{ total_duration: number | string | null }>(
+        'total_duration',
+        (q) =>
+          q
+            .eq('status', 'success')
+            .gte('received_at', new Date(sinceTime).toISOString())
+            .order('received_at', { ascending: false })
+            .limit(limit),
+      );
+
+      const durations: number[] = [];
+      for (const row of rows) {
+        const duration = this.parseNumber(row.total_duration);
+        if (duration !== undefined && duration > 0) {
+          durations.push(duration);
+        }
+      }
+      return durations;
+    } catch (error) {
+      this.logger.error('[成功耗时] 查询失败:', error);
+      return [];
+    }
+  }
+
+  /**
    * 获取最慢的处理请求（按 AI 处理耗时降序）
    */
   async getSlowestMessages(

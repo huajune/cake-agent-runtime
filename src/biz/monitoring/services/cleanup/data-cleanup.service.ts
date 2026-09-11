@@ -7,6 +7,7 @@ import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { GuardrailReviewService } from '@biz/message/services/guardrail-review.service';
 import { MessageProcessingService } from '@biz/message/services/message-processing.service';
 import { AgentExecutionEventRepository } from '../../repositories/agent-execution-event.repository';
+import { MonitoringCacheService } from '../tracking/monitoring-cache.service';
 import { MonitoringErrorLogRepository } from '../../repositories/error-log.repository';
 import { ReengagementTouchRepository } from '../../repositories/reengagement-touch.repository';
 import { MonitoringHourlyStatsRepository } from '../../repositories/hourly-stats.repository';
@@ -72,6 +73,7 @@ export class DataCleanupService implements OnModuleInit {
     private readonly hourlyStatsRepository: MonitoringHourlyStatsRepository,
     private readonly dailyStatsRepository: MonitoringDailyStatsRepository,
     private readonly handoffEventsRepository: HandoffEventsRepository,
+    private readonly monitoringCacheService: MonitoringCacheService,
     @Optional()
     private readonly exceptionNotifier?: IncidentReporterService,
   ) {
@@ -419,6 +421,8 @@ export class DataCleanupService implements OnModuleInit {
       const updatedCount = await this.messageProcessingService.timeoutStuckRecords(30);
       if (updatedCount > 0) {
         this.logger.log(`[数据清理] 已将 ${updatedCount} 条卡住的 processing 记录标记为 timeout`);
+        // 这些行的 +1 从未走到 -1，同步扣掉 Redis 在途计数，避免两次读取之间持续漂移
+        await this.monitoringCacheService.incrementActiveRequests(-updatedCount);
         // timeout = 候选人消息被静默丢弃、无任何回复（生产日均 ~7 条，曾连带复聊误停，
         // 见 ）。只落日志运营无感知，按批告警到飞书让静默丢消息可被运营看见。
         this.exceptionNotifier?.notifyAsync({

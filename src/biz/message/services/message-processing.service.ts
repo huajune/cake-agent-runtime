@@ -157,6 +157,20 @@ export class MessageProcessingService {
   }
 
   /**
+   * 自 sinceTime 起仍在 processing 的记录数（在途请求真相源，供 System 面板使用）。
+   */
+  async countProcessingRecordsSince(sinceTime: number): Promise<number> {
+    return this.messageProcessingRepository.countProcessingSince(sinceTime);
+  }
+
+  /**
+   * 自 sinceTime 起成功回合的 total_duration 列表（供 P95 计算，只投影一列）。
+   */
+  async getSuccessDurationsSince(sinceTime: number, limit: number): Promise<number[]> {
+    return this.messageProcessingRepository.getSuccessDurationsSince(sinceTime, limit);
+  }
+
+  /**
    * 获取 Dashboard 业务趋势所需的轻量记录。
    */
   async getBusinessTrendRecordsByTimeRange(startTime: number, endTime: number, limit?: number) {

@@ -10,10 +10,7 @@ import {
   Legend,
   Filler,
 } from 'chart.js';
-import {
-  useAgentReplyConfig,
-  useUpdateAgentReplyConfig,
-} from '@/hooks/config/useSystemConfig';
+import { useAgentReplyConfig, useUpdateAgentReplyConfig } from '@/hooks/config/useSystemConfig';
 import { useSystemMonitoring } from '@/hooks/analytics/useDashboard';
 import { useMetrics } from '@/hooks/analytics/useMetrics';
 import { formatDuration, formatHourLabel } from '@/utils/format';
@@ -36,7 +33,7 @@ ChartJS.register(
   Title,
   Tooltip,
   Legend,
-  Filler
+  Filler,
 );
 
 export default function System() {
@@ -104,12 +101,12 @@ export default function System() {
     updateConfig.mutate({ businessAlertEnabled: newValue });
   };
 
-  // 错误趋势图表数据（24小时）
+  // 告警趋势图表数据：后端按小时分桶并从今日 0 点补零，minute 形如 "YYYY-MM-DD HH:00"
   const alertChartData = {
     labels: alertTrend.map((p) => formatHourLabel(p.minute)),
     datasets: [
       {
-        label: '错误次数',
+        label: '告警次数',
         data: alertTrend.map((p) => p.count || 0),
         borderColor: '#ef4444',
         backgroundColor: (context: { chart: { ctx: CanvasRenderingContext2D } }) => {
@@ -145,7 +142,7 @@ export default function System() {
         usePointStyle: true,
         displayColors: false,
         callbacks: {
-          label: (context: { parsed: { y: number | null } }) => `${context.parsed.y ?? 0} 次错误`,
+          label: (context: { parsed: { y: number | null } }) => `${context.parsed.y ?? 0} 次告警`,
         },
       },
     },
@@ -189,7 +186,7 @@ export default function System() {
             value: `${queue?.peakActiveRequests ?? '-'}`,
             label: '运行期峰值',
           }}
-          title="当前尚未完成的请求数量"
+          title="当前仍处于 processing 状态的消息处理记录数（近 24 小时，以数据库为准）"
         />
         <KpiCard
           icon="⏱️"
@@ -198,12 +195,12 @@ export default function System() {
           value={percentiles?.p95 ? formatDuration(percentiles.p95) : '-'}
           valueVariant="warning"
           trend={{ direction: 'flat', value: 'E2E', label: '全流程' }}
-          title="95% 的请求会在这个总耗时内完成（从接收到全部处理完成）"
+          title="今日成功回合 P95：今日（0 点起）status=success 的回合中，95% 会在这个总耗时内完成（从接收到全部处理完成，最近 1000 条样本）"
         />
         <KpiCard
           icon="🚨"
           variant="danger"
-          label="今日错误"
+          label="今日告警"
           value={alerts?.total ?? '-'}
           valueVariant="danger"
           trend={{
@@ -211,7 +208,7 @@ export default function System() {
             value: `+${alerts?.lastHour ?? 0}`,
             label: '近1小时',
           }}
-          title="今日消息处理错误总数（非飞书告警数）"
+          title="今日飞书告警持久化记录数（含基础设施/定时任务/守卫拦截等所有子系统，非仅消息处理错误）"
         />
         <KpiCard
           icon="🌊"

@@ -52,6 +52,8 @@ describe('AnalyticsQueryService', () => {
   const mockMessageProcessingService = {
     getRecordsByTimeRange: jest.fn(),
     getQueueDurationStats: jest.fn(),
+    countProcessingRecordsSince: jest.fn(),
+    getSuccessDurationsSince: jest.fn(),
     getRecordsByTimestamps: recordsByTimestampsMock,
     getMessageProcessingRecords: recordsByTimestampsMock,
     getMessageStatsByTimestamps: messageStatsByTimestampsMock,
@@ -82,6 +84,7 @@ describe('AnalyticsQueryService', () => {
 
   const mockCacheService = {
     getCounters: jest.fn(),
+    resyncActiveRequests: jest.fn().mockResolvedValue(undefined),
   };
 
   const mockMessageTrackingService = {
@@ -155,6 +158,9 @@ describe('AnalyticsQueryService', () => {
 
     // Setup defaults
     mockMessageProcessingService.getRecordsByTimeRange.mockResolvedValue([]);
+    mockMessageProcessingService.countProcessingRecordsSince.mockResolvedValue(0);
+    mockMessageProcessingService.getSuccessDurationsSince.mockResolvedValue([]);
+    mockCacheService.resyncActiveRequests.mockResolvedValue(undefined);
     mockMessageProcessingService.getRecordsByTimestamps.mockResolvedValue({
       records: [],
       total: 0,
@@ -265,6 +271,73 @@ describe('AnalyticsQueryService', () => {
       expect(result.queue.avgQueueDuration).toBe(500);
     });
 
+    it('should take activeRequests from the DB processing count, not the Redis counter', async () => {
+      // Redis 计数器超时回收 / 进程重启漏减会漂到几百；DB 里仍为 processing 的行才是真值
+      mockMessageProcessingService.getQueueDurationStats.mockResolvedValue({
+        sampleCount: 0,
+        avgQueueDuration: 0,
+      });
+      mockMessageProcessingService.countProcessingRecordsSince.mockResolvedValue(4);
+      mockMessageTrackingService.getActiveRequests.mockResolvedValue(410);
+
+      const result = await service.getSystemMonitoringAsync();
+
+      expect(result.queue.activeRequests).toBe(4);
+      expect(mockMessageTrackingService.getActiveRequests).not.toHaveBeenCalled();
+    });
+
+    it('should only count processing rows received within the last 24 hours', async () => {
+      mockMessageProcessingService.getQueueDurationStats.mockResolvedValue({
+        sampleCount: 0,
+        avgQueueDuration: 0,
+      });
+      const before = Date.now();
+
+      await service.getSystemMonitoringAsync();
+
+      const [sinceTime] = mockMessageProcessingService.countProcessingRecordsSince.mock.calls[0];
+      expect(before - sinceTime).toBeGreaterThanOrEqual(24 * 60 * 60 * 1000);
+      expect(Date.now() - sinceTime).toBeLessThan(24 * 60 * 60 * 1000 + 5000);
+    });
+
+    it('should resync the Redis counter to the DB truth before reading the peak', async () => {
+      mockMessageProcessingService.getQueueDurationStats.mockResolvedValue({
+        sampleCount: 0,
+        avgQueueDuration: 0,
+      });
+      mockMessageProcessingService.countProcessingRecordsSince.mockResolvedValue(4);
+      const callOrder: string[] = [];
+      mockCacheService.resyncActiveRequests.mockImplementation(async () => {
+        callOrder.push('resync');
+      });
+      mockMessageTrackingService.getPeakActiveRequests.mockImplementation(async () => {
+        callOrder.push('peak');
+        return 4;
+      });
+
+      const result = await service.getSystemMonitoringAsync();
+
+      expect(mockCacheService.resyncActiveRequests).toHaveBeenCalledWith(4);
+      expect(callOrder).toEqual(['resync', 'peak']);
+      expect(result.queue.peakActiveRequests).toBe(4);
+    });
+
+    it('should report zero active requests when the DB count fails instead of falling back to Redis', async () => {
+      mockMessageProcessingService.getQueueDurationStats.mockResolvedValue({
+        sampleCount: 0,
+        avgQueueDuration: 0,
+      });
+      mockMessageProcessingService.countProcessingRecordsSince.mockRejectedValue(
+        new Error('DB error'),
+      );
+      mockMessageTrackingService.getActiveRequests.mockResolvedValue(410);
+
+      const result = await service.getSystemMonitoringAsync();
+
+      expect(result.queue.activeRequests).toBe(0);
+      expect(mockCacheService.resyncActiveRequests).toHaveBeenCalledWith(0);
+    });
+
     it('should calculate alertsSummary correctly with timestamps', async () => {
       const now = Date.now();
       const errorLogs = [
@@ -363,6 +436,7 @@ describe('AnalyticsQueryService', () => {
         records,
         total: records.length,
       });
+      mockMessageProcessingService.getSuccessDurationsSince.mockResolvedValue([1000, 5000, 10000]);
 
       const result = await service.getMetricsDataAsync();
 
@@ -374,20 +448,60 @@ describe('AnalyticsQueryService', () => {
       expect(result.percentiles.p50).toBeGreaterThan(0);
     });
 
-    it('should filter out records exceeding MAX_DURATION_MS (60s) for percentile calc', async () => {
-      const records = [
-        buildRecord({ totalDuration: 5000 }),
-        buildRecord({ totalDuration: 70000 }), // exceeds 60s, excluded from percentiles
-      ];
+    it('should compute percentiles over today success durations without a 60s cap', async () => {
+      // 旧口径以 60s 封顶会丢掉四成真实成功回合，P95 卡在 ~57s；真实 P95 应能超过 60s
+      const durations = [5000, 70000, 211000, 30000, 90000];
+      mockMessageProcessingService.getSuccessDurationsSince.mockResolvedValue(durations);
       mockMessageProcessingService.getMessageProcessingRecords.mockResolvedValue({
-        records,
-        total: records.length,
+        records: [buildRecord({ totalDuration: 5000 })],
+        total: 1,
       });
 
       const result = await service.getMetricsDataAsync();
 
-      // p50 should only consider the 5000ms record
-      expect(result.percentiles.p50).toBe(5000);
+      expect(result.percentiles.p95).toBe(211000);
+      expect(result.percentiles.p50).toBe(70000);
+    });
+
+    it('should fetch today success durations from local day start with a 1000 sample cap', async () => {
+      mockMessageProcessingService.getMessageProcessingRecords.mockResolvedValue({
+        records: [],
+        total: 0,
+      });
+
+      await service.getMetricsDataAsync();
+
+      const [sinceTime, limit] =
+        mockMessageProcessingService.getSuccessDurationsSince.mock.calls[0];
+      expect(sinceTime).toBe(getLocalDayStart().getTime());
+      expect(limit).toBe(1000);
+    });
+
+    it('should not derive percentiles from the recent 50 detail rows', async () => {
+      // 最近 50 行不分状态/时间；分位数只认今日成功回合
+      mockMessageProcessingService.getSuccessDurationsSince.mockResolvedValue([]);
+      mockMessageProcessingService.getMessageProcessingRecords.mockResolvedValue({
+        records: [buildRecord({ totalDuration: 5000 }), buildRecord({ totalDuration: 9000 })],
+        total: 2,
+      });
+
+      const result = await service.getMetricsDataAsync();
+
+      expect(result.percentiles).toEqual({ p50: 0, p95: 0, p99: 0, p999: 0 });
+      expect(result.slowestRecords).toHaveLength(2);
+    });
+
+    it('should return zero percentiles when the duration query fails', async () => {
+      mockMessageProcessingService.getSuccessDurationsSince.mockRejectedValue(new Error('DB'));
+      mockMessageProcessingService.getMessageProcessingRecords.mockResolvedValue({
+        records: [buildRecord({ totalDuration: 5000 })],
+        total: 1,
+      });
+
+      const result = await service.getMetricsDataAsync();
+
+      expect(result.percentiles).toEqual({ p50: 0, p95: 0, p99: 0, p999: 0 });
+      expect(result.slowestRecords).toHaveLength(1);
     });
 
     it('should limit slowestRecords to top 10', async () => {
