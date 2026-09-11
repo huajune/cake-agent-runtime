@@ -7,6 +7,7 @@ import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { GuardrailReviewService } from '@biz/message/services/guardrail-review.service';
 import { MessageProcessingService } from '@biz/message/services/message-processing.service';
 import { AgentExecutionEventRepository } from '@biz/monitoring/repositories/agent-execution-event.repository';
+import { MonitoringCacheService } from '@biz/monitoring/services/tracking/monitoring-cache.service';
 import { MonitoringErrorLogRepository } from '@biz/monitoring/repositories/error-log.repository';
 import { ReengagementTouchRepository } from '@biz/monitoring/repositories/reengagement-touch.repository';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
@@ -65,6 +66,7 @@ describe('DataCleanupService', () => {
   const mockHourlyStatsRepository = { cleanupExpiredStats: jest.fn().mockResolvedValue(0) };
   const mockDailyStatsRepository = { cleanupExpiredStats: jest.fn().mockResolvedValue(0) };
   const mockHandoffEventsRepository = { cleanupExpiredEvents: jest.fn().mockResolvedValue(0) };
+  const mockMonitoringCacheService = { incrementActiveRequests: jest.fn().mockResolvedValue(0) };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -113,6 +115,7 @@ describe('DataCleanupService', () => {
         { provide: MonitoringHourlyStatsRepository, useValue: mockHourlyStatsRepository },
         { provide: MonitoringDailyStatsRepository, useValue: mockDailyStatsRepository },
         { provide: HandoffEventsRepository, useValue: mockHandoffEventsRepository },
+        { provide: MonitoringCacheService, useValue: mockMonitoringCacheService },
       ],
     }).compile();
 
@@ -238,6 +241,25 @@ describe('DataCleanupService', () => {
       await service.timeoutStuckRecordsHourly();
 
       expect(mockMessageProcessingService.timeoutStuckRecords).toHaveBeenCalledWith(30);
+    });
+
+    it('should decrement the Redis active counter by the number of rows flipped to timeout', async () => {
+      // 被翻成 timeout 的行从未走到 -1，不扣掉计数器会在两次读取之间持续漂移
+      mockSupabaseService.isAvailable.mockReturnValue(true);
+      mockMessageProcessingService.timeoutStuckRecords.mockResolvedValue(3);
+
+      await service.timeoutStuckRecordsHourly();
+
+      expect(mockMonitoringCacheService.incrementActiveRequests).toHaveBeenCalledWith(-3);
+    });
+
+    it('should not touch the Redis active counter when nothing was flipped', async () => {
+      mockSupabaseService.isAvailable.mockReturnValue(true);
+      mockMessageProcessingService.timeoutStuckRecords.mockResolvedValue(0);
+
+      await service.timeoutStuckRecordsHourly();
+
+      expect(mockMonitoringCacheService.incrementActiveRequests).not.toHaveBeenCalled();
     });
 
     it('should skip when Supabase is not available', async () => {

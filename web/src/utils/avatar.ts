@@ -5,12 +5,12 @@
 
 /** 用户头像渐变色方案（按名字哈希轮转） */
 export const AVATAR_GRADIENTS = [
-  'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-  'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
-  'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
-  'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)',
-  'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',
-  'linear-gradient(135deg, #89f7fe 0%, #66a6ff 100%)',
+  'linear-gradient(135deg, #a9b4f0 0%, #b7a0d8 100%)',
+  'linear-gradient(135deg, #f3bdf7 0%, #f6a5ae 100%)',
+  'linear-gradient(135deg, #a5d0fb 0%, #a9ecf4 100%)',
+  'linear-gradient(135deg, #a9ebc3 0%, #a6f0e2 100%)',
+  'linear-gradient(135deg, #f8b5c7 0%, #fbe8a8 100%)',
+  'linear-gradient(135deg, #c3f3f8 0%, #afc8fb 100%)',
 ] as const;
 
 /** 根据用户名哈希生成头像背景样式 */

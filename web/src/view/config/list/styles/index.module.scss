@@ -18,24 +18,17 @@
   scroll-margin-top: 76px;
 }
 
-// ==================== 页内锚点导航 ====================
+// ==================== 页内锚点导航（页头卡内的白胶囊分段） ====================
 
 .sectionNav {
-  position: sticky;
-  top: 8px;
-  z-index: $z-sticky;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  width: 100%;
-  max-width: 100%;
-  margin-bottom: $spacing-lg;
-  padding: 5px;
-  border: 1px solid $border;
-  border-radius: $radius-xl;
-  background: rgba(255, 255, 255, 0.82);
-  backdrop-filter: blur(12px);
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: $radius-full;
+  background: #fff;
+  box-shadow: inset 0 0 0 1px rgba(212, 208, 255, 0.55);
+  flex-shrink: 1;
+  min-width: 0;
   overflow-x: auto;
   scrollbar-width: none;
 
@@ -45,83 +38,61 @@
 }
 
 .sectionNavItem {
-  display: flex;
-  flex: 1 1 0;
-  min-width: 112px;
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  gap: 7px;
-  flex-shrink: 0;
-  padding: 8px 14px;
-  border: none;
-  border-radius: $radius-lg;
+  height: 26px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: $radius-full;
   background: transparent;
-  font-size: $font-size-xs;
-  font-weight: $font-weight-semibold;
-  color: $text-secondary;
+  color: #3b3a55;
+  font-size: 12px;
+  font-weight: $font-weight-normal;
   white-space: nowrap;
   cursor: pointer;
   transition:
-    background $transition-fast,
     color $transition-fast,
+    background $transition-fast,
     box-shadow $transition-fast;
 
   &:hover {
-    color: $text-primary;
-    background: $bg-secondary;
+    color: #14132b;
   }
-}
 
-.sectionNavLabel {
-  color: inherit;
-}
-
-.sectionNavMeta {
-  font-size: 10px;
-  font-weight: $font-weight-medium;
-  color: $text-muted;
-}
-
-.sectionNavItemActive .sectionNavMeta {
-  color: $primary;
+  &:focus-visible {
+    outline: 2px solid rgba($primary, 0.5);
+    outline-offset: 1px;
+  }
 }
 
 .sectionNavItemActive {
-  color: $primary;
-  background: $primary-soft;
-  box-shadow: $shadow-sm;
+  background: $gradient-primary;
+  color: #fff;
+  font-weight: $font-weight-medium;
+  box-shadow: 0 2px 6px rgba($primary, 0.28);
 
   &:hover {
-    color: $primary;
-    background: $primary-soft;
+    color: #fff;
   }
 }
 
-// ==================== 节标题生效方式徽章 ====================
+// 节标题旁的生效方式：灰色小字 + 细分隔线，不再做彩色徽章
+.moduleMode {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: 12px;
+  font-size: $font-size-xs;
+  font-weight: $font-weight-normal;
+  color: #5b5a86;
+  vertical-align: 2px;
 
-.sectionModeBadge {
-  margin-left: $spacing-sm;
-  padding: 3px 10px;
-  border-radius: $radius-full;
-  font-size: 11px;
-  font-weight: $font-weight-semibold;
-  letter-spacing: 0;
-  vertical-align: 3px;
-}
-
-.sectionModeSave {
-  background: $primary-soft;
-  color: $primary;
-}
-
-.sectionModeInstant {
-  background: $success-soft;
-  color: $success;
-}
-
-.sectionModeMixed {
-  background: $warning-soft;
-  color: $warning;
+  &::before {
+    content: '';
+    width: 1px;
+    height: 12px;
+    background: rgba(91, 90, 134, 0.3);
+  }
 }
 
 // ==================== 模型路由网格 ====================
@@ -133,38 +104,36 @@
 
 .modelListHeader {
   display: grid;
-  grid-template-columns: minmax(420px, 1.15fr) minmax(380px, 1fr);
+  grid-template-columns: minmax(0, 1.15fr) minmax(200px, 1fr);
   gap: $spacing-lg;
-  padding: 0 $spacing-md 10px;
-  border-bottom: 1px solid $border;
+  margin: -#{$spacing-md} -#{$spacing-lg} 0;
+  padding: 12px $spacing-lg 10px;
+  border-radius: 14px 14px 0 0;
+  background: linear-gradient(118deg, #f0efff 0%, #faf4fe 45%, #f2f7ff 80%, #fdfdff 100%);
   font-size: 11px;
-  font-weight: $font-weight-semibold;
-  color: $text-muted;
+  font-weight: $font-weight-medium;
+  color: #5b5a86;
 }
 
 .modelCell {
   display: grid;
-  grid-template-columns: minmax(420px, 1.15fr) minmax(380px, 1fr);
+  grid-template-columns: minmax(0, 1.15fr) minmax(200px, 1fr);
   gap: $spacing-lg;
   align-items: center;
   min-width: 0;
   padding: 13px $spacing-md;
-  border-bottom: 1px solid $border;
+  border-radius: 10px;
   transition:
     background $transition-fast,
     box-shadow $transition-fast;
 
   &:hover {
-    background: $bg-secondary;
-  }
-
-  &:last-child {
-    border-bottom: 0;
+    background: rgba(240, 239, 255, 0.65);
   }
 }
 
 .modelCellModified {
-  box-shadow: inset 3px 0 0 $primary;
+  box-shadow: inset 3px 0 0 rgba($primary, 0.6);
   background: $primary-03;
 }
 
@@ -198,29 +167,37 @@
 }
 
 .moduleTitle {
+  display: flex;
+  align-items: center;
   margin: 0 0 6px 0;
-  font-size: $font-size-xl;
-  font-weight: $font-weight-bold;
-  letter-spacing: -0.02em;
-  color: $text-primary;
+  font-size: 16px;
+  font-weight: $font-weight-medium;
+  letter-spacing: -0.01em;
+  color: #14132b;
 }
 
 .moduleDescription {
   margin: 0;
   max-width: 68ch;
-  font-size: $font-size-sm;
+  font-size: $font-size-xs;
   line-height: $line-height-relaxed;
-  color: $text-secondary;
+  color: #5b5a86;
 }
 
 .settingsPanel {
   padding: $spacing-md $spacing-lg;
-  border-radius: $radius-xl;
-  border: 1px solid $border;
-  background: $bg-card;
-  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.045);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow:
+    inset 0 0 0 1px rgba(212, 208, 255, 0.55),
+    0 10px 24px rgba(31, 41, 55, 0.04);
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+}
+
+.settingsPanel + .settingsPanel {
+  margin-top: $spacing-md;
 }
 
 .subPanel {
@@ -229,11 +206,11 @@
 
 .settingRow {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(260px, 380px);
+  grid-template-columns: minmax(0, 1fr) minmax(200px, 340px);
   gap: $spacing-lg;
   align-items: center;
   padding: 16px 0;
-  border-bottom: 1px solid $border;
+  border-bottom: 1px solid rgba(212, 208, 255, 0.4);
 }
 
 .settingRow:last-child {
@@ -262,10 +239,10 @@
 }
 
 .settingLabel {
-  font-size: $font-size-base;
-  font-weight: $font-weight-semibold;
+  font-size: $font-size-sm;
+  font-weight: $font-weight-medium;
   letter-spacing: -0.01em;
-  color: $text-primary;
+  color: #14132b;
 }
 
 .modifiedBadge {
@@ -274,19 +251,19 @@
   background: $primary-soft;
   color: $primary;
   font-size: 11px;
-  font-weight: $font-weight-semibold;
+  font-weight: $font-weight-medium;
 }
 
 .statusBadge {
   padding: 3px 8px;
   border-radius: $radius-full;
   font-size: 11px;
-  font-weight: $font-weight-semibold;
+  font-weight: $font-weight-medium;
 }
 
 .statusOn {
-  background: $success-soft;
-  color: $success;
+  background: rgba(95, 184, 148, 0.12);
+  color: #4fae87;
 }
 
 .statusOff {
@@ -295,8 +272,8 @@
 }
 
 .statusWarn {
-  background: $warning-soft;
-  color: $warning;
+  background: rgba(233, 181, 110, 0.16);
+  color: #c9964e;
 }
 
 .settingDescription {
@@ -318,9 +295,10 @@
   span {
     display: inline-flex;
     align-items: center;
-    padding: 4px 8px;
+    padding: 3px 8px;
     border-radius: $radius-full;
-    background: $bg-secondary;
+    background: #fff;
+    box-shadow: inset 0 0 0 1px rgba(212, 208, 255, 0.55);
   }
 }
 
@@ -344,7 +322,7 @@
   border-radius: $radius-full;
   background: $primary-soft;
   font-size: 12px;
-  font-weight: $font-weight-semibold;
+  font-weight: $font-weight-medium;
   color: $primary;
   word-break: break-word;
 }
@@ -364,11 +342,13 @@
 
 .numberInput {
   width: 84px;
-  padding: $spacing-xs $spacing-sm;
-  border: 1px solid $border;
-  border-radius: $radius-md;
-  background: $bg-primary;
-  color: $text-primary;
+  height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: $radius-full;
+  background: #fff;
+  box-shadow: inset 0 0 0 1px rgba(212, 208, 255, 0.55);
+  color: #14132b;
   text-align: right;
   font-size: $font-size-xs;
   transition:
@@ -377,40 +357,41 @@
     background $transition-fast;
 
   &:hover {
-    background: $bg-card;
-    border-color: $border-hover;
+    box-shadow: inset 0 0 0 1px rgba(212, 208, 255, 0.9);
   }
 
   &:focus {
     outline: none;
-    border-color: $primary;
-    box-shadow: 0 0 0 3px $primary-12;
+    box-shadow:
+      inset 0 0 0 1px rgba($primary, 0.6),
+      0 0 0 3px $primary-12;
   }
 }
 
 .selectInput {
   width: 100%;
-  min-height: 44px;
-  padding: $spacing-sm $spacing-md;
-  border: 1px solid $border;
-  border-radius: $radius-md;
-  background: $bg-primary;
-  color: $text-primary;
-  font-size: $font-size-sm;
+  min-height: 32px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: $radius-full;
+  background: #fff;
+  box-shadow: inset 0 0 0 1px rgba(212, 208, 255, 0.55);
+  color: #14132b;
+  font-size: $font-size-xs;
   transition:
     border-color $transition-fast,
     box-shadow $transition-fast,
     background $transition-fast;
 
   &:hover {
-    background: $bg-card;
-    border-color: $border-hover;
+    box-shadow: inset 0 0 0 1px rgba(212, 208, 255, 0.9);
   }
 
   &:focus {
     outline: none;
-    border-color: $primary;
-    box-shadow: 0 0 0 3px $primary-12;
+    box-shadow:
+      inset 0 0 0 1px rgba($primary, 0.6),
+      0 0 0 3px $primary-12;
   }
 
   &:disabled {
@@ -618,7 +599,7 @@
   border-radius: $radius-full;
   background: transparent;
   font-size: $font-size-xs;
-  font-weight: $font-weight-semibold;
+  font-weight: $font-weight-medium;
   color: $text-muted;
   white-space: nowrap;
   cursor: pointer;
@@ -683,7 +664,7 @@
 
 .scenarioGroupTitle {
   font-size: $font-size-sm;
-  font-weight: $font-weight-bold;
+  font-weight: $font-weight-medium;
   color: $text-primary;
 }
 
@@ -700,7 +681,7 @@
     padding: 10px 12px;
     text-align: left;
     white-space: nowrap;
-    font-weight: $font-weight-semibold;
+    font-weight: $font-weight-medium;
     color: $text-secondary;
     background: $bg-secondary;
     border-bottom: 1px solid $border;
@@ -728,7 +709,7 @@
 }
 
 .scenarioName {
-  font-weight: $font-weight-semibold;
+  font-weight: $font-weight-medium;
   white-space: nowrap;
 }
 
@@ -792,7 +773,7 @@
 
 .saveDockTitle {
   font-size: $font-size-base;
-  font-weight: $font-weight-bold;
+  font-weight: $font-weight-medium;
   color: $text-primary;
 }
 

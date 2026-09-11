@@ -46,11 +46,11 @@ const TREND_EXTRA: Record<
   keyof ConversionKpisResponse,
   { color: string; numeratorKey: CountKey; denominatorKey: CountKey }
 > = {
-  breakIceRate: { color: '#10b981', numeratorKey: 'breakIce', denominatorKey: 'friendAdded' },
-  bookingRate: { color: '#0ea5e9', numeratorKey: 'booking', denominatorKey: 'breakIce' },
-  groupInviteRate: { color: '#ec4899', numeratorKey: 'groupInvite', denominatorKey: 'breakIce' },
-  passRate: { color: '#f59e0b', numeratorKey: 'interviewPass', denominatorKey: 'booking' },
-  overallRate: { color: '#8b5cf6', numeratorKey: 'interviewPass', denominatorKey: 'friendAdded' },
+  breakIceRate: { color: '#8fc7a0', numeratorKey: 'breakIce', denominatorKey: 'friendAdded' },
+  bookingRate: { color: '#9ea9e0', numeratorKey: 'booking', denominatorKey: 'breakIce' },
+  groupInviteRate: { color: '#e59fbc', numeratorKey: 'groupInvite', denominatorKey: 'breakIce' },
+  passRate: { color: '#e6b487', numeratorKey: 'interviewPass', denominatorKey: 'booking' },
+  overallRate: { color: '#ad8fd0', numeratorKey: 'interviewPass', denominatorKey: 'friendAdded' },
 };
 
 const TREND_METRICS = KPI_DEFS.map((def) => ({

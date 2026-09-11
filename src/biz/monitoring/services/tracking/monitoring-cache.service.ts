@@ -94,6 +94,28 @@ export class MonitoringCacheService {
     return nextCount;
   }
 
+  /**
+   * 用真相源（DB 中 processing 行数）校准 Redis 在途计数。
+   * 计数器只增不减的泄漏（超时回收 / 进程重启漏减）会让存量高于真值：
+   * 检测到泄漏时峰值一并重置为当前值（旧峰值是漂移产物），否则峰值取 max。
+   */
+  async resyncActiveRequests(current: number): Promise<void> {
+    const normalizedCurrent = this.normalizeCount(current);
+    const stored = await this.getActiveRequests();
+
+    await this.setActiveRequests(normalizedCurrent);
+
+    if (stored > normalizedCurrent) {
+      this.logger.warn(
+        `[在途请求] Redis 计数 ${stored} 高于 DB 真值 ${normalizedCurrent}，已校准并重置峰值`,
+      );
+      await this.setPeakActiveRequests(normalizedCurrent);
+      return;
+    }
+
+    await this.updatePeakActiveRequests(normalizedCurrent);
+  }
+
   async updatePeakActiveRequests(count: number): Promise<void> {
     const normalizedCount = this.normalizeCount(count);
     const currentPeak = await this.getPeakActiveRequests();

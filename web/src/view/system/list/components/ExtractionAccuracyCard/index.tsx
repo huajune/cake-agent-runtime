@@ -4,6 +4,8 @@ import { formatLocaleNumber } from '@/utils/format';
 import styles from './index.module.scss';
 
 const DAYS_OPTIONS = [7, 14, 30] as const;
+/** 高置信样本低于此数时不展示百分比：小样本下的准确率波动没有参考价值 */
+const MIN_HIGH_CONF_SAMPLES = 30;
 
 const FIELD_LABELS: Record<string, string> = {
   name: '姓名',
@@ -84,9 +86,13 @@ export default function ExtractionAccuracyCard({
                     </span>
                   </td>
                   <td className={styles.numCol}>
-                    <span className={rateClass(field.highConfAccuracyPct)}>
-                      {formatPercent(field.highConfAccuracyPct)}
-                    </span>
+                    {field.highConf < MIN_HIGH_CONF_SAMPLES ? (
+                      <span className={styles.rateMuted}>样本不足</span>
+                    ) : (
+                      <span className={rateClass(field.highConfAccuracyPct)}>
+                        {formatPercent(field.highConfAccuracyPct)}
+                      </span>
+                    )}
                     <span className={styles.subValue}>
                       n={formatLocaleNumber(field.highConf, 'zh-CN')}
                     </span>

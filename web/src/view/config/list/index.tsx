@@ -41,7 +41,7 @@ const numberConfigMeta: Record<NumberConfigKey, NumberConfigMeta> = {
   initialMergeWindowMs: {
     key: 'initialMergeWindowMs',
     label: '消息静默触发时间',
-    description: '最后一条用户消息后静默多久，才把这一轮消息聚合成一次新的 Agent 请求。',
+    description: '最后一条消息后静默多久再聚合成一次请求。',
     unit: 'ms',
     min: 0,
     max: 30000,
@@ -50,7 +50,7 @@ const numberConfigMeta: Record<NumberConfigKey, NumberConfigMeta> = {
   typingSpeedCharsPerSec: {
     key: 'typingSpeedCharsPerSec',
     label: '打字速度',
-    description: '模拟真人回复速度，控制文本逐段发送时的整体节奏。',
+    description: '模拟真人打字节奏。',
     unit: '字符/秒',
     min: 1,
     max: 50,
@@ -59,7 +59,7 @@ const numberConfigMeta: Record<NumberConfigKey, NumberConfigMeta> = {
   paragraphGapMs: {
     key: 'paragraphGapMs',
     label: '段落间隔',
-    description: '多段回复之间的停顿时长，让长消息看起来更自然。',
+    description: '多段回复之间的停顿。',
     unit: 'ms',
     min: 0,
     max: 10000,
@@ -198,17 +198,7 @@ export default function Config() {
   };
 
   const renderSectionModeBadge = (mode: SectionMode) => (
-    <span
-      className={`${styles.sectionModeBadge} ${
-        mode === 'instant'
-          ? styles.sectionModeInstant
-          : mode === 'save'
-            ? styles.sectionModeSave
-            : styles.sectionModeMixed
-      }`}
-    >
-      {SECTION_MODE_LABELS[mode]}
-    </span>
+    <span className={styles.moduleMode}>{SECTION_MODE_LABELS[mode]}</span>
   );
 
   const handleConfigChange = (key: string, value: number | boolean | string | string[]) => {
@@ -330,37 +320,37 @@ export default function Config() {
       key: 'wecomCallbackModelId',
       label: '企微聊天',
       envVar: 'AGENT_CHAT_MODEL',
-      hint: '企微回调进 Agent 的主对话模型，直接决定候选人体验。',
+      hint: '主对话模型，直接决定候选人体验。',
     },
     {
       key: 'extractModelId',
       label: '事实提取',
       envVar: 'AGENT_EXTRACT_MODEL',
-      hint: '会话事实、沉淀摘要和简历字段共用的提取模型。切换后盯系统监控页「提取质量对账」。',
+      hint: '事实、摘要、简历字段共用的提取模型。',
     },
     {
       key: 'visionModelId',
       label: '图片理解',
       envVar: 'AGENT_VISION_MODEL',
-      hint: '健康证、岗位截图等图片消息的视觉理解，仅可选多模态模型。',
+      hint: '图片消息的视觉理解，仅多模态模型。',
     },
     {
       key: 'evaluateModelId',
       label: '对话质量评估',
       envVar: 'AGENT_EVALUATE_MODEL',
-      hint: '对话质量 LLM 评分。切换后评估分数环比会出现口径断点。',
+      hint: '对话质量评分。',
     },
     {
       key: 'repairModelId',
       label: '守卫修复',
       envVar: 'AGENT_REPAIR_MODEL',
-      hint: '守卫拦截后的回复改写（revise 修复）。',
+      hint: '守卫拦截后的回复改写。',
     },
     {
       key: 'reengagementModelId',
       label: '复聊',
       envVar: 'AGENT_REENGAGEMENT_MODEL',
-      hint: '复聊触达的语义停止判定与文案生成，判定质量对模型敏感；留空回退环境变量，再回退企微聊天角色。',
+      hint: '复聊的停止判定与文案生成。',
     },
   ];
 
@@ -631,17 +621,13 @@ export default function Config() {
     <div className={styles.page}>
       <ControlBar
         title="运行时配置"
-        subtitle="统一管理企微回调模型、消息节奏和运行开关。这里只放真正影响当前系统运行方式的配置。"
-        hints={[{ label: '表单项需要保存' }, { label: '运行开关即时生效' }]}
+        subtitle="模型、节奏与开关"
+        hints={[{ label: '表单项需保存' }, { label: '开关即时生效' }]}
         hasChanges={hasChanges}
         pendingChangeCount={pendingChangeCount}
         isPending={updateConfig.isPending}
-      />
-
-      {isLoadingConfig ? (
-        <div className={styles.loadingText}>加载配置中...</div>
-      ) : (
-        <>
+      >
+        {isLoadingConfig ? null : (
           <nav className={styles.sectionNav} aria-label="页内分区导航">
             {PAGE_SECTIONS.map((section) => (
               <button
@@ -652,12 +638,17 @@ export default function Config() {
                 }`}
                 onClick={() => scrollToSection(section.id)}
               >
-                <span className={styles.sectionNavLabel}>{section.label}</span>
-                <span className={styles.sectionNavMeta}>{SECTION_MODE_LABELS[section.mode]}</span>
+                {section.label}
               </button>
             ))}
           </nav>
+        )}
+      </ControlBar>
 
+      {isLoadingConfig ? (
+        <div className={styles.loadingText}>加载配置中...</div>
+      ) : (
+        <>
           <section id="config-models" className={styles.moduleSection}>
             <div className={styles.moduleHeader}>
               <div>
@@ -666,8 +657,7 @@ export default function Config() {
                   {renderSectionModeBadge('save')}
                 </h3>
                 <p className={styles.moduleDescription}>
-                  七个 Agent 角色各用哪个模型。留空走后端环境变量的默认路由，改动保存后约 5
-                  秒内全实例生效，无需发版。
+                  各角色用哪个模型，留空走默认路由，保存后 5 秒生效。
                 </p>
               </div>
             </div>
@@ -695,9 +685,7 @@ export default function Config() {
                       </span>
                     </div>
                     <p className={styles.settingDescription}>
-                      主模型不可用时按此顺序换用降级模型；链上含识图模型时，纯文本主聊的图片轮也会整轮切到首个识图候选。
-                      逗号分隔的模型 ID，留空回退环境变量 AGENT_DEFAULT_FALLBACKS，保存后约 5
-                      秒生效。
+                      主模型不可用时按此顺序换用，逗号分隔，留空走环境变量。
                     </p>
                     <div className={styles.settingMeta}>
                       <span>当前生效: {fallbackChains.default.chain.join(' → ') || '未配置'}</span>
@@ -737,8 +725,7 @@ export default function Config() {
                       </span>
                     </div>
                     <p className={styles.settingDescription}>
-                      图片理解角色专属降级链，优先于默认链；建议保持与主链跨厂商（qwen
-                      主模型挂掉时靠它兜底识图）。 留空回退环境变量 AGENT_VISION_FALLBACKS。
+                      识图角色专属，优先于默认链，建议跨厂商。
                     </p>
                     <div className={styles.settingMeta}>
                       <span>
@@ -780,8 +767,7 @@ export default function Config() {
                           <span className={styles.modifiedBadge}>env · 只读</span>
                         </div>
                         <p className={styles.settingDescription}>
-                          该角色专属降级链（AGENT_{role.toUpperCase()}
-                          _FALLBACKS），优先于默认链生效。
+                          该角色专属降级链，优先于默认链。
                         </p>
                       </div>
                       <div className={styles.controlBlock}>
@@ -800,9 +786,7 @@ export default function Config() {
                   回复节奏
                   {renderSectionModeBadge('save')}
                 </h3>
-                <p className={styles.moduleDescription}>
-                  决定回复偏速度还是偏推理，以及消息发出时表现出来的拟人节奏。
-                </p>
+                <p className={styles.moduleDescription}>回复偏速度还是偏推理，以及发送节奏。</p>
               </div>
             </div>
 
@@ -818,11 +802,9 @@ export default function Config() {
                     ) : null}
                   </div>
                   <p className={styles.settingDescription}>
-                    控制企微回调进入 Agent
-                    时更偏向极速回复，还是偏向深度推理。对不支持推理模式的模型，会自动忽略这项设置。
+                    偏极速回复还是深度推理，不支持推理的模型自动忽略。
                   </p>
                   <div className={styles.settingMeta}>
-                    <span>适用于新的企微回调请求</span>
                     <span>默认: {getThinkingModeLabel(thinkingModeDefaultValue)}</span>
                   </div>
                 </div>
@@ -861,11 +843,9 @@ export default function Config() {
                       ) : null}
                     </div>
                     <p className={styles.settingDescription}>
-                      深度思考模式下的推理强度档位（低/中/高），按各家模型的 reasoning effort
-                      能力映射；极速模式下此项不生效。
+                      深度思考的推理强度，极速模式下不生效。
                     </p>
                     <div className={styles.settingMeta}>
-                      <span>适用于新的企微回调请求</span>
                       <span>默认: {getThinkingEffortLabel(thinkingEffortDefaultValue)}</span>
                     </div>
                   </div>
@@ -905,9 +885,7 @@ export default function Config() {
                   消息处理与调度
                   {renderSectionModeBadge('mixed')}
                 </h3>
-                <p className={styles.moduleDescription}>
-                  用来控制消息何时触发一轮新请求，以及 Worker 如何消化这些请求。
-                </p>
+                <p className={styles.moduleDescription}>消息何时触发请求，Worker 如何消化。</p>
               </div>
             </div>
 
@@ -925,7 +903,7 @@ export default function Config() {
                     </span>
                   </div>
                   <p className={styles.settingDescription}>
-                    启用后，系统会等待短暂静默窗口再触发新请求，适合用户连续发多条消息的场景。
+                    等一小段静默再触发请求，把连续消息合成一轮。
                   </p>
                   <div className={styles.settingMeta}>
                     <span>该开关即时生效</span>
@@ -977,8 +955,7 @@ export default function Config() {
                   {renderSectionModeBadge('instant')}
                 </h3>
                 <p className={styles.moduleDescription}>
-                  回复发出前只检查格式、封闭高风险词形和结构化工具回执。开放对话语义由主 Agent
-                  承担；这里不运行第二个模型。
+                  发送前的格式与工具回执检查，不跑第二个模型。
                 </p>
               </div>
             </div>
@@ -993,8 +970,7 @@ export default function Config() {
                     </span>
                   </div>
                   <p className={styles.settingDescription}>
-                    输入 catalog ruleId 后可即时设为 <strong>Observe</strong>（只记录、不拦截）或
-                    <strong> Off</strong>（停用）。这里只能降权；规则升档仍须修改代码并走发牌制。
+                    按 ruleId 即时降为 Observe（只记录）或 Off（停用），只能降不能升。
                   </p>
                   <div className={styles.settingMeta}>
                     <span>切换即时生效</span>
@@ -1076,9 +1052,7 @@ export default function Config() {
                   {renderSectionModeBadge('instant')}
                 </h3>
                 <p className={styles.moduleDescription}>
-                  候选人沉默后由 Agent
-                  主动跟进：开场未回、报名未完成、面试提醒等场景到点生成跟进消息。
-                  开关即时生效；灰度期先开 Shadow 观测看"本应发什么"，达标后再切真实发送。
+                  候选人沉默后按场景到点跟进；Shadow 只观测不发送。
                 </p>
               </div>
             </div>
@@ -1090,17 +1064,10 @@ export default function Config() {
                     <span className={styles.settingLabel}>运行状态</span>
                   </div>
                   <p className={styles.settingDescription}>
-                    <strong>关闭</strong>
-                    ：急刹车，不再排程新跟进任务，已排程的任务到点也直接丢弃。
-                    <strong>Shadow 观测</strong>：锚点事件正常排程，到点走完停止判断并生成跟进文案，
-                    但不发给候选人，只记录"本应发什么"。
-                    <strong>真实发送</strong>
-                    ：下方场景清单里开关打开的场景会真正发送，其余场景仍只记录。
+                    关闭：不再排程；Shadow：只记录不发送；真实发送：按下方场景开关发送。
                   </p>
                   <div className={styles.settingMeta}>
-                    <span>切换即时生效</span>
-                    <span>频控 24h ≤ 2 条 · 仅 9-21 点投递</span>
-                    <span>触达明细见「二次触发」页</span>
+                    <span>24h ≤ 2 条 · 9-21 点投递</span>
                   </div>
                 </div>
                 <div className={styles.controlBlock}>
@@ -1204,9 +1171,7 @@ export default function Config() {
                   群任务通知
                   {renderSectionModeBadge('instant')}
                 </h3>
-                <p className={styles.moduleDescription}>
-                  管理 Cron 自动推送与手动触发入口。这里的开关都是即时生效，不需要额外保存。
-                </p>
+                <p className={styles.moduleDescription}>Cron 自动推送与手动触发入口。</p>
               </div>
             </div>
 

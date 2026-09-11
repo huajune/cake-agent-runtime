@@ -1,4 +1,9 @@
-import { formatLocalDate, formatLocalMinute } from '@infra/utils/date.util';
+import {
+  formatLocalDate,
+  formatLocalMinute,
+  getLocalDayStart,
+  getLocalHourStart,
+} from '@infra/utils/date.util';
 import { asRecord } from '@infra/utils/object.util';
 import type { MessageProcessingRecord, MonitoringErrorLog } from '@shared-types/tracking.types';
 import type {
@@ -135,12 +140,29 @@ export function buildResponseTrend(
     }));
 }
 
+const HOUR_MS = 60 * 60 * 1000;
+
+/**
+ * 告警趋势：today 按小时分桶并从本地日起点到 now 逐小时补零（只输出有告警的分钟会画成稀疏折线）；
+ * 其余范围按天分桶，只输出有告警的天。
+ */
 export function buildAlertTrend(
   logs: MonitoringErrorLog[],
   timeRange: TimeRange,
+  now: Date = new Date(),
 ): AlertTrendPoint[] {
-  const keyFn = timeRange === 'today' ? formatLocalMinute : formatLocalDate;
   const buckets = new Map<string, number>();
+  const keyFn =
+    timeRange === 'today'
+      ? (date: Date) => formatLocalMinute(getLocalHourStart(date))
+      : formatLocalDate;
+
+  if (timeRange === 'today') {
+    const dayStart = getLocalDayStart(now).getTime();
+    for (let hourStart = dayStart; hourStart <= now.getTime(); hourStart += HOUR_MS) {
+      buckets.set(keyFn(new Date(hourStart)), 0);
+    }
+  }
 
   for (const log of logs) {
     const key = keyFn(new Date(log.timestamp));

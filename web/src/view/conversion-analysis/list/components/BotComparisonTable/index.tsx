@@ -231,34 +231,34 @@ function RankIcon({ rank }: { rank: 1 | 2 | 3 }) {
         <defs>
           <linearGradient id="rank1CrownFill" x1="9" x2="31" y1="8" y2="30">
             <stop offset="0%" stopColor="#fff7ed" />
-            <stop offset="36%" stopColor="#fde68a" />
-            <stop offset="72%" stopColor="#fbbf24" />
-            <stop offset="100%" stopColor="#f59e0b" />
+            <stop offset="36%" stopColor="#f7e4a8" />
+            <stop offset="72%" stopColor="#f0d283" />
+            <stop offset="100%" stopColor="#e9c46a" />
           </linearGradient>
           <radialGradient id="rank1Gem" cx="50%" cy="38%" r="58%">
             <stop offset="0%" stopColor="#ffffff" />
-            <stop offset="58%" stopColor="#f472b6" />
-            <stop offset="100%" stopColor="#db2777" />
+            <stop offset="58%" stopColor="#f3a8cc" />
+            <stop offset="100%" stopColor="#e78ab5" />
           </radialGradient>
         </defs>
         <path
           d="M6.5 9.8h3.2M30.3 9.8h3.2M20 3.9v3.2"
           fill="none"
-          stroke="#fbbf24"
+          stroke="#f0d283"
           strokeLinecap="round"
           strokeWidth="1.3"
         />
         <path
           d="M8.4 29.5c1.4 2 4.1 3.2 7.4 3.6M31.6 29.5c-1.4 2-4.1 3.2-7.4 3.6"
           fill="none"
-          stroke="#f59e0b"
+          stroke="#e9c46a"
           strokeLinecap="round"
           strokeWidth="1.4"
         />
         <ellipse
           cx="10.4"
           cy="28.4"
-          fill="#fde68a"
+          fill="#f7e4a8"
           rx="1.2"
           ry="2"
           transform="rotate(-35 10.4 28.4)"
@@ -266,7 +266,7 @@ function RankIcon({ rank }: { rank: 1 | 2 | 3 }) {
         <ellipse
           cx="13.3"
           cy="30.7"
-          fill="#fde68a"
+          fill="#f7e4a8"
           rx="1.1"
           ry="1.8"
           transform="rotate(-55 13.3 30.7)"
@@ -274,7 +274,7 @@ function RankIcon({ rank }: { rank: 1 | 2 | 3 }) {
         <ellipse
           cx="29.6"
           cy="28.4"
-          fill="#fde68a"
+          fill="#f7e4a8"
           rx="1.2"
           ry="2"
           transform="rotate(35 29.6 28.4)"
@@ -282,7 +282,7 @@ function RankIcon({ rank }: { rank: 1 | 2 | 3 }) {
         <ellipse
           cx="26.7"
           cy="30.7"
-          fill="#fde68a"
+          fill="#f7e4a8"
           rx="1.1"
           ry="1.8"
           transform="rotate(55 26.7 30.7)"
@@ -290,14 +290,14 @@ function RankIcon({ rank }: { rank: 1 | 2 | 3 }) {
         <path
           d="M8.6 25.9 10.2 11l6.2 6.2L20 7.7l3.6 9.5 6.2-6.2 1.6 14.9Z"
           fill="url(#rank1CrownFill)"
-          stroke="#f59e0b"
+          stroke="#e9c46a"
           strokeLinejoin="round"
           strokeWidth="1.35"
         />
         <path
           d="M11 24.5h18l-1.2 6.1H12.2Z"
           fill="#fff7ed"
-          stroke="#f59e0b"
+          stroke="#e9c46a"
           strokeLinejoin="round"
           strokeWidth="1.25"
         />
@@ -315,7 +315,7 @@ function RankIcon({ rank }: { rank: 1 | 2 | 3 }) {
         <path
           d="M15.2 28.1h9.6"
           fill="none"
-          stroke="#f59e0b"
+          stroke="#e9c46a"
           strokeLinecap="round"
           strokeWidth="1.3"
         />
@@ -330,16 +330,16 @@ function RankIcon({ rank }: { rank: 1 | 2 | 3 }) {
     ? {
         fillStops: ['#ffffff', '#e0f2fe', '#bfdbfe'],
         rimStops: ['#f8fafc', '#bfdbfe', '#60a5fa'],
-        ribbonStops: ['#818cf8', '#38bdf8'],
+        ribbonStops: ['#b3b9f3', '#b6cfe4'],
         text: '#3b82f6',
         star: '#60a5fa',
       }
     : {
         fillStops: ['#fff7ed', '#fed7aa', '#fdba74'],
-        rimStops: ['#fff7ed', '#fdba74', '#fb923c'],
-        ribbonStops: ['#a78bfa', '#f59e0b'],
-        text: '#ea580c',
-        star: '#f97316',
+        rimStops: ['#fff7ed', '#fdba74', '#e8b08a'],
+        ribbonStops: ['#a78bfa', '#e9c46a'],
+        text: '#d8966c',
+        star: '#e2a37a',
       };
   return (
     <svg className={styles.rankIcon} viewBox="0 0 40 40" role="img" aria-hidden="true">

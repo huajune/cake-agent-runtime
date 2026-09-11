@@ -21,22 +21,22 @@
 }
 
 .label {
-  font-weight: $font-weight-semibold;
+  font-weight: $font-weight-medium;
   color: $text-primary;
   font-size: $font-size-base;
 }
 
 .activeJobs {
   font-size: 11px;
-  color: $success;
+  color: #4fae87;
   padding: 4px 8px;
-  background: $success-soft;
+  background: rgba(95, 184, 148, 0.12);
   border-radius: $radius-full;
 }
 
 .value {
   font-size: 24px;
-  font-weight: $font-weight-bold;
+  font-weight: $font-weight-medium;
   color: $primary;
   letter-spacing: -0.02em;
 }
@@ -56,21 +56,21 @@
   margin-bottom: $spacing-md;
   border: 1px solid rgba($warning, 0.25);
   border-radius: $radius-lg;
-  background: $warning-soft;
+  background: rgba(233, 181, 110, 0.14);
   color: $text-secondary;
   font-size: $font-size-sm;
   line-height: $line-height-normal;
 
   strong {
     color: $text-primary;
-    font-weight: $font-weight-semibold;
+    font-weight: $font-weight-medium;
   }
 }
 
 .restartNoticeIcon {
   flex: 0 0 auto;
   margin-top: 2px;
-  color: $warning;
+  color: #c9964e;
 }
 
 // 吞吐量计算公式
@@ -78,7 +78,7 @@
   font-size: 11px;
   color: $text-muted;
   padding: $spacing-sm $spacing-md;
-  background: $bg-secondary;
+  background: rgba(240, 239, 255, 0.45);
   border: 1px solid $border;
   border-radius: $radius-lg;
   margin-bottom: $spacing-md;
@@ -93,7 +93,7 @@
 
 .highlight {
   color: $primary;
-  font-weight: $font-weight-semibold;
+  font-weight: $font-weight-medium;
 }
 
 // 滑块控制区域
@@ -141,7 +141,7 @@
   align-items: center;
   padding: 4px 8px;
   border-radius: $radius-full;
-  background: $bg-secondary;
+  background: rgba(240, 239, 255, 0.45);
 }
 
 .actions {

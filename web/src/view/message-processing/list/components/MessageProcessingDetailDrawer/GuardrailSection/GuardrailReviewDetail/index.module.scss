@@ -116,24 +116,43 @@ $faint: #8a89ad;
   color: $faint;
 }
 
-/* ── 裁决元信息 ── */
+/* ── 裁决元信息：每阶段只留裁决一个胶囊，其余降为文字 ── */
+.container :global(.status-badge) {
+  background: #fff;
+  border-color: $lilac-edge;
+  font-weight: 400;
+
+  &:global(.success) {
+    color: #5b4de6;
+  }
+
+  &:global(.info) {
+    color: #7c6ef2;
+  }
+
+  &:global(.warning) {
+    color: #a06bd6;
+  }
+
+  &:global(.danger) {
+    color: #c25b8c;
+    border-color: rgba(194, 91, 140, 0.35);
+  }
+}
+
 .verdictMeta {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  gap: 4px 14px;
+  font-size: 11.5px;
+  line-height: 18px;
 }
 
-.riskBadge {
+.riskText {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-size: 11px;
-  line-height: 20px;
-  padding: 0 8px 0 7px;
-  border-radius: 999px;
-  background: #fff;
-  box-shadow: inset 0 0 0 1px $lilac-edge;
   color: $muted;
 }
 
@@ -146,65 +165,54 @@ $faint: #8a89ad;
 }
 
 .risklow {
-  color: #15803d;
+  color: $faint;
 }
 
 .riskmedium {
-  color: #b45309;
+  color: #a06bd6;
 }
 
 .riskhigh {
-  color: #dc2626;
+  color: #c25b8c;
 }
 
-.ruleTag,
-.blockedRuleTag,
-.severity,
-.blockedMark,
-.semanticMode,
-.findingCode {
+.ruleList {
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
-  max-width: 100%;
-  font-size: 11px;
-  line-height: 20px;
-  padding: 0 8px;
-  border-radius: 999px;
-  overflow-wrap: anywhere;
-  word-break: normal;
+  gap: 0 8px;
+  color: $faint;
 }
 
-.ruleTag {
+.ruleName {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
   color: #6d5bd0;
-  background: linear-gradient(118deg, #f0efff 0%, #faf4fe 100%);
-  box-shadow: inset 0 0 0 1px rgba(212, 208, 255, 0.7);
-}
-
-.blockedRuleTag,
-.blockedMark {
-  color: #dc2626;
-  background: rgba(254, 242, 242, 0.9);
-  box-shadow: inset 0 0 0 1px rgba(239, 68, 68, 0.22);
-}
-
-.blockedMark {
-  flex: 0 0 auto;
+  overflow-wrap: anywhere;
 }
 
 .severity {
+  font-size: 11px;
+  color: $faint;
   flex: 0 0 auto;
-  padding: 0 7px;
-  background: #fff;
 }
 
 .severityHigh {
-  color: #b45309;
-  box-shadow: inset 0 0 0 1px rgba(245, 158, 11, 0.35);
+  color: #a06bd6;
 }
 
-.severityLow {
-  color: $muted;
-  box-shadow: inset 0 0 0 1px $lilac-edge;
+.blockedMark {
+  font-size: 11px;
+  color: #c25b8c;
+  flex: 0 0 auto;
+}
+
+.semanticMode,
+.findingCode {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
+  color: #6d5bd0;
+  overflow-wrap: anywhere;
 }
 
 /* ── 违规卡片 ── */
@@ -219,8 +227,8 @@ $faint: #8a89ad;
   flex-direction: column;
   gap: 8px;
   padding: 10px 12px 11px;
-  background: linear-gradient(180deg, #fffaf0 0%, #fffdf8 100%);
-  box-shadow: inset 0 0 0 1px rgba(245, 158, 11, 0.2);
+  background: linear-gradient(118deg, #f7f6ff 0%, #fdfdff 100%);
+  box-shadow: inset 0 0 0 1px $lilac-edge;
   border-radius: 10px;
 }
 
@@ -229,12 +237,6 @@ $faint: #8a89ad;
   align-items: center;
   flex-wrap: wrap;
   gap: 6px;
-
-  .ruleTag {
-    flex: 0 1 auto;
-    min-width: 0;
-    background: #fff;
-  }
 }
 
 .violationLine {
