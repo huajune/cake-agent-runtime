@@ -21,11 +21,11 @@
 }
 
 .neutral {
-  border-color: rgba(100, 116, 139, 0.3) !important;
-  color: #6b7a90 !important;
+  border-color: rgba($text-secondary, 0.3) !important;
+  color: $text-secondary !important;
 }
 
 .muted {
-  border-color: rgba(148, 163, 184, 0.3) !important;
-  color: #9aa6b8 !important;
+  border-color: rgba($text-muted, 0.3) !important;
+  color: $text-muted !important;
 }

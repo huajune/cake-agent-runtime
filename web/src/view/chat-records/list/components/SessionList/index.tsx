@@ -126,7 +126,7 @@ export default function SessionList({
                   stroke="#A3AED0"
                   strokeWidth="2"
                 />
-                <circle cx="44" cy="22" r="3" fill="#FF7596" />
+                <circle cx="44" cy="22" r="3" fill="#e07a9a" />
               </svg>
             </div>
             <p>{searchTerm ? `没有匹配「${searchTerm}」的会话` : `${timeRangeLabel}暂无会话记录`}</p>

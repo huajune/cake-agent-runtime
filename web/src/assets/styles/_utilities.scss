@@ -63,7 +63,7 @@
   height: 8px;
   border-radius: 50%;
   background: $success;
-  box-shadow: 0 0 12px rgba(16, 185, 129, 0.7);
+  box-shadow: 0 0 12px rgba($success, 0.7);
 }
 
 .auto-refresh {
@@ -103,7 +103,7 @@
   height: 100%;
   z-index: -1;
   overflow: hidden;
-  background: #f3f4f6;
+  background: $bg-tint;
 }
 
 .bg-blue,
@@ -137,9 +137,9 @@
 .skeleton {
   background: linear-gradient(
     90deg,
-    rgba(148, 163, 184, 0.1) 25%,
-    rgba(148, 163, 184, 0.2) 50%,
-    rgba(148, 163, 184, 0.1) 75%
+    rgba($text-muted, 0.1) 25%,
+    rgba($text-muted, 0.2) 50%,
+    rgba($text-muted, 0.1) 75%
   );
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
@@ -150,7 +150,7 @@
 canvas {
   width: 100% !important;
   height: 280px !important;
-  filter: drop-shadow(0 4px 8px rgba(148, 163, 184, 0.15));
+  filter: drop-shadow(0 4px 8px rgba($text-muted, 0.15));
 }
 
 // ========== 百分位数 ==========
@@ -206,7 +206,7 @@ canvas {
   border-left: 3px solid transparent;
 
   &:hover {
-    background: rgba(249, 250, 251, 0.8);
+    background: rgba($bg-secondary, 0.8);
   }
 
   &.active {
@@ -219,7 +219,7 @@ canvas {
   width: 40px;
   height: 40px;
   border-radius: 12px;
-  background: linear-gradient(135deg, #60a5fa, #3b82f6);
+  background: linear-gradient(135deg, $info, $info);
   color: #fff;
   display: flex;
   align-items: center;
@@ -227,7 +227,7 @@ canvas {
   font-size: 14px;
   font-weight: 600;
   flex-shrink: 0;
-  box-shadow: 0 4px 10px rgba(59, 130, 246, 0.2);
+  box-shadow: 0 4px 10px rgba($info, 0.2);
 }
 
 .chat-message-bubble {
@@ -247,8 +247,8 @@ canvas {
   }
 
   &.assistant {
-    background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(5, 150, 105, 0.1));
-    border: 1px solid rgba(16, 185, 129, 0.2);
+    background: linear-gradient(135deg, rgba($success, 0.1), rgba(5, 150, 105, 0.1));
+    border: 1px solid rgba($success, 0.2);
     border-top-right-radius: 4px;
     color: $text-primary;
     margin-left: auto;
@@ -268,7 +268,7 @@ canvas {
   overflow: hidden;
 
   &:hover {
-    background: rgba(249, 250, 251, 0.8);
+    background: rgba($bg-secondary, 0.8);
   }
 
   &.active {
@@ -323,14 +323,14 @@ canvas {
 
 .manager-badge {
   font-size: 10px;
-  color: #b45309;
-  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  color: $warning-text;
+  background: linear-gradient(135deg, $warning-bg 0%, $warning-light 100%);
   padding: 2px 6px;
   border-radius: 6px;
   font-weight: 600;
   flex-shrink: 0 !important;
   white-space: nowrap !important;
-  border: 1px solid rgba(251, 191, 36, 0.2);
+  border: 1px solid rgba($warning, 0.2);
   max-width: 50%;
   text-overflow: ellipsis;
   overflow: hidden;
@@ -370,7 +370,7 @@ canvas {
 }
 
 .msg-count-badge {
-  background: rgba(243, 244, 246, 1);
+  background: rgba($bg-tint, 1);
   padding: 2px 8px;
   border-radius: 12px;
   font-size: 10px;
@@ -391,7 +391,7 @@ canvas {
 }
 
 .message-date-badge {
-  background: rgba(243, 244, 246, 1);
+  background: rgba($bg-tint, 1);
   padding: 4px 12px;
   border-radius: 12px;
   font-size: 12px;
@@ -457,7 +457,7 @@ canvas {
   font-weight: 600;
   color: $text-primary;
   border-bottom: 1px solid $border;
-  background: rgba(249, 250, 251, 0.5);
+  background: rgba($bg-secondary, 0.5);
 }
 
 .tooltip-content {
@@ -479,7 +479,7 @@ canvas {
     align-items: center;
     justify-content: space-between;
     padding: 8px 12px;
-    background: rgba(249, 250, 251, 0.8);
+    background: rgba($bg-secondary, 0.8);
     border-radius: 8px;
     font-size: 13px;
     color: $text-secondary;
@@ -520,7 +520,7 @@ canvas {
   font-size: 11px;
   color: $text-muted;
   border-top: 1px solid $border;
-  background: rgba(249, 250, 251, 0.5);
+  background: rgba($bg-secondary, 0.5);
 }
 
 .tooltip-status-grid {
@@ -534,7 +534,7 @@ canvas {
   justify-content: space-between;
   align-items: center;
   padding: 8px 12px;
-  background: rgba(249, 250, 251, 0.8);
+  background: rgba($bg-secondary, 0.8);
   border-radius: 8px;
 }
 
@@ -555,15 +555,15 @@ canvas {
 // ========== 春暖花开主题 ==========
 .spring-card {
   margin-top: 16px;
-  background: linear-gradient(135deg, #fdf2f8 0%, #ecfdf5 100%);
+  background: linear-gradient(135deg, $rose-bg 0%, $success-bg 100%);
   border-radius: 16px;
   padding: 16px;
   position: relative;
   overflow: hidden;
-  color: #1f2937;
-  box-shadow: 0 4px 12px rgba(236, 72, 153, 0.12);
+  color: $text-primary;
+  box-shadow: 0 4px 12px rgba($rose, 0.12);
   cursor: default;
-  border: 1px solid rgba(251, 207, 232, 0.5);
+  border: 1px solid rgba($rose-light, 0.5);
 }
 
 .spring-floating {
@@ -585,7 +585,7 @@ canvas {
   gap: 6px;
   position: relative;
   z-index: 2;
-  color: #be185d;
+  color: $rose-text;
 }
 
 .spring-text {
@@ -660,15 +660,15 @@ canvas {
   align-items: center;
   justify-content: center;
   // Spring bloom card style
-  background: linear-gradient(135deg, #fdf2f8 0%, #fbcfe8 100%);
-  border: 2px solid #F9A8D4;
+  background: linear-gradient(135deg, $rose-bg 0%, $rose-light 100%);
+  border: 2px solid $rose-light;
   border-radius: 12px;
   // Pink text
-  color: #be185d;
+  color: $rose-text;
   font-weight: 800;
   text-shadow: 0 1px 0 rgba(190, 24, 93, 0.15);
   // Soft depth
-  box-shadow: 0 4px 0 #F9A8D4, 0 6px 8px rgba(236, 72, 153, 0.12);
+  box-shadow: 0 4px 0 $rose-light, 0 6px 8px rgba($rose, 0.12);
   position: relative;
   z-index: 10;
   transform-origin: top center;
@@ -683,7 +683,7 @@ canvas {
     transform: translateX(-50%);
     width: 4px;
     height: 8px;
-    background: #86EFAC;
+    background: $success-light;
     border-radius: 2px;
   }
 
@@ -709,10 +709,10 @@ canvas {
 }
 
 .firework {
-  color: rgba(251, 207, 232, 0.7);
+  color: rgba($rose-light, 0.7);
   font-size: 1em;
   font-family: Arial, sans-serif;
-  text-shadow: 0 0 5px rgba(251, 207, 232, 0.5);
+  text-shadow: 0 0 5px rgba($rose-light, 0.5);
   position: absolute;
   top: -10%;
   z-index: 1;
@@ -811,10 +811,10 @@ canvas {
 }
 
 // ========== 边框颜色工具类 ==========
-.border-warning-soft { border: 1px solid rgba(245, 158, 11, 0.3) !important; }
+.border-warning-soft { border: 1px solid rgba($warning, 0.3) !important; }
 .border-primary-soft { border: 1px solid $primary-30 !important; }
-.border-purple-soft { border: 1px solid rgba(168, 85, 247, 0.3) !important; }
-.border-success-soft { border: 1px solid rgba(16, 185, 129, 0.3) !important; }
+.border-purple-soft { border: 1px solid rgba($accent, 0.3) !important; }
+.border-success-soft { border: 1px solid rgba($success, 0.3) !important; }
 
 // ========== 徽章样式 ==========
 .time-range-badge {

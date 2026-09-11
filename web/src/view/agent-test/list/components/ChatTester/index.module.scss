@@ -107,7 +107,7 @@
   align-items: center;
   padding: $spacing-md $spacing-lg;
   border-bottom: 1px solid $accent-10;
-  background: linear-gradient(135deg, $primary-03 0%, $bg-secondary 30%, rgba(253, 242, 248, 0.3) 70%, rgba(236, 72, 153, 0.03) 100%);
+  background: linear-gradient(135deg, $primary-03 0%, $bg-secondary 30%, rgba(253, 242, 248, 0.3) 70%, rgba($rose, 0.03) 100%);
   flex-shrink: 0;
   position: relative;
 
@@ -136,8 +136,8 @@
 .idConfigBtn {
   padding: 6px 12px;
   border-radius: $radius-md;
-  border: 1px solid rgba(236, 72, 153, 0.24);
-  background: rgba(236, 72, 153, 0.08);
+  border: 1px solid rgba($rose, 0.24);
+  background: rgba($rose, 0.08);
   color: $accent;
   font-size: $font-size-xs;
   font-weight: $font-weight-medium;
@@ -148,8 +148,8 @@
   gap: 5px;
 
   &:hover:not(:disabled) {
-    background: rgba(236, 72, 153, 0.14);
-    border-color: rgba(236, 72, 153, 0.34);
+    background: rgba($rose, 0.14);
+    border-color: rgba($rose, 0.34);
   }
 
   &:disabled {
@@ -185,7 +185,7 @@
     right: -40px;
     width: 180px;
     height: 180px;
-    background: radial-gradient(circle, $accent-04 0%, rgba(236, 72, 153, 0.03) 50%, transparent 70%);
+    background: radial-gradient(circle, $accent-04 0%, rgba($rose, 0.03) 50%, transparent 70%);
     pointer-events: none;
     z-index: 0;
   }
@@ -202,7 +202,7 @@
     width: 6px;
   }
   &::-webkit-scrollbar-thumb {
-    background: rgba(148, 163, 184, 0.3);
+    background: rgba($text-muted, 0.3);
     border-radius: 3px;
   }
 }
@@ -298,7 +298,7 @@
   padding: 4px;
   border-radius: $radius-xl;
   background: rgba(255, 255, 255, 0.72);
-  border: 1px solid rgba(236, 72, 153, 0.12);
+  border: 1px solid rgba($rose, 0.12);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
 
@@ -328,9 +328,9 @@
 }
 
 .modeOptionActive {
-  background: linear-gradient(135deg, rgba(236, 72, 153, 0.14) 0%, rgba(244, 114, 182, 0.22) 100%);
+  background: linear-gradient(135deg, rgba($rose, 0.14) 0%, rgba($rose, 0.22) 100%);
   color: $accent;
-  box-shadow: 0 8px 16px rgba(236, 72, 153, 0.12);
+  box-shadow: 0 8px 16px rgba($rose, 0.12);
 }
 
 .budgetField {
@@ -340,7 +340,7 @@
   min-height: 42px;
   padding: 4px 12px;
   border-radius: $radius-xl;
-  border: 1px solid rgba(236, 72, 153, 0.12);
+  border: 1px solid rgba($rose, 0.12);
   background: rgba(255, 255, 255, 0.72);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
 }
@@ -390,7 +390,7 @@
   min-height: 42px;
   padding: 8px 12px;
   border-radius: $radius-xl;
-  border: 1px solid rgba(236, 72, 153, 0.12);
+  border: 1px solid rgba($rose, 0.12);
   background: rgba(255, 255, 255, 0.72);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
   color: $text-primary;
@@ -401,7 +401,7 @@
   transition: all 0.2s ease;
 
   &:hover:not(:disabled) {
-    border-color: rgba(236, 72, 153, 0.24);
+    border-color: rgba($rose, 0.24);
     background: rgba(255, 255, 255, 0.85);
   }
 
@@ -547,7 +547,7 @@
     justify-content: center;
     border-radius: $radius-md;
     border: none;
-    background: linear-gradient(135deg, $accent 0%, #ec4899 100%);
+    background: linear-gradient(135deg, $accent 0%, $rose 100%);
     color: $text-on-primary;
     cursor: pointer;
     transition: all 0.2s ease;
@@ -676,7 +676,7 @@
 
   &:hover:not(:disabled) {
     color: $danger;
-    background: rgba(239, 68, 68, 0.08);
+    background: rgba($danger, 0.08);
 
     svg {
       transform: rotate(90deg);
@@ -713,7 +713,7 @@
     width: 6px;
   }
   &::-webkit-scrollbar-thumb {
-    background: rgba(148, 163, 184, 0.3);
+    background: rgba($text-muted, 0.3);
     border-radius: 3px;
   }
   &::-webkit-scrollbar-track {
@@ -908,7 +908,7 @@
     align-items: center;
     gap: 6px;
     padding: 5px 10px;
-    background: linear-gradient(135deg, $accent-12 0%, rgba(236, 72, 153, 0.12) 100%);
+    background: linear-gradient(135deg, $accent-12 0%, rgba($rose, 0.12) 100%);
     color: $accent;
     border: 1px solid $accent-15;
     border-radius: $radius-md;
@@ -976,11 +976,11 @@
   .toolDetail {
     margin: 0;
     padding: 12px;
-    background: #0f172a;
+    background: $text-primary;
     border-radius: $radius-md;
     font-size: 11px;
     font-family: 'JetBrains Mono', monospace;
-    color: #e2e8f0;
+    color: $border;
     overflow-x: auto;
     white-space: pre-wrap;
     word-break: break-all;
@@ -1045,7 +1045,7 @@
 
 .streamCursor {
   display: inline-block;
-  color: #ec4899;
+  color: $rose;
   font-weight: bold;
   animation: blink 1s step-end infinite;
   margin-left: 2px;

@@ -2,11 +2,11 @@
 @use '@/assets/styles/variables' as *;
 
 // ==================== 局部色彩 (teal 系) ====================
-$_teal: #0d9488;
-$_teal-06: rgba(13, 148, 136, 0.06);
-$_teal-10: rgba(13, 148, 136, 0.1);
-$_teal-15: rgba(13, 148, 136, 0.15);
-$_teal-25: rgba(13, 148, 136, 0.25);
+$_teal: $success;
+$_teal-06: rgba($success, 0.06);
+$_teal-10: rgba($success, 0.1);
+$_teal-15: rgba($success, 0.15);
+$_teal-25: rgba($success, 0.25);
 
 // ==================== 阈值标签列表 ====================
 .thresholdList {

@@ -18,7 +18,7 @@ $faint: #8a89ad;
   overflow: hidden;
   box-shadow:
     inset 0 0 0 1px $lilac-edge,
-    0 10px 24px rgba(31, 41, 55, 0.04);
+    0 10px 24px rgba($text-primary, 0.04);
 }
 
 /* ── 时间线骨架 ── */
@@ -50,7 +50,7 @@ $faint: #8a89ad;
     height: 8px;
     border-radius: 50%;
     background: #fff;
-    box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.45);
+    box-shadow: 0 0 0 2px rgba($primary, 0.45);
   }
 }
 
@@ -281,13 +281,13 @@ $faint: #8a89ad;
   padding-top: 8px;
   padding-bottom: 9px;
   padding-right: 14px;
-  background: linear-gradient(90deg, rgba(255, 247, 237, 0.85) 0%, rgba(255, 255, 255, 0) 78%);
+  background: linear-gradient(90deg, rgba($warning-bg, 0.85) 0%, rgba(255, 255, 255, 0) 78%);
 }
 
 .repairIcon {
   flex: 0 0 auto;
   margin-top: 2px;
-  color: #d97706;
+  color: $warning-text;
 }
 
 .repairBody {
@@ -300,7 +300,7 @@ $faint: #8a89ad;
 .repairTitle {
   font-size: 12px;
   line-height: 1.5;
-  color: #9a5b12;
+  color: $warning-text;
 }
 
 .sideEffectNote {
@@ -366,7 +366,7 @@ $faint: #8a89ad;
 
 .findingCode {
   align-self: flex-start;
-  color: #4f46e5;
+  color: $primary-dark;
   background: #fff;
   box-shadow: inset 0 0 0 1px $lilac-edge;
 }
@@ -436,7 +436,7 @@ $faint: #8a89ad;
 
 .blockHint {
   font-size: 11px;
-  color: #ef4444;
+  color: $danger;
   white-space: nowrap;
 }
 

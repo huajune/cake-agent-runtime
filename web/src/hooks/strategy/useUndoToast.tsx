@@ -29,12 +29,12 @@ export function showUndoToast(
           gap: '12px',
           background: 'rgba(255, 255, 255, 0.95)',
           backdropFilter: 'blur(10px)',
-          border: '1px solid rgba(148, 163, 184, 0.2)',
+          border: '1px solid rgba(138, 137, 173, 0.2)',
           borderRadius: '12px',
           padding: '12px 16px',
           boxShadow: '0 4px 20px rgba(0, 0, 0, 0.1)',
           fontSize: '14px',
-          color: '#1e293b',
+          color: '#14132b',
         }}
       >
         <span>{message}</span>
@@ -45,8 +45,8 @@ export function showUndoToast(
           }}
           style={{
             background: 'none',
-            border: '1px solid #6366f1',
-            color: '#6366f1',
+            border: '1px solid #6d5bd0',
+            color: '#6d5bd0',
             borderRadius: '6px',
             padding: '4px 10px',
             cursor: 'pointer',

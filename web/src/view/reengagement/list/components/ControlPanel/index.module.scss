@@ -30,7 +30,7 @@
   padding: 2px;
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.7);
-  border: 1px solid rgba(161, 173, 255, 0.18);
+  border: 1px solid rgba($primary-light, 0.18);
   flex-shrink: 0;
 }
 
@@ -51,14 +51,14 @@
 
   &:hover {
     color: var(--text-primary);
-    background: rgba(99, 102, 241, 0.04);
+    background: rgba($primary, 0.04);
   }
 }
 
 .segBtnActive {
   background: #fff;
   color: var(--primary);
-  box-shadow: 0 1px 3px rgba(91, 87, 255, 0.14);
+  box-shadow: 0 1px 3px rgba($primary, 0.14);
 }
 
 /* ── Search ── */
@@ -73,7 +73,7 @@
   width: 100%;
   height: 30px;
   padding: 0 26px 0 10px;
-  border: 1px solid rgba(161, 173, 255, 0.2);
+  border: 1px solid rgba($primary-light, 0.2);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.76);
   color: var(--text-primary);
@@ -84,8 +84,8 @@
     box-shadow 0.15s ease;
 
   &:focus {
-    border-color: rgba(91, 87, 255, 0.4);
-    box-shadow: 0 0 0 2px rgba(91, 87, 255, 0.06);
+    border-color: rgba($primary, 0.4);
+    box-shadow: 0 0 0 2px rgba($primary, 0.06);
   }
 }
 
@@ -101,7 +101,7 @@
   height: 16px;
   border: none;
   border-radius: 999px;
-  background: rgba(99, 102, 241, 0.08);
+  background: rgba($primary, 0.08);
   color: var(--text-muted);
   font-size: 11px;
   line-height: 1;
@@ -116,7 +116,7 @@
   width: 150px;
   height: 30px;
   padding: 0 10px;
-  border: 1px solid rgba(161, 173, 255, 0.2);
+  border: 1px solid rgba($primary-light, 0.2);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.76);
   color: #5b5a86;
@@ -127,8 +127,8 @@
     box-shadow 0.15s ease;
 
   &:focus-within {
-    border-color: rgba(91, 87, 255, 0.4);
-    box-shadow: 0 0 0 2px rgba(91, 87, 255, 0.06);
+    border-color: rgba($primary, 0.4);
+    box-shadow: 0 0 0 2px rgba($primary, 0.06);
   }
 
   svg {
@@ -200,7 +200,7 @@
   padding: 0 10px;
   border-radius: 8px;
   border: 1px solid transparent;
-  background: rgba(99, 102, 241, 0.06);
+  background: rgba($primary, 0.06);
   white-space: nowrap;
   transition: background 0.15s ease;
 }
@@ -220,40 +220,40 @@
 
 /* Badge color variants */
 .badgePrimary {
-  background: rgba(99, 102, 241, 0.07);
-  border-color: rgba(99, 102, 241, 0.14);
+  background: rgba($primary, 0.07);
+  border-color: rgba($primary, 0.14);
   .statBadgeValue {
     color: var(--primary);
   }
 }
 
 .badgeSuccess {
-  background: rgba(16, 185, 129, 0.07);
-  border-color: rgba(16, 185, 129, 0.14);
+  background: rgba($success, 0.07);
+  border-color: rgba($success, 0.14);
   .statBadgeValue {
     color: var(--success);
   }
 }
 
 .badgeNeutral {
-  background: rgba(139, 92, 246, 0.06);
-  border-color: rgba(139, 92, 246, 0.13);
+  background: rgba($primary, 0.06);
+  border-color: rgba($primary, 0.13);
   .statBadgeValue {
     color: #6d5bd0;
   }
 }
 
 .badgeDanger {
-  background: rgba(239, 68, 68, 0.07);
-  border-color: rgba(239, 68, 68, 0.16);
+  background: rgba($danger, 0.07);
+  border-color: rgba($danger, 0.16);
   .statBadgeValue {
     color: var(--danger);
   }
 }
 
 .badgeIdle {
-  background: rgba(148, 163, 184, 0.06);
-  border-color: rgba(148, 163, 184, 0.12);
+  background: rgba($text-muted, 0.06);
+  border-color: rgba($text-muted, 0.12);
   .statBadgeValue {
     color: #8a89ad;
   }

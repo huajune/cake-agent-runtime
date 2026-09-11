@@ -81,7 +81,7 @@
   }
 
   &.reviewing {
-    background: linear-gradient(135deg, $accent-12 0%, rgba(236, 72, 153, 0.06) 100%);
+    background: linear-gradient(135deg, $accent-12 0%, rgba($rose, 0.06) 100%);
     border-radius: $radius-lg;
     margin: 2px 4px;
     border: 1px solid $accent-30;
@@ -100,7 +100,7 @@
   }
 
   &.selected {
-    background: linear-gradient(135deg, $accent-08 0%, rgba(236, 72, 153, 0.04) 100%);
+    background: linear-gradient(135deg, $accent-08 0%, rgba($rose, 0.04) 100%);
     border-radius: $radius-lg;
     margin: 2px 4px;
     border: 1px solid $accent-20;
@@ -164,7 +164,7 @@
       font-weight: $font-weight-medium;
       line-height: 1.2;
       color: $primary-dark;
-      background: rgba(14, 165, 233, 0.12);
+      background: rgba($info, 0.12);
       white-space: nowrap;
       flex-shrink: 0;
 
@@ -234,13 +234,13 @@
 
   // 执行状态
   &.execSuccess {
-    background: rgba(16, 185, 129, 0.15);
-    color: #10b981;
+    background: rgba($success, 0.15);
+    color: $success;
   }
 
   &.execFailure {
-    background: rgba(236, 72, 153, 0.16);
-    color: #ec4899;
+    background: rgba($rose, 0.16);
+    color: $rose;
   }
 
   &.execRunning {
@@ -253,19 +253,19 @@
   }
 
   &.execPending {
-    background: rgba(148, 163, 184, 0.15);
-    color: #94a3b8;
+    background: rgba($text-muted, 0.15);
+    color: $text-muted;
   }
 
   // 评审状态
   &.reviewPassed {
-    background: rgba(16, 185, 129, 0.15);
-    color: #10b981;
+    background: rgba($success, 0.15);
+    color: $success;
   }
 
   &.reviewFailed {
-    background: rgba(236, 72, 153, 0.16);
-    color: #ec4899;
+    background: rgba($rose, 0.16);
+    color: $rose;
   }
 
   &.reviewPending {
@@ -329,58 +329,58 @@
 
 // 分类颜色（11 种）
 .category1 {
-  background: rgba(239, 68, 68, 0.12);
-  color: #dc2626;
+  background: rgba($danger, 0.12);
+  color: $danger;
 }
 .category2,
 .categoryRegion {
   background: rgba(249, 115, 22, 0.12);
-  color: #ea580c;
+  color: $warning;
 }
 .category3,
 .categoryJobIssue {
-  background: rgba(245, 158, 11, 0.14);
-  color: #d97706;
+  background: rgba($warning, 0.14);
+  color: $warning-text;
 }
 .category4,
 .categoryJobHard {
-  background: rgba(139, 92, 246, 0.12);
-  color: #7c3aed;
+  background: rgba($primary, 0.12);
+  color: $primary-dark;
 }
 .category5,
 .categoryAppointment {
-  background: rgba(34, 197, 94, 0.12);
-  color: #16a34a;
+  background: rgba($success, 0.12);
+  color: $success-text;
 }
 .category6,
 .categoryOther {
   background: rgba(20, 184, 166, 0.12);
-  color: #0d9488;
+  color: $success;
 }
 .category7,
 .categoryMessageFlow {
-  background: rgba(6, 182, 212, 0.12);
-  color: #0891b2;
+  background: rgba($info, 0.12);
+  color: $info-text;
 }
 .category8,
 .categoryAddressJob,
 .categoryTrust {
-  background: rgba(59, 130, 246, 0.12);
-  color: #2563eb;
+  background: rgba($info, 0.12);
+  color: $info-text;
 }
 .category9 {
   background: $primary-12;
-  color: #4f46e5;
+  color: $primary-dark;
 }
 .category10 {
   background: $accent-12;
   color: $primary-dark;
 }
 .category11 {
-  background: rgba(236, 72, 153, 0.12);
-  color: #db2777;
+  background: rgba($rose, 0.12);
+  color: $rose-text;
 }
 .categoryDefault {
-  background: rgba(148, 163, 184, 0.12);
-  color: #64748b;
+  background: rgba($text-muted, 0.12);
+  color: $text-secondary;
 }

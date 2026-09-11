@@ -1,8 +1,8 @@
 // 处理请求流水页 — 页面级样式（无限滚动的加载/到底提示）
 @use '@/assets/styles/variables' as *;
 
-$gray-2: #9c9c9c;
-$hairline: #e6e6e9;
+$gray-2: $text-muted;
+$hairline: $border;
 
 @keyframes spin {
   to {

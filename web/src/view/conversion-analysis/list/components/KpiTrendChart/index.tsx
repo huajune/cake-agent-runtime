@@ -132,21 +132,21 @@ export default function KpiTrendChart({
                 <div className={styles.trendChartBox}>
                   <ResponsiveContainer width="100%" height={180}>
                     <LineChart data={chartData} margin={{ top: 8, right: 16, left: -8, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#eef0f5" vertical={false} />
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f3f2ff" vertical={false} />
                       <XAxis
                         dataKey="label"
-                        stroke="#9ca3af"
-                        tick={{ fontSize: 11, fill: '#6b7280' }}
+                        stroke="#8a89ad"
+                        tick={{ fontSize: 11, fill: '#5b5a86' }}
                         tickLine={false}
-                        axisLine={{ stroke: '#e5e7eb' }}
+                        axisLine={{ stroke: 'rgba(212, 208, 255, 0.55)' }}
                         interval={xAxisInterval}
                         minTickGap={8}
                       />
                       <YAxis
-                        stroke="#9ca3af"
-                        tick={{ fontSize: 11, fill: '#6b7280' }}
+                        stroke="#8a89ad"
+                        tick={{ fontSize: 11, fill: '#5b5a86' }}
                         tickLine={false}
-                        axisLine={{ stroke: '#e5e7eb' }}
+                        axisLine={{ stroke: 'rgba(212, 208, 255, 0.55)' }}
                         width={44}
                         domain={[0, 'auto']}
                         tickFormatter={(value) => formatPercent(Number(value))}

@@ -199,7 +199,7 @@ export default function ReengagementPage() {
               style={{
                 padding: '24px 20px',
                 textAlign: 'center',
-                color: '#94a3b8',
+                color: '#8a89ad',
                 fontSize: '13px',
                 fontWeight: 500,
                 display: 'flex',
@@ -213,8 +213,8 @@ export default function ReengagementPage() {
                   display: 'inline-block',
                   width: '16px',
                   height: '16px',
-                  border: '2px solid rgba(99, 102, 241, 0.15)',
-                  borderTopColor: '#6366f1',
+                  border: '2px solid rgba(109, 91, 208, 0.15)',
+                  borderTopColor: '#6d5bd0',
                   borderRadius: '50%',
                   animation: 'spin 0.6s linear infinite',
                 }}
@@ -229,7 +229,7 @@ export default function ReengagementPage() {
               style={{
                 padding: '24px 20px',
                 textAlign: 'center',
-                color: '#94a3b8',
+                color: '#8a89ad',
                 fontSize: '13px',
                 fontWeight: 500,
                 display: 'flex',

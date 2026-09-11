@@ -12,15 +12,15 @@
 
 /* ── History card ── */
 .historyCard {
-  border: 1px solid rgba(139, 92, 246, 0.14);
+  border: 1px solid rgba($primary, 0.14);
   border-radius: 18px;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(251, 250, 255, 0.94) 100%);
   margin-bottom: 18px;
   overflow: hidden;
   box-shadow:
-    0 18px 44px rgba(31, 41, 55, 0.06),
-    0 0 34px rgba(139, 92, 246, 0.06);
+    0 18px 44px rgba($text-primary, 0.06),
+    0 0 34px rgba($primary, 0.06);
 }
 
 .historyList {
@@ -35,7 +35,7 @@
   flex-direction: column;
   gap: 6px;
   padding: 14px 18px;
-  border-bottom: 1px dashed rgba(139, 92, 246, 0.13);
+  border-bottom: 1px dashed rgba($primary, 0.13);
 
   &:last-child {
     border-bottom: none;
@@ -47,7 +47,7 @@
 }
 
 .historyAssistant {
-  background: rgba(99, 102, 241, 0.025);
+  background: rgba($primary, 0.025);
 }
 
 .historyRole {
@@ -71,21 +71,21 @@
 
 .historyEmpty {
   padding: 16px 18px;
-  background: rgba(139, 92, 246, 0.03);
+  background: rgba($primary, 0.03);
   color: $text-muted;
   font-size: 12px;
 }
 
 /* ── Response card ── */
 .responseCard {
-  border: 1px solid rgba(139, 92, 246, 0.14);
+  border: 1px solid rgba($primary, 0.14);
   border-radius: 18px;
   overflow: hidden;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(251, 250, 255, 0.94) 100%);
   box-shadow:
-    0 18px 44px rgba(31, 41, 55, 0.06),
-    0 0 34px rgba(139, 92, 246, 0.06);
+    0 18px 44px rgba($text-primary, 0.06),
+    0 0 34px rgba($primary, 0.06);
 }
 
 .responseHeader {
@@ -93,9 +93,9 @@
   align-items: center;
   gap: 8px;
   padding: 12px 18px;
-  border-bottom: 1px solid rgba(139, 92, 246, 0.1);
+  border-bottom: 1px solid rgba($primary, 0.1);
   background:
-    linear-gradient(135deg, rgba(139, 92, 246, 0.045) 0%, rgba(255, 255, 255, 0.76) 100%);
+    linear-gradient(135deg, rgba($primary, 0.045) 0%, rgba(255, 255, 255, 0.76) 100%);
 }
 
 .roleTag {
@@ -139,7 +139,7 @@
   }
 
   &::-webkit-scrollbar-thumb {
-    background: rgba(139, 92, 246, 0.16);
+    background: rgba($primary, 0.16);
     border: 2px solid transparent;
     border-radius: 999px;
     background-clip: padding-box;
@@ -173,7 +173,7 @@
   border-radius: 16px;
   padding: 14px 16px;
   margin-top: 16px;
-  box-shadow: 0 14px 34px rgba(239, 68, 68, 0.08);
+  box-shadow: 0 14px 34px rgba($danger, 0.08);
 }
 
 .errorHeader {
@@ -196,13 +196,13 @@
 
 .fallbackBox {
   background:
-    linear-gradient(180deg, rgba(255, 251, 235, 0.96) 0%, rgba(255, 255, 255, 0.96) 100%);
-  border: 1px solid rgba(251, 191, 36, 0.24);
+    linear-gradient(180deg, rgba($warning-bg, 0.96) 0%, rgba(255, 255, 255, 0.96) 100%);
+  border: 1px solid rgba($warning, 0.24);
   border-radius: 16px;
   padding: 14px 16px;
-  color: #b45309;
+  color: $warning-text;
   margin-top: 16px;
-  box-shadow: 0 14px 34px rgba(245, 158, 11, 0.08);
+  box-shadow: 0 14px 34px rgba($warning, 0.08);
 }
 
 .fallbackHeader {
@@ -220,13 +220,13 @@
   border-radius: 99px;
 
   &.success {
-    background: #fef3c7;
-    color: #b45309;
+    background: $warning-bg;
+    color: $warning-text;
   }
 
   &.failed {
-    background: #fee2e2;
-    color: #dc2626;
+    background: $danger-bg;
+    color: $danger;
   }
 }
 
@@ -289,14 +289,14 @@
 }
 
 .payloadCard {
-  border: 1px solid rgba(139, 92, 246, 0.14);
+  border: 1px solid rgba($primary, 0.14);
   border-radius: 18px;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(251, 250, 255, 0.94) 100%);
   overflow: hidden;
   box-shadow:
-    0 18px 44px rgba(31, 41, 55, 0.06),
-    0 0 34px rgba(139, 92, 246, 0.06);
+    0 18px 44px rgba($text-primary, 0.06),
+    0 0 34px rgba($primary, 0.06);
 }
 
 .payloadHeader {
@@ -305,9 +305,9 @@
   justify-content: space-between;
   gap: 10px;
   padding: 12px 16px;
-  border-bottom: 1px solid rgba(139, 92, 246, 0.1);
+  border-bottom: 1px solid rgba($primary, 0.1);
   background:
-    linear-gradient(135deg, rgba(139, 92, 246, 0.04) 0%, rgba(255, 255, 255, 0.74) 100%);
+    linear-gradient(135deg, rgba($primary, 0.04) 0%, rgba(255, 255, 255, 0.74) 100%);
 }
 
 .payloadLabel {
@@ -331,7 +331,7 @@
 }
 
 .codeShell {
-  background: #1e1e2e;
+  background: $text-primary;
   border-radius: 0 0 18px 18px;
   overflow: hidden;
 }

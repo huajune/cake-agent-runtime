@@ -41,12 +41,12 @@
 
   &.thumbsUp:hover:not(:disabled) {
     color: $success;
-    background: rgba(16, 185, 129, 0.08);
+    background: rgba($success, 0.08);
   }
 
   &.thumbsDown:hover:not(:disabled) {
     color: $danger;
-    background: rgba(239, 68, 68, 0.08);
+    background: rgba($danger, 0.08);
   }
 }
 
@@ -57,10 +57,10 @@
   padding: 6px 12px;
   background: $success-soft;
   color: $success;
-  border: 1px solid rgba(16, 185, 129, 0.22);
+  border: 1px solid rgba($success, 0.22);
   border-radius: $radius-full;
   font-size: $font-size-xs;
   font-weight: $font-weight-semibold;
-  box-shadow: 0 8px 18px rgba(16, 185, 129, 0.12);
+  box-shadow: 0 8px 18px rgba($success, 0.12);
   animation: fadeIn 0.3s ease-out;
 }

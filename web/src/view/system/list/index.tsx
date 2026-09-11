@@ -108,12 +108,12 @@ export default function System() {
       {
         label: '告警次数',
         data: alertTrend.map((p) => p.count || 0),
-        borderColor: '#ef4444',
+        borderColor: '#e07a9a',
         backgroundColor: (context: { chart: { ctx: CanvasRenderingContext2D } }) => {
           const ctx = context.chart.ctx;
           const gradient = ctx.createLinearGradient(0, 0, 0, 300);
-          gradient.addColorStop(0, 'rgba(239, 68, 68, 0.2)');
-          gradient.addColorStop(1, 'rgba(239, 68, 68, 0)');
+          gradient.addColorStop(0, 'rgba(224, 122, 154, 0.2)');
+          gradient.addColorStop(1, 'rgba(224, 122, 154, 0)');
           return gradient;
         },
         borderWidth: 2,
@@ -133,8 +133,8 @@ export default function System() {
       legend: { display: false },
       tooltip: {
         backgroundColor: 'rgba(255, 255, 255, 0.9)',
-        titleColor: '#1f2937',
-        bodyColor: '#6b7280',
+        titleColor: '#14132b',
+        bodyColor: '#5b5a86',
         borderColor: 'rgba(0,0,0,0.05)',
         borderWidth: 1,
         padding: 12,
@@ -150,7 +150,7 @@ export default function System() {
       x: {
         grid: { display: false },
         ticks: {
-          color: '#94a3b8',
+          color: '#8a89ad',
           font: { size: 10 },
           maxRotation: 0,
           autoSkip: true,
@@ -162,7 +162,7 @@ export default function System() {
         border: { display: false },
         grid: { color: 'rgba(0, 0, 0, 0.02)' },
         ticks: {
-          color: '#94a3b8',
+          color: '#8a89ad',
           font: { size: 10 },
           padding: 10,
           stepSize: 1,

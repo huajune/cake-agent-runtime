@@ -103,7 +103,7 @@
   }
 
   &.selected {
-    background: linear-gradient(135deg, $accent-12 0%, rgba(236, 72, 153, 0.06) 100%);
+    background: linear-gradient(135deg, $accent-12 0%, rgba($rose, 0.06) 100%);
     border-radius: $radius-lg;
     margin: 2px 4px;
     border: 1px solid $accent-30;
@@ -187,24 +187,24 @@
 }
 
 .scoreExcellent {
-  background: rgba(16, 185, 129, 0.12);
-  color: #10b981;
+  background: rgba($success, 0.12);
+  color: $success;
 }
 .scoreGood {
-  background: rgba(59, 130, 246, 0.12);
-  color: #3b82f6;
+  background: rgba($info, 0.12);
+  color: $info;
 }
 .scoreFair {
-  background: rgba(245, 158, 11, 0.12);
-  color: #f59e0b;
+  background: rgba($warning, 0.12);
+  color: $warning;
 }
 .scorePoor {
-  background: rgba(239, 68, 68, 0.12);
-  color: #ef4444;
+  background: rgba($danger, 0.12);
+  color: $danger;
 }
 .scoreDefault {
-  background: rgba(148, 163, 184, 0.12);
-  color: #64748b;
+  background: rgba($text-muted, 0.12);
+  color: $text-secondary;
 }
 
 // ==================== 状态区域 ====================
@@ -255,13 +255,13 @@
   }
 
   &.statusCompleted {
-    background: rgba(16, 185, 129, 0.15);
-    color: #10b981;
+    background: rgba($success, 0.15);
+    color: $success;
   }
 
   &.statusFailed {
-    background: rgba(236, 72, 153, 0.16);
-    color: #ec4899;
+    background: rgba($rose, 0.16);
+    color: $rose;
   }
 
   &.statusRunning {
@@ -274,8 +274,8 @@
   }
 
   &.statusPending {
-    background: rgba(148, 163, 184, 0.15);
-    color: #94a3b8;
+    background: rgba($text-muted, 0.15);
+    color: $text-muted;
   }
 }
 

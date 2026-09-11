@@ -188,7 +188,7 @@ export default function UserTrendChart({
             <div className={`${styles.statCard} ${styles.cardPrimary}`}>
               <div
                 className={styles.statIcon}
-                style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}
+                style={{ background: 'linear-gradient(135deg, #667eea 0%, #5b4de6 100%)' }}
               >
                 <IconUsers style={{ color: 'white' }} />
               </div>
@@ -202,7 +202,7 @@ export default function UserTrendChart({
             <div className={`${styles.statCard} ${styles.cardSecondary}`}>
               <div
                 className={styles.statIcon}
-                style={{ background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)' }}
+                style={{ background: 'linear-gradient(135deg, #f093fb 0%, #e07a9a 100%)' }}
               >
                 <IconBarChart style={{ color: 'white' }} />
               </div>
@@ -277,17 +277,17 @@ export default function UserTrendChart({
                         <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
                         <XAxis
                           dataKey="date"
-                          stroke="#9ca3af"
-                          tick={{ fontSize: 12, fill: '#6b7280' }}
+                          stroke="#8a89ad"
+                          tick={{ fontSize: 12, fill: '#5b5a86' }}
                           tickLine={false}
-                          axisLine={{ stroke: '#e5e7eb' }}
+                          axisLine={{ stroke: 'rgba(212, 208, 255, 0.55)' }}
                           interval={xAxisInterval}
                         />
                         <YAxis
-                          stroke="#9ca3af"
-                          tick={{ fontSize: 12, fill: '#6b7280' }}
+                          stroke="#8a89ad"
+                          tick={{ fontSize: 12, fill: '#5b5a86' }}
                           tickLine={false}
-                          axisLine={{ stroke: '#e5e7eb' }}
+                          axisLine={{ stroke: 'rgba(212, 208, 255, 0.55)' }}
                           width={48}
                         />
                         <Tooltip
@@ -299,12 +299,12 @@ export default function UserTrendChart({
                             padding: '12px 16px',
                           }}
                           labelStyle={{
-                            color: '#1f2937',
+                            color: '#14132b',
                             fontWeight: 600,
                             marginBottom: '8px',
                           }}
                           itemStyle={{
-                            color: '#6b7280',
+                            color: '#5b5a86',
                             fontSize: '13px',
                           }}
                           formatter={(value) => [

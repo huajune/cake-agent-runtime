@@ -2,17 +2,17 @@
 @use '@/assets/styles/variables' as *;
 
 // ==================== 粉紫渐变局部色彩 ====================
-$_pp: #a78bfa; // 柔和淡紫（标签/文字）
-$_gradient-pp: linear-gradient(135deg, #c084fc 0%, #818cf8 100%);
+$_pp: $primary-light; // 柔和淡紫（标签/文字）
+$_gradient-pp: linear-gradient(135deg, $accent-light 0%, $primary-light 100%);
 
-$_pp-03: rgba(167, 139, 250, 0.03);
-$_pp-05: rgba(167, 139, 250, 0.05);
-$_pp-06: rgba(167, 139, 250, 0.06);
-$_pp-08: rgba(167, 139, 250, 0.08);
-$_pp-10: rgba(167, 139, 250, 0.1);
-$_pp-15: rgba(167, 139, 250, 0.15);
-$_pp-25: rgba(167, 139, 250, 0.25);
-$_pp-30: rgba(167, 139, 250, 0.3);
+$_pp-03: rgba($primary-light, 0.03);
+$_pp-05: rgba($primary-light, 0.05);
+$_pp-06: rgba($primary-light, 0.06);
+$_pp-08: rgba($primary-light, 0.08);
+$_pp-10: rgba($primary-light, 0.1);
+$_pp-15: rgba($primary-light, 0.15);
+$_pp-25: rgba($primary-light, 0.25);
+$_pp-30: rgba($primary-light, 0.3);
 
 .page {
   padding: $spacing-md;
@@ -41,7 +41,7 @@ $_pp-30: rgba(167, 139, 250, 0.3);
     right: -60px;
     width: 450px;
     height: 450px;
-    background: radial-gradient(circle, rgba(244, 114, 182, 0.18) 0%, rgba(244, 114, 182, 0.04) 60%, transparent 100%);
+    background: radial-gradient(circle, rgba($rose, 0.18) 0%, rgba($rose, 0.04) 60%, transparent 100%);
     border-radius: 50%;
     filter: blur(60px);
     z-index: 0;
@@ -142,7 +142,7 @@ $_pp-30: rgba(167, 139, 250, 0.3);
   font-size: $font-size-xs;
   font-weight: $font-weight-semibold;
   color: #fff;
-  background: linear-gradient(135deg, #c084fc 0%, #818cf8 100%);
+  background: linear-gradient(135deg, $accent-light 0%, $primary-light 100%);
   box-shadow: 0 2px 8px $_pp-25;
   transition: all $transition-fast;
 
@@ -157,8 +157,8 @@ $_pp-30: rgba(167, 139, 250, 0.3);
   gap: 6px;
   padding: 8px 12px;
   border-radius: $radius-md;
-  background: rgba(59, 130, 246, 0.06);
-  color: rgba(59, 130, 246, 0.8);
+  background: rgba($info, 0.06);
+  color: rgba($info, 0.8);
   font-size: $font-size-xs;
   position: relative;
   z-index: 1;
@@ -173,7 +173,7 @@ $_pp-30: rgba(167, 139, 250, 0.3);
   align-items: baseline;
   gap: 10px;
   padding-top: 8px;
-  border-top: 1px solid rgba(15, 23, 42, 0.06);
+  border-top: 1px solid rgba($text-primary, 0.06);
   position: relative;
   z-index: 1;
 
@@ -289,7 +289,7 @@ $_pp-30: rgba(167, 139, 250, 0.3);
     left: -40px;
     width: 220px;
     height: 220px;
-    background: radial-gradient(circle, rgba(244, 114, 182, 0.06) 0%, rgba(244, 114, 182, 0.02) 50%, transparent 70%);
+    background: radial-gradient(circle, rgba($rose, 0.06) 0%, rgba($rose, 0.02) 50%, transparent 70%);
     border-radius: 50%;
     pointer-events: none;
     z-index: 0;
@@ -342,12 +342,12 @@ $_pp-30: rgba(167, 139, 250, 0.3);
 }
 
 .dimensionNavActive {
-  background: linear-gradient(135deg, #f9a8d4 0%, #f472b6 100%);
+  background: linear-gradient(135deg, $rose-light 0%, $rose 100%);
   color: #fff;
-  box-shadow: 0 2px 6px rgba(244, 114, 182, 0.3);
+  box-shadow: 0 2px 6px rgba($rose, 0.3);
 
   &:hover {
-    background: linear-gradient(135deg, #f9a8d4 0%, #f472b6 100%);
+    background: linear-gradient(135deg, $rose-light 0%, $rose 100%);
     color: #fff;
     filter: brightness(1.05);
   }
@@ -481,7 +481,7 @@ $_pp-30: rgba(167, 139, 250, 0.3);
   padding: $spacing-lg $spacing-xl;
   background: #fff;
   border: 1px solid $_pp-25;
-  border-left: 3px solid #f9a8d4;
+  border-left: 3px solid $rose-light;
   box-shadow: 0 4px 20px $_pp-10, 0 1px 4px $_pp-06;
 
   &:hover {
@@ -528,22 +528,22 @@ $_pp-30: rgba(167, 139, 250, 0.3);
   height: 22px;
   padding: 0 10px;
   border-radius: $radius-full;
-  background: rgba(236, 72, 153, 0.08);
-  border: 1px solid rgba(236, 72, 153, 0.15);
-  color: #ec4899;
+  background: rgba($rose, 0.08);
+  border: 1px solid rgba($rose, 0.15);
+  color: $rose;
   font-size: 10px;
   font-weight: $font-weight-semibold;
   font-family: $font-family-mono;
   flex-shrink: 0;
   white-space: nowrap;
   letter-spacing: 0.3px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 1px 2px rgba(236, 72, 153, 0.06);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 1px 2px rgba($rose, 0.06);
   transition: all $transition-fast;
 
   .stageCard:hover & {
-    background: rgba(236, 72, 153, 0.12);
-    border-color: rgba(236, 72, 153, 0.25);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 2px 4px rgba(236, 72, 153, 0.1);
+    background: rgba($rose, 0.12);
+    border-color: rgba($rose, 0.25);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 2px 4px rgba($rose, 0.1);
   }
 }
 
@@ -829,7 +829,7 @@ $_pp-30: rgba(167, 139, 250, 0.3);
 
   &:hover {
     color: #fff;
-    background: color.adjust(#ef4444, $lightness: -8%);
+    background: color.adjust($danger, $lightness: -8%);
   }
 }
 
@@ -934,7 +934,7 @@ $_pp-30: rgba(167, 139, 250, 0.3);
   align-items: center;
   padding: 3px;
   margin-bottom: $spacing-lg;
-  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  background: linear-gradient(135deg, $bg-secondary 0%, $border 100%);
   border: 1px solid rgba(0, 0, 0, 0.06);
   border-radius: 10px;
 }

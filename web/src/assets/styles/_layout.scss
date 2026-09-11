@@ -19,7 +19,7 @@
 // ========== 侧边栏 ==========
 .sidebar {
   width: 216px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.95) 0%, rgba(240, 249, 255, 0.9) 100%);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.95) 0%, rgba($info-bg, 0.9) 100%);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid rgba(255, 255, 255, 0.6);
@@ -297,11 +297,11 @@
 // Nav icon hover colors
 .nav-item:hover .icon-dashboard { color: $primary; }
 .nav-item:hover .icon-users { color: $accent; }
-.nav-item:hover .icon-hosting { color: #06b6d4; }
-.nav-item:hover .icon-config { color: #6b7280; }
-.nav-item:hover .icon-system { color: #ef4444; }
-.nav-item:hover .icon-logs { color: #10b981; }
-.nav-item:hover .icon-console { color: #1f2937; }
+.nav-item:hover .icon-hosting { color: $info; }
+.nav-item:hover .icon-config { color: $text-secondary; }
+.nav-item:hover .icon-system { color: $danger; }
+.nav-item:hover .icon-logs { color: $success; }
+.nav-item:hover .icon-console { color: $text-primary; }
 
 // ========== 页面区块 ==========
 .page-section {

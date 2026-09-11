@@ -143,8 +143,8 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
   background: $bg-card !important;
   color: $primary !important;
   box-shadow:
-    0 1px 2px rgba(15, 23, 42, 0.08),
-    0 1px 1px rgba(15, 23, 42, 0.04);
+    0 1px 2px rgba($text-primary, 0.08),
+    0 1px 1px rgba($text-primary, 0.04);
 }
 
 @keyframes conversionRefreshSlide {
@@ -470,7 +470,7 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
 
   &.teal {
     --kpi-tone: #8fcba3;
-    --kpi-next: #c6e8cf;
+    --kpi-next: $success-light;
     --kpi-soft: rgba(169, 215, 179, 0.18);
   }
 
@@ -760,7 +760,7 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
     linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(250, 252, 255, 0.84));
   padding: 16px 16px 10px;
   box-shadow:
-    0 10px 24px rgba(15, 23, 42, 0.05),
+    0 10px 24px rgba($text-primary, 0.05),
     inset 0 1px 0 rgba(255, 255, 255, 0.9);
   backdrop-filter: blur(7px);
   transition:
@@ -786,7 +786,7 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
     transform: translateY(-3px);
     border-color: color-mix(in srgb, var(--trend-tone, #{$primary}) 28%, #{$border});
     box-shadow:
-      0 16px 30px rgba(15, 23, 42, 0.08),
+      0 16px 30px rgba($text-primary, 0.08),
       inset 0 1px 0 rgba(255, 255, 255, 0.92);
   }
 }
@@ -855,7 +855,7 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.97);
   padding: 8px 12px;
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
+  box-shadow: 0 10px 24px rgba($text-primary, 0.12);
 
   strong {
     color: $text-primary;
@@ -898,7 +898,7 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
       rgba(255, 255, 255, 0.93) 47%,
       rgba(242, 247, 255, 0.78) 100%
     ),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.985), rgba(248, 250, 252, 0.95)), $bg-card;
+    linear-gradient(180deg, rgba(255, 255, 255, 0.985), rgba($bg-secondary, 0.95)), $bg-card;
 
   .panelHeader,
   .funnelLayout {
@@ -971,7 +971,7 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
   max-width: 320px;
   max-height: 380px;
   overflow: visible;
-  filter: drop-shadow(0 14px 22px rgba(15, 23, 42, 0.12));
+  filter: drop-shadow(0 14px 22px rgba($text-primary, 0.12));
 }
 
 // 漏斗层：入场自上而下依次落下。
@@ -1051,7 +1051,7 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
   display: flex;
   flex-direction: column;
   gap: 7px;
-  border: 1px solid color-mix(in srgb, var(--stage-tone) 14%, #eef0f5);
+  border: 1px solid color-mix(in srgb, var(--stage-tone) 14%, $bg-tint);
   border-radius: 16px;
   background: color-mix(in srgb, var(--stage-tone) 6%, #ffffff);
   padding: 13px 16px 13px 26px;
@@ -1093,8 +1093,8 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
 
   &:hover {
     transform: translateX(3px);
-    border-color: color-mix(in srgb, var(--stage-tone) 42%, #e5e7eb);
-    box-shadow: 0 10px 22px color-mix(in srgb, var(--stage-tone) 16%, rgba(15, 23, 42, 0.05));
+    border-color: color-mix(in srgb, var(--stage-tone) 42%, $border);
+    box-shadow: 0 10px 22px color-mix(in srgb, var(--stage-tone) 16%, rgba($text-primary, 0.05));
   }
 }
 
@@ -1174,7 +1174,7 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
 .botPanel {
   padding-bottom: $spacing-lg;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.94)), $bg-card;
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba($bg-secondary, 0.94)), $bg-card;
   isolation: isolate;
 
   .panelHeader,
@@ -1212,7 +1212,7 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
   border: 1px solid rgba($border, 0.82);
   border-radius: 18px;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.8), rgba(248, 250, 252, 0.62)),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.8), rgba($bg-secondary, 0.62)),
     radial-gradient(circle at 18% 0%, rgba($primary, 0.05), transparent 28%),
     radial-gradient(circle at 86% 8%, rgba($success, 0.06), transparent 24%);
   padding: 10px;
@@ -1277,9 +1277,9 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
       td {
         border-color: rgba($primary-light, 0.22);
         background:
-          linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.92)),
+          linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba($bg-secondary, 0.92)),
           linear-gradient(90deg, $primary-04, transparent 36%);
-        box-shadow: 0 8px 18px rgba(99, 102, 241, 0.055);
+        box-shadow: 0 8px 18px rgba($primary, 0.055);
       }
     }
 
@@ -1342,7 +1342,7 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
   tbody tr.rowSilver,
   tbody tr.rowBronze {
     td {
-      border-color: color-mix(in srgb, var(--row-tone) 20%, #e5e7eb);
+      border-color: color-mix(in srgb, var(--row-tone) 20%, $border);
       background: color-mix(in srgb, var(--row-tone) 4.5%, #ffffff);
     }
 
@@ -1351,7 +1351,7 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
     }
 
     &:hover td {
-      border-color: color-mix(in srgb, var(--row-tone) 32%, #e5e7eb);
+      border-color: color-mix(in srgb, var(--row-tone) 32%, $border);
       background: color-mix(in srgb, var(--row-tone) 8%, #ffffff);
       box-shadow: 0 8px 18px color-mix(in srgb, var(--row-tone) 12%, transparent);
     }
@@ -1416,7 +1416,7 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
   justify-content: center;
   border-radius: 10px;
   background: color-mix(in srgb, var(--row-tone, #{$primary}) 10%, #ffffff);
-  color: color-mix(in srgb, var(--row-tone, #{$primary}) 72%, #0f172a);
+  color: color-mix(in srgb, var(--row-tone, #{$primary}) 72%, $text-primary);
   font-size: $font-size-xs;
   font-weight: $font-weight-medium;
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--row-tone, #{$primary}) 18%, transparent);
@@ -1427,13 +1427,13 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
   height: 42px;
   overflow: hidden;
   isolation: isolate;
-  border: 1px solid var(--rank-ring, rgba(99, 102, 241, 0.2));
+  border: 1px solid var(--rank-ring, rgba($primary, 0.2));
   border-radius: 15px;
   color: #fff;
   box-shadow:
-    0 12px 24px var(--rank-shadow, rgba(15, 23, 42, 0.1)),
+    0 12px 24px var(--rank-shadow, rgba($text-primary, 0.1)),
     inset 0 1px 0 rgba(255, 255, 255, 0.9),
-    inset 0 -10px 18px rgba(15, 23, 42, 0.035);
+    inset 0 -10px 18px rgba($text-primary, 0.035);
 
   &::before {
     content: '';
@@ -1445,7 +1445,7 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
       radial-gradient(circle at 28% 22%, rgba(255, 255, 255, 0.9), transparent 42%),
       radial-gradient(
         circle at 78% 84%,
-        var(--rank-glow, rgba(99, 102, 241, 0.08)),
+        var(--rank-glow, rgba($primary, 0.08)),
         transparent 52%
       );
     opacity: 0.9;
@@ -1470,7 +1470,7 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
   width: 36px;
   height: 36px;
   overflow: visible;
-  filter: drop-shadow(0 2px 2px rgba(15, 23, 42, 0.15));
+  filter: drop-shadow(0 2px 2px rgba($text-primary, 0.15));
 }
 
 .rankGold {
@@ -1479,8 +1479,8 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
   --rank-glow: rgba(233, 196, 106, 0.22);
 
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(255, 251, 235, 0.78)),
-    linear-gradient(145deg, rgba(254, 243, 199, 0.8), rgba(233, 196, 106, 0.3));
+    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba($warning-bg, 0.78)),
+    linear-gradient(145deg, rgba($warning-bg, 0.8), rgba(233, 196, 106, 0.3));
 }
 
 .rankSilver {
@@ -1489,9 +1489,9 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
   --rank-glow: rgba(169, 185, 204, 0.22);
 
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(240, 249, 255, 0.78)),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba($info-bg, 0.78)),
     linear-gradient(145deg, rgba(169, 185, 204, 0.12), rgba(129, 140, 248, 0.13));
-  color: #334155;
+  color: $text-body;
 }
 
 .rankBronze {
@@ -1500,7 +1500,7 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
   --rank-glow: rgba(226, 163, 122, 0.2);
 
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(255, 247, 237, 0.76)),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba($warning-bg, 0.76)),
     linear-gradient(145deg, rgba(226, 163, 122, 0.12), rgba(233, 196, 106, 0.22));
 }
 
@@ -1537,7 +1537,7 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
   border: 1px solid rgba($border, 0.74);
   border-radius: 8px;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(248, 250, 252, 0.82)),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba($bg-secondary, 0.82)),
     color-mix(in srgb, var(--row-tone, #{$primary}) 5%, transparent);
   color: $text-secondary;
   padding: 0 7px;
@@ -1555,7 +1555,7 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
   min-height: 26px;
   border: 1px solid rgba($border, 0.74);
   border-radius: 9px;
-  background: rgba(248, 250, 252, 0.86);
+  background: rgba($bg-secondary, 0.86);
   color: $text-secondary;
   padding: 0 9px;
   font-size: $font-size-xs;
@@ -1587,11 +1587,11 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
 
   // 百分比数字与下方进度条同色系：报名=天蓝、面试=琥珀。
   strong.rateValueBooking {
-    color: color-mix(in srgb, #0284c7 62%, $text-primary);
+    color: color-mix(in srgb, $info-text 62%, $text-primary);
   }
 
   strong.rateValueInterview {
-    color: color-mix(in srgb, #d97706 62%, $text-primary);
+    color: color-mix(in srgb, $warning-text 62%, $text-primary);
   }
 
   strong.rateZero {
@@ -1620,19 +1620,19 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
 }
 
 .rateBarBooking {
-  background: rgba(14, 165, 233, 0.12);
+  background: rgba($info, 0.12);
 
   b {
-    background: linear-gradient(90deg, #0ea5e9, #38bdf8);
-    box-shadow: 0 0 12px rgba(14, 165, 233, 0.2);
+    background: linear-gradient(90deg, $info, $info);
+    box-shadow: 0 0 12px rgba($info, 0.2);
   }
 }
 
 .rateBarInterview {
-  background: rgba(245, 158, 11, 0.14);
+  background: rgba($warning, 0.14);
 
   b {
-    background: linear-gradient(90deg, #f59e0b, #fb923c);
+    background: linear-gradient(90deg, $warning, $warning);
     box-shadow: 0 0 12px rgba(233, 196, 106, 0.22);
   }
 }
@@ -1644,7 +1644,7 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
   min-height: 28px;
   border: 1px solid rgba($border, 0.84);
   border-radius: 9px;
-  background: rgba(248, 250, 252, 0.86);
+  background: rgba($bg-secondary, 0.86);
   color: $text-secondary;
   font-size: $font-size-xs;
   font-weight: $font-weight-bold;
@@ -1663,9 +1663,9 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
   }
 
   &.statusBad {
-    border-color: rgba(236, 72, 153, 0.18);
-    background: rgba(236, 72, 153, 0.065);
-    color: color-mix(in srgb, #ec4899 50%, $text-primary);
+    border-color: rgba($rose, 0.18);
+    background: rgba($rose, 0.065);
+    color: color-mix(in srgb, $rose 50%, $text-primary);
   }
 }
 
@@ -1685,7 +1685,7 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
   }
 
   &.statusBad {
-    background: #ec4899;
+    background: $rose;
   }
 }
 
@@ -1717,7 +1717,7 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
   align-items: center;
   justify-content: center;
   gap: 18px;
-  box-shadow: 0 12px 26px rgba(15, 23, 42, 0.045);
+  box-shadow: 0 12px 26px rgba($text-primary, 0.045);
 
   &::before {
     content: '';
@@ -1776,7 +1776,7 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
   border: 1px solid $border;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.88);
-  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.05);
+  box-shadow: 0 10px 22px rgba($text-primary, 0.05);
   transform: translate(-50%, -50%);
 
   span,
@@ -1842,7 +1842,7 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
   border-radius: $radius-lg;
   background: linear-gradient(135deg, #ffffff 0%, #fbfcff 100%);
   padding: 12px 14px;
-  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.035);
+  box-shadow: 0 6px 16px rgba($text-primary, 0.035);
 }
 
 .reasonRank {
@@ -1855,7 +1855,7 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
   color: $text-on-primary;
   font-size: $font-size-sm;
   font-weight: $font-weight-extrabold;
-  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+  box-shadow: 0 8px 18px rgba($text-primary, 0.08);
 }
 
 .reasonContent {

@@ -230,7 +230,7 @@ function RankIcon({ rank }: { rank: 1 | 2 | 3 }) {
       <svg className={styles.rankIcon} viewBox="0 0 40 40" role="img" aria-hidden="true">
         <defs>
           <linearGradient id="rank1CrownFill" x1="9" x2="31" y1="8" y2="30">
-            <stop offset="0%" stopColor="#fff7ed" />
+            <stop offset="0%" stopColor="#fdf6ec" />
             <stop offset="36%" stopColor="#f7e4a8" />
             <stop offset="72%" stopColor="#f0d283" />
             <stop offset="100%" stopColor="#e9c46a" />
@@ -296,7 +296,7 @@ function RankIcon({ rank }: { rank: 1 | 2 | 3 }) {
         />
         <path
           d="M11 24.5h18l-1.2 6.1H12.2Z"
-          fill="#fff7ed"
+          fill="#fdf6ec"
           stroke="#e9c46a"
           strokeLinejoin="round"
           strokeWidth="1.25"
@@ -309,9 +309,9 @@ function RankIcon({ rank }: { rank: 1 | 2 | 3 }) {
           strokeWidth="1.45"
         />
         <circle cx="20" cy="22.1" r="2.3" fill="url(#rank1Gem)" stroke="#fff" strokeWidth="1.1" />
-        <circle cx="10.2" cy="11" r="1.5" fill="#fef3c7" />
-        <circle cx="20" cy="7.8" r="1.8" fill="#fef3c7" />
-        <circle cx="29.8" cy="11" r="1.5" fill="#fef3c7" />
+        <circle cx="10.2" cy="11" r="1.5" fill="#fdf6ec" />
+        <circle cx="20" cy="7.8" r="1.8" fill="#fdf6ec" />
+        <circle cx="29.8" cy="11" r="1.5" fill="#fdf6ec" />
         <path
           d="M15.2 28.1h9.6"
           fill="none"
@@ -328,16 +328,16 @@ function RankIcon({ rank }: { rank: 1 | 2 | 3 }) {
   const rimId = `rank${rank}MedalRim`;
   const medal = isSilver
     ? {
-        fillStops: ['#ffffff', '#e0f2fe', '#bfdbfe'],
-        rimStops: ['#f8fafc', '#bfdbfe', '#60a5fa'],
+        fillStops: ['#ffffff', '#eef4fd', '#a9c6f0'],
+        rimStops: ['#faf9ff', '#a9c6f0', '#6f9ce6'],
         ribbonStops: ['#b3b9f3', '#b6cfe4'],
-        text: '#3b82f6',
-        star: '#60a5fa',
+        text: '#6f9ce6',
+        star: '#6f9ce6',
       }
     : {
-        fillStops: ['#fff7ed', '#fed7aa', '#fdba74'],
-        rimStops: ['#fff7ed', '#fdba74', '#e8b08a'],
-        ribbonStops: ['#a78bfa', '#e9c46a'],
+        fillStops: ['#fdf6ec', '#efc27a', '#efc27a'],
+        rimStops: ['#fdf6ec', '#efc27a', '#e8b08a'],
+        ribbonStops: ['#a48ae8', '#e9c46a'],
         text: '#d8966c',
         star: '#e2a37a',
       };

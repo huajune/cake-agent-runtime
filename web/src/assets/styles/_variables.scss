@@ -3,130 +3,127 @@
 // ============================================================
 
 // ========== 颜色系统 ==========
+// 丁香墨色系（2026-09-11 定稿，源自出站守卫档案）：
+// 文字用带紫相的墨色而非中性灰，分隔/描边用丁香细边，底色白 + 极淡渐变，
+// 语义色保留色相但压到与丁香同档饱和（方案 A）。改色只改这一处。
+// 命名约定：`-text` 用于白底小字（更深），无后缀用于圆点/填充/边，`-soft` 用于淡底。
 
-// ============================================================
-// 💜 紫色主题 (当前启用)
-// ============================================================
-// 主色调
-$primary: #6366f1;
-$primary-dark: #4f46e5;
-$primary-light: #818cf8;
-$primary-soft: rgba(99, 102, 241, 0.1);
+// 主色（丁香紫）
+$primary: #6d5bd0;
+$primary-dark: #5b4de6;
+$primary-light: #a48ae8;
+$primary-soft: rgba($primary, 0.1);
 
-// 强调色
-$accent: #8b5cf6;
-$accent-light: #a78bfa;
+// 强调色（藕紫）
+$accent: #a06bd6;
+$accent-light: #c9a8e8;
 
-// 主题透明度变量
-$primary-02: rgba(99, 102, 241, 0.02);
-$primary-03: rgba(99, 102, 241, 0.03);
-$primary-04: rgba(99, 102, 241, 0.04);
-$primary-05: rgba(99, 102, 241, 0.05);
-$primary-06: rgba(99, 102, 241, 0.06);
-$primary-08: rgba(99, 102, 241, 0.08);
-$primary-10: rgba(99, 102, 241, 0.1);
-$primary-12: rgba(99, 102, 241, 0.12);
-$primary-15: rgba(99, 102, 241, 0.15);
-$primary-20: rgba(99, 102, 241, 0.2);
-$primary-25: rgba(99, 102, 241, 0.25);
-$primary-30: rgba(99, 102, 241, 0.3);
-$primary-35: rgba(99, 102, 241, 0.35);
-$primary-40: rgba(99, 102, 241, 0.4);
+// 丁香（描边 / 轨道 / 淡底的基色）
+$lilac: #d4d0ff;
 
-$accent-02: rgba(139, 92, 246, 0.02);
-$accent-03: rgba(139, 92, 246, 0.03);
-$accent-04: rgba(139, 92, 246, 0.04);
-$accent-05: rgba(139, 92, 246, 0.05);
-$accent-06: rgba(139, 92, 246, 0.06);
-$accent-08: rgba(139, 92, 246, 0.08);
-$accent-10: rgba(139, 92, 246, 0.1);
-$accent-12: rgba(139, 92, 246, 0.12);
-$accent-15: rgba(139, 92, 246, 0.15);
-$accent-20: rgba(139, 92, 246, 0.2);
-$accent-25: rgba(139, 92, 246, 0.25);
-$accent-30: rgba(139, 92, 246, 0.3);
-$accent-35: rgba(139, 92, 246, 0.35);
-$accent-40: rgba(139, 92, 246, 0.4);
+// 主题透明度阶梯
+$primary-02: rgba($primary, 0.02);
+$primary-03: rgba($primary, 0.03);
+$primary-04: rgba($primary, 0.04);
+$primary-05: rgba($primary, 0.05);
+$primary-06: rgba($primary, 0.06);
+$primary-08: rgba($primary, 0.08);
+$primary-10: rgba($primary, 0.1);
+$primary-12: rgba($primary, 0.12);
+$primary-15: rgba($primary, 0.15);
+$primary-20: rgba($primary, 0.2);
+$primary-25: rgba($primary, 0.25);
+$primary-30: rgba($primary, 0.3);
+$primary-35: rgba($primary, 0.35);
+$primary-40: rgba($primary, 0.4);
 
-// ============================================================
-// 🧧 新春主题 (节日期间取消注释以下内容，并注释上方紫色主题)
-// ============================================================
-// // 主色调 - 中国红
-// $primary: #dc2626;
-// $primary-dark: #b91c1c;
-// $primary-light: #ef4444;
-// $primary-soft: rgba(220, 38, 38, 0.1);
-//
-// // 强调色 - 金色
-// $accent: #f59e0b;
-// $accent-light: #fbbf24;
-//
-// // 主题透明度变量 (用于替换硬编码颜色)
-// $primary-02: rgba(220, 38, 38, 0.02);
-// $primary-03: rgba(220, 38, 38, 0.03);
-// $primary-04: rgba(220, 38, 38, 0.04);
-// $primary-05: rgba(220, 38, 38, 0.05);
-// $primary-06: rgba(220, 38, 38, 0.06);
-// $primary-08: rgba(220, 38, 38, 0.08);
-// $primary-10: rgba(220, 38, 38, 0.1);
-// $primary-12: rgba(220, 38, 38, 0.12);
-// $primary-15: rgba(220, 38, 38, 0.15);
-// $primary-20: rgba(220, 38, 38, 0.2);
-// $primary-25: rgba(220, 38, 38, 0.25);
-// $primary-30: rgba(220, 38, 38, 0.3);
-// $primary-35: rgba(220, 38, 38, 0.35);
-// $primary-40: rgba(220, 38, 38, 0.4);
-//
-// $accent-02: rgba(245, 158, 11, 0.02);
-// $accent-03: rgba(245, 158, 11, 0.03);
-// $accent-04: rgba(245, 158, 11, 0.04);
-// $accent-05: rgba(245, 158, 11, 0.05);
-// $accent-06: rgba(245, 158, 11, 0.06);
-// $accent-08: rgba(245, 158, 11, 0.08);
-// $accent-10: rgba(245, 158, 11, 0.1);
-// $accent-12: rgba(245, 158, 11, 0.12);
-// $accent-15: rgba(245, 158, 11, 0.15);
-// $accent-20: rgba(245, 158, 11, 0.2);
-// $accent-25: rgba(245, 158, 11, 0.25);
-// $accent-30: rgba(245, 158, 11, 0.3);
-// $accent-35: rgba(245, 158, 11, 0.35);
-// $accent-40: rgba(245, 158, 11, 0.4);
-// ============================================================
+$accent-02: rgba($accent, 0.02);
+$accent-03: rgba($accent, 0.03);
+$accent-04: rgba($accent, 0.04);
+$accent-05: rgba($accent, 0.05);
+$accent-06: rgba($accent, 0.06);
+$accent-08: rgba($accent, 0.08);
+$accent-10: rgba($accent, 0.1);
+$accent-12: rgba($accent, 0.12);
+$accent-15: rgba($accent, 0.15);
+$accent-20: rgba($accent, 0.2);
+$accent-25: rgba($accent, 0.25);
+$accent-30: rgba($accent, 0.3);
+$accent-35: rgba($accent, 0.35);
+$accent-40: rgba($accent, 0.4);
 
-// 语义色
-$success: #10b981;
-$success-soft: rgba(16, 185, 129, 0.1);
-$warning: #f59e0b;
-$warning-soft: rgba(245, 158, 11, 0.1);
-$danger: #ef4444;
-$danger-soft: rgba(239, 68, 68, 0.1);
-$info: #06b6d4;
-$info-soft: rgba(6, 182, 212, 0.1);
+// 语义色（保留色相 · 降饱和）
+$success: #5fb894;
+$success-text: #4fae87;
+$success-light: #a8dcc4;
+$success-soft: rgba($success, 0.12);
+$success-bg: #edf8f3;
 
-// 文字颜色
-$text-primary: #1f2937;
-$text-secondary: #6b7280;
-$text-muted: #9ca3af;
+$warning: #d19a52;
+$warning-text: #c9964e;
+$warning-light: #efc27a;
+$warning-soft: rgba($warning, 0.12);
+$warning-bg: #fdf6ec;
+
+$danger: #e07a9a;
+$danger-text: #c25b8c;
+$danger-light: #f2b7cd;
+$danger-soft: rgba($danger, 0.12);
+$danger-bg: #fbeef3;
+
+$info: #6f9ce6;
+$info-text: #5b8ad9;
+$info-light: #a9c6f0;
+$info-soft: rgba($info, 0.12);
+$info-bg: #eef4fd;
+
+// 樱粉（加群 / 数据强调，非语义危险）
+$rose: #ec9ec0;
+$rose-text: #d4759f;
+$rose-light: #f5c6da;
+$rose-soft: rgba($rose, 0.12);
+$rose-bg: #fdf3f8;
+
+// 数据色（转化 / 榜单 / 图表；0911 淡雅粉彩定稿）
+$data-mint: #6cc4a1;
+$data-sky: #7ab8e6;
+$data-rose: #ec9ec0;
+$data-apricot: #e9b56e;
+$data-lavender: #a996f2;
+$rank-gold: #e9c46a;
+$rank-silver: #a9b9cc;
+$rank-bronze: #e2a37a;
+
+// 文字颜色（墨色系）
+$text-primary: #14132b;
+$text-body: #3b3a55;
+$text-secondary: #5b5a86;
+$text-muted: #8a89ad;
+$text-placeholder: #a3a2b8;
 $text-on-primary: #ffffff;
 
 // 背景颜色
 $bg-primary: #ffffff;
-$bg-page: #f3f4f6;
+$bg-page: #f6f5fc;
 $bg-card: #ffffff;
-$bg-secondary: #f9fafb;
+$bg-secondary: #faf9ff;
+$bg-tint: #f3f2ff;
 $bg-sidebar: #ffffff;
-$bg-hover: rgba(99, 102, 241, 0.05);
+$bg-hover: rgba(240, 239, 255, 0.65);
 
-// 边框颜色
-$border: #e5e7eb;
-$border-color: #e5e7eb; // alias for compatibility
-$border-hover: #d1d5db;
+// 边框颜色（丁香细边）
+$border: rgba($lilac, 0.55);
+$border-color: $border; // alias for compatibility
+$border-strong: rgba($lilac, 0.85);
+$border-hover: #c4c1ea;
 $border-focus: $primary;
+$rail: rgba($lilac, 0.75);
 
 // ========== 渐变 ==========
-$gradient-primary: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-$gradient-card: linear-gradient(135deg, #ffffff 0%, #f9fafb 100%);
-$gradient-hover: linear-gradient(135deg, rgba(99, 102, 241, 0.05) 0%, rgba(139, 92, 246, 0.05) 100%);
+$gradient-primary: linear-gradient(135deg, #7a68d9 0%, #a98ce6 100%);
+$gradient-card: linear-gradient(135deg, #ffffff 0%, #faf9ff 100%);
+$gradient-hover: linear-gradient(135deg, rgba($primary, 0.05) 0%, rgba($accent, 0.05) 100%);
+$gradient-dream: linear-gradient(118deg, #f0efff 0%, #faf4fe 34%, #f2f7ff 68%, #fdfdff 100%);
 
 // ========== 间距系统 ==========
 $spacing-unit: 1rem; // 16px
@@ -158,7 +155,7 @@ $shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
 $shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
 $shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
 $shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-$shadow-glow: 0 0 20px rgba(99, 102, 241, 0.15);
+$shadow-glow: 0 0 20px rgba($primary, 0.15);
 
 // ========== 字体 ==========
 $font-family-sans: 'PingFang SC', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -382,8 +379,8 @@ $z-tooltip: 600;
     padding: 0 14px;
     border: 1px solid transparent;
     border-radius: 10px;
-    background: #f5f7fa;
-    color: #0f172a;
+    background: $bg-secondary;
+    color: $text-primary;
     font-size: 13px;
     outline: none;
     transition:
@@ -392,11 +389,11 @@ $z-tooltip: 600;
       box-shadow 0.2s ease;
 
     &::placeholder {
-      color: #94a3b8;
+      color: $text-muted;
     }
 
     &:hover {
-      background: #eff2f6;
+      background: $bg-tint;
     }
 
     &:focus {
@@ -419,32 +416,32 @@ $z-tooltip: 600;
   th {
     padding: 14px 24px;
     text-align: left;
-    background: #f8fafc;
-    color: #64748b;
+    background: $bg-secondary;
+    color: $text-secondary;
     font-weight: 500;
     font-size: 13px;
-    border-top: 1px solid #e2e8f0;
-    border-bottom: 1px solid #e2e8f0;
+    border-top: 1px solid $border;
+    border-bottom: 1px solid $border;
     white-space: nowrap;
 
     &:first-child {
       border-top-left-radius: 8px;
       border-bottom-left-radius: 8px;
-      border-left: 1px solid #e2e8f0;
+      border-left: 1px solid $border;
     }
 
     &:last-child {
       border-top-right-radius: 8px;
       border-bottom-right-radius: 8px;
-      border-right: 1px solid #e2e8f0;
+      border-right: 1px solid $border;
     }
   }
 
   td {
     padding: 16px 24px;
     text-align: left;
-    border-bottom: 1px solid #e2e8f0;
-    color: #334155;
+    border-bottom: 1px solid $border;
+    color: $text-body;
     transition: background 0.15s ease;
   }
 
@@ -452,7 +449,7 @@ $z-tooltip: 600;
     transition: background 0.2s ease;
 
     &:hover {
-      background: #f8fafc;
+      background: $bg-secondary;
     }
 
     &:last-child td {
@@ -463,7 +460,7 @@ $z-tooltip: 600;
 
 @mixin managed-user-loading-cell {
   padding: 56px 0 !important;
-  color: #94a3b8;
+  color: $text-muted;
   font-size: 14px;
 }
 
@@ -477,7 +474,7 @@ $z-tooltip: 600;
     margin: 0;
     font-size: 14px;
     font-weight: 500;
-    color: #64748b;
+    color: $text-secondary;
   }
 }
 
@@ -516,7 +513,7 @@ $z-tooltip: 600;
 @mixin empty-state-hint {
   margin-top: 6px;
   font-size: 12px;
-  color: #94a3b8;
+  color: $text-muted;
 }
 
 @mixin managed-user-target-name {
@@ -524,14 +521,14 @@ $z-tooltip: 600;
   align-items: center;
   gap: 8px;
   font-weight: 500;
-  color: #0f172a;
+  color: $text-primary;
 }
 
 @mixin managed-user-source-tag {
   font-size: 11px;
-  color: #64748b;
-  background: #f1f5f9;
-  border: 1px solid #e2e8f0;
+  color: $text-secondary;
+  background: $bg-tint;
+  border: 1px solid $border;
   padding: 1px 8px;
   border-radius: 999px;
   white-space: nowrap;
@@ -540,7 +537,7 @@ $z-tooltip: 600;
 @mixin managed-user-target-id {
   margin-top: 2px;
   font-size: 12px;
-  color: #94a3b8;
+  color: $text-muted;
   max-width: 220px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -552,7 +549,7 @@ $z-tooltip: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #334155;
+  color: $text-body;
 }
 
 @mixin managed-user-reason-cell {
@@ -560,12 +557,12 @@ $z-tooltip: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #334155;
+  color: $text-body;
 }
 
 @mixin managed-user-time-cell {
   white-space: nowrap;
-  color: #64748b;
+  color: $text-secondary;
   font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
@@ -602,7 +599,7 @@ $z-tooltip: 600;
 @mixin monitoring-table-section {
   background: rgba(255, 255, 255, 0.88);
   border-radius: 18px;
-  border: 1px solid rgba(161, 173, 255, 0.14);
+  border: 1px solid rgba($primary-light, 0.14);
   padding: 20px;
   box-shadow: 0 4px 20px rgba(103, 80, 164, 0.05);
   backdrop-filter: blur(10px);
@@ -623,7 +620,7 @@ $z-tooltip: 600;
   }
 
   &::-webkit-scrollbar-thumb {
-    background: rgba(99, 102, 241, 0.15);
+    background: rgba($primary, 0.15);
     border-radius: 3px;
   }
 }
@@ -631,26 +628,26 @@ $z-tooltip: 600;
 @mixin monitoring-table-header {
   padding: 12px 16px;
   text-align: left;
-  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
-  color: #64748b;
+  background: linear-gradient(180deg, $bg-secondary 0%, $bg-tint 100%);
+  color: $text-secondary;
   font-weight: 600;
   font-size: 12px;
   letter-spacing: 0.03em;
   text-transform: uppercase;
   white-space: nowrap;
-  border-top: 1px solid rgba(161, 173, 255, 0.16);
-  border-bottom: 1px solid rgba(161, 173, 255, 0.16);
+  border-top: 1px solid rgba($primary-light, 0.16);
+  border-bottom: 1px solid rgba($primary-light, 0.16);
 
   &:first-child {
     border-top-left-radius: 10px;
     border-bottom-left-radius: 10px;
-    border-left: 1px solid rgba(161, 173, 255, 0.16);
+    border-left: 1px solid rgba($primary-light, 0.16);
   }
 
   &:last-child {
     border-top-right-radius: 10px;
     border-bottom-right-radius: 10px;
-    border-right: 1px solid rgba(161, 173, 255, 0.16);
+    border-right: 1px solid rgba($primary-light, 0.16);
   }
 }
 
@@ -666,8 +663,8 @@ $z-tooltip: 600;
 
   td {
     padding: 12px 14px;
-    border-bottom: 1px solid rgba(241, 245, 249, 0.8);
-    color: #334155;
+    border-bottom: 1px solid rgba($bg-tint, 0.8);
+    color: $text-body;
     transition: background 0.15s ease;
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
@@ -681,10 +678,10 @@ $z-tooltip: 600;
 // 监控页：详情抽屉头部
 @mixin monitoring-detail-header {
   padding: 16px 24px 14px;
-  border-bottom: 1px solid rgba(139, 92, 246, 0.12);
+  border-bottom: 1px solid rgba($primary, 0.12);
   background: linear-gradient(
     135deg,
-    rgba(139, 92, 246, 0.06) 0%,
+    rgba($primary, 0.06) 0%,
     rgba(255, 255, 255, 0.86) 48%,
     #fff 100%
   );
@@ -709,7 +706,7 @@ $z-tooltip: 600;
   width: 30px;
   height: 30px;
   border-radius: 12px;
-  border: 1px solid rgba(148, 163, 184, 0.24);
+  border: 1px solid rgba($text-muted, 0.24);
   background: #fff;
   color: $text-muted;
   cursor: pointer;
@@ -723,9 +720,9 @@ $z-tooltip: 600;
   transition: all 0.15s ease;
 
   &:hover {
-    background: rgba(139, 92, 246, 0.06);
+    background: rgba($primary, 0.06);
     color: $text-primary;
-    border-color: rgba(139, 92, 246, 0.22);
+    border-color: rgba($primary, 0.22);
   }
 }
 
@@ -752,7 +749,7 @@ $z-tooltip: 600;
     border-radius: 999px;
     border: 0;
     background: transparent;
-    color: #667085;
+    color: $text-secondary;
     cursor: pointer;
     display: inline-flex;
     align-items: center;

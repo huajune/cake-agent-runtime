@@ -27,18 +27,18 @@ function App() {
           style: {
             background: 'rgba(255, 255, 255, 0.95)',
             backdropFilter: 'blur(10px)',
-            border: '1px solid rgba(148, 163, 184, 0.2)',
+            border: '1px solid rgba(138, 137, 173, 0.2)',
             borderRadius: '12px',
             padding: '12px 16px',
             boxShadow: '0 4px 20px rgba(0, 0, 0, 0.1)',
             fontSize: '14px',
-            color: '#1e293b',
+            color: '#14132b',
           },
           success: {
-            iconTheme: { primary: '#10b981', secondary: '#fff' },
+            iconTheme: { primary: '#5fb894', secondary: '#fff' },
           },
           error: {
-            iconTheme: { primary: '#ef4444', secondary: '#fff' },
+            iconTheme: { primary: '#e07a9a', secondary: '#fff' },
           },
         }}
       />
