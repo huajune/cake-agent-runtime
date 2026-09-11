@@ -23,7 +23,6 @@ describe('chat-history-cache.util', () => {
       messageType: StorageMessageType.TEXT,
       isSelf: true,
       payloadSource: 'manual',
-      provenanceVersion: 2,
     });
 
     expect(parseCachedChatHistoryMessages([raw])).toEqual([
@@ -37,7 +36,6 @@ describe('chat-history-cache.util', () => {
         messageType: StorageMessageType.TEXT,
         isSelf: true,
         payloadSource: 'manual',
-        provenanceVersion: 2,
       },
     ]);
   });

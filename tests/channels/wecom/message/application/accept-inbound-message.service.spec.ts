@@ -37,9 +37,6 @@ describe('AcceptInboundMessageService', () => {
   const llm = {
     supportsVisionInput: jest.fn(),
   };
-  const longTerm = {
-    updateMessageMetadata: jest.fn(),
-  };
   const session = {
     recordCandidateActivity: jest.fn(),
   };
@@ -85,7 +82,6 @@ describe('AcceptInboundMessageService', () => {
       overrideModelId: 'gpt-test',
     });
     llm.supportsVisionInput.mockReturnValue(true);
-    longTerm.updateMessageMetadata.mockResolvedValue(undefined);
     session.recordCandidateActivity.mockResolvedValue(undefined);
     userHostingService.isAnyPaused.mockResolvedValue({ paused: false });
     userHostingService.pauseUser.mockResolvedValue(undefined);
@@ -102,7 +98,6 @@ describe('AcceptInboundMessageService', () => {
       imageDescription as never,
       wecomObservability as never,
       monitoringService as never,
-      longTerm as never,
       session as never,
       opsEventsRecorder as never,
       userHostingService as never,
@@ -492,7 +487,7 @@ describe('AcceptInboundMessageService', () => {
     expect(deduplicationService.markMessageAsProcessedAsync).not.toHaveBeenCalled();
   });
 
-  it('首条真实消息（破冰）触发 friend.added 并开户长期记忆', async () => {
+  it('首条真实消息（破冰）触发 friend.added', async () => {
     opsEventsRecorder.recordCandidateMessage.mockResolvedValueOnce({
       messageRecorded: true,
       engaged: true,
@@ -515,21 +510,6 @@ describe('AcceptInboundMessageService', () => {
         userId: 'im-contact-1',
         sourceChannel: 'unknown',
       }),
-    );
-    // friend.added 首次插入时开户长期记忆元数据
-    expect(longTerm.updateMessageMetadata).toHaveBeenCalledWith(
-      'corp-1',
-      'im-contact-1',
-      'manager-1',
-      {
-      botId: 'bot-1',
-      imBotId: 'im-bot-1',
-      imContactId: 'im-contact-1',
-      contactType: ContactType.PERSONAL_WECHAT,
-      contactName: '张三',
-      externalUserId: 'external-1',
-      avatar: 'https://example.com/avatar.png',
-      },
     );
     // 不应再记 agent.opening_sent（开场白改由 reply-workflow 在首条对外回复时记）
     expect(opsEventsRecorder.recordEvent).not.toHaveBeenCalledWith(
@@ -563,8 +543,6 @@ describe('AcceptInboundMessageService', () => {
         idempotencyKey: 'im-contact-1:friend_added',
       }),
     );
-    // 握手语首次插入 friend.added → 同样开户长期记忆
-    expect(longTerm.updateMessageMetadata).toHaveBeenCalled();
   });
 
   it('带求职意图的「我是…」按真实候选人消息计入（不当作握手语）', async () => {

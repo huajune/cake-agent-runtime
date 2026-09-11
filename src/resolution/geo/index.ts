@@ -31,6 +31,7 @@ export {
 export { resolveCityFromLocation } from './place-alias.resolver';
 export { scanWhitelistKeysByLongest, matchInUncoveredSegments } from './whitelist-scanner';
 export { scanGeoSignalsFromText } from './geo-text-scan';
+export { pruneGeoPreferencesForCity } from './preference-prune';
 export { hasGenericAmbiguousSuffix, GENERIC_AMBIGUOUS_SUFFIXES } from './ambiguous-place.policy';
 export { NATIONAL_CITY_BARE_NAMES } from './explicit-city.data';
 

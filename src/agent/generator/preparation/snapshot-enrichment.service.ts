@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { unwrapUserProfileFactValue } from '@memory/long-term/long-term.types';
-import type { AgentMemoryContext } from '@memory/recall.types';
+import type { MemoryRecallContext } from '@memory/recall.types';
 import { unwrapSessionFactValue } from '@memory/short-term/short-term.types';
 import {
   mergeSupplementalGenderClaims,
@@ -24,9 +24,9 @@ export class SnapshotEnrichmentService {
   constructor(private readonly candidateProfile: CandidateProfileEnrichmentService) {}
 
   async enrich(
-    snapshot: AgentMemoryContext,
+    snapshot: MemoryRecallContext,
     identity: CandidateIdentityHint,
-  ): Promise<AgentMemoryContext> {
+  ): Promise<MemoryRecallContext> {
     if (this.resolveKnownGender(snapshot)) return snapshot;
     try {
       const gender = await this.candidateProfile.lookupGenderFromCustomerDetail(identity);
@@ -40,7 +40,7 @@ export class SnapshotEnrichmentService {
     }
   }
 
-  private resolveKnownGender(snapshot: AgentMemoryContext): '男' | '女' | null {
+  private resolveKnownGender(snapshot: MemoryRecallContext): '男' | '女' | null {
     return (
       normalizeGenderValue(
         unwrapUserProfileFactValue(snapshot.longTerm.semantic.profile?.gender),

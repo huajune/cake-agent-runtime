@@ -12,7 +12,7 @@ import { SessionStateService } from './short-term/session-state.service';
 import { SessionWorkbenchService } from './short-term/workbench.service';
 import { MessageWindowService } from './short-term/message-window.service';
 import { stripQuotedBlocks, stripTimeContext } from '@resolution/signal/markers';
-import type { AgentMemoryContext } from './recall.types';
+import type { MemoryRecallContext } from './recall.types';
 import type { ShortTermMessage } from './short-term/short-term.types';
 import type { WeworkSessionState } from './short-term/short-term.types';
 import type { RecommendedJobSummary } from '@resolution/job/types';
@@ -114,7 +114,7 @@ export class MemoryLifecycleService {
       /** 当前托管账号的稳定企微身份（wecomUserId）；缺失时长期记忆 fail-closed。 */
       botUserId?: string;
     },
-  ): Promise<AgentMemoryContext> {
+  ): Promise<MemoryRecallContext> {
     const includeShortTerm = options?.includeShortTerm ?? true;
     const botUserId = options?.botUserId?.trim();
 
@@ -142,7 +142,7 @@ export class MemoryLifecycleService {
     }
 
     const hasOwnSessionMemory = this.hasStructuredSessionMemoryState(sessionState);
-    const snapshot: AgentMemoryContext = {
+    const snapshot: MemoryRecallContext = {
       shortTerm: {
         messageWindow: shortTermMessages,
         sessionState: hasOwnSessionMemory ? sessionState : null,

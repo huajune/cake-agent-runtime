@@ -27,6 +27,7 @@ import {
 } from '../../src/resolution/geo/administrative-division.data';
 import {
   NATIONAL_COUNTY_LEVEL_CITY_TO_PREFECTURE,
+  NATIONAL_DISTRICT_NAMES,
   NATIONAL_PREFECTURE_TO_PROVINCE,
 } from '../../src/resolution/geo/administrative-division.generated';
 import {
@@ -125,6 +126,12 @@ for (const [prefecture, province] of generatedProvinceEntries) {
     `地级→省级生成表漂移：「${prefecture}」提交产物→${province}，重算→${rebuilt.prefectureToProvince[prefecture] ?? '(无)'}——请 pnpm run geo:generate`,
   );
 }
+
+check(
+  NATIONAL_DISTRICT_NAMES.length === rebuilt.districtNames.length &&
+    NATIONAL_DISTRICT_NAMES.every((name, index) => rebuilt.districtNames[index] === name),
+  `区/县全名词典漂移：提交产物 ${NATIONAL_DISTRICT_NAMES.length} 条，按数据集重算 ${rebuilt.districtNames.length} 条——请 pnpm run geo:generate`,
+);
 
 // 5. 策展表 × 生成表父级一致（供应商差异须登记）
 for (const [county, prefecture] of Object.entries(COUNTY_LEVEL_CITY_TO_PREFECTURE)) {

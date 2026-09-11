@@ -194,3 +194,37 @@ describe('scanGeoSignalsFromText（三轮扫描编排）', () => {
     });
   });
 });
+
+describe('白名单外 raw district：全国区县词典替代贪婪正则（09-11）', () => {
+  it('白名单命中后的残段不再被截成「区安亭」，镇名只在紧接命中的残段开头识别', () => {
+    const scan = scanGeoSignalsFromText('嘉定区安亭镇');
+
+    expect(scan.districts).toContain('嘉定');
+    expect(scan.districts).toContain('安亭');
+    expect(scan.districts).not.toContain('区安亭');
+  });
+
+  it('词典命中白名单外的真实区县（钟楼区），不再回吃「查查」等前缀', () => {
+    const scan = scanGeoSignalsFromText('帮我查查钟楼区邹区的岗位');
+
+    expect(scan.districts).toEqual(['钟楼']);
+  });
+
+  it('泛指/口语里的「区」不再产出 district', () => {
+    for (const text of [
+      '奉贤、闵行、徐汇这三个区都行',
+      '本地健康证和健康证有区别吗',
+      '意向工作地区：武进吾悦',
+    ]) {
+      const scan = scanGeoSignalsFromText(text);
+      expect(scan.districts.filter((d) => /这三个|健康证|意向工作地/u.test(d))).toEqual([]);
+    }
+  });
+
+  it('全国词典要求文本带后缀：裸「江宁」不触发，「江宁区」触发且不补 city', () => {
+    expect(scanGeoSignalsFromText('我主要在江宁').districts).toEqual([]);
+    const withSuffix = scanGeoSignalsFromText('我主要在江宁区');
+    expect(withSuffix.districts).toEqual(['江宁']);
+    expect(withSuffix.city).toBeNull();
+  });
+});

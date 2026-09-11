@@ -12,7 +12,6 @@ describe('MessageWindowService', () => {
 
   const mockRedis = {
     lrange: jest.fn(),
-    del: jest.fn(),
     eval: jest.fn(),
     rpush: jest.fn(),
     expire: jest.fn(),
@@ -269,39 +268,6 @@ describe('MessageWindowService', () => {
       source: StorageMessageSource.MOBILE_PUSH,
       messageType: StorageMessageType.TEXT,
       isSelf: true,
-      provenanceVersion: 2,
-    });
-  });
-
-  it('should invalidate legacy cache entries and rebuild provenance from DB on the same key', async () => {
-    mockRedis.lrange.mockResolvedValue([
-      JSON.stringify({
-        chatId: 'chat_1',
-        messageId: 'legacy-1',
-        role: 'assistant',
-        content: '旧缓存无来源',
-        timestamp: BASE,
-      }),
-    ]);
-    mockRepo.getChatHistory.mockResolvedValue([
-      {
-        messageId: 'manual-1',
-        role: 'assistant',
-        content: 'DB 人工消息',
-        timestamp: BASE,
-        source: StorageMessageSource.AGGREGATED_CHAT_MANUAL,
-        messageType: StorageMessageType.TEXT,
-        isSelf: true,
-      },
-    ]);
-
-    const result = await service.getMessages('chat_1');
-
-    expect(mockRedis.del).toHaveBeenCalledWith(buildChatHistoryCacheKey('chat_1'));
-    expect(mockRepo.getChatHistory).toHaveBeenCalled();
-    expect(result[0]).toMatchObject({
-      source: StorageMessageSource.AGGREGATED_CHAT_MANUAL,
-      isSelf: true,
     });
   });
 
@@ -341,7 +307,7 @@ describe('MessageWindowService', () => {
       role: 'user' | 'assistant',
       content: string,
       timestamp: number,
-    ) => ({ chatId: 'chat_1', messageId, role, content, timestamp, provenanceVersion: 2 });
+    ) => ({ chatId: 'chat_1', messageId, role, content, timestamp });
     const wide = () =>
       new MessageWindowService(
         mockRepo as never,

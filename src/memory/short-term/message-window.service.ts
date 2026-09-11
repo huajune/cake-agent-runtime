@@ -16,7 +16,7 @@ import { MEMORY_CHAT_SESSION_PORT, type MemoryChatSessionPort } from '../memory.
 /**
  * 短期记忆服务 — 对话窗口管理
  *
- * 热路径读 Redis 窗口缓存（provenance 版本校验），miss/降版本回退 chat_messages
+ * 热路径读 Redis 窗口缓存，miss 回退 chat_messages
  * （Supabase 永久存储）最近 N 条并回填缓存；两条路径都在内存里套同一个滚动历史窗口
  * （见 applyRollingWindow），再按本批上界与字符上限裁剪后输出给 Agent。
  */
@@ -35,7 +35,7 @@ export class MessageWindowService {
   /**
    * 获取会话的短期记忆（裁剪后的消息窗口）
    *
-   * 1. 优先读 Redis 窗口缓存；miss/降版本回退 chat_messages（最近 N 条硬上限）并回填缓存
+   * 1. 优先读 Redis 窗口缓存；miss 回退 chat_messages（最近 N 条硬上限）并回填缓存
    * 2. 本批上界裁剪 + 滚动历史窗口（锚点 = 本批之前候选人最后一次开口）
    * 3. 注入时间上下文，按字符上限裁剪
    */
@@ -46,20 +46,14 @@ export class MessageWindowService {
     this.lastLoadError = null;
 
     try {
-      const cached = await this.getCachedHistory(chatId);
-      const cacheHasProvenance =
-        cached.length > 0 && cached.every((message) => message.provenanceVersion === 2);
+      // 非空 list 即完整历史（list 只由下方 DB 回填创建，写路径只追加不建 key）。
       // 命中与 miss 同一口径：缓存与 DB 都只按条数封顶，语义窗口统一在内存里套。
+      const cached = await this.getCachedHistory(chatId);
       const cachedHistory = this.applyRollingWindow(
         this.applyTimeBoundary(cached, options?.endTimeInclusive),
       );
-      if (cacheHasProvenance && cachedHistory.length > 0) {
+      if (cachedHistory.length > 0) {
         return this.trimByChars(this.injectTimeContext(cachedHistory));
-      }
-      if (cached.length > 0 && !cacheHasProvenance) {
-        // 滚动发布兼容：旧实例写入的 v1 entry 仍可被旧代码读取；新实例发现后
-        // 原地重建同一个 key，不切前缀，避免 v1/v2 双 key 导致消息窗口分叉。
-        await this.redisService?.del(buildChatHistoryCacheKey(chatId));
       }
 
       // DB 只按条数封顶，不带时间谓词：滚动窗口的锚点是上一次开口而非当前时间，
@@ -200,7 +194,6 @@ export class MessageWindowService {
         messageType: message.messageType,
         isSelf: message.isSelf,
         payloadSource: message.payloadSource,
-        provenanceVersion: 2,
       }),
     );
 

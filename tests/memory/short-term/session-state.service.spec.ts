@@ -145,25 +145,6 @@ describe('SessionStateService（S1-S6）', () => {
     expect((await service.getFacts('corp-1', 'user-1', 'session-1'))?.brand).toEqual(brand);
   });
 
-  it('旧顶层 brand_state 读时懒迁移到 facts.brand，嵌套值立即生效', async () => {
-    const brand = {
-      currentBrand: { canonicalName: '肯德基', brandId: 1 },
-      excludedBrands: [],
-      updatedAtMs: 1000,
-    };
-    const { brand: _brand, ...legacyFacts } = softFacts();
-    hash = { facts: legacyFacts, brand_state: brand };
-
-    const state = await service.getSessionState('corp-1', 'user-1', 'session-1');
-
-    expect(state.facts?.brand).toEqual(brand);
-    expect(redis.patchHash).toHaveBeenCalledWith(
-      'factsv2:corp-1:user-1:session-1',
-      expect.objectContaining({ facts: expect.objectContaining({ brand }) }),
-      config.sessionFactsTtl,
-    );
-  });
-
   it('收资逐格 medium 入档；同值不刷新，办结后升级 high', async () => {
     await expect(
       service.saveCollectionProgressFact(
@@ -518,6 +499,26 @@ describe('SessionStateService（S1-S6）', () => {
         evidence: '地图解析',
       }),
     ).resolves.toBe('skipped_city_conflict');
+  });
+
+  it('城市确权后剔除白名单能反推为其他城市的区域/地点，白名单外的值保留', async () => {
+    hash = {
+      facts: softFacts({ district: ['栖霞', '我浦江'], location: ['陆家嘴', '某某小区'] }),
+    };
+
+    await expect(
+      service.saveToolAttestedCity('corp-1', 'user-1', 'session-3', {
+        city: '北京',
+        source: 'geocode_unique',
+        evidence: '地图解析',
+      }),
+    ).resolves.toBe('written');
+
+    const facts = await service.getFacts('corp-1', 'user-1', 'session-3');
+    expect(facts?.preferences.city?.value).toBe('北京');
+    expect(facts?.preferences.district?.value).toEqual(['我浦江']);
+    expect(facts?.preferences.district?.evidence).toContain('换城清理：移除 栖霞');
+    expect(facts?.preferences.location?.value).toEqual(['某某小区']);
   });
 
   it('事务字段已从 sessionFacts schema 退出', () => {

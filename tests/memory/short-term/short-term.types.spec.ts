@@ -32,4 +32,38 @@ describe('SessionFactsSchema 读写边界', () => {
     expect(parsed.interview_info.household_register_province).toBeNull();
     expect(parsed.interview_info.name?.value).toBe('张三');
   });
+
+  it('city 只收事实信封：裸字符串 / CityFact 对象与非域内 source 均校验失败', () => {
+    const base = toSessionFacts(FALLBACK_EXTRACTION, {
+      confidence: 'medium',
+      source: 'model',
+      evidence: '测试基线',
+    });
+    const withCity = (city: unknown) =>
+      SessionFactsSchema.safeParse({ ...base, preferences: { ...base.preferences, city } });
+
+    expect(withCity('上海市').success).toBe(false);
+    expect(
+      withCity({ value: '上海', confidence: 'medium', evidence: 'explicit_city' }).success,
+    ).toBe(false);
+    expect(
+      withCity({ value: '上海', confidence: 'medium', source: 'llm', evidence: 'x' }).success,
+    ).toBe(false);
+
+    const envelope = withCity({
+      value: '上海',
+      confidence: 'medium',
+      source: 'rule',
+      evidence: 'explicit_city',
+    });
+    expect(envelope.success).toBe(true);
+    if (envelope.success) {
+      expect(envelope.data.preferences.city).toEqual({
+        value: '上海',
+        confidence: 'medium',
+        source: 'rule',
+        evidence: 'explicit_city',
+      });
+    }
+  });
 });
