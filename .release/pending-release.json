@@ -1,275 +1,212 @@
 {
-  "baseVersion": "11.6.0",
+  "baseVersion": "11.7.0",
   "nextVersion": "11.7.0",
   "updatedAt": "2026-09-11",
   "sourceBranch": "develop",
-  "entries": [
-    {
-      "number": "1250",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1250",
-      "title": "会话状态 TTL 与沉淀间隙统一为 7 天，收资单据同步对齐",
-      "author": "huajune",
-      "mergedAt": "2026-09-11",
-      "businessUpdates": [
-        "`MEMORY_SESSION_TTL_DAYS` / `MEMORY_SETTLEMENT_GAP_DAYS` 默认 3 → 7；消息回看窗口维持 7 天；间隙 ≥ TTL 的不变式保持，factsv2 12 小时沉淀余量不变",
-        "`COLLECTION_FORM_TTL_SECONDS` 3 → 7 天，避免事实仍在而收资单据先失效",
-        "README、`.env.example`、redis-schema、架构与术语文档口径同步"
-      ],
-      "summary": [
-        "会话状态 TTL 与沉淀间隙统一为 7 天，收资单据同步对齐",
-        "`MEMORY_SESSION_TTL_DAYS` / `MEMORY_SETTLEMENT_GAP_DAYS` 默认 3 → 7；消息回看窗口维持 7 天；间隙 ≥ TTL 的不变式保持，factsv2 12 小时沉淀余量不变",
-        "`COLLECTION_FORM_TTL_SECONDS` 3 → 7 天，避免事实仍在而收资单据先失效",
-        "README、`.env.example`、redis-schema、架构与术语文档口径同步"
-      ],
-      "features": [],
-      "fixes": [
-        "`MEMORY_SESSION_TTL_DAYS` / `MEMORY_SETTLEMENT_GAP_DAYS` 默认 3 → 7；消息回看窗口维持 7 天；间隙 ≥ TTL 的不变式保持，factsv2 12 小时沉淀余量不变",
-        "`COLLECTION_FORM_TTL_SECONDS` 3 → 7 天，避免事实仍在而收资单据先失效",
-        "README、`.env.example`、redis-schema、架构与术语文档口径同步"
-      ],
-      "optimizations": [],
-      "ops": [
-        "会话状态 TTL 与沉淀间隙统一为 7 天，收资单据同步对齐"
-      ],
-      "config": [],
-      "envFiles": [
-        ".env.example"
-      ],
-      "verification": [],
-      "level": "patch"
-    },
-    {
-      "number": "1251",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1251",
-      "title": "记忆值质量修复四项 + 下线已耗尽的旧数据兼容",
-      "author": "huajune",
-      "mergedAt": "2026-09-11",
-      "businessUpdates": [
-        "记忆值质量修复四项 + 下线已耗尽的旧数据兼容"
-      ],
-      "summary": [
-        "记忆值质量修复四项 + 下线已耗尽的旧数据兼容",
-        "长期记忆存量形态一次性归一，删除读边界懒迁移与旧 source 映射"
-      ],
-      "features": [],
-      "fixes": [
-        "记忆值质量修复四项 + 下线已耗尽的旧数据兼容"
-      ],
-      "optimizations": [
-        "长期记忆存量形态一次性归一，删除读边界懒迁移与旧 source 映射"
-      ],
-      "ops": [],
-      "config": [],
-      "envFiles": [],
-      "verification": [],
-      "level": "patch"
-    },
-    {
-      "number": "1254",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1254",
-      "title": "转化分析等四页视觉调淡雅 + 系统监控页失真指标改真实口径",
-      "author": "huajune",
-      "mergedAt": "2026-09-11",
-      "businessUpdates": [
-        "转化分析/运行时配置/二次触发追溯与守卫弹窗收进丁香紫单色系",
-        "系统监控页三项失真指标改为真实口径",
-        "数据色改淡雅粉彩（保留各指标色相），运行时配置页按胶囊语言重做",
-        "运行时配置页说明文案精简为一句",
-        "转化分析页按作品页配色重调底色与插画",
-        "转化分析页去掉降饱和滤镜，只用色值与白罩提亮",
-        "转化分析页改淡雅暖色；运行时配置页说明压成一句",
-        "转化分析页去掉自带的页面底色与色块，改走全站统一背景",
-        "转化分析 KPI 卡改纯白纸面：去图标大阴影与整面淡色渐变，环比胶囊实白细边",
-        "转化分析 KPI 区提亮：卡片下垫白色托盘，卡片改白边，图标色阶调亮"
-      ],
-      "summary": [
-        "转化分析/运行时配置/二次触发追溯与守卫弹窗收进丁香紫单色系",
-        "系统监控页三项失真指标改为真实口径",
-        "数据色改淡雅粉彩（保留各指标色相），运行时配置页按胶囊语言重做",
-        "运行时配置页说明文案精简为一句",
-        "转化分析页按作品页配色重调底色与插画",
-        "转化分析页去掉降饱和滤镜，只用色值与白罩提亮",
-        "转化分析页改淡雅暖色；运行时配置页说明压成一句",
-        "转化分析页去掉自带的页面底色与色块，改走全站统一背景",
-        "转化分析 KPI 卡改纯白纸面：去图标大阴影与整面淡色渐变，环比胶囊实白细边",
-        "转化分析 KPI 区提亮：卡片下垫白色托盘，卡片改白边，图标色阶调亮",
-        "转化分析等四页视觉调淡雅 + 系统监控页失真指标改真实口径"
-      ],
-      "features": [],
-      "fixes": [],
-      "optimizations": [],
-      "ops": [
-        "转化分析/运行时配置/二次触发追溯与守卫弹窗收进丁香紫单色系",
-        "系统监控页三项失真指标改为真实口径",
-        "数据色改淡雅粉彩（保留各指标色相），运行时配置页按胶囊语言重做",
-        "运行时配置页说明文案精简为一句",
-        "转化分析页按作品页配色重调底色与插画",
-        "转化分析页去掉降饱和滤镜，只用色值与白罩提亮",
-        "转化分析页改淡雅暖色；运行时配置页说明压成一句",
-        "转化分析页去掉自带的页面底色与色块，改走全站统一背景",
-        "转化分析 KPI 卡改纯白纸面：去图标大阴影与整面淡色渐变，环比胶囊实白细边",
-        "转化分析 KPI 区提亮：卡片下垫白色托盘，卡片改白边，图标色阶调亮"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [],
-      "level": "minor"
-    },
-    {
-      "number": "1256",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1256",
-      "title": "booking 查重命中 already_booked 视为预约已存在，不再当失败改写",
-      "author": "huajune",
-      "mergedAt": "2026-09-11",
-      "businessUpdates": [
-        "**守卫** `booking-receipt.rule.ts`：新增形态 G，`already_booked` 先于失败路径判定。回复说「没提交成功/系统故障/稍后再提交」或重新征询日期 → repair，指令要求如实说「已约上」并按工单登记时间播报；如实播报已约上放行。真实失败（`rejected` 等）仍按 2026-08-27 口径放行「稍后再帮你提交」。",
-        "**长期记忆** `ActiveBookingEntry` 新增 `interview_time`（JSONB 内字段，无迁移），建单时随 `job_id` 写入；存量行为空时回执不编造时间。",
-        "**booking 工具**查重回执：`_outcome` / `_replyInstruction` 改为「预约已存在、不是失败」，明令禁止系统故障/稍后重提口径；带出 `existingWorkOrderId`、`existingInterviewTime`、`_existingInterviewTimeHuman`。",
-        "**修复证据包** `BookingEvidence` 加 `alreadyBooked / outcome / existingWorkOrderId / existingInterviewTimeHuman`，`ReplyRepairAgent` 渲染为「预约已经存在，本轮未重复提交——这不是失败」。",
-        "`docs/prompt-rule-ledger.md` 登记形态 G 与工具回执改口径。"
-      ],
-      "summary": [
-        "booking 查重命中 already_booked 视为预约已存在，不再当失败改写",
-        "**守卫** `booking-receipt.rule.ts`：新增形态 G，`already_booked` 先于失败路径判定。回复说「没提交成功/系统故障/稍后再提交」或重新征询日期 → repair，指令要求如实说「已约上」并按工单登记时间播报；如实播报已约上放行。真实失败（`rejected` 等）仍按 2026-08-27 口径放行「稍后再帮你提交」。",
-        "**booking 工具**查重回执：`_outcome` / `_replyInstruction` 改为「预约已存在、不是失败」，明令禁止系统故障/稍后重提口径；带出 `existingWorkOrderId`、`existingInterviewTime`、`_existingInterviewTimeHuman`。",
-        "**长期记忆** `ActiveBookingEntry` 新增 `interview_time`（JSONB 内字段，无迁移），建单时随 `job_id` 写入；存量行为空时回执不编造时间。",
-        "**修复证据包** `BookingEvidence` 加 `alreadyBooked / outcome / existingWorkOrderId / existingInterviewTimeHuman`，`ReplyRepairAgent` 渲染为「预约已经存在，本轮未重复提交——这不是失败」。",
-        "`docs/prompt-rule-ledger.md` 登记形态 G 与工具回执改口径。"
-      ],
-      "features": [
-        "**守卫** `booking-receipt.rule.ts`：新增形态 G，`already_booked` 先于失败路径判定。回复说「没提交成功/系统故障/稍后再提交」或重新征询日期 → repair，指令要求如实说「已约上」并按工单登记时间播报；如实播报已约上放行。真实失败（`rejected` 等）仍按 2026-08-27 口径放行「稍后再帮你提交」。",
-        "**长期记忆** `ActiveBookingEntry` 新增 `interview_time`（JSONB 内字段，无迁移），建单时随 `job_id` 写入；存量行为空时回执不编造时间。"
-      ],
-      "fixes": [
-        "**booking 工具**查重回执：`_outcome` / `_replyInstruction` 改为「预约已存在、不是失败」，明令禁止系统故障/稍后重提口径；带出 `existingWorkOrderId`、`existingInterviewTime`、`_existingInterviewTimeHuman`。",
-        "**修复证据包** `BookingEvidence` 加 `alreadyBooked / outcome / existingWorkOrderId / existingInterviewTimeHuman`，`ReplyRepairAgent` 渲染为「预约已经存在，本轮未重复提交——这不是失败」。",
-        "`docs/prompt-rule-ledger.md` 登记形态 G 与工具回执改口径。"
-      ],
-      "optimizations": [],
-      "ops": [
-        "booking 查重命中 already_booked 视为预约已存在，不再当失败改写"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "`tsc --noEmit` 通过；改动文件 eslint / prettier 通过",
-        "全量 Jest：469 suites / 6898 tests 全绿（含 `output-rule-catalog.spec` 执行覆盖校验）",
-        "新增用例：形态 G 四种否认口径拦截、如实播报放行、重新征询日期拦截、真实失败不受影响；booking 工具查重回执字段；证据包 already_booked 投影；store `interview_time` 透传"
-      ],
-      "level": "patch"
-    },
-    {
-      "number": "1257",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1257",
-      "title": "候选人级在途工单查重前移到 precheck，恢复 duplicateBookingGuard 守卫接线",
-      "author": "huajune",
-      "mergedAt": "2026-09-11",
-      "businessUpdates": [
-        "**守卫接线恢复**：`duplicateBookingGuard` 随 #1023 收资切换消失后，`interview_time_change_unconfirmed`（形态 F，P0 repair）与 `booking_done_claim_*` 的在途工单豁免一直空转。字段按守卫读取口径恢复，新增 precheck 真实回执 → 两个检测器的契约配对测试。",
-        "**查重前移到 precheck**：注入 `LongTermService`，按 booking 同一判据读 `active_booking`；命中即 `nextAction=already_booked` + `duplicateBookingGuard { workOrderId, interviewTime?, interviewTimeHuman?, note }`。指令：如实说已约上、按工单登记时间播报，禁止 booking / 再收资 / 征询日期，禁止\"系统故障 / 稍后重提\"口径，改时间 modify、取消 cancel。本表单自身已提交仍优先 `already_submitted`；追加候选人（代报）表单与 booking 同口径豁免；不发 `precheck.passed`。",
-        "**共享判据**：30 分钟同岗位查重抽成 `src/tools/booking/active-booking-dedup.util.ts`，booking 改为共用（语义不变：`job_id` 为空存量行按命中）。",
-        "**`interview_time` 随工单指针落库**：`ActiveBookingEntry` 新增可选 `interview_time`，建单时写入；booking `already_booked` 回执改为\"预约已存在\"口径并带 `existingWorkOrderId` / `_existingInterviewTimeHuman`。⚠️ 这部分与 booking 侧 already_booked 修复（另一会话，含守卫形态 G / 修复证据包）**同批镜像、hunk 逐字一致**，两个 PR 任一先合都不冲突。",
-        "`duliday_modify_interview_time` 描述删除已不存在的 `existingRegistrations` 来源，改指向 `duplicateBookingGuard.workOrderId`；badcase skill fixture 说明同步；`docs/prompt-rule-ledger.md` precheck / modify 行登记。"
-      ],
-      "summary": [
-        "候选人级在途工单查重前移到 precheck，恢复 duplicateBookingGuard 守卫接线",
-        "**查重前移到 precheck**：注入 `LongTermService`，按 booking 同一判据读 `active_booking`；命中即 `nextAction=already_booked` + `duplicateBookingGuard { workOrderId, interviewTime?, interviewTimeHuman?, note }`。指令：如实说已约上、按工单登记时间播报，禁止 booking / 再收资 / 征询日期，禁止\"系统故障 / 稍后重提\"口径，改时间 modify、取消 cancel。本表单自身已提交仍优先 `already_submitted`；追加候选人（代报）表单与 booking 同口径豁免；不发 `precheck.passed`。",
-        "**共享判据**：30 分钟同岗位查重抽成 `src/tools/booking/active-booking-dedup.util.ts`，booking 改为共用（语义不变：`job_id` 为空存量行按命中）。",
-        "**守卫接线恢复**：`duplicateBookingGuard` 随 #1023 收资切换消失后，`interview_time_change_unconfirmed`（形态 F，P0 repair）与 `booking_done_claim_*` 的在途工单豁免一直空转。字段按守卫读取口径恢复，新增 precheck 真实回执 → 两个检测器的契约配对测试。",
-        "**`interview_time` 随工单指针落库**：`ActiveBookingEntry` 新增可选 `interview_time`，建单时写入；booking `already_booked` 回执改为\"预约已存在\"口径并带 `existingWorkOrderId` / `_existingInterviewTimeHuman`。⚠️ 这部分与 booking 侧 already_booked 修复（另一会话，含守卫形态 G / 修复证据包）**同批镜像、hunk 逐字一致**，两个 PR 任一先合都不冲突。",
-        "`duliday_modify_interview_time` 描述删除已不存在的 `existingRegistrations` 来源，改指向 `duplicateBookingGuard.workOrderId`；badcase skill fixture 说明同步；`docs/prompt-rule-ledger.md` precheck / modify 行登记。"
-      ],
-      "features": [
-        "**守卫接线恢复**：`duplicateBookingGuard` 随 #1023 收资切换消失后，`interview_time_change_unconfirmed`（形态 F，P0 repair）与 `booking_done_claim_*` 的在途工单豁免一直空转。字段按守卫读取口径恢复，新增 precheck 真实回执 → 两个检测器的契约配对测试。"
-      ],
-      "fixes": [
-        "**查重前移到 precheck**：注入 `LongTermService`，按 booking 同一判据读 `active_booking`；命中即 `nextAction=already_booked` + `duplicateBookingGuard { workOrderId, interviewTime?, interviewTimeHuman?, note }`。指令：如实说已约上、按工单登记时间播报，禁止 booking / 再收资 / 征询日期，禁止\"系统故障 / 稍后重提\"口径，改时间 modify、取消 cancel。本表单自身已提交仍优先 `already_submitted`；追加候选人（代报）表单与 booking 同口径豁免；不发 `precheck.passed`。",
-        "**共享判据**：30 分钟同岗位查重抽成 `src/tools/booking/active-booking-dedup.util.ts`，booking 改为共用（语义不变：`job_id` 为空存量行按命中）。",
-        "**`interview_time` 随工单指针落库**：`ActiveBookingEntry` 新增可选 `interview_time`，建单时写入；booking `already_booked` 回执改为\"预约已存在\"口径并带 `existingWorkOrderId` / `_existingInterviewTimeHuman`。⚠️ 这部分与 booking 侧 already_booked 修复（另一会话，含守卫形态 G / 修复证据包）**同批镜像、hunk 逐字一致**，两个 PR 任一先合都不冲突。",
-        "`duliday_modify_interview_time` 描述删除已不存在的 `existingRegistrations` 来源，改指向 `duplicateBookingGuard.workOrderId`；badcase skill fixture 说明同步；`docs/prompt-rule-ledger.md` precheck / modify 行登记。"
-      ],
-      "optimizations": [],
-      "ops": [
-        "候选人级在途工单查重前移到 precheck，恢复 duplicateBookingGuard 守卫接线"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "`lint:check` / `format:check` / `typecheck` / `geo:validate` / `vocab:validate` / `quality-ledger:validate` 通过",
-        "全量 jest：470 套件 6900 用例通过（`ci:check` 的 `build:ci` 在本 worktree 因 `web/node_modules` 未安装失败，与本 PR 无关，未动 web）",
-        "新增用例：窗口边界 / 不同岗位 / 存量空 `job_id` / 无 `interview_time` / 收资中截住 / 已提交优先 / 代报豁免 / 未注入依赖跳过 / 守卫契约配对"
-      ],
-      "level": "patch"
-    }
-  ],
+  "entries": [],
   "lastRelease": {
-    "version": "11.6.0",
-    "date": "2026-09-10",
+    "version": "11.7.0",
+    "date": "2026-09-11",
     "sourceBranch": "develop",
     "entries": [
       {
-        "number": "1244",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/1244",
-        "title": "出站守卫规则化重组 + Runner 三态 outcome + 品牌提及溯源 + 转化分析 RPC 下沉",
+        "number": "1250",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1250",
+        "title": "会话状态 TTL 与沉淀间隙统一为 7 天，收资单据同步对齐",
         "author": "huajune",
-        "mergedAt": "2026-09-10",
+        "mergedAt": "2026-09-11",
         "businessUpdates": [
-          "岗位推荐前会先核对品牌确实出现在对话里，候选人从没提过的品牌不再被拿去查岗",
-          "消息处理详情页新增「当时的工具说明」快照，排查历史对话不会再被现在的版本误导",
-          "Agent 偶尔在回复里编出「正在查询…已查到…」这类假的系统往返内容，现在能识别更多写法并重新生成",
-          "候选人已约过一个岗位后再问另一个岗位的报名进度，会被误当成「这个岗也约好了」，现在按当前正在聊的岗位核对",
-          "Agent 交代自己在做什么的旁白（不是给候选人的正文）会误触发人工介入、把托管暂停掉，现在只当作本轮不回复，下一轮仍由 Agent 正常接管",
-          "回复前的准备环节会被群成员核验拖住，最慢接近两分钟，现在最多等 10 秒，超时按「没核验到」处理，候选人等待明显缩短",
-          "转化分析页要串行发几十次请求才能算完，时间范围一长就容易超时，现在一次算完",
-          "排查对话时，记忆收尾、复聊、图片识别这三条链路的运行记录关联不回原对话，现在都能按对话追溯",
-          "消息流水的最终状态写库失败时只写日志，会有对话一直卡在「处理中」没人发现，现在改为飞书告警"
+          "`MEMORY_SESSION_TTL_DAYS` / `MEMORY_SETTLEMENT_GAP_DAYS` 默认 3 → 7；消息回看窗口维持 7 天；间隙 ≥ TTL 的不变式保持，factsv2 12 小时沉淀余量不变",
+          "`COLLECTION_FORM_TTL_SECONDS` 3 → 7 天，避免事实仍在而收资单据先失效",
+          "README、`.env.example`、redis-schema、架构与术语文档口径同步"
         ],
         "summary": [
-          "岗位推荐前先核对品牌确实在对话里出现过，避免把工具说明里的示例品牌当成候选人说过的去查岗",
-          "修掉三类候选人可感知的回复问题：编造系统往返内容、报名进度串岗、旁白误暂停托管",
-          "回复准备环节不再被群成员核验拖住（最慢曾近两分钟），转化分析页从几十次串行请求降为一次算完"
+          "会话状态 TTL 与沉淀间隙统一为 7 天，收资单据同步对齐",
+          "`MEMORY_SESSION_TTL_DAYS` / `MEMORY_SETTLEMENT_GAP_DAYS` 默认 3 → 7；消息回看窗口维持 7 天；间隙 ≥ TTL 的不变式保持，factsv2 12 小时沉淀余量不变",
+          "`COLLECTION_FORM_TTL_SECONDS` 3 → 7 天，避免事实仍在而收资单据先失效",
+          "README、`.env.example`、redis-schema、架构与术语文档口径同步"
         ],
-        "features": [
-          "岗位推荐前会先核对品牌确实出现在对话里，候选人从没提过的品牌不再被拿去查岗",
-          "消息处理详情页新增「当时的工具说明」快照，排查历史对话不会再被现在的版本误导"
-        ],
+        "features": [],
         "fixes": [
-          "Agent 偶尔在回复里编出「正在查询…已查到…」这类假的系统往返内容，现在能识别更多写法并重新生成",
-          "候选人已约过一个岗位后再问另一个岗位的报名进度，会被误当成「这个岗也约好了」，现在按当前正在聊的岗位核对",
-          "Agent 交代自己在做什么的旁白（不是给候选人的正文）会误触发人工介入、把托管暂停掉，现在只当作本轮不回复，下一轮仍由 Agent 正常接管",
-          "回复前的准备环节会被群成员核验拖住，最慢接近两分钟，现在最多等 10 秒，超时按「没核验到」处理，候选人等待明显缩短",
-          "转化分析页要串行发几十次请求才能算完，时间范围一长就容易超时，现在一次算完",
-          "排查对话时，记忆收尾、复聊、图片识别这三条链路的运行记录关联不回原对话，现在都能按对话追溯",
-          "消息流水的最终状态写库失败时只写日志，会有对话一直卡在「处理中」没人发现，现在改为飞书告警"
+          "`MEMORY_SESSION_TTL_DAYS` / `MEMORY_SETTLEMENT_GAP_DAYS` 默认 3 → 7；消息回看窗口维持 7 天；间隙 ≥ TTL 的不变式保持，factsv2 12 小时沉淀余量不变",
+          "`COLLECTION_FORM_TTL_SECONDS` 3 → 7 天，避免事实仍在而收资单据先失效",
+          "README、`.env.example`、redis-schema、架构与术语文档口径同步"
         ],
-        "optimizations": [
-          "出站守卫按规则重组目录，审查结论收敛为四档，修复方式由规则档位派生，Runner 只执行不识别规则",
-          "Runner 终态统一为回复 / 转人工 / 本轮不回复三态，入站风险命中同样走转人工，不再新增普通转人工意图",
-          "清理工具说明里的具体门店、ID、日期、坐标和仿会话记忆格式示例，业务规则与必要地理映射保留",
-          "企微 trace 只留一种存储结构，时长折算抽成独立纯函数，删除消息追踪服务里已成空实现的五个埋点方法"
-        ],
+        "optimizations": [],
         "ops": [
-          "回合装配观测事件的落库门槛按生产基线上调（15s / 20s / 50K 字符），此前 3s/5s/30K 低于中位值，导致这两类大事件 100% 落库、事件表按回合数翻倍增长",
-          "群成员核验失败与预热超时在装配档案里落「未核验」，不再和「核验过不在群」混为一谈",
-          "新增时长折算与群成员预热的行为测试，锁死静默窗口不计入排队、预热超时不阻塞回合"
+          "会话状态 TTL 与沉淀间隙统一为 7 天，收资单据同步对齐"
         ],
-        "config": [
-          "新增可选环境变量 `GROUP_MEMBERSHIP_HYDRATE_WAIT_MS`（默认 10000ms），控制等待群成员缓存预热的上限；不配置即用默认值",
-          "⚠️ **发版协同**：迁移 `20260910025705_conversion_analytics_rpcs.sql` 已推 TEST，**生产必须与本次代码发版同步 `db:push:prod`**，否则转化分析页面全零。该迁移为 5 个 `CREATE OR REPLACE FUNCTION`，无表结构变更、无数据改写"
-        ],
+        "config": [],
         "envFiles": [
           ".env.example"
         ],
-        "verification": [
-          "`pnpm run ci:check` 全绿：**466 suites / 6891 tests passed, 5 skipped**",
-          "关键链路已人工验证：生产库实证三项口径（收尾 extract 事件 1699/1699 缺对话标识、装配事件 100% 落库、群成员核验 p90 117 秒）",
-          "未新增对开放自然语言直接 reject/覆盖/判缺的正则分支",
-          "新增虚构 prompt 示例值均来自 `example-registry.ts`",
-          "其他说明：本批新增 5 个群成员预热用例、8 个时长折算用例"
+        "verification": [],
+        "level": "patch"
+      },
+      {
+        "number": "1251",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1251",
+        "title": "记忆值质量修复四项 + 下线已耗尽的旧数据兼容",
+        "author": "huajune",
+        "mergedAt": "2026-09-11",
+        "businessUpdates": [
+          "记忆值质量修复四项 + 下线已耗尽的旧数据兼容"
         ],
+        "summary": [
+          "记忆值质量修复四项 + 下线已耗尽的旧数据兼容",
+          "长期记忆存量形态一次性归一，删除读边界懒迁移与旧 source 映射"
+        ],
+        "features": [],
+        "fixes": [
+          "记忆值质量修复四项 + 下线已耗尽的旧数据兼容"
+        ],
+        "optimizations": [
+          "长期记忆存量形态一次性归一，删除读边界懒迁移与旧 source 映射"
+        ],
+        "ops": [],
+        "config": [],
+        "envFiles": [],
+        "verification": [],
+        "level": "patch"
+      },
+      {
+        "number": "1254",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1254",
+        "title": "转化分析等四页视觉调淡雅 + 系统监控页失真指标改真实口径",
+        "author": "huajune",
+        "mergedAt": "2026-09-11",
+        "businessUpdates": [
+          "转化分析/运行时配置/二次触发追溯与守卫弹窗收进丁香紫单色系",
+          "系统监控页三项失真指标改为真实口径",
+          "数据色改淡雅粉彩（保留各指标色相），运行时配置页按胶囊语言重做",
+          "运行时配置页说明文案精简为一句",
+          "转化分析页按作品页配色重调底色与插画",
+          "转化分析页去掉降饱和滤镜，只用色值与白罩提亮",
+          "转化分析页改淡雅暖色；运行时配置页说明压成一句",
+          "转化分析页去掉自带的页面底色与色块，改走全站统一背景",
+          "转化分析 KPI 卡改纯白纸面：去图标大阴影与整面淡色渐变，环比胶囊实白细边",
+          "转化分析 KPI 区提亮：卡片下垫白色托盘，卡片改白边，图标色阶调亮"
+        ],
+        "summary": [
+          "转化分析/运行时配置/二次触发追溯与守卫弹窗收进丁香紫单色系",
+          "系统监控页三项失真指标改为真实口径",
+          "数据色改淡雅粉彩（保留各指标色相），运行时配置页按胶囊语言重做",
+          "运行时配置页说明文案精简为一句",
+          "转化分析页按作品页配色重调底色与插画",
+          "转化分析页去掉降饱和滤镜，只用色值与白罩提亮",
+          "转化分析页改淡雅暖色；运行时配置页说明压成一句",
+          "转化分析页去掉自带的页面底色与色块，改走全站统一背景",
+          "转化分析 KPI 卡改纯白纸面：去图标大阴影与整面淡色渐变，环比胶囊实白细边",
+          "转化分析 KPI 区提亮：卡片下垫白色托盘，卡片改白边，图标色阶调亮",
+          "转化分析等四页视觉调淡雅 + 系统监控页失真指标改真实口径"
+        ],
+        "features": [],
+        "fixes": [],
+        "optimizations": [],
+        "ops": [
+          "转化分析/运行时配置/二次触发追溯与守卫弹窗收进丁香紫单色系",
+          "系统监控页三项失真指标改为真实口径",
+          "数据色改淡雅粉彩（保留各指标色相），运行时配置页按胶囊语言重做",
+          "运行时配置页说明文案精简为一句",
+          "转化分析页按作品页配色重调底色与插画",
+          "转化分析页去掉降饱和滤镜，只用色值与白罩提亮",
+          "转化分析页改淡雅暖色；运行时配置页说明压成一句",
+          "转化分析页去掉自带的页面底色与色块，改走全站统一背景",
+          "转化分析 KPI 卡改纯白纸面：去图标大阴影与整面淡色渐变，环比胶囊实白细边",
+          "转化分析 KPI 区提亮：卡片下垫白色托盘，卡片改白边，图标色阶调亮"
+        ],
+        "config": [],
+        "envFiles": [],
+        "verification": [],
         "level": "minor"
+      },
+      {
+        "number": "1256",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1256",
+        "title": "booking 查重命中 already_booked 视为预约已存在，不再当失败改写",
+        "author": "huajune",
+        "mergedAt": "2026-09-11",
+        "businessUpdates": [
+          "**守卫** `booking-receipt.rule.ts`：新增形态 G，`already_booked` 先于失败路径判定。回复说「没提交成功/系统故障/稍后再提交」或重新征询日期 → repair，指令要求如实说「已约上」并按工单登记时间播报；如实播报已约上放行。真实失败（`rejected` 等）仍按 2026-08-27 口径放行「稍后再帮你提交」。",
+          "**长期记忆** `ActiveBookingEntry` 新增 `interview_time`（JSONB 内字段，无迁移），建单时随 `job_id` 写入；存量行为空时回执不编造时间。",
+          "**booking 工具**查重回执：`_outcome` / `_replyInstruction` 改为「预约已存在、不是失败」，明令禁止系统故障/稍后重提口径；带出 `existingWorkOrderId`、`existingInterviewTime`、`_existingInterviewTimeHuman`。",
+          "**修复证据包** `BookingEvidence` 加 `alreadyBooked / outcome / existingWorkOrderId / existingInterviewTimeHuman`，`ReplyRepairAgent` 渲染为「预约已经存在，本轮未重复提交——这不是失败」。",
+          "`docs/prompt-rule-ledger.md` 登记形态 G 与工具回执改口径。"
+        ],
+        "summary": [
+          "booking 查重命中 already_booked 视为预约已存在，不再当失败改写",
+          "**守卫** `booking-receipt.rule.ts`：新增形态 G，`already_booked` 先于失败路径判定。回复说「没提交成功/系统故障/稍后再提交」或重新征询日期 → repair，指令要求如实说「已约上」并按工单登记时间播报；如实播报已约上放行。真实失败（`rejected` 等）仍按 2026-08-27 口径放行「稍后再帮你提交」。",
+          "**booking 工具**查重回执：`_outcome` / `_replyInstruction` 改为「预约已存在、不是失败」，明令禁止系统故障/稍后重提口径；带出 `existingWorkOrderId`、`existingInterviewTime`、`_existingInterviewTimeHuman`。",
+          "**长期记忆** `ActiveBookingEntry` 新增 `interview_time`（JSONB 内字段，无迁移），建单时随 `job_id` 写入；存量行为空时回执不编造时间。",
+          "**修复证据包** `BookingEvidence` 加 `alreadyBooked / outcome / existingWorkOrderId / existingInterviewTimeHuman`，`ReplyRepairAgent` 渲染为「预约已经存在，本轮未重复提交——这不是失败」。",
+          "`docs/prompt-rule-ledger.md` 登记形态 G 与工具回执改口径。"
+        ],
+        "features": [
+          "**守卫** `booking-receipt.rule.ts`：新增形态 G，`already_booked` 先于失败路径判定。回复说「没提交成功/系统故障/稍后再提交」或重新征询日期 → repair，指令要求如实说「已约上」并按工单登记时间播报；如实播报已约上放行。真实失败（`rejected` 等）仍按 2026-08-27 口径放行「稍后再帮你提交」。",
+          "**长期记忆** `ActiveBookingEntry` 新增 `interview_time`（JSONB 内字段，无迁移），建单时随 `job_id` 写入；存量行为空时回执不编造时间。"
+        ],
+        "fixes": [
+          "**booking 工具**查重回执：`_outcome` / `_replyInstruction` 改为「预约已存在、不是失败」，明令禁止系统故障/稍后重提口径；带出 `existingWorkOrderId`、`existingInterviewTime`、`_existingInterviewTimeHuman`。",
+          "**修复证据包** `BookingEvidence` 加 `alreadyBooked / outcome / existingWorkOrderId / existingInterviewTimeHuman`，`ReplyRepairAgent` 渲染为「预约已经存在，本轮未重复提交——这不是失败」。",
+          "`docs/prompt-rule-ledger.md` 登记形态 G 与工具回执改口径。"
+        ],
+        "optimizations": [],
+        "ops": [
+          "booking 查重命中 already_booked 视为预约已存在，不再当失败改写"
+        ],
+        "config": [],
+        "envFiles": [],
+        "verification": [
+          "`tsc --noEmit` 通过；改动文件 eslint / prettier 通过",
+          "全量 Jest：469 suites / 6898 tests 全绿（含 `output-rule-catalog.spec` 执行覆盖校验）",
+          "新增用例：形态 G 四种否认口径拦截、如实播报放行、重新征询日期拦截、真实失败不受影响；booking 工具查重回执字段；证据包 already_booked 投影；store `interview_time` 透传"
+        ],
+        "level": "patch"
+      },
+      {
+        "number": "1257",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1257",
+        "title": "候选人级在途工单查重前移到 precheck，恢复 duplicateBookingGuard 守卫接线",
+        "author": "huajune",
+        "mergedAt": "2026-09-11",
+        "businessUpdates": [
+          "**守卫接线恢复**：`duplicateBookingGuard` 随 #1023 收资切换消失后，`interview_time_change_unconfirmed`（形态 F，P0 repair）与 `booking_done_claim_*` 的在途工单豁免一直空转。字段按守卫读取口径恢复，新增 precheck 真实回执 → 两个检测器的契约配对测试。",
+          "**查重前移到 precheck**：注入 `LongTermService`，按 booking 同一判据读 `active_booking`；命中即 `nextAction=already_booked` + `duplicateBookingGuard { workOrderId, interviewTime?, interviewTimeHuman?, note }`。指令：如实说已约上、按工单登记时间播报，禁止 booking / 再收资 / 征询日期，禁止\"系统故障 / 稍后重提\"口径，改时间 modify、取消 cancel。本表单自身已提交仍优先 `already_submitted`；追加候选人（代报）表单与 booking 同口径豁免；不发 `precheck.passed`。",
+          "**共享判据**：30 分钟同岗位查重抽成 `src/tools/booking/active-booking-dedup.util.ts`，booking 改为共用（语义不变：`job_id` 为空存量行按命中）。",
+          "**`interview_time` 随工单指针落库**：`ActiveBookingEntry` 新增可选 `interview_time`，建单时写入；booking `already_booked` 回执改为\"预约已存在\"口径并带 `existingWorkOrderId` / `_existingInterviewTimeHuman`。⚠️ 这部分与 booking 侧 already_booked 修复（另一会话，含守卫形态 G / 修复证据包）**同批镜像、hunk 逐字一致**，两个 PR 任一先合都不冲突。",
+          "`duliday_modify_interview_time` 描述删除已不存在的 `existingRegistrations` 来源，改指向 `duplicateBookingGuard.workOrderId`；badcase skill fixture 说明同步；`docs/prompt-rule-ledger.md` precheck / modify 行登记。"
+        ],
+        "summary": [
+          "候选人级在途工单查重前移到 precheck，恢复 duplicateBookingGuard 守卫接线",
+          "**查重前移到 precheck**：注入 `LongTermService`，按 booking 同一判据读 `active_booking`；命中即 `nextAction=already_booked` + `duplicateBookingGuard { workOrderId, interviewTime?, interviewTimeHuman?, note }`。指令：如实说已约上、按工单登记时间播报，禁止 booking / 再收资 / 征询日期，禁止\"系统故障 / 稍后重提\"口径，改时间 modify、取消 cancel。本表单自身已提交仍优先 `already_submitted`；追加候选人（代报）表单与 booking 同口径豁免；不发 `precheck.passed`。",
+          "**共享判据**：30 分钟同岗位查重抽成 `src/tools/booking/active-booking-dedup.util.ts`，booking 改为共用（语义不变：`job_id` 为空存量行按命中）。",
+          "**守卫接线恢复**：`duplicateBookingGuard` 随 #1023 收资切换消失后，`interview_time_change_unconfirmed`（形态 F，P0 repair）与 `booking_done_claim_*` 的在途工单豁免一直空转。字段按守卫读取口径恢复，新增 precheck 真实回执 → 两个检测器的契约配对测试。",
+          "**`interview_time` 随工单指针落库**：`ActiveBookingEntry` 新增可选 `interview_time`，建单时写入；booking `already_booked` 回执改为\"预约已存在\"口径并带 `existingWorkOrderId` / `_existingInterviewTimeHuman`。⚠️ 这部分与 booking 侧 already_booked 修复（另一会话，含守卫形态 G / 修复证据包）**同批镜像、hunk 逐字一致**，两个 PR 任一先合都不冲突。",
+          "`duliday_modify_interview_time` 描述删除已不存在的 `existingRegistrations` 来源，改指向 `duplicateBookingGuard.workOrderId`；badcase skill fixture 说明同步；`docs/prompt-rule-ledger.md` precheck / modify 行登记。"
+        ],
+        "features": [
+          "**守卫接线恢复**：`duplicateBookingGuard` 随 #1023 收资切换消失后，`interview_time_change_unconfirmed`（形态 F，P0 repair）与 `booking_done_claim_*` 的在途工单豁免一直空转。字段按守卫读取口径恢复，新增 precheck 真实回执 → 两个检测器的契约配对测试。"
+        ],
+        "fixes": [
+          "**查重前移到 precheck**：注入 `LongTermService`，按 booking 同一判据读 `active_booking`；命中即 `nextAction=already_booked` + `duplicateBookingGuard { workOrderId, interviewTime?, interviewTimeHuman?, note }`。指令：如实说已约上、按工单登记时间播报，禁止 booking / 再收资 / 征询日期，禁止\"系统故障 / 稍后重提\"口径，改时间 modify、取消 cancel。本表单自身已提交仍优先 `already_submitted`；追加候选人（代报）表单与 booking 同口径豁免；不发 `precheck.passed`。",
+          "**共享判据**：30 分钟同岗位查重抽成 `src/tools/booking/active-booking-dedup.util.ts`，booking 改为共用（语义不变：`job_id` 为空存量行按命中）。",
+          "**`interview_time` 随工单指针落库**：`ActiveBookingEntry` 新增可选 `interview_time`，建单时写入；booking `already_booked` 回执改为\"预约已存在\"口径并带 `existingWorkOrderId` / `_existingInterviewTimeHuman`。⚠️ 这部分与 booking 侧 already_booked 修复（另一会话，含守卫形态 G / 修复证据包）**同批镜像、hunk 逐字一致**，两个 PR 任一先合都不冲突。",
+          "`duliday_modify_interview_time` 描述删除已不存在的 `existingRegistrations` 来源，改指向 `duplicateBookingGuard.workOrderId`；badcase skill fixture 说明同步；`docs/prompt-rule-ledger.md` precheck / modify 行登记。"
+        ],
+        "optimizations": [],
+        "ops": [
+          "候选人级在途工单查重前移到 precheck，恢复 duplicateBookingGuard 守卫接线"
+        ],
+        "config": [],
+        "envFiles": [],
+        "verification": [
+          "`lint:check` / `format:check` / `typecheck` / `geo:validate` / `vocab:validate` / `quality-ledger:validate` 通过",
+          "全量 jest：470 套件 6900 用例通过（`ci:check` 的 `build:ci` 在本 worktree 因 `web/node_modules` 未安装失败，与本 PR 无关，未动 web）",
+          "新增用例：窗口边界 / 不同岗位 / 存量空 `job_id` / 无 `interview_time` / 收资中截住 / 已提交优先 / 代报豁免 / 未注入依赖跳过 / 守卫契约配对"
+        ],
+        "level": "patch"
       }
     ]
   },
-  "lastAnalyzedSha": "b58a4cee5376d669bdf0bc3cb0388fc8e182aadb"
+  "lastAnalyzedSha": "38e715f919765f6b0c558e6859bd842565bc7ca4"
 }
