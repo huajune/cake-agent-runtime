@@ -409,7 +409,7 @@ new Set(['invite_to_group', 'duliday_interview_booking']);
 | 作用域              | 当前内容                            | 生命周期 / 边界                                                                                | 存储                     |
 | ------------------- | ----------------------------------- | ---------------------------------------------------------------------------------------------- | ------------------------ |
 | short-term 消息窗口 | 原始对话                            | 滚动 7 天（锚点 = 本批之前候选人最后一次开口），再按 24,000 字符预算裁剪；300 条只是物理硬上限 | Supabase；Redis 热缓存   |
-| short-term 会话状态 | facts、岗位工作台、阶段指针         | 3 天；facts hash 多 12 小时沉淀余量                                                            | Redis                    |
+| short-term 会话状态 | facts、岗位工作台、阶段指针         | 7 天；facts hash 多 12 小时沉淀余量                                                            | Redis                    |
 | episode             | 连续咨询切片                        | 闲置 3 天划界，不是独立层                                                                      | 无独立 key/表            |
 | long-term 关系档    | profile、job intent、最多 20 段摘要 | 持久；候选人 × bot 隔离                                                                        | Supabase + 2h Redis 缓存 |
 
@@ -811,8 +811,8 @@ Evaluation、Memory、Tool 和 Feishu Sync。
 | `AGENT_THINKING_BUDGET_TOKENS`            | `0`      | 环境默认关闭；WeCom deep 模式可由运行时配置开启    |
 | `AGENT_MAX_INPUT_CHARS`                   | `24000`  | 消息窗口字符预算                                   |
 | `MAX_HISTORY_PER_CHAT`                    | `300`    | 单轮历史条数硬上限（语义窗口是滚动 7 天）          |
-| `MEMORY_SESSION_TTL_DAYS`                 | `3`      | session stage / 状态业务生命周期                   |
-| `MEMORY_SETTLEMENT_GAP_DAYS`              | `3`      | episode 闲置边界和 consolidation delay             |
+| `MEMORY_SESSION_TTL_DAYS`                 | `7`      | session stage / 状态业务生命周期                   |
+| `MEMORY_SETTLEMENT_GAP_DAYS`              | `7`      | episode 闲置边界和 consolidation delay             |
 | `MEMORY_HISTORY_WINDOW_DAYS`              | `7`      | 滚动历史窗口：从本批之前候选人最后一次开口往前回看 |
 | `SESSION_EXTRACTION_INCREMENTAL_MESSAGES` | `10`     | 已有 facts 时的增量提取窗口                        |
 | `GROUP_MEMBER_LIMIT`                      | `200`    | 群容量判断                                         |

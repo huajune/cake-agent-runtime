@@ -17,7 +17,7 @@ import { FACT_CONFIDENCE_LEVELS_DESC, factConfidenceRank } from '../confidence-r
 export interface ShortTermMemoryStructure {
   /** 7 天原始消息窗口。 */
   messageWindow: ShortTermMemoryState;
-  /** 3 天结构化会话状态；工作台字段因 Redis hash 契约保持平铺。 */
+  /** 7 天结构化会话状态；工作台字段因 Redis hash 契约保持平铺。 */
   sessionState: WeworkSessionState;
   /** 会话阶段指针；属于 short-term，但保留独立 `stage:` Redis key。 */
   stage: StageState;

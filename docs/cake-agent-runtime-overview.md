@@ -211,8 +211,8 @@ CoALA 在本项目中用于解释内容类型，不等于建立四套存储。�
 ```text
 短期（Redis + chat_messages）
 ├─ 滚动 7 天消息窗口：锚点 = 本批之前候选人最后一次开口，最多 24000 字符；300 条为物理硬上限，Redis 缺失时由 DB 回填
-├─ 3 天会话事实：factsv2:{corp}:{user}:{session} Hash
-└─ 3 天阶段状态：stage:{corp}:{user}:{session}
+├─ 7 天会话事实：factsv2:{corp}:{user}:{session} Hash
+└─ 7 天阶段状态：stage:{corp}:{user}:{session}
 
 长期（Supabase agent_long_term_memories）
 ├─ 主键维度：(corpId, userId, botUserId)
@@ -234,7 +234,7 @@ Prompt 组装时再按 procedural / semantic / episodic / working 类型组织�
 
 记忆系统现在拆成三个时间参数：
 
-- `sessionTtl`：Redis 会话事实与阶段状态，当前环境按 3 天配置
+- `sessionTtl`：Redis 会话事实与阶段状态，当前环境按 7 天配置
 - `consolidationGapSeconds`：当前环境按 3 天配置；水位单独记录已处理边界
 - `historyWindowSeconds`：短期窗口 DB fallback 回查范围，默认 7 天
 
@@ -658,8 +658,8 @@ FollowUpTaskProcessor
 | `AGENT_MAX_INPUT_CHARS`        | 24000  | 输入字符上限                     |
 | `AGENT_THINKING_BUDGET_TOKENS` | 0      | Extended thinking 预算           |
 | `MAX_HISTORY_PER_CHAT`         | 300    | 短期窗口硬上限条数（非语义窗口） |
-| `MEMORY_SESSION_TTL_DAYS`      | 3      | 会话级 Redis TTL                 |
-| `MEMORY_SETTLEMENT_GAP_DAYS`   | 3      | 跨会话 consolidation 间隔阈值    |
+| `MEMORY_SESSION_TTL_DAYS`      | 7      | 会话级 Redis TTL                 |
+| `MEMORY_SETTLEMENT_GAP_DAYS`   | 7      | 跨会话 consolidation 间隔阈值    |
 | `MEMORY_HISTORY_WINDOW_DAYS` | 7 | 滚动历史窗口（锚点 = 上次开口，非当前时间） |
 | `MESSAGE_DEDUP_TTL_SECONDS`    | 300    | 去重 TTL                         |
 
