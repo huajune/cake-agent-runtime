@@ -115,13 +115,13 @@
 }
 
 .sectionModeInstant {
-  background: $success-soft;
-  color: $success;
+  background: $primary-soft;
+  color: $primary;
 }
 
 .sectionModeMixed {
-  background: $warning-soft;
-  color: $warning;
+  background: $accent-10;
+  color: $accent;
 }
 
 // ==================== 模型路由网格 ====================
@@ -285,8 +285,8 @@
 }
 
 .statusOn {
-  background: $success-soft;
-  color: $success;
+  background: $primary-soft;
+  color: $primary;
 }
 
 .statusOff {
@@ -295,8 +295,8 @@
 }
 
 .statusWarn {
-  background: $warning-soft;
-  color: $warning;
+  background: $accent-10;
+  color: $accent;
 }
 
 .settingDescription {

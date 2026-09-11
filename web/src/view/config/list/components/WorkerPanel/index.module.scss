@@ -28,9 +28,9 @@
 
 .activeJobs {
   font-size: 11px;
-  color: $success;
+  color: $primary;
   padding: 4px 8px;
-  background: $success-soft;
+  background: $primary-soft;
   border-radius: $radius-full;
 }
 
@@ -56,7 +56,7 @@
   margin-bottom: $spacing-md;
   border: 1px solid rgba($warning, 0.25);
   border-radius: $radius-lg;
-  background: $warning-soft;
+  background: $accent-06;
   color: $text-secondary;
   font-size: $font-size-sm;
   line-height: $line-height-normal;
@@ -70,7 +70,7 @@
 .restartNoticeIcon {
   flex: 0 0 auto;
   margin-top: 2px;
-  color: $warning;
+  color: $accent;
 }
 
 // 吞吐量计算公式

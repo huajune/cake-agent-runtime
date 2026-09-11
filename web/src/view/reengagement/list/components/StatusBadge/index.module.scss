@@ -1,11 +1,37 @@
-/* StatusBadge — 补充全局 status-badge 缺失的灰色系变体 */
+/* StatusBadge — 复聊页状态胶囊统一丁香色系：白底细边，只用色相深浅区分状态，不再红绿蓝黄并列 */
+
+.success,
+.info,
+.warning,
+.danger,
+.neutral,
+.muted {
+  background: #fff !important;
+  border-color: rgba(212, 208, 255, 0.55) !important;
+  font-weight: 400;
+}
+
+.success {
+  color: #5b4de6 !important;
+}
+
+.info {
+  color: #7c6ef2 !important;
+}
+
+.warning {
+  color: #a06bd6 !important;
+}
+
+.danger {
+  color: #c25b8c !important;
+  border-color: rgba(194, 91, 140, 0.35) !important;
+}
 
 .neutral {
-  border-color: rgba(100, 116, 139, 0.4) !important;
-  color: #64748b !important;
+  color: #5b5a86 !important;
 }
 
 .muted {
-  border-color: rgba(148, 163, 184, 0.35) !important;
-  color: #94a3b8 !important;
+  color: #8a89ad !important;
 }

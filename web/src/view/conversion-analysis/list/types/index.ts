@@ -3,7 +3,6 @@ import type {
   ConversionRange,
 } from '@/api/types/conversion-analytics.types';
 import type { AnalyticsRangeOption } from '@/components/AnalyticsControlFilters';
-import { THEME_COLORS } from '@/constants';
 
 export const TIME_RANGE_OPTIONS: Array<AnalyticsRangeOption<ConversionRange>> = [
   { key: 'today', label: '本日' },
@@ -21,28 +20,28 @@ export const KPI_DEFS: Array<{
   key: keyof ConversionKpisResponse;
   label: string;
   formula: string;
-  tone: 'teal' | 'sky' | 'rose' | 'amber' | 'purple';
+  tone: 'purple' | 'sky' | 'rose' | 'amber' | 'purple';
 }> = [
-  { key: 'breakIceRate', label: '破冰率', formula: '= 候选人回复 / 新增好友', tone: 'teal' },
-  { key: 'groupInviteRate', label: '加群率', formula: '= 邀请进群 / 候选人回复', tone: 'rose' },
-  { key: 'bookingRate', label: '报名转化率', formula: '= 报名成功 / 候选人回复', tone: 'sky' },
+  { key: 'breakIceRate', label: '破冰率', formula: '= 候选人回复 / 新增好友', tone: 'purple' },
+  { key: 'groupInviteRate', label: '加群率', formula: '= 邀请进群 / 候选人回复', tone: 'purple' },
+  { key: 'bookingRate', label: '报名转化率', formula: '= 报名成功 / 候选人回复', tone: 'purple' },
   {
     key: 'passRate',
     label: '面试通过率',
     formula: '= 面试通过 / 报名成功',
-    tone: 'amber',
+    tone: 'purple',
   },
   { key: 'overallRate', label: '整体转化率', formula: '= 面试通过 / 新增好友', tone: 'purple' },
 ];
 
 export const CHART_COLORS = [
-  THEME_COLORS.primary,
-  THEME_COLORS.accent,
-  THEME_COLORS.primaryLight,
-  '#10b981',
-  '#06b6d4',
-  '#f59e0b',
-  '#ef4444',
+  '#5b4de6',
+  '#7c6ef2',
+  '#9d8bf8',
+  '#b8aafc',
+  '#8fa6f7',
+  '#c7b8fb',
+  '#dcd3fd',
 ];
 
 export type BotSortKey =
