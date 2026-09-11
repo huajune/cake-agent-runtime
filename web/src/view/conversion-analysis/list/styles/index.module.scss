@@ -482,11 +482,39 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
     transform: translateY(-4px);
   }
 
+  &.teal {
+    --kpi-tone: #6cc4a1;
+    --kpi-next: #8fd6c6;
+    --kpi-soft: rgba(108, 196, 161, 0.14);
+    background: linear-gradient(135deg, #ffffff 0%, rgba(108, 196, 161, 0.05) 100%);
+  }
+
+  &.sky {
+    --kpi-tone: #7ab8e6;
+    --kpi-next: #a4c8f2;
+    --kpi-soft: rgba(122, 184, 230, 0.14);
+    background: linear-gradient(135deg, #ffffff 0%, rgba(122, 184, 230, 0.05) 100%);
+  }
+
+  &.rose {
+    --kpi-tone: #ec9ec0;
+    --kpi-next: #f5b3c4;
+    --kpi-soft: rgba(236, 158, 192, 0.14);
+    background: linear-gradient(135deg, #ffffff 0%, rgba(236, 158, 192, 0.05) 100%);
+  }
+
+  &.amber {
+    --kpi-tone: #e9b56e;
+    --kpi-next: #f2c39a;
+    --kpi-soft: rgba(233, 181, 110, 0.14);
+    background: linear-gradient(135deg, #ffffff 0%, rgba(233, 181, 110, 0.05) 100%);
+  }
+
   &.purple {
-    --kpi-tone: #{$primary};
-    --kpi-next: #{$accent};
-    --kpi-soft: #{$primary-10};
-    background: linear-gradient(135deg, #ffffff 0%, rgba($primary, 0.045) 100%);
+    --kpi-tone: #a996f2;
+    --kpi-next: #bfb3f6;
+    --kpi-soft: rgba(169, 150, 242, 0.14);
+    background: linear-gradient(135deg, #ffffff 0%, rgba(169, 150, 242, 0.05) 100%);
   }
 }
 
@@ -583,11 +611,11 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
 }
 
 .up {
-  color: $primary;
+  color: #5fb894;
 }
 
 .down {
-  color: #8a89ad;
+  color: #e07a9a;
 }
 
 .neutral {
@@ -1319,10 +1347,16 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
   }
 
   // 前三名整行氛围：与奖牌徽章同色的极淡渐变 + 左缘色条，呼应排名梯队。
-  tbody tr.rowGold,
-  tbody tr.rowSilver,
+  tbody tr.rowGold {
+    --row-tone: #e9c46a;
+  }
+
+  tbody tr.rowSilver {
+    --row-tone: #a9b9cc;
+  }
+
   tbody tr.rowBronze {
-    --row-tone: #{$primary};
+    --row-tone: #e2a37a;
   }
 
   // 行底色用平铺纯色而非渐变：渐变会在每个 td 内重启，形成竖向条纹。
@@ -1411,9 +1445,85 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
 }
 
 .rankTop {
-  background: $gradient-primary;
+  width: 42px;
+  height: 42px;
+  overflow: hidden;
+  isolation: isolate;
+  border: 1px solid var(--rank-ring, rgba(99, 102, 241, 0.2));
+  border-radius: 15px;
   color: #fff;
-  box-shadow: 0 2px 6px rgba($primary, 0.28);
+  box-shadow:
+    0 12px 24px var(--rank-shadow, rgba(15, 23, 42, 0.1)),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    inset 0 -10px 18px rgba(15, 23, 42, 0.035);
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    border-radius: inherit;
+    background:
+      radial-gradient(circle at 28% 22%, rgba(255, 255, 255, 0.9), transparent 42%),
+      radial-gradient(
+        circle at 78% 84%,
+        var(--rank-glow, rgba(99, 102, 241, 0.08)),
+        transparent 52%
+      );
+    opacity: 0.9;
+    pointer-events: none;
+  }
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 1px 4px auto;
+    z-index: 2;
+    height: 34%;
+    border-radius: inherit;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.58), transparent);
+    pointer-events: none;
+  }
+}
+
+.rankIcon {
+  position: relative;
+  z-index: 1;
+  width: 36px;
+  height: 36px;
+  overflow: visible;
+  filter: drop-shadow(0 2px 2px rgba(15, 23, 42, 0.15));
+}
+
+.rankGold {
+  --rank-ring: rgba(233, 196, 106, 0.4);
+  --rank-shadow: rgba(233, 196, 106, 0.22);
+  --rank-glow: rgba(233, 196, 106, 0.22);
+
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(255, 251, 235, 0.78)),
+    linear-gradient(145deg, rgba(254, 243, 199, 0.8), rgba(233, 196, 106, 0.3));
+}
+
+.rankSilver {
+  --rank-ring: rgba(169, 185, 204, 0.4);
+  --rank-shadow: rgba(169, 185, 204, 0.2);
+  --rank-glow: rgba(169, 185, 204, 0.22);
+
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(240, 249, 255, 0.78)),
+    linear-gradient(145deg, rgba(169, 185, 204, 0.12), rgba(129, 140, 248, 0.13));
+  color: #334155;
+}
+
+.rankBronze {
+  --rank-ring: rgba(226, 163, 122, 0.4);
+  --rank-shadow: rgba(226, 163, 122, 0.2);
+  --rank-glow: rgba(226, 163, 122, 0.2);
+
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(255, 247, 237, 0.76)),
+    linear-gradient(145deg, rgba(226, 163, 122, 0.12), rgba(233, 196, 106, 0.22));
 }
 
 .accountCell {
@@ -1545,7 +1655,7 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
 
   b {
     background: linear-gradient(90deg, #f59e0b, #fb923c);
-    box-shadow: 0 0 12px rgba(245, 158, 11, 0.2);
+    box-shadow: 0 0 12px rgba(233, 196, 106, 0.22);
   }
 }
 

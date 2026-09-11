@@ -1,37 +1,31 @@
-/* StatusBadge — 复聊页状态胶囊统一丁香色系：白底细边，只用色相深浅区分状态，不再红绿蓝黄并列 */
-
-.success,
-.info,
-.warning,
-.danger,
-.neutral,
-.muted {
-  background: #fff !important;
-  border-color: rgba(212, 208, 255, 0.55) !important;
-  font-weight: 400;
-}
+/* StatusBadge — 复聊页状态胶囊：沿用全局 status-badge 的语义色相，但整体降饱和成粉彩 */
 
 .success {
-  color: #5b4de6 !important;
+  border-color: rgba(95, 184, 148, 0.4) !important;
+  color: #4fae87 !important;
 }
 
 .info {
-  color: #7c6ef2 !important;
+  border-color: rgba(111, 156, 230, 0.4) !important;
+  color: #6f9ce6 !important;
 }
 
 .warning {
-  color: #a06bd6 !important;
+  border-color: rgba(217, 163, 92, 0.4) !important;
+  color: #d19a52 !important;
 }
 
 .danger {
-  color: #c25b8c !important;
-  border-color: rgba(194, 91, 140, 0.35) !important;
+  border-color: rgba(224, 122, 154, 0.4) !important;
+  color: #e07a9a !important;
 }
 
 .neutral {
-  color: #5b5a86 !important;
+  border-color: rgba(100, 116, 139, 0.3) !important;
+  color: #6b7a90 !important;
 }
 
 .muted {
-  color: #8a89ad !important;
+  border-color: rgba(148, 163, 184, 0.3) !important;
+  color: #9aa6b8 !important;
 }

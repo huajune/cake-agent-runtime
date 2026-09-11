@@ -198,17 +198,7 @@ export default function Config() {
   };
 
   const renderSectionModeBadge = (mode: SectionMode) => (
-    <span
-      className={`${styles.sectionModeBadge} ${
-        mode === 'instant'
-          ? styles.sectionModeInstant
-          : mode === 'save'
-            ? styles.sectionModeSave
-            : styles.sectionModeMixed
-      }`}
-    >
-      {SECTION_MODE_LABELS[mode]}
-    </span>
+    <span className={styles.moduleMode}>{SECTION_MODE_LABELS[mode]}</span>
   );
 
   const handleConfigChange = (key: string, value: number | boolean | string | string[]) => {
@@ -631,17 +621,13 @@ export default function Config() {
     <div className={styles.page}>
       <ControlBar
         title="运行时配置"
-        subtitle="统一管理企微回调模型、消息节奏和运行开关。这里只放真正影响当前系统运行方式的配置。"
-        hints={[{ label: '表单项需要保存' }, { label: '运行开关即时生效' }]}
+        subtitle="统一管理企微回调模型、消息节奏和运行开关，只放真正影响当前运行方式的配置"
+        hints={[{ label: '表单项需保存' }, { label: '开关即时生效' }]}
         hasChanges={hasChanges}
         pendingChangeCount={pendingChangeCount}
         isPending={updateConfig.isPending}
-      />
-
-      {isLoadingConfig ? (
-        <div className={styles.loadingText}>加载配置中...</div>
-      ) : (
-        <>
+      >
+        {isLoadingConfig ? null : (
           <nav className={styles.sectionNav} aria-label="页内分区导航">
             {PAGE_SECTIONS.map((section) => (
               <button
@@ -652,12 +638,17 @@ export default function Config() {
                 }`}
                 onClick={() => scrollToSection(section.id)}
               >
-                <span className={styles.sectionNavLabel}>{section.label}</span>
-                <span className={styles.sectionNavMeta}>{SECTION_MODE_LABELS[section.mode]}</span>
+                {section.label}
               </button>
             ))}
           </nav>
+        )}
+      </ControlBar>
 
+      {isLoadingConfig ? (
+        <div className={styles.loadingText}>加载配置中...</div>
+      ) : (
+        <>
           <section id="config-models" className={styles.moduleSection}>
             <div className={styles.moduleHeader}>
               <div>
