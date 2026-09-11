@@ -52,42 +52,12 @@ const EMPTY_CONSOLIDATION_WATERMARKS: ConsolidationWatermarks = {
   lastSettledMessageAt: null,
 };
 
-interface NormalizedEpisodicState {
-  sessionSummaries: SummaryEntry[] | null;
-  consolidationWatermarks: ConsolidationWatermarks;
-  needsMigration: boolean;
-}
-
-function toStringRecord(value: unknown): Record<string, string> {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
-  return Object.fromEntries(
-    Object.entries(value).filter(
-      (entry): entry is [string, string] =>
-        typeof entry[1] === 'string' && entry[1].trim().length > 0,
-    ),
-  );
-}
-
 function toSummaryEntries(value: unknown): SummaryEntry[] {
   if (!Array.isArray(value)) return [];
   return value.filter(
     (entry): entry is SummaryEntry =>
       Boolean(entry) && typeof entry === 'object' && typeof entry.summary === 'string',
   );
-}
-
-/** 旧 archive 没有逐段标识符；用空标识符补齐既有 SummaryEntry 形状。 */
-function legacyArchiveEntries(value: unknown): SummaryEntry[] {
-  const segments = (typeof value === 'string' ? [value] : Array.isArray(value) ? value : [])
-    .filter((segment): segment is string => typeof segment === 'string')
-    .map((segment) => segment.trim())
-    .filter(Boolean);
-  return segments.map((summary) => ({
-    summary,
-    sessionId: '',
-    startTime: '',
-    endTime: '',
-  }));
 }
 
 function isCanonicalWatermarks(value: unknown): value is ConsolidationWatermarks {
@@ -103,47 +73,34 @@ function isCanonicalWatermarks(value: unknown): value is ConsolidationWatermarks
   );
 }
 
-function normalizeEpisodicState(row: AgentLongTermMemoryRow): NormalizedEpisodicState {
-  const summaryValue = row.episodic_session_summaries;
-  const canonicalSummaries = Array.isArray(summaryValue);
-  const rawSummary =
-    summaryValue && typeof summaryValue === 'object' && !canonicalSummaries
-      ? (summaryValue as unknown as Record<string, unknown>)
-      : null;
+interface EpisodicState {
+  sessionSummaries: SummaryEntry[] | null;
+  consolidationWatermarks: ConsolidationWatermarks;
+}
 
-  let sessionSummaries: SummaryEntry[] | null = null;
-  let summaryNeedsMigration = false;
-  if (canonicalSummaries) {
-    sessionSummaries = toSummaryEntries(summaryValue).slice(-MAX_SESSION_SUMMARIES);
-    summaryNeedsMigration = sessionSummaries.length !== summaryValue.length;
-  } else if (rawSummary) {
-    // 旧 recent 以新到旧排列；裸数组统一为旧到新，archive 旧段置于头部。
-    const recent = toSummaryEntries(rawSummary.recent).reverse();
-    sessionSummaries = [...legacyArchiveEntries(rawSummary.archive), ...recent].slice(
-      -MAX_SESSION_SUMMARIES,
-    );
-    summaryNeedsMigration = true;
+/**
+ * episodic 读边界：列已由迁移 20260911120000 归一为裸 `SummaryEntry[]` + 独立水位列，
+ * 这里只做形状校验与 20 段封顶（append RPC 已在写侧封顶，读侧不再写回）。
+ */
+function readEpisodicState(row: AgentLongTermMemoryRow | null): EpisodicState {
+  if (!row) {
+    return {
+      sessionSummaries: null,
+      consolidationWatermarks: { ...EMPTY_CONSOLIDATION_WATERMARKS, bySession: {} },
+    };
   }
-
-  const rawWatermarks = row.consolidation_watermarks;
-  const canonicalWatermarks = isCanonicalWatermarks(rawWatermarks);
-  const currentWatermarks = canonicalWatermarks ? rawWatermarks : EMPTY_CONSOLIDATION_WATERMARKS;
-  const legacyBySession = toStringRecord(rawSummary?.lastSettledBySession);
-  const legacyFallback =
-    typeof rawSummary?.lastSettledMessageAt === 'string' ? rawSummary.lastSettledMessageAt : null;
-  const consolidationWatermarks: ConsolidationWatermarks = {
-    bySession: { ...legacyBySession, ...currentWatermarks.bySession },
-    lastSettledMessageAt: currentWatermarks.lastSettledMessageAt ?? legacyFallback,
-  };
-
+  const summaryValue = row.episodic_session_summaries;
+  const watermarks = isCanonicalWatermarks(row.consolidation_watermarks)
+    ? row.consolidation_watermarks
+    : EMPTY_CONSOLIDATION_WATERMARKS;
   return {
-    sessionSummaries,
-    consolidationWatermarks,
-    needsMigration:
-      summaryNeedsMigration ||
-      (!canonicalWatermarks && Boolean(rawSummary)) ||
-      Object.keys(legacyBySession).length > 0 ||
-      legacyFallback !== null,
+    sessionSummaries: Array.isArray(summaryValue)
+      ? toSummaryEntries(summaryValue).slice(-MAX_SESSION_SUMMARIES)
+      : null,
+    consolidationWatermarks: {
+      bySession: { ...watermarks.bySession },
+      lastSettledMessageAt: watermarks.lastSettledMessageAt,
+    },
   };
 }
 
@@ -370,7 +327,7 @@ export class SupabaseStore implements MemoryStore {
     userId: string,
     botUserId: string,
   ): Promise<SummaryEntry[] | null> {
-    return (await this.getEpisodicState(corpId, userId, botUserId)).sessionSummaries;
+    return readEpisodicState(await this.getRow(corpId, userId, botUserId)).sessionSummaries;
   }
 
   async getConsolidationWatermarks(
@@ -378,7 +335,7 @@ export class SupabaseStore implements MemoryStore {
     userId: string,
     botUserId: string,
   ): Promise<ConsolidationWatermarks> {
-    return (await this.getEpisodicState(corpId, userId, botUserId)).consolidationWatermarks;
+    return readEpisodicState(await this.getRow(corpId, userId, botUserId)).consolidationWatermarks;
   }
 
   /** 原子追加一条 episode 并推进独立水位；DB 端同一 UPDATE 写两列。 */
@@ -548,77 +505,6 @@ export class SupabaseStore implements MemoryStore {
   }
 
   // ==================== 内部方法 ====================
-
-  /**
-   * episodic 读边界懒迁移：旧 recent/archive 合成裸 SummaryEntry[]，摘要内旧水位搬到独立列。
-   * 回写走 CAS RPC，避免较早的读快照覆盖并发 append/mark 已推进的摘要或水位。
-   */
-  private async getEpisodicState(
-    corpId: string,
-    userId: string,
-    botUserId: string,
-  ): Promise<NormalizedEpisodicState> {
-    const row = await this.getRow(corpId, userId, botUserId);
-    if (!row) {
-      return {
-        sessionSummaries: null,
-        consolidationWatermarks: { ...EMPTY_CONSOLIDATION_WATERMARKS, bySession: {} },
-        needsMigration: false,
-      };
-    }
-
-    const normalized = normalizeEpisodicState(row);
-    if (normalized.needsMigration && normalized.sessionSummaries) {
-      return this.migrateEpisodicStateAtomic(corpId, userId, botUserId, row, normalized);
-    }
-    return normalized;
-  }
-
-  /**
-   * compare-and-swap 懒迁移。RPC 未命中说明并发写已改变两列，此时以 RPC 返回的
-   * 数据库当前值重新规范化；最多再尝试一次仍为旧形状的极窄竞争窗口。
-   */
-  private async migrateEpisodicStateAtomic(
-    corpId: string,
-    userId: string,
-    botUserId: string,
-    initialRow: AgentLongTermMemoryRow,
-    initialNormalized: NormalizedEpisodicState,
-  ): Promise<NormalizedEpisodicState> {
-    const client = this.supabase.getSupabaseClient();
-    if (!client) {
-      this.logger.warn('Supabase 不可用，episodic 旧形状未持久化');
-      return initialNormalized;
-    }
-
-    let expectedRow = initialRow;
-    let normalized = initialNormalized;
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      const { data, error } = await client.rpc('migrate_long_term_episodic_state_atomic', {
-        p_corp_id: corpId,
-        p_user_id: userId,
-        p_bot_user_id: botUserId,
-        p_expected_session_summaries: expectedRow.episodic_session_summaries ?? null,
-        p_expected_consolidation_watermarks: expectedRow.consolidation_watermarks ?? null,
-        p_session_summaries: normalized.sessionSummaries,
-        p_consolidation_watermarks: normalized.consolidationWatermarks,
-      });
-
-      if (error) {
-        this.logger.warn('[migrateEpisodicStateAtomic] RPC 失败', error.message);
-        throw error;
-      }
-      if (!data) return normalized;
-
-      const currentRow = data as AgentLongTermMemoryRow;
-      normalized = normalizeEpisodicState(currentRow);
-      await this.invalidateCache(corpId, userId, botUserId);
-      if (!normalized.needsMigration || !normalized.sessionSummaries) return normalized;
-      expectedRow = currentRow;
-    }
-
-    return normalized;
-  }
 
   private async getRow(
     corpId: string,

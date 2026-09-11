@@ -159,8 +159,8 @@ Redis hash 没有字段级 TTL，因此 `factsv2:` 内的 facts 与 workbench �
 - `consolidation_watermarks`：独立工作水位列，不属于记忆内容，也不进入召回契约。
 
 摘要数组按时间从旧到新排列，最多保留 20 段，超限时确定性淘汰最老段；已写入条目
-永不再交给 LLM 重写。旧 `{ recent, archive, lastSettled* }` 在读取时懒迁移：recent
-反转并入裸数组，archive 文本补为空标识符 `SummaryEntry` 置于头部，旧水位写入独立列。
+永不再交给 LLM 重写。旧 `{ recent, archive, lastSettled* }` 对象形态与旧 source 词表已由迁移
+`20260911120000_flatten_legacy_long_term_shapes` 一次性归一（列约束只允许裸数组），读边界不再做懒迁移。
 `episodic_session_summaries` 列名保持不变。
 
 没有可验证 bot 血缘的存量行保持冻结且不参与读取；有可靠血缘的数据才拆到关系行。长期召回不再做跨 bot 来源研判，也不渲染跨咨询泛指横幅。

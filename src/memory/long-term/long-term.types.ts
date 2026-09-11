@@ -96,32 +96,14 @@ export interface UserProfileFactValue<T> {
   originBotId?: string;
 }
 
-const LEGACY_PROFILE_FACT_PRODUCERS: Readonly<Record<string, CandidateFactProducer>> = {
-  candidate: 'candidate_quote',
-  llm: 'model',
-  rule: 'rule',
-  system: 'system',
-  memory: 'archive',
-  derived: 'rule',
-  tool: 'system',
-  booking: 'system',
-  extraction: 'archive',
-  enrichment: 'system',
-};
-
-const StoredProfileFactProducerSchema = z.preprocess(
-  (value) => (typeof value === 'string' ? (LEGACY_PROFILE_FACT_PRODUCERS[value] ?? value) : value),
-  z.enum(CANDIDATE_FACT_PRODUCERS),
-);
-
-/** 长期档案读边界 schema：兼容旧 source，输出只含六章根词汇。 */
+/** 长期档案读边界 schema：source 只含六章根词汇（旧 source 已由迁移 20260911120000 归一）。 */
 export const UserProfileFactValueSchema = z.object({
   value: z.unknown(),
   confidence: z.preprocess(
     (value) => (value === 'low' || value === 'unknown' ? 'medium' : value),
     z.enum(FACT_CONFIDENCE_LEVELS_DESC),
   ),
-  source: StoredProfileFactProducerSchema,
+  source: z.enum(CANDIDATE_FACT_PRODUCERS),
   evidence: z.string(),
   updatedAt: z.string(),
   originSessionId: z.string().optional(),
