@@ -188,7 +188,7 @@ export default function UserTrendChart({
             <div className={`${styles.statCard} ${styles.cardPrimary}`}>
               <div
                 className={styles.statIcon}
-                style={{ background: 'linear-gradient(135deg, #667eea 0%, #5b4de6 100%)' }}
+                style={{ background: 'linear-gradient(135deg, #667eea 0%, #4f46e5 100%)' }}
               >
                 <IconUsers style={{ color: 'white' }} />
               </div>
@@ -280,14 +280,14 @@ export default function UserTrendChart({
                           stroke="#8a89ad"
                           tick={{ fontSize: 12, fill: '#5b5a86' }}
                           tickLine={false}
-                          axisLine={{ stroke: 'rgba(212, 208, 255, 0.55)' }}
+                          axisLine={{ stroke: '#e5e7eb' }}
                           interval={xAxisInterval}
                         />
                         <YAxis
                           stroke="#8a89ad"
                           tick={{ fontSize: 12, fill: '#5b5a86' }}
                           tickLine={false}
-                          axisLine={{ stroke: 'rgba(212, 208, 255, 0.55)' }}
+                          axisLine={{ stroke: '#e5e7eb' }}
                           width={48}
                         />
                         <Tooltip

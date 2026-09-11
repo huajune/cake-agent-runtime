@@ -329,7 +329,7 @@ function RankIcon({ rank }: { rank: 1 | 2 | 3 }) {
   const medal = isSilver
     ? {
         fillStops: ['#ffffff', '#eef4fd', '#a9c6f0'],
-        rimStops: ['#faf9ff', '#a9c6f0', '#6f9ce6'],
+        rimStops: ['#f9fafb', '#a9c6f0', '#6f9ce6'],
         ribbonStops: ['#b3b9f3', '#b6cfe4'],
         text: '#6f9ce6',
         star: '#6f9ce6',
@@ -337,7 +337,7 @@ function RankIcon({ rank }: { rank: 1 | 2 | 3 }) {
     : {
         fillStops: ['#fdf6ec', '#efc27a', '#efc27a'],
         rimStops: ['#fdf6ec', '#efc27a', '#e8b08a'],
-        ribbonStops: ['#a48ae8', '#e9c46a'],
+        ribbonStops: ['#818cf8', '#e9c46a'],
         text: '#d8966c',
         star: '#e2a37a',
       };

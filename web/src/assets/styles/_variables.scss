@@ -3,20 +3,19 @@
 // ============================================================
 
 // ========== 颜色系统 ==========
-// 丁香墨色系（2026-09-11 定稿，源自出站守卫档案）：
-// 文字用带紫相的墨色而非中性灰，分隔/描边用丁香细边，底色白 + 极淡渐变，
-// 语义色保留色相但压到与丁香同档饱和（方案 A）。改色只改这一处。
+// 2026-09-11 起：文字灰阶改为带紫相的墨色（源自出站守卫档案），语义色保留色相但降饱和（方案 A）；
+// 主色、底色、边框保持原值——用户只要文字配色，不动布局底色。改色只改这一处。
 // 命名约定：`-text` 用于白底小字（更深），无后缀用于圆点/填充/边，`-soft` 用于淡底。
 
-// 主色（丁香紫）
-$primary: #6d5bd0;
-$primary-dark: #5b4de6;
-$primary-light: #a48ae8;
+// 主色（靛蓝紫，原值保留）
+$primary: #6366f1;
+$primary-dark: #4f46e5;
+$primary-light: #818cf8;
 $primary-soft: rgba($primary, 0.1);
 
-// 强调色（藕紫）
-$accent: #a06bd6;
-$accent-light: #c9a8e8;
+// 强调色（紫罗兰，原值保留）
+$accent: #8b5cf6;
+$accent-light: #a78bfa;
 
 // 丁香（描边 / 轨道 / 淡底的基色）
 $lilac: #d4d0ff;
@@ -104,24 +103,24 @@ $text-on-primary: #ffffff;
 
 // 背景颜色
 $bg-primary: #ffffff;
-$bg-page: #f6f5fc;
+$bg-page: #f3f4f6;
 $bg-card: #ffffff;
-$bg-secondary: #faf9ff;
-$bg-tint: #f3f2ff;
+$bg-secondary: #f9fafb;
+$bg-tint: #f1f5f9;
 $bg-sidebar: #ffffff;
-$bg-hover: rgba(240, 239, 255, 0.65);
+$bg-hover: rgba($primary, 0.05);
 
-// 边框颜色（丁香细边）
-$border: rgba($lilac, 0.55);
+// 边框颜色（原值保留；$lilac/$rail 供守卫档案等已定稿组件使用）
+$border: #e5e7eb;
 $border-color: $border; // alias for compatibility
-$border-strong: rgba($lilac, 0.85);
-$border-hover: #c4c1ea;
+$border-strong: #e2e8f0;
+$border-hover: #d1d5db;
 $border-focus: $primary;
 $rail: rgba($lilac, 0.75);
 
 // ========== 渐变 ==========
-$gradient-primary: linear-gradient(135deg, #7a68d9 0%, #a98ce6 100%);
-$gradient-card: linear-gradient(135deg, #ffffff 0%, #faf9ff 100%);
+$gradient-primary: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+$gradient-card: linear-gradient(135deg, #ffffff 0%, #f9fafb 100%);
 $gradient-hover: linear-gradient(135deg, rgba($primary, 0.05) 0%, rgba($accent, 0.05) 100%);
 $gradient-dream: linear-gradient(118deg, #f0efff 0%, #faf4fe 34%, #f2f7ff 68%, #fdfdff 100%);
 

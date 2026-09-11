@@ -232,19 +232,19 @@ export default function Layout() {
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', animation: 'butterflyFloat 4s ease-in-out infinite', transformOrigin: 'top center' }}>
             <div style={{ width: '1px', height: '10px', background: '#D8B4FE' }} />
             <svg width="42" height="36" viewBox="0 0 36 30" fill="none">
-              <path d="M18 15 Q8 4 4 10 Q2 18 12 19 Q14 19 18 15Z" fill="#a48ae8" opacity="0.85">
+              <path d="M18 15 Q8 4 4 10 Q2 18 12 19 Q14 19 18 15Z" fill="#818cf8" opacity="0.85">
                 <animateTransform attributeName="transform" type="rotate" values="-5 18 15;10 18 15;-5 18 15" dur="0.6s" repeatCount="indefinite" />
               </path>
               <path d="M18 15 Q28 4 32 10 Q34 18 24 19 Q22 19 18 15Z" fill="#DDD6FE" opacity="0.85">
                 <animateTransform attributeName="transform" type="rotate" values="5 18 15;-10 18 15;5 18 15" dur="0.6s" repeatCount="indefinite" />
               </path>
-              <path d="M18 15 Q12 22 10 25 Q14 28 18 22Z" fill="#a48ae8" opacity="0.6" />
+              <path d="M18 15 Q12 22 10 25 Q14 28 18 22Z" fill="#818cf8" opacity="0.6" />
               <path d="M18 15 Q24 22 26 25 Q22 28 18 22Z" fill="#DDD6FE" opacity="0.6" />
-              <ellipse cx="18" cy="17" rx="1.5" ry="5.5" fill="#5b4de6" />
-              <path d="M17 12 Q14 6 12 4" stroke="#5b4de6" strokeWidth="0.8" fill="none" />
-              <path d="M19 12 Q22 6 24 4" stroke="#5b4de6" strokeWidth="0.8" fill="none" />
-              <circle cx="12" cy="4" r="1" fill="#a48ae8" />
-              <circle cx="24" cy="4" r="1" fill="#a48ae8" />
+              <ellipse cx="18" cy="17" rx="1.5" ry="5.5" fill="#4f46e5" />
+              <path d="M17 12 Q14 6 12 4" stroke="#4f46e5" strokeWidth="0.8" fill="none" />
+              <path d="M19 12 Q22 6 24 4" stroke="#4f46e5" strokeWidth="0.8" fill="none" />
+              <circle cx="12" cy="4" r="1" fill="#818cf8" />
+              <circle cx="24" cy="4" r="1" fill="#818cf8" />
             </svg>
           </div>
 

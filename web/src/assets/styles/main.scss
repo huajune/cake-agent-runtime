@@ -28,7 +28,7 @@
 @use './utilities';
 
 // ========== CSS 变量 (用于运行时主题) ==========
-// 默认主题 - 丁香墨色（值来自 _variables.scss，此处只做运行时暴露）
+// 默认主题 - 梦幻蓝紫（值来自 _variables.scss，此处只做运行时暴露）
 :root {
   // 主色调
   --primary: #{$primary};

@@ -81,7 +81,7 @@ const SPRINKLES: Array<[number, number, number, number]> = [
   [0.32, -0.45, -12, 5],
   [-0.18, -0.05, 40, 4],
 ];
-const SPRINKLE_COLORS = ['#f5c6da', '#efc27a', '#a8dcc4', '#a9c6f0', '#f2b7cd', '#a48ae8'];
+const SPRINKLE_COLORS = ['#f5c6da', '#efc27a', '#a8dcc4', '#a9c6f0', '#f2b7cd', '#818cf8'];
 
 export default function CohortFunnel({
   data,
@@ -199,7 +199,7 @@ export default function CohortFunnel({
                     markerHeight="7"
                     orient="auto-start-reverse"
                   >
-                    <path d="M0 0 L8 4 L0 8 z" fill="#a48ae8" />
+                    <path d="M0 0 L8 4 L0 8 z" fill="#818cf8" />
                   </marker>
                   <clipPath id="funnelCavityClip">
                     <ellipse
@@ -235,7 +235,7 @@ export default function CohortFunnel({
                 <path
                   d={`M 42 ${layout[Math.min(1, n - 1)].topY + 6} C 10 ${layout[Math.min(1, n - 1)].topY + 86}, 12 ${funnelBottom - 96}, 48 ${funnelBottom - 18}`}
                   fill="none"
-                  stroke="#a48ae8"
+                  stroke="#818cf8"
                   strokeWidth={1.6}
                   strokeDasharray="5 6"
                   markerEnd="url(#funnelArrowHead)"

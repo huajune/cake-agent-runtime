@@ -283,7 +283,7 @@ export default function ChatRecords() {
         backgroundColor: 'rgba(255, 255, 255, 0.98)',
         titleColor: '#14132b',
         bodyColor: '#3b3a55',
-        borderColor: 'rgba(212, 208, 255, 0.55)',
+        borderColor: '#e5e7eb',
         borderWidth: 1,
         padding: 12,
         boxPadding: 6,
