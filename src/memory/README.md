@@ -7,13 +7,13 @@
 | 作用域              | 当前内容                          | 生命周期 / 边界   | 存储                              |
 | ------------------- | --------------------------------- | ----------------- | --------------------------------- |
 | short-term 消息窗口 | 原始对话窗口                      | **滚动 7 天**     | 锚点 = 本批之前候选人最后一次开口 |
-| short-term 会话状态 | facts、工作台、阶段指针           | **3 天**          | Redis                             |
-| 咨询段（episode）   | 本次连续咨询的消息切片            | **闲置 3 天**划界 | 无独立存储层                      |
+| short-term 会话状态 | facts、工作台、阶段指针           | **7 天**          | Redis                             |
+| 咨询段（episode）   | 本次连续咨询的消息切片            | **闲置 7 天**划界 | 无独立存储层                      |
 | long-term 关系档    | semantic 档案/意向、episodic 摘要 | 持久              | Supabase + Redis 缓存             |
 
-三个对外口径固定为 **7d / 3d / 3d**：消息回看窗口滚动 7 天、会话状态 TTL 3 天、闲置沉淀间隙 3 天。沉淀间隙（`MEMORY_SETTLEMENT_GAP_DAYS`）不得配成小于 sessionTtl：否则会话存活期间即发生沉淀，会话会读回自己刚沉淀的长期记忆。`factsv2:` 的实际 TTL 额外加 12 小时，只是保证 delayed job 先读取再过期的安全余量，不构成新的业务生命周期。
+三个对外口径固定为 **7d / 7d / 7d**：消息回看窗口滚动 7 天、会话状态 TTL 7 天、闲置沉淀间隙 7 天。沉淀间隙（`MEMORY_SETTLEMENT_GAP_DAYS`）不得配成小于 sessionTtl：否则会话存活期间即发生沉淀，会话会读回自己刚沉淀的长期记忆。`factsv2:` 的实际 TTL 额外加 12 小时，只是保证 delayed job 先读取再过期的安全余量，不构成新的业务生命周期。
 
-**短期不等于单次咨询。** 代码里的 session 是 `chatId`，即候选人 × bot 的关系，可跨多次咨询长期存在；业务里的 session 是连续咨询段，由闲置 3 天计算得到。消息窗口按上次开口滚动回看 7 天，回访时捡回上一段咨询尾部，便于重建上下文。episode 只是裁剪与沉淀的计算边界，没有自己的 Redis key、表或目录。
+**短期不等于单次咨询。** 代码里的 session 是 `chatId`，即候选人 × bot 的关系，可跨多次咨询长期存在；业务里的 session 是连续咨询段，由闲置 7 天计算得到。消息窗口按上次开口滚动回看 7 天，回访时捡回上一段咨询尾部，便于重建上下文。episode 只是裁剪与沉淀的计算边界，没有自己的 Redis key、表或目录。
 
 ## 当前目录
 
@@ -76,7 +76,7 @@ src/tools/collection/
 - `resolution/` 永远零 IO。
 - `memory/` 只保存记忆系统自己的窗口、session hash 与长期关系档。
 - 各域单据自持存储，可直接使用通用 infra Redis 底座，并自持 TTL 配置。
-- 收资单据默认 TTL 3 天；它与会话状态时间对齐是业务口径，不依赖 `MemoryConfig`。
+- 收资单据默认 TTL 7 天；它与会话状态时间对齐是业务口径，不依赖 `MemoryConfig`。
 
 `collection-form:` key 是“丢了算事故”的业务单据；移动目录不改变它的 key 形态、整实体快照语义或恢复责任。
 
@@ -125,8 +125,8 @@ Prompt 内的 `[会话记忆]`、`[用户档案]`、`[本轮解析线索]` 等�
 
 Redis 契约：
 
-- `factsv2:{corpId}:{userId}:{sessionId}`：facts + workbench，基准 3 天，实际带 12 小时沉淀余量；
-- `stage:{corpId}:{userId}:{sessionId}`：阶段指针，3 天。
+- `factsv2:{corpId}:{userId}:{sessionId}`：facts + workbench，基准 7 天，实际带 12 小时沉淀余量；
+- `stage:{corpId}:{userId}:{sessionId}`：阶段指针，7 天。
 
 Redis hash 没有字段级 TTL，因此 `factsv2:` 内的 facts 与 workbench 共同享有 12 小时余量。
 
@@ -171,7 +171,7 @@ Redis hash 没有字段级 TTL，因此 `factsv2:` 内的 facts 与 workbench �
 ### 沉淀总装图（consolidation：三种产出、三套写法）
 
 ```text
-┌─ 输入（每段咨询沉淀一次，闲置满 3 天定时触发）────────────────┐
+┌─ 输入（每段咨询沉淀一次，闲置满 7 天定时触发）────────────────┐
 │  A. chat_messages 本段原文（水位之后 → 最新，尾截 120 条）     │
 │     ← 摘要的主料；terminal/推过什么岗等信息由摘要 LLM 从原文读  │
 │  B. sessionFacts 的 facts 舱                                │
@@ -221,7 +221,7 @@ Redis hash 没有字段级 TTL，因此 `factsv2:` 内的 facts 与 workbench �
 
 回合收尾按固定顺序更新工作台和事实，并在结束时注册或刷新同一 chat 的 delayed consolidation job。新队列与 job 标识统一使用 `consolidation` 词根。
 
-任务在闲置满沉淀间隙（3 天）到点时：
+任务在闲置满沉淀间隙（7 天）到点时：
 
 1. 重新读取 DB 最新消息时间并校验确已闲置；未达标则按剩余时间重排；
 2. 用 `consolidation_watermarks.bySession[sessionId]` 判断是否已覆盖，做到幂等；

@@ -37,7 +37,7 @@ const SUMMARY_MAX_MESSAGES = 120;
  *
  * ## 设计约束
  *
- * 每回合结束由 ConsolidationSchedulerService 刷新约 3 天的 Bull delayed job；本服务
+ * 每回合结束由 ConsolidationSchedulerService 刷新约 7 天的 Bull delayed job；本服务
  * 到点后用 chat_messages 最新时间复核闲置，避免旧任务与新消息竞态。facts key 比
  * 沉淀阈值多 12 小时余量，使本服务在状态过期前完成读取。
  *

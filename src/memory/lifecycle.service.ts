@@ -229,7 +229,7 @@ export class MemoryLifecycleService {
       const branchPromises: Array<Promise<PostProcessingStepStatus[]>> = [];
       const previousState = previousStateResult.value;
 
-      // 每回合结束刷新 3 天 delayed job；真正沉淀到点后重读 facts 与 DB 活跃时间。
+      // 每回合结束刷新 7 天 delayed job；真正沉淀到点后重读 facts 与 DB 活跃时间。
       const consolidationTask = this.createTimedTask('schedule_consolidation', async () => {
         await this.consolidationScheduler.schedule({
           corpId: ctx.corpId,
