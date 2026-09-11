@@ -344,7 +344,6 @@ export class ChatSessionService {
       isSelf: message.isSelf,
       payloadSource:
         typeof message.payload?.source === 'string' ? message.payload.source : undefined,
-      provenanceVersion: 2,
     };
 
     const appended = await appendChatHistoryCacheEntry(

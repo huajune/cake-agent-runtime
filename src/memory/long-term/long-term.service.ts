@@ -285,19 +285,6 @@ export class LongTermService {
     }
   }
 
-  async updateMessageMetadata(
-    corpId: string,
-    userId: string,
-    botUserId: string,
-    metadata: MessageMetadata,
-  ): Promise<void> {
-    try {
-      await this.supabaseStore.upsertMessageMetadata(corpId, userId, botUserId, metadata);
-    } catch (error) {
-      this.logger.warn('更新长期记忆消息元数据失败', error);
-    }
-  }
-
   // ==================== active_booking ====================
 
   /**

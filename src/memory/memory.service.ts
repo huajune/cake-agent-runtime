@@ -3,7 +3,7 @@ import { LongTermService } from './long-term/long-term.service';
 import { SessionStateService } from './short-term/session-state.service';
 import { SessionWorkbenchService } from './short-term/workbench.service';
 import { MemoryLifecycleService, type MemoryLifecycleTurnContext } from './lifecycle.service';
-import type { AgentMemoryContext } from './recall.types';
+import type { MemoryRecallContext } from './recall.types';
 import type { SummaryEntry } from './long-term/long-term.types';
 import type { InvitedGroupRecord } from './short-term/short-term.types';
 import type { TurnHints } from '@resolution/turn-hints/turn-hint.types';
@@ -49,7 +49,7 @@ export class MemoryService {
       /** 当前托管账号的稳定企微身份（wecomUserId）。 */
       botUserId?: string;
     },
-  ): Promise<AgentMemoryContext> {
+  ): Promise<MemoryRecallContext> {
     return await this.lifecycle.onTurnStart(corpId, userId, sessionId, currentUserMessage, options);
   }
 

@@ -13,6 +13,7 @@ import {
   MUNICIPALITIES,
   HIGH_CONFIDENCE_BARE_LOCATION_ALIASES,
 } from './administrative-division.data';
+import { NATIONAL_DISTRICT_NAMES } from './administrative-division.generated';
 import { NATIONAL_CITY_SUFFIX_TO_CITY } from './explicit-city.data';
 import { UNIQUE_PLACE_ALIAS_TO_CITY } from './place-alias.data';
 import { normalizeDistrictForLookup } from './geo-name.normalizer';
@@ -28,17 +29,25 @@ const CITY_DICT: Record<string, true> = Object.fromEntries(
   ),
 );
 
-/** 正则兜底：在白名单未覆盖区间识别"白名单外的 raw district"（不补 city）。 */
-const RAW_DISTRICT_PATTERN = /([一-龥]{2,10}(?:区|县|镇|街道|新区|开发区))/g;
+/**
+ * 白名单外 raw district 的词典：全国区/县全名（含后缀）。
+ *
+ * 曾用正则 `[一-龥]{2,10}(?:区|县|镇|街道…)` 在未覆盖段兜底，贪婪回吃会把
+ * 「嘉定区安亭镇」残段截成「区安亭」、把「查查钟楼区邹区」截成「查查钟楼区邹」，
+ * 09-11 生产核对近 7 天 12% 会话的 district 带此类脏值。改为词典最长匹配后，
+ * 只有数据集里真实存在且文本带后缀的区/县名才会入 district；镇/街道级地点
+ * 交给白名单与地理编码，不再由代码猜。
+ */
+const NATIONAL_DISTRICT_DICT: Record<string, true> = Object.fromEntries(
+  NATIONAL_DISTRICT_NAMES.map((name) => [name, true]),
+);
 
 /**
- * 正则兜底吃到的"区名"里含这些字/词就不是地名：候选人说"没有固定区，都可以"
- * "也可以跑其他区"，兜底会把"区"前整段话截成区名写进 preferences.district
- * （生产 09-02 核对到 2 例）。这里只列地名里绝不出现的虚词、否定词与泛指词；
- * "都/有/无"等在真实区县名里会出现（花都、都昌、有…），只以短语形式收。
+ * 镇/街道级地点不在全国区县数据集里，只在紧接白名单/词典命中的残段开头识别
+ * （「浦东新区航头镇」→ 航头；「嘉定区安亭镇」→ 安亭）：残段开头允许一个 区/县/市
+ * 残字，正文 2–4 字，后缀必须是 镇/街道。句中自由出现的镇名交给 LLM 轨与地理编码。
  */
-const RAW_DISTRICT_STOP_WORDS =
-  /没有|没固定|不固定|不限|都可以|都行|都能|可以|随便|其他|其它|任何|哪里|哪儿|哪个|什么|这个|那个|固定|方便|就近|附近|周边|以外|之外|所有|每个|各个|[的吗呢吧了也还就要想找去到在是]/u;
+const TOWN_AFTER_HIT_PATTERN = /^[区县市]?[一-龥]{2,4}(?=镇|街道)/u;
 
 const SELF_INTRO_PREFIXES = [
   '你好，我是',
@@ -116,14 +125,23 @@ export function scanGeoSignalsFromText(message: string): GeoTextScanResult {
 
   const city = resolveCity(scannableMessage, cityScan, districtScan, locationScan);
 
-  // district：白名单命中（归一化后） + 未覆盖区间正则兜底（白名单外，城市未知）
+  // district：白名单命中（归一化后） + 未覆盖区间全国区/县词典扫描（白名单外，不补 city）
   const whitelistDistricts = districtScan.hits.map((hit) => normalizeDistrictForLookup(hit.key));
-  const rawDistricts = matchInUncoveredSegments(
+  const rawDistrictScan = scanWhitelistKeysByLongest(
     scannableMessage,
+    NATIONAL_DISTRICT_DICT,
     locationScan.covered,
-    RAW_DISTRICT_PATTERN,
-  ).map(normalizeRawDistrict);
-  const districts = Array.from(new Set([...whitelistDistricts, ...rawDistricts].filter(Boolean)));
+    { rejectPlaceFeatureSuffix: true },
+  );
+  const rawDistricts = rawDistrictScan.hits.map((hit) => normalizeDistrictForLookup(hit.key));
+  const towns = matchInUncoveredSegments(
+    scannableMessage,
+    rawDistrictScan.covered,
+    TOWN_AFTER_HIT_PATTERN,
+  ).map((match) => match.replace(/^[区县市]/u, ''));
+  const districts = Array.from(
+    new Set([...whitelistDistricts, ...rawDistricts, ...towns].filter(Boolean)),
+  );
 
   return {
     city,
@@ -194,17 +212,4 @@ function resolveCity(
   }
 
   return null;
-}
-
-function normalizeRawDistrict(candidate: string): string {
-  // 兜底场景：候选词来自"白名单未覆盖区间"。理论上不含已识别的区名，但仍可能整段
-  // 被正则吃进来（如完全在白名单外的城市的区），所以复用旧版前缀剥离 + 后缀归一化
-  // 作最后一层保险。
-  const withoutPrefix = candidate
-    .replace(/^[\u4e00-\u9fa5]{2,12}省/, '')
-    .replace(/^[\u4e00-\u9fa5]{2,12}市/, '')
-    .replace(/^(?:你好|您好|哈喽|嗨)/, '')
-    .replace(/^(?:我在|人在|住在|我住|目前在|现在在|今天在|平时在|在)/, '');
-  if (RAW_DISTRICT_STOP_WORDS.test(withoutPrefix)) return '';
-  return normalizeDistrictForLookup(withoutPrefix);
 }

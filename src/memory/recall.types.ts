@@ -48,12 +48,6 @@ export interface MemoryRecallContext {
   // episodic 摘要不进入默认召回；需要时由显式 recall_history 路径按需读取。
 }
 
-/**
- * Agent/generator 侧沿用的语义别名。唯一结构定义仍是
- * `MemoryRecallContext`；此处不维护第二份 DTO。
- */
-export type AgentMemoryContext = MemoryRecallContext;
-
 // ==================== 主动复聊召回投影 ====================
 
 // 信封唯一定义在 @resolution/candidate/types；此处仅作存储侧别名转发，

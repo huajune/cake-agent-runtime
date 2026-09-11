@@ -103,7 +103,6 @@ interface MemoryRecallContext {
 - `shortTerm.stage` 是会话状态部件；因为仍使用独立 `stage:` key，所以并列注入。
 - `turnHints` 只在当前轮生效，必须经过回合末验证与置信度合并后才能成为持久事实。
 - episodic 摘要不进默认召回；需要时显式调用 `recall_history`。
-- `AgentMemoryContext` 暂时保留为兼容别名，调用方继续收口到 `MemoryRecallContext`。
 
 Prompt 内的 `[会话记忆]`、`[用户档案]`、`[本轮解析线索]` 等标签是模型可见契约，代码字段重排不改变这些文本。
 
@@ -130,6 +129,11 @@ Redis 契约：
 
 Redis hash 没有字段级 TTL，因此 `factsv2:` 内的 facts 与 workbench 共同享有 12 小时余量。
 
+城市的两条写路径（本轮提取、工具确权）都汇合于 `savePreferences`；城市确立后，白名单能反推为
+其他城市的 `district` / `location` 会被剔除（`pruneGeoPreferencesForCity`，证据追加「换城清理」），
+白名单外反推不出城市的值不动。旧 `facts:` 单 blob key、顶层 `brand_state`、裸字符串 city 与
+消息缓存 v1 形态的读兼容已于 2026-09-11 下线（生产存量核对为零）。
+
 ### facts 与 brand
 
 `SessionFacts` 的字段通常使用带 `value / confidence / source / evidence` 的信封。`facts.brand` 是例外：它原样保存 `PersistedBrandState`，不再套一层事实信封。
@@ -138,12 +142,12 @@ Redis hash 没有字段级 TTL，因此 `factsv2:` 内的 facts 与 workbench �
 
 - `BrandStateService` reducer 是唯一写者；
 - 回合收尾在事实提取之后执行，提取失败也不跳过；
-- 旧顶层品牌字段只在读取时懒迁移到 `facts.brand`；
 - 观测事件 `brand_state_change` 与 trace 步骤 `apply_brand_state` 保持不变。
 
 ## Long-term
 
-长期关系档按 `(corpId, userId, botUserId)` 隔离。`botUserId` 使用托管账号稳定的 `wecomUserId`；轮换的 `imBotId` 只用于渠道调用或血缘排障，不参与长期主键。
+长期关系档按 `(corpId, userId, botUserId)` 隔离。关系行只由 consolidation 创建：候选人首次接触
+不再在 `agent_long_term_memories` 开户，`message_metadata` 列不再写入（存量保留，无读方）。`botUserId` 使用托管账号稳定的 `wecomUserId`；轮换的 `imBotId` 只用于渠道调用或血缘排障，不参与长期主键。
 
 存储形态：
 
@@ -201,6 +205,11 @@ Redis hash 没有字段级 TTL，因此 `factsv2:` 内的 facts 与 workbench �
 ```
 
 三套写法对应三种数据的天性：**事实越证越硬（合并）、意向喜新厌旧（覆盖）、经历落笔成史（追加）**。
+
+摘要 LLM 输出首行为「范围：求职 / 非求职」，随后四节固定为「标题：正文」纯文本；`parseSummaryOutput`
+在写入前做确定性格式归一（去范围行、Markdown 标题与加粗统一为「标题：」），不改内容。范围为
+非求职（在职工时/工资/排班等事务、闲聊）时不写摘要、只推进水位；范围行缺失按求职处理。
+缺失的标识符直接省略，不再写「无」填充句。
 
 ## 回合生命周期
 

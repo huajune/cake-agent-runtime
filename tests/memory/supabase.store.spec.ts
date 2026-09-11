@@ -680,55 +680,6 @@ describe('SupabaseStore', () => {
     });
   });
 
-  describe('upsertMessageMetadata', () => {
-    it('should upsert compact message metadata and invalidate cache', async () => {
-      await store.upsertMessageMetadata('corp1', 'user1', BOT_USER_ID, {
-        botId: 'bot-1',
-        imBotId: 'im-bot-1',
-        imContactId: 'im-contact-1',
-        contactType: 1,
-        contactName: '候选人',
-        externalUserId: '',
-        avatar: undefined,
-      });
-
-      expect(mockUpsert).toHaveBeenCalledWith(
-        {
-          corp_id: 'corp1',
-          user_id: 'user1',
-          bot_user_id: BOT_USER_ID,
-          message_metadata: {
-            botId: 'bot-1',
-            imBotId: 'im-bot-1',
-            imContactId: 'im-contact-1',
-            contactType: 1,
-            contactName: '候选人',
-          },
-          updated_at: expect.any(String),
-        },
-        { onConflict: 'corp_id,user_id,bot_user_id' },
-      );
-      expect(mockRedis.del).toHaveBeenCalledWith(`long-term:corp1:user1:${BOT_USER_ID}`);
-    });
-
-    it('should skip empty message metadata', async () => {
-      await store.upsertMessageMetadata('corp1', 'user1', BOT_USER_ID, {
-        contactName: '',
-      });
-
-      expect(mockUpsert).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('del (v1 compat)', () => {
-    it('should delete from Redis cache', async () => {
-      await store.del(`profile:corp1:user1:${BOT_USER_ID}`);
-
-      expect(mockRedis.del).toHaveBeenCalledWith(`long-term:corp1:user1:${BOT_USER_ID}`);
-      expect(mockDeleteChain.eq).toHaveBeenCalledWith('bot_user_id', BOT_USER_ID);
-    });
-  });
-
   // 议题 3-3：单数读 API 已删除，"最近一笔 = getActiveBookings()[0]" 由调用方直接依赖。
   // 该等价关系此前只存在于 store 实现的约定里（getActiveBooking = bookings[0] ?? null），
   // 这里在三种存量 JSONB 形态上把它锁死。

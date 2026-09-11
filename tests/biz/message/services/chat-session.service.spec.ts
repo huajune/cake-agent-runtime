@@ -101,7 +101,6 @@ describe('ChatSessionService', () => {
         messageType: StorageMessageType.TEXT,
         isSelf: true,
         payloadSource: 'callback',
-        provenanceVersion: 2,
       });
       // Index key is gone — dedup delegated to DB UNIQUE(message_id)
       expect(mockRedisService.setex).not.toHaveBeenCalled();

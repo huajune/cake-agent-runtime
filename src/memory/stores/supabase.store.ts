@@ -440,18 +440,6 @@ export class SupabaseStore implements MemoryStore {
     await this.invalidateCache(corpId, userId, botUserId);
   }
 
-  async upsertMessageMetadata(
-    corpId: string,
-    userId: string,
-    botUserId: string,
-    metadata: MessageMetadata,
-  ): Promise<void> {
-    const cleanMetadata = this.normalizeMessageMetadata(metadata);
-    if (!cleanMetadata) return;
-
-    await this.upsertRow(corpId, userId, botUserId, { message_metadata: cleanMetadata });
-  }
-
   // ==================== active_booking 操作 ====================
 
   /**
@@ -769,18 +757,6 @@ export class SupabaseStore implements MemoryStore {
 
     if (error) this.logger.warn('upsert active_booking 失败', error.message);
     await this.redis.del(`active-booking:${corpId}:${userId}`).catch(() => {});
-  }
-
-  private normalizeMessageMetadata(metadata: MessageMetadata): MessageMetadata | null {
-    const clean: MessageMetadata = {};
-    for (const [key, value] of Object.entries(metadata) as Array<
-      [keyof MessageMetadata, MessageMetadata[keyof MessageMetadata]]
-    >) {
-      if (value === null || value === undefined) continue;
-      if (typeof value === 'string' && value.trim().length === 0) continue;
-      (clean as Record<string, unknown>)[key] = value;
-    }
-    return Object.keys(clean).length > 0 ? clean : null;
   }
 
   private async invalidateCache(corpId: string, userId: string, botUserId: string): Promise<void> {

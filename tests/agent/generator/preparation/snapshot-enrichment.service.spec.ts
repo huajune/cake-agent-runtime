@@ -1,6 +1,6 @@
 import { SnapshotEnrichmentService } from '@agent/generator/preparation/snapshot-enrichment.service';
 import { FALLBACK_EXTRACTION } from '@memory/short-term/short-term.types';
-import type { AgentMemoryContext } from '@memory/recall.types';
+import type { MemoryRecallContext } from '@memory/recall.types';
 import { getTurnHint } from '@resolution/turn-hints/reducer';
 import { testTurnHint, testTurnHints } from '../../../helpers/turn-hints.fixture';
 
@@ -11,7 +11,7 @@ describe('SnapshotEnrichmentService', () => {
 
   let service: SnapshotEnrichmentService;
 
-  const baseSnapshot = (): AgentMemoryContext => ({
+  const baseSnapshot = (): MemoryRecallContext => ({
     shortTerm: {
       messageWindow: [],
       sessionState: null,
@@ -36,7 +36,7 @@ describe('SnapshotEnrichmentService', () => {
   });
 
   it('skips lookup when longTerm profile already has gender', async () => {
-    const snapshot: AgentMemoryContext = {
+    const snapshot: MemoryRecallContext = {
       ...baseSnapshot(),
       longTerm: {
         semantic: {
@@ -59,7 +59,7 @@ describe('SnapshotEnrichmentService', () => {
   });
 
   it('skips lookup when short-term session state facts already has gender', async () => {
-    const snapshot: AgentMemoryContext = {
+    const snapshot: MemoryRecallContext = {
       ...baseSnapshot(),
       shortTerm: {
         ...baseSnapshot().shortTerm,
@@ -81,7 +81,7 @@ describe('SnapshotEnrichmentService', () => {
   });
 
   it('skips lookup when turnHints already has gender', async () => {
-    const snapshot: AgentMemoryContext = {
+    const snapshot: MemoryRecallContext = {
       ...baseSnapshot(),
       turnHints: testTurnHints(testTurnHint('interview_info.gender', '男', '性别识别：男')),
     };
@@ -122,7 +122,7 @@ describe('SnapshotEnrichmentService', () => {
     mockCandidate.lookupGenderFromCustomerDetail.mockResolvedValue('男');
 
     await service.enrich(baseSnapshot(), { token: 't', imBotId: 'b', imContactId: 'c' });
-    const nextTurnSnapshot: AgentMemoryContext = {
+    const nextTurnSnapshot: MemoryRecallContext = {
       ...baseSnapshot(),
       shortTerm: {
         ...baseSnapshot().shortTerm,
@@ -153,7 +153,7 @@ describe('SnapshotEnrichmentService', () => {
 
   it('preserves existing turnHints fields when merging gender', async () => {
     mockCandidate.lookupGenderFromCustomerDetail.mockResolvedValue('女');
-    const snapshot: AgentMemoryContext = {
+    const snapshot: MemoryRecallContext = {
       ...baseSnapshot(),
       turnHints: testTurnHints(testTurnHint('preferences.salary', '30元/时', '薪资识别：30元/时')),
     };

@@ -159,13 +159,14 @@ export type CityFact = z.infer<typeof CityFactSchema>;
 export type CityFactEvidence = z.infer<typeof CityFactEvidenceSchema>;
 
 /**
- * 兼容旧数据的 city 字段解析：
- * - 字符串（旧 Redis 数据、LLM 原始输出）→ 归一化为 `{ value, confidence: 'medium', evidence: 'explicit_city' }`
+ * 提取结果（EntityExtractionResult）的 city 字段解析：
+ * - 字符串：LLM 原始输出（LLMPreferencesSchema 的 city 是 `string | null`），
+ *   归一化为 `{ value, confidence: 'medium', evidence: 'explicit_city' }`
  * - 对象 → 直接校验为 CityFact
  * - null/空串 → null
  *
- * 拆除判据：A1 及后续复扫中旧 city 字符串/旧 CityFact 形态存量计数均归零后，
- * 删除字符串分支与旧对象兼容；factsv2 无短 TTL，不能以自然过期代替数据侧确认。
+ * 这是提取态的归一化入口，与落盘态无关：Redis 里的 city 只有事实信封一种形态
+ * （见 SessionPreferencesSchema）。
  */
 const NullableCityFactSchema = z
   .union([CityFactSchema, z.string(), z.null()])
@@ -247,10 +248,10 @@ export type AvailableAfterFact = z.infer<typeof AvailableAfterFactSchema>;
 const NullableAvailableAfterSchema = AvailableAfterFactSchema.nullable().default(null);
 
 /**
- * 意向偏好 schema — 存储态（Redis/记忆）
+ * 意向偏好 schema — 提取态（EntityExtractionResult）
  *
- * city 字段为 CityFact 对象（含 confidence/evidence），
- * 但解析时接受旧的字符串数据做自动归一化，保证 Redis 兼容。
+ * city 字段为 CityFact 对象（含 confidence/evidence）；LLM 输出的字符串 city
+ * 经 NullableCityFactSchema 归一化为对象。
  *
  * 新增字段（与 booking gate / hard-constraints 配套）：
  * - delayed_intent：候选人明确推迟/再说意向
@@ -258,7 +259,7 @@ const NullableAvailableAfterSchema = AvailableAfterFactSchema.nullable().default
  * - open_position：候选人"什么岗位都行/X都可以"宽口径（不锁定到 position）
  * - time_windows：候选人给出的可用时间窗口（如"17点后"、"14点前"）
  *
- * 兼容性：所有新字段均 nullable + default(null)，旧 Redis 数据缺字段时解析为 null。
+ * 所有新字段均 nullable + default(null)，输入缺字段时解析为 null。
  */
 export const PreferencesSchema = z.object({
   // brands 字段已删：品牌唯一真相是 facts.brand，
@@ -272,7 +273,7 @@ export const PreferencesSchema = z.object({
   position: z.array(z.string()).nullable().describe('意向岗位'),
   schedule: z.string().nullable().describe('意向班次'),
   city: NullableCityFactSchema.describe(
-    '意向城市（对象：{ value, confidence, evidence }；兼容旧字符串输入，将自动归一化）',
+    '意向城市（对象：{ value, confidence, evidence }；LLM 输出的字符串自动归一化为对象）',
   ),
   district: z.array(z.string()).nullable().describe('意向区域'),
   location: z.array(z.string()).nullable().describe('意向地点/商圈'),
@@ -482,21 +483,8 @@ export const SessionFactConfidenceSchema = z.preprocess(
   z.enum(FACT_CONFIDENCE_LEVELS_DESC),
 );
 
-const LEGACY_SESSION_FACT_PRODUCERS: Readonly<Record<string, CandidateFactProducer>> = {
-  candidate: 'candidate_quote',
-  llm: 'model',
-  rule: 'rule',
-  system: 'system',
-  memory: 'archive',
-  derived: 'rule',
-  tool: 'system',
-};
-
-/** 存储读边界兼容旧 source；域内只允许六章根词汇，不回写旧行。 */
-const StoredCandidateFactProducerSchema = z.preprocess(
-  (value) => (typeof value === 'string' ? (LEGACY_SESSION_FACT_PRODUCERS[value] ?? value) : value),
-  z.enum(CANDIDATE_FACT_PRODUCERS),
-);
+/** 落盘 source 只认 CANDIDATE_FACT_PRODUCERS 词汇；其他字面量在读边界直接校验失败。 */
+const StoredCandidateFactProducerSchema = z.enum(CANDIDATE_FACT_PRODUCERS);
 
 export type SessionFactConfidence = z.infer<typeof SessionFactConfidenceSchema>;
 
@@ -604,22 +592,10 @@ const SessionFactValueSchema = <T extends z.ZodTypeAny>(valueSchema: T) =>
   });
 
 /**
- * 旧 city 字符串的兼容信封。
- *
- * 通用裸值信封（任何字段的裸标量都能经它悄悄落成 unknown/archive）已随 saveFacts 收成
- * `SessionFacts` 单形态而删除。**只剩 city 一路**：`NullableSessionCityFactSchema` 的
- * 字符串/CityFact 分支服务的是旧 Redis 记录（拆除判据见 NullableCityFactSchema），不是活跃
- * 写入方——保留是为了不让陈年记录的 pref.city 被逐字段校验静默丢掉。
- */
-function legacyCityFactValue<T>(value: T, evidence: string): SessionFactValue<T> {
-  return { value, confidence: 'medium', source: 'archive', evidence };
-}
-
-/**
  * 落盘字段的信封 schema。
  *
- * **只收信封或 null**：裸标量不再被接受——它意味着一个没人为其置信度签名负责的值。
- * 写入方必须显式经 `toSessionFacts` 或自己构造 `SessionFactValue`。
+ * **只收信封或 null**：裸标量不被接受——它意味着一个没人为其置信度签名负责的值。
+ * 写入方必须显式经 `toSessionFacts` 或自己构造 `SessionFactValue`。city 亦无例外。
  */
 const NullableSessionFactSchema = <T extends z.ZodTypeAny>(valueSchema: T) =>
   z
@@ -644,31 +620,9 @@ const NullableSessionPreferenceFactSchema = <T extends z.ZodTypeAny>(valueSchema
       value === null ? null : (value as SessionFactValue<z.infer<T> | null>),
     );
 
-function cityEvidenceToString(evidence: CityFactEvidence): string {
-  return evidence;
-}
-
-// city 的两条非信封分支（CityFact / 裸字符串）保留为**旧 Redis 记录**兼容层：
-// 活跃写入方都已显式带信封（toSessionFacts 对 city 有专门分支），但旧记录的存量计数
-// 尚未复扫归零（拆除判据见上方 NullableCityFactSchema）。删早了的代价是逐字段校验
-// 把一条陈年记录的 pref.city 静默丢掉，收益只是少十行——不划算，留着。
-const NullableSessionCityFactSchema = z
-  .union([SessionFactValueSchema(z.string().nullable()), CityFactSchema, z.string(), z.null()])
-  .transform((value): SessionFactValue<string | null> | null => {
-    if (value === null) return null;
-    if (typeof value === 'string') {
-      const city = value.trim().replace(/市$/, '');
-      return city ? legacyCityFactValue(city, '旧 sessionFacts city 字符串兼容迁移') : null;
-    }
-    if (isSessionFactValue(value)) return value as SessionFactValue<string | null>;
-    const cityFact = value as CityFact;
-    return {
-      value: cityFact.value,
-      confidence: cityFact.confidence,
-      source: 'rule',
-      evidence: cityEvidenceToString(cityFact.evidence),
-    };
-  });
+// 落盘态的 city 与其余 preferences 同形：只收信封（value 可为 null 墓碑）或 null。
+// CityFact 的 confidence/evidence 在 toSessionFacts 写入信封时已折进 confidence/evidence 字段。
+const NullableSessionCityFactSchema = NullableSessionPreferenceFactSchema(z.string());
 
 export const SessionInterviewInfoSchema = z.object({
   name: NullableSessionFactSchema(z.string()),
@@ -930,7 +884,7 @@ export function toSessionFacts(
             ...meta,
             confidence: facts.preferences.city.confidence,
             source: meta.source === 'model' ? 'rule' : meta.source,
-            evidence: cityEvidenceToString(facts.preferences.city.evidence),
+            evidence: facts.preferences.city.evidence,
           })
         : null,
     },
