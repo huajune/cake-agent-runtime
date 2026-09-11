@@ -17,7 +17,8 @@ import { asRecord } from '../output-rule.types';
  * - 本轮存在任何 duliday_interview_booking 调用（无论成败）→ 一律让位给
  *   booking_receipt_mismatch，绝不双记账；
  * - 本轮成功改约（duliday_modify_interview_time）→"已帮你约到/改到"是合法回执；
- * - precheck 返回在途工单（duplicateBookingGuard）→ 完成时态是对既有工单的合法复述；
+ * - precheck 返回在途工单（duplicateBookingGuard，取自候选人级 active_booking 查重窗口内的
+ *   同岗位工单）→ 完成时态是对既有工单的合法复述；
  * - 将来时（"我帮你约"）、征询（"要帮你约吗"）不在口径内；条件从句（"报名成功**后**会发你
  *   面试码"）同样不在口径内——"成功"在这里是尚未发生的前提而非回执，故 `成功` 后紧跟
  *   `后/之后/以后/後/的话` 时不判命中。
@@ -39,7 +40,8 @@ const BOOKING_FAMILY_TOOL_NAMES: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * precheck 是否返回在途工单——完成时态此时是对既有工单的复述，不是假宣称。
+ * precheck 是否返回在途工单（nextAction=already_booked 同批带出的 duplicateBookingGuard）
+ * ——完成时态此时是对既有工单的复述，不是假宣称。
  *
  * `asRecord` 收窄失败时返回 `null` 而非 `undefined`，所以判空必须比 `null`：
  * 比 `undefined` 会让**任何**带 precheck 的回合都被豁免，等于把哨兵对整条预约主链路关掉。

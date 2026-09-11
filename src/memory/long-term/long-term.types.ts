@@ -308,6 +308,8 @@ export interface ActiveBookingEntry {
   work_order_id: number;
   linked_at: string;
   job_id?: number | null;
+  /** 建单时提交的面试时间（`YYYY-MM-DD HH:mm:ss`）；wait_notice 岗位与存量行为空。 */
+  interview_time?: string | null;
 }
 
 /**

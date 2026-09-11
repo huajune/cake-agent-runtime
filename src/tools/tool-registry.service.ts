@@ -140,6 +140,8 @@ export class ToolRegistryService {
           // 收资表单接管（蓝图 §5）：注入即换轨，生产恒走表单路径。
           collectionForms: collectionFormService,
           identityAnchors: process.env.COLLECTION_IDENTITY_LABEL_IDS,
+          // 候选人级在途工单查重：与 booking 同一判据，先于 booking 亮出另一账号刚建的单。
+          longTermService,
         }),
       }),
 

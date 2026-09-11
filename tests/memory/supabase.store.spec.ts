@@ -591,5 +591,35 @@ describe('SupabaseStore', () => {
         job_id: 902,
       });
     });
+
+    it('interview_time 随工单指针透传；存量行缺失时不补空键', async () => {
+      const bookings = await readWith({
+        work_order_id: 5003,
+        linked_at: '2026-09-11T07:19:12.000Z',
+        job_id: 528902,
+        interview_time: '2026-09-14 13:30:00',
+        bookings: [
+          {
+            work_order_id: 5003,
+            linked_at: '2026-09-11T07:19:12.000Z',
+            job_id: 528902,
+            interview_time: '2026-09-14 13:30:00',
+          },
+          { work_order_id: 5001, linked_at: '2026-04-15T00:00:00.000Z', job_id: 900 },
+        ],
+      });
+
+      expect(bookings[0]).toEqual({
+        work_order_id: 5003,
+        linked_at: '2026-09-11T07:19:12.000Z',
+        job_id: 528902,
+        interview_time: '2026-09-14 13:30:00',
+      });
+      expect(bookings[1]).toEqual({
+        work_order_id: 5001,
+        linked_at: '2026-04-15T00:00:00.000Z',
+        job_id: 900,
+      });
+    });
   });
 });
