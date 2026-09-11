@@ -161,12 +161,12 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
 .kpiCell {
   position: relative;
   overflow: hidden;
-  border: 1px solid #f3e9ef;
+  border: 1px solid rgba(255, 255, 255, 0.95);
   border-radius: $panel-radius;
   background: #fff;
   box-shadow:
-    0 10px 24px rgba(226, 178, 200, 0.08),
-    0 1px 3px rgba(226, 178, 200, 0.06);
+    0 8px 20px rgba(214, 190, 220, 0.1),
+    0 1px 2px rgba(214, 190, 220, 0.08);
   transition:
     border-color $transition-normal,
     box-shadow $transition-normal,
@@ -420,6 +420,10 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
   display: grid;
   grid-template-columns: repeat(5, minmax(150px, 1fr));
   gap: $spacing-md;
+  padding: 12px;
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.62);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.9);
 }
 
 .caliberNote {
@@ -465,32 +469,32 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
   }
 
   &.teal {
-    --kpi-tone: #8fc7a0;
-    --kpi-next: #b8ddc2;
+    --kpi-tone: #8fcba3;
+    --kpi-next: #c6e8cf;
     --kpi-soft: rgba(169, 215, 179, 0.18);
   }
 
   &.sky {
-    --kpi-tone: #9ea9e0;
-    --kpi-next: #c3c9ef;
+    --kpi-tone: #a0abe6;
+    --kpi-next: #cdd2f4;
     --kpi-soft: rgba(184, 190, 232, 0.18);
   }
 
   &.rose {
-    --kpi-tone: #e59fbc;
-    --kpi-next: #f3c4d6;
+    --kpi-tone: #eba4c1;
+    --kpi-next: #f8cddd;
     --kpi-soft: rgba(242, 183, 205, 0.18);
   }
 
   &.amber {
-    --kpi-tone: #e6b487;
-    --kpi-next: #f2d2b3;
+    --kpi-tone: #ecb98a;
+    --kpi-next: #f7dbbe;
     --kpi-soft: rgba(240, 201, 160, 0.18);
   }
 
   &.purple {
-    --kpi-tone: #ad8fd0;
-    --kpi-next: #cdb6e3;
+    --kpi-tone: #b393d6;
+    --kpi-next: #d6c2ea;
     --kpi-soft: rgba(173, 143, 208, 0.16);
   }
 }
