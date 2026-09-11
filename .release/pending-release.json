@@ -157,6 +157,49 @@
         "新增用例：形态 G 四种否认口径拦截、如实播报放行、重新征询日期拦截、真实失败不受影响；booking 工具查重回执字段；证据包 already_booked 投影；store `interview_time` 透传"
       ],
       "level": "patch"
+    },
+    {
+      "number": "1257",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1257",
+      "title": "候选人级在途工单查重前移到 precheck，恢复 duplicateBookingGuard 守卫接线",
+      "author": "huajune",
+      "mergedAt": "2026-09-11",
+      "businessUpdates": [
+        "**守卫接线恢复**：`duplicateBookingGuard` 随 #1023 收资切换消失后，`interview_time_change_unconfirmed`（形态 F，P0 repair）与 `booking_done_claim_*` 的在途工单豁免一直空转。字段按守卫读取口径恢复，新增 precheck 真实回执 → 两个检测器的契约配对测试。",
+        "**查重前移到 precheck**：注入 `LongTermService`，按 booking 同一判据读 `active_booking`；命中即 `nextAction=already_booked` + `duplicateBookingGuard { workOrderId, interviewTime?, interviewTimeHuman?, note }`。指令：如实说已约上、按工单登记时间播报，禁止 booking / 再收资 / 征询日期，禁止\"系统故障 / 稍后重提\"口径，改时间 modify、取消 cancel。本表单自身已提交仍优先 `already_submitted`；追加候选人（代报）表单与 booking 同口径豁免；不发 `precheck.passed`。",
+        "**共享判据**：30 分钟同岗位查重抽成 `src/tools/booking/active-booking-dedup.util.ts`，booking 改为共用（语义不变：`job_id` 为空存量行按命中）。",
+        "**`interview_time` 随工单指针落库**：`ActiveBookingEntry` 新增可选 `interview_time`，建单时写入；booking `already_booked` 回执改为\"预约已存在\"口径并带 `existingWorkOrderId` / `_existingInterviewTimeHuman`。⚠️ 这部分与 booking 侧 already_booked 修复（另一会话，含守卫形态 G / 修复证据包）**同批镜像、hunk 逐字一致**，两个 PR 任一先合都不冲突。",
+        "`duliday_modify_interview_time` 描述删除已不存在的 `existingRegistrations` 来源，改指向 `duplicateBookingGuard.workOrderId`；badcase skill fixture 说明同步；`docs/prompt-rule-ledger.md` precheck / modify 行登记。"
+      ],
+      "summary": [
+        "候选人级在途工单查重前移到 precheck，恢复 duplicateBookingGuard 守卫接线",
+        "**查重前移到 precheck**：注入 `LongTermService`，按 booking 同一判据读 `active_booking`；命中即 `nextAction=already_booked` + `duplicateBookingGuard { workOrderId, interviewTime?, interviewTimeHuman?, note }`。指令：如实说已约上、按工单登记时间播报，禁止 booking / 再收资 / 征询日期，禁止\"系统故障 / 稍后重提\"口径，改时间 modify、取消 cancel。本表单自身已提交仍优先 `already_submitted`；追加候选人（代报）表单与 booking 同口径豁免；不发 `precheck.passed`。",
+        "**共享判据**：30 分钟同岗位查重抽成 `src/tools/booking/active-booking-dedup.util.ts`，booking 改为共用（语义不变：`job_id` 为空存量行按命中）。",
+        "**守卫接线恢复**：`duplicateBookingGuard` 随 #1023 收资切换消失后，`interview_time_change_unconfirmed`（形态 F，P0 repair）与 `booking_done_claim_*` 的在途工单豁免一直空转。字段按守卫读取口径恢复，新增 precheck 真实回执 → 两个检测器的契约配对测试。",
+        "**`interview_time` 随工单指针落库**：`ActiveBookingEntry` 新增可选 `interview_time`，建单时写入；booking `already_booked` 回执改为\"预约已存在\"口径并带 `existingWorkOrderId` / `_existingInterviewTimeHuman`。⚠️ 这部分与 booking 侧 already_booked 修复（另一会话，含守卫形态 G / 修复证据包）**同批镜像、hunk 逐字一致**，两个 PR 任一先合都不冲突。",
+        "`duliday_modify_interview_time` 描述删除已不存在的 `existingRegistrations` 来源，改指向 `duplicateBookingGuard.workOrderId`；badcase skill fixture 说明同步；`docs/prompt-rule-ledger.md` precheck / modify 行登记。"
+      ],
+      "features": [
+        "**守卫接线恢复**：`duplicateBookingGuard` 随 #1023 收资切换消失后，`interview_time_change_unconfirmed`（形态 F，P0 repair）与 `booking_done_claim_*` 的在途工单豁免一直空转。字段按守卫读取口径恢复，新增 precheck 真实回执 → 两个检测器的契约配对测试。"
+      ],
+      "fixes": [
+        "**查重前移到 precheck**：注入 `LongTermService`，按 booking 同一判据读 `active_booking`；命中即 `nextAction=already_booked` + `duplicateBookingGuard { workOrderId, interviewTime?, interviewTimeHuman?, note }`。指令：如实说已约上、按工单登记时间播报，禁止 booking / 再收资 / 征询日期，禁止\"系统故障 / 稍后重提\"口径，改时间 modify、取消 cancel。本表单自身已提交仍优先 `already_submitted`；追加候选人（代报）表单与 booking 同口径豁免；不发 `precheck.passed`。",
+        "**共享判据**：30 分钟同岗位查重抽成 `src/tools/booking/active-booking-dedup.util.ts`，booking 改为共用（语义不变：`job_id` 为空存量行按命中）。",
+        "**`interview_time` 随工单指针落库**：`ActiveBookingEntry` 新增可选 `interview_time`，建单时写入；booking `already_booked` 回执改为\"预约已存在\"口径并带 `existingWorkOrderId` / `_existingInterviewTimeHuman`。⚠️ 这部分与 booking 侧 already_booked 修复（另一会话，含守卫形态 G / 修复证据包）**同批镜像、hunk 逐字一致**，两个 PR 任一先合都不冲突。",
+        "`duliday_modify_interview_time` 描述删除已不存在的 `existingRegistrations` 来源，改指向 `duplicateBookingGuard.workOrderId`；badcase skill fixture 说明同步；`docs/prompt-rule-ledger.md` precheck / modify 行登记。"
+      ],
+      "optimizations": [],
+      "ops": [
+        "候选人级在途工单查重前移到 precheck，恢复 duplicateBookingGuard 守卫接线"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`lint:check` / `format:check` / `typecheck` / `geo:validate` / `vocab:validate` / `quality-ledger:validate` 通过",
+        "全量 jest：470 套件 6900 用例通过（`ci:check` 的 `build:ci` 在本 worktree 因 `web/node_modules` 未安装失败，与本 PR 无关，未动 web）",
+        "新增用例：窗口边界 / 不同岗位 / 存量空 `job_id` / 无 `interview_time` / 收资中截住 / 已提交优先 / 代报豁免 / 未注入依赖跳过 / 守卫契约配对"
+      ],
+      "level": "patch"
     }
   ],
   "lastRelease": {
@@ -228,5 +271,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "71b7a445a90772e6c3264fcd1c2f5f8f918b1221"
+  "lastAnalyzedSha": "b58a4cee5376d669bdf0bc3cb0388fc8e182aadb"
 }
