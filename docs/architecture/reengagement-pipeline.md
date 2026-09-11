@@ -1,6 +1,6 @@
 # 二次主动回复流水线（reengagement / 复聊）
 
-**最后更新**：2026-09-01
+**最后更新**：2026-09-11
 **代码居所**：`src/agent/reengagement/`
 
 > 复聊是**独立链路**：系统决定何时主动找候选人，话术由 LLM 实时生成。
@@ -26,9 +26,12 @@ Bull delayed job（jobId 幂等：sessionId:scenarioCode:anchorEventId）
 FollowUpTaskProcessor
     ├─ ① 停止条件 shouldStop（读复聊会话快照，调 LLM 之前）
     ├─ ② 频控：24h 内 sent 状态 ≤ 2
-    ├─ ③ 托管状态核验：重查接客 bot 托管账号列表，查询失败 fail closed；已暂停/取消托管则跳过
-    ├─ ④ ReengagementAgent.compose()  ← 不开放工具
-    ├─ ⑤ 投递 + 触达底账 outbox 状态机
+    ├─ ③ RequestContext(traceId=batchId, callerKind=reengagement)
+    │      └─ ReengagementAgent.compose()  ← 不开放工具
+    ├─ ④ shadow / 非 reply → 只落档，不进入真实投递
+    ├─ ⑤ 真实投递 + 触达底账 outbox 状态机
+    │      └─ 临发送前重查接客 bot 托管账号列表
+    │           查询失败 fail closed；已暂停/取消托管则跳过
     └─ ⑥ 推店升档：仅 markSent 成功后确定性调用 GroupInviteService
               │
               ▼
@@ -68,7 +71,7 @@ await reengagementQueue.add(
 | `opening_no_reply`          | `agent.opening_sent`                   | +15min                  | 轻量确认是否还在看机会，并继续询问所在位置                  |
 | `address_missing`           | 最终回复已投递且请求位置/地址          | +30min                  | 提醒发定位以便就近推荐                                      |
 | `store_presented_no_reply`  | 最终回复已投递且展示岗位               | +30min                  | 承接该岗位询问考虑得如何                                    |
-| `booking_incomplete`        | 最终采纳回合 precheck `collect_fields` | +30min                  | 提醒补齐剩余资料                                            |
+| `booking_incomplete`        | 最终采纳回合 precheck 进入收资或待确认 | +30min                  | 按子态提醒补资料、确认复述或选择面试时间                    |
 | `interview_reminder`        | `booking.succeeded`                    | 依 `interviewTime` 计算 | 按面试形式提醒；**AI 面试提醒在线完成，线下面试才提醒到店** |
 | `post_interview_followup`   | `booking.succeeded`                    | 依 `interviewTime` 计算 | 面试后回访                                                  |
 | `post_interview_onboarding` | `interview.passed`                     | +3d                     | 面试后回访家族的入职跟进；未入职时确定性转人工              |
@@ -78,9 +81,15 @@ await reengagementQueue.add(
 
 `interview_reminder` 在二期拥有两个同 code 档位：默认到场档仍使用原任务身份；报名日至面试日相差至少 3 个上海日历天时，额外排面试前 2 天确认档，任务锚点追加 `:d2` 后缀并在 payload 标记 `touchVariant=d2_confirm`。变体的延迟与灰度分别读取既有 map 的 `interview_reminder:d2` 子键，缺省延迟 2880 分钟、缺省灰度开（显式 false 可单独关变体）；变体从属场景开关，场景关则变体必关。改期时两个档位按实时工单独立重排，确认档重新核验报名间隔。
 
+`booking_incomplete` 有两个锚点子态。precheck 返回 `collect_fields` 或仍有缺失字段时，使用
+`collection_started`，只提醒继续补充且不猜字段；precheck 成功并进入 `confirm_collection` 或
+`select_interview_time` 时，使用 `collection_awaiting_confirmation`，任务携带
+`collectionAwaitingConfirmation=true`。后者只请候选人确认复述、指出修改项或选择时间，严禁再说
+“还缺资料”或重发完整资料。场景本身不以“字段已齐”停止，统一由锚点后回复和终态收敛。
+
 `store_presented_no_reply` 不新增场景 code。会话状态用 `storePresentationRounds` 单独累计推店轮次；第 2 轮起任务 payload 标记 `escalateToGroupInvite=true`。独立灰度子键 `store_presented_no_reply:invite` 缺省关闭且不回退主场景开关，关闭时在生成前移除有效升档标记，退化为普通推店未回文案。
 
-`post_interview_onboarding` 归入面试后回访家族，但因锚点不同使用独立 registry code。processor 对 `interview.passed` 走专属状态分派，不进入预约有效性检查或面试时间校准：`面试成功` 才生成触达，`上岗成功` 静默停止，`上岗失败/已离职` 直接落人工介入底账并告警，其余状态按工单回退停止。真实消息 `markSent` 后才排 +48h `wo{id}:onboarding_check` 复核；复核任务只查工单并告警，不经过触达闸、不发送消息。人工介入调用 `HandoffRecorderService + GeneralHandoffNotifierService`，不调用会暂停托管的 `InterventionService`。
+`post_interview_onboarding` 归入面试后回访家族，但因锚点不同使用独立 registry code。processor 对 `interview.passed` 走专属状态分派，不进入预约有效性检查或面试时间校准：`面试成功` 才生成触达，`上岗成功` 静默停止，`上岗失败/已离职` 直接落人工介入底账并告警，其余状态按工单回退停止。真实消息 `markSent` 后才排 +48h `wo{id}:onboarding_check` 复核；复核任务只查工单并告警，不经过触达闸、不发送消息。人工介入调用 `HandoffRecorderService + GeneralHandoffNotifierService`，不调用会暂停托管的 `InterventionService`。告警身份使用 processor 已解析的渠道身份（含 `chat_messages` 回填），昵称仍缺时再从最近聊天记录补齐；卡片同时携带品牌、门店、岗位和工单诊断，且明确 `hostingPaused=false`。
 
 ---
 
@@ -91,7 +100,8 @@ await reengagementQueue.add(
 - `state.terminal ∈ {booked, handed_off, rejected, onboarded}` → 停；
 - 候选人明确拒绝 → 停；
 - **锚点后候选人已回话** → 场景已不成立 → 停；
-- 场景特定 `stopUnless(state)`：`address_missing` 但 location 已有、`booking_incomplete` 但字段已齐 → 停。
+- 场景特定 `stopUnless(state)` 不成立 → 停；例如 `address_missing` 但 location 已有。`booking_incomplete`
+  的 `stopUnless` 恒为 true，由候选人回复与终态收敛两个收资子态。
 
 ### 4.2 「已回话」的水位判定（防被 timeout 消息误停）
 
@@ -160,6 +170,8 @@ reserved → delivery_attempted → sent / failed / unknown
 全生命周期落 `reengagement_touch_records`（`biz/monitoring`），Dashboard 的 `/reengagement` 页面默认候选人视角。
 
 - 命中场景、停止原因、生成话术、投递状态全程留痕；
+- 主动回合不经主 Runner，processor 在 `compose()` 外建立 ALS 请求上下文：`traceId=messageId/batchId`，
+  并写入 chat、user、corp、scenario 与 `callerKind=REENGAGEMENT`；
 - `unknown` 状态是最需关注的档——它意味着「可能已发出但账没记上」；
 - 数据清理：NULL `generated_text`（>N 天）+ DELETE 整行（>M 天），见 `data-cleanup.service.ts`。
 

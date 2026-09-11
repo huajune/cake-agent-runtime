@@ -12,13 +12,17 @@ episode 是连续咨询段的计算边界，二者都不是额外记忆层。
 | 作用域              | 内容                         | 生命周期 / 边界                                                                   | 权威存储                            |
 | ------------------- | ---------------------------- | --------------------------------------------------------------------------------- | ----------------------------------- |
 | short-term 消息窗口 | 候选人与助手原始对话         | 取最近 N 条并套滚动 7 天窗（锚点 = 本批之前候选人最后一次开口），再受字符预算裁剪 | `chat_messages`；Redis 仅作窗口缓存 |
-| short-term 会话状态 | facts、岗位工作台、阶段指针  | 业务口径 3 天                                                                     | Redis                               |
-| episode             | 一段连续咨询的消息切片       | 闲置 3 天划界                                                                     | 无独立 key、表或目录                |
+| short-term 会话状态 | facts、岗位工作台、阶段指针  | 业务口径 7 天                                                                     | Redis                               |
+| episode             | 一段连续咨询的消息切片       | 闲置 7 天划界                                                                     | 无独立 key、表或目录                |
 | long-term 关系档    | 身份档案、求职意向、咨询摘要 | 持久                                                                              | Supabase；Redis 作 2 小时缓存       |
 
-对外时间口径固定为 **7d / 3d / 3d**：消息回看窗口滚动 7 天、会话状态 3 天、
-咨询段闲置划界 3 天。`factsv2:` 实际比 3 天多保留 12 小时，只为保证延迟任务先读取事实再过期，
-不构成第四个业务时间口径。
+对外时间口径固定为 **7d / 7d / 7d**：消息回看窗口滚动 7 天、会话状态 TTL 7 天、
+咨询段闲置划界 7 天。`factsv2:` 的物理 TTL 在 7 天基础上再加 12 小时，只为保证延迟任务
+先读取事实再过期，不延长业务会话，也不构成第四个业务时间口径。
+
+消息窗口的 7 天是相对“本批之前最后一次候选人开口”的锚点回看值，不是绝对时间硬上界。
+连续未获回复的候选人消息会让锚点后移；首次咨询找不到更早开口时不按时间裁剪，最终由
+300 条硬上限与字符预算封顶，窗口跨度可能超过 7 天。
 
 代码里的 `sessionId` 是 `chatId`，代表候选人和 bot 的聊天关系；一条聊天关系可以包含多段咨询。
 长期关系档则显式使用 `(corpId, userId, botUserId)`：`botUserId` 是托管账号稳定的
@@ -27,11 +31,11 @@ episode 是连续咨询段的计算边界，二者都不是额外记忆层。
 ```text
 候选人输入
   │
-  ├─ short-term：滚动 7 天消息窗口 + 3 天会话状态
+  ├─ short-term：滚动 7 天消息窗口 + 7 天会话状态
   │       │
   │       └─ preparation：快照补料 → 共享裁决 → Prompt / 工具投影
   │
-  └─ 闲置满 3 天形成 episode 边界
+  └─ 闲置满 7 天形成 episode 边界
           │
           └─ consolidation
                ├─ semantic_profile
@@ -42,7 +46,7 @@ episode 是连续咨询段的计算边界，二者都不是额外记忆层。
 ```
 
 收资表单不是记忆。它是工具域内“丢失即事故”的业务单据，由
-`src/tools/collection/` 自持整实体快照、定位指针与 3 天 TTL；迁入工具域后不再经过
+`src/tools/collection/` 自持整实体快照、定位指针与 7 天 TTL；它不经过
 `MemoryService`。
 
 ## 2. 两层数据模型
@@ -51,12 +55,13 @@ episode 是连续咨询段的计算边界，二者都不是额外记忆层。
 
 `MemoryLifecycleService.onTurnStart()` 读取三项 short-term 部件：
 
-1. `MessageWindowService` 先读 `memory:short_term:chat:{chatId}` 热缓存；缓存缺失或
-   provenance 版本过旧时，回退 `chat_messages` 最近 N 条原文并回填；两条路径都在内存里套滚动 7 天窗口。
+1. `MessageWindowService` 先读 `memory:short_term:chat:{chatId}` 热缓存；缓存为空时
+   回退 `chat_messages` 最近 N 条原文并原子重建 list。写路径只用 `RPUSHX` 追加现有
+   完整快照，不负责创建残缺缓存；两条读取路径都在内存里套滚动 7 天窗口。
 2. `SessionStateService` 从 `factsv2:{corpId}:{userId}:{sessionId}` 读取 facts 与 workbench。
 3. `SessionWorkbenchService` 从独立的 `stage:{corpId}:{userId}:{sessionId}` 读取阶段指针。
 
-硬上限默认 300 条（物理封顶，生产 7 天内 p99≈90）、字符预算 24,000；超限时从最早消息开始裁剪。Redis 窗口缓存的 3 天 TTL
+硬上限默认 300 条（物理封顶，生产 7 天内 p99≈90）、字符预算 24,000；超限时从最早消息开始裁剪。Redis 窗口缓存的 7 天 TTL
 不改变 7 天源数据窗口：缓存失效后仍可从数据库重建。
 
 `factsv2:` 是 Redis hash，主要分为两类数据：
@@ -64,19 +69,31 @@ episode 是连续咨询段的计算边界，二者都不是额外记忆层。
 - facts：候选人结构化事实、偏好、已邀群、终态与活动水位；
 - workbench：候选岗位池、已展示岗位、当前焦点岗位、查询签名与推店过程状态。
 
-Redis hash 没有字段级 TTL，因此 facts 与 workbench 共同享有 3 天加 12 小时的实际 TTL。
-阶段指针保持独立 key，严格按 3 天过期。
+Redis hash 没有字段级 TTL，因此 facts 与 workbench 共同享有 7 天加 12 小时的实际 TTL。
+阶段指针保持独立 key，严格按 7 天过期。运行时只读取 `factsv2:` hash，不读取或合并
+`facts:` 单 blob，也不做 `HSETNX` 惰性搬迁。每个已注册 hash field 独立做 schema
+校验；单字段损坏只丢该字段，并通过执行事件与节流告警暴露。
 
 大多数候选人事实使用 `value / confidence / source / evidence` 信封。`facts.brand` 是明确例外：
 它直接保存 `PersistedBrandState`，由 `BrandStateService` reducer 唯一写入，不再套事实信封。
 品牌 reducer 在回合收尾的事实提取之后运行，即使事实提取失败也不会跳过；规则轨、图片轨和
 LLM 轨的品牌解析会在这里汇总。
 
+事实 `source` 只接受 `candidate_quote / rule / model / system / manual / archive` 六种
+生产者。城市的本轮提取与工具确权最终都通过 `savePreferences` 合并；城市确立后，
+`pruneGeoPreferencesForCity()` 删除白名单能确定性反推出另一城市的 district/location。
+无法反推城市的地点保留，没有城市事实时不剪枝；一组值被清空时用带 evidence 的
+`value:null` 信封留下显式墓碑。
+
 ### 2.2 Long-term：候选人 × bot 关系档
 
 长期关系档的 Supabase 表为 `agent_long_term_memories`，唯一关系维包含
 `(corp_id, user_id, bot_user_id)`；Redis 缓存为
 `long-term:{corpId}:{userId}:{botUserId}`，默认 2 小时。
+
+回合开始与消息元数据读取不会创建关系行。只有非空 profile/job intent、求职摘要、
+consolidation 水位或预约办结等有实际业务内容的写路径才创建或更新数据，避免把仅发生过
+一次消息读取的候选人预建成空壳长期关系档。
 
 | 列                           | 语义                             | 默认召回                         |
 | ---------------------------- | -------------------------------- | -------------------------------- |
@@ -94,11 +111,20 @@ LLM 轨的品牌解析会在这里汇总。
 `position`、`schedule`、`salary`、`labor_form`、`schedule_constraint`、`delayed_intent`、
 `available_after`。品牌意向从 `facts.brand.currentBrand` 进入同一快照。
 
-`episodic_session_summaries` 是单层 `SummaryEntry[]`：每段咨询追加一条，最多 20 段，
+`episodic_session_summaries` 是单层 `SummaryEntry[]`：每段求职咨询追加一条，最多 20 段，
 超限时确定性淘汰最老条目。LLM 只生成本次新增摘要；已经写入的摘要永不交给 LLM 重写。
 
-无可靠 bot 血缘的存量行保持冻结且不参与读取。跨会话来源研判已经退役：召回只读取当前
-`botUserId` 的关系档，不拼接其他 bot 的信息，也不向模型渲染泛化来源横幅。
+长期 profile 与 job intent 的事实 source 同样只接受
+`candidate_quote / rule / model / system / manual / archive` 六种规范生产者。
+`episodic_session_summaries` 只接受裸数组，水位只接受独立
+`{ bySession, lastSettledMessageAt }` 对象；读边界只校验规范形态并封顶 20 段，不在读取时
+改写数据库。无可靠 bot 血缘的行不参与关系档召回；召回只读取当前 `botUserId`，不跨 bot
+拼接信息。
+
+应用运行的数据库前置契约由
+`supabase/migrations/20260911120000_flatten_legacy_long_term_shapes.sql` 建立。当前代码不提供
+episodic 对象、非规范 source 或 CAS 懒迁移的运行时兼容。发布流程必须应用并验证迁移，再启用
+依赖该 schema 的代码；仓库中的 SQL 和本文都不能证明任一环境已经执行。
 
 ## 3. 默认召回契约
 
@@ -124,7 +150,7 @@ interface MemoryRecallContext {
 - `turnHints` 只对当前轮有效；经过回合末验证与合并后，采信结果才可能成为 session facts。
 - episodic 摘要不进入默认召回，避免每轮无条件膨胀上下文。
 - `[会话记忆]`、`[用户档案]`、`[本轮解析线索]` 等模型可见标签是契约，不随内部字段重排改名。
-- `AgentMemoryContext` 只是兼容别名，新调用方应使用 `MemoryRecallContext`。
+- 类型契约只使用 `MemoryRecallContext`。
 
 ## 4. 回合读时序：召回到 preparation 备料
 
@@ -193,8 +219,9 @@ Memory 只负责召回；模型可见呈现与工具投影在 generator preparat
 | `recall_history` 工具结果  | 不使用                        | episodic 摘要                        | 显式工具调用           | 摘要不在每轮默认 system 中出现         |
 
 `memory` section 可以展示 medium 的历史档案供模型追问，但不能因此让工具绕过 high 门槛。
-当前预约信息由 `active_booking` 无 bot 兼容行中的工单指针结合业务系统实时状态备料；
-它是待迁移的业务指针与 Prompt 上下文，不属于三维长期关系档，也不是新增记忆层。
+当前预约信息由候选人级 `active_booking` 索引结合业务系统实时状态备料；它按
+`(corpId, userId)` 跨托管账号共享，是工单索引与 Prompt 上下文，不属于三维长期关系档，
+也不是新增记忆层。
 
 ### 5.2 工具消费
 
@@ -233,7 +260,7 @@ Memory 只负责召回；模型可见呈现与工具投影在 generator preparat
 
 ### 6.2 consolidation：三种产出、三种写法
 
-任务到点后先重新读取数据库最新消息时间。若尚未连续闲置 3 天，按剩余时间重排；达到边界后，
+任务到点后先重新读取数据库最新消息时间。若尚未连续闲置 7 天，按剩余时间重排；达到边界后，
 按 `consolidation_watermarks.bySession[sessionId]` 从上次已处理消息之后扫描本段原文。
 扫描最多 10 页、每页 500 条；首次接管会裁到最后一段连续咨询，摘要输入只取尾部最多 120 条。
 
@@ -243,18 +270,23 @@ Memory 只负责召回；模型可见呈现与工具投影在 generator preparat
 - B：当前 session facts 的 `interview_info`、`preferences` 与 `facts.brand.currentBrand`，
   workbench 和簿记字段不参与长期事实生成。
 
-| 产出                         | 来源                                  | 写法                                                                   | 语义           |
-| ---------------------------- | ------------------------------------- | ---------------------------------------------------------------------- | -------------- |
-| `semantic_profile`           | B 的 `interview_info` 9 字段          | 逐字段守卫合并；输入按 medium 写入，SQL rank 阻止覆盖 high             | 档案越确认越硬 |
-| `semantic_job_intent`        | B 的 `preferences` 11 字段 + 当前品牌 | 最新咨询整组快照覆盖；信封内空值是显式清除，外层缺失表示保持旧值       | 意向以最新为准 |
-| `episodic_session_summaries` | A 原文，B 仅作参考                    | LLM 生成一条不超过 150 字的四节摘要后追加；20 段上限确定性淘汰最老条目 | 经历只增不改   |
+| 产出                         | 来源                                  | 写法                                                             | 语义           |
+| ---------------------------- | ------------------------------------- | ---------------------------------------------------------------- | -------------- |
+| `semantic_profile`           | B 的 `interview_info` 9 字段          | 逐字段守卫合并；输入按 medium 写入，SQL rank 阻止覆盖 high       | 档案越确认越硬 |
+| `semantic_job_intent`        | B 的 `preferences` 11 字段 + 当前品牌 | 最新咨询整组快照覆盖；信封内空值是显式清除，外层缺失表示保持旧值 | 意向以最新为准 |
+| `episodic_session_summaries` | A 原文，B 仅作参考                    | 求职段追加不超过 150 字的四节摘要；20 段上限确定性淘汰最老条目   | 经历只增不改   |
 
-写入分两步：profile 与 job intent 在同一 RPC / 行锁内先写；新增摘要与本次
-`consolidation_watermarks` 在另一原子更新中一起写。水位是独立工作列，不是摘要内容、
-不进默认召回，也不因摘要数组淘汰而丢失。
+摘要输出首行必须标记 `范围：求职` 或 `范围：非求职`，随后使用“求职目标、关键约束、
+进展与结果、未决事项”四节纯文本；写入前统一标题格式。范围标记缺失时按求职段处理。
 
-事实写是幂等覆盖；摘要写失败时 Bull 使用指数退避重试，最多 3 次。最终失败通过
-`memory.consolidation_failed` 上报，不能只留本地日志。
+profile 与 job intent 在同一 RPC / 行锁内先写。求职段的新增摘要与本次
+`consolidation_watermarks` 在另一原子更新中一起写；非求职段不写摘要，只通过
+`mark_long_term_settled_boundary` 推进水位。水位是独立工作列，不是摘要内容、不进默认召回，
+也不因摘要数组淘汰而丢失。
+
+事实写是幂等覆盖；非求职段仍推进水位以避免重复处理和污染后续 episode 边界。摘要正文为空时
+任务失败。Bull 使用指数退避重试，最多 3 次；最终失败通过 `memory.consolidation_failed`
+上报，不能只留本地日志。
 
 ## 7. 存储所有权
 
@@ -286,9 +318,10 @@ Memory 只负责召回；模型可见呈现与工具投影在 generator preparat
 
 ### 8.2 7 天内原文缺失
 
-1. 检查 Redis list `memory:short_term:chat:{chatId}` 是否含 provenance v2 条目。
+1. 检查 Redis list `memory:short_term:chat:{chatId}` 是否为完整 JSON 条目快照；该 list
+   只能由 DB 回填创建，消息写路径只对已存在的 list 执行 `RPUSHX`。
 2. 缓存异常时检查 `chat_messages` 的 `chatId`、查询时间边界与消息来源元数据。
-3. 区分缓存 3 天 TTL 与滚动 7 天窗口（锚点是上次开口，不是当前时间）；缓存过期不应导致回查窗口缩短。
+3. 区分缓存 7 天 TTL 与滚动 7 天窗口（锚点是上次开口，不是当前时间）；缓存过期不应导致回查窗口缩短。
 4. 再核对 300 条硬上限 / 24,000 字符裁剪是否符合预期。
 
 ### 8.3 会话事实、岗位工作台或阶段丢失
@@ -300,39 +333,43 @@ Memory 只负责召回；模型可见呈现与工具投影在 generator preparat
    Redis hash 没有字段 TTL，不应从“单字段提前过期”解释问题。
 4. 岗位反复出现时，沿 `save_candidate_pool → project_assistant_turn → drop_invalidated_jobs`
    核对写入顺序与 ledger。
+5. district/location 与已确权城市冲突时，检查 `savePreferences` 的“换城清理”日志和 evidence；
+   白名单无法反推城市的地点按契约应保留。
 
 ### 8.4 长期档案或意向不正确
 
 1. 查 `long-term:{corpId}:{userId}:{botUserId}`，再查 Supabase 同三维关系行，排除缓存旧值。
 2. profile 未更新时比较字段 confidence rank；medium 不能覆盖报名写入的 high 是预期行为。
 3. job intent 残留时区分“本段未提”与“明确清除”：前者保持旧值，后者应生成信封内空值。
-4. 若数据只存在于无可靠 bot 血缘的存量行，冻结且不召回是预期安全策略。
+4. 检查事实 source 是否属于六种规范 producer；不规范信封不会通过当前读边界。
+5. 没有 profile、intent、摘要或水位的候选人不应仅因消息读取而出现空壳关系行。
 
 ### 8.5 摘要或水位异常
 
-1. 查 delayed job 是否被每个成功回合刷新，以及到点时数据库最新消息是否真的已闲置 3 天。
+1. 查 delayed job 是否被每个成功回合刷新，以及到点时数据库最新消息是否真的已闲置 7 天。
 2. 查 `consolidation_watermarks.bySession[sessionId]`，确认扫描起点没有越过或重复覆盖消息。
 3. 查消息分页数量、首次接管的连续段裁剪与尾部 120 条摘要输入。
-4. 对比三类写入：profile / intent 成功不代表摘要成功；摘要成功也不能替代独立水位。
-5. 查 Bull 三次重试与 `memory.consolidation_failed` 事件。
+4. 核对摘要首行 scope：非求职段应只有事实与水位，不应新增 episodic 摘要。
+5. 对比三类写入：profile / intent 成功不代表摘要成功；摘要成功也不能替代独立水位。
+6. 查 Bull 三次重试与 `memory.consolidation_failed` 事件。
 
 ### 8.6 收资进度缺失
 
-直接检查 `src/tools/collection/`、`collection-form:` 实体 key 与
-`collection-form-current:` 定位 key。该问题属于工具业务单据恢复，不应从 memory hash 或
-consolidation 路径补救。
+直接检查 `src/tools/collection/`、`collection-form:` 实体 key，以及
+`collection-form-primary:` / `collection-form-current:` 两类定位 key。三类 key 的 TTL 均为
+7 天。该问题属于工具业务单据恢复，不应从 memory hash 或 consolidation 路径补救。
 
-## 9. 不变量与沿革
+## 9. 不变量
 
 - 记忆只分 short-term / long-term；episode 与 turnHints 不升级为层。
-- 消息窗口、会话状态、咨询段边界分别遵守 7d / 3d / 3d。
+- 消息窗口、会话状态、咨询段边界分别遵守 7d / 7d / 7d；仅 `factsv2:` 有 12 小时物理余量。
 - 长期关系档必须包含稳定 bot 维；不同托管账号默认隔离。
-- summaries 保持单层数组、20 段上限、确定性淘汰、零 LLM 重写。
+- summaries 保持单层数组、20 段上限、确定性淘汰、零 LLM 重写；非求职段不写摘要。
 - consolidation 水位独立存储，永不伪装成用户记忆。
+- 运行时只消费 canonical short-term hash、long-term 数组/水位与六种 producer，不执行读时迁移。
+- 回合读取不创建空壳长期关系行。
 - 动态记忆保持 system 语义；Prompt 展示与工具采信使用各自明确的信任门。
 - collection form 是 tools 单据，不属于记忆。
-
-沿革：早期文档曾以“四层”、recent/archive 分级摘要和 settlement 命名描述实现；这些概念现已退役，当前统一为两层记忆、单层 episodes 与 consolidation。
 
 ## 相关文档
 

@@ -1,6 +1,6 @@
 # Agent 运行时架构
 
-**最后更新**：2026-09-10（按当前工作区生产调用链与修复所有权复核）
+**最后更新**：2026-09-11（按当前工作区生产调用链与修复所有权复核）
 
 **面向**：研发、测试与运行时排障
 
@@ -410,10 +410,14 @@ new Set(['invite_to_group', 'duliday_interview_booking']);
 | ------------------- | ----------------------------------- | ---------------------------------------------------------------------------------------------- | ------------------------ |
 | short-term 消息窗口 | 原始对话                            | 滚动 7 天（锚点 = 本批之前候选人最后一次开口），再按 24,000 字符预算裁剪；300 条只是物理硬上限 | Supabase；Redis 热缓存   |
 | short-term 会话状态 | facts、岗位工作台、阶段指针         | 7 天；facts hash 多 12 小时沉淀余量                                                            | Redis                    |
-| episode             | 连续咨询切片                        | 闲置 3 天划界，不是独立层                                                                      | 无独立 key/表            |
+| episode             | 连续咨询切片                        | 闲置 7 天划界，不是独立层                                                                      | 无独立 key/表            |
 | long-term 关系档    | profile、job intent、最多 20 段摘要 | 持久；候选人 × bot 隔离                                                                        | Supabase + 2h Redis 缓存 |
 
 `turnHints`、snapshot enrichment、Prompt 裁决视图和 ledger 都是当轮 sidecar，不是额外记忆层。
+
+消息窗口的 7 天从本批之前候选人最后一次开口向前计算，不是绝对时间硬上界。首次咨询没有更早
+开口时不按时间裁剪；连续未获回复的候选人消息可使实际跨度超过 7 天，最终由 300 条与
+24,000 字符预算封顶。
 
 ### 7.1 onTurnStart
 
@@ -443,8 +447,8 @@ episodic summaries 不进默认 Prompt，只允许 `recall_history` 显式读取
 Finalizer 执行或回滚。
 
 回合末依次保存岗位池、查询签名、助手投影、失效岗位、确权城市、事实提取和品牌 reducer；同时刷新
-闲置 3 天后的 consolidation job。consolidation 分别以守卫合并、整组覆盖、追加淘汰写入
-profile、job intent 和单层 episodic summaries。
+闲置 7 天后的 consolidation job。consolidation 先写 profile 与 job intent；求职段再追加单层
+episodic summary 并原子推进水位，非求职段不追加摘要、只推进水位。
 
 完整数据模型、Redis key 和排障矩阵见：
 
@@ -862,5 +866,5 @@ DuLiDay token；所选 provider 还必须有对应 API key。Supabase、飞书�
 | WeCom reply       | [`reply-workflow.service.ts`](../../src/channels/wecom/message/application/reply-workflow.service.ts)                  |
 | Reengagement flow | [`follow-up.processor.ts`](../../src/agent/reengagement/follow-up.processor.ts)                                        |
 | Reengagement LLM  | [`reengagement.agent.ts`](../../src/agent/reengagement/reengagement.agent.ts)                                          |
-| Evaluation        | [`llm-evaluation.service.ts`](../../src/evaluation/llm-evaluation.service.ts)                                          |
+| Evaluation 解析   | [`conversation-parser.service.ts`](../../src/evaluation/conversation-parser.service.ts)                                |
 | Test Suite        | [`test-execution.service.ts`](../../src/biz/test-suite/services/test-execution.service.ts)                             |
