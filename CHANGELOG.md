@@ -8,6 +8,44 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v11.6.1`
+**最近更新**: `2026-09-11`
+**来源分支**: `develop`
+**累计 PR**: 1
+
+### 更新摘要
+- PR #1250 会话状态 TTL 与沉淀间隙统一为 7 天，收资单据同步对齐
+- PR #1250 `MEMORY_SESSION_TTL_DAYS` / `MEMORY_SETTLEMENT_GAP_DAYS` 默认 3 → 7；消息回看窗口维持 7 天；间隙 ≥ TTL 的不变式保持，factsv2 12 小时沉淀余量不变
+- PR #1250 `COLLECTION_FORM_TTL_SECONDS` 3 → 7 天，避免事实仍在而收资单据先失效
+- PR #1250 README、`.env.example`、redis-schema、架构与术语文档口径同步
+
+### 新功能
+- 无
+
+### 问题修复
+- PR #1250 `MEMORY_SESSION_TTL_DAYS` / `MEMORY_SETTLEMENT_GAP_DAYS` 默认 3 → 7；消息回看窗口维持 7 天；间隙 ≥ TTL 的不变式保持，factsv2 12 小时沉淀余量不变
+- PR #1250 `COLLECTION_FORM_TTL_SECONDS` 3 → 7 天，避免事实仍在而收资单据先失效
+- PR #1250 README、`.env.example`、redis-schema、架构与术语文档口径同步
+
+### 优化调整
+- 无
+
+### 运维与流程
+- PR #1250 会话状态 TTL 与沉淀间隙统一为 7 天，收资单据同步对齐
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- PR #1250 检测到环境变量相关文件变更：`.env.example`。请手动同步远程服务器 `/data/cake/.env.production`。
+
+### 验证记录
+- 无
+<!-- release:pending:end -->
+
 ## [11.6.0] - 2026-09-10
 
 **来源分支**: `develop`
