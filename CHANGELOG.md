@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [11.7.0] - 2026-09-11
 
-**预计版本**: `v11.7.0`
-**最近更新**: `2026-09-11`
 **来源分支**: `develop`
-**累计 PR**: 5
 
 ### 更新摘要
 - PR #1250 会话状态 TTL 与沉淀间隙统一为 7 天，收资单据同步对齐
@@ -96,7 +92,6 @@
 - PR #1257 `lint:check` / `format:check` / `typecheck` / `geo:validate` / `vocab:validate` / `quality-ledger:validate` 通过
 - PR #1257 全量 jest：470 套件 6900 用例通过（`ci:check` 的 `build:ci` 在本 worktree 因 `web/node_modules` 未安装失败，与本 PR 无关，未动 web）
 - PR #1257 新增用例：窗口边界 / 不同岗位 / 存量空 `job_id` / 无 `interview_time` / 收资中截住 / 已提交优先 / 代报豁免 / 未注入依赖跳过 / 守卫契约配对
-<!-- release:pending:end -->
 
 ## [11.6.0] - 2026-09-10
 
