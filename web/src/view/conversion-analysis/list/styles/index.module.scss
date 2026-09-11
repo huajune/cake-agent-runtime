@@ -1,13 +1,7 @@
 @use '@/assets/styles/variables' as *;
 
 $panel-radius: 20px;
-$soft-top-line: linear-gradient(
-  90deg,
-  $primary-light 0%,
-  $accent-light 38%,
-  $success 68%,
-  $warning 100%
-);
+$soft-top-line: linear-gradient(90deg, #f2b7cd 0%, #f6cdb7 45%, #d9c4ec 100%);
 $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
 
 .page {
@@ -167,12 +161,12 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
 .kpiCell {
   position: relative;
   overflow: hidden;
-  border: 1px solid #e6dff3;
+  border: 1px solid #f1e3ea;
   border-radius: $panel-radius;
   background: #fff;
   box-shadow:
-    0 12px 36px rgba(112, 92, 176, 0.08),
-    0 2px 6px rgba(112, 92, 176, 0.05);
+    0 12px 30px rgba(226, 178, 200, 0.12),
+    0 2px 6px rgba(226, 178, 200, 0.07);
   transition:
     border-color $transition-normal,
     box-shadow $transition-normal,
@@ -211,8 +205,8 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
       rgba(255, 255, 255, 0.9) 48%,
       rgba(255, 255, 255, 0.55) 100%
     ),
-    linear-gradient(180deg, #ffffff 0%, #fbfcff 100%),
-    radial-gradient(circle at right top, $primary-08, transparent 42%);
+    linear-gradient(180deg, #ffffff 0%, #fdf8fa 100%),
+    radial-gradient(circle at right top, rgba(242, 183, 205, 0.18), transparent 42%);
   overflow: visible;
   z-index: 20;
 }
@@ -466,57 +460,43 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
   padding: 22px 22px;
   background: linear-gradient(135deg, #ffffff 0%, rgba($primary, 0.04) 100%);
 
-  &::after {
-    content: '';
-    position: absolute;
-    right: -28px;
-    bottom: -34px;
-    z-index: 0;
-    width: 128px;
-    height: 128px;
-    border-radius: 50%;
-    background: var(--kpi-tone);
-    opacity: 0.12;
-    filter: blur(34px);
-  }
-
   &:hover {
     transform: translateY(-4px);
   }
 
   &.teal {
-    --kpi-tone: #8cc9a1;
-    --kpi-next: #b4dfc0;
+    --kpi-tone: #8fc7a0;
+    --kpi-next: #b8ddc2;
     --kpi-soft: rgba(169, 215, 179, 0.18);
-    background: linear-gradient(135deg, #ffffff 0%, #eef8f0 100%);
+    background: linear-gradient(135deg, #ffffff 0%, #eff8f0 100%);
   }
 
   &.sky {
-    --kpi-tone: #8fb2e0;
-    --kpi-next: #b9cff0;
-    --kpi-soft: rgba(169, 196, 232, 0.18);
-    background: linear-gradient(135deg, #ffffff 0%, #eef3fb 100%);
+    --kpi-tone: #9ea9e0;
+    --kpi-next: #c3c9ef;
+    --kpi-soft: rgba(184, 190, 232, 0.18);
+    background: linear-gradient(135deg, #ffffff 0%, #f1f0fb 100%);
   }
 
   &.rose {
-    --kpi-tone: #e3a3bf;
-    --kpi-next: #f2c3d6;
+    --kpi-tone: #e59fbc;
+    --kpi-next: #f3c4d6;
     --kpi-soft: rgba(242, 183, 205, 0.18);
-    background: linear-gradient(135deg, #ffffff 0%, #fbeef3 100%);
+    background: linear-gradient(135deg, #ffffff 0%, #fdeef3 100%);
   }
 
   &.amber {
-    --kpi-tone: #e2b98a;
-    --kpi-next: #f0d3b3;
+    --kpi-tone: #e6b487;
+    --kpi-next: #f2d2b3;
     --kpi-soft: rgba(240, 201, 160, 0.18);
-    background: linear-gradient(135deg, #ffffff 0%, #fbf3ea 100%);
+    background: linear-gradient(135deg, #ffffff 0%, #fdf3e9 100%);
   }
 
   &.purple {
-    --kpi-tone: #8f82d6;
-    --kpi-next: #b3a9e6;
-    --kpi-soft: rgba(123, 108, 208, 0.16);
-    background: linear-gradient(135deg, #ffffff 0%, #f1edfa 100%);
+    --kpi-tone: #ad8fd0;
+    --kpi-next: #cdb6e3;
+    --kpi-soft: rgba(173, 143, 208, 0.16);
+    background: linear-gradient(135deg, #ffffff 0%, #f6eef8 100%);
   }
 }
 
@@ -570,10 +550,7 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
   position: relative;
   z-index: 1;
   margin-top: 16px;
-  background: linear-gradient(120deg, var(--kpi-tone), var(--kpi-next));
-  background-clip: text;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
+  color: var(--kpi-tone);
   font-size: 34px;
   font-weight: $font-weight-medium;
   line-height: 1.08;
@@ -613,11 +590,11 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
 }
 
 .up {
-  color: #7fbf93;
+  color: #82bd95;
 }
 
 .down {
-  color: #d98aa7;
+  color: #dc8ea9;
 }
 
 .neutral {
@@ -2273,7 +2250,7 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
     position: absolute;
     inset: 0;
     z-index: -2;
-    background: #fbf9fd;
+    background: linear-gradient(180deg, #fdf8fa 0%, #fbf5f9 100%);
     pointer-events: none;
   }
 
@@ -2284,61 +2261,22 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
     inset: -10%;
     z-index: -1;
     background:
-      radial-gradient(closest-side at 86% 8%, #fbdce8, rgba(251, 220, 232, 0) 100%) 0 0 / 60% 42%
+      radial-gradient(closest-side at 84% 6%, #fadbe6, rgba(250, 219, 230, 0) 100%) 0 0 / 60% 44%
         no-repeat,
-      radial-gradient(closest-side at 22% 30%, #e6ddf8, rgba(230, 221, 248, 0) 100%) 0 0 / 100% 100%
+      radial-gradient(closest-side at 20% 28%, #fde9dd, rgba(253, 233, 221, 0) 100%) 0 0 / 100% 100%
         no-repeat,
-      radial-gradient(closest-side at 8% 92%, #e3f3e6, rgba(227, 243, 230, 0) 100%) 0 0 / 100% 100%
+      radial-gradient(closest-side at 10% 92%, #f1e4f5, rgba(241, 228, 245, 0) 100%) 0 0 / 100% 100%
         no-repeat;
-    opacity: 0.7;
-    filter: blur(48px);
+    opacity: 0.9;
+    filter: blur(18px);
     animation: holoAurora 26s ease-in-out infinite alternate;
     pointer-events: none;
   }
 }
 
-// ── 面板：原 3px 顶线升级为整圈全息旋转描边（浅色、低饱和） ──
-.heroPanel,
-.panel,
-.kpiCell {
-  &::before {
-    inset: -1px;
-    height: auto;
-    border-radius: inherit;
-    padding: 1.5px;
-    background: conic-gradient(
-      from var(--holo-spin, 0deg),
-      transparent 0deg,
-      rgba(129, 140, 248, 0.55) 48deg,
-      rgba(34, 211, 238, 0.5) 88deg,
-      transparent 150deg,
-      transparent 210deg,
-      rgba(192, 132, 252, 0.4) 266deg,
-      transparent 320deg
-    );
-    -webkit-mask:
-      linear-gradient(#000 0 0) content-box,
-      linear-gradient(#000 0 0);
-    mask:
-      linear-gradient(#000 0 0) content-box,
-      linear-gradient(#000 0 0);
-    -webkit-mask-composite: xor;
-    mask-composite: exclude;
-    opacity: 0.9;
-    animation: holoBorderSpin 9s linear infinite;
-  }
-}
-
 // ── Hero 标题：多彩渐变 + 缓慢流光 ──
 .heroContent h1 {
-  background: linear-gradient(
-    115deg,
-    #4f46e5 0%,
-    #6366f1 26%,
-    #0ea5e9 52%,
-    #8b5cf6 76%,
-    #d946ef 100%
-  );
+  background: linear-gradient(115deg, #7b6cd0 0%, #9a83d3 30%, #c48fcf 60%, #e59fbc 100%);
   background-size: 240% 100%;
   background-clip: text;
   -webkit-background-clip: text;
@@ -2348,16 +2286,8 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
     holoTitlePan 8s ease-in-out infinite alternate;
 }
 
-// KPI 数值轻微光晕，呼应各自色调
-.kpiValue {
-  filter: drop-shadow(0 2px 10px var(--kpi-soft));
-}
-
 @media (prefers-reduced-motion: reduce) {
   .page::after,
-  .heroPanel::before,
-  .panel::before,
-  .kpiCell::before,
   .heroContent h1 {
     animation: none !important;
   }

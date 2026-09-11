@@ -39,10 +39,10 @@ export const CHART_COLORS = [
   THEME_COLORS.primary,
   THEME_COLORS.accent,
   THEME_COLORS.primaryLight,
-  '#8cc9a1',
-  '#8fb2e0',
-  '#e2b98a',
-  '#e3a3bf',
+  '#8fc7a0',
+  '#9ea9e0',
+  '#e6b487',
+  '#e59fbc',
 ];
 
 export type BotSortKey =
