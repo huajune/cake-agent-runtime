@@ -14,7 +14,7 @@
 **预计版本**: `v11.7.0`
 **最近更新**: `2026-09-11`
 **来源分支**: `develop`
-**累计 PR**: 3
+**累计 PR**: 4
 
 ### 更新摘要
 - PR #1250 会话状态 TTL 与沉淀间隙统一为 7 天，收资单据同步对齐
@@ -34,15 +34,25 @@
 - PR #1254 转化分析 KPI 卡改纯白纸面：去图标大阴影与整面淡色渐变，环比胶囊实白细边
 - PR #1254 转化分析 KPI 区提亮：卡片下垫白色托盘，卡片改白边，图标色阶调亮
 - PR #1254 转化分析等四页视觉调淡雅 + 系统监控页失真指标改真实口径
+- PR #1256 booking 查重命中 already_booked 视为预约已存在，不再当失败改写
+- PR #1256 **守卫** `booking-receipt.rule.ts`：新增形态 G，`already_booked` 先于失败路径判定。回复说「没提交成功/系统故障/稍后再提交」或重新征询日期 → repair，指令要求如实说「已约上」并按工单登记时间播报；如实播报已约上放行。真实失败（`rejected` 等）仍按 2026-08-27 口径放行「稍后再帮你提交」。
+- PR #1256 **booking 工具**查重回执：`_outcome` / `_replyInstruction` 改为「预约已存在、不是失败」，明令禁止系统故障/稍后重提口径；带出 `existingWorkOrderId`、`existingInterviewTime`、`_existingInterviewTimeHuman`。
+- PR #1256 **长期记忆** `ActiveBookingEntry` 新增 `interview_time`（JSONB 内字段，无迁移），建单时随 `job_id` 写入；存量行为空时回执不编造时间。
+- PR #1256 **修复证据包** `BookingEvidence` 加 `alreadyBooked / outcome / existingWorkOrderId / existingInterviewTimeHuman`，`ReplyRepairAgent` 渲染为「预约已经存在，本轮未重复提交——这不是失败」。
+- PR #1256 `docs/prompt-rule-ledger.md` 登记形态 G 与工具回执改口径。
 
 ### 新功能
-- 无
+- PR #1256 **守卫** `booking-receipt.rule.ts`：新增形态 G，`already_booked` 先于失败路径判定。回复说「没提交成功/系统故障/稍后再提交」或重新征询日期 → repair，指令要求如实说「已约上」并按工单登记时间播报；如实播报已约上放行。真实失败（`rejected` 等）仍按 2026-08-27 口径放行「稍后再帮你提交」。
+- PR #1256 **长期记忆** `ActiveBookingEntry` 新增 `interview_time`（JSONB 内字段，无迁移），建单时随 `job_id` 写入；存量行为空时回执不编造时间。
 
 ### 问题修复
 - PR #1250 `MEMORY_SESSION_TTL_DAYS` / `MEMORY_SETTLEMENT_GAP_DAYS` 默认 3 → 7；消息回看窗口维持 7 天；间隙 ≥ TTL 的不变式保持，factsv2 12 小时沉淀余量不变
 - PR #1250 `COLLECTION_FORM_TTL_SECONDS` 3 → 7 天，避免事实仍在而收资单据先失效
 - PR #1250 README、`.env.example`、redis-schema、架构与术语文档口径同步
 - PR #1251 记忆值质量修复四项 + 下线已耗尽的旧数据兼容
+- PR #1256 **booking 工具**查重回执：`_outcome` / `_replyInstruction` 改为「预约已存在、不是失败」，明令禁止系统故障/稍后重提口径；带出 `existingWorkOrderId`、`existingInterviewTime`、`_existingInterviewTimeHuman`。
+- PR #1256 **修复证据包** `BookingEvidence` 加 `alreadyBooked / outcome / existingWorkOrderId / existingInterviewTimeHuman`，`ReplyRepairAgent` 渲染为「预约已经存在，本轮未重复提交——这不是失败」。
+- PR #1256 `docs/prompt-rule-ledger.md` 登记形态 G 与工具回执改口径。
 
 ### 优化调整
 - PR #1251 长期记忆存量形态一次性归一，删除读边界懒迁移与旧 source 映射
@@ -59,6 +69,7 @@
 - PR #1254 转化分析页去掉自带的页面底色与色块，改走全站统一背景
 - PR #1254 转化分析 KPI 卡改纯白纸面：去图标大阴影与整面淡色渐变，环比胶囊实白细边
 - PR #1254 转化分析 KPI 区提亮：卡片下垫白色托盘，卡片改白边，图标色阶调亮
+- PR #1256 booking 查重命中 already_booked 视为预约已存在，不再当失败改写
 
 ### 配置变更
 - 无
@@ -67,7 +78,9 @@
 - PR #1250 检测到环境变量相关文件变更：`.env.example`。请手动同步远程服务器 `/data/cake/.env.production`。
 
 ### 验证记录
-- 无
+- PR #1256 `tsc --noEmit` 通过；改动文件 eslint / prettier 通过
+- PR #1256 全量 Jest：469 suites / 6898 tests 全绿（含 `output-rule-catalog.spec` 执行覆盖校验）
+- PR #1256 新增用例：形态 G 四种否认口径拦截、如实播报放行、重新征询日期拦截、真实失败不受影响；booking 工具查重回执字段；证据包 already_booked 投影；store `interview_time` 透传
 <!-- release:pending:end -->
 
 ## [11.6.0] - 2026-09-10
