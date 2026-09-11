@@ -1,9 +1,33 @@
 {
   "baseVersion": "11.7.0",
-  "nextVersion": "11.7.0",
+  "nextVersion": "11.7.1",
   "updatedAt": "2026-09-11",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "1263",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1263",
+      "title": "v11.7.0 发版日志改写为业务语言",
+      "author": "huajune",
+      "mergedAt": "2026-09-11",
+      "businessUpdates": [
+        "v11.7.0 发版日志改写为业务语言"
+      ],
+      "summary": [
+        "v11.7.0 发版日志改写为业务语言"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "v11.7.0 发版日志改写为业务语言"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [],
+      "level": "patch"
+    }
+  ],
   "lastRelease": {
     "version": "11.7.0",
     "date": "2026-09-11",
@@ -208,5 +232,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "38e715f919765f6b0c558e6859bd842565bc7ca4"
+  "lastAnalyzedSha": "74ada4b6c3b5358731d5e8fd90a5a8d2422d186c"
 }
