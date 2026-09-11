@@ -152,10 +152,10 @@
 .filterToggle {
   height: 30px;
   padding: 0 12px;
-  border: 1px solid rgba(95, 184, 148, 0.3);
+  border: 1px solid rgba(94, 201, 160, 0.3);
   border-radius: 8px;
-  background: rgba(95, 184, 148, 0.08);
-  color: #4fae87;
+  background: rgba(94, 201, 160, 0.08);
+  color: #3fb58c;
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
@@ -167,8 +167,8 @@
     color 0.15s ease;
 
   &:hover {
-    background: rgba(95, 184, 148, 0.13);
-    border-color: rgba(95, 184, 148, 0.4);
+    background: rgba(94, 201, 160, 0.13);
+    border-color: rgba(94, 201, 160, 0.4);
   }
 }
 

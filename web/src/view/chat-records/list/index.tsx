@@ -246,9 +246,9 @@ export default function ChatRecords() {
           {
             label: '会话数',
             data: formattedData.map((d) => d.sessions),
-            borderColor: '#5fb894',
-            backgroundColor: 'rgba(95, 184, 148, 0.1)',
-            pointBackgroundColor: '#5fb894',
+            borderColor: '#5ec9a0',
+            backgroundColor: 'rgba(94, 201, 160, 0.1)',
+            pointBackgroundColor: '#5ec9a0',
             ...baseDataset,
           },
         ],

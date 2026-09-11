@@ -4,18 +4,18 @@
 
 // ========== 颜色系统 ==========
 // 2026-09-11 起：文字灰阶改为带紫相的墨色（源自出站守卫档案），语义色保留色相但降饱和（方案 A）；
-// 主色/激活态渐变改丁香系；页面底色、边框保持原值。改色只改这一处。
+// 主色/激活态渐变改丁香系；大背景改极淡粉紫渐变（$gradient-page）；边框保持原值。改色只改这一处。
 // 命名约定：`-text` 用于白底小字（更深），无后缀用于圆点/填充/边，`-soft` 用于淡底。
 
 // 主色（丁香紫）
-$primary: #6d5bd0;
+$primary: #8674ff;
 $primary-dark: #5b4de6;
-$primary-light: #a48ae8;
+$primary-light: #b9a6ff;
 $primary-soft: rgba($primary, 0.1);
 
 // 强调色（藕紫）
-$accent: #a06bd6;
-$accent-light: #c9a8e8;
+$accent: #b985f5;
+$accent-light: #dabff8;
 
 // 丁香（描边 / 轨道 / 淡底的基色）
 $lilac: #d4d0ff;
@@ -52,29 +52,29 @@ $accent-35: rgba($accent, 0.35);
 $accent-40: rgba($accent, 0.4);
 
 // 语义色（保留色相 · 降饱和）
-$success: #5fb894;
-$success-text: #4fae87;
-$success-light: #a8dcc4;
+$success: #5ec9a0;
+$success-text: #3fb58c;
+$success-light: #a6e6cc;
 $success-soft: rgba($success, 0.12);
-$success-bg: #edf8f3;
+$success-bg: #ebfaf3;
 
-$warning: #d19a52;
-$warning-text: #c9964e;
-$warning-light: #efc27a;
+$warning: #e8a64f;
+$warning-text: #d4903a;
+$warning-light: #f5c878;
 $warning-soft: rgba($warning, 0.12);
-$warning-bg: #fdf6ec;
+$warning-bg: #fff5e6;
 
-$danger: #e07a9a;
-$danger-text: #c25b8c;
-$danger-light: #f2b7cd;
+$danger: #f07ea3;
+$danger-text: #d65a8f;
+$danger-light: #f7bcd3;
 $danger-soft: rgba($danger, 0.12);
-$danger-bg: #fbeef3;
+$danger-bg: #fdeef4;
 
-$info: #6f9ce6;
-$info-text: #5b8ad9;
-$info-light: #a9c6f0;
+$info: #6ea3f5;
+$info-text: #5390eb;
+$info-light: #aacbfa;
 $info-soft: rgba($info, 0.12);
-$info-bg: #eef4fd;
+$info-bg: #ecf3ff;
 
 // 樱粉（加群 / 数据强调，非语义危险）
 $rose: #ec9ec0;
@@ -103,7 +103,7 @@ $text-on-primary: #ffffff;
 
 // 背景颜色
 $bg-primary: #ffffff;
-$bg-page: #f3f4f6;
+$bg-page: #fdfcff;
 $bg-card: #ffffff;
 $bg-secondary: #f9fafb;
 $bg-tint: #f1f5f9;
@@ -119,10 +119,12 @@ $border-focus: $primary;
 $rail: rgba($lilac, 0.75);
 
 // ========== 渐变 ==========
-$gradient-primary: linear-gradient(135deg, #7a68d9 0%, #a98ce6 100%);
+$gradient-primary: linear-gradient(135deg, #8c7bff 0%, #c3a0fb 100%);
 $gradient-card: linear-gradient(135deg, #ffffff 0%, #f9fafb 100%);
 $gradient-hover: linear-gradient(135deg, rgba($primary, 0.05) 0%, rgba($accent, 0.05) 100%);
 $gradient-dream: linear-gradient(118deg, #f0efff 0%, #faf4fe 34%, #f2f7ff 68%, #fdfdff 100%);
+// 全站大背景：极淡粉紫→近白，尾段带一点蓝（用户 0911 点名「非常淡的粉紫亮色偏白，渐变，加一点点蓝」）
+$gradient-page: linear-gradient(135deg, #fdfbff 0%, #fff9fd 30%, #f9fbff 65%, #ffffff 100%);
 
 // ========== 间距系统 ==========
 $spacing-unit: 1rem; // 16px

@@ -1,7 +1,7 @@
 @use '@/assets/styles/variables' as *;
 
 $panel-radius: 20px;
-$soft-top-line: linear-gradient(90deg, #f2b7cd 0%, #f6cdb7 45%, #d9c4ec 100%);
+$soft-top-line: linear-gradient(90deg, #f7bcd3 0%, #f6cdb7 45%, #d9c4ec 100%);
 $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
 
 .page {
@@ -206,7 +206,7 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
       rgba(255, 255, 255, 0.55) 100%
     ),
     linear-gradient(180deg, #ffffff 0%, #fdf8fa 100%),
-    radial-gradient(circle at right top, rgba(242, 183, 205, 0.18), transparent 42%);
+    radial-gradient(circle at right top, rgba(255, 190, 218, 0.18), transparent 42%);
   overflow: visible;
   z-index: 20;
 }
@@ -469,33 +469,33 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
   }
 
   &.teal {
-    --kpi-tone: #8fcba3;
+    --kpi-tone: #80dba7;
     --kpi-next: $success-light;
-    --kpi-soft: rgba(169, 215, 179, 0.18);
+    --kpi-soft: rgba(150, 228, 186, 0.18);
   }
 
   &.sky {
-    --kpi-tone: #a0abe6;
-    --kpi-next: #cdd2f4;
-    --kpi-soft: rgba(184, 190, 232, 0.18);
+    --kpi-tone: #9ba8f7;
+    --kpi-next: #cfd5ff;
+    --kpi-soft: rgba(176, 186, 250, 0.18);
   }
 
   &.rose {
-    --kpi-tone: #eba4c1;
-    --kpi-next: #f8cddd;
-    --kpi-soft: rgba(242, 183, 205, 0.18);
+    --kpi-tone: #f6a3c9;
+    --kpi-next: #fdd0e3;
+    --kpi-soft: rgba(255, 190, 218, 0.18);
   }
 
   &.amber {
-    --kpi-tone: #ecb98a;
-    --kpi-next: #f7dbbe;
-    --kpi-soft: rgba(240, 201, 160, 0.18);
+    --kpi-tone: #f7bd80;
+    --kpi-next: #ffe0be;
+    --kpi-soft: rgba(255, 205, 158, 0.18);
   }
 
   &.purple {
-    --kpi-tone: #b393d6;
-    --kpi-next: #d6c2ea;
-    --kpi-soft: rgba(173, 143, 208, 0.16);
+    --kpi-tone: #bb97f2;
+    --kpi-next: #dccbfa;
+    --kpi-soft: rgba(184, 146, 240, 0.16);
   }
 }
 
@@ -589,11 +589,11 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
 }
 
 .up {
-  color: #82bd95;
+  color: #5fc98d;
 }
 
 .down {
-  color: #dc8ea9;
+  color: #ec83b2;
 }
 
 .neutral {
@@ -2227,7 +2227,7 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
 
 // ── Hero 标题：多彩渐变 + 缓慢流光 ──
 .heroContent h1 {
-  background: linear-gradient(115deg, #7b6cd0 0%, #9a83d3 30%, #c48fcf 60%, #e59fbc 100%);
+  background: linear-gradient(115deg, #8674ff 0%, #a08cf0 30%, #d19aea 60%, #f59bc5 100%);
   background-size: 240% 100%;
   background-clip: text;
   -webkit-background-clip: text;

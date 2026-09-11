@@ -103,7 +103,7 @@
   height: 100%;
   z-index: -1;
   overflow: hidden;
-  background: $bg-tint;
+  background: $gradient-page;
 }
 
 .bg-blue,
@@ -111,7 +111,7 @@
   position: absolute;
   border-radius: 50%;
   filter: blur(120px);
-  opacity: 0.6;
+  opacity: 0.18; // 0.6 时与灰底叠成靛雾；底改近白后只留一点极光感
   animation: float 25s infinite ease-in-out;
 }
 

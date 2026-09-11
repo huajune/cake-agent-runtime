@@ -18,21 +18,21 @@ export const OPERATION_METRICS_FEISHU_URL =
 // === 💜 丁香紫主题 (当前启用；与 _variables.scss 同源，改色两处同步) ===
 export const THEME_COLORS = {
   // 主色 - 丁香紫
-  primary: '#6d5bd0',
-  primaryLight: '#a48ae8',
+  primary: '#8674ff',
+  primaryLight: '#b9a6ff',
   primaryDark: '#5b4de6',
   // 强调色 - 藕紫
-  accent: '#a06bd6',
-  accentLight: '#c9a8e8',
+  accent: '#b985f5',
+  accentLight: '#dabff8',
   // 透明度变体
-  primary02: 'rgba(109, 91, 208, 0.02)',
-  primary10: 'rgba(109, 91, 208, 0.1)',
-  primary20: 'rgba(109, 91, 208, 0.2)',
-  primary30: 'rgba(109, 91, 208, 0.3)',
-  accent02: 'rgba(160, 107, 214, 0.02)',
-  accent10: 'rgba(160, 107, 214, 0.1)',
-  accent20: 'rgba(160, 107, 214, 0.2)',
-  accent30: 'rgba(160, 107, 214, 0.3)',
+  primary02: 'rgba(134, 116, 255, 0.02)',
+  primary10: 'rgba(134, 116, 255, 0.1)',
+  primary20: 'rgba(134, 116, 255, 0.2)',
+  primary30: 'rgba(134, 116, 255, 0.3)',
+  accent02: 'rgba(185, 133, 245, 0.02)',
+  accent10: 'rgba(185, 133, 245, 0.1)',
+  accent20: 'rgba(185, 133, 245, 0.2)',
+  accent30: 'rgba(185, 133, 245, 0.3)',
 } as const;
 
 // === 🧧 新春主题 (节日期间启用) ===

@@ -35,12 +35,12 @@ interface FunnelChartDatum extends ConversionFunnelStage {
 
 // 柔和马卡龙渐变：紫 → 蓝 → 青绿 → 粉 → 桃（参考玻璃碗漏斗）。
 const FUNNEL_PALETTE = [
-  { color: '#ad8fd0', accent: '#cdb6e3' },
-  { color: '#9ea9e0', accent: '#c3c9ef' },
-  { color: '#8fc7a0', accent: '#b8ddc2' },
-  { color: '#e59fbc', accent: '#f3c4d6' },
-  { color: '#e6b487', accent: '#f2d2b3' },
-  { color: '#cdb6e3', accent: '#e4d6ef' },
+  { color: '#b892f0', accent: '#d3bdf5' },
+  { color: '#97a5f5', accent: '#c9cffb' },
+  { color: '#7ed8a4', accent: '#b6ecc9' },
+  { color: '#f59bc5', accent: '#fbc6dc' },
+  { color: '#f5b878', accent: '#ffd9b8' },
+  { color: '#d3bdf5', accent: '#e9dcfb' },
 ];
 
 // 小人占比图的图标个数（参考信息图：填充个数 = 占总数比例）。
@@ -81,7 +81,7 @@ const SPRINKLES: Array<[number, number, number, number]> = [
   [0.32, -0.45, -12, 5],
   [-0.18, -0.05, 40, 4],
 ];
-const SPRINKLE_COLORS = ['#f5c6da', '#efc27a', '#a8dcc4', '#a9c6f0', '#f2b7cd', '#a48ae8'];
+const SPRINKLE_COLORS = ['#f5c6da', '#f5c878', '#a6e6cc', '#aacbfa', '#f7bcd3', '#b9a6ff'];
 
 export default function CohortFunnel({
   data,
@@ -199,7 +199,7 @@ export default function CohortFunnel({
                     markerHeight="7"
                     orient="auto-start-reverse"
                   >
-                    <path d="M0 0 L8 4 L0 8 z" fill="#a48ae8" />
+                    <path d="M0 0 L8 4 L0 8 z" fill="#b9a6ff" />
                   </marker>
                   <clipPath id="funnelCavityClip">
                     <ellipse
@@ -235,7 +235,7 @@ export default function CohortFunnel({
                 <path
                   d={`M 42 ${layout[Math.min(1, n - 1)].topY + 6} C 10 ${layout[Math.min(1, n - 1)].topY + 86}, 12 ${funnelBottom - 96}, 48 ${funnelBottom - 18}`}
                   fill="none"
-                  stroke="#a48ae8"
+                  stroke="#b9a6ff"
                   strokeWidth={1.6}
                   strokeDasharray="5 6"
                   markerEnd="url(#funnelArrowHead)"

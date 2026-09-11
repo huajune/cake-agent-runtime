@@ -8,9 +8,9 @@ import type { StrategyChangelogRecord } from '@/api/types/strategy.types';
 import styles from './index.module.scss';
 
 const FIELD_META: Record<string, { label: string; color: string }> = {
-  persona: { label: '人格设定', color: '#a48ae8' },
+  persona: { label: '人格设定', color: '#b9a6ff' },
   stage_goals: { label: '阶段目标', color: '#ec9ec0' },
-  red_lines: { label: '政策红线', color: '#d19a52' },
+  red_lines: { label: '政策红线', color: '#e8a64f' },
 };
 
 interface ChangelogModalProps {

@@ -108,12 +108,12 @@ export default function System() {
       {
         label: '告警次数',
         data: alertTrend.map((p) => p.count || 0),
-        borderColor: '#e07a9a',
+        borderColor: '#f07ea3',
         backgroundColor: (context: { chart: { ctx: CanvasRenderingContext2D } }) => {
           const ctx = context.chart.ctx;
           const gradient = ctx.createLinearGradient(0, 0, 0, 300);
-          gradient.addColorStop(0, 'rgba(224, 122, 154, 0.2)');
-          gradient.addColorStop(1, 'rgba(224, 122, 154, 0)');
+          gradient.addColorStop(0, 'rgba(240, 126, 163, 0.2)');
+          gradient.addColorStop(1, 'rgba(240, 126, 163, 0)');
           return gradient;
         },
         borderWidth: 2,

@@ -35,10 +35,10 @@ function App() {
             color: '#14132b',
           },
           success: {
-            iconTheme: { primary: '#5fb894', secondary: '#fff' },
+            iconTheme: { primary: '#5ec9a0', secondary: '#fff' },
           },
           error: {
-            iconTheme: { primary: '#e07a9a', secondary: '#fff' },
+            iconTheme: { primary: '#f07ea3', secondary: '#fff' },
           },
         }}
       />

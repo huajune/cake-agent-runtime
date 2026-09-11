@@ -213,8 +213,8 @@ export default function ReengagementPage() {
                   display: 'inline-block',
                   width: '16px',
                   height: '16px',
-                  border: '2px solid rgba(109, 91, 208, 0.15)',
-                  borderTopColor: '#6d5bd0',
+                  border: '2px solid rgba(134, 116, 255, 0.15)',
+                  borderTopColor: '#8674ff',
                   borderRadius: '50%',
                   animation: 'spin 0.6s linear infinite',
                 }}
