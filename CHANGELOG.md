@@ -14,13 +14,15 @@
 **预计版本**: `v11.6.1`
 **最近更新**: `2026-09-11`
 **来源分支**: `develop`
-**累计 PR**: 1
+**累计 PR**: 2
 
 ### 更新摘要
 - PR #1250 会话状态 TTL 与沉淀间隙统一为 7 天，收资单据同步对齐
 - PR #1250 `MEMORY_SESSION_TTL_DAYS` / `MEMORY_SETTLEMENT_GAP_DAYS` 默认 3 → 7；消息回看窗口维持 7 天；间隙 ≥ TTL 的不变式保持，factsv2 12 小时沉淀余量不变
 - PR #1250 `COLLECTION_FORM_TTL_SECONDS` 3 → 7 天，避免事实仍在而收资单据先失效
 - PR #1250 README、`.env.example`、redis-schema、架构与术语文档口径同步
+- PR #1251 记忆值质量修复四项 + 下线已耗尽的旧数据兼容
+- PR #1251 长期记忆存量形态一次性归一，删除读边界懒迁移与旧 source 映射
 
 ### 新功能
 - 无
@@ -29,9 +31,10 @@
 - PR #1250 `MEMORY_SESSION_TTL_DAYS` / `MEMORY_SETTLEMENT_GAP_DAYS` 默认 3 → 7；消息回看窗口维持 7 天；间隙 ≥ TTL 的不变式保持，factsv2 12 小时沉淀余量不变
 - PR #1250 `COLLECTION_FORM_TTL_SECONDS` 3 → 7 天，避免事实仍在而收资单据先失效
 - PR #1250 README、`.env.example`、redis-schema、架构与术语文档口径同步
+- PR #1251 记忆值质量修复四项 + 下线已耗尽的旧数据兼容
 
 ### 优化调整
-- 无
+- PR #1251 长期记忆存量形态一次性归一，删除读边界懒迁移与旧 source 映射
 
 ### 运维与流程
 - PR #1250 会话状态 TTL 与沉淀间隙统一为 7 天，收资单据同步对齐
