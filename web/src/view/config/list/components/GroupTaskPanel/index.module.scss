@@ -3,13 +3,26 @@
 // ==================== 动画 ====================
 
 @keyframes dotPulse {
-  0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
-  40% { transform: scale(1); opacity: 1; }
+  0%,
+  80%,
+  100% {
+    transform: scale(0.6);
+    opacity: 0.4;
+  }
+  40% {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 
 @keyframes statusGlow {
-  0%, 100% { box-shadow: 0 0 0 0 currentColor; }
-  50% { box-shadow: 0 0 0 3px transparent; }
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 currentColor;
+  }
+  50% {
+    box-shadow: 0 0 0 3px transparent;
+  }
 }
 
 // ==================== 外层面板 ====================
@@ -49,7 +62,7 @@
 }
 
 .toggleLabel {
-  font-weight: $font-weight-semibold;
+  font-weight: $font-weight-medium;
   color: $text-primary;
   font-size: $font-size-sm;
   white-space: nowrap;
@@ -142,7 +155,9 @@
   background: $border;
   border: 1px solid $border-hover;
   border-radius: $radius-full;
-  transition: background $transition-normal, border-color $transition-normal;
+  transition:
+    background $transition-normal,
+    border-color $transition-normal;
   display: flex;
   align-items: center;
 }
@@ -155,7 +170,9 @@
   background: $bg-primary;
   border-radius: 50%;
   box-shadow: $shadow-sm;
-  transition: transform $transition-normal, box-shadow $transition-normal;
+  transition:
+    transform $transition-normal,
+    box-shadow $transition-normal;
 }
 
 // ==================== 分隔线 ====================
@@ -178,7 +195,7 @@
 }
 
 .triggerSectionLabel {
-  font-weight: $font-weight-semibold;
+  font-weight: $font-weight-medium;
   color: $text-primary;
   font-size: $font-size-sm;
 }
@@ -264,12 +281,14 @@
   width: 32px;
   height: 32px;
   border-radius: $radius-md;
-  background: $bg-secondary;
+  background: rgba(240, 239, 255, 0.45);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  transition: background $transition-normal, transform $transition-normal;
+  transition:
+    background $transition-normal,
+    transform $transition-normal;
 }
 
 .triggerIcon {
@@ -287,7 +306,7 @@
 
 .triggerName {
   font-size: $font-size-xs;
-  font-weight: $font-weight-semibold;
+  font-weight: $font-weight-medium;
   color: $text-primary;
   transition: color $transition-normal;
   white-space: nowrap;
@@ -307,7 +326,9 @@
   font-size: $font-size-base;
   color: $text-muted;
   opacity: 0;
-  transition: opacity $transition-normal, transform $transition-normal;
+  transition:
+    opacity $transition-normal,
+    transform $transition-normal;
   flex-shrink: 0;
   line-height: 1;
 }
@@ -335,9 +356,15 @@
     background: $primary;
     animation: dotPulse 1.4s ease-in-out infinite;
 
-    &:nth-child(1) { animation-delay: 0s; }
-    &:nth-child(2) { animation-delay: 0.2s; }
-    &:nth-child(3) { animation-delay: 0.4s; }
+    &:nth-child(1) {
+      animation-delay: 0s;
+    }
+    &:nth-child(2) {
+      animation-delay: 0.2s;
+    }
+    &:nth-child(3) {
+      animation-delay: 0.4s;
+    }
   }
 }
 

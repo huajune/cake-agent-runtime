@@ -5,7 +5,7 @@ import type { AlertTypeItem } from '@/api/types/analytics.types';
 import styles from './index.module.scss';
 
 /**
- * 错误分布维度的友好名：后端按 subsystem 优先聚合（group-task/cron/infra…），
+ * 告警分布维度的友好名：后端按 subsystem 优先聚合（group-task/cron/infra…），
  * 老消息失败回退 alertType（agent/message/delivery）。这里映射成中文展示名，
  * 未覆盖的子系统原样显示，空值兜底"未知子系统"。
  */
@@ -77,7 +77,9 @@ export default function ConsolePanel({
 
         <div className={styles.controlGrid}>
           {/* 业务告警开关 */}
-          <div className={`${styles.controlBox} ${alertConfig.businessAlertEnabled ? styles.active : ''}`}>
+          <div
+            className={`${styles.controlBox} ${alertConfig.businessAlertEnabled ? styles.active : ''}`}
+          >
             <div className={styles.controlBoxHeader}>
               <span className={styles.controlBoxTitle}>业务告警开关</span>
               <button
@@ -165,7 +167,9 @@ export default function ConsolePanel({
             <div className={styles.thresholdBox}>
               <div className={styles.thresholdBoxHeader}>
                 <span className={styles.thresholdLabel}>总耗时阈值</span>
-                <span className={styles.thresholdValue}>{alertConfig.avgDurationCritical / 1000}s</span>
+                <span className={styles.thresholdValue}>
+                  {alertConfig.avgDurationCritical / 1000}s
+                </span>
               </div>
               <input
                 type="range"
@@ -223,7 +227,9 @@ export default function ConsolePanel({
         {/* 图表区 */}
         <div className={styles.chartArea}>
           <div className={styles.areaHeader}>
-            <h4>错误趋势（今日）</h4>
+            <h4 title="飞书告警持久化记录按小时分桶（含基础设施/定时任务/守卫拦截）">
+              告警趋势（今日）
+            </h4>
             <div className={styles.kpiBadge}>
               近1小时: <strong>{recentAlertCount ?? '-'}</strong>
             </div>
@@ -236,7 +242,7 @@ export default function ConsolePanel({
         {/* 列表区 */}
         <div className={styles.listArea}>
           <div className={styles.areaHeader}>
-            <h4>错误分布</h4>
+            <h4 title="飞书告警持久化记录按子系统分布（含基础设施/定时任务/守卫拦截）">告警分布</h4>
           </div>
           <div className={styles.alertList}>
             {!alertTypes || alertTypes.length === 0 ? (

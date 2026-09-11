@@ -19,7 +19,6 @@ import {
   type EntityExtractionResult,
   type InvitedGroupRecord,
   InvitedGroupRecordSchema,
-  PersistedBrandStateSchema,
   SessionFactsSchema,
   SessionFactsRedisContentSchema,
   type SessionFacts,
@@ -43,13 +42,10 @@ import {
 import { detectBrandAliasHints } from '@resolution/turn-hints/producers/rule-track';
 import { isSameFactValue } from '@resolution/turn-hints/reducer';
 import type { TurnHints } from '@resolution/turn-hints/turn-hint.types';
-import type {
-  BrandResolution,
-  PersistedBrandState,
-} from '@resolution/brand/brand-resolution.types';
+import type { BrandResolution } from '@resolution/brand/brand-resolution.types';
 import { produceValidatedBrandIntents } from '@resolution/brand/intent-producer';
 import { decideGeoPreferenceClear } from '@resolution/geo/preference-clear';
-import { normalizeCityName } from '@resolution/geo';
+import { normalizeCityName, pruneGeoPreferencesForCity } from '@resolution/geo';
 import { adjudicateCityClaims, cityClaimFromFact } from '@resolution/geo/city-adjudicator';
 import { decideLaborFormIntent, type LaborFormIntentDecision } from '@resolution/labor-form';
 import { parseTimeContextAt, stripTimeContext } from '@resolution/signal/markers';
@@ -109,8 +105,6 @@ export class SessionFactsService {
   // "读-合并-写"依赖 chat 处理锁串行（同一 chat 的回合收尾在锁释放前 await 落盘），
   // 不持锁的写入方（activity/terminal）只碰各自独占的字段。
   //
-  // 迁移：读时旧 blob（facts:*）与 hash 叠加（hash 字段优先），并用 HSETNX 把旧
-  // blob 惰性回填进 hash 后删除旧 key；回填不会覆盖迁移窗口内的新写入。
 
   async getSessionState(
     corpId: string,
@@ -119,29 +113,10 @@ export class SessionFactsService {
   ): Promise<WeworkSessionState> {
     // 这里统一返回完整的空态，避免调用方反复处理 null/undefined 的分支。
     const hashKey = buildSessionFactsHashKey(corpId, userId, sessionId);
-    const legacyKey = this.buildKey(corpId, userId, sessionId);
     const hashFields = await this.redisStore.getHash(hashKey);
+    if (!hashFields) return { ...EMPTY_SESSION_STATE };
 
-    // factsv2 命中后不再读取已经迁移并删除的 facts:* 旧 Key。
-    // 生产数据已完成迁移；旧格式只在新 Hash 缺失时走一次兼容读取与惰性回填。
-    const legacyEntry = hashFields ? null : await this.redisStore.get(legacyKey);
-
-    const legacyContent =
-      legacyEntry?.content && typeof legacyEntry.content === 'object'
-        ? (legacyEntry.content as Record<string, unknown>)
-        : null;
-    if (legacyContent) {
-      void this.migrateLegacyState(hashKey, legacyKey, legacyContent);
-    }
-
-    if (!hashFields && !legacyContent) return { ...EMPTY_SESSION_STATE };
-
-    const combined = this.projectLegacyBrandState(hashFields ?? legacyContent ?? {}, hashKey, {
-      corpId,
-      userId,
-      sessionId,
-    });
-    const content = this.parseSessionStateFields(combined, { corpId, userId, sessionId });
+    const content = this.parseSessionStateFields(hashFields, { corpId, userId, sessionId });
 
     return {
       ...EMPTY_SESSION_STATE,
@@ -205,37 +180,6 @@ export class SessionFactsService {
    * 旧字段不主动 HDEL：同一 factsv2 key 的 TTL 会让它自然过期；迁移窗口内嵌套新值
    * 一旦存在即优先，绝不被旧顶层字段覆盖。
    */
-  private projectLegacyBrandState(
-    combined: Record<string, unknown>,
-    hashKey: string,
-    scope: { corpId: string; userId: string; sessionId: string },
-  ): Record<string, unknown> {
-    const legacyBrand = PersistedBrandStateSchema.safeParse(combined.brand_state);
-    if (!legacyBrand.success) return combined;
-
-    const parsedFacts = SessionFactsSchema.safeParse(combined.facts ?? FALLBACK_EXTRACTION);
-    if (!parsedFacts.success || parsedFacts.data.brand) return combined;
-
-    const migratedFacts: SessionFacts = {
-      ...(parsedFacts.data as SessionFacts),
-      brand: legacyBrand.data as PersistedBrandState,
-    };
-    void this.redisStore
-      .patchHash(hashKey, { facts: migratedFacts }, this.config.sessionFactsTtl)
-      .then(() => {
-        this.logger.log(
-          `[getSessionState] 顶层 brand_state 已懒迁移到 facts.brand: ` +
-            `${scope.corpId}/${scope.userId}/${scope.sessionId}`,
-        );
-      })
-      .catch((error: unknown) => {
-        this.logger.warn(
-          `[getSessionState] brand_state 懒迁移失败（下次读取重试）: ${toErrorMessage(error)}`,
-        );
-      });
-
-    return { ...combined, facts: migratedFacts };
-  }
 
   /**
    * 落盘态字段被丢弃的观测出口：日志 + 执行事件 + 飞书告警，一条都不省。
@@ -300,27 +244,9 @@ export class SessionFactsService {
   }
 
   /** 旧版单 blob → hash 的惰性迁移（HSETNX 只补缺失字段，迁移后删旧 key）。 */
-  private async migrateLegacyState(
-    hashKey: string,
-    legacyKey: string,
-    legacyContent: Record<string, unknown>,
-  ): Promise<void> {
-    try {
-      await this.redisStore.backfillHash(hashKey, legacyContent, this.config.sessionFactsTtl);
-      await this.redisStore.del(legacyKey);
-      this.logger.log(`[getSessionState] 旧版 session blob 已迁移为 hash: ${legacyKey}`);
-    } catch (error) {
-      const message = toErrorMessage(error);
-      this.logger.warn(`[getSessionState] 旧版 session blob 迁移失败（下次读取重试）: ${message}`);
-    }
-  }
 
   async clearSessionState(corpId: string, userId: string, sessionId: string): Promise<boolean> {
-    const [hashDeleted, legacyDeleted] = await Promise.all([
-      this.redisStore.del(buildSessionFactsHashKey(corpId, userId, sessionId)),
-      this.redisStore.del(this.buildKey(corpId, userId, sessionId)),
-    ]);
-    return hashDeleted || legacyDeleted;
+    return this.redisStore.del(buildSessionFactsHashKey(corpId, userId, sessionId));
   }
 
   async getFacts(corpId: string, userId: string, sessionId: string): Promise<SessionFacts | null> {
@@ -432,10 +358,58 @@ export class SessionFactsService {
     const base = state.facts ?? (SessionFactsSchema.parse(FALLBACK_EXTRACTION) as SessionFacts);
     const merged = SessionFactsSchema.parse({
       interview_info: base.interview_info,
-      preferences: this.mergePreferences(base.preferences, preferences),
+      preferences: this.pruneCrossCityGeoPreferences(
+        this.mergePreferences(base.preferences, preferences),
+        { corpId, userId, sessionId },
+      ),
       brand: base.brand,
     }) as SessionFacts;
     await this.patchSessionState(corpId, userId, sessionId, { facts: merged });
+  }
+
+  /**
+   * 会话城市确立后剔除跨城的区域/地点：两条城市写路径（本轮提取、工具确权）都经
+   * savePreferences 汇合，在这里统一收口。判据是纯函数 pruneGeoPreferencesForCity。
+   */
+  private pruneCrossCityGeoPreferences(
+    preferences: SessionFacts['preferences'],
+    scope: { corpId: string; userId: string; sessionId: string },
+  ): SessionFacts['preferences'] {
+    const city = preferences.city;
+    if (!isSessionFactValue(city) || typeof city.value !== 'string') return preferences;
+    const district = preferences.district;
+    const location = preferences.location;
+    const pruned = pruneGeoPreferencesForCity(
+      city.value,
+      isSessionFactValue(district) && Array.isArray(district.value) ? district.value : null,
+      isSessionFactValue(location) && Array.isArray(location.value) ? location.value : null,
+    );
+    if (pruned.removedDistricts.length === 0 && pruned.removedLocations.length === 0) {
+      return preferences;
+    }
+    const next = { ...preferences };
+    if (pruned.removedDistricts.length > 0 && isSessionFactValue(district)) {
+      next.district = {
+        ...district,
+        value: pruned.districts.length > 0 ? pruned.districts : null,
+        evidence: truncateEvidence(
+          `${district.evidence}；换城清理：移除 ${pruned.removedDistricts.join('、')}`,
+        ),
+      };
+    }
+    if (pruned.removedLocations.length > 0 && isSessionFactValue(location)) {
+      next.location = {
+        ...location,
+        value: pruned.locations.length > 0 ? pruned.locations : null,
+        evidence: truncateEvidence(
+          `${location.evidence}；换城清理：移除 ${pruned.removedLocations.join('、')}`,
+        ),
+      };
+    }
+    this.logger.log(
+      `[savePreferences] 换城清理 city=${city.value} district-=${pruned.removedDistricts.join('、') || '-'} location-=${pruned.removedLocations.join('、') || '-'} ${scope.corpId}/${scope.userId}/${scope.sessionId}`,
+    );
+    return next;
   }
 
   private mergePreferences(
@@ -910,11 +884,6 @@ export class SessionFactsService {
   /** 解析 `[消息发送时间：12:11 星期三]` 后缀（北京时间）为毫秒时间戳。 */
   private parseMessageSentAt(content: string): number | null {
     return parseTimeContextAt(content);
-  }
-
-  /** 旧版单 blob key（只读 + 迁移删除，禁止新写入）。 */
-  private buildKey(corpId: string, userId: string, sessionId: string): string {
-    return `facts:${corpId}:${userId}:${sessionId}`;
   }
 
   private serializeStateContent(content: Partial<WeworkSessionState>): Partial<WeworkSessionState> {

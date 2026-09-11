@@ -72,6 +72,12 @@ export interface BookingEvidence {
   success: boolean;
   status?: string;
   errorType?: string;
+  /** 工具回执的一句话结论（`_outcome`），失败/查重时说明本轮到底发生了什么。 */
+  outcome?: string;
+  /** 命中在途工单查重：预约已存在、本轮未重复提交（不是失败）。 */
+  alreadyBooked?: boolean;
+  existingWorkOrderId?: number | string;
+  existingInterviewTimeHuman?: string;
   confirmedInterviewTimeHuman?: string;
   onSiteScript?: string;
   interviewAddress?: string;

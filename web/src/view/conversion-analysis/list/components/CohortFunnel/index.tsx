@@ -35,12 +35,12 @@ interface FunnelChartDatum extends ConversionFunnelStage {
 
 // 柔和马卡龙渐变：紫 → 蓝 → 青绿 → 粉 → 桃（参考玻璃碗漏斗）。
 const FUNNEL_PALETTE = [
-  { color: '#7c6ef2', accent: '#9d8bf8' },
-  { color: '#56a6f4', accent: '#86c4f9' },
-  { color: '#33d1bb', accent: '#6ce6d2' },
-  { color: '#f5689f', accent: '#f99cc0' },
-  { color: '#fb9d6b', accent: '#fdc197' },
-  { color: '#a98bf4', accent: '#c4b2f8' },
+  { color: '#ad8fd0', accent: '#cdb6e3' },
+  { color: '#9ea9e0', accent: '#c3c9ef' },
+  { color: '#8fc7a0', accent: '#b8ddc2' },
+  { color: '#e59fbc', accent: '#f3c4d6' },
+  { color: '#e6b487', accent: '#f2d2b3' },
+  { color: '#cdb6e3', accent: '#e4d6ef' },
 ];
 
 // 小人占比图的图标个数（参考信息图：填充个数 = 占总数比例）。

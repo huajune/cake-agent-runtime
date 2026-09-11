@@ -12,8 +12,6 @@ export interface CachedChatHistoryMessage {
   isSelf?: boolean;
   /** 仅保留 payload.source，避免把完整回调 payload 放大到短期缓存。 */
   payloadSource?: string;
-  /** v2 表示该条已走 provenance-aware writer/backfill；兼容滚动发布时的旧缓存。 */
-  provenanceVersion?: 2;
 }
 
 const CHAT_HISTORY_CACHE_PREFIX = 'memory:short_term:chat';
@@ -37,7 +35,7 @@ export interface ChatHistoryCacheLimits {
  *
  * list 的唯一创建者是 `rebuildChatHistoryCache`（DB 完整快照）。若写路径用 RPUSH 建 key，
  * `updateMessageContent` DEL 之后到达的第一条消息会把 list 建成「只含自己」的残缺快照，
- * 而读路径把任何非空 v2 list 当完整历史——整段前文就此从 Agent 上下文消失。
+ * 而读路径把任何非空 list 当完整历史——整段前文就此从 Agent 上下文消失。
  * ARGV: [maxMessages, ttlSeconds, payload]；返回 false 表示 key 不存在、未追加。
  */
 const APPEND_SCRIPT = `

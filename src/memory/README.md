@@ -7,13 +7,13 @@
 | 作用域              | 当前内容                          | 生命周期 / 边界   | 存储                              |
 | ------------------- | --------------------------------- | ----------------- | --------------------------------- |
 | short-term 消息窗口 | 原始对话窗口                      | **滚动 7 天**     | 锚点 = 本批之前候选人最后一次开口 |
-| short-term 会话状态 | facts、工作台、阶段指针           | **3 天**          | Redis                             |
-| 咨询段（episode）   | 本次连续咨询的消息切片            | **闲置 3 天**划界 | 无独立存储层                      |
+| short-term 会话状态 | facts、工作台、阶段指针           | **7 天**          | Redis                             |
+| 咨询段（episode）   | 本次连续咨询的消息切片            | **闲置 7 天**划界 | 无独立存储层                      |
 | long-term 关系档    | semantic 档案/意向、episodic 摘要 | 持久              | Supabase + Redis 缓存             |
 
-三个对外口径固定为 **7d / 3d / 3d**：消息回看窗口滚动 7 天、会话状态 TTL 3 天、闲置沉淀间隙 3 天。沉淀间隙（`MEMORY_SETTLEMENT_GAP_DAYS`）不得配成小于 sessionTtl：否则会话存活期间即发生沉淀，会话会读回自己刚沉淀的长期记忆。`factsv2:` 的实际 TTL 额外加 12 小时，只是保证 delayed job 先读取再过期的安全余量，不构成新的业务生命周期。
+三个对外口径固定为 **7d / 7d / 7d**：消息回看窗口滚动 7 天、会话状态 TTL 7 天、闲置沉淀间隙 7 天。沉淀间隙（`MEMORY_SETTLEMENT_GAP_DAYS`）不得配成小于 sessionTtl：否则会话存活期间即发生沉淀，会话会读回自己刚沉淀的长期记忆。`factsv2:` 的实际 TTL 额外加 12 小时，只是保证 delayed job 先读取再过期的安全余量，不构成新的业务生命周期。
 
-**短期不等于单次咨询。** 代码里的 session 是 `chatId`，即候选人 × bot 的关系，可跨多次咨询长期存在；业务里的 session 是连续咨询段，由闲置 3 天计算得到。消息窗口按上次开口滚动回看 7 天，回访时捡回上一段咨询尾部，便于重建上下文。episode 只是裁剪与沉淀的计算边界，没有自己的 Redis key、表或目录。
+**短期不等于单次咨询。** 代码里的 session 是 `chatId`，即候选人 × bot 的关系，可跨多次咨询长期存在；业务里的 session 是连续咨询段，由闲置 7 天计算得到。消息窗口按上次开口滚动回看 7 天，回访时捡回上一段咨询尾部，便于重建上下文。episode 只是裁剪与沉淀的计算边界，没有自己的 Redis key、表或目录。
 
 ## 当前目录
 
@@ -76,7 +76,7 @@ src/tools/collection/
 - `resolution/` 永远零 IO。
 - `memory/` 只保存记忆系统自己的窗口、session hash 与长期关系档。
 - 各域单据自持存储，可直接使用通用 infra Redis 底座，并自持 TTL 配置。
-- 收资单据默认 TTL 3 天；它与会话状态时间对齐是业务口径，不依赖 `MemoryConfig`。
+- 收资单据默认 TTL 7 天；它与会话状态时间对齐是业务口径，不依赖 `MemoryConfig`。
 
 `collection-form:` key 是“丢了算事故”的业务单据；移动目录不改变它的 key 形态、整实体快照语义或恢复责任。
 
@@ -103,7 +103,6 @@ interface MemoryRecallContext {
 - `shortTerm.stage` 是会话状态部件；因为仍使用独立 `stage:` key，所以并列注入。
 - `turnHints` 只在当前轮生效，必须经过回合末验证与置信度合并后才能成为持久事实。
 - episodic 摘要不进默认召回；需要时显式调用 `recall_history`。
-- `AgentMemoryContext` 暂时保留为兼容别名，调用方继续收口到 `MemoryRecallContext`。
 
 Prompt 内的 `[会话记忆]`、`[用户档案]`、`[本轮解析线索]` 等标签是模型可见契约，代码字段重排不改变这些文本。
 
@@ -125,10 +124,15 @@ Prompt 内的 `[会话记忆]`、`[用户档案]`、`[本轮解析线索]` 等�
 
 Redis 契约：
 
-- `factsv2:{corpId}:{userId}:{sessionId}`：facts + workbench，基准 3 天，实际带 12 小时沉淀余量；
-- `stage:{corpId}:{userId}:{sessionId}`：阶段指针，3 天。
+- `factsv2:{corpId}:{userId}:{sessionId}`：facts + workbench，基准 7 天，实际带 12 小时沉淀余量；
+- `stage:{corpId}:{userId}:{sessionId}`：阶段指针，7 天。
 
 Redis hash 没有字段级 TTL，因此 `factsv2:` 内的 facts 与 workbench 共同享有 12 小时余量。
+
+城市的两条写路径（本轮提取、工具确权）都汇合于 `savePreferences`；城市确立后，白名单能反推为
+其他城市的 `district` / `location` 会被剔除（`pruneGeoPreferencesForCity`，证据追加「换城清理」），
+白名单外反推不出城市的值不动。旧 `facts:` 单 blob key、顶层 `brand_state`、裸字符串 city 与
+消息缓存 v1 形态的读兼容已于 2026-09-11 下线（生产存量核对为零）。
 
 ### facts 与 brand
 
@@ -138,12 +142,12 @@ Redis hash 没有字段级 TTL，因此 `factsv2:` 内的 facts 与 workbench �
 
 - `BrandStateService` reducer 是唯一写者；
 - 回合收尾在事实提取之后执行，提取失败也不跳过；
-- 旧顶层品牌字段只在读取时懒迁移到 `facts.brand`；
 - 观测事件 `brand_state_change` 与 trace 步骤 `apply_brand_state` 保持不变。
 
 ## Long-term
 
-长期关系档按 `(corpId, userId, botUserId)` 隔离。`botUserId` 使用托管账号稳定的 `wecomUserId`；轮换的 `imBotId` 只用于渠道调用或血缘排障，不参与长期主键。
+长期关系档按 `(corpId, userId, botUserId)` 隔离。关系行只由 consolidation 创建：候选人首次接触
+不再在 `agent_long_term_memories` 开户，`message_metadata` 列不再写入（存量保留，无读方）。`botUserId` 使用托管账号稳定的 `wecomUserId`；轮换的 `imBotId` 只用于渠道调用或血缘排障，不参与长期主键。
 
 存储形态：
 
@@ -155,8 +159,8 @@ Redis hash 没有字段级 TTL，因此 `factsv2:` 内的 facts 与 workbench �
 - `consolidation_watermarks`：独立工作水位列，不属于记忆内容，也不进入召回契约。
 
 摘要数组按时间从旧到新排列，最多保留 20 段，超限时确定性淘汰最老段；已写入条目
-永不再交给 LLM 重写。旧 `{ recent, archive, lastSettled* }` 在读取时懒迁移：recent
-反转并入裸数组，archive 文本补为空标识符 `SummaryEntry` 置于头部，旧水位写入独立列。
+永不再交给 LLM 重写。旧 `{ recent, archive, lastSettled* }` 对象形态与旧 source 词表已由迁移
+`20260911120000_flatten_legacy_long_term_shapes` 一次性归一（列约束只允许裸数组），读边界不再做懒迁移。
 `episodic_session_summaries` 列名保持不变。
 
 没有可验证 bot 血缘的存量行保持冻结且不参与读取；有可靠血缘的数据才拆到关系行。长期召回不再做跨 bot 来源研判，也不渲染跨咨询泛指横幅。
@@ -171,7 +175,7 @@ Redis hash 没有字段级 TTL，因此 `factsv2:` 内的 facts 与 workbench �
 ### 沉淀总装图（consolidation：三种产出、三套写法）
 
 ```text
-┌─ 输入（每段咨询沉淀一次，闲置满 3 天定时触发）────────────────┐
+┌─ 输入（每段咨询沉淀一次，闲置满 7 天定时触发）────────────────┐
 │  A. chat_messages 本段原文（水位之后 → 最新，尾截 120 条）     │
 │     ← 摘要的主料；terminal/推过什么岗等信息由摘要 LLM 从原文读  │
 │  B. sessionFacts 的 facts 舱                                │
@@ -202,6 +206,11 @@ Redis hash 没有字段级 TTL，因此 `factsv2:` 内的 facts 与 workbench �
 
 三套写法对应三种数据的天性：**事实越证越硬（合并）、意向喜新厌旧（覆盖）、经历落笔成史（追加）**。
 
+摘要 LLM 输出首行为「范围：求职 / 非求职」，随后四节固定为「标题：正文」纯文本；`parseSummaryOutput`
+在写入前做确定性格式归一（去范围行、Markdown 标题与加粗统一为「标题：」），不改内容。范围为
+非求职（在职工时/工资/排班等事务、闲聊）时不写摘要、只推进水位；范围行缺失按求职处理。
+缺失的标识符直接省略，不再写「无」填充句。
+
 ## 回合生命周期
 
 ### `onTurnStart`
@@ -221,7 +230,7 @@ Redis hash 没有字段级 TTL，因此 `factsv2:` 内的 facts 与 workbench �
 
 回合收尾按固定顺序更新工作台和事实，并在结束时注册或刷新同一 chat 的 delayed consolidation job。新队列与 job 标识统一使用 `consolidation` 词根。
 
-任务在闲置满沉淀间隙（3 天）到点时：
+任务在闲置满沉淀间隙（7 天）到点时：
 
 1. 重新读取 DB 最新消息时间并校验确已闲置；未达标则按剩余时间重排；
 2. 用 `consolidation_watermarks.bySession[sessionId]` 判断是否已覆盖，做到幂等；

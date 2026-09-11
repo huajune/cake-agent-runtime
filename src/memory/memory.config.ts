@@ -9,7 +9,7 @@ import { ConfigService } from '@nestjs/config';
  * 两处必须引用此常量作为默认值——默认值不同会让缓存实际生命周期
  * 取决于最后一次写入来自哪条路径。
  */
-export const MEMORY_SESSION_TTL_DAYS_DEFAULT = '3';
+export const MEMORY_SESSION_TTL_DAYS_DEFAULT = '7';
 
 /**
  * `MAX_HISTORY_PER_CHAT` 未配置时的默认条数：短期 list 缓存与 DB 单次回查共用的硬上限。
@@ -58,7 +58,7 @@ export class MemoryConfig {
    * 沉淀间隙阈值（秒）。
    *
    * 每回合结束按此阈值刷新 delayed job；任务到点后还会用 DB 最新消息时间复核
-   * 闲置已达标。它与 `sessionTtl` 同为 3 天，使 episode 边界与咨询状态生命周期
+   * 闲置已达标。它与 `sessionTtl` 同为 7 天，使 episode 边界与咨询状态生命周期
    * 对齐；`MEMORY_SETTLEMENT_GAP_DAYS` 不得配成小于 sessionTtl——否则会话存活
    * 期间即发生沉淀，会话会读回自己刚沉淀的长期记忆（badcase 蒋强）。
    * `sessionFactsTtl` 额外保留 12 小时，保证定时沉淀先读后过期。
@@ -103,7 +103,7 @@ export class MemoryConfig {
     this.sessionFactsTtl = this.sessionTtl + 12 * 60 * 60;
 
     const consolidationGapDays = parseInt(
-      this.configService.get('MEMORY_SETTLEMENT_GAP_DAYS', '3'),
+      this.configService.get('MEMORY_SETTLEMENT_GAP_DAYS', '7'),
       10,
     );
     this.consolidationGapSeconds = consolidationGapDays * 24 * 60 * 60;

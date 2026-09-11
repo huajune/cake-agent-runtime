@@ -160,6 +160,43 @@ describe('buildAlertTrend', () => {
     expect(trend).toHaveLength(2);
     expect(trend[1].count).toBe(2);
   });
+
+  it('buckets today by hour and zero-fills every hour from local day start to now', () => {
+    const now = new Date('2026-08-13T10:30:00+08:00');
+    const trend = buildAlertTrend(
+      [
+        errorLog({ timestamp: Date.parse('2026-08-13T03:05:00+08:00') }),
+        errorLog({ timestamp: Date.parse('2026-08-13T03:59:00+08:00') }),
+        errorLog({ timestamp: Date.parse('2026-08-13T10:10:00+08:00') }),
+      ],
+      'today',
+      now,
+    );
+
+    // 00:00 ~ 10:00 共 11 个整点桶，没有告警的小时也要出现（否则折线稀疏失真）
+    expect(trend).toHaveLength(11);
+    expect(trend.map((point) => point.minute)).toEqual([
+      '2026-08-13 00:00',
+      '2026-08-13 01:00',
+      '2026-08-13 02:00',
+      '2026-08-13 03:00',
+      '2026-08-13 04:00',
+      '2026-08-13 05:00',
+      '2026-08-13 06:00',
+      '2026-08-13 07:00',
+      '2026-08-13 08:00',
+      '2026-08-13 09:00',
+      '2026-08-13 10:00',
+    ]);
+    expect(trend[3].count).toBe(2);
+    expect(trend[10].count).toBe(1);
+    expect(trend.filter((point) => point.count === 0)).toHaveLength(9);
+  });
+
+  it('emits only the current hour bucket right after local midnight', () => {
+    const now = new Date('2026-08-13T00:20:00+08:00');
+    expect(buildAlertTrend([], 'today', now)).toEqual([{ minute: '2026-08-13 00:00', count: 0 }]);
+  });
 });
 
 describe('buildBusinessTrend', () => {

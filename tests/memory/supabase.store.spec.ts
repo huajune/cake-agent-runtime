@@ -72,28 +72,28 @@ describe('SupabaseStore', () => {
     );
   });
 
-  describe('profile fact source compatibility', () => {
-    it.each([
-      ['candidate', 'candidate_quote'],
-      ['llm', 'model'],
-      ['derived', 'rule'],
-      ['system', 'system'],
-      ['tool', 'system'],
-      ['memory', 'archive'],
-      ['rule', 'rule'],
-      ['booking', 'system'],
-      ['enrichment', 'system'],
-      ['extraction', 'archive'],
-    ] as const)('normalizes legacy %s to %s at the schema boundary', (source, expected) => {
+  describe('profile fact source vocabulary', () => {
+    it('rejects legacy sources at the schema boundary (data migrated by 20260911120000)', () => {
+      for (const legacy of ['candidate', 'llm', 'memory', 'booking', 'extraction']) {
+        expect(
+          UserProfileFactValueSchema.safeParse({
+            value: 'x',
+            confidence: 'medium',
+            source: legacy,
+            evidence: 'spec',
+            updatedAt: '2026-09-11T00:00:00.000Z',
+          }).success,
+        ).toBe(false);
+      }
       expect(
-        UserProfileFactValueSchema.parse({
-          value: '张三',
+        UserProfileFactValueSchema.safeParse({
+          value: 'x',
           confidence: 'medium',
-          source,
-          evidence: 'legacy',
-          updatedAt: '2026-05-22T10:00:00.000Z',
-        }).source,
-      ).toBe(expected);
+          source: 'system',
+          evidence: 'spec',
+          updatedAt: '2026-09-11T00:00:00.000Z',
+        }).success,
+      ).toBe(true);
     });
   });
 
@@ -219,89 +219,7 @@ describe('SupabaseStore', () => {
       expect(result).toBeNull();
     });
 
-    it('读边界把旧 recent 并入并反转为按时间排列的裸数组', async () => {
-      const sessionSummaries = {
-        recent: [
-          { summary: 'new', sessionId: 's2', startTime: '2026-03-16', endTime: '2026-03-16' },
-          { summary: 'old', sessionId: 's1', startTime: '2026-03-15', endTime: '2026-03-15' },
-        ],
-        archive: null,
-      };
-      const migratedSummaries = [...sessionSummaries.recent].reverse();
-      mockRedis.get.mockResolvedValue(null);
-      mockMaybeSingle.mockResolvedValue({
-        data: { episodic_session_summaries: sessionSummaries },
-        error: null,
-      });
-      mockRpc.mockResolvedValue({
-        data: {
-          episodic_session_summaries: migratedSummaries,
-          consolidation_watermarks: { bySession: {}, lastSettledMessageAt: null },
-        },
-        error: null,
-      });
-
-      const result = await store.getSessionSummaries('corp1', 'user1', BOT_USER_ID);
-
-      expect(result?.map((entry) => entry.summary)).toEqual(['old', 'new']);
-      expect(mockRpc).toHaveBeenCalledWith('migrate_long_term_episodic_state_atomic', {
-        p_corp_id: 'corp1',
-        p_user_id: 'user1',
-        p_bot_user_id: BOT_USER_ID,
-        p_expected_session_summaries: sessionSummaries,
-        p_expected_consolidation_watermarks: null,
-        p_session_summaries: migratedSummaries,
-        p_consolidation_watermarks: { bySession: {}, lastSettledMessageAt: null },
-      });
-      expect(mockUpsert).not.toHaveBeenCalled();
-    });
-
-    it('旧 archive 转为无标识符 SummaryEntry 置于数组头部，旧水位写入新列', async () => {
-      const legacyState = {
-        recent: [
-          {
-            summary: '近期咨询',
-            sessionId: 'session-1',
-            startTime: '2026-08-20',
-            endTime: '2026-08-20',
-          },
-        ],
-        archive: '旧版合并摘要',
-        lastSettledMessageAt: '2026-08-19T00:00:00.000Z',
-        lastSettledBySession: { 'session-1': '2026-08-20T00:00:00.000Z' },
-      };
-      const migratedSummaries = [
-        { summary: '旧版合并摘要', sessionId: '', startTime: '', endTime: '' },
-        legacyState.recent[0],
-      ];
-      const migratedWatermarks = {
-        bySession: { 'session-1': '2026-08-20T00:00:00.000Z' },
-        lastSettledMessageAt: '2026-08-19T00:00:00.000Z',
-      };
-      mockRedis.get.mockResolvedValue({ episodic_session_summaries: legacyState });
-      mockRpc.mockResolvedValue({
-        data: {
-          episodic_session_summaries: migratedSummaries,
-          consolidation_watermarks: migratedWatermarks,
-        },
-        error: null,
-      });
-
-      const result = await store.getSessionSummaries('corp1', 'user1', BOT_USER_ID);
-
-      expect(result).toEqual(migratedSummaries);
-      expect(mockRpc).toHaveBeenCalledWith(
-        'migrate_long_term_episodic_state_atomic',
-        expect.objectContaining({
-          p_expected_session_summaries: legacyState,
-          p_session_summaries: migratedSummaries,
-          p_consolidation_watermarks: migratedWatermarks,
-        }),
-      );
-      expect(mockUpsert).not.toHaveBeenCalled();
-    });
-
-    it('canonical 裸数组与独立水位直接读取，不触发懒迁移写', async () => {
+    it('裸数组与独立水位直接读取，不触发任何写', async () => {
       mockRedis.get.mockResolvedValue({
         episodic_session_summaries: [],
         consolidation_watermarks: {
@@ -320,24 +238,16 @@ describe('SupabaseStore', () => {
       expect(mockUpsert).not.toHaveBeenCalled();
     });
 
-    it('裸数组超过 20 段时确定性淘汰最老段并懒写回', async () => {
+    it('裸数组超过 20 段时读侧确定性淘汰最老段，不写回', async () => {
       const storedSummaries = Array.from({ length: 21 }, (_, index) => ({
         summary: `摘要-${index}`,
         sessionId: `session-${index}`,
         startTime: `2026-08-${String(index + 1).padStart(2, '0')}`,
         endTime: `2026-08-${String(index + 1).padStart(2, '0')}`,
       }));
-      const migratedSummaries = storedSummaries.slice(-MAX_SESSION_SUMMARIES);
       mockRedis.get.mockResolvedValue({
         episodic_session_summaries: storedSummaries,
         consolidation_watermarks: { bySession: {}, lastSettledMessageAt: null },
-      });
-      mockRpc.mockResolvedValue({
-        data: {
-          episodic_session_summaries: migratedSummaries,
-          consolidation_watermarks: { bySession: {}, lastSettledMessageAt: null },
-        },
-        error: null,
       });
 
       const result = await store.getSessionSummaries('corp1', 'user1', BOT_USER_ID);
@@ -345,53 +255,7 @@ describe('SupabaseStore', () => {
       expect(result).toHaveLength(MAX_SESSION_SUMMARIES);
       expect(result?.[0].summary).toBe('摘要-1');
       expect(result?.at(-1)?.summary).toBe('摘要-20');
-      expect(mockRpc).toHaveBeenCalledWith(
-        'migrate_long_term_episodic_state_atomic',
-        expect.objectContaining({
-          p_expected_session_summaries: storedSummaries,
-          p_session_summaries: migratedSummaries,
-        }),
-      );
-      expect(mockUpsert).not.toHaveBeenCalled();
-    });
-
-    it('CAS 未命中时采用并发 append 后的当前值，不用旧快照覆盖新摘要或水位', async () => {
-      const legacyState = {
-        recent: [
-          {
-            summary: '旧摘要',
-            sessionId: 'session-1',
-            startTime: '2026-08-20',
-            endTime: '2026-08-20',
-          },
-        ],
-        archive: null,
-        lastSettledBySession: { 'session-1': '2026-08-20T00:00:00.000Z' },
-      };
-      const concurrentSummary = {
-        summary: '并发新摘要',
-        sessionId: 'session-1',
-        startTime: '2026-08-21',
-        endTime: '2026-08-21',
-      };
-      const currentSummaries = [legacyState.recent[0], concurrentSummary];
-      const currentWatermarks = {
-        bySession: { 'session-1': '2026-08-21T00:00:00.000Z' },
-        lastSettledMessageAt: '2026-08-21T00:00:00.000Z',
-      };
-      mockRedis.get.mockResolvedValue({ episodic_session_summaries: legacyState });
-      mockRpc.mockResolvedValue({
-        data: {
-          episodic_session_summaries: currentSummaries,
-          consolidation_watermarks: currentWatermarks,
-        },
-        error: null,
-      });
-
-      await expect(store.getSessionSummaries('corp1', 'user1', BOT_USER_ID)).resolves.toEqual(
-        currentSummaries,
-      );
-      expect(mockRpc).toHaveBeenCalledTimes(1);
+      expect(mockRpc).not.toHaveBeenCalled();
       expect(mockUpsert).not.toHaveBeenCalled();
     });
   });
@@ -680,55 +544,6 @@ describe('SupabaseStore', () => {
     });
   });
 
-  describe('upsertMessageMetadata', () => {
-    it('should upsert compact message metadata and invalidate cache', async () => {
-      await store.upsertMessageMetadata('corp1', 'user1', BOT_USER_ID, {
-        botId: 'bot-1',
-        imBotId: 'im-bot-1',
-        imContactId: 'im-contact-1',
-        contactType: 1,
-        contactName: '候选人',
-        externalUserId: '',
-        avatar: undefined,
-      });
-
-      expect(mockUpsert).toHaveBeenCalledWith(
-        {
-          corp_id: 'corp1',
-          user_id: 'user1',
-          bot_user_id: BOT_USER_ID,
-          message_metadata: {
-            botId: 'bot-1',
-            imBotId: 'im-bot-1',
-            imContactId: 'im-contact-1',
-            contactType: 1,
-            contactName: '候选人',
-          },
-          updated_at: expect.any(String),
-        },
-        { onConflict: 'corp_id,user_id,bot_user_id' },
-      );
-      expect(mockRedis.del).toHaveBeenCalledWith(`long-term:corp1:user1:${BOT_USER_ID}`);
-    });
-
-    it('should skip empty message metadata', async () => {
-      await store.upsertMessageMetadata('corp1', 'user1', BOT_USER_ID, {
-        contactName: '',
-      });
-
-      expect(mockUpsert).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('del (v1 compat)', () => {
-    it('should delete from Redis cache', async () => {
-      await store.del(`profile:corp1:user1:${BOT_USER_ID}`);
-
-      expect(mockRedis.del).toHaveBeenCalledWith(`long-term:corp1:user1:${BOT_USER_ID}`);
-      expect(mockDeleteChain.eq).toHaveBeenCalledWith('bot_user_id', BOT_USER_ID);
-    });
-  });
-
   // 议题 3-3：单数读 API 已删除，"最近一笔 = getActiveBookings()[0]" 由调用方直接依赖。
   // 该等价关系此前只存在于 store 实现的约定里（getActiveBooking = bookings[0] ?? null），
   // 这里在三种存量 JSONB 形态上把它锁死。
@@ -774,6 +589,36 @@ describe('SupabaseStore', () => {
         work_order_id: 5002,
         linked_at: '2026-04-16T00:00:00.000Z',
         job_id: 902,
+      });
+    });
+
+    it('interview_time 随工单指针透传；存量行缺失时不补空键', async () => {
+      const bookings = await readWith({
+        work_order_id: 5003,
+        linked_at: '2026-09-11T07:19:12.000Z',
+        job_id: 528902,
+        interview_time: '2026-09-14 13:30:00',
+        bookings: [
+          {
+            work_order_id: 5003,
+            linked_at: '2026-09-11T07:19:12.000Z',
+            job_id: 528902,
+            interview_time: '2026-09-14 13:30:00',
+          },
+          { work_order_id: 5001, linked_at: '2026-04-15T00:00:00.000Z', job_id: 900 },
+        ],
+      });
+
+      expect(bookings[0]).toEqual({
+        work_order_id: 5003,
+        linked_at: '2026-09-11T07:19:12.000Z',
+        job_id: 528902,
+        interview_time: '2026-09-14 13:30:00',
+      });
+      expect(bookings[1]).toEqual({
+        work_order_id: 5001,
+        linked_at: '2026-04-15T00:00:00.000Z',
+        job_id: 900,
       });
     });
   });

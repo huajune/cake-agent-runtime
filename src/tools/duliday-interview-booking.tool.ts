@@ -12,7 +12,6 @@ import type { CollectionFormService } from '@tools/collection/collection-form.se
 import type { LongTermService } from '@memory/long-term/long-term.service';
 import type { SessionStateService } from '@memory/short-term/session-state.service';
 import { sessionFactValue } from '@memory/short-term/short-term.types';
-import type { ActiveBookingEntry } from '@memory/long-term/long-term.types';
 import { Logger } from '@nestjs/common';
 import type { PrivateChatMonitorNotifierService } from '@notification/services/private-chat-monitor-notifier.service';
 import {
@@ -39,6 +38,7 @@ import {
   resolveManualInterviewGroupHandling,
 } from '@tools/booking/booking-reply-format.util';
 import { runBookingScheduleAndNameGuards } from '@tools/booking/booking-guards.util';
+import { findRecentSameJobBooking } from '@tools/booking/active-booking-dedup.util';
 import { isTestPiiPhoneAllowed, maskPhoneForDetails } from '@tools/shared/test-pii-gate';
 import { buildJobPolicyAnalysis, isWaitNoticeInterview } from '@tools/job-list/job-policy-parser';
 import { buildBookableSlots } from '@tools/booking/bookable-slot.util';
@@ -53,7 +53,6 @@ import { z } from 'zod';
 
 const logger = new Logger('duliday_interview_booking');
 const INTERVIEW_TIME_REGEX = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/u;
-const BOOKING_DEDUP_WINDOW_MS = 30 * 60 * 1000;
 
 // 程序记忆层（procedural memory）工具绑定规则；总目录：docs/prompt-rule-ledger.md
 const DESCRIPTION = `提交面试报名。候选人资料全部来自已授权的收资表单，本工具只接收 jobId 与可选 interviewTime。
@@ -341,7 +340,7 @@ export function buildInterviewBookingTool(
           const activeBookings = isAdditionalCandidate
             ? []
             : await longTermService.getActiveBookings(scope.corpId, scope.userId);
-          const duplicate = activeBookings.find((entry) => isRecentSameJobBooking(entry, jobId));
+          const duplicate = findRecentSameJobBooking(activeBookings, jobId);
           // 换店报名不自动取消旧工单（是否保留两家由候选人决定），但必须把在途的另一家亮出来让
           // 模型当轮问清，不得默默双报（badcase 9m5exulb：换到大学城店报名成功后，世纪联华店旧工单
           // 一直挂着，真人只能事后追问"是只报大学城吗"）。
@@ -349,13 +348,31 @@ export function buildInterviewBookingTool(
             .filter((entry) => entry.job_id != null && entry.job_id !== jobId)
             .map((entry) => ({ workOrderId: entry.work_order_id, jobId: entry.job_id }));
           if (duplicate) {
+            // 在途工单是候选人级（corpId+userId）而非会话级：同一候选人同时跟两个托管账号聊、
+            // 另一账号刚建单时，这里也会命中。此时预约**已经存在**，不是"没提交成功"——
+            // 回复必须如实说已约上，不得编造系统故障或承诺稍后重提（生产 batch …_1789111221226）。
             context.ledger.jobs.bookingSucceeded = true;
+            const existingInterviewTimeHuman = duplicate.interview_time
+              ? formatInterviewTimeForReply(duplicate.interview_time)
+              : undefined;
             return buildToolError({
               errorType: TOOL_ERROR_TYPES.BOOKING_ALREADY_BOOKED,
-              outcome: '近期已有当前岗位的预约工单，跳过重复提交',
+              outcome: '当前岗位已有在途预约工单，本次未重复提交；预约已存在，不是失败',
               replyInstruction:
-                '不要重复 booking。改时间用 duliday_modify_interview_time，取消用 duliday_cancel_work_order。',
-              details: { existingWorkOrderId: duplicate.work_order_id },
+                '该岗位的面试预约已经存在（可能刚由同事/另一账号提交），如实告诉候选人已经约上、不用再提交；' +
+                (existingInterviewTimeHuman
+                  ? `工单上的面试时间是 ${existingInterviewTimeHuman}，按此播报。`
+                  : '工单未记录面试时间时不要编造时间，按 [当前预约信息] 或本轮已确认的时间播报。') +
+                '禁止说"系统有问题/没提交成功/稍后再帮你提交"。改时间用 duliday_modify_interview_time，取消用 duliday_cancel_work_order。',
+              details: {
+                existingWorkOrderId: duplicate.work_order_id,
+                ...(duplicate.interview_time
+                  ? { existingInterviewTime: duplicate.interview_time }
+                  : {}),
+                ...(existingInterviewTimeHuman
+                  ? { _existingInterviewTimeHuman: existingInterviewTimeHuman }
+                  : {}),
+              },
             });
           }
 
@@ -492,7 +509,7 @@ export function buildInterviewBookingTool(
                   scope.corpId,
                   scope.userId,
                   result.workOrderId as number,
-                  { job_id: jobId },
+                  { job_id: jobId, interview_time: interviewTime ?? null },
                 ),
               );
             }
@@ -743,15 +760,6 @@ async function buildLabelList(params: {
     labelList.push({ labelId: field.labelId, value });
   }
   return { labelList };
-}
-
-function isRecentSameJobBooking(entry: ActiveBookingEntry, jobId: number): boolean {
-  const linkedAt = Date.parse(entry.linked_at);
-  return (
-    Number.isFinite(linkedAt) &&
-    Date.now() - linkedAt < BOOKING_DEDUP_WINDOW_MS &&
-    (entry.job_id == null || entry.job_id === jobId)
-  );
 }
 
 function pauseUserHostingAsync(service: UserHostingService, chatId: string, reason: string): void {

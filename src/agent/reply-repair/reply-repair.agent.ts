@@ -169,7 +169,15 @@ export class ReplyRepairAgent {
 
     if (booking) {
       const lines = [
-        `- 报名：${booking.success ? '成功' : '未成功'}${booking.errorType ? `（${booking.errorType}）` : ''}`,
+        booking.alreadyBooked
+          ? `- 报名：该岗位已有在途工单${booking.existingWorkOrderId != null ? `（${booking.existingWorkOrderId}）` : ''}，预约已经存在，本轮未重复提交——这不是失败，不得说没提交成功/系统问题/稍后再提交`
+          : `- 报名：${booking.success ? '成功' : '未成功'}${booking.errorType ? `（${booking.errorType}）` : ''}`,
+        !booking.alreadyBooked && !booking.success && booking.outcome
+          ? `- 本轮结果：${booking.outcome}`
+          : null,
+        booking.alreadyBooked && booking.existingInterviewTimeHuman
+          ? `- 工单登记的面试时间：${booking.existingInterviewTimeHuman}`
+          : null,
         booking.confirmedInterviewTimeHuman
           ? `- 确认面试时间：${booking.confirmedInterviewTimeHuman}`
           : null,

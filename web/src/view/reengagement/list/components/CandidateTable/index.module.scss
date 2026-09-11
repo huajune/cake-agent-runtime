@@ -28,7 +28,7 @@
   td {
     padding: 14px 16px;
     border-bottom: 1px solid rgba(241, 245, 249, 0.8);
-    color: #334155;
+    color: #3b3a55;
     font-variant-numeric: tabular-nums;
     vertical-align: middle;
     white-space: nowrap;
@@ -53,7 +53,7 @@
   gap: 5px;
 
   svg {
-    color: #94a3b8;
+    color: #8a89ad;
   }
 }
 
@@ -121,7 +121,7 @@ td.loading {
   p {
     margin: 0;
     font-size: 14px;
-    color: #64748b;
+    color: #5b5a86;
     font-weight: 500;
     letter-spacing: 0.02em;
   }
@@ -219,7 +219,7 @@ td.loading {
   height: 34px;
   border-radius: 50%;
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 500;
   box-shadow:
     0 0 0 2px #fff,
     0 2px 6px rgba(15, 23, 42, 0.12);
@@ -228,7 +228,7 @@ td.loading {
 
 // 接管账号：纯深色文字（对齐消息处理流水的 BOT 列，不做胶囊装饰）
 .botCell {
-  color: #334155;
+  color: #3b3a55;
   font-size: 13px;
   font-weight: 500;
   max-width: 100%;
@@ -239,8 +239,8 @@ td.loading {
 
 .candidateUser {
   font-size: 14px;
-  font-weight: 600;
-  color: #1e293b;
+  font-weight: 500;
+  color: #14132b;
   letter-spacing: 0.01em;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -257,8 +257,8 @@ td.loading {
   border: 1px solid rgba(139, 92, 246, 0.22);
   background: rgba(139, 92, 246, 0.06);
   font-size: 11px;
-  font-weight: 600;
-  color: #7c3aed;
+  font-weight: 500;
+  color: #6d5bd0;
   width: fit-content;
   max-width: 100%;
   overflow: hidden;
@@ -284,33 +284,33 @@ td.loading {
   transition: background 0.15s ease;
 
   &:hover {
-    background: #f1f5f9;
+    background: #f5f4ff;
   }
 }
 
 .nextTouchIcon {
-  color: #94a3b8;
+  color: #8a89ad;
   flex: 0 0 auto;
 }
 
 .nextTouchScenario {
   font-size: 13px;
-  font-weight: 600;
-  color: #1e293b;
+  font-weight: 500;
+  color: #14132b;
 }
 
 .nextTouchCountdown {
   padding: 1px 7px;
   border-radius: 6px;
-  background: #eef2f7;
+  background: #ecebff;
   font-size: 11px;
-  font-weight: 600;
-  color: #475569;
+  font-weight: 500;
+  color: #3b3a55;
 }
 
 .nextTouchTime {
   font-size: 11px;
-  color: #94a3b8;
+  color: #8a89ad;
   font-variant-numeric: tabular-nums;
 }
 
@@ -318,7 +318,7 @@ td.loading {
   display: inline-block;
   padding-left: 12px;
   font-size: 13px;
-  color: #cbd5e1;
+  color: #d4d0ff;
 }
 
 // ── 各场景最近任务芯片 ──
@@ -335,15 +335,15 @@ td.loading {
   gap: 6px;
   padding: 4px 10px;
   border-radius: 8px;
-  border: 1px solid #eef2f7;
-  background: #f8fafc;
+  border: 1px solid #ecebff;
+  background: #fbfbfe;
   cursor: pointer;
   font-size: 12px;
   line-height: 1.4;
   transition: background 0.15s ease;
 
   &:hover {
-    background: #f1f5f9;
+    background: #f5f4ff;
   }
 }
 
@@ -351,17 +351,17 @@ td.loading {
   width: 6px;
   height: 6px;
   border-radius: 999px;
-  background: #94a3b8;
+  background: #8a89ad;
   flex: 0 0 auto;
 }
 
 .chipScenario {
-  font-weight: 600;
-  color: #334155;
+  font-weight: 500;
+  color: #3b3a55;
 }
 
 .chipStatus {
-  color: #64748b;
+  color: #5b5a86;
   font-weight: 500;
 }
 
@@ -375,41 +375,41 @@ td.loading {
 
 .latestRelative {
   font-size: 12px;
-  font-weight: 600;
-  color: #475569;
+  font-weight: 500;
+  color: #3b3a55;
 }
 
 .latestAbsolute {
   font-size: 10px;
-  color: #b6c2d4;
+  color: #a3a1c4;
   font-variant-numeric: tabular-nums;
 }
 
 // ── 状态色调：颜色只保留在小圆点上（与 STATUS_META tone 对齐），文字统一深灰不喧宾夺主 ──
 .tone_info .chipDot {
-  background: #3b82f6;
+  background: #8fb4f0;
 }
 
 .tone_success .chipDot {
-  background: #22c55e;
+  background: #7fd0a3;
 }
 
 .tone_warning .chipDot {
-  background: #f59e0b;
+  background: #efc27a;
 }
 
 .tone_danger .chipDot {
-  background: #ef4444;
+  background: #f09aa4;
 }
 
 .tone_muted {
   .chipDot {
-    background: #cbd5e1;
+    background: #d4d0ff;
   }
 
   .chipScenario,
   .chipStatus {
-    color: #94a3b8;
+    color: #8a89ad;
   }
 }
 

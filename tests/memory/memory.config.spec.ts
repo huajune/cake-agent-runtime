@@ -9,15 +9,15 @@ describe('MemoryConfig', () => {
   it('should use default values when env vars not set', () => {
     const config = createConfig();
 
-    expect(config.sessionTtl).toBe(3 * 24 * 60 * 60); // 3d
-    expect(config.sessionFactsTtl).toBe(3.5 * 24 * 60 * 60); // 3d + 12h
-    expect(config.consolidationGapSeconds).toBe(3 * 24 * 60 * 60); // 3d
+    expect(config.sessionTtl).toBe(7 * 24 * 60 * 60); // 7d
+    expect(config.sessionFactsTtl).toBe(7.5 * 24 * 60 * 60); // 7d + 12h
+    expect(config.consolidationGapSeconds).toBe(7 * 24 * 60 * 60); // 7d
     expect(config.historyWindowSeconds).toBe(7 * 24 * 60 * 60); // 7d
     expect(config.sessionWindowMaxMessages).toBe(300);
     expect(config.sessionWindowMaxChars).toBe(24000);
     expect(config.sessionExtractionIncrementalMessages).toBe(10);
     expect(config.longTermCacheTtl).toBe(2 * 60 * 60); // 2h
-    expect(config.sessionTtlDays).toBe(3);
+    expect(config.sessionTtlDays).toBe(7);
   });
 
   it('should read MEMORY_SESSION_TTL_DAYS from env', () => {

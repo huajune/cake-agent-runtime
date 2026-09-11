@@ -203,44 +203,28 @@ describe('BrandStateService', () => {
     });
   });
 
-  describe('facts.brand 持久化与旧顶层懒迁移（M5）', () => {
-    it('读取旧顶层 brand_state 时回写 facts.brand，结构不套信封', async () => {
-      const legacy = {
-        currentBrand: { canonicalName: '肯德基', brandId: 1 },
-        excludedBrands: [],
-        updatedAtMs: 1000,
-      };
-      mockRedisStore.getHash.mockResolvedValue({ brand_state: legacy });
-
-      await expect(service.readBrandState('c', 'u', 's')).resolves.toEqual(legacy);
-      expect(mockRedisStore.patchHash).toHaveBeenCalledWith(
-        'factsv2:c:u:s',
-        expect.objectContaining({
-          facts: expect.objectContaining({ brand: legacy }),
-        }),
-        46800,
-      );
-      const migratedBrand = mockRedisStore.patchHash.mock.calls[0][1].facts.brand;
-      expect(migratedBrand).not.toHaveProperty('value');
-      expect(migratedBrand).not.toHaveProperty('confidence');
-    });
-
-    it('新嵌套值优先于仍未过期的旧顶层字段', async () => {
+  describe('readBrandState（facts.brand 是唯一存放位置）', () => {
+    it('读取嵌套 facts.brand，结构不套信封，读路径不写回', async () => {
       const nested = {
         currentBrand: { canonicalName: '麦当劳', brandId: 2 },
         excludedBrands: [],
         updatedAtMs: 2000,
       };
-      mockRedisStore.getHash.mockResolvedValue({
-        facts: factsWithBrand(nested),
-        brand_state: {
-          currentBrand: { canonicalName: '肯德基', brandId: 1 },
-          excludedBrands: [],
-          updatedAtMs: 1000,
-        },
-      });
+      mockRedisStore.getHash.mockResolvedValue({ facts: factsWithBrand(nested) });
 
       await expect(service.readBrandState('c', 'u', 's')).resolves.toEqual(nested);
+      expect(mockRedisStore.patchHash).not.toHaveBeenCalled();
+    });
+
+    it('facts 缺席或 brand 为空 → null；hash 上的其他顶层字段不参与读取', async () => {
+      mockRedisStore.getHash.mockResolvedValue(null);
+      await expect(service.readBrandState('c', 'u', 's')).resolves.toBeNull();
+
+      mockRedisStore.getHash.mockResolvedValue({
+        facts: factsWithBrand(null),
+        brand_state: { currentBrand: { canonicalName: '肯德基', brandId: 1 }, excludedBrands: [] },
+      });
+      await expect(service.readBrandState('c', 'u', 's')).resolves.toBeNull();
       expect(mockRedisStore.patchHash).not.toHaveBeenCalled();
     });
   });

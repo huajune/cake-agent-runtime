@@ -4,13 +4,13 @@
 // 基础卡片样式
 .card {
   padding: $spacing-md;
-  background: $bg-secondary;
-  border-radius: $radius-lg;
-  border: 1px solid $border;
-  transition: all $transition-fast;
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: inset 0 0 0 1px rgba(212, 208, 255, 0.55);
+  transition: box-shadow $transition-fast;
 
   &.modified {
-    border-color: $primary;
+    box-shadow: inset 0 0 0 1px rgba($primary, 0.55);
   }
 }
 
@@ -20,21 +20,21 @@
 }
 
 .label {
-  font-weight: $font-weight-semibold;
+  font-weight: $font-weight-medium;
   color: $text-primary;
   font-size: $font-size-sm;
 }
 
 .value {
   font-size: $font-size-lg;
-  font-weight: $font-weight-bold;
+  font-weight: $font-weight-medium;
   color: $primary;
 }
 
 .valueText {
   max-width: 52%;
   font-size: $font-size-xs;
-  font-weight: $font-weight-semibold;
+  font-weight: $font-weight-medium;
   color: $primary;
   text-align: right;
   line-height: $line-height-tight;
@@ -92,7 +92,9 @@
   background: $bg-primary;
   color: $text-primary;
   font-size: $font-size-sm;
-  transition: border-color $transition-fast, box-shadow $transition-fast;
+  transition:
+    border-color $transition-fast,
+    box-shadow $transition-fast;
 
   &:focus {
     outline: none;

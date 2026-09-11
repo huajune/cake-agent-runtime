@@ -41,9 +41,17 @@ const OUTPUT_PATH = join(
 
 const REAL_PREFECTURE_SUFFIXES = ['市', '州', '盟', '地区'];
 
+/**
+ * 区/县全名词典的排除项：占位名与通名不是可检索的行政区。
+ * 剥掉后缀只剩 1 字的（东区/城区/郊区/矿区）一并排除，避免单字裸词命中。
+ */
+const DISTRICT_NAME_EXCLUSIONS = new Set(['市辖区']);
+
 export interface GeneratedMappingResult {
   mapping: Record<string, string>;
   prefectureToProvince: Record<string, string>;
+  /** 全国区/县全名（含后缀，如「江宁区」「平安县」），供白名单外的 raw district 词典扫描。 */
+  districtNames: string[];
   skipped: Array<{ name: string; pseudoParent: string }>;
   citiesSha256: string;
   areasSha256: string;
@@ -117,9 +125,19 @@ export function buildNationalCountyMapping(): GeneratedMappingResult {
     prefectureToProvince[city.name] = province;
   }
 
+  const districtNames = Array.from(
+    new Set(
+      areas
+        .map((area) => area.name)
+        .filter((name) => /[区县]$/u.test(name))
+        .filter((name) => !DISTRICT_NAME_EXCLUSIONS.has(name) && name.length >= 3),
+    ),
+  ).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+
   return {
     mapping,
     prefectureToProvince,
+    districtNames,
     skipped,
     citiesSha256: createHash('sha256').update(citiesRaw).digest('hex'),
     areasSha256: createHash('sha256').update(areasRaw).digest('hex'),
@@ -136,6 +154,7 @@ function renderGeneratedModule(result: GeneratedMappingResult): string {
   const provinceEntries = Object.entries(result.prefectureToProvince)
     .map(([prefecture, province]) => `  ${prefecture}: '${province}',`)
     .join('\n');
+  const districtEntries = result.districtNames.map((name) => `  '${name}',`).join('\n');
 
   return `/**
  * 全国县级市 → 地级行政区映射（脚本生成，禁止手改）。
@@ -167,6 +186,16 @@ ${entries}
 export const NATIONAL_PREFECTURE_TO_PROVINCE: Record<string, string> = {
 ${provinceEntries}
 };
+
+/**
+ * 全国区/县全名（含 区/县 后缀）；与上表同源生成。
+ * 运行时消费：geo-text-scan 在白名单未覆盖字符段上做词典扫描，识别白名单外的
+ * raw district（只标注 district，不补 city）；要求文本里带后缀，裸名不触发。
+ */
+// prettier-ignore
+export const NATIONAL_DISTRICT_NAMES: readonly string[] = [
+${districtEntries}
+];
 `;
 }
 

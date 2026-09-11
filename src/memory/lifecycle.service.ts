@@ -12,7 +12,7 @@ import { SessionStateService } from './short-term/session-state.service';
 import { SessionWorkbenchService } from './short-term/workbench.service';
 import { MessageWindowService } from './short-term/message-window.service';
 import { stripQuotedBlocks, stripTimeContext } from '@resolution/signal/markers';
-import type { AgentMemoryContext } from './recall.types';
+import type { MemoryRecallContext } from './recall.types';
 import type { ShortTermMessage } from './short-term/short-term.types';
 import type { WeworkSessionState } from './short-term/short-term.types';
 import type { RecommendedJobSummary } from '@resolution/job/types';
@@ -114,7 +114,7 @@ export class MemoryLifecycleService {
       /** 当前托管账号的稳定企微身份（wecomUserId）；缺失时长期记忆 fail-closed。 */
       botUserId?: string;
     },
-  ): Promise<AgentMemoryContext> {
+  ): Promise<MemoryRecallContext> {
     const includeShortTerm = options?.includeShortTerm ?? true;
     const botUserId = options?.botUserId?.trim();
 
@@ -142,7 +142,7 @@ export class MemoryLifecycleService {
     }
 
     const hasOwnSessionMemory = this.hasStructuredSessionMemoryState(sessionState);
-    const snapshot: AgentMemoryContext = {
+    const snapshot: MemoryRecallContext = {
       shortTerm: {
         messageWindow: shortTermMessages,
         sessionState: hasOwnSessionMemory ? sessionState : null,
@@ -229,7 +229,7 @@ export class MemoryLifecycleService {
       const branchPromises: Array<Promise<PostProcessingStepStatus[]>> = [];
       const previousState = previousStateResult.value;
 
-      // 每回合结束刷新 3 天 delayed job；真正沉淀到点后重读 facts 与 DB 活跃时间。
+      // 每回合结束刷新 7 天 delayed job；真正沉淀到点后重读 facts 与 DB 活跃时间。
       const consolidationTask = this.createTimedTask('schedule_consolidation', async () => {
         await this.consolidationScheduler.schedule({
           corpId: ctx.corpId,

@@ -25,7 +25,7 @@ const NEW_INTERVIEW_TIME_REGEX = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/;
 const DESCRIPTION = `修改约面时间。候选人**主动**要求把一个**已确认的**面试改到新时间时调用，真正调海绵改约接口更新该工单的约面时间。
 
 ## 调用前提（全部满足才调用）
-1. workOrderId 必须来自 [当前预约信息]，或本轮 duliday_interview_precheck 按候选人手机号实时返回的 existingRegistrations / duplicateBookingGuard；没有真实工单号时**禁止**调用本工具
+1. workOrderId 必须来自 [当前预约信息]，或本轮 duliday_interview_precheck 返回的 duplicateBookingGuard.workOrderId（候选人名下同岗位在途工单）；没有真实工单号时**禁止**调用本工具
 2. 候选人是**主动**要求改时间/改期/换一天，例如"能不能改到明天"、"约的那天我去不了，换周一行吗"、"想改个时间"
 3. 已经和候选人确认了**具体的新时间点**（到分钟）。新时间含糊（"下周吧""随便哪天"）时先追问确认，不要猜时间提交
    - **“明天上午的面试还有吗 / 上午还有场次吗”只是查询可用性，不是改约确认**：只能 precheck 后回答可约时段，再问候选人是否确定改到该时间；即使 precheck 只返回一个上午场，也禁止擅自取开始时间提交改约

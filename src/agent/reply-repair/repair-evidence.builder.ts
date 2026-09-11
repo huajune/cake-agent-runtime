@@ -174,10 +174,17 @@ export class RepairEvidenceBuilder {
     const result = readRecord(call?.result);
     if (!result) return undefined;
 
+    const errorType = readString(result.errorType);
+    const alreadyBooked = errorType === 'booking.already_booked';
     return {
       success: result.success === true || result.workOrderId != null,
       status: readString(result.status),
-      errorType: readString(result.errorType),
+      errorType,
+      outcome: readString(result._outcome),
+      ...(alreadyBooked ? { alreadyBooked } : {}),
+      existingWorkOrderId:
+        readString(result.existingWorkOrderId) ?? readNumber(result.existingWorkOrderId),
+      existingInterviewTimeHuman: readString(result._existingInterviewTimeHuman),
       confirmedInterviewTimeHuman: readString(result._confirmedInterviewTimeHuman),
       onSiteScript: readString(result._onSiteScript),
       interviewAddress:

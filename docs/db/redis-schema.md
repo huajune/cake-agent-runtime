@@ -38,12 +38,12 @@
 | 3   | `wecom:message:last-message-at:{chatId}`                               | String        | 5 min                      | wecom/message   | 最近消息到达时间（静默窗口）        |
 | 4   | `wecom:message:lock:{chatId}`                                          | String        | 90 s 租约（30 s 心跳续期） | wecom/message   | 处理分布式锁（Lua 条件续期/释放）   |
 | 5   | `wecom:message:trace:{messageId}:v2`                                   | Hash          | 24 h                       | wecom/message   | 消息 trace 上下文（字段级增量更新） |
-| 6   | `memory:short_term:chat:{chatId}`                                      | List          | 3 天                       | memory          | 消息热缓存；滚动 7 天窗口在内存套用 |
-| 7   | `factsv2:{corpId}:{userId}:{sessionId}`                                | Hash          | 3 天 + 12 小时             | memory          | 会话 facts + 工作台                 |
-| 8   | `stage:{corpId}:{userId}:{sessionId}`                                  | String (JSON) | 3 天                       | memory          | short-term 阶段指针                 |
+| 6   | `memory:short_term:chat:{chatId}`                                      | List          | 7 天                       | memory          | 消息热缓存；滚动 7 天窗口在内存套用 |
+| 7   | `factsv2:{corpId}:{userId}:{sessionId}`                                | Hash          | 7 天 + 12 小时             | memory          | 会话 facts + 工作台                 |
+| 8   | `stage:{corpId}:{userId}:{sessionId}`                                  | String (JSON) | 7 天                       | memory          | short-term 阶段指针                 |
 | 9   | `long-term:{corpId}:{userId}:{botUserId}`                              | String (JSON) | 2 小时                     | memory          | 长期关系档缓存                      |
-| 10  | `collection-form:{corpId}:{userId}:{botUserId}:{candidateRef}:{jobId}` | String (JSON) | 3 天                       | tools           | 收资表单完整实体                    |
-| 11  | `collection-form-current:{corpId}:{userId}:{botUserId}:{jobId}`        | String (JSON) | 3 天                       | tools           | 当前办理人定位指针                  |
+| 10  | `collection-form:{corpId}:{userId}:{botUserId}:{candidateRef}:{jobId}` | String (JSON) | 7 天                       | tools           | 收资表单完整实体                    |
+| 11  | `collection-form-current:{corpId}:{userId}:{botUserId}:{jobId}`        | String (JSON) | 7 天                       | tools           | 当前办理人定位指针                  |
 | 12  | `hosting:blacklist:groups:v1`                                          | String (JSON) | 无（观察者主动刷新）       | hosting-config  | 群黑名单共享缓存                    |
 | 13  | `hosting:paused-users:v1`                                              | String (JSON) | 无                         | user            | 暂停用户共享缓存                    |
 | 14  | `hosting:config:ai-reply-enabled:v1`                                   | String (JSON) | 无                         | hosting-config  | AI 回复开关                         |
@@ -182,7 +182,7 @@
 | -------- | ------------------------------------------------------ |
 | 数据结构 | List                                                   |
 | 存储内容 | JSON `{ chatId, messageId, role, content, timestamp }` |
-| TTL      | `MEMORY_SESSION_TTL_DAYS * 86400`（当前默认 3 天）     |
+| TTL      | `MEMORY_SESSION_TTL_DAYS * 86400`（当前默认 7 天）     |
 
 **操作**：`RPUSHX`（写路径追加，只在 key 已存在时生效）/ `LRANGE 0 -1`（读取）/ `LTRIM`（控制窗口）/ `EXPIRE` / `DEL`（`updateMessageContent` 作废）
 
@@ -206,7 +206,7 @@
 | -------- | ------------------------------------------------------------ |
 | 数据结构 | Redis Hash；字段级原子写                                     |
 | 存储内容 | `facts` + 岗位池、已展示岗位、焦点岗位、查询签名等 workbench |
-| TTL      | 3 天 + 12 小时安全余量                                       |
+| TTL      | 7 天 + 12 小时安全余量                                       |
 
 Redis Hash 不支持 field TTL，因此 facts 与 workbench 共享同一个 key 生命周期。额外 12 小时只用于
 确保 delayed consolidation 先读取再过期，不构成新的业务窗口。
@@ -220,7 +220,7 @@ Redis Hash 不支持 field TTL，因此 facts 与 workbench 共享同一个 key 
 | -------- | ------------------------- |
 | 数据结构 | String（统一 entry JSON） |
 | 存储内容 | `{ currentStage }`        |
-| TTL      | 3 天                      |
+| TTL      | 7 天                      |
 
 阶段属于 short-term working state；“procedural”是 Prompt 手册/规则的内容类型，不是本 key 的存储层。
 
@@ -244,8 +244,8 @@ Supabase `agent_long_term_memories` 是权威源。无 bot 的旧缓存 key 不�
 
 | Key                                                                    | 内容                              | TTL  |
 | ---------------------------------------------------------------------- | --------------------------------- | ---- |
-| `collection-form:{corpId}:{userId}:{botUserId}:{candidateRef}:{jobId}` | 完整 `BookingCollectionForm` 快照 | 3 天 |
-| `collection-form-current:{corpId}:{userId}:{botUserId}:{jobId}`        | 当前办理人的 `candidateRef`       | 3 天 |
+| `collection-form:{corpId}:{userId}:{botUserId}:{candidateRef}:{jobId}` | 完整 `BookingCollectionForm` 快照 | 7 天 |
+| `collection-form-current:{corpId}:{userId}:{botUserId}:{jobId}`        | 当前办理人的 `candidateRef`       | 7 天 |
 
 collection form 是 tools 自持的业务单据，不属于 memory；它采用整实体覆盖写，不使用 deep merge。
 key 形状与 TTL 在候选人证据链收口中保持不变：手机号到达前 `candidateRef=session`，到达后
@@ -452,11 +452,11 @@ bull:{env}:test-suite:{waiting|active|completed|failed|delayed|{jobId}}
 | 消息聚合队列 / last-message-at | 5 min（兜底）                              | Worker 主动裁剪 / 自动过期        |
 | 处理锁                         | 90 s 单次租约，30 s 心跳续期               | Lua 条件续期 / 释放               |
 | 消息 trace                     | 24 h                                       | 自动过期                          |
-| 消息热缓存                     | `MEMORY_SESSION_TTL_DAYS`（当前默认 3 天） | 自动过期；滚动 7 天窗口独立于 TTL |
-| Session facts + workbench      | 3 天 + 12 小时安全余量                     | 自动过期                          |
-| 阶段指针                       | 3 天                                       | 自动过期                          |
+| 消息热缓存                     | `MEMORY_SESSION_TTL_DAYS`（当前默认 7 天） | 自动过期；滚动 7 天窗口独立于 TTL |
+| Session facts + workbench      | 7 天 + 12 小时安全余量                     | 自动过期                          |
+| 阶段指针                       | 7 天                                       | 自动过期                          |
 | 长期关系档缓存                 | 2 小时                                     | 自动过期；Supabase 为权威源       |
-| 收资表单与定位指针             | 3 天                                       | tools 域自动过期或办结后主动删除  |
+| 收资表单与定位指针             | 7 天                                       | tools 域自动过期或办结后主动删除  |
 | 托管共享缓存                   | 无                                         | 观察者 / 定期同步                 |
 | 监控实时计数                   | 无                                         | 持续累计                          |
 | 群成员缓存                     | 10 min                                     | 自动过期 + 定期 hydrate           |

@@ -14,8 +14,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { RedisService } from '@infra/redis/redis.service';
 import type { BookingCollectionForm } from '@resolution/collection';
 
-/** 收资单据自持 TTL：默认 3 天；与会话状态对齐是业务口径，不依赖 MemoryConfig。 */
-export const COLLECTION_FORM_TTL_SECONDS = 3 * 24 * 60 * 60;
+/** 收资单据自持 TTL：默认 7 天；与会话状态对齐是业务口径，不依赖 MemoryConfig。 */
+export const COLLECTION_FORM_TTL_SECONDS = 7 * 24 * 60 * 60;
 
 interface CollectionFormStoreEntry {
   key: string;

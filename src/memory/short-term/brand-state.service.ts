@@ -33,12 +33,7 @@ import type {
 import { BRAND_EXECUTABLE_CONFIDENCE } from '@resolution/brand/brand-resolution.types';
 import { RedisStore } from '../stores/redis.store';
 import { MemoryConfig } from '../memory.config';
-import {
-  FALLBACK_EXTRACTION,
-  PersistedBrandStateSchema,
-  SessionFactsSchema,
-  type SessionFacts,
-} from './short-term.types';
+import { FALLBACK_EXTRACTION, SessionFactsSchema, type SessionFacts } from './short-term.types';
 import { buildSessionFactsHashKey } from './session-key';
 
 export interface TurnBrandContext {
@@ -196,7 +191,7 @@ export class BrandStateService {
     return 'applied';
   }
 
-  /** 读取 facts.brand；旧顶层 brand_state 命中时懒迁移到新位置。 */
+  /** 读取 facts.brand；facts 缺席、字段为空或 facts 校验失败一律按不存在处理。 */
   async readBrandState(
     corpId: string,
     userId: string,
@@ -205,38 +200,13 @@ export class BrandStateService {
     const hashKey = buildSessionFactsHashKey(corpId, userId, sessionId);
     const hash = await this.redisStore.getHash(hashKey);
     const parsedFacts = SessionFactsSchema.safeParse(hash?.facts ?? FALLBACK_EXTRACTION);
-    if (parsedFacts.success && parsedFacts.data.brand) {
-      return parsedFacts.data.brand as PersistedBrandState;
+    if (parsedFacts.success) {
+      return (parsedFacts.data.brand as PersistedBrandState | null) ?? null;
     }
-    if (!parsedFacts.success && hash?.facts != null) {
+    if (hash?.facts != null) {
       this.logger.warn(`[brand-state] Redis 中的 facts 校验失败，无法读取嵌套品牌状态`);
     }
-
-    const legacyBrand = PersistedBrandStateSchema.safeParse(hash?.brand_state);
-    if (!legacyBrand.success) {
-      if (hash?.brand_state != null) {
-        this.logger.warn(`[brand-state] Redis 中的旧顶层 brand_state 校验失败，按不存在处理`);
-      }
-      return null;
-    }
-
-    // 旧顶层字段只作读兼容；新嵌套值缺失且 facts 有效时回写，旧字段随 key TTL 自然过期。
-    if (parsedFacts.success) {
-      const migratedFacts: SessionFacts = {
-        ...(parsedFacts.data as SessionFacts),
-        brand: legacyBrand.data as PersistedBrandState,
-      };
-      try {
-        await this.redisStore.patchHash(
-          hashKey,
-          { facts: migratedFacts },
-          this.config.sessionFactsTtl,
-        );
-      } catch (error) {
-        this.logger.warn(`[brand-state] 旧顶层 brand_state 懒迁移失败: ${toErrorMessage(error)}`);
-      }
-    }
-    return legacyBrand.data as PersistedBrandState;
+    return null;
   }
 
   /**

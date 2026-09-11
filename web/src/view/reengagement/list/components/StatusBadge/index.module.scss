@@ -1,11 +1,31 @@
-/* StatusBadge — 补充全局 status-badge 缺失的灰色系变体 */
+/* StatusBadge — 复聊页状态胶囊：沿用全局 status-badge 的语义色相，但整体降饱和成粉彩 */
+
+.success {
+  border-color: rgba(95, 184, 148, 0.4) !important;
+  color: #4fae87 !important;
+}
+
+.info {
+  border-color: rgba(111, 156, 230, 0.4) !important;
+  color: #6f9ce6 !important;
+}
+
+.warning {
+  border-color: rgba(217, 163, 92, 0.4) !important;
+  color: #d19a52 !important;
+}
+
+.danger {
+  border-color: rgba(224, 122, 154, 0.4) !important;
+  color: #e07a9a !important;
+}
 
 .neutral {
-  border-color: rgba(100, 116, 139, 0.4) !important;
-  color: #64748b !important;
+  border-color: rgba(100, 116, 139, 0.3) !important;
+  color: #6b7a90 !important;
 }
 
 .muted {
-  border-color: rgba(148, 163, 184, 0.35) !important;
-  color: #94a3b8 !important;
+  border-color: rgba(148, 163, 184, 0.3) !important;
+  color: #9aa6b8 !important;
 }

@@ -14,6 +14,8 @@ import {
   PRECHECK_INPUT_SCHEMA,
 } from '@tools/duliday-interview-precheck.tool';
 import { TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
+import { detectBookingReceiptMismatch } from '@agent/guardrail/output/rules/booking-receipt.rule';
+import { detectBookingDoneClaimWithoutSubmission } from '@agent/guardrail/output/rules/booking-claim-reconciliation.rule';
 import { createToolContext, mergeToolContext } from '../../helpers/tool-context.fixture';
 
 const CONTRACT = [
@@ -200,10 +202,12 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
   };
   const ops = { recordEvent: jest.fn().mockResolvedValue(true) };
   const observer = { emit: jest.fn() };
+  const longTerm = { getActiveBookings: jest.fn() };
 
   beforeEach(() => {
     jest.clearAllMocks();
     currentForm = null;
+    longTerm.getActiveBookings.mockResolvedValue([]);
     context = createToolContext({
       session: {
         corpId: 'corp-1',
@@ -221,6 +225,7 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
     const built = buildInterviewPrecheckTool(sponge as never, ops as never, {
       collectionForms: collectionForms as never,
       observer,
+      longTermService: longTerm as never,
     })(context);
     const normalizedInput = {
       mode:
@@ -1275,6 +1280,167 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
       const result = await execute({ jobId: 100, requestedDate: tomorrow });
       expect(result.nextAction).toBe('select_interview_time');
       expect(currentForm?.scheduleDraft?.selectedInterviewTime).toBeUndefined();
+    });
+  });
+  /**
+   * 生产 batch …_1789111221226（2026-09-11）：同一候选人同时跟两个托管账号聊，另一账号 47 秒前
+   * 已建单（工单 464336），本账号 precheck 仍给 ready_to_book，booking 才被候选人级查重打回。
+   * precheck 必须先于 booking 亮出在途工单，让模型如实说"已约上"。
+   */
+  describe('候选人级在途工单查重（与 booking already_booked 同一判据）', () => {
+    const recentBooking = (extra: Record<string, unknown> = {}) => ({
+      work_order_id: 464336,
+      job_id: 100,
+      linked_at: new Date(Date.now() - 47_000).toISOString(),
+      ...extra,
+    });
+
+    function readyToBookSetup() {
+      currentForm = filledForm();
+      context.turnInput.messages = recapDialogue('没问题');
+      return recapConfirmationInput();
+    }
+
+    it('资料已授权但候选人名下 30 分钟内已有同岗位工单 → already_booked，不发 ready_to_book 凭据', async () => {
+      longTerm.getActiveBookings.mockResolvedValue([
+        recentBooking({ interview_time: '2026-09-14 13:30:00' }),
+      ]);
+
+      const result = await execute(readyToBookSetup());
+
+      expect(longTerm.getActiveBookings).toHaveBeenCalledWith('corp-1', 'user-1');
+      expect(result.collectionVerdict).toBe('ready');
+      expect(result.nextAction).toBe('already_booked');
+      expect(result.duplicateBookingGuard).toEqual({
+        workOrderId: 464336,
+        interviewTime: '2026-09-14 13:30:00',
+        interviewTimeHuman: '9月14日（周一）13:30',
+        note: expect.stringContaining('严禁再次 booking'),
+      });
+      expect(context.ledger.jobs.collectionReadyJobId).toBeUndefined();
+      expect(ops.recordEvent).not.toHaveBeenCalledWith(
+        expect.objectContaining({ eventName: 'precheck.passed' }),
+      );
+      expect(result._replyInstruction).toContain('工单 464336');
+      expect(result._replyInstruction).toContain('9月14日（周一）13:30');
+      expect(result._replyInstruction).toContain('已经约上');
+      expect(result._replyInstruction).toContain('禁止调用 duliday_interview_booking');
+      expect(result._replyInstruction).toContain('禁止说"系统有问题/没提交成功/稍后再帮你提交"');
+      expect(result._replyInstruction).toContain('workOrderId=464336');
+    });
+
+    it('duplicateBookingGuard 与出站守卫读取的字段成对（契约配对）', async () => {
+      longTerm.getActiveBookings.mockResolvedValue([
+        recentBooking({ interview_time: '2026-09-14 13:30:00' }),
+      ]);
+      const result = await execute(readyToBookSetup());
+      const precheckCall = [
+        { toolName: 'duliday_interview_precheck', args: {}, status: 'ok', result },
+      ] as never[];
+
+      // 形态 F：未改约却确认了另一个钟点 → 守卫按 interviewTime 对账
+      const changed = detectBookingReceiptMismatch('你说的15:30这个时间没问题', precheckCall);
+      expect(changed?.ruleId).toBe('interview_time_change_unconfirmed');
+      expect(changed?.label).toContain('464336');
+      // 复述工单既有钟点是如实陈述
+      expect(
+        detectBookingReceiptMismatch(
+          '你后台已经登记好了，预约是周一13:30，这个时间没问题',
+          precheckCall,
+        ),
+      ).toBeNull();
+      // 完成时态是对既有工单的合法复述
+      expect(
+        detectBookingDoneClaimWithoutSubmission('之前已经帮你约好了，周一直接到店', precheckCall),
+      ).toBeNull();
+      // 对照：没有在途工单的 precheck 不豁免
+      expect(
+        detectBookingDoneClaimWithoutSubmission('之前已经帮你约好了，周一直接到店', [
+          { toolName: 'duliday_interview_precheck', args: {}, status: 'ok', result: {} },
+        ] as never[])?.ruleId,
+      ).toBe('booking_done_claim_without_submission');
+    });
+
+    it('存量行没记面试时间：回执不带 interviewTime，指令要求不要编造时间', async () => {
+      longTerm.getActiveBookings.mockResolvedValue([recentBooking({ work_order_id: 400001 })]);
+
+      const result = await execute(readyToBookSetup());
+
+      expect(result.nextAction).toBe('already_booked');
+      expect(result.duplicateBookingGuard).toEqual({
+        workOrderId: 400001,
+        note: expect.any(String),
+      });
+      expect(result._replyInstruction).toContain('不要编造时间');
+      expect(result._replyInstruction).not.toContain('面试时间 ');
+    });
+
+    it.each([
+      [
+        '超出 30 分钟窗口',
+        recentBooking({ linked_at: new Date(Date.now() - 31 * 60_000).toISOString() }),
+      ],
+      ['不同岗位', recentBooking({ job_id: 101 })],
+    ])('%s 的在途工单不触发查重，照常 ready_to_book', async (_label, entry) => {
+      longTerm.getActiveBookings.mockResolvedValue([entry]);
+
+      const result = await execute(readyToBookSetup());
+
+      expect(result.nextAction).toBe('ready_to_book');
+      expect(result.duplicateBookingGuard).toBeUndefined();
+      expect(context.ledger.jobs.collectionReadyJobId).toBe(100);
+    });
+
+    it('收资中的表单同样被在途工单截住：不再向候选人收资', async () => {
+      longTerm.getActiveBookings.mockResolvedValue([recentBooking()]);
+
+      const result = await execute({ mode: 'query', jobId: 100 });
+
+      expect(result.collectionVerdict).toBe('collecting');
+      expect(result.nextAction).toBe('already_booked');
+      expect(result._replyInstruction).toContain('也不要再收资');
+    });
+
+    it('本表单自身已提交仍优先 already_submitted', async () => {
+      longTerm.getActiveBookings.mockResolvedValue([recentBooking()]);
+      currentForm = markSubmitted(filledForm(), 9001);
+
+      const result = await execute({ jobId: 100 });
+
+      expect(result.nextAction).toBe('already_submitted');
+      expect(result._replyInstruction).toContain('工单 9001');
+    });
+
+    it('追加候选人（代报）表单不查候选人级在途工单——与 booking 同口径豁免', async () => {
+      longTerm.getActiveBookings.mockResolvedValue([recentBooking()]);
+      const input = readyToBookSetup();
+      currentForm = { ...currentForm!, candidateScope: 'additional', candidateRef: '18271421690' };
+
+      const result = await execute(input);
+
+      expect(longTerm.getActiveBookings).not.toHaveBeenCalled();
+      expect(result.candidateScope).toBe('additional');
+      expect(result.nextAction).toBe('ready_to_book');
+      expect(result.duplicateBookingGuard).toBeUndefined();
+    });
+
+    it('未注入 LongTermService 时跳过查重', async () => {
+      longTerm.getActiveBookings.mockResolvedValue([recentBooking()]);
+      const input = readyToBookSetup();
+      const built = buildInterviewPrecheckTool(sponge as never, ops as never, {
+        collectionForms: collectionForms as never,
+        observer,
+      })(context);
+
+      const result = (await built.execute!(input as never, {
+        toolCallId: 'precheck-test',
+        context: {},
+        messages: [],
+        abortSignal: undefined as never,
+      })) as Record<string, unknown>;
+
+      expect(longTerm.getActiveBookings).not.toHaveBeenCalled();
+      expect(result.nextAction).toBe('ready_to_book');
     });
   });
 });

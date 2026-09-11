@@ -8,6 +8,7 @@ describe('ConsolidationService（M5 定时闲置沉淀）', () => {
   const latestAt = now - GAP_SECONDS * 1000;
 
   const longTerm = {
+    markLastSettledMessageAt: jest.fn().mockResolvedValue(undefined),
     getConsolidationWatermarks: jest.fn(),
     appendSummary: jest.fn().mockResolvedValue(undefined),
     writeFromConsolidation: jest.fn().mockResolvedValue(undefined),
@@ -202,6 +203,43 @@ describe('ConsolidationService（M5 定时闲置沉淀）', () => {
     expect(request.system).toContain('jobId、门店名、日期');
     expect(request.system).toContain('拒绝品牌');
     expect(request.system).toContain('不超过 150 字');
+  });
+
+  it('摘要写入前归一格式：范围行移除、Markdown 标题统一为「标题：」', async () => {
+    llm.generate.mockResolvedValue({
+      text: '范围：求职\n## 求职目标\n找上海浦东兼职。\n\n**关键约束** 只做晚班\n进展与结果：推荐了肯德基。\n未决事项：待回复。',
+    });
+
+    await service.consolidateIdleSession('corp-1', 'user-1', 'session-1', BOT_USER_ID, null);
+
+    expect(longTerm.appendSummary).toHaveBeenCalledWith(
+      'corp-1',
+      'user-1',
+      BOT_USER_ID,
+      expect.objectContaining({
+        summary:
+          '求职目标：找上海浦东兼职。\n关键约束：只做晚班\n进展与结果：推荐了肯德基。\n未决事项：待回复。',
+      }),
+      expect.any(Object),
+    );
+    expect(longTerm.markLastSettledMessageAt).not.toHaveBeenCalled();
+  });
+
+  it('范围为非求职时不写摘要，只推进会话水位', async () => {
+    llm.generate.mockResolvedValue({
+      text: '范围：非求职\n求职目标：无\n关键约束：无\n进展与结果：核对 8 月工时。\n未决事项：漏算工时补发。',
+    });
+
+    await service.consolidateIdleSession('corp-1', 'user-1', 'session-1', BOT_USER_ID, null);
+
+    expect(longTerm.appendSummary).not.toHaveBeenCalled();
+    expect(longTerm.markLastSettledMessageAt).toHaveBeenCalledWith(
+      'corp-1',
+      'user-1',
+      BOT_USER_ID,
+      new Date(latestAt).toISOString(),
+      'session-1',
+    );
   });
 
   it('超长咨询段只摘要末 120 条，并在 SummaryEntry 标注覆盖范围', async () => {

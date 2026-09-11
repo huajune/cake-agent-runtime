@@ -239,6 +239,69 @@ describe('MessageProcessingRepository', () => {
     });
   });
 
+  // ==================== countProcessingSince ====================
+
+  describe('countProcessingSince', () => {
+    it('should run a head-only exact count filtered by status=processing and received_at', async () => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(true);
+      const queryMock = makeQueryMock({ data: null, error: null, count: 4 });
+      mockSupabaseClient.from.mockReturnValue(queryMock);
+      const since = Date.now() - 24 * 60 * 60 * 1000;
+
+      const result = await repository.countProcessingSince(since);
+
+      expect(result).toBe(4);
+      expect(queryMock.select).toHaveBeenCalledWith('*', { count: 'exact', head: true });
+      expect(queryMock.eq).toHaveBeenCalledWith('status', 'processing');
+      expect(queryMock.gte).toHaveBeenCalledWith('received_at', new Date(since).toISOString());
+    });
+
+    it('should return 0 when supabase is not available', async () => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(false);
+
+      const result = await repository.countProcessingSince(Date.now());
+
+      expect(result).toBe(0);
+      expect(mockSupabaseClient.from).not.toHaveBeenCalled();
+    });
+  });
+
+  // ==================== getSuccessDurationsSince ====================
+
+  describe('getSuccessDurationsSince', () => {
+    it('should project only total_duration for success rows since the cutoff, newest first', async () => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(true);
+      const queryMock = makeQueryMock({
+        data: [
+          { total_duration: 211000 },
+          { total_duration: '5000' },
+          { total_duration: null },
+          { total_duration: 0 },
+        ],
+        error: null,
+      });
+      mockSupabaseClient.from.mockReturnValue(queryMock);
+      const since = Date.now() - 60 * 60 * 1000;
+
+      const result = await repository.getSuccessDurationsSince(since, 1000);
+
+      expect(result).toEqual([211000, 5000]);
+      expect(queryMock.select).toHaveBeenCalledWith('total_duration');
+      expect(queryMock.eq).toHaveBeenCalledWith('status', 'success');
+      expect(queryMock.gte).toHaveBeenCalledWith('received_at', new Date(since).toISOString());
+      expect(queryMock.order).toHaveBeenCalledWith('received_at', { ascending: false });
+      expect(queryMock.limit).toHaveBeenCalledWith(1000);
+    });
+
+    it('should return an empty array when supabase is not available', async () => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(false);
+
+      const result = await repository.getSuccessDurationsSince(Date.now(), 10);
+
+      expect(result).toEqual([]);
+    });
+  });
+
   // ==================== getMessageProcessingRecords ====================
 
   describe('getMessageProcessingRecords', () => {

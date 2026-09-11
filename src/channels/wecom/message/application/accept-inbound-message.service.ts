@@ -17,9 +17,7 @@ import {
   getMessageSourceDescription,
 } from '@enums/message-callback.enum';
 import { FilterReason } from '@enums/message-filter.enum';
-import { LongTermService } from '@memory/long-term/long-term.service';
 import { SessionStateService } from '@memory/short-term/session-state.service';
-import type { MessageMetadata } from '@memory/long-term/long-term.types';
 import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { GeneralHandoffNotifierService } from '@notification/services/general-handoff-notifier.service';
@@ -78,7 +76,6 @@ export class AcceptInboundMessageService {
     private readonly imageDescription: ImageDescriptionService,
     private readonly wecomObservability: WecomMessageObservabilityService,
     private readonly monitoringService: MessageTrackingService,
-    private readonly longTerm: LongTermService,
     private readonly session: SessionStateService,
     private readonly opsEventsRecorder: OpsEventsRecorderService,
     private readonly userHostingService: UserHostingService,
@@ -270,9 +267,8 @@ export class AcceptInboundMessageService {
     void (async () => {
       try {
         if (isGreeting) {
-          // 纯握手语：只代表「加好友」，不算候选人真实开口 → 兜底记 friend.added + 开户长期记忆，不记消息/破冰
+          // 纯握手语：只代表「加好友」，不算候选人真实开口 → 兜底记 friend.added，不记消息/破冰
           await this.recordFriendAddedOnFirstContact(messageData, corpId, botImId, userId);
-          await this.ensureLongTermProfile(messageData, corpId, userId);
           this.logger.log(
             `[漏斗] 加好友握手语不计候选人消息/破冰 [${messageData.messageId}] chatId=${messageData.chatId}`,
           );
@@ -290,10 +286,9 @@ export class AcceptInboundMessageService {
           userId,
         });
 
-        // 首条真实消息（破冰）即新好友首次接触 → 兜底补记 friend.added（幂等）+ 开户长期记忆
+        // 首条真实消息（破冰）即新好友首次接触 → 兜底补记 friend.added（幂等）
         if (result.engaged) {
           await this.recordFriendAddedOnFirstContact(messageData, corpId, botImId, userId);
-          await this.ensureLongTermProfile(messageData, corpId, userId);
         }
       } catch (error) {
         const errorMessage = toErrorMessage(error);
@@ -308,8 +303,10 @@ export class AcceptInboundMessageService {
    * friend.added（幂等键 `userId:friend_added` → 每候选人一次）。
    *
    * 这是**兜底**信号：主信号来自「新增客户回调—RPA」(NewCustomerCallbackService)，它在真实加好友时
-   * 即触发、含从不发消息的沉默僵尸。两者共用同一幂等键，谁先到算谁。长期记忆开户已解耦到
-   * ensureLongTermProfile——否则回调抢先插入 friend.added 后，消息路径就再也不会开户。
+   * 即触发、含从不发消息的沉默僵尸。两者共用同一幂等键，谁先到算谁。
+   *
+   * 首次接触不再在 agent_long_term_memories 开户：09-11 核对近 60 天 10,988 行里 7,758 行
+   * 是只带 message_metadata 的占位行，从未沉淀；长期关系行只由 consolidation 创建。
    */
   private async recordFriendAddedOnFirstContact(
     messageData: EnterpriseMessageCallbackDto,
@@ -327,61 +324,6 @@ export class AcceptInboundMessageService {
       userId,
       chatId: messageData.chatId,
     });
-  }
-
-  /**
-   * 开户长期记忆元数据。与 friend.added 是否新插入解耦：新增客户回调可能已抢先记了 friend.added，
-   * 此时消息路径仍需在候选人首次接触时开户。updateMessageMetadata 底层为 upsert，重复调用幂等。
-   */
-  private async ensureLongTermProfile(
-    messageData: EnterpriseMessageCallbackDto,
-    corpId: string,
-    userId: string,
-  ): Promise<void> {
-    const metadata = this.buildMessageMetadata(messageData);
-    if (!metadata) return;
-    try {
-      const botUserId =
-        (await this.botService.resolveBotUserIdByImBotId(messageData.imBotId)) ??
-        messageData.botUserId?.trim();
-      if (!botUserId) {
-        this.logger.warn(
-          `[新好友] 缺少稳定 botUserId，跳过长期记忆元数据开户 [${messageData.messageId}]`,
-        );
-        return;
-      }
-      await this.longTerm.updateMessageMetadata(corpId, userId, botUserId, metadata);
-      this.logger.log(
-        `[新好友] 已开户长期记忆元数据: userId=${userId}, chatId=${messageData.chatId}`,
-      );
-    } catch (error) {
-      const errorMessage = toErrorMessage(error);
-      this.logger.warn(
-        `[新好友] 长期记忆元数据开户失败 [${messageData.messageId}]: ${errorMessage}`,
-      );
-    }
-  }
-
-  private buildMessageMetadata(messageData: EnterpriseMessageCallbackDto): MessageMetadata | null {
-    const metadata: MessageMetadata = {};
-    this.assignIfPresent(metadata, 'botId', messageData.botId);
-    this.assignIfPresent(metadata, 'imBotId', messageData.imBotId);
-    this.assignIfPresent(metadata, 'imContactId', messageData.imContactId);
-    this.assignIfPresent(metadata, 'contactType', messageData.contactType);
-    this.assignIfPresent(metadata, 'contactName', messageData.contactName);
-    this.assignIfPresent(metadata, 'externalUserId', messageData.externalUserId);
-    this.assignIfPresent(metadata, 'avatar', messageData.avatar);
-    return Object.keys(metadata).length > 0 ? metadata : null;
-  }
-
-  private assignIfPresent<K extends keyof MessageMetadata>(
-    target: MessageMetadata,
-    key: K,
-    value: MessageMetadata[K] | undefined,
-  ): void {
-    if (value === null || value === undefined) return;
-    if (typeof value === 'string' && value.trim().length === 0) return;
-    target[key] = value;
   }
 
   // 入站预描述分支已废弃（用户裁定，visual-fact-structuring 链路简化）：

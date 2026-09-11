@@ -33,6 +33,10 @@ import { getTrendHours } from './analytics-calc.util';
 
 const DEFAULT_USER_TREND_DAYS = 30;
 const MAX_USER_TREND_DAYS = 730;
+/** 在途请求只看最近 24h 的 processing 行；更早的行由小时级超时回收兜底 */
+const ACTIVE_REQUEST_WINDOW_MS = 24 * 60 * 60 * 1000;
+/** P95 样本上限：今日成功回合按 received_at 倒序取最近 N 条 */
+const PERCENTILE_SAMPLE_LIMIT = 1000;
 
 function normalizeUserTrendDays(days?: number): number {
   if (!Number.isFinite(days) || days === undefined) {
@@ -107,15 +111,20 @@ export class AnalyticsQueryService {
   }> {
     try {
       const now = Date.now();
-      const [queueDurationStats, errorLogs, activeRequests, peakActiveRequests, queueStatus] =
-        await Promise.all([
-          // 只要一个均值，交给 DB 聚合；拉明细会因 jsonb 列 detoast 拖到数秒
-          this.messageProcessingService.getQueueDurationStats(now - 24 * 60 * 60 * 1000, now),
-          this.getErrorLogsByTimeRange('today'),
-          this.messageTrackingService.getActiveRequests(),
-          this.messageTrackingService.getPeakActiveRequests(),
-          this.messageProcessor.getQueueStatus(),
-        ]);
+      const dayAgo = now - ACTIVE_REQUEST_WINDOW_MS;
+      const [queueDurationStats, errorLogs, activeRequests, queueStatus] = await Promise.all([
+        // 只要一个均值，交给 DB 聚合；拉明细会因 jsonb 列 detoast 拖到数秒
+        this.messageProcessingService.getQueueDurationStats(dayAgo, now),
+        this.getErrorLogsByTimeRange('today'),
+        // 在途请求以 DB 里仍为 processing 的行为准（head-only count）：
+        // Redis 计数器在超时回收 / 进程重启时漏减，只增不减会漂到几百
+        this.countActiveRequests(dayAgo),
+        this.messageProcessor.getQueueStatus(),
+      ]);
+
+      // 用真值回写 Redis，让其他读计数器的路径与告警阈值不再看到漂移值
+      await this.cacheService.resyncActiveRequests(activeRequests);
+      const peakActiveRequests = await this.messageTrackingService.getPeakActiveRequests();
 
       const queue = {
         activeRequests,
@@ -170,23 +179,16 @@ export class AnalyticsQueryService {
   async getMetricsDataAsync(): Promise<MetricsData> {
     try {
       // hourlyStats 曾随 metrics 每 5 秒拉 72 行，唯一消费方（系统监控页）只读 percentiles.p95，已移除
-      const [detailRecords, globalCounters, recentErrors] = await Promise.all([
+      const [detailRecords, globalCounters, recentErrors, todayDurations] = await Promise.all([
         this.getRecentDetailRecords(50),
         this.cacheService.getCounters(),
         this.getRecentErrors(20),
+        // 分位数按「今日成功回合」算：最近 50 行不分状态/时间，且曾以 60s 封顶丢掉四成真实成功回合
+        this.getTodaySuccessDurations(),
       ]);
 
-      const MAX_DURATION_MS = 60 * 1000;
-      const durations = detailRecords
-        .filter(
-          (r) =>
-            r.status === 'success' &&
-            r.totalDuration !== undefined &&
-            r.totalDuration <= MAX_DURATION_MS,
-        )
-        .map((r) => r.totalDuration!);
-
-      const percentiles = this.analyticsMetricsService.calculatePercentilesFromArray(durations);
+      const percentiles =
+        this.analyticsMetricsService.calculatePercentilesFromArray(todayDurations);
 
       const slowestRecords = [...detailRecords]
         .filter((r) => r.totalDuration !== undefined)
@@ -363,6 +365,33 @@ export class AnalyticsQueryService {
       active_users: item.uniqueUsers,
       active_chats: 0,
     }));
+  }
+
+  /**
+   * 今日（Asia/Shanghai 日起点）成功回合的 total_duration，最多取最近 1000 条。
+   */
+  private async getTodaySuccessDurations(): Promise<number[]> {
+    try {
+      return await this.messageProcessingService.getSuccessDurationsSince(
+        getLocalDayStart().getTime(),
+        PERCENTILE_SAMPLE_LIMIT,
+      );
+    } catch (error) {
+      this.logger.error('查询今日成功回合耗时失败:', error);
+      return [];
+    }
+  }
+
+  /**
+   * DB 中仍为 processing 的记录数；查询失败时返回 0，不回退到 Redis 漂移值。
+   */
+  private async countActiveRequests(sinceTime: number): Promise<number> {
+    try {
+      return await this.messageProcessingService.countProcessingRecordsSince(sinceTime);
+    } catch (error) {
+      this.logger.error('统计在途请求失败:', error);
+      return 0;
+    }
   }
 
   public async getRecentDetailRecords(limit: number = 50): Promise<MessageProcessingRecord[]> {

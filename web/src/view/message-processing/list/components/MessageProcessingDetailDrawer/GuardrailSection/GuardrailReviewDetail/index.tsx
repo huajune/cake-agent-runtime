@@ -53,54 +53,53 @@ function shouldShowStepFeedback(step: GuardrailReviewStepDetail) {
   );
 }
 
-function severityClass(severity: string) {
-  return /^p[01]$/i.test(severity.trim()) ? styles.severityHigh : styles.severityLow;
+function isHighSeverity(severity: string) {
+  return /^p[01]$/i.test(severity.trim());
 }
 
 /**
- * 首审/二审裁决：命中规则、风险、阻断与逐条违规（证据/建议全文）。
- * 同一规则只露一次——已有违规卡片的规则不再重复渲染成独立标签，阻断标记并入卡片头部。
+ * 首审/二审裁决。每个阶段只保留一个胶囊（裁决），其余信息降为文字：
+ * 风险等级一行小字，命中规则、级别、阻断都在违规卡片头部同一行用文字表达，
+ * 不再堆叠 rule / P1 / 阻断 三个胶囊。同一规则只露一次。
  */
 function StepVerdict({ step }: { step: GuardrailReviewStepDetail }) {
   const showFeedback = shouldShowStepFeedback(step);
   const violationTypes = new Set(step.violations.map((violation) => violation.type));
   const blockedSet = new Set(step.blockedRuleIds);
   const standaloneRules = step.ruleIds.filter((rule) => !violationTypes.has(rule));
-  const standaloneBlocked = step.blockedRuleIds.filter((rule) => !violationTypes.has(rule));
 
   return (
     <>
       <div className={styles.verdictMeta}>
-        <span className={`${styles.riskBadge} ${styles[`risk${step.riskLevel}`]}`}>
+        <span className={`${styles.riskText} ${styles[`risk${step.riskLevel}`]}`}>
           <i className={styles.riskDot} />
-          风险 {RISK_LABELS[step.riskLevel]}
+          风险{RISK_LABELS[step.riskLevel]}
         </span>
-        {standaloneRules.map((rule) => (
-          <code key={rule} className={styles.ruleTag} title={guardrailRuleTitle(rule)}>
-            {guardrailRuleLabel(rule)}
-          </code>
-        ))}
-        {standaloneBlocked.map((rule) => (
-          <code
-            key={`blocked-${rule}`}
-            className={styles.blockedRuleTag}
-            title={guardrailRuleTitle(rule)}
-          >
-            阻断 · {guardrailRuleLabel(rule)}
-          </code>
-        ))}
+        {standaloneRules.length > 0 && (
+          <span className={styles.ruleList}>
+            命中
+            {standaloneRules.map((rule) => (
+              <span key={rule} className={styles.ruleName} title={guardrailRuleTitle(rule)}>
+                {blockedSet.has(rule) ? '阻断 · ' : ''}
+                {guardrailRuleLabel(rule)}
+              </span>
+            ))}
+          </span>
+        )}
       </div>
       {step.violations.length > 0 && (
         <div className={styles.violationList}>
           {step.violations.map((v, i) => (
             <div key={`${v.type}-${i}`} className={styles.violation}>
               <div className={styles.violationHead}>
-                <code className={styles.ruleTag} title={guardrailRuleTitle(v.type)}>
+                <span className={styles.ruleName} title={guardrailRuleTitle(v.type)}>
                   {guardrailRuleLabel(v.type)}
-                </code>
+                </span>
                 {v.severity && (
-                  <span className={`${styles.severity} ${severityClass(v.severity)}`}>
-                    {v.severity}
+                  <span
+                    className={`${styles.severity} ${isHighSeverity(v.severity) ? styles.severityHigh : ''}`}
+                  >
+                    {v.severity.toUpperCase()}
                   </span>
                 )}
                 {blockedSet.has(v.type) && <span className={styles.blockedMark}>阻断</span>}
@@ -136,7 +135,7 @@ function SemanticReview({ review, index }: { review: GuardrailSemanticReview; in
     <div className={styles.semanticReview}>
       <div className={styles.semanticHeader}>
         <span className={styles.semanticIndex}>判例 {index + 1}</span>
-        <code className={styles.semanticMode}>{review.mode}</code>
+        <span className={styles.semanticMode}>{review.mode}</span>
         {decisionBadge(review.decision)}
         <span className={styles.confidence}>置信度 {review.confidence}</span>
       </div>
@@ -144,7 +143,7 @@ function SemanticReview({ review, index }: { review: GuardrailSemanticReview; in
         <div className={styles.findingList}>
           {review.findings.map((finding, findingIndex) => (
             <div key={`${finding.code}-${findingIndex}`} className={styles.finding}>
-              <code className={styles.findingCode}>{finding.code}</code>
+              <span className={styles.findingCode}>{finding.code}</span>
               {finding.evidenceQuote && (
                 <div className={styles.findingLine}>
                   <span>证据</span>

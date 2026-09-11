@@ -4,6 +4,7 @@ import { ModelRole } from '@/llm/llm.types';
 import { MemoryConfig } from '../memory.config';
 import { LongTermService } from './long-term.service';
 import type { SummaryEntry } from './long-term.types';
+import { parseSummaryOutput } from './summary-format';
 import {
   type EntityExtractionResult,
   type SessionFacts,
@@ -19,12 +20,20 @@ import {
 
 const SUMMARY_SYSTEM_PROMPT = `你是对话摘要生成器。将招募经理与候选人的对话和提取事实压缩为结构化短摘要。
 
+输出格式（纯文本，不用 Markdown 标题、列表或加粗）：
+范围：求职 或 非求职
+求职目标：…
+关键约束：…
+进展与结果：…
+未决事项：…
+
 要求：
-- 必须严格输出四节，标题依次为「求职目标」「关键约束」「进展与结果」「未决事项」
-- 保留可检索标识符，包括 jobId、门店名、日期；没有的信息写“无”
+- 首行「范围」：对话围绕找工作、看岗位、约面、报名写「求职」；候选人已入职后的工时、工资、排班、离职等在职事务，或与找工作无关的闲聊写「非求职」
+- 必须严格输出四节，标题依次为「求职目标」「关键约束」「进展与结果」「未决事项」，每节一行，标题后用中文冒号
+- 保留可检索标识符，包括 jobId、门店名、日期；没有的信息直接省略，不写“无”“未提供”“均无”之类的填充句
 - 拒绝品牌、不可接受的岗位/地点/时间等必须写入「关键约束」
 - 不得把岗位要求或助手话术写成候选人事实
-- 总长度不超过 150 字，使用第三人称`;
+- 四节总长度不超过 150 字，使用第三人称`;
 
 const CONSOLIDATION_FETCH_LIMIT = 500;
 const CONSOLIDATION_MAX_PAGES = 10;
@@ -37,7 +46,7 @@ const SUMMARY_MAX_MESSAGES = 120;
  *
  * ## 设计约束
  *
- * 每回合结束由 ConsolidationSchedulerService 刷新约 3 天的 Bull delayed job；本服务
+ * 每回合结束由 ConsolidationSchedulerService 刷新约 7 天的 Bull delayed job；本服务
  * 到点后用 chat_messages 最新时间复核闲置，避免旧任务与新消息竞态。facts key 比
  * 沉淀阈值多 12 小时余量，使本服务在状态过期前完成读取。
  *
@@ -205,7 +214,8 @@ export class ConsolidationService {
       prompt: `[对话记录]\n${conversationText}\n\n[提取信息]\n${factsText}`,
     });
 
-    const summary = result.text?.trim();
+    const parsed = parseSummaryOutput(result.text ?? '');
+    const summary = parsed.body;
     if (!summary) {
       throw new Error(`memory_consolidation_summary_empty:${sessionId}`);
     }
@@ -232,6 +242,22 @@ export class ConsolidationService {
         botImId,
         brandState: brandState ?? null,
       });
+    }
+
+    // 非求职段（在职事务/闲聊）不进经历摘要：摘要只增不改，写进去就永远占着 20 段配额。
+    // 事实仍已写入，水位照常推进，保证幂等与下一段的边界。范围行缺失时按求职处理。
+    if (parsed.scope === 'other') {
+      await this.longTerm.markLastSettledMessageAt(
+        corpId,
+        userId,
+        botUserId,
+        sessionEndAt,
+        sessionId,
+      );
+      this.logger.log(
+        `[consolidation] 非求职段不写摘要，仅推进水位: userId=${userId}, sessionId=${sessionId}, endAt=${sessionEndAt}`,
+      );
+      return;
     }
 
     await this.longTerm.appendSummary(corpId, userId, botUserId, summaryEntry, {
