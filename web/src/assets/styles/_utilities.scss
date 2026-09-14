@@ -237,7 +237,7 @@ canvas {
   line-height: 1.6;
   max-width: 80%;
   position: relative;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
+  box-shadow: 0 2px 4px rgba(91, 77, 230, 0.02);
 
   &.user {
     background: #fff;
@@ -446,7 +446,7 @@ canvas {
   background: #ffffff;
   border: 1px solid $border;
   border-radius: 16px;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(255, 255, 255, 0.5) inset;
+  box-shadow: 0 10px 40px rgba(91, 77, 230, 0.12), 0 0 0 1px rgba(255, 255, 255, 0.5) inset;
   animation: tooltipFadeIn 0.2s ease-out;
   overflow: hidden;
 }
@@ -571,7 +571,7 @@ canvas {
   top: -10px;
   right: 10px;
   font-size: 32px;
-  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.15));
+  filter: drop-shadow(0 4px 6px rgba(91, 77, 230, 0.15));
   animation: springFloat 3s ease-in-out infinite;
   z-index: 20;
 }
@@ -601,7 +601,7 @@ canvas {
   font-size: 28px;
   z-index: 15;
   pointer-events: none;
-  filter: drop-shadow(0 4px 4px rgba(0, 0, 0, 0.15));
+  filter: drop-shadow(0 4px 4px rgba(91, 77, 230, 0.15));
   transition: all 0.3s ease;
 
   .metric-card:hover &,

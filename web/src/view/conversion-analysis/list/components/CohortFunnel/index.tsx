@@ -36,9 +36,9 @@ interface FunnelChartDatum extends ConversionFunnelStage {
 // 柔和马卡龙渐变：紫 → 蓝 → 青绿 → 粉 → 桃（参考玻璃碗漏斗）。
 const FUNNEL_PALETTE = [
   { color: '#b892f0', accent: '#d3bdf5' },
-  { color: '#97a5f5', accent: '#c9cffb' },
+  { color: '#7fb9c4', accent: '#c5e3e0' },
   { color: '#7ed8a4', accent: '#b6ecc9' },
-  { color: '#f59bc5', accent: '#fbc6dc' },
+  { color: '#dfa4bb', accent: '#edd1d8' },
   { color: '#f5b878', accent: '#ffd9b8' },
   { color: '#d3bdf5', accent: '#e9dcfb' },
 ];
@@ -81,7 +81,7 @@ const SPRINKLES: Array<[number, number, number, number]> = [
   [0.32, -0.45, -12, 5],
   [-0.18, -0.05, 40, 4],
 ];
-const SPRINKLE_COLORS = ['#f5c6da', '#f5c878', '#a6e6cc', '#aacbfa', '#f7bcd3', '#b9a6ff'];
+const SPRINKLE_COLORS = ['#edd1d8', '#f5c878', '#a6e6cc', '#b4dcdf', '#f7bcd3', '#b9a6ff'];
 
 export default function CohortFunnel({
   data,
