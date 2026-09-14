@@ -1,10 +1,43 @@
 {
   "baseVersion": "11.8.1",
-  "nextVersion": "11.8.1",
-  "lastAnalyzedSha": null,
+  "nextVersion": "11.8.2",
   "updatedAt": "2026-09-14",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "1279",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1279",
+      "title": "回滚过度提亮，背景恢复 0911 版并补回阴影/淡底/光晕分量",
+      "author": "huajune",
+      "mergedAt": "2026-09-14",
+      "businessUpdates": [
+        "回滚过度提亮，背景恢复 0911 版并补回阴影/淡底/光晕分量"
+      ],
+      "summary": [
+        "回滚过度提亮，背景恢复 0911 版并补回阴影/淡底/光晕分量"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [
+        "全站背景恢复上周（0911）版本：页面渐变回到极淡粉紫、底色 `#fdfcff`、背景光斑透明度回到 0.18；上一版提亮到近白后被判「太淡」",
+        "输入框、搜索框与灰胶囊底恢复到看得见的淡紫（tint `#f1eefb`、次级底 `#f8f6fd`）",
+        "四档卡片阴影保留丁香色相，分量按上周黑阴影的观感回补；页面内 78 处写死的丁香阴影与淡底同步加重",
+        "处理记录详情弹窗的三层紫光晕回到 4%～8%，右栏半透明回到 0.72",
+        "聊天记录候选人气泡水色淡底回到 10%；Agent 气泡黄底回到 50%/22%，比原先的 30% 仍轻一档，避免此前反馈过的「明黄太重」"
+      ],
+      "ops": [
+        "回滚过度提亮，背景恢复 0911 版并补回阴影/淡底/光晕分量"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`pnpm --dir web run lint`：0 error（6 条既有 hooks warning 与本次无关）",
+        "`pnpm --dir web run build`：通过",
+        "本地起 backend-prod-preview + web，用户在浏览器实机逐项确认"
+      ],
+      "level": "patch"
+    }
+  ],
   "lastRelease": {
     "version": "11.8.1",
     "date": "2026-09-14",
@@ -111,5 +144,6 @@
         "level": "patch"
       }
     ]
-  }
+  },
+  "lastAnalyzedSha": "6a85a35e4a91d32e1a1834f926313b7a0d64ff63"
 }

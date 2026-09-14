@@ -106,10 +106,10 @@ $text-on-primary: #ffffff;
 
 // 背景颜色
 $bg-primary: #ffffff;
-$bg-page: #ffffff;
+$bg-page: #fdfcff;
 $bg-card: #ffffff;
-$bg-secondary: #fcfbff;
-$bg-tint: #f7f6ff;
+$bg-secondary: #f8f6fd;
+$bg-tint: #f1eefb;
 $bg-sidebar: #ffffff;
 $bg-hover: rgba($primary, 0.05);
 
@@ -126,8 +126,8 @@ $gradient-primary: linear-gradient(135deg, #8c7bff 0%, #c3a0fb 100%);
 $gradient-card: linear-gradient(135deg, #ffffff 0%, #f8f6fd 100%);
 $gradient-hover: linear-gradient(135deg, rgba($primary, 0.05) 0%, rgba($accent, 0.05) 100%);
 $gradient-dream: linear-gradient(118deg, #f0efff 0%, #faf4fe 34%, #f2f7ff 68%, #fdfdff 100%);
-// 全站大背景：近白粉紫→中段一丝蓝→纯白（奶油尾段试过被判偏黄，已撤）
-$gradient-page: linear-gradient(135deg, #fefdff 0%, #fffcfe 30%, #fcfdff 65%, #ffffff 100%);
+// 全站大背景：极淡粉紫→中段一丝蓝→纯白（0911 定版；0914 试过再提亮到近白，用户判「太淡」已回滚；奶油尾段判偏黄也已撤）
+$gradient-page: linear-gradient(135deg, #fdfbff 0%, #fff9fd 30%, #f9fbff 65%, #ffffff 100%);
 
 // ========== 间距系统 ==========
 $spacing-unit: 1rem; // 16px
@@ -155,10 +155,10 @@ $radius-xl: 16px;
 $radius-full: 9999px;
 
 // ========== 阴影 ==========
-$shadow-sm: 0 1px 2px rgba(134, 116, 255, 0.04);
-$shadow-md: 0 4px 6px -1px rgba(134, 116, 255, 0.06), 0 2px 4px -1px rgba(134, 116, 255, 0.04);
-$shadow-lg: 0 10px 15px -3px rgba(134, 116, 255, 0.06), 0 4px 6px -2px rgba(134, 116, 255, 0.03);
-$shadow-xl: 0 20px 25px -5px rgba(134, 116, 255, 0.06), 0 10px 10px -5px rgba(134, 116, 255, 0.03);
+$shadow-sm: 0 1px 2px rgba(134, 116, 255, 0.07);
+$shadow-md: 0 4px 6px -1px rgba(134, 116, 255, 0.14), 0 2px 4px -1px rgba(134, 116, 255, 0.08);
+$shadow-lg: 0 10px 15px -3px rgba(134, 116, 255, 0.14), 0 4px 6px -2px rgba(134, 116, 255, 0.07);
+$shadow-xl: 0 20px 25px -5px rgba(134, 116, 255, 0.14), 0 10px 10px -5px rgba(134, 116, 255, 0.06);
 $shadow-glow: 0 0 20px rgba($primary, 0.15);
 
 // ========== 字体 ==========

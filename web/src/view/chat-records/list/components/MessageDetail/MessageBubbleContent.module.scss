@@ -14,7 +14,7 @@
   display: inline-block;
   font-size: $font-size-xs;
   color: $text-muted;
-  background: rgba(134, 116, 255, 0.04);
+  background: rgba(134, 116, 255, 0.056);
   padding: 4px 10px;
   border-radius: $radius-md;
 }
@@ -49,7 +49,7 @@
   max-height: min(420px, 58vh);
   border-radius: $radius-md;
   object-fit: contain;
-  background: rgba(134, 116, 255, 0.04);
+  background: rgba(134, 116, 255, 0.056);
   transition:
     transform 0.2s ease,
     box-shadow 0.2s ease;
@@ -277,7 +277,7 @@
   gap: 10px;
   padding: 10px 14px;
   border-radius: $radius-md;
-  background: rgba(134, 116, 255, 0.03);
+  background: rgba(134, 116, 255, 0.042);
   border: 1px solid rgba(0, 0, 0, 0.06);
   color: $text-primary;
   text-decoration: none;
@@ -285,7 +285,7 @@
   max-width: 320px;
 
   &:hover {
-    background: rgba(134, 116, 255, 0.05);
+    background: rgba(134, 116, 255, 0.07);
   }
 }
 
@@ -320,7 +320,7 @@
   gap: 10px;
   padding: 10px 12px;
   border-radius: $radius-md;
-  background: rgba(134, 116, 255, 0.03);
+  background: rgba(134, 116, 255, 0.042);
   border: 1px solid rgba(0, 0, 0, 0.06);
   color: $text-primary;
   text-decoration: none;
@@ -328,7 +328,7 @@
   max-width: 340px;
 
   &:hover {
-    background: rgba(134, 116, 255, 0.05);
+    background: rgba(134, 116, 255, 0.07);
   }
 }
 
@@ -338,7 +338,7 @@
   border-radius: $radius-sm;
   object-fit: cover;
   flex-shrink: 0;
-  background: rgba(134, 116, 255, 0.05);
+  background: rgba(134, 116, 255, 0.07);
 }
 
 .linkBody {
@@ -512,7 +512,7 @@
   max-height: 140px;
   object-fit: cover;
   border-radius: $radius-sm;
-  background: rgba(134, 116, 255, 0.04);
+  background: rgba(134, 116, 255, 0.056);
 }
 
 .miniProgramDesc {
@@ -528,7 +528,7 @@
   gap: 10px;
   padding: 10px 14px;
   border-radius: $radius-md;
-  background: rgba(134, 116, 255, 0.03);
+  background: rgba(134, 116, 255, 0.042);
   border: 1px solid rgba(0, 0, 0, 0.06);
   min-width: 220px;
   max-width: 300px;
@@ -549,7 +549,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: rgba(134, 116, 255, 0.06);
+  background: rgba(134, 116, 255, 0.084);
   font-size: $font-size-lg;
   flex-shrink: 0;
 }
