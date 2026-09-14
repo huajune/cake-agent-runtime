@@ -14,12 +14,13 @@
 **预计版本**: `v11.8.1`
 **最近更新**: `2026-09-14`
 **来源分支**: `develop`
-**累计 PR**: 1
+**累计 PR**: 2
 
 ### 更新摘要
 - PR #1270 删除 brand_state 懒迁移的孤儿 JSDoc
 - PR #1270 删除 8 月至 9 月初的周报存档
 - PR #1270 删除 brand_state 孤儿 JSDoc 与 8 月周报存档
+- PR #1271 清理已完成的 todo，收口数据保留与 BadCase 两份待办
 
 ### 新功能
 - 无
@@ -29,11 +30,17 @@
 
 ### 优化调整
 - PR #1270 删除 `facts.service.ts` 里 brand_state 懒迁移的孤儿 JSDoc：PR #1251 下线该读兼容时删了方法体，注释块悬空。
+- PR #1271 `docs/db/database-schema.md` 与 `data-cleanup.service.ts` 头注释的保留期改为当前值：`chat_messages` / `user_activity` 永久，观测表 90 天，`agent_invocation` 子表 7 天；已 DROP 的 `cleanup_chat_messages` / `cleanup_user_activity` 从 RPC 表移除。纯文档与注释，无行为变化。
 
 ### 运维与流程
 - PR #1270 删除 `docs/releases/2026/` 下 8 月至 9 月初的四份周报存档（08-14 / 08-21 / 08-28 / 09-04）。用户 2026-09-14 决定不再在仓库内保留：运行数据每周已发飞书卡片，改动明细在 CHANGELOG 与各版本发版说明里，存档是第三份重复。
 - PR #1270 删除 brand_state 懒迁移的孤儿 JSDoc
 - PR #1270 删除 8 月至 9 月初的周报存档
+- PR #1271 删除三份已落地的 todo：判官标定（`weekly-judge-calibration` 周任务 09-08 已自动运行并落质量指标台账）、回合装配边界重构（PR #1190 完成定义全勾）、品牌提及集合与工具示例治理（随 v11.6.0 上线）。
+- PR #1271 数据保留策略 todo 只保留未做项：运营口径对齐、PII 读取收口、`handoff_events` 数据质量、表结构遗留。主体已随 v11.2.0 上线，两条迁移已核实在生产。
+- PR #1271 BadCase 积压报告压缩为单份待办，按「需裁定 / 工程待实现 / 运营核对 / 观察中」分组；判官标定文档里的三条管道观察项并入。
+- PR #1271 todo 索引同步；四处指向已删文档的链接改为现状描述。
+- PR #1271 清理已完成的 todo，收口数据保留与 BadCase 两份待办
 
 ### 配置变更
 - 无
@@ -43,6 +50,7 @@
 
 ### 验证记录
 - PR #1270 `prettier --check` / `eslint` 对改动的源文件通过；纯注释与文档删除，无行为变化，无迁移、无环境变量。
+- PR #1271 prettier / eslint 对改动文件通过；无迁移、无环境变量、无运行时改动。
 <!-- release:pending:end -->
 
 ## [11.8.0] - 2026-09-11
