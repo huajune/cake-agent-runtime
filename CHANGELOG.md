@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [11.8.2] - 2026-09-14
 
-**预计版本**: `v11.8.2`
-**最近更新**: `2026-09-14`
 **来源分支**: `develop`
-**累计 PR**: 1
 
 ### 更新摘要
 - PR #1279 回滚过度提亮，背景恢复 0911 版并补回阴影/淡底/光晕分量
@@ -45,7 +41,6 @@
 - PR #1279 `pnpm --dir web run lint`：0 error（6 条既有 hooks warning 与本次无关）
 - PR #1279 `pnpm --dir web run build`：通过
 - PR #1279 本地起 backend-prod-preview + web，用户在浏览器实机逐项确认
-<!-- release:pending:end -->
 
 ## [11.8.1] - 2026-09-14
 
