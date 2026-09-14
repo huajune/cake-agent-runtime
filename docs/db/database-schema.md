@@ -43,24 +43,24 @@
 
 ## 总览
 
-| #     | 表名                                      | 业务域 | 写入方式            | 读取方式     | 数据保留                             |
-| ----- | ----------------------------------------- | ------ | ------------------- | ------------ | ------------------------------------ |
-| 1     | `chat_messages`                           | 消息   | upsert              | select / RPC | 90 天                                |
-| 2     | `message_processing_records`              | 消息   | insert / upsert     | select / RPC | 30 天（7 天后清空 agent_invocation） |
-| ~~3~~ | ~~`interview_booking_records`~~ 🗄️ 已删除 | —      | —                   | —            | 迁移 20260625111500 移除             |
-| ~~4~~ | ~~`recruitment_cases`~~ 🗄️ 已删除         | —      | —                   | —            | 迁移 20260610170000 移除             |
-| 5     | `agent_long_term_memories`                | 记忆   | RPC upsert / select | select       | 永久                                 |
-| 6     | `user_activity`                           | 用户   | RPC upsert          | select       | 30 天                                |
-| 7     | `user_hosting_status`                     | 用户   | upsert / update     | select       | 永久                                 |
-| 8     | `monitoring_hourly_stats`                 | 监控   | upsert              | select       | 永久                                 |
-| 9     | `monitoring_daily_stats`                  | 监控   | upsert              | select       | 永久                                 |
-| 10    | `monitoring_error_logs`                   | 监控   | insert              | select       | 30 天                                |
-| 11    | `system_config`                           | 配置   | upsert              | select       | 永久                                 |
-| 12    | `strategy_config`                         | 配置   | insert / update     | select       | 永久（多版本）                       |
-| 13    | `strategy_config_changelog`               | 配置   | insert              | select       | 永久                                 |
-| 14    | `test_batches`                            | 测试   | insert / update     | select       | 永久                                 |
-| 15    | `test_executions`                         | 测试   | insert / update     | select       | 永久                                 |
-| 16    | `test_conversation_snapshots`             | 测试   | insert / update     | select       | 永久                                 |
+| #     | 表名                                      | 业务域 | 写入方式            | 读取方式     | 数据保留                            |
+| ----- | ----------------------------------------- | ------ | ------------------- | ------------ | ----------------------------------- |
+| 1     | `chat_messages`                           | 消息   | upsert              | select / RPC | 永久（不可再生资产）                |
+| 2     | `message_processing_records`              | 消息   | insert / upsert     | select / RPC | 90 天（agent_invocation 子表 7 天） |
+| ~~3~~ | ~~`interview_booking_records`~~ 🗄️ 已删除 | —      | —                   | —            | 迁移 20260625111500 移除            |
+| ~~4~~ | ~~`recruitment_cases`~~ 🗄️ 已删除         | —      | —                   | —            | 迁移 20260610170000 移除            |
+| 5     | `agent_long_term_memories`                | 记忆   | RPC upsert / select | select       | 永久                                |
+| 6     | `user_activity`                           | 用户   | RPC upsert          | select       | 永久                                |
+| 7     | `user_hosting_status`                     | 用户   | upsert / update     | select       | 永久                                |
+| 8     | `monitoring_hourly_stats`                 | 监控   | upsert              | select       | 90 天                               |
+| 9     | `monitoring_daily_stats`                  | 监控   | upsert              | select       | 90 天                               |
+| 10    | `monitoring_error_logs`                   | 监控   | insert              | select       | 90 天                               |
+| 11    | `system_config`                           | 配置   | upsert              | select       | 永久                                |
+| 12    | `strategy_config`                         | 配置   | insert / update     | select       | 永久（多版本）                      |
+| 13    | `strategy_config_changelog`               | 配置   | insert              | select       | 永久                                |
+| 14    | `test_batches`                            | 测试   | insert / update     | select       | 永久                                |
+| 15    | `test_executions`                         | 测试   | insert / update     | select       | 永久                                |
+| 16    | `test_conversation_snapshots`             | 测试   | insert / update     | select       | 永久                                |
 
 ---
 
@@ -151,7 +151,7 @@
 
 - **写入**：`saveChatMessage()` / `saveChatMessagesBatch()` — upsert by message_id
 - **读取**：`getChatHistory()` / `getSessionList()` — 按 chat_id + 时间范围
-- **清理**：RPC `cleanup_chat_messages(90)` — 保留 90 天
+- **清理**：不清理，永久保留（业务 / 不可再生数据）
 
 ---
 
@@ -221,8 +221,8 @@
 - **写入**：`saveMessageProcessingRecord()` — 接收时创建，处理完成后更新
 - **读取**：`getSlowestMessages()` / `getMessageProcessingRecords()` — Dashboard 查询
 - **聚合**：RPC `aggregate_hourly_stats()` / `aggregate_daily_stats()`
-- **清理**：RPC `cleanup_message_processing_records(30)` — 保留 30 天
-- **瘦身**：RPC `null_agent_invocation(7)` — 7 天后清空 agent_invocation
+- **清理**：RPC `cleanup_message_processing_records(90)` — 保留 90 天
+- **瘦身**：`agent_invocation` 存在子表 `message_processing_invocations`，RPC `delete_expired_agent_invocations(7)` 分批删 7 天前的子表行，`null_agent_invocation(7)` 置空存量主表列
 
 ---
 
@@ -429,7 +429,7 @@
 
 - **写入**：RPC `upsert_user_activity()` — 消息接收时自动累加
 - **读取**：RPC `get_active_users_by_range()` / `get_daily_user_stats_by_range()`
-- **清理**：RPC `cleanup_user_activity(30)` — 保留 30 天
+- **清理**：不清理，永久保留（托管趋势数据源）
 
 ---
 
@@ -547,7 +547,7 @@
 **操作说明**：
 
 - **写入**：`saveErrorLog()` / `saveErrorLogsBatch()`
-- **清理**：`cleanupErrorLogs()` — 保留 30 天
+- **清理**：`cleanupErrorLogs()` — 保留 90 天（跟随 `DATA_CLEANUP_PROCESSING_DAYS`）
 
 ---
 
@@ -732,12 +732,14 @@
 
 ### 清理类
 
-| 函数                                               | 默认参数 | 说明                             |
-| -------------------------------------------------- | -------- | -------------------------------- |
-| `cleanup_chat_messages(retention_days)`            | 90       | 删除过期聊天消息                 |
-| `cleanup_message_processing_records(days_to_keep)` | 30       | 删除过期处理记录                 |
-| `cleanup_user_activity(retention_days)`            | 30       | 删除过期用户活跃记录             |
-| `null_agent_invocation(p_days_old)`                | 7        | 清空旧记录 agent_invocation 字段 |
+| 函数                                               | 默认参数 | 说明                                                 |
+| -------------------------------------------------- | -------- | ---------------------------------------------------- |
+| `cleanup_message_processing_records(days_to_keep)` | 90       | 删除过期处理记录                                     |
+| `delete_expired_agent_invocations(p_days_old)`     | 7        | 分批删除 `message_processing_invocations` 过期子表行 |
+| `null_agent_invocation(p_days_old)`                | 7        | 置空存量主表 agent_invocation 列                     |
+
+`cleanup_chat_messages` / `cleanup_user_activity` 已随迁移 20260902073727 DROP：两表永久保留，改配置也不会再删。
+`monitoring_hourly_stats` / `monitoring_daily_stats` / `handoff_events` / `monitoring_error_logs` 的 90 天清理由仓储直接 `delete().lt()`，不走 RPC。
 
 ### 查询类
 
@@ -784,18 +786,18 @@
 ```
 消息接收
   │
-  ├──► chat_messages（保留 90 天）
+  ├──► chat_messages（永久）
   │
-  ├──► message_processing_records（保留 30 天）
+  ├──► message_processing_records（保留 90 天）
   │       │
-  │       ├── 7 天后：agent_invocation 字段置 NULL
+  │       ├── 7 天后：message_processing_invocations 子表行删除、存量 agent_invocation 列置 NULL
   │       │
-  │       ├── 每小时 ──► monitoring_hourly_stats（永久）
-  │       └── 每天   ──► monitoring_daily_stats（永久）
+  │       ├── 每小时 ──► monitoring_hourly_stats（保留 90 天）
+  │       └── 每天   ──► monitoring_daily_stats（保留 90 天）
   │
-  ├──► user_activity（保留 365 天）
+  ├──► user_activity（永久）
   │
-  ├──► monitoring_error_logs（保留 30 天，异常时写入）
+  ├──► monitoring_error_logs（保留 90 天，异常时写入）
   │
   └──► agent_long_term_memories（跨会话长期记忆，永久）
 ```
@@ -804,8 +806,8 @@
 
 **存储估算**（日均 500 条消息）：
 
-- chat_messages: ~45K 行/90 天 ≈ 50 MB
-- message_processing_records: ~15K 行/30 天 ≈ 30 MB（含 tool_calls/agent_steps JSONB）
+- chat_messages: 永久累积，2026-09 实测约 15K 行/月
+- message_processing_records: ~45K 行/90 天（agent_invocation 已拆子表，主表只剩标量与轻 JSONB）
 - monitoring_hourly_stats: ~8760 行/年 ≈ 5 MB
 - monitoring_daily_stats: ~365 行/年 ≈ <1 MB
 - 总计: < 150 MB（远低于 Supabase 免费额度 500 MB）
