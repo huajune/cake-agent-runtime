@@ -216,8 +216,8 @@
   min-width: 0;
   border: 1px solid rgba($border, 0.6);
   box-shadow:
-    0 4px 6px -1px rgba(91, 77, 230, 0.02),
-    0 2px 4px -1px rgba(91, 77, 230, 0.02);
+    0 4px 6px -1px rgba(134, 116, 255, 0.02),
+    0 2px 4px -1px rgba(134, 116, 255, 0.02);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
   overflow: hidden;
@@ -287,8 +287,8 @@
   &:hover {
     transform: translateY(-4px);
     box-shadow:
-      0 12px 20px -3px rgba(91, 77, 230, 0.08),
-      0 4px 6px -2px rgba(91, 77, 230, 0.04);
+      0 12px 20px -3px rgba(134, 116, 255, 0.08),
+      0 4px 6px -2px rgba(134, 116, 255, 0.04);
 
     &::after {
       transform: translateX(100%);
@@ -311,13 +311,13 @@
   justify-content: center;
   color: #fff;
   flex-shrink: 0;
-  box-shadow: 0 4px 10px rgba(91, 77, 230, 0.1);
+  box-shadow: 0 4px 10px rgba(134, 116, 255, 0.1);
   font-size: 24px; // Ensure svg size is controlled if using text, but here we use SVGs
 
   svg {
     width: 28px;
     height: 28px;
-    filter: drop-shadow(0 2px 4px rgba(91, 77, 230, 0.1));
+    filter: drop-shadow(0 2px 4px rgba(134, 116, 255, 0.1));
   }
 }
 

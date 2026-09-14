@@ -328,11 +328,11 @@ function RankIcon({ rank }: { rank: 1 | 2 | 3 }) {
   const rimId = `rank${rank}MedalRim`;
   const medal = isSilver
     ? {
-        fillStops: ['#ffffff', '#eef7f8', '#b4dcdf'],
-        rimStops: ['#f9fafb', '#b4dcdf', '#74b6c2'],
+        fillStops: ['#ffffff', '#ecf8fa', '#b3e3ea'],
+        rimStops: ['#f9fafb', '#b3e3ea', '#6fbfcc'],
         ribbonStops: ['#b3b9f3', '#b6cfe4'],
-        text: '#74b6c2',
-        star: '#74b6c2',
+        text: '#6fbfcc',
+        star: '#6fbfcc',
       }
     : {
         fillStops: ['#fff5e6', '#f5c878', '#f5c878'],
