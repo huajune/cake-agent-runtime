@@ -1,7 +1,7 @@
 # Agent 质量评估体系（口径页）
 
 > 本页是"Agent 回复质量怎么评"的唯一口径：三层评估各管什么、指标怎么定义、多久看一次、谁消费结论。
-> 判官自身的精确率考核（发牌制）见 [docs/todo/judge-calibration.md](../todo/judge-calibration.md)；精确率数字落 [质量指标台账](../quality-metrics-ledger.md)，样本明细在本地报告 `logs/analysis/judge-calibration-*.md`。
+> 判官自身的精确率考核（发牌制）由每周二 07:00 的 `weekly-judge-calibration` 定时任务执行，降级阈值见本页 §2；精确率数字落 [质量指标台账](../quality-metrics-ledger.md)，样本明细在本地报告 `logs/analysis/judge-calibration-*.md`。
 > 2026-09-02 裁定：**评估以周频质量盯盘为主，发版闸门保持轻量**——实践证明直接上生产再快速修复比重闸门更划算。
 
 ## 1. 顶层指标：每个阶段的任务目标完成质量

@@ -580,7 +580,7 @@
     opacity: 0;
     pointer-events: none;
     transition: all 0.25s ease;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    box-shadow: 0 4px 12px rgba(134, 116, 255, 0.15);
     z-index: 100;
   }
 
@@ -596,7 +596,7 @@
   border-color: rgba($success, 0.3);
   box-shadow:
     0 4px 15px rgba($success, 0.2),
-    inset 0 -2px 4px rgba(0, 0, 0, 0.03),
+    inset 0 -2px 4px rgba(134, 116, 255, 0.03),
     inset 0 2px 4px rgba(255, 255, 255, 0.9);
 
   &::after {
@@ -610,7 +610,7 @@
     border-color: rgba($success, 0.5);
     box-shadow:
       0 8px 25px rgba($success, 0.35),
-      inset 0 -2px 4px rgba(0, 0, 0, 0.03),
+      inset 0 -2px 4px rgba(134, 116, 255, 0.03),
       inset 0 2px 4px rgba(255, 255, 255, 0.9);
 
     svg {
@@ -629,7 +629,7 @@
   border-color: rgba($rose, 0.2);
   box-shadow:
     0 4px 15px rgba($rose, 0.2),
-    inset 0 -2px 4px rgba(0, 0, 0, 0.05),
+    inset 0 -2px 4px rgba(134, 116, 255, 0.05),
     inset 0 2px 4px rgba(255, 255, 255, 0.9);
 
   &::after {
@@ -643,7 +643,7 @@
     border-color: rgba($rose, 0.4);
     box-shadow:
       0 8px 25px rgba($rose, 0.3),
-      inset 0 -2px 4px rgba(0, 0, 0, 0.05),
+      inset 0 -2px 4px rgba(134, 116, 255, 0.05),
       inset 0 2px 4px rgba(255, 255, 255, 0.9);
 
     svg {

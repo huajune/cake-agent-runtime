@@ -67,4 +67,3 @@ NormalizedTurnInput
 
 - [Agent Runtime 架构](../agent-runtime-architecture.md)
 - [主动复聊与二次触达流水线](../reengagement-pipeline.md)
-- [Agent 回合装配边界重构方案](../../todo/agent-turn-assembly-refactor.md)

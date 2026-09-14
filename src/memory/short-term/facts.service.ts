@@ -175,13 +175,6 @@ export class SessionFactsService {
   }
 
   /**
-   * 旧 hash 顶层 brand_state 读时投影为 facts.brand，并回写新形态。
-   *
-   * 旧字段不主动 HDEL：同一 factsv2 key 的 TTL 会让它自然过期；迁移窗口内嵌套新值
-   * 一旦存在即优先，绝不被旧顶层字段覆盖。
-   */
-
-  /**
    * 落盘态字段被丢弃的观测出口：日志 + 执行事件 + 飞书告警，一条都不省。
    *
    * 告警是 fire-and-forget：读会话状态在消息处理主链路上，告警通道抖动不得拖慢或

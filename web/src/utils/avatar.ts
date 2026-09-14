@@ -23,7 +23,7 @@ export function getAvatarStyle(name: string, gradients: readonly string[] = AVAT
   return {
     background: gradients[index],
     color: '#fff',
-    textShadow: '0 1px 2px rgba(0,0,0,0.1)',
+    textShadow: '0 1px 2px rgba(134, 116, 255, 0.1)',
   };
 }
 

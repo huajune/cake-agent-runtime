@@ -32,7 +32,7 @@ export function showUndoToast(
           border: '1px solid rgba(138, 137, 173, 0.2)',
           borderRadius: '12px',
           padding: '12px 16px',
-          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.1)',
+          boxShadow: '0 4px 20px rgba(134, 116, 255, 0.1)',
           fontSize: '14px',
           color: '#14132b',
         }}

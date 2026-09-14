@@ -3,8 +3,11 @@
 // ============================================================
 
 // ========== 颜色系统 ==========
-// 2026-09-11 起：文字灰阶改为带紫相的墨色（源自出站守卫档案），语义色保留色相但降饱和（方案 A）；
-// 主色/激活态渐变改丁香系；大背景改极淡粉紫渐变（$gradient-page）；边框保持原值。改色只改这一处。
+// 整体走莫奈式粉彩（掺白不掺灰）：文字为带紫相的墨色，语义色保留色相但降饱和，主色/激活态渐变为丁香系。
+// 2026-09-14 定稿（要清亮）：阴影/滚动条/淡底一律用主色丁香透明（禁纯黑阴影、禁 rgba(0,0,0,x) 灰底），透明度压在 0.03~0.08；
+// 边框是有明确丁香色相的浅紫（不是紫灰）；次级底/tint 接近白；大背景近白粉紫、光斑 0.03；
+// 樱粉一族为藕粉，信息蓝一族与 data-sky 为浅青（都取掺白提亮版，淡底用它们时透明度 ≤0.05）。
+// 改色只改这一处；页面里不得再写死同族色值（转化分析页的指标卡/图表色是历史遗留，见其文件）。
 // 命名约定：`-text` 用于白底小字（更深），无后缀用于圆点/填充/边，`-soft` 用于淡底。
 
 // 主色（丁香紫）
@@ -70,23 +73,23 @@ $danger-light: #f7bcd3;
 $danger-soft: rgba($danger, 0.12);
 $danger-bg: #fdeef4;
 
-$info: #6ea3f5;
-$info-text: #5390eb;
-$info-light: #aacbfa;
+$info: #6fbfcc;
+$info-text: #4f9aa8;
+$info-light: #b3e3ea;
 $info-soft: rgba($info, 0.12);
-$info-bg: #ecf3ff;
+$info-bg: #ecf8fa;
 
 // 樱粉（加群 / 数据强调，非语义危险）
-$rose: #ec9ec0;
-$rose-text: #d4759f;
-$rose-light: #f5c6da;
+$rose: #e9a6c0;
+$rose-text: #d07a9d;
+$rose-light: #f2cddb;
 $rose-soft: rgba($rose, 0.12);
-$rose-bg: #fdf3f8;
+$rose-bg: #fdf2f7;
 
 // 数据色（转化 / 榜单 / 图表；0911 淡雅粉彩定稿）
 $data-mint: #6cc4a1;
-$data-sky: #7ab8e6;
-$data-rose: #ec9ec0;
+$data-sky: #84cbd2;
+$data-rose: #e9a6c0;
 $data-apricot: #e9b56e;
 $data-lavender: #a996f2;
 $rank-gold: #e9c46a;
@@ -94,8 +97,8 @@ $rank-silver: #a9b9cc;
 $rank-bronze: #e2a37a;
 
 // 文字颜色（墨色系）
-$text-primary: #14132b;
-$text-body: #3b3a55;
+$text-primary: #262351;
+$text-body: #46446a;
 $text-secondary: #5b5a86;
 $text-muted: #8a89ad;
 $text-placeholder: #a3a2b8;
@@ -103,28 +106,28 @@ $text-on-primary: #ffffff;
 
 // 背景颜色
 $bg-primary: #ffffff;
-$bg-page: #fdfcff;
+$bg-page: #ffffff;
 $bg-card: #ffffff;
-$bg-secondary: #f9fafb;
-$bg-tint: #f1f5f9;
+$bg-secondary: #fcfbff;
+$bg-tint: #f7f6ff;
 $bg-sidebar: #ffffff;
 $bg-hover: rgba($primary, 0.05);
 
-// 边框颜色（原值保留；$lilac/$rail 供守卫档案等已定稿组件使用）
-$border: #e5e7eb;
+// 边框颜色（带一丝紫相；$lilac/$rail 供守卫档案等已定稿组件使用）
+$border: #e8e4ff;
 $border-color: $border; // alias for compatibility
-$border-strong: #e2e8f0;
-$border-hover: #d1d5db;
+$border-strong: #ddd8ff;
+$border-hover: #cfc8ff;
 $border-focus: $primary;
 $rail: rgba($lilac, 0.75);
 
 // ========== 渐变 ==========
 $gradient-primary: linear-gradient(135deg, #8c7bff 0%, #c3a0fb 100%);
-$gradient-card: linear-gradient(135deg, #ffffff 0%, #f9fafb 100%);
+$gradient-card: linear-gradient(135deg, #ffffff 0%, #f8f6fd 100%);
 $gradient-hover: linear-gradient(135deg, rgba($primary, 0.05) 0%, rgba($accent, 0.05) 100%);
 $gradient-dream: linear-gradient(118deg, #f0efff 0%, #faf4fe 34%, #f2f7ff 68%, #fdfdff 100%);
-// 全站大背景：极淡粉紫→近白，尾段带一点蓝（用户 0911 点名「非常淡的粉紫亮色偏白，渐变，加一点点蓝」）
-$gradient-page: linear-gradient(135deg, #fdfbff 0%, #fff9fd 30%, #f9fbff 65%, #ffffff 100%);
+// 全站大背景：近白粉紫→中段一丝蓝→纯白（奶油尾段试过被判偏黄，已撤）
+$gradient-page: linear-gradient(135deg, #fefdff 0%, #fffcfe 30%, #fcfdff 65%, #ffffff 100%);
 
 // ========== 间距系统 ==========
 $spacing-unit: 1rem; // 16px
@@ -152,10 +155,10 @@ $radius-xl: 16px;
 $radius-full: 9999px;
 
 // ========== 阴影 ==========
-$shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
-$shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-$shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-$shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+$shadow-sm: 0 1px 2px rgba(134, 116, 255, 0.04);
+$shadow-md: 0 4px 6px -1px rgba(134, 116, 255, 0.06), 0 2px 4px -1px rgba(134, 116, 255, 0.04);
+$shadow-lg: 0 10px 15px -3px rgba(134, 116, 255, 0.06), 0 4px 6px -2px rgba(134, 116, 255, 0.03);
+$shadow-xl: 0 20px 25px -5px rgba(134, 116, 255, 0.06), 0 10px 10px -5px rgba(134, 116, 255, 0.03);
 $shadow-glow: 0 0 20px rgba($primary, 0.15);
 
 // ========== 字体 ==========
@@ -256,7 +259,7 @@ $z-tooltip: 600;
 }
 
 // 滚动条样式
-@mixin custom-scrollbar($width: 6px, $track: transparent, $thumb: rgba(0, 0, 0, 0.1)) {
+@mixin custom-scrollbar($width: 6px, $track: transparent, $thumb: rgba(134, 116, 255, 0.12)) {
   &::-webkit-scrollbar {
     width: $width;
     height: $width;
@@ -271,7 +274,7 @@ $z-tooltip: 600;
     border-radius: $width;
 
     &:hover {
-      background: rgba(0, 0, 0, 0.2);
+      background: rgba(134, 116, 255, 0.22);
     }
   }
 }
