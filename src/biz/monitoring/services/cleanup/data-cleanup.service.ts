@@ -20,29 +20,29 @@ import { IncidentReporterService } from '@observability/incidents/incident-repor
 /**
  * 数据清理服务（分层存储策略）
  *
+ * 裁定：业务 / 不可再生数据永久（chat_messages、user_activity 等不清理），Agent 观测数据统一 ≤ 90 天。
+ *
  * 清理顺序（每日 03:00 上海时区）:
- * 1. NULL agent_invocation（>N 天）— 释放 TOAST 空间，保留记录本身；
+ * 1. agent_invocation（>N 天）：删 message_processing_invocations 子表行 + 置空存量主表列；
  *    agent_steps/tool_calls 不提前 NULL（工具统计兜底 RPC + badcase 证据需要处理链窗口），
  *    随消息处理行删除统一回收
- * 2. DELETE chat_messages（>N 天）
- * 3. DELETE guardrail_review_records（>N 天）— message_processing_records 的 trace 附属证据
- * 4. DELETE agent_execution_events（>N 天）— message_processing_records 的 trace 附属事件
- * 5. DELETE message_processing_records（>N 天）— 历史数据已聚合到 monitoring_hourly_stats
- * 6. DELETE monitoring_error_logs（>N 天）
- * 7. DELETE user_activity（>N 天）
+ * 2. DELETE guardrail_review_records（>N 天）— message_processing_records 的 trace 附属证据
+ * 3. DELETE agent_execution_events（>N 天）— message_processing_records 的 trace 附属事件
+ * 4. DELETE message_processing_records（>N 天）— 历史数据已聚合到 monitoring_hourly_stats
+ * 5. DELETE monitoring_error_logs（>N 天）
+ * 6. DELETE monitoring_hourly_stats / monitoring_daily_stats（>N 天）
+ * 7. DELETE handoff_events（>N 天）
  * 8. reengagement_touch_records：NULL generated_text（>N 天）+ DELETE 整行（>M 天）
  *    — 审计底账保留期比原始流水长
  *
- * monitoring_hourly_stats — 永久保留（~8760 行/年，约 5MB）
- *
  * 保留天数通过环境变量配置（Layer 2，有默认值）：
  * - DATA_CLEANUP_AGENT_INVOCATION_DAYS (默认 7)
- * - DATA_CLEANUP_PROCESSING_DAYS       (默认 60)
+ * - DATA_CLEANUP_PROCESSING_DAYS       (默认 90)
  * - DATA_CLEANUP_GUARDRAIL_REVIEW_DAYS (默认跟随 DATA_CLEANUP_PROCESSING_DAYS)
  * - DATA_CLEANUP_AGENT_EXECUTION_EVENTS_DAYS (默认跟随 DATA_CLEANUP_PROCESSING_DAYS)
- * - DATA_CLEANUP_CHAT_DAYS             (默认 60)
- * - DATA_CLEANUP_USER_ACTIVITY_DAYS    (默认 365)
- * - DATA_CLEANUP_ERROR_LOGS_DAYS       (默认 30)
+ * - DATA_CLEANUP_ERROR_LOGS_DAYS       (默认跟随 DATA_CLEANUP_PROCESSING_DAYS)
+ * - DATA_CLEANUP_MONITORING_STATS_DAYS (默认跟随 DATA_CLEANUP_PROCESSING_DAYS)
+ * - DATA_CLEANUP_HANDOFF_EVENTS_DAYS   (默认跟随 DATA_CLEANUP_PROCESSING_DAYS)
  * - DATA_CLEANUP_TOUCH_TEXT_DAYS       (默认 30)
  * - DATA_CLEANUP_TOUCH_RECORDS_DAYS    (默认 90)
  */

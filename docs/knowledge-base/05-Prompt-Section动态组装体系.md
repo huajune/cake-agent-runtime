@@ -200,6 +200,5 @@ system 信息塞进 user messages、为了缓存命中而擅自删工具或事�
 ## 延伸阅读
 
 - [Agent Runtime 架构](../architecture/agent-runtime-architecture.md)
-- [回合装配边界重构方案](../todo/agent-turn-assembly-refactor.md)
 - [最终 Prompt 示例](../../src/agent/generator/context/final-prompt-example.md)
 - [Prompt 规则台账](../prompt-rule-ledger.md)
