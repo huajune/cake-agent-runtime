@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [11.8.1] - 2026-09-14
 
-**预计版本**: `v11.8.1`
-**最近更新**: `2026-09-14`
 **来源分支**: `develop`
-**累计 PR**: 3
 
 ### 更新摘要
 - PR #1270 删除 brand_state 懒迁移的孤儿 JSDoc
@@ -63,7 +59,6 @@
 - PR #1272 `pnpm --dir web run lint`：0 error（6 条既有 hooks warning 与本次无关）
 - PR #1272 `pnpm --dir web run build`：通过
 - PR #1272 本地起 backend-prod-preview + web，首页 / 转化分析 / 消息处理流水 / 聊天记录逐页截图对照并采样像素，用户在浏览器实机预览后逐项拍板
-<!-- release:pending:end -->
 
 ## [11.8.0] - 2026-09-11
 
