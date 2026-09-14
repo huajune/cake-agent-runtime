@@ -47,8 +47,8 @@ const TREND_EXTRA: Record<
   { color: string; numeratorKey: CountKey; denominatorKey: CountKey }
 > = {
   breakIceRate: { color: '#7ed8a4', numeratorKey: 'breakIce', denominatorKey: 'friendAdded' },
-  bookingRate: { color: '#97a5f5', numeratorKey: 'booking', denominatorKey: 'breakIce' },
-  groupInviteRate: { color: '#f59bc5', numeratorKey: 'groupInvite', denominatorKey: 'breakIce' },
+  bookingRate: { color: '#6fbfcc', numeratorKey: 'booking', denominatorKey: 'breakIce' },
+  groupInviteRate: { color: '#e9a6c0', numeratorKey: 'groupInvite', denominatorKey: 'breakIce' },
   passRate: { color: '#f5b878', numeratorKey: 'interviewPass', denominatorKey: 'booking' },
   overallRate: { color: '#b892f0', numeratorKey: 'interviewPass', denominatorKey: 'friendAdded' },
 };

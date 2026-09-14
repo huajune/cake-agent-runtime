@@ -125,7 +125,7 @@
       top: 2px;
       left: 2px;
       transition: all 0.3s ease;
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      box-shadow: 0 2px 4px rgba(134, 116, 255, 0.1);
     }
 
     &:checked {
@@ -960,7 +960,7 @@
   top: 3px;
   left: 3px;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 4px rgba(134, 116, 255, 0.1);
 
   .control-toggle-btn.active & {
     left: 27px;
@@ -1007,7 +1007,7 @@
   max-width: 800px;
   max-height: 85vh;
   box-shadow:
-    0 20px 60px rgba(0, 0, 0, 0.15),
+    0 20px 60px rgba(134, 116, 255, 0.15),
     0 0 0 1px rgba(255, 255, 255, 0.5) inset;
   display: flex;
   flex-direction: column;
@@ -1041,7 +1041,7 @@
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: rgba(0, 0, 0, 0.04);
+  background: rgba(134, 116, 255, 0.04);
   border: none;
   font-size: 20px;
   color: $text-secondary;
@@ -1052,7 +1052,7 @@
   transition: all 0.2s ease;
 
   &:hover {
-    background: rgba(0, 0, 0, 0.08);
+    background: rgba(134, 116, 255, 0.08);
     color: $text-primary;
     transform: rotate(90deg);
   }
@@ -1125,12 +1125,12 @@
   line-height: 1.6;
   white-space: pre-wrap;
   word-break: break-word;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+  box-shadow: 0 1px 2px rgba(134, 116, 255, 0.02);
   transition: all 0.2s ease;
 
   &:hover {
     border-color: $border-hover;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+    box-shadow: 0 4px 12px rgba(134, 116, 255, 0.04);
   }
 
   &.primary {
@@ -1231,7 +1231,7 @@
   height: calc(100vh - 32px);
   margin: 16px 16px 16px 0;
   border-radius: 24px;
-  box-shadow: -10px 0 40px rgba(0, 0, 0, 0.1);
+  box-shadow: -10px 0 40px rgba(134, 116, 255, 0.1);
   display: flex;
   flex-direction: column;
   animation: drawerSlideLeft 0.4s cubic-bezier(0.16, 1, 0.3, 1);
@@ -1483,7 +1483,7 @@ tbody tr:hover {
 
   &:hover {
     border-color: rgba(0, 0, 0, 0.15);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
+    box-shadow: 0 2px 8px rgba(134, 116, 255, 0.02);
   }
 
   &:focus {
@@ -1497,7 +1497,7 @@ tbody tr:hover {
   background: rgba(255, 255, 255, 0.8);
   backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.6);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
+  box-shadow: 0 4px 20px rgba(134, 116, 255, 0.03);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   padding: 20px;
   display: flex;
@@ -1507,7 +1507,7 @@ tbody tr:hover {
 
   &:hover {
     transform: translateY(-4px);
-    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.06);
+    box-shadow: 0 12px 30px rgba(134, 116, 255, 0.06);
     border-color: rgba(255, 255, 255, 0.9);
   }
 }
@@ -1571,13 +1571,13 @@ tbody tr:hover {
 .glass-panel {
   background: #fff;
   border-radius: 20px;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 8px 30px rgba(134, 116, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.6);
   overflow: hidden;
   transition: all 0.3s ease;
 
   &:hover {
-    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.08);
+    box-shadow: 0 20px 40px rgba(134, 116, 255, 0.08);
   }
 }
 

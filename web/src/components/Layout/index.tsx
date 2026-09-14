@@ -136,9 +136,9 @@ export default function Layout() {
             <svg width="120" height="90" viewBox="0 0 150 110" fill="none" style={{ marginTop: '-10px' }}>
           <defs>
             <radialGradient id="bloomL" cx="50%" cy="50%">
-              <stop offset="0%" stopColor="#fdf3f8" />
-              <stop offset="50%" stopColor="#f5c6da" />
-              <stop offset="100%" stopColor="#f5c6da" />
+              <stop offset="0%" stopColor="#fdf2f7" />
+              <stop offset="50%" stopColor="#f2cddb" />
+              <stop offset="100%" stopColor="#f2cddb" />
             </radialGradient>
             <radialGradient id="bloomCenter" cx="50%" cy="50%">
               <stop offset="0%" stopColor="#FFF" />
@@ -181,19 +181,19 @@ export default function Layout() {
             <circle cx="0" cy="0" r="2" fill="url(#bloomCenter)" />
           </g>
           {/* 花苞 */}
-          <ellipse cx="145" cy="38" rx="3" ry="4.5" fill="#f5c6da" />
+          <ellipse cx="145" cy="38" rx="3" ry="4.5" fill="#f2cddb" />
           <path d="M143 34 Q145 30 147 34" stroke="#a6e6cc" strokeWidth="1.2" fill="#a6e6cc" />
-          <ellipse cx="100" cy="32" rx="2.5" ry="3.5" fill="#f5c6da" />
+          <ellipse cx="100" cy="32" rx="2.5" ry="3.5" fill="#f2cddb" />
           {/* 叶子 */}
           <ellipse cx="25" cy="12" rx="4" ry="8" fill="#a6e6cc" transform="rotate(60, 25, 12)" opacity="0.7" />
           <ellipse cx="50" cy="22" rx="3" ry="6" fill="#a6e6cc" transform="rotate(40, 50, 22)" opacity="0.6" />
           <ellipse cx="95" cy="38" rx="3" ry="6" fill="#a6e6cc" transform="rotate(-20, 95, 38)" opacity="0.7" />
           {/* 飘落花瓣 */}
-          <ellipse cx="55" cy="75" rx="3" ry="2" fill="#f5c6da" opacity="0.6" transform="rotate(-30, 55, 75)">
+          <ellipse cx="55" cy="75" rx="3" ry="2" fill="#f2cddb" opacity="0.6" transform="rotate(-30, 55, 75)">
             <animateTransform attributeName="transform" type="translate" values="0 0;5 15;10 30" dur="4s" repeatCount="indefinite" />
             <animate attributeName="opacity" values="0.6;0.3;0" dur="4s" repeatCount="indefinite" />
           </ellipse>
-          <ellipse cx="90" cy="80" rx="2.5" ry="1.8" fill="#f5c6da" opacity="0.5" transform="rotate(20, 90, 80)">
+          <ellipse cx="90" cy="80" rx="2.5" ry="1.8" fill="#f2cddb" opacity="0.5" transform="rotate(20, 90, 80)">
             <animateTransform attributeName="transform" type="translate" values="0 0;-3 12;-6 25" dur="5s" repeatCount="indefinite" />
             <animate attributeName="opacity" values="0.5;0.25;0" dur="5s" repeatCount="indefinite" />
           </ellipse>
@@ -214,14 +214,14 @@ export default function Layout() {
 
           {/* 樱花+叶子 */}
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', animation: 'swing 3s ease-in-out infinite', transformOrigin: 'top center' }}>
-            <div style={{ width: '1.5px', height: '14px', background: 'linear-gradient(180deg, #a6e6cc, #f5c6da)' }} />
+            <div style={{ width: '1.5px', height: '14px', background: 'linear-gradient(180deg, #a6e6cc, #f2cddb)' }} />
             <svg width="40" height="44" viewBox="0 0 44 48" fill="none">
               <path d="M22 0 Q20 12 24 24" stroke="#a6e6cc" strokeWidth="2" fill="none" />
               <ellipse cx="16" cy="10" rx="4" ry="7" fill="#a6e6cc" transform="rotate(-25, 16, 10)" opacity="0.8" />
               <ellipse cx="30" cy="16" rx="3.5" ry="6" fill="#a6e6cc" transform="rotate(20, 30, 16)" opacity="0.7" />
               <g transform="translate(22, 30)">
                 {[0, 72, 144, 216, 288].map((r) => (
-                  <ellipse key={r} cx="0" cy="-7" rx="4.5" ry="8" fill="#f5c6da" transform={`rotate(${r})`} opacity="0.9" />
+                  <ellipse key={r} cx="0" cy="-7" rx="4.5" ry="8" fill="#f2cddb" transform={`rotate(${r})`} opacity="0.9" />
                 ))}
                 <circle cx="0" cy="0" r="3.5" fill="#f5c878" />
               </g>
@@ -264,20 +264,20 @@ export default function Layout() {
                 <animateTransform attributeName="transform" type="rotate" values="0 18 22;-12 18 22;0 18 22" dur="0.8s" repeatCount="indefinite" />
               </path>
               <path d="M16 24 Q10 26 8 30" stroke="#e8a64f" strokeWidth="1.5" fill="none" />
-              <circle cx="28" cy="20" r="1.5" fill="#f5c6da" opacity="0.5" />
+              <circle cx="28" cy="20" r="1.5" fill="#f2cddb" opacity="0.5" />
             </svg>
           </div>
 
           {/* 绿叶花朵 */}
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', animation: 'swing 2.8s ease-in-out infinite', animationDelay: '0.3s', transformOrigin: 'top center' }}>
-            <div style={{ width: '1.5px', height: '20px', background: 'linear-gradient(180deg, #a6e6cc, #f5c6da)' }} />
+            <div style={{ width: '1.5px', height: '20px', background: 'linear-gradient(180deg, #a6e6cc, #f2cddb)' }} />
             <svg width="38" height="42" viewBox="0 0 40 46" fill="none">
               <path d="M20 0 Q18 14 22 28" stroke="#a6e6cc" strokeWidth="2" fill="none" />
               <ellipse cx="14" cy="8" rx="4" ry="7" fill="#a6e6cc" transform="rotate(-30, 14, 8)" opacity="0.75" />
               <ellipse cx="28" cy="18" rx="3.5" ry="6.5" fill="#a6e6cc" transform="rotate(25, 28, 18)" opacity="0.8" />
               <g transform="translate(20, 34)">
                 {[0, 72, 144, 216, 288].map((r) => (
-                  <ellipse key={r} cx="0" cy="-6" rx="4" ry="7" fill="#f5c6da" transform={`rotate(${r})`} opacity="0.85" />
+                  <ellipse key={r} cx="0" cy="-6" rx="4" ry="7" fill="#f2cddb" transform={`rotate(${r})`} opacity="0.85" />
                 ))}
                 <circle cx="0" cy="0" r="3" fill="#f5c878" />
               </g>
@@ -292,27 +292,27 @@ export default function Layout() {
               <ellipse cx="7" cy="10" rx="5" ry="8" fill="#5ec9a0" transform="rotate(-35, 7, 10)" opacity="0.7" />
               <ellipse cx="21" cy="22" rx="4.5" ry="7" fill="#6EE7B7" transform="rotate(30, 21, 22)" opacity="0.75" />
               <ellipse cx="8" cy="34" rx="4" ry="6.5" fill="#a6e6cc" transform="rotate(-25, 8, 34)" opacity="0.7" />
-              <ellipse cx="14" cy="45" rx="3" ry="3.5" fill="#f5c6da" opacity="0.8" />
+              <ellipse cx="14" cy="45" rx="3" ry="3.5" fill="#f2cddb" opacity="0.8" />
             </svg>
           </div>
 
           {/* 蝴蝶2 */}
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', animation: 'butterflyFloat 4.5s ease-in-out infinite', animationDelay: '1.5s', transformOrigin: 'top center' }}>
-            <div style={{ width: '1px', height: '18px', background: '#f5c6da' }} />
+            <div style={{ width: '1px', height: '18px', background: '#f2cddb' }} />
             <svg width="38" height="32" viewBox="0 0 36 30" fill="none">
-              <path d="M18 15 Q8 3 4 10 Q2 18 12 19 Q14 19 18 15Z" fill="#f5c6da" opacity="0.85">
+              <path d="M18 15 Q8 3 4 10 Q2 18 12 19 Q14 19 18 15Z" fill="#f2cddb" opacity="0.85">
                 <animateTransform attributeName="transform" type="rotate" values="-5 18 15;12 18 15;-5 18 15" dur="0.5s" repeatCount="indefinite" />
               </path>
-              <path d="M18 15 Q28 3 32 10 Q34 18 24 19 Q22 19 18 15Z" fill="#f5c6da" opacity="0.85">
+              <path d="M18 15 Q28 3 32 10 Q34 18 24 19 Q22 19 18 15Z" fill="#f2cddb" opacity="0.85">
                 <animateTransform attributeName="transform" type="rotate" values="5 18 15;-12 18 15;5 18 15" dur="0.5s" repeatCount="indefinite" />
               </path>
-              <path d="M18 15 Q12 22 10 25 Q14 28 18 22Z" fill="#f5c6da" opacity="0.6" />
-              <path d="M18 15 Q24 22 26 25 Q22 28 18 22Z" fill="#f5c6da" opacity="0.6" />
-              <ellipse cx="18" cy="17" rx="1.5" ry="5.5" fill="#ec9ec0" />
-              <path d="M17 12 Q14 5 12 3" stroke="#ec9ec0" strokeWidth="0.7" fill="none" />
-              <path d="M19 12 Q22 5 24 3" stroke="#ec9ec0" strokeWidth="0.7" fill="none" />
-              <circle cx="12" cy="3" r="0.8" fill="#ec9ec0" />
-              <circle cx="24" cy="3" r="0.8" fill="#ec9ec0" />
+              <path d="M18 15 Q12 22 10 25 Q14 28 18 22Z" fill="#f2cddb" opacity="0.6" />
+              <path d="M18 15 Q24 22 26 25 Q22 28 18 22Z" fill="#f2cddb" opacity="0.6" />
+              <ellipse cx="18" cy="17" rx="1.5" ry="5.5" fill="#e9a6c0" />
+              <path d="M17 12 Q14 5 12 3" stroke="#e9a6c0" strokeWidth="0.7" fill="none" />
+              <path d="M19 12 Q22 5 24 3" stroke="#e9a6c0" strokeWidth="0.7" fill="none" />
+              <circle cx="12" cy="3" r="0.8" fill="#e9a6c0" />
+              <circle cx="24" cy="3" r="0.8" fill="#e9a6c0" />
             </svg>
           </div>
             </div>
@@ -322,8 +322,8 @@ export default function Layout() {
           <defs>
             <radialGradient id="bloomR" cx="50%" cy="50%">
               <stop offset="0%" stopColor="#FFF" />
-              <stop offset="50%" stopColor="#f5c6da" />
-              <stop offset="100%" stopColor="#ec9ec0" />
+              <stop offset="50%" stopColor="#f2cddb" />
+              <stop offset="100%" stopColor="#e9a6c0" />
             </radialGradient>
           </defs>
           {/* 主枝 */}
@@ -357,15 +357,15 @@ export default function Layout() {
             <circle cx="0" cy="0" r="2" fill="url(#bloomCenter)" />
           </g>
           {/* 花苞 */}
-          <ellipse cx="145" cy="38" rx="3" ry="4.5" fill="#f5c6da" />
+          <ellipse cx="145" cy="38" rx="3" ry="4.5" fill="#f2cddb" />
           <path d="M143 34 Q145 30 147 34" stroke="#a6e6cc" strokeWidth="1.2" fill="#a6e6cc" />
-          <ellipse cx="100" cy="32" rx="2.5" ry="3.5" fill="#f5c6da" />
+          <ellipse cx="100" cy="32" rx="2.5" ry="3.5" fill="#f2cddb" />
           {/* 叶子 */}
           <ellipse cx="25" cy="12" rx="4" ry="8" fill="#a6e6cc" transform="rotate(60, 25, 12)" opacity="0.7" />
           <ellipse cx="50" cy="22" rx="3" ry="6" fill="#a6e6cc" transform="rotate(40, 50, 22)" opacity="0.6" />
           <ellipse cx="95" cy="38" rx="3" ry="6" fill="#a6e6cc" transform="rotate(-20, 95, 38)" opacity="0.7" />
           {/* 飘落花瓣 */}
-          <ellipse cx="55" cy="75" rx="3" ry="2" fill="#f5c6da" opacity="0.6" transform="rotate(-30, 55, 75)">
+          <ellipse cx="55" cy="75" rx="3" ry="2" fill="#f2cddb" opacity="0.6" transform="rotate(-30, 55, 75)">
             <animateTransform attributeName="transform" type="translate" values="0 0;5 15;10 30" dur="4.5s" repeatCount="indefinite" />
             <animate attributeName="opacity" values="0.6;0.3;0" dur="4.5s" repeatCount="indefinite" />
           </ellipse>

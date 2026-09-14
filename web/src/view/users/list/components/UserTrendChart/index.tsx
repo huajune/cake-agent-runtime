@@ -295,7 +295,7 @@ export default function UserTrendChart({
                             background: '#ffffff',
                             border: 'none',
                             borderRadius: '12px',
-                            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
+                            boxShadow: '0 4px 12px rgba(134, 116, 255, 0.1)',
                             padding: '12px 16px',
                           }}
                           labelStyle={{

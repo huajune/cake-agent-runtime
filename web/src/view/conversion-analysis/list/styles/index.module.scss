@@ -475,15 +475,15 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
   }
 
   &.sky {
-    --kpi-tone: #9ba8f7;
-    --kpi-next: #cfd5ff;
-    --kpi-soft: rgba(176, 186, 250, 0.18);
+    --kpi-tone: #84cbd2;
+    --kpi-next: #c8ecef;
+    --kpi-soft: rgba(150, 215, 220, 0.18);
   }
 
   &.rose {
-    --kpi-tone: #f6a3c9;
-    --kpi-next: #fdd0e3;
-    --kpi-soft: rgba(255, 190, 218, 0.18);
+    --kpi-tone: #e9a6c0;
+    --kpi-next: #f2cddb;
+    --kpi-soft: rgba(233, 166, 192, 0.18);
   }
 
   &.amber {
@@ -2227,7 +2227,7 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
 
 // ── Hero 标题：多彩渐变 + 缓慢流光 ──
 .heroContent h1 {
-  background: linear-gradient(115deg, #8674ff 0%, #a08cf0 30%, #d19aea 60%, #f59bc5 100%);
+  background: linear-gradient(115deg, #8674ff 0%, #a08cf0 30%, #d19aea 60%, #e9a6c0 100%);
   background-size: 240% 100%;
   background-clip: text;
   -webkit-background-clip: text;
