@@ -36,6 +36,37 @@
         "`prettier --check` / `eslint` 对改动的源文件通过；纯注释与文档删除，无行为变化，无迁移、无环境变量。"
       ],
       "level": "patch"
+    },
+    {
+      "number": "1271",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1271",
+      "title": "清理已完成的 todo，收口数据保留与 BadCase 两份待办",
+      "author": "huajune",
+      "mergedAt": "2026-09-14",
+      "businessUpdates": [
+        "清理已完成的 todo，收口数据保留与 BadCase 两份待办"
+      ],
+      "summary": [
+        "清理已完成的 todo，收口数据保留与 BadCase 两份待办"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [
+        "`docs/db/database-schema.md` 与 `data-cleanup.service.ts` 头注释的保留期改为当前值：`chat_messages` / `user_activity` 永久，观测表 90 天，`agent_invocation` 子表 7 天；已 DROP 的 `cleanup_chat_messages` / `cleanup_user_activity` 从 RPC 表移除。纯文档与注释，无行为变化。"
+      ],
+      "ops": [
+        "删除三份已落地的 todo：判官标定（`weekly-judge-calibration` 周任务 09-08 已自动运行并落质量指标台账）、回合装配边界重构（PR #1190 完成定义全勾）、品牌提及集合与工具示例治理（随 v11.6.0 上线）。",
+        "数据保留策略 todo 只保留未做项：运营口径对齐、PII 读取收口、`handoff_events` 数据质量、表结构遗留。主体已随 v11.2.0 上线，两条迁移已核实在生产。",
+        "BadCase 积压报告压缩为单份待办，按「需裁定 / 工程待实现 / 运营核对 / 观察中」分组；判官标定文档里的三条管道观察项并入。",
+        "todo 索引同步；四处指向已删文档的链接改为现状描述。",
+        "清理已完成的 todo，收口数据保留与 BadCase 两份待办"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "prettier / eslint 对改动文件通过；无迁移、无环境变量、无运行时改动。"
+      ],
+      "level": "patch"
     }
   ],
   "lastRelease": {
@@ -110,5 +141,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "6a63eb114651ec4486093a1c04f0f283e22b9b8d"
+  "lastAnalyzedSha": "e50075a53845f760e7f684a6826c706a3ca22141"
 }
