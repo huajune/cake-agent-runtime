@@ -58,7 +58,7 @@ describe('canonicalizeCandidateFieldValue（数值字段落库规范形）', () 
     expect(isValidCandidateFieldShape('gender', '不确定')).toBe(false);
   });
 
-  it.each(['布海力其木·图拉江', '艾力·买买提', '艾力•买买提', '热依来木·艾则孜'])(
+  it.each(['布海力其木·图拉江', '艾力·买买提', '艾力•买买提', '古丽娜尔·阿布都拉'])(
     '姓名形态门放行间隔号分段的少数民族全名 %s',
     (name) => {
       expect(isValidCandidateFieldShape('name', name)).toBe(true);

@@ -42,14 +42,16 @@ describe('name primitives', () => {
 });
 
 describe('间隔号分段的少数民族全名', () => {
-  it.each(['布海力其木·图拉江', '艾力·买买提', '热依来木·艾则孜', '阿不都热依木·阿不来提·买买提'])(
-    '%s 宽松档与严格档同收',
-    (name) => {
-      expect(isCompoundEthnicName(name)).toBe(true);
-      expect(isLikelyRealChineseName(name)).toBe(true);
-      expect(isStrictRealChineseName(name)).toBe(true);
-    },
-  );
+  it.each([
+    '布海力其木·图拉江',
+    '艾力·买买提',
+    '古丽娜尔·阿布都拉',
+    '阿不都热依木·阿不来提·买买提',
+  ])('%s 宽松档与严格档同收', (name) => {
+    expect(isCompoundEthnicName(name)).toBe(true);
+    expect(isLikelyRealChineseName(name)).toBe(true);
+    expect(isStrictRealChineseName(name)).toBe(true);
+  });
 
   it.each(['艾力•买买提', '艾力・买买提', '艾力‧买买提', '艾力･买买提'])(
     '分隔符变体 %s 折叠成 U+00B7 后同收',
@@ -84,7 +86,7 @@ describe('间隔号分段的少数民族全名', () => {
   it.each([
     ['姓名：布海力其木·图拉江', '布海力其木·图拉江'],
     ['我叫艾力•买买提，明天能面试', '艾力•买买提'],
-    ['名字:热依来木·艾则孜\n[消息发送时间：2026-09-15 14:00 周二]', '热依来木·艾则孜'],
+    ['名字:古丽娜尔·阿布都拉\n[消息发送时间：2026-09-15 14:00 周二]', '古丽娜尔·阿布都拉'],
   ])('parseName(%s) 取到间隔号全名', (input, expected) => {
     expect(parseName(input)?.value).toBe(expected);
   });
