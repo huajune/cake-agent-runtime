@@ -1,5 +1,6 @@
 import { formatLocalDate } from '@infra/utils/date.util';
 import { asArray, asRecord, type UnknownRecord } from '@infra/utils/object.util';
+import { parseInterviewMethod, type InterviewMethod } from '@sponge/interview-method';
 import { JobDetail } from '@sponge/sponge.types';
 
 export interface InterviewWindow {
@@ -57,7 +58,8 @@ export interface JobPolicyAnalysis {
     interviewSupplements: string[];
   };
   interviewMeta: {
-    method: string | null;
+    /** 海绵四值单选，归一见 `@sponge/interview-method`；枚举外/缺失为 null。 */
+    method: InterviewMethod | null;
     address: string | null;
     demand: string | null;
     timeHint: string | null;
@@ -67,16 +69,6 @@ export interface JobPolicyAnalysis {
     requirementHighlights: string[];
     timingHighlights: string[];
   };
-}
-
-/**
- * 只有面试方式明确表达“需要到现场”时才视为线下面试。
- * 空值/未知不得根据 interviewAddress 反推为线下，避免把历史残留地址
- * 错发给线上、AI、视频或电话面试候选人。
- */
-export function isOfflineInterviewMethod(method: string | null | undefined): boolean {
-  if (!method?.trim()) return false;
-  return /线下|到店|现场|当面|门店面试/u.test(method);
 }
 
 function hasValue(value: unknown): boolean {
@@ -735,7 +727,7 @@ export function buildJobPolicyAnalysis(job: JobDetail): JobPolicyAnalysis {
       interviewSupplements,
     },
     interviewMeta: {
-      method: normalizePolicyText(asString(firstInterview?.firstInterviewWay)) || null,
+      method: parseInterviewMethod(firstInterview?.firstInterviewWay),
       address: normalizePolicyText(asString(firstInterview?.interviewAddress)) || null,
       demand: interviewDemand,
       timeHint: extractInterviewTimeHint(job),

@@ -1,5 +1,6 @@
 import { createOutputRuleFinding } from '../output-rule-catalog';
 import type { AgentToolCall } from '@shared-types/agent-telemetry.types';
+import { parseInterviewMethod, requiresStoreVisit } from '@sponge/interview-method';
 import type { RuleContradiction } from '../output-rule.types';
 
 /**
@@ -8,20 +9,12 @@ import type { RuleContradiction } from '../output-rule.types';
  * AI／视频等线上面试无需到店；此时声称已发面试定位或要求到店，
  * 会让候选人白跑一趟。
  *
- * 语义层早有对应条款（reviewer 提示词「只有 interviewMethod 明确为线下/到店/现场面试时
- * 才允许声称有面试地址」），但 `send_store_location` 的 `interviewMethod` /
- * `locationNotRequired` 已在工具结果里，
- * 这个形态**确定性可判**，不需要 LLM。
+ * `send_store_location` 的 `interviewMethod` / `locationNotRequired` 已在工具结果里，
+ * 面试方式是海绵四值单选，这个形态**确定性可判**，不需要 LLM。
  *
  * 边界：`destination='store'` 表示候选人明确问的是"工作地点在哪"，此时发门店定位是正确
  * 行为，只要回复没把它说成面试目的地就放行——这是本规则最主要的假阳来源，必须区分。
  */
-
-/** 线上面试形态：这些方式下候选人不需要到店。 */
-const ONLINE_INTERVIEW_PATTERN = /线上|AI\s*面试|ai\s*面试|视频|电话|远程/u;
-
-/** 明确的线下面试形态；命中即整条规则豁免（到店是正确指引）。 */
-const OFFLINE_INTERVIEW_PATTERN = /线下|到店|现场|门店面试/u;
 
 /**
  * 到店/面试定位声称。
@@ -58,7 +51,7 @@ function readRecord(value: unknown): Record<string, unknown> | null {
  * 触发条件：
  * 1. 本轮调过 `send_store_location` 且拿到结果；
  * 2. 该结果表明本次面试**无需到店**（`locationNotRequired=true`，或 `interviewMethod`
- *    命中线上形态且未同时命中线下形态）；
+ *    是线下面试以外的枚举值）；
  * 3. `destination` 不是 `store`（候选人问工作地点时发门店定位是正确行为）；
  * 4. 回复出现到店或面试定位声称。
  */
@@ -77,17 +70,16 @@ export function detectOnlineInterviewLocationClaim(
   // 候选人问的是工作地点，不是面试地点——发门店定位本身正确，不在本规则射程内。
   if (result.destination === 'store') return null;
 
-  const interviewMethod = typeof result.interviewMethod === 'string' ? result.interviewMethod : '';
-  // 线下字样优先：方式串里同时出现"线上初筛/线下复试"时保守放行，交语义审查。
-  if (OFFLINE_INTERVIEW_PATTERN.test(interviewMethod)) return null;
+  const interviewMethod = parseInterviewMethod(result.interviewMethod);
+  if (requiresStoreVisit(interviewMethod)) return null;
 
-  const noVisitNeeded =
-    result.locationNotRequired === true || ONLINE_INTERVIEW_PATTERN.test(interviewMethod);
+  // 枚举外的方式串（如"线上初筛后线下复试"）不判线上，只认工具明说的 locationNotRequired。
+  const noVisitNeeded = result.locationNotRequired === true || interviewMethod !== null;
   if (!noVisitNeeded) return null;
 
   for (const { kind, pattern } of INTERVIEW_LOCATION_CLAIM_PATTERNS) {
     if (!pattern.test(replyText)) continue;
-    const method = interviewMethod || '无需到店';
+    const method = interviewMethod ?? '无需到店';
     return createOutputRuleFinding(
       'online_interview_location_claim',
       `本次面试方式为“${method}”、无需到店，回复却出现${kind}` +

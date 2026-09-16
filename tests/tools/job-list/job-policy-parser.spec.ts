@@ -3,7 +3,6 @@ import {
   buildJobPolicyAnalysis,
   cleanPolicyText,
   extractInterviewWindows,
-  isOfflineInterviewMethod,
   isResumeReviewFirstInterview,
   isWaitNoticeInterview,
   normalizePolicyText,
@@ -19,15 +18,15 @@ describe('job-policy-parser', () => {
     jest.useRealTimers();
   });
 
-  it('只有明确到场语义才识别为线下面试', () => {
-    expect(isOfflineInterviewMethod('线下面试')).toBe(true);
-    expect(isOfflineInterviewMethod('到店面试')).toBe(true);
-    expect(isOfflineInterviewMethod('现场面试')).toBe(true);
-    expect(isOfflineInterviewMethod('线上面试')).toBe(false);
-    expect(isOfflineInterviewMethod('AI面试')).toBe(false);
-    expect(isOfflineInterviewMethod('视频面试')).toBe(false);
-    expect(isOfflineInterviewMethod('电话面试')).toBe(false);
-    expect(isOfflineInterviewMethod(null)).toBe(false);
+  it('面试方式按海绵四值单选归一，枚举外为 null', () => {
+    const analysisOf = (firstInterviewWay: unknown) =>
+      buildJobPolicyAnalysis({ interviewProcess: { firstInterview: { firstInterviewWay } } });
+    expect(analysisOf('线下面试').interviewMeta.method).toBe('线下面试');
+    expect(analysisOf('AI面试').interviewMeta.method).toBe('AI面试');
+    expect(analysisOf('视频面试').interviewMeta.method).toBe('视频面试');
+    expect(analysisOf('电话面试').interviewMeta.method).toBe('电话面试');
+    expect(analysisOf('门店面试').interviewMeta.method).toBeNull();
+    expect(analysisOf(undefined).interviewMeta.method).toBeNull();
   });
 
   it('should normalize and clean policy text fragments', () => {
