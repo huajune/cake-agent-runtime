@@ -194,8 +194,48 @@ describe('RiskInterceptService', () => {
     ).resolves.toEqual({
       hit: true,
       riskType: 'interview_result_inquiry',
-      reason: expect.stringContaining('上次面试结果'),
-      label: '历史面试结果追问',
+      reason: expect.stringContaining('面试结果'),
+      label: '面试结果追问',
+    });
+  });
+
+  describe('interview_result_inquiry 全形态（生产 chat 6a9f7db6：Agent 自行播报通过并编造报到）', () => {
+    it.each([
+      '面试结果几天给呀。',
+      '面试结果出来了吗',
+      '我面试通过了吗',
+      '昨天面过了没',
+      'AI面试过了吗',
+      '面完了录取了吗',
+      '什么时候出结果',
+      '有结果了吗',
+      '结果下来了吗',
+      '录取通知什么时候发',
+    ])('hits on result inquiry regardless of visible outcome: %s', async (scanContent) => {
+      await expect(service.precheck(baseInput({ scanContent }))).resolves.toMatchObject({
+        hit: true,
+        riskType: 'interview_result_inquiry',
+        label: '面试结果追问',
+      });
+    });
+
+    it.each([
+      '面试要带什么',
+      '面试通过后要办健康证吗',
+      '明天面试几点到',
+      '这个岗位面试要求是什么',
+      '我想约明天的面试',
+      '资料我发你了',
+    ])('does NOT flag pre-interview / process questions: %s', async (scanContent) => {
+      await expect(service.precheck(baseInput({ scanContent }))).resolves.toEqual({
+        hit: false,
+      });
+    });
+
+    it('ignores the manager quote and only scans the candidate own words', async () => {
+      await expect(
+        service.precheck(baseInput({ scanContent: '[引用 经理：面试结果会通知你] 好的' })),
+      ).resolves.toEqual({ hit: false });
     });
   });
 

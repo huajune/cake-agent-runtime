@@ -54,6 +54,12 @@ export interface JobPolicyAnalysis {
     healthCertGate: HealthCertGate;
     remark: string | null;
     interviewRemark: string | null;
+    /**
+     * 模型可见的面试备注：只含一轮面试描述，不拼 processDesc（海绵「面试入职流程」字段，
+     * 2026-09-16 全量扫描 158/622 非空、其中 115 条写的是通过后入职对接）。面试后环节不归 Agent，
+     * 该文本不得进入 prompt；确定性抽取（报名截止/健康证时点）仍读 interviewRemark 全文。
+     */
+    interviewRemarkDisplay: string | null;
     interviewSupplements: string[];
   };
   interviewMeta: {
@@ -686,7 +692,24 @@ export function buildJobPolicyAnalysis(job: JobDetail): JobPolicyAnalysis {
   const interviewRemark = sanitizeConstraintText(interviewFreeText);
   const interviewDemand = sanitizeConstraintText(asString(firstInterview?.interviewDemand));
 
-  const requirementHighlights = pickKeySentences(requirementFreeText, [
+  // 约面重点里的「关键要求 / 时效限制」是模型可见的摘句，只从 hiringRequirement.remark 与一轮面试描述里挑，
+  // 不读 processDesc（海绵「面试入职流程」：通过后对接文本，面试后环节不归 Agent）。
+  const displayRequirementText = [
+    asString(hiringRequirement?.remark),
+    asString(firstInterview?.firstInterviewDesc),
+  ]
+    .filter((t): t is string => Boolean(t))
+    .join('\n');
+  // 兼容旧 interviewProcess.remark（现网已不返回）；processDesc 仍排除。
+  const displayInterviewText = [
+    asString(interviewProcess?.remark),
+    asString(firstInterview?.firstInterviewDesc),
+  ]
+    .filter((t): t is string => Boolean(t))
+    .join('\n');
+  const interviewRemarkDisplay = sanitizeConstraintText(displayInterviewText);
+
+  const requirementHighlights = pickKeySentences(displayRequirementText, [
     /经验/,
     /体力/,
     /分拣/,
@@ -698,7 +721,7 @@ export function buildJobPolicyAnalysis(job: JobDetail): JobPolicyAnalysis {
     .map((fragment) => sanitizeConstraintText(fragment))
     .filter((fragment): fragment is string => Boolean(fragment));
 
-  const timingHighlights = pickKeySentences(interviewFreeText, [
+  const timingHighlights = pickKeySentences(displayInterviewText, [
     /健康证/,
     /最迟/,
     /最后/,
@@ -732,6 +755,7 @@ export function buildJobPolicyAnalysis(job: JobDetail): JobPolicyAnalysis {
       }),
       remark: requirementRemark,
       interviewRemark,
+      interviewRemarkDisplay,
       interviewSupplements,
     },
     interviewMeta: {
