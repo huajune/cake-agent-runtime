@@ -336,14 +336,17 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     entrypoint: 'detectJobFactWithoutProvenance',
     action: GUARDRAIL_ACTION.REPLAN,
     priority: GUARDRAIL_PRIORITY.P1,
-    description: '零查岗工具轮报出会话内从未出现过的岗位薪资/距离/班次数字。',
-    riskGoal: '岗位量化事实必须有来源（本轮工具或自己说过的话），杜绝凭空编门店薪资。',
-    exogenousSignal: '本轮查岗工具存在性 + 会话历史助手消息是否出现过同一数字。',
+    description:
+      '零查岗工具轮报出会话内（历史回复与会话记忆岗位摘要）从未出现过的岗位薪资/距离/班次数字。',
+    riskGoal:
+      '岗位量化事实必须有来源（本轮工具、会话记忆里的岗位摘要或自己说过的话），杜绝凭空编门店薪资。',
+    exogenousSignal:
+      '本轮查岗工具存在性 + 会话历史助手/候选人消息与会话记忆岗位摘要（已展示岗位/上轮候选池/焦点岗位）是否出现过同一数字。',
     residualRisk:
-      '模型凭上一轮工具结果补报未介绍过的岗位会命中（应重查后再介绍）；回指历史的句子豁免。',
+      '同一事实换表述（"下午5点到11点"↔"17:00-23:00"）仍会命中；无会话身份（advisory/debug）时读不到记忆摘要，退回只按历史回复对账；回指历史的句子豁免。',
     verification: 'tests/agent/guardrail/output/rules/job-fact-reconciliation.rule.spec.ts',
     feedbackToGenerator:
-      '上一版回复里的岗位薪资/距离/班次数字既不是本轮工具返回的，历史回复里也从未说过。' +
+      '上一版回复里的岗位薪资/距离/班次数字既不是本轮工具返回的，会话记忆和历史回复里也从未出现过。' +
       '删掉这些没有来源的数字，或本轮先调用 duliday_job_list 查实后再按工具结果介绍。',
   },
   {

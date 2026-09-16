@@ -1,5 +1,6 @@
 import { createOutputRuleFinding } from '../output-rule-catalog';
 import type { AgentToolCall } from '@agent/generator/generator.types';
+import type { RecommendedJobSummary } from '@resolution/job/types';
 import type { RuleContradiction } from '../output-rule.types';
 import { QUANTIFIED_JOB_FACT_PATTERN } from './job-fact-signals.util';
 
@@ -16,8 +17,10 @@ import { QUANTIFIED_JOB_FACT_PATTERN } from './job-fact-signals.util';
  * - `job_query_claim_without_query`（REPLAN）：回复用**完成时态**宣称本轮查过（"帮你查了下""没查到"
  *   "系统里暂时没有"），而本轮零查岗/预检/定位工具。"刚才/之前/上次查的"这类回指历史的说法不算。
  * - `job_fact_without_provenance`（REPLAN）：回复出现量化岗位事实（元/时·天·月、km、HH:MM-HH:MM）、
- *   本轮零查岗工具，且该数字在会话内任何一条历史助手消息里都没出现过——既不是本轮工具给的，
- *   也不是复述自己说过的话。回指历史（"刚才那家/上面那个"）的句子豁免。
+ *   本轮零查岗工具，且该数字在会话内任何一条历史助手消息、候选人消息与会话记忆的岗位摘要
+ *   （已展示岗位 / 上轮候选池 / 焦点岗位，即上一轮工具结果沉淀后渲染进 [会话记忆] 的班次、
+ *   薪资、距离）里都没出现过——既不是本轮工具给的，也不是复述模型本就看得到的事实。
+ *   回指历史（"刚才那家/上面那个"）的句子豁免。
  */
 // 「看了下」泛用（看健康证/看定位），只有后面跟岗位类宾语才算查岗宣称；「查/搜了下」本身就是查岗动作。
 const QUERY_DONE_CLAIM_PATTERN =
@@ -84,9 +87,33 @@ export function detectJobQueryClaimWithoutQuery(
 }
 
 /**
- * @param priorTexts 会话内的历史助手回复 + 候选人消息（含本轮）。候选人自己刚说的数字
- *   （"那个 25 元/时的还在招吗"）被复述回去不是编造。调用方拿不到会话历史时不要调本函数
- *   （无法判出处 ≠ 无出处）。已知残余：同一事实换表述（"下午5点到11点"↔"17:00-23:00"）仍会命中。
+ * 把会话记忆里的岗位摘要压成出处文本：只取会被量化事实正则命中的字段（薪资/结算/班次/距离/年龄）。
+ * 这些摘要来自上一轮真实工具结果，模型在 [会话记忆] 里看得到，按它们作答不是编造。
+ */
+export function formatJobFactProvenanceTexts(
+  jobs: readonly (RecommendedJobSummary | null | undefined)[],
+): string[] {
+  const texts: string[] = [];
+  for (const job of jobs) {
+    if (!job) continue;
+    const parts = [
+      job.salaryDesc,
+      job.settlementSummary,
+      job.shiftSummary,
+      job.ageRequirement,
+      job.distanceKm != null ? `${job.distanceKm.toFixed(1)}km` : null,
+    ].filter((part): part is string => typeof part === 'string' && part.trim().length > 0);
+    if (parts.length > 0) texts.push(parts.join(' | '));
+  }
+  return texts;
+}
+
+/**
+ * @param priorTexts 会话内的历史助手回复 + 候选人消息（含本轮）+ 会话记忆岗位摘要
+ *   （见 formatJobFactProvenanceTexts）。候选人自己刚说的数字（"那个 25 元/时的还在招吗"）
+ *   被复述回去不是编造；上一轮工具结果沉淀进记忆的班次/薪资被挑出来回答追问同样不是。
+ *   调用方拿不到会话历史时不要调本函数（无法判出处 ≠ 无出处）。
+ *   已知残余：同一事实换表述（"下午5点到11点"↔"17:00-23:00"）仍会命中。
  */
 export function detectJobFactWithoutProvenance(
   text: string,

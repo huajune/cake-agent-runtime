@@ -1,7 +1,9 @@
 import {
   detectJobFactWithoutProvenance,
   detectJobQueryClaimWithoutQuery,
+  formatJobFactProvenanceTexts,
 } from '@agent/guardrail/output/rules/job-fact-reconciliation.rule';
+import type { RecommendedJobSummary } from '@resolution/job/types';
 
 const jobListCall = { toolName: 'duliday_job_list', args: {}, result: { resultCount: 1 } } as never;
 
@@ -54,6 +56,88 @@ describe('job_fact_without_provenance（零工具轮的无来源岗位数字）'
     expect(
       detectJobFactWithoutProvenance('面试时间是 13:30～16:30，明天来得及', [], history),
     ).toBeNull();
+  });
+
+  it('上一轮工具结果沉淀进会话记忆的班次被挑出来回答追问，不算无来源（trace …_1789537953238）', () => {
+    // 上一轮助手只口头说了"早中夜三班轮换 / 10:00-22:00可选"，具体时段只存在于记忆的岗位摘要里。
+    const priorReplies = [
+      '奥乐齐（庆春银泰）- 通岗店员，4.9km\n班次：早中夜三班轮换，5000-7000元/月\n\n' +
+        '果蔬好（大悦城店）- 理货员/收银员，9.4km\n班次：10:00-22:00可选，4000-5000元/月',
+    ];
+    const reply =
+      '有的～\n\n奥乐齐有早班 05:00-14:00，不过这家需要早中夜三班都能上。\n\n' +
+      '果蔬好有 10:00-19:00 的上午班，可以只选这个班次。';
+    expect(detectJobFactWithoutProvenance(reply, [], priorReplies)?.action).toBe('replan');
+
+    const memoryJobs: RecommendedJobSummary[] = [
+      {
+        jobId: 529402,
+        brandName: '奥乐齐',
+        jobName: '通岗店员',
+        storeName: '庆春银泰',
+        cityName: '杭州市',
+        regionName: '上城区',
+        laborForm: '全职',
+        salaryDesc: '5000-7000 元/月',
+        shiftSummary:
+          '组合班次，全部需出勤：\n- 05:00-14:00（早班，全天班，约 9 小时）\n- 14:00-23:00（下午班）',
+        jobCategoryName: '零售/超市/通岗店员',
+        distanceKm: 4.9,
+      },
+      {
+        jobId: 529138,
+        brandName: '果蔬好',
+        jobName: '综合理货员',
+        storeName: '大悦城店',
+        cityName: '杭州市',
+        regionName: '拱墅区',
+        laborForm: '兼职',
+        salaryDesc: '4000-5000 元/月',
+        shiftSummary: '班次可选其一：\n- 10:00-19:00（上午班）\n- 13:00-22:00（中班）',
+        jobCategoryName: '零售/超市/理货员',
+        distanceKm: 9.4,
+      },
+    ];
+    expect(
+      detectJobFactWithoutProvenance(
+        reply,
+        [],
+        [...priorReplies, ...formatJobFactProvenanceTexts(memoryJobs)],
+      ),
+    ).toBeNull();
+  });
+
+  it('formatJobFactProvenanceTexts 只取会被量化正则命中的字段，空摘要不产出', () => {
+    const texts = formatJobFactProvenanceTexts([
+      null,
+      {
+        jobId: 1,
+        brandName: '肯德基',
+        jobName: null,
+        storeName: null,
+        cityName: null,
+        regionName: null,
+        laborForm: null,
+        salaryDesc: '基础 17 元/时',
+        settlementSummary: '月结',
+        shiftSummary: null,
+        jobCategoryName: null,
+        ageRequirement: '18-45岁',
+        distanceKm: 2.7,
+      },
+      {
+        jobId: 2,
+        brandName: '空壳',
+        jobName: null,
+        storeName: null,
+        cityName: null,
+        regionName: null,
+        laborForm: null,
+        salaryDesc: null,
+        jobCategoryName: null,
+      },
+    ]);
+    expect(texts).toEqual(['基础 17 元/时 | 月结 | 18-45岁 | 2.7km']);
   });
 
   it('本轮有查岗工具即放行', () => {

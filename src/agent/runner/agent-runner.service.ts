@@ -925,6 +925,7 @@ export class AgentRunnerService {
       chatId: ctx.chatId,
       userId: ctx.userId,
       corpId: ctx.sessionRef?.corpId,
+      sessionId: ctx.sessionRef?.sessionId,
       traceId: ctx.traceId,
       contactName: ctx.contactName,
       botImId: ctx.botImId,
