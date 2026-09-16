@@ -97,6 +97,11 @@ mode=validate（校验候选人资料）：实时契约只作漂移比对 → lo
 回执另带 `action`：`retry_submission` 才允许按原有证据改投；`ask_candidate`（昵称不是真名、
 社保缺缴纳方/参保地、文件未发送等）必须先向候选人澄清并等待新回复。两类不能共用
 “候选人已答过、不要再问”的总指令，否则会把身份闸门推成原值重投循环。
+第三类 `drop`（0916）：槽位已 disqualified 时的显式改口在公证之前就被棘轮挡回，本岗不再
+接受该字段任何提案。挡回同样不能静默：回执以 `reason=slot_disqualified, action=drop` 回显，
+`screening_rejected` 的 replyInstruction 点名"改口未入账、不重投、不邀请候选人重报数值"，
+审计落 `proposal_ignored`。已 filled 槽位的普通重投仍静默忽略——模型每轮重发全表是常态。
+筛退终态只在本张表内成立：换岗表单重新收该字段，档案预填对越界值也只留空不判不合格。
 
 **棘轮对系统单向、对本人双向**：filled 重开仅三条路径——复述 corrections /
 applyErrorList / 候选人显式改口（`proposal.restatement`，同套公证，通过即替换，
@@ -166,8 +171,9 @@ outcome=`restated` 落审计；askCount 不清零防刷熔断配额）。系统/
   列入「丢了算事故」key 清单。契约快照与 slots 同实体原子落盘；旧表单没有
   `contractSnapshot` 时不得直接校验，先走纯 jobId 查询建立快照。旧 key 不迁移，随 3 天 TTL
   自然过期；兼容窗内旧槽位 `confidence:'medium'` 保守触发 recap，窗口结束后临时兼容失效。
-- 审计：labelTitle 定位失败、值适配/公证拒收 / slot_restated / slot_disqualified /
-  escalated / config_debt / recap_confirmation_rejected 等落 `agent_execution_events`。
+- 审计：labelTitle 定位失败、值适配/公证拒收 / proposal_ignored（筛退槽位改口被挡）/
+  slot_restated / slot_disqualified / escalated / config_debt / recap_confirmation_rejected
+  等落 `agent_execution_events`。
   `collection_form_audit` 固化 `jobId + labelId + labelTitle + fieldType`，配置债必须按标签
   聚合并附横跨岗位数，不能按单岗拆工单。`message_processing_records` 无 `trace_id` 列；
   钻取先以事件 `trace_id` 对流水 `message_id/batch_id`，对不上时用 `chat_id + 时间窗`
