@@ -165,13 +165,13 @@ export default function ControlPanel({
           <Search size={14} strokeWidth={2} aria-hidden="true" className={styles.searchIcon} />
           <input
             type="text"
-            placeholder="检索会话主体"
+            placeholder="检索用户名 / chatId"
             value={inputValue}
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
             onBlur={handleBlur}
             className={styles.searchInput}
-            aria-label="检索会话主体"
+            aria-label="检索用户名 / chatId"
           />
           {inputValue && (
             <button

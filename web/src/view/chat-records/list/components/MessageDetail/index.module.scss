@@ -146,6 +146,34 @@
   color: $text-muted;
 }
 
+// 托管号侧消息归属：真人 / AI / 自动
+.provenanceTag {
+  padding: 1px 7px;
+  border: 1px solid transparent;
+  border-radius: $radius-full;
+  font-size: 10px;
+  line-height: 1.5;
+  white-space: nowrap;
+
+  &.human {
+    border-color: rgba($rose, 0.45);
+    background: $rose-soft;
+    color: $rose-text;
+  }
+
+  &.ai {
+    border-color: $primary-20;
+    background: $primary-08;
+    color: $primary-dark;
+  }
+
+  &.auto {
+    border-color: rgba($info, 0.4);
+    background: $info-soft;
+    color: $info-text;
+  }
+}
+
 .processingLink {
   padding: 2px 7px;
   border: 1px solid rgba($primary, 0.18);
