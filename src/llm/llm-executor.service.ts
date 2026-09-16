@@ -34,6 +34,8 @@ export interface LlmGenerateOptions extends Omit<Parameters<typeof generateText>
    * 步末墙钟会错配到成功尝试的 steps 上。
    */
   onAttemptStart?: (info: { modelId: string; attempt: number }) => void;
+  /** 观测用途标签，随 llm_execution 事件落库；不参与模型请求。 */
+  purpose?: string;
 }
 
 export interface LlmGenerateStructuredOptions<TSchema extends z.ZodTypeAny>
@@ -54,6 +56,8 @@ export interface LlmStreamOptions extends Omit<Parameters<typeof streamText>[0],
   disableFallbacks?: boolean;
   thinking?: LlmThinkingConfig;
   onPreparedRequest?: (request: Record<string, unknown>) => Promise<void> | void;
+  /** 观测用途标签，随 llm_execution 事件落库；不参与模型请求。 */
+  purpose?: string;
 }
 
 export type LlmGenerateResult = Awaited<ReturnType<typeof generateText>> & {
@@ -92,8 +96,15 @@ export class LlmExecutorService {
   ) {}
 
   async generate(options: LlmGenerateOptions): Promise<LlmGenerateResult> {
-    const { config, onPreparedRequest, onAttemptStart, thinking, validateResult, ...routeOptions } =
-      options;
+    const {
+      config,
+      onPreparedRequest,
+      onAttemptStart,
+      thinking,
+      validateResult,
+      purpose,
+      ...routeOptions
+    } = options;
     const plan = await this.resolveExecutionPlanWithOverrides(routeOptions);
     const executionStartMs = Date.now();
     const trail: LlmAttemptTrace[] = [];
@@ -141,7 +152,19 @@ export class LlmExecutorService {
             durationMs: Date.now() - attemptStartMs,
             status: 'success',
           });
-          this.emitLlmExecution(plan, 'generate', modelId, trail, executionStartMs, backoffTotalMs);
+          this.emitLlmExecution(
+            plan,
+            'generate',
+            modelId,
+            trail,
+            executionStartMs,
+            backoffTotalMs,
+            {
+              purpose,
+              inputTokens: result.usage?.inputTokens,
+              outputTokens: result.usage?.outputTokens,
+            },
+          );
           // 结果对象由 AI SDK 创建；附加路由层实际 modelId，供业务观测区分首选与 fallback。
           return Object.assign(result, { modelId });
         } catch (err) {
@@ -174,7 +197,9 @@ export class LlmExecutorService {
       }
     }
 
-    this.emitLlmExecution(plan, 'generate', null, trail, executionStartMs, backoffTotalMs);
+    this.emitLlmExecution(plan, 'generate', null, trail, executionStartMs, backoffTotalMs, {
+      purpose,
+    });
     throw this.buildExhaustedError(plan, trail, lastRawError);
   }
 
@@ -200,7 +225,7 @@ export class LlmExecutorService {
   }
 
   async stream(options: LlmStreamOptions): Promise<ReturnType<typeof streamText>> {
-    const { onPreparedRequest, thinking, ...routeOptions } = options;
+    const { onPreparedRequest, thinking, purpose, ...routeOptions } = options;
     const plan = await this.resolveExecutionPlanWithOverrides(routeOptions);
     const executionStartMs = Date.now();
     const trail: LlmAttemptTrace[] = [];
@@ -244,7 +269,7 @@ export class LlmExecutorService {
           durationMs: Date.now() - attemptStartMs,
           status: 'success',
         });
-        this.emitLlmExecution(plan, 'stream', modelId, trail, executionStartMs, 0);
+        this.emitLlmExecution(plan, 'stream', modelId, trail, executionStartMs, 0, { purpose });
         return streamResult;
       } catch (error) {
         let err: Error;
@@ -267,7 +292,7 @@ export class LlmExecutorService {
       }
     }
 
-    this.emitLlmExecution(plan, 'stream', null, trail, executionStartMs, 0);
+    this.emitLlmExecution(plan, 'stream', null, trail, executionStartMs, 0, { purpose });
     throw this.buildExhaustedError(plan, trail, lastError);
   }
 
@@ -415,6 +440,7 @@ export class LlmExecutorService {
     attempts: LlmAttemptTrace[],
     executionStartMs: number,
     backoffTotalMs: number,
+    extra?: { purpose?: string; inputTokens?: number; outputTokens?: number },
   ): void {
     this.tracer?.emit({
       type: 'llm_execution',
@@ -427,6 +453,9 @@ export class LlmExecutorService {
       totalDurationMs: Date.now() - executionStartMs,
       backoffTotalMs,
       attempts,
+      purpose: extra?.purpose,
+      inputTokens: extra?.inputTokens,
+      outputTokens: extra?.outputTokens,
     });
   }
 
