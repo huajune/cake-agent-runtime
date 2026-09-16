@@ -14,7 +14,7 @@
 **预计版本**: `v11.9.0`
 **最近更新**: `2026-09-16`
 **来源分支**: `develop`
-**累计 PR**: 3
+**累计 PR**: 4
 
 ### 更新摘要
 - PR #1287 筛退槽位的改口被棘轮挡回时对模型与观测可见
@@ -28,6 +28,7 @@
 - PR #1284 `duliday_modify_interview_time`：指针未命中时按 workOrderId 查海绵，要求工单为进行中约面状态、登记手机号在候选人本会话原话中有出处（与 precheck `candidatePhone` 出处判据同源，剔除第三方截图），通过则放行并回填 `active_booking`；任一环节不成立或海绵查询失败均 fail-closed 短路转人工，错误码沿用 `modify_interview.work_order_not_in_memory`。
 - PR #1284 DESCRIPTION 第 5 条与 `tool-error-types` 注释同步；`docs/prompt-rule-ledger.md` 登记。
 - PR #1284 spec 新增 6 例：放行+回填、行内手机号/缺 interviewTime、非候选人出处、非在途状态、查询失败、无登记手机号。
+- PR #1292 面试方式收拢为海绵四值枚举，AI 面试不再附到店脚本
 
 ### 新功能
 - PR #1285 聊天记录页现在能一眼看出每条托管号消息是谁发的：招募经理在手机上手打的标「真人」，AI 回的标「AI」，托管平台 SOP / 定时 / 建群等自动消息标「自动」；来源不明的不标，入群邀请卡片因平台回调无法区分人机也不标
@@ -42,17 +43,21 @@
 - PR #1285 消息处理流水页搜索框以前只认用户名，粘贴 chatId 查不到任何记录；现在输入 chatId（或其前缀）也能命中，方便运营按会话排障
 - PR #1284 `duliday_modify_interview_time`：指针未命中时按 workOrderId 查海绵，要求工单为进行中约面状态、登记手机号在候选人本会话原话中有出处（与 precheck `candidatePhone` 出处判据同源，剔除第三方截图），通过则放行并回填 `active_booking`；任一环节不成立或海绵查询失败均 fail-closed 短路转人工，错误码沿用 `modify_interview.work_order_not_in_memory`。
 - PR #1284 DESCRIPTION 第 5 条与 `tool-error-types` 注释同步；`docs/prompt-rule-ledger.md` 登记。
+- PR #1292 AI 面试岗位预约成功后不再附带"到店跟前台说……"到店脚本和门店地址，改为线上面试提醒（batch …_1789456933610 必胜客保利大都汇复现，与生产 chat 6a9f7db6 同因）
 
 ### 优化调整
 - PR #1287 precheck 工具说明补充：被筛掉的字段在本岗是终态，候选人改口不入账，不要承诺"我帮你更新"，换岗表单才会重新收这项。
 - PR #1287 架构文档与 prompt 规则台账同步登记。
 - PR #1285 后端共享过滤器把搜索词改为同时匹配 `user_name` 与 `chat_id`（PostgREST `or` 过滤，沿用既有分隔符转义），接口参数名保持 `userName` 不变；前端 placeholder 改为「检索用户名 / chatId」
 - PR #1285 全站大背景 `$gradient-page` 的 30% 粉段 `#fff9fd` 减半到 `#fffbfe`，其余色站不动（0914 整体提亮到近白曾被判「太淡」，故只动粉段）
+- PR #1292 面试方式统一按海绵后台的四值单选（AI面试 / 电话面试 / 视频面试 / 线下面试）识别，只有线下面试才发到店脚本；预约回执、面试地址定位、出站守卫、复聊排程四处原本各自维护的关键词判断合并为同一判据
+- PR #1292 面试方式缺失或不在四值内时，预约回执既不附到店脚本也不附线上提醒，并记录告警
 
 ### 运维与流程
 - PR #1287 筛退槽位的改口被棘轮挡回时对模型与观测可见
 - PR #1285 聊天记录托管号侧消息标记真人/AI/自动来源
 - PR #1284 改约工具对带外工单按候选人自报手机号核验归属并回填 active_booking
+- PR #1292 面试方式收拢为海绵四值枚举，AI 面试不再附到店脚本
 
 ### 配置变更
 - 无
@@ -72,6 +77,7 @@
 - PR #1284 `npx jest tests/tools/duliday-modify-interview-time.tool.spec.ts`：12/12 通过
 - PR #1284 `npx jest tests/agent/runner/agent-runner.service.spec.ts`：61/61 通过
 - PR #1284 `tsc --noEmit` 通过；改动文件 ESLint 零告警
+- PR #1292 pre-push 钩子完整跑过 ci:check（lint / format / typecheck / geo / vocab / quality-ledger / build:ci / test:ci）
 <!-- release:pending:end -->
 
 ## [11.8.2] - 2026-09-14
