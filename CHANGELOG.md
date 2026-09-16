@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [11.9.1] - 2026-09-16
 
-**预计版本**: `v11.9.1`
-**最近更新**: `2026-09-16`
 **来源分支**: `develop`
-**累计 PR**: 2
 
 ### 更新摘要
 - PR #1303 更新跑测试的 node 说明，禁止命令前加 export PATH
@@ -58,7 +54,6 @@
 - PR #1306 未新增对开放自然语言直接 reject/覆盖/判缺的正则分支；本次只对可 JSON.parse 的封闭工具参数形态做判定
 - PR #1306 新增虚构 prompt 示例值均来自 `src/agent/guardrail/prompt/example-registry.ts`（本 PR 未新增 prompt 示例）
 - PR #1306 其他说明：真实 Agent 链路回归标 N/A——触发条件是模型未发起工具调用而把参数当正文吐出，属非确定性模型行为，无法用真实链路稳定复现；生产验证靠上线后观察 `guardrail_review_records.reason_code='skip_intent_envelope_silenced'` 与 `envelope_unwrapped` 的 `revised_reply` 内容。
-<!-- release:pending:end -->
 
 ## [11.9.0] - 2026-09-16
 
