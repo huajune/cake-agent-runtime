@@ -61,14 +61,33 @@ export interface BookingClaimContext {
 }
 
 /**
+ * 本轮 precheck 校验的岗位——比入口快照的 currentFocusJob 更新鲜的焦点信号。
+ * 快照取自回合开始前，同轮 precheck 刚校验的岗位还没写进记忆；宣称"报名成功"的就是这家店。
+ * 多次 precheck 取最后一次；参数缺 jobId（模型拼错）按未知处理。
+ */
+function readPrecheckJobId(toolCalls: readonly AgentToolCall[]): number | undefined {
+  for (let index = toolCalls.length - 1; index >= 0; index -= 1) {
+    const call = toolCalls[index];
+    if (call.toolName !== 'duliday_interview_precheck') continue;
+    const jobId = asRecord(call.args)?.jobId;
+    if (typeof jobId === 'number' && Number.isInteger(jobId)) return jobId;
+  }
+  return undefined;
+}
+
+/**
  * 在途工单能否解释本轮的完成时态：名下有工单、焦点岗位已知、且每张工单都带 job_id 却没有一张
  * 等于焦点岗位 → 不能解释。任一信息缺失时按"能解释"处理（老行 job_id 可能为空，不得升档误拦）。
  */
-function activeBookingsCoverFocusJob(context: BookingClaimContext): boolean {
+function activeBookingsCoverFocusJob(
+  context: BookingClaimContext,
+  toolCalls: readonly AgentToolCall[],
+): boolean {
   const bookings = context.activeBookings ?? [];
-  if (bookings.length === 0 || context.focusJobId === undefined) return true;
+  const focusJobId = context.focusJobId ?? readPrecheckJobId(toolCalls);
+  if (bookings.length === 0 || focusJobId === undefined) return true;
   if (bookings.some((entry) => typeof entry.job_id !== 'number')) return true;
-  return bookings.some((entry) => entry.job_id === context.focusJobId);
+  return bookings.some((entry) => entry.job_id === focusJobId);
 }
 
 export function detectBookingDoneClaimWithoutSubmission(
@@ -91,7 +110,7 @@ export function detectBookingDoneClaimWithoutSubmission(
     );
   }
 
-  if (!activeBookingsCoverFocusJob(context)) {
+  if (!activeBookingsCoverFocusJob(context, toolCalls)) {
     return createOutputRuleFinding(
       'booking_done_claim_no_work_order',
       '回复用完成时态宣称报名/预约已办好（"已帮你报好/报名成功"），但本轮没有 booking 调用、' +

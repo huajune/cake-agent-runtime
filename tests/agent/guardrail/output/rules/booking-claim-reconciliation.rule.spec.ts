@@ -157,6 +157,35 @@ describe('booking_done_claim_no_work_order（长期记忆确证无在途工单�
     ).toBe('booking_done_claim_without_submission');
   });
 
+  it('入口快照焦点为空时回落本轮 precheck 参数 jobId → repair（chat 6aa13718 旧店工单 + 新店零工具"报名成功"）', () => {
+    const precheck = {
+      toolName: 'duliday_interview_precheck',
+      args: { mode: 'query', jobId: 523254 },
+      result: { success: true, nextAction: 'ready_to_book' },
+    } as unknown as AgentToolCall;
+    const hit = detectBookingDoneClaimWithoutSubmission(
+      '报名成功\n\n面试时间：9月17日（周四）14:00',
+      [precheck],
+      { activeBookings: [booking(520437)] },
+    );
+    expect(hit?.ruleId).toBe('booking_done_claim_no_work_order');
+    expect(hit?.action).toBe('repair');
+
+    // 同轮多次 precheck 取最后一次；快照焦点存在时仍以快照为准。
+    const older = { ...precheck, args: { jobId: 520437 } } as unknown as AgentToolCall;
+    expect(
+      detectBookingDoneClaimWithoutSubmission('报名成功', [precheck, older], {
+        activeBookings: [booking(520437)],
+      })?.ruleId,
+    ).toBe('booking_done_claim_without_submission');
+    expect(
+      detectBookingDoneClaimWithoutSubmission('报名成功', [precheck], {
+        activeBookings: [booking(520437)],
+        focusJobId: 520437,
+      })?.ruleId,
+    ).toBe('booking_done_claim_without_submission');
+  });
+
   it('焦点岗位未知或老行 job_id 为空时不升档', () => {
     expect(
       detectBookingDoneClaimWithoutSubmission('已经帮你约好了', [], {

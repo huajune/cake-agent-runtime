@@ -170,6 +170,26 @@ export class SessionWorkbenchService {
     });
   }
 
+  /**
+   * 写入工具确权焦点（本轮 precheck 校验通过的岗位）。
+   *
+   * precheck 只带 basicInfo/hiringRequirement/interviewProcess 拉岗位，投影出的摘要缺薪资、
+   * 班次等展示字段；候选池或已展示岗位里若还有同 jobId 的完整摘要，优先落那一份，
+   * 不让"更强的焦点信号"顺带降低焦点岗位的信息密度。
+   */
+  async saveAttestedFocusJob(
+    corpId: string,
+    userId: string,
+    sessionId: string,
+    job: RecommendedJobSummary,
+  ): Promise<void> {
+    const state = await this.facts.getSessionState(corpId, userId, sessionId);
+    const known = [...(state.presentedJobs ?? []), ...(state.lastCandidatePool ?? [])].find(
+      (candidate) => candidate.jobId === job.jobId,
+    );
+    await this.saveCurrentFocusJob(corpId, userId, sessionId, known ?? job);
+  }
+
   // ==================== projection ====================
 
   async projectAssistantTurn(params: {

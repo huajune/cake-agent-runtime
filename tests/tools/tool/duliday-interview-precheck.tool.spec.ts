@@ -501,6 +501,18 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
       }),
     );
     expect(context.ledger.jobs.collectionReadyJobId).toBe(100);
+    // 海绵查得到的岗位登记为工具确权焦点：轮末写 currentFocusJob，守卫据此判假回执。
+    expect(context.ledger.jobs.attestedFocusJob).toEqual(
+      expect.objectContaining({ jobId: 100, brandName: JOB.basicInfo.brandName }),
+    );
+  });
+
+  it('岗位失效（海绵查不到）时不登记工具确权焦点', async () => {
+    sponge.fetchJobs.mockResolvedValue({ jobs: [] });
+    const result = await execute({ jobId: 100 });
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.PRECHECK_JOB_NOT_FOUND);
+    expect(context.ledger.jobs.attestedFocusJob).toBeNull();
+    expect(context.ledger.jobs.invalidatedJobIds).toEqual([100]);
   });
 
   it('逐行填满模板与自然表达走同一路径：资料授权，无时间则 select_interview_time', async () => {

@@ -305,9 +305,10 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
       '零 booking 调用、无在途工单（或在途工单都不是本轮焦点岗位）却宣称"已帮你报好/报名成功"。',
     riskGoal: '堵住 observe 哨兵管不了的假回执：候选人据此等面试，这家店的工单根本不存在。',
     exogenousSignal:
-      '本轮 booking 调用存在性 + precheck 在途工单 + 长期记忆 active_booking（为空，或每张 job_id 都≠焦点岗位 jobId）。',
+      '本轮 booking 调用存在性 + precheck 在途工单 + 长期记忆 active_booking（为空，或每张 job_id 都≠焦点岗位 jobId）；' +
+      '焦点岗位取入口快照 currentFocusJob，缺失时回落本轮 precheck 参数 jobId（precheck 校验过的岗位轮末也会写入 currentFocusJob）。',
     residualRisk:
-      '长期记忆读失败时降级为 observe 档（activeBookings=undefined），不误拦；焦点岗位未知或老行 job_id 为空时同样只落 observe。',
+      '长期记忆读失败时降级为 observe 档（activeBookings=undefined），不误拦；焦点岗位未知（本会话从未 precheck、候选池已过期）或老行 job_id 为空时同样只落 observe。',
     verification: 'tests/agent/guardrail/output/rules/booking-claim-reconciliation.rule.spec.ts',
     feedbackToGenerator:
       '上一版回复宣称已帮候选人报好名/预约成功，但预约从未提交（本轮无 booking，候选人名下也没有工单）。' +

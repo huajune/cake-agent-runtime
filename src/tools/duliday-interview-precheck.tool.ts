@@ -50,6 +50,7 @@ import {
 import { renderRecap, renderRecapRedeliveryText } from '@tools/collection/recap-renderer';
 import { renderRejection } from '@tools/collection/rejection-renderer';
 import { findRecentSameJobBooking } from '@tools/booking/active-booking-dedup.util';
+import { mapJobsToRecommendedSummaries } from '@tools/job-list/job-summary.util';
 import { formatInterviewTimeForReply } from '@tools/booking/booking-reply-format.util';
 import {
   buildBookableSlots,
@@ -550,6 +551,10 @@ export function buildInterviewPrecheckTool(
           const analysis = buildJobPolicyAnalysis(job);
           const interviewTimeWaitNotice = isWaitNoticeInterview(analysis);
           const windows = analysis.interviewWindows;
+
+          // 海绵查得到即登记为工具确权焦点：轮末写入 currentFocusJob，候选池过期后回复
+          // 文本投影失效时焦点也不会一直为空（出站守卫据焦点判"报名成功"是否假回执）。
+          context.ledger.recordAttestedFocusJob(mapJobsToRecommendedSummaries([job])[0]);
 
           const formRun = await runForm({
             deps: { ...deps, collectionForms: deps.collectionForms },

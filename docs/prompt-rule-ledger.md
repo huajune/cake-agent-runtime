@@ -555,6 +555,12 @@ badcase 5j1mbgi8 / kwxk74gn / kb629uko / wvr7pejq；教侧配对手册"岗位事
 `currentFocusJob.jobId` 时，"跨轮复述真实工单"的解释不成立，同样 revise（chat 6a97b336：09-02 真约 A 店、09-07 换店后零工具连发
 "李霄/周建青的报名已提交成功"，武进万达店从未建单，候选人空等两天）。焦点岗位未知或老行 `job_id` 为空时不升档。
 
+2026-09-16 该判据补一条焦点来源：入口快照的 `currentFocusJob` 取自回合开始前，同轮 precheck 刚校验过的
+岗位还没写进记忆，快照为空时整条对账空转（生产零工具"报名成功"因此没拦住）。现焦点岗位缺失时回落到
+本轮 `duliday_interview_precheck` 参数里的 `jobId`（多次调用取最后一次，缺 `jobId` 仍按未知处理），
+判据本身与升档条件不变。precheck 侧同批把校验通过的岗位登记为工具确权焦点（`attestedFocusJob`），
+轮末写入 `currentFocusJob`，后续回合的快照不再为空。
+
 其中 `cancel_done_claim_failed_tool` 同属执行档（见下文取消/改期链路）。
 
 observe 哨兵（只落档不拦截，5 条）：`requested_brand_mismatch`、`settlement_cycle_mismatch`、
