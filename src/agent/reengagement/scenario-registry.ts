@@ -1,4 +1,5 @@
 import type { ReengagementSessionState } from '@memory/recall.types';
+import { parseInterviewMethod } from '@sponge/interview-method';
 
 export type FollowUpScenarioCode =
   | 'opening_no_reply'
@@ -82,7 +83,7 @@ const HOUR = 60 * MINUTE;
 const SHANGHAI_UTC_OFFSET_MS = 8 * HOUR;
 
 function isAiInterview(interviewType?: string): boolean {
-  return typeof interviewType === 'string' && /ai\s*面试/i.test(interviewType);
+  return parseInterviewMethod(interviewType) === 'AI面试';
 }
 
 /** 上海时区无夏令时：返回面试日期当天指定整点的绝对时间。 */

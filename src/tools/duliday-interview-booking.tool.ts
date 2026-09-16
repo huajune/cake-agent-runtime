@@ -34,7 +34,7 @@ import type { ToolBuildContext, ToolBuilder } from '@shared-types/tool.types';
 import {
   buildOnSiteScript,
   formatInterviewTimeForReply,
-  isOnlineInterview,
+  resolveInterviewReceiptMode,
   resolveManualInterviewGroupHandling,
 } from '@tools/booking/booking-reply-format.util';
 import { runBookingScheduleAndNameGuards } from '@tools/booking/booking-guards.util';
@@ -453,7 +453,7 @@ export function buildInterviewBookingTool(
           }
 
           const jobInfo = readJobInfo(job);
-          const interviewType = resolveInterviewType(job);
+          const interviewType = analysis.interviewMeta.method ?? undefined;
 
           if (!result.success) {
             const rewritten = applyErrorList(form, result.applyErrorList ?? [], contract);
@@ -590,11 +590,12 @@ export function buildInterviewBookingTool(
             interviewRemark: analysis.normalizedRequirements.interviewRemark,
             flowDescription: analysis.interviewMeta.demand,
           });
-          const online = isOnlineInterview({
-            interviewType,
-            interviewRemark: analysis.normalizedRequirements.interviewRemark,
-            flowDescription: analysis.interviewMeta.demand,
-          });
+          const receiptMode = resolveInterviewReceiptMode(analysis.interviewMeta.method);
+          if (receiptMode === 'unknown') {
+            logger.warn(
+              `[booking] jobId=${jobId} 面试方式缺失或枚举外，回执不附到店脚本也不附线上提醒`,
+            );
+          }
           const toolResult = {
             ...baseToolOutput,
             _outcome: '预约成功，可以告知候选人面试安排',
@@ -614,7 +615,7 @@ export function buildInterviewBookingTool(
             _confirmedInterviewTimeHuman: interviewTime
               ? formatInterviewTimeForReply(interviewTime)
               : '未指定面试时间：面试官会直接电话联系候选人确认',
-            ...(interviewTime && !online
+            ...(interviewTime && receiptMode === 'on_site'
               ? {
                   _onSiteScript: buildOnSiteScript({
                     candidateName: identity.name,
@@ -622,7 +623,7 @@ export function buildInterviewBookingTool(
                   }),
                 }
               : {}),
-            ...(online
+            ...(receiptMode === 'remote'
               ? {
                   _onlineInterviewGuide:
                     '本轮不需要到店；按 precheck 的流程说明提醒候选人留意线上/电话面试通知。',
@@ -865,21 +866,6 @@ async function notifyBooking(
 
 function normalizeText(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
-}
-
-/** 从岗位详情读取面试方式，仅用于回执展示，不参与收资判决。 */
-export function resolveInterviewType(job: JobDetail): string | undefined {
-  const process =
-    job.interviewProcess && typeof job.interviewProcess === 'object'
-      ? (job.interviewProcess as Record<string, unknown>)
-      : null;
-  const first =
-    process?.firstInterview && typeof process.firstInterview === 'object'
-      ? (process.firstInterview as Record<string, unknown>)
-      : null;
-  const description = normalizeText(first?.firstInterviewDesc);
-  if (description && /ai/iu.test(description)) return 'AI面试';
-  return normalizeText(first?.firstInterviewWay);
 }
 
 function assertIdentity(values: ReturnType<typeof readIdentity>): asserts values is IdentityValues {
