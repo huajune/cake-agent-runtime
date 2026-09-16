@@ -1,9 +1,41 @@
 {
   "baseVersion": "11.8.2",
-  "nextVersion": "11.8.2",
-  "updatedAt": "2026-09-14",
+  "nextVersion": "11.8.3",
+  "updatedAt": "2026-09-16",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "1287",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1287",
+      "title": "筛退槽位的改口被棘轮挡回时对模型与观测可见",
+      "author": "huajune",
+      "mergedAt": "2026-09-16",
+      "businessUpdates": [
+        "收资字段被岗位筛选条件判不合格后，候选人改口的提案在公证之前就被状态机挡回，但工具回执里什么都不显示、审计也不落库。模型只看到裁决没变，在思考里猜\"系统不信任\"，上一轮还向候选人许下\"说下真实值我帮你更新\"这种无法兑现的话。现在回执以 `rejectedAnswers`（`action=drop`）明确告知模型该字段本岗已终态，回复指令要求不重投、不邀请候选人重报数值；审计新增 `proposal_ignored` 事件，排障可直接查到。"
+      ],
+      "summary": [
+        "筛退槽位的改口被棘轮挡回时对模型与观测可见"
+      ],
+      "features": [],
+      "fixes": [
+        "收资字段被岗位筛选条件判不合格后，候选人改口的提案在公证之前就被状态机挡回，但工具回执里什么都不显示、审计也不落库。模型只看到裁决没变，在思考里猜\"系统不信任\"，上一轮还向候选人许下\"说下真实值我帮你更新\"这种无法兑现的话。现在回执以 `rejectedAnswers`（`action=drop`）明确告知模型该字段本岗已终态，回复指令要求不重投、不邀请候选人重报数值；审计新增 `proposal_ignored` 事件，排障可直接查到。"
+      ],
+      "optimizations": [
+        "precheck 工具说明补充：被筛掉的字段在本岗是终态，候选人改口不入账，不要承诺\"我帮你更新\"，换岗表单才会重新收这项。",
+        "架构文档与 prompt 规则台账同步登记。"
+      ],
+      "ops": [
+        "筛退槽位的改口被棘轮挡回时对模型与观测可见"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "新增 3 个测试（collection-core 2 个、precheck 工具 1 个），本地全量 jest 6934 通过；唯一失败是与本改动无关的 `resume-transcribe.util` 图片切片测试在全量并行下超时，单独跑通过。",
+        "tsc、eslint（改动文件）、prettier 通过。"
+      ],
+      "level": "patch"
+    }
+  ],
   "lastRelease": {
     "version": "11.8.2",
     "date": "2026-09-14",
@@ -44,5 +76,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "cec9feed5ffd1c573e606606296c5c52c063b75b"
+  "lastAnalyzedSha": "7ccc01c94484103086ac6386a99be42526b30086"
 }
