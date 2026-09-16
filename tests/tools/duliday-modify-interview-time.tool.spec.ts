@@ -4,9 +4,9 @@ import { TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
 import { createToolContext, mergeToolContext } from '../helpers/tool-context.fixture';
 
 describe('buildModifyInterviewTimeTool', () => {
-  const spongeService = { modifyInterviewTime: jest.fn() };
+  const spongeService = { modifyInterviewTime: jest.fn(), fetchSignupWorkOrders: jest.fn() };
   const opsEventsRecorder = { recordEvent: jest.fn() };
-  const longTermService = { getActiveBookings: jest.fn() };
+  const longTermService = { getActiveBookings: jest.fn(), setActiveBooking: jest.fn() };
 
   const mockContext: ToolBuildContext = createToolContext({
     session: {
@@ -33,6 +33,8 @@ describe('buildModifyInterviewTimeTool', () => {
     jest.clearAllMocks();
     delete mockContext.ledger.jobs.resolvedWorkOrderId;
     longTermService.getActiveBookings.mockResolvedValue([{ work_order_id: 123 }]);
+    longTermService.setActiveBooking.mockResolvedValue(undefined);
+    spongeService.fetchSignupWorkOrders.mockResolvedValue({ total: 0, workOrders: [] });
     spongeService.modifyInterviewTime.mockResolvedValue({ success: true, code: 0, message: 'ok' });
     opsEventsRecorder.recordEvent.mockResolvedValue(true);
   });
@@ -98,26 +100,159 @@ describe('buildModifyInterviewTimeTool', () => {
     });
   });
 
-  it('short-circuits to handoff before modification when the work order is not in current contact memory', async () => {
-    longTermService.getActiveBookings.mockResolvedValue([]);
-    const context = mergeToolContext(mockContext, {
-      turnInput: { currentUserMessage: '确定，帮我改到明天上午10点' },
-    });
-    const tool = buildTool(context);
-    const result = await exec(tool, {
-      workOrderId: 450643,
-      newInterviewTime: '2026-07-17 10:00',
+  describe('work order not in active_booking (out-of-band ownership check)', () => {
+    const outOfBandOrder = {
+      workOrderId: 464227,
+      jobId: 529005,
+      currentStatus: '约面成功',
+      interviewTime: '2026-09-14 12:00',
+    };
+    const candidateSaidPhone = [
+      { role: 'assistant', content: '你的手机号发我一下' },
+      { role: 'user', content: '18271421690' },
+      { role: 'user', content: '周五可以的' },
+    ];
+
+    beforeEach(() => {
+      longTermService.getActiveBookings.mockResolvedValue([]);
     });
 
-    expect(spongeService.modifyInterviewTime).not.toHaveBeenCalled();
-    expect(context.ledger.jobs.resolvedWorkOrderId).toBe(450643);
-    expect(result).toMatchObject({
-      success: false,
-      shortCircuited: true,
-      gateRejected: true,
-      reasonCode: 'modify_appointment',
-      workOrderId: 450643,
-      errorType: TOOL_ERROR_TYPES.MODIFY_INTERVIEW_WORK_ORDER_NOT_IN_MEMORY,
+    const expectRejected = (result: unknown) =>
+      expect(result).toMatchObject({
+        success: false,
+        shortCircuited: true,
+        gateRejected: true,
+        reasonCode: 'modify_appointment',
+        workOrderId: 464227,
+        errorType: TOOL_ERROR_TYPES.MODIFY_INTERVIEW_WORK_ORDER_NOT_IN_MEMORY,
+      });
+
+    it('releases and backfills active_booking when the work order phone was said by the candidate in this session', async () => {
+      spongeService.fetchSignupWorkOrders.mockResolvedValue({
+        phone: '18271421690',
+        total: 1,
+        workOrders: [outOfBandOrder],
+      });
+      const context = mergeToolContext(mockContext, {
+        turnInput: { currentUserMessage: '确定，改到周五下午2点', messages: candidateSaidPhone },
+      });
+      const tool = buildTool(context);
+      const result = await exec(tool, {
+        workOrderId: 464227,
+        newInterviewTime: '2026-09-18 14:00',
+      });
+
+      expect(spongeService.fetchSignupWorkOrders).toHaveBeenCalledWith(
+        { workOrderId: 464227 },
+        { botImId: 'bot-im-1', botUserId: 'mgr-bob', groupId: undefined },
+      );
+      expect(longTermService.setActiveBooking).toHaveBeenCalledWith('corp-1', 'user-1', 464227, {
+        job_id: 529005,
+        interview_time: '2026-09-14 12:00:00',
+      });
+      expect(spongeService.modifyInterviewTime).toHaveBeenCalledWith(
+        { workOrderId: 464227, newInterviewTime: '2026-09-18 14:00' },
+        expect.anything(),
+      );
+      expect(result).toMatchObject({ success: true, workOrderId: 464227 });
+    });
+
+    it('accepts the phone carried on the work order row and tolerates missing interviewTime', async () => {
+      spongeService.fetchSignupWorkOrders.mockResolvedValue({
+        total: 1,
+        workOrders: [{ ...outOfBandOrder, phone: '182 7142 1690', interviewTime: null }],
+      });
+      const context = mergeToolContext(mockContext, {
+        turnInput: { currentUserMessage: '确定', messages: candidateSaidPhone },
+      });
+      const result = await exec(buildTool(context), {
+        workOrderId: 464227,
+        newInterviewTime: '2026-09-18 14:00',
+      });
+
+      expect(longTermService.setActiveBooking).toHaveBeenCalledWith('corp-1', 'user-1', 464227, {
+        job_id: 529005,
+        interview_time: null,
+      });
+      expect(result).toMatchObject({ success: true });
+    });
+
+    it('short-circuits to handoff when the phone only appears in non-candidate messages', async () => {
+      spongeService.fetchSignupWorkOrders.mockResolvedValue({
+        phone: '18271421690',
+        total: 1,
+        workOrders: [outOfBandOrder],
+      });
+      const context = mergeToolContext(mockContext, {
+        turnInput: {
+          currentUserMessage: '确定，帮我改到明天上午10点',
+          messages: [
+            { role: 'assistant', content: '已帮你登记，手机号 18271421690' },
+            { role: 'user', content: '好的' },
+          ],
+        },
+      });
+      const result = await exec(buildTool(context), {
+        workOrderId: 464227,
+        newInterviewTime: '2026-07-17 10:00',
+      });
+
+      expect(spongeService.modifyInterviewTime).not.toHaveBeenCalled();
+      expect(longTermService.setActiveBooking).not.toHaveBeenCalled();
+      expect(context.ledger.jobs.resolvedWorkOrderId).toBe(464227);
+      expectRejected(result);
+      expect(result).toMatchObject({ handoffReason: expect.stringContaining('尾号 1690') });
+    });
+
+    it('short-circuits to handoff when the work order is no longer an active interview order', async () => {
+      spongeService.fetchSignupWorkOrders.mockResolvedValue({
+        phone: '18271421690',
+        total: 1,
+        workOrders: [{ ...outOfBandOrder, currentStatus: '已取消' }],
+      });
+      const context = mergeToolContext(mockContext, {
+        turnInput: { currentUserMessage: '确定', messages: candidateSaidPhone },
+      });
+      const result = await exec(buildTool(context), {
+        workOrderId: 464227,
+        newInterviewTime: '2026-07-17 10:00',
+      });
+
+      expect(spongeService.modifyInterviewTime).not.toHaveBeenCalled();
+      expect(longTermService.setActiveBooking).not.toHaveBeenCalled();
+      expectRejected(result);
+    });
+
+    it('fails closed to handoff when the work order lookup throws', async () => {
+      spongeService.fetchSignupWorkOrders.mockRejectedValue(new Error('sponge down'));
+      const context = mergeToolContext(mockContext, {
+        turnInput: { currentUserMessage: '确定', messages: candidateSaidPhone },
+      });
+      const result = await exec(buildTool(context), {
+        workOrderId: 464227,
+        newInterviewTime: '2026-07-17 10:00',
+      });
+
+      expect(spongeService.modifyInterviewTime).not.toHaveBeenCalled();
+      expect(longTermService.setActiveBooking).not.toHaveBeenCalled();
+      expectRejected(result);
+    });
+
+    it('fails closed to handoff when the work order carries no candidate phone', async () => {
+      spongeService.fetchSignupWorkOrders.mockResolvedValue({
+        total: 1,
+        workOrders: [{ ...outOfBandOrder, phone: null }],
+      });
+      const context = mergeToolContext(mockContext, {
+        turnInput: { currentUserMessage: '确定', messages: candidateSaidPhone },
+      });
+      const result = await exec(buildTool(context), {
+        workOrderId: 464227,
+        newInterviewTime: '2026-07-17 10:00',
+      });
+
+      expect(spongeService.modifyInterviewTime).not.toHaveBeenCalled();
+      expectRejected(result);
     });
   });
 
