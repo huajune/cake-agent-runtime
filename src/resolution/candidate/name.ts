@@ -64,6 +64,9 @@ const REAL_NAME_STRICT_REGEX = /^[一-鿿]{2,4}$/u;
 const NAME_SEPARATOR_VARIANTS_REGEX = /[\u2022\u30FB\u2027\uFF65\u22C5]/gu;
 const NAME_SEPARATOR = '\u00B7';
 const COMPOUND_NAME_REGEX = /^[一-鿿]{2,6}(?:\u00B7[一-鿿]{2,6}){1,2}$/u;
+/** 在未折叠分隔符的原文里匹配复合姓名的正则源，供简历规则抽取拼接键值对模式。 */
+export const COMPOUND_NAME_PATTERN_SOURCE =
+  '[一-鿿]{2,6}(?:[\\u00B7\\u2022\\u30FB\\u2027\\uFF65\\u22C5][一-鿿]{2,6}){1,2}';
 const PLACEHOLDER_PREFIX_BLACKLIST = ['测试', '用户', '昵称', '游客', '匿名', '无名', '客户'];
 
 /**
