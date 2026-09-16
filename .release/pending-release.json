@@ -122,6 +122,36 @@
         "`tsc --noEmit` 通过；改动文件 ESLint 零告警"
       ],
       "level": "patch"
+    },
+    {
+      "number": "1292",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1292",
+      "title": "面试方式收拢为海绵四值枚举，AI 面试不再附到店脚本",
+      "author": "huajune",
+      "mergedAt": "2026-09-16",
+      "businessUpdates": [
+        "AI 面试岗位预约成功后不再附带\"到店跟前台说……\"到店脚本和门店地址，改为线上面试提醒（batch …_1789456933610 必胜客保利大都汇复现，与生产 chat 6a9f7db6 同因）"
+      ],
+      "summary": [
+        "面试方式收拢为海绵四值枚举，AI 面试不再附到店脚本"
+      ],
+      "features": [],
+      "fixes": [
+        "AI 面试岗位预约成功后不再附带\"到店跟前台说……\"到店脚本和门店地址，改为线上面试提醒（batch …_1789456933610 必胜客保利大都汇复现，与生产 chat 6a9f7db6 同因）"
+      ],
+      "optimizations": [
+        "面试方式统一按海绵后台的四值单选（AI面试 / 电话面试 / 视频面试 / 线下面试）识别，只有线下面试才发到店脚本；预约回执、面试地址定位、出站守卫、复聊排程四处原本各自维护的关键词判断合并为同一判据",
+        "面试方式缺失或不在四值内时，预约回执既不附到店脚本也不附线上提醒，并记录告警"
+      ],
+      "ops": [
+        "面试方式收拢为海绵四值枚举，AI 面试不再附到店脚本"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "pre-push 钩子完整跑过 ci:check（lint / format / typecheck / geo / vocab / quality-ledger / build:ci / test:ci）"
+      ],
+      "level": "patch"
     }
   ],
   "lastRelease": {
@@ -164,5 +194,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "5d2e7330a343e5226a2ee3dec67397a8df2f428e"
+  "lastAnalyzedSha": "c542155b6196fea13507ad4ddd6cedee44038f88"
 }
