@@ -50,6 +50,15 @@ const TEXTUAL_TOOL_CALL_RETRY_NOTICE =
   '严禁在工具未执行的情况下宣称报名/预约/取消/拉群已完成或报出岗位薪资/距离/班次。';
 
 /**
+ * 零工具空响应的带工具重试指令。生产实测（0909～0916）空文本恢复 198 次里 195 次是
+ * "第一步就 0 输出 token、没调任何工具"，不是恢复模式设想的"工具跑完没写终文本"。
+ */
+const EMPTY_RESPONSE_RETRY_NOTICE =
+  '⚠️ 系统提示：上一次生成没有产出任何内容，也没有调用任何工具。请重新作答：' +
+  '需要查岗位/报名/拉群等动作就真正发起 tool call，不需要就直接写一条候选人可见的中文回复。' +
+  '严禁在工具未执行的情况下报出岗位薪资/距离/班次或宣称动作已完成。';
+
+/**
  * stopWhen 条件：当任意工具的 toolResult 标记 `shortCircuited: true` 时结束本轮 loop。
  *
  * ⚠️ AI SDK 的 toolResult 取值用 `.output` 而非 `.result`（与 buildRunResult 中的取法一致）。
@@ -527,11 +536,12 @@ export class GeneratorAgent {
    * @param options.extraInstructions 追加到 system prompt 末尾的临时指令（重试纠正用）。
    * @param options.emitPreparedRequest 是否把本次 prompt 透给调用方；重试传 false，
    *        让流水里留存的始终是本回合首版 prompt，与 agent_steps 的起点对齐。
+   * @param options.purpose llm_execution 事件的用途标签；缺省 generation（首步生成）。
    */
   private async runGeneration(
     params: GeneratorInvokeParams,
     ctx: WorkingMemory,
-    options?: { extraInstructions?: string; emitPreparedRequest?: boolean },
+    options?: { extraInstructions?: string; emitPreparedRequest?: boolean; purpose?: string },
   ): Promise<GeneratorRunResult> {
     let agentRequest: Record<string, unknown> | undefined;
     let stepStartMs = Date.now();
@@ -539,6 +549,7 @@ export class GeneratorAgent {
     const executionOptions = this.buildLlmExecutionOptions(params, ctx);
     const r = await this.llm.generate({
       ...executionOptions,
+      purpose: options?.purpose ?? 'generation',
       instructions: options?.extraInstructions
         ? `${executionOptions.instructions}\n\n${options.extraInstructions}`
         : executionOptions.instructions,
@@ -621,6 +632,7 @@ export class GeneratorAgent {
       const retry = await this.runGeneration(params, ctx, {
         extraInstructions: TEXTUAL_TOOL_CALL_RETRY_NOTICE,
         emitPreparedRequest: false,
+        purpose: 'textual_tool_retry',
       });
 
       if (retry.toolCalls.length === 0 && containsSimulatedToolExchange(retry.reasoning ?? '')) {
@@ -633,29 +645,65 @@ export class GeneratorAgent {
         );
       }
 
-      return {
-        ...retry,
-        // 首版 prompt 才是本回合的规范快照，重试只在末尾多一段纠正指令。
-        agentRequest: result.agentRequest ?? retry.agentRequest,
-        steps: result.steps + retry.steps,
-        agentSteps: [
-          ...result.agentSteps,
-          ...retry.agentSteps.map((step, index) => ({
-            ...step,
-            stepIndex: result.agentSteps.length + index,
-          })),
-        ],
-        usage: {
-          inputTokens: result.usage.inputTokens + retry.usage.inputTokens,
-          outputTokens: result.usage.outputTokens + retry.usage.outputTokens,
-          totalTokens: result.usage.totalTokens + retry.usage.totalTokens,
-          cachedInputTokens:
-            (result.usage.cachedInputTokens ?? 0) + (retry.usage.cachedInputTokens ?? 0),
-        },
-      };
+      return this.mergeRegeneration(result, retry);
     } catch (error) {
       this.logger.warn(
         `工具调用文本化重生成失败: sessionId=${ctx.sessionId}; ${toErrorMessage(error)}`,
+      );
+      return result;
+    }
+  }
+
+  /**
+   * 带工具重生成产物取代首版：首版 steps 前置保留（泄漏/空响应在流水里可见）、
+   * stepIndex 顺延、usage 两次相加；prompt 快照仍取首版（重试只在末尾多一段指令）。
+   */
+  private mergeRegeneration(
+    first: GeneratorRunResult,
+    retry: GeneratorRunResult,
+  ): GeneratorRunResult {
+    return {
+      ...retry,
+      agentRequest: first.agentRequest ?? retry.agentRequest,
+      steps: first.steps + retry.steps,
+      agentSteps: [
+        ...first.agentSteps,
+        ...retry.agentSteps.map((step, index) => ({
+          ...step,
+          stepIndex: first.agentSteps.length + index,
+        })),
+      ],
+      usage: {
+        inputTokens: first.usage.inputTokens + retry.usage.inputTokens,
+        outputTokens: first.usage.outputTokens + retry.usage.outputTokens,
+        totalTokens: first.usage.totalTokens + retry.usage.totalTokens,
+        cachedInputTokens:
+          (first.usage.cachedInputTokens ?? 0) + (retry.usage.cachedInputTokens ?? 0),
+      },
+    };
+  }
+
+  /**
+   * 零工具空响应的带工具重试（hard cap 1）：模型第一步既没写文本也没调工具时，
+   * 无工具恢复只能逼它凭空补话——要么编岗位事实（0910 M Stand 编造首版），要么留一句
+   * "我帮你查下"的空头承诺（同 trace 的 replan 产物）。零工具 = 无既成副作用，带工具重跑安全。
+   */
+  private async retryEmptyZeroToolResult(
+    result: GeneratorRunResult,
+    ctx: WorkingMemory,
+    params: GeneratorInvokeParams,
+  ): Promise<GeneratorRunResult> {
+    this.logger.warn(`Agent 首步空响应且零工具调用，带工具重生成一次: sessionId=${ctx.sessionId}`);
+    try {
+      const retry = await this.runGeneration(params, ctx, {
+        extraInstructions: EMPTY_RESPONSE_RETRY_NOTICE,
+        emitPreparedRequest: false,
+        purpose: 'empty_text_retry',
+      });
+      return this.mergeRegeneration(result, retry);
+    } catch (error) {
+      this.logger.warn(
+        `零工具空响应重生成失败: sessionId=${ctx.sessionId}; ${toErrorMessage(error)}`,
       );
       return result;
     }
@@ -670,22 +718,20 @@ export class GeneratorAgent {
    * - 恢复失败时保留原空结果，让上层按既有异常链路处理
    */
   private async recoverEmptyTextResult(
-    result: GeneratorRunResult,
+    initial: GeneratorRunResult,
     ctx: WorkingMemory,
     params: GeneratorInvokeParams,
   ): Promise<GeneratorRunResult> {
+    if (initial.text.trim().length > 0) return initial;
+    if (this.didShortCircuit(initial)) return initial;
+
+    // 零工具空响应先带工具重试一次；补出文本或工具短路即定稿，仍空才落到无工具恢复。
+    const result =
+      initial.toolCalls.length === 0
+        ? await this.retryEmptyZeroToolResult(initial, ctx, params)
+        : initial;
     if (result.text.trim().length > 0) return result;
-    // 已短路则不做空文本恢复（短路语义=本轮不再对外投递回复）：
-    // - skip_reply：无条件短路
-    // - 其他工具：仅当返回值标记 shortCircuited 时算短路；HANDOFF_NO_BOOKING（false）
-    //   不算短路，booking gate hard-reject（true）算短路。
-    const didShortCircuit = result.toolCalls.some((call) => {
-      if (call.toolName === SKIP_REPLY_TOOL_NAME) return true;
-      return isShortCircuitedToolResult(call.result);
-    });
-    if (didShortCircuit) {
-      return result;
-    }
+    if (this.didShortCircuit(result)) return result;
 
     this.logger.warn(
       `Agent 返回空文本，尝试无工具恢复: sessionId=${ctx.sessionId}, steps=${result.steps}`,
@@ -706,6 +752,7 @@ export class GeneratorAgent {
         instructions: `${ctx.finalPrompt}\n\n[空响应恢复模式]\n只输出一条候选人可见的中文回复。不要提系统、工具、模型、thinking、恢复或异常。不要调用工具。`,
         prompt: this.buildEmptyTextRecoveryPrompt(result, ctx),
         maxOutputTokens: Math.min(this.maxOutputTokens, 800),
+        purpose: 'empty_text_recovery',
       });
 
       const text = recovery.text?.trim() ?? '';
@@ -761,7 +808,21 @@ export class GeneratorAgent {
     }
   }
 
+  /**
+   * 短路语义 = 本轮不再对外投递回复，不做空文本恢复：
+   * - skip_reply：无条件短路
+   * - 其他工具：仅当返回值标记 shortCircuited 时算短路；HANDOFF_NO_BOOKING（false）
+   *   不算短路，booking gate hard-reject（true）算短路。
+   */
+  private didShortCircuit(result: GeneratorRunResult): boolean {
+    return result.toolCalls.some((call) => {
+      if (call.toolName === SKIP_REPLY_TOOL_NAME) return true;
+      return isShortCircuitedToolResult(call.result);
+    });
+  }
+
   private buildEmptyTextRecoveryPrompt(result: GeneratorRunResult, ctx: WorkingMemory): string {
+    const ranTools = result.toolCalls.length > 0;
     const transcript = result.agentSteps.map((step) => ({
       stepIndex: step.stepIndex,
       finishReason: step.finishReason,
@@ -777,13 +838,21 @@ export class GeneratorAgent {
     }));
 
     return [
-      '上一轮工具链已经执行完，但最终没有产出可发送文本。',
+      ranTools
+        ? '上一轮工具链已经执行完，但最终没有产出可发送文本。'
+        : '上一轮模型没有调用任何工具，也没有产出可发送文本。',
       '下面是候选人与招募经理的当前对话上下文，以及刚执行过的工具调用摘要。',
       '请基于当前对话和下面的工具调用摘要，直接补一条候选人可见回复。',
       '要求：',
       '- 只输出回复正文，不要解释内部过程。',
       '- 如果工具结果显示 requestedDate.status=unavailable，必须明确说明不可约原因，并给最近可选替代时间。',
       '- 不要编造工具结果，不要承诺已经预约成功。',
+      ...(ranTools
+        ? []
+        : [
+            '- 本轮没有执行任何工具：不得报出任何岗位名称、薪资、距离、班次等岗位事实，' +
+              '也不要写"我帮你查下/稍后告诉你"这类无法兑现的承诺；直接顺着对话回应，或询问候选人还需要什么信息。',
+          ]),
       '',
       '对话上下文：',
       this.truncateForPrompt(this.formatMessagesForRecovery(ctx.normalizedMessages), 8000),

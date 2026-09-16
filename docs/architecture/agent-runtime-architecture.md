@@ -184,7 +184,7 @@ GeneratorAgent.invoke(params)
   │    stopWhen    = 步数上限 / skip_reply / 任一 shortCircuited tool result
   │    prepareStep = 每步动态收紧 activeTools
   ├─ retryTextualToolCall()（零工具轮 reasoning 模拟了工具调用/回执时，带工具纠正重试一次）
-  ├─ recoverEmptyTextResult()（仅兜底一次、禁用工具）
+  ├─ recoverEmptyTextResult()（零工具空响应先带工具重试一次；仍空才无工具兜底一次）
   └─ attachTurnEnd()（总是挂载 runTurnEnd）
 ```
 
@@ -209,7 +209,13 @@ GeneratorAgent.invoke(params)
 - `readonly` 模式物理移除主动回合禁止的副作用工具；
 - 工具返回 `shortCircuited: true` 时立即结束 loop。
 
-空文本恢复只把已执行结果压成 transcript，关闭工具后补一条回复；它不会重新执行业务动作。
+空响应分两档处理。首步既无文本也无工具调用（无既成副作用）时，先带工具、附一段"上一次没有
+任何产出"的纠正指令重生成一次；重试产物取代首版，首版空步前置保留在 `agentSteps`。工具已执行
+但没写终文本，或重试仍空时，才把已执行结果压成 transcript、关闭工具补一条回复；零工具进入
+该兜底时提示词如实声明"本轮没有执行任何工具"，禁止报岗位事实与"我帮你查下"式承诺。
+兜底不会重新执行业务动作。每次 `LlmExecutorService.generate()` 都带 `purpose`
+（generation / textual_tool_retry / empty_text_retry / empty_text_recovery）随 `llm_execution`
+事件落库，事件同时带 `inputTokens / outputTokens`，首步 0 输出 token 可直接从事件看出。
 
 ### 4.3 出站审查与修复
 
