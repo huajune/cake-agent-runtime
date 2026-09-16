@@ -1,9 +1,37 @@
 {
   "baseVersion": "11.9.0",
-  "nextVersion": "11.9.0",
+  "nextVersion": "11.9.1",
   "updatedAt": "2026-09-16",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "1303",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1303",
+      "title": "更新跑测试的 node 说明，禁止命令前加 export PATH",
+      "author": "huajune",
+      "mergedAt": "2026-09-16",
+      "businessUpdates": [
+        "更新跑测试的 node 说明，禁止命令前加 export PATH"
+      ],
+      "summary": [
+        "更新跑测试的 node 说明，禁止命令前加 export PATH"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "`CLAUDE.md`「跑测试的坑」更新：Bash 工具默认 node 已是 v24（满足项目要求的 ≥22），直接跑即可；旧说明里的 `nvm use 22.16.0` 已过期。",
+        "明确禁止在命令前加 `export PATH=…` / `nvm use`：`$PATH` 展开会触发 shell 安全检查并强制弹权限确认，导致 commit/push 无法自动放行。",
+        "更新跑测试的 node 说明，禁止命令前加 export PATH"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "纯文档改动，无代码/测试影响。"
+      ],
+      "level": "patch"
+    }
+  ],
   "lastRelease": {
     "version": "11.9.0",
     "date": "2026-09-16",
@@ -269,5 +297,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "b885d6b5644027f5cbabaf12376a7572090e15e8"
+  "lastAnalyzedSha": "aecf0e9b9fedf5903f21f560cd4195d2ad2dc4f1"
 }
