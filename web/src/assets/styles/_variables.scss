@@ -126,8 +126,9 @@ $gradient-primary: linear-gradient(135deg, #8c7bff 0%, #c3a0fb 100%);
 $gradient-card: linear-gradient(135deg, #ffffff 0%, #f8f6fd 100%);
 $gradient-hover: linear-gradient(135deg, rgba($primary, 0.05) 0%, rgba($accent, 0.05) 100%);
 $gradient-dream: linear-gradient(118deg, #f0efff 0%, #faf4fe 34%, #f2f7ff 68%, #fdfdff 100%);
-// 全站大背景：极淡粉紫→中段一丝蓝→纯白（0911 定版；0914 试过再提亮到近白，用户判「太淡」已回滚；奶油尾段判偏黄也已撤）
-$gradient-page: linear-gradient(135deg, #fdfbff 0%, #fff9fd 30%, #f9fbff 65%, #ffffff 100%);
+// 全站大背景：极淡粉紫→中段一丝蓝→纯白（0911 定版；0914 试过再提亮到近白，用户判「太淡」已回滚；奶油尾段判偏黄也已撤；
+// 0916 用户判「有点太粉」，只把 30% 粉段 #fff9fd 减半到 #fffbfe，其余色站不动）
+$gradient-page: linear-gradient(135deg, #fdfbff 0%, #fffbfe 30%, #f9fbff 65%, #ffffff 100%);
 
 // ========== 间距系统 ==========
 $spacing-unit: 1rem; // 16px
