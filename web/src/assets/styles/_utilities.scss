@@ -596,7 +596,7 @@ canvas {
   z-index: 2;
 }
 
-.spring-sticker {
+.season-sticker {
   position: absolute;
   font-size: 28px;
   z-index: 15;
@@ -626,7 +626,7 @@ canvas {
   animation: floatSticker 4s ease-in-out infinite;
 }
 
-.spring-garland {
+.season-garland {
   position: fixed;
   top: 0;
   left: 260px;
@@ -638,6 +638,18 @@ canvas {
   pointer-events: none;
   padding: 0 40px;
   transition: left 0.3s ease;
+}
+
+// 顶栏被风吹落的叶：从顶边落下约 150px，随风向左漂、摇摆旋转并淡出
+.falling-leaf {
+  position: absolute;
+  top: -32px;
+  width: 30px;
+  height: 30px;
+  opacity: 0;
+  animation-name: leafFall;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
 }
 
 .garland-string {
@@ -689,7 +701,7 @@ canvas {
 
   // Petal charm
   &::after {
-    content: '🌸';
+    content: '🍁';
     position: absolute;
     bottom: -10px;
     right: -6px;
@@ -795,6 +807,16 @@ canvas {
   0%, 100% { transform: translateX(0) scale(1); }
   25% { transform: translateX(-5px) scale(1.1); }
   75% { transform: translateX(5px) scale(1.1); }
+}
+
+@keyframes leafFall {
+  0% { transform: translate(0, 0) rotate(0deg); opacity: 0; }
+  10% { opacity: 0.85; }
+  25% { transform: translate(-18px, 36px) rotate(-60deg); }
+  45% { transform: translate(-30px, 72px) rotate(-140deg); opacity: 0.75; }
+  65% { transform: translate(-52px, 104px) rotate(-200deg); opacity: 0.5; }
+  85% { transform: translate(-66px, 134px) rotate(-260deg); opacity: 0.2; }
+  100% { transform: translate(-78px, 156px) rotate(-300deg); opacity: 0; }
 }
 
 @keyframes butterflyFloat {

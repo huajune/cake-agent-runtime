@@ -262,9 +262,9 @@
     }
   }
 
-  // Spring bloom decoration - 樱花
+  // 季节装饰 - 秋叶（换季只改这一处）
   &::after {
-    content: '🌸';
+    content: '🍁';
     position: absolute;
     right: 12px;
     top: 50%;
