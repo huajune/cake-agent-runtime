@@ -196,6 +196,43 @@
         "新增 `interview-process-onboarding-omitted.spec.ts`：含「试工通过后加琪琪微信办理入职」的岗位，卡片不出现流程说明 / 试工 / 培训 / 办理入职，而解析器内部仍能读到"
       ],
       "level": "patch"
+    },
+    {
+      "number": "1288",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1288",
+      "title": "纯数字引文按数字边界匹配，非身份字段拒收纯短答空引文",
+      "author": "huajune",
+      "mergedAt": "2026-09-16",
+      "businessUpdates": [
+        "收资公证的出处核验对纯数字引文做子串匹配，「22」「65」这类 quote 会命中手机号里的一段，等于没验；现改为数字边界匹配（前后不能紧邻其他数字，空白视为分界，数字中间打空格仍算同一个数）。",
+        "非身份字段以「是的」「对」这类纯短答作 quote 时，值既不在 quote 里、适配器也算不出来，此前照样入账（生产有一条时间段值由「是的」作证入账）；现新增空引文门拒收，回执给出改法：候选人在回答字段问句时带 agentQuestionQuote 绑定真实问句，否则改用含值的原话。",
+        "Merge origin/develop into fix/notary-citation-strictness"
+      ],
+      "summary": [
+        "纯数字引文按数字边界匹配，非身份字段拒收纯短答空引文",
+        "Merge origin/develop into fix/notary-citation-strictness"
+      ],
+      "features": [],
+      "fixes": [
+        "收资公证的出处核验对纯数字引文做子串匹配，「22」「65」这类 quote 会命中手机号里的一段，等于没验；现改为数字边界匹配（前后不能紧邻其他数字，空白视为分界，数字中间打空格仍算同一个数）。",
+        "非身份字段以「是的」「对」这类纯短答作 quote 时，值既不在 quote 里、适配器也算不出来，此前照样入账（生产有一条时间段值由「是的」作证入账）；现新增空引文门拒收，回执给出改法：候选人在回答字段问句时带 agentQuestionQuote 绑定真实问句，否则改用含值的原话。",
+        "Merge origin/develop into fix/notary-citation-strictness"
+      ],
+      "optimizations": [
+        "clear 与 correct 的引文核验统一改走 verifyCitation，与写入口规则同源。",
+        "precheck 回执的 source_text_not_found 提示增写：纯数字 quote 须带前后文。",
+        "架构文档出处门条目与 prompt 规则台账同步登记。"
+      ],
+      "ops": [
+        "纯数字引文按数字边界匹配，非身份字段拒收纯短答空引文"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "新增 4 个测试（citation-verifier 1 个、form-writes 3 个），pre-push 钩子全量 6936 通过，tsc / eslint / prettier 通过。",
+        "已有的 confirm 路径（agentQuestionQuote 绑定）、适配器可推导的选项短答、「是」→「是」字面值均有用例保证不受影响。"
+      ],
+      "level": "patch"
     }
   ],
   "lastRelease": {
@@ -238,5 +275,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "b2c25bf4c3b1e1f44f7d0e9b31d291d6d50bf333"
+  "lastAnalyzedSha": "3a406fd32eb9804e5c7c9427677937d79a0e31b2"
 }

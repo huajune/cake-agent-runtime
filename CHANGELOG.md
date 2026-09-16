@@ -14,7 +14,7 @@
 **预计版本**: `v11.9.0`
 **最近更新**: `2026-09-16`
 **来源分支**: `develop`
-**累计 PR**: 5
+**累计 PR**: 6
 
 ### 更新摘要
 - PR #1287 筛退槽位的改口被棘轮挡回时对模型与观测可见
@@ -31,6 +31,8 @@
 - PR #1292 面试方式收拢为海绵四值枚举，AI 面试不再附到店脚本
 - PR #1293 面试结果与入职对接一律转人工，Agent 不再读取海绵工单状态与入职流程文本
 - PR #1293 Merge origin/develop into fix/post-interview-flow-human-only
+- PR #1288 纯数字引文按数字边界匹配，非身份字段拒收纯短答空引文
+- PR #1288 Merge origin/develop into fix/notary-citation-strictness
 
 ### 新功能
 - PR #1285 聊天记录页现在能一眼看出每条托管号消息是谁发的：招募经理在手机上手打的标「真人」，AI 回的标「AI」，托管平台 SOP / 定时 / 建群等自动消息标「自动」；来源不明的不标，入群邀请卡片因平台回调无法区分人机也不标
@@ -51,6 +53,9 @@
 - PR #1293 取消工具拆除 B5-2 状态拦截与 `SELF_CANCEL_BLOCKED_STATUSES`：取消不再查工单状态（海绵 `currentStatus` / `interviewPassTime` 滞后不可信）
 - PR #1293 `interview_result_inquiry` / `onboarding_paperwork` / `self_recruited_or_completed` 三类转人工改为暂停到人工在 Dashboard 恢复为止（`InterventionService.requiresManualResume`），不再次日零点自动解禁；其余转人工不变
 - PR #1293 Merge origin/develop into fix/post-interview-flow-human-only
+- PR #1288 收资公证的出处核验对纯数字引文做子串匹配，「22」「65」这类 quote 会命中手机号里的一段，等于没验；现改为数字边界匹配（前后不能紧邻其他数字，空白视为分界，数字中间打空格仍算同一个数）。
+- PR #1288 非身份字段以「是的」「对」这类纯短答作 quote 时，值既不在 quote 里、适配器也算不出来，此前照样入账（生产有一条时间段值由「是的」作证入账）；现新增空引文门拒收，回执给出改法：候选人在回答字段问句时带 agentQuestionQuote 绑定真实问句，否则改用含值的原话。
+- PR #1288 Merge origin/develop into fix/notary-citation-strictness
 
 ### 优化调整
 - PR #1287 precheck 工具说明补充：被筛掉的字段在本岗是终态，候选人改口不入账，不要承诺"我帮你更新"，换岗表单才会重新收这项。
@@ -62,6 +67,9 @@
 - PR #1293 [当前预约信息] 不再渲染「当前状态」「面试通过时间」；复聊 prompt 去掉「工单当前状态」
 - PR #1293 岗位卡片去掉海绵「试工培训与上岗」区块（试工信息 / 培训信息 / 流程说明）；「面试备注」与 precheck `processRemark` 改用新字段 `interviewRemarkDisplay`，约面重点摘句不再读 `processDesc`；确定性抽取（报名截止、健康证时点、学生要求）仍读全文。全量在招 622 岗扫描：`processDesc` 158 非空、去重 19 种、115 条写的是通过后入职对接
 - PR #1293 复聊 `post_interview_onboarding` 改为只 shadow 不投递（锚点 `interview.passed` 来自滞后的海绵状态；上岗失败人工告警不受影响）
+- PR #1288 clear 与 correct 的引文核验统一改走 verifyCitation，与写入口规则同源。
+- PR #1288 precheck 回执的 source_text_not_found 提示增写：纯数字 quote 须带前后文。
+- PR #1288 架构文档出处门条目与 prompt 规则台账同步登记。
 
 ### 运维与流程
 - PR #1287 筛退槽位的改口被棘轮挡回时对模型与观测可见
@@ -72,6 +80,7 @@
 - PR #1293 台账 `docs/prompt-rule-ledger.md` 登记 BK7 / C1 / post_interview_no_rebook / 工具表 / 阶段表；运营文档同步措辞
 - PR #1293 待发版后观察：暂停列表里「面试后人工对接，需人工恢复托管」条目需运营处理完手动恢复
 - PR #1293 面试结果与入职对接一律转人工，Agent 不再读取海绵工单状态与入职流程文本
+- PR #1288 纯数字引文按数字边界匹配，非身份字段拒收纯短答空引文
 
 ### 配置变更
 - 无
@@ -94,6 +103,8 @@
 - PR #1292 pre-push 钩子完整跑过 ci:check（lint / format / typecheck / geo / vocab / quality-ledger / build:ci / test:ci）
 - PR #1293 隔离工作树（基线 origin/develop）typecheck 通过；job-list / precheck / booking / 取消 / intervention / generator / reengagement / guardrail / runner 共 107 个 suite、2039 用例通过
 - PR #1293 新增 `interview-process-onboarding-omitted.spec.ts`：含「试工通过后加琪琪微信办理入职」的岗位，卡片不出现流程说明 / 试工 / 培训 / 办理入职，而解析器内部仍能读到
+- PR #1288 新增 4 个测试（citation-verifier 1 个、form-writes 3 个），pre-push 钩子全量 6936 通过，tsc / eslint / prettier 通过。
+- PR #1288 已有的 confirm 路径（agentQuestionQuote 绑定）、适配器可推导的选项短答、「是」→「是」字面值均有用例保证不受影响。
 <!-- release:pending:end -->
 
 ## [11.8.2] - 2026-09-14
