@@ -1,9 +1,33 @@
 {
   "baseVersion": "11.9.1",
-  "nextVersion": "11.9.1",
+  "nextVersion": "11.9.2",
   "updatedAt": "2026-09-16",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "1310",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1310",
+      "title": "无来源岗位事实对账补入会话记忆岗位摘要作为合法来源",
+      "author": "huajune",
+      "mergedAt": "2026-09-16",
+      "businessUpdates": [
+        "无来源岗位事实对账补入会话记忆岗位摘要作为合法来源"
+      ],
+      "summary": [
+        "无来源岗位事实对账补入会话记忆岗位摘要作为合法来源"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "无来源岗位事实对账补入会话记忆岗位摘要作为合法来源"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [],
+      "level": "patch"
+    }
+  ],
   "lastRelease": {
     "version": "11.9.1",
     "date": "2026-09-16",
@@ -83,5 +107,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "2c36457c6a854de81b3ae6ef257ea1e4e7771fc5"
+  "lastAnalyzedSha": "2ac5e830d92b4d4b8487aa40f877b351256a93fd"
 }
