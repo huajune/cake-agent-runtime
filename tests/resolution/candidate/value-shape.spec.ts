@@ -26,6 +26,9 @@ describe('canonicalizeCandidateFieldValue（数值字段落库规范形）', () 
     ['age', '二十六', '26'],
     ['age', '十八周岁', '18'],
     ['name', ' 张三 ', '张三'],
+    ['name', '布海力其木·图拉江', '布海力其木·图拉江'],
+    ['name', '艾力•买买提', '艾力·买买提'],
+    ['name', '艾力・买买提', '艾力·买买提'],
   ] as const)('%s %s → %s', (field, value, expected) => {
     expect(canonicalizeCandidateFieldValue(field, value)).toBe(expected);
   });
@@ -53,6 +56,32 @@ describe('canonicalizeCandidateFieldValue（数值字段落库规范形）', () 
     expect(isValidCandidateFieldShape('gender', '女生')).toBe(true);
     expect(isValidCandidateFieldShape('gender', '2')).toBe(true);
     expect(isValidCandidateFieldShape('gender', '不确定')).toBe(false);
+  });
+
+  it.each(['布海力其木·图拉江', '艾力·买买提', '艾力•买买提', '古丽娜尔·阿布都拉'])(
+    '姓名形态门放行间隔号分段的少数民族全名 %s',
+    (name) => {
+      expect(isValidCandidateFieldShape('name', name)).toBe(true);
+    },
+  );
+
+  it.each([
+    ['艾力·138', '含数字'],
+    ['艾力·买买提先生', '称谓后缀'],
+    ['艾力·买买提，', '标点'],
+    ['艾力· 买买提', '空白'],
+    ['艾·买买提', '单字段'],
+    ['艾力·买买提·图拉江·阿不都', '超过 3 段'],
+    ['布海力其木图拉江', '无间隔号的 8 字仍超单名上限'],
+    ['13800138000', '纯数字'],
+    ['卢小姐', '称谓后缀'],
+  ])('姓名形态门拒收 %s（%s）', (name) => {
+    expect(isValidCandidateFieldShape('name', name)).toBe(false);
+  });
+
+  it('间隔号变体在值等价上视为同一姓名', () => {
+    expect(candidateValuesEquivalent('name', '艾力•买买提', '艾力·买买提')).toBe(true);
+    expect(candidateValuesEquivalent('name', '艾力·买买提', '艾力·图拉江')).toBe(false);
   });
 });
 
