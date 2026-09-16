@@ -110,6 +110,11 @@ export class HardRulesService {
     /** 会话内历史助手回复（不含本轮），供“无来源岗位事实”对账。 */
     priorAssistantTexts?: readonly string[];
     /**
+     * 会话记忆里的岗位摘要出处文本（已展示岗位 / 上轮候选池 / 焦点岗位的薪资、班次、距离），
+     * 来自上一轮真实工具结果；模型在 [会话记忆] 看得到，按它们作答不算无来源。
+     */
+    sessionJobFactTexts?: readonly string[];
+    /**
      * 候选人名下在途工单（长期记忆 active_booking）。undefined=未知（只落 observe），
      * []=确证没有任何工单——完成时态的“已帮你约好”此时是假回执，升 repair；有工单但都不是
      * 本轮焦点岗位时同样升 repair。
@@ -287,6 +292,7 @@ export class HardRulesService {
     const jobFactWithoutProvenance = params.chatId
       ? detectJobFactWithoutProvenance(text, toolCalls, [
           ...(params.priorAssistantTexts ?? []),
+          ...(params.sessionJobFactTexts ?? []),
           ...(params.recentUserTexts ?? []),
           ...(params.userMessage ? [params.userMessage] : []),
         ])

@@ -1,6 +1,7 @@
 import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
+import { SessionFactsService } from '@memory/short-term/facts.service';
 import { MessageWindowService } from '@memory/short-term/message-window.service';
 import { LongTermService } from '@memory/long-term/long-term.service';
 import type { ActiveBookingEntry } from '@memory/long-term/long-term.types';
@@ -19,6 +20,7 @@ import {
   GUARDRAIL_RISK_LEVEL,
 } from '@shared-types/guardrail.contract';
 import { HardRulesService, type HardRuleOverrideHit } from './rules/hard-rules.service';
+import { formatJobFactProvenanceTexts } from './rules/job-fact-reconciliation.rule';
 import type { RuleContradiction } from './output-rule.types';
 import { OutboundReplySanitizer } from './sanitizer/outbound-reply-sanitizer';
 
@@ -37,6 +39,7 @@ export class OutputGuardrailService {
     private readonly ruleGuard: HardRulesService,
     private readonly shortTerm: MessageWindowService,
     private readonly longTerm?: LongTermService,
+    private readonly sessionFacts?: SessionFactsService,
   ) {}
 
   private async readRecentTexts(
@@ -81,14 +84,42 @@ export class OutputGuardrailService {
     }
   }
 
+  /**
+   * 会话记忆里的岗位摘要（已展示岗位 / 上轮候选池 / 焦点岗位）压成出处文本，供
+   * job_fact_without_provenance 对账：它们是上一轮真实工具结果沉淀后渲染进 [会话记忆] 的
+   * 班次/薪资/距离，模型据此回答追问不是编造。读不到（无会话身份 / 读失败）返回空数组，
+   * 规则退回只按历史回复对账。
+   */
+  private async readSessionJobFactTexts(
+    corpId: string | undefined,
+    userId: string | undefined,
+    sessionId: string | undefined,
+  ): Promise<string[]> {
+    if (!this.sessionFacts || !corpId || !userId || !sessionId) return [];
+    try {
+      const state = await this.sessionFacts.getSessionState(corpId, userId, sessionId);
+      return formatJobFactProvenanceTexts([
+        ...(state.presentedJobs ?? []),
+        ...(state.lastCandidatePool ?? []),
+        state.currentFocusJob,
+      ]);
+    } catch (error: unknown) {
+      this.logger.warn(
+        `[OutputGuardrail] 读取会话岗位记忆失败，按无记忆出处继续对账: ${toErrorMessage(error)}`,
+      );
+      return [];
+    }
+  }
+
   async check(input: OutputGuardInput): Promise<OutputGuardDecision> {
     const reply = input.reply?.trim() ?? '';
     if (!reply) return this.passDecision([], []);
 
-    const [recent, runtimeConfig, activeBookings] = await Promise.all([
+    const [recent, runtimeConfig, activeBookings, sessionJobFactTexts] = await Promise.all([
       this.readRecentTexts(input.chatId),
       this.systemConfig.getAgentReplyConfig(),
       this.readActiveBookings(input.corpId, input.userId),
+      this.readSessionJobFactTexts(input.corpId, input.userId, input.sessionId),
     ]);
     const pruned = OutboundReplySanitizer.pruneRepeatedSegments(
       reply,
@@ -110,6 +141,7 @@ export class OutputGuardrailService {
       recentMessages: recent.messages,
       memorySnapshot: input.memorySnapshot,
       priorAssistantTexts: recent.assistantTexts,
+      sessionJobFactTexts,
       activeBookings,
       silent: input.silent,
       hardRuleOverrides: runtimeConfig.hardRuleOverrides ?? {},
@@ -220,6 +252,8 @@ export interface OutputGuardInput {
   userId?: string;
   /** 与 userId 一起定位长期记忆（在途工单对账）；缺省时不查。 */
   corpId?: string;
+  /** 与 corpId/userId 一起定位会话记忆（岗位摘要出处对账）；缺省时不读。 */
+  sessionId?: string;
   traceId?: string;
   contactName?: string;
   botImId?: string;

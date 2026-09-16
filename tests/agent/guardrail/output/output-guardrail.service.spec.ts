@@ -75,6 +75,78 @@ describe('OutputGuardrailService', () => {
     );
   });
 
+  it('带 sessionId 时读会话记忆岗位摘要并压成 sessionJobFactTexts 传给规则层', async () => {
+    const sessionFacts = {
+      getSessionState: jest.fn().mockResolvedValue({
+        presentedJobs: [
+          {
+            jobId: 529402,
+            brandName: '奥乐齐',
+            salaryDesc: '5000-7000 元/月',
+            shiftSummary: '05:00-14:00（早班）',
+            distanceKm: 4.9,
+          },
+        ],
+        lastCandidatePool: null,
+        currentFocusJob: null,
+      }),
+    };
+    const withSession = new OutputGuardrailService(
+      systemConfig as never,
+      ruleGuard as never,
+      shortTerm as never,
+      undefined,
+      sessionFacts as never,
+    );
+
+    await withSession.check({
+      reply: '奥乐齐有早班 05:00-14:00',
+      toolCalls: [],
+      chatId: 'chat-1',
+      userId: 'user-1',
+      corpId: 'corp-1',
+      sessionId: 'session-1',
+    });
+
+    expect(sessionFacts.getSessionState).toHaveBeenCalledWith('corp-1', 'user-1', 'session-1');
+    expect(ruleGuard.check).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionJobFactTexts: ['5000-7000 元/月 | 05:00-14:00（早班） | 4.9km'],
+      }),
+    );
+  });
+
+  it('缺 sessionId 或会话记忆读失败时 sessionJobFactTexts 为空数组（退回只按历史回复对账）', async () => {
+    const sessionFacts = { getSessionState: jest.fn().mockRejectedValue(new Error('redis down')) };
+    const withSession = new OutputGuardrailService(
+      systemConfig as never,
+      ruleGuard as never,
+      shortTerm as never,
+      undefined,
+      sessionFacts as never,
+    );
+
+    await withSession.check({ reply: '有早班', toolCalls: [], chatId: 'chat-1', userId: 'u' });
+    await withSession.check({
+      reply: '有早班',
+      toolCalls: [],
+      chatId: 'chat-1',
+      userId: 'user-1',
+      corpId: 'corp-1',
+      sessionId: 'session-1',
+    });
+
+    expect(sessionFacts.getSessionState).toHaveBeenCalledTimes(1);
+    expect(ruleGuard.check).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ sessionJobFactTexts: [] }),
+    );
+    expect(ruleGuard.check).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ sessionJobFactTexts: [] }),
+    );
+  });
+
   it('缺会话身份或长期记忆读失败时 activeBookings 为 undefined（保持 observe）', async () => {
     // 长期记忆读失败在 LongTermService 内被吞成 null（不是 []），守卫必须把它当未知
     const longTerm = { tryGetActiveBookings: jest.fn().mockResolvedValue(null) };

@@ -561,6 +561,10 @@ badcase 5j1mbgi8 / kwxk74gn / kb629uko / wvr7pejq；教侧配对手册"岗位事
 判据本身与升档条件不变。precheck 侧同批把校验通过的岗位登记为工具确权焦点（`attestedFocusJob`），
 轮末写入 `currentFocusJob`，后续回合的快照不再为空。
 
+2026-09-16 `job_fact_without_provenance` 的来源集合补入会话记忆岗位摘要（已展示岗位 / 上轮候选池 / 焦点岗位的
+薪资、结算、班次、年龄、距离）：上一轮工具结果沉淀进记忆且模型在 [会话记忆] 看得到的数字被挑出来回答追问，
+不再判无来源；缺 sessionId（advisory/debug）时退回只按历史回复与候选人消息对账。
+
 其中 `cancel_done_claim_failed_tool` 同属执行档（见下文取消/改期链路）。
 
 observe 哨兵（只落档不拦截，5 条）：`requested_brand_mismatch`、`settlement_cycle_mismatch`、
