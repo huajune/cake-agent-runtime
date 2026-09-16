@@ -233,6 +233,34 @@
         "已有的 confirm 路径（agentQuestionQuote 绑定）、适配器可推导的选项短答、「是」→「是」字面值均有用例保证不受影响。"
       ],
       "level": "patch"
+    },
+    {
+      "number": "1294",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1294",
+      "title": "precheck 校验岗位登记为焦点，守卫据此拦假报名回执",
+      "author": "huajune",
+      "mergedAt": "2026-09-16",
+      "businessUpdates": [
+        "Merge remote-tracking branch 'origin/develop' into fix/precheck-attes…"
+      ],
+      "summary": [
+        "precheck 校验岗位登记为焦点，守卫据此拦假报名回执",
+        "补 job-summary.util 独立单测，并登记守卫判据扩展",
+        "Merge remote-tracking branch 'origin/develop' into fix/precheck-attes…"
+      ],
+      "features": [],
+      "fixes": [
+        "Merge remote-tracking branch 'origin/develop' into fix/precheck-attes…"
+      ],
+      "optimizations": [],
+      "ops": [
+        "precheck 校验岗位登记为焦点，守卫据此拦假报名回执",
+        "补 job-summary.util 独立单测，并登记守卫判据扩展"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [],
+      "level": "patch"
     }
   ],
   "lastRelease": {
@@ -275,5 +303,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "3a406fd32eb9804e5c7c9427677937d79a0e31b2"
+  "lastAnalyzedSha": "a808fdb19a82b7e7ff4534970cd8305b07b33310"
 }
