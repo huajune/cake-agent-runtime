@@ -452,6 +452,243 @@ describe('FollowUpProcessor', () => {
     expect(reengagementAgent.compose).toHaveBeenCalled();
   });
 
+  it.each(['interview_reminder', 'post_interview_followup'] as const)(
+    '真人介入闸：真人手发话术后 Agent 又回答了候选人，不视为接管，%s 照常生成',
+    async (scenarioCode) => {
+      // 生产 case（2026-09-14 孑然 / ZhuDongSheng）：报名成功 → 候选人「好的」→ 经理手发
+      // 「面试注意事项」话术 → 候选人追问「是去门店面试是吧」→ Agent 回答。
+      const anchorAt = Date.UTC(2026, 8, 14, 6, 5, 35);
+      // 面试 9/16 14:00（06:00Z）：提醒默认提前 1h、回访面试后 2h，各自对齐到点时刻
+      const firedAt =
+        scenarioCode === 'interview_reminder'
+          ? Date.UTC(2026, 8, 16, 5, 0, 0)
+          : Date.UTC(2026, 8, 16, 8, 0, 0);
+      jest.spyOn(Date, 'now').mockReturnValue(firedAt);
+      sponge.getWorkOrderById.mockResolvedValue({
+        workOrderId: 464965,
+        currentStatus: '约面成功',
+        interviewTime: '2026-09-16 14:00',
+      });
+      session.getReengagementState.mockResolvedValue(baseState({ terminal: 'booked' }));
+      // 候选人最后一条「好的」已进处理管道，候选人待答闸不拦
+      messageProcessing.getLatestReceivedAtByChatId.mockResolvedValue(anchorAt + 141_000);
+      chatSession.getChatHistory.mockResolvedValue([
+        {
+          role: 'assistant',
+          content: '报名成功啦',
+          timestamp: anchorAt + 200,
+          source: 'API_SEND',
+          messageType: 'TEXT',
+          isSelf: true,
+        },
+        {
+          role: 'user',
+          content: '好的',
+          timestamp: anchorAt + 34_000,
+          source: 'MOBILE_PUSH',
+          messageType: 'TEXT',
+          isSelf: false,
+        },
+        {
+          role: 'assistant',
+          content: '好！你的面试已经安排好了，有几个面试注意事项跟你说一下：…',
+          timestamp: anchorAt + 52_000,
+          source: 'MOBILE_PUSH',
+          messageType: 'TEXT',
+          isSelf: true,
+        },
+        {
+          role: 'user',
+          content: '是去门店面试是吧？',
+          timestamp: anchorAt + 93_000,
+          source: 'MOBILE_PUSH',
+          messageType: 'TEXT',
+          isSelf: false,
+        },
+        {
+          role: 'assistant',
+          content: '是的，去门店面试',
+          timestamp: anchorAt + 130_000,
+          source: 'API_SEND',
+          messageType: 'TEXT',
+          isSelf: true,
+        },
+        {
+          role: 'user',
+          content: '好的',
+          timestamp: anchorAt + 141_000,
+          source: 'MOBILE_PUSH',
+          messageType: 'TEXT',
+          isSelf: false,
+        },
+      ]);
+
+      await buildProcessor().process(
+        makeJob({
+          data: {
+            sessionRef,
+            scenarioCode,
+            anchorEventId: 'wo464965:iv1789538400000',
+            anchorAt,
+            workOrderId: 464965,
+            expectedInterviewAt: Date.UTC(2026, 8, 16, 6, 0, 0),
+          },
+        }),
+      );
+
+      expect(tracking.trackStopped).not.toHaveBeenCalledWith(
+        expect.anything(),
+        'human_intervention_after_candidate',
+      );
+      expect(reengagementAgent.compose).toHaveBeenCalled();
+    },
+  );
+
+  it('真人介入闸：Agent 回复之后真人再次手打且成为我方最后一条发言，仍视为接管', async () => {
+    const anchorAt = Date.UTC(2026, 8, 14, 6, 5, 35);
+    jest.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 8, 16, 5, 0, 0));
+    sponge.getWorkOrderById.mockResolvedValue({
+      workOrderId: 464965,
+      currentStatus: '约面成功',
+      interviewTime: '2026-09-16 14:00',
+    });
+    session.getReengagementState.mockResolvedValue(baseState({ terminal: 'booked' }));
+    chatSession.getChatHistory.mockResolvedValue([
+      {
+        role: 'user',
+        content: '好的',
+        timestamp: anchorAt + 1_000,
+        source: 'MOBILE_PUSH',
+        messageType: 'TEXT',
+        isSelf: false,
+      },
+      {
+        role: 'assistant',
+        content: '有几个面试注意事项跟你说一下：…',
+        timestamp: anchorAt + 2_000,
+        source: 'MOBILE_PUSH',
+        messageType: 'TEXT',
+        isSelf: true,
+      },
+      {
+        role: 'user',
+        content: '是去门店面试是吧？',
+        timestamp: anchorAt + 3_000,
+        source: 'MOBILE_PUSH',
+        messageType: 'TEXT',
+        isSelf: false,
+      },
+      {
+        role: 'assistant',
+        content: '是的，去门店面试',
+        timestamp: anchorAt + 4_000,
+        source: 'API_SEND',
+        messageType: 'TEXT',
+        isSelf: true,
+      },
+      {
+        role: 'user',
+        content: '我那天可能去不了',
+        timestamp: anchorAt + 5_000,
+        source: 'MOBILE_PUSH',
+        messageType: 'TEXT',
+        isSelf: false,
+      },
+      {
+        role: 'assistant',
+        content: '那我帮你取消，改天再约',
+        timestamp: anchorAt + 6_000,
+        source: 'MOBILE_PUSH',
+        messageType: 'TEXT',
+        isSelf: true,
+      },
+    ]);
+
+    await buildProcessor().process(
+      makeJob({
+        data: {
+          sessionRef,
+          scenarioCode: 'interview_reminder',
+          anchorEventId: 'wo464965:iv1789538400000',
+          anchorAt,
+          workOrderId: 464965,
+          expectedInterviewAt: Date.UTC(2026, 8, 16, 6, 0, 0),
+        },
+      }),
+    );
+
+    expect(tracking.trackStopped).toHaveBeenCalledWith(
+      expect.anything(),
+      'human_intervention_after_candidate',
+    );
+    expect(reengagementAgent.compose).not.toHaveBeenCalled();
+  });
+
+  it('真人介入闸：真人手打之后只有复聊主动触达回灌，不算 Agent 继续回复，仍停止', async () => {
+    const anchorAt = Date.UTC(2026, 8, 14, 6, 5, 35);
+    jest.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 8, 16, 8, 0, 0));
+    sponge.getWorkOrderById.mockResolvedValue({
+      workOrderId: 464965,
+      currentStatus: '约面成功',
+      interviewTime: '2026-09-16 14:00',
+    });
+    session.getReengagementState.mockResolvedValue(baseState({ terminal: 'booked' }));
+    chatSession.getChatHistory.mockResolvedValue([
+      {
+        role: 'user',
+        content: '好的',
+        timestamp: anchorAt + 1_000,
+        source: 'MOBILE_PUSH',
+        messageType: 'TEXT',
+        isSelf: false,
+      },
+      {
+        role: 'assistant',
+        content: '这个是面试官的微信，添加的时候备注下',
+        timestamp: anchorAt + 2_000,
+        source: 'MOBILE_PUSH',
+        messageType: 'TEXT',
+        isSelf: true,
+      },
+      {
+        role: 'assistant',
+        content: '资料还差一项，方便补一下吗',
+        timestamp: anchorAt + 3_000,
+        source: 'API_SEND',
+        messageType: 'TEXT',
+        isSelf: true,
+        payloadSource: 'reengagement',
+      },
+      {
+        role: 'assistant',
+        content: '[入群邀请] 已发送入群邀请卡片',
+        timestamp: anchorAt + 4_000,
+        source: 'MOBILE_PUSH',
+        messageType: 'ROOM_INVITE',
+        isSelf: true,
+      },
+    ]);
+
+    await buildProcessor().process(
+      makeJob({
+        data: {
+          sessionRef,
+          scenarioCode: 'post_interview_followup',
+          anchorEventId: 'wo464965:iv1789538400000',
+          anchorAt,
+          workOrderId: 464965,
+          expectedInterviewAt: Date.UTC(2026, 8, 16, 6, 0, 0),
+        },
+      }),
+    );
+
+    expect(tracking.trackStopped).toHaveBeenCalledWith(
+      expect.anything(),
+      'human_intervention_after_candidate',
+    );
+    expect(reengagementAgent.compose).not.toHaveBeenCalled();
+  });
+
   it('drops in-flight jobs without generating when the master switch is off', async () => {
     systemConfig.getAgentReplyConfig.mockResolvedValue({
       reengagementEnabled: false,
