@@ -687,6 +687,81 @@ describe('AgentRunnerService.runInboundTurn', () => {
       );
     });
 
+    it('keeps the discarded first generation in agentSteps and sums usage across both runs', async () => {
+      // trace batch_6aa215c8…（0916 排障）：replan 结果整体覆盖首版后，流水里只剩重生成的
+      // steps 与 token，"首版为什么编造 / 走没走空文本恢复 / 两轮各花多少"全部不可见。
+      const firstSteps = [
+        {
+          stepIndex: 0,
+          toolCalls: [],
+          usage: { inputTokens: 100, outputTokens: 0, totalTokens: 100 },
+          finishReason: 'stop',
+        },
+        {
+          stepIndex: 1,
+          text: fabricated,
+          toolCalls: [],
+          usage: { inputTokens: 50, outputTokens: 40, totalTokens: 90 },
+          finishReason: 'empty-text-recovery',
+        },
+      ];
+      const replanSteps = [
+        {
+          stepIndex: 0,
+          text: '离你最近的是达美乐（北滘诚德路），1.6公里。',
+          toolCalls: groundedToolCalls as never,
+          usage: { inputTokens: 120, outputTokens: 30, totalTokens: 150 },
+          finishReason: 'stop',
+        },
+      ];
+      generator.invoke
+        .mockResolvedValueOnce(
+          makeResult({
+            text: fabricated,
+            steps: 2,
+            agentSteps: firstSteps,
+            usage: { inputTokens: 150, outputTokens: 40, totalTokens: 190, cachedInputTokens: 90 },
+          }),
+        )
+        .mockResolvedValueOnce(
+          makeResult({
+            text: '离你最近的是达美乐（北滘诚德路），1.6公里。',
+            steps: 1,
+            agentSteps: replanSteps,
+            toolCalls: groundedToolCalls as never,
+            usage: { inputTokens: 120, outputTokens: 30, totalTokens: 150, cachedInputTokens: 100 },
+          }),
+        );
+      outputGuard.check
+        .mockResolvedValueOnce(fabricationDecision)
+        .mockResolvedValueOnce(passDecision);
+
+      const outcome = await service.runInboundTurn({
+        sessionRef,
+        input: { text: '[位置分享] 北滘公园' },
+        context: { messageId: 'msg-regen-steps' },
+      });
+
+      expect(outcome.kind).toBe('reply');
+      expect(outcome.reply?.text).toBe('离你最近的是达美乐（北滘诚德路），1.6公里。');
+      // 语义字段以重生成为准：工具轨迹是 replan 自己的
+      expect(outcome.toolCalls).toEqual(groundedToolCalls);
+      // 首版 steps 前置并标注 generation，重生成步序顺延
+      expect(outcome.agentSteps?.map((s) => [s.stepIndex, s.generation, s.finishReason])).toEqual([
+        [0, 'first', 'stop'],
+        [1, 'first', 'empty-text-recovery'],
+        [2, 'replan', 'stop'],
+      ]);
+      expect(outcome.agentSteps?.[1]?.text).toBe(fabricated);
+      // token 用量两轮累加
+      expect(outcome.usage).toEqual({
+        inputTokens: 270,
+        outputTokens: 70,
+        totalTokens: 340,
+        cachedInputTokens: 190,
+      });
+    });
+
     it.each([
       ['request_handoff', 'handoff', 'modify_appointment'],
       ['skip_reply', 'skipped', undefined],

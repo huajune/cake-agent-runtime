@@ -10,6 +10,11 @@ import { useFeedback } from '@/view/agent-test/list/hooks/useFeedback';
 import { formatLocaleDate, formatLocaleDateTime } from '@/utils/format';
 import { MessageBubbleContent } from './MessageBubbleContent';
 import { getBubbleVariant } from './bubble-variant';
+import {
+  REPLY_PROVENANCE_LABEL,
+  REPLY_PROVENANCE_TITLE,
+  getReplyProvenance,
+} from './reply-provenance';
 import styles from './index.module.scss';
 
 // 格式化时间戳
@@ -273,6 +278,7 @@ export default function MessageDetail({
               const avatarChar = displayName.charAt(0).toUpperCase();
               const avatarUrl = !isAssistant ? msg.avatar || currentSession?.avatar : undefined;
               const variant = getBubbleVariant(msg.messageType);
+              const provenance = isAssistant ? getReplyProvenance(msg) : undefined;
               const bubbleClass = [
                 styles.messageBubble,
                 isAssistant ? styles.assistant : styles.user,
@@ -308,6 +314,14 @@ export default function MessageDetail({
                   <div className={styles.messageContent}>
                     <div className={`${styles.messageMeta} ${isAssistant ? styles.assistant : ''}`}>
                       <span className={styles.senderName}>{displayName}</span>
+                      {provenance && (
+                        <span
+                          className={`${styles.provenanceTag} ${styles[provenance]}`}
+                          title={REPLY_PROVENANCE_TITLE[provenance]}
+                        >
+                          {REPLY_PROVENANCE_LABEL[provenance]}
+                        </span>
+                      )}
                       <span className={styles.messageTime}>{formatTime(msg.timestamp)}</span>
                       {!isAssistant && (
                         <button

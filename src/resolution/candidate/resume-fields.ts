@@ -1,5 +1,9 @@
 import { normalizeEducationToId, parseHighestEducation } from '@resolution/candidate/education';
-import { isLikelyRealChineseName, isStrictRealChineseName } from '@resolution/candidate/name';
+import {
+  COMPOUND_NAME_PATTERN_SOURCE,
+  isLikelyRealChineseName,
+  isStrictRealChineseName,
+} from '@resolution/candidate/name';
 import {
   isPlaceholderPhone,
   isStorableCandidatePhone,
@@ -425,6 +429,13 @@ function labelValue(
   };
 }
 
+/**
+ * 「姓名：X」键值对与手机/年龄锚点邻行扫描共用的姓名词形：间隔号分段的少数民族全名
+ * 优先于纯 CJK（交替顺序决定贪婪度，反过来会只吃到首段）；真名判定仍由 name.ts 两档负责。
+ */
+const LABEL_NAME_VALUE_PATTERN = `(?:${COMPOUND_NAME_PATTERN_SOURCE}|[一-鿿]{2,5})`;
+const NEIGHBOR_NAME_TOKEN_REGEX = new RegExp(`${COMPOUND_NAME_PATTERN_SOURCE}|[一-鿿]{2,4}`, 'gu');
+
 function fallbackNeighborName(text: string): ResumeRawField | null {
   const lines = text.split('\n').map((line) => line.trim());
   const anchors = lines
@@ -438,7 +449,7 @@ function fallbackNeighborName(text: string): ResumeRawField | null {
       index += 1
     ) {
       const line = lines[index];
-      const tokens = line.match(/[一-鿿]{2,4}/gu) ?? [];
+      const tokens = line.match(NEIGHBOR_NAME_TOKEN_REGEX) ?? [];
       for (const value of tokens) {
         if (
           isStrictRealChineseName(value) &&
@@ -462,7 +473,7 @@ export function extractResumeFieldsFallback(text: string, fileName?: string): Re
     }
   };
 
-  add(labelValue(text, 'name', '姓名|名字', '[一-鿿]{2,5}'));
+  add(labelValue(text, 'name', '姓名|名字', LABEL_NAME_VALUE_PATTERN));
   add(rawFileNameField(fileName));
   if (!fields.some((item) => item.field === 'name')) add(fallbackNeighborName(text));
 

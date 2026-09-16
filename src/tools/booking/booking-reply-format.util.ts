@@ -10,6 +10,7 @@
  */
 
 import { WEEKDAY_LABELS_SHORT } from '@infra/utils/chinese-numeral.util';
+import { requiresStoreVisit, type InterviewMethod } from '@sponge/interview-method';
 
 /**
  * 把 "YYYY-MM-DD HH:mm:ss" 格式的 interviewTime 转成候选人能直接读的自然时间。
@@ -28,33 +29,22 @@ export function formatInterviewTimeForReply(interviewTime: string): string {
 }
 
 /**
- * 判断岗位是否为线上（非到店）面试，用于决定预约成功后要不要附带到店脚本。
+ * 预约成功回执的到店形态，决定附带到店脚本还是线上提醒。
  *
- * 无条件附带到店脚本会让 Agent 在线上面试岗上自相矛盾（同一轮既说"腾讯会议链接"又说
- * "到店跟前台说……"）。
+ * - `on_site`：面试方式为线下面试，附 `_onSiteScript`。
+ * - `remote`：AI / 电话 / 视频面试，附 `_onlineInterviewGuide`；无条件附到店脚本会让
+ *   Agent 在同一轮既说"线上完成"又说"到店跟前台说……"。
+ * - `unknown`：面试方式缺失或枚举外（后台必填，生产只见于岗位失效），两样都不附。
  *
- * 判定口径刻意保守：只有面试方式或面试备注出现**明确线上信号**才判线上；空值/未知一律
- * 按到店处理，漏发到店脚本会让候选人到店被当陌生人。面试方式明确写"线下/到店/现场"时，
- * 即便备注含"线上"字样（混合流程）也按到店处理。
+ * 面试方式是海绵四值单选（`@sponge/interview-method`），这里不再读备注自由文本做分类。
  */
-// “先电话沟通，合适后通知线下面试”属于两段式流程，初始环节不应发送到店脚本。
-// 这里只收强电话初面信号；“保持电话畅通/有变动会电话联系”等到店岗常见措辞不收。
-const ONLINE_INTERVIEW_SIGNAL_PATTERN =
-  /线上面试|线上形式|线上进行|视频面试|电话面试|电话初面|电话初试|先电话沟通|电话沟通后|先电话联系|远程面试|腾讯会议|会议链接|入会|钉钉会议|飞书会议/;
-const OFFLINE_INTERVIEW_METHOD_PATTERN = /线下|到店|现场|当面|门店面试/;
+export type InterviewReceiptMode = 'on_site' | 'remote' | 'unknown';
 
-export function isOnlineInterview(params: {
-  interviewType?: string | null;
-  interviewRemark?: string | null;
-  flowDescription?: string | null;
-}): boolean {
-  const type = params.interviewType?.trim() ?? '';
-  if (OFFLINE_INTERVIEW_METHOD_PATTERN.test(type)) return false;
-  if (/线上|视频|电话|远程/.test(type)) return true;
-  const freeText = [params.interviewRemark, params.flowDescription]
-    .filter((text): text is string => Boolean(text?.trim()))
-    .join('\n');
-  return ONLINE_INTERVIEW_SIGNAL_PATTERN.test(freeText);
+export function resolveInterviewReceiptMode(
+  interviewMethod: InterviewMethod | null | undefined,
+): InterviewReceiptMode {
+  if (!interviewMethod) return 'unknown';
+  return requiresStoreVisit(interviewMethod) ? 'on_site' : 'remote';
 }
 
 export interface ManualInterviewGroupHandling {

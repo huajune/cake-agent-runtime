@@ -159,6 +159,8 @@ export interface MessageRecordToolCall {
 
 export interface MessageRecordAgentStep {
   stepIndex: number;
+  /** 守卫 replan 合并两轮 steps 时的归属：first=被作废首版，replan=重生成；单轮无此字段 */
+  generation?: 'first' | 'replan';
   text?: string;
   reasoning?: string;
   toolCalls: MessageRecordToolCall[];

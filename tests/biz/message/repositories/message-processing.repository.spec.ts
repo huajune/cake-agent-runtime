@@ -237,6 +237,33 @@ describe('MessageProcessingRepository', () => {
 
       expect(queryMock.ilike).toHaveBeenCalledWith('manager_name', '%LiHanTing%');
     });
+
+    it('should match the subject search term against chat_id as well as user_name', async () => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(true);
+
+      const queryMock = makeQueryMock({ data: [], error: null });
+      mockSupabaseClient.from.mockReturnValue(queryMock);
+
+      await repository.getSlowestMessages(undefined, undefined, 10, {
+        userName: ' 6aa215c8ce406a6aeed2ce3d ',
+      });
+
+      expect(queryMock.or).toHaveBeenCalledWith(
+        'user_name.ilike.%6aa215c8ce406a6aeed2ce3d%,chat_id.ilike.%6aa215c8ce406a6aeed2ce3d%',
+      );
+      expect(queryMock.ilike).not.toHaveBeenCalled();
+    });
+
+    it('should strip PostgREST or-filter delimiters from the subject search term', async () => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(true);
+
+      const queryMock = makeQueryMock({ data: [], error: null });
+      mockSupabaseClient.from.mockReturnValue(queryMock);
+
+      await repository.getSlowestMessages(undefined, undefined, 10, { userName: 'a,b(c)' });
+
+      expect(queryMock.or).toHaveBeenCalledWith('user_name.ilike.%abc%,chat_id.ilike.%abc%');
+    });
   });
 
   // ==================== countProcessingSince ====================
@@ -593,7 +620,7 @@ describe('MessageProcessingRepository', () => {
       });
 
       expect(mockSupabaseClient.rpc).not.toHaveBeenCalled();
-      expect(queryMock.ilike).toHaveBeenCalledWith('user_name', '%Alice%');
+      expect(queryMock.or).toHaveBeenCalledWith('user_name.ilike.%Alice%,chat_id.ilike.%Alice%');
       expect(queryMock.ilike).toHaveBeenCalledWith('manager_name', '%LiHanTing%');
       expect(result).toEqual({
         total: 3,

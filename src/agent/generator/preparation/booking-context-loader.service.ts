@@ -10,10 +10,8 @@ import {
 import type { SpongeTokenResolveContext } from '@sponge/sponge-token.config';
 import { isStorableCandidatePhone } from '@resolution/candidate/phone';
 import { normalizeJobId } from '@resolution/job';
-import {
-  buildJobPolicyAnalysis,
-  isOfflineInterviewMethod,
-} from '@tools/job-list/job-policy-parser';
+import { requiresStoreVisit } from '@sponge/interview-method';
+import { buildJobPolicyAnalysis } from '@tools/job-list/job-policy-parser';
 import type { GeneratorInvokeParams } from '../generator.types';
 import type {
   BookingLocationDetails,
@@ -170,7 +168,7 @@ export class BookingContextLoaderService {
           : undefined;
       const interviewMeta = buildJobPolicyAnalysis(job).interviewMeta;
       const interviewMethod = interviewMeta.method ?? undefined;
-      const interviewAddress = isOfflineInterviewMethod(interviewMethod)
+      const interviewAddress = requiresStoreVisit(interviewMeta.method)
         ? (interviewMeta.address ?? undefined)
         : undefined;
       return { storeAddress, interviewMethod, interviewAddress };
