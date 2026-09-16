@@ -14,7 +14,7 @@
 **预计版本**: `v11.9.0`
 **最近更新**: `2026-09-16`
 **来源分支**: `develop`
-**累计 PR**: 6
+**累计 PR**: 7
 
 ### 更新摘要
 - PR #1287 筛退槽位的改口被棘轮挡回时对模型与观测可见
@@ -33,6 +33,9 @@
 - PR #1293 Merge origin/develop into fix/post-interview-flow-human-only
 - PR #1288 纯数字引文按数字边界匹配，非身份字段拒收纯短答空引文
 - PR #1288 Merge origin/develop into fix/notary-citation-strictness
+- PR #1294 precheck 校验岗位登记为焦点，守卫据此拦假报名回执
+- PR #1294 补 job-summary.util 独立单测，并登记守卫判据扩展
+- PR #1294 Merge remote-tracking branch 'origin/develop' into fix/precheck-attes…
 
 ### 新功能
 - PR #1285 聊天记录页现在能一眼看出每条托管号消息是谁发的：招募经理在手机上手打的标「真人」，AI 回的标「AI」，托管平台 SOP / 定时 / 建群等自动消息标「自动」；来源不明的不标，入群邀请卡片因平台回调无法区分人机也不标
@@ -56,6 +59,7 @@
 - PR #1288 收资公证的出处核验对纯数字引文做子串匹配，「22」「65」这类 quote 会命中手机号里的一段，等于没验；现改为数字边界匹配（前后不能紧邻其他数字，空白视为分界，数字中间打空格仍算同一个数）。
 - PR #1288 非身份字段以「是的」「对」这类纯短答作 quote 时，值既不在 quote 里、适配器也算不出来，此前照样入账（生产有一条时间段值由「是的」作证入账）；现新增空引文门拒收，回执给出改法：候选人在回答字段问句时带 agentQuestionQuote 绑定真实问句，否则改用含值的原话。
 - PR #1288 Merge origin/develop into fix/notary-citation-strictness
+- PR #1294 Merge remote-tracking branch 'origin/develop' into fix/precheck-attes…
 
 ### 优化调整
 - PR #1287 precheck 工具说明补充：被筛掉的字段在本岗是终态，候选人改口不入账，不要承诺"我帮你更新"，换岗表单才会重新收这项。
@@ -81,6 +85,8 @@
 - PR #1293 待发版后观察：暂停列表里「面试后人工对接，需人工恢复托管」条目需运营处理完手动恢复
 - PR #1293 面试结果与入职对接一律转人工，Agent 不再读取海绵工单状态与入职流程文本
 - PR #1288 纯数字引文按数字边界匹配，非身份字段拒收纯短答空引文
+- PR #1294 precheck 校验岗位登记为焦点，守卫据此拦假报名回执
+- PR #1294 补 job-summary.util 独立单测，并登记守卫判据扩展
 
 ### 配置变更
 - 无
