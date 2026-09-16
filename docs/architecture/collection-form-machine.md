@@ -75,7 +75,11 @@ mode=validate（校验候选人资料）：实时契约只作漂移比对 → lo
 闸门顺序（全部确定性，零语义判断）：
 
 0. **棘轮**：filled 槽位的提案，非显式改口一律拒（`slotAlreadyFilled`）；
-1. **出处门**：sourceText 必须逐字连续出现在本轮候选人原文（归一化子串查找）；
+1. **出处门**：sourceText 必须逐字连续出现在本轮候选人原文（归一化子串查找；**纯数字引文
+   须独立成数**，0916：「22」不能是手机号里的一段，空白视为分界、数字间空格允许）；
+   **非身份字段另设空引文门**（0916，生产 mpr 389042「是的」→时间段入账）：quote 是肯定
+   词表里的纯短答、值不在 quote 内、适配器也从 quote 算不出该值 → 拒收
+   `bare_affirmation_without_question`；短答确认走 `agentQuestionQuote` 绑定真实问句；
    身份槽位另查值本体锚定——值须逐字在承值文本中（候选人原话，或 confirm 式的
    `agentQuestionQuote` 问句：候选人答"对"+问句含值，两段合成完整证据），
    **或确定性解析器能从这段原话独立复算出等价值**（`valueDerivableFromSource`）。

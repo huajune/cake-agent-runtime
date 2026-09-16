@@ -23,6 +23,7 @@ import {
   verifyRecapConfirmationBinding,
   type RecapConfirmationRejectionReason,
 } from '@resolution/notary/recap-confirmation';
+import { verifyCitation } from '@resolution/notary/citation-verifier';
 import { normalizedIncludes } from '@resolution/notary/text-normalization';
 import { isStorableCandidatePhone } from '@resolution/candidate/phone';
 import { selectEvidenceDialogueMessages } from '@resolution/signal/corpus';
@@ -279,7 +280,11 @@ const REJECTION_HINTS: Readonly<Record<string, RejectionGuidance>> = {
     action: 'drop',
   },
   source_text_not_found: {
-    hint: 'quote 必须是候选人原话里逐字存在的片段；请改用候选人真实说过的原文重投。',
+    hint: 'quote 必须是候选人原话里逐字存在的片段；请改用候选人真实说过的原文重投。纯数字 quote 必须在原话里独立成数，不能是手机号等更长数字串里的一段——带上前后文（如「年龄：22」「我22岁」）。',
+    action: 'retry_submission',
+  },
+  bare_affirmation_without_question: {
+    hint: 'quote 只是「是的/对/嗯/好的」这类纯短答，本身不含值。候选人是在回答你上一句字段问句时，带 agentQuestionQuote（你真实发出的那句、含该值的问句）重投；否则改用含值的候选人原话作 quote，没有就保持该槽位 empty 并定向追问。',
     action: 'retry_submission',
   },
   value_not_in_source_text: {
@@ -887,11 +892,7 @@ async function runForm(params: {
   );
   const corrections = proposals
     .filter((answer) => answer.operation === 'correct' || answer.operation === 'clear')
-    .filter(
-      (answer) =>
-        Boolean(answer.quote) &&
-        candidateTexts.some((text) => normalizedIncludes(text, answer.quote ?? '')),
-    )
+    .filter((answer) => verifyCitation({ quote: answer.quote ?? '' }, candidateTexts).verified)
     .map((answer) => findFieldByTitle(contract, answer.labelTitle)?.labelId)
     .filter((labelId): labelId is number => labelId !== undefined);
   if (corrections.length > 0 && form.lastRecap) {
