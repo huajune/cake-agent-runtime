@@ -3,6 +3,10 @@
  *
  * 候选人主动要求改约面试时间（改期/换一天）时，自助调海绵修改约面时间接口完成改约。
  * 自助优先：接口失败或无工单号时，回退 request_handoff(modify_appointment) 转人工。
+ *
+ * 工单归属两级核验：先看 active_booking 指针；不在指针里（真人后台手工建单、[当前预约信息]
+ * 按手机号带外查得）时，再拿工单登记手机号与候选人本会话自报原话核对，一致即视为本人、
+ * 放行并回填指针；核对不上一律 fail-closed 转人工，绝不跨微信联系人改单。
  */
 
 import { toErrorMessage, toErrorStack } from '@infra/utils/error.util';
@@ -13,7 +17,13 @@ import { SpongeService } from '@sponge/sponge.service';
 import { buildSpongeTokenContext } from '@tools/shared/sponge-token-context.util';
 import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
 import { LongTermService } from '@memory/long-term/long-term.service';
-import { ToolBuilder } from '@shared-types/tool.types';
+import { isStorableCandidatePhone } from '@resolution/candidate/phone';
+import { normalizeJobId } from '@resolution/job';
+import { normalizedIncludes } from '@resolution/notary/text-normalization';
+import { extractCandidateTexts } from '@resolution/signal/self-report';
+import { type SignupWorkOrderItem, type SignupWorkOrdersResult } from '@sponge/sponge.types';
+import type { SpongeTokenResolveContext } from '@sponge/sponge-token.config';
+import type { ToolBuildContext, ToolBuilder } from '@shared-types/tool.types';
 import { buildToolError, TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
 import { isInterviewSlotAvailabilityInquiryOnly } from '@tools/booking/interview-time-intent.util';
 
@@ -30,7 +40,7 @@ const DESCRIPTION = `修改约面时间。候选人**主动**要求把一个**�
 3. 已经和候选人确认了**具体的新时间点**（到分钟）。新时间含糊（"下周吧""随便哪天"）时先追问确认，不要猜时间提交
    - **“明天上午的面试还有吗 / 上午还有场次吗”只是查询可用性，不是改约确认**：只能 precheck 后回答可约时段，再问候选人是否确定改到该时间；即使 precheck 只返回一个上午场，也禁止擅自取开始时间提交改约
 4. **新日期已经过 duliday_interview_precheck 校验确认可约**——改约前必须先用 [当前预约信息] 的「岗位ID」调 duliday_interview_precheck(jobId=岗位ID, requestedDate=候选人想改到的新日期)，只有当返回的 interview.requestedDate.status === "available"（nextAction 不是 date_unavailable）时，才允许调用本工具提交改约。与首次约面"先 precheck 再 booking"完全同一套契约：本工具信任 precheck 的时段结论，自身不再做时段/周末/报名截止的二次校验
-5. **工单归属保护**：如果 workOrderId 是按手机号实时查到的，但不在当前微信联系人的 active_booking 中，本工具不会修改工单，而会直接短路并触发人工介入。严禁跨微信联系人自助修改工单
+5. **工单归属保护**：workOrderId 不在当前微信联系人的 active_booking 中时（典型为 [当前预约信息] 标注"按候选人手机号实时查得、非本会话提交"的工单），本工具会拿工单登记手机号与候选人本会话亲口发过的手机号核对：一致则正常改约；核对不上则不改单、直接短路触发人工介入。严禁跨微信联系人自助修改工单
 
 ## precheck 判新日期不可约时（status=unavailable / nextAction=date_unavailable）
 - **不要**调用本工具，**也不要**转人工（request_handoff）
@@ -131,6 +141,8 @@ export function buildModifyInterviewTimeTool(
         // 则直接来自本工具结果的 workOrderId 字段（outcome 层读工具结果，不读此上下文）。
         context.ledger.jobs.resolvedWorkOrderId = workOrderId;
 
+        const tokenContext = buildSpongeTokenContext(context);
+
         const activeBookings = await longTermService.getActiveBookings(
           context.session.corpId,
           context.session.userId,
@@ -139,26 +151,49 @@ export function buildModifyInterviewTimeTool(
           (booking) => booking.work_order_id === workOrderId,
         );
         if (!belongsToCurrentContact) {
-          logger.warn(
-            `手机号工单不在当前联系人 active_booking，禁止自助改约并转人工: chatId=${chatId}, workOrderId=${workOrderId}`,
-          );
-          return buildToolError({
-            errorType: TOOL_ERROR_TYPES.MODIFY_INTERVIEW_WORK_ORDER_NOT_IN_MEMORY,
-            outcome: '手机号查到的工单不属于当前微信联系人，已阻止自助改约',
-            replyInstruction:
-              '该工单不在当前微信联系人的预约记忆中，禁止继续自助修改。runtime 会直接触发人工介入并暂停本轮；不要再生成文本或调用 request_handoff。',
-            details: {
-              shortCircuited: true,
-              gateRejected: true,
-              reasonCode: 'modify_appointment',
-              workOrderId,
-              handoffReason: `候选人要求修改工单 ${workOrderId}，但该手机号查到的工单不在当前微信联系人的 active_booking 中，为避免跨联系人误改已阻止自助操作。`,
-              actionAdvice: `核实当前联系人和工单 ${workOrderId} 的候选人关系，确认后人工修改工单信息。`,
-            },
+          // 真人后台手工建的单不会写 active_booking，但 [当前预约信息] 会按手机号带外查到它、
+          // 模型随即拿它改约。二级核验：工单登记手机号必须在候选人本会话原话里有出处。
+          const ownership = await resolveOutOfBandOwnership({
+            spongeService,
+            context,
+            workOrderId,
+            tokenContext,
           });
-        }
+          if (ownership.owned === false) {
+            logger.warn(
+              `工单不在当前联系人 active_booking 且带外归属核验未通过，禁止自助改约并转人工: chatId=${chatId}, workOrderId=${workOrderId}, reason=${ownership.reason}`,
+            );
+            return buildToolError({
+              errorType: TOOL_ERROR_TYPES.MODIFY_INTERVIEW_WORK_ORDER_NOT_IN_MEMORY,
+              outcome:
+                '工单不属于当前微信联系人（预约记忆与本会话自报手机号均核对不上），已阻止自助改约',
+              replyInstruction:
+                '该工单不在当前微信联系人的预约记忆中，登记手机号也无法与候选人本会话自报核对，禁止继续自助修改。runtime 会直接触发人工介入并暂停本轮；不要再生成文本或调用 request_handoff。',
+              details: {
+                shortCircuited: true,
+                gateRejected: true,
+                reasonCode: 'modify_appointment',
+                workOrderId,
+                handoffReason: `候选人要求修改工单 ${workOrderId}，但该工单不在当前微信联系人的 active_booking 中，且${ownership.reason}，为避免跨联系人误改已阻止自助操作。`,
+                actionAdvice: `核实当前联系人和工单 ${workOrderId} 的候选人关系，确认后人工修改工单信息。`,
+              },
+            });
+          }
 
-        const tokenContext = buildSpongeTokenContext(context);
+          // 归属成立：回填指针，后续取消/改约/复聊都走 active_booking 主路径，不再每轮带外查询。
+          await longTermService.setActiveBooking(
+            context.session.corpId,
+            context.session.userId,
+            workOrderId,
+            {
+              job_id: normalizeJobId(ownership.workOrder.jobId),
+              interview_time: toActiveBookingInterviewTime(ownership.workOrder.interviewTime),
+            },
+          );
+          logger.log(
+            `带外工单归属核验通过并回填 active_booking: chatId=${chatId}, workOrderId=${workOrderId}, phoneTail=${ownership.phone.slice(-4)}`,
+          );
+        }
 
         try {
           const result = await spongeService.modifyInterviewTime(
@@ -234,4 +269,62 @@ export function buildModifyInterviewTimeTool(
       },
     });
   };
+}
+
+type OutOfBandOwnership =
+  | { owned: true; workOrder: SignupWorkOrderItem; phone: string }
+  | { owned: false; reason: string };
+
+/**
+ * 带外工单归属核验（fail-closed）：
+ * 海绵按 workOrderId 取工单 → 登记手机号必须出现在候选人本会话原话中
+ *（工单 currentStatus 不参与判断：海绵状态字段滞后不可信，2026-09-16 运营裁定改约不看状态）（与 precheck 多人代报的 candidatePhone 出处判据同源，剔除第三方截图）。
+ * 任一环节不成立都不放行；海绵查询失败同样不放行，由调用方转人工。
+ */
+async function resolveOutOfBandOwnership(params: {
+  spongeService: Pick<SpongeService, 'fetchSignupWorkOrders'>;
+  context: ToolBuildContext;
+  workOrderId: number;
+  tokenContext: SpongeTokenResolveContext | undefined;
+}): Promise<OutOfBandOwnership> {
+  let result: SignupWorkOrdersResult;
+  try {
+    result = await params.spongeService.fetchSignupWorkOrders(
+      { workOrderId: params.workOrderId },
+      params.tokenContext,
+    );
+  } catch (err) {
+    logger.warn(
+      `带外工单归属核验查询失败（fail closed）: workOrderId=${params.workOrderId}, error=${toErrorMessage(err)}`,
+    );
+    return { owned: false, reason: '工单系统暂时查不到该工单的登记信息' };
+  }
+
+  const workOrder = result.workOrders.find((item) => item.workOrderId === params.workOrderId);
+  if (!workOrder) return { owned: false, reason: '工单系统查不到该工单' };
+
+  // signup/list 通常把候选人手机号下发在顶层，个别响应挂在工单行上；两处都认。
+  const phone = [workOrder.phone, result.phone]
+    .map((value) => (typeof value === 'string' ? value.trim() : ''))
+    .find(isStorableCandidatePhone);
+  if (!phone) return { owned: false, reason: '工单未登记可核对的候选人手机号' };
+
+  const candidateTexts = extractCandidateTexts(params.context.turnInput.messages, {
+    visualSheetsByContent: params.context.turnInput.visualSheetsByContent,
+  });
+  if (!candidateTexts.some((text) => normalizedIncludes(text, phone))) {
+    return {
+      owned: false,
+      reason: `工单登记手机号（尾号 ${phone.slice(-4)}）在候选人本会话原话中无出处`,
+    };
+  }
+  return { owned: true, workOrder, phone };
+}
+
+/** 海绵工单 interviewTime 为 `yyyy-MM-dd HH:mm`；active_booking 约定带秒，对齐 booking 建单口径。 */
+function toActiveBookingInterviewTime(value: string | null | undefined): string | null {
+  const trimmed = value?.trim() ?? '';
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(trimmed)) return `${trimmed}:00`;
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(trimmed)) return trimmed;
+  return null;
 }

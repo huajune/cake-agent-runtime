@@ -18,7 +18,6 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { SpongeService } from '@sponge/sponge.service';
 import type { JobBasicInfo, JobDetail } from '@sponge/sponge.types';
-import type { RecommendedJobSummary } from '@resolution/job/types';
 import { isValidLaborForm, stripLaborFormFromCategories } from '@resolution/labor-form';
 import { ToolBuilder, ToolBuildContext } from '@shared-types/tool.types';
 import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
@@ -29,7 +28,6 @@ import {
   buildNoMatchScript,
   buildPostInviteClosureScript,
 } from '@tools/job-list/no-match-script.util';
-import { formatSettlementSummary } from '@tools/job-list/salary-settlement.util';
 import { buildJobPolicyAnalysis } from '@tools/job-list/job-policy-parser';
 import { sanitizeBrandName } from '@resolution/brand/sanitize-brand-name';
 import { BRAND_FILTER_MODES } from '@resolution/brand/brand-resolution.types';
@@ -70,17 +68,16 @@ import {
 } from '@resolution/brand/fuzzy-recall';
 import {
   buildBrandNearestStoreSummary,
-  formatSalarySummary,
   getMultiStoreBrandGroups,
 } from '@tools/job-list/brand-stores.util';
-import {
-  formatJobsToMarkdown,
-  inferStudentRequirement,
-  type ProgressiveDisclosureFlags,
-} from '@tools/job-list/render.util';
+import { formatJobsToMarkdown, type ProgressiveDisclosureFlags } from '@tools/job-list/render.util';
 import { type DistanceAnchorPrecision } from '@tools/job-list/distance-render.util';
-import { composeShiftTimeText } from '@tools/job-list/format-shift-time.util';
 import { extractWelfareFacts } from '@tools/job-list/welfare-facts.util';
+import {
+  mapJobsToRecommendedSummaries,
+  type JobWithDistance,
+  type StoreInfoView,
+} from '@tools/job-list/job-summary.util';
 import { parseAgeRange, parseCandidateAge } from '@tools/job-list/age.util';
 import {
   AGE_BOUNDARY_HANDOFF_FLOOR,
@@ -388,81 +385,6 @@ const inputSchema = z.object({
       '候选人班次硬约束。传入后，工具会按岗位 workTime 语义判定是否兼容；不兼容岗位会从结果中移除并在 queryMeta.scheduleFilter 里说明剔除数量。候选人明确表达"只能周末/只做晚班/每周最多两天"等班次硬约束时必须传，避免推荐工作日强排班/全周岗位。注意方向：候选人解释"为什么某班次做不了"（如"我七点才下班赶不上晚班""上晚班影响睡眠"）是对该班次的**排除**，不是"只做该班次"，不得据此传 onlyEvenings/onlyMornings；"找周六/周末的活"= onlyWeekends: true。班次约束跨轮累积：候选人早前说过"只周六/只周末"，本轮只是补充其他限制时，onlyWeekends 必须继续带上，不得用新约束替换。',
     ),
 });
-
-/**
- * `basicInfo.storeInfo` 在领域契约里是 raw `Record<string, unknown>`（海绵按门店透传），
- * 这里声明本工具实际读取的字段视图。仅用于类型断言，不做运行时转换。
- */
-type StoreInfoView = {
-  storeName?: string;
-  storeAddress?: string;
-  storeCityName?: string;
-  storeRegionName?: string;
-  latitude?: unknown;
-  longitude?: unknown;
-};
-
-/**
- * `_distanceKm` 是**本工具写上去的合成标注**（海绵不返回）：拿到候选人坐标后按 haversine
- * 算出门店距离回写到岗位对象，供排序/半径过滤/摘要读取。`JobDetail` 的 catchall 把它读成
- * `unknown`，这里给读写两侧一个显式契约，替代原先整段 `eslint-disable no-explicit-any`。
- */
-type JobWithDistance = JobDetail & { _distanceKm?: number };
-
-function mapJobsToSummaries(jobs: JobDetail[]): RecommendedJobSummary[] {
-  return jobs.map((job) => {
-    const policy = buildJobPolicyAnalysis(job);
-    const ageRequirement = policy.normalizedRequirements.ageRequirement;
-    const educationRequirement = policy.normalizedRequirements.educationRequirement;
-    const healthCertificateRequirement = policy.normalizedRequirements.healthCertificateRequirement;
-    const hasWelfarePayload =
-      job.welfare !== null && typeof job.welfare === 'object' && !Array.isArray(job.welfare);
-    const welfare = hasWelfarePayload ? extractWelfareFacts(job.welfare) : null;
-    // storeInfo 在领域契约里是 raw Record：按预期形状断言后直接透传，不做运行时转换
-    // （与 candidate-card.util.ts 同一写法，缺字段落 undefined → `?? null`）。
-    const storeInfo = job.basicInfo.storeInfo as StoreInfoView | undefined;
-    const distanceKm = (job as JobWithDistance)._distanceKm;
-
-    return {
-      jobId: job.basicInfo.jobId,
-      brandName: job.basicInfo.brandName ?? null,
-      jobName: job.basicInfo.jobName ?? null,
-      storeName: storeInfo?.storeName ?? null,
-      storeAddress: storeInfo?.storeAddress ?? null,
-      cityName: storeInfo?.storeCityName ?? null,
-      regionName: storeInfo?.storeRegionName ?? null,
-      laborForm: job.basicInfo.laborForm ?? null,
-      partTimeJobType: job.basicInfo.partTimeJobType ?? null,
-      salaryDesc: formatSalarySummary(job),
-      settlementSummary: formatSettlementSummary(job),
-      shiftSummary: composeShiftTimeText(job.workTime),
-      jobCategoryName: job.basicInfo.jobCategoryName ?? null,
-      ageRequirement: ageRequirement && ageRequirement !== '不限' ? ageRequirement : null,
-      educationRequirement:
-        educationRequirement && educationRequirement !== '不限' ? educationRequirement : null,
-      healthCertificateRequirement:
-        healthCertificateRequirement && healthCertificateRequirement !== '未明确要求'
-          ? healthCertificateRequirement
-          : null,
-      studentRequirement: inferStudentRequirement(policy),
-      resumeRequired: policy.fieldGuidance.fieldSignals.some(
-        (signal) => signal.field === '简历附件',
-      ),
-      distanceKm: distanceKm != null ? Math.round(distanceKm * 10) / 10 : null,
-      welfareFacts: welfare
-        ? {
-            meals: welfare.meals,
-            accommodation: welfare.accommodation,
-            hasTrafficAllowance: welfare.hasTrafficAllowance,
-            hasPromotionWelfare: welfare.hasPromotionWelfare,
-            otherWelfareItems: welfare.otherWelfareItems
-              .slice(0, 5)
-              .map((item) => item.slice(0, 120)),
-          }
-        : null,
-    };
-  });
-}
 
 function readFactValue(value: unknown): unknown {
   if (isRecord(value) && 'value' in value) return value.value;
@@ -2123,7 +2045,8 @@ export function buildJobListTool(
           };
 
           // 通知调用方已获取岗位数据
-          if (jobs.length > 0) context.ledger.recordFetchedJobs(mapJobsToSummaries(jobs));
+          if (jobs.length > 0)
+            context.ledger.recordFetchedJobs(mapJobsToRecommendedSummaries(jobs));
 
           // job.recommended：候选人本轮被推过岗位 → 记一次。fire-and-forget。
           // 幂等键按「本轮 turn」而非「每候选人一次」：daily_ops_report 是当天事件数，

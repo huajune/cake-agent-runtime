@@ -554,6 +554,7 @@ function makePolicy(input: {
       healthCertGate: 'unknown',
       remark: input.remark ?? null,
       interviewRemark: input.interviewRemark ?? null,
+      interviewRemarkDisplay: input.interviewRemark ?? null,
       interviewSupplements: [],
     },
     interviewMeta: {

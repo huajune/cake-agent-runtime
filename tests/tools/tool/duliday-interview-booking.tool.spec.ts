@@ -8,10 +8,7 @@ import { getTomorrowDate } from '@infra/utils/date.util';
 import type { ToolBuildContext } from '@shared-types/tool.types';
 import type { TurnOutcome } from '@agent/runner/agent-runner.types';
 import { resolveReplaySkipDecision } from '@agent/runner/turn-outcome';
-import {
-  buildInterviewBookingTool,
-  resolveInterviewType,
-} from '@tools/duliday-interview-booking.tool';
+import { buildInterviewBookingTool } from '@tools/duliday-interview-booking.tool';
 import { STALE_INPUT_REASON_CODE, TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
 import { createToolContext } from '../../helpers/tool-context.fixture';
 
@@ -77,7 +74,7 @@ const JOB_WITH_WINDOWS = {
   ...JOB,
   interviewProcess: {
     firstInterview: {
-      firstInterviewWay: '门店面试',
+      firstInterviewWay: '线下面试',
       periodicInterviewTimes: ['一', '二', '三', '四', '五', '六', '日'].map((day) => ({
         interviewWeekday: `每周${day}`,
         interviewTimes: [{ interviewStartTime: '10:00', interviewEndTime: '18:00' }],
@@ -555,18 +552,52 @@ describe('duliday_interview_booking（form → labelList）', () => {
     expect(currentForm.escalatedReason).toBe('booking_success_missing_work_order_id');
   });
 
-  it('resolveInterviewType 只作展示：AI 描述优先，否则取方式', () => {
-    expect(
-      resolveInterviewType({
-        interviewProcess: {
-          firstInterview: { firstInterviewWay: '线上面试', firstInterviewDesc: 'AI 视频面试' },
-        },
-      }),
-    ).toBe('AI面试');
-    expect(
-      resolveInterviewType({
-        interviewProcess: { firstInterview: { firstInterviewWay: '线下面试' } },
-      }),
-    ).toBe('线下面试');
+  describe('回执到店形态只看海绵四值面试方式', () => {
+    async function bookWithMethod(firstInterviewWay: string | undefined) {
+      sponge.fetchJobs.mockResolvedValue({
+        jobs: [
+          {
+            ...JOB_WITH_WINDOWS,
+            interviewProcess: {
+              firstInterview: {
+                ...JOB_WITH_WINDOWS.interviewProcess.firstInterview,
+                firstInterviewWay,
+              },
+            },
+          },
+        ],
+      });
+      const interviewTime = `${getTomorrowDate()} 10:00:00`;
+      currentForm.scheduleDraft = {
+        requestedDate: getTomorrowDate(),
+        selectedInterviewTime: interviewTime,
+        sourceText: '我明天10点可以',
+      };
+      return execute({ jobId: 100, interviewTime });
+    }
+
+    it('线下面试附到店脚本', async () => {
+      const result = await bookWithMethod('线下面试');
+      expect(result.success).toBe(true);
+      expect(result._onSiteScript).toContain('独立客招聘介绍来的');
+      expect(result._onlineInterviewGuide).toBeUndefined();
+    });
+
+    it.each(['AI面试', '电话面试', '视频面试'])(
+      '%s 附线上提醒、不附到店脚本（生产 batch …_1789456933610：AI 面试却发到店脚本）',
+      async (method) => {
+        const result = await bookWithMethod(method);
+        expect(result.success).toBe(true);
+        expect(result._onSiteScript).toBeUndefined();
+        expect(result._onlineInterviewGuide).toContain('不需要到店');
+      },
+    );
+
+    it('面试方式缺失时既不附到店脚本也不附线上提醒', async () => {
+      const result = await bookWithMethod(undefined);
+      expect(result.success).toBe(true);
+      expect(result._onSiteScript).toBeUndefined();
+      expect(result._onlineInterviewGuide).toBeUndefined();
+    });
   });
 });

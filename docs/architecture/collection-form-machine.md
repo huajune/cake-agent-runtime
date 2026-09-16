@@ -75,7 +75,11 @@ mode=validate（校验候选人资料）：实时契约只作漂移比对 → lo
 闸门顺序（全部确定性，零语义判断）：
 
 0. **棘轮**：filled 槽位的提案，非显式改口一律拒（`slotAlreadyFilled`）；
-1. **出处门**：sourceText 必须逐字连续出现在本轮候选人原文（归一化子串查找）；
+1. **出处门**：sourceText 必须逐字连续出现在本轮候选人原文（归一化子串查找；**纯数字引文
+   须独立成数**，0916：「22」不能是手机号里的一段，空白视为分界、数字间空格允许）；
+   **非身份字段另设空引文门**（0916，生产 mpr 389042「是的」→时间段入账）：quote 是肯定
+   词表里的纯短答、值不在 quote 内、适配器也从 quote 算不出该值 → 拒收
+   `bare_affirmation_without_question`；短答确认走 `agentQuestionQuote` 绑定真实问句；
    身份槽位另查值本体锚定——值须逐字在承值文本中（候选人原话，或 confirm 式的
    `agentQuestionQuote` 问句：候选人答"对"+问句含值，两段合成完整证据），
    **或确定性解析器能从这段原话独立复算出等价值**（`valueDerivableFromSource`）。
@@ -97,6 +101,11 @@ mode=validate（校验候选人资料）：实时契约只作漂移比对 → lo
 回执另带 `action`：`retry_submission` 才允许按原有证据改投；`ask_candidate`（昵称不是真名、
 社保缺缴纳方/参保地、文件未发送等）必须先向候选人澄清并等待新回复。两类不能共用
 “候选人已答过、不要再问”的总指令，否则会把身份闸门推成原值重投循环。
+第三类 `drop`（0916）：槽位已 disqualified 时的显式改口在公证之前就被棘轮挡回，本岗不再
+接受该字段任何提案。挡回同样不能静默：回执以 `reason=slot_disqualified, action=drop` 回显，
+`screening_rejected` 的 replyInstruction 点名"改口未入账、不重投、不邀请候选人重报数值"，
+审计落 `proposal_ignored`。已 filled 槽位的普通重投仍静默忽略——模型每轮重发全表是常态。
+筛退终态只在本张表内成立：换岗表单重新收该字段，档案预填对越界值也只留空不判不合格。
 
 **棘轮对系统单向、对本人双向**：filled 重开仅三条路径——复述 corrections /
 applyErrorList / 候选人显式改口（`proposal.restatement`，同套公证，通过即替换，
@@ -166,8 +175,9 @@ outcome=`restated` 落审计；askCount 不清零防刷熔断配额）。系统/
   列入「丢了算事故」key 清单。契约快照与 slots 同实体原子落盘；旧表单没有
   `contractSnapshot` 时不得直接校验，先走纯 jobId 查询建立快照。旧 key 不迁移，随 3 天 TTL
   自然过期；兼容窗内旧槽位 `confidence:'medium'` 保守触发 recap，窗口结束后临时兼容失效。
-- 审计：labelTitle 定位失败、值适配/公证拒收 / slot_restated / slot_disqualified /
-  escalated / config_debt / recap_confirmation_rejected 等落 `agent_execution_events`。
+- 审计：labelTitle 定位失败、值适配/公证拒收 / proposal_ignored（筛退槽位改口被挡）/
+  slot_restated / slot_disqualified / escalated / config_debt / recap_confirmation_rejected
+  等落 `agent_execution_events`。
   `collection_form_audit` 固化 `jobId + labelId + labelTitle + fieldType`，配置债必须按标签
   聚合并附横跨岗位数，不能按单岗拆工单。`message_processing_records` 无 `trace_id` 列；
   钻取先以事件 `trace_id` 对流水 `message_id/batch_id`，对不上时用 `chat_id + 时间窗`

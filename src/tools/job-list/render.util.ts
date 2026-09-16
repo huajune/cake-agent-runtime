@@ -1005,45 +1005,12 @@ function renderInterviewProcessSection(
     if (items.length) lines.push(`- **面试补充项**: ${items.join('；')}`);
   }
 
-  const probation = asRecord(ip.probationWork);
-  if (probation && isNonEmpty(probation)) {
-    const sub: string[] = [];
-    if (hasValue(probation.probationWorkPeriod)) {
-      const s = formatValueWithUnit(
-        probation.probationWorkPeriod,
-        probation.probationWorkPeriodUnit,
-      );
-      if (s) sub.push(`- **试工周期**: ${s}`);
-    }
-    pushField(sub, '试工地址', probation.probationWorkAddress);
-    pushField(sub, '试工考核方式', probation.probationWorkAssessment);
-    pushLongText(sub, '试工考核说明', probation.probationWorkAssessmentText);
-    if (sub.length) {
-      lines.push(`- **试工信息**:`);
-      lines.push(...sub.map((l) => `  ${l}`));
-    }
-  }
+  // 试工信息 / 培训信息 / 流程说明（海绵「试工培训与上岗」区块）不再渲染：面试结束之后的环节
+  // 不归 Agent，这些字段里 73% 写的是通过后入职对接（2026-09-16 全量扫描），模型看到就会照抄。
 
-  const training = asRecord(ip.training);
-  if (training && isNonEmpty(training)) {
-    const sub: string[] = [];
-    pushField(sub, '培训地址', training.trainingAddress);
-    if (hasValue(training.trainingPeriod)) {
-      const s = formatValueWithUnit(training.trainingPeriod, training.trainingPeriodUnit);
-      if (s) sub.push(`- **培训周期**: ${s}`);
-    }
-    pushLongText(sub, '培训说明', training.trainingDesc);
-    if (sub.length) {
-      lines.push(`- **培训信息**:`);
-      lines.push(...sub.map((l) => `  ${l}`));
-    }
-  }
-
-  pushLongText(lines, '流程说明', ip.processDesc);
-
-  // 面试备注：使用 policy 清洗过的 interviewRemark（已剔除过期时效等噪音）
-  if (policy.normalizedRequirements.interviewRemark) {
-    pushLongText(lines, '面试备注', policy.normalizedRequirements.interviewRemark);
+  // 面试备注：只用一轮面试描述（interviewRemarkDisplay），不含海绵「面试入职流程」文本
+  if (policy.normalizedRequirements.interviewRemarkDisplay) {
+    pushLongText(lines, '面试备注', policy.normalizedRequirements.interviewRemarkDisplay);
   }
 
   // 面试补充项/面试描述/面试备注等自由文本可能内嵌"户籍（不要新疆西藏）"类

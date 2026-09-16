@@ -52,6 +52,7 @@ export function createTurnLedger(input: CreateTurnLedgerInput = {}): TurnLedger 
   const geocodeAnchors: GeocodeResolvedAnchor[] = [];
   const fetchedJobs: TurnFetchedJob[] = [];
   const currentFocusJob = input.currentFocusJob ? { ...input.currentFocusJob } : null;
+  let attestedFocusJob: RecommendedJobSummary | null = null;
   const invalidatedJobIds: number[] = [];
   const collectedFields = Object.freeze({ ...(input.collectedFields ?? {}) });
   const geoSignalCities = new Set(input.geoSignalCities ?? []);
@@ -87,6 +88,9 @@ export function createTurnLedger(input: CreateTurnLedgerInput = {}): TurnLedger 
         return fetchedJobs;
       },
       currentFocusJob,
+      get attestedFocusJob() {
+        return attestedFocusJob;
+      },
       get querySignature() {
         return jobListQuerySignature;
       },
@@ -162,6 +166,9 @@ export function createTurnLedger(input: CreateTurnLedgerInput = {}): TurnLedger 
     markJobInvalidated(jobId) {
       if (!invalidatedJobIds.includes(jobId)) invalidatedJobIds.push(jobId);
     },
+    recordAttestedFocusJob(job) {
+      attestedFocusJob = { ...job };
+    },
     drain() {
       return {
         mentionedBrands: mentionedBrands ? new Set(mentionedBrands) : null,
@@ -180,6 +187,7 @@ export function createTurnLedger(input: CreateTurnLedgerInput = {}): TurnLedger 
         jobs: {
           fetchedJobs: [...fetchedJobs],
           currentFocusJob: ledger.jobs.currentFocusJob ? { ...ledger.jobs.currentFocusJob } : null,
+          attestedFocusJob: attestedFocusJob ? { ...attestedFocusJob } : null,
           querySignature: jobListQuerySignature,
           invalidatedJobIds: [...invalidatedJobIds],
           bookingSucceeded: ledger.jobs.bookingSucceeded,

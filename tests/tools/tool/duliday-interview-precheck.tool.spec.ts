@@ -95,7 +95,7 @@ const JOB_WITH_WINDOWS = {
   ...JOB,
   interviewProcess: {
     firstInterview: {
-      firstInterviewWay: '门店面试',
+      firstInterviewWay: '线下面试',
       periodicInterviewTimes: ['一', '二', '三', '四', '五', '六', '日'].map((day) => ({
         interviewWeekday: `每周${day}`,
         interviewTimes: [{ interviewStartTime: '10:00', interviewEndTime: '18:00' }],
@@ -110,7 +110,7 @@ const JOB_WITH_TWO_WINDOWS = {
   ...JOB,
   interviewProcess: {
     firstInterview: {
-      firstInterviewWay: '门店面试',
+      firstInterviewWay: '线下面试',
       periodicInterviewTimes: ['一', '二', '三', '四', '五', '六', '日'].map((day) => ({
         interviewWeekday: `每周${day}`,
         interviewTimes: [
@@ -501,6 +501,18 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
       }),
     );
     expect(context.ledger.jobs.collectionReadyJobId).toBe(100);
+    // 海绵查得到的岗位登记为工具确权焦点：轮末写 currentFocusJob，守卫据此判假回执。
+    expect(context.ledger.jobs.attestedFocusJob).toEqual(
+      expect.objectContaining({ jobId: 100, brandName: JOB.basicInfo.brandName }),
+    );
+  });
+
+  it('岗位失效（海绵查不到）时不登记工具确权焦点', async () => {
+    sponge.fetchJobs.mockResolvedValue({ jobs: [] });
+    const result = await execute({ jobId: 100 });
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.PRECHECK_JOB_NOT_FOUND);
+    expect(context.ledger.jobs.attestedFocusJob).toBeNull();
+    expect(context.ledger.jobs.invalidatedJobIds).toEqual([100]);
   });
 
   it('逐行填满模板与自然表达走同一路径：资料授权，无时间则 select_interview_time', async () => {
@@ -705,6 +717,63 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
     expect(result._replyInstruction).toContain('identity_age_exception');
     expect(result._replyInstruction).toContain('禁止调用 duliday_interview_booking');
     expect(context.ledger.jobs.collectionReadyJobId).toBeUndefined();
+  });
+
+  // 生产 batch …_1789456796864：体重 76 被筛退，候选人改口「实际65」后模型提交 correct，
+  // 改口在公证之前被 disqualified 棘轮挡回；回执里什么都没有，模型只能猜"系统不信任"，
+  // 上一轮还向候选人许了"说下真实体重我帮你更新"这种状态机永远兑现不了的话。
+  it('筛退槽位的改口被挡回：rejectedAnswers 以 action=drop 回显、审计落 proposal_ignored、指令禁止重投与邀请重报', async () => {
+    const agedContract = CONTRACT.map((field) =>
+      field.labelId === 103
+        ? {
+            ...field,
+            valueSpec: { kind: 'number' as const, min: 18, max: 35, unit: '岁', genderRanges: [] },
+          }
+        : field,
+    );
+    sponge.fetchJobCollectionContract.mockResolvedValue({ jobId: 100, fields: agedContract });
+    context.turnInput.messages = [{ role: 'user', content: '我今年45岁' }];
+    const first = await execute({
+      jobId: 100,
+      fieldValueProposals: [{ labelTitle: '年龄', value: '45', quote: '我今年45岁' }],
+    });
+    expect(first.nextAction).toBe('screening_rejected');
+    expect(currentForm?.slots[103]?.state).toBe('disqualified');
+
+    context.turnInput.messages = [
+      { role: 'user', content: '我今年45岁' },
+      { role: 'assistant', content: '这个岗位年龄要求 18-35 岁，你这边暂时对不上' },
+      { role: 'user', content: '实际30' },
+    ];
+    const second = await execute({
+      jobId: 100,
+      fieldValueProposals: [
+        { labelTitle: '年龄', value: '30', quote: '实际30', operation: 'correct' },
+      ],
+    });
+
+    expect(second.nextAction).toBe('screening_rejected');
+    expect(currentForm?.slots[103]?.state).toBe('disqualified');
+    expect(currentForm?.slots[103]?.value?.value).toBe('45');
+    expect(second.rejectedAnswers).toEqual([
+      expect.objectContaining({
+        labelTitle: '年龄',
+        reason: 'slot_disqualified',
+        action: 'drop',
+        hint: expect.stringContaining('本岗终态'),
+      }),
+    ]);
+    expect(second._replyInstruction).toContain('年龄 的改口未入账');
+    expect(second._replyInstruction).toContain('不要邀请候选人重报数值');
+    expect(observer.emit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'collection_form_audit',
+        kind: 'proposal_ignored',
+        labelId: 103,
+        labelTitle: '年龄',
+        reason: 'slot_disqualified',
+      }),
+    );
   });
 
   it('没有拒收时不返回 rejectedAnswers，收资指令保持原样', async () => {

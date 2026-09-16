@@ -506,12 +506,12 @@ export function formatBookingContext(
     workOrder.brandName ? `品牌: ${workOrder.brandName}` : null,
     workOrder.projectName ? `门店/项目: ${workOrder.projectName}` : null,
     displayJobName ? `岗位: ${displayJobName}` : null,
-    workOrder.currentStatus ? `当前状态: ${workOrder.currentStatus}` : null,
+    // 「当前状态」「面试通过时间」不再渲染：海绵状态字段由运营手工维护、严重滞后（2026-09-16 裁定），
+    // 模型据此播报过面试结果并安排报到（chat 6a9f7db6）。面试后环节不归 Agent，字段留给确定性逻辑。
     workOrder.signUpTime ? `报名时间: ${workOrder.signUpTime}` : null,
     // 海绵下发；缺了它模型只看到「约面待确认」这个无日期状态词，
     // 会把"已排期"语义补全成"还在等门店确认排期"。
     workOrder.interviewTime ? `面试时间: ${workOrder.interviewTime}` : null,
-    workOrder.interviewPassTime ? `面试通过时间: ${workOrder.interviewPassTime}` : null,
     location?.storeAddress ? `工作门店地址: ${location.storeAddress}` : null,
     location?.interviewMethod ? `面试形式: ${location.interviewMethod}` : null,
     location?.interviewAddress ? `面试地址: ${location.interviewAddress}` : null,
@@ -543,10 +543,11 @@ export const BOOKING_CONTEXT_SHARED_RULES = [
   '以上预约统一按下列规则处理：',
   '候选人可同时报名多个不同岗位；已预约 A 岗不代表不能继续报名 B 岗。但同一工单/同一岗位不要重复提交报名。',
   '候选人主动要求改约面时间时：先用上面的「岗位ID」调 duliday_interview_precheck(requestedDate=候选人想改到的新日期) 校验新日期是否可约——只有返回 interview.requestedDate.status=available（nextAction 不是 date_unavailable）时，才用「工单号」调 duliday_modify_interview_time 自助改约；若 precheck 判该日期不可约，则把 precheck 返回的可约时段（scheduleRule / upcomingTimeOptions）抛给候选人继续协商重选，不要转人工。候选人在**面试开始之前**明确放弃这次已约面试/岗位时（不限于说"取消"二字，"不去了""干不了""不想干了"等明确拒绝也算）必须调 duliday_cancel_work_order 自助取消——工单不会因口头放弃自动失效，不取消门店会空等、候选人留爽约记录。**但「面试时间」已经到了/过了，候选人才说"没去""过不去了""没赶上"→ 这是爽约不是取消，禁止再调 duliday_cancel_work_order**：过时未到属门店与人工跟单处理的爽约事件，只承接候选人（问下原因/是否还想找），有继续找工意向就按新流程推进。改约/取消工具自身提交失败时，再按 request_handoff(modify_appointment) 转人工。',
-  '「面试时间」已在上方给出时：不得声称还在等门店确认时间、等排期或时间未定。若该时间已早于当前日期且没有「面试通过时间」，说明面试已过期且结果未知——必须先向候选人核实当天是否到场面试，再按其回答推进或改约，禁止臆断已面试/未面试或编造后续流程。',
+  '「面试时间」已在上方给出时：不得声称还在等门店确认时间、等排期或时间未定。若该时间已早于当前日期，说明面试已过、结果只能由真人告知——必须先向候选人核实当天是否到场面试，再按其回答推进或改约，禁止臆断已面试/未面试或编造后续流程。',
   '预约可能来自候选人此前与另一位招聘顾问的沟通，不一定是你经手的。仅当候选人主动问起它、或主动要求改约/取消时才可提及；候选人在咨询其他品牌/门店/岗位时，不得主动插入该预约的状态，也不得使用「我看到你报了…」这类像是本人经手的口径。',
   '当 case 出现无法推进的阻塞（找不到门店/到店无人接待/预约信息冲突/入职办理异常等）时，必须调用 request_handoff 工具触发人工介入。',
   '必须先核对「面试形式」：只有明确为线下/到店/现场面试才允许告知或发送面试地址。线上、AI、视频、电话面试不需要到店，禁止发送任何面试定位；面试形式未明确时也不得猜测为线下。仅在明确线下面试且「面试地址」与「工作门店地址」不同时，候选人询问赴约地址/定位才优先面试地址。',
+  '面试结束之后的环节不归你：面试结果和入职对接（报到、入职、上岗、培训、手续、到店安排）只由真人处理，你手里没有任何能代表门店安排的信息源。候选人追问结果或询问入职对接时，无论工单信息或岗位数据里写了什么，都不作答、不安排、不推测，一律 request_handoff（结果追问 interview_result_inquiry，入职对接 onboarding_paperwork）。预约成功后由你主动发出的面试前提醒（面试时间、到店脚本、证件）不受本条影响。',
 ].join('\n');
 
 function formatJobMemoryLine(job: RecommendedJobSummary, index?: number): string {

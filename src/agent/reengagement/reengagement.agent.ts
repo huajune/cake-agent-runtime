@@ -635,7 +635,7 @@ export class ReengagementAgent {
       if (booking?.projectName) lines.push(`- 项目/门店：${booking.projectName}`);
       else if (booking?.storeName) lines.push(`- 门店：${booking.storeName}`);
       if (booking?.jobName) lines.push(`- 岗位：${booking.jobName}`);
-      if (booking?.currentStatus) lines.push(`- 工单当前状态：${booking.currentStatus}`);
+      // 工单当前状态不再进 prompt：海绵状态字段滞后不可信（2026-09-16 裁定），停止判定仍由确定性核验做。
       if (!isOnboarding && booking?.interviewAddress) {
         lines.push(`- 面试地址：${booking.interviewAddress}`);
       }

@@ -13,6 +13,7 @@ import type { BookingCollectionForm, ContractFieldDef, Verdict } from '@resoluti
 import {
   adapterFor,
   ANSWERED_BUT_UNPARSEABLE_REASONS,
+  PROPOSAL_IGNORE_REASONS,
   detectSuspectedMultiPerson,
   escalate,
   ESCALATION_REASONS,
@@ -66,6 +67,7 @@ export function deriveCollectionAction(verdict: Verdict): CollectionAction {
 export interface CollectionAuditEvent {
   kind:
     | 'proposal_rejected'
+    | 'proposal_ignored'
     | 'slot_disqualified'
     | 'slot_restated'
     | 'config_debt'
@@ -197,6 +199,18 @@ export function runCollectionCore(input: CollectionCoreInput): CollectionCoreRes
         }
         break;
       case 'ignored':
+        // 已判不合格的槽位是本岗终态，改口在公证之前就被棘轮挡回。这一挡必须可见：
+        // 不回显模型只看到 verdict 没变、只能猜"系统不信任"；不落库排障只能读代码反推。
+        // 已 filled 槽位的普通重投是模型每轮重发全表的常态，不入账，避免刷屏。
+        if (result.reason === PROPOSAL_IGNORE_REASONS.slotDisqualified) {
+          audits.push({
+            kind: 'proposal_ignored',
+            labelId: field.labelId,
+            reason: result.reason,
+            detail: result.detail,
+            channel: proposal.channel,
+          });
+        }
         break;
     }
   }

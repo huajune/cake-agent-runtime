@@ -160,6 +160,15 @@ export type AgentEvent = AgentEventContext &
         /** 重试退避 sleep 累计（ms）。 */
         backoffTotalMs: number;
         attempts: LlmAttemptTrace[];
+        /**
+         * 调用方声明的用途标签（generation / textual_tool_retry / empty_text_retry /
+         * empty_text_recovery …）：同一回合多次 chat 调用只有靠它才能分清哪次是首步、
+         * 哪次是兜底重试；未声明为 undefined。
+         */
+        purpose?: string;
+        /** 成功返回时的 token 用量；stream 与耗尽为 undefined。首步 0 输出 token 是空响应的直接证据。 */
+        inputTokens?: number;
+        outputTokens?: number;
       }
     | {
         type: 'tool_call';

@@ -76,6 +76,12 @@ export interface TurnJobsSnapshot {
   readonly fetchedJobs: readonly TurnFetchedJob[];
   /** prep 时刻的当前焦点岗位；供本轮工具与轮末抽取共享同一上下文快照。 */
   readonly currentFocusJob: RecommendedJobSummary | null;
+  /**
+   * 本轮 precheck 校验通过的岗位（工具确权焦点）。轮末写入 currentFocusJob，不依赖回复文本
+   * 投影：会话候选池过期（7d）后文本投影无从匹配，此前 precheck 连跑多轮焦点仍为空，出站守卫
+   * 因焦点未知只能落 observe。同轮多次 precheck 取最后一次。
+   */
+  readonly attestedFocusJob: RecommendedJobSummary | null;
   /** duliday_job_list 查询签名；去掉历史上的单字段对象包装。 */
   readonly querySignature: string | undefined;
   readonly invalidatedJobIds: readonly number[];
@@ -128,5 +134,7 @@ export interface TurnLedger extends TurnLedgerSnapshot {
   recordFetchedJobs(jobs: TurnFetchedJob[]): void;
   recordJobListQuery(query: { signature: string }): void;
   markJobInvalidated(jobId: number): void;
+  /** precheck 校验通过（海绵查得到岗位）时登记工具确权焦点；只接收真实海绵岗位的投影。 */
+  recordAttestedFocusJob(job: RecommendedJobSummary): void;
   drain(): TurnLedgerSnapshot;
 }

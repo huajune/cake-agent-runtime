@@ -473,6 +473,32 @@ describe('LlmExecutorService', () => {
       expect(onAttemptStart).toHaveBeenNthCalledWith(2, { modelId: primaryModelId, attempt: 2 });
     });
 
+    it('成功事件带调用方 purpose 与 token 用量，purpose 不透传给 provider', async () => {
+      mockGenerateText.mockResolvedValueOnce(
+        makeGenerateResult({
+          text: '',
+          usage: { inputTokens: 44207, outputTokens: 0, totalTokens: 44207 },
+        }),
+      );
+
+      await service.generate({
+        role: ModelRole.Chat,
+        prompt: 'hello',
+        disableFallbacks: true,
+        purpose: 'generation',
+      });
+
+      const events = getLlmExecutionEvents();
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        status: 'success',
+        purpose: 'generation',
+        inputTokens: 44207,
+        outputTokens: 0,
+      });
+      expect(mockGenerateText.mock.calls[0][0]).not.toHaveProperty('purpose');
+    });
+
     it('全链耗尽：抛错前发射 exhausted 事件，vision 预检跳过的候选以 skipped 入轨', async () => {
       mockSupportsVision.mockImplementation((modelId: string) => modelId === primaryModelId);
       mockGenerateText

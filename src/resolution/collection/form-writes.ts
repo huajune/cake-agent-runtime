@@ -38,6 +38,7 @@ import type { CandidateFactField, CandidateFactProducer } from '@resolution/cand
 import { verifyCitation } from '@resolution/notary/citation-verifier';
 import { isAssistantQuestionConfirmedInDialogue } from '@resolution/notary/dialogue-confirmation';
 import { normalizedIncludes } from '@resolution/notary/text-normalization';
+import { isAffirmativeAnswer, normalizeShortAnswer } from '@resolution/signal/dialogue';
 import { adapterFor, genericAdapter } from './adapters/adapter.registry';
 import type { SlotProposal } from './adapters/adapter.types';
 import {
@@ -156,6 +157,7 @@ export const PROPOSAL_REJECTION_REASONS = {
   missingAttributionCorpus: 'missing_attribution_corpus',
   identityGateRejected: 'identity_gate_rejected',
   deterministicConflict: 'deterministic_conflict',
+  bareAffirmationWithoutQuestion: 'bare_affirmation_without_question',
 } as const;
 
 export type FieldValueRejectionReason =
@@ -334,6 +336,26 @@ export function applyFieldValueProposal(
   );
   if (deterministicConflict) {
     return reject(form, PROPOSAL_REJECTION_REASONS.deterministicConflict, deterministicConflict);
+  }
+
+  // ── ①′ 空引文门（非身份字段） ──
+  // 出处门只证明「这几个字候选人说过」。「是的」「对」这类纯短答任何对话里都找得到，
+  // 单独拿来作证等于没有证据：值既不在引文里、适配器也算不出来，就只剩模型的自述。
+  // 身份字段已由值本体门覆盖；这里补齐非身份字段。真正的短答确认走 agentQuestionQuote
+  // 绑定真实相邻问句（值在问句里），不在这里放行。
+  if (
+    !identityKey &&
+    !agentQuestionQuote &&
+    normalized.producer === 'model' &&
+    isAffirmativeAnswer(normalizeShortAnswer(sourceText)) &&
+    !normalizedIncludes(sourceText, normalized.value) &&
+    !adapterDerivesProposalValue(field, normalized, sourceText, shapeField)
+  ) {
+    return reject(
+      form,
+      PROPOSAL_REJECTION_REASONS.bareAffirmationWithoutQuestion,
+      `quote「${sourceText}」只是纯短答、本身不含值，且未绑定字段问句`,
+    );
   }
 
   // ── ③ 归属门（身份槽位专属） ──
@@ -1033,6 +1055,20 @@ function findDeterministicConflict(
   const derived = adapterFor(field)(adapterInput) ?? genericAdapter(adapterInput);
   if (!derived || deterministicValuesAgree(derived, proposal, factField)) return null;
   return `确定性 parser/adapter 从候选人原话得出「${derived.value}」，与模型提案「${proposal.value}」冲突`;
+}
+
+/** 确定性适配器能否从这段原话独立得出与提案等价的值（空引文门的放行判据）。 */
+function adapterDerivesProposalValue(
+  field: ContractFieldDef,
+  proposal: FieldValueProposal,
+  sourceText: string,
+  factField: CandidateFactField | null,
+): boolean {
+  const candidateText = bareAnswerForConflictCheck(field, sourceText);
+  if (!candidateText) return false;
+  const adapterInput = { field, candidateText, answerBound: true };
+  const derived = adapterFor(field)(adapterInput) ?? genericAdapter(adapterInput);
+  return derived !== null && deterministicValuesAgree(derived, proposal, factField);
 }
 
 /**

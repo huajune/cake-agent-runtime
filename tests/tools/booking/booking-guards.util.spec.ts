@@ -26,6 +26,31 @@ describe('runBookingScheduleAndNameGuards', () => {
     expect(result?.errorType).toBe('booking.missing_fields');
   });
 
+  it.each(['布海力其木·图拉江', '艾力•买买提'])(
+    '间隔号分段的少数民族全名 %s 过姓名守卫',
+    (name) => {
+      expect(
+        runBookingScheduleAndNameGuards({
+          job: makeWindowJob(),
+          name,
+          interviewTime: '2099-12-31 15:00:00',
+        }),
+      ).toBeNull();
+    },
+  );
+
+  it('纯 CJK 5 字与带称谓的间隔号写法仍被姓名守卫拦下', () => {
+    for (const name of ['布买日也木', '艾力·买买提先生']) {
+      expect(
+        runBookingScheduleAndNameGuards({
+          job: makeWindowJob(),
+          name,
+          interviewTime: '2099-12-31 15:00:00',
+        })?.errorType,
+      ).toBe('booking.missing_fields');
+    }
+  });
+
   it.each(['09:00:00', '15:00:00', '18:00:00'])(
     'accepts a real name and an in-window time: %s',
     (time) => {

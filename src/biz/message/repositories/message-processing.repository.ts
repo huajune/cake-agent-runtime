@@ -7,6 +7,7 @@ import { MessageProcessingRecordInput } from '../types/message.types';
 import type { MessageProcessingStatus } from '@enums/message.enum';
 
 interface MessageProcessingFilters {
+  /** 会话主体检索词：同时对 user_name 与 chat_id 做子串匹配（运营常直接粘贴 chatId 排障）。 */
   userName?: string;
   managerNames?: string[];
 }
@@ -1007,7 +1008,10 @@ export class MessageProcessingRepository extends BaseRepository {
   private applyTextFilters(query: any, filters?: MessageProcessingFilters) {
     let result = query;
     const userName = filters?.userName?.trim();
-    if (userName) result = result.ilike('user_name', `%${userName}%`);
+    if (userName) {
+      const term = this.escapeOrFilterValue(userName);
+      result = result.or(`user_name.ilike.%${term}%,chat_id.ilike.%${term}%`);
+    }
 
     const managerNames = this.normalizeFilterValues(filters?.managerNames);
     if (managerNames.length === 1) {

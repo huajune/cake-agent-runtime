@@ -55,9 +55,11 @@ const RISK_PROBES = [
   {
     riskType: 'interview_result_inquiry',
     text: '上次面试结果',
-    riskLabel: '历史面试结果追问',
-    summary: '候选人询问历史面试结果，Agent 无权限获取该信息，需立即转人工处理',
-    reason: '命中关键词：上次面试结果',
+    riskLabel: '面试结果追问',
+    summary:
+      '候选人追问面试结果/是否通过，已静默暂停托管。面试结果播报与通过后的入职对接只能由真人完成：' +
+      '请用同一账号自然接续，核实结果后再安排后续，不要提及 AI、机器人或转接。',
+    reason: '命中关键词：面试结果',
   },
   {
     riskType: 'human_handoff_request',

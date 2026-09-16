@@ -21,14 +21,14 @@ const baseState = (over: Partial<ReengagementSessionState> = {}): ReengagementSe
 const at = (utcHour: number, minute = 0): number => Date.UTC(2026, 5, 24, utcHour, minute, 0);
 
 describe('scenario-registry', () => {
-  it('registers the onboarding follow-up as a default-on post-booking family member', () => {
+  it('registers the onboarding follow-up as a shadow-only post-booking family member', () => {
     expect(getScenario('post_interview_onboarding')).toMatchObject({
       phase: 'post_booking',
       displayName: '面试后回访 · 入职跟进',
       anchorEvent: 'interview.passed',
       defaultDelayMinutes: 4320,
-      // 0820 裁定：三档发版即开
-      defaultRolloutEnabled: true,
+      // 2026-09-16 裁定：面试后环节一律真人对接，且 interview.passed 锚点来自滞后的海绵状态 → 只 shadow 不投递
+      defaultRolloutEnabled: false,
     });
   });
 
@@ -339,9 +339,9 @@ describe('scenario-registry', () => {
           interviewAt: anchorAt + 3_600_000,
         } as never);
 
-        expect(
-          shouldStop(postBooking, state, anchorAt, { externallyVerifiable: true }),
-        ).toEqual({ stop: false });
+        expect(shouldStop(postBooking, state, anchorAt, { externallyVerifiable: true })).toEqual({
+          stop: false,
+        });
         expect(shouldStop(postBooking, state, anchorAt)).toEqual({
           stop: true,
           reason: 'candidate_replied_after_anchor',
@@ -356,9 +356,9 @@ describe('scenario-registry', () => {
         lastCandidateMessageAt: anchorAt + 1,
       });
 
-      expect(
-        shouldStop(onboarding, state, anchorAt, { externallyVerifiable: true }),
-      ).toEqual({ stop: false });
+      expect(shouldStop(onboarding, state, anchorAt, { externallyVerifiable: true })).toEqual({
+        stop: false,
+      });
       expect(shouldStop(onboarding, state, anchorAt)).toEqual({
         stop: true,
         reason: 'candidate_replied_after_anchor',

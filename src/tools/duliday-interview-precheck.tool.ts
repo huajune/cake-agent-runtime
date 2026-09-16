@@ -23,6 +23,7 @@ import {
   verifyRecapConfirmationBinding,
   type RecapConfirmationRejectionReason,
 } from '@resolution/notary/recap-confirmation';
+import { verifyCitation } from '@resolution/notary/citation-verifier';
 import { normalizedIncludes } from '@resolution/notary/text-normalization';
 import { isStorableCandidatePhone } from '@resolution/candidate/phone';
 import { selectEvidenceDialogueMessages } from '@resolution/signal/corpus';
@@ -49,6 +50,7 @@ import {
 import { renderRecap, renderRecapRedeliveryText } from '@tools/collection/recap-renderer';
 import { renderRejection } from '@tools/collection/rejection-renderer';
 import { findRecentSameJobBooking } from '@tools/booking/active-booking-dedup.util';
+import { mapJobsToRecommendedSummaries } from '@tools/job-list/job-summary.util';
 import { formatInterviewTimeForReply } from '@tools/booking/booking-reply-format.util';
 import {
   buildBookableSlots,
@@ -112,14 +114,14 @@ export const PRECHECK_DESCRIPTION = `面试前置校验。实时读取岗位收�
 - 每项 labelTitle 必须逐字取自 bookingChecklist.requiredFields，value 传规范值，quote 必须逐字取自候选人完整原话。一条消息明确支持多个字段时全部提交。纠正用 correct、清除用 clear；confirm 只用于候选人对真实相邻字段问句的短答确认，不得把 recap 拆成全部 filled 字段重投。
 - fieldValueProposals 只能填写实时契约已有槽位，不能增删字段，也不能控制 requiredFields 及其顺序。不得传岗位要求冒充候选人答案，不得补造字段或沿用旧 candidateXxx 裸参数。
 - recapConfirmation=true 是报名信息确认的**唯一入账入口**：候选人明确表示报名信息无误时（包括「好的」「确认」等纯短答，也包括「没」这类语境化短答——回应「有不对的地方直接说改哪项」即表示没有要修改的信息），必须提交 true，不提交则确认永不入账、booking 会被拒。候选人原话和已发送的报名信息由系统自动绑定，不要复制 quote。**这只适用于确实需要确认报名信息的表单**：若回执给出 recap_not_required，说明本岗无需确认，不要卡在讨确认上。存在 correct/clear 时不要同时提交，纠正优先。
-- 返回里出现 rejectedAnswers 表示这些答案**已被退回、没有入账**。逐项服从 action：retry_submission 才按 hint 修正重投；ask_candidate 必须按 hint 向候选人补问并等待新回复，禁止原值重投。
+- 返回里出现 rejectedAnswers 表示这些答案**已被退回、没有入账**。逐项服从 action：retry_submission 才按 hint 修正重投；ask_candidate 必须按 hint 向候选人补问并等待新回复，禁止原值重投；drop 表示本岗不再接受该字段，不重投也不追问。
 - 返回里出现 rejectedRecapConfirmation 表示本轮 recap 确认被公证退回、没有入账：按其 hint 修复后重投，不要把候选人已经确认过的内容再问一遍。
 
 行动纪律：
 - collect_fields：只收 bookingChecklist.requiredFieldsToCollectNow。${COLLECTION_TEMPLATE_SEND_INSTRUCTION}
 - confirm_collection：返回 recap.candidateMessage 时必须照发；未返回表示当前 KV 已真实送达，只需简短请候选人确认。如尚未选时间，可同时并列展示 interview.bookableSlots。
 - select_interview_time：资料已授权但尚未选择具体时段；interview.bookableSlots 是按 availabilityAuthority.evaluatedAt 和完整日期时间过滤后的唯一可约事实。只展示 bookingAllowed=true 的时段，不得根据 scheduleRule/processRemark 中“当天、前一天”等相对词二次计算或删减，不再复述资料。
-- screening_rejected：只使用 rejection.candidateMessage，不自行披露内部筛选原因。
+- screening_rejected：只使用 rejection.candidateMessage，不自行披露内部筛选原因。被筛掉的字段在本岗是终态：候选人改口也不入账，不要承诺"说下真实值我帮你更新"，换岗表单才会重新收这项。
 - handoff：停止收资并转人工。
 - age_boundary_handoff：候选人年龄在岗位要求的弹性带内，报名接口必拒；资料不重问、禁止 booking，调用 request_handoff（identity_age_exception）交人工裁量。
 - ready_to_book：才允许调用 duliday_interview_booking；booking 成功前禁止声称已报名。
@@ -263,7 +265,8 @@ interface RejectedAnswer {
   labelTitle: string;
   reason: string;
   hint: string;
-  action: 'retry_submission' | 'ask_candidate';
+  /** drop：本岗不再接受该字段的任何提案，不重投也不追问。 */
+  action: 'retry_submission' | 'ask_candidate' | 'drop';
 }
 
 /** 拒收原因 → 模型可执行的下一步。措辞只讲"怎么办"，不复述候选人隐私值。 */
@@ -273,8 +276,16 @@ interface RejectionGuidance {
 }
 
 const REJECTION_HINTS: Readonly<Record<string, RejectionGuidance>> = {
+  slot_disqualified: {
+    hint: '该字段已按本岗筛选条件判不合格，是本岗终态：改口不入账、不要重投，也不要邀请候选人重报数值；只按 rejection.candidateMessage 承接并转向其他岗位，换岗表单会重新收这项。',
+    action: 'drop',
+  },
   source_text_not_found: {
-    hint: 'quote 必须是候选人原话里逐字存在的片段；请改用候选人真实说过的原文重投。',
+    hint: 'quote 必须是候选人原话里逐字存在的片段；请改用候选人真实说过的原文重投。纯数字 quote 必须在原话里独立成数，不能是手机号等更长数字串里的一段——带上前后文（如「年龄：22」「我22岁」）。',
+    action: 'retry_submission',
+  },
+  bare_affirmation_without_question: {
+    hint: 'quote 只是「是的/对/嗯/好的」这类纯短答，本身不含值。候选人是在回答你上一句字段问句时，带 agentQuestionQuote（你真实发出的那句、含该值的问句）重投；否则改用含值的候选人原话作 quote，没有就保持该槽位 empty 并定向追问。',
     action: 'retry_submission',
   },
   value_not_in_source_text: {
@@ -541,6 +552,10 @@ export function buildInterviewPrecheckTool(
           const interviewTimeWaitNotice = isWaitNoticeInterview(analysis);
           const windows = analysis.interviewWindows;
 
+          // 海绵查得到即登记为工具确权焦点：轮末写入 currentFocusJob，候选池过期后回复
+          // 文本投影失效时焦点也不会一直为空（出站守卫据焦点判"报名成功"是否假回执）。
+          context.ledger.recordAttestedFocusJob(mapJobsToRecommendedSummaries([job])[0]);
+
           const formRun = await runForm({
             deps: { ...deps, collectionForms: deps.collectionForms },
             spongeService,
@@ -713,7 +728,7 @@ export function buildInterviewPrecheckTool(
                   }
                 : undefined,
               flowDescription: analysis.interviewMeta.demand,
-              processRemark: analysis.normalizedRequirements.interviewRemark,
+              processRemark: analysis.normalizedRequirements.interviewRemarkDisplay,
               timingHighlights:
                 analysis.highlights.timingHighlights.length > 0
                   ? analysis.highlights.timingHighlights
@@ -882,11 +897,7 @@ async function runForm(params: {
   );
   const corrections = proposals
     .filter((answer) => answer.operation === 'correct' || answer.operation === 'clear')
-    .filter(
-      (answer) =>
-        Boolean(answer.quote) &&
-        candidateTexts.some((text) => normalizedIncludes(text, answer.quote ?? '')),
-    )
+    .filter((answer) => verifyCitation({ quote: answer.quote ?? '' }, candidateTexts).verified)
     .map((answer) => findFieldByTitle(contract, answer.labelTitle)?.labelId)
     .filter((labelId): labelId is number => labelId !== undefined);
   if (corrections.length > 0 && form.lastRecap) {
@@ -1000,7 +1011,11 @@ function collectRejectedAnswers(
   const rejected: RejectedAnswer[] = [];
   const seen = new Set<string>();
   for (const audit of audits) {
-    if (audit.kind !== 'proposal_rejected' || audit.labelId === undefined || !audit.reason)
+    if (
+      (audit.kind !== 'proposal_rejected' && audit.kind !== 'proposal_ignored') ||
+      audit.labelId === undefined ||
+      !audit.reason
+    )
       continue;
     const field = fieldById.get(audit.labelId);
     if (!field) continue;
@@ -1094,8 +1109,14 @@ function replyInstruction(
     }
     case 'select_interview_time':
       return '候选人资料已经授权，但尚未选择具体预约时段。interview.bookableSlots 已按 availabilityAuthority.evaluatedAt 和完整报名截止时间过滤；只展示 bookingAllowed=true 的时段，严禁根据“当天”或当前钟点二次计算、删除时段。保留已收资料，不得重新收资或签发 booking。';
-    case 'screening_rejected':
-      return '停止收资与 booking，只按 rejection.candidateMessage 承接；不得披露内部受限原因。';
+    case 'screening_rejected': {
+      const dropped = run.rejectedAnswers.filter((item) => item.action === 'drop');
+      const droppedNote =
+        dropped.length > 0
+          ? ` 注意：${dropped.map((item) => item.labelTitle).join('、')} 的改口未入账（本岗已判不合格，见 rejectedAnswers action=drop）；不要重投，也不要邀请候选人重报数值。`
+          : '';
+      return `停止收资与 booking，只按 rejection.candidateMessage 承接；不得披露内部受限原因。${droppedNote}`;
+    }
     case 'handoff':
       return `表单已转人工：${run.form.escalatedReason ?? 'unknown'}。停止发问并调用 request_handoff。`;
     case 'age_boundary_handoff': {

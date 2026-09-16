@@ -339,6 +339,48 @@ describe('runCollectionCore · 筛选与审计', () => {
     );
   });
 
+  // 生产 batch …_1789456796864：体重 76 被筛退后候选人改口「实际65」，改口在公证之前
+  // 就被 disqualified 棘轮挡回，但既不回显也不落库，模型只能猜"系统不信任"。
+  it('已判不合格槽位的显式改口被棘轮挡回 → 落 proposal_ignored 审计、表单不变', () => {
+    const first = run('我今年58岁');
+    expect(first.verdict).toBe('disqualified');
+
+    const correction = '实际48';
+    const second = runCollectionCore({
+      form: first.form,
+      contract: CONTRACT,
+      candidateTexts: [correction],
+      messages: [{ role: 'user', content: correction }],
+      fieldValueProposals: [
+        { labelTitle: '年龄', value: '48', quote: correction, operation: 'correct' },
+      ],
+    });
+
+    expect(second.verdict).toBe('disqualified');
+    expect(second.form.slots[AGE.labelId].state).toBe('disqualified');
+    expect(second.form.slots[AGE.labelId].value?.value).toBe('58');
+    expect(second.audits).toContainEqual(
+      expect.objectContaining({
+        kind: 'proposal_ignored',
+        labelId: AGE.labelId,
+        reason: 'slot_disqualified',
+        channel: 'form_answer',
+      }),
+    );
+  });
+
+  it('已 filled 槽位的普通重投不落 proposal_ignored（模型每轮重发全表是常态）', () => {
+    const first = run('我今年26岁');
+    const second = runCollectionCore({
+      form: first.form,
+      contract: CONTRACT,
+      candidateTexts: ['年龄：26'],
+      messages: [{ role: 'user', content: '年龄：26' }],
+      fieldValueProposals: [{ labelTitle: '年龄', value: '26', quote: '年龄：26' }],
+    });
+    expect(second.audits.some((audit) => audit.kind === 'proposal_ignored')).toBe(false);
+  });
+
   it('值域越界 → 同样 screening_rejected（判据读契约 valueSpec）', () => {
     const text = '我今年58岁';
     const result = run(text);
