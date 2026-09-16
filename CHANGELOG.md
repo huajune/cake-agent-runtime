@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [11.9.0] - 2026-09-16
 
-**预计版本**: `v11.9.0`
-**最近更新**: `2026-09-16`
 **来源分支**: `develop`
-**累计 PR**: 7
 
 ### 更新摘要
 - PR #1287 筛退槽位的改口被棘轮挡回时对模型与观测可见
@@ -111,7 +107,6 @@
 - PR #1293 新增 `interview-process-onboarding-omitted.spec.ts`：含「试工通过后加琪琪微信办理入职」的岗位，卡片不出现流程说明 / 试工 / 培训 / 办理入职，而解析器内部仍能读到
 - PR #1288 新增 4 个测试（citation-verifier 1 个、form-writes 3 个），pre-push 钩子全量 6936 通过，tsc / eslint / prettier 通过。
 - PR #1288 已有的 confirm 路径（agentQuestionQuote 绑定）、适配器可推导的选项短答、「是」→「是」字面值均有用例保证不受影响。
-<!-- release:pending:end -->
 
 ## [11.8.2] - 2026-09-14
 
