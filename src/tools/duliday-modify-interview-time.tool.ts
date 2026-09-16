@@ -21,11 +21,7 @@ import { isStorableCandidatePhone } from '@resolution/candidate/phone';
 import { normalizeJobId } from '@resolution/job';
 import { normalizedIncludes } from '@resolution/notary/text-normalization';
 import { extractCandidateTexts } from '@resolution/signal/self-report';
-import {
-  ACTIVE_INTERVIEW_WORK_ORDER_STATUSES,
-  type SignupWorkOrderItem,
-  type SignupWorkOrdersResult,
-} from '@sponge/sponge.types';
+import { type SignupWorkOrderItem, type SignupWorkOrdersResult } from '@sponge/sponge.types';
 import type { SpongeTokenResolveContext } from '@sponge/sponge-token.config';
 import type { ToolBuildContext, ToolBuilder } from '@shared-types/tool.types';
 import { buildToolError, TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
@@ -281,8 +277,8 @@ type OutOfBandOwnership =
 
 /**
  * 带外工单归属核验（fail-closed）：
- * 海绵按 workOrderId 取工单 → 必须是进行中的约面工单 → 登记手机号必须出现在候选人
- * 本会话原话中（与 precheck 多人代报的 candidatePhone 出处判据同源，剔除第三方截图）。
+ * 海绵按 workOrderId 取工单 → 登记手机号必须出现在候选人本会话原话中
+ *（工单 currentStatus 不参与判断：海绵状态字段滞后不可信，2026-09-16 运营裁定改约不看状态）（与 precheck 多人代报的 candidatePhone 出处判据同源，剔除第三方截图）。
  * 任一环节不成立都不放行；海绵查询失败同样不放行，由调用方转人工。
  */
 async function resolveOutOfBandOwnership(params: {
@@ -306,14 +302,6 @@ async function resolveOutOfBandOwnership(params: {
 
   const workOrder = result.workOrders.find((item) => item.workOrderId === params.workOrderId);
   if (!workOrder) return { owned: false, reason: '工单系统查不到该工单' };
-
-  const status = workOrder.currentStatus?.trim() ?? '';
-  if (!ACTIVE_INTERVIEW_WORK_ORDER_STATUSES.has(status)) {
-    return {
-      owned: false,
-      reason: `该工单当前状态为「${status || '未知'}」，不是进行中的约面工单`,
-    };
-  }
 
   // signup/list 通常把候选人手机号下发在顶层，个别响应挂在工单行上；两处都认。
   const phone = [workOrder.phone, result.phone]

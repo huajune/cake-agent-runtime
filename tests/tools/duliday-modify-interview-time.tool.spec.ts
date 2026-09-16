@@ -204,23 +204,21 @@ describe('buildModifyInterviewTimeTool', () => {
       expect(result).toMatchObject({ handoffReason: expect.stringContaining('尾号 1690') });
     });
 
-    it('short-circuits to handoff when the work order is no longer an active interview order', async () => {
+    it('ignores the sponge status field（海绵状态滞后不可信，2026-09-16 运营裁定改约不看状态）', async () => {
       spongeService.fetchSignupWorkOrders.mockResolvedValue({
         phone: '18271421690',
         total: 1,
-        workOrders: [{ ...outOfBandOrder, currentStatus: '已取消' }],
+        workOrders: [{ ...outOfBandOrder, currentStatus: '面试成功' }],
       });
       const context = mergeToolContext(mockContext, {
         turnInput: { currentUserMessage: '确定', messages: candidateSaidPhone },
       });
-      const result = await exec(buildTool(context), {
+      await exec(buildTool(context), {
         workOrderId: 464227,
         newInterviewTime: '2026-07-17 10:00',
       });
 
-      expect(spongeService.modifyInterviewTime).not.toHaveBeenCalled();
-      expect(longTermService.setActiveBooking).not.toHaveBeenCalled();
-      expectRejected(result);
+      expect(spongeService.modifyInterviewTime).toHaveBeenCalledTimes(1);
     });
 
     it('fails closed to handoff when the work order lookup throws', async () => {

@@ -35,19 +35,40 @@ const COMPLAINT_ACTION_PATTERNS = [
 ] as const;
 
 /**
- * 历史面试结果追问关键词。
- * 候选人询问"为什么没通过/上次面试结果"时，Agent 无法获取面试结果信息，
- * 继续推岗会显得漠视候选人关切，产品要求立即转人工。
+ * 面试结果追问关键词。
+ *
+ * 候选人追问面试结果/是否通过时一律静默转人工——**无论系统里能否看到结果**。
+ * 2026-09-16 裁定（生产 chat 6a9f7db6ce406a6aee13b137）：Agent 从 [当前预约信息] 读到
+ * "面试成功"后自行播报通过并编造"去店里报到"，候选人未入职即到店白干 3 小时。面试通过后的
+ * 入职对接不标准、出错代价高，结果播报与后续安排只能由真人完成，因此词表从"历史/未通过"
+ * 追问扩到所有结果追问形态；封闭句式见 INTERVIEW_RESULT_INQUIRY_PATTERNS。
  */
 const INTERVIEW_RESULT_INQUIRY_KEYWORDS = [
   '为什么没通过',
   '为什么没过面试',
   '面试没通过',
   '面试失败了',
-  '上次面试结果',
-  '面试结果怎么样',
-  '没收到面试结果',
+  '面试结果',
+  '录取通知',
+  '录用通知',
 ] as const;
+
+/**
+ * 面试结果追问的封闭句式（关键词盖不到的口语形态）。
+ *
+ * - "面试通过了吗 / 面过了没 / AI面试过了吗 / 面完了录取了吗"：面试词 + 结果动词 + 疑问尾
+ * - "几天给结果 / 什么时候出结果 / 有结果了吗 / 结果下来了吗"：结果何时/是否产生
+ *
+ * 边界：只收带疑问尾或时间疑问的结果追问；"面试通过后要带什么"这类流程询问、
+ * "面试要求"等岗位咨询不在此列，交给 prompt 侧规则（BK7 / post_interview_no_rebook）处理。
+ */
+const INTERVIEW_RESULT_INQUIRY_PATTERNS: readonly RegExp[] = [
+  /(?:面试|面完|面过|ai\s*面)[^，。！？!?\n]{0,10}(?:通过|过关|过|录取|录用)(?:了)?(?:吗|没有|没|么|嘛|不|\?|？)/,
+  // "面过了没 / 面完了吗"：结果动词被省略，只剩完成态 + 疑问尾。不收裸 "面试吗"（"要面试吗"是岗位咨询）。
+  /(?:面过|面完)(?:了)?(?:吗|没有|没|么|嘛|\?|？)/,
+  /(?:几天|多久|多长时间|什么时候|啥时候|何时|有|出|给|下)[^，。！？!?\n]{0,4}结果(?:了)?(?:吗|没有|没|么|嘛|呀|啊|呢|\?|？|$)/,
+  /结果(?:出来|下来|出)了?(?:吗|没有|没|么|嘛|\?|？)/,
+];
 
 /**
  * 候选人主动要求转人工的高置信短语。
@@ -226,6 +247,9 @@ export class RiskInterceptService {
           break;
         case INPUT_RISK_TYPE.INTERVIEW_RESULT_INQUIRY:
           result = this.detectKeywordRisk(content, INTERVIEW_RESULT_INQUIRY_KEYWORDS, rule);
+          if (!result.hit) {
+            result = this.detectPatternRisk(content, INTERVIEW_RESULT_INQUIRY_PATTERNS, rule);
+          }
           break;
         case INPUT_RISK_TYPE.HUMAN_HANDOFF_REQUEST:
           result = this.detectHumanHandoffRequest(content, rule);

@@ -266,8 +266,9 @@ export const FOLLOW_UP_SCENARIOS: readonly FollowUpScenario[] = [
     generationPolicy:
       '确认候选人是否已顺利入职、有没有遇到问题，需要协助可以直接说；不得断言候选人已入职或未入职，不施压、不催报到',
     relevantFactLabels: [],
-    // 0820 裁定：三档发版即开，不设 shadow 期（D+3 延迟天然缓坡，首周盯告警误报）。
-    defaultRolloutEnabled: true,
+    // 2026-09-16 裁定：面试后环节一律真人对接，且锚点 interview.passed 来自滞后不可信的海绵状态，
+    // 本档改为只 shadow 不投递；上岗失败的人工告警（handleOnboardingAtFire）不受影响。
+    defaultRolloutEnabled: false,
   },
   {
     code: 'new_job_for_waiting',
