@@ -53,6 +53,17 @@ const HONORIFIC_SUFFIX_REGEX = /(?:先生|女士|小姐|夫人|太太|老师|师
  */
 const REAL_NAME_REGEX = /^[一-鿿]{2,5}$/u;
 const REAL_NAME_STRICT_REGEX = /^[一-鿿]{2,4}$/u;
+
+/**
+ * 间隔号分段的少数民族全名（"布海力其木·图拉江""艾力·买买提"）：2-3 段、每段 2-6 字纯 CJK。
+ * 规范分隔符是间隔号 U+00B7；候选人手打常见 U+2022 •、U+30FB ・、U+2027 ‧、U+FF65 ･、
+ * U+22C5 ⋅，判定前统一折叠成 U+00B7。间隔号本身就是封闭形态信号（昵称不会在两段
+ * 2-6 字汉字之间打间隔号），所以宽松档与严格档同收；纯 CJK 5 字的昵称歧义裁定不受影响。
+ * 生产锚点：收资审计 invalid_value_shape 姓名拒收簇（间隔号全名整串被拒，候选人报不上名）。
+ */
+const NAME_SEPARATOR_VARIANTS_REGEX = /[\u2022\u30FB\u2027\uFF65\u22C5]/gu;
+const NAME_SEPARATOR = '\u00B7';
+const COMPOUND_NAME_REGEX = /^[一-鿿]{2,6}(?:\u00B7[一-鿿]{2,6}){1,2}$/u;
 const PLACEHOLDER_PREFIX_BLACKLIST = ['测试', '用户', '昵称', '游客', '匿名', '无名', '客户'];
 
 /**
@@ -93,9 +104,29 @@ export function hasHonorificSuffix(name: string): boolean {
   return HONORIFIC_SUFFIX_REGEX.test(name.trim());
 }
 
+/** 把间隔号变体折叠成规范的 U+00B7；无分隔符时原样返回（含首尾空白）。 */
+export function normalizeNameSeparators(name: string): string {
+  return name.replace(NAME_SEPARATOR_VARIANTS_REGEX, NAME_SEPARATOR);
+}
+
+export function hasNameSeparator(name: string): boolean {
+  return normalizeNameSeparators(name).includes(NAME_SEPARATOR);
+}
+
+/**
+ * 间隔号分段的少数民族全名形态（分隔符变体已折叠）。占位前缀与称谓后缀判据与纯 CJK
+ * 真名共用：整串首段吃占位黑名单、末段吃称谓后缀。
+ */
+export function isCompoundEthnicName(value: string | null | undefined): boolean {
+  const trimmed = normalizeNameSeparators(value?.trim() ?? '');
+  if (!COMPOUND_NAME_REGEX.test(trimmed)) return false;
+  if (PLACEHOLDER_PREFIX_BLACKLIST.some((prefix) => trimmed.startsWith(prefix))) return false;
+  return !hasHonorificSuffix(trimmed);
+}
+
 function checkChineseName(value: string | null | undefined, regex: RegExp): boolean {
-  const trimmed = value?.trim() ?? '';
-  if (!regex.test(trimmed)) return false;
+  const trimmed = normalizeNameSeparators(value?.trim() ?? '');
+  if (!regex.test(trimmed)) return isCompoundEthnicName(trimmed);
   if (PLACEHOLDER_PREFIX_BLACKLIST.some((prefix) => trimmed.startsWith(prefix))) return false;
   return !hasHonorificSuffix(trimmed);
 }
@@ -108,6 +139,7 @@ export function isLikelyRealChineseName(value: string | null | undefined): boole
 /**
  * booking/precheck 硬 guard 使用的严格档（2-4 字）。
  * 5 字纯 CJK 有较高概率是昵称，不直接进预约接口；5 字真名走转人工补录。
+ * 间隔号分段的少数民族全名（见 COMPOUND_NAME_REGEX）不在这条裁定内，两档同收。
  */
 export function isStrictRealChineseName(value: string | null | undefined): boolean {
   return checkChineseName(value, REAL_NAME_STRICT_REGEX);

@@ -14,7 +14,13 @@ import { normalizeGenderValue } from '@resolution/candidate/gender';
 import { normalizeWeightToKg } from '@resolution/candidate/height-weight';
 import { isPlaceholderPhone, isStorableCandidatePhone } from '@resolution/candidate/phone';
 import { isPlausibleAgeValue } from '@resolution/candidate/age';
-import { hasHonorificSuffix, isDigitsOnlyName } from '@resolution/candidate/name';
+import {
+  hasHonorificSuffix,
+  hasNameSeparator,
+  isCompoundEthnicName,
+  isDigitsOnlyName,
+  normalizeNameSeparators,
+} from '@resolution/candidate/name';
 import type { CandidateFactField } from './types';
 import { normalizeCandidateFieldValue } from './value-equivalence';
 
@@ -217,6 +223,9 @@ export function canonicalizeCandidateFieldValue(
         : parseSpokenWeightKg(compact);
       return kg !== null && kg >= 30 && kg <= 200 ? String(kg) : null;
     }
+    case 'name':
+      // 间隔号变体（•・‧）折叠成规范 U+00B7，表单槽位、长期档案与报名工单落同一个形。
+      return normalizeNameSeparators(text);
     default:
       return text;
   }
@@ -246,7 +255,10 @@ export function isValidCandidateFieldShape(field: CandidateFactField, value: unk
       // 性别只有男/女两个合法形态（含 1/2、male/female、"女生"类写法）；其余一律非法。
       return normalizeGenderValue(text) !== null;
     case 'name':
+      // 间隔号分段的少数民族全名走复合形态（每段 2-6 字纯 CJK、2-3 段，见 name.ts），
+      // 总长天然超过 6 字的单名上限；其余姓名仍按 2-6 字、无数字/空白/标点判定。
       // 纯数字姓名（手机号错填）与称谓后缀都与长度/标点判据同族，统一收在这里。
+      if (hasNameSeparator(text)) return isCompoundEthnicName(text);
       return (
         text.length >= 2 &&
         text.length <= 6 &&
