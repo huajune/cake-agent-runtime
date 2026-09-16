@@ -22,7 +22,7 @@ import {
 } from '@resolution/collection';
 import type { CandidateFactField } from '@resolution/candidate/types';
 import { parsePhone } from '@resolution/candidate/phone';
-import { normalizedIncludes } from '@resolution/notary/text-normalization';
+import { verifyCitation } from '@resolution/notary/citation-verifier';
 import type { FieldValueProposalInput } from './field-value-proposal-input';
 import {
   filePlaceholder,
@@ -329,7 +329,7 @@ function fromModelFieldValueProposals(input: IntakeInput): RoutedFieldValuePropo
     const operation = answer.operation ?? 'set';
     if (operation === 'clear') {
       const quote = answer.quote?.trim() ?? '';
-      if (!quote || !input.candidateTexts.some((text) => normalizedIncludes(text, quote))) {
+      if (!verifyCitation({ quote }, input.candidateTexts).verified) {
         input.onAudit?.({
           kind: 'proposal_rejected',
           labelId: field.labelId,

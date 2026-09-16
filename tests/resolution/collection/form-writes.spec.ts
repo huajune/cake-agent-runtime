@@ -719,6 +719,89 @@ describe('防线 4 · 臆造防线：sourceText 回查失败的提案零入账',
     expect(result.outcome).toBe('accepted');
   });
 
+  // 生产 mpr 389042：quote「是的」、值「09:30-21:30」的每天可工作时间段提案照样入账——
+  // 「是的」任何对话里都找得到，出处门对它是空证据。
+  it('非身份字段以纯短答作 quote 且值不在其中、适配器也算不出 → 空引文门拒收', () => {
+    const shiftField: ContractFieldDef = {
+      labelId: 741,
+      labelTitle: '每天可工作时间段',
+      fieldType: 'TEXT',
+      required: true,
+      acceptedOptions: [],
+      rejectedOptions: [],
+    };
+    const result = applyFieldValueProposal(form([shiftField]), shiftField, {
+      value: '09:30-21:30',
+      sourceText: '是的',
+      producer: 'model',
+      candidateTexts: ['是的'],
+      messages: [userMessage('是的')],
+    });
+    expect(result.outcome).toBe('rejected');
+    expect(result.reason).toBe(PROPOSAL_REJECTION_REASONS.bareAffirmationWithoutQuestion);
+  });
+
+  it('纯短答绑定真实相邻字段问句（confirm 路径）→ 非身份字段照常入账', () => {
+    const shiftField: ContractFieldDef = {
+      labelId: 741,
+      labelTitle: '每天可工作时间段',
+      fieldType: 'TEXT',
+      required: true,
+      acceptedOptions: [],
+      rejectedOptions: [],
+    };
+    const question = '每天可工作时间段是 09:30-21:30，对吗？';
+    const result = applyFieldValueProposal(form([shiftField]), shiftField, {
+      value: '09:30-21:30',
+      sourceText: '是的',
+      producer: 'model',
+      candidateTexts: ['是的'],
+      messages: [assistantMessage(question), userMessage('是的')],
+      agentQuestionQuote: question,
+    });
+    expect(result.outcome).toBe('accepted');
+  });
+
+  it('短答本身就是值（「是」→「是」）或适配器能从短答得出选项 → 不触发空引文门', () => {
+    const weekendField: ContractFieldDef = {
+      labelId: 611,
+      labelTitle: '周末能否出勤',
+      fieldType: 'TEXT',
+      required: true,
+      acceptedOptions: [],
+      rejectedOptions: [],
+    };
+    const literal = applyFieldValueProposal(form([weekendField]), weekendField, {
+      value: '是',
+      sourceText: '是',
+      producer: 'model',
+      candidateTexts: ['是'],
+      messages: [userMessage('是')],
+    });
+    expect(literal.outcome).toBe('accepted');
+
+    const optionField: ContractFieldDef = {
+      labelId: 612,
+      labelTitle: '是否接受一定范围内门店调度',
+      fieldType: 'SINGLE_OPTION',
+      required: true,
+      acceptedOptions: [
+        { optionCode: '1', optionLabel: '是' },
+        { optionCode: '2', optionLabel: '否' },
+      ],
+      rejectedOptions: [],
+    };
+    const derived = applyFieldValueProposal(form([optionField]), optionField, {
+      value: '是',
+      optionCodes: ['1'],
+      sourceText: '是的',
+      producer: 'model',
+      candidateTexts: ['是的'],
+      messages: [userMessage('是的')],
+    });
+    expect(derived.outcome).toBe('accepted');
+  });
+
   it('姓名仅以「我是X」打招呼语昵称出现 → 归属门拒收', () => {
     const text = '你好，我是小晴';
     const result = applyFieldValueProposal(
