@@ -85,6 +85,43 @@
         "其他说明：单测更新 `user_name` 断言为 `or` 形态，新增 chatId 命中与分隔符剥离两条用例（repository spec 53 条全过）"
       ],
       "level": "minor"
+    },
+    {
+      "number": "1284",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1284",
+      "title": "改约工具对带外工单按候选人自报手机号核验归属并回填 active_booking",
+      "author": "huajune",
+      "mergedAt": "2026-09-16",
+      "businessUpdates": [
+        "spec 新增 6 例：放行+回填、行内手机号/缺 interviewTime、非候选人出处、非在途状态、查询失败、无登记手机号。",
+        "`duliday_modify_interview_time`：指针未命中时按 workOrderId 查海绵，要求工单为进行中约面状态、登记手机号在候选人本会话原话中有出处（与 precheck `candidatePhone` 出处判据同源，剔除第三方截图），通过则放行并回填 `active_booking`；任一环节不成立或海绵查询失败均 fail-closed 短路转人工，错误码沿用 `modify_interview.work_order_not_in_memory`。",
+        "DESCRIPTION 第 5 条与 `tool-error-types` 注释同步；`docs/prompt-rule-ledger.md` 登记。"
+      ],
+      "summary": [
+        "改约工具对带外工单按候选人自报手机号核验归属并回填 active_booking",
+        "`duliday_modify_interview_time`：指针未命中时按 workOrderId 查海绵，要求工单为进行中约面状态、登记手机号在候选人本会话原话中有出处（与 precheck `candidatePhone` 出处判据同源，剔除第三方截图），通过则放行并回填 `active_booking`；任一环节不成立或海绵查询失败均 fail-closed 短路转人工，错误码沿用 `modify_interview.work_order_not_in_memory`。",
+        "DESCRIPTION 第 5 条与 `tool-error-types` 注释同步；`docs/prompt-rule-ledger.md` 登记。",
+        "spec 新增 6 例：放行+回填、行内手机号/缺 interviewTime、非候选人出处、非在途状态、查询失败、无登记手机号。"
+      ],
+      "features": [
+        "spec 新增 6 例：放行+回填、行内手机号/缺 interviewTime、非候选人出处、非在途状态、查询失败、无登记手机号。"
+      ],
+      "fixes": [
+        "`duliday_modify_interview_time`：指针未命中时按 workOrderId 查海绵，要求工单为进行中约面状态、登记手机号在候选人本会话原话中有出处（与 precheck `candidatePhone` 出处判据同源，剔除第三方截图），通过则放行并回填 `active_booking`；任一环节不成立或海绵查询失败均 fail-closed 短路转人工，错误码沿用 `modify_interview.work_order_not_in_memory`。",
+        "DESCRIPTION 第 5 条与 `tool-error-types` 注释同步；`docs/prompt-rule-ledger.md` 登记。"
+      ],
+      "optimizations": [],
+      "ops": [
+        "改约工具对带外工单按候选人自报手机号核验归属并回填 active_booking"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`npx jest tests/tools/duliday-modify-interview-time.tool.spec.ts`：12/12 通过",
+        "`npx jest tests/agent/runner/agent-runner.service.spec.ts`：61/61 通过",
+        "`tsc --noEmit` 通过；改动文件 ESLint 零告警"
+      ],
+      "level": "patch"
     }
   ],
   "lastRelease": {
@@ -127,5 +164,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "f531bf27b3a1fb48005fe60e83a6eb3c36c95994"
+  "lastAnalyzedSha": "5d2e7330a343e5226a2ee3dec67397a8df2f428e"
 }

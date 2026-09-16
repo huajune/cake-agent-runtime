@@ -14,7 +14,7 @@
 **预计版本**: `v11.9.0`
 **最近更新**: `2026-09-16`
 **来源分支**: `develop`
-**累计 PR**: 2
+**累计 PR**: 3
 
 ### 更新摘要
 - PR #1287 筛退槽位的改口被棘轮挡回时对模型与观测可见
@@ -24,6 +24,10 @@
 - PR #1285 全站大背景的粉色段略微调淡，其余配色不变
 - PR #1285 聊天记录页托管号侧每条消息旁标出是「真人」经理手打、「AI」回复还是平台「自动」消息
 - PR #1285 聊天记录标记真人/AI 回复；消息处理流水支持 chatId 检索并调淡背景粉段
+- PR #1284 改约工具对带外工单按候选人自报手机号核验归属并回填 active_booking
+- PR #1284 `duliday_modify_interview_time`：指针未命中时按 workOrderId 查海绵，要求工单为进行中约面状态、登记手机号在候选人本会话原话中有出处（与 precheck `candidatePhone` 出处判据同源，剔除第三方截图），通过则放行并回填 `active_booking`；任一环节不成立或海绵查询失败均 fail-closed 短路转人工，错误码沿用 `modify_interview.work_order_not_in_memory`。
+- PR #1284 DESCRIPTION 第 5 条与 `tool-error-types` 注释同步；`docs/prompt-rule-ledger.md` 登记。
+- PR #1284 spec 新增 6 例：放行+回填、行内手机号/缺 interviewTime、非候选人出处、非在途状态、查询失败、无登记手机号。
 
 ### 新功能
 - PR #1285 聊天记录页现在能一眼看出每条托管号消息是谁发的：招募经理在手机上手打的标「真人」，AI 回的标「AI」，托管平台 SOP / 定时 / 建群等自动消息标「自动」；来源不明的不标，入群邀请卡片因平台回调无法区分人机也不标
@@ -31,10 +35,13 @@
 - PR #1285 全站大背景的粉色段略微调淡，其余配色不变
 - PR #1285 聊天记录页托管号侧每条消息旁标出是「真人」经理手打、「AI」回复还是平台「自动」消息
 - PR #1285 消息处理流水搜索框支持 chatId，并调淡全站背景粉段
+- PR #1284 spec 新增 6 例：放行+回填、行内手机号/缺 interviewTime、非候选人出处、非在途状态、查询失败、无登记手机号。
 
 ### 问题修复
 - PR #1287 收资字段被岗位筛选条件判不合格后，候选人改口的提案在公证之前就被状态机挡回，但工具回执里什么都不显示、审计也不落库。模型只看到裁决没变，在思考里猜"系统不信任"，上一轮还向候选人许下"说下真实值我帮你更新"这种无法兑现的话。现在回执以 `rejectedAnswers`（`action=drop`）明确告知模型该字段本岗已终态，回复指令要求不重投、不邀请候选人重报数值；审计新增 `proposal_ignored` 事件，排障可直接查到。
 - PR #1285 消息处理流水页搜索框以前只认用户名，粘贴 chatId 查不到任何记录；现在输入 chatId（或其前缀）也能命中，方便运营按会话排障
+- PR #1284 `duliday_modify_interview_time`：指针未命中时按 workOrderId 查海绵，要求工单为进行中约面状态、登记手机号在候选人本会话原话中有出处（与 precheck `candidatePhone` 出处判据同源，剔除第三方截图），通过则放行并回填 `active_booking`；任一环节不成立或海绵查询失败均 fail-closed 短路转人工，错误码沿用 `modify_interview.work_order_not_in_memory`。
+- PR #1284 DESCRIPTION 第 5 条与 `tool-error-types` 注释同步；`docs/prompt-rule-ledger.md` 登记。
 
 ### 优化调整
 - PR #1287 precheck 工具说明补充：被筛掉的字段在本岗是终态，候选人改口不入账，不要承诺"我帮你更新"，换岗表单才会重新收这项。
@@ -45,6 +52,7 @@
 ### 运维与流程
 - PR #1287 筛退槽位的改口被棘轮挡回时对模型与观测可见
 - PR #1285 聊天记录托管号侧消息标记真人/AI/自动来源
+- PR #1284 改约工具对带外工单按候选人自报手机号核验归属并回填 active_booking
 
 ### 配置变更
 - 无
@@ -61,6 +69,9 @@
 - PR #1285 未新增对开放自然语言直接 reject/覆盖/判缺的正则分支；如有探测需求，已先走 shadow diff
 - PR #1285 新增虚构 prompt 示例值均来自 `src/agent/guardrail/prompt/example-registry.ts`（本 PR 无 prompt 改动）
 - PR #1285 其他说明：单测更新 `user_name` 断言为 `or` 形态，新增 chatId 命中与分隔符剥离两条用例（repository spec 53 条全过）
+- PR #1284 `npx jest tests/tools/duliday-modify-interview-time.tool.spec.ts`：12/12 通过
+- PR #1284 `npx jest tests/agent/runner/agent-runner.service.spec.ts`：61/61 通过
+- PR #1284 `tsc --noEmit` 通过；改动文件 ESLint 零告警
 <!-- release:pending:end -->
 
 ## [11.8.2] - 2026-09-14
