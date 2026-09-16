@@ -1,116 +1,43 @@
 {
-  "baseVersion": "11.9.1",
+  "baseVersion": "11.9.2",
   "nextVersion": "11.9.2",
+  "lastAnalyzedSha": null,
   "updatedAt": "2026-09-16",
   "sourceBranch": "develop",
-  "entries": [
-    {
-      "number": "1310",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1310",
-      "title": "无来源岗位事实对账补入会话记忆岗位摘要作为合法来源",
-      "author": "huajune",
-      "mergedAt": "2026-09-16",
-      "businessUpdates": [
-        "候选人追问已推荐岗位的班次、薪资、结算方式等信息时（如“有没有早班”“几点上班”），Agent 依据会话记忆正确作答，不再被误判为无来源而拦截转人工，避免候选人收不到回复"
-      ],
-      "summary": [
-        "出站守卫的 job_fact_without_provenance 规则补入会话记忆岗位摘要作为合法来源，修复候选人追问已展示岗位信息时被误拦截转人工的问题"
-      ],
-      "features": [],
-      "fixes": [
-        "job_fact_without_provenance 规则的来源集合补入会话记忆中的岗位摘要（已展示岗位、上轮候选池、焦点岗位的薪资/结算/班次/年龄/距离），避免模型基于记忆正确作答时被误判为无来源事实",
-        "OutputGuardrailService 新增可选依赖 SessionFactsService，按 corpId/userId/sessionId 读取会话状态生成来源文本；读取失败或缺少身份信息时退回空数组，不影响原有历史回复与候选人消息对账逻辑",
-        "Runner 的 buildGuardInput 透传 sessionRef.sessionId 以支持会话状态读取"
-      ],
-      "optimizations": [],
-      "ops": [],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "新增回归测试复现真实 trace，验证无会话记忆摘要时仍触发 replan、带摘要后正常放行；补充守卫服务读取会话状态及读取失败退回空数组两条用例",
-        "pnpm run ci:check 全绿：474 suites / 7045 tests"
-      ],
-      "level": "patch"
-    }
-  ],
+  "entries": [],
   "lastRelease": {
-    "version": "11.9.1",
+    "version": "11.9.2",
     "date": "2026-09-16",
     "sourceBranch": "develop",
     "entries": [
       {
-        "number": "1303",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/1303",
-        "title": "更新跑测试的 node 说明，禁止命令前加 export PATH",
+        "number": "1310",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1310",
+        "title": "无来源岗位事实对账补入会话记忆岗位摘要作为合法来源",
         "author": "huajune",
         "mergedAt": "2026-09-16",
         "businessUpdates": [
-          "更新跑测试的 node 说明，禁止命令前加 export PATH"
+          "候选人追问已推荐岗位的班次、薪资、结算方式等信息时（如“有没有早班”“几点上班”），Agent 依据会话记忆正确作答，不再被误判为无来源而拦截转人工，避免候选人收不到回复"
         ],
         "summary": [
-          "更新跑测试的 node 说明，禁止命令前加 export PATH"
-        ],
-        "features": [],
-        "fixes": [],
-        "optimizations": [],
-        "ops": [
-          "`CLAUDE.md`「跑测试的坑」更新：Bash 工具默认 node 已是 v24（满足项目要求的 ≥22），直接跑即可；旧说明里的 `nvm use 22.16.0` 已过期。",
-          "明确禁止在命令前加 `export PATH=…` / `nvm use`：`$PATH` 展开会触发 shell 安全检查并强制弹权限确认，导致 commit/push 无法自动放行。",
-          "更新跑测试的 node 说明，禁止命令前加 export PATH"
-        ],
-        "config": [],
-        "envFiles": [],
-        "verification": [
-          "纯文档改动，无代码/测试影响。"
-        ],
-        "level": "patch"
-      },
-      {
-        "number": "1306",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/1306",
-        "title": "skip_reply 参数信封判为有意静默，不再拆封投递内部理由",
-        "author": "huajune",
-        "mergedAt": "2026-09-16",
-        "businessUpdates": [
-          "候选人只回「好」「好的」这类确认词时，Agent 本该保持沉默；以前偶发把内部的沉默理由原文发给候选人，现在这种情况会正确地不回复，也不触发人工介入。",
-          "修复守卫「JSON 信封拆封」把模型的沉默理由当正文发给候选人的问题：模型想 skip_reply 却把参数 JSON 当正文吐出时，改为整轮有意静默，等效 skip_reply。",
-          "生产两例（2026-09-11、09-16）候选人回「好/好的」后收到「候选人回复纯确认词'好'，上轮已完成预约成功回执，无新诉求」这类内部旁白，本 PR 后不再发生。"
-        ],
-        "summary": [
-          "skip_reply 参数信封判为有意静默，不再拆封投递内部理由",
-          "台账登记沉默意图参数信封收敛（skip_intent_envelope_silenced）",
-          "修复守卫「JSON 信封拆封」把模型的沉默理由当正文发给候选人的问题：模型想 skip_reply 却把参数 JSON 当正文吐出时，改为整轮有意静默，等效 skip_reply。",
-          "生产两例（2026-09-11、09-16）候选人回「好/好的」后收到「候选人回复纯确认词'好'，上轮已完成预约成功回执，无新诉求」这类内部旁白，本 PR 后不再发生。"
+          "出站守卫的 job_fact_without_provenance 规则补入会话记忆岗位摘要作为合法来源，修复候选人追问已展示岗位信息时被误拦截转人工的问题"
         ],
         "features": [],
         "fixes": [
-          "候选人只回「好」「好的」这类确认词时，Agent 本该保持沉默；以前偶发把内部的沉默理由原文发给候选人，现在这种情况会正确地不回复，也不触发人工介入。",
-          "修复守卫「JSON 信封拆封」把模型的沉默理由当正文发给候选人的问题：模型想 skip_reply 却把参数 JSON 当正文吐出时，改为整轮有意静默，等效 skip_reply。",
-          "生产两例（2026-09-11、09-16）候选人回「好/好的」后收到「候选人回复纯确认词'好'，上轮已完成预约成功回执，无新诉求」这类内部旁白，本 PR 后不再发生。"
+          "job_fact_without_provenance 规则的来源集合补入会话记忆中的岗位摘要（已展示岗位、上轮候选池、焦点岗位的薪资/结算/班次/年龄/距离），避免模型基于记忆正确作答时被误判为无来源事实",
+          "OutputGuardrailService 新增可选依赖 SessionFactsService，按 corpId/userId/sessionId 读取会话状态生成来源文本；读取失败或缺少身份信息时退回空数组，不影响原有历史回复与候选人消息对账逻辑",
+          "Runner 的 buildGuardInput 透传 sessionRef.sessionId 以支持会话状态读取"
         ],
-        "optimizations": [
-          "信封拆封黑名单补上已注册工具的参数键（reason / reasonCode / riskType / actionAdvice / missingJobInfo），顶层任一字符串值点名已注册工具名的信封也不拆。",
-          "新增 `isSkipIntentEnvelope`：整条首版是 skip_reply 参数形态（裸 reason / action=skip_reply / tool_use 嵌套）时判为沉默意图；runner 直达静默分支新增 `skip_intent_envelope_silenced`，终态 skipped、不进 repair、不派守卫介入副作用，与 `meta_narration_silenced` 同轨。",
-          "其它工具的参数信封（reasonCode / riskType）回落残文判定，维持 `tool_call_artifact_silenced` 转人工。",
-          "`turn-outcome` 抽出 `INTENTIONAL_SILENCE_REASON_CODES` / `isIntentionalGuardSilence`，收拢两处对 `meta_narration_silenced` 的硬编码。",
-          "Dashboard 守卫 trace 新增理由码标签；`security-guardrails.md` 与 analyze-guardrail skill 口径同步。"
-        ],
-        "ops": [
-          "skip_reply 参数信封判为有意静默，不再拆封投递内部理由",
-          "台账登记沉默意图参数信封收敛（skip_intent_envelope_silenced）"
-        ],
+        "optimizations": [],
+        "ops": [],
         "config": [],
         "envFiles": [],
         "verification": [
-          "`pnpm run ci:check`（pre-push 钩子全跑：474 suites / 7041 tests 通过，lint / typecheck / build 绿）",
-          "关键链路已人工验证：用生产两条 `first_reply` 原文作为 fixture 的单测覆盖规则层（拆封返回 null、沉默意图判定）与 runner 层（终态 skipped、无 repair、无副作用、守卫档案落库）",
-          "未新增对开放自然语言直接 reject/覆盖/判缺的正则分支；本次只对可 JSON.parse 的封闭工具参数形态做判定",
-          "新增虚构 prompt 示例值均来自 `src/agent/guardrail/prompt/example-registry.ts`（本 PR 未新增 prompt 示例）",
-          "其他说明：真实 Agent 链路回归标 N/A——触发条件是模型未发起工具调用而把参数当正文吐出，属非确定性模型行为，无法用真实链路稳定复现；生产验证靠上线后观察 `guardrail_review_records.reason_code='skip_intent_envelope_silenced'` 与 `envelope_unwrapped` 的 `revised_reply` 内容。"
+          "新增回归测试复现真实 trace，验证无会话记忆摘要时仍触发 replan、带摘要后正常放行；补充守卫服务读取会话状态及读取失败退回空数组两条用例",
+          "pnpm run ci:check 全绿：474 suites / 7045 tests"
         ],
         "level": "patch"
       }
     ]
-  },
-  "lastAnalyzedSha": "aa28980affae9744ea414cf549c23233dc8e4999"
+  }
 }
