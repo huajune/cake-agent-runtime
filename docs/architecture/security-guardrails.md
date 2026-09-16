@@ -174,8 +174,10 @@ Output guard 可做精确去重并产出 `deterministicReply`，其余只产出�
 两者都归 `src/agent/reply-repair/`，由 `AgentModule` 注册；`GuardrailModule` 不导出修复证据构建器。
 证据构建不参与 Output 规则裁决，修复代理也不拥有最终放行权。任何修复都不能重做已提交的副作用。
 Runner 用 `resolution: { outcome: reply | handoff | skipped, reasonCode? }` 收敛，真实首审/二审保持原样。
-仅元叙述旁白的 `meta_narration_silenced` 为 `skipped`，保留已有工具意图且不新增介入；纯推理/工具
-残文直接 `handoff`。空修复、悬空承接句等提前分支不伪造二审，并保留既有回退资格。
+仅元叙述旁白的 `meta_narration_silenced` 与 skip_reply 参数信封的 `skip_intent_envelope_silenced`
+（首版整条是 `{"reason":"…"}` 形态的沉默意图，模型想沉默但没走工具调用）为 `skipped`，保留已有
+工具意图且不新增介入；纯推理/工具残文直接 `handoff`。JSON 信封拆封只放出候选人正文，含已注册
+工具参数键（reason / reasonCode / riskType 等）或点名工具名的信封一律不拆。空修复、悬空承接句等提前分支不伪造二审，并保留既有回退资格。
 
 ### 6.3 最终清洗
 

@@ -38,7 +38,7 @@ description: 分析出站守卫（output guardrail）的生产效果，产出一
 | `fence_stripped` / `envelope_unwrapped` | 确定性机械剥离修复 | 不是 LLM 重写，单独归类 |
 | `semantic_reviews` | 历史兼容字段 | 不纳入当前窗口规则效果统计 |
 
-单次 Output 审查只有 `pass/observe/repair/replan`；旧 `revise` 和旧 `block` 都归入 `repair`，原严格规则的 `allowFailOpen:false` 独立保留，不能从 `repair` 推断可放行。首审、二审保留真实审查结果，Trace 的 `finalOutcome` 单独记录最终处置，advisory 没有最终处置。历史记录可能以空修复或残句合成二审值，不能把所有 `revised_decision <> 'pass'` 都算作真实复燃。`meta_narration_silenced` 有意跳过且保留已有工具意图、不新增人工介入；纯推理/工具残文则转人工。
+单次 Output 审查只有 `pass/observe/repair/replan`；旧 `revise` 和旧 `block` 都归入 `repair`，原严格规则的 `allowFailOpen:false` 独立保留，不能从 `repair` 推断可放行。首审、二审保留真实审查结果，Trace 的 `finalOutcome` 单独记录最终处置，advisory 没有最终处置。历史记录可能以空修复或残句合成二审值，不能把所有 `revised_decision <> 'pass'` 都算作真实复燃。`meta_narration_silenced` / `skip_intent_envelope_silenced`（skip_reply 参数 JSON 被当正文吐出）有意跳过且保留已有工具意图、不新增人工介入；纯推理/工具残文则转人工。
 
 `reason_code` 可能带 `|override...` 后缀；所有原因分类都取 `split_part(coalesce(reason_code,''),'|',1)`，保留原字段供追溯。重生成若由真实工具明确短路为 handoff/skipped，按工具终态统计，不算空修复失败或一次二审；纯无工具空产物仍按修复失败处理。
 

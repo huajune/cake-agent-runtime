@@ -1142,6 +1142,55 @@ describe('AgentRunnerService.runInboundTurn', () => {
     );
   });
 
+  // 2026-09-16 生产（trace …_1789531804368）：模型想 skip_reply 却把参数 JSON 当正文吐出，
+  // 旧链路拆封后把 reason 里的内部理由投递给了候选人。正解等效 skip_reply：整轮静默、
+  // 不进 repair、不派守卫介入副作用，守卫档案照常落库。
+  it('skip_reply argument envelope is silenced as intentional skip (not unwrapped)', async () => {
+    const draft = '{"reason":"候选人回复纯确认词\'好\'，上轮已完成预约成功回执，无新诉求"}';
+    generator.invoke.mockResolvedValueOnce(makeResult({ text: draft }));
+    outputGuard.check.mockResolvedValueOnce({
+      decision: 'repair',
+      riskLevel: 'high',
+      violations: [
+        {
+          type: 'internal_output_leak',
+          evidence: '回复疑似泄漏 Agent 内部状态/工具实现（pattern=json）',
+          suggestion: '删除泄漏内容',
+          allowFailOpen: false,
+          repairMode: 'rewrite',
+        },
+      ],
+      ruleIds: ['internal_output_leak', 'booking_done_claim_without_submission'],
+      blockedRuleIds: ['internal_output_leak'],
+      repairMode: 'rewrite',
+    });
+
+    const outcome = await service.runInboundTurn({
+      sessionRef,
+      input: { text: '好' },
+      context: { messageId: 'trace-skip-envelope-1' },
+    });
+
+    expect(replyRepairAgent.repair).not.toHaveBeenCalled();
+    expect(outputGuard.check).toHaveBeenCalledTimes(1);
+    expect(outcome.kind).toBe('skipped');
+    expect(outcome.reply).toBeUndefined();
+    expect(outcome.handoff).toBeUndefined();
+    expect(outcome.sideEffects ?? []).toEqual([]);
+    expect(outcome.outputGuardrail).toMatchObject({
+      decision: 'repair',
+      finalOutcome: 'skipped',
+      reasonCode: 'skip_intent_envelope_silenced',
+    });
+    expect(guardrailReviews.recordReview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        finalOutcome: 'skipped',
+        reasonCode: 'skip_intent_envelope_silenced',
+        repaired: false,
+      }),
+    );
+  });
+
   // tool_use 信封（trace …_1785746625937）里的 reason 是内部升级理由不是话术，
   // 必须维持 tool_call_artifact_silenced 直达静默，不得拆封投递。
   it('tool_use envelope stays silenced (not unwrapped)', async () => {
