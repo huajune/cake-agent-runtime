@@ -1,9 +1,44 @@
 {
   "baseVersion": "11.9.2",
-  "nextVersion": "11.9.2",
+  "nextVersion": "11.10.0",
   "updatedAt": "2026-09-16",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "1316",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1316",
+      "title": "Dashboard 春日装饰换成秋日主题",
+      "author": "huajune",
+      "mergedAt": "2026-09-16",
+      "businessUpdates": [
+        "Dashboard 换季：春日樱花枝与吊坠装饰换成秋日主题",
+        "顶栏改为几片早秋落叶从顶边随风飘落（梧桐五裂叶与卵形叶，赭黄 / 秋金 / 杏黄 / 古铜 / 黄绿）",
+        "侧栏水印与菜单选中项的小花换成枫叶，首页卡片角上的贴纸池换成秋景 emoji",
+        "全站丁香紫配色不动，只改装饰层"
+      ],
+      "summary": [
+        "Dashboard 春日装饰换成秋日主题"
+      ],
+      "features": [
+        "Dashboard 换季：春日樱花枝与吊坠装饰换成秋日主题",
+        "顶栏改为几片早秋落叶从顶边随风飘落（梧桐五裂叶与卵形叶，赭黄 / 秋金 / 杏黄 / 古铜 / 黄绿）",
+        "侧栏水印与菜单选中项的小花换成枫叶，首页卡片角上的贴纸池换成秋景 emoji",
+        "全站丁香紫配色不动，只改装饰层"
+      ],
+      "fixes": [],
+      "optimizations": [
+        "顶栏装饰从 Layout 内联 240 行 SVG 抽成独立 `AutumnGarland` 组件",
+        "`spring-garland` / `spring-sticker` 类名改为季节中性的 `season-garland` / `season-sticker`，下次换季只改组件与 emoji 列表"
+      ],
+      "ops": [
+        "Dashboard 春日装饰换成秋日主题"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [],
+      "level": "minor"
+    }
+  ],
   "lastRelease": {
     "version": "11.9.2",
     "date": "2026-09-16",
@@ -39,5 +74,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "6221e6b318c737f08c75a6dd20c89bb3060ba36d"
+  "lastAnalyzedSha": "604737a9aa1b030ad36b228b1d25033c0e1e2611"
 }
