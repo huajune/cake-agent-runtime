@@ -11,20 +11,25 @@
       "author": "huajune",
       "mergedAt": "2026-09-16",
       "businessUpdates": [
-        "无来源岗位事实对账补入会话记忆岗位摘要作为合法来源"
+        "候选人追问已推荐岗位的班次、薪资、结算方式等信息时（如“有没有早班”“几点上班”），Agent 依据会话记忆正确作答，不再被误判为无来源而拦截转人工，避免候选人收不到回复"
       ],
       "summary": [
-        "无来源岗位事实对账补入会话记忆岗位摘要作为合法来源"
+        "出站守卫的 job_fact_without_provenance 规则补入会话记忆岗位摘要作为合法来源，修复候选人追问已展示岗位信息时被误拦截转人工的问题"
       ],
       "features": [],
-      "fixes": [],
-      "optimizations": [],
-      "ops": [
-        "无来源岗位事实对账补入会话记忆岗位摘要作为合法来源"
+      "fixes": [
+        "job_fact_without_provenance 规则的来源集合补入会话记忆中的岗位摘要（已展示岗位、上轮候选池、焦点岗位的薪资/结算/班次/年龄/距离），避免模型基于记忆正确作答时被误判为无来源事实",
+        "OutputGuardrailService 新增可选依赖 SessionFactsService，按 corpId/userId/sessionId 读取会话状态生成来源文本；读取失败或缺少身份信息时退回空数组，不影响原有历史回复与候选人消息对账逻辑",
+        "Runner 的 buildGuardInput 透传 sessionRef.sessionId 以支持会话状态读取"
       ],
+      "optimizations": [],
+      "ops": [],
       "config": [],
       "envFiles": [],
-      "verification": [],
+      "verification": [
+        "新增回归测试复现真实 trace，验证无会话记忆摘要时仍触发 replan、带摘要后正常放行；补充守卫服务读取会话状态及读取失败退回空数组两条用例",
+        "pnpm run ci:check 全绿：474 suites / 7045 tests"
+      ],
       "level": "patch"
     }
   ],
@@ -107,5 +112,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "2ac5e830d92b4d4b8487aa40f877b351256a93fd"
+  "lastAnalyzedSha": "aa28980affae9744ea414cf549c23233dc8e4999"
 }
