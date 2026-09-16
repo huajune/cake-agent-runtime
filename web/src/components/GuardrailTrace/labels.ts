@@ -46,6 +46,7 @@ const GUARDRAIL_RULE_LABELS: Record<string, string> = {
 const REASON_CODE_LABELS: Record<string, string> = {
   repair_exhausted: '修复后仍未通过',
   meta_narration_silenced: '元叙述无需回复',
+  skip_intent_envelope_silenced: '沉默意图参数信封无需回复',
   internal_reasoning_artifact_silenced: '推理残文无可用正文',
   tool_call_artifact_silenced: '工具残文无可用正文',
   revise_empty: '修复产物为空',

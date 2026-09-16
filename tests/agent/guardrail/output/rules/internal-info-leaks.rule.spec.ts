@@ -5,6 +5,7 @@ import {
   isToolCallArtifactOnly,
   stripInternalReasoningArtifacts,
   stripMarkdownCodeFences,
+  isSkipIntentEnvelope,
   tryUnwrapEnvelopeReply,
 } from '@agent/guardrail/output/rules/internal-info-leaks.rule';
 
@@ -165,6 +166,14 @@ describe('isToolCallArtifactOnly', () => {
     ).toBe(false);
   });
 
+  it('裸工具参数信封判残文（reasonCode/reason 是内部理由非话术）', () => {
+    expect(
+      isToolCallArtifactOnly(
+        '{"reasonCode":"modify_appointment","reason":"候选人要求把明天的面试改到后天上午"}',
+      ),
+    ).toBe(true);
+  });
+
   it('tool_use 信封仍判残文（trace …_1785746625937，reason 是内部理由非话术）', () => {
     expect(
       isToolCallArtifactOnly(
@@ -224,6 +233,68 @@ describe('tryUnwrapEnvelopeReply', () => {
     expect(tryUnwrapEnvelopeReply('好的，我帮你看下')).toBeNull();
     expect(tryUnwrapEnvelopeReply('{"censorStatus":"ok"}')).toBeNull();
     expect(tryUnwrapEnvelopeReply('["好的，我帮你看下罗湖附近在招的岗位哈"]')).toBeNull();
+  });
+
+  // 2026-09-16 生产（trace …_1789531804368）与 09-11：skip_reply 参数 JSON 被当正文吐出，
+  // 拆封把 reason 里的内部理由「候选人回复纯确认词'好'…无新诉求」当正文投递给了候选人。
+  it('工具参数键 / 点名工具名的信封不拆（reason 是内部理由不是话术）', () => {
+    expect(
+      tryUnwrapEnvelopeReply(
+        '{"reason":"候选人回复纯确认词\'好\'，上轮已完成预约成功回执，无新诉求"}',
+      ),
+    ).toBeNull();
+    expect(
+      tryUnwrapEnvelopeReply(
+        '{"action":"skip_reply","reason":"候选人回复纯确认词\'好的\'，上轮已完成岗位推荐，无新诉求"}',
+      ),
+    ).toBeNull();
+    expect(
+      tryUnwrapEnvelopeReply(
+        '{"reasonCode":"modify_appointment","reason":"候选人要求把明天的面试改到后天上午"}',
+      ),
+    ).toBeNull();
+  });
+});
+
+describe('isSkipIntentEnvelope', () => {
+  it('skip_reply 参数信封的三种形态都算沉默意图', () => {
+    expect(
+      isSkipIntentEnvelope(
+        '{"reason":"候选人回复纯确认词\'好\'，上轮已完成预约成功回执，无新诉求"}',
+      ),
+    ).toBe(true);
+    expect(
+      isSkipIntentEnvelope(
+        '{"action":"skip_reply","reason":"候选人回复纯确认词\'好的\'，上轮已完成岗位推荐，无新诉求"}',
+      ),
+    ).toBe(true);
+    expect(
+      isSkipIntentEnvelope(
+        '{"type":"tool_use","id":"toolu_x","name":"skip_reply","input":{"reason":"候选人回复好的，上轮已拉群"}}',
+      ),
+    ).toBe(true);
+  });
+
+  it('其它工具的参数信封 / 正文信封 / 空 reason 不算沉默意图', () => {
+    expect(
+      isSkipIntentEnvelope(
+        '{"reasonCode":"modify_appointment","reason":"候选人要求把明天的面试改到后天上午"}',
+      ),
+    ).toBe(false);
+    expect(
+      isSkipIntentEnvelope(
+        '{"type":"tool_use","name":"request_handoff","input":{"reason":"候选人追问培训期天数"}}',
+      ),
+    ).toBe(false);
+    expect(isSkipIntentEnvelope('{"action":"request_handoff","reason":"候选人要改约"}')).toBe(
+      false,
+    );
+    expect(isSkipIntentEnvelope('{"agent_response":"好的，我帮你看下罗湖附近在招的岗位哈"}')).toBe(
+      false,
+    );
+    expect(isSkipIntentEnvelope('{"reason":""}')).toBe(false);
+    expect(isSkipIntentEnvelope('{"reason":"x","extra":"y"}')).toBe(false);
+    expect(isSkipIntentEnvelope('候选人回复纯确认词，无新诉求')).toBe(false);
   });
 });
 

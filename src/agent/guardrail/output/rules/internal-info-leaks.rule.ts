@@ -211,6 +211,13 @@ const TOOL_CALL_SKELETON_PATTERNS: readonly RegExp[] = [
  * 防反例：`{"type":"tool_use","name":"request_handoff","input":{"reason":"…"}}` 的 reason
  * 同样是长中文，但那是内部升级理由不是候选人话术——含 type/name/input/arguments 等调用
  * 结构键的对象一律不拆，维持静默。
+ *
+ * 第二类反例（2026-09-11 / 09-16 生产各一例）：模型没发起 skip_reply 调用，把它的参数
+ * `{"reason":"候选人回复纯确认词'好'，上轮已完成预约成功回执，无新诉求"}` 当正文吐出。
+ * reason 是工具参数、值是复盘用的内部理由，拆封放出即把内心独白发给候选人。
+ * 因此 reason / reasonCode / riskType 等已注册工具的参数键同样不拆；顶层任一字符串值
+ * 就是已注册工具名（`{"action":"skip_reply",…}`）也不拆。这类信封由
+ * isSkipIntentEnvelope 单独识别为"沉默意图"，其余交回残文判定。
  */
 const ENVELOPE_TOOL_STRUCTURE_KEYS = new Set([
   'type',
@@ -222,14 +229,21 @@ const ENVELOPE_TOOL_STRUCTURE_KEYS = new Set([
   'input',
   'arguments',
   'parameters',
+  // 已注册工具的参数键（skip_reply / request_handoff / raise_risk_alert）
+  'reason',
+  'reasoncode',
+  'risktype',
+  'actionadvice',
+  'missingjobinfo',
 ]);
+const TOOL_NAME_SET: ReadonlySet<string> = new Set(TOOL_NAMES);
 const ENVELOPE_MIN_HAN_CHARS = 6;
 
 function countHanChars(text: string): number {
   return text.match(/\p{Script=Han}/gu)?.length ?? 0;
 }
 
-export function tryUnwrapEnvelopeReply(content: string): string | null {
+function parseJsonObjectEnvelope(content: string): Record<string, unknown> | null {
   const text = content?.trim() ?? '';
   if (!text.startsWith('{') || !text.endsWith('}')) return null;
   let parsed: unknown;
@@ -239,10 +253,20 @@ export function tryUnwrapEnvelopeReply(content: string): string | null {
     return null; // 解析不了的伪 JSON 不猜测，交回残文判定/常规 repair
   }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
-  const record = parsed as Record<string, unknown>;
+  return parsed as Record<string, unknown>;
+}
+
+function namesRegisteredTool(value: unknown): boolean {
+  return typeof value === 'string' && TOOL_NAME_SET.has(value.trim());
+}
+
+export function tryUnwrapEnvelopeReply(content: string): string | null {
+  const record = parseJsonObjectEnvelope(content);
+  if (!record) return null;
   if (Object.keys(record).some((key) => ENVELOPE_TOOL_STRUCTURE_KEYS.has(key.toLowerCase()))) {
     return null;
   }
+  if (Object.values(record).some(namesRegisteredTool)) return null;
   // 仅取顶层字符串值里"像候选人话术"的候选：中文量足够、自身无任何泄漏形态、
   // 非技术文档。恰好一条才拆——多条无法确定哪条是正文，宁可维持原收敛。
   const candidates = Object.values(record).filter(
@@ -254,6 +278,62 @@ export function tryUnwrapEnvelopeReply(content: string): string | null {
   );
   if (candidates.length !== 1) return null;
   return candidates[0].trim();
+}
+
+/**
+ * 沉默意图信封：整条首版是 skip_reply 的参数 JSON（模型想沉默但没走工具调用，把参数
+ * 当正文吐出）。skip_reply 是唯一以 `reason` 为全部参数的工具，因此接受的形态是：
+ * - `{"reason":"…"}`；
+ * - `{"action"|"name"|"tool"|"tool_name"|"function":"skip_reply","reason":"…"}`；
+ * - `{"type":"tool_use","name":"skip_reply","input":{"reason":"…"}}` 类嵌套调用结构。
+ *
+ * 带 reasonCode / riskType 等其它工具参数键、或点名其它工具的信封都不算——那是转人工/
+ * 告警意图的残文，仍按 isToolCallArtifactOnly 收敛为转人工。
+ *
+ * 与元叙述旁白同型：模型表达的真实意图就是本轮不回复，正确结局是整轮静默（skipped），
+ * 不进 rewrite（重写出来仍是不该发的插话），也不新增人工介入。
+ */
+const SKIP_ENVELOPE_TOOL_ID_KEYS = new Set([
+  'action',
+  'name',
+  'tool',
+  'toolname',
+  'tool_name',
+  'function',
+]);
+const SKIP_ENVELOPE_NESTED_ARGS_KEYS = new Set(['input', 'arguments', 'parameters']);
+const SKIP_REPLY_TOOL_NAME = 'skip_reply';
+
+export function isSkipIntentEnvelope(content: string): boolean {
+  const record = parseJsonObjectEnvelope(content);
+  if (!record) return false;
+  let nestedArgs: Record<string, unknown> | null = null;
+  for (const [key, value] of Object.entries(record)) {
+    const normalized = key.toLowerCase();
+    if (SKIP_ENVELOPE_NESTED_ARGS_KEYS.has(normalized)) {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+      nestedArgs = value as Record<string, unknown>;
+      continue;
+    }
+    if (SKIP_ENVELOPE_TOOL_ID_KEYS.has(normalized)) {
+      if (typeof value !== 'string' || value.trim() !== SKIP_REPLY_TOOL_NAME) return false;
+      continue;
+    }
+    if (normalized === 'type') {
+      if (typeof value !== 'string' || !/^(?:tool_use|function|tool_call)$/i.test(value.trim())) {
+        return false;
+      }
+      continue;
+    }
+    if (normalized === 'id') continue;
+    if (normalized === 'reason') continue;
+    return false;
+  }
+  if (nestedArgs && !Object.keys(nestedArgs).every((key) => key.toLowerCase() === 'reason')) {
+    return false;
+  }
+  const reason = (nestedArgs ?? record).reason;
+  return typeof reason === 'string' && reason.trim() !== '';
 }
 
 /**
