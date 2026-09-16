@@ -24,12 +24,17 @@ import type {
   GuardrailReviewInsertInput,
   GuardrailReviewStepDetail,
 } from '@biz/message/types/guardrail-review.types';
-import { classifyReviewedOutcome, resolveReviewedResolution } from './turn-outcome';
+import {
+  INTENTIONAL_SILENCE_REASON_CODES,
+  classifyReviewedOutcome,
+  resolveReviewedResolution,
+} from './turn-outcome';
 import { isDanglingCheckReply } from './dangling-reply';
 import {
   detectOutputLeak,
   hasTechnicalDocumentationShape,
   isInternalReasoningArtifactOnly,
+  isSkipIntentEnvelope,
   isToolCallArtifactOnly,
   stripInternalReasoningArtifacts,
   stripMarkdownCodeFences,
@@ -258,7 +263,7 @@ export class AgentRunnerService {
     const silenceReason = this.resolveDirectSilenceReason(decision, firstText);
     if (silenceReason) {
       const resolution: OutputResolution = {
-        outcome: silenceReason === 'meta_narration_silenced' ? 'skipped' : 'handoff',
+        outcome: INTENTIONAL_SILENCE_REASON_CODES.has(silenceReason) ? 'skipped' : 'handoff',
         source: 'output_guardrail',
         reasonCode: silenceReason,
       };
@@ -824,11 +829,15 @@ export class AgentRunnerService {
   }
 
   /**
-   * 直达静默判据——三类首版进 repair 只会产出另一条不该发的文本：
+   * 直达静默判据——四类首版进 repair 只会产出另一条不该发的文本：
    *
    * - `meta_narration_silenced`：元叙述旁白表达的真实意图就是不回复。
-   * - `tool_call_artifact_silenced`：整条首版只是工具调用残文；剥离后无正文可供 rewrite
-   *   保留，没有事实可依时只能静默。
+   * - `skip_intent_envelope_silenced`：整条首版是 skip_reply 的参数 JSON
+   *   （`{"reason":"候选人回复纯确认词'好'…无新诉求"}`），模型想沉默但没走工具调用；
+   *   与元叙述同型，等效 skip_reply 静默。必须先于残文/拆封判定，否则 reason 里的内部
+   *   理由会被拆封当正文投递（2026-09-16 生产 trace …_1789531804368）。
+   * - `internal_reasoning_artifact_silenced` / `tool_call_artifact_silenced`：整条首版只是
+   *   推理独白或工具调用残文；剥离后无正文可供 rewrite 保留，没有事实可依时只能转人工。
    * 混合命中其它规则时都不走捷径，仍按常规 repair 流程保守处理。
    */
   private resolveDirectSilenceReason(
@@ -837,6 +846,9 @@ export class AgentRunnerService {
   ): string | null {
     if (decision.decision === 'repair') {
       if (this.isOnlyMetaNarration(decision)) return 'meta_narration_silenced';
+      if (this.isOnlyInternalOutputLeak(decision) && isSkipIntentEnvelope(firstText)) {
+        return 'skip_intent_envelope_silenced';
+      }
       if (this.isOnlyInternalOutputLeak(decision) && isInternalReasoningArtifactOnly(firstText)) {
         return 'internal_reasoning_artifact_silenced';
       }

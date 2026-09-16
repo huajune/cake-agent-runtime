@@ -1,10 +1,82 @@
 {
   "baseVersion": "11.9.0",
-  "nextVersion": "11.9.0",
-  "lastAnalyzedSha": null,
+  "nextVersion": "11.9.1",
   "updatedAt": "2026-09-16",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "1303",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1303",
+      "title": "更新跑测试的 node 说明，禁止命令前加 export PATH",
+      "author": "huajune",
+      "mergedAt": "2026-09-16",
+      "businessUpdates": [
+        "更新跑测试的 node 说明，禁止命令前加 export PATH"
+      ],
+      "summary": [
+        "更新跑测试的 node 说明，禁止命令前加 export PATH"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "`CLAUDE.md`「跑测试的坑」更新：Bash 工具默认 node 已是 v24（满足项目要求的 ≥22），直接跑即可；旧说明里的 `nvm use 22.16.0` 已过期。",
+        "明确禁止在命令前加 `export PATH=…` / `nvm use`：`$PATH` 展开会触发 shell 安全检查并强制弹权限确认，导致 commit/push 无法自动放行。",
+        "更新跑测试的 node 说明，禁止命令前加 export PATH"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "纯文档改动，无代码/测试影响。"
+      ],
+      "level": "patch"
+    },
+    {
+      "number": "1306",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1306",
+      "title": "skip_reply 参数信封判为有意静默，不再拆封投递内部理由",
+      "author": "huajune",
+      "mergedAt": "2026-09-16",
+      "businessUpdates": [
+        "候选人只回「好」「好的」这类确认词时，Agent 本该保持沉默；以前偶发把内部的沉默理由原文发给候选人，现在这种情况会正确地不回复，也不触发人工介入。",
+        "修复守卫「JSON 信封拆封」把模型的沉默理由当正文发给候选人的问题：模型想 skip_reply 却把参数 JSON 当正文吐出时，改为整轮有意静默，等效 skip_reply。",
+        "生产两例（2026-09-11、09-16）候选人回「好/好的」后收到「候选人回复纯确认词'好'，上轮已完成预约成功回执，无新诉求」这类内部旁白，本 PR 后不再发生。"
+      ],
+      "summary": [
+        "skip_reply 参数信封判为有意静默，不再拆封投递内部理由",
+        "台账登记沉默意图参数信封收敛（skip_intent_envelope_silenced）",
+        "修复守卫「JSON 信封拆封」把模型的沉默理由当正文发给候选人的问题：模型想 skip_reply 却把参数 JSON 当正文吐出时，改为整轮有意静默，等效 skip_reply。",
+        "生产两例（2026-09-11、09-16）候选人回「好/好的」后收到「候选人回复纯确认词'好'，上轮已完成预约成功回执，无新诉求」这类内部旁白，本 PR 后不再发生。"
+      ],
+      "features": [],
+      "fixes": [
+        "候选人只回「好」「好的」这类确认词时，Agent 本该保持沉默；以前偶发把内部的沉默理由原文发给候选人，现在这种情况会正确地不回复，也不触发人工介入。",
+        "修复守卫「JSON 信封拆封」把模型的沉默理由当正文发给候选人的问题：模型想 skip_reply 却把参数 JSON 当正文吐出时，改为整轮有意静默，等效 skip_reply。",
+        "生产两例（2026-09-11、09-16）候选人回「好/好的」后收到「候选人回复纯确认词'好'，上轮已完成预约成功回执，无新诉求」这类内部旁白，本 PR 后不再发生。"
+      ],
+      "optimizations": [
+        "信封拆封黑名单补上已注册工具的参数键（reason / reasonCode / riskType / actionAdvice / missingJobInfo），顶层任一字符串值点名已注册工具名的信封也不拆。",
+        "新增 `isSkipIntentEnvelope`：整条首版是 skip_reply 参数形态（裸 reason / action=skip_reply / tool_use 嵌套）时判为沉默意图；runner 直达静默分支新增 `skip_intent_envelope_silenced`，终态 skipped、不进 repair、不派守卫介入副作用，与 `meta_narration_silenced` 同轨。",
+        "其它工具的参数信封（reasonCode / riskType）回落残文判定，维持 `tool_call_artifact_silenced` 转人工。",
+        "`turn-outcome` 抽出 `INTENTIONAL_SILENCE_REASON_CODES` / `isIntentionalGuardSilence`，收拢两处对 `meta_narration_silenced` 的硬编码。",
+        "Dashboard 守卫 trace 新增理由码标签；`security-guardrails.md` 与 analyze-guardrail skill 口径同步。"
+      ],
+      "ops": [
+        "skip_reply 参数信封判为有意静默，不再拆封投递内部理由",
+        "台账登记沉默意图参数信封收敛（skip_intent_envelope_silenced）"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`pnpm run ci:check`（pre-push 钩子全跑：474 suites / 7041 tests 通过，lint / typecheck / build 绿）",
+        "关键链路已人工验证：用生产两条 `first_reply` 原文作为 fixture 的单测覆盖规则层（拆封返回 null、沉默意图判定）与 runner 层（终态 skipped、无 repair、无副作用、守卫档案落库）",
+        "未新增对开放自然语言直接 reject/覆盖/判缺的正则分支；本次只对可 JSON.parse 的封闭工具参数形态做判定",
+        "新增虚构 prompt 示例值均来自 `src/agent/guardrail/prompt/example-registry.ts`（本 PR 未新增 prompt 示例）",
+        "其他说明：真实 Agent 链路回归标 N/A——触发条件是模型未发起工具调用而把参数当正文吐出，属非确定性模型行为，无法用真实链路稳定复现；生产验证靠上线后观察 `guardrail_review_records.reason_code='skip_intent_envelope_silenced'` 与 `envelope_unwrapped` 的 `revised_reply` 内容。"
+      ],
+      "level": "patch"
+    }
+  ],
   "lastRelease": {
     "version": "11.9.0",
     "date": "2026-09-16",
@@ -269,5 +341,6 @@
         "level": "patch"
       }
     ]
-  }
+  },
+  "lastAnalyzedSha": "d6a8925d8afa2cafe6b7d2a8fc4fc2bf0d058500"
 }

@@ -23,7 +23,7 @@ pnpm run test              # Jest；tests/ 目录镜像 src/ 结构
 pnpm run test -- tests/agent/runner/agent-runner.service.spec.ts --watchman=false
 ```
 
-⚠️ **跑测试的坑**：shell 默认 node 可能是 16（先 `node -v` 确认），本项目要求 Node 20+，实践用 `nvm use 22.16.0`；jest 不加 `--watchman=false` 会静默 0 测试无输出。
+⚠️ **跑测试的坑**：Claude Code 的 Bash 工具默认 node 已是 v24（本项目要求 ≥22），直接跑即可；**不要在命令前加 `export PATH=…` 或 `nvm use`**——`$PATH` 展开会触发 shell 安全检查并强制弹权限确认，导致 commit/push 无法自动放行。jest 不加 `--watchman=false` 会静默 0 测试无输出。
 
 ⚠️ 本地运行也必须提供可用 Redis：Service 缓存需配置 `UPSTASH_REDIS_REST_URL/TOKEN`，
 Bull 队列需配置 `UPSTASH_REDIS_TCP_URL`（或使用 `REDIS_URL` / `REDIS_HOST` 等现有 TCP 兜底）；

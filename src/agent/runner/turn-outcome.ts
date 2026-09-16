@@ -34,12 +34,30 @@ export type ReviewedResultLike = GeneratorRunResult & {
   guardrailTrace?: GuardrailTurnTrace;
 };
 
+/**
+ * 守卫直达静默中"模型本意就是不回复"的理由码：元叙述旁白、skip_reply 参数信封。
+ * 二者语义等效 skip_reply——最终处置 `skipped`、保留已有工具意图、不派守卫介入副作用。
+ * 推理/工具残文不在此列（无正文可依只能转人工）。
+ */
+export const INTENTIONAL_SILENCE_REASON_CODES: ReadonlySet<string> = new Set([
+  'meta_narration_silenced',
+  'skip_intent_envelope_silenced',
+]);
+
+export function isIntentionalGuardSilence(resolution: OutputResolution): boolean {
+  return (
+    resolution.outcome === 'skipped' &&
+    resolution.reasonCode !== undefined &&
+    INTENTIONAL_SILENCE_REASON_CODES.has(resolution.reasonCode.split('|')[0])
+  );
+}
+
 /** 对齐审查后的处置与已发生的工具终态；归档和渠道分类共用，不执行副作用。 */
 export function resolveReviewedResolution(
   result: Pick<GeneratorRunResult, 'text' | 'toolCalls'>,
   resolution: OutputResolution,
 ): OutputResolution {
-  if (resolution.outcome === 'handoff' || resolution.reasonCode === 'meta_narration_silenced') {
+  if (resolution.outcome === 'handoff' || isIntentionalGuardSilence(resolution)) {
     return resolution;
   }
   const toolCalls = result.toolCalls ?? [];
@@ -177,14 +195,14 @@ export function classifyReviewedOutcome(
   // Runner 已完成有界修复与放行判断；这里仅把处置投影成渠道可提交的回合结果。
   if (
     (result.resolution.outcome === 'handoff' && result.resolution.source !== 'agent_tool') ||
-    result.resolution.reasonCode === 'meta_narration_silenced'
+    isIntentionalGuardSilence(result.resolution)
   ) {
     const ruleBlocked = result.outputDecision.blockedRuleIds.length > 0;
     const ruleIds = ruleBlocked
       ? result.outputDecision.blockedRuleIds
       : [result.resolution.reasonCode ?? 'output_review_failed'];
     const turnId = messageId ?? sessionRef.sessionId;
-    // 元叙述旁白收敛（meta_narration_silenced）：模型本意就是本轮沉默，语义上等效
+    // 有意静默收敛（meta_narration_silenced / skip_intent_envelope_silenced）：模型本意就是本轮沉默，语义上等效
     // skip_reply，不派 general_handoff——该副作用会暂停托管 + 飞书告警，而此场景
     // 多为真人经理已在沟通（用户裁定：真人插话不自动暂停托管），且候选人下一轮
     // 的新诉求仍应由 Agent 正常接管。守卫档案照常落库，不丢观测。

@@ -597,6 +597,16 @@ JSON 文本时，该工具本轮并未执行，据此宣称的报名/预约/取�
 走既有 repair 链路，不为段落形态另写确定性剥离；`---` 在岗位卡之间是合法正文，不算信号。
 教侧配对：final-check 块首说明句（第三节）。
 
+沉默意图参数信封（`internal_output_leak` 命中后的 runner 收敛，2026-09-16，batch …\_1789531804368 /
+09-11 一例）：模型想 skip_reply 却没走工具调用，把参数 JSON `{"reason":"候选人回复纯确认词'好'…无新诉求"}`
+（或 `{"action":"skip_reply","reason":…}`）当正文吐出；规则照常命中 JSON 起头形态，但 runner 的 JSON 信封
+拆封快通道（`envelope_unwrapped`）把 reason 里的内部理由当候选人正文放出，二审只剩 observe 哨兵于是放行。
+现拆封黑名单补上已注册工具的参数键（reason / reasonCode / riskType / actionAdvice / missingJobInfo），顶层
+任一字符串值点名已注册工具名的信封也不拆；skip_reply 参数形态由 `isSkipIntentEnvelope` 判为沉默意图，
+runner 直达静默 `skip_intent_envelope_silenced`——终态 `skipped`、不进 repair、不派守卫介入副作用，与
+`meta_narration_silenced` 同轨（`INTENTIONAL_SILENCE_REASON_CODES`）。其它工具的参数信封回落残文判定，
+维持 `tool_call_artifact_silenced` 转人工。规则词库与教侧文本不变；教侧配对：G14（想沉默只能走 skip_reply）。
+
 取消/改期链路（2026-08-31 新增，badcase nrz6axmr / 4peya6s9）：
 
 - `cancel_done_claim_without_submission`（observe 哨兵）——零 cancel/modify 调用却用完成时态
