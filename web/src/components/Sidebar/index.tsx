@@ -76,8 +76,8 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
   return (
     <aside className={`sidebar ${isCollapsed ? 'collapsed' : ''}`}>
       {/* 背景水印装饰 */}
-      <span className="sidebar-watermark">🌸</span>
-      <span className="sidebar-watermark-2">🦋</span>
+      <span className="sidebar-watermark">🍁</span>
+      <span className="sidebar-watermark-2">🍂</span>
 
       {/* 收起/展开按钮 - 放在侧边栏右边缘 */}
       <button

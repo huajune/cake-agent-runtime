@@ -37,8 +37,8 @@ import ChartCard, { ChartsRow } from './components/ChartCard';
 // 样式导入
 import styles from './styles/index.module.scss';
 
-// 春日装饰 emoji 列表
-const springDecorations = ['🌿', '🍃', '🌱', '🌾', '🐦', '🐝', '🌻', '🌼', '🍀', '🌳'];
+// 秋日装饰 emoji 列表
+const autumnDecorations = ['🍁', '🍂', '🌾', '🌰', '🍊', '🍐', '🍇', '🌻'];
 
 const TIME_RANGE_LABELS: Record<DashboardTimeRange, string> = {
   today: '本日',
@@ -126,28 +126,28 @@ export default function Dashboard() {
     const cards = document.querySelectorAll('.metric-card, .chart-card, .insight-card');
 
     cards.forEach((card) => {
-      card.querySelectorAll('.spring-sticker').forEach((s) => s.remove());
+      card.querySelectorAll('.season-sticker').forEach((s) => s.remove());
 
       if (Math.random() > 0.6) {
         const sticker = document.createElement('div');
-        sticker.className = 'spring-sticker sticker-tr';
+        sticker.className = 'season-sticker sticker-tr';
         sticker.textContent =
-          springDecorations[Math.floor(Math.random() * springDecorations.length)];
+          autumnDecorations[Math.floor(Math.random() * autumnDecorations.length)];
         sticker.style.animationDelay = `${Math.random() * 2}s`;
         card.appendChild(sticker);
       }
 
       if (Math.random() > 0.85) {
         const sticker2 = document.createElement('div');
-        sticker2.className = 'spring-sticker sticker-tl';
+        sticker2.className = 'season-sticker sticker-tl';
         sticker2.textContent =
-          springDecorations[Math.floor(Math.random() * springDecorations.length)];
+          autumnDecorations[Math.floor(Math.random() * autumnDecorations.length)];
         card.appendChild(sticker2);
       }
     });
 
     return () => {
-      document.querySelectorAll('.spring-sticker').forEach((s) => s.remove());
+      document.querySelectorAll('.season-sticker').forEach((s) => s.remove());
     };
   }, [dashboardLoading]);
 
