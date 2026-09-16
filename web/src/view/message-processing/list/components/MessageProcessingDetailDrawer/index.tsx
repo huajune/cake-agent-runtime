@@ -152,6 +152,7 @@ export default function MessageProcessingDetailDrawer({
           toolCalls: message.toolCalls,
           agentSteps: message.agentSteps?.map((step) => ({
             stepIndex: step.stepIndex,
+            generation: step.generation,
             toolCalls: step.toolCalls?.map((toolCall) => toolCall.toolName),
             usage: step.usage,
             durationMs: step.durationMs,

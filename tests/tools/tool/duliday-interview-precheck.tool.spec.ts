@@ -95,7 +95,7 @@ const JOB_WITH_WINDOWS = {
   ...JOB,
   interviewProcess: {
     firstInterview: {
-      firstInterviewWay: '门店面试',
+      firstInterviewWay: '线下面试',
       periodicInterviewTimes: ['一', '二', '三', '四', '五', '六', '日'].map((day) => ({
         interviewWeekday: `每周${day}`,
         interviewTimes: [{ interviewStartTime: '10:00', interviewEndTime: '18:00' }],
@@ -110,7 +110,7 @@ const JOB_WITH_TWO_WINDOWS = {
   ...JOB,
   interviewProcess: {
     firstInterview: {
-      firstInterviewWay: '门店面试',
+      firstInterviewWay: '线下面试',
       periodicInterviewTimes: ['一', '二', '三', '四', '五', '六', '日'].map((day) => ({
         interviewWeekday: `每周${day}`,
         interviewTimes: [

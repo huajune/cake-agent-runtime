@@ -166,11 +166,11 @@ describe('MemorySection', () => {
     const rendered = renderBookingPrompt(
       bookingSnapshotOf(
         { workOrderId: 1, brandName: '瑞幸', currentStatus: '约面待确认' },
-        { storeAddress: '上海市某工作门店', interviewMethod: '线上面试' },
+        { storeAddress: '上海市某工作门店', interviewMethod: '视频面试' },
       ),
     );
 
-    expect(rendered).toContain('面试形式: 线上面试');
+    expect(rendered).toContain('面试形式: 视频面试');
     expect(rendered).not.toContain('面试地址: ');
   });
 

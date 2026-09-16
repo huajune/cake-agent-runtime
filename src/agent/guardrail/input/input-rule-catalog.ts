@@ -231,12 +231,17 @@ export const INPUT_RISK_RULES = {
   [INPUT_RISK_TYPE.INTERVIEW_RESULT_INQUIRY]: defineInputRiskRule(
     INPUT_RISK_TYPE.INTERVIEW_RESULT_INQUIRY,
     {
-      riskLabel: '历史面试结果追问',
-      summary: '候选人询问历史面试结果，Agent 无权限获取该信息，需立即转人工处理',
-      description: '候选人追问历史面试结果或未通过原因时静默转人工，避免继续推岗忽略当前关切。',
-      entrypoint: 'RiskInterceptService.detectKeywordRisk',
-      exogenousSignal: '剥除引用块后的本轮候选人原话与历史面试结果追问词表匹配。',
-      residualRisk: '限定词表不覆盖所有追问改写；实际面试结果仍由人工查询与解释。',
+      riskLabel: '面试结果追问',
+      summary:
+        '候选人追问面试结果/是否通过，已静默暂停托管。面试结果播报与通过后的入职对接只能由真人完成：' +
+        '请用同一账号自然接续，核实结果后再安排后续，不要提及 AI、机器人或转接。',
+      description:
+        '候选人追问面试结果、是否通过、录取通知或结果何时出时静默转人工——无论系统能否看到结果；' +
+        '面试通过后的报到/入职安排一律不由 Agent 给出。',
+      entrypoint: 'RiskInterceptService.detectKeywordRisk + RiskInterceptService.detectPatternRisk',
+      exogenousSignal: '剥除引用块后的本轮候选人原话与面试结果追问词表或封闭疑问句式匹配。',
+      residualRisk:
+        '只收结果追问形态；"通过后怎么入职"等流程询问交由 prompt 侧规则转人工；实际面试结果仍由人工查询与解释。',
     },
   ),
   [INPUT_RISK_TYPE.HUMAN_HANDOFF_REQUEST]: defineInputRiskRule(

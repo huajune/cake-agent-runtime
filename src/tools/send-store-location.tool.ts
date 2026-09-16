@@ -11,10 +11,8 @@ import type { JobDetail } from '@sponge/sponge.types';
 import { ToolBuilder } from '@shared-types/tool.types';
 import { buildToolError, TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
 import { buildSpongeTokenContext } from '@tools/shared/sponge-token-context.util';
-import {
-  buildJobPolicyAnalysis,
-  isOfflineInterviewMethod,
-} from '@tools/job-list/job-policy-parser';
+import { requiresStoreVisit } from '@sponge/interview-method';
+import { buildJobPolicyAnalysis } from '@tools/job-list/job-policy-parser';
 import { canUseFactForAction } from '@tools/shared/action-confidence';
 
 const logger = new Logger('send_store_location');
@@ -289,7 +287,7 @@ export function buildSendStoreLocationTool(
           const policy = buildJobPolicyAnalysis(matchedJob);
           const interviewAddress = policy.interviewMeta.address;
           const interviewMethod = policy.interviewMeta.method;
-          const offlineInterview = isOfflineInterviewMethod(interviewMethod);
+          const offlineInterview = requiresStoreVisit(interviewMethod);
           const isActiveBooking =
             context.archive.activeBookingJobIds?.includes(resolvedJobId) ?? false;
           const explicitlyAsksForWorkplace = /上班|工作(?:地点|地址)|入职后|工作门店/u.test(

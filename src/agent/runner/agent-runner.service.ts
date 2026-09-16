@@ -360,7 +360,7 @@ export class AgentRunnerService {
         (envelopeUnwrappedText !== null ? '，JSON 信封命中走确定性拆封，跳过 LLM 重写' : ''),
     );
     const revised = replan
-      ? await this.generator.invoke(params)
+      ? this.attachDiscardedGeneration(first, await this.generator.invoke(params))
       : deterministicRepairText !== null
         ? this.buildRepairedResult(first, deterministicRepairText)
         : this.buildRepairedResult(
@@ -940,6 +940,42 @@ export class AgentRunnerService {
       );
       return undefined;
     }
+  }
+
+  /**
+   * replan 重生成结果整体取代首版，但首版的 steps / token 用量不能随之消失：
+   * 流水里的 agent_steps 与 token_usage 取自最终结果，覆盖后「首版为什么编造、
+   * 走没走空文本恢复、两轮各花了多少 token」全部不可见（0916 trace 排障实证）。
+   * 这里把首版 steps 前置并标注 generation，用量两轮累加；toolCalls / text 等语义字段
+   * 仍以重生成为准——二审与回归闸对账的是 revised 自己的工具轨迹。
+   */
+  private attachDiscardedGeneration(
+    first: GeneratorRunResult,
+    revised: GeneratorRunResult,
+  ): GeneratorRunResult {
+    const firstSteps = first.agentSteps.map((step) => ({ ...step, generation: 'first' as const }));
+    return {
+      ...revised,
+      steps: first.steps + revised.steps,
+      agentSteps: [
+        ...firstSteps,
+        ...revised.agentSteps.map((step, index) => ({
+          ...step,
+          stepIndex: firstSteps.length + index,
+          generation: 'replan' as const,
+        })),
+      ],
+      usage: {
+        inputTokens: first.usage.inputTokens + revised.usage.inputTokens,
+        outputTokens: first.usage.outputTokens + revised.usage.outputTokens,
+        totalTokens: first.usage.totalTokens + revised.usage.totalTokens,
+        cachedInputTokens:
+          first.usage.cachedInputTokens === undefined &&
+          revised.usage.cachedInputTokens === undefined
+            ? undefined
+            : (first.usage.cachedInputTokens ?? 0) + (revised.usage.cachedInputTokens ?? 0),
+      },
+    };
   }
 
   private buildRepairedResult(result: GeneratorRunResult, text: string): GeneratorRunResult {

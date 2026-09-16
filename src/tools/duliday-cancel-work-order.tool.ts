@@ -11,7 +11,7 @@ import { Logger } from '@nestjs/common';
 import { tool } from 'ai';
 import { z } from 'zod';
 import { SpongeService } from '@sponge/sponge.service';
-import { SELF_CANCEL_BLOCKED_STATUSES, type FailureReasonItem } from '@sponge/sponge.types';
+import { type FailureReasonItem } from '@sponge/sponge.types';
 import { buildSpongeTokenContext } from '@tools/shared/sponge-token-context.util';
 import { isTestPiiPhoneAllowed, maskPhoneForDetails } from '@tools/shared/test-pii-gate';
 import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
@@ -64,9 +64,8 @@ const DESCRIPTION = `取消工单。候选人**主动**要求取消一个**已�
 ## 成功/失败处理硬规则
 - **只有当本工具返回 success 后**，才能向候选人确认"已帮你取消这次面试预约"
 - 失败时按 _replyInstruction 行动：自助取消失败应转人工（request_handoff，reasonCode=modify_appointment），不要原样复读报错、不要透露接口细节、不要谎称已取消
-- 工具执行前有两道确定性核验，被拦时严格按返回的 _replyInstruction 行动：
-  1. 工单号必须在候选人当前有效预约集合内——不在则说明引用了记忆残留/不存在的预约，不可取消
-  2. 面试已通过/入职推进中的工单不可自助取消——需先向候选人核实，再走 request_handoff（reasonCode=self_recruited_or_completed）`;
+- 工具执行前有一道确定性核验，被拦时严格按返回的 _replyInstruction 行动：工单号必须在候选人当前有效预约集合内——不在则说明引用了记忆残留/不存在的预约，不可取消
+- 工单在海绵里的状态字段不参与取消判断（该字段滞后不可信）；候选人面试前明确放弃就取消，面试已开始/已过才说放弃属于爽约，按 [当前预约信息] 的共享规则处理`;
 
 const inputSchema = z.object({
   workOrderId: z.number().int().positive().describe('工单 ID，取自 [当前预约信息] 的「工单号」'),
@@ -189,40 +188,8 @@ export function buildCancelWorkOrderTool(
           );
         }
 
-        // B5-2 工单状态核验：面试已通过/入职推进中的工单不可自助取消（
-        // 面试面完了还取消工单）。海绵查询失败时降级放行——status 守卫是 best-effort，
-        // 不能让海绵抖动把正常取消都打成转人工。
-        try {
-          const workOrder = await spongeService.getWorkOrderById(workOrderId, tokenContext);
-          const currentStatus = workOrder?.currentStatus ?? '';
-          const interviewPassed = Boolean(workOrder?.interviewPassTime);
-          const statusBlocked = SELF_CANCEL_BLOCKED_STATUSES.has(currentStatus);
-          if (interviewPassed || statusBlocked) {
-            logger.warn(
-              `取消拦截（工单状态不可自助取消）: chatId=${chatId}, workOrderId=${workOrderId}, status=${currentStatus}, interviewPassTime=${workOrder?.interviewPassTime ?? '-'}`,
-            );
-            return buildToolError({
-              errorType: TOOL_ERROR_TYPES.CANCEL_BLOCKED_BY_STATUS,
-              outcome: '取消拦截（面试已通过/入职推进中，不可自助取消）',
-              replyInstruction:
-                '该预约的面试已通过或已进入入职推进流程，不可自助取消。' +
-                '先向候选人核实当前情况（是否已面试、是否要放弃入职），然后按 request_handoff' +
-                '（reasonCode=self_recruited_or_completed，reason 附候选人原话）转人工处理；' +
-                '不要谎称已取消，不要向候选人提及工单/系统状态字眼。',
-              details: {
-                workOrderId,
-                currentStatus: currentStatus || null,
-                interviewPassTime: workOrder?.interviewPassTime ?? null,
-              },
-            });
-          }
-        } catch (err) {
-          logger.warn(
-            `取消前状态核验查询失败（降级放行）: chatId=${chatId}, workOrderId=${workOrderId}, error=${toErrorMessage(
-              err,
-            )}`,
-          );
-        }
+        // 工单状态不参与取消判断：海绵 currentStatus / interviewPassTime 由运营手工维护、严重滞后
+        // （2026-09-16 运营裁定；此前按「面试成功/上岗…」拦截自助取消的 B5-2 已拆除）。
 
         // 取消原因字典：拉取父级 pid 下的候选原因，作为 cancelReasonId 的合法集合。
         let reasons: FailureReasonItem[];

@@ -723,7 +723,7 @@ export function buildInterviewPrecheckTool(
                   }
                 : undefined,
               flowDescription: analysis.interviewMeta.demand,
-              processRemark: analysis.normalizedRequirements.interviewRemark,
+              processRemark: analysis.normalizedRequirements.interviewRemarkDisplay,
               timingHighlights:
                 analysis.highlights.timingHighlights.length > 0
                   ? analysis.highlights.timingHighlights

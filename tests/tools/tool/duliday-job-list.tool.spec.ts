@@ -2001,7 +2001,7 @@ describe('buildJobListTool', () => {
       interviewProcess: {
         interviewTotal: 1,
         firstInterview: {
-          firstInterviewWay: '线上面试',
+          firstInterviewWay: '视频面试',
           interviewTimeMode: '周期',
           periodicInterviewTimes: [
             {
