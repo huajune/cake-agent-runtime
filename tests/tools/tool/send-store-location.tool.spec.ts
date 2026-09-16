@@ -590,14 +590,14 @@ describe('buildSendStoreLocationTool', () => {
     );
   });
 
-  it('线上面试即使残留 interviewAddress 也不得发送定位', async () => {
+  it('视频面试即使残留 interviewAddress 也不得发送定位', async () => {
     mockSpongeService.fetchJobs.mockResolvedValue({
       jobs: [
         {
           ...makeJob(),
           interviewProcess: {
             firstInterview: {
-              firstInterviewWay: '线上面试',
+              firstInterviewWay: '视频面试',
               interviewAddress: '历史残留的某门店地址',
             },
           },
@@ -612,7 +612,7 @@ describe('buildSendStoreLocationTool', () => {
 
     expect(result.success).toBe(true);
     expect(result.locationNotRequired).toBe(true);
-    expect(result.interviewMethod).toBe('线上面试');
+    expect(result.interviewMethod).toBe('视频面试');
     expect(result.interviewAddress).toBeNull();
     expect(result._fixedReply).toContain('不需要到门店');
     expect(mockGeocodingService.searchCandidates).not.toHaveBeenCalled();

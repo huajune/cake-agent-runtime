@@ -164,6 +164,18 @@ describe('extractResumeFieldsFallback', () => {
     expect(result.name).toMatchObject({ value: '兮兮', confidence: 'medium' });
   });
 
+  it('extracts a compound ethnic name from the name label', () => {
+    const text = '姓名：布海力其木·图拉江\n手机：18271421690';
+    const result = notarizeResumeFields(extractResumeFieldsFallback(text), text);
+    expect(result.name).toMatchObject({ value: '布海力其木·图拉江', confidence: 'high' });
+  });
+
+  it('falls back to a compound ethnic name near a phone/age anchor as one token', () => {
+    const text = '个人信息\n艾力•买买提\n18271421690\n24岁\n餐饮经历';
+    const result = notarizeResumeFields(extractResumeFieldsFallback(text), text);
+    expect(result.name).toMatchObject({ value: '艾力•买买提', confidence: 'medium' });
+  });
+
   it('does not guess a neighbor name when multiple candidates exist', () => {
     const text = '兮兮甲\n18271421690\n24岁\n兮兮';
     const result = notarizeResumeFields(extractResumeFieldsFallback(text), text);

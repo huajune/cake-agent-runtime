@@ -79,6 +79,51 @@ describe('InterventionService', () => {
     expect(riskNotifier.notifyConversationRisk).not.toHaveBeenCalled();
   });
 
+  describe('面试后转人工暂停到人工恢复为止（2026-09-16 裁定，chat 6a9f7db6 托管隔天自动恢复酿成事故）', () => {
+    it.each(['interview_result_inquiry', 'onboarding_paperwork', 'self_recruited_or_completed'])(
+      'pauses permanently for general_handoff reasonCode=%s',
+      async (reasonCode) => {
+        const payload: GeneralHandoffInterventionPayload = {
+          ...baseContext,
+          kind: 'general_handoff',
+          alertLabel: '面试后对接',
+          reasonCode,
+          reason: '候选人追问入职安排',
+          source: 'agent_tool',
+        };
+        await service.dispatch(payload);
+        expect(userHostingService.pauseUser).toHaveBeenCalledWith(
+          'chat-1',
+          expect.objectContaining({ permanent: true, reason: '面试后人工对接，需人工恢复托管' }),
+        );
+      },
+    );
+
+    it('pauses permanently for the interview_result_inquiry input risk', async () => {
+      await service.dispatch({ ...riskPayload, riskType: 'interview_result_inquiry' });
+      expect(userHostingService.pauseUser).toHaveBeenCalledWith(
+        'chat-1',
+        expect.objectContaining({ permanent: true }),
+      );
+    });
+
+    it('keeps the default midnight-expiring pause for other handoffs', async () => {
+      const payload: GeneralHandoffInterventionPayload = {
+        ...baseContext,
+        kind: 'general_handoff',
+        alertLabel: '需人工跟进',
+        reasonCode: 'no_match_or_group_full',
+        reason: '无岗且群满',
+        source: 'agent_tool',
+      };
+      await service.dispatch(payload);
+      await service.dispatch(riskPayload);
+      for (const call of userHostingService.pauseUser.mock.calls) {
+        expect(call[1]).toMatchObject({ permanent: false });
+      }
+    });
+  });
+
   it('pauses and notifies risk via ConversationRiskNotifierService', async () => {
     const result = await service.dispatch(riskPayload);
 

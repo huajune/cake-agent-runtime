@@ -540,8 +540,10 @@ export interface SignupWorkOrderItem {
  * 报名工单 `currentStatus` 中文全集（海绵领域语言，9 态）。
  *
  * 状态词是海绵的领域语言，唯一权威在此。此前全集只存在于 SignupWorkOrderItem 的行注释里，
- * 而"活跃约面"与"不可自助取消"两个语义子集在 precheck / oob-work-order /
- * follow-up.processor / cancel-work-order 不再各自维护字面副本。
+ * 而"活跃约面"语义子集在 precheck / oob-work-order / follow-up.processor 不再各自维护字面副本。
+ *
+ * ⚠️ 该字段由运营手工维护、严重滞后（2026-09-16 裁定）：取消 / 改约不看它，
+ * 面向候选人的口径不得引用它；其余消费点只当弱提示、fail-closed 转人工。
  *
  * ⚠️ 各消费点的比较预处理（precheck 的 normalizePolicyText、oob 的 trim）**各自保留**，
  * 本常量只统一集合成员，不统一比较函数——统一比较属于行为变更。
@@ -569,17 +571,6 @@ export type SignupWorkOrderStatus = (typeof SIGNUP_WORK_ORDER_STATUSES)[number];
 export const ACTIVE_INTERVIEW_WORK_ORDER_STATUSES: ReadonlySet<string> = new Set<string>([
   '约面待确认',
   '约面成功',
-]);
-
-/**
- * 不可由 Agent 自助取消的工单状态（面试面完了还取消工单）。
- * 面试已通过或已进入入职推进流程，只能转人工。
- */
-export const SELF_CANCEL_BLOCKED_STATUSES: ReadonlySet<string> = new Set<string>([
-  '面试成功',
-  '上岗失败',
-  '上岗成功',
-  '已离职',
 ]);
 
 /** 候选人维度的工单查询结果。 */

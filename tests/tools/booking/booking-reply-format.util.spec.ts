@@ -1,7 +1,7 @@
 import {
   buildOnSiteScript,
   formatInterviewTimeForReply,
-  isOnlineInterview,
+  resolveInterviewReceiptMode,
   resolveManualInterviewGroupHandling,
 } from '@tools/booking/booking-reply-format.util';
 
@@ -56,72 +56,20 @@ describe('buildOnSiteScript', () => {
   });
 });
 
-describe('isOnlineInterview (badcase chat 6a5f3080 线上面试误发到店话术)', () => {
-  it('detects online from interviewType 线上/视频/电话', () => {
-    expect(isOnlineInterview({ interviewType: '线上面试' })).toBe(true);
-    expect(isOnlineInterview({ interviewType: '视频面试' })).toBe(true);
-    expect(isOnlineInterview({ interviewType: '电话面试' })).toBe(true);
+describe('resolveInterviewReceiptMode（海绵四值单选，不读备注分类）', () => {
+  it('线下面试才附到店脚本', () => {
+    expect(resolveInterviewReceiptMode('线下面试')).toBe('on_site');
   });
 
-  it('detects online from remark 腾讯会议 signal (badcase 原文形态)', () => {
-    expect(
-      isOnlineInterview({
-        interviewType: null,
-        interviewRemark:
-          '让人选添加佛山面试群，备注好名字＋手机号码，在群里发腾讯会议链接，请在规定时间入会',
-      }),
-    ).toBe(true);
+  it('AI / 电话 / 视频面试一律远程（生产 chat 6a9f7db6：到店脚本随 AI 面试回执发出）', () => {
+    expect(resolveInterviewReceiptMode('AI面试')).toBe('remote');
+    expect(resolveInterviewReceiptMode('电话面试')).toBe('remote');
+    expect(resolveInterviewReceiptMode('视频面试')).toBe('remote');
   });
 
-  it('detects online from flowDescription 线上面试 signal', () => {
-    expect(
-      isOnlineInterview({ interviewType: null, flowDescription: '线上面试，24小时出结果' }),
-    ).toBe(true);
-  });
-
-  it('defaults to offline when no signal at all (keciu6u6 到店脚本不回归)', () => {
-    expect(isOnlineInterview({})).toBe(false);
-    expect(isOnlineInterview({ interviewType: '到店面试', interviewRemark: '带好健康证' })).toBe(
-      false,
-    );
-  });
-
-  it('explicit offline method wins over online words in remark (混合流程按到店)', () => {
-    expect(
-      isOnlineInterview({
-        interviewType: '线下面试',
-        interviewRemark: '先线上初筛，通过后到店复试',
-      }),
-    ).toBe(false);
-  });
-
-  it('does not treat unrelated remark words as online', () => {
-    expect(
-      isOnlineInterview({ interviewType: null, interviewRemark: '到店找店长，带身份证' }),
-    ).toBe(false);
-  });
-
-  describe('先电话后到店两段式（badcase 6a608ad4/6a607170 沈阳必胜客双面投诉）', () => {
-    it('detects phone-first flow from remark 先电话沟通 (badcase 原文形态)', () => {
-      // 岗位面试方式字段未下发（interviewType undefined），信号只在 processRemark 原文里
-      expect(
-        isOnlineInterview({
-          interviewType: undefined,
-          interviewRemark: '面试官先电话沟通，合适的会通知线下门店面试',
-        }),
-      ).toBe(true);
-    });
-
-    it('detects phone-first variants 电话初面/电话沟通后', () => {
-      expect(isOnlineInterview({ interviewRemark: '电话初面通过后安排到店' })).toBe(true);
-      expect(isOnlineInterview({ interviewRemark: '电话沟通后再约门店时间' })).toBe(true);
-    });
-
-    it('does NOT misfire on 保持电话畅通 (到店岗常见提醒，keciu6u6 不回归)', () => {
-      expect(
-        isOnlineInterview({ interviewRemark: '到店面试请保持电话畅通，有变动会电话联系' }),
-      ).toBe(false);
-    });
+  it('面试方式缺失时既不附到店脚本也不附线上提醒', () => {
+    expect(resolveInterviewReceiptMode(null)).toBe('unknown');
+    expect(resolveInterviewReceiptMode(undefined)).toBe('unknown');
   });
 });
 

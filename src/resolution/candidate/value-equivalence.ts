@@ -1,3 +1,4 @@
+import { normalizeNameSeparators } from '@resolution/candidate/name';
 import type { CandidateFactField } from './types';
 
 const HEALTH_CERT_LABELS: Record<number, string> = {
@@ -41,7 +42,7 @@ export function normalizeCandidateFieldValue(field: CandidateFactField, value: u
       if (/^(false|否|社会人士|社会人|不是学生|0)$/.test(text)) return 'false';
       return text;
     case 'name':
-      return text;
+      return normalizeNameSeparators(text);
   }
 }
 

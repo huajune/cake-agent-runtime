@@ -183,7 +183,23 @@ describe('resolveTurnContext', () => {
         { role: 'user', content: '再帮我约一次' },
       ]);
 
-      expect(guards.join('\n')).toContain('近邻上下文显示候选人已在面试/入职');
+      expect(guards.join('\n')).toContain('近邻上下文显示候选人已在面试/结果追问/入职');
+    });
+
+    it('triggers it on a result inquiry even without prior post-interview words (chat 6a9f7db6)', () => {
+      const inquiry = resolveCriticalTurnInstructions({
+        currentUserMessage: '面试结果几天给呀。',
+        normalizedMessages: [{ role: 'assistant', content: '收到啦，结果会通知你' }],
+      });
+      expect(inquiry.join('\n')).toContain('面试结束之后的环节不归你');
+    });
+
+    it('leaves the post-booking pre-interview reminder turn alone (预约成功提醒不受影响)', () => {
+      const guards = resolveCriticalTurnInstructions({
+        currentUserMessage: '已完成✅',
+        normalizedMessages: [{ role: 'assistant', content: '今天的AI面试14:00开始哦' }],
+      });
+      expect(guards.join('\n')).not.toContain('近邻上下文显示候选人已在面试/结果追问');
     });
 
     it('does not trigger it when the history carries no such state', () => {
@@ -192,7 +208,7 @@ describe('resolveTurnContext', () => {
         { role: 'user', content: '再帮我约一次' },
       ]);
 
-      expect(guards.join('\n')).not.toContain('近邻上下文显示候选人已在面试/入职');
+      expect(guards.join('\n')).not.toContain('近邻上下文显示候选人已在面试/结果追问/入职');
     });
   });
 });

@@ -32,8 +32,15 @@ export interface AgentToolCall {
 }
 
 /** 每一步模型循环的详细快照：用于排查"模型两次调用之间想了什么"。 */
+/**
+ * 步骤所属生成轮次。仅出站守卫 replan（同参重生成）把两轮 steps 合并落流水时标注：
+ * first = 被守卫作废的首版，replan = 重生成产物。常规单轮生成不带该字段。
+ */
+export type AgentStepGeneration = 'first' | 'replan';
+
 export interface AgentStepDetail {
   stepIndex: number;
+  generation?: AgentStepGeneration;
   text?: string;
   reasoning?: string;
   toolCalls: AgentToolCall[];
@@ -49,6 +56,10 @@ export interface AgentStepDetail {
     cachedInputTokens?: number;
   };
   durationMs?: number;
+  /**
+   * AI SDK finishReason，或 generator 自身的重生成标记：
+   * `empty-text-recovery` = 无工具空文本恢复补出的文本步。
+   */
   finishReason?: string;
 }
 
