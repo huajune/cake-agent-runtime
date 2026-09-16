@@ -14,6 +14,7 @@ describe('MemoryLifecycleService', () => {
     saveLastCandidatePool: jest.fn().mockResolvedValue(undefined),
     saveLastJobListQuery: jest.fn().mockResolvedValue(undefined),
     projectAssistantTurn: jest.fn().mockResolvedValue(undefined),
+    saveAttestedFocusJob: jest.fn().mockResolvedValue(undefined),
     extractAndSave: jest.fn().mockResolvedValue({ llmDegraded: false, brandIntents: [] }),
     saveToolAttestedCity: jest.fn().mockResolvedValue('written'),
   };
@@ -680,6 +681,69 @@ describe('MemoryLifecycleService', () => {
       expect(stepNames.indexOf('apply_brand_state')).toBeGreaterThan(
         stepNames.indexOf('extract_facts'),
       );
+    });
+
+    it('本轮 precheck 确权的焦点岗位在回复投影之后写入 currentFocusJob', async () => {
+      const attestedFocusJob = {
+        jobId: 523254,
+        brandName: '奥乐齐',
+        jobName: '奥乐齐-1035 银都-晚班补货-小时工',
+        storeName: '1035 银都',
+        cityName: '上海',
+        regionName: '闵行区',
+        laborForm: '兼职',
+        salaryDesc: null,
+        jobCategoryName: '补货',
+      };
+
+      await service.onTurnEnd(
+        {
+          corpId: 'corp-1',
+          userId: 'user-1',
+          sessionId: 'sess-1',
+          messageId: 'msg-5',
+          turnHints: null,
+          laborFormIntent: { kind: 'ignore' },
+          normalizedMessages: [{ role: 'user', content: '好吧' }],
+          attestedFocusJob,
+        },
+        '这家店的面试时间是固定的下午2点',
+      );
+
+      expect(mockSessionService.saveAttestedFocusJob).toHaveBeenCalledWith(
+        'corp-1',
+        'user-1',
+        'sess-1',
+        attestedFocusJob,
+      );
+      const finalStatus = mockMessageProcessing.updatePostProcessingStatus.mock.calls.at(-1)![1];
+      const stepNames = finalStatus.steps.map((step: { name: string }) => step.name);
+      // 工具确权焦点覆盖文本投影，必须排在 project_assistant_turn 之后。
+      expect(stepNames.indexOf('save_attested_focus_job')).toBeGreaterThan(
+        stepNames.indexOf('project_assistant_turn'),
+      );
+      expect(finalStatus.steps).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ name: 'save_attested_focus_job', status: 'success' }),
+        ]),
+      );
+    });
+
+    it('本轮没有 precheck 确权焦点时跳过写入', async () => {
+      await service.onTurnEnd(
+        {
+          corpId: 'corp-1',
+          userId: 'user-1',
+          sessionId: 'sess-1',
+          messageId: 'msg-6',
+          turnHints: null,
+          laborFormIntent: { kind: 'ignore' },
+          normalizedMessages: [{ role: 'user', content: '好吧' }],
+        },
+        '好的',
+      );
+
+      expect(mockSessionService.saveAttestedFocusJob).not.toHaveBeenCalled();
     });
 
     it('extract_facts 抛错/降级时 reducer 仍以规则轨结果照常运行并落状态', async () => {

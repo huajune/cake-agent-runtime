@@ -45,6 +45,11 @@ export interface MemoryLifecycleTurnContext {
    * 避免下一轮模型又从记忆取到死岗位重试 precheck。
    */
   invalidatedJobIds?: number[] | null;
+  /**
+   * 本轮 precheck 校验通过的岗位（工具确权焦点）；回合结束写入 currentFocusJob。
+   * 候选池过期后回复文本投影无从匹配，此路径保证 precheck 跑过的岗位不会一直焦点为空。
+   */
+  attestedFocusJob?: RecommendedJobSummary | null;
   /** prep 时刻唯一一次规则轨判定；轮末直接消费，禁止重跑。 */
   turnHints: TurnHints | null;
   /** prep 时刻规则轨的 labor-form 三态判定；轮末只消费、不重跑。 */
@@ -375,6 +380,27 @@ export class MemoryLifecycleService {
     } else {
       steps.push(
         this.buildSkippedStep('project_assistant_turn', '本轮没有 assistantText，跳过岗位记忆投影'),
+      );
+    }
+
+    // 工具确权焦点：排在 project_assistant_turn 之后——precheck 校验过的岗位是比回复文本
+    // 投影更强的焦点信号，须覆盖投影结果；候选池过期后投影本身也无从匹配。
+    if (ctx.attestedFocusJob) {
+      const attestedFocusResult = await this.runMeasuredStep(
+        'save_attested_focus_job',
+        async () => {
+          await this.session.saveAttestedFocusJob(
+            ctx.corpId,
+            ctx.userId,
+            ctx.sessionId,
+            ctx.attestedFocusJob as RecommendedJobSummary,
+          );
+        },
+      );
+      steps.push(attestedFocusResult.step);
+    } else {
+      steps.push(
+        this.buildSkippedStep('save_attested_focus_job', '本轮没有 precheck 确权的焦点岗位'),
       );
     }
 

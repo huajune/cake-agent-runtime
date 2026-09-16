@@ -131,6 +131,43 @@ function job(brandName: string, jobId = 1): RecommendedJobSummary {
   return { jobId, brandName } as RecommendedJobSummary;
 }
 
+describe('attested focus job recorded by precheck', () => {
+  const summary = (jobId: number): RecommendedJobSummary => ({
+    jobId,
+    brandName: '奥乐齐',
+    jobName: `奥乐齐-${jobId}-补货`,
+    storeName: `门店${jobId}`,
+    cityName: '上海',
+    regionName: '闵行区',
+    laborForm: '兼职',
+    salaryDesc: null,
+    jobCategoryName: '补货',
+  });
+
+  it('defaults to null and keeps the last precheck job when recorded repeatedly', () => {
+    const ledger = createTurnLedger();
+    expect(ledger.jobs.attestedFocusJob).toBeNull();
+    expect(ledger.drain().jobs.attestedFocusJob).toBeNull();
+
+    ledger.recordAttestedFocusJob(summary(520437));
+    ledger.recordAttestedFocusJob(summary(523254));
+
+    expect(ledger.jobs.attestedFocusJob?.jobId).toBe(523254);
+    const snapshot = ledger.drain();
+    expect(snapshot.jobs.attestedFocusJob).toEqual(summary(523254));
+    // 快照是拷贝：后续登记不得改写已交档的快照。
+    ledger.recordAttestedFocusJob(summary(1));
+    expect(snapshot.jobs.attestedFocusJob?.jobId).toBe(523254);
+  });
+
+  it('does not touch the prep-time currentFocusJob', () => {
+    const ledger = createTurnLedger({ currentFocusJob: summary(520437) });
+    ledger.recordAttestedFocusJob(summary(523254));
+    expect(ledger.jobs.currentFocusJob?.jobId).toBe(520437);
+    expect(ledger.drain().jobs.currentFocusJob?.jobId).toBe(520437);
+  });
+});
+
 describe('mentioned brands accumulated by the ledger', () => {
   it('normalizes returned aliases and retains earlier brands when latest jobs are replaced', () => {
     const ledger = createTurnLedger({ mentionedBrands: [], brandCatalog: catalog });

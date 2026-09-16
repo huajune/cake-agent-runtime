@@ -83,6 +83,9 @@ export class SessionStateService {
   saveCurrentFocusJob(...args: Parameters<SessionWorkbenchService['saveCurrentFocusJob']>) {
     return this.workbench.saveCurrentFocusJob(...args);
   }
+  saveAttestedFocusJob(...args: Parameters<SessionWorkbenchService['saveAttestedFocusJob']>) {
+    return this.workbench.saveAttestedFocusJob(...args);
+  }
   projectAssistantTurn(...args: Parameters<SessionWorkbenchService['projectAssistantTurn']>) {
     return this.workbench.projectAssistantTurn(...args);
   }
