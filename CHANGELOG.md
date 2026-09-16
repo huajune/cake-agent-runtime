@@ -14,7 +14,7 @@
 **预计版本**: `v11.9.0`
 **最近更新**: `2026-09-16`
 **来源分支**: `develop`
-**累计 PR**: 4
+**累计 PR**: 5
 
 ### 更新摘要
 - PR #1287 筛退槽位的改口被棘轮挡回时对模型与观测可见
@@ -29,6 +29,8 @@
 - PR #1284 DESCRIPTION 第 5 条与 `tool-error-types` 注释同步；`docs/prompt-rule-ledger.md` 登记。
 - PR #1284 spec 新增 6 例：放行+回填、行内手机号/缺 interviewTime、非候选人出处、非在途状态、查询失败、无登记手机号。
 - PR #1292 面试方式收拢为海绵四值枚举，AI 面试不再附到店脚本
+- PR #1293 面试结果与入职对接一律转人工，Agent 不再读取海绵工单状态与入职流程文本
+- PR #1293 Merge origin/develop into fix/post-interview-flow-human-only
 
 ### 新功能
 - PR #1285 聊天记录页现在能一眼看出每条托管号消息是谁发的：招募经理在手机上手打的标「真人」，AI 回的标「AI」，托管平台 SOP / 定时 / 建群等自动消息标「自动」；来源不明的不标，入群邀请卡片因平台回调无法区分人机也不标
@@ -44,6 +46,11 @@
 - PR #1284 `duliday_modify_interview_time`：指针未命中时按 workOrderId 查海绵，要求工单为进行中约面状态、登记手机号在候选人本会话原话中有出处（与 precheck `candidatePhone` 出处判据同源，剔除第三方截图），通过则放行并回填 `active_booking`；任一环节不成立或海绵查询失败均 fail-closed 短路转人工，错误码沿用 `modify_interview.work_order_not_in_memory`。
 - PR #1284 DESCRIPTION 第 5 条与 `tool-error-types` 注释同步；`docs/prompt-rule-ledger.md` 登记。
 - PR #1292 AI 面试岗位预约成功后不再附带"到店跟前台说……"到店脚本和门店地址，改为线上面试提醒（batch …_1789456933610 必胜客保利大都汇复现，与生产 chat 6a9f7db6 同因）
+- PR #1293 入站守卫 `interview_result_inquiry` 从 7 个历史追问词扩到全部结果追问形态（词表 + 封闭句式：面试结果几天给 / 通过了吗 / 面过了没 / 什么时候出结果 / 录取通知…），命中即在进 Agent 前静默转人工，不看系统是否已有结果；「面试要带什么」等流程询问不误伤
+- PR #1293 预约共享规则 BK7、final-check `post_interview_no_rebook`、request_handoff 场景 4/5 统一写成工作原则：面试结束之后的环节不归 Agent，工单字段与岗位数据都不构成作答依据，一律 request_handoff；预约成功后 Agent 主动发出的面试前提醒不受影响
+- PR #1293 取消工具拆除 B5-2 状态拦截与 `SELF_CANCEL_BLOCKED_STATUSES`：取消不再查工单状态（海绵 `currentStatus` / `interviewPassTime` 滞后不可信）
+- PR #1293 `interview_result_inquiry` / `onboarding_paperwork` / `self_recruited_or_completed` 三类转人工改为暂停到人工在 Dashboard 恢复为止（`InterventionService.requiresManualResume`），不再次日零点自动解禁；其余转人工不变
+- PR #1293 Merge origin/develop into fix/post-interview-flow-human-only
 
 ### 优化调整
 - PR #1287 precheck 工具说明补充：被筛掉的字段在本岗是终态，候选人改口不入账，不要承诺"我帮你更新"，换岗表单才会重新收这项。
@@ -52,12 +59,19 @@
 - PR #1285 全站大背景 `$gradient-page` 的 30% 粉段 `#fff9fd` 减半到 `#fffbfe`，其余色站不动（0914 整体提亮到近白曾被判「太淡」，故只动粉段）
 - PR #1292 面试方式统一按海绵后台的四值单选（AI面试 / 电话面试 / 视频面试 / 线下面试）识别，只有线下面试才发到店脚本；预约回执、面试地址定位、出站守卫、复聊排程四处原本各自维护的关键词判断合并为同一判据
 - PR #1292 面试方式缺失或不在四值内时，预约回执既不附到店脚本也不附线上提醒，并记录告警
+- PR #1293 [当前预约信息] 不再渲染「当前状态」「面试通过时间」；复聊 prompt 去掉「工单当前状态」
+- PR #1293 岗位卡片去掉海绵「试工培训与上岗」区块（试工信息 / 培训信息 / 流程说明）；「面试备注」与 precheck `processRemark` 改用新字段 `interviewRemarkDisplay`，约面重点摘句不再读 `processDesc`；确定性抽取（报名截止、健康证时点、学生要求）仍读全文。全量在招 622 岗扫描：`processDesc` 158 非空、去重 19 种、115 条写的是通过后入职对接
+- PR #1293 复聊 `post_interview_onboarding` 改为只 shadow 不投递（锚点 `interview.passed` 来自滞后的海绵状态；上岗失败人工告警不受影响）
 
 ### 运维与流程
 - PR #1287 筛退槽位的改口被棘轮挡回时对模型与观测可见
 - PR #1285 聊天记录托管号侧消息标记真人/AI/自动来源
 - PR #1284 改约工具对带外工单按候选人自报手机号核验归属并回填 active_booking
 - PR #1292 面试方式收拢为海绵四值枚举，AI 面试不再附到店脚本
+- PR #1293 `strategy_config.stage_goals.onboard_followup` 生产 released/testing 双行已改为"面试前简单咨询 + 面试后一律转人工"，`strategy_config_changelog` 留痕（本 PR 不含迁移）
+- PR #1293 台账 `docs/prompt-rule-ledger.md` 登记 BK7 / C1 / post_interview_no_rebook / 工具表 / 阶段表；运营文档同步措辞
+- PR #1293 待发版后观察：暂停列表里「面试后人工对接，需人工恢复托管」条目需运营处理完手动恢复
+- PR #1293 面试结果与入职对接一律转人工，Agent 不再读取海绵工单状态与入职流程文本
 
 ### 配置变更
 - 无
@@ -78,6 +92,8 @@
 - PR #1284 `npx jest tests/agent/runner/agent-runner.service.spec.ts`：61/61 通过
 - PR #1284 `tsc --noEmit` 通过；改动文件 ESLint 零告警
 - PR #1292 pre-push 钩子完整跑过 ci:check（lint / format / typecheck / geo / vocab / quality-ledger / build:ci / test:ci）
+- PR #1293 隔离工作树（基线 origin/develop）typecheck 通过；job-list / precheck / booking / 取消 / intervention / generator / reengagement / guardrail / runner 共 107 个 suite、2039 用例通过
+- PR #1293 新增 `interview-process-onboarding-omitted.spec.ts`：含「试工通过后加琪琪微信办理入职」的岗位，卡片不出现流程说明 / 试工 / 培训 / 办理入职，而解析器内部仍能读到
 <!-- release:pending:end -->
 
 ## [11.8.2] - 2026-09-14
