@@ -10,7 +10,9 @@ function formatScenarioSettlement(scenario: UnknownRecord, index: number): strin
 
   const salaryType = readText(scenario.salaryType) ?? `薪资方案${index}`;
   const payday = readText(scenario.payday);
-  return `${salaryType}:${period}${payday ? `（${payday}发薪）` : ''}`;
+  // "当日结 / 次日结" 自带结算语义，不再拼"发薪"后缀。
+  const paydayText = payday ? (/结$/.test(payday) ? payday : `${payday}发薪`) : null;
+  return `${salaryType}:${period}${paydayText ? `（${paydayText}）` : ''}`;
 }
 
 function extractSettlementNotes(remark: string | null): string[] {

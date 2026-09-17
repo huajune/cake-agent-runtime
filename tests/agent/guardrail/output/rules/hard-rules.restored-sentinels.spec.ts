@@ -23,7 +23,7 @@ describe('HardRulesService restored sentinels', () => {
       status: 'ok' as const,
       result: {
         markdown:
-          '#### 薪资方案 1（正式）\n- **结算周期**: 日结算, 当日结发薪\n' +
+          '#### 薪资方案 1（正式）\n- **结算周期**: 日结算, 当日结\n' +
           '#### 薪资方案 2（培训期）\n- **结算周期**: 月结算, 10号发薪',
       },
     };
@@ -88,7 +88,7 @@ describe('HardRulesService restored sentinels', () => {
         toolName: 'duliday_job_list',
         args: { jobIdList: [1] },
         status: 'ok' as const,
-        result: { markdown: '#### 薪资方案 1（正式）\n- **结算周期**: 日结算, 当日结发薪' },
+        result: { markdown: '#### 薪资方案 1（正式）\n- **结算周期**: 日结算, 当日结' },
       };
 
       // trace batch_6a5db6d9…/batch_6a5ede31…：回复说的恰恰是判决书的反面。

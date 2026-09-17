@@ -251,6 +251,16 @@ describe('job-list render util', () => {
       expect(markdown).not.toContain('发上月工资');
     });
 
+    it('日结 payday 自带"结"字时不再拼"发薪"（避免"当日结发薪"）', () => {
+      const markdown = withSalary({
+        salaryType: '正式',
+        salaryPeriod: '日结算',
+        payday: '当日结',
+      });
+      expect(markdown).toContain('日结算, 当日结');
+      expect(markdown).not.toContain('当日结发薪');
+    });
+
     it('缺 salaryPeriod 时不标注（无法判定是否月结）', () => {
       const markdown = withSalary({ salaryType: '小时工', payday: '10号' });
       expect(markdown).toContain('10号发薪');
