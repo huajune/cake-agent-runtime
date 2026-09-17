@@ -1,4 +1,7 @@
-import { isHumanAgentTextMessage } from '@biz/message/utils/message-provenance.util';
+import {
+  isAgentReplyTextMessage,
+  isHumanAgentTextMessage,
+} from '@biz/message/utils/message-provenance.util';
 import {
   StorageMessageSource,
   StorageMessageType,
@@ -39,5 +42,38 @@ describe('message-provenance.util', () => {
 
     expect(source).toBe(StorageMessageSource.UNKNOWN);
     expect(isHumanAgentTextMessage({ ...manualText, source })).toBe(false);
+  });
+
+  describe('isAgentReplyTextMessage', () => {
+    const agentText = {
+      role: 'assistant',
+      isSelf: true,
+      messageType: StorageMessageType.TEXT,
+      source: StorageMessageSource.API_SEND,
+    };
+
+    it.each([StorageMessageSource.API_SEND, StorageMessageSource.AI_REPLY])(
+      'recognizes agent reply text from %s',
+      (source) => {
+        expect(isAgentReplyTextMessage({ ...agentText, source })).toBe(true);
+      },
+    );
+
+    it.each([
+      ['user role', { role: 'user' }],
+      ['non-text message', { messageType: StorageMessageType.ROOM_INVITE }],
+      ['missing message type', { messageType: undefined }],
+      ['human manual source', { source: StorageMessageSource.MOBILE_PUSH }],
+      ['missing source', { source: undefined }],
+      ['reengagement proactive touch', { payloadSource: 'reengagement' }],
+    ])('rejects %s', (_label, overrides) => {
+      expect(isAgentReplyTextMessage({ ...agentText, ...overrides })).toBe(false);
+    });
+
+    it('is disjoint from human manual text', () => {
+      const manual = { ...agentText, source: StorageMessageSource.MOBILE_PUSH };
+      expect(isHumanAgentTextMessage(manual)).toBe(true);
+      expect(isAgentReplyTextMessage(manual)).toBe(false);
+    });
   });
 });

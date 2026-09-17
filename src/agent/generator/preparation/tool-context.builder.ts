@@ -9,6 +9,7 @@ import type {
   ToolRuntimeContext,
   ToolSessionContext,
   ToolTurnInputContext,
+  ToolBookingWorkOrderRef,
 } from '@shared-types/tool.types';
 import type { GeocodeLocationAnchor, TurnLedger } from '@shared-types/turn.types';
 import type { SessionBrandState } from '@resolution/brand/brand-resolution.types';
@@ -176,6 +177,8 @@ export function resolveToolContextModel(input: {
   currentLaborFormIntent: LaborFormIntentDecision;
   /** 当前进行中预约工单的 jobId（改约场景 system prompt 暴露给模型的「岗位ID」），并入 provenance 集。 */
   bookingWorkOrderJobIds: number[];
+  /** 与 [当前预约信息] 同门可见的工单引用（含来源），供改期转人工回落带外工单号。 */
+  bookingWorkOrders?: ToolBookingWorkOrderRef[];
   /** 剥时间后缀内容 → 视觉事实 sheet；出处公证据此认简历/证件类自陈材料。 */
   visualSheetsByContent?: ReadonlyMap<string, FinalizedVisualFactSheet>;
 }): ToolContextModel {
@@ -192,6 +195,7 @@ export function resolveToolContextModel(input: {
     currentUserMessage,
     currentLaborFormIntent,
     bookingWorkOrderJobIds,
+    bookingWorkOrders,
   } = input;
   const recentBrandPool = collectRecentBrandPool(memory.shortTerm.sessionState);
   // jobId provenance 闸门数据源：turn-start 已召回岗位集 + 进行中预约工单 jobId（改约路径）
@@ -245,6 +249,7 @@ export function resolveToolContextModel(input: {
       stageGoals,
       lastJobListQuery: memory.shortTerm.sessionState?.lastJobListQuery ?? null,
       activeBookingJobIds: bookingWorkOrderJobIds,
+      bookingWorkOrders: bookingWorkOrders ?? [],
       currentFocusJob: memory.shortTerm.sessionState?.currentFocusJob ?? null,
       recentBrandPool,
       bookingCandidateFacts: sessionFacts?.interview_info ?? null,

@@ -33,6 +33,12 @@ export interface ToolSessionContext {
   contactName?: string;
 }
 
+export interface ToolBookingWorkOrderRef {
+  workOrderId: number;
+  jobId: number | null;
+  source: 'active_booking' | 'out_of_band';
+}
+
 export interface ToolArchiveContext {
   profile?: UserProfile | null;
   sessionFacts?: EntityExtractionResult | null;
@@ -46,6 +52,8 @@ export interface ToolArchiveContext {
   isRecalledJobId?: (jobId: number) => boolean;
   lastJobListQuery?: { signature: string; turnId: string | null } | null;
   activeBookingJobIds?: number[];
+  /** 与 [当前预约信息] 同门可见的工单引用（含来源）；带外工单只在这里可见，不进 active_booking。 */
+  bookingWorkOrders?: ToolBookingWorkOrderRef[];
   currentFocusJob?: RecommendedJobSummary | null;
   recentBrandPool?: string[];
   bookingCandidateFacts?: EntityExtractionResult['interview_info'] | null;

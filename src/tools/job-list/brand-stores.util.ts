@@ -18,6 +18,7 @@ import {
 import { composeShiftTimeText } from '@tools/job-list/format-shift-time.util';
 import { extractHardRequirements } from '@tools/job-list/hard-requirements.util';
 import { buildJobPolicyAnalysis } from '@tools/job-list/job-policy-parser';
+import { sanitizeLaborFormForDisplay } from '@resolution/labor-form';
 import type { JobDetail } from '@sponge/sponge.types';
 
 export interface BrandStoreEntry {
@@ -47,6 +48,7 @@ export interface BrandNearestStoresGroup {
  * 叶子值保持 unknown，由 `!= null` / 模板串兜底任意 raw 值）。
  */
 interface SalarySummaryJobInput {
+  basicInfo?: { laborForm?: unknown } | null;
   jobSalary?: {
     salaryScenarioList?: Array<{
       comprehensiveSalary?: {
@@ -68,13 +70,19 @@ export function formatSalarySummary(job: SalarySummaryJobInput): string | null {
   const scenario = salary.salaryScenarioList?.[0];
   if (scenario) {
     const comp = scenario.comprehensiveSalary;
-    if (comp && (comp.minComprehensiveSalary != null || comp.maxComprehensiveSalary != null)) {
-      return `${comp.minComprehensiveSalary ?? '?'}-${comp.maxComprehensiveSalary ?? '?'} ${comp.comprehensiveSalaryUnit || '元/月'}`;
-    }
+    const compText =
+      comp && (comp.minComprehensiveSalary != null || comp.maxComprehensiveSalary != null)
+        ? `${comp.minComprehensiveSalary ?? '?'}-${comp.maxComprehensiveSalary ?? '?'} ${comp.comprehensiveSalaryUnit || '元/月'}`
+        : null;
     const basic = scenario.basicSalary;
-    if (basic?.basicSalary != null) {
-      return `${basic.basicSalary}${basic.basicSalaryUnit || '元'}`;
-    }
+    const basicText =
+      basic?.basicSalary != null ? `${basic.basicSalary}${basic.basicSalaryUnit || '元'}` : null;
+    // 与候选人卡片同口径：兼职岗按小时计薪，基础时薪优先于综合月薪区间。
+    const laborForm = job.basicInfo?.laborForm;
+    const partTimeFirst =
+      sanitizeLaborFormForDisplay(typeof laborForm === 'string' ? laborForm : null) === '兼职';
+    const picked = partTimeFirst ? (basicText ?? compText) : (compText ?? basicText);
+    if (picked) return picked;
   }
 
   const probation = salary.probationSalary;
@@ -119,6 +127,7 @@ function formatBrandStoreDisplayLine(
  */
 type BrandSummaryJobInput = {
   basicInfo?: {
+    laborForm?: unknown;
     brandName?: unknown;
     brandId?: unknown;
     jobId?: unknown;

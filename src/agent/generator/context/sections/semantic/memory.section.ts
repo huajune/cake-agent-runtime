@@ -238,6 +238,30 @@ export function hasCurrentBookingInformation(snapshot: BookingPromptSnapshot): b
   );
 }
 
+export interface VisibleBookingWorkOrderRef {
+  workOrderId: number;
+  jobId: number | null;
+  /** active_booking：本联系人自建；out_of_band：按手机号从工单系统实时查得（真人/其它渠道或其它联系人登记）。 */
+  source: 'active_booking' | 'out_of_band';
+}
+
+/**
+ * 与 Prompt 可见性同门的工单引用：模型在 [当前预约信息] 里看得到的每一张工单，
+ * 工具侧也能拿到同一份工单号与来源（改期转人工据此不把带外工单当成"尚无预约"）。
+ */
+export function visibleBookingWorkOrders(
+  snapshot: BookingPromptSnapshot,
+): VisibleBookingWorkOrderRef[] {
+  if (snapshot.state !== 'active') return [];
+  return visibleBookingEntries(snapshot)
+    .map(({ entry }) => ({
+      workOrderId: entry.workOrder.workOrderId,
+      jobId: normalizeJobId(entry.workOrder.jobId),
+      source: snapshot.source,
+    }))
+    .filter((ref): ref is VisibleBookingWorkOrderRef => typeof ref.workOrderId === 'number');
+}
+
 /** 与 Prompt 可见性同门的预约岗位 provenance。 */
 export function visibleBookingJobIds(snapshot: BookingPromptSnapshot): number[] {
   return visibleBookingEntries(snapshot)

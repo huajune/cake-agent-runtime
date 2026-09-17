@@ -12,7 +12,10 @@ import { MessageTrackingService } from '@biz/monitoring/services/tracking/messag
 import type { MessageProcessingRecordInput } from '@biz/message/types/message.types';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { MessageProcessingService } from '@biz/message/services/message-processing.service';
-import { isHumanAgentTextMessage } from '@biz/message/utils/message-provenance.util';
+import {
+  isAgentReplyTextMessage,
+  isHumanAgentTextMessage,
+} from '@biz/message/utils/message-provenance.util';
 import {
   GroupInviteService,
   type GroupInviteResult,
@@ -362,10 +365,11 @@ export class FollowUpProcessor implements OnModuleInit {
     }
 
     // 1.3) 报名后真人介入闸：候选人在报名锚点后发过消息，随后真人经理又从企微
-    // 客户端手打回复，说明本次面试已进入人工判断/跟进。真人拒面、手工约面、已人工
-    // 回复都不会写 Agent terminal，也不一定及时同步到海绵工单；继续发面试提醒或
-    // 回访会越过真人结论。只认带来源的真人手打文本，不把 API_SEND/AI_REPLY、
-    // 入群卡片或复聊回灌当人工介入。
+    // 客户端手打回复且此后 Agent 没有再回复过，说明本次面试已进入人工判断/跟进。
+    // 真人拒面、手工约面、已人工回复都不会写 Agent terminal，也不一定及时同步到
+    // 海绵工单；继续发面试提醒或回访会越过真人结论。只认带来源的真人手打文本，
+    // 不把 API_SEND/AI_REPLY、入群卡片或复聊回灌当人工介入；真人手打之后 Agent
+    // 又回答了候选人，视为会话仍由 Agent 托管，不停。
     //
     // 这道闸与 lastProcessedCandidateMessageAt 水位正交：候选人 timeout 后若无人
     // 回复，不会命中；只有后续确有真人回复才停，避免把无人回复误判成真人已介入。
@@ -736,17 +740,26 @@ export class FollowUpProcessor implements OnModuleInit {
         startTimeInclusive: anchorAt,
         endTimeInclusive: now,
       });
+      // 真人手打文本只在它仍是我方最后一条对话发言时才算接管：运营报名后例行手发
+      // 「面试注意事项 / 面试官微信」话术后，Agent 若又回答了候选人的追问，说明会话
+      // 仍由 Agent 托管，不能据此停掉面试提醒与回访。Agent 回复之后再出现真人手打，
+      // 仍按接管处理。
       let candidateMessageSeen = false;
+      let humanReplyAt: number | null = null;
       for (const message of history) {
         if (message.role === 'user') {
           candidateMessageSeen = true;
           continue;
         }
         if (candidateMessageSeen && isHumanAgentTextMessage(message)) {
-          return message.timestamp;
+          humanReplyAt = message.timestamp;
+          continue;
+        }
+        if (humanReplyAt != null && isAgentReplyTextMessage(message)) {
+          humanReplyAt = null;
         }
       }
-      return null;
+      return humanReplyAt;
     } catch (error) {
       this.logger.warn(
         `[reengagement] 真人介入检测失败，按放行处理 sessionId=${sessionId}: ${this.errorMessage(error)}`,

@@ -153,8 +153,27 @@ export function buildRequestHandoffTool(
         const [activeBooking] = await longTermService
           .getActiveBookings(context.session.corpId, context.session.userId)
           .catch(() => []);
+        // 带外工单：真人后台手工建单或另一个微信联系人报的名，不在本联系人的 active_booking
+        // 里，但 [当前预约信息] 已按手机号查到并展示给了模型。候选人据此要求改期时，
+        // 不能退回"首次约面"流程自助报可约时段、重发收资单（生产 chat 6aa215c8ce406a6aeed2ce3d），
+        // 而是带着这张工单号转人工核实归属后处理。
+        const outOfBandWorkOrder =
+          context.archive.bookingWorkOrders?.find((ref) => ref.source === 'out_of_band') ?? null;
         const workOrderId =
-          activeBooking?.work_order_id ?? context.ledger.jobs.resolvedWorkOrderId ?? null;
+          activeBooking?.work_order_id ??
+          context.ledger.jobs.resolvedWorkOrderId ??
+          outOfBandWorkOrder?.workOrderId ??
+          null;
+        if (
+          reasonCode === 'modify_appointment' &&
+          activeBooking?.work_order_id == null &&
+          context.ledger.jobs.resolvedWorkOrderId == null &&
+          outOfBandWorkOrder
+        ) {
+          logger.log(
+            `request_handoff(modify_appointment) 无 active_booking，回落带外工单转人工: chatId=${chatId}, workOrderId=${outOfBandWorkOrder.workOrderId}`,
+          );
+        }
 
         // 转人工当轮的焦点岗位：让运营的「岗位数据缺口榜 / 满岗信号榜」能直接定位到岗位。
         // 优先本轮焦点岗位；没有焦点岗位（如只有进行中工单）时退回在约岗位。

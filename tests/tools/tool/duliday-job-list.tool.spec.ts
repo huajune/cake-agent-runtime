@@ -238,7 +238,7 @@ describe('buildJobListTool', () => {
       expect.objectContaining({
         salaryDesc: '2000-4000 元/月',
         settlementSummary:
-          '正式:日结算（当日结发薪）；培训期:月结算（10号发薪）；基础工资按日结；阶梯差价按月结；培训费用按月结；每月10号发上月差价',
+          '正式:日结算（当日结）；培训期:月结算（10号发薪）；基础工资按日结；阶梯差价按月结；培训费用按月结；每月10号发上月差价',
       }),
     ]);
   });
@@ -2032,7 +2032,7 @@ describe('buildJobListTool', () => {
     expect(result.markdown).toContain('**基础薪资**: 17 元/时');
     expect(result.markdown).toContain('**综合薪资**: 3000-6000 元/月');
     expect(result.markdown).toContain('**阶梯薪资**');
-    expect(result.markdown).toContain('每月超过 100小时: 21 元/时');
+    expect(result.markdown).toContain('累计满 100小时: 21 元/时');
     expect(result.markdown).toContain('**节假日薪资**: 无薪资');
     expect(result.markdown).toContain('**加班薪资**: 无薪资');
     expect(result.markdown).toContain('**一轮面试**');

@@ -567,6 +567,7 @@ export function buildInterviewPrecheckTool(
             hasExplicitRequestedDate: Boolean(requestedDate?.trim()),
             contractAccess: mode,
             messages: evidenceMessages,
+            jobLabel: normalizePolicyText(job.basicInfo.jobName || job.basicInfo.jobNickName),
           });
 
           const rawScheduleRequest = requestedDate?.trim() || formRun.divertedRequestedDate;
@@ -818,6 +819,8 @@ async function runForm(params: {
   hasExplicitRequestedDate: boolean;
   contractAccess: 'query' | 'validate';
   messages: readonly unknown[];
+  /** 报名岗位名，复述文案带上它让候选人能核对报的是哪个岗位。 */
+  jobLabel?: string;
 }): Promise<FormRun> {
   const botUserId = params.context.session.botUserId?.trim();
   if (!botUserId) {
@@ -968,7 +971,7 @@ async function runForm(params: {
 
   let recapText: string | undefined;
   if (verdictOf(persisted) === 'ready' && needsRecap(persisted) && !persisted.lastRecap) {
-    const recap = renderRecap(persisted, contract);
+    const recap = renderRecap(persisted, contract, { jobLabel: params.jobLabel });
     persisted = recap.form;
     recapText = recap.text ?? undefined;
   } else if (
@@ -983,7 +986,8 @@ async function runForm(params: {
     })
   ) {
     // lastRecap 只证明工具生成过复述；聊天历史里没有当前 KV 才补发官方文案。
-    recapText = renderRecapRedeliveryText(persisted, contract) ?? undefined;
+    recapText =
+      renderRecapRedeliveryText(persisted, contract, { jobLabel: params.jobLabel }) ?? undefined;
   }
   await params.deps.collectionForms.persist(scope, persisted);
   emitAudits(params.deps, params.context, params.jobId, result.audits, contract);

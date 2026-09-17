@@ -333,6 +333,14 @@ function renderHolidayOrOvertimeLine(
   return `- **${prefix}薪资**: ${valueStr}${desc}`;
 }
 
+/** 海绵门槛单位是"累计工作小时"，"累计满 100累计工作小时"重复，规整为"小时"。 */
+function normalizeStairUnit(unit: unknown): string {
+  if (!hasValue(unit)) return '';
+  return String(unit)
+    .replace(/累计(工作)?/g, '')
+    .trim();
+}
+
 function renderSalaryScenario(scenarioInput: unknown, index: number): string {
   const scenario = asRecord(scenarioInput);
   if (!scenario || !isNonEmpty(scenario)) return '';
@@ -347,10 +355,14 @@ function renderSalaryScenario(scenarioInput: unknown, index: number): string {
     // 月结 + 具体几号时显式标注归属月份，模型照读即可；周结/日结不适用不标。
     const isMonthly =
       hasValue(scenario.salaryPeriod) && String(scenario.salaryPeriod).includes('月');
+    // 日结的 payday 取值是"当日结 / 次日结"，自带结算语义，再拼"发薪"会读成"当日结发薪"。
+    const payday = String(scenario.payday).trim();
     const paydayText =
-      isMonthly && /^\d+\s*号$/.test(String(scenario.payday).trim())
-        ? `${scenario.payday}发薪（次月${scenario.payday}发上月工资，无当月发当月）`
-        : `${scenario.payday}发薪`;
+      isMonthly && /^\d+\s*号$/.test(payday)
+        ? `${payday}发薪（次月${payday}发上月工资，无当月发当月）`
+        : /结$/.test(payday)
+          ? payday
+          : `${payday}发薪`;
     periodParts.push(paydayText);
   }
   if (periodParts.length) lines.push(`- **结算周期**: ${periodParts.join(', ')}`);
@@ -383,9 +395,10 @@ function renderSalaryScenario(scenarioInput: unknown, index: number): string {
       if (!isNonEmpty(stair)) return;
       const salaryStr = formatValueWithUnit(stair.salary, stair.salaryUnit);
       if (!salaryStr) return;
-      const periodPrefix = hasValue(stair.perTimeUnit) ? String(stair.perTimeUnit) : '';
+      // perTimeUnit 取值"每月 / 不限"，产品裁定两者都按自然月累计、每月清零，
+      // 不再把它拼进门槛前缀（"不限超过 100累计工作小时"会被读成不限周期）。
       const thresholdStr = hasValue(stair.fullWorkTime)
-        ? `${periodPrefix}超过 ${cleanNumber(stair.fullWorkTime)}${stair.fullWorkTimeUnit || ''}`
+        ? `累计满 ${cleanNumber(stair.fullWorkTime)}${normalizeStairUnit(stair.fullWorkTimeUnit)}`
         : '';
       const desc = hasValue(stair.description)
         ? `（${cleanSingleLineText(String(stair.description))}）`
@@ -414,6 +427,8 @@ function renderSalaryScenario(scenarioInput: unknown, index: number): string {
     }
     if (hasValue(other.performance)) pushField(lines, '绩效', other.performance);
   }
+  // 奖金自由文本栏：与提成/全勤/绩效并列的第四个奖金来源，原文透传给模型自行整合。
+  if (hasValue(scenario.bonusDesc)) pushField(lines, '奖金说明', scenario.bonusDesc);
 
   // 特殊时段薪资（夜班津贴等）：真实字段是 jobSpecialSalaryList（旧的 customSalaries 现网不返回）。
   const specialSalaries = asRecordArray(scenario.jobSpecialSalaryList);

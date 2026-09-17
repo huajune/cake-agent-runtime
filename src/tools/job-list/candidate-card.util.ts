@@ -15,6 +15,7 @@
  *
  * 设计原则：
  *  - 信息密度优先：1 个岗位 2-3 行覆盖关键事实（地址 / 班次 / 薪资 / 硬要求）
+ *  - 薪资行按岗位类型定型（兼职阶梯 / 兼职无阶梯 / 全职），推荐时只给关键项，细节留给追问
  *  - 缺失字段优雅省略（不输出 "班次: undefined"）
  *  - 不输出"建议/可能/也许/大概"等软性措辞
  *  - 不进入决策——这一层只是把已派生事实拼装成候选人友好句子
@@ -30,13 +31,13 @@ import {
   extractHardRequirements,
   type HardRequirements,
 } from '@tools/job-list/hard-requirements.util';
-import { extractSalaryFacts } from '@tools/job-list/salary-facts.util';
 import { buildJobPolicyAnalysis, sanitizeConstraintText } from '@tools/job-list/job-policy-parser';
+import { sanitizeLaborFormForDisplay } from '@resolution/labor-form';
 import type { JobBasicInfo, JobDetail } from '@sponge/sponge.types';
 
 export interface CandidateCard {
   jobId: number | string;
-  /** 单行精简版（"1. KFC 服务员 - 静安寺店 | 2.3km | 周一至五 11-15 ｜ 24-29 元/时 ｜ 18-50 岁 需食品健康证"） */
+  /** 单行精简版（"1. KFC 服务员 - 静安寺店 | 2.3km | 周一至五 11-15 ｜ 24-29元/时 ｜ 18-50 岁 需食品健康证"） */
   oneLine: string;
   /** 多行可读版（标题 + 班次 + 薪资 + 要求 三行格式） */
   multiLine: string;
@@ -56,6 +57,8 @@ function resolvePositionName(bi: JobBasicInfo): string {
   if (nick) return nick;
   return '岗位';
 }
+
+// ==================== 班次 ====================
 
 /**
  * `buildShiftPart` 实际读取的最小 workTime 字段集。
@@ -112,47 +115,241 @@ function buildShiftPart(workTime: unknown): string {
   return parts.join('，');
 }
 
-function buildSalaryPart(job: JobDetail): string {
-  const scenarios = Array.isArray(job?.jobSalary?.salaryScenarioList)
-    ? job.jobSalary.salaryScenarioList
+// ==================== 薪资 ====================
+
+/**
+ * 卡片薪资段实际读取的最小 salaryScenario 字段集（同 salary-facts 的 RawSalaryScenario）；
+ * raw 值仍靠 `hasValue` 逐字段兜底。
+ */
+interface SalaryScenario {
+  salaryType?: unknown;
+  salaryPeriod?: unknown;
+  payday?: unknown;
+  hasStairSalary?: unknown;
+  stairSalaries?: unknown;
+  bonusDesc?: unknown;
+  basicSalary?: { basicSalary?: unknown; basicSalaryUnit?: unknown } | null;
+  comprehensiveSalary?: {
+    minComprehensiveSalary?: unknown;
+    maxComprehensiveSalary?: unknown;
+    comprehensiveSalaryUnit?: unknown;
+  } | null;
+  holidaySalary?: {
+    holidaySalaryType?: unknown;
+    holidaySalaryMultiple?: unknown;
+    holidayFixedSalary?: unknown;
+    holidayFixedSalaryUnit?: unknown;
+  } | null;
+  overtimeSalary?: {
+    overtimeSalaryType?: unknown;
+    overtimeSalaryMultiple?: unknown;
+    overtimeFixedSalary?: unknown;
+    overtimeFixedSalaryUnit?: unknown;
+  } | null;
+  otherSalary?: { commission?: unknown; attendanceSalary?: unknown; performance?: unknown } | null;
+}
+
+interface StairEntry {
+  fullWorkTime?: unknown;
+  fullWorkTimeUnit?: unknown;
+  salary?: unknown;
+  salaryUnit?: unknown;
+  description?: unknown;
+}
+
+type LaborForm = '兼职' | '全职' | null;
+
+const SUPPLEMENTAL_SALARY_TYPE_PATTERN = /培训|试用|试工/;
+
+function isSupplementalScenario(s: SalaryScenario): boolean {
+  return typeof s?.salaryType === 'string' && SUPPLEMENTAL_SALARY_TYPE_PATTERN.test(s.salaryType);
+}
+
+/** 正式方案优先；海绵把培训期/试用期列在前面时也只取正式方案进卡片，附属方案留给追问。 */
+function pickPrimaryScenario(job: JobDetail): SalaryScenario | null {
+  const scenarios: SalaryScenario[] = Array.isArray(job?.jobSalary?.salaryScenarioList)
+    ? (job.jobSalary.salaryScenarioList as SalaryScenario[])
     : [];
-  for (const s of scenarios) {
-    const comp = s?.comprehensiveSalary;
-    const min = comp?.minComprehensiveSalary;
-    const max = comp?.maxComprehensiveSalary;
-    const unit = comp?.comprehensiveSalaryUnit || '元/时';
-    if (hasValue(min) && hasValue(max) && min !== max) return `${min}-${max} ${unit}`;
-    if (hasValue(min)) return `${min} ${unit}`;
-    if (hasValue(max)) return `${max} ${unit}`;
-    const basic = s?.basicSalary?.basicSalary;
-    if (hasValue(basic)) return `${basic} ${s?.basicSalary?.basicSalaryUnit || '元/月'}`;
+  const valid = scenarios.filter((s) => s && typeof s === 'object');
+  return valid.find((s) => !isSupplementalScenario(s)) ?? valid[0] ?? null;
+}
+
+function resolveLaborForm(job: JobDetail): LaborForm {
+  const form = sanitizeLaborFormForDisplay(job?.basicInfo?.laborForm);
+  return form === '兼职' || form === '全职' ? form : null;
+}
+
+function textOf(value: unknown): string {
+  return hasValue(value) ? String(value).trim() : '';
+}
+
+function amount(value: unknown, unit: unknown, fallbackUnit: string): string {
+  if (!hasValue(value)) return '';
+  return `${String(value)}${textOf(unit) || fallbackUnit}`;
+}
+
+function formatComprehensiveRange(s: SalaryScenario): string {
+  const comp = s?.comprehensiveSalary;
+  const min = comp?.minComprehensiveSalary;
+  const max = comp?.maxComprehensiveSalary;
+  const unit = textOf(comp?.comprehensiveSalaryUnit) || '元/时';
+  if (hasValue(min) && hasValue(max) && min !== max) return `${String(min)}-${String(max)}${unit}`;
+  if (hasValue(min)) return `${String(min)}${unit}`;
+  if (hasValue(max)) return `${String(max)}${unit}`;
+  return '';
+}
+
+function formatBasic(s: SalaryScenario): string {
+  return amount(s?.basicSalary?.basicSalary, s?.basicSalary?.basicSalaryUnit, '元/月');
+}
+
+/**
+ * 薪资主数：兼职岗基础时薪优先（有阶梯时冠"基础"以区别各档），全职岗综合区间优先并冠"综合薪资"；
+ * 用工形式缺失时沿用综合区间优先、不加前缀。
+ *
+ * 海绵上兼职岗普遍同时维护"基础 19 元/时"和"综合 2000-4000 元/月"两栏，候选人按小时计薪，
+ * 先取综合区间就把时薪岗展示成了月薪区间；全职岗则相反，基础月薪只是综合构成的一部分。
+ */
+function formatBaseSalary(s: SalaryScenario, laborForm: LaborForm, hasStair: boolean): string {
+  if (laborForm === '兼职') {
+    const basic = formatBasic(s);
+    if (basic) return hasStair ? `基础${basic}` : basic;
+    return formatComprehensiveRange(s);
+  }
+  const comp = formatComprehensiveRange(s);
+  if (comp) return laborForm === '全职' ? `综合薪资${comp}` : comp;
+  return formatBasic(s);
+}
+
+function readStairs(s: SalaryScenario): StairEntry[] {
+  return Array.isArray(s?.stairSalaries)
+    ? (s.stairSalaries as unknown[]).filter(
+        (stair): stair is StairEntry => Boolean(stair) && typeof stair === 'object',
+      )
+    : [];
+}
+
+function hasStairSalary(s: SalaryScenario): boolean {
+  return (
+    (typeof s?.hasStairSalary === 'string' && s.hasStairSalary.includes('有阶梯')) ||
+    readStairs(s).some((stair) => hasValue(stair.salary))
+  );
+}
+
+/** 海绵阶梯门槛单位现网全是"累计工作小时"，卡片对候选人只说"小时"。 */
+function normalizeStairThresholdUnit(unit: unknown): string {
+  if (typeof unit !== 'string' || !unit.trim()) return '小时';
+  return unit.replace(/累计(工作)?/g, '').trim() || '小时';
+}
+
+/**
+ * 阶梯段："满100小时21元/时，满190小时23元/时，超出后所有工时按照新的薪资标准计算"。
+ * 计算口径只照括注原文，多档括注相同只说一次；括注为空不补。
+ */
+function formatStairParts(s: SalaryScenario): string[] {
+  const parts: string[] = [];
+  const descriptions = new Set<string>();
+  for (const stair of readStairs(s)) {
+    const salary = amount(stair.salary, stair.salaryUnit, '元/时');
+    if (!salary) continue;
+    const threshold = hasValue(stair.fullWorkTime)
+      ? `满${String(stair.fullWorkTime)}${normalizeStairThresholdUnit(stair.fullWorkTimeUnit)}`
+      : '';
+    parts.push(`${threshold}${salary}`);
+    const description = textOf(stair.description);
+    if (description) descriptions.add(description);
+  }
+  return [...parts, ...descriptions];
+}
+
+/** 法定节假日 / 加班：多倍薪资 → "3倍"；固定薪资 → "34.5元/时"；无薪资或空 → 省略。 */
+function formatMultiplierOrFixed(
+  label: string,
+  type: unknown,
+  multiple: unknown,
+  fixed: unknown,
+  fixedUnit: unknown,
+): string {
+  const kind = textOf(type);
+  if (!kind || kind === '无薪资') return '';
+  if (kind === '多倍薪资') return hasValue(multiple) ? `${label}${String(multiple)}倍` : '';
+  if (kind === '固定薪资') {
+    const value = amount(fixed, fixedUnit, '元/时');
+    return value ? `${label}${value}` : '';
   }
   return '';
 }
 
-function buildStairPart(job: JobDetail): string {
-  const facts = extractSalaryFacts(job?.jobSalary);
-  if (!facts.hasStairSalary) return '';
-  const scenarios = Array.isArray(job?.jobSalary?.salaryScenarioList)
-    ? job.jobSalary.salaryScenarioList
-    : [];
-  for (const s of scenarios) {
-    const stairs = Array.isArray(s?.stairSalaries) ? s.stairSalaries : [];
-    if (stairs.length === 0) continue;
-    const parts = stairs
-      .map((stair) => {
-        if (!hasValue(stair?.salary)) return null;
-        const unit = stair?.salaryUnit || '元/时';
-        const threshold = hasValue(stair?.fullWorkTime)
-          ? `满 ${stair.fullWorkTime}${stair?.fullWorkTimeUnit || ''}→${stair.salary}${unit}`
-          : `${stair.salary}${unit}`;
-        return threshold;
-      })
-      .filter(Boolean);
-    if (parts.length > 0) return `阶梯：${parts.join(' / ')}`;
-  }
-  return '';
+function formatHoliday(s: SalaryScenario): string {
+  const h = s?.holidaySalary;
+  return formatMultiplierOrFixed(
+    '法定节假日',
+    h?.holidaySalaryType,
+    h?.holidaySalaryMultiple,
+    h?.holidayFixedSalary,
+    h?.holidayFixedSalaryUnit,
+  );
 }
+
+function formatOvertime(s: SalaryScenario): string {
+  const o = s?.overtimeSalary;
+  return formatMultiplierOrFixed(
+    '加班',
+    o?.overtimeSalaryType,
+    o?.overtimeSalaryMultiple,
+    o?.overtimeFixedSalary,
+    o?.overtimeFixedSalaryUnit,
+  );
+}
+
+/** 全职奖金项只上标签（"另有提成、全勤奖"），数额留给追问时按详情块回答。 */
+function formatBonusLabels(s: SalaryScenario): string {
+  const labels: string[] = [];
+  if (hasValue(s?.otherSalary?.commission)) labels.push('提成');
+  if (hasValue(s?.otherSalary?.attendanceSalary)) labels.push('全勤奖');
+  if (hasValue(s?.otherSalary?.performance)) labels.push('绩效');
+  if (hasValue(s?.bonusDesc)) labels.push('奖金');
+  return labels.length > 0 ? `另有${labels.join('、')}` : '';
+}
+
+/** 结算："日结，当日结" / "周结，每周三发薪" / "月结，15号发薪"。 */
+function formatSettlementParts(s: SalaryScenario): string[] {
+  const parts: string[] = [];
+  const period = textOf(s?.salaryPeriod).replace(/结算$/, '结');
+  if (period) parts.push(period);
+  const payday = textOf(s?.payday);
+  if (payday) parts.push(/结$/.test(payday) ? payday : `${payday}发薪`);
+  return parts;
+}
+
+/**
+ * 卡片薪资行，按岗位类型定型：
+ *  - 兼职 & 有阶梯：基础时薪 → 各档门槛 → 计算口径 → 结算（阶梯本身已够复杂，节假日/加班留给追问）
+ *  - 兼职 & 无阶梯：时薪 → 法定节假日 → 加班 → 结算
+ *  - 全职（含用工形式缺失）：综合薪资 → [阶梯] → 法定节假日 → 加班 → 奖金标签 → 结算
+ */
+function buildSalarySegment(job: JobDetail): string {
+  const scenario = pickPrimaryScenario(job);
+  if (!scenario) return '';
+  const laborForm = resolveLaborForm(job);
+  const stair = hasStairSalary(scenario);
+  const base = formatBaseSalary(scenario, laborForm, stair);
+
+  const parts: string[] = [];
+  if (base) parts.push(base);
+  if (laborForm === '兼职' && stair) {
+    parts.push(...formatStairParts(scenario));
+  } else if (laborForm === '兼职') {
+    parts.push(formatHoliday(scenario), formatOvertime(scenario));
+  } else {
+    if (stair) parts.push(...formatStairParts(scenario));
+    parts.push(formatHoliday(scenario), formatOvertime(scenario), formatBonusLabels(scenario));
+  }
+  parts.push(...formatSettlementParts(scenario));
+  return parts.filter(Boolean).join('，');
+}
+
+// ==================== 要求 / 备注 ====================
 
 function buildRequirementPart(hr: HardRequirements, ageText: string | null): string {
   const parts: string[] = [];
@@ -188,6 +385,8 @@ function collectRemarks(job: JobDetail): string {
   return parts.join('\n   ');
 }
 
+// ==================== 装配 ====================
+
 /**
  * 派生单个岗位的候选人推荐卡片。
  *
@@ -216,8 +415,7 @@ export function renderCandidateCard(
   const hr = extractHardRequirements(job, policy);
 
   const shift = buildShiftPart(job?.workTime);
-  const salary = buildSalaryPart(job);
-  const stair = buildStairPart(job);
+  const salary = buildSalarySegment(job);
   const remarks = collectRemarks(job);
   const requirement = buildRequirementPart(hr, policy.normalizedRequirements.ageRequirement);
 
@@ -228,7 +426,7 @@ export function renderCandidateCard(
   const oneParts = [
     typeof index === 'number' ? `${index + 1}. **${head}**` : `**${head}**`,
     shift && `班次：${shift}`,
-    salary && `薪资：${salary}${stair ? '，' + stair : ''}`,
+    salary && `薪资：${salary}`,
     requirement && `要求：${requirement}`,
     remarks && `${remarks}`,
   ].filter(Boolean);
@@ -239,7 +437,7 @@ export function renderCandidateCard(
     typeof index === 'number' ? `${index + 1}. **${head}**` : `**${head}**`,
   ];
   if (shift) multiLines.push(`   班次：${shift}`);
-  if (salary) multiLines.push(`   薪资：${salary}${stair ? '，' + stair : ''}`);
+  if (salary) multiLines.push(`   薪资：${salary}`);
   if (requirement) multiLines.push(`   要求：${requirement}`);
   if (remarks) multiLines.push(`   ${remarks}`);
   const multiLine = multiLines.join('\n');
