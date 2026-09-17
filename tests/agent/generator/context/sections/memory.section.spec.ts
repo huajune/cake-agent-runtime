@@ -5,6 +5,7 @@ import {
   renderBookingPrompt,
   visibleBookingEntries,
   visibleBookingJobIds,
+  visibleBookingWorkOrders,
 } from '@agent/generator/context/sections/semantic/memory.section';
 import { promptModelOf, renderSection } from '../../../../helpers/prompt-model.fixture';
 
@@ -82,6 +83,38 @@ describe('MemorySection', () => {
     expect(rendered).not.toContain('预约 2');
     expect(visibleBookingEntries(snapshot)).toHaveLength(1);
     expect(visibleBookingJobIds(snapshot)).toEqual([42]);
+  });
+
+  it('exposes visible work orders with their source so tools see the same out-of-band orders as the prompt', () => {
+    const snapshot = {
+      state: 'active' as const,
+      source: 'out_of_band' as const,
+      syncing: false,
+      entries: [
+        {
+          workOrder: {
+            workOrderId: 464227,
+            jobId: 529005,
+            brandName: '品牌 A',
+            storeName: '七宝乐购店',
+            jobName: '服务员',
+          } as never,
+        },
+        {
+          workOrder: {
+            jobId: 43,
+            brandName: '品牌 B',
+            storeName: '门店 B',
+            jobName: '店员',
+          } as never,
+        },
+      ],
+    };
+
+    expect(visibleBookingWorkOrders(snapshot)).toEqual([
+      { workOrderId: 464227, jobId: 529005, source: 'out_of_band' },
+    ]);
+    expect(visibleBookingWorkOrders({ state: 'none' })).toEqual([]);
   });
 
   it('treats a syncing-only snapshot as visible booking information', () => {

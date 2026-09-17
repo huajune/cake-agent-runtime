@@ -82,6 +82,42 @@ describe('buildRequestHandoffTool', () => {
     expect(interventionService.dispatch).not.toHaveBeenCalled();
   });
 
+  it('falls back to an out-of-band work order and dispatches handoff instead of restarting first booking', async () => {
+    // 生产 chat 6aa215c8ce406a6aeed2ce3d：面试由真人手工登记在另一联系人名下，[当前预约信息]
+    // 按手机号带外查到工单 464227；候选人要改期时不能退回首次约面流程自助报时段、重发收资单
+    longTermService.getActiveBookings.mockResolvedValue([]);
+    const tool = buildTool(
+      mergeToolContext(mockContext, {
+        archive: {
+          bookingWorkOrders: [{ workOrderId: 464227, jobId: 529005, source: 'out_of_band' }],
+        },
+      }),
+    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = await (tool as any).execute({
+      reasonCode: 'modify_appointment',
+      reason: '候选人父亲手术需改期到周四或周五',
+    });
+    expect(result).toMatchObject({
+      dispatched: true,
+      shortCircuited: true,
+      sideEffect: expect.objectContaining({ workOrderId: 464227 }),
+    });
+    expect(result).not.toMatchObject({ errorType: TOOL_ERROR_TYPES.HANDOFF_NO_BOOKING });
+  });
+
+  it('still treats modify_appointment as first booking when visible work orders are only empty', async () => {
+    longTermService.getActiveBookings.mockResolvedValue([]);
+    const tool = buildTool(mergeToolContext(mockContext, { archive: { bookingWorkOrders: [] } }));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = await (tool as any).execute({
+      reasonCode: 'modify_appointment',
+      reason: '想改到明天',
+    });
+    expect(result).toMatchObject({ errorType: TOOL_ERROR_TYPES.HANDOFF_NO_BOOKING });
+    expect(interventionService.dispatch).not.toHaveBeenCalled();
+  });
+
   it('uses a work order resolved earlier in the same turn when the current contact has no active_booking', async () => {
     longTermService.getActiveBookings.mockResolvedValue([]);
     const tool = buildTool(
