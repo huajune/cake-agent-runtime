@@ -29,12 +29,26 @@ export interface RecapRender {
   form: BookingCollectionForm;
 }
 
-const INTRO_LINE = '帮你核对一下报名信息：';
+const INTRO_LINE = '帮你核对一下报名信息';
 const CLOSING_LINE = '没问题的话我这就帮你提交，有不对的地方直接说改哪项';
+
+export interface RecapRenderOptions {
+  /**
+   * 报名岗位名（如「乐高-运营部-景区运营兼职（国庆）-小时工」）。复述里带上岗位，候选人才能
+   * 在提交前发现报错了近似岗位（badcase xfgjshrp：国庆短期岗与长期岗同名，报到了长期岗）。
+   */
+  jobLabel?: string;
+}
+
+function buildIntroLine(options?: RecapRenderOptions): string {
+  const jobLabel = options?.jobLabel?.trim();
+  return jobLabel ? `${INTRO_LINE}（${jobLabel}）：` : `${INTRO_LINE}：`;
+}
 
 export function renderRecap(
   form: BookingCollectionForm,
   contract: readonly ContractFieldDef[],
+  options?: RecapRenderOptions,
 ): RecapRender {
   const labelIds = filledSlotIds(form, contract);
   if (labelIds.length === 0) return { text: null, labelIds: [], form };
@@ -46,7 +60,7 @@ export function renderRecap(
   });
 
   return {
-    text: `${INTRO_LINE}\n${lines.join('\n')}\n\n${CLOSING_LINE}`,
+    text: `${buildIntroLine(options)}\n${lines.join('\n')}\n\n${CLOSING_LINE}`,
     labelIds,
     form: markRecapSent(form, labelIds),
   };
@@ -60,6 +74,7 @@ export function renderRecap(
 export function renderRecapRedeliveryText(
   form: BookingCollectionForm,
   contract: readonly ContractFieldDef[],
+  options?: RecapRenderOptions,
 ): string | null {
   const recap = form.lastRecap;
   if (!recap || recap.affirmed || recap.labelIds.length === 0) return null;
@@ -69,5 +84,5 @@ export function renderRecapRedeliveryText(
     const slot = form.slots[labelId];
     return `${titleById.get(labelId) ?? String(labelId)}：${slot?.value?.value ?? ''}`;
   });
-  return `${INTRO_LINE}\n${lines.join('\n')}\n\n${CLOSING_LINE}`;
+  return `${buildIntroLine(options)}\n${lines.join('\n')}\n\n${CLOSING_LINE}`;
 }

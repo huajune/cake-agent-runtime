@@ -45,28 +45,48 @@ const CONTRACT = [NAME_FIELD, PHONE_FIELD, AGE_FIELD, DIRTY_TITLE_FIELD];
 function filledForm() {
   let form = createForm({ jobId: 528781, contract: CONTRACT });
   const nameText = '姓名：兮兮';
-  form = applyFieldValueProposal(form, NAME_FIELD, {
-    value: '兮兮',
-    sourceText: nameText,
-    producer: 'candidate_quote',
-  }, { candidateTexts: [nameText], messages: [{ role: 'user', content: nameText }] }).form;
+  form = applyFieldValueProposal(
+    form,
+    NAME_FIELD,
+    {
+      value: '兮兮',
+      sourceText: nameText,
+      producer: 'candidate_quote',
+    },
+    { candidateTexts: [nameText], messages: [{ role: 'user', content: nameText }] },
+  ).form;
   const phoneText = '我的手机号是18271421690';
-  form = applyFieldValueProposal(form, PHONE_FIELD, {
-    value: '18271421690',
-    sourceText: phoneText,
-    producer: 'candidate_quote',
-  }, { candidateTexts: [phoneText], messages: [{ role: 'user', content: phoneText }] }).form;
-  form = applyFieldValueProposal(form, AGE_FIELD, {
-    value: '26',
-    sourceText: '我今年26岁',
-    producer: 'candidate_quote',
-  }, { candidateTexts: ['我今年26岁'], messages: [] }).form;
-  form = applyFieldValueProposal(form, DIRTY_TITLE_FIELD, {
-    value: '社会人士',
-    optionCodes: ['s1'],
-    sourceText: '我是社会人士',
-    producer: 'candidate_quote',
-  }, { candidateTexts: ['我是社会人士'], messages: [] }).form;
+  form = applyFieldValueProposal(
+    form,
+    PHONE_FIELD,
+    {
+      value: '18271421690',
+      sourceText: phoneText,
+      producer: 'candidate_quote',
+    },
+    { candidateTexts: [phoneText], messages: [{ role: 'user', content: phoneText }] },
+  ).form;
+  form = applyFieldValueProposal(
+    form,
+    AGE_FIELD,
+    {
+      value: '26',
+      sourceText: '我今年26岁',
+      producer: 'candidate_quote',
+    },
+    { candidateTexts: ['我今年26岁'], messages: [] },
+  ).form;
+  form = applyFieldValueProposal(
+    form,
+    DIRTY_TITLE_FIELD,
+    {
+      value: '社会人士',
+      optionCodes: ['s1'],
+      sourceText: '我是社会人士',
+      producer: 'candidate_quote',
+    },
+    { candidateTexts: ['我是社会人士'], messages: [] },
+  ).form;
   return form;
 }
 
@@ -81,6 +101,20 @@ describe('renderRecap', () => {
 
       没问题的话我这就帮你提交，有不对的地方直接说改哪项"
     `);
+  });
+
+  it('带岗位名时引导句附上岗位，候选人能核对报的是哪个岗位（badcase xfgjshrp）', () => {
+    const text = renderRecap(filledForm(), CONTRACT, {
+      jobLabel: '乐高-运营部-景区运营兼职（国庆）-小时工',
+    }).text!;
+    expect(text.split('\n')[0]).toBe(
+      '帮你核对一下报名信息（乐高-运营部-景区运营兼职（国庆）-小时工）：',
+    );
+    expect(text).toContain('姓名：兮兮');
+    expect(MessageSplitter.split(text)[0]).toContain('乐高-运营部-景区运营兼职（国庆）-小时工');
+    expect(renderRecap(filledForm(), CONTRACT, { jobLabel: '  ' }).text!.split('\n')[0]).toBe(
+      '帮你核对一下报名信息：',
+    );
   });
 
   it('渲染即落账——拿不到"只渲染不落账"的出口', () => {
