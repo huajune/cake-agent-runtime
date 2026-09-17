@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [11.11.0] - 2026-09-17
 
-**预计版本**: `v11.11.0`
-**最近更新**: `2026-09-17`
 **来源分支**: `develop`
-**累计 PR**: 2
 
 ### 更新摘要
 - PR #1321 真人介入闸只在真人手打仍是我方最后发言时停止报名后触达
@@ -78,7 +74,6 @@
 - PR #1321 新增用例：request-handoff.tool.spec 带外工单回落派发 / 可见工单为空仍按首次约面；memory.section.spec visibleBookingWorkOrders 来源与过滤；generator preparation 全组 118 passed
 - PR #1322 `tsc --noEmit`、`eslint --max-warnings=0` 无报错
 - PR #1322 tools / agent / memory / biz 目录 4314 个用例通过；三个需求例句在 candidate-card spec 中逐字比对
-<!-- release:pending:end -->
 
 ## [11.10.0] - 2026-09-16
 
