@@ -36,6 +36,7 @@ import type { PromptInjectionAssessment } from '../../guardrail/input/prompt-inj
 import { PromptInjectionDetector } from '../../guardrail/input/prompt-injection-detector';
 import {
   visibleBookingJobIds,
+  visibleBookingWorkOrders,
   type MemoryPromptView,
 } from '../context/sections/semantic/memory.section';
 import type { CreateTurnLedgerInput } from './turn-ledger';
@@ -132,6 +133,7 @@ export function resolveTurnContext(input: {
     visualSheetsByContent: sources.visualSheetsByContent,
   });
   const bookingWorkOrderJobIds = visibleBookingJobIds(sources.booking);
+  const bookingWorkOrders = visibleBookingWorkOrders(sources.booking);
   const ledgerSeed: CreateTurnLedgerInput = {
     brandCatalog: sources.brandCatalog,
     mentionedBrands: collectMentionedBrands({
@@ -205,6 +207,7 @@ export function resolveTurnContext(input: {
     currentUserMessage: normalizedInput.currentUserMessage,
     currentLaborFormIntent: normalizedInput.laborFormIntent,
     bookingWorkOrderJobIds,
+    bookingWorkOrders,
     visualSheetsByContent: sources.visualSheetsByContent,
   });
 
