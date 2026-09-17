@@ -154,12 +154,34 @@ function parseChineseOrArabicNumber(token: string): number | null {
   return Number.isFinite(num) && num >= 1 && num <= 7 ? num : null;
 }
 
+// 「只有晚班？」「只有周末班吗」是候选人在问岗位是不是只有这个班次，不是自陈只做这个班次；
+// 按子句判断：带「只有」且以问号收尾或含疑问语气词的子句里，「只有 + 班次」不算硬约束。
+const QUESTION_MARKER_PATTERN = /(?:吗|么|嘛|是不是|是吧|有没有)/;
+
+function isOnlyShiftQuestion(clause: string, trailing: string): boolean {
+  if (!clause.includes('只有')) return false;
+  return /[？?]/.test(trailing) || QUESTION_MARKER_PATTERN.test(clause);
+}
+
+function splitClausesWithTrailing(message: string): Array<{ clause: string; trailing: string }> {
+  const result: Array<{ clause: string; trailing: string }> = [];
+  const pattern = /([^，。！？；;\n?!]+)([，。！？；;\n?!]*)/g;
+  for (const match of message.matchAll(pattern)) {
+    result.push({ clause: match[1], trailing: match[2] });
+  }
+  return result;
+}
+
 function matchOnlyShiftTargets(message: string): OnlyShiftTarget[] {
-  return ONLY_SHIFT_TARGETS.filter((shift) =>
-    new RegExp(`只(?:能|想|考虑)?[^，。！？；;]{0,8}?${ONLY_SHIFT_TARGET_FRAGMENTS[shift]}`).test(
-      message,
-    ),
+  const clauses = splitClausesWithTrailing(message).filter(
+    ({ clause, trailing }) => !isOnlyShiftQuestion(clause, trailing),
   );
+  return ONLY_SHIFT_TARGETS.filter((shift) => {
+    const pattern = new RegExp(
+      `只(?:能|想|考虑)?[^，。！？；;]{0,8}?${ONLY_SHIFT_TARGET_FRAGMENTS[shift]}`,
+    );
+    return clauses.some(({ clause }) => pattern.test(clause));
+  });
 }
 
 function matchOnlyShifts(message: string): string[] {

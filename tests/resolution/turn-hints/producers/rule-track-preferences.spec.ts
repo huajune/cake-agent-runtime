@@ -125,6 +125,27 @@ describe('extractScheduleConstraintStructured', () => {
     expect(extractScheduleConstraintStructured('只上晚班')).toMatchObject({ onlyEvenings: true });
   });
 
+  it('does not read 只有X？ availability questions as only-shift constraints', () => {
+    // 生产 badcase vvlfn9td：候选人问「只有晚班？」是在问岗位是否只有晚班，不是只做晚班
+    // 无任何硬约束时整体返回 null；有其他约束时 onlyEvenings 也不得为 true
+    expect(extractScheduleConstraintStructured('只有晚班？')?.onlyEvenings ?? null).toBeNull();
+    expect(extractScheduleConstraintStructured('只有晚班吗')?.onlyEvenings ?? null).toBeNull();
+    expect(
+      extractScheduleConstraintStructured('是不是只有周末班？')?.onlyWeekends ?? null,
+    ).toBeNull();
+    expect(extractSchedule('只有晚班？')).not.toContain('只晚班');
+  });
+
+  it('keeps 只有X statements without question markers as constraints', () => {
+    expect(extractScheduleConstraintStructured('我只有周末有空')).toMatchObject({
+      onlyWeekends: true,
+    });
+    expect(extractScheduleConstraintStructured('只有晚班？我只能上早班')).toMatchObject({
+      onlyEvenings: null,
+      onlyMornings: true,
+    });
+  });
+
   it('turns 只上早班 into onlyMornings', () => {
     expect(extractScheduleConstraintStructured('只能上早班')).toMatchObject({
       onlyMornings: true,
