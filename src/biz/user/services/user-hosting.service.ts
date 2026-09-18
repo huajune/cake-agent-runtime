@@ -526,7 +526,7 @@ export class UserHostingService {
       this.pausedUsersCache.set(entry.userId, {
         isPaused: true,
         pausedAt: entry.pausedAt,
-        // 兼容旧版 Redis 快照（无 expiresAt）：以 pausedAt + 3 天兜底
+        // 兼容旧版 Redis 快照（无 expiresAt）：按 pausedAt 之后的第一个零点兜底
         expiresAt: entry.permanent
           ? PERMANENT_EXPIRES_AT
           : (entry.expiresAt ?? resolveTemporaryPauseExpiresAt(entry.pausedAt)),

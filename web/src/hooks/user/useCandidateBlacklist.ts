@@ -52,7 +52,7 @@ export function useRemoveCandidateFromBlacklist() {
       candidateBlacklistService.removeCandidateFromBlacklist(params),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['candidate-blacklist'] });
-      toast.success('已从黑名单移除（已暂停的会话需在用户列表手动恢复）');
+      toast.success('已从黑名单移除（已暂停的会话需在「永久禁止托管」中手动恢复）');
     },
     onError: () => {
       toast.error('移除失败，请重试');

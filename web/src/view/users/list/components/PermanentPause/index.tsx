@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Ban, ShieldCheck } from 'lucide-react';
 import { formatDateTime } from '@/utils/format';
 import type { UserData } from '../../types';
+import { PAUSE_SOURCE_LABELS } from '../../constants';
 import styles from './index.module.scss';
 
 interface PermanentPauseProps {
@@ -16,15 +17,6 @@ interface PermanentPauseProps {
   /** 把托管账号 wxid 解析为配置的展示名（未配置别名时返回原始值） */
   resolveBotLabel?: (ids: Pick<UserData, 'botUserId' | 'imBotId'>) => string;
 }
-
-/** 永久禁止来源（user_hosting_status.pause_source）展示文案 */
-const SOURCE_LABELS: Record<string, string> = {
-  manual: '手动',
-  candidate_blacklist: '黑名单命中',
-  interview_booking: '面试预约',
-  intervention: '人工介入',
-  human_intervention: '人工介入',
-};
 
 export default function PermanentPause({
   users,
@@ -131,7 +123,7 @@ export default function PermanentPause({
               users.map((user) => {
                 const botLabel = resolveBotLabel?.(user) || user.botUserId || user.imBotId || '-';
                 const sourceLabel = user.pauseSource
-                  ? SOURCE_LABELS[user.pauseSource] || user.pauseSource
+                  ? PAUSE_SOURCE_LABELS[user.pauseSource] || user.pauseSource
                   : null;
                 return (
                   <tr key={user.chatId}>
