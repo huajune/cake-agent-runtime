@@ -63,6 +63,12 @@ export interface ToolArchiveContext {
 
 export interface ToolTurnInputContext {
   messages: unknown[];
+  /**
+   * 候选人当前消息块之前最近一条经理侧消息是否为真人手动发送（见
+   * conversation-normalizer.resolveHumanTakeoverActive）。skip_reply(scene=human_takeover)
+   * 的确定性准入条件；缺省视为 false。
+   */
+  humanTakeoverActive?: boolean;
   /** 事实相关消费方优先用此结构化旁路；messages 仅保留给对话语义判定与模型 transport。 */
   corpusBlocks?: CorpusBlock[];
   currentUserMessage?: string;

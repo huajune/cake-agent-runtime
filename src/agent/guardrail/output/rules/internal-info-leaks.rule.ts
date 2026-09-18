@@ -282,10 +282,11 @@ export function tryUnwrapEnvelopeReply(content: string): string | null {
 
 /**
  * 沉默意图信封：整条首版是 skip_reply 的参数 JSON（模型想沉默但没走工具调用，把参数
- * 当正文吐出）。skip_reply 是唯一以 `reason` 为全部参数的工具，因此接受的形态是：
- * - `{"reason":"…"}`；
+ * 当正文吐出）。skip_reply 的参数只有 `scene` + `reason`（scene 为可选出现的场景枚举字符串），
+ * 因此接受的形态是：
+ * - `{"reason":"…"}` / `{"scene":"…","reason":"…"}`；
  * - `{"action"|"name"|"tool"|"tool_name"|"function":"skip_reply","reason":"…"}`；
- * - `{"type":"tool_use","name":"skip_reply","input":{"reason":"…"}}` 类嵌套调用结构。
+ * - `{"type":"tool_use","name":"skip_reply","input":{"scene":"…","reason":"…"}}` 类嵌套调用结构。
  *
  * 带 reasonCode / riskType 等其它工具参数键、或点名其它工具的信封都不算——那是转人工/
  * 告警意图的残文，仍按 isToolCallArtifactOnly 收敛为转人工。
@@ -302,6 +303,7 @@ const SKIP_ENVELOPE_TOOL_ID_KEYS = new Set([
   'function',
 ]);
 const SKIP_ENVELOPE_NESTED_ARGS_KEYS = new Set(['input', 'arguments', 'parameters']);
+const SKIP_ENVELOPE_ARG_KEYS = new Set(['reason', 'scene']);
 const SKIP_REPLY_TOOL_NAME = 'skip_reply';
 
 export function isSkipIntentEnvelope(content: string): boolean {
@@ -327,11 +329,19 @@ export function isSkipIntentEnvelope(content: string): boolean {
     }
     if (normalized === 'id') continue;
     if (normalized === 'reason') continue;
+    if (normalized === 'scene') {
+      if (typeof value !== 'string') return false;
+      continue;
+    }
     return false;
   }
-  if (nestedArgs && !Object.keys(nestedArgs).every((key) => key.toLowerCase() === 'reason')) {
+  if (
+    nestedArgs &&
+    !Object.keys(nestedArgs).every((key) => SKIP_ENVELOPE_ARG_KEYS.has(key.toLowerCase()))
+  ) {
     return false;
   }
+  if (nestedArgs && 'scene' in nestedArgs && typeof nestedArgs.scene !== 'string') return false;
   const reason = (nestedArgs ?? record).reason;
   return typeof reason === 'string' && reason.trim() !== '';
 }

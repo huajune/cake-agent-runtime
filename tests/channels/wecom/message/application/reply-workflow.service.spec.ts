@@ -1732,7 +1732,13 @@ describe('ReplyWorkflowService', () => {
         text: '',
         reasoning: undefined,
         responseMessages: [],
-        toolCalls: [{ toolName: 'skip_reply', args: { reason: '候选人仅确认' } }],
+        toolCalls: [
+          {
+            toolName: 'skip_reply',
+            args: { scene: 'confirmation_closure', reason: '候选人仅确认' },
+            result: { skipped: true, shortCircuited: true },
+          },
+        ],
         usage: { inputTokens: 1, outputTokens: 0, totalTokens: 1 },
       });
 

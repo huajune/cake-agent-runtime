@@ -185,6 +185,76 @@ describe('GeneratorAgent', () => {
     expect(preparedStep).not.toHaveProperty('system');
   });
 
+  it('should block skip_reply for the rest of the turn once runtime rejected it', async () => {
+    mockPreparation.prepare.mockResolvedValue({
+      ...preparedContext,
+      tools: {
+        skip_reply: {},
+        duliday_job_list: {},
+      },
+    });
+
+    await service.invoke(invokeParams);
+
+    const call = mockLlm.generate.mock.calls[0][0] as Record<string, unknown>;
+    const prepareStep = call.prepareStep as (input: unknown) => unknown;
+    const preparedStep = await Promise.resolve(
+      prepareStep({
+        steps: [
+          {
+            toolCalls: [{ toolName: 'skip_reply' }],
+            toolResults: [
+              {
+                toolName: 'skip_reply',
+                output: {
+                  success: false,
+                  skipped: false,
+                  errorType: 'skip_reply.human_takeover_not_active',
+                },
+              },
+            ],
+          },
+        ],
+      }),
+    );
+
+    expect(preparedStep).toEqual(
+      expect.objectContaining({
+        activeTools: ['duliday_job_list'],
+        instructions: expect.stringContaining('已被拒绝'),
+      }),
+    );
+  });
+
+  it('should not block skip_reply when it was accepted (round already short-circuits)', async () => {
+    mockPreparation.prepare.mockResolvedValue({
+      ...preparedContext,
+      tools: {
+        skip_reply: {},
+        duliday_job_list: {},
+      },
+    });
+
+    await service.invoke(invokeParams);
+
+    const call = mockLlm.generate.mock.calls[0][0] as Record<string, unknown>;
+    const prepareStep = call.prepareStep as (input: unknown) => unknown;
+    const preparedStep = await Promise.resolve(
+      prepareStep({
+        steps: [
+          {
+            toolCalls: [{ toolName: 'skip_reply' }],
+            toolResults: [
+              { toolName: 'skip_reply', output: { skipped: true, shortCircuited: true } },
+            ],
+          },
+        ],
+      }),
+    );
+
+    expect(preparedStep).toEqual({});
+  });
+
   it('should use env thinking budget when request does not override thinking', async () => {
     mockConfigService.get.mockImplementation((key: string, defaultValue?: string) => {
       if (key === 'AGENT_THINKING_BUDGET_TOKENS') return '3000';

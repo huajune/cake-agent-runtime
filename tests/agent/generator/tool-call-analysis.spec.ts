@@ -11,6 +11,9 @@ import {
   findSucceededSideEffectTools,
   findToolsExceedingLimit,
   hasCommittedSideEffect,
+  hasRejectedSkipReply,
+  isAcceptedSkipReplyResult,
+  isShortCircuitedToolCall,
   isForbiddenDuringRevise,
   isForbiddenForProactive,
   isGuardrailRejected,
@@ -210,6 +213,44 @@ describe('tool-call-analysis', () => {
     it('ignores steps without toolCalls and invalid entries', () => {
       const steps = [{}, { toolCalls: [{ toolName: '' }, { toolName: 'skip_reply' }] }];
       expect(collectCalledToolNames(steps)).toEqual(new Set(['skip_reply']));
+    });
+  });
+
+  describe('skip_reply 接受/拒绝判定', () => {
+    const accepted = { skipped: true, shortCircuited: true, scene: 'human_takeover' };
+    const rejected = {
+      success: false,
+      skipped: false,
+      errorType: 'skip_reply.human_takeover_not_active',
+    };
+
+    it('isAcceptedSkipReplyResult 只认 skipped === true', () => {
+      expect(isAcceptedSkipReplyResult(accepted)).toBe(true);
+      expect(isAcceptedSkipReplyResult(rejected)).toBe(false);
+      expect(isAcceptedSkipReplyResult(undefined)).toBe(false);
+      expect(isAcceptedSkipReplyResult({})).toBe(false);
+    });
+
+    it('isShortCircuitedToolCall：skip_reply 只有被接受才短路，不再按工具名无条件短路', () => {
+      expect(isShortCircuitedToolCall({ toolName: 'skip_reply', result: accepted })).toBe(true);
+      expect(isShortCircuitedToolCall({ toolName: 'skip_reply', result: rejected })).toBe(false);
+      expect(isShortCircuitedToolCall({ toolName: 'skip_reply', result: undefined })).toBe(false);
+      expect(
+        isShortCircuitedToolCall({ toolName: 'request_handoff', result: { shortCircuited: true } }),
+      ).toBe(true);
+    });
+
+    it('hasRejectedSkipReply 扫描 toolResults 中被拒绝的 skip_reply', () => {
+      expect(hasRejectedSkipReply([])).toBe(false);
+      expect(
+        hasRejectedSkipReply([{ toolResults: [{ toolName: 'skip_reply', output: accepted }] }]),
+      ).toBe(false);
+      expect(
+        hasRejectedSkipReply([{ toolResults: [{ toolName: 'skip_reply', output: rejected }] }]),
+      ).toBe(true);
+      expect(
+        hasRejectedSkipReply([{ toolResults: [{ toolName: 'geocode', output: rejected }] }]),
+      ).toBe(false);
     });
   });
 

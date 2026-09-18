@@ -181,6 +181,8 @@ export function resolveToolContextModel(input: {
   bookingWorkOrders?: ToolBookingWorkOrderRef[];
   /** 剥时间后缀内容 → 视觉事实 sheet；出处公证据此认简历/证件类自陈材料。 */
   visualSheetsByContent?: ReadonlyMap<string, FinalizedVisualFactSheet>;
+  /** 与 normalizedMessages 同批计算的「真人正在沟通」态；缺省 false（见 ToolTurnInputContext）。 */
+  humanTakeoverActive?: boolean;
 }): ToolContextModel {
   const {
     params,
@@ -257,6 +259,7 @@ export function resolveToolContextModel(input: {
     },
     turnInput: {
       messages: normalizedMessages,
+      humanTakeoverActive: input.humanTakeoverActive ?? false,
       corpusBlocks: conversationCorpusBlocks,
       currentUserMessage,
       currentLaborFormIntent,
