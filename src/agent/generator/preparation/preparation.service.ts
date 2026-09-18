@@ -80,19 +80,20 @@ export class PreparationService {
       const sources = await measureAsyncPhase(phaseDurationsMs, 'load_sources', () =>
         this.dataLoader.load(params, input),
       );
-      const { messages: normalizedMessages, corpusBlocks: conversationCorpusBlocks } = measurePhase(
-        phaseDurationsMs,
-        'normalize_conversation',
-        () =>
-          normalizeConversationWithCorpus({
-            callerKind: params.callerKind,
-            memoryWindow: sources.memory.shortTerm.messageWindow,
-            passedMessages: input.truncatedMessages,
-            enableVision: options?.enableVision ?? false,
-            imageUrls: params.imageUrls,
-            imageMessageIds: params.imageMessageIds,
-            visualMessageTypes: params.visualMessageTypes,
-          }),
+      const {
+        messages: normalizedMessages,
+        corpusBlocks: conversationCorpusBlocks,
+        humanTakeoverActive,
+      } = measurePhase(phaseDurationsMs, 'normalize_conversation', () =>
+        normalizeConversationWithCorpus({
+          callerKind: params.callerKind,
+          memoryWindow: sources.memory.shortTerm.messageWindow,
+          passedMessages: input.truncatedMessages,
+          enableVision: options?.enableVision ?? false,
+          imageUrls: params.imageUrls,
+          imageMessageIds: params.imageMessageIds,
+          visualMessageTypes: params.visualMessageTypes,
+        }),
       );
 
       const injectionAssessment = this.injectionDetector.detectTexts(input.currentTurnTexts);
@@ -107,6 +108,7 @@ export class PreparationService {
           sources,
           normalizedMessages,
           conversationCorpusBlocks,
+          humanTakeoverActive,
           injectionAssessment,
           nowMs: Date.now(),
         }),

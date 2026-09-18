@@ -8,7 +8,7 @@
 import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { hasToolCall, stepCountIs, type generateText } from 'ai';
+import { stepCountIs, type generateText } from 'ai';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
 import { ModelRole } from '@/llm/llm.types';
 import { MemoryService } from '@memory/memory.service';
@@ -24,6 +24,8 @@ import {
   computeToolCallStatus,
   findSucceededSideEffectTools,
   findToolsExceedingLimit,
+  hasRejectedSkipReply,
+  isShortCircuitedToolCall,
   isShortCircuitedToolResult,
   MAX_PRECHECK_CALLS_PER_TURN,
   MAX_SAME_TOOL_CALLS_PER_TURN,
@@ -253,7 +255,8 @@ export class GeneratorAgent {
       maxOutputTokens: this.maxOutputTokens,
       stopWhen: [
         stepCountIs(ctx.maxSteps),
-        hasToolCall(SKIP_REPLY_TOOL_NAME), // skip_reply 无条件短路
+        // skip_reply 被接受时返回 shortCircuited=true，与其他短路工具走同一判据；
+        // 被拒绝的 skip_reply（真人并未在沟通）不短路，模型必须继续正常回复。
         shortCircuitByAnyToolResult, // 任意工具 shortCircuited=true 即短路
       ],
       prepareStep: this.buildPrepareStep(ctx),
@@ -295,8 +298,12 @@ export class GeneratorAgent {
       // 本轮已调用过业务工具（非 skip_reply 自身）→ 屏蔽 skip_reply
       const called = collectCalledToolNames(steps);
       const hasBusinessAction = [...called].some((name) => name !== SKIP_REPLY_TOOL_NAME);
+      // skip_reply 已被 runtime 拒绝（真人并未在沟通）→ 同样屏蔽，防止换 scene 再申请沉默
+      const skipReplyRejected = hasRejectedSkipReply(steps);
       const skipReplyBlocked =
-        hasBusinessAction && baseTools.includes(SKIP_REPLY_TOOL_NAME) ? [SKIP_REPLY_TOOL_NAME] : [];
+        (hasBusinessAction || skipReplyRejected) && baseTools.includes(SKIP_REPLY_TOOL_NAME)
+          ? [SKIP_REPLY_TOOL_NAME]
+          : [];
 
       // 副作用工具本轮已成功执行 → 屏蔽，防止重复提交
       const sideEffectBlocked = findSucceededSideEffectTools(steps).filter((name) =>
@@ -319,7 +326,9 @@ export class GeneratorAgent {
       if (generalOveruseNotice) noticeParts.push(generalOveruseNotice);
       if (skipReplyBlocked.length > 0) {
         noticeParts.push(
-          `⚠️ 系统拦截：本轮已发生业务工具调用，不可再调用 \`${SKIP_REPLY_TOOL_NAME}\`。沉默仅适用于本轮完全无业务动作且候选人仅发确认词的场景。`,
+          skipReplyRejected
+            ? `⚠️ 系统拦截：本轮 \`${SKIP_REPLY_TOOL_NAME}\` 已被拒绝（候选人当前消息之前最近一条经理侧消息是你自己发的，不存在真人正在沟通），不可再调用。候选人这条消息是发给你的，请正常回复。`
+            : `⚠️ 系统拦截：本轮已发生业务工具调用，不可再调用 \`${SKIP_REPLY_TOOL_NAME}\`。沉默仅适用于本轮完全无业务动作且候选人仅发确认词的场景。`,
         );
       }
       const sideEffectNotice = buildSideEffectBlockNotice(sideEffectBlocked);
@@ -811,15 +820,12 @@ export class GeneratorAgent {
 
   /**
    * 短路语义 = 本轮不再对外投递回复，不做空文本恢复：
-   * - skip_reply：无条件短路
+   * - skip_reply：仅被接受（skipped=true）时短路；被拒绝时模型必须继续回复
    * - 其他工具：仅当返回值标记 shortCircuited 时算短路；HANDOFF_NO_BOOKING（false）
    *   不算短路，booking gate hard-reject（true）算短路。
    */
   private didShortCircuit(result: GeneratorRunResult): boolean {
-    return result.toolCalls.some((call) => {
-      if (call.toolName === SKIP_REPLY_TOOL_NAME) return true;
-      return isShortCircuitedToolResult(call.result);
-    });
+    return result.toolCalls.some((call) => isShortCircuitedToolCall(call));
   }
 
   private buildEmptyTextRecoveryPrompt(result: GeneratorRunResult, ctx: WorkingMemory): string {
