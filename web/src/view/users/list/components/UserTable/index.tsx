@@ -1,7 +1,7 @@
 import { Inbox } from 'lucide-react';
 import { formatDateTime, formatLocaleNumber } from '@/utils/format';
 import type { UserTableProps } from '../../types';
-import { AVATAR_GRADIENTS } from '../../constants';
+import { AVATAR_GRADIENTS, PAUSE_SOURCE_LABELS } from '../../constants';
 import { getAvatarStyle, getUserInitial } from '../../utils/helpers';
 import Switch from '@/components/Switch';
 import styles from './index.module.scss';
@@ -16,14 +16,6 @@ function formatCompactTime(timestamp: number) {
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
-
-const PAUSE_SOURCE_LABELS: Record<string, string> = {
-  manual: '手动',
-  candidate_blacklist: '黑名单',
-  interview_booking: '约面',
-  intervention: '人工介入',
-  human_intervention: '真人介入',
-};
 
 export default function UserTable({
   users,
@@ -42,7 +34,7 @@ export default function UserTable({
         <thead>
           <tr>
             <th>用户</th>
-            <th>托管 bot</th>
+            <th>托管账号</th>
             <th>会话ID</th>
             {!isPausedTab && <th>消息数</th>}
             {!isPausedTab && <th>Token 消耗</th>}
