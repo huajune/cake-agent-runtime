@@ -14,16 +14,21 @@
 **预计版本**: `v11.11.1`
 **最近更新**: `2026-09-18`
 **来源分支**: `develop`
-**累计 PR**: 1
+**累计 PR**: 2
 
 ### 更新摘要
 - PR #1328 skip_reply 真人接管场景改由 runtime 按消息来源校验
+- PR #1329 托管用户页筛选越界、排序失义与解禁口径文案修正
 
 ### 新功能
 - 无
 
 ### 问题修复
 - PR #1328 修复 Agent 把候选人的正常提问误当成"在回复真人经理"而自行静默的问题：以前只要历史里出现过真人从手机发的消息（哪怕只是 36 分钟前的一句开场"你好"），模型就可能编造"真人刚发了 XX"并不回复；现在系统会核对候选人这条消息之前最近一条经理侧消息到底是真人发的还是 Agent 自己发的，不是真人发的就拒绝静默、必须正常回复。（生产 chat `6a4dbf4bce406a6aee3137e4`，候选人问"前厅还是后厨"被吞 1 小时 42 分钟；近 7 天同类误静默 19 次）
+- PR #1329 托管用户页：在「今日托管会话」输入搜索关键词或选择托管账号后切到「永久禁止托管」，列表被看不见的筛选条件过滤成空、Tab 计数归零。现在搜索/账号筛选只在带工具条的 Tab（今日会话、临时禁止）生效，永久禁止列表不受影响，无工具条的 Tab 上计数展示总量。
+- PR #1329 「临时禁止托管」提示写的是"3 天后自动恢复"，实际后端自 0902 起按次日零点解禁（列表里解禁时间也一直显示次日 00:00）。提示改为"次日 0 点自动恢复托管"，后端兜底注释同步。
+- PR #1329 趋势卡收起态在首屏（尚未展开、数据未加载）显示"平均 0 人/天 / 消息 0 条"假零值，现在没有数据时不展示预览数字。
+- PR #1329 托管用户页筛选越界、排序失义与解禁口径文案修正
 
 ### 优化调整
 - PR #1328 `skip_reply` 新增必填 `scene` 参数（`confirmation_closure` / `human_takeover`）；`human_takeover` 由 runtime 按消息来源（`isHumanAgentTextMessage`）确定性校验，不成立返回 `skip_reply.human_takeover_not_active`（`skipped=false`，不短路），并在本轮 prepareStep 屏蔽 `skip_reply` 防止换场景再申请沉默
@@ -32,6 +37,11 @@
 - PR #1328 真人消息来源标记缩短为只标来源与保密纪律，删除内嵌的沉默教学（唯一住所为 skip_reply description 场景二）；`[内部来源标记：` 前缀不变，泄漏检测口径不受影响
 - PR #1328 `isSkipIntentEnvelope` 同步接受 `scene` 键，09-16 的沉默意图信封治理语义不变
 - PR #1328 规则台账 `docs/prompt-rule-ledger.md` 登记本批（六、工具 description 2026-09-18 小节 + G14 / skip_reply 行）
+- PR #1329 「临时禁止托管」的排序下拉只保留「禁止时间新到旧 / 解禁时间由近到远」，不再出现该列表并不存在的「首次活跃 / 最后活跃 / 消息数」维度。
+- PR #1329 暂停来源文案收拢为一份共享常量：此前临时/永久两张表对同一来源各叫一套（约面 vs 面试预约、真人介入 vs 人工介入、黑名单 vs 黑名单命中）。
+- PR #1329 今日会话表头「托管 bot」统一为「托管账号」，与其他 Tab 与筛选器一致。
+- PR #1329 黑名单移除的确认框与提示改为指向"永久禁止托管"页恢复（命中黑名单的会话是永久暂停，不在用户列表开关里），避免运营去错地方。
+- PR #1329 删除未使用的 TAB_CONFIG 常量。
 
 ### 运维与流程
 - PR #1328 skip_reply 真人接管场景改由 runtime 按消息来源校验
@@ -46,6 +56,8 @@
 - PR #1328 定向 jest：skip-reply.tool / conversation-normalizer / tool-call-analysis / agent.service / agent-runner / reply-workflow / test-execution / internal-info-leaks 等 18 个套件全绿
 - PR #1328 本地 `pnpm run ci:check` 8 步全绿
 - PR #1328 发版后观测：`message_processing_records.tool_calls` 中 `skip_reply` 的 `errorType=skip_reply.human_takeover_not_active` 出现即代表闸门生效；`reply_preview LIKE '[主动沉默]%真人%'` 的回合逐条对照 prompt 中最近一条经理侧消息应全部为真人标记
+- PR #1329 `web` 下 `tsc -b`、`eslint --max-warnings=0`、prettier 通过。
+- PR #1329 本地以 mock API 起 web 预览逐项核对：隐藏筛选不再影响永久禁止列表与计数、临时禁止排序选项与解禁时间排序、提示文案、来源标签、收起态趋势预览。生产页面 https://cake.duliday.com/web/users 上复现了上述筛选越界与"3 天"文案问题。
 <!-- release:pending:end -->
 
 ## [11.11.0] - 2026-09-17
