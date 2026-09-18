@@ -1,197 +1,89 @@
 {
-  "baseVersion": "11.11.0",
+  "baseVersion": "11.11.1",
   "nextVersion": "11.11.1",
   "updatedAt": "2026-09-18",
   "sourceBranch": "develop",
-  "entries": [
-    {
-      "number": "1328",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1328",
-      "title": "skip_reply 真人接管场景改由 runtime 按消息来源校验",
-      "author": "huajune",
-      "mergedAt": "2026-09-18",
-      "businessUpdates": [
-        "修复 Agent 把候选人的正常提问误当成\"在回复真人经理\"而自行静默的问题：以前只要历史里出现过真人从手机发的消息（哪怕只是 36 分钟前的一句开场\"你好\"），模型就可能编造\"真人刚发了 XX\"并不回复；现在系统会核对候选人这条消息之前最近一条经理侧消息到底是真人发的还是 Agent 自己发的，不是真人发的就拒绝静默、必须正常回复。（生产 chat `6a4dbf4bce406a6aee3137e4`，候选人问\"前厅还是后厨\"被吞 1 小时 42 分钟；近 7 天同类误静默 19 次）"
-      ],
-      "summary": [
-        "skip_reply 真人接管场景改由 runtime 按消息来源校验"
-      ],
-      "features": [],
-      "fixes": [
-        "修复 Agent 把候选人的正常提问误当成\"在回复真人经理\"而自行静默的问题：以前只要历史里出现过真人从手机发的消息（哪怕只是 36 分钟前的一句开场\"你好\"），模型就可能编造\"真人刚发了 XX\"并不回复；现在系统会核对候选人这条消息之前最近一条经理侧消息到底是真人发的还是 Agent 自己发的，不是真人发的就拒绝静默、必须正常回复。（生产 chat `6a4dbf4bce406a6aee3137e4`，候选人问\"前厅还是后厨\"被吞 1 小时 42 分钟；近 7 天同类误静默 19 次）"
-      ],
-      "optimizations": [
-        "`skip_reply` 新增必填 `scene` 参数（`confirmation_closure` / `human_takeover`）；`human_takeover` 由 runtime 按消息来源（`isHumanAgentTextMessage`）确定性校验，不成立返回 `skip_reply.human_takeover_not_active`（`skipped=false`，不短路），并在本轮 prepareStep 屏蔽 `skip_reply` 防止换场景再申请沉默",
-        "skip_reply 接受时返回 `skipped=true` + `shortCircuited=true`；generator / turn-outcome 的短路判据改为只认 `skipped === true`，不再按工具名无条件短路",
-        "`conversation-normalizer` 新增 `resolveHumanTakeoverActive`，经 `turn-context-resolver` / `tool-context.builder` 接线到 `ToolTurnInputContext.humanTakeoverActive`",
-        "真人消息来源标记缩短为只标来源与保密纪律，删除内嵌的沉默教学（唯一住所为 skip_reply description 场景二）；`[内部来源标记：` 前缀不变，泄漏检测口径不受影响",
-        "`isSkipIntentEnvelope` 同步接受 `scene` 键，09-16 的沉默意图信封治理语义不变",
-        "规则台账 `docs/prompt-rule-ledger.md` 登记本批（六、工具 description 2026-09-18 小节 + G14 / skip_reply 行）"
-      ],
-      "ops": [
-        "skip_reply 真人接管场景改由 runtime 按消息来源校验"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "定向 jest：skip-reply.tool / conversation-normalizer / tool-call-analysis / agent.service / agent-runner / reply-workflow / test-execution / internal-info-leaks 等 18 个套件全绿",
-        "本地 `pnpm run ci:check` 8 步全绿",
-        "发版后观测：`message_processing_records.tool_calls` 中 `skip_reply` 的 `errorType=skip_reply.human_takeover_not_active` 出现即代表闸门生效；`reply_preview LIKE '[主动沉默]%真人%'` 的回合逐条对照 prompt 中最近一条经理侧消息应全部为真人标记"
-      ],
-      "level": "patch"
-    },
-    {
-      "number": "1329",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1329",
-      "title": "托管用户页筛选越界、排序失义与解禁口径文案修正",
-      "author": "huajune",
-      "mergedAt": "2026-09-18",
-      "businessUpdates": [
-        "托管用户页：在「今日托管会话」输入搜索关键词或选择托管账号后切到「永久禁止托管」，列表被看不见的筛选条件过滤成空、Tab 计数归零。现在搜索/账号筛选只在带工具条的 Tab（今日会话、临时禁止）生效，永久禁止列表不受影响，无工具条的 Tab 上计数展示总量。",
-        "「临时禁止托管」提示写的是\"3 天后自动恢复\"，实际后端自 0902 起按次日零点解禁（列表里解禁时间也一直显示次日 00:00）。提示改为\"次日 0 点自动恢复托管\"，后端兜底注释同步。",
-        "趋势卡收起态在首屏（尚未展开、数据未加载）显示\"平均 0 人/天 / 消息 0 条\"假零值，现在没有数据时不展示预览数字。",
-        "托管用户页筛选越界、排序失义与解禁口径文案修正"
-      ],
-      "summary": [
-        "托管用户页筛选越界、排序失义与解禁口径文案修正"
-      ],
-      "features": [],
-      "fixes": [
-        "托管用户页：在「今日托管会话」输入搜索关键词或选择托管账号后切到「永久禁止托管」，列表被看不见的筛选条件过滤成空、Tab 计数归零。现在搜索/账号筛选只在带工具条的 Tab（今日会话、临时禁止）生效，永久禁止列表不受影响，无工具条的 Tab 上计数展示总量。",
-        "「临时禁止托管」提示写的是\"3 天后自动恢复\"，实际后端自 0902 起按次日零点解禁（列表里解禁时间也一直显示次日 00:00）。提示改为\"次日 0 点自动恢复托管\"，后端兜底注释同步。",
-        "趋势卡收起态在首屏（尚未展开、数据未加载）显示\"平均 0 人/天 / 消息 0 条\"假零值，现在没有数据时不展示预览数字。",
-        "托管用户页筛选越界、排序失义与解禁口径文案修正"
-      ],
-      "optimizations": [
-        "「临时禁止托管」的排序下拉只保留「禁止时间新到旧 / 解禁时间由近到远」，不再出现该列表并不存在的「首次活跃 / 最后活跃 / 消息数」维度。",
-        "暂停来源文案收拢为一份共享常量：此前临时/永久两张表对同一来源各叫一套（约面 vs 面试预约、真人介入 vs 人工介入、黑名单 vs 黑名单命中）。",
-        "今日会话表头「托管 bot」统一为「托管账号」，与其他 Tab 与筛选器一致。",
-        "黑名单移除的确认框与提示改为指向\"永久禁止托管\"页恢复（命中黑名单的会话是永久暂停，不在用户列表开关里），避免运营去错地方。",
-        "删除未使用的 TAB_CONFIG 常量。"
-      ],
-      "ops": [],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "`web` 下 `tsc -b`、`eslint --max-warnings=0`、prettier 通过。",
-        "本地以 mock API 起 web 预览逐项核对：隐藏筛选不再影响永久禁止列表与计数、临时禁止排序选项与解禁时间排序、提示文案、来源标签、收起态趋势预览。生产页面 https://cake.duliday.com/web/users 上复现了上述筛选越界与\"3 天\"文案问题。"
-      ],
-      "level": "patch"
-    }
-  ],
+  "entries": [],
   "lastRelease": {
-    "version": "11.11.0",
-    "date": "2026-09-17",
+    "version": "11.11.1",
+    "date": "2026-09-18",
     "sourceBranch": "develop",
     "entries": [
       {
-        "number": "1321",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/1321",
-        "title": "真人介入闸收窄；「只有晚班？」不入班次约束；复述附岗位名；改期回落带外工单转人工",
+        "number": "1328",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1328",
+        "title": "skip_reply 真人接管场景改由 runtime 按消息来源校验",
         "author": "huajune",
-        "mergedAt": "2026-09-17",
+        "mergedAt": "2026-09-18",
         "businessUpdates": [
-          "候选人报名后，运营手发「面试注意事项」「面试官微信」等话术，之后 AI 又正常回答了候选人的追问，面试前提醒和面试后回访不再被误停，会照常发出",
-          "真人接管的判定收窄为：真人手打消息之后 AI 没有再回复过；只要 AI 之后又答了候选人，就仍由 AI 继续跟进",
-          "真人在 AI 回复之后再次手打并成为我方最后一条发言，仍视为接管、继续停止主动触达",
-          "候选人问「只有晚班？」「是不是只有周末班」这类疑问句，不再被当成「只做晚班/只做周末」的硬约束去筛岗，回复不会再说「和你『只晚班』的时段对不上」",
-          "提交报名前的核对信息里带上岗位名，候选人能看出报的是哪个岗位；同名近似岗位（如乐高国庆短期岗与长期岗）报错时可在提交前发现",
-          "面试由真人手工登记在另一个微信联系人名下、候选人来找 AI 改期时，AI 不再当成首次约面去自助报可约时段、重发收资单，而是带着查到的工单号直接转人工核实"
+          "修复 Agent 把候选人的正常提问误当成\"在回复真人经理\"而自行静默的问题：以前只要历史里出现过真人从手机发的消息（哪怕只是 36 分钟前的一句开场\"你好\"），模型就可能编造\"真人刚发了 XX\"并不回复；现在系统会核对候选人这条消息之前最近一条经理侧消息到底是真人发的还是 Agent 自己发的，不是真人发的就拒绝静默、必须正常回复。（生产 chat `6a4dbf4bce406a6aee3137e4`，候选人问\"前厅还是后厨\"被吞 1 小时 42 分钟；近 7 天同类误静默 19 次）"
         ],
         "summary": [
-          "真人介入闸只在真人手打仍是我方最后发言时停止报名后触达",
-          "「只有晚班？」疑问句不再解析成只做晚班的硬约束",
-          "提交前复述引导句附上岗位名，候选人能核对报的是哪个岗位",
-          "改期转人工在本联系人无工单时回落带外工单号转人工，不再退回首次约面流程",
-          "真人介入闸收窄；「只有晚班？」不入班次约束；复述附岗位名；改期回落带外工单转人工"
+          "skip_reply 真人接管场景改由 runtime 按消息来源校验"
         ],
         "features": [],
         "fixes": [
-          "候选人报名后，运营手发「面试注意事项」「面试官微信」等话术，之后 AI 又正常回答了候选人的追问，面试前提醒和面试后回访不再被误停，会照常发出",
-          "真人接管的判定收窄为：真人手打消息之后 AI 没有再回复过；只要 AI 之后又答了候选人，就仍由 AI 继续跟进",
-          "真人在 AI 回复之后再次手打并成为我方最后一条发言，仍视为接管、继续停止主动触达",
-          "候选人问「只有晚班？」「是不是只有周末班」这类疑问句，不再被当成「只做晚班/只做周末」的硬约束去筛岗，回复不会再说「和你『只晚班』的时段对不上」",
-          "提交报名前的核对信息里带上岗位名，候选人能看出报的是哪个岗位；同名近似岗位（如乐高国庆短期岗与长期岗）报错时可在提交前发现",
-          "面试由真人手工登记在另一个微信联系人名下、候选人来找 AI 改期时，AI 不再当成首次约面去自助报可约时段、重发收资单，而是带着查到的工单号直接转人工核实"
+          "修复 Agent 把候选人的正常提问误当成\"在回复真人经理\"而自行静默的问题：以前只要历史里出现过真人从手机发的消息（哪怕只是 36 分钟前的一句开场\"你好\"），模型就可能编造\"真人刚发了 XX\"并不回复；现在系统会核对候选人这条消息之前最近一条经理侧消息到底是真人发的还是 Agent 自己发的，不是真人发的就拒绝静默、必须正常回复。（生产 chat `6a4dbf4bce406a6aee3137e4`，候选人问\"前厅还是后厨\"被吞 1 小时 42 分钟；近 7 天同类误静默 19 次）"
         ],
         "optimizations": [
-          "`message-provenance.util` 新增 `isAgentReplyTextMessage`（API_SEND / AI_REPLY 的 TEXT，排除复聊主动触达回灌），与 `isHumanAgentTextMessage` 互斥",
-          "`FollowUpProcessor.detectHumanInterventionAfterCandidate` 改为返回「未被 Agent 回复覆盖的最后一条真人手打」时间",
-          "`rule-track-preferences` 的只做某班次匹配按子句判断，带「只有」且以问号收尾或含疑问语气词的子句不参与匹配",
-          "`renderRecap` / `renderRecapRedeliveryText` 新增 `jobLabel` 选项，引导句渲染为「帮你核对一下报名信息（岗位名）：」，仍以冒号收尾保持表单块原子分段；precheck 从 `job.basicInfo` 传入岗位名；公证器只比对「标签：值」行不受影响",
-          "规则台账 precheck 行登记本次复述文案变化",
-          "`memory.section` 新增 `visibleBookingWorkOrders`（与 [当前预约信息] 同门可见的工单引用，含 active_booking / out_of_band 来源），经 `turn-context-resolver` 进入 `ToolArchiveContext.bookingWorkOrders`；`request_handoff(modify_appointment)` 在 active_booking 与本轮 resolvedWorkOrderId 皆空时回落带外工单号派发转人工，可见工单为空时行为不变"
+          "`skip_reply` 新增必填 `scene` 参数（`confirmation_closure` / `human_takeover`）；`human_takeover` 由 runtime 按消息来源（`isHumanAgentTextMessage`）确定性校验，不成立返回 `skip_reply.human_takeover_not_active`（`skipped=false`，不短路），并在本轮 prepareStep 屏蔽 `skip_reply` 防止换场景再申请沉默",
+          "skip_reply 接受时返回 `skipped=true` + `shortCircuited=true`；generator / turn-outcome 的短路判据改为只认 `skipped === true`，不再按工具名无条件短路",
+          "`conversation-normalizer` 新增 `resolveHumanTakeoverActive`，经 `turn-context-resolver` / `tool-context.builder` 接线到 `ToolTurnInputContext.humanTakeoverActive`",
+          "真人消息来源标记缩短为只标来源与保密纪律，删除内嵌的沉默教学（唯一住所为 skip_reply description 场景二）；`[内部来源标记：` 前缀不变，泄漏检测口径不受影响",
+          "`isSkipIntentEnvelope` 同步接受 `scene` 键，09-16 的沉默意图信封治理语义不变",
+          "规则台账 `docs/prompt-rule-ledger.md` 登记本批（六、工具 description 2026-09-18 小节 + G14 / skip_reply 行）"
         ],
         "ops": [
-          "真人介入闸只在真人手打仍是我方最后发言时停止报名后触达",
-          "「只有晚班？」疑问句不再解析成只做晚班的硬约束",
-          "提交前复述引导句附上岗位名，候选人能核对报的是哪个岗位",
-          "改期转人工在本联系人无工单时回落带外工单号转人工，不再退回首次约面流程"
+          "skip_reply 真人接管场景改由 runtime 按消息来源校验"
         ],
         "config": [],
         "envFiles": [],
         "verification": [
-          "生产 case：2026-09-14 孑然 / ZhuDongSheng（chat 6aa784f6ce406a6aee293f60）报名后运营手发注意事项话术，面试提醒与回访均以 human_intervention_after_candidate 停止；已按该对话复刻为回归用例",
-          "近 14 天量级：interview_reminder 因该闸停止 123 条（发出 116），post_interview_followup 停止 137 条（发出 40）；其中 112 条真人消息之后 Agent 仍有回复，本次收窄可放行这部分",
-          "新增用例在改动前的 processor 上确认为红（2 failed），改动后全绿：follow-up.processor.spec 98 / message-provenance.util.spec 21",
-          "定向 eslint、prettier、tsc --noEmit 通过",
-          "生产 case：badcase vvlfn9td（batch …_1789529639796，「只有晚班？」被解析成只晚班）、badcase xfgjshrp（batch …_1789021251494，乐高国庆岗报成长期岗）",
-          "新增用例：rule-track-preferences.spec 疑问句不入约束 / 陈述句仍入约束；recap-renderer.spec 带岗位名引导句与分段原子性",
-          "定向 jest 四个 spec 143 passed；eslint、prettier、tsc --noEmit 通过",
-          "生产 case：badcase cwpprakx（chat 6aa215c8ce406a6aeed2ce3d，真人手工约面后候选人改期，AI 退回首次约面流程与真人撞车）",
-          "新增用例：request-handoff.tool.spec 带外工单回落派发 / 可见工单为空仍按首次约面；memory.section.spec visibleBookingWorkOrders 来源与过滤；generator preparation 全组 118 passed"
+          "定向 jest：skip-reply.tool / conversation-normalizer / tool-call-analysis / agent.service / agent-runner / reply-workflow / test-execution / internal-info-leaks 等 18 个套件全绿",
+          "本地 `pnpm run ci:check` 8 步全绿",
+          "发版后观测：`message_processing_records.tool_calls` 中 `skip_reply` 的 `errorType=skip_reply.human_takeover_not_active` 出现即代表闸门生效；`reply_preview LIKE '[主动沉默]%真人%'` 的回合逐条对照 prompt 中最近一条经理侧消息应全部为真人标记"
         ],
         "level": "patch"
       },
       {
-        "number": "1322",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/1322",
-        "title": "推荐卡片薪资行按岗位类型定型，兼职先取基础时薪",
+        "number": "1329",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1329",
+        "title": "托管用户页筛选越界、排序失义与解禁口径文案修正",
         "author": "huajune",
-        "mergedAt": "2026-09-17",
+        "mergedAt": "2026-09-18",
         "businessUpdates": [
-          "推荐卡片薪资行按岗位类型定型（四行卡片结构不变，只换薪资行内容）：",
-          "兼职有阶梯：`基础19元/时，满100小时21元/时，满190小时23元/时，超出后所有工时按照新的薪资标准计算，日结，当日结`",
-          "兼职无阶梯：`13.8元/时，法定节假日34.5元/时，月结，5号发薪`",
-          "全职：`综合薪资5000-7000元/月，法定节假日3倍，加班1.5倍，月结，15号发薪`（有提成/全勤/绩效/奖金说明时追加「另有…」标签，数额留给追问）",
-          "详情块新增「奖金说明」行，透传海绵 `bonusDesc` 供模型整合回答奖金追问",
-          "兼职岗卡片此前优先取综合月薪区间，把时薪岗展示成「2000-4000 元/月」；现兼职先取基础时薪，全职先取综合区间，只取正式方案不取培训期/试用期",
-          "阶梯门槛单位「累计工作小时」在卡片和详情块里都规整为「小时」；详情块去掉「每月/不限」前缀（产品裁定两者都按月清零，「不限超过 100累计工作小时」会被读成不限周期）",
-          "日结岗 payday 取值「当日结/次日结」自带结算语义，详情块与记忆结算摘要不再拼成「当日结发薪」",
-          "「更远的 N 家」摘要行薪资取值与卡片同口径"
+          "托管用户页：在「今日托管会话」输入搜索关键词或选择托管账号后切到「永久禁止托管」，列表被看不见的筛选条件过滤成空、Tab 计数归零。现在搜索/账号筛选只在带工具条的 Tab（今日会话、临时禁止）生效，永久禁止列表不受影响，无工具条的 Tab 上计数展示总量。",
+          "「临时禁止托管」提示写的是\"3 天后自动恢复\"，实际后端自 0902 起按次日零点解禁（列表里解禁时间也一直显示次日 00:00）。提示改为\"次日 0 点自动恢复托管\"，后端兜底注释同步。",
+          "趋势卡收起态在首屏（尚未展开、数据未加载）显示\"平均 0 人/天 / 消息 0 条\"假零值，现在没有数据时不展示预览数字。",
+          "托管用户页筛选越界、排序失义与解禁口径文案修正"
         ],
         "summary": [
-          "推荐卡片薪资行按岗位类型定型，兼职先取基础时薪"
+          "托管用户页筛选越界、排序失义与解禁口径文案修正"
         ],
-        "features": [
-          "推荐卡片薪资行按岗位类型定型（四行卡片结构不变，只换薪资行内容）：",
-          "兼职有阶梯：`基础19元/时，满100小时21元/时，满190小时23元/时，超出后所有工时按照新的薪资标准计算，日结，当日结`",
-          "兼职无阶梯：`13.8元/时，法定节假日34.5元/时，月结，5号发薪`",
-          "全职：`综合薪资5000-7000元/月，法定节假日3倍，加班1.5倍，月结，15号发薪`（有提成/全勤/绩效/奖金说明时追加「另有…」标签，数额留给追问）",
-          "详情块新增「奖金说明」行，透传海绵 `bonusDesc` 供模型整合回答奖金追问"
-        ],
+        "features": [],
         "fixes": [
-          "兼职岗卡片此前优先取综合月薪区间，把时薪岗展示成「2000-4000 元/月」；现兼职先取基础时薪，全职先取综合区间，只取正式方案不取培训期/试用期",
-          "阶梯门槛单位「累计工作小时」在卡片和详情块里都规整为「小时」；详情块去掉「每月/不限」前缀（产品裁定两者都按月清零，「不限超过 100累计工作小时」会被读成不限周期）",
-          "日结岗 payday 取值「当日结/次日结」自带结算语义，详情块与记忆结算摘要不再拼成「当日结发薪」",
-          "「更远的 N 家」摘要行薪资取值与卡片同口径"
+          "托管用户页：在「今日托管会话」输入搜索关键词或选择托管账号后切到「永久禁止托管」，列表被看不见的筛选条件过滤成空、Tab 计数归零。现在搜索/账号筛选只在带工具条的 Tab（今日会话、临时禁止）生效，永久禁止列表不受影响，无工具条的 Tab 上计数展示总量。",
+          "「临时禁止托管」提示写的是\"3 天后自动恢复\"，实际后端自 0902 起按次日零点解禁（列表里解禁时间也一直显示次日 00:00）。提示改为\"次日 0 点自动恢复托管\"，后端兜底注释同步。",
+          "趋势卡收起态在首屏（尚未展开、数据未加载）显示\"平均 0 人/天 / 消息 0 条\"假零值，现在没有数据时不展示预览数字。",
+          "托管用户页筛选越界、排序失义与解禁口径文案修正"
         ],
         "optimizations": [
-          "工具描述：阶梯「计算基数不在岗位数据里→转人工」改为照阶梯括注原文答（海绵抽样 473 岗括注 100% 维护，两种口径并存），括注为空才转人工；四行铁律中薪资行改为「照卡片说、追问再按详情块展开」，回收「薪资行须结合备注补阶梯/节假日」教学",
-          "prompt-rule-ledger 登记 G2a 与 duliday_job_list 行"
+          "「临时禁止托管」的排序下拉只保留「禁止时间新到旧 / 解禁时间由近到远」，不再出现该列表并不存在的「首次活跃 / 最后活跃 / 消息数」维度。",
+          "暂停来源文案收拢为一份共享常量：此前临时/永久两张表对同一来源各叫一套（约面 vs 面试预约、真人介入 vs 人工介入、黑名单 vs 黑名单命中）。",
+          "今日会话表头「托管 bot」统一为「托管账号」，与其他 Tab 与筛选器一致。",
+          "黑名单移除的确认框与提示改为指向\"永久禁止托管\"页恢复（命中黑名单的会话是永久暂停，不在用户列表开关里），避免运营去错地方。",
+          "删除未使用的 TAB_CONFIG 常量。"
         ],
-        "ops": [
-          "推荐卡片薪资行按岗位类型定型，兼职先取基础时薪"
-        ],
+        "ops": [],
         "config": [],
         "envFiles": [],
         "verification": [
-          "`tsc --noEmit`、`eslint --max-warnings=0` 无报错",
-          "tools / agent / memory / biz 目录 4314 个用例通过；三个需求例句在 candidate-card spec 中逐字比对"
+          "`web` 下 `tsc -b`、`eslint --max-warnings=0`、prettier 通过。",
+          "本地以 mock API 起 web 预览逐项核对：隐藏筛选不再影响永久禁止列表与计数、临时禁止排序选项与解禁时间排序、提示文案、来源标签、收起态趋势预览。生产页面 https://cake.duliday.com/web/users 上复现了上述筛选越界与\"3 天\"文案问题。"
         ],
-        "level": "minor"
+        "level": "patch"
       }
     ]
   },
-  "lastAnalyzedSha": "628e063d54606df0907b17f03dd9a46fd8abc67a"
+  "lastAnalyzedSha": "dbd18e3bca623b6f7dcf1b6bf1c9f0ccae7996a9"
 }
