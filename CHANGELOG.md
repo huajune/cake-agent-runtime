@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [11.11.1] - 2026-09-18
 
-**预计版本**: `v11.11.1`
-**最近更新**: `2026-09-18`
 **来源分支**: `develop`
-**累计 PR**: 2
 
 ### 更新摘要
 - PR #1328 skip_reply 真人接管场景改由 runtime 按消息来源校验
@@ -58,7 +54,6 @@
 - PR #1328 发版后观测：`message_processing_records.tool_calls` 中 `skip_reply` 的 `errorType=skip_reply.human_takeover_not_active` 出现即代表闸门生效；`reply_preview LIKE '[主动沉默]%真人%'` 的回合逐条对照 prompt 中最近一条经理侧消息应全部为真人标记
 - PR #1329 `web` 下 `tsc -b`、`eslint --max-warnings=0`、prettier 通过。
 - PR #1329 本地以 mock API 起 web 预览逐项核对：隐藏筛选不再影响永久禁止列表与计数、临时禁止排序选项与解禁时间排序、提示文案、来源标签、收起态趋势预览。生产页面 https://cake.duliday.com/web/users 上复现了上述筛选越界与"3 天"文案问题。
-<!-- release:pending:end -->
 
 ## [11.11.0] - 2026-09-17
 
