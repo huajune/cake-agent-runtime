@@ -8,6 +8,46 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v11.11.1`
+**最近更新**: `2026-09-18`
+**来源分支**: `develop`
+**累计 PR**: 1
+
+### 更新摘要
+- PR #1328 skip_reply 真人接管场景改由 runtime 按消息来源校验
+
+### 新功能
+- 无
+
+### 问题修复
+- PR #1328 修复 Agent 把候选人的正常提问误当成"在回复真人经理"而自行静默的问题：以前只要历史里出现过真人从手机发的消息（哪怕只是 36 分钟前的一句开场"你好"），模型就可能编造"真人刚发了 XX"并不回复；现在系统会核对候选人这条消息之前最近一条经理侧消息到底是真人发的还是 Agent 自己发的，不是真人发的就拒绝静默、必须正常回复。（生产 chat `6a4dbf4bce406a6aee3137e4`，候选人问"前厅还是后厨"被吞 1 小时 42 分钟；近 7 天同类误静默 19 次）
+
+### 优化调整
+- PR #1328 `skip_reply` 新增必填 `scene` 参数（`confirmation_closure` / `human_takeover`）；`human_takeover` 由 runtime 按消息来源（`isHumanAgentTextMessage`）确定性校验，不成立返回 `skip_reply.human_takeover_not_active`（`skipped=false`，不短路），并在本轮 prepareStep 屏蔽 `skip_reply` 防止换场景再申请沉默
+- PR #1328 skip_reply 接受时返回 `skipped=true` + `shortCircuited=true`；generator / turn-outcome 的短路判据改为只认 `skipped === true`，不再按工具名无条件短路
+- PR #1328 `conversation-normalizer` 新增 `resolveHumanTakeoverActive`，经 `turn-context-resolver` / `tool-context.builder` 接线到 `ToolTurnInputContext.humanTakeoverActive`
+- PR #1328 真人消息来源标记缩短为只标来源与保密纪律，删除内嵌的沉默教学（唯一住所为 skip_reply description 场景二）；`[内部来源标记：` 前缀不变，泄漏检测口径不受影响
+- PR #1328 `isSkipIntentEnvelope` 同步接受 `scene` 键，09-16 的沉默意图信封治理语义不变
+- PR #1328 规则台账 `docs/prompt-rule-ledger.md` 登记本批（六、工具 description 2026-09-18 小节 + G14 / skip_reply 行）
+
+### 运维与流程
+- PR #1328 skip_reply 真人接管场景改由 runtime 按消息来源校验
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #1328 定向 jest：skip-reply.tool / conversation-normalizer / tool-call-analysis / agent.service / agent-runner / reply-workflow / test-execution / internal-info-leaks 等 18 个套件全绿
+- PR #1328 本地 `pnpm run ci:check` 8 步全绿
+- PR #1328 发版后观测：`message_processing_records.tool_calls` 中 `skip_reply` 的 `errorType=skip_reply.human_takeover_not_active` 出现即代表闸门生效；`reply_preview LIKE '[主动沉默]%真人%'` 的回合逐条对照 prompt 中最近一条经理侧消息应全部为真人标记
+<!-- release:pending:end -->
+
 ## [11.11.0] - 2026-09-17
 
 **来源分支**: `develop`
