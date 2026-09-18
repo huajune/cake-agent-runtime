@@ -260,12 +260,38 @@ export function isShortCircuitedToolResult(result: unknown): boolean {
   return r?.shortCircuited === true;
 }
 
-/** 归一后的 AgentToolCall 是否短路；skip_reply 是无条件沉默工具。 */
+const SKIP_REPLY_TOOL_NAME = 'skip_reply';
+
+/**
+ * skip_reply 是否被接受：工具返回 `skipped === true`。被拒绝的调用（scene=human_takeover
+ * 但真人并未在沟通）返回 buildToolError 形态（skipped=false、errorType），不算沉默。
+ */
+export function isAcceptedSkipReplyResult(result: unknown): boolean {
+  return asRecord(result)?.skipped === true;
+}
+
+/** 归一后的 AgentToolCall 是否短路；skip_reply 只有被接受（skipped=true）才算沉默短路。 */
 export function isShortCircuitedToolCall(
   call: Pick<AgentToolCall, 'toolName' | 'result'>,
 ): boolean {
-  if (call.toolName === 'skip_reply') return true;
+  if (call.toolName === SKIP_REPLY_TOOL_NAME) return isAcceptedSkipReplyResult(call.result);
   return isShortCircuitedToolResult(call.result);
+}
+
+/**
+ * 已执行 steps 中是否有被拒绝的 skip_reply。拒绝后本轮必须正常回复，prepareStep 据此
+ * 屏蔽 skip_reply，防止模型换 scene 再次申请沉默。
+ */
+export function hasRejectedSkipReply(steps: StepLike[]): boolean {
+  for (const step of steps) {
+    const results = step.toolResults;
+    if (!Array.isArray(results)) continue;
+    for (const tr of results) {
+      if (tr.toolName !== SKIP_REPLY_TOOL_NAME) continue;
+      if (!isAcceptedSkipReplyResult(tr.output)) return true;
+    }
+  }
+  return false;
 }
 
 /** booking provenance gate hard-reject 会在 outcome 层转人工。 */

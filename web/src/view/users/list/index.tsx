@@ -26,14 +26,34 @@ import UserTrendChart from './components/UserTrendChart';
 import UserTabNav from './components/UserTabNav';
 import CandidateBlacklist from './components/CandidateBlacklist';
 import PermanentPause from './components/PermanentPause';
-import { USER_RANGE_OPTIONS } from './constants';
+import { TEMPORARY_PAUSE_RESUME_HINT, USER_RANGE_OPTIONS } from './constants';
 
 // 样式导入
 import styles from './styles/index.module.scss';
 
 const ALL_BOTS = '__all_bots__';
 
-type SortMode = 'firstActiveDesc' | 'lastActiveDesc' | 'messageDesc';
+type SortMode = 'firstActiveDesc' | 'lastActiveDesc' | 'messageDesc' | 'pauseExpiresAsc';
+
+interface SortOption {
+  value: SortMode;
+  label: string;
+}
+
+/** 今日会话按活跃/消息排序；临时禁止列表没有这些维度，只按禁止/解禁时间排 */
+const TODAY_SORT_OPTIONS: SortOption[] = [
+  { value: 'firstActiveDesc', label: '首次活跃时间新到旧' },
+  { value: 'lastActiveDesc', label: '最后活跃时间新到旧' },
+  { value: 'messageDesc', label: '消息数多到少' },
+];
+
+const PAUSED_SORT_OPTIONS: SortOption[] = [
+  { value: 'firstActiveDesc', label: '禁止时间新到旧' },
+  { value: 'pauseExpiresAsc', label: '解禁时间由近到远' },
+];
+
+/** 搜索 / 托管账号筛选只在有工具条的 Tab 生效，避免隐藏的筛选条件悄悄过滤其他 Tab */
+const TABS_WITH_TOOLBAR: ReadonlySet<TabType> = new Set<TabType>(['today', 'paused']);
 
 interface BotOption {
   value: string;
@@ -108,9 +128,7 @@ function filterUsersByControls(
       return true;
     }
 
-    return [user.odName, user.chatId].some((value) =>
-      normalizeText(value).includes(keyword),
-    );
+    return [user.odName, user.chatId].some((value) => normalizeText(value).includes(keyword));
   });
 }
 
@@ -133,11 +151,7 @@ export default function Users() {
     toggleHosting.mutate({ chatId, enabled });
   };
 
-  const handlePermanentPause = (params: {
-    userId: string;
-    reason: string;
-    operator?: string;
-  }) => {
+  const handlePermanentPause = (params: { userId: string; reason: string; operator?: string }) => {
     pauseHosting.mutate({ ...params, permanent: true });
   };
 
@@ -151,13 +165,13 @@ export default function Users() {
     [pausedUsersData],
   );
 
-  const sourceUsers =
-    activeTab === 'today'
-      ? todayUsers
-      : activeTab === 'permanent'
-        ? permanentPausedUsersData
-        : temporaryPausedUsersData;
+  const sourceUsers = activeTab === 'today' ? todayUsers : temporaryPausedUsersData;
   const isLoading = activeTab === 'today' ? isTodayLoading : isPausedLoading;
+  const hasToolbar = TABS_WITH_TOOLBAR.has(activeTab);
+  const sortOptions = activeTab === 'paused' ? PAUSED_SORT_OPTIONS : TODAY_SORT_OPTIONS;
+  const activeSortMode = sortOptions.some((option) => option.value === sortMode)
+    ? sortMode
+    : sortOptions[0].value;
   const pendingChatId = toggleHosting.isPending ? toggleHosting.variables?.chatId : undefined;
 
   const botOptions = useMemo(() => {
@@ -213,31 +227,32 @@ export default function Users() {
     [activeBotOption, normalizedKeyword, temporaryPausedUsersData],
   );
 
-  const filteredPermanentUsers = useMemo(
-    () => filterUsersByControls(permanentPausedUsersData, normalizedKeyword, activeBotOption),
-    [activeBotOption, normalizedKeyword, permanentPausedUsersData],
-  );
-
   const filteredSourceUsers =
     activeTab === 'today'
       ? filteredTodayUsers
       : activeTab === 'permanent'
-        ? filteredPermanentUsers
+        ? permanentPausedUsersData
         : filteredPausedUsers;
 
   const displayUsers = useMemo(() => {
     return [...filteredSourceUsers].sort((a, b) => {
-      if (sortMode === 'lastActiveDesc') {
+      if (activeSortMode === 'lastActiveDesc') {
         return b.lastActiveAt - a.lastActiveAt || compareText(a.chatId, b.chatId);
       }
 
-      if (sortMode === 'messageDesc') {
+      if (activeSortMode === 'messageDesc') {
         return b.messageCount - a.messageCount || compareText(a.chatId, b.chatId);
+      }
+
+      if (activeSortMode === 'pauseExpiresAsc') {
+        const expiresA = a.pauseExpiresAt ?? Number.MAX_SAFE_INTEGER;
+        const expiresB = b.pauseExpiresAt ?? Number.MAX_SAFE_INTEGER;
+        return expiresA - expiresB || compareText(a.chatId, b.chatId);
       }
 
       return b.firstActiveAt - a.firstActiveAt || compareText(a.chatId, b.chatId);
     });
-  }, [filteredSourceUsers, sortMode]);
+  }, [activeSortMode, filteredSourceUsers]);
 
   const emptyMessage = searchKeyword || activeBotOption ? '没有匹配的数据' : '暂无数据';
 
@@ -250,9 +265,9 @@ export default function Users() {
       <section className={styles.section}>
         <UserTabNav
           activeTab={activeTab}
-          todayCount={filteredTodayUsers.length}
-          pausedCount={filteredPausedUsers.length}
-          permanentCount={filteredPermanentUsers.length}
+          todayCount={hasToolbar ? filteredTodayUsers.length : todayUsers.length}
+          pausedCount={hasToolbar ? filteredPausedUsers.length : temporaryPausedUsersData.length}
+          permanentCount={permanentPausedUsersData.length}
           blacklistCount={candidateBlacklist?.candidates?.length || 0}
           onTabChange={setActiveTab}
         />
@@ -262,8 +277,8 @@ export default function Users() {
             <div className={styles.tabHint}>
               <Info className={styles.tabHintIcon} aria-hidden="true" />
               <span>
-                临时禁止托管后，系统将在 3
-                天后自动恢复托管；如需提前恢复，请手动切换"托管状态"开关。
+                临时禁止托管后，系统将在{TEMPORARY_PAUSE_RESUME_HINT}
+                自动恢复托管；如需提前恢复，请手动切换"托管状态"开关。
               </span>
             </div>
           </>
@@ -283,7 +298,7 @@ export default function Users() {
           <div className={styles.tabHint}>
             <Info className={styles.tabHintIcon} aria-hidden="true" />
             <span>
-              拉黑后，任一托管账号再次收到该候选人消息时会发送飞书告警（附拉黑理由），并永久取消该会话的托管；移除黑名单不会自动恢复已暂停的会话。
+              拉黑后，任一托管账号再次收到该候选人消息时会发送飞书告警（附拉黑理由），并永久禁止该会话托管；移除黑名单不会自动恢复，需在"永久禁止托管"中手动恢复。
             </span>
           </div>
         )}
@@ -335,13 +350,15 @@ export default function Users() {
               <label className={styles.selectControl}>
                 <ArrowUpDown aria-hidden="true" size={15} />
                 <select
-                  value={sortMode}
+                  value={activeSortMode}
                   onChange={(event) => setSortMode(event.target.value as SortMode)}
                   aria-label="排序方式"
                 >
-                  <option value="firstActiveDesc">首次活跃时间新到旧</option>
-                  <option value="lastActiveDesc">最后活跃时间新到旧</option>
-                  <option value="messageDesc">消息数多到少</option>
+                  {sortOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
                 </select>
               </label>
 

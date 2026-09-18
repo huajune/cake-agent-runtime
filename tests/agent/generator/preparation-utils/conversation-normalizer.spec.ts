@@ -1,9 +1,11 @@
 import { CallerKind } from '@/enums/agent.enum';
 import {
+  HUMAN_AGENT_MESSAGE_MARKER,
   normalizeConversation,
   normalizeConversationWithCorpus,
+  resolveHumanTakeoverActive,
 } from '@agent/generator/preparation/conversation-normalizer';
-import { StorageMessageType } from '@enums/storage-message.enum';
+import { StorageMessageSource, StorageMessageType } from '@enums/storage-message.enum';
 
 describe('normalizeConversation', () => {
   it('downgrades system-role history messages to user context (AI SDK v7 rejects system in messages)', () => {
@@ -152,5 +154,90 @@ describe('normalizeConversationWithCorpus · 多模态图片注入', () => {
     });
 
     expect(messages).toEqual([{ role: 'user', content: '[图片消息]' }]);
+  });
+});
+
+describe('真人接管态（resolveHumanTakeoverActive / humanTakeoverActive）', () => {
+  const human = (content: string) => ({
+    role: 'assistant',
+    content,
+    source: StorageMessageSource.MOBILE_PUSH,
+    messageType: StorageMessageType.TEXT,
+    isSelf: true,
+  });
+  const agent = (content: string) => ({
+    role: 'assistant',
+    content,
+    source: StorageMessageSource.API_SEND,
+    messageType: StorageMessageType.TEXT,
+    isSelf: true,
+  });
+  const user = (content: string) => ({ role: 'user', content });
+
+  it('候选人当前消息块之前最近一条经理侧消息是真人手动发送 → active', () => {
+    expect(
+      resolveHumanTakeoverActive([agent('岗位在这'), human('有餐饮经验吗'), user('有的')]),
+    ).toBe(true);
+    // 合并请求：末尾多条 user 仍只看其前最近一条 assistant
+    expect(resolveHumanTakeoverActive([human('明天面试有空吗'), user('有'), user('几点')])).toBe(
+      true,
+    );
+  });
+
+  // chat 6a4dbf4bce406a6aee3137e4：真人只发过开场"你好"，之后全是 Agent 回复，候选人问
+  // "前厅还是后厨"是发给 Agent 的；历史更早的真人标记不构成让位理由。
+  it('Agent 已经回复过之后，更早的真人消息不再构成 active', () => {
+    expect(
+      resolveHumanTakeoverActive([
+        human('你好'),
+        user('你好'),
+        agent('你平时在哪个区域呀'),
+        user('延吉'),
+        agent('固定排班制，每月至少上岗80小时'),
+        user('前厅还是后厨'),
+      ]),
+    ).toBe(false);
+  });
+
+  it('没有任何经理侧消息、或最近一条是复聊/群邀请等非真人文本 → 不 active', () => {
+    expect(resolveHumanTakeoverActive([user('你好')])).toBe(false);
+    expect(resolveHumanTakeoverActive([])).toBe(false);
+    expect(
+      resolveHumanTakeoverActive([
+        { ...human('还在找工作吗'), payloadSource: 'reengagement' },
+        user('在找'),
+      ]),
+    ).toBe(false);
+    expect(
+      resolveHumanTakeoverActive([
+        { ...human('邀请你加入群聊'), messageType: StorageMessageType.ROOM_INVITE },
+        user('好'),
+      ]),
+    ).toBe(false);
+  });
+
+  it('normalizeConversationWithCorpus 随 messages 同批输出 humanTakeoverActive，并只给真人消息挂来源标记', () => {
+    const result = normalizeConversationWithCorpus({
+      callerKind: CallerKind.WECOM,
+      memoryWindow: [agent('岗位在这'), human('有餐饮经验吗'), user('有的')],
+      passedMessages: [user('有的')],
+      enableVision: false,
+    });
+
+    expect(result.humanTakeoverActive).toBe(true);
+    expect(result.messages[0].content).toBe('岗位在这');
+    expect(result.messages[1].content).toBe(`${HUMAN_AGENT_MESSAGE_MARKER}\n有餐饮经验吗`);
+    // 标记只标来源与保密纪律；沉默条件唯一住所是 skip_reply description
+    expect(HUMAN_AGENT_MESSAGE_MARKER).toMatch(/^\[内部来源标记：/);
+    expect(HUMAN_AGENT_MESSAGE_MARKER).not.toContain('skip_reply');
+    expect(HUMAN_AGENT_MESSAGE_MARKER).not.toContain('本轮不回复');
+
+    const inactive = normalizeConversationWithCorpus({
+      callerKind: CallerKind.WECOM,
+      memoryWindow: [human('你好'), user('你好'), agent('在哪个区域'), user('前厅还是后厨')],
+      passedMessages: [user('前厅还是后厨')],
+      enableVision: false,
+    });
+    expect(inactive.humanTakeoverActive).toBe(false);
   });
 });

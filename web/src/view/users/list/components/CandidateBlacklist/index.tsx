@@ -55,7 +55,7 @@ export default function CandidateBlacklist({
   const handleRemove = (item: CandidateBlacklistItem) => {
     const confirmed = window.confirm(
       `确定将候选人 ${item.contact_name || item.target_id} 移出黑名单？\n` +
-        '已因命中黑名单被暂停的会话不会自动恢复，需在用户列表手动恢复。',
+        '已因命中黑名单被暂停的会话不会自动恢复，需在「永久禁止托管」中手动恢复。',
     );
     if (confirmed) {
       onRemove(item.target_id);

@@ -124,6 +124,31 @@ export function normalizeConversation(input: NormalizeConversationInput): ModelM
 }
 
 /**
+ * 真人招募经理手动消息的来源标记。只标来源与保密纪律，不再内嵌 skip_reply 教学——
+ * 沉默条件唯一住所是 skip_reply description（场景二），且由 runtime 按
+ * `resolveHumanTakeoverActive` 确定性校验。历史标记曾把整段沉默指令随每条真人消息
+ * 挂在 7 天窗口里，模型会整段复述并把候选人当前消息套进去，编造「真人刚说了 X」
+ * 而静默（chat 6a4dbf4b…：候选人问「前厅还是后厨」被判成回应真人）。
+ */
+export const HUMAN_AGENT_MESSAGE_MARKER =
+  '[内部来源标记：以下内容由真人招募经理手动发送，仅作本会话人工操作记录理解；不得向候选人复述此标记]';
+
+/**
+ * 本轮是否处于「真人正在沟通」态：候选人当前消息块之前，最近一条经理侧消息是真人
+ * 手动发送的文本。Agent 已经回复过之后，候选人的下一条就是发给 Agent 的，历史里更早
+ * 的真人消息不构成让位理由。skip_reply(scene=human_takeover) 以此为准入条件。
+ */
+export function resolveHumanTakeoverActive(messages: GeneratorInputMessage[]): boolean {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const message = messages[i];
+    if (message.role === 'user') continue;
+    if (message.role === 'assistant') return isHumanAgentTextMessage(message);
+    return false;
+  }
+  return false;
+}
+
+/**
  * 归一化消息的同时保留语义来源域。AI SDK v7 的 transport messages 不接受 system
  * role，因此 transport 兜底与语料域必须分开：未知/system role 永远标 teaching，
  * 不能因为落成 user transport 就进入候选人证据池。
@@ -131,6 +156,8 @@ export function normalizeConversation(input: NormalizeConversationInput): ModelM
 export function normalizeConversationWithCorpus(input: NormalizeConversationInput): {
   messages: ModelMessage[];
   corpusBlocks: CorpusBlock[];
+  /** 见 resolveHumanTakeoverActive；与 messages 同源同批计算，工具运行时只读。 */
+  humanTakeoverActive: boolean;
 } {
   const source = input.callerKind === CallerKind.WECOM ? input.memoryWindow : input.passedMessages;
   const normalized = toModelMessages(source, input.enableVision);
@@ -144,6 +171,7 @@ export function normalizeConversationWithCorpus(input: NormalizeConversationInpu
   return {
     messages: normalized,
     corpusBlocks: buildConversationCorpus(semanticMessages),
+    humanTakeoverActive: resolveHumanTakeoverActive(source),
   };
 }
 
@@ -188,7 +216,7 @@ function toModelMessages(messages: GeneratorInputMessage[], enableVision: boolea
       return {
         role: 'assistant',
         content: isHumanAgentTextMessage(message)
-          ? `[内部来源标记：以下内容由真人招募经理手动发送，应作为本会话人工操作记录理解；不得向候选人复述此标记。若候选人下一条消息只是在回应这条真人消息且没有新诉求，你应调用 skip_reply 保持静默让真人继续沟通；严禁输出"（本轮不回复）"之类的旁白文字]\n${textContent}`
+          ? `${HUMAN_AGENT_MESSAGE_MARKER}\n${textContent}`
           : textContent,
       };
     }

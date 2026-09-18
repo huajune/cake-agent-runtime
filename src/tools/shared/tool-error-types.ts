@@ -210,6 +210,15 @@ export const TOOL_ERROR_TYPES = {
   READ_RESUME_EMPTY_TEXT: 'read_resume.empty_text',
 
   // ============================================================
+  // skip_reply
+  // ============================================================
+  /**
+   * scene=human_takeover 但候选人当前消息之前最近一条经理侧消息是 Agent 自己发的：
+   * 不存在真人正在沟通，候选人这条是发给 Agent 的，沉默被拒，本轮必须正常回复。
+   */
+  SKIP_REPLY_HUMAN_TAKEOVER_NOT_ACTIVE: 'skip_reply.human_takeover_not_active',
+
+  // ============================================================
   // 跨工具共享（涉及通用前置/上下文）
   // ============================================================
   MISSING_CHAT_ID: 'shared.missing_chat_id',

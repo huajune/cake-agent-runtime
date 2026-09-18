@@ -71,6 +71,8 @@ export function resolveTurnContext(input: {
   sources: TurnSourceSnapshot;
   normalizedMessages: ModelMessage[];
   conversationCorpusBlocks: CorpusBlock[];
+  /** 与 normalizedMessages 同批的「真人正在沟通」态（normalizeConversationWithCorpus 产出）。 */
+  humanTakeoverActive?: boolean;
   injectionAssessment: PromptInjectionAssessment;
   /** 本轮统一时间锚点，避免纯裁决函数内部读取系统时钟。 */
   nowMs: number;
@@ -209,6 +211,7 @@ export function resolveTurnContext(input: {
     bookingWorkOrderJobIds,
     bookingWorkOrders,
     visualSheetsByContent: sources.visualSheetsByContent,
+    humanTakeoverActive: input.humanTakeoverActive,
   });
 
   return {

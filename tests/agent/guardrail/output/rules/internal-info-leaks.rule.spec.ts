@@ -294,6 +294,19 @@ describe('isSkipIntentEnvelope', () => {
     );
     expect(isSkipIntentEnvelope('{"reason":""}')).toBe(false);
     expect(isSkipIntentEnvelope('{"reason":"x","extra":"y"}')).toBe(false);
+    // 2026-09-18 起 skip_reply 参数含 scene 枚举；带 scene 的信封仍是沉默意图
+    expect(isSkipIntentEnvelope('{"scene":"human_takeover","reason":"候选人回应真人经理"}')).toBe(
+      true,
+    );
+    expect(
+      isSkipIntentEnvelope(
+        '{"type":"tool_use","name":"skip_reply","input":{"scene":"confirmation_closure","reason":"纯确认词"}}',
+      ),
+    ).toBe(true);
+    expect(isSkipIntentEnvelope('{"scene":123,"reason":"x"}')).toBe(false);
+    expect(isSkipIntentEnvelope('{"name":"skip_reply","input":{"scene":true,"reason":"x"}}')).toBe(
+      false,
+    );
     expect(isSkipIntentEnvelope('候选人回复纯确认词，无新诉求')).toBe(false);
   });
 });

@@ -61,7 +61,7 @@ export default function UserTrendChart({
   const selectedRange =
     USER_RANGE_OPTIONS.find((option) => option.days === selectedDays) || USER_RANGE_OPTIONS[0];
 
-  // 格式化日期显示（MM-DD）
+  // 格式化日期显示（M/D）
   const formatDate = (dateStr: string) => {
     const date = parseDateKey(dateStr);
     const month = date.getMonth() + 1;
@@ -70,6 +70,8 @@ export default function UserTrendChart({
   };
 
   const trendDataByDate = new Map(trendData.map((item) => [item.date, item]));
+  // 收起态不请求趋势数据（首屏只有展开后才拉取），没有数据时不展示"平均 0 人/天"这类假零值
+  const hasTrendData = trendData.length > 0;
 
   // 准备图表数据
   // 「全部」（days=0）：日期轴取后端返回的实际区间（起点=业务数据起点），不再按"最近 N 天"构造
@@ -136,7 +138,7 @@ export default function UserTrendChart({
             <h3>
               <span>{selectedRange.label}托管趋势</span>
             </h3>
-            {!isExpanded && (
+            {!isExpanded && hasTrendData && (
               <div className={styles.statsPreview}>
                 <span className={styles.stat}>
                   <span className={styles.label}>平均</span>
