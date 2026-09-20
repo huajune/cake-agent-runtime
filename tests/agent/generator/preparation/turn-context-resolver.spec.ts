@@ -4,6 +4,12 @@ import type { CorpusBlock } from '@shared-types/corpus.types';
 import type { RecommendedJobSummary } from '@resolution/job/types';
 import { finalizeVisualFactSheet } from '@resolution/signal/visual';
 import { sessionFactsOf } from '../../../helpers/session-facts.fixture';
+import { CallerKind } from '@/enums/agent.enum';
+import { StorageMessageSource, StorageMessageType } from '@enums/storage-message.enum';
+import {
+  HUMAN_AGENT_MESSAGE_MARKER,
+  normalizeConversationWithCorpus,
+} from '@agent/generator/preparation/conversation-normalizer';
 import {
   resolveCriticalTurnInstructions,
   resolveTurnContext,
@@ -283,13 +289,53 @@ describe('mentioned brands at turn start', () => {
     },
   );
 
-  it('includes assistant/human recommendations and quoted messages', () => {
+  it('includes human manager messages and quoted messages', () => {
     expect(
       collect(sources(), [
-        message('可以看看麦当劳', 'assistant'),
+        message(`${HUMAN_AGENT_MESSAGE_MARKER}\n可以看看麦当劳`, 'assistant'),
         message('引用：\n> 肯德基还在招\n还有吗'),
       ]),
     ).toEqual(new Set(['麦当劳', '肯德基']));
+  });
+
+  // chat 6aaf831e：Agent 历史回复不是品牌出处，否则上一轮的编造会放行下一轮查询。
+  it('excludes brands that only appear in the Agent own replies', () => {
+    expect(
+      collect(sources(), [
+        message('我通过了你的联系人验证请求，现在我们可以开始聊天了'),
+        message('我帮你看下瑞幸附近的岗位', 'assistant'),
+        message('我在佛山'),
+      ]),
+    ).toEqual(new Set());
+  });
+
+  it('keeps Agent-recommended brands through the job pools instead of the reply text', () => {
+    const snapshot = sources();
+    snapshot.memory.shortTerm.sessionState = {
+      presentedJobs: [job('KFC')],
+    } as typeof snapshot.memory.shortTerm.sessionState;
+    expect(
+      collect(snapshot, [message('肯德基和麦当劳都在招', 'assistant'), message('第一个怎么报名')]),
+    ).toEqual(new Set(['肯德基']));
+  });
+
+  it('separates Agent and human manager messages on real normalizer output', () => {
+    const selfText = {
+      role: 'assistant',
+      messageType: StorageMessageType.TEXT,
+      isSelf: true,
+    };
+    const { corpusBlocks } = normalizeConversationWithCorpus({
+      callerKind: CallerKind.WECOM,
+      memoryWindow: [
+        { ...selfText, content: '瑞幸在招', source: StorageMessageSource.API_SEND },
+        { ...selfText, content: '麦当劳缺人', source: StorageMessageSource.MOBILE_PUSH },
+        { role: 'user', content: '好的' },
+      ],
+      passedMessages: [],
+      enableVision: false,
+    });
+    expect(collect(sources(), corpusBlocks)).toEqual(new Set(['麦当劳']));
   });
 
   it('keeps every ambiguous catalog candidate without choosing an intent', () => {
