@@ -48,6 +48,11 @@ import { resolveToolContextModel, type ToolContextModel } from './tool-context.b
 import type { LoadedGeoAnchor } from './turn-data-loader.service';
 import { resolveBrandMentionKeys } from '@resolution/brand/brand-matcher';
 import { selectEvidenceDialogueMessages } from '@resolution/signal/corpus';
+import {
+  stripFriendVerifyGreeting,
+  stripLocationShareMarkup,
+  stripMessageDecorations,
+} from '@resolution/signal/markers';
 
 const RETURNING_USER_ENTRY_STAGE = 'job_consultation';
 
@@ -326,12 +331,38 @@ export function resolveCriticalTurnInstructions(input: {
     .map((message) => `${message.role}: ${extractTextFromContent(message.content)}`)
     .join('\n');
   const combined = `${recent}\n${current}`;
+  const candidateSide = [
+    ...input.normalizedMessages
+      .slice(-12)
+      .map((message) => toCandidateSideText(message))
+      .filter(Boolean),
+    stripNonCandidateMarkup(current),
+  ].join('\n');
+  const targets = { current, combined, candidate_side: candidateSide };
 
   return FINAL_CHECK_RULES.filter((rule) => {
     if (rule.trigger !== 'turn') return false;
-    const text = rule.target === 'current' ? current : combined;
+    const text = targets[rule.target];
     return rule.patterns.every((pattern) => pattern.test(text));
   }).map((rule) => rule.text);
+}
+
+/** candidate_side 视图的单条投影：候选人原话与真人经理手动消息保留，Agent 自产文本丢弃。 */
+function toCandidateSideText(message: ModelMessage): string {
+  const text = extractTextFromContent(message.content);
+  if (message.role === 'user') return stripNonCandidateMarkup(text);
+  if (message.role === 'assistant' && text.includes(HUMAN_AGENT_MESSAGE_MARKER)) {
+    return stripNonCandidateMarkup(text.replace(HUMAN_AGENT_MESSAGE_MARKER, ''));
+  }
+  return '';
+}
+
+/** 剥掉 user 消息里不是候选人打的字：引用块、时间后缀、位置分享 POI、加好友系统语。 */
+function stripNonCandidateMarkup(text: string): string {
+  return stripFriendVerifyGreeting(
+    stripLocationShareMarkup(stripMessageDecorations(text), ' '),
+    ' ',
+  ).trim();
 }
 
 /** 把共享 TurnHints 裁决结果投影成 Section 可直接渲染的两档视图。 */
