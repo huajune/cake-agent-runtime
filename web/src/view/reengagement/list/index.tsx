@@ -26,7 +26,8 @@ export default function ReengagementPage() {
   const [statusFilter, setStatusFilter] = useState<string>(ALL_VALUE);
   const [scenarioFilter, setScenarioFilter] = useState<string>(ALL_VALUE);
   const [searchKeyword, setSearchKeyword] = useState<string>('');
-  const [includeClosedCandidates, setIncludeClosedCandidates] = useState(false);
+  // 默认显示全部：运营复盘复聊发送情况要看已结束记录，「隐藏无待发」改为可选过滤
+  const [includeClosedCandidates, setIncludeClosedCandidates] = useState(true);
   const [selectedTouchKey, setSelectedTouchKey] = useState<string | null>(null);
 
   // 候选人视角分页累加

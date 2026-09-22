@@ -318,7 +318,7 @@ describe('ReengagementAnchorService', () => {
     expect(scheduler.scheduleFollowUp).not.toHaveBeenCalled();
   });
 
-  it('skips modify-anchored scheduling when the turn is not deliverable', async () => {
+  it('still schedules modify-anchored follow-ups when the turn ends in handoff', async () => {
     buildService().handleToolAnchors(
       {
         outcome: { kind: 'handoff' },
@@ -326,7 +326,7 @@ describe('ReengagementAnchorService', () => {
           {
             toolName: 'duliday_modify_interview_time',
             args: { workOrderId: 555, newInterviewTime: INTERVIEW_TIME },
-            result: { success: true },
+            result: { success: true, workOrderId: 555 },
           },
         ],
       },
@@ -334,7 +334,30 @@ describe('ReengagementAnchorService', () => {
     );
     await flush();
 
+    expect(scheduler.scheduleBookingResolution).toHaveBeenCalledTimes(2);
     expect(scheduler.scheduleFollowUp).not.toHaveBeenCalled();
+  });
+
+  it('still schedules booking follow-ups when booking and handoff land in the same turn', async () => {
+    // 同回合先报名成功再 request_handoff 短路：工单已真实创建，提醒/回访必须照排
+    buildService().handleToolAnchors(
+      { outcome: { kind: 'handoff' }, toolCalls: [bookingCall] },
+      context,
+    );
+    await flush();
+
+    expect(session.saveTerminalState).toHaveBeenCalledWith(
+      context.corpId,
+      context.userId,
+      context.chatId,
+      'booked',
+    );
+    expect(scheduler.scheduleBookingResolution).toHaveBeenCalledWith(
+      expect.objectContaining({ scenarioCode: 'interview_reminder' }),
+    );
+    expect(scheduler.scheduleBookingResolution).toHaveBeenCalledWith(
+      expect.objectContaining({ scenarioCode: 'post_interview_followup' }),
+    );
   });
 
   it('does nothing in group chats', async () => {
