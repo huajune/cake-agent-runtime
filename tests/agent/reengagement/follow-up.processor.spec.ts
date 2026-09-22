@@ -44,6 +44,7 @@ describe('FollowUpProcessor', () => {
     markDeliveryAttempted: jest.Mock;
     markSent: jest.Mock;
     markFailedOrUnknown: jest.Mock;
+    acquireOnce: jest.Mock;
   };
   let systemConfig: { getAgentReplyConfig: jest.Mock };
   let tracking: Record<string, jest.Mock>;
@@ -98,6 +99,7 @@ describe('FollowUpProcessor', () => {
       markDeliveryAttempted: jest.fn().mockResolvedValue(undefined),
       markSent: jest.fn().mockResolvedValue(undefined),
       markFailedOrUnknown: jest.fn().mockResolvedValue(undefined),
+      acquireOnce: jest.fn().mockResolvedValue(true),
     };
     systemConfig = {
       getAgentReplyConfig: jest
@@ -1396,6 +1398,127 @@ describe('FollowUpProcessor', () => {
       expect(touchLedger.markFailedOrUnknown).toHaveBeenCalledWith(
         'sess-1:store_presented_no_reply:evt-store-2',
         'failed',
+      );
+    });
+  });
+
+  describe('聊天约定时间≠工单时间（PRD R1 改动 3）', () => {
+    const anchorAt = Date.UTC(2026, 8, 14, 6, 5, 35);
+    const workOrderInterviewAt = Date.UTC(2026, 8, 16, 6, 0, 0); // 09-16 14:00 上海
+    const chatAgreedInterviewAt = Date.UTC(2026, 8, 16, 7, 0, 0); // 09-16 15:00 上海
+    const mismatch = {
+      workOrderId: 464965,
+      workOrderInterviewAt,
+      chatAgreedInterviewTime: '2026-09-16 15:00',
+      chatAgreedInterviewAt,
+      evidence: '招募经理 09-15 说「通知明天下午 15 点面试」',
+    };
+    const reminderJob = () =>
+      makeJob({
+        data: {
+          sessionRef,
+          scenarioCode: 'interview_reminder',
+          anchorEventId: 'wo464965:iv1789538400000',
+          anchorAt,
+          workOrderId: 464965,
+          channelIdentity: { botImId: 'bot-1', imContactId: 'contact-1', candidateName: '候选人A' },
+        },
+      });
+
+    beforeEach(() => {
+      jest.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 8, 16, 5, 0, 0));
+      sponge.getWorkOrderById.mockResolvedValue({
+        workOrderId: 464965,
+        currentStatus: '约面成功',
+        interviewTime: '2026-09-16 14:00',
+        brandName: '瑞幸',
+      });
+      session.getReengagementState.mockResolvedValue(baseState({ terminal: 'booked' }));
+      systemConfig.getAgentReplyConfig.mockResolvedValue({
+        reengagementEnabled: true,
+        reengagementShadow: false,
+      });
+      reengagementAgent.compose.mockResolvedValue(
+        asExecution(
+          {
+            kind: 'skipped',
+            generatedText: undefined,
+            toolCalls: [],
+            scenarioCode: 'interview_reminder',
+            agentSteps: [],
+          },
+          { validationReason: 'chat_interview_time_mismatch', chatInterviewTimeMismatch: mismatch },
+        ),
+      );
+    });
+
+    it('真发链路：不发、给运营发「请改工单」提醒（带工单号与两个时间、不暂停托管）、落 skipped', async () => {
+      await buildProcessor().process(reminderJob());
+
+      expect(delivery.deliver).not.toHaveBeenCalled();
+      expect(touchLedger.acquireOnce).toHaveBeenCalledWith(
+        `chat_interview_time_mismatch:wo464965:iv${workOrderInterviewAt}:chat${chatAgreedInterviewAt}`,
+      );
+      expect(handoffRecorder.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          reasonCode: 'chat_interview_time_mismatch',
+          workOrderId: 464965,
+          stage: 'interview_reminder',
+          idempotencyKey: `sess-1:chat_interview_time_mismatch:wo464965:iv${workOrderInterviewAt}:chat${chatAgreedInterviewAt}`,
+        }),
+      );
+      expect(handoffNotifier.notify).toHaveBeenCalledWith(
+        expect.objectContaining({
+          reasonCode: 'chat_interview_time_mismatch',
+          workOrderId: 464965,
+          hostingPaused: false,
+          contactName: '候选人A',
+          reason: expect.stringContaining('2026/9/16 15:00'),
+          currentMessageContent: expect.stringContaining('工单面试时间 2026/9/16 14:00'),
+          diagnostics: expect.objectContaining({
+            chatAgreedInterviewTime: '2026-09-16 15:00',
+            workOrderInterviewAt,
+            hostingPaused: false,
+          }),
+        }),
+      );
+      expect(handoffNotifier.notify.mock.calls[0][0].reason).toContain('工单 464965');
+      expect(tracking.trackOutcomeNotReply).toHaveBeenCalledWith(
+        expect.anything(),
+        'skipped',
+        expect.any(String),
+        'chat_interview_time_mismatch',
+      );
+      expect(touchLedger.markFailedOrUnknown).toHaveBeenCalledWith(expect.any(String), 'failed');
+    });
+
+    it('Redis 幂等：同一工单同一对时间已提醒过则不再发卡片', async () => {
+      touchLedger.acquireOnce.mockResolvedValue(false);
+
+      await buildProcessor().process(reminderJob());
+
+      expect(handoffRecorder.record).not.toHaveBeenCalled();
+      expect(handoffNotifier.notify).not.toHaveBeenCalled();
+      expect(tracking.trackOutcomeNotReply).toHaveBeenCalledWith(
+        expect.anything(),
+        'skipped',
+        expect.any(String),
+        'chat_interview_time_mismatch',
+      );
+    });
+
+    it('shadow 链路只记录不打扰运营', async () => {
+      systemConfig.getAgentReplyConfig.mockResolvedValue({
+        reengagementEnabled: true,
+        reengagementShadow: true,
+      });
+
+      await buildProcessor().process(reminderJob());
+
+      expect(handoffNotifier.notify).not.toHaveBeenCalled();
+      expect(tracking.trackShadow).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ reason: 'chat_interview_time_mismatch' }),
       );
     });
   });

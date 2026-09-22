@@ -10,7 +10,7 @@ import type { ReengagementSessionState, CandidateFieldKey } from '@memory/recall
 import type { TurnOutcome } from '../runner/agent-runner.types';
 import type { AgentStepDetail } from '@shared-types/agent-telemetry.types';
 import type { FollowUpJob } from './follow-up-scheduler.service';
-import type { FollowUpScenario } from './scenario-registry';
+import { parseInterviewTimestamp, type FollowUpScenario } from './scenario-registry';
 import type { ReengagementBookingContext } from './booking-context';
 import { stripTimeContext } from '@resolution/signal/markers';
 import { redactCandidatePhones } from '@resolution/candidate/phone';
@@ -50,13 +50,46 @@ export interface ReengagementAgentInput {
   memory: ReengagementMemorySnapshot;
 }
 
+/**
+ * 聊天约定时间与工单面试时间不一致的确定性证据（面试提醒/回访）。
+ * processor 据此不发、给运营发「请改工单」提醒，并写进触达记录的 stop_context。
+ */
+export interface ChatInterviewTimeMismatch {
+  workOrderId: number;
+  workOrderInterviewAt: number;
+  chatAgreedInterviewTime: string;
+  chatAgreedInterviewAt: number;
+  evidence: string;
+}
+
 export interface ReengagementAgentExecution {
   outcome: TurnOutcome;
   agentRequest?: Record<string, unknown>;
   aiStartAt: number;
   aiEndAt: number;
   validationReason?: string;
+  chatInterviewTimeMismatch?: ChatInterviewTimeMismatch;
 }
+
+export const REENGAGEMENT_BLOCK_REASONS = [
+  'none',
+  'candidate_declined_interview',
+  'manager_cancelled_interview',
+  'interview_result_known',
+  'interview_done_reported',
+  'result_inquiry_already_sent',
+  'interview_reminder_already_sent',
+  'confirmation_already_sent',
+  'interview_not_started_per_chat',
+  'chat_interview_time_mismatch',
+  'candidate_abandoned_onboarding',
+  'candidate_reported_onboarded',
+] as const;
+
+export type ReengagementBlockReason = (typeof REENGAGEMENT_BLOCK_REASONS)[number];
+
+/** 聊天约定时间与工单时间差异小于该值按同一时间处理（工单精确到分钟）。 */
+const INTERVIEW_TIME_MATCH_TOLERANCE_MS = 60_000;
 
 // 字段顺序即模型生成顺序：判定依据（reason）必须先于 decision 产出，
 // 强制“先摆证据再下结论”。曾有判例：模型推理已识别到候选人放弃岗位，
@@ -67,22 +100,24 @@ const REENGAGEMENT_OUTPUT_SCHEMA = z.object({
     .describe(
       '判定依据：引用近期对话里决定发送或跳过的关键证据（谁在何时说了什么）；只引用输入证据，不得补写“已读”“在忙”等未提供状态',
     ),
+  chatAgreedInterviewTime: z
+    .string()
+    .default('')
+    .describe(
+      '近期对话中招募经理（assistant）或候选人（user）明确约定、确认或更正的本次面试（同一岗位、同一工单）实际时间，格式 YYYY-MM-DD HH:mm；对话无明确约定、或拿不准是否指本工单本次面试时留空',
+    ),
+  interviewTimeMismatch: z
+    .boolean()
+    .default(false)
+    .describe(
+      'chatAgreedInterviewTime 非空且与状态摘要里的工单面试时间不同（日期或钟点任一不同）时为 true，否则 false',
+    ),
   blockReason: z
-    .enum([
-      'none',
-      'candidate_declined_interview',
-      'manager_cancelled_interview',
-      'interview_result_known',
-      'interview_done_reported',
-      'result_inquiry_already_sent',
-      'interview_reminder_already_sent',
-      'confirmation_already_sent',
-      'interview_not_started_per_chat',
-      'candidate_abandoned_onboarding',
-      'candidate_reported_onboarded',
-    ])
+    .enum(REENGAGEMENT_BLOCK_REASONS)
     .default('none')
-    .describe('根据判定依据得出的发送前语义停止原因；未命中为 none'),
+    .describe(
+      '根据判定依据得出的发送前语义停止原因；未命中为 none。interviewTimeMismatch=true 时必须为 chat_interview_time_mismatch',
+    ),
   decision: z
     .enum(['send', 'skip'])
     .describe('是否发送本次复聊。blockReason 命中任一停止原因时必须为 skip，否则为 send'),
@@ -211,6 +246,7 @@ export class ReengagementAgent {
             '# 上次输出纠正',
             `上次结构化输出违反协议（${contractIssue}），请重新决策。`,
             'decision=send 时 blockReason 必须为 none 且 message 非空；decision=skip 时必须命中明确的 blockReason 且 message 为空。',
+            'interviewTimeMismatch=true 时 chatAgreedInterviewTime 必须是对话中明确约定的、与工单面试时间确实不同的时间（YYYY-MM-DD HH:mm）；对话没有明确约定不同时间的，interviewTimeMismatch 必须为 false 且 chatAgreedInterviewTime 留空。',
             '不得以“正常对话流程”、“感觉不需要”等模糊判断跳过已到点且通过预检的复聊任务。',
           ].join('\n'),
         );
@@ -224,7 +260,11 @@ export class ReengagementAgent {
       const agentSteps = this.extractAgentSteps(result.steps);
 
       const output = result.output;
-      const blockReason = output.blockReason ?? 'none';
+      // 聊天约定时间≠工单时间：确定性证据优先于模型给出的 blockReason，不能按聊天时间发。
+      const chatInterviewTimeMismatch = this.resolveChatInterviewTimeMismatch(ctx, output);
+      const blockReason: ReengagementBlockReason = chatInterviewTimeMismatch
+        ? 'chat_interview_time_mismatch'
+        : (output.blockReason ?? 'none');
       const temporalCorrection = this.correctInterviewTemporalFacts(
         ctx,
         output.message,
@@ -247,6 +287,7 @@ export class ReengagementAgent {
               },
             }
           : {}),
+        ...(chatInterviewTimeMismatch ? { chatInterviewTimeMismatch } : {}),
       };
 
       if (output.decision === 'skip' || blockReason !== 'none') {
@@ -268,6 +309,7 @@ export class ReengagementAgent {
           aiStartAt,
           aiEndAt,
           validationReason,
+          ...(chatInterviewTimeMismatch ? { chatInterviewTimeMismatch } : {}),
         };
       }
 
@@ -380,6 +422,23 @@ export class ReengagementAgent {
     const blockReason = output.blockReason ?? 'none';
     const hasMessage = !!output.message?.trim();
 
+    // 时间不一致必须给出可解析且确实不同于工单的聊天时间：运营提醒要带两个时间，
+    // 拿不到就纠正重试；仍拿不到按协议违规 fail-closed（不发、不伪造）。
+    if (this.isInterviewTimeMismatchFlagged(output)) {
+      if (!this.isInterviewTimeMismatchScenario(ctx))
+        return 'interview_time_mismatch_not_applicable';
+      const chatAgreedInterviewAt = parseInterviewTimestamp(output.chatAgreedInterviewTime?.trim());
+      if (chatAgreedInterviewAt == null) return 'interview_time_mismatch_without_time';
+      const workOrderInterviewAt = ctx.bookingContext?.interviewAt;
+      if (
+        workOrderInterviewAt != null &&
+        Math.abs(chatAgreedInterviewAt - workOrderInterviewAt) < INTERVIEW_TIME_MATCH_TOLERANCE_MS
+      ) {
+        return 'interview_time_mismatch_same_as_work_order';
+      }
+      return null;
+    }
+
     if (output.decision === 'send') {
       // 显式 blockReason 始终优先：即使 decision 误写成 send，也保持 fail-closed，
       // 由下方统一分支安全跳过，不为纠正格式而冒险发送。
@@ -461,28 +520,28 @@ export class ReengagementAgent {
             ...(ctx.scenario.code === 'post_interview_onboarding'
               ? []
               : [
-                  '- 时间口径（聊天优先）：状态摘要里的面试时间来自工单登记，可能只是当天面试窗口的起点而非实际面试时刻；若近期对话中候选人、招募经理或助手已明确约定、确认或更正了本次面试（同一岗位、同一工单）的实际时间，一律以对话中最新的明确约定为准；对话中没有明确时间约定时，才以工单时间为准。拿不准对话里的时间是否指本工单本次面试（例如候选人同时聊着多个岗位）时，一律回退按工单时间处理，不得据此 skip 或改写提醒钟点。',
+                  '- 时间口径（工单为准，聊天不一致则不发）：状态摘要里的面试时间来自工单登记。先检查近期对话：若候选人（user）或招募经理（assistant）已明确约定、确认或更正了本次面试（同一岗位、同一工单）的实际时间（如“通知明天下午 14 点面试”“那改到周四上午 10 点”“我 15 点到”），且该时间与工单面试时间不同（日期或钟点任一不同），必须把该时间填入 chatAgreedInterviewTime（YYYY-MM-DD HH:mm，相对日期按该条消息的发送时间换算），interviewTimeMismatch=true，blockReason=chat_interview_time_mismatch，decision=skip，message 留空。提醒钟点不得改写成聊天时间——工单需由运营修正后系统再按新时间提醒。对话中没有明确时间约定、约定时间与工单一致、或拿不准对话里的时间是否指本工单本次面试（例如候选人同时聊着多个岗位）时，interviewTimeMismatch=false、chatAgreedInterviewTime 留空，一律按工单时间处理，不得据此 skip。',
                   '- 候选人（user）最新明确表示取消面试、去不了/不去了、无法参加，或不再考虑这个岗位：blockReason=candidate_declined_interview。',
                   '- 候选人得知岗位要求或条件后表示接受不了，例如“干不了”“做不了”“那算了”，即使语气委婉、没有出现“取消”字样，也属于放弃本岗位；若招募经理随后已转为邀请进群、改推其他岗位，候选人未再重新确认参加本次面试的，同样判 candidate_declined_interview。注意区分：招募经理为本次面试拉群（如群内接龙面试）不属于放弃信号。',
                   '- 招募经理（assistant）明确表示不用参加本次面试，理由包括面试取消、已经招满、不合适等：blockReason=manager_cancelled_interview。**婉拒也算取消**：招募经理在了解候选人条件后给出否定性结论（如"那不太合适""这个做不了""条件不符合"），且此后没有重新确认面试继续的，同样命中本条——不要求出现"取消""不用来"等字样，候选人回应"行/好吧"更是接受拒绝的信号。不得以"没有明确说取消"或"工单仍显示约面成功"为由放行发送。',
                   '- 对话已经给出面试通过、未通过、录用或淘汰等结果，或者“和店长吵架了”“店长让我走了”等语境已经能合理判断面试流程结束：blockReason=interview_result_known。不要把“等通知”“还不知道结果”误判成已有结果。',
-                  '- 招募经理（assistant）已经发出询问本次面试结果、是否完成或面试是否顺利的语句：blockReason=result_inquiry_already_sent。候选人自己询问结果不属于此项。',
+                  '- 招募经理（assistant）在本次面试时间**之后**已经发出询问本次面试结果、是否完成或面试是否顺利的语句：blockReason=result_inquiry_already_sent。只看发送时间晚于状态摘要“面试时间”的询问；面试时间之前发出的“面试做完了吗”“到店了吗”是进程确认，不算已询问结果。候选人自己询问结果不属于此项。',
                 ]),
             ...(ctx.scenario.code === 'interview_reminder'
               ? ctx.jobData.touchVariant === 'd2_confirm'
                 ? [
                     '- 本场景是面试前 2 天的意向确认；若报名成功当轮之后，招募经理（assistant）已经另行发出过确认候选人是否还在找工作、是否仍会参加本次面试的同类消息：blockReason=confirmation_already_sent。预约成功当轮的时间地点告知与收尾叮嘱不算另行确认。',
-                    '- 本次面试的具体钟点按上面的时间口径（聊天优先）确定。候选人可能同时有多个面试；近期对话中出现的其它岗位、其它工单的面试时间，禁止用来生成本次确认。',
+                    '- 本次面试的具体钟点一律按状态摘要里的工单面试时间；聊天约定了不同时间的按上面的时间口径不发。候选人可能同时有多个面试；近期对话中出现的其它岗位、其它工单的面试时间，禁止用来生成本次确认。',
                   ]
                 : [
-                    '- 本场景是面试提醒；若招募经理（assistant）已经发出提醒候选人参加本次面试的语句：blockReason=interview_reminder_already_sent。判断口径：预约成功当轮的告知与收尾叮嘱都不算已提醒，包括时间地点确认、“准时到哈”“记得提前到”“记得带证件”、发送面试码或二维码；只有预约回合之后另行发出的提醒参加消息（如“记得今天的面试哈”“明天来吗，面试可以来吗”）才算已提醒。面试前 1–3 天发出的求职意向确认消息不构成已提醒。可用状态摘要里的“报名完成时间”区分：与其紧邻的消息属于预约当轮。',
-                    '- 本次面试的具体钟点按上面的时间口径（聊天优先）确定。候选人可能同时有多个面试；近期对话中出现的其它岗位、其它工单的面试时间，禁止用来生成本次提醒。',
+                    '- 本场景是面试提醒；只有招募经理（assistant）在**面试当天**（发送时间与状态摘要“面试时间”同一天）另行发出过提醒候选人参加本次面试的语句（如“记得今天的面试哈”“今天下午来面试可以吗”）才算已提醒：blockReason=interview_reminder_already_sent。前一天或更早发出的提醒不算，今天照常提醒。以下都不算已提醒：预约成功当轮的告知与收尾叮嘱（时间地点确认、“准时到哈”“记得提前到”“记得带证件”）、改时间或通知面试时间（如“通知明天下午 14 点面试”“改到周四”）、询问 AI 面试做完没、发送面试码/二维码、发送地址、面试前 1–3 天的求职意向确认。可用状态摘要里的“报名完成时间”区分：与其紧邻的消息属于预约当轮。',
+                    '- 本次面试的具体钟点一律按状态摘要里的工单面试时间；聊天约定了不同时间的按上面的时间口径不发。候选人可能同时有多个面试；近期对话中出现的其它岗位、其它工单的面试时间，禁止用来生成本次提醒。',
                   ]
               : ctx.scenario.code === 'post_interview_onboarding'
                 ? []
                 : [
                     '- 本场景是面试后回访；招募经理此前只发送过面试提醒不构成停止条件，仍可正常回访。',
-                    '- 按上面的时间口径（聊天优先）判断，本次面试的实际时间尚未到、面试还没开始的：blockReason=interview_not_started_per_chat。不要仅因为工单登记时间已过就断定面试已经进行；候选人明确说“还没开始”“还没面”也属于此项。',
+                    '- 候选人（user）或招募经理（assistant）近期明确说本次面试“还没开始”“还没面”“推迟了”但没有给出具体新时间的：blockReason=interview_not_started_per_chat（给出了具体不同时间的走上面的时间口径 chat_interview_time_mismatch）。不要仅因为工单登记时间已过就断定面试已经进行。',
                     '- 候选人已经主动告知本次面试已参加/已完成并在等结果（如“已面试，等您通知”“面完了，等消息”），且招募经理（assistant）已对该消息作出过回应：blockReason=interview_done_reported。此时再问“面试结束了吧/还顺利吗”是重复打扰；面试是否顺利的结果跟进由招募经理按通知节奏处理。注意与 interview_result_known 的区别：本条不要求已知结果，只要求候选人已报告面试完成且经理已回应过。',
                   ]),
             ...(ctx.scenario.code === 'post_interview_onboarding'
@@ -511,12 +570,55 @@ export class ReengagementAgent {
       '- 可以在确有助于候选人识别上下文时，简短承接近期对话里已经出现的岗位、门店、薪资、班次或位置；不得新增、改写、拼接或夸大任何细节，也不要整段复制岗位介绍。',
       '',
       '# 输出协议',
-      '按字段顺序返回结构化结果：先在 reason 里引用决定发送或跳过的关键对话证据（谁在何时说了什么，仅内部观测），再据此给出 blockReason（未命中必须为 none），然后才是 decision。只有明确命中上述语义停止条件时才允许 decision=skip，此时 message 必须为空；否则 decision=send 且 message 必须是候选人可见的最终文案。message 不得包含候选人的姓名或昵称，reason 不得添加输入中没有的状态。不要给多个方案或解释过程。',
+      '按字段顺序返回结构化结果：先在 reason 里引用决定发送或跳过的关键对话证据（谁在何时说了什么，仅内部观测），再填 chatAgreedInterviewTime 与 interviewTimeMismatch（仅面试提醒/回访按时间口径判定，其余场景留空/false），再据此给出 blockReason（未命中必须为 none），然后才是 decision。只有明确命中上述语义停止条件时才允许 decision=skip，此时 message 必须为空；否则 decision=send 且 message 必须是候选人可见的最终文案。message 不得包含候选人的姓名或昵称，reason 不得添加输入中没有的状态。不要给多个方案或解释过程。',
     ].join('\n');
   }
 
   private isPostBookingScenario(ctx: ReengagementComposeContext): boolean {
     return ctx.scenario.phase === 'post_booking';
+  }
+
+  /** 面试提醒（含前 2 天确认档）与面试后回访才有「聊天约定时间 vs 工单时间」判定；入职跟进无面试时间。 */
+  private isInterviewTimeMismatchScenario(ctx: ReengagementComposeContext): boolean {
+    return (
+      ctx.scenario.code === 'interview_reminder' || ctx.scenario.code === 'post_interview_followup'
+    );
+  }
+
+  private isInterviewTimeMismatchFlagged(output: ReengagementOutput): boolean {
+    return (
+      output.interviewTimeMismatch === true || output.blockReason === 'chat_interview_time_mismatch'
+    );
+  }
+
+  /**
+   * 模型标记的时间不一致经确定性复核后才成立：聊天时间可解析、与实时工单时间确实不同。
+   * getOutputContractIssue 已把不满足者拦成协议违规并纠正重试，这里只做投影。
+   */
+  private resolveChatInterviewTimeMismatch(
+    ctx: ReengagementComposeContext,
+    output: ReengagementOutput,
+  ): ChatInterviewTimeMismatch | undefined {
+    if (!this.isInterviewTimeMismatchFlagged(output)) return undefined;
+    if (!this.isInterviewTimeMismatchScenario(ctx)) return undefined;
+    const workOrderId = ctx.bookingContext?.workOrderId;
+    const workOrderInterviewAt = ctx.bookingContext?.interviewAt;
+    if (workOrderId == null || workOrderInterviewAt == null) return undefined;
+    const chatAgreedInterviewTime = output.chatAgreedInterviewTime?.trim() ?? '';
+    const chatAgreedInterviewAt = parseInterviewTimestamp(chatAgreedInterviewTime);
+    if (chatAgreedInterviewAt == null) return undefined;
+    if (
+      Math.abs(chatAgreedInterviewAt - workOrderInterviewAt) < INTERVIEW_TIME_MATCH_TOLERANCE_MS
+    ) {
+      return undefined;
+    }
+    return {
+      workOrderId,
+      workOrderInterviewAt,
+      chatAgreedInterviewTime,
+      chatAgreedInterviewAt,
+      evidence: output.reason,
+    };
   }
 
   private resolveObjective(ctx: ReengagementComposeContext): string {
@@ -556,18 +658,7 @@ export class ReengagementAgent {
   private resolveSkipValidationReason(
     ctx: ReengagementComposeContext,
     memory: ReengagementMemorySnapshot,
-    blockReason?:
-      | 'none'
-      | 'candidate_declined_interview'
-      | 'manager_cancelled_interview'
-      | 'interview_result_known'
-      | 'interview_done_reported'
-      | 'result_inquiry_already_sent'
-      | 'interview_reminder_already_sent'
-      | 'confirmation_already_sent'
-      | 'interview_not_started_per_chat'
-      | 'candidate_abandoned_onboarding'
-      | 'candidate_reported_onboarded',
+    blockReason?: ReengagementBlockReason,
   ): string {
     if (!this.isPostBookingScenario(ctx)) return 'reengagement_agent_skipped';
     if (blockReason && blockReason !== 'none') return blockReason;
@@ -651,9 +742,10 @@ export class ReengagementAgent {
         }
         lines.push(`- 面试日期相对当前：${formatRelativeShanghaiDate(booking.interviewAt, now)}`);
         // 窗口制岗位的工单时间只是面试窗口起点（badcase：工单 10:00、聊天约定 13:00，
-        // 12:00 回访问"面试顺利吗"）。产品裁定：有明确聊天约定以聊天为准，无则以工单为准。
+        // 12:00 回访问"面试顺利吗"）。2026-09 裁定：聊天约定了不同时间不按聊天时间发，
+        // 而是不发并提醒运营改工单（生成后的钟点纠正会把文案改回工单钟点）。
         lines.push(
-          '- 时间口径：以上面试时间来自工单登记，可能只是当天面试窗口的起点；近期对话中对本次面试实际时间的明确约定优先于该时间',
+          '- 时间口径：以上面试时间来自工单登记；近期对话中对本次面试实际时间有与之不同的明确约定时，本次不发（见发送前语义停止条件）',
         );
       }
     }

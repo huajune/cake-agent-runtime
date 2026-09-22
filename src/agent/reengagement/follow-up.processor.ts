@@ -46,7 +46,7 @@ import {
 import { TouchLedgerService } from './touch-ledger.service';
 import { evaluateOutOfBandWorkOrders, type OutOfBandWorkOrderVerdict } from './oob-work-order';
 import { ReengagementAgent } from './reengagement.agent';
-import type { ReengagementAgentExecution } from './reengagement.agent';
+import type { ChatInterviewTimeMismatch, ReengagementAgentExecution } from './reengagement.agent';
 import {
   resolveReengagementBookingContext,
   type ReengagementBookingContext,
@@ -54,7 +54,7 @@ import {
 import { BotService } from '@wecom/bot/bot.service';
 import { CallerKind } from '@enums/agent.enum';
 import { RequestContextService } from '@observability/context/request-context.service';
-import { shanghaiDayNumber } from './reengagement-datetime.util';
+import { formatShanghaiTime, shanghaiDayNumber } from './reengagement-datetime.util';
 
 export const REENGAGEMENT_DELIVERY_PORT = Symbol('REENGAGEMENT_DELIVERY_PORT');
 
@@ -576,6 +576,15 @@ export class FollowUpProcessor implements OnModuleInit {
       this.logger.log(
         `[reengagement] 回合非 reply（${outcome.kind}）→ 不投递 ${scenarioCode} sessionId=${sessionRef.sessionId}`,
       );
+      // 聊天约定时间≠工单时间：真发链路才给运营发「请改工单」提醒；shadow/灰度关只记录不打扰运营。
+      if (execution.chatInterviewTimeMismatch && bookingContext) {
+        await this.dispatchInterviewTimeMismatchNotice(
+          effectiveJobData,
+          identity,
+          bookingContext,
+          execution.chatInterviewTimeMismatch,
+        );
+      }
       this.tracking.trackOutcomeNotReply(
         identity,
         outcome.kind,
@@ -1209,13 +1218,7 @@ export class FollowUpProcessor implements OnModuleInit {
     this.tracking.trackStopped(identity, 'onboarding_intervention_dispatched');
   }
 
-  /**
-   * 入职异常统一出口：幂等底账 + 告警，不调用 InterventionService，保持托管可应答。
-   *
-   * 候选人身份取 process() 已兜底的 identity（含 chat_messages 回填），不直接读 job.data：
-   * 入职巡检排程只带 botImId，直接读 payload 会让卡片没有昵称/托管账号，运营无法定位候选人。
-   * 昵称仍缺时再从最近聊天记录取候选人侧的昵称兜底。
-   */
+  /** 入职异常出口：复用不暂停托管的运营任务通道。 */
   private async dispatchOnboardingHandoff(
     jobData: FollowUpJob,
     identity: ReengagementTouchIdentity,
@@ -1224,32 +1227,118 @@ export class FollowUpProcessor implements OnModuleInit {
   ): Promise<void> {
     const { sessionRef, workOrderId } = jobData;
     if (workOrderId == null) return;
-    const botImId = identity.botImId ?? jobData.channelIdentity?.botImId;
     const reason =
       reasonCode === 'onboarding_failed'
         ? `面试通过后工单已变为${bookingContext.currentStatus ?? '上岗失败'}，需要人工确认候选人后续安排`
         : `入职跟进触达 48 小时后工单仍未到上岗成功，需要人工确认入职进展`;
-    const idempotencyKey = `${sessionRef.sessionId}:post_interview_onboarding:wo${workOrderId}:${reasonCode}`;
+    const jobLabel = this.formatJobLabel(bookingContext);
+    await this.dispatchOpsTask({
+      jobData,
+      identity,
+      bookingContext,
+      reasonCode,
+      reason,
+      actionAdvice: '请核实候选人是否已入职及遇到的问题；本告警不会暂停 AI 托管',
+      alertLabel: '面试后回访 · 入职跟进',
+      stage: 'post_interview_onboarding',
+      idempotencyKey: `${sessionRef.sessionId}:post_interview_onboarding:wo${workOrderId}:${reasonCode}`,
+      currentMessageContent: `入职跟进巡检：工单 ${workOrderId}${jobLabel ? `（${jobLabel}）` : ''} 当前状态 ${bookingContext.currentStatus ?? '未知'}`,
+    });
+  }
+
+  /**
+   * 聊天约定时间≠工单时间（PRD R1 改动 3）：本次不发，给运营一条「请改工单」提醒。
+   * 不暂停托管；Redis 按工单 + 两个时间幂等（同一差异只提醒一次），handoff_events 再按
+   * idempotencyKey 兜底去重。工单改正后到点核验会按新时间重排，这里不重排。
+   */
+  private async dispatchInterviewTimeMismatchNotice(
+    jobData: FollowUpJob,
+    identity: ReengagementTouchIdentity,
+    bookingContext: ReengagementBookingContext,
+    mismatch: ChatInterviewTimeMismatch,
+  ): Promise<void> {
+    const onceKey = `chat_interview_time_mismatch:wo${mismatch.workOrderId}:iv${mismatch.workOrderInterviewAt}:chat${mismatch.chatAgreedInterviewAt}`;
+    if (!(await this.touchLedger.acquireOnce(onceKey))) {
+      this.logger.log(`[reengagement] 聊天/工单时间不一致提醒已发过，跳过 key=${onceKey}`);
+      return;
+    }
+    const workOrderTime = formatShanghaiTime(mismatch.workOrderInterviewAt);
+    const chatTime = formatShanghaiTime(mismatch.chatAgreedInterviewAt);
+    const jobLabel = this.formatJobLabel(bookingContext);
+    await this.dispatchOpsTask({
+      jobData,
+      identity,
+      bookingContext,
+      reasonCode: 'chat_interview_time_mismatch',
+      reason: `聊天约定的面试时间（${chatTime}）与海绵工单 ${mismatch.workOrderId} 登记的面试时间（${workOrderTime}）不一致，本次${jobData.scenarioCode === 'post_interview_followup' ? '回访' : '面试提醒'}未发送`,
+      actionAdvice:
+        '请核对聊天记录后把海绵工单的面试时间改成实际约定时间；工单改正后系统会按新时间重排提醒。本提醒不会暂停 AI 托管',
+      alertLabel: '复聊 · 聊天约定时间与海绵工单不一致，请改工单',
+      stage: jobData.scenarioCode,
+      idempotencyKey: `${jobData.sessionRef.sessionId}:${onceKey}`,
+      currentMessageContent: `工单 ${mismatch.workOrderId}${jobLabel ? `（${jobLabel}）` : ''}：工单面试时间 ${workOrderTime}，聊天约定 ${chatTime}（${mismatch.chatAgreedInterviewTime}）`,
+      diagnostics: {
+        scenarioCode: jobData.scenarioCode,
+        touchVariant: jobData.touchVariant ?? null,
+        workOrderInterviewAt: mismatch.workOrderInterviewAt,
+        chatAgreedInterviewAt: mismatch.chatAgreedInterviewAt,
+        chatAgreedInterviewTime: mismatch.chatAgreedInterviewTime,
+        evidence: mismatch.evidence,
+      },
+    });
+  }
+
+  private formatJobLabel(bookingContext: ReengagementBookingContext): string {
+    return [bookingContext.brandName, bookingContext.storeName, bookingContext.jobName]
+      .map((part) => part?.trim())
+      .filter((part): part is string => Boolean(part))
+      .join(' · ');
+  }
+
+  /**
+   * 不暂停托管的运营任务统一出口：幂等底账（handoff_events）+ 飞书卡片，不调用 InterventionService。
+   *
+   * 候选人身份取 process() 已兜底的 identity（含 chat_messages 回填），不直接读 job.data：
+   * 入职巡检排程只带 botImId，直接读 payload 会让卡片没有昵称/托管账号，运营无法定位候选人。
+   * 昵称仍缺时再从最近聊天记录取候选人侧的昵称兜底。
+   */
+  private async dispatchOpsTask(params: {
+    jobData: FollowUpJob;
+    identity: ReengagementTouchIdentity;
+    bookingContext: ReengagementBookingContext;
+    reasonCode: string;
+    reason: string;
+    actionAdvice: string;
+    alertLabel: string;
+    stage: string;
+    idempotencyKey: string;
+    currentMessageContent: string;
+    diagnostics?: Record<string, unknown>;
+  }): Promise<void> {
+    const { jobData, identity, bookingContext, reasonCode, reason, idempotencyKey } = params;
+    const { sessionRef } = jobData;
+    const workOrderId = bookingContext.workOrderId;
+    const botImId = identity.botImId ?? jobData.channelIdentity?.botImId;
     const writeOutcome = await this.handoffRecorder.record({
       corpId: sessionRef.corpId,
       chatId: sessionRef.sessionId,
       userId: sessionRef.userId,
       reasonCode,
       reason,
-      actionAdvice: '请核实候选人是否已入职及遇到的问题；本告警不会暂停 AI 托管',
-      stage: 'post_interview_onboarding',
+      actionAdvice: params.actionAdvice,
+      stage: params.stage,
       botImId,
       workOrderId,
       jobId: bookingContext.jobId ?? null,
       idempotencyKey,
     });
     if (writeOutcome === 'duplicate') {
-      this.logger.warn(`[reengagement] 入职人工介入已处理，跳过重复告警 key=${idempotencyKey}`);
+      this.logger.warn(`[reengagement] 运营任务已处理，跳过重复告警 key=${idempotencyKey}`);
       return;
     }
     if (writeOutcome === 'failed') {
       this.logger.error(
-        `[reengagement] 入职人工介入底账失败，继续 fail-safe 告警 key=${idempotencyKey}`,
+        `[reengagement] 运营任务底账失败，继续 fail-safe 告警 key=${idempotencyKey}`,
       );
     }
 
@@ -1265,16 +1354,12 @@ export class FollowUpProcessor implements OnModuleInit {
         .find((message) => message.role === 'user' && message.candidateName?.trim())
         ?.candidateName?.trim() ||
       undefined;
-    const jobLabel = [bookingContext.brandName, bookingContext.storeName, bookingContext.jobName]
-      .map((part) => part?.trim())
-      .filter((part): part is string => Boolean(part))
-      .join(' · ');
     try {
       const notified = await this.handoffNotifier.notify({
-        alertLabel: '面试后回访 · 入职跟进',
+        alertLabel: params.alertLabel,
         reasonCode,
         reason,
-        actionAdvice: '请核实候选人是否已入职及遇到的问题；本告警不会暂停 AI 托管',
+        actionAdvice: params.actionAdvice,
         workOrderId,
         corpId: sessionRef.corpId,
         botImId,
@@ -1282,7 +1367,7 @@ export class FollowUpProcessor implements OnModuleInit {
         contactName,
         chatId: sessionRef.sessionId,
         pausedUserId: sessionRef.sessionId,
-        currentMessageContent: `入职跟进巡检：工单 ${workOrderId}${jobLabel ? `（${jobLabel}）` : ''} 当前状态 ${bookingContext.currentStatus ?? '未知'}`,
+        currentMessageContent: params.currentMessageContent,
         recentMessages: recentMessages.map((message) => ({
           role: message.role,
           content: message.content,
@@ -1301,14 +1386,15 @@ export class FollowUpProcessor implements OnModuleInit {
           imContactId: identity.imContactId ?? null,
           externalUserId: identity.externalUserId ?? null,
           hostingPaused: false,
+          ...(params.diagnostics ?? {}),
         },
       });
       if (!notified) {
-        this.logger.error(`[reengagement] 入职人工介入告警发送失败 key=${idempotencyKey}`);
+        this.logger.error(`[reengagement] 运营任务告警发送失败 key=${idempotencyKey}`);
       }
     } catch (error) {
       this.logger.error(
-        `[reengagement] 入职人工介入告警异常 key=${idempotencyKey}: ${this.errorMessage(error)}`,
+        `[reengagement] 运营任务告警异常 key=${idempotencyKey}: ${this.errorMessage(error)}`,
       );
     }
   }
