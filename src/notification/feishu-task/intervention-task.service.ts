@@ -51,10 +51,10 @@ export interface FeishuTaskRuntimeConfig {
  *
  * 键顺序即清单表头列顺序：飞书自定义字段列顺序 = 创建顺序，事后无法重排
  * （探测脚本按此顺序建字段），改顺序前先确认清单尚未建表头。
- * 介入触发时刻不建自定义字段，由任务内置「开始时间」承载（createTask.startAt，分钟精度）。
+ * 介入触发时刻不建自定义字段，由任务内置「开始时间」承载（createTask.startAt，分钟精度）；
+ * 完成状态用飞书任务自带的勾选；岗位 ID / 品牌门店只留在描述正文。
  */
 export const DEFAULT_FIELD_NAMES = {
-  status: '状态',
   priority: '优先级',
   category: '介入大类',
   nickname: '候选人昵称',
@@ -65,24 +65,9 @@ export const DEFAULT_FIELD_NAMES = {
   workOrderId: '工单号',
   interviewTime: '面试时间',
   interventionCount: '第几次介入',
-  remark: '备注',
 } as const;
 
 export type FieldKey = keyof typeof DEFAULT_FIELD_NAMES;
-
-/** 「状态」选项：新建时写「待处理」，之后由运营翻为「已处理」；合并追加不改。 */
-export const TASK_STATUS_LABELS = {
-  pending: '待处理',
-  done: '已处理',
-} as const;
-
-/**
- * 运营维护的单选字段选项：由脚本建表头；运行时只在新建时写 status=待处理。
- * 「备注」是文本字段，运营手填，不在此列。岗位 ID / 品牌门店不建字段，只留在描述正文。
- */
-export const BACKFILL_FIELD_OPTIONS: Partial<Record<FieldKey, string[]>> = {
-  status: Object.values(TASK_STATUS_LABELS),
-};
 
 interface OwnerConfig {
   supervisor?: string[];
@@ -412,7 +397,6 @@ export class InterventionTaskService implements OnApplicationBootstrap {
     await text('interviewTime', draft.interviewTimeText);
     if (scope === 'update') return values;
 
-    await select('status', TASK_STATUS_LABELS.pending);
     await text('nickname', draft.nickname);
     await text('name', draft.candidateName);
     await text('phone', draft.candidatePhone);

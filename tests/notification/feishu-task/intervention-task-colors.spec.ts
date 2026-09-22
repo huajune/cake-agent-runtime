@@ -9,14 +9,9 @@ import {
   CATEGORY_COLOR,
   FEISHU_OPTION_COLOR,
   PRIORITY_OPTION_COLOR,
-  STATUS_OPTION_COLOR,
   resolveOptionColorIndex,
   shade,
 } from '@notification/feishu-task/intervention-task-colors';
-import {
-  BACKFILL_FIELD_OPTIONS,
-  TASK_STATUS_LABELS,
-} from '@notification/feishu-task/intervention-task.service';
 
 describe('intervention-task-colors', () => {
   it('色相表：每 5 个一组取组首，范围 0–54；shade 取组内档位', () => {
@@ -97,17 +92,10 @@ describe('intervention-task-colors', () => {
     expect(resolveOptionColorIndex('priority', '未知')).toBe(FEISHU_OPTION_COLOR.gray);
   });
 
-  it('状态：待处理=橙(5) / 已处理=青组第 1 档(21)；键集与运营维护选项一致', () => {
-    expect(Object.keys(STATUS_OPTION_COLOR)).toEqual(BACKFILL_FIELD_OPTIONS.status);
-    expect(resolveOptionColorIndex('status', TASK_STATUS_LABELS.pending)).toBe(5);
-    expect(resolveOptionColorIndex('status', TASK_STATUS_LABELS.done)).toBe(21);
-    expect(resolveOptionColorIndex('status', '未知状态')).toBe(FEISHU_OPTION_COLOR.gray);
-  });
-
   it('托管账号一律蓝；其他字段 gray', () => {
     expect(resolveOptionColorIndex('hostingAccount', '东升')).toBe(FEISHU_OPTION_COLOR.blue);
     expect(resolveOptionColorIndex('hostingAccount', '任意账号')).toBe(FEISHU_OPTION_COLOR.blue);
     expect(resolveOptionColorIndex('nickname', '小明')).toBe(FEISHU_OPTION_COLOR.gray);
-    expect(resolveOptionColorIndex('remark', '任意备注')).toBe(FEISHU_OPTION_COLOR.gray);
+    expect(resolveOptionColorIndex('workOrderId', '555')).toBe(FEISHU_OPTION_COLOR.gray);
   });
 });

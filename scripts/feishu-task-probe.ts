@@ -57,7 +57,6 @@ import { FeishuApiService } from '@infra/feishu/services/api.service';
 import { BOT_TO_RECEIVER } from '@infra/feishu/constants/receivers';
 import { FeishuTaskClient } from '@notification/feishu-task/feishu-task.client';
 import {
-  BACKFILL_FIELD_OPTIONS,
   DEFAULT_FIELD_NAMES,
   type FieldKey,
 } from '@notification/feishu-task/intervention-task.service';
@@ -77,7 +76,6 @@ import { HANDOFF_REASON_CATALOG } from '@enums/handoff-reason.enum';
 
 /** 各字段类型与初始选项名；顺序由 DEFAULT_FIELD_NAMES 键顺序派生（列顺序 = 创建顺序，事后不可重排）。 */
 const FIELD_SPECS: Record<FieldKey, { type: FeishuCustomFieldType; options?: string[] }> = {
-  status: { type: 'single_select', options: BACKFILL_FIELD_OPTIONS.status },
   priority: { type: 'single_select', options: Object.values(PRIORITY_LABELS) },
   category: {
     type: 'single_select',
@@ -94,7 +92,6 @@ const FIELD_SPECS: Record<FieldKey, { type: FeishuCustomFieldType; options?: str
   workOrderId: { type: 'text' },
   interviewTime: { type: 'text' },
   interventionCount: { type: 'number' },
-  remark: { type: 'text' },
 };
 
 const EXPECTED_FIELDS: Array<{

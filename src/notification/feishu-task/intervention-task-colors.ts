@@ -5,7 +5,7 @@
  * `FEISHU_OPTION_COLOR` 只登记每组组首（最浅档），需要组内更深一档时用 `shade(color, step)`。
  * 同一介入大类与其名下的原因码同色：大类名与 T 编号的对应取自 `CATEGORY_META`，
  * 原因码所属大类取自权威目录 `HANDOFF_REASON_CATALOG`，这里不维护任何字面副本。
- * 状态 / 优先级的具体档位按运营在飞书里手调的值固定。
+ * 优先级的具体档位按运营在飞书里手调的值固定。
  */
 
 import { HANDOFF_REASON_CATALOG } from '@enums/handoff-reason.enum';
@@ -61,12 +61,6 @@ export const PRIORITY_OPTION_COLOR: Readonly<Record<string, number>> = {
   [PRIORITY_LABELS.normal]: FEISHU_OPTION_COLOR.gray,
 };
 
-/** 「状态」选项配色；键集须与 `BACKFILL_FIELD_OPTIONS.status` 一致（单测守门）。 */
-export const STATUS_OPTION_COLOR: Readonly<Record<string, number>> = {
-  待处理: FEISHU_OPTION_COLOR.orange,
-  已处理: shade('teal', 1),
-};
-
 const CATEGORY_BY_LABEL: ReadonlyMap<string, InterventionTaskCategory> = new Map(
   (Object.keys(CATEGORY_META) as InterventionTaskCategory[]).map((code) => [
     CATEGORY_META[code].label,
@@ -94,8 +88,6 @@ export function resolveOptionColorIndex(fieldKey: FieldKey, optionName: string):
     }
     case 'priority':
       return PRIORITY_OPTION_COLOR[optionName] ?? FEISHU_OPTION_COLOR.gray;
-    case 'status':
-      return STATUS_OPTION_COLOR[optionName] ?? FEISHU_OPTION_COLOR.gray;
     case 'hostingAccount':
       return FEISHU_OPTION_COLOR.blue;
     default:

@@ -112,7 +112,6 @@ describe('InterventionTaskService', () => {
 
   it('DEFAULT_FIELD_NAMES 键顺序即清单表头列顺序（列顺序 = 创建顺序，不可重排）', () => {
     expect(Object.keys(DEFAULT_FIELD_NAMES)).toEqual([
-      'status',
       'priority',
       'category',
       'nickname',
@@ -123,14 +122,18 @@ describe('InterventionTaskService', () => {
       'workOrderId',
       'interviewTime',
       'interventionCount',
-      'remark',
     ]);
-    // 岗位 ID / 品牌门店 / 本可由蛋糕完成 已随清单删除，只留在描述正文
-    expect(Object.values(DEFAULT_FIELD_NAMES)).not.toEqual(
-      expect.arrayContaining(['岗位 ID', '品牌门店', '本可由蛋糕完成']),
-    );
-    expect(DEFAULT_FIELD_NAMES.status).toBe('状态');
-    expect(DEFAULT_FIELD_NAMES.remark).toBe('备注');
+    // 已随清单删除的列：岗位 ID / 品牌门店 只留描述正文；状态用飞书自带勾选；备注/本可由蛋糕完成 不再建
+    for (const removed of [
+      '岗位 ID',
+      '品牌门店',
+      '本可由蛋糕完成',
+      '状态',
+      '备注',
+      '介入触发时间',
+    ]) {
+      expect(Object.values(DEFAULT_FIELD_NAMES)).not.toContain(removed);
+    }
   });
 
   it('开关关闭时不调飞书', async () => {
@@ -175,8 +178,7 @@ describe('InterventionTaskService', () => {
 
     const fields = input.customFields as FieldCall[];
     const byGuid = Object.fromEntries(fields.map((f) => [f.guid, f]));
-    expect(byGuid['field:状态'].single_select_value).toBe('opt:状态:待处理'); // 新建默认待处理
-    expect(byGuid['field:备注']).toBeUndefined(); // 运营手填，运行时不写
+    expect(byGuid['field:状态']).toBeUndefined(); // 完成状态用飞书自带勾选，不建字段
     expect(byGuid['field:优先级'].single_select_value).toBe('opt:优先级:急');
     expect(byGuid['field:第几次介入'].number_value).toBe('1');
     expect(byGuid['field:候选人昵称'].text_value).toBe('小明');
@@ -192,8 +194,7 @@ describe('InterventionTaskService', () => {
     expect(byGuid['field:品牌门店']).toBeUndefined();
     expect(byGuid['field:候选人姓名']).toBeUndefined(); // 未收集留空
 
-    // 自动建选项时带 color_index：状态待处理=5、优先级急=3、大类/原因码同为 T2 orange(5)、托管账号 blue(30)
-    expect(client.resolveOptionGuid).toHaveBeenCalledWith('tl-1', '状态', '待处理', 5);
+    // 自动建选项时带 color_index：优先级急=3、大类/原因码同为 T2 orange(5)、托管账号 blue(30)
     expect(client.resolveOptionGuid).toHaveBeenCalledWith('tl-1', '优先级', '急', 3);
     expect(client.resolveOptionGuid).toHaveBeenCalledWith('tl-1', '介入大类', '预约协调', 5);
     expect(client.resolveOptionGuid).toHaveBeenCalledWith('tl-1', '原因码', '改约/取消自助失败', 5);
@@ -208,7 +209,7 @@ describe('InterventionTaskService', () => {
   });
 
   it('清单里不存在的字段（运营手动删列）静默跳过，其余字段照写，不告警', async () => {
-    const missing = new Set(['面试时间', '状态', '备注']);
+    const missing = new Set(['面试时间', '优先级']);
     client.resolveFieldGuid.mockImplementation(async (_tasklist: string, name: string) =>
       missing.has(name) ? null : `field:${name}`,
     );
@@ -227,20 +228,14 @@ describe('InterventionTaskService', () => {
     const fields = client.createTask.mock.calls[0][0].customFields as FieldCall[];
     const guids = fields.map((f) => f.guid);
     expect(guids).not.toContain('field:面试时间');
-    expect(guids).not.toContain('field:状态');
-    expect(guids).not.toContain('field:备注');
+    expect(guids).not.toContain('field:优先级');
     expect(guids).toEqual(
-      expect.arrayContaining([
-        'field:优先级',
-        'field:介入大类',
-        'field:原因码',
-        'field:候选人昵称',
-      ]),
+      expect.arrayContaining(['field:介入大类', 'field:原因码', 'field:候选人昵称']),
     );
-    // 字段缺失时不应去建选项
+    // 单选字段缺失时不应去建选项
     expect(client.resolveOptionGuid).not.toHaveBeenCalledWith(
       'tl-1',
-      '状态',
+      '优先级',
       expect.anything(),
       expect.anything(),
     );
@@ -269,7 +264,6 @@ describe('InterventionTaskService', () => {
     expect(update.startAt).toBeUndefined(); // 开始时间保持首次触发时刻，合并不改
     const fields = update.customFields as FieldCall[];
     expect(fields.find((f) => f.guid === 'field:第几次介入')?.number_value).toBe('2');
-    expect(fields.find((f) => f.guid === 'field:状态')).toBeUndefined(); // 合并不回写状态
     expect(client.addComment).toHaveBeenCalledWith(
       'task-old',
       expect.stringContaining('第 2 次介入'),
