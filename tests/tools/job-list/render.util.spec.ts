@@ -4,6 +4,7 @@ import {
   ProgressiveDisclosureFlags,
 } from '@tools/job-list/render.util';
 import { JobPolicyAnalysis } from '@tools/job-list/job-policy-parser';
+import { Logger } from '@nestjs/common';
 
 describe('job-list render util', () => {
   const minimalFlags: ProgressiveDisclosureFlags = {
@@ -146,8 +147,9 @@ describe('job-list render util', () => {
     });
   });
 
-  // 海绵 2026-08-06 新增 basicInfo.cooperationMode（BPO/RPO），决定发薪主体与签约主体。
-  // 渲染层只输出结论、不让模型自己记映射；裸值仅作 🔒 内部标注。
+  // 海绵 basicInfo.cooperationMode 下发固定枚举全称「业务流程外包(BPO)」「招聘流程外包(RPO)」
+  //（生产实测只有这两个值），决定发薪主体与签约主体。渲染层只输出结论、不让模型自己记映射；
+  // 归一化标记仅作 🔒 内部标注，不输出带"外包"的全称。
   describe('合作模式 → 发薪/签约主体结论', () => {
     // 只开 includeBasicInfo 会命中 isMinimalMode（走一行式摘要，不渲染基本信息段），
     // 所以再开一个开关强制进详情模式。
@@ -166,44 +168,64 @@ describe('job-list render util', () => {
       return formatJobsToMarkdown([job], 1, 1, 10, basicFlags);
     };
 
-    it('BPO：发薪与签约都可自答', () => {
-      const markdown = withMode('BPO');
+    it('业务流程外包(BPO)：独立客发薪、签灵活用工协议，都可自答', () => {
+      const markdown = withMode('业务流程外包(BPO)');
+      expect(markdown).toContain('**合作模式**: BPO');
       expect(markdown).toContain('**发薪主体**: 由独立客发薪');
       expect(markdown).toContain('可直接答，不必转人工');
       expect(markdown).toContain('与独立客签约，形式是**灵活用工协议**');
-      expect(markdown).not.toContain('无法自答');
+      expect(markdown).not.toContain('由客户（品牌方）发薪');
     });
 
-    it('RPO：签约主体可答但发薪主体必须转人工（两条规则的 RPO 分支不同）', () => {
-      const markdown = withMode('RPO');
-      expect(markdown).toContain('发薪方两种都有可能');
-      expect(markdown).toContain('request_handoff(reasonCode="salary_admin_inquiry")');
-      expect(markdown).toContain('与**客户（品牌方）**签约');
-      expect(markdown).toContain('是协议还是合同取决于客户');
+    it('招聘流程外包(RPO)：客户发薪、与客户签合同，都可自答且不升格成劳动合同', () => {
+      const markdown = withMode('招聘流程外包(RPO)');
+      expect(markdown).toContain('**合作模式**: RPO');
+      expect(markdown).toContain('**发薪主体**: 由客户（品牌方）发薪');
+      expect(markdown).toContain('与**客户（品牌方）**签合同');
+      expect(markdown).toContain('不要自行升格成"劳动合同"');
+      expect(markdown).not.toContain('无法自答');
+      expect(markdown).not.toContain('发薪方两种都有可能');
       // 不得把 BPO 的独立客结论泄漏到 RPO
       expect(markdown).not.toContain('由独立客发薪');
     });
 
-    it('两种模式都标 🔒 禁止对候选人提及术语', () => {
-      for (const mode of ['BPO', 'RPO']) {
+    it('渲染行只输出归一化标记，不输出带"外包"的全称，并标 🔒 禁止对候选人提及术语', () => {
+      for (const mode of ['业务流程外包(BPO)', '招聘流程外包(RPO)']) {
         const markdown = withMode(mode);
-        expect(markdown).toContain('严禁对候选人提及 "BPO/RPO/合作模式" 字样');
+        expect(markdown).not.toContain('外包(');
+        expect(markdown).not.toContain('流程外包');
+        expect(markdown).toContain('严禁对候选人提及 "BPO/RPO/合作模式/外包" 字样');
       }
     });
 
-    it('大小写/空格容错', () => {
-      expect(withMode(' bpo ')).toContain('由独立客发薪');
-      expect(withMode('rpo')).toContain('发薪方两种都有可能');
+    it('裸值 BPO/RPO 与全角括号写法仍按固定值识别（兼容历史 fixture）', () => {
+      expect(withMode('BPO')).toContain('由独立客发薪');
+      expect(withMode(' rpo ')).toContain('由客户（品牌方）发薪');
+      expect(withMode('业务流程外包（BPO）')).toContain('由独立客发薪');
     });
 
-    it('字段缺失/空/未知值时整段不渲染（海绵发布前老数据）', () => {
-      // 发布前岗位没有该键，此时不得输出任何发薪/签约结论，
-      // 由 candidate-consultation.md 的兜底规则转人工。
-      for (const mode of [undefined, null, '', '   ', 'UNKNOWN']) {
+    it('字段缺失/空时整段不渲染（海绵发布前老数据）', () => {
+      for (const mode of [undefined, null, '', '   ']) {
         const markdown = withMode(mode);
         expect(markdown).not.toContain('合作模式');
         expect(markdown).not.toContain('发薪主体');
         expect(markdown).not.toContain('签约主体');
+      }
+    });
+
+    it('未知非空取值不做模糊匹配：不输出结论并用 Logger.warn 留痕', () => {
+      const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      try {
+        for (const mode of ['UNKNOWN', '外包(BPO)', '业务流程外包', 'BPO/RPO']) {
+          const markdown = withMode(mode);
+          expect(markdown).not.toContain('合作模式');
+          expect(markdown).not.toContain('发薪主体');
+          expect(markdown).not.toContain('签约主体');
+        }
+        expect(warnSpy).toHaveBeenCalledTimes(4);
+        expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('cooperationMode=UNKNOWN'));
+      } finally {
+        warnSpy.mockRestore();
       }
     });
   });
@@ -563,6 +585,7 @@ function makePolicy(input: {
       healthCertificateRequirement: '未明确要求',
       healthCertGate: 'unknown',
       remark: input.remark ?? null,
+      remarkDisplay: input.remark ?? null,
       interviewRemark: input.interviewRemark ?? null,
       interviewRemarkDisplay: input.interviewRemark ?? null,
       interviewSupplements: [],
