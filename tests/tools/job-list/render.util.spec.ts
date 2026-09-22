@@ -375,6 +375,64 @@ describe('job-list render util', () => {
       expect(markdown).not.toContain('仅限女');
       expect(markdown).not.toContain('仅限男');
     });
+
+    // 2026-09-22 运营口径 O12：最短工期原来只在工作时间段里出现，模型不把它当硬条件；
+    // 进 banner 后要和性别/健康证同级醒目，且措辞只陈述"明确说做不满才拒"、不派盘问动作。
+    describe('最短工期（workTime.minWorkMonths）', () => {
+      it('有最短月数时进 banner，标硬性并附"不主动盘问"边界', () => {
+        const job = makeJob(1);
+        job.workTime = { ...job.workTime, minWorkMonths: 3 } as typeof job.workTime;
+        const markdown = formatJobsToMarkdown([job], 1, 1, 10, detailFlags);
+
+        expect(markdown).toContain('候选人硬性约束');
+        expect(markdown).toContain('**最短工期**：最短做满 3 个月（硬性）');
+        expect(markdown).toContain('不主动盘问');
+        expect(markdown).not.toContain('阶段用工');
+        // 顶部候选人卡片也带"最短做满"，这里锁的是硬约束 banner 那一行必须紧跟岗位标题之后
+        const bannerIdx = markdown.indexOf('**最短工期**：');
+        const titleIdx = markdown.indexOf('## 1.');
+        expect(bannerIdx).toBeGreaterThan(titleIdx);
+      });
+
+      it('阶段用工岗同时带最短月数时，banner 标明按起止时段判断、不按最短月数拒', () => {
+        const job = makeJob(1);
+        job.workTime = {
+          ...job.workTime,
+          minWorkMonths: 2,
+          temporaryEmployment: {
+            temporaryEmploymentStartTime: '2026-07-01',
+            temporaryEmploymentEndTime: '2026-08-31',
+          },
+        } as typeof job.workTime;
+        const markdown = formatJobsToMarkdown([job], 1, 1, 10, detailFlags);
+
+        expect(markdown).toContain('最短做满 2 个月（硬性）');
+        expect(markdown).toContain(
+          '本岗为阶段用工 2026-07-01 至 2026-08-31，按起止时段判断，不按最短月数拒',
+        );
+      });
+
+      it('无最短月数字段时 banner 不出现最短工期行（其余硬约束照常）', () => {
+        const job = makeJob(1);
+        const markdown = formatJobsToMarkdown([job], 1, 1, 10, detailFlags);
+
+        expect(markdown).toContain('候选人硬性约束');
+        expect(markdown).not.toContain('最短工期');
+        expect(markdown).not.toContain('最短做满');
+      });
+
+      it('includeWorkTime 关闭时 banner 仍带最短工期（硬约束不依赖详情模块开关）', () => {
+        const job = makeJob(1);
+        job.workTime = { ...job.workTime, minWorkMonths: 6 } as typeof job.workTime;
+        const markdown = formatJobsToMarkdown([job], 1, 1, 10, {
+          ...detailFlags,
+          includeWorkTime: false,
+        });
+
+        expect(markdown).toContain('最短做满 6 个月（硬性）');
+        expect(markdown).not.toContain('最少工作月数');
+      });
+    });
   });
 
   describe('sensitive screening free-text notice', () => {

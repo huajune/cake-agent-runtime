@@ -202,7 +202,27 @@ describe('extractHardRequirements', () => {
         household: { mode: 'exclude', regions: ['东三省'] },
         healthCert: 'required_before_onboard',
         student: 'unspecified',
+        minWorkMonths: null,
       });
+    });
+  });
+
+  describe('minWorkMonths (运营口径 O12 最短工期)', () => {
+    it('透传 workTime.minWorkMonths 数字与数字字符串', () => {
+      expect(extractHardRequirements({ workTime: { minWorkMonths: 3 } }).minWorkMonths).toBe(3);
+      expect(extractHardRequirements({ workTime: { minWorkMonths: '6' } }).minWorkMonths).toBe(6);
+    });
+
+    it('缺失 / 非正数 / 不可解析时为 null', () => {
+      expect(extractHardRequirements({}).minWorkMonths).toBeNull();
+      expect(extractHardRequirements({ workTime: {} }).minWorkMonths).toBeNull();
+      expect(extractHardRequirements({ workTime: { minWorkMonths: 0 } }).minWorkMonths).toBeNull();
+      expect(
+        extractHardRequirements({ workTime: { minWorkMonths: 'abc' } }).minWorkMonths,
+      ).toBeNull();
+      expect(
+        extractHardRequirements({ workTime: { minWorkMonths: null } }).minWorkMonths,
+      ).toBeNull();
     });
   });
 });

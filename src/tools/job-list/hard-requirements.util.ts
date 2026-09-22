@@ -44,6 +44,11 @@ export interface HardRequirements {
   household: HouseholdRequirement | null;
   healthCert: HealthCertRequirement;
   student: StudentRequirement;
+  /**
+   * 最短用工月数（`workTime.minWorkMonths`），运营口径 O12：做不满是硬性不匹配。
+   * 只做透传不做判定——是否"做不满"由候选人明确表述决定，见手册规则；字段缺失/非正数为 null。
+   */
+  minWorkMonths: number | null;
 }
 
 const HOUSEHOLD_REGION_GROUPS: Record<string, string[]> = {
@@ -231,9 +236,19 @@ function normalizeStudentRequirement(
 }
 
 /**
+ * 海绵 `workTime.minWorkMonths` 现网下发数字，历史 fixture 有字符串形态；
+ * 只认正的有限数，其余一律 null（不猜、不渲染）。
+ */
+function normalizeMinWorkMonths(raw: unknown): number | null {
+  const n =
+    typeof raw === 'number' ? raw : typeof raw === 'string' && raw.trim() ? Number(raw) : NaN;
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/**
  * 顶层入口：从 raw job + 可选的 policy 派生 HardRequirements enum。
  *
- * 当前覆盖 gender / household / healthCert / student 四类高频硬约束。
+ * 当前覆盖 gender / household / healthCert / student 四类高频硬约束，外加最短用工月数透传。
  * 后续切片会扩展 age / education 等。
  *
  * policy 参数：调用方已经跑过 buildJobPolicyAnalysis 时直接传进来，避免重复构建。
@@ -243,6 +258,7 @@ export function extractHardRequirements(
   job:
     | {
         hiringRequirement?: unknown;
+        workTime?: unknown;
         _policy?: { normalizedRequirements?: unknown };
       }
     | null
@@ -250,6 +266,7 @@ export function extractHardRequirements(
   policy?: { normalizedRequirements?: unknown } | null,
 ): HardRequirements {
   const req = asRecord(job?.hiringRequirement);
+  const workTime = asRecord(job?.workTime);
   // sponge raw 用 basicPersonalRequirements；render/job-policy-parser 都按此 key 解构。
   const basic = asRecord((req && (req.basicPersonalRequirements || req.basic)) || {}) ?? {};
   const hometown = (req && req.requirementsForHometown) || null;
@@ -270,5 +287,6 @@ export function extractHardRequirements(
       req?.remark,
       [normalized?.remark, normalized?.interviewRemark].filter(Boolean).join('；'),
     ),
+    minWorkMonths: normalizeMinWorkMonths(workTime?.minWorkMonths),
   };
 }

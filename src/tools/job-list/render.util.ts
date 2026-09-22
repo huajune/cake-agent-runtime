@@ -170,7 +170,23 @@ const HEALTH_CERT_LABEL: Record<HardRequirements['healthCert'], string | null> =
  * 把内部筛选条件捅到台面上。该门槛的执行点是 booking-guards 的
  * isHouseholdRequirementViolated 硬闸，数据来自收资 checklist 的籍贯字段，不需要口头打听。
  */
-function renderHardRequirementsBanner(hr: HardRequirements): string {
+/**
+ * 阶段用工时间窗（`workTime.temporaryEmployment`）→ "S 至 E"；任一端缺失用 "?" 占位，两端都缺返回 null。
+ * 硬约束 banner 与工作时间段共用，保证同一岗位两处口径一致。
+ */
+function formatTemporaryEmploymentWindow(workTimeInput: unknown): string | null {
+  const wt = asRecord(workTimeInput);
+  const tempEmp = asRecord(wt?.temporaryEmployment) ?? {};
+  const start = tempEmp.temporaryEmploymentStartTime;
+  const end = tempEmp.temporaryEmploymentEndTime;
+  if (!hasValue(start) && !hasValue(end)) return null;
+  return `${hasValue(start) ? String(start) : '?'} 至 ${hasValue(end) ? String(end) : '?'}`;
+}
+
+function renderHardRequirementsBanner(
+  hr: HardRequirements,
+  temporaryEmploymentWindow: string | null,
+): string {
   const lines: string[] = [];
 
   const genderLabel = GENDER_LABEL[hr.gender];
@@ -191,6 +207,18 @@ function renderHardRequirementsBanner(hr: HardRequirements): string {
   const healthCertLabel = HEALTH_CERT_LABEL[hr.healthCert];
   if (healthCertLabel) {
     lines.push(`- **健康证**：${healthCertLabel}`);
+  }
+
+  // 运营口径 O12：最短工期是硬性要求，但只在候选人**明确表示**做不满时才算不匹配；
+  // 不主动盘问"能做几个月"。阶段用工岗另有起止时间，按起止时段判断，防误拒。
+  if (hr.minWorkMonths !== null) {
+    const phaseNote = temporaryEmploymentWindow
+      ? `；本岗为阶段用工 ${temporaryEmploymentWindow}，按起止时段判断，不按最短月数拒`
+      : '';
+    lines.push(
+      `- **最短工期**：最短做满 ${hr.minWorkMonths} 个月（硬性）（候选人明确说做不满时如实说明不匹配并转推其他岗位；` +
+        `不主动盘问"能做几个月"，"先做做看/不确定"不算不满足${phaseNote}）`,
+    );
   }
 
   if (lines.length === 0) return '';
@@ -746,18 +774,9 @@ function renderWorkTimeSection(workTimeInput: unknown): string {
   }
 
   // 阶段用工时间窗
-  const tempEmp = asRecord(wt.temporaryEmployment) ?? {};
-  if (
-    hasValue(tempEmp.temporaryEmploymentStartTime) ||
-    hasValue(tempEmp.temporaryEmploymentEndTime)
-  ) {
-    const s = hasValue(tempEmp.temporaryEmploymentStartTime)
-      ? String(tempEmp.temporaryEmploymentStartTime)
-      : '?';
-    const e = hasValue(tempEmp.temporaryEmploymentEndTime)
-      ? String(tempEmp.temporaryEmploymentEndTime)
-      : '?';
-    lines.push(`- **阶段用工**: ${s} 至 ${e}`);
+  const temporaryEmploymentWindow = formatTemporaryEmploymentWindow(wt);
+  if (temporaryEmploymentWindow) {
+    lines.push(`- **阶段用工**: ${temporaryEmploymentWindow}`);
   }
 
   // 每周/每月排班（海绵2.0 weekAndMonthWorkTime）
@@ -1165,9 +1184,12 @@ function formatJobToMarkdown(
   }
   let md = `## ${index + 1}. ${titleParts.join(' ')}\n\n`;
 
-  // 硬性约束 banner 紧跟标题：性别 / 户籍 / 健康证 三类高频硬约束，
-  // 任一非 unspecified/any 时才输出。让 LLM 一眼看到不可妥协的硬规则。
-  md += renderHardRequirementsBanner(extractHardRequirements(job, policy));
+  // 硬性约束 banner 紧跟标题：性别 / 户籍 / 健康证 / 最短工期 四类高频硬约束，
+  // 任一非 unspecified/any/null 时才输出。让 LLM 一眼看到不可妥协的硬规则。
+  md += renderHardRequirementsBanner(
+    extractHardRequirements(job, policy),
+    formatTemporaryEmploymentWindow(job.workTime),
+  );
 
   // 候选人需要 workTime 时（默认开）才注入归一化班次（含早/中/晚班/午高峰/星期约束等含义）；
   // 模型显式关 includeWorkTime 表示本轮在做不涉及班次的追问，无需归一化班次。

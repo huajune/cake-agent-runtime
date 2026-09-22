@@ -364,6 +364,9 @@ function buildRequirementPart(hr: HardRequirements, ageText: string | null): str
     const verb = hr.household.mode === 'include' ? '仅' : '不要';
     parts.push(`${verb}${hr.household.regions.join('/')}`);
   }
+  // 运营口径 O12：最短工期是硬性要求，卡片上如实告知；是否"做不满"由候选人明确表述决定（手册规则），
+  // 卡片只陈述事实、不派盘问动作。
+  if (hr.minWorkMonths !== null) parts.push(`最短做满 ${hr.minWorkMonths} 个月`);
   return parts.join('，');
 }
 
