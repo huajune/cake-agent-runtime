@@ -299,7 +299,8 @@ describe('AgentRunnerService.runInboundTurn', () => {
     expect(outcome.outputGuardrail).toBeUndefined();
     expect(outcome.handoff).toBeUndefined();
 
-    // 入站终态更名后依然只提交原风险意图，不补普通转人工、不重复通知或记普通底账。
+    // 入站终态更名后依然只提交原风险意图，不补普通转人工、不重复通知；
+    // 底账按 PRD R5.2 落一条（原因码 = 风险类型，来源 input_guardrail）。
     const intervention = {
       dispatch: jest.fn().mockResolvedValue({ paused: true, alerted: true }),
     };
@@ -325,7 +326,14 @@ describe('AgentRunnerService.runInboundTurn', () => {
         pauseTargetId: 's1',
       }),
     );
-    expect(handoffRecorder.record).not.toHaveBeenCalled();
+    expect(handoffRecorder.record).toHaveBeenCalledTimes(1);
+    expect(handoffRecorder.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reasonCode: 'abuse',
+        origin: 'input_guardrail',
+        idempotencyKey: 's1:handoff:trace-input-risk:input_risk',
+      }),
+    );
   });
 
   it.each([
