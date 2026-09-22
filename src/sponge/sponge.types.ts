@@ -490,6 +490,11 @@ export interface SignupWorkOrdersParams {
   workOrderId?: number;
   /** 定位键：定位到某候选人；与 workOrderId 至少传一个 */
   phone?: string;
+  /**
+   * 是否只返回当前供应商账号（Duliday-Token 对应账号）提交的工单（海绵 2026-09-22 新契约）。
+   * 缺省不传，由海绵按默认口径返回；带外对账需要跨账号查重时显式传 false。
+   */
+  onlyCurrentAccount?: boolean;
   queryParam?: {
     signUpStartTime?: string;
     signUpEndTime?: string;
@@ -505,12 +510,44 @@ export interface SelfSignupWorkOrdersParams {
   queryParam?: SignupWorkOrdersParams['queryParam'];
 }
 
+/**
+ * 当前供应商账号工单分页查询参数（POST /ai/api/workorder/signup/self/list/v2，海绵 2026-09-22 新增）。
+ * 带外对账补偿扫描用它按 signupSource 计数；运营日报仍用老 self/list。
+ */
+export interface SelfSignupWorkOrdersV2Params {
+  pageNum: number;
+  pageSize: number;
+  queryParam?: SignupWorkOrdersParams['queryParam'];
+}
+
+/** 已知的工单报名来源取值：`AI` 为蛋糕自己报的，`SUPPLIER` 为供应商后台手工报的（带外工单）。 */
+export const KNOWN_SIGNUP_WORK_ORDER_SOURCES = ['AI', 'SUPPLIER'] as const;
+
+/**
+ * 工单报名来源（海绵 2026-09-22 新契约）。类型保留 string：海绵后续加值时读取方按未知来源处理，
+ * 不能因为枚举外取值让 schema 失败；判定时用 KNOWN_SIGNUP_WORK_ORDER_SOURCES 收窄。
+ */
+export type SignupWorkOrderSource = string;
+
+/** 工单操作日志行（海绵 2026-09-22 新契约）；operationType 编码全集待实测，读取方按字符串容缺。 */
+export interface SignupWorkOrderOperationLog {
+  operationTime?: string | null;
+  operationType?: string | number | null;
+  operationName?: string | null;
+}
+
 /** 单个工单（候选人维度响应的 workOrders[] 元素）。 */
 export interface SignupWorkOrderItem {
   workOrderId: number;
   /** self/list 可能把候选人信息下发在工单行上；signup/list 通常下发在顶层。 */
   candidateName?: string | null;
   phone?: string | null;
+  /** 报名来源；老版本响应无此字段，读取方必须容缺。 */
+  signupSource?: SignupWorkOrderSource | null;
+  /** 报名来源中文名（如「AI」「供应商」）。 */
+  signupSourceName?: string | null;
+  /** 工单操作日志（时间、类型编码、类型名）；老版本响应无此字段。 */
+  operationLogs?: SignupWorkOrderOperationLog[] | null;
   signUpTime?: string | null;
   /**
    * 当前约面时间（yyyy-MM-dd HH:mm，与海绵约定新增下发）。
@@ -583,11 +620,22 @@ export interface SignupWorkOrdersResult {
   workOrders: SignupWorkOrderItem[];
 }
 
+export const SignupWorkOrderOperationLogSchema = z
+  .object({
+    operationTime: z.string().nullable().optional(),
+    operationType: z.union([z.string(), z.number()]).nullable().optional(),
+    operationName: z.string().nullable().optional(),
+  })
+  .passthrough();
+
 export const SignupWorkOrderItemSchema = z
   .object({
     workOrderId: z.coerce.number().int(),
     candidateName: z.string().nullable().optional(),
     phone: z.string().nullable().optional(),
+    signupSource: z.string().nullable().optional(),
+    signupSourceName: z.string().nullable().optional(),
+    operationLogs: z.array(SignupWorkOrderOperationLogSchema).nullable().optional(),
     signUpTime: z.string().nullable().optional(),
     interviewTime: z.string().nullable().optional(),
     interviewPassTime: z.string().nullable().optional(),
@@ -620,6 +668,26 @@ export const SignupWorkOrdersApiResponseSchema = z
         age: z.number().nullable().optional(),
         total: z.number().nullable().optional(),
         workOrders: z.array(SignupWorkOrderItemSchema).nullable().optional(),
+      })
+      .nullable()
+      .optional(),
+  })
+  .passthrough();
+
+/** self/list/v2 分页结果：行仍是工单，但顶层不再有候选人信息（每行自带 phone/candidateName/signupSource）。 */
+export interface SelfSignupWorkOrdersV2Result {
+  total: number;
+  workOrders: SignupWorkOrderItem[];
+}
+
+export const SelfSignupWorkOrdersV2ApiResponseSchema = z
+  .object({
+    code: z.number(),
+    message: z.string().optional(),
+    data: z
+      .object({
+        total: z.number().nullable().optional(),
+        result: z.array(SignupWorkOrderItemSchema).nullable().optional(),
       })
       .nullable()
       .optional(),

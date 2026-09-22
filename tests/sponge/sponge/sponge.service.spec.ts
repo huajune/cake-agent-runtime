@@ -230,6 +230,181 @@ describe('SpongeService', () => {
     });
   });
 
+  describe('fetchSignupWorkOrders', () => {
+    it('passes onlyCurrentAccount through and keeps the new contract fields on rows', async () => {
+      const mockResponse = {
+        ok: true,
+        json: jest.fn().mockResolvedValue({
+          code: 0,
+          data: {
+            candidateName: '兮兮',
+            gender: '女',
+            phone: '18271421690',
+            age: 24,
+            total: 1,
+            workOrders: [
+              {
+                workOrderId: 9101,
+                signupSource: 'SUPPLIER',
+                signupSourceName: '供应商',
+                operationLogs: [
+                  { operationTime: '2026-09-22 10:00:00', operationType: 1, operationName: '报名' },
+                ],
+                currentStatus: '约面成功',
+              },
+            ],
+          },
+        }),
+      };
+      jest.spyOn(global, 'fetch').mockResolvedValue(mockResponse as unknown as Response);
+
+      const result = await service.fetchSignupWorkOrders({
+        phone: '18271421690',
+        onlyCurrentAccount: false,
+      });
+
+      expect(result.candidateName).toBe('兮兮');
+      expect(result.age).toBe(24);
+      expect(result.workOrders[0].signupSource).toBe('SUPPLIER');
+      expect(result.workOrders[0].signupSourceName).toBe('供应商');
+      expect(result.workOrders[0].operationLogs?.[0]?.operationName).toBe('报名');
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringContaining('/ai/api/workorder/signup/list'),
+        expect.objectContaining({
+          body: JSON.stringify({ phone: '18271421690', onlyCurrentAccount: false }),
+        }),
+      );
+    });
+
+    it('omits onlyCurrentAccount from the payload when not given', async () => {
+      const mockResponse = {
+        ok: true,
+        json: jest.fn().mockResolvedValue({ code: 0, data: { total: 0, workOrders: [] } }),
+      };
+      jest.spyOn(global, 'fetch').mockResolvedValue(mockResponse as unknown as Response);
+
+      await service.fetchSignupWorkOrders({ workOrderId: 1 });
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ body: JSON.stringify({ workOrderId: 1 }) }),
+      );
+    });
+
+    it('still accepts legacy rows without the new contract fields', async () => {
+      const mockResponse = {
+        ok: true,
+        json: jest.fn().mockResolvedValue({
+          code: 0,
+          data: { total: 1, workOrders: [{ workOrderId: 9102, currentStatus: '约面待确认' }] },
+        }),
+      };
+      jest.spyOn(global, 'fetch').mockResolvedValue(mockResponse as unknown as Response);
+
+      const result = await service.fetchSignupWorkOrders({ workOrderId: 9102 });
+
+      expect(result.workOrders[0].signupSource).toBeUndefined();
+      expect(result.total).toBe(1);
+    });
+
+    it('throws on a non-zero business code instead of returning an empty list', async () => {
+      const mockResponse = {
+        ok: true,
+        json: jest.fn().mockResolvedValue({ code: 500, message: '系统繁忙', data: null }),
+      };
+      jest.spyOn(global, 'fetch').mockResolvedValue(mockResponse as unknown as Response);
+
+      await expect(service.fetchSignupWorkOrders({ workOrderId: 1 })).rejects.toThrow(
+        '海绵工单查询业务失败: code=500 message=系统繁忙',
+      );
+    });
+
+    it('throws on a malformed response body instead of returning an empty list', async () => {
+      const mockResponse = {
+        ok: true,
+        json: jest.fn().mockResolvedValue({ data: { workOrders: 'oops' } }),
+      };
+      jest.spyOn(global, 'fetch').mockResolvedValue(mockResponse as unknown as Response);
+
+      await expect(service.fetchSignupWorkOrders({ workOrderId: 1 })).rejects.toThrow(
+        /海绵工单查询返回结构异常: /,
+      );
+    });
+  });
+
+  describe('fetchSelfSignupWorkOrdersV2', () => {
+    it('posts pagination to self/list/v2 with the hosting-member token and reads data.result', async () => {
+      hostingMemberConfigService.resolveDulidayToken.mockResolvedValueOnce('member-token');
+      const mockResponse = {
+        ok: true,
+        json: jest.fn().mockResolvedValue({
+          code: 0,
+          data: {
+            total: 2,
+            result: [
+              {
+                workOrderId: 9201,
+                phone: '18271421690',
+                candidateName: '兮兮',
+                signupSource: 'SUPPLIER',
+              },
+            ],
+          },
+        }),
+      };
+      jest.spyOn(global, 'fetch').mockResolvedValue(mockResponse as unknown as Response);
+
+      const result = await service.fetchSelfSignupWorkOrdersV2(
+        {
+          pageNum: 1,
+          pageSize: 50,
+          queryParam: { signUpStartTime: '2026-09-22 00:00:00' },
+        },
+        { botImId: 'bot-im-1' },
+      );
+
+      expect(result.total).toBe(2);
+      expect(result.workOrders).toHaveLength(1);
+      expect(result.workOrders[0].signupSource).toBe('SUPPLIER');
+      expect(result.workOrders[0].phone).toBe('18271421690');
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringContaining('/ai/api/workorder/signup/self/list/v2'),
+        expect.objectContaining({
+          method: 'POST',
+          headers: expect.objectContaining({ 'Duliday-Token': 'member-token' }),
+          body: JSON.stringify({
+            pageNum: 1,
+            pageSize: 50,
+            queryParam: { signUpStartTime: '2026-09-22 00:00:00' },
+          }),
+        }),
+      );
+    });
+
+    it('does not fall back to the global token for self/list/v2', async () => {
+      const fetchSpy = jest.spyOn(global, 'fetch');
+
+      await expect(
+        service.fetchSelfSignupWorkOrdersV2({ pageNum: 1, pageSize: 20 }, { botImId: 'unknown' }),
+      ).rejects.toThrow('缺少 DULIDAY_API_TOKEN');
+
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it('throws on a non-zero business code', async () => {
+      hostingMemberConfigService.resolveDulidayToken.mockResolvedValueOnce('member-token');
+      const mockResponse = {
+        ok: true,
+        json: jest.fn().mockResolvedValue({ code: 401, message: '未授权' }),
+      };
+      jest.spyOn(global, 'fetch').mockResolvedValue(mockResponse as unknown as Response);
+
+      await expect(
+        service.fetchSelfSignupWorkOrdersV2({ pageNum: 1, pageSize: 20 }, { botImId: 'bot-im-1' }),
+      ).rejects.toThrow('海绵当前供应商工单分页查询(v2)业务失败: code=401 message=未授权');
+    });
+  });
+
   describe('fetchSelfSignupWorkOrders', () => {
     it('uses the hosting-member Duliday token and posts only time filters', async () => {
       hostingMemberConfigService.resolveDulidayToken.mockResolvedValueOnce('member-token');
