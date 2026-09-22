@@ -1,6 +1,7 @@
 import { Global, Module } from '@nestjs/common';
 import { SpongeModule } from '@sponge/sponge.module';
 import { OpsDailyReportCronService } from './crons/ops-daily-report.cron';
+import { PostBookingInviteRateCronService } from './crons/post-booking-invite-rate.cron';
 import { SpongeStatusPollService } from './crons/sponge-status-poll.cron';
 import { DailyOpsReportRepository } from './repositories/daily-ops-report.repository';
 import { OpsEventsRepository } from './repositories/ops-events.repository';
@@ -31,6 +32,7 @@ import { OpsEventsRecorderService } from './services/ops-events-recorder.service
     DailyOpsReportRepository,
     DailyOpsReportService,
     OpsDailyReportCronService,
+    PostBookingInviteRateCronService,
   ],
   exports: [
     OpsEventsRepository,

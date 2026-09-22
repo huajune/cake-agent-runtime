@@ -247,19 +247,33 @@ export class RepairEvidenceBuilder {
 
   /**
    * 群邀请证据：保留 invite_to_group 的下发结果，记录本轮是否已经发送群邀请。
+   * 报名成功后的拉群由运行时执行（booking 回执 `groupInvite`），没有 invite_to_group
+   * 调用时以它为证据，否则修复会把如实的"已帮你加入群"当无证据完成态。
    */
   private buildGroupInviteEvidence(toolCalls: AgentToolCall[]): GroupInviteEvidence | undefined {
     const call = [...toolCalls]
       .reverse()
       .find((item) => item.toolName === 'invite_to_group' && item.result);
     const result = readRecord(call?.result);
-    if (!result) return undefined;
+    if (result) {
+      return {
+        success: result.success === true,
+        groupName: readString(result.groupName),
+        alreadyInGroup: readBoolean(result.alreadyInGroup),
+        errorType: readString(result.errorType),
+      };
+    }
 
+    const booking = [...toolCalls]
+      .reverse()
+      .find((item) => item.toolName === 'duliday_interview_booking' && item.result);
+    const runtimeInvite = readRecord(readRecord(booking?.result)?.groupInvite);
+    if (!runtimeInvite) return undefined;
     return {
-      success: result.success === true,
-      groupName: readString(result.groupName),
-      alreadyInGroup: readBoolean(result.alreadyInGroup),
-      errorType: readString(result.errorType),
+      success: runtimeInvite.success === true,
+      groupName: readString(runtimeInvite.groupName),
+      alreadyInGroup: readBoolean(runtimeInvite.alreadyInGroup),
+      errorType: readString(runtimeInvite.failureReason) ?? readString(runtimeInvite.skippedReason),
     };
   }
 

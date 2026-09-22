@@ -151,6 +151,40 @@ export class OpsEventsRepository extends BaseRepository {
     return pending;
   }
 
+  /**
+   * 查时间窗内 booking.succeeded 事件 payload 里的运行时拉群结果（PRD R3 观测）。
+   *
+   * payload.group_invite.outcome 由 booking 工具写入：invited / already_in_group /
+   * skipped:<reason> / failed:<reason>；上线前的旧事件没有该字段，返回 null 由调用方剔除。
+   * 只取 payload 列、按 report_date 走既有索引，窗口由调用方限定在一周量级。
+   */
+  async findBookingGroupInviteOutcomes(
+    sinceReportDate: string,
+    untilReportDate: string,
+  ): Promise<Array<{ botImId: string | null; outcome: string | null }>> {
+    if (!this.isAvailable()) return [];
+
+    const rows = await this.selectAllPaged<{
+      bot_im_id?: string | null;
+      payload?: { group_invite?: { outcome?: unknown } | null } | null;
+    }>(this.tableName, 'bot_im_id, payload', (q) =>
+      q
+        .eq('event_name', 'booking.succeeded')
+        .gte('report_date', sinceReportDate)
+        .lte('report_date', untilReportDate)
+        .order('report_date', { ascending: true })
+        .order('id', { ascending: true }),
+    );
+
+    return rows.map((row) => {
+      const outcome = row.payload?.group_invite?.outcome;
+      return {
+        botImId: row.bot_im_id ?? null,
+        outcome: typeof outcome === 'string' ? outcome : null,
+      };
+    });
+  }
+
   /** 查时间窗内的面试通过事件，供复聊侧 D+3 入职跟进 sweep 排程。 */
   async findRecentInterviewPassed(
     since: Date,

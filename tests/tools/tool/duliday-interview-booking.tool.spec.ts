@@ -9,6 +9,7 @@ import type { ToolBuildContext } from '@shared-types/tool.types';
 import type { TurnOutcome } from '@agent/runner/agent-runner.types';
 import { resolveReplaySkipDecision } from '@agent/runner/turn-outcome';
 import { buildInterviewBookingTool } from '@tools/duliday-interview-booking.tool';
+import type { PostBookingGroupInviteOutcome } from '@tools/invite/post-booking-group-invite';
 import { STALE_INPUT_REASON_CODE, TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
 import { createToolContext } from '../../helpers/tool-context.fixture';
 
@@ -598,6 +599,160 @@ describe('duliday_interview_booking（form → labelList）', () => {
       expect(result.success).toBe(true);
       expect(result._onSiteScript).toBeUndefined();
       expect(result._onlineInterviewGuide).toBeUndefined();
+    });
+  });
+
+  // PRD R3：报名成功后拉群改为程序保证——首次报名成功、私聊、城市可知时由运行时直接拉群，
+  // 结果进回执，模型只按结果说话；任何失败都不影响报名成功回执。
+  describe('报名成功后运行时拉群', () => {
+    interface BookingResultWithInvite {
+      success: boolean;
+      errorType?: string;
+      _outcome: string;
+      _replyInstruction: string;
+      _groupInviteGuide: string;
+      groupInvite: PostBookingGroupInviteOutcome;
+    }
+    const groupInvite = {
+      preflightExistingMembership: jest.fn(),
+      invite: jest.fn(),
+    };
+    const sessionFactsWithCity = {
+      ...sessionFacts,
+      getSessionState: jest.fn().mockResolvedValue({ invitedGroups: [] }),
+      getFacts: jest.fn().mockResolvedValue({
+        preferences: {
+          city: { value: '上海', confidence: 'high', source: 'candidate_quote', evidence: '原文' },
+        },
+      }),
+    };
+
+    beforeEach(() => {
+      groupInvite.preflightExistingMembership.mockResolvedValue(null);
+      groupInvite.invite.mockResolvedValue({
+        success: true,
+        groupName: '上海餐饮群',
+        inviteDelivery: 'invite_card',
+      });
+      context.session.turnId = 'turn-9';
+    });
+
+    async function executeWithInvite(input: Record<string, unknown> = { jobId: 100 }) {
+      const built = buildInterviewBookingTool(
+        sponge as never,
+        notifier as never,
+        hosting as never,
+        longTerm as never,
+        ops as never,
+        {
+          collectionForms: collectionForms as never,
+          sessionFacts: sessionFactsWithCity as never,
+          groupInvite: groupInvite as never,
+        },
+      )(context);
+      return built.execute!(input as never, {
+        toolCallId: 'booking-test',
+        context: {},
+        messages: [],
+        abortSignal: undefined as never,
+      }) as Promise<BookingResultWithInvite>;
+    }
+
+    it('报名成功后直接拉群：结果进回执、回复指令要求只按结果说话、运营事件带口径', async () => {
+      const result = await executeWithInvite();
+
+      expect(result.success).toBe(true);
+      expect(groupInvite.invite).toHaveBeenCalledWith(
+        expect.objectContaining({ city: '上海', contactWxid: 'user-1', turnKey: 'turn-9' }),
+      );
+      expect(result.groupInvite).toEqual({
+        attempted: true,
+        success: true,
+        city: '上海',
+        groupName: '上海餐饮群',
+        delivery: 'invite_card',
+      });
+      expect(result._groupInviteGuide).toContain('「上海餐饮群」的入群邀请卡片');
+      expect(result._replyInstruction).toContain('报名成功');
+      expect(result._replyInstruction).toContain('不要再调用 invite_to_group');
+      expect(context.ledger.jobs.postBookingGroupInvite).toEqual(result.groupInvite);
+      expect(ops.recordEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          eventName: 'booking.succeeded',
+          payload: expect.objectContaining({
+            turn_id: 'turn-9',
+            group_invite: expect.objectContaining({ outcome: 'invited', group_name: '上海餐饮群' }),
+          }),
+        }),
+      );
+    });
+
+    it('拉群失败或抛异常不影响报名成功回执', async () => {
+      groupInvite.invite.mockRejectedValue(new Error('enterprise api down'));
+
+      const result = await executeWithInvite();
+
+      expect(result.success).toBe(true);
+      expect(result.errorType).toBeUndefined();
+      expect(result._outcome).toBe('预约成功，可以告知候选人面试安排');
+      expect(result.groupInvite).toMatchObject({
+        attempted: true,
+        success: false,
+        failureReason: 'exception',
+      });
+      expect(result._groupInviteGuide).toContain('不要向候选人提及群相关内容');
+      expect(context.ledger.jobs.bookingSucceeded).toBe(true);
+      expect(hosting.pauseUser).not.toHaveBeenCalled();
+      expect(ops.recordEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          eventName: 'booking.succeeded',
+          payload: expect.objectContaining({
+            group_invite: expect.objectContaining({ outcome: 'failed:exception' }),
+          }),
+        }),
+      );
+    });
+
+    it('群聊里报名成功不拉群并给原因', async () => {
+      context.session.imRoomId = 'room-1';
+      const result = await executeWithInvite();
+      expect(result.success).toBe(true);
+      expect(result.groupInvite).toEqual({
+        attempted: false,
+        success: false,
+        skippedReason: 'group_chat',
+      });
+      expect(groupInvite.invite).not.toHaveBeenCalled();
+      delete context.session.imRoomId;
+    });
+
+    it('城市未知时不拉群并给原因', async () => {
+      sessionFactsWithCity.getFacts.mockResolvedValueOnce(null);
+      const result = await executeWithInvite();
+      expect(result.success).toBe(true);
+      expect(result.groupInvite).toEqual({
+        attempted: false,
+        success: false,
+        skippedReason: 'city_unknown',
+      });
+      expect(groupInvite.invite).not.toHaveBeenCalled();
+      expect(result._groupInviteGuide).toContain('原因: city_unknown');
+    });
+
+    it('候选人名下已有其他在途工单：不是首次报名，不拉群', async () => {
+      longTerm.getActiveBookings.mockResolvedValue([
+        { work_order_id: 8001, job_id: 200, linked_at: new Date().toISOString() },
+      ]);
+      const result = await executeWithInvite();
+      expect(result.success).toBe(true);
+      expect(result.groupInvite.skippedReason).toBe('not_first_booking');
+      expect(groupInvite.invite).not.toHaveBeenCalled();
+    });
+
+    it('未注入拉群服务时回执记 service_unavailable（旧装配兼容）', async () => {
+      const result = await execute({ jobId: 100 });
+      expect(result.success).toBe(true);
+      expect(result.groupInvite.skippedReason).toBe('service_unavailable');
     });
   });
 });

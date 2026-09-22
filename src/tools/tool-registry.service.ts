@@ -127,6 +127,8 @@ export class ToolRegistryService {
             collectionForms: collectionFormService,
             sessionFacts: sessionService,
             identityAnchors: process.env.COLLECTION_IDENTITY_LABEL_IDS,
+            // 报名成功后拉群由运行时程序保证（PRD R3），与 invite_to_group 同一闸门与执行。
+            groupInvite: groupInviteService,
           },
         ),
       }),
@@ -178,7 +180,8 @@ export class ToolRegistryService {
 
       invite_to_group: createToolDefinition({
         name: 'invite_to_group',
-        description: '邀请候选人加入企微兼职群（穷尽推荐无匹配/登记完成后触发）',
+        description:
+          '邀请候选人加入企微兼职群（连续两轮推荐不满意后的群承接 / 候选人同意入群；报名成功后的拉群由运行时自动完成）',
         create: buildInviteToGroupTool(groupInviteService, sessionService),
       }),
 

@@ -164,6 +164,11 @@ export const TOOL_ERROR_TYPES = {
    * 模型应据实回应"你已经在 X 群里了"，不要再次发起邀请。
    */
   INVITE_ALREADY_INVITED: 'invite.already_invited',
+  /**
+   * 本轮报名成功后拉群已由运行时执行（booking 回执里的 groupInvite），模型仍调用了本工具。
+   * 按运行时结果回应即可，不再重复发起邀请。
+   */
+  INVITE_HANDLED_BY_RUNTIME: 'invite.handled_by_runtime',
   INVITE_NO_GROUP_AVAILABLE: 'invite.no_group_available',
   INVITE_NO_GROUP_IN_CITY: 'invite.no_group_in_city',
   INVITE_GROUP_FULL: 'invite.group_full',

@@ -50,6 +50,16 @@ SELECT count(*) AS turns, count(DISTINCT chat_id) AS chats,
 
 - `guardrail_review_records`：`count(*)` 写入行数、`final_decision='block'` 拦截数、`repaired` 改写数，再按 `first_decision` 分组（用 `created_at`）。**这是单写入者稀疏表——放行回合不写行，行数≠审查量**，不要写成「审查 X 条回复」；`first_decision='pass'` 的行是仅观察命中（误报的主要去处），单独报它的环比更有信息量。
 - `reengagement_touch_records`：`count(*)` 计划数、`status='sent'` 实发数（用 `created_at`）
+- **首次报名后同轮拉群率**（`ops_events`，PRD R3 观测；2026-09-22 起 booking 工具把运行时拉群结果写进 `booking.succeeded` 的 `payload->'group_invite'`）。分子 = `invited` + `already_in_group`；分母 = 分子 + `failed:*`，剔除 `failed:no_group_in_city` / `failed:no_group_available`（城市本就没群）；`skipped:*`（群聊/代报/非首次/城市未知/已邀请）不进分母。低于 80% 要在周报里点名，运行时每周一 09:30 的 `PostBookingInviteRateCronService` 也按同一口径飞书告警：
+
+```sql
+SET LOCAL statement_timeout = '25s';
+SELECT payload->'group_invite'->>'outcome' AS outcome, count(*)
+FROM ops_events
+WHERE event_name = 'booking.succeeded'
+  AND report_date >= '<周一>' AND report_date <= '<周日>'
+GROUP BY 1 ORDER BY 2 DESC;
+```
 
 ### 3. BadCase 治理台账（飞书表）
 
@@ -73,6 +83,7 @@ node scripts/weekly-ops-report/collect-badcase-stats.js <since> <until>
 #### 📊 本周运行数据
 - 对话：X 轮 / Y 位候选人，处理成功率 Z%
 - 招聘漏斗（ops_events）：新增好友 / 破冰 / 岗位推荐 / 拉群邀请 / 预检通过 / 报名成功（失败）/ 改约 / 取消 / 面试通过
+- 首次报名后同轮拉群率：X%（分子/分母；低于 80% 加粗点名并列出主要失败原因）
 - 转人工：X 次，按 `payload->>'reason_code'` 分组（**不是** `payload->>'reason'`，那列是自由文本且含候选人 PII，不要入报告）
 - 出站守卫：改写 X 条，拦截 Y 条；仅观察命中 Z 次（环比）
 - 二次触达：计划 X 条，实发 Y 条

@@ -5,6 +5,7 @@
  * BookingCollectionForm，唯一外发形状是 `{ jobId, interviewTime?, labelList }`。
  */
 
+import type { GroupInviteService } from '@biz/group-task/services/group-invite.service';
 import type { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
 import type { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { toErrorMessage } from '@infra/utils/error.util';
@@ -42,6 +43,11 @@ import { findRecentSameJobBooking } from '@tools/booking/active-booking-dedup.ut
 import { isTestPiiPhoneAllowed, maskPhoneForDetails } from '@tools/shared/test-pii-gate';
 import { buildJobPolicyAnalysis, isWaitNoticeInterview } from '@tools/job-list/job-policy-parser';
 import { buildBookableSlots } from '@tools/booking/bookable-slot.util';
+import {
+  buildPostBookingGroupInviteGuide,
+  describePostBookingGroupInviteForEvent,
+  runPostBookingGroupInvite,
+} from '@tools/invite/post-booking-group-invite';
 import { buildSpongeTokenContext } from '@tools/shared/sponge-token-context.util';
 import {
   buildToolError,
@@ -79,6 +85,8 @@ export interface BookingAdjudicationDeps {
   identityAnchors?: string;
   /** 收资审计面：`error_list_unmapped` 熔断此前只落盘不发事件，观测里完全看不见。 */
   observer?: { emit: (event: AgentEvent) => void };
+  /** 报名成功后由运行时直接拉群（PRD R3）；缺省时回执里 groupInvite 记 service_unavailable。 */
+  groupInvite?: GroupInviteService;
 }
 
 /**
@@ -567,6 +575,17 @@ export function buildInterviewBookingTool(
               );
             }
           }
+          // 报名成功后拉群改为程序保证（PRD R3）：首次报名成功、私聊、城市可知时直接走
+          // 与 invite_to_group 相同的确定性流水线，结果进回执，模型只按结果说话。
+          // 内部已全量兜底，任何失败都不影响报名成功回执。
+          const groupInvite = await runPostBookingGroupInvite({
+            context,
+            groupInviteService: deps.groupInvite,
+            sessionService: deps.sessionFacts,
+            logger,
+            isAdditionalCandidate,
+            hasOtherActiveBookings: otherActiveBookings.length > 0,
+          });
           recordBookingEvent(
             opsEventsRecorder,
             context,
@@ -582,6 +601,8 @@ export function buildInterviewBookingTool(
               brand_name: jobInfo.brandName,
               store_name: jobInfo.storeName,
               job_name: jobInfo.jobName,
+              turn_id: context.session.turnId ?? null,
+              group_invite: describePostBookingGroupInviteForEvent(groupInvite),
             },
             result.workOrderId,
           );
@@ -596,9 +617,12 @@ export function buildInterviewBookingTool(
               `[booking] jobId=${jobId} 面试方式缺失或枚举外，回执不附到店脚本也不附线上提醒`,
             );
           }
+          const groupInviteGuide = buildPostBookingGroupInviteGuide(groupInvite);
           const toolResult = {
             ...baseToolOutput,
             _outcome: '预约成功，可以告知候选人面试安排',
+            groupInvite,
+            _groupInviteGuide: groupInviteGuide,
             ...(otherActiveBookings.length > 0
               ? {
                   otherActiveBookings,
@@ -609,9 +633,11 @@ export function buildInterviewBookingTool(
                     )}）。本轮告知报名成功后，必须紧接着问一句是两家都去还是只保留这家；候选人说只保留新的一家时，当轮用 duliday_cancel_work_order 取消旧工单。不得默默双报，也不得替候选人决定。`,
                 }
               : {}),
-            _replyInstruction: isAdditionalCandidate
-              ? '本轮必须明确告诉用户当前这位候选人报名成功，并照实复述面试安排；只有告知成功后才能处理下一位候选人。'
-              : '本轮必须明确告诉候选人报名成功，并照实复述面试安排；不得静默或只回答其它问题。',
+            _replyInstruction:
+              (isAdditionalCandidate
+                ? '本轮必须明确告诉用户当前这位候选人报名成功，并照实复述面试安排；只有告知成功后才能处理下一位候选人。'
+                : '本轮必须明确告诉候选人报名成功，并照实复述面试安排；不得静默或只回答其它问题。') +
+              `群动作（groupInvite）：${groupInviteGuide}`,
             _confirmedInterviewTimeHuman: interviewTime
               ? formatInterviewTimeForReply(interviewTime)
               : '未指定面试时间：面试官会直接电话联系候选人确认',
