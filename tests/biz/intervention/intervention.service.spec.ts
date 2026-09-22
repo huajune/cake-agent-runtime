@@ -156,6 +156,39 @@ describe('InterventionService', () => {
     });
   });
 
+  it('forwards dispatched interventions to InterventionTaskService without blocking on failure', async () => {
+    const interventionTaskService = {
+      submit: jest.fn().mockRejectedValue(new Error('feishu down')),
+    };
+    const withTask = new InterventionService(
+      userHostingService as never,
+      riskNotifier as never,
+      generalHandoffNotifier as never,
+      interventionTaskService as never,
+    );
+
+    const result = await withTask.dispatch(riskPayload);
+
+    expect(result.dispatched).toBe(true);
+    expect(interventionTaskService.submit).toHaveBeenCalledWith(riskPayload);
+    await new Promise((resolve) => setImmediate(resolve));
+  });
+
+  it('does not submit a feishu task when intervention is suppressed', async () => {
+    const interventionTaskService = { submit: jest.fn() };
+    userHostingService.isUserPaused.mockResolvedValue(true);
+    const withTask = new InterventionService(
+      userHostingService as never,
+      riskNotifier as never,
+      generalHandoffNotifier as never,
+      interventionTaskService as never,
+    );
+
+    await withTask.dispatch(riskPayload);
+
+    expect(interventionTaskService.submit).not.toHaveBeenCalled();
+  });
+
   it('pauses + notifies via GeneralHandoffNotifierService for general_handoff payload', async () => {
     const generalPayload: GeneralHandoffInterventionPayload = {
       ...baseContext,

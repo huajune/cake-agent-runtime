@@ -1,5 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
+import { toErrorMessage } from '@infra/utils/error.util';
+import { InterventionTaskService } from '@notification/feishu-task/intervention-task.service';
 import { ConversationRiskNotifierService } from '@notification/services/conversation-risk-notifier.service';
 import { GeneralHandoffNotifierService } from '@notification/services/general-handoff-notifier.service';
 import type { WeworkSessionState } from '@memory/short-term/short-term.types';
@@ -96,6 +98,7 @@ export class InterventionService {
     private readonly userHostingService: UserHostingService,
     private readonly riskNotifier: ConversationRiskNotifierService,
     private readonly generalHandoffNotifier: GeneralHandoffNotifierService,
+    @Optional() private readonly interventionTaskService?: InterventionTaskService,
   ) {}
 
   async dispatch(payload: InterventionPayload): Promise<InterventionResult> {
@@ -138,6 +141,9 @@ export class InterventionService {
       `[Intervention] kind=${payload.kind} source=${payload.source} chatId=${payload.chatId} alerted=${alerted}`,
     );
 
+    // 飞书任务（PRD R6）：异步、不阻塞群卡片与暂停；失败由任务服务自行告警。
+    this.submitFeishuTask(payload);
+
     return {
       dispatched: true,
       paused: true,
@@ -145,6 +151,15 @@ export class InterventionService {
       suppressed: alerted ? undefined : 'notify_failed',
       reason: payload.reason,
     };
+  }
+
+  private submitFeishuTask(payload: InterventionPayload): void {
+    if (!this.interventionTaskService) return;
+    void this.interventionTaskService.submit(payload).catch((error: unknown) => {
+      this.logger.warn(
+        `[Intervention] 飞书任务提交异常（已忽略）: chatId=${payload.chatId} error=${toErrorMessage(error)}`,
+      );
+    });
   }
 
   private notifyRisk(payload: RiskInterventionPayload): Promise<boolean> {
