@@ -11,7 +11,7 @@ import { MonitoringCacheService } from './services/tracking/monitoring-cache.ser
 import { MetricsData, TimeRange } from './types/analytics.types';
 import { DeliverySkipReason } from '@shared-types/tracking.types';
 import { ApiTokenGuard } from '@infra/server/guards/api-token.guard';
-import { formatLocalDate } from '@infra/utils/date.util';
+import { addLocalDays, formatLocalDate, parseLocalDateStart } from '@infra/utils/date.util';
 
 /**
  * Analytics API 控制器
@@ -115,6 +115,22 @@ export class AnalyticsController {
     const end = endDate ?? formatLocalDate(new Date());
     const start = startDate ?? end;
     return this.reengagementQueryService.getStats(start, end);
+  }
+
+  /**
+   * 二次触发周度漏斗：登记 → 发出 → 6h 内候选人回复（按创建周 cohort）
+   * GET /analytics/reengagement-weekly-funnel?startDate=&endDate=
+   * 缺省最近 8 周；服务层再把跨度封顶到 13 周。
+   */
+  @Get('reengagement-weekly-funnel')
+  async getReengagementWeeklyFunnel(
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    const end = endDate ?? formatLocalDate(new Date());
+    const start =
+      startDate ?? formatLocalDate(addLocalDays(parseLocalDateStart(end), -(8 * 7 - 1)));
+    return this.reengagementQueryService.getWeeklyFunnel(start, end);
   }
 
   /**

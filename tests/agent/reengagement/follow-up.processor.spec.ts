@@ -204,12 +204,37 @@ describe('FollowUpProcessor', () => {
 
     await buildProcessor().process(makeJob());
 
+    // E7：触发停发的那条候选人消息写进触达记录 stop_context
     expect(tracking.trackStopped).toHaveBeenCalledWith(
       expect.anything(),
       'pending_candidate_message',
+      {
+        kind: 'pending_candidate_message',
+        candidateMessageAt: lastUserAt,
+        candidateMessagePreview: '因为我是暑假工',
+      },
     );
     expect(reengagementAgent.compose).not.toHaveBeenCalled();
     expect(delivery.deliver).not.toHaveBeenCalled();
+  });
+
+  it('候选人待答闸：stop_context 预览脱敏手机号并截断 120 字', async () => {
+    const lastUserAt = Date.now() - 30 * 60 * 1000;
+    chatSession.getChatHistory.mockResolvedValue([
+      { role: 'user', content: `我电话 13812345678 ${'很'.repeat(200)}`, timestamp: lastUserAt },
+    ]);
+    messageProcessing.getLatestReceivedAtByChatId.mockResolvedValue(lastUserAt - 10 * 60 * 1000);
+
+    await buildProcessor().process(makeJob());
+
+    const context = tracking.trackStopped.mock.calls[0][2] as {
+      candidateMessagePreview: string;
+    };
+    expect(context.candidateMessagePreview).not.toContain('13812345678');
+    expect(context.candidateMessagePreview).toContain('（手机号已省略）');
+    expect(Array.from(context.candidateMessagePreview).length).toBeLessThanOrEqual(
+      120 + '（手机号已省略）'.length,
+    );
   });
 
   it('候选人待答闸：轮次已进管道（含主动沉默）时不拦', async () => {
@@ -1490,6 +1515,7 @@ describe('FollowUpProcessor', () => {
         'skipped',
         expect.any(String),
         'chat_interview_time_mismatch',
+        { kind: 'chat_interview_time_mismatch', ...mismatch },
       );
       expect(touchLedger.markFailedOrUnknown).toHaveBeenCalledWith(expect.any(String), 'failed');
     });
@@ -1506,6 +1532,7 @@ describe('FollowUpProcessor', () => {
         'skipped',
         expect.any(String),
         'chat_interview_time_mismatch',
+        expect.objectContaining({ kind: 'chat_interview_time_mismatch' }),
       );
     });
 
@@ -1520,7 +1547,10 @@ describe('FollowUpProcessor', () => {
       expect(handoffNotifier.notify).not.toHaveBeenCalled();
       expect(tracking.trackShadow).toHaveBeenCalledWith(
         expect.anything(),
-        expect.objectContaining({ reason: 'chat_interview_time_mismatch' }),
+        expect.objectContaining({
+          reason: 'chat_interview_time_mismatch',
+          stopContext: { kind: 'chat_interview_time_mismatch', ...mismatch },
+        }),
       );
     });
   });
@@ -2667,6 +2697,7 @@ describe('FollowUpProcessor', () => {
       expect(tracking.trackStopped).toHaveBeenCalledWith(
         expect.anything(),
         'pending_candidate_message',
+        expect.objectContaining({ kind: 'pending_candidate_message' }),
       );
       expect(reengagementAgent.compose).not.toHaveBeenCalled();
     });

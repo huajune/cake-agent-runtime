@@ -8,6 +8,7 @@ import {
   ReengagementTouchDbRecord,
   ReengagementTouchFilters,
   ReengagementTouchStatsRow,
+  ReengagementWeeklyFunnelRow,
 } from '../entities/reengagement-touch.entity';
 
 /**
@@ -82,6 +83,7 @@ export class ReengagementTouchRepository extends BaseRepository {
       p_candidate_name: input.candidateName ?? null,
       p_manager_name: input.managerName ?? null,
       p_bot_im_id: input.botImId ?? null,
+      p_stop_context: input.stopContext ?? null,
     });
     // RPC RETURNS VOID → data 为 null；错误路径 BaseRepository 已记日志并返回 null，
     // 这里无法区分，仅作 best-effort 观测写入，不影响调用方。
@@ -148,6 +150,21 @@ export class ReengagementTouchRepository extends BaseRepository {
   /** 时间范围内按 status + scenario 分组计数（DB 侧聚合） */
   async getStats(startDate: string, endDate: string): Promise<ReengagementTouchStatsRow[]> {
     const rows = await this.rpc<ReengagementTouchStatsRow[]>('get_reengagement_touch_stats', {
+      p_start: startDate,
+      p_end: endDate,
+    });
+    return rows ?? [];
+  }
+
+  /**
+   * 周度漏斗（DB 侧聚合）：按创建周 × 场景返回 登记/发出/6h 回复 计数。
+   * RPC 内已剔除 signup_interview_gap_lt_3d 不适用底账；范围上限由服务层限制（≤ 13 周）。
+   */
+  async getWeeklyFunnel(
+    startDate: string,
+    endDate: string,
+  ): Promise<ReengagementWeeklyFunnelRow[]> {
+    const rows = await this.rpc<ReengagementWeeklyFunnelRow[]>('get_reengagement_weekly_funnel', {
       p_start: startDate,
       p_end: endDate,
     });

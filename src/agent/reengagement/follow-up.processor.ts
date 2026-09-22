@@ -8,6 +8,8 @@ import {
   ReengagementTrackingService,
   type ReengagementTouchIdentity,
 } from '@biz/monitoring/services/tracking/reengagement-tracking.service';
+import type { ReengagementStopContext } from '@biz/monitoring/entities/reengagement-touch.entity';
+import { redactCandidatePhones } from '@resolution/candidate/phone';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import type { MessageProcessingRecordInput } from '@biz/message/types/message.types';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
@@ -404,16 +406,19 @@ export class FollowUpProcessor implements OnModuleInit {
     // 与"Agent 主动沉默"区分：主动沉默的轮次有处理记录，本闸不拦。
     // 命中即停止并落触达底账（reason=pending_candidate_message），该信号同时是
     // 主链丢消息的显性化探针，值得告警排查。
-    const pendingCandidateMessageAt = await this.detectPendingCandidateMessage(
+    const pendingCandidateMessage = await this.detectPendingCandidateMessage(
       sessionRef.sessionId,
       now,
     );
-    if (pendingCandidateMessageAt != null) {
+    if (pendingCandidateMessage) {
       this.logger.warn(
         `[reengagement] 候选人待答闸命中，停止 ${scenarioCode} sessionId=${sessionRef.sessionId} ` +
-          `候选人最后消息 ${new Date(pendingCandidateMessageAt).toISOString()} 未被处理（疑似主链丢 turn）`,
+          `候选人最后消息 ${new Date(pendingCandidateMessage.candidateMessageAt).toISOString()} 未被处理（疑似主链丢 turn）`,
       );
-      this.tracking.trackStopped(identity, 'pending_candidate_message');
+      this.tracking.trackStopped(identity, 'pending_candidate_message', {
+        kind: 'pending_candidate_message',
+        ...pendingCandidateMessage,
+      });
       return;
     }
 
@@ -550,6 +555,7 @@ export class FollowUpProcessor implements OnModuleInit {
               ? 'rollout_disabled'
               : 'shadow_mode'),
         batchId,
+        stopContext: this.toMismatchStopContext(execution),
       });
       this.messageTracking.recordProactiveTurn(
         this.buildProactiveTurnRecord({
@@ -623,6 +629,7 @@ export class FollowUpProcessor implements OnModuleInit {
         outcome.kind,
         batchId,
         execution.validationReason,
+        this.toMismatchStopContext(execution),
       );
       this.messageTracking.recordProactiveTurn(
         this.buildProactiveTurnRecord({
@@ -712,14 +719,17 @@ export class FollowUpProcessor implements OnModuleInit {
    *
    * 历史/流水查询失败一律 fail open（返回 null 放行触达）——本闸是体验加固，
    * 不能因观测数据不可用把复聊整体憋死。
+   *
+   * 命中时连同那条候选人消息（时间 + 脱敏预览）返回，写进触达记录 stop_context 供运营核对。
    */
   private async detectPendingCandidateMessage(
     sessionId: string,
     now: number,
-  ): Promise<number | null> {
+  ): Promise<{ candidateMessageAt: number; candidateMessagePreview: string } | null> {
     const GRACE_MS = 10 * 60 * 1000;
     // received_at 是 debounce 合并批次的锚点，可能略早于批内最后一条消息的存储时间戳
     const MERGE_TOLERANCE_MS = 2 * 60 * 1000;
+    const PREVIEW_MAX_CHARS = 120;
     try {
       const history = await this.chatSession.getChatHistory(sessionId, 10);
       if (history.length === 0) return null;
@@ -732,7 +742,15 @@ export class FollowUpProcessor implements OnModuleInit {
       if (latestProcessedAt != null && latestProcessedAt >= lastUserAt - MERGE_TOLERANCE_MS) {
         return null;
       }
-      return lastUserAt;
+      return {
+        candidateMessageAt: lastUserAt,
+        candidateMessagePreview: redactCandidatePhones(
+          Array.from(last.content ?? '')
+            .slice(0, PREVIEW_MAX_CHARS)
+            .join(''),
+          '（手机号已省略）',
+        ),
+      };
     } catch (error) {
       this.logger.warn(
         `[reengagement] 候选人待答检测失败，按放行处理 sessionId=${sessionId}: ${this.errorMessage(error)}`,
@@ -1363,6 +1381,15 @@ export class FollowUpProcessor implements OnModuleInit {
         evidence: mismatch.evidence,
       },
     });
+  }
+
+  /** 聊天约定时间≠工单时间的停发上下文投影（写进触达记录 stop_context）。 */
+  private toMismatchStopContext(
+    execution: ProactiveTurnExecution,
+  ): ReengagementStopContext | undefined {
+    const mismatch = execution.chatInterviewTimeMismatch;
+    if (!mismatch) return undefined;
+    return { kind: 'chat_interview_time_mismatch', ...mismatch };
   }
 
   private formatJobLabel(bookingContext: ReengagementBookingContext): string {

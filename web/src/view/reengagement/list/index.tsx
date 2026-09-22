@@ -7,6 +7,7 @@ import {
 } from '@/hooks/reengagement/useReengagementRecords';
 import { buildScenarioLabels, buildScenarioOptions } from './constants';
 import ControlPanel from './components/ControlPanel';
+import WeeklyFunnel from './components/WeeklyFunnel';
 import CandidateTable from './components/CandidateTable';
 import ReengagementDetailDrawer from './components/ReengagementDetailDrawer';
 import type { ReengagementCandidateSummary } from '@/api/types/reengagement.types';
@@ -189,6 +190,8 @@ export default function ReengagementPage() {
         allValue={ALL_VALUE}
         scenarioOptions={scenarioOptions}
       />
+
+      <WeeklyFunnel />
 
       <InfiniteScroll
         dataLength={scrollLength}

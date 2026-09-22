@@ -42,6 +42,7 @@ describe('AnalyticsController', () => {
     getRecords: jest.fn(),
     getRecordByTouchKey: jest.fn(),
     getStats: jest.fn(),
+    getWeeklyFunnel: jest.fn(),
     getCandidateOverview: jest.fn(),
   };
 
@@ -147,6 +148,24 @@ describe('AnalyticsController', () => {
         '2026-07-07',
       );
       expect(result).toEqual(mockResult);
+    });
+
+    it('should default the weekly funnel to the most recent 8 weeks and pass explicit dates through', async () => {
+      mockReengagementQueryService.getWeeklyFunnel.mockResolvedValue([]);
+      jest.useFakeTimers().setSystemTime(new Date('2026-09-22T06:00:00.000Z'));
+
+      await controller.getReengagementWeeklyFunnel();
+      expect(mockReengagementQueryService.getWeeklyFunnel).toHaveBeenCalledWith(
+        '2026-07-29',
+        '2026-09-22',
+      );
+
+      await controller.getReengagementWeeklyFunnel('2026-08-01', '2026-09-01');
+      expect(mockReengagementQueryService.getWeeklyFunnel).toHaveBeenLastCalledWith(
+        '2026-08-01',
+        '2026-09-01',
+      );
+      jest.useRealTimers();
     });
 
     it('should pass touch key to detail lookup', async () => {

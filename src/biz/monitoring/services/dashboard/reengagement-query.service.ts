@@ -8,8 +8,12 @@ import {
   ReengagementTouchFilters,
   ReengagementTouchStatsRow,
   ReengagementTouchStatus,
+  ReengagementWeeklyFunnelBucket,
 } from '../../entities/reengagement-touch.entity';
 import { ReengagementTouchRepository } from '../../repositories/reengagement-touch.repository';
+
+/** 周度漏斗最长查询跨度：13 周（约一季度），防止 Dashboard 传超长范围扫全表。 */
+const WEEKLY_FUNNEL_MAX_DAYS = 13 * 7;
 
 /**
  * 二次触发追溯页查询编排：日期补全 + 参数解析，供 AnalyticsController 使用。
@@ -74,6 +78,45 @@ export class ReengagementQueryService {
       return rows;
     }
     return subtractStatsRows(rows, excluded);
+  }
+
+  /**
+   * 周度漏斗：登记 → 发出 → 6h 内候选人回复（按创建周 cohort，Asia/Shanghai）。
+   * RPC 按周 × 场景返回，这里合并到周并算回复率；跨度超过 13 周时只保留最近 13 周。
+   */
+  async getWeeklyFunnel(
+    startDate: string,
+    endDate: string,
+  ): Promise<ReengagementWeeklyFunnelBucket[]> {
+    const end = parseLocalDateStart(endDate);
+    const requestedStart = parseLocalDateStart(startDate);
+    const earliestStart = addLocalDays(end, -(WEEKLY_FUNNEL_MAX_DAYS - 1));
+    const start =
+      requestedStart.getTime() < earliestStart.getTime() ? earliestStart : requestedStart;
+    const rows = await this.repository.getWeeklyFunnel(
+      start.toISOString(),
+      addLocalDays(end, 1).toISOString(),
+    );
+    const byWeek = new Map<string, ReengagementWeeklyFunnelBucket>();
+    for (const row of rows) {
+      const bucket = byWeek.get(row.week_start) ?? {
+        weekStart: row.week_start,
+        registered: 0,
+        sent: 0,
+        replied6h: 0,
+        replyRate: null,
+      };
+      bucket.registered += Number(row.registered) || 0;
+      bucket.sent += Number(row.sent) || 0;
+      bucket.replied6h += Number(row.replied_6h) || 0;
+      byWeek.set(row.week_start, bucket);
+    }
+    return [...byWeek.values()]
+      .sort((a, b) => a.weekStart.localeCompare(b.weekStart))
+      .map((bucket) => ({
+        ...bucket,
+        replyRate: bucket.sent > 0 ? bucket.replied6h / bucket.sent : null,
+      }));
   }
 
   /**

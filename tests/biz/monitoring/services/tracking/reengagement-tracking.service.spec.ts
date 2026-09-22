@@ -49,6 +49,50 @@ describe('ReengagementTrackingService', () => {
     expect(input.firedAt).toEqual(expect.any(Number));
   });
 
+  it('carries the stop context (the message that triggered the stop) into the record', () => {
+    service.trackStopped(identity, 'pending_candidate_message', {
+      kind: 'pending_candidate_message',
+      candidateMessageAt: 1750000100000,
+      candidateMessagePreview: '因为我是暑假工',
+    });
+
+    expect(lastInput().stopContext).toEqual({
+      kind: 'pending_candidate_message',
+      candidateMessageAt: 1750000100000,
+      candidateMessagePreview: '因为我是暑假工',
+    });
+    expect(lastInput().decisionReason).toBe('pending_candidate_message');
+  });
+
+  it('carries the chat/work-order time mismatch context on skipped and shadow outcomes', () => {
+    const stopContext = {
+      kind: 'chat_interview_time_mismatch' as const,
+      workOrderId: 555,
+      workOrderInterviewAt: 1750000200000,
+      chatAgreedInterviewTime: '2026-06-25 15:00',
+      chatAgreedInterviewAt: 1750003800000,
+      evidence: '经理说通知明天下午 15 点面试',
+    };
+    service.trackOutcomeNotReply(
+      identity,
+      'skipped',
+      'batch-1',
+      'chat_interview_time_mismatch',
+      stopContext,
+    );
+    expect(lastInput().status).toBe('skipped');
+    expect(lastInput().stopContext).toEqual(stopContext);
+
+    repository.record.mockClear();
+    service.trackShadow(identity, {
+      outcomeKind: 'skipped',
+      reason: 'chat_interview_time_mismatch',
+      stopContext,
+    });
+    expect(lastInput().status).toBe('shadow');
+    expect(lastInput().stopContext).toEqual(stopContext);
+  });
+
   it('records an eagerly removed pending job as stopped without a fire time', () => {
     service.trackStoppedBeforeFire(identity, {
       jobId: 'job-1',

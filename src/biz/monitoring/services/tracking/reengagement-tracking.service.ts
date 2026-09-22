@@ -2,6 +2,7 @@ import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import {
   RecordReengagementTouchInput,
+  ReengagementStopContext,
   ReengagementTouchEventName,
   ReengagementTouchStatus,
 } from '../../entities/reengagement-touch.entity';
@@ -123,13 +124,18 @@ export class ReengagementTrackingService {
     );
   }
 
-  /** 到点停止条件命中 */
-  trackStopped(identity: ReengagementTouchIdentity, reason: string): void {
+  /** 到点停止条件命中；stopContext 为触发停发的那条消息/证据（可选） */
+  trackStopped(
+    identity: ReengagementTouchIdentity,
+    reason: string,
+    stopContext?: ReengagementStopContext,
+  ): void {
     this.markFired(
       identity,
       ReengagementTouchStatus.Stopped,
       reason,
       ReengagementTouchEventName.Stopped,
+      stopContext,
     );
   }
 
@@ -189,7 +195,13 @@ export class ReengagementTrackingService {
   /** shadow 分支：生成了文案但不投递（终态） */
   trackShadow(
     identity: ReengagementTouchIdentity,
-    params: { outcomeKind: string; generatedText?: string; reason: string; batchId?: string },
+    params: {
+      outcomeKind: string;
+      generatedText?: string;
+      reason: string;
+      batchId?: string;
+      stopContext?: ReengagementStopContext;
+    },
   ): void {
     this.persist({
       ...this.base(identity),
@@ -199,6 +211,7 @@ export class ReengagementTrackingService {
       outcomeKind: params.outcomeKind,
       generatedText: params.generatedText,
       batchId: params.batchId,
+      stopContext: params.stopContext,
       firedAt: Date.now(),
       event: {
         event: ReengagementTouchEventName.ShadowGenerated,
@@ -244,6 +257,7 @@ export class ReengagementTrackingService {
     outcomeKind: 'reply' | 'skipped' | 'handoff' | 'delivery_skipped',
     batchId?: string,
     reason: string = ReengagementTouchEventName.OutcomeNotReply,
+    stopContext?: ReengagementStopContext,
   ): void {
     const expectedNoSendOutcomes = new Set(['skipped', 'handoff', 'delivery_skipped']);
     const generationErrorReasons = new Set(['reengagement_agent_error', 'composer_error']);
@@ -257,6 +271,7 @@ export class ReengagementTrackingService {
       decisionReason: reason,
       outcomeKind,
       batchId,
+      stopContext,
       event: {
         event: ReengagementTouchEventName.OutcomeNotReply,
         detail: { outcomeKind, reason },
@@ -331,11 +346,13 @@ export class ReengagementTrackingService {
     status: ReengagementTouchStatus,
     reason: string,
     eventName: ReengagementTouchEventName,
+    stopContext?: ReengagementStopContext,
   ): void {
     this.persist({
       ...this.base(identity),
       status,
       decisionReason: reason,
+      stopContext,
       firedAt: Date.now(),
       event: { event: eventName, detail: { reason } },
     });

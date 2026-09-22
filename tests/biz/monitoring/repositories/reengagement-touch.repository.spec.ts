@@ -92,8 +92,65 @@ describe('ReengagementTouchRepository', () => {
           event: 'sent',
           detail: { idempotencyKey: 'touch-slot-1' },
         }),
+        p_stop_context: null,
       }),
     );
+  });
+
+  it('passes the stop context through to the RPC as jsonb', async () => {
+    await repository.record({
+      touchKey: 'sess-1:interview_reminder:evt-1',
+      stopContext: {
+        kind: 'pending_candidate_message',
+        candidateMessageAt: 1750000100000,
+        candidateMessagePreview: '因为我是暑假工',
+      },
+    });
+
+    expect(mockSupabaseClient.rpc).toHaveBeenCalledWith(
+      'record_reengagement_touch',
+      expect.objectContaining({
+        p_stop_context: {
+          kind: 'pending_candidate_message',
+          candidateMessageAt: 1750000100000,
+          candidateMessagePreview: '因为我是暑假工',
+        },
+      }),
+    );
+  });
+
+  it('reads the weekly funnel through the aggregate RPC', async () => {
+    mockSupabaseClient.rpc.mockResolvedValueOnce({
+      data: [
+        {
+          week_start: '2026-09-14',
+          scenario_code: 'interview_reminder',
+          registered: 10,
+          sent: 6,
+          replied_6h: 2,
+        },
+      ],
+      error: null,
+    });
+
+    const rows = await repository.getWeeklyFunnel(
+      '2026-09-13T16:00:00.000Z',
+      '2026-09-20T16:00:00.000Z',
+    );
+
+    expect(mockSupabaseClient.rpc).toHaveBeenCalledWith('get_reengagement_weekly_funnel', {
+      p_start: '2026-09-13T16:00:00.000Z',
+      p_end: '2026-09-20T16:00:00.000Z',
+    });
+    expect(rows).toEqual([
+      {
+        week_start: '2026-09-14',
+        scenario_code: 'interview_reminder',
+        registered: 10,
+        sent: 6,
+        replied_6h: 2,
+      },
+    ]);
   });
 
   it('skips writes when Supabase is unavailable', async () => {

@@ -1,0 +1,93 @@
+// WeeklyFunnel — 周度漏斗（登记 → 发出 → 6h 回复），沿用候选人表格的卡片与表头视觉
+@use '@/assets/styles/variables' as *;
+
+.section {
+  background: rgba(255, 255, 255, 0.88);
+  border-radius: 18px;
+  border: 1px solid rgba($primary-light, 0.14);
+  padding: 16px 20px;
+  box-shadow: 0 4px 20px rgba($primary, 0.05);
+  backdrop-filter: blur(10px);
+  margin-bottom: 16px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: $text-primary;
+  letter-spacing: -0.01em;
+
+  svg {
+    color: $primary;
+  }
+}
+
+.note {
+  font-size: 12px;
+  color: $text-muted;
+  cursor: help;
+}
+
+.empty {
+  padding: 14px 0;
+  font-size: 12px;
+  color: $text-muted;
+}
+
+.tableWrapper {
+  @include monitoring-table-wrapper;
+}
+
+.table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 13px;
+
+  th {
+    @include monitoring-table-header;
+  }
+
+  td {
+    padding: 10px 16px;
+    border-bottom: 1px solid rgba($bg-tint, 0.8);
+    color: $text-body;
+    font-variant-numeric: tabular-nums;
+    vertical-align: middle;
+    white-space: nowrap;
+  }
+
+  tbody tr:last-child td {
+    border-bottom: none;
+  }
+}
+
+.thRight {
+  text-align: right !important;
+}
+
+.cellRight {
+  text-align: right;
+}
+
+.weekCell {
+  color: $text-secondary;
+}
+
+.rateCell {
+  color: $primary;
+  font-weight: 500;
+}

@@ -18,7 +18,11 @@ import {
 } from '@/hooks/reengagement/useReengagementRecords';
 import { useMessageProcessingRecordDetail } from '@/hooks/chat/useMessageProcessingRecords';
 import { useChatSessionMessages } from '@/hooks/chat/useChatSessions';
-import type { ReengagementEvent, ReengagementTouchRecord } from '@/api/types/reengagement.types';
+import type {
+  ReengagementEvent,
+  ReengagementStopContext,
+  ReengagementTouchRecord,
+} from '@/api/types/reengagement.types';
 import type { FeedbackSourceTrace } from '@/api/types/agent-test.types';
 import { FeedbackButtons } from '@/view/agent-test/list/components/FeedbackButtons';
 import { FeedbackModal } from '@/view/agent-test/list/components/FeedbackModal';
@@ -106,9 +110,17 @@ const DETAIL_REASON_LABELS: Record<string, string> = {
   candidate_declined_interview: '候选人已明确表示取消或无法参加面试',
   manager_cancelled_interview: '招募经理已明确通知面试取消或无需参加',
   interview_result_known: '对话中已经有明确的面试结果',
-  result_inquiry_already_sent: '招募经理已经询问过本次面试结果',
-  interview_reminder_already_sent: '本次面试提醒已经发送过',
-  interview_not_started_per_chat: '按聊天记录约定的实际面试时间，面试尚未开始',
+  result_inquiry_already_sent: '招募经理在面试时间之后已经询问过本次面试结果',
+  interview_reminder_already_sent: '面试当天招募经理已另行发过本次面试提醒',
+  interview_not_started_per_chat: '按聊天记录面试尚未开始（未给出新的具体时间）',
+  chat_interview_time_mismatch: '聊天约定的面试时间与海绵工单不一致，已提醒运营改工单，本次不发',
+  pending_candidate_message: '候选人有一条消息还没被回复，不能压着未答消息主动触达',
+  missing_interview_time: '工单没有面试时间（等通知岗），暂不安排提醒',
+  interview_time_resolved: '等通知岗复核时工单已有面试时间，静默结束',
+  interview_slot_coordination_dispatched: '等通知岗满 3 天仍无面试时间，已给运营发协调任务提醒',
+  interview_slot_coordination_already_dispatched: '等通知岗协调任务提醒此前已发过，不重复',
+  interview_time_changed: '工单面试时间已变化，已按新时间重排',
+  interview_time_passed: '到点时面试时间已过，不再提醒',
   candidate_cancelled_interview_in_chat: '候选人在聊天中已明确取消或无法参加面试，已停止触达',
   reengagement_agent_skipped: '复聊 Agent 根据当前上下文决定不发送，具体依据见生成轨迹',
   reengagement_decision_invalid: '模型连续两次返回了自相矛盾的决策，系统已安全地不发送',
@@ -185,6 +197,14 @@ function formatReason(reason?: string | null): string {
   if (reason.startsWith('delivery_skipped:'))
     return `渠道未实际投递：${reason.slice('delivery_skipped:'.length)}`;
   return reason;
+}
+
+/** 停发依据（stop_context）：让运营不翻聊天记录就能核对停止原因。 */
+function formatStopContext(context: ReengagementStopContext): string {
+  if (context.kind === 'pending_candidate_message') {
+    return `候选人 ${formatDateTime(context.candidateMessageAt)} 的消息未被回复：「${context.candidateMessagePreview}」`;
+  }
+  return `工单 ${context.workOrderId} 面试时间 ${formatDateTime(context.workOrderInterviewAt)}，聊天约定 ${context.chatAgreedInterviewTime}（${context.evidence}）`;
 }
 
 function getReadableStatus(record: ReengagementTouchRecord): SummaryInfo {
@@ -466,6 +486,9 @@ export default function ReengagementDetailDrawer({
       { label: '场景', value: scenarioLabels[record.scenario_code] ?? record.scenario_code ?? '-' },
       { label: '当前结论', value: getReadableStatus(record).title },
       { label: '原因', value: formatReason(record.decision_reason) },
+      ...(record.stop_context
+        ? [{ label: '停发依据', value: formatStopContext(record.stop_context) }]
+        : []),
     ];
   }, [record, scenarioLabels]);
 
