@@ -87,7 +87,10 @@ function checkMembersPresent(check: string, relPath: string, members: readonly s
     .split('\n')
     .find((l) => l.includes('仅允许以下合法值之一'));
   if (!line) {
-    failures.push({ check, detail: `${relPath} 找不到「仅允许以下合法值之一」那行（提示词被改写？）` });
+    failures.push({
+      check,
+      detail: `${relPath} 找不到「仅允许以下合法值之一」那行（提示词被改写？）`,
+    });
   } else {
     const listed = [...line.matchAll(/"([^"]+)"/g)].map((x) => x[1]);
     const expected = [...VALID_LABOR_FORMS].sort();
@@ -137,39 +140,60 @@ checkMembersPresent(
   }
 }
 
-// ── 检查 3：转人工原因码 三份 label 表键集一致 ────────────────────────────────
+// ── 检查 3：转人工原因码 派生方必须引用权威目录 ────────────────────────────────
 //
-// 同一组 reasonCode 有三份 Record<string,string> 标签表（工具侧告警卡片、
-// 转化分析后端、前端饼图），键集全靠人肉同步。文案**刻意不比**——三者受众不同
-// （飞书告警 vs 运营看板），文案是否统一属产品判断，这里只保证键集不漏。
+// 2026-09-22 起 reasonCode 的唯一权威是 src/enums/handoff-reason.enum.ts：
+// 工具 z.enum、转化分析标签、飞书同步脚本都从它派生，前端饼图改用后端下发的
+// displayName。这里不再比三份字面标签表的键集（已无字面副本），改为两条结构性
+// 断言：① 权威目录能解析出码且不为空；② 每个派生方源码里引用了权威目录
+// （或前端：引用后端 displayName），谁再把字面表抄回来就会在这里被拦。
 {
-  const check = 'handoff reasonCode 三份标签表键集';
-  const sources: Array<[string, string]> = [
-    ['工具侧', 'src/tools/request-handoff.tool.ts'],
-    ['转化分析', 'src/biz/conversion-analytics/conversion-analytics.service.ts'],
-    ['前端饼图', 'web/src/view/conversion-analysis/list/components/HandoffPieChart/index.tsx'],
+  const check = 'handoff reasonCode 派生方引用权威目录';
+  const enumSource = read('src/enums/handoff-reason.enum.ts');
+  const authority = [...enumSource.matchAll(/code:\s*'([a-z_]+)'/g)].map((x) => x[1]);
+  const consumers: Array<[string, string, RegExp]> = [
+    ['工具侧', 'src/tools/request-handoff.tool.ts', /@enums\/handoff-reason\.enum/],
+    [
+      '转化分析',
+      'src/biz/conversion-analytics/conversion-analytics.service.ts',
+      /@enums\/handoff-reason\.enum/,
+    ],
+    [
+      '前端饼图',
+      'web/src/view/conversion-analysis/list/components/HandoffPieChart/index.tsx',
+      /displayName/,
+    ],
+    ['飞书同步脚本', 'scripts/sync-handoff-events-to-feishu.js', /handoff-reason\.enum/],
   ];
 
-  // 权威：工具入参 z.enum 的成员（模型唯一能产出的取值集）
-  const toolSource = read('src/tools/request-handoff.tool.ts');
-  const enumBlock = toolSource.match(/reasonCode:\s*z\s*\n?\s*\.enum\(\[([\s\S]*?)\]\)/);
-  const authority = enumBlock ? [...enumBlock[1].matchAll(/'([a-z_]+)'/g)].map((x) => x[1]) : [];
-
   if (authority.length === 0) {
-    failures.push({ check, detail: '未能从 request-handoff.tool.ts 解析出 reasonCode 词表' });
+    failures.push({
+      check,
+      detail: '未能从 src/enums/handoff-reason.enum.ts 解析出 reasonCode 词表',
+    });
+  } else if (new Set(authority).size !== authority.length) {
+    failures.push({ check, detail: '权威目录里有重复的 reasonCode' });
   } else {
-    for (const [label, relPath] of sources) {
+    for (const [label, relPath, pattern] of consumers) {
       const source = read(relPath);
-      const missing = authority.filter((code) => !source.includes(code));
-      if (missing.length > 0) {
+      if (!pattern.test(source)) {
         failures.push({
           check,
-          detail: `${label}（${relPath}）缺少 reasonCode：${missing.join('、')} → 该原因在此处会落到 "?? 兜底" 标签`,
+          detail: `${label}（${relPath}）未引用权威目录（缺 ${pattern.source}），疑似抄回了字面标签表`,
+        });
+        continue;
+      }
+      // 派生方若仍手写字面码表（≥ 半数码以单引号字面量出现），视为副本回潮
+      const literalHits = authority.filter((code) => source.includes(`'${code}'`)).length;
+      if (label !== '工具侧' && literalHits >= Math.ceil(authority.length / 2)) {
+        failures.push({
+          check,
+          detail: `${label}（${relPath}）出现 ${literalHits}/${authority.length} 个字面 reasonCode，疑似重新维护了副本表`,
         });
       }
     }
     if (!failures.some((f) => f.check === check)) {
-      passed.push(`${check}（${authority.length} 个码 × 3 处一致）`);
+      passed.push(`${check}（权威目录 ${authority.length} 个码 × ${consumers.length} 个派生方）`);
     }
   }
 }
@@ -240,11 +264,12 @@ checkMembersPresent(
         }
       }
     }
-
   }
 
   if (!failures.some((f) => f.check === check)) {
-    passed.push(`${check}（${PROMPT_ASSETS.length} 份提示词资产 × ${entries.length} 个 errorType）`);
+    passed.push(
+      `${check}（${PROMPT_ASSETS.length} 份提示词资产 × ${entries.length} 个 errorType）`,
+    );
   }
 }
 
