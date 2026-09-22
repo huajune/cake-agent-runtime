@@ -23,6 +23,7 @@ import {
   classifyArrangementType,
   composeShiftTimeText,
 } from '@tools/job-list/format-shift-time.util';
+import { resolveWeeklyWorkDays } from '@tools/job-list/schedule-semantic.util';
 import {
   buildJobPolicyAnalysis,
   cleanPolicyText,
@@ -743,7 +744,7 @@ function renderWorkTimeSection(workTimeInput: unknown): string {
         renderedWeeklyDays = weekWorkDays;
         wmParts.push(`${idiom}（每周出勤 ${weekWorkDays} 天）`);
       } else {
-        const cycleWeekly = Math.floor((7 * weekWorkDays) / (weekWorkDays + weekRestDays));
+        const cycleWeekly = resolveWeeklyWorkDays(wm).days ?? 0;
         renderedWeeklyDays = cycleWeekly;
         wmParts.push(
           `${idiom}（上${weekWorkDays}休${weekRestDays}循环班型，平均每周出勤约 ${cycleWeekly} 天，不是每周休 ${weekRestDays} 天）`,

@@ -27,6 +27,7 @@ import {
   type DistanceAnchorPrecision,
 } from '@tools/job-list/distance-render.util';
 import { normalizeStoreNameForAgent } from '@tools/job-list/sanitize.util';
+import { resolveWeeklyWorkDays } from '@tools/job-list/schedule-semantic.util';
 import {
   extractHardRequirements,
   type HardRequirements,
@@ -75,7 +76,10 @@ interface ShiftWorkTimeInput {
       perDayMinWorkHours?: number | string;
     };
   } | null;
-  weekAndMonthWorkTime?: { perWeekWorkDays?: number | string } | null;
+  weekAndMonthWorkTime?: {
+    perWeekWorkDays?: number | string;
+    perWeekRestDays?: number | string;
+  } | null;
 }
 
 function buildShiftPart(workTime: unknown): string {
@@ -110,7 +114,15 @@ function buildShiftPart(workTime: unknown): string {
   // 每周天数
   const wm: NonNullable<ShiftWorkTimeInput['weekAndMonthWorkTime']> =
     wt?.weekAndMonthWorkTime ?? {};
-  if (hasValue(wm.perWeekWorkDays)) parts.push(`每周 ${wm.perWeekWorkDays} 天`);
+  // 做一休一等循环班型的 perWeekWorkDays 不是周频，直出会变成"每周 1 天"
+  const weekly = resolveWeeklyWorkDays(wm);
+  if (weekly.days !== null) {
+    parts.push(
+      weekly.cyclic
+        ? `做${wm.perWeekWorkDays}休${wm.perWeekRestDays}轮换（平均每周约 ${weekly.days} 天，工作日也要排班）`
+        : `每周 ${weekly.days} 天`,
+    );
+  }
 
   return parts.join('，');
 }

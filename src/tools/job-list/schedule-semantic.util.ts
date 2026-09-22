@@ -146,7 +146,7 @@ function deriveStructuredScheduleSemantics(
   const limitType = typeof wm.onWorkLimitType === 'string' ? wm.onWorkLimitType : '';
   const unit = typeof wm.onWorkTimeUnit === 'string' ? wm.onWorkTimeUnit : '';
 
-  let weeklyWorkDays = numberOf(wm.perWeekWorkDays);
+  let weeklyWorkDays = resolveWeeklyWorkDays(wm).days;
   if (weeklyWorkDays === null && unit === '天' && /至少/.test(limitType)) {
     weeklyWorkDays = numberOf(wm.onWorkTime);
   }
@@ -161,6 +161,27 @@ function deriveStructuredScheduleSemantics(
     return ['low_weekly_frequency'];
   }
   return [];
+}
+
+/**
+ * 每周实际出勤天数（perWeekWorkDays 的唯一解释处）。
+ *
+ * perWeekWorkDays / perWeekRestDays 成对出现且相加≠7 时是循环班型（做一休一=上1休1轮换，
+ * 工作日也要到岗），此时 perWeekWorkDays 不是周频，须换算成平均每周天数；直接当周频读会把
+ * 做一休一当成"每周 1 天"，既在卡片上误报，又被判成低频岗放给只做周末的候选人。
+ */
+export function resolveWeeklyWorkDays(wm: {
+  perWeekWorkDays?: unknown;
+  perWeekRestDays?: unknown;
+}): {
+  days: number | null;
+  cyclic: boolean;
+} {
+  const work = numberOf(wm.perWeekWorkDays);
+  const rest = numberOf(wm.perWeekRestDays);
+  if (work === null) return { days: null, cyclic: false };
+  if (rest === null || work + rest === 7 || work + rest <= 0) return { days: work, cyclic: false };
+  return { days: Math.floor((7 * work) / (work + rest)), cyclic: true };
 }
 
 function numberOf(value: unknown): number | null {
