@@ -2,7 +2,8 @@
  * DuLiDay 修改约面时间工具
  *
  * 候选人主动要求改约面试时间（改期/换一天）时，自助调海绵修改约面时间接口完成改约。
- * 自助优先：接口失败或无工单号时，回退 request_handoff(modify_appointment) 转人工。
+ * 自助优先：接口失败时回执自带转人工副作用（modify_appointment + 工单号/岗位/失败原因），
+ * 模型只需如实告知已转同事；无工单号时仍回退 request_handoff(modify_appointment)。
  *
  * 工单归属两级核验：先看 active_booking 指针；不在指针里（真人后台手工建单、[当前预约信息]
  * 按手机号带外查得）时，再拿工单登记手机号与候选人本会话自报原话核对，一致即视为本人、
@@ -25,6 +26,10 @@ import { type SignupWorkOrderItem, type SignupWorkOrdersResult } from '@sponge/s
 import type { SpongeTokenResolveContext } from '@sponge/sponge-token.config';
 import type { ToolBuildContext, ToolBuilder } from '@shared-types/tool.types';
 import { buildToolError, TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
+import {
+  buildToolFailureHandoffSideEffect,
+  buildToolFailureReplyInstruction,
+} from '@tools/shared/tool-failure-handoff.util';
 import { isInterviewSlotAvailabilityInquiryOnly } from '@tools/booking/interview-time-intent.util';
 
 const logger = new Logger('duliday_modify_interview_time');
@@ -60,7 +65,7 @@ const DESCRIPTION = `修改约面时间。候选人**主动**要求把一个**�
 
 ## 成功/失败处理硬规则
 - **只有当本工具返回 success 后**，才能向候选人确认改约成功并复述新的面试时间
-- 失败时按 _replyInstruction 行动：自助改约失败应转人工（request_handoff，reasonCode=modify_appointment），不要原样复读报错、不要透露接口细节、不要谎称已改约`;
+- 失败时按 _replyInstruction 行动：接口失败的回执已自带转人工（本轮不要再调 request_handoff），你只需如实告诉候选人这次改约暂时处理不了、已转同事跟进；不要原样复读报错、不要透露接口细节、不要谎称已改约`;
 
 const inputSchema = z.object({
   workOrderId: z
@@ -205,20 +210,30 @@ export function buildModifyInterviewTimeTool(
             logger.warn(
               `修改约面时间失败: chatId=${chatId}, workOrderId=${workOrderId}, code=${result.code}, message=${result.message ?? '-'}`,
             );
-            return buildToolError({
-              errorType: TOOL_ERROR_TYPES.MODIFY_INTERVIEW_REJECTED,
-              outcome: '修改约面时间失败',
-              replyInstruction:
-                '改约未成功。请以真人招募者口吻一句话向候选人说明"我让同事帮你确认一下，稍等"之类的衔接语，并按 request_handoff（reasonCode=modify_appointment）转人工；不要透露接口报错/技术细节，不要谎称已改约。',
-              // apiCode/apiMessage 透传海绵后端的拒绝原因，仅供观测落库（dashboard 直接可见，无需翻 Winston 日志）；
-              // _replyInstruction 已禁止 LLM 把这些细节复读给候选人。
-              details: {
+            return {
+              ...buildToolError({
+                errorType: TOOL_ERROR_TYPES.MODIFY_INTERVIEW_REJECTED,
+                outcome: '修改约面时间失败',
+                replyInstruction: buildToolFailureReplyInstruction('改约'),
+                // apiCode/apiMessage 透传海绵后端的拒绝原因，仅供观测落库（dashboard 直接可见，无需翻 Winston 日志）；
+                // _replyInstruction 已禁止 LLM 把这些细节复读给候选人。
+                details: {
+                  workOrderId,
+                  newInterviewTime: trimmedTime,
+                  apiCode: result.code,
+                  apiMessage: result.message ?? null,
+                },
+              }),
+              // 失败即自带转人工（outcome 统一出口在回复投递后落底账/暂停/告警），不再让模型调 request_handoff
+              sideEffect: buildToolFailureHandoffSideEffect({
+                context,
+                action: '改约',
                 workOrderId,
-                newInterviewTime: trimmedTime,
-                apiCode: result.code,
-                apiMessage: result.message ?? null,
-              },
-            });
+                errorType: TOOL_ERROR_TYPES.MODIFY_INTERVIEW_REJECTED,
+                failureReason: result.message ?? `海绵返回 code=${result.code}`,
+                requestedInterviewTime: trimmedTime,
+              }),
+            };
           }
 
           logger.log(
@@ -254,17 +269,26 @@ export function buildModifyInterviewTimeTool(
             `修改约面时间异常: chatId=${chatId}, workOrderId=${workOrderId}`,
             toErrorStack(err),
           );
-          return buildToolError({
-            errorType: TOOL_ERROR_TYPES.MODIFY_INTERVIEW_REQUEST_FAILED,
-            outcome: '修改约面时间异常',
-            replyInstruction:
-              '改约未成功。请以真人招募者口吻一句话安抚衔接，并按 request_handoff（reasonCode=modify_appointment）转人工；不要透露接口报错/技术细节，不要谎称已改约。',
-            details: {
+          return {
+            ...buildToolError({
+              errorType: TOOL_ERROR_TYPES.MODIFY_INTERVIEW_REQUEST_FAILED,
+              outcome: '修改约面时间异常',
+              replyInstruction: buildToolFailureReplyInstruction('改约'),
+              details: {
+                workOrderId,
+                newInterviewTime: trimmedTime,
+                reason: toErrorMessage(err) || '未知错误',
+              },
+            }),
+            sideEffect: buildToolFailureHandoffSideEffect({
+              context,
+              action: '改约',
               workOrderId,
-              newInterviewTime: trimmedTime,
-              reason: toErrorMessage(err) || '未知错误',
-            },
-          });
+              errorType: TOOL_ERROR_TYPES.MODIFY_INTERVIEW_REQUEST_FAILED,
+              failureReason: toErrorMessage(err) || '未知错误',
+              requestedInterviewTime: trimmedTime,
+            }),
+          };
         }
       },
     });

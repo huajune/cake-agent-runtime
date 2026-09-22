@@ -210,6 +210,9 @@ export class TurnOutcomeInterventionService {
         botImId: intent.botImId ?? context.botImId,
         workOrderId: intent.workOrderId ?? null,
         jobId: intent.jobId ?? null,
+        origin:
+          intent.origin ??
+          (intent.source === 'output_guardrail' ? 'output_guardrail' : 'agent_tool'),
         idempotencyKey,
         occurredAt,
       });

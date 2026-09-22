@@ -773,6 +773,93 @@ describe('ReplyWorkflowService', () => {
     );
   });
 
+  it('同轮报名成功 + request_handoff → 先投递确定性回执，再暂停/告警（PRD R5.1）', async () => {
+    runner.invoke.mockResolvedValueOnce({
+      text: '',
+      reasoning: undefined,
+      responseMessages: [],
+      toolCalls: [
+        {
+          toolName: 'duliday_interview_booking',
+          args: { jobId: 528546, interviewTime: '2026-08-28 10:00:00' },
+          result: {
+            success: true,
+            workOrderId: 459742,
+            requestInfo: { jobId: 528546, interviewTime: '2026-08-28 10:00:00' },
+            _confirmedInterviewTimeHuman: '8月28日（周五）10:00',
+          },
+        },
+        {
+          toolName: 'request_handoff',
+          args: { reasonCode: 'salary_admin_inquiry', reason: '试工问题答不上' },
+          result: {
+            dispatched: true,
+            shortCircuited: true,
+            sideEffect: {
+              kind: 'general_handoff',
+              source: 'agent_tool',
+              alertLabel: '岗位口径答不上',
+              reasonCode: 'salary_admin_inquiry',
+              reason: '试工问题答不上',
+              recordHandoff: true,
+            },
+          },
+        },
+      ],
+      usage: { inputTokens: 1, outputTokens: 5, totalTokens: 6 },
+    });
+
+    await service.processSingleMessage(createMessage());
+
+    expect(deliveryService.deliverReply).toHaveBeenCalledTimes(1);
+    expect(deliveryService.deliverReply).toHaveBeenCalledWith(
+      { content: '报名已经提交成功了，面试时间是 8月28日（周五）10:00。' },
+      expect.anything(),
+      false,
+    );
+    expect(interventionService.dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'general_handoff', reasonCode: 'salary_admin_inquiry' }),
+    );
+    expect(deliveryService.deliverReply.mock.invocationCallOrder[0]).toBeLessThan(
+      interventionService.dispatch.mock.invocationCallOrder[0],
+    );
+    // 仍是 handoff 终态：本轮流水记跳过发送，不生成 delivered-reply 锚点
+    expect(wecomObservability.markReplySkipped).toHaveBeenCalledWith('msg-1');
+  });
+
+  it('承诺对账补介入只在回复真实投递时提交；投递被托管暂停跳过则不补', async () => {
+    runner.invoke.mockResolvedValue({
+      text: '我让同事帮你确认下具体算法，稍后联系你哈',
+      usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+      toolCalls: [],
+    });
+
+    // 正常投递：补一次 promise_reconciliation 介入
+    await service.processSingleMessage(createMessage());
+    expect(handoffRecorder.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        origin: 'promise_reconciliation',
+        reason: expect.stringContaining('承诺跟进：「我让同事帮你确认下具体算法，稍后联系你哈」'),
+      }),
+    );
+
+    jest.clearAllMocks();
+    deliveryService.deliverReply.mockResolvedValueOnce({
+      success: true,
+      segmentCount: 0,
+      failedSegments: 0,
+      deliveredSegments: 0,
+      totalTime: 1,
+      skipped: true,
+      skipReason: 'hosting_paused',
+    });
+
+    // 未投递：候选人没听到承诺，不补介入
+    await service.processSingleMessage(createMessage({ messageId: 'msg-2' }));
+    expect(handoffRecorder.record).not.toHaveBeenCalled();
+    expect(interventionService.dispatch).not.toHaveBeenCalled();
+  });
+
   it('schedules booking_incomplete follow-up when accepted precheck still needs fields', async () => {
     runner.invoke.mockResolvedValueOnce({
       text: '还差学历，补一下我帮你约',

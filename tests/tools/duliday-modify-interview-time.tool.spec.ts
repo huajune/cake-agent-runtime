@@ -278,4 +278,58 @@ describe('buildModifyInterviewTimeTool', () => {
       errorType: TOOL_ERROR_TYPES.MODIFY_INTERVIEW_REQUEST_FAILED,
     });
   });
+
+  describe('失败回执自带转人工（PRD R5.1：删「说衔接语 + 调 request_handoff」互斥指令）', () => {
+    const contextWithFocus = mergeToolContext(mockContext, {
+      archive: { currentStage: 'interview_booked', activeBookingJobIds: [777] },
+      turnInput: { currentUserMessage: '能改到 20 号下午两点吗' },
+    });
+
+    it.each([
+      [
+        'MODIFY_INTERVIEW_REJECTED',
+        () => spongeService.modifyInterviewTime.mockResolvedValue({ success: false, code: 500 }),
+        TOOL_ERROR_TYPES.MODIFY_INTERVIEW_REJECTED,
+      ],
+      [
+        'MODIFY_INTERVIEW_REQUEST_FAILED',
+        () => spongeService.modifyInterviewTime.mockRejectedValue(new Error('boom')),
+        TOOL_ERROR_TYPES.MODIFY_INTERVIEW_REQUEST_FAILED,
+      ],
+    ])('%s carries a modify_appointment handoff sideEffect', async (_label, arrange, errorType) => {
+      arrange();
+      const result = await exec(buildTool(contextWithFocus), {
+        workOrderId: 123,
+        newInterviewTime: '2026-06-20 14:00',
+      });
+
+      expect(result.errorType).toBe(errorType);
+      expect(result.sideEffect).toEqual(
+        expect.objectContaining({
+          kind: 'general_handoff',
+          origin: 'tool_failure',
+          reasonCode: 'modify_appointment',
+          workOrderId: 123,
+          jobId: 777,
+          stage: 'interview_booked',
+          recordHandoff: true,
+          reason: expect.stringContaining('想改到：2026-06-20 14:00'),
+        }),
+      );
+      expect(result._replyInstruction).not.toContain('按 request_handoff');
+      expect(result._replyInstruction).not.toContain('我让同事帮你确认一下');
+      expect(result._replyInstruction).toContain('已经转给同事跟进');
+    });
+
+    it('ownership gate rejection keeps the short-circuit contract (no extra sideEffect)', async () => {
+      longTermService.getActiveBookings.mockResolvedValue([]);
+      spongeService.fetchSignupWorkOrders.mockResolvedValue({ total: 0, workOrders: [] });
+      const result = await exec(buildTool(contextWithFocus), {
+        workOrderId: 999,
+        newInterviewTime: '2026-06-20 14:00',
+      });
+      expect(result.gateRejected).toBe(true);
+      expect(result.sideEffect).toBeUndefined();
+    });
+  });
 });

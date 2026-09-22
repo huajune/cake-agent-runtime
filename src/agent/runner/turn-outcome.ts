@@ -9,20 +9,21 @@ import type { OutputGuardDecision } from '../guardrail/output/output-guardrail.s
 import { OutboundReplySanitizer } from '../guardrail/output/sanitizer/outbound-reply-sanitizer';
 import { STALE_INPUT_REASON_CODE } from '@tools/shared/tool-error-types';
 import { buildHandoffIdempotencyKey } from './handoff-idempotency';
+import { buildPreHandoffReceipt } from './handoff-receipt';
+import {
+  buildPromiseReconciliationSideEffect,
+  detectUnreconciledHandoffPromise,
+} from './promise-reconciliation';
 import type { SessionRef, TurnOutcome } from './agent-runner.types';
 import type {
   GeneralHandoffSideEffectIntent,
   TurnSideEffectIntent,
 } from './turn-side-effect.types';
 
-const HANDOFF_PROMISE_PATTERNS: readonly RegExp[] = [
-  /我(?:们)?(?:这边)?(?:还)?(?:已经|会|来|先|马上|尽快|需要|得|要)?(?:帮你|给你)?(?:(?:让|请|找|问|联系|反馈给|转给|转达给)[^。！？\n]{0,12}|跟|同)(?:同事|负责人|店长|门店|招聘经理)[^。！？\n]{0,20}(?:确认|核实|处理|跟进|联系你|回复你|答复你|安排)/u,
-  /我(?:们)?(?:这边)?[^。！？\n]{0,10}(?:帮你|给你)[^。！？\n]{0,12}[，,]\s*(?:让|请)(?:同事|负责人|招聘经理)[^。！？\n]{0,20}(?:确认|核实|处理|跟进|联系你|回复你|答复你|安排)/u,
-];
-const HANDOFF_BOUNDARY_PATTERN =
-  /(?:具体|最终|实际|准确的?)[^。！？\n]{0,8}(?:以|看|按)[^。！？\n]{0,10}(?:同事|负责人|店长|门店|招聘经理|现场|面试时)[^。！？\n]{0,6}(?:确认|沟通|说明|为准|通知)/u;
-const NEGATED_HANDOFF_PROMISE_PATTERN =
-  /(?:如果|要是|万一|假如)[^。！？\n]{0,20}(?:同事|负责人|店长|门店|招聘经理)[^。！？\n]{0,12}(?:没有?|未|不)/u;
+/** 分类时可选的回合上下文：候选人当轮原话（承诺对账落底账用），runner 从入站请求透传。 */
+export interface ReviewedTurnContext {
+  userMessage?: string;
+}
 
 /** 已审生成结果的最小投入：生成结果 + 出站裁决（runner.invokeReviewed 的产物子集）。 */
 export type ReviewedResultLike = GeneratorRunResult & {
@@ -168,6 +169,7 @@ export function classifyReviewedOutcome(
   result: ReviewedResultLike,
   sessionRef: SessionRef,
   messageId?: string,
+  turnContext?: ReviewedTurnContext,
 ): TurnOutcome {
   const toolCalls = result.toolCalls ?? [];
   const text = OutboundReplySanitizer.sanitize(result.text ?? '').trim();
@@ -309,11 +311,16 @@ export function classifyReviewedOutcome(
       alreadyDispatched,
       recordHandoff: !alreadyDispatched,
     };
+    // 同轮已提交的报名/改约/取消结果：request_handoff 短路会让候选人什么都收不到，
+    // 渠道须在暂停前先投递这段确定性回执（PRD R5.1 第 3 条）。闸门拒绝不算已提交。
+    const preHandoffReceipt =
+      handoffCall.toolName === 'request_handoff' ? buildPreHandoffReceipt(toolCalls) : undefined;
     return {
       kind: 'handoff',
       toolCalls,
       runTurnEnd,
       ...metadata,
+      ...(preHandoffReceipt ? { preHandoffReceipt } : {}),
       sideEffects: [
         handoffToolSideEffect
           ? { ...handoffToolSideEffect, idempotencyKey }
@@ -345,10 +352,18 @@ export function classifyReviewedOutcome(
 
   // 第一人称明确承诺由同事/负责人跟进，但工具尚未执行时，在终态直接补人工介入。
   // 这属于 side-effect/result reconciliation，不进入 Output Guardrail 规则目录。
-  const promiseReconciliation = hasUnreconciledHandoffPromise(text, toolCalls)
+  // 结构化：承诺原句 + 候选人原话 + 焦点岗位/工单/阶段 + 按触发工具给码（promise-reconciliation.ts）。
+  const promisedText = detectUnreconciledHandoffPromise(text, toolCalls);
+  const promiseReconciliation = promisedText
     ? buildPromiseReconciliationSideEffect({
         sessionRef,
         turnId: messageId ?? sessionRef.sessionId,
+        promisedText,
+        toolCalls,
+        userMessage: turnContext?.userMessage,
+        focusJobId: resolveFocusJobId(result),
+        stage: result.memorySnapshot?.currentStage ?? null,
+        resolvedWorkOrderId: result.turnLedger?.jobs.resolvedWorkOrderId ?? null,
       })
     : undefined;
 
@@ -365,55 +380,15 @@ export function classifyReviewedOutcome(
   };
 }
 
-/**
- * handoff 承诺-动作对账的补动作意图。
- *
- * 复用既有 `other` reasonCode，不新开底账分桶：对运营来说这就是一次普通的"需人工跟进"。
- */
-function buildPromiseReconciliationSideEffect(params: {
-  sessionRef: SessionRef;
-  turnId: string;
-}): GeneralHandoffSideEffectIntent {
-  return {
-    kind: 'general_handoff',
-    source: 'agent_tool',
-    alertLabel: '需人工跟进（已向候选人承诺）',
-    reasonCode: 'other',
-    reason: '已向候选人承诺会有人来跟进，需要真人接手兑现。',
-    actionAdvice:
-      '候选人已经收到"会有人来跟进"的承诺。请按承诺内容接手该会话；若判定无需人工，直接恢复托管即可。',
-    idempotencyKey: buildHandoffIdempotencyKey({
-      chatId: params.sessionRef.sessionId,
-      turnId: params.turnId,
-    }),
-    recordHandoff: true,
-  };
-}
-
-function hasUnreconciledHandoffPromise(text: string, toolCalls: AgentToolCall[]): boolean {
-  if (!text.trim()) return false;
-  if (HANDOFF_BOUNDARY_PATTERN.test(text) || NEGATED_HANDOFF_PROMISE_PATTERN.test(text)) {
-    return false;
-  }
-  if (!HANDOFF_PROMISE_PATTERNS.some((pattern) => pattern.test(text))) return false;
-  if (toolCalls.some((call) => hasCompletedHandoffAction(call))) return false;
-  return !toolCalls.some((call) => {
-    const result =
-      call.result && typeof call.result === 'object' && !Array.isArray(call.result)
-        ? (call.result as Record<string, unknown>)
-        : undefined;
-    return result?.hostingPaused === true;
-  });
-}
-
-function hasCompletedHandoffAction(call: AgentToolCall): boolean {
-  if (call.toolName === 'request_handoff') return isCommittedRequestHandoffCall(call);
-  if (call.toolName !== 'raise_risk_alert') return false;
-  const result =
-    call.result && typeof call.result === 'object' && !Array.isArray(call.result)
-      ? (call.result as Record<string, unknown>)
-      : undefined;
-  return Boolean(result && result.success !== false && typeof result.errorType !== 'string');
+/** 承诺对账落底账用的焦点岗位：工具确权焦点 → prep 焦点 → 记忆快照焦点。 */
+function resolveFocusJobId(result: ReviewedResultLike): number | null {
+  const jobs = result.turnLedger?.jobs;
+  return (
+    jobs?.attestedFocusJob?.jobId ??
+    jobs?.currentFocusJob?.jobId ??
+    result.memorySnapshot?.currentFocusJob?.jobId ??
+    null
+  );
 }
 
 function sanitizeResponseMessages(
