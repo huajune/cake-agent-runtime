@@ -97,6 +97,12 @@ export interface ConversionBotCounts {
   booking_cancel: number;
   /** 自助改约面时间数（booking.interview_modified）；运营侧支，不进线性漏斗。 */
   interview_modified: number;
+  /** 带外工单（供应商后台建单）被对账到的数（booking.linked_out_of_band）；来源维度，不进漏斗。 */
+  oob_linked: number;
+  /** 带外工单的后续自助取消数（booking.canceled 且 payload.source=oob）。 */
+  oob_booking_cancel: number;
+  /** 带外工单的后续自助改约数（booking.interview_modified 且 payload.source=oob）。 */
+  oob_interview_modified: number;
 }
 
 export interface ConversionBotRow {

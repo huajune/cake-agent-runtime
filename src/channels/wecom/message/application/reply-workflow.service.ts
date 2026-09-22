@@ -12,6 +12,7 @@ import { isShortCircuitedToolCall } from '@agent/generator/tool-call-analysis';
 import { TurnFinalizer } from '@agent/runner/turn-finalizer';
 import { FollowUpSchedulerService } from '@agent/reengagement/follow-up-scheduler.service';
 import { ReengagementAnchorService } from '@agent/reengagement/anchor.service';
+import { OobReconcileService } from '@agent/reengagement/oob-reconcile.service';
 import type { ReengagementChannelIdentity } from '@agent/reengagement/follow-up-scheduler.service';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { MessageParser } from '../utils/message-parser.util';
@@ -100,6 +101,7 @@ export class ReplyWorkflowService {
     private readonly session: SessionStateService,
     private readonly llm: LlmExecutorService,
     private readonly botService: BotService,
+    private readonly oobReconcile: OobReconcileService,
   ) {}
 
   async processSingleMessage(messageData: EnterpriseMessageCallbackDto): Promise<void> {
@@ -419,18 +421,32 @@ export class ReplyWorkflowService {
         await this.deliverPreHandoffReceipt(agentResult.outcome, parsed, traceId, contactName);
         await this.outcomeFinalizer.commit(agentResult.outcome, sideEffectContext);
       }
+      const reengagementChannelIdentity = this.buildReengagementChannelIdentity(
+        parsed,
+        params.primaryMessage,
+        stableBotUserId,
+      );
       this.reengagementAnchors.handleToolAnchors(agentResult, {
         traceId,
         chatId,
         userId: agentCallParams.userId,
         corpId: agentCallParams.corpId,
         isGroupChat: Boolean(params.primaryMessage.imRoomId),
-        channelIdentity: this.buildReengagementChannelIdentity(
-          parsed,
-          params.primaryMessage,
-          stableBotUserId,
-        ),
+        channelIdentity: reengagementChannelIdentity,
       });
+      // 带外工单对账副作用（PRD R2）：只在企微生产回合、渠道层、异步不阻塞回复；
+      // 回归测试/调试也走 prepare 且连生产海绵，副作用不能放进 prepare。
+      if (!params.primaryMessage.imRoomId) {
+        void this.oobReconcile.reconcileAfterTurn({
+          corpId: agentCallParams.corpId,
+          userId: agentCallParams.userId,
+          chatId,
+          botImId: agentCallParams.botImId ?? null,
+          botUserId: agentCallParams.botUserId ?? null,
+          traceId,
+          channelIdentity: reengagementChannelIdentity,
+        });
+      }
 
       // 非 reply 终态（skipped 静默 / handoff 人工介入意图）：跳过 WeCom 发送，
       // 但仍完成本轮流水与观测。终态由 runner 共享分类器给出（agentResult.outcome），与主动复聊同源；

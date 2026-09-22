@@ -24,6 +24,7 @@ import { PreparationService } from './generator/preparation/preparation.service'
 import { ToolRuntimeBuilderService } from './generator/preparation/tool-context.builder';
 import { TurnDataLoaderService } from './generator/preparation/turn-data-loader.service';
 import { BookingContextLoaderService } from './generator/preparation/booking-context-loader.service';
+import { OobReconcileService } from './reengagement/oob-reconcile.service';
 import { PreparationModule } from './generator/preparation/preparation.module';
 import { ContextService } from './generator/context/context.service';
 import { AgentController } from './agent.controller';
@@ -91,6 +92,7 @@ import {
     ReengagementAgent,
     OnboardingSweepCronService,
     ReengagementDeliveryService,
+    OobReconcileService,
     { provide: REENGAGEMENT_DELIVERY_PORT, useExisting: ReengagementDeliveryService },
   ],
   exports: [
@@ -104,6 +106,7 @@ import {
     GuardrailModule,
     FollowUpSchedulerService,
     ReengagementAnchorService,
+    OobReconcileService,
   ],
 })
 export class AgentModule {}

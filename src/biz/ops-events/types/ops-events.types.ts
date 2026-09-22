@@ -28,6 +28,11 @@ export const OPS_EVENT_NAMES = [
   'candidate.hired',
   'booking.canceled',
   'booking.interview_modified',
+  /**
+   * 带外工单（供应商后台建单，signupSource=SUPPLIER）首次被本会话对账到；不补发 booking.succeeded。
+   * 幂等键 = `${workOrderId}:oob_linked`；不投影 daily_ops_report（ops_event_projection_column 返回 NULL 即跳过）。
+   */
+  'booking.linked_out_of_band',
 ] as const;
 
 export type OpsEventName = (typeof OPS_EVENT_NAMES)[number];

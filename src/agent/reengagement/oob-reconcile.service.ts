@@ -1,0 +1,368 @@
+import { Injectable, Logger } from '@nestjs/common';
+import { RedisService } from '@infra/redis/redis.service';
+import { toErrorMessage } from '@infra/utils/error.util';
+import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
+import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
+import { LongTermService } from '@memory/long-term/long-term.service';
+import { isUserProfileFactValue } from '@memory/long-term/long-term.types';
+import type { ReengagementSessionState } from '@memory/recall.types';
+import { SessionStateService } from '@memory/short-term/session-state.service';
+import { isStorableCandidatePhone } from '@resolution/candidate/phone';
+import { BookingSnapshotService } from '@tools/booking/booking-snapshot.service';
+import type { BookingSnapshotEntry } from '@tools/booking/booking-snapshot.types';
+import {
+  buildReconcileAnchorKey,
+  snapshotInterviewAt,
+  snapshotSignUpAt,
+} from '@tools/booking/booking-snapshot.util';
+import {
+  FollowUpSchedulerService,
+  type ReengagementChannelIdentity,
+} from './follow-up-scheduler.service';
+
+export type OobReconcileTrigger = 'turn' | 'scan' | 'resume';
+
+export interface OobReconcileInput {
+  corpId: string;
+  userId: string;
+  chatId: string;
+  botImId: string | null | undefined;
+  /** 长期档案定位键；缺省时只用会话事实取姓名/手机号。 */
+  botUserId?: string | null;
+  /** 已知本人手机号（补偿扫描从索引带来）；缺省从会话事实/长期档案解析。 */
+  phone?: string | null;
+  traceId?: string;
+  channelIdentity?: ReengagementChannelIdentity;
+  trigger: OobReconcileTrigger;
+}
+
+export interface OobReconcileResult {
+  status: 'done' | 'skipped';
+  reason?: string;
+  supplierOwned: number;
+  scheduled: number;
+  linkedEvents: number;
+  terminal?: 'booked' | 'cleared' | 'unchanged';
+}
+
+/** 排过提醒的稳定锚点标记（非工单副本，只记"排没排过"）。 */
+const ANCHOR_MARKER_TTL_SECONDS = 30 * 24 * 60 * 60;
+const DEFAULT_REMINDER_LEAD_MINUTES = 60;
+const MINUTE_MS = 60 * 1000;
+
+/**
+ * 带外工单对账副作用（PRD R2）：判定带外、本人校验、会话终态、排面试提醒/回访、落独立事件。
+ *
+ * 只读快照、不落工单副本：蛋糕侧只留两样状态——提醒排没排过（稳定锚点标记）、带外事件发没发过
+ * （ops_events 幂等键=工单号）。调用方三处：企微生产回合（渠道层异步）、补偿扫描、手动恢复托管。
+ * 回归测试/调试链路不调用（它们也走 prepare 且连生产海绵）。
+ */
+@Injectable()
+export class OobReconcileService {
+  private readonly logger = new Logger(OobReconcileService.name);
+
+  constructor(
+    private readonly bookingSnapshot: BookingSnapshotService,
+    private readonly session: SessionStateService,
+    private readonly longTerm: LongTermService,
+    private readonly scheduler: FollowUpSchedulerService,
+    private readonly opsEvents: OpsEventsRecorderService,
+    private readonly redis: RedisService,
+    private readonly systemConfig: SystemConfigService,
+  ) {}
+
+  /** 渠道层 fire-and-forget 入口：任何失败只记日志，绝不影响回复投递。 */
+  async reconcileAfterTurn(input: Omit<OobReconcileInput, 'trigger'>): Promise<void> {
+    try {
+      await this.reconcile({ ...input, trigger: 'turn' });
+    } catch (error) {
+      this.logger.warn(`[oob] 回合后对账失败 chatId=${input.chatId}: ${toErrorMessage(error)}`);
+    }
+  }
+
+  async reconcile(input: OobReconcileInput): Promise<OobReconcileResult> {
+    const empty: OobReconcileResult = {
+      status: 'skipped',
+      supplierOwned: 0,
+      scheduled: 0,
+      linkedEvents: 0,
+    };
+    const identity = await this.resolveIdentity(input);
+    if (!identity.phone) return { ...empty, reason: 'no_phone' };
+
+    const snapshot = await this.bookingSnapshot.load({
+      phone: identity.phone,
+      botImId: input.botImId,
+      corpId: input.corpId,
+      userId: input.userId,
+      knownCandidateNames: identity.names,
+      // 回合内 prepare 刚查过（缓存命中即可）；扫描/恢复没有前置查询，必须穿透。
+      bypassCache: input.trigger !== 'turn',
+    });
+    if (snapshot.status !== 'ok') return { ...empty, reason: snapshot.status };
+
+    const now = Date.now();
+    const ownedSupplier = snapshot.entries.filter(
+      (entry) => entry.signupSource === 'SUPPLIER' && entry.ownedByCandidate,
+    );
+    const terminal = await this.reconcileTerminal(input, snapshot.entries, ownedSupplier);
+
+    let scheduled = 0;
+    let linkedEvents = 0;
+    for (const entry of ownedSupplier) {
+      linkedEvents += (await this.recordLinkedEvent(input, entry)) ? 1 : 0;
+      scheduled += await this.scheduleFollowUps(input, entry, now);
+      if (input.trigger === 'resume') {
+        scheduled += await this.rescheduleAfterResume(input, entry, now);
+      }
+    }
+    if (ownedSupplier.length > 0 || terminal !== 'unchanged') {
+      this.logger.log(
+        `[oob] 对账完成 trigger=${input.trigger} chatId=${input.chatId} supplierOwned=${ownedSupplier.length} scheduled=${scheduled} linked=${linkedEvents} terminal=${terminal}`,
+      );
+    }
+    return {
+      status: 'done',
+      supplierOwned: ownedSupplier.length,
+      scheduled,
+      linkedEvents,
+      terminal,
+    };
+  }
+
+  private async resolveIdentity(
+    input: OobReconcileInput,
+  ): Promise<{ phone: string | null; names: string[] }> {
+    const names: string[] = [];
+    let phone = input.phone?.trim() ?? '';
+    try {
+      const state = await this.session.getSessionState(input.corpId, input.userId, input.chatId);
+      const sessionName = state.facts?.interview_info?.name?.value;
+      if (typeof sessionName === 'string' && sessionName.trim()) names.push(sessionName.trim());
+      const sessionPhone = state.facts?.interview_info?.phone?.value;
+      if (!phone && typeof sessionPhone === 'string') phone = sessionPhone.trim();
+    } catch (error) {
+      this.logger.warn(`[oob] 读取会话事实失败 chatId=${input.chatId}: ${toErrorMessage(error)}`);
+    }
+    const botUserId = input.botUserId?.trim();
+    if (botUserId) {
+      const profile = await this.longTerm.getProfile(input.corpId, input.userId, botUserId);
+      const profileName = profile?.name;
+      if (isUserProfileFactValue<string>(profileName) && profileName.value?.trim()) {
+        names.push(profileName.value.trim());
+      }
+      const profilePhone = profile?.phone;
+      if (!phone && isUserProfileFactValue<string>(profilePhone) && profilePhone.value) {
+        phone = profilePhone.value.trim();
+      }
+    }
+    return { phone: isStorableCandidatePhone(phone) ? phone : null, names };
+  }
+
+  /**
+   * 会话终态：有本人带外在途工单 → booked（停报名前复聊）；快照里已无任何在途工单且当前为
+   * booked → 回退（带外工单被后台取消后候选人才收得到跟进）。其它终态（handed_off 等）不动。
+   */
+  private async reconcileTerminal(
+    input: OobReconcileInput,
+    entries: readonly BookingSnapshotEntry[],
+    ownedSupplier: readonly BookingSnapshotEntry[],
+  ): Promise<'booked' | 'cleared' | 'unchanged'> {
+    try {
+      const state = await this.session.getReengagementState(
+        input.corpId,
+        input.userId,
+        input.chatId,
+      );
+      if (ownedSupplier.length > 0 && state.terminal == null) {
+        await this.session.saveTerminalState(input.corpId, input.userId, input.chatId, 'booked');
+        return 'booked';
+      }
+      if (entries.length === 0 && state.terminal === 'booked') {
+        await this.session.saveTerminalState(input.corpId, input.userId, input.chatId, undefined);
+        return 'cleared';
+      }
+    } catch (error) {
+      this.logger.warn(`[oob] 会话终态对账失败 chatId=${input.chatId}: ${toErrorMessage(error)}`);
+    }
+    return 'unchanged';
+  }
+
+  private async recordLinkedEvent(
+    input: OobReconcileInput,
+    entry: BookingSnapshotEntry,
+  ): Promise<boolean> {
+    try {
+      const signUpAt = snapshotSignUpAt(entry);
+      return await this.opsEvents.recordEvent({
+        corpId: input.corpId,
+        eventName: 'booking.linked_out_of_band',
+        idempotencyKey: `${entry.workOrderId}:oob_linked`,
+        occurredAt: signUpAt != null ? new Date(signUpAt) : new Date(),
+        botImId: input.botImId ?? null,
+        userId: input.userId,
+        chatId: input.chatId,
+        payload: {
+          source: 'oob',
+          signup_source: entry.signupSource,
+          work_order_id: entry.workOrderId,
+          job_id: entry.jobId,
+          brand_name: entry.brandName,
+          job_name: entry.jobName,
+          interview_time: entry.interviewTime,
+          sign_up_time: entry.signUpTime,
+          candidate_name: entry.candidateName,
+          operation_logs: (entry.workOrder.operationLogs ?? []).map((log) => ({
+            time: log.operationTime ?? null,
+            type: log.operationType ?? null,
+            name: log.operationName ?? null,
+          })),
+          trigger: input.trigger,
+          trace_id: input.traceId ?? null,
+        },
+      });
+    } catch (error) {
+      this.logger.warn(
+        `[oob] booking.linked_out_of_band 落库失败 workOrderId=${entry.workOrderId}: ${toErrorMessage(error)}`,
+      );
+      return false;
+    }
+  }
+
+  /**
+   * 排面试提醒与面试后回访：稳定锚点 `reconcile:wo{工单号}:iv{面试时间}`——首次发现排一次；
+   * 快照面试时间变化（含由空变有值）即换锚点重排；面试已过不排；无面试时间直接落
+   * missing_interview_time（不调解析任务），并挂满 3 天复核。「报名完成时间」取海绵报名时间。
+   */
+  private async scheduleFollowUps(
+    input: OobReconcileInput,
+    entry: BookingSnapshotEntry,
+    now: number,
+  ): Promise<number> {
+    const interviewAt = snapshotInterviewAt(entry);
+    if (interviewAt != null && interviewAt <= now) return 0;
+    const anchorKey = buildReconcileAnchorKey(entry);
+    if (!(await this.claimAnchor(input.chatId, anchorKey))) return 0;
+
+    const sessionRef = { corpId: input.corpId, userId: input.userId, sessionId: input.chatId };
+    const anchorAt = snapshotSignUpAt(entry) ?? now;
+    let scheduled = 0;
+    if (interviewAt == null) {
+      const state = {
+        collectedFields: {},
+        recalledJobIds: new Set<number>(),
+        hardConstraints: [],
+        presentedStores: [],
+        stage: null,
+        terminal: 'booked',
+        interviewAt: undefined,
+      } as ReengagementSessionState;
+      await this.scheduler.scheduleFollowUp({
+        sessionRef,
+        scenarioCode: 'interview_reminder',
+        anchorEventId: `${anchorKey}:interview_reminder`,
+        anchorAt,
+        state,
+        workOrderId: entry.workOrderId,
+        channelIdentity: input.channelIdentity,
+      });
+      await this.scheduler.scheduleInterviewSlotCheck({
+        sessionRef,
+        workOrderId: entry.workOrderId,
+        signUpAt: anchorAt,
+        channelIdentity: input.channelIdentity,
+      });
+      return 0;
+    }
+    for (const scenarioCode of ['interview_reminder', 'post_interview_followup'] as const) {
+      const result = await this.scheduler.scheduleBookingResolution({
+        sessionRef,
+        scenarioCode,
+        workOrderId: entry.workOrderId,
+        anchorEventId: `${anchorKey}:${scenarioCode}`,
+        anchorAt,
+        channelIdentity: input.channelIdentity,
+      });
+      if (result.scheduled) scheduled += 1;
+    }
+    return scheduled;
+  }
+
+  /**
+   * 手动恢复托管后：暂停期间被跳过的提醒用 `:resumed` 后缀重排（同锚点的已完成任务在保留期内
+   * 会被直接判重），且只在距面试不少于配置提前量时重排。
+   */
+  private async rescheduleAfterResume(
+    input: OobReconcileInput,
+    entry: BookingSnapshotEntry,
+    now: number,
+  ): Promise<number> {
+    const interviewAt = snapshotInterviewAt(entry);
+    if (interviewAt == null || interviewAt <= now) return 0;
+    const baseKey = buildReconcileAnchorKey(entry);
+    const baseClaimed = await this.isAnchorClaimed(input.chatId, baseKey);
+    // 首次发现（基础锚点本轮刚排）无需重排。
+    if (!baseClaimed || baseClaimed === 'fresh') return 0;
+    const leadMs = (await this.resolveReminderLeadMinutes()) * MINUTE_MS;
+    if (interviewAt - now < leadMs) return 0;
+    const resumedKey = buildReconcileAnchorKey(entry, 'resumed');
+    if (!(await this.claimAnchor(input.chatId, resumedKey))) return 0;
+    const sessionRef = { corpId: input.corpId, userId: input.userId, sessionId: input.chatId };
+    let scheduled = 0;
+    for (const scenarioCode of ['interview_reminder', 'post_interview_followup'] as const) {
+      const result = await this.scheduler.scheduleBookingResolution({
+        sessionRef,
+        scenarioCode,
+        workOrderId: entry.workOrderId,
+        anchorEventId: `${resumedKey}:${scenarioCode}`,
+        anchorAt: now,
+        channelIdentity: input.channelIdentity,
+      });
+      if (result.scheduled) scheduled += 1;
+    }
+    return scheduled;
+  }
+
+  private async resolveReminderLeadMinutes(): Promise<number> {
+    try {
+      const runtime = await this.systemConfig.getAgentReplyConfig();
+      const configured = runtime.reengagementScenarioDelayMinutes?.interview_reminder;
+      return typeof configured === 'number' && configured > 0
+        ? configured
+        : DEFAULT_REMINDER_LEAD_MINUTES;
+    } catch {
+      return DEFAULT_REMINDER_LEAD_MINUTES;
+    }
+  }
+
+  /** 稳定锚点标记：SET NX；首次占到返回 true。Redis 故障按"已排过"处理，宁可漏排不重复骚扰。 */
+  private async claimAnchor(chatId: string, anchorKey: string): Promise<boolean> {
+    try {
+      return await this.redis.setNx(
+        anchorMarkerKey(chatId, anchorKey),
+        Date.now(),
+        ANCHOR_MARKER_TTL_SECONDS,
+      );
+    } catch (error) {
+      this.logger.warn(`[oob] 锚点标记写入失败 ${anchorKey}: ${toErrorMessage(error)}`);
+      return false;
+    }
+  }
+
+  private async isAnchorClaimed(
+    chatId: string,
+    anchorKey: string,
+  ): Promise<'fresh' | 'old' | null> {
+    try {
+      const claimedAt = await this.redis.get<number>(anchorMarkerKey(chatId, anchorKey));
+      if (claimedAt == null) return null;
+      return Date.now() - Number(claimedAt) < 60 * 1000 ? 'fresh' : 'old';
+    } catch {
+      return null;
+    }
+  }
+}
+
+function anchorMarkerKey(chatId: string, anchorKey: string): string {
+  return `oob:anchor:${chatId}:${anchorKey}`;
+}

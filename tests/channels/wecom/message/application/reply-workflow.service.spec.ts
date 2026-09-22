@@ -322,6 +322,7 @@ describe('ReplyWorkflowService', () => {
       session as never,
       llm as never,
       botService as never,
+      { reconcileAfterTurn: jest.fn().mockResolvedValue(undefined) } as never,
     );
   });
 

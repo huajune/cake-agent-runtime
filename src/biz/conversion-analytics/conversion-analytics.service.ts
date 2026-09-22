@@ -119,6 +119,7 @@ const GROUP_INVITE_STAGE = 'group_invite';
 // 直接按 period 计数 ops_events，不参与 cohort/funnel 计算，避免污染转化口径。
 const BOOKING_CANCEL_EVENT = 'booking.canceled';
 const INTERVIEW_MODIFIED_EVENT = 'booking.interview_modified';
+const OOB_LINKED_EVENT = 'booking.linked_out_of_band';
 const BOT_IDENTITY_ALIASES_CONFIG_KEY = 'conversion_bot_identity_aliases';
 const BOT_IDENTITY_ALIASES_CACHE_TTL_MS = 60 * 1000;
 
@@ -471,6 +472,9 @@ export class ConversionAnalyticsService {
       // 取消/改约不在 cohort/period 漏斗口径内，统一由 applyMutationCounts 后置合并。
       booking_cancel: 0,
       interview_modified: 0,
+      oob_linked: 0,
+      oob_booking_cancel: 0,
+      oob_interview_modified: 0,
     };
   }
 
@@ -555,7 +559,7 @@ export class ConversionAnalyticsService {
     const events = await this.fetchOpsEvents(
       filter,
       period,
-      [BOOKING_CANCEL_EVENT, INTERVIEW_MODIFIED_EVENT],
+      [BOOKING_CANCEL_EVENT, INTERVIEW_MODIFIED_EVENT, OOB_LINKED_EVENT],
       'current',
       { applyGroupFilter: true },
     );
@@ -566,8 +570,17 @@ export class ConversionAnalyticsService {
       const botImId = event.bot_im_id || 'unknown';
       const row =
         byBot.get(botImId) ?? this.createBotRow(botImId, event.manager_name, event.group_name);
-      if (event.event_name === BOOKING_CANCEL_EVENT) row.eventCounts.booking_cancel += 1;
-      else row.eventCounts.interview_modified += 1;
+      // 带外来源单列：取消/改约事件 payload.source=oob 表示该工单由供应商后台建单（PRD R2）。
+      const fromOob = this.payloadText(event.payload, 'source') === 'oob';
+      if (event.event_name === OOB_LINKED_EVENT) {
+        row.eventCounts.oob_linked += 1;
+      } else if (event.event_name === BOOKING_CANCEL_EVENT) {
+        row.eventCounts.booking_cancel += 1;
+        if (fromOob) row.eventCounts.oob_booking_cancel += 1;
+      } else {
+        row.eventCounts.interview_modified += 1;
+        if (fromOob) row.eventCounts.oob_interview_modified += 1;
+      }
       byBot.set(botImId, row);
     }
     // 补行不会改 overallRate（取消/改约不进 ratio），但仍统一 finalize 一遍保持状态字段一致。
@@ -666,6 +679,9 @@ export class ConversionAnalyticsService {
       existing.eventCounts.interview_pass += row.eventCounts.interview_pass;
       existing.eventCounts.booking_cancel += row.eventCounts.booking_cancel;
       existing.eventCounts.interview_modified += row.eventCounts.interview_modified;
+      existing.eventCounts.oob_linked += row.eventCounts.oob_linked;
+      existing.eventCounts.oob_booking_cancel += row.eventCounts.oob_booking_cancel;
+      existing.eventCounts.oob_interview_modified += row.eventCounts.oob_interview_modified;
       if (alias?.managerName) existing.managerName = alias.managerName;
     }
     return Array.from(byId.values()).map((row) => this.finalizeBotRow(row));
@@ -1140,6 +1156,9 @@ export class ConversionAnalyticsService {
         interview_pass: 0,
         booking_cancel: 0,
         interview_modified: 0,
+        oob_linked: 0,
+        oob_booking_cancel: 0,
+        oob_interview_modified: 0,
       },
       overallRate: 0,
       status: 'bad',
