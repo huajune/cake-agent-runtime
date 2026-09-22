@@ -1,0 +1,22 @@
+{
+  "note": "海绵下发但蛋糕源码没有任何地方读取的字段（2026-09-22 首次生成，口径见 tests/tools/job-list/sponge-unread-fields.spec.ts）。分组：①面试后流程（试工/培训/上岗着装/上岗材料）按 0916/0920 裁定一律人工，不读是对的；②面试入口附件/权限字段（firstInterviewAccess/firstInterviewAttachments）目前无消费场景；③试用期是否享受福利（probation*Receive）与坐标系（coordinateSystem）无消费场景；④hasSpecialSalary 是布尔标志，明细列表 jobSpecialSalaryList 已读；⑤stairSalaries[].perTimeUnit（阶梯累计周期：不限/每月）与 weekMonthArrangementMode（做几休几/自定义时间）有业务含义但尚未接入，待产品裁定后接入并从本清单移除。",
+  "paths": [
+    "basicInfo.storeInfo.coordinateSystem",
+    "interviewProcess.firstInterview.firstInterviewAccess",
+    "interviewProcess.firstInterview.firstInterviewAttachments",
+    "interviewProcess.onWorkClothingExplain",
+    "interviewProcess.onWorkInfo",
+    "interviewProcess.probationWork",
+    "interviewProcess.probationWork.probationWorkAddress",
+    "interviewProcess.probationWork.probationWorkAssessment",
+    "interviewProcess.probationWork.probationWorkAssessmentText",
+    "interviewProcess.probationWork.probationWorkPeriod",
+    "interviewProcess.probationWork.probationWorkPeriodUnit",
+    "interviewProcess.training",
+    "jobSalary.salaryScenarioList[].hasSpecialSalary",
+    "jobSalary.salaryScenarioList[].stairSalaries[].perTimeUnit",
+    "welfare.probationCateringAllowanceReceive",
+    "welfare.probationInsuranceReceive",
+    "workTime.weekAndMonthWorkTime.weekMonthArrangementMode"
+  ]
+}

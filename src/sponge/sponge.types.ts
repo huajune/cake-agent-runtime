@@ -118,7 +118,13 @@ export const JobBasicInfoSchema = z
   })
   .catchall(z.unknown());
 
-/** 岗位详情（包含薪资、福利等可选信息） */
+/**
+ * 岗位详情（包含薪资、福利等可选信息）。
+ *
+ * 各分区真实字段形态以 tests/fixtures/sponge-jobs/jobs.json（2026-09-20 现网脱敏样例）为准；
+ * 「海绵下发但蛋糕未读」的字段清单见同目录 unread-fields.allowlist.json，
+ * 由 tests/tools/job-list/sponge-unread-fields.spec.ts 与源码持续比对。
+ */
 export interface JobInterviewSupplementItem {
   interviewSupplementId?: number | null;
   interviewSupplement?: string | null;
