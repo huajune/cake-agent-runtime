@@ -146,7 +146,7 @@ describe('InterventionTaskService', () => {
       '【急·预约协调】小明 · 候选人要改到周四下午 · 面试 2026-09-22 12:00',
     );
     expect(input.tasklistGuid).toBe('tl-1');
-    expect(input.sectionGuid).toBe('section:T2 预约协调');
+    expect(input.sectionGuid).toBe('section:📅 预约协调'); // 分组名 = 表情 + 大类名，不带 T 编号
     expect(input.members).toEqual([{ id: 'ou_dongsheng', type: 'user', role: 'assignee' }]);
     // 触发时刻走内置开始时间，不建自定义字段
     expect(input.startAt.toISOString()).toBe('2026-09-22T02:00:00.000Z');
@@ -258,6 +258,7 @@ describe('InterventionTaskService', () => {
     });
     expect(redis.get).toHaveBeenCalledWith('feishu-task:intervention:v1:job:4242:T5');
     const input = client.createTask.mock.calls[0][0];
+    expect(input.sectionGuid).toBe('section:📋 岗位数据/口径缺口');
     expect(input.summary).toBe('【常规·岗位数据/口径缺口】小明 · 瑞幸-徐家汇店 · 几号发工资答不上');
     expect(input.description).toContain('【缺失字段】发薪日');
     expect(input.members).toEqual([{ id: 'ou_dongsheng', type: 'user', role: 'assignee' }]); // T5 未配置 → 回退托管账号

@@ -49,6 +49,8 @@ export type CategoryDeadlineRule =
 export interface InterventionTaskCategoryMeta {
   code: InterventionTaskCategory;
   label: string;
+  /** 语义表情：只用于清单分组名（见 sectionNameOf），任务标题与大类单选文案不带。 */
+  icon: string;
   deadline: CategoryDeadlineRule;
   /** 大类默认优先级（原因码标急 / 面试临近可抬到 urgent）。 */
   basePriority: InterventionTaskPriority;
@@ -65,6 +67,7 @@ export const CATEGORY_META: Record<InterventionTaskCategory, InterventionTaskCat
   T1: {
     code: 'T1',
     label: HANDOFF_TASK_CATEGORY_META.T1.name,
+    icon: '🚨',
     deadline: { kind: 'working_minutes', minutes: 30 },
     basePriority: 'urgent',
     interviewCapApplies: false,
@@ -73,6 +76,7 @@ export const CATEGORY_META: Record<InterventionTaskCategory, InterventionTaskCat
   T2: {
     code: 'T2',
     label: HANDOFF_TASK_CATEGORY_META.T2.name,
+    icon: '📅',
     deadline: { kind: 'working_minutes', minutes: 120 },
     basePriority: 'today',
     interviewCapApplies: true,
@@ -81,6 +85,7 @@ export const CATEGORY_META: Record<InterventionTaskCategory, InterventionTaskCat
   T3: {
     code: 'T3',
     label: HANDOFF_TASK_CATEGORY_META.T3.name,
+    icon: '🤝',
     deadline: { kind: 'same_day_or_next_noon' },
     basePriority: 'today',
     interviewCapApplies: false,
@@ -89,6 +94,7 @@ export const CATEGORY_META: Record<InterventionTaskCategory, InterventionTaskCat
   T4: {
     code: 'T4',
     label: HANDOFF_TASK_CATEGORY_META.T4.name,
+    icon: '💰',
     deadline: { kind: 'working_minutes', minutes: WORKDAY_MINUTES },
     basePriority: 'normal',
     interviewCapApplies: false,
@@ -97,6 +103,7 @@ export const CATEGORY_META: Record<InterventionTaskCategory, InterventionTaskCat
   T5: {
     code: 'T5',
     label: HANDOFF_TASK_CATEGORY_META.T5.name,
+    icon: '📋',
     deadline: { kind: 'working_minutes', minutes: 3 * WORKDAY_MINUTES },
     basePriority: 'normal',
     interviewCapApplies: false,
@@ -105,6 +112,7 @@ export const CATEGORY_META: Record<InterventionTaskCategory, InterventionTaskCat
   T6: {
     code: 'T6',
     label: HANDOFF_TASK_CATEGORY_META.T6.name,
+    icon: '⚙️',
     deadline: { kind: 'working_minutes', minutes: 120 },
     basePriority: 'today',
     interviewCapApplies: true,
@@ -113,6 +121,7 @@ export const CATEGORY_META: Record<InterventionTaskCategory, InterventionTaskCat
   T7: {
     code: 'T7',
     label: HANDOFF_TASK_CATEGORY_META.T7.name,
+    icon: '⚠️',
     deadline: { kind: 'working_minutes', minutes: 60 },
     basePriority: 'urgent',
     interviewCapApplies: false,
@@ -121,6 +130,7 @@ export const CATEGORY_META: Record<InterventionTaskCategory, InterventionTaskCat
   T8: {
     code: 'T8',
     label: HANDOFF_TASK_CATEGORY_META.T8.name,
+    icon: '📱',
     deadline: { kind: 'same_day_or_next_noon' },
     basePriority: 'today',
     interviewCapApplies: false,
@@ -129,12 +139,19 @@ export const CATEGORY_META: Record<InterventionTaskCategory, InterventionTaskCat
   UNCLASSIFIED: {
     code: 'UNCLASSIFIED',
     label: UNCLASSIFIED_LABEL,
+    icon: '❓',
     deadline: { kind: 'working_minutes', minutes: 120 },
     basePriority: 'today',
     interviewCapApplies: false,
     owner: 'hosting_account',
   },
 };
+
+/** 清单分组名：`${icon} ${label}`（唯一拼装点；建分组与探针校验都走这里）。 */
+export function sectionNameOf(category: InterventionTaskCategory): string {
+  const meta = CATEGORY_META[category];
+  return `${meta.icon} ${meta.label}`;
+}
 
 /**
  * 原因码 → 大类：空码或目录标记归不了类（`other`）→ 未归类；

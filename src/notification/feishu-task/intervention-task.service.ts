@@ -23,6 +23,7 @@ import {
   resolveBasePriority,
   resolveReasonCodeLabel,
   resolveTaskCategory,
+  sectionNameOf,
   type InterventionTaskCategory,
   type InterventionTaskPriority,
 } from './intervention-task-category';
@@ -395,7 +396,7 @@ export class InterventionTaskService implements OnApplicationBootstrap {
     const customFields = await this.buildCustomFields(draft, 1, 'create');
     const sectionGuid = await this.client.resolveSectionGuid(
       this.tasklistGuid,
-      `${draft.category === 'UNCLASSIFIED' ? '' : `${draft.category} `}${draft.categoryLabel}`,
+      sectionNameOf(draft.category),
     );
     const task = await this.client.createTask({
       summary: draft.title,

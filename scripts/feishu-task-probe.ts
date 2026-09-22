@@ -65,6 +65,7 @@ import {
   CATEGORY_META,
   PRIORITY_LABELS,
   UNCLASSIFIED_LABEL,
+  sectionNameOf,
   type InterventionTaskCategory,
 } from '@notification/feishu-task/intervention-task-category';
 import { resolveOptionColorIndex } from '@notification/feishu-task/intervention-task-colors';
@@ -112,8 +113,8 @@ const EXPECTED_FIELDS: Array<{
   })),
 }));
 
-const EXPECTED_SECTIONS = (Object.keys(CATEGORY_META) as InterventionTaskCategory[]).map((code) =>
-  code === 'UNCLASSIFIED' ? CATEGORY_META[code].label : `${code} ${CATEGORY_META[code].label}`,
+const EXPECTED_SECTIONS = (Object.keys(CATEGORY_META) as InterventionTaskCategory[]).map(
+  sectionNameOf,
 );
 
 function log(message: string): void {

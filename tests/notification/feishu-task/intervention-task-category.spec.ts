@@ -13,6 +13,7 @@ import {
   resolveBasePriority,
   resolveReasonCodeLabel,
   resolveTaskCategory,
+  sectionNameOf,
   type InterventionTaskCategory,
 } from '@notification/feishu-task/intervention-task-category';
 
@@ -108,6 +109,29 @@ describe('intervention-task-category', () => {
       for (const [code, owner] of Object.entries(expectedOwner)) {
         expect(CATEGORY_META[code as InterventionTaskCategory].owner).toBe(owner);
       }
+    });
+
+    it('每个大类有语义表情；分组名 = 表情 + 大类名，标题/单选文案不受影响', () => {
+      const expectedIcon: Record<InterventionTaskCategory, string> = {
+        T1: '🚨',
+        T2: '📅',
+        T3: '🤝',
+        T4: '💰',
+        T5: '📋',
+        T6: '⚙️',
+        T7: '⚠️',
+        T8: '📱',
+        UNCLASSIFIED: '❓',
+      };
+      for (const [code, icon] of Object.entries(expectedIcon)) {
+        const category = code as InterventionTaskCategory;
+        expect(CATEGORY_META[category].icon).toBe(icon);
+        expect(sectionNameOf(category)).toBe(`${icon} ${CATEGORY_META[category].label}`);
+        expect(sectionNameOf(category)).not.toMatch(/^T\d /);
+      }
+      expect(sectionNameOf('T1')).toBe('🚨 现场急件');
+      expect(sectionNameOf('UNCLASSIFIED')).toBe('❓ 未归类');
+      expect(CATEGORY_META.T1.label).toBe('现场急件'); // 单选选项文案不带表情
     });
 
     it('面试上限只对 T2、T6 生效', () => {
