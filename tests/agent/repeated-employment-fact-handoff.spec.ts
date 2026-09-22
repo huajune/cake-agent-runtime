@@ -18,7 +18,7 @@ describe('unknown employment fact handoff contract', () => {
     expect(candidatePrompt).toContain('request_handoff` 会短路本轮并由人工跟进');
 
     expect(handoffTool).toContain('三方协议、合同/协议条款、签约主体');
-    expect(handoffTool).toContain('直接按本码调用本工具');
+    expect(handoffTool).toContain('当轮按本码调用本工具');
     expect(handoffTool).toContain('reasonCode=salary_admin_inquiry 时必传');
     expect(handoffTool).toContain('missingJobInfo');
   });
