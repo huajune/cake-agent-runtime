@@ -87,6 +87,6 @@
 ## 收尾
 | # | 事项 | 状态 |
 |---|---|---|
-| Z1 | 汇总各批 ledger 条目写入 `docs/prompt-rule-ledger.md` | 🔧 A/B/C/D/E 已写入（判定树复聊分支、T11/C10/salary_account 修订、六节五个工具行追加、新开第八节 RE1–RE5）；F 批条目待交回后追加 |
+| Z1 | 汇总各批 ledger 条目写入 `docs/prompt-rule-ledger.md` | ✅ d09ce4159（A/B/C/D/E：判定树复聊分支、T11/C10/salary_account 修订、六节五个工具行追加、新开第八节 RE1–RE5）+ F 批第二次提交（取消/改约归属、二节 [当前预约信息] 快照渲染 BQ1/BQ2、查重回执、已预约岗位重查） |
 | Z2 | 全量 `ci:check`；PR → develop | ⬜ |
 | Z3 | 生产写授权清单（B5、C8）与迁移清单 | ⬜ |
