@@ -29,6 +29,11 @@ export interface AgentToolCall {
    * 历史数据/wrapper 缺失时退化为步骤墙钟近似（含 LLM 思考时间，偏大）。
    */
   durationMs?: number;
+  /**
+   * 产出该调用的 llm-executor 尝试序号（1 起）。仅当本轮 provider 重试并续接了前次
+   * 已完成步骤时标注：attempt=1 的工具调用在首次尝试里已真实执行，重试轮没有重放它。
+   */
+  attempt?: number;
 }
 
 /** 每一步模型循环的详细快照：用于排查"模型两次调用之间想了什么"。 */
@@ -41,6 +46,8 @@ export type AgentStepGeneration = 'first' | 'replan';
 export interface AgentStepDetail {
   stepIndex: number;
   generation?: AgentStepGeneration;
+  /** 产出该步的 llm-executor 尝试序号（1 起）；语义同 {@link AgentToolCall.attempt}。 */
+  attempt?: number;
   text?: string;
   reasoning?: string;
   toolCalls: AgentToolCall[];

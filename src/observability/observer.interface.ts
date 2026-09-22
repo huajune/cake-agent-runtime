@@ -24,6 +24,11 @@ export interface LlmAttemptTrace {
   error?: string;
   /** 本次失败后进入的指数退避等待（ms）；最后一次失败/不重试时缺省。 */
   backoffMs?: number;
+  /**
+   * 本次尝试从上次失败尝试续接的已完成步数（多步循环中途失败不从 step 0 重放，
+   * 已执行的工具调用不再重放）；从头重跑时缺省。
+   */
+  resumedSteps?: number;
 }
 
 export type TurnSourceLoadStatus = 'success' | 'empty' | 'degraded' | 'failed';
