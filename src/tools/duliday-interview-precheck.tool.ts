@@ -50,6 +50,11 @@ import {
 import { renderRecap, renderRecapRedeliveryText } from '@tools/collection/recap-renderer';
 import { renderRejection } from '@tools/collection/rejection-renderer';
 import { findRecentSameJobBooking } from '@tools/booking/active-booking-dedup.util';
+import {
+  findCrossAccountDuplicate,
+  findSnapshotDuplicate,
+  type SnapshotDuplicateMatch,
+} from '@tools/booking/booking-snapshot.util';
 import { mapJobsToRecommendedSummaries } from '@tools/job-list/job-summary.util';
 import { formatInterviewTimeForReply } from '@tools/booking/booking-reply-format.util';
 import {
@@ -202,6 +207,10 @@ interface DuplicateBookingGuard {
   interviewTime?: string;
   interviewTimeHuman?: string;
   note: string;
+  /** 命中判据：同岗位 / 同品牌；来源：本轮快照 / 指针窗口 / 其它托管账号。 */
+  matchedBy?: 'job' | 'brand';
+  brandName?: string | null;
+  crossAccount?: boolean;
 }
 
 interface FormRun {
@@ -631,6 +640,9 @@ export function buildInterviewPrecheckTool(
             context,
             jobId,
             form: formRun.form,
+            contract: formRun.contract,
+            brandName: normalizePolicyText(job.basicInfo?.brandName) ?? null,
+            spongeService,
           });
           const nextAction = actionForForm(
             formRun,
@@ -1136,8 +1148,21 @@ function replyInstruction(
     case 'already_booked': {
       const workOrderId = duplicateBookingGuard?.workOrderId ?? 'unknown';
       const timeHuman = duplicateBookingGuard?.interviewTimeHuman;
+      const scope =
+        duplicateBookingGuard?.matchedBy === 'brand'
+          ? `该品牌${duplicateBookingGuard.brandName ? `（${duplicateBookingGuard.brandName}）` : ''}`
+          : '该岗位';
+      if (duplicateBookingGuard?.crossAccount) {
+        return (
+          `候选人在${scope}已有在途预约工单（工单 ${workOrderId}${timeHuman ? `，面试时间 ${timeHuman}` : ''}），由其它托管账号或渠道提交：预约已经存在，` +
+          '禁止调用 duliday_interview_booking，也不要再收资或征询日期。如实告诉候选人「你之前已经报过这个岗位/品牌」、不用再提交；' +
+          (timeHuman ? '面试时间按上述工单登记时间播报；' : '工单未记录面试时间，不要编造时间；') +
+          '本账号无法操作该工单，随后调用 request_handoff(reasonCode="duplicate_signup") 转人工核实。' +
+          '禁止说"系统有问题/没提交成功/稍后再帮你提交"。'
+        );
+      }
       return (
-        `候选人在该岗位已有在途预约工单（工单 ${workOrderId}${timeHuman ? `，面试时间 ${timeHuman}` : ''}），可能刚由同事/另一账号提交：预约已经存在，` +
+        `候选人在${scope}已有在途预约工单（工单 ${workOrderId}${timeHuman ? `，面试时间 ${timeHuman}` : ''}），可能刚由同事/另一账号提交：预约已经存在，` +
         '禁止调用 duliday_interview_booking，也不要再收资或征询日期。如实告诉候选人已经约上、不用再提交；' +
         (timeHuman
           ? '面试时间按上述工单登记时间播报。'
@@ -1161,26 +1186,92 @@ async function resolveDuplicateBookingGuard(params: {
   context: Parameters<ToolBuilder>[0];
   jobId: number;
   form: BookingCollectionForm;
+  contract: ContractFieldDef[];
+  brandName: string | null;
+  spongeService: Pick<SpongeService, 'fetchSignupWorkOrders'>;
 }): Promise<DuplicateBookingGuard | undefined> {
-  if (!params.deps.longTermService || params.form.candidateScope === 'additional') {
-    return undefined;
-  }
-  const activeBookings = await params.deps.longTermService.getActiveBookings(
-    params.context.session.corpId,
-    params.context.session.userId,
-  );
-  const duplicate = findRecentSameJobBooking(activeBookings, params.jobId);
-  if (!duplicate) return undefined;
+  if (params.form.candidateScope === 'additional') return undefined;
 
-  const interviewTime = duplicate.interview_time ?? undefined;
+  // 1) 本轮预约快照（按手机号查得，含自建与带外）：同岗位或同品牌在途即命中。
+  const snapshotHit = findSnapshotDuplicate(params.context.archive.bookingWorkOrders ?? [], {
+    jobId: params.jobId,
+    brandName: params.brandName,
+  });
+  if (snapshotHit) {
+    return buildDuplicateGuard(
+      {
+        workOrderId: snapshotHit.workOrderId,
+        interviewTime: snapshotHit.interviewTime ?? null,
+        matchedBy: snapshotHit.matchedBy,
+        brandName: snapshotHit.brandName ?? null,
+        crossAccount: false,
+      },
+      params.jobId,
+    );
+  }
+
+  // 2) active_booking 30 分钟窗口：只留给「另一账号刚建单」的并发场景（本账号快照查不到）。
+  //    窗口内的单也可能是本候选人自己另一账号或重试刚建的，不按跨账号转人工，按"已约上"播报。
+  if (params.deps.longTermService) {
+    const activeBookings = await params.deps.longTermService.getActiveBookings(
+      params.context.session.corpId,
+      params.context.session.userId,
+    );
+    const duplicate = findRecentSameJobBooking(activeBookings, params.jobId);
+    if (duplicate) {
+      return buildDuplicateGuard(
+        {
+          workOrderId: duplicate.work_order_id,
+          interviewTime: duplicate.interview_time ?? null,
+          matchedBy: 'job',
+          brandName: null,
+          crossAccount: false,
+        },
+        params.jobId,
+      );
+    }
+  }
+
+  // 3) 别的托管账号下的重复报名：报名前再查一次 onlyCurrentAccount=false，同岗位或同品牌在途
+  //    即如实告知并用 duplicate_signup 转人工，不等海绵拒绝。查询失败按无命中放行（海绵提交仍会拒）。
+  const phoneField = params.contract.find((field) => field.systemField === 'phone');
+  const phone = phoneField ? params.form.slots[phoneField.labelId]?.value?.value : null;
+  const crossAccount = await findCrossAccountDuplicate({
+    spongeService: params.spongeService,
+    phone: typeof phone === 'string' ? phone : null,
+    tokenContext: buildSpongeTokenContext(params.context),
+    target: { jobId: params.jobId, brandName: params.brandName },
+    onFailure: (message) =>
+      logger.warn(
+        `[precheck] 跨账号查重查询失败（按无命中放行）: jobId=${params.jobId} ${message}`,
+      ),
+  });
+  if (crossAccount) {
+    return buildDuplicateGuard({ ...crossAccount, crossAccount: true }, params.jobId);
+  }
+  return undefined;
+}
+
+function buildDuplicateGuard(
+  match: SnapshotDuplicateMatch & { crossAccount: boolean },
+  jobId: number,
+): DuplicateBookingGuard {
+  const interviewTime = match.interviewTime ?? undefined;
   logger.log(
-    `[precheck] 命中候选人名下同岗位在途工单: jobId=${params.jobId} workOrderId=${duplicate.work_order_id}`,
+    `[precheck] 命中候选人名下在途工单: jobId=${jobId} workOrderId=${match.workOrderId} matchedBy=${match.matchedBy} crossAccount=${match.crossAccount}`,
   );
+  const scope =
+    match.matchedBy === 'brand' ? `同品牌（${match.brandName ?? '同一品牌'}）` : '当前岗位';
   return {
-    workOrderId: duplicate.work_order_id,
+    workOrderId: match.workOrderId,
     interviewTime,
     interviewTimeHuman: interviewTime ? formatInterviewTimeForReply(interviewTime) : undefined,
-    note: '候选人在当前岗位已有在途工单，预约已经存在；严禁再次 booking 重复报名，改时间用 duliday_modify_interview_time，取消用 duliday_cancel_work_order。',
+    matchedBy: match.matchedBy,
+    brandName: match.brandName ?? null,
+    crossAccount: match.crossAccount,
+    note: match.crossAccount
+      ? `候选人在${scope}已有在途工单（由其它托管账号/渠道提交），预约已经存在；严禁再次 booking 重复报名，如实告知后按 request_handoff(reasonCode="duplicate_signup") 转人工核实。`
+      : `候选人在${scope}已有在途工单，预约已经存在；严禁再次 booking 重复报名，改时间用 duliday_modify_interview_time，取消用 duliday_cancel_work_order。`,
   };
 }
 

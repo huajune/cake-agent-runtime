@@ -491,6 +491,17 @@ export const BI_FILTER_TYPES = {
  * 1. 必须按候选人定位：workOrderId / phone 至少传一个（没有"全局列出所有工单"的查法）。
  * 2. 响应是该候选人**全部**工单列表 → 用 workOrderId 定位时仍要在 workOrders[] 里挑出目标那条。
  */
+/**
+ * 工单查询的请求级护栏。
+ * - `timeoutMs`：单次超时（缺省走 fetchWithTimeout 的 20s；每轮 prepare 的预约快照必须收紧到 3s）。
+ * - `allowDefaultToken`：false 时托管账号没配 token 直接抛错，禁止回退 DULIDAY_API_TOKEN
+ *   （跨账号污染防线：默认 token 查到的是别家账号的工单）。
+ */
+export interface SignupWorkOrdersRequestOptions {
+  timeoutMs?: number;
+  allowDefaultToken?: boolean;
+}
+
 export interface SignupWorkOrdersParams {
   /** 定位键：定位到某候选人；与 phone 至少传一个 */
   workOrderId?: number;

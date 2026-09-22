@@ -132,12 +132,16 @@ export function buildRequestHandoffTool(
         // 里，但 [当前预约信息] 已按手机号查到并展示给了模型。候选人据此要求改期时，
         // 不能退回"首次约面"流程自助报可约时段、重发收资单（生产 chat 6aa215c8ce406a6aeed2ce3d），
         // 而是带着这张工单号转人工核实归属后处理。
-        const outOfBandWorkOrder =
-          context.archive.bookingWorkOrders?.find((ref) => ref.source === 'out_of_band') ?? null;
+        // 本轮预约快照（按手机号查得，含自建与带外）是卡片工单号的首选来源：通过本人校验的
+        // 优先，其次任一可见工单；快照为空再退回指针 / 本轮改约核验到的工单号。
+        const snapshotRefs = context.archive.bookingWorkOrders ?? [];
+        const snapshotWorkOrder =
+          snapshotRefs.find((ref) => ref.ownedByCandidate !== false) ?? snapshotRefs[0] ?? null;
+        const outOfBandWorkOrder = snapshotRefs.find((ref) => ref.source === 'out_of_band') ?? null;
         const workOrderId =
+          snapshotWorkOrder?.workOrderId ??
           activeBooking?.work_order_id ??
           context.ledger.jobs.resolvedWorkOrderId ??
-          outOfBandWorkOrder?.workOrderId ??
           null;
         if (
           reasonCode === 'modify_appointment' &&

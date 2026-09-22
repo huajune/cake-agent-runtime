@@ -1,10 +1,11 @@
 import { toErrorMessage } from '@infra/utils/error.util';
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 import { SessionFactsService } from '@memory/short-term/facts.service';
 import { MessageWindowService } from '@memory/short-term/message-window.service';
 import { LongTermService } from '@memory/long-term/long-term.service';
 import type { ActiveBookingEntry } from '@memory/long-term/long-term.types';
+import { BookingSnapshotService } from '@tools/booking/booking-snapshot.service';
 import type { AgentMemorySnapshot, AgentToolCall } from '@agent/generator/generator.types';
 import type {
   GuardViolation,
@@ -40,6 +41,7 @@ export class OutputGuardrailService {
     private readonly shortTerm: MessageWindowService,
     private readonly longTerm?: LongTermService,
     private readonly sessionFacts?: SessionFactsService,
+    @Optional() private readonly bookingSnapshot?: BookingSnapshotService,
   ) {}
 
   private async readRecentTexts(
@@ -74,7 +76,47 @@ export class OutputGuardrailService {
     corpId: string | undefined,
     userId: string | undefined,
   ): Promise<readonly ActiveBookingEntry[] | undefined> {
-    if (!this.longTerm || !corpId || !userId) return undefined;
+    if (!corpId || !userId) return undefined;
+    // 本轮预约快照（prepare 按手机号从海绵查得、按候选人身份镜像 5 分钟）是权威读视图：
+    // 候选人在聊 Y 岗时，按快照里有没有 Y 岗的在途工单判断，不再只看 active_booking 指针。
+    // 指针仍并入：它带着"另一账号刚建单"的并发窗口；两者按工单号去重。
+    const [snapshot, pointer] = await Promise.all([
+      this.readSnapshotBookings(corpId, userId),
+      this.readPointerBookings(corpId, userId),
+    ]);
+    if (snapshot === undefined && pointer === undefined) return undefined;
+    const merged = new Map<number, ActiveBookingEntry>();
+    for (const entry of [...(snapshot ?? []), ...(pointer ?? [])]) {
+      if (!merged.has(entry.work_order_id)) merged.set(entry.work_order_id, entry);
+    }
+    return Array.from(merged.values());
+  }
+
+  private async readSnapshotBookings(
+    corpId: string,
+    userId: string,
+  ): Promise<readonly ActiveBookingEntry[] | undefined> {
+    if (!this.bookingSnapshot) return undefined;
+    try {
+      const record = await this.bookingSnapshot.peekForCandidate(corpId, userId);
+      if (!record) return undefined;
+      return record.entries.map((entry) => ({
+        work_order_id: entry.workOrderId,
+        linked_at: new Date(record.fetchedAt).toISOString(),
+        job_id: entry.jobId,
+        interview_time: entry.interviewTime ? `${entry.interviewTime}:00` : null,
+      }));
+    } catch (error: unknown) {
+      this.logger.warn(`[OutputGuardrail] 读取预约快照失败，按未知处理: ${toErrorMessage(error)}`);
+      return undefined;
+    }
+  }
+
+  private async readPointerBookings(
+    corpId: string,
+    userId: string,
+  ): Promise<readonly ActiveBookingEntry[] | undefined> {
+    if (!this.longTerm) return undefined;
     try {
       const bookings = await this.longTerm.tryGetActiveBookings(corpId, userId);
       return bookings ?? undefined;

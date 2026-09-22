@@ -152,9 +152,6 @@ export class TurnDataLoaderService {
           (snapshot) => (snapshot._warnings?.length ? 'degraded' : undefined),
         ),
       );
-      const pointerBookingPromise = observe('booking_pointer', () =>
-        this.bookingLoader.loadPointer(params, input.currentUserMessage),
-      );
       const groupsPromise = observe('groups', () => this.loadGroups(warnings));
       const realtimeGroupsPromise = groupsPromise.then((groups) =>
         observe(
@@ -166,18 +163,11 @@ export class TurnDataLoaderService {
         ),
       );
 
-      // 依赖链直接挂在各自的前置上，不设第二道全量屏障：带外预约只等 memory + 指针，
+      // 依赖链直接挂在各自的前置上，不设第二道全量屏障：预约快照只等 memory（取本人手机号），
       // 品牌只等 memory，否则它们会被最慢的无关源（逆地理编码、视觉事实）拖住。
-      const bookingPromise = Promise.all([memoryPromise, pointerBookingPromise]).then(
-        ([memory, pointerBooking]) =>
-          observe('booking_enrichment', () =>
-            this.bookingLoader.enrichOutOfBand(
-              pointerBooking,
-              memory,
-              params,
-              input.currentUserMessage,
-            ),
-          ),
+      // 快照优先（按手机号查一次海绵）、失败回落 active_booking 指针路径，都在 loader 内部。
+      const bookingPromise = memoryPromise.then((memory) =>
+        observe('booking', () => this.bookingLoader.load(memory, params, input.currentUserMessage)),
       );
       const brandPromise = memoryPromise.then((memory) =>
         observe('brand', () => this.deriveTurnBrandContext(params.contactName, memory, warnings)),

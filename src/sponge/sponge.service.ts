@@ -22,6 +22,7 @@ import {
   SelfSignupWorkOrdersV2Params,
   SelfSignupWorkOrdersV2Result,
   SignupWorkOrdersParams,
+  SignupWorkOrdersRequestOptions,
   SignupWorkOrdersResult,
   SignupWorkOrderItem,
   SignupWorkOrdersApiResponseSchema,
@@ -425,6 +426,7 @@ export class SpongeService {
   async fetchSignupWorkOrders(
     params: SignupWorkOrdersParams,
     tokenContext?: SpongeTokenResolveContext,
+    options?: SignupWorkOrdersRequestOptions,
   ): Promise<SignupWorkOrdersResult> {
     if (params.workOrderId == null && !params.phone) {
       throw new Error('fetchSignupWorkOrders 需至少传 workOrderId 或 phone');
@@ -443,6 +445,7 @@ export class SpongeService {
       tokenContext,
       '海绵工单查询',
       SignupWorkOrdersApiResponseSchema,
+      options,
     );
     const workOrders: SignupWorkOrderItem[] = (data?.workOrders ?? []) as SignupWorkOrderItem[];
     return {
@@ -531,7 +534,7 @@ export class SpongeService {
     tokenContext: SpongeTokenResolveContext | undefined,
     label: string,
     schema: z.ZodType<SignupListEnvelope<TData>>,
-    options?: { allowDefaultToken?: boolean },
+    options?: SignupWorkOrdersRequestOptions,
   ): Promise<TData | null | undefined> {
     const token = await this.resolveDulidayToken(tokenContext, {
       allowDefaultToken: options?.allowDefaultToken ?? true,
@@ -543,6 +546,7 @@ export class SpongeService {
         'Duliday-Token': token,
       },
       body: JSON.stringify(payload),
+      ...(options?.timeoutMs != null ? { timeoutMs: options.timeoutMs } : {}),
     });
 
     if (!response.ok) {

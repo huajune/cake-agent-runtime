@@ -36,7 +36,23 @@ export interface ToolSessionContext {
 export interface ToolBookingWorkOrderRef {
   workOrderId: number;
   jobId: number | null;
+  /**
+   * active_booking：蛋糕自建（AI 建单或指针路径）；out_of_band：供应商后台建单（signupSource=SUPPLIER）
+   * 或旧带外查询路径。工具只据此决定措辞，归属判定看 ownedByCandidate。
+   */
   source: 'active_booking' | 'out_of_band';
+  /** 海绵 signupSource；快照路径必有，指针路径为 undefined。 */
+  signupSource?: 'AI' | 'SUPPLIER' | null;
+  /**
+   * 本人校验：海绵登记姓名与会话/档案姓名一致。true 视同自有工单（取消/改约放行、排提醒）；
+   * false 只渲染；undefined 表示该引用来自指针路径（归属由 active_booking 保证）。
+   */
+  ownedByCandidate?: boolean;
+  brandName?: string | null;
+  jobName?: string | null;
+  /** 海绵 `yyyy-MM-dd HH:mm`；等通知单为 null。 */
+  interviewTime?: string | null;
+  signUpTime?: string | null;
 }
 
 export interface ToolArchiveContext {

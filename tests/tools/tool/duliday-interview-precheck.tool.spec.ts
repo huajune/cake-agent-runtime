@@ -199,6 +199,7 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
   const sponge = {
     fetchJobs: jest.fn(),
     fetchJobCollectionContract: jest.fn(),
+    fetchSignupWorkOrders: jest.fn(),
   };
   const ops = { recordEvent: jest.fn().mockResolvedValue(true) };
   const observer = { emit: jest.fn() };
@@ -219,6 +220,7 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
     });
     sponge.fetchJobs.mockResolvedValue({ jobs: [JOB] });
     sponge.fetchJobCollectionContract.mockResolvedValue({ jobId: 100, fields: CONTRACT });
+    sponge.fetchSignupWorkOrders.mockResolvedValue({ workOrders: [] });
   });
 
   async function execute(input: Record<string, unknown>) {
@@ -1382,6 +1384,8 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
       expect(result.nextAction).toBe('already_booked');
       expect(result.duplicateBookingGuard).toEqual({
         workOrderId: 464336,
+        matchedBy: 'job',
+        crossAccount: false,
         interviewTime: '2026-09-14 13:30:00',
         interviewTimeHuman: '9月14日（周一）13:30',
         note: expect.stringContaining('严禁再次 booking'),
@@ -1430,6 +1434,73 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
       ).toBe('booking_done_claim_without_submission');
     });
 
+    it('本轮预约快照里同品牌在途工单 → already_booked（matchedBy=brand），不查跨账号', async () => {
+      context.archive.bookingWorkOrders = [
+        {
+          workOrderId: 777001,
+          jobId: 900,
+          source: 'out_of_band',
+          signupSource: 'SUPPLIER',
+          ownedByCandidate: true,
+          brandName: JOB.basicInfo.brandName,
+          interviewTime: '2026-09-14 13:30',
+        },
+      ];
+
+      const result = await execute(readyToBookSetup());
+
+      expect(result.nextAction).toBe('already_booked');
+      expect(result.duplicateBookingGuard).toMatchObject({
+        workOrderId: 777001,
+        matchedBy: 'brand',
+        crossAccount: false,
+      });
+      expect(result._replyInstruction).toContain('该品牌');
+      expect(sponge.fetchSignupWorkOrders).not.toHaveBeenCalled();
+    });
+
+    it('快照与指针都没有时再查一次 onlyCurrentAccount=false：别的账号同岗位在途 → 如实告知并转 duplicate_signup', async () => {
+      context.session.botImId = 'bot-A';
+      sponge.fetchSignupWorkOrders.mockResolvedValue({
+        workOrders: [
+          {
+            workOrderId: 888001,
+            jobId: 100,
+            brandName: JOB.basicInfo.brandName,
+            currentStatus: '约面待确认',
+            signUpTime: new Date().toISOString().replace('T', ' ').slice(0, 19),
+            signupSource: 'AI',
+          },
+        ],
+      });
+
+      const result = await execute(readyToBookSetup());
+
+      expect(sponge.fetchSignupWorkOrders).toHaveBeenCalledWith(
+        expect.objectContaining({ onlyCurrentAccount: false }),
+        expect.objectContaining({ botImId: 'bot-A' }),
+        { timeoutMs: 3000, allowDefaultToken: false },
+      );
+      expect(result.nextAction).toBe('already_booked');
+      expect(result.duplicateBookingGuard).toMatchObject({
+        workOrderId: 888001,
+        matchedBy: 'job',
+        crossAccount: true,
+      });
+      expect(result._replyInstruction).toContain('你之前已经报过这个岗位/品牌');
+      expect(result._replyInstruction).toContain('reasonCode="duplicate_signup"');
+    });
+
+    it('跨账号查重查询失败按无命中放行（海绵提交侧仍会兜底拒绝）', async () => {
+      context.session.botImId = 'bot-A';
+      sponge.fetchSignupWorkOrders.mockRejectedValue(new Error('timeout'));
+
+      const result = await execute(readyToBookSetup());
+
+      expect(result.nextAction).not.toBe('already_booked');
+      expect(result.duplicateBookingGuard).toBeUndefined();
+    });
+
     it('存量行没记面试时间：回执不带 interviewTime，指令要求不要编造时间', async () => {
       longTerm.getActiveBookings.mockResolvedValue([recentBooking({ work_order_id: 400001 })]);
 
@@ -1438,6 +1509,8 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
       expect(result.nextAction).toBe('already_booked');
       expect(result.duplicateBookingGuard).toEqual({
         workOrderId: 400001,
+        matchedBy: 'job',
+        crossAccount: false,
         note: expect.any(String),
       });
       expect(result._replyInstruction).toContain('不要编造时间');

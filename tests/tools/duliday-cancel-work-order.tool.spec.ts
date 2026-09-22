@@ -58,6 +58,82 @@ describe('buildCancelWorkOrderTool', () => {
   });
 
   describe('B5 取消前置核验', () => {
+    const snapshotRef = (over: Record<string, unknown> = {}) => ({
+      workOrderId: 464227,
+      jobId: 529005,
+      source: 'out_of_band' as const,
+      signupSource: 'SUPPLIER' as const,
+      ownedByCandidate: true,
+      ...over,
+    });
+    const bookingSnapshot = { invalidate: jest.fn().mockResolvedValue(undefined) };
+    const buildWithSnapshot = (ctx: ToolBuildContext) =>
+      buildCancelWorkOrderTool(
+        spongeService as never,
+        opsEventsRecorder as never,
+        longTermService as never,
+        privateChatNotifier as never,
+        { bookingSnapshot: bookingSnapshot as never },
+      )(ctx);
+
+    it('快照里通过本人校验的带外工单视同自有：放行取消、事件带 source=oob、失效快照缓存', async () => {
+      bookingSnapshot.invalidate.mockClear();
+      const ctx = mergeToolContext(mockContext, {
+        archive: { bookingWorkOrders: [snapshotRef()] },
+      });
+      const result = await exec(buildWithSnapshot(ctx), {
+        workOrderId: 464227,
+        cancelReasonId: 12010,
+        phone: '18271421690',
+      });
+
+      expect(result).toMatchObject({ success: true, workOrderId: 464227 });
+      expect(spongeService.cancelWorkOrder).toHaveBeenCalledWith(
+        expect.objectContaining({ workOrderId: 464227 }),
+        expect.anything(),
+      );
+      expect(opsEventsRecorder.recordEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          eventName: 'booking.canceled',
+          payload: expect.objectContaining({ source: 'oob' }),
+        }),
+      );
+      expect(bookingSnapshot.invalidate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          phone: '18271421690',
+          botImId: 'bot-im-1',
+          corpId: 'corp-1',
+          userId: 'user-1',
+        }),
+      );
+    });
+
+    it('本人校验未通过的快照工单禁止取消（identity_mismatch）', async () => {
+      const ctx = mergeToolContext(mockContext, {
+        archive: { bookingWorkOrders: [snapshotRef({ ownedByCandidate: false })] },
+      });
+      const result = await exec(buildWithSnapshot(ctx), {
+        workOrderId: 464227,
+        cancelReasonId: 12010,
+      });
+
+      expect(result).toMatchObject({
+        success: false,
+        errorType: TOOL_ERROR_TYPES.CANCEL_WORK_ORDER_NOT_OWNED,
+        ownershipReason: 'identity_mismatch',
+      });
+      expect(result._replyInstruction).toContain('姓名');
+      expect(spongeService.cancelWorkOrder).not.toHaveBeenCalled();
+    });
+
+    it('指针里的自建单取消事件来源为 ai', async () => {
+      const result = await exec(buildTool(), { workOrderId: 123, cancelReasonId: 12010 });
+      expect(result).toMatchObject({ success: true });
+      expect(opsEventsRecorder.recordEvent).toHaveBeenCalledWith(
+        expect.objectContaining({ payload: expect.objectContaining({ source: 'ai' }) }),
+      );
+    });
+
     it('rejects a workOrderId outside the active_booking set (记忆残留/臆造工单)', async () => {
       const tool = buildTool();
       const result = await exec(tool, { workOrderId: 999, cancelReasonId: 12010 });

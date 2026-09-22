@@ -71,6 +71,19 @@ export type AgentEvent = AgentEventContext &
         durationMs: number;
       }
     | { type: 'agent_error'; userId?: string; error: string }
+    /**
+     * 每轮预约快照（按手机号查海绵 signup/list）的读取观测：调用量、耗时、失败率、
+     * 缓存命中与"账号没配 token 跳过"都靠这条事件切片，不再只打日志。
+     */
+    | {
+        type: 'booking_snapshot';
+        status: 'ok' | 'cache_hit' | 'skipped_no_token' | 'skipped_no_phone' | 'failed';
+        botImId?: string;
+        durationMs?: number;
+        entryCount?: number;
+        supplierCount?: number;
+        error?: string;
+      }
     | {
         type: 'turn_data_sources';
         userId?: string;

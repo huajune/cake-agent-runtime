@@ -20,6 +20,12 @@ import { LongTermService } from '@memory/long-term/long-term.service';
 import { PrivateChatMonitorNotifierService } from '@notification/services/private-chat-monitor-notifier.service';
 import { ToolBuilder } from '@shared-types/tool.types';
 import { buildToolError, TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
+import type { BookingSnapshotService } from '@tools/booking/booking-snapshot.service';
+import {
+  bookingEventSource,
+  findSnapshotWorkOrder,
+  resolveBookingOwnership,
+} from '@tools/booking/booking-ownership.util';
 import {
   buildToolFailureHandoffSideEffect,
   buildToolFailureReplyInstruction,
@@ -114,11 +120,17 @@ const inputSchema = z.object({
  * cancelReasonId 由 LLM 从失败原因字典（pid=CANCEL_REASON_PID）中按原话挑选；
  * workOrderId 由 LLM 从 [当前预约信息] 显式传入。成功后写入 booking.canceled 运营事件。
  */
+export interface CancelWorkOrderToolDeps {
+  /** 取消成功后失效该手机号的预约快照缓存（否则 5 分钟内仍显示在途）。 */
+  bookingSnapshot?: Pick<BookingSnapshotService, 'invalidate'>;
+}
+
 export function buildCancelWorkOrderTool(
   spongeService: SpongeService,
   opsEventsRecorder: OpsEventsRecorderService,
   longTermService: LongTermService,
   privateChatNotifier: PrivateChatMonitorNotifierService,
+  deps?: CancelWorkOrderToolDeps,
 ): ToolBuilder {
   return (context) => {
     return tool({
@@ -161,27 +173,38 @@ export function buildCancelWorkOrderTool(
 
         const tokenContext = buildSpongeTokenContext(context);
 
-        // B5-1 工单归属核验：workOrderId 必须在候选人当前有效预约（active_booking）集合内。
+        // B5-1 工单归属核验：workOrderId 必须在候选人当前有效预约里——active_booking 指针，
+        // 或本轮预约快照中通过本人校验的工单（含真人后台建的带外单：查得到就是操作得了的）。
         // 记忆污染/示例回声可能让模型引用根本不存在或不属于本人的"预约"（
         // Agent 声称取消一个臆造的上海预约），取消是不可逆动作，必须锚定真实工单证据。
+        const snapshotRef = findSnapshotWorkOrder(context.archive.bookingWorkOrders, workOrderId);
         try {
           const activeBookings = await longTermService.getActiveBookings(
             context.session.corpId,
             context.session.userId,
           );
           const ownedWorkOrderIds = activeBookings.map((b) => b.work_order_id);
-          if (!ownedWorkOrderIds.includes(workOrderId)) {
+          const ownership = resolveBookingOwnership({
+            workOrderId,
+            pointerWorkOrderIds: ownedWorkOrderIds,
+            snapshotRefs: context.archive.bookingWorkOrders,
+          });
+          if (ownership.owned === false) {
             logger.warn(
-              `取消拦截（工单不属于候选人当前预约）: chatId=${chatId}, workOrderId=${workOrderId}, owned=[${ownedWorkOrderIds.join(',')}]`,
+              `取消拦截（工单不属于候选人当前预约，${ownership.reason}）: chatId=${chatId}, workOrderId=${workOrderId}, owned=[${ownedWorkOrderIds.join(',')}]`,
             );
+            const identityMismatch = ownership.reason === 'identity_mismatch';
             return buildToolError({
               errorType: TOOL_ERROR_TYPES.CANCEL_WORK_ORDER_NOT_OWNED,
-              outcome: '取消拦截（工单号不在候选人当前有效预约中）',
-              replyInstruction:
-                '该工单号不在候选人当前有效预约中，禁止取消——它可能来自记忆残留或误引用。' +
-                '请基于 [当前预约信息] 里真实存在的「工单号」重新确认候选人要取消哪一个预约；' +
-                '若 [当前预约信息] 为空：对话里有真人经理手动发出的预约确认或候选人指认的具体已约面试时，改调 request_handoff(reasonCode="modify_appointment") 交人工取消，不得说"没有预约记录/不需要取消"；确实没有任何预约痕迹时才向候选人自然说明，不要提及工单/系统。',
-              details: { workOrderId, ownedWorkOrderIds },
+              outcome: identityMismatch
+                ? '取消拦截（工单登记姓名与候选人自报姓名不一致）'
+                : '取消拦截（工单号不在候选人当前有效预约中）',
+              replyInstruction: identityMismatch
+                ? '该工单登记的候选人姓名与本会话候选人自报姓名不一致，禁止自助取消。请调 request_handoff(reasonCode="modify_appointment") 交人工核实后取消，不得说"没有预约记录/不需要取消"，也不要提及工单/系统。'
+                : '该工单号不在候选人当前有效预约中，禁止取消——它可能来自记忆残留或误引用。' +
+                  '请基于 [当前预约信息] 里真实存在的「工单号」重新确认候选人要取消哪一个预约；' +
+                  '若 [当前预约信息] 为空：对话里有真人经理手动发出的预约确认或候选人指认的具体已约面试时，改调 request_handoff(reasonCode="modify_appointment") 交人工取消，不得说"没有预约记录/不需要取消"；确实没有任何预约痕迹时才向候选人自然说明，不要提及工单/系统。',
+              details: { workOrderId, ownedWorkOrderIds, ownershipReason: ownership.reason },
             });
           }
         } catch (err) {
@@ -288,6 +311,8 @@ export function buildCancelWorkOrderTool(
             chatId: context.session.sessionId,
             payload: {
               work_order_id: workOrderId,
+              // 带外工单（供应商后台建单）的后续取消按来源单列统计。
+              source: bookingEventSource(snapshotRef),
               cancel_reason_id: matched.id,
               cancel_reason: matched.info || null,
               cancel_reason_desc: cancelReasonDesc?.trim() || null,
@@ -305,6 +330,17 @@ export function buildCancelWorkOrderTool(
             context.session.userId,
             workOrderId,
           );
+          // 预约快照按手机号缓存 5 分钟；不失效会让刚取消的工单在后续回合仍显示在途。
+          await deps?.bookingSnapshot?.invalidate({
+            phone:
+              normalizeOptionalText(phone) ??
+              context.archive.bookingCandidateFacts?.phone ??
+              context.archive.profile?.phone ??
+              null,
+            botImId: context.session.botImId,
+            corpId: context.session.corpId,
+            userId: context.session.userId,
+          });
 
           void sendCancelWorkOrderNotification({
             privateChatNotifier,

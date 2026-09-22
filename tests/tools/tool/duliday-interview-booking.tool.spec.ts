@@ -121,7 +121,10 @@ describe('duliday_interview_booking（form → labelList）', () => {
     fetchJobs: jest.fn(),
     bookInterview: jest.fn(),
     uploadAttachmentFromUrl: jest.fn(),
+    fetchSignupWorkOrders: jest.fn(),
   };
+  const bookingSnapshot = { invalidate: jest.fn().mockResolvedValue(undefined) };
+  const phoneSessionIndex = { record: jest.fn().mockResolvedValue(undefined) };
   const collectionForms = {
     loadOrCreate: jest.fn(async () => currentForm),
     persist: jest.fn(async (_scope, form) => {
@@ -157,6 +160,9 @@ describe('duliday_interview_booking（form → labelList）', () => {
     context.ledger.jobs.collectionReadyJobId = 100;
     sponge.fetchJobCollectionContract.mockResolvedValue({ jobId: 100, fields: CONTRACT });
     sponge.fetchJobs.mockResolvedValue({ jobs: [JOB] });
+    sponge.fetchSignupWorkOrders.mockResolvedValue({ workOrders: [] });
+    bookingSnapshot.invalidate.mockResolvedValue(undefined);
+    phoneSessionIndex.record.mockResolvedValue(undefined);
     sponge.bookInterview.mockResolvedValue({
       success: true,
       code: 0,
@@ -178,7 +184,12 @@ describe('duliday_interview_booking（form → labelList）', () => {
       hosting as never,
       longTerm as never,
       ops as never,
-      { collectionForms: collectionForms as never, sessionFacts: sessionFacts as never },
+      {
+        collectionForms: collectionForms as never,
+        sessionFacts: sessionFacts as never,
+        bookingSnapshot: bookingSnapshot as never,
+        phoneSessionIndex: phoneSessionIndex as never,
+      },
     )(context);
     return built.execute!(input as never, {
       toolCallId: 'booking-test',
@@ -526,6 +537,71 @@ describe('duliday_interview_booking（form → labelList）', () => {
     expect(result._replyInstruction).toContain('已经约上');
     expect(result._replyInstruction).toContain('禁止说"系统有问题/没提交成功/稍后再帮你提交"');
     expect(result._replyInstruction).toContain('不要编造时间');
+  });
+
+  it('本轮预约快照里同品牌在途工单（含带外）→ already_booked，不再查跨账号', async () => {
+    context.archive.bookingWorkOrders = [
+      {
+        workOrderId: 9001,
+        jobId: 900,
+        source: 'out_of_band',
+        signupSource: 'SUPPLIER',
+        ownedByCandidate: true,
+        brandName: JOB.basicInfo.brandName,
+        interviewTime: '2026-09-14 13:30',
+      },
+    ];
+    context.ledger.recordFetchedJobs([
+      { jobId: 100, brandName: JOB.basicInfo.brandName, jobName: '服务员' } as never,
+    ]);
+    const result = await execute({ jobId: 100 });
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_ALREADY_BOOKED);
+    expect(result.existingWorkOrderId).toBe(9001);
+    expect(result.matchedBy).toBe('brand');
+    expect(result.crossAccount).toBe(false);
+    expect(result._replyInstruction).toContain('同品牌');
+    expect(sponge.fetchSignupWorkOrders).not.toHaveBeenCalled();
+    expect(sponge.bookInterview).not.toHaveBeenCalled();
+  });
+
+  it('快照与指针都没命中时再查 onlyCurrentAccount=false：别的账号同岗位在途 → 如实告知并转 duplicate_signup', async () => {
+    sponge.fetchSignupWorkOrders.mockResolvedValue({
+      workOrders: [
+        {
+          workOrderId: 9002,
+          jobId: 100,
+          currentStatus: '约面成功',
+          signUpTime: new Date().toISOString().replace('T', ' ').slice(0, 19),
+          interviewTime: '2026-09-14 13:30',
+        },
+      ],
+    });
+    const result = await execute({ jobId: 100 });
+    expect(sponge.fetchSignupWorkOrders).toHaveBeenCalledWith(
+      expect.objectContaining({ onlyCurrentAccount: false, phone: expect.any(String) }),
+      expect.objectContaining({ botImId: 'bot-A' }),
+      { timeoutMs: 3000, allowDefaultToken: false },
+    );
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_ALREADY_BOOKED);
+    expect(result.existingWorkOrderId).toBe(9002);
+    expect(result.crossAccount).toBe(true);
+    expect(result._replyInstruction).toContain('你之前已经报过这个岗位/品牌');
+    expect(result._replyInstruction).toContain('reasonCode="duplicate_signup"');
+    expect(sponge.bookInterview).not.toHaveBeenCalled();
+  });
+
+  it('报名成功后失效该手机号的预约快照缓存并写手机号→会话索引', async () => {
+    const result = await execute({ jobId: 100 });
+    expect(result.success).toBe(true);
+    expect(bookingSnapshot.invalidate).toHaveBeenCalledWith(
+      expect.objectContaining({ botImId: 'bot-A', corpId: 'corp-1', userId: 'user-1' }),
+    );
+    expect(phoneSessionIndex.record).toHaveBeenCalledWith(expect.any(String), {
+      corpId: 'corp-1',
+      userId: 'user-1',
+      chatId: 'session-1',
+      botImId: 'bot-A',
+    });
   });
 
   it('在途工单记录了面试时间时，查重回执带人类可读时间供回复播报', async () => {

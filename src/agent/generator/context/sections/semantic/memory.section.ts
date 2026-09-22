@@ -41,15 +41,26 @@ export interface BookingLocationDetails {
 export interface BookingPromptEntry {
   workOrder: SignupWorkOrderItem;
   location?: BookingLocationDetails;
+  /** 海绵 signupSource：SUPPLIER=供应商后台（真人）建单，即带外工单；快照路径必有。 */
+  signupSource?: 'AI' | 'SUPPLIER' | null;
+  /**
+   * 本人校验：海绵登记姓名与会话/档案姓名一致。false 只渲染、不放行取消改约；
+   * undefined 表示来自 active_booking 指针（归属由指针保证）。
+   */
+  ownedByCandidate?: boolean;
 }
 
-/** 预约读取结果；hidden 表示源异常，none 表示权威源明确无进行中预约。 */
+/**
+ * 预约读取结果；hidden 表示源异常，none 表示权威源明确无进行中预约。
+ * source：snapshot=每轮按手机号从海绵查得的快照（含自建与带外）；active_booking=指针回落路径；
+ * out_of_band=旧带外查询路径（保留类型兼容，快照上线后不再产出）。
+ */
 export type BookingPromptSnapshot =
   | { state: 'hidden' }
   | { state: 'none' }
   | {
       state: 'active';
-      source: 'active_booking' | 'out_of_band';
+      source: 'active_booking' | 'out_of_band' | 'snapshot';
       entries: BookingPromptEntry[];
       syncing: boolean;
     };
@@ -208,10 +219,29 @@ export function visibleBookingEntries(
   if (snapshot.state !== 'active') return [];
   const visible: Array<{ entry: BookingPromptEntry; rendered: string }> = [];
   for (const entry of snapshot.entries) {
-    const rendered = formatBookingContext(entry.workOrder, visible.length + 1, entry.location);
-    if (rendered) visible.push({ entry, rendered });
+    const base = formatBookingContext(entry.workOrder, visible.length + 1, entry.location);
+    if (!base) continue;
+    const notes = formatBookingEntryNotes(entry);
+    visible.push({ entry, rendered: notes ? `${base}\n${notes}` : base });
   }
   return visible;
+}
+
+/**
+ * 快照条目的来源/归属附注：带外（供应商后台建单）与本人校验未通过的工单要让模型知道
+ * 它不是本会话经手的、也不能替候选人自助改动，只能如实转述或转人工。
+ */
+function formatBookingEntryNotes(entry: BookingPromptEntry): string {
+  const lines: string[] = [];
+  if (entry.signupSource === 'SUPPLIER') {
+    lines.push('来源: 招聘顾问后台登记（非本会话提交），候选人问起时可如实转述预约信息。');
+  }
+  if (entry.ownedByCandidate === false) {
+    lines.push(
+      '归属: 工单登记姓名与候选人自报姓名不一致，只可转述、不得自助改约或取消；候选人要求改动时按 request_handoff(reasonCode="modify_appointment") 转人工。',
+    );
+  }
+  return lines.join('\n');
 }
 
 /** 把类型化预约快照渲染成模型证据，不在加载层拼 Prompt 文案。 */
@@ -241,25 +271,53 @@ export function hasCurrentBookingInformation(snapshot: BookingPromptSnapshot): b
 export interface VisibleBookingWorkOrderRef {
   workOrderId: number;
   jobId: number | null;
-  /** active_booking：本联系人自建；out_of_band：按手机号从工单系统实时查得（真人/其它渠道或其它联系人登记）。 */
+  /**
+   * active_booking：蛋糕自建（AI 建单或指针路径）；out_of_band：供应商后台建单
+   * （快照 signupSource=SUPPLIER）或旧带外查询路径。
+   */
   source: 'active_booking' | 'out_of_band';
+  signupSource?: 'AI' | 'SUPPLIER' | null;
+  ownedByCandidate?: boolean;
+  brandName?: string | null;
+  jobName?: string | null;
+  interviewTime?: string | null;
+  signUpTime?: string | null;
 }
 
 /**
  * 与 Prompt 可见性同门的工单引用：模型在 [当前预约信息] 里看得到的每一张工单，
- * 工具侧也能拿到同一份工单号与来源（改期转人工据此不把带外工单当成"尚无预约"）。
+ * 工具侧也能拿到同一份工单号、来源与归属（取消/改约放行、查重、转人工卡片都读这一份）。
  */
 export function visibleBookingWorkOrders(
   snapshot: BookingPromptSnapshot,
 ): VisibleBookingWorkOrderRef[] {
   if (snapshot.state !== 'active') return [];
   return visibleBookingEntries(snapshot)
-    .map(({ entry }) => ({
-      workOrderId: entry.workOrder.workOrderId,
-      jobId: normalizeJobId(entry.workOrder.jobId),
-      source: snapshot.source,
-    }))
-    .filter((ref): ref is VisibleBookingWorkOrderRef => typeof ref.workOrderId === 'number');
+    .map(({ entry }): VisibleBookingWorkOrderRef => {
+      const { workOrder } = entry;
+      const source: VisibleBookingWorkOrderRef['source'] =
+        snapshot.source === 'snapshot'
+          ? entry.signupSource === 'SUPPLIER'
+            ? 'out_of_band'
+            : 'active_booking'
+          : snapshot.source;
+      return {
+        workOrderId: workOrder.workOrderId,
+        jobId: normalizeJobId(workOrder.jobId),
+        source,
+        ...(snapshot.source === 'snapshot'
+          ? {
+              signupSource: entry.signupSource ?? null,
+              ownedByCandidate: entry.ownedByCandidate ?? false,
+            }
+          : {}),
+        brandName: typeof workOrder.brandName === 'string' ? workOrder.brandName : null,
+        jobName: typeof workOrder.jobName === 'string' ? workOrder.jobName : null,
+        interviewTime: typeof workOrder.interviewTime === 'string' ? workOrder.interviewTime : null,
+        signUpTime: typeof workOrder.signUpTime === 'string' ? workOrder.signUpTime : null,
+      };
+    })
+    .filter((ref) => typeof ref.workOrderId === 'number');
 }
 
 /** 与 Prompt 可见性同门的预约岗位 provenance。 */
