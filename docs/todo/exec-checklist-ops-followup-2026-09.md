@@ -89,4 +89,19 @@
 |---|---|---|
 | Z1 | 汇总各批 ledger 条目写入 `docs/prompt-rule-ledger.md` | ✅ d09ce4159（A/B/C/D/E：判定树复聊分支、T11/C10/salary_account 修订、六节五个工具行追加、新开第八节 RE1–RE5）+ F 批第二次提交（取消/改约归属、二节 [当前预约信息] 快照渲染 BQ1/BQ2、查重回执、已预约岗位重查） |
 | Z2 | 全量 `ci:check`；PR → develop | ⬜ |
-| Z3 | 生产写授权清单（B5、C8）与迁移清单 | ⬜ |
+| Z3 | 生产写授权清单（B5、C8）与迁移清单 | ✅ 见下表 |
+
+## Z3 上线前清单（代码已就绪、需人操作或授权）
+
+| 类别 | 事项 | 谁 |
+|---|---|---|
+| 生产写（逐项授权） | B5 阶段目标里「没有合适岗位就拉群」旧口径清理 | 用户授权后由我执行 |
+| 生产写（逐项授权） | C8 红线第 9 条改为「出错不暴露技术细节、如实说暂时处理不了」 | 同上 |
+| 迁移 | `20260922063414_reengagement_stop_context_and_weekly_funnel.sql`（stop_context 列 + record_reengagement_touch 新签名 + 周漏斗 RPC）：先 `db:push:test` 再 `db:push:prod`，与发版同步；上线前跑 `EXPLAIN (ANALYZE, BUFFERS)` | 我 |
+| 飞书任务 G4 | 应用开通 task:task / task:tasklist / task:section / task:custom_field / task:comment 读写并发布新版本（链接见 09-22 对话）；建清单填 `FEISHU_TASK_TASKLIST_GUID`；跑 `scripts/feishu-task-probe.ts --write --setup-fields`；open_id 实测；T4/T8 负责人填 `FEISHU_TASK_OWNER_OPEN_IDS_JSON`；最后 `system_config.feishu_task_config={"enabled":true}` | 管理员开权限；其余我跑 |
+| 海绵实测 F7 | `operationLogs.operationType` 编码全集；`onlyCurrentAccount=false` 返回范围；`self/list/v2` 排序与单页上限；`onlySignableJobs:false` 能否取回已下架岗位；`queryParam.currentStatus` 与本地 9 态一致 | 我（生产 token） |
+| 运行时开关（默认关，验证后打开） | `system_config.oob_reconcile_scan_config.enabled`（补偿扫描）、`JOB_DATA_AUDIT_ENABLED`（岗位体检）、`feishu_task_config.enabled` | 我 |
+| 生产机 env | `.env.example` 新增项同步到生产：FEISHU_TASK_*、JOB_DATA_AUDIT_*、POST_BOOKING_INVITE_RATE_* | 我 |
+| 待裁定 | 报名后拉群不传行业按城市兜底选群；「首次报名」判据=候选人名下无其他在途工单；阶梯薪资 `perTimeUnit`（每月/不限）现渲染一律「累计满 N 小时」可能答错；飞书任务对已暂停会话不建任务 | 用户 |
+| 观测 | 上线后一周：当日提醒发出率、`other` 占比、同轮拉群率、带外工单数与海绵调用量/失败率、承诺对账带码率 | 我 |
+
