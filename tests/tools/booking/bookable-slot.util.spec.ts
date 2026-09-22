@@ -3,6 +3,8 @@ import {
   buildScheduleRule,
   buildUpcomingTimeOptions,
   evaluateRequestedDate,
+  formatWindowTimeText,
+  isFixedTimePointWindow,
 } from '@tools/booking/bookable-slot.util';
 import type { InterviewWindow } from '@tools/job-list/job-policy-parser';
 
@@ -61,6 +63,74 @@ describe('bookable-slot.util', () => {
         },
       ];
       expect(buildUpcomingTimeOptions(windows)).toEqual([]);
+    });
+  });
+
+  // 海绵把「固定时间点」面试录成 startTime === endTime；文案只写一个时刻，不拼成「14:00-14:00」。
+  describe('固定时间点窗口（startTime === endTime）', () => {
+    it('formatWindowTimeText / isFixedTimePointWindow collapse equal start and end to one time', () => {
+      expect(isFixedTimePointWindow('14:00', '14:00')).toBe(true);
+      expect(isFixedTimePointWindow('14:00', '14：00')).toBe(true);
+      expect(isFixedTimePointWindow('14:00', '16:00')).toBe(false);
+      expect(isFixedTimePointWindow('unknown', 'unknown')).toBe(false);
+      expect(formatWindowTimeText('14:00', '14:00')).toBe('14:00');
+      expect(formatWindowTimeText('14:00', '16:00')).toBe('14:00-16:00');
+    });
+
+    it('buildUpcomingTimeOptions labels a fixed time point with a single time', () => {
+      const windows: InterviewWindow[] = [
+        { weekday: '每周三', startTime: '14:00', endTime: '14:00' },
+      ];
+      const out = buildUpcomingTimeOptions(windows, 7, 10);
+      const label = out.find((item) => item.includes('2026-05-20'));
+      expect(label).toBeDefined();
+      expect(label).toContain('周三 14:00');
+      expect(label).not.toContain('14:00-14:00');
+    });
+
+    it('buildBookableSlots marks a fixed time point as bookable but not flexible, with a fixed-point hint', () => {
+      const windows: InterviewWindow[] = [
+        { weekday: '每周三', startTime: '14:00', endTime: '14:00' },
+      ];
+      const slot = buildBookableSlots({ windows }).find((s) => s.date === '2026-05-20');
+      expect(slot).toBeDefined();
+      expect(slot?.label).toBe('2026-05-20 周三 14:00');
+      expect(slot?.label).not.toContain('14:00-14:00');
+      expect(slot?.bookingAllowed).toBe(true);
+      expect(slot?.dateOnly).toBe(false);
+      expect(slot?.interviewTime).toBe('2026-05-20 14:00:00');
+      expect(slot?.interviewTimeFlexible).toBe(false);
+      expect(slot?.interviewTimeHint).toContain('固定时间点 14:00');
+      expect(slot?.interviewTimeHint).not.toContain('14:00-14:00');
+      expect(slot?.interviewTimeHint).not.toContain('窗口内任意时刻');
+    });
+
+    it('buildBookableSlots keeps the flexible-window hint for a real range', () => {
+      const windows: InterviewWindow[] = [
+        { weekday: '每周三', startTime: '13:30', endTime: '16:30' },
+      ];
+      const slot = buildBookableSlots({ windows }).find((s) => s.date === '2026-05-20');
+      expect(slot?.interviewTimeFlexible).toBe(true);
+      expect(slot?.interviewTimeHint).toContain('13:30-16:30 的面试窗口');
+    });
+
+    it('date-only windows (00:00-00:00) are still date-only, not fixed time points', () => {
+      const windows: InterviewWindow[] = [
+        { date: '2026-05-22', startTime: '00:00', endTime: '00:00' },
+      ];
+      const slot = buildBookableSlots({ windows }).find((s) => s.date === '2026-05-22');
+      expect(slot?.dateOnly).toBe(true);
+      expect(slot?.bookingAllowed).toBe(false);
+    });
+
+    it('buildScheduleRule writes a single time for fixed time points', () => {
+      const windows: InterviewWindow[] = [
+        { weekday: '每周一', startTime: '14:00', endTime: '14:00' },
+        { weekday: '每周三', startTime: '14:00', endTime: '14:00' },
+      ];
+      const rule = buildScheduleRule(windows);
+      expect(rule).toContain('14:00');
+      expect(rule).not.toContain('14:00-14:00');
     });
   });
 
