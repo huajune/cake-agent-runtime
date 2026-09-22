@@ -56,7 +56,7 @@
 | G1 | 飞书 task/v2 客户端：建任务、加成员、评论、字段选项缓存 | ✅ 4b3d31aa7 |
 | G2 | 介入 → 任务映射：大类、优先级、按上班时间的到期算法、Redis 合并键、描述脱敏 | ✅ 4b3d31aa7；原因码→大类/标签/标急已改读 `handoff-reason.enum` 权威目录，模块只留时限/负责人/优先级 |
 | G3 | 失败不阻塞卡片，发告警；运行时开关 | ✅ 4b3d31aa7（system_config.feishu_task_config.enabled 默认关） |
-| G4 | 权限申请、五项实测、负责人人选 | ⏸ 需运营/平台操作 |
+| G4 | 权限申请、五项实测、负责人人选 | 🔧 09-22 权限已开；清单已建 guid=`d43e66f3-42a9-467d-b1e6-95957d099234`，9 分组 15 字段已建；测试任务建/指派/评论/删除全部成功，现有 open_id 属于本应用；8 位运营已加为清单编辑者。剩：生产 env 填 `FEISHU_TASK_TASKLIST_GUID`、`FEISHU_TASK_OWNER_OPEN_IDS_JSON`（主管/T4/T5/T8/default 人选），再开 `feishu_task_config.enabled` |
 
 ## 波次 2（依赖波次 1）
 
@@ -98,7 +98,7 @@
 | 生产写（逐项授权） | B5 阶段目标里「没有合适岗位就拉群」旧口径清理 | 用户授权后由我执行 |
 | 生产写（逐项授权） | C8 红线第 9 条改为「出错不暴露技术细节、如实说暂时处理不了」 | 同上 |
 | 迁移 | `20260922063414_reengagement_stop_context_and_weekly_funnel.sql`（stop_context 列 + record_reengagement_touch 新签名 + 周漏斗 RPC）：先 `db:push:test` 再 `db:push:prod`，与发版同步；上线前跑 `EXPLAIN (ANALYZE, BUFFERS)` | 我 |
-| 飞书任务 G4 | 应用开通 task:task / task:tasklist / task:section / task:custom_field / task:comment 读写并发布新版本（链接见 09-22 对话）；建清单填 `FEISHU_TASK_TASKLIST_GUID`；跑 `scripts/feishu-task-probe.ts --write --setup-fields`；open_id 实测；T4/T8 负责人填 `FEISHU_TASK_OWNER_OPEN_IDS_JSON`；最后 `system_config.feishu_task_config={"enabled":true}` | 管理员开权限；其余我跑 |
+| 飞书任务 G4 | 权限、清单（guid `d43e66f3-42a9-467d-b1e6-95957d099234`）、字段分组、open_id 实测 09-22 已完成；剩生产 env 填清单 guid 与负责人 open_id（主管/T4/T5/T8/default），然后 `system_config.feishu_task_config={"enabled":true}` | 用户给人选；我填与开启 |
 | 海绵实测 F7 | `operationLogs.operationType` 编码全集；`onlyCurrentAccount=false` 返回范围；`self/list/v2` 排序与单页上限；`onlySignableJobs:false` 能否取回已下架岗位；`queryParam.currentStatus` 与本地 9 态一致 | 我（生产 token） |
 | 运行时开关（默认关，验证后打开） | `system_config.oob_reconcile_scan_config.enabled`（补偿扫描）、`JOB_DATA_AUDIT_ENABLED`（岗位体检）、`feishu_task_config.enabled` | 我 |
 | 生产机 env | `.env.example` 新增项同步到生产：FEISHU_TASK_*、JOB_DATA_AUDIT_*、POST_BOOKING_INVITE_RATE_* | 我 |
