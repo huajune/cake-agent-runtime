@@ -70,12 +70,12 @@
 ### F. 带外工单对账（PRD R2；依赖 A1）
 | # | 事项 | 状态 |
 |---|---|---|
-| F1 | 每轮按手机号查快照（护栏、缓存、失效、回落） | ⬜ |
-| F2 | 下游读快照：提示词、取消改约、守卫、卡片、报名查重（含跨账号 `onlyCurrentAccount=false`） | ⬜ |
-| F3 | 带外副作用：`signupSource` 判定、本人校验、终态、排提醒（稳定锚点）、事件 | ⬜ |
-| F4 | 补偿扫描（`self/list/v2` 筛 SUPPLIER）+ 手机号→会话映射 | ⬜ |
-| F5 | 手动恢复后对账；`:resumed` 重排 | ⬜ |
-| F6 | J5/J6 已约岗位可重查 | ⬜ |
+| F1 | 每轮按手机号查快照（护栏、缓存、失效、回落） | ✅ 801a39137 |
+| F2 | 下游读快照：提示词、取消改约、守卫、卡片、报名查重（含跨账号 `onlyCurrentAccount=false`） | ✅ 801a39137（ledger 文本在汇总，待 Z1 写入） |
+| F3 | 带外副作用：`signupSource` 判定、本人校验、终态、排提醒（稳定锚点）、事件 | ✅ bb10c3dcf |
+| F4 | 补偿扫描（`self/list/v2` 筛 SUPPLIER）+ 手机号→会话映射 | ✅ 3018208ac（映射在 801a39137；`system_config.oob_reconcile_scan_config.enabled` 默认关） |
+| F5 | 手动恢复后对账；`:resumed` 重排 | ✅ 3018208ac（`:resumed` 重排逻辑在 bb10c3dcf） |
+| F6 | J5/J6 已约岗位可重查 | ✅ e41ec1e14（`onlySignableJobs:false` 能否取回已下架岗位未实测，见 F7） |
 | F7 | 接口三项实测 | ⏸ 需生产 token 实测 |
 
 ### H. 防复发（PRD R8）
