@@ -1,4 +1,5 @@
 import type { AgentToolCall } from '../generator/generator.types';
+import { classifyBookingFailure } from '@tools/shared/tool-failure-handoff.util';
 import { buildHandoffIdempotencyKey } from './handoff-idempotency';
 import type { SessionRef } from './agent-runner.types';
 import type { GeneralHandoffSideEffectIntent } from './turn-side-effect.types';
@@ -145,16 +146,6 @@ export function resolveTriggeringToolFailure(
     }
   }
   return undefined;
-}
-
-/** 报名失败的原因码：海绵拒绝语义能分出名额满/重复报名，其余算系统卡点。 */
-export function classifyBookingFailure(result: Record<string, unknown> | undefined): string {
-  const message = [result?.apiMessage, result?.reason, result?._outcome]
-    .map((value) => (typeof value === 'string' ? value : ''))
-    .join(' ');
-  if (/已报名|重复报名/u.test(message)) return 'duplicate_signup';
-  if (/上限|已满|名额/u.test(message)) return 'booking_capacity_full';
-  return 'system_blocked';
 }
 
 function hasCompletedHandoffAction(call: AgentToolCall): boolean {

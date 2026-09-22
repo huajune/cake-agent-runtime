@@ -1234,7 +1234,15 @@ describe('ReplyWorkflowService', () => {
           pauseTargetId: 'chat-1',
         }),
       );
-      expect(handoffRecorder.record).not.toHaveBeenCalled();
+      // PRD R5.2：入站风险类介入也落 handoff_events 底账（原因码 = 风险类型，来源 input_guardrail）
+      expect(handoffRecorder.record).toHaveBeenCalledTimes(1);
+      expect(handoffRecorder.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          reasonCode: 'abuse',
+          origin: 'input_guardrail',
+          idempotencyKey: 'chat-1:handoff:batch-risk:input_risk',
+        }),
+      );
       expect(wecomObservability.recordAgentResult).toHaveBeenCalledWith(
         'batch-risk',
         expect.objectContaining({

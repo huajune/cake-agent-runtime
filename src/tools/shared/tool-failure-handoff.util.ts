@@ -60,6 +60,72 @@ export function buildToolFailureHandoffSideEffect(params: {
   };
 }
 
+/** 报名失败的原因码：海绵拒绝语义能分出名额满/重复报名，其余算系统卡点（T6）。 */
+export function classifyBookingFailure(
+  result: Record<string, unknown> | undefined,
+): 'duplicate_signup' | 'booking_capacity_full' | 'system_blocked' {
+  const message = [result?.apiMessage, result?.reason, result?._outcome, result?.message]
+    .map((value) => (typeof value === 'string' ? value : ''))
+    .join(' ');
+  if (/已报名|重复报名/u.test(message)) return 'duplicate_signup';
+  if (/上限|已满|名额/u.test(message)) return 'booking_capacity_full';
+  return 'system_blocked';
+}
+
+/**
+ * 报名失败只记底账、不再重复告警的介入意图（PRD R5.2「报名失败类介入先落介入底账」）。
+ *
+ * booking 工具失败时已自行暂停托管并发过预约失败卡片（28 天 82 张不在 handoff_events 里），
+ * 这里用 recordOnly 让 outcome 出口只写 handoff_events / ops_events，不再暂停、不再发第二张卡。
+ * 幂等键与 booking.failed 运营事件同源（会话 + 岗位 + 时段）。
+ */
+export interface BookingFailureRecordIntent {
+  kind: 'general_handoff';
+  source: 'agent_tool';
+  origin: 'booking_failure';
+  alertLabel: string;
+  reasonCode: ReturnType<typeof classifyBookingFailure>;
+  reason: string;
+  actionAdvice: string;
+  workOrderId: null;
+  jobId: number;
+  stage: string | null;
+  botImId?: string;
+  idempotencyKey: string;
+  recordHandoff: true;
+  recordOnly: true;
+}
+
+export function buildBookingFailureRecordIntent(params: {
+  context: ToolBuildContext;
+  jobId: number;
+  interviewTime: string | undefined;
+  errorType: string;
+  failureReason: string;
+}): BookingFailureRecordIntent {
+  const { context, jobId } = params;
+  const reasonCode = classifyBookingFailure({ message: params.failureReason });
+  const candidateMessage = context.turnInput.currentUserMessage?.trim();
+  const reasonParts = [`报名提交失败（${params.errorType}：${params.failureReason}）`];
+  if (candidateMessage) reasonParts.push(`候选人原话：「${candidateMessage.slice(0, 200)}」`);
+  return {
+    kind: 'general_handoff',
+    source: 'agent_tool',
+    origin: 'booking_failure',
+    alertLabel: HANDOFF_REASON_LABELS[reasonCode] ?? '报名失败',
+    reasonCode,
+    reason: reasonParts.join('｜'),
+    actionAdvice: '报名工具已暂停托管并发过预约失败卡片；本条只记底账，按卡片处理即可。',
+    workOrderId: null,
+    jobId,
+    stage: context.archive.currentStage ?? null,
+    botImId: context.session.botImId,
+    idempotencyKey: `${context.session.sessionId}:booking_failed:${jobId}:${params.interviewTime ?? 'wait_notice'}`,
+    recordHandoff: true,
+    recordOnly: true,
+  };
+}
+
 /** 失败回执给模型的统一指令：如实说暂时处理不了、已转同事，不再要求调 request_handoff。 */
 export function buildToolFailureReplyInstruction(action: '取消' | '改约'): string {
   return (

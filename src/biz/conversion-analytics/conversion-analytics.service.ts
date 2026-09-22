@@ -1,6 +1,6 @@
 import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
-import { HANDOFF_REASON_LABELS } from '@enums/handoff-reason.enum';
+import { HANDOFF_REASON_LABELS, STORE_NO_SHOW_REASON_CODES } from '@enums/handoff-reason.enum';
 import { BotGroupResolverService } from '@biz/ops-events/services/bot-group-resolver.service';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 import {
@@ -32,6 +32,8 @@ import {
   ConversionTrendCounts,
   ConversionTrendPoint,
   ConversionTrendResponse,
+  StoreNoShowRankResponse,
+  StoreNoShowRankRow,
 } from './types/conversion-analytics.types';
 
 type JsonPayload = Record<string, unknown> | null;
@@ -693,6 +695,114 @@ export class ConversionAnalyticsService {
         percent: item.percent,
       })),
     };
+  }
+
+  /**
+   * 门店未履约周榜（PRD R5.2）：门店侧履约类介入（门店/面试官未履约、到店无人接待、门店查不到预约）
+   * 按品牌 + 门店聚合。介入本身只带 job_id / work_order_id，门店名从同会话的 booking.succeeded
+   * 事件（payload 带 brand_name/store_name）回溯：优先同工单号，其次介入之前该会话最近一次报名成功。
+   * 报名事件回看 60 天（介入常发生在报名后数周）。
+   */
+  async getStoreNoShowRank(filter: ConversionFilter): Promise<StoreNoShowRankResponse> {
+    await this.botGroupResolver.warmUp();
+    const period = this.getPeriod(filter.range);
+    const bounds = this.getDateBounds(period, 'current');
+    const [handoffs, bookings] = await Promise.all([
+      this.fetchOpsEvents(filter, period, ['handoff.triggered'], 'current', {
+        applyGroupFilter: true,
+      }),
+      this.fetchOpsEvents(filter, period, ['booking.succeeded'], 'current', {
+        applyGroupFilter: false,
+        dateBounds: {
+          startDate: formatLocalDate(
+            addLocalDays(parseLocalDateStart(bounds.startDate) ?? getLocalDayStart(), -60),
+          ),
+          endDate: bounds.endDate,
+        },
+      }),
+    ]);
+
+    const reasonCodes = [...STORE_NO_SHOW_REASON_CODES];
+    const bookingsByWorkOrder = new Map<string, OpsEventRow>();
+    const bookingsByChat = new Map<string, OpsEventRow[]>();
+    for (const row of bookings) {
+      const workOrderId = this.payloadText(row.payload, 'work_order_id');
+      if (workOrderId) bookingsByWorkOrder.set(workOrderId, row);
+      if (row.chat_id) {
+        const list = bookingsByChat.get(row.chat_id) ?? [];
+        list.push(row);
+        bookingsByChat.set(row.chat_id, list);
+      }
+    }
+
+    const buckets = new Map<
+      string,
+      { brandName: string; storeName: string; byReason: Map<string, number>; chats: Set<string> }
+    >();
+    let total = 0;
+    let unresolved = 0;
+    for (const handoff of handoffs) {
+      const reasonCode = this.payloadText(handoff.payload, 'reason_code');
+      if (!reasonCode || !reasonCodes.includes(reasonCode)) continue;
+      total += 1;
+      const booking = this.resolveHandoffBooking(handoff, bookingsByWorkOrder, bookingsByChat);
+      const brandName = booking ? this.payloadText(booking.payload, 'brand_name') : null;
+      const storeName = booking ? this.payloadText(booking.payload, 'store_name') : null;
+      if (!brandName && !storeName) {
+        unresolved += 1;
+        continue;
+      }
+      const key = `${brandName ?? ''}｜${storeName ?? ''}`;
+      const bucket = buckets.get(key) ?? {
+        brandName: brandName ?? '',
+        storeName: storeName ?? '',
+        byReason: new Map<string, number>(),
+        chats: new Set<string>(),
+      };
+      bucket.byReason.set(reasonCode, (bucket.byReason.get(reasonCode) ?? 0) + 1);
+      if (handoff.chat_id) bucket.chats.add(handoff.chat_id);
+      buckets.set(key, bucket);
+    }
+
+    const rows: StoreNoShowRankRow[] = Array.from(buckets.values())
+      .map((bucket) => ({
+        brandName: bucket.brandName,
+        storeName: bucket.storeName,
+        total: Array.from(bucket.byReason.values()).reduce((sum, count) => sum + count, 0),
+        byReason: Object.fromEntries(bucket.byReason),
+        chatCount: bucket.chats.size,
+      }))
+      .sort((a, b) => b.total - a.total || b.chatCount - a.chatCount);
+
+    return {
+      startDate: bounds.startDate,
+      endDate: bounds.endDate,
+      reasonCodes,
+      total,
+      unresolved,
+      rows,
+    };
+  }
+
+  private resolveHandoffBooking(
+    handoff: OpsEventRow,
+    byWorkOrder: Map<string, OpsEventRow>,
+    byChat: Map<string, OpsEventRow[]>,
+  ): OpsEventRow | undefined {
+    const workOrderId = this.payloadText(handoff.payload, 'work_order_id');
+    if (workOrderId && byWorkOrder.has(workOrderId)) return byWorkOrder.get(workOrderId);
+    if (!handoff.chat_id) return undefined;
+    const candidates = (byChat.get(handoff.chat_id) ?? []).filter(
+      (row) => row.occurred_at <= handoff.occurred_at,
+    );
+    return candidates.length > 0 ? candidates[candidates.length - 1] : undefined;
+  }
+
+  private payloadText(payload: JsonPayload, key: string): string | null {
+    const value = payload?.[key];
+    if (typeof value === 'string') return value.trim() || null;
+    if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+    return null;
   }
 
   private async getBotRowsFromPeriodStats(

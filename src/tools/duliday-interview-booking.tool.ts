@@ -54,6 +54,7 @@ import {
   STALE_INPUT_SHORT_CIRCUIT,
   TOOL_ERROR_TYPES,
 } from '@tools/shared/tool-error-types';
+import { buildBookingFailureRecordIntent } from '@tools/shared/tool-failure-handoff.util';
 import { tool } from 'ai';
 import { z } from 'zod';
 
@@ -495,6 +496,14 @@ export function buildInterviewBookingTool(
                 },
               }),
               hostingPaused: true,
+              // 报名失败类介入落 handoff_events 底账（recordOnly：托管已在上面暂停、卡片由 notifyBooking 发）
+              sideEffect: buildBookingFailureRecordIntent({
+                context,
+                jobId,
+                interviewTime,
+                errorType: TOOL_ERROR_TYPES.BOOKING_REJECTED,
+                failureReason: result.message ?? `海绵返回 code=${result.code}`,
+              }),
             };
             void notifyBooking(
               privateChatNotifier,
@@ -714,6 +723,13 @@ export function buildInterviewBookingTool(
               details: { jobId, reason: toErrorMessage(error) },
             }),
             hostingPaused: true,
+            sideEffect: buildBookingFailureRecordIntent({
+              context,
+              jobId,
+              interviewTime,
+              errorType: TOOL_ERROR_TYPES.BOOKING_REQUEST_FAILED,
+              failureReason: toErrorMessage(error) || '未知错误',
+            }),
           };
         }
       },
