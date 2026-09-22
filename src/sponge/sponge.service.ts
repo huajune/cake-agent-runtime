@@ -501,6 +501,7 @@ export class SpongeService {
   async fetchSelfSignupWorkOrdersV2(
     params: SelfSignupWorkOrdersV2Params,
     tokenContext?: SpongeTokenResolveContext,
+    options?: Pick<SignupWorkOrdersRequestOptions, 'timeoutMs'>,
   ): Promise<SelfSignupWorkOrdersV2Result> {
     const payload = stripNullish({
       pageNum: params.pageNum,
@@ -514,7 +515,7 @@ export class SpongeService {
       tokenContext,
       '海绵当前供应商工单分页查询(v2)',
       SelfSignupWorkOrdersV2ApiResponseSchema,
-      { allowDefaultToken: false },
+      { allowDefaultToken: false, timeoutMs: options?.timeoutMs },
     );
     const workOrders: SignupWorkOrderItem[] = (data?.result ?? []) as SignupWorkOrderItem[];
     return {

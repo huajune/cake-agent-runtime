@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional, type OnModuleInit } from '@nestjs/common';
 import { RedisService } from '@infra/redis/redis.service';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
@@ -6,7 +6,9 @@ import { SystemConfigService } from '@biz/hosting-config/services/system-config.
 import { LongTermService } from '@memory/long-term/long-term.service';
 import { isUserProfileFactValue } from '@memory/long-term/long-term.types';
 import type { ReengagementSessionState } from '@memory/recall.types';
+import { PhoneSessionIndexService } from '@memory/phone-session-index.service';
 import { SessionStateService } from '@memory/short-term/session-state.service';
+import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { isStorableCandidatePhone } from '@resolution/candidate/phone';
 import { BookingSnapshotService } from '@tools/booking/booking-snapshot.service';
 import type { BookingSnapshotEntry } from '@tools/booking/booking-snapshot.types';
@@ -58,7 +60,7 @@ const MINUTE_MS = 60 * 1000;
  * 回归测试/调试链路不调用（它们也走 prepare 且连生产海绵）。
  */
 @Injectable()
-export class OobReconcileService {
+export class OobReconcileService implements OnModuleInit {
   private readonly logger = new Logger(OobReconcileService.name);
 
   constructor(
@@ -69,7 +71,37 @@ export class OobReconcileService {
     private readonly opsEvents: OpsEventsRecorderService,
     private readonly redis: RedisService,
     private readonly systemConfig: SystemConfigService,
+    @Optional() private readonly userHosting?: UserHostingService,
+    @Optional() private readonly phoneSessionIndex?: PhoneSessionIndexService,
   ) {}
+
+  /** 手动恢复托管即时对账一次（到期恢复不经过恢复函数，由下一回合与补偿扫描兜底）。 */
+  onModuleInit(): void {
+    this.userHosting?.registerResumeListener(async (chatId) => {
+      await this.reconcileAfterResume(chatId);
+    });
+  }
+
+  async reconcileAfterResume(chatId: string): Promise<OobReconcileResult | null> {
+    try {
+      const record = await this.phoneSessionIndex?.lookupByChat(chatId);
+      if (!record) {
+        this.logger.log(`[oob] 恢复托管对账跳过：无手机号→会话索引 chatId=${chatId}`);
+        return null;
+      }
+      return await this.reconcile({
+        corpId: record.corpId,
+        userId: record.userId,
+        chatId: record.chatId,
+        botImId: record.botImId ?? null,
+        phone: record.phone,
+        trigger: 'resume',
+      });
+    } catch (error) {
+      this.logger.warn(`[oob] 恢复托管对账失败 chatId=${chatId}: ${toErrorMessage(error)}`);
+      return null;
+    }
+  }
 
   /** 渠道层 fire-and-forget 入口：任何失败只记日志，绝不影响回复投递。 */
   async reconcileAfterTurn(input: Omit<OobReconcileInput, 'trigger'>): Promise<void> {

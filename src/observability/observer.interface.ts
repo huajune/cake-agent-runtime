@@ -84,6 +84,22 @@ export type AgentEvent = AgentEventContext &
         supplierCount?: number;
         error?: string;
       }
+    /** 带外工单补偿扫描（每 6 小时）的一轮观测：账号数、拉取行数、带外行数、反查命中/未命中、对账结果。 */
+    | {
+        type: 'oob_reconcile_scan';
+        status: 'done' | 'skipped' | 'failed';
+        reason?: string;
+        accounts?: number;
+        rows?: number;
+        supplierRows?: number;
+        resolved?: number;
+        unresolved?: number;
+        botMismatch?: number;
+        reconciled?: number;
+        scheduled?: number;
+        accountFailures?: number;
+        durationMs?: number;
+      }
     | {
         type: 'turn_data_sources';
         userId?: string;

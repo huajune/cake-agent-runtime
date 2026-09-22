@@ -312,4 +312,45 @@ describe('OobReconcileService', () => {
     bookingSnapshot.load.mockRejectedValue(new Error('boom'));
     await expect(service().reconcileAfterTurn(input)).resolves.toBeUndefined();
   });
+  describe('手动恢复托管钩子', () => {
+    it('onModuleInit 向 UserHostingService 注册监听；恢复时按会话反查索引后以 resume 触发对账', async () => {
+      const userHosting = { registerResumeListener: jest.fn() };
+      const phoneIndex = {
+        lookupByChat: jest.fn().mockResolvedValue({
+          corpId: 'corp-1',
+          userId: 'user-1',
+          chatId: 'chat-1',
+          botImId: 'bot-1',
+          phone: '18271421690',
+        }),
+      };
+      const hooked = new OobReconcileService(
+        bookingSnapshot as never,
+        session as never,
+        longTerm as never,
+        scheduler as never,
+        opsEvents as never,
+        redis as never,
+        systemConfig as never,
+        userHosting as never,
+        phoneIndex as never,
+      );
+      hooked.onModuleInit();
+      expect(userHosting.registerResumeListener).toHaveBeenCalledTimes(1);
+
+      const listener = userHosting.registerResumeListener.mock.calls[0][0] as (
+        chatId: string,
+      ) => Promise<unknown>;
+      await listener('chat-1');
+      expect(phoneIndex.lookupByChat).toHaveBeenCalledWith('chat-1');
+      expect(bookingSnapshot.load).toHaveBeenCalledWith(
+        expect.objectContaining({ phone: '18271421690', botImId: 'bot-1', bypassCache: true }),
+      );
+
+      phoneIndex.lookupByChat.mockResolvedValue(null);
+      bookingSnapshot.load.mockClear();
+      await expect(hooked.reconcileAfterResume('chat-2')).resolves.toBeNull();
+      expect(bookingSnapshot.load).not.toHaveBeenCalled();
+    });
+  });
 });
