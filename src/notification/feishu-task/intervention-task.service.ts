@@ -12,6 +12,8 @@ import { toErrorMessage } from '@infra/utils/error.util';
 import { LongTermService } from '@memory/long-term/long-term.service';
 import type { ActiveBookingEntry } from '@memory/long-term/long-term.types';
 import { unwrapSessionFactValue } from '@memory/short-term/short-term.types';
+import { SpongeService } from '@sponge/sponge.service';
+import type { SignupWorkOrderItem } from '@sponge/sponge.types';
 import { AlertNotifierService } from '../services/alert-notifier.service';
 import { FeishuTaskClient, buildCustomFieldValue } from './feishu-task.client';
 import type { FeishuTaskCustomFieldValue, FeishuTaskMember } from './feishu-task.types';
@@ -128,7 +130,23 @@ const TEST_SESSION_PREFIXES = ['test-', 'p1-fixed-', 'p2-fixed-', 'p3-fixed-'];
 const MERGE_TTL_SECONDS = 7 * 24 * 60 * 60;
 const MERGE_KEY_PREFIX = 'feishu-task:intervention:v1';
 const RUNTIME_CONFIG_TTL_MS = 30 * 1000;
-const TITLE_REASON_MAX = 30;
+const TITLE_FALLBACK_NICKNAME = '候选人';
+const TITLE_IMMINENT_SUFFIX = '面试将至';
+const TITLE_COUNT_SUFFIX_PATTERN = /（第 \d+ 次）$/;
+
+/** 合并时的标题尾缀：先去掉旧的「（第 N 次）」再按当前次数追加（首次不加）。 */
+function withCountSuffix(title: string, count: number): string {
+  const base = title.replace(TITLE_COUNT_SUFFIX_PATTERN, '');
+  return count > 1 ? `${base}（第 ${count} 次）` : base;
+}
+
+/** 「品牌-门店/项目」拼装；两段都空时返回 null。 */
+function joinBrandStore(
+  brand: string | null | undefined,
+  store: string | null | undefined,
+): string | null {
+  return [brand, store].filter(Boolean).join('-') || null;
+}
 
 /**
  * 人工介入 → 飞书任务（G2 + G3）。
@@ -146,6 +164,7 @@ export class InterventionTaskService implements OnApplicationBootstrap {
   private runtimeConfig: FeishuTaskRuntimeConfig | null = null;
   private runtimeConfigExpiry = 0;
   private longTermService: LongTermService | null = null;
+  private spongeService: SpongeService | null = null;
 
   constructor(
     private readonly client: FeishuTaskClient,
@@ -168,6 +187,12 @@ export class InterventionTaskService implements OnApplicationBootstrap {
       this.longTermService = this.moduleRef.get(LongTermService, { strict: false });
     } catch {
       this.logger.warn('LongTermService 未注册，飞书任务的面试时间将留空');
+    }
+    // SpongeService 同法懒解析：指针缺失时回落海绵工单取面试时间；FeishuTaskModule 不 import SpongeModule 以免成环。
+    try {
+      this.spongeService = this.moduleRef.get(SpongeService, { strict: false });
+    } catch {
+      this.logger.warn('SpongeService 未注册，飞书任务的面试时间不回落海绵');
     }
   }
 
@@ -234,11 +259,30 @@ export class InterventionTaskService implements OnApplicationBootstrap {
     const workOrderId = payload.kind === 'general_handoff' ? (payload.workOrderId ?? null) : null;
 
     const booking = await this.lookupBooking(payload.corpId, payload.userId, workOrderId);
-    const interviewAt = booking?.interview_time ? parseLocalDateTime(booking.interview_time) : null;
-    const jobId = booking?.job_id ?? focusJob?.jobId ?? null;
-    const brandStore = focusJob
-      ? [focusJob.brandName, focusJob.storeName].filter(Boolean).join('-') || null
+    const bookingMatchesOrder =
+      booking != null && (workOrderId == null || booking.work_order_id === workOrderId);
+    const bookingInterviewAt =
+      booking?.interview_time != null ? parseLocalDateTime(booking.interview_time) : null;
+    // 指针没命中该工单、或命中但无面试时间 → 回落海绵工单（失败静默回空）
+    const spongeOrder =
+      workOrderId != null && !(bookingMatchesOrder && bookingInterviewAt)
+        ? await this.fetchSpongeWorkOrder(workOrderId, payload.botImId)
+        : null;
+    const spongeInterviewAt = spongeOrder?.interviewTime
+      ? parseLocalDateTime(spongeOrder.interviewTime)
       : null;
+    const interviewAt = bookingMatchesOrder
+      ? (bookingInterviewAt ?? spongeInterviewAt)
+      : (spongeInterviewAt ?? bookingInterviewAt);
+    const jobId =
+      (bookingMatchesOrder
+        ? (booking?.job_id ?? spongeOrder?.jobId)
+        : (spongeOrder?.jobId ?? booking?.job_id)) ??
+      focusJob?.jobId ??
+      null;
+    const brandStore =
+      joinBrandStore(focusJob?.brandName, focusJob?.storeName) ??
+      joinBrandStore(spongeOrder?.brandName, spongeOrder?.projectName);
 
     const due = computeFollowUpDue({ category, triggeredAt, interviewAt });
     const basePriority = resolveBasePriority({ category, reasonCode, reasonText: reason });
@@ -249,12 +293,8 @@ export class InterventionTaskService implements OnApplicationBootstrap {
     const lastCandidateMessage = payload.currentMessageContent?.trim() ?? '';
 
     const title = this.buildTitle({
-      priority,
-      categoryLabel,
       nickname,
-      brandStore,
-      reason,
-      interviewTimeText,
+      reasonCodeLabel,
       interviewImminent: due.interviewImminent,
     });
     const description = buildTaskDescription({
@@ -264,7 +304,7 @@ export class InterventionTaskService implements OnApplicationBootstrap {
       reason,
       actionAdvice: payload.kind === 'general_handoff' ? payload.actionAdvice : null,
       missingJobInfo: payload.kind === 'general_handoff' ? payload.missingJobInfo : null,
-      workOrderId: booking?.work_order_id ?? workOrderId,
+      workOrderId: workOrderId ?? booking?.work_order_id ?? null,
       jobId,
       brandStore,
       interviewTimeText,
@@ -302,7 +342,7 @@ export class InterventionTaskService implements OnApplicationBootstrap {
       candidateName,
       candidatePhone,
       hostingAccountName,
-      workOrderId: booking?.work_order_id ?? workOrderId,
+      workOrderId: workOrderId ?? booking?.work_order_id ?? null,
       jobId,
       brandStore,
       interviewTimeText,
@@ -313,27 +353,22 @@ export class InterventionTaskService implements OnApplicationBootstrap {
     };
   }
 
+  /**
+   * 标题：「{昵称或"候选人"} · {原因码中文标签}」，面试临近时加「 · 面试将至」；
+   * 合并时由 withCountSuffix 追加「（第 N 次）」。演示前缀由脚本加，不在这里做。
+   */
   private buildTitle(params: {
-    priority: InterventionTaskPriority;
-    categoryLabel: string;
     nickname: string | null;
-    brandStore: string | null;
-    reason: string;
-    interviewTimeText: string | null;
+    reasonCodeLabel: string;
     interviewImminent: boolean;
   }): string {
-    const oneLineReason = truncateText(
-      params.reason.split(/[。；;\n]/)[0] ?? params.reason,
-      TITLE_REASON_MAX,
-    );
-    const parts = [
-      params.interviewImminent ? '下班期间触发，面试已临近/已过' : null,
-      params.nickname ?? '未知昵称',
-      params.brandStore,
-      oneLineReason,
-      params.interviewTimeText ? `面试 ${params.interviewTimeText}` : null,
-    ].filter((part): part is string => Boolean(part));
-    return `【${PRIORITY_LABELS[params.priority]}·${params.categoryLabel}】${parts.join(' · ')}`;
+    return [
+      params.nickname ?? TITLE_FALLBACK_NICKNAME,
+      params.reasonCodeLabel,
+      params.interviewImminent ? TITLE_IMMINENT_SUFFIX : null,
+    ]
+      .filter((part): part is string => Boolean(part))
+      .join(' · ');
   }
 
   /**
@@ -439,16 +474,7 @@ export class InterventionTaskService implements OnApplicationBootstrap {
   private async mergeIntoExisting(existing: MergeRecord, draft: TaskDraft): Promise<boolean> {
     const count = existing.count + 1;
     const priority = maxPriority(existing.priority, draft.priority);
-    const merged: TaskDraft = { ...draft, priority };
-    merged.title = this.buildTitle({
-      priority,
-      categoryLabel: draft.categoryLabel,
-      nickname: draft.nickname,
-      brandStore: draft.brandStore,
-      reason: draft.reason,
-      interviewTimeText: draft.interviewTimeText,
-      interviewImminent: draft.interviewImminent,
-    });
+    const merged: TaskDraft = { ...draft, priority, title: withCountSuffix(draft.title, count) };
     const customFields = await this.buildCustomFields(merged, count, 'update');
     const updated = await this.client.updateTask(existing.taskGuid, {
       summary: merged.title,
@@ -509,6 +535,27 @@ export class InterventionTaskService implements OnApplicationBootstrap {
       return bookings[0];
     } catch (error) {
       this.logger.warn(`[FeishuTask] 读取 active_booking 失败: ${toErrorMessage(error)}`);
+      return null;
+    }
+  }
+
+  /** 海绵工单回落：按 workOrderId 查一行（用托管账号 token）；任何失败静默回空。 */
+  private async fetchSpongeWorkOrder(
+    workOrderId: number,
+    botImId: string | undefined,
+  ): Promise<SignupWorkOrderItem | null> {
+    if (!this.spongeService) return null;
+    try {
+      const result = await this.spongeService.fetchSignupWorkOrders({ workOrderId }, { botImId });
+      return (
+        result.workOrders.find((order) => order.workOrderId === workOrderId) ??
+        result.workOrders[0] ??
+        null
+      );
+    } catch (error) {
+      this.logger.warn(
+        `[FeishuTask] 海绵工单回落失败，面试时间留空: workOrderId=${workOrderId} error=${toErrorMessage(error)}`,
+      );
       return null;
     }
   }

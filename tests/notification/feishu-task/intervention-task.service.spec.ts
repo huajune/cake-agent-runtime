@@ -2,11 +2,13 @@ import type {
   GeneralHandoffInterventionPayload,
   RiskInterventionPayload,
 } from '@biz/intervention/intervention.service';
+import { LongTermService } from '@memory/long-term/long-term.service';
 import {
   DEFAULT_FIELD_NAMES,
   FEISHU_TASK_CONFIG_KEY,
   InterventionTaskService,
 } from '@notification/feishu-task/intervention-task.service';
+import { SpongeService } from '@sponge/sponge.service';
 
 type FieldCall = {
   guid: string;
@@ -43,7 +45,15 @@ describe('InterventionTaskService', () => {
   };
   const alertNotifier = { sendAlert: jest.fn(async () => true) };
   const longTerm = { tryGetActiveBookings: jest.fn(async () => null) };
-  const moduleRef = { get: jest.fn(() => longTerm) };
+  const sponge = { fetchSignupWorkOrders: jest.fn() };
+  // ModuleRef 懒解析：按 token 分发（LongTermService / SpongeService 都不进 FeishuTaskModule）
+  const moduleRef = {
+    get: jest.fn((token: unknown) => {
+      if (token === LongTermService) return longTerm;
+      if (token === SpongeService) return sponge;
+      throw new Error(`unexpected token ${String(token)}`);
+    }),
+  };
 
   let service: InterventionTaskService;
 
@@ -82,6 +92,7 @@ describe('InterventionTaskService', () => {
     client.addComment.mockResolvedValue('c1');
     client.addMembers.mockResolvedValue(true);
     longTerm.tryGetActiveBookings.mockResolvedValue(null);
+    sponge.fetchSignupWorkOrders.mockResolvedValue({ workOrders: [] });
 
     service = new InterventionTaskService(
       client as never,
@@ -147,9 +158,10 @@ describe('InterventionTaskService', () => {
 
     expect(client.createTask).toHaveBeenCalledTimes(1);
     const input = client.createTask.mock.calls[0][0];
-    expect(input.summary).toBe(
-      '【急·预约协调】小明 · 候选人要改到周四下午 · 面试 2026-09-22 12:00',
-    );
+    // 标题只留「昵称 · 原因码标签」，不拼【急·大类】/门店/一句话原因/面试时间
+    expect(input.summary).toBe('小明 · 改约/取消自助失败');
+    // active_booking 指针命中该工单且有面试时间 → 不调海绵
+    expect(sponge.fetchSignupWorkOrders).not.toHaveBeenCalled();
     expect(input.tasklistGuid).toBe('tl-1');
     expect(input.sectionGuid).toBe('section:📅 预约协调'); // 分组名 = 表情 + 大类名，不带 T 编号
     expect(input.members).toEqual([{ id: 'ou_dongsheng', type: 'user', role: 'assignee' }]);
@@ -251,7 +263,7 @@ describe('InterventionTaskService', () => {
     expect(client.createTask).not.toHaveBeenCalled();
     expect(client.updateTask).toHaveBeenCalledWith(
       'task-old',
-      expect.objectContaining({ summary: '【当日·预约协调】小明 · 名额满了' }),
+      expect.objectContaining({ summary: '小明 · 岗位报名名额已满（第 2 次）' }),
     );
     const update = client.updateTask.mock.calls[0][1];
     expect(update.startAt).toBeUndefined(); // 开始时间保持首次触发时刻，合并不改
@@ -269,7 +281,7 @@ describe('InterventionTaskService', () => {
     );
   });
 
-  it('合并时优先级取更急者', async () => {
+  it('合并时优先级取更急者；标题次数后缀按当前次数替换', async () => {
     redis.get.mockResolvedValue({ taskGuid: 'task-old', count: 3, priority: 'urgent' });
     await service.submit({
       ...basePayload,
@@ -278,8 +290,87 @@ describe('InterventionTaskService', () => {
     });
     expect(client.updateTask).toHaveBeenCalledWith(
       'task-old',
-      expect.objectContaining({ summary: expect.stringMatching(/^【急·预约协调】/) }),
+      expect.objectContaining({ summary: '小明 · 岗位报名名额已满（第 4 次）' }),
     );
+    const fields = client.updateTask.mock.calls[0][1].customFields as FieldCall[];
+    expect(fields.find((f) => f.guid === 'field:优先级')?.single_select_value).toBe(
+      'opt:优先级:急',
+    );
+    expect(redis.setex).toHaveBeenCalledWith(
+      'feishu-task:intervention:v1:chat:wrkChat1:T2',
+      7 * 24 * 60 * 60,
+      expect.objectContaining({ count: 4, priority: 'urgent' }),
+    );
+  });
+
+  it('面试临近（T2 且面试早于起算点）时标题加「面试将至」', async () => {
+    longTerm.tryGetActiveBookings.mockResolvedValue([
+      {
+        work_order_id: 555,
+        linked_at: '2026-09-21T00:00:00Z',
+        job_id: 99,
+        interview_time: '2026-09-22 09:00:00', // 早于触发时刻 10:00
+      },
+    ]);
+    await service.submit(basePayload);
+    const input = client.createTask.mock.calls[0][0];
+    expect(input.summary).toBe('小明 · 改约/取消自助失败 · 面试将至');
+  });
+
+  it('无昵称时标题用「候选人」占位', async () => {
+    await service.submit({ ...basePayload, contactName: '' });
+    expect(client.createTask.mock.calls[0][0].summary).toBe('候选人 · 改约/取消自助失败');
+  });
+
+  it('active_booking 无该工单指针时回落海绵：填面试时间、jobId、品牌-项目', async () => {
+    longTerm.tryGetActiveBookings.mockResolvedValue(null);
+    sponge.fetchSignupWorkOrders.mockResolvedValue({
+      workOrders: [
+        {
+          workOrderId: 555,
+          interviewTime: '2026-09-22 12:00',
+          jobId: 77,
+          brandName: '瑞幸',
+          projectName: '徐家汇店',
+        },
+      ],
+    });
+    await service.submit(basePayload);
+
+    expect(sponge.fetchSignupWorkOrders).toHaveBeenCalledWith(
+      { workOrderId: 555 },
+      { botImId: '1688854363869800' },
+    );
+    const input = client.createTask.mock.calls[0][0];
+    const fields = input.customFields as FieldCall[];
+    expect(fields.find((f) => f.guid === 'field:面试时间')?.text_value).toBe('2026-09-22 12:00');
+    expect(input.description).toContain('瑞幸-徐家汇店');
+    expect(input.description).toContain('jobId 77');
+    // 面试 12:00 − 1h = 11:00 早于常规 12:00（海绵面试时间同样参与时限）
+    expect(input.dueAt.toISOString()).toBe('2026-09-22T03:00:00.000Z');
+  });
+
+  it('指针命中该工单但无面试时间时也回落海绵', async () => {
+    longTerm.tryGetActiveBookings.mockResolvedValue([
+      { work_order_id: 555, linked_at: '2026-09-21T00:00:00Z', job_id: 99, interview_time: null },
+    ]);
+    sponge.fetchSignupWorkOrders.mockResolvedValue({
+      workOrders: [{ workOrderId: 555, interviewTime: '2026-09-23 14:00', jobId: 99 }],
+    });
+    await service.submit(basePayload);
+    expect(sponge.fetchSignupWorkOrders).toHaveBeenCalledTimes(1);
+    const fields = client.createTask.mock.calls[0][0].customFields as FieldCall[];
+    expect(fields.find((f) => f.guid === 'field:面试时间')?.text_value).toBe('2026-09-23 14:00');
+  });
+
+  it('海绵回落失败不抛错：面试时间留空，任务照建，不告警', async () => {
+    longTerm.tryGetActiveBookings.mockResolvedValue(null);
+    sponge.fetchSignupWorkOrders.mockRejectedValue(new Error('sponge down'));
+    await expect(service.submit(basePayload)).resolves.toBeUndefined();
+    expect(client.createTask).toHaveBeenCalledTimes(1);
+    const fields = client.createTask.mock.calls[0][0].customFields as FieldCall[];
+    expect(fields.find((f) => f.guid === 'field:面试时间')).toBeUndefined();
+    expect(alertNotifier.sendAlert).not.toHaveBeenCalled();
   });
 
   it('合并更新失败（任务已删）时回退新建', async () => {
@@ -305,7 +396,9 @@ describe('InterventionTaskService', () => {
     expect(redis.get).toHaveBeenCalledWith('feishu-task:intervention:v1:job:4242:T5');
     const input = client.createTask.mock.calls[0][0];
     expect(input.sectionGuid).toBe('section:📋 岗位数据/口径缺口');
-    expect(input.summary).toBe('【常规·岗位数据/口径缺口】小明 · 瑞幸-徐家汇店 · 几号发工资答不上');
+    expect(input.summary).toBe('小明 · 岗位口径答不上（需补岗位数据）');
+    expect(input.description).toContain('瑞幸-徐家汇店'); // 门店只进正文，不进标题
+    expect(sponge.fetchSignupWorkOrders).not.toHaveBeenCalled(); // 无 workOrderId 不查海绵
     expect(input.description).toContain('【缺失字段】发薪日');
     expect(input.members).toEqual([{ id: 'ou_dongsheng', type: 'user', role: 'assignee' }]); // T5 未配置 → 回退托管账号
   });
@@ -322,7 +415,7 @@ describe('InterventionTaskService', () => {
     };
     await service.submit(risk);
     const input = client.createTask.mock.calls[0][0];
-    expect(input.summary).toMatch(/^【急·风险与合规】小明/);
+    expect(input.summary).toBe('小明 · 辱骂/攻击');
     expect(input.members).toEqual([{ id: 'ou_boss', type: 'user', role: 'assignee' }]);
     expect(input.description).not.toContain('候选人] 周四下午可以吗');
     expect(input.description).toContain('详见企微会话');
