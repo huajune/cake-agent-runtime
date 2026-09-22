@@ -51,13 +51,10 @@ const PRIORITY_COLOR: Readonly<Record<string, FeishuOptionColorName>> = {
   [PRIORITY_LABELS.normal]: 'gray',
 };
 
-/** 处理结果选项配色；键集须与 `BACKFILL_FIELD_OPTIONS.result` 一致（单测守门）。 */
-export const RESULT_OPTION_COLOR: Readonly<Record<string, FeishuOptionColorName>> = {
-  已解决并恢复托管: 'green',
-  已解决无需恢复: 'green',
-  '无需处理（误报）': 'gray',
-  已转交: 'orange',
-  候选人已流失: 'red',
+/** 「状态」选项配色；键集须与 `BACKFILL_FIELD_OPTIONS.status` 一致（单测守门）。 */
+export const STATUS_OPTION_COLOR: Readonly<Record<string, FeishuOptionColorName>> = {
+  待处理: 'orange',
+  已处理: 'green',
 };
 
 /** 「本可由蛋糕完成」选项配色；键集须与 `BACKFILL_FIELD_OPTIONS.couldBeAutomated` 一致。 */
@@ -100,8 +97,8 @@ export function resolveOptionColorName(
     }
     case 'priority':
       return PRIORITY_COLOR[optionName] ?? 'gray';
-    case 'result':
-      return RESULT_OPTION_COLOR[optionName] ?? 'gray';
+    case 'status':
+      return STATUS_OPTION_COLOR[optionName] ?? 'gray';
     case 'couldBeAutomated':
       return COULD_BE_AUTOMATED_OPTION_COLOR[optionName] ?? 'gray';
     case 'hostingAccount':

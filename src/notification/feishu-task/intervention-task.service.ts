@@ -48,8 +48,10 @@ export interface FeishuTaskRuntimeConfig {
  *
  * 键顺序即清单表头列顺序：飞书自定义字段列顺序 = 创建顺序，事后无法重排
  * （探测脚本按此顺序建字段），改顺序前先确认清单尚未建表头。
+ * 介入触发时刻不建自定义字段，由任务内置「开始时间」承载（createTask.startAt，分钟精度）。
  */
 export const DEFAULT_FIELD_NAMES = {
+  status: '状态',
   priority: '优先级',
   category: '介入大类',
   reasonCode: '原因码',
@@ -61,17 +63,25 @@ export const DEFAULT_FIELD_NAMES = {
   jobId: '岗位 ID',
   brandStore: '品牌门店',
   interviewTime: '面试时间',
-  triggeredAt: '介入触发时间',
   interventionCount: '第几次介入',
-  result: '处理结果',
   couldBeAutomated: '本可由蛋糕完成',
+  remark: '备注',
 } as const;
 
 export type FieldKey = keyof typeof DEFAULT_FIELD_NAMES;
 
-/** 运营回填字段：由脚本建表头，运行时不写。 */
+/** 「状态」选项：新建时写「待处理」，之后由运营翻为「已处理」；合并追加不改。 */
+export const TASK_STATUS_LABELS = {
+  pending: '待处理',
+  done: '已处理',
+} as const;
+
+/**
+ * 运营维护的单选字段选项：由脚本建表头；运行时只在新建时写 status=待处理，
+ * couldBeAutomated 运行时不写。「备注」是文本字段，运营手填，不在此列。
+ */
 export const BACKFILL_FIELD_OPTIONS: Partial<Record<FieldKey, string[]>> = {
-  result: ['已解决并恢复托管', '已解决无需恢复', '无需处理（误报）', '已转交', '候选人已流失'],
+  status: Object.values(TASK_STATUS_LABELS),
   couldBeAutomated: ['是', '否'],
 };
 
@@ -366,12 +376,12 @@ export class InterventionTaskService implements OnApplicationBootstrap {
     await text('interviewTime', draft.interviewTimeText);
     if (scope === 'update') return values;
 
+    await select('status', TASK_STATUS_LABELS.pending);
     await text('nickname', draft.nickname);
     await text('name', draft.candidateName);
     await text('phone', draft.candidatePhone);
     await select('hostingAccount', draft.hostingAccountName);
     await text('workOrderId', draft.workOrderId != null ? String(draft.workOrderId) : null);
-    await text('triggeredAt', formatLocalMinute(draft.triggeredAt));
     await select('category', draft.categoryLabel);
     await select('reasonCode', draft.reasonCodeLabel);
     await text('brandStore', draft.brandStore);
@@ -390,6 +400,7 @@ export class InterventionTaskService implements OnApplicationBootstrap {
     const task = await this.client.createTask({
       summary: draft.title,
       description: draft.description,
+      startAt: draft.triggeredAt,
       dueAt: draft.dueAt,
       members: draft.members,
       tasklistGuid: this.tasklistGuid,
@@ -422,7 +433,10 @@ export class InterventionTaskService implements OnApplicationBootstrap {
     );
   }
 
-  /** 合并命中：追加评论 + 刷新 due / 优先级 / 标题前缀；任务已不存在时返回 false 走新建。 */
+  /**
+   * 合并命中：追加评论 + 刷新 due / 优先级 / 标题前缀；开始时间保持首次触发时刻不动。
+   * 任务已不存在时返回 false 走新建。
+   */
   private async mergeIntoExisting(existing: MergeRecord, draft: TaskDraft): Promise<boolean> {
     const count = existing.count + 1;
     const priority = maxPriority(existing.priority, draft.priority);

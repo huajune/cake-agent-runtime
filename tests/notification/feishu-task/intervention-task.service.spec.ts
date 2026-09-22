@@ -97,6 +97,7 @@ describe('InterventionTaskService', () => {
 
   it('DEFAULT_FIELD_NAMES 键顺序即清单表头列顺序（列顺序 = 创建顺序，不可重排）', () => {
     expect(Object.keys(DEFAULT_FIELD_NAMES)).toEqual([
+      'status',
       'priority',
       'category',
       'reasonCode',
@@ -108,11 +109,12 @@ describe('InterventionTaskService', () => {
       'jobId',
       'brandStore',
       'interviewTime',
-      'triggeredAt',
       'interventionCount',
-      'result',
       'couldBeAutomated',
+      'remark',
     ]);
+    expect(DEFAULT_FIELD_NAMES.status).toBe('状态');
+    expect(DEFAULT_FIELD_NAMES.remark).toBe('备注');
   });
 
   it('开关关闭时不调飞书', async () => {
@@ -127,7 +129,7 @@ describe('InterventionTaskService', () => {
     expect(client.createTask).not.toHaveBeenCalled();
   });
 
-  it('新建：标题前缀 + 13 个字段 + 负责人 + 到期 + Redis 合并键', async () => {
+  it('新建：标题前缀 + 自定义字段 + 内置开始时间 + 负责人 + 到期 + Redis 合并键', async () => {
     longTerm.tryGetActiveBookings.mockResolvedValue([
       {
         work_order_id: 555,
@@ -146,6 +148,8 @@ describe('InterventionTaskService', () => {
     expect(input.tasklistGuid).toBe('tl-1');
     expect(input.sectionGuid).toBe('section:T2 预约协调');
     expect(input.members).toEqual([{ id: 'ou_dongsheng', type: 'user', role: 'assignee' }]);
+    // 触发时刻走内置开始时间，不建自定义字段
+    expect(input.startAt.toISOString()).toBe('2026-09-22T02:00:00.000Z');
     // 面试 12:00 − 1h = 11:00 早于常规 12:00
     expect(input.dueAt.toISOString()).toBe('2026-09-22T03:00:00.000Z');
     expect(input.description).toContain('【工单】555');
@@ -154,12 +158,15 @@ describe('InterventionTaskService', () => {
 
     const fields = input.customFields as FieldCall[];
     const byGuid = Object.fromEntries(fields.map((f) => [f.guid, f]));
+    expect(byGuid['field:状态'].single_select_value).toBe('opt:状态:待处理'); // 新建默认待处理
+    expect(byGuid['field:备注']).toBeUndefined(); // 运营手填，运行时不写
     expect(byGuid['field:优先级'].single_select_value).toBe('opt:优先级:急');
     expect(byGuid['field:第几次介入'].number_value).toBe('1');
     expect(byGuid['field:候选人昵称'].text_value).toBe('小明');
     expect(byGuid['field:托管账号'].single_select_value).toBe('opt:托管账号:东升');
     expect(byGuid['field:工单号'].text_value).toBe('555');
-    expect(byGuid['field:介入触发时间'].text_value).toBe('2026-09-22 10:00');
+    expect(byGuid['field:介入触发时间']).toBeUndefined();
+    expect(fields.map((f) => f.guid)).not.toContain('field:介入触发时间');
     expect(byGuid['field:面试时间'].text_value).toBe('2026-09-22 12:00');
     expect(byGuid['field:介入大类'].single_select_value).toBe('opt:介入大类:预约协调');
     // 原因码选项名取权威目录标签
@@ -168,6 +175,7 @@ describe('InterventionTaskService', () => {
     expect(byGuid['field:候选人姓名']).toBeUndefined(); // 未收集留空
 
     // 自动建选项时带 color_index：优先级急=red(0)、大类/原因码同为 T2 orange(5)、托管账号 blue(30)
+    expect(client.resolveOptionGuid).toHaveBeenCalledWith('tl-1', '状态', '待处理', 5);
     expect(client.resolveOptionGuid).toHaveBeenCalledWith('tl-1', '优先级', '急', 0);
     expect(client.resolveOptionGuid).toHaveBeenCalledWith('tl-1', '介入大类', '预约协调', 5);
     expect(client.resolveOptionGuid).toHaveBeenCalledWith('tl-1', '原因码', '改约/取消自助失败', 5);
@@ -200,8 +208,10 @@ describe('InterventionTaskService', () => {
       expect.objectContaining({ summary: '【当日·预约协调】小明 · 名额满了' }),
     );
     const update = client.updateTask.mock.calls[0][1];
+    expect(update.startAt).toBeUndefined(); // 开始时间保持首次触发时刻，合并不改
     const fields = update.customFields as FieldCall[];
     expect(fields.find((f) => f.guid === 'field:第几次介入')?.number_value).toBe('2');
+    expect(fields.find((f) => f.guid === 'field:状态')).toBeUndefined(); // 合并不回写状态
     expect(client.addComment).toHaveBeenCalledWith(
       'task-old',
       expect.stringContaining('第 2 次介入'),

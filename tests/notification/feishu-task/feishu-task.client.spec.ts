@@ -25,10 +25,12 @@ describe('FeishuTaskClient', () => {
     fetchMock.mockResolvedValue(
       jsonResponse(200, { code: 0, msg: 'ok', data: { task: { guid: 'g1' } } }),
     );
+    const startAt = new Date('2026-09-22T02:00:00Z');
     const dueAt = new Date('2026-09-22T03:00:00Z');
     const task = await client.createTask({
       summary: 's',
       description: 'd',
+      startAt,
       dueAt,
       members: [{ id: 'ou_1' }],
       tasklistGuid: 'tl',
@@ -44,11 +46,29 @@ describe('FeishuTaskClient', () => {
     expect(JSON.parse(String(init?.body))).toEqual({
       summary: 's',
       description: 'd',
+      start: { timestamp: String(startAt.getTime()), is_all_day: false },
       due: { timestamp: String(dueAt.getTime()), is_all_day: false },
       members: [{ id: 'ou_1', type: 'user', role: 'assignee' }],
       tasklists: [{ tasklist_guid: 'tl', section_guid: 'sec' }],
       custom_fields: [{ guid: 'f', text_value: 'v' }],
       client_token: 'ct',
+    });
+  });
+
+  it('updateTask：只更新给定字段；不传 startAt 时 update_fields 不含 start', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { code: 0, msg: 'ok', data: {} }));
+    const dueAt = new Date('2026-09-22T04:00:00Z');
+    expect(await client.updateTask('g1', { summary: 'new', dueAt })).toBe(true);
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({
+      task: { summary: 'new', due: { timestamp: String(dueAt.getTime()), is_all_day: false } },
+      update_fields: ['summary', 'due'],
+    });
+
+    const startAt = new Date('2026-09-22T01:00:00Z');
+    expect(await client.updateTask('g1', { startAt })).toBe(true);
+    expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual({
+      task: { start: { timestamp: String(startAt.getTime()), is_all_day: false } },
+      update_fields: ['start'],
     });
   });
 

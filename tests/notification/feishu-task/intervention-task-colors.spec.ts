@@ -9,11 +9,14 @@ import {
   CATEGORY_COLOR,
   COULD_BE_AUTOMATED_OPTION_COLOR,
   FEISHU_OPTION_COLOR,
-  RESULT_OPTION_COLOR,
+  STATUS_OPTION_COLOR,
   resolveOptionColorIndex,
   resolveOptionColorName,
 } from '@notification/feishu-task/intervention-task-colors';
-import { BACKFILL_FIELD_OPTIONS } from '@notification/feishu-task/intervention-task.service';
+import {
+  BACKFILL_FIELD_OPTIONS,
+  TASK_STATUS_LABELS,
+} from '@notification/feishu-task/intervention-task.service';
 
 describe('intervention-task-colors', () => {
   it('色相表：每 5 个一组取最浅档，范围 0–54', () => {
@@ -89,16 +92,18 @@ describe('intervention-task-colors', () => {
     expect(resolveOptionColorIndex('priority', '未知')).toBe(FEISHU_OPTION_COLOR.gray);
   });
 
-  it('处理结果 / 本可由蛋糕完成：配色键集与运营回填选项一致', () => {
-    expect(Object.keys(RESULT_OPTION_COLOR)).toEqual(BACKFILL_FIELD_OPTIONS.result);
+  it('状态 / 本可由蛋糕完成：配色键集与运营维护选项一致', () => {
+    expect(Object.keys(STATUS_OPTION_COLOR)).toEqual(BACKFILL_FIELD_OPTIONS.status);
     expect(Object.keys(COULD_BE_AUTOMATED_OPTION_COLOR)).toEqual(
       BACKFILL_FIELD_OPTIONS.couldBeAutomated,
     );
-    expect(resolveOptionColorIndex('result', '已解决并恢复托管')).toBe(FEISHU_OPTION_COLOR.green);
-    expect(resolveOptionColorIndex('result', '已解决无需恢复')).toBe(FEISHU_OPTION_COLOR.green);
-    expect(resolveOptionColorIndex('result', '无需处理（误报）')).toBe(FEISHU_OPTION_COLOR.gray);
-    expect(resolveOptionColorIndex('result', '已转交')).toBe(FEISHU_OPTION_COLOR.orange);
-    expect(resolveOptionColorIndex('result', '候选人已流失')).toBe(FEISHU_OPTION_COLOR.red);
+    expect(resolveOptionColorIndex('status', TASK_STATUS_LABELS.pending)).toBe(
+      FEISHU_OPTION_COLOR.orange,
+    );
+    expect(resolveOptionColorIndex('status', TASK_STATUS_LABELS.done)).toBe(
+      FEISHU_OPTION_COLOR.green,
+    );
+    expect(resolveOptionColorIndex('status', '未知状态')).toBe(FEISHU_OPTION_COLOR.gray);
     expect(resolveOptionColorIndex('couldBeAutomated', '是')).toBe(FEISHU_OPTION_COLOR.green);
     expect(resolveOptionColorIndex('couldBeAutomated', '否')).toBe(FEISHU_OPTION_COLOR.gray);
   });
@@ -108,5 +113,6 @@ describe('intervention-task-colors', () => {
     expect(resolveOptionColorIndex('hostingAccount', '任意账号')).toBe(FEISHU_OPTION_COLOR.blue);
     expect(resolveOptionColorIndex('nickname', '小明')).toBe(FEISHU_OPTION_COLOR.gray);
     expect(resolveOptionColorIndex('brandStore', '瑞幸-徐家汇店')).toBe(FEISHU_OPTION_COLOR.gray);
+    expect(resolveOptionColorIndex('remark', '任意备注')).toBe(FEISHU_OPTION_COLOR.gray);
   });
 });

@@ -43,6 +43,8 @@ export interface FeishuTaskDue {
 export interface CreateFeishuTaskInput {
   summary: string;
   description?: string;
+  /** 内置「开始时间」（分钟精度，is_all_day=false）；介入任务用它承载首次触发时刻 */
+  startAt?: Date | null;
   dueAt?: Date | null;
   members?: FeishuTaskMember[];
   tasklistGuid?: string | null;
@@ -54,6 +56,7 @@ export interface CreateFeishuTaskInput {
 
 export interface UpdateFeishuTaskInput {
   summary?: string;
+  startAt?: Date | null;
   dueAt?: Date | null;
   customFields?: FeishuTaskCustomFieldValue[];
 }

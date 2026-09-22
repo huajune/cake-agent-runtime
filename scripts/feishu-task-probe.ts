@@ -76,6 +76,7 @@ import { HANDOFF_REASON_CATALOG } from '@enums/handoff-reason.enum';
 
 /** 各字段类型与初始选项名；顺序由 DEFAULT_FIELD_NAMES 键顺序派生（列顺序 = 创建顺序，事后不可重排）。 */
 const FIELD_SPECS: Record<FieldKey, { type: FeishuCustomFieldType; options?: string[] }> = {
+  status: { type: 'single_select', options: BACKFILL_FIELD_OPTIONS.status },
   priority: { type: 'single_select', options: Object.values(PRIORITY_LABELS) },
   category: {
     type: 'single_select',
@@ -93,10 +94,9 @@ const FIELD_SPECS: Record<FieldKey, { type: FeishuCustomFieldType; options?: str
   jobId: { type: 'text' },
   brandStore: { type: 'text' },
   interviewTime: { type: 'text' },
-  triggeredAt: { type: 'text' },
   interventionCount: { type: 'number' },
-  result: { type: 'single_select', options: BACKFILL_FIELD_OPTIONS.result },
   couldBeAutomated: { type: 'single_select', options: BACKFILL_FIELD_OPTIONS.couldBeAutomated },
+  remark: { type: 'text' },
 };
 
 const EXPECTED_FIELDS: Array<{

@@ -85,6 +85,8 @@ export class FeishuTaskClient {
       summary: input.summary,
       description: input.description ?? '',
     };
+    const start = toDue(input.startAt);
+    if (start) body.start = start;
     const due = toDue(input.dueAt);
     if (due) body.due = due;
     if (input.members && input.members.length > 0) body.members = normalizeMembers(input.members);
@@ -147,6 +149,11 @@ export class FeishuTaskClient {
     if (input.summary !== undefined) {
       task.summary = input.summary;
       updateFields.push('summary');
+    }
+    const start = toDue(input.startAt);
+    if (start) {
+      task.start = start;
+      updateFields.push('start');
     }
     const due = toDue(input.dueAt);
     if (due) {
@@ -489,6 +496,7 @@ function isFailure<T>(result: FeishuTaskApiResult<T>): result is FeishuTaskApiFa
   return !result.ok;
 }
 
+/** Date → 飞书 start / due 结构（两者同构：毫秒时间戳字符串 + is_all_day=false 保留分钟精度）。 */
 function toDue(date: Date | null | undefined): FeishuTaskDue | undefined {
   if (!date || Number.isNaN(date.getTime())) return undefined;
   return { timestamp: String(date.getTime()), is_all_day: false };
