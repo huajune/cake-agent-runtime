@@ -7,11 +7,11 @@ import {
 } from '@notification/feishu-task/intervention-task-category';
 import {
   CATEGORY_COLOR,
-  COULD_BE_AUTOMATED_OPTION_COLOR,
   FEISHU_OPTION_COLOR,
+  PRIORITY_OPTION_COLOR,
   STATUS_OPTION_COLOR,
   resolveOptionColorIndex,
-  resolveOptionColorName,
+  shade,
 } from '@notification/feishu-task/intervention-task-colors';
 import {
   BACKFILL_FIELD_OPTIONS,
@@ -19,7 +19,7 @@ import {
 } from '@notification/feishu-task/intervention-task.service';
 
 describe('intervention-task-colors', () => {
-  it('色相表：每 5 个一组取最浅档，范围 0–54', () => {
+  it('色相表：每 5 个一组取组首，范围 0–54；shade 取组内档位', () => {
     expect(FEISHU_OPTION_COLOR).toEqual({
       red: 0,
       orange: 5,
@@ -38,9 +38,13 @@ describe('intervention-task-colors', () => {
       expect(index).toBeGreaterThanOrEqual(0);
       expect(index).toBeLessThanOrEqual(54);
     }
+    expect(shade('red', 0)).toBe(0);
+    expect(shade('red', 3)).toBe(3);
+    expect(shade('teal', 1)).toBe(21);
+    expect(shade('gray', 4)).toBe(54);
   });
 
-  it('介入大类：九个大类各自固定色相', () => {
+  it('介入大类：九个大类各自固定色相（组首）', () => {
     const expected: Record<InterventionTaskCategory, number> = {
       T1: FEISHU_OPTION_COLOR.red,
       T2: FEISHU_OPTION_COLOR.orange,
@@ -63,7 +67,9 @@ describe('intervention-task-colors', () => {
   it('原因码：每个权威目录 label 跟随所属大类同色', () => {
     for (const item of HANDOFF_REASON_CATALOG) {
       const category: InterventionTaskCategory = item.category ?? 'UNCLASSIFIED';
-      expect(resolveOptionColorName('reasonCode', item.label)).toBe(CATEGORY_COLOR[category]);
+      expect(resolveOptionColorIndex('reasonCode', item.label)).toBe(
+        FEISHU_OPTION_COLOR[CATEGORY_COLOR[category]],
+      );
       expect(resolveOptionColorIndex('reasonCode', item.label)).toBe(
         resolveOptionColorIndex('category', CATEGORY_META[category].label),
       );
@@ -79,40 +85,29 @@ describe('intervention-task-colors', () => {
     expect(resolveOptionColorIndex('reasonCode', '目录里没有的码')).toBe(FEISHU_OPTION_COLOR.gray);
   });
 
-  it('优先级：急红 / 当日橙 / 常规灰', () => {
-    expect(resolveOptionColorIndex('priority', PRIORITY_LABELS.urgent)).toBe(
-      FEISHU_OPTION_COLOR.red,
-    );
-    expect(resolveOptionColorIndex('priority', PRIORITY_LABELS.today)).toBe(
-      FEISHU_OPTION_COLOR.orange,
-    );
-    expect(resolveOptionColorIndex('priority', PRIORITY_LABELS.normal)).toBe(
-      FEISHU_OPTION_COLOR.gray,
-    );
+  it('优先级：急=红组第 3 档(3) / 当日=红组最浅(0) / 常规=灰(50)', () => {
+    expect(PRIORITY_OPTION_COLOR).toEqual({
+      [PRIORITY_LABELS.urgent]: 3,
+      [PRIORITY_LABELS.today]: 0,
+      [PRIORITY_LABELS.normal]: 50,
+    });
+    expect(resolveOptionColorIndex('priority', PRIORITY_LABELS.urgent)).toBe(3);
+    expect(resolveOptionColorIndex('priority', PRIORITY_LABELS.today)).toBe(0);
+    expect(resolveOptionColorIndex('priority', PRIORITY_LABELS.normal)).toBe(50);
     expect(resolveOptionColorIndex('priority', '未知')).toBe(FEISHU_OPTION_COLOR.gray);
   });
 
-  it('状态 / 本可由蛋糕完成：配色键集与运营维护选项一致', () => {
+  it('状态：待处理=橙(5) / 已处理=青组第 1 档(21)；键集与运营维护选项一致', () => {
     expect(Object.keys(STATUS_OPTION_COLOR)).toEqual(BACKFILL_FIELD_OPTIONS.status);
-    expect(Object.keys(COULD_BE_AUTOMATED_OPTION_COLOR)).toEqual(
-      BACKFILL_FIELD_OPTIONS.couldBeAutomated,
-    );
-    expect(resolveOptionColorIndex('status', TASK_STATUS_LABELS.pending)).toBe(
-      FEISHU_OPTION_COLOR.orange,
-    );
-    expect(resolveOptionColorIndex('status', TASK_STATUS_LABELS.done)).toBe(
-      FEISHU_OPTION_COLOR.green,
-    );
+    expect(resolveOptionColorIndex('status', TASK_STATUS_LABELS.pending)).toBe(5);
+    expect(resolveOptionColorIndex('status', TASK_STATUS_LABELS.done)).toBe(21);
     expect(resolveOptionColorIndex('status', '未知状态')).toBe(FEISHU_OPTION_COLOR.gray);
-    expect(resolveOptionColorIndex('couldBeAutomated', '是')).toBe(FEISHU_OPTION_COLOR.green);
-    expect(resolveOptionColorIndex('couldBeAutomated', '否')).toBe(FEISHU_OPTION_COLOR.gray);
   });
 
   it('托管账号一律蓝；其他字段 gray', () => {
     expect(resolveOptionColorIndex('hostingAccount', '东升')).toBe(FEISHU_OPTION_COLOR.blue);
     expect(resolveOptionColorIndex('hostingAccount', '任意账号')).toBe(FEISHU_OPTION_COLOR.blue);
     expect(resolveOptionColorIndex('nickname', '小明')).toBe(FEISHU_OPTION_COLOR.gray);
-    expect(resolveOptionColorIndex('brandStore', '瑞幸-徐家汇店')).toBe(FEISHU_OPTION_COLOR.gray);
     expect(resolveOptionColorIndex('remark', '任意备注')).toBe(FEISHU_OPTION_COLOR.gray);
   });
 });

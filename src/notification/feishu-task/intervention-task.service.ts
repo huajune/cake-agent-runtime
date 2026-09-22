@@ -55,17 +55,14 @@ export const DEFAULT_FIELD_NAMES = {
   status: '状态',
   priority: '优先级',
   category: '介入大类',
-  reasonCode: '原因码',
   nickname: '候选人昵称',
+  reasonCode: '原因码',
   name: '候选人姓名',
   phone: '手机号',
   hostingAccount: '托管账号',
   workOrderId: '工单号',
-  jobId: '岗位 ID',
-  brandStore: '品牌门店',
   interviewTime: '面试时间',
   interventionCount: '第几次介入',
-  couldBeAutomated: '本可由蛋糕完成',
   remark: '备注',
 } as const;
 
@@ -78,12 +75,11 @@ export const TASK_STATUS_LABELS = {
 } as const;
 
 /**
- * 运营维护的单选字段选项：由脚本建表头；运行时只在新建时写 status=待处理，
- * couldBeAutomated 运行时不写。「备注」是文本字段，运营手填，不在此列。
+ * 运营维护的单选字段选项：由脚本建表头；运行时只在新建时写 status=待处理。
+ * 「备注」是文本字段，运营手填，不在此列。岗位 ID / 品牌门店不建字段，只留在描述正文。
  */
 export const BACKFILL_FIELD_OPTIONS: Partial<Record<FieldKey, string[]>> = {
   status: Object.values(TASK_STATUS_LABELS),
-  couldBeAutomated: ['是', '否'],
 };
 
 interface OwnerConfig {
@@ -340,6 +336,10 @@ export class InterventionTaskService implements OnApplicationBootstrap {
     return `【${PRIORITY_LABELS[params.priority]}·${params.categoryLabel}】${parts.join(' · ')}`;
   }
 
+  /**
+   * 组装自定义字段值。字段名在清单里查不到（运营手动删了列）时静默跳过该字段，
+   * 不报错、不告警——表头以飞书里的实际列为准。
+   */
   private async buildCustomFields(
     draft: TaskDraft,
     count: number,
@@ -385,8 +385,6 @@ export class InterventionTaskService implements OnApplicationBootstrap {
     await text('workOrderId', draft.workOrderId != null ? String(draft.workOrderId) : null);
     await select('category', draft.categoryLabel);
     await select('reasonCode', draft.reasonCodeLabel);
-    await text('brandStore', draft.brandStore);
-    await text('jobId', draft.jobId != null ? String(draft.jobId) : null);
     return values;
   }
 

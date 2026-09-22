@@ -69,6 +69,10 @@ describe('InterventionTaskService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    // clearAllMocks 不还原 mockImplementation，显式重置字段解析默认行为（缺列用例会覆盖它）
+    client.resolveFieldGuid.mockImplementation(
+      async (_tasklist: string, name: string) => `field:${name}`,
+    );
     jest.useFakeTimers().setSystemTime(new Date('2026-09-22T02:00:00Z')); // 上海周二 10:00
     systemConfig.getConfigValue.mockResolvedValue({ enabled: true });
     redis.get.mockResolvedValue(null);
@@ -100,19 +104,20 @@ describe('InterventionTaskService', () => {
       'status',
       'priority',
       'category',
-      'reasonCode',
       'nickname',
+      'reasonCode',
       'name',
       'phone',
       'hostingAccount',
       'workOrderId',
-      'jobId',
-      'brandStore',
       'interviewTime',
       'interventionCount',
-      'couldBeAutomated',
       'remark',
     ]);
+    // 岗位 ID / 品牌门店 / 本可由蛋糕完成 已随清单删除，只留在描述正文
+    expect(Object.values(DEFAULT_FIELD_NAMES)).not.toEqual(
+      expect.arrayContaining(['岗位 ID', '品牌门店', '本可由蛋糕完成']),
+    );
     expect(DEFAULT_FIELD_NAMES.status).toBe('状态');
     expect(DEFAULT_FIELD_NAMES.remark).toBe('备注');
   });
@@ -171,12 +176,13 @@ describe('InterventionTaskService', () => {
     expect(byGuid['field:介入大类'].single_select_value).toBe('opt:介入大类:预约协调');
     // 原因码选项名取权威目录标签
     expect(byGuid['field:原因码'].single_select_value).toBe('opt:原因码:改约/取消自助失败');
-    expect(byGuid['field:岗位 ID'].text_value).toBe('99');
+    expect(byGuid['field:岗位 ID']).toBeUndefined(); // 已删列：岗位 ID 只留在描述正文
+    expect(byGuid['field:品牌门店']).toBeUndefined();
     expect(byGuid['field:候选人姓名']).toBeUndefined(); // 未收集留空
 
-    // 自动建选项时带 color_index：优先级急=red(0)、大类/原因码同为 T2 orange(5)、托管账号 blue(30)
+    // 自动建选项时带 color_index：状态待处理=5、优先级急=3、大类/原因码同为 T2 orange(5)、托管账号 blue(30)
     expect(client.resolveOptionGuid).toHaveBeenCalledWith('tl-1', '状态', '待处理', 5);
-    expect(client.resolveOptionGuid).toHaveBeenCalledWith('tl-1', '优先级', '急', 0);
+    expect(client.resolveOptionGuid).toHaveBeenCalledWith('tl-1', '优先级', '急', 3);
     expect(client.resolveOptionGuid).toHaveBeenCalledWith('tl-1', '介入大类', '预约协调', 5);
     expect(client.resolveOptionGuid).toHaveBeenCalledWith('tl-1', '原因码', '改约/取消自助失败', 5);
     expect(client.resolveOptionGuid).toHaveBeenCalledWith('tl-1', '托管账号', '东升', 30);
@@ -185,6 +191,46 @@ describe('InterventionTaskService', () => {
       'feishu-task:intervention:v1:chat:wrkChat1:T2',
       7 * 24 * 60 * 60,
       expect.objectContaining({ taskGuid: 'task-new', count: 1, priority: 'urgent' }),
+    );
+    expect(alertNotifier.sendAlert).not.toHaveBeenCalled();
+  });
+
+  it('清单里不存在的字段（运营手动删列）静默跳过，其余字段照写，不告警', async () => {
+    const missing = new Set(['面试时间', '状态', '备注']);
+    client.resolveFieldGuid.mockImplementation(async (_tasklist: string, name: string) =>
+      missing.has(name) ? null : `field:${name}`,
+    );
+    longTerm.tryGetActiveBookings.mockResolvedValue([
+      {
+        work_order_id: 555,
+        linked_at: '2026-09-21T00:00:00Z',
+        job_id: 99,
+        interview_time: '2026-09-22 12:00:00',
+      },
+    ]);
+
+    await expect(service.submit(basePayload)).resolves.toBeUndefined();
+
+    expect(client.createTask).toHaveBeenCalledTimes(1);
+    const fields = client.createTask.mock.calls[0][0].customFields as FieldCall[];
+    const guids = fields.map((f) => f.guid);
+    expect(guids).not.toContain('field:面试时间');
+    expect(guids).not.toContain('field:状态');
+    expect(guids).not.toContain('field:备注');
+    expect(guids).toEqual(
+      expect.arrayContaining([
+        'field:优先级',
+        'field:介入大类',
+        'field:原因码',
+        'field:候选人昵称',
+      ]),
+    );
+    // 字段缺失时不应去建选项
+    expect(client.resolveOptionGuid).not.toHaveBeenCalledWith(
+      'tl-1',
+      '状态',
+      expect.anything(),
+      expect.anything(),
     );
     expect(alertNotifier.sendAlert).not.toHaveBeenCalled();
   });

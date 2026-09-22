@@ -83,20 +83,17 @@ const FIELD_SPECS: Record<FieldKey, { type: FeishuCustomFieldType; options?: str
     type: 'single_select',
     options: Object.values(CATEGORY_META).map((meta) => meta.label),
   },
+  nickname: { type: 'text' },
   reasonCode: {
     type: 'single_select',
     options: [...HANDOFF_REASON_CATALOG.map((item) => item.label), UNCLASSIFIED_LABEL],
   },
-  nickname: { type: 'text' },
   name: { type: 'text' },
   phone: { type: 'text' },
   hostingAccount: { type: 'single_select', options: [] },
   workOrderId: { type: 'text' },
-  jobId: { type: 'text' },
-  brandStore: { type: 'text' },
   interviewTime: { type: 'text' },
   interventionCount: { type: 'number' },
-  couldBeAutomated: { type: 'single_select', options: BACKFILL_FIELD_OPTIONS.couldBeAutomated },
   remark: { type: 'text' },
 };
 

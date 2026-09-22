@@ -2,9 +2,10 @@
  * 飞书清单单选选项配色。
  *
  * 飞书 task/v2 的选项 `color_index` 取值 0–54，每 5 个一组同色相，组内序号 0 最浅；
- * 本模块一律取每组最浅档（低饱和浅色）。同一介入大类与其名下的原因码同色，
- * 大类名与 T 编号的对应取自 `CATEGORY_META`，原因码所属大类取自权威目录 `HANDOFF_REASON_CATALOG`，
- * 这里不维护任何字面副本。
+ * `FEISHU_OPTION_COLOR` 只登记每组组首（最浅档），需要组内更深一档时用 `shade(color, step)`。
+ * 同一介入大类与其名下的原因码同色：大类名与 T 编号的对应取自 `CATEGORY_META`，
+ * 原因码所属大类取自权威目录 `HANDOFF_REASON_CATALOG`，这里不维护任何字面副本。
+ * 状态 / 优先级的具体档位按运营在飞书里手调的值固定。
  */
 
 import { HANDOFF_REASON_CATALOG } from '@enums/handoff-reason.enum';
@@ -15,7 +16,7 @@ import {
 } from './intervention-task-category';
 import type { FieldKey } from './intervention-task.service';
 
-/** 每个色相组最浅一档的 color_index。 */
+/** 每个色相组组首（最浅一档）的 color_index。 */
 export const FEISHU_OPTION_COLOR = {
   red: 0,
   orange: 5,
@@ -32,7 +33,15 @@ export const FEISHU_OPTION_COLOR = {
 
 export type FeishuOptionColorName = keyof typeof FEISHU_OPTION_COLOR;
 
-/** 介入大类 → 色相；原因码跟随所属大类。 */
+/** 组内深浅档位：0 最浅 … 4 最深（gray 组只到 54，即 step ≤ 4）。 */
+export type FeishuOptionColorStep = 0 | 1 | 2 | 3 | 4;
+
+/** 同色相组内取第 step 档：shade('teal', 1) → 21。 */
+export function shade(color: FeishuOptionColorName, step: FeishuOptionColorStep): number {
+  return FEISHU_OPTION_COLOR[color] + step;
+}
+
+/** 介入大类 → 色相（组首）；原因码跟随所属大类。 */
 export const CATEGORY_COLOR: Record<InterventionTaskCategory, FeishuOptionColorName> = {
   T1: 'red',
   T2: 'orange',
@@ -45,22 +54,17 @@ export const CATEGORY_COLOR: Record<InterventionTaskCategory, FeishuOptionColorN
   UNCLASSIFIED: 'gray',
 };
 
-const PRIORITY_COLOR: Readonly<Record<string, FeishuOptionColorName>> = {
-  [PRIORITY_LABELS.urgent]: 'red',
-  [PRIORITY_LABELS.today]: 'orange',
-  [PRIORITY_LABELS.normal]: 'gray',
+/** 优先级：急取红组第 3 档（较深）、当日取红组最浅、常规灰。 */
+export const PRIORITY_OPTION_COLOR: Readonly<Record<string, number>> = {
+  [PRIORITY_LABELS.urgent]: shade('red', 3),
+  [PRIORITY_LABELS.today]: FEISHU_OPTION_COLOR.red,
+  [PRIORITY_LABELS.normal]: FEISHU_OPTION_COLOR.gray,
 };
 
 /** 「状态」选项配色；键集须与 `BACKFILL_FIELD_OPTIONS.status` 一致（单测守门）。 */
-export const STATUS_OPTION_COLOR: Readonly<Record<string, FeishuOptionColorName>> = {
-  待处理: 'orange',
-  已处理: 'green',
-};
-
-/** 「本可由蛋糕完成」选项配色；键集须与 `BACKFILL_FIELD_OPTIONS.couldBeAutomated` 一致。 */
-export const COULD_BE_AUTOMATED_OPTION_COLOR: Readonly<Record<string, FeishuOptionColorName>> = {
-  是: 'green',
-  否: 'gray',
+export const STATUS_OPTION_COLOR: Readonly<Record<string, number>> = {
+  待处理: FEISHU_OPTION_COLOR.orange,
+  已处理: shade('teal', 1),
 };
 
 const CATEGORY_BY_LABEL: ReadonlyMap<string, InterventionTaskCategory> = new Map(
@@ -70,40 +74,31 @@ const CATEGORY_BY_LABEL: ReadonlyMap<string, InterventionTaskCategory> = new Map
   ]),
 );
 
-/** 原因码中文标签 → 大类（目录里 `category: null` 的 `other` 与入站风险类各归其位，风险类目录已标 T7）。 */
+/** 原因码中文标签 → 大类（目录里 `category: null` 的 `other` 归未归类；入站风险类目录已标 T7）。 */
 const CATEGORY_BY_REASON_LABEL: ReadonlyMap<string, InterventionTaskCategory> = new Map(
   HANDOFF_REASON_CATALOG.map((item) => [item.label, item.category ?? 'UNCLASSIFIED']),
 );
 
 /**
- * 字段 + 选项名 → color_index。未知字段或未知选项一律 gray。
+ * 字段 + 选项名 → color_index。未知字段或未知选项一律 gray（组首 50）。
  */
 export function resolveOptionColorIndex(fieldKey: FieldKey, optionName: string): number {
-  return FEISHU_OPTION_COLOR[resolveOptionColorName(fieldKey, optionName)];
-}
-
-export function resolveOptionColorName(
-  fieldKey: FieldKey,
-  optionName: string,
-): FeishuOptionColorName {
   switch (fieldKey) {
     case 'category': {
       const category = CATEGORY_BY_LABEL.get(optionName);
-      return category ? CATEGORY_COLOR[category] : 'gray';
+      return category ? FEISHU_OPTION_COLOR[CATEGORY_COLOR[category]] : FEISHU_OPTION_COLOR.gray;
     }
     case 'reasonCode': {
       const category = CATEGORY_BY_REASON_LABEL.get(optionName);
-      return category ? CATEGORY_COLOR[category] : 'gray';
+      return category ? FEISHU_OPTION_COLOR[CATEGORY_COLOR[category]] : FEISHU_OPTION_COLOR.gray;
     }
     case 'priority':
-      return PRIORITY_COLOR[optionName] ?? 'gray';
+      return PRIORITY_OPTION_COLOR[optionName] ?? FEISHU_OPTION_COLOR.gray;
     case 'status':
-      return STATUS_OPTION_COLOR[optionName] ?? 'gray';
-    case 'couldBeAutomated':
-      return COULD_BE_AUTOMATED_OPTION_COLOR[optionName] ?? 'gray';
+      return STATUS_OPTION_COLOR[optionName] ?? FEISHU_OPTION_COLOR.gray;
     case 'hostingAccount':
-      return 'blue';
+      return FEISHU_OPTION_COLOR.blue;
     default:
-      return 'gray';
+      return FEISHU_OPTION_COLOR.gray;
   }
 }
