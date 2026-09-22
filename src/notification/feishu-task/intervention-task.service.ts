@@ -26,6 +26,7 @@ import {
   type InterventionTaskCategory,
   type InterventionTaskPriority,
 } from './intervention-task-category';
+import { resolveOptionColorIndex } from './intervention-task-colors';
 import {
   COMMENT_MAX_LENGTH,
   buildTaskDescription,
@@ -42,20 +43,25 @@ export interface FeishuTaskRuntimeConfig {
   enabled: boolean;
 }
 
-/** 自定义字段名（PRD R6 表头）。可用 FEISHU_TASK_FIELD_NAMES_JSON 覆盖。 */
+/**
+ * 自定义字段名（PRD R6 表头）。可用 FEISHU_TASK_FIELD_NAMES_JSON 覆盖。
+ *
+ * 键顺序即清单表头列顺序：飞书自定义字段列顺序 = 创建顺序，事后无法重排
+ * （探测脚本按此顺序建字段），改顺序前先确认清单尚未建表头。
+ */
 export const DEFAULT_FIELD_NAMES = {
+  priority: '优先级',
+  category: '介入大类',
+  reasonCode: '原因码',
   nickname: '候选人昵称',
   name: '候选人姓名',
   phone: '手机号',
   hostingAccount: '托管账号',
   workOrderId: '工单号',
-  priority: '优先级',
-  triggeredAt: '介入触发时间',
-  interviewTime: '面试时间',
-  category: '介入大类',
-  reasonCode: '原因码',
-  brandStore: '品牌门店',
   jobId: '岗位 ID',
+  brandStore: '品牌门店',
+  interviewTime: '面试时间',
+  triggeredAt: '介入触发时间',
   interventionCount: '第几次介入',
   result: '处理结果',
   couldBeAutomated: '本可由蛋糕完成',
@@ -346,6 +352,7 @@ export class InterventionTaskService implements OnApplicationBootstrap {
         this.tasklistGuid,
         fieldName,
         optionName,
+        resolveOptionColorIndex(key, optionName),
       );
       if (optionGuid) push(buildCustomFieldValue(guid, { singleSelectOptionGuid: optionGuid }));
     };

@@ -3,6 +3,7 @@ import type {
   RiskInterventionPayload,
 } from '@biz/intervention/intervention.service';
 import {
+  DEFAULT_FIELD_NAMES,
   FEISHU_TASK_CONFIG_KEY,
   InterventionTaskService,
 } from '@notification/feishu-task/intervention-task.service';
@@ -94,6 +95,26 @@ describe('InterventionTaskService', () => {
     jest.useRealTimers();
   });
 
+  it('DEFAULT_FIELD_NAMES 键顺序即清单表头列顺序（列顺序 = 创建顺序，不可重排）', () => {
+    expect(Object.keys(DEFAULT_FIELD_NAMES)).toEqual([
+      'priority',
+      'category',
+      'reasonCode',
+      'nickname',
+      'name',
+      'phone',
+      'hostingAccount',
+      'workOrderId',
+      'jobId',
+      'brandStore',
+      'interviewTime',
+      'triggeredAt',
+      'interventionCount',
+      'result',
+      'couldBeAutomated',
+    ]);
+  });
+
   it('开关关闭时不调飞书', async () => {
     systemConfig.getConfigValue.mockResolvedValue({ enabled: false });
     await service.submit(basePayload);
@@ -145,6 +166,12 @@ describe('InterventionTaskService', () => {
     expect(byGuid['field:原因码'].single_select_value).toBe('opt:原因码:改约/取消自助失败');
     expect(byGuid['field:岗位 ID'].text_value).toBe('99');
     expect(byGuid['field:候选人姓名']).toBeUndefined(); // 未收集留空
+
+    // 自动建选项时带 color_index：优先级急=red(0)、大类/原因码同为 T2 orange(5)、托管账号 blue(30)
+    expect(client.resolveOptionGuid).toHaveBeenCalledWith('tl-1', '优先级', '急', 0);
+    expect(client.resolveOptionGuid).toHaveBeenCalledWith('tl-1', '介入大类', '预约协调', 5);
+    expect(client.resolveOptionGuid).toHaveBeenCalledWith('tl-1', '原因码', '改约/取消自助失败', 5);
+    expect(client.resolveOptionGuid).toHaveBeenCalledWith('tl-1', '托管账号', '东升', 30);
 
     expect(redis.setex).toHaveBeenCalledWith(
       'feishu-task:intervention:v1:chat:wrkChat1:T2',

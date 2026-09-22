@@ -119,14 +119,78 @@ describe('FeishuTaskClient', () => {
     expect(await client.resolveFieldGuid('tl', '优先级')).toBe('f-priority');
     expect(await client.resolveOptionGuid('tl', '优先级', '急')).toBe('o-urgent');
     expect(fetchMock).toHaveBeenCalledTimes(1); // 命中缓存
-    expect(await client.resolveOptionGuid('tl', '优先级', '当日')).toBe('o-today');
+    expect(await client.resolveOptionGuid('tl', '优先级', '当日', 5)).toBe('o-today');
     expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(fetchMock.mock.calls[1][0]).toBe(
       'https://open.feishu.cn/open-apis/task/v2/custom_fields/f-priority/options',
     );
+    expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual({
+      name: '当日',
+      color_index: 5,
+    });
     expect(await client.resolveOptionGuid('tl', '优先级', '当日')).toBe('o-today');
     expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(await client.resolveFieldGuid('tl', '不存在')).toBeNull();
+  });
+
+  it('建选项不传颜色时请求体不带 color_index', async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse(200, {
+          code: 0,
+          msg: 'ok',
+          data: {
+            items: [{ guid: 'f-x', name: '托管账号', type: 'single_select' }],
+            has_more: false,
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(200, { code: 0, msg: 'ok', data: { option: { guid: 'o-1' } } }),
+      )
+      .mockResolvedValueOnce(jsonResponse(200, { code: 0, msg: 'ok', data: { items: [] } }));
+    expect(await client.resolveOptionGuid('tl', '托管账号', '东升')).toBe('o-1');
+    expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual({ name: '东升' });
+  });
+
+  it('createCustomField：单选选项带 color_index，字符串选项不带', async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse(200, {
+          code: 0,
+          msg: 'ok',
+          data: {
+            custom_field: {
+              guid: 'f-new',
+              name: '介入大类',
+              type: 'single_select',
+              single_select_setting: { options: [{ guid: 'o-a', name: '现场急件' }] },
+            },
+          },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse(200, { code: 0, msg: 'ok', data: { items: [] } }));
+    const created = await client.createCustomField('tl', {
+      name: '介入大类',
+      type: 'single_select',
+      options: [{ name: '现场急件', colorIndex: 0 }, { name: '预约协调', colorIndex: 5 }, '未归类'],
+    });
+    expect(created?.guid).toBe('f-new');
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('https://open.feishu.cn/open-apis/task/v2/custom_fields?user_id_type=open_id');
+    expect(JSON.parse(String(init?.body))).toEqual({
+      resource_type: 'tasklist',
+      resource_id: 'tl',
+      name: '介入大类',
+      type: 'single_select',
+      single_select_setting: {
+        options: [
+          { name: '现场急件', color_index: 0 },
+          { name: '预约协调', color_index: 5 },
+          { name: '未归类' },
+        ],
+      },
+    });
   });
 
   it('分组缺失时创建', async () => {

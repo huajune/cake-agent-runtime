@@ -4,6 +4,7 @@ import { toErrorMessage } from '@infra/utils/error.util';
 import { fetchWithTimeout } from '@infra/utils/fetch-timeout.util';
 import type {
   CreateCustomFieldInput,
+  CreateCustomFieldOptionInput,
   CreateFeishuTaskInput,
   FeishuApiEnvelope,
   FeishuCustomFieldDefinition,
@@ -294,11 +295,15 @@ export class FeishuTaskClient {
     return catalog?.fieldsByName.get(fieldName)?.guid ?? null;
   }
 
-  /** 单选选项名 → guid；缺选项时创建并刷新缓存。字段不存在返回 null。 */
+  /**
+   * 单选选项名 → guid；缺选项时创建（带 colorIndex 时写 color_index）并刷新缓存。
+   * 字段不存在返回 null。
+   */
   async resolveOptionGuid(
     tasklistGuid: string,
     fieldName: string,
     optionName: string,
+    colorIndex?: number,
   ): Promise<string | null> {
     const catalog = await this.getFieldCatalog(tasklistGuid);
     const field = catalog?.fieldsByName.get(fieldName);
@@ -309,7 +314,7 @@ export class FeishuTaskClient {
     const result = await this.request<{ option?: RawOption }>(
       'POST',
       `/task/v2/custom_fields/${field.guid}/options`,
-      { body: { name: optionName } },
+      { body: toRawOption({ name: optionName, colorIndex }) },
     );
     if (isFailure(result)) {
       this.warnFailure('createOption', result, { tasklistGuid, fieldName, optionName });
@@ -336,7 +341,11 @@ export class FeishuTaskClient {
       type: input.type,
     };
     if (input.type === 'single_select' || input.type === 'multi_select') {
-      const setting = { options: (input.options ?? []).map((name) => ({ name })) };
+      const setting = {
+        options: (input.options ?? []).map((option) =>
+          toRawOption(typeof option === 'string' ? { name: option } : option),
+        ),
+      };
       body[input.type === 'single_select' ? 'single_select_setting' : 'multi_select_setting'] =
         setting;
     }
@@ -491,6 +500,14 @@ function normalizeMembers(members: FeishuTaskMember[]): FeishuTaskMember[] {
     type: member.type ?? 'user',
     role: member.role ?? 'assignee',
   }));
+}
+
+/** 选项入参 → 飞书请求体（color_index 仅在给定时写入，缺省由飞书自动分配）。 */
+function toRawOption(option: CreateCustomFieldOptionInput): Record<string, unknown> {
+  return {
+    name: option.name,
+    ...(option.colorIndex !== undefined ? { color_index: option.colorIndex } : {}),
+  };
 }
 
 function normalizeField(raw: RawCustomField): FeishuCustomFieldDefinition | null {

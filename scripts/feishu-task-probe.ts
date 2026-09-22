@@ -64,35 +64,53 @@ import {
 import {
   CATEGORY_META,
   PRIORITY_LABELS,
+  UNCLASSIFIED_LABEL,
   type InterventionTaskCategory,
 } from '@notification/feishu-task/intervention-task-category';
-import type { FeishuCustomFieldType } from '@notification/feishu-task/feishu-task.types';
+import { resolveOptionColorIndex } from '@notification/feishu-task/intervention-task-colors';
+import type {
+  CreateCustomFieldOptionInput,
+  FeishuCustomFieldType,
+} from '@notification/feishu-task/feishu-task.types';
+import { HANDOFF_REASON_CATALOG } from '@enums/handoff-reason.enum';
 
-const EXPECTED_FIELDS: Array<{ key: FieldKey; type: FeishuCustomFieldType; options?: string[] }> = [
-  { key: 'nickname', type: 'text' },
-  { key: 'name', type: 'text' },
-  { key: 'phone', type: 'text' },
-  { key: 'hostingAccount', type: 'single_select', options: [] },
-  { key: 'workOrderId', type: 'text' },
-  { key: 'priority', type: 'single_select', options: Object.values(PRIORITY_LABELS) },
-  { key: 'triggeredAt', type: 'text' },
-  { key: 'interviewTime', type: 'text' },
-  {
-    key: 'category',
+/** 各字段类型与初始选项名；顺序由 DEFAULT_FIELD_NAMES 键顺序派生（列顺序 = 创建顺序，事后不可重排）。 */
+const FIELD_SPECS: Record<FieldKey, { type: FeishuCustomFieldType; options?: string[] }> = {
+  priority: { type: 'single_select', options: Object.values(PRIORITY_LABELS) },
+  category: {
     type: 'single_select',
     options: Object.values(CATEGORY_META).map((meta) => meta.label),
   },
-  { key: 'reasonCode', type: 'single_select', options: ['未归类'] },
-  { key: 'brandStore', type: 'text' },
-  { key: 'jobId', type: 'text' },
-  { key: 'interventionCount', type: 'number' },
-  { key: 'result', type: 'single_select', options: BACKFILL_FIELD_OPTIONS.result },
-  {
-    key: 'couldBeAutomated',
+  reasonCode: {
     type: 'single_select',
-    options: BACKFILL_FIELD_OPTIONS.couldBeAutomated,
+    options: [...HANDOFF_REASON_CATALOG.map((item) => item.label), UNCLASSIFIED_LABEL],
   },
-];
+  nickname: { type: 'text' },
+  name: { type: 'text' },
+  phone: { type: 'text' },
+  hostingAccount: { type: 'single_select', options: [] },
+  workOrderId: { type: 'text' },
+  jobId: { type: 'text' },
+  brandStore: { type: 'text' },
+  interviewTime: { type: 'text' },
+  triggeredAt: { type: 'text' },
+  interventionCount: { type: 'number' },
+  result: { type: 'single_select', options: BACKFILL_FIELD_OPTIONS.result },
+  couldBeAutomated: { type: 'single_select', options: BACKFILL_FIELD_OPTIONS.couldBeAutomated },
+};
+
+const EXPECTED_FIELDS: Array<{
+  key: FieldKey;
+  type: FeishuCustomFieldType;
+  options?: CreateCustomFieldOptionInput[];
+}> = (Object.keys(DEFAULT_FIELD_NAMES) as FieldKey[]).map((key) => ({
+  key,
+  type: FIELD_SPECS[key].type,
+  options: FIELD_SPECS[key].options?.map((name) => ({
+    name,
+    colorIndex: resolveOptionColorIndex(key, name),
+  })),
+}));
 
 const EXPECTED_SECTIONS = (Object.keys(CATEGORY_META) as InterventionTaskCategory[]).map((code) =>
   code === 'UNCLASSIFIED' ? CATEGORY_META[code].label : `${code} ${CATEGORY_META[code].label}`,

@@ -95,11 +95,17 @@ export interface FeishuTasklistSummary {
   url?: string;
 }
 
+/** 建字段 / 建选项时的选项描述；`colorIndex` 为飞书 color_index（0–54）。 */
+export interface CreateCustomFieldOptionInput {
+  name: string;
+  colorIndex?: number;
+}
+
 export interface CreateCustomFieldInput {
   name: string;
   type: FeishuCustomFieldType;
-  /** single_select / multi_select 的初始选项 */
-  options?: string[];
+  /** single_select / multi_select 的初始选项；字符串等价于不带颜色的 { name } */
+  options?: Array<string | CreateCustomFieldOptionInput>;
 }
 
 /** 飞书 OpenAPI 统一响应壳 */
