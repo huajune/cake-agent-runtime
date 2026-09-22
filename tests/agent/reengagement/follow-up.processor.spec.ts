@@ -250,13 +250,17 @@ describe('FollowUpProcessor', () => {
     );
   });
 
-  it.each(['interview_reminder', 'post_interview_followup'] as const)(
-    '真人介入闸：候选人消息后有 MOBILE_PUSH 真人文本时停止 %s',
-    async (scenarioCode) => {
+  it.each([
+    // 面试 07-23 18:00 上海（10:00Z）：提醒面试前 1h、回访面试后 2h 各自对齐到点时刻
+    ['interview_reminder', Date.UTC(2026, 6, 23, 9, 0, 0)],
+    ['post_interview_followup', Date.UTC(2026, 6, 23, 12, 0, 0)],
+  ] as const)(
+    '报名后不设真人手打闸：候选人消息后有 MOBILE_PUSH 真人文本，%s 照常生成（PRD R1 改动 1）',
+    async (scenarioCode, firedAt) => {
       const anchorAt = Date.UTC(2026, 6, 22, 8, 20, 0);
       const candidateAt = anchorAt + 60_000;
       const humanReplyAt = candidateAt + 30_000;
-      jest.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 6, 23, 9, 0, 0));
+      jest.spyOn(Date, 'now').mockReturnValue(firedAt);
       sponge.getWorkOrderById.mockResolvedValue({
         workOrderId: 555,
         currentStatus: '约面成功',
@@ -295,20 +299,14 @@ describe('FollowUpProcessor', () => {
         }),
       );
 
-      expect(chatSession.getChatHistory).toHaveBeenCalledWith('sess-1', 200, {
-        startTimeInclusive: anchorAt,
-        endTimeInclusive: Date.UTC(2026, 6, 23, 9, 0, 0),
-      });
-      expect(tracking.trackStopped).toHaveBeenCalledWith(
-        expect.anything(),
-        'human_intervention_after_candidate',
-      );
-      expect(reengagementAgent.compose).not.toHaveBeenCalled();
-      expect(delivery.deliver).not.toHaveBeenCalled();
+      // 不再按锚点后窗口扫描真人手打消息，只剩待答闸的最近 10 条读取
+      expect(chatSession.getChatHistory).not.toHaveBeenCalledWith('sess-1', 200, expect.anything());
+      expect(tracking.trackStopped).not.toHaveBeenCalled();
+      expect(reengagementAgent.compose).toHaveBeenCalled();
     },
   );
 
-  it('真人介入闸：候选人 timeout 但没有真人回复时不冒充已处理回话（兼容 PR #766）', async () => {
+  it('候选人 timeout 无人回复时：待答闸不拦（该轮有处理记录），照常生成（兼容 PR #766）', async () => {
     const anchorAt = Date.UTC(2026, 6, 22, 8, 20, 0);
     const candidateAt = anchorAt + 60_000;
     jest.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 6, 23, 5, 0, 0));
@@ -350,10 +348,7 @@ describe('FollowUpProcessor', () => {
       }),
     );
 
-    expect(tracking.trackStopped).not.toHaveBeenCalledWith(
-      expect.anything(),
-      'human_intervention_after_candidate',
-    );
+    expect(tracking.trackStopped).not.toHaveBeenCalled();
     expect(reengagementAgent.compose).toHaveBeenCalled();
   });
 
@@ -396,64 +391,8 @@ describe('FollowUpProcessor', () => {
     );
   });
 
-  it('真人介入闸：API_SEND 或非文本自发消息不算真人手打', async () => {
-    const anchorAt = Date.UTC(2026, 6, 22, 8, 20, 0);
-    jest.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 6, 23, 5, 0, 0));
-    sponge.getWorkOrderById.mockResolvedValue({
-      workOrderId: 555,
-      currentStatus: '约面成功',
-      interviewTime: '2026-07-23 14:00',
-    });
-    session.getReengagementState.mockResolvedValue(baseState({ terminal: 'booked' }));
-    chatSession.getChatHistory.mockResolvedValue([
-      {
-        role: 'user',
-        content: '好的',
-        timestamp: anchorAt + 1_000,
-        source: 'MOBILE_PUSH',
-        messageType: 'TEXT',
-        isSelf: false,
-      },
-      {
-        role: 'assistant',
-        content: '系统自动回复',
-        timestamp: anchorAt + 2_000,
-        source: 'API_SEND',
-        messageType: 'TEXT',
-        isSelf: true,
-      },
-      {
-        role: 'assistant',
-        content: '[入群邀请] 已发送入群邀请卡片',
-        timestamp: anchorAt + 3_000,
-        source: 'MOBILE_PUSH',
-        messageType: 'ROOM_INVITE',
-        isSelf: true,
-      },
-    ]);
-
-    await buildProcessor().process(
-      makeJob({
-        data: {
-          sessionRef,
-          scenarioCode: 'interview_reminder',
-          anchorEventId: 'wo555:iv1784786400000',
-          anchorAt,
-          workOrderId: 555,
-          expectedInterviewAt: Date.UTC(2026, 6, 23, 6, 0, 0),
-        },
-      }),
-    );
-
-    expect(tracking.trackStopped).not.toHaveBeenCalledWith(
-      expect.anything(),
-      'human_intervention_after_candidate',
-    );
-    expect(reengagementAgent.compose).toHaveBeenCalled();
-  });
-
   it.each(['interview_reminder', 'post_interview_followup'] as const)(
-    '真人介入闸：真人手发话术后 Agent 又回答了候选人，不视为接管，%s 照常生成',
+    '真人手发「面试注意事项」话术后 Agent 又回答了候选人，%s 照常生成',
     async (scenarioCode) => {
       // 生产 case（2026-09-14 孑然 / ZhuDongSheng）：报名成功 → 候选人「好的」→ 经理手发
       // 「面试注意事项」话术 → 候选人追问「是去门店面试是吧」→ Agent 回答。
@@ -536,15 +475,12 @@ describe('FollowUpProcessor', () => {
         }),
       );
 
-      expect(tracking.trackStopped).not.toHaveBeenCalledWith(
-        expect.anything(),
-        'human_intervention_after_candidate',
-      );
+      expect(tracking.trackStopped).not.toHaveBeenCalled();
       expect(reengagementAgent.compose).toHaveBeenCalled();
     },
   );
 
-  it('真人介入闸：Agent 回复之后真人再次手打且成为我方最后一条发言，仍视为接管', async () => {
+  it('真人手打为我方最后一条发言（「那我帮你取消，改天再约」）也不在代码层停发，取消与否交复聊 Agent 语义判定', async () => {
     const anchorAt = Date.UTC(2026, 8, 14, 6, 5, 35);
     jest.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 8, 16, 5, 0, 0));
     sponge.getWorkOrderById.mockResolvedValue({
@@ -617,14 +553,11 @@ describe('FollowUpProcessor', () => {
       }),
     );
 
-    expect(tracking.trackStopped).toHaveBeenCalledWith(
-      expect.anything(),
-      'human_intervention_after_candidate',
-    );
-    expect(reengagementAgent.compose).not.toHaveBeenCalled();
+    expect(tracking.trackStopped).not.toHaveBeenCalled();
+    expect(reengagementAgent.compose).toHaveBeenCalled();
   });
 
-  it('真人介入闸：真人手打之后只有复聊主动触达回灌，不算 Agent 继续回复，仍停止', async () => {
+  it('真人手打之后只有复聊主动触达回灌，回访照常生成', async () => {
     const anchorAt = Date.UTC(2026, 8, 14, 6, 5, 35);
     jest.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 8, 16, 8, 0, 0));
     sponge.getWorkOrderById.mockResolvedValue({
@@ -682,11 +615,169 @@ describe('FollowUpProcessor', () => {
       }),
     );
 
-    expect(tracking.trackStopped).toHaveBeenCalledWith(
-      expect.anything(),
-      'human_intervention_after_candidate',
+    expect(tracking.trackStopped).not.toHaveBeenCalled();
+    expect(reengagementAgent.compose).toHaveBeenCalled();
+  });
+
+  it('删真人闸后改期校准照常执行：真人手打消息存在且工单时间已变 → interview_time_changed 并排替代任务（PRD R1 改动 5）', async () => {
+    const anchorAt = Date.UTC(2026, 8, 14, 6, 5, 35);
+    // 任务按 09-16 14:00 排在 09-16 13:00 上海（05:00Z）到点，实时工单已改到 09-17 14:00
+    jest.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 8, 16, 5, 0, 0));
+    sponge.getWorkOrderById.mockResolvedValue({
+      workOrderId: 464965,
+      currentStatus: '约面成功',
+      interviewTime: '2026-09-17 14:00',
+    });
+    session.getReengagementState.mockResolvedValue(baseState({ terminal: 'booked' }));
+    chatSession.getChatHistory.mockResolvedValue([
+      {
+        role: 'user',
+        content: '好的',
+        timestamp: anchorAt + 1_000,
+        source: 'MOBILE_PUSH',
+        messageType: 'TEXT',
+        isSelf: false,
+      },
+      {
+        role: 'assistant',
+        content: '通知明天下午 14 点面试',
+        timestamp: anchorAt + 2_000,
+        source: 'MOBILE_PUSH',
+        messageType: 'TEXT',
+        isSelf: true,
+      },
+    ]);
+
+    await buildProcessor().process(
+      makeJob({
+        data: {
+          sessionRef,
+          scenarioCode: 'interview_reminder',
+          anchorEventId: 'wo464965:iv1789538400000',
+          anchorAt,
+          workOrderId: 464965,
+        },
+      }),
+    );
+
+    expect(tracking.trackStopped).toHaveBeenCalledWith(expect.anything(), 'interview_time_changed');
+    expect(scheduler.scheduleFollowUp).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scenarioCode: 'interview_reminder',
+        workOrderId: 464965,
+        expectedInterviewAt: Date.UTC(2026, 8, 17, 6, 0, 0),
+      }),
     );
     expect(reengagementAgent.compose).not.toHaveBeenCalled();
+  });
+
+  it('回访到点基准取实时工单面试时间，不取任务快照：快照时间到点但工单已改晚 → 按新时间重排', async () => {
+    const anchorAt = Date.UTC(2026, 8, 14, 6, 5, 35);
+    // 任务快照 14:00（06:00Z）→ 回访按快照排在 08:00Z；实时工单已改成 16:00（08:00Z）
+    jest.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 8, 16, 8, 0, 0));
+    sponge.getWorkOrderById.mockResolvedValue({
+      workOrderId: 464965,
+      currentStatus: '约面成功',
+      interviewTime: '2026-09-16 16:00',
+    });
+    session.getReengagementState.mockResolvedValue(
+      baseState({ terminal: 'booked', interviewAt: Date.UTC(2026, 8, 16, 6, 0, 0) } as never),
+    );
+
+    await buildProcessor().process(
+      makeJob({
+        data: {
+          sessionRef,
+          scenarioCode: 'post_interview_followup',
+          anchorEventId: 'wo464965:iv1789538400000',
+          anchorAt,
+          workOrderId: 464965,
+          expectedInterviewAt: Date.UTC(2026, 8, 16, 6, 0, 0),
+        },
+      }),
+    );
+
+    expect(tracking.trackStopped).toHaveBeenCalledWith(expect.anything(), 'interview_time_changed');
+    expect(scheduler.scheduleFollowUp).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scenarioCode: 'post_interview_followup',
+        expectedInterviewAt: Date.UTC(2026, 8, 16, 8, 0, 0),
+      }),
+    );
+    expect(reengagementAgent.compose).not.toHaveBeenCalled();
+  });
+
+  it('回访到点基准取实时工单面试时间：实时工单时间 +2h 已到则生成，且 state.interviewAt 为实时值', async () => {
+    const anchorAt = Date.UTC(2026, 8, 14, 6, 5, 35);
+    jest.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 8, 16, 10, 0, 0));
+    sponge.getWorkOrderById.mockResolvedValue({
+      workOrderId: 464965,
+      currentStatus: '约面成功',
+      interviewTime: '2026-09-16 16:00',
+    });
+    session.getReengagementState.mockResolvedValue(
+      baseState({ terminal: 'booked', interviewAt: Date.UTC(2026, 8, 16, 6, 0, 0) } as never),
+    );
+
+    await buildProcessor().process(
+      makeJob({
+        data: {
+          sessionRef,
+          scenarioCode: 'post_interview_followup',
+          anchorEventId: 'wo464965:iv1789538400000',
+          anchorAt,
+          workOrderId: 464965,
+          expectedInterviewAt: Date.UTC(2026, 8, 16, 6, 0, 0),
+        },
+      }),
+    );
+
+    expect(tracking.trackStopped).not.toHaveBeenCalled();
+    expect(reengagementAgent.compose).toHaveBeenCalledWith(
+      expect.objectContaining({
+        state: expect.objectContaining({ interviewAt: Date.UTC(2026, 8, 16, 8, 0, 0) }),
+        bookingContext: expect.objectContaining({ interviewAt: Date.UTC(2026, 8, 16, 8, 0, 0) }),
+      }),
+    );
+  });
+
+  it('AI 面试回访：工单时间是窗口起点，回访按面试日 17:00 上海到点生成', async () => {
+    const anchorAt = Date.UTC(2026, 8, 14, 6, 5, 35);
+    // 窗口起点 10:00 上海；17:00 上海 = 09:00Z
+    jest.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 8, 16, 9, 0, 0));
+    sponge.getWorkOrderById.mockResolvedValue({
+      workOrderId: 464965,
+      jobId: 9002,
+      currentStatus: '约面成功',
+      interviewTime: '2026-09-16 10:00',
+    });
+    sponge.fetchJobs.mockResolvedValue({
+      total: 1,
+      jobs: [{ interviewProcess: { firstInterview: { firstInterviewWay: 'AI面试' } } }],
+    });
+    session.getReengagementState.mockResolvedValue(baseState({ terminal: 'booked' }));
+
+    await buildProcessor().process(
+      makeJob({
+        data: {
+          sessionRef,
+          scenarioCode: 'post_interview_followup',
+          anchorEventId: 'wo464965:iv1789523400000:post_interview_followup:ai17',
+          anchorAt,
+          workOrderId: 464965,
+        },
+      }),
+    );
+
+    expect(tracking.trackStopped).not.toHaveBeenCalled();
+    expect(reengagementAgent.compose).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bookingContext: expect.objectContaining({
+          interviewAt: Date.UTC(2026, 8, 16, 2, 0, 0),
+          interviewType: 'AI面试',
+        }),
+      }),
+    );
   });
 
   it('drops in-flight jobs without generating when the master switch is off', async () => {
@@ -2252,7 +2343,7 @@ describe('FollowUpProcessor', () => {
       expect(reengagementAgent.compose).toHaveBeenCalled();
     });
 
-    it('keeps the human-intervention gate for the onboarding touch', async () => {
+    it('does not stop the onboarding touch for a human handwritten reply after the candidate', async () => {
       const candidateAt = passedAt + 60_000;
       sponge.getWorkOrderById.mockResolvedValue({ workOrderId: 901, currentStatus: '面试成功' });
       session.getReengagementState.mockResolvedValue(baseState({ terminal: 'booked' }));
@@ -2277,11 +2368,8 @@ describe('FollowUpProcessor', () => {
 
       await buildProcessor().process(onboardingJob());
 
-      expect(tracking.trackStopped).toHaveBeenCalledWith(
-        expect.anything(),
-        'human_intervention_after_candidate',
-      );
-      expect(reengagementAgent.compose).not.toHaveBeenCalled();
+      expect(tracking.trackStopped).not.toHaveBeenCalled();
+      expect(reengagementAgent.compose).toHaveBeenCalled();
     });
 
     it('keeps the pending-candidate-message gate for the onboarding touch', async () => {

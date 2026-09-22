@@ -13,10 +13,6 @@ import type { MessageProcessingRecordInput } from '@biz/message/types/message.ty
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { MessageProcessingService } from '@biz/message/services/message-processing.service';
 import {
-  isAgentReplyTextMessage,
-  isHumanAgentTextMessage,
-} from '@biz/message/utils/message-provenance.util';
-import {
   GroupInviteService,
   type GroupInviteResult,
 } from '@biz/group-task/services/group-invite.service';
@@ -364,30 +360,9 @@ export class FollowUpProcessor implements OnModuleInit {
       return;
     }
 
-    // 1.3) 报名后真人介入闸：候选人在报名锚点后发过消息，随后真人经理又从企微
-    // 客户端手打回复且此后 Agent 没有再回复过，说明本次面试已进入人工判断/跟进。
-    // 真人拒面、手工约面、已人工回复都不会写 Agent terminal，也不一定及时同步到
-    // 海绵工单；继续发面试提醒或回访会越过真人结论。只认带来源的真人手打文本，
-    // 不把 API_SEND/AI_REPLY、入群卡片或复聊回灌当人工介入；真人手打之后 Agent
-    // 又回答了候选人，视为会话仍由 Agent 托管，不停。
-    //
-    // 这道闸与 lastProcessedCandidateMessageAt 水位正交：候选人 timeout 后若无人
-    // 回复，不会命中；只有后续确有真人回复才停，避免把无人回复误判成真人已介入。
-    if (scenario.phase === 'post_booking') {
-      const humanReplyAt = await this.detectHumanInterventionAfterCandidate(
-        sessionRef.sessionId,
-        anchorAt,
-        now,
-      );
-      if (humanReplyAt != null) {
-        this.logger.log(
-          `[reengagement] 真人介入闸命中，停止 ${scenarioCode} sessionId=${sessionRef.sessionId} ` +
-            `humanReplyAt=${new Date(humanReplyAt).toISOString()}`,
-        );
-        this.tracking.trackStopped(identity, 'human_intervention_after_candidate');
-        return;
-      }
-    }
+    // 报名后场景不设「真人手打过就停」的闸：面试提醒/回访只看工单与聊天记录
+    // （待答闸、到点核验、复聊 Agent 的语义停止条件）。真人几分钟前刚手打过话也不顺延。
+    // 真人拒面/取消/改约等结论由复聊 Agent 按对话语义判定，不以「真人说过话」为停发信号。
 
     // 1.4) 候选人待答前置闸：候选人最后一条消息晚于我方最后一条消息，且从未进过
     // 处理管道（无对应 message_processing_record）时，说明该轮被静默丢弃、候选人
@@ -719,50 +694,6 @@ export class FollowUpProcessor implements OnModuleInit {
     } catch (error) {
       this.logger.warn(
         `[reengagement] 候选人待答检测失败，按放行处理 sessionId=${sessionId}: ${this.errorMessage(error)}`,
-      );
-      return null;
-    }
-  }
-
-  /**
-   * 报名锚点后是否已形成「候选人消息 → 真人经理手打文本」的人工介入证据。
-   *
-   * 查询失败 fail open：聊天历史是辅助证据面，不能因观测存储抖动把报名后触达全量
-   * 静默。最多读取 200 条锚点后消息，覆盖预约后到提醒/回访的短窗口。
-   */
-  private async detectHumanInterventionAfterCandidate(
-    sessionId: string,
-    anchorAt: number,
-    now: number,
-  ): Promise<number | null> {
-    try {
-      const history = await this.chatSession.getChatHistory(sessionId, 200, {
-        startTimeInclusive: anchorAt,
-        endTimeInclusive: now,
-      });
-      // 真人手打文本只在它仍是我方最后一条对话发言时才算接管：运营报名后例行手发
-      // 「面试注意事项 / 面试官微信」话术后，Agent 若又回答了候选人的追问，说明会话
-      // 仍由 Agent 托管，不能据此停掉面试提醒与回访。Agent 回复之后再出现真人手打，
-      // 仍按接管处理。
-      let candidateMessageSeen = false;
-      let humanReplyAt: number | null = null;
-      for (const message of history) {
-        if (message.role === 'user') {
-          candidateMessageSeen = true;
-          continue;
-        }
-        if (candidateMessageSeen && isHumanAgentTextMessage(message)) {
-          humanReplyAt = message.timestamp;
-          continue;
-        }
-        if (humanReplyAt != null && isAgentReplyTextMessage(message)) {
-          humanReplyAt = null;
-        }
-      }
-      return humanReplyAt;
-    } catch (error) {
-      this.logger.warn(
-        `[reengagement] 真人介入检测失败，按放行处理 sessionId=${sessionId}: ${this.errorMessage(error)}`,
       );
       return null;
     }
