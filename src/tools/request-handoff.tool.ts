@@ -8,12 +8,15 @@ import { InterventionService } from '@biz/intervention/intervention.service';
 import { HandoffRecorderService } from '@biz/handoff-events/handoff-recorder.service';
 import { ToolBuilder } from '@shared-types/tool.types';
 import { buildToolError, TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
+import { HANDOFF_REASON_CODES, HANDOFF_REASON_LABELS } from '@enums/handoff-reason.enum';
 import { extractLatestUserMessage } from './shared/chat-history.util';
 
 const logger = new Logger('request_handoff');
 
 // 程序记忆层（procedural memory）工具绑定规则；总目录：docs/prompt-rule-ledger.md
-const DESCRIPTION = `候选人遇到你无法自助推进、需要真人介入的阻塞时调用——**不限会话阶段**：岗位咨询、收资、约面、面试后、入职跟进期间都可能触发（具体见下方 15 类场景，其中 6/7/9/10 等场景在约面及之后阶段最常见）。**调用即短路本轮——runtime 会自动结束本轮，候选人本次不会收到任何回复**，副作用（暂停托管 / 飞书告警 / case 状态变更）全部异步执行。
+const DESCRIPTION = `候选人遇到你无法自助推进、需要真人介入的阻塞时调用——**不限会话阶段**：岗位咨询、收资、约面、面试后、入职跟进期间都可能触发（具体见下方触发场景表，其中 6/7/9/10 等场景在约面及之后阶段最常见）。**调用即短路本轮——runtime 会自动结束本轮，候选人本次不会收到任何回复**（例外：本轮已有成功的报名/改约/取消结果时，runtime 会先把该结果确定性地告知候选人再暂停），副作用（暂停托管 / 飞书告警 / case 状态变更）全部异步执行。
+
+**两条常见漏归类**：答不上岗位/门店规定类问题（试用期、工服、排班上限、体检点、合同形式等）走 salary_admin_inquiry 并在 missingJobInfo 列出缺失字段；面试时间协调（候选人的时间与可约场次对不上、需要门店特批时段）走 interview_slot_coordination。这两类不要归 other。
 
 ## 前置条件
 - [当前预约信息] 存在时必须调用，本工具会异步暂停托管并发送人工介入告警
@@ -37,10 +40,17 @@ const DESCRIPTION = `候选人遇到你无法自助推进、需要真人介入�
 9. system_blocked：precheck / booking 等工具返回结构性错误导致无法自助推进（如 precheck 持续 missingFields 卡住 booking、booking 返回 ${TOOL_ERROR_TYPES.BOOKING_REJECTED} 且非报名人数已满）。本质是**系统报错让流程转不下去、你无法替候选人完成报名登记，而非候选人自身原因**——需运营在后台核对资料、手动补录报名或修复数据。reason 里用平实语言写清「候选人卡在哪一步、资料是否已收齐、需要人工做什么」，不要只贴报错码。**报名人数超上限用 booking_capacity_full、拉群接口失败用 group_invite_failed，不要归入本码**
 10. booking_capacity_full：duliday_interview_booking 返回"报名人数已超出上限"类失败——资料已齐、时间已定但岗位名额满，需人工确认能否加名额或协调其他时段/门店。这不是系统故障，严禁归入 system_blocked
 11. group_invite_failed：候选人已同意进群，但 invite_to_group 返回接口拒绝（invite.api_rejected / bot 非好友 / bot 不在群 / errcode 异常等，**非群满、非该城市无群**），无法完成拉群，需人工手动邀请或维护
-12. salary_admin_inquiry：候选人咨询针对个人的薪资/行政事务——如工时未计入、几号发几月工资、考勤核算、开工作证明/收入证明、三方协议、合同/协议条款、签约主体、社保、试用期、银行卡异常不能本人收薪、税务/发薪主体等。**先查证，查不到就当轮转人工**：属于岗位通用口径的（薪资范围/结算周期/福利）先用 duliday_job_list 等岗位工具的字段作答；工具字段确实没有答案（尤其针对候选人个人的账务/证明/合同细节）时，直接按本码调用本工具，由真人接续跟进。**用本码时必传 missingJobInfo**：逐项列出候选人问到而岗位字段没有答案的信息点（如 ["试用期","工作餐"]）——这类问题本质是岗位数据缺口，告警卡片会连同当前岗位一起展示给运营补录。**"帮你确认下/我去问问"说出口就必须当轮调用本工具**——没有任何机制会替你"确认"；不要复读兜底、不要凭常识编造合同或薪资口径
+12. salary_admin_inquiry：**岗位级口径答不上**——候选人问的是岗位/门店的通用规定（薪资范围与阶梯算法、结算周期、发薪主体/合作模式、签约主体与合同形式、社保、试用期、工作餐、工服、排班上限、体检点/健康证认可机构、发型等），你先用 duliday_job_list 等岗位工具的字段查证，字段确实没有答案时当轮按本码调用本工具。**用本码时必传 missingJobInfo**：逐项列出候选人问到而岗位字段没有答案的信息点（如 ["试用期","工作餐"]）——这类问题本质是岗位数据缺口，告警卡片会连同当前岗位一起展示给运营补录。**"帮你确认下/我去问问"说出口就必须当轮调用本工具**——没有任何机制会替你"确认"；不要复读兜底、不要凭常识编造合同或薪资口径。针对候选人个人账务的问题（如「我 8 月工资到了没」）不用本码，见场景 20
 13. interview_slot_coordination：候选人有明确的硬性时间窗（如只能周末/只能某个具体时段），precheck 确认系统可约场次均无法覆盖且候选人明确不接受现有场次，需人工与门店协调特殊时段。与 modify_appointment 区分：本码用于**尚未预约成功**的时段协调，不是改期
-14. identity_age_exception：候选人身份/年龄处于岗位硬要求边界（如 17 岁、学生想上社会人士岗、暑假工改长期兼职但系统仍按原身份过滤），且你已按"何时不调用"的要求重查替代岗仍无果，需人工裁量能否破例或人工修正登记信息
-15. other：明显需人工介入、且确实不属于以上十四类的阻塞场景（真正的兜底，能归类就不要用 other）
+14. identity_age_exception：候选人身份/年龄处于岗位硬要求边界（如 17 岁、学生想上社会人士岗、暑假工改长期兼职但系统仍按原身份过滤、民族或外籍身份能否录用），且你已按"何时不调用"的要求重查替代岗仍无果，需人工裁量能否破例或人工修正登记信息。**残障披露不用此码**：候选人自述听障/残障等身份或问残障者能否应聘时，入站守卫会静默转人工，你不要重查替代岗、不要按本码调用
+15. store_no_show：门店/面试官未履约——约好的电话面试没人打、AI 面试码/面试通知没收到、等通知岗面试官一周不联系、到店后临场协调无果。与 no_reception（到店无人接待）区分：本码覆盖电话/线上/等通知等非到店形态
+16. out_of_band_booking_inquiry：候选人说自己已经约了/报了名（真人手工登记、另一联系人代报、其它渠道），但 [当前预约信息] 与本会话都查不到工单，需人工核实预约归属后再处理
+17. store_hiring_status_check：候选人指认某家门店是否还在招、是否已开业/闭店，岗位工具查不到该店或与候选人说法矛盾，需人工向门店核实
+18. duplicate_signup：报名被海绵拒绝「已报名该岗位或品牌」，候选人否认或说想换店，需人工核对既有工单后处理
+19. employment_affairs：已入职候选人的在职事务——换店、转全职、离职后回流、住宿、打卡、班表、工伤等。**工伤或人身安全相关必须在 reason 首句写明**，运营按急件处理
+20. personal_pay_attendance：候选人个人的薪资考勤个案——「我 X 月工资到了没」「我上周的工时少算了」「补卡怎么办」这类针对本人账务的问题，你查不到本人结算数据，转结算对接人核对
+21. platform_operation：候选人在平台操作上卡住——抢单、审核不通过、健康证上传失败、签署承揽协议、打卡异常等，需平台客服处理
+22. other：明显需人工介入、且确实不属于以上各类的阻塞场景（真正的兜底，能归类就不要用 other）
 
 ## 何时不调用
 - 如果候选人只是常规询问门店位置/路线，先用 send_store_location 处理，不要直接转人工
@@ -51,7 +61,7 @@ const DESCRIPTION = `候选人遇到你无法自助推进、需要真人介入�
 - 异步执行「暂停托管 + case 状态改为 handoff + 飞书告警」
 
 ## 参数
-- reasonCode：十五个枚举之一
+- reasonCode：触发场景表中的枚举之一
 - reason：结合候选人原话描述阻塞点
 - actionAdvice（可选）：建议下一步动作（一句话），帮招募经理直接看到"该做什么"，例如"协调周末面试"、"联系门店确认到岗安排"、"引导改岗到 X 品牌"
 
@@ -60,25 +70,8 @@ const DESCRIPTION = `候选人遇到你无法自助推进、需要真人介入�
 - 严禁在本轮继续推进其他任务（换岗位、改约时间、收资料等）`;
 
 const inputSchema = z.object({
-  reasonCode: z
-    .enum([
-      'cannot_find_store',
-      'no_reception',
-      'booking_conflict',
-      'onboarding_paperwork',
-      'interview_result_inquiry',
-      'modify_appointment',
-      'self_recruited_or_completed',
-      'no_match_or_group_full',
-      'system_blocked',
-      'booking_capacity_full',
-      'group_invite_failed',
-      'salary_admin_inquiry',
-      'interview_slot_coordination',
-      'identity_age_exception',
-      'other',
-    ])
-    .describe('转人工原因代码'),
+  // 枚举值域唯一来源：@enums/handoff-reason.enum（toolSelectable 的码，顺序即触发场景编号）
+  reasonCode: z.enum(HANDOFF_REASON_CODES).describe('转人工原因代码'),
   reason: z.string().describe('具体原因：结合候选人原话说明当前阻塞点'),
   actionAdvice: z
     .string()
@@ -93,24 +86,6 @@ const inputSchema = z.object({
       'reasonCode=salary_admin_inquiry 时必传：候选人问到而岗位工具/字段没有答案的信息点（岗位数据缺口），如 ["试用期","工作餐","转正政策"]。告警卡片会连同当前焦点岗位展示给运营补录岗位数据',
     ),
 });
-
-const HANDOFF_REASON_LABELS: Record<string, string> = {
-  cannot_find_store: '找不到门店',
-  no_reception: '到店无人接待',
-  booking_conflict: '预约信息冲突',
-  onboarding_paperwork: '入职办理异常',
-  interview_result_inquiry: '候选人追问面试结果',
-  modify_appointment: '候选人要求改期/取消已预约面试',
-  self_recruited_or_completed: '候选人已被面试通过/餐厅自招/办入职',
-  no_match_or_group_full: '无匹配岗位/群满需维护',
-  system_blocked: '系统异常需人工补录',
-  booking_capacity_full: '岗位报名人数已满',
-  group_invite_failed: '拉群失败需人工维护',
-  salary_admin_inquiry: '薪资/考勤/证明类咨询',
-  interview_slot_coordination: '面试时段需人工协调',
-  identity_age_exception: '身份/年龄边界需人工裁量',
-  other: '其他需人工处理场景',
-};
 
 /**
  * request_handoff 工具
@@ -226,6 +201,7 @@ export function buildRequestHandoffTool(
             alertLabel: HANDOFF_REASON_LABELS[reasonCode] ?? '需人工跟进',
             reasonCode,
             reason: reason?.trim() || HANDOFF_REASON_LABELS[reasonCode] || '需要人工协助',
+            origin: 'agent_tool',
             actionAdvice: actionAdvice?.trim(),
             missingJobInfo: missingJobInfo?.map((item) => item.trim()).filter(Boolean),
             currentMessageContent: extractLatestUserMessage(recentMessages),

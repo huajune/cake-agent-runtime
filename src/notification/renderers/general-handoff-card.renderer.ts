@@ -2,18 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { FeishuReceiver } from '@infra/feishu/constants/receivers';
 import { FeishuCardBuilderService } from '@infra/feishu/services/card-builder.service';
 import { unwrapSessionFactValue } from '@memory/short-term/short-term.types';
+import { isUrgentHandoffReason } from '@enums/handoff-reason.enum';
 import { GeneralHandoffNotificationPayload } from '../types/general-handoff-notification.types';
-
-/**
- * 时效敏感的转人工原因：候选人可能已在途/正在等待，超时未跟进直接丢单。
- * （改约类 24h 真人跟进率长期偏低，卡片顶部显式标急以对齐处理优先级。）
- */
-const URGENT_REASON_CODES = new Set([
-  'modify_appointment',
-  'no_reception',
-  'booking_conflict',
-  'interview_group_invite_required',
-]);
 
 @Injectable()
 export class GeneralHandoffCardRenderer {
@@ -26,7 +16,9 @@ export class GeneralHandoffCardRenderer {
       atAll?: boolean;
     },
   ): Record<string, unknown> {
-    const isUrgent = payload.reasonCode ? URGENT_REASON_CODES.has(payload.reasonCode) : false;
+    // 时效敏感集合由权威目录（@enums/handoff-reason.enum）的 urgent 属性派生：
+    // 候选人可能已在途/正在等待，超时未跟进直接丢单。
+    const isUrgent = isUrgentHandoffReason(payload.reasonCode);
     const sections = [
       payload.isTest ? '> 测试ing（来自回归批次，无需 @ 招募经理）' : null,
       isUrgent

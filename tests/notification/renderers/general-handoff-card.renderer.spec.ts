@@ -161,6 +161,17 @@ describe('GeneralHandoffCardRenderer', () => {
         buildPayload({ reasonCode: 'interview_group_invite_required' }),
       );
       expect(interviewGroupCard.content as string).toContain('⏱ 时效敏感');
+
+      // PRD R5.2：找不到门店、门店未履约、带外预约核实补进标急集合（由权威目录派生）
+      for (const reasonCode of [
+        'cannot_find_store',
+        'store_no_show',
+        'out_of_band_booking_inquiry',
+      ]) {
+        expect(renderer.buildCard(buildPayload({ reasonCode })).content as string).toContain(
+          '⏱ 时效敏感',
+        );
+      }
     });
 
     it('omits urgency banner for non-urgent or missing reason codes', () => {

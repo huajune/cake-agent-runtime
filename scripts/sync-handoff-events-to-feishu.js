@@ -22,18 +22,24 @@ const FIELD_TYPES = {
   DATE: 5,
 };
 
-const REASON_LABELS = {
-  cannot_find_store: '找不到门店',
-  no_reception: '到店无人接待',
-  booking_conflict: '预约信息冲突',
-  onboarding_paperwork: '入职办理异常',
-  interview_result_inquiry: '候选人追问面试结果',
-  modify_appointment: '候选人要求改期/取消已预约面试',
-  self_recruited_or_completed: '候选人已被面试通过/餐厅自招/办入职',
-  no_match_or_group_full: '无匹配岗位/群满需维护',
-  system_blocked: '工具/系统卡死无法自助',
-  other: '其他需人工处理场景',
-};
+/**
+ * 原因码标签唯一来源：src/enums/handoff-reason.enum.ts（零依赖，可直接经 ts-node 加载）。
+ * 优先读已编译的 dist，没有 dist 时用 ts-node 即时转译；两者都失败才抛错，绝不再维护字面副本。
+ */
+const REASON_LABELS = loadHandoffReasonLabels();
+
+function loadHandoffReasonLabels() {
+  const distPath = path.resolve(__dirname, '../dist/enums/handoff-reason.enum.js');
+  if (fs.existsSync(distPath)) {
+    return require(distPath).HANDOFF_REASON_LABELS;
+  }
+  require('ts-node').register({
+    transpileOnly: true,
+    compilerOptions: { module: 'commonjs' },
+  });
+  return require(path.resolve(__dirname, '../src/enums/handoff-reason.enum.ts'))
+    .HANDOFF_REASON_LABELS;
+}
 
 const PRIMARY_EVENT_ID_FIELD = '事件ID（主键）';
 const LEGACY_EVENT_ID_FIELD = '事件ID';
@@ -382,14 +388,10 @@ async function listFields(token, appToken, tableId) {
 }
 
 async function renameField(token, appToken, tableId, field, newName) {
-  return feishu(
-    token,
-    `/bitable/v1/apps/${appToken}/tables/${tableId}/fields/${field.field_id}`,
-    {
-      method: 'PUT',
-      body: JSON.stringify({ field_name: newName, type: field.type }),
-    },
-  );
+  return feishu(token, `/bitable/v1/apps/${appToken}/tables/${tableId}/fields/${field.field_id}`, {
+    method: 'PUT',
+    body: JSON.stringify({ field_name: newName, type: field.type }),
+  });
 }
 
 async function ensurePrimaryEventIdField(token, appToken, tableId) {
@@ -464,9 +466,9 @@ async function upsertRecords(token, appToken, tableId, rows) {
   const existing = await listAllRecords(token, appToken, tableId);
   const byEventId = new Map();
   for (const record of existing) {
-    const eventId = EVENT_ID_LOOKUP_FIELDS.map((name) => normalizeField(record.fields?.[name])).find(
-      Boolean,
-    );
+    const eventId = EVENT_ID_LOOKUP_FIELDS.map((name) =>
+      normalizeField(record.fields?.[name]),
+    ).find(Boolean);
     if (eventId) byEventId.set(eventId, record.record_id);
   }
 
