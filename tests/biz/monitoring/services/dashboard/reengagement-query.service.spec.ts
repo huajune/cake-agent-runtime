@@ -11,6 +11,7 @@ describe('ReengagementQueryService', () => {
       getRecords: jest.fn(),
       getRecordByTouchKey: jest.fn(),
       getStats: jest.fn(),
+      getStatsByDecisionReasons: jest.fn().mockResolvedValue([]),
       getCandidateOverview: jest.fn(),
     } as unknown as jest.Mocked<ReengagementTouchRepository>;
     service = new ReengagementQueryService(repository);
@@ -84,6 +85,41 @@ describe('ReengagementQueryService', () => {
       '2026-07-05T16:00:00.000Z',
       '2026-07-07T15:59:59.999Z',
     );
+    expect(repository.getStatsByDecisionReasons).toHaveBeenCalledWith(
+      '2026-07-05T16:00:00.000Z',
+      '2026-07-07T15:59:59.999Z',
+      ['signup_interview_gap_lt_3d'],
+    );
+  });
+
+  it('excludes signup_interview_gap_lt_3d records from the grouped stats (总触达口径)', async () => {
+    repository.getStats.mockResolvedValue([
+      { status: 'sent', scenario_code: 'interview_reminder', cnt: 10 },
+      { status: 'skipped', scenario_code: 'interview_reminder', cnt: 5 },
+      { status: 'stopped', scenario_code: 'interview_reminder', cnt: 2 },
+      { status: 'sent', scenario_code: 'opening_no_reply', cnt: 7 },
+    ]);
+    repository.getStatsByDecisionReasons.mockResolvedValue([
+      { status: 'skipped', scenario_code: 'interview_reminder', cnt: 3 },
+      { status: 'stopped', scenario_code: 'interview_reminder', cnt: 2 },
+    ]);
+
+    const rows = await service.getStats('2026-07-06', '2026-07-07');
+
+    // skipped 5-3=2 保留；stopped 2-2=0 整桶去掉；其余不动
+    expect(rows).toEqual([
+      { status: 'sent', scenario_code: 'interview_reminder', cnt: 10 },
+      { status: 'skipped', scenario_code: 'interview_reminder', cnt: 2 },
+      { status: 'sent', scenario_code: 'opening_no_reply', cnt: 7 },
+    ]);
+  });
+
+  it('falls back to the raw grouped stats when the exclusion query fails', async () => {
+    const raw = [{ status: 'sent', scenario_code: 'interview_reminder', cnt: 10 }];
+    repository.getStats.mockResolvedValue(raw);
+    repository.getStatsByDecisionReasons.mockRejectedValue(new Error('db timeout'));
+
+    await expect(service.getStats('2026-07-06', '2026-07-07')).resolves.toEqual(raw);
   });
 
   it('delegates detail lookup by touch key', async () => {

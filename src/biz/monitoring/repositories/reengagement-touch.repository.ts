@@ -155,6 +155,40 @@ export class ReengagementTouchRepository extends BaseRepository {
   }
 
   /**
+   * 时间范围内 decision_reason 命中给定原因的记录，按 status + scenario 分组计数。
+   *
+   * 供统计口径剔除「不适用」记录（见 REENGAGEMENT_STATS_EXCLUDED_DECISION_REASONS）。
+   * 命中行只投影两列，行数受 created_at 范围 + 原因等值过滤限制（只有面试提醒的 d2 档会写这些原因），
+   * 不拉 generated_text / events；统计 RPC 不带原因维度，这里在代码侧聚合而不改迁移。
+   */
+  async getStatsByDecisionReasons(
+    startDate: string,
+    endDate: string,
+    reasons: readonly string[],
+  ): Promise<ReengagementTouchStatsRow[]> {
+    if (reasons.length === 0) return [];
+    const rows = await this.select<Pick<ReengagementTouchDbRecord, 'status' | 'scenario_code'>>(
+      'status, scenario_code',
+      (q) =>
+        q
+          .gte('created_at', startDate)
+          .lt('created_at', endDate)
+          .in('decision_reason', [...reasons]),
+    );
+    const grouped = new Map<string, ReengagementTouchStatsRow>();
+    for (const row of rows) {
+      const key = `${row.status}|${row.scenario_code}`;
+      const bucket = grouped.get(key);
+      if (bucket) {
+        bucket.cnt += 1;
+      } else {
+        grouped.set(key, { status: row.status, scenario_code: row.scenario_code, cnt: 1 });
+      }
+    }
+    return [...grouped.values()];
+  }
+
+  /**
    * NULL 化过期行的 generated_text（最大的单列文本）。
    * 状态摘要 + events 轨迹继续保留（审计底账），文案本体到期释放。
    * @returns 本次 NULL 化的行数

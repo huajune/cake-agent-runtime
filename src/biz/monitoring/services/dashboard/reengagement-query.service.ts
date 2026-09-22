@@ -1,9 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { addLocalDays, parseLocalDateStart } from '@infra/utils/date.util';
+import { toErrorMessage } from '@infra/utils/error.util';
 import {
+  REENGAGEMENT_STATS_EXCLUDED_DECISION_REASONS,
   ReengagementCandidateOverviewRow,
   ReengagementCandidateSummary,
   ReengagementTouchFilters,
+  ReengagementTouchStatsRow,
   ReengagementTouchStatus,
 } from '../../entities/reengagement-touch.entity';
 import { ReengagementTouchRepository } from '../../repositories/reengagement-touch.repository';
@@ -48,9 +51,29 @@ export class ReengagementQueryService {
     return this.repository.getRecordByTouchKey(touchKey);
   }
 
-  /** 时间范围内按 status + scenario 分组计数 */
-  async getStats(startDate: string, endDate: string) {
-    return this.repository.getStats(this.dayStart(startDate), this.dayEnd(endDate));
+  /**
+   * 时间范围内按 status + scenario 分组计数。
+   *
+   * 口径：剔除 REENGAGEMENT_STATS_EXCLUDED_DECISION_REASONS 命中的「不适用」记录
+   * （如面试提醒提前 2 天档因报名到面试不足 3 天而跳过），它们不是一次触达，不进「总触达」。
+   * 剔除查询失败时退回未剔除的原始分组并告警，不让统计卡整体报错。
+   */
+  async getStats(startDate: string, endDate: string): Promise<ReengagementTouchStatsRow[]> {
+    const start = this.dayStart(startDate);
+    const end = this.dayEnd(endDate);
+    const rows = await this.repository.getStats(start, end);
+    let excluded: ReengagementTouchStatsRow[] = [];
+    try {
+      excluded = await this.repository.getStatsByDecisionReasons(
+        start,
+        end,
+        REENGAGEMENT_STATS_EXCLUDED_DECISION_REASONS,
+      );
+    } catch (error) {
+      this.logger.warn(`复聊统计剔除不适用记录失败，退回原始分组: ${toErrorMessage(error)}`);
+      return rows;
+    }
+    return subtractStatsRows(rows, excluded);
   }
 
   /**
@@ -162,4 +185,24 @@ export class ReengagementQueryService {
   private dayEnd(date: string): string {
     return new Date(addLocalDays(parseLocalDateStart(date), 1).getTime() - 1).toISOString();
   }
+}
+
+/** 按 (status, scenario_code) 从 rows 里扣减 excluded 的计数；扣成 0 或负数的桶整行去掉。 */
+function subtractStatsRows(
+  rows: ReengagementTouchStatsRow[],
+  excluded: ReengagementTouchStatsRow[],
+): ReengagementTouchStatsRow[] {
+  if (excluded.length === 0) return rows;
+  const excludedByKey = new Map<string, number>();
+  for (const row of excluded) {
+    const key = `${row.status}|${row.scenario_code}`;
+    excludedByKey.set(key, (excludedByKey.get(key) ?? 0) + Number(row.cnt));
+  }
+  const result: ReengagementTouchStatsRow[] = [];
+  for (const row of rows) {
+    const key = `${row.status}|${row.scenario_code}`;
+    const cnt = Number(row.cnt) - (excludedByKey.get(key) ?? 0);
+    if (cnt > 0) result.push({ ...row, cnt });
+  }
+  return result;
 }

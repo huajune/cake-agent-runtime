@@ -142,6 +142,16 @@ export interface ReengagementTouchStatsRow {
   cnt: number;
 }
 
+/**
+ * Dashboard 复聊「总触达」统计要剔除的 decision_reason：这些记录是「本来就不适用」而非一次触达。
+ *
+ * - `signup_interview_gap_lt_3d`：面试提醒的提前 2 天确认档，报名到面试不足 3 天时排程即跳过 /
+ *   到点停止，记录只是底账，不代表向候选人发起过一次触达；算进总触达会把分母虚增。
+ */
+export const REENGAGEMENT_STATS_EXCLUDED_DECISION_REASONS: readonly string[] = [
+  'signup_interview_gap_lt_3d',
+];
+
 /** 候选人视角查询筛选条件 */
 export interface ReengagementCandidateFilters {
   startDate?: string;

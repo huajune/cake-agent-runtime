@@ -4,7 +4,7 @@ import { ReengagementTouchStatus } from '@biz/monitoring/entities/reengagement-t
 import { SupabaseService } from '@infra/supabase/supabase.service';
 
 function makeQueryMock(result: { data?: unknown; error?: unknown }) {
-  const chainMethods = ['select', 'eq', 'gte', 'lte', 'order', 'range', 'limit'];
+  const chainMethods = ['select', 'eq', 'in', 'gte', 'lt', 'lte', 'order', 'range', 'limit'];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mock: any = Object.assign(Promise.resolve(result), {});
   for (const method of chainMethods) {
@@ -187,6 +187,44 @@ describe('ReengagementTouchRepository', () => {
       'candidate_name,manager_name,im_bot_id,im_contact_id,external_user_id,is_self',
     );
     expect(queryMock.limit).toHaveBeenCalledWith(20);
+  });
+
+  it('groups excluded-reason rows by status + scenario in code without touching the stats RPC', async () => {
+    const query = makeQueryMock({
+      data: [
+        { status: 'skipped', scenario_code: 'interview_reminder' },
+        { status: 'skipped', scenario_code: 'interview_reminder' },
+        { status: 'stopped', scenario_code: 'interview_reminder' },
+      ],
+      error: null,
+    });
+    mockSupabaseClient.from.mockReturnValue(query);
+
+    const rows = await repository.getStatsByDecisionReasons(
+      '2026-07-06T00:00:00.000Z',
+      '2026-07-06T23:59:59.999Z',
+      ['signup_interview_gap_lt_3d'],
+    );
+
+    expect(rows).toEqual(
+      expect.arrayContaining([
+        { status: 'skipped', scenario_code: 'interview_reminder', cnt: 2 },
+        { status: 'stopped', scenario_code: 'interview_reminder', cnt: 1 },
+      ]),
+    );
+    expect(rows).toHaveLength(2);
+    expect(mockSupabaseClient.from).toHaveBeenCalledWith('reengagement_touch_records');
+    expect(query.select).toHaveBeenCalledWith('status, scenario_code');
+    expect(query.gte).toHaveBeenCalledWith('created_at', '2026-07-06T00:00:00.000Z');
+    expect(query.lt).toHaveBeenCalledWith('created_at', '2026-07-06T23:59:59.999Z');
+    expect(query.in).toHaveBeenCalledWith('decision_reason', ['signup_interview_gap_lt_3d']);
+    expect(mockSupabaseClient.rpc).not.toHaveBeenCalled();
+  });
+
+  it('skips the query entirely when no excluded reasons are configured', async () => {
+    const rows = await repository.getStatsByDecisionReasons('a', 'b', []);
+    expect(rows).toEqual([]);
+    expect(mockSupabaseClient.from).not.toHaveBeenCalled();
   });
 
   it('delegates stats and candidate overview to RPCs with capped pagination', async () => {
