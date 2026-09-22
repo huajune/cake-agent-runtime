@@ -1,22 +1,31 @@
 /**
- * 介入原因码 → 任务大类（T1–T8）临时映射。
+ * 介入原因码 → 飞书任务大类 / 优先级。
  *
- * TODO(批次 C)：批次 C 正在建 `src/enums/handoff-reason.enum.ts` 权威枚举
- * （原因码 → 中文标签 / urgent / manualResumeOnly / 任务大类）。枚举落地后本文件的
- * `REASON_CODE_CATEGORY` / `REASON_CODE_LABELS` / `URGENT_REASON_CODES` 三张表应改为从
- * 该枚举读取，只保留大类元数据（时限、负责人、优先级）。表内容按 PRD R5.2 抄录。
+ * 原因码的大类（T1–T8）、中文标签、标急三项属性一律从 `@enums/handoff-reason.enum` 权威目录
+ * 读取，本文件不再维护任何原因码副本；这里只保留飞书任务侧特有的大类元数据：
+ * 机器可算的时限规则、默认优先级、面试上限开关、负责人取向。大类名称同样取自
+ * 枚举的 `HANDOFF_TASK_CATEGORY_META.name`（枚举里的 `sla` / `owner` 是展示用文案，
+ * 与此处的结构化规则一一对应，见 PRD R5.2 / R6）。
  */
 
-export type InterventionTaskCategory =
-  | 'T1'
-  | 'T2'
-  | 'T3'
-  | 'T4'
-  | 'T5'
-  | 'T6'
-  | 'T7'
-  | 'T8'
-  | 'UNCLASSIFIED';
+import { Logger } from '@nestjs/common';
+import {
+  HANDOFF_TASK_CATEGORY_META,
+  getHandoffReasonDefinition,
+  getHandoffReasonLabel,
+  isUrgentHandoffReason,
+  type HandoffTaskCategory,
+} from '@enums/handoff-reason.enum';
+
+const logger = new Logger('InterventionTaskCategory');
+
+/** 飞书任务大类：T1–T8 + 「未归类」（原因码为空或目录标记归不了类的 `other`）。 */
+export type InterventionTaskCategory = HandoffTaskCategory | 'UNCLASSIFIED';
+
+export const UNCLASSIFIED_LABEL = '未归类';
+
+/** 目录里查无此码时的兜底大类：按预约协调（2 小时、托管账号运营）处理并记警告。 */
+const UNKNOWN_REASON_FALLBACK_CATEGORY: HandoffTaskCategory = 'T2';
 
 export type InterventionTaskPriority = 'urgent' | 'today' | 'normal';
 
@@ -51,10 +60,11 @@ export interface InterventionTaskCategoryMeta {
 
 const WORKDAY_MINUTES = 9 * 60;
 
+/** 飞书任务侧的大类规则（名称取自枚举，其余为本模块特有）。 */
 export const CATEGORY_META: Record<InterventionTaskCategory, InterventionTaskCategoryMeta> = {
   T1: {
     code: 'T1',
-    label: '现场急件',
+    label: HANDOFF_TASK_CATEGORY_META.T1.name,
     deadline: { kind: 'working_minutes', minutes: 30 },
     basePriority: 'urgent',
     interviewCapApplies: false,
@@ -62,7 +72,7 @@ export const CATEGORY_META: Record<InterventionTaskCategory, InterventionTaskCat
   },
   T2: {
     code: 'T2',
-    label: '预约协调',
+    label: HANDOFF_TASK_CATEGORY_META.T2.name,
     deadline: { kind: 'working_minutes', minutes: 120 },
     basePriority: 'today',
     interviewCapApplies: true,
@@ -70,7 +80,7 @@ export const CATEGORY_META: Record<InterventionTaskCategory, InterventionTaskCat
   },
   T3: {
     code: 'T3',
-    label: '面试后跟进',
+    label: HANDOFF_TASK_CATEGORY_META.T3.name,
     deadline: { kind: 'same_day_or_next_noon' },
     basePriority: 'today',
     interviewCapApplies: false,
@@ -78,7 +88,7 @@ export const CATEGORY_META: Record<InterventionTaskCategory, InterventionTaskCat
   },
   T4: {
     code: 'T4',
-    label: '薪资考勤个案',
+    label: HANDOFF_TASK_CATEGORY_META.T4.name,
     deadline: { kind: 'working_minutes', minutes: WORKDAY_MINUTES },
     basePriority: 'normal',
     interviewCapApplies: false,
@@ -86,7 +96,7 @@ export const CATEGORY_META: Record<InterventionTaskCategory, InterventionTaskCat
   },
   T5: {
     code: 'T5',
-    label: '岗位数据/口径缺口',
+    label: HANDOFF_TASK_CATEGORY_META.T5.name,
     deadline: { kind: 'working_minutes', minutes: 3 * WORKDAY_MINUTES },
     basePriority: 'normal',
     interviewCapApplies: false,
@@ -94,7 +104,7 @@ export const CATEGORY_META: Record<InterventionTaskCategory, InterventionTaskCat
   },
   T6: {
     code: 'T6',
-    label: '系统卡点',
+    label: HANDOFF_TASK_CATEGORY_META.T6.name,
     deadline: { kind: 'working_minutes', minutes: 120 },
     basePriority: 'today',
     interviewCapApplies: true,
@@ -102,7 +112,7 @@ export const CATEGORY_META: Record<InterventionTaskCategory, InterventionTaskCat
   },
   T7: {
     code: 'T7',
-    label: '风险与合规',
+    label: HANDOFF_TASK_CATEGORY_META.T7.name,
     deadline: { kind: 'working_minutes', minutes: 60 },
     basePriority: 'urgent',
     interviewCapApplies: false,
@@ -110,7 +120,7 @@ export const CATEGORY_META: Record<InterventionTaskCategory, InterventionTaskCat
   },
   T8: {
     code: 'T8',
-    label: '平台操作问题',
+    label: HANDOFF_TASK_CATEGORY_META.T8.name,
     deadline: { kind: 'same_day_or_next_noon' },
     basePriority: 'today',
     interviewCapApplies: false,
@@ -118,7 +128,7 @@ export const CATEGORY_META: Record<InterventionTaskCategory, InterventionTaskCat
   },
   UNCLASSIFIED: {
     code: 'UNCLASSIFIED',
-    label: '未归类',
+    label: UNCLASSIFIED_LABEL,
     deadline: { kind: 'working_minutes', minutes: 120 },
     basePriority: 'today',
     interviewCapApplies: false,
@@ -126,103 +136,32 @@ export const CATEGORY_META: Record<InterventionTaskCategory, InterventionTaskCat
   },
 };
 
-/** 原因码 → 大类（PRD R5.2）。TODO(批次 C)：改读权威枚举。 */
-const REASON_CODE_CATEGORY: Record<string, InterventionTaskCategory> = {
-  no_reception: 'T1',
-  booking_conflict: 'T1',
-  cannot_find_store: 'T1',
-  store_no_show: 'T1',
-  interview_group_invite_required: 'T2',
-  modify_appointment: 'T2',
-  interview_slot_coordination: 'T2',
-  booking_capacity_full: 'T2',
-  group_invite_failed: 'T2',
-  no_match_or_group_full: 'T2',
-  out_of_band_booking_inquiry: 'T2',
-  store_hiring_status_check: 'T2',
-  duplicate_signup: 'T2',
-  interview_result_inquiry: 'T3',
-  onboarding_paperwork: 'T3',
-  onboarding_failed: 'T3',
-  self_recruited_or_completed: 'T3',
-  onboarding_follow_up_required: 'T3',
-  employment_affairs: 'T3',
-  personal_pay_attendance: 'T4',
-  salary_admin_inquiry: 'T5',
-  system_blocked: 'T6',
-  identity_age_exception: 'T7',
-  platform_operation: 'T8',
-  // 入站风险类（conversation_risk.riskType）
-  abuse: 'T7',
-  complaint_risk: 'T7',
-  escalation: 'T7',
-  human_handoff_request: 'T7',
-  disability_disclosure: 'T7',
-};
-
-/** 原因码中文标签（飞书单选「原因码」选项名）。TODO(批次 C)：改读权威枚举。 */
-const REASON_CODE_LABELS: Record<string, string> = {
-  no_reception: '到店无人接待',
-  booking_conflict: '门店查不到预约',
-  cannot_find_store: '找不到门店',
-  store_no_show: '门店/面试官未履约',
-  interview_group_invite_required: '需手动发面试群邀请',
-  modify_appointment: '改约/取消',
-  interview_slot_coordination: '面试时段协调',
-  booking_capacity_full: '名额已满',
-  group_invite_failed: '拉群失败',
-  no_match_or_group_full: '无岗且群满',
-  out_of_band_booking_inquiry: '带外预约核实',
-  store_hiring_status_check: '门店招聘状态核实',
-  duplicate_signup: '重复报名核实',
-  interview_result_inquiry: '面试结果追问',
-  onboarding_paperwork: '入职流程',
-  onboarding_failed: '入职失败',
-  self_recruited_or_completed: '门店自招/已通过',
-  onboarding_follow_up_required: '入职跟进巡检',
-  employment_affairs: '在职事务',
-  personal_pay_attendance: '个人薪资考勤个案',
-  salary_admin_inquiry: '岗位口径缺口',
-  system_blocked: '系统卡住',
-  identity_age_exception: '年龄身份裁量',
-  platform_operation: '平台操作问题',
-  other: '其他',
-  abuse: '辱骂/攻击',
-  complaint_risk: '投诉风险',
-  escalation: '情绪升级',
-  human_handoff_request: '主动要人工',
-  disability_disclosure: '残障披露',
-};
-
-/** 标急原因码（PRD R5.2「标急」列 = 是）。TODO(批次 C)：改读权威枚举 urgent。 */
-const URGENT_REASON_CODES: ReadonlySet<string> = new Set([
-  'no_reception',
-  'booking_conflict',
-  'cannot_find_store',
-  'store_no_show',
-  'interview_group_invite_required',
-  'modify_appointment',
-  'out_of_band_booking_inquiry',
-  'abuse',
-  'complaint_risk',
-  'escalation',
-  'human_handoff_request',
-]);
-
+/**
+ * 原因码 → 大类：空码或目录标记归不了类（`other`）→ 未归类；
+ * 目录里查无此码 → 回退 T2 并记警告（码表漂移应尽快补进权威目录）。
+ */
 export function resolveTaskCategory(
   reasonCode: string | null | undefined,
 ): InterventionTaskCategory {
   if (!reasonCode) return 'UNCLASSIFIED';
-  return REASON_CODE_CATEGORY[reasonCode] ?? 'UNCLASSIFIED';
+  const definition = getHandoffReasonDefinition(reasonCode);
+  if (!definition) {
+    logger.warn(
+      `[FeishuTask] 原因码不在权威目录，按 ${UNKNOWN_REASON_FALLBACK_CATEGORY} 处理: reasonCode=${reasonCode}`,
+    );
+    return UNKNOWN_REASON_FALLBACK_CATEGORY;
+  }
+  return definition.category ?? 'UNCLASSIFIED';
 }
 
+/** 原因码中文标签（飞书单选「原因码」选项名），空码或未知码取「未归类」。 */
 export function resolveReasonCodeLabel(reasonCode: string | null | undefined): string {
-  if (!reasonCode) return '未归类';
-  return REASON_CODE_LABELS[reasonCode] ?? '未归类';
+  if (!reasonCode) return UNCLASSIFIED_LABEL;
+  return getHandoffReasonLabel(reasonCode, UNCLASSIFIED_LABEL);
 }
 
 export function isUrgentReasonCode(reasonCode: string | null | undefined): boolean {
-  return reasonCode != null && URGENT_REASON_CODES.has(reasonCode);
+  return isUrgentHandoffReason(reasonCode);
 }
 
 /** 在职事务里只有工伤标急（PRD R5.2）。 */

@@ -141,7 +141,8 @@ describe('InterventionTaskService', () => {
     expect(byGuid['field:介入触发时间'].text_value).toBe('2026-09-22 10:00');
     expect(byGuid['field:面试时间'].text_value).toBe('2026-09-22 12:00');
     expect(byGuid['field:介入大类'].single_select_value).toBe('opt:介入大类:预约协调');
-    expect(byGuid['field:原因码'].single_select_value).toBe('opt:原因码:改约/取消');
+    // 原因码选项名取权威目录标签
+    expect(byGuid['field:原因码'].single_select_value).toBe('opt:原因码:改约/取消自助失败');
     expect(byGuid['field:岗位 ID'].text_value).toBe('99');
     expect(byGuid['field:候选人姓名']).toBeUndefined(); // 未收集留空
 
