@@ -262,6 +262,15 @@ export class FollowUpProcessor implements OnModuleInit {
           botImId: channelIdentity?.botImId,
         })) ?? undefined;
 
+      // 等通知岗报名满 3 天复核：不走触达闸，只查工单并按需给运营发任务提醒。
+      if (job.data.interviewSlotCheck) {
+        if (!bookingContext) {
+          throw new Error(`reengagement_booking_context_unavailable:${job.data.workOrderId}`);
+        }
+        await this.handleInterviewSlotCheck(job.data, identity, bookingContext);
+        return;
+      }
+
       // 面试排程解析任务只保存工单引用；拿到海绵实时工单后才创建正式 delayed job。
       // 查询失败抛错交给 Bull backoff 重试，绝不使用预约工具参数兜底。
       if (job.data.resolveBookingAtFire) {
@@ -276,7 +285,31 @@ export class FollowUpProcessor implements OnModuleInit {
           return;
         }
         if (!bookingContext.interviewAt) {
-          throw new Error(`reengagement_booking_time_unavailable:${job.data.workOrderId}`);
+          // 等通知岗：工单在途但没有面试时间。不再抛错重试后静默消失——走 scheduler 现成的
+          // missing_interview_time 落库分支正常结束；面试时间由空变有值的重排交后续对账。
+          // 报名满 3 天仍无面试时间由复核任务给运营发协调提醒（只从提醒场景排一次）。
+          await this.scheduler.scheduleFollowUp({
+            sessionRef,
+            scenarioCode,
+            anchorEventId,
+            anchorAt,
+            state: {
+              ...loadedState,
+              terminal: 'booked',
+              interviewAt: undefined,
+            } as ReengagementSessionState,
+            workOrderId: bookingContext.workOrderId,
+            channelIdentity,
+          });
+          if (scenarioCode === 'interview_reminder') {
+            await this.scheduler.scheduleInterviewSlotCheck({
+              sessionRef,
+              workOrderId: bookingContext.workOrderId,
+              signUpAt: parseInterviewTimestamp(bookingContext.signUpTime) ?? now,
+              channelIdentity,
+            });
+          }
+          return;
         }
         const resolvedState = {
           ...loadedState,
@@ -1197,6 +1230,50 @@ export class FollowUpProcessor implements OnModuleInit {
       default:
         return 'work_order_regressed';
     }
+  }
+
+  /**
+   * 等通知岗报名满 3 天复核（PRD R1 改动 6）：
+   * - 工单已不在途 → 按原因停止；
+   * - 面试时间已出现 → 静默结束（正式提醒的重排由后续对账负责，不在此重排）；
+   * - 仍无面试时间 → 给运营发 interview_slot_coordination 任务提醒（不暂停托管，幂等）。
+   */
+  private async handleInterviewSlotCheck(
+    jobData: FollowUpJob,
+    identity: ReengagementTouchIdentity,
+    bookingContext: ReengagementBookingContext,
+  ): Promise<void> {
+    const invalidReason = this.checkBookingInvalidAtFire(bookingContext);
+    if (invalidReason) {
+      this.tracking.trackStopped(identity, invalidReason);
+      return;
+    }
+    if (bookingContext.interviewAt != null) {
+      this.tracking.trackStopped(identity, 'interview_time_resolved');
+      return;
+    }
+    const onceKey = `interview_slot_coordination:wo${bookingContext.workOrderId}`;
+    if (!(await this.touchLedger.acquireOnce(onceKey))) {
+      this.tracking.trackStopped(identity, 'interview_slot_coordination_already_dispatched');
+      return;
+    }
+    const jobLabel = this.formatJobLabel(bookingContext);
+    const signUpLabel = bookingContext.signUpTime ? `报名时间 ${bookingContext.signUpTime}，` : '';
+    await this.dispatchOpsTask({
+      jobData,
+      identity,
+      bookingContext,
+      reasonCode: 'interview_slot_coordination',
+      reason: `等通知岗报名已满 3 天，海绵工单 ${bookingContext.workOrderId} 仍未登记面试时间，候选人尚未收到任何面试安排`,
+      actionAdvice:
+        '请与门店协调面试时间并回填到海绵工单；工单有面试时间后系统会自动安排提醒。本提醒不会暂停 AI 托管',
+      alertLabel: '复聊 · 等通知岗满 3 天未定面试时间，请协调',
+      stage: 'interview_reminder',
+      idempotencyKey: `${jobData.sessionRef.sessionId}:${onceKey}`,
+      currentMessageContent: `工单 ${bookingContext.workOrderId}${jobLabel ? `（${jobLabel}）` : ''}：${signUpLabel}当前状态 ${bookingContext.currentStatus ?? '未知'}，面试时间为空`,
+      diagnostics: { signUpTime: bookingContext.signUpTime ?? null },
+    });
+    this.tracking.trackStopped(identity, 'interview_slot_coordination_dispatched');
   }
 
   /** +48h 复核不经过触达闸；已上岗静默，其余状态统一交人工判断。 */

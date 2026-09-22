@@ -59,6 +59,7 @@ describe('FollowUpProcessor', () => {
   let scheduler: {
     scheduleFollowUp: jest.Mock;
     scheduleOnboardingCheck: jest.Mock;
+    scheduleInterviewSlotCheck: jest.Mock;
     stopPendingJobsForSessionScenario: jest.Mock;
   };
   let groupInvite: { invite: jest.Mock };
@@ -115,6 +116,7 @@ describe('FollowUpProcessor', () => {
     scheduler = {
       scheduleFollowUp: jest.fn().mockResolvedValue({ scheduled: true }),
       scheduleOnboardingCheck: jest.fn().mockResolvedValue({ scheduled: true }),
+      scheduleInterviewSlotCheck: jest.fn().mockResolvedValue({ scheduled: true }),
       stopPendingJobsForSessionScenario: jest.fn().mockResolvedValue(0),
     };
     groupInvite = {
@@ -1901,6 +1903,160 @@ describe('FollowUpProcessor', () => {
         toolCalls: [],
         scenarioCode: 'interview_reminder',
         runTurnEnd: jest.fn().mockResolvedValue(undefined),
+      });
+    });
+
+    describe('等通知岗：工单在途但无面试时间（PRD R1 改动 6）', () => {
+      it.each(['interview_reminder', 'post_interview_followup'] as const)(
+        '解析任务 %s：走 scheduler 的 missing_interview_time 落库分支正常结束，不抛错重试',
+        async (scenarioCode) => {
+          sponge.getWorkOrderById.mockResolvedValue({
+            workOrderId: 555,
+            currentStatus: '约面待确认',
+            signUpTime: '2026-06-24 10:00',
+          });
+          scheduler.scheduleFollowUp.mockResolvedValue({
+            scheduled: false,
+            reason: 'missing_interview_time',
+          });
+
+          await expect(
+            buildProcessor().process(
+              bookingJob({
+                scenarioCode,
+                resolveBookingAtFire: true,
+                expectedInterviewAt: undefined,
+              }),
+            ),
+          ).resolves.toBeUndefined();
+
+          expect(scheduler.scheduleFollowUp).toHaveBeenCalledTimes(1);
+          expect(scheduler.scheduleFollowUp).toHaveBeenCalledWith(
+            expect.objectContaining({
+              scenarioCode,
+              anchorEventId: 'evt-b',
+              workOrderId: 555,
+              state: expect.objectContaining({ terminal: 'booked' }),
+            }),
+          );
+          expect(scheduler.scheduleFollowUp.mock.calls[0][0].state.interviewAt).toBeUndefined();
+          expect(tracking.trackStopped).not.toHaveBeenCalled();
+          expect(reengagementAgent.compose).not.toHaveBeenCalled();
+          // 满 3 天复核只从提醒场景排一次（Bull 同 jobId 兜底去重）
+          if (scenarioCode === 'interview_reminder') {
+            expect(scheduler.scheduleInterviewSlotCheck).toHaveBeenCalledWith({
+              sessionRef,
+              workOrderId: 555,
+              signUpAt: Date.UTC(2026, 5, 24, 2, 0, 0),
+              channelIdentity: undefined,
+            });
+          } else {
+            expect(scheduler.scheduleInterviewSlotCheck).not.toHaveBeenCalled();
+          }
+        },
+      );
+
+      it('工单缺 signUpTime 时复核从解析时刻起算 3 天', async () => {
+        sponge.getWorkOrderById.mockResolvedValue({ workOrderId: 555, currentStatus: '约面成功' });
+
+        await buildProcessor().process(
+          bookingJob({ resolveBookingAtFire: true, expectedInterviewAt: undefined }),
+        );
+
+        expect(scheduler.scheduleInterviewSlotCheck).toHaveBeenCalledWith(
+          expect.objectContaining({ signUpAt: Date.UTC(2026, 5, 24, 2, 30, 0) }),
+        );
+      });
+
+      const slotCheckJob = () =>
+        bookingJob({
+          anchorEventId: 'wo555:interview_slot_check',
+          expectedInterviewAt: undefined,
+          interviewSlotCheck: true,
+          channelIdentity: { botImId: 'bot-1', candidateName: '候选人B' },
+        });
+
+      it('满 3 天复核：仍无面试时间且工单在途 → 发 interview_slot_coordination 运营任务（不暂停托管、幂等）', async () => {
+        sponge.getWorkOrderById.mockResolvedValue({
+          workOrderId: 555,
+          currentStatus: '约面待确认',
+          signUpTime: '2026-06-21 10:00',
+          brandName: '瑞幸',
+        });
+
+        await buildProcessor().process(slotCheckJob());
+
+        expect(touchLedger.acquireOnce).toHaveBeenCalledWith('interview_slot_coordination:wo555');
+        expect(handoffRecorder.record).toHaveBeenCalledWith(
+          expect.objectContaining({
+            reasonCode: 'interview_slot_coordination',
+            workOrderId: 555,
+            stage: 'interview_reminder',
+            idempotencyKey: 'sess-1:interview_slot_coordination:wo555',
+          }),
+        );
+        expect(handoffNotifier.notify).toHaveBeenCalledWith(
+          expect.objectContaining({
+            reasonCode: 'interview_slot_coordination',
+            workOrderId: 555,
+            hostingPaused: false,
+            contactName: '候选人B',
+            currentMessageContent: expect.stringContaining('面试时间为空'),
+            diagnostics: expect.objectContaining({ signUpTime: '2026-06-21 10:00' }),
+          }),
+        );
+        expect(tracking.trackStopped).toHaveBeenCalledWith(
+          expect.objectContaining({ anchorEventId: 'wo555:interview_slot_check' }),
+          'interview_slot_coordination_dispatched',
+        );
+        expect(reengagementAgent.compose).not.toHaveBeenCalled();
+        expect(scheduler.scheduleFollowUp).not.toHaveBeenCalled();
+      });
+
+      it('满 3 天复核：面试时间已出现 → 静默结束，不重排（重排交后续对账）', async () => {
+        sponge.getWorkOrderById.mockResolvedValue({
+          workOrderId: 555,
+          currentStatus: '约面成功',
+          interviewTime: '2026-06-28 14:00',
+        });
+
+        await buildProcessor().process(slotCheckJob());
+
+        expect(tracking.trackStopped).toHaveBeenCalledWith(
+          expect.anything(),
+          'interview_time_resolved',
+        );
+        expect(handoffNotifier.notify).not.toHaveBeenCalled();
+        expect(scheduler.scheduleFollowUp).not.toHaveBeenCalled();
+      });
+
+      it('满 3 天复核：工单已不在途 → 按工单原因停止', async () => {
+        sponge.getWorkOrderById.mockResolvedValue({ workOrderId: 555, currentStatus: '约面取消' });
+
+        await buildProcessor().process(slotCheckJob());
+
+        expect(tracking.trackStopped).toHaveBeenCalledWith(
+          expect.anything(),
+          'work_order_not_active:约面取消',
+        );
+        expect(handoffNotifier.notify).not.toHaveBeenCalled();
+      });
+
+      it('满 3 天复核：同工单已提醒过 → 不重复发卡片', async () => {
+        touchLedger.acquireOnce.mockResolvedValue(false);
+        sponge.getWorkOrderById.mockResolvedValue({
+          workOrderId: 555,
+          currentStatus: '约面待确认',
+        });
+
+        await buildProcessor().process(slotCheckJob());
+
+        expect(handoffRecorder.record).not.toHaveBeenCalled();
+        expect(handoffNotifier.notify).not.toHaveBeenCalled();
+        expect(tracking.trackStopped).toHaveBeenCalledWith(
+          expect.anything(),
+          'interview_slot_coordination_already_dispatched',
+        );
       });
     });
 

@@ -64,6 +64,11 @@ export interface FollowUpJob {
   /** 入职跟进触达后 +48h 的纯复核任务；只查工单并按需告警，不生成或投递消息。 */
   onboardingCheck?: boolean;
   /**
+   * 等通知岗（工单无面试时间）报名满 3 天的纯复核任务：仍无面试时间且工单在途时给运营
+   * 发协调面试时间的任务提醒，不生成或投递消息；面试时间已出现时静默结束（重排交对账）。
+   */
+  interviewSlotCheck?: boolean;
+  /**
    * 收资未完成场景的子态：资料已收齐、复述已发出、只差候选人确认（或选面试时间）。
    * 到点文案必须改成"请回一句确认"，不得再说"还缺资料"。
    */
@@ -137,6 +142,17 @@ export interface ScheduleOnboardingCheckInput {
   anchorAt: number;
   channelIdentity?: ReengagementChannelIdentity;
 }
+
+export interface ScheduleInterviewSlotCheckInput {
+  sessionRef: SessionRef;
+  workOrderId: number;
+  /** 报名时间（海绵 signUpTime；拿不到时用解析时刻）：复核在其 3 天后触发。 */
+  signUpAt: number;
+  channelIdentity?: ReengagementChannelIdentity;
+}
+
+/** 等通知岗仍无面试时间的运营任务提醒时限。 */
+export const INTERVIEW_SLOT_CHECK_DELAY_MS = 3 * 24 * 60 * 60_000;
 
 /**
  * 复聊排程：锚点事件发生时排一个 Bull delayed job（不轮询全量会话）。
@@ -324,6 +340,55 @@ export class FollowUpSchedulerService {
       return { scheduled: true, fireAt, jobId };
     } catch (error) {
       this.logger.error(`[reengagement] 入职复核排程失败 jobId=${jobId}: ${toErrorMessage(error)}`);
+      return { scheduled: false, reason: 'enqueue_error', jobId };
+    }
+  }
+
+  /**
+   * 等通知岗报名满 3 天复核：稳定 jobId（同工单只排一次），到点由 processor 查实时工单，
+   * 仍无面试时间才给运营发协调任务提醒。不落 scheduled 追溯行（与入职复核同款：不是候选人触达）。
+   */
+  async scheduleInterviewSlotCheck(
+    input: ScheduleInterviewSlotCheckInput,
+  ): Promise<ScheduleFollowUpResult> {
+    if (!(await this.isEnabled())) return { scheduled: false, reason: 'disabled' };
+
+    const scenarioCode: FollowUpScenarioCode = 'interview_reminder';
+    const anchorEventId = `wo${input.workOrderId}:interview_slot_check`;
+    const jobId = this.buildJobId(input.sessionRef.sessionId, scenarioCode, anchorEventId);
+    try {
+      const existingJob = await this.queue.getJob(jobId).catch(() => null);
+      if (existingJob) return { scheduled: false, reason: 'duplicate_job', jobId };
+
+      const fireAt = input.signUpAt + INTERVIEW_SLOT_CHECK_DELAY_MS;
+      await this.queue.add(
+        REENGAGEMENT_JOB_NAME,
+        {
+          sessionRef: input.sessionRef,
+          scenarioCode,
+          anchorEventId,
+          anchorAt: input.signUpAt,
+          workOrderId: input.workOrderId,
+          interviewSlotCheck: true,
+          ...(input.channelIdentity ? { channelIdentity: input.channelIdentity } : {}),
+        },
+        {
+          jobId,
+          delay: Math.max(0, fireAt - Date.now()),
+          attempts: 2,
+          backoff: { type: 'fixed', delay: 30_000 },
+          removeOnComplete: { age: 7 * 24 * 60 * 60, count: 500 },
+          removeOnFail: { age: 7 * 24 * 60 * 60, count: 500 },
+        },
+      );
+      this.logger.log(
+        `[reengagement] 已排等通知岗面试时间复核 jobId=${jobId} fireAt=${new Date(fireAt).toISOString()}`,
+      );
+      return { scheduled: true, fireAt, jobId };
+    } catch (error) {
+      this.logger.error(
+        `[reengagement] 等通知岗面试时间复核排程失败 jobId=${jobId}: ${toErrorMessage(error)}`,
+      );
       return { scheduled: false, reason: 'enqueue_error', jobId };
     }
   }
