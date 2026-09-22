@@ -15,6 +15,7 @@ type JobListTestContext = ToolBuildContext & {
   lastJobListQuery?: ToolBuildContext['archive']['lastJobListQuery'];
   recentBrandPool?: string[];
   invitedGroups?: ToolBuildContext['archive']['invitedGroups'];
+  activeBookingJobIds?: number[];
   messages?: unknown[];
   currentUserMessage?: string;
   currentLaborFormIntent?: ToolBuildContext['turnInput']['currentLaborFormIntent'];
@@ -69,6 +70,9 @@ describe('buildJobListTool', () => {
           ? {}
           : { recentBrandPool: context.recentBrandPool }),
         ...(context.invitedGroups === undefined ? {} : { invitedGroups: context.invitedGroups }),
+        ...(context.activeBookingJobIds === undefined
+          ? {}
+          : { activeBookingJobIds: context.activeBookingJobIds }),
       },
       turnInput: {
         ...(context.messages === undefined ? {} : { messages: context.messages }),
@@ -794,6 +798,57 @@ describe('buildJobListTool', () => {
     expect(result.noMatchScript.nextAction).toBe('group_handoff_complete');
     expect(result.noMatchScript.candidateMessage).toContain('上海餐饮兼职群');
     expect(result._replyInstruction).toContain('不得继续查询、推荐岗位或询问其他区域');
+    expect(mockSpongeService.fetchJobs).not.toHaveBeenCalled();
+  });
+
+  it('按已预约岗位 ID 重查：豁免拉群后的查询闸、带 onlySignableJobs:false、结果标注且不进候选池', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJobData()], total: 1 });
+    const recordFetchedJobs = jest.fn();
+    const result = await executeTool(
+      {
+        ...mockContext,
+        invitedGroups: [
+          {
+            groupName: '上海餐饮兼职群',
+            city: '上海',
+            industry: '餐饮',
+            invitedAt: '2026-08-20T09:00:00.000Z',
+          },
+        ],
+        activeBookingJobIds: [528697],
+        isRecalledJobId: (jobId: number) => jobId === 528697,
+        currentUserMessage: '我约的那个岗位工资怎么算的',
+        recordFetchedJobs,
+      },
+      { ...defaultInput, jobIdList: [528697] },
+    );
+
+    expect(result.errorType).toBeUndefined();
+    expect(mockSpongeService.fetchJobs.mock.calls[0][0]).toEqual(
+      expect.objectContaining({ jobIdList: [528697], onlySignableJobs: false }),
+    );
+    expect(result.bookedJobLookupNote).toContain('不得据此推荐、不得再次报名');
+    expect(recordFetchedJobs).not.toHaveBeenCalled();
+  });
+
+  it('jobIdList 混入未预约岗位时不按已预约重查：仍走原闸门与默认 onlySignableJobs', async () => {
+    const result = await executeTool(
+      {
+        ...mockContext,
+        invitedGroups: [
+          {
+            groupName: '上海餐饮兼职群',
+            city: '上海',
+            industry: '餐饮',
+            invitedAt: '2026-08-20T09:00:00.000Z',
+          },
+        ],
+        activeBookingJobIds: [528697],
+        isRecalledJobId: (jobId: number) => jobId === 528697 || jobId === 1,
+      },
+      { ...defaultInput, jobIdList: [528697, 1] },
+    );
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_GROUP_HANDOFF_COMPLETE);
     expect(mockSpongeService.fetchJobs).not.toHaveBeenCalled();
   });
 

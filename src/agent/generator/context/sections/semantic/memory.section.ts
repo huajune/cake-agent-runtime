@@ -320,6 +320,30 @@ export function visibleBookingWorkOrders(
     .filter((ref) => typeof ref.workOrderId === 'number');
 }
 
+/**
+ * 焦点岗位兜底（J5/J6）：会话焦点为空、而本轮预约快照里恰有一张带岗位 ID 的可见工单时，
+ * 把该工单岗位视为合法焦点——候选人回头追问"我约的那个岗位"时，工具与出站守卫才有岗位 ID 可用。
+ * 多张工单时不猜（焦点仍为空，由模型按 [当前预约信息] 的岗位ID 按 jobIdList 重查）。
+ */
+export function bookingFocusJobFallback(
+  refs: readonly VisibleBookingWorkOrderRef[],
+): RecommendedJobSummary | null {
+  const withJob = refs.filter((ref) => ref.jobId != null);
+  if (withJob.length !== 1) return null;
+  const [ref] = withJob;
+  return {
+    jobId: ref.jobId as number,
+    brandName: ref.brandName ?? null,
+    jobName: ref.jobName ?? null,
+    storeName: null,
+    cityName: null,
+    regionName: null,
+    laborForm: null,
+    salaryDesc: null,
+    jobCategoryName: null,
+  };
+}
+
 /** 与 Prompt 可见性同门的预约岗位 provenance。 */
 export function visibleBookingJobIds(snapshot: BookingPromptSnapshot): number[] {
   return visibleBookingEntries(snapshot)

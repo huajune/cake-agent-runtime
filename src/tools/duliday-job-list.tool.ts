@@ -733,7 +733,13 @@ export function buildJobListTool(
           searchJobName,
           storeNameList,
         });
-        if (invitedGroup && !candidateGroundedPostInviteLookup) {
+        // 已预约岗位重查（J5/J6）：jobIdList 全部属于候选人已预约岗位（本轮预约快照）时，
+        // 豁免拉群后的查询闸，并带 onlySignableJobs:false 取回可能已停招的岗位详情；
+        // 结果只用于答疑，不进候选池、不得推荐或再次报名。
+        const bookedJobIds = context.archive.activeBookingJobIds ?? [];
+        const bookedJobLookup =
+          jobIdList.length > 0 && jobIdList.every((jobId) => bookedJobIds.includes(jobId));
+        if (invitedGroup && !candidateGroundedPostInviteLookup && !bookedJobLookup) {
           const noMatchScript = buildPostInviteClosureScript({
             groupName: invitedGroup.groupName,
             city: invitedGroup.city,
@@ -749,7 +755,9 @@ export function buildJobListTool(
         }
         if (invitedGroup) {
           logger.log(
-            `候选人原文已点名查询对象，放行群承接后的实时查询 (user=${context.session.userId})`,
+            bookedJobLookup
+              ? `按已预约岗位 ID 重查，放行群承接后的实时查询 (user=${context.session.userId}, jobIdList=[${jobIdList.join('、')}])`
+              : `候选人原文已点名查询对象，放行群承接后的实时查询 (user=${context.session.userId})`,
           );
         }
 
@@ -1028,6 +1036,8 @@ export function buildJobListTool(
           salaryPeriodNameList: settlementPeriodList.map((p) => p.trim()).filter(Boolean),
           location: effectiveLocation,
           options,
+          // 已预约岗位可能已停招：海绵默认 onlySignableJobs=true 会查空，答疑必须取回详情。
+          ...(bookedJobLookup ? { onlySignableJobs: false } : {}),
         };
         try {
           let storeMatchStrategy: 'api_exact' | 'local_fuzzy_match' = 'api_exact';
@@ -1894,6 +1904,10 @@ export function buildJobListTool(
           }
           // 观测自报口径：tool-call-analysis 优先读该字段推断 empty/narrow/ok
           result.resultCount = total;
+          if (bookedJobLookup) {
+            result.bookedJobLookupNote =
+              '以下为候选人已预约岗位的详情（含可能已停招的岗位），仅用于回答候选人对已约岗位的追问；不得据此推荐、不得再次报名，也不进入候选池。';
+          }
           const knownCityFactValue = readFactValue(context.archive.sessionFacts?.preferences?.city);
           const knownCityForConflict =
             typeof knownCityFactValue === 'string' ? knownCityFactValue : null;
@@ -2044,8 +2058,8 @@ export function buildJobListTool(
             searchJobName: searchJobName?.trim() || null,
           };
 
-          // 通知调用方已获取岗位数据
-          if (jobs.length > 0)
+          // 通知调用方已获取岗位数据（已预约岗位重查不进候选池：不得据此推荐或再次报名）
+          if (jobs.length > 0 && !bookedJobLookup)
             context.ledger.recordFetchedJobs(mapJobsToRecommendedSummaries(jobs));
 
           // job.recommended：候选人本轮被推过岗位 → 记一次。fire-and-forget。
