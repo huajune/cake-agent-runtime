@@ -1,6 +1,6 @@
 # 执行清单：PRD 本次迭代（2026-09-22 起）
 
-对应 [prd-ops-followup-2026-09.md](./prd-ops-followup-2026-09.md)。分支 `feat/ops-followup-0922`（独立 worktree，主目录留给其他会话）。
+对应 PRD `docs/todo/prd-ops-followup-2026-09.md`（2026-09-23 已删除，看 git 历史：`git show c0dbd9783:docs/todo/prd-ops-followup-2026-09.md`）。分支 `feat/ops-followup-0922`（独立 worktree，主目录留给其他会话）。
 状态：⬜ 未开始 / 🔧 进行中 / ✅ 已提交 / ⏸ 阻塞（写明原因）/ 🚫 本次不做。
 
 ## 波次 1（并行，文件集互不重叠）
