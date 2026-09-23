@@ -41,10 +41,13 @@ const PRIORITY_RANK: Record<InterventionTaskPriority, number> = {
   normal: 1,
 };
 
-/** 时限规则：固定上班分钟数，或 T3/T8 的「16:30 前取当天 18:30，否则次日 12:00」。 */
+/**
+ * 时限规则（所有任务日清）：固定上班分钟数（跨下班顺延），或「当日」= 起算点所在工作日 18:30
+ * （下班触发的起算点是下一个工作日 9:30，则为那天 18:30）。两者最终都不早于起算点 + 15 上班分钟。
+ */
 export type CategoryDeadlineRule =
   | { kind: 'working_minutes'; minutes: number }
-  | { kind: 'same_day_or_next_noon' };
+  | { kind: 'same_day' };
 
 export interface InterventionTaskCategoryMeta {
   code: InterventionTaskCategory;
@@ -60,15 +63,15 @@ export interface InterventionTaskCategoryMeta {
   owner: 'hosting_account' | 'supervisor' | 'configured';
 }
 
-const WORKDAY_MINUTES = 9 * 60;
+const SAME_DAY: CategoryDeadlineRule = { kind: 'same_day' };
 
-/** 飞书任务侧的大类规则（名称取自枚举，其余为本模块特有）。 */
+/** 飞书任务侧的大类规则（名称取自枚举，其余为本模块特有；时限见 CategoryDeadlineRule）。 */
 export const CATEGORY_META: Record<InterventionTaskCategory, InterventionTaskCategoryMeta> = {
   T1: {
     code: 'T1',
     label: HANDOFF_TASK_CATEGORY_META.T1.name,
     icon: '🚨',
-    deadline: { kind: 'working_minutes', minutes: 30 },
+    deadline: { kind: 'working_minutes', minutes: 15 },
     basePriority: 'urgent',
     interviewCapApplies: false,
     owner: 'hosting_account',
@@ -77,7 +80,7 @@ export const CATEGORY_META: Record<InterventionTaskCategory, InterventionTaskCat
     code: 'T2',
     label: HANDOFF_TASK_CATEGORY_META.T2.name,
     icon: '📅',
-    deadline: { kind: 'working_minutes', minutes: 120 },
+    deadline: { kind: 'working_minutes', minutes: 60 },
     basePriority: 'today',
     interviewCapApplies: true,
     owner: 'hosting_account',
@@ -86,7 +89,7 @@ export const CATEGORY_META: Record<InterventionTaskCategory, InterventionTaskCat
     code: 'T3',
     label: HANDOFF_TASK_CATEGORY_META.T3.name,
     icon: '🤝',
-    deadline: { kind: 'same_day_or_next_noon' },
+    deadline: SAME_DAY,
     basePriority: 'today',
     interviewCapApplies: false,
     owner: 'hosting_account',
@@ -95,7 +98,7 @@ export const CATEGORY_META: Record<InterventionTaskCategory, InterventionTaskCat
     code: 'T4',
     label: HANDOFF_TASK_CATEGORY_META.T4.name,
     icon: '💰',
-    deadline: { kind: 'working_minutes', minutes: WORKDAY_MINUTES },
+    deadline: SAME_DAY,
     basePriority: 'normal',
     interviewCapApplies: false,
     owner: 'configured',
@@ -104,7 +107,7 @@ export const CATEGORY_META: Record<InterventionTaskCategory, InterventionTaskCat
     code: 'T5',
     label: HANDOFF_TASK_CATEGORY_META.T5.name,
     icon: '📋',
-    deadline: { kind: 'working_minutes', minutes: 3 * WORKDAY_MINUTES },
+    deadline: SAME_DAY,
     basePriority: 'normal',
     interviewCapApplies: false,
     owner: 'configured',
@@ -122,7 +125,7 @@ export const CATEGORY_META: Record<InterventionTaskCategory, InterventionTaskCat
     code: 'T7',
     label: HANDOFF_TASK_CATEGORY_META.T7.name,
     icon: '⚠️',
-    deadline: { kind: 'working_minutes', minutes: 60 },
+    deadline: { kind: 'working_minutes', minutes: 30 },
     basePriority: 'urgent',
     interviewCapApplies: false,
     owner: 'supervisor',
@@ -131,7 +134,7 @@ export const CATEGORY_META: Record<InterventionTaskCategory, InterventionTaskCat
     code: 'T8',
     label: HANDOFF_TASK_CATEGORY_META.T8.name,
     icon: '📱',
-    deadline: { kind: 'same_day_or_next_noon' },
+    deadline: SAME_DAY,
     basePriority: 'today',
     interviewCapApplies: false,
     owner: 'configured',
@@ -140,7 +143,7 @@ export const CATEGORY_META: Record<InterventionTaskCategory, InterventionTaskCat
     code: 'UNCLASSIFIED',
     label: UNCLASSIFIED_LABEL,
     icon: '❓',
-    deadline: { kind: 'working_minutes', minutes: 120 },
+    deadline: SAME_DAY,
     basePriority: 'today',
     interviewCapApplies: false,
     owner: 'hosting_account',

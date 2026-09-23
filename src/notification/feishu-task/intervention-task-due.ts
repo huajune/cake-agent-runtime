@@ -3,16 +3,15 @@ import { CN_WORK_CALENDAR_2026, type WorkCalendar } from './cn-holidays-2026';
 import { CATEGORY_META, type InterventionTaskCategory } from './intervention-task-category';
 
 /**
- * 最晚跟进时间算法（PRD R6）。时限一律按运营上班时间计：工作日 9:30–18:30，
+ * 最晚跟进时间算法（PRD R6，所有任务日清）。时限一律按运营上班时间计：工作日 9:30–18:30，
  * 下班不计时，周末与法定节假日顺到下一个工作日；调休上班的周末算工作日。
- * 全部按 Asia/Shanghai 计算，与容器时区无关。
+ * 分钟档跨下班顺延；「当日」档 = 起算点所在工作日 18:30。两者最终都不早于起算点 + 15 上班分钟，
+ * 所以 18:20 触发的当日任务落到次日 9:45。全部按 Asia/Shanghai 计算，与容器时区无关。
  */
 
 const MINUTE_MS = 60 * 1000;
 export const WORKDAY_START_MINUTES = 9 * 60 + 30;
 export const WORKDAY_END_MINUTES = 18 * 60 + 30;
-const SAME_DAY_CUTOFF_MINUTES = 16 * 60 + 30;
-const NEXT_DAY_NOON_MINUTES = 12 * 60;
 const MIN_LEAD_MINUTES = 15;
 const INTERVIEW_CAP_LEAD_MINUTES = 60;
 const INTERVIEW_CAP_MIN_GAP_MINUTES = 30;
@@ -55,7 +54,7 @@ export function computeFollowUpDue(input: FollowUpDueInput): FollowUpDueResult {
   let dueAt =
     meta.deadline.kind === 'working_minutes'
       ? addWorkingMinutes(startAt, meta.deadline.minutes, calendar)
-      : resolveSameDayOrNextNoon(startAt, calendar);
+      : resolveSameDayEnd(startAt, calendar);
 
   let interviewImminent = false;
   const interviewAt = input.interviewAt ?? null;
@@ -140,12 +139,14 @@ export function addWorkingMinutes(start: Date, minutes: number, calendar: WorkCa
   return cursor;
 }
 
-/** T3/T8：起算点早于 16:30 取当天 18:30，否则次日 12:00。 */
-function resolveSameDayOrNextNoon(startAt: Date, calendar: WorkCalendar): Date {
-  const dayStart = getLocalDayStart(startAt);
-  if (localMinutesOfDay(startAt) < SAME_DAY_CUTOFF_MINUTES) {
-    return atLocalMinutes(dayStart, WORKDAY_END_MINUTES);
-  }
-  const nextStart = nextWorkdayStart(dayStart, calendar);
-  return atLocalMinutes(getLocalDayStart(nextStart), NEXT_DAY_NOON_MINUTES);
+/**
+ * 「当日」：起算点所在工作日的 18:30（起算点已保证落在工作日上班时段内）。
+ * 起算点晚于 18:15 时当天 18:30 已满足不了 +15 分钟下限，「当日」整体顺到下一个工作日：
+ * 取那天 9:30 + 15 分钟（如 18:20 触发 → 次日 9:45），而不是把剩余分钟跨夜续算。
+ */
+function resolveSameDayEnd(startAt: Date, calendar: WorkCalendar): Date {
+  const dayEnd = atLocalMinutes(getLocalDayStart(startAt), WORKDAY_END_MINUTES);
+  if (dayEnd.getTime() - startAt.getTime() >= MIN_LEAD_MINUTES * MINUTE_MS) return dayEnd;
+  const nextStart = nextWorkdayStart(getLocalDayStart(startAt), calendar);
+  return new Date(nextStart.getTime() + MIN_LEAD_MINUTES * MINUTE_MS);
 }

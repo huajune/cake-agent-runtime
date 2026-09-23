@@ -35,18 +35,14 @@ export const HANDOFF_TASK_CATEGORY_META: Record<
   HandoffTaskCategory,
   { name: string; sla: string; owner: string }
 > = {
-  T1: { name: '现场急件', sla: '30 分钟', owner: '托管账号对应运营' },
-  T2: { name: '预约协调', sla: '2 小时', owner: '托管账号对应运营' },
-  T3: {
-    name: '面试后跟进',
-    sla: '起算点早于 16:30 取当天 18:30，否则次日 12:00',
-    owner: '托管账号对应运营',
-  },
-  T4: { name: '薪资考勤个案', sla: '1 个工作日', owner: '运营或结算对接人' },
-  T5: { name: '岗位数据/口径缺口', sla: '3 个工作日', owner: '岗位数据维护人' },
+  T1: { name: '现场急件', sla: '15 分钟', owner: '托管账号对应运营' },
+  T2: { name: '预约协调', sla: '1 小时', owner: '托管账号对应运营' },
+  T3: { name: '面试后跟进', sla: '当日（起算日 18:30）', owner: '托管账号对应运营' },
+  T4: { name: '薪资考勤个案', sla: '当日（起算日 18:30）', owner: '运营或结算对接人' },
+  T5: { name: '岗位数据/口径缺口', sla: '当日（起算日 18:30）', owner: '岗位数据维护人' },
   T6: { name: '系统卡点', sla: '2 小时', owner: '托管账号对应运营（同时进研发缺陷池）' },
-  T7: { name: '风险与合规', sla: '1 小时', owner: '运营主管' },
-  T8: { name: '平台操作问题', sla: '同 T3', owner: '平台客服对接人' },
+  T7: { name: '风险与合规', sla: '30 分钟', owner: '运营主管' },
+  T8: { name: '平台操作问题', sla: '当日（起算日 18:30）', owner: '平台客服对接人' },
 };
 
 export interface HandoffReasonDefinition {
