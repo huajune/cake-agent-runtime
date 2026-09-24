@@ -10,9 +10,11 @@ describe('booking failure current-result-only contract', () => {
       'utf8',
     );
 
-    expect(candidatePrompt).toContain('回复必须在确认失败事实处结束');
-    expect(candidatePrompt).toContain('不得继续追问是否看其他岗位');
-    expect(candidatePrompt).toContain('承诺以后确认或登记');
-    expect(candidatePrompt).toContain('不得添加任何下一步建议');
+    expect(candidatePrompt).toContain(
+      '候选人报告报名失败但工具和权威历史没有原因时，只能确认失败事实',
+    );
+    expect(candidatePrompt).toContain('若候选人同时明确只要当前结果、不需要后续动作或再次提交');
+    expect(candidatePrompt).toContain('确认失败后立即结束');
+    expect(candidatePrompt).toContain('不追加问题、推荐、承诺或建议');
   });
 });

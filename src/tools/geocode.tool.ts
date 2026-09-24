@@ -58,13 +58,13 @@ const DESCRIPTION = `将地名或地址解析为标准化的省/市/区/镇层�
 
 ## 作用
 1. 补全行政区划：将模糊地名解析为完整的省/市/区/街道，用返回的 district 作为 duliday_job_list.regionNameList
-2. 获取经纬度：用返回的 latitude/longitude 组装 duliday_job_list.location；需要按 10km / 5km 等范围筛选时，把米数写入 location.range
+2. 获取经纬度：用返回的 latitude/longitude 组装 duliday_job_list.location；需要按指定范围筛选时，将范围换算成米写入 location.range
 
 ## 参数
-- address 必传；当你判断该地点是地铁站时，传"X站"/"X地铁站"而非裸路名——裸路名会被当成整条道路、坐标可能锚到远端
+- address 必传；当你判断该地点是地铁站时，保留站名后的车站或地铁站后缀，不要只传裸路名，以免坐标被定位到整条道路的远端
 - city 可选；按以下优先级判断要不要填：
   1. 候选人当前明示城市 / [本轮查询硬约束] 的城市 / [本轮解析线索] 的城市 / [会话记忆] 任一存在 → 直接填入（哪怕本工具的 address 是商圈/地标，也要带上这个已知城市）
-  2. 上面都没有，但你判断"地名→城市"是公认唯一对应（假设输入的映射示例："马陆"→上海、"光谷"→武汉、"漕宝路地铁站"→上海），且地名**不**命中下面的"通用后缀黑名单" → 允许凭通识填城市
+  2. 上面都没有，但你判断地名与城市存在公认的唯一对应关系，且地名**不**命中下面的"通用后缀黑名单" → 允许凭通识填城市
   3. 既无明示也无高置信通识，或地名命中黑名单 → city 留空（不传或传 null），由工具判定
 - 不要为了 city 反复反问候选人——拿不准就留空让工具自己处理
 
@@ -82,9 +82,9 @@ const DESCRIPTION = `将地名或地址解析为标准化的省/市/区/镇层�
 
 ## 返回三态
 - \`resolution=unique\` + 扁平 \`result\`：单城唯一命中，直接把 result 当结果用，组装 location 走 duliday_job_list
-  - **解析成功即城市已确认**：结果第一个字段 \`_cityConfirmed\` 已写明"已确认城市：XX"。**此后禁止再向候选人反问"你在哪个城市/你这边是哪儿"**，也禁止宣称"没找到这个位置"——应直接按已确认城市与坐标查岗。仅当结果带 \`_cityConflictNotice\`（本次解析城市与会话记忆城市冲突）时，按其指引向候选人做一句确认，**不得静默按新城市推进、也不得静默沿用旧城市**
+  - **解析成功即城市已确认**：结果第一个字段 \`_cityConfirmed\` 已写明"已确认城市：XX"。**此后禁止再向候选人询问已确认的城市**，也禁止宣称该位置未找到——应直接按已确认城市与坐标查岗。仅当结果带 \`_cityConflictNotice\`（本次解析城市与会话记忆城市冲突）时，按其指引向候选人做一句确认，**不得静默按新城市推进、也不得静默沿用旧城市**
   - \`result.areaLevelQuery=true\` 表示查询词只是区/市级行政区名，坐标是**行政区代表点**而非候选人真实位置：仍可据此查岗，但据此算出的门店距离只能按"约 X 公里（按 XX 估算）"的估算口径表述（岗位工具结果会自动带估算标记），或先追问候选人具体位置/商圈/定位
-- \`resolution=ambiguous\` + \`candidates\`：多城市同名，**禁止默认选第一个**；按 candidates 里的 city 清单反问候选人"是 A 的 X 还是 B 的 X"，候选人选定后带上 city 重调本工具
+- \`resolution=ambiguous\` + \`candidates\`：多城市同名，**禁止默认选第一个**；列出 candidates 中实际返回的城市，请候选人选择，选定后带上 city 重调本工具
 - \`errorType\`：按各错误类型的 \`_replyInstruction\` 行事
 
 ## 边界
@@ -92,7 +92,7 @@ const DESCRIPTION = `将地名或地址解析为标准化的省/市/区/镇层�
 - 学校 / 校区 / 学院 / 小学部 / 附小 等地点名只是位置线索，不得据此推断候选人学历
 
 ## 空头承诺禁忌
-- 未拿到经纬度前，不得说"我看了下附近 X 店"或复述历史门店事实；位置确认前只能说"我先帮你查一下附近的"`;
+- 未拿到经纬度前，不得声称已查到附近门店或复述历史门店事实；位置确认前只能说明准备查询附近岗位`;
 
 const inputSchema = z.object({
   address: z.string().describe('待解析的地名或地址文本，可包含行政区、商圈、地标、街道或具体站名'),
@@ -191,10 +191,7 @@ function buildSessionCityConflictNotice(
   if (!isRecognizedCityName(sessionCity)) return null;
   return (
     `⚠️ 本次解析城市（${c.city}）与会话记忆中的意向城市（${sessionCityRaw}）不一致。` +
-    '禁止静默按新城市推进，也禁止静默沿用旧城市：先向候选人用一句话确认以哪个城市为准' +
-    '（如"你现在是在' +
-    c.city +
-    '这边找工作吗"），确认后再据此查岗。'
+    '禁止静默按新城市推进，也禁止静默沿用旧城市：先向候选人用一句话确认以哪个城市为准，确认后再据此查岗。'
   );
 }
 
@@ -433,7 +430,7 @@ export function buildGeocodeTool(geocodingService: GeocodingService): ToolBuilde
             errorType: TOOL_ERROR_TYPES.GEOCODE_AMBIGUOUS_SUFFIX,
             replyInstruction:
               '该地名属于跨城同名的通用后缀（万达广场/天街/火车站/购物中心 等），' +
-              '禁止凭通识默认任一城市。先中性反问候选人所在城市（"你这边主要在哪个城市呀"），' +
+              '禁止凭通识默认任一城市。先中性询问候选人所在城市，' +
               '反问不得带具体城市名；候选人答完后带上 city 重新调用本工具。',
             details: { address: trimmedAddress },
           });
@@ -530,7 +527,7 @@ export function buildGeocodeTool(geocodingService: GeocodingService): ToolBuilde
                   replyInstruction:
                     '候选人报的区名在多个城市同名，未带城市时本次解析可能落到错误城市，' +
                     '禁止采用本次坐标、也禁止据此判定"该城市无岗/无群"后收口。' +
-                    '先中性反问候选人所在城市（"你这边主要在哪个城市呀"，不得带具体城市名），' +
+                    '先中性询问候选人所在城市，不得带具体城市名，' +
                     '拿到城市后带 city 参数重新调用本工具。',
                   details: {
                     address: trimmedAddress,

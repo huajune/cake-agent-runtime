@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { Injectable, Logger, type OnApplicationBootstrap } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ModuleRef } from '@nestjs/core';
@@ -6,7 +6,6 @@ import { AlertLevel } from '@enums/alert.enum';
 import { HostingMemberConfigService } from '@biz/hosting-config/services/hosting-member-config.service';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 import type { InterventionPayload } from '@biz/intervention/intervention.service';
-import { RedisService } from '@infra/redis/redis.service';
 import { formatLocalMinute, parseLocalDateTime } from '@infra/utils/date.util';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { LongTermService } from '@memory/long-term/long-term.service';
@@ -20,8 +19,6 @@ import type { FeishuTaskCustomFieldValue, FeishuTaskMember } from './feishu-task
 import {
   CATEGORY_META,
   PRIORITY_LABELS,
-  maxPriority,
-  parsePriority,
   resolveBasePriority,
   resolveReasonCodeLabel,
   resolveTaskCategory,
@@ -30,13 +27,7 @@ import {
   type InterventionTaskPriority,
 } from './intervention-task-category';
 import { resolveOptionColorIndex } from './intervention-task-colors';
-import {
-  COMMENT_MAX_LENGTH,
-  buildTaskDescription,
-  redactSensitiveNumbers,
-  shouldOmitTranscript,
-  truncateText,
-} from './intervention-task-description';
+import { buildTaskDescription } from './intervention-task-description';
 import { computeFollowUpDue } from './intervention-task-due';
 
 /** system_config 运行时开关键；默认关。 */
@@ -77,57 +68,33 @@ interface OwnerConfig {
   default?: string[];
 }
 
-interface MergeRecord {
-  taskGuid: string;
-  firstTriggeredAt: string;
-  count: number;
-  priority: InterventionTaskPriority;
-  /** 首次建任务的标题主体（不含次数后缀）；岗位级合并（T5）沿用它，不随后来候选人换人。 */
-  title?: string;
-}
-
 interface TaskDraft {
+  chatId: string;
   category: InterventionTaskCategory;
   categoryLabel: string;
-  reasonCode: string | null;
   reasonCodeLabel: string;
-  reason: string;
   priority: InterventionTaskPriority;
   title: string;
   description: string;
   dueAt: Date;
   triggeredAt: Date;
-  interviewImminent: boolean;
   nickname: string | null;
   candidateName: string | null;
   candidatePhone: string | null;
   hostingAccountName: string | null;
   workOrderId: number | null;
-  jobId: number | null;
-  brandStore: string | null;
   interviewTimeText: string | null;
-  lastCandidateMessage: string;
   members: FeishuTaskMember[];
-  mergeKey: string;
   clientToken: string;
 }
 
 const TEST_CORP_IDS = new Set(['test', 'debug']);
 const TEST_SESSION_PREFIXES = ['test-', 'p1-fixed-', 'p2-fixed-', 'p3-fixed-'];
-const MERGE_TTL_SECONDS = 7 * 24 * 60 * 60;
-const MERGE_KEY_PREFIX = 'feishu-task:intervention:v1';
 const RUNTIME_CONFIG_TTL_MS = 30 * 1000;
 /** active_booking 无指针时回落海绵查工单的硬超时；提交路径不能被海绵慢查询拖住。 */
 const SPONGE_FALLBACK_TIMEOUT_MS = 5_000;
 const TITLE_FALLBACK_NICKNAME = '候选人';
 const TITLE_IMMINENT_SUFFIX = '面试将至';
-const TITLE_COUNT_SUFFIX_PATTERN = /（第 \d+ 次）$/;
-
-/** 合并时的标题尾缀：先去掉旧的「（第 N 次）」再按当前次数追加（首次不加）。 */
-function withCountSuffix(title: string, count: number): string {
-  const base = title.replace(TITLE_COUNT_SUFFIX_PATTERN, '');
-  return count > 1 ? `${base}（第 ${count} 次）` : base;
-}
 
 /** 「品牌-门店/项目」拼装；两段都空时返回 null。 */
 function joinBrandStore(
@@ -140,9 +107,9 @@ function joinBrandStore(
 /**
  * 人工介入 → 飞书任务（G2 + G3）。
  *
- * 输入一次介入 payload，输出：按 PRD R6 表头组装任务、按上班时间算最晚跟进时间、
- * 合并键（会话 + 大类，T5 按岗位）命中时追加评论并刷新 due / 优先级 / 标题前缀。
- * 任务数据不落库，只留 Redis 合并键（7 天）。任何失败只记日志 + 飞书告警，不抛给调用方。
+ * 每次介入提交独立新建任务，按表头组装本次上下文、按上班时间算最晚跟进时间。
+ * 不按会话、岗位或时间窗口合并。创建标识仅用于同一次 HTTP 请求重试的幂等保护。
+ * 任何失败只记日志 + 飞书告警，不抛给调用方。
  */
 @Injectable()
 export class InterventionTaskService implements OnApplicationBootstrap {
@@ -157,7 +124,6 @@ export class InterventionTaskService implements OnApplicationBootstrap {
 
   constructor(
     private readonly client: FeishuTaskClient,
-    private readonly redisService: RedisService,
     private readonly configService: ConfigService,
     private readonly systemConfigService: SystemConfigService,
     private readonly hostingMemberConfig: HostingMemberConfigService,
@@ -193,8 +159,6 @@ export class InterventionTaskService implements OnApplicationBootstrap {
       if (this.isTestSession(payload.corpId, payload.chatId)) return;
       if (!(await this.isEnabled())) return;
       const draft = await this.buildDraft(payload);
-      const existing = await this.readMergeRecord(draft.mergeKey);
-      if (existing && (await this.mergeIntoExisting(existing, draft))) return;
       await this.createNewTask(draft);
     } catch (error) {
       this.logger.warn(
@@ -306,45 +270,32 @@ export class InterventionTaskService implements OnApplicationBootstrap {
     });
 
     const members = await this.resolveMembers(category, payload.botImId);
-    const mergeKey =
-      category === 'T5' && jobId != null
-        ? `${MERGE_KEY_PREFIX}:job:${jobId}:T5`
-        : `${MERGE_KEY_PREFIX}:chat:${payload.chatId}:${category}`;
-    const minuteBucket = Math.floor(triggeredAt.getTime() / 60_000);
-    const clientToken = createHash('sha1')
-      .update(`${payload.chatId}|${category}|${reasonCode ?? ''}|${minuteBucket}`)
-      .digest('hex');
 
     return {
+      chatId: payload.chatId,
       category,
       categoryLabel,
-      reasonCode,
       reasonCodeLabel,
-      reason,
       priority,
       title,
       description,
       dueAt: due.dueAt,
       triggeredAt,
-      interviewImminent: due.interviewImminent,
       nickname,
       candidateName,
       candidatePhone,
       hostingAccountName,
       workOrderId: workOrderId ?? booking?.work_order_id ?? null,
-      jobId,
-      brandStore,
       interviewTimeText,
-      lastCandidateMessage,
       members,
-      mergeKey,
-      clientToken,
+      // 每次提交独立；FeishuTaskClient 的网络重试复用同一个标识和请求体。
+      clientToken: randomUUID(),
     };
   }
 
   /**
    * 标题：「{昵称或"候选人"} · {原因码中文标签}」，面试临近时加「 · 面试将至」；
-   * 合并时由 withCountSuffix 追加「（第 N 次）」。演示前缀由脚本加，不在这里做。
+   * 演示前缀由脚本加，不在这里做。
    */
   private buildTitle(params: {
     nickname: string | null;
@@ -364,11 +315,7 @@ export class InterventionTaskService implements OnApplicationBootstrap {
    * 组装自定义字段值。字段名在清单里查不到（运营手动删了列）时静默跳过该字段，
    * 不报错、不告警——表头以飞书里的实际列为准。
    */
-  private async buildCustomFields(
-    draft: TaskDraft,
-    count: number,
-    scope: 'create' | 'update',
-  ): Promise<FeishuTaskCustomFieldValue[]> {
+  private async buildCustomFields(draft: TaskDraft): Promise<FeishuTaskCustomFieldValue[]> {
     const values: FeishuTaskCustomFieldValue[] = [];
     const push = (value: FeishuTaskCustomFieldValue | null) => {
       if (value) values.push(value);
@@ -397,9 +344,9 @@ export class InterventionTaskService implements OnApplicationBootstrap {
     };
 
     await select('priority', PRIORITY_LABELS[draft.priority]);
-    await number('interventionCount', count);
+    // 兼容现有清单字段：每条任务只承载本次介入，不再累计合并次数。
+    await number('interventionCount', 1);
     await text('interviewTime', draft.interviewTimeText);
-    if (scope === 'update') return values;
 
     await text('nickname', draft.nickname);
     await text('name', draft.candidateName);
@@ -411,10 +358,10 @@ export class InterventionTaskService implements OnApplicationBootstrap {
     return values;
   }
 
-  // ==================== 创建 / 合并 ====================
+  // ==================== 创建 ====================
 
   private async createNewTask(draft: TaskDraft): Promise<void> {
-    const customFields = await this.buildCustomFields(draft, 1, 'create');
+    const customFields = await this.buildCustomFields(draft);
     const sectionGuid = await this.client.resolveSectionGuid(
       this.tasklistGuid,
       sectionNameOf(draft.category),
@@ -433,7 +380,7 @@ export class InterventionTaskService implements OnApplicationBootstrap {
     if (!task) {
       await this.alertFailure(
         'createTask',
-        draft.mergeKey,
+        draft.chatId,
         '飞书任务创建失败（详见日志）',
         draft.nickname,
       );
@@ -441,73 +388,12 @@ export class InterventionTaskService implements OnApplicationBootstrap {
     }
     if (draft.members.length === 0) {
       this.logger.warn(
-        `[FeishuTask] 任务无负责人（托管账号未配置飞书接收人且无默认负责人）: guid=${task.guid}, key=${draft.mergeKey}`,
+        `[FeishuTask] 任务无负责人（托管账号未配置飞书接收人且无默认负责人）: guid=${task.guid}, chatId=${draft.chatId}`,
       );
     }
-    await this.writeMergeRecord(draft.mergeKey, {
-      taskGuid: task.guid,
-      firstTriggeredAt: draft.triggeredAt.toISOString(),
-      count: 1,
-      priority: draft.priority,
-      title: draft.title,
-    });
     this.logger.log(
-      `[FeishuTask] 已建任务: guid=${task.guid} category=${draft.category} priority=${draft.priority} due=${formatLocalMinute(draft.dueAt)} key=${draft.mergeKey}`,
+      `[FeishuTask] 已建任务: guid=${task.guid} category=${draft.category} priority=${draft.priority} due=${formatLocalMinute(draft.dueAt)} chatId=${draft.chatId}`,
     );
-  }
-
-  /**
-   * 合并命中：追加评论 + 刷新 due / 优先级 / 次数后缀；开始时间保持首次触发时刻不动。
-   * 岗位级合并（T5 按 jobId 挂）沿用首次建任务的标题主体——同一岗位口径缺口被多个候选人
-   * 触发时标题不能跟着换人，后来者只进评论。会话级合并仍按本次原因刷新标题。
-   * 任务已不存在时返回 false 走新建。
-   */
-  private async mergeIntoExisting(existing: MergeRecord, draft: TaskDraft): Promise<boolean> {
-    const count = existing.count + 1;
-    const priority = maxPriority(existing.priority, draft.priority);
-    const baseTitle = draft.category === 'T5' ? (existing.title ?? draft.title) : draft.title;
-    const merged: TaskDraft = { ...draft, priority, title: withCountSuffix(baseTitle, count) };
-    const customFields = await this.buildCustomFields(merged, count, 'update');
-    const updated = await this.client.updateTask(existing.taskGuid, {
-      summary: merged.title,
-      dueAt: draft.dueAt,
-      customFields,
-    });
-    if (!updated) {
-      this.logger.warn(
-        `[FeishuTask] 合并更新失败，改为新建: guid=${existing.taskGuid} key=${draft.mergeKey}`,
-      );
-      return false;
-    }
-    await this.client.addComment(existing.taskGuid, this.buildMergeComment(draft, count));
-    await this.writeMergeRecord(draft.mergeKey, {
-      taskGuid: existing.taskGuid,
-      firstTriggeredAt: existing.firstTriggeredAt,
-      count,
-      priority,
-      title: baseTitle,
-    });
-    this.logger.log(
-      `[FeishuTask] 已合并到既有任务: guid=${existing.taskGuid} count=${count} priority=${priority} due=${formatLocalMinute(draft.dueAt)}`,
-    );
-    return true;
-  }
-
-  private buildMergeComment(draft: TaskDraft, count: number): string {
-    const omit = shouldOmitTranscript({
-      category: draft.category,
-      texts: [draft.reason, draft.lastCandidateMessage],
-    });
-    const lines = [
-      `第 ${count} 次介入 · ${formatLocalMinute(draft.triggeredAt)}`,
-      `原因码：${draft.reasonCodeLabel}`,
-      `原因：${redactSensitiveNumbers(truncateText(draft.reason, 300), draft.candidatePhone)}`,
-      omit
-        ? '候选人最后一句：涉及敏感内容，详见企微会话'
-        : `候选人最后一句：${redactSensitiveNumbers(truncateText(draft.lastCandidateMessage || '-', 150), draft.candidatePhone)}`,
-      `最晚跟进时间已刷新为 ${formatLocalMinute(draft.dueAt)}`,
-    ];
-    return truncateText(lines.join('\n'), COMMENT_MAX_LENGTH);
   }
 
   // ==================== 解析 ====================
@@ -599,38 +485,6 @@ export class InterventionTaskService implements OnApplicationBootstrap {
     } catch (error) {
       this.logger.warn(`[FeishuTask] 解析托管账号飞书接收人失败: ${toErrorMessage(error)}`);
       return null;
-    }
-  }
-
-  // ==================== Redis 合并键 ====================
-
-  private async readMergeRecord(key: string): Promise<MergeRecord | null> {
-    try {
-      const raw = await this.redisService.get<Partial<MergeRecord> | null>(key);
-      if (!raw || typeof raw !== 'object' || typeof raw.taskGuid !== 'string') return null;
-      return {
-        taskGuid: raw.taskGuid,
-        firstTriggeredAt:
-          typeof raw.firstTriggeredAt === 'string'
-            ? raw.firstTriggeredAt
-            : new Date().toISOString(),
-        count: typeof raw.count === 'number' && raw.count > 0 ? raw.count : 1,
-        priority: parsePriority(raw.priority) ?? 'normal',
-        ...(typeof raw.title === 'string' && raw.title.trim() ? { title: raw.title } : {}),
-      };
-    } catch (error) {
-      this.logger.warn(
-        `[FeishuTask] 读取合并键失败，按新建处理: key=${key} error=${toErrorMessage(error)}`,
-      );
-      return null;
-    }
-  }
-
-  private async writeMergeRecord(key: string, record: MergeRecord): Promise<void> {
-    try {
-      await this.redisService.setex(key, MERGE_TTL_SECONDS, record);
-    } catch (error) {
-      this.logger.warn(`[FeishuTask] 写入合并键失败: key=${key} error=${toErrorMessage(error)}`);
     }
   }
 

@@ -233,7 +233,7 @@ describe('resolveTurnContext', () => {
         });
 
         expect(guards.join('\n')).not.toContain(POST_INTERVIEW_GUARD);
-        expect(guards.join('\n')).not.toContain('本轮涉及“健康证”和“专业筛选”');
+        expect(guards.join('\n')).not.toContain('本轮涉及健康证和专业筛选');
       });
 
       it('ignores quoted cards and location-share POI names', () => {
@@ -253,7 +253,7 @@ describe('resolveTurnContext', () => {
         normalizedMessages: [{ role: 'assistant', content: '这家对专业有要求，暂时不匹配哈' }],
       });
 
-      expect(guards.join('\n')).toContain('本轮涉及“健康证”和“专业筛选”');
+      expect(guards.join('\n')).toContain('本轮涉及健康证和专业筛选');
     });
 
     it('triggers it on a result inquiry even without prior post-interview words (chat 6a9f7db6)', () => {

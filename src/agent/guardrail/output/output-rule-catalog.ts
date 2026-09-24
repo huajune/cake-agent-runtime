@@ -278,7 +278,7 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     verification: 'tests/agent/guardrail/output/rules/hard-rules.restored-sentinels.spec.ts',
     feedbackToGenerator:
       '上一版回复出现"转人工/人工客服/真人经理/专人联系"类表述，与"候选人看到的这个账号就是你本人"的身份设定冲突，当前文本不可发送。' +
-      '只把露馅措辞改成人设内口径（如"我帮你问下同事""让负责的同事联系你"），其余内容原样保留，不要改变承诺的事实和后续动作。',
+      '只把露馅措辞改为本人或同事协作的表述，其余内容原样保留，不要改变承诺的事实和后续动作。',
   },
   {
     id: 'booking_done_claim_without_submission',
@@ -313,7 +313,7 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     verification: 'tests/agent/guardrail/output/rules/booking-claim-reconciliation.rule.spec.ts',
     feedbackToGenerator:
       '上一版回复宣称已帮候选人报好名/预约成功，但预约从未提交（本轮无 booking，候选人名下也没有工单）。' +
-      '改成如实说明当前进度（资料已收/还差什么/这就提交），需要提交就本轮调用 duliday_interview_booking，' +
+      '改成如实说明当前收资和提交进度，需要提交就本轮调用 duliday_interview_booking，' +
       '不得用完成时态宣称未发生的预约。',
   },
   {
@@ -328,8 +328,8 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     residualRisk: '"刚才/之前查的"回指历史不判；将来时"我帮你查下"不在口径内。',
     verification: 'tests/agent/guardrail/output/rules/job-fact-reconciliation.rule.spec.ts',
     feedbackToGenerator:
-      '上一版回复说"帮你查了/没查到"，但本轮没有调用任何查岗工具。要么本轮真的调用 duliday_job_list 后再答，' +
-      '要么只基于已展示过的岗位如实表述，不得使用"查了/没查到/系统里没有"这类宣称本轮查询过的说法。',
+      '上一版回复宣称本轮查询过岗位，但本轮没有调用任何查岗工具。要么本轮真的调用 duliday_job_list 后再答，' +
+      '要么只基于已展示过的岗位如实表述，不得宣称本轮执行过查询或据此给出无岗结论。',
   },
   {
     id: 'job_fact_without_provenance',

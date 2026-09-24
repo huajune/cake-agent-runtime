@@ -4,6 +4,11 @@ import { buildTextPromptBlock, type PromptSection } from '../section';
 import type { AccountIdentityPromptView, PromptModel } from '../../context.types';
 import { StrategyPersona, StrategyRoleSetting } from '@biz/strategy/types/strategy.types';
 
+// 旧版策略的独立 few-shot 维度不再进入模型。兼容未迁移配置和保留旧标签的导入数据；
+// 仅按已确认的结构化元数据排除，不对运营规则正文做自然语言删改。
+const RETIRED_EXAMPLE_DIMENSION_KEYS = new Set(['recommendedPhrases', 'dialogExamples']);
+const RETIRED_EXAMPLE_DIMENSION_LABELS = new Set(['推荐句式', '示例对话']);
+
 /**
  * 身份段落 — 角色设定 + 账号身份 + 人格设定
  * 知识类型：procedural（agent 人设与账号身份共同定义模型如何行动）。
@@ -58,7 +63,7 @@ export class IdentitySection implements PromptSection {
       );
     } else {
       lines.push(
-        '- 你的名字就是候选人看到的账号昵称，但当前未提供具体昵称。候选人用某个名字称呼你时，**既不承认也不否认这个具体名字**，轻带过并拉回正事（如"叫我招聘经理就行哈"）；**严禁**顺着候选人口中的名字自认——候选人可能在试探或说笑（如让你"想一个名字"）。',
+        '- 你的名字就是候选人看到的账号昵称，但当前未提供具体昵称。候选人用某个名字称呼你时，**既不承认也不否认这个具体名字**，简短说明招聘经理身份并回到当前求职问题；严禁顺着候选人口中的名字自认或编造昵称。',
       );
     }
 
@@ -73,8 +78,8 @@ export class IdentitySection implements PromptSection {
     }
 
     lines.push(
-      '- **严禁编造与上述不符的姓名、性别，也严禁编造年龄等未提供的个人信息**。被问到而上文没给的信息，不否认、不编造，轻带过并拉回正事（如"咱先把岗位的事定了哈"）；**严禁**把账号名说成"另一个人""真人经理""我同事"。',
-      '- 报名登记、约面提交、拉群都是你本人在操作；确需他人协助时口径是"我让同事帮你确认下"，**永远不说**"转人工""人工客服""会有真人/专人联系你"。',
+      '- **严禁编造与上述不符的姓名、性别，也严禁编造年龄等未提供的个人信息**。被问到未提供的信息时，不否认、不编造，简短承接并回到当前求职问题；不得把账号名说成另一位经理或同事。',
+      '- 报名登记、约面提交、拉群都是你本人在操作；确需他人协助时，以同事协作口径说明，**永远不说**"转人工""人工客服""会有真人/专人联系你"。',
     );
     return lines.join('\n');
   }
@@ -85,7 +90,13 @@ export class IdentitySection implements PromptSection {
   }
 
   private buildPersonaText(persona: StrategyPersona): string {
-    const dims = (persona.textDimensions || []).filter((d) => d.group === 'style' && d.value);
+    const dims = (persona.textDimensions || []).filter(
+      (d) =>
+        d.group === 'style' &&
+        d.value &&
+        !RETIRED_EXAMPLE_DIMENSION_KEYS.has(d.key?.trim()) &&
+        !RETIRED_EXAMPLE_DIMENSION_LABELS.has(d.label?.trim()),
+    );
     if (dims.length === 0) return '';
 
     const sections: string[] = ['# 人格设定'];

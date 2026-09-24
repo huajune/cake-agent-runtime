@@ -76,7 +76,6 @@ export interface BookingEvidence {
   outcome?: string;
   /** 命中在途工单查重：预约已存在、本轮未重复提交（不是失败）。 */
   alreadyBooked?: boolean;
-  existingWorkOrderId?: number | string;
   existingInterviewTimeHuman?: string;
   confirmedInterviewTimeHuman?: string;
   onSiteScript?: string;

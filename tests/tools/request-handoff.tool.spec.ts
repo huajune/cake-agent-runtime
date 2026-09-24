@@ -215,7 +215,7 @@ describe('buildRequestHandoffTool', () => {
       expect(tool.description).toContain('走 interview_slot_coordination');
       // 场景 12 改为岗位级口径；个案式问法归 personal_pay_attendance
       expect(tool.description).not.toContain('几号发几月工资');
-      expect(tool.description).toContain('我 X 月工资到了没');
+      expect(tool.description).toContain('包括工资到账、工时核对、补卡');
       expect(tool.description).toContain('残障披露不用此码');
     });
   });

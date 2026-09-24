@@ -151,6 +151,17 @@ describe('ContextService', () => {
     await service.onModuleInit();
   });
 
+  it('assembles empty-memory greetings without retired examples or maintenance incidents', () => {
+    const result = compose({
+      currentUserMessage: '我通过了你的联系人验证请求，现在我们可以开始聊天了',
+    });
+    const text = result.promptBlocks.map((block) => block.content).join('\n');
+    expect(text).not.toMatch(/测试娟|粪叉|长泰广场|九方那边|badcase|<!--/u);
+    expect(text).toContain('候选人事实只能来自其真实输入');
+    expect(text).toContain('booking 成功前不得声称已登记');
+    expect(text).toContain('M Stand'); // 当前默认咖啡品牌属于业务规则，不能当示例删除。
+  });
+
   it('registers a corpus domain for every production leaf section and composes every scenario', async () => {
     const productionLeafDomains = {
       identity: 'teaching',
@@ -300,7 +311,7 @@ describe('ContextService', () => {
     // 手册 F10 教侧仍在（2026-08-21 P3-2 首批：删与守卫完全同构的复核条目）
     expect(prompt).not.toContain('这就帮你登记');
     expect(prompt).not.toContain('nextAction 不是 ready_to_book');
-    expect(prompt).toContain('booking 成功前不说已登记');
+    expect(prompt).toContain('booking 成功前不得声称已登记');
     // 11 班次硬约束 — 已下沉到 strategy_config.red_lines（运营可配），主 prompt 不再固化
     expect(prompt).not.toContain('候选人已明确表达时段/班次硬约束');
     // 13 多岗位分段输出 — 已下沉到 duliday_job_list 工具描述（## 回复展示要求），主 prompt 不再固化

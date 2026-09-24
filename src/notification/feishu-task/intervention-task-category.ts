@@ -36,12 +36,6 @@ export const PRIORITY_LABELS: Record<InterventionTaskPriority, string> = {
   normal: '常规',
 };
 
-const PRIORITY_RANK: Record<InterventionTaskPriority, number> = {
-  urgent: 3,
-  today: 2,
-  normal: 1,
-};
-
 /**
  * 时限规则（所有任务日清）：固定上班分钟数（跨下班顺延），或「当日」= 起算点所在工作日 18:30
  * （下班触发的起算点是下一个工作日 9:30，则为那天 18:30）。两者最终都不早于起算点 + 15 上班分钟。
@@ -193,15 +187,4 @@ export function resolveBasePriority(params: {
 }): InterventionTaskPriority {
   if (isUrgentHandoff(params.reasonCode, params.reasonText)) return 'urgent';
   return CATEGORY_META[params.category].basePriority;
-}
-
-export function maxPriority(
-  a: InterventionTaskPriority,
-  b: InterventionTaskPriority,
-): InterventionTaskPriority {
-  return PRIORITY_RANK[a] >= PRIORITY_RANK[b] ? a : b;
-}
-
-export function parsePriority(value: unknown): InterventionTaskPriority | null {
-  return value === 'urgent' || value === 'today' || value === 'normal' ? value : null;
 }
