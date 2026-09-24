@@ -904,14 +904,21 @@ export function buildJobListTool(
         // 岗位整批剔除并让 Agent 念"排班对不上"；收资表单里的"周末两天都在接受门店排班"
         // 是可用性不是排他性，模型误读一次就够候选人流失（chat 6ab26452ce406a6aeea65fce）。
         // 判据复用规则轨，不新增班次正则、不改早/中/晚班判定语义。
-        const candidateProvenanceTexts = context.turnInput.corpusBlocks
-          ? extractCandidateTextsFromCorpus(context.turnInput.corpusBlocks, {
-              visualSheetsByContent: context.turnInput.visualSheetsByContent,
-            })
-          : null;
+        // 绝大多数查询不带排他性班次字段，语料抽取按需求值一次即可。
+        let provenanceTextsCache: string[] | null | undefined;
+        const candidateProvenanceTexts = (): string[] | null => {
+          if (provenanceTextsCache === undefined) {
+            provenanceTextsCache = context.turnInput.corpusBlocks
+              ? extractCandidateTextsFromCorpus(context.turnInput.corpusBlocks, {
+                  visualSheetsByContent: context.turnInput.visualSheetsByContent,
+                })
+              : null;
+          }
+          return provenanceTextsCache;
+        };
         const unsupportedModelShiftFields = findUnsupportedExclusiveShiftFields(
           candidateScheduleConstraint,
-          candidateProvenanceTexts,
+          candidateScheduleConstraint ? candidateProvenanceTexts() : null,
         );
         if (unsupportedModelShiftFields.length > 0) {
           const label = formatExclusiveShiftFields(unsupportedModelShiftFields);
@@ -971,7 +978,7 @@ export function buildJobListTool(
             // 字段（模型没主张，报错无从修复），不阻断查询。
             const unsupportedPersistedFields = findUnsupportedExclusiveShiftFields(
               merged,
-              candidateProvenanceTexts,
+              candidateProvenanceTexts(),
             );
             if (unsupportedPersistedFields.length > 0) {
               logger.warn(
