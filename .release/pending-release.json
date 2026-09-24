@@ -1,9 +1,33 @@
 {
   "baseVersion": "11.11.1",
-  "nextVersion": "11.11.1",
-  "updatedAt": "2026-09-18",
+  "nextVersion": "11.11.2",
+  "updatedAt": "2026-09-24",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "1336",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1336",
+      "title": "weekly-judge-calibration 2026-09-22 结论落账",
+      "author": "huajune",
+      "mergedAt": "2026-09-24",
+      "businessUpdates": [
+        "weekly-judge-calibration 2026-09-22 结论落账"
+      ],
+      "summary": [
+        "weekly-judge-calibration 2026-09-22 结论落账"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "weekly-judge-calibration 2026-09-22 结论落账"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [],
+      "level": "patch"
+    }
+  ],
   "lastRelease": {
     "version": "11.11.1",
     "date": "2026-09-18",
@@ -85,5 +109,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "dbd18e3bca623b6f7dcf1b6bf1c9f0ccae7996a9"
+  "lastAnalyzedSha": "80e4eff113c6e9064195d849508f30d4cde40210"
 }
