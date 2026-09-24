@@ -541,7 +541,7 @@ FC 编号保留为历史别名：
 | `invite_to_group` DESCRIPTION / inputSchema | 删除具体品牌行业举例和模拟 `城市: … / 区域: …` 记忆格式；改为餐饮/零售品牌或岗位，以及取城市字段、不取区域字段 | 行业枚举和城市级参数契约保持原义 |
 | `save_image_description` DESCRIPTION；`channels/wecom/message/application/image-description.service.ts` 视觉提示词 | 删除固定品牌 ID 示例；保留 `品牌ID：` 格式，以原始标题实际数字填值 | 两个独立视觉调用面保持既有图片摘录契约，不把模板数字写成视觉事实 |
 | `duliday_modify_interview_time` DESCRIPTION / inputSchema | 删除固定日期时间示例，仅保留 `YYYY-MM-DD HH:mm` 格式 | precheck 可约日期与确认具体时段的契约保持原义 |
-| `duliday_job_list.execute` 的 `job_list.brand_no_provenance` 错误回执 | 品牌可明确归一化、提及集合可用且品牌未被提及才拒绝查询；恢复指引只住该错误的 `_replyInstruction`：按真实上下文重试，或明确清除品牌筛选查询，不得解释为无岗 | 拦侧为 TurnLedger `mentionedBrands` 集合核验；归一化或集合可用性不确定时不新增拦截；请求参数/失败回显不能登记成品牌提及；不在 DESCRIPTION 重复恢复规则 |
+| `duliday_job_list.execute` 的 `job_list.brand_no_provenance` 错误回执 | 品牌可明确归一化、提及集合可用且品牌未被提及才拒绝查询；恢复指引只住该错误的 `_replyInstruction`：按真实上下文重试，或明确清除品牌筛选查询，不得解释为无岗 | 拦侧为 TurnLedger `mentionedBrands` 集合核验；归一化或集合可用性不确定时不新增拦截；请求参数/失败回显不能登记成品牌提及；不在 DESCRIPTION 重复恢复规则。**2026-09-20**：Agent 自产回复同样不登记，经理侧只认带来源标记的真人手动文本；Agent 合法推荐由会话岗位池/工单/品牌状态承接（chat 6aaf831e） |
 
 下表字符数是各历史批次的基线，不作为本批实时快照。
 

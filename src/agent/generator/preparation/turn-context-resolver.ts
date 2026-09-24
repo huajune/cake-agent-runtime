@@ -231,7 +231,7 @@ export function resolveTurnContext(input: {
 
 /**
  * 只汇总本次业务上下文提及过的品牌，不裁定意向、不更新品牌状态。
- * 复用品牌域目录、词形归一与品类配置；负向/履历照收，教学与工具参数不入语料。
+ * 复用品牌域目录、词形归一与品类配置；负向/履历照收，教学、工具参数与 Agent 自产回复不入语料。
  */
 function collectMentionedBrands(input: {
   sources: TurnSourceSnapshot;
@@ -268,8 +268,14 @@ function collectMentionedBrands(input: {
   };
 
   // 不剥引用块、不只选候选人自陈：本集合只回答“是否提及”，不负责归属或极性。
+  // Agent 自产回复不构成出处（chat 6aaf831e）：其合法推荐由下方岗位池/工单/品牌状态承接；
+  // 经理侧只认带来源标记的真人手动文本，经理发图走 visualSheetsByContent。
   for (const message of selectEvidenceDialogueMessages(input.conversationCorpusBlocks)) {
-    collect(extractTextFromContent(message.content));
+    const text = extractTextFromContent(message.content);
+    if (message.role !== 'assistant') collect(text);
+    else if (text.startsWith(HUMAN_AGENT_MESSAGE_MARKER)) {
+      collect(text.slice(HUMAN_AGENT_MESSAGE_MARKER.length));
+    }
   }
   collect(input.contactName, 'contact_name');
   collect(sources.turnBrandContext.nicknameBrands, 'contact_name');
