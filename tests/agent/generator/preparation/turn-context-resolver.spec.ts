@@ -4,10 +4,18 @@ import type { CorpusBlock } from '@shared-types/corpus.types';
 import type { RecommendedJobSummary } from '@resolution/job/types';
 import { finalizeVisualFactSheet } from '@resolution/signal/visual';
 import { sessionFactsOf } from '../../../helpers/session-facts.fixture';
+import { CallerKind } from '@/enums/agent.enum';
+import { StorageMessageSource, StorageMessageType } from '@enums/storage-message.enum';
+import {
+  HUMAN_AGENT_MESSAGE_MARKER,
+  normalizeConversationWithCorpus,
+} from '@agent/generator/preparation/conversation-normalizer';
 import {
   resolveCriticalTurnInstructions,
   resolveTurnContext,
 } from '@agent/generator/preparation/turn-context-resolver';
+
+const POST_INTERVIEW_GUARD = '近邻上下文显示候选人已在面试/结果追问/入职';
 
 /** 最小可解析回合；只用来断言单个投影，其余字段保持无害缺省。 */
 function buildResolverInput(paramsOverride: Record<string, unknown> = {}) {
@@ -177,13 +185,75 @@ describe('resolveTurnContext', () => {
         normalizedMessages: window,
       });
 
-    it('triggers post_interview_no_rebook from short-term history', () => {
+    it('triggers post_interview_no_rebook from a human manager message in short-term history', () => {
       const guards = withWindow([
-        { role: 'assistant', content: '恭喜你面试通过了，门店那边会联系你安排入职' },
+        {
+          role: 'assistant',
+          content: `${HUMAN_AGENT_MESSAGE_MARKER}\n恭喜你面试通过了，门店那边会联系你安排入职`,
+        },
         { role: 'user', content: '再帮我约一次' },
       ]);
 
-      expect(guards.join('\n')).toContain('近邻上下文显示候选人已在面试/结果追问/入职');
+      expect(guards.join('\n')).toContain(POST_INTERVIEW_GUARD);
+    });
+
+    it('triggers it from the candidate own earlier words', () => {
+      const guards = withWindow([
+        { role: 'user', content: '店长说我面试通过了\n[消息发送时间：2026-09-20 10:00 星期日]' },
+        { role: 'assistant', content: '好的，我让同事确认下' },
+        { role: 'user', content: '再帮我约一次' },
+      ]);
+
+      expect(guards.join('\n')).toContain(POST_INTERVIEW_GUARD);
+    });
+
+    describe('candidate_side 视图不把非候选人原话当状态证据', () => {
+      it('ignores the friend-accept system greeting (chat 6aaf831e)', () => {
+        const guards = resolveCriticalTurnInstructions({
+          currentUserMessage:
+            '我通过了你的联系人验证请求，现在我们可以开始聊天了\n[消息发送时间：2026-09-20 14:54 星期日]',
+          normalizedMessages: [
+            { role: 'user', content: '我通过了你的联系人验证请求，现在我们可以开始聊天了' },
+          ],
+        });
+
+        expect(guards).toEqual([]);
+      });
+
+      it('ignores the Agent own job card wording (入职前办食品健康证)', () => {
+        const guards = resolveCriticalTurnInstructions({
+          currentUserMessage: '第一家可以',
+          normalizedMessages: [
+            {
+              role: 'assistant',
+              content: '肯德基（大宁店）- 服务员，1.2km\n要求：18-40岁，入职前办食品健康证',
+            },
+            { role: 'user', content: '第一家可以' },
+          ],
+        });
+
+        expect(guards.join('\n')).not.toContain(POST_INTERVIEW_GUARD);
+        expect(guards.join('\n')).not.toContain('本轮涉及“健康证”和“专业筛选”');
+      });
+
+      it('ignores quoted cards and location-share POI names', () => {
+        const guards = resolveCriticalTurnInstructions({
+          currentUserMessage:
+            '[引用 辛瑜琦：要求：20-50岁，入职前办食品健康证]\n这个\n[位置分享] 中通机动车驾驶员培训中心（江苏省常州市武进区） [经纬度:31.7,119.9]',
+          normalizedMessages: [],
+        });
+
+        expect(guards.join('\n')).not.toContain(POST_INTERVIEW_GUARD);
+      });
+    });
+
+    it('keeps health_cert_is_not_major for a real major-screening context', () => {
+      const guards = resolveCriticalTurnInstructions({
+        currentUserMessage: '我有食品健康证的呀',
+        normalizedMessages: [{ role: 'assistant', content: '这家对专业有要求，暂时不匹配哈' }],
+      });
+
+      expect(guards.join('\n')).toContain('本轮涉及“健康证”和“专业筛选”');
     });
 
     it('triggers it on a result inquiry even without prior post-interview words (chat 6a9f7db6)', () => {
@@ -283,13 +353,53 @@ describe('mentioned brands at turn start', () => {
     },
   );
 
-  it('includes assistant/human recommendations and quoted messages', () => {
+  it('includes human manager messages and quoted messages', () => {
     expect(
       collect(sources(), [
-        message('可以看看麦当劳', 'assistant'),
+        message(`${HUMAN_AGENT_MESSAGE_MARKER}\n可以看看麦当劳`, 'assistant'),
         message('引用：\n> 肯德基还在招\n还有吗'),
       ]),
     ).toEqual(new Set(['麦当劳', '肯德基']));
+  });
+
+  // chat 6aaf831e：Agent 历史回复不是品牌出处，否则上一轮的编造会放行下一轮查询。
+  it('excludes brands that only appear in the Agent own replies', () => {
+    expect(
+      collect(sources(), [
+        message('我通过了你的联系人验证请求，现在我们可以开始聊天了'),
+        message('我帮你看下瑞幸附近的岗位', 'assistant'),
+        message('我在佛山'),
+      ]),
+    ).toEqual(new Set());
+  });
+
+  it('keeps Agent-recommended brands through the job pools instead of the reply text', () => {
+    const snapshot = sources();
+    snapshot.memory.shortTerm.sessionState = {
+      presentedJobs: [job('KFC')],
+    } as typeof snapshot.memory.shortTerm.sessionState;
+    expect(
+      collect(snapshot, [message('肯德基和麦当劳都在招', 'assistant'), message('第一个怎么报名')]),
+    ).toEqual(new Set(['肯德基']));
+  });
+
+  it('separates Agent and human manager messages on real normalizer output', () => {
+    const selfText = {
+      role: 'assistant',
+      messageType: StorageMessageType.TEXT,
+      isSelf: true,
+    };
+    const { corpusBlocks } = normalizeConversationWithCorpus({
+      callerKind: CallerKind.WECOM,
+      memoryWindow: [
+        { ...selfText, content: '瑞幸在招', source: StorageMessageSource.API_SEND },
+        { ...selfText, content: '麦当劳缺人', source: StorageMessageSource.MOBILE_PUSH },
+        { role: 'user', content: '好的' },
+      ],
+      passedMessages: [],
+      enableVision: false,
+    });
+    expect(collect(sources(), corpusBlocks)).toEqual(new Set(['麦当劳']));
   });
 
   it('keeps every ambiguous catalog candidate without choosing an intent', () => {

@@ -114,7 +114,7 @@ Tool / Output 的确定性边界裁决。
 
 | id                          | 动作             | 保护目标                                   |
 | --------------------------- | ---------------- | ------------------------------------------ |
-| `job_list_brand_provenance` | `reject_hard` | 查岗品牌须有本轮提及来源；提及集合不可用时保留放行 |
+| `job_list_brand_provenance` | `reject_hard` | 查岗品牌须有本轮提及来源（Agent 自产回复不算）；提及集合不可用时保留放行 |
 | `booking_jobid_provenance`  | `reject_hard`    | 只能预约本会话真实召回过的岗位             |
 | `booking_precheck_contract` | `reject_hard`    | booking 必须复用本轮可预约的 precheck 结论 |
 | `booking_real_name`         | `reject_collect` | 昵称、拼音和占位串不进入报名库             |

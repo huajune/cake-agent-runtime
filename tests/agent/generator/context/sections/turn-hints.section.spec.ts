@@ -172,18 +172,34 @@ describe('TurnHintsSection', () => {
       ...baseCtx,
       ...sharedView(
         testTurnHints(
-          testTurnHint('interview_info.gender', '女', '客户详情接口补充性别：女', {
-            confidence: 'low',
-            producer: 'system',
-          }),
+          testTurnHint('interview_info.age', '24', '年龄识别：24', { confidence: 'low' }),
         ),
       ),
     });
 
     expect(output).toContain('[本轮解析线索]');
-    expect(output).toContain(
-      '性别: 女（系统标签，未经候选人自陈，不得用于直接排除候选人）（置信度: low，来源: system，证据: 客户详情接口补充性别：女，原话: 客户详情接口补充性别：女）',
-    );
+    expect(output).toContain('置信度: low');
+  });
+
+  it('keeps system-produced external tags out of the model-visible hints (chat 6aaf831e)', () => {
+    const systemGender = testTurnHint('interview_info.gender', '女', '客户详情接口补充性别：女', {
+      confidence: 'low',
+      producer: 'system',
+    });
+
+    // 只有系统标签时整块不渲染；与候选人线索并存时只渲染候选人线索
+    expect(section.build({ ...baseCtx, ...sharedView(testTurnHints(systemGender)) })).toBe('');
+    const mixed = section.build({
+      ...baseCtx,
+      ...sharedView(
+        testTurnHints(
+          systemGender,
+          testTurnHint('preferences.district', ['杨浦区'], '区域识别：杨浦区'),
+        ),
+      ),
+    });
+    expect(mixed).toContain('杨浦区');
+    expect(mixed).not.toContain('客户详情接口');
   });
 
   it('projects candidate_quote gender as candidate self-report without a sibling claim', () => {
