@@ -79,8 +79,15 @@ export default function ControlPanel({
     onSearchKeywordChange('');
   }, [onSearchKeywordChange]);
 
-  const statBadges = [
-    { label: '总触达', value: String(stats.total), toneClass: styles.badgePrimary },
+  const statBadges: Array<{ label: string; value: string; toneClass: string; title?: string }> = [
+    {
+      label: '总触达',
+      value: String(stats.total),
+      toneClass: styles.badgePrimary,
+      // 口径说明：与后端 REENGAGEMENT_STATS_EXCLUDED_DECISION_REASONS 同步
+      title:
+        '口径：时间范围内的复聊触达记录数，已剔除「不适用」记录——面试提醒提前 2 天确认档因报名到面试不足 3 天而跳过/停止的（signup_interview_gap_lt_3d），它们不算一次触达。',
+    },
     { label: '已投递', value: String(stats.sent), toneClass: styles.badgeSuccess },
     { label: 'Shadow', value: String(stats.shadow), toneClass: styles.badgeNeutral },
     {
@@ -180,7 +187,11 @@ export default function ControlPanel({
 
         <div className={styles.statsGroup}>
           {statBadges.map((item) => (
-            <span key={item.label} className={`${styles.statBadge} ${item.toneClass}`}>
+            <span
+              key={item.label}
+              className={`${styles.statBadge} ${item.toneClass}`}
+              title={item.title}
+            >
               <span className={styles.statBadgeLabel}>{item.label}</span>
               <span className={styles.statBadgeValue}>{item.value}</span>
             </span>

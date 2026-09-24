@@ -11,6 +11,8 @@ describe('ReengagementQueryService', () => {
       getRecords: jest.fn(),
       getRecordByTouchKey: jest.fn(),
       getStats: jest.fn(),
+      getStatsByDecisionReasons: jest.fn().mockResolvedValue([]),
+      getWeeklyFunnel: jest.fn().mockResolvedValue([]),
       getCandidateOverview: jest.fn(),
     } as unknown as jest.Mocked<ReengagementTouchRepository>;
     service = new ReengagementQueryService(repository);
@@ -75,6 +77,110 @@ describe('ReengagementQueryService', () => {
     );
   });
 
+  describe('weekly funnel（登记 → 发出 → 6h 回复）', () => {
+    it('merges scenarios into weekly buckets and derives the 6h reply rate', async () => {
+      repository.getWeeklyFunnel.mockResolvedValue([
+        {
+          week_start: '2026-09-07',
+          scenario_code: 'interview_reminder',
+          registered: 10,
+          sent: 6,
+          replied_6h: 3,
+        },
+        {
+          week_start: '2026-09-07',
+          scenario_code: 'opening_no_reply',
+          registered: 20,
+          sent: 14,
+          replied_6h: 2,
+        },
+        {
+          week_start: '2026-09-14',
+          scenario_code: 'opening_no_reply',
+          registered: 5,
+          sent: 0,
+          replied_6h: 0,
+        },
+      ]);
+
+      const buckets = await service.getWeeklyFunnel('2026-09-07', '2026-09-20');
+
+      expect(repository.getWeeklyFunnel).toHaveBeenCalledWith(
+        '2026-09-06T16:00:00.000Z',
+        '2026-09-20T16:00:00.000Z',
+      );
+      expect(buckets).toEqual([
+        { weekStart: '2026-09-07', registered: 30, sent: 20, replied6h: 5, replyRate: 0.25 },
+        { weekStart: '2026-09-14', registered: 5, sent: 0, replied6h: 0, replyRate: null },
+      ]);
+    });
+
+    it('caps the range to the most recent 13 weeks so the RPC never scans the whole table', async () => {
+      await service.getWeeklyFunnel('2025-01-01', '2026-09-20');
+
+      // 13 周 = 91 天：2026-09-20 往前 90 天 = 2026-06-22（上海日界）
+      expect(repository.getWeeklyFunnel).toHaveBeenCalledWith(
+        '2026-06-21T16:00:00.000Z',
+        '2026-09-20T16:00:00.000Z',
+      );
+    });
+
+    it('caches by (start, end) for 10 minutes so Dashboard refreshes do not re-run the RPC', async () => {
+      const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-09-21T00:00:00Z'));
+      repository.getWeeklyFunnel.mockResolvedValue([
+        {
+          week_start: '2026-09-14',
+          scenario_code: 'opening_no_reply',
+          registered: 1,
+          sent: 1,
+          replied_6h: 0,
+        },
+      ]);
+
+      const first = await service.getWeeklyFunnel('2026-09-07', '2026-09-20');
+      const second = await service.getWeeklyFunnel('2026-09-07', '2026-09-20');
+      // 不同范围是独立缓存键
+      await service.getWeeklyFunnel('2026-09-14', '2026-09-20');
+
+      expect(second).toEqual(first);
+      expect(repository.getWeeklyFunnel).toHaveBeenCalledTimes(2);
+
+      // 超过 TTL 后重新拉
+      nowSpy.mockReturnValue(Date.parse('2026-09-21T00:10:01Z'));
+      await service.getWeeklyFunnel('2026-09-07', '2026-09-20');
+      expect(repository.getWeeklyFunnel).toHaveBeenCalledTimes(3);
+      nowSpy.mockRestore();
+    });
+
+    it('does not cache a failed load, so the next call retries the RPC', async () => {
+      repository.getWeeklyFunnel
+        .mockRejectedValueOnce(new Error('rpc timeout'))
+        .mockResolvedValueOnce([]);
+
+      await expect(service.getWeeklyFunnel('2026-09-07', '2026-09-20')).rejects.toThrow(
+        'rpc timeout',
+      );
+      await expect(service.getWeeklyFunnel('2026-09-07', '2026-09-20')).resolves.toEqual([]);
+      expect(repository.getWeeklyFunnel).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it('caps stats to the most recent 13 weeks (same rule as the weekly funnel)', async () => {
+    repository.getStats.mockResolvedValue([]);
+
+    await service.getStats('2025-01-01', '2026-09-20');
+
+    expect(repository.getStats).toHaveBeenCalledWith(
+      '2026-06-21T16:00:00.000Z',
+      '2026-09-20T15:59:59.999Z',
+    );
+    expect(repository.getStatsByDecisionReasons).toHaveBeenCalledWith(
+      '2026-06-21T16:00:00.000Z',
+      '2026-09-20T15:59:59.999Z',
+      ['signup_interview_gap_lt_3d'],
+    );
+  });
+
   it('queries stats using the same local-day boundary convention', async () => {
     repository.getStats.mockResolvedValue([]);
 
@@ -84,6 +190,41 @@ describe('ReengagementQueryService', () => {
       '2026-07-05T16:00:00.000Z',
       '2026-07-07T15:59:59.999Z',
     );
+    expect(repository.getStatsByDecisionReasons).toHaveBeenCalledWith(
+      '2026-07-05T16:00:00.000Z',
+      '2026-07-07T15:59:59.999Z',
+      ['signup_interview_gap_lt_3d'],
+    );
+  });
+
+  it('excludes signup_interview_gap_lt_3d records from the grouped stats (总触达口径)', async () => {
+    repository.getStats.mockResolvedValue([
+      { status: 'sent', scenario_code: 'interview_reminder', cnt: 10 },
+      { status: 'skipped', scenario_code: 'interview_reminder', cnt: 5 },
+      { status: 'stopped', scenario_code: 'interview_reminder', cnt: 2 },
+      { status: 'sent', scenario_code: 'opening_no_reply', cnt: 7 },
+    ]);
+    repository.getStatsByDecisionReasons.mockResolvedValue([
+      { status: 'skipped', scenario_code: 'interview_reminder', cnt: 3 },
+      { status: 'stopped', scenario_code: 'interview_reminder', cnt: 2 },
+    ]);
+
+    const rows = await service.getStats('2026-07-06', '2026-07-07');
+
+    // skipped 5-3=2 保留；stopped 2-2=0 整桶去掉；其余不动
+    expect(rows).toEqual([
+      { status: 'sent', scenario_code: 'interview_reminder', cnt: 10 },
+      { status: 'skipped', scenario_code: 'interview_reminder', cnt: 2 },
+      { status: 'sent', scenario_code: 'opening_no_reply', cnt: 7 },
+    ]);
+  });
+
+  it('falls back to the raw grouped stats when the exclusion query fails', async () => {
+    const raw = [{ status: 'sent', scenario_code: 'interview_reminder', cnt: 10 }];
+    repository.getStats.mockResolvedValue(raw);
+    repository.getStatsByDecisionReasons.mockRejectedValue(new Error('db timeout'));
+
+    await expect(service.getStats('2026-07-06', '2026-07-07')).resolves.toEqual(raw);
   });
 
   it('delegates detail lookup by touch key', async () => {

@@ -61,14 +61,14 @@ export interface JobBasicInfo {
   /** 兼职类型（laborForm=兼职 时的细分）：寒假工 / 暑假工 / 小时工 */
   partTimeJobType?: string;
   /**
-   * 合作模式：`BPO` / `RPO`（老数据为空）。
+   * 合作模式，海绵下发固定枚举全称：`业务流程外包(BPO)` / `招聘流程外包(RPO)`（老数据为空）。
+   * 生产实测只有这两个取值；渲染层按固定值判断，不做模糊匹配，未知取值不输出结论并告警。
    *
    * 决定**发薪主体**与**签约主体**，是这两类高频咨询能否自答的唯一依据：
    * - BPO：独立客发薪；与独立客签约，形式为灵活用工协议（不签劳动合同）
-   * - RPO：发薪方两种都可能 → 必须转人工；签约方是客户（品牌方），
-   *   但协议还是合同取决于客户，不得断言
+   * - RPO：客户（品牌方）发薪；与客户签合同，可直接答，但不得自行升格成"劳动合同"
    *
-   * ⚠️ 商业内部术语，**严禁对候选人提及 "BPO/RPO/合作模式" 字样**，只用它推出结论。
+   * ⚠️ 商业内部术语，**严禁对候选人提及 "BPO/RPO/合作模式/外包" 字样**，只用它推出结论。
    * 字段为空（发布前数据 / 未回填）时按"无依据"处理，两类问题一律转人工。
    */
   cooperationMode?: string;
@@ -118,7 +118,13 @@ export const JobBasicInfoSchema = z
   })
   .catchall(z.unknown());
 
-/** 岗位详情（包含薪资、福利等可选信息） */
+/**
+ * 岗位详情（包含薪资、福利等可选信息）。
+ *
+ * 各分区真实字段形态以 tests/fixtures/sponge-jobs/jobs.json（2026-09-20 现网脱敏样例）为准；
+ * 「海绵下发但蛋糕未读」的字段清单见同目录 unread-fields.allowlist.json，
+ * 由 tests/tools/job-list/sponge-unread-fields.spec.ts 与源码持续比对。
+ */
 export interface JobInterviewSupplementItem {
   interviewSupplementId?: number | null;
   interviewSupplement?: string | null;
@@ -485,11 +491,27 @@ export const BI_FILTER_TYPES = {
  * 1. 必须按候选人定位：workOrderId / phone 至少传一个（没有"全局列出所有工单"的查法）。
  * 2. 响应是该候选人**全部**工单列表 → 用 workOrderId 定位时仍要在 workOrders[] 里挑出目标那条。
  */
+/**
+ * 工单查询的请求级护栏。
+ * - `timeoutMs`：单次超时（缺省走 fetchWithTimeout 的 20s；每轮 prepare 的预约快照必须收紧到 3s）。
+ * - `allowDefaultToken`：false 时托管账号没配 token 直接抛错，禁止回退 DULIDAY_API_TOKEN
+ *   （跨账号污染防线：默认 token 查到的是别家账号的工单）。
+ */
+export interface SignupWorkOrdersRequestOptions {
+  timeoutMs?: number;
+  allowDefaultToken?: boolean;
+}
+
 export interface SignupWorkOrdersParams {
   /** 定位键：定位到某候选人；与 phone 至少传一个 */
   workOrderId?: number;
   /** 定位键：定位到某候选人；与 workOrderId 至少传一个 */
   phone?: string;
+  /**
+   * 是否只返回当前供应商账号（Duliday-Token 对应账号）提交的工单（海绵 2026-09-22 新契约）。
+   * 缺省不传，由海绵按默认口径返回；带外对账需要跨账号查重时显式传 false。
+   */
+  onlyCurrentAccount?: boolean;
   queryParam?: {
     signUpStartTime?: string;
     signUpEndTime?: string;
@@ -505,12 +527,44 @@ export interface SelfSignupWorkOrdersParams {
   queryParam?: SignupWorkOrdersParams['queryParam'];
 }
 
+/**
+ * 当前供应商账号工单分页查询参数（POST /ai/api/workorder/signup/self/list/v2，海绵 2026-09-22 新增）。
+ * 带外对账补偿扫描用它按 signupSource 计数；运营日报仍用老 self/list。
+ */
+export interface SelfSignupWorkOrdersV2Params {
+  pageNum: number;
+  pageSize: number;
+  queryParam?: SignupWorkOrdersParams['queryParam'];
+}
+
+/** 已知的工单报名来源取值：`AI` 为蛋糕自己报的，`SUPPLIER` 为供应商后台手工报的（带外工单）。 */
+export const KNOWN_SIGNUP_WORK_ORDER_SOURCES = ['AI', 'SUPPLIER'] as const;
+
+/**
+ * 工单报名来源（海绵 2026-09-22 新契约）。类型保留 string：海绵后续加值时读取方按未知来源处理，
+ * 不能因为枚举外取值让 schema 失败；判定时用 KNOWN_SIGNUP_WORK_ORDER_SOURCES 收窄。
+ */
+export type SignupWorkOrderSource = string;
+
+/** 工单操作日志行（海绵 2026-09-22 新契约）；operationType 编码全集待实测，读取方按字符串容缺。 */
+export interface SignupWorkOrderOperationLog {
+  operationTime?: string | null;
+  operationType?: string | number | null;
+  operationName?: string | null;
+}
+
 /** 单个工单（候选人维度响应的 workOrders[] 元素）。 */
 export interface SignupWorkOrderItem {
   workOrderId: number;
   /** self/list 可能把候选人信息下发在工单行上；signup/list 通常下发在顶层。 */
   candidateName?: string | null;
   phone?: string | null;
+  /** 报名来源；老版本响应无此字段，读取方必须容缺。 */
+  signupSource?: SignupWorkOrderSource | null;
+  /** 报名来源中文名（如「AI」「供应商」）。 */
+  signupSourceName?: string | null;
+  /** 工单操作日志（时间、类型编码、类型名）；老版本响应无此字段。 */
+  operationLogs?: SignupWorkOrderOperationLog[] | null;
   signUpTime?: string | null;
   /**
    * 当前约面时间（yyyy-MM-dd HH:mm，与海绵约定新增下发）。
@@ -573,6 +627,15 @@ export const ACTIVE_INTERVIEW_WORK_ORDER_STATUSES: ReadonlySet<string> = new Set
   '约面成功',
 ]);
 
+/**
+ * 仍未出最终结果的工单状态：约面在途两态 + 面试通过待上岗。
+ * 清 booked 终态前的复核只认这三态——候选人名下还有任一张，报名关系就还在，不得回退终态。
+ */
+export const OPEN_RESULT_WORK_ORDER_STATUSES: ReadonlySet<string> = new Set<string>([
+  ...ACTIVE_INTERVIEW_WORK_ORDER_STATUSES,
+  '面试成功',
+]);
+
 /** 候选人维度的工单查询结果。 */
 export interface SignupWorkOrdersResult {
   candidateName?: string | null;
@@ -583,11 +646,22 @@ export interface SignupWorkOrdersResult {
   workOrders: SignupWorkOrderItem[];
 }
 
+export const SignupWorkOrderOperationLogSchema = z
+  .object({
+    operationTime: z.string().nullable().optional(),
+    operationType: z.union([z.string(), z.number()]).nullable().optional(),
+    operationName: z.string().nullable().optional(),
+  })
+  .passthrough();
+
 export const SignupWorkOrderItemSchema = z
   .object({
     workOrderId: z.coerce.number().int(),
     candidateName: z.string().nullable().optional(),
     phone: z.string().nullable().optional(),
+    signupSource: z.string().nullable().optional(),
+    signupSourceName: z.string().nullable().optional(),
+    operationLogs: z.array(SignupWorkOrderOperationLogSchema).nullable().optional(),
     signUpTime: z.string().nullable().optional(),
     interviewTime: z.string().nullable().optional(),
     interviewPassTime: z.string().nullable().optional(),
@@ -620,6 +694,27 @@ export const SignupWorkOrdersApiResponseSchema = z
         age: z.number().nullable().optional(),
         total: z.number().nullable().optional(),
         workOrders: z.array(SignupWorkOrderItemSchema).nullable().optional(),
+      })
+      .nullable()
+      .optional(),
+  })
+  .passthrough();
+
+/** self/list/v2 分页结果：行仍是工单，但顶层不再有候选人信息（每行自带 phone/candidateName/signupSource）。 */
+export interface SelfSignupWorkOrdersV2Result {
+  /** 海绵下发的总数；接口没给时原样为 null（不回落成本页行数），翻页判停由调用方自行处理。 */
+  total: number | null;
+  workOrders: SignupWorkOrderItem[];
+}
+
+export const SelfSignupWorkOrdersV2ApiResponseSchema = z
+  .object({
+    code: z.number(),
+    message: z.string().optional(),
+    data: z
+      .object({
+        total: z.number().nullable().optional(),
+        result: z.array(SignupWorkOrderItemSchema).nullable().optional(),
       })
       .nullable()
       .optional(),

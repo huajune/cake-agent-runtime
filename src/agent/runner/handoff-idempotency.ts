@@ -1,4 +1,4 @@
-export type HandoffIdempotencyScope = 'handoff' | 'output_guard';
+export type HandoffIdempotencyScope = 'handoff' | 'output_guard' | 'input_risk';
 
 /**
  * 统一生成 Runner 人工介入出口的幂等键。
@@ -16,6 +16,11 @@ export function buildHandoffIdempotencyKey(input: {
   if (!chatId) throw new Error('handoff idempotency key 缺少 chatId');
   if (!turnId) throw new Error('handoff idempotency key 缺少 turnId');
 
-  const suffix = input.scope === 'output_guard' ? ':output_guard' : '';
+  const suffix =
+    input.scope === 'output_guard'
+      ? ':output_guard'
+      : input.scope === 'input_risk'
+        ? ':input_risk'
+        : '';
   return `${chatId}:handoff:${turnId}${suffix}`;
 }

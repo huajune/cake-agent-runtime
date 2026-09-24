@@ -5,6 +5,29 @@
  */
 export type HandoffWriteOutcome = 'inserted' | 'duplicate' | 'failed';
 
+/**
+ * 介入来源标记（落 ops_events(handoff.triggered).payload.origin；handoff_events 表无独立列，
+ * 同一来源的底账行还可按 idempotency_key 的 scope 段区分）。
+ *
+ * - agent_tool             request_handoff 工具
+ * - output_guardrail       出站守卫无法安全放行
+ * - input_guardrail        入站风险预检（辱骂/投诉/主动要人工/残障披露/结果追问）
+ * - risk_alert_tool        raise_risk_alert 工具（模型语义判定的会话风险）
+ * - promise_reconciliation 回复承诺「让同事跟进」但未调工具，终态对账补的介入
+ * - tool_failure           取消/改约工具失败时自带的转人工
+ * - booking_failure        报名工具失败暂停托管（只记底账不再重复告警）
+ * - reengagement           复聊/入职巡检链路
+ */
+export type HandoffEventOrigin =
+  | 'agent_tool'
+  | 'output_guardrail'
+  | 'input_guardrail'
+  | 'risk_alert_tool'
+  | 'promise_reconciliation'
+  | 'tool_failure'
+  | 'booking_failure'
+  | 'reengagement';
+
 export interface RecordHandoffInput {
   corpId: string;
   chatId: string;
@@ -29,6 +52,8 @@ export interface RecordHandoffInput {
    * （纯闲聊、开场即转人工）时为 null，属正常缺失。
    */
   jobId?: number | null;
+  /** 介入来源标记；缺省按 agent_tool 记。 */
+  origin?: HandoffEventOrigin | null;
   /** 去重键：同 (corpId, idempotencyKey) 仅记一次。 */
   idempotencyKey: string;
   occurredAt?: Date;

@@ -3,6 +3,7 @@ import type {
   ReengagementScenario,
   ReengagementStatsItem,
   ReengagementTouchRecord,
+  ReengagementWeeklyFunnelBucket,
 } from '../types/reengagement.types';
 import { api, unwrapResponse } from '../client';
 
@@ -13,7 +14,9 @@ export type {
   ReengagementEvent,
   ReengagementScenario,
   ReengagementStatsItem,
+  ReengagementStopContext,
   ReengagementTouchRecord,
+  ReengagementWeeklyFunnelBucket,
 } from '../types/reengagement.types';
 
 // ==================== 二次触发追溯 API ====================
@@ -81,4 +84,16 @@ export async function getReengagementStats(options?: { startDate?: string; endDa
   if (options?.endDate) params.set('endDate', options.endDate);
   const { data } = await api.get(`/analytics/reengagement-stats?${params.toString()}`);
   return unwrapResponse<ReengagementStatsItem[]>(data);
+}
+
+/** 周度漏斗（登记 → 发出 → 6h 回复）；不传日期时后端默认最近 8 周 */
+export async function getReengagementWeeklyFunnel(options?: {
+  startDate?: string;
+  endDate?: string;
+}) {
+  const params = new URLSearchParams();
+  if (options?.startDate) params.set('startDate', options.startDate);
+  if (options?.endDate) params.set('endDate', options.endDate);
+  const { data } = await api.get(`/analytics/reengagement-weekly-funnel?${params.toString()}`);
+  return unwrapResponse<ReengagementWeeklyFunnelBucket[]>(data);
 }

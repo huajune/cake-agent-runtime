@@ -75,6 +75,75 @@ describe('OutputGuardrailService', () => {
     );
   });
 
+  it('本轮预约快照镜像并入 activeBookings（与指针按工单号去重），快照读不到时只用指针', async () => {
+    const longTerm = {
+      tryGetActiveBookings: jest
+        .fn()
+        .mockResolvedValue([{ work_order_id: 1, linked_at: '2026-09-01T00:00:00Z', job_id: 100 }]),
+    };
+    const bookingSnapshot = {
+      peekForCandidate: jest.fn().mockResolvedValue({
+        fetchedAt: Date.parse('2026-09-22T02:00:00Z'),
+        candidateName: '张三',
+        entries: [
+          { workOrderId: 1, jobId: 100, interviewTime: '2026-09-25 14:00', ownedByCandidate: true },
+          { workOrderId: 2, jobId: 200, interviewTime: null },
+          // 本人校验未通过（同号代报同行人）：不算本人在途工单
+          { workOrderId: 3, jobId: 300, interviewTime: null, ownedByCandidate: false },
+        ],
+      }),
+    };
+    const withSnapshot = new OutputGuardrailService(
+      systemConfig as never,
+      ruleGuard as never,
+      shortTerm as never,
+      longTerm as never,
+      undefined,
+      bookingSnapshot as never,
+    );
+    shortTerm.getMessages.mockResolvedValue([]);
+
+    await withSnapshot.check({
+      reply: '已经帮你约好了',
+      toolCalls: [],
+      chatId: 'chat-1',
+      userId: 'user-1',
+      corpId: 'corp-1',
+    });
+
+    expect(bookingSnapshot.peekForCandidate).toHaveBeenCalledWith('corp-1', 'user-1');
+    expect(ruleGuard.check).toHaveBeenCalledWith(
+      expect.objectContaining({
+        activeBookings: [
+          expect.objectContaining({
+            work_order_id: 1,
+            job_id: 100,
+            interview_time: '2026-09-25 14:00:00',
+          }),
+          expect.objectContaining({ work_order_id: 2, job_id: 200, interview_time: null }),
+        ],
+      }),
+    );
+    expect(JSON.stringify(ruleGuard.check.mock.calls[0][0].activeBookings)).not.toContain(
+      '"work_order_id":3',
+    );
+
+    bookingSnapshot.peekForCandidate.mockResolvedValue(null);
+    ruleGuard.check.mockClear();
+    await withSnapshot.check({
+      reply: '已经帮你约好了',
+      toolCalls: [],
+      chatId: 'chat-1',
+      userId: 'user-1',
+      corpId: 'corp-1',
+    });
+    expect(ruleGuard.check).toHaveBeenCalledWith(
+      expect.objectContaining({
+        activeBookings: [expect.objectContaining({ work_order_id: 1 })],
+      }),
+    );
+  });
+
   it('带 sessionId 时读会话记忆岗位摘要并压成 sessionJobFactTexts 传给规则层', async () => {
     const sessionFacts = {
       getSessionState: jest.fn().mockResolvedValue({

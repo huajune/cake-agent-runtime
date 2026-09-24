@@ -8,6 +8,7 @@ import {
   ReengagementTouchDbRecord,
   ReengagementTouchFilters,
   ReengagementTouchStatsRow,
+  ReengagementWeeklyFunnelRow,
 } from '../entities/reengagement-touch.entity';
 
 /**
@@ -82,6 +83,7 @@ export class ReengagementTouchRepository extends BaseRepository {
       p_candidate_name: input.candidateName ?? null,
       p_manager_name: input.managerName ?? null,
       p_bot_im_id: input.botImId ?? null,
+      p_stop_context: input.stopContext ?? null,
     });
     // RPC RETURNS VOID → data 为 null；错误路径 BaseRepository 已记日志并返回 null，
     // 这里无法区分，仅作 best-effort 观测写入，不影响调用方。
@@ -152,6 +154,59 @@ export class ReengagementTouchRepository extends BaseRepository {
       p_end: endDate,
     });
     return rows ?? [];
+  }
+
+  /**
+   * 周度漏斗（DB 侧聚合）：按创建周 × 场景返回 登记/发出/6h 回复 计数。
+   * RPC 内已剔除 signup_interview_gap_lt_3d 不适用底账；范围上限由服务层限制（≤ 13 周）。
+   */
+  async getWeeklyFunnel(
+    startDate: string,
+    endDate: string,
+  ): Promise<ReengagementWeeklyFunnelRow[]> {
+    const rows = await this.rpc<ReengagementWeeklyFunnelRow[]>('get_reengagement_weekly_funnel', {
+      p_start: startDate,
+      p_end: endDate,
+    });
+    return rows ?? [];
+  }
+
+  /**
+   * 时间范围内 decision_reason 命中给定原因的记录，按 status + scenario 分组计数。
+   *
+   * 供统计口径剔除「不适用」记录（见 REENGAGEMENT_STATS_EXCLUDED_DECISION_REASONS）。
+   * 命中行只投影两列，行数受 created_at 范围 + 原因等值过滤限制（只有面试提醒的 d2 档会写这些原因），
+   * 不拉 generated_text / events；统计 RPC 不带原因维度，这里在代码侧聚合而不改迁移。
+   * 走 range 分页拉取：PostgREST 单次 select 默认 1000 行截断，长范围会把计数默默算少；
+   * 范围上限（≤ 13 周）由服务层限制。
+   */
+  async getStatsByDecisionReasons(
+    startDate: string,
+    endDate: string,
+    reasons: readonly string[],
+  ): Promise<ReengagementTouchStatsRow[]> {
+    if (reasons.length === 0) return [];
+    const rows = await this.selectAllPaged<
+      Pick<ReengagementTouchDbRecord, 'status' | 'scenario_code'>
+    >(this.tableName, 'status, scenario_code', (q) =>
+      q
+        .gte('created_at', startDate)
+        .lt('created_at', endDate)
+        .in('decision_reason', [...reasons])
+        .order('created_at', { ascending: true })
+        .order('touch_key', { ascending: true }),
+    );
+    const grouped = new Map<string, ReengagementTouchStatsRow>();
+    for (const row of rows) {
+      const key = `${row.status}|${row.scenario_code}`;
+      const bucket = grouped.get(key);
+      if (bucket) {
+        bucket.cnt += 1;
+      } else {
+        grouped.set(key, { status: row.status, scenario_code: row.scenario_code, cnt: 1 });
+      }
+    }
+    return [...grouped.values()];
   }
 
   /**

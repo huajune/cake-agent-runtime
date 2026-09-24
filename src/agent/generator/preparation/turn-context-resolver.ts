@@ -35,6 +35,7 @@ import { formatCurrentTime } from '@infra/utils/date.util';
 import type { PromptInjectionAssessment } from '../../guardrail/input/prompt-injection-detector';
 import { PromptInjectionDetector } from '../../guardrail/input/prompt-injection-detector';
 import {
+  bookingFocusJobFallback,
   visibleBookingJobIds,
   visibleBookingWorkOrders,
   type MemoryPromptView,
@@ -155,7 +156,10 @@ export function resolveTurnContext(input: {
       nowMs,
     ),
     geoSignalCities: inferCitiesFromGeoSignals(candidateTexts),
-    currentFocusJob: sources.memory.shortTerm.sessionState?.currentFocusJob ?? null,
+    // 焦点为空时用本轮预约快照里唯一的已约岗位兜底（J5/J6：已约候选人回头追问能按岗位 ID 重查）。
+    currentFocusJob:
+      sources.memory.shortTerm.sessionState?.currentFocusJob ??
+      bookingFocusJobFallback(bookingWorkOrders),
   };
   // 历史阶段可能已从当前策略删除；保持旧 Context 行为：入口阶段继续写入工具/账本，
   // Prompt 的阶段策略回落当前配置首阶段，避免整个策略块静默消失。

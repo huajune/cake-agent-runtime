@@ -1,6 +1,6 @@
 # 拉人进群 — 产品设计文档
 
-Agent 在对话中根据候选人情况，自动将其拉入匹配的企微兼职岗位信息群（`invite_to_group` 工具）。本文描述已实现系统的现行口径；实现在 `src/tools/invite-to-group.tool.ts` 与 `src/tools/invite/invite-timing-gate.ts` / `invite-city-gate.ts`。
+Agent 在对话中根据候选人情况，将其拉入匹配的企微兼职岗位信息群。拉群有两类入口：**报名成功后由运行时程序拉群**（`duliday_interview_booking` 成功路径直接执行，模型只按结果说话）和**模型判断的无岗承接**（`invite_to_group` 工具）。两类入口共用同一段确定性流水线 `src/tools/invite/group-invite-pipeline.ts`（重复邀请 gate / 已在群闸门 / 城市 provenance gate / 执行）；本文描述已实现系统的现行口径，实现在 `src/tools/invite-to-group.tool.ts`、`src/tools/invite/post-booking-group-invite.ts` 与 `src/tools/invite/invite-timing-gate.ts` / `invite-city-gate.ts`。
 
 ---
 
@@ -38,17 +38,24 @@ Agent 在对话中根据候选人情况，自动将其拉入匹配的企微兼�
 
 ## 触发策略（0820 口径）
 
-拉群只有**两条合法入口**（外加同意确认轮），真无岗**不拉群**：
+拉群有**一条程序入口 + 两条模型入口**（外加同意确认轮），真无岗**不拉群**：
 
-### 场景 1：首次面试预约成功后，同轮首拉
+### 场景 1：首次面试预约成功后，由程序拉群（2026-09-22 起）
 
-| 条件 | 说明                                                                                         |
-| ---- | -------------------------------------------------------------------------------------------- |
-| 前提 | `duliday_interview_booking` 返回 `success: true`，且必须检查 `_outcome` 字段确认预约真的成功 |
-| 时机 | 已知候选人城市时，**同轮**调用                                                               |
-| 限制 | 仅限本会话**首次**预约成功时触发；后续再预约不再重复拉群                                     |
+报名成功后的拉群**不再由模型决定**。`duliday_interview_booking` 在海绵工单落地后，由运行时直接走拉群流水线，结果放进报名回执，模型只按结果说话；`invite_to_group` description 里的"触发场景 1"已删除。
 
-> 旧口径的"登记完成后由 `advance_stage` 推进触发"已废弃——现行判据是 booking 工具本轮成功（回合账本 `bookingSucceeded`），与阶段推进无关。
+| 项目     | 说明                                                                                                                                                                                                                                                                                             |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 触发条件 | 海绵 `success=true`；私聊（`imRoomId` 为空）；主联系人本人报名（代报同行人不拉）；报名前候选人名下没有其他在途工单（本会话首次报名）；候选人城市可知                                                                                                                                             |
+| 城市来源 | 会话高置信城市事实 → 本轮工具确权城市（geocode / 定位分享）→ 本轮 geocode 锚点；全无则 `city_unknown` 跳过                                                                                                                                                                                       |
+| 闸门     | 与 `invite_to_group` 相同：重复邀请 gate、前置已在群闸门、城市 provenance gate、testing 模拟；行业不传（按人数最少兜底选群）                                                                                                                                                                     |
+| 回执     | `groupInvite: { attempted, success, city?, groupName?, delivery?: 'direct_add' \| 'invite_card', alreadyInGroup?, skippedReason?, failureReason? }` + `_groupInviteGuide`（拼进 `_replyInstruction`）：成功按群名/投递方式复述；未成功时不提群、不承诺；两种情况都**不再调用 `invite_to_group`** |
+| 隔离     | 拉群任何失败/异常都不影响报名成功回执；结果写入回合账本 `ledger.jobs.postBookingGroupInvite`，模型同轮仍调 `invite_to_group` 时工具据此短路（成功复述 / `invite.handled_by_runtime`），不重复触达企业接口                                                                                        |
+| 观测     | `booking.succeeded` 事件 payload 带 `turn_id` 与 `group_invite.outcome`（`invited` / `already_in_group` / `skipped:<reason>` / `failed:<reason>`）；周报「首次报名后同轮拉群率」与每周一 09:30 的 `PostBookingInviteRateCronService` 巡检同一口径，低于 80% 飞书告警                             |
+
+> 为什么改成程序：近 4 周首次报名成功 434 轮里 73% 没调拉群工具，同轮拉群率从 7 月初 66% 掉到 20–30%，两个月后才由运营在群里发现。触发条件全是确定信息，交给模型"记得调"反而不稳（bitter-lessons L6）。
+
+场景 2、3 仍由模型根据完整对话判断，通过 `invite_to_group` 工具触发。
 
 ### 场景 2：连续两轮推荐均不满意后的群承接
 
@@ -68,14 +75,14 @@ Agent 在对话中根据候选人情况，自动将其拉入匹配的企微兼�
 
 **真实搜索 0 条、暑假工无库存**等"查了确实没有"的情况**不属于任何拉群场景**：按 noMatchScript 如实收口、等待库存，不得借"本轮跑过 job_list"偷渡拉群。这是 0820 口径对旧"穷尽推荐后无匹配就拉群兜底"策略的替换——查岗完成不等于获得拉群授权。
 
-### 禁止触发
+### 禁止触发（`invite_to_group`）
 
-- booking 本轮已调用且返回失败/抛异常（场景 1 前提不成立）
+- 本轮已调用 `duliday_interview_booking`（无论成败）：报名后的拉群随报名结果由系统处理
 - 城市未知，或候选人明确拒绝/表示不需要
 - 本会话已经成功拉过群（会话记忆 `invitedGroups`）
 - 尚未做过任何岗位检索
 - [兼职群资源] prompt 段已注明该城市无可用群
-- **候选人正在推进某个已匹配岗位的收资/约面/确认**（"怎么报名/几点面试"等推进信号）——拉群是"无岗维护"场景，不是"有岗推进"场景，此时拉群等于打断成单
+- **候选人正在推进某个已匹配岗位的收资/约面/确认**（"怎么报名/几点面试"等推进信号）——工具只承接"无岗维护"（本文场景 2/3，即 `invite_to_group` description 里的场景 1/2）；"有岗推进"的拉群时点是报名成功那一刻，由系统自动完成，模型此时拉群等于打断成单
 
 ### 拉群即收口
 
@@ -123,6 +130,14 @@ Agent 在对话中根据候选人情况，自动将其拉入匹配的企微兼�
 会话记忆 `invitedGroups` 已有同城市记录时返回 `invite.already_invited`，换城市放行。该 gate 不接收聊天文本，也不校验查岗轮次或候选人同意句式。
 
 同轮预约工具明确返回 `success: false` 时，`invite_to_group` 仍以结构化的 `bookingSucceeded === false` 返回 `invite.booking_not_success`；这不是自然语言意图识别。
+
+### 4. 运行时已处理短路（`invite_to_group` 独有）
+
+回合账本 `ledger.jobs.postBookingGroupInvite` 非空（本轮报名成功后运行时已拉群）时，工具在区县纠正之前直接按该结果返回：成功则复述群名与投递方式（不再触达企业接口），未成功返回 `invite.handled_by_runtime`，指令为不提群、不重试。
+
+### 报名成功后的运行时来源
+
+见[场景 1](#场景-1首次面试预约成功后由程序拉群2026-09-22-起)。该来源不经过 `invite_to_group` 工具，由 `duliday_interview_booking` 成功路径调用 `runPostBookingGroupInvite()`，走同一段 `group-invite-pipeline`。
 
 ### 复聊触发来源
 
@@ -180,12 +195,14 @@ Prompt 侧 [兼职群资源] 段（`group-inventory.section.ts`）预先注入�
 ## 核心流程
 
 ```
-LLM 决定拉群（city 必填, industry 强烈建议）
-  │
-  ├─ 0. 本轮 booking 失败短路 / 区县误传纠正（expectedCity）
-  ├─ 1. 前置已在群闸门（缓存群列表 + 实时成员关系）→ 已在群直接 success
-  ├─ 2. 城市 provenance gate（五档出处）→ conflict/unverified 拒绝
-  ├─ 3. 重复邀请 gate（already_invited；换城市放行）
+入口 A：duliday_interview_booking 海绵 success=true        入口 B：LLM 调 invite_to_group（city 必填, industry 强烈建议）
+  │  私聊 / 本人 / 首次报名 / 城市可知（否则 skippedReason）     │  0. 运行时已处理短路 / 本轮 booking 失败短路 / 区县误传纠正
+  └────────────────────────┬───────────────────────────────────┘
+                           ▼
+        group-invite-pipeline（两入口共用）
+  ├─ 1. 重复邀请 gate（already_invited；换城市放行）
+  ├─ 2. 前置已在群闸门（缓存群列表 + 实时成员关系）→ 已在群直接 success
+  ├─ 3. 城市 provenance gate（五档出处）→ conflict/unverified 拒绝
   ├─ 4. testing 链路（test-suite 重放）在此返回模拟成功，不触达企业接口
   │
   ├─ 5. 获取兼职群列表（forceRefresh）→ 城市过滤 → 行业精筛（可回退）
@@ -200,8 +217,9 @@ LLM 决定拉群（city 必填, industry 强烈建议）
   │     └─ 其他拒绝（含 -8 非好友）→ 记录，换下一个候选群
   │
   ├─ 9. 成功：写会话记忆 invitedGroups → 记 ops 事件 group.invited
-  │        → 返回 success + inviteDelivery + _replyInstruction
-  └─ 10. 全部失败：按 -8 全拒/接口拒绝/群满 分档返回（见失败分档）
+  │        → 入口 A：booking 回执 groupInvite + _groupInviteGuide，写 ledger.jobs.postBookingGroupInvite
+  │        → 入口 B：返回 success + inviteDelivery + _replyInstruction
+  └─ 10. 全部失败：入口 A 只进回执（不转人工、不影响报名成功）；入口 B 按 -8 全拒/接口拒绝/群满 分档返回（见失败分档）
 ```
 
 ---
@@ -225,9 +243,13 @@ errcode=-12 表示平台已实际下发邀请卡片，**按投递成功处理**�
 
 `groupName` / `groupPurpose`（固定 `"job_pool"`）/ `city` / `industry` / `inviteDelivery` / `matchedIndustry`（实际命中行业）/ `fallbackUsed`（行业回退标记）/ `selectionReason` / `citySnapshot`（该城市群分布概览，候选人质疑选群时作解释依据）/ `_outcome` / `_replyInstruction`（必须严格遵守的话术指令，含"这是兼职群不是面试群"边界与中间步骤文字未送达提醒）。
 
+### booking 回执里的 groupInvite（入口 A）
+
+`groupInvite.attempted=false` 表示闸门前就没走（`skippedReason`：`service_unavailable` / `group_chat` / `additional_candidate` / `not_first_booking` / `city_unknown` / `already_invited`）；`attempted=true, success=false` 表示流水线走了但没拉成（`failureReason`：`GroupInviteFailureReason` 或 `city_unverified` / `city_conflict` / `exception`）。成功时 `delivery` 与工具的 `inviteDelivery` 同义，`alreadyInGroup` 同上。`_groupInviteGuide` 是给模型的话术指令，已拼进 `_replyInstruction`。出站守卫与修复证据把 `groupInvite.success` 视同 `invite_to_group:ok`（兼职群/面试群区分规则、群邀请完成态证据）。
+
 ### 工具判定与执行编排边界
 
-`invite_to_group` 工具只保留依赖对话回合的意图闸：预约成功短路、城市出处核验与拉群时机核验。选群、成员实时预检、容量刷新、企微邀请、接客 bot 入群补偿、记忆与 `group.invited` 底账统一由 `GroupInviteService` 执行。这个拆分不改变工具给 LLM 的返回字段和话术指令。
+`invite_to_group` 工具只保留依赖对话回合的意图闸：运行时已处理短路、预约失败短路、区县纠正。城市出处核验、拉群时机核验与 testing 模拟在 `group-invite-pipeline` 里与入口 A 共用；选群、成员实时预检、容量刷新、企微邀请、接客 bot 入群补偿、记忆与 `group.invited` 底账统一由 `GroupInviteService` 执行。这个拆分不改变工具给 LLM 的返回字段和话术指令。
 
 ---
 
@@ -254,7 +276,7 @@ errcode=-12 表示平台已实际下发邀请卡片，**按投递成功处理**�
 
 ### 可恢复拒绝（模型按指令纠偏，不转人工）
 
-`invite.invalid_city_scope`（用 expectedCity 重调）/ `invite.city_conflict` / `invite.city_unverified`（先确认城市）/ `invite.already_invited`（据实回应"邀请已发过"）/ `invite.booking_not_success`。
+`invite.invalid_city_scope`（用 expectedCity 重调）/ `invite.city_conflict` / `invite.city_unverified`（先确认城市）/ `invite.already_invited`（据实回应"邀请已发过"）/ `invite.booking_not_success` / `invite.handled_by_runtime`（本轮报名后运行时已尝试且未成功：不提群、不重试）。
 
 所有失败场景共同底线：不向候选人提及群相关内容；**只有 `success: true` 才能用完成口径**声称群动作已发生。
 
@@ -347,8 +369,8 @@ errcode=-12 表示平台已实际下发邀请卡片，**按投递成功处理**�
 
 ### 监控
 
-- 日志：`invite_to_group` 工具调用日志（含选群、重试、降卡明细）
-- 运营事件：`ops_events` 的 `group.invited`（进日报）
+- 日志：`invite_to_group` 工具调用日志（含选群、重试、降卡明细）；`[booking] 报名后拉群结果` 行
+- 运营事件：`ops_events` 的 `group.invited`（进日报）；`booking.succeeded` 的 `payload.group_invite.outcome`（首次报名后同轮拉群率，进周报；`PostBookingInviteRateCronService` 每周一 09:30 回看 7 天，可归因样本 ≥ `POST_BOOKING_INVITE_RATE_MIN_SAMPLES`（默认 20）且低于 `POST_BOOKING_INVITE_RATE_ALERT_THRESHOLD`（默认 0.8）时飞书告警 `ops.post_booking_invite_rate_low`）
 - Redis：`room:members:*` 成员缓存状态
 
 ---

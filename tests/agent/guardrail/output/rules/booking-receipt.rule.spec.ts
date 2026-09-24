@@ -292,3 +292,37 @@ describe('detectBookingReceiptMismatch — 形态 G：already_booked 查重不�
     expect(found?.label).toContain('工单 467600');
   });
 });
+
+// PRD R3：报名成功后拉群由运行时执行（booking 回执 groupInvite），没有 invite_to_group
+// 调用时，兼职群与待手动补发的面试群仍要区分。
+describe('detectBookingReceiptMismatch — 运行时拉群后的兼职群/面试群区分', () => {
+  const bookingWithRuntimeInvite = [
+    {
+      toolName: 'duliday_interview_booking',
+      status: 'ok',
+      result: {
+        success: true,
+        interviewGroupHandling: { required: true, delivery: 'manual' },
+        groupInvite: { attempted: true, success: true, groupName: '上海餐饮群' },
+      },
+    } as never,
+  ];
+
+  it('回复把腾讯会议链接接在兼职群后、不区分面试群 → 命中', () => {
+    const found = detectBookingReceiptMismatch(
+      '已经帮你约好啦，「上海餐饮群」的邀请发你了，腾讯会议链接会在群里发',
+      bookingWithRuntimeInvite,
+    );
+    expect(found?.ruleId).toBe('booking_receipt_mismatch');
+    expect(found?.label).toContain('没有把它与待手动发送的面试群区分');
+  });
+
+  it('回复区分了兼职群与稍后单独发的面试群 → 放行', () => {
+    expect(
+      detectBookingReceiptMismatch(
+        '已经帮你约好啦。另外「上海餐饮群」的邀请发你了，这个群平时看兼职岗位信息；面试群我这边接着单独发你邀请，腾讯会议链接在面试群里',
+        bookingWithRuntimeInvite,
+      ),
+    ).toBeNull();
+  });
+});

@@ -1234,4 +1234,62 @@ describe('buildInviteToGroupTool', () => {
       expect(result.errorType).toBe(TOOL_ERROR_TYPES.INVITE_INVALID_CITY_SCOPE);
     });
   });
+
+  // PRD R3：报名成功后拉群已由运行时随 booking 执行；模型同轮仍调本工具时按运行时结果
+  // 回应，不重复触达企业接口。
+  describe('报名后运行时拉群已执行（ledger.jobs.postBookingGroupInvite）', () => {
+    const executeWithRuntimeInvite = async (
+      runtimeInvite: Record<string, unknown>,
+      groupMembership = { listUserRooms: jest.fn().mockResolvedValue([]) },
+    ) => {
+      const service = await createGroupInviteService({ groupMembership });
+      const inviteSpy = jest.spyOn(service, 'invite');
+      const builder = buildInviteToGroupTool(service);
+      const context = buildContext();
+      context.ledger.jobs.postBookingGroupInvite = runtimeInvite as never;
+      const builtTool = builder(context);
+      const result = (await builtTool.execute({ city: '上海' } as never, {
+        toolCallId: 'test',
+        context: {},
+        messages: [],
+        abortSignal: undefined as never,
+      })) as Record<string, unknown>;
+      return { result, inviteSpy, groupMembership };
+    };
+
+    it('运行时已成功发卡：按成功口径复述群名，不再触达邀请接口', async () => {
+      const { result, inviteSpy, groupMembership } = await executeWithRuntimeInvite({
+        attempted: true,
+        success: true,
+        city: '上海',
+        groupName: '上海餐饮群',
+        delivery: 'invite_card',
+      });
+
+      expect(result).toMatchObject({
+        success: true,
+        groupName: '上海餐饮群',
+        groupPurpose: 'job_pool',
+        inviteDelivery: 'invite_card',
+      });
+      expect(inviteSpy).not.toHaveBeenCalled();
+      expect(groupMembership.listUserRooms).not.toHaveBeenCalled();
+      expect(mockRoomService.addMemberEnterprise).not.toHaveBeenCalled();
+    });
+
+    it('运行时未拉成：返回 handled_by_runtime，指令不提群、不重试', async () => {
+      const { result, inviteSpy } = await executeWithRuntimeInvite({
+        attempted: true,
+        success: false,
+        city: '上海',
+        failureReason: 'group_full',
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.INVITE_HANDLED_BY_RUNTIME);
+      expect(result.failureReason).toBe('group_full');
+      expect(String(result._replyInstruction)).toContain('不要再调用 invite_to_group');
+      expect(inviteSpy).not.toHaveBeenCalled();
+    });
+  });
 });

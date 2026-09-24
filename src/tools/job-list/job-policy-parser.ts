@@ -54,6 +54,11 @@ export interface JobPolicyAnalysis {
     healthCertificateRequirement: string;
     healthCertGate: HealthCertGate;
     remark: string | null;
+    /**
+     * 模型可见的「其他要求」：只含 hiringRequirement.remark 与一轮面试描述，不拼 processDesc。
+     * 确定性抽取（健康证时点/关键词信号）仍读 remark 全文。
+     */
+    remarkDisplay: string | null;
     interviewRemark: string | null;
     /**
      * 模型可见的面试备注：只含一轮面试描述，不拼 processDesc（海绵「面试入职流程」字段，
@@ -700,6 +705,7 @@ export function buildJobPolicyAnalysis(job: JobDetail): JobPolicyAnalysis {
     .filter((t): t is string => Boolean(t))
     .join('\n');
   const interviewRemarkDisplay = sanitizeConstraintText(displayInterviewText);
+  const requirementRemarkDisplay = sanitizeConstraintText(displayRequirementText);
 
   const requirementHighlights = pickKeySentences(displayRequirementText, [
     /经验/,
@@ -746,6 +752,7 @@ export function buildJobPolicyAnalysis(job: JobDetail): JobPolicyAnalysis {
         interviewSupplements,
       }),
       remark: requirementRemark,
+      remarkDisplay: requirementRemarkDisplay,
       interviewRemark,
       interviewRemarkDisplay,
       interviewSupplements,

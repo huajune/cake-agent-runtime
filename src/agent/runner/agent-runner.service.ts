@@ -899,7 +899,13 @@ export class AgentRunnerService {
     onTurnEndError?: (error: unknown) => void;
   }): Promise<ReviewedTurnRunResult> {
     const result = await this.invokeReviewed(params.invoke, params.review);
-    const outcome = classifyReviewedOutcome(result, params.sessionRef, params.messageId);
+    const lastUserMessage = [...params.invoke.messages]
+      .reverse()
+      .find((message) => message.role === 'user');
+    const outcome = classifyReviewedOutcome(result, params.sessionRef, params.messageId, {
+      userMessage:
+        typeof lastUserMessage?.content === 'string' ? lastUserMessage.content : undefined,
+    });
     const turnFinalizer = TurnFinalizer.from(result.runTurnEnd, params.onTurnEndError);
     return {
       ...result,
@@ -1197,7 +1203,9 @@ export class AgentRunnerService {
 
     // 终态分类与渠道共享同一处纯函数（classifyReviewedOutcome）：无法安全放行→handoff/outbound、
     // committed handoff / booking gate→handoff、短路/空文本→skipped、其余→reply。
-    const outcome = classifyReviewedOutcome(result, sessionRef, context?.messageId);
+    const outcome = classifyReviewedOutcome(result, sessionRef, context?.messageId, {
+      userMessage: input.text,
+    });
     if (outcome.kind === 'handoff' && outcome.guardrail?.phase === 'outbound') {
       this.logger.warn(
         `[runInboundTurn] 出站守卫拦截: sessionId=${sessionRef.sessionId}, ` +

@@ -56,6 +56,7 @@ export class HandoffRecorderService {
         work_order_id: input.workOrderId ?? null,
         job_id: input.jobId ?? null,
         missing_job_info: input.missingJobInfo?.length ? input.missingJobInfo : null,
+        origin: input.origin ?? 'agent_tool',
       },
     });
 

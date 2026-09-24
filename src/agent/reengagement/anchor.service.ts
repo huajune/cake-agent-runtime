@@ -31,6 +31,17 @@ interface AnchorAgentResult {
 
 type ReengagementState = ReengagementSessionState & { interviewAt?: number };
 
+/** 本轮工具调用里有一次真实成功的报名（海绵已建单）。渠道层与锚点侧共用同一判据。 */
+export function isBookingSucceededCall(call: AgentToolCall): boolean {
+  if (call.toolName !== 'duliday_interview_booking') return false;
+  const result = asRecord(call.result);
+  return result?.success === true || typeof result?.workOrderId === 'number';
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === 'object' ? (value as Record<string, unknown>) : undefined;
+}
+
 @Injectable()
 export class ReengagementAnchorService {
   private readonly logger = new Logger(ReengagementAnchorService.name);
@@ -40,8 +51,13 @@ export class ReengagementAnchorService {
     private readonly session: SessionStateService,
   ) {}
 
-  handleToolAnchors(result: AnchorAgentResult, context: AnchorContext): void {
-    if (context.isGroupChat) return;
+  /**
+   * 排程仍是 fire-and-forget；返回值只是本轮**终态写入链**（取消清 booked → 报名写 booked）
+   * 的 settle 承诺（内部已兜错，永不 reject），供渠道层把带外对账排在终态落定之后，
+   * 避免两条链路对同一会话终态并发读-判-写。
+   */
+  handleToolAnchors(result: AnchorAgentResult, context: AnchorContext): Promise<void> {
+    if (context.isGroupChat) return Promise.resolve();
     // lastCandidateMessageAt（「锚点后已回话」停止信号）由入站接收层刷新：
     // accept-inbound-message.service 在消息进入时按回调时间戳调 recordCandidateActivity，
     // 比在这里（Agent 生成完成后）更早且带真实消息时间，此处不再重复写。
@@ -98,7 +114,6 @@ export class ReengagementAnchorService {
           .catch((error) => this.logFailure('save booked terminal', context, error)),
       );
     }
-    void terminalChain;
 
     // 改约成功：新锚点只触发面试排程解析；正式提醒/回访按海绵返回的新时间重排。
     // 旧任务到点也会重新查同一工单，并因实时触发时间变化而停止或替换。
@@ -111,8 +126,10 @@ export class ReengagementAnchorService {
       this.scheduleBookingFollowUps(modified, `${context.traceId}:interview_modified`, context);
     }
 
-    if (!booking) return;
-    this.scheduleBookingFollowUps(booking, `${context.traceId}:booking_succeeded`, context);
+    if (booking) {
+      this.scheduleBookingFollowUps(booking, `${context.traceId}:booking_succeeded`, context);
+    }
+    return terminalChain;
   }
 
   /**
@@ -319,9 +336,7 @@ export class ReengagementAnchorService {
   }
 
   private isBookingSucceeded(call: AgentToolCall): boolean {
-    if (call.toolName !== 'duliday_interview_booking') return false;
-    const result = this.asRecord(call.result);
-    return result?.success === true || typeof result?.workOrderId === 'number';
+    return isBookingSucceededCall(call);
   }
 
   private isCancelSucceeded(call: AgentToolCall): boolean {

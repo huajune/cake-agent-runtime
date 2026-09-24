@@ -3,7 +3,8 @@
  *
  * 候选人主动要求取消已确认的面试预约时，自助调海绵取消工单接口完成取消。
  * 取消原因取自海绵失败原因字典（父级 pid 12001），由 LLM 据候选人原话挑选 cancelReasonId。
- * 自助优先：字典/接口失败或无工单号时，回退 request_handoff(modify_appointment) 转人工。
+ * 自助优先：字典/接口失败时回执自带转人工副作用（modify_appointment + 工单号/岗位/失败原因），
+ * 模型只需如实告知已转同事；无工单号时仍回退 request_handoff(modify_appointment)。
  */
 
 import { toErrorMessage, toErrorStack } from '@infra/utils/error.util';
@@ -19,6 +20,16 @@ import { LongTermService } from '@memory/long-term/long-term.service';
 import { PrivateChatMonitorNotifierService } from '@notification/services/private-chat-monitor-notifier.service';
 import { ToolBuilder } from '@shared-types/tool.types';
 import { buildToolError, TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
+import type { BookingSnapshotService } from '@tools/booking/booking-snapshot.service';
+import {
+  bookingEventSource,
+  findSnapshotWorkOrder,
+  resolveBookingOwnership,
+} from '@tools/booking/booking-ownership.util';
+import {
+  buildToolFailureHandoffSideEffect,
+  buildToolFailureReplyInstruction,
+} from '@tools/shared/tool-failure-handoff.util';
 
 const logger = new Logger('duliday_cancel_work_order');
 
@@ -63,7 +74,7 @@ const DESCRIPTION = `取消工单。候选人**主动**要求取消一个**已�
 
 ## 成功/失败处理硬规则
 - **只有当本工具返回 success 后**，才能向候选人确认"已帮你取消这次面试预约"
-- 失败时按 _replyInstruction 行动：自助取消失败应转人工（request_handoff，reasonCode=modify_appointment），不要原样复读报错、不要透露接口细节、不要谎称已取消
+- 失败时按 _replyInstruction 行动：接口/字典失败的回执已自带转人工（本轮不要再调 request_handoff），你只需如实告诉候选人这次取消暂时处理不了、已转同事跟进；不要原样复读报错、不要透露接口细节、不要谎称已取消
 - 工具执行前有一道确定性核验，被拦时严格按返回的 _replyInstruction 行动：工单号必须在候选人当前有效预约集合内——不在则说明引用了记忆残留/不存在的预约，不可取消
 - 工单在海绵里的状态字段不参与取消判断（该字段滞后不可信）；候选人面试前明确放弃就取消，面试已开始/已过才说放弃属于爽约，按 [当前预约信息] 的共享规则处理`;
 
@@ -109,11 +120,17 @@ const inputSchema = z.object({
  * cancelReasonId 由 LLM 从失败原因字典（pid=CANCEL_REASON_PID）中按原话挑选；
  * workOrderId 由 LLM 从 [当前预约信息] 显式传入。成功后写入 booking.canceled 运营事件。
  */
+export interface CancelWorkOrderToolDeps {
+  /** 取消成功后失效该手机号的预约快照缓存（否则 5 分钟内仍显示在途）。 */
+  bookingSnapshot?: Pick<BookingSnapshotService, 'invalidate'>;
+}
+
 export function buildCancelWorkOrderTool(
   spongeService: SpongeService,
   opsEventsRecorder: OpsEventsRecorderService,
   longTermService: LongTermService,
   privateChatNotifier: PrivateChatMonitorNotifierService,
+  deps?: CancelWorkOrderToolDeps,
 ): ToolBuilder {
   return (context) => {
     return tool({
@@ -156,27 +173,38 @@ export function buildCancelWorkOrderTool(
 
         const tokenContext = buildSpongeTokenContext(context);
 
-        // B5-1 工单归属核验：workOrderId 必须在候选人当前有效预约（active_booking）集合内。
+        // B5-1 工单归属核验：workOrderId 必须在候选人当前有效预约里——active_booking 指针，
+        // 或本轮预约快照中通过本人校验的工单（含真人后台建的带外单：查得到就是操作得了的）。
         // 记忆污染/示例回声可能让模型引用根本不存在或不属于本人的"预约"（
         // Agent 声称取消一个臆造的上海预约），取消是不可逆动作，必须锚定真实工单证据。
+        const snapshotRef = findSnapshotWorkOrder(context.archive.bookingWorkOrders, workOrderId);
         try {
           const activeBookings = await longTermService.getActiveBookings(
             context.session.corpId,
             context.session.userId,
           );
           const ownedWorkOrderIds = activeBookings.map((b) => b.work_order_id);
-          if (!ownedWorkOrderIds.includes(workOrderId)) {
+          const ownership = resolveBookingOwnership({
+            workOrderId,
+            pointerWorkOrderIds: ownedWorkOrderIds,
+            snapshotRefs: context.archive.bookingWorkOrders,
+          });
+          if (ownership.owned === false) {
             logger.warn(
-              `取消拦截（工单不属于候选人当前预约）: chatId=${chatId}, workOrderId=${workOrderId}, owned=[${ownedWorkOrderIds.join(',')}]`,
+              `取消拦截（工单不属于候选人当前预约，${ownership.reason}）: chatId=${chatId}, workOrderId=${workOrderId}, owned=[${ownedWorkOrderIds.join(',')}]`,
             );
+            const identityMismatch = ownership.reason === 'identity_mismatch';
             return buildToolError({
               errorType: TOOL_ERROR_TYPES.CANCEL_WORK_ORDER_NOT_OWNED,
-              outcome: '取消拦截（工单号不在候选人当前有效预约中）',
-              replyInstruction:
-                '该工单号不在候选人当前有效预约中，禁止取消——它可能来自记忆残留或误引用。' +
-                '请基于 [当前预约信息] 里真实存在的「工单号」重新确认候选人要取消哪一个预约；' +
-                '若 [当前预约信息] 为空：对话里有真人经理手动发出的预约确认或候选人指认的具体已约面试时，改调 request_handoff(reasonCode="modify_appointment") 交人工取消，不得说"没有预约记录/不需要取消"；确实没有任何预约痕迹时才向候选人自然说明，不要提及工单/系统。',
-              details: { workOrderId, ownedWorkOrderIds },
+              outcome: identityMismatch
+                ? '取消拦截（工单登记姓名与候选人自报姓名不一致）'
+                : '取消拦截（工单号不在候选人当前有效预约中）',
+              replyInstruction: identityMismatch
+                ? '该工单登记的候选人姓名与本会话候选人自报姓名不一致，禁止自助取消。请调 request_handoff(reasonCode="modify_appointment") 交人工核实后取消，不得说"没有预约记录/不需要取消"，也不要提及工单/系统。'
+                : '该工单号不在候选人当前有效预约中，禁止取消——它可能来自记忆残留或误引用。' +
+                  '请基于 [当前预约信息] 里真实存在的「工单号」重新确认候选人要取消哪一个预约；' +
+                  '若 [当前预约信息] 为空：对话里有真人经理手动发出的预约确认或候选人指认的具体已约面试时，改调 request_handoff(reasonCode="modify_appointment") 交人工取消，不得说"没有预约记录/不需要取消"；确实没有任何预约痕迹时才向候选人自然说明，不要提及工单/系统。',
+              details: { workOrderId, ownedWorkOrderIds, ownershipReason: ownership.reason },
             });
           }
         } catch (err) {
@@ -203,11 +231,12 @@ export function buildCancelWorkOrderTool(
             `取消原因字典拉取异常: chatId=${chatId}, workOrderId=${workOrderId}`,
             toErrorStack(err),
           );
-          return buildToolError({
+          return buildCancelFailure({
+            context,
+            workOrderId,
             errorType: TOOL_ERROR_TYPES.CANCEL_REASON_FETCH_FAILED,
             outcome: '取消原因字典拉取失败',
-            replyInstruction:
-              '暂时取不到取消原因，无法自助取消。请以真人招募者口吻一句话安抚衔接，并按 request_handoff（reasonCode=modify_appointment）转人工；不要透露接口细节，不要谎称已取消。',
+            failureReason: toErrorMessage(err) || '未知错误',
             details: { workOrderId, reason: toErrorMessage(err) || '未知错误' },
           });
         }
@@ -216,11 +245,12 @@ export function buildCancelWorkOrderTool(
           logger.warn(
             `取消原因字典为空: chatId=${chatId}, workOrderId=${workOrderId}, pid=${CANCEL_REASON_PID}`,
           );
-          return buildToolError({
+          return buildCancelFailure({
+            context,
+            workOrderId,
             errorType: TOOL_ERROR_TYPES.CANCEL_REASON_FETCH_FAILED,
             outcome: '取消原因字典为空',
-            replyInstruction:
-              '暂时取不到可用的取消原因，无法自助取消。请以真人招募者口吻一句话安抚衔接，并按 request_handoff（reasonCode=modify_appointment）转人工；不要谎称已取消。',
+            failureReason: '取消原因字典为空',
             details: { workOrderId },
           });
         }
@@ -254,11 +284,12 @@ export function buildCancelWorkOrderTool(
             logger.warn(
               `取消工单失败: chatId=${chatId}, workOrderId=${workOrderId}, code=${result.code}, message=${result.message ?? '-'}`,
             );
-            return buildToolError({
+            return buildCancelFailure({
+              context,
+              workOrderId,
               errorType: TOOL_ERROR_TYPES.CANCEL_REJECTED,
               outcome: '取消工单失败',
-              replyInstruction:
-                '取消未成功。请以真人招募者口吻一句话向候选人说明"我让同事帮你确认一下，稍等"之类的衔接语，并按 request_handoff（reasonCode=modify_appointment）转人工；不要透露接口报错/技术细节，不要谎称已取消。',
+              failureReason: result.message ?? `海绵返回 code=${result.code}`,
               // apiCode/apiMessage 透传海绵后端的拒绝原因，仅供观测落库（dashboard 直接可见，无需翻 Winston 日志）；
               // _replyInstruction 已禁止 LLM 把这些细节复读给候选人。
               details: { workOrderId, apiCode: result.code, apiMessage: result.message ?? null },
@@ -280,6 +311,8 @@ export function buildCancelWorkOrderTool(
             chatId: context.session.sessionId,
             payload: {
               work_order_id: workOrderId,
+              // 带外工单（供应商后台建单）的后续取消按来源单列统计。
+              source: bookingEventSource(snapshotRef),
               cancel_reason_id: matched.id,
               cancel_reason: matched.info || null,
               cancel_reason_desc: cancelReasonDesc?.trim() || null,
@@ -297,6 +330,17 @@ export function buildCancelWorkOrderTool(
             context.session.userId,
             workOrderId,
           );
+          // 预约快照按手机号缓存 5 分钟；不失效会让刚取消的工单在后续回合仍显示在途。
+          await deps?.bookingSnapshot?.invalidate({
+            phone:
+              normalizeOptionalText(phone) ??
+              context.archive.bookingCandidateFacts?.phone ??
+              context.archive.profile?.phone ??
+              null,
+            botImId: context.session.botImId,
+            corpId: context.session.corpId,
+            userId: context.session.userId,
+          });
 
           void sendCancelWorkOrderNotification({
             privateChatNotifier,
@@ -327,11 +371,12 @@ export function buildCancelWorkOrderTool(
             `取消工单异常: chatId=${chatId}, workOrderId=${workOrderId}`,
             toErrorStack(err),
           );
-          return buildToolError({
+          return buildCancelFailure({
+            context,
+            workOrderId,
             errorType: TOOL_ERROR_TYPES.CANCEL_REQUEST_FAILED,
             outcome: '取消工单异常',
-            replyInstruction:
-              '取消未成功。请以真人招募者口吻一句话安抚衔接，并按 request_handoff（reasonCode=modify_appointment）转人工；不要透露接口报错/技术细节，不要谎称已取消。',
+            failureReason: toErrorMessage(err) || '未知错误',
             details: {
               workOrderId,
               reason: toErrorMessage(err) || '未知错误',
@@ -340,6 +385,38 @@ export function buildCancelWorkOrderTool(
         }
       },
     });
+  };
+}
+
+/**
+ * 自助取消失败的统一回执：工具错误 + 自带转人工副作用（由 outcome 统一出口在回复投递后
+ * 落底账/暂停/告警），模型只需如实告知候选人已转同事，不再要求调 request_handoff。
+ */
+function buildCancelFailure(params: {
+  context: Parameters<ToolBuilder>[0];
+  workOrderId: number;
+  errorType:
+    | typeof TOOL_ERROR_TYPES.CANCEL_REASON_FETCH_FAILED
+    | typeof TOOL_ERROR_TYPES.CANCEL_REJECTED
+    | typeof TOOL_ERROR_TYPES.CANCEL_REQUEST_FAILED;
+  outcome: string;
+  failureReason: string;
+  details: Record<string, unknown>;
+}) {
+  return {
+    ...buildToolError({
+      errorType: params.errorType,
+      outcome: params.outcome,
+      replyInstruction: buildToolFailureReplyInstruction('取消'),
+      details: params.details,
+    }),
+    sideEffect: buildToolFailureHandoffSideEffect({
+      context: params.context,
+      action: '取消',
+      workOrderId: params.workOrderId,
+      errorType: params.errorType,
+      failureReason: params.failureReason,
+    }),
   };
 }
 

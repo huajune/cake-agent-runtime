@@ -1,0 +1,94 @@
+// WeeklyFunnel — 周度漏斗（登记 → 发出 → 6h 回复），沿用候选人表格的卡片与表头视觉
+@use '@/assets/styles/variables' as *;
+
+.section {
+  background: rgba($bg-card, 0.88);
+  border-radius: 18px; // 卡片圆角沿用候选人表格，token 里没有 18px 档
+  border: 1px solid rgba($primary-light, 0.14);
+  padding: $spacing-md 20px; // 横向 20px 与候选人表格卡片一致，无对应 token
+  box-shadow: 0 4px 20px rgba($primary, 0.05);
+  backdrop-filter: blur(10px);
+  margin-bottom: $spacing-md;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px; // 介于 $spacing-sm / $spacing-md 之间，无对应 token
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: $font-size-base;
+  font-weight: $font-weight-medium;
+  color: $text-primary;
+  letter-spacing: -0.01em;
+
+  svg {
+    color: $primary;
+  }
+}
+
+.note {
+  font-size: $font-size-xs;
+  color: $text-muted;
+  cursor: help;
+}
+
+.empty {
+  padding: 14px 0;
+  font-size: $font-size-xs;
+  color: $text-muted;
+}
+
+.tableWrapper {
+  @include monitoring-table-wrapper;
+}
+
+.table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: $font-size-sm;
+
+  th {
+    @include monitoring-table-header;
+  }
+
+  // 表头 mixin 写死 text-align: left；用 .table th.thRight 提高特异性覆盖，不用 !important
+  th.thRight {
+    text-align: right;
+  }
+
+  td {
+    padding: 10px $spacing-md;
+    border-bottom: 1px solid rgba($bg-tint, 0.8);
+    color: $text-body;
+    font-variant-numeric: tabular-nums;
+    vertical-align: middle;
+    white-space: nowrap;
+  }
+
+  tbody tr:last-child td {
+    border-bottom: none;
+  }
+}
+
+.cellRight {
+  text-align: right;
+}
+
+.weekCell {
+  color: $text-secondary;
+}
+
+.rateCell {
+  color: $primary;
+  font-weight: $font-weight-medium;
+}

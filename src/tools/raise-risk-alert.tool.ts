@@ -4,6 +4,7 @@ import { z } from 'zod';
 import type { ConversationRiskSideEffectIntent } from '@agent/runner/turn-side-effect.types';
 import { ToolBuilder } from '@shared-types/tool.types';
 import { buildToolError, TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
+import { getHandoffReasonLabel } from '@enums/handoff-reason.enum';
 
 const logger = new Logger('raise_risk_alert');
 
@@ -41,15 +42,8 @@ const inputSchema = z.object({
 
 type ToolRiskType = ConversationRiskSideEffectIntent['riskType'];
 
-const RISK_TYPE_LABELS: Record<ToolRiskType, string> = {
-  abuse: '辱骂/攻击',
-  complaint_risk: '投诉/举报风险',
-  escalation: '情绪升级',
-  interview_result_inquiry: '面试结果追问',
-  // input 层确定性拦截专用类型；本工具的 inputSchema 未开放给模型，仅为类型完整。
-  human_handoff_request: '候选人主动要求人工',
-  disability_disclosure: '候选人披露残障身份',
-};
+// 风险类型中文名唯一居所是 @enums/handoff-reason.enum（与入站守卫卡片同一份标签）。
+const RISK_LABEL_FALLBACK = '交流异常';
 
 function extractLatestUserMessageFromToolContext(messages: unknown[]): string {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
@@ -109,7 +103,7 @@ export function buildRaiseRiskAlertTool(): ToolBuilder {
             kind: 'conversation_risk',
             source: 'agent_tool',
             riskType: finalRiskType,
-            riskLabel: RISK_TYPE_LABELS[finalRiskType] ?? '交流异常',
+            riskLabel: getHandoffReasonLabel(finalRiskType, RISK_LABEL_FALLBACK),
             summary: summary?.trim() || '候选人对话出现异常风险',
             reason: reason.trim() || `命中 ${finalRiskType}`,
             currentMessageContent,

@@ -106,4 +106,29 @@ describe('OpsEventsRepository', () => {
       skipped: 1,
     });
   });
+
+  it('reads booking.succeeded payload.group_invite.outcome and leaves legacy rows as null', async () => {
+    const client = makeClient({
+      'booking.succeeded': [
+        [
+          { bot_im_id: 'bot-1', payload: { group_invite: { outcome: 'invited' } } },
+          { bot_im_id: 'bot-1', payload: { group_invite: { outcome: 'skipped:group_chat' } } },
+          { bot_im_id: 'bot-2', payload: { work_order_id: 1 } },
+          { bot_im_id: null, payload: null },
+        ],
+      ],
+    });
+
+    const result = await makeRepository(client).findBookingGroupInviteOutcomes(
+      '2026-09-14',
+      '2026-09-20',
+    );
+
+    expect(result).toEqual([
+      { botImId: 'bot-1', outcome: 'invited' },
+      { botImId: 'bot-1', outcome: 'skipped:group_chat' },
+      { botImId: 'bot-2', outcome: null },
+      { botImId: null, outcome: null },
+    ]);
+  });
 });

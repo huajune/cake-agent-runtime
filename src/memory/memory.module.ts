@@ -4,6 +4,7 @@ import { LlmModule } from '@/llm/llm.module';
 import { SpongeModule } from '@sponge/sponge.module';
 import { MemoryConfig } from './memory.config';
 import { MemoryService } from './memory.service';
+import { PhoneSessionIndexService } from './phone-session-index.service';
 import { RedisStore } from './stores/redis.store';
 import { SupabaseStore } from './stores/supabase.store';
 import { BrandStateService } from './short-term/brand-state.service';
@@ -55,6 +56,7 @@ import { PreparationModule } from '@agent/generator/preparation/preparation.modu
     ConsolidationProcessor,
     MemoryLifecycleService,
     MemoryService,
+    PhoneSessionIndexService,
   ],
   exports: [
     MemoryConfig,
@@ -65,6 +67,7 @@ import { PreparationModule } from '@agent/generator/preparation/preparation.modu
     LongTermService,
     MessageWindowService,
     BrandStateService,
+    PhoneSessionIndexService,
   ],
 })
 export class MemoryModule {}

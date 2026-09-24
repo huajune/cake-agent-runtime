@@ -97,13 +97,14 @@ describe('TurnDataLoaderService', () => {
       },
     ];
     const booking = {
-      loadPointer: jest.fn().mockResolvedValue({ state: 'none' }),
-      enrichOutOfBand: jest.fn().mockResolvedValue({ state: 'none' }),
+      load: jest.fn().mockResolvedValue({ state: 'none' }),
     };
     const memoryService = { onTurnStart: jest.fn().mockResolvedValue(memory) };
     const sponge = { fetchBrandList: jest.fn().mockResolvedValue([]) };
     const groupResolver = { resolveGroups: jest.fn().mockResolvedValue(groups) };
-    const groupMembership = { lookupUserRooms: jest.fn().mockResolvedValue({ rooms: ['room-1'], verified: true }) };
+    const groupMembership = {
+      lookupUserRooms: jest.fn().mockResolvedValue({ rooms: ['room-1'], verified: true }),
+    };
     const accountIdentity = {
       resolveAgentAccountIdentity: jest.fn().mockResolvedValue({ nickname: '小蛋', gender: '女' }),
     };
@@ -166,8 +167,7 @@ describe('TurnDataLoaderService', () => {
     expect(groupResolver.resolveGroups).toHaveBeenCalledTimes(1);
     expect(groupMembership.lookupUserRooms).toHaveBeenCalledWith('contact-1', expect.anything());
     expect(strategy.getActiveConfig).toHaveBeenCalledWith('testing');
-    expect(booking.enrichOutOfBand).toHaveBeenCalledWith(
-      { state: 'none' },
+    expect(booking.load).toHaveBeenCalledWith(
       memory,
       expect.objectContaining({ sessionId: 'session-1' }),
       '上海有餐饮工作吗',
@@ -210,8 +210,7 @@ describe('TurnDataLoaderService', () => {
   it('keeps optional source failures explicit without rejecting the turn', async () => {
     const memory = buildMemory();
     const booking = {
-      loadPointer: jest.fn().mockResolvedValue({ state: 'none' }),
-      enrichOutOfBand: jest.fn().mockResolvedValue({ state: 'none' }),
+      load: jest.fn().mockResolvedValue({ state: 'none' }),
     };
     const tracer = { emit: jest.fn() };
     const service = new TurnDataLoaderService(
@@ -288,8 +287,7 @@ describe('TurnDataLoaderService', () => {
     const tracer = { emit: jest.fn() };
     const service = new TurnDataLoaderService(
       {
-        loadPointer: jest.fn().mockResolvedValue({ state: 'none' }),
-        enrichOutOfBand: jest.fn().mockResolvedValue({ state: 'none' }),
+        load: jest.fn().mockResolvedValue({ state: 'none' }),
       } as never,
       { onTurnStart: jest.fn().mockResolvedValue(memory) } as never,
       { fetchBrandList: jest.fn().mockResolvedValue([]) } as never,
@@ -348,8 +346,7 @@ describe('TurnDataLoaderService', () => {
     });
     const service = new TurnDataLoaderService(
       {
-        loadPointer: jest.fn().mockResolvedValue({ state: 'none' }),
-        enrichOutOfBand: jest.fn().mockResolvedValue({ state: 'none' }),
+        load: jest.fn().mockResolvedValue({ state: 'none' }),
       } as never,
       { onTurnStart: jest.fn().mockReturnValue(slowMemory) } as never,
       { fetchBrandList: jest.fn().mockResolvedValue([]) } as never,
@@ -487,8 +484,7 @@ function buildLoader(
 ) {
   return new TurnDataLoaderService(
     {
-      loadPointer: jest.fn().mockResolvedValue({ state: 'none' }),
-      enrichOutOfBand: jest.fn().mockResolvedValue({ state: 'none' }),
+      load: jest.fn().mockResolvedValue({ state: 'none' }),
     } as never,
     { onTurnStart: overrides.onTurnStart ?? jest.fn().mockResolvedValue(buildMemory()) } as never,
     { fetchBrandList: overrides.fetchBrandList ?? jest.fn().mockResolvedValue([]) } as never,

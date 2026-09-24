@@ -112,7 +112,7 @@ describe('MemorySection', () => {
     };
 
     expect(visibleBookingWorkOrders(snapshot)).toEqual([
-      { workOrderId: 464227, jobId: 529005, source: 'out_of_band' },
+      expect.objectContaining({ workOrderId: 464227, jobId: 529005, source: 'out_of_band' }),
     ]);
     expect(visibleBookingWorkOrders({ state: 'none' })).toEqual([]);
   });

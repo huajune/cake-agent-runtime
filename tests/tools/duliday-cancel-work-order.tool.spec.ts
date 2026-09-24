@@ -1,7 +1,7 @@
 import { buildCancelWorkOrderTool } from '@tools/duliday-cancel-work-order.tool';
 import { ToolBuildContext } from '@shared-types/tool.types';
 import { TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
-import { createToolContext } from '../helpers/tool-context.fixture';
+import { createToolContext, mergeToolContext } from '../helpers/tool-context.fixture';
 
 describe('buildCancelWorkOrderTool', () => {
   const spongeService = {
@@ -58,6 +58,82 @@ describe('buildCancelWorkOrderTool', () => {
   });
 
   describe('B5 取消前置核验', () => {
+    const snapshotRef = (over: Record<string, unknown> = {}) => ({
+      workOrderId: 464227,
+      jobId: 529005,
+      source: 'out_of_band' as const,
+      signupSource: 'SUPPLIER' as const,
+      ownedByCandidate: true,
+      ...over,
+    });
+    const bookingSnapshot = { invalidate: jest.fn().mockResolvedValue(undefined) };
+    const buildWithSnapshot = (ctx: ToolBuildContext) =>
+      buildCancelWorkOrderTool(
+        spongeService as never,
+        opsEventsRecorder as never,
+        longTermService as never,
+        privateChatNotifier as never,
+        { bookingSnapshot: bookingSnapshot as never },
+      )(ctx);
+
+    it('快照里通过本人校验的带外工单视同自有：放行取消、事件带 source=oob、失效快照缓存', async () => {
+      bookingSnapshot.invalidate.mockClear();
+      const ctx = mergeToolContext(mockContext, {
+        archive: { bookingWorkOrders: [snapshotRef()] },
+      });
+      const result = await exec(buildWithSnapshot(ctx), {
+        workOrderId: 464227,
+        cancelReasonId: 12010,
+        phone: '18271421690',
+      });
+
+      expect(result).toMatchObject({ success: true, workOrderId: 464227 });
+      expect(spongeService.cancelWorkOrder).toHaveBeenCalledWith(
+        expect.objectContaining({ workOrderId: 464227 }),
+        expect.anything(),
+      );
+      expect(opsEventsRecorder.recordEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          eventName: 'booking.canceled',
+          payload: expect.objectContaining({ source: 'oob' }),
+        }),
+      );
+      expect(bookingSnapshot.invalidate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          phone: '18271421690',
+          botImId: 'bot-im-1',
+          corpId: 'corp-1',
+          userId: 'user-1',
+        }),
+      );
+    });
+
+    it('本人校验未通过的快照工单禁止取消（identity_mismatch）', async () => {
+      const ctx = mergeToolContext(mockContext, {
+        archive: { bookingWorkOrders: [snapshotRef({ ownedByCandidate: false })] },
+      });
+      const result = await exec(buildWithSnapshot(ctx), {
+        workOrderId: 464227,
+        cancelReasonId: 12010,
+      });
+
+      expect(result).toMatchObject({
+        success: false,
+        errorType: TOOL_ERROR_TYPES.CANCEL_WORK_ORDER_NOT_OWNED,
+        ownershipReason: 'identity_mismatch',
+      });
+      expect(result._replyInstruction).toContain('姓名');
+      expect(spongeService.cancelWorkOrder).not.toHaveBeenCalled();
+    });
+
+    it('指针里的自建单取消事件来源为 ai', async () => {
+      const result = await exec(buildTool(), { workOrderId: 123, cancelReasonId: 12010 });
+      expect(result).toMatchObject({ success: true });
+      expect(opsEventsRecorder.recordEvent).toHaveBeenCalledWith(
+        expect.objectContaining({ payload: expect.objectContaining({ source: 'ai' }) }),
+      );
+    });
+
     it('rejects a workOrderId outside the active_booking set (记忆残留/臆造工单)', async () => {
       const tool = buildTool();
       const result = await exec(tool, { workOrderId: 999, cancelReasonId: 12010 });
@@ -259,6 +335,77 @@ describe('buildCancelWorkOrderTool', () => {
     expect(result).toMatchObject({
       success: false,
       errorType: TOOL_ERROR_TYPES.CANCEL_REQUEST_FAILED,
+    });
+  });
+
+  describe('失败回执自带转人工（PRD R5.1：删「说衔接语 + 调 request_handoff」互斥指令）', () => {
+    const contextWithFocus = mergeToolContext(mockContext, {
+      archive: {
+        currentStage: 'interview_booked',
+        currentFocusJob: { jobId: 528546 } as never,
+        activeBookingJobIds: [528546],
+      },
+      turnInput: {
+        messages: [{ role: 'user', content: '那个面试我不去了，帮我取消吧' }],
+        currentUserMessage: '那个面试我不去了，帮我取消吧',
+      },
+    });
+
+    it.each([
+      [
+        'CANCEL_REJECTED',
+        () =>
+          spongeService.cancelWorkOrder.mockResolvedValue({
+            success: false,
+            code: 500,
+            message: 'busy',
+          }),
+        TOOL_ERROR_TYPES.CANCEL_REJECTED,
+      ],
+      [
+        'CANCEL_REQUEST_FAILED',
+        () => spongeService.cancelWorkOrder.mockRejectedValue(new Error('network down')),
+        TOOL_ERROR_TYPES.CANCEL_REQUEST_FAILED,
+      ],
+      [
+        'CANCEL_REASON_FETCH_FAILED',
+        () => spongeService.fetchFailureReasonsByPids.mockRejectedValue(new Error('dict down')),
+        TOOL_ERROR_TYPES.CANCEL_REASON_FETCH_FAILED,
+      ],
+    ])('%s carries a modify_appointment handoff sideEffect', async (_label, arrange, errorType) => {
+      arrange();
+      const result = await exec(buildTool(contextWithFocus), {
+        workOrderId: 123,
+        cancelReasonId: 12010,
+      });
+
+      expect(result.errorType).toBe(errorType);
+      expect(result.sideEffect).toEqual(
+        expect.objectContaining({
+          kind: 'general_handoff',
+          source: 'agent_tool',
+          origin: 'tool_failure',
+          reasonCode: 'modify_appointment',
+          workOrderId: 123,
+          jobId: 528546,
+          stage: 'interview_booked',
+          botImId: 'bot-im-1',
+          recordHandoff: true,
+          reason: expect.stringContaining(`自助取消失败（${errorType}`),
+        }),
+      );
+      expect(result.sideEffect.reason).toContain('候选人原话：「那个面试我不去了，帮我取消吧」');
+      // 不再要求模型调 request_handoff，也不再教「我让同事帮你确认一下」
+      expect(result._replyInstruction).not.toContain('按 request_handoff');
+      expect(result._replyInstruction).not.toContain('我让同事帮你确认一下');
+      expect(result._replyInstruction).toContain('已经转给同事跟进');
+      expect(result._replyInstruction).toContain('不要谎称已取消');
+    });
+
+    it('does not carry a sideEffect when the reason still needs to be picked (first step)', async () => {
+      const result = await exec(buildTool(contextWithFocus), { workOrderId: 123 });
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.CANCEL_REASON_REQUIRED);
+      expect(result.sideEffect).toBeUndefined();
     });
   });
 });

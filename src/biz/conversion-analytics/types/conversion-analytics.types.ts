@@ -97,6 +97,12 @@ export interface ConversionBotCounts {
   booking_cancel: number;
   /** 自助改约面时间数（booking.interview_modified）；运营侧支，不进线性漏斗。 */
   interview_modified: number;
+  /** 带外工单（供应商后台建单）被对账到的数（booking.linked_out_of_band）；来源维度，不进漏斗。 */
+  oob_linked: number;
+  /** 带外工单的后续自助取消数（booking.canceled 且 payload.source=oob）。 */
+  oob_booking_cancel: number;
+  /** 带外工单的后续自助改约数（booking.interview_modified 且 payload.source=oob）。 */
+  oob_interview_modified: number;
 }
 
 export interface ConversionBotRow {
@@ -122,4 +128,26 @@ export interface HandoffBucket {
 export interface ConversionHandoffResponse {
   total: number;
   reasons: Array<HandoffBucket & { reasonCode: string }>;
+}
+
+/** 门店未履约周榜的一行：按品牌 + 门店聚合的门店侧履约类介入。 */
+export interface StoreNoShowRankRow {
+  brandName: string;
+  storeName: string;
+  /** 三类合计（store_no_show + no_reception + booking_conflict）。 */
+  total: number;
+  /** 各原因码计数。 */
+  byReason: Record<string, number>;
+  /** 涉及的候选人会话数（同一候选人反复转不重复计）。 */
+  chatCount: number;
+}
+
+export interface StoreNoShowRankResponse {
+  startDate: string;
+  endDate: string;
+  reasonCodes: string[];
+  total: number;
+  /** 关联不到工单/岗位的介入条数（另计，不进榜）。 */
+  unresolved: number;
+  rows: StoreNoShowRankRow[];
 }

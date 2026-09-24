@@ -53,6 +53,17 @@ export class HostingMemberConfigService {
   }
 
   /**
+   * 已配置海绵 token 的托管账号 botImId 全集（带外工单补偿扫描按账号遍历）。
+   * 配置读取失败返回空数组：扫描宁可这一轮不跑，也不能用默认 token 拉别家账号的工单。
+   */
+  async listTokenConfiguredBotImIds(): Promise<string[]> {
+    const config = await this.loadConfig();
+    return Object.entries(config?.members ?? {})
+      .filter(([, entry]) => Boolean(entry?.dulidayToken?.trim()))
+      .map(([botImId]) => botImId);
+  }
+
+  /**
    * Agent 账号身份（企微昵称/性别）：注入 system prompt 身份段（IdentitySection），
    * 让模型确知"自己是谁"。
    *

@@ -350,14 +350,27 @@ function replyStatesBookedDate(replyText: string, confirmedTimeHuman: string): b
   return weekday ? replyText.includes(weekday) : false;
 }
 
+/**
+ * 本轮是否成功发出兼职群邀请：`invite_to_group:ok`，或报名成功后运行时拉群成功
+ * （booking 回执 `groupInvite.success`，PRD R3）。两种来源发的都是兼职岗位信息群。
+ */
 function findSuccessfulJobPoolInvite(toolCalls: AgentToolCall[]): AgentToolCall | null {
   for (const call of toolCalls) {
-    if (call.toolName !== 'invite_to_group' || call.status === 'error') continue;
-    const result =
-      call.result && typeof call.result === 'object' && !Array.isArray(call.result)
-        ? (call.result as Record<string, unknown>)
-        : null;
-    if (result?.success === true && result.groupPurpose === 'job_pool') return call;
+    if (call.status === 'error') continue;
+    const result = asRecord(call.result);
+    if (
+      call.toolName === 'invite_to_group' &&
+      result?.success === true &&
+      result.groupPurpose === 'job_pool'
+    ) {
+      return call;
+    }
+    if (
+      call.toolName === 'duliday_interview_booking' &&
+      asRecord(result?.groupInvite)?.success === true
+    ) {
+      return call;
+    }
   }
   return null;
 }

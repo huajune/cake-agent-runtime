@@ -62,4 +62,34 @@ describe('岗位卡片不渲染面试后环节（试工/培训/入职流程）',
     expect(policy.normalizedRequirements.interviewRemarkDisplay).toContain('AI面试');
     expect(policy.normalizedRequirements.interviewRemarkDisplay).not.toContain('办理入职');
   });
+
+  // J10（2026-09-20 复核）：0916 只屏蔽了「流程说明」行与面试备注，processDesc 仍经
+  // normalizedRequirements.remark 拼进「招聘要求 › 其他要求」。招聘要求与面试流程两个开关同开时也不得出现。
+  it('does not leak processDesc through 招聘要求 › 其他要求 when both switches are on', () => {
+    const job = buildJob();
+    job.hiringRequirement = {
+      basicPersonalRequirements: { minAge: 18, maxAge: 45, genderRequirement: '不限' },
+      figure: '社会人士',
+    } as unknown as JobDetail['hiringRequirement'];
+    const flags: ProgressiveDisclosureFlags = {
+      ...FLAGS,
+      includeHiringRequirement: true,
+      includeInterviewProcess: true,
+    };
+
+    const md = formatJobsToMarkdown([job], 1, 1, 10, flags);
+    const policy = buildJobPolicyAnalysis(job);
+
+    expect(md).toContain('AI面试');
+    expect(md).not.toContain('办理入职');
+    expect(md).not.toContain('琪琪');
+    expect(md).not.toContain('店长会直接加微信');
+    // 确定性抽取仍读全文；模型可见的展示变体不含 processDesc
+    expect(policy.normalizedRequirements.remark).toContain('办理入职');
+    expect(policy.normalizedRequirements.remarkDisplay).toContain('AI面试');
+    expect(policy.normalizedRequirements.remarkDisplay).not.toContain('办理入职');
+    // J8：「身份要求」标签用中文，不再露出英文字段名 figure
+    expect(md).toContain('**身份要求**: 社会人士');
+    expect(md).not.toContain('**figure**');
+  });
 });

@@ -21,6 +21,20 @@ import { formatShanghaiDate, formatShanghaiTime } from '@tools/booking/date.util
 
 const SHORT_WEEKDAYS = ['一', '二', '三', '四', '五', '六', '日'];
 
+/** 起止时刻归一后相同即为「固定时间点」窗口（海绵把固定时间点录成 startTime === endTime）。 */
+export function isFixedTimePointWindow(startTime: string, endTime: string): boolean {
+  const start = normalizeHm(startTime);
+  return start !== null && start === normalizeHm(endTime);
+}
+
+/**
+ * 面试窗口时刻文案：区间写 `10:00-12:00`；起止相同只写 `14:00`，不拼成「14:00-14:00」
+ * （那会让模型把固定时间点读成零宽区间，对候选人复述成"14:00到14:00"）。
+ */
+export function formatWindowTimeText(startTime: string, endTime: string): string {
+  return isFixedTimePointWindow(startTime, endTime) ? startTime : `${startTime}-${endTime}`;
+}
+
 /**
  * 生成未来 horizonDays 天内实际可约的面试时段（扁平 label 数组），不受 requestedDate 影响。
  * - 过滤已过报名截止的时段
@@ -81,7 +95,7 @@ export function buildUpcomingTimeOptions(
         startTime: window.startTime,
         endTime: window.endTime,
         deadline,
-        label: `${date} ${weekdayShort} ${window.startTime}-${window.endTime}${suffix}`,
+        label: `${date} ${weekdayShort} ${formatWindowTimeText(window.startTime, window.endTime)}${suffix}`,
       });
     }
   }
@@ -165,12 +179,14 @@ export function buildBookableSlots(params: {
       const weekdayShort = weekday.replace('每周', '周');
       const dateOnly = isDateOnlyWindow(window);
       const normalizedStart = normalizeHm(window.startTime);
+      const fixedTimePoint = !dateOnly && isFixedTimePointWindow(window.startTime, window.endTime);
+      const windowTimeText = formatWindowTimeText(window.startTime, window.endTime);
       const base = {
         date,
         weekday: weekdayShort,
         startTime: window.startTime,
         endTime: window.endTime,
-        label: `${date} ${weekdayShort} ${window.startTime}-${window.endTime}`,
+        label: `${date} ${weekdayShort} ${windowTimeText}`,
         registrationDeadline,
       };
 
@@ -193,17 +209,29 @@ export function buildBookableSlots(params: {
                 reason:
                   '该面试窗口缺少可识别的具体开始时间；不要自动调用预约工具，先让同事确认具体提交时间。',
               }
-            : {
-                ...base,
-                dateOnly: false,
-                bookingAllowed: true,
-                interviewTime: `${date} ${normalizedStart}:00`,
-                interviewTimeFlexible: true,
-                interviewTimeHint:
-                  `本时段是 ${window.startTime}-${window.endTime} 的面试窗口，窗口内任意时刻都可预约。` +
-                  '候选人说了窗口内的具体时刻就按他说的提交，不要改写成窗口起点，' +
-                  '也不要对候选人说"只能约某一个时间点"；候选人没说时刻时才用 interviewTime 默认值。',
-              },
+            : fixedTimePoint
+              ? {
+                  ...base,
+                  dateOnly: false,
+                  bookingAllowed: true,
+                  interviewTime: `${date} ${normalizedStart}:00`,
+                  interviewTimeFlexible: false,
+                  interviewTimeHint:
+                    `本时段是固定时间点 ${window.startTime}（不是时间段，岗位只在这一刻面试）。` +
+                    '对候选人只说这一个时间，不要说成"X点到X点"；候选人要约别的时刻时按无此时段处理，' +
+                    '按 interviewTime 提交。',
+                }
+              : {
+                  ...base,
+                  dateOnly: false,
+                  bookingAllowed: true,
+                  interviewTime: `${date} ${normalizedStart}:00`,
+                  interviewTimeFlexible: true,
+                  interviewTimeHint:
+                    `本时段是 ${windowTimeText} 的面试窗口，窗口内任意时刻都可预约。` +
+                    '候选人说了窗口内的具体时刻就按他说的提交，不要改写成窗口起点，' +
+                    '也不要对候选人说"只能约某一个时间点"；候选人没说时刻时才用 interviewTime 默认值。',
+                },
       );
     }
   }
@@ -256,7 +284,7 @@ export function buildScheduleRule(windows: InterviewWindow[]): string {
   for (const group of groups.values()) {
     const weekdayStr = formatWeekdayList(group.windows.map((window) => window.weekday || ''));
     if (!weekdayStr) continue;
-    const timeStr = `${group.startTime}-${group.endTime}`;
+    const timeStr = formatWindowTimeText(group.startTime, group.endTime);
     const deadlineClause = formatDeadlineClause(group.windows[0]);
     parts.push(
       deadlineClause ? `${weekdayStr} ${timeStr}，${deadlineClause}` : `${weekdayStr} ${timeStr}`,

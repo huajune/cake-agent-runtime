@@ -75,6 +75,12 @@ export interface InboundTurnRequest {
 export interface TurnOutcome {
   kind: 'reply' | 'handoff' | 'skipped';
   reply?: { text: string };
+  /**
+   * 仅 handoff：本轮已有成功提交的报名/改约/取消结果，而模型随后调 request_handoff 导致无回复文本。
+   * 渠道必须在提交暂停/告警之前先把这段确定性文本投递给候选人（PRD R5.1 第 3 条）。
+   * 文本由工具返回的结构化字段拼成，不经 LLM。
+   */
+  preHandoffReceipt?: { text: string; sources: string[] };
   toolCalls: AgentToolCall[];
   /** 审查后的生成文本；reply 时等于 reply.text，非投递终态时供观测留痕。 */
   generatedText?: string;

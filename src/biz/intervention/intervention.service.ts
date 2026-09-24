@@ -1,8 +1,12 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
+import { toErrorMessage } from '@infra/utils/error.util';
+import { InterventionTaskService } from '@notification/feishu-task/intervention-task.service';
 import { ConversationRiskNotifierService } from '@notification/services/conversation-risk-notifier.service';
 import { GeneralHandoffNotifierService } from '@notification/services/general-handoff-notifier.service';
 import type { WeworkSessionState } from '@memory/short-term/short-term.types';
+import type { ConversationRiskType } from '@shared-types/guardrail.contract';
+import { requiresManualResumeForReason } from '@enums/handoff-reason.enum';
 
 export interface InterventionMessageSnapshot {
   role: 'user' | 'assistant';
@@ -25,13 +29,7 @@ export interface InterventionBase {
 
 export interface RiskInterventionPayload extends InterventionBase {
   kind: 'conversation_risk';
-  riskType:
-    | 'abuse'
-    | 'complaint_risk'
-    | 'escalation'
-    | 'interview_result_inquiry'
-    | 'human_handoff_request'
-    | 'disability_disclosure';
+  riskType: ConversationRiskType;
   riskLabel: string;
   summary: string;
   reason: string;
@@ -60,20 +58,15 @@ export type InterventionPayload = RiskInterventionPayload | GeneralHandoffInterv
 
 /**
  * 面试之后的环节一律真人对接（2026-09-16 运营裁定，生产 chat 6a9f7db6ce406a6aee13b137）。
- * 这三类转人工不能在次日零点自动解禁——事故里托管隔天自动恢复，Agent 接回后指引候选人到店白干；
+ * 面试后类转人工不能在次日零点自动解禁——事故里托管隔天自动恢复，Agent 接回后指引候选人到店白干；
  * 改为暂停到人工在 Dashboard 恢复为止。其余转人工仍按默认次日零点解禁。
+ * 哪些码永久暂停由权威目录（@enums/handoff-reason.enum 的 manualResumeOnly）决定，不在此重复维护。
  */
-const MANUAL_RESUME_HANDOFF_REASON_CODES: ReadonlySet<string> = new Set([
-  'interview_result_inquiry',
-  'onboarding_paperwork',
-  'self_recruited_or_completed',
-]);
-
 export function requiresManualResume(payload: InterventionPayload): boolean {
   if (payload.kind === 'conversation_risk') {
-    return payload.riskType === 'interview_result_inquiry';
+    return requiresManualResumeForReason(payload.riskType);
   }
-  return payload.reasonCode != null && MANUAL_RESUME_HANDOFF_REASON_CODES.has(payload.reasonCode);
+  return requiresManualResumeForReason(payload.reasonCode);
 }
 
 export interface InterventionResult {
@@ -100,6 +93,7 @@ export class InterventionService {
     private readonly userHostingService: UserHostingService,
     private readonly riskNotifier: ConversationRiskNotifierService,
     private readonly generalHandoffNotifier: GeneralHandoffNotifierService,
+    @Optional() private readonly interventionTaskService?: InterventionTaskService,
   ) {}
 
   async dispatch(payload: InterventionPayload): Promise<InterventionResult> {
@@ -142,6 +136,9 @@ export class InterventionService {
       `[Intervention] kind=${payload.kind} source=${payload.source} chatId=${payload.chatId} alerted=${alerted}`,
     );
 
+    // 飞书任务（PRD R6）：异步、不阻塞群卡片与暂停；失败由任务服务自行告警。
+    this.submitFeishuTask(payload);
+
     return {
       dispatched: true,
       paused: true,
@@ -149,6 +146,15 @@ export class InterventionService {
       suppressed: alerted ? undefined : 'notify_failed',
       reason: payload.reason,
     };
+  }
+
+  private submitFeishuTask(payload: InterventionPayload): void {
+    if (!this.interventionTaskService) return;
+    void this.interventionTaskService.submit(payload).catch((error: unknown) => {
+      this.logger.warn(
+        `[Intervention] 飞书任务提交异常（已忽略）: chatId=${payload.chatId} error=${toErrorMessage(error)}`,
+      );
+    });
   }
 
   private notifyRisk(payload: RiskInterventionPayload): Promise<boolean> {

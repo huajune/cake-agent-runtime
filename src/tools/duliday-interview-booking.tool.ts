@@ -5,6 +5,7 @@
  * BookingCollectionForm，唯一外发形状是 `{ jobId, interviewTime?, labelList }`。
  */
 
+import type { GroupInviteService } from '@biz/group-task/services/group-invite.service';
 import type { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
 import type { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { toErrorMessage } from '@infra/utils/error.util';
@@ -39,15 +40,27 @@ import {
 } from '@tools/booking/booking-reply-format.util';
 import { runBookingScheduleAndNameGuards } from '@tools/booking/booking-guards.util';
 import { findRecentSameJobBooking } from '@tools/booking/active-booking-dedup.util';
+import type { BookingSnapshotService } from '@tools/booking/booking-snapshot.service';
+import {
+  findCrossAccountDuplicate,
+  findSnapshotDuplicate,
+} from '@tools/booking/booking-snapshot.util';
+import type { PhoneSessionIndexService } from '@memory/phone-session-index.service';
 import { isTestPiiPhoneAllowed, maskPhoneForDetails } from '@tools/shared/test-pii-gate';
 import { buildJobPolicyAnalysis, isWaitNoticeInterview } from '@tools/job-list/job-policy-parser';
 import { buildBookableSlots } from '@tools/booking/bookable-slot.util';
+import {
+  buildPostBookingGroupInviteGuide,
+  describePostBookingGroupInviteForEvent,
+  runPostBookingGroupInvite,
+} from '@tools/invite/post-booking-group-invite';
 import { buildSpongeTokenContext } from '@tools/shared/sponge-token-context.util';
 import {
   buildToolError,
   STALE_INPUT_SHORT_CIRCUIT,
   TOOL_ERROR_TYPES,
 } from '@tools/shared/tool-error-types';
+import { buildBookingFailureRecordIntent } from '@tools/shared/tool-failure-handoff.util';
 import { tool } from 'ai';
 import { z } from 'zod';
 
@@ -79,6 +92,12 @@ export interface BookingAdjudicationDeps {
   identityAnchors?: string;
   /** 收资审计面：`error_list_unmapped` 熔断此前只落盘不发事件，观测里完全看不见。 */
   observer?: { emit: (event: AgentEvent) => void };
+  /** 报名成功后由运行时直接拉群（PRD R3）；缺省时回执里 groupInvite 记 service_unavailable。 */
+  groupInvite?: GroupInviteService;
+  /** 预约快照：报名成功后失效该手机号缓存（否则 5 分钟内快照看不到新单）。 */
+  bookingSnapshot?: Pick<BookingSnapshotService, 'invalidate'>;
+  /** 手机号→会话索引：报名成功即写入，带外工单补偿扫描据此反查会话。 */
+  phoneSessionIndex?: Pick<PhoneSessionIndexService, 'record'>;
 }
 
 /**
@@ -401,22 +420,111 @@ export function buildInterviewBookingTool(
           const activeBookings = isAdditionalCandidate
             ? []
             : await longTermService.getActiveBookings(scope.corpId, scope.userId);
-          const duplicate = findRecentSameJobBooking(activeBookings, jobId);
+          // 查重三级判据（与 precheck 同口径）：
+          // 1) 本轮预约快照（按手机号查得，含自建与带外）同岗位或同品牌在途即命中；
+          // 2) active_booking 30 分钟窗口只留给「另一账号刚建单」的并发场景；
+          // 3) 报名前再查一次 onlyCurrentAccount=false，别的账号下同岗位/同品牌在途即命中，
+          //    如实告诉候选人并用 duplicate_signup 转人工，不等海绵拒绝。
+          const targetBrandName =
+            context.ledger.jobs.fetchedJobs.find((job) => job.jobId === jobId)?.brandName ??
+            (context.archive.currentFocusJob?.jobId === jobId
+              ? context.archive.currentFocusJob.brandName
+              : null) ??
+            null;
+          const snapshotHit = isAdditionalCandidate
+            ? undefined
+            : findSnapshotDuplicate(context.archive.bookingWorkOrders ?? [], {
+                jobId,
+                brandName: targetBrandName,
+              });
+          const pointerHit = snapshotHit
+            ? undefined
+            : findRecentSameJobBooking(activeBookings, jobId);
+          const crossAccountHit =
+            snapshotHit || pointerHit || isAdditionalCandidate
+              ? undefined
+              : await findCrossAccountDuplicate({
+                  spongeService,
+                  phone: identity.phone,
+                  tokenContext,
+                  target: { jobId, brandName: targetBrandName },
+                  onFailure: (message) =>
+                    logger.warn(
+                      `[booking] 跨账号查重查询失败（按无命中放行）: jobId=${jobId} ${message}`,
+                    ),
+                });
+          const duplicate = snapshotHit
+            ? {
+                work_order_id: snapshotHit.workOrderId,
+                interview_time: snapshotHit.interviewTime,
+                matchedBy: snapshotHit.matchedBy,
+                crossAccount: false,
+              }
+            : pointerHit
+              ? {
+                  work_order_id: pointerHit.work_order_id,
+                  interview_time: pointerHit.interview_time ?? null,
+                  matchedBy: 'job' as const,
+                  // 30 分钟窗口内的单可能是本候选人另一账号/重试刚建的：按"已约上"播报，不转人工。
+                  crossAccount: false,
+                }
+              : crossAccountHit
+                ? {
+                    work_order_id: crossAccountHit.workOrderId,
+                    interview_time: crossAccountHit.interviewTime,
+                    matchedBy: crossAccountHit.matchedBy,
+                    crossAccount: true,
+                  }
+                : undefined;
           // 换店报名不自动取消旧工单（是否保留两家由候选人决定），但必须把在途的另一家亮出来让
           // 模型当轮问清，不得默默双报（badcase 9m5exulb：换到大学城店报名成功后，世纪联华店旧工单
           // 一直挂着，真人只能事后追问"是只报大学城吗"）。
-          const otherActiveBookings = activeBookings
-            .filter((entry) => entry.job_id != null && entry.job_id !== jobId)
-            .map((entry) => ({ workOrderId: entry.work_order_id, jobId: entry.job_id }));
+          const otherActiveBookings = [
+            ...activeBookings
+              .filter((entry) => entry.job_id != null && entry.job_id !== jobId)
+              .map((entry) => ({ workOrderId: entry.work_order_id, jobId: entry.job_id })),
+            ...(context.archive.bookingWorkOrders ?? [])
+              .filter((ref) => ref.jobId != null && ref.jobId !== jobId)
+              .map((ref) => ({ workOrderId: ref.workOrderId, jobId: ref.jobId })),
+          ].filter(
+            (entry, index, all) =>
+              all.findIndex((other) => other.workOrderId === entry.workOrderId) === index,
+          );
           if (duplicate) {
             // 在途工单是候选人级（corpId+userId）而非会话级：同一候选人同时跟两个托管账号聊、
             // 另一账号刚建单时，这里也会命中。此时预约**已经存在**，不是"没提交成功"——
             // 回复必须如实说已约上，不得编造系统故障或承诺稍后重提（生产 batch …_1789111221226）。
             context.ledger.jobs.bookingSucceeded = true;
-            return buildAlreadyBookedReceipt({
-              workOrderId: duplicate.work_order_id,
-              interviewTime: duplicate.interview_time ?? null,
-              source: 'active_booking_dedup',
+            const existingInterviewTimeHuman = duplicate.interview_time
+              ? formatInterviewTimeForReply(duplicate.interview_time)
+              : undefined;
+            const scopeText = duplicate.matchedBy === 'brand' ? '同品牌' : '该岗位';
+            return buildToolError({
+              errorType: TOOL_ERROR_TYPES.BOOKING_ALREADY_BOOKED,
+              outcome: `${scopeText}已有在途预约工单，本次未重复提交；预约已存在，不是失败`,
+              replyInstruction:
+                (duplicate.crossAccount
+                  ? `候选人在${scopeText}的面试预约已经存在（由其它托管账号/渠道提交），如实告诉候选人「你之前已经报过这个岗位/品牌」、不用再提交；`
+                  : `${scopeText}的面试预约已经存在，如实告诉候选人已经约上、不用再提交；`) +
+                (existingInterviewTimeHuman
+                  ? `工单上的面试时间是 ${existingInterviewTimeHuman}，按此播报。`
+                  : '工单未记录面试时间时不要编造时间，按 [当前预约信息] 或本轮已确认的时间播报。') +
+                '禁止说"系统有问题/没提交成功/稍后再帮你提交"。' +
+                (duplicate.crossAccount
+                  ? '本账号无法操作该工单，随后调用 request_handoff(reasonCode="duplicate_signup") 转人工核实。'
+                  : '改时间用 duliday_modify_interview_time，取消用 duliday_cancel_work_order。'),
+              details: {
+                existingWorkOrderId: duplicate.work_order_id,
+                alreadyBookedSource: 'active_booking_dedup',
+                matchedBy: duplicate.matchedBy,
+                crossAccount: duplicate.crossAccount,
+                ...(duplicate.interview_time
+                  ? { existingInterviewTime: duplicate.interview_time }
+                  : {}),
+                ...(existingInterviewTimeHuman
+                  ? { _existingInterviewTimeHuman: existingInterviewTimeHuman }
+                  : {}),
+              },
             });
           }
 
@@ -531,6 +639,14 @@ export function buildInterviewBookingTool(
                 },
               }),
               hostingPaused: true,
+              // 报名失败类介入落 handoff_events 底账（recordOnly：托管已在上面暂停、卡片由 notifyBooking 发）
+              sideEffect: buildBookingFailureRecordIntent({
+                context,
+                jobId,
+                interviewTime,
+                errorType: TOOL_ERROR_TYPES.BOOKING_REJECTED,
+                failureReason: result.message ?? `海绵返回 code=${result.code}`,
+              }),
             };
             void notifyBooking(
               privateChatNotifier,
@@ -591,6 +707,26 @@ export function buildInterviewBookingTool(
                 },
               );
             });
+            // 报名成功后失效该手机号的预约快照缓存，并把手机号→会话索引写下（补偿扫描反查用）。
+            await runPostBookingWrite('预约快照失效', async () => {
+              await deps.bookingSnapshot?.invalidate({
+                phone: identity.phone,
+                botImId: context.session.botImId,
+                corpId: scope.corpId,
+                userId: scope.userId,
+              });
+            });
+            // 测试链路（统一假身份报名）不写索引：带外补偿扫描会按手机号反查到测试会话并排提醒。
+            if (context.runtime.strategySource !== 'testing') {
+              await runPostBookingWrite('手机号→会话索引写入', async () => {
+                await deps.phoneSessionIndex?.record(identity.phone, {
+                  corpId: scope.corpId,
+                  userId: scope.userId,
+                  chatId: scope.sessionId,
+                  botImId: context.session.botImId ?? null,
+                });
+              });
+            }
             const botUserId = context.session.botUserId?.trim();
             if (botUserId) {
               await runPostBookingWrite('长期身份档案写入', () =>
@@ -611,6 +747,17 @@ export function buildInterviewBookingTool(
               );
             }
           }
+          // 报名成功后拉群改为程序保证（PRD R3）：首次报名成功、私聊、城市可知时直接走
+          // 与 invite_to_group 相同的确定性流水线，结果进回执，模型只按结果说话。
+          // 内部已全量兜底，任何失败都不影响报名成功回执。
+          const groupInvite = await runPostBookingGroupInvite({
+            context,
+            groupInviteService: deps.groupInvite,
+            sessionService: deps.sessionFacts,
+            logger,
+            isAdditionalCandidate,
+            hasOtherActiveBookings: otherActiveBookings.length > 0,
+          });
           recordBookingEvent(
             opsEventsRecorder,
             context,
@@ -626,6 +773,8 @@ export function buildInterviewBookingTool(
               brand_name: jobInfo.brandName,
               store_name: jobInfo.storeName,
               job_name: jobInfo.jobName,
+              turn_id: context.session.turnId ?? null,
+              group_invite: describePostBookingGroupInviteForEvent(groupInvite),
             },
             result.workOrderId,
           );
@@ -640,9 +789,12 @@ export function buildInterviewBookingTool(
               `[booking] jobId=${jobId} 面试方式缺失或枚举外，回执不附到店脚本也不附线上提醒`,
             );
           }
+          const groupInviteGuide = buildPostBookingGroupInviteGuide(groupInvite);
           const toolResult = {
             ...baseToolOutput,
             _outcome: '预约成功，可以告知候选人面试安排',
+            groupInvite,
+            _groupInviteGuide: groupInviteGuide,
             ...(otherActiveBookings.length > 0
               ? {
                   otherActiveBookings,
@@ -653,9 +805,11 @@ export function buildInterviewBookingTool(
                     )}）。本轮告知报名成功后，必须紧接着问一句是两家都去还是只保留这家；候选人说只保留新的一家时，当轮用 duliday_cancel_work_order 取消旧工单。不得默默双报，也不得替候选人决定。`,
                 }
               : {}),
-            _replyInstruction: isAdditionalCandidate
-              ? '本轮必须明确告诉用户当前这位候选人报名成功，并照实复述面试安排；只有告知成功后才能处理下一位候选人。'
-              : '本轮必须明确告诉候选人报名成功，并照实复述面试安排；不得静默或只回答其它问题。',
+            _replyInstruction:
+              (isAdditionalCandidate
+                ? '本轮必须明确告诉用户当前这位候选人报名成功，并照实复述面试安排；只有告知成功后才能处理下一位候选人。'
+                : '本轮必须明确告诉候选人报名成功，并照实复述面试安排；不得静默或只回答其它问题。') +
+              `群动作（groupInvite）：${groupInviteGuide}`,
             _confirmedInterviewTimeHuman: interviewTime
               ? formatInterviewTimeForReply(interviewTime)
               : '未指定面试时间：面试官会直接电话联系候选人确认',
@@ -732,6 +886,13 @@ export function buildInterviewBookingTool(
               details: { jobId, reason: toErrorMessage(error) },
             }),
             hostingPaused: true,
+            sideEffect: buildBookingFailureRecordIntent({
+              context,
+              jobId,
+              interviewTime,
+              errorType: TOOL_ERROR_TYPES.BOOKING_REQUEST_FAILED,
+              failureReason: toErrorMessage(error) || '未知错误',
+            }),
           };
         }
       },

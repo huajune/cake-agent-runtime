@@ -8,14 +8,12 @@ import {
   ReengagementTrackingService,
   type ReengagementTouchIdentity,
 } from '@biz/monitoring/services/tracking/reengagement-tracking.service';
+import type { ReengagementStopContext } from '@biz/monitoring/entities/reengagement-touch.entity';
+import { redactCandidatePhones } from '@resolution/candidate/phone';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import type { MessageProcessingRecordInput } from '@biz/message/types/message.types';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { MessageProcessingService } from '@biz/message/services/message-processing.service';
-import {
-  isAgentReplyTextMessage,
-  isHumanAgentTextMessage,
-} from '@biz/message/utils/message-provenance.util';
 import {
   GroupInviteService,
   type GroupInviteResult,
@@ -50,7 +48,7 @@ import {
 import { TouchLedgerService } from './touch-ledger.service';
 import { evaluateOutOfBandWorkOrders, type OutOfBandWorkOrderVerdict } from './oob-work-order';
 import { ReengagementAgent } from './reengagement.agent';
-import type { ReengagementAgentExecution } from './reengagement.agent';
+import type { ChatInterviewTimeMismatch, ReengagementAgentExecution } from './reengagement.agent';
 import {
   resolveReengagementBookingContext,
   type ReengagementBookingContext,
@@ -58,7 +56,7 @@ import {
 import { BotService } from '@wecom/bot/bot.service';
 import { CallerKind } from '@enums/agent.enum';
 import { RequestContextService } from '@observability/context/request-context.service';
-import { shanghaiDayNumber } from './reengagement-datetime.util';
+import { formatShanghaiTime, shanghaiDayNumber } from './reengagement-datetime.util';
 
 export const REENGAGEMENT_DELIVERY_PORT = Symbol('REENGAGEMENT_DELIVERY_PORT');
 
@@ -266,6 +264,15 @@ export class FollowUpProcessor implements OnModuleInit {
           botImId: channelIdentity?.botImId,
         })) ?? undefined;
 
+      // 等通知岗报名满 3 天复核：不走触达闸，只查工单并按需给运营发任务提醒。
+      if (job.data.interviewSlotCheck) {
+        if (!bookingContext) {
+          throw new Error(`reengagement_booking_context_unavailable:${job.data.workOrderId}`);
+        }
+        await this.handleInterviewSlotCheck(job.data, identity, bookingContext);
+        return;
+      }
+
       // 面试排程解析任务只保存工单引用；拿到海绵实时工单后才创建正式 delayed job。
       // 查询失败抛错交给 Bull backoff 重试，绝不使用预约工具参数兜底。
       if (job.data.resolveBookingAtFire) {
@@ -280,7 +287,31 @@ export class FollowUpProcessor implements OnModuleInit {
           return;
         }
         if (!bookingContext.interviewAt) {
-          throw new Error(`reengagement_booking_time_unavailable:${job.data.workOrderId}`);
+          // 等通知岗：工单在途但没有面试时间。不再抛错重试后静默消失——走 scheduler 现成的
+          // missing_interview_time 落库分支正常结束；面试时间由空变有值的重排交后续对账。
+          // 报名满 3 天仍无面试时间由复核任务给运营发协调提醒（只从提醒场景排一次）。
+          await this.scheduler.scheduleFollowUp({
+            sessionRef,
+            scenarioCode,
+            anchorEventId,
+            anchorAt,
+            state: {
+              ...loadedState,
+              terminal: 'booked',
+              interviewAt: undefined,
+            } as ReengagementSessionState,
+            workOrderId: bookingContext.workOrderId,
+            channelIdentity,
+          });
+          if (scenarioCode === 'interview_reminder') {
+            await this.scheduler.scheduleInterviewSlotCheck({
+              sessionRef,
+              workOrderId: bookingContext.workOrderId,
+              signUpAt: parseInterviewTimestamp(bookingContext.signUpTime) ?? now,
+              channelIdentity,
+            });
+          }
+          return;
         }
         const resolvedState = {
           ...loadedState,
@@ -364,30 +395,9 @@ export class FollowUpProcessor implements OnModuleInit {
       return;
     }
 
-    // 1.3) 报名后真人介入闸：候选人在报名锚点后发过消息，随后真人经理又从企微
-    // 客户端手打回复且此后 Agent 没有再回复过，说明本次面试已进入人工判断/跟进。
-    // 真人拒面、手工约面、已人工回复都不会写 Agent terminal，也不一定及时同步到
-    // 海绵工单；继续发面试提醒或回访会越过真人结论。只认带来源的真人手打文本，
-    // 不把 API_SEND/AI_REPLY、入群卡片或复聊回灌当人工介入；真人手打之后 Agent
-    // 又回答了候选人，视为会话仍由 Agent 托管，不停。
-    //
-    // 这道闸与 lastProcessedCandidateMessageAt 水位正交：候选人 timeout 后若无人
-    // 回复，不会命中；只有后续确有真人回复才停，避免把无人回复误判成真人已介入。
-    if (scenario.phase === 'post_booking') {
-      const humanReplyAt = await this.detectHumanInterventionAfterCandidate(
-        sessionRef.sessionId,
-        anchorAt,
-        now,
-      );
-      if (humanReplyAt != null) {
-        this.logger.log(
-          `[reengagement] 真人介入闸命中，停止 ${scenarioCode} sessionId=${sessionRef.sessionId} ` +
-            `humanReplyAt=${new Date(humanReplyAt).toISOString()}`,
-        );
-        this.tracking.trackStopped(identity, 'human_intervention_after_candidate');
-        return;
-      }
-    }
+    // 报名后场景不设「真人手打过就停」的闸：面试提醒/回访只看工单与聊天记录
+    // （待答闸、到点核验、复聊 Agent 的语义停止条件）。真人几分钟前刚手打过话也不顺延。
+    // 真人拒面/取消/改约等结论由复聊 Agent 按对话语义判定，不以「真人说过话」为停发信号。
 
     // 1.4) 候选人待答前置闸：候选人最后一条消息晚于我方最后一条消息，且从未进过
     // 处理管道（无对应 message_processing_record）时，说明该轮被静默丢弃、候选人
@@ -396,16 +406,19 @@ export class FollowUpProcessor implements OnModuleInit {
     // 与"Agent 主动沉默"区分：主动沉默的轮次有处理记录，本闸不拦。
     // 命中即停止并落触达底账（reason=pending_candidate_message），该信号同时是
     // 主链丢消息的显性化探针，值得告警排查。
-    const pendingCandidateMessageAt = await this.detectPendingCandidateMessage(
+    const pendingCandidateMessage = await this.detectPendingCandidateMessage(
       sessionRef.sessionId,
       now,
     );
-    if (pendingCandidateMessageAt != null) {
+    if (pendingCandidateMessage) {
       this.logger.warn(
         `[reengagement] 候选人待答闸命中，停止 ${scenarioCode} sessionId=${sessionRef.sessionId} ` +
-          `候选人最后消息 ${new Date(pendingCandidateMessageAt).toISOString()} 未被处理（疑似主链丢 turn）`,
+          `候选人最后消息 ${new Date(pendingCandidateMessage.candidateMessageAt).toISOString()} 未被处理（疑似主链丢 turn）`,
       );
-      this.tracking.trackStopped(identity, 'pending_candidate_message');
+      this.tracking.trackStopped(identity, 'pending_candidate_message', {
+        kind: 'pending_candidate_message',
+        ...pendingCandidateMessage,
+      });
       return;
     }
 
@@ -542,6 +555,7 @@ export class FollowUpProcessor implements OnModuleInit {
               ? 'rollout_disabled'
               : 'shadow_mode'),
         batchId,
+        stopContext: this.toMismatchStopContext(execution),
       });
       this.messageTracking.recordProactiveTurn(
         this.buildProactiveTurnRecord({
@@ -601,11 +615,21 @@ export class FollowUpProcessor implements OnModuleInit {
       this.logger.log(
         `[reengagement] 回合非 reply（${outcome.kind}）→ 不投递 ${scenarioCode} sessionId=${sessionRef.sessionId}`,
       );
+      // 聊天约定时间≠工单时间：真发链路才给运营发「请改工单」提醒；shadow/灰度关只记录不打扰运营。
+      if (execution.chatInterviewTimeMismatch && bookingContext) {
+        await this.dispatchInterviewTimeMismatchNotice(
+          effectiveJobData,
+          identity,
+          bookingContext,
+          execution.chatInterviewTimeMismatch,
+        );
+      }
       this.tracking.trackOutcomeNotReply(
         identity,
         outcome.kind,
         batchId,
         execution.validationReason,
+        this.toMismatchStopContext(execution),
       );
       this.messageTracking.recordProactiveTurn(
         this.buildProactiveTurnRecord({
@@ -695,14 +719,17 @@ export class FollowUpProcessor implements OnModuleInit {
    *
    * 历史/流水查询失败一律 fail open（返回 null 放行触达）——本闸是体验加固，
    * 不能因观测数据不可用把复聊整体憋死。
+   *
+   * 命中时连同那条候选人消息（时间 + 脱敏预览）返回，写进触达记录 stop_context 供运营核对。
    */
   private async detectPendingCandidateMessage(
     sessionId: string,
     now: number,
-  ): Promise<number | null> {
+  ): Promise<{ candidateMessageAt: number; candidateMessagePreview: string } | null> {
     const GRACE_MS = 10 * 60 * 1000;
     // received_at 是 debounce 合并批次的锚点，可能略早于批内最后一条消息的存储时间戳
     const MERGE_TOLERANCE_MS = 2 * 60 * 1000;
+    const PREVIEW_MAX_CHARS = 120;
     try {
       const history = await this.chatSession.getChatHistory(sessionId, 10);
       if (history.length === 0) return null;
@@ -715,54 +742,18 @@ export class FollowUpProcessor implements OnModuleInit {
       if (latestProcessedAt != null && latestProcessedAt >= lastUserAt - MERGE_TOLERANCE_MS) {
         return null;
       }
-      return lastUserAt;
+      return {
+        candidateMessageAt: lastUserAt,
+        candidateMessagePreview: redactCandidatePhones(
+          Array.from(last.content ?? '')
+            .slice(0, PREVIEW_MAX_CHARS)
+            .join(''),
+          '（手机号已省略）',
+        ),
+      };
     } catch (error) {
       this.logger.warn(
         `[reengagement] 候选人待答检测失败，按放行处理 sessionId=${sessionId}: ${this.errorMessage(error)}`,
-      );
-      return null;
-    }
-  }
-
-  /**
-   * 报名锚点后是否已形成「候选人消息 → 真人经理手打文本」的人工介入证据。
-   *
-   * 查询失败 fail open：聊天历史是辅助证据面，不能因观测存储抖动把报名后触达全量
-   * 静默。最多读取 200 条锚点后消息，覆盖预约后到提醒/回访的短窗口。
-   */
-  private async detectHumanInterventionAfterCandidate(
-    sessionId: string,
-    anchorAt: number,
-    now: number,
-  ): Promise<number | null> {
-    try {
-      const history = await this.chatSession.getChatHistory(sessionId, 200, {
-        startTimeInclusive: anchorAt,
-        endTimeInclusive: now,
-      });
-      // 真人手打文本只在它仍是我方最后一条对话发言时才算接管：运营报名后例行手发
-      // 「面试注意事项 / 面试官微信」话术后，Agent 若又回答了候选人的追问，说明会话
-      // 仍由 Agent 托管，不能据此停掉面试提醒与回访。Agent 回复之后再出现真人手打，
-      // 仍按接管处理。
-      let candidateMessageSeen = false;
-      let humanReplyAt: number | null = null;
-      for (const message of history) {
-        if (message.role === 'user') {
-          candidateMessageSeen = true;
-          continue;
-        }
-        if (candidateMessageSeen && isHumanAgentTextMessage(message)) {
-          humanReplyAt = message.timestamp;
-          continue;
-        }
-        if (humanReplyAt != null && isAgentReplyTextMessage(message)) {
-          humanReplyAt = null;
-        }
-      }
-      return humanReplyAt;
-    } catch (error) {
-      this.logger.warn(
-        `[reengagement] 真人介入检测失败，按放行处理 sessionId=${sessionId}: ${this.errorMessage(error)}`,
       );
       return null;
     }
@@ -1259,6 +1250,50 @@ export class FollowUpProcessor implements OnModuleInit {
     }
   }
 
+  /**
+   * 等通知岗报名满 3 天复核（PRD R1 改动 6）：
+   * - 工单已不在途 → 按原因停止；
+   * - 面试时间已出现 → 静默结束（正式提醒的重排由后续对账负责，不在此重排）；
+   * - 仍无面试时间 → 给运营发 interview_slot_coordination 任务提醒（不暂停托管，幂等）。
+   */
+  private async handleInterviewSlotCheck(
+    jobData: FollowUpJob,
+    identity: ReengagementTouchIdentity,
+    bookingContext: ReengagementBookingContext,
+  ): Promise<void> {
+    const invalidReason = this.checkBookingInvalidAtFire(bookingContext);
+    if (invalidReason) {
+      this.tracking.trackStopped(identity, invalidReason);
+      return;
+    }
+    if (bookingContext.interviewAt != null) {
+      this.tracking.trackStopped(identity, 'interview_time_resolved');
+      return;
+    }
+    const onceKey = `interview_slot_coordination:wo${bookingContext.workOrderId}`;
+    if (!(await this.touchLedger.acquireOnce(onceKey))) {
+      this.tracking.trackStopped(identity, 'interview_slot_coordination_already_dispatched');
+      return;
+    }
+    const jobLabel = this.formatJobLabel(bookingContext);
+    const signUpLabel = bookingContext.signUpTime ? `报名时间 ${bookingContext.signUpTime}，` : '';
+    await this.dispatchOpsTask({
+      jobData,
+      identity,
+      bookingContext,
+      reasonCode: 'interview_slot_coordination',
+      reason: `等通知岗报名已满 3 天，海绵工单 ${bookingContext.workOrderId} 仍未登记面试时间，候选人尚未收到任何面试安排`,
+      actionAdvice:
+        '请与门店协调面试时间并回填到海绵工单；工单有面试时间后系统会自动安排提醒。本提醒不会暂停 AI 托管',
+      alertLabel: '复聊 · 等通知岗满 3 天未定面试时间，请协调',
+      stage: 'interview_reminder',
+      idempotencyKey: `${jobData.sessionRef.sessionId}:${onceKey}`,
+      currentMessageContent: `工单 ${bookingContext.workOrderId}${jobLabel ? `（${jobLabel}）` : ''}：${signUpLabel}当前状态 ${bookingContext.currentStatus ?? '未知'}，面试时间为空`,
+      diagnostics: { signUpTime: bookingContext.signUpTime ?? null },
+    });
+    this.tracking.trackStopped(identity, 'interview_slot_coordination_dispatched');
+  }
+
   /** +48h 复核不经过触达闸；已上岗静默，其余状态统一交人工判断。 */
   private async handleOnboardingCheck(
     jobData: FollowUpJob,
@@ -1278,13 +1313,7 @@ export class FollowUpProcessor implements OnModuleInit {
     this.tracking.trackStopped(identity, 'onboarding_intervention_dispatched');
   }
 
-  /**
-   * 入职异常统一出口：幂等底账 + 告警，不调用 InterventionService，保持托管可应答。
-   *
-   * 候选人身份取 process() 已兜底的 identity（含 chat_messages 回填），不直接读 job.data：
-   * 入职巡检排程只带 botImId，直接读 payload 会让卡片没有昵称/托管账号，运营无法定位候选人。
-   * 昵称仍缺时再从最近聊天记录取候选人侧的昵称兜底。
-   */
+  /** 入职异常出口：复用不暂停托管的运营任务通道。 */
   private async dispatchOnboardingHandoff(
     jobData: FollowUpJob,
     identity: ReengagementTouchIdentity,
@@ -1293,32 +1322,127 @@ export class FollowUpProcessor implements OnModuleInit {
   ): Promise<void> {
     const { sessionRef, workOrderId } = jobData;
     if (workOrderId == null) return;
-    const botImId = identity.botImId ?? jobData.channelIdentity?.botImId;
     const reason =
       reasonCode === 'onboarding_failed'
         ? `面试通过后工单已变为${bookingContext.currentStatus ?? '上岗失败'}，需要人工确认候选人后续安排`
         : `入职跟进触达 48 小时后工单仍未到上岗成功，需要人工确认入职进展`;
-    const idempotencyKey = `${sessionRef.sessionId}:post_interview_onboarding:wo${workOrderId}:${reasonCode}`;
+    const jobLabel = this.formatJobLabel(bookingContext);
+    await this.dispatchOpsTask({
+      jobData,
+      identity,
+      bookingContext,
+      reasonCode,
+      reason,
+      actionAdvice: '请核实候选人是否已入职及遇到的问题；本告警不会暂停 AI 托管',
+      alertLabel: '面试后回访 · 入职跟进',
+      stage: 'post_interview_onboarding',
+      idempotencyKey: `${sessionRef.sessionId}:post_interview_onboarding:wo${workOrderId}:${reasonCode}`,
+      currentMessageContent: `入职跟进巡检：工单 ${workOrderId}${jobLabel ? `（${jobLabel}）` : ''} 当前状态 ${bookingContext.currentStatus ?? '未知'}`,
+    });
+  }
+
+  /**
+   * 聊天约定时间≠工单时间（PRD R1 改动 3）：本次不发，给运营一条「请改工单」提醒。
+   * 不暂停托管；Redis 按工单 + 两个时间幂等（同一差异只提醒一次），handoff_events 再按
+   * idempotencyKey 兜底去重。工单改正后到点核验会按新时间重排，这里不重排。
+   */
+  private async dispatchInterviewTimeMismatchNotice(
+    jobData: FollowUpJob,
+    identity: ReengagementTouchIdentity,
+    bookingContext: ReengagementBookingContext,
+    mismatch: ChatInterviewTimeMismatch,
+  ): Promise<void> {
+    const onceKey = `chat_interview_time_mismatch:wo${mismatch.workOrderId}:iv${mismatch.workOrderInterviewAt}:chat${mismatch.chatAgreedInterviewAt}`;
+    if (!(await this.touchLedger.acquireOnce(onceKey))) {
+      this.logger.log(`[reengagement] 聊天/工单时间不一致提醒已发过，跳过 key=${onceKey}`);
+      return;
+    }
+    const workOrderTime = formatShanghaiTime(mismatch.workOrderInterviewAt);
+    const chatTime = formatShanghaiTime(mismatch.chatAgreedInterviewAt);
+    const jobLabel = this.formatJobLabel(bookingContext);
+    await this.dispatchOpsTask({
+      jobData,
+      identity,
+      bookingContext,
+      reasonCode: 'chat_interview_time_mismatch',
+      reason: `聊天约定的面试时间（${chatTime}）与海绵工单 ${mismatch.workOrderId} 登记的面试时间（${workOrderTime}）不一致，本次${jobData.scenarioCode === 'post_interview_followup' ? '回访' : '面试提醒'}未发送`,
+      actionAdvice:
+        '请核对聊天记录后把海绵工单的面试时间改成实际约定时间；工单改正后系统会按新时间重排提醒。本提醒不会暂停 AI 托管',
+      alertLabel: '复聊 · 聊天约定时间与海绵工单不一致，请改工单',
+      stage: jobData.scenarioCode,
+      idempotencyKey: `${jobData.sessionRef.sessionId}:${onceKey}`,
+      currentMessageContent: `工单 ${mismatch.workOrderId}${jobLabel ? `（${jobLabel}）` : ''}：工单面试时间 ${workOrderTime}，聊天约定 ${chatTime}（${mismatch.chatAgreedInterviewTime}）`,
+      diagnostics: {
+        scenarioCode: jobData.scenarioCode,
+        touchVariant: jobData.touchVariant ?? null,
+        workOrderInterviewAt: mismatch.workOrderInterviewAt,
+        chatAgreedInterviewAt: mismatch.chatAgreedInterviewAt,
+        chatAgreedInterviewTime: mismatch.chatAgreedInterviewTime,
+        evidence: mismatch.evidence,
+      },
+    });
+  }
+
+  /** 聊天约定时间≠工单时间的停发上下文投影（写进触达记录 stop_context）。 */
+  private toMismatchStopContext(
+    execution: ProactiveTurnExecution,
+  ): ReengagementStopContext | undefined {
+    const mismatch = execution.chatInterviewTimeMismatch;
+    if (!mismatch) return undefined;
+    return { kind: 'chat_interview_time_mismatch', ...mismatch };
+  }
+
+  private formatJobLabel(bookingContext: ReengagementBookingContext): string {
+    return [bookingContext.brandName, bookingContext.storeName, bookingContext.jobName]
+      .map((part) => part?.trim())
+      .filter((part): part is string => Boolean(part))
+      .join(' · ');
+  }
+
+  /**
+   * 不暂停托管的运营任务统一出口：幂等底账（handoff_events）+ 飞书卡片，不调用 InterventionService。
+   *
+   * 候选人身份取 process() 已兜底的 identity（含 chat_messages 回填），不直接读 job.data：
+   * 入职巡检排程只带 botImId，直接读 payload 会让卡片没有昵称/托管账号，运营无法定位候选人。
+   * 昵称仍缺时再从最近聊天记录取候选人侧的昵称兜底。
+   */
+  private async dispatchOpsTask(params: {
+    jobData: FollowUpJob;
+    identity: ReengagementTouchIdentity;
+    bookingContext: ReengagementBookingContext;
+    reasonCode: string;
+    reason: string;
+    actionAdvice: string;
+    alertLabel: string;
+    stage: string;
+    idempotencyKey: string;
+    currentMessageContent: string;
+    diagnostics?: Record<string, unknown>;
+  }): Promise<void> {
+    const { jobData, identity, bookingContext, reasonCode, reason, idempotencyKey } = params;
+    const { sessionRef } = jobData;
+    const workOrderId = bookingContext.workOrderId;
+    const botImId = identity.botImId ?? jobData.channelIdentity?.botImId;
     const writeOutcome = await this.handoffRecorder.record({
       corpId: sessionRef.corpId,
       chatId: sessionRef.sessionId,
       userId: sessionRef.userId,
       reasonCode,
       reason,
-      actionAdvice: '请核实候选人是否已入职及遇到的问题；本告警不会暂停 AI 托管',
-      stage: 'post_interview_onboarding',
+      actionAdvice: params.actionAdvice,
+      stage: params.stage,
       botImId,
       workOrderId,
       jobId: bookingContext.jobId ?? null,
       idempotencyKey,
     });
     if (writeOutcome === 'duplicate') {
-      this.logger.warn(`[reengagement] 入职人工介入已处理，跳过重复告警 key=${idempotencyKey}`);
+      this.logger.warn(`[reengagement] 运营任务已处理，跳过重复告警 key=${idempotencyKey}`);
       return;
     }
     if (writeOutcome === 'failed') {
       this.logger.error(
-        `[reengagement] 入职人工介入底账失败，继续 fail-safe 告警 key=${idempotencyKey}`,
+        `[reengagement] 运营任务底账失败，继续 fail-safe 告警 key=${idempotencyKey}`,
       );
     }
 
@@ -1334,16 +1458,12 @@ export class FollowUpProcessor implements OnModuleInit {
         .find((message) => message.role === 'user' && message.candidateName?.trim())
         ?.candidateName?.trim() ||
       undefined;
-    const jobLabel = [bookingContext.brandName, bookingContext.storeName, bookingContext.jobName]
-      .map((part) => part?.trim())
-      .filter((part): part is string => Boolean(part))
-      .join(' · ');
     try {
       const notified = await this.handoffNotifier.notify({
-        alertLabel: '面试后回访 · 入职跟进',
+        alertLabel: params.alertLabel,
         reasonCode,
         reason,
-        actionAdvice: '请核实候选人是否已入职及遇到的问题；本告警不会暂停 AI 托管',
+        actionAdvice: params.actionAdvice,
         workOrderId,
         corpId: sessionRef.corpId,
         botImId,
@@ -1351,7 +1471,7 @@ export class FollowUpProcessor implements OnModuleInit {
         contactName,
         chatId: sessionRef.sessionId,
         pausedUserId: sessionRef.sessionId,
-        currentMessageContent: `入职跟进巡检：工单 ${workOrderId}${jobLabel ? `（${jobLabel}）` : ''} 当前状态 ${bookingContext.currentStatus ?? '未知'}`,
+        currentMessageContent: params.currentMessageContent,
         recentMessages: recentMessages.map((message) => ({
           role: message.role,
           content: message.content,
@@ -1370,14 +1490,15 @@ export class FollowUpProcessor implements OnModuleInit {
           imContactId: identity.imContactId ?? null,
           externalUserId: identity.externalUserId ?? null,
           hostingPaused: false,
+          ...(params.diagnostics ?? {}),
         },
       });
       if (!notified) {
-        this.logger.error(`[reengagement] 入职人工介入告警发送失败 key=${idempotencyKey}`);
+        this.logger.error(`[reengagement] 运营任务告警发送失败 key=${idempotencyKey}`);
       }
     } catch (error) {
       this.logger.error(
-        `[reengagement] 入职人工介入告警异常 key=${idempotencyKey}: ${this.errorMessage(error)}`,
+        `[reengagement] 运营任务告警异常 key=${idempotencyKey}: ${this.errorMessage(error)}`,
       );
     }
   }

@@ -1,4 +1,5 @@
 import { INPUT_RISK_TYPE, type InputRiskType } from '@shared-types/guardrail.contract';
+import { getHandoffReasonLabel } from '@enums/handoff-reason.enum';
 import type { GuardrailCatalogEntry } from '../catalog.types';
 
 export type PromptInjectionCategory = 'role_hijack' | 'prompt_leak' | 'system_marker';
@@ -210,10 +211,10 @@ function defineInputRiskRule<Risk extends InputRiskType>(
   } as const satisfies InputRiskRule<Risk>;
 }
 
-/** 风险分类、告警文案和处置元数据唯一居所；匹配词表与边界仍归 RiskInterceptService。 */
+/** 风险分类、告警文案和处置元数据唯一居所（riskLabel 取 @enums/handoff-reason.enum 的权威标签）；匹配词表与边界仍归 RiskInterceptService。 */
 export const INPUT_RISK_RULES = {
   [INPUT_RISK_TYPE.ABUSE]: defineInputRiskRule(INPUT_RISK_TYPE.ABUSE, {
-    riskLabel: '辱骂/攻击',
+    riskLabel: getHandoffReasonLabel(INPUT_RISK_TYPE.ABUSE),
     summary: '候选人出现明显辱骂或攻击性表达',
     description: '候选人辱骂词或封闭攻击句式命中后静默暂停托管；保留“滚”语境及亲属称呼例外。',
     entrypoint: 'RiskInterceptService.detectKeywordRisk + RiskInterceptService.detectPatternRisk',
@@ -221,7 +222,7 @@ export const INPUT_RISK_RULES = {
     residualRisk: '规则不理解反讽或变体；未列举攻击表达可能漏检，候选人自己引用脏话也可能命中。',
   }),
   [INPUT_RISK_TYPE.COMPLAINT_RISK]: defineInputRiskRule(INPUT_RISK_TYPE.COMPLAINT_RISK, {
-    riskLabel: '投诉/举报风险',
+    riskLabel: getHandoffReasonLabel(INPUT_RISK_TYPE.COMPLAINT_RISK),
     summary: '候选人出现明确投诉、举报或欺骗风险表达',
     description: '候选人投诉、举报或欺骗风险词，以及封闭曝光、报警、仲裁动作句式触发静默人工接管。',
     entrypoint: 'RiskInterceptService.detectKeywordRisk + RiskInterceptService.detectPatternRisk',
@@ -231,7 +232,7 @@ export const INPUT_RISK_RULES = {
   [INPUT_RISK_TYPE.INTERVIEW_RESULT_INQUIRY]: defineInputRiskRule(
     INPUT_RISK_TYPE.INTERVIEW_RESULT_INQUIRY,
     {
-      riskLabel: '面试结果追问',
+      riskLabel: getHandoffReasonLabel(INPUT_RISK_TYPE.INTERVIEW_RESULT_INQUIRY),
       summary:
         '候选人追问面试结果/是否通过，已静默暂停托管。面试结果播报与通过后的入职对接只能由真人完成：' +
         '请用同一账号自然接续，核实结果后再安排后续，不要提及 AI、机器人或转接。',
@@ -247,7 +248,7 @@ export const INPUT_RISK_RULES = {
   [INPUT_RISK_TYPE.HUMAN_HANDOFF_REQUEST]: defineInputRiskRule(
     INPUT_RISK_TYPE.HUMAN_HANDOFF_REQUEST,
     {
-      riskLabel: '候选人主动要求人工',
+      riskLabel: getHandoffReasonLabel(INPUT_RISK_TYPE.HUMAN_HANDOFF_REQUEST),
       summary:
         '候选人明确要求转人工，已静默暂停托管。候选人正在等待，请尽快用同一账号自然接续' +
         '（首句如"刚在忙，你说"），不要提及 AI、机器人或转接。',
@@ -262,7 +263,7 @@ export const INPUT_RISK_RULES = {
   [INPUT_RISK_TYPE.DISABILITY_DISCLOSURE]: defineInputRiskRule(
     INPUT_RISK_TYPE.DISABILITY_DISCLOSURE,
     {
-      riskLabel: '候选人披露残障身份',
+      riskLabel: getHandoffReasonLabel(INPUT_RISK_TYPE.DISABILITY_DISCLOSURE),
       summary:
         '候选人主动披露残障身份或询问残障者能否应聘，已静默暂停托管。合规敏感（残障就业受法律保护）：' +
         '请真人尽快用同一账号自然接续，按岗位实际情况人工判断与沟通；不要使用任何模板式拒绝话术，' +

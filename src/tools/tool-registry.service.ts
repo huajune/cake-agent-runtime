@@ -18,6 +18,8 @@ import { buildInterviewPrecheckTool } from './duliday-interview-precheck.tool';
 import { buildInterviewBookingTool } from './duliday-interview-booking.tool';
 import { buildCancelWorkOrderTool } from './duliday-cancel-work-order.tool';
 import { buildModifyInterviewTimeTool } from './duliday-modify-interview-time.tool';
+import { BookingSnapshotService } from './booking/booking-snapshot.service';
+import { PhoneSessionIndexService } from '@memory/phone-session-index.service';
 import { buildGeocodeTool } from './geocode.tool';
 import { buildSaveImageDescriptionTool } from './save-image-description.tool';
 import { buildInviteToGroupTool } from './invite-to-group.tool';
@@ -89,6 +91,8 @@ export class ToolRegistryService {
     private readonly brandResolutionService: BrandResolutionService,
     agentTracer: AgentTracerService,
     collectionFormService: CollectionFormService,
+    bookingSnapshotService: BookingSnapshotService,
+    phoneSessionIndexService: PhoneSessionIndexService,
   ) {
     this.registry = {
       // ===== 阶段工具 =====
@@ -127,6 +131,11 @@ export class ToolRegistryService {
             collectionForms: collectionFormService,
             sessionFacts: sessionService,
             identityAnchors: process.env.COLLECTION_IDENTITY_LABEL_IDS,
+            // 报名成功后拉群由运行时程序保证（PRD R3），与 invite_to_group 同一闸门与执行。
+            groupInvite: groupInviteService,
+            // 预约快照：查重读本轮快照 + 跨账号查一次；成功后失效缓存并刷新手机号→会话索引。
+            bookingSnapshot: bookingSnapshotService,
+            phoneSessionIndex: phoneSessionIndexService,
           },
         ),
       }),
@@ -154,6 +163,7 @@ export class ToolRegistryService {
           opsEventsRecorder,
           longTermService,
           privateChatMonitorNotifier,
+          { bookingSnapshot: bookingSnapshotService },
         ),
       }),
 
@@ -161,7 +171,9 @@ export class ToolRegistryService {
         name: 'duliday_modify_interview_time',
         description:
           '修改约面时间（候选人主动要求把已确认的面试改到新时间时调用，真正调海绵改约接口；workOrderId 取自 [当前预约信息]）',
-        create: buildModifyInterviewTimeTool(spongeService, opsEventsRecorder, longTermService),
+        create: buildModifyInterviewTimeTool(spongeService, opsEventsRecorder, longTermService, {
+          bookingSnapshot: bookingSnapshotService,
+        }),
       }),
 
       geocode: createToolDefinition({
@@ -178,7 +190,8 @@ export class ToolRegistryService {
 
       invite_to_group: createToolDefinition({
         name: 'invite_to_group',
-        description: '邀请候选人加入企微兼职群（穷尽推荐无匹配/登记完成后触发）',
+        description:
+          '邀请候选人加入企微兼职群（连续两轮推荐不满意后的群承接 / 候选人同意入群；报名成功后的拉群由运行时自动完成）',
         create: buildInviteToGroupTool(groupInviteService, sessionService),
       }),
 

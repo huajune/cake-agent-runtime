@@ -11,7 +11,7 @@ describe('salary settlement summary', () => {
           ],
         },
         welfare: {
-          remark: '每天按照20*实际出勤日结，阶梯部分&培训期间费用月结，每月10号发上月差价',
+          memo: '每天按照20*实际出勤日结，阶梯部分&培训期间费用月结，每月10号发上月差价',
         },
       }),
     ).toBe(
@@ -25,6 +25,17 @@ describe('salary settlement summary', () => {
         jobSalary: {
           salaryScenarioList: [{ salaryType: '正式', salaryPeriod: '月结算', payday: '15号' }],
         },
+      }),
+    ).toBe('正式:月结算（15号发薪）');
+  });
+
+  it('reads welfare.memo (the real sponge field) and ignores the non-existent welfare.remark', () => {
+    expect(
+      formatSettlementSummary({
+        jobSalary: {
+          salaryScenarioList: [{ salaryType: '正式', salaryPeriod: '月结算', payday: '15号' }],
+        },
+        welfare: { remark: '每月10号发上月差价' },
       }),
     ).toBe('正式:月结算（15号发薪）');
   });

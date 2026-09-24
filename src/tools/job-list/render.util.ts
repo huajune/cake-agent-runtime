@@ -16,6 +16,7 @@
  * - format-shift-time：班次时间组合
  */
 
+import { Logger } from '@nestjs/common';
 import { sanitizeJobDisplayText, sanitizeLaborFormForDisplay } from '@resolution/labor-form';
 import { asRecord, asRecordArray } from '@infra/utils/object.util';
 import type { JobDetail } from '@sponge/sponge.types';
@@ -170,7 +171,23 @@ const HEALTH_CERT_LABEL: Record<HardRequirements['healthCert'], string | null> =
  * 把内部筛选条件捅到台面上。该门槛的执行点是 booking-guards 的
  * isHouseholdRequirementViolated 硬闸，数据来自收资 checklist 的籍贯字段，不需要口头打听。
  */
-function renderHardRequirementsBanner(hr: HardRequirements): string {
+/**
+ * 阶段用工时间窗（`workTime.temporaryEmployment`）→ "S 至 E"；任一端缺失用 "?" 占位，两端都缺返回 null。
+ * 硬约束 banner 与工作时间段共用，保证同一岗位两处口径一致。
+ */
+function formatTemporaryEmploymentWindow(workTimeInput: unknown): string | null {
+  const wt = asRecord(workTimeInput);
+  const tempEmp = asRecord(wt?.temporaryEmployment) ?? {};
+  const start = tempEmp.temporaryEmploymentStartTime;
+  const end = tempEmp.temporaryEmploymentEndTime;
+  if (!hasValue(start) && !hasValue(end)) return null;
+  return `${hasValue(start) ? String(start) : '?'} 至 ${hasValue(end) ? String(end) : '?'}`;
+}
+
+function renderHardRequirementsBanner(
+  hr: HardRequirements,
+  temporaryEmploymentWindow: string | null,
+): string {
   const lines: string[] = [];
 
   const genderLabel = GENDER_LABEL[hr.gender];
@@ -193,6 +210,18 @@ function renderHardRequirementsBanner(hr: HardRequirements): string {
     lines.push(`- **健康证**：${healthCertLabel}`);
   }
 
+  // 运营口径 O12：最短工期是硬性要求，但只在候选人**明确表示**做不满时才算不匹配；
+  // 不主动盘问"能做几个月"。阶段用工岗另有起止时间，按起止时段判断，防误拒。
+  if (hr.minWorkMonths !== null) {
+    const phaseNote = temporaryEmploymentWindow
+      ? `；本岗为阶段用工 ${temporaryEmploymentWindow}，按起止时段判断，不按最短月数拒`
+      : '';
+    lines.push(
+      `- **最短工期**：最短做满 ${hr.minWorkMonths} 个月（硬性）（候选人明确说做不满时如实说明不匹配并转推其他岗位；` +
+        `不主动盘问"能做几个月"，"先做做看/不确定"不算不满足${phaseNote}）`,
+    );
+  }
+
   if (lines.length === 0) return '';
 
   return [
@@ -213,22 +242,54 @@ function asNumber(value: unknown): number | null {
 
 // ==================== 模块 1：基本信息 ====================
 
+const logger = new Logger('job-list-render');
+
 /**
- * 合作模式（basicInfo.cooperationMode，海绵 新增）→ 发薪/签约主体口径。
+ * 海绵 `basicInfo.cooperationMode` 的固定枚举全称 → 归一化标记。
+ *
+ * 生产实测（2026-09-20 岗位数据缺口调研）只有这两个取值；裸值 BPO/RPO 一并接受以兼容
+ * 历史 fixture。**不做模糊匹配**：其它非空取值视为未知，不输出结论并留痕。
+ */
+const COOPERATION_MODE_BY_RAW_VALUE: ReadonlyMap<string, 'BPO' | 'RPO'> = new Map([
+  ['业务流程外包(BPO)', 'BPO'],
+  ['招聘流程外包(RPO)', 'RPO'],
+  ['BPO', 'BPO'],
+  ['RPO', 'RPO'],
+]);
+
+/** 全角括号归一到半角后再查表；只做这一种字符级归一，不做子串/模糊匹配。 */
+function normalizeCooperationMode(rawMode: string): 'BPO' | 'RPO' | null {
+  const key = rawMode.trim().replace(/（/g, '(').replace(/）/g, ')');
+  return (
+    COOPERATION_MODE_BY_RAW_VALUE.get(key) ??
+    COOPERATION_MODE_BY_RAW_VALUE.get(key.toUpperCase()) ??
+    null
+  );
+}
+
+/**
+ * 合作模式（basicInfo.cooperationMode）→ 发薪/签约主体口径。
  *
  * 候选人高频追问"工资是你们发还是门店发""签的是谁的合同"，答案完全由合作模式决定，
  * 而 BPO/RPO 是商业内部术语，直接把裸值丢给模型有两个风险：一是它可能原样说给候选人，
- * 二是它得自己记住映射关系。所以这里**只输出结论**，裸值仅作 🔒 内部标注保留。
+ * 二是它得自己记住映射关系。所以这里**只输出结论**，归一化标记仅作 🔒 内部标注保留，
+ * 不输出海绵的「…外包(…)」全称，免得模型把"外包"两个字说给候选人。
  *
- * 口径来源：运营确认。注意两条规则的 RPO 分支**不一样**——
- * 发薪在 RPO 下两种都可能（必须转人工），签约在 RPO 下主体确定是客户（只是形式不定）。
+ * 口径来源：运营确认（2026-09-20 复核）。两条规则的 RPO 分支都可自答：
+ * RPO 下与客户签合同、由客户发薪；BPO 下由独立客发薪、签灵活用工协议。
+ * 两种模式都不得升格成"劳动合同"。
  */
 function renderCooperationModeLines(rawMode: string | null): string[] {
-  const mode = rawMode?.trim().toUpperCase();
-  if (mode !== 'BPO' && mode !== 'RPO') return [];
+  const raw = rawMode?.trim();
+  if (!raw) return [];
+  const mode = normalizeCooperationMode(raw);
+  if (!mode) {
+    logger.warn(`合作模式取值不在已知枚举内，跳过发薪/签约结论渲染: cooperationMode=${raw}`);
+    return [];
+  }
 
   const lines = [
-    `- **合作模式**: ${mode}（🔒 商业内部术语，**严禁对候选人提及 "BPO/RPO/合作模式" 字样**，只用它推出下面两条结论）`,
+    `- **合作模式**: ${mode}（🔒 商业内部术语，**严禁对候选人提及 "BPO/RPO/合作模式/外包" 字样**，只用它推出下面两条结论）`,
   ];
   if (mode === 'BPO') {
     lines.push(
@@ -237,8 +298,8 @@ function renderCooperationModeLines(rawMode: string | null): string[] {
     );
   } else {
     lines.push(
-      '  - **发薪主体**: ⚠️ 本模式下发薪方两种都有可能，**无法自答**——候选人问发薪主体时必须当轮 `request_handoff(reasonCode="salary_admin_inquiry")`，严禁猜"是我们发/是门店发"',
-      '  - **签约主体**: 与**客户（品牌方）**签约，可如实告知签约对象是品牌方；但**是协议还是合同取决于客户**，不得断言具体形式，候选人追问形式时转人工',
+      '  - **发薪主体**: 由客户（品牌方）发薪（结论确定，候选人问"工资是你们发还是门店发"时可直接答"由品牌方/门店那边发"，不必转人工）',
+      '  - **签约主体**: 与**客户（品牌方）**签合同（结论确定，可直接答"跟品牌方签"）；只说"签合同"，不要自行升格成"劳动合同"，候选人追问合同性质/条款时转人工',
     );
   }
   return lines;
@@ -575,7 +636,7 @@ function renderHiringRequirementSection(reqInput: unknown, policy: JobPolicyAnal
   if (!req) return '';
   const lines: string[] = [];
 
-  pushField(lines, 'figure', req.figure);
+  pushField(lines, '身份要求', req.figure);
 
   const basic = asRecord(req.basicPersonalRequirements) ?? {};
   pushField(lines, '性别', basic.genderRequirement);
@@ -673,9 +734,10 @@ function renderHiringRequirementSection(reqInput: unknown, policy: JobPolicyAnal
   pushField(lines, '健康证', cert.healthCertificate);
   pushField(lines, '驾照类型', cert.driverLicenseType);
 
-  // 其他要求：优先使用 policy 清洗后的 remark（已剔除过期时效约束）
+  // 其他要求：只用不含 processDesc 的展示文本（与「面试备注」同口径——海绵「面试入职流程」
+  // 是面试后对接文本，不归 Agent）；policy 没给时回落到 hiringRequirement.remark 自身。
   const sanitizedRemark =
-    policy.normalizedRequirements.remark ?? sanitizeConstraintText(asString(req.remark));
+    policy.normalizedRequirements.remarkDisplay ?? sanitizeConstraintText(asString(req.remark));
   if (sanitizedRemark) pushLongText(lines, '其他要求', sanitizedRemark);
 
   // 自由文本（其他要求等）可能内嵌"不要 X 籍 / 限本地户口 / 婚育要求"类敏感筛选条件，
@@ -713,18 +775,9 @@ function renderWorkTimeSection(workTimeInput: unknown): string {
   }
 
   // 阶段用工时间窗
-  const tempEmp = asRecord(wt.temporaryEmployment) ?? {};
-  if (
-    hasValue(tempEmp.temporaryEmploymentStartTime) ||
-    hasValue(tempEmp.temporaryEmploymentEndTime)
-  ) {
-    const s = hasValue(tempEmp.temporaryEmploymentStartTime)
-      ? String(tempEmp.temporaryEmploymentStartTime)
-      : '?';
-    const e = hasValue(tempEmp.temporaryEmploymentEndTime)
-      ? String(tempEmp.temporaryEmploymentEndTime)
-      : '?';
-    lines.push(`- **阶段用工**: ${s} 至 ${e}`);
+  const temporaryEmploymentWindow = formatTemporaryEmploymentWindow(wt);
+  if (temporaryEmploymentWindow) {
+    lines.push(`- **阶段用工**: ${temporaryEmploymentWindow}`);
   }
 
   // 每周/每月排班（海绵2.0 weekAndMonthWorkTime）
@@ -1132,9 +1185,12 @@ function formatJobToMarkdown(
   }
   let md = `## ${index + 1}. ${titleParts.join(' ')}\n\n`;
 
-  // 硬性约束 banner 紧跟标题：性别 / 户籍 / 健康证 三类高频硬约束，
-  // 任一非 unspecified/any 时才输出。让 LLM 一眼看到不可妥协的硬规则。
-  md += renderHardRequirementsBanner(extractHardRequirements(job, policy));
+  // 硬性约束 banner 紧跟标题：性别 / 户籍 / 健康证 / 最短工期 四类高频硬约束，
+  // 任一非 unspecified/any/null 时才输出。让 LLM 一眼看到不可妥协的硬规则。
+  md += renderHardRequirementsBanner(
+    extractHardRequirements(job, policy),
+    formatTemporaryEmploymentWindow(job.workTime),
+  );
 
   // 候选人需要 workTime 时（默认开）才注入归一化班次（含早/中/晚班/午高峰/星期约束等含义）；
   // 模型显式关 includeWorkTime 表示本轮在做不涉及班次的追问，无需归一化班次。
