@@ -14,7 +14,7 @@
 **预计版本**: `v11.11.2`
 **最近更新**: `2026-09-24`
 **来源分支**: `develop`
-**累计 PR**: 2
+**累计 PR**: 3
 
 ### 更新摘要
 - PR #1336 weekly-judge-calibration 2026-09-22 结论落账
@@ -22,6 +22,7 @@
 - PR #1335 开场轮不再把系统语与系统标签当成候选人状态证据
 - PR #1335 同一条生产 badcase（chat `6aaf831ece406a6aee0617f7`）的两段根因一起修：第 1 轮「为什么会凭空编出候选人档案和意向品牌」，第 2 轮「为什么编出来的品牌能通过查岗出处校验」
 - PR #1335 堵住开场轮编造候选人档案及按编造品牌查岗
+- PR #1337 多步循环中途失败重试续接已完成工具步，不再重放 booking 副作用
 
 ### 新功能
 - 无
@@ -32,6 +33,8 @@
 - PR #1335 修复 Agent 凭空给候选人安上意向品牌、并据此回复"该品牌没有岗位"导致候选人流失的问题：以前只要 Agent 上一轮回复里出现过某个品牌（哪怕是它自己编的），下一轮按这个品牌查岗就会被放行；现在只有候选人自己说过、真人经理手动发过、或系统里真实推荐 / 预约过的品牌才允许用来查岗，否则查询会被拦下并要求改为不限品牌重查，且不得宣称该品牌无岗。
 - PR #1335 修复"食品健康证"被当成"食品专业"的问题：岗位卡几乎每张都带"入职前办食品健康证"，以前会逢卡必中"健康证 ≠ 专业"的禁令；现在"食品健康证"按证件名处理，真正涉及专业筛选时禁令照常生效。
 - PR #1335 同一条生产 badcase（chat `6aaf831ece406a6aee0617f7`）的两段根因一起修：第 1 轮「为什么会凭空编出候选人档案和意向品牌」，第 2 轮「为什么编出来的品牌能通过查岗出处校验」
+- PR #1337 **LLM 执行器重试不再重放已提交的副作用**：多步循环中途失败（provider 超时/5xx、结果校验不过）时，把上次尝试已完成、以工具结果收尾的步骤作为对话前缀续接下一次尝试，只让模型接着往下走；同模型重试与降级都续接，换模型时剥离 reasoning 段，结果校验不过时只丢掉坏的末步文本。`prepareStep` / `stopWhen` 看到的 steps 同样带前缀，副作用工具「成功一次即屏蔽」、同名工具限次、总步数上限跨尝试生效。
+- PR #1337 **booking 工具对本轮已提交的表单幂等**：表单已 `submitted` 且本轮账本 `bookingSucceeded=true` 时，返回 `booking.already_booked` 回执（`alreadyBookedSource=same_turn_submitted_form`，带工单号与面试时间），沿用 0911「already_booked ≠ 失败」裁定：守卫形态 G 放行如实播报、`invite_to_group` 不再跳过。查重路径与之共用 `buildAlreadyBookedReceipt`。
 
 ### 优化调整
 - PR #1335 `FINAL_CHECK_RULES` 的 turn 规则新增匹配目标 `candidate_side`：近 12 条里候选人原话 + 带 `HUMAN_AGENT_MESSAGE_MARKER` 的真人经理手动消息 + 本轮输入；不含 Agent 自产文本，并先剥引用块、位置分享、时间后缀与加好友系统语。`post_interview_no_rebook` 由 `combined` 收窄到 `candidate_side`；`health_cert_is_not_major` 的专业词改为 `食品(?!健康证)`
@@ -42,11 +45,13 @@
 - PR #1335 品牌出处误拒评估：「咖啡→M Stand」靠候选人原文品类词展开、截图靠 visual sheet、备注靠 `contactName`，均不依赖助手文本；生产近 7 天私聊 assistant 消息只有 `API_SEND`（Agent）与 `MOBILE_PUSH`（真人）两类来源，无 SOP / 群发类第三来源
 - PR #1335 残余误拒（低频，已记入 catalog `residualRisk`）：品牌已被挤出会话岗位池（`presentedJobs` 仅留最近 10 条）或来自往轮 `recall_history` / 简历附件工具结果，且候选人不点名追问时会被拦，由错误回执引导清除品牌重查
 - PR #1335 `tool-guardrail.catalog.ts` 的 `job_list_brand_provenance` 关闭「历史助手文本既有幻觉」残余风险；`docs/architecture/security-guardrails.md` 与 `docs/prompt-rule-ledger.md`（动态硬禁令匹配目标说明、两条规则命中口径、S 节系统性别标签、`job_list.brand_no_provenance` 行）同步
+- PR #1337 **观测**：`agent_steps` / `tool_calls` 保留首次尝试已真实执行的工具调用，多尝试时逐条标注 `attempt`；`llm_execution` 尝试轨迹新增 `resumedSteps`；续接步保留原墙钟。replay 的副作用判定（扁平 toolCalls）因此也能看到首次尝试的 booking。
 
 ### 运维与流程
 - PR #1336 weekly-judge-calibration 2026-09-22 结论落账
 - PR #1335 品牌提及集合不再采信 Agent 自产回复
 - PR #1335 开场轮不再把系统语与系统标签当成候选人状态证据
+- PR #1337 多步循环中途失败重试续接已完成工具步，不再重放 booking 副作用
 
 ### 配置变更
 - 无
@@ -59,6 +64,12 @@
 - PR #1335 定向 jest：`turn-context-resolver` / `turn-hints.section` / `final-check.section` / `markers` / `friend-add-greeting.util` / `brand-query.util` / `turn-ledger` / `duliday-job-list.tool` / guardrail `catalog` 等套件全绿
 - PR #1335 未新增对开放自然语言直接 reject/覆盖/判缺的正则分支（`candidate_side` 是收窄既有禁令的匹配范围，加好友系统语是平台固定词形）
 - PR #1335 发版后观测：① `message_processing_records.tool_calls` 中 `duliday_job_list` 的 `errorType=job_list.brand_no_provenance` 次数预期小幅上升，逐条核对被拦品牌是否确为候选人未提过的品牌；② 开场轮（候选人只发加好友系统语）的 prompt 里不应再出现 `# 本轮动态硬禁令` 的面试后条目与「客户详情接口补充性别」线索
+- PR #1337 `pnpm run lint:check` / `format:check` / `typecheck` / `geo:validate` / `vocab:validate` / `quality-ledger:validate` 通过；`build:ci` + `test:ci` 见本 PR CI。
+- PR #1337 新增回归：
+- PR #1337 `tests/llm/llm-executor.service.spec.ts`：provider 中途超时续接、结果校验不过丢末步、降级换模型剥离 reasoning、无工具步从头重跑。
+- PR #1337 `tests/agent/generator/generator-step-timing.spec.ts`：续接步墙钟保留 + attempt 标注。
+- PR #1337 `tests/tools/tool/duliday-interview-booking.tool.spec.ts`：本轮已建单再调 → already_booked 幂等；旧工单不冒充本轮成功。
+- PR #1337 `tests/agent/guardrail/output/rules/booking-receipt.rule.spec.ts`：同轮幂等回执 + 如实播报放行 / 改口没提交成功 → repair。
 <!-- release:pending:end -->
 
 ## [11.11.1] - 2026-09-18
