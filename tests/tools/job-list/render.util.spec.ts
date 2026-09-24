@@ -75,15 +75,30 @@ describe('job-list render util', () => {
     expect(markdown.indexOf('⚠️ 同品牌多门店')).toBeLessThan(markdown.indexOf('## 1. 服务员'));
   });
 
-  it('treats missing student restriction as no extra student hard gate', () => {
+  // figure='不限' 是海绵下发的**明确**取值，不是缺数据。此前卡片把它渲染成
+  // 「未标注学生限制」，与硬过滤（判 any）各说各话，模型因此从不知道哪些岗收学生。
+  it('renders an explicit figure=不限 as identity-unrestricted, not as missing data', () => {
     const flags: ProgressiveDisclosureFlags = {
       ...minimalFlags,
       includeHiringRequirement: true,
     };
     const markdown = formatJobsToMarkdown([makeJob(1)], 1, 1, 10, flags);
 
-    expect(markdown).toContain('未标注学生限制（按无额外学生硬限制处理）');
+    expect(markdown).toContain('不限身份，学生与社会人士均可');
+    expect(markdown).not.toContain('未标注学生限制');
     expect(markdown).not.toContain('需确认');
+  });
+
+  it('flags a genuinely empty identity field as suspected missing data', () => {
+    const flags: ProgressiveDisclosureFlags = {
+      ...minimalFlags,
+      includeHiringRequirement: true,
+    };
+    const job = makeJob(1);
+    job.hiringRequirement.figure = '';
+    const markdown = formatJobsToMarkdown([job], 1, 1, 10, flags);
+
+    expect(markdown).toContain('岗位数据未下发社会身份要求（疑似数据缺失，不等于"不限身份"）');
   });
 
   it('marks insurance as sensitive in welfare markdown instead of ordinary active welfare', () => {

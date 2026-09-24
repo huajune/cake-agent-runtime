@@ -29,6 +29,10 @@ import {
   buildNoMatchScript,
   buildPostInviteClosureScript,
 } from '@tools/job-list/no-match-script.util';
+import {
+  extractHardRequirements,
+  type StudentRequirement,
+} from '@tools/job-list/hard-requirements.util';
 import { buildJobPolicyAnalysis } from '@tools/job-list/job-policy-parser';
 import { sanitizeBrandName } from '@resolution/brand/sanitize-brand-name';
 import { BRAND_FILTER_MODES } from '@resolution/brand/brand-resolution.types';
@@ -499,6 +503,106 @@ interface JobAgeScreeningSummary {
   };
 }
 
+interface JobIdentitySummary {
+  markdown: string;
+  meta: {
+    candidateIsStudent: boolean | null;
+    counts: Record<StudentRequirement, number>;
+    missingDataJobs: Array<{ jobId: number | null; label: string }>;
+  };
+}
+
+const IDENTITY_TIER_LABEL: Record<StudentRequirement, string> = {
+  any: '不限身份（学生/社会人士均可）',
+  student_only: '仅限学生',
+  social_only: '仅限社会人士',
+  second_job_only: '仅限第二职业（需已有主职）',
+  unspecified: '岗位数据未下发社会身份要求',
+};
+
+/**
+ * 候选人社会身份筛选提示（与「候选人年龄筛选提示」同构）。
+ *
+ * 存在的理由：岗位卡逐条写了「学生身份要求」，但模型此前无处得知**整批**结果里
+ * 哪些岗收学生、哪些不收（badcase 6aaf9202：候选人收资表已填「全日制在校学生」，
+ * 必胜客被 precheck 筛退后，模型把同样不收学生的两家肯德基当"接受学生的岗位"推过去）。
+ *
+ * `unspecified` 单独成档、且**不得**被当作"不限身份"：运营 2026-09-24 裁定，
+ * 社会身份在岗位后台是必填项，取值缺失更可能是数据链路问题而非"这岗真的不限"，
+ * 按"不限"放行等于拿候选人的意向去赌一个未知门槛。
+ */
+function buildJobIdentitySummary(
+  jobs: JobDetail[],
+  candidateIsStudent: boolean | null,
+): JobIdentitySummary | null {
+  if (jobs.length === 0) return null;
+
+  const counts: Record<StudentRequirement, number> = {
+    any: 0,
+    student_only: 0,
+    social_only: 0,
+    second_job_only: 0,
+    unspecified: 0,
+  };
+  const missingDataJobs: JobIdentitySummary['meta']['missingDataJobs'] = [];
+
+  for (const job of jobs) {
+    const policy = buildJobPolicyAnalysis(job);
+    const requirement = extractHardRequirements(job, policy).student;
+    counts[requirement] += 1;
+    if (requirement === 'unspecified' && missingDataJobs.length < 5) {
+      const basic = job.basicInfo ?? ({} as JobBasicInfo);
+      const storeName = (basic.storeInfo as StoreInfoView | undefined)?.storeName;
+      const label =
+        [basic.brandName, storeName, basic.jobNickName ?? basic.jobName]
+          .filter(Boolean)
+          .join('-') || '未命名岗位';
+      missingDataJobs.push({
+        jobId: typeof basic.jobId === 'number' ? basic.jobId : null,
+        label,
+      });
+    }
+  }
+
+  const lines = [
+    '## 候选人社会身份筛选提示',
+    `- 本次结果社会身份要求分布：${(Object.keys(counts) as StudentRequirement[])
+      .filter((tier) => counts[tier] > 0)
+      .map((tier) => `${IDENTITY_TIER_LABEL[tier]} ${counts[tier]} 个`)
+      .join('，')}。取值来自岗位数据的社会身份字段，不是从备注猜的，按此如实介绍。`,
+  ];
+
+  if (candidateIsStudent === true) {
+    lines.push(
+      '- 候选人已明确是**在校学生**：只招社会人士/只招第二职业的岗位已在查询侧剔除，剩下的岗位不得再被描述成"不接受学生"。',
+    );
+  } else {
+    lines.push(
+      '- 候选人社会身份未确认：**不要凭年龄/学历猜身份**，也不要把"不限身份"说成"要求社会人士"。需要判定时按收资表「社会身份」栏单问一次。',
+    );
+  }
+
+  if (counts.unspecified > 0) {
+    lines.push(
+      `- ⚠️ **${counts.unspecified} 个岗位的社会身份要求字段为空**（示例：${missingDataJobs
+        .map((job) => job.label)
+        .join('、')}）。该字段在岗位后台是必填项，为空属于**数据缺失**，` +
+        '**不得按"不限身份"放行**、不得对候选人说"这个岗不限身份/学生也可以"。' +
+        (candidateIsStudent === true
+          ? '候选人已明确是学生时，若本轮只剩这类岗位可推，调用 request_handoff' +
+            '（reasonCode="identity_age_exception"），并在 reason 里写明"岗位社会身份要求字段为空（疑似岗位数据缺失），' +
+            '无法确认是否接受在校学生"——让接手的人一眼看出是数据问题、不是候选人资格问题；' +
+            '同时如实告诉候选人这几家的用工身份要求需要跟门店确认、稍后答复。'
+          : '候选人身份未知时可继续推进其余条件，但一旦候选人自报在校学生，这些岗位必须按上述口径转人工确认。'),
+    );
+  }
+
+  return {
+    markdown: lines.join('\n'),
+    meta: { candidateIsStudent, counts, missingDataJobs },
+  };
+}
+
 function buildJobAgeScreeningSummary(
   jobs: JobDetail[],
   candidateAge: number | null,
@@ -679,7 +783,7 @@ const DESCRIPTION = `查询在招岗位列表。支持渐进式数据返回，�
 - **健康证口径必须两段一起给**：岗位分「面试前须持证」与「入职前办妥」两档；属后者时回答"面试要不要健康证"**必须同时说明入职前仍须办妥**，**严禁**只回"面试不需要"就结束（候选人会以为全程不用办，是既有投诉形态）。时点以本轮健康证字段为准，不得自行加"试工/培训"等数据没有的环节口径
 - 历史助手回复说过的门店事实不能当本轮事实复述；本轮要给候选人新的具体推荐时，必须以本轮工具结果为准；只有 [当前焦点岗位] 等记忆字段是稳定的，可以直接承接
 - **工具未返回的业务事实禁止用通识补充**：候选人追问的主题岗位字段**确实没有**时（如"保险具体是哪几种险 / 健康证认可哪家机构办的 / 每天最多排几小时 / 试用期多长 / 能否跨店"），当轮按 request_handoff（reasonCode="salary_admin_inquiry"）转人工，**严禁**"一般日结当天结 / 应该是全职"类经验性回答。**先查字段再转**——下面这些主题都有字段，按本轮工具结果答、不得转人工："排班固定还是灵活"看「工作时间」段的排班周期/排班类型；"几号发几月工资"看「结算周期」的发薪日与归属月；"面试线上还是线下"看「面试方式」；"有没有试用期"看「是否有试用期」（只有"试用期多长"才是无字段主题）
-- **学生安排只服从岗位数据，且资格通过≠预约已通过**：工具明确写不接受学生就不得推荐；写接受/学生优先则继续；未标注学生限制时按"没有额外学生硬限制"继续校验其余条件——不得凭空说"需要跟店里确认"、不得因此 request_handoff 或声称已联系门店，年龄/学历/常识不能替代岗位数据。资格通过只代表可以继续：约面阶段必须保持候选人原话身份（历史明确填学生就传 candidateIsStudent=true）走 duliday_interview_precheck，只有 booking 返回 success=true 才能说已提交/已预约，严禁只调本工具就说"现在帮你提交预约/稍后提交"。
+- **学生安排只服从岗位数据，且资格通过≠预约已通过**：工具明确写不接受学生就不得推荐；写接受/学生优先则继续；岗位社会身份要求字段为空时**不得按"不限身份"放行**：该字段在岗位后台是必填项，为空属于数据缺失，不得对候选人说"这个岗不限身份/学生也可以"。候选人身份未知时可继续校验其余条件；候选人已明确是在校学生、且本轮只剩这类字段为空的岗位可推时，按 request_handoff（reasonCode="identity_age_exception"）转人工，reason 必须写明"岗位社会身份要求字段为空（疑似岗位数据缺失），无法确认是否接受在校学生"，并如实告诉候选人需要跟门店确认、稍后答复。除此之外不得凭空说"需要跟店里确认"、不得因此 request_handoff 或声称已联系门店，年龄/学历/常识不能替代岗位数据。资格通过只代表可以继续：约面阶段必须保持候选人原话身份（历史明确填学生就传 candidateIsStudent=true）走 duliday_interview_precheck，只有 booking 返回 success=true 才能说已提交/已预约，严禁只调本工具就说"现在帮你提交预约/稍后提交"。
 - **门店运营状态禁编造**：本工具只确认是否有在招岗位，**不掌握**营业/装修/关店/搬迁/招满等状态；结果为空只能答"目前查不到 X 在招岗位"，**严禁**"可能关店了 / 应该是搬了"类推测；候选人坚持要实际状态时按 request_handoff 转人工。
 - **同字段多次查询不一致时以最新一次为准**：前后返回不同时按最新结果自洽回复，用一句衔接（"刚再核了一下，这家目前确实没空缺了"），不得前后口径并存造成人格分裂`;
 
@@ -1939,6 +2043,9 @@ export function buildJobListTool(
           const ageScreeningSummary = includeHiringRequirement
             ? buildJobAgeScreeningSummary(jobs, resolveCandidateAge(context))
             : null;
+          const identitySummary = includeHiringRequirement
+            ? buildJobIdentitySummary(jobs, candidateIsStudent)
+            : null;
 
           // 始终计算 brandNearestStores（不再仅在 hasUserCoords 时计算）：
           // 即使没有用户坐标，同品牌≥2 家时也需要 displayLine 让 LLM 区分。
@@ -1977,6 +2084,7 @@ export function buildJobListTool(
               studentFilterNotice,
               jobCategoryNotice,
               ageScreeningSummary?.markdown,
+              identitySummary?.markdown,
               jobsMarkdown,
             ].filter((section): section is string => Boolean(section));
             result.markdown = sanitizeBrandName(markdownSections.join('\n\n'));
@@ -2136,6 +2244,7 @@ export function buildJobListTool(
                   }))
                 : null,
             ageScreening: ageScreeningSummary?.meta ?? null,
+            identityScreening: identitySummary?.meta ?? null,
             // 品牌散字段（brandIdList/brandAliasList/brandAliasSource/rejectedNickname…）
             // 已收拢为类型化 brand 小节（§11）；模型原始参数在 message_processing_records
             // 调用流水里本来就有，不重复存。
