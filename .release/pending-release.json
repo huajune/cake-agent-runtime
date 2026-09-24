@@ -1,9 +1,42 @@
 {
   "baseVersion": "11.12.0",
-  "nextVersion": "11.12.0",
+  "nextVersion": "11.12.1",
   "updatedAt": "2026-09-24",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "1350",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1350",
+      "title": "不合作品牌直说、编造品牌不进重查、排班约束须有原话依据（运营 0924 case 复核）",
+      "author": "huajune",
+      "mergedAt": "2026-09-24",
+      "businessUpdates": [
+        "不合作品牌直说、编造品牌不进重查、排班约束须有原话依据",
+        "班次出处语料按需抽取",
+        "不合作品牌直说、编造品牌不进重查、排班约束须有原话依据（运营 0924 case 复核）"
+      ],
+      "summary": [
+        "不合作品牌直说、编造品牌不进重查、排班约束须有原话依据",
+        "班次出处语料按需抽取",
+        "不合作品牌直说、编造品牌不进重查、排班约束须有原话依据（运营 0924 case 复核）"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [
+        "班次出处语料按需抽取"
+      ],
+      "ops": [
+        "未改 `schedule-semantic.util.ts` 的早/中/晚班判定语义，未新增班次正则——运营裁定「班次相关需要重新裁定」，本次只做「没依据不许筛」这一层。",
+        "`findUnmentionedQueryBrands` 按设计只校验目录内品牌，目录外品牌绕过出处守卫是既有设计，未改守卫语义，从回执与话术侧收口。",
+        "出站守卫 `unsupported_store_status_speculation` 同步接受新的 `nextAction=brand_not_partnered`，不新增 ruleId。",
+        "不合作品牌直说、编造品牌不进重查、排班约束须有原话依据"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [],
+      "level": "patch"
+    }
+  ],
   "lastRelease": {
     "version": "11.12.0",
     "date": "2026-09-24",
@@ -396,5 +429,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "50f6135e77a641a34ce455adef7904a14154d505"
+  "lastAnalyzedSha": "8996f6c7b558f900d8da3f5a2562688fe518cdd8"
 }
