@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [11.12.0] - 2026-09-24
 
-**预计版本**: `v11.12.0`
-**最近更新**: `2026-09-24`
 **来源分支**: `develop`
-**累计 PR**: 6
 
 ### 更新摘要
 - PR #1336 weekly-judge-calibration 2026-09-22 结论落账
@@ -247,7 +243,6 @@
 - PR #1337 `tests/agent/generator/generator-step-timing.spec.ts`：续接步墙钟保留 + attempt 标注。
 - PR #1337 `tests/tools/tool/duliday-interview-booking.tool.spec.ts`：本轮已建单再调 → already_booked 幂等；旧工单不冒充本轮成功。
 - PR #1337 `tests/agent/guardrail/output/rules/booking-receipt.rule.spec.ts`：同轮幂等回执 + 如实播报放行 / 改口没提交成功 → repair。
-<!-- release:pending:end -->
 
 ## [11.11.1] - 2026-09-18
 
