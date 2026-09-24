@@ -174,25 +174,6 @@ describe('GeneralHandoffCardRenderer', () => {
       }
     });
 
-    it('renders the pause-overdue inspection card with @ receiver', () => {
-      const card = renderer.buildPauseOverdueCard({
-        chatId: 'chat-1',
-        overdueDays: 4,
-        pausedAtLabel: '2026/09/18 10:00',
-        pauseReason: '面试后人工对接，需人工恢复托管',
-        contactName: '张三',
-        botUserName: 'manager-1',
-        atUsers: [{ openId: 'ou_1', name: '运营A' }],
-      });
-      const content = card.content as string;
-      expect(card.title).toBe('⏳ 人工介入暂停超期未恢复');
-      expect(content).toContain('永久暂停已超 4 天未恢复');
-      expect(content).toContain('微信昵称：张三');
-      expect(content).toContain('托管账号：manager-1');
-      expect(content).toContain('会话ID：chat-1');
-      expect(card.atUsers).toEqual([{ openId: 'ou_1', name: '运营A' }]);
-    });
-
     it('escalates employment_affairs to urgent only when reason mentions work injury (same rule as task priority)', () => {
       const injury = renderer.buildCard(
         buildPayload({ reasonCode: 'employment_affairs', reason: '候选人说上班工伤了' }),

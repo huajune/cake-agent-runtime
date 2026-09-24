@@ -3,10 +3,7 @@ import { HostingMemberConfigService } from '@biz/hosting-config/services/hosting
 import { FeishuAlertChannel } from '../channels/feishu-alert.channel';
 import { FeishuPrivateChatChannel } from '../channels/feishu-private-chat.channel';
 import { GeneralHandoffCardRenderer } from '../renderers/general-handoff-card.renderer';
-import {
-  GeneralHandoffNotificationPayload,
-  PauseOverdueNotificationPayload,
-} from '../types/general-handoff-notification.types';
+import { GeneralHandoffNotificationPayload } from '../types/general-handoff-notification.types';
 
 /**
  * 测试/调试链路识别。
@@ -61,20 +58,6 @@ export class GeneralHandoffNotifierService {
         `通用人工介入告警发送失败${tag}: chatId=${payload.chatId}, label=${payload.alertLabel}`,
       );
     }
-    return success;
-  }
-
-  /** 永久暂停超期巡检提醒：与人工介入卡片同群、同 @ 规则（按托管账号解析运营，解析不到才 @all）。 */
-  async notifyPauseOverdue(payload: PauseOverdueNotificationPayload): Promise<boolean> {
-    const receiver = await this.hostingMemberConfig.resolveFeishuReceiver(payload.botImId);
-    const card = this.cardRenderer.buildPauseOverdueCard({
-      ...payload,
-      ...(receiver ? { atUsers: [receiver] } : { atAll: true }),
-    });
-    const success = await this.privateChatChannel.send(card);
-    this.logger.warn(
-      `永久暂停超期提醒${success ? '已发送' : '发送失败'}: chatId=${payload.chatId}, overdueDays=${payload.overdueDays}`,
-    );
     return success;
   }
 }
