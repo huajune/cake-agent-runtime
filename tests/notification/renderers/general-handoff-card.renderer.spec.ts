@@ -193,6 +193,18 @@ describe('GeneralHandoffCardRenderer', () => {
       expect(card.atUsers).toEqual([{ openId: 'ou_1', name: '运营A' }]);
     });
 
+    it('escalates employment_affairs to urgent only when reason mentions work injury (same rule as task priority)', () => {
+      const injury = renderer.buildCard(
+        buildPayload({ reasonCode: 'employment_affairs', reason: '候选人说上班工伤了' }),
+      );
+      expect(injury.content as string).toContain('⏱ 时效敏感');
+
+      const routine = renderer.buildCard(
+        buildPayload({ reasonCode: 'employment_affairs', reason: '问离职手续' }),
+      );
+      expect(routine.content as string).not.toContain('时效敏感');
+    });
+
     it('omits urgency banner for non-urgent or missing reason codes', () => {
       const nonUrgent = renderer.buildCard(buildPayload({ reasonCode: 'salary_admin_inquiry' }));
       expect(nonUrgent.content as string).not.toContain('时效敏感');

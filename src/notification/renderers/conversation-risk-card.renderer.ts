@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { FeishuCardBuilderService } from '@infra/feishu/services/card-builder.service';
 import { FeishuReceiver } from '@infra/feishu/constants/receivers';
 import { unwrapSessionFactValue } from '@memory/short-term/short-term.types';
+import { getHandoffReasonLabel } from '@enums/handoff-reason.enum';
 import { ConversationRiskNotificationPayload } from '../types/conversation-risk-notification.types';
 
 @Injectable()
@@ -163,10 +164,14 @@ export class ConversationRiskCardRenderer {
   }
 
   private isGenericSummary(riskLabel: string, summary: string): boolean {
+    // 键取风险码的权威标签（@enums/handoff-reason.enum），不再在这里维护第二份中文名。
     const genericSummariesByLabel: Record<string, string[]> = {
-      '辱骂/攻击': ['候选人出现明显辱骂或攻击性表达'],
-      '投诉/举报风险': ['候选人出现明确投诉、举报或欺骗风险表达', '候选人出现明确投诉风险'],
-      '连续质问/情绪升级': [
+      [getHandoffReasonLabel('abuse')]: ['候选人出现明显辱骂或攻击性表达'],
+      [getHandoffReasonLabel('complaint_risk')]: [
+        '候选人出现明确投诉、举报或欺骗风险表达',
+        '候选人出现明确投诉风险',
+      ],
+      [getHandoffReasonLabel('escalation')]: [
         '候选人近期连续追问，情绪有明显升级趋势',
         '候选人出现明显负面情绪，需要结合上下文做复判',
       ],

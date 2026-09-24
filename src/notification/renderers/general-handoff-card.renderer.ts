@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { FeishuReceiver } from '@infra/feishu/constants/receivers';
 import { FeishuCardBuilderService } from '@infra/feishu/services/card-builder.service';
 import { unwrapSessionFactValue } from '@memory/short-term/short-term.types';
-import { isUrgentHandoffReason } from '@enums/handoff-reason.enum';
+import { isUrgentHandoff } from '@enums/handoff-reason.enum';
 import {
   GeneralHandoffNotificationPayload,
   PauseOverdueCardPayload,
@@ -19,9 +19,9 @@ export class GeneralHandoffCardRenderer {
       atAll?: boolean;
     },
   ): Record<string, unknown> {
-    // 时效敏感集合由权威目录（@enums/handoff-reason.enum）的 urgent 属性派生：
-    // 候选人可能已在途/正在等待，超时未跟进直接丢单。
-    const isUrgent = isUrgentHandoffReason(payload.reasonCode);
+    // 时效敏感由权威目录（@enums/handoff-reason.enum）的 urgent 属性 + 在职事务工伤升急派生，
+    // 与飞书任务优先级同一判据：候选人可能已在途/正在等待，超时未跟进直接丢单。
+    const isUrgent = isUrgentHandoff(payload.reasonCode, payload.reason);
     const sections = [
       payload.isTest ? '> 测试ing（来自回归批次，无需 @ 招募经理）' : null,
       isUrgent

@@ -13,6 +13,7 @@ import {
   HANDOFF_TASK_CATEGORY_META,
   getHandoffReasonDefinition,
   getHandoffReasonLabel,
+  isUrgentHandoff,
   isUrgentHandoffReason,
   type HandoffTaskCategory,
 } from '@enums/handoff-reason.enum';
@@ -184,18 +185,13 @@ export function isUrgentReasonCode(reasonCode: string | null | undefined): boole
   return isUrgentHandoffReason(reasonCode);
 }
 
-/** 在职事务里只有工伤标急（PRD R5.2）。 */
-const WORK_INJURY_PATTERN = /工伤/;
-
+/** 标急判定（含在职事务的工伤升急）只住 `isUrgentHandoff`，与人工介入卡片同一判据。 */
 export function resolveBasePriority(params: {
   category: InterventionTaskCategory;
   reasonCode: string | null | undefined;
   reasonText: string;
 }): InterventionTaskPriority {
-  if (isUrgentReasonCode(params.reasonCode)) return 'urgent';
-  if (params.reasonCode === 'employment_affairs' && WORK_INJURY_PATTERN.test(params.reasonText)) {
-    return 'urgent';
-  }
+  if (isUrgentHandoff(params.reasonCode, params.reasonText)) return 'urgent';
   return CATEGORY_META[params.category].basePriority;
 }
 

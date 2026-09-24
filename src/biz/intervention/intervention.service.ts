@@ -5,6 +5,7 @@ import { InterventionTaskService } from '@notification/feishu-task/intervention-
 import { ConversationRiskNotifierService } from '@notification/services/conversation-risk-notifier.service';
 import { GeneralHandoffNotifierService } from '@notification/services/general-handoff-notifier.service';
 import type { WeworkSessionState } from '@memory/short-term/short-term.types';
+import type { ConversationRiskType } from '@shared-types/guardrail.contract';
 import { requiresManualResumeForReason } from '@enums/handoff-reason.enum';
 
 export interface InterventionMessageSnapshot {
@@ -28,13 +29,7 @@ export interface InterventionBase {
 
 export interface RiskInterventionPayload extends InterventionBase {
   kind: 'conversation_risk';
-  riskType:
-    | 'abuse'
-    | 'complaint_risk'
-    | 'escalation'
-    | 'interview_result_inquiry'
-    | 'human_handoff_request'
-    | 'disability_disclosure';
+  riskType: ConversationRiskType;
   riskLabel: string;
   summary: string;
   reason: string;

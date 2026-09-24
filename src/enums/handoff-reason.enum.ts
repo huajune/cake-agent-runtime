@@ -8,7 +8,9 @@
  * - `label`            中文标签（卡片标题 / 饼图 / 飞书表「原因分类」）
  * - `urgent`           卡片标急、飞书任务优先级急
  * - `manualResumeOnly` 暂停到人工在 Dashboard 恢复为止（其余次日零点自动恢复）
- * - `category`         任务大类 T1–T8（谁处理、多久内处理，见 docs/todo/prd-ops-followup-2026-09.md R5.2）
+ * - `category`         任务大类 T1–T8（谁处理、多久内处理，见 PRD
+ *                      `36185ecb1^:docs/todo/prd-ops-followup-2026-09.md` §R5.2——文件已删除，
+ *                      用 `git show 36185ecb1^:docs/todo/prd-ops-followup-2026-09.md` 取）
  * - `toolSelectable`   是否允许模型在 request_handoff 里直接选用；系统专用码（入站风险、booking
  *                      侧发、复聊巡检）只由代码写入
  *
@@ -95,7 +97,8 @@ export const HANDOFF_REASON_CATALOG: readonly HandoffReasonDefinition[] = [
   },
   {
     code: 'interview_result_inquiry',
-    label: '候选人追问面试结果',
+    // 同码也是入站风险类型，label 与交流异常卡片既有口径一致（见文末风险类型段注释）。
+    label: '面试结果追问',
     urgent: false,
     manualResumeOnly: true,
     category: 'T3',
@@ -262,7 +265,10 @@ export const HANDOFF_REASON_CATALOG: readonly HandoffReasonDefinition[] = [
     category: 'T3',
     toolSelectable: false,
   },
-  // 入站守卫 / raise_risk_alert 的风险类型（InputRiskType 与 RiskInterventionPayload.riskType）
+  // 入站守卫 / raise_risk_alert 的风险类型（InputRiskType 与 RiskInterventionPayload.riskType）。
+  // 这几个码的 label 是交流异常飞书卡片标题「🚨 交流异常 · <label>」既有口径（与 input-rule-catalog
+  // 上线以来的卡片文案一致，运营已习惯）；input-rule-catalog.riskLabel 与 raise_risk_alert 的
+  // riskLabel 都从本表派生，改文案只改这里。
   {
     code: 'abuse',
     label: '辱骂/攻击',
@@ -273,7 +279,7 @@ export const HANDOFF_REASON_CATALOG: readonly HandoffReasonDefinition[] = [
   },
   {
     code: 'complaint_risk',
-    label: '投诉/维权风险',
+    label: '投诉/举报风险',
     urgent: true,
     manualResumeOnly: false,
     category: 'T7',
@@ -281,7 +287,7 @@ export const HANDOFF_REASON_CATALOG: readonly HandoffReasonDefinition[] = [
   },
   {
     code: 'escalation',
-    label: '情绪升级需人工安抚',
+    label: '情绪升级',
     urgent: true,
     manualResumeOnly: false,
     category: 'T7',
@@ -297,7 +303,7 @@ export const HANDOFF_REASON_CATALOG: readonly HandoffReasonDefinition[] = [
   },
   {
     code: 'disability_disclosure',
-    label: '残障披露（静默转人工）',
+    label: '候选人披露残障身份',
     urgent: false,
     manualResumeOnly: false,
     category: 'T7',
@@ -348,6 +354,22 @@ export function getHandoffReasonLabel(code: string, fallback?: string): string {
 
 export function isUrgentHandoffReason(code: string | null | undefined): boolean {
   return code != null && URGENT_HANDOFF_REASON_CODES.has(code);
+}
+
+/** 在职事务里只有工伤标急（PRD §R5.2）；reason 文本升急的唯一判定词表。 */
+const WORK_INJURY_PATTERN = /工伤/;
+
+/**
+ * 卡片标急 / 飞书任务优先级急的唯一判定：码本身标急，或 `employment_affairs` 的 reason
+ * 提到工伤（工具 description 要求工伤必须写在 reason 首句）。卡片渲染与任务分类都走这里，
+ * 不得各自再按 reason 文本判一遍。
+ */
+export function isUrgentHandoff(
+  code: string | null | undefined,
+  reasonText?: string | null,
+): boolean {
+  if (isUrgentHandoffReason(code)) return true;
+  return code === 'employment_affairs' && WORK_INJURY_PATTERN.test(reasonText ?? '');
 }
 
 export function requiresManualResumeForReason(code: string | null | undefined): boolean {

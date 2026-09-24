@@ -6,6 +6,7 @@ import {
   STORE_NO_SHOW_REASON_CODES,
   URGENT_HANDOFF_REASON_CODES,
   getHandoffReasonLabel,
+  isUrgentHandoff,
   isUrgentHandoffReason,
   requiresManualResumeForReason,
   resolveHandoffTaskCategory,
@@ -93,6 +94,27 @@ describe('handoff-reason catalog', () => {
     }
     expect(isUrgentHandoffReason('salary_admin_inquiry')).toBe(false);
     expect(isUrgentHandoffReason(undefined)).toBe(false);
+  });
+
+  it('isUrgentHandoff: urgent codes stay urgent; employment_affairs escalates only on work-injury reason', () => {
+    expect(isUrgentHandoff('modify_appointment')).toBe(true);
+    expect(isUrgentHandoff('modify_appointment', '')).toBe(true);
+    expect(isUrgentHandoff('employment_affairs', '候选人说上班工伤了')).toBe(true);
+    expect(isUrgentHandoff('employment_affairs', '问离职手续')).toBe(false);
+    expect(isUrgentHandoff('employment_affairs')).toBe(false);
+    expect(isUrgentHandoff('employment_affairs', null)).toBe(false);
+    // 工伤词只对在职事务升急，其他非急码不因 reason 文本升急
+    expect(isUrgentHandoff('salary_admin_inquiry', '工伤')).toBe(false);
+    expect(isUrgentHandoff(undefined, '工伤')).toBe(false);
+  });
+
+  it('risk-type labels are the single source for input catalog and raise_risk_alert wording', () => {
+    expect(HANDOFF_REASON_LABELS.abuse).toBe('辱骂/攻击');
+    expect(HANDOFF_REASON_LABELS.complaint_risk).toBe('投诉/举报风险');
+    expect(HANDOFF_REASON_LABELS.escalation).toBe('情绪升级');
+    expect(HANDOFF_REASON_LABELS.interview_result_inquiry).toBe('面试结果追问');
+    expect(HANDOFF_REASON_LABELS.human_handoff_request).toBe('候选人主动要求人工');
+    expect(HANDOFF_REASON_LABELS.disability_disclosure).toBe('候选人披露残障身份');
   });
 
   it('manual-resume set: three post-interview codes + employment_affairs; onboarding_follow_up does not pause', () => {

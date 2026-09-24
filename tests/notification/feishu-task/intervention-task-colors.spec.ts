@@ -71,7 +71,7 @@ describe('intervention-task-colors', () => {
     }
     // 入站风险类归 T7（紫）
     expect(resolveOptionColorIndex('reasonCode', '辱骂/攻击')).toBe(FEISHU_OPTION_COLOR.purple);
-    expect(resolveOptionColorIndex('reasonCode', '投诉/维权风险')).toBe(FEISHU_OPTION_COLOR.purple);
+    expect(resolveOptionColorIndex('reasonCode', '投诉/举报风险')).toBe(FEISHU_OPTION_COLOR.purple);
     // other 归不了类 → gray；未归类 / 未知标签 → gray
     expect(resolveOptionColorIndex('reasonCode', '其他需人工处理')).toBe(FEISHU_OPTION_COLOR.gray);
     expect(resolveOptionColorIndex('reasonCode', UNCLASSIFIED_LABEL)).toBe(

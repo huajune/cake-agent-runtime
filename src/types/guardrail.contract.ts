@@ -175,6 +175,13 @@ export const INPUT_RISK_TYPES = Object.values(INPUT_RISK_TYPE);
 
 export type InputRiskType = (typeof INPUT_RISK_TYPES)[number];
 
+/**
+ * 交流异常（conversation_risk）介入的风险类型：入站确定性拦截的 InputRiskType，
+ * 加上只由 raise_risk_alert 工具选用的 `escalation`（情绪升级）。中文标签一律取
+ * `@enums/handoff-reason.enum` 的 label。
+ */
+export type ConversationRiskType = InputRiskType | 'escalation';
+
 export const GUARDRAIL_RISK_LEVEL = {
   LOW: 'low',
   MEDIUM: 'medium',
