@@ -704,6 +704,10 @@ export class LlmExecutorService {
       ...rest,
       ...(prompt !== undefined ? { prompt } : {}),
       ...(messages !== undefined ? { messages } : {}),
+      // 非续接路径必须原样带回：缺 stopWhen 时 SDK 默认 stepCountIs(1)，调完首个工具即结束；
+      // 缺 prepareStep 时 generator 的限次/互斥/副作用屏蔽全部失效。仅在调用方传了才设，避免 undefined 覆盖默认。
+      ...(prepareStep !== undefined ? { prepareStep } : {}),
+      ...(stopWhen !== undefined ? { stopWhen } : {}),
       onStepFinish: (step: LoopStep) => {
         completedSteps.push(step);
         return onStepFinish?.(step);

@@ -810,6 +810,27 @@ describe('LlmExecutorService', () => {
       expect(result.steps).toEqual([finalStep]);
       expect(result.stepAttempts).toEqual([2]);
     });
+
+    it('首次尝试（无续接）原样透传调用方的 stopWhen 与 prepareStep，多步循环不被 SDK 默认单步截断', async () => {
+      const finalStep = textStep('你好');
+      mockGenerateText.mockResolvedValueOnce(makeGenerateResult({ text: '你好', steps: [finalStep] }));
+      const prepareStep = jest.fn().mockReturnValue({});
+      const stopWhen = jest.fn().mockReturnValue(false);
+
+      await service.generate({
+        role: ModelRole.Chat,
+        messages: userMessages as never,
+        disableFallbacks: true,
+        prepareStep,
+        stopWhen: [stopWhen],
+      });
+
+      expect(mockGenerateText).toHaveBeenCalledTimes(1);
+      const options = getGenerateOptions(0);
+      // 无续接前缀时不需要包装：必须是同一引用，缺失即退化为 stepCountIs(1) 单步
+      expect(options.prepareStep).toBe(prepareStep);
+      expect(options.stopWhen).toEqual([stopWhen]);
+    });
   });
 
   describe('generateStructured', () => {
