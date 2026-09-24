@@ -143,6 +143,36 @@ describe('InterventionTaskService', () => {
     expect(systemConfig.getConfigValue).toHaveBeenCalledWith(FEISHU_TASK_CONFIG_KEY);
   });
 
+  it('FEISHU_TASK_TASKLIST_GUID 为空时整条链路静默跳过，不读开关也不调飞书', async () => {
+    const emptyEnv = { ...env, FEISHU_TASK_TASKLIST_GUID: '' };
+    const emptyConfigService = { get: jest.fn((key: string) => emptyEnv[key]) };
+    const noTasklistService = new InterventionTaskService(
+      client as never,
+      redis as never,
+      emptyConfigService as never,
+      systemConfig as never,
+      hostingMember as never,
+      alertNotifier as never,
+      moduleRef as never,
+    );
+    noTasklistService.onApplicationBootstrap();
+
+    await expect(noTasklistService.submit(basePayload)).resolves.toBeUndefined();
+    expect(systemConfig.getConfigValue).not.toHaveBeenCalled();
+    expect(client.createTask).not.toHaveBeenCalled();
+    expect(client.updateTask).not.toHaveBeenCalled();
+    expect(alertNotifier.sendAlert).not.toHaveBeenCalled();
+  });
+
+  it('读取运行时开关抛错时按关闭处理：不调飞书、不抛、不告警', async () => {
+    systemConfig.getConfigValue.mockRejectedValue(new Error('system_config down'));
+    await expect(service.submit(basePayload)).resolves.toBeUndefined();
+    expect(systemConfig.getConfigValue).toHaveBeenCalledWith(FEISHU_TASK_CONFIG_KEY);
+    expect(client.createTask).not.toHaveBeenCalled();
+    expect(client.updateTask).not.toHaveBeenCalled();
+    expect(alertNotifier.sendAlert).not.toHaveBeenCalled();
+  });
+
   it('测试链路（corpId=test）不建任务', async () => {
     await service.submit({ ...basePayload, corpId: 'test' });
     expect(client.createTask).not.toHaveBeenCalled();
@@ -334,6 +364,7 @@ describe('InterventionTaskService', () => {
     expect(sponge.fetchSignupWorkOrders).toHaveBeenCalledWith(
       { workOrderId: 555 },
       { botImId: '1688854363869800' },
+      { timeoutMs: 5000 },
     );
     const input = client.createTask.mock.calls[0][0];
     const fields = input.customFields as FieldCall[];

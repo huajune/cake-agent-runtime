@@ -16,11 +16,20 @@
  */
 
 // 环境文件必须在业务模块 import 之前加载（ConfigService 读 process.env）；函数声明有提升，可先用。
+// 文件不存在时直接退出：dotenv 缺文件只静默跳过，后续会拿空凭证去打飞书接口，报错难以定位。
 // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
-require('dotenv').config({
-  // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
-  path: require('node:path').resolve(__dirname, '..', parseArgs(process.argv.slice(2)).env),
-});
+const envFilePath: string = require('node:path').resolve(
+  __dirname,
+  '..',
+  parseArgs(process.argv.slice(2)).env,
+);
+// eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+if (!require('node:fs').existsSync(envFilePath)) {
+  process.stderr.write(`环境文件不存在：${envFilePath}（用 --env <path> 指定）\n`);
+  process.exit(1);
+}
+// eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+require('dotenv').config({ path: envFilePath });
 
 interface CliOptions {
   env: string;

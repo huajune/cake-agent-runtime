@@ -110,7 +110,7 @@ interface TriggeringToolFailure {
 }
 
 /** 本轮最后一个失败的业务工具 → 对应原因码；无失败工具返回 undefined。 */
-export function resolveTriggeringToolFailure(
+function resolveTriggeringToolFailure(
   toolCalls: AgentToolCall[],
 ): TriggeringToolFailure | undefined {
   for (let index = toolCalls.length - 1; index >= 0; index -= 1) {

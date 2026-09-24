@@ -64,18 +64,18 @@ describe('handoff-reason catalog', () => {
       'onboarding_follow_up_required',
     ]) {
       expect(HANDOFF_REASON_CODES).not.toContain(code);
-      expect(HANDOFF_REASON_LABELS[code]).toBeDefined();
+      expect(HANDOFF_REASON_LABELS[code]).toEqual(expect.stringMatching(/\S/));
     }
   });
 
   it('every input risk type is a catalog code so inbound handoffs can be recorded', () => {
     for (const riskType of INPUT_RISK_TYPES) {
-      expect(HANDOFF_REASON_LABELS[riskType]).toBeDefined();
+      expect(HANDOFF_REASON_LABELS[riskType]).toEqual(expect.stringMatching(/\S/));
       expect(resolveHandoffTaskCategory(riskType)).toBe(
         riskType === 'interview_result_inquiry' ? 'T3' : 'T7',
       );
     }
-    expect(HANDOFF_REASON_LABELS.escalation).toBeDefined();
+    expect(HANDOFF_REASON_LABELS.escalation).toEqual(expect.stringMatching(/\S/));
   });
 
   it('urgent set: legacy urgent codes + cannot_find_store + new store_no_show / out_of_band', () => {
@@ -123,7 +123,7 @@ describe('handoff-reason catalog', () => {
 
   it('store no-show leaderboard codes all exist in the catalog', () => {
     for (const code of STORE_NO_SHOW_REASON_CODES) {
-      expect(HANDOFF_REASON_LABELS[code]).toBeDefined();
+      expect(HANDOFF_REASON_LABELS[code]).toEqual(expect.stringMatching(/\S/));
     }
   });
 
