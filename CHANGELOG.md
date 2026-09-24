@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [11.12.2] - 2026-09-24
 
-**预计版本**: `v11.12.2`
-**最近更新**: `2026-09-24`
 **来源分支**: `develop`
-**累计 PR**: 1
 
 ### 运营说明
 **人工介入「永久暂停超期未恢复」提醒** ✅ 已下线
@@ -63,7 +59,6 @@
 - PR #1359 `tests/scripts`（9 套 69 例，含新增 10 例）、`tests/notification/renderers`、`tests/biz/intervention` 通过
 - PR #1359 夹具驱动 dry-run：release PR 正文与飞书卡片均按「运营说明」原样渲染
 - PR #1359 未新增对开放自然语言直接 reject/覆盖/判缺的正则分支
-<!-- release:pending:end -->
 
 ## [11.12.1] - 2026-09-24
 
