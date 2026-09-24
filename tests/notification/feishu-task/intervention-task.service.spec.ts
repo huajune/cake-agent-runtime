@@ -428,6 +428,60 @@ describe('InterventionTaskService', () => {
     expect(input.members).toEqual([{ id: 'ou_dongsheng', type: 'user', role: 'assignee' }]); // T5 未配置 → 回退托管账号
   });
 
+  it('T5 岗位级合并：标题主体沿用首次候选人不换人，只刷新次数后缀/due/优先级；新建时把标题写进合并键', async () => {
+    const sessionState = {
+      currentFocusJob: { jobId: 4242, brandName: '瑞幸', storeName: '徐家汇店' },
+    } as unknown as GeneralHandoffInterventionPayload['sessionState'];
+    const t5 = {
+      ...basePayload,
+      reasonCode: 'salary_admin_inquiry',
+      reason: '几号发工资答不上',
+      workOrderId: null,
+      sessionState,
+    };
+    await service.submit(t5);
+    expect(redis.setex).toHaveBeenCalledWith(
+      'feishu-task:intervention:v1:job:4242:T5',
+      7 * 24 * 60 * 60,
+      expect.objectContaining({ count: 1, title: '小明 · 岗位口径答不上（需补岗位数据）' }),
+    );
+
+    jest.clearAllMocks();
+    client.resolveFieldGuid.mockImplementation(
+      async (_tasklist: string, name: string) => `field:${name}`,
+    );
+    redis.get.mockResolvedValue({
+      taskGuid: 'task-job',
+      firstTriggeredAt: '2026-09-21T02:00:00.000Z',
+      count: 1,
+      priority: 'today',
+      title: '小明 · 岗位口径答不上（需补岗位数据）',
+    });
+    client.updateTask.mockResolvedValue(true);
+    client.addComment.mockResolvedValue('c2');
+    await service.submit({
+      ...t5,
+      contactName: '小红',
+      chatId: 'wrkChat2',
+      pauseTargetId: 'wrkChat2',
+    });
+
+    expect(client.createTask).not.toHaveBeenCalled();
+    expect(client.updateTask).toHaveBeenCalledWith(
+      'task-job',
+      expect.objectContaining({ summary: '小明 · 岗位口径答不上（需补岗位数据）（第 2 次）' }),
+    );
+    expect(client.addComment).toHaveBeenCalledWith(
+      'task-job',
+      expect.stringContaining('第 2 次介入'),
+    );
+    expect(redis.setex).toHaveBeenCalledWith(
+      'feishu-task:intervention:v1:job:4242:T5',
+      7 * 24 * 60 * 60,
+      expect.objectContaining({ count: 2, title: '小明 · 岗位口径答不上（需补岗位数据）' }),
+    );
+  });
+
   it('T7 风险类：负责人取主管，不贴对话原文', async () => {
     const risk: RiskInterventionPayload = {
       ...basePayload,

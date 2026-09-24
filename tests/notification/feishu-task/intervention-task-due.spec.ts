@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { formatLocalMinute } from '@infra/utils/date.util';
 import { computeFollowUpDue, isWorkday } from '@notification/feishu-task/intervention-task-due';
 import type { InterventionTaskCategory } from '@notification/feishu-task/intervention-task-category';
@@ -24,6 +25,22 @@ const SAME_DAY_CATEGORIES: InterventionTaskCategory[] = ['T3', 'T4', 'T5', 'T8',
 
 describe('intervention-task-due（所有任务日清）', () => {
   describe('isWorkday（2026 日历）', () => {
+    it('日期超出日历覆盖年份（2027）：按纯周末计算并 warn 一次（进程内按年份去重）', () => {
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      try {
+        expect(isWorkday(sh(2027, 1, 1))).toBe(true); // 2027-01-01 周五，日历没维护元旦 → 按周五算
+        expect(isWorkday(sh(2027, 1, 2))).toBe(false); // 周六
+        due('T1', sh(2027, 1, 4, 10, 0));
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn.mock.calls[0][0]).toContain('未覆盖 2027 年');
+        // 覆盖内年份不告警
+        isWorkday(sh(2026, 3, 2));
+        expect(warn).toHaveBeenCalledTimes(1);
+      } finally {
+        warn.mockRestore();
+      }
+    });
+
     it('周一到周五是工作日，周末不是', () => {
       expect(isWorkday(sh(2026, 9, 22))).toBe(true); // 周二
       expect(isWorkday(sh(2026, 9, 12))).toBe(false); // 周六

@@ -82,6 +82,8 @@ interface MergeRecord {
   firstTriggeredAt: string;
   count: number;
   priority: InterventionTaskPriority;
+  /** 首次建任务的标题主体（不含次数后缀）；岗位级合并（T5）沿用它，不随后来候选人换人。 */
+  title?: string;
 }
 
 interface TaskDraft {
@@ -447,6 +449,7 @@ export class InterventionTaskService implements OnApplicationBootstrap {
       firstTriggeredAt: draft.triggeredAt.toISOString(),
       count: 1,
       priority: draft.priority,
+      title: draft.title,
     });
     this.logger.log(
       `[FeishuTask] 已建任务: guid=${task.guid} category=${draft.category} priority=${draft.priority} due=${formatLocalMinute(draft.dueAt)} key=${draft.mergeKey}`,
@@ -454,13 +457,16 @@ export class InterventionTaskService implements OnApplicationBootstrap {
   }
 
   /**
-   * 合并命中：追加评论 + 刷新 due / 优先级 / 标题前缀；开始时间保持首次触发时刻不动。
+   * 合并命中：追加评论 + 刷新 due / 优先级 / 次数后缀；开始时间保持首次触发时刻不动。
+   * 岗位级合并（T5 按 jobId 挂）沿用首次建任务的标题主体——同一岗位口径缺口被多个候选人
+   * 触发时标题不能跟着换人，后来者只进评论。会话级合并仍按本次原因刷新标题。
    * 任务已不存在时返回 false 走新建。
    */
   private async mergeIntoExisting(existing: MergeRecord, draft: TaskDraft): Promise<boolean> {
     const count = existing.count + 1;
     const priority = maxPriority(existing.priority, draft.priority);
-    const merged: TaskDraft = { ...draft, priority, title: withCountSuffix(draft.title, count) };
+    const baseTitle = draft.category === 'T5' ? (existing.title ?? draft.title) : draft.title;
+    const merged: TaskDraft = { ...draft, priority, title: withCountSuffix(baseTitle, count) };
     const customFields = await this.buildCustomFields(merged, count, 'update');
     const updated = await this.client.updateTask(existing.taskGuid, {
       summary: merged.title,
@@ -479,6 +485,7 @@ export class InterventionTaskService implements OnApplicationBootstrap {
       firstTriggeredAt: existing.firstTriggeredAt,
       count,
       priority,
+      title: baseTitle,
     });
     this.logger.log(
       `[FeishuTask] 已合并到既有任务: guid=${existing.taskGuid} count=${count} priority=${priority} due=${formatLocalMinute(draft.dueAt)}`,
@@ -609,6 +616,7 @@ export class InterventionTaskService implements OnApplicationBootstrap {
             : new Date().toISOString(),
         count: typeof raw.count === 'number' && raw.count > 0 ? raw.count : 1,
         priority: parsePriority(raw.priority) ?? 'normal',
+        ...(typeof raw.title === 'string' && raw.title.trim() ? { title: raw.title } : {}),
       };
     } catch (error) {
       this.logger.warn(

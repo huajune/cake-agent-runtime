@@ -67,9 +67,12 @@ export interface WorkCalendar {
   holidays: ReadonlySet<string>;
   /** 调休上班的周末 YYYY-MM-DD（Asia/Shanghai） */
   makeupWorkdays: ReadonlySet<string>;
+  /** 日历维护到的年份；日期落在覆盖外时按纯周末算工作日并告警一次（节假日/调休会算错）。 */
+  coveredYears?: ReadonlySet<number>;
 }
 
 export const CN_WORK_CALENDAR_2026: WorkCalendar = {
   holidays: CN_HOLIDAYS_2026,
   makeupWorkdays: CN_MAKEUP_WORKDAYS_2026,
+  coveredYears: new Set([2026]),
 };

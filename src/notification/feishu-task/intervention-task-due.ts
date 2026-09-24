@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { addLocalDays, formatLocalDate, getLocalDayStart } from '@infra/utils/date.util';
 import { CN_WORK_CALENDAR_2026, type WorkCalendar } from './cn-holidays-2026';
 import { CATEGORY_META, type InterventionTaskCategory } from './intervention-task-category';
@@ -17,6 +18,9 @@ const INTERVIEW_CAP_LEAD_MINUTES = 60;
 const INTERVIEW_CAP_MIN_GAP_MINUTES = 30;
 /** 防御：日历缺失（如 2027 年未维护）时最多向后找 60 天工作日。 */
 const MAX_WORKDAY_SCAN = 60;
+const logger = new Logger('InterventionTaskDue');
+/** 日历覆盖外年份的告警进程内只发一次（按年份去重），到期计算每天跑几十次不能刷屏。 */
+const warnedUncoveredYears = new Set<number>();
 
 export interface FollowUpDueInput {
   category: InterventionTaskCategory;
@@ -38,6 +42,7 @@ export interface FollowUpDueResult {
 
 export function isWorkday(date: Date, calendar: WorkCalendar = CN_WORK_CALENDAR_2026): boolean {
   const key = formatLocalDate(date);
+  warnIfYearUncovered(key, calendar);
   if (calendar.holidays.has(key)) return false;
   if (calendar.makeupWorkdays.has(key)) return true;
   const weekday = localWeekday(date);
@@ -79,6 +84,18 @@ export function computeFollowUpDue(input: FollowUpDueInput): FollowUpDueResult {
 }
 
 // ==================== 内部 ====================
+
+/** 日期年份不在日历覆盖内：节假日/调休会按纯周末算错，进程内按年份告警一次提醒补维护。 */
+function warnIfYearUncovered(localDateKey: string, calendar: WorkCalendar): void {
+  if (!calendar.coveredYears) return;
+  const year = Number(localDateKey.slice(0, 4));
+  if (!Number.isInteger(year) || calendar.coveredYears.has(year)) return;
+  if (warnedUncoveredYears.has(year)) return;
+  warnedUncoveredYears.add(year);
+  logger.warn(
+    `[FeishuTask] 工作日历未覆盖 ${year} 年（已维护：${Array.from(calendar.coveredYears).join('/')}），该年节假日与调休按纯周末计算，请补维护 cn-holidays`,
+  );
+}
 
 function truncateToMinute(date: Date): Date {
   return new Date(Math.floor(date.getTime() / MINUTE_MS) * MINUTE_MS);
