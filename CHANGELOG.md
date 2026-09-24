@@ -14,7 +14,7 @@
 **预计版本**: `v11.11.2`
 **最近更新**: `2026-09-24`
 **来源分支**: `develop`
-**累计 PR**: 4
+**累计 PR**: 5
 
 ### 更新摘要
 - PR #1336 weekly-judge-calibration 2026-09-22 结论落账
@@ -29,6 +29,8 @@
 - PR #1339 面试提醒配置行说明补「提前 2 天确认档」；Claude Code 项目权限 ask 改为 allow
 - PR #1339 Merge remote-tracking branch 'origin/develop' into fix/agent-followup…
 - PR #1339 动态硬禁令改用候选人侧靶、系统性别标签不进模型可见面
+- PR #1340 weekly-handoff-analysis 2026-09-24 结论落账
+- PR #1340 Merge remote-tracking branch 'origin/develop' into tmp/pr1340
 
 ### 新功能
 - 无
@@ -68,6 +70,8 @@
 - PR #1339 报名/改约锚点不再受本轮处置闸限制，后台列表不再隐藏已停止任务
 - PR #1339 09/14~09/18 周同步
 - PR #1339 面试提醒配置行说明补「提前 2 天确认档」；Claude Code 项目权限 ask 改为 allow
+- PR #1340 weekly-handoff-analysis 2026-09-24 结论落账
+- PR #1340 Merge remote-tracking branch 'origin/develop' into tmp/pr1340
 
 ### 配置变更
 - 无
