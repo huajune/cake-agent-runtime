@@ -469,8 +469,16 @@ describe('LlmExecutorService', () => {
       });
       expect(events[0].attempts[0].error).toContain('HTTP 500 flaky');
       expect(events[0].attempts[1]).toMatchObject({ attempt: 2, status: 'success' });
-      expect(onAttemptStart).toHaveBeenNthCalledWith(1, { modelId: primaryModelId, attempt: 1 });
-      expect(onAttemptStart).toHaveBeenNthCalledWith(2, { modelId: primaryModelId, attempt: 2 });
+      expect(onAttemptStart).toHaveBeenNthCalledWith(1, {
+        modelId: primaryModelId,
+        attempt: 1,
+        resumedStepCount: 0,
+      });
+      expect(onAttemptStart).toHaveBeenNthCalledWith(2, {
+        modelId: primaryModelId,
+        attempt: 2,
+        resumedStepCount: 0,
+      });
     });
 
     it('成功事件带调用方 purpose 与 token 用量，purpose 不透传给 provider', async () => {
@@ -549,6 +557,258 @@ describe('LlmExecutorService', () => {
         finalModelId: primaryModelId,
         attemptCount: 1,
       });
+    });
+  });
+
+  /**
+   * 多步循环中途失败的续接（生产 batch …_1790057431146，2026-09-22）：attempt 1 的 step 0 已
+   * 真实提交 booking（工单 467600），随后 provider "Headers Timeout" 失败；旧实现重试时整个
+   * generateText 从 step 0 重放，booking 被再调一次并按"表单已 submitted"拒绝，候选人收到
+   * 假失败且拉群没发。重试必须把已完成的工具步作为对话前缀续接，且不重放副作用。
+   */
+  describe('多步循环中途失败：从已完成步骤续接而非重放 step 0', () => {
+    type StepLike = Record<string, unknown> & { response: { messages: unknown[] } };
+    type GenerateOptions = {
+      messages?: unknown[];
+      prompt?: unknown;
+      onStepFinish?: (step: unknown) => unknown;
+      prepareStep?: (options: Record<string, unknown>) => unknown;
+      stopWhen?: Array<(options: { steps: unknown[] }) => unknown>;
+    };
+    let mockTracer: { emit: jest.Mock };
+
+    const toolStep: StepLike = {
+      text: '',
+      finishReason: 'tool-calls',
+      toolCalls: [
+        { toolCallId: 'call-1', toolName: 'duliday_interview_booking', input: { jobId: 1 } },
+      ],
+      toolResults: [
+        {
+          toolCallId: 'call-1',
+          toolName: 'duliday_interview_booking',
+          output: { success: true, workOrderId: 467600 },
+        },
+      ],
+      response: {
+        messages: [
+          {
+            role: 'assistant',
+            content: [
+              { type: 'reasoning', text: '资料齐了，先提交预约' },
+              {
+                type: 'tool-call',
+                toolCallId: 'call-1',
+                toolName: 'duliday_interview_booking',
+                input: { jobId: 1 },
+              },
+            ],
+          },
+          {
+            role: 'tool',
+            content: [
+              {
+                type: 'tool-result',
+                toolCallId: 'call-1',
+                toolName: 'duliday_interview_booking',
+                output: { type: 'json', value: { success: true, workOrderId: 467600 } },
+              },
+            ],
+          },
+        ],
+      },
+    };
+    const textStep = (text: string): StepLike => ({
+      text,
+      finishReason: 'stop',
+      response: { messages: [{ role: 'assistant', content: [{ type: 'text', text }] }] },
+    });
+    const userMessages = [{ role: 'user', content: '帮我报名' }];
+
+    beforeEach(() => {
+      mockTracer = { emit: jest.fn() };
+      service = new LlmExecutorService(
+        mockRouter as unknown as RouterService,
+        mockRegistry as unknown as RegistryService,
+        mockReliable as unknown as ReliableService,
+        mockTracer as unknown as AgentTracerService,
+      );
+    });
+
+    function getGenerateOptions(index: number): GenerateOptions {
+      return mockGenerateText.mock.calls[index][0] as unknown as GenerateOptions;
+    }
+
+    function getLlmExecutionEvent(): Extract<AgentEvent, { type: 'llm_execution' }> {
+      const events = mockTracer.emit.mock.calls
+        .map(([event]) => event as AgentEvent)
+        .filter(
+          (event): event is Extract<AgentEvent, { type: 'llm_execution' }> =>
+            event.type === 'llm_execution',
+        );
+      expect(events).toHaveLength(1);
+      return events[0];
+    }
+
+    it('provider 中途超时：重试把已完成工具步接到对话末尾续跑，steps 合并且逐步标注尝试序号', async () => {
+      const finalStep = textStep('预约成功啦');
+      mockGenerateText
+        .mockImplementationOnce(async (options) => {
+          await (options as GenerateOptions).onStepFinish?.(toolStep);
+          throw new Error('Cannot connect to API: Headers Timeout Error');
+        })
+        .mockImplementationOnce(async (options) => {
+          await (options as GenerateOptions).onStepFinish?.(finalStep);
+          return makeGenerateResult({ text: '预约成功啦', steps: [finalStep] });
+        });
+      const onStepFinish = jest.fn();
+      const onAttemptStart = jest.fn();
+      const prepareStep = jest.fn().mockReturnValue({});
+      const stopWhen = jest.fn().mockReturnValue(false);
+
+      const result = await service.generate({
+        role: ModelRole.Chat,
+        messages: userMessages as never,
+        disableFallbacks: true,
+        config: { maxRetries: 3 },
+        onStepFinish,
+        onAttemptStart,
+        prepareStep,
+        stopWhen: [stopWhen],
+      });
+
+      // 尝试 1 从头跑：只有用户消息
+      expect(getGenerateOptions(0).messages).toEqual(userMessages);
+      // 尝试 2 续接：用户消息 + 尝试 1 已完成工具步的 assistant/tool 消息，reasoning 同模型保留
+      expect(getGenerateOptions(1).messages).toEqual([
+        ...userMessages,
+        ...toolStep.response.messages,
+      ]);
+      expect(onAttemptStart).toHaveBeenNthCalledWith(1, {
+        modelId: primaryModelId,
+        attempt: 1,
+        resumedStepCount: 0,
+      });
+      expect(onAttemptStart).toHaveBeenNthCalledWith(2, {
+        modelId: primaryModelId,
+        attempt: 2,
+        resumedStepCount: 1,
+      });
+      // 调用方 onStepFinish 每个真实步只触发一次：续接步不重复触发
+      expect(onStepFinish).toHaveBeenCalledTimes(2);
+      expect(onStepFinish).toHaveBeenNthCalledWith(1, toolStep);
+      expect(onStepFinish).toHaveBeenNthCalledWith(2, finalStep);
+
+      // prepareStep / stopWhen 看到的 steps 带续接前缀，stepNumber 顺延——
+      // generator 基于 prior steps 的副作用屏蔽才能跨尝试生效
+      const resumedOptions = getGenerateOptions(1);
+      await resumedOptions.prepareStep?.({ steps: [], stepNumber: 0, messages: [] });
+      expect(prepareStep).toHaveBeenCalledWith(
+        expect.objectContaining({ steps: [toolStep], stepNumber: 1 }),
+      );
+      await resumedOptions.stopWhen?.[0]({ steps: [finalStep] });
+      expect(stopWhen).toHaveBeenCalledWith({ steps: [toolStep, finalStep] });
+
+      expect(result.text).toBe('预约成功啦');
+      expect(result.steps).toEqual([toolStep, finalStep]);
+      expect(result.stepAttempts).toEqual([1, 2]);
+
+      const event = getLlmExecutionEvent();
+      expect(event.attemptCount).toBe(2);
+      expect(event.attempts[0]).toMatchObject({ attempt: 1, status: 'error' });
+      expect(event.attempts[0].resumedSteps).toBeUndefined();
+      expect(event.attempts[1]).toMatchObject({ attempt: 2, status: 'success', resumedSteps: 1 });
+    });
+
+    it('结果校验不过：丢掉坏的末步文本、保留其前的工具步续接', async () => {
+      const badFinal = textStep('<think>想一想</think>预约成功');
+      const goodFinal = textStep('预约成功啦');
+      mockGenerateText
+        .mockImplementationOnce(async (options) => {
+          await (options as GenerateOptions).onStepFinish?.(toolStep);
+          await (options as GenerateOptions).onStepFinish?.(badFinal);
+          return makeGenerateResult({ text: badFinal.text, steps: [toolStep, badFinal] });
+        })
+        .mockImplementationOnce(async (options) => {
+          await (options as GenerateOptions).onStepFinish?.(goodFinal);
+          return makeGenerateResult({ text: '预约成功啦', steps: [goodFinal] });
+        });
+
+      const result = await service.generate({
+        role: ModelRole.Chat,
+        messages: userMessages as never,
+        disableFallbacks: true,
+        config: { maxRetries: 3 },
+      });
+
+      expect(getGenerateOptions(1).messages).toEqual([
+        ...userMessages,
+        ...toolStep.response.messages,
+      ]);
+      expect(result.steps).toEqual([toolStep, goodFinal]);
+      expect(result.stepAttempts).toEqual([1, 2]);
+    });
+
+    it('降级到另一个模型时续接工具步但剥离 reasoning 段', async () => {
+      const finalStep = textStep('预约成功啦');
+      mockGenerateText
+        .mockImplementationOnce(async (options) => {
+          await (options as GenerateOptions).onStepFinish?.(toolStep);
+          throw new Error('HTTP 401 Unauthorized');
+        })
+        .mockImplementationOnce(async (options) => {
+          await (options as GenerateOptions).onStepFinish?.(finalStep);
+          return makeGenerateResult({ text: '预约成功啦', steps: [finalStep] });
+        });
+
+      const result = await service.generate({
+        role: ModelRole.Chat,
+        messages: userMessages as never,
+        config: { maxRetries: 3 },
+      });
+
+      expect(getGenerateModelIds()).toEqual([primaryModelId, fallbackModelId]);
+      const [assistant, toolMessage] = toolStep.response.messages as Array<{
+        role: string;
+        content: Array<{ type: string }>;
+      }>;
+      expect(getGenerateOptions(1).messages).toEqual([
+        ...userMessages,
+        { ...assistant, content: assistant.content.filter((part) => part.type !== 'reasoning') },
+        toolMessage,
+      ]);
+      expect(result.modelId).toBe(fallbackModelId);
+      expect(result.steps).toEqual([toolStep, finalStep]);
+      expect(result.stepAttempts).toEqual([1, 2]);
+    });
+
+    it('失败前没有以工具结果收尾的步骤时从头重跑，不带前缀', async () => {
+      const finalStep = textStep('你好');
+      mockGenerateText
+        .mockImplementationOnce(async (options) => {
+          await (options as GenerateOptions).onStepFinish?.(textStep('<think>x</think>你好'));
+          return makeGenerateResult({ text: '<think>x</think>你好' });
+        })
+        .mockResolvedValueOnce(makeGenerateResult({ text: '你好', steps: [finalStep] }));
+      const onAttemptStart = jest.fn();
+
+      const result = await service.generate({
+        role: ModelRole.Chat,
+        prompt: 'hello',
+        disableFallbacks: true,
+        config: { maxRetries: 3 },
+        onAttemptStart,
+      });
+
+      expect(getGenerateOptions(1).prompt).toBe('hello');
+      expect(getGenerateOptions(1).messages).toBeUndefined();
+      expect(onAttemptStart).toHaveBeenNthCalledWith(2, {
+        modelId: primaryModelId,
+        attempt: 2,
+        resumedStepCount: 0,
+      });
+      expect(result.steps).toEqual([finalStep]);
+      expect(result.stepAttempts).toEqual([2]);
     });
   });
 

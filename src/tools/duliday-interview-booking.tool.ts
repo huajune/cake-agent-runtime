@@ -109,6 +109,52 @@ function emitErrorListEscalation(params: {
   });
 }
 
+/**
+ * 「预约已存在」回执：`success:false` 只表示本次没有重复提交，预约本身已经约上，不是失败。
+ *
+ * 两个来源共用同一形态（守卫形态 G、修复证据包、invite 闸都按 errorType 识别）：
+ * - 候选人级在途工单查重命中（另一账号/同事刚建单）；
+ * - 本轮已成功提交过、收资表单已 submitted，模型/重试轮又调了一次 booking
+ *   （生产 batch …_1790057431146：provider 中途超时后重试从 step 0 重放 booking，
+ *   表单状态=submitted 被当失败拒绝，候选人收到"没提交成功"的假失败且拉群没发）。
+ */
+function buildAlreadyBookedReceipt(params: {
+  workOrderId: number;
+  interviewTime?: string | null;
+  source: 'active_booking_dedup' | 'same_turn_submitted_form';
+}): Record<string, unknown> {
+  const { workOrderId, interviewTime, source } = params;
+  const existingInterviewTimeHuman = interviewTime
+    ? formatInterviewTimeForReply(interviewTime)
+    : undefined;
+  const origin =
+    source === 'same_turn_submitted_form'
+      ? '该岗位的面试预约本轮已经成功提交过（工单已创建），这次调用没有重复提交；'
+      : '该岗位的面试预约已经存在（可能刚由同事/另一账号提交），';
+  return buildToolError({
+    errorType: TOOL_ERROR_TYPES.BOOKING_ALREADY_BOOKED,
+    outcome:
+      source === 'same_turn_submitted_form'
+        ? '本轮预约已成功提交过，本次未重复提交；预约已存在，不是失败'
+        : '当前岗位已有在途预约工单，本次未重复提交；预约已存在，不是失败',
+    replyInstruction:
+      origin +
+      '如实告诉候选人已经约上、不用再提交；' +
+      (existingInterviewTimeHuman
+        ? `工单上的面试时间是 ${existingInterviewTimeHuman}，按此播报。`
+        : '工单未记录面试时间时不要编造时间，按 [当前预约信息] 或本轮已确认的时间播报。') +
+      '禁止说"系统有问题/没提交成功/稍后再帮你提交"。改时间用 duliday_modify_interview_time，取消用 duliday_cancel_work_order。',
+    details: {
+      existingWorkOrderId: workOrderId,
+      alreadyBookedSource: source,
+      ...(interviewTime ? { existingInterviewTime: interviewTime } : {}),
+      ...(existingInterviewTimeHuman
+        ? { _existingInterviewTimeHuman: existingInterviewTimeHuman }
+        : {}),
+    },
+  });
+}
+
 export function buildInterviewBookingTool(
   spongeService: SpongeService,
   privateChatNotifier: PrivateChatMonitorNotifierService,
@@ -214,6 +260,21 @@ export function buildInterviewBookingTool(
           }
           const isAdditionalCandidate = form.candidateScope === 'additional';
           const verdict = verdictOf(form);
+          if (
+            verdict === 'submitted' &&
+            form.workOrderId !== undefined &&
+            context.ledger.jobs.bookingSucceeded === true
+          ) {
+            // 本轮已经成功建过单（账本只在本回合内有效），表单被 markSubmitted 后又来一次
+            // booking——典型是 provider 中途失败后重试重放，或模型重复调用。预约已存在，
+            // 不能按"表单状态≠ready"拒绝：那会让回复改口"没提交成功"、invite 因
+            // bookingSucceeded=false 跳过拉群。幂等返回已约上回执，账本维持成功。
+            return buildAlreadyBookedReceipt({
+              workOrderId: form.workOrderId,
+              interviewTime: form.scheduleDraft?.selectedInterviewTime ?? interviewTime ?? null,
+              source: 'same_turn_submitted_form',
+            });
+          }
           if (verdict !== 'ready') {
             return fail(
               buildToolError({
@@ -352,27 +413,10 @@ export function buildInterviewBookingTool(
             // 另一账号刚建单时，这里也会命中。此时预约**已经存在**，不是"没提交成功"——
             // 回复必须如实说已约上，不得编造系统故障或承诺稍后重提（生产 batch …_1789111221226）。
             context.ledger.jobs.bookingSucceeded = true;
-            const existingInterviewTimeHuman = duplicate.interview_time
-              ? formatInterviewTimeForReply(duplicate.interview_time)
-              : undefined;
-            return buildToolError({
-              errorType: TOOL_ERROR_TYPES.BOOKING_ALREADY_BOOKED,
-              outcome: '当前岗位已有在途预约工单，本次未重复提交；预约已存在，不是失败',
-              replyInstruction:
-                '该岗位的面试预约已经存在（可能刚由同事/另一账号提交），如实告诉候选人已经约上、不用再提交；' +
-                (existingInterviewTimeHuman
-                  ? `工单上的面试时间是 ${existingInterviewTimeHuman}，按此播报。`
-                  : '工单未记录面试时间时不要编造时间，按 [当前预约信息] 或本轮已确认的时间播报。') +
-                '禁止说"系统有问题/没提交成功/稍后再帮你提交"。改时间用 duliday_modify_interview_time，取消用 duliday_cancel_work_order。',
-              details: {
-                existingWorkOrderId: duplicate.work_order_id,
-                ...(duplicate.interview_time
-                  ? { existingInterviewTime: duplicate.interview_time }
-                  : {}),
-                ...(existingInterviewTimeHuman
-                  ? { _existingInterviewTimeHuman: existingInterviewTimeHuman }
-                  : {}),
-              },
+            return buildAlreadyBookedReceipt({
+              workOrderId: duplicate.work_order_id,
+              interviewTime: duplicate.interview_time ?? null,
+              source: 'active_booking_dedup',
             });
           }
 
