@@ -167,6 +167,13 @@ describe('extractHardRequirements', () => {
       ['社会人士', 'social_only'],
       ['学生,社会人士', 'any'],
       ['学生', 'student_only'],
+      // 生产 fixture（2026-09-20 实查 22 岗）里 figure 的四个取值都要有归宿：
+      // 不限 27% / 社会人士 68% / 第二职业 5%。第二职业此前落进 unspecified，
+      // 既不进硬过滤也不上卡片，等于对在校学生隐形放行。
+      ['不限', 'any'],
+      ['第二职业', 'second_job_only'],
+      ['社会人士,第二职业', 'social_only'],
+      ['学生,第二职业', 'any'],
     ])('maps figure "%s" to %s', (figure, expected) => {
       const result = extractHardRequirements({ hiringRequirement: { figure } });
       expect(result.student).toBe(expected);

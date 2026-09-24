@@ -20,7 +20,7 @@ import {
   type ContractFieldDef,
 } from '@resolution/collection';
 import { isStorableCandidatePhone } from '@resolution/candidate/phone';
-import type { CandidateFieldKey } from '@resolution/candidate/types';
+import { classifyIdentityAnswerText } from '@resolution/candidate/student-identity';
 import type { CandidateFactField } from '@resolution/candidate/types';
 import { CollectionFormStore } from './collection-form.store';
 import { findFieldForCandidateFact } from './proposal-intake';
@@ -43,7 +43,6 @@ export interface CollectionFormLoadOptions {
   locatorMode?: 'active';
 }
 
-type ProgressCandidateField = Exclude<CandidateFieldKey, 'supplementAnswers'>;
 type ProgressInterviewField = Extract<
   keyof SessionInterviewInfo,
   | 'name'
@@ -55,16 +54,25 @@ type ProgressInterviewField = Extract<
   | 'household_register_province'
   | 'height'
   | 'weight'
+  | 'is_student'
 >;
 
-/** CandidateFieldKey 与 interview_info 的语义交集；新增候选字段时必须显式裁定去向。 */
+/**
+ * CandidateFactField 与 interview_info 的语义交集；新增候选事实字段时必须显式裁定去向。
+ *
+ * 穷尽轴用 `CandidateFactField` 而非 `CandidateFieldKey`：定位契约槽位的
+ * `findFieldForCandidateFact` 就是按前者索引的，两者一致才能保证"新增一个可回流的
+ * 事实字段"时编译器逼着在这里表态，而不是像 isStudent 那样静默漏掉整条回流
+ *（badcase 6aaf9202：收资表填了"全日制在校学生"，sessionFacts 永远为空，
+ * 查岗侧的学生硬过滤因此近乎从不触发）。
+ */
 const COLLECTION_PROGRESS_FACT_MAPPING = {
   name: { factField: 'name', interviewField: 'name' },
   phone: { factField: 'phone', interviewField: 'phone' },
   age: { factField: 'age', interviewField: 'age' },
   gender: { factField: 'gender', interviewField: 'gender' },
   education: { factField: 'education', interviewField: 'education' },
-  healthCert: {
+  healthCertificate: {
     factField: 'healthCertificate',
     interviewField: 'has_health_certificate',
   },
@@ -74,10 +82,31 @@ const COLLECTION_PROGRESS_FACT_MAPPING = {
   },
   height: { factField: 'height', interviewField: 'height' },
   weight: { factField: 'weight', interviewField: 'weight' },
+  isStudent: { factField: 'isStudent', interviewField: 'is_student' },
 } as const satisfies Record<
-  ProgressCandidateField,
+  CandidateFactField,
   { factField: CandidateFactField; interviewField: ProgressInterviewField }
 >;
+
+/**
+ * 槽位原文 → sessionFacts 值。除身份外都是原样搬运字符串。
+ *
+ * `is_student` 是 schema 上的 boolean，收资槽位存的却是选项标签
+ *（「全日制在校学生」/「社会人士」/「第二职业」），必须经身份识别器换型；
+ * 识别器是全库唯一身份判据，这里不另写规则。
+ *
+ * **只回流 true，不回流 false**：查岗侧的学生硬过滤同样只认 true
+ *（`resolveCandidateIsStudent`），因为 is_student=false 有抽取污染史——
+ * 凭空落 false 会把"没说过"伪装成"已确认不是学生"。收资表答「社会人士」时
+ * 保持字段缺席而不是写 false，语义上仍是"未确权"，下游行为与今天一致。
+ */
+function projectProgressFactValue(
+  interviewField: ProgressInterviewField,
+  slotValue: string,
+): string | boolean | null {
+  if (interviewField !== 'is_student') return slotValue;
+  return classifyIdentityAnswerText(slotValue) === '学生' ? true : null;
+}
 
 @Injectable()
 export class CollectionFormService {
@@ -218,12 +247,15 @@ export class CollectionFormService {
       );
       if (!mapping) continue;
 
+      const factValue = projectProgressFactValue(mapping.interviewField, slot.value.value);
+      if (factValue === null) continue;
+
       await this.sessionState.saveCollectionProgressFact(
         scope.corpId,
         scope.userId,
         scope.sessionId,
         mapping.interviewField,
-        sessionFactValue(slot.value.value, {
+        sessionFactValue(factValue, {
           confidence: 'medium',
           source: slot.value.producer,
           evidence: `收资表单第 ${index + 1} 格落定（${field.labelTitle}，labelId=${field.labelId}）`,

@@ -37,7 +37,19 @@ export type HealthCertRequirement =
   | 'not_required' // 岗位明确不需要
   | 'unspecified'; // 数据未明确
 
-export type StudentRequirement = 'student_only' | 'social_only' | 'any' | 'unspecified';
+/**
+ * 岗位对候选人社会身份的要求。取值直接对应海绵 `hiringRequirement.figure` 的
+ * 封闭选项集（学生 / 社会人士 / 第二职业 / 不限），与收资表「社会身份」三选项同源。
+ *
+ * `second_job_only`：岗位要求候选人已有主职（需社保证明/劳动合同）。平台把
+ * 「第二职业」与「全日制在校学生」列为互斥选项，故该档同样不接受在校学生。
+ */
+export type StudentRequirement =
+  | 'student_only'
+  | 'social_only'
+  | 'second_job_only'
+  | 'any'
+  | 'unspecified';
 
 export interface HardRequirements {
   gender: GenderRequirement;
@@ -215,8 +227,12 @@ function normalizeStudentRequirement(
   const figureParts = normalizedFigure.split(/[,，、/；;]+/).filter(Boolean);
   const figureAllowsStudent = figureParts.includes('学生');
   const figureAllowsSocial = figureParts.includes('社会人士');
-  if (/不限/.test(normalizedFigure) || (figureAllowsStudent && figureAllowsSocial)) return 'any';
+  const figureAllowsSecondJob = figureParts.includes('第二职业');
+  // figure 是海绵下发的结构化封闭选项（实测 100% 有值），优先级高于任何自由文本推断。
+  if (/不限/.test(normalizedFigure)) return 'any';
+  if (figureAllowsStudent && (figureAllowsSocial || figureAllowsSecondJob)) return 'any';
   if (figureAllowsSocial) return 'social_only';
+  if (figureAllowsSecondJob) return 'second_job_only';
   if (figureAllowsStudent) return 'student_only';
 
   const text = [remark, policyText]

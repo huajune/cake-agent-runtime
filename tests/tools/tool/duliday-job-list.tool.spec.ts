@@ -1681,6 +1681,76 @@ describe('buildJobListTool', () => {
       expect(result.queryMeta.studentIdentityFilter.excludedCount).toBe(2);
     });
 
+    it('excludes 仅限第二职业 jobs for a known student (figure=第二职业 需已有主职)', async () => {
+      const secondJobOnly = makeJobData({
+        basicInfo: { jobId: 3, brandName: '必胜客' },
+        hiringRequirement: {
+          basicPersonalRequirements: { minAge: 18, maxAge: 40 },
+          figure: '第二职业',
+        },
+      });
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [secondJobOnly, openJob(2, '成都你六姐')],
+        total: 2,
+      });
+
+      const result = await executeTool(studentContext, { ...defaultInput });
+
+      expect(result.markdown).not.toContain('必胜客');
+      expect(result.queryMeta.studentIdentityFilter).toEqual(
+        expect.objectContaining({ applied: true, excludedCount: 1 }),
+      );
+    });
+
+    // 运营 2026-09-24 裁定：社会身份在岗位后台是必填项，字段为空属数据缺失，
+    // 不得按"不限身份"放行；已知学生时走人工，理由须点明是数据问题。
+    it('flags jobs whose identity field is empty as suspected missing data, not as 不限身份', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [openJob(2, '成都你六姐')],
+        total: 1,
+      });
+
+      const result = await executeTool(studentContext, {
+        ...defaultInput,
+        includeHiringRequirement: true,
+      });
+
+      expect(result.markdown).toContain('## 候选人社会身份筛选提示');
+      expect(result.markdown).toContain('社会身份要求字段为空');
+      expect(result.markdown).toContain('不得按"不限身份"放行');
+      expect(result.markdown).toContain('identity_age_exception');
+      expect(result.queryMeta.identityScreening).toEqual(
+        expect.objectContaining({
+          candidateIsStudent: true,
+          counts: expect.objectContaining({ unspecified: 1 }),
+        }),
+      );
+    });
+
+    it('reports an explicit figure=不限 as identity-unrestricted in the summary', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [
+          makeJobData({
+            basicInfo: { jobId: 4, brandName: '成都你六姐' },
+            hiringRequirement: {
+              basicPersonalRequirements: { minAge: 18, maxAge: 40 },
+              figure: '不限',
+            },
+          }),
+        ],
+        total: 1,
+      });
+
+      const result = await executeTool(studentContext, {
+        ...defaultInput,
+        includeHiringRequirement: true,
+      });
+
+      expect(result.markdown).toContain('不限身份（学生/社会人士均可） 1 个');
+      expect(result.markdown).not.toContain('社会身份要求字段为空');
+      expect(result.queryMeta.identityScreening.counts.any).toBe(1);
+    });
+
     it('does not filter when is_student is false or unknown（false 有污染史不可作过滤依据）', async () => {
       mockSpongeService.fetchJobs.mockResolvedValue({
         jobs: [socialOnlyJob(1, '拉瓦萨')],
