@@ -6,6 +6,7 @@ import { AgentTracerService } from '@observability/agent-tracer.service';
 import { SpongeService } from '@sponge/sponge.service';
 import {
   ACTIVE_INTERVIEW_WORK_ORDER_STATUSES,
+  OPEN_RESULT_WORK_ORDER_STATUSES,
   type SignupWorkOrdersResult,
 } from '@sponge/sponge.types';
 import { isStorableCandidatePhone } from '@resolution/candidate/phone';
@@ -177,6 +178,45 @@ export class BookingSnapshotService {
     userId: string,
   ): Promise<BookingSnapshotCacheRecord | null> {
     return this.readCache(candidateCacheKey(corpId, userId));
+  }
+
+  /**
+   * 清 booked 终态前的复核：按手机号**不带状态过滤**再查一次海绵，回答候选人名下是否还有任何
+   * 在途/待结果工单（约面待确认 / 约面成功 / 面试成功）。快照本身只装「近 15 天或面试在未来」的
+   * 在途单，AI 自建的老单（报名超 15 天且面试已过）会从快照消失但报名关系仍在，不能据此清终态。
+   *
+   * 查不到（无 token / 海绵失败 / 熔断中）返回 null——调用方按「未知」处理，不得当成「没有工单」。
+   * 不读不写缓存；失败计入同账号熔断。
+   */
+  async hasOpenWorkOrders(input: {
+    phone: string | null | undefined;
+    botImId: string | null | undefined;
+    now?: number;
+  }): Promise<boolean | null> {
+    const phone = input.phone?.trim() ?? '';
+    if (!isStorableCandidatePhone(phone)) return null;
+    const botImId = input.botImId?.trim() ?? '';
+    const token = botImId ? await this.hostingMemberConfig.resolveDulidayToken(botImId) : null;
+    if (!token) return null;
+    const now = input.now ?? Date.now();
+    if (this.isCircuitOpen(botImId, now)) return null;
+    try {
+      const result = await this.spongeService.fetchSignupWorkOrders(
+        { phone },
+        { botImId },
+        { timeoutMs: BOOKING_SNAPSHOT_FETCH_TIMEOUT_MS, allowDefaultToken: false },
+      );
+      this.circuits.delete(botImId);
+      return (result.workOrders ?? []).some((order) =>
+        OPEN_RESULT_WORK_ORDER_STATUSES.has(order.currentStatus?.trim() ?? ''),
+      );
+    } catch (error) {
+      this.recordFailure(botImId, now);
+      this.logger.warn(
+        `在途工单复核查询失败（按未知处理）phoneTail=${phone.slice(-4)} botImId=${botImId}: ${toErrorMessage(error)}`,
+      );
+      return null;
+    }
   }
 
   /** 取消、改约、报名成功后失效该手机号的快照（否则 5 分钟内仍显示在途）。 */

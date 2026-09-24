@@ -278,9 +278,11 @@ describe('FollowUpSchedulerService', () => {
     });
 
     it('dedupes on an existing job and respects the master switch', async () => {
+      const now = Date.UTC(2026, 5, 24, 2, 30, 0);
+      jest.spyOn(Date, 'now').mockReturnValue(now);
       queue.getJob.mockResolvedValueOnce({ id: 'existing' });
       await expect(
-        service.scheduleInterviewSlotCheck({ sessionRef, workOrderId: 555, signUpAt: 1 }),
+        service.scheduleInterviewSlotCheck({ sessionRef, workOrderId: 555, signUpAt: now }),
       ).resolves.toEqual({
         scheduled: false,
         reason: 'duplicate_job',
@@ -290,8 +292,46 @@ describe('FollowUpSchedulerService', () => {
 
       systemConfig.getAgentReplyConfig.mockResolvedValue({ reengagementEnabled: false });
       await expect(
-        service.scheduleInterviewSlotCheck({ sessionRef, workOrderId: 556, signUpAt: 1 }),
+        service.scheduleInterviewSlotCheck({ sessionRef, workOrderId: 556, signUpAt: now }),
       ).resolves.toEqual({ scheduled: false, reason: 'disabled' });
+    });
+
+    it('历史单（报名距今 > 3 天 + 24h 宽限）不补排：只记 slot_check_skipped_stale 观测，不占 Bull 任务', async () => {
+      const now = Date.UTC(2026, 5, 24, 2, 30, 0);
+      jest.spyOn(Date, 'now').mockReturnValue(now);
+      const staleSignUpAt = now - 4 * 24 * 60 * 60_000 - 60_000;
+
+      await expect(
+        service.scheduleInterviewSlotCheck({
+          sessionRef,
+          workOrderId: 557,
+          signUpAt: staleSignUpAt,
+          channelIdentity: { botImId: 'bot-1' },
+        }),
+      ).resolves.toEqual({ scheduled: false, reason: 'slot_check_skipped_stale' });
+      expect(queue.getJob).not.toHaveBeenCalled();
+      expect(queue.add).not.toHaveBeenCalled();
+      expect(tracking.trackScheduleSkipped).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sessionId: 'sess-1',
+          scenarioCode: 'interview_reminder',
+          anchorEventId: 'wo557:interview_slot_check',
+          anchorAt: staleSignUpAt,
+          botImId: 'bot-1',
+        }),
+        'slot_check_skipped_stale',
+      );
+
+      // 宽限内（报名 3 天 + 23 小时）照排
+      const withinGrace = now - 3 * 24 * 60 * 60_000 - 23 * 60 * 60_000;
+      await expect(
+        service.scheduleInterviewSlotCheck({ sessionRef, workOrderId: 558, signUpAt: withinGrace }),
+      ).resolves.toMatchObject({ scheduled: true });
+      expect(queue.add).toHaveBeenCalledWith(
+        REENGAGEMENT_JOB_NAME,
+        expect.objectContaining({ workOrderId: 558, interviewSlotCheck: true }),
+        expect.objectContaining({ delay: 0 }),
+      );
     });
   });
 

@@ -4,7 +4,7 @@ import { parseLocalDateTime } from '@infra/utils/date.util';
 const NOW = parseLocalDateTime('2026-09-22 10:00:00')!.getTime();
 
 describe('OobReconcileService', () => {
-  const bookingSnapshot = { load: jest.fn() };
+  const bookingSnapshot = { load: jest.fn(), hasOpenWorkOrders: jest.fn() };
   const session = {
     getSessionState: jest.fn(),
     getReengagementState: jest.fn(),
@@ -17,7 +17,8 @@ describe('OobReconcileService', () => {
     scheduleInterviewSlotCheck: jest.fn(),
   };
   const opsEvents = { recordEvent: jest.fn() };
-  const redis = { setNx: jest.fn(), get: jest.fn() };
+  const redis = { setNx: jest.fn(), get: jest.fn(), setex: jest.fn(), del: jest.fn() };
+  const BOOKED_MARKER_KEY = 'oob:booked:chat-1';
   const systemConfig = { getAgentReplyConfig: jest.fn() };
 
   const service = () =>
@@ -87,8 +88,11 @@ describe('OobReconcileService', () => {
     opsEvents.recordEvent.mockResolvedValue(true);
     redis.setNx.mockResolvedValue(true);
     redis.get.mockResolvedValue(null);
+    redis.setex.mockResolvedValue(undefined);
+    redis.del.mockResolvedValue(1);
     systemConfig.getAgentReplyConfig.mockResolvedValue({ reengagementScenarioDelayMinutes: {} });
     bookingSnapshot.load.mockResolvedValue(okSnapshot([supplierEntry()]));
+    bookingSnapshot.hasOpenWorkOrders.mockResolvedValue(false);
   });
 
   afterEach(() => {
@@ -137,9 +141,12 @@ describe('OobReconcileService', () => {
       supplierOwned: 1,
       scheduled: 2,
       linkedEvents: 1,
+      slotChecksScheduled: 0,
       terminal: 'booked',
     });
     expect(session.saveTerminalState).toHaveBeenCalledWith('corp-1', 'user-1', 'chat-1', 'booked');
+    // 「booked 是本链路写的」标记：快照为空时只有它在才允许回退终态
+    expect(redis.setex).toHaveBeenCalledWith(BOOKED_MARKER_KEY, 30 * 24 * 60 * 60, NOW);
     expect(opsEvents.recordEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         eventName: 'booking.linked_out_of_band',
@@ -195,16 +202,73 @@ describe('OobReconcileService', () => {
     expect(session.saveTerminalState).not.toHaveBeenCalled();
   });
 
-  it('快照已无在途工单且当前为 booked → 回退终态；其它终态不动', async () => {
-    bookingSnapshot.load.mockResolvedValue(okSnapshot([]));
-    session.getReengagementState.mockResolvedValue({ terminal: 'booked' });
-    expect(await service().reconcile(input)).toMatchObject({ terminal: 'cleared' });
-    expect(session.saveTerminalState).toHaveBeenCalledWith('corp-1', 'user-1', 'chat-1', undefined);
+  describe('快照为空且当前为 booked 时的终态回退', () => {
+    beforeEach(() => {
+      bookingSnapshot.load.mockResolvedValue(okSnapshot([]));
+      session.getReengagementState.mockResolvedValue({ terminal: 'booked' });
+    });
 
-    session.saveTerminalState.mockClear();
-    session.getReengagementState.mockResolvedValue({ terminal: 'handed_off' });
-    expect(await service().reconcile(input)).toMatchObject({ terminal: 'unchanged' });
-    expect(session.saveTerminalState).not.toHaveBeenCalled();
+    it('本链路写过 booked（标记在）且不带状态复查确认名下无在途/待结果单 → 回退并删标记', async () => {
+      redis.get.mockImplementation(async (key: string) => (key === BOOKED_MARKER_KEY ? NOW : null));
+      bookingSnapshot.hasOpenWorkOrders.mockResolvedValue(false);
+
+      expect(await service().reconcile(input)).toMatchObject({ terminal: 'cleared' });
+      expect(bookingSnapshot.hasOpenWorkOrders).toHaveBeenCalledWith({
+        phone: '18271421690',
+        botImId: 'bot-1',
+      });
+      expect(session.saveTerminalState).toHaveBeenCalledWith(
+        'corp-1',
+        'user-1',
+        'chat-1',
+        undefined,
+      );
+      expect(redis.del).toHaveBeenCalledWith(BOOKED_MARKER_KEY);
+    });
+
+    it('booked 不是本链路写的（无标记，如 AI 自建老单的锚点链）→ 不动，也不打海绵复查', async () => {
+      redis.get.mockResolvedValue(null);
+      expect(await service().reconcile(input)).toMatchObject({ terminal: 'unchanged' });
+      expect(bookingSnapshot.hasOpenWorkOrders).not.toHaveBeenCalled();
+      expect(session.saveTerminalState).not.toHaveBeenCalled();
+    });
+
+    it('标记在但复查发现名下仍有在途/待结果单（快照只装近 15 天）→ 不动', async () => {
+      redis.get.mockImplementation(async (key: string) => (key === BOOKED_MARKER_KEY ? NOW : null));
+      bookingSnapshot.hasOpenWorkOrders.mockResolvedValue(true);
+      expect(await service().reconcile(input)).toMatchObject({ terminal: 'unchanged' });
+      expect(session.saveTerminalState).not.toHaveBeenCalled();
+      expect(redis.del).not.toHaveBeenCalled();
+    });
+
+    it('复查查不到（null：无 token / 海绵失败 / 熔断）按未知处理 → 不动', async () => {
+      redis.get.mockImplementation(async (key: string) => (key === BOOKED_MARKER_KEY ? NOW : null));
+      bookingSnapshot.hasOpenWorkOrders.mockResolvedValue(null);
+      expect(await service().reconcile(input)).toMatchObject({ terminal: 'unchanged' });
+      expect(session.saveTerminalState).not.toHaveBeenCalled();
+    });
+
+    it('回合触发且本轮刚报名成功 → 禁止清终态（新单可能还没进快照缓存），不复查', async () => {
+      redis.get.mockImplementation(async (key: string) => (key === BOOKED_MARKER_KEY ? NOW : null));
+      expect(
+        await service().reconcile({ ...input, trigger: 'turn', bookingSucceededThisTurn: true }),
+      ).toMatchObject({ terminal: 'unchanged' });
+      expect(bookingSnapshot.hasOpenWorkOrders).not.toHaveBeenCalled();
+      expect(session.saveTerminalState).not.toHaveBeenCalled();
+    });
+
+    it('标记读取失败按未标记处理（fail-closed 不清）', async () => {
+      redis.get.mockRejectedValue(new Error('redis down'));
+      expect(await service().reconcile(input)).toMatchObject({ terminal: 'unchanged' });
+      expect(session.saveTerminalState).not.toHaveBeenCalled();
+    });
+
+    it('其它终态（handed_off）不动', async () => {
+      session.getReengagementState.mockResolvedValue({ terminal: 'handed_off' });
+      redis.get.mockResolvedValue(NOW);
+      expect(await service().reconcile(input)).toMatchObject({ terminal: 'unchanged' });
+      expect(session.saveTerminalState).not.toHaveBeenCalled();
+    });
   });
 
   it('稳定锚点：同工单同面试时间已排过（SET NX 失败）不重排；面试时间变化换键重排', async () => {
@@ -253,6 +317,55 @@ describe('OobReconcileService', () => {
         signUpAt: parseLocalDateTime('2026-09-20 10:00:00')!.getTime(),
       }),
     );
+    expect(result).toMatchObject({ slotChecksScheduled: 1 });
+  });
+
+  describe('等通知复核的单次配额（补偿扫描单轮上限）', () => {
+    const waitNotice = (workOrderId: number, signUpTime: string) =>
+      supplierEntry({ workOrderId, interviewTime: null, signUpTime });
+
+    it('配额用完：非历史等通知单整条不占锚点、不排任何任务，留给下一轮', async () => {
+      bookingSnapshot.load.mockResolvedValue(
+        okSnapshot([waitNotice(1, '2026-09-21 10:00:00'), waitNotice(2, '2026-09-21 11:00:00')]),
+      );
+      const result = await service().reconcile({ ...input, trigger: 'scan', maxSlotChecks: 1 });
+
+      expect(result).toMatchObject({ slotChecksScheduled: 1, linkedEvents: 2 });
+      expect(scheduler.scheduleInterviewSlotCheck).toHaveBeenCalledTimes(1);
+      expect(scheduler.scheduleInterviewSlotCheck).toHaveBeenCalledWith(
+        expect.objectContaining({ workOrderId: 1 }),
+      );
+      expect(scheduler.scheduleFollowUp).toHaveBeenCalledTimes(1);
+      // 第二张的锚点没被占：下一轮扫描还能排上
+      expect(redis.setNx).toHaveBeenCalledTimes(1);
+      expect(redis.setNx).toHaveBeenCalledWith(
+        expect.stringContaining('wo1:'),
+        expect.anything(),
+        expect.anything(),
+      );
+    });
+
+    it('历史等通知单（报名超 3 天 + 24h 宽限）不占配额：仍占锚点、落 missing_interview_time，复核交 scheduler 记 stale', async () => {
+      scheduler.scheduleInterviewSlotCheck.mockResolvedValue({
+        scheduled: false,
+        reason: 'slot_check_skipped_stale',
+      });
+      bookingSnapshot.load.mockResolvedValue(okSnapshot([waitNotice(3, '2026-09-10 10:00:00')]));
+      const result = await service().reconcile({ ...input, trigger: 'scan', maxSlotChecks: 0 });
+
+      expect(result).toMatchObject({ slotChecksScheduled: 0 });
+      expect(redis.setNx).toHaveBeenCalledWith(
+        'oob:anchor:chat-1:reconcile:wo3:ivnone',
+        NOW,
+        30 * 24 * 60 * 60,
+      );
+      expect(scheduler.scheduleFollowUp).toHaveBeenCalledWith(
+        expect.objectContaining({ workOrderId: 3, scenarioCode: 'interview_reminder' }),
+      );
+      expect(scheduler.scheduleInterviewSlotCheck).toHaveBeenCalledWith(
+        expect.objectContaining({ workOrderId: 3 }),
+      );
+    });
   });
 
   it('本人校验取会话姓名与长期档案姓名任一', async () => {

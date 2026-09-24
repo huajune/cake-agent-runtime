@@ -627,6 +627,15 @@ export const ACTIVE_INTERVIEW_WORK_ORDER_STATUSES: ReadonlySet<string> = new Set
   '约面成功',
 ]);
 
+/**
+ * 仍未出最终结果的工单状态：约面在途两态 + 面试通过待上岗。
+ * 清 booked 终态前的复核只认这三态——候选人名下还有任一张，报名关系就还在，不得回退终态。
+ */
+export const OPEN_RESULT_WORK_ORDER_STATUSES: ReadonlySet<string> = new Set<string>([
+  ...ACTIVE_INTERVIEW_WORK_ORDER_STATUSES,
+  '面试成功',
+]);
+
 /** 候选人维度的工单查询结果。 */
 export interface SignupWorkOrdersResult {
   candidateName?: string | null;
@@ -693,7 +702,8 @@ export const SignupWorkOrdersApiResponseSchema = z
 
 /** self/list/v2 分页结果：行仍是工单，但顶层不再有候选人信息（每行自带 phone/candidateName/signupSource）。 */
 export interface SelfSignupWorkOrdersV2Result {
-  total: number;
+  /** 海绵下发的总数；接口没给时原样为 null（不回落成本页行数），翻页判停由调用方自行处理。 */
+  total: number | null;
   workOrders: SignupWorkOrderItem[];
 }
 

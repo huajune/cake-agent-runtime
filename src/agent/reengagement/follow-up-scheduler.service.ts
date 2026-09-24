@@ -153,6 +153,13 @@ export interface ScheduleInterviewSlotCheckInput {
 
 /** 等通知岗仍无面试时间的运营任务提醒时限。 */
 export const INTERVIEW_SLOT_CHECK_DELAY_MS = 3 * 24 * 60 * 60_000;
+/** 复核补排宽限：报名已超过「3 天 + 宽限」的历史单不再补排（开关首轮打开时避免集中触发）。 */
+export const INTERVIEW_SLOT_CHECK_STALE_GRACE_MS = 24 * 60 * 60_000;
+
+/** 报名时间距今已超过复核时限 + 宽限：这张等通知单的 3 天复核已成历史，不再补排。 */
+export function isInterviewSlotCheckStale(signUpAt: number, now: number): boolean {
+  return now - signUpAt > INTERVIEW_SLOT_CHECK_DELAY_MS + INTERVIEW_SLOT_CHECK_STALE_GRACE_MS;
+}
 
 /**
  * 复聊排程：锚点事件发生时排一个 Bull delayed job（不轮询全量会话）。
@@ -355,6 +362,23 @@ export class FollowUpSchedulerService {
 
     const scenarioCode: FollowUpScenarioCode = 'interview_reminder';
     const anchorEventId = `wo${input.workOrderId}:interview_slot_check`;
+    // 历史单（报名已超 3 天 + 24 小时宽限）不补排：复核到点早已过去，补排只会让开关打开
+    // 首轮对运营集中轰一批「协调面试时间」任务。只记观测，不占 Bull 任务。
+    if (isInterviewSlotCheckStale(input.signUpAt, Date.now())) {
+      this.tracking.trackScheduleSkipped(
+        {
+          sessionId: input.sessionRef.sessionId,
+          userId: input.sessionRef.userId,
+          corpId: input.sessionRef.corpId,
+          scenarioCode,
+          anchorEventId,
+          anchorAt: input.signUpAt,
+          ...input.channelIdentity,
+        },
+        'slot_check_skipped_stale',
+      );
+      return { scheduled: false, reason: 'slot_check_skipped_stale' };
+    }
     const jobId = this.buildJobId(input.sessionRef.sessionId, scenarioCode, anchorEventId);
     try {
       const existingJob = await this.queue.getJob(jobId).catch(() => null);

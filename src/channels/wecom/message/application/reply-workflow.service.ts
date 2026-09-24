@@ -11,7 +11,10 @@ import { resolveReplaySkipDecision } from '@agent/runner/turn-outcome';
 import { isShortCircuitedToolCall } from '@agent/generator/tool-call-analysis';
 import { TurnFinalizer } from '@agent/runner/turn-finalizer';
 import { FollowUpSchedulerService } from '@agent/reengagement/follow-up-scheduler.service';
-import { ReengagementAnchorService } from '@agent/reengagement/anchor.service';
+import {
+  ReengagementAnchorService,
+  isBookingSucceededCall,
+} from '@agent/reengagement/anchor.service';
 import { OobReconcileService } from '@agent/reengagement/oob-reconcile.service';
 import type { ReengagementChannelIdentity } from '@agent/reengagement/follow-up-scheduler.service';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
@@ -426,7 +429,7 @@ export class ReplyWorkflowService {
         params.primaryMessage,
         stableBotUserId,
       );
-      this.reengagementAnchors.handleToolAnchors(agentResult, {
+      const terminalSettled = this.reengagementAnchors.handleToolAnchors(agentResult, {
         traceId,
         chatId,
         userId: agentCallParams.userId,
@@ -436,16 +439,26 @@ export class ReplyWorkflowService {
       });
       // 带外工单对账副作用（PRD R2）：只在企微生产回合、渠道层、异步不阻塞回复；
       // 回归测试/调试也走 prepare 且连生产海绵，副作用不能放进 prepare。
+      // 必须排在锚点链的终态写入 settle 之后：两条链路并发读-判-写同一会话终态时，
+      // 对账按「快照为空」清 booked 可能落在锚点刚写的 booked 之后把它抹掉。
       if (!params.primaryMessage.imRoomId) {
-        void this.oobReconcile.reconcileAfterTurn({
-          corpId: agentCallParams.corpId,
-          userId: agentCallParams.userId,
-          chatId,
-          botImId: agentCallParams.botImId ?? null,
-          botUserId: agentCallParams.botUserId ?? null,
-          traceId,
-          channelIdentity: reengagementChannelIdentity,
-        });
+        const bookingSucceededThisTurn = (agentResult.toolCalls ?? []).some((call) =>
+          isBookingSucceededCall(call),
+        );
+        void terminalSettled
+          .catch(() => undefined)
+          .then(() =>
+            this.oobReconcile.reconcileAfterTurn({
+              corpId: agentCallParams.corpId,
+              userId: agentCallParams.userId,
+              chatId,
+              botImId: agentCallParams.botImId ?? null,
+              botUserId: agentCallParams.botUserId ?? null,
+              traceId,
+              channelIdentity: reengagementChannelIdentity,
+              bookingSucceededThisTurn,
+            }),
+          );
       }
 
       // 非 reply 终态（skipped 静默 / handoff 人工介入意图）：跳过 WeCom 发送，

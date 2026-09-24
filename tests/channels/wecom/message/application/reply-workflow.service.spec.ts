@@ -115,11 +115,13 @@ describe('ReplyWorkflowService', () => {
   const botService = {
     resolveBotUserIdByImBotId: jest.fn(),
   };
+  const oobReconcile = { reconcileAfterTurn: jest.fn() };
 
   let service: ReplyWorkflowService;
 
   beforeEach(() => {
     jest.clearAllMocks();
+    oobReconcile.reconcileAfterTurn.mockReset().mockResolvedValue(undefined);
     // invokeReviewedTurn 委托给 invoke（保留既有 runner.invoke 断言），并叠加统一 outcome/finalizer。
     currentOutputDecision = passOutputDecision;
     currentResolution = { outcome: 'reply' };
@@ -322,7 +324,7 @@ describe('ReplyWorkflowService', () => {
       session as never,
       llm as never,
       botService as never,
-      { reconcileAfterTurn: jest.fn().mockResolvedValue(undefined) } as never,
+      oobReconcile as never,
     );
   });
 
@@ -933,6 +935,54 @@ describe('ReplyWorkflowService', () => {
       'im-contact-1',
       'chat-1',
       'booked',
+    );
+  });
+
+  it('带外对账排在锚点终态写入 settle 之后，并带 bookingSucceededThisTurn 禁止清终态', async () => {
+    const order: string[] = [];
+    session.saveTerminalState.mockImplementation(
+      () =>
+        new Promise<void>((resolve) =>
+          setTimeout(() => {
+            order.push('terminal');
+            resolve();
+          }, 5),
+        ),
+    );
+    oobReconcile.reconcileAfterTurn.mockImplementation(async () => {
+      order.push('reconcile');
+    });
+    runner.invoke.mockResolvedValueOnce({
+      text: '报名成功',
+      usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+      toolCalls: [
+        {
+          toolName: 'duliday_interview_booking',
+          args: { jobId: 100 },
+          result: { success: true, workOrderId: 123, errorType: null },
+        },
+      ],
+    });
+
+    await service.processSingleMessage(createMessage());
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(order).toEqual(['terminal', 'reconcile']);
+    expect(oobReconcile.reconcileAfterTurn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        chatId: 'chat-1',
+        corpId: 'corp-1',
+        userId: 'im-contact-1',
+        bookingSucceededThisTurn: true,
+      }),
+    );
+  });
+
+  it('本轮没有成功报名时 bookingSucceededThisTurn=false', async () => {
+    await service.processSingleMessage(createMessage());
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(oobReconcile.reconcileAfterTurn).toHaveBeenCalledWith(
+      expect.objectContaining({ bookingSucceededThisTurn: false }),
     );
   });
 

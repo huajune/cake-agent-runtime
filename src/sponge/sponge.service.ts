@@ -519,7 +519,8 @@ export class SpongeService {
     );
     const workOrders: SignupWorkOrderItem[] = (data?.result ?? []) as SignupWorkOrderItem[];
     return {
-      total: data?.total ?? workOrders.length,
+      // total 缺失原样透传 null：回落成本页行数会让翻页在第一页就误判「已取完」。
+      total: data?.total ?? null,
       workOrders,
     };
   }

@@ -44,6 +44,7 @@ describe('OobReconcileScanCronService', () => {
       scheduled: 2,
       supplierOwned: 1,
       linkedEvents: 1,
+      slotChecksScheduled: 0,
     });
     redis.setNx.mockResolvedValue(true);
     redis.eval.mockResolvedValue(1);
@@ -143,6 +144,7 @@ describe('OobReconcileScanCronService', () => {
         botImId: 'bot-A',
         phone: '18271421690',
         trigger: 'scan',
+        maxSlotChecks: 50,
       });
       expect(summary).toMatchObject({
         status: 'done',
@@ -153,6 +155,8 @@ describe('OobReconcileScanCronService', () => {
         unresolved: 1,
         reconciled: 1,
         scheduled: 2,
+        slotChecks: 0,
+        totalUnknown: false,
       });
       expect(tracer.emit).toHaveBeenCalledWith(
         expect.objectContaining({ type: 'oob_reconcile_scan', status: 'done', supplierRows: 2 }),
@@ -174,6 +178,76 @@ describe('OobReconcileScanCronService', () => {
       const summary = await service().runOnce();
       expect(reconcile.reconcile).not.toHaveBeenCalled();
       expect(summary).toMatchObject({ botMismatch: 1, resolved: 0 });
+    });
+
+    it('索引记录没有 botImId 时不拿扫描账号兜底：计入 unresolved 跳过', async () => {
+      sponge.fetchSelfSignupWorkOrdersV2.mockResolvedValue({
+        total: 1,
+        workOrders: [supplierRow()],
+      });
+      phoneIndex.lookupByPhone.mockResolvedValue({
+        corpId: 'corp-1',
+        userId: 'user-1',
+        chatId: 'chat-1',
+        botImId: null,
+        phone: '18271421690',
+      });
+      const summary = await service().runOnce();
+      expect(reconcile.reconcile).not.toHaveBeenCalled();
+      expect(summary).toMatchObject({ unresolved: 1, botMismatch: 0, resolved: 0 });
+    });
+
+    it('等通知复核单轮上限 50：按累计已排数递减配额传给对账，用完后传 0', async () => {
+      const rows = Array.from({ length: 3 }, (_, i) =>
+        supplierRow({ workOrderId: i + 1, phone: `1827142169${i}` }),
+      );
+      sponge.fetchSelfSignupWorkOrdersV2.mockResolvedValue({ total: 3, workOrders: rows });
+      phoneIndex.lookupByPhone.mockImplementation(async (phone: string) => ({
+        corpId: 'corp-1',
+        userId: `user-${phone}`,
+        chatId: `chat-${phone}`,
+        botImId: 'bot-A',
+        phone,
+      }));
+      reconcile.reconcile
+        .mockResolvedValueOnce({ status: 'done', scheduled: 0, slotChecksScheduled: 30 })
+        .mockResolvedValueOnce({ status: 'done', scheduled: 0, slotChecksScheduled: 25 })
+        .mockResolvedValueOnce({ status: 'done', scheduled: 0, slotChecksScheduled: 0 });
+
+      const summary = await service().runOnce();
+
+      const budgets = reconcile.reconcile.mock.calls.map(
+        (call: [{ maxSlotChecks: number }]) => call[0].maxSlotChecks,
+      );
+      expect(budgets).toEqual([50, 20, 0]);
+      expect(summary.slotChecks).toBe(55);
+    });
+
+    it('海绵不下发 total 时只按整页判停并标记 totalUnknown；有 total 时按累计行数判停', async () => {
+      const fullPage = (n: number) => ({
+        total: null,
+        workOrders: Array.from({ length: 100 }, (_, i) =>
+          supplierRow({ workOrderId: n * 1000 + i, signupSource: 'AI' }),
+        ),
+      });
+      sponge.fetchSelfSignupWorkOrdersV2
+        .mockResolvedValueOnce(fullPage(1))
+        .mockResolvedValueOnce({ total: null, workOrders: [supplierRow({ signupSource: 'AI' })] });
+
+      const summary = await service().runOnce({ enabled: true, maxRowsPerRun: 10_000 });
+      // 第一页满页、无 total → 继续翻；第二页不满页 → 停
+      expect(sponge.fetchSelfSignupWorkOrdersV2).toHaveBeenCalledTimes(2);
+      expect(summary).toMatchObject({ rows: 101, totalUnknown: true });
+      expect(tracer.emit).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'oob_reconcile_scan', totalUnknown: true }),
+      );
+
+      // 对照：满页但 total=100 → 累计已达 total，不再翻第二页
+      sponge.fetchSelfSignupWorkOrdersV2.mockReset();
+      sponge.fetchSelfSignupWorkOrdersV2.mockResolvedValue({ ...fullPage(1), total: 100 });
+      const exact = await service().runOnce({ enabled: true, maxRowsPerRun: 10_000 });
+      expect(sponge.fetchSelfSignupWorkOrdersV2).toHaveBeenCalledTimes(1);
+      expect(exact).toMatchObject({ rows: 100, totalUnknown: false });
     });
 
     it('单轮条数上限与翻页上限：满页继续翻，达到上限停止', async () => {

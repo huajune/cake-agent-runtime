@@ -45,6 +45,70 @@ describe('BookingSnapshotService', () => {
     });
   });
 
+  describe('hasOpenWorkOrders（清 booked 终态前的不带状态复查）', () => {
+    it('不带 currentStatus 过滤查一次；名下有约面在途或面试通过待上岗 → true，全是终态 → false', async () => {
+      sponge.fetchSignupWorkOrders.mockResolvedValue({
+        workOrders: [
+          { ...supplierOrder, currentStatus: '约面取消' },
+          {
+            ...supplierOrder,
+            workOrderId: 2,
+            currentStatus: '面试成功',
+            signUpTime: '2026-08-01 10:00:00',
+          },
+        ],
+      });
+      await expect(
+        service().hasOpenWorkOrders({ phone: '18271421690', botImId: 'bot-1', now: NOW }),
+      ).resolves.toBe(true);
+      expect(sponge.fetchSignupWorkOrders).toHaveBeenCalledWith(
+        { phone: '18271421690' },
+        { botImId: 'bot-1' },
+        { timeoutMs: 3000, allowDefaultToken: false },
+      );
+      // 不读不写缓存
+      expect(redis.get).not.toHaveBeenCalled();
+      expect(redis.setex).not.toHaveBeenCalled();
+
+      sponge.fetchSignupWorkOrders.mockResolvedValue({
+        workOrders: [
+          { ...supplierOrder, currentStatus: '约面取消' },
+          { ...supplierOrder, workOrderId: 2, currentStatus: '上岗成功' },
+        ],
+      });
+      await expect(
+        service().hasOpenWorkOrders({ phone: '18271421690', botImId: 'bot-1', now: NOW }),
+      ).resolves.toBe(false);
+    });
+
+    it('无 token / 非候选人号段 / 海绵失败 / 熔断中 → null（未知，调用方不得清终态）', async () => {
+      hosting.resolveDulidayToken.mockResolvedValue(null);
+      await expect(
+        service().hasOpenWorkOrders({ phone: '18271421690', botImId: 'bot-1' }),
+      ).resolves.toBeNull();
+      expect(sponge.fetchSignupWorkOrders).not.toHaveBeenCalled();
+
+      hosting.resolveDulidayToken.mockResolvedValue('token-1');
+      await expect(
+        service().hasOpenWorkOrders({ phone: '10086', botImId: 'bot-1' }),
+      ).resolves.toBeNull();
+
+      sponge.fetchSignupWorkOrders.mockRejectedValue(new Error('timeout'));
+      const svc = service();
+      await expect(
+        svc.hasOpenWorkOrders({ phone: '18271421690', botImId: 'bot-1', now: NOW }),
+      ).resolves.toBeNull();
+      // 失败计入同账号熔断：连续 3 次后开断，第 4 次不再打海绵
+      await svc.hasOpenWorkOrders({ phone: '18271421690', botImId: 'bot-1', now: NOW });
+      await svc.hasOpenWorkOrders({ phone: '18271421690', botImId: 'bot-1', now: NOW });
+      sponge.fetchSignupWorkOrders.mockClear();
+      await expect(
+        svc.hasOpenWorkOrders({ phone: '18271421690', botImId: 'bot-1', now: NOW + 1000 }),
+      ).resolves.toBeNull();
+      expect(sponge.fetchSignupWorkOrders).not.toHaveBeenCalled();
+    });
+  });
+
   it('用本会话账号 token 按手机号查一次，服务端只过滤在途状态，3 秒超时且禁止回退默认 token', async () => {
     const result = await service().load(baseInput);
 

@@ -43,6 +43,10 @@ export interface OobReconcileScanSummary {
   accountFailures: number;
   /** 单轮硬时间窗到点，剩余行/账号未处理（下一轮从头再扫，锚点标记保证不重排）。 */
   truncated: boolean;
+  /** 本轮新排的等通知满 3 天复核数（单轮上限 MAX_SLOT_CHECKS_PER_RUN，超出留待下一轮）。 */
+  slotChecks: number;
+  /** 至少一个账号的海绵响应没给 total，翻页只按整页判停。 */
+  totalUnknown: boolean;
 }
 
 const LOCK_KEY = 'oob:reconcile-scan:lock:v1';
@@ -55,6 +59,8 @@ const SIGNUP_LOOKBACK_MS = 15 * 24 * 60 * 60 * 1000;
 const PAGE_SIZE = 100;
 const DEFAULT_MAX_PAGES_PER_ACCOUNT = 10;
 const DEFAULT_MAX_ROWS_PER_RUN = 500;
+/** 单轮最多新排的等通知复核数：开关首轮打开时历史等通知单集中进来，不能一次给运营排几百个任务。 */
+export const MAX_SLOT_CHECKS_PER_RUN = 50;
 const FETCH_TIMEOUT_MS = 5_000;
 const FETCH_ATTEMPTS = 3;
 const RETRY_BASE_DELAY_MS = 1_000;
@@ -127,6 +133,8 @@ export class OobReconcileScanCronService {
       scheduled: 0,
       accountFailures: 0,
       truncated: false,
+      slotChecks: 0,
+      totalUnknown: false,
     };
     const maxRows = runtime.maxRowsPerRun ?? DEFAULT_MAX_ROWS_PER_RUN;
     const maxPages = runtime.maxPagesPerAccount ?? DEFAULT_MAX_PAGES_PER_ACCOUNT;
@@ -149,7 +157,7 @@ export class OobReconcileScanCronService {
         summary.truncated = true;
         break;
       }
-      let rows: { total: number; supplier: SignupWorkOrderItem[] };
+      let rows: SupplierRowsPage;
       try {
         rows = await this.fetchSupplierRows(
           botImId,
@@ -163,6 +171,7 @@ export class OobReconcileScanCronService {
         continue;
       }
       summary.rows += rows.total;
+      if (rows.totalUnknown) summary.totalUnknown = true;
       for (const row of rows.supplier) {
         // 硬时间窗按行检查：对账含海绵查询与排任务，账号级检查不够细，一个大账号能把整轮拖过锁 TTL。
         if (this.isPastDeadline(startedAt)) {
@@ -185,8 +194,13 @@ export class OobReconcileScanCronService {
           continue;
         }
         // 账号边界：索引记录的是候选人在哪个托管账号下的会话；工单属于别的账号时不能
-        // 用本账号 token 往那条会话排提醒/改终态。
-        if (record.botImId && record.botImId !== botImId) {
+        // 用本账号 token 往那条会话排提醒/改终态。索引没记账号时同样不能拿扫描账号兜底
+        // ——那等于把别家账号的工单按本账号 token 排进这条会话，计 unresolved 跳过。
+        if (!record.botImId) {
+          summary.unresolved += 1;
+          continue;
+        }
+        if (record.botImId !== botImId) {
           summary.botMismatch += 1;
           continue;
         }
@@ -199,10 +213,12 @@ export class OobReconcileScanCronService {
             botImId,
             phone,
             trigger: 'scan',
+            maxSlotChecks: Math.max(0, MAX_SLOT_CHECKS_PER_RUN - summary.slotChecks),
           });
           if (result.status === 'done') {
             summary.reconciled += 1;
             summary.scheduled += result.scheduled;
+            summary.slotChecks += result.slotChecksScheduled;
           }
         } catch (error) {
           this.logger.warn(
@@ -218,20 +234,25 @@ export class OobReconcileScanCronService {
       );
     }
     this.logger.log(
-      `[oob-scan] 完成: accounts=${summary.accounts} rows=${summary.rows} supplier=${summary.supplierRows} resolved=${summary.resolved} unresolved=${summary.unresolved} botMismatch=${summary.botMismatch} reconciled=${summary.reconciled} scheduled=${summary.scheduled} accountFailures=${summary.accountFailures} truncated=${summary.truncated}`,
+      `[oob-scan] 完成: accounts=${summary.accounts} rows=${summary.rows} supplier=${summary.supplierRows} resolved=${summary.resolved} unresolved=${summary.unresolved} botMismatch=${summary.botMismatch} reconciled=${summary.reconciled} scheduled=${summary.scheduled} slotChecks=${summary.slotChecks} accountFailures=${summary.accountFailures} truncated=${summary.truncated} totalUnknown=${summary.totalUnknown}`,
     );
     this.emit({ type: 'oob_reconcile_scan', ...summary, durationMs: Date.now() - startedAt });
     return summary;
   }
 
+  /**
+   * 翻页判停：整页不满即停；海绵给了 total 再按累计行数判停；没给 total 时只按整页判停
+   * （不把本页行数当 total，否则第一页就误判取完），并标记 totalUnknown 供观测。
+   */
   private async fetchSupplierRows(
     botImId: string,
     signUpStartTime: string,
     maxPages: number,
     rowBudget: number,
-  ): Promise<{ total: number; supplier: SignupWorkOrderItem[] }> {
+  ): Promise<SupplierRowsPage> {
     const supplier: SignupWorkOrderItem[] = [];
     let total = 0;
+    let totalUnknown = false;
     for (let pageNum = 1; pageNum <= maxPages && total < rowBudget; pageNum += 1) {
       const page = await this.withRetry(() =>
         this.spongeService.fetchSelfSignupWorkOrdersV2(
@@ -252,9 +273,14 @@ export class OobReconcileScanCronService {
       for (const row of rows) {
         if (normalizeSignupSource(row.signupSource) === 'SUPPLIER') supplier.push(row);
       }
-      if (rows.length < PAGE_SIZE || total >= page.total) break;
+      if (rows.length < PAGE_SIZE) break;
+      if (page.total == null) {
+        totalUnknown = true;
+        continue;
+      }
+      if (total >= page.total) break;
     }
-    return { total, supplier };
+    return { total, supplier, totalUnknown };
   }
 
   private isPastDeadline(startedAt: number): boolean {
@@ -316,6 +342,12 @@ export class OobReconcileScanCronService {
   private emit(event: Parameters<AgentTracerService['emit']>[0]): void {
     this.tracer?.emit(event);
   }
+}
+
+interface SupplierRowsPage {
+  total: number;
+  supplier: SignupWorkOrderItem[];
+  totalUnknown: boolean;
 }
 
 function positiveInt(value: unknown): number | undefined {

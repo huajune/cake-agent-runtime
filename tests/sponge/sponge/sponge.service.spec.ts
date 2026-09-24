@@ -381,6 +381,25 @@ describe('SpongeService', () => {
       );
     });
 
+    it('total 缺失时原样透传 null，不回落成本页行数（翻页判停交调用方）', async () => {
+      hostingMemberConfigService.resolveDulidayToken.mockResolvedValueOnce('member-token');
+      const mockResponse = {
+        ok: true,
+        json: jest.fn().mockResolvedValue({
+          code: 0,
+          data: { result: [{ workOrderId: 9201 }, { workOrderId: 9202 }] },
+        }),
+      };
+      jest.spyOn(global, 'fetch').mockResolvedValue(mockResponse as unknown as Response);
+
+      const result = await service.fetchSelfSignupWorkOrdersV2(
+        { pageNum: 1, pageSize: 2 },
+        { botImId: 'bot-im-1' },
+      );
+      expect(result.total).toBeNull();
+      expect(result.workOrders).toHaveLength(2);
+    });
+
     it('does not fall back to the global token for self/list/v2', async () => {
       const fetchSpy = jest.spyOn(global, 'fetch');
 
