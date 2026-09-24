@@ -24,6 +24,10 @@ import { PreparationService } from './generator/preparation/preparation.service'
 import { ToolRuntimeBuilderService } from './generator/preparation/tool-context.builder';
 import { TurnDataLoaderService } from './generator/preparation/turn-data-loader.service';
 import { BookingContextLoaderService } from './generator/preparation/booking-context-loader.service';
+import { OobReconcileService } from './reengagement/oob-reconcile.service';
+import { OobReconcileScanCronService } from './reengagement/oob-reconcile-scan.cron';
+import { UserModule } from '@biz/user/user.module';
+import { HostingConfigModule } from '@biz/hosting-config/hosting-config.module';
 import { PreparationModule } from './generator/preparation/preparation.module';
 import { ContextService } from './generator/context/context.service';
 import { AgentController } from './agent.controller';
@@ -61,6 +65,9 @@ import {
     HandoffEventsModule,
     InterventionModule,
     GuardrailModule,
+    // 带外工单对账：手动恢复托管即时对账（UserHostingService 监听）、补偿扫描运行时开关（SystemConfigService）。
+    UserModule,
+    HostingConfigModule,
     BullModule.registerQueue({
       name: REENGAGEMENT_QUEUE,
       defaultJobOptions: {
@@ -91,6 +98,8 @@ import {
     ReengagementAgent,
     OnboardingSweepCronService,
     ReengagementDeliveryService,
+    OobReconcileService,
+    OobReconcileScanCronService,
     { provide: REENGAGEMENT_DELIVERY_PORT, useExisting: ReengagementDeliveryService },
   ],
   exports: [
@@ -104,6 +113,7 @@ import {
     GuardrailModule,
     FollowUpSchedulerService,
     ReengagementAnchorService,
+    OobReconcileService,
   ],
 })
 export class AgentModule {}

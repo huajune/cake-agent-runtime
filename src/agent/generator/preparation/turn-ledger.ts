@@ -98,6 +98,7 @@ export function createTurnLedger(input: CreateTurnLedgerInput = {}): TurnLedger 
         return invalidatedJobIds;
       },
       bookingSucceeded: undefined,
+      postBookingGroupInvite: undefined,
       collectionReadyJobId: undefined,
       jobListExecuted: false,
     },
@@ -191,6 +192,9 @@ export function createTurnLedger(input: CreateTurnLedgerInput = {}): TurnLedger 
           querySignature: jobListQuerySignature,
           invalidatedJobIds: [...invalidatedJobIds],
           bookingSucceeded: ledger.jobs.bookingSucceeded,
+          ...(ledger.jobs.postBookingGroupInvite === undefined
+            ? {}
+            : { postBookingGroupInvite: { ...ledger.jobs.postBookingGroupInvite } }),
           ...(ledger.jobs.collectionReadyJobId === undefined
             ? {}
             : { collectionReadyJobId: ledger.jobs.collectionReadyJobId }),

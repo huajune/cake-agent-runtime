@@ -2,18 +2,11 @@ import { Injectable } from '@nestjs/common';
 import { FeishuReceiver } from '@infra/feishu/constants/receivers';
 import { FeishuCardBuilderService } from '@infra/feishu/services/card-builder.service';
 import { unwrapSessionFactValue } from '@memory/short-term/short-term.types';
-import { GeneralHandoffNotificationPayload } from '../types/general-handoff-notification.types';
-
-/**
- * 时效敏感的转人工原因：候选人可能已在途/正在等待，超时未跟进直接丢单。
- * （改约类 24h 真人跟进率长期偏低，卡片顶部显式标急以对齐处理优先级。）
- */
-const URGENT_REASON_CODES = new Set([
-  'modify_appointment',
-  'no_reception',
-  'booking_conflict',
-  'interview_group_invite_required',
-]);
+import { isUrgentHandoff } from '@enums/handoff-reason.enum';
+import {
+  GeneralHandoffNotificationPayload,
+  PauseOverdueCardPayload,
+} from '../types/general-handoff-notification.types';
 
 @Injectable()
 export class GeneralHandoffCardRenderer {
@@ -26,7 +19,9 @@ export class GeneralHandoffCardRenderer {
       atAll?: boolean;
     },
   ): Record<string, unknown> {
-    const isUrgent = payload.reasonCode ? URGENT_REASON_CODES.has(payload.reasonCode) : false;
+    // 时效敏感由权威目录（@enums/handoff-reason.enum）的 urgent 属性 + 在职事务工伤升急派生，
+    // 与飞书任务优先级同一判据：候选人可能已在途/正在等待，超时未跟进直接丢单。
+    const isUrgent = isUrgentHandoff(payload.reasonCode, payload.reason);
     const sections = [
       payload.isTest ? '> 测试ing（来自回归批次，无需 @ 招募经理）' : null,
       isUrgent
@@ -51,6 +46,37 @@ export class GeneralHandoffCardRenderer {
       title: payload.isTest ? `${baseTitle} · 测试ing` : baseTitle,
       content: sections.join('\n\n'),
       color,
+      atUsers: payload.atUsers,
+      atAll: payload.atAll,
+    });
+  }
+
+  /**
+   * 永久暂停超期巡检提醒（PRD R5.2）：人工恢复类转人工暂停超过 N 天仍未恢复，
+   * 候选人在此期间收不到任何回复；卡片 @ 该托管账号的运营。
+   */
+  buildPauseOverdueCard(
+    payload: PauseOverdueCardPayload & { atUsers?: FeishuReceiver[]; atAll?: boolean },
+  ): Record<string, unknown> {
+    const lines = [
+      `> <font color='red'>**⏳ 永久暂停已超 ${payload.overdueDays} 天未恢复**：候选人此后收不到任何回复，请确认是否已处理完并恢复托管</font>`,
+      `**暂停原因**：${payload.pauseReason || '人工介入暂停'}`,
+      payload.reasonCode ? `**原因码**：${payload.reasonLabel ?? payload.reasonCode}` : null,
+      `**暂停时间**：${payload.pausedAtLabel}`,
+      '**候选人信息**',
+      [
+        payload.contactName ? `微信昵称：${payload.contactName}` : null,
+        payload.botUserName ? `托管账号：${payload.botUserName}` : null,
+        `会话ID：${payload.chatId}`,
+      ]
+        .filter((line): line is string => Boolean(line))
+        .join('\n'),
+      '处理完请到 Web 托管后台手动恢复托管；确认无需恢复也请在托管后台备注。',
+    ].filter((line): line is string => Boolean(line));
+    return this.cardBuilder.buildMarkdownCard({
+      title: '⏳ 人工介入暂停超期未恢复',
+      content: lines.join('\n\n'),
+      color: 'orange',
       atUsers: payload.atUsers,
       atAll: payload.atAll,
     });

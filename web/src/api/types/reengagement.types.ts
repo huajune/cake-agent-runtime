@@ -39,6 +39,34 @@ export interface ReengagementTouchRecord {
   // 仅详情接口返回：
   generated_text?: string | null;
   events?: ReengagementEvent[];
+  /** 触发停发的上下文（候选人待答消息 / 聊天约定时间与工单时间），其余原因为空 */
+  stop_context?: ReengagementStopContext | null;
+}
+
+/** 触发停发的上下文（与后端 ReengagementStopContext 同形） */
+export type ReengagementStopContext =
+  | {
+      kind: 'pending_candidate_message';
+      candidateMessageAt: number;
+      candidateMessagePreview: string;
+    }
+  | {
+      kind: 'chat_interview_time_mismatch';
+      workOrderId: number;
+      workOrderInterviewAt: number;
+      chatAgreedInterviewTime: string;
+      chatAgreedInterviewAt: number;
+      evidence: string;
+    };
+
+/** 周度漏斗桶：登记 → 发出 → 6h 内候选人回复（按创建周 cohort，周一为 weekStart） */
+export interface ReengagementWeeklyFunnelBucket {
+  weekStart: string;
+  registered: number;
+  sent: number;
+  replied6h: number;
+  /** replied6h / sent；sent=0 时为 null */
+  replyRate: number | null;
 }
 
 /** 分组统计项（status x scenario_code） */

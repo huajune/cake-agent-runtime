@@ -34,6 +34,10 @@ function buildRegistry(
     { emit: jest.fn() } as never,
     // collectionFormService（收资表单接管，蓝图 §5）
     {} as never,
+    // bookingSnapshotService（每轮预约快照：查重/失效缓存）
+    { invalidate: jest.fn(), load: jest.fn(), peekForCandidate: jest.fn() } as never,
+    // phoneSessionIndexService（手机号→会话索引：报名成功写入）
+    { record: jest.fn() } as never,
   );
 }
 

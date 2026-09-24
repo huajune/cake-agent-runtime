@@ -25,6 +25,7 @@ import {
 import { type GeneratorInvokeParams, type GeneratorToolMode } from '../generator.types';
 import { type TurnStartMemory } from './prompt-memory-adjudicator';
 import { createTurnLedger } from './turn-ledger';
+import { bookingFocusJobFallback } from '../context/sections/semantic/memory.section';
 import type { CorpusBlock } from '@shared-types/corpus.types';
 import type { FinalizedVisualFactSheet } from '@resolution/signal/visual';
 import type { StageGoalConfig, Threshold } from '@biz/strategy/types/strategy.types';
@@ -252,7 +253,9 @@ export function resolveToolContextModel(input: {
       lastJobListQuery: memory.shortTerm.sessionState?.lastJobListQuery ?? null,
       activeBookingJobIds: bookingWorkOrderJobIds,
       bookingWorkOrders: bookingWorkOrders ?? [],
-      currentFocusJob: memory.shortTerm.sessionState?.currentFocusJob ?? null,
+      currentFocusJob:
+        memory.shortTerm.sessionState?.currentFocusJob ??
+        bookingFocusJobFallback(bookingWorkOrders ?? []),
       recentBrandPool,
       bookingCandidateFacts: sessionFacts?.interview_info ?? null,
       invitedGroups: memory.shortTerm.sessionState?.invitedGroups ?? [],

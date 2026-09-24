@@ -98,6 +98,34 @@ export class TurnOutcomeInterventionService {
     context: TurnOutcomeCommitContext,
   ): Promise<void> {
     const occurredAt = Date.now();
+    // 入站风险类介入此前只发群卡片、不落底账（10 天 9 条看不见）。底账原因码直接用风险类型
+    // （abuse / complaint_risk / human_handoff_request / disability_disclosure / interview_result_inquiry
+    // / escalation，均在权威目录 T7/T3），来源标记 input_guardrail（正则预检）或 risk_alert_tool（模型工具）。
+    const writeOutcome = await this.recordHandoff(
+      {
+        kind: 'general_handoff',
+        source: 'agent_tool',
+        origin: intent.source === 'regex_intercept' ? 'input_guardrail' : 'risk_alert_tool',
+        alertLabel: intent.riskLabel,
+        reasonCode: intent.riskType,
+        reason: intent.reason,
+        actionAdvice: intent.summary,
+        stage: null,
+      },
+      context,
+      buildHandoffIdempotencyKey({
+        chatId: context.chatId,
+        turnId: context.traceId,
+        scope: 'input_risk',
+      }),
+      new Date(occurredAt),
+    );
+    if (writeOutcome === 'duplicate') {
+      this.logger.warn(
+        `[OutcomeSideEffect] duplicate conversation_risk，跳过重复 dispatch: chatId=${context.chatId}, type=${intent.riskType}`,
+      );
+      return;
+    }
     try {
       const result = await this.interventionService.dispatch({
         kind: 'conversation_risk',
@@ -152,6 +180,14 @@ export class TurnOutcomeInterventionService {
           `[OutcomeSideEffect] handoff 底账写入失败，执行 fail-safe dispatch: chatId=${context.chatId}, key=${idempotencyKey}`,
         );
       }
+    }
+
+    // 只记底账（报名失败：工具内已暂停托管并发过卡片），不再暂停/告警打扰运营。
+    if (intent.recordOnly) {
+      this.logger.log(
+        `[OutcomeSideEffect] record-only handoff 已落底账: chatId=${context.chatId}, reasonCode=${intent.reasonCode}, origin=${intent.origin ?? '-'}`,
+      );
+      return;
     }
 
     try {
@@ -210,6 +246,9 @@ export class TurnOutcomeInterventionService {
         botImId: intent.botImId ?? context.botImId,
         workOrderId: intent.workOrderId ?? null,
         jobId: intent.jobId ?? null,
+        origin:
+          intent.origin ??
+          (intent.source === 'output_guardrail' ? 'output_guardrail' : 'agent_tool'),
         idempotencyKey,
         occurredAt,
       });

@@ -53,7 +53,8 @@ export function formatSettlementSummary(jobInput: unknown): string | null {
     .filter((part): part is string => Boolean(part));
 
   const welfare = asRecord(job?.welfare);
-  const notes = extractSettlementNotes(readText(welfare?.remark));
+  // 海绵福利备注真实字段是 welfare.memo（不是 remark；2026-09-20 岗位数据缺口调研实测）。
+  const notes = extractSettlementNotes(readText(welfare?.memo));
   const parts = [...scenarioParts, ...notes];
   return parts.length > 0 ? [...new Set(parts)].join('；') : null;
 }

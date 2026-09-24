@@ -236,6 +236,27 @@ export function containsLocationShareMarkup(text: string | null | undefined): bo
   return LOCATION_SHARE_MARKER_RE.test(text ?? '');
 }
 
+// ── 加好友系统语 `我通过了你的(朋友|联系人)验证请求，现在我们可以开始聊天了` ─────────
+
+/**
+ * 平台在候选人通过好友申请时代发的系统语：以普通 user 消息入库，但不是候选人打的字。
+ * 写入者是微信/企微平台；渠道层用它排除破冰统计，Agent 侧按候选人原话做词形匹配前必须先剥
+ * （句中「通过了」会被当成面试结果词）。
+ */
+const FRIEND_VERIFY_GREETING_SOURCE =
+  '我通过了你的.{0,6}验证请求(?:[，,]\\s*现在我们可以开始聊天了)?[。！!]?';
+const FRIEND_VERIFY_GREETING_START_RE = new RegExp(`^${FRIEND_VERIFY_GREETING_SOURCE}`, 'u');
+const FRIEND_VERIFY_GREETING_RE = new RegExp(FRIEND_VERIFY_GREETING_SOURCE, 'gu');
+
+/** 消息是否以加好友系统语开头（调用方自行 trim）。 */
+export function isFriendVerifyGreeting(text: string | null | undefined): boolean {
+  return FRIEND_VERIFY_GREETING_START_RE.test(text ?? '');
+}
+
+export function stripFriendVerifyGreeting(text: string, replaceWith = ''): string {
+  return text.replace(FRIEND_VERIFY_GREETING_RE, replaceWith);
+}
+
 // ── 多模态文本扁平化 ────────────────────────────────────────────────────────
 
 export function extractMessageText(content: unknown): string {

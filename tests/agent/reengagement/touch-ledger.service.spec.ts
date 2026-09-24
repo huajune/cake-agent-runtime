@@ -142,4 +142,27 @@ describe('TouchLedgerService (outbox state machine + freq)', () => {
       { key: 's1:opening_no_reply:1000', state: 'unknown' },
     ]);
   });
+  describe('acquireOnce（运营提醒等一次性副作用的幂等占位）', () => {
+    it('首次占位成功，同 key 再次占位失败，key 走独立前缀不与触达槽混用', async () => {
+      await expect(ledger.acquireOnce('chat_interview_time_mismatch:wo1:iv2:chat3')).resolves.toBe(
+        true,
+      );
+      await expect(ledger.acquireOnce('chat_interview_time_mismatch:wo1:iv2:chat3')).resolves.toBe(
+        false,
+      );
+      expect(redis.setNx).toHaveBeenCalledWith(
+        'reengagement:once:chat_interview_time_mismatch:wo1:iv2:chat3',
+        '1',
+        7 * 24 * 60 * 60,
+      );
+      expect(await ledger.reserve('chat_interview_time_mismatch:wo1:iv2:chat3')).toBe('reserved');
+    });
+
+    it('Redis 异常 fail-closed：返回 false 不发（与 claimAnchor 一致，宁可漏发不重复骚扰）', async () => {
+      redis.setNx.mockRejectedValueOnce(new Error('redis down'));
+      await expect(ledger.acquireOnce('k')).resolves.toBe(false);
+      // Redis 恢复后同 key 可重新占位
+      await expect(ledger.acquireOnce('k')).resolves.toBe(true);
+    });
+  });
 });

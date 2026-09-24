@@ -35,6 +35,7 @@ import { formatCurrentTime } from '@infra/utils/date.util';
 import type { PromptInjectionAssessment } from '../../guardrail/input/prompt-injection-detector';
 import { PromptInjectionDetector } from '../../guardrail/input/prompt-injection-detector';
 import {
+  bookingFocusJobFallback,
   visibleBookingJobIds,
   visibleBookingWorkOrders,
   type MemoryPromptView,
@@ -43,11 +44,16 @@ import type { CreateTurnLedgerInput } from './turn-ledger';
 import type { NormalizedTurnInput } from './conversation-normalizer';
 import type { TurnSourceSnapshot } from './turn-data-loader.service';
 import { adjudicatePromptMemory, resolveActiveLaborForm } from './prompt-memory-adjudicator';
-import { extractTextFromContent } from './conversation-normalizer';
+import { extractTextFromContent, HUMAN_AGENT_MESSAGE_MARKER } from './conversation-normalizer';
 import { resolveToolContextModel, type ToolContextModel } from './tool-context.builder';
 import type { LoadedGeoAnchor } from './turn-data-loader.service';
 import { resolveBrandMentionKeys } from '@resolution/brand/brand-matcher';
 import { selectEvidenceDialogueMessages } from '@resolution/signal/corpus';
+import {
+  stripFriendVerifyGreeting,
+  stripLocationShareMarkup,
+  stripMessageDecorations,
+} from '@resolution/signal/markers';
 
 const RETURNING_USER_ENTRY_STAGE = 'job_consultation';
 
@@ -150,7 +156,10 @@ export function resolveTurnContext(input: {
       nowMs,
     ),
     geoSignalCities: inferCitiesFromGeoSignals(candidateTexts),
-    currentFocusJob: sources.memory.shortTerm.sessionState?.currentFocusJob ?? null,
+    // 焦点为空时用本轮预约快照里唯一的已约岗位兜底（J5/J6：已约候选人回头追问能按岗位 ID 重查）。
+    currentFocusJob:
+      sources.memory.shortTerm.sessionState?.currentFocusJob ??
+      bookingFocusJobFallback(bookingWorkOrders),
   };
   // 历史阶段可能已从当前策略删除；保持旧 Context 行为：入口阶段继续写入工具/账本，
   // Prompt 的阶段策略回落当前配置首阶段，避免整个策略块静默消失。
@@ -226,7 +235,7 @@ export function resolveTurnContext(input: {
 
 /**
  * 只汇总本次业务上下文提及过的品牌，不裁定意向、不更新品牌状态。
- * 复用品牌域目录、词形归一与品类配置；负向/履历照收，教学与工具参数不入语料。
+ * 复用品牌域目录、词形归一与品类配置；负向/履历照收，教学、工具参数与 Agent 自产回复不入语料。
  */
 function collectMentionedBrands(input: {
   sources: TurnSourceSnapshot;
@@ -263,8 +272,14 @@ function collectMentionedBrands(input: {
   };
 
   // 不剥引用块、不只选候选人自陈：本集合只回答“是否提及”，不负责归属或极性。
+  // Agent 自产回复不构成出处（chat 6aaf831e）：其合法推荐由下方岗位池/工单/品牌状态承接；
+  // 经理侧只认带来源标记的真人手动文本，经理发图走 visualSheetsByContent。
   for (const message of selectEvidenceDialogueMessages(input.conversationCorpusBlocks)) {
-    collect(extractTextFromContent(message.content));
+    const text = extractTextFromContent(message.content);
+    if (message.role !== 'assistant') collect(text);
+    else if (text.startsWith(HUMAN_AGENT_MESSAGE_MARKER)) {
+      collect(text.slice(HUMAN_AGENT_MESSAGE_MARKER.length));
+    }
   }
   collect(input.contactName, 'contact_name');
   collect(sources.turnBrandContext.nicknameBrands, 'contact_name');
@@ -320,12 +335,38 @@ export function resolveCriticalTurnInstructions(input: {
     .map((message) => `${message.role}: ${extractTextFromContent(message.content)}`)
     .join('\n');
   const combined = `${recent}\n${current}`;
+  const candidateSide = [
+    ...input.normalizedMessages
+      .slice(-12)
+      .map((message) => toCandidateSideText(message))
+      .filter(Boolean),
+    stripNonCandidateMarkup(current),
+  ].join('\n');
+  const targets = { current, combined, candidate_side: candidateSide };
 
   return FINAL_CHECK_RULES.filter((rule) => {
     if (rule.trigger !== 'turn') return false;
-    const text = rule.target === 'current' ? current : combined;
+    const text = targets[rule.target];
     return rule.patterns.every((pattern) => pattern.test(text));
   }).map((rule) => rule.text);
+}
+
+/** candidate_side 视图的单条投影：候选人原话与真人经理手动消息保留，Agent 自产文本丢弃。 */
+function toCandidateSideText(message: ModelMessage): string {
+  const text = extractTextFromContent(message.content);
+  if (message.role === 'user') return stripNonCandidateMarkup(text);
+  if (message.role === 'assistant' && text.includes(HUMAN_AGENT_MESSAGE_MARKER)) {
+    return stripNonCandidateMarkup(text.replace(HUMAN_AGENT_MESSAGE_MARKER, ''));
+  }
+  return '';
+}
+
+/** 剥掉 user 消息里不是候选人打的字：引用块、时间后缀、位置分享 POI、加好友系统语。 */
+function stripNonCandidateMarkup(text: string): string {
+  return stripFriendVerifyGreeting(
+    stripLocationShareMarkup(stripMessageDecorations(text), ' '),
+    ' ',
+  ).trim();
 }
 
 /** 把共享 TurnHints 裁决结果投影成 Section 可直接渲染的两档视图。 */

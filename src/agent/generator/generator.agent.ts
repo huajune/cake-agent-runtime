@@ -457,12 +457,25 @@ export class GeneratorAgent {
      * 命中时 AgentToolCall.durationMs 用真实执行时间；缺失时退回步骤墙钟近似。
      */
     toolExecutionTimings?: Map<string, number>;
+    /**
+     * 与 steps 等长：每步由 llm-executor 第几次尝试产出。executor 重试续接了前次已完成
+     * 工具步时不全相同，此时 agent_steps/tool_calls 逐条标注 attempt，让流水能看出
+     * 哪些工具调用在首次尝试里已真实执行、重试轮没有重放。
+     */
+    stepAttempts?: number[];
   }): GeneratorRunResult {
     const agentSteps: AgentStepDetail[] = [];
     const toolCalls: AgentToolCall[] = [];
+    const attemptOf = (stepIndex: number): number | undefined => {
+      const attempts = params.stepAttempts;
+      if (!attempts || attempts.length === 0) return undefined;
+      if (!attempts.some((value) => value !== attempts[0])) return undefined;
+      return attempts[stepIndex];
+    };
 
     let prevStepEndMs: number | undefined = params.stepStartMs;
     params.steps.forEach((step, stepIndex) => {
+      const attempt = attemptOf(stepIndex);
       const wallclockEnd = params.stepEndWallclocks?.[stepIndex];
       const stepEndMs = wallclockEnd ?? this.extractTimestampMs(step.response?.timestamp);
       const stepDurationMs =
@@ -499,6 +512,7 @@ export class GeneratorAgent {
             resultCount,
             status,
             durationMs,
+            ...(attempt !== undefined ? { attempt } : {}),
           };
           stepToolCalls.push(call);
           toolCalls.push(call);
@@ -507,6 +521,7 @@ export class GeneratorAgent {
 
       agentSteps.push({
         stepIndex,
+        ...(attempt !== undefined ? { attempt } : {}),
         text: step.text || undefined,
         reasoning: step.reasoningText || undefined,
         toolCalls: stepToolCalls,
@@ -566,12 +581,13 @@ export class GeneratorAgent {
       onStepFinish: () => {
         stepEndWallclocks.push(Date.now());
       },
-      // 失败尝试（结果校验不过/多步中途断）同样触发 onStepFinish：锚不随尝试重置，
-      // 其步末墙钟会错配到成功尝试的 steps 上。重置后 agent_steps 只计成功尝试，
+      // 失败尝试（结果校验不过/多步中途断）同样触发 onStepFinish。executor 重试时把上次
+      // 已完成的工具步续接进来（不重放副作用），这些步的墙钟原样保留、其后的孤儿墙钟
+      // 截掉；没有可续接步骤（从头重跑）时重置锚点，agent_steps 只计成功尝试，
       // 失败尝试耗时由 llm_execution 事件承接。
-      onAttemptStart: () => {
-        stepStartMs = Date.now();
-        stepEndWallclocks.length = 0;
+      onAttemptStart: ({ resumedStepCount }) => {
+        if (resumedStepCount === 0) stepStartMs = Date.now();
+        stepEndWallclocks.length = resumedStepCount;
       },
       onPreparedRequest: async (request) => {
         agentRequest = request;
@@ -605,6 +621,7 @@ export class GeneratorAgent {
       stepStartMs,
       stepEndWallclocks,
       toolExecutionTimings: ctx.toolExecutionTimings,
+      stepAttempts: r.stepAttempts,
     });
   }
 

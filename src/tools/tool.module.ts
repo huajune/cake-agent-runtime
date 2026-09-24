@@ -13,6 +13,7 @@ import { ToolRegistryService } from './tool-registry.service';
 import { LlmModule } from '@/llm/llm.module';
 import { CollectionFormService } from './collection/collection-form.service';
 import { CollectionFormStore } from './collection/collection-form.store';
+import { BookingSnapshotService } from './booking/booking-snapshot.service';
 
 @Module({
   imports: [
@@ -28,7 +29,12 @@ import { CollectionFormStore } from './collection/collection-form.store';
     InterventionModule,
     LlmModule,
   ],
-  providers: [CollectionFormStore, CollectionFormService, ToolRegistryService],
-  exports: [CollectionFormService, ToolRegistryService],
+  providers: [
+    CollectionFormStore,
+    CollectionFormService,
+    BookingSnapshotService,
+    ToolRegistryService,
+  ],
+  exports: [CollectionFormService, BookingSnapshotService, ToolRegistryService],
 })
 export class ToolModule {}

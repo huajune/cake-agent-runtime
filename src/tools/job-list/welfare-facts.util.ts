@@ -213,7 +213,7 @@ export function renderWelfareFactsBanner(facts: WelfareFacts): string {
   // 周报：食宿类缺口 7 项提及全部转人工，而实测 catering/accommodation
   // 在 includeWelfare=true 时 20/20 均有值——转人工发生在"没重查"或"有值仍不敢答"。
   lines.push(
-    '> ⚠️ 本速览即员工餐/住宿的**最终事实**：候选人问包不包吃住/有没有员工餐时按上面各项直接答（含"❌ 无"），**不得**回"岗位没写/我确认下"，也**不得**为此调 `request_handoff`。',
+    '> ⚠️ 本速览即员工餐/住宿的**最终事实**：候选人问包不包吃住/有没有员工餐时按上面各项直接答（含"❌ 无"），**不得**回"岗位没写/我确认下"，也**不得**为此调 `request_handoff`。「未配置即为无」**只适用于员工餐和住宿这两项**；交通补贴/晋升/其它福利/保险未配置时仍是"未明确"，不得替公司断言"没有"。',
   );
   lines.push(`> - 员工餐：${KIND_LABEL[facts.meals]}`);
   lines.push(`> - 住宿：${KIND_LABEL[facts.accommodation]}`);

@@ -1,5 +1,6 @@
 import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
+import { z } from 'zod';
 import { ConfigService } from '@nestjs/config';
 import {
   JobListQueryParams,
@@ -17,7 +18,11 @@ import {
   BIOrder,
   JobListApiResponseSchema,
   SelfSignupWorkOrdersParams,
+  SelfSignupWorkOrdersV2ApiResponseSchema,
+  SelfSignupWorkOrdersV2Params,
+  SelfSignupWorkOrdersV2Result,
   SignupWorkOrdersParams,
+  SignupWorkOrdersRequestOptions,
   SignupWorkOrdersResult,
   SignupWorkOrderItem,
   SignupWorkOrdersApiResponseSchema,
@@ -68,6 +73,13 @@ const MAX_ATTACHMENT_UPLOAD_BYTES = 20 * 1024 * 1024;
  */
 const SPONGE_TRACE_HEADER_NAMES = ['x-trace-id', 'traceid'] as const;
 
+/** 海绵工单类接口的统一信封：code=0 才算成功，data 段形状由各接口 schema 决定。 */
+interface SignupListEnvelope<TData> {
+  code: number;
+  message?: string;
+  data?: TData | null;
+}
+
 /** 从响应头里提取海绵链路 traceId，取不到返回 null。 */
 function extractSpongeTraceId(headers: Headers): string | null {
   for (const name of SPONGE_TRACE_HEADER_NAMES) {
@@ -94,6 +106,7 @@ export class SpongeService {
   private readonly interviewScheduleApi: string;
   private readonly signupListApi: string;
   private readonly selfSignupListApi: string;
+  private readonly selfSignupListV2Api: string;
   private readonly cancelWorkOrderApi: string;
   private readonly interviewBookingApi: string;
   private readonly modifyInterviewTimeApi: string;
@@ -123,6 +136,7 @@ export class SpongeService {
     this.interviewScheduleApi = `${spongeBaseUrl}/ai/api/interview/schedule`;
     this.signupListApi = `${spongeBaseUrl}/ai/api/workorder/signup/list`;
     this.selfSignupListApi = `${spongeBaseUrl}/ai/api/workorder/signup/self/list`;
+    this.selfSignupListV2Api = `${spongeBaseUrl}/ai/api/workorder/signup/self/list/v2`;
     this.cancelWorkOrderApi = `${spongeBaseUrl}/ai/api/workorder/cancel`;
     this.interviewBookingApi = `${spongeBaseUrl}/ai/api/workorder/entryUser`;
     this.modifyInterviewTimeApi = `${spongeBaseUrl}/ai/api/workorder/interviewTime/modify`;
@@ -406,11 +420,13 @@ export class SpongeService {
    * 查询候选人工单（海绵 signup/list，source of truth）。
    *
    * 约束：workOrderId / phone 至少传一个；响应为该候选人**全部**工单列表。
-   * 失败时抛错由调用方决定降级（cron 容忍、Agent 上下文不渲染）。
+   * 任何失败（HTTP 非 2xx、非零返回码、结构异常）都抛错，由调用方决定降级
+   * （cron 容忍、Agent 上下文不渲染、归属核验 fail-closed）——**查询失败 ≠ 没有工单**。
    */
   async fetchSignupWorkOrders(
     params: SignupWorkOrdersParams,
     tokenContext?: SpongeTokenResolveContext,
+    options?: SignupWorkOrdersRequestOptions,
   ): Promise<SignupWorkOrdersResult> {
     if (params.workOrderId == null && !params.phone) {
       throw new Error('fetchSignupWorkOrders 需至少传 workOrderId 或 phone');
@@ -419,10 +435,27 @@ export class SpongeService {
     const payload = stripNullish({
       workOrderId: params.workOrderId,
       phone: params.phone,
+      onlyCurrentAccount: params.onlyCurrentAccount,
       queryParam: params.queryParam,
     });
 
-    return this.postSignupWorkOrders(this.signupListApi, payload, tokenContext, '海绵工单查询');
+    const data = await this.postSignupWorkOrders(
+      this.signupListApi,
+      payload,
+      tokenContext,
+      '海绵工单查询',
+      SignupWorkOrdersApiResponseSchema,
+      options,
+    );
+    const workOrders: SignupWorkOrderItem[] = (data?.workOrders ?? []) as SignupWorkOrderItem[];
+    return {
+      candidateName: data?.candidateName ?? null,
+      gender: data?.gender ?? null,
+      phone: data?.phone ?? null,
+      age: data?.age ?? null,
+      total: data?.total ?? workOrders.length,
+      workOrders,
+    };
   }
 
   /**
@@ -439,22 +472,72 @@ export class SpongeService {
       queryParam: params.queryParam,
     });
 
-    return this.postSignupWorkOrders(
+    const data = await this.postSignupWorkOrders(
       this.selfSignupListApi,
       payload,
       tokenContext,
       '海绵当前供应商工单查询',
+      SignupWorkOrdersApiResponseSchema,
       { allowDefaultToken: false },
     );
+    const workOrders: SignupWorkOrderItem[] = (data?.workOrders ?? []) as SignupWorkOrderItem[];
+    return {
+      candidateName: data?.candidateName ?? null,
+      gender: data?.gender ?? null,
+      phone: data?.phone ?? null,
+      age: data?.age ?? null,
+      total: data?.total ?? workOrders.length,
+      workOrders,
+    };
   }
 
-  private async postSignupWorkOrders(
+  /**
+   * 分页查询当前供应商账号提交的报名工单（海绵 signup/self/list/v2，2026-09-22 新增）。
+   *
+   * 响应形状为 `data.result[] + data.total`，每行自带 phone / candidateName / signupSource，
+   * 供带外工单补偿扫描按 `signupSource=SUPPLIER` 筛选。与老 self/list 一样只认托管账号 token，
+   * 不退回全局 token（否则不同账号会混成同一供应商账号的数据）。失败抛错，调用方自行降级。
+   */
+  async fetchSelfSignupWorkOrdersV2(
+    params: SelfSignupWorkOrdersV2Params,
+    tokenContext?: SpongeTokenResolveContext,
+    options?: Pick<SignupWorkOrdersRequestOptions, 'timeoutMs'>,
+  ): Promise<SelfSignupWorkOrdersV2Result> {
+    const payload = stripNullish({
+      pageNum: params.pageNum,
+      pageSize: params.pageSize,
+      queryParam: params.queryParam,
+    });
+
+    const data = await this.postSignupWorkOrders(
+      this.selfSignupListV2Api,
+      payload,
+      tokenContext,
+      '海绵当前供应商工单分页查询(v2)',
+      SelfSignupWorkOrdersV2ApiResponseSchema,
+      { allowDefaultToken: false, timeoutMs: options?.timeoutMs },
+    );
+    const workOrders: SignupWorkOrderItem[] = (data?.result ?? []) as SignupWorkOrderItem[];
+    return {
+      // total 缺失原样透传 null：回落成本页行数会让翻页在第一页就误判「已取完」。
+      total: data?.total ?? null,
+      workOrders,
+    };
+  }
+
+  /**
+   * 工单查询公共 POST：HTTP 非 2xx、返回体结构异常、业务码非零一律抛错（错误信息带 label 与 code/message）。
+   * 不再把失败折成 `{ total: 0, workOrders: [] }`——那会让调用方把「查不到」误判成「没有工单」
+   * （带外对账、归属核验、复聊停止条件都依赖这个区分）。返回 schema 解析后的 data 段。
+   */
+  private async postSignupWorkOrders<TData>(
     url: string,
     payload: Record<string, unknown>,
     tokenContext: SpongeTokenResolveContext | undefined,
     label: string,
-    options?: { allowDefaultToken?: boolean },
-  ): Promise<SignupWorkOrdersResult> {
+    schema: z.ZodType<SignupListEnvelope<TData>>,
+    options?: SignupWorkOrdersRequestOptions,
+  ): Promise<TData | null | undefined> {
     const token = await this.resolveDulidayToken(tokenContext, {
       allowDefaultToken: options?.allowDefaultToken ?? true,
     });
@@ -465,6 +548,7 @@ export class SpongeService {
         'Duliday-Token': token,
       },
       body: JSON.stringify(payload),
+      ...(options?.timeoutMs != null ? { timeoutMs: options.timeoutMs } : {}),
     });
 
     if (!response.ok) {
@@ -472,31 +556,22 @@ export class SpongeService {
     }
 
     const rawData = await response.json();
-    const parsed = SignupWorkOrdersApiResponseSchema.safeParse(rawData);
+    const parsed: z.ZodSafeParseResult<SignupListEnvelope<TData>> = schema.safeParse(rawData);
     if (!parsed.success) {
-      this.logger.warn(
-        `${label}返回结构异常: ${parsed.error.issues
-          .map((issue) => `${issue.path.join('.') || '<root>'}: ${issue.message}`)
-          .join('; ')}`,
+      const issues = parsed.error.issues
+        .map((issue) => `${issue.path.join('.') || '<root>'}: ${issue.message}`)
+        .join('; ');
+      throw new Error(`${label}返回结构异常: ${issues}`);
+    }
+
+    const envelope = parsed.data;
+    if (envelope.code !== 0) {
+      throw new Error(
+        `${label}业务失败: code=${envelope.code} message=${envelope.message || '未知错误'}`,
       );
-      return { total: 0, workOrders: [] };
     }
 
-    if (parsed.data.code !== 0) {
-      this.logger.warn(`${label}业务失败: ${parsed.data.message || '未知错误'}`);
-      return { total: 0, workOrders: [] };
-    }
-
-    const data = parsed.data.data;
-    const workOrders: SignupWorkOrderItem[] = (data?.workOrders ?? []) as SignupWorkOrderItem[];
-    return {
-      candidateName: data?.candidateName ?? null,
-      gender: data?.gender ?? null,
-      phone: data?.phone ?? null,
-      age: data?.age ?? null,
-      total: data?.total ?? workOrders.length,
-      workOrders,
-    };
+    return envelope.data;
   }
 
   private async downloadAttachment(

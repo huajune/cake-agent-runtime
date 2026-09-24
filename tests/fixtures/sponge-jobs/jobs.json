@@ -1,0 +1,5694 @@
+[
+  {
+    "basicInfo": {
+      "jobId": 529305,
+      "storeInfo": {
+        "storeId": 310935,
+        "storeName": "示例门店1",
+        "storeCityName": "西安市",
+        "storeRegionName": "灞桥区",
+        "storeAddress": "西安市灞桥区",
+        "coordinateSystem": "GAODE",
+        "longitude": 109,
+        "latitude": 34
+      },
+      "brandId": 10005,
+      "brandName": "肯德基",
+      "projectId": 1214,
+      "projectName": "肯德基-西安",
+      "createTime": "2026-09-08 16:13:01",
+      "jobName": "肯德基-示例门店1-灵工-小时工",
+      "jobNickName": "灵工",
+      "jobCategoryName": "其他/其他",
+      "jobContent": "岗位工作内容主要有前台&后厨&总配工作站，每天上班时间为6-9小时，全程站立，上班期间不可携带手机以及配饰，且工作内容比较辛苦、节奏较快、有油烟。\n1、前厅工作站：需要进行顾客服务、配餐发餐、饮料制作、薯条炸制、收拾餐盘、大厅地面清洁以及垃圾桶清洁，部分餐厅需要进行厕所清洁；\n2、总配工作站：进行汉堡鸡肉卷等产品制作，饮料调制、在保温柜附近工作，较热；\n3、后厨工作站：主要负责半成品烹炸、烤制以及裹粉腌制，会接触到油锅、烤箱和生肉，进出冷藏以及冷冻库，体力要求较高。",
+      "cooperationMode": "招聘流程外包(RPO)",
+      "laborForm": "兼职",
+      "partTimeJobType": "小时工",
+      "needProbationWork": "不需要",
+      "needTraining": "不需要",
+      "haveProbation": "无试用期"
+    },
+    "jobSalary": {
+      "salaryScenarioList": [
+        {
+          "salaryType": "正式",
+          "salaryPeriod": "周结算",
+          "payday": "每周三",
+          "hasStairSalary": "有阶梯薪资",
+          "hasSpecialSalary": true,
+          "bonusDesc": "",
+          "basicSalary": {
+            "basicSalary": 13.2,
+            "basicSalaryUnit": "元/时"
+          },
+          "stairSalaries": [
+            {
+              "description": "超出后所有工时按照新的薪资标准计算",
+              "perTimeUnit": "不限",
+              "fullWorkTime": 1,
+              "fullWorkTimeUnit": "累计工作小时",
+              "salary": 13.2,
+              "salaryUnit": "元/时"
+            },
+            {
+              "description": "超出后所有工时按照新的薪资标准计算",
+              "perTimeUnit": "不限",
+              "fullWorkTime": 100,
+              "fullWorkTimeUnit": "累计工作小时",
+              "salary": 16,
+              "salaryUnit": "元/时"
+            },
+            {
+              "description": "超出后所有工时按照新的薪资标准计算",
+              "perTimeUnit": "不限",
+              "fullWorkTime": 180,
+              "fullWorkTimeUnit": "累计工作小时",
+              "salary": 18,
+              "salaryUnit": "元/时"
+            }
+          ],
+          "jobSpecialSalaryList": [
+            {
+              "specialSalary": 2.2,
+              "specialSalaryUnit": "元/时",
+              "startTime": "22:00",
+              "endTime": "07:00",
+              "specialSalaryRemark": "22:00以后-7:00以前 ，在原有时薪基础上加2.2元/h（月工时100及以上生效）"
+            }
+          ],
+          "comprehensiveSalary": {
+            "minComprehensiveSalary": 2000,
+            "maxComprehensiveSalary": 4000,
+            "comprehensiveSalaryUnit": "元/月"
+          },
+          "holidaySalary": {
+            "holidaySalaryType": "固定薪资",
+            "holidaySalaryMultiple": null,
+            "holidayFixedSalary": 50,
+            "holidayFixedSalaryUnit": "元/日",
+            "holidaySalaryDesc": "当天出勤8H以上，发放50元/天"
+          },
+          "overtimeSalary": {
+            "overtimeSalaryType": "无薪资",
+            "overtimeSalaryMultiple": null,
+            "overtimeFixedSalary": null,
+            "overtimeFixedSalaryUnit": null,
+            "overtimeSalaryDesc": null
+          },
+          "otherSalary": {
+            "commission": "",
+            "attendanceSalary": null,
+            "attendanceSalaryUnit": null,
+            "performance": ""
+          }
+        }
+      ],
+      "probationSalary": null
+    },
+    "welfare": {
+      "haveInsurance": "独立日不购买",
+      "accommodation": "无住宿福利",
+      "accommodationAllowance": null,
+      "accommodationAllowanceUnit": null,
+      "probationAccommodationAllowanceReceive": null,
+      "probationInsuranceReceive": null,
+      "catering": "无餐饮福利",
+      "cateringSalary": null,
+      "cateringSalaryUnit": null,
+      "probationCateringAllowanceReceive": null,
+      "trafficAllowanceSalary": null,
+      "trafficAllowanceSalaryUnit": null,
+      "memo": ""
+    },
+    "hiringRequirement": {
+      "figure": "不限",
+      "basicPersonalRequirements": {
+        "manMinHeight": null,
+        "manMaxHeight": null,
+        "womanMinHeight": null,
+        "womanMaxHeight": null,
+        "genderRequirement": "男性,女性",
+        "minAge": 18,
+        "maxAge": 50
+      },
+      "requirementsForHometown": {
+        "countryRequirementType": "仅要中国人",
+        "nationRequirementType": "不限",
+        "nations": null,
+        "nativePlaceRequirementType": "不限",
+        "nativePlaces": null
+      },
+      "marriageBearingAndSocialSecurity": {
+        "marriageBearingType": "不限",
+        "marriageBearing": null,
+        "socialSecurityList": null
+      },
+      "competencyRequirements": {
+        "workExperienceJobType": null,
+        "minWorkTime": null,
+        "minWorkTimeUnit": null
+      },
+      "language": {
+        "languages": null,
+        "languageRemark": ""
+      },
+      "certificate": {
+        "education": "不限",
+        "certificates": null,
+        "healthCertificate": null,
+        "driverLicenseType": null
+      }
+    },
+    "workTime": {
+      "employmentForm": "长期用工",
+      "minWorkMonths": 6,
+      "temporaryEmployment": null,
+      "weekAndMonthWorkTime": {
+        "arrangementCycleType": null,
+        "weekMonthArrangementMode": "做几休几",
+        "weekMonthRestMode": "周中休",
+        "onWorkLimitType": null,
+        "onWorkTimeUnit": null,
+        "onWorkTime": null,
+        "perWeekWorkDays": 6,
+        "perWeekRestDays": 1,
+        "workSingleDouble": null
+      },
+      "dayWorkTime": {
+        "arrangementType": "固定排班",
+        "combinedArrangement": [
+          {
+            "combinedArrangementStartTime": "06:00",
+            "combinedArrangementEndTime": "23:00"
+          }
+        ],
+        "fixedTime": null
+      }
+    },
+    "interviewProcess": {
+      "interviewTotal": 1,
+      "firstInterview": {
+        "firstInterviewWay": "线下面试",
+        "interviewAddress": "西安市未央区（周三休息不面试）",
+        "firstInterviewDesc": "",
+        "firstInterviewAccess": "",
+        "firstInterviewAttachments": [],
+        "interviewTimeMode": "周期",
+        "fixedInterviewTimes": null,
+        "periodicInterviewTimes": [
+          {
+            "interviewWeekday": "每周一",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "10:00",
+                "interviewEndTime": "17:00",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "09:00"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周四",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "10:00",
+                "interviewEndTime": "17:00",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "09:00"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周二",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "10:00",
+                "interviewEndTime": "17:00",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "09:00"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周五",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "10:00",
+                "interviewEndTime": "17:00",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "09:00"
+              }
+            ]
+          }
+        ]
+      },
+      "secondInterview": null,
+      "thirdInterview": null,
+      "interviewSupplement": [
+        {
+          "interviewSupplementId": 1,
+          "interviewSupplement": "社会身份"
+        },
+        {
+          "interviewSupplementId": 787,
+          "interviewSupplement": "面试门店"
+        }
+      ],
+      "probationWork": null,
+      "training": null,
+      "onWorkClothingExplain": "工服",
+      "onWorkInfo": "",
+      "processDesc": ""
+    }
+  },
+  {
+    "basicInfo": {
+      "jobId": 529161,
+      "storeInfo": {
+        "storeId": 310526,
+        "storeName": "示例门店2",
+        "storeCityName": "青岛市",
+        "storeRegionName": "市北区",
+        "storeAddress": "青岛市市北区",
+        "coordinateSystem": "GAODE",
+        "longitude": 120,
+        "latitude": 36
+      },
+      "brandId": 10440,
+      "brandName": "哈根达斯",
+      "projectId": 188,
+      "projectName": "哈根达斯",
+      "createTime": "2026-08-28 15:17:42",
+      "jobName": "哈根达斯-示例门店2-只要第二职业（需提供第一职业的劳动合同和社保证明）-小时工",
+      "jobNickName": "只要第二职业（需提供第一职业的劳动合同和社保证明）",
+      "jobCategoryName": "餐饮/面包甜品店/店员",
+      "jobContent": "1、负责开店前原料的准备；\n2、完成商品的来货验收、上架陈列摆放、补货、退货、防损等日常营业工作;\n3、前台接待客人点单，配料，制作茶饮小食，厨房准备物料；店内环境卫生；\n4、支持店面的运营。",
+      "cooperationMode": "招聘流程外包(RPO)",
+      "laborForm": "兼职",
+      "partTimeJobType": "小时工",
+      "needProbationWork": "不需要",
+      "needTraining": "不需要",
+      "haveProbation": "无试用期"
+    },
+    "jobSalary": {
+      "salaryScenarioList": [
+        {
+          "salaryType": "正式",
+          "salaryPeriod": "月结算",
+          "payday": "5号",
+          "hasStairSalary": "无阶梯薪资",
+          "hasSpecialSalary": false,
+          "bonusDesc": "",
+          "basicSalary": {
+            "basicSalary": 24,
+            "basicSalaryUnit": "元/时"
+          },
+          "stairSalaries": null,
+          "jobSpecialSalaryList": null,
+          "comprehensiveSalary": {
+            "minComprehensiveSalary": 96,
+            "maxComprehensiveSalary": 144,
+            "comprehensiveSalaryUnit": "元/天"
+          },
+          "holidaySalary": {
+            "holidaySalaryType": "多倍薪资",
+            "holidaySalaryMultiple": 3,
+            "holidayFixedSalary": null,
+            "holidayFixedSalaryUnit": null,
+            "holidaySalaryDesc": ""
+          },
+          "overtimeSalary": {
+            "overtimeSalaryType": "无薪资",
+            "overtimeSalaryMultiple": null,
+            "overtimeFixedSalary": null,
+            "overtimeFixedSalaryUnit": null,
+            "overtimeSalaryDesc": null
+          },
+          "otherSalary": {
+            "commission": "",
+            "attendanceSalary": null,
+            "attendanceSalaryUnit": null,
+            "performance": ""
+          }
+        }
+      ],
+      "probationSalary": null
+    },
+    "welfare": {
+      "haveInsurance": "独立日不购买",
+      "accommodation": "无住宿福利",
+      "accommodationAllowance": null,
+      "accommodationAllowanceUnit": null,
+      "probationAccommodationAllowanceReceive": null,
+      "probationInsuranceReceive": null,
+      "catering": "无餐饮福利",
+      "cateringSalary": null,
+      "cateringSalaryUnit": null,
+      "probationCateringAllowanceReceive": null,
+      "trafficAllowanceSalary": 0,
+      "trafficAllowanceSalaryUnit": "元/月",
+      "memo": "1.只要第二职业 24元/小时  2.每周至少2天 每天4-6小时"
+    },
+    "hiringRequirement": {
+      "figure": "第二职业",
+      "basicPersonalRequirements": {
+        "manMinHeight": 170,
+        "manMaxHeight": 185,
+        "womanMinHeight": 160,
+        "womanMaxHeight": 170,
+        "genderRequirement": "男性,女性",
+        "minAge": 19,
+        "maxAge": 33
+      },
+      "requirementsForHometown": {
+        "countryRequirementType": "仅要中国人",
+        "nationRequirementType": "不限",
+        "nations": null,
+        "nativePlaceRequirementType": "不限",
+        "nativePlaces": null
+      },
+      "marriageBearingAndSocialSecurity": {
+        "marriageBearingType": "不限",
+        "marriageBearing": null,
+        "socialSecurityList": "公司缴纳本地社保"
+      },
+      "competencyRequirements": {
+        "workExperienceJobType": "餐饮/咖啡厅/店员",
+        "minWorkTime": 2,
+        "minWorkTimeUnit": 1
+      },
+      "language": {
+        "languages": "普通话",
+        "languageRemark": ""
+      },
+      "certificate": {
+        "education": "高中",
+        "certificates": "健康证",
+        "healthCertificate": "食品健康证",
+        "driverLicenseType": null
+      }
+    },
+    "workTime": {
+      "employmentForm": "长期用工",
+      "minWorkMonths": 3,
+      "temporaryEmployment": null,
+      "weekAndMonthWorkTime": {
+        "arrangementCycleType": "每周",
+        "weekMonthArrangementMode": "自定义时间",
+        "weekMonthRestMode": null,
+        "onWorkLimitType": "至少上岗",
+        "onWorkTimeUnit": "天",
+        "onWorkTime": 2,
+        "perWeekWorkDays": null,
+        "perWeekRestDays": null,
+        "workSingleDouble": null
+      },
+      "dayWorkTime": {
+        "arrangementType": "固定排班",
+        "combinedArrangement": [
+          {
+            "combinedArrangementStartTime": "10:00",
+            "combinedArrangementEndTime": "16:30"
+          }
+        ],
+        "fixedTime": null
+      }
+    },
+    "interviewProcess": {
+      "interviewTotal": 1,
+      "firstInterview": {
+        "firstInterviewWay": "线下面试",
+        "interviewAddress": "同工作地址",
+        "firstInterviewDesc": "",
+        "firstInterviewAccess": "",
+        "firstInterviewAttachments": [],
+        "interviewTimeMode": "周期",
+        "fixedInterviewTimes": null,
+        "periodicInterviewTimes": [
+          {
+            "interviewWeekday": "每周一",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "10:00",
+                "interviewEndTime": "22:00",
+                "cycleDeadlineDay": "前一天",
+                "cycleDeadlineEnd": "17:30"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周二",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "10:00",
+                "interviewEndTime": "22:00",
+                "cycleDeadlineDay": "前一天",
+                "cycleDeadlineEnd": "17:30"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周三",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "10:00",
+                "interviewEndTime": "22:00",
+                "cycleDeadlineDay": "前一天",
+                "cycleDeadlineEnd": "17:30"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周四",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "10:00",
+                "interviewEndTime": "22:00",
+                "cycleDeadlineDay": "前一天",
+                "cycleDeadlineEnd": "17:30"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周五",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "10:00",
+                "interviewEndTime": "22:00",
+                "cycleDeadlineDay": "前一天",
+                "cycleDeadlineEnd": "17:30"
+              }
+            ]
+          }
+        ]
+      },
+      "secondInterview": null,
+      "thirdInterview": null,
+      "interviewSupplement": [
+        {
+          "interviewSupplementId": 4,
+          "interviewSupplement": "身高(cm)"
+        },
+        {
+          "interviewSupplementId": 50,
+          "interviewSupplement": "体重(kg)"
+        },
+        {
+          "interviewSupplementId": 1,
+          "interviewSupplement": "社会身份"
+        },
+        {
+          "interviewSupplementId": 12,
+          "interviewSupplement": "社保缴纳情况"
+        },
+        {
+          "interviewSupplementId": 741,
+          "interviewSupplement": "每天可工作时间段"
+        },
+        {
+          "interviewSupplementId": 13,
+          "interviewSupplement": "有无本地健康证"
+        }
+      ],
+      "probationWork": null,
+      "training": null,
+      "onWorkClothingExplain": "1，携带一直黑色水笔\n2，面试时保持微笑",
+      "onWorkInfo": "1、公司提供工服\n2、员工准备白色运动鞋",
+      "processDesc": ""
+    }
+  },
+  {
+    "basicInfo": {
+      "jobId": 529139,
+      "storeInfo": {
+        "storeId": 309341,
+        "storeName": "示例门店3",
+        "storeCityName": "上海市",
+        "storeRegionName": "奉贤区",
+        "storeAddress": "上海市奉贤区",
+        "coordinateSystem": "GAODE",
+        "longitude": 122,
+        "latitude": 31
+      },
+      "brandId": 10006,
+      "brandName": "必胜客",
+      "projectId": 1190,
+      "projectName": "上海必胜客加盟",
+      "createTime": "2026-08-26 14:53:32",
+      "jobName": "必胜客-示例门店3-校内骑手（自行车）-小时工",
+      "jobNickName": "校内骑手（自行车）",
+      "jobCategoryName": "骑手/快递/仓储/外卖骑手",
+      "jobContent": "1、通过线上接单完成指定门店与顾客之间的商品配送；\n2、主要负责相关区域商品的配送；\n3、保证商品的配送时效，卫生与安全。\n！！校内配送，只能自行车！！\n门店不提供交通工具，可报销小蓝车费用",
+      "cooperationMode": "业务流程外包(BPO)",
+      "laborForm": "兼职",
+      "partTimeJobType": "小时工",
+      "needProbationWork": "不需要",
+      "needTraining": "不需要",
+      "haveProbation": null
+    },
+    "jobSalary": {
+      "salaryScenarioList": [
+        {
+          "salaryType": "正式",
+          "salaryPeriod": "月结算",
+          "payday": "20号",
+          "hasStairSalary": "无阶梯薪资",
+          "hasSpecialSalary": false,
+          "bonusDesc": null,
+          "basicSalary": {
+            "basicSalary": 21,
+            "basicSalaryUnit": "元/时"
+          },
+          "stairSalaries": null,
+          "jobSpecialSalaryList": null,
+          "comprehensiveSalary": {
+            "minComprehensiveSalary": 2000,
+            "maxComprehensiveSalary": 6000,
+            "comprehensiveSalaryUnit": "元/月"
+          },
+          "holidaySalary": {
+            "holidaySalaryType": "固定薪资",
+            "holidaySalaryMultiple": null,
+            "holidayFixedSalary": 45,
+            "holidayFixedSalaryUnit": "元/时",
+            "holidaySalaryDesc": ""
+          },
+          "overtimeSalary": {
+            "overtimeSalaryType": "无薪资",
+            "overtimeSalaryMultiple": null,
+            "overtimeFixedSalary": null,
+            "overtimeFixedSalaryUnit": null,
+            "overtimeSalaryDesc": null
+          },
+          "otherSalary": {
+            "commission": null,
+            "attendanceSalary": null,
+            "attendanceSalaryUnit": null,
+            "performance": ""
+          }
+        }
+      ],
+      "probationSalary": null
+    },
+    "welfare": {
+      "haveInsurance": "独立日购买",
+      "accommodation": "无住宿福利",
+      "accommodationAllowance": null,
+      "accommodationAllowanceUnit": null,
+      "probationAccommodationAllowanceReceive": null,
+      "probationInsuranceReceive": null,
+      "catering": "无餐饮福利",
+      "cateringSalary": null,
+      "cateringSalaryUnit": null,
+      "probationCateringAllowanceReceive": null,
+      "trafficAllowanceSalary": null,
+      "trafficAllowanceSalaryUnit": null,
+      "memo": "月工时 0-100小时，21元每小时\n月工时100-140小时，23元每小时\n月工时140-160小时，24元每小时\n月工时160小时以上，25元每小时"
+    },
+    "hiringRequirement": {
+      "figure": "社会人士",
+      "basicPersonalRequirements": {
+        "manMinHeight": null,
+        "manMaxHeight": null,
+        "womanMinHeight": null,
+        "womanMaxHeight": null,
+        "genderRequirement": "男性,女性",
+        "minAge": 18,
+        "maxAge": 60
+      },
+      "requirementsForHometown": {
+        "countryRequirementType": "仅要中国人",
+        "nationRequirementType": "不限",
+        "nations": null,
+        "nativePlaceRequirementType": "不限",
+        "nativePlaces": null
+      },
+      "marriageBearingAndSocialSecurity": {
+        "marriageBearingType": "不限",
+        "marriageBearing": null,
+        "socialSecurityList": "不限"
+      },
+      "competencyRequirements": {
+        "workExperienceJobType": null,
+        "minWorkTime": null,
+        "minWorkTimeUnit": null
+      },
+      "language": {
+        "languages": null,
+        "languageRemark": ""
+      },
+      "certificate": {
+        "education": "不限",
+        "certificates": "健康证",
+        "healthCertificate": "食品健康证",
+        "driverLicenseType": null
+      }
+    },
+    "workTime": {
+      "employmentForm": "长期用工",
+      "minWorkMonths": 6,
+      "temporaryEmployment": null,
+      "weekAndMonthWorkTime": {
+        "arrangementCycleType": "每月",
+        "weekMonthArrangementMode": "自定义时间",
+        "weekMonthRestMode": null,
+        "onWorkLimitType": "至少上岗",
+        "onWorkTimeUnit": "小时",
+        "onWorkTime": 160,
+        "perWeekWorkDays": null,
+        "perWeekRestDays": null,
+        "workSingleDouble": null
+      },
+      "dayWorkTime": {
+        "arrangementType": "固定排班",
+        "combinedArrangement": [
+          {
+            "combinedArrangementStartTime": "08:30",
+            "combinedArrangementEndTime": "20:30"
+          }
+        ],
+        "fixedTime": null
+      }
+    },
+    "interviewProcess": {
+      "interviewTotal": 1,
+      "firstInterview": {
+        "firstInterviewWay": "线下面试",
+        "interviewAddress": "同工作地址",
+        "firstInterviewDesc": null,
+        "firstInterviewAccess": null,
+        "firstInterviewAttachments": [],
+        "interviewTimeMode": "等待通知",
+        "fixedInterviewTimes": null,
+        "periodicInterviewTimes": null
+      },
+      "secondInterview": null,
+      "thirdInterview": null,
+      "interviewSupplement": [
+        {
+          "interviewSupplementId": 13,
+          "interviewSupplement": "有无本地健康证"
+        },
+        {
+          "interviewSupplementId": 1,
+          "interviewSupplement": "社会身份"
+        }
+      ],
+      "probationWork": null,
+      "training": null,
+      "onWorkClothingExplain": "无",
+      "onWorkInfo": null,
+      "processDesc": ""
+    }
+  },
+  {
+    "basicInfo": {
+      "jobId": 529105,
+      "storeInfo": {
+        "storeId": 308454,
+        "storeName": "示例门店4",
+        "storeCityName": "上海市",
+        "storeRegionName": "松江区",
+        "storeAddress": "上海市松江区",
+        "coordinateSystem": "GAODE",
+        "longitude": 121,
+        "latitude": 31
+      },
+      "brandId": 10200,
+      "brandName": "成都你六姐",
+      "projectId": 941,
+      "projectName": "成都你六姐",
+      "createTime": "2026-08-24 11:25:16",
+      "jobName": "成都你六姐-示例门店4-前厅服务员-小时工",
+      "jobNickName": "前厅服务员",
+      "jobCategoryName": "餐饮/中餐/普通服务员",
+      "jobContent": "1、主动迎接顾客、引导入座、协助点单，熟悉菜品与辣度，做好点餐与上菜服务。\n2、及时巡台添茶、收空盘，保持桌面与就餐区干净整洁。\n3、顾客点餐后协助结账、用餐结束后快速清理台面，保障翻台效率。",
+      "cooperationMode": "业务流程外包(BPO)",
+      "laborForm": "兼职",
+      "partTimeJobType": "小时工",
+      "needProbationWork": "需要",
+      "needTraining": "不需要",
+      "haveProbation": null
+    },
+    "jobSalary": {
+      "salaryScenarioList": [
+        {
+          "salaryType": "正式",
+          "salaryPeriod": "月结算",
+          "payday": "15号",
+          "hasStairSalary": "无阶梯薪资",
+          "hasSpecialSalary": false,
+          "bonusDesc": null,
+          "basicSalary": {
+            "basicSalary": 24,
+            "basicSalaryUnit": "元/时"
+          },
+          "stairSalaries": null,
+          "jobSpecialSalaryList": null,
+          "comprehensiveSalary": {
+            "minComprehensiveSalary": 2000,
+            "maxComprehensiveSalary": 3000,
+            "comprehensiveSalaryUnit": "元/月"
+          },
+          "holidaySalary": {
+            "holidaySalaryType": "固定薪资",
+            "holidaySalaryMultiple": null,
+            "holidayFixedSalary": 24,
+            "holidayFixedSalaryUnit": "元/时",
+            "holidaySalaryDesc": ""
+          },
+          "overtimeSalary": {
+            "overtimeSalaryType": "固定薪资",
+            "overtimeSalaryMultiple": null,
+            "overtimeFixedSalary": 24,
+            "overtimeFixedSalaryUnit": "元/时",
+            "overtimeSalaryDesc": ""
+          },
+          "otherSalary": {
+            "commission": null,
+            "attendanceSalary": null,
+            "attendanceSalaryUnit": null,
+            "performance": ""
+          }
+        }
+      ],
+      "probationSalary": {
+        "salary": 20,
+        "salaryUnit": "元/时",
+        "salaryDescription": "1、试工周期：2-4小时，试工1小时内劝退的无薪资 2、试工通过后正式入职的，薪资按照正式兼职的时薪结算 3、若试工了2~4小时（完整试工周期）后不做了或试工失败的，则按照20元/时结算"
+      }
+    },
+    "welfare": {
+      "haveInsurance": "独立日购买",
+      "accommodation": "无住宿福利",
+      "accommodationAllowance": null,
+      "accommodationAllowanceUnit": null,
+      "probationAccommodationAllowanceReceive": null,
+      "probationInsuranceReceive": "是",
+      "catering": "包吃",
+      "cateringSalary": null,
+      "cateringSalaryUnit": null,
+      "probationCateringAllowanceReceive": "否",
+      "trafficAllowanceSalary": null,
+      "trafficAllowanceSalaryUnit": null,
+      "memo": "1、兼职长期稳定后店铺按实际情况提供员工餐。\n2、薪资计算方式：\n月工时≤40小时:24元/小时\n月工时40＞80小时：超出40h的部分26元/小时\n工时80以上：超出80h的部分28元/小时\n【例如小甲月出勤85小时，则小甲有40小时按照24结算，40小时按照26结算，5小时按照28结算】\n注明：高峰兼职一天排班为2-4小时，全天的排班8小时的暑假工薪资20元/小时"
+    },
+    "hiringRequirement": {
+      "figure": "社会人士",
+      "basicPersonalRequirements": {
+        "manMinHeight": null,
+        "manMaxHeight": null,
+        "womanMinHeight": null,
+        "womanMaxHeight": null,
+        "genderRequirement": "男性,女性",
+        "minAge": 20,
+        "maxAge": 40
+      },
+      "requirementsForHometown": {
+        "countryRequirementType": "仅要中国人",
+        "nationRequirementType": "不限",
+        "nations": null,
+        "nativePlaceRequirementType": "不限",
+        "nativePlaces": null
+      },
+      "marriageBearingAndSocialSecurity": {
+        "marriageBearingType": "不限",
+        "marriageBearing": null,
+        "socialSecurityList": "不限"
+      },
+      "competencyRequirements": {
+        "workExperienceJobType": null,
+        "minWorkTime": null,
+        "minWorkTimeUnit": null
+      },
+      "language": {
+        "languages": "普通话",
+        "languageRemark": ""
+      },
+      "certificate": {
+        "education": "初中",
+        "certificates": "健康证",
+        "healthCertificate": "食品健康证",
+        "driverLicenseType": null
+      }
+    },
+    "workTime": {
+      "employmentForm": "长期用工",
+      "minWorkMonths": 3,
+      "temporaryEmployment": null,
+      "weekAndMonthWorkTime": {
+        "arrangementCycleType": "每周",
+        "weekMonthArrangementMode": "自定义时间",
+        "weekMonthRestMode": null,
+        "onWorkLimitType": "至少上岗",
+        "onWorkTimeUnit": "天",
+        "onWorkTime": 7,
+        "perWeekWorkDays": null,
+        "perWeekRestDays": null,
+        "workSingleDouble": null
+      },
+      "dayWorkTime": {
+        "arrangementType": "固定排班",
+        "combinedArrangement": [
+          {
+            "combinedArrangementStartTime": "12:00",
+            "combinedArrangementEndTime": "14:00"
+          }
+        ],
+        "fixedTime": null
+      }
+    },
+    "interviewProcess": {
+      "interviewTotal": 1,
+      "firstInterview": {
+        "firstInterviewWay": "线下面试",
+        "interviewAddress": "同工作地址",
+        "firstInterviewDesc": null,
+        "firstInterviewAccess": null,
+        "firstInterviewAttachments": null,
+        "interviewTimeMode": "周期",
+        "fixedInterviewTimes": null,
+        "periodicInterviewTimes": [
+          {
+            "interviewWeekday": "每周一",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "13:30",
+                "interviewEndTime": "16:30",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "12:00"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周二",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "13:30",
+                "interviewEndTime": "16:30",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "12:00"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周三",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "13:30",
+                "interviewEndTime": "16:30",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "12:00"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周四",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "13:30",
+                "interviewEndTime": "16:30",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "12:00"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周五",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "13:30",
+                "interviewEndTime": "16:30",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "12:00"
+              }
+            ]
+          }
+        ]
+      },
+      "secondInterview": null,
+      "thirdInterview": null,
+      "interviewSupplement": [
+        {
+          "interviewSupplementId": 13,
+          "interviewSupplement": "有无本地健康证"
+        }
+      ],
+      "probationWork": {
+        "probationWorkPeriod": 2,
+        "probationWorkPeriodUnit": "小时",
+        "probationWorkAddress": null,
+        "probationWorkAssessment": "实操",
+        "probationWorkAssessmentText": null
+      },
+      "training": null,
+      "onWorkClothingExplain": "门店提供工服，请自备黑裤子、运动鞋。",
+      "onWorkInfo": "健康证",
+      "processDesc": "1、门店店长面试，共一轮面试；\n2、面试当天出结果，通过的候选人会直接沟通上岗时间；"
+    }
+  },
+  {
+    "basicInfo": {
+      "jobId": 529084,
+      "storeInfo": {
+        "storeId": 309148,
+        "storeName": "示例门店5",
+        "storeCityName": "南京市",
+        "storeRegionName": "雨花台区",
+        "storeAddress": "南京市雨花台区",
+        "coordinateSystem": "GAODE",
+        "longitude": 119,
+        "latitude": 32
+      },
+      "brandId": 10006,
+      "brandName": "必胜客",
+      "projectId": 1185,
+      "projectName": "南京必胜客-1",
+      "createTime": "2026-08-21 10:34:10",
+      "jobName": "必胜客-示例门店5-餐厅服务员-小时工",
+      "jobNickName": "餐厅服务员",
+      "jobCategoryName": "餐饮/西餐厅/普通服务员",
+      "jobContent": "1、布置餐厅和餐桌；\n2、引领客人入座就席，协助客人点菜，向客人介绍特色或时令菜点；\n3、整理餐厅的清洁卫生。\n每周需上岗4-5天，周末必须在岗",
+      "cooperationMode": "业务流程外包(BPO)",
+      "laborForm": "兼职",
+      "partTimeJobType": "小时工",
+      "needProbationWork": "不需要",
+      "needTraining": "不需要",
+      "haveProbation": "无试用期"
+    },
+    "jobSalary": {
+      "salaryScenarioList": [
+        {
+          "salaryType": "正式",
+          "salaryPeriod": "日结算",
+          "payday": "次日结",
+          "hasStairSalary": "有阶梯薪资",
+          "hasSpecialSalary": false,
+          "bonusDesc": "",
+          "basicSalary": {
+            "basicSalary": 21,
+            "basicSalaryUnit": "元/时"
+          },
+          "stairSalaries": [
+            {
+              "description": "超出后所有工时按照新的薪资标准计算",
+              "perTimeUnit": "不限",
+              "fullWorkTime": 100,
+              "fullWorkTimeUnit": "累计工作小时",
+              "salary": 22,
+              "salaryUnit": "元/时"
+            },
+            {
+              "description": "超出后所有工时按照新的薪资标准计算",
+              "perTimeUnit": "不限",
+              "fullWorkTime": 190,
+              "fullWorkTimeUnit": "累计工作小时",
+              "salary": 22.8,
+              "salaryUnit": "元/时"
+            }
+          ],
+          "jobSpecialSalaryList": null,
+          "comprehensiveSalary": {
+            "minComprehensiveSalary": 2000,
+            "maxComprehensiveSalary": 4000,
+            "comprehensiveSalaryUnit": "元/月"
+          },
+          "holidaySalary": {
+            "holidaySalaryType": "固定薪资",
+            "holidaySalaryMultiple": null,
+            "holidayFixedSalary": 55.5,
+            "holidayFixedSalaryUnit": "元/时",
+            "holidaySalaryDesc": ""
+          },
+          "overtimeSalary": {
+            "overtimeSalaryType": "无薪资",
+            "overtimeSalaryMultiple": null,
+            "overtimeFixedSalary": null,
+            "overtimeFixedSalaryUnit": null,
+            "overtimeSalaryDesc": null
+          },
+          "otherSalary": {
+            "commission": "",
+            "attendanceSalary": null,
+            "attendanceSalaryUnit": null,
+            "performance": ""
+          }
+        }
+      ],
+      "probationSalary": null
+    },
+    "welfare": {
+      "haveInsurance": "独立日不购买",
+      "accommodation": "无住宿福利",
+      "accommodationAllowance": null,
+      "accommodationAllowanceUnit": null,
+      "probationAccommodationAllowanceReceive": null,
+      "probationInsuranceReceive": null,
+      "catering": "无餐饮福利",
+      "cateringSalary": null,
+      "cateringSalaryUnit": null,
+      "probationCateringAllowanceReceive": null,
+      "trafficAllowanceSalary": null,
+      "trafficAllowanceSalaryUnit": null,
+      "memo": ""
+    },
+    "hiringRequirement": {
+      "figure": "社会人士",
+      "basicPersonalRequirements": {
+        "manMinHeight": null,
+        "manMaxHeight": null,
+        "womanMinHeight": null,
+        "womanMaxHeight": null,
+        "genderRequirement": "男性,女性",
+        "minAge": 22,
+        "maxAge": 50
+      },
+      "requirementsForHometown": {
+        "countryRequirementType": "仅要中国人",
+        "nationRequirementType": "不限",
+        "nations": null,
+        "nativePlaceRequirementType": "不限",
+        "nativePlaces": null
+      },
+      "marriageBearingAndSocialSecurity": {
+        "marriageBearingType": "不限",
+        "marriageBearing": null,
+        "socialSecurityList": "不限"
+      },
+      "competencyRequirements": {
+        "workExperienceJobType": null,
+        "minWorkTime": null,
+        "minWorkTimeUnit": null
+      },
+      "language": {
+        "languages": null,
+        "languageRemark": ""
+      },
+      "certificate": {
+        "education": "高中",
+        "certificates": "健康证",
+        "healthCertificate": "食品健康证",
+        "driverLicenseType": null
+      }
+    },
+    "workTime": {
+      "employmentForm": "长期用工",
+      "minWorkMonths": 3,
+      "temporaryEmployment": null,
+      "weekAndMonthWorkTime": {
+        "arrangementCycleType": "每周",
+        "weekMonthArrangementMode": "自定义时间",
+        "weekMonthRestMode": null,
+        "onWorkLimitType": "至少上岗",
+        "onWorkTimeUnit": "天",
+        "onWorkTime": 4,
+        "perWeekWorkDays": null,
+        "perWeekRestDays": null,
+        "workSingleDouble": null
+      },
+      "dayWorkTime": {
+        "arrangementType": "固定排班",
+        "combinedArrangement": [
+          {
+            "combinedArrangementStartTime": "07:00",
+            "combinedArrangementEndTime": "00:00"
+          },
+          {
+            "combinedArrangementStartTime": "16:00",
+            "combinedArrangementEndTime": "23:00"
+          }
+        ],
+        "fixedTime": null
+      }
+    },
+    "interviewProcess": {
+      "interviewTotal": 1,
+      "firstInterview": {
+        "firstInterviewWay": "电话面试",
+        "interviewAddress": "南京市雨花台区",
+        "firstInterviewDesc": "有负责人打电话与候选人沟通！请保证填写名单是电话号码是准确的、正在使用的、可接通的！！！\n不要学生，发现是学生不结算招募费！！！！",
+        "firstInterviewAccess": "",
+        "firstInterviewAttachments": [],
+        "interviewTimeMode": "周期",
+        "fixedInterviewTimes": null,
+        "periodicInterviewTimes": [
+          {
+            "interviewWeekday": "每周五",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "15:00",
+                "interviewEndTime": "19:00",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "10:00"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周四",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "15:00",
+                "interviewEndTime": "19:00",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "10:00"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周三",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "15:00",
+                "interviewEndTime": "19:00",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "10:00"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周二",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "15:00",
+                "interviewEndTime": "19:00",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "10:00"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周一",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "15:00",
+                "interviewEndTime": "19:00",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "10:00"
+              }
+            ]
+          }
+        ]
+      },
+      "secondInterview": null,
+      "thirdInterview": null,
+      "interviewSupplement": [
+        {
+          "interviewSupplementId": 4,
+          "interviewSupplement": "身高(cm)"
+        },
+        {
+          "interviewSupplementId": 13,
+          "interviewSupplement": "有无本地健康证"
+        },
+        {
+          "interviewSupplementId": 50,
+          "interviewSupplement": "体重(kg)"
+        },
+        {
+          "interviewSupplementId": 11,
+          "interviewSupplement": "居住地址"
+        },
+        {
+          "interviewSupplementId": 566,
+          "interviewSupplement": "意向工作地区"
+        },
+        {
+          "interviewSupplementId": 611,
+          "interviewSupplement": "周末能否出勤"
+        },
+        {
+          "interviewSupplementId": 741,
+          "interviewSupplement": "每天可工作时间段"
+        },
+        {
+          "interviewSupplementId": 1,
+          "interviewSupplement": "社会身份"
+        },
+        {
+          "interviewSupplementId": 246,
+          "interviewSupplement": "最晚可在岗日期"
+        }
+      ],
+      "probationWork": null,
+      "training": null,
+      "onWorkClothingExplain": "根据门店安排自备",
+      "onWorkInfo": "",
+      "processDesc": ""
+    }
+  },
+  {
+    "basicInfo": {
+      "jobId": 529060,
+      "storeInfo": {
+        "storeId": 310759,
+        "storeName": "示例门店6",
+        "storeCityName": "上海市",
+        "storeRegionName": "宝山区",
+        "storeAddress": "上海市宝山区",
+        "coordinateSystem": "GAODE",
+        "longitude": 121,
+        "latitude": 31
+      },
+      "brandId": 10200,
+      "brandName": "成都你六姐",
+      "projectId": 941,
+      "projectName": "成都你六姐",
+      "createTime": "2026-08-18 16:37:58",
+      "jobName": "成都你六姐-示例门店6-前厅服务员（有证约）-小时工",
+      "jobNickName": "前厅服务员（有证约）",
+      "jobCategoryName": "餐饮/火锅店/普通服务员",
+      "jobContent": "1、主动迎接顾客、引导入座、协助点单，熟悉菜品与辣度，做好点餐与上菜服务。\n2、及时巡台添茶、收空盘，保持桌面与就餐区干净整洁。\n3、顾客点餐后协助结账、用餐结束后快速清理台面，保障翻台效率。",
+      "cooperationMode": "业务流程外包(BPO)",
+      "laborForm": "兼职",
+      "partTimeJobType": "小时工",
+      "needProbationWork": "需要",
+      "needTraining": "不需要",
+      "haveProbation": null
+    },
+    "jobSalary": {
+      "salaryScenarioList": [
+        {
+          "salaryType": "正式",
+          "salaryPeriod": "月结算",
+          "payday": "15号",
+          "hasStairSalary": "有阶梯薪资",
+          "hasSpecialSalary": false,
+          "bonusDesc": null,
+          "basicSalary": {
+            "basicSalary": 24,
+            "basicSalaryUnit": "元/时"
+          },
+          "stairSalaries": [
+            {
+              "description": "超出部分按照新的薪资标准计算",
+              "perTimeUnit": "每月",
+              "fullWorkTime": 40,
+              "fullWorkTimeUnit": "累计工作小时",
+              "salary": 26,
+              "salaryUnit": "元/时"
+            },
+            {
+              "description": "超出部分按照新的薪资标准计算",
+              "perTimeUnit": "每月",
+              "fullWorkTime": 80,
+              "fullWorkTimeUnit": "累计工作小时",
+              "salary": 28,
+              "salaryUnit": "元/时"
+            }
+          ],
+          "jobSpecialSalaryList": null,
+          "comprehensiveSalary": {
+            "minComprehensiveSalary": 1000,
+            "maxComprehensiveSalary": 3000,
+            "comprehensiveSalaryUnit": "元/月"
+          },
+          "holidaySalary": {
+            "holidaySalaryType": "无薪资",
+            "holidaySalaryMultiple": null,
+            "holidayFixedSalary": null,
+            "holidayFixedSalaryUnit": null,
+            "holidaySalaryDesc": null
+          },
+          "overtimeSalary": {
+            "overtimeSalaryType": "无薪资",
+            "overtimeSalaryMultiple": null,
+            "overtimeFixedSalary": null,
+            "overtimeFixedSalaryUnit": null,
+            "overtimeSalaryDesc": null
+          },
+          "otherSalary": {
+            "commission": null,
+            "attendanceSalary": null,
+            "attendanceSalaryUnit": null,
+            "performance": ""
+          }
+        }
+      ],
+      "probationSalary": {
+        "salary": 24,
+        "salaryUnit": "元/时",
+        "salaryDescription": "试工不通过无薪资，试工不通过的情况包含：1、员工个人原因主动自离   2、店长现场评估无法胜任岗位；试工通过后，试工时长会正常计薪；"
+      }
+    },
+    "welfare": {
+      "haveInsurance": "独立日购买",
+      "accommodation": "无住宿福利",
+      "accommodationAllowance": null,
+      "accommodationAllowanceUnit": null,
+      "probationAccommodationAllowanceReceive": null,
+      "probationInsuranceReceive": "是",
+      "catering": "无餐饮福利",
+      "cateringSalary": null,
+      "cateringSalaryUnit": null,
+      "probationCateringAllowanceReceive": null,
+      "trafficAllowanceSalary": null,
+      "trafficAllowanceSalaryUnit": null,
+      "memo": null
+    },
+    "hiringRequirement": {
+      "figure": "不限",
+      "basicPersonalRequirements": {
+        "manMinHeight": null,
+        "manMaxHeight": null,
+        "womanMinHeight": null,
+        "womanMaxHeight": null,
+        "genderRequirement": "男性,女性",
+        "minAge": 18,
+        "maxAge": 40
+      },
+      "requirementsForHometown": {
+        "countryRequirementType": "不限",
+        "nationRequirementType": "不限",
+        "nations": null,
+        "nativePlaceRequirementType": "不限",
+        "nativePlaces": null
+      },
+      "marriageBearingAndSocialSecurity": {
+        "marriageBearingType": "不限",
+        "marriageBearing": null,
+        "socialSecurityList": null
+      },
+      "competencyRequirements": {
+        "workExperienceJobType": null,
+        "minWorkTime": null,
+        "minWorkTimeUnit": null
+      },
+      "language": {
+        "languages": null,
+        "languageRemark": ""
+      },
+      "certificate": {
+        "education": "不限",
+        "certificates": null,
+        "healthCertificate": null,
+        "driverLicenseType": null
+      }
+    },
+    "workTime": {
+      "employmentForm": "长期用工",
+      "minWorkMonths": 3,
+      "temporaryEmployment": null,
+      "weekAndMonthWorkTime": {
+        "arrangementCycleType": "每周",
+        "weekMonthArrangementMode": "自定义时间",
+        "weekMonthRestMode": null,
+        "onWorkLimitType": "至少上岗",
+        "onWorkTimeUnit": "天",
+        "onWorkTime": 6,
+        "perWeekWorkDays": null,
+        "perWeekRestDays": null,
+        "workSingleDouble": null
+      },
+      "dayWorkTime": {
+        "arrangementType": "固定排班",
+        "combinedArrangement": [
+          {
+            "combinedArrangementStartTime": "11:00",
+            "combinedArrangementEndTime": "14:00"
+          }
+        ],
+        "fixedTime": null
+      }
+    },
+    "interviewProcess": {
+      "interviewTotal": 1,
+      "firstInterview": {
+        "firstInterviewWay": "线下面试",
+        "interviewAddress": "同工作地址",
+        "firstInterviewDesc": null,
+        "firstInterviewAccess": null,
+        "firstInterviewAttachments": [],
+        "interviewTimeMode": "周期",
+        "fixedInterviewTimes": null,
+        "periodicInterviewTimes": [
+          {
+            "interviewWeekday": "每周二",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "13:30",
+                "interviewEndTime": "16:30",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "10:00"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周一",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "13:30",
+                "interviewEndTime": "16:30",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "10:00"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周三",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "13:30",
+                "interviewEndTime": "16:30",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "10:00"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周四",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "13:30",
+                "interviewEndTime": "16:30",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "10:00"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周五",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "13:30",
+                "interviewEndTime": "16:30",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "10:00"
+              }
+            ]
+          }
+        ]
+      },
+      "secondInterview": null,
+      "thirdInterview": null,
+      "interviewSupplement": null,
+      "probationWork": {
+        "probationWorkPeriod": 2,
+        "probationWorkPeriodUnit": "小时",
+        "probationWorkAddress": null,
+        "probationWorkAssessment": "实操",
+        "probationWorkAssessmentText": null
+      },
+      "training": null,
+      "onWorkClothingExplain": "着装整洁，佩戴工牌",
+      "onWorkInfo": null,
+      "processDesc": ""
+    }
+  },
+  {
+    "basicInfo": {
+      "jobId": 528941,
+      "storeInfo": {
+        "storeId": 310726,
+        "storeName": "示例门店7",
+        "storeCityName": "北京市",
+        "storeRegionName": "海淀区",
+        "storeAddress": "北京市海淀区",
+        "coordinateSystem": "GAODE",
+        "longitude": 116,
+        "latitude": 40
+      },
+      "brandId": 10006,
+      "brandName": "必胜客",
+      "projectId": 1045,
+      "projectName": "北京必胜客",
+      "createTime": "2026-08-07 13:58:27",
+      "jobName": "必胜客-示例门店7-内场/外场-小时工",
+      "jobNickName": "内场/外场",
+      "jobCategoryName": "餐饮/快餐店/普通服务员",
+      "jobContent": "1、布置餐厅和餐桌；\n2、引领客人入座就席，协助客人点菜，向客人介绍特色或时令菜点；\n3、整理餐厅的清洁卫生。\n班次：\n\n17:00-23:00\t内场  工作站+打烊\n18:00-24:00     内场  工作站+洗碗\n备注：预计8月底开业（不要学生！）前期挂广外PBJ044\n招聘注意事项：\n之前在百胜集团旗下入职过的，一年内重新入职仍算客户人选，不能结算",
+      "cooperationMode": "业务流程外包(BPO)",
+      "laborForm": "兼职",
+      "partTimeJobType": "小时工",
+      "needProbationWork": "不需要",
+      "needTraining": "不需要",
+      "haveProbation": null
+    },
+    "jobSalary": {
+      "salaryScenarioList": [
+        {
+          "salaryType": "正式",
+          "salaryPeriod": "日结算",
+          "payday": "当日结",
+          "hasStairSalary": "有阶梯薪资",
+          "hasSpecialSalary": false,
+          "bonusDesc": null,
+          "basicSalary": {
+            "basicSalary": 20,
+            "basicSalaryUnit": "元/时"
+          },
+          "stairSalaries": [
+            {
+              "description": "超出后所有工时按照新的薪资标准计算",
+              "perTimeUnit": "每月",
+              "fullWorkTime": 100,
+              "fullWorkTimeUnit": "累计工作小时",
+              "salary": 22,
+              "salaryUnit": "元/时"
+            },
+            {
+              "description": "超出后所有工时按照新的薪资标准计算",
+              "perTimeUnit": "每月",
+              "fullWorkTime": 190,
+              "fullWorkTimeUnit": "累计工作小时",
+              "salary": 24,
+              "salaryUnit": "元/时"
+            }
+          ],
+          "jobSpecialSalaryList": null,
+          "comprehensiveSalary": {
+            "minComprehensiveSalary": 2000,
+            "maxComprehensiveSalary": 4000,
+            "comprehensiveSalaryUnit": "元/月"
+          },
+          "holidaySalary": {
+            "holidaySalaryType": "固定薪资",
+            "holidaySalaryMultiple": null,
+            "holidayFixedSalary": 38,
+            "holidayFixedSalaryUnit": "元/时",
+            "holidaySalaryDesc": "月实际出勤工时<100为38,月实际出勤工时>100为57"
+          },
+          "overtimeSalary": {
+            "overtimeSalaryType": "无薪资",
+            "overtimeSalaryMultiple": null,
+            "overtimeFixedSalary": null,
+            "overtimeFixedSalaryUnit": null,
+            "overtimeSalaryDesc": null
+          },
+          "otherSalary": {
+            "commission": null,
+            "attendanceSalary": null,
+            "attendanceSalaryUnit": null,
+            "performance": ""
+          }
+        }
+      ],
+      "probationSalary": null
+    },
+    "welfare": {
+      "haveInsurance": "独立日购买",
+      "accommodation": "无住宿福利",
+      "accommodationAllowance": null,
+      "accommodationAllowanceUnit": null,
+      "probationAccommodationAllowanceReceive": null,
+      "probationInsuranceReceive": null,
+      "catering": "无餐饮福利",
+      "cateringSalary": null,
+      "cateringSalaryUnit": null,
+      "probationCateringAllowanceReceive": null,
+      "trafficAllowanceSalary": null,
+      "trafficAllowanceSalaryUnit": null,
+      "memo": "月实际出勤工时>190 时薪24100<月实际出勤工时<190 时薪22月实际出勤工时<100 时薪20法定节假日时薪：月实际出勤工时<100为38月实际出勤工时>100为57每天按照20*实际出勤日结，阶梯部分&培训期间费用月结，每月10号发上月差价，培训工资20-100元，具体以实际培训工作站为准，不计入阶梯计算"
+    },
+    "hiringRequirement": {
+      "figure": "不限",
+      "basicPersonalRequirements": {
+        "manMinHeight": null,
+        "manMaxHeight": null,
+        "womanMinHeight": null,
+        "womanMaxHeight": null,
+        "genderRequirement": "男性,女性",
+        "minAge": 20,
+        "maxAge": 50
+      },
+      "requirementsForHometown": {
+        "countryRequirementType": "不限",
+        "nationRequirementType": "不限",
+        "nations": null,
+        "nativePlaceRequirementType": "不限",
+        "nativePlaces": null
+      },
+      "marriageBearingAndSocialSecurity": {
+        "marriageBearingType": "不限",
+        "marriageBearing": null,
+        "socialSecurityList": null
+      },
+      "competencyRequirements": {
+        "workExperienceJobType": null,
+        "minWorkTime": null,
+        "minWorkTimeUnit": null
+      },
+      "language": {
+        "languages": null,
+        "languageRemark": ""
+      },
+      "certificate": {
+        "education": "中专\\技校\\职高",
+        "certificates": "健康证",
+        "healthCertificate": "食品健康证",
+        "driverLicenseType": null
+      }
+    },
+    "workTime": {
+      "employmentForm": "长期用工",
+      "minWorkMonths": 6,
+      "temporaryEmployment": null,
+      "weekAndMonthWorkTime": {
+        "arrangementCycleType": "每周",
+        "weekMonthArrangementMode": "自定义时间",
+        "weekMonthRestMode": null,
+        "onWorkLimitType": "至少上岗",
+        "onWorkTimeUnit": "天",
+        "onWorkTime": 3,
+        "perWeekWorkDays": null,
+        "perWeekRestDays": null,
+        "workSingleDouble": null
+      },
+      "dayWorkTime": {
+        "arrangementType": "固定排班",
+        "combinedArrangement": [
+          {
+            "combinedArrangementStartTime": "17:00",
+            "combinedArrangementEndTime": "23:00"
+          },
+          {
+            "combinedArrangementStartTime": "18:00",
+            "combinedArrangementEndTime": "00:00"
+          }
+        ],
+        "fixedTime": null
+      }
+    },
+    "interviewProcess": {
+      "interviewTotal": 1,
+      "firstInterview": {
+        "firstInterviewWay": "AI面试",
+        "interviewAddress": null,
+        "firstInterviewDesc": "AI面试，请让候选人提前一天或者邀约当天下午三点半前完成AI面试！提前两天或者当天下午三点半前未完成AI面试的，判定为未参面！",
+        "firstInterviewAccess": null,
+        "firstInterviewAttachments": [],
+        "interviewTimeMode": "周期",
+        "fixedInterviewTimes": null,
+        "periodicInterviewTimes": [
+          {
+            "interviewWeekday": "每周一",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "10:00",
+                "interviewEndTime": "19:00",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "09:30"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周二",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "10:00",
+                "interviewEndTime": "19:00",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "09:30"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周三",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "10:00",
+                "interviewEndTime": "19:00",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "09:30"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周四",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "10:00",
+                "interviewEndTime": "19:00",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "09:30"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周五",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "10:00",
+                "interviewEndTime": "19:00",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "09:30"
+              }
+            ]
+          }
+        ]
+      },
+      "secondInterview": null,
+      "thirdInterview": null,
+      "interviewSupplement": [
+        {
+          "interviewSupplementId": 4,
+          "interviewSupplement": "身高(cm)"
+        },
+        {
+          "interviewSupplementId": 13,
+          "interviewSupplement": "有无本地健康证"
+        },
+        {
+          "interviewSupplementId": 50,
+          "interviewSupplement": "体重(kg)"
+        },
+        {
+          "interviewSupplementId": 300,
+          "interviewSupplement": "每周可出勤天数"
+        },
+        {
+          "interviewSupplementId": 11,
+          "interviewSupplement": "居住地址"
+        },
+        {
+          "interviewSupplementId": 741,
+          "interviewSupplement": "每天可工作时间段"
+        },
+        {
+          "interviewSupplementId": 611,
+          "interviewSupplement": "周末能否出勤"
+        },
+        {
+          "interviewSupplementId": 628,
+          "interviewSupplement": "是否接受一定范围内门店调度"
+        },
+        {
+          "interviewSupplementId": 1,
+          "interviewSupplement": "社会身份"
+        }
+      ],
+      "probationWork": null,
+      "training": null,
+      "onWorkClothingExplain": "门店提供",
+      "onWorkInfo": null,
+      "processDesc": ""
+    }
+  },
+  {
+    "basicInfo": {
+      "jobId": 528854,
+      "storeInfo": {
+        "storeId": 310700,
+        "storeName": "示例门店8",
+        "storeCityName": "深圳市",
+        "storeRegionName": "南山区",
+        "storeAddress": "深圳市南山区",
+        "coordinateSystem": "GAODE",
+        "longitude": 114,
+        "latitude": 23
+      },
+      "brandId": 10005,
+      "brandName": "肯德基",
+      "projectId": 1142,
+      "projectName": "深圳肯德基",
+      "createTime": "2026-08-03 17:10:01",
+      "jobName": "肯德基-示例门店8-餐厅服务员-小时工",
+      "jobNickName": "餐厅服务员",
+      "jobCategoryName": "餐饮/西餐厅/普通服务员",
+      "jobContent": "1.前厅服务：收银，点餐，配发餐，餐区清洁\n2.总配服务：产品组装，饮料调制\n3.厨房服务：裹粉烤制，后厨清洗\n具备以下条件，即可申请:\n1.22-45周岁，初中及以上学历，专业不限；\n2.热情开朗，善于与人沟通，有志于从事服务业；\n3.适应早班、晚班和高效的工作节奏 ，乐于从事连锁餐饮零售业",
+      "cooperationMode": "业务流程外包(BPO)",
+      "laborForm": "兼职",
+      "partTimeJobType": "小时工",
+      "needProbationWork": "不需要",
+      "needTraining": "不需要",
+      "haveProbation": null
+    },
+    "jobSalary": {
+      "salaryScenarioList": [
+        {
+          "salaryType": "正式",
+          "salaryPeriod": "周结算",
+          "payday": "每周三",
+          "hasStairSalary": "有阶梯薪资",
+          "hasSpecialSalary": false,
+          "bonusDesc": null,
+          "basicSalary": {
+            "basicSalary": 16.3,
+            "basicSalaryUnit": "元/时"
+          },
+          "stairSalaries": [
+            {
+              "description": "超出后所有工时按照新的薪资标准计算",
+              "perTimeUnit": "每月",
+              "fullWorkTime": 80,
+              "fullWorkTimeUnit": "累计工作小时",
+              "salary": 19,
+              "salaryUnit": "元/时"
+            }
+          ],
+          "jobSpecialSalaryList": null,
+          "comprehensiveSalary": {
+            "minComprehensiveSalary": 2000,
+            "maxComprehensiveSalary": 3000,
+            "comprehensiveSalaryUnit": "元/月"
+          },
+          "holidaySalary": {
+            "holidaySalaryType": "固定薪资",
+            "holidaySalaryMultiple": null,
+            "holidayFixedSalary": 32,
+            "holidayFixedSalaryUnit": "元/时",
+            "holidaySalaryDesc": ""
+          },
+          "overtimeSalary": {
+            "overtimeSalaryType": "无薪资",
+            "overtimeSalaryMultiple": null,
+            "overtimeFixedSalary": null,
+            "overtimeFixedSalaryUnit": null,
+            "overtimeSalaryDesc": null
+          },
+          "otherSalary": {
+            "commission": null,
+            "attendanceSalary": null,
+            "attendanceSalaryUnit": null,
+            "performance": ""
+          }
+        }
+      ],
+      "probationSalary": null
+    },
+    "welfare": {
+      "haveInsurance": "独立日购买",
+      "accommodation": "无住宿福利",
+      "accommodationAllowance": null,
+      "accommodationAllowanceUnit": null,
+      "probationAccommodationAllowanceReceive": null,
+      "probationInsuranceReceive": null,
+      "catering": "无餐饮福利",
+      "cateringSalary": null,
+      "cateringSalaryUnit": null,
+      "probationCateringAllowanceReceive": null,
+      "trafficAllowanceSalary": null,
+      "trafficAllowanceSalaryUnit": null,
+      "memo": "\"灵活用工价格：薪资周结月工时<80小时，平时16.3/时，月工时>80小时，平时19/时，\"正式入职前有学习期,学习期最短的四小时最长的三天，要根据门店安排您做哪个服务内容决定，学习期有学习奖金，30-170不等依据学习内容决定，不同学习内容对应不同金额的奖金，全部完成后会拿到.学习奖金平均下来是每小时7-8元，学习完成后一次性发放，中通放弃或者不通过没有"
+    },
+    "hiringRequirement": {
+      "figure": "社会人士",
+      "basicPersonalRequirements": {
+        "manMinHeight": null,
+        "manMaxHeight": null,
+        "womanMinHeight": null,
+        "womanMaxHeight": null,
+        "genderRequirement": "男性,女性",
+        "minAge": 18,
+        "maxAge": 50
+      },
+      "requirementsForHometown": {
+        "countryRequirementType": "仅要中国人",
+        "nationRequirementType": "仅要",
+        "nations": ["汉族"],
+        "nativePlaceRequirementType": "不限",
+        "nativePlaces": null
+      },
+      "marriageBearingAndSocialSecurity": {
+        "marriageBearingType": "不限",
+        "marriageBearing": null,
+        "socialSecurityList": "不限"
+      },
+      "competencyRequirements": {
+        "workExperienceJobType": null,
+        "minWorkTime": null,
+        "minWorkTimeUnit": null
+      },
+      "language": {
+        "languages": null,
+        "languageRemark": ""
+      },
+      "certificate": {
+        "education": "初中",
+        "certificates": "健康证",
+        "healthCertificate": "食品健康证",
+        "driverLicenseType": null
+      }
+    },
+    "workTime": {
+      "employmentForm": "长期用工",
+      "minWorkMonths": 6,
+      "temporaryEmployment": null,
+      "weekAndMonthWorkTime": {
+        "arrangementCycleType": "每周",
+        "weekMonthArrangementMode": "自定义时间",
+        "weekMonthRestMode": null,
+        "onWorkLimitType": "至少上岗",
+        "onWorkTimeUnit": "天",
+        "onWorkTime": 4,
+        "perWeekWorkDays": null,
+        "perWeekRestDays": null,
+        "workSingleDouble": null
+      },
+      "dayWorkTime": {
+        "arrangementType": "固定排班",
+        "combinedArrangement": [
+          {
+            "combinedArrangementStartTime": "06:00",
+            "combinedArrangementEndTime": "15:00"
+          },
+          {
+            "combinedArrangementStartTime": "15:00",
+            "combinedArrangementEndTime": "23:00"
+          }
+        ],
+        "fixedTime": null
+      }
+    },
+    "interviewProcess": {
+      "interviewTotal": 1,
+      "firstInterview": {
+        "firstInterviewWay": "视频面试",
+        "interviewAddress": null,
+        "firstInterviewDesc": "添加面试官【面试官姓名】，备注“独立日＋姓名＋门店",
+        "firstInterviewAccess": null,
+        "firstInterviewAttachments": ["https://example.invalid/attachment"],
+        "interviewTimeMode": "周期",
+        "fixedInterviewTimes": null,
+        "periodicInterviewTimes": [
+          {
+            "interviewWeekday": "每周五",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "10:00",
+                "interviewEndTime": "19:00",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "10:00"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周一",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "10:00",
+                "interviewEndTime": "19:00",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "10:00"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周二",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "10:00",
+                "interviewEndTime": "19:00",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "10:00"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周三",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "10:00",
+                "interviewEndTime": "19:00",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "10:00"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周四",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "10:00",
+                "interviewEndTime": "19:00",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "10:00"
+              }
+            ]
+          }
+        ]
+      },
+      "secondInterview": null,
+      "thirdInterview": null,
+      "interviewSupplement": [
+        {
+          "interviewSupplementId": 13,
+          "interviewSupplement": "有无本地健康证"
+        },
+        {
+          "interviewSupplementId": 791,
+          "interviewSupplement": "学生身份无法办理入职"
+        },
+        {
+          "interviewSupplementId": 730,
+          "interviewSupplement": "是否接受岗位工作内容"
+        }
+      ],
+      "probationWork": null,
+      "training": null,
+      "onWorkClothingExplain": "黑裤子黑鞋",
+      "onWorkInfo": null,
+      "processDesc": ""
+    }
+  },
+  {
+    "basicInfo": {
+      "jobId": 528837,
+      "storeInfo": {
+        "storeId": 310691,
+        "storeName": "示例门店9",
+        "storeCityName": "南京市",
+        "storeRegionName": "鼓楼区",
+        "storeAddress": "南京市鼓楼区",
+        "coordinateSystem": "GAODE",
+        "longitude": 119,
+        "latitude": 32
+      },
+      "brandId": 10005,
+      "brandName": "肯德基",
+      "projectId": 1209,
+      "projectName": "南京肯德基-加盟",
+      "createTime": "2026-08-03 15:28:10",
+      "jobName": "肯德基-示例门店9-餐厅服务员-小时工",
+      "jobNickName": "餐厅服务员",
+      "jobCategoryName": "餐饮/西餐厅/普通服务员",
+      "jobContent": "外场顾客接待:需要引导顾客坐到位置上，协助点单，要及时向顾客介绍当期的促销活动和产品，给顾客上餐，在顾客离开前询问满意度，进行收桌、垃圾分类，空闲时候需要打扫堂食区域;\n内场需要后厨备餐(准备食材、油炸、煎烤、切配等)、餐品制作、厨房清洁等，您的每个工作站我们都会有专人带训，不用担心不会，但也有需要看学习视频和需要记忆的内容。(后续进到餐厅由经理分配具体工作站的内容);\n晚上打烊的工作，主要包含洗碗，洗刷烤箱，冰箱及其他设备和机器，擦洗桌面，台面，垃圾分类之类的，要检查所有当天使用的物料的有效期，过期要及时丢弃扔掉\n需求岗位：\n晚班16:00-24:00（厨房1、总配1）",
+      "cooperationMode": "业务流程外包(BPO)",
+      "laborForm": "兼职",
+      "partTimeJobType": "小时工",
+      "needProbationWork": "不需要",
+      "needTraining": "不需要",
+      "haveProbation": "无试用期"
+    },
+    "jobSalary": {
+      "salaryScenarioList": [
+        {
+          "salaryType": "正式",
+          "salaryPeriod": "月结算",
+          "payday": "10号",
+          "hasStairSalary": "有阶梯薪资",
+          "hasSpecialSalary": false,
+          "bonusDesc": "",
+          "basicSalary": {
+            "basicSalary": 21,
+            "basicSalaryUnit": "元/时"
+          },
+          "stairSalaries": [
+            {
+              "description": "超出部分按照新的薪资标准计算",
+              "perTimeUnit": "不限",
+              "fullWorkTime": 0,
+              "fullWorkTimeUnit": "累计工作小时",
+              "salary": 21,
+              "salaryUnit": "元/时"
+            },
+            {
+              "description": "超出部分按照新的薪资标准计算",
+              "perTimeUnit": "不限",
+              "fullWorkTime": 60,
+              "fullWorkTimeUnit": "累计工作小时",
+              "salary": 22,
+              "salaryUnit": "元/时"
+            }
+          ],
+          "jobSpecialSalaryList": null,
+          "comprehensiveSalary": {
+            "minComprehensiveSalary": 2000,
+            "maxComprehensiveSalary": 4000,
+            "comprehensiveSalaryUnit": "元/月"
+          },
+          "holidaySalary": {
+            "holidaySalaryType": "固定薪资",
+            "holidaySalaryMultiple": null,
+            "holidayFixedSalary": 48,
+            "holidayFixedSalaryUnit": "元/时",
+            "holidaySalaryDesc": ""
+          },
+          "overtimeSalary": {
+            "overtimeSalaryType": "无薪资",
+            "overtimeSalaryMultiple": null,
+            "overtimeFixedSalary": null,
+            "overtimeFixedSalaryUnit": null,
+            "overtimeSalaryDesc": null
+          },
+          "otherSalary": {
+            "commission": "",
+            "attendanceSalary": null,
+            "attendanceSalaryUnit": null,
+            "performance": ""
+          }
+        }
+      ],
+      "probationSalary": null
+    },
+    "welfare": {
+      "haveInsurance": "独立日不购买",
+      "accommodation": "无住宿福利",
+      "accommodationAllowance": null,
+      "accommodationAllowanceUnit": null,
+      "probationAccommodationAllowanceReceive": null,
+      "probationInsuranceReceive": null,
+      "catering": "无餐饮福利",
+      "cateringSalary": null,
+      "cateringSalaryUnit": null,
+      "probationCateringAllowanceReceive": null,
+      "trafficAllowanceSalary": null,
+      "trafficAllowanceSalaryUnit": null,
+      "memo": ""
+    },
+    "hiringRequirement": {
+      "figure": "社会人士",
+      "basicPersonalRequirements": {
+        "manMinHeight": null,
+        "manMaxHeight": null,
+        "womanMinHeight": null,
+        "womanMaxHeight": null,
+        "genderRequirement": "男性,女性",
+        "minAge": 20,
+        "maxAge": 45
+      },
+      "requirementsForHometown": {
+        "countryRequirementType": "不限",
+        "nationRequirementType": "不限",
+        "nations": null,
+        "nativePlaceRequirementType": "不限",
+        "nativePlaces": null
+      },
+      "marriageBearingAndSocialSecurity": {
+        "marriageBearingType": "不限",
+        "marriageBearing": null,
+        "socialSecurityList": "不限"
+      },
+      "competencyRequirements": {
+        "workExperienceJobType": null,
+        "minWorkTime": null,
+        "minWorkTimeUnit": null
+      },
+      "language": {
+        "languages": null,
+        "languageRemark": ""
+      },
+      "certificate": {
+        "education": "高中",
+        "certificates": "健康证",
+        "healthCertificate": "食品健康证",
+        "driverLicenseType": null
+      }
+    },
+    "workTime": {
+      "employmentForm": "长期用工",
+      "minWorkMonths": 6,
+      "temporaryEmployment": null,
+      "weekAndMonthWorkTime": {
+        "arrangementCycleType": "每周",
+        "weekMonthArrangementMode": "自定义时间",
+        "weekMonthRestMode": null,
+        "onWorkLimitType": "至多上岗",
+        "onWorkTimeUnit": "天",
+        "onWorkTime": 6,
+        "perWeekWorkDays": null,
+        "perWeekRestDays": null,
+        "workSingleDouble": null
+      },
+      "dayWorkTime": {
+        "arrangementType": "固定排班",
+        "combinedArrangement": [
+          {
+            "combinedArrangementStartTime": "16:00",
+            "combinedArrangementEndTime": "00:00"
+          }
+        ],
+        "fixedTime": null
+      }
+    },
+    "interviewProcess": {
+      "interviewTotal": 1,
+      "firstInterview": {
+        "firstInterviewWay": "电话面试",
+        "interviewAddress": "南京市鼓楼区",
+        "firstInterviewDesc": "经理电话联系人选，请保证人选电话是正确的",
+        "firstInterviewAccess": "",
+        "firstInterviewAttachments": [],
+        "interviewTimeMode": "周期",
+        "fixedInterviewTimes": null,
+        "periodicInterviewTimes": [
+          {
+            "interviewWeekday": "每周一",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "14:00",
+                "interviewEndTime": "18:00",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "10:00"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周二",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "14:00",
+                "interviewEndTime": "18:00",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "10:00"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周三",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "14:00",
+                "interviewEndTime": "18:00",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "10:00"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周四",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "14:00",
+                "interviewEndTime": "18:00",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "10:00"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周五",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "14:00",
+                "interviewEndTime": "18:00",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "10:00"
+              }
+            ]
+          }
+        ]
+      },
+      "secondInterview": null,
+      "thirdInterview": null,
+      "interviewSupplement": [
+        {
+          "interviewSupplementId": 4,
+          "interviewSupplement": "身高(cm)"
+        },
+        {
+          "interviewSupplementId": 13,
+          "interviewSupplement": "有无本地健康证"
+        },
+        {
+          "interviewSupplementId": 50,
+          "interviewSupplement": "体重(kg)"
+        },
+        {
+          "interviewSupplementId": 753,
+          "interviewSupplement": "有无工作经验"
+        },
+        {
+          "interviewSupplementId": 11,
+          "interviewSupplement": "居住地址"
+        },
+        {
+          "interviewSupplementId": 533,
+          "interviewSupplement": "通勤方式"
+        },
+        {
+          "interviewSupplementId": 1,
+          "interviewSupplement": "社会身份"
+        }
+      ],
+      "probationWork": null,
+      "training": null,
+      "onWorkClothingExplain": "自备黑裤子黑鞋子\n不要有纹身",
+      "onWorkInfo": "",
+      "processDesc": ""
+    }
+  },
+  {
+    "basicInfo": {
+      "jobId": 528752,
+      "storeInfo": {
+        "storeId": 310646,
+        "storeName": "示例门店10",
+        "storeCityName": "佛山市",
+        "storeRegionName": "南海区",
+        "storeAddress": "佛山市南海区",
+        "coordinateSystem": "GAODE",
+        "longitude": 113,
+        "latitude": 23
+      },
+      "brandId": 10451,
+      "brandName": "达美乐",
+      "projectId": 1206,
+      "projectName": "达美乐-佛山东莞",
+      "createTime": "2026-07-29 10:44:14",
+      "jobName": "达美乐-示例门店10-兼职通岗服务员-小时工",
+      "jobNickName": "兼职通岗服务员",
+      "jobCategoryName": "餐饮/中餐/普通服务员",
+      "jobContent": "日常9-14，2人\n17-20，2人\n周末全天，3人（周末要求能上20-24）\n服务内容描述：\n1、按照服务要求，认真做好餐厅卫生；\n2、各种比萨及小食制作；\n3、热情主动、耐心礼貌地接待顾客；\n4、负责达美乐外卖配送工作，将美味送至顾客手中或指定地点。\n人员要求：\n1、18周岁以上，可办理食品类健康证；\n2、会骑电动车，遵守交通规则；\n3、严格遵守食品安全类法律法规及服务制度，礼貌待客，文明用语。\n\n配送距离：店周围约2.5公里范围内\n派单方式：系统派单，无需抢单，主打一个快乐和谐又能赚钱的环境\n送餐工具：公司免费提供电瓶车、保温外送箱、工作制服等全套装备",
+      "cooperationMode": "业务流程外包(BPO)",
+      "laborForm": "兼职",
+      "partTimeJobType": "小时工",
+      "needProbationWork": "不需要",
+      "needTraining": "不需要",
+      "haveProbation": null
+    },
+    "jobSalary": {
+      "salaryScenarioList": [
+        {
+          "salaryType": "正式",
+          "salaryPeriod": "月结算",
+          "payday": "5号",
+          "hasStairSalary": "无阶梯薪资",
+          "hasSpecialSalary": true,
+          "bonusDesc": null,
+          "basicSalary": {
+            "basicSalary": 13.8,
+            "basicSalaryUnit": "元/时"
+          },
+          "stairSalaries": null,
+          "jobSpecialSalaryList": [
+            {
+              "specialSalary": 1,
+              "specialSalaryUnit": "元/单",
+              "startTime": "11:00",
+              "endTime": "14:00",
+              "specialSalaryRemark": "高峰期外送单补贴"
+            },
+            {
+              "specialSalary": 1,
+              "specialSalaryUnit": "元/单",
+              "startTime": "17:00",
+              "endTime": "20:00",
+              "specialSalaryRemark": "高峰期外送单补贴"
+            }
+          ],
+          "comprehensiveSalary": {
+            "minComprehensiveSalary": 0,
+            "maxComprehensiveSalary": 110,
+            "comprehensiveSalaryUnit": "元/天"
+          },
+          "holidaySalary": {
+            "holidaySalaryType": "固定薪资",
+            "holidaySalaryMultiple": null,
+            "holidayFixedSalary": 34.5,
+            "holidayFixedSalaryUnit": "元/时",
+            "holidaySalaryDesc": ""
+          },
+          "overtimeSalary": {
+            "overtimeSalaryType": "无薪资",
+            "overtimeSalaryMultiple": null,
+            "overtimeFixedSalary": null,
+            "overtimeFixedSalaryUnit": null,
+            "overtimeSalaryDesc": null
+          },
+          "otherSalary": {
+            "commission": null,
+            "attendanceSalary": null,
+            "attendanceSalaryUnit": null,
+            "performance": ""
+          }
+        }
+      ],
+      "probationSalary": null
+    },
+    "welfare": {
+      "haveInsurance": "独立日购买",
+      "accommodation": "无住宿福利",
+      "accommodationAllowance": null,
+      "accommodationAllowanceUnit": null,
+      "probationAccommodationAllowanceReceive": null,
+      "probationInsuranceReceive": null,
+      "catering": "无餐饮福利",
+      "cateringSalary": null,
+      "cateringSalaryUnit": null,
+      "probationCateringAllowanceReceive": null,
+      "trafficAllowanceSalary": null,
+      "trafficAllowanceSalaryUnit": null,
+      "memo": "公司免费提供电瓶车、保温外送箱、工作制服等全套装备"
+    },
+    "hiringRequirement": {
+      "figure": "社会人士",
+      "basicPersonalRequirements": {
+        "manMinHeight": null,
+        "manMaxHeight": null,
+        "womanMinHeight": null,
+        "womanMaxHeight": null,
+        "genderRequirement": "男性,女性",
+        "minAge": 18,
+        "maxAge": 40
+      },
+      "requirementsForHometown": {
+        "countryRequirementType": "不限",
+        "nationRequirementType": "不限",
+        "nations": null,
+        "nativePlaceRequirementType": "不限",
+        "nativePlaces": null
+      },
+      "marriageBearingAndSocialSecurity": {
+        "marriageBearingType": "不限",
+        "marriageBearing": null,
+        "socialSecurityList": "本人缴纳本地社保,本人缴纳外地社保,无公司在缴社保流水"
+      },
+      "competencyRequirements": {
+        "workExperienceJobType": null,
+        "minWorkTime": null,
+        "minWorkTimeUnit": null
+      },
+      "language": {
+        "languages": null,
+        "languageRemark": ""
+      },
+      "certificate": {
+        "education": "初中",
+        "certificates": "健康证",
+        "healthCertificate": "食品健康证",
+        "driverLicenseType": null
+      }
+    },
+    "workTime": {
+      "employmentForm": "长期用工",
+      "minWorkMonths": 6,
+      "temporaryEmployment": null,
+      "weekAndMonthWorkTime": {
+        "arrangementCycleType": "每周",
+        "weekMonthArrangementMode": "自定义时间",
+        "weekMonthRestMode": null,
+        "onWorkLimitType": "至少上岗",
+        "onWorkTimeUnit": "天",
+        "onWorkTime": 4,
+        "perWeekWorkDays": null,
+        "perWeekRestDays": null,
+        "workSingleDouble": null
+      },
+      "dayWorkTime": {
+        "arrangementType": "固定排班",
+        "combinedArrangement": [
+          {
+            "combinedArrangementStartTime": "09:00",
+            "combinedArrangementEndTime": "14:00"
+          },
+          {
+            "combinedArrangementStartTime": "17:00",
+            "combinedArrangementEndTime": "20:00"
+          },
+          {
+            "combinedArrangementStartTime": "20:00",
+            "combinedArrangementEndTime": "00:00"
+          }
+        ],
+        "fixedTime": null
+      }
+    },
+    "interviewProcess": {
+      "interviewTotal": 2,
+      "firstInterview": {
+        "firstInterviewWay": "AI面试",
+        "interviewAddress": null,
+        "firstInterviewDesc": "第一轮AI面试，AI面试链接由手机短信通知，请留正确的手机号码（面试通过后续签约手机号需保持一致），AI面试通过后由店长电话面试或者线下面试",
+        "firstInterviewAccess": null,
+        "firstInterviewAttachments": [],
+        "interviewTimeMode": "周期",
+        "fixedInterviewTimes": null,
+        "periodicInterviewTimes": [
+          {
+            "interviewWeekday": "每周五",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "11:00",
+                "interviewEndTime": "18:00",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "09:00"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周四",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "11:00",
+                "interviewEndTime": "18:00",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "09:00"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周三",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "11:00",
+                "interviewEndTime": "18:00",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "09:00"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周二",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "11:00",
+                "interviewEndTime": "18:00",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "09:00"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周一",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "11:00",
+                "interviewEndTime": "18:00",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "09:00"
+              }
+            ]
+          }
+        ]
+      },
+      "secondInterview": {
+        "secondInterviewWay": "线下面试",
+        "secondInterviewAddress": "同工作地址"
+      },
+      "thirdInterview": null,
+      "interviewSupplement": [
+        {
+          "interviewSupplementId": 13,
+          "interviewSupplement": "有无本地健康证"
+        },
+        {
+          "interviewSupplementId": 2,
+          "interviewSupplement": "学历"
+        },
+        {
+          "interviewSupplementId": 744,
+          "interviewSupplement": "可在岗几个月"
+        },
+        {
+          "interviewSupplementId": 1,
+          "interviewSupplement": "社会身份"
+        },
+        {
+          "interviewSupplementId": 12,
+          "interviewSupplement": "社保缴纳情况"
+        }
+      ],
+      "probationWork": null,
+      "training": null,
+      "onWorkClothingExplain": "根据门店要求",
+      "onWorkInfo": null,
+      "processDesc": ""
+    }
+  },
+  {
+    "basicInfo": {
+      "jobId": 528760,
+      "storeInfo": {
+        "storeId": 310638,
+        "storeName": "示例门店11",
+        "storeCityName": "佛山市",
+        "storeRegionName": "南海区",
+        "storeAddress": "佛山市南海区",
+        "coordinateSystem": "GAODE",
+        "longitude": 113,
+        "latitude": 23
+      },
+      "brandId": 10451,
+      "brandName": "达美乐",
+      "projectId": 1206,
+      "projectName": "达美乐-佛山东莞",
+      "createTime": "2026-07-29 10:44:14",
+      "jobName": "达美乐-示例门店11-兼职服务员-小时工",
+      "jobNickName": "兼职服务员",
+      "jobCategoryName": "餐饮/中餐/普通服务员",
+      "jobContent": "排班\n8：00—17：00，1人\n17：00—24：30，3人\n服务内容描述：\n1、按照服务要求，认真做好餐厅卫生；\n2、各种比萨及小食制作；\n3、热情主动、耐心礼貌地接待顾客；\n人员要求：\n1、18周岁以上，可办理食品类健康证；\n2、严格遵守食品安全类法律法规及服务制度，礼貌待客，文明用语。",
+      "cooperationMode": "业务流程外包(BPO)",
+      "laborForm": "兼职",
+      "partTimeJobType": "小时工",
+      "needProbationWork": "不需要",
+      "needTraining": "不需要",
+      "haveProbation": "无试用期"
+    },
+    "jobSalary": {
+      "salaryScenarioList": [
+        {
+          "salaryType": "正式",
+          "salaryPeriod": "月结算",
+          "payday": "5号",
+          "hasStairSalary": "无阶梯薪资",
+          "hasSpecialSalary": false,
+          "bonusDesc": "",
+          "basicSalary": {
+            "basicSalary": 13.8,
+            "basicSalaryUnit": "元/时"
+          },
+          "stairSalaries": null,
+          "jobSpecialSalaryList": null,
+          "comprehensiveSalary": {
+            "minComprehensiveSalary": 0,
+            "maxComprehensiveSalary": 110,
+            "comprehensiveSalaryUnit": "元/天"
+          },
+          "holidaySalary": {
+            "holidaySalaryType": "固定薪资",
+            "holidaySalaryMultiple": null,
+            "holidayFixedSalary": 34.5,
+            "holidayFixedSalaryUnit": "元/时",
+            "holidaySalaryDesc": ""
+          },
+          "overtimeSalary": {
+            "overtimeSalaryType": "无薪资",
+            "overtimeSalaryMultiple": null,
+            "overtimeFixedSalary": null,
+            "overtimeFixedSalaryUnit": null,
+            "overtimeSalaryDesc": null
+          },
+          "otherSalary": {
+            "commission": "",
+            "attendanceSalary": null,
+            "attendanceSalaryUnit": null,
+            "performance": ""
+          }
+        }
+      ],
+      "probationSalary": null
+    },
+    "welfare": {
+      "haveInsurance": "独立日购买",
+      "accommodation": "无住宿福利",
+      "accommodationAllowance": null,
+      "accommodationAllowanceUnit": null,
+      "probationAccommodationAllowanceReceive": null,
+      "probationInsuranceReceive": null,
+      "catering": "无餐饮福利",
+      "cateringSalary": null,
+      "cateringSalaryUnit": null,
+      "probationCateringAllowanceReceive": null,
+      "trafficAllowanceSalary": null,
+      "trafficAllowanceSalaryUnit": null,
+      "memo": ""
+    },
+    "hiringRequirement": {
+      "figure": "社会人士",
+      "basicPersonalRequirements": {
+        "manMinHeight": null,
+        "manMaxHeight": null,
+        "womanMinHeight": null,
+        "womanMaxHeight": null,
+        "genderRequirement": "男性,女性",
+        "minAge": 20,
+        "maxAge": 40
+      },
+      "requirementsForHometown": {
+        "countryRequirementType": "不限",
+        "nationRequirementType": "不限",
+        "nations": null,
+        "nativePlaceRequirementType": "不限",
+        "nativePlaces": null
+      },
+      "marriageBearingAndSocialSecurity": {
+        "marriageBearingType": "不限",
+        "marriageBearing": null,
+        "socialSecurityList": "本人缴纳本地社保,本人缴纳外地社保,无公司在缴社保流水"
+      },
+      "competencyRequirements": {
+        "workExperienceJobType": null,
+        "minWorkTime": null,
+        "minWorkTimeUnit": null
+      },
+      "language": {
+        "languages": null,
+        "languageRemark": ""
+      },
+      "certificate": {
+        "education": "初中",
+        "certificates": "健康证",
+        "healthCertificate": "食品健康证",
+        "driverLicenseType": null
+      }
+    },
+    "workTime": {
+      "employmentForm": "长期用工",
+      "minWorkMonths": 6,
+      "temporaryEmployment": null,
+      "weekAndMonthWorkTime": {
+        "arrangementCycleType": "每周",
+        "weekMonthArrangementMode": "自定义时间",
+        "weekMonthRestMode": null,
+        "onWorkLimitType": "至少上岗",
+        "onWorkTimeUnit": "天",
+        "onWorkTime": 4,
+        "perWeekWorkDays": null,
+        "perWeekRestDays": null,
+        "workSingleDouble": null
+      },
+      "dayWorkTime": {
+        "arrangementType": "固定排班",
+        "combinedArrangement": [
+          {
+            "combinedArrangementStartTime": "08:30",
+            "combinedArrangementEndTime": "17:00"
+          },
+          {
+            "combinedArrangementStartTime": "17:00",
+            "combinedArrangementEndTime": "00:30"
+          }
+        ],
+        "fixedTime": null
+      }
+    },
+    "interviewProcess": {
+      "interviewTotal": 2,
+      "firstInterview": {
+        "firstInterviewWay": "AI面试",
+        "interviewAddress": "佛山市南海区",
+        "firstInterviewDesc": "第一轮AI面试，AI面试链接由手机短信通知，请留正确的手机号码（面试通过后续签约手机号需保持一致），AI面试通过后由店长电话面试或者线下面试",
+        "firstInterviewAccess": "",
+        "firstInterviewAttachments": [],
+        "interviewTimeMode": "等待通知",
+        "fixedInterviewTimes": null,
+        "periodicInterviewTimes": null
+      },
+      "secondInterview": {
+        "secondInterviewWay": "线下面试",
+        "secondInterviewAddress": "同工作地址"
+      },
+      "thirdInterview": null,
+      "interviewSupplement": [
+        {
+          "interviewSupplementId": 13,
+          "interviewSupplement": "有无本地健康证"
+        },
+        {
+          "interviewSupplementId": 2,
+          "interviewSupplement": "学历"
+        },
+        {
+          "interviewSupplementId": 744,
+          "interviewSupplement": "可在岗几个月"
+        },
+        {
+          "interviewSupplementId": 1,
+          "interviewSupplement": "社会身份"
+        },
+        {
+          "interviewSupplementId": 12,
+          "interviewSupplement": "社保缴纳情况"
+        }
+      ],
+      "probationWork": null,
+      "training": null,
+      "onWorkClothingExplain": "根据门店要求",
+      "onWorkInfo": "",
+      "processDesc": ""
+    }
+  },
+  {
+    "basicInfo": {
+      "jobId": 528763,
+      "storeInfo": {
+        "storeId": 310635,
+        "storeName": "示例门店12",
+        "storeCityName": "佛山市",
+        "storeRegionName": "禅城区",
+        "storeAddress": "佛山市禅城区",
+        "coordinateSystem": "GAODE",
+        "longitude": 113,
+        "latitude": 23
+      },
+      "brandId": 10451,
+      "brandName": "达美乐",
+      "projectId": 1206,
+      "projectName": "达美乐-佛山东莞",
+      "createTime": "2026-07-29 10:44:14",
+      "jobName": "达美乐-示例门店12-兼职服务员-小时工",
+      "jobNickName": "兼职服务员",
+      "jobCategoryName": "餐饮/中餐/普通服务员",
+      "jobContent": "排班\n8：00-13：00，\n11：00-17：00，\n17：00-21：00，3个时段各1名\n服务内容描述：\n1、按照服务要求，认真做好餐厅卫生；\n2、各种比萨及小食制作；\n3、热情主动、耐心礼貌地接待顾客；\n人员要求：\n1、18周岁以上，可办理食品类健康证；\n2、严格遵守食品安全类法律法规及服务制度，礼貌待客，文明用语。",
+      "cooperationMode": "业务流程外包(BPO)",
+      "laborForm": "兼职",
+      "partTimeJobType": "小时工",
+      "needProbationWork": "不需要",
+      "needTraining": "不需要",
+      "haveProbation": "无试用期"
+    },
+    "jobSalary": {
+      "salaryScenarioList": [
+        {
+          "salaryType": "正式",
+          "salaryPeriod": "月结算",
+          "payday": "5号",
+          "hasStairSalary": "无阶梯薪资",
+          "hasSpecialSalary": false,
+          "bonusDesc": "",
+          "basicSalary": {
+            "basicSalary": 13.8,
+            "basicSalaryUnit": "元/时"
+          },
+          "stairSalaries": null,
+          "jobSpecialSalaryList": null,
+          "comprehensiveSalary": {
+            "minComprehensiveSalary": 0,
+            "maxComprehensiveSalary": 110,
+            "comprehensiveSalaryUnit": "元/天"
+          },
+          "holidaySalary": {
+            "holidaySalaryType": "固定薪资",
+            "holidaySalaryMultiple": null,
+            "holidayFixedSalary": 34.5,
+            "holidayFixedSalaryUnit": "元/时",
+            "holidaySalaryDesc": ""
+          },
+          "overtimeSalary": {
+            "overtimeSalaryType": "无薪资",
+            "overtimeSalaryMultiple": null,
+            "overtimeFixedSalary": null,
+            "overtimeFixedSalaryUnit": null,
+            "overtimeSalaryDesc": null
+          },
+          "otherSalary": {
+            "commission": "",
+            "attendanceSalary": null,
+            "attendanceSalaryUnit": null,
+            "performance": ""
+          }
+        }
+      ],
+      "probationSalary": null
+    },
+    "welfare": {
+      "haveInsurance": "独立日购买",
+      "accommodation": "无住宿福利",
+      "accommodationAllowance": null,
+      "accommodationAllowanceUnit": null,
+      "probationAccommodationAllowanceReceive": null,
+      "probationInsuranceReceive": null,
+      "catering": "无餐饮福利",
+      "cateringSalary": null,
+      "cateringSalaryUnit": null,
+      "probationCateringAllowanceReceive": null,
+      "trafficAllowanceSalary": null,
+      "trafficAllowanceSalaryUnit": null,
+      "memo": ""
+    },
+    "hiringRequirement": {
+      "figure": "社会人士",
+      "basicPersonalRequirements": {
+        "manMinHeight": null,
+        "manMaxHeight": null,
+        "womanMinHeight": null,
+        "womanMaxHeight": null,
+        "genderRequirement": "男性,女性",
+        "minAge": 18,
+        "maxAge": 38
+      },
+      "requirementsForHometown": {
+        "countryRequirementType": "不限",
+        "nationRequirementType": "不限",
+        "nations": null,
+        "nativePlaceRequirementType": "不限",
+        "nativePlaces": null
+      },
+      "marriageBearingAndSocialSecurity": {
+        "marriageBearingType": "不限",
+        "marriageBearing": null,
+        "socialSecurityList": "本人缴纳本地社保,本人缴纳外地社保,无公司在缴社保流水"
+      },
+      "competencyRequirements": {
+        "workExperienceJobType": null,
+        "minWorkTime": null,
+        "minWorkTimeUnit": null
+      },
+      "language": {
+        "languages": null,
+        "languageRemark": ""
+      },
+      "certificate": {
+        "education": "初中",
+        "certificates": "健康证",
+        "healthCertificate": "食品健康证",
+        "driverLicenseType": null
+      }
+    },
+    "workTime": {
+      "employmentForm": "长期用工",
+      "minWorkMonths": 6,
+      "temporaryEmployment": null,
+      "weekAndMonthWorkTime": {
+        "arrangementCycleType": "每周",
+        "weekMonthArrangementMode": "自定义时间",
+        "weekMonthRestMode": null,
+        "onWorkLimitType": "至少上岗",
+        "onWorkTimeUnit": "天",
+        "onWorkTime": 4,
+        "perWeekWorkDays": null,
+        "perWeekRestDays": null,
+        "workSingleDouble": null
+      },
+      "dayWorkTime": {
+        "arrangementType": "固定排班",
+        "combinedArrangement": [
+          {
+            "combinedArrangementStartTime": "08:00",
+            "combinedArrangementEndTime": "13:00"
+          },
+          {
+            "combinedArrangementStartTime": "11:00",
+            "combinedArrangementEndTime": "17:00"
+          },
+          {
+            "combinedArrangementStartTime": "17:00",
+            "combinedArrangementEndTime": "21:00"
+          }
+        ],
+        "fixedTime": null
+      }
+    },
+    "interviewProcess": {
+      "interviewTotal": 2,
+      "firstInterview": {
+        "firstInterviewWay": "AI面试",
+        "interviewAddress": "佛山市禅城区",
+        "firstInterviewDesc": "第一轮AI面试，AI面试链接由手机短信通知，请留正确的手机号码（面试通过后续签约手机号需保持一致），AI面试通过后由店长电话面试或者线下面试",
+        "firstInterviewAccess": "",
+        "firstInterviewAttachments": [],
+        "interviewTimeMode": "等待通知",
+        "fixedInterviewTimes": null,
+        "periodicInterviewTimes": null
+      },
+      "secondInterview": {
+        "secondInterviewWay": "线下面试",
+        "secondInterviewAddress": "同工作地址"
+      },
+      "thirdInterview": null,
+      "interviewSupplement": [
+        {
+          "interviewSupplementId": 13,
+          "interviewSupplement": "有无本地健康证"
+        },
+        {
+          "interviewSupplementId": 2,
+          "interviewSupplement": "学历"
+        },
+        {
+          "interviewSupplementId": 744,
+          "interviewSupplement": "可在岗几个月"
+        },
+        {
+          "interviewSupplementId": 1,
+          "interviewSupplement": "社会身份"
+        },
+        {
+          "interviewSupplementId": 12,
+          "interviewSupplement": "社保缴纳情况"
+        }
+      ],
+      "probationWork": null,
+      "training": null,
+      "onWorkClothingExplain": "根据门店要求",
+      "onWorkInfo": "",
+      "processDesc": ""
+    }
+  },
+  {
+    "basicInfo": {
+      "jobId": 528700,
+      "storeInfo": {
+        "storeId": 310650,
+        "storeName": "示例门店13",
+        "storeCityName": "北京市",
+        "storeRegionName": "西城区",
+        "storeAddress": "北京市西城区",
+        "coordinateSystem": "GAODE",
+        "longitude": 116,
+        "latitude": 40
+      },
+      "brandId": 10006,
+      "brandName": "必胜客",
+      "projectId": 1045,
+      "projectName": "北京必胜客",
+      "createTime": "2026-07-22 17:17:06",
+      "jobName": "必胜客-示例门店13-内场/外场-小时工",
+      "jobNickName": "内场/外场",
+      "jobCategoryName": "餐饮/快餐店/普通服务员",
+      "jobContent": "1、布置餐厅和餐桌；\n2、引领客人入座就席，协助客人点菜，向客人介绍特色或时令菜点；\n3、整理餐厅的清洁卫生。\n班次：\n05:00-18:00\t外场\n07:00-15:00\t内场\n08:00-15:00\t内场、汉堡\n11:00-20:00\t内场、汉堡\n15:00-23:00\t内场、汉堡\n19:00-24:00\t内场\n备注：预计8月底开业，前期在丽泽龙湖上班（不要学生！）\n招聘注意事项：\n之前在百胜集团旗下入职过的，一年内重新入职仍算客户人选，不能结算",
+      "cooperationMode": "业务流程外包(BPO)",
+      "laborForm": "兼职",
+      "partTimeJobType": "小时工",
+      "needProbationWork": "不需要",
+      "needTraining": "不需要",
+      "haveProbation": null
+    },
+    "jobSalary": {
+      "salaryScenarioList": [
+        {
+          "salaryType": "正式",
+          "salaryPeriod": "日结算",
+          "payday": "当日结",
+          "hasStairSalary": "有阶梯薪资",
+          "hasSpecialSalary": false,
+          "bonusDesc": null,
+          "basicSalary": {
+            "basicSalary": 19.5,
+            "basicSalaryUnit": "元/时"
+          },
+          "stairSalaries": [
+            {
+              "description": "超出后所有工时按照新的薪资标准计算",
+              "perTimeUnit": "每月",
+              "fullWorkTime": 100,
+              "fullWorkTimeUnit": "累计工作小时",
+              "salary": 21.5,
+              "salaryUnit": "元/时"
+            },
+            {
+              "description": "超出后所有工时按照新的薪资标准计算",
+              "perTimeUnit": "每月",
+              "fullWorkTime": 190,
+              "fullWorkTimeUnit": "累计工作小时",
+              "salary": 23.5,
+              "salaryUnit": "元/时"
+            }
+          ],
+          "jobSpecialSalaryList": null,
+          "comprehensiveSalary": {
+            "minComprehensiveSalary": 2000,
+            "maxComprehensiveSalary": 4000,
+            "comprehensiveSalaryUnit": "元/月"
+          },
+          "holidaySalary": {
+            "holidaySalaryType": "固定薪资",
+            "holidaySalaryMultiple": null,
+            "holidayFixedSalary": 38,
+            "holidayFixedSalaryUnit": "元/时",
+            "holidaySalaryDesc": "月实际出勤工时<100为38,月实际出勤工时>100为57"
+          },
+          "overtimeSalary": {
+            "overtimeSalaryType": "无薪资",
+            "overtimeSalaryMultiple": null,
+            "overtimeFixedSalary": null,
+            "overtimeFixedSalaryUnit": null,
+            "overtimeSalaryDesc": null
+          },
+          "otherSalary": {
+            "commission": null,
+            "attendanceSalary": null,
+            "attendanceSalaryUnit": null,
+            "performance": ""
+          }
+        }
+      ],
+      "probationSalary": null
+    },
+    "welfare": {
+      "haveInsurance": "独立日购买",
+      "accommodation": "无住宿福利",
+      "accommodationAllowance": null,
+      "accommodationAllowanceUnit": null,
+      "probationAccommodationAllowanceReceive": null,
+      "probationInsuranceReceive": null,
+      "catering": "无餐饮福利",
+      "cateringSalary": null,
+      "cateringSalaryUnit": null,
+      "probationCateringAllowanceReceive": null,
+      "trafficAllowanceSalary": null,
+      "trafficAllowanceSalaryUnit": null,
+      "memo": "月实际出勤工时>190 时薪23.5，100<月实际出勤工时<190 时薪21.5月实际出勤工时<100 时薪19.5法定节假日时薪：月实际出勤工时<100为38月实际出勤工时>100为57每天按照20*实际出勤日结，阶梯部分&培训期间费用月结，每月10号发上月差价，培训工资20-100元，具体以实际培训工作站为准，不计入阶梯计算"
+    },
+    "hiringRequirement": {
+      "figure": "不限",
+      "basicPersonalRequirements": {
+        "manMinHeight": null,
+        "manMaxHeight": null,
+        "womanMinHeight": null,
+        "womanMaxHeight": null,
+        "genderRequirement": "男性,女性",
+        "minAge": 20,
+        "maxAge": 50
+      },
+      "requirementsForHometown": {
+        "countryRequirementType": "不限",
+        "nationRequirementType": "不限",
+        "nations": null,
+        "nativePlaceRequirementType": "不限",
+        "nativePlaces": null
+      },
+      "marriageBearingAndSocialSecurity": {
+        "marriageBearingType": "不限",
+        "marriageBearing": null,
+        "socialSecurityList": null
+      },
+      "competencyRequirements": {
+        "workExperienceJobType": null,
+        "minWorkTime": null,
+        "minWorkTimeUnit": null
+      },
+      "language": {
+        "languages": null,
+        "languageRemark": ""
+      },
+      "certificate": {
+        "education": "中专\\技校\\职高",
+        "certificates": "健康证",
+        "healthCertificate": "食品健康证",
+        "driverLicenseType": null
+      }
+    },
+    "workTime": {
+      "employmentForm": "长期用工",
+      "minWorkMonths": 6,
+      "temporaryEmployment": null,
+      "weekAndMonthWorkTime": {
+        "arrangementCycleType": "每周",
+        "weekMonthArrangementMode": "自定义时间",
+        "weekMonthRestMode": null,
+        "onWorkLimitType": "至少上岗",
+        "onWorkTimeUnit": "天",
+        "onWorkTime": 4,
+        "perWeekWorkDays": null,
+        "perWeekRestDays": null,
+        "workSingleDouble": null
+      },
+      "dayWorkTime": {
+        "arrangementType": "固定排班",
+        "combinedArrangement": [
+          {
+            "combinedArrangementStartTime": "05:00",
+            "combinedArrangementEndTime": "18:00"
+          },
+          {
+            "combinedArrangementStartTime": "07:00",
+            "combinedArrangementEndTime": "15:00"
+          },
+          {
+            "combinedArrangementStartTime": "11:00",
+            "combinedArrangementEndTime": "20:00"
+          },
+          {
+            "combinedArrangementStartTime": "15:00",
+            "combinedArrangementEndTime": "23:00"
+          },
+          {
+            "combinedArrangementStartTime": "19:00",
+            "combinedArrangementEndTime": "00:00"
+          }
+        ],
+        "fixedTime": null
+      }
+    },
+    "interviewProcess": {
+      "interviewTotal": 1,
+      "firstInterview": {
+        "firstInterviewWay": "AI面试",
+        "interviewAddress": null,
+        "firstInterviewDesc": "AI面试，请让候选人提前一天或者邀约当天下午三点半前完成AI面试！提前两天或者当天下午三点半前未完成AI面试的，判定为未参面！",
+        "firstInterviewAccess": null,
+        "firstInterviewAttachments": [],
+        "interviewTimeMode": "周期",
+        "fixedInterviewTimes": null,
+        "periodicInterviewTimes": [
+          {
+            "interviewWeekday": "每周一",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "10:00",
+                "interviewEndTime": "19:00",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "09:30"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周三",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "10:00",
+                "interviewEndTime": "19:00",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "09:30"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周四",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "10:00",
+                "interviewEndTime": "19:00",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "09:30"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周五",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "10:00",
+                "interviewEndTime": "19:00",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "09:30"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周二",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "10:00",
+                "interviewEndTime": "19:00",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "09:30"
+              }
+            ]
+          }
+        ]
+      },
+      "secondInterview": null,
+      "thirdInterview": null,
+      "interviewSupplement": [
+        {
+          "interviewSupplementId": 4,
+          "interviewSupplement": "身高(cm)"
+        },
+        {
+          "interviewSupplementId": 13,
+          "interviewSupplement": "有无本地健康证"
+        },
+        {
+          "interviewSupplementId": 50,
+          "interviewSupplement": "体重(kg)"
+        },
+        {
+          "interviewSupplementId": 300,
+          "interviewSupplement": "每周可出勤天数"
+        },
+        {
+          "interviewSupplementId": 11,
+          "interviewSupplement": "居住地址"
+        },
+        {
+          "interviewSupplementId": 741,
+          "interviewSupplement": "每天可工作时间段"
+        },
+        {
+          "interviewSupplementId": 611,
+          "interviewSupplement": "周末能否出勤"
+        },
+        {
+          "interviewSupplementId": 628,
+          "interviewSupplement": "是否接受一定范围内门店调度"
+        },
+        {
+          "interviewSupplementId": 1,
+          "interviewSupplement": "社会身份"
+        }
+      ],
+      "probationWork": null,
+      "training": null,
+      "onWorkClothingExplain": "门店提供",
+      "onWorkInfo": null,
+      "processDesc": "新店,预计8月底开业,前期在丽泽龙湖。"
+    }
+  },
+  {
+    "basicInfo": {
+      "jobId": 528645,
+      "storeInfo": {
+        "storeId": 306034,
+        "storeName": "示例门店14",
+        "storeCityName": "北京市",
+        "storeRegionName": "朝阳区",
+        "storeAddress": "北京市朝阳区",
+        "coordinateSystem": "GAODE",
+        "longitude": 116,
+        "latitude": 40
+      },
+      "brandId": 10006,
+      "brandName": "必胜客",
+      "projectId": 1045,
+      "projectName": "北京必胜客",
+      "createTime": "2026-07-20 18:22:31",
+      "jobName": "必胜客-示例门店14-地铁站-内场/外场-小时工",
+      "jobNickName": "地铁站-内场/外场",
+      "jobCategoryName": "餐饮/快餐店/普通服务员",
+      "jobContent": "不要学生，有外场经验优先，需接受早餐开始时间有些许浮动\n班次：7-13\n工作内容：早上在地铁站早餐售卖，中午在门店负责日常工作站\n\n门店：1、布置餐厅和餐桌；\n2、引领客人入座就席，协助客人点菜，向客人介绍特色或时令菜点；\n3、整理餐厅的清洁卫生。",
+      "cooperationMode": "业务流程外包(BPO)",
+      "laborForm": "兼职",
+      "partTimeJobType": "小时工",
+      "needProbationWork": "不需要",
+      "needTraining": "不需要",
+      "haveProbation": null
+    },
+    "jobSalary": {
+      "salaryScenarioList": [
+        {
+          "salaryType": "正式",
+          "salaryPeriod": "日结算",
+          "payday": "当日结",
+          "hasStairSalary": "有阶梯薪资",
+          "hasSpecialSalary": false,
+          "bonusDesc": null,
+          "basicSalary": {
+            "basicSalary": 19.5,
+            "basicSalaryUnit": "元/时"
+          },
+          "stairSalaries": [
+            {
+              "description": "超出后所有工时按照新的薪资标准计算",
+              "perTimeUnit": "每月",
+              "fullWorkTime": 100,
+              "fullWorkTimeUnit": "累计工作小时",
+              "salary": 21.5,
+              "salaryUnit": "元/时"
+            },
+            {
+              "description": "超出后所有工时按照新的薪资标准计算",
+              "perTimeUnit": "每月",
+              "fullWorkTime": 190,
+              "fullWorkTimeUnit": "累计工作小时",
+              "salary": 23.5,
+              "salaryUnit": "元/时"
+            }
+          ],
+          "jobSpecialSalaryList": null,
+          "comprehensiveSalary": {
+            "minComprehensiveSalary": 2000,
+            "maxComprehensiveSalary": 4000,
+            "comprehensiveSalaryUnit": "元/月"
+          },
+          "holidaySalary": {
+            "holidaySalaryType": "固定薪资",
+            "holidaySalaryMultiple": null,
+            "holidayFixedSalary": 38,
+            "holidayFixedSalaryUnit": "元/时",
+            "holidaySalaryDesc": "月实际出勤工时<100为38,月实际出勤工时>100为57"
+          },
+          "overtimeSalary": {
+            "overtimeSalaryType": "无薪资",
+            "overtimeSalaryMultiple": null,
+            "overtimeFixedSalary": null,
+            "overtimeFixedSalaryUnit": null,
+            "overtimeSalaryDesc": null
+          },
+          "otherSalary": {
+            "commission": null,
+            "attendanceSalary": null,
+            "attendanceSalaryUnit": null,
+            "performance": ""
+          }
+        }
+      ],
+      "probationSalary": null
+    },
+    "welfare": {
+      "haveInsurance": "独立日购买",
+      "accommodation": "无住宿福利",
+      "accommodationAllowance": null,
+      "accommodationAllowanceUnit": null,
+      "probationAccommodationAllowanceReceive": null,
+      "probationInsuranceReceive": null,
+      "catering": "无餐饮福利",
+      "cateringSalary": null,
+      "cateringSalaryUnit": null,
+      "probationCateringAllowanceReceive": null,
+      "trafficAllowanceSalary": null,
+      "trafficAllowanceSalaryUnit": null,
+      "memo": "培训工资20-100元，具体以实际培训工作站为准，不计入阶梯计算"
+    },
+    "hiringRequirement": {
+      "figure": "不限",
+      "basicPersonalRequirements": {
+        "manMinHeight": null,
+        "manMaxHeight": null,
+        "womanMinHeight": null,
+        "womanMaxHeight": null,
+        "genderRequirement": "男性,女性",
+        "minAge": 20,
+        "maxAge": 50
+      },
+      "requirementsForHometown": {
+        "countryRequirementType": "不限",
+        "nationRequirementType": "不限",
+        "nations": null,
+        "nativePlaceRequirementType": "不限",
+        "nativePlaces": null
+      },
+      "marriageBearingAndSocialSecurity": {
+        "marriageBearingType": "不限",
+        "marriageBearing": null,
+        "socialSecurityList": null
+      },
+      "competencyRequirements": {
+        "workExperienceJobType": null,
+        "minWorkTime": null,
+        "minWorkTimeUnit": null
+      },
+      "language": {
+        "languages": null,
+        "languageRemark": ""
+      },
+      "certificate": {
+        "education": "高中",
+        "certificates": "健康证",
+        "healthCertificate": "食品健康证",
+        "driverLicenseType": null
+      }
+    },
+    "workTime": {
+      "employmentForm": "长期用工",
+      "minWorkMonths": 6,
+      "temporaryEmployment": null,
+      "weekAndMonthWorkTime": {
+        "arrangementCycleType": "每周",
+        "weekMonthArrangementMode": "自定义时间",
+        "weekMonthRestMode": null,
+        "onWorkLimitType": "至少上岗",
+        "onWorkTimeUnit": "天",
+        "onWorkTime": 5,
+        "perWeekWorkDays": null,
+        "perWeekRestDays": null,
+        "workSingleDouble": null
+      },
+      "dayWorkTime": {
+        "arrangementType": "固定排班",
+        "combinedArrangement": [
+          {
+            "combinedArrangementStartTime": "07:00",
+            "combinedArrangementEndTime": "13:00"
+          }
+        ],
+        "fixedTime": null
+      }
+    },
+    "interviewProcess": {
+      "interviewTotal": 1,
+      "firstInterview": {
+        "firstInterviewWay": "AI面试",
+        "interviewAddress": null,
+        "firstInterviewDesc": "AI面试，请让候选人提前一天或者邀约当天下午三点半前完成AI面试！提前两天或者当天下午三点半前未完成AI面试的，判定为未参面！",
+        "firstInterviewAccess": null,
+        "firstInterviewAttachments": [],
+        "interviewTimeMode": "周期",
+        "fixedInterviewTimes": null,
+        "periodicInterviewTimes": [
+          {
+            "interviewWeekday": "每周一",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "10:00",
+                "interviewEndTime": "19:00",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "09:30"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周二",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "10:00",
+                "interviewEndTime": "19:00",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "09:30"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周三",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "10:00",
+                "interviewEndTime": "19:00",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "09:30"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周四",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "10:00",
+                "interviewEndTime": "19:00",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "09:30"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周五",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "10:00",
+                "interviewEndTime": "19:00",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "09:30"
+              }
+            ]
+          }
+        ]
+      },
+      "secondInterview": null,
+      "thirdInterview": null,
+      "interviewSupplement": [
+        {
+          "interviewSupplementId": 4,
+          "interviewSupplement": "身高(cm)"
+        },
+        {
+          "interviewSupplementId": 13,
+          "interviewSupplement": "有无本地健康证"
+        },
+        {
+          "interviewSupplementId": 50,
+          "interviewSupplement": "体重(kg)"
+        },
+        {
+          "interviewSupplementId": 300,
+          "interviewSupplement": "每周可出勤天数"
+        },
+        {
+          "interviewSupplementId": 11,
+          "interviewSupplement": "居住地址"
+        },
+        {
+          "interviewSupplementId": 741,
+          "interviewSupplement": "每天可工作时间段"
+        },
+        {
+          "interviewSupplementId": 611,
+          "interviewSupplement": "周末能否出勤"
+        },
+        {
+          "interviewSupplementId": 628,
+          "interviewSupplement": "是否接受一定范围内门店调度"
+        },
+        {
+          "interviewSupplementId": 1,
+          "interviewSupplement": "社会身份"
+        }
+      ],
+      "probationWork": null,
+      "training": null,
+      "onWorkClothingExplain": "门店提供",
+      "onWorkInfo": null,
+      "processDesc": ""
+    }
+  },
+  {
+    "basicInfo": {
+      "jobId": 528626,
+      "storeInfo": {
+        "storeId": 309347,
+        "storeName": "示例门店15",
+        "storeCityName": "上海市",
+        "storeRegionName": "浦东新区",
+        "storeAddress": "上海市浦东新区",
+        "coordinateSystem": "GAODE",
+        "longitude": 122,
+        "latitude": 31
+      },
+      "brandId": 10200,
+      "brandName": "成都你六姐",
+      "projectId": 941,
+      "projectName": "成都你六姐",
+      "createTime": "2026-07-20 14:14:58",
+      "jobName": "成都你六姐-示例门店15-早班开档（有证约）-小时工",
+      "jobNickName": "早班开档（有证约）",
+      "jobCategoryName": "餐饮/中餐/普通服务员",
+      "jobContent": "1、主动迎接顾客、引导入座、协助点单，熟悉菜品与辣度，做好点餐与上菜服务。\n2、及时巡台添茶、收空盘，保持桌面与就餐区干净整洁。\n3、顾客点餐后协助结账、用餐结束后快速清理台面，保障翻台效率。",
+      "cooperationMode": "业务流程外包(BPO)",
+      "laborForm": "兼职",
+      "partTimeJobType": "小时工",
+      "needProbationWork": "需要",
+      "needTraining": "不需要",
+      "haveProbation": "无试用期"
+    },
+    "jobSalary": {
+      "salaryScenarioList": [
+        {
+          "salaryType": "正式",
+          "salaryPeriod": "月结算",
+          "payday": "15号",
+          "hasStairSalary": "有阶梯薪资",
+          "hasSpecialSalary": false,
+          "bonusDesc": "",
+          "basicSalary": {
+            "basicSalary": 24,
+            "basicSalaryUnit": "元/时"
+          },
+          "stairSalaries": [
+            {
+              "description": "超出部分按照新的薪资标准计算",
+              "perTimeUnit": "不限",
+              "fullWorkTime": 40,
+              "fullWorkTimeUnit": "累计工作小时",
+              "salary": 26,
+              "salaryUnit": "元/时"
+            },
+            {
+              "description": "超出部分按照新的薪资标准计算",
+              "perTimeUnit": "不限",
+              "fullWorkTime": 80,
+              "fullWorkTimeUnit": "累计工作小时",
+              "salary": 28,
+              "salaryUnit": "元/时"
+            }
+          ],
+          "jobSpecialSalaryList": null,
+          "comprehensiveSalary": {
+            "minComprehensiveSalary": 1000,
+            "maxComprehensiveSalary": 3000,
+            "comprehensiveSalaryUnit": "元/月"
+          },
+          "holidaySalary": {
+            "holidaySalaryType": "固定薪资",
+            "holidaySalaryMultiple": null,
+            "holidayFixedSalary": 24,
+            "holidayFixedSalaryUnit": "元/时",
+            "holidaySalaryDesc": ""
+          },
+          "overtimeSalary": {
+            "overtimeSalaryType": "固定薪资",
+            "overtimeSalaryMultiple": null,
+            "overtimeFixedSalary": 24,
+            "overtimeFixedSalaryUnit": "元/时",
+            "overtimeSalaryDesc": ""
+          },
+          "otherSalary": {
+            "commission": "",
+            "attendanceSalary": null,
+            "attendanceSalaryUnit": null,
+            "performance": ""
+          }
+        }
+      ],
+      "probationSalary": {
+        "salary": 20,
+        "salaryUnit": "元/时",
+        "salaryDescription": "1、试工周期：2-4小时，试工1小时内劝退的无薪资 2、试工通过后正式入职的，薪资按照正式兼职的时薪结算 3、若试工了2~4小时（完整试工周期）后不做了或试工失败的，则按照20元/时结算"
+      }
+    },
+    "welfare": {
+      "haveInsurance": "独立日购买",
+      "accommodation": "无住宿福利",
+      "accommodationAllowance": null,
+      "accommodationAllowanceUnit": null,
+      "probationAccommodationAllowanceReceive": null,
+      "probationInsuranceReceive": "是",
+      "catering": "包吃",
+      "cateringSalary": null,
+      "cateringSalaryUnit": null,
+      "probationCateringAllowanceReceive": "否",
+      "trafficAllowanceSalary": null,
+      "trafficAllowanceSalaryUnit": null,
+      "memo": "1、兼职长期稳定后店铺按实际情况提供员工餐。 2、薪资计算方式： 月工时≤40小时:24元/小时 月工时40＞80小时：超出40h的部分26元/小时 工时80以上：超出80h的部分28元/小时 【例如小甲月出勤85小时，则小甲有40小时按照24结算，40小时按照26结算，5小时按照28结算】 注明：高峰兼职一天排班为2-4小时"
+    },
+    "hiringRequirement": {
+      "figure": "社会人士",
+      "basicPersonalRequirements": {
+        "manMinHeight": null,
+        "manMaxHeight": null,
+        "womanMinHeight": 155,
+        "womanMaxHeight": 180,
+        "genderRequirement": "女性",
+        "minAge": 30,
+        "maxAge": 50
+      },
+      "requirementsForHometown": {
+        "countryRequirementType": "仅要中国人",
+        "nationRequirementType": "不限",
+        "nations": null,
+        "nativePlaceRequirementType": "不限",
+        "nativePlaces": null
+      },
+      "marriageBearingAndSocialSecurity": {
+        "marriageBearingType": "不限",
+        "marriageBearing": null,
+        "socialSecurityList": "不限"
+      },
+      "competencyRequirements": {
+        "workExperienceJobType": null,
+        "minWorkTime": null,
+        "minWorkTimeUnit": null
+      },
+      "language": {
+        "languages": "普通话",
+        "languageRemark": ""
+      },
+      "certificate": {
+        "education": "初中",
+        "certificates": "健康证",
+        "healthCertificate": "食品健康证",
+        "driverLicenseType": null
+      }
+    },
+    "workTime": {
+      "employmentForm": "长期用工",
+      "minWorkMonths": 3,
+      "temporaryEmployment": null,
+      "weekAndMonthWorkTime": {
+        "arrangementCycleType": "每周",
+        "weekMonthArrangementMode": "自定义时间",
+        "weekMonthRestMode": null,
+        "onWorkLimitType": "至少上岗",
+        "onWorkTimeUnit": "天",
+        "onWorkTime": 7,
+        "perWeekWorkDays": null,
+        "perWeekRestDays": null,
+        "workSingleDouble": null
+      },
+      "dayWorkTime": {
+        "arrangementType": "固定排班",
+        "combinedArrangement": [
+          {
+            "combinedArrangementStartTime": "06:30",
+            "combinedArrangementEndTime": "09:30"
+          }
+        ],
+        "fixedTime": null
+      }
+    },
+    "interviewProcess": {
+      "interviewTotal": 1,
+      "firstInterview": {
+        "firstInterviewWay": "线下面试",
+        "interviewAddress": "同工作地址",
+        "firstInterviewDesc": "",
+        "firstInterviewAccess": "",
+        "firstInterviewAttachments": [],
+        "interviewTimeMode": "周期",
+        "fixedInterviewTimes": null,
+        "periodicInterviewTimes": [
+          {
+            "interviewWeekday": "每周三",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "13:30",
+                "interviewEndTime": "16:30",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "10:00"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周二",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "13:30",
+                "interviewEndTime": "16:30",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "10:00"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周四",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "13:30",
+                "interviewEndTime": "16:30",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "10:00"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周五",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "13:30",
+                "interviewEndTime": "16:30",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "10:00"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周一",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "13:30",
+                "interviewEndTime": "16:30",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "10:00"
+              }
+            ]
+          }
+        ]
+      },
+      "secondInterview": null,
+      "thirdInterview": null,
+      "interviewSupplement": [
+        {
+          "interviewSupplementId": 13,
+          "interviewSupplement": "有无本地健康证"
+        }
+      ],
+      "probationWork": {
+        "probationWorkPeriod": 2,
+        "probationWorkPeriodUnit": "小时",
+        "probationWorkAddress": "",
+        "probationWorkAssessment": "实操",
+        "probationWorkAssessmentText": ""
+      },
+      "training": null,
+      "onWorkClothingExplain": "面试上岗前都保持身体整洁、不留美甲、长指甲、无大量纹身",
+      "onWorkInfo": "本人身份证+健康证+银行卡，黑鞋子",
+      "processDesc": "线下面试通过后，店长会直接加微信与员工沟通试工时间，试工通过后+负责人微信办理入职"
+    }
+  },
+  {
+    "basicInfo": {
+      "jobId": 528271,
+      "storeInfo": {
+        "storeId": 307269,
+        "storeName": "示例门店16",
+        "storeCityName": "上海市",
+        "storeRegionName": "松江区",
+        "storeAddress": "上海市松江区",
+        "coordinateSystem": "GAODE",
+        "longitude": 121,
+        "latitude": 31
+      },
+      "brandId": 10005,
+      "brandName": "肯德基",
+      "projectId": 5,
+      "projectName": "肯德基",
+      "createTime": "2026-06-05 17:12:08",
+      "jobName": "肯德基-示例门店16-兼职+-小时工",
+      "jobNickName": "兼职+",
+      "jobCategoryName": "餐饮/快餐店/普通服务员",
+      "jobContent": "1、布置餐厅和餐桌；\n2、引领客人入座就席，协助客人点菜，向客人介绍特色或时令菜点；\n3、整理餐厅的清洁卫生。\n4、接受门店所有岗位安排",
+      "cooperationMode": "业务流程外包(BPO)",
+      "laborForm": "兼职",
+      "partTimeJobType": "小时工",
+      "needProbationWork": "不需要",
+      "needTraining": "不需要",
+      "haveProbation": null
+    },
+    "jobSalary": {
+      "salaryScenarioList": [
+        {
+          "salaryType": "正式",
+          "salaryPeriod": "周结算",
+          "payday": "每周三",
+          "hasStairSalary": "有阶梯薪资",
+          "hasSpecialSalary": false,
+          "bonusDesc": null,
+          "basicSalary": {
+            "basicSalary": 17,
+            "basicSalaryUnit": "元/时"
+          },
+          "stairSalaries": [
+            {
+              "description": "超出后所有工时按照新的薪资标准计算",
+              "perTimeUnit": "每月",
+              "fullWorkTime": 100,
+              "fullWorkTimeUnit": "累计工作小时",
+              "salary": 21,
+              "salaryUnit": "元/时"
+            },
+            {
+              "description": "超出后所有工时按照新的薪资标准计算",
+              "perTimeUnit": "每月",
+              "fullWorkTime": 180,
+              "fullWorkTimeUnit": "累计工作小时",
+              "salary": 24,
+              "salaryUnit": "元/时"
+            },
+            {
+              "description": "超出后所有工时按照新的薪资标准计算",
+              "perTimeUnit": "每月",
+              "fullWorkTime": 200,
+              "fullWorkTimeUnit": "累计工作小时",
+              "salary": 27,
+              "salaryUnit": "元/时"
+            }
+          ],
+          "jobSpecialSalaryList": null,
+          "comprehensiveSalary": {
+            "minComprehensiveSalary": 3000,
+            "maxComprehensiveSalary": 6000,
+            "comprehensiveSalaryUnit": "元/月"
+          },
+          "holidaySalary": {
+            "holidaySalaryType": "无薪资",
+            "holidaySalaryMultiple": null,
+            "holidayFixedSalary": null,
+            "holidayFixedSalaryUnit": null,
+            "holidaySalaryDesc": null
+          },
+          "overtimeSalary": {
+            "overtimeSalaryType": "无薪资",
+            "overtimeSalaryMultiple": null,
+            "overtimeFixedSalary": null,
+            "overtimeFixedSalaryUnit": null,
+            "overtimeSalaryDesc": null
+          },
+          "otherSalary": {
+            "commission": null,
+            "attendanceSalary": null,
+            "attendanceSalaryUnit": null,
+            "performance": ""
+          }
+        }
+      ],
+      "probationSalary": null
+    },
+    "welfare": {
+      "haveInsurance": "独立日购买",
+      "accommodation": "无住宿福利",
+      "accommodationAllowance": null,
+      "accommodationAllowanceUnit": null,
+      "probationAccommodationAllowanceReceive": null,
+      "probationInsuranceReceive": null,
+      "catering": "无餐饮福利",
+      "cateringSalary": null,
+      "cateringSalaryUnit": null,
+      "probationCateringAllowanceReceive": null,
+      "trafficAllowanceSalary": null,
+      "trafficAllowanceSalaryUnit": null,
+      "memo": null
+    },
+    "hiringRequirement": {
+      "figure": "不限",
+      "basicPersonalRequirements": {
+        "manMinHeight": 175,
+        "manMaxHeight": 185,
+        "womanMinHeight": 165,
+        "womanMaxHeight": 175,
+        "genderRequirement": "男性,女性",
+        "minAge": 18,
+        "maxAge": 40
+      },
+      "requirementsForHometown": {
+        "countryRequirementType": "不限",
+        "nationRequirementType": "不限",
+        "nations": null,
+        "nativePlaceRequirementType": "不限",
+        "nativePlaces": null
+      },
+      "marriageBearingAndSocialSecurity": {
+        "marriageBearingType": "不限",
+        "marriageBearing": null,
+        "socialSecurityList": null
+      },
+      "competencyRequirements": {
+        "workExperienceJobType": null,
+        "minWorkTime": null,
+        "minWorkTimeUnit": null
+      },
+      "language": {
+        "languages": null,
+        "languageRemark": ""
+      },
+      "certificate": {
+        "education": "不限",
+        "certificates": "健康证",
+        "healthCertificate": "食品健康证",
+        "driverLicenseType": null
+      }
+    },
+    "workTime": {
+      "employmentForm": "长期用工",
+      "minWorkMonths": 6,
+      "temporaryEmployment": null,
+      "weekAndMonthWorkTime": {
+        "arrangementCycleType": "每周",
+        "weekMonthArrangementMode": "自定义时间",
+        "weekMonthRestMode": null,
+        "onWorkLimitType": "至少上岗",
+        "onWorkTimeUnit": "天",
+        "onWorkTime": 4,
+        "perWeekWorkDays": null,
+        "perWeekRestDays": null,
+        "workSingleDouble": null
+      },
+      "dayWorkTime": {
+        "arrangementType": "固定排班",
+        "combinedArrangement": [
+          {
+            "combinedArrangementStartTime": "05:00",
+            "combinedArrangementEndTime": "01:00"
+          }
+        ],
+        "fixedTime": null
+      }
+    },
+    "interviewProcess": {
+      "interviewTotal": 1,
+      "firstInterview": {
+        "firstInterviewWay": "电话面试",
+        "interviewAddress": null,
+        "firstInterviewDesc": "提交完ai面试，客户审核完ai面试结果后电话沟通后合适，通知线下门店面试",
+        "firstInterviewAccess": null,
+        "firstInterviewAttachments": [],
+        "interviewTimeMode": "周期",
+        "fixedInterviewTimes": null,
+        "periodicInterviewTimes": [
+          {
+            "interviewWeekday": "每周一",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "10:30",
+                "interviewEndTime": "15:00",
+                "cycleDeadlineDay": "前一天",
+                "cycleDeadlineEnd": "18:00"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周五",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "10:30",
+                "interviewEndTime": "15:00",
+                "cycleDeadlineDay": "前一天",
+                "cycleDeadlineEnd": "18:00"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周三",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "10:30",
+                "interviewEndTime": "15:00",
+                "cycleDeadlineDay": "前一天",
+                "cycleDeadlineEnd": "18:00"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周二",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "10:30",
+                "interviewEndTime": "15:00",
+                "cycleDeadlineDay": "前一天",
+                "cycleDeadlineEnd": "18:00"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周四",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "10:30",
+                "interviewEndTime": "15:00",
+                "cycleDeadlineDay": "前一天",
+                "cycleDeadlineEnd": "18:00"
+              }
+            ]
+          }
+        ]
+      },
+      "secondInterview": null,
+      "thirdInterview": null,
+      "interviewSupplement": [
+        {
+          "interviewSupplementId": 13,
+          "interviewSupplement": "有无本地健康证"
+        },
+        {
+          "interviewSupplementId": 744,
+          "interviewSupplement": "可在岗几个月"
+        },
+        {
+          "interviewSupplementId": 2,
+          "interviewSupplement": "学历"
+        }
+      ],
+      "probationWork": null,
+      "training": null,
+      "onWorkClothingExplain": "门店准备，自备黑裤子鞋子",
+      "onWorkInfo": null,
+      "processDesc": ""
+    }
+  },
+  {
+    "basicInfo": {
+      "jobId": 528176,
+      "storeInfo": {
+        "storeId": 310371,
+        "storeName": "示例门店17",
+        "storeCityName": "延边朝鲜族自治州",
+        "storeRegionName": "延吉市",
+        "storeAddress": "延边朝鲜族自治州延吉市",
+        "coordinateSystem": "GAODE",
+        "longitude": 129,
+        "latitude": 43
+      },
+      "brandId": 10006,
+      "brandName": "必胜客",
+      "projectId": 1200,
+      "projectName": "辽吉必胜客",
+      "createTime": "2026-05-29 11:51:15",
+      "jobName": "必胜客-示例门店17-延吉万达店-小时工",
+      "jobNickName": "延吉万达店",
+      "jobCategoryName": "餐饮/西餐厅/普通服务员",
+      "jobContent": "1、布置餐厅和餐桌；\n2、引领客人入座就席，协助客人点菜，向客人介绍特色或时令菜点；\n3、整理餐厅的清洁卫生。",
+      "cooperationMode": "业务流程外包(BPO)",
+      "laborForm": "兼职",
+      "partTimeJobType": "小时工",
+      "needProbationWork": "不需要",
+      "needTraining": "不需要",
+      "haveProbation": null
+    },
+    "jobSalary": {
+      "salaryScenarioList": [
+        {
+          "salaryType": "正式",
+          "salaryPeriod": "日结算",
+          "payday": "次日结",
+          "hasStairSalary": "有阶梯薪资",
+          "hasSpecialSalary": false,
+          "bonusDesc": null,
+          "basicSalary": {
+            "basicSalary": 12.4,
+            "basicSalaryUnit": "元/时"
+          },
+          "stairSalaries": [
+            {
+              "description": "超出后所有工时按照新的薪资标准计算",
+              "perTimeUnit": "每月",
+              "fullWorkTime": 0,
+              "fullWorkTimeUnit": "累计工作小时",
+              "salary": 12.4,
+              "salaryUnit": "元/时"
+            },
+            {
+              "description": "超出后所有工时按照新的薪资标准计算",
+              "perTimeUnit": "每月",
+              "fullWorkTime": 100,
+              "fullWorkTimeUnit": "累计工作小时",
+              "salary": 13.1,
+              "salaryUnit": "元/时"
+            }
+          ],
+          "jobSpecialSalaryList": null,
+          "comprehensiveSalary": {
+            "minComprehensiveSalary": 2000,
+            "maxComprehensiveSalary": 2300,
+            "comprehensiveSalaryUnit": "元/月"
+          },
+          "holidaySalary": {
+            "holidaySalaryType": "无薪资",
+            "holidaySalaryMultiple": null,
+            "holidayFixedSalary": null,
+            "holidayFixedSalaryUnit": null,
+            "holidaySalaryDesc": null
+          },
+          "overtimeSalary": {
+            "overtimeSalaryType": "无薪资",
+            "overtimeSalaryMultiple": null,
+            "overtimeFixedSalary": null,
+            "overtimeFixedSalaryUnit": null,
+            "overtimeSalaryDesc": null
+          },
+          "otherSalary": {
+            "commission": null,
+            "attendanceSalary": null,
+            "attendanceSalaryUnit": null,
+            "performance": ""
+          }
+        }
+      ],
+      "probationSalary": null
+    },
+    "welfare": {
+      "haveInsurance": "独立日购买",
+      "accommodation": "无住宿福利",
+      "accommodationAllowance": null,
+      "accommodationAllowanceUnit": null,
+      "probationAccommodationAllowanceReceive": null,
+      "probationInsuranceReceive": null,
+      "catering": "无餐饮福利",
+      "cateringSalary": null,
+      "cateringSalaryUnit": null,
+      "probationCateringAllowanceReceive": null,
+      "trafficAllowanceSalary": null,
+      "trafficAllowanceSalaryUnit": null,
+      "memo": null
+    },
+    "hiringRequirement": {
+      "figure": "社会人士",
+      "basicPersonalRequirements": {
+        "manMinHeight": null,
+        "manMaxHeight": null,
+        "womanMinHeight": null,
+        "womanMaxHeight": null,
+        "genderRequirement": "男性,女性",
+        "minAge": 23,
+        "maxAge": 40
+      },
+      "requirementsForHometown": {
+        "countryRequirementType": "仅要中国人",
+        "nationRequirementType": "不限",
+        "nations": null,
+        "nativePlaceRequirementType": "不限",
+        "nativePlaces": null
+      },
+      "marriageBearingAndSocialSecurity": {
+        "marriageBearingType": "不限",
+        "marriageBearing": null,
+        "socialSecurityList": "不限"
+      },
+      "competencyRequirements": {
+        "workExperienceJobType": null,
+        "minWorkTime": null,
+        "minWorkTimeUnit": null
+      },
+      "language": {
+        "languages": null,
+        "languageRemark": ""
+      },
+      "certificate": {
+        "education": "不限",
+        "certificates": "健康证",
+        "healthCertificate": "食品健康证",
+        "driverLicenseType": null
+      }
+    },
+    "workTime": {
+      "employmentForm": "长期用工",
+      "minWorkMonths": 6,
+      "temporaryEmployment": null,
+      "weekAndMonthWorkTime": {
+        "arrangementCycleType": "每月",
+        "weekMonthArrangementMode": "自定义时间",
+        "weekMonthRestMode": null,
+        "onWorkLimitType": "至少上岗",
+        "onWorkTimeUnit": "小时",
+        "onWorkTime": 80,
+        "perWeekWorkDays": null,
+        "perWeekRestDays": null,
+        "workSingleDouble": null
+      },
+      "dayWorkTime": {
+        "arrangementType": "固定排班",
+        "combinedArrangement": [
+          {
+            "combinedArrangementStartTime": "08:00",
+            "combinedArrangementEndTime": "15:00"
+          },
+          {
+            "combinedArrangementStartTime": "17:00",
+            "combinedArrangementEndTime": "22:00"
+          }
+        ],
+        "fixedTime": null
+      }
+    },
+    "interviewProcess": {
+      "interviewTotal": 1,
+      "firstInterview": {
+        "firstInterviewWay": "电话面试",
+        "interviewAddress": "同工作地址",
+        "firstInterviewDesc": "面试官先电话沟通，合适的会通知线下门店面试",
+        "firstInterviewAccess": null,
+        "firstInterviewAttachments": [],
+        "interviewTimeMode": "周期",
+        "fixedInterviewTimes": null,
+        "periodicInterviewTimes": [
+          {
+            "interviewWeekday": "每周五",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "10:00",
+                "interviewEndTime": "12:00",
+                "cycleDeadlineDay": "前一天",
+                "cycleDeadlineEnd": "18:00"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周三",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "10:00",
+                "interviewEndTime": "12:00",
+                "cycleDeadlineDay": "前一天",
+                "cycleDeadlineEnd": "18:00"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周一",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "10:00",
+                "interviewEndTime": "12:00",
+                "cycleDeadlineDay": "前一天",
+                "cycleDeadlineEnd": "18:00"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周二",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "10:00",
+                "interviewEndTime": "12:00",
+                "cycleDeadlineDay": "前一天",
+                "cycleDeadlineEnd": "18:00"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周四",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "10:00",
+                "interviewEndTime": "12:00",
+                "cycleDeadlineDay": "前一天",
+                "cycleDeadlineEnd": "18:00"
+              }
+            ]
+          }
+        ]
+      },
+      "secondInterview": null,
+      "thirdInterview": null,
+      "interviewSupplement": [
+        {
+          "interviewSupplementId": 13,
+          "interviewSupplement": "有无本地健康证"
+        },
+        {
+          "interviewSupplementId": 744,
+          "interviewSupplement": "可在岗几个月"
+        },
+        {
+          "interviewSupplementId": 1,
+          "interviewSupplement": "社会身份"
+        }
+      ],
+      "probationWork": null,
+      "training": null,
+      "onWorkClothingExplain": "工服",
+      "onWorkInfo": null,
+      "processDesc": ""
+    }
+  },
+  {
+    "basicInfo": {
+      "jobId": 528136,
+      "storeInfo": {
+        "storeId": 310123,
+        "storeName": "示例门店18",
+        "storeCityName": "北京市",
+        "storeRegionName": "朝阳区",
+        "storeAddress": "北京市朝阳区",
+        "coordinateSystem": "GAODE",
+        "longitude": 116,
+        "latitude": 40
+      },
+      "brandId": 10447,
+      "brandName": "果蔬好",
+      "projectId": 1193,
+      "projectName": "果蔬好",
+      "createTime": "2026-05-25 17:59:40",
+      "jobName": "果蔬好-示例门店18-蔬菜理货员-小时工",
+      "jobNickName": "蔬菜理货员",
+      "jobCategoryName": "零售/超市/理货员",
+      "jobContent": "排班：5：00—14：30；中间吃饭30分钟\n1、货品的摆放和上架；\n2、对于现有库存的盘点与整理记录；\n3、负责相关区域的卫生以及整洁工作。",
+      "cooperationMode": "业务流程外包(BPO)",
+      "laborForm": "兼职",
+      "partTimeJobType": "小时工",
+      "needProbationWork": "不需要",
+      "needTraining": "不需要",
+      "haveProbation": null
+    },
+    "jobSalary": {
+      "salaryScenarioList": [
+        {
+          "salaryType": "正式",
+          "salaryPeriod": "月结算",
+          "payday": "20号",
+          "hasStairSalary": "无阶梯薪资",
+          "hasSpecialSalary": false,
+          "bonusDesc": null,
+          "basicSalary": {
+            "basicSalary": 20,
+            "basicSalaryUnit": "元/时"
+          },
+          "stairSalaries": null,
+          "jobSpecialSalaryList": null,
+          "comprehensiveSalary": {
+            "minComprehensiveSalary": 4800,
+            "maxComprehensiveSalary": 5400,
+            "comprehensiveSalaryUnit": "元/月"
+          },
+          "holidaySalary": {
+            "holidaySalaryType": "无薪资",
+            "holidaySalaryMultiple": null,
+            "holidayFixedSalary": null,
+            "holidayFixedSalaryUnit": null,
+            "holidaySalaryDesc": null
+          },
+          "overtimeSalary": {
+            "overtimeSalaryType": "无薪资",
+            "overtimeSalaryMultiple": null,
+            "overtimeFixedSalary": null,
+            "overtimeFixedSalaryUnit": null,
+            "overtimeSalaryDesc": null
+          },
+          "otherSalary": {
+            "commission": null,
+            "attendanceSalary": null,
+            "attendanceSalaryUnit": null,
+            "performance": ""
+          }
+        }
+      ],
+      "probationSalary": null
+    },
+    "welfare": {
+      "haveInsurance": "独立日购买",
+      "accommodation": "无住宿福利",
+      "accommodationAllowance": null,
+      "accommodationAllowanceUnit": null,
+      "probationAccommodationAllowanceReceive": null,
+      "probationInsuranceReceive": null,
+      "catering": "无餐饮福利",
+      "cateringSalary": null,
+      "cateringSalaryUnit": null,
+      "probationCateringAllowanceReceive": null,
+      "trafficAllowanceSalary": null,
+      "trafficAllowanceSalaryUnit": null,
+      "memo": null
+    },
+    "hiringRequirement": {
+      "figure": "社会人士",
+      "basicPersonalRequirements": {
+        "manMinHeight": 150,
+        "manMaxHeight": 185,
+        "womanMinHeight": 150,
+        "womanMaxHeight": 175,
+        "genderRequirement": "女性,男性",
+        "minAge": 20,
+        "maxAge": 45
+      },
+      "requirementsForHometown": {
+        "countryRequirementType": "不限",
+        "nationRequirementType": "不限",
+        "nations": null,
+        "nativePlaceRequirementType": "不要",
+        "nativePlaces": ["天津市", "辽宁省", "吉林省", "黑龙江省", "江西省"]
+      },
+      "marriageBearingAndSocialSecurity": {
+        "marriageBearingType": "不限",
+        "marriageBearing": null,
+        "socialSecurityList": "不限"
+      },
+      "competencyRequirements": {
+        "workExperienceJobType": null,
+        "minWorkTime": null,
+        "minWorkTimeUnit": 1
+      },
+      "language": {
+        "languages": null,
+        "languageRemark": ""
+      },
+      "certificate": {
+        "education": "不限",
+        "certificates": "健康证",
+        "healthCertificate": "食品健康证",
+        "driverLicenseType": null
+      }
+    },
+    "workTime": {
+      "employmentForm": "长期用工",
+      "minWorkMonths": 3,
+      "temporaryEmployment": null,
+      "weekAndMonthWorkTime": {
+        "arrangementCycleType": "每周",
+        "weekMonthArrangementMode": "自定义时间",
+        "weekMonthRestMode": null,
+        "onWorkLimitType": "至少上岗",
+        "onWorkTimeUnit": "天",
+        "onWorkTime": 7,
+        "perWeekWorkDays": null,
+        "perWeekRestDays": null,
+        "workSingleDouble": null
+      },
+      "dayWorkTime": {
+        "arrangementType": "组合排班制",
+        "combinedArrangement": [
+          {
+            "combinedArrangementStartTime": "05:00",
+            "combinedArrangementEndTime": "14:30"
+          }
+        ],
+        "fixedTime": null
+      }
+    },
+    "interviewProcess": {
+      "interviewTotal": 1,
+      "firstInterview": {
+        "firstInterviewWay": "线下面试",
+        "interviewAddress": "同工作地址",
+        "firstInterviewDesc": null,
+        "firstInterviewAccess": null,
+        "firstInterviewAttachments": [],
+        "interviewTimeMode": "周期",
+        "fixedInterviewTimes": null,
+        "periodicInterviewTimes": [
+          {
+            "interviewWeekday": "每周二",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "11:00",
+                "interviewEndTime": "18:00",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "09:00"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周一",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "11:00",
+                "interviewEndTime": "18:00",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "09:00"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周三",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "11:00",
+                "interviewEndTime": "18:00",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "09:00"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周四",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "11:00",
+                "interviewEndTime": "18:00",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "09:00"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周五",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "11:00",
+                "interviewEndTime": "18:00",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "09:00"
+              }
+            ]
+          }
+        ]
+      },
+      "secondInterview": null,
+      "thirdInterview": null,
+      "interviewSupplement": [
+        {
+          "interviewSupplementId": 3,
+          "interviewSupplement": "籍贯"
+        },
+        {
+          "interviewSupplementId": 4,
+          "interviewSupplement": "身高(cm)"
+        },
+        {
+          "interviewSupplementId": 13,
+          "interviewSupplement": "有无本地健康证"
+        },
+        {
+          "interviewSupplementId": 50,
+          "interviewSupplement": "体重(kg)"
+        },
+        {
+          "interviewSupplementId": 1,
+          "interviewSupplement": "社会身份"
+        }
+      ],
+      "probationWork": null,
+      "training": null,
+      "onWorkClothingExplain": "门店准备上衣工服，需要自己准备：黑裤子，黑色或蓝色头花，黑色鞋子",
+      "onWorkInfo": null,
+      "processDesc": "提前与门店约面试时间，不可无预约面试"
+    }
+  },
+  {
+    "basicInfo": {
+      "jobId": 527743,
+      "storeInfo": {
+        "storeId": 310171,
+        "storeName": "示例门店19",
+        "storeCityName": "常州市",
+        "storeRegionName": "新北区",
+        "storeAddress": "常州市新北区",
+        "coordinateSystem": "GAODE",
+        "longitude": 120,
+        "latitude": 32
+      },
+      "brandId": 10006,
+      "brandName": "必胜客",
+      "projectId": 1203,
+      "projectName": "常州必胜客（新）",
+      "createTime": "2026-05-07 15:26:53",
+      "jobName": "必胜客-示例门店19-内场服务/打烊-小时工",
+      "jobNickName": "内场服务/打烊",
+      "jobCategoryName": "餐饮/西餐厅/普通服务员",
+      "jobContent": "内场厨房：工作内容包括产品制作（最重要部分）：披萨、焗饭、牛排、鸡翅、炒饭意面，沙拉、饮料甜点、薯条、鸡块等炸制小吃制作以及洗碗，理货、卫生清洁等工作\n外场大厅：接待、服务、点餐、配餐、打包、卫生清洁等工作\n\n用人要求：\n1、能稳定出勤1年及以上，如果是兼职，下午需要满足17：00以前到岗\n2、接受调店和共享门店，会在候选人5公里内安排2-3家门店出勤\n3、不要学生\n\n注：面试官面试会通过电话沟通，请提醒候选人不要设置屏蔽，甲方反馈在48小时内反馈，我会在统一时间同步反馈，谢谢！！",
+      "cooperationMode": "业务流程外包(BPO)",
+      "laborForm": "兼职",
+      "partTimeJobType": "小时工",
+      "needProbationWork": "不需要",
+      "needTraining": "不需要",
+      "haveProbation": null
+    },
+    "jobSalary": {
+      "salaryScenarioList": [
+        {
+          "salaryType": "正式",
+          "salaryPeriod": "日结算",
+          "payday": "当日结",
+          "hasStairSalary": "无阶梯薪资",
+          "hasSpecialSalary": false,
+          "bonusDesc": null,
+          "basicSalary": {
+            "basicSalary": 21,
+            "basicSalaryUnit": "元/时"
+          },
+          "stairSalaries": null,
+          "jobSpecialSalaryList": null,
+          "comprehensiveSalary": {
+            "minComprehensiveSalary": 2000,
+            "maxComprehensiveSalary": 4000,
+            "comprehensiveSalaryUnit": "元/月"
+          },
+          "holidaySalary": {
+            "holidaySalaryType": "无薪资",
+            "holidaySalaryMultiple": null,
+            "holidayFixedSalary": null,
+            "holidayFixedSalaryUnit": null,
+            "holidaySalaryDesc": null
+          },
+          "overtimeSalary": {
+            "overtimeSalaryType": "无薪资",
+            "overtimeSalaryMultiple": null,
+            "overtimeFixedSalary": null,
+            "overtimeFixedSalaryUnit": null,
+            "overtimeSalaryDesc": null
+          },
+          "otherSalary": {
+            "commission": null,
+            "attendanceSalary": null,
+            "attendanceSalaryUnit": null,
+            "performance": null
+          }
+        }
+      ],
+      "probationSalary": null
+    },
+    "welfare": {
+      "haveInsurance": "独立日购买",
+      "accommodation": "无住宿福利",
+      "accommodationAllowance": null,
+      "accommodationAllowanceUnit": null,
+      "probationAccommodationAllowanceReceive": null,
+      "probationInsuranceReceive": null,
+      "catering": "无餐饮福利",
+      "cateringSalary": null,
+      "cateringSalaryUnit": null,
+      "probationCateringAllowanceReceive": null,
+      "trafficAllowanceSalary": null,
+      "trafficAllowanceSalaryUnit": null,
+      "memo": "\"平日单价21 自然月满100h22 自然月超190h22.8 阶梯不含法定小时；\n法定单价55.5\""
+    },
+    "hiringRequirement": {
+      "figure": "社会人士",
+      "basicPersonalRequirements": {
+        "manMinHeight": null,
+        "manMaxHeight": null,
+        "womanMinHeight": null,
+        "womanMaxHeight": null,
+        "genderRequirement": "男性,女性",
+        "minAge": 20,
+        "maxAge": 47
+      },
+      "requirementsForHometown": {
+        "countryRequirementType": "仅要中国人",
+        "nationRequirementType": "不限",
+        "nations": null,
+        "nativePlaceRequirementType": "不限",
+        "nativePlaces": null
+      },
+      "marriageBearingAndSocialSecurity": {
+        "marriageBearingType": "不限",
+        "marriageBearing": null,
+        "socialSecurityList": "不限"
+      },
+      "competencyRequirements": {
+        "workExperienceJobType": null,
+        "minWorkTime": null,
+        "minWorkTimeUnit": null
+      },
+      "language": {
+        "languages": null,
+        "languageRemark": null
+      },
+      "certificate": {
+        "education": "高中",
+        "certificates": "健康证",
+        "healthCertificate": "食品健康证",
+        "driverLicenseType": null
+      }
+    },
+    "workTime": {
+      "employmentForm": "长期用工",
+      "minWorkMonths": 12,
+      "temporaryEmployment": null,
+      "weekAndMonthWorkTime": {
+        "arrangementCycleType": "每周",
+        "weekMonthArrangementMode": "自定义时间",
+        "weekMonthRestMode": null,
+        "onWorkLimitType": "至少上岗",
+        "onWorkTimeUnit": "天",
+        "onWorkTime": 6,
+        "perWeekWorkDays": null,
+        "perWeekRestDays": null,
+        "workSingleDouble": null
+      },
+      "dayWorkTime": {
+        "arrangementType": "固定排班",
+        "combinedArrangement": [
+          {
+            "combinedArrangementStartTime": "08:00",
+            "combinedArrangementEndTime": "15:00"
+          },
+          {
+            "combinedArrangementStartTime": "10:00",
+            "combinedArrangementEndTime": "20:00"
+          },
+          {
+            "combinedArrangementStartTime": "17:00",
+            "combinedArrangementEndTime": "23:00"
+          }
+        ],
+        "fixedTime": null
+      }
+    },
+    "interviewProcess": {
+      "interviewTotal": 1,
+      "firstInterview": {
+        "firstInterviewWay": "AI面试",
+        "interviewAddress": null,
+        "firstInterviewDesc": "有负责人打电话与候选人沟通！请保证填写名单是电话号码是准确的、正在使用的、可接通的！！！\n\n1个内场早班 1个外场全天",
+        "firstInterviewAccess": null,
+        "firstInterviewAttachments": [],
+        "interviewTimeMode": "周期",
+        "fixedInterviewTimes": null,
+        "periodicInterviewTimes": [
+          {
+            "interviewWeekday": "每周一",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "10:00",
+                "interviewEndTime": "19:00",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "10:30"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周二",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "10:00",
+                "interviewEndTime": "19:00",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "10:30"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周三",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "10:00",
+                "interviewEndTime": "19:00",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "10:30"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周四",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "10:00",
+                "interviewEndTime": "19:00",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "10:30"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周五",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "10:00",
+                "interviewEndTime": "19:00",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "10:30"
+              }
+            ]
+          }
+        ]
+      },
+      "secondInterview": null,
+      "thirdInterview": null,
+      "interviewSupplement": [
+        {
+          "interviewSupplementId": 4,
+          "interviewSupplement": "身高(cm)"
+        },
+        {
+          "interviewSupplementId": 13,
+          "interviewSupplement": "有无本地健康证"
+        },
+        {
+          "interviewSupplementId": 50,
+          "interviewSupplement": "体重(kg)"
+        },
+        {
+          "interviewSupplementId": 744,
+          "interviewSupplement": "可在岗几个月"
+        },
+        {
+          "interviewSupplementId": 11,
+          "interviewSupplement": "居住地址"
+        },
+        {
+          "interviewSupplementId": 741,
+          "interviewSupplement": "每天可工作时间段"
+        },
+        {
+          "interviewSupplementId": 1,
+          "interviewSupplement": "社会身份"
+        }
+      ],
+      "probationWork": null,
+      "training": null,
+      "onWorkClothingExplain": "根据门店安排自备",
+      "onWorkInfo": null,
+      "processDesc": null
+    }
+  },
+  {
+    "basicInfo": {
+      "jobId": 524404,
+      "storeInfo": {
+        "storeId": 306526,
+        "storeName": "示例门店20",
+        "storeCityName": "上海市",
+        "storeRegionName": "虹口区",
+        "storeAddress": "上海市虹口区",
+        "coordinateSystem": "GAODE",
+        "longitude": 121,
+        "latitude": 31
+      },
+      "brandId": 10200,
+      "brandName": "成都你六姐",
+      "projectId": 941,
+      "projectName": "成都你六姐",
+      "createTime": "2025-10-22 11:17:55",
+      "jobName": "成都你六姐-示例门店20-前厅服务员-小时工",
+      "jobNickName": "前厅服务员",
+      "jobCategoryName": "餐饮/中餐/普通服务员",
+      "jobContent": "1、主动迎接顾客、引导入座、协助点单，熟悉菜品与辣度，做好点餐与上菜服务。\n2、及时巡台添茶、收空盘，保持桌面与就餐区干净整洁。\n3、顾客点餐后协助结账、用餐结束后快速清理台面，保障翻台效率。",
+      "cooperationMode": "业务流程外包(BPO)",
+      "laborForm": "兼职",
+      "partTimeJobType": "小时工",
+      "needProbationWork": "需要",
+      "needTraining": "不需要",
+      "haveProbation": null
+    },
+    "jobSalary": {
+      "salaryScenarioList": [
+        {
+          "salaryType": "正式",
+          "salaryPeriod": "月结算",
+          "payday": "15号",
+          "hasStairSalary": "有阶梯薪资",
+          "hasSpecialSalary": false,
+          "bonusDesc": null,
+          "basicSalary": {
+            "basicSalary": 24,
+            "basicSalaryUnit": "元/时"
+          },
+          "stairSalaries": [
+            {
+              "description": "超出部分按照新的薪资标准计算",
+              "perTimeUnit": "每月",
+              "fullWorkTime": 40,
+              "fullWorkTimeUnit": "累计工作小时",
+              "salary": 26,
+              "salaryUnit": "元/时"
+            },
+            {
+              "description": "超出部分按照新的薪资标准计算",
+              "perTimeUnit": "每月",
+              "fullWorkTime": 80,
+              "fullWorkTimeUnit": "累计工作小时",
+              "salary": 28,
+              "salaryUnit": "元/时"
+            }
+          ],
+          "jobSpecialSalaryList": null,
+          "comprehensiveSalary": {
+            "minComprehensiveSalary": 1000,
+            "maxComprehensiveSalary": 3000,
+            "comprehensiveSalaryUnit": "元/月"
+          },
+          "holidaySalary": {
+            "holidaySalaryType": "固定薪资",
+            "holidaySalaryMultiple": null,
+            "holidayFixedSalary": 24,
+            "holidayFixedSalaryUnit": "元/时",
+            "holidaySalaryDesc": ""
+          },
+          "overtimeSalary": {
+            "overtimeSalaryType": "固定薪资",
+            "overtimeSalaryMultiple": null,
+            "overtimeFixedSalary": 24,
+            "overtimeFixedSalaryUnit": "元/时",
+            "overtimeSalaryDesc": ""
+          },
+          "otherSalary": {
+            "commission": null,
+            "attendanceSalary": null,
+            "attendanceSalaryUnit": null,
+            "performance": null
+          }
+        }
+      ],
+      "probationSalary": {
+        "salary": 20,
+        "salaryUnit": "元/时",
+        "salaryDescription": "1、试工周期：2-4小时，试工1小时内劝退的无薪资 2、试工通过后正式入职的，薪资按照正式兼职的时薪结算 3、若试工了2~4小时（完整试工周期）后不做了或试工失败的，则按照20元/时结算"
+      }
+    },
+    "welfare": {
+      "haveInsurance": "独立日购买",
+      "accommodation": "无住宿福利",
+      "accommodationAllowance": null,
+      "accommodationAllowanceUnit": null,
+      "probationAccommodationAllowanceReceive": null,
+      "probationInsuranceReceive": "是",
+      "catering": "包吃",
+      "cateringSalary": null,
+      "cateringSalaryUnit": null,
+      "probationCateringAllowanceReceive": "否",
+      "trafficAllowanceSalary": null,
+      "trafficAllowanceSalaryUnit": null,
+      "memo": "1、兼职长期稳定后店铺按实际情况提供员工餐。\n2、薪资计算方式：\n月工时≤40小时:24元/小时\n月工时40＞80小时：超出40h的部分26元/小时\n工时80以上：超出80h的部分28元/小时\n【例如小甲月出勤85小时，则小甲有40小时按照24结算，40小时按照26结算，5小时按照28结算】"
+    },
+    "hiringRequirement": {
+      "figure": "社会人士",
+      "basicPersonalRequirements": {
+        "manMinHeight": null,
+        "manMaxHeight": null,
+        "womanMinHeight": 155,
+        "womanMaxHeight": 170,
+        "genderRequirement": "女性",
+        "minAge": 20,
+        "maxAge": 45
+      },
+      "requirementsForHometown": {
+        "countryRequirementType": "仅要中国人",
+        "nationRequirementType": "不限",
+        "nations": null,
+        "nativePlaceRequirementType": "不限",
+        "nativePlaces": null
+      },
+      "marriageBearingAndSocialSecurity": {
+        "marriageBearingType": "不限",
+        "marriageBearing": null,
+        "socialSecurityList": "不限"
+      },
+      "competencyRequirements": {
+        "workExperienceJobType": null,
+        "minWorkTime": null,
+        "minWorkTimeUnit": null
+      },
+      "language": {
+        "languages": "普通话",
+        "languageRemark": null
+      },
+      "certificate": {
+        "education": "初中",
+        "certificates": "健康证",
+        "healthCertificate": "食品健康证",
+        "driverLicenseType": null
+      }
+    },
+    "workTime": {
+      "employmentForm": "长期用工",
+      "minWorkMonths": 3,
+      "temporaryEmployment": null,
+      "weekAndMonthWorkTime": {
+        "arrangementCycleType": "每周",
+        "weekMonthArrangementMode": "自定义时间",
+        "weekMonthRestMode": null,
+        "onWorkLimitType": "至少上岗",
+        "onWorkTimeUnit": "天",
+        "onWorkTime": 7,
+        "perWeekWorkDays": null,
+        "perWeekRestDays": null,
+        "workSingleDouble": null
+      },
+      "dayWorkTime": {
+        "arrangementType": "固定排班",
+        "combinedArrangement": [
+          {
+            "combinedArrangementStartTime": "17:00",
+            "combinedArrangementEndTime": "19:00"
+          }
+        ],
+        "fixedTime": null
+      }
+    },
+    "interviewProcess": {
+      "interviewTotal": 1,
+      "firstInterview": {
+        "firstInterviewWay": "线下面试",
+        "interviewAddress": "同工作地址",
+        "firstInterviewDesc": null,
+        "firstInterviewAccess": null,
+        "firstInterviewAttachments": [],
+        "interviewTimeMode": "周期",
+        "fixedInterviewTimes": null,
+        "periodicInterviewTimes": [
+          {
+            "interviewWeekday": "每周二",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "13:30",
+                "interviewEndTime": "16:30",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "11:30"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周一",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "13:30",
+                "interviewEndTime": "16:30",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "11:30"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周四",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "13:30",
+                "interviewEndTime": "16:30",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "11:30"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周五",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "13:30",
+                "interviewEndTime": "16:30",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "11:30"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周三",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "13:30",
+                "interviewEndTime": "16:30",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "11:30"
+              }
+            ]
+          }
+        ]
+      },
+      "secondInterview": null,
+      "thirdInterview": null,
+      "interviewSupplement": [
+        {
+          "interviewSupplementId": 13,
+          "interviewSupplement": "有无本地健康证"
+        }
+      ],
+      "probationWork": {
+        "probationWorkPeriod": 2,
+        "probationWorkPeriodUnit": "小时",
+        "probationWorkAddress": "同工作地址",
+        "probationWorkAssessment": "实操",
+        "probationWorkAssessmentText": null
+      },
+      "training": null,
+      "onWorkClothingExplain": "门店提供工服，请自备黑裤子、运动鞋。",
+      "onWorkInfo": "本人健康证（纸质、上海地区的）、本人银行卡、本人身份证",
+      "processDesc": "\n"
+    }
+  },
+  {
+    "basicInfo": {
+      "jobId": 520459,
+      "storeInfo": {
+        "storeId": 305094,
+        "storeName": "示例门店21",
+        "storeCityName": "上海市",
+        "storeRegionName": "松江区",
+        "storeAddress": "上海市松江区",
+        "coordinateSystem": "GAODE",
+        "longitude": 121,
+        "latitude": 31
+      },
+      "brandId": 10250,
+      "brandName": "奥乐齐",
+      "projectId": 865,
+      "projectName": "奥乐齐",
+      "createTime": "2024-08-22 13:38:13",
+      "jobName": "奥乐齐-示例门店21-社会兼职-小时工",
+      "jobNickName": "社会兼职",
+      "jobCategoryName": "零售/超市/通岗店员",
+      "jobContent": "主要做上货补货、打包等，其他部分需要能够服从门店的安排",
+      "cooperationMode": "业务流程外包(BPO)",
+      "laborForm": "兼职",
+      "partTimeJobType": "小时工",
+      "needProbationWork": "不需要",
+      "needTraining": "不需要",
+      "haveProbation": null
+    },
+    "jobSalary": {
+      "salaryScenarioList": [
+        {
+          "salaryType": "正式",
+          "salaryPeriod": "月结算",
+          "payday": "15号",
+          "hasStairSalary": "无阶梯薪资",
+          "hasSpecialSalary": false,
+          "bonusDesc": null,
+          "basicSalary": {
+            "basicSalary": 26,
+            "basicSalaryUnit": "元/时"
+          },
+          "stairSalaries": null,
+          "jobSpecialSalaryList": null,
+          "comprehensiveSalary": {
+            "minComprehensiveSalary": 4000,
+            "maxComprehensiveSalary": 5500,
+            "comprehensiveSalaryUnit": "元/月"
+          },
+          "holidaySalary": {
+            "holidaySalaryType": "无薪资",
+            "holidaySalaryMultiple": null,
+            "holidayFixedSalary": null,
+            "holidayFixedSalaryUnit": null,
+            "holidaySalaryDesc": null
+          },
+          "overtimeSalary": {
+            "overtimeSalaryType": "无薪资",
+            "overtimeSalaryMultiple": null,
+            "overtimeFixedSalary": null,
+            "overtimeFixedSalaryUnit": null,
+            "overtimeSalaryDesc": null
+          },
+          "otherSalary": {
+            "commission": null,
+            "attendanceSalary": null,
+            "attendanceSalaryUnit": null,
+            "performance": null
+          }
+        }
+      ],
+      "probationSalary": null
+    },
+    "welfare": {
+      "haveInsurance": "独立日购买",
+      "accommodation": "无住宿福利",
+      "accommodationAllowance": null,
+      "accommodationAllowanceUnit": null,
+      "probationAccommodationAllowanceReceive": null,
+      "probationInsuranceReceive": null,
+      "catering": "无餐饮福利",
+      "cateringSalary": null,
+      "cateringSalaryUnit": null,
+      "probationCateringAllowanceReceive": null,
+      "trafficAllowanceSalary": null,
+      "trafficAllowanceSalaryUnit": null,
+      "memo": "分层时薪方案：①在职天数＜30天，26元/小时； ②30天≤在职天数＜60天，27元/小时； ③60天≤在职天数＜180天，28元/小时； ④在职天数≥180天，30元/小时 发放条件 1、在职天数从2026/8/25开始计算 2、当月无迟到/早退/旷工等违纪行为； 3、当月出勤时长≥104"
+    },
+    "hiringRequirement": {
+      "figure": "社会人士",
+      "basicPersonalRequirements": {
+        "manMinHeight": null,
+        "manMaxHeight": null,
+        "womanMinHeight": null,
+        "womanMaxHeight": null,
+        "genderRequirement": "男性,女性",
+        "minAge": 18,
+        "maxAge": 40
+      },
+      "requirementsForHometown": {
+        "countryRequirementType": "仅要中国人",
+        "nationRequirementType": "不限",
+        "nations": null,
+        "nativePlaceRequirementType": "不限",
+        "nativePlaces": null
+      },
+      "marriageBearingAndSocialSecurity": {
+        "marriageBearingType": "不限",
+        "marriageBearing": null,
+        "socialSecurityList": "不限"
+      },
+      "competencyRequirements": {
+        "workExperienceJobType": null,
+        "minWorkTime": null,
+        "minWorkTimeUnit": null
+      },
+      "language": {
+        "languages": null,
+        "languageRemark": null
+      },
+      "certificate": {
+        "education": "不限",
+        "certificates": "健康证",
+        "healthCertificate": "食品健康证",
+        "driverLicenseType": null
+      }
+    },
+    "workTime": {
+      "employmentForm": "长期用工",
+      "minWorkMonths": 2,
+      "temporaryEmployment": null,
+      "weekAndMonthWorkTime": {
+        "arrangementCycleType": null,
+        "weekMonthArrangementMode": "做几休几",
+        "weekMonthRestMode": "周中休",
+        "onWorkLimitType": null,
+        "onWorkTimeUnit": null,
+        "onWorkTime": null,
+        "perWeekWorkDays": 6,
+        "perWeekRestDays": 1,
+        "workSingleDouble": null
+      },
+      "dayWorkTime": {
+        "arrangementType": "灵活排班",
+        "combinedArrangement": null,
+        "fixedTime": {
+          "perDayMinWorkHours": "8",
+          "shiftCodes": ["早班", "中班", "晚班"],
+          "goToWorkStartTime": "05:00",
+          "goOffWorkEndTime": "23:00",
+          "goOffWorkTimeType": "当日"
+        }
+      }
+    },
+    "interviewProcess": {
+      "interviewTotal": 1,
+      "firstInterview": {
+        "firstInterviewWay": "线下面试",
+        "interviewAddress": "同工作地址",
+        "firstInterviewDesc": null,
+        "firstInterviewAccess": null,
+        "firstInterviewAttachments": [],
+        "interviewTimeMode": "周期",
+        "fixedInterviewTimes": null,
+        "periodicInterviewTimes": [
+          {
+            "interviewWeekday": "每周一",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "14:00",
+                "interviewEndTime": "14:00",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "10:45"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周二",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "14:00",
+                "interviewEndTime": "14:00",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "10:45"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周三",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "14:00",
+                "interviewEndTime": "14:00",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "10:45"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周四",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "14:00",
+                "interviewEndTime": "14:00",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "10:45"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周五",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "14:00",
+                "interviewEndTime": "14:00",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "10:45"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周日",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "14:00",
+                "interviewEndTime": "14:00",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "10:45"
+              }
+            ]
+          }
+        ]
+      },
+      "secondInterview": null,
+      "thirdInterview": null,
+      "interviewSupplement": [
+        {
+          "interviewSupplementId": 14,
+          "interviewSupplement": "出生年月日"
+        },
+        {
+          "interviewSupplementId": 265,
+          "interviewSupplement": "工作过的公司及岗位"
+        },
+        {
+          "interviewSupplementId": 13,
+          "interviewSupplement": "有无本地健康证"
+        },
+        {
+          "interviewSupplementId": 1,
+          "interviewSupplement": "社会身份"
+        }
+      ],
+      "probationWork": null,
+      "training": null,
+      "onWorkClothingExplain": "自备深色的裤子和鞋子。其他工服由客户方入职时统一发放",
+      "onWorkInfo": "身份证、健康证图片、灵工协议&授权书、背调报告、员工信息表",
+      "processDesc": "通过后安排材料准备、信息登记、资料齐全后安排排班，按照排班到岗服务即可\n持健康证上岗，有健康证后，入职前一个工作日16:00前准备好资料，最快可以次日排班上岗"
+    }
+  },
+  {
+    "basicInfo": {
+      "jobId": 520423,
+      "storeInfo": {
+        "storeId": 303540,
+        "storeName": "示例门店22",
+        "storeCityName": "上海市",
+        "storeRegionName": "杨浦区",
+        "storeAddress": "上海市杨浦区",
+        "coordinateSystem": "GAODE",
+        "longitude": 122,
+        "latitude": 31
+      },
+      "brandId": 10250,
+      "brandName": "奥乐齐",
+      "projectId": 865,
+      "projectName": "奥乐齐",
+      "createTime": "2024-08-21 20:58:28",
+      "jobName": "奥乐齐-示例门店22-社会兼职-小时工",
+      "jobNickName": "社会兼职",
+      "jobCategoryName": "零售/超市/通岗店员",
+      "jobContent": "主要做上货补货、打包等，其他部分需要能够服从门店的安排",
+      "cooperationMode": "业务流程外包(BPO)",
+      "laborForm": "兼职",
+      "partTimeJobType": "小时工",
+      "needProbationWork": "不需要",
+      "needTraining": "不需要",
+      "haveProbation": null
+    },
+    "jobSalary": {
+      "salaryScenarioList": [
+        {
+          "salaryType": "正式",
+          "salaryPeriod": "月结算",
+          "payday": "15号",
+          "hasStairSalary": "无阶梯薪资",
+          "hasSpecialSalary": false,
+          "bonusDesc": null,
+          "basicSalary": {
+            "basicSalary": 26,
+            "basicSalaryUnit": "元/时"
+          },
+          "stairSalaries": null,
+          "jobSpecialSalaryList": null,
+          "comprehensiveSalary": {
+            "minComprehensiveSalary": 4000,
+            "maxComprehensiveSalary": 5500,
+            "comprehensiveSalaryUnit": "元/月"
+          },
+          "holidaySalary": {
+            "holidaySalaryType": "无薪资",
+            "holidaySalaryMultiple": null,
+            "holidayFixedSalary": null,
+            "holidayFixedSalaryUnit": null,
+            "holidaySalaryDesc": null
+          },
+          "overtimeSalary": {
+            "overtimeSalaryType": "无薪资",
+            "overtimeSalaryMultiple": null,
+            "overtimeFixedSalary": null,
+            "overtimeFixedSalaryUnit": null,
+            "overtimeSalaryDesc": null
+          },
+          "otherSalary": {
+            "commission": null,
+            "attendanceSalary": null,
+            "attendanceSalaryUnit": null,
+            "performance": null
+          }
+        }
+      ],
+      "probationSalary": null
+    },
+    "welfare": {
+      "haveInsurance": "独立日购买",
+      "accommodation": "无住宿福利",
+      "accommodationAllowance": null,
+      "accommodationAllowanceUnit": null,
+      "probationAccommodationAllowanceReceive": null,
+      "probationInsuranceReceive": null,
+      "catering": "无餐饮福利",
+      "cateringSalary": null,
+      "cateringSalaryUnit": null,
+      "probationCateringAllowanceReceive": null,
+      "trafficAllowanceSalary": null,
+      "trafficAllowanceSalaryUnit": null,
+      "memo": "分层时薪方案：①在职天数＜30天，26元/小时； ②30天≤在职天数＜60天，27元/小时； ③60天≤在职天数＜180天，28元/小时； ④在职天数≥180天，30元/小时 发放条件 1、在职天数从2026/8/25开始计算 2、当月无迟到/早退/旷工等违纪行为； 3、当月出勤时长≥104"
+    },
+    "hiringRequirement": {
+      "figure": "社会人士",
+      "basicPersonalRequirements": {
+        "manMinHeight": null,
+        "manMaxHeight": null,
+        "womanMinHeight": null,
+        "womanMaxHeight": null,
+        "genderRequirement": "男性,女性",
+        "minAge": 18,
+        "maxAge": 40
+      },
+      "requirementsForHometown": {
+        "countryRequirementType": "仅要中国人",
+        "nationRequirementType": "不限",
+        "nations": null,
+        "nativePlaceRequirementType": "不限",
+        "nativePlaces": null
+      },
+      "marriageBearingAndSocialSecurity": {
+        "marriageBearingType": "不限",
+        "marriageBearing": null,
+        "socialSecurityList": "不限"
+      },
+      "competencyRequirements": {
+        "workExperienceJobType": null,
+        "minWorkTime": null,
+        "minWorkTimeUnit": null
+      },
+      "language": {
+        "languages": null,
+        "languageRemark": null
+      },
+      "certificate": {
+        "education": "不限",
+        "certificates": "健康证",
+        "healthCertificate": "食品健康证",
+        "driverLicenseType": null
+      }
+    },
+    "workTime": {
+      "employmentForm": "长期用工",
+      "minWorkMonths": 2,
+      "temporaryEmployment": null,
+      "weekAndMonthWorkTime": {
+        "arrangementCycleType": null,
+        "weekMonthArrangementMode": "做几休几",
+        "weekMonthRestMode": "周中休",
+        "onWorkLimitType": null,
+        "onWorkTimeUnit": null,
+        "onWorkTime": null,
+        "perWeekWorkDays": 6,
+        "perWeekRestDays": 1,
+        "workSingleDouble": null
+      },
+      "dayWorkTime": {
+        "arrangementType": "灵活排班",
+        "combinedArrangement": null,
+        "fixedTime": {
+          "perDayMinWorkHours": "8",
+          "shiftCodes": ["早班", "中班", "晚班"],
+          "goToWorkStartTime": "05:00",
+          "goOffWorkEndTime": "23:00",
+          "goOffWorkTimeType": "当日"
+        }
+      }
+    },
+    "interviewProcess": {
+      "interviewTotal": 1,
+      "firstInterview": {
+        "firstInterviewWay": "线下面试",
+        "interviewAddress": "同工作地址",
+        "firstInterviewDesc": null,
+        "firstInterviewAccess": null,
+        "firstInterviewAttachments": [],
+        "interviewTimeMode": "周期",
+        "fixedInterviewTimes": null,
+        "periodicInterviewTimes": [
+          {
+            "interviewWeekday": "每周二",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "14:00",
+                "interviewEndTime": "14:00",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "10:45"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周三",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "14:00",
+                "interviewEndTime": "14:00",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "10:45"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周四",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "14:00",
+                "interviewEndTime": "14:00",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "10:45"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周五",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "14:00",
+                "interviewEndTime": "14:00",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "10:45"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周日",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "14:00",
+                "interviewEndTime": "14:00",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "10:45"
+              }
+            ]
+          },
+          {
+            "interviewWeekday": "每周一",
+            "interviewTimes": [
+              {
+                "interviewStartTime": "14:00",
+                "interviewEndTime": "14:00",
+                "cycleDeadlineDay": "当天",
+                "cycleDeadlineEnd": "10:45"
+              }
+            ]
+          }
+        ]
+      },
+      "secondInterview": null,
+      "thirdInterview": null,
+      "interviewSupplement": [
+        {
+          "interviewSupplementId": 14,
+          "interviewSupplement": "出生年月日"
+        },
+        {
+          "interviewSupplementId": 265,
+          "interviewSupplement": "工作过的公司及岗位"
+        },
+        {
+          "interviewSupplementId": 13,
+          "interviewSupplement": "有无本地健康证"
+        },
+        {
+          "interviewSupplementId": 1,
+          "interviewSupplement": "社会身份"
+        }
+      ],
+      "probationWork": null,
+      "training": null,
+      "onWorkClothingExplain": "自备深色的裤子和鞋子。其他工服由客户方入职时统一发放",
+      "onWorkInfo": "身份证、健康证图片、灵工协议&授权书、背调报告、员工信息表",
+      "processDesc": "通过后安排材料准备、信息登记、资料齐全后安排排班，按照排班到岗服务即可\n持健康证上岗，有健康证后，入职前一个工作日16:00前准备好资料，最快可以次日排班上岗"
+    }
+  }
+]

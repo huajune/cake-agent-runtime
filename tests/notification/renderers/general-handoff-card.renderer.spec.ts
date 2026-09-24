@@ -161,6 +161,48 @@ describe('GeneralHandoffCardRenderer', () => {
         buildPayload({ reasonCode: 'interview_group_invite_required' }),
       );
       expect(interviewGroupCard.content as string).toContain('⏱ 时效敏感');
+
+      // PRD R5.2：找不到门店、门店未履约、带外预约核实补进标急集合（由权威目录派生）
+      for (const reasonCode of [
+        'cannot_find_store',
+        'store_no_show',
+        'out_of_band_booking_inquiry',
+      ]) {
+        expect(renderer.buildCard(buildPayload({ reasonCode })).content as string).toContain(
+          '⏱ 时效敏感',
+        );
+      }
+    });
+
+    it('renders the pause-overdue inspection card with @ receiver', () => {
+      const card = renderer.buildPauseOverdueCard({
+        chatId: 'chat-1',
+        overdueDays: 4,
+        pausedAtLabel: '2026/09/18 10:00',
+        pauseReason: '面试后人工对接，需人工恢复托管',
+        contactName: '张三',
+        botUserName: 'manager-1',
+        atUsers: [{ openId: 'ou_1', name: '运营A' }],
+      });
+      const content = card.content as string;
+      expect(card.title).toBe('⏳ 人工介入暂停超期未恢复');
+      expect(content).toContain('永久暂停已超 4 天未恢复');
+      expect(content).toContain('微信昵称：张三');
+      expect(content).toContain('托管账号：manager-1');
+      expect(content).toContain('会话ID：chat-1');
+      expect(card.atUsers).toEqual([{ openId: 'ou_1', name: '运营A' }]);
+    });
+
+    it('escalates employment_affairs to urgent only when reason mentions work injury (same rule as task priority)', () => {
+      const injury = renderer.buildCard(
+        buildPayload({ reasonCode: 'employment_affairs', reason: '候选人说上班工伤了' }),
+      );
+      expect(injury.content as string).toContain('⏱ 时效敏感');
+
+      const routine = renderer.buildCard(
+        buildPayload({ reasonCode: 'employment_affairs', reason: '问离职手续' }),
+      );
+      expect(routine.content as string).not.toContain('时效敏感');
     });
 
     it('omits urgency banner for non-urgent or missing reason codes', () => {

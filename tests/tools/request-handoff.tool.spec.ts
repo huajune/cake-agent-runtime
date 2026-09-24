@@ -187,6 +187,39 @@ describe('buildRequestHandoffTool', () => {
     });
   });
 
+  describe('原因码值域来自权威目录（PRD R5.2 新码）', () => {
+    it.each([
+      ['store_no_show', '门店/面试官未履约'],
+      ['out_of_band_booking_inquiry', '带外预约核实'],
+      ['store_hiring_status_check', '门店招聘状态核实'],
+      ['duplicate_signup', '重复报名核实'],
+      ['employment_affairs', '在职事务'],
+      ['personal_pay_attendance', '个人薪资考勤个案'],
+      ['platform_operation', '平台操作问题'],
+    ])('accepts %s and labels the alert from the catalog', async (reasonCode, label) => {
+      const tool = buildTool();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const result = await (tool as any).execute({ reasonCode, reason: '候选人原话' });
+
+      expect(result).toMatchObject({ dispatched: true, shortCircuited: true });
+      expect(result.sideEffect).toEqual(
+        expect.objectContaining({ reasonCode, alertLabel: label, origin: 'agent_tool' }),
+      );
+    });
+
+    it('description no longer hard-codes the old "15 类" wording and routes the two leak clusters', () => {
+      const tool = buildTool() as unknown as { description: string };
+      expect(tool.description).not.toContain('15 类');
+      expect(tool.description).not.toContain('十五个枚举');
+      expect(tool.description).toContain('salary_admin_inquiry 并在 missingJobInfo');
+      expect(tool.description).toContain('走 interview_slot_coordination');
+      // 场景 12 改为岗位级口径；个案式问法归 personal_pay_attendance
+      expect(tool.description).not.toContain('几号发几月工资');
+      expect(tool.description).toContain('我 X 月工资到了没');
+      expect(tool.description).toContain('残障披露不用此码');
+    });
+  });
+
   it('returns a handoff sideEffect intent for outcome-layer dispatch', async () => {
     longTermService.getActiveBookings.mockResolvedValue([
       { work_order_id: 5001, linked_at: '2026-04-15T00:00:00Z' },

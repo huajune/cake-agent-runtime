@@ -2,27 +2,26 @@ import { toErrorMessage } from '@infra/utils/error.util';
 import { Logger } from '@nestjs/common';
 import { tool } from 'ai';
 import { z } from 'zod';
-import { ToolBuilder } from '@shared-types/tool.types';
+import type { ToolBuildContext, ToolBuilder } from '@shared-types/tool.types';
 import { buildToolError, TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
 import {
   GroupInviteService,
-  type GroupInviteInput,
   type GroupInviteResult,
 } from '@biz/group-task/services/group-invite.service';
 import { SessionStateService } from '@memory/short-term/session-state.service';
-import { evaluateInviteCityGate } from '@tools/invite/invite-city-gate';
+import type { InviteCityGateVerdict } from '@tools/invite/invite-city-gate';
+import type { InviteTimingGateVerdict } from '@tools/invite/invite-timing-gate';
+import { runGroupInvitePipeline } from '@tools/invite/group-invite-pipeline';
 import {
-  evaluateInviteTimingGate,
-  type InviteTimingGateVerdict,
-} from '@tools/invite/invite-timing-gate';
-import { extractUserTexts } from '@resolution/signal/dialogue';
+  buildPostBookingGroupInviteGuide,
+  type PostBookingGroupInviteOutcome,
+} from '@tools/invite/post-booking-group-invite';
 import { resolveCityFromDistrict } from '@resolution/geo';
-import { canUseFactForAction } from '@tools/shared/action-confidence';
 
 const logger = new Logger('invite_to_group');
 
 const UNDELIVERED_INVITE_HANDOFF_INSTRUCTION =
-  '如果候选人本轮是在同意入群/后续通知，或当前意向已无匹配而需要群维护，请立即调用 request_handoff(reasonCode="other") 转人工跟进；调用后不得再输出文本。';
+  '如果候选人本轮是在同意入群/后续通知，或当前意向已无匹配而需要群维护，请立即调用 request_handoff(reasonCode="group_invite_failed") 转人工跟进；调用后不得再输出文本。';
 
 // 无群（区别于群满）：业务要求"推荐无岗且没有兼职群（群满场景除外）不再转人工"。
 // 该城市/平台本就没有可对接的兼职群时，不触发人工介入，Agent 自然收口并继续托管。
@@ -47,14 +46,16 @@ const DESCRIPTION = `邀请候选人加入企微兼职岗位信息群。
 - 本工具只能发送**兼职岗位信息群**，返回的 groupPurpose 固定为 "job_pool"。
 - 本工具不能发送面试群。即使本轮预约成功、岗位备注提到“面试群/腾讯会议链接”，也不得把本工具选中的兼职群说成面试群。
 - 预约成功且 booking 返回 interviewGroupHandling.required=true 时，最终回复必须明确区分：
-  1. 本工具返回的实际 groupName 是兼职岗位信息群，邀请已发送/已加入；
+  1. booking 回执 groupInvite（或本工具）返回的实际 groupName 是兼职岗位信息群，邀请已发送/已加入；
   2. 本次面试使用单独的面试群，按 booking 的 _manualInterviewGroupGuide 告知“我这边接着发你邀请”。
 - 腾讯会议链接、面试通知、姓名+手机号备注要求只能关联“面试群”，不得接在兼职群说明后让候选人误以为两者是同一个群。
 
+## 报名成功后的拉群不归本工具
+报名成功后的拉群由系统随 duliday_interview_booking 自动完成：结果在 booking 回执的 groupInvite / _groupInviteGuide 里，你只按结果说话，**不需要也不应再调用本工具**。同轮再调本工具只会得到系统已处理的结果，不会重复邀请。
+
 ## 触发场景（满足任一即可）
-1. **首次面试预约成功后** — duliday_interview_booking 返回 success: true（必须检查 _outcome 字段确认预约成功），且已知候选人城市时，在同轮调用。仅限本会话首次预约成功时触发，后续再预约不再重复拉群
-2. **连续两轮推荐均不满意后的群承接** — 你必须根据完整对话确认候选人已明确否定两轮具体岗位推荐；工具不会用关键词替你计数。上一轮已停止第三轮推荐并征询入群，候选人本轮明确回复同意后调用本工具。真实搜索 0 条/暑假工无库存不属于本场景，不得因此直接拉群。**拉群不能替代取消工单**：若候选人在**面试开始之前**放弃的岗位在 [当前预约信息] 里有进行中的工单，必须同时走 duliday_cancel_work_order 取消该工单再拉群收尾。面试时间已到/已过之后才说没去属爽约，不要取消工单
-3. **候选人同意入群/后续通知** — 如果上一轮你曾提出"拉群/进群/有岗位通知"，候选人本轮回复"好/可以/嗯/谢谢"等同意词，必须调用本工具确认是否真的能拉群；只有 success: true 才能说已拉群或已发邀请
+1. **连续两轮推荐均不满意后的群承接** — 你必须根据完整对话确认候选人已明确否定两轮具体岗位推荐；工具不会用关键词替你计数。上一轮已停止第三轮推荐并征询入群，候选人本轮明确回复同意后调用本工具。真实搜索 0 条/暑假工无库存不属于本场景，不得因此直接拉群。**拉群不能替代取消工单**：若候选人在**面试开始之前**放弃的岗位在 [当前预约信息] 里有进行中的工单，必须同时走 duliday_cancel_work_order 取消该工单再拉群收尾。面试时间已到/已过之后才说没去属爽约，不要取消工单
+2. **候选人同意入群/后续通知** — 如果上一轮你曾提出"拉群/进群/有岗位通知"，候选人本轮回复"好/可以/嗯/谢谢"等同意词，必须调用本工具确认是否真的能拉群；只有 success: true 才能说已拉群或已发邀请
 
 ## 调用前置条件（必须满足）
 - **本轮必须已经给出查岗结论**：要么本轮已推荐了具体岗位（让候选人明确知道有什么岗），要么本轮已明确告知候选人"暂时没有合适岗位"。**未先告知候选人查岗结果就直接发群邀请属于"突兀拉群"**，候选人会困惑你是因为有岗还是没岗才拉他进群
@@ -63,13 +64,13 @@ const DESCRIPTION = `邀请候选人加入企微兼职岗位信息群。
   - 本城市本就没有兼职群（区别于群满），属于"推荐无岗且没有兼职群"场景，不要转人工，继续托管即可：礼貌告知暂时没有合适岗位、后续有匹配会主动联系，引导候选人留意后续主动联系，不要调用 request_handoff。
 
 ## 禁止触发
-- duliday_interview_booking 本轮已调用且返回 success: false / 抛异常时（首次预约成功场景）
+- 本轮已调用 duliday_interview_booking（无论成败）：报名后的拉群随报名结果由系统处理，不要再调本工具
 - 城市未知时
 - 候选人明确拒绝或表示不需要时
 - 本会话已经成功拉过群时（查看 [会话记忆] 中的 invitedGroups）
 - 尚未做过任何岗位检索、还完全没判断过是否有匹配时
 - [兼职群资源] 段已注明该城市无可用群时
-- **候选人正在推进某个已匹配岗位的收资/约面/确认面试时** — 候选人已接受某岗位、正在回填资料、追问"明天能面试吗/几点面试/怎么报名"等推进信号时，说明当前有匹配在走报名流程，**禁止**此时拉群打断（拉群是"无岗维护"场景，不是"有岗推进"场景）。应继续把这单约面收尾；只有等本次预约成功（走场景 1）或确认该岗位无法继续（如失败/不符）才考虑拉群
+- **候选人正在推进某个已匹配岗位的收资/约面/确认面试时** — 候选人已接受某岗位、正在回填资料、追问"明天能面试吗/几点面试/怎么报名"等推进信号时，说明当前有匹配在走报名流程，**禁止**此时拉群打断。本工具只承接"无岗维护"（场景 1/2）；"有岗推进"的拉群时点是报名成功那一刻，由系统自动完成，不需要你操作。应继续把这单约面收尾；只有确认该岗位无法继续（如失败/不符）且满足场景 1/2 时才考虑拉群
 
 ## 参数
 - city（必填）：候选人所在**城市级**名称，从 [会话记忆] / [本轮查询硬约束] 的"城市"字段获取。
@@ -98,14 +99,14 @@ const DESCRIPTION = `邀请候选人加入企微兼职岗位信息群。
 - 若 errorType=invite.city_conflict，说明你传的城市与会话记忆中的城市不一致。候选人没明确说换城市时，改用返回的 expectedCity 重新调用；否则先向候选人确认城市，不要转人工
 - 若 errorType=invite.city_unverified，说明该城市没有出处依据（会话记忆和候选人原文都没有）。先向候选人确认所在城市再调用；本轮不要提群相关内容，不要转人工
 - 若 errorType=invite.already_invited，说明本会话已给该城市拉过群。按返回的群名据实回应（"邀请已经发过了"），不要再次发起邀请，不要转人工
-- 若候选人本轮是在同意入群/后续通知，或当前意向已无匹配而需要群维护，但工具返回 success: false，多数情况要立刻调用 request_handoff(reasonCode="other") 转人工跟进；不要自然语言收尾把候选人晾住
+- 若候选人本轮是在同意入群/后续通知，或当前意向已无匹配而需要群维护，但工具返回 success: false，多数情况要立刻调用 request_handoff(reasonCode="group_invite_failed") 转人工跟进（群满用 no_match_or_group_full，不要归 other）；不要自然语言收尾把候选人晾住
   - **例外（不转人工）**：失败原因是"该城市/平台本就没有兼职群"（invite.no_group_in_city / invite.no_group_available），或"候选人非外部联系人/已拉黑删好友"（invite.candidate_not_friend）时，**不要**转人工——按工具返回的 replyInstruction 自然收口并继续托管即可；只有"群满"（invite.group_full）或接口/结构性失败才转人工
 - 只有 success: true 时才能说"已拉群/已发入群邀请"；无群、群满、接口拒绝、未调用工具时，都不要用**完成口径**声称群相关动作已发生
 
-## 拉群口径（两轮动作链，与场景 2/3 一致）
+## 拉群口径（两轮动作链，与场景 1/2 一致）
 - **征询式**（"要不我邀请你进群？"）只在连续两轮推荐均不满意后使用：先承接候选人意向，**本轮不调本工具**；真实搜索 0 条不得提群
-- 候选人对拉群提议回复"好/可以/嗯"等同意词后，**下一轮必须实调本工具**（场景 3）；提了拉群却一直不调 = 空头承诺，候选人看到没动静会立刻流失
-- **完成口径**（"已拉你进群 / 群邀请已经发你了 / 发了群邀请"）**必须**本轮实调本工具且返回 success: true，否则严禁使用
+- 候选人对拉群提议回复"好/可以/嗯"等同意词后，**下一轮必须实调本工具**（场景 2）；提了拉群却一直不调 = 空头承诺，候选人看到没动静会立刻流失
+- **完成口径**（"已拉你进群 / 群邀请已经发你了 / 发了群邀请"）**必须**本轮实调本工具且返回 success: true，或 booking 回执 groupInvite.success=true，否则严禁使用
 - 拉群成功后，本轮必须停止继续推荐其他岗位；后续轮也不要再向候选人推岗位，转为群内运营`;
 
 const inputSchema = z.object({
@@ -125,22 +126,14 @@ export function buildInviteToGroupTool(
       description: DESCRIPTION,
       inputSchema,
       execute: async ({ city, industry }) => {
-        const inviteInput: GroupInviteInput = {
-          corpId: context.session.corpId,
-          userId: context.session.userId,
-          sessionId: context.session.sessionId,
-          botImId: context.session.botImId ?? '',
-          botUserId: context.session.botUserId ?? '',
-          contactWxid: context.session.userId,
-          city,
-          industry,
-          turnKey: context.session.turnId ?? Date.now().toString(),
-          messageId: context.session.turnId,
-          contactName: context.session.contactName,
-          chatId: context.session.chatId ?? context.session.sessionId,
-        };
-
         try {
+          // 报名成功后的拉群已由运行时随 booking 执行（PRD R3）；模型仍调本工具时按运行时
+          // 结果回应，不重复发起邀请、不重复触达企业接口。
+          const runtimeInvite = context.ledger.jobs.postBookingGroupInvite;
+          if (runtimeInvite) {
+            return buildRuntimeHandledResult(runtimeInvite, city, industry);
+          }
+
           if (context.ledger.jobs.bookingSucceeded === false) {
             logger.log(`本轮预约失败，跳过拉群: city=${city}, user=${context.session.userId}`);
             return buildToolError({
@@ -169,156 +162,46 @@ export function buildInviteToGroupTool(
             });
           }
 
-          // 先做不依赖外部系统的确定性时机校验，再读取企微群成员关系。候选人是否同意
-          // 入群由主 Agent 根据完整对话判断；工具层不再解析自然语言做二次授权裁决。
-          //
-          // 重复邀请状态在会话归档中已有快照；如果可用，先用轻量会话状态刷新一次，
-          // 但读取失败时继续用快照，不让 Redis 抖动挡住合法拉群。只有整个时机 gate
-          // 通过后才值得触达企微实时成员接口。
-          let invitedGroups: { groupName?: string | null; city?: string | null }[] =
-            context.archive.invitedGroups ?? [];
-          if (sessionService) {
-            try {
-              const state = await sessionService.getSessionState(
-                context.session.corpId,
-                context.session.userId,
-                context.session.sessionId,
-              );
-              invitedGroups = state?.invitedGroups ?? invitedGroups;
-            } catch (error: unknown) {
-              const message = toErrorMessage(error);
-              logger.warn(`读取 invitedGroups 失败（时机 gate 使用归档快照）: ${message}`);
-            }
-          }
-          const earlyTimingVerdict = evaluateInviteTimingGate({
-            requestedCity: city,
-            invitedGroups,
-          });
-          if (earlyTimingVerdict.decision === 'reject') {
-            logger.warn(
-              `invite_to_group 前置时机 gate 拒绝: reason=${earlyTimingVerdict.reason}, city=${city} (user=${context.session.userId})`,
-            );
-            return buildInviteTimingGateError({
-              verdict: earlyTimingVerdict,
-              city,
-              industry,
-            });
-          }
-
-          // 前置已在群闸门：候选人已在
-          // 目标城市兼职群时，业务目标已达成，直接短路成功——不再要求城市出处。
-          // 本核验必须排在城市 provenance gate 之前，否则模型无视"已在群"注入调用本
-          // 工具、city 又缺出处时，工具回 city_unverified 并引导模型追问城市继续
-          // 推进拉群，候选人被反复纠缠。实时群成员关系本身就是该城市的最强依据。
-          // 群列表走缓存（不 forceRefresh），任何失败静默降级回原流程。
-          if (context.runtime.strategySource !== 'testing') {
-            const existingMembership =
-              await groupInviteService.preflightExistingMembership(inviteInput);
-            if (existingMembership) {
-              return buildAlreadyInGroupResult(existingMembership, city, industry);
-            }
-          }
-
-          // 城市 provenance gate（防拉错城市群）：city 入参必须能追溯到会话城市事实、
-          // 候选人原文城市名、geo 地名白名单推断（顺义→北京 等，见 @resolution/geo）或
-          // 本轮 geocode 确权城市（ledger.geo.anchors 穿线），模型自报不构成依据。
-          // 会话城市事实的合法来源含 'tool'（geocode 确权、定位分享逆解析）——按置信度
-          // 采信，不挑 source。
-          // 会话事实读取失败按 null 降级（gate 仍可凭候选人原文放行），不让 Redis 抖动挡住拉群。
-          let sessionCity: string | null = null;
-          if (sessionService) {
-            try {
-              const facts = await sessionService.getFacts(
-                context.session.corpId,
-                context.session.userId,
-                context.session.sessionId,
-              );
-              const cityFact = facts?.preferences?.city ?? null;
-              sessionCity =
-                cityFact && canUseFactForAction('invite_city', cityFact.confidence)
-                  ? cityFact.value
-                  : null;
-            } catch (error: unknown) {
-              const message = toErrorMessage(error);
-              logger.warn(`读取会话城市事实失败（gate 按无事实降级）: ${message}`);
-            }
-          }
-          // 顺序恢复提示（visual-fact §二A ⑩）：本轮有图片但尚未 save_image_description
-          // 时，地图截图的城市线索还没进 ledger——拒绝理由里给模型一条确定性恢复路径。
-          const hasUnsavedImages =
-            (context.turnInput.imageMessageIds?.length ?? 0) > 0 &&
-            (context.ledger.visual.factSheets?.length ?? 0) === 0;
-          const unsavedImageHint = hasUnsavedImages
-            ? '本轮候选人发了图片但你还没调用 save_image_description；若图片是位置/地图截图，先保存描述再重试本工具，城市核验会采信图中位置。'
-            : '';
-          const cityGateVerdict = evaluateInviteCityGate({
-            requestedCity: city,
-            sessionCity,
-            userTexts: extractUserTexts(context.turnInput.messages),
-            geoSignalCities: context.ledger.geo.signalCities,
-            // 同轮 geocode unique 确权城市：补"轮末写档、下轮生效"的时序空档
-            //（geocode → 无岗 → invite 常在同一轮发生）。
-            turnResolvedCities: (context.ledger.geo.anchors ?? []).map((anchor) => anchor.city),
-            turnVisualSheets: context.ledger.visual.factSheets,
-          });
-          if (cityGateVerdict.decision === 'reject') {
-            if (cityGateVerdict.reason === 'city_conflict') {
-              logger.warn(
-                `invite_to_group city 与会话城市事实冲突: city=${city}, expectedCity=${cityGateVerdict.expectedCity} (user=${context.session.userId})`,
-              );
-              return buildToolError({
-                errorType: TOOL_ERROR_TYPES.INVITE_CITY_CONFLICT,
-                outcome: 'city 入参与会话记忆中的城市不一致',
-                replyInstruction:
-                  '你传入的 city 与候选人会话记忆中的城市不一致。若候选人本轮没有明确说换城市，请改用 expectedCity 重新调用 invite_to_group；若你认为候选人换了城市，先向候选人确认所在城市，本轮不要提群相关内容，也不要调用 request_handoff。' +
-                  unsavedImageHint,
-                details: {
-                  city,
-                  expectedCity: cityGateVerdict.expectedCity,
-                  industry: industry ?? undefined,
-                },
-              });
-            }
-            logger.warn(
-              `invite_to_group city 缺少出处依据（模型凭空指定）: city=${city} (user=${context.session.userId})`,
-            );
-            return buildToolError({
-              errorType: TOOL_ERROR_TYPES.INVITE_CITY_UNVERIFIED,
-              outcome: 'city 入参在会话记忆与候选人原文中均无依据',
-              replyInstruction:
-                '该城市在会话记忆和候选人原文里都找不到依据，不能据此拉群。请先向候选人确认所在城市（例如"方便说下你现在在哪个城市吗"），得到明确回复后再调用本工具；本轮不要提群相关内容，也不要调用 request_handoff。' +
-                unsavedImageHint,
-              details: { city, industry: industry ?? undefined },
-            });
-          }
-
-          // testing 链路（test-suite 重放/调试）：确定性校验（区县、城市 gate）已在上方
-          // 真实跑完，这里返回模拟成功、不触达企业接口——否则测试环境缺 bot 身份必失败，
-          // prompt 的"invite 失败转人工"指引会把重放全部推进 handoff，拉群链路永远测不到。
-          if (context.runtime.strategySource === 'testing') {
-            logger.log(`testing 链路模拟拉群成功: city=${city} (user=${context.session.userId})`);
-            return {
-              success: true,
-              simulated: true,
-              groupName: `${city}兼职群（测试模拟）`,
-              groupPurpose: 'job_pool',
-              city,
-              industry: industry ?? undefined,
-              inviteDelivery: 'invite_card',
-              _outcome: '【测试链路模拟】已向候选人发送入群邀请卡片（未触达真实企业接口）',
-              _replyInstruction:
-                `企微已向候选人发送兼职岗位信息群"${city}兼职群（测试模拟）"的邀请卡片。` +
-                `回复时必须带实际群名并说明这是兼职岗位信息群、不是面试群；不得把腾讯会议链接或面试通知关联到这个群；` +
-                `禁止输出、编造或粘贴任何群链接 / URL。${UNDELIVERED_PRELUDE_REMINDER}`,
-            };
-          }
-
-          const inviteResult = await groupInviteService.invite(inviteInput);
-          return buildGroupInviteResult({
-            result: inviteResult,
+          // 候选人是否同意入群由主 Agent 根据完整对话判断；工具层不解析自然语言做二次授权
+          // 裁决，只跑与报名后运行时拉群共用的确定性流水线：重复邀请 gate → 前置已在群闸门
+          // （必须排在城市 gate 之前，否则模型无视"已在群"注入、city 又缺出处时会被引导
+          // 反复追问城市）→ 城市 provenance gate → testing 模拟 → 真实邀请。
+          const outcome = await runGroupInvitePipeline({
+            context,
             city,
             industry,
+            groupInviteService,
+            sessionService,
+            logger,
           });
+          switch (outcome.kind) {
+            case 'already_invited':
+              logger.warn(
+                `invite_to_group 前置时机 gate 拒绝: reason=${outcome.verdict.reason}, city=${city} (user=${context.session.userId})`,
+              );
+              return buildInviteTimingGateError({ verdict: outcome.verdict, city, industry });
+            case 'already_in_group':
+              return buildAlreadyInGroupResult(outcome.result, city, industry);
+            case 'city_rejected':
+              return buildCityGateError({ context, verdict: outcome.verdict, city, industry });
+            case 'simulated':
+              return {
+                success: true,
+                simulated: true,
+                groupName: outcome.groupName,
+                groupPurpose: 'job_pool',
+                city,
+                industry: industry ?? undefined,
+                inviteDelivery: 'invite_card',
+                _outcome: '【测试链路模拟】已向候选人发送入群邀请卡片（未触达真实企业接口）',
+                _replyInstruction:
+                  `企微已向候选人发送兼职岗位信息群"${outcome.groupName}"的邀请卡片。` +
+                  `回复时必须带实际群名并说明这是兼职岗位信息群、不是面试群；不得把腾讯会议链接或面试通知关联到这个群；` +
+                  `禁止输出、编造或粘贴任何群链接 / URL。${UNDELIVERED_PRELUDE_REMINDER}`,
+              };
+            case 'invited':
+              return buildGroupInviteResult({ result: outcome.result, city, industry });
+          }
         } catch (error: unknown) {
           const message = toErrorMessage(error);
           logger.error(`拉群失败: ${message} (user=${context.session.userId})`);
@@ -331,6 +214,88 @@ export function buildInviteToGroupTool(
         }
       },
     });
+}
+
+/** 报名后运行时拉群已执行：成功按成功口径复述，未成功按 handled_by_runtime 收口，不再重试。 */
+function buildRuntimeHandledResult(
+  runtimeInvite: PostBookingGroupInviteOutcome,
+  city: string,
+  industry?: string,
+) {
+  if (runtimeInvite.success) {
+    if (runtimeInvite.alreadyInGroup) {
+      return buildAlreadyInGroupResult(
+        { success: true, alreadyInGroup: true, groupName: runtimeInvite.groupName },
+        runtimeInvite.city ?? city,
+        industry,
+      );
+    }
+    return buildGroupInviteResult({
+      result: {
+        success: true,
+        groupName: runtimeInvite.groupName,
+        inviteDelivery: runtimeInvite.delivery ?? 'invite_card',
+      },
+      city: runtimeInvite.city ?? city,
+      industry,
+    });
+  }
+  return buildToolError({
+    errorType: TOOL_ERROR_TYPES.INVITE_HANDLED_BY_RUNTIME,
+    outcome: '本轮报名成功后拉群已由系统处理且未成功，不重复发起',
+    replyInstruction: buildPostBookingGroupInviteGuide(runtimeInvite),
+    details: {
+      city: runtimeInvite.city ?? city,
+      industry: industry ?? undefined,
+      skippedReason: runtimeInvite.skippedReason,
+      failureReason: runtimeInvite.failureReason,
+    },
+  });
+}
+
+function buildCityGateError(params: {
+  context: ToolBuildContext;
+  verdict: Extract<InviteCityGateVerdict, { decision: 'reject' }>;
+  city: string;
+  industry?: string;
+}) {
+  const { context, verdict, city, industry } = params;
+  // 顺序恢复提示（visual-fact §二A ⑩）：本轮有图片但尚未 save_image_description
+  // 时，地图截图的城市线索还没进 ledger——拒绝理由里给模型一条确定性恢复路径。
+  const hasUnsavedImages =
+    (context.turnInput.imageMessageIds?.length ?? 0) > 0 &&
+    (context.ledger.visual.factSheets?.length ?? 0) === 0;
+  const unsavedImageHint = hasUnsavedImages
+    ? '本轮候选人发了图片但你还没调用 save_image_description；若图片是位置/地图截图，先保存描述再重试本工具，城市核验会采信图中位置。'
+    : '';
+  if (verdict.reason === 'city_conflict') {
+    logger.warn(
+      `invite_to_group city 与会话城市事实冲突: city=${city}, expectedCity=${verdict.expectedCity} (user=${context.session.userId})`,
+    );
+    return buildToolError({
+      errorType: TOOL_ERROR_TYPES.INVITE_CITY_CONFLICT,
+      outcome: 'city 入参与会话记忆中的城市不一致',
+      replyInstruction:
+        '你传入的 city 与候选人会话记忆中的城市不一致。若候选人本轮没有明确说换城市，请改用 expectedCity 重新调用 invite_to_group；若你认为候选人换了城市，先向候选人确认所在城市，本轮不要提群相关内容，也不要调用 request_handoff。' +
+        unsavedImageHint,
+      details: {
+        city,
+        expectedCity: verdict.expectedCity,
+        industry: industry ?? undefined,
+      },
+    });
+  }
+  logger.warn(
+    `invite_to_group city 缺少出处依据（模型凭空指定）: city=${city} (user=${context.session.userId})`,
+  );
+  return buildToolError({
+    errorType: TOOL_ERROR_TYPES.INVITE_CITY_UNVERIFIED,
+    outcome: 'city 入参在会话记忆与候选人原文中均无依据',
+    replyInstruction:
+      '该城市在会话记忆和候选人原文里都找不到依据，不能据此拉群。请先向候选人确认所在城市（例如"方便说下你现在在哪个城市吗"），得到明确回复后再调用本工具；本轮不要提群相关内容，也不要调用 request_handoff。' +
+      unsavedImageHint,
+    details: { city, industry: industry ?? undefined },
+  });
 }
 
 function buildInviteTimingGateError(params: {

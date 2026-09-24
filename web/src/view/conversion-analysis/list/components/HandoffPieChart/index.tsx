@@ -149,25 +149,10 @@ function polarToCartesian(cx: number, cy: number, radius: number, angleInDegrees
   };
 }
 
-function reasonLabel(reasonCode: string, fallback: string) {
-  const labels: Record<string, string> = {
-    cannot_find_store: '找不到候选人想去的门店',
-    no_reception: '到店无人接待',
-    booking_conflict: '预约时间冲突',
-    onboarding_paperwork: '入职材料或办理问题',
-    onboarding_failed: '面试通过后上岗失败或离职',
-    onboarding_follow_up_required: '入职进展待人工确认',
-    interview_result_inquiry: '候选人追问面试结果',
-    modify_appointment: '改期或取消预约',
-    self_recruited_or_completed: '已自招或已入职',
-    no_match_or_group_full: '无匹配岗位/群满需维护',
-    system_blocked: '系统异常需人工补录',
-    booking_capacity_full: '岗位报名人数已满',
-    group_invite_failed: '拉群失败需人工维护',
-    salary_admin_inquiry: '薪资/考勤/证明类咨询',
-    interview_slot_coordination: '面试时段需人工协调',
-    identity_age_exception: '身份/年龄边界需人工裁量',
-    other: '其他原因',
-  };
-  return labels[reasonCode] ?? fallback;
+/**
+ * 标签由后端接口下发（displayName 来自 src/enums/handoff-reason.enum 权威目录），
+ * 前端不再维护字面副本；displayName 缺失时退回原因码本身。
+ */
+function reasonLabel(reasonCode: string, displayName: string) {
+  return displayName?.trim() || reasonCode;
 }

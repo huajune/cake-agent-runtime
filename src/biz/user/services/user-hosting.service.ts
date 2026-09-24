@@ -87,6 +87,8 @@ export class UserHostingService {
   private pausedUsersCache = new Map<string, PausedUserCacheEntry>();
   private cacheExpiry = 0;
 
+  private readonly resumeListeners: Array<(chatId: string) => void | Promise<void>> = [];
+
   constructor(
     private readonly repository: UserHostingRepository,
     private readonly redisService: RedisService,
@@ -214,6 +216,23 @@ export class UserHostingService {
     await this.markHandoffResolved(userId, 'resumed');
 
     await this.persistSharedCache();
+
+    // 手动恢复即时对账等副作用由监听方自理（fire-and-forget，任何失败不影响恢复本身）。
+    // 到期恢复不经过本函数，由下一回合与补偿扫描兜底（PRD R2）。
+    for (const listener of this.resumeListeners) {
+      try {
+        void Promise.resolve(listener(userId)).catch((error) =>
+          this.logger.warn(`[托管恢复] 恢复监听器执行失败 chat=${userId}`, error),
+        );
+      } catch (error) {
+        this.logger.warn(`[托管恢复] 恢复监听器抛错 chat=${userId}`, error);
+      }
+    }
+  }
+
+  /** 注册「手动恢复托管」监听器；chatId 即 resumeUser 的 userId。 */
+  registerResumeListener(listener: (chatId: string) => void | Promise<void>): void {
+    this.resumeListeners.push(listener);
   }
 
   private async markHandoffResolved(chatId: string, outcome: 'resumed' | 'expired'): Promise<void> {

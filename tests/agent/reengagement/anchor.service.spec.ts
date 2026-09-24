@@ -128,6 +128,50 @@ describe('ReengagementAnchorService', () => {
     expect(scheduler.stopPendingJobsForSessionScenario).not.toHaveBeenCalled();
   });
 
+  it('返回值是终态写入链的 settle 承诺：取消清 booked → 报名写 booked 按序落定后才 resolve；群聊直接 resolve', async () => {
+    const order: string[] = [];
+    session.getReengagementState.mockResolvedValue(baseState({ terminal: 'booked' }));
+    session.saveTerminalState.mockImplementation(
+      (_corp: string, _user: string, _chat: string, terminal: string | undefined) =>
+        new Promise<void>((resolve) =>
+          setTimeout(() => {
+            order.push(terminal ?? 'cleared');
+            resolve();
+          }, 5),
+        ),
+    );
+
+    const settled = buildService().handleToolAnchors(
+      {
+        toolCalls: [
+          {
+            toolName: 'duliday_cancel_work_order',
+            args: { workOrderId: 1 },
+            result: { success: true },
+          },
+          bookingCall,
+        ],
+      },
+      context,
+    );
+    expect(settled).toBeInstanceOf(Promise);
+    expect(order).toEqual([]);
+    await settled;
+    expect(order).toEqual(['cleared', 'booked']);
+
+    // 终态写失败也不 reject（内部兜错），调用方可以安全 then 串联
+    session.saveTerminalState.mockRejectedValue(new Error('redis down'));
+    await expect(
+      buildService().handleToolAnchors({ toolCalls: [bookingCall] }, context),
+    ).resolves.toBeUndefined();
+    await expect(
+      buildService().handleToolAnchors(
+        { toolCalls: [bookingCall] },
+        { ...context, isGroupChat: true },
+      ),
+    ).resolves.toBeUndefined();
+  });
+
   it('schedules booking resolution retries carrying only the stable workOrderId', async () => {
     buildService().handleToolAnchors({ toolCalls: [bookingCall] }, context);
     await flush();
@@ -318,7 +362,7 @@ describe('ReengagementAnchorService', () => {
     expect(scheduler.scheduleFollowUp).not.toHaveBeenCalled();
   });
 
-  it('skips modify-anchored scheduling when the turn is not deliverable', async () => {
+  it('still schedules modify-anchored follow-ups when the turn ends in handoff', async () => {
     buildService().handleToolAnchors(
       {
         outcome: { kind: 'handoff' },
@@ -326,7 +370,7 @@ describe('ReengagementAnchorService', () => {
           {
             toolName: 'duliday_modify_interview_time',
             args: { workOrderId: 555, newInterviewTime: INTERVIEW_TIME },
-            result: { success: true },
+            result: { success: true, workOrderId: 555 },
           },
         ],
       },
@@ -334,7 +378,30 @@ describe('ReengagementAnchorService', () => {
     );
     await flush();
 
+    expect(scheduler.scheduleBookingResolution).toHaveBeenCalledTimes(2);
     expect(scheduler.scheduleFollowUp).not.toHaveBeenCalled();
+  });
+
+  it('still schedules booking follow-ups when booking and handoff land in the same turn', async () => {
+    // 同回合先报名成功再 request_handoff 短路：工单已真实创建，提醒/回访必须照排
+    buildService().handleToolAnchors(
+      { outcome: { kind: 'handoff' }, toolCalls: [bookingCall] },
+      context,
+    );
+    await flush();
+
+    expect(session.saveTerminalState).toHaveBeenCalledWith(
+      context.corpId,
+      context.userId,
+      context.chatId,
+      'booked',
+    );
+    expect(scheduler.scheduleBookingResolution).toHaveBeenCalledWith(
+      expect.objectContaining({ scenarioCode: 'interview_reminder' }),
+    );
+    expect(scheduler.scheduleBookingResolution).toHaveBeenCalledWith(
+      expect.objectContaining({ scenarioCode: 'post_interview_followup' }),
+    );
   });
 
   it('does nothing in group chats', async () => {

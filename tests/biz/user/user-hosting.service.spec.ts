@@ -63,4 +63,18 @@ describe('UserHostingService', () => {
       [expect.any(String)],
     );
   });
+  it('手动恢复托管后触发已注册的恢复监听器（fire-and-forget，监听器失败不影响恢复）', async () => {
+    mockRepository.updateResume = jest.fn().mockResolvedValue(undefined);
+    mockRepository.findPausedUserIds = jest.fn().mockResolvedValue([]);
+    const listener = jest.fn().mockRejectedValue(new Error('boom'));
+    const okListener = jest.fn().mockResolvedValue(undefined);
+    service.registerResumeListener(listener);
+    service.registerResumeListener(okListener);
+
+    await expect(service.resumeUser('chat-1')).resolves.toBeUndefined();
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(listener).toHaveBeenCalledWith('chat-1');
+    expect(okListener).toHaveBeenCalledWith('chat-1');
+  });
 });

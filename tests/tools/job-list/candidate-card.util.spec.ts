@@ -84,6 +84,15 @@ describe('renderCandidateCard', () => {
     expect(card.oneLine).toContain('每周 4 天');
   });
 
+  it('renders 做一休一 as a rotation instead of 每周 1 天', () => {
+    const job = makeJob({
+      workTime: { weekAndMonthWorkTime: { perWeekWorkDays: 1, perWeekRestDays: 1 } },
+    });
+    const card = renderCandidateCard(job, 0)!;
+    expect(card.oneLine).not.toContain('每周 1 天');
+    expect(card.oneLine).toContain('做1休1轮换（平均每周约 3 天，工作日也要排班）');
+  });
+
   it('includes salary range without 综合薪资 prefix when laborForm is absent', () => {
     const card = renderCandidateCard(makeJob(), 0)!;
     expect(card.oneLine).toContain('薪资：24-29元/时');
@@ -94,6 +103,37 @@ describe('renderCandidateCard', () => {
     const card = renderCandidateCard(makeJob(), 0)!;
     expect(card.oneLine).toMatch(/要求：18-50/);
     expect(card.oneLine).toContain('入职前办食品健康证');
+  });
+
+  // 2026-09-22 运营口径 O12：最短工期是硬性要求，卡片要如实告知；卡片只陈述事实、不派盘问动作。
+  describe('最短工期（workTime.minWorkMonths）', () => {
+    it('有最短月数时进要求段，排在年龄/健康证之后', () => {
+      const job = makeJob();
+      job.workTime = { ...(job.workTime as Record<string, unknown>), minWorkMonths: 3 };
+      const card = renderCandidateCard(job, 0)!;
+      const requirementLine = card.multiLine
+        .split('\n')
+        .map((l) => l.trim())
+        .find((l) => l.startsWith('要求：'));
+      expect(requirementLine).toBe('要求：18-50岁，入职前办食品健康证，最短做满 3 个月');
+      expect(card.oneLine).toContain('最短做满 3 个月');
+      expect(card.oneLine).not.toContain('能做几个月');
+    });
+
+    it('无最短月数字段时要求段不出现最短做满', () => {
+      const card = renderCandidateCard(makeJob(), 0)!;
+      expect(card.oneLine).not.toContain('最短做满');
+      expect(card.multiLine).not.toContain('最短做满');
+    });
+
+    it('最短月数为 0 / 非法值时不渲染', () => {
+      for (const minWorkMonths of [0, 'abc', null]) {
+        const job = makeJob();
+        job.workTime = { ...(job.workTime as Record<string, unknown>), minWorkMonths };
+        const card = renderCandidateCard(job, 0)!;
+        expect(card.oneLine).not.toContain('最短做满');
+      }
+    });
   });
 
   describe('salary line by job type (产品需求三类模板)', () => {

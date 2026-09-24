@@ -6,6 +6,7 @@ import { InterventionModule } from '@biz/intervention/intervention.module';
 import { BizMessageModule } from '@biz/message/message.module';
 import { MemoryModule } from '@memory/memory.module';
 import { NotificationModule } from '@notification/notification.module';
+import { ToolModule } from '@tools/tool.module';
 import { InputGuardrailService } from './input/input-guard.service';
 import { PromptInjectionDetector } from './input/prompt-injection-detector';
 import { PromptSecurityObserverService } from './input/prompt-security-observer.service';
@@ -22,6 +23,8 @@ import { HardRulesService } from './output/rules/hard-rules.service';
     BizMessageModule,
     MemoryModule,
     NotificationModule,
+    // 出站守卫「声称已报名但无工单」读本轮预约快照镜像（BookingSnapshotService）。
+    ToolModule,
   ],
   providers: [
     InputGuardrailService,

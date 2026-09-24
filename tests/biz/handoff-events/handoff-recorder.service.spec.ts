@@ -65,6 +65,8 @@ describe('HandoffRecorderService', () => {
         work_order_id: 12345,
         job_id: 528572,
         missing_job_info: ['trial_period'],
+        // 来源标记：未显式给 origin 时按 agent_tool 记（PRD R5.2 底账来源区分）
+        origin: 'agent_tool',
       },
     });
   });

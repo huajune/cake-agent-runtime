@@ -11,7 +11,11 @@ import { resolveReplaySkipDecision } from '@agent/runner/turn-outcome';
 import { isShortCircuitedToolCall } from '@agent/generator/tool-call-analysis';
 import { TurnFinalizer } from '@agent/runner/turn-finalizer';
 import { FollowUpSchedulerService } from '@agent/reengagement/follow-up-scheduler.service';
-import { ReengagementAnchorService } from '@agent/reengagement/anchor.service';
+import {
+  ReengagementAnchorService,
+  isBookingSucceededCall,
+} from '@agent/reengagement/anchor.service';
+import { OobReconcileService } from '@agent/reengagement/oob-reconcile.service';
 import type { ReengagementChannelIdentity } from '@agent/reengagement/follow-up-scheduler.service';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { MessageParser } from '../utils/message-parser.util';
@@ -100,6 +104,7 @@ export class ReplyWorkflowService {
     private readonly session: SessionStateService,
     private readonly llm: LlmExecutorService,
     private readonly botService: BotService,
+    private readonly oobReconcile: OobReconcileService,
   ) {}
 
   async processSingleMessage(messageData: EnterpriseMessageCallbackDto): Promise<void> {
@@ -414,20 +419,47 @@ export class ReplyWorkflowService {
         userMessage: content,
       };
       if (agentResult.outcome?.kind !== 'reply') {
+        // 同轮已提交的报名/改约/取消结果：先把确定性回执发给候选人，再提交暂停/告警
+        // （PRD R5.1 第 3 条）。顺序不能反：暂停后 deliverReply 会因托管暂停被跳过。
+        await this.deliverPreHandoffReceipt(agentResult.outcome, parsed, traceId, contactName);
         await this.outcomeFinalizer.commit(agentResult.outcome, sideEffectContext);
       }
-      this.reengagementAnchors.handleToolAnchors(agentResult, {
+      const reengagementChannelIdentity = this.buildReengagementChannelIdentity(
+        parsed,
+        params.primaryMessage,
+        stableBotUserId,
+      );
+      const terminalSettled = this.reengagementAnchors.handleToolAnchors(agentResult, {
         traceId,
         chatId,
         userId: agentCallParams.userId,
         corpId: agentCallParams.corpId,
         isGroupChat: Boolean(params.primaryMessage.imRoomId),
-        channelIdentity: this.buildReengagementChannelIdentity(
-          parsed,
-          params.primaryMessage,
-          stableBotUserId,
-        ),
+        channelIdentity: reengagementChannelIdentity,
       });
+      // 带外工单对账副作用（PRD R2）：只在企微生产回合、渠道层、异步不阻塞回复；
+      // 回归测试/调试也走 prepare 且连生产海绵，副作用不能放进 prepare。
+      // 必须排在锚点链的终态写入 settle 之后：两条链路并发读-判-写同一会话终态时，
+      // 对账按「快照为空」清 booked 可能落在锚点刚写的 booked 之后把它抹掉。
+      if (!params.primaryMessage.imRoomId) {
+        const bookingSucceededThisTurn = (agentResult.toolCalls ?? []).some((call) =>
+          isBookingSucceededCall(call),
+        );
+        void terminalSettled
+          .catch(() => undefined)
+          .then(() =>
+            this.oobReconcile.reconcileAfterTurn({
+              corpId: agentCallParams.corpId,
+              userId: agentCallParams.userId,
+              chatId,
+              botImId: agentCallParams.botImId ?? null,
+              botUserId: agentCallParams.botUserId ?? null,
+              traceId,
+              channelIdentity: reengagementChannelIdentity,
+              bookingSucceededThisTurn,
+            }),
+          );
+      }
 
       // 非 reply 终态（skipped 静默 / handoff 人工介入意图）：跳过 WeCom 发送，
       // 但仍完成本轮流水与观测。终态由 runner 共享分类器给出（agentResult.outcome），与主动复聊同源；
@@ -473,12 +505,14 @@ export class ReplyWorkflowService {
         deliveryContext,
         true,
       );
-      await this.commitReplyOutcomeSideEffects(agentResult.outcome, sideEffectContext);
-
-      // Agent 回复真实投递 → agent.replied（仅个人单聊；锚点读取必须先于回合 settle）。
       // deliverReply 可能因托管暂停/内部泄漏保护返回 skipped=true，此时不能生成
       // delivered-reply 锚点，否则会排出候选人没收到上一条时的幽灵复聊。
       const replyDelivered = this.wasReplyActuallyDelivered(deliveryResult);
+      await this.commitReplyOutcomeSideEffects(agentResult.outcome, sideEffectContext, {
+        replyDelivered,
+      });
+
+      // Agent 回复真实投递 → agent.replied（仅个人单聊；锚点读取必须先于回合 settle）。
       if (replyDelivered) {
         const reengagementAnchorContext = {
           traceId,
@@ -568,12 +602,58 @@ export class ReplyWorkflowService {
   private async commitReplyOutcomeSideEffects(
     outcome: AgentInvokeResult['outcome'],
     context: Parameters<TurnOutcomeInterventionService['commit']>[1],
+    options: { replyDelivered: boolean },
   ): Promise<void> {
     if (outcome?.kind !== 'reply' || !outcome.sideEffects?.length) return;
-    await this.outcomeFinalizer.commit(outcome, context).catch((error: unknown) => {
-      const errorMessage = toErrorMessage(error);
-      this.logger.error(`[ReplyOutcomeSideEffect] dispatch failed: ${errorMessage}`);
-    });
+    // 承诺对账补的介入只在承诺真的送到候选人手上时才成立：回复被托管暂停/泄漏保护丢弃时，
+    // 候选人根本没听到「会有人跟进」，补介入只会让运营去兑现一句没说出口的话。
+    const sideEffects = options.replyDelivered
+      ? outcome.sideEffects
+      : outcome.sideEffects.filter((intent) => {
+          const dropped =
+            intent.kind === 'general_handoff' && intent.origin === 'promise_reconciliation';
+          if (dropped) {
+            this.logger.warn(
+              `[ReplyOutcomeSideEffect] 回复未投递，跳过承诺对账补介入: chatId=${context.chatId}`,
+            );
+          }
+          return !dropped;
+        });
+    if (sideEffects.length === 0) return;
+    await this.outcomeFinalizer
+      .commit({ ...outcome, sideEffects }, context)
+      .catch((error: unknown) => {
+        const errorMessage = toErrorMessage(error);
+        this.logger.error(`[ReplyOutcomeSideEffect] dispatch failed: ${errorMessage}`);
+      });
+  }
+
+  /**
+   * handoff 终态前的已提交动作回执（报名成功/改约成功/取消成功）。文本由 runner 从工具结构化
+   * 字段拼成；投递失败只记日志，不阻断随后的暂停/告警。
+   */
+  private async deliverPreHandoffReceipt(
+    outcome: AgentInvokeResult['outcome'],
+    parsed: ReturnType<typeof MessageParser.parse>,
+    traceId: string,
+    contactName: string,
+  ): Promise<void> {
+    if (outcome?.kind !== 'handoff' || !outcome.preHandoffReceipt?.text.trim()) return;
+    const receipt = outcome.preHandoffReceipt;
+    try {
+      const result = await this.deliveryService.deliverReply(
+        { content: receipt.text },
+        this.buildDeliveryContext(parsed, traceId),
+        false,
+      );
+      this.logger.warn(
+        `[${contactName}] 转人工前先投递已提交动作回执: sources=${receipt.sources.join(',')}, delivered=${this.wasReplyActuallyDelivered(result)}`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `[${contactName}] 转人工前回执投递失败（继续提交介入）: ${toErrorMessage(error)}`,
+      );
+    }
   }
 
   /**

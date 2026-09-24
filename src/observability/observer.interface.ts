@@ -24,6 +24,11 @@ export interface LlmAttemptTrace {
   error?: string;
   /** 本次失败后进入的指数退避等待（ms）；最后一次失败/不重试时缺省。 */
   backoffMs?: number;
+  /**
+   * 本次尝试从上次失败尝试续接的已完成步数（多步循环中途失败不从 step 0 重放，
+   * 已执行的工具调用不再重放）；从头重跑时缺省。
+   */
+  resumedSteps?: number;
 }
 
 export type TurnSourceLoadStatus = 'success' | 'empty' | 'degraded' | 'failed';
@@ -71,6 +76,42 @@ export type AgentEvent = AgentEventContext &
         durationMs: number;
       }
     | { type: 'agent_error'; userId?: string; error: string }
+    /**
+     * 每轮预约快照（按手机号查海绵 signup/list）的读取观测：调用量、耗时、失败率、
+     * 缓存命中与"账号没配 token 跳过"都靠这条事件切片，不再只打日志。
+     */
+    | {
+        type: 'booking_snapshot';
+        status: 'ok' | 'cache_hit' | 'skipped_no_token' | 'skipped_no_phone' | 'failed';
+        botImId?: string;
+        durationMs?: number;
+        entryCount?: number;
+        supplierCount?: number;
+        error?: string;
+        /** 同账号连续失败熔断开断：本次没打海绵（或本次失败即触发开断）。 */
+        circuitOpen?: boolean;
+      }
+    /** 带外工单补偿扫描（每 6 小时）的一轮观测：账号数、拉取行数、带外行数、反查命中/未命中、对账结果。 */
+    | {
+        type: 'oob_reconcile_scan';
+        status: 'done' | 'skipped' | 'failed';
+        reason?: string;
+        accounts?: number;
+        rows?: number;
+        supplierRows?: number;
+        resolved?: number;
+        unresolved?: number;
+        botMismatch?: number;
+        reconciled?: number;
+        scheduled?: number;
+        accountFailures?: number;
+        truncated?: boolean;
+        /** 海绵未下发 total，翻页只按短页判停 */
+        totalUnknown?: boolean;
+        /** 本轮新排的等通知复核数（有单轮上限） */
+        slotChecks?: number;
+        durationMs?: number;
+      }
     | {
         type: 'turn_data_sources';
         userId?: string;

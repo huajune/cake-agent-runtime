@@ -91,6 +91,16 @@ export class ConversionAnalyticsController {
     return this.service.getHandoff(this.toFilter(range, groups, corpId));
   }
 
+  /** 门店未履约榜（默认近 7 天）：store_no_show + no_reception + booking_conflict 按品牌/门店聚合。 */
+  @Get('store-no-show-rank')
+  async getStoreNoShowRank(
+    @Query('range') range?: string,
+    @Query('groups') groups?: string | string[],
+    @Query('corpId') corpId?: string,
+  ) {
+    return this.service.getStoreNoShowRank(this.toFilter(range ?? 'week', groups, corpId));
+  }
+
   private toFilter(
     rawRange?: string,
     rawGroups?: string | string[],

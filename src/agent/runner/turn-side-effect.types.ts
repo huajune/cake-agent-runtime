@@ -4,6 +4,7 @@ import type {
   RiskInterventionPayload,
 } from '@biz/intervention/intervention.service';
 import type { WeworkSessionState } from '@memory/short-term/short-term.types';
+import type { HandoffEventOrigin } from '@biz/handoff-events/handoff-events.types';
 
 type ConversationRiskSource = RiskInterventionPayload['source'];
 type GeneralHandoffSource = GeneralHandoffInterventionPayload['source'];
@@ -47,6 +48,13 @@ export interface GeneralHandoffSideEffectIntent extends TurnSideEffectBase {
   idempotencyKey?: string;
   /** 是否写 handoff_events / ops_events 底账。兼容旧已写入场景时可置 false。 */
   recordHandoff?: boolean;
+  /**
+   * 只记底账、不再暂停/告警：工具内已自行暂停托管并发过卡片（booking 失败）时用，
+   * 让这类介入进 handoff_events 而不重复打扰运营。
+   */
+  recordOnly?: boolean;
+  /** 介入来源标记（落 ops_events payload.origin）。 */
+  origin?: HandoffEventOrigin;
 }
 
 export type TurnSideEffectIntent =

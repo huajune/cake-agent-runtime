@@ -27,6 +27,7 @@ import {
   type DistanceAnchorPrecision,
 } from '@tools/job-list/distance-render.util';
 import { normalizeStoreNameForAgent } from '@tools/job-list/sanitize.util';
+import { resolveWeeklyWorkDays } from '@tools/job-list/schedule-semantic.util';
 import {
   extractHardRequirements,
   type HardRequirements,
@@ -75,7 +76,10 @@ interface ShiftWorkTimeInput {
       perDayMinWorkHours?: number | string;
     };
   } | null;
-  weekAndMonthWorkTime?: { perWeekWorkDays?: number | string } | null;
+  weekAndMonthWorkTime?: {
+    perWeekWorkDays?: number | string;
+    perWeekRestDays?: number | string;
+  } | null;
 }
 
 function buildShiftPart(workTime: unknown): string {
@@ -110,7 +114,15 @@ function buildShiftPart(workTime: unknown): string {
   // 每周天数
   const wm: NonNullable<ShiftWorkTimeInput['weekAndMonthWorkTime']> =
     wt?.weekAndMonthWorkTime ?? {};
-  if (hasValue(wm.perWeekWorkDays)) parts.push(`每周 ${wm.perWeekWorkDays} 天`);
+  // 做一休一等循环班型的 perWeekWorkDays 不是周频，直出会变成"每周 1 天"
+  const weekly = resolveWeeklyWorkDays(wm);
+  if (weekly.days !== null) {
+    parts.push(
+      weekly.cyclic
+        ? `做${wm.perWeekWorkDays}休${wm.perWeekRestDays}轮换（平均每周约 ${weekly.days} 天，工作日也要排班）`
+        : `每周 ${weekly.days} 天`,
+    );
+  }
 
   return parts.join('，');
 }
@@ -364,6 +376,9 @@ function buildRequirementPart(hr: HardRequirements, ageText: string | null): str
     const verb = hr.household.mode === 'include' ? '仅' : '不要';
     parts.push(`${verb}${hr.household.regions.join('/')}`);
   }
+  // 运营口径 O12：最短工期是硬性要求，卡片上如实告知；是否"做不满"由候选人明确表述决定（手册规则），
+  // 卡片只陈述事实、不派盘问动作。
+  if (hr.minWorkMonths !== null) parts.push(`最短做满 ${hr.minWorkMonths} 个月`);
   return parts.join('，');
 }
 

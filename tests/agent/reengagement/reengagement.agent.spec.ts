@@ -280,9 +280,7 @@ describe('ReengagementAgent', () => {
       bookingContext: liveBookingContext(),
     });
 
-    expect(llm.generateStructured.mock.calls[0][0].system).toContain(
-      '面试前 1–3 天发出的求职意向确认消息不构成已提醒',
-    );
+    expect(llm.generateStructured.mock.calls[0][0].system).toContain('面试前 1–3 天的求职意向确认');
     expect(result.outcome.kind).toBe('reply');
   });
 
@@ -417,8 +415,13 @@ describe('ReengagementAgent', () => {
       if (scenarioCode === 'interview_reminder') {
         // 抽样审计：模型高频把预约当轮的收尾叮嘱/二维码交付误判为“已提醒”（误杀），
         // 也漏判预约回合后另行发出的口头提醒（漏拦）。口径必须给出正反例。
-        expect(system).toContain('预约成功当轮的告知与收尾叮嘱都不算已提醒');
-        expect(system).toContain('预约回合之后另行发出的提醒参加消息');
+        expect(system).toContain('预约成功当轮的告知与收尾叮嘱');
+        // 2026-09 裁定（PRD R1 改动 4）：只认面试当天真人另行发出的提醒；改时间/通知面试时间、
+        // 问 AI 面试做完没、发二维码、发地址都不算已提醒。
+        expect(system).toContain('在**面试当天**');
+        expect(system).toContain('前一天或更早发出的提醒不算');
+        expect(system).toContain('通知明天下午 14 点面试');
+        expect(system).toContain('询问 AI 面试做完没、发送面试码/二维码、发送地址');
       }
       // 生产 badcase（touch 19712）：候选人说“干不了”且顾问已转拉群，提醒仍被发出。
       // 判据必须覆盖婉拒表达 + 转群语境，并区分“为本次面试拉群”不算放弃。
@@ -433,7 +436,14 @@ describe('ReengagementAgent', () => {
         // badcase chat 6a607596（2026-07-24）：候选人已报告"已面试，等您通知"且经理已
         // 回应，回访仍问"面试结束了吧"。
         expect(system).toContain('interview_done_reported');
+        // PRD R1 改动 4：「已询问结果」只看面试时间之后的询问
+        expect(system).toContain('在本次面试时间**之后**已经发出询问');
+        expect(system).toContain('面试时间之前发出的“面试做完了吗”“到店了吗”是进程确认');
       }
+      // PRD R1 改动 3：聊天约定时间≠工单时间 → 不发（不能按聊天时间发）
+      expect(system).toContain('时间口径（工单为准，聊天不一致则不发）');
+      expect(system).toContain('blockReason=chat_interview_time_mismatch');
+      expect(system).toContain('提醒钟点不得改写成聊天时间');
       expect(result.outcome.kind).toBe('skipped');
       expect(result.outcome.reply).toBeUndefined();
       expect(result.validationReason).toBe('candidate_declined_interview');
@@ -1265,5 +1275,217 @@ describe('ReengagementAgent', () => {
 
     expect(result.outcome.kind).toBe('skipped');
     expect(result.validationReason).toBe(blockReason);
+  });
+  describe('聊天约定时间 vs 工单时间（PRD R1 改动 3）', () => {
+    // 工单 2026-06-25 14:00 上海（06:00Z）；聊天里真人前一天说「通知明天下午 15 点面试」
+    const mismatchOutput = (over: Record<string, unknown> = {}) => ({
+      decision: 'skip',
+      chatAgreedInterviewTime: '2026-06-25 15:00',
+      interviewTimeMismatch: true,
+      blockReason: 'chat_interview_time_mismatch',
+      message: '',
+      reason: '招募经理 06-24 说「通知明天下午 15 点面试」，与工单 14:00 不同',
+      ...over,
+    });
+
+    it.each(['interview_reminder', 'post_interview_followup'] as const)(
+      '%s：模型标记不一致且时间可解析且≠工单 → skipped + 确定性证据（不按聊天时间发）',
+      async (scenarioCode) => {
+        memoryRecall.recentMessages = [
+          {
+            role: 'assistant',
+            content: '通知明天下午 15 点面试\n[消息发送时间：2026-06-24 09:00 星期三]',
+          },
+          { role: 'user', content: '好的' },
+        ];
+        llm.generateStructured.mockResolvedValueOnce({
+          output: mismatchOutput(),
+          usage: { inputTokens: 10, outputTokens: 8, totalTokens: 18 },
+        });
+
+        const result = await reengagementAgent.compose({
+          sessionRef,
+          scenario: getScenario(scenarioCode)!,
+          jobData: job(scenarioCode, { workOrderId: 555 }),
+          state: baseState({ terminal: 'booked' }),
+          bookingContext: liveBookingContext(),
+        });
+
+        expect(llm.generateStructured).toHaveBeenCalledTimes(1);
+        expect(result.outcome.kind).toBe('skipped');
+        expect(result.validationReason).toBe('chat_interview_time_mismatch');
+        expect(result.chatInterviewTimeMismatch).toEqual({
+          workOrderId: 555,
+          workOrderInterviewAt: Date.UTC(2026, 5, 25, 6, 0, 0),
+          chatAgreedInterviewTime: '2026-06-25 15:00',
+          chatAgreedInterviewAt: Date.UTC(2026, 5, 25, 7, 0, 0),
+          evidence: '招募经理 06-24 说「通知明天下午 15 点面试」，与工单 14:00 不同',
+        });
+        expect(result.agentRequest).toMatchObject({
+          validationReason: 'chat_interview_time_mismatch',
+          chatInterviewTimeMismatch: { chatAgreedInterviewTime: '2026-06-25 15:00' },
+        });
+      },
+    );
+
+    it('模型标记不一致却仍 decision=send/blockReason=none：确定性覆盖为 skip，绝不按聊天时间发', async () => {
+      llm.generateStructured.mockResolvedValueOnce({
+        output: mismatchOutput({
+          decision: 'send',
+          blockReason: 'none',
+          message: '提醒一下，今天15:00记得来面试哈。',
+        }),
+        usage: { inputTokens: 10, outputTokens: 8, totalTokens: 18 },
+      });
+
+      const result = await reengagementAgent.compose({
+        sessionRef,
+        scenario: getScenario('interview_reminder')!,
+        jobData: job('interview_reminder', { workOrderId: 555 }),
+        state: baseState({ terminal: 'booked' }),
+        bookingContext: liveBookingContext(),
+      });
+
+      expect(result.outcome.kind).toBe('skipped');
+      expect(result.outcome.reply).toBeUndefined();
+      expect(result.validationReason).toBe('chat_interview_time_mismatch');
+      expect(result.chatInterviewTimeMismatch?.chatAgreedInterviewAt).toBe(
+        Date.UTC(2026, 5, 25, 7, 0, 0),
+      );
+    });
+
+    it('前 2 天确认档同样适用', async () => {
+      llm.generateStructured.mockResolvedValueOnce({
+        output: mismatchOutput(),
+        usage: { inputTokens: 10, outputTokens: 8, totalTokens: 18 },
+      });
+
+      const result = await reengagementAgent.compose({
+        sessionRef,
+        scenario: getScenario('interview_reminder')!,
+        jobData: job('interview_reminder', { workOrderId: 555, touchVariant: 'd2_confirm' }),
+        state: baseState({ terminal: 'booked' }),
+        bookingContext: liveBookingContext(),
+      });
+
+      expect(result.outcome.kind).toBe('skipped');
+      expect(result.validationReason).toBe('chat_interview_time_mismatch');
+      expect(result.chatInterviewTimeMismatch).toBeDefined();
+    });
+
+    it('标记不一致但聊天时间与工单相同：视为协议违规纠正重试，重试给出 send 则正常发送', async () => {
+      llm.generateStructured
+        .mockResolvedValueOnce({
+          output: mismatchOutput({ chatAgreedInterviewTime: '2026-06-25 14:00' }),
+          usage: { inputTokens: 10, outputTokens: 8, totalTokens: 18 },
+        })
+        .mockResolvedValueOnce({
+          output: {
+            decision: 'send',
+            chatAgreedInterviewTime: '',
+            interviewTimeMismatch: false,
+            blockReason: 'none',
+            message: '提醒一下，今天14:00记得按面试通知参加。',
+            reason: '聊天约定时间与工单一致',
+          },
+          usage: { inputTokens: 10, outputTokens: 8, totalTokens: 18 },
+        });
+
+      const result = await reengagementAgent.compose({
+        sessionRef,
+        scenario: getScenario('interview_reminder')!,
+        jobData: job('interview_reminder', { workOrderId: 555 }),
+        state: baseState({ terminal: 'booked' }),
+        bookingContext: liveBookingContext(),
+      });
+
+      expect(llm.generateStructured).toHaveBeenCalledTimes(2);
+      expect(llm.generateStructured.mock.calls[1][0].system).toContain(
+        'interview_time_mismatch_same_as_work_order',
+      );
+      expect(result.outcome.kind).toBe('reply');
+      expect(result.chatInterviewTimeMismatch).toBeUndefined();
+      expect(result.agentRequest).toMatchObject({
+        outputCorrection: { issue: 'interview_time_mismatch_same_as_work_order' },
+      });
+    });
+
+    it('标记不一致但两次都给不出可解析的聊天时间：fail-closed 为 reengagement_decision_invalid，不发', async () => {
+      llm.generateStructured.mockResolvedValue({
+        output: mismatchOutput({ chatAgreedInterviewTime: '明天下午' }),
+        usage: { inputTokens: 10, outputTokens: 8, totalTokens: 18 },
+      });
+
+      const result = await reengagementAgent.compose({
+        sessionRef,
+        scenario: getScenario('interview_reminder')!,
+        jobData: job('interview_reminder', { workOrderId: 555 }),
+        state: baseState({ terminal: 'booked' }),
+        bookingContext: liveBookingContext(),
+      });
+
+      expect(llm.generateStructured).toHaveBeenCalledTimes(2);
+      expect(result.outcome.kind).toBe('skipped');
+      expect(result.validationReason).toBe('reengagement_decision_invalid');
+      expect(result.chatInterviewTimeMismatch).toBeUndefined();
+    });
+
+    it('入职跟进没有面试时间口径：标记不一致按协议违规纠正', async () => {
+      llm.generateStructured
+        .mockResolvedValueOnce({
+          output: mismatchOutput(),
+          usage: { inputTokens: 10, outputTokens: 8, totalTokens: 18 },
+        })
+        .mockResolvedValueOnce({
+          output: {
+            decision: 'send',
+            chatAgreedInterviewTime: '',
+            interviewTimeMismatch: false,
+            blockReason: 'none',
+            message: '入职还顺利吗？有问题可以直接说。',
+            reason: '无停止条件',
+          },
+          usage: { inputTokens: 10, outputTokens: 8, totalTokens: 18 },
+        });
+
+      const result = await reengagementAgent.compose({
+        sessionRef,
+        scenario: getScenario('post_interview_onboarding')!,
+        jobData: job('post_interview_onboarding', { workOrderId: 901 }),
+        state: baseState({ terminal: 'booked' }),
+        bookingContext: liveBookingContext({ workOrderId: 901, currentStatus: '面试成功' }),
+      });
+
+      expect(llm.generateStructured.mock.calls[1][0].system).toContain(
+        'interview_time_mismatch_not_applicable',
+      );
+      expect(result.outcome.kind).toBe('reply');
+    });
+
+    it('未标记不一致时新字段不影响既有发送路径，且钟点纠正仍按工单时间', async () => {
+      llm.generateStructured.mockResolvedValueOnce({
+        output: {
+          decision: 'send',
+          chatAgreedInterviewTime: '',
+          interviewTimeMismatch: false,
+          blockReason: 'none',
+          message: '提醒一下，今天15:00记得按面试通知参加。',
+          reason: '对话无明确不同约定',
+        },
+        usage: { inputTokens: 10, outputTokens: 8, totalTokens: 18 },
+      });
+
+      const result = await reengagementAgent.compose({
+        sessionRef,
+        scenario: getScenario('interview_reminder')!,
+        jobData: job('interview_reminder', { workOrderId: 555 }),
+        state: baseState({ terminal: 'booked' }),
+        bookingContext: liveBookingContext({ interviewAt: Date.UTC(2026, 5, 24, 6, 0, 0) }),
+      });
+
+      expect(result.outcome.kind).toBe('reply');
+      expect(result.outcome.reply?.text).toBe('提醒一下，今天14:00记得按面试通知参加。');
+      expect(result.chatInterviewTimeMismatch).toBeUndefined();
+    });
   });
 });

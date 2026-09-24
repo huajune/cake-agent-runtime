@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { toErrorMessage } from '@infra/utils/error.util';
 import { RedisService } from '@infra/redis/redis.service';
 import type { ReserveResult, TouchSlotState } from './follow-up-scheduler.service';
 
@@ -42,6 +43,23 @@ export class TouchLedgerService {
 
   private lastTouchKey(sessionId: string): string {
     return `reengagement:lastTouch:${sessionId}`;
+  }
+
+  /**
+   * 一次性副作用幂等占位（运营提醒卡片等非候选人投递动作）：SET NX，默认 7 天。
+   * Redis 异常 fail-closed（按「已占过」返回 false，不发）——与 OobReconcileService.claimAnchor
+   * 同一口径：占位写不进去就无法保证只发一次，宁可漏一张卡片也不重复骚扰运营；
+   * Redis 恢复后下一次触发会重新占位。
+   */
+  async acquireOnce(key: string, ttlSeconds = 7 * 24 * 60 * 60): Promise<boolean> {
+    try {
+      return await this.redis.setNx(`reengagement:once:${key}`, '1', ttlSeconds);
+    } catch (error) {
+      this.logger.warn(
+        `[reengagement] 一次性幂等占位失败，本次不发 key=${key}: ${toErrorMessage(error)}`,
+      );
+      return false;
+    }
   }
 
   /** 原子占位。已存在则按当前状态区分 duplicate_sent / duplicate_inflight。 */

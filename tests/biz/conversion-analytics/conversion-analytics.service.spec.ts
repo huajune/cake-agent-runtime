@@ -699,6 +699,71 @@ describe('ConversionAnalyticsService — conversion analysis', () => {
     expect(handoff.reasons.find((r) => r.reasonCode === 'booking_conflict')?.count).toBe(1);
   });
 
+  it('门店未履约榜：三类门店侧介入按品牌/门店聚合，门店名从同会话 booking.succeeded 回溯（PRD R5.2）', async () => {
+    const booking = (
+      chatId: string,
+      workOrderId: string,
+      brand: string,
+      store: string,
+      hour: number,
+    ): TestEvent => ({
+      ...ev('booking.succeeded', chatId, today, hour),
+      chat_id: chatId,
+      payload: { work_order_id: workOrderId, brand_name: brand, store_name: store },
+    });
+    const handoff = (
+      chatId: string,
+      reasonCode: string,
+      hour: number,
+      workOrderId?: string,
+    ): TestEvent => ({
+      ...ev('handoff.triggered', chatId, today, hour),
+      chat_id: chatId,
+      payload: { reason_code: reasonCode, work_order_id: workOrderId ?? null },
+    });
+    const events: TestEvent[] = [
+      booking('C1', 'W1', '肯德基', '西宸里店', 1),
+      handoff('C1', 'store_no_show', 3, 'W1'),
+      handoff('C1', 'no_reception', 4, 'W1'),
+      // 同会话无工单号：按介入之前最近一次报名成功回溯
+      booking('C2', 'W2', '肯德基', '西宸里店', 1),
+      handoff('C2', 'booking_conflict', 2),
+      booking('C3', 'W3', '必胜客', '麦德龙店', 1),
+      handoff('C3', 'store_no_show', 2, 'W3'),
+      // 非门店侧原因码不进榜
+      handoff('C3', 'salary_admin_inquiry', 5, 'W3'),
+      // 关联不到报名 → unresolved
+      handoff('C4', 'no_reception', 2),
+    ];
+    const service = new ConversionAnalyticsService(
+      fakeOpsRepo(events),
+      new BotGroupResolverService(),
+      fakeSystemConfig(),
+    );
+
+    const rank = await service.getStoreNoShowRank({ range: 'week', groups: [] });
+
+    expect(rank.reasonCodes).toEqual(['store_no_show', 'no_reception', 'booking_conflict']);
+    expect(rank.total).toBe(5);
+    expect(rank.unresolved).toBe(1);
+    expect(rank.rows).toEqual([
+      {
+        brandName: '肯德基',
+        storeName: '西宸里店',
+        total: 3,
+        byReason: { store_no_show: 1, no_reception: 1, booking_conflict: 1 },
+        chatCount: 2,
+      },
+      {
+        brandName: '必胜客',
+        storeName: '麦德龙店',
+        total: 1,
+        byReason: { store_no_show: 1 },
+        chatCount: 1,
+      },
+    ]);
+  });
+
   it('「全部」档从业务数据起点 2026-01-01 起算，不受固定天数档位限制', async () => {
     const withReason = (event: TestEvent, reasonCode: string): TestEvent => ({
       ...event,

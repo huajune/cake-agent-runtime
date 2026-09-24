@@ -92,8 +92,30 @@ export interface ReengagementTouchDbRecord {
   manager_name?: string | null;
   /** 接管 bot 系统 wxid */
   bot_im_id?: string | null;
+  /** 触发停发的上下文（候选人待答消息 / 聊天约定时间与工单时间等），其余原因为空 */
+  stop_context?: ReengagementStopContext | null;
   events?: ReengagementTouchEvent[];
 }
+
+/**
+ * 触发停发的上下文（stop_context jsonb）：让运营抽样核对停止原因时不必翻聊天记录。
+ * - pending_candidate_message：候选人待答闸命中的那条候选人消息；
+ * - chat_interview_time_mismatch：工单时间、聊天约定时间与模型引用的证据。
+ */
+export type ReengagementStopContext =
+  | {
+      kind: 'pending_candidate_message';
+      candidateMessageAt: number;
+      candidateMessagePreview: string;
+    }
+  | {
+      kind: 'chat_interview_time_mismatch';
+      workOrderId: number;
+      workOrderInterviewAt: number;
+      chatAgreedInterviewTime: string;
+      chatAgreedInterviewAt: number;
+      evidence: string;
+    };
 
 /** 单次落库调用的输入：非空字段覆盖对应列，event 追加到轨迹 */
 export interface RecordReengagementTouchInput {
@@ -121,6 +143,8 @@ export interface RecordReengagementTouchInput {
   candidateName?: string;
   managerName?: string;
   botImId?: string;
+  /** 触发停发的上下文；只在停发/跳过埋点传入 */
+  stopContext?: ReengagementStopContext;
   event?: { event: string; detail?: Record<string, unknown> };
 }
 
@@ -135,12 +159,42 @@ export interface ReengagementTouchFilters {
   offset?: number;
 }
 
+/** 周度漏斗 RPC 返回行（按创建周 × 场景） */
+export interface ReengagementWeeklyFunnelRow {
+  /** 周一日期（Asia/Shanghai，YYYY-MM-DD） */
+  week_start: string;
+  scenario_code: string;
+  registered: number;
+  sent: number;
+  replied_6h: number;
+}
+
+/** 周度漏斗（服务层按周合并各场景后的形态） */
+export interface ReengagementWeeklyFunnelBucket {
+  weekStart: string;
+  registered: number;
+  sent: number;
+  replied6h: number;
+  /** 6h 回复率 = replied6h / sent；sent=0 时为 null */
+  replyRate: number | null;
+}
+
 /** 统计 RPC 返回行 */
 export interface ReengagementTouchStatsRow {
   status: string;
   scenario_code: string;
   cnt: number;
 }
+
+/**
+ * Dashboard 复聊「总触达」统计要剔除的 decision_reason：这些记录是「本来就不适用」而非一次触达。
+ *
+ * - `signup_interview_gap_lt_3d`：面试提醒的提前 2 天确认档，报名到面试不足 3 天时排程即跳过 /
+ *   到点停止，记录只是底账，不代表向候选人发起过一次触达；算进总触达会把分母虚增。
+ */
+export const REENGAGEMENT_STATS_EXCLUDED_DECISION_REASONS: readonly string[] = [
+  'signup_interview_gap_lt_3d',
+];
 
 /** 候选人视角查询筛选条件 */
 export interface ReengagementCandidateFilters {

@@ -18,6 +18,7 @@ import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { AgentRunnerService } from '@agent/runner/agent-runner.service';
 import { FollowUpSchedulerService } from '@agent/reengagement/follow-up-scheduler.service';
 import { ReengagementAnchorService } from '@agent/reengagement/anchor.service';
+import { OobReconcileService } from '@agent/reengagement/oob-reconcile.service';
 import { WecomMessageObservabilityService } from '@wecom/message/telemetry/wecom-message-observability.service';
 import { EnterpriseMessageCallbackDto } from '@wecom/message/ingress/message-callback.dto';
 import { DeliveryFailureError } from '@wecom/message/types';
@@ -276,6 +277,7 @@ describe('MessagePipelineService', () => {
         // ReplyWorkflowService 第 14 个构造依赖；其自身依赖（FollowUpScheduler/SessionStateService）
         // 已在上面提供，直接注册真实类即可解析。
         ReengagementAnchorService,
+        { provide: OobReconcileService, useValue: { reconcileAfterTurn: jest.fn() } },
         {
           provide: ImageBrandBackfillService,
           useValue: {

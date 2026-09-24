@@ -1,5 +1,6 @@
 import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
+import { HANDOFF_REASON_LABELS, STORE_NO_SHOW_REASON_CODES } from '@enums/handoff-reason.enum';
 import { BotGroupResolverService } from '@biz/ops-events/services/bot-group-resolver.service';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 import {
@@ -31,6 +32,8 @@ import {
   ConversionTrendCounts,
   ConversionTrendPoint,
   ConversionTrendResponse,
+  StoreNoShowRankResponse,
+  StoreNoShowRankRow,
 } from './types/conversion-analytics.types';
 
 type JsonPayload = Record<string, unknown> | null;
@@ -116,6 +119,7 @@ const GROUP_INVITE_STAGE = 'group_invite';
 // 直接按 period 计数 ops_events，不参与 cohort/funnel 计算，避免污染转化口径。
 const BOOKING_CANCEL_EVENT = 'booking.canceled';
 const INTERVIEW_MODIFIED_EVENT = 'booking.interview_modified';
+const OOB_LINKED_EVENT = 'booking.linked_out_of_band';
 const BOT_IDENTITY_ALIASES_CONFIG_KEY = 'conversion_bot_identity_aliases';
 const BOT_IDENTITY_ALIASES_CACHE_TTL_MS = 60 * 1000;
 
@@ -123,26 +127,6 @@ interface BotIdentityAlias {
   canonicalBotImId: string;
   managerName: string | null;
 }
-
-const HANDOFF_REASON_LABELS: Record<string, string> = {
-  cannot_find_store: '找不到候选人想去的门店',
-  no_reception: '到店无人接待',
-  booking_conflict: '预约时间冲突',
-  onboarding_paperwork: '入职材料或办理问题',
-  onboarding_failed: '面试通过后上岗失败或离职',
-  onboarding_follow_up_required: '入职进展待人工确认',
-  interview_result_inquiry: '候选人追问面试结果',
-  modify_appointment: '改期或取消预约',
-  self_recruited_or_completed: '已自招或已入职',
-  no_match_or_group_full: '无匹配岗位/群满需维护',
-  system_blocked: '系统异常需人工补录',
-  booking_capacity_full: '岗位报名人数已满',
-  group_invite_failed: '拉群失败需人工维护',
-  salary_admin_inquiry: '薪资/考勤/证明类咨询',
-  interview_slot_coordination: '面试时段需人工协调',
-  identity_age_exception: '身份/年龄边界需人工裁量',
-  other: '其他原因',
-};
 
 /**
  * 转化分析：KPI 名片 / 漏斗 / 趋势 / 账号对比 / 转人工原因。
@@ -488,6 +472,9 @@ export class ConversionAnalyticsService {
       // 取消/改约不在 cohort/period 漏斗口径内，统一由 applyMutationCounts 后置合并。
       booking_cancel: 0,
       interview_modified: 0,
+      oob_linked: 0,
+      oob_booking_cancel: 0,
+      oob_interview_modified: 0,
     };
   }
 
@@ -572,7 +559,7 @@ export class ConversionAnalyticsService {
     const events = await this.fetchOpsEvents(
       filter,
       period,
-      [BOOKING_CANCEL_EVENT, INTERVIEW_MODIFIED_EVENT],
+      [BOOKING_CANCEL_EVENT, INTERVIEW_MODIFIED_EVENT, OOB_LINKED_EVENT],
       'current',
       { applyGroupFilter: true },
     );
@@ -583,8 +570,17 @@ export class ConversionAnalyticsService {
       const botImId = event.bot_im_id || 'unknown';
       const row =
         byBot.get(botImId) ?? this.createBotRow(botImId, event.manager_name, event.group_name);
-      if (event.event_name === BOOKING_CANCEL_EVENT) row.eventCounts.booking_cancel += 1;
-      else row.eventCounts.interview_modified += 1;
+      // 带外来源单列：取消/改约事件 payload.source=oob 表示该工单由供应商后台建单（PRD R2）。
+      const fromOob = this.payloadText(event.payload, 'source') === 'oob';
+      if (event.event_name === OOB_LINKED_EVENT) {
+        row.eventCounts.oob_linked += 1;
+      } else if (event.event_name === BOOKING_CANCEL_EVENT) {
+        row.eventCounts.booking_cancel += 1;
+        if (fromOob) row.eventCounts.oob_booking_cancel += 1;
+      } else {
+        row.eventCounts.interview_modified += 1;
+        if (fromOob) row.eventCounts.oob_interview_modified += 1;
+      }
       byBot.set(botImId, row);
     }
     // 补行不会改 overallRate（取消/改约不进 ratio），但仍统一 finalize 一遍保持状态字段一致。
@@ -683,6 +679,9 @@ export class ConversionAnalyticsService {
       existing.eventCounts.interview_pass += row.eventCounts.interview_pass;
       existing.eventCounts.booking_cancel += row.eventCounts.booking_cancel;
       existing.eventCounts.interview_modified += row.eventCounts.interview_modified;
+      existing.eventCounts.oob_linked += row.eventCounts.oob_linked;
+      existing.eventCounts.oob_booking_cancel += row.eventCounts.oob_booking_cancel;
+      existing.eventCounts.oob_interview_modified += row.eventCounts.oob_interview_modified;
       if (alias?.managerName) existing.managerName = alias.managerName;
     }
     return Array.from(byId.values()).map((row) => this.finalizeBotRow(row));
@@ -712,6 +711,114 @@ export class ConversionAnalyticsService {
         percent: item.percent,
       })),
     };
+  }
+
+  /**
+   * 门店未履约周榜（PRD R5.2）：门店侧履约类介入（门店/面试官未履约、到店无人接待、门店查不到预约）
+   * 按品牌 + 门店聚合。介入本身只带 job_id / work_order_id，门店名从同会话的 booking.succeeded
+   * 事件（payload 带 brand_name/store_name）回溯：优先同工单号，其次介入之前该会话最近一次报名成功。
+   * 报名事件回看 60 天（介入常发生在报名后数周）。
+   */
+  async getStoreNoShowRank(filter: ConversionFilter): Promise<StoreNoShowRankResponse> {
+    await this.botGroupResolver.warmUp();
+    const period = this.getPeriod(filter.range);
+    const bounds = this.getDateBounds(period, 'current');
+    const [handoffs, bookings] = await Promise.all([
+      this.fetchOpsEvents(filter, period, ['handoff.triggered'], 'current', {
+        applyGroupFilter: true,
+      }),
+      this.fetchOpsEvents(filter, period, ['booking.succeeded'], 'current', {
+        applyGroupFilter: false,
+        dateBounds: {
+          startDate: formatLocalDate(
+            addLocalDays(parseLocalDateStart(bounds.startDate) ?? getLocalDayStart(), -60),
+          ),
+          endDate: bounds.endDate,
+        },
+      }),
+    ]);
+
+    const reasonCodes = [...STORE_NO_SHOW_REASON_CODES];
+    const bookingsByWorkOrder = new Map<string, OpsEventRow>();
+    const bookingsByChat = new Map<string, OpsEventRow[]>();
+    for (const row of bookings) {
+      const workOrderId = this.payloadText(row.payload, 'work_order_id');
+      if (workOrderId) bookingsByWorkOrder.set(workOrderId, row);
+      if (row.chat_id) {
+        const list = bookingsByChat.get(row.chat_id) ?? [];
+        list.push(row);
+        bookingsByChat.set(row.chat_id, list);
+      }
+    }
+
+    const buckets = new Map<
+      string,
+      { brandName: string; storeName: string; byReason: Map<string, number>; chats: Set<string> }
+    >();
+    let total = 0;
+    let unresolved = 0;
+    for (const handoff of handoffs) {
+      const reasonCode = this.payloadText(handoff.payload, 'reason_code');
+      if (!reasonCode || !reasonCodes.includes(reasonCode)) continue;
+      total += 1;
+      const booking = this.resolveHandoffBooking(handoff, bookingsByWorkOrder, bookingsByChat);
+      const brandName = booking ? this.payloadText(booking.payload, 'brand_name') : null;
+      const storeName = booking ? this.payloadText(booking.payload, 'store_name') : null;
+      if (!brandName && !storeName) {
+        unresolved += 1;
+        continue;
+      }
+      const key = `${brandName ?? ''}｜${storeName ?? ''}`;
+      const bucket = buckets.get(key) ?? {
+        brandName: brandName ?? '',
+        storeName: storeName ?? '',
+        byReason: new Map<string, number>(),
+        chats: new Set<string>(),
+      };
+      bucket.byReason.set(reasonCode, (bucket.byReason.get(reasonCode) ?? 0) + 1);
+      if (handoff.chat_id) bucket.chats.add(handoff.chat_id);
+      buckets.set(key, bucket);
+    }
+
+    const rows: StoreNoShowRankRow[] = Array.from(buckets.values())
+      .map((bucket) => ({
+        brandName: bucket.brandName,
+        storeName: bucket.storeName,
+        total: Array.from(bucket.byReason.values()).reduce((sum, count) => sum + count, 0),
+        byReason: Object.fromEntries(bucket.byReason),
+        chatCount: bucket.chats.size,
+      }))
+      .sort((a, b) => b.total - a.total || b.chatCount - a.chatCount);
+
+    return {
+      startDate: bounds.startDate,
+      endDate: bounds.endDate,
+      reasonCodes,
+      total,
+      unresolved,
+      rows,
+    };
+  }
+
+  private resolveHandoffBooking(
+    handoff: OpsEventRow,
+    byWorkOrder: Map<string, OpsEventRow>,
+    byChat: Map<string, OpsEventRow[]>,
+  ): OpsEventRow | undefined {
+    const workOrderId = this.payloadText(handoff.payload, 'work_order_id');
+    if (workOrderId && byWorkOrder.has(workOrderId)) return byWorkOrder.get(workOrderId);
+    if (!handoff.chat_id) return undefined;
+    const candidates = (byChat.get(handoff.chat_id) ?? []).filter(
+      (row) => row.occurred_at <= handoff.occurred_at,
+    );
+    return candidates.length > 0 ? candidates[candidates.length - 1] : undefined;
+  }
+
+  private payloadText(payload: JsonPayload, key: string): string | null {
+    const value = payload?.[key];
+    if (typeof value === 'string') return value.trim() || null;
+    if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+    return null;
   }
 
   private async getBotRowsFromPeriodStats(
@@ -1049,6 +1156,9 @@ export class ConversionAnalyticsService {
         interview_pass: 0,
         booking_cancel: 0,
         interview_modified: 0,
+        oob_linked: 0,
+        oob_booking_cancel: 0,
+        oob_interview_modified: 0,
       },
       overallRate: 0,
       status: 'bad',

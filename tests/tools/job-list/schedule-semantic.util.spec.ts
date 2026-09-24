@@ -74,6 +74,17 @@ describe('classifyScheduleSemantic', () => {
     expect(semantics).not.toContain('flexible');
   });
 
+  it('做一休一 (perWeekWorkDays 1 + perWeekRestDays 1) is a rotation, not a 1-day-per-week job', () => {
+    // 哈根达斯南丰城新店：做一休一被当成每周 1 天 → 判成低频岗放给只做周末的候选人
+    const workTimeText = JSON.stringify({
+      weekAndMonthWorkTime: { perWeekWorkDays: 1, perWeekRestDays: 1 },
+    });
+
+    const semantics = classifyScheduleSemantic({ workTimeText });
+    expect(semantics).not.toContain('low_weekly_frequency');
+    expect(matchScheduleConstraint(semantics, { onlyWeekends: true }).matched).toBe(false);
+  });
+
   it('badcase id4zx7q9: 固定排班 label with 每周至少 2 天 has low weekly frequency', () => {
     // 哈根达斯又一城：排班类型「固定排班」+ 每周至少上岗 2 天，周末可做，
     // 曾被 /固定排班/ 文本判据误判 requires_full_week 致"只周末"候选人被告知无岗。

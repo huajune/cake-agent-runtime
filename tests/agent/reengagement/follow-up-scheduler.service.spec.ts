@@ -239,6 +239,102 @@ describe('FollowUpSchedulerService', () => {
     );
   });
 
+  describe('scheduleInterviewSlotCheck（等通知岗满 3 天复核）', () => {
+    it('schedules the check 3 days after signup with a stable per-work-order job id', async () => {
+      const now = Date.UTC(2026, 5, 24, 2, 30, 0);
+      const signUpAt = Date.UTC(2026, 5, 24, 2, 0, 0);
+      jest.spyOn(Date, 'now').mockReturnValue(now);
+
+      const result = await service.scheduleInterviewSlotCheck({
+        sessionRef,
+        workOrderId: 555,
+        signUpAt,
+        channelIdentity: { botImId: 'bot-1' },
+      });
+
+      expect(result).toEqual({
+        scheduled: true,
+        fireAt: signUpAt + 3 * 24 * 60 * 60_000,
+        jobId: 'sess-1:interview_reminder:wo555:interview_slot_check',
+      });
+      expect(queue.add).toHaveBeenCalledWith(
+        REENGAGEMENT_JOB_NAME,
+        {
+          sessionRef,
+          scenarioCode: 'interview_reminder',
+          anchorEventId: 'wo555:interview_slot_check',
+          anchorAt: signUpAt,
+          workOrderId: 555,
+          interviewSlotCheck: true,
+          channelIdentity: { botImId: 'bot-1' },
+        },
+        expect.objectContaining({
+          jobId: 'sess-1:interview_reminder:wo555:interview_slot_check',
+          delay: 3 * 24 * 60 * 60_000 - 30 * 60_000,
+        }),
+      );
+      // 复核不是候选人触达，不落 scheduled 追溯行
+      expect(tracking.trackScheduled).not.toHaveBeenCalled();
+    });
+
+    it('dedupes on an existing job and respects the master switch', async () => {
+      const now = Date.UTC(2026, 5, 24, 2, 30, 0);
+      jest.spyOn(Date, 'now').mockReturnValue(now);
+      queue.getJob.mockResolvedValueOnce({ id: 'existing' });
+      await expect(
+        service.scheduleInterviewSlotCheck({ sessionRef, workOrderId: 555, signUpAt: now }),
+      ).resolves.toEqual({
+        scheduled: false,
+        reason: 'duplicate_job',
+        jobId: 'sess-1:interview_reminder:wo555:interview_slot_check',
+      });
+      expect(queue.add).not.toHaveBeenCalled();
+
+      systemConfig.getAgentReplyConfig.mockResolvedValue({ reengagementEnabled: false });
+      await expect(
+        service.scheduleInterviewSlotCheck({ sessionRef, workOrderId: 556, signUpAt: now }),
+      ).resolves.toEqual({ scheduled: false, reason: 'disabled' });
+    });
+
+    it('历史单（报名距今 > 3 天 + 24h 宽限）不补排：只记 slot_check_skipped_stale 观测，不占 Bull 任务', async () => {
+      const now = Date.UTC(2026, 5, 24, 2, 30, 0);
+      jest.spyOn(Date, 'now').mockReturnValue(now);
+      const staleSignUpAt = now - 4 * 24 * 60 * 60_000 - 60_000;
+
+      await expect(
+        service.scheduleInterviewSlotCheck({
+          sessionRef,
+          workOrderId: 557,
+          signUpAt: staleSignUpAt,
+          channelIdentity: { botImId: 'bot-1' },
+        }),
+      ).resolves.toEqual({ scheduled: false, reason: 'slot_check_skipped_stale' });
+      expect(queue.getJob).not.toHaveBeenCalled();
+      expect(queue.add).not.toHaveBeenCalled();
+      expect(tracking.trackScheduleSkipped).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sessionId: 'sess-1',
+          scenarioCode: 'interview_reminder',
+          anchorEventId: 'wo557:interview_slot_check',
+          anchorAt: staleSignUpAt,
+          botImId: 'bot-1',
+        }),
+        'slot_check_skipped_stale',
+      );
+
+      // 宽限内（报名 3 天 + 23 小时）照排
+      const withinGrace = now - 3 * 24 * 60 * 60_000 - 23 * 60 * 60_000;
+      await expect(
+        service.scheduleInterviewSlotCheck({ sessionRef, workOrderId: 558, signUpAt: withinGrace }),
+      ).resolves.toMatchObject({ scheduled: true });
+      expect(queue.add).toHaveBeenCalledWith(
+        REENGAGEMENT_JOB_NAME,
+        expect.objectContaining({ workOrderId: 558, interviewSlotCheck: true }),
+        expect.objectContaining({ delay: 0 }),
+      );
+    });
+  });
+
   it('enqueues a delayed follow-up with deterministic job id', async () => {
     const now = Date.UTC(2026, 5, 24, 2, 0, 0);
     jest.spyOn(Date, 'now').mockReturnValue(now);

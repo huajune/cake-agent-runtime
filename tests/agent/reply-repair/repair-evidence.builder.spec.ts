@@ -407,6 +407,59 @@ describe('RepairEvidenceBuilder', () => {
     });
   });
 
+  // PRD R3：报名成功后拉群由运行时执行，证据在 booking 回执 groupInvite 里，
+  // 没有 invite_to_group 调用时也要支撑"已帮你加入群"的完成态。
+  it('falls back to booking groupInvite evidence when the runtime invited after booking', () => {
+    const packet = builder.build({
+      reply: '报名成功啦，另外已帮你加入了「上海餐饮群」',
+      toolCalls: [
+        {
+          toolName: 'duliday_interview_booking',
+          args: { jobId: 100 },
+          result: {
+            success: true,
+            groupInvite: {
+              attempted: true,
+              success: true,
+              groupName: '上海餐饮群',
+              delivery: 'direct_add',
+            },
+          },
+          status: 'ok',
+        },
+      ],
+    });
+
+    expect(packet.evidence.groupInvite).toEqual({
+      success: true,
+      groupName: '上海餐饮群',
+      alreadyInGroup: undefined,
+      errorType: undefined,
+    });
+  });
+
+  it('keeps the runtime skip reason as errorType so an unbacked group claim stays unbacked', () => {
+    const packet = builder.build({
+      reply: '报名成功啦',
+      toolCalls: [
+        {
+          toolName: 'duliday_interview_booking',
+          args: { jobId: 100 },
+          result: {
+            success: true,
+            groupInvite: { attempted: false, success: false, skippedReason: 'city_unknown' },
+          },
+          status: 'ok',
+        },
+      ],
+    });
+
+    expect(packet.evidence.groupInvite).toMatchObject({
+      success: false,
+      errorType: 'city_unknown',
+    });
+  });
+
   // badcase 2026-08-06 chat 6a1e42c5 trace …_1785977093673：候选人发后台工单截图，
   // save_image_description 已落档「预约面试时间 2026/08/06 15:00」，助手据此回
   // "你现在是想确认今天15点这个面试对吧"。packet 当时不收该工具 → reviewer 判

@@ -100,21 +100,28 @@ describe('buildModifyInterviewTimeTool', () => {
     });
   });
 
-  describe('work order not in active_booking (out-of-band ownership check)', () => {
-    const outOfBandOrder = {
+  describe('work order not in active_booking (snapshot ownership)', () => {
+    const snapshotRef = (over: Record<string, unknown> = {}) => ({
       workOrderId: 464227,
       jobId: 529005,
-      currentStatus: '约面成功',
+      source: 'out_of_band' as const,
+      signupSource: 'SUPPLIER' as const,
+      ownedByCandidate: true,
       interviewTime: '2026-09-14 12:00',
-    };
-    const candidateSaidPhone = [
-      { role: 'assistant', content: '你的手机号发我一下' },
-      { role: 'user', content: '18271421690' },
-      { role: 'user', content: '周五可以的' },
-    ];
+      ...over,
+    });
+    const bookingSnapshot = { invalidate: jest.fn().mockResolvedValue(undefined) };
+    const buildWithSnapshot = (ctx: ToolBuildContext) =>
+      buildModifyInterviewTimeTool(
+        spongeService as never,
+        opsEventsRecorder as never,
+        longTermService as never,
+        { bookingSnapshot: bookingSnapshot as never },
+      )(ctx);
 
     beforeEach(() => {
       longTermService.getActiveBookings.mockResolvedValue([]);
+      bookingSnapshot.invalidate.mockClear();
     });
 
     const expectRejected = (result: unknown) =>
@@ -127,130 +134,83 @@ describe('buildModifyInterviewTimeTool', () => {
         errorType: TOOL_ERROR_TYPES.MODIFY_INTERVIEW_WORK_ORDER_NOT_IN_MEMORY,
       });
 
-    it('releases and backfills active_booking when the work order phone was said by the candidate in this session', async () => {
-      spongeService.fetchSignupWorkOrders.mockResolvedValue({
-        phone: '18271421690',
-        total: 1,
-        workOrders: [outOfBandOrder],
-      });
+    it('快照里通过本人校验的带外工单视同自有：放行改约，不再要求原话含手机号，也不回填 active_booking', async () => {
       const context = mergeToolContext(mockContext, {
-        turnInput: { currentUserMessage: '确定，改到周五下午2点', messages: candidateSaidPhone },
+        archive: { bookingWorkOrders: [snapshotRef()] },
+        turnInput: { currentUserMessage: '确定，改到周五下午2点', messages: [] },
       });
-      const tool = buildTool(context);
-      const result = await exec(tool, {
+      const result = await exec(buildWithSnapshot(context), {
         workOrderId: 464227,
         newInterviewTime: '2026-09-18 14:00',
       });
 
-      expect(spongeService.fetchSignupWorkOrders).toHaveBeenCalledWith(
-        { workOrderId: 464227 },
-        { botImId: 'bot-im-1', botUserId: 'mgr-bob', groupId: undefined },
-      );
-      expect(longTermService.setActiveBooking).toHaveBeenCalledWith('corp-1', 'user-1', 464227, {
-        job_id: 529005,
-        interview_time: '2026-09-14 12:00:00',
-      });
+      expect(spongeService.fetchSignupWorkOrders).not.toHaveBeenCalled();
+      expect(longTermService.setActiveBooking).not.toHaveBeenCalled();
       expect(spongeService.modifyInterviewTime).toHaveBeenCalledWith(
         { workOrderId: 464227, newInterviewTime: '2026-09-18 14:00' },
         expect.anything(),
       );
       expect(result).toMatchObject({ success: true, workOrderId: 464227 });
+      // 带外工单的改约事件带来源标记；成功后失效该候选人的快照缓存
+      expect(opsEventsRecorder.recordEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          eventName: 'booking.interview_modified',
+          payload: expect.objectContaining({ source: 'oob' }),
+        }),
+      );
+      expect(bookingSnapshot.invalidate).toHaveBeenCalledWith(
+        expect.objectContaining({ botImId: 'bot-im-1', corpId: 'corp-1', userId: 'user-1' }),
+      );
     });
 
-    it('accepts the phone carried on the work order row and tolerates missing interviewTime', async () => {
-      spongeService.fetchSignupWorkOrders.mockResolvedValue({
-        total: 1,
-        workOrders: [{ ...outOfBandOrder, phone: '182 7142 1690', interviewTime: null }],
-      });
+    it('本人校验未通过（登记姓名≠候选人姓名）→ 短路转人工，不改约', async () => {
       const context = mergeToolContext(mockContext, {
-        turnInput: { currentUserMessage: '确定', messages: candidateSaidPhone },
+        archive: { bookingWorkOrders: [snapshotRef({ ownedByCandidate: false })] },
+        turnInput: { currentUserMessage: '确定', messages: [] },
       });
-      const result = await exec(buildTool(context), {
-        workOrderId: 464227,
-        newInterviewTime: '2026-09-18 14:00',
-      });
-
-      expect(longTermService.setActiveBooking).toHaveBeenCalledWith('corp-1', 'user-1', 464227, {
-        job_id: 529005,
-        interview_time: null,
-      });
-      expect(result).toMatchObject({ success: true });
-    });
-
-    it('short-circuits to handoff when the phone only appears in non-candidate messages', async () => {
-      spongeService.fetchSignupWorkOrders.mockResolvedValue({
-        phone: '18271421690',
-        total: 1,
-        workOrders: [outOfBandOrder],
-      });
-      const context = mergeToolContext(mockContext, {
-        turnInput: {
-          currentUserMessage: '确定，帮我改到明天上午10点',
-          messages: [
-            { role: 'assistant', content: '已帮你登记，手机号 18271421690' },
-            { role: 'user', content: '好的' },
-          ],
-        },
-      });
-      const result = await exec(buildTool(context), {
+      const result = await exec(buildWithSnapshot(context), {
         workOrderId: 464227,
         newInterviewTime: '2026-07-17 10:00',
       });
 
       expect(spongeService.modifyInterviewTime).not.toHaveBeenCalled();
-      expect(longTermService.setActiveBooking).not.toHaveBeenCalled();
       expect(context.ledger.jobs.resolvedWorkOrderId).toBe(464227);
       expectRejected(result);
-      expect(result).toMatchObject({ handoffReason: expect.stringContaining('尾号 1690') });
+      expect(result).toMatchObject({
+        ownershipReason: 'identity_mismatch',
+        handoffReason: expect.stringContaining('姓名'),
+      });
     });
 
-    it('ignores the sponge status field（海绵状态滞后不可信，2026-09-16 运营裁定改约不看状态）', async () => {
-      spongeService.fetchSignupWorkOrders.mockResolvedValue({
-        phone: '18271421690',
-        total: 1,
-        workOrders: [{ ...outOfBandOrder, currentStatus: '面试成功' }],
-      });
+    it('既不在指针也不在快照 → 短路转人工', async () => {
       const context = mergeToolContext(mockContext, {
-        turnInput: { currentUserMessage: '确定', messages: candidateSaidPhone },
+        archive: { bookingWorkOrders: [] },
+        turnInput: { currentUserMessage: '确定', messages: [] },
       });
-      await exec(buildTool(context), {
-        workOrderId: 464227,
-        newInterviewTime: '2026-07-17 10:00',
-      });
-
-      expect(spongeService.modifyInterviewTime).toHaveBeenCalledTimes(1);
-    });
-
-    it('fails closed to handoff when the work order lookup throws', async () => {
-      spongeService.fetchSignupWorkOrders.mockRejectedValue(new Error('sponge down'));
-      const context = mergeToolContext(mockContext, {
-        turnInput: { currentUserMessage: '确定', messages: candidateSaidPhone },
-      });
-      const result = await exec(buildTool(context), {
-        workOrderId: 464227,
-        newInterviewTime: '2026-07-17 10:00',
-      });
-
-      expect(spongeService.modifyInterviewTime).not.toHaveBeenCalled();
-      expect(longTermService.setActiveBooking).not.toHaveBeenCalled();
-      expectRejected(result);
-    });
-
-    it('fails closed to handoff when the work order carries no candidate phone', async () => {
-      spongeService.fetchSignupWorkOrders.mockResolvedValue({
-        total: 1,
-        workOrders: [{ ...outOfBandOrder, phone: null }],
-      });
-      const context = mergeToolContext(mockContext, {
-        turnInput: { currentUserMessage: '确定', messages: candidateSaidPhone },
-      });
-      const result = await exec(buildTool(context), {
+      const result = await exec(buildWithSnapshot(context), {
         workOrderId: 464227,
         newInterviewTime: '2026-07-17 10:00',
       });
 
       expect(spongeService.modifyInterviewTime).not.toHaveBeenCalled();
       expectRejected(result);
+      expect(result).toMatchObject({ ownershipReason: 'not_in_snapshot' });
+    });
+
+    it('自建单（AI 来源）改约事件来源为 ai', async () => {
+      const context = mergeToolContext(mockContext, {
+        archive: {
+          bookingWorkOrders: [snapshotRef({ source: 'active_booking', signupSource: 'AI' })],
+        },
+        turnInput: { currentUserMessage: '确定', messages: [] },
+      });
+      await exec(buildWithSnapshot(context), {
+        workOrderId: 464227,
+        newInterviewTime: '2026-07-17 10:00',
+      });
+      expect(opsEventsRecorder.recordEvent).toHaveBeenCalledWith(
+        expect.objectContaining({ payload: expect.objectContaining({ source: 'ai' }) }),
+      );
     });
   });
 
@@ -276,6 +236,60 @@ describe('buildModifyInterviewTimeTool', () => {
     expect(result).toMatchObject({
       success: false,
       errorType: TOOL_ERROR_TYPES.MODIFY_INTERVIEW_REQUEST_FAILED,
+    });
+  });
+
+  describe('失败回执自带转人工（PRD R5.1：删「说衔接语 + 调 request_handoff」互斥指令）', () => {
+    const contextWithFocus = mergeToolContext(mockContext, {
+      archive: { currentStage: 'interview_booked', activeBookingJobIds: [777] },
+      turnInput: { currentUserMessage: '能改到 20 号下午两点吗' },
+    });
+
+    it.each([
+      [
+        'MODIFY_INTERVIEW_REJECTED',
+        () => spongeService.modifyInterviewTime.mockResolvedValue({ success: false, code: 500 }),
+        TOOL_ERROR_TYPES.MODIFY_INTERVIEW_REJECTED,
+      ],
+      [
+        'MODIFY_INTERVIEW_REQUEST_FAILED',
+        () => spongeService.modifyInterviewTime.mockRejectedValue(new Error('boom')),
+        TOOL_ERROR_TYPES.MODIFY_INTERVIEW_REQUEST_FAILED,
+      ],
+    ])('%s carries a modify_appointment handoff sideEffect', async (_label, arrange, errorType) => {
+      arrange();
+      const result = await exec(buildTool(contextWithFocus), {
+        workOrderId: 123,
+        newInterviewTime: '2026-06-20 14:00',
+      });
+
+      expect(result.errorType).toBe(errorType);
+      expect(result.sideEffect).toEqual(
+        expect.objectContaining({
+          kind: 'general_handoff',
+          origin: 'tool_failure',
+          reasonCode: 'modify_appointment',
+          workOrderId: 123,
+          jobId: 777,
+          stage: 'interview_booked',
+          recordHandoff: true,
+          reason: expect.stringContaining('想改到：2026-06-20 14:00'),
+        }),
+      );
+      expect(result._replyInstruction).not.toContain('按 request_handoff');
+      expect(result._replyInstruction).not.toContain('我让同事帮你确认一下');
+      expect(result._replyInstruction).toContain('已经转给同事跟进');
+    });
+
+    it('ownership gate rejection keeps the short-circuit contract (no extra sideEffect)', async () => {
+      longTermService.getActiveBookings.mockResolvedValue([]);
+      spongeService.fetchSignupWorkOrders.mockResolvedValue({ total: 0, workOrders: [] });
+      const result = await exec(buildTool(contextWithFocus), {
+        workOrderId: 999,
+        newInterviewTime: '2026-06-20 14:00',
+      });
+      expect(result.gateRejected).toBe(true);
+      expect(result.sideEffect).toBeUndefined();
     });
   });
 });
