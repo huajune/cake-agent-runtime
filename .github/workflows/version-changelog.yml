@@ -114,6 +114,7 @@ jobs:
 
             Each JSON object must have these keys:
             {
+              "opsNotes": [],
               "businessUpdates": [],
               "summary": [],
               "features": [],
@@ -126,7 +127,8 @@ jobs:
 
             Rules:
             - Only use facts from the PR title, PR body, commits, and changed files in `.release/merged-pr-contexts.json`.
-            - `businessUpdates` is shown directly in the Feishu deploy card under "业务改动（候选人/运营可感知）"; cover every candidate/operator-visible commit there.
+            - `opsNotes` is the operator-facing release note and goes into the Feishu deploy card verbatim, one array item per line. If the PR body already has a `## 运营说明` section, copy its lines exactly (bold group lines and `- ` bullets). Otherwise write one: group by requirement or feature; each group starts with a bold line like `**报名成功后自动拉群** ✅ 已上线` (use ⏳ and say which part shipped when a requirement is only partly done), followed by 2-4 `- ` bullets in plain Chinese describing only what operators or candidates will notice. No tool names, field names, file paths, percentages, or PR numbers. Leave it an empty array when nothing is operator-visible.
+            - `businessUpdates` is the fallback list under "业务改动（候选人/运营可感知）" when no `opsNotes` exist; cover every candidate/operator-visible commit there.
             - `features` and `fixes` should still be categorized for CHANGELOG details.
             - Prefer business-facing Chinese. Keep necessary identifiers such as Vision, Agent, Dashboard, reply-fact-guard, payload.artworkUrl.
             - Do not include PR numbers, author names, file paths, test commands, Markdown headings, or "无/暂无".

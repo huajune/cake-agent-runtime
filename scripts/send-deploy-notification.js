@@ -21,6 +21,9 @@ const RELEASE_METADATA_PATH = '.release/pending-release.json';
 const PENDING_START = '<!-- release:pending:start -->';
 const PENDING_END = '<!-- release:pending:end -->';
 const DEFAULT_OPERATIONAL_SUMMARY = '- 本次包含体验优化与稳定性修复，技术明细已记录在版本说明中。';
+const OPS_NOTES_HEADING = '**业务改动（按需求 / 功能分组，运营版说明）**';
+const OPS_NOTES_MISSING_NOTICE =
+  '> 本版 PR 未填写「运营说明」，以下为自动技术摘要；下次请在 PR 正文补 `## 运营说明`。';
 const NO_BUSINESS_UPDATE_SUMMARY = '- 本次无候选人/运营可感知业务改动。';
 const DEPLOY_STATUS_META = {
   success: {
@@ -141,13 +144,65 @@ function buildMarkdown(options = {}) {
     `**发布状态**：${deployStatus.markdown}`,
   ];
 
+  // 运营版说明优先：PR 正文 `## 运营说明`（或 LLM 补写）经元数据 / CHANGELOG 原样透传，
+  // 按需求或功能分组、不限条数（只受卡片总长截断）。没有时才回落到技术摘要并明示。
+  const opsNotes = readStructuredOpsNotes(releaseTag) ?? extractOpsNotesSection(releaseNotes);
+  if (opsNotes.length > 0) {
+    lines.push('', OPS_NOTES_HEADING, '', ...opsNotes);
+    return truncateText(lines.join('\n'), MAX_MARKDOWN_CHARS);
+  }
+
   lines.push(
     '',
     '**业务改动（候选人/运营可感知）**',
+    OPS_NOTES_MISSING_NOTICE,
     renderBusinessUpdateSummary(structuredBusinessUpdates, releaseNotes),
   );
 
   return truncateText(lines.join('\n'), MAX_MARKDOWN_CHARS);
+}
+
+/** 元数据里各 PR 的「运营说明」原样行；无元数据返回 null，有元数据但没人写返回 []。 */
+function readStructuredOpsNotes(releaseTag = getReleaseTag()) {
+  const releaseMetadata = readReleaseMetadata();
+  if (!releaseMetadata) {
+    return null;
+  }
+
+  const version = String(releaseTag || '').replace(/^v/, '');
+  const releaseEntries = resolveReleaseMetadataEntries(releaseMetadata, version);
+  if (releaseEntries.length === 0) {
+    return null;
+  }
+
+  const blocks = [];
+  for (const entry of releaseEntries) {
+    const entryTitle = formatReleaseText(entry.title, { includePrReference: false });
+    if (entryTitle && isReleaseProcessUpdate(entryTitle)) continue;
+    const notes = Array.isArray(entry.opsNotes)
+      ? entry.opsNotes.map((line) => String(line || '').trim()).filter(Boolean)
+      : [];
+    if (notes.length === 0) continue;
+    if (blocks.length > 0) blocks.push('');
+    blocks.push(...notes);
+  }
+  return blocks;
+}
+
+/** CHANGELOG「### 运营说明」段原样行（保留分组标题与段间空行）；缺席或"- 无"返回 []。 */
+function extractOpsNotesSection(releaseNotes) {
+  const section = extractMarkdownSection(releaseNotes || '', '运营说明');
+  if (!section || /^-\s*(?:无|暂无)\s*$/.test(section)) {
+    return [];
+  }
+  const lines = section.split('\n').map((line) => line.trimEnd());
+  const collapsed = [];
+  for (const line of lines) {
+    if (!line.trim() && (collapsed.length === 0 || !collapsed[collapsed.length - 1])) continue;
+    collapsed.push(line.trim() ? line.trim() : '');
+  }
+  while (collapsed.length > 0 && !collapsed[collapsed.length - 1]) collapsed.pop();
+  return collapsed;
 }
 
 function extractStructuredUpdate(releaseNotes) {
@@ -573,11 +628,13 @@ function postJson(url, payload) {
 module.exports = {
   buildCardTitle,
   buildMarkdown,
+  extractOpsNotesSection,
   extractStructuredUpdate,
   extractUpdateSummary,
   getCardTemplate,
   getWebhookConfig,
   normalizeReleaseNotes,
+  readStructuredOpsNotes,
 };
 
 function assertFeishuResponse(response) {
