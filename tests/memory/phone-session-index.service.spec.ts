@@ -1,4 +1,7 @@
-import { PhoneSessionIndexService } from '@memory/phone-session-index.service';
+import {
+  PhoneSessionIndexService,
+  isNonProductionSessionRef,
+} from '@memory/phone-session-index.service';
 
 describe('PhoneSessionIndexService', () => {
   const redis = { setex: jest.fn(), get: jest.fn() };
@@ -39,6 +42,21 @@ describe('PhoneSessionIndexService', () => {
     await other.record('18271421690', ref);
     // 第一次失败不占去重槽，第二次重写成功（2 次失败尝试中的 1 次 + 2 次成功）
     expect(redis.setex.mock.calls.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it.each([
+    ['corpId=test', { ...ref, corpId: 'test' }],
+    ['corpId=debug', { ...ref, corpId: 'debug' }],
+    ['chatId test-*', { ...ref, chatId: 'test-abc' }],
+    ['chatId p1-fixed-*', { ...ref, chatId: 'p1-fixed-1' }],
+    ['chatId p2-fixed-*', { ...ref, chatId: 'p2-fixed-1' }],
+    ['chatId p3-fixed-*', { ...ref, chatId: 'p3-fixed-1' }],
+  ])('测试/调试链路会话（%s）兜底不写索引', async (_label, testRef) => {
+    const service = new PhoneSessionIndexService(redis as never);
+    await service.record('18271421690', testRef);
+    expect(redis.setex).not.toHaveBeenCalled();
+    expect(isNonProductionSessionRef(testRef)).toBe(true);
+    expect(isNonProductionSessionRef(ref)).toBe(false);
   });
 
   it('非候选人号段不写索引', async () => {

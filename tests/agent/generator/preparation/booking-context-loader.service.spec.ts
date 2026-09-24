@@ -3,6 +3,7 @@ import {
   renderBookingPrompt,
   visibleBookingWorkOrders,
 } from '@agent/generator/context/sections/semantic/memory.section';
+import { CallerKind } from '@enums/agent.enum';
 
 describe('BookingContextLoaderService', () => {
   const longTerm = { getActiveBookings: jest.fn() };
@@ -25,6 +26,7 @@ describe('BookingContextLoaderService', () => {
     userId: 'user-1',
     sessionId: 'session-1',
     botImId: 'bot-1',
+    callerKind: CallerKind.WECOM,
   } as never;
 
   const memoryWithPhone = (over: { name?: string; phone?: string | null } = {}) =>
@@ -156,6 +158,19 @@ describe('BookingContextLoaderService', () => {
       await service.load(memoryWithPhone(), params, '你们工资怎么算');
       expect(snapshot.load).toHaveBeenCalledWith(expect.objectContaining({ bypassCache: false }));
     });
+
+    it.each([CallerKind.TEST_SUITE, CallerKind.DEBUG])(
+      '%s 链路仍查快照但不刷新手机号→会话索引（带外扫描不能反查到测试会话）',
+      async (callerKind) => {
+        await service.load(
+          memoryWithPhone(),
+          { ...(params as object), callerKind } as never,
+          '面试',
+        );
+        expect(snapshot.load).toHaveBeenCalledTimes(1);
+        expect(phoneIndex.record).not.toHaveBeenCalled();
+      },
+    );
 
     it('本人校验未通过的工单只渲染并标注归属', async () => {
       snapshot.load.mockResolvedValue({

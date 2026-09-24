@@ -324,11 +324,12 @@ export function visibleBookingWorkOrders(
  * 焦点岗位兜底（J5/J6）：会话焦点为空、而本轮预约快照里恰有一张带岗位 ID 的可见工单时，
  * 把该工单岗位视为合法焦点——候选人回头追问"我约的那个岗位"时，工具与出站守卫才有岗位 ID 可用。
  * 多张工单时不猜（焦点仍为空，由模型按 [当前预约信息] 的岗位ID 按 jobIdList 重查）。
+ * 本人校验未通过的工单（同号代报同行人）不参与兜底：别人的岗位不能成为本人的焦点。
  */
 export function bookingFocusJobFallback(
   refs: readonly VisibleBookingWorkOrderRef[],
 ): RecommendedJobSummary | null {
-  const withJob = refs.filter((ref) => ref.jobId != null);
+  const withJob = refs.filter((ref) => ref.jobId != null && ref.ownedByCandidate !== false);
   if (withJob.length !== 1) return null;
   const [ref] = withJob;
   return {

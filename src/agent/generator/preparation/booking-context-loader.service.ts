@@ -1,4 +1,5 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
+import { CallerKind } from '@enums/agent.enum';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { isUserProfileFactValue } from '@memory/long-term/long-term.types';
 import { LongTermService } from '@memory/long-term/long-term.service';
@@ -45,7 +46,9 @@ export class BookingContextLoaderService {
     currentUserMessage: string | undefined,
   ): Promise<BookingPromptSnapshot> {
     const phone = resolveCandidatePhone(memory);
-    if (phone) this.refreshPhoneIndex(phone, params);
+    // 手机号→会话索引是带外补偿扫描的反查依据，只能由企微生产回合刷新：回归测试/调试链路
+    // 也走 prepare，写进去会让扫描把真实工单的提醒排到测试会话上。
+    if (phone && params.callerKind === CallerKind.WECOM) this.refreshPhoneIndex(phone, params);
     if (!phone || !this.bookingSnapshot) {
       return this.loadPointer(params, currentUserMessage);
     }

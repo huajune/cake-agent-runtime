@@ -716,14 +716,17 @@ export function buildInterviewBookingTool(
                 userId: scope.userId,
               });
             });
-            await runPostBookingWrite('手机号→会话索引写入', async () => {
-              await deps.phoneSessionIndex?.record(identity.phone, {
-                corpId: scope.corpId,
-                userId: scope.userId,
-                chatId: scope.sessionId,
-                botImId: context.session.botImId ?? null,
+            // 测试链路（统一假身份报名）不写索引：带外补偿扫描会按手机号反查到测试会话并排提醒。
+            if (context.runtime.strategySource !== 'testing') {
+              await runPostBookingWrite('手机号→会话索引写入', async () => {
+                await deps.phoneSessionIndex?.record(identity.phone, {
+                  corpId: scope.corpId,
+                  userId: scope.userId,
+                  chatId: scope.sessionId,
+                  botImId: context.session.botImId ?? null,
+                });
               });
-            });
+            }
             const botUserId = context.session.botUserId?.trim();
             if (botUserId) {
               await runPostBookingWrite('长期身份档案写入', () =>

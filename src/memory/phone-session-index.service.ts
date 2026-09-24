@@ -24,6 +24,8 @@ export class PhoneSessionIndexService {
   async record(phone: string, ref: PhoneSessionRef): Promise<void> {
     const normalized = phone.trim();
     if (!isStorableCandidatePhone(normalized)) return;
+    // 兜底：测试/调试链路的会话一律不进索引（上游已按 callerKind / strategySource 拦，这里按身份再挡一道）。
+    if (isNonProductionSessionRef(ref)) return;
     const dedupeKey = `${normalized}:${ref.chatId}:${ref.botImId ?? ''}`;
     const last = this.recentWrites.get(dedupeKey);
     const now = Date.now();
@@ -82,6 +84,17 @@ export interface PhoneSessionIndexRecord extends PhoneSessionRef {
 const INDEX_TTL_SECONDS = 30 * 24 * 60 * 60;
 const WRITE_DEDUPE_MS = 60 * 60 * 1000;
 const MAX_DEDUPE_ENTRIES = 5_000;
+/** 测试套件 / 调试端点的会话身份：corpId 固定为 test / debug，或 chatId 带固定测试前缀。 */
+const NON_PRODUCTION_CORP_IDS: ReadonlySet<string> = new Set(['test', 'debug']);
+const NON_PRODUCTION_CHAT_ID_PREFIXES = ['test-', 'p1-fixed-', 'p2-fixed-', 'p3-fixed-'] as const;
+
+export function isNonProductionSessionRef(
+  ref: Pick<PhoneSessionRef, 'corpId' | 'chatId'>,
+): boolean {
+  if (NON_PRODUCTION_CORP_IDS.has(ref.corpId.trim())) return true;
+  const chatId = ref.chatId.trim();
+  return NON_PRODUCTION_CHAT_ID_PREFIXES.some((prefix) => chatId.startsWith(prefix));
+}
 
 function phoneKey(phone: string): string {
   return `oob:phone:${phone}`;

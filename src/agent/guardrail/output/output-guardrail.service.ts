@@ -100,12 +100,15 @@ export class OutputGuardrailService {
     try {
       const record = await this.bookingSnapshot.peekForCandidate(corpId, userId);
       if (!record) return undefined;
-      return record.entries.map((entry) => ({
-        work_order_id: entry.workOrderId,
-        linked_at: new Date(record.fetchedAt).toISOString(),
-        job_id: entry.jobId,
-        interview_time: entry.interviewTime ? `${entry.interviewTime}:00` : null,
-      }));
+      // 本人校验未通过的条目（同号代报同行人）不算候选人本人的在途工单，否则「已约上」哨兵会按别人的单放行。
+      return record.entries
+        .filter((entry) => entry.ownedByCandidate !== false)
+        .map((entry) => ({
+          work_order_id: entry.workOrderId,
+          linked_at: new Date(record.fetchedAt).toISOString(),
+          job_id: entry.jobId,
+          interview_time: entry.interviewTime ? `${entry.interviewTime}:00` : null,
+        }));
     } catch (error: unknown) {
       this.logger.warn(`[OutputGuardrail] 读取预约快照失败，按未知处理: ${toErrorMessage(error)}`);
       return undefined;

@@ -590,6 +590,14 @@ describe('duliday_interview_booking（form → labelList）', () => {
     expect(sponge.bookInterview).not.toHaveBeenCalled();
   });
 
+  it('测试链路用统一假身份报名成功：快照照常失效，但不写手机号→会话索引', async () => {
+    context.runtime.strategySource = 'testing';
+    const result = await execute({ jobId: 100 });
+    expect(result.success).toBe(true);
+    expect(bookingSnapshot.invalidate).toHaveBeenCalledTimes(1);
+    expect(phoneSessionIndex.record).not.toHaveBeenCalled();
+  });
+
   it('报名成功后失效该手机号的预约快照缓存并写手机号→会话索引', async () => {
     const result = await execute({ jobId: 100 });
     expect(result.success).toBe(true);

@@ -40,6 +40,20 @@ describe('bookingFocusJobFallback（J5/J6 已约岗位视为合法焦点）', ()
     ).toBeNull();
   });
 
+  it('本人校验未通过的工单（同号代报同行人）不参与兜底：唯一剩下的本人单才成焦点', () => {
+    expect(
+      bookingFocusJobFallback([
+        { workOrderId: 1, jobId: 10, source: 'out_of_band', ownedByCandidate: false },
+      ]),
+    ).toBeNull();
+    expect(
+      bookingFocusJobFallback([
+        { workOrderId: 1, jobId: 10, source: 'out_of_band', ownedByCandidate: false },
+        { workOrderId: 2, jobId: 20, source: 'out_of_band', ownedByCandidate: true },
+      ])?.jobId,
+    ).toBe(20);
+  });
+
   it('多张工单但只有一张带岗位 ID → 取那一张', () => {
     expect(
       bookingFocusJobFallback([

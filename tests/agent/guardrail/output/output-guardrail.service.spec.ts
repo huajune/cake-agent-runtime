@@ -86,8 +86,10 @@ describe('OutputGuardrailService', () => {
         fetchedAt: Date.parse('2026-09-22T02:00:00Z'),
         candidateName: '张三',
         entries: [
-          { workOrderId: 1, jobId: 100, interviewTime: '2026-09-25 14:00' },
+          { workOrderId: 1, jobId: 100, interviewTime: '2026-09-25 14:00', ownedByCandidate: true },
           { workOrderId: 2, jobId: 200, interviewTime: null },
+          // 本人校验未通过（同号代报同行人）：不算本人在途工单
+          { workOrderId: 3, jobId: 300, interviewTime: null, ownedByCandidate: false },
         ],
       }),
     };
@@ -121,6 +123,9 @@ describe('OutputGuardrailService', () => {
           expect.objectContaining({ work_order_id: 2, job_id: 200, interview_time: null }),
         ],
       }),
+    );
+    expect(JSON.stringify(ruleGuard.check.mock.calls[0][0].activeBookings)).not.toContain(
+      '"work_order_id":3',
     );
 
     bookingSnapshot.peekForCandidate.mockResolvedValue(null);
