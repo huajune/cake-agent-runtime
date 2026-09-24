@@ -41,6 +41,17 @@ const ENV_RELATED_FILE_PATTERNS = [
   /^\.env\.(?:example|sample|template)$/,
   /^src\/infra\/config\/env\.validation\.ts$/,
 ];
+// PR 正文里的「运营说明」段：给运营看的发版说明，按需求/功能分组的原样 markdown 行。
+// 不走 formatReleaseText / 分类，逐行原样进入 CHANGELOG「### 运营说明」与飞书发版卡片。
+const OPS_NOTES_HEADINGS = new Set([
+  '运营说明',
+  '运营版说明',
+  '运营可感知说明',
+  'OpsNotes',
+  'Opsnotes',
+]);
+const OPS_NOTES_EMPTY_VALUES = new Set(['无', '暂无', 'none', 'n/a', '待补充']);
+
 const RELEASE_ENTRY_SECTION_KEYS = [
   'businessUpdates',
   'summary',
@@ -507,6 +518,9 @@ function parsePullRequestEntry() {
   const title = normalizeTitle(rawTitle || `更新 ${rawNumber}` || '未命名更新');
   const sections = parseBodySections(rawBody);
   const fallbackKey = inferPrimaryCategory(rawTitle || title);
+  // 作者手写的「运营说明」优先；缺席时才用 LLM 生成的同名段。
+  const authoredOpsNotes = uniqueList(sections.opsNotes || []);
+  delete sections.opsNotes;
 
   // `## 更新摘要 / Summary / Changes` 里的 bullet 要原样保留在 CHANGELOG 摘要中，
   // 同时按关键词分发到具体类别，避免摘要里的 feat/fix/chore 信号丢失。
@@ -544,6 +558,7 @@ function parsePullRequestEntry() {
       rawMergedAt,
       envFiles,
       sections: llmSections,
+      opsNotes: authoredOpsNotes.length > 0 ? authoredOpsNotes : llmSections.opsNotes || [],
       fallbackSummary: uniqueList([...commitBullets, ...summaryBullets, title]),
     });
   }
@@ -578,6 +593,7 @@ function parsePullRequestEntry() {
     rawMergedAt,
     envFiles,
     sections,
+    opsNotes: authoredOpsNotes,
     fallbackSummary: uniqueList([...commitBullets, ...summaryBullets, title]),
   });
 }
@@ -590,6 +606,7 @@ function buildPullRequestEntry({
   rawMergedAt,
   envFiles,
   sections,
+  opsNotes,
   fallbackSummary,
 }) {
   const summary = uniqueList(sections.summary || []);
@@ -600,6 +617,7 @@ function buildPullRequestEntry({
     title,
     author: rawAuthor,
     mergedAt: rawMergedAt ? rawMergedAt.slice(0, 10) : formatShanghaiDate(),
+    opsNotes: sanitizeOpsNoteLines(opsNotes),
     businessUpdates: buildBusinessUpdates(sections, fallbackSummary),
     summary: summary.length > 0 ? summary : uniqueList(fallbackSummary).filter(Boolean),
     features: uniqueList(sections.features),
@@ -673,12 +691,14 @@ function parseBodySections(body) {
     ops: [],
     config: [],
     verification: [],
+    opsNotes: [],
   };
 
   if (!body) return sections;
 
   // H2 是类别边界；H3+ 是同一类别下的子标题，不重置 currentKey，
   // 这样 `## Summary` 下的 `### 消息回调 / ### Agent 侧修复` 子段里的 bullet 依然能被捕获。
+  // 「运营说明」段例外：其下的 H3+ 与加粗行都是分组标题，逐行原样保留。
   let currentKey = null;
   for (const rawLine of body.split('\n')) {
     const headingMatch = rawLine.match(/^(#{2,6})\s*(.+?)\s*$/);
@@ -686,12 +706,21 @@ function parseBodySections(body) {
       const level = headingMatch[1].length;
       if (level === 2) {
         const normalizedHeading = headingMatch[2].replace(/\s+/g, '');
-        currentKey = SECTION_ALIASES.get(normalizedHeading) || null;
+        currentKey = OPS_NOTES_HEADINGS.has(normalizedHeading)
+          ? 'opsNotes'
+          : SECTION_ALIASES.get(normalizedHeading) || null;
+        continue;
       }
-      continue;
+      if (currentKey !== 'opsNotes') continue;
     }
 
     if (!currentKey) continue;
+
+    if (currentKey === 'opsNotes') {
+      const opsLine = normalizeOpsNoteLine(rawLine);
+      if (opsLine) sections.opsNotes.push(opsLine);
+      continue;
+    }
 
     const normalizedLine = normalizeBodyLine(rawLine);
     if (!normalizedLine) continue;
@@ -699,6 +728,26 @@ function parseBodySections(body) {
   }
 
   return sections;
+}
+
+/**
+ * 「运营说明」行：原样保留分组标题（加粗行）与 bullet，只做三件事——
+ * 去首尾空白、丢 HTML 注释与"无"占位、把 markdown 标题降成加粗行（CHANGELOG 用 `###` 切段，
+ * 正文里不能再出现标题符号）。
+ */
+function normalizeOpsNoteLine(line) {
+  const text = String(line || '').trim();
+  if (!text || text.startsWith('<!--')) return '';
+  const bare = text.replace(/^(?:[-*+]\s+|\d+\.\s+)/, '').trim();
+  if (OPS_NOTES_EMPTY_VALUES.has(bare.toLowerCase())) return '';
+  const headingMatch = text.match(/^#{1,6}\s+(.+?)\s*$/);
+  if (headingMatch) return `**${headingMatch[1]}**`;
+  return text;
+}
+
+function sanitizeOpsNoteLines(value) {
+  const values = Array.isArray(value) ? value : [];
+  return values.map(normalizeOpsNoteLine).filter(Boolean);
 }
 
 // 把落在 `summary` 池的 bullet 按关键词分发到具体类别；缺乏信号时回落到 PR 标题推断的类别。
@@ -914,6 +963,7 @@ function sanitizeLlmReleaseSections(value) {
   for (const key of RELEASE_ENTRY_SECTION_KEYS) {
     sections[key] = sanitizeReleaseLines(value[key]);
   }
+  sections.opsNotes = sanitizeOpsNoteLines(value.opsNotes);
 
   if (sections.summary.length === 0) {
     sections.summary = uniqueList([
@@ -994,6 +1044,9 @@ function renderPendingSection(state) {
     `**来源分支**: \`${state.sourceBranch || 'develop'}\``,
     `**累计 PR**: ${state.entries.length}`,
     '',
+    '### 运营说明',
+    ...renderOpsNoteLines(state.entries),
+    '',
     '### 更新摘要',
     ...renderSummaryLines(state.entries),
     '',
@@ -1029,6 +1082,9 @@ function renderReleaseSection({ version, date, entries }) {
     '',
     '**来源分支**: `develop`',
     '',
+    '### 运营说明',
+    ...renderOpsNoteLines(entries),
+    '',
     '### 更新摘要',
     ...renderSummaryLines(entries),
     '',
@@ -1055,6 +1111,18 @@ function renderReleaseSection({ version, date, entries }) {
   ];
 
   return lines.join('\n');
+}
+
+// 运营说明逐行原样输出（分组标题 + bullet），多个 PR 之间空一行；不带 PR 引用，不做改写。
+function renderOpsNoteLines(entries) {
+  const blocks = [];
+  for (const entry of entries) {
+    const lines = sanitizeOpsNoteLines(entry.opsNotes);
+    if (lines.length === 0) continue;
+    if (blocks.length > 0) blocks.push('');
+    blocks.push(...lines);
+  }
+  return blocks.length > 0 ? blocks : ['- 无'];
 }
 
 function renderSummaryLines(entries) {
@@ -1165,6 +1233,9 @@ module.exports = {
   analyzeReleaseLevel,
   aggregateEntryLevels,
   bumpVersion,
+  parseBodySections,
+  renderReleaseSection,
+  sanitizeLlmReleaseSections,
 };
 
 // CLI 启动必须放在所有顶层 const 初始化之后。main() 会同步进入 runPrepare，

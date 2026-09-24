@@ -43,6 +43,7 @@ function buildReleasePrContent({ base, head, changelogPath, packageJsonPath }) {
   const pending = extractPendingSection(changelog);
   const fallbackVersion = readPackageVersion(packageJsonPath);
   const version = extractExpectedVersion(pending) || `v${fallbackVersion}`;
+  const opsNotes = extractRawSection(pending, '运营说明');
   const updateSummary = extractBulletSection(pending, '更新摘要');
   const configChanges = extractBulletSection(pending, '配置变更', { preserveCode: true });
   const envReminder = extractBulletSection(pending, '环境变量提醒');
@@ -58,6 +59,11 @@ function buildReleasePrContent({ base, head, changelogPath, packageJsonPath }) {
       `- 合并方向：\`${head}\` → \`${base}\``,
       '- ⚠️ 合并方式：master 要求线性历史，请使用 **Squash and merge**（merge commit 会被拒绝）',
       '- 合并后动作：固化正式版本记录、创建 Git Tag / GitHub Release，并触发部署工作流',
+      '',
+      '## 运营说明',
+      ...(opsNotes.length > 0
+        ? opsNotes
+        : ['- 无（本版各 PR 均未填写运营说明，飞书卡片将回落到技术摘要）']),
       '',
       '## 更新摘要',
       ...renderLines(updateSummary, '- 暂无待发布摘要'),
@@ -78,6 +84,18 @@ function buildReleasePrContent({ base, head, changelogPath, packageJsonPath }) {
       ...renderLines(verification, '- 暂无'),
     ].join('\n'),
   };
+}
+
+// 「运营说明」段逐行原样（分组加粗行 + bullet + 段间空行），不做 bullet 归一化；"- 无"视为空。
+function extractRawSection(markdown, headingText) {
+  const section = extractMarkdownSection(markdown, headingText);
+  if (!section || /^-\s*(?:无|暂无)\s*$/.test(section.trim())) {
+    return [];
+  }
+  return section
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line, index, lines) => line || (index > 0 && lines[index - 1]));
 }
 
 function extractPendingSection(changelog) {
@@ -157,7 +175,9 @@ function readText(filePath) {
 
 function readPackageVersion(packageJsonPath) {
   try {
-    return JSON.parse(fs.readFileSync(packageJsonPath || PACKAGE_JSON_PATH, 'utf8')).version || '0.0.0';
+    return (
+      JSON.parse(fs.readFileSync(packageJsonPath || PACKAGE_JSON_PATH, 'utf8')).version || '0.0.0'
+    );
   } catch {
     return '0.0.0';
   }

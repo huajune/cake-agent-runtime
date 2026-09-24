@@ -14,23 +14,6 @@ export interface GeneralHandoffNotificationMessage {
  * 适用场景：候选人需要人工介入（无群可拉、流程异常等），事件要交给招募经理跟进，
  * 不能只暂停托管。
  */
-/** 永久暂停超期巡检提醒卡片载荷。 */
-export interface PauseOverdueCardPayload {
-  chatId: string;
-  overdueDays: number;
-  pausedAtLabel: string;
-  pauseReason?: string;
-  reasonCode?: string;
-  reasonLabel?: string;
-  contactName?: string;
-  botUserName?: string;
-}
-
-export interface PauseOverdueNotificationPayload extends PauseOverdueCardPayload {
-  corpId?: string;
-  botImId?: string;
-}
-
 export interface GeneralHandoffNotificationPayload {
   alertLabel: string;
   /**

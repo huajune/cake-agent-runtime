@@ -3,10 +3,7 @@ import { FeishuReceiver } from '@infra/feishu/constants/receivers';
 import { FeishuCardBuilderService } from '@infra/feishu/services/card-builder.service';
 import { unwrapSessionFactValue } from '@memory/short-term/short-term.types';
 import { isUrgentHandoff } from '@enums/handoff-reason.enum';
-import {
-  GeneralHandoffNotificationPayload,
-  PauseOverdueCardPayload,
-} from '../types/general-handoff-notification.types';
+import { GeneralHandoffNotificationPayload } from '../types/general-handoff-notification.types';
 
 @Injectable()
 export class GeneralHandoffCardRenderer {
@@ -46,37 +43,6 @@ export class GeneralHandoffCardRenderer {
       title: payload.isTest ? `${baseTitle} · 测试ing` : baseTitle,
       content: sections.join('\n\n'),
       color,
-      atUsers: payload.atUsers,
-      atAll: payload.atAll,
-    });
-  }
-
-  /**
-   * 永久暂停超期巡检提醒（PRD R5.2）：人工恢复类转人工暂停超过 N 天仍未恢复，
-   * 候选人在此期间收不到任何回复；卡片 @ 该托管账号的运营。
-   */
-  buildPauseOverdueCard(
-    payload: PauseOverdueCardPayload & { atUsers?: FeishuReceiver[]; atAll?: boolean },
-  ): Record<string, unknown> {
-    const lines = [
-      `> <font color='red'>**⏳ 永久暂停已超 ${payload.overdueDays} 天未恢复**：候选人此后收不到任何回复，请确认是否已处理完并恢复托管</font>`,
-      `**暂停原因**：${payload.pauseReason || '人工介入暂停'}`,
-      payload.reasonCode ? `**原因码**：${payload.reasonLabel ?? payload.reasonCode}` : null,
-      `**暂停时间**：${payload.pausedAtLabel}`,
-      '**候选人信息**',
-      [
-        payload.contactName ? `微信昵称：${payload.contactName}` : null,
-        payload.botUserName ? `托管账号：${payload.botUserName}` : null,
-        `会话ID：${payload.chatId}`,
-      ]
-        .filter((line): line is string => Boolean(line))
-        .join('\n'),
-      '处理完请到 Web 托管后台手动恢复托管；确认无需恢复也请在托管后台备注。',
-    ].filter((line): line is string => Boolean(line));
-    return this.cardBuilder.buildMarkdownCard({
-      title: '⏳ 人工介入暂停超期未恢复',
-      content: lines.join('\n\n'),
-      color: 'orange',
       atUsers: payload.atUsers,
       atAll: payload.atAll,
     });

@@ -29,9 +29,14 @@ describe('build-release-pr-body', () => {
     const packageJsonPath = path.join(dir, 'package.json');
     fs.writeFileSync(
       changelogPath,
-      ['# Changelog', '', '<!-- release:pending:start -->', pendingBody, '<!-- release:pending:end -->', ''].join(
-        '\n',
-      ),
+      [
+        '# Changelog',
+        '',
+        '<!-- release:pending:start -->',
+        pendingBody,
+        '<!-- release:pending:end -->',
+        '',
+      ].join('\n'),
     );
     fs.writeFileSync(packageJsonPath, JSON.stringify({ version: '9.9.8' }));
     return { changelogPath, packageJsonPath };
@@ -71,5 +76,37 @@ describe('build-release-pr-body', () => {
     expect(title).toBe('chore(release): 发布 v9.9.8');
     expect(body).toContain('- 暂无待发布摘要');
     expect(body).toContain('## 配置与 Migration 提醒\n- 无');
+  });
+
+  it('carries the pending 运营说明 block verbatim into the release PR body', () => {
+    const paths = writeFixture(
+      [
+        '**预计版本**: `v9.9.9`',
+        '',
+        '### 运营说明',
+        '**报名成功后自动拉群** ✅ 已上线',
+        '- 报名一成功系统就自动拉群',
+        '',
+        '**政策口径库** ⏳ 本版只做第 0 期',
+        '- 已上线：银行卡可以直接说「必须本人卡」',
+        '',
+        '### 更新摘要',
+        '- PR #1 甲',
+      ].join('\n'),
+    );
+    const { body } = buildReleasePrContent({ base: 'master', head: 'develop', ...paths });
+    expect(body).toContain(
+      '## 运营说明\n**报名成功后自动拉群** ✅ 已上线\n- 报名一成功系统就自动拉群\n\n**政策口径库** ⏳ 本版只做第 0 期\n- 已上线：银行卡可以直接说「必须本人卡」\n\n## 更新摘要',
+    );
+  });
+
+  it('says so when no PR wrote 运营说明', () => {
+    const paths = writeFixture(
+      ['**预计版本**: `v9.9.9`', '', '### 运营说明', '- 无', '', '### 更新摘要', '- PR #1 甲'].join(
+        '\n',
+      ),
+    );
+    const { body } = buildReleasePrContent({ base: 'master', head: 'develop', ...paths });
+    expect(body).toContain('## 运营说明\n- 无（本版各 PR 均未填写运营说明');
   });
 });
