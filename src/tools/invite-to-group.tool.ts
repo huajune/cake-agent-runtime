@@ -21,7 +21,7 @@ import { resolveCityFromDistrict } from '@resolution/geo';
 const logger = new Logger('invite_to_group');
 
 const UNDELIVERED_INVITE_HANDOFF_INSTRUCTION =
-  '如果候选人本轮是在同意入群/后续通知，或当前意向已无匹配而需要群维护，请立即调用 request_handoff(reasonCode="other") 转人工跟进；调用后不得再输出文本。';
+  '如果候选人本轮是在同意入群/后续通知，或当前意向已无匹配而需要群维护，请立即调用 request_handoff(reasonCode="group_invite_failed") 转人工跟进；调用后不得再输出文本。';
 
 // 无群（区别于群满）：业务要求"推荐无岗且没有兼职群（群满场景除外）不再转人工"。
 // 该城市/平台本就没有可对接的兼职群时，不触发人工介入，Agent 自然收口并继续托管。
@@ -99,7 +99,7 @@ const DESCRIPTION = `邀请候选人加入企微兼职岗位信息群。
 - 若 errorType=invite.city_conflict，说明你传的城市与会话记忆中的城市不一致。候选人没明确说换城市时，改用返回的 expectedCity 重新调用；否则先向候选人确认城市，不要转人工
 - 若 errorType=invite.city_unverified，说明该城市没有出处依据（会话记忆和候选人原文都没有）。先向候选人确认所在城市再调用；本轮不要提群相关内容，不要转人工
 - 若 errorType=invite.already_invited，说明本会话已给该城市拉过群。按返回的群名据实回应（"邀请已经发过了"），不要再次发起邀请，不要转人工
-- 若候选人本轮是在同意入群/后续通知，或当前意向已无匹配而需要群维护，但工具返回 success: false，多数情况要立刻调用 request_handoff(reasonCode="other") 转人工跟进；不要自然语言收尾把候选人晾住
+- 若候选人本轮是在同意入群/后续通知，或当前意向已无匹配而需要群维护，但工具返回 success: false，多数情况要立刻调用 request_handoff(reasonCode="group_invite_failed") 转人工跟进（群满用 no_match_or_group_full，不要归 other）；不要自然语言收尾把候选人晾住
   - **例外（不转人工）**：失败原因是"该城市/平台本就没有兼职群"（invite.no_group_in_city / invite.no_group_available），或"候选人非外部联系人/已拉黑删好友"（invite.candidate_not_friend）时，**不要**转人工——按工具返回的 replyInstruction 自然收口并继续托管即可；只有"群满"（invite.group_full）或接口/结构性失败才转人工
 - 只有 success: true 时才能说"已拉群/已发入群邀请"；无群、群满、接口拒绝、未调用工具时，都不要用**完成口径**声称群相关动作已发生
 
