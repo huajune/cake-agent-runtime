@@ -177,6 +177,8 @@ export class ReengagementTouchRepository extends BaseRepository {
    * 供统计口径剔除「不适用」记录（见 REENGAGEMENT_STATS_EXCLUDED_DECISION_REASONS）。
    * 命中行只投影两列，行数受 created_at 范围 + 原因等值过滤限制（只有面试提醒的 d2 档会写这些原因），
    * 不拉 generated_text / events；统计 RPC 不带原因维度，这里在代码侧聚合而不改迁移。
+   * 走 range 分页拉取：PostgREST 单次 select 默认 1000 行截断，长范围会把计数默默算少；
+   * 范围上限（≤ 13 周）由服务层限制。
    */
   async getStatsByDecisionReasons(
     startDate: string,
@@ -184,13 +186,15 @@ export class ReengagementTouchRepository extends BaseRepository {
     reasons: readonly string[],
   ): Promise<ReengagementTouchStatsRow[]> {
     if (reasons.length === 0) return [];
-    const rows = await this.select<Pick<ReengagementTouchDbRecord, 'status' | 'scenario_code'>>(
-      'status, scenario_code',
-      (q) =>
-        q
-          .gte('created_at', startDate)
-          .lt('created_at', endDate)
-          .in('decision_reason', [...reasons]),
+    const rows = await this.selectAllPaged<
+      Pick<ReengagementTouchDbRecord, 'status' | 'scenario_code'>
+    >(this.tableName, 'status, scenario_code', (q) =>
+      q
+        .gte('created_at', startDate)
+        .lt('created_at', endDate)
+        .in('decision_reason', [...reasons])
+        .order('created_at', { ascending: true })
+        .order('touch_key', { ascending: true }),
     );
     const grouped = new Map<string, ReengagementTouchStatsRow>();
     for (const row of rows) {

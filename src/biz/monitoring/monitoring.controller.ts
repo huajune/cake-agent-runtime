@@ -3,7 +3,10 @@ import { ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { AnalyticsDashboardService } from './services/dashboard/analytics-dashboard.service';
 import { AnalyticsQueryService } from './services/dashboard/analytics-query.service';
 import { AnalyticsMaintenanceService } from './services/maintenance/analytics-maintenance.service';
-import { ReengagementQueryService } from './services/dashboard/reengagement-query.service';
+import {
+  REENGAGEMENT_WEEKLY_FUNNEL_DEFAULT_WEEKS,
+  ReengagementQueryService,
+} from './services/dashboard/reengagement-query.service';
 import { FOLLOW_UP_SCENARIOS } from '@agent/reengagement/scenario-registry';
 import { MonitoringProbeService } from './services/maintenance/monitoring-probe.service';
 import { ExtractionAccuracyService } from './services/dashboard/extraction-accuracy.service';
@@ -120,7 +123,7 @@ export class AnalyticsController {
   /**
    * 二次触发周度漏斗：登记 → 发出 → 6h 内候选人回复（按创建周 cohort）
    * GET /analytics/reengagement-weekly-funnel?startDate=&endDate=
-   * 缺省最近 8 周；服务层再把跨度封顶到 13 周。
+   * 缺省最近 4 周（与前端 useReengagementWeeklyFunnel 缺省同步）；服务层再把跨度封顶到 13 周。
    */
   @Get('reengagement-weekly-funnel')
   async getReengagementWeeklyFunnel(
@@ -129,7 +132,10 @@ export class AnalyticsController {
   ) {
     const end = endDate ?? formatLocalDate(new Date());
     const start =
-      startDate ?? formatLocalDate(addLocalDays(parseLocalDateStart(end), -(8 * 7 - 1)));
+      startDate ??
+      formatLocalDate(
+        addLocalDays(parseLocalDateStart(end), -(REENGAGEMENT_WEEKLY_FUNNEL_DEFAULT_WEEKS * 7 - 1)),
+      );
     return this.reengagementQueryService.getWeeklyFunnel(start, end);
   }
 

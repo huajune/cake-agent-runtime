@@ -124,6 +124,61 @@ describe('ReengagementQueryService', () => {
         '2026-09-20T16:00:00.000Z',
       );
     });
+
+    it('caches by (start, end) for 10 minutes so Dashboard refreshes do not re-run the RPC', async () => {
+      const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-09-21T00:00:00Z'));
+      repository.getWeeklyFunnel.mockResolvedValue([
+        {
+          week_start: '2026-09-14',
+          scenario_code: 'opening_no_reply',
+          registered: 1,
+          sent: 1,
+          replied_6h: 0,
+        },
+      ]);
+
+      const first = await service.getWeeklyFunnel('2026-09-07', '2026-09-20');
+      const second = await service.getWeeklyFunnel('2026-09-07', '2026-09-20');
+      // 不同范围是独立缓存键
+      await service.getWeeklyFunnel('2026-09-14', '2026-09-20');
+
+      expect(second).toEqual(first);
+      expect(repository.getWeeklyFunnel).toHaveBeenCalledTimes(2);
+
+      // 超过 TTL 后重新拉
+      nowSpy.mockReturnValue(Date.parse('2026-09-21T00:10:01Z'));
+      await service.getWeeklyFunnel('2026-09-07', '2026-09-20');
+      expect(repository.getWeeklyFunnel).toHaveBeenCalledTimes(3);
+      nowSpy.mockRestore();
+    });
+
+    it('does not cache a failed load, so the next call retries the RPC', async () => {
+      repository.getWeeklyFunnel
+        .mockRejectedValueOnce(new Error('rpc timeout'))
+        .mockResolvedValueOnce([]);
+
+      await expect(service.getWeeklyFunnel('2026-09-07', '2026-09-20')).rejects.toThrow(
+        'rpc timeout',
+      );
+      await expect(service.getWeeklyFunnel('2026-09-07', '2026-09-20')).resolves.toEqual([]);
+      expect(repository.getWeeklyFunnel).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it('caps stats to the most recent 13 weeks (same rule as the weekly funnel)', async () => {
+    repository.getStats.mockResolvedValue([]);
+
+    await service.getStats('2025-01-01', '2026-09-20');
+
+    expect(repository.getStats).toHaveBeenCalledWith(
+      '2026-06-21T16:00:00.000Z',
+      '2026-09-20T15:59:59.999Z',
+    );
+    expect(repository.getStatsByDecisionReasons).toHaveBeenCalledWith(
+      '2026-06-21T16:00:00.000Z',
+      '2026-09-20T15:59:59.999Z',
+      ['signup_interview_gap_lt_3d'],
+    );
   });
 
   it('queries stats using the same local-day boundary convention', async () => {

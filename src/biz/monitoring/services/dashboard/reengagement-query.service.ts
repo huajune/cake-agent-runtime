@@ -12,8 +12,18 @@ import {
 } from '../../entities/reengagement-touch.entity';
 import { ReengagementTouchRepository } from '../../repositories/reengagement-touch.repository';
 
-/** 周度漏斗最长查询跨度：13 周（约一季度），防止 Dashboard 传超长范围扫全表。 */
-const WEEKLY_FUNNEL_MAX_DAYS = 13 * 7;
+/** 统计/周漏斗最长查询跨度：13 周（约一季度），防止 Dashboard 传超长范围扫全表。 */
+export const REENGAGEMENT_RANGE_MAX_DAYS = 13 * 7;
+/** 周度漏斗缺省回看周数（Controller 缺省与前端 WeeklyFunnel 文案同步）。 */
+export const REENGAGEMENT_WEEKLY_FUNNEL_DEFAULT_WEEKS = 4;
+/** 周度漏斗进程内缓存 TTL：Dashboard 反复刷新不重复打聚合 RPC；多实例各自独立。 */
+const WEEKLY_FUNNEL_CACHE_TTL_MS = 10 * 60 * 1000;
+const WEEKLY_FUNNEL_CACHE_MAX_ENTRIES = 50;
+
+interface WeeklyFunnelCacheEntry {
+  expiresAt: number;
+  promise: Promise<ReengagementWeeklyFunnelBucket[]>;
+}
 
 /**
  * 二次触发追溯页查询编排：日期补全 + 参数解析，供 AnalyticsController 使用。
@@ -21,6 +31,7 @@ const WEEKLY_FUNNEL_MAX_DAYS = 13 * 7;
 @Injectable()
 export class ReengagementQueryService {
   private readonly logger = new Logger(ReengagementQueryService.name);
+  private readonly weeklyFunnelCache = new Map<string, WeeklyFunnelCacheEntry>();
 
   constructor(private readonly repository: ReengagementTouchRepository) {}
 
@@ -61,10 +72,12 @@ export class ReengagementQueryService {
    * 口径：剔除 REENGAGEMENT_STATS_EXCLUDED_DECISION_REASONS 命中的「不适用」记录
    * （如面试提醒提前 2 天档因报名到面试不足 3 天而跳过），它们不是一次触达，不进「总触达」。
    * 剔除查询失败时退回未剔除的原始分组并告警，不让统计卡整体报错。
+   * 跨度超过 13 周时只保留最近 13 周（与周漏斗一致），剔除查询是明细扫描，不能放任全表。
    */
   async getStats(startDate: string, endDate: string): Promise<ReengagementTouchStatsRow[]> {
-    const start = this.dayStart(startDate);
-    const end = this.dayEnd(endDate);
+    const { start: startDay, end: endDay } = this.capRange(startDate, endDate, 'stats');
+    const start = startDay.toISOString();
+    const end = new Date(addLocalDays(endDay, 1).getTime() - 1).toISOString();
     const rows = await this.repository.getStats(start, end);
     let excluded: ReengagementTouchStatsRow[] = [];
     try {
@@ -83,40 +96,29 @@ export class ReengagementQueryService {
   /**
    * 周度漏斗：登记 → 发出 → 6h 内候选人回复（按创建周 cohort，Asia/Shanghai）。
    * RPC 按周 × 场景返回，这里合并到周并算回复率；跨度超过 13 周时只保留最近 13 周。
+   * 结果按封顶后的 start/end 进程内缓存 10 分钟（失败不缓存）。
    */
   async getWeeklyFunnel(
     startDate: string,
     endDate: string,
   ): Promise<ReengagementWeeklyFunnelBucket[]> {
-    const end = parseLocalDateStart(endDate);
-    const requestedStart = parseLocalDateStart(startDate);
-    const earliestStart = addLocalDays(end, -(WEEKLY_FUNNEL_MAX_DAYS - 1));
-    const start =
-      requestedStart.getTime() < earliestStart.getTime() ? earliestStart : requestedStart;
-    const rows = await this.repository.getWeeklyFunnel(
-      start.toISOString(),
-      addLocalDays(end, 1).toISOString(),
-    );
-    const byWeek = new Map<string, ReengagementWeeklyFunnelBucket>();
-    for (const row of rows) {
-      const bucket = byWeek.get(row.week_start) ?? {
-        weekStart: row.week_start,
-        registered: 0,
-        sent: 0,
-        replied6h: 0,
-        replyRate: null,
-      };
-      bucket.registered += Number(row.registered) || 0;
-      bucket.sent += Number(row.sent) || 0;
-      bucket.replied6h += Number(row.replied_6h) || 0;
-      byWeek.set(row.week_start, bucket);
-    }
-    return [...byWeek.values()]
-      .sort((a, b) => a.weekStart.localeCompare(b.weekStart))
-      .map((bucket) => ({
-        ...bucket,
-        replyRate: bucket.sent > 0 ? bucket.replied6h / bucket.sent : null,
-      }));
+    const { start, end } = this.capRange(startDate, endDate, 'weekly_funnel');
+    const startIso = start.toISOString();
+    const endIso = addLocalDays(end, 1).toISOString();
+    const cacheKey = `${startIso}|${endIso}`;
+    const now = Date.now();
+    const cached = this.weeklyFunnelCache.get(cacheKey);
+    if (cached && cached.expiresAt > now) return cached.promise;
+
+    const promise = this.loadWeeklyFunnel(startIso, endIso).catch((error) => {
+      if (this.weeklyFunnelCache.get(cacheKey)?.promise === promise) {
+        this.weeklyFunnelCache.delete(cacheKey);
+      }
+      throw error;
+    });
+    this.weeklyFunnelCache.set(cacheKey, { expiresAt: now + WEEKLY_FUNNEL_CACHE_TTL_MS, promise });
+    this.pruneWeeklyFunnelCache(now);
+    return promise;
   }
 
   /**
@@ -144,6 +146,66 @@ export class ReengagementQueryService {
       offset: this.parsePositiveInt(query.offset),
     });
     return this.groupCandidates(rows);
+  }
+
+  private async loadWeeklyFunnel(
+    startIso: string,
+    endIso: string,
+  ): Promise<ReengagementWeeklyFunnelBucket[]> {
+    const rows = await this.repository.getWeeklyFunnel(startIso, endIso);
+    const byWeek = new Map<string, ReengagementWeeklyFunnelBucket>();
+    for (const row of rows) {
+      const bucket = byWeek.get(row.week_start) ?? {
+        weekStart: row.week_start,
+        registered: 0,
+        sent: 0,
+        replied6h: 0,
+        replyRate: null,
+      };
+      bucket.registered += Number(row.registered) || 0;
+      bucket.sent += Number(row.sent) || 0;
+      bucket.replied6h += Number(row.replied_6h) || 0;
+      byWeek.set(row.week_start, bucket);
+    }
+    return [...byWeek.values()]
+      .sort((a, b) => a.weekStart.localeCompare(b.weekStart))
+      .map((bucket) => ({
+        ...bucket,
+        replyRate: bucket.sent > 0 ? bucket.replied6h / bucket.sent : null,
+      }));
+  }
+
+  private pruneWeeklyFunnelCache(now: number): void {
+    if (this.weeklyFunnelCache.size <= WEEKLY_FUNNEL_CACHE_MAX_ENTRIES) return;
+    for (const [key, entry] of this.weeklyFunnelCache) {
+      if (entry.expiresAt <= now) this.weeklyFunnelCache.delete(key);
+    }
+    while (this.weeklyFunnelCache.size > WEEKLY_FUNNEL_CACHE_MAX_ENTRIES) {
+      const firstKey = this.weeklyFunnelCache.keys().next().value as string | undefined;
+      if (!firstKey) break;
+      this.weeklyFunnelCache.delete(firstKey);
+    }
+  }
+
+  /**
+   * 把 YYYY-MM-DD 范围封顶到最近 REENGAGEMENT_RANGE_MAX_DAYS 天（上海日界的当日 00:00）。
+   * 超出时截断到最早允许起点并 warn，不让 Dashboard 一次拉全历史。
+   */
+  private capRange(
+    startDate: string,
+    endDate: string,
+    scope: 'stats' | 'weekly_funnel',
+  ): { start: Date; end: Date } {
+    const end = parseLocalDateStart(endDate);
+    const requestedStart = parseLocalDateStart(startDate);
+    const earliestStart = addLocalDays(end, -(REENGAGEMENT_RANGE_MAX_DAYS - 1));
+    if (requestedStart.getTime() < earliestStart.getTime()) {
+      this.logger.warn(
+        `复聊 ${scope} 查询跨度超过 ${REENGAGEMENT_RANGE_MAX_DAYS} 天，已截断: requested=${startDate}~${endDate}`,
+      );
+      return { start: earliestStart, end };
+    }
+    return { start: requestedStart, end };
   }
 
   private groupCandidates(rows: ReengagementCandidateOverviewRow[]): {

@@ -3,7 +3,7 @@ import { TrendingUp } from 'lucide-react';
 import { useReengagementWeeklyFunnel } from '@/hooks/reengagement/useReengagementRecords';
 import styles from './index.module.scss';
 
-/** 周度漏斗最小展示：登记 → 发出 → 6h 回复 + 回复率；后端默认最近 8 周。 */
+/** 周度漏斗最小展示：登记 → 发出 → 6h 回复 + 回复率；后端默认最近 4 周。 */
 export default function WeeklyFunnel() {
   const { data, isLoading, isError } = useReengagementWeeklyFunnel();
 
@@ -24,7 +24,7 @@ export default function WeeklyFunnel() {
           className={styles.note}
           title="登记 = 该周创建的复聊任务（不含「不适用」底账）；发出 = 其中已投递；6h 回复 = 投递后 6 小时内候选人有消息。按任务创建周归组（周一起算）。"
         >
-          登记 → 发出 → 6h 内回复 · 最近 8 周
+          登记 → 发出 → 6h 内回复 · 最近 4 周
         </span>
       </div>
 

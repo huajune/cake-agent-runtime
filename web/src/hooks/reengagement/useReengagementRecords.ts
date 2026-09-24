@@ -87,7 +87,8 @@ export function useReengagementStats(options?: { startDate?: string; endDate?: s
 }
 
 /**
- * 周度漏斗：登记 → 发出 → 6h 内候选人回复（按创建周 cohort；后端默认最近 8 周）
+ * 周度漏斗：登记 → 发出 → 6h 内候选人回复（按创建周 cohort；不传日期时后端默认最近 4 周，
+ * 后端有 10 分钟缓存，前端 staleTime 只防同页重复请求）
  */
 export function useReengagementWeeklyFunnel(options?: { startDate?: string; endDate?: string }) {
   return useQuery({

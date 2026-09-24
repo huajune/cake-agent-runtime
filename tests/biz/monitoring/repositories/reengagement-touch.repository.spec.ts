@@ -275,7 +275,38 @@ describe('ReengagementTouchRepository', () => {
     expect(query.gte).toHaveBeenCalledWith('created_at', '2026-07-06T00:00:00.000Z');
     expect(query.lt).toHaveBeenCalledWith('created_at', '2026-07-06T23:59:59.999Z');
     expect(query.in).toHaveBeenCalledWith('decision_reason', ['signup_interview_gap_lt_3d']);
+    // 分页拉取必须带稳定排序 + range，否则 PostgREST 1000 行截断会把计数算少
+    expect(query.order).toHaveBeenCalledWith('created_at', { ascending: true });
+    expect(query.order).toHaveBeenCalledWith('touch_key', { ascending: true });
+    expect(query.range).toHaveBeenCalledWith(0, 999);
     expect(mockSupabaseClient.rpc).not.toHaveBeenCalled();
+  });
+
+  it('pages through excluded-reason rows past the PostgREST 1000-row cap', async () => {
+    const fullPage = Array.from({ length: 1000 }, () => ({
+      status: 'skipped',
+      scenario_code: 'interview_reminder',
+    }));
+    const firstPage = makeQueryMock({ data: fullPage, error: null });
+    const secondPage = makeQueryMock({
+      data: [{ status: 'stopped', scenario_code: 'interview_reminder' }],
+      error: null,
+    });
+    mockSupabaseClient.from.mockReturnValueOnce(firstPage).mockReturnValueOnce(secondPage);
+
+    const rows = await repository.getStatsByDecisionReasons('a', 'b', [
+      'signup_interview_gap_lt_3d',
+    ]);
+
+    expect(mockSupabaseClient.from).toHaveBeenCalledTimes(2);
+    expect(firstPage.range).toHaveBeenCalledWith(0, 999);
+    expect(secondPage.range).toHaveBeenCalledWith(1000, 1999);
+    expect(rows).toEqual(
+      expect.arrayContaining([
+        { status: 'skipped', scenario_code: 'interview_reminder', cnt: 1000 },
+        { status: 'stopped', scenario_code: 'interview_reminder', cnt: 1 },
+      ]),
+    );
   });
 
   it('skips the query entirely when no excluded reasons are configured', async () => {

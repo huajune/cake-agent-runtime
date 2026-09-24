@@ -150,13 +150,14 @@ describe('AnalyticsController', () => {
       expect(result).toEqual(mockResult);
     });
 
-    it('should default the weekly funnel to the most recent 8 weeks and pass explicit dates through', async () => {
+    it('should default the weekly funnel to the most recent 4 weeks and pass explicit dates through', async () => {
       mockReengagementQueryService.getWeeklyFunnel.mockResolvedValue([]);
       jest.useFakeTimers().setSystemTime(new Date('2026-09-22T06:00:00.000Z'));
 
+      // 4 周 = 28 天：2026-09-22 往前 27 天 = 2026-08-26
       await controller.getReengagementWeeklyFunnel();
       expect(mockReengagementQueryService.getWeeklyFunnel).toHaveBeenCalledWith(
-        '2026-07-29',
+        '2026-08-26',
         '2026-09-22',
       );
 
