@@ -2,20 +2,20 @@
 @use '@/assets/styles/variables' as *;
 
 .section {
-  background: rgba(255, 255, 255, 0.88);
-  border-radius: 18px;
+  background: rgba($bg-card, 0.88);
+  border-radius: 18px; // 卡片圆角沿用候选人表格，token 里没有 18px 档
   border: 1px solid rgba($primary-light, 0.14);
-  padding: 16px 20px;
+  padding: $spacing-md 20px; // 横向 20px 与候选人表格卡片一致，无对应 token
   box-shadow: 0 4px 20px rgba($primary, 0.05);
   backdrop-filter: blur(10px);
-  margin-bottom: 16px;
+  margin-bottom: $spacing-md;
 }
 
 .header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 12px; // 介于 $spacing-sm / $spacing-md 之间，无对应 token
   flex-wrap: wrap;
   margin-bottom: 10px;
 }
@@ -25,8 +25,8 @@
   align-items: center;
   gap: 6px;
   margin: 0;
-  font-size: 14px;
-  font-weight: 500;
+  font-size: $font-size-base;
+  font-weight: $font-weight-medium;
   color: $text-primary;
   letter-spacing: -0.01em;
 
@@ -36,14 +36,14 @@
 }
 
 .note {
-  font-size: 12px;
+  font-size: $font-size-xs;
   color: $text-muted;
   cursor: help;
 }
 
 .empty {
   padding: 14px 0;
-  font-size: 12px;
+  font-size: $font-size-xs;
   color: $text-muted;
 }
 
@@ -55,14 +55,19 @@
   width: 100%;
   border-collapse: separate;
   border-spacing: 0;
-  font-size: 13px;
+  font-size: $font-size-sm;
 
   th {
     @include monitoring-table-header;
   }
 
+  // 表头 mixin 写死 text-align: left；用 .table th.thRight 提高特异性覆盖，不用 !important
+  th.thRight {
+    text-align: right;
+  }
+
   td {
-    padding: 10px 16px;
+    padding: 10px $spacing-md;
     border-bottom: 1px solid rgba($bg-tint, 0.8);
     color: $text-body;
     font-variant-numeric: tabular-nums;
@@ -75,10 +80,6 @@
   }
 }
 
-.thRight {
-  text-align: right !important;
-}
-
 .cellRight {
   text-align: right;
 }
@@ -89,5 +90,5 @@
 
 .rateCell {
   color: $primary;
-  font-weight: 500;
+  font-weight: $font-weight-medium;
 }

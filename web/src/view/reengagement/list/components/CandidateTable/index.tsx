@@ -60,8 +60,6 @@ export default function CandidateTable({
 }: CandidateTableProps) {
   // 不在前端二次隐藏任何状态：运营复盘要看到 stopped / sent 等全部终态，
   // superseded 已由后端分组时跳过。列表口径 = 接口口径，避免"已加载 N 个"与空态自相矛盾。
-  const visibleData = data;
-
   const tableHeaders = (
     <tr>
       <th>候选人</th>
@@ -79,7 +77,7 @@ export default function CandidateTable({
     </tr>
   );
 
-  if (loading || error || visibleData.length === 0) {
+  if (loading || error || data.length === 0) {
     return (
       <section className={styles.section}>
         <div className={styles.tableWrapper}>
@@ -131,7 +129,7 @@ export default function CandidateTable({
         <table className={styles.table}>
           <thead>{tableHeaders}</thead>
           <tbody>
-            {visibleData.map((candidate, index) => {
+            {data.map((candidate, index) => {
               const rowTouchKey = primaryTouchKey(candidate);
               const nextTouchCountdown = candidate.nextTouch
                 ? formatCountdown(candidate.nextTouch.fireAt)
