@@ -16,7 +16,11 @@
  *
  * turn 规则匹配语义：
  * - target=current：只匹配本轮用户输入（末尾连续 user 块）；
- * - target=combined：匹配近 12 条对话 + 本轮输入的拼接文本。
+ * - target=combined：匹配近 12 条对话 + 本轮输入的拼接文本；
+ * - target=candidate_side：近 12 条里候选人手打的字 + 真人经理手动消息 + 本轮输入。
+ *   不含 Agent 自产文本，并先剥引用块、位置分享、时间后缀与加好友系统语——判断
+ *   「候选人处于什么状态」的规则用它：Agent 自己发的岗位卡、被引用的卡片、POI 名称
+ *   和平台系统语都不是候选人状态的证据。
  */
 import { LOCATION_SHARE_MARKER_RE } from '@resolution/signal/markers';
 import { CANDIDATE_PHONE_RE } from '@resolution/candidate/phone';
@@ -44,8 +48,8 @@ export type FinalCheckRule =
   | {
       id: string;
       trigger: 'turn';
-      /** 匹配目标：current=本轮用户输入；combined=近邻对话+本轮输入。 */
-      target: 'current' | 'combined';
+      /** 匹配目标：current=本轮用户输入；combined=近邻对话+本轮输入；candidate_side=近邻对话里非 Agent 自产的原话+本轮输入。 */
+      target: 'current' | 'combined' | 'candidate_side';
       /** 全部命中才触发。 */
       patterns: RegExp[];
       /** 命中后注入的禁令文本。 */
@@ -240,13 +244,17 @@ export const FINAL_CHECK_RULES: FinalCheckRule[] = [
     id: 'health_cert_is_not_major',
     trigger: 'turn',
     target: 'combined',
-    patterns: [/健康证/, /专业|食品|新媒体|填写错误|职业/],
+    // 「食品健康证」是证件名不是专业词：岗位卡每张都带「入职前办食品健康证」，不排除会逢卡必中。
+    patterns: [/健康证/, /专业|食品(?!健康证)|新媒体|填写错误|职业/],
     text: '本轮涉及“健康证”和“专业筛选”。健康证只代表证件，不代表候选人的专业；即使历史助手说过专业不符，也不能把“有食品健康证”当成“食品专业”。最终回复必须先澄清“你实际专业是什么”，严禁直接拒绝预约或复述“食品/新媒体专业不符”，也不要声称已拉群，除非本轮 invite_to_group 成功。',
   },
   {
     id: 'post_interview_no_rebook',
     trigger: 'turn',
-    target: 'combined',
+    // 只认候选人与真人经理的原话：词表里的「入职/通过了/培训」同样出现在 Agent 岗位卡
+    // （入职前办食品健康证）、加好友系统语（我通过了你的联系人验证请求）和位置分享 POI 名里，
+    // 按 combined 匹配会把未约面的新候选人判成面试后状态（chat 6aaf831ece406a6aee0617f7）。
+    target: 'candidate_side',
     // 2026-09-16（生产 chat 6a9f7db6ce406a6aee13b137）：补结果追问形态。模型从 [当前预约信息]
     // 读到"面试成功"后自行播报通过并编造"去店里报到"，候选人未入职到店白干。只管通过后咨询，
     // 预约成功后的面试前提醒不在此列。

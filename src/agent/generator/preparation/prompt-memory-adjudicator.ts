@@ -301,7 +301,12 @@ function adjudicateTurnHints(
     target.add(hint.field);
   }
 
-  const claims = turnHints.claims.filter((claim) => !duplicateFields.has(claim.field));
+  // 外部系统标签（producer=system，如客户详情接口的性别）不进模型可见线索：模型不得据此行动，
+  // 收资预填由工具域直接读 TurnLedger；而它作为开场轮唯一的候选人事实块时，会被模型当成
+  // [用户档案]，再用手册里的示例值补全其余字段（chat 6aaf831ece406a6aee0617f7）。
+  const claims = turnHints.claims.filter(
+    (claim) => claim.producer !== 'system' && !duplicateFields.has(claim.field),
+  );
   return {
     displayTurnHints: claims.length > 0 ? { claims, reasoning: turnHints.reasoning } : null,
     pendingTurnHintFields: [...pendingFields],

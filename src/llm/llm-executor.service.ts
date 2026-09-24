@@ -1,7 +1,14 @@
 import { toErrorMessage } from '@infra/utils/error.util';
 import { sleep } from '@infra/utils/async.util';
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
-import { Output, generateText, streamText } from 'ai';
+import {
+  Output,
+  generateText,
+  streamText,
+  type ModelMessage,
+  type StepResult,
+  type ToolSet,
+} from 'ai';
 import { RegistryService } from '@providers/registry.service';
 import { ReliableService } from '@providers/reliable.service';
 import { RouterService } from '@providers/router.service';
@@ -30,10 +37,12 @@ export interface LlmGenerateOptions extends Omit<Parameters<typeof generateText>
   /**
    * 每次真实 provider 尝试（含同模型重试与降级）发起前回调。
    *
-   * 失败尝试同样触发 onStepFinish，调用方须借此重置步骤墙钟锚，否则失败尝试的
-   * 步末墙钟会错配到成功尝试的 steps 上。
+   * 失败尝试同样触发 onStepFinish，调用方须借此校正步骤墙钟锚：`resumedStepCount`
+   * 是本次尝试从上次失败尝试续接的已完成步数（见 {@link LlmGenerateResult.stepAttempts}），
+   * 这些步的 onStepFinish 不会再次触发，调用方应保留它们的墙钟、丢弃其后的孤儿墙钟；
+   * 为 0 时按从头重跑处理（重置锚点）。
    */
-  onAttemptStart?: (info: { modelId: string; attempt: number }) => void;
+  onAttemptStart?: (info: { modelId: string; attempt: number; resumedStepCount: number }) => void;
   /** 观测用途标签，随 llm_execution 事件落库；不参与模型请求。 */
   purpose?: string;
 }
@@ -63,7 +72,26 @@ export interface LlmStreamOptions extends Omit<Parameters<typeof streamText>[0],
 export type LlmGenerateResult = Awaited<ReturnType<typeof generateText>> & {
   /** 经重试/降级后真正成功返回结果的模型，而非调用方请求的首选模型。 */
   modelId: string;
+  /**
+   * 与 `steps` 等长：每一步由本次 llm-executor 调用的第几次真实尝试（1 起，跨模型累计）产出。
+   *
+   * 多步循环中途失败（provider 超时/5xx/结果校验不过）时，重试**不从 step 0 重放**：
+   * 上次尝试已完成的工具步（含工具结果）作为对话前缀续接，`steps` 里也原样保留，
+   * 已提交的副作用（预约/拉群/发定位）不会被再次执行。只有全部来自同一次尝试时才全为 1。
+   */
+  stepAttempts: number[];
 };
+
+/** 多步循环里已完成、可作为下次尝试对话前缀续接的步骤。 */
+type LoopStep = StepResult<ToolSet>;
+
+interface ResumableSteps {
+  steps: LoopStep[];
+  /** 与 steps 等长：产出该步的尝试序号。 */
+  attempts: number[];
+  /** 产出这些步骤的模型；换模型续接时需剥离其 reasoning 段。 */
+  modelId: string;
+}
 
 type StructuredGenerateResult<TSchema extends z.ZodTypeAny> = LlmGenerateResult & {
   output: z.infer<TSchema>;
@@ -115,6 +143,9 @@ export class LlmExecutorService {
     await this.emitPreparedRequest(plan, routeOptions, thinking, onPreparedRequest);
 
     let previousModelId: string | undefined;
+    // 上次失败尝试留下的已完成步骤：下次尝试（同模型重试或降级）从这里续接，不从 step 0 重放。
+    let carried: ResumableSteps | null = null;
+    let attemptOrdinal = 0;
     for (const modelId of this.iterateCandidateModels(plan)) {
       if (requiresVisionInput && !supportsVision(modelId)) {
         trail.push(this.buildSkippedAttempt(modelId, executionStartMs, '模型不支持图片输入'));
@@ -136,10 +167,13 @@ export class LlmExecutorService {
 
       for (let attempt = 1; attempt <= retryConfig.maxRetries; attempt += 1) {
         const attemptStartMs = Date.now();
-        onAttemptStart?.({ modelId, attempt });
+        attemptOrdinal += 1;
+        const resumed = this.selectResumableSteps(carried);
+        const completedSteps: LoopStep[] = [];
+        onAttemptStart?.({ modelId, attempt, resumedStepCount: resumed.steps.length });
         try {
           const result = await generateText({
-            ...params,
+            ...this.buildAttemptParams(params, resumed, modelId, completedSteps),
             model,
             maxRetries: 0,
           } as Parameters<typeof generateText>[0]);
@@ -151,6 +185,7 @@ export class LlmExecutorService {
             startOffsetMs: attemptStartMs - executionStartMs,
             durationMs: Date.now() - attemptStartMs,
             status: 'success',
+            ...(resumed.steps.length > 0 ? { resumedSteps: resumed.steps.length } : {}),
           });
           this.emitLlmExecution(
             plan,
@@ -166,9 +201,21 @@ export class LlmExecutorService {
             },
           );
           // 结果对象由 AI SDK 创建；附加路由层实际 modelId，供业务观测区分首选与 fallback。
-          return Object.assign(result, { modelId });
+          // text/toolCalls/finishReason 等都是按 steps 派生的 getter，续接的前缀步并回 steps
+          // 后它们自然覆盖整轮（最终文本取末步）。
+          const newSteps = (result.steps ?? []) as LoopStep[];
+          return Object.assign(result, {
+            modelId,
+            steps: [...resumed.steps, ...newSteps],
+            stepAttempts: [...resumed.attempts, ...newSteps.map(() => attemptOrdinal)],
+          });
         } catch (err) {
           lastRawError = err;
+          carried = {
+            steps: [...resumed.steps, ...completedSteps],
+            attempts: [...resumed.attempts, ...completedSteps.map(() => attemptOrdinal)],
+            modelId,
+          };
           const category = this.reliable.classifyError(err);
           const message = toErrorMessage(err);
           const entry: LlmAttemptTrace = {
@@ -179,6 +226,7 @@ export class LlmExecutorService {
             status: 'error',
             errorCategory: category,
             error: this.truncateErrorForTrace(message),
+            ...(resumed.steps.length > 0 ? { resumedSteps: resumed.steps.length } : {}),
           };
           trail.push(entry);
 
@@ -190,7 +238,8 @@ export class LlmExecutorService {
           entry.backoffMs = backoff;
           backoffTotalMs += backoff;
           this.logger.warn(
-            `${modelId} 重试 ${attempt}/${retryConfig.maxRetries}, 等待 ${backoff}ms`,
+            `${modelId} 重试 ${attempt}/${retryConfig.maxRetries}, 等待 ${backoff}ms` +
+              (completedSteps.length > 0 ? `, 已完成 ${completedSteps.length} 步将续接` : ''),
           );
           await sleep(backoff);
         }
@@ -610,6 +659,115 @@ export class LlmExecutorService {
       ...params
     } = options;
     return providerOptions ? { ...params, providerOptions } : params;
+  }
+
+  /**
+   * 从上次失败尝试留下的步骤里挑出可续接的前缀：只保留到最后一个以工具结果收尾的步。
+   *
+   * 多步循环里 provider 中途失败时，已完成的步都以工具结果收尾，整段可续接；结果校验
+   * 不过（可见 <think>、纯数字回复）时最后一步是坏的最终文本，必须丢掉让模型重写末步，
+   * 前面的工具步照旧保留。全部是纯文本步（无工具）时返回空，退回从头重跑。
+   */
+  private selectResumableSteps(carried: ResumableSteps | null): ResumableSteps {
+    if (!carried) return { steps: [], attempts: [], modelId: '' };
+    let end = carried.steps.length;
+    while (end > 0 && !this.endsWithToolResult(carried.steps[end - 1])) end -= 1;
+    return {
+      steps: carried.steps.slice(0, end),
+      attempts: carried.attempts.slice(0, end),
+      modelId: carried.modelId,
+    };
+  }
+
+  private endsWithToolResult(step: LoopStep): boolean {
+    const messages = step.response?.messages;
+    if (!Array.isArray(messages) || messages.length === 0) return false;
+    return messages[messages.length - 1]?.role === 'tool';
+  }
+
+  /**
+   * 单次尝试的 generateText 参数：登记本次完成的步骤，并在有续接前缀时把上次尝试的
+   * assistant/tool 消息接到对话末尾续跑。
+   *
+   * 续接时 prepareStep / stopWhen 看到的 `steps` 同样带上前缀（stepNumber 顺延），
+   * 调用方基于 prior steps 的屏蔽（副作用工具成功后禁用、同名工具限次、总步数上限）
+   * 才能跨尝试生效——否则重试轮会把已成功的 booking 再放开一次。
+   */
+  private buildAttemptParams(
+    params: Omit<Parameters<typeof generateText>[0], 'model'>,
+    resumed: ResumableSteps,
+    modelId: string,
+    completedSteps: LoopStep[],
+  ): Omit<Parameters<typeof generateText>[0], 'model'> {
+    const { onStepFinish, prepareStep, stopWhen, prompt, messages, ...rest } = params;
+    const withStepCapture = {
+      ...rest,
+      ...(prompt !== undefined ? { prompt } : {}),
+      ...(messages !== undefined ? { messages } : {}),
+      onStepFinish: (step: LoopStep) => {
+        completedSteps.push(step);
+        return onStepFinish?.(step);
+      },
+    } as Omit<Parameters<typeof generateText>[0], 'model'>;
+    if (resumed.steps.length === 0) return withStepCapture;
+
+    const baseMessages = this.resolveBaseMessages(prompt, messages);
+    if (!baseMessages) return withStepCapture;
+
+    const resumedMessages = resumed.steps.flatMap((step) => step.response.messages);
+    const prefix =
+      resumed.modelId === modelId ? resumedMessages : this.stripReasoningParts(resumedMessages);
+    const offset = resumed.steps.length;
+    const stopConditions =
+      stopWhen === undefined ? [] : Array.isArray(stopWhen) ? stopWhen : [stopWhen];
+
+    return {
+      ...withStepCapture,
+      prompt: undefined,
+      messages: [...baseMessages, ...prefix],
+      ...(prepareStep
+        ? {
+            prepareStep: (options: Parameters<typeof prepareStep>[0]) =>
+              prepareStep({
+                ...options,
+                steps: [...resumed.steps, ...options.steps],
+                stepNumber: options.stepNumber + offset,
+              }),
+          }
+        : {}),
+      ...(stopConditions.length > 0
+        ? {
+            stopWhen: stopConditions.map(
+              (condition) => (options: { steps: LoopStep[] }) =>
+                condition({ ...options, steps: [...resumed.steps, ...options.steps] }),
+            ),
+          }
+        : {}),
+    } as Omit<Parameters<typeof generateText>[0], 'model'>;
+  }
+
+  private resolveBaseMessages(
+    prompt: Parameters<typeof generateText>[0]['prompt'],
+    messages: Parameters<typeof generateText>[0]['messages'],
+  ): ModelMessage[] | null {
+    if (Array.isArray(messages)) return messages;
+    if (typeof prompt === 'string') return [{ role: 'user', content: prompt }];
+    if (Array.isArray(prompt)) return prompt as ModelMessage[];
+    return null;
+  }
+
+  /**
+   * 换模型续接时剥离 assistant 消息里的 reasoning 段：签名型思考块（Anthropic）不能喂给
+   * 另一个模型，其它 provider 也不消费别家的思考文本；工具调用/结果原样保留。
+   */
+  private stripReasoningParts(messages: ModelMessage[]): ModelMessage[] {
+    return messages.map((message) => {
+      if (message.role !== 'assistant' || !Array.isArray(message.content)) return message;
+      return {
+        ...message,
+        content: message.content.filter((part) => part.type !== 'reasoning'),
+      } as ModelMessage;
+    });
   }
 
   private buildStreamParams(

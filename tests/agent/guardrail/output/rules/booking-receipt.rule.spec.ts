@@ -261,6 +261,36 @@ describe('detectBookingReceiptMismatch — 形态 G：already_booked 查重不�
       detectBookingReceiptMismatch('这次没有提交成功，我稍后再帮你提交一次', rejected),
     ).toBeNull();
   });
+
+  /**
+   * 同一回执形态的第二个来源（生产 batch …_1790057431146）：本轮 booking 已成功建单，
+   * provider 超时重试后模型再调 booking，工具按 same_turn_submitted_form 幂等返回已约上。
+   * 首稿"预约成功啦"如实播报必须放行，不得被改写成"没提交成功"。
+   */
+  it('本轮已建单的幂等回执 + 首稿播报预约成功 → 放行', () => {
+    expect(
+      detectBookingReceiptMismatch(
+        '预约成功啦，明天 9月23日 上午10:30 记得准时到店面试',
+        alreadyBooked({
+          existingWorkOrderId: 467600,
+          alreadyBookedSource: 'same_turn_submitted_form',
+          _existingInterviewTimeHuman: '9月23日（周三）10:30',
+        }),
+      ),
+    ).toBeNull();
+  });
+
+  it('本轮已建单的幂等回执却改口没提交成功 → REPAIR', () => {
+    const found = detectBookingReceiptMismatch(
+      '刚才没提交成功，我稍后帮你重新提交',
+      alreadyBooked({
+        existingWorkOrderId: 467600,
+        alreadyBookedSource: 'same_turn_submitted_form',
+      }),
+    );
+    expect(found?.ruleId).toBe('booking_receipt_mismatch');
+    expect(found?.label).toContain('工单 467600');
+  });
 });
 
 // PRD R3：报名成功后拉群由运行时执行（booking 回执 groupInvite），没有 invite_to_group

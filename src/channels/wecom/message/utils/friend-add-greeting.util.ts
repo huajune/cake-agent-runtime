@@ -13,11 +13,10 @@
  * 注意：friend.added（加好友数）不依赖本函数——任何首条消息都代表新好友，靠幂等键去重即可。
  */
 
+import { isFriendVerifyGreeting } from '@resolution/signal/markers';
+
 /** 纯微信系统消息（精确匹配即排除）。 */
 const PURE_SYSTEM_GREETINGS = new Set<string>(['请求添加你为朋友']);
-
-/** 「我通过了你的(朋友|联系人)验证请求…」系统消息。 */
-const VERIFY_REQUEST_RE = /^我通过了你的.{0,6}验证请求/;
 
 /**
  * 求职意图关键词：「我是…」招呼语命中任一即视为带意图（算破冰，不排除）。
@@ -67,7 +66,8 @@ export function isPureFriendAddGreeting(content: string | null | undefined): boo
   if (!text) return false;
 
   if (PURE_SYSTEM_GREETINGS.has(text)) return true;
-  if (VERIFY_REQUEST_RE.test(text)) return true;
+  // 「我通过了你的(朋友|联系人)验证请求…」系统消息；词形唯一定义在 signal/markers
+  if (isFriendVerifyGreeting(text)) return true;
 
   if (text.startsWith('我是')) {
     const lower = text.toLowerCase();

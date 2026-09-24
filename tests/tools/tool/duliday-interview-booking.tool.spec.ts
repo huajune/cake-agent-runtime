@@ -621,6 +621,42 @@ describe('duliday_interview_booking（form → labelList）', () => {
     expect(result._replyInstruction).toContain('9月14日（周一）13:30');
   });
 
+  /**
+   * 生产 batch …_1790057431146（2026-09-22）：attempt 1 booking 成功建单 467600 后 provider
+   * 超时，executor 重试重放 booking；表单已 markSubmitted，旧实现按"状态=submitted"拒绝，
+   * 回复被守卫改成"没提交成功"、invite 因 bookingSucceeded=false 跳过拉群。
+   */
+  it('本轮已成功建单后再次调用 → already_booked 幂等回执，不按 submitted 拒绝', async () => {
+    currentForm = {
+      ...readyForm(),
+      workOrderId: 467600,
+      scheduleDraft: { selectedInterviewTime: '2026-09-23 10:30:00', sourceText: '明天十点半' },
+    };
+    context.ledger.jobs.bookingSucceeded = true;
+    const result = await execute({ jobId: 100, interviewTime: '2026-09-23 10:30:00' });
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_ALREADY_BOOKED);
+    expect(result.existingWorkOrderId).toBe(467600);
+    expect(result.alreadyBookedSource).toBe('same_turn_submitted_form');
+    expect(result.existingInterviewTime).toBe('2026-09-23 10:30:00');
+    expect(result._existingInterviewTimeHuman).toBe('9月23日（周三）10:30');
+    expect(result._replyInstruction).toContain('本轮已经成功提交过');
+    expect(result._replyInstruction).toContain('禁止说"系统有问题/没提交成功/稍后再帮你提交"');
+    expect(sponge.fetchJobs).not.toHaveBeenCalled();
+    expect(sponge.bookInterview).not.toHaveBeenCalled();
+    expect(collectionForms.persist).not.toHaveBeenCalled();
+    // 账本维持成功：invite_to_group 只在 bookingSucceeded===false 时跳过拉群
+    expect(context.ledger.jobs.bookingSucceeded).toBe(true);
+  });
+
+  it('表单 submitted 但本轮账本无成功记录时仍拒绝，旧工单不冒充本轮成功', async () => {
+    currentForm = { ...readyForm(), workOrderId: 467600 };
+    const result = await execute({ jobId: 100 });
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_REJECTED);
+    expect(result._outcome).toContain('submitted');
+    expect(sponge.bookInterview).not.toHaveBeenCalled();
+    expect(context.ledger.jobs.bookingSucceeded).toBe(false);
+  });
+
   it('成功但缺 workOrderId 时表单转人工，阻止重复提交', async () => {
     sponge.bookInterview.mockResolvedValue({ success: true, code: 0, message: '成功' });
     const result = await execute({ jobId: 100 });

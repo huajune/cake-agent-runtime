@@ -10,6 +10,8 @@ import {
   stripResumeAttachmentLines,
   stripTimeContext,
   stripVisualPrefix,
+  isFriendVerifyGreeting,
+  stripFriendVerifyGreeting,
 } from '@/resolution/signal/markers';
 
 /**
@@ -95,5 +97,22 @@ describe('infra/message-markup · 简历附件行', () => {
     expect(hasResumeAttachmentLine('描述\n  简历附件: https://a/1.jpg')).toBe(true);
     expect(stripResumeAttachmentLines('描述\n简历附件：https://a/1.jpg')).toBe('描述');
     expect(hasResumeAttachmentLine('描述')).toBe(false);
+  });
+});
+
+describe('infra/message-markup · 加好友系统语', () => {
+  it('两种称谓都认，只认句首', () => {
+    expect(isFriendVerifyGreeting('我通过了你的联系人验证请求，现在我们可以开始聊天了')).toBe(true);
+    expect(isFriendVerifyGreeting('我通过了你的朋友验证请求，现在我们可以开始聊天了')).toBe(true);
+    expect(isFriendVerifyGreeting('店长说我通过了')).toBe(false);
+    expect(isFriendVerifyGreeting(null)).toBe(false);
+  });
+
+  it('剥掉系统语，保留候选人同批手打的内容', () => {
+    expect(
+      stripFriendVerifyGreeting(
+        '我通过了你的联系人验证请求，现在我们可以开始聊天了\n我面试通过了吗',
+      ).trim(),
+    ).toBe('我面试通过了吗');
   });
 });
