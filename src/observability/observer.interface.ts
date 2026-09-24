@@ -88,6 +88,8 @@ export type AgentEvent = AgentEventContext &
         entryCount?: number;
         supplierCount?: number;
         error?: string;
+        /** 同账号连续失败熔断开断：本次没打海绵（或本次失败即触发开断）。 */
+        circuitOpen?: boolean;
       }
     /** 带外工单补偿扫描（每 6 小时）的一轮观测：账号数、拉取行数、带外行数、反查命中/未命中、对账结果。 */
     | {

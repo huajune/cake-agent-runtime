@@ -115,6 +115,8 @@ const TEST_SESSION_PREFIXES = ['test-', 'p1-fixed-', 'p2-fixed-', 'p3-fixed-'];
 const MERGE_TTL_SECONDS = 7 * 24 * 60 * 60;
 const MERGE_KEY_PREFIX = 'feishu-task:intervention:v1';
 const RUNTIME_CONFIG_TTL_MS = 30 * 1000;
+/** active_booking 无指针时回落海绵查工单的硬超时；提交路径不能被海绵慢查询拖住。 */
+const SPONGE_FALLBACK_TIMEOUT_MS = 5_000;
 const TITLE_FALLBACK_NICKNAME = '候选人';
 const TITLE_IMMINENT_SUFFIX = '面试将至';
 const TITLE_COUNT_SUFFIX_PATTERN = /（第 \d+ 次）$/;
@@ -530,7 +532,12 @@ export class InterventionTaskService implements OnApplicationBootstrap {
   ): Promise<SignupWorkOrderItem | null> {
     if (!this.spongeService) return null;
     try {
-      const result = await this.spongeService.fetchSignupWorkOrders({ workOrderId }, { botImId });
+      // 建任务在人工介入提交路径上，回落查询给 5 秒硬超时，海绵慢时面试时间留空而不是拖住整条提交
+      const result = await this.spongeService.fetchSignupWorkOrders(
+        { workOrderId },
+        { botImId },
+        { timeoutMs: SPONGE_FALLBACK_TIMEOUT_MS },
+      );
       return (
         result.workOrders.find((order) => order.workOrderId === workOrderId) ??
         result.workOrders[0] ??

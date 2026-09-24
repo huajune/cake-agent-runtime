@@ -158,8 +158,10 @@ describe('TouchLedgerService (outbox state machine + freq)', () => {
       expect(await ledger.reserve('chat_interview_time_mismatch:wo1:iv2:chat3')).toBe('reserved');
     });
 
-    it('Redis 异常按未占过放行（下游 handoff_events 仍按 idempotencyKey 去重）', async () => {
+    it('Redis 异常 fail-closed：返回 false 不发（与 claimAnchor 一致，宁可漏发不重复骚扰）', async () => {
       redis.setNx.mockRejectedValueOnce(new Error('redis down'));
+      await expect(ledger.acquireOnce('k')).resolves.toBe(false);
+      // Redis 恢复后同 key 可重新占位
       await expect(ledger.acquireOnce('k')).resolves.toBe(true);
     });
   });

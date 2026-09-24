@@ -21,6 +21,19 @@ import {
   toBookingSnapshotEntry,
 } from './booking-snapshot.util';
 
+/** 同一托管账号连续失败/超时达到该次数即开断。 */
+export const BOOKING_SNAPSHOT_CIRCUIT_FAILURE_THRESHOLD = 3;
+/** 开断后直接返回 failed（走指针回落）的时长。 */
+export const BOOKING_SNAPSHOT_CIRCUIT_OPEN_MS = 5 * 60 * 1000;
+export const BOOKING_SNAPSHOT_CIRCUIT_OPEN_ERROR = 'circuit_open';
+
+interface CircuitState {
+  /** 连续失败次数；成功即清零。 */
+  consecutiveFailures: number;
+  /** 开断截止时间戳；到期后放一次试探（半开），再失败立即重新开断。 */
+  openUntil: number;
+}
+
 export interface BookingSnapshotLoadInput {
   /** 候选人本人手机号（会话事实/长期档案）；代报同行人的手机号不参与。 */
   phone: string | null | undefined;
@@ -45,10 +58,13 @@ export interface BookingSnapshotLoadInput {
  *
  * 护栏：超时 3s；账号没配 token 直接跳过并落观测（默认 token 会查到别家账号的工单）；
  * 查询失败抛错→上层回落 active_booking 指针路径，不当成"没有工单"。
+ * 熔断：同一账号连续 3 次失败/超时后 5 分钟内直接返回 failed，不再打海绵——海绵抖动时每轮
+ * 都等满 3 秒超时会把回合时延整体抬高。计数在进程内（多实例各自独立开断，不共享）。
  */
 @Injectable()
 export class BookingSnapshotService {
   private readonly logger = new Logger(BookingSnapshotService.name);
+  private readonly circuits = new Map<string, CircuitState>();
 
   constructor(
     private readonly spongeService: SpongeService,
@@ -89,6 +105,11 @@ export class BookingSnapshotService {
       }
     }
 
+    if (this.isCircuitOpen(botImId, now)) {
+      this.emit({ type: 'booking_snapshot', status: 'failed', botImId, circuitOpen: true });
+      return { status: 'failed', error: BOOKING_SNAPSHOT_CIRCUIT_OPEN_ERROR, circuitOpen: true };
+    }
+
     const startedAt = Date.now();
     let result: SignupWorkOrdersResult;
     try {
@@ -102,8 +123,9 @@ export class BookingSnapshotService {
       );
     } catch (error) {
       const message = toErrorMessage(error);
+      const opened = this.recordFailure(botImId, now);
       this.logger.warn(
-        `预约快照查询失败（回落 active_booking 指针路径）phoneTail=${phone.slice(-4)} botImId=${botImId}: ${message}`,
+        `预约快照查询失败（回落 active_booking 指针路径）phoneTail=${phone.slice(-4)} botImId=${botImId}: ${message}${opened ? `；连续失败达 ${BOOKING_SNAPSHOT_CIRCUIT_FAILURE_THRESHOLD} 次，${BOOKING_SNAPSHOT_CIRCUIT_OPEN_MS / 60000} 分钟内不再查海绵` : ''}`,
       );
       this.emit({
         type: 'booking_snapshot',
@@ -111,9 +133,11 @@ export class BookingSnapshotService {
         botImId,
         durationMs: Date.now() - startedAt,
         error: message,
+        ...(opened ? { circuitOpen: true } : {}),
       });
-      return { status: 'failed', error: message };
+      return { status: 'failed', error: message, ...(opened ? { circuitOpen: true } : {}) };
     }
+    this.circuits.delete(botImId);
 
     const topCandidateName =
       typeof result.candidateName === 'string' && result.candidateName.trim()
@@ -173,6 +197,22 @@ export class BookingSnapshotService {
     } catch (error) {
       this.logger.warn(`预约快照缓存失效失败: ${toErrorMessage(error)}`);
     }
+  }
+
+  /** 开断中：同账号 5 分钟内不再打海绵。到期后放行一次试探，失败则由 recordFailure 重新开断。 */
+  private isCircuitOpen(botImId: string, now: number): boolean {
+    const state = this.circuits.get(botImId);
+    return state !== undefined && state.openUntil > now;
+  }
+
+  /** 累计连续失败；达到阈值则开断并返回 true（本次即开断那一次，或半开试探再失败）。 */
+  private recordFailure(botImId: string, now: number): boolean {
+    const state = this.circuits.get(botImId) ?? { consecutiveFailures: 0, openUntil: 0 };
+    state.consecutiveFailures += 1;
+    const opened = state.consecutiveFailures >= BOOKING_SNAPSHOT_CIRCUIT_FAILURE_THRESHOLD;
+    if (opened) state.openUntil = now + BOOKING_SNAPSHOT_CIRCUIT_OPEN_MS;
+    this.circuits.set(botImId, state);
+    return opened;
   }
 
   private async readCache(key: string): Promise<BookingSnapshotCacheRecord | null> {

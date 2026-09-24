@@ -168,6 +168,117 @@ describe('BookingSnapshotService', () => {
     );
   });
 
+  describe('同账号连续失败熔断（进程内计数，多实例各自独立）', () => {
+    const failing = () => {
+      sponge.fetchSignupWorkOrders.mockRejectedValue(new Error('海绵工单查询失败: timeout'));
+    };
+
+    it('连续 3 次失败后开断：5 分钟内直接 failed（走指针回落）不打海绵，事件带 circuitOpen', async () => {
+      failing();
+      const svc = service();
+      await svc.load(baseInput);
+      await svc.load({ ...baseInput, now: NOW + 1000 });
+      const third = await svc.load({ ...baseInput, now: NOW + 2000 });
+      expect(sponge.fetchSignupWorkOrders).toHaveBeenCalledTimes(3);
+      expect(third).toEqual({
+        status: 'failed',
+        error: '海绵工单查询失败: timeout',
+        circuitOpen: true,
+      });
+
+      const blocked = await svc.load({ ...baseInput, now: NOW + 60_000 });
+      expect(sponge.fetchSignupWorkOrders).toHaveBeenCalledTimes(3);
+      expect(blocked).toEqual({ status: 'failed', error: 'circuit_open', circuitOpen: true });
+      expect(tracer.emit).toHaveBeenLastCalledWith({
+        type: 'booking_snapshot',
+        status: 'failed',
+        botImId: 'bot-1',
+        circuitOpen: true,
+      });
+    });
+
+    it('未达 3 次不开断，前两次失败事件不带 circuitOpen', async () => {
+      failing();
+      const svc = service();
+      await svc.load(baseInput);
+      const second = await svc.load({ ...baseInput, now: NOW + 1000 });
+      expect(second).toEqual({ status: 'failed', error: '海绵工单查询失败: timeout' });
+      expect(tracer.emit).not.toHaveBeenCalledWith(expect.objectContaining({ circuitOpen: true }));
+      await svc.load({ ...baseInput, now: NOW + 2000 });
+      expect(sponge.fetchSignupWorkOrders).toHaveBeenCalledTimes(3);
+    });
+
+    it('成功一次即清零连续失败计数', async () => {
+      const svc = service();
+      failing();
+      await svc.load(baseInput);
+      await svc.load({ ...baseInput, now: NOW + 1000 });
+      sponge.fetchSignupWorkOrders.mockResolvedValue({ candidateName: '张三', workOrders: [] });
+      await expect(svc.load({ ...baseInput, now: NOW + 2000 })).resolves.toMatchObject({
+        status: 'ok',
+      });
+      failing();
+      await svc.load({ ...baseInput, now: NOW + 3000 });
+      await svc.load({ ...baseInput, now: NOW + 4000 });
+      // 清零后只有 2 次失败：仍然打海绵
+      await svc.load({ ...baseInput, now: NOW + 5000 });
+      expect(sponge.fetchSignupWorkOrders).toHaveBeenCalledTimes(6);
+    });
+
+    it('5 分钟后半开：放行一次试探，成功即恢复，再失败立即重新开断', async () => {
+      const svc = service();
+      failing();
+      await svc.load(baseInput);
+      await svc.load({ ...baseInput, now: NOW + 1000 });
+      await svc.load({ ...baseInput, now: NOW + 2000 });
+      expect(sponge.fetchSignupWorkOrders).toHaveBeenCalledTimes(3);
+
+      // 半开试探再失败 → 重新开断 5 分钟
+      const reopenAt = NOW + 2000 + 5 * 60 * 1000 + 1;
+      const probe = await svc.load({ ...baseInput, now: reopenAt });
+      expect(sponge.fetchSignupWorkOrders).toHaveBeenCalledTimes(4);
+      expect(probe).toMatchObject({ status: 'failed', circuitOpen: true });
+      await svc.load({ ...baseInput, now: reopenAt + 1000 });
+      expect(sponge.fetchSignupWorkOrders).toHaveBeenCalledTimes(4);
+
+      // 再过 5 分钟半开，海绵恢复 → ok 并清零
+      sponge.fetchSignupWorkOrders.mockResolvedValue({ candidateName: '张三', workOrders: [] });
+      const recovered = await svc.load({ ...baseInput, now: reopenAt + 5 * 60 * 1000 + 1 });
+      expect(recovered).toMatchObject({ status: 'ok', fromCache: false });
+      expect(sponge.fetchSignupWorkOrders).toHaveBeenCalledTimes(5);
+    });
+
+    it('熔断按账号隔离：bot-1 开断不影响 bot-2', async () => {
+      const svc = service();
+      failing();
+      await svc.load(baseInput);
+      await svc.load({ ...baseInput, now: NOW + 1000 });
+      await svc.load({ ...baseInput, now: NOW + 2000 });
+      sponge.fetchSignupWorkOrders.mockResolvedValue({ candidateName: '张三', workOrders: [] });
+      await expect(
+        svc.load({ ...baseInput, botImId: 'bot-2', now: NOW + 3000 }),
+      ).resolves.toMatchObject({
+        status: 'ok',
+      });
+      await expect(svc.load({ ...baseInput, now: NOW + 3000 })).resolves.toMatchObject({
+        error: 'circuit_open',
+      });
+    });
+
+    it('缓存命中优先于熔断判断：开断中仍可读 5 分钟缓存', async () => {
+      const svc = service();
+      failing();
+      await svc.load(baseInput);
+      await svc.load({ ...baseInput, now: NOW + 1000 });
+      await svc.load({ ...baseInput, now: NOW + 2000 });
+      redis.get.mockResolvedValue({ entries: [], candidateName: '张三', fetchedAt: NOW });
+      await expect(svc.load({ ...baseInput, now: NOW + 3000 })).resolves.toMatchObject({
+        status: 'ok',
+        fromCache: true,
+      });
+    });
+  });
+
   it('缓存读写失败只降级，不影响查询结果', async () => {
     redis.get.mockRejectedValue(new Error('redis down'));
     redis.setex.mockRejectedValue(new Error('redis down'));

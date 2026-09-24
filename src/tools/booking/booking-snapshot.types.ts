@@ -40,7 +40,12 @@ export type BookingSnapshotLoadResult =
     }
   | { status: 'skipped_no_token' }
   | { status: 'skipped_no_phone' }
-  | { status: 'failed'; error: string };
+  | {
+      status: 'failed';
+      error: string;
+      /** 同账号连续失败开断中（或本次即触发开断），本轮没有/不再打海绵。 */
+      circuitOpen?: boolean;
+    };
 
 /** Redis 缓存体（按手机号+托管账号）；同时按候选人身份镜像一份供出站守卫读。 */
 export interface BookingSnapshotCacheRecord {

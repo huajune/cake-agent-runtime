@@ -47,17 +47,18 @@ export class TouchLedgerService {
 
   /**
    * 一次性副作用幂等占位（运营提醒卡片等非候选人投递动作）：SET NX，默认 7 天。
-   * Redis 异常按「未占过」放行——下游 handoff_events 仍按 idempotencyKey 去重，宁可多一张卡片
-   * 也不能因 Redis 抖动把运营提醒整条吞掉。
+   * Redis 异常 fail-closed（按「已占过」返回 false，不发）——与 OobReconcileService.claimAnchor
+   * 同一口径：占位写不进去就无法保证只发一次，宁可漏一张卡片也不重复骚扰运营；
+   * Redis 恢复后下一次触发会重新占位。
    */
   async acquireOnce(key: string, ttlSeconds = 7 * 24 * 60 * 60): Promise<boolean> {
     try {
       return await this.redis.setNx(`reengagement:once:${key}`, '1', ttlSeconds);
     } catch (error) {
       this.logger.warn(
-        `[reengagement] 一次性幂等占位失败，按未占过放行 key=${key}: ${toErrorMessage(error)}`,
+        `[reengagement] 一次性幂等占位失败，本次不发 key=${key}: ${toErrorMessage(error)}`,
       );
-      return true;
+      return false;
     }
   }
 
