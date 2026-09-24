@@ -105,9 +105,13 @@ export type AgentEvent = AgentEventContext &
         reconciled?: number;
         scheduled?: number;
         accountFailures?: number;
+        truncated?: boolean;
+        /** 海绵未下发 total，翻页只按短页判停 */
+        totalUnknown?: boolean;
+        /** 本轮新排的等通知复核数（有单轮上限） */
+        slotChecks?: number;
         durationMs?: number;
       }
-        truncated?: boolean;
     | {
         type: 'turn_data_sources';
         userId?: string;
