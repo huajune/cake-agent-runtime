@@ -167,9 +167,41 @@ describe('extractHardRequirements', () => {
       ['社会人士', 'social_only'],
       ['学生,社会人士', 'any'],
       ['学生', 'student_only'],
+      // 生产 fixture（2026-09-20 实查 22 岗）里 figure 的四个取值都要有归宿：
+      // 不限 27% / 社会人士 68% / 第二职业 5%。第二职业此前落进 unspecified，
+      // 既不进硬过滤也不上卡片，等于对在校学生隐形放行。
+      ['不限', 'any'],
+      ['第二职业', 'second_job_only'],
+      ['社会人士,第二职业', 'social_only'],
+      ['学生,第二职业', 'any'],
     ])('maps figure "%s" to %s', (figure, expected) => {
       const result = extractHardRequirements({ hiringRequirement: { figure } });
       expect(result.student).toBe(expected);
+    });
+
+    // 岗位卡数据使用原则：自由文本与结构化字段冲突时以自由文本为准。这一侧的错判
+    // 方向就是 badcase 本体（把学生推给不收学生的岗），保守方向必须是拒收赢。
+    // 生产实例：必胜客 processRemark「不要学生，发现是学生不结算招募费！」。
+    it('lets an explicit 不要学生 remark override figure=不限', () => {
+      const result = extractHardRequirements({
+        hiringRequirement: { figure: '不限', remark: '不要学生，发现是学生不结算招募费！' },
+      });
+      expect(result.student).toBe('social_only');
+    });
+
+    it('lets an explicit 不要学生 remark override figure=学生,社会人士', () => {
+      const result = extractHardRequirements({
+        hiringRequirement: { figure: '学生,社会人士', remark: '长期用工，不接受学生' },
+      });
+      expect(result.student).toBe('social_only');
+    });
+
+    // 反向不对称：figure 明确只招学生时，备注里一句「社会人士」不足以翻盘。
+    it('keeps student_only when figure says 学生 and remark merely mentions 社会人士', () => {
+      const result = extractHardRequirements({
+        hiringRequirement: { figure: '学生', remark: '社会人士请咨询其他门店' },
+      });
+      expect(result.student).toBe('student_only');
     });
 
     it('infers 不接受学生 from hiring remark', () => {

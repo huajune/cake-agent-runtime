@@ -33,6 +33,14 @@ const HEALTH_CERT_FIELD: ContractFieldDef = {
   acceptedOptions: [],
   rejectedOptions: [],
 };
+const IDENTITY_FIELD: ContractFieldDef = {
+  labelId: 1,
+  labelTitle: '社会身份',
+  fieldType: 'TEXT',
+  required: true,
+  acceptedOptions: [],
+  rejectedOptions: [],
+};
 
 const SCOPE = { corpId: 'corp1', userId: 'user1', botUserId: 'wecom-user-A', jobId: 528962 };
 const TEST_PHONE = '18271421690';
@@ -122,6 +130,54 @@ describe('CollectionFormService', () => {
       expect.objectContaining({ value: '有', confidence: 'medium' }),
     );
     expect(sessionState.saveCollectionProgressFact).toHaveBeenCalledTimes(2);
+  });
+
+  // badcase 6aaf9202：收资表填了「全日制在校学生」，但 isStudent 从未进过回流映射表，
+  // sessionFacts.interview_info.is_student 生产 14 天 17951 个 turn 里出现 0 次，
+  // 查岗侧的学生硬过滤因此近乎从不触发。
+  describe('社会身份回流', () => {
+    async function finalizeIdentity(answer: string) {
+      const contract = [IDENTITY_FIELD];
+      const form = createForm({ jobId: SCOPE.jobId, contract });
+      form.slots[IDENTITY_FIELD.labelId] = {
+        labelId: IDENTITY_FIELD.labelId,
+        state: 'filled',
+        askCount: 0,
+        value: { value: answer, sourceText: answer, producer: 'candidate_quote' },
+      };
+      await service.saveFinalizedProgressFacts(
+        { ...SCOPE, sessionId: 'session-1' },
+        form,
+        contract,
+        contract,
+        '2026-09-24T10:00:00.000Z',
+      );
+    }
+
+    it('「全日制在校学生」回流成 is_student=true', async () => {
+      await finalizeIdentity('全日制在校学生');
+
+      expect(sessionState.saveCollectionProgressFact).toHaveBeenCalledWith(
+        'corp1',
+        'user1',
+        'session-1',
+        'is_student',
+        expect.objectContaining({
+          value: true,
+          confidence: 'medium',
+          source: 'candidate_quote',
+          evidence: '收资表单第 1 格落定（社会身份，labelId=1）',
+        }),
+      );
+    });
+
+    // 不对称是刻意的：is_student=false 有抽取污染史，查岗侧也只认 true 触发过滤。
+    // 答「社会人士」时保持字段缺席，语义仍是"未确权"，而不是"已确认不是学生"。
+    it.each(['社会人士', '第二职业'])('「%s」不回流（不写 false）', async (answer) => {
+      await finalizeIdentity(answer);
+
+      expect(sessionState.saveCollectionProgressFact).not.toHaveBeenCalled();
+    });
   });
 
   describe('loadOrCreate', () => {

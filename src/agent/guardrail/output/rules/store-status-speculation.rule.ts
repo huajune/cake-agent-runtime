@@ -5,17 +5,24 @@ import type { RuleContradiction } from '../output-rule.types';
 const UNSUPPORTED_STORE_STATUS_PATTERN =
   /(?:可能|应该|估计|大概|也许|或许|看起来)?(?:已经|都|暂时)?(?:(?:招满|招完|不招了|停止招聘|关店|关了|搬了|装修|撤店|下架)|(?:门店|岗位)(?:那边|这边)?(?:有|做了|出现)?(?:调整|变动|变化))/u;
 
+/**
+ * 无岗事实的两个居所：真实无岗走 noMatchScript（nextAction=wait_for_inventory），
+ * 品牌不在合作目录走 brandNotPartneredScript（nextAction=brand_not_partnered）。
+ * 后者我们连该品牌的岗位数据都没有，更没有资格断言它的门店经营状态。
+ */
+const NO_INVENTORY_SCRIPT_ACTIONS = new Set(['wait_for_inventory', 'brand_not_partnered']);
+
 function hasNoMatchScript(call: AgentToolCall): boolean {
   if (call.toolName !== 'duliday_job_list' || call.status === 'error') return false;
   if (!call.result || typeof call.result !== 'object') return false;
   const result = call.result as Record<string, unknown>;
-  const noMatchScript = result.noMatchScript;
-  if (!noMatchScript || typeof noMatchScript !== 'object') return false;
+  const script = result.noMatchScript ?? result.brandNotPartneredScript;
+  if (!script || typeof script !== 'object') return false;
   const errorType = result.errorType;
   return (
     typeof errorType === 'string' &&
     errorType.startsWith('job_list.') &&
-    (noMatchScript as Record<string, unknown>).nextAction === 'wait_for_inventory'
+    NO_INVENTORY_SCRIPT_ACTIONS.has(String((script as Record<string, unknown>).nextAction))
   );
 }
 

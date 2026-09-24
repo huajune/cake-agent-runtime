@@ -59,6 +59,27 @@ export const TOOL_GUARDRAIL_CATALOG = [
     status: 'active',
   },
   {
+    id: 'job_list_schedule_constraint_provenance',
+    stage: GUARDRAIL_STAGE.TOOL_RUNTIME,
+    action: GUARDRAIL_ACTION.REJECT_HARD,
+    coverage: GUARDRAIL_COVERAGE.CODE,
+    priority: GUARDRAIL_PRIORITY.P1,
+    description:
+      '查岗的排他性班次约束（只做周末/晚班/早班）必须在候选人原话里找得到依据；收资表单的"这些时段能上班"不算，出处池不可用时放行。',
+    riskGoal:
+      '阻止模型把收资表单的可用性答案误读成"只能做某时段"，整批剔掉在招岗位后对候选人念"排班对不上"。',
+    source:
+      'tools/job-list/schedule-provenance.util.ts（判据复用 resolution/turn-hints 规则轨 extractScheduleConstraintStructured）+ tools/duliday-job-list.tool.ts',
+    exogenousSignal:
+      '候选人本人原话语料 extractCandidateTextsFromCorpus（evidence 域 user 消息，剥引用块/时间后缀）',
+    residualRisk:
+      '规则轨只认"只…周末/晚班/早班"与"找周末的兼职"等表达，候选人说"我只能做晚上"（无"晚班"字样）会被误拒，由回执引导去掉该字段重查（放宽召回，不产生假无岗）；持久化兜底带来的缺出处字段只静默剥离不报错。班次口径本身待运营重新裁定，本闸不判定早/中/晚班语义。',
+    verification:
+      'tests/tools/job-list/schedule-provenance.util.spec.ts + tests/tools/tool/duliday-job-list.tool.spec.ts',
+    owner: 'tools-runtime',
+    status: 'active',
+  },
+  {
     id: 'booking_jobid_provenance',
     stage: GUARDRAIL_STAGE.TOOL_RUNTIME,
     action: GUARDRAIL_ACTION.REJECT_HARD,

@@ -90,6 +90,7 @@ function addSummaryLine(lines: string[], label: string, value: string | null | u
 
 function formatInterviewDecisionSummary(
   policy: JobPolicyAnalysis,
+  hardRequirements: HardRequirements,
   shiftTimeText?: string | null,
 ): string {
   const lines: string[] = [];
@@ -107,13 +108,12 @@ function formatInterviewDecisionSummary(
     addSummaryLine(lines, '健康证', policy.normalizedRequirements.healthCertificateRequirement);
   }
 
-  const studentRequirement = inferStudentRequirement(policy);
   // 该行是给模型的纯事实；先筛后推的行为口径（已知学生查询侧已过滤/身份未知
   // 收资前单问/身份信息不上卡片）在 candidate-consultation.md，不在数据行里复述。
   addSummaryLine(
     lines,
     '学生身份要求',
-    studentRequirement ?? '未标注学生限制（按无额外学生硬限制处理）',
+    describeStudentRequirement(hardRequirements.student, policy),
   );
 
   if (policy.highlights.requirementHighlights.length > 0) {
@@ -184,6 +184,16 @@ function formatTemporaryEmploymentWindow(workTimeInput: unknown): string | null 
   return `${hasValue(start) ? String(start) : '?'} 至 ${hasValue(end) ? String(end) : '?'}`;
 }
 
+/** 构成硬门槛的身份档才上 banner；`any`/`unspecified` 不是约束，不占 banner 版面。 */
+const STUDENT_REQUIREMENT_BANNER_LABEL: Record<HardRequirements['student'], string | null> = {
+  social_only: '仅限社会人士，**不接受在校学生**（候选人已明确是学生则不得推荐、不得 booking）',
+  second_job_only:
+    '仅限第二职业（需已有主职，通常要社保证明/劳动合同），**不接受在校学生**（候选人已明确是学生则不得推荐、不得 booking）',
+  student_only: '仅限在校学生（社会人士不可报名）',
+  any: null,
+  unspecified: null,
+};
+
 function renderHardRequirementsBanner(
   hr: HardRequirements,
   temporaryEmploymentWindow: string | null,
@@ -208,6 +218,14 @@ function renderHardRequirementsBanner(
   const healthCertLabel = HEALTH_CERT_LABEL[hr.healthCert];
   if (healthCertLabel) {
     lines.push(`- **健康证**：${healthCertLabel}`);
+  }
+
+  // 社会身份与性别/户籍同级，是 booking 前不可妥协的硬门槛（badcase 6aaf9202：
+  // 候选人已填「全日制在校学生」，模型仍把两家只招社会人士的肯德基当"接受学生的岗位"
+  // 推过去）。与年龄提示不同，身份门槛是可公开条件，允许对候选人明说。
+  const studentLabel = STUDENT_REQUIREMENT_BANNER_LABEL[hr.student];
+  if (studentLabel) {
+    lines.push(`- **社会身份**：${studentLabel}`);
   }
 
   // 运营口径 O12：最短工期是硬性要求，但只在候选人**明确表示**做不满时才算不匹配；
@@ -1187,8 +1205,9 @@ function formatJobToMarkdown(
 
   // 硬性约束 banner 紧跟标题：性别 / 户籍 / 健康证 / 最短工期 四类高频硬约束，
   // 任一非 unspecified/any/null 时才输出。让 LLM 一眼看到不可妥协的硬规则。
+  const hardRequirements = extractHardRequirements(job, policy);
   md += renderHardRequirementsBanner(
-    extractHardRequirements(job, policy),
+    hardRequirements,
     formatTemporaryEmploymentWindow(job.workTime),
   );
 
@@ -1198,7 +1217,7 @@ function formatJobToMarkdown(
   const shiftTimeText = flags.includeWorkTime ? composeShiftTimeText(job.workTime) : null;
 
   if (flags.includeHiringRequirement || flags.includeInterviewProcess) {
-    md += formatInterviewDecisionSummary(policy, shiftTimeText);
+    md += formatInterviewDecisionSummary(policy, hardRequirements, shiftTimeText);
   }
   if (flags.includeBasicInfo) {
     md += renderBasicInfoSection(job.basicInfo, asNumber(job._distanceKm), distanceAnchor);
@@ -1294,6 +1313,42 @@ export function formatJobsToMarkdown(
     md += '\n';
   }
   return md;
+}
+
+/**
+ * 岗位卡「学生身份要求」行文案：**以海绵结构化 figure 派生的 enum 为唯一真相源**，
+ * 与查岗侧硬过滤（`applyStudentIdentityConstraint`）读同一个值。
+ *
+ * 此前本行由 `inferStudentRequirement` 从 remark/备注自由文本重新推断，与硬过滤
+ * 各判各的，实测两处分歧（生产 fixture 22 岗 / 2026-09-20 实查）：
+ * - `figure=不限`（27%）：过滤判 any，卡片却写「未标注学生限制」——把"明确不限身份"
+ *   说成"没数据"；
+ * - `figure=第二职业`（5%）：两处都落空；
+ * - 自由文本里只要出现「社会人士」四个字就先命中拒绝分支，导致
+ *   `可接受学生`/`学生优先` 两个分支在生产 7 天 10041 张岗位卡里**命中 0 次**——
+ *   模型从来没被告知过"这个岗收学生"。
+ *
+ * 结构化 enum 落在 `unspecified`（figure 确实为空）时才回落自由文本推断。
+ */
+function describeStudentRequirement(
+  requirement: HardRequirements['student'],
+  policy: JobPolicyAnalysis,
+): string {
+  switch (requirement) {
+    case 'social_only':
+      return '不接受学生（仅限社会人士）';
+    case 'second_job_only':
+      return '不接受学生（仅限第二职业：需已有主职，通常要社保证明/劳动合同）';
+    case 'student_only':
+      return '仅限学生（社会人士不可报名）';
+    case 'any':
+      return '不限身份，学生与社会人士均可';
+    case 'unspecified':
+      return (
+        inferStudentRequirement(policy) ??
+        '岗位数据未下发社会身份要求（疑似数据缺失，不等于"不限身份"）'
+      );
+  }
 }
 
 export function inferStudentRequirement(policy: JobPolicyAnalysis): string | null {

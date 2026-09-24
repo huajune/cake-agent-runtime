@@ -210,7 +210,7 @@ export interface StudentIdentityFilterResult {
  * 按候选人学生身份硬过滤岗位（先筛后推，badcase fazpqciu：拉瓦萨「不接受学生」
  * 岗被推荐并收完整张报名表，候选人填完"学生"才被 precheck 拒绝）。
  *
- * 只在 candidateIsStudent === true 时过滤（剔除 student='social_only' 的岗位）：
+ * 只在 candidateIsStudent === true 时过滤（剔除 student='social_only' / 'second_job_only'）：
  * - true 来自候选人明确自报，可信；
  * - false 有抽取污染史（evidence 自证"不填"仍落 false），
  *   不能据此隐藏"仅限学生"岗位，false/null 一律不过滤；
@@ -228,11 +228,14 @@ export function applyStudentIdentityConstraint(
   for (const job of jobs) {
     const policy = buildJobPolicyAnalysis(job);
     const hr = extractHardRequirements(job, policy);
-    if (hr.student === 'social_only') {
+    if (hr.student === 'social_only' || hr.student === 'second_job_only') {
       excluded.push({
         jobId: typeof job?.basicInfo?.jobId === 'number' ? job.basicInfo.jobId : null,
         brandName: typeof job?.basicInfo?.brandName === 'string' ? job.basicInfo.brandName : null,
-        reason: '岗位不接受学生，与候选人已明确的学生身份冲突',
+        reason:
+          hr.student === 'second_job_only'
+            ? '岗位仅限第二职业（需已有主职），与候选人已明确的在校学生身份冲突'
+            : '岗位不接受学生，与候选人已明确的学生身份冲突',
       });
     } else {
       kept.push(job);

@@ -31,7 +31,11 @@ export interface NoMatchQueryContext {
   identityConstraintLabel?: string | null;
 }
 
-export const NO_MATCH_NEXT_ACTIONS = ['wait_for_inventory', 'group_handoff_complete'] as const;
+export const NO_MATCH_NEXT_ACTIONS = [
+  'wait_for_inventory',
+  'group_handoff_complete',
+  'brand_not_partnered',
+] as const;
 export type NoMatchNextAction = (typeof NO_MATCH_NEXT_ACTIONS)[number];
 
 export interface NoMatchScript {
@@ -126,6 +130,46 @@ export function buildNoMatchScript(ctx: NoMatchQueryContext): NoMatchScript {
             '附近有在招岗位、只是排班与候选人时段不匹配：不得说成"附近没有岗位/没查到岗位"，必须按照 candidateMessage 的"有 N 家但排班对不上"口径说',
           ]
         : []),
+    ],
+  };
+}
+
+/**
+ * 品牌入参经品牌目录校验为"库中无此品牌"（rejected.reason 全为 unmatched）时的候选人话术。
+ *
+ * 与 buildNoMatchScript 的区别是**事实不同**：那条说的是"这个品牌我们有合作、但这附近
+ * 当前没有在招岗位"，所以承接语是等库存；这条说的是"这个品牌我们根本没有合作"，
+ * 等库存是空头承诺——运营 2026-09-24 裁定：如实说没合作，别让候选人一直等我们的通知。
+ *
+ * 运营同日补充口径：说完没合作要**追问候选人接不接受别的品牌**，候选人接受就清掉品牌重查。
+ * 这也给"模型把自己编造的品牌当查询条件"留了一条纠偏出口——候选人会当场否认或改口。
+ * 因此本脚本的 forbiddenActions **不含**"不得反问换品牌"那一条（那是真实无岗分支的口径，
+ * 见 buildNoMatchScript，两处不得互相套用）。
+ */
+export function buildBrandNotPartneredScript(ctx: {
+  /** 候选人说的品牌原词（未命中品牌库，没有标准名可用） */
+  brandLabels: string[];
+  cityLabels?: string[];
+  regionLabels?: string[];
+}): NoMatchScript {
+  const brand = joinWithCommaAndOr(ctx.brandLabels) || '这个品牌';
+  const region = joinWithCommaAndOr(ctx.regionLabels);
+  const city = joinWithCommaAndOr(ctx.cityLabels);
+  const place = region || city;
+  const placePhrase = place ? `${place}这边` : '我这边';
+
+  return {
+    querySummary: `${brand}未在合作品牌目录中${place ? `（候选人查询范围：${place}）` : ''}`,
+    candidateMessage:
+      `${brand}我们这边目前没有合作，所以接不到他家的岗位，不好意思～` +
+      `${placePhrase}还有别的品牌在招人，你接受其他品牌吗？接受的话我发几个给你看看。`,
+    nextAction: 'brand_not_partnered',
+    forbiddenActions: [
+      `不得说"${brand}暂时没找到合适的岗位""后续有新岗位上来第一时间联系你"——我们没有和该品牌合作，等库存是空头承诺`,
+      '不得声称该品牌门店招满/关店/搬迁/暂停招聘：我们没有该品牌的任何岗位数据，说不了它的经营状态',
+      '不得在候选人明确答复接受其他品牌之前，就直接推别的品牌岗位或调用 duliday_job_list',
+      "候选人答复接受其他品牌后，用 brandFilterMode='clear' 按候选人已确认的城市/位置重查一次再推荐；" +
+        '候选人明确只要这个品牌就如实收尾，不得调用 invite_to_group 顶替',
     ],
   };
 }
