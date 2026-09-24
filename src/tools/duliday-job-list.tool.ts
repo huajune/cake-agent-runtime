@@ -25,6 +25,7 @@ import { GeocodingService } from '@infra/geocoding/geocoding.service';
 import { isRecord } from '@infra/utils/object.util';
 import { buildToolError, TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
 import {
+  buildBrandNotPartneredScript,
   buildNoMatchScript,
   buildPostInviteClosureScript,
 } from '@tools/job-list/no-match-script.util';
@@ -56,6 +57,13 @@ import {
   stripGenericPositionUmbrella,
 } from '@tools/job-list/search.util';
 import {
+  findUnsupportedExclusiveShiftFields,
+  formatExclusiveShiftFields,
+  stripExclusiveShiftFields,
+} from '@tools/job-list/schedule-provenance.util';
+import { extractCandidateTextsFromCorpus } from '@resolution/signal/self-report';
+import {
+  allRejectedAsUnmatched,
   buildBrandQueryPlan,
   findUnmentionedQueryBrands,
   toBrandQueryMeta,
@@ -142,16 +150,19 @@ function hasCandidateGroundedPostInviteLookup(params: {
 /**
  * 模型品牌入参全部被拒（未命中品牌库/冲突别名）时的结构化结果（§8.2.5）。
  *
- * 三种走向由回指置信度决定（判定阈值与守卫共享 resolveFuzzyConfidence）：
- * high=直接按回指品牌推进；low=反问澄清；none=按 noMatchScript 收口。
+ * 四种走向：回指置信度 high=直接按回指品牌推进；low=反问澄清（判定阈值与守卫共享
+ * resolveFuzzyConfidence）；none 再按 rejected.reason 二分——全部 unmatched=品牌库里
+ * 根本没有这个品牌，即**我们没有与该品牌合作**，走 brandNotPartneredScript 如实告知；
+ * 掺杂 ambiguous/low_confidence 时品牌可能存在只是指代不清，仍按 noMatchScript 收口。
  * 未验证品牌绝不静默降级成无品牌查询（那会引发跨品牌乱推），也不进入品牌过滤。
  */
 function buildBrandRejectedResult(params: {
   brandPlan: BrandQueryPlan;
   fuzzySuggestions: BrandFuzzyMatch[];
   noMatchScript: ReturnType<typeof buildNoMatchScript>;
+  brandNotPartneredScript: ReturnType<typeof buildBrandNotPartneredScript>;
 }): Record<string, unknown> {
-  const { brandPlan, fuzzySuggestions, noMatchScript } = params;
+  const { brandPlan, fuzzySuggestions, noMatchScript, brandNotPartneredScript } = params;
   const fuzzyConfidence = resolveFuzzyConfidence(fuzzySuggestions);
   const topMatch = fuzzySuggestions[0] ?? null;
   const rejectedInputs = brandPlan.rejected.map((item) => item.input);
@@ -171,6 +182,18 @@ function buildBrandRejectedResult(params: {
       `品牌入参 ${JSON.stringify(rejectedInputs)} 未在品牌库命中，会话最近品牌池里存在多个同音/字形候选` +
       '（见 queryMeta.brand.fuzzySuggestions），无法判定指代哪一个。**用一句反问澄清**："你说的是 X 还是 Y？"——' +
       '不要直接答"没查到"，不要照念 noMatchScript，不要调 invite_to_group。';
+  } else if (allRejectedAsUnmatched(brandPlan)) {
+    // 运营 2026-09-24 裁定：目录里没有这个品牌＝我们没有和它合作，如实说，
+    // 不能用"暂时没找到岗位＋后续有新岗位联系你"把候选人挂起来等一个永远不会来的通知。
+    outcome = '品牌入参不在合作品牌目录中（我方未与该品牌合作）';
+    replyInstruction =
+      `品牌入参 ${JSON.stringify(rejectedInputs)} 经品牌库校验全部为 unmatched（见 queryMeta.brand.rejected），` +
+      '含义是**我们没有和这个品牌合作**，不是"该品牌暂时没有岗位"。未按该品牌执行查询。' +
+      '**严格按 brandNotPartneredScript.candidateMessage 原文照念**：如实说没有合作，' +
+      '并在同一句里问候选人接不接受其他品牌；' +
+      '禁止说"暂时没找到合适的岗位""后续有新岗位第一时间联系你"，禁止照念 noMatchScript，禁止调用 invite_to_group。' +
+      "候选人明确答复接受其他品牌后，才用 brandFilterMode='clear' 按候选人已确认的城市/位置重查一次再推荐。" +
+      '若这个品牌名不是候选人说的（你自己拼错或凭空补的），以候选人当场的答复为准重查，不要把它当作候选人意向沉淀。';
   } else {
     outcome = '品牌入参未命中品牌库，未形成品牌过滤';
     replyInstruction =
@@ -186,7 +209,7 @@ function buildBrandRejectedResult(params: {
     outcome,
     replyInstruction,
     details: {
-      noMatchScript,
+      ...(allRejectedAsUnmatched(brandPlan) ? { brandNotPartneredScript } : { noMatchScript }),
       aliasFuzzyMatch:
         fuzzyConfidence !== 'none'
           ? {
@@ -382,7 +405,7 @@ const inputSchema = z.object({
     })
     .optional()
     .describe(
-      '候选人班次硬约束。传入后，工具会按岗位 workTime 语义判定是否兼容；不兼容岗位会从结果中移除并在 queryMeta.scheduleFilter 里说明剔除数量。候选人明确表达"只能周末/只做晚班/每周最多两天"等班次硬约束时必须传，避免推荐工作日强排班/全周岗位。注意方向：候选人解释"为什么某班次做不了"（如"我七点才下班赶不上晚班""上晚班影响睡眠"）是对该班次的**排除**，不是"只做该班次"，不得据此传 onlyEvenings/onlyMornings；"找周六/周末的活"= onlyWeekends: true。班次约束跨轮累积：候选人早前说过"只周六/只周末"，本轮只是补充其他限制时，onlyWeekends 必须继续带上，不得用新约束替换。',
+      '候选人班次硬约束。传入后，工具会按岗位 workTime 语义判定是否兼容；不兼容岗位会从结果中移除并在 queryMeta.scheduleFilter 里说明剔除数量。候选人明确表达"只能周末/只做晚班/每周最多两天"等班次硬约束时必须传，避免推荐工作日强排班/全周岗位。注意方向：候选人解释"为什么某班次做不了"（如"我七点才下班赶不上晚班""上晚班影响睡眠"）是对该班次的**排除**，不是"只做该班次"，不得据此传 onlyEvenings/onlyMornings；"找周六/周末的活"= onlyWeekends: true。onlyWeekends/onlyEvenings/onlyMornings 断言的是**排他性**（候选人只能做这个时段），必须有候选人"只…"这类原话依据，工具会按候选人原话校验，缺依据直接拒绝本次查询；收资表单里"周末两天都在接受门店排班""可接受晚班"这类答案说的是候选人**这些时段能上班**（可用性），不构成排他性约束，不得据此传这三个字段。班次约束跨轮累积：候选人早前说过"只周六/只周末"，本轮只是补充其他限制时，onlyWeekends 必须继续带上，不得用新约束替换。',
     ),
 });
 
@@ -835,6 +858,11 @@ export function buildJobListTool(
                 ? formatScheduleConstraintLabel(candidateScheduleConstraint)
                 : null,
             }),
+            brandNotPartneredScript: buildBrandNotPartneredScript({
+              brandLabels: rejectedInputs,
+              cityLabels: normalizedCityNameList,
+              regionLabels: normalizedRegionNameList,
+            }),
           });
         }
 
@@ -871,6 +899,47 @@ export function buildJobListTool(
           brandPlan.filterMode === 'enforce'
             ? brandPlan.applied.map((brand) => brand.canonicalName)
             : [];
+        // 排他性班次约束出处闸（运营 2026-09-24 重要 case 复核第 3 条）。
+        // onlyWeekends/onlyEvenings/onlyMornings 说的是"只能做这个时段"，会把排班对不上的
+        // 岗位整批剔除并让 Agent 念"排班对不上"；收资表单里的"周末两天都在接受门店排班"
+        // 是可用性不是排他性，模型误读一次就够候选人流失（chat 6ab26452ce406a6aeea65fce）。
+        // 判据复用规则轨，不新增班次正则、不改早/中/晚班判定语义。
+        // 绝大多数查询不带排他性班次字段，语料抽取按需求值一次即可。
+        let provenanceTextsCache: string[] | null | undefined;
+        const candidateProvenanceTexts = (): string[] | null => {
+          if (provenanceTextsCache === undefined) {
+            provenanceTextsCache = context.turnInput.corpusBlocks
+              ? extractCandidateTextsFromCorpus(context.turnInput.corpusBlocks, {
+                  visualSheetsByContent: context.turnInput.visualSheetsByContent,
+                })
+              : null;
+          }
+          return provenanceTextsCache;
+        };
+        const unsupportedModelShiftFields = findUnsupportedExclusiveShiftFields(
+          candidateScheduleConstraint,
+          candidateScheduleConstraint ? candidateProvenanceTexts() : null,
+        );
+        if (unsupportedModelShiftFields.length > 0) {
+          const label = formatExclusiveShiftFields(unsupportedModelShiftFields);
+          return buildToolError({
+            errorType: TOOL_ERROR_TYPES.JOB_LIST_SCHEDULE_NO_PROVENANCE,
+            outcome: '班次排他性约束缺少候选人原话依据，未执行岗位查询',
+            replyInstruction:
+              `candidateScheduleConstraint 里的 ${label} 断言候选人「只能」做这个时段，` +
+              '但候选人原话里没有这样说过。收资表单的「周末两天都在接受门店排班」「可接受晚班」等答案说的是' +
+              '**候选人这些时段能上班**（可用性），不是「只做周末/只做晚班」（排他性），不得据此设排他性约束。' +
+              `请去掉 ${unsupportedModelShiftFields.join('、')} 后重新查询；确实要限制时段时，只传候选人原话支持的 ` +
+              'availableWindow（具体钟点区间）或 maxDaysPerWeek。' +
+              '本次未执行岗位查询：禁止对候选人说"附近岗位排班和你的时段对不上"或"没有匹配的岗位"，' +
+              '也不得把这个时段偏好当作候选人意向沉淀。',
+            details: {
+              unsupportedScheduleFields: unsupportedModelShiftFields,
+              queryMeta: { scheduleFilter: { rejectedFields: unsupportedModelShiftFields } },
+            },
+          });
+        }
+
         // 候选人在更早轮次表达过的班次硬约束已经被 fact-extraction 持久化到
         // sessionFacts.preferences.schedule_constraint。Agent 本轮调本工具时若没显式
         // 传 candidateScheduleConstraint，自动从 sessionFacts 兜底，避免 Agent 忘了
@@ -904,7 +973,23 @@ export function buildJobListTool(
                   `由持久化约束补齐 → ${JSON.stringify(merged)}`,
               );
             }
-            candidateScheduleConstraint = merged;
+            // 持久化兜底同样过出处闸：fact-extraction 也可能把收资表单的可用性答案
+            // 沉淀成排他性约束，模型本轮没传、闸门就漏过去了。这里只静默剥离缺出处的
+            // 字段（模型没主张，报错无从修复），不阻断查询。
+            const unsupportedPersistedFields = findUnsupportedExclusiveShiftFields(
+              merged,
+              candidateProvenanceTexts(),
+            );
+            if (unsupportedPersistedFields.length > 0) {
+              logger.warn(
+                `持久化班次约束缺候选人原话依据，已剥离 [${unsupportedPersistedFields.join(',')}]：` +
+                  `${JSON.stringify(merged)}`,
+              );
+            }
+            const kept = stripExclusiveShiftFields(merged, unsupportedPersistedFields);
+            // 剥空后必须回落 undefined：`{}` 是 truthy，会让下游把"无约束"当成"有约束"，
+            // 在无岗话术里渲染出一个空的时段标签。
+            candidateScheduleConstraint = Object.keys(kept).length > 0 ? kept : undefined;
           }
         }
 

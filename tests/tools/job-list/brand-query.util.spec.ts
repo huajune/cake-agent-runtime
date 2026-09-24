@@ -4,6 +4,7 @@
 
 import type { BrandItem } from '@/sponge/sponge.types';
 import {
+  allRejectedAsUnmatched,
   buildBrandQueryPlan,
   findUnmentionedQueryBrands,
   toBrandQueryMeta,
@@ -310,5 +311,29 @@ describe('toBrandQueryMeta（§11 类型化 brand 小节）', () => {
     });
     expect(toBrandQueryMeta(plan).brandSource).toBe('session_state');
     expect(toBrandQueryMeta(plan).appliedCanonicalNames).toEqual(['肯德基']);
+  });
+});
+
+describe('allRejectedAsUnmatched', () => {
+  const planWith = (rejected: Array<{ input: string; reason: 'unmatched' | 'ambiguous' }>) =>
+    ({ rejected }) as unknown as Parameters<typeof allRejectedAsUnmatched>[0];
+
+  it('全部 unmatched：品牌库里没有这个品牌，可对候选人说没合作', () => {
+    expect(allRejectedAsUnmatched(planWith([{ input: '星巴克', reason: 'unmatched' }]))).toBe(true);
+  });
+
+  it('掺一个 ambiguous 就不能下"没合作"的结论', () => {
+    expect(
+      allRejectedAsUnmatched(
+        planWith([
+          { input: '星巴克', reason: 'unmatched' },
+          { input: '刘姐', reason: 'ambiguous' },
+        ]),
+      ),
+    ).toBe(false);
+  });
+
+  it('没有被拒品牌时为 false', () => {
+    expect(allRejectedAsUnmatched(planWith([]))).toBe(false);
   });
 });

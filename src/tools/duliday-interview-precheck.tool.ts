@@ -112,7 +112,7 @@ export const PRECHECK_DESCRIPTION = `面试前置校验。实时读取岗位收�
   - mode="query"：查询/刷新岗位报名表单与预约时段。本轮没有候选人报名资料需要校验时使用；多人代报可带 candidatePhone，查询指定日期可带 requestedDate。
   - mode="validate"：校验候选人报名资料。本轮候选人已经明确给出任何报名字段答案时必须使用，并携带非空 fieldValueProposals；登记报名信息确认时携带 recapConfirmation=true。新表单会在同一次调用中建立实时契约快照并校验，禁止为了查询契约而丢掉本轮答案。
 - validate 使用持久化契约快照；若返回 contract_changed，先用 mode="query" 刷新表单，再根据新 bookingChecklist 在同一轮用 mode="validate" 重投仍有原话依据的 fieldValueProposals。
-- 如果 jobId 因无召回出处被拒，禁止把该数字放进 jobIdList 继续查。只从历史原话提取城市、品牌、门店、岗位，单次调用 duliday_job_list：cityNameList=城市、brandAliasList=品牌、searchJobName="门店关键词+岗位关键词"；用唯一返回的真实 jobId 重试本工具。
+- 如果 jobId 因无召回出处被拒，禁止把该数字放进 jobIdList 继续查，也禁止把当前上下文里出现的品牌/门店直接当查询条件重查——城市、品牌、门店、岗位必须能在**候选人本人原话**里逐字找到出处（你自己上一条回复、岗位卡片、示例文本、以及你为了解释被拒 jobId 而写下的描述都不算出处）。有出处时单次调用 duliday_job_list：cityNameList=城市、brandAliasList=品牌、searchJobName="门店关键词+岗位关键词"，用唯一返回的真实 jobId 重试本工具；候选人从没说过品牌/门店就直接问候选人想应聘哪家，问不出来调用 request_handoff 转人工，**禁止**凭上下文推断补齐后继续查。
 - candidatePhone 仅用于**同一会话代多人报名**：逐人传入当前正在办理者原话中的 11 位手机号，用它选择独立表单；单人报名不传。多人时严格按一人一条链路串行处理：本工具返回 ready_to_book 后立即 booking，booking 成功后才能 precheck 下一人；禁止并行调用多个 precheck。
 - requestedDate 只在候选人明确表达时传：可传日期、interview.bookableSlots 中的精确 interviewTime，或候选人约定的窗口内具体时刻（YYYY-MM-DD HH:mm）；含糊就不传。面试时间不属于收资字段，不得写成 fieldValueProposals 条目。
 - fieldValueProposals 是唯一收资字段入口。只在候选人原话明确支持最终契约值时提交；没提到、无法唯一映射、带保留或有歧义时不提交，让该槽位保持 empty。不得为了填满表单猜值，不得提交置信分、待复核标记或“先填后确认”值。
@@ -521,8 +521,15 @@ export function buildInterviewPrecheckTool(
             outcome: '前置校验拦截（jobId 无召回出处）',
             replyInstruction:
               recalled.length === 0
-                ? '不要把这个无出处 jobId 放进 jobIdList。根据历史原话中的城市＋品牌＋门店＋岗位，单次调用 duliday_job_list：cityNameList=城市、brandAliasList=品牌、searchJobName="门店关键词+岗位关键词"；再用唯一返回的真实 jobId 调本工具。'
-                : `只能使用本会话召回过的 jobId：${recalled.join('、')}。若都不符合历史岗位，禁止查询这个被拒数字；按历史城市＋品牌＋门店＋岗位单次调用 duliday_job_list（cityNameList＋brandAliasList＋searchJobName="门店关键词+岗位关键词"）精确召回。`,
+                ? '不要把这个无出处 jobId 放进 jobIdList。本会话还没有召回过任何岗位，这个 jobId 以及你为它配的城市/品牌/门店都没有事实来源，' +
+                  '**禁止**拿当前上下文里的品牌/门店直接去重查——查询条件必须能在候选人本人原话里逐字找到出处（你自己的回复、岗位卡片、示例文本都不算）。' +
+                  '候选人原话里确实说过城市＋品牌/门店时，单次调用 duliday_job_list：cityNameList=城市、brandAliasList=品牌、searchJobName="门店关键词+岗位关键词"，再用唯一返回的真实 jobId 调本工具；' +
+                  '候选人没说过就直接问他想应聘哪个品牌/门店，问不出来调用 request_handoff 转人工。' +
+                  '禁止对候选人宣称任何岗位/门店的在招状态——本次没有查询发生。'
+                : `只能使用本会话召回过的 jobId：${recalled.join('、')}。若都不符合候选人要的岗位，禁止查询这个被拒数字；` +
+                  '重查的城市＋品牌＋门店必须能在候选人本人原话里逐字找到出处（你自己的回复、岗位卡片、示例文本都不算），' +
+                  '有出处就单次调用 duliday_job_list（cityNameList＋brandAliasList＋searchJobName="门店关键词+岗位关键词"）精确召回；' +
+                  '候选人没说过品牌/门店就直接问他想应聘哪家，问不出来调用 request_handoff 转人工，禁止凭上下文推断补齐。',
             details: { jobId, recalledJobIds: recalled },
           });
         }

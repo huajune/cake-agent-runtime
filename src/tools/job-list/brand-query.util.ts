@@ -69,6 +69,17 @@ export function findUnmentionedQueryBrands(
   });
 }
 
+/**
+ * 被拒品牌是否**全部**为"品牌库里没有这个品牌"。
+ *
+ * unmatched 与 ambiguous/low_confidence 是两种事实：前者说明我们没有与该品牌合作
+ * （话术要如实说没合作），后者说明品牌可能存在、只是指代不清（话术仍是澄清/无岗口径）。
+ * 只要掺进一个非 unmatched 就不能按"没合作"对候选人下结论。
+ */
+export function allRejectedAsUnmatched(plan: BrandQueryPlan): boolean {
+  return plan.rejected.length > 0 && plan.rejected.every((item) => item.reason === 'unmatched');
+}
+
 /** 组装 queryMeta.brand 小节（§9 类型化接口）。 */
 export function toBrandQueryMeta(
   plan: BrandQueryPlan,
