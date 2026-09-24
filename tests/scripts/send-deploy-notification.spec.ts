@@ -176,6 +176,76 @@ console.log(buildMarkdown({ releaseTag: 'v5.4.0', deployResult: 'success' }));
     expect(markdown).toContain('消息流水支持按托管 BOT 筛选，排查会话更方便');
   });
 
+  it('renders ops notes from release metadata verbatim, grouped, without the 10-line cap', () => {
+    const opsNotes = Array.from({ length: 14 }, (_, index) => `- 第 ${index + 1} 条运营可见变化`);
+    const markdown = runNode(`
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const metadataFile = path.join(os.tmpdir(), \`release-metadata-ops-\${process.pid}.json\`);
+fs.writeFileSync(metadataFile, JSON.stringify({
+  nextVersion: '11.13.0',
+  entries: [],
+  lastRelease: {
+    version: '11.13.0',
+    entries: [
+      { title: '报名后跟进', opsNotes: ['**报名成功后自动拉群** ✅ 已上线', ...${JSON.stringify(opsNotes)}], businessUpdates: ['技术摘要不应出现'] },
+      { title: '修正发版元数据', opsNotes: ['**流程 PR 不该出现**'], businessUpdates: [] },
+      { title: '纯工程', opsNotes: [], businessUpdates: ['也不应出现'] }
+    ]
+  }
+}));
+process.env.RELEASE_METADATA_FILE = metadataFile;
+process.env.RELEASE_NOTES = '### 运营说明\\n- 旧 CHANGELOG 段不应优先';
+const { buildMarkdown } = require('./scripts/send-deploy-notification');
+console.log(buildMarkdown({ releaseTag: 'v11.13.0', deployResult: 'success' }));
+fs.rmSync(metadataFile, { force: true });
+`);
+
+    expect(markdown).toContain('**业务改动（按需求 / 功能分组，运营版说明）**');
+    expect(markdown).toContain('**报名成功后自动拉群** ✅ 已上线');
+    expect(markdown).toContain('- 第 14 条运营可见变化');
+    expect(markdown).not.toContain('技术摘要不应出现');
+    expect(markdown).not.toContain('流程 PR 不该出现');
+    expect(markdown).not.toContain('旧 CHANGELOG 段不应优先');
+    expect(markdown).not.toContain('未填写「运营说明」');
+  });
+
+  it('falls back to the CHANGELOG ### 运营说明 section when no metadata is present', () => {
+    const releaseNotes = `
+### 运营说明
+**带外工单** ✅ 已上线
+- 真人经理在后台约的面，AI 现在能看到
+
+**政策口径库** ⏳ 本版只做第 0 期
+- 已上线：银行卡可以直接说「必须本人卡」
+
+### 新功能
+- PR #1 技术明细不应进卡片
+`;
+    const markdown = runNode(`
+process.env.RELEASE_NOTES = ${JSON.stringify(releaseNotes)};
+const { buildMarkdown } = require('./scripts/send-deploy-notification');
+console.log(buildMarkdown({ releaseTag: 'v11.13.0', deployResult: 'success' }));
+`);
+
+    expect(markdown).toContain(
+      '**带外工单** ✅ 已上线\n- 真人经理在后台约的面，AI 现在能看到\n\n**政策口径库** ⏳ 本版只做第 0 期',
+    );
+    expect(markdown).not.toContain('技术明细不应进卡片');
+  });
+
+  it('flags the missing ops notes when falling back to the technical summary', () => {
+    const markdown = runNode(`
+process.env.RELEASE_NOTES = '### 运营说明\\n- 无\\n\\n### 问题修复\\n- PR #2 健康证不再阻塞面试';
+const { buildMarkdown } = require('./scripts/send-deploy-notification');
+console.log(buildMarkdown({ releaseTag: 'v11.13.1', deployResult: 'success' }));
+`);
+
+    expect(markdown).toContain('未填写「运营说明」');
+    expect(markdown).toContain('- 健康证不再阻塞面试');
+  });
+
   it('renders businessUpdates from release metadata before parsing CHANGELOG markdown', () => {
     const markdown = runNode(`
 const fs = require('fs');

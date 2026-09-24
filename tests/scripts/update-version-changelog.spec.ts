@@ -81,3 +81,74 @@ describe('update-version-changelog entry level aggregation', () => {
     expect(aggregateEntryLevels([{ level: 'patch' }])).toBe('patch');
   });
 });
+
+describe('update-version-changelog ops notes (运营说明)', () => {
+  const {
+    parseBodySections,
+    renderReleaseSection,
+    sanitizeLlmReleaseSections,
+  } = require('../../scripts/update-version-changelog');
+
+  it('captures the ## 运营说明 section verbatim, keeping group headings and bullets', () => {
+    const body = `## 运营说明
+
+<!-- 模板注释不进正文 -->
+**报名成功后自动拉群** ✅ 已上线
+- 报名一成功系统就自动拉群，不再靠 AI 自己记得
+### 政策口径库 ⏳ 本版只做第 0 期
+- 已上线：银行卡可以直接说「必须本人卡」
+
+## 新功能
+
+- 报名成功路径经 group-invite-pipeline 自动拉群
+`;
+    const sections = parseBodySections(body);
+    expect(sections.opsNotes).toEqual([
+      '**报名成功后自动拉群** ✅ 已上线',
+      '- 报名一成功系统就自动拉群，不再靠 AI 自己记得',
+      '**政策口径库 ⏳ 本版只做第 0 期**',
+      '- 已上线：银行卡可以直接说「必须本人卡」',
+    ]);
+    expect(sections.features).toEqual(['报名成功路径经 group-invite-pipeline 自动拉群']);
+  });
+
+  it('treats "- 无" as no ops notes', () => {
+    expect(parseBodySections('## 运营说明\n\n- 无\n').opsNotes).toEqual([]);
+  });
+
+  it('renders ### 运营说明 before 更新摘要 with entries separated by a blank line', () => {
+    const markdown = renderReleaseSection({
+      version: '11.13.0',
+      date: '2026-09-25',
+      entries: [
+        { title: 'A', opsNotes: ['**甲** ✅ 已上线', '- 甲的变化'], summary: ['a'] },
+        { title: 'B', summary: ['b'] },
+        { title: 'C', opsNotes: ['**丙** ✅ 已上线', '- 丙的变化'], summary: ['c'] },
+      ],
+    });
+    const opsIndex = markdown.indexOf('### 运营说明');
+    const summaryIndex = markdown.indexOf('### 更新摘要');
+    expect(opsIndex).toBeGreaterThan(-1);
+    expect(opsIndex).toBeLessThan(summaryIndex);
+    expect(markdown).toContain('**甲** ✅ 已上线\n- 甲的变化\n\n**丙** ✅ 已上线\n- 丙的变化');
+  });
+
+  it('renders "- 无" when no entry carries ops notes', () => {
+    const markdown = renderReleaseSection({
+      version: '11.13.1',
+      date: '2026-09-25',
+      entries: [{ title: 'A', summary: ['a'] }],
+    });
+    expect(markdown).toContain('### 运营说明\n- 无\n');
+  });
+
+  it('keeps LLM-provided opsNotes lines verbatim while sanitizing the other sections', () => {
+    const sections = sanitizeLlmReleaseSections({
+      opsNotes: ['**甲** ✅ 已上线', '- 甲的变化 (#123)', ''],
+      fixes: ['fix: 修一个问题 (#123)'],
+    });
+    expect(sections.opsNotes).toEqual(['**甲** ✅ 已上线', '- 甲的变化 (#123)']);
+    expect(sections.fixes).toHaveLength(1);
+    expect(sections.fixes[0]).toMatch(/^修一个问题/);
+  });
+});

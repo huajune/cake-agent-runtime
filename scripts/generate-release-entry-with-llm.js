@@ -94,6 +94,7 @@ function buildPrompt(input) {
     '',
     '输出 schema：',
     '{',
+    '  "opsNotes": ["**<需求或功能名>** ✅ 已上线", "- 运营/候选人会看到的变化（大白话）", "..."],',
     '  "businessUpdates": ["会直接进入飞书发版卡片的候选人/运营可感知改动"],',
     '  "summary": ["一句话业务摘要，覆盖重要 commit"],',
     '  "features": ["候选人或运营可感知的新能力/行为变化"],',
@@ -111,6 +112,7 @@ function buildPrompt(input) {
     '4. 不要输出 PR 编号、作者、文件路径、测试命令，也不要输出“无/暂无”。',
     '5. 如果一个技术改动会影响运营排查或候选人体验，放到 features 或 fixes，不要丢到 optimizations。',
     '6. 合并重复项；不要把同一件事拆成过碎的多条，也不要把多件重要业务改动压成一条。',
+    '7. opsNotes 是给运营看的发版说明，会原样进飞书卡片：若 PR 正文已有「## 运营说明」段则逐行照抄；否则按需求或功能分组，每组第一行是加粗组名（带 ✅ 已上线，未完整上线的标 ⏳ 并写清做了哪部分），下面 2-4 条 "- " 开头的大白话 bullet，只说候选人/运营看得见的变化，不写工具名、字段名、文件路径、百分比口径；没有运营可感知改动时给空数组。',
   ].join('\n');
 }
 
@@ -206,6 +208,7 @@ function parseJsonObject(content) {
 function normalizeSections(value) {
   const source = value && typeof value === 'object' ? value : {};
   const keys = [
+    'opsNotes',
     'businessUpdates',
     'summary',
     'features',
@@ -218,10 +221,19 @@ function normalizeSections(value) {
   const result = {};
 
   for (const key of keys) {
-    result[key] = normalizeLines(source[key]);
+    result[key] =
+      key === 'opsNotes' ? normalizeOpsNoteLines(source[key]) : normalizeLines(source[key]);
   }
 
   return result;
+}
+
+// 运营说明逐行原样保留（"- " 前缀与加粗组名都是格式的一部分），只去空行。
+function normalizeOpsNoteLines(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.map((item) => String(item || '').trim()).filter(Boolean);
 }
 
 function normalizeLines(value) {

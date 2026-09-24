@@ -171,6 +171,8 @@ Conventional Commits + 标准 semver：`feat:` → minor，`fix:`/其余 → pat
 
 仓库常有多个 AI 会话并发改码：**commit 时用 pathspec 限定自己的文件**；发现 stash / 工作树有他人改动勿动，先确认。
 
+**PR 正文必须带 `## 运营说明`**（模板首段）：按需求/功能分组、加粗组名带 ✅/⏳ 状态、2~4 条大白话 bullet；它会原样进 CHANGELOG「运营说明」段和飞书发版卡片，`新功能/问题修复` 只是技术明细。纯工程 PR 写「- 无」。没人写时卡片会回落到技术摘要并明示缺失。
+
 ## Testing & Debugging
 
 ```bash
