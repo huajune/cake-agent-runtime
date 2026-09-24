@@ -102,12 +102,16 @@ export class ReengagementAnchorService {
 
     // 改约成功：新锚点只触发面试排程解析；正式提醒/回访按海绵返回的新时间重排。
     // 旧任务到点也会重新查同一工单，并因实时触发时间变化而停止或替换。
+    // 报名/改约的跟进不看 deliverable：工单已在海绵真实创建/变更，面试时间是真的，
+    // 即使本轮随后被转人工短路（同回合先报名再 request_handoff），提醒与回访也必须排上；
+    // 否则候选人既没被告知报名结果，也收不到任何面试提醒（chat 6ab0f3fece406a6aee5e05c8）。
+    // 真人是否已接手由 processor 到点的真人介入闸判断，不在锚点侧预先放弃。
     const modified = toolCalls.find((call) => this.isInterviewModified(call));
-    if (modified && deliverable) {
+    if (modified) {
       this.scheduleBookingFollowUps(modified, `${context.traceId}:interview_modified`, context);
     }
 
-    if (!booking || !deliverable) return;
+    if (!booking) return;
     this.scheduleBookingFollowUps(booking, `${context.traceId}:booking_succeeded`, context);
   }
 

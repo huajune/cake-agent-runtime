@@ -5,8 +5,6 @@ import { AVATAR_GRADIENTS, getAvatarStyle, getUserInitial } from '@/utils/avatar
 import { getStatusMeta } from '../../constants';
 import styles from './index.module.scss';
 
-const HIDDEN_SCENARIO_STATUSES = new Set(['superseded', 'stopped']);
-
 /** 未来时间的相对表述（fire_at 倒计时）；已过期/无效返回 null */
 function formatCountdown(fireAt: string): string | null {
   const target = Date.parse(fireAt);
@@ -28,9 +26,9 @@ function formatCountdown(fireAt: string): string | null {
 /** 行点击的默认目标：优先待发任务，否则最近更新的场景触达 */
 function primaryTouchKey(candidate: ReengagementCandidateSummary): string | null {
   if (candidate.nextTouch) return candidate.nextTouch.touchKey;
-  const latest = candidate.scenarios
-    .filter((scenario) => !HIDDEN_SCENARIO_STATUSES.has(scenario.status))
-    .sort((a, b) => Date.parse(b.updatedAt || '') - Date.parse(a.updatedAt || ''))[0];
+  const latest = [...candidate.scenarios].sort(
+    (a, b) => Date.parse(b.updatedAt || '') - Date.parse(a.updatedAt || ''),
+  )[0];
   return latest?.touchKey ?? null;
 }
 
@@ -60,14 +58,9 @@ export default function CandidateTable({
   pendingOnly = false,
   onTouchClick,
 }: CandidateTableProps) {
-  const visibleData = data
-    .map((candidate) => ({
-      ...candidate,
-      scenarios: candidate.scenarios.filter(
-        (scenario) => !HIDDEN_SCENARIO_STATUSES.has(scenario.status),
-      ),
-    }))
-    .filter((candidate) => candidate.nextTouch || candidate.scenarios.length > 0);
+  // 不在前端二次隐藏任何状态：运营复盘要看到 stopped / sent 等全部终态，
+  // superseded 已由后端分组时跳过。列表口径 = 接口口径，避免"已加载 N 个"与空态自相矛盾。
+  const visibleData = data;
 
   const tableHeaders = (
     <tr>

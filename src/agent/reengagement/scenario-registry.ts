@@ -209,7 +209,8 @@ export const FOLLOW_UP_SCENARIOS: readonly FollowUpScenario[] = [
       if (interviewAt == null) return 0;
       return Math.max(0, interviewAt - HOUR - ctx.anchorAt);
     },
-    delayLabel: '面试前 1 小时（无面试时间不触发）',
+    delayLabel:
+      '到场档面试前 1 小时（无面试时间不触发）；另有「提前 2 天确认」档：报名日与面试日相隔 ≥3 天时，面试前 48 小时固定再发一条，不受左侧分钟数影响',
     delayMode: 'before_interview',
     defaultDelayMinutes: 60,
     objective: '根据面试形式提醒候选人按时参加；AI 面试提醒在线完成，线下面试才提醒到店',
