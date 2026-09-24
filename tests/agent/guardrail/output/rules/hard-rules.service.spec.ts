@@ -121,6 +121,20 @@ describe('HardRulesService — 封闭确定性输出规则', () => {
         ],
       }),
     ).not.toContain('unsupported_store_status_speculation');
+    // 品牌不在合作目录：我们连该品牌岗位数据都没有，更无从断言门店经营状态
+    expect(
+      ids('这家应该已经招满了', {
+        toolCalls: [
+          {
+            ...noMatchTool,
+            result: {
+              errorType: 'job_list.no_results',
+              brandNotPartneredScript: { nextAction: 'brand_not_partnered' },
+            },
+          },
+        ],
+      }),
+    ).toContain('unsupported_store_status_speculation');
   });
 
   it('预约成功回执必须播报已确认日期', () => {

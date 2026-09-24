@@ -1,4 +1,5 @@
 import {
+  buildBrandNotPartneredScript,
   buildNoMatchScript,
   buildPostInviteClosureScript,
 } from '@tools/job-list/no-match-script.util';
@@ -143,5 +144,43 @@ describe('班次过滤致空的如实披露（badcase 1rl3z9ai）', () => {
   it('真无岗（零剔除）保持原话术', () => {
     const script = buildNoMatchScript({ cityLabels: ['上海'], maxKm: 10 });
     expect(script.candidateMessage).toContain('暂时没找到合适的岗位');
+  });
+});
+
+describe('buildBrandNotPartneredScript（运营 2026-09-24 裁定：不合作直说）', () => {
+  it('如实说没合作，并追问接不接受别的品牌，不承诺"以后有了通知你"', () => {
+    const script = buildBrandNotPartneredScript({
+      brandLabels: ['星巴克'],
+      cityLabels: ['上海'],
+    });
+    expect(script.candidateMessage).toContain('星巴克');
+    expect(script.candidateMessage).toContain('没有合作');
+    expect(script.candidateMessage).toContain('接受其他品牌吗');
+    expect(script.candidateMessage).not.toContain('暂时没找到合适的岗位');
+    expect(script.candidateMessage).not.toContain('第一时间联系你');
+    expect(script.nextAction).toBe('brand_not_partnered');
+  });
+
+  it('禁令里保留等库存/门店状态两条，但**不含**真实无岗那条"不得反问换品牌"', () => {
+    const script = buildBrandNotPartneredScript({ brandLabels: ['麦德龙'], regionLabels: ['徐汇'] });
+    const forbidden = script.forbiddenActions.join('\n');
+    expect(forbidden).toContain('后续有新岗位上来第一时间联系你');
+    expect(forbidden).toContain('招满');
+    expect(forbidden).not.toContain('不得反问"换品牌');
+    expect(forbidden).toContain("brandFilterMode='clear'");
+  });
+
+  it('真实无岗分支的"不得反问换品牌"禁令不受影响', () => {
+    const script = buildNoMatchScript({ brandLabels: ['肯德基'], cityLabels: ['上海'] });
+    expect(script.forbiddenActions.join('\n')).toContain('不得反问"换品牌');
+  });
+
+  it('区域优先于城市作为承接地点', () => {
+    const script = buildBrandNotPartneredScript({
+      brandLabels: ['大润发'],
+      cityLabels: ['上海'],
+      regionLabels: ['浦东新区'],
+    });
+    expect(script.candidateMessage).toContain('浦东新区这边');
   });
 });

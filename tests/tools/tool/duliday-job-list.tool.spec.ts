@@ -17,6 +17,7 @@ type JobListTestContext = ToolBuildContext & {
   invitedGroups?: ToolBuildContext['archive']['invitedGroups'];
   activeBookingJobIds?: number[];
   messages?: unknown[];
+  corpusBlocks?: ToolBuildContext['turnInput']['corpusBlocks'];
   currentUserMessage?: string;
   currentLaborFormIntent?: ToolBuildContext['turnInput']['currentLaborFormIntent'];
   contactBrandAliases?: string[];
@@ -76,6 +77,7 @@ describe('buildJobListTool', () => {
       },
       turnInput: {
         ...(context.messages === undefined ? {} : { messages: context.messages }),
+        ...(context.corpusBlocks === undefined ? {} : { corpusBlocks: context.corpusBlocks }),
         ...(context.currentUserMessage === undefined
           ? {}
           : { currentUserMessage: context.currentUserMessage }),
@@ -627,7 +629,9 @@ describe('buildJobListTool', () => {
     expect(mockSpongeService.fetchJobs).not.toHaveBeenCalled();
     expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_NO_RESULTS);
     expect(result.queryMeta.brand.rejected).toEqual([{ input: 'Gattouzo', reason: 'unmatched' }]);
-    expect(result.noMatchScript).toBeDefined();
+    // 目录里没有这个品牌 = 我们没有合作（运营 2026-09-24 裁定），不再走"等库存"话术
+    expect(result.brandNotPartneredScript).toBeDefined();
+    expect(result.noMatchScript).toBeUndefined();
   });
 
   it('unknown brand stays rejected even when the candidate explicitly names it（查不到就不猜，§6.2）', async () => {
@@ -2353,7 +2357,7 @@ describe('buildJobListTool', () => {
       expect(result._replyInstruction).not.toContain('直接按该品牌继续推进');
     });
 
-    it('no fuzzy match：候选人输入与最近推荐品牌完全无关，回退到 noMatchScript 拉群', async () => {
+    it('no fuzzy match：候选人输入与最近推荐品牌完全无关，走不合作话术', async () => {
       mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [], total: 0 });
 
       const ctxWithUnrelatedBrand: JobListTestContext = {
@@ -2369,10 +2373,11 @@ describe('buildJobListTool', () => {
 
       expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_NO_RESULTS);
       expect(result.aliasFuzzyMatch).toBeNull();
-      expect(result._replyInstruction).toContain('不得调用 invite_to_group');
+      expect(result.brandNotPartneredScript.nextAction).toBe('brand_not_partnered');
+      expect(result._replyInstruction).toContain('禁止调用 invite_to_group');
     });
 
-    it('no recentBrandPool：未传品牌池时不触发模糊匹配，照旧走 noMatchScript', async () => {
+    it('no recentBrandPool：未传品牌池时不触发模糊匹配，走不合作话术', async () => {
       mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [], total: 0 });
 
       const result = await executeTool(mockContext, {
@@ -2382,7 +2387,103 @@ describe('buildJobListTool', () => {
       });
 
       expect(result.aliasFuzzyMatch).toBeNull();
-      expect(result._replyInstruction).toContain('不得调用 invite_to_group');
+      expect(result._replyInstruction).toContain('禁止调用 invite_to_group');
+    });
+  });
+
+  describe('排他性班次约束出处闸（运营 2026-09-24 case 复核第 3 条）', () => {
+    const candidateSaid = (...texts: string[]) =>
+      texts.map((content, index) => ({
+        id: `blk-${index}`,
+        domain: 'evidence' as const,
+        role: 'user' as const,
+        content,
+      }));
+
+    it('收资表单"周末两天都在接受门店排班"被读成 onlyWeekends：拒绝入参，不查询也不产出无岗话术', async () => {
+      const result = await executeTool(
+        {
+          ...mockContext,
+          corpusBlocks: candidateSaid('周末两天是否在岗：周末两天都在接受门店排班'),
+        },
+        {
+          ...defaultInput,
+          cityNameList: ['上海'],
+          candidateScheduleConstraint: { onlyWeekends: true },
+        } as typeof defaultInput,
+      );
+
+      expect(mockSpongeService.fetchJobs).not.toHaveBeenCalled();
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_SCHEDULE_NO_PROVENANCE);
+      expect(result.unsupportedScheduleFields).toEqual(['onlyWeekends']);
+      expect(result.noMatchScript).toBeUndefined();
+      expect(result._replyInstruction).toContain('排班和你的时段对不上');
+    });
+
+    it('候选人原话"我只能做周末"：放行，正常查询', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [], total: 0 });
+
+      const result = await executeTool(
+        { ...mockContext, corpusBlocks: candidateSaid('我只能做周末，平时要上课') },
+        {
+          ...defaultInput,
+          cityNameList: ['上海'],
+          candidateScheduleConstraint: { onlyWeekends: true },
+        } as typeof defaultInput,
+      );
+
+      expect(mockSpongeService.fetchJobs).toHaveBeenCalled();
+      expect(result.errorType).not.toBe(TOOL_ERROR_TYPES.JOB_LIST_SCHEDULE_NO_PROVENANCE);
+    });
+
+    it('availableWindow/maxDaysPerWeek 不在出处闸范围内', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [], total: 0 });
+
+      await executeTool(
+        { ...mockContext, corpusBlocks: candidateSaid('随便聊两句') },
+        {
+          ...defaultInput,
+          cityNameList: ['上海'],
+          candidateScheduleConstraint: {
+            maxDaysPerWeek: 3,
+            availableWindow: { start: '18:00', end: '23:00' },
+          },
+        } as typeof defaultInput,
+      );
+
+      expect(mockSpongeService.fetchJobs).toHaveBeenCalled();
+    });
+
+    it('无语料（出处池不可用）时整体放行，不改变既有行为', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [], total: 0 });
+
+      await executeTool(mockContext, {
+        ...defaultInput,
+        cityNameList: ['上海'],
+        candidateScheduleConstraint: { onlyWeekends: true },
+      } as typeof defaultInput);
+
+      expect(mockSpongeService.fetchJobs).toHaveBeenCalled();
+    });
+
+    it('持久化兜底里的缺出处排他性字段被静默剥离，不阻断查询', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [], total: 0 });
+
+      const result = await executeTool(
+        {
+          ...mockContext,
+          corpusBlocks: candidateSaid('周末两天都在接受门店排班'),
+          sessionFacts: {
+            preferences: { schedule_constraint: { onlyWeekends: true, maxDaysPerWeek: null } },
+          } as never,
+        },
+        { ...defaultInput, cityNameList: ['上海'] },
+      );
+
+      expect(mockSpongeService.fetchJobs).toHaveBeenCalled();
+      expect(result.errorType).not.toBe(TOOL_ERROR_TYPES.JOB_LIST_SCHEDULE_NO_PROVENANCE);
+      // 剥空后回落 undefined：无岗话术里不得出现空的时段标签
+      expect(JSON.stringify(result.noMatchScript ?? {})).not.toContain('只周末');
     });
   });
 
