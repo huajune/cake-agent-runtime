@@ -51,3 +51,5 @@
 | 2026-09-07 | fact-adjudication-shadow-daily | qualify_candidate | 判官精确率 | 1.0000 | 17        | 17          | 7 天(09-01~09-07)判据④出处门抽查：17 条可裁定全是候选人确实没说过、零假阳；另 1 条 labelId 13 因 payload 不带 sourceText 未定性不进分母；周末三天零样本 | logs/observability/fact-adjudication-daily.md; 6a99303b; 6a9693f4 |
 | 2026-09-08 | weekly-judge-calibration | onboard_followup | 判官精确率 | 1.0000 | 17        | 17          | J1 复聊 blockReason：17 次判决全对（send 15、skip 2 含归因）；1 条「已提醒过」是否限当天的口径待人裁                | logs/analysis/judge-calibration-2026-09-08.md#C1 |
 | 2026-09-08 | weekly-judge-calibration | -                | 判官精确率 | 0.0000 | 0         | 2           | J4 入站词表离线回放 6 天：仅 2 条会命中且均假阳（泛指骗子、转述第三方客服转人工）；n=2 不触发降级，残障自述本周 0 样本 | logs/analysis/judge-calibration-2026-09-08.md#C4 |
+| 2026-09-24 | weekly-handoff-analysis | - | 转人工精确率 | 0.8947 | 17 | 19 | 20 条分层抽样逐条核对转人工前对话：17 条码与事实一致、2 条不一致、1 条无对话不进分母；other 里 26 条同一句「已承诺跟进」模板把 13% 的转人工记成无业务原因 | handoff-analysis-reports/2026-09-24.md; 4189; 4131; 4145 |
+| 2026-09-24 | weekly-handoff-analysis | interview_scheduling | 转人工精确率 | 0.8889 | 8 | 9 | 该阶段 9 条样本 8 条一致；唯一不一致是到店填表后离开被记成入职手续、实为面试结果追问 | handoff-analysis-reports/2026-09-24.md; 4131 |
