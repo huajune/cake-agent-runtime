@@ -44,14 +44,17 @@ export const TOOL_GUARDRAIL_CATALOG = [
     action: GUARDRAIL_ACTION.REJECT_HARD,
     coverage: GUARDRAIL_COVERAGE.CODE,
     priority: GUARDRAIL_PRIORITY.P1,
-    description: '查岗显式品牌归一化后须在本回合提及集合中；提及不等同意向，集合不可用时放行。',
-    riskGoal: '阻止提示词示例或模型编造的品牌进入实际查询及无岗话术。',
-    source: 'tools/job-list/brand-query.util.ts + tools/duliday-job-list.tool.ts',
-    exogenousSignal: '开轮业务上下文与本轮真实工具结果累计的 ledger.mentionedBrands',
+    description:
+      '查岗显式品牌归一化后须在本回合提及集合中；提及不等同意向，Agent 自产回复不算提及，集合不可用时放行。',
+    riskGoal: '阻止提示词示例或模型编造的品牌（含 Agent 历史回复里的编造）进入实际查询及无岗话术。',
+    source:
+      'agent/generator/preparation/turn-context-resolver.ts（collectMentionedBrands）+ tools/job-list/brand-query.util.ts + tools/duliday-job-list.tool.ts',
+    exogenousSignal:
+      '开轮业务上下文（候选人与真人经理消息、会话岗位池、工单、品牌状态、备注、视觉事实）与本轮真实工具结果累计的 ledger.mentionedBrands',
     residualRisk:
-      '来源加载失败、未知品牌 ID 按放行处理；历史助手文本中的既有幻觉也可能被视为提及。',
+      '来源加载失败、未知品牌 ID 按放行处理；Agent 依据已挤出会话岗位池（presentedJobs 仅留最近 10 条）或往轮工具结果（recall_history / 简历附件）说过的品牌，候选人不点名追问时会误拒，由错误回执引导清除品牌重查。',
     verification:
-      'tests/tools/job-list/brand-query.util.spec.ts + tests/tools/tool/duliday-job-list.tool.spec.ts',
+      'tests/agent/generator/preparation/turn-context-resolver.spec.ts + tests/tools/job-list/brand-query.util.spec.ts + tests/tools/tool/duliday-job-list.tool.spec.ts',
     owner: 'tools-runtime',
     status: 'active',
   },
