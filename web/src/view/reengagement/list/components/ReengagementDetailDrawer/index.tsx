@@ -124,6 +124,7 @@ const DETAIL_REASON_LABELS: Record<string, string> = {
   missing_interview_time: '工单没有面试时间（等通知岗），暂不安排提醒',
   missing_authoritative_work_order_id: '任务没有权威的海绵工单号，无法核验工单现状，已停止',
   interview_time_resolved: '等通知岗复核时工单已有面试时间，静默结束',
+  slot_check_skipped_stale: '等通知岗报名已超过 3 天宽限期（历史单），不再排复核',
   interview_slot_coordination: '等通知岗满 3 天仍无面试时间，请运营与门店协调面试时间',
   interview_slot_coordination_dispatched: '等通知岗满 3 天仍无面试时间，已给运营发协调任务提醒',
   interview_slot_coordination_already_dispatched: '等通知岗协调任务提醒此前已发过，不重复',
