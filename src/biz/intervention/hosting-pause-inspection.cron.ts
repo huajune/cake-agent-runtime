@@ -34,6 +34,7 @@ export interface PauseOverdueInspectionResult {
  * user_hosting_status 里 source=intervention 的永久暂停，超过 3 天未恢复的按会话提醒一次。
  *
  * 只读 UserHostingService 的暂停缓存（已按 permanent/未过期过滤，体量小），不扫全表。
+ * 只在生产运行（RUNTIME_ENV / NODE_ENV = production）：本地/测试环境连的是测试库，提醒会误发到运营飞书。
  */
 @Injectable()
 export class HostingPauseInspectionCron {
@@ -49,6 +50,10 @@ export class HostingPauseInspectionCron {
   @Cron('15 */2 * * *', { timeZone: 'Asia/Shanghai' })
   async inspect(): Promise<void> {
     if (this.isReadOnlyPreview()) return;
+    if (!this.isProduction()) {
+      this.logger.debug('永久暂停超期巡检只在生产运行，跳过');
+      return;
+    }
     const lockToken = await this.acquireLock();
     if (!lockToken) {
       this.logger.debug('跳过永久暂停超期巡检：其他副本正在执行');
@@ -127,14 +132,23 @@ export class HostingPauseInspectionCron {
     return this.configService?.get<string>('READ_ONLY_PREVIEW', 'false') === 'true';
   }
 
+  private isProduction(): boolean {
+    const runtimeEnv =
+      this.configService?.get<string>('RUNTIME_ENV') ||
+      this.configService?.get<string>('NODE_ENV') ||
+      'development';
+    return runtimeEnv === 'production';
+  }
+
+  /** 抢锁失败（含 Redis 异常）一律跳过本轮：多副本各自"回退照跑"会把同一条超期提醒发多遍。 */
   private async acquireLock(): Promise<string | null> {
     const token = `${process.pid}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
     try {
       const acquired = await this.redisService.setNx(LOCK_KEY, token, LOCK_TTL_SECONDS);
       return acquired ? token : null;
     } catch (error) {
-      this.logger.warn('获取永久暂停巡检锁失败，回退为当前副本执行', error);
-      return token;
+      this.logger.warn(`获取永久暂停巡检锁失败，本轮跳过: ${toErrorMessage(error)}`);
+      return null;
     }
   }
 

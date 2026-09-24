@@ -148,6 +148,40 @@ describe('JobDataAuditCronService.runOnce', () => {
     expect(alertNotifier.sendAlert.mock.calls[0][0].summary).toContain('扫描已截断');
   });
 
+  it('某页 fetchJobs 抛错不中断整轮：已拉到的页照常体检，truncated=true 且告警带「拉取被截断」', async () => {
+    const { service, spongeService, alertNotifier } = makeService(PROD_ENABLED);
+    const fullPage = Array.from({ length: 50 }, (_, i) =>
+      buildSpongeJobFixture(IDS.PIZZA_HUT_BPO_HOLIDAY_CONFLICT, (draft) => {
+        draft.basicInfo!.jobId = 800000 + i;
+      }),
+    );
+    spongeService.fetchJobs
+      .mockResolvedValueOnce(page(fullPage, 120))
+      .mockRejectedValueOnce(new Error('海绵 502'));
+
+    const result = await service.runOnce();
+
+    expect(spongeService.fetchJobs).toHaveBeenCalledTimes(2);
+    expect(result.scanned).toBe(50);
+    expect(result.truncated).toBe(true);
+    expect(result.fetchError).toBe('第 2 页拉取失败: 海绵 502');
+    expect(result.issues.length).toBeGreaterThan(0);
+    expect(result.alerted).toBe(true);
+    const context = alertNotifier.sendAlert.mock.calls[0][0];
+    expect(context.summary).toContain('拉取被截断（第 2 页拉取失败: 海绵 502）');
+    expect(context.diagnostics.payload.fetchError).toBe('第 2 页拉取失败: 海绵 502');
+  });
+
+  it('第一页就拉取失败：零问题也要告警说明拉取被截断，不能静默当「今天没问题」', async () => {
+    const { service, spongeService, alertNotifier } = makeService(PROD_ENABLED);
+    spongeService.fetchJobs.mockRejectedValueOnce(new Error('海绵 504'));
+
+    const result = await service.runOnce();
+
+    expect(result).toMatchObject({ scanned: 0, truncated: true, issues: [], alerted: true });
+    expect(alertNotifier.sendAlert.mock.calls[0][0].summary).toContain('拉取被截断');
+  });
+
   it('时间窗耗尽时不再发起下一页', async () => {
     const { service, spongeService } = makeService({
       ...PROD_ENABLED,

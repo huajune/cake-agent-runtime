@@ -41,10 +41,14 @@ export interface OobReconcileScanSummary {
   reconciled: number;
   scheduled: number;
   accountFailures: number;
+  /** 单轮硬时间窗到点，剩余行/账号未处理（下一轮从头再扫，锚点标记保证不重排）。 */
+  truncated: boolean;
 }
 
 const LOCK_KEY = 'oob:reconcile-scan:lock:v1';
-const LOCK_TTL_SECONDS = 30 * 60;
+const RUN_DEADLINE_MS = 20 * 60 * 1000;
+/** 锁 TTL 必须 ≥ 2 × 单轮硬时间窗：一轮跑满 + 释放失败也不会让下一副本提前进场重排。 */
+const LOCK_TTL_SECONDS = (2 * RUN_DEADLINE_MS) / 1000;
 const RELEASE_OWNED_LOCK_SCRIPT =
   "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) end return 0";
 const SIGNUP_LOOKBACK_MS = 15 * 24 * 60 * 60 * 1000;
@@ -54,7 +58,6 @@ const DEFAULT_MAX_ROWS_PER_RUN = 500;
 const FETCH_TIMEOUT_MS = 5_000;
 const FETCH_ATTEMPTS = 3;
 const RETRY_BASE_DELAY_MS = 1_000;
-const RUN_DEADLINE_MS = 20 * 60 * 1000;
 
 /**
  * 带外工单补偿扫描（每 6 小时）：候选人不再说话时没有回合可对账，按已配 token 的托管账号
@@ -123,6 +126,7 @@ export class OobReconcileScanCronService {
       reconciled: 0,
       scheduled: 0,
       accountFailures: 0,
+      truncated: false,
     };
     const maxRows = runtime.maxRowsPerRun ?? DEFAULT_MAX_ROWS_PER_RUN;
     const maxPages = runtime.maxPagesPerAccount ?? DEFAULT_MAX_PAGES_PER_ACCOUNT;
@@ -140,7 +144,11 @@ export class OobReconcileScanCronService {
     const seen = new Set<string>();
 
     for (const botImId of botImIds) {
-      if (summary.rows >= maxRows || Date.now() - startedAt > RUN_DEADLINE_MS) break;
+      if (summary.rows >= maxRows || summary.truncated) break;
+      if (this.isPastDeadline(startedAt)) {
+        summary.truncated = true;
+        break;
+      }
       let rows: { total: number; supplier: SignupWorkOrderItem[] };
       try {
         rows = await this.fetchSupplierRows(
@@ -156,6 +164,11 @@ export class OobReconcileScanCronService {
       }
       summary.rows += rows.total;
       for (const row of rows.supplier) {
+        // 硬时间窗按行检查：对账含海绵查询与排任务，账号级检查不够细，一个大账号能把整轮拖过锁 TTL。
+        if (this.isPastDeadline(startedAt)) {
+          summary.truncated = true;
+          break;
+        }
         summary.supplierRows += 1;
         const phone = typeof row.phone === 'string' ? row.phone.trim() : '';
         if (!isStorableCandidatePhone(phone)) {
@@ -199,8 +212,13 @@ export class OobReconcileScanCronService {
       }
     }
 
+    if (summary.truncated) {
+      this.logger.warn(
+        `[oob-scan] 单轮硬时间窗 ${RUN_DEADLINE_MS / 60000} 分钟到点，剩余行留待下一轮`,
+      );
+    }
     this.logger.log(
-      `[oob-scan] 完成: accounts=${summary.accounts} rows=${summary.rows} supplier=${summary.supplierRows} resolved=${summary.resolved} unresolved=${summary.unresolved} botMismatch=${summary.botMismatch} reconciled=${summary.reconciled} scheduled=${summary.scheduled} accountFailures=${summary.accountFailures}`,
+      `[oob-scan] 完成: accounts=${summary.accounts} rows=${summary.rows} supplier=${summary.supplierRows} resolved=${summary.resolved} unresolved=${summary.unresolved} botMismatch=${summary.botMismatch} reconciled=${summary.reconciled} scheduled=${summary.scheduled} accountFailures=${summary.accountFailures} truncated=${summary.truncated}`,
     );
     this.emit({ type: 'oob_reconcile_scan', ...summary, durationMs: Date.now() - startedAt });
     return summary;
@@ -237,6 +255,10 @@ export class OobReconcileScanCronService {
       if (rows.length < PAGE_SIZE || total >= page.total) break;
     }
     return { total, supplier };
+  }
+
+  private isPastDeadline(startedAt: number): boolean {
+    return Date.now() - startedAt > RUN_DEADLINE_MS;
   }
 
   /** 指数退避重试（1s、2s），最后一次失败向上抛给账号级计数。 */

@@ -16,6 +16,7 @@ import { OpsEventsRepository } from '../repositories/ops-events.repository';
  *   城市本就没群不是链路失败）；skipped:*（群聊、代报、非首次、城市未知、已邀请）不进分母。
  * 与周报 SKILL 里的 SQL 同一口径；低于阈值发飞书告警。这个指标曾从 66% 跌到 25% 两个月
  * 无人发现，直到运营在群里反馈。
+ * 只在生产运行（RUNTIME_ENV / NODE_ENV = production）：测试库样本会误触发低拉群率告警。
  */
 
 /** 城市本就没群：不是链路失败，剔出分母。 */
@@ -94,6 +95,10 @@ export class PostBookingInviteRateCronService {
   @Cron('30 9 * * 1', { timeZone: 'Asia/Shanghai' })
   async run(): Promise<void> {
     if (this.isReadOnlyPreview()) return;
+    if (!this.isProduction()) {
+      this.logger.debug('报名后拉群率巡检只在生产运行，跳过');
+      return;
+    }
     if (this.running) {
       this.logger.warn('上一轮报名后拉群率巡检尚未结束，跳过本次');
       return;
@@ -163,5 +168,13 @@ export class PostBookingInviteRateCronService {
 
   private isReadOnlyPreview(): boolean {
     return this.configService?.get<string>('READ_ONLY_PREVIEW', 'false') === 'true';
+  }
+
+  private isProduction(): boolean {
+    const runtimeEnv =
+      this.configService?.get<string>('RUNTIME_ENV') ||
+      this.configService?.get<string>('NODE_ENV') ||
+      'development';
+    return runtimeEnv === 'production';
   }
 }

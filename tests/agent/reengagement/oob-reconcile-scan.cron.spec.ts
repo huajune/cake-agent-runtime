@@ -82,16 +82,25 @@ describe('OobReconcileScanCronService', () => {
 
       redis.setNx.mockResolvedValue(true);
       await service().scan();
+      // 锁 TTL = 2 × 单轮硬时间窗（20 分钟）
       expect(redis.setNx).toHaveBeenCalledWith(
         'oob:reconcile-scan:lock:v1',
         expect.any(String),
-        30 * 60,
+        40 * 60,
       );
       expect(redis.eval).toHaveBeenCalledWith(
         expect.stringContaining("redis.call('del', KEYS[1])"),
         ['oob:reconcile-scan:lock:v1'],
         [expect.any(String)],
       );
+    });
+
+    it('system_config 读取抛错时按关闭处理：不抢锁、不调海绵', async () => {
+      systemConfig.getConfigValue.mockRejectedValue(new Error('supabase down'));
+      await service().scan();
+      expect(redis.setNx).not.toHaveBeenCalled();
+      expect(sponge.fetchSelfSignupWorkOrdersV2).not.toHaveBeenCalled();
+      expect(tracer.emit).not.toHaveBeenCalled();
     });
   });
 
@@ -208,6 +217,52 @@ describe('OobReconcileScanCronService', () => {
         sponge.fetchSelfSignupWorkOrdersV2.mock.calls.filter(([, ctx]) => ctx.botImId === 'bot-A'),
       ).toHaveLength(3);
       expect(summary).toMatchObject({ accountFailures: 1, accounts: 2 });
+    });
+
+    it('单轮硬时间窗 20 分钟到点：剩余行与账号不再处理，结果带 truncated', async () => {
+      const base = Date.parse('2026-09-22T02:00:00Z');
+      let clock = base;
+      jest.spyOn(Date, 'now').mockImplementation(() => clock);
+      hosting.listTokenConfiguredBotImIds.mockResolvedValue(['bot-A', 'bot-B']);
+      sponge.fetchSelfSignupWorkOrdersV2.mockResolvedValue({
+        total: 2,
+        workOrders: [supplierRow(), supplierRow({ workOrderId: 2, phone: '13800000002' })],
+      });
+      phoneIndex.lookupByPhone.mockImplementation(async (phone: string) => ({
+        corpId: 'corp-1',
+        userId: `user-${phone}`,
+        chatId: `chat-${phone}`,
+        botImId: 'bot-A',
+        phone,
+      }));
+      // 第一行对账耗时 21 分钟 → 第二行前检查已过时间窗
+      reconcile.reconcile.mockImplementation(async () => {
+        clock += 21 * 60 * 1000;
+        return { status: 'done', scheduled: 1, supplierOwned: 1, linkedEvents: 1 };
+      });
+
+      const summary = await service().runOnce({ enabled: true }, base);
+
+      expect(reconcile.reconcile).toHaveBeenCalledTimes(1);
+      expect(sponge.fetchSelfSignupWorkOrdersV2).toHaveBeenCalledTimes(1);
+      expect(
+        sponge.fetchSelfSignupWorkOrdersV2.mock.calls.filter(([, ctx]) => ctx.botImId === 'bot-B'),
+      ).toHaveLength(0);
+      expect(summary).toMatchObject({
+        status: 'done',
+        truncated: true,
+        supplierRows: 1,
+        resolved: 1,
+        reconciled: 1,
+      });
+      expect(tracer.emit).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'oob_reconcile_scan', truncated: true }),
+      );
+    });
+
+    it('未超时的一轮 truncated=false', async () => {
+      const summary = await service().runOnce();
+      expect(summary.truncated).toBe(false);
     });
 
     it('没有已配 token 的账号 → skipped，不打海绵', async () => {

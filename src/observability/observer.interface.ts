@@ -105,6 +105,7 @@ export type AgentEvent = AgentEventContext &
         accountFailures?: number;
         durationMs?: number;
       }
+        truncated?: boolean;
     | {
         type: 'turn_data_sources';
         userId?: string;

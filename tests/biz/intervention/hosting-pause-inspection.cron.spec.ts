@@ -104,3 +104,57 @@ describe('HostingPauseInspectionCron.runOnce', () => {
     expect(notifier.notifyPauseOverdue).toHaveBeenCalledTimes(30);
   });
 });
+
+describe('HostingPauseInspectionCron.inspect 护栏', () => {
+  const userHostingService = { getPausedUsersWithProfiles: jest.fn().mockResolvedValue([]) };
+  const redisService = { setNx: jest.fn(), del: jest.fn(), eval: jest.fn().mockResolvedValue(1) };
+  const notifier = { notifyPauseOverdue: jest.fn() };
+  const makeCron = (configMap: Record<string, string | undefined>) =>
+    new HostingPauseInspectionCron(
+      userHostingService as never,
+      redisService as never,
+      notifier as never,
+      { get: (key: string, fallback?: string) => configMap[key] ?? fallback } as never,
+    );
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    redisService.setNx.mockResolvedValue(true);
+  });
+
+  it('非生产环境不运行（不抢锁、不读暂停列表）', async () => {
+    await makeCron({ NODE_ENV: 'development' }).inspect();
+    expect(redisService.setNx).not.toHaveBeenCalled();
+    expect(userHostingService.getPausedUsersWithProfiles).not.toHaveBeenCalled();
+  });
+
+  it('RUNTIME_ENV=production 优先于 NODE_ENV', async () => {
+    await makeCron({ RUNTIME_ENV: 'production', NODE_ENV: 'development' }).inspect();
+    expect(redisService.setNx).toHaveBeenCalledWith(
+      'intervention:pause_overdue:cron_lock',
+      expect.any(String),
+      10 * 60,
+    );
+    expect(userHostingService.getPausedUsersWithProfiles).toHaveBeenCalledTimes(1);
+    expect(redisService.eval).toHaveBeenCalledTimes(1);
+  });
+
+  it('READ_ONLY_PREVIEW 跳过', async () => {
+    await makeCron({ NODE_ENV: 'production', READ_ONLY_PREVIEW: 'true' }).inspect();
+    expect(redisService.setNx).not.toHaveBeenCalled();
+  });
+
+  it('锁被占用时跳过本轮', async () => {
+    redisService.setNx.mockResolvedValueOnce(false);
+    await makeCron({ NODE_ENV: 'production' }).inspect();
+    expect(userHostingService.getPausedUsersWithProfiles).not.toHaveBeenCalled();
+    expect(redisService.eval).not.toHaveBeenCalled();
+  });
+
+  it('抢锁抛错（Redis 异常）也跳过本轮，不再回退照跑', async () => {
+    redisService.setNx.mockRejectedValueOnce(new Error('redis down'));
+    await makeCron({ NODE_ENV: 'production' }).inspect();
+    expect(userHostingService.getPausedUsersWithProfiles).not.toHaveBeenCalled();
+    expect(redisService.eval).not.toHaveBeenCalled();
+  });
+});

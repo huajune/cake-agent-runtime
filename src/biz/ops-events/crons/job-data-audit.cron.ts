@@ -50,8 +50,10 @@ export interface JobDataAuditRunResult {
   scanned: number;
   /** 海绵报告的在招岗位总数。 */
   total: number;
-  /** 分页上限或时间窗触顶，只扫了一部分。 */
+  /** 分页上限、时间窗触顶或某页拉取失败，只扫了一部分。 */
   truncated: boolean;
+  /** 某页 fetchJobs 抛错时的说明（页码 + 错误），整轮不中断，只体检已拉到的页。 */
+  fetchError?: string;
   issues: JobDataIssue[];
   byKind: Record<JobDataIssueKind, number>;
   alerted: boolean;
@@ -124,7 +126,7 @@ export class JobDataAuditCronService {
   /** 执行一次体检（不含开关/锁护栏，便于测试与手动触发）。 */
   async runOnce(): Promise<JobDataAuditRunResult> {
     const reportDate = formatLocalDate(getLocalDayStart());
-    const { jobs, total, truncated } = await this.fetchSignableJobs();
+    const { jobs, total, truncated, fetchError } = await this.fetchSignableJobs();
     const issues = auditJobDataBatch(jobs);
     const byKind = countJobDataIssuesByKind(issues);
     const result: JobDataAuditRunResult = {
@@ -132,27 +134,34 @@ export class JobDataAuditCronService {
       scanned: jobs.length,
       total,
       truncated,
+      ...(fetchError ? { fetchError } : {}),
       issues,
       byKind,
       alerted: false,
     };
+    const truncatedNote = fetchError
+      ? `，拉取被截断（${fetchError}）`
+      : truncated
+        ? '，扫描已截断'
+        : '';
 
     const byKindText = (Object.keys(byKind) as JobDataIssueKind[])
       .filter((kind) => byKind[kind] > 0)
       .map((kind) => `${JOB_DATA_ISSUE_LABELS[kind]} ${byKind[kind]}`)
       .join('，');
     this.logger.log(
-      `岗位数据体检 ${reportDate}: 扫描 ${jobs.length}/${total} 岗${truncated ? '（已截断）' : ''}，` +
+      `岗位数据体检 ${reportDate}: 扫描 ${jobs.length}/${total} 岗${truncatedNote}，` +
         `问题 ${issues.length} 处${byKindText ? `（${byKindText}）` : ''}`,
     );
-    if (issues.length === 0) return result;
+    // 没问题且拉取完整才静默；某页拉取失败也要出告警，否则「今天没问题」可能只是没拉到。
+    if (issues.length === 0 && !fetchError) return result;
 
     result.alerted = await this.alertNotifier.sendAlert({
       code: 'ops.job_data_audit',
       severity: AlertLevel.WARNING,
       summary:
         `岗位数据体检：${jobs.length} 个在招岗位发现 ${issues.length} 处录入问题` +
-        `（${byKindText}）${truncated ? '，扫描已截断' : ''}`,
+        `${byKindText ? `（${byKindText}）` : ''}${truncatedNote}`,
       source: {
         subsystem: 'ops-events',
         component: 'job-data-audit',
@@ -166,6 +175,7 @@ export class JobDataAuditCronService {
           scanned: jobs.length,
           total,
           truncated,
+          ...(fetchError ? { fetchError } : {}),
           byKind,
           report: formatJobDataAuditReport(issues, REPORT_MAX_LINES),
         },
@@ -179,23 +189,34 @@ export class JobDataAuditCronService {
     jobs: JobDetail[];
     total: number;
     truncated: boolean;
+    fetchError?: string;
   }> {
     const startedAt = Date.now();
     const jobs: JobDetail[] = [];
     const seen = new Set<number>();
     let total = Number.POSITIVE_INFINITY;
     let truncated = false;
+    let fetchError: string | undefined;
 
     for (let pageNum = 1; pageNum <= this.maxPages && jobs.length < total; pageNum++) {
       if (Date.now() - startedAt >= this.timeBudgetMs) {
         truncated = true;
         break;
       }
-      const page = await this.spongeService.fetchJobs({
-        pageNum,
-        pageSize: PAGE_SIZE,
-        options: ALL_SECTIONS,
-      });
+      let page: Awaited<ReturnType<SpongeService['fetchJobs']>>;
+      try {
+        page = await this.spongeService.fetchJobs({
+          pageNum,
+          pageSize: PAGE_SIZE,
+          options: ALL_SECTIONS,
+        });
+      } catch (error) {
+        // 某页失败不中断整轮：已拉到的页照常体检，结果标记截断并在告警里说明，不重试、不回退更重的查询。
+        fetchError = `第 ${pageNum} 页拉取失败: ${toErrorMessage(error)}`;
+        truncated = true;
+        this.logger.warn(`岗位数据体检${fetchError}，已拉 ${jobs.length} 岗继续体检`);
+        break;
+      }
       total = page.total;
       for (const job of page.jobs) {
         const jobId = job.basicInfo?.jobId;
@@ -208,7 +229,12 @@ export class JobDataAuditCronService {
       if (page.jobs.length < PAGE_SIZE) break;
       if (pageNum === this.maxPages && jobs.length < total) truncated = true;
     }
-    return { jobs, total: Number.isFinite(total) ? total : jobs.length, truncated };
+    return {
+      jobs,
+      total: Number.isFinite(total) ? total : jobs.length,
+      truncated,
+      ...(fetchError ? { fetchError } : {}),
+    };
   }
 
   private isReadOnlyPreview(): boolean {

@@ -97,3 +97,35 @@ describe('PostBookingInviteRateCronService.check', () => {
     expect(alertNotifier.sendAlert).not.toHaveBeenCalled();
   });
 });
+
+describe('PostBookingInviteRateCronService.run 护栏', () => {
+  const repository = { findBookingGroupInviteOutcomes: jest.fn().mockResolvedValue([]) };
+  const alertNotifier = { sendAlert: jest.fn().mockResolvedValue(true) };
+  const makeService = (configMap: Record<string, string | undefined>) =>
+    new PostBookingInviteRateCronService(
+      repository as never,
+      alertNotifier as never,
+      { get: (key: string, fallback?: string) => configMap[key] ?? fallback } as never,
+    );
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+    jest.spyOn(Logger.prototype, 'debug').mockImplementation(() => undefined);
+  });
+
+  it('非生产环境不运行', async () => {
+    await makeService({ NODE_ENV: 'development' }).run();
+    expect(repository.findBookingGroupInviteOutcomes).not.toHaveBeenCalled();
+  });
+
+  it('RUNTIME_ENV=production 优先于 NODE_ENV', async () => {
+    await makeService({ RUNTIME_ENV: 'production', NODE_ENV: 'development' }).run();
+    expect(repository.findBookingGroupInviteOutcomes).toHaveBeenCalledTimes(1);
+  });
+
+  it('READ_ONLY_PREVIEW 跳过', async () => {
+    await makeService({ NODE_ENV: 'production', READ_ONLY_PREVIEW: 'true' }).run();
+    expect(repository.findBookingGroupInviteOutcomes).not.toHaveBeenCalled();
+  });
+});
