@@ -61,6 +61,23 @@ describe('detectBookingReceiptMismatch — 形态 E：已建单但未告知日�
       detectBookingReceiptMismatch('已经帮你报上名啦，面试官会电话联系你', successBooking()),
     ).toBeNull();
   });
+
+  it('生产 wait_notice 旧回执带说明文字时，不把电话通知误判为漏报具体日期', () => {
+    expect(
+      detectBookingReceiptMismatch('报名成功啦，面试官会电话联系你确认面试时间，保持电话畅通哈', [
+        {
+          toolName: 'duliday_interview_booking',
+          status: 'ok',
+          result: {
+            success: true,
+            workOrderId: 468104,
+            requestInfo: { interviewTime: null },
+            _confirmedInterviewTimeHuman: '未指定面试时间：面试官会直接电话联系候选人确认',
+          },
+        } as never,
+      ]),
+    ).toBeNull();
+  });
 });
 
 /**
@@ -222,7 +239,8 @@ describe('detectBookingReceiptMismatch — 形态 G：already_booked 查重不�
     const found = detectBookingReceiptMismatch(reply, alreadyBooked());
     expect(found?.ruleId).toBe('booking_receipt_mismatch');
     expect(found?.action).toBe('repair');
-    expect(found?.label).toContain('工单 464336');
+    expect(found?.label).toContain('预约已经存在');
+    expect(JSON.stringify(found)).not.toContain('464336');
     expect(found?.feedbackToGenerator).toContain('已经约上');
     expect(found?.feedbackToGenerator).toContain('不得承诺稍后再提交');
   });
@@ -289,7 +307,8 @@ describe('detectBookingReceiptMismatch — 形态 G：already_booked 查重不�
       }),
     );
     expect(found?.ruleId).toBe('booking_receipt_mismatch');
-    expect(found?.label).toContain('工单 467600');
+    expect(found?.label).toContain('预约已经存在');
+    expect(JSON.stringify(found)).not.toContain('467600');
   });
 });
 
