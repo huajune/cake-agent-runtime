@@ -1,152 +1,73 @@
 {
-  "baseVersion": "11.12.1",
+  "baseVersion": "11.12.2",
   "nextVersion": "11.12.2",
   "updatedAt": "2026-09-24",
   "sourceBranch": "develop",
-  "entries": [
-    {
-      "number": "1359",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1359",
-      "title": "删除永久暂停超期巡检提醒；发版通知改为运营版说明",
-      "author": "huajune",
-      "mergedAt": "2026-09-24",
-      "opsNotes": [
-        "**人工介入「永久暂停超期未恢复」提醒** ✅ 已下线",
-        "- 今天中午一次发出的 30 条「⏳ 人工介入暂停超期未恢复」飞书卡片，是新上线的巡检误发；该提醒已整体取消，以后不会再收到",
-        "- 已在生产临时静音，本版发布后彻底删除",
-        "**发版通知改成运营版** ✅ 已上线",
-        "- 以后每次发版的飞书卡片按「需求 / 功能」分组，每组一行标题带 ✅ 已上线 或 ⏳ 部分上线，下面几条大白话说明，不再出现技术术语堆砌",
-        "- 技术明细仍在 CHANGELOG，运营不用看"
-      ],
-      "businessUpdates": [
-        "飞书发版卡片优先渲染各 PR 的「运营说明」（按需求/功能分组、带 ✅/⏳ 状态），不再受 10 条上限限制",
-        "删除 v11.12.0（#1338 C7）新增的永久暂停 >3 天未恢复巡检 cron 及通知/卡片/类型/单测；生产已用 Redis 锁键静音",
-        "PR 正文新增 `## 运营说明` 段：逐行原样进 `.release/pending-release.json`、CHANGELOG「### 运营说明」、release PR 正文与飞书发版卡片，不限条数、不改写；作者没写时由 Claude（workflow 提示词）/ OpenAI 兼容分支生成同格式 `opsNotes`；仍为空则卡片回落技术摘要并明示缺失",
-        "删除永久暂停超期巡检提醒（运营裁定不需要），停止每 2 小时向运营群发「暂停超期未恢复」卡片"
-      ],
-      "summary": [
-        "删除永久暂停超期巡检提醒（运营裁定不需要）",
-        "发版通知改为运营版说明——PR 正文「运营说明」段原样进 CHANGELOG 与飞书卡片",
-        "登记 B5/C8 生产直写与 C7 巡检下线",
-        "删除 v11.12.0（#1338 C7）新增的永久暂停 >3 天未恢复巡检 cron 及通知/卡片/类型/单测；生产已用 Redis 锁键静音",
-        "PR 正文新增 `## 运营说明` 段：逐行原样进 `.release/pending-release.json`、CHANGELOG「### 运营说明」、release PR 正文与飞书发版卡片，不限条数、不改写；作者没写时由 Claude（workflow 提示词）/ OpenAI 兼容分支生成同格式 `opsNotes`；仍为空则卡片回落技术摘要并明示缺失",
-        "PR 模板首段加「运营说明」写法说明；CLAUDE.md 与 ship-release 通知闸口同步",
-        "删除永久暂停超期巡检提醒；发版通知改为运营版说明"
-      ],
-      "features": [
-        "飞书发版卡片优先渲染各 PR 的「运营说明」（按需求/功能分组、带 ✅/⏳ 状态），不再受 10 条上限限制",
-        "删除 v11.12.0（#1338 C7）新增的永久暂停 >3 天未恢复巡检 cron 及通知/卡片/类型/单测；生产已用 Redis 锁键静音",
-        "PR 正文新增 `## 运营说明` 段：逐行原样进 `.release/pending-release.json`、CHANGELOG「### 运营说明」、release PR 正文与飞书发版卡片，不限条数、不改写；作者没写时由 Claude（workflow 提示词）/ OpenAI 兼容分支生成同格式 `opsNotes`；仍为空则卡片回落技术摘要并明示缺失"
-      ],
-      "fixes": [
-        "删除永久暂停超期巡检提醒（运营裁定不需要），停止每 2 小时向运营群发「暂停超期未恢复」卡片"
-      ],
-      "optimizations": [
-        "`update-version-changelog` 新增 `opsNotes` 捕获/渲染与 `sanitizeOpsNoteLines`；`build-release-pr-body` 新增 `## 运营说明` 段；`send-deploy-notification` 新增 `readStructuredOpsNotes` / `extractOpsNotesSection`"
-      ],
-      "ops": [
-        "`version-changelog.yml` Claude 提示词新增 `opsNotes` 生成规则（PR 正文已有则逐行照抄）",
-        "生产 Redis `production:intervention:pause_overdue:cron_lock` 已置 30 天静音锁，本版上线后随 cron 删除自然失效",
-        "PR 模板首段加「运营说明」写法说明；CLAUDE.md 与 ship-release 通知闸口同步",
-        "删除永久暂停超期巡检提醒（运营裁定不需要）",
-        "发版通知改为运营版说明——PR 正文「运营说明」段原样进 CHANGELOG 与飞书卡片",
-        "登记 B5/C8 生产直写与 C7 巡检下线"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "`pnpm run typecheck` / `pnpm run lint:check` 通过",
-        "`tests/scripts`（9 套 69 例，含新增 10 例）、`tests/notification/renderers`、`tests/biz/intervention` 通过",
-        "夹具驱动 dry-run：release PR 正文与飞书卡片均按「运营说明」原样渲染",
-        "未新增对开放自然语言直接 reject/覆盖/判缺的正则分支"
-      ],
-      "level": "patch"
-    },
-    {
-      "number": "1362",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/1362",
-      "title": "执行器正常路径带回 stopWhen/prepareStep，修复调完首个工具即结束的多步循环",
-      "author": "huajune",
-      "mergedAt": "2026-09-24",
-      "opsNotes": [
-        "**Agent 查岗断链修复** ✅ 已修复",
-        "- 昨天中午（9/24 11:33）发版起，蛋糕帮候选人定位完地址后不再继续查岗位，只回一句「我这就帮你查下，稍等哈」就没下文，甚至凭空编出门店和时薪；本次已修复",
-        "- 同一回合内的多步操作（定位 → 查岗 → 回复）恢复正常，候选人问岗位会得到真实的岗位列表",
-        "- 报名成功后的重复报名拦截、跳过回复与正常回复的互斥也一并恢复（同一故障导致）"
-      ],
-      "businessUpdates": [
-        "`LlmExecutorService.buildAttemptParams` 把 `prepareStep` / `stopWhen` 解构出来后只在续接重试分支（`resumed.steps.length > 0`）装回，正常路径直接返回 `withStepCapture`，两者都丢了。AI SDK v7 `generateText` 缺 `stopWhen` 时默认 `stepCountIs(1)`，模型调完第一个工具循环即结束、没有文本步，Generator 落到 `recoverEmptyTextResult` 无工具恢复，产出空头承诺或编岗。`prepareStep` 丢失同时使同名工具限次、`skip_reply` 互斥、副作用工具成功后屏蔽在正常路径全部失效",
-        "修复：非续接路径仅当调用方传了 `prepareStep` / `stopWhen` 时原样带回（不用 undefined 覆盖 SDK 默认）；续接分支已有的包装逻辑不变",
-        "生产证据（`message_processing_records`，2026-09-24 北京时间，v11.12.0 tag 11:33 之后 212 回合）：带工具步回合有后续文本步 131/155 → 3/140；平均真实步数 1.77 → 1.02；`empty-text-recovery` 1 → 120；geocode 后同回合接 `duliday_job_list` 54 → 0。样本 id 428888 / 428254 / 428280 / 428807",
-        "修复 v11.12.0 引入的 LLM 执行器回归：首次尝试（非续接）路径丢失了调用方的 `stopWhen` 与 `prepareStep`，AI SDK 退化为单步循环，模型调完首个工具即结束",
-        "补充首次尝试路径的回归测试，修复前必失败",
-        "执行器正常路径带回 stopWhen/prepareStep，修复调完首个工具即结束的多步循环"
-      ],
-      "summary": [
-        "执行器正常路径带回 stopWhen/prepareStep，修复调完首个工具即结束的多步循环",
-        "修复 v11.12.0 引入的 LLM 执行器回归：首次尝试（非续接）路径丢失了调用方的 `stopWhen` 与 `prepareStep`，AI SDK 退化为单步循环，模型调完首个工具即结束",
-        "补充首次尝试路径的回归测试，修复前必失败"
-      ],
-      "features": [],
-      "fixes": [
-        "`LlmExecutorService.buildAttemptParams` 把 `prepareStep` / `stopWhen` 解构出来后只在续接重试分支（`resumed.steps.length > 0`）装回，正常路径直接返回 `withStepCapture`，两者都丢了。AI SDK v7 `generateText` 缺 `stopWhen` 时默认 `stepCountIs(1)`，模型调完第一个工具循环即结束、没有文本步，Generator 落到 `recoverEmptyTextResult` 无工具恢复，产出空头承诺或编岗。`prepareStep` 丢失同时使同名工具限次、`skip_reply` 互斥、副作用工具成功后屏蔽在正常路径全部失效",
-        "修复：非续接路径仅当调用方传了 `prepareStep` / `stopWhen` 时原样带回（不用 undefined 覆盖 SDK 默认）；续接分支已有的包装逻辑不变",
-        "生产证据（`message_processing_records`，2026-09-24 北京时间，v11.12.0 tag 11:33 之后 212 回合）：带工具步回合有后续文本步 131/155 → 3/140；平均真实步数 1.77 → 1.02；`empty-text-recovery` 1 → 120；geocode 后同回合接 `duliday_job_list` 54 → 0。样本 id 428888 / 428254 / 428280 / 428807",
-        "修复 v11.12.0 引入的 LLM 执行器回归：首次尝试（非续接）路径丢失了调用方的 `stopWhen` 与 `prepareStep`，AI SDK 退化为单步循环，模型调完首个工具即结束",
-        "补充首次尝试路径的回归测试，修复前必失败",
-        "执行器正常路径带回 stopWhen/prepareStep，修复调完首个工具即结束的多步循环"
-      ],
-      "optimizations": [],
-      "ops": [],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "`pnpm run ci:check`（本地分步跑：`typecheck` / `lint:check` 通过；`tests/llm/llm-executor.service.spec.ts` 35/35；`tests/agent/generator` + `tests/agent/runner` 452/452）",
-        "关键链路已人工验证：新增回归测试「首次尝试（无续接）原样透传调用方的 stopWhen 与 prepareStep」在修复前失败（`prepareStep` 为 undefined）、修复后通过",
-        "未新增对开放自然语言直接 reject/覆盖/判缺的正则分支",
-        "未新增虚构 prompt 示例值",
-        "其他说明：部署后用生产库复核最近 30 分钟带工具步回合的后续文本步比例（预期回到 80% 以上）与 `empty-text-recovery` 计数（预期回到个位数）"
-      ],
-      "level": "patch"
-    }
-  ],
+  "entries": [],
   "lastRelease": {
-    "version": "11.12.1",
+    "version": "11.12.2",
     "date": "2026-09-24",
     "sourceBranch": "develop",
     "entries": [
       {
-        "number": "1350",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/1350",
-        "title": "不合作品牌直说、编造品牌不进重查、排班约束须有原话依据（运营 0924 case 复核）",
+        "number": "1359",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/1359",
+        "title": "删除永久暂停超期巡检提醒；发版通知改为运营版说明",
         "author": "huajune",
         "mergedAt": "2026-09-24",
+        "opsNotes": [
+          "**人工介入「永久暂停超期未恢复」提醒** ✅ 已下线",
+          "- 今天中午一次发出的 30 条「⏳ 人工介入暂停超期未恢复」飞书卡片，是新上线的巡检误发；该提醒已整体取消，以后不会再收到",
+          "- 已在生产临时静音，本版发布后彻底删除",
+          "**发版通知改成运营版** ✅ 已上线",
+          "- 以后每次发版的飞书卡片按「需求 / 功能」分组，每组一行标题带 ✅ 已上线 或 ⏳ 部分上线，下面几条大白话说明，不再出现技术术语堆砌",
+          "- 技术明细仍在 CHANGELOG，运营不用看"
+        ],
         "businessUpdates": [
-          "候选人问到我们没有合作的品牌时，Agent 如实告知「没有和这个品牌合作」并顺势问候选人接不接受其他品牌，不再回复听起来像暂时缺岗、让候选人一直空等的话术",
-          "杜绝 Agent 编造品牌门店后拿编造内容去重新查询、再对候选人念一遍「该品牌暂无岗位」；城市、品牌、门店必须能在候选人本人原话中找到依据，找不到就直接问候选人想应聘哪家，问不出来转人工",
-          "候选人在报名资料里填写「周末两天都在接受门店排班」不再被误判成「只能做周末」，避免把附近所有排班正常的岗位错误剔除、误告知候选人「排班对不上」"
+          "飞书发版卡片优先渲染各 PR 的「运营说明」（按需求/功能分组、带 ✅/⏳ 状态），不再受 10 条上限限制",
+          "删除 v11.12.0（#1338 C7）新增的永久暂停 >3 天未恢复巡检 cron 及通知/卡片/类型/单测；生产已用 Redis 锁键静音",
+          "PR 正文新增 `## 运营说明` 段：逐行原样进 `.release/pending-release.json`、CHANGELOG「### 运营说明」、release PR 正文与飞书发版卡片，不限条数、不改写；作者没写时由 Claude（workflow 提示词）/ OpenAI 兼容分支生成同格式 `opsNotes`；仍为空则卡片回落技术摘要并明示缺失",
+          "删除永久暂停超期巡检提醒（运营裁定不需要），停止每 2 小时向运营群发「暂停超期未恢复」卡片"
         ],
         "summary": [
-          "修复三处运营周度 case 复核中确认的候选人体验问题：不合作品牌的答复口径、编造品牌避免二次误查、排班可用性描述误判为排他性约束"
+          "删除永久暂停超期巡检提醒（运营裁定不需要）",
+          "发版通知改为运营版说明——PR 正文「运营说明」段原样进 CHANGELOG 与飞书卡片",
+          "登记 B5/C8 生产直写与 C7 巡检下线",
+          "删除 v11.12.0（#1338 C7）新增的永久暂停 >3 天未恢复巡检 cron 及通知/卡片/类型/单测；生产已用 Redis 锁键静音",
+          "PR 正文新增 `## 运营说明` 段：逐行原样进 `.release/pending-release.json`、CHANGELOG「### 运营说明」、release PR 正文与飞书发版卡片，不限条数、不改写；作者没写时由 Claude（workflow 提示词）/ OpenAI 兼容分支生成同格式 `opsNotes`；仍为空则卡片回落技术摘要并明示缺失",
+          "PR 模板首段加「运营说明」写法说明；CLAUDE.md 与 ship-release 通知闸口同步",
+          "删除永久暂停超期巡检提醒；发版通知改为运营版说明"
         ],
-        "features": [],
+        "features": [
+          "飞书发版卡片优先渲染各 PR 的「运营说明」（按需求/功能分组、带 ✅/⏳ 状态），不再受 10 条上限限制",
+          "删除 v11.12.0（#1338 C7）新增的永久暂停 >3 天未恢复巡检 cron 及通知/卡片/类型/单测；生产已用 Redis 锁键静音",
+          "PR 正文新增 `## 运营说明` 段：逐行原样进 `.release/pending-release.json`、CHANGELOG「### 运营说明」、release PR 正文与飞书发版卡片，不限条数、不改写；作者没写时由 Claude（workflow 提示词）/ OpenAI 兼容分支生成同格式 `opsNotes`；仍为空则卡片回落技术摘要并明示缺失"
+        ],
         "fixes": [
-          "品牌不在合作目录且全部因未匹配被拒时，切换为如实告知未合作并追问候选人是否接受其他品牌的话术，而非沿用「暂时没找到合适岗位」的缺岗话术",
-          "无出处的岗位编号回执不再引导 Agent 用编造的城市、品牌、门店信息重新查询，改为要求这些信息必须能在候选人原话中逐字找到出处",
-          "新增排班约束出处校验：候选人原话中找不到依据的「只能做周末／只做早班／只做晚班」类排他性限制不再生效，也不允许据此说排班不匹配"
+          "删除永久暂停超期巡检提醒（运营裁定不需要），停止每 2 小时向运营群发「暂停超期未恢复」卡片"
         ],
         "optimizations": [
-          "排班出处语料改为按需惰性提取并缓存，避免每次查岗都扫描一遍会话历史"
+          "`update-version-changelog` 新增 `opsNotes` 捕获/渲染与 `sanitizeOpsNoteLines`；`build-release-pr-body` 新增 `## 运营说明` 段；`send-deploy-notification` 新增 `readStructuredOpsNotes` / `extractOpsNotesSection`"
         ],
-        "ops": [],
+        "ops": [
+          "`version-changelog.yml` Claude 提示词新增 `opsNotes` 生成规则（PR 正文已有则逐行照抄）",
+          "生产 Redis `production:intervention:pause_overdue:cron_lock` 已置 30 天静音锁，本版上线后随 cron 删除自然失效",
+          "PR 模板首段加「运营说明」写法说明；CLAUDE.md 与 ship-release 通知闸口同步",
+          "删除永久暂停超期巡检提醒（运营裁定不需要）",
+          "发版通知改为运营版说明——PR 正文「运营说明」段原样进 CHANGELOG 与飞书卡片",
+          "登记 B5/C8 生产直写与 C7 巡检下线"
+        ],
         "config": [],
         "envFiles": [],
         "verification": [
-          "全量测试套件通过验证"
+          "`pnpm run typecheck` / `pnpm run lint:check` 通过",
+          "`tests/scripts`（9 套 69 例，含新增 10 例）、`tests/notification/renderers`、`tests/biz/intervention` 通过",
+          "夹具驱动 dry-run：release PR 正文与飞书卡片均按「运营说明」原样渲染",
+          "未新增对开放自然语言直接 reject/覆盖/判缺的正则分支"
         ],
         "level": "patch"
       }
     ]
   },
-  "lastAnalyzedSha": "54e14eedefb8a1d9ee1cdd099c6b9c17c5ebcec9"
+  "lastAnalyzedSha": "a4a9c53a546e2de35795ae258fbe9e72dba1099e"
 }
