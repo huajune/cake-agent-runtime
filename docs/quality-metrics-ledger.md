@@ -55,3 +55,5 @@
 | 2026-09-22 | weekly-judge-calibration | -                | 判官精确率 | 1.0000 | 7         | 7           | J2 test-suite Claude 评审：本期仅 7 条且全判 passed，逐条核工具返回后全部一致；无 failed/skipped 样本                        | logs/analysis/judge-calibration-2026-09-22.md#C2 |
 | 2026-09-22 | weekly-judge-calibration | -                | 判官精确率 | 0.7778 | 14        | 18          | J4 入站词表生产命中 14 天：18 条 14 真阳，假阳为条件句、自嘲与候选人给我方答复；< 80% 建议给词表加护栏，残障自述召回缺口 1 条（结巴） | logs/analysis/judge-calibration-2026-09-22.md#C4 |
 | 2026-09-22 | weekly-judge-calibration | -                | 判官精确率 | 0.8148 | 44        | 54          | J4 入站词表离线回放 14 天：27146 条消息 54 条会命中（图片描述 3 条单列不进分母）、44 真阳；假阳集中在结果类陈述句               | logs/analysis/judge-calibration-2026-09-22.md#C4 |
+| 2026-09-24 | weekly-handoff-analysis | - | 转人工精确率 | 0.8947 | 17 | 19 | 20 条分层抽样逐条核对转人工前对话：17 条码与事实一致、2 条不一致、1 条无对话不进分母；other 里 26 条同一句「已承诺跟进」模板把 13% 的转人工记成无业务原因 | handoff-analysis-reports/2026-09-24.md; 4189; 4131; 4145 |
+| 2026-09-24 | weekly-handoff-analysis | interview_scheduling | 转人工精确率 | 0.8889 | 8 | 9 | 该阶段 9 条样本 8 条一致；唯一不一致是到店填表后离开被记成入职手续、实为面试结果追问 | handoff-analysis-reports/2026-09-24.md; 4131 |

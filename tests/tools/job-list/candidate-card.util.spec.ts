@@ -84,6 +84,15 @@ describe('renderCandidateCard', () => {
     expect(card.oneLine).toContain('每周 4 天');
   });
 
+  it('renders 做一休一 as a rotation instead of 每周 1 天', () => {
+    const job = makeJob({
+      workTime: { weekAndMonthWorkTime: { perWeekWorkDays: 1, perWeekRestDays: 1 } },
+    });
+    const card = renderCandidateCard(job, 0)!;
+    expect(card.oneLine).not.toContain('每周 1 天');
+    expect(card.oneLine).toContain('做1休1轮换（平均每周约 3 天，工作日也要排班）');
+  });
+
   it('includes salary range without 综合薪资 prefix when laborForm is absent', () => {
     const card = renderCandidateCard(makeJob(), 0)!;
     expect(card.oneLine).toContain('薪资：24-29元/时');

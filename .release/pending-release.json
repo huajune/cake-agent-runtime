@@ -77,6 +77,112 @@
         "发版后观测：① `message_processing_records.tool_calls` 中 `duliday_job_list` 的 `errorType=job_list.brand_no_provenance` 次数预期小幅上升，逐条核对被拦品牌是否确为候选人未提过的品牌；② 开场轮（候选人只发加好友系统语）的 prompt 里不应再出现 `# 本轮动态硬禁令` 的面试后条目与「客户详情接口补充性别」线索"
       ],
       "level": "patch"
+    },
+    {
+      "number": "1337",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1337",
+      "title": "多步循环中途失败重试续接已完成工具步，不再重放 booking 副作用",
+      "author": "huajune",
+      "mergedAt": "2026-09-24",
+      "businessUpdates": [
+        "**LLM 执行器重试不再重放已提交的副作用**：多步循环中途失败（provider 超时/5xx、结果校验不过）时，把上次尝试已完成、以工具结果收尾的步骤作为对话前缀续接下一次尝试，只让模型接着往下走；同模型重试与降级都续接，换模型时剥离 reasoning 段，结果校验不过时只丢掉坏的末步文本。`prepareStep` / `stopWhen` 看到的 steps 同样带前缀，副作用工具「成功一次即屏蔽」、同名工具限次、总步数上限跨尝试生效。",
+        "**booking 工具对本轮已提交的表单幂等**：表单已 `submitted` 且本轮账本 `bookingSucceeded=true` 时，返回 `booking.already_booked` 回执（`alreadyBookedSource=same_turn_submitted_form`，带工单号与面试时间），沿用 0911「already_booked ≠ 失败」裁定：守卫形态 G 放行如实播报、`invite_to_group` 不再跳过。查重路径与之共用 `buildAlreadyBookedReceipt`。"
+      ],
+      "summary": [
+        "多步循环中途失败重试续接已完成工具步，不再重放 booking 副作用"
+      ],
+      "features": [],
+      "fixes": [
+        "**LLM 执行器重试不再重放已提交的副作用**：多步循环中途失败（provider 超时/5xx、结果校验不过）时，把上次尝试已完成、以工具结果收尾的步骤作为对话前缀续接下一次尝试，只让模型接着往下走；同模型重试与降级都续接，换模型时剥离 reasoning 段，结果校验不过时只丢掉坏的末步文本。`prepareStep` / `stopWhen` 看到的 steps 同样带前缀，副作用工具「成功一次即屏蔽」、同名工具限次、总步数上限跨尝试生效。",
+        "**booking 工具对本轮已提交的表单幂等**：表单已 `submitted` 且本轮账本 `bookingSucceeded=true` 时，返回 `booking.already_booked` 回执（`alreadyBookedSource=same_turn_submitted_form`，带工单号与面试时间），沿用 0911「already_booked ≠ 失败」裁定：守卫形态 G 放行如实播报、`invite_to_group` 不再跳过。查重路径与之共用 `buildAlreadyBookedReceipt`。"
+      ],
+      "optimizations": [
+        "**观测**：`agent_steps` / `tool_calls` 保留首次尝试已真实执行的工具调用，多尝试时逐条标注 `attempt`；`llm_execution` 尝试轨迹新增 `resumedSteps`；续接步保留原墙钟。replay 的副作用判定（扁平 toolCalls）因此也能看到首次尝试的 booking。"
+      ],
+      "ops": [
+        "多步循环中途失败重试续接已完成工具步，不再重放 booking 副作用"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`pnpm run lint:check` / `format:check` / `typecheck` / `geo:validate` / `vocab:validate` / `quality-ledger:validate` 通过；`build:ci` + `test:ci` 见本 PR CI。",
+        "新增回归：",
+        "`tests/llm/llm-executor.service.spec.ts`：provider 中途超时续接、结果校验不过丢末步、降级换模型剥离 reasoning、无工具步从头重跑。",
+        "`tests/agent/generator/generator-step-timing.spec.ts`：续接步墙钟保留 + attempt 标注。",
+        "`tests/tools/tool/duliday-interview-booking.tool.spec.ts`：本轮已建单再调 → already_booked 幂等；旧工单不冒充本轮成功。",
+        "`tests/agent/guardrail/output/rules/booking-receipt.rule.spec.ts`：同轮幂等回执 + 如实播报放行 / 改口没提交成功 → repair。"
+      ],
+      "level": "patch"
+    },
+    {
+      "number": "1339",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1339",
+      "title": "动态硬禁令改用候选人侧靶、系统性别标签不进模型可见面",
+      "author": "huajune",
+      "mergedAt": "2026-09-24",
+      "businessUpdates": [
+        "本轮动态硬禁令新增 `candidate_side` 靶（剥引用块/位置分享/时间后缀/加好友系统语）：面试后状态、健康证专业词等规则从 `combined` 收窄，不再被 Agent 自产岗位卡「入职前办食品健康证」与加好友系统语自触发（抽样 76% 回合带禁令的过度触发）",
+        "`producer=system` 的外部性别标签只留 TurnLedger 供收资预填，不再渲染进 `[本轮解析线索]`：消除开场轮该行被读成用户档案而补造字段（同一请求体消融重放 46 次 7 次误读、去掉后 80 次为 0）",
+        "候选人卡片、排班语义与加好友问候相关展示修正；规则台账同步登记",
+        "报名/改约锚点不再受本轮处置闸限制，后台列表不再隐藏已停止任务（同分支既有提交）",
+        "动态硬禁令改用候选人侧靶、系统性别标签不进模型可见面、岗位卡时薪与排班展示修正",
+        "Merge remote-tracking branch 'origin/develop' into fix/agent-followup…"
+      ],
+      "summary": [
+        "报名/改约锚点不再受本轮处置闸限制，后台列表不再隐藏已停止任务",
+        "动态硬禁令改用候选人侧靶、系统性别标签不进模型可见面、岗位卡时薪与排班展示修正",
+        "09/14~09/18 周同步",
+        "面试提醒配置行说明补「提前 2 天确认档」；Claude Code 项目权限 ask 改为 allow",
+        "Merge remote-tracking branch 'origin/develop' into fix/agent-followup…",
+        "动态硬禁令改用候选人侧靶、系统性别标签不进模型可见面"
+      ],
+      "features": [],
+      "fixes": [
+        "本轮动态硬禁令新增 `candidate_side` 靶（剥引用块/位置分享/时间后缀/加好友系统语）：面试后状态、健康证专业词等规则从 `combined` 收窄，不再被 Agent 自产岗位卡「入职前办食品健康证」与加好友系统语自触发（抽样 76% 回合带禁令的过度触发）",
+        "`producer=system` 的外部性别标签只留 TurnLedger 供收资预填，不再渲染进 `[本轮解析线索]`：消除开场轮该行被读成用户档案而补造字段（同一请求体消融重放 46 次 7 次误读、去掉后 80 次为 0）",
+        "候选人卡片、排班语义与加好友问候相关展示修正；规则台账同步登记",
+        "报名/改约锚点不再受本轮处置闸限制，后台列表不再隐藏已停止任务（同分支既有提交）",
+        "动态硬禁令改用候选人侧靶、系统性别标签不进模型可见面、岗位卡时薪与排班展示修正",
+        "Merge remote-tracking branch 'origin/develop' into fix/agent-followup…"
+      ],
+      "optimizations": [
+        "09/14~09/18 周同步文档"
+      ],
+      "ops": [
+        "报名/改约锚点不再受本轮处置闸限制，后台列表不再隐藏已停止任务",
+        "09/14~09/18 周同步",
+        "面试提醒配置行说明补「提前 2 天确认档」；Claude Code 项目权限 ask 改为 allow"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [],
+      "level": "patch"
+    },
+    {
+      "number": "1340",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1340",
+      "title": "weekly-handoff-analysis 2026-09-24 结论落账",
+      "author": "huajune",
+      "mergedAt": "2026-09-24",
+      "businessUpdates": [
+        "weekly-handoff-analysis 2026-09-24 结论落账",
+        "Merge remote-tracking branch 'origin/develop' into tmp/pr1340"
+      ],
+      "summary": [
+        "weekly-handoff-analysis 2026-09-24 结论落账",
+        "Merge remote-tracking branch 'origin/develop' into tmp/pr1340"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "weekly-handoff-analysis 2026-09-24 结论落账",
+        "Merge remote-tracking branch 'origin/develop' into tmp/pr1340"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [],
+      "level": "patch"
     }
   ],
   "lastRelease": {
@@ -160,5 +266,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "1f88b57c0a12686c38f238f65aa2f6924207834e"
+  "lastAnalyzedSha": "b7d79f33e7346483f92827810e0f149dd44ca5bf"
 }
