@@ -34,6 +34,43 @@
         "全量测试套件通过验证"
       ],
       "level": "patch"
+    },
+    {
+      "number": "1351",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1351",
+      "title": "打通学生身份链路——收资回流 isStudent + 查岗侧社会身份可见",
+      "author": "huajune",
+      "mergedAt": "2026-09-24",
+      "businessUpdates": [
+        "`duliday_job_list` 新增「候选人社会身份筛选提示」汇总段，与既有「候选人年龄筛选提示」同构：按档位给出本轮结果的社会身份要求分布、字段为空的岗位示例与处置口径；结构化产物落 `queryMeta.identityScreening`。",
+        "硬约束 banner（性别/户籍/健康证/最短工期）增「社会身份」行，仅在构成硬门槛的档位输出。",
+        "打通学生身份链路——收资回流 isStudent + 查岗侧社会身份可见"
+      ],
+      "summary": [
+        "打通学生身份链路——收资回流 isStudent + 查岗侧社会身份可见",
+        "自由文本明确拒收学生时压过 figure 的\"不限\""
+      ],
+      "features": [
+        "`duliday_job_list` 新增「候选人社会身份筛选提示」汇总段，与既有「候选人年龄筛选提示」同构：按档位给出本轮结果的社会身份要求分布、字段为空的岗位示例与处置口径；结构化产物落 `queryMeta.identityScreening`。",
+        "硬约束 banner（性别/户籍/健康证/最短工期）增「社会身份」行，仅在构成硬门槛的档位输出。",
+        "打通学生身份链路——收资回流 isStudent + 查岗侧社会身份可见"
+      ],
+      "fixes": [],
+      "optimizations": [
+        "`StudentRequirement` 补 `second_job_only`：`figure=第二职业` 要求候选人已有主职，平台把「第二职业」与「全日制在校学生」列为互斥选项，故纳入学生硬过滤。此前该取值两处都落空，等于对在校学生隐形放行。",
+        "`figure` 解析补 `不限` 与多值组合（`学生,第二职业` → any、`社会人士,第二职业` → social_only）的显式归宿。",
+        "结构化与自由文本冲突时按岗位卡既有的数据使用原则收口：自由文本里**显式写出的拒收**（不招/不接受/不要/拒绝/仅限非/只要非学生、学生勿扰、需要已毕业）压过 `figure` 的 `不限` 与「学生+社会人士」组合（生产实例：必胜客 processRemark「不要学生，发现是学生不结算招募费！」）。反向不对称——`figure` 明确只招学生时，备注里一句裸「社会人士」不翻盘，裸措辞线索降级到最后兜底。"
+      ],
+      "ops": [
+        "`docs/prompt-rule-ledger.md` 同批登记 `duliday_job_list` 的社会身份口径改判（原「未标注按无额外学生硬限制」条目删除）。",
+        "`ci:check` 全绿：500 suites / 7,579 tests。",
+        "上线后核验口径：生产库 `memory_snapshot.sessionFacts` 里 `interview.is_student` 应开始出现（当前基线 0 次）。",
+        "自由文本明确拒收学生时压过 figure 的\"不限\""
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [],
+      "level": "patch"
     }
   ],
   "lastRelease": {
@@ -428,5 +465,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "27ae5d441812e35b020554bcfcccca64d9569d07"
+  "lastAnalyzedSha": "974ff363a0f5288342df23a250f0d7556e8c8fe5"
 }
