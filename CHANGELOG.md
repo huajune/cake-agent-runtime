@@ -14,7 +14,7 @@
 **预计版本**: `v11.12.2`
 **最近更新**: `2026-09-24`
 **来源分支**: `develop`
-**累计 PR**: 1
+**累计 PR**: 2
 
 ### 运营说明
 **人工介入「永久暂停超期未恢复」提醒** ✅ 已下线
@@ -24,6 +24,11 @@
 - 以后每次发版的飞书卡片按「需求 / 功能」分组，每组一行标题带 ✅ 已上线 或 ⏳ 部分上线，下面几条大白话说明，不再出现技术术语堆砌
 - 技术明细仍在 CHANGELOG，运营不用看
 
+**Agent 查岗断链修复** ✅ 已修复
+- 昨天中午（9/24 11:33）发版起，蛋糕帮候选人定位完地址后不再继续查岗位，只回一句「我这就帮你查下，稍等哈」就没下文，甚至凭空编出门店和时薪；本次已修复
+- 同一回合内的多步操作（定位 → 查岗 → 回复）恢复正常，候选人问岗位会得到真实的岗位列表
+- 报名成功后的重复报名拦截、跳过回复与正常回复的互斥也一并恢复（同一故障导致）
+
 ### 更新摘要
 - PR #1359 删除永久暂停超期巡检提醒（运营裁定不需要）
 - PR #1359 发版通知改为运营版说明——PR 正文「运营说明」段原样进 CHANGELOG 与飞书卡片
@@ -32,6 +37,9 @@
 - PR #1359 PR 正文新增 `## 运营说明` 段：逐行原样进 `.release/pending-release.json`、CHANGELOG「### 运营说明」、release PR 正文与飞书发版卡片，不限条数、不改写；作者没写时由 Claude（workflow 提示词）/ OpenAI 兼容分支生成同格式 `opsNotes`；仍为空则卡片回落技术摘要并明示缺失
 - PR #1359 PR 模板首段加「运营说明」写法说明；CLAUDE.md 与 ship-release 通知闸口同步
 - PR #1359 删除永久暂停超期巡检提醒；发版通知改为运营版说明
+- PR #1362 执行器正常路径带回 stopWhen/prepareStep，修复调完首个工具即结束的多步循环
+- PR #1362 修复 v11.12.0 引入的 LLM 执行器回归：首次尝试（非续接）路径丢失了调用方的 `stopWhen` 与 `prepareStep`，AI SDK 退化为单步循环，模型调完首个工具即结束
+- PR #1362 补充首次尝试路径的回归测试，修复前必失败
 
 ### 新功能
 - PR #1359 飞书发版卡片优先渲染各 PR 的「运营说明」（按需求/功能分组、带 ✅/⏳ 状态），不再受 10 条上限限制
@@ -40,6 +48,12 @@
 
 ### 问题修复
 - PR #1359 删除永久暂停超期巡检提醒（运营裁定不需要），停止每 2 小时向运营群发「暂停超期未恢复」卡片
+- PR #1362 `LlmExecutorService.buildAttemptParams` 把 `prepareStep` / `stopWhen` 解构出来后只在续接重试分支（`resumed.steps.length > 0`）装回，正常路径直接返回 `withStepCapture`，两者都丢了。AI SDK v7 `generateText` 缺 `stopWhen` 时默认 `stepCountIs(1)`，模型调完第一个工具循环即结束、没有文本步，Generator 落到 `recoverEmptyTextResult` 无工具恢复，产出空头承诺或编岗。`prepareStep` 丢失同时使同名工具限次、`skip_reply` 互斥、副作用工具成功后屏蔽在正常路径全部失效
+- PR #1362 修复：非续接路径仅当调用方传了 `prepareStep` / `stopWhen` 时原样带回（不用 undefined 覆盖 SDK 默认）；续接分支已有的包装逻辑不变
+- PR #1362 生产证据（`message_processing_records`，2026-09-24 北京时间，v11.12.0 tag 11:33 之后 212 回合）：带工具步回合有后续文本步 131/155 → 3/140；平均真实步数 1.77 → 1.02；`empty-text-recovery` 1 → 120；geocode 后同回合接 `duliday_job_list` 54 → 0。样本 id 428888 / 428254 / 428280 / 428807
+- PR #1362 修复 v11.12.0 引入的 LLM 执行器回归：首次尝试（非续接）路径丢失了调用方的 `stopWhen` 与 `prepareStep`，AI SDK 退化为单步循环，模型调完首个工具即结束
+- PR #1362 补充首次尝试路径的回归测试，修复前必失败
+- PR #1362 执行器正常路径带回 stopWhen/prepareStep，修复调完首个工具即结束的多步循环
 
 ### 优化调整
 - PR #1359 `update-version-changelog` 新增 `opsNotes` 捕获/渲染与 `sanitizeOpsNoteLines`；`build-release-pr-body` 新增 `## 运营说明` 段；`send-deploy-notification` 新增 `readStructuredOpsNotes` / `extractOpsNotesSection`
@@ -63,6 +77,11 @@
 - PR #1359 `tests/scripts`（9 套 69 例，含新增 10 例）、`tests/notification/renderers`、`tests/biz/intervention` 通过
 - PR #1359 夹具驱动 dry-run：release PR 正文与飞书卡片均按「运营说明」原样渲染
 - PR #1359 未新增对开放自然语言直接 reject/覆盖/判缺的正则分支
+- PR #1362 `pnpm run ci:check`（本地分步跑：`typecheck` / `lint:check` 通过；`tests/llm/llm-executor.service.spec.ts` 35/35；`tests/agent/generator` + `tests/agent/runner` 452/452）
+- PR #1362 关键链路已人工验证：新增回归测试「首次尝试（无续接）原样透传调用方的 stopWhen 与 prepareStep」在修复前失败（`prepareStep` 为 undefined）、修复后通过
+- PR #1362 未新增对开放自然语言直接 reject/覆盖/判缺的正则分支
+- PR #1362 未新增虚构 prompt 示例值
+- PR #1362 其他说明：部署后用生产库复核最近 30 分钟带工具步回合的后续文本步比例（预期回到 80% 以上）与 `empty-text-recovery` 计数（预期回到个位数）
 <!-- release:pending:end -->
 
 ## [11.12.1] - 2026-09-24

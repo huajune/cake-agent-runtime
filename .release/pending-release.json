@@ -61,6 +61,53 @@
         "未新增对开放自然语言直接 reject/覆盖/判缺的正则分支"
       ],
       "level": "patch"
+    },
+    {
+      "number": "1362",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1362",
+      "title": "执行器正常路径带回 stopWhen/prepareStep，修复调完首个工具即结束的多步循环",
+      "author": "huajune",
+      "mergedAt": "2026-09-24",
+      "opsNotes": [
+        "**Agent 查岗断链修复** ✅ 已修复",
+        "- 昨天中午（9/24 11:33）发版起，蛋糕帮候选人定位完地址后不再继续查岗位，只回一句「我这就帮你查下，稍等哈」就没下文，甚至凭空编出门店和时薪；本次已修复",
+        "- 同一回合内的多步操作（定位 → 查岗 → 回复）恢复正常，候选人问岗位会得到真实的岗位列表",
+        "- 报名成功后的重复报名拦截、跳过回复与正常回复的互斥也一并恢复（同一故障导致）"
+      ],
+      "businessUpdates": [
+        "`LlmExecutorService.buildAttemptParams` 把 `prepareStep` / `stopWhen` 解构出来后只在续接重试分支（`resumed.steps.length > 0`）装回，正常路径直接返回 `withStepCapture`，两者都丢了。AI SDK v7 `generateText` 缺 `stopWhen` 时默认 `stepCountIs(1)`，模型调完第一个工具循环即结束、没有文本步，Generator 落到 `recoverEmptyTextResult` 无工具恢复，产出空头承诺或编岗。`prepareStep` 丢失同时使同名工具限次、`skip_reply` 互斥、副作用工具成功后屏蔽在正常路径全部失效",
+        "修复：非续接路径仅当调用方传了 `prepareStep` / `stopWhen` 时原样带回（不用 undefined 覆盖 SDK 默认）；续接分支已有的包装逻辑不变",
+        "生产证据（`message_processing_records`，2026-09-24 北京时间，v11.12.0 tag 11:33 之后 212 回合）：带工具步回合有后续文本步 131/155 → 3/140；平均真实步数 1.77 → 1.02；`empty-text-recovery` 1 → 120；geocode 后同回合接 `duliday_job_list` 54 → 0。样本 id 428888 / 428254 / 428280 / 428807",
+        "修复 v11.12.0 引入的 LLM 执行器回归：首次尝试（非续接）路径丢失了调用方的 `stopWhen` 与 `prepareStep`，AI SDK 退化为单步循环，模型调完首个工具即结束",
+        "补充首次尝试路径的回归测试，修复前必失败",
+        "执行器正常路径带回 stopWhen/prepareStep，修复调完首个工具即结束的多步循环"
+      ],
+      "summary": [
+        "执行器正常路径带回 stopWhen/prepareStep，修复调完首个工具即结束的多步循环",
+        "修复 v11.12.0 引入的 LLM 执行器回归：首次尝试（非续接）路径丢失了调用方的 `stopWhen` 与 `prepareStep`，AI SDK 退化为单步循环，模型调完首个工具即结束",
+        "补充首次尝试路径的回归测试，修复前必失败"
+      ],
+      "features": [],
+      "fixes": [
+        "`LlmExecutorService.buildAttemptParams` 把 `prepareStep` / `stopWhen` 解构出来后只在续接重试分支（`resumed.steps.length > 0`）装回，正常路径直接返回 `withStepCapture`，两者都丢了。AI SDK v7 `generateText` 缺 `stopWhen` 时默认 `stepCountIs(1)`，模型调完第一个工具循环即结束、没有文本步，Generator 落到 `recoverEmptyTextResult` 无工具恢复，产出空头承诺或编岗。`prepareStep` 丢失同时使同名工具限次、`skip_reply` 互斥、副作用工具成功后屏蔽在正常路径全部失效",
+        "修复：非续接路径仅当调用方传了 `prepareStep` / `stopWhen` 时原样带回（不用 undefined 覆盖 SDK 默认）；续接分支已有的包装逻辑不变",
+        "生产证据（`message_processing_records`，2026-09-24 北京时间，v11.12.0 tag 11:33 之后 212 回合）：带工具步回合有后续文本步 131/155 → 3/140；平均真实步数 1.77 → 1.02；`empty-text-recovery` 1 → 120；geocode 后同回合接 `duliday_job_list` 54 → 0。样本 id 428888 / 428254 / 428280 / 428807",
+        "修复 v11.12.0 引入的 LLM 执行器回归：首次尝试（非续接）路径丢失了调用方的 `stopWhen` 与 `prepareStep`，AI SDK 退化为单步循环，模型调完首个工具即结束",
+        "补充首次尝试路径的回归测试，修复前必失败",
+        "执行器正常路径带回 stopWhen/prepareStep，修复调完首个工具即结束的多步循环"
+      ],
+      "optimizations": [],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`pnpm run ci:check`（本地分步跑：`typecheck` / `lint:check` 通过；`tests/llm/llm-executor.service.spec.ts` 35/35；`tests/agent/generator` + `tests/agent/runner` 452/452）",
+        "关键链路已人工验证：新增回归测试「首次尝试（无续接）原样透传调用方的 stopWhen 与 prepareStep」在修复前失败（`prepareStep` 为 undefined）、修复后通过",
+        "未新增对开放自然语言直接 reject/覆盖/判缺的正则分支",
+        "未新增虚构 prompt 示例值",
+        "其他说明：部署后用生产库复核最近 30 分钟带工具步回合的后续文本步比例（预期回到 80% 以上）与 `empty-text-recovery` 计数（预期回到个位数）"
+      ],
+      "level": "patch"
     }
   ],
   "lastRelease": {
@@ -101,5 +148,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "ba01f46c5e2f4f86eb086760144e2d939f79893f"
+  "lastAnalyzedSha": "54e14eedefb8a1d9ee1cdd099c6b9c17c5ebcec9"
 }
