@@ -113,6 +113,50 @@
         "`tests/agent/guardrail/output/rules/booking-receipt.rule.spec.ts`：同轮幂等回执 + 如实播报放行 / 改口没提交成功 → repair。"
       ],
       "level": "patch"
+    },
+    {
+      "number": "1339",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1339",
+      "title": "动态硬禁令改用候选人侧靶、系统性别标签不进模型可见面",
+      "author": "huajune",
+      "mergedAt": "2026-09-24",
+      "businessUpdates": [
+        "本轮动态硬禁令新增 `candidate_side` 靶（剥引用块/位置分享/时间后缀/加好友系统语）：面试后状态、健康证专业词等规则从 `combined` 收窄，不再被 Agent 自产岗位卡「入职前办食品健康证」与加好友系统语自触发（抽样 76% 回合带禁令的过度触发）",
+        "`producer=system` 的外部性别标签只留 TurnLedger 供收资预填，不再渲染进 `[本轮解析线索]`：消除开场轮该行被读成用户档案而补造字段（同一请求体消融重放 46 次 7 次误读、去掉后 80 次为 0）",
+        "候选人卡片、排班语义与加好友问候相关展示修正；规则台账同步登记",
+        "报名/改约锚点不再受本轮处置闸限制，后台列表不再隐藏已停止任务（同分支既有提交）",
+        "动态硬禁令改用候选人侧靶、系统性别标签不进模型可见面、岗位卡时薪与排班展示修正",
+        "Merge remote-tracking branch 'origin/develop' into fix/agent-followup…"
+      ],
+      "summary": [
+        "报名/改约锚点不再受本轮处置闸限制，后台列表不再隐藏已停止任务",
+        "动态硬禁令改用候选人侧靶、系统性别标签不进模型可见面、岗位卡时薪与排班展示修正",
+        "09/14~09/18 周同步",
+        "面试提醒配置行说明补「提前 2 天确认档」；Claude Code 项目权限 ask 改为 allow",
+        "Merge remote-tracking branch 'origin/develop' into fix/agent-followup…",
+        "动态硬禁令改用候选人侧靶、系统性别标签不进模型可见面"
+      ],
+      "features": [],
+      "fixes": [
+        "本轮动态硬禁令新增 `candidate_side` 靶（剥引用块/位置分享/时间后缀/加好友系统语）：面试后状态、健康证专业词等规则从 `combined` 收窄，不再被 Agent 自产岗位卡「入职前办食品健康证」与加好友系统语自触发（抽样 76% 回合带禁令的过度触发）",
+        "`producer=system` 的外部性别标签只留 TurnLedger 供收资预填，不再渲染进 `[本轮解析线索]`：消除开场轮该行被读成用户档案而补造字段（同一请求体消融重放 46 次 7 次误读、去掉后 80 次为 0）",
+        "候选人卡片、排班语义与加好友问候相关展示修正；规则台账同步登记",
+        "报名/改约锚点不再受本轮处置闸限制，后台列表不再隐藏已停止任务（同分支既有提交）",
+        "动态硬禁令改用候选人侧靶、系统性别标签不进模型可见面、岗位卡时薪与排班展示修正",
+        "Merge remote-tracking branch 'origin/develop' into fix/agent-followup…"
+      ],
+      "optimizations": [
+        "09/14~09/18 周同步文档"
+      ],
+      "ops": [
+        "报名/改约锚点不再受本轮处置闸限制，后台列表不再隐藏已停止任务",
+        "09/14~09/18 周同步",
+        "面试提醒配置行说明补「提前 2 天确认档」；Claude Code 项目权限 ask 改为 allow"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [],
+      "level": "patch"
     }
   ],
   "lastRelease": {
@@ -196,5 +240,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "14d74e67343150bbd2448908a16a27424ddb64b9"
+  "lastAnalyzedSha": "cda43734948557adfcee54b68f852b8289415437"
 }

@@ -14,7 +14,7 @@
 **预计版本**: `v11.11.2`
 **最近更新**: `2026-09-24`
 **来源分支**: `develop`
-**累计 PR**: 3
+**累计 PR**: 4
 
 ### 更新摘要
 - PR #1336 weekly-judge-calibration 2026-09-22 结论落账
@@ -23,6 +23,12 @@
 - PR #1335 同一条生产 badcase（chat `6aaf831ece406a6aee0617f7`）的两段根因一起修：第 1 轮「为什么会凭空编出候选人档案和意向品牌」，第 2 轮「为什么编出来的品牌能通过查岗出处校验」
 - PR #1335 堵住开场轮编造候选人档案及按编造品牌查岗
 - PR #1337 多步循环中途失败重试续接已完成工具步，不再重放 booking 副作用
+- PR #1339 报名/改约锚点不再受本轮处置闸限制，后台列表不再隐藏已停止任务
+- PR #1339 动态硬禁令改用候选人侧靶、系统性别标签不进模型可见面、岗位卡时薪与排班展示修正
+- PR #1339 09/14~09/18 周同步
+- PR #1339 面试提醒配置行说明补「提前 2 天确认档」；Claude Code 项目权限 ask 改为 allow
+- PR #1339 Merge remote-tracking branch 'origin/develop' into fix/agent-followup…
+- PR #1339 动态硬禁令改用候选人侧靶、系统性别标签不进模型可见面
 
 ### 新功能
 - 无
@@ -35,6 +41,12 @@
 - PR #1335 同一条生产 badcase（chat `6aaf831ece406a6aee0617f7`）的两段根因一起修：第 1 轮「为什么会凭空编出候选人档案和意向品牌」，第 2 轮「为什么编出来的品牌能通过查岗出处校验」
 - PR #1337 **LLM 执行器重试不再重放已提交的副作用**：多步循环中途失败（provider 超时/5xx、结果校验不过）时，把上次尝试已完成、以工具结果收尾的步骤作为对话前缀续接下一次尝试，只让模型接着往下走；同模型重试与降级都续接，换模型时剥离 reasoning 段，结果校验不过时只丢掉坏的末步文本。`prepareStep` / `stopWhen` 看到的 steps 同样带前缀，副作用工具「成功一次即屏蔽」、同名工具限次、总步数上限跨尝试生效。
 - PR #1337 **booking 工具对本轮已提交的表单幂等**：表单已 `submitted` 且本轮账本 `bookingSucceeded=true` 时，返回 `booking.already_booked` 回执（`alreadyBookedSource=same_turn_submitted_form`，带工单号与面试时间），沿用 0911「already_booked ≠ 失败」裁定：守卫形态 G 放行如实播报、`invite_to_group` 不再跳过。查重路径与之共用 `buildAlreadyBookedReceipt`。
+- PR #1339 本轮动态硬禁令新增 `candidate_side` 靶（剥引用块/位置分享/时间后缀/加好友系统语）：面试后状态、健康证专业词等规则从 `combined` 收窄，不再被 Agent 自产岗位卡「入职前办食品健康证」与加好友系统语自触发（抽样 76% 回合带禁令的过度触发）
+- PR #1339 `producer=system` 的外部性别标签只留 TurnLedger 供收资预填，不再渲染进 `[本轮解析线索]`：消除开场轮该行被读成用户档案而补造字段（同一请求体消融重放 46 次 7 次误读、去掉后 80 次为 0）
+- PR #1339 候选人卡片、排班语义与加好友问候相关展示修正；规则台账同步登记
+- PR #1339 报名/改约锚点不再受本轮处置闸限制，后台列表不再隐藏已停止任务（同分支既有提交）
+- PR #1339 动态硬禁令改用候选人侧靶、系统性别标签不进模型可见面、岗位卡时薪与排班展示修正
+- PR #1339 Merge remote-tracking branch 'origin/develop' into fix/agent-followup…
 
 ### 优化调整
 - PR #1335 `FINAL_CHECK_RULES` 的 turn 规则新增匹配目标 `candidate_side`：近 12 条里候选人原话 + 带 `HUMAN_AGENT_MESSAGE_MARKER` 的真人经理手动消息 + 本轮输入；不含 Agent 自产文本，并先剥引用块、位置分享、时间后缀与加好友系统语。`post_interview_no_rebook` 由 `combined` 收窄到 `candidate_side`；`health_cert_is_not_major` 的专业词改为 `食品(?!健康证)`
@@ -46,12 +58,16 @@
 - PR #1335 残余误拒（低频，已记入 catalog `residualRisk`）：品牌已被挤出会话岗位池（`presentedJobs` 仅留最近 10 条）或来自往轮 `recall_history` / 简历附件工具结果，且候选人不点名追问时会被拦，由错误回执引导清除品牌重查
 - PR #1335 `tool-guardrail.catalog.ts` 的 `job_list_brand_provenance` 关闭「历史助手文本既有幻觉」残余风险；`docs/architecture/security-guardrails.md` 与 `docs/prompt-rule-ledger.md`（动态硬禁令匹配目标说明、两条规则命中口径、S 节系统性别标签、`job_list.brand_no_provenance` 行）同步
 - PR #1337 **观测**：`agent_steps` / `tool_calls` 保留首次尝试已真实执行的工具调用，多尝试时逐条标注 `attempt`；`llm_execution` 尝试轨迹新增 `resumedSteps`；续接步保留原墙钟。replay 的副作用判定（扁平 toolCalls）因此也能看到首次尝试的 booking。
+- PR #1339 09/14~09/18 周同步文档
 
 ### 运维与流程
 - PR #1336 weekly-judge-calibration 2026-09-22 结论落账
 - PR #1335 品牌提及集合不再采信 Agent 自产回复
 - PR #1335 开场轮不再把系统语与系统标签当成候选人状态证据
 - PR #1337 多步循环中途失败重试续接已完成工具步，不再重放 booking 副作用
+- PR #1339 报名/改约锚点不再受本轮处置闸限制，后台列表不再隐藏已停止任务
+- PR #1339 09/14~09/18 周同步
+- PR #1339 面试提醒配置行说明补「提前 2 天确认档」；Claude Code 项目权限 ask 改为 allow
 
 ### 配置变更
 - 无
