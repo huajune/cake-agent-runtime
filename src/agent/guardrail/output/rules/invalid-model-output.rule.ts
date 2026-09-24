@@ -155,7 +155,7 @@ export function detectInvalidModelOutput(content: string): RuleContradiction | n
   if (CONTROL_MARKER_ONLY_PATTERN.test(text)) {
     return createOutputRuleFinding(
       'invalid_model_output',
-      '整条回复只是模型自造的「本轮不回复」控制标记（如 [NO_REPLY]），不是候选人可读文本；' +
+      '整条回复只是模型自造的「本轮不回复」控制标记，不是候选人可读文本；' +
         '沉默必须走 skip_reply 工具，标记本身绝不能投递',
     );
   }

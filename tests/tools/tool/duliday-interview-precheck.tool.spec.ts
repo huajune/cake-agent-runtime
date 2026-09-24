@@ -603,6 +603,32 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
     expect(result.bookingChecklist.missingFields).toContain('联系电话');
   });
 
+  it.each([
+    { labelTitle: '年龄', value: '99', quote: '我99岁', constraint: '14–70 的整数' },
+    {
+      labelTitle: '联系电话',
+      value: '12345',
+      quote: '我的联系电话是12345',
+      constraint: '11 位大陆手机号',
+    },
+  ])('非法$labelTitle返回可执行的形态约束，而非岗位筛退', async (proposal) => {
+    const { constraint, ...fieldValueProposal } = proposal;
+    context.turnInput.messages = [{ role: 'user', content: proposal.quote }];
+    const result = await execute({ jobId: 100, fieldValueProposals: [fieldValueProposal] });
+
+    expect(result.rejectedAnswers).toContainEqual(
+      expect.objectContaining({
+        labelTitle: proposal.labelTitle,
+        reason: 'invalid_value_shape',
+        action: 'retry_submission',
+        hint: expect.stringContaining(constraint),
+      }),
+    );
+    expect(result.rejectedAnswers[0].hint).toContain('不代表符合岗位招聘要求');
+    expect(result.bookingChecklist.missingFields).toContain(proposal.labelTitle);
+    expect(result.nextAction).not.toBe('screening_rejected');
+  });
+
   it('身份闸门拒绝昵称后要求补问真名，禁止原值重投', async () => {
     context.turnInput.messages = [{ role: 'user', content: '我是兮兮' }];
     const result = await execute({
@@ -1398,7 +1424,9 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
       expect(result._replyInstruction).toContain('9月14日（周一）13:30');
       expect(result._replyInstruction).toContain('已经约上');
       expect(result._replyInstruction).toContain('禁止调用 duliday_interview_booking');
-      expect(result._replyInstruction).toContain('禁止说"系统有问题/没提交成功/稍后再帮你提交"');
+      expect(result._replyInstruction).toContain(
+        '禁止把已有预约描述为系统故障、提交失败或尚待再次提交',
+      );
       expect(result._replyInstruction).toContain('workOrderId=464336');
     });
 

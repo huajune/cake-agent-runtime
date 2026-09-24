@@ -19,6 +19,41 @@ describe('IdentitySection', () => {
     expect(text).toContain('你是招募经理，主要为大型公司招人。');
   });
 
+  it('omits legacy example dimensions while retaining style rules and real account identity', () => {
+    const ctx = buildCtx({ identity: { nickname: '招聘经理' } });
+    ctx.strategy.persona = {
+      textDimensions: [
+        { key: 'tone', label: '语气', value: '简洁自然，先回答当前问题。' },
+        { key: 'recommendedPhrases', label: '改名后的旧栏目', value: '示范回复内容' },
+        { key: 'dialogExamples', label: '对话演示', value: '虚构候选人对话' },
+        { key: 'legacy-import', label: ' 示例对话 ', value: '旧导入示例' },
+        { key: 'legacy-phrases', label: '推荐句式', value: '旧导入话术' },
+      ].map((dim) => ({ ...dim, group: 'style' as const, placeholder: '' })),
+    };
+    const text = build(ctx);
+    expect(text).toContain('简洁自然，先回答当前问题。');
+    expect(text).toContain('你的名字（企微昵称）：「招聘经理」');
+    for (const dim of ctx.strategy.persona.textDimensions.slice(1)) {
+      expect(text).not.toContain(dim.value);
+    }
+  });
+
+  it('omits the persona block when legacy examples are its only dimensions', () => {
+    const ctx = buildCtx();
+    ctx.strategy.persona = {
+      textDimensions: [
+        {
+          key: 'dialogExamples',
+          label: '示例对话',
+          value: '虚构对话',
+          group: 'style',
+          placeholder: '',
+        },
+      ],
+    };
+    expect(build(ctx)).not.toContain('# 人格设定');
+  });
+
   describe('账号身份锚定 (badcase chat 6a5dedb2ce406a6aeee1ea62)', () => {
     it('renders configured nickname and gender as the agent own identity', () => {
       const text = build(

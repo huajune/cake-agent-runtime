@@ -12,6 +12,9 @@ import { buildInterviewBookingTool } from '@tools/duliday-interview-booking.tool
 import type { PostBookingGroupInviteOutcome } from '@tools/invite/post-booking-group-invite';
 import { STALE_INPUT_REASON_CODE, TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
 import { createToolContext } from '../../helpers/tool-context.fixture';
+import { generateText, stepCountIs } from 'ai';
+import { MockLanguageModelV3 } from 'ai/test';
+import { detectBookingReceiptMismatch } from '@agent/guardrail/output/rules/booking-receipt.rule';
 
 const CONTRACT: ContractFieldDef[] = [
   {
@@ -177,8 +180,8 @@ describe('duliday_interview_booking（form → labelList）', () => {
     longTerm.getActiveBookings.mockResolvedValue([]);
   });
 
-  async function execute(input: Record<string, unknown>) {
-    const built = buildInterviewBookingTool(
+  function buildTool() {
+    return buildInterviewBookingTool(
       sponge as never,
       notifier as never,
       hosting as never,
@@ -191,12 +194,16 @@ describe('duliday_interview_booking（form → labelList）', () => {
         phoneSessionIndex: phoneSessionIndex as never,
       },
     )(context);
+  }
+
+  async function execute(input: Record<string, unknown>) {
+    const built = buildTool();
     return built.execute!(input as never, {
       toolCallId: 'booking-test',
       context: {},
       messages: [],
       abortSignal: undefined as never,
-    }) as Promise<Record<string, any>>;
+    }) as Promise<Record<string, unknown>>;
   }
 
   it('本轮没有 ready_to_book 凭据时，在任何外部请求前拒绝', async () => {
@@ -250,6 +257,13 @@ describe('duliday_interview_booking（form → labelList）', () => {
   it('只向 entryUser 发送 jobId + labelList，wait_notice 不带 interviewTime', async () => {
     const result = await execute({ jobId: 100 });
     expect(result.success).toBe(true);
+    expect(result._confirmedInterviewTimeHuman).toBeUndefined();
+    expect(result._waitNoticeReplyGuide).toContain('面试官会电话联系');
+    expect(
+      detectBookingReceiptMismatch('报名成功啦，面试官会电话联系你，保持电话畅通哈', [
+        { toolName: 'duliday_interview_booking', status: 'ok', result } as never,
+      ]),
+    ).toBeNull();
     const [payload] = sponge.bookInterview.mock.calls[0];
     expect(Object.keys(payload).sort()).toEqual(['interviewTime', 'jobId', 'labelList']);
     expect(payload.interviewTime).toBeUndefined();
@@ -261,6 +275,68 @@ describe('duliday_interview_booking（form → labelList）', () => {
     ]);
     expect(payload).not.toEqual(expect.objectContaining({ name: expect.anything() }));
     expect(payload).not.toEqual(expect.objectContaining({ customerLabelList: expect.anything() }));
+  });
+
+  it('真实 SDK 后续模型消息隐藏后台工单号，运行时结果与报名指针仍保留', async () => {
+    sponge.bookInterview.mockResolvedValue({
+      success: true,
+      code: 0,
+      workOrderId: 468104,
+      traceId: 'trace-runtime-only',
+      notice: 'manager-runtime-only',
+      applyErrorList: null,
+    });
+    const usage = {
+      inputTokens: { total: 10, noCache: 10, cacheRead: 0, cacheWrite: 0 },
+      outputTokens: { total: 1, text: 1, reasoning: 0 },
+    };
+    const model = new MockLanguageModelV3({
+      doGenerate: [
+        {
+          content: [
+            {
+              type: 'tool-call',
+              toolCallId: 'book-1',
+              toolName: 'duliday_interview_booking',
+              input: '{"jobId":100}',
+            },
+          ],
+          finishReason: { unified: 'tool-calls', raw: 'tool_calls' },
+          usage,
+          warnings: [],
+        },
+        {
+          content: [{ type: 'text', text: '报名成功，请保持电话畅通' }],
+          finishReason: { unified: 'stop', raw: 'stop' },
+          usage,
+          warnings: [],
+        },
+      ],
+    });
+    const result = await generateText({
+      model,
+      prompt: '确认报名',
+      tools: { duliday_interview_booking: buildTool() },
+      stopWhen: stepCountIs(3),
+      maxRetries: 0,
+    });
+    expect(model.doGenerateCalls).toHaveLength(2);
+    const visible = JSON.stringify(model.doGenerateCalls[1].prompt);
+    expect(visible).toContain('面试官会电话联系');
+    expect(visible).not.toMatch(
+      /468104|workOrderId|trace-runtime-only|manager-runtime-only|labelIds|collectionConfigDebts/,
+    );
+    expect(JSON.stringify(result.response.messages)).not.toContain('468104');
+    expect(result.steps[0].toolResults[0].output).toMatchObject({
+      workOrderId: 468104,
+      traceId: 'trace-runtime-only',
+    });
+    expect(currentForm.workOrderId).toBe(468104);
+    expect(longTerm.setActiveBooking).toHaveBeenCalledWith('corp-1', 'user-1', 468104, {
+      job_id: 100,
+      interview_time: null,
+    });
+    expect(sponge.bookInterview).toHaveBeenCalledTimes(1);
   });
 
   it('普通岗不能用仅有 interviewTime 的输入绕过持久化 schedule draft', async () => {
@@ -535,7 +611,7 @@ describe('duliday_interview_booking（form → labelList）', () => {
     // 查重 ≠ 失败：指令必须说"已约上"，并明令禁止系统故障/稍后重提口径
     //（生产 batch …_1789111221226 把它改写成"系统有点问题，稍后再帮你提交"）。
     expect(result._replyInstruction).toContain('已经约上');
-    expect(result._replyInstruction).toContain('禁止说"系统有问题/没提交成功/稍后再帮你提交"');
+    expect(result._replyInstruction).toContain('禁止把已有预约描述为系统故障、提交失败或尚待再次提交');
     expect(result._replyInstruction).toContain('不要编造时间');
   });
 
@@ -648,7 +724,7 @@ describe('duliday_interview_booking（form → labelList）', () => {
     expect(result.existingInterviewTime).toBe('2026-09-23 10:30:00');
     expect(result._existingInterviewTimeHuman).toBe('9月23日（周三）10:30');
     expect(result._replyInstruction).toContain('本轮已经成功提交过');
-    expect(result._replyInstruction).toContain('禁止说"系统有问题/没提交成功/稍后再帮你提交"');
+    expect(result._replyInstruction).toContain('禁止把已有预约描述为系统故障、提交失败或尚待再次提交');
     expect(sponge.fetchJobs).not.toHaveBeenCalled();
     expect(sponge.bookInterview).not.toHaveBeenCalled();
     expect(collectionForms.persist).not.toHaveBeenCalled();
@@ -872,7 +948,7 @@ describe('duliday_interview_booking（form → labelList）', () => {
     it('未注入拉群服务时回执记 service_unavailable（旧装配兼容）', async () => {
       const result = await execute({ jobId: 100 });
       expect(result.success).toBe(true);
-      expect(result.groupInvite.skippedReason).toBe('service_unavailable');
+      expect(result.groupInvite).toMatchObject({ skippedReason: 'service_unavailable' });
     });
   });
 });

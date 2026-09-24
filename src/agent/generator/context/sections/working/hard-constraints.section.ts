@@ -53,7 +53,7 @@ export class HardConstraintsSection implements PromptSection {
         '[本轮查询参考信息]',
         '',
         '以下信息来自 [会话记忆] 与 [本轮解析线索]，供查询和推荐时参考。',
-        '这些是建议性过滤条件——优先用于结果筛选，但如果你判断提取可能有误（如从引用消息中误提取），',
+        '这些是建议性过滤条件——优先用于结果筛选，但如果你判断提取可能有误，',
         '可以根据上下文自行决定是否采纳。',
         '',
         ...softLines,
@@ -98,12 +98,12 @@ export class HardConstraintsSection implements PromptSection {
     }
     if (interview.age) {
       lines.push(
-        `- 年龄: ${interview.age}（开 includeHiringRequirement；年龄弹性由 precheck ageBoundary 字段判定：severity=boundary 的可继续推进，severity=hard_reject 的必须拦截换岗；不要自行决定"稍微超了帮你试试"）`,
+        `- 年龄: ${interview.age}（开 includeHiringRequirement；年龄弹性由 precheck ageBoundary 字段判定：severity=boundary 的可继续推进，severity=hard_reject 的必须拦截换岗；不要自行放宽年龄要求）`,
       );
     }
     if (pref.schedule) {
       lines.push(
-        `- 班次/工时偏好: ${pref.schedule}（结合 includeWorkTime 校验；结果集中无匹配班次/出勤的岗位不要推荐；岗位要求"每天/做六休一/周四周六周日都要给班/早开晚结全天时段"时，不能当作"只周末/每周最多几天/做一休一/下班后/只晚班"匹配；"每天/周一至周日"不等于"可只排周末"；"做一休一"通常每周出勤 3–4 天，不满足"每周最多 1–2 天"，不得把它列为低周频候选人的合适方案；若正在收资/约面且本轮刚补充或重复该硬约束，未校验匹配前不得说"没问题/备注上"，也不得继续追问身高体重住址等收资字段）`,
+        `- 班次/工时偏好: ${pref.schedule}（结合 includeWorkTime 校验；结果集中无匹配班次/出勤的岗位不要推荐；岗位要求每日、高周频、固定多日或全天出勤时，不得当作可任选工作日或时段，须分别核对候选人的日期、每周天数及可工作时段；做一休一通常每周出勤 3–4 天，不满足每周最多 1–2 天，不得把它列为低周频候选人的合适方案；若正在收资/约面且本轮刚补充或重复该硬约束，未校验匹配前不得应允可安排或只作备注，也不得继续追问身高体重住址等收资字段）`,
       );
     }
     if (pref.salary) {
@@ -158,14 +158,14 @@ export class HardConstraintsSection implements PromptSection {
     }
     if (pref.position?.length) {
       lines.push(
-        `- 意向岗位: ${pref.position.join('、')}（候选人明确点名的具体工种可填 jobCategoryList——它**只影响排序不过滤**，匹配岗位会排在结果最前；只接受具体工种如"服务员"、"收银员"，不要填用工形式词。结果里没有明确匹配工种时，按每个岗位真实的岗位名称/工作内容判断相近岗位并如实介绍，不得把其他工种包装成候选人要的工种）`,
+        `- 意向岗位: ${pref.position.join('、')}（候选人明确点名的具体工种可填 jobCategoryList——它**只影响排序不过滤**，匹配岗位会排在结果最前；只接受具体工种，不要填用工形式词。结果里没有明确匹配工种时，按每个岗位真实的岗位名称/工作内容判断相近岗位并如实介绍，不得把其他工种包装成候选人要的工种）`,
       );
     }
     if (pref.labor_form && isValidLaborForm(pref.labor_form)) {
       const hardFiltered = isHardFilteredLaborForm(pref.labor_form);
       lines.push(
         hardFiltered
-          ? `- 用工形式: ${pref.labor_form}（工具会按岗位 用工形式/兼职类型 结构化字段**硬过滤**，只保留匹配「${pref.labor_form}」的岗位；不要填入 jobCategoryList。是否有「${pref.labor_form}」一律以工具结果为准，查岗前禁止承诺"有/没有「${pref.labor_form}」"，过滤后为空就如实告知附近暂无该用工形式岗位${pref.labor_form === '暑假工' ? '；暑假工无岗时直接拒绝并结束本轮，禁止追加问题、替代岗位或“是否考虑普通兼职/小时工/全职”等劝转话术' : ''}）`
+          ? `- 用工形式: ${pref.labor_form}（工具会按岗位 用工形式/兼职类型 结构化字段**硬过滤**，只保留匹配「${pref.labor_form}」的岗位；不要填入 jobCategoryList。是否有「${pref.labor_form}」一律以工具结果为准，查岗前禁止断言有无该用工形式岗位，过滤后为空就如实告知附近暂无该用工形式岗位${pref.labor_form === '暑假工' ? '；暑假工无岗时直接拒绝并结束本轮，禁止追加问题、替代岗位或劝转其他用工形式' : ''}）`
           : `- 用工形式: ${pref.labor_form}（不要填入 jobCategoryList；介绍岗位用工形式时严格照岗位 用工形式/兼职类型 结构化字段，不要把别的用工形式的岗位说成「${pref.labor_form}」）`,
       );
     }
@@ -188,12 +188,12 @@ export class HardConstraintsSection implements PromptSection {
     }
     if (pref.open_position) {
       lines.push(
-        `- 候选人岗位开放: 是（候选人说过"什么都可以"等宽口径句式；jobCategoryList 建议留空，按区域/品牌/班次召回后由候选人自选）`,
+        `- 候选人岗位开放: 是（候选人已明确不限岗位；jobCategoryList 建议留空，按区域/品牌/班次召回后由候选人自选）`,
       );
     }
     if (pref.short_term) {
       lines.push(
-        `- 短期工意向: 是（候选人明确表示"做几天/临时/短期"；最少工作月数 ≥ 1 的岗位优先排除）`,
+        `- 短期工意向: 是（候选人明确表达短期或临时工作意向；最少工作月数 ≥ 1 的岗位优先排除）`,
       );
     }
     if (pref.delayed_intent) {

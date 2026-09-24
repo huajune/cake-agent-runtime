@@ -20,13 +20,11 @@ describe('generic job-requirement boundaries', () => {
 
     expect(candidatePrompt).toContain('“组合排班”只描述班次组合/轮换，不代表周频');
     expect(candidatePrompt).toContain('不能据此推断每周最低出勤天数');
-    expect(candidatePrompt).toContain('是否匹配要另看具体岗位明确的每周要求');
-    expect(candidatePrompt).toContain(
-      '严禁泛化成“组合排班通常有周频底线 / 每周两天很难匹配这类排班”',
-    );
+    expect(candidatePrompt).toContain('候选人的每周出勤上限须独立处理');
+    expect(candidatePrompt).toContain('是否匹配只看具体岗位本轮 `duliday_job_list` 返回的每周要求');
     expect(comboScheduleCheck).toContain('把两者作为独立维度');
     expect(comboScheduleCheck).toContain(
-      '删除“组合排班通常有每周出勤底线 / 每周 N 天很难匹配”之类泛化',
+      '无具体岗位与本轮岗位工具证据时，不得推断组合排班存在周出勤底线或候选人难以匹配',
     );
   });
 
@@ -34,16 +32,14 @@ describe('generic job-requirement boundaries', () => {
     const candidatePrompt = readPrompt('candidate-consultation.md');
     const healthCertCheck = finalCheckRuleText('health_cert_general_answer');
 
-    expect(candidatePrompt).toContain('餐饮类工作一律需要健康证，办理阶段不得编造比例');
+    expect(candidatePrompt).toContain('办理阶段以具体岗位当前要求为准');
     expect(candidatePrompt).toContain('餐饮类工作一律需要食品健康证');
-    expect(candidatePrompt).toContain(
-      '不得编造“大部分录用后办 / 少数或极少数面试前办”等比例性流程结论',
-    );
-    expect(candidatePrompt).toContain('只用于已确认具体岗位且工具证据表明入职前办证的约面流程');
+    expect(candidatePrompt).toContain('不得编造各办理阶段的岗位占比');
+    expect(candidatePrompt).toContain('一般性办证问题不得被当作候选人已持证或愿意办理的事实');
+    expect(candidatePrompt).toContain('只适用于已确认具体岗位且工具证据支持入职前办证的约面流程');
     expect(healthCertCheck).toContain('保留正确的统一办证要求');
-    expect(healthCertCheck).toContain(
-      '删除“大部分 / 少数 / 极少数在面试前、录用后或入职前办理”等无证据比例结论',
-    );
+    expect(healthCertCheck).toContain('删除办理阶段分布的无证据比例结论');
+    expect(healthCertCheck).toContain('不得把问句写成候选人已持证或愿意办理的事实');
   });
 
   it('keeps weak gender evidence and post-form detail questions on the deduplicated collection path', () => {
@@ -52,6 +48,9 @@ describe('generic job-requirement boundaries', () => {
     expect(candidatePrompt).toContain('无论岗位是否限制性别，都严禁拆成单独确认问题');
     expect(candidatePrompt).toContain('性别：男/女（如有误请改）');
     expect(candidatePrompt).toContain('发过收资表后插问岗位细节，不重发表');
-    expect(candidatePrompt).toContain('答完只用“还差 X、Y 两项哈”');
+    expect(candidatePrompt).toContain('先查证并回答当前问题，随后只用一句话提醒仍缺的字段');
+    expect(candidatePrompt).toContain(
+      '即使本轮只调用 `duliday_job_list` 而未重调 precheck，也不从历史复制整张表',
+    );
   });
 });

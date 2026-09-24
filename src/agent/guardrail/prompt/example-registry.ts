@@ -14,25 +14,10 @@ export interface PromptExampleValue {
 /**
  * 模型可见 prompt 的 canary values（占位值）唯一注册表。
  *
- * 新增虚构人名、门店或号码前必须先登记；号码一律从既有号码表投影（候选人域占位号表 +
- * 测试链路假身份白名单），禁止在本文件里手抄第二份号码。
+ * 模型提示词默认只保留规则，不新增虚构姓名或门店。测试链路必要的号码从既有号码表
+ * 投影（候选人域占位号表 + 测试链路假身份白名单），禁止手抄第二份号码。
  */
 export const PROMPT_EXAMPLE_REGISTRY: readonly PromptExampleValue[] = [
-  {
-    value: '测试娟',
-    kind: 'person_name',
-    selfDestructsBy: '姓名形状门拒绝「测试」前缀',
-  },
-  {
-    value: '粪叉',
-    kind: 'person_name',
-    selfDestructsBy: '仅作昵称反例；禁止进入候选人姓名事实',
-  },
-  {
-    value: '测试门店',
-    kind: 'store_name',
-    selfDestructsBy: '「测试」前缀可稳定识别，且不对应生产门店',
-  },
   ...[...PLACEHOLDER_PHONES].map(
     (value): PromptExampleValue => ({
       value,

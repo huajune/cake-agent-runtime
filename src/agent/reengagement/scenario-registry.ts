@@ -118,7 +118,7 @@ export const FOLLOW_UP_SCENARIOS: readonly FollowUpScenario[] = [
     requiredEvidence: ['lastCandidateMessageAt'],
     stopUnless: () => true, // 通用停止条件（已回/terminal）已在 shouldStop 覆盖
     generationPolicy:
-      '优先使用“还在看机会吗”，再自然询问候选人目前在哪个区域、商圈或地铁站附近，说明可以帮忙看看附近岗位；不要使用“求职意向”这个词，不要问“在忙吗”“怎么没回”，不夸大、不承诺、不催促',
+      '先轻量确认候选人是否还在看工作机会，再自然询问目前所在区域、商圈或地铁站附近位置，说明便于推荐附近岗位；用日常语言表达，不使用招聘术语，不追问未回复的原因，不夸大、不承诺、不催促',
     relevantFactLabels: ['意向城市', '意向区域', '意向地点'],
     defaultRolloutEnabled: true,
     canonicalAnchorEventId: 'opening',
@@ -193,7 +193,7 @@ export const FOLLOW_UP_SCENARIOS: readonly FollowUpScenario[] = [
     // 是否已完成由候选人回话、报名成功终态和外部业务流程推进来收敛。
     stopUnless: () => true,
     generationPolicy:
-      '只提醒继续补充资料、说明补齐后便于推进约面；不要猜具体缺少哪些字段，不使用“现在补”“尽快发”等催促表达',
+      '只提醒继续补充资料、说明补齐后便于推进约面；不要猜具体缺少哪些字段，不催促立即或限时补交',
     relevantFactLabels: [],
     defaultRolloutEnabled: true,
   },

@@ -181,7 +181,7 @@ describe('buildInviteToGroupTool', () => {
     expect(result.inviteMode).toBeUndefined();
     expect(result.groupName).toBe('上海兼职群1号');
     expect(result._outcome).toContain('直接加入');
-    expect(result._replyInstruction).toContain('已帮你加入了');
+    expect(result._replyInstruction).toContain('告知已加入');
     expect(result._replyInstruction).toContain('兼职岗位信息');
     expect(result._replyInstruction).toContain('不是面试群');
     expect(result._replyInstruction).toContain('不要输出任何群链接');
@@ -308,7 +308,7 @@ describe('buildInviteToGroupTool', () => {
     expect(result.inviteMode).toBeUndefined();
     expect(result._outcome).toContain('邀请卡片');
     expect(result._replyInstruction).toContain('上海兼职群1号');
-    expect(result._replyInstruction).toContain('邀请已经发你了');
+    expect(result._replyInstruction).toContain('邀请已发送');
     expect(result._replyInstruction).toContain('不是面试群');
     expect(result._replyInstruction).toContain('不得把腾讯会议链接');
     expect(result._replyInstruction).toContain(
@@ -372,7 +372,8 @@ describe('buildInviteToGroupTool', () => {
     expect(result.alreadyInGroup).toBe(true);
     expect(result.groupName).toBe('上海兼职群1号');
     expect(result._replyInstruction).toContain('不要承诺拉群');
-    expect(result._replyInstruction).toContain('你已经在上海兼职群1号里了');
+    expect(result._replyInstruction).toContain('候选人已经在兼职岗位信息群「上海兼职群1号」里');
+    expect(result._replyInstruction).toContain('告知已在该群并带实际群名');
     expect(mockRoomService.addMemberEnterprise).toHaveBeenCalled();
     expect(mockMemoryService.saveInvitedGroup).toHaveBeenCalled();
   });
@@ -741,7 +742,7 @@ describe('buildInviteToGroupTool', () => {
     expect(result.inviteDelivery).toBe('invite_card');
     expect(result.groupName).toBe('上海零售①');
     expect(result._outcome).toContain('入群邀请卡片');
-    expect(result._replyInstruction).toContain('邀请已经发你了');
+    expect(result._replyInstruction).toContain('邀请已发送');
     // 只调一次拉群接口，不再换下一个候选群重发卡片
     expect(mockRoomService.addMemberEnterprise).toHaveBeenCalledTimes(1);
     expect(mockOpsNotifier.sendInviteRejectedAlert).not.toHaveBeenCalled();
@@ -1072,7 +1073,7 @@ describe('buildInviteToGroupTool', () => {
 
       expect(result.success).toBe(false);
       expect(result.errorType).toBe(TOOL_ERROR_TYPES.INVITE_CITY_UNVERIFIED);
-      expect(result._replyInstruction).toContain('确认所在城市');
+      expect(result._replyInstruction).toContain('询问候选人所在城市');
       expect(mockGroupResolver.resolveGroups).not.toHaveBeenCalled();
     });
 

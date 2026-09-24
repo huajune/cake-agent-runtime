@@ -56,8 +56,8 @@ describe('scenario-registry', () => {
 
   it('uses frontline-friendly opening copy and half-hour funnel delays', () => {
     const opening = getScenario('opening_no_reply')!;
-    expect(opening.generationPolicy).toContain('还在看机会吗');
-    expect(opening.generationPolicy).toContain('不要使用“求职意向”');
+    expect(opening.generationPolicy).toContain('确认候选人是否还在看工作机会');
+    expect(opening.generationPolicy).toContain('用日常语言表达，不使用招聘术语');
     expect(getScenario('store_presented_no_reply')!.triggerDelayMs).toBe(30 * 60_000);
     expect(getScenario('booking_incomplete')!.triggerDelayMs).toBe(30 * 60_000);
   });

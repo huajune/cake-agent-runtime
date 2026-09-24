@@ -83,6 +83,29 @@ describe('FeishuTaskClient', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it('创建成功但响应丢失时，网络重试复用同一创建标识，远端仅建一条任务', async () => {
+    const remoteTasks = new Map<string, { guid: string }>();
+    let responseLost = false;
+    fetchMock.mockImplementation(async (_url, init) => {
+      const body = JSON.parse(String(init?.body)) as { client_token: string };
+      const task = remoteTasks.get(body.client_token) ?? {
+        guid: `task-${remoteTasks.size + 1}`,
+      };
+      remoteTasks.set(body.client_token, task);
+      if (!responseLost) {
+        responseLost = true;
+        throw new Error('ECONNRESET after task creation');
+      }
+      return jsonResponse(200, { code: 0, msg: 'ok', data: { task } });
+    });
+
+    const task = await client.createTask({ summary: '本次介入', clientToken: 'one-submission' });
+    expect(task?.guid).toBe('task-1');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1][1]?.body).toBe(fetchMock.mock.calls[0][1]?.body);
+    expect(remoteTasks.size).toBe(1);
+  });
+
   it('业务错误码不抛错，返回 null', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { code: 1470001, msg: 'no permission' }));
     await expect(client.createTask({ summary: 's' })).resolves.toBeNull();
