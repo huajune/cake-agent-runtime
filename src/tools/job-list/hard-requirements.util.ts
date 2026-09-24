@@ -228,23 +228,33 @@ function normalizeStudentRequirement(
   const figureAllowsStudent = figureParts.includes('学生');
   const figureAllowsSocial = figureParts.includes('社会人士');
   const figureAllowsSecondJob = figureParts.includes('第二职业');
-  // figure 是海绵下发的结构化封闭选项（实测 100% 有值），优先级高于任何自由文本推断。
-  if (/不限/.test(normalizedFigure)) return 'any';
-  if (figureAllowsStudent && (figureAllowsSocial || figureAllowsSecondJob)) return 'any';
-  if (figureAllowsSocial) return 'social_only';
-  if (figureAllowsSecondJob) return 'second_job_only';
-  if (figureAllowsStudent) return 'student_only';
 
   const text = [remark, policyText]
     .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
     .join('；')
     .replace(/\s+/g, '');
+  // 自由文本里**明确写出的拒收**：岗位卡头部的数据使用原则就是"自由文本与结构化字段
+  // 冲突时以自由文本为准"，且这一侧的错判方向是把学生推给不收学生的岗（badcase 本体）。
+  // 生产实例：必胜客 processRemark「不要学生，发现是学生不结算招募费！」。
+  const textRejectsStudents = /(不招|不接受|不要|拒绝|仅限非|只要非)学生|学生勿扰|需要已毕业/.test(
+    text,
+  );
+
+  // figure 是海绵下发的结构化封闭选项（实测 100% 有值），除上面那条拒收外优先于文本推断。
+  if (!textRejectsStudents) {
+    if (/不限/.test(normalizedFigure)) return 'any';
+    if (figureAllowsStudent && (figureAllowsSocial || figureAllowsSecondJob)) return 'any';
+  }
+  if (figureAllowsSocial) return 'social_only';
+  if (figureAllowsSecondJob) return 'second_job_only';
+  if (textRejectsStudents) return 'social_only';
+  if (figureAllowsStudent) return 'student_only';
+
   if (!text) return 'unspecified';
 
   if (/不限学生|学生不限/.test(text)) return 'any';
-  if (/(不招|不接受|不要|拒绝|仅限非|只要非)学生|学生勿扰|需要已毕业|社会人士/.test(text)) {
-    return 'social_only';
-  }
+  // 裸「社会人士」只是措辞线索，不如上面的显式拒收强，放在最后兜。
+  if (/社会人士/.test(text)) return 'social_only';
   if (/(仅限|只招|只要|仅要)学生/.test(text) || /^学生$/.test(text)) {
     return 'student_only';
   }
