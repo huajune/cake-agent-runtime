@@ -3,7 +3,7 @@ import type { RecommendedJobSummary } from '@resolution/job/types';
 import { buildJobPolicyAnalysis } from '@tools/job-list/job-policy-parser';
 import { formatSalarySummary } from '@tools/job-list/brand-stores.util';
 import { formatSettlementSummary } from '@tools/job-list/salary-settlement.util';
-import { composeShiftTimeText } from '@tools/job-list/format-shift-time.util';
+import { formatJobShiftTime } from '@tools/job-list/format-shift-time.util';
 import { extractWelfareFacts } from '@tools/job-list/welfare-facts.util';
 import { inferStudentRequirement } from '@tools/job-list/render.util';
 
@@ -59,7 +59,7 @@ export function mapJobsToRecommendedSummaries(jobs: JobDetail[]): RecommendedJob
       partTimeJobType: job.basicInfo.partTimeJobType ?? null,
       salaryDesc: formatSalarySummary(job),
       settlementSummary: formatSettlementSummary(job),
-      shiftSummary: composeShiftTimeText(job.workTime),
+      shiftSummary: formatJobShiftTime(job),
       jobCategoryName: job.basicInfo.jobCategoryName ?? null,
       ageRequirement: ageRequirement && ageRequirement !== '不限' ? ageRequirement : null,
       educationRequirement:

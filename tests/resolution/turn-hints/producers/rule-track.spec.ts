@@ -138,9 +138,9 @@ describe('turn-hints rule track', () => {
     expect(readProjectedValue(result?.preferences.position)).toEqual(['服务员']);
     expect(readProjectedValue(result?.preferences.schedule)).toBe('周末');
     expect(readProjectedValue(result?.interview_info.gender)).toBe('男');
-    expect(
-      produced?.claims.find((claim) => claim.field === 'interview_info.gender'),
-    ).toEqual(expect.objectContaining({ producer: 'candidate_quote', confidence: 'high' }));
+    expect(produced?.claims.find((claim) => claim.field === 'interview_info.gender')).toEqual(
+      expect.objectContaining({ producer: 'candidate_quote', confidence: 'high' }),
+    );
     expect(readProjectedValue(result?.interview_info.age)).toBe('25');
     expect(readProjectedValue(result?.interview_info.has_health_certificate)).toBe('有');
   });
@@ -298,9 +298,7 @@ describe('turn-hints rule track', () => {
     expect(
       readProjectedValue(projectTurnHints(produced)?.interview_info.has_health_certificate),
     ).toBe('无');
-    expect(readProjectedValue(projectTurnHints(produced)?.preferences.labor_form)).toBe(
-      '寒假工',
-    );
+    expect(readProjectedValue(projectTurnHints(produced)?.preferences.labor_form)).toBe('寒假工');
   });
 
   it('should not extract phone from longer numeric strings', () => {
@@ -390,7 +388,7 @@ describe('turn-hints rule track', () => {
       const constraint = extractTurnHints(['我只能周末上班'], brandData)?.preferences
         .schedule_constraint;
       expect(readProjectedValue(constraint)?.onlyWeekends).toBe(true);
-      expect(readProjectedValue(constraint)?.maxDaysPerWeek).toBeNull();
+      expect(readProjectedValue(constraint)?.maxDaysPerWeek).toBeUndefined();
     });
 
     it('extracts onlyEvenings from "只做晚班"', () => {
@@ -449,7 +447,7 @@ describe('turn-hints rule track', () => {
       const facts = extractTurnHints(['帮我找黄浦区周六嘛兼职'], brandData);
       const constraint = readProjectedValue(facts?.preferences.schedule_constraint);
       expect(constraint?.onlyWeekends).toBe(true);
-      expect(constraint?.onlyEvenings).toBeNull();
+      expect(constraint?.onlyEvenings).toBeUndefined();
       expect(readProjectedValue(facts?.preferences.schedule)).toContain('周末');
     });
 

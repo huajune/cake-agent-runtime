@@ -1,3 +1,4 @@
+import { scheduledJob, flexibleJob } from '../../helpers/job-schedule.fixture';
 import { buildJobListTool, shortenSearchJobName } from '@tools/duliday-job-list.tool';
 import { ToolBuildContext } from '@shared-types/tool.types';
 import { TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
@@ -192,9 +193,8 @@ describe('buildJobListTool', () => {
     );
     const builtTool = builder(mockContext);
 
-    expect(builtTool.description).toContain('只周末');
-    expect(builtTool.description).toContain('早开晚结全天时段/05:00-23:00');
-    expect(builtTool.description).toContain('不得回复"周末能排"');
+    expect(builtTool.description).toContain('purpose=inspect');
+    expect(builtTool.description).not.toContain('早开晚结全天时段/05:00-23:00');
     // 2026-08-21 P3-2 首批：展示要求围绕四行卡片铁律收敛，"推荐 2 个及以上岗位时"
     // 旧措辞并入"卡片正文是展示的唯一底盘"条目，多岗分隔约束保留
     expect(builtTool.description).toContain('卡片正文是展示的唯一底盘');
@@ -470,6 +470,8 @@ describe('buildJobListTool', () => {
 
     expect(mockSpongeService.fetchJobs).toHaveBeenCalledWith(
       expect.objectContaining({ brandIdList: [] }),
+      undefined,
+      expect.any(AbortSignal),
     );
     expect(result.queryMeta.brand.appliedBrandIds).toEqual([]);
   });
@@ -488,6 +490,8 @@ describe('buildJobListTool', () => {
     // 昵称品牌统一在首轮准备阶段经验证后 seed 进 brand_state，工具侧不再存在昵称档
     expect(mockSpongeService.fetchJobs).toHaveBeenCalledWith(
       expect.objectContaining({ brandAliasList: [] }),
+      undefined,
+      expect.any(AbortSignal),
     );
     expect(result.queryMeta.brand.brandSource).toBe('none');
   });
@@ -511,6 +515,8 @@ describe('buildJobListTool', () => {
 
     expect(mockSpongeService.fetchJobs).toHaveBeenCalledWith(
       expect.objectContaining({ brandAliasList: ['大米先生'] }),
+      undefined,
+      expect.any(AbortSignal),
     );
     expect(result.queryMeta.brand.brandSource).toBe('session_state');
     expect(result.queryMeta.brand.filterMode).toBe('enforce');
@@ -557,6 +563,8 @@ describe('buildJobListTool', () => {
 
     expect(mockSpongeService.fetchJobs).toHaveBeenCalledWith(
       expect.objectContaining({ brandAliasList: [], brandIdList: [] }),
+      undefined,
+      expect.any(AbortSignal),
     );
     expect(result.queryMeta.brand.filterMode).toBe('clear');
     expect(result.queryMeta.brand.brandSource).toBe('none');
@@ -581,6 +589,8 @@ describe('buildJobListTool', () => {
 
     expect(mockSpongeService.fetchJobs).toHaveBeenCalledWith(
       expect.objectContaining({ brandAliasList: ['KFC'] }),
+      undefined,
+      expect.any(AbortSignal),
     );
     expect(result.queryMeta.brand.brandSource).toBe('model_input');
   });
@@ -678,6 +688,8 @@ describe('buildJobListTool', () => {
     // 查询本身不带品牌条件，召回后本地剔除
     expect(mockSpongeService.fetchJobs).toHaveBeenCalledWith(
       expect.objectContaining({ brandAliasList: [], brandIdList: [] }),
+      undefined,
+      expect.any(AbortSignal),
     );
     expect(result.resultCount).toBe(1);
     expect(result.queryMeta.brand.filterMode).toBe('exclude');
@@ -974,6 +986,8 @@ describe('buildJobListTool', () => {
       expect.objectContaining({
         location: { longitude: 121.46, latitude: 31.18, range: 10000 },
       }),
+      undefined,
+      expect.any(AbortSignal),
     );
   });
 
@@ -1002,6 +1016,8 @@ describe('buildJobListTool', () => {
       expect.objectContaining({
         location: { longitude: 121.46, latitude: 31.18, range: 3000 },
       }),
+      undefined,
+      expect.any(AbortSignal),
     );
   });
 
@@ -1032,6 +1048,8 @@ describe('buildJobListTool', () => {
       expect(mockSpongeService.fetchJobs).toHaveBeenNthCalledWith(
         2,
         expect.objectContaining({ searchJobName: '乐高' }),
+        undefined,
+        expect.any(AbortSignal),
       );
       expect(result.queryMeta.searchNameShortened).toEqual({ from: '乐高乐园', to: '乐高' });
       expect(String(result.queryMeta.searchNameShortenedInstruction)).toContain('核对');
@@ -1095,6 +1113,8 @@ describe('buildJobListTool', () => {
 
       expect(mockSpongeService.fetchJobs).toHaveBeenCalledWith(
         expect.objectContaining({ location: undefined }),
+        undefined,
+        expect.any(AbortSignal),
       );
       expect(result.queryMeta.accommodationFilter).toEqual(
         expect.objectContaining({
@@ -1932,6 +1952,7 @@ describe('buildJobListTool', () => {
       },
       workTime: {
         employmentForm: '兼职',
+        ...scheduledJob(1, '固定排班', [['09:00', '17:00']]).workTime,
         workTimeRemark: '每天8小时，过年不返乡',
       },
       interviewProcess: {
@@ -1984,11 +2005,11 @@ describe('buildJobListTool', () => {
           onWorkTime: 26,
         },
         dayWorkTime: {
-          arrangementType: '满足其中一个时段即可安排上岗',
+          arrangementType: '固定排班',
           combinedArrangement: [
             { combinedArrangementStartTime: '11:00', combinedArrangementEndTime: '14:00' },
           ],
-          fixedTime: { perDayMinWorkHours: '3.0' },
+          fixedTime: null,
         },
       },
     });
@@ -2011,9 +2032,9 @@ describe('buildJobListTool', () => {
     expect(result.markdown).toContain('**门店**: 朝阳店 (ID: 100)');
     expect(result.markdown).toContain('**坐标**: 116.1, 39.9');
     expect(result.markdown).toContain('**最少工作月数**: 3 个月');
-    expect(result.markdown).toContain('**每日工时**: 最少 3 小时');
+    expect(result.markdown).toContain('班次跨度 3 小时');
     expect(result.markdown).toContain('**排班周期**: 每月: 至多上岗 26 天');
-    expect(result.markdown).toContain('**排班类型**: 满足其中一个时段即可安排上岗');
+    expect(result.markdown).toContain('固定排班（需接受全部班次）');
 
     // No legacy projection block artifacts
     expect(result.markdown).not.toContain('字段投影');
@@ -2062,7 +2083,7 @@ describe('buildJobListTool', () => {
     expect(result.markdown).not.toContain('已省略未设置字段');
   });
 
-  it('should render 组合排班(满足所有时段) slots + full-week hint', async () => {
+  it('should render 固定排班全部时段 and weekly requirements independently', async () => {
     const job = makeJobData({
       workTime: {
         weekAndMonthWorkTime: {
@@ -2072,7 +2093,7 @@ describe('buildJobListTool', () => {
           perWeekRestDays: 0,
         },
         dayWorkTime: {
-          arrangementType: '满足所有时段才可安排上岗',
+          arrangementType: '固定排班',
           combinedArrangement: [
             { combinedArrangementStartTime: '09:00', combinedArrangementEndTime: '18:30' },
             { combinedArrangementStartTime: '13:00', combinedArrangementEndTime: '22:30' },
@@ -2088,14 +2109,14 @@ describe('buildJobListTool', () => {
       includeWorkTime: true,
     });
 
-    expect(result.markdown).toContain('**排班类型**: 满足所有时段才可安排上岗');
-    expect(result.markdown).toContain('**可排时段**');
-    expect(result.markdown).toContain('时段 1: 09:00 - 18:30');
-    expect(result.markdown).toContain('时段 2: 13:00 - 22:30');
-    // 组合排班制 → 全部出勤；perWeekWorkDays=7 → 全周强排班
-    expect(result.markdown).toContain('**班次硬约束提示**');
+    expect(result.markdown).toContain('固定排班（需接受全部班次）');
+    expect(result.markdown).toContain('**每日排班**');
+    expect(result.markdown).toContain('09:00-18:30');
+    expect(result.markdown).toContain('13:00-22:30');
+    // 固定排班全部出勤；周频单独提示。
+    expect(result.markdown).toContain('需接受全部班次');
     expect(result.markdown).toContain('**排班硬约束提示**');
-    expect(result.markdown).toContain('不能把该岗位说成"周末能排"');
+    expect(result.markdown).toContain('须核对周频限制');
   });
 
   it('should render stair salary and periodic interview times for complex jobs', async () => {
@@ -2461,99 +2482,135 @@ describe('buildJobListTool', () => {
     });
   });
 
-  describe('排他性班次约束出处闸（运营 2026-09-24 case 复核第 3 条）', () => {
-    const candidateSaid = (...texts: string[]) =>
-      texts.map((content, index) => ({
-        id: `blk-${index}`,
-        domain: 'evidence' as const,
-        role: 'user' as const,
-        content,
-      }));
-
-    it('收资表单"周末两天都在接受门店排班"被读成 onlyWeekends：拒绝入参，不查询也不产出无岗话术', async () => {
-      const result = await executeTool(
-        {
-          ...mockContext,
-          corpusBlocks: candidateSaid('周末两天是否在岗：周末两天都在接受门店排班'),
-        },
-        {
+  describe('班次条件引用与事实核对', () => {
+    it.each([undefined, { quote: '助手说只能晚班' }, { quote: '旧轮只能晚班' }])(
+      '缺少本轮引用不能设置任何时间条件: %j',
+      async (citation) => {
+        const result = await executeTool({ ...mockContext, currentUserMessage: '几点上班？' }, {
           ...defaultInput,
           cityNameList: ['上海'],
-          candidateScheduleConstraint: { onlyWeekends: true },
-        } as typeof defaultInput,
+          candidateScheduleConstraint: { availableWindow: { start: '18:00' } },
+          candidateScheduleCitation: citation,
+        } as typeof defaultInput);
+        expect(mockSpongeService.fetchJobs).not.toHaveBeenCalled();
+        expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_SCHEDULE_NO_PROVENANCE);
+        expect(result.noMatchScript).toBeUndefined();
+      },
+    );
+    it('正确引用放行并强制取得workTime', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [scheduledJob(1, '固定排班', [['18:00', '22:00']])],
+        total: 1,
+      });
+      const result = await executeTool({ ...mockContext, currentUserMessage: '18点后有空' }, {
+        ...defaultInput,
+        candidateScheduleConstraint: { availableWindow: { start: '18:00' } },
+        candidateScheduleCitation: { quote: '18点后有空' },
+      } as typeof defaultInput);
+      expect(mockSpongeService.fetchJobs).toHaveBeenCalledWith(
+        expect.objectContaining({ options: expect.objectContaining({ includeWorkTime: true }) }),
+        undefined,
+        expect.any(AbortSignal),
       );
-
-      expect(mockSpongeService.fetchJobs).not.toHaveBeenCalled();
-      expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_SCHEDULE_NO_PROVENANCE);
-      expect(result.unsupportedScheduleFields).toEqual(['onlyWeekends']);
+      expect(result.resultCount).toBe(1);
+    });
+    it('inspect返回不匹配岗位事实，不写推荐池或推荐事件', async () => {
+      const recordFetchedJobs = jest.fn();
+      const recordEvent = jest.fn();
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [scheduledJob(1, '固定排班', [['08:00', '16:00']])],
+        total: 1,
+      });
+      const ctx = normalizeContext({
+        ...mockContext,
+        recordFetchedJobs,
+        sessionFacts: {
+          preferences: { schedule_constraint: { availableWindow: { start: '18:00' } } },
+        } as never,
+      });
+      const built = buildJobListTool(
+        mockSpongeService as never,
+        { recordEvent } as never,
+        { geocode: jest.fn() } as never,
+      )(ctx);
+      const result = (await built.execute!(
+        { ...defaultInput, purpose: 'inspect', jobIdList: [1] } as never,
+        {} as never,
+      )) as Awaited<ReturnType<typeof executeTool>>;
+      expect(result.resultCount).toBe(1);
+      expect(result.markdown).toContain('08:00-16:00');
+      expect(result.queryMeta.scheduleFilter.assessments[0].status).toBe('unmatched');
+      expect(recordFetchedJobs).not.toHaveBeenCalled();
+      expect(recordEvent).not.toHaveBeenCalled();
+    });
+    it('灵活窗口待确认不进入推荐结果，也不说无岗', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [flexibleJob()], total: 1 });
+      const result = await executeTool({ ...mockContext, currentUserMessage: '18点后有空' }, {
+        ...defaultInput,
+        candidateScheduleConstraint: { availableWindow: { start: '18:00' } },
+        candidateScheduleCitation: { quote: '18点后有空' },
+      } as typeof defaultInput);
+      expect(result.queryMeta.unknownCount).toBe(1);
       expect(result.noMatchScript).toBeUndefined();
-      expect(result._replyInstruction).toContain('排班和你的时段对不上');
+      expect(result._replyInstruction).toContain('不能断言');
     });
-
-    it('候选人原话"我只能做周末"：放行，正常查询', async () => {
-      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [], total: 0 });
-
-      const result = await executeTool(
-        { ...mockContext, corpusBlocks: candidateSaid('我只能做周末，平时要上课') },
-        {
-          ...defaultInput,
-          cityNameList: ['上海'],
-          candidateScheduleConstraint: { onlyWeekends: true },
-        } as typeof defaultInput,
-      );
-
-      expect(mockSpongeService.fetchJobs).toHaveBeenCalled();
-      expect(result.errorType).not.toBe(TOOL_ERROR_TYPES.JOB_LIST_SCHEDULE_NO_PROVENANCE);
-    });
-
-    it('availableWindow/maxDaysPerWeek 不在出处闸范围内', async () => {
-      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [], total: 0 });
-
-      await executeTool(
-        { ...mockContext, corpusBlocks: candidateSaid('随便聊两句') },
-        {
-          ...defaultInput,
-          cityNameList: ['上海'],
-          candidateScheduleConstraint: {
-            maxDaysPerWeek: 3,
-            availableWindow: { start: '18:00', end: '23:00' },
-          },
-        } as typeof defaultInput,
-      );
-
-      expect(mockSpongeService.fetchJobs).toHaveBeenCalled();
-    });
-
-    it('无语料（出处池不可用）时整体放行，不改变既有行为', async () => {
-      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [], total: 0 });
-
-      await executeTool(mockContext, {
+    it('门店模糊回退仍扫描后页并保持本地门店条件', async () => {
+      const first = Array.from({ length: 20 }, (_, i) => {
+        const job = scheduledJob(i + 1, '固定排班', [['19:00', '22:00']]);
+        job.basicInfo.storeInfo = { storeName: '其他店' };
+        return job;
+      });
+      const target = scheduledJob(21, '固定排班', [['19:00', '22:00']]);
+      target.basicInfo.storeInfo = { storeName: '目标门店' };
+      mockSpongeService.fetchJobs
+        .mockResolvedValueOnce({ jobs: [], total: 0 })
+        .mockResolvedValueOnce({ jobs: first, total: 21 })
+        .mockResolvedValueOnce({ jobs: [target], total: 21 });
+      const result = await executeTool({ ...mockContext, currentUserMessage: '18点后有空' }, {
         ...defaultInput,
         cityNameList: ['上海'],
-        candidateScheduleConstraint: { onlyWeekends: true },
+        storeNameList: ['目标'],
+        candidateScheduleConstraint: { availableWindow: { start: '18:00' } },
+        candidateScheduleCitation: { quote: '18点后有空' },
       } as typeof defaultInput);
-
-      expect(mockSpongeService.fetchJobs).toHaveBeenCalled();
+      expect(result.resultCount).toBe(1);
+      expect(result.queryMeta).toMatchObject({
+        upstreamTotal: 21,
+        scannedCount: 21,
+        scanComplete: true,
+      });
+      expect(mockSpongeService.fetchJobs.mock.calls[2][0]).toMatchObject({
+        cityNameList: ['上海'],
+        storeNameList: [],
+        pageNum: 2,
+      });
     });
-
-    it('持久化兜底里的缺出处排他性字段被静默剥离，不阻断查询', async () => {
-      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [], total: 0 });
-
-      const result = await executeTool(
-        {
-          ...mockContext,
-          corpusBlocks: candidateSaid('周末两天都在接受门店排班'),
-          sessionFacts: {
-            preferences: { schedule_constraint: { onlyWeekends: true, maxDaysPerWeek: null } },
-          } as never,
-        },
-        { ...defaultInput, cityNameList: ['上海'] },
+    it('第一页不符仍查询第二页，不改变城市品牌和条件', async () => {
+      const first = Array.from({ length: 20 }, (_, i) =>
+        scheduledJob(i + 1, '固定排班', [['08:00', '12:00']]),
       );
-
-      expect(mockSpongeService.fetchJobs).toHaveBeenCalled();
-      expect(result.errorType).not.toBe(TOOL_ERROR_TYPES.JOB_LIST_SCHEDULE_NO_PROVENANCE);
-      // 剥空后回落 undefined：无岗话术里不得出现空的时段标签
-      expect(JSON.stringify(result.noMatchScript ?? {})).not.toContain('只周末');
+      mockSpongeService.fetchJobs
+        .mockResolvedValueOnce({ jobs: first, total: 21 })
+        .mockResolvedValueOnce({
+          jobs: [scheduledJob(21, '固定排班', [['19:00', '22:00']])],
+          total: 21,
+        });
+      const result = await executeTool({ ...mockContext, currentUserMessage: '18点后有空' }, {
+        ...defaultInput,
+        cityNameList: ['上海'],
+        candidateScheduleConstraint: { availableWindow: { start: '18:00' } },
+        candidateScheduleCitation: { quote: '18点后有空' },
+      } as typeof defaultInput);
+      expect(result.resultCount).toBe(1);
+      expect(result.queryMeta).toMatchObject({
+        upstreamTotal: 21,
+        scannedCount: 21,
+        scanComplete: true,
+      });
+      expect(mockSpongeService.fetchJobs.mock.calls[1][0]).toMatchObject({
+        cityNameList: ['上海'],
+        pageNum: 2,
+      });
     });
   });
 
@@ -2613,118 +2670,64 @@ describe('buildJobListTool', () => {
     });
   });
 
-  describe('sessionFacts 班次约束逐字段合并 (badcase batch_6a4e430dce406a6aee7a3421)', () => {
-    // 候选人要"周六的兼职"（facts 已沉淀 onlyWeekends），模型却传 {onlyEvenings:true}
-    // 把周末约束弄丢——持久化约束必须补齐模型漏传的字段，而不是被整体覆盖
-    const contextWithWeekendFact = (): JobListTestContext => ({
-      ...mockContext,
-      sessionFacts: {
-        interview_info: {},
-        preferences: {
-          schedule_constraint: {
-            onlyWeekends: true,
-            onlyEvenings: null,
-            onlyMornings: null,
-            maxDaysPerWeek: null,
-          },
-        },
-      } as ToolBuildContext['archive']['sessionFacts'],
+  describe('班次条件跨轮增改撤销', () => {
+    const previous = {
+      onlyWeekends: true,
+      includeAnyTags: ['evening'],
+      availableWindow: { start: '18:00' },
+    };
+    const ctx = () =>
+      ({
+        ...mockContext,
+        currentUserMessage: '现在时间不限了',
+        sessionFacts: { preferences: { schedule_constraint: previous } },
+      }) as JobListTestContext;
+    beforeEach(() => {
+      const job = scheduledJob(1, '固定排班', [['18:00', '22:00']]);
+      job.workTime = { ...job.workTime, weekAndMonthWorkTime: { perWeekWorkDays: 2 } };
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [job], total: 1 });
     });
-
-    it('模型传了不含 onlyWeekends 的约束时由持久化事实补齐，不整体覆盖', async () => {
-      mockSpongeService.fetchJobs.mockResolvedValue({
-        jobs: [
-          makeJobData({
-            basicInfo: { jobId: 1, brandName: 'KFC' },
-            workTime: { remark: '灵活排班，可选时段' },
-          }),
-        ],
-        total: 1,
-      });
-
-      const result = await executeTool(contextWithWeekendFact(), {
-        ...defaultInput,
-        candidateScheduleConstraint: { onlyEvenings: true },
-      } as typeof defaultInput);
-
-      expect(result.queryMeta.scheduleFilter).toEqual(
-        expect.objectContaining({
-          applied: true,
-          candidateConstraint: { onlyWeekends: true, onlyEvenings: true },
-        }),
-      );
-    });
-
-    it('模型传空对象 {} 视同未传，仍走持久化约束兜底', async () => {
-      mockSpongeService.fetchJobs.mockResolvedValue({
-        jobs: [
-          makeJobData({
-            basicInfo: { jobId: 1, brandName: 'KFC' },
-            workTime: { remark: '灵活排班，可选时段' },
-          }),
-        ],
-        total: 1,
-      });
-
-      const result = await executeTool(contextWithWeekendFact(), {
+    it('省略沿用已有条件，无需把历史原话冒充当前引用', async () => {
+      const result = await executeTool(ctx(), {
         ...defaultInput,
         candidateScheduleConstraint: {},
       } as typeof defaultInput);
-
-      expect(result.queryMeta.scheduleFilter).toEqual(
-        expect.objectContaining({
-          applied: true,
-          candidateConstraint: { onlyWeekends: true },
-        }),
-      );
+      expect(result.queryMeta.scheduleFilter.candidateConstraint).toEqual(previous);
     });
-
-    it('模型显式传的同名字段优先于持久化事实（本轮新信息覆盖旧值）', async () => {
-      mockSpongeService.fetchJobs.mockResolvedValue({
-        jobs: [
-          makeJobData({
-            basicInfo: { jobId: 1, brandName: 'KFC' },
-            workTime: { remark: '灵活排班，可选时段' },
-          }),
-        ],
-        total: 1,
-      });
-
-      const result = await executeTool(contextWithWeekendFact(), {
+    it('撤销日内时间不抹除周末条件', async () => {
+      const result = await executeTool(ctx(), {
         ...defaultInput,
-        candidateScheduleConstraint: { onlyWeekends: false },
+        candidateScheduleConstraint: { includeAnyTags: [], availableWindow: null },
+        candidateScheduleCitation: { quote: '现在时间不限了' },
       } as typeof defaultInput);
-
-      expect(result.queryMeta.scheduleFilter).toEqual(
-        expect.objectContaining({
-          applied: true,
-          candidateConstraint: { onlyWeekends: false },
-        }),
-      );
+      expect(result.queryMeta.scheduleFilter.candidateConstraint).toEqual({
+        onlyWeekends: true,
+        includeAnyTags: [],
+        availableWindow: null,
+      });
     });
-
-    it('无持久化约束时模型入参原样生效', async () => {
-      mockSpongeService.fetchJobs.mockResolvedValue({
-        jobs: [
-          makeJobData({
-            basicInfo: { jobId: 1, brandName: 'KFC' },
-            workTime: { remark: '灵活排班，可选时段' },
-          }),
-        ],
-        total: 1,
-      });
-
-      const result = await executeTool(mockContext, {
+    it('新字段替换同字段，未提及条件保留', async () => {
+      const result = await executeTool({ ...ctx(), currentUserMessage: '下午到晚上都行' }, {
         ...defaultInput,
-        candidateScheduleConstraint: { onlyEvenings: true },
+        candidateScheduleConstraint: {
+          includeAnyTags: ['afternoon', 'evening'],
+          availableWindow: null,
+        },
+        candidateScheduleCitation: { quote: '下午到晚上都行' },
       } as typeof defaultInput);
-
-      expect(result.queryMeta.scheduleFilter).toEqual(
-        expect.objectContaining({
-          applied: true,
-          candidateConstraint: { onlyEvenings: true },
-        }),
-      );
+      expect(result.queryMeta.scheduleFilter.candidateConstraint).toEqual({
+        onlyWeekends: true,
+        includeAnyTags: ['afternoon', 'evening'],
+        availableWindow: null,
+      });
+    });
+    it('历史早晚班布尔值无明确含义时要求确认，不悄悄放宽', async () => {
+      const result = await executeTool({
+        ...mockContext,
+        sessionFacts: { preferences: { schedule_constraint: { onlyEvenings: true } } },
+      } as JobListTestContext);
+      expect(mockSpongeService.fetchJobs).not.toHaveBeenCalled();
+      expect(result._outcome).toBe('已有班次条件需要重新确认');
     });
   });
 

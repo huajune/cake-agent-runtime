@@ -429,8 +429,12 @@ export function resolveHardConstraintsPromptView(input: {
     short_term: current?.preferences.short_term ?? trusted?.preferences.short_term ?? null,
     open_position: current?.preferences.open_position ?? trusted?.preferences.open_position ?? null,
     time_windows: current?.preferences.time_windows ?? trusted?.preferences.time_windows ?? null,
-    schedule_constraint:
-      current?.preferences.schedule_constraint ?? trusted?.preferences.schedule_constraint ?? null,
+    // 班次是可逆查岗偏好。轮末抽取保留 medium 证据等级，不能因此跨轮丢失；
+    // 本轮日内变更由 Agent 提交带原话的工具参数，不能由规则轨覆盖已保存条件。
+    schedule_constraint: unwrapSessionFactValue(
+      input.sessionFacts?.preferences.schedule_constraint,
+      { minConfidence: 'medium' },
+    ),
     available_after:
       current?.preferences.available_after ?? trusted?.preferences.available_after ?? null,
   };

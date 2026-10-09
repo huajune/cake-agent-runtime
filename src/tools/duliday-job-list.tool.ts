@@ -1,3 +1,9 @@
+import {
+  scanJobPages,
+  buildScannedQueryError,
+  JOB_SCAN_BUDGET_MS,
+  type JobScanMeta,
+} from '@tools/job-list/scan-jobs.util';
 /**
  * DuLiDay 岗位查询工具（LLM 优化版）
  *
@@ -61,11 +67,15 @@ import {
   stripGenericPositionUmbrella,
 } from '@tools/job-list/search.util';
 import {
-  findUnsupportedExclusiveShiftFields,
-  formatExclusiveShiftFields,
-  stripExclusiveShiftFields,
-} from '@tools/job-list/schedule-provenance.util';
-import { extractCandidateTextsFromCorpus } from '@resolution/signal/self-report';
+  SCHEDULE_CONSTRAINT_GUIDANCE,
+  CandidateScheduleConstraintSchema,
+  hasScheduleConstraint,
+  mergeScheduleConstraints,
+  readScheduleConditions,
+} from '@resolution/schedule/types';
+import { verifyCitation } from '@resolution/notary/citation-verifier';
+import { WorkTimeContractError } from '@sponge/work-time.types';
+import { getJobSchedule } from '@tools/job-list/schedule-normalizer.util';
 import {
   allRejectedAsUnmatched,
   buildBrandQueryPlan,
@@ -104,7 +114,7 @@ import { normalizeCitationText, normalizedIncludes } from '@resolution/notary/te
 
 const DEFAULT_PAGE_NUM = 1;
 const DEFAULT_PAGE_SIZE = 20;
-const DISTANCE_SCAN_MAX_PAGES = 10;
+
 /**
  * 判定"模型传入的坐标 = 本轮 geocode 解析结果"的坐标容差（度）。
  * 模型从 geocode 结果转抄经纬度时可能截断小数位，0.005° ≈ 500m，
@@ -393,24 +403,26 @@ const inputSchema = z.object({
     .describe(
       '候选人明确要「包住/提供住宿/有宿舍」的岗位时传 true（如"我想找住宿的""有没有包住的""家远想住店里"）。传入后工具自动：①解除距离上限改全城召回（通勤距离对包住岗位不成立，坐标只用于显示距离）；②只保留福利里公司提供住宿或有住宿补贴的岗位，其余剔除并在 queryMeta.accommodationFilter 说明。候选人只是随口问"包不包住"不算硬需求，不要传。',
     ),
-  candidateScheduleConstraint: z
-    .object({
-      onlyWeekends: z.boolean().optional().describe('候选人只能周末上班'),
-      onlyEvenings: z.boolean().optional().describe('候选人只做晚班/晚上有空'),
-      onlyMornings: z.boolean().optional().describe('候选人只做早班'),
-      maxDaysPerWeek: z.number().int().min(1).max(7).optional().describe('候选人每周最多 N 天'),
-      availableWindow: z
-        .object({ start: z.string(), end: z.string() })
-        .nullable()
-        .optional()
-        .describe(
-          '候选人可上班的具体时段（HH:MM，如"晚上6点半到24点"→{start:"18:30",end:"24:00"}）。传入后班次必须整段落在该时段内才保留（组合班次需全部落入；窗口式排班按重叠时长判）。候选人给了具体钟点区间时必须传，不要降级成 onlyEvenings。',
-        ),
-    })
+  purpose: z
+    .enum(['recommend', 'inspect'])
+    .optional()
+    .default('recommend')
+    .describe(
+      'recommend=按候选人条件筛选推荐；inspect=按已知jobIdList核对岗位事实，不筛掉不匹配岗位，不进入推荐候选池',
+    ),
+  preferFlexibleSchedule: z
+    .boolean()
+    .optional()
+    .describe('候选人希望灵活排班时优先展示灵活排班；只是排序，不保证能任选时段'),
+  candidateScheduleCitation: z
+    .object({ quote: z.string() })
     .optional()
     .describe(
-      '候选人班次硬约束。传入后，工具会按岗位 workTime 语义判定是否兼容；不兼容岗位会从结果中移除并在 queryMeta.scheduleFilter 里说明剔除数量。候选人明确表达"只能周末/只做晚班/每周最多两天"等班次硬约束时必须传，避免推荐工作日强排班/全周岗位。注意方向：候选人解释"为什么某班次做不了"（如"我七点才下班赶不上晚班""上晚班影响睡眠"）是对该班次的**排除**，不是"只做该班次"，不得据此传 onlyEvenings/onlyMornings；"找周六/周末的活"= onlyWeekends: true。onlyWeekends/onlyEvenings/onlyMornings 断言的是**排他性**（候选人只能做这个时段），必须有候选人"只…"这类原话依据，工具会按候选人原话校验，缺依据直接拒绝本次查询；收资表单里"周末两天都在接受门店排班""可接受晚班"这类答案说的是候选人**这些时段能上班**（可用性），不构成排他性约束，不得据此传这三个字段。班次约束跨轮累积：候选人早前说过"只周六/只周末"，本轮只是补充其他限制时，onlyWeekends 必须继续带上，不得用新约束替换。',
+      '本轮新增、修改或撤销班次条件/排班方式偏好时，摘录本轮候选人的逐字原话。沿用记忆中的条件可省略',
     ),
+  candidateScheduleConstraint: CandidateScheduleConstraintSchema.optional().describe(
+    SCHEDULE_CONSTRAINT_GUIDANCE,
+  ),
 });
 
 function readFactValue(value: unknown): unknown {
@@ -717,11 +729,10 @@ const DESCRIPTION = `查询在招岗位列表。支持渐进式数据返回，�
 - **1 条** 且候选人在问"还有别的吗 / 其他选择"：反常信号，**必须再放宽 1 个维度重查**（去掉 location / 扩大半径 / 去掉某个 brand/category filter），不得用 1 条结果直接答"暂时没空缺"
 - **≥ 2 条**：可以基于结果回复，无需扩面
 - **同一轮内本工具调用次数硬上限 = 3**：第 4 次系统会直接拒绝。第 3 次仍未拿到可用数据时，应基于已有结果如实告知候选人，不要再继续猜 filter
-- **结果只对最近 6 家给全文，更远的列在「### 更远的 N 家」里只有摘要行（店名/距离/薪资/年龄/jobId）**：推荐时优先用全文的最近几家；候选人明确问到摘要区某家的班次/福利/详细要求时，用该行的 jobId 走 jobIdList 单独重查拿全文，不要凭摘要行编造其未列出的字段
+- **结果只对最近 6 家给全文，更远的列在「### 更远的 N 家」里只有摘要行（店名/距离/薪资/年龄/jobId）**：推荐时优先用全文的最近几家；候选人明确问到摘要区某家的班次/福利/详细要求时，用purpose=inspect与该行的jobId走jobIdList单独重查拿全文，不要凭摘要行编造其未列出的字段
 
 ## 必须考虑的硬约束
 - [本轮查询硬约束] 段列出的字段必须在本轮查询里体现——按每项注明的处理方式执行（作为 filter 或在结果集自行排除），注释没说"填到 XxxList"的不要硬塞 filter；缺任一硬约束的结果不得用于"无空缺"结论
-- 候选人说"只周末"、"平时下班后"、"只能晚班"、"每周最多两天"、"做一休一"、"不上夜班"、"周四最早 19:30"这类班次/出勤限制时，必须把工作时间当硬约束。岗位侧"每天"、"周一至周日"、"做六休一"、"每周四/六/日都要给班"、"早开晚结全天时段/05:00-23:00"是强排班要求：除非岗位明确写"只周末/仅周末/可只排周末/每周可两天/可做一休一"，否则一律视为与上述窄约束不匹配，不能解释成任选一天、任选晚班或可只做周末，不得回复"周末能排"或"可以协调"
 
 ## 参数要点
 - 至少提供一个有效筛选条件：城市、区域、品牌、门店、岗位类型、项目ID、岗位ID。根据 [会话记忆] 中候选人意向填入
@@ -746,7 +757,7 @@ const DESCRIPTION = `查询在招岗位列表。支持渐进式数据返回，�
 - **工作内容**：回答"具体做什么"前必须读本轮岗位详情的工作内容字段，未返回时按缺字段规则补查；出现"打荷/收档/出货"等行业短语时用一句口语化解释展开，不要原样复读
 
 ## 硬规则
-- **岗位详情缺字段必须按 jobId 补查（通用规则，含福利追问）**：候选人追问当前岗位的薪资、结算、班次、福利、要求、地址、用工形式、工作内容、工期等具体字段时，先检查 [当前焦点岗位] 摘要是否明确包含所问字段；缺少任一字段时，必须用当前焦点岗位的 jobId 传 jobIdList 重新调用本工具并开启对应 include 开关（福利用 includeWelfare=true），只按本轮结果回答。记忆只用于定位 jobId，严禁从综合薪资的"元/月"、岗位名、品牌常识或历史助手回复推断缺失字段。**薪资、结算周期/发薪日与具体福利是易变高风险字段，即使摘要已有也必须本轮实时重查**；当前岗位不唯一时先确认具体门店，禁止拿另一门店代答
+- **岗位详情缺字段必须按 jobId 补查（通用规则，含福利追问）**：候选人追问当前岗位的薪资、结算、班次、福利、要求、地址、用工形式、工作内容、工期等具体字段时，先检查 [当前焦点岗位] 摘要是否明确包含所问字段；缺少任一字段时，必须用purpose=inspect和当前焦点岗位的jobId传jobIdList重新调用本工具并开启对应 include 开关（福利用 includeWelfare=true），只按本轮结果回答。记忆只用于定位 jobId，严禁从综合薪资的"元/月"、岗位名、品牌常识或历史助手回复推断缺失字段。**薪资、结算周期/发薪日与具体福利是易变高风险字段，即使摘要已有也必须本轮实时重查**；当前岗位不唯一时先确认具体门店，禁止拿另一门店代答
 - **品牌/区域分布判断必须基于本工具结果**：候选人说出品牌不得用"XX是吧"直接确认，需先在当前已知范围验证在招；"杨浦没岗、虹口有岗"这类分布结论也必须先查。未查前只能说"我先帮你查下"
 - **具体岗位/门店推荐必须带位置**：候选人给了商圈/地标/街道/详细地址/位置分享/经纬度等具体位置线索、且本轮要输出具体岗位或门店推荐时，必须先 geocode 或使用位置分享经纬度再调用本工具；不要因对方没明说"附近/离我近"就跳过。学校、校区、学院、小学部等地点名只代表位置，不代表学历
 - **候选人给了 2 个及以上位置（多个位置分享/多个地标）**：对每个位置**各调用一次**本工具（可并行），分别传各自的 location 坐标；推荐时按位置分组展示，让候选人清楚各自附近有哪些岗位；**禁止**只查其中一个位置然后合并描述
@@ -794,10 +805,12 @@ export function buildJobListTool(
 ): ToolBuilder {
   return (context) => {
     const spongeTokenContext = buildSpongeTokenContext(context);
-    const fetchJobs = (params: Parameters<SpongeService['fetchJobs']>[0]) =>
-      spongeTokenContext
-        ? spongeService.fetchJobs(params, spongeTokenContext)
-        : spongeService.fetchJobs(params);
+    const fetchJobs = (params: Parameters<SpongeService['fetchJobs']>[0], signal?: AbortSignal) =>
+      signal
+        ? spongeService.fetchJobs(params, spongeTokenContext, signal)
+        : spongeTokenContext
+          ? spongeService.fetchJobs(params, spongeTokenContext)
+          : spongeService.fetchJobs(params);
     // v7 的 tool() 多重载对本工具的大 schema + 长 execute 推断失败（塌成
     // Tool<never,never,CONTEXT> 报 FlexibleSchema<never>），必须显式钉死泛型。
     const jobListTool = tool<z.output<typeof inputSchema>, unknown, Record<string, unknown>>({
@@ -822,10 +835,13 @@ export function buildJobListTool(
         includeJobSalary = true,
         includeWelfare = true,
         includeHiringRequirement = true,
-        includeWorkTime = false,
+        includeWorkTime = true,
         includeInterviewProcess = false,
         requireAccommodation = false,
         candidateScheduleConstraint,
+        candidateScheduleCitation,
+        purpose = 'recommend',
+        preferFlexibleSchedule = false,
       }) => {
         // 经纬度对调确定性纠偏（模型 reasoning 绑定正确、发射的
         // JSON 值却对调，圆心落到纬度 121° → 必然 0 条假"无岗"）。args 落库仍是模型
@@ -906,6 +922,114 @@ export function buildJobListTool(
                 '请去掉 jobIdList，按候选人本轮真实意向（城市/位置/品牌/工种）用常规参数查询；' +
                 '严禁把本次拦截的品牌/城市/岗位名当作事实写进给候选人的话术。',
               details: { unrecalledJobIds, recalledJobIds: recalled },
+            });
+          }
+        }
+
+        const persistedConstraint = context.archive.sessionFacts?.preferences?.schedule_constraint;
+        const changedSchedule =
+          candidateScheduleConstraint &&
+          Object.entries(candidateScheduleConstraint).some(
+            ([key, value]) =>
+              JSON.stringify(value) !==
+              JSON.stringify(persistedConstraint?.[key as keyof typeof persistedConstraint]),
+          );
+        if (
+          (changedSchedule || preferFlexibleSchedule) &&
+          (!candidateScheduleCitation ||
+            !verifyCitation(candidateScheduleCitation, [context.turnInput.currentUserMessage ?? ''])
+              .verified)
+        ) {
+          return buildToolError({
+            errorType: TOOL_ERROR_TYPES.JOB_LIST_SCHEDULE_NO_PROVENANCE,
+            outcome: '班次条件变更缺少本轮候选人原话，未查询岗位',
+            replyInstruction:
+              '请用本轮候选人逐字原话提供candidateScheduleCitation后重试；仅核对岗位时间应使用purpose=inspect。不得把本次参数拦截描述成没有岗位。',
+          });
+        }
+        const scheduleState = readScheduleConditions(
+          mergeScheduleConstraints(persistedConstraint, candidateScheduleConstraint),
+        );
+        const conditions = CandidateScheduleConstraintSchema.safeParse(scheduleState.conditions);
+        if ((!conditions.success || scheduleState.legacyUnresolved) && purpose !== 'inspect') {
+          return buildToolError({
+            errorType: TOOL_ERROR_TYPES.JOB_LIST_SCHEDULE_NO_PROVENANCE,
+            outcome: '已有班次条件需要重新确认',
+            replyInstruction:
+              '已有班次条件的早晚班含义或钟点边界不明确，请确认具体可上班时间后再查；不能丢弃已有条件直接推荐，也不能据此断言无岗。',
+          });
+        }
+        candidateScheduleConstraint = conditions.success ? conditions.data : undefined;
+        if (
+          hasScheduleConstraint(candidateScheduleConstraint) ||
+          purpose === 'inspect' ||
+          preferFlexibleSchedule
+        )
+          includeWorkTime = true;
+        if (purpose === 'inspect') {
+          if (!jobIdList.length)
+            return buildToolError({
+              errorType: TOOL_ERROR_TYPES.JOB_LIST_JOBID_NO_PROVENANCE,
+              outcome: '核对岗位需要jobIdList',
+              replyInstruction: '请提供本会话真实召回的岗位ID，按ID核对岗位事实。',
+            });
+          try {
+            const inspected = await fetchJobs({
+              jobIdList,
+              pageSize: jobIdList.length,
+              options: {
+                includeBasicInfo: true,
+                includeJobSalary,
+                includeWelfare,
+                includeHiringRequirement,
+                includeWorkTime: true,
+                includeInterviewProcess,
+              },
+              ...(bookedJobLookup ? { onlySignableJobs: false } : {}),
+            });
+            const assessment = applyScheduleConstraint(inspected.jobs, candidateScheduleConstraint);
+            if (!conditions.success || scheduleState.legacyUnresolved) {
+              assessment.matches = inspected.jobs.map((job) => ({
+                jobId: job.basicInfo?.jobId ?? null,
+                status: 'unknown',
+                mode: 'none',
+                matchedSlotIndexes: [],
+                reason: '已有班次条件需要重新确认',
+              }));
+            }
+            return {
+              markdown: formatJobsToMarkdown(
+                inspected.jobs,
+                inspected.jobs.length,
+                1,
+                jobIdList.length,
+                {
+                  includeBasicInfo: true,
+                  includeJobSalary,
+                  includeWelfare,
+                  includeHiringRequirement,
+                  includeWorkTime: true,
+                  includeInterviewProcess,
+                },
+              ),
+              ...(responseFormat.includes('rawData') ? { rawData: inspected } : {}),
+              resultCount: inspected.jobs.length,
+              queryMeta: {
+                purpose,
+                upstreamTotal: inspected.total,
+                scannedCount: inspected.jobs.length,
+                scanComplete: inspected.jobs.length >= inspected.total,
+                scheduleFilter: { applied: false, assessments: assessment.matches },
+              },
+              replyInstruction:
+                '本次仅核对已指定岗位事实，结果未进入推荐候选池。不匹配是对指定岗位的评估，并非推荐筛空，不触发推荐筛空后的重查流程。按真实排班回答；不匹配或待确认不能说能安排上岗。候选人未要求另找岗位时，本轮回答核对结果后结束，不自动改品牌、另选位置或扩展范围推荐。',
+            };
+          } catch (error) {
+            return buildToolError({
+              errorType: TOOL_ERROR_TYPES.JOB_LIST_FETCH_FAILED,
+              outcome: '岗位事实查询失败',
+              replyInstruction: '岗位事实暂时未确认，不能把异常当无岗或用旧排班作承诺。',
+              details: { reason: toErrorMessage(error) },
             });
           }
         }
@@ -1003,100 +1127,6 @@ export function buildJobListTool(
           brandPlan.filterMode === 'enforce'
             ? brandPlan.applied.map((brand) => brand.canonicalName)
             : [];
-        // 排他性班次约束出处闸（运营 2026-09-24 重要 case 复核第 3 条）。
-        // onlyWeekends/onlyEvenings/onlyMornings 说的是"只能做这个时段"，会把排班对不上的
-        // 岗位整批剔除并让 Agent 念"排班对不上"；收资表单里的"周末两天都在接受门店排班"
-        // 是可用性不是排他性，模型误读一次就够候选人流失（chat 6ab26452ce406a6aeea65fce）。
-        // 判据复用规则轨，不新增班次正则、不改早/中/晚班判定语义。
-        // 绝大多数查询不带排他性班次字段，语料抽取按需求值一次即可。
-        let provenanceTextsCache: string[] | null | undefined;
-        const candidateProvenanceTexts = (): string[] | null => {
-          if (provenanceTextsCache === undefined) {
-            provenanceTextsCache = context.turnInput.corpusBlocks
-              ? extractCandidateTextsFromCorpus(context.turnInput.corpusBlocks, {
-                  visualSheetsByContent: context.turnInput.visualSheetsByContent,
-                })
-              : null;
-          }
-          return provenanceTextsCache;
-        };
-        const unsupportedModelShiftFields = findUnsupportedExclusiveShiftFields(
-          candidateScheduleConstraint,
-          candidateScheduleConstraint ? candidateProvenanceTexts() : null,
-        );
-        if (unsupportedModelShiftFields.length > 0) {
-          const label = formatExclusiveShiftFields(unsupportedModelShiftFields);
-          return buildToolError({
-            errorType: TOOL_ERROR_TYPES.JOB_LIST_SCHEDULE_NO_PROVENANCE,
-            outcome: '班次排他性约束缺少候选人原话依据，未执行岗位查询',
-            replyInstruction:
-              `candidateScheduleConstraint 里的 ${label} 断言候选人「只能」做这个时段，` +
-              '但候选人原话里没有这样说过。收资表单的「周末两天都在接受门店排班」「可接受晚班」等答案说的是' +
-              '**候选人这些时段能上班**（可用性），不是「只做周末/只做晚班」（排他性），不得据此设排他性约束。' +
-              `请去掉 ${unsupportedModelShiftFields.join('、')} 后重新查询；确实要限制时段时，只传候选人原话支持的 ` +
-              'availableWindow（具体钟点区间）或 maxDaysPerWeek。' +
-              '本次未执行岗位查询：禁止对候选人说"附近岗位排班和你的时段对不上"或"没有匹配的岗位"，' +
-              '也不得把这个时段偏好当作候选人意向沉淀。',
-            details: {
-              unsupportedScheduleFields: unsupportedModelShiftFields,
-              queryMeta: { scheduleFilter: { rejectedFields: unsupportedModelShiftFields } },
-            },
-          });
-        }
-
-        // 候选人在更早轮次表达过的班次硬约束已经被 fact-extraction 持久化到
-        // sessionFacts.preferences.schedule_constraint。Agent 本轮调本工具时若没显式
-        // 传 candidateScheduleConstraint，自动从 sessionFacts 兜底，避免 Agent 忘了
-        // 拉回候选人原话（badcase 簇 schedule_constraint_forgotten）。
-        // 模型传了约束也不整体采信：
-        // 候选人要"周六的兼职"，模型却传 {onlyEvenings:true} 把"周六"弄丢。持久化约束
-        // 是候选人原话的高置信沉淀，须与模型入参逐字段合并：模型显式传的字段保留
-        // （本轮新信息优先），漏传的字段由持久化约束补齐；空对象 {} 视同未传
-        // （{} 是 truthy，不显式排除会绕过兜底）。
-        const persistedConstraint =
-          context.archive.sessionFacts?.preferences?.schedule_constraint ?? null;
-        if (persistedConstraint) {
-          const persistedInput = {
-            ...(persistedConstraint.onlyWeekends && { onlyWeekends: true }),
-            ...(persistedConstraint.onlyEvenings && { onlyEvenings: true }),
-            ...(persistedConstraint.onlyMornings && { onlyMornings: true }),
-            ...(persistedConstraint.maxDaysPerWeek !== null && {
-              maxDaysPerWeek: persistedConstraint.maxDaysPerWeek,
-            }),
-            ...(persistedConstraint.availableWindow && {
-              availableWindow: persistedConstraint.availableWindow,
-            }),
-          };
-          if (Object.keys(persistedInput).length > 0) {
-            const modelInput = candidateScheduleConstraint ?? {};
-            const merged = { ...persistedInput, ...modelInput };
-            const addedFields = Object.keys(persistedInput).filter((key) => !(key in modelInput));
-            if (addedFields.length > 0) {
-              logger.log(
-                `sessionFacts 班次约束合并：模型入参 ${JSON.stringify(modelInput)} 缺 [${addedFields.join(',')}]，` +
-                  `由持久化约束补齐 → ${JSON.stringify(merged)}`,
-              );
-            }
-            // 持久化兜底同样过出处闸：fact-extraction 也可能把收资表单的可用性答案
-            // 沉淀成排他性约束，模型本轮没传、闸门就漏过去了。这里只静默剥离缺出处的
-            // 字段（模型没主张，报错无从修复），不阻断查询。
-            const unsupportedPersistedFields = findUnsupportedExclusiveShiftFields(
-              merged,
-              candidateProvenanceTexts(),
-            );
-            if (unsupportedPersistedFields.length > 0) {
-              logger.warn(
-                `持久化班次约束缺候选人原话依据，已剥离 [${unsupportedPersistedFields.join(',')}]：` +
-                  `${JSON.stringify(merged)}`,
-              );
-            }
-            const kept = stripExclusiveShiftFields(merged, unsupportedPersistedFields);
-            // 剥空后必须回落 undefined：`{}` 是 truthy，会让下游把"无约束"当成"有约束"，
-            // 在无岗话术里渲染出一个空的时段标签。
-            candidateScheduleConstraint = Object.keys(kept).length > 0 ? kept : undefined;
-          }
-        }
-
         // 缺城市上下文兜底：用户给了区/门店/商圈级位置线索，但既没传 cityNameList
         // 也没有 location 坐标（geocode 拿到的经纬度）。badcase 簇 missing_city_context
         // （v3nexby8/spen553o/o1intrqf/jqhr3kku）：Agent 在没有城市的情况下直接预设
@@ -1228,6 +1258,10 @@ export function buildJobListTool(
           // 已预约岗位可能已停招：海绵默认 onlySignableJobs=true 会查空，答疑必须取回详情。
           ...(bookedJobLookup ? { onlySignableJobs: false } : {}),
         };
+        let scanMeta: JobScanMeta | undefined;
+        let unknownSchedules: Array<{ jobId: number | null; reason: string }> = [];
+        const buildQueryError = (args: Parameters<typeof buildToolError>[0]) =>
+          buildScannedQueryError(args, scanMeta, unknownSchedules);
         try {
           let storeMatchStrategy: 'api_exact' | 'local_fuzzy_match' = 'api_exact';
           let distanceScanPages = 1;
@@ -1282,6 +1316,8 @@ export function buildJobListTool(
             salaryPeriodNameList: fetchBaseParams.salaryPeriodNameList,
             location: fetchBaseParams.location ?? null,
             candidateScheduleConstraint: candidateScheduleConstraint ?? null,
+            purpose,
+            preferFlexibleSchedule,
             candidateLaborForm,
             requireAccommodation,
           });
@@ -1293,7 +1329,14 @@ export function buildJobListTool(
           );
 
           // 首次请求
-          let { jobs, total } = await fetchJobs(fetchBaseParams);
+          const scanDeadline = Date.now() + JOB_SCAN_BUDGET_MS;
+          const fetchWithinBudget = (params: Parameters<typeof fetchJobs>[0]) => {
+            const remaining = scanDeadline - Date.now();
+            if (remaining <= 0) throw new Error('岗位扫描时间预算已用尽');
+            return fetchJobs(params, AbortSignal.timeout(remaining));
+          };
+          let recoveryInterrupted = false;
+          let { jobs, total } = await fetchWithinBudget(fetchBaseParams);
           context.ledger.recordJobListQuery({ signature: querySignature });
           // 本轮已产出查岗结论：invite_to_group 的时机 gate 据此判断"是否突兀拉群"
           //（回合内直写，同 bookingSucceeded 模式）。放在请求返回后而非入口，
@@ -1308,7 +1351,10 @@ export function buildJobListTool(
           // 的岗位。恢复查询失败不覆盖原始“0 条”语义。
           if (jobs.length === 0 && hasCoordinates && normalizedCityNameList.length > 0) {
             try {
-              const locationOnly = await fetchJobs({ ...fetchBaseParams, cityNameList: [] });
+              const locationOnly = await fetchWithinBudget({
+                ...fetchBaseParams,
+                cityNameList: [],
+              });
               const recoveredJobs = filterJobsToRequestedAdministrativeArea(
                 locationOnly.jobs,
                 normalizedCityNameList,
@@ -1320,9 +1366,9 @@ export function buildJobListTool(
                 candidateCount: locationOnly.jobs.length,
                 recoveredCount: recoveredJobs.length,
               };
-              if (recoveredJobs.length > 0) {
-                jobs = recoveredJobs;
-                total = recoveredJobs.length;
+              if (locationOnly.jobs.length > 0) {
+                jobs = locationOnly.jobs;
+                total = locationOnly.total;
                 // 后续分页若触发，不能重新带回已证实错误的 city filter。
                 fetchBaseParams = { ...fetchBaseParams, cityNameList: [] };
                 logger.warn(
@@ -1331,6 +1377,8 @@ export function buildJobListTool(
                 );
               }
             } catch (error: unknown) {
+              if (error instanceof WorkTimeContractError) throw error;
+              recoveryInterrupted = true;
               const reason = toErrorMessage(error);
               logger.warn(`城市层级过滤兜底查询失败，保留原始 0 条结果: ${reason}`);
             }
@@ -1343,7 +1391,7 @@ export function buildJobListTool(
           // 距离仍受原 location.range 约束，不会带回远处岗位。
           if (jobs.length === 0 && hasCoordinates && searchJobName?.trim()) {
             try {
-              const locationOnly = await fetchJobs({
+              const locationOnly = await fetchWithinBudget({
                 ...fetchBaseParams,
                 searchJobName: undefined,
               });
@@ -1358,6 +1406,8 @@ export function buildJobListTool(
                 );
               }
             } catch (error: unknown) {
+              if (error instanceof WorkTimeContractError) throw error;
+              recoveryInterrupted = true;
               logger.warn(`场所名模糊查兜底失败，保留原始 0 条结果: ${toErrorMessage(error)}`);
             }
           }
@@ -1369,7 +1419,10 @@ export function buildJobListTool(
             const shortened = shortenSearchJobName(searchJobName.trim());
             if (shortened) {
               try {
-                const retried = await fetchJobs({ ...fetchBaseParams, searchJobName: shortened });
+                const retried = await fetchWithinBudget({
+                  ...fetchBaseParams,
+                  searchJobName: shortened,
+                });
                 if (retried.jobs.length > 0) {
                   jobs = retried.jobs;
                   total = retried.total ?? retried.jobs.length;
@@ -1380,6 +1433,8 @@ export function buildJobListTool(
                   );
                 }
               } catch (error: unknown) {
+                if (error instanceof WorkTimeContractError) throw error;
+                recoveryInterrupted = true;
                 logger.warn(`岗位名简名重试失败，保留原始 0 条结果: ${toErrorMessage(error)}`);
               }
             }
@@ -1390,20 +1445,12 @@ export function buildJobListTool(
           // 条件，无筛选请求会被拒（"查询岗位时至少提供一个筛选条件"），把"该门店已
           // 无在招岗位"这一合法结果污染成接口故障。
           if (jobs.length === 0 && storeNameList.length > 0) {
-            const fallback = await fetchJobs({ ...fetchBaseParams, storeNameList: [] });
+            const fallback = await fetchWithinBudget({ ...fetchBaseParams, storeNameList: [] });
             if (fallback.jobs.length > 0) {
-              const lowerKeywords = storeNameList.map((s) => s.toLowerCase());
-              const filtered = fallback.jobs.filter((job) => {
-                const storeName = (
-                  (job.basicInfo?.storeInfo as StoreInfoView | undefined)?.storeName || ''
-                ).toLowerCase();
-                return lowerKeywords.some((kw) => storeName.includes(kw));
-              });
-              if (filtered.length > 0) {
-                storeMatchStrategy = 'local_fuzzy_match';
-                jobs = filtered;
-                total = filtered.length;
-              }
+              storeMatchStrategy = 'local_fuzzy_match';
+              jobs = fallback.jobs;
+              total = fallback.total;
+              fetchBaseParams = { ...fetchBaseParams, storeNameList: [] };
             }
           }
 
@@ -1444,7 +1491,7 @@ export function buildJobListTool(
                 range:
                   maxKmThreshold?.max != null ? Math.round(maxKmThreshold.max * 1000) : undefined,
               };
-              const relaxed = await fetchJobs({
+              const relaxed = await fetchWithinBudget({
                 ...fetchBaseParams,
                 regionNameList: [],
                 location: relaxedLocation,
@@ -1552,43 +1599,53 @@ export function buildJobListTool(
               ? Math.min(requestedRangeKm, EXPLICIT_RANGE_CAP_KM)
               : distanceThreshold?.max;
 
-          // 关键优化：在距离过滤前补抓后续页，避免“第一页只有1条近距离岗位”；
-          // 包住模式全城召回后还要按福利筛，同样需要看到第一页之外的岗位。
-          if (((hasUserCoords && maxKm != null) || requireAccommodation) && total > jobs.length) {
-            const totalPages = Math.ceil(total / DEFAULT_PAGE_SIZE);
-            const maxPagesToScan = Math.min(totalPages, DISTANCE_SCAN_MAX_PAGES);
-            distanceScanTruncated = maxPagesToScan < totalPages;
+          scanMeta = {
+            upstreamTotal: total,
+            scannedCount: jobs.length,
+            scannedPages: 1,
+            scanComplete: jobs.length >= total,
+            stopReason: jobs.length >= total ? 'complete' : 'not_scanned',
+          };
+          if (
+            (hasScheduleConstraint(candidateScheduleConstraint) ||
+              preferFlexibleSchedule ||
+              (hasUserCoords && maxKm != null) ||
+              requireAccommodation) &&
+            total > jobs.length
+          ) {
+            const scanned = await scanJobPages(
+              { jobs, total },
+              fetchBaseParams,
+              fetchJobs,
+              scanDeadline,
+            );
+            jobs = scanned.jobs;
+            scanMeta = scanned.meta;
+            distanceScanPages = scanMeta.scannedPages;
+            distanceScanTruncated = !scanMeta.scanComplete;
+            total = jobs.length;
+          }
 
-            if (maxPagesToScan > 1) {
-              const mergedJobs = [...jobs];
-              const seenJobIds = new Set<number>();
-              for (const job of mergedJobs) {
-                const jobId = job?.basicInfo?.jobId;
-                if (typeof jobId === 'number') seenJobIds.add(jobId);
-              }
-
-              for (let pageNum = 2; pageNum <= maxPagesToScan; pageNum += 1) {
-                const pageResult = await fetchJobs({
-                  ...fetchBaseParams,
-                  pageNum,
-                  pageSize: DEFAULT_PAGE_SIZE,
-                });
-                distanceScanPages = pageNum;
-
-                if (!pageResult.jobs.length) break;
-                for (const job of pageResult.jobs) {
-                  const jobId = job?.basicInfo?.jobId;
-                  if (typeof jobId === 'number') {
-                    if (seenJobIds.has(jobId)) continue;
-                    seenJobIds.add(jobId);
-                  }
-                  mergedJobs.push(job);
-                }
-              }
-
-              jobs = mergedJobs;
-              total = mergedJobs.length;
-            }
+          if (recoveryInterrupted) {
+            scanMeta.scanComplete = false;
+            scanMeta.stopReason = Date.now() >= scanDeadline ? 'time_budget' : 'page_error';
+          }
+          // 恢复查询的本地地理/门店条件必须对所有补页统一执行。
+          if (cityFilterRecovery?.attempted && fetchBaseParams.cityNameList?.length === 0) {
+            jobs = filterJobsToRequestedAdministrativeArea(jobs, normalizedCityNameList);
+            cityFilterRecovery.recoveredCount = jobs.length;
+            cityFilterRecovery.applied = jobs.length > 0;
+            total = jobs.length;
+          }
+          if (storeMatchStrategy === 'local_fuzzy_match') {
+            const keywords = storeNameList.map((name) => name.toLowerCase());
+            jobs = jobs.filter((job) => {
+              const name = (
+                (job.basicInfo?.storeInfo as StoreInfoView | undefined)?.storeName ?? ''
+              ).toLowerCase();
+              return keywords.some((keyword) => name.includes(keyword));
+            });
+            total = jobs.length;
           }
 
           if (hasUserCoords) {
@@ -1612,7 +1669,7 @@ export function buildJobListTool(
               });
               total = jobs.length;
               if (beforeCount > 0 && jobs.length === 0) {
-                return buildToolError({
+                return buildQueryError({
                   errorType: TOOL_ERROR_TYPES.JOB_LIST_NO_RESULTS,
                   outcome: `附近 ${maxKm}km 内无符合岗位`,
                   replyInstruction:
@@ -1699,7 +1756,7 @@ export function buildJobListTool(
               brandAliasList.length === 0 &&
               !hasHighStabilityFilter
             ) {
-              return buildToolError({
+              return buildQueryError({
                 errorType: TOOL_ERROR_TYPES.JOB_LIST_REGION_NEEDS_GEOCODE,
                 outcome: '区域名疑似乡镇/街道级，需先 geocode 规范化再重查',
                 replyInstruction:
@@ -1770,7 +1827,7 @@ export function buildJobListTool(
                 '候选人主动追问扩张时同样按此动作链处理。';
             }
 
-            return buildToolError({
+            return buildQueryError({
               errorType: TOOL_ERROR_TYPES.JOB_LIST_NO_RESULTS,
               outcome,
               replyInstruction,
@@ -1814,14 +1871,15 @@ export function buildJobListTool(
           // 候选人班次硬约束过滤（同时给保留岗位标 _scheduleSemantic）。
           // 即使候选人没传约束，也要给所有岗位标语义，便于上层信号使用。
           const scheduleFilterResult = applyScheduleConstraint(jobs, candidateScheduleConstraint);
+          unknownSchedules = scheduleFilterResult.unknown;
           jobs = scheduleFilterResult.jobs;
           total = jobs.length;
           if (
             candidateScheduleConstraint &&
-            scheduleFilterResult.excluded.length > 0 &&
+            (scheduleFilterResult.excluded.length > 0 || scheduleFilterResult.unknown.length > 0) &&
             jobs.length === 0
           ) {
-            return buildToolError({
+            return buildQueryError({
               errorType: TOOL_ERROR_TYPES.JOB_LIST_SCHEDULE_FILTER_EMPTY,
               outcome: '班次约束过滤后无匹配岗位',
               replyInstruction:
@@ -1869,7 +1927,7 @@ export function buildJobListTool(
               const scope = distanceScanTruncated
                 ? `已查的前 ${accommodationFilterResult.excluded.length} 个在招岗位里没有包住/提供住宿的`
                 : '目前全城暂时没有包住/提供住宿的岗位';
-              return buildToolError({
+              return buildQueryError({
                 errorType: TOOL_ERROR_TYPES.JOB_LIST_NO_RESULTS,
                 outcome: distanceScanTruncated
                   ? '已扫描的在招岗位里没有包住/提供住宿的（全城未扫完）'
@@ -1930,7 +1988,7 @@ export function buildJobListTool(
                     '不得沿用历史非暑假工岗位继续收资或约面；' +
                     '只有候选人之后主动、明确改口接受其他用工形式，才按其新意向重新查岗。'
                   : '可主动表示后续有匹配岗位上线会第一时间通知；若候选人愿意考虑其他用工形式，再据其意向重新查岗。';
-              return buildToolError({
+              return buildQueryError({
                 errorType: TOOL_ERROR_TYPES.JOB_LIST_LABOR_FORM_FILTER_EMPTY,
                 outcome: `本轮召回岗位经"${candidateLaborForm}"用工形式过滤后为空`,
                 replyInstruction:
@@ -1978,7 +2036,7 @@ export function buildJobListTool(
             jobs = studentFilterResult.jobs;
             total = jobs.length;
             if (studentFilterResult.excluded.length > 0 && jobs.length === 0) {
-              return buildToolError({
+              return buildQueryError({
                 errorType: TOOL_ERROR_TYPES.JOB_LIST_STUDENT_FILTER_EMPTY,
                 outcome: '本轮召回岗位全部不接受学生，按候选人学生身份过滤后为空',
                 replyInstruction:
@@ -2029,6 +2087,13 @@ export function buildJobListTool(
                 : `⚠️ 本轮召回中没有 岗位名称/岗位类型/工作内容 明确匹配「${requestedLabel}」的岗位；以下为同范围其他在招岗位（工具未做工种过滤）。请先如实告知候选人"附近暂时没有明确的${requestedLabel}岗位"，再逐条按岗位名称/工作内容判断是否相近、介绍给候选人自行决定；不得把其他工种包装成「${requestedLabel}」，也不得据此直接判定无岗拉群。`;
           }
 
+          if (preferFlexibleSchedule)
+            jobs.sort(
+              (a, b) =>
+                Number(getJobSchedule(b)?.arrangementType === '灵活排班') -
+                Number(getJobSchedule(a)?.arrangementType === '灵活排班'),
+            );
+
           const flags: ProgressiveDisclosureFlags = {
             includeBasicInfo,
             includeJobSalary,
@@ -2076,6 +2141,12 @@ export function buildJobListTool(
               distanceAnchor,
             );
             const markdownSections = [
+              scanMeta && !scanMeta.scanComplete
+                ? `本次已查 ${scanMeta.scannedCount}/${scanMeta.upstreamTotal} 个岗位，未完成全范围查询，只能说明已查范围内的结果。`
+                : null,
+              unknownSchedules.length
+                ? `另有 ${unknownSchedules.length} 个岗位班次待确认，未进入推荐结果，不能说全部无匹配。`
+                : null,
               isRepeatQuery ? REPEAT_QUERY_NOTICE : null,
               brandFilterNotice ? `ℹ️ ${brandFilterNotice}` : null,
               rangeClampNotice,
@@ -2105,6 +2176,9 @@ export function buildJobListTool(
           const knownCityForConflict =
             typeof knownCityFactValue === 'string' ? knownCityFactValue : null;
           result.queryMeta = {
+            purpose,
+            ...scanMeta,
+            unknownCount: unknownSchedules.length,
             storeMatchStrategy,
             // 意向工种本地软排序观测（取代 API 直传时代的 jobCategoryMatchStrategy）：
             // requested=剥离后实际参与排序的关键词，matchedCount=明确匹配数，用于评估
@@ -2183,6 +2257,9 @@ export function buildJobListTool(
               ? {
                   applied: true,
                   candidateConstraint: candidateScheduleConstraint,
+                  assessments: scheduleFilterResult.matches,
+                  unknownCount: unknownSchedules.length,
+                  unknownSchedules,
                   excludedCount: scheduleFilterResult.excluded.length,
                   excludedExamples: scheduleFilterResult.excluded.slice(0, 5),
                 }
@@ -2276,16 +2353,18 @@ export function buildJobListTool(
           return result;
         } catch (err) {
           logger.error('获取岗位列表失败', err);
-          return buildToolError({
+          return buildQueryError({
             errorType: TOOL_ERROR_TYPES.JOB_LIST_FETCH_FAILED,
             outcome: '岗位查询接口失败',
             replyInstruction:
-              candidateLaborForm === '暑假工'
-                ? '岗位查询接口暂时不可用，且候选人已明确只要暑假工。不要把异常信息原文转述给候选人；' +
-                  '不得基于 [会话记忆] 的普通兼职/小时工/全职岗位维持上下文，不得推荐、收资或约面。' +
-                  '先用招募者口吻说明需要再确认暑假工岗位，必要时调用 request_handoff 转人工。'
-                : '岗位查询接口暂时不可用。不要把异常信息原文转述给候选人；用招募者口吻安抚"这边稍等下"，' +
-                  '基于 [会话记忆] 已展示岗位维持上下文，必要时调用 request_handoff 转人工。',
+              err instanceof WorkTimeContractError
+                ? '海绵班次数据不符合契约，需数据源团队修复。不能当作无岗，也不能用旧班次推荐或承诺上岗；向候选人说明排班需要确认。'
+                : candidateLaborForm === '暑假工'
+                  ? '岗位查询接口暂时不可用，且候选人已明确只要暑假工。不要把异常信息原文转述给候选人；' +
+                    '不得基于 [会话记忆] 的普通兼职/小时工/全职岗位维持上下文，不得推荐、收资或约面。' +
+                    '先用招募者口吻说明需要再确认暑假工岗位，必要时调用 request_handoff 转人工。'
+                  : '岗位查询接口暂时不可用。不要把异常信息原文转述给候选人；用招募者口吻安抚"这边稍等下"，' +
+                    '基于 [会话记忆] 已展示岗位维持上下文，必要时调用 request_handoff 转人工。',
             details: { reason: toErrorMessage(err) || '未知错误' },
           });
         }

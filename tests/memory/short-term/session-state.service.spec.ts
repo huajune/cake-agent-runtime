@@ -1,3 +1,4 @@
+import { testTurnHint, testTurnHints } from '../../helpers/turn-hints.fixture';
 import { SessionFactsService } from '@memory/short-term/facts.service';
 import { LongTermService } from '@memory/long-term/long-term.service';
 import { SessionWorkbenchService } from '@memory/short-term/workbench.service';
@@ -90,6 +91,105 @@ describe('SessionStateService（S1-S6）', () => {
       },
       { confidence: 'medium', source: 'model', evidence: 'spec soft fact' },
     );
+
+  it('班次增量保存：省略延续、数组替换、明确空值撤销', async () => {
+    await service.saveFacts(
+      'corp-1',
+      'user-1',
+      'session-1',
+      softFacts({
+        schedule: '18点后',
+        time_windows: ['18点后'],
+        schedule_constraint: {
+          onlyWeekends: true,
+          onlyEvenings: true,
+          includeAnyTags: ['evening'],
+          availableWindow: { start: '18:00' },
+        },
+      }),
+    );
+    llm.generateStructured.mockResolvedValue({
+      output: {
+        preferences: preferences({
+          schedule_constraint: { includeAnyTags: [], availableWindow: null },
+        }),
+        schedule_constraint_citation: { quote: '时间不限了' },
+        reasoning: '撤销日内限制',
+      },
+    });
+    await service.extractAndSave(
+      'corp-1',
+      'user-1',
+      'session-1',
+      [{ role: 'user', content: '时间不限了' }],
+      testTurnHints(testTurnHint('preferences.schedule', '18点后', '旧钟点')),
+    );
+    const value = (await service.getFacts('corp-1', 'user-1', 'session-1'))?.preferences
+      .schedule_constraint;
+    expect(value).toMatchObject({
+      value: { onlyWeekends: true, includeAnyTags: [], availableWindow: null },
+      evidence: '时间不限了',
+      source: 'candidate_quote',
+    });
+    expect(value?.value).not.toHaveProperty('onlyEvenings');
+    const saved = (await service.getFacts('corp-1', 'user-1', 'session-1'))?.preferences;
+    expect(saved.schedule).toMatchObject({ value: null });
+    expect(saved.time_windows).toMatchObject({ value: null });
+  });
+  it('正常班次抽取与无变化都不会被旧规则轨覆盖', async () => {
+    const hints = testTurnHints(
+      testTurnHint('preferences.schedule_constraint', { onlyEvenings: true }, '晚班'),
+    );
+    llm.generateStructured.mockResolvedValue({
+      output: {
+        preferences: preferences({ schedule_constraint: { excludeTags: ['evening'] } }),
+        schedule_constraint_citation: { quote: '晚班不行' },
+        reasoning: '排除晚班',
+      },
+    });
+    await service.extractAndSave(
+      'corp-1',
+      'user-1',
+      'session-1',
+      [{ role: 'user', content: '晚班不行' }],
+      hints,
+    );
+    expect(
+      (await service.getFacts('corp-1', 'user-1', 'session-1'))?.preferences.schedule_constraint
+        ?.value,
+    ).toEqual({ excludeTags: ['evening'] });
+    llm.generateStructured.mockResolvedValue({
+      output: { preferences: preferences(), reasoning: '只问事实' },
+    });
+    await service.extractAndSave(
+      'corp-1',
+      'user-1',
+      'session-1',
+      [{ role: 'user', content: '晚班几点下班？' }],
+      hints,
+    );
+    expect(
+      (await service.getFacts('corp-1', 'user-1', 'session-1'))?.preferences.schedule_constraint
+        ?.value,
+    ).toEqual({ excludeTags: ['evening'] });
+  });
+  it('班次引用只认本轮候选人，助手和旧轮引文不入记忆', async () => {
+    llm.generateStructured.mockResolvedValue({
+      output: {
+        preferences: preferences({ schedule_constraint: { includeAnyTags: ['evening'] } }),
+        schedule_constraint_citation: { quote: '我只做晚班' },
+        reasoning: '错误旧引文',
+      },
+    });
+    await service.extractAndSave('corp-1', 'user-1', 'session-1', [
+      { role: 'user', content: '我只做晚班' },
+      { role: 'assistant', content: '收到' },
+      { role: 'user', content: '薪资多少？' },
+    ]);
+    expect(
+      (await service.getFacts('corp-1', 'user-1', 'session-1'))?.preferences.schedule_constraint,
+    ).toBeNull();
+  });
 
   it('读边界把历史 low/unknown 统一归一为 medium', () => {
     const parsed = SessionFactsSchema.parse({

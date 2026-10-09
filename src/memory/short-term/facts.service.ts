@@ -1,3 +1,9 @@
+import {
+  mergeScheduleConstraints,
+  StoredScheduleConstraintSchema,
+} from '@resolution/schedule/types';
+import { verifyCitation } from '@resolution/notary/citation-verifier';
+import type { TextCitation } from '@resolution/notary/citation.types';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import type { CityAttestation } from '@shared-types/turn.types';
@@ -421,6 +427,22 @@ export class SessionFactsService {
       ) {
         continue;
       }
+      if (
+        field === 'schedule_constraint' &&
+        isSessionFactValue(current) &&
+        isSessionFactValue(raw) &&
+        raw.value !== null
+      ) {
+        const before = StoredScheduleConstraintSchema.safeParse(current.value);
+        const patch = StoredScheduleConstraintSchema.safeParse(raw.value);
+        if (patch.success) {
+          merged[field] = {
+            ...raw,
+            value: mergeScheduleConstraints(before.success ? before.data : null, patch.data),
+          };
+          continue;
+        }
+      }
       merged[field] = raw;
     }
     return merged as unknown as SessionFacts['preferences'];
@@ -665,17 +687,42 @@ export class SessionFactsService {
     // 提取降级或标签无效时才使用当前消息的确定性规则兜底。模型的 legacy
     // preferences.labor_form 和 turnHints 都不能绕过这个裁决入口。
     preferences.labor_form = null;
+    const scheduleCitation = llmOutcome.scheduleCitation;
+    const scheduleValid = Boolean(
+      llmOutcome.facts.preferences.schedule_constraint &&
+        scheduleCitation &&
+        verifyCitation(scheduleCitation, [lastUserText]).verified,
+    );
+    const scheduleAuthoritative =
+      !llmOutcome.degraded &&
+      (llmOutcome.facts.preferences.schedule_constraint == null || scheduleValid);
+    if (!scheduleValid) preferences.schedule_constraint = null;
+    else if (isSessionFactValue(preferences.schedule_constraint)) {
+      preferences.schedule_constraint = {
+        ...preferences.schedule_constraint,
+        source: 'candidate_quote',
+        evidence: scheduleCitation!.quote,
+      };
+      // 结构化条件成为当前排班事实后，清掉重复的旧文本入口，防止撤销后被旧钟点唤回。
+      preferences.schedule = this.preferenceTombstone(scheduleCitation!.quote);
+      preferences.time_windows = this.preferenceTombstone(scheduleCitation!.quote);
+    }
 
     // 规则轨也只是软事实来源；身份 claim 在这里被刻意忽略。labor_form 由下方
     // 单独裁决，避免正常 LLM 结果又被规则轨覆盖。
     for (const fact of resolveTurnHints(turnHints)) {
       const [group, field] = fact.field.split('.');
       if (group !== 'preferences' || field === 'labor_form' || !(field in preferences)) continue;
+      if (field === 'schedule_constraint' && scheduleAuthoritative) continue;
+      if (scheduleValid && (field === 'schedule' || field === 'time_windows')) continue;
       const target = preferences as unknown as Record<string, unknown>;
-      const value =
+      let value =
         field === 'city' && typeof fact.value === 'string'
           ? normalizeCityName(fact.value)
           : fact.value;
+      if (field === 'schedule_constraint' && value && typeof value === 'object') {
+        value = Object.fromEntries(Object.entries(value).filter(([, item]) => item != null));
+      }
       if (!hasMeaningfulValue(value)) continue;
       target[field] = sessionFactValue(value, {
         confidence: 'medium',
@@ -702,7 +749,8 @@ export class SessionFactsService {
     for (const claim of turnHints?.claims ?? []) {
       if (claim.operation !== 'clear' || !claim.field.startsWith('preferences.')) continue;
       const field = claim.field.slice('preferences.'.length);
-      if (field === 'labor_form') continue;
+      if (field === 'labor_form' || (field === 'schedule_constraint' && scheduleAuthoritative))
+        continue;
       if (field in preferences) {
         preferenceTarget[field] = this.preferenceTombstone(
           truncateEvidence(claim.evidence.code ?? claim.evidence.label),
@@ -814,6 +862,7 @@ export class SessionFactsService {
     facts: EntityExtractionResult;
     brandIntents: BrandIntentEntry[];
     laborFormIntent: LaborFormIntentExtraction | null;
+    scheduleCitation: TextCitation | null;
     degraded: boolean;
   }> {
     try {
@@ -841,13 +890,20 @@ export class SessionFactsService {
         preferences: raw.preferences,
         reasoning: raw.reasoning,
       });
-      return { facts, brandIntents, laborFormIntent, degraded: false };
+      return {
+        facts,
+        brandIntents,
+        laborFormIntent,
+        scheduleCitation: raw.schedule_constraint_citation ?? null,
+        degraded: false,
+      };
     } catch (error) {
       this.logger.warn('[extractFacts] preference extraction failed, using empty delta', error);
       return {
         facts: FALLBACK_EXTRACTION,
         brandIntents: [],
         laborFormIntent: null,
+        scheduleCitation: null,
         degraded: true,
       };
     }

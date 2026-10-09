@@ -202,7 +202,7 @@ describe('MemoryFixtureService', () => {
       'session-1',
       {
         signature:
-          '{"city":["上海"],"region":["黄浦区"],"brandAlias":[],"brandId":[],"brandMode":null,"excludeBrand":[],"project":[],"projectId":[],"store":[],"searchJobName":null,"category":[],"jobId":[],"settlement":[],"location":null,"schedule":null,"laborForm":null}',
+          '{"purpose":"recommend","preferFlexibleSchedule":false,"city":["上海"],"region":["黄浦区"],"brandAlias":[],"brandId":[],"brandMode":null,"excludeBrand":[],"project":[],"projectId":[],"store":[],"searchJobName":null,"category":[],"jobId":[],"settlement":[],"location":null,"schedule":null,"laborForm":null}',
         turnId: 'previous-turn',
         updatedAtMs: 123,
       },
