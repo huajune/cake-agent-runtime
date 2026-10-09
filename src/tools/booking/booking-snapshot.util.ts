@@ -175,7 +175,6 @@ export async function findCrossAccountDuplicate(params: {
       {
         phone,
         onlyCurrentAccount: false,
-        queryParam: { currentStatus: Array.from(ACTIVE_INTERVIEW_WORK_ORDER_STATUSES) },
       },
       params.tokenContext,
       { timeoutMs: BOOKING_SNAPSHOT_FETCH_TIMEOUT_MS, allowDefaultToken: false },

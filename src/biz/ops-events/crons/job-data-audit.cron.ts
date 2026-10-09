@@ -154,7 +154,7 @@ export class JobDataAuditCronService {
         `问题 ${issues.length} 处${byKindText ? `（${byKindText}）` : ''}`,
     );
     // 没问题且拉取完整才静默；某页拉取失败也要出告警，否则「今天没问题」可能只是没拉到。
-    if (issues.length === 0 && !fetchError) return result;
+    if (issues.length === 0 && !truncated) return result;
 
     result.alerted = await this.alertNotifier.sendAlert({
       code: 'ops.job_data_audit',
@@ -198,6 +198,26 @@ export class JobDataAuditCronService {
     let truncated = false;
     let fetchError: string | undefined;
 
+    if (Date.now() - startedAt >= this.timeBudgetMs) {
+      return { jobs, total: 0, truncated: true };
+    }
+    let brandIds: number[];
+    try {
+      // 岗位接口要求明确查询范围；品牌目录来自同一供应商账号，不允许无筛选全量查询。
+      const brands = await this.spongeService.fetchBrandList();
+      brandIds = [...new Set(brands.map((brand) => brand.id))].filter(
+        (id): id is number => typeof id === 'number' && Number.isInteger(id) && id > 0,
+      );
+      if (brandIds.length === 0) throw new Error('未取得可查询的品牌目录');
+    } catch (error) {
+      return {
+        jobs,
+        total: 0,
+        truncated: true,
+        fetchError: `品牌范围读取失败: ${toErrorMessage(error)}`,
+      };
+    }
+
     for (let pageNum = 1; pageNum <= this.maxPages && jobs.length < total; pageNum++) {
       if (Date.now() - startedAt >= this.timeBudgetMs) {
         truncated = true;
@@ -206,6 +226,7 @@ export class JobDataAuditCronService {
       let page: Awaited<ReturnType<SpongeService['fetchJobs']>>;
       try {
         page = await this.spongeService.fetchJobs({
+          brandIdList: brandIds,
           pageNum,
           pageSize: PAGE_SIZE,
           options: ALL_SECTIONS,

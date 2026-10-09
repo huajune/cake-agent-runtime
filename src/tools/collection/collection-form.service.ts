@@ -256,7 +256,8 @@ export class CollectionFormService {
         scope.sessionId,
         mapping.interviewField,
         sessionFactValue(factValue, {
-          confidence: 'medium',
+          // 已公证的学生槽位需要进入后续查岗的高置信筛选；其他字段仍保持原有口径。
+          confidence: mapping.interviewField === 'is_student' ? 'high' : 'medium',
           source: slot.value.producer,
           evidence: `收资表单第 ${index + 1} 格落定（${field.labelTitle}，labelId=${field.labelId}）`,
           extractedAt,

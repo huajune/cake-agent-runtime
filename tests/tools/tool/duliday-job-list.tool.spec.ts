@@ -4,6 +4,10 @@ import { TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
 import type { TurnLedger } from '@shared-types/turn.types';
 import { createToolContext, mergeToolContext } from '../../helpers/tool-context.fixture';
 import { testTurnHint, testTurnHints } from '../../helpers/turn-hints.fixture';
+import { CollectionFormService } from '@tools/collection/collection-form.service';
+import { createForm, type ContractFieldDef } from '@resolution/collection';
+import { sessionFactsOf } from '../../helpers/session-facts.fixture';
+import { resolveHardConstraintsPromptView } from '@agent/generator/preparation/turn-context-resolver';
 
 type JobListTestContext = ToolBuildContext & {
   turnId?: string;
@@ -1655,6 +1659,65 @@ describe('buildJobListTool', () => {
         interview_info: { is_student: true },
       } as ToolBuildContext['archive']['sessionFacts'],
     };
+
+    it('收资确认的学生身份经过真实高置信投影后，下一轮查岗仍剔除社会人士岗位', async () => {
+      const field: ContractFieldDef = {
+        labelId: 1,
+        labelTitle: '社会身份',
+        fieldType: 'TEXT',
+        required: true,
+        acceptedOptions: [],
+        rejectedOptions: [],
+      };
+      const form = createForm({ jobId: 1, contract: [field] });
+      form.slots[field.labelId] = {
+        labelId: field.labelId,
+        state: 'filled',
+        askCount: 0,
+        value: {
+          value: '全日制在校学生',
+          sourceText: '全日制在校学生',
+          producer: 'candidate_quote',
+        },
+      };
+      const session = { saveCollectionProgressFact: jest.fn() };
+      const collection = new CollectionFormService({} as never, session as never);
+      await collection.saveFinalizedProgressFacts(
+        { corpId: 'corp', userId: 'user', botUserId: 'bot', sessionId: 'session', jobId: 1 },
+        form,
+        [field],
+        [field],
+      );
+      const savedFact = session.saveCollectionProgressFact.mock.calls[0][4];
+      const facts = sessionFactsOf();
+      facts.interview_info.is_student = savedFact;
+      const view = resolveHardConstraintsPromptView({
+        sessionFacts: facts,
+        turnHints: null,
+        laborFormIntent: { kind: 'ignore' },
+        brandState: null,
+      });
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [socialOnlyJob(1, '拉瓦萨'), openJob(2, '成都你六姐')],
+        total: 2,
+      });
+      const result = await executeTool(
+        {
+          ...mockContext,
+          sessionFacts: {
+            interview_info: view.facts!.interview,
+            preferences: view.facts!.preferences,
+            reasoning: 'resolved turn constraints',
+          },
+        },
+        { ...defaultInput },
+      );
+      expect(result.markdown).not.toContain('拉瓦萨');
+      expect(result.queryMeta.studentIdentityFilter).toMatchObject({
+        applied: true,
+        excludedCount: 1,
+      });
+    });
 
     it('excludes 不接受学生 jobs for a known student and discloses the filtering', async () => {
       mockSpongeService.fetchJobs.mockResolvedValue({

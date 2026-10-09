@@ -119,6 +119,9 @@ describe('FollowUpSchedulerService', () => {
     const removeOtherScenario = jest.fn().mockResolvedValue(undefined);
     const removeOtherSession = jest.fn().mockResolvedValue(undefined);
     queue.getJobs.mockResolvedValue([
+      null,
+      { id: 'expired', data: undefined },
+      { id: 'missing-session', data: {} },
       {
         id: 'store-job-1',
         data: {
@@ -477,6 +480,9 @@ describe('FollowUpSchedulerService', () => {
     const removeOtherSession = jest.fn().mockResolvedValue(undefined);
     const removePostBooking = jest.fn().mockResolvedValue(undefined);
     queue.getJobs.mockResolvedValue([
+      null,
+      { id: 'expired', data: undefined },
+      { id: 'missing-session', data: {} },
       {
         id: 'sess-1:opening_no_reply:opening',
         data: {

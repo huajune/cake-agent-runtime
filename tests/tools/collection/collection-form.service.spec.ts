@@ -154,7 +154,7 @@ describe('CollectionFormService', () => {
       );
     }
 
-    it('「全日制在校学生」回流成 is_student=true', async () => {
+    it('「全日制在校学生」回流成高置信 is_student=true，供后续查岗筛选', async () => {
       await finalizeIdentity('全日制在校学生');
 
       expect(sessionState.saveCollectionProgressFact).toHaveBeenCalledWith(
@@ -164,7 +164,7 @@ describe('CollectionFormService', () => {
         'is_student',
         expect.objectContaining({
           value: true,
-          confidence: 'medium',
+          confidence: 'high',
           source: 'candidate_quote',
           evidence: '收资表单第 1 格落定（社会身份，labelId=1）',
         }),

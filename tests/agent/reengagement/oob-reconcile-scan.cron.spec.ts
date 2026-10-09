@@ -106,7 +106,7 @@ describe('OobReconcileScanCronService', () => {
   });
 
   describe('runOnce', () => {
-    it('按已配 token 的账号拉 self/list/v2（报名近 15 天、在途、5 秒超时），筛 SUPPLIER 并按手机号反查会话对账', async () => {
+    it('按已配 token 的账号拉 self/list/v2（报名近 15 天、5 秒超时），不传状态文案，筛 SUPPLIER 并反查会话对账', async () => {
       const now = Date.parse('2026-09-22T02:00:00Z');
       sponge.fetchSelfSignupWorkOrdersV2.mockResolvedValue({
         total: 3,
@@ -130,7 +130,6 @@ describe('OobReconcileScanCronService', () => {
           pageSize: 100,
           queryParam: {
             signUpStartTime: '2026-09-07 10:00:00',
-            currentStatus: ['约面待确认', '约面成功'],
           },
         },
         { botImId: 'bot-A' },

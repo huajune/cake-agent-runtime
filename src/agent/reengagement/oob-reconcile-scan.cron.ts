@@ -10,10 +10,7 @@ import { SystemConfigService } from '@biz/hosting-config/services/system-config.
 import { PhoneSessionIndexService } from '@memory/phone-session-index.service';
 import { AgentTracerService } from '@observability/agent-tracer.service';
 import { SpongeService } from '@sponge/sponge.service';
-import {
-  ACTIVE_INTERVIEW_WORK_ORDER_STATUSES,
-  type SignupWorkOrderItem,
-} from '@sponge/sponge.types';
+import type { SignupWorkOrderItem } from '@sponge/sponge.types';
 import { isStorableCandidatePhone } from '@resolution/candidate/phone';
 import { normalizeSignupSource } from '@tools/booking/booking-snapshot.util';
 import { OobReconcileService } from './oob-reconcile.service';
@@ -211,6 +208,7 @@ export class OobReconcileScanCronService {
             userId: record.userId,
             chatId: record.chatId,
             botImId,
+            botUserId: record.botUserId,
             phone,
             trigger: 'scan',
             maxSlotChecks: Math.max(0, MAX_SLOT_CHECKS_PER_RUN - summary.slotChecks),
@@ -261,7 +259,6 @@ export class OobReconcileScanCronService {
             pageSize: PAGE_SIZE,
             queryParam: {
               signUpStartTime,
-              currentStatus: Array.from(ACTIVE_INTERVIEW_WORK_ORDER_STATUSES),
             },
           },
           { botImId },

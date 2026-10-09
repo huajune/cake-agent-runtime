@@ -611,7 +611,9 @@ describe('duliday_interview_booking（form → labelList）', () => {
     // 查重 ≠ 失败：指令必须说"已约上"，并明令禁止系统故障/稍后重提口径
     //（生产 batch …_1789111221226 把它改写成"系统有点问题，稍后再帮你提交"）。
     expect(result._replyInstruction).toContain('已经约上');
-    expect(result._replyInstruction).toContain('禁止把已有预约描述为系统故障、提交失败或尚待再次提交');
+    expect(result._replyInstruction).toContain(
+      '禁止把已有预约描述为系统故障、提交失败或尚待再次提交',
+    );
     expect(result._replyInstruction).toContain('不要编造时间');
   });
 
@@ -685,6 +687,7 @@ describe('duliday_interview_booking（form → labelList）', () => {
       userId: 'user-1',
       chatId: 'session-1',
       botImId: 'bot-A',
+      botUserId: 'wecom-user-A',
     });
   });
 
@@ -724,7 +727,9 @@ describe('duliday_interview_booking（form → labelList）', () => {
     expect(result.existingInterviewTime).toBe('2026-09-23 10:30:00');
     expect(result._existingInterviewTimeHuman).toBe('9月23日（周三）10:30');
     expect(result._replyInstruction).toContain('本轮已经成功提交过');
-    expect(result._replyInstruction).toContain('禁止把已有预约描述为系统故障、提交失败或尚待再次提交');
+    expect(result._replyInstruction).toContain(
+      '禁止把已有预约描述为系统故障、提交失败或尚待再次提交',
+    );
     expect(sponge.fetchJobs).not.toHaveBeenCalled();
     expect(sponge.bookInterview).not.toHaveBeenCalled();
     expect(collectionForms.persist).not.toHaveBeenCalled();

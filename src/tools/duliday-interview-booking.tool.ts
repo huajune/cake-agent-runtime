@@ -732,6 +732,7 @@ export function buildInterviewBookingTool(
                   userId: scope.userId,
                   chatId: scope.sessionId,
                   botImId: context.session.botImId ?? null,
+                  botUserId: scope.botUserId,
                 });
               });
             }
