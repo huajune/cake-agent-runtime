@@ -1,0 +1,14 @@
+{
+  "type": "object",
+  "properties": {
+    "decision": { "type": "string", "enum": ["APPROVE", "REQUEST_CHANGES"] },
+    "summary": { "type": "string", "minLength": 1, "maxLength": 4000 },
+    "blocking_findings": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1, "maxLength": 1000 },
+      "maxItems": 20
+    }
+  },
+  "required": ["decision", "summary", "blocking_findings"],
+  "additionalProperties": false
+}
