@@ -1,3 +1,4 @@
+import { scheduledJob } from '../../helpers/job-schedule.fixture';
 import {
   renderCandidateCard,
   renderCandidateCardsBanner,
@@ -19,7 +20,7 @@ function makeJob(overrides: Record<string, unknown> = {}): Record<string, unknow
     _distanceKm: 2.31,
     workTime: {
       dayWorkTime: {
-        arrangementType: '满足其中一个时段即可安排上岗',
+        arrangementType: '固定排班',
         combinedArrangement: [
           { combinedArrangementStartTime: '11:00', combinedArrangementEndTime: '15:00' },
         ],
@@ -86,7 +87,7 @@ describe('renderCandidateCard', () => {
 
   it('renders 做一休一 as a rotation instead of 每周 1 天', () => {
     const job = makeJob({
-      workTime: { weekAndMonthWorkTime: { perWeekWorkDays: 1, perWeekRestDays: 1 } },
+      workTime: { ...scheduledJob(101,'固定排班',[['11:00','15:00']]).workTime, weekAndMonthWorkTime: { perWeekWorkDays: 1, perWeekRestDays: 1 } },
     });
     const card = renderCandidateCard(job, 0)!;
     expect(card.oneLine).not.toContain('每周 1 天');
@@ -197,7 +198,9 @@ describe('renderCandidateCard', () => {
       const card = renderCandidateCard(job, 0)!;
       const lines = card.multiLine.split('\n').map((l) => l.trim());
       expect(lines[0]).toBe('1. **必胜客（马驹桥店） - 内场/外场，3.7km**');
-      expect(lines[1]).toBe('班次：08:00-14:00 / 15:00-23:00');
+      expect(lines[1]).toContain('组合排班制（任选其中一档完整班次）');
+      expect(lines[1]).toContain('08:00-14:00');
+      expect(lines[1]).toContain('15:00-23:00');
       expect(lines[2]).toBe(
         '薪资：基础19元/时，满100小时21元/时，满190小时23元/时，超出后所有工时按照新的薪资标准计算，日结，当日结',
       );
@@ -475,7 +478,7 @@ describe('renderCandidateCard', () => {
     const lines = card.multiLine.split('\n');
     expect(lines).toHaveLength(4);
     expect(lines[0]).toContain('肯德基');
-    expect(lines[1]).toContain('班次：11:00-15:00');
+    expect(lines[1]).toContain('班次：固定排班（需接受全部班次）：11:00-15:00');
     expect(lines[2]).toContain('薪资：24-29元/时');
     expect(lines[3]).toContain('要求：');
   });

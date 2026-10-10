@@ -1,3 +1,5 @@
+import { parseDayWorkTime } from './work-time.types';
+import { SpongeResponseContractError } from './response-contract.error';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { z } from 'zod';
@@ -201,6 +203,7 @@ export class SpongeService {
   async fetchJobs(
     params: JobListQueryParams,
     tokenContext?: SpongeTokenResolveContext,
+    signal?: AbortSignal,
   ): Promise<JobListResult> {
     const token = await this.resolveDulidayToken(tokenContext);
 
@@ -240,6 +243,7 @@ export class SpongeService {
 
     const response = await fetchWithTimeout(this.jobListApi, {
       method: 'POST',
+      signal,
       headers: {
         'Content-Type': 'application/json',
         'Duliday-Token': token,
@@ -251,7 +255,14 @@ export class SpongeService {
       throw new Error(`API请求失败: ${response.status} ${response.statusText}`);
     }
 
-    const data = await response.json();
+    let data: unknown;
+    try {
+      data = await response.json();
+    } catch (error) {
+      if (error instanceof SyntaxError)
+        throw new SpongeResponseContractError('岗位查询成功响应不是有效JSON');
+      throw error;
+    }
     const parsed = JobListApiResponseSchema.safeParse(data);
     if (!parsed.success) {
       this.logger.warn(
@@ -259,15 +270,25 @@ export class SpongeService {
           .map((issue) => `${issue.path.join('.') || '<root>'}: ${issue.message}`)
           .join('; ')}`,
       );
-      return { jobs: [], total: 0 };
+      throw new SpongeResponseContractError(`岗位查询返回结构异常: ${parsed.error.message}`);
     }
 
     if (parsed.data.code !== 0) {
       // 这里不能静默吞错返回 empty，否则 "lng/lat 缺 range" 之类的参数错会被
       // 误判为"没岗位"。必须抛错以便上层暴露真实原因。
-      const reason = data?.message ?? `code=${parsed.data.code}`;
+      const reason = parsed.data.message ?? `code=${parsed.data.code}`;
       this.logger.warn(`岗位查询返回非零: ${reason}`);
       throw new Error(`岗位查询失败: ${reason}`);
+    }
+
+    if (!parsed.data.data) {
+      throw new SpongeResponseContractError('岗位查询成功响应缺少 data');
+    }
+
+    if (params.options?.includeWorkTime) {
+      for (const job of parsed.data.data?.result ?? []) {
+        parseDayWorkTime(job.workTime, job.basicInfo?.jobId ?? null);
+      }
     }
 
     return {

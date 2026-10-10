@@ -18,12 +18,10 @@ describe('generic job-requirement boundaries', () => {
     const candidatePrompt = readPrompt('candidate-consultation.md');
     const comboScheduleCheck = finalCheckRuleText('combo_schedule_two_dimensions');
 
-    expect(candidatePrompt).toContain('“组合排班”只描述班次组合/轮换，不代表周频');
+    expect(candidatePrompt).toContain('组合排班制完整满足其中一档即可');
     expect(candidatePrompt).toContain('不能据此推断每周最低出勤天数');
-    expect(candidatePrompt).toContain('是否匹配要另看具体岗位明确的每周要求');
-    expect(candidatePrompt).toContain(
-      '严禁泛化成“组合排班通常有周频底线 / 每周两天很难匹配这类排班”',
-    );
+    expect(candidatePrompt).toContain('每周最多 N 天');
+    expect(candidatePrompt).toContain('仍独立核对周频');
     expect(comboScheduleCheck).toContain('把两者作为独立维度');
     expect(comboScheduleCheck).toContain(
       '删除“组合排班通常有每周出勤底线 / 每周 N 天很难匹配”之类泛化',

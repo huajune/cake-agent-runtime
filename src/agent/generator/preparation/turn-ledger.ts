@@ -58,6 +58,7 @@ export function createTurnLedger(input: CreateTurnLedgerInput = {}): TurnLedger 
   const geoSignalCities = new Set(input.geoSignalCities ?? []);
   let cityAttestation: CityAttestation | undefined;
   let jobListQuerySignature: string | undefined;
+  let scheduleConstraint: TurnLedgerSnapshot['jobs']['scheduleConstraint'];
 
   const ledger: TurnLedger = {
     get mentionedBrands() {
@@ -96,6 +97,9 @@ export function createTurnLedger(input: CreateTurnLedgerInput = {}): TurnLedger 
       },
       get invalidatedJobIds() {
         return invalidatedJobIds;
+      },
+      get scheduleConstraint() {
+        return scheduleConstraint;
       },
       bookingSucceeded: undefined,
       postBookingGroupInvite: undefined,
@@ -164,6 +168,9 @@ export function createTurnLedger(input: CreateTurnLedgerInput = {}): TurnLedger 
     recordJobListQuery(query) {
       jobListQuerySignature = query.signature;
     },
+    recordScheduleConstraint(constraint) {
+      scheduleConstraint = structuredClone(constraint);
+    },
     markJobInvalidated(jobId) {
       if (!invalidatedJobIds.includes(jobId)) invalidatedJobIds.push(jobId);
     },
@@ -199,6 +206,9 @@ export function createTurnLedger(input: CreateTurnLedgerInput = {}): TurnLedger 
             ? {}
             : { collectionReadyJobId: ledger.jobs.collectionReadyJobId }),
           jobListExecuted: ledger.jobs.jobListExecuted,
+          ...(scheduleConstraint === undefined
+            ? {}
+            : { scheduleConstraint: structuredClone(scheduleConstraint) }),
           ...(ledger.jobs.resolvedWorkOrderId === undefined
             ? {}
             : { resolvedWorkOrderId: ledger.jobs.resolvedWorkOrderId }),

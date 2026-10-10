@@ -1,3 +1,4 @@
+import { scheduledJob } from '../../helpers/job-schedule.fixture';
 import {
   applyLaborFormConstraint,
   applyScheduleConstraint,
@@ -133,10 +134,10 @@ describe('job-list search util', () => {
     expect(
       formatScheduleConstraintLabel({
         onlyWeekends: true,
-        onlyEvenings: true,
+        includeAnyTags: ['evening'],
         maxDaysPerWeek: 2,
       }),
-    ).toBe('只周末 / 只晚班 / 每周最多 2 天');
+    ).toBe('只周末 / 要求 晚班 / 每周最多 2 天');
     expect(formatScheduleConstraintLabel({})).toBe('未明确');
   });
 
@@ -316,6 +317,7 @@ describe('job-list search util', () => {
       workTime: {
         dayWorkTime: {
           arrangementType: '固定排班',
+          fixedTime: null,
           combinedArrangement: [
             { combinedArrangementStartTime: '22:00', combinedArrangementEndTime: '07:00' },
           ],
@@ -327,6 +329,7 @@ describe('job-list search util', () => {
       workTime: {
         dayWorkTime: {
           arrangementType: '固定排班',
+          fixedTime: null,
           combinedArrangement: [
             { combinedArrangementStartTime: '19:00', combinedArrangementEndTime: '22:00' },
           ],
@@ -340,7 +343,7 @@ describe('job-list search util', () => {
 
     expect(result.jobs.map((job) => job.basicInfo?.jobId)).toEqual([12]);
     expect(result.excluded).toEqual([
-      expect.objectContaining({ jobId: 11, reason: expect.stringContaining('18:30-24:00') }),
+      expect.objectContaining({ jobId: 11, reason: expect.stringContaining('不符合时间') }),
     ]);
     expect(
       formatScheduleConstraintLabel({ availableWindow: { start: '18:30', end: '24:00' } }),
@@ -351,6 +354,8 @@ describe('job-list search util', () => {
     const weekendJob = makeJob(1, '服务员', '周末短班', '餐饮', '可只做周末');
     const fullWeekJob = makeJob(2, '服务员', '全周排班', '餐饮', '每天 05:00-23:00 固定排班');
 
+    fullWeekJob.workTime = { ...fullWeekJob.workTime, ...scheduledJob(2,'固定排班',[['05:00','23:00']]).workTime };
+    weekendJob.workTime = { ...weekendJob.workTime, ...scheduledJob(1,'固定排班',[['08:00','12:00']]).workTime };
     const result = applyScheduleConstraint([fullWeekJob, weekendJob], { onlyWeekends: true });
 
     expect(result.jobs).toEqual([weekendJob]);

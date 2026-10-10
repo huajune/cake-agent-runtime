@@ -2,7 +2,7 @@
  * duliday_job_list 查询签名：把一次岗位查询的「实质过滤条件」归一成稳定字符串，
  * 用于跨轮比对"两轮查询是否有实质差异"。
  *
- * 签名相同 = 结果必然相同。模型曾在承诺"扩大范围再查"后连续三轮发出完全相同的入参、
+ * 签名相同只说明条件相同；实时岗位可能变化。模型曾在承诺"扩大范围再查"后连续三轮发出完全相同的入参、
  * 逐字复读"没有"；此时必须实质调整查询，或按"两轮推荐不满意后征询入群"的兜底阶梯推进，
  * 不得复读。
  *
@@ -17,6 +17,8 @@ interface SignatureLocation {
 }
 
 export interface JobListQuerySignatureInput {
+  purpose?: 'recommend' | 'inspect';
+  preferFlexibleSchedule?: boolean;
   cityNameList: string[];
   regionNameList: string[];
   brandAliasList: string[];
@@ -64,6 +66,7 @@ export function buildJobListQuerySignature(input: JobListQuerySignatureInput): s
   const normalizedConstraintEntries = constraint
     ? Object.entries(constraint)
         .filter(([, v]) => v !== undefined && v !== null && v !== false)
+        .map(([key, value]) => [key, canonicalizeScheduleValue(value)] as const)
         .sort(([a], [b]) => a.localeCompare(b))
     : [];
   const normalizedConstraint =
@@ -79,6 +82,8 @@ export function buildJobListQuerySignature(input: JobListQuerySignatureInput): s
     ? Object.values(normalizedLocation).some((value) => value !== null)
     : false;
   const payload = {
+    purpose: input.purpose ?? 'recommend',
+    preferFlexibleSchedule: input.preferFlexibleSchedule ?? false,
     city: normalizeStrings(input.cityNameList),
     region: normalizeStrings(input.regionNameList),
     brandAlias: normalizeStrings(input.brandAliasList),
@@ -106,11 +111,22 @@ export function buildJobListQuerySignature(input: JobListQuerySignatureInput): s
  * 并把出口指回既有兜底阶梯（改查询 → 两轮推荐均不满意时征询入群）。
  */
 export const REPEAT_QUERY_NOTICE =
-  '⚠️ **重复查询提醒**：本次查询条件与上一轮完全一致，岗位结果不会有任何变化。' +
+  '⚠️ **重复查询提醒**：本次查询条件与上一轮完全一致，岗位结果以本次实时返回为准。' +
   '若上一轮结果已经无法满足候选人明确提出的需求（如包住宿、包吃、特定班次、更近门店等），' +
   '本轮**禁止**基于相同结果复读上一轮话术、也禁止再次原样反问同一个问题，按下面顺序推进：\n' +
-  '1. 还能实质调整查询条件的（如去掉 regionNameList 扩大到全市、放宽品牌/品类、调整距离范围），立即调整后重新查询；\n' +
+  '1. 还能实质调整查询条件的（如去掉 regionNameList 扩大到全市、放宽品牌/品类、调整距离范围），仅在候选人授权范围内调整后重新查询，不得放宽班次硬条件；\n' +
   '2. 调整后仍为 0 条的真实无岗，只如实说明一次"暂时没有满足该条件的岗位"并结束本轮，不调用 invite_to_group；\n' +
   '3. 候选人已连续两轮否定具体推荐时，停止第三轮查询，只征询是否愿意入群；本轮不实调，下一轮明确同意后才调用 invite_to_group；\n' +
   '4. 本会话已经成功拉群时，禁止继续查询、推荐或询问其他区域，只提示留意既有群消息。\n' +
   '另外：若你已向候选人承诺"扩大范围/帮你再查查"，本轮必须真的改变查询条件；严禁声称已扩大范围却原样重查。';
+
+export function canonicalizeScheduleValue(value: unknown): unknown {
+  if (Array.isArray(value)) return [...new Set(value)].sort();
+  if (value !== null && typeof value === 'object')
+    return Object.fromEntries(
+      Object.entries(value)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([key, item]) => [key, canonicalizeScheduleValue(item)]),
+    );
+  return value;
+}

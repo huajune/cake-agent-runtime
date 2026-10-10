@@ -4,6 +4,8 @@ import { SpongeService } from '@sponge/sponge.service';
 import { SpongeBiService } from '@sponge/sponge-bi.service';
 import { RedisService } from '@infra/redis/redis.service';
 import { HostingMemberConfigService } from '@biz/hosting-config/services/hosting-member-config.service';
+import { WorkTimeContractError } from '@sponge/work-time.types';
+import { SpongeResponseContractError } from '@sponge/response-contract.error';
 
 describe('SpongeService', () => {
   let service: SpongeService;
@@ -165,7 +167,7 @@ describe('SpongeService', () => {
       await expect(service.fetchJobs({})).rejects.toThrow('API请求失败');
     });
 
-    it('should return empty result when API response shape is invalid', async () => {
+    it('should reject invalid API shapes instead of claiming no jobs', async () => {
       const mockResponse = {
         ok: true,
         json: jest.fn().mockResolvedValue({
@@ -175,9 +177,58 @@ describe('SpongeService', () => {
       };
       jest.spyOn(global, 'fetch').mockResolvedValue(mockResponse as unknown as Response);
 
-      const result = await service.fetchJobs({});
+      await expect(service.fetchJobs({})).rejects.toThrow('岗位查询返回结构异常');
+    });
 
-      expect(result).toEqual({ jobs: [], total: 0 });
+    it.each([undefined, {}, { result: [] }, { total: 0 }])(
+      'rejects a success response with missing pagination fields: %j',
+      async (data) => {
+        jest.spyOn(global, 'fetch').mockResolvedValue({
+          ok: true,
+          json: async () => ({ code: 0, data }),
+        } as Response);
+        const error = await service.fetchJobs({}).catch((failure: unknown) => failure);
+        expect(error).toBeInstanceOf(SpongeResponseContractError);
+        expect(error).not.toBeInstanceOf(WorkTimeContractError);
+      },
+    );
+
+    it.each([
+      { result: [], total: 'invalid' },
+      { result: 'invalid', total: 1 },
+      { result: [{ basicInfo: { jobId: 'invalid' } }], total: 1 },
+    ])('普通响应结构异常不进入班次错误分支：%j', async (data) => {
+      jest.spyOn(global, 'fetch').mockResolvedValue({
+        ok: true,
+        json: async () => ({ code: 0, data }),
+      } as Response);
+      const error = await service
+        .fetchJobs({ options: { includeWorkTime: true } })
+        .catch((failure: unknown) => failure);
+      expect(error).toBeInstanceOf(SpongeResponseContractError);
+      expect(error).not.toBeInstanceOf(WorkTimeContractError);
+    });
+
+    it('成功响应不是JSON时作为响应契约错误传播', async () => {
+      jest.spyOn(global, 'fetch').mockResolvedValue({
+        ok: true,
+        json: async () => {
+          throw new SyntaxError('invalid JSON');
+        },
+      } as unknown as Response);
+      await expect(service.fetchJobs({})).rejects.toThrow(SpongeResponseContractError);
+    });
+    it('真实班次契约异常仍使用班次错误类型', async () => {
+      jest.spyOn(global, 'fetch').mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          code: 0,
+          data: { result: [{ basicInfo: { jobId: 1 }, workTime: {} }], total: 1 },
+        }),
+      } as Response);
+      await expect(
+        service.fetchJobs({ options: { includeWorkTime: true } }),
+      ).rejects.toBeInstanceOf(WorkTimeContractError);
     });
 
     it('resolves the Duliday token from hosting_member_config by botImId', async () => {
