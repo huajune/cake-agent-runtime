@@ -39,6 +39,7 @@ import {
   resolveManualInterviewGroupHandling,
 } from '@tools/booking/booking-reply-format.util';
 import { runBookingScheduleAndNameGuards } from '@tools/booking/booking-guards.util';
+import { projectBookingModelOutput } from '@tools/booking/booking-model-output.util';
 import { findRecentSameJobBooking } from '@tools/booking/active-booking-dedup.util';
 import type { BookingSnapshotService } from '@tools/booking/booking-snapshot.service';
 import {
@@ -186,6 +187,7 @@ export function buildInterviewBookingTool(
     tool({
       description: DESCRIPTION,
       inputSchema,
+      toModelOutput: ({ output }) => ({ type: 'json', value: projectBookingModelOutput(output) }),
       execute: async ({ jobId, interviewTime }) => {
         const fail = <T extends Record<string, unknown>>(result: T): T => {
           context.ledger.jobs.bookingSucceeded = false;
@@ -601,6 +603,12 @@ export function buildInterviewBookingTool(
               _outcome: '预约成功，可以告知候选人资料已提交',
               _replyInstruction:
                 '预约已真实成功。即使本地后处理异常，也必须告知候选人报名成功；禁止改口为预约失败。',
+              ...(interviewTime
+                ? { _confirmedInterviewTimeHuman: formatInterviewTimeForReply(interviewTime) }
+                : {
+                    _waitNoticeReplyGuide:
+                      '告知候选人资料已提交，面试官会电话联系；请保持电话畅通，禁止编造时间。',
+                  }),
             };
           }
 
@@ -798,11 +806,7 @@ export function buildInterviewBookingTool(
             ...(otherActiveBookings.length > 0
               ? {
                   otherActiveBookings,
-                  _otherBookingsGuide: `候选人名下还有 ${otherActiveBookings.length} 个其他岗位的在途预约（工单 ${otherActiveBookings
-                    .map((entry) => entry.workOrderId)
-                    .join(
-                      '、',
-                    )}）。本轮告知报名成功后，必须紧接着问一句是两家都去还是只保留这家；候选人说只保留新的一家时，当轮用 duliday_cancel_work_order 取消旧工单。不得默默双报，也不得替候选人决定。`,
+                  _otherBookingsGuide: `候选人名下还有 ${otherActiveBookings.length} 个其他岗位的在途预约。本轮告知报名成功后，必须紧接着问一句是两家都去还是只保留这家；候选人说只保留新的一家时，当轮用 duliday_cancel_work_order 取消旧工单。不得默默双报，也不得替候选人决定。`,
                 }
               : {}),
             _replyInstruction:
@@ -810,9 +814,9 @@ export function buildInterviewBookingTool(
                 ? '本轮必须明确告诉用户当前这位候选人报名成功，并照实复述面试安排；只有告知成功后才能处理下一位候选人。'
                 : '本轮必须明确告诉候选人报名成功，并照实复述面试安排；不得静默或只回答其它问题。') +
               `群动作（groupInvite）：${groupInviteGuide}`,
-            _confirmedInterviewTimeHuman: interviewTime
-              ? formatInterviewTimeForReply(interviewTime)
-              : '未指定面试时间：面试官会直接电话联系候选人确认',
+            ...(interviewTime
+              ? { _confirmedInterviewTimeHuman: formatInterviewTimeForReply(interviewTime) }
+              : {}),
             ...(interviewTime && receiptMode === 'on_site'
               ? {
                   _onSiteScript: buildOnSiteScript({

@@ -8,8 +8,6 @@ import {
   CATEGORY_META,
   UNCLASSIFIED_LABEL,
   isUrgentReasonCode,
-  maxPriority,
-  parsePriority,
   resolveBasePriority,
   resolveReasonCodeLabel,
   resolveTaskCategory,
@@ -168,13 +166,5 @@ describe('intervention-task-category', () => {
         resolveBasePriority({ category: 'UNCLASSIFIED', reasonCode: null, reasonText: '' }),
       ).toBe('today');
     });
-  });
-
-  it('maxPriority / parsePriority', () => {
-    expect(maxPriority('normal', 'today')).toBe('today');
-    expect(maxPriority('urgent', 'today')).toBe('urgent');
-    expect(parsePriority('urgent')).toBe('urgent');
-    expect(parsePriority('nope')).toBeNull();
-    expect(parsePriority(undefined)).toBeNull();
   });
 });

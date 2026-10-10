@@ -82,6 +82,7 @@ describe('ReplyRepairAgent', () => {
     expect(call.system).toContain('明天：');
     expect(call.system).not.toContain('confirmedInterviewTimeHuman');
     expect(call.system).not.toContain('duliday_interview_booking(');
+    expect(call.system).not.toContain('wo-1');
     // 真实对话历史走 messages 槽，不再塞进 system
     expect(call.messages).toEqual([
       { role: 'user', content: '上海有餐饮兼职吗' },
@@ -103,5 +104,36 @@ describe('ReplyRepairAgent', () => {
         toolCalls: [],
       }),
     ).resolves.toBe('好的，我这边帮你改成更自然的说法。');
+  });
+  it('重复报名修复时，模型只收到已有预约事实和时间，不收到工单号', async () => {
+    await service.repair({
+      userMessage: '已经报上了吗',
+      originalReply: '系统有问题，稍后重试',
+      violations: [
+        {
+          type: 'booking_receipt_mismatch',
+          evidence: '预约已存在',
+          suggestion: '如实告知已有预约',
+        },
+      ],
+      feedbackToGenerator: '告知已经约上，无需重复报名',
+      ruleIds: ['booking_receipt_mismatch'],
+      toolCalls: [
+        {
+          toolName: 'duliday_interview_booking',
+          args: {},
+          result: {
+            success: false,
+            errorType: 'booking.already_booked',
+            existingWorkOrderId: 468104,
+            _existingInterviewTimeHuman: '9月25日（周五）14:00',
+          },
+        },
+      ],
+    });
+    const prompt = llm.generate.mock.calls[0][0];
+    expect(prompt.system).toContain('预约已经存在');
+    expect(prompt.system).toContain('9月25日（周五）14:00');
+    expect(JSON.stringify(prompt)).not.toContain('468104');
   });
 });

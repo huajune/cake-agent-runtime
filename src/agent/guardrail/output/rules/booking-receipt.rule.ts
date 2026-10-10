@@ -254,11 +254,6 @@ const SYSTEM_FAULT_CLAIM_PATTERN = /系统[^。！？!?\n]{0,6}(?:问题|故障|
 const RESUBMIT_PROMISE_PATTERN =
   /(?:稍后|等下|等会|一会儿?|回头|晚点|待会儿?|明天|之后)[^。！？!?\n]{0,10}(?:再|重新)[^。！？!?\n]{0,6}(?:帮你|给你)?[^。！？!?\n]{0,4}(?:提交|报名|预约|约)/u;
 
-function readExistingWorkOrderId(booking: AgentToolCall): number | string | null {
-  const value = asRecord(booking.result)?.existingWorkOrderId;
-  return typeof value === 'number' || (typeof value === 'string' && value.trim()) ? value : null;
-}
-
 function readExistingInterviewTimeHuman(booking: AgentToolCall): string | null {
   const value = asRecord(booking.result)?._existingInterviewTimeHuman;
   return typeof value === 'string' && value.trim() ? value.trim() : null;
@@ -279,18 +274,16 @@ function describeAlreadyBookedDenial(
   const asksDateAgain = DATE_ASK_PATTERN.test(replyText) && !CONFIRMATION_PATTERN.test(replyText);
   if (!deniesBooking && !asksDateAgain) return null;
 
-  const workOrderId = readExistingWorkOrderId(alreadyBooked);
-  const workOrderLabel = workOrderId != null ? `（工单 ${workOrderId}）` : '';
   const existingTime = readExistingInterviewTimeHuman(alreadyBooked);
   return {
     label:
-      `本轮 duliday_interview_booking 命中在途工单查重${workOrderLabel}：预约已经存在、本轮只是没有重复提交，` +
+      '本轮 duliday_interview_booking 命中在途工单查重：预约已经存在、本轮只是没有重复提交，' +
       (deniesBooking
         ? '回复却告诉候选人没提交成功/系统有问题/稍后再提交——候选人会以为没约上，而重提永远不会成功'
         : '回复却仍在向候选人征询面试日期——与已存在的预约直接矛盾') +
       '（生产 batch …_1789111221226：同一候选人两个托管账号并聊，另一账号刚建单）',
     suggestion:
-      `本轮 booking 返回 already_booked：候选人在该岗位已有在途工单${workOrderLabel}，预约已经存在，本轮只是没有重复提交，这不是失败。` +
+      '本轮 booking 返回 already_booked：候选人在该岗位已有在途工单，预约已经存在，本轮只是没有重复提交，这不是失败。' +
       '上一版回复把它说成没提交成功/系统故障、承诺稍后再提交，或重新征询日期，当前文本不可发送。' +
       '请改为如实告知候选人这个岗位已经约上、不用再提交；' +
       (existingTime
@@ -324,6 +317,8 @@ function readConfirmedInterviewTimeHuman(booking: AgentToolCall): string | null 
     booking.result && typeof booking.result === 'object' && !Array.isArray(booking.result)
       ? (booking.result as Record<string, unknown>)
       : null;
+  // 历史 wait_notice 回执曾把“等电话通知”说明误填到日期字段；无指定时间时不做日期必报校验。
+  if (asRecord(result?.requestInfo)?.interviewTime === null) return null;
   const value = result?._confirmedInterviewTimeHuman;
   return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
