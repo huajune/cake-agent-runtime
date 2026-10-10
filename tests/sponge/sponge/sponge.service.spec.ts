@@ -4,6 +4,7 @@ import { SpongeService } from '@sponge/sponge.service';
 import { SpongeBiService } from '@sponge/sponge-bi.service';
 import { RedisService } from '@infra/redis/redis.service';
 import { HostingMemberConfigService } from '@biz/hosting-config/services/hosting-member-config.service';
+import { WorkTimeContractError } from '@sponge/work-time.types';
 
 describe('SpongeService', () => {
   let service: SpongeService;
@@ -185,9 +186,40 @@ describe('SpongeService', () => {
           ok: true,
           json: async () => ({ code: 0, data }),
         } as Response);
-        await expect(service.fetchJobs({})).rejects.toThrow('契约错误');
+        const error = await service.fetchJobs({}).catch((failure: unknown) => failure);
+        expect(error).toBeInstanceOf(Error);
+        expect(error).not.toBeInstanceOf(WorkTimeContractError);
       },
     );
+
+    it.each([
+      { result: [], total: 'invalid' },
+      { result: 'invalid', total: 1 },
+      { result: [{ basicInfo: { jobId: 'invalid' } }], total: 1 },
+    ])('普通响应结构异常不进入班次错误分支：%j', async (data) => {
+      jest.spyOn(global, 'fetch').mockResolvedValue({
+        ok: true,
+        json: async () => ({ code: 0, data }),
+      } as Response);
+      const error = await service
+        .fetchJobs({ options: { includeWorkTime: true } })
+        .catch((failure: unknown) => failure);
+      expect(error).toBeInstanceOf(Error);
+      expect(error).not.toBeInstanceOf(WorkTimeContractError);
+    });
+
+    it('真实班次契约异常仍使用班次错误类型', async () => {
+      jest.spyOn(global, 'fetch').mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          code: 0,
+          data: { result: [{ basicInfo: { jobId: 1 }, workTime: {} }], total: 1 },
+        }),
+      } as Response);
+      await expect(
+        service.fetchJobs({ options: { includeWorkTime: true } }),
+      ).rejects.toBeInstanceOf(WorkTimeContractError);
+    });
 
     it('resolves the Duliday token from hosting_member_config by botImId', async () => {
       hostingMemberConfigService.resolveDulidayToken.mockResolvedValueOnce('member-token');
