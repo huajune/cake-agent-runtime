@@ -52,6 +52,7 @@ import { getTurnHintValue } from '@resolution/turn-hints/reducer';
 import {
   buildJobListQuerySignature,
   REPEAT_QUERY_NOTICE,
+  canonicalizeScheduleValue,
 } from '@tools/shared/job-list-query-signature';
 import { correctSwappedLatLng } from '@tools/shared/latlng-swap';
 import {
@@ -926,13 +927,19 @@ export function buildJobListTool(
           }
         }
 
-        const persistedConstraint = context.archive.sessionFacts?.preferences?.schedule_constraint;
+        const persistedConstraint =
+          context.ledger.jobs.scheduleConstraint ??
+          context.archive.sessionFacts?.preferences?.schedule_constraint;
         const changedSchedule =
           candidateScheduleConstraint &&
           Object.entries(candidateScheduleConstraint).some(
             ([key, value]) =>
-              JSON.stringify(value) !==
-              JSON.stringify(persistedConstraint?.[key as keyof typeof persistedConstraint]),
+              JSON.stringify(canonicalizeScheduleValue(value)) !==
+              JSON.stringify(
+                canonicalizeScheduleValue(
+                  persistedConstraint?.[key as keyof typeof persistedConstraint],
+                ),
+              ),
           );
         if (
           (changedSchedule || preferFlexibleSchedule) &&
@@ -947,9 +954,11 @@ export function buildJobListTool(
               '请用本轮候选人逐字原话提供candidateScheduleCitation后重试；仅核对岗位时间应使用purpose=inspect。不得把本次参数拦截描述成没有岗位。',
           });
         }
-        const scheduleState = readScheduleConditions(
-          mergeScheduleConstraints(persistedConstraint, candidateScheduleConstraint),
+        const mergedConstraint = mergeScheduleConstraints(
+          persistedConstraint,
+          candidateScheduleConstraint,
         );
+        const scheduleState = readScheduleConditions(mergedConstraint);
         const conditions = CandidateScheduleConstraintSchema.safeParse(scheduleState.conditions);
         if ((!conditions.success || scheduleState.legacyUnresolved) && purpose !== 'inspect') {
           return buildToolError({
@@ -958,6 +967,9 @@ export function buildJobListTool(
             replyInstruction:
               '已有班次条件的早晚班含义或钟点边界不明确，请确认具体可上班时间后再查；不能丢弃已有条件直接推荐，也不能据此断言无岗。',
           });
+        }
+        if (candidateScheduleConstraint && conditions.success && !scheduleState.legacyUnresolved) {
+          context.ledger.recordScheduleConstraint(mergedConstraint);
         }
         candidateScheduleConstraint =
           conditions.success && hasScheduleConstraint(conditions.data)
@@ -1761,6 +1773,15 @@ export function buildJobListTool(
           }
 
           if (jobs.length === 0) {
+            if (jobIdList.length > 0) {
+              return buildQueryError({
+                errorType: TOOL_ERROR_TYPES.JOB_LIST_FETCH_FAILED,
+                outcome: '指定岗位的实时事实未查到',
+                replyInstruction:
+                  '指定岗位的实时事实暂时无法核对，不能用历史岗位摘要回答班次或承诺上岗，也不能据此断言岗位已停招或附近无岗。说明暂时无法确认；本轮不要自动改查其他岗位。',
+                details: { missingJobIds: jobIdList },
+              });
+            }
             // 乡镇/街道/新镇/地标级地名被误当 regionNameList（川沙、九亭、周浦 等）：后端只精确
             // 匹配区级 storeRegionName，这类地名必然命中 0 ≠ 该片区无岗（候选人答"川沙"、
             // Agent 直接 regionNameList=["川沙"] 查 0 条就拉群收口）。

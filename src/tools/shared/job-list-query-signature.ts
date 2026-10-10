@@ -66,7 +66,7 @@ export function buildJobListQuerySignature(input: JobListQuerySignatureInput): s
   const normalizedConstraintEntries = constraint
     ? Object.entries(constraint)
         .filter(([, v]) => v !== undefined && v !== null && v !== false)
-        .map(([key, value]) => [key, canonicalize(value)] as const)
+        .map(([key, value]) => [key, canonicalizeScheduleValue(value)] as const)
         .sort(([a], [b]) => a.localeCompare(b))
     : [];
   const normalizedConstraint =
@@ -120,13 +120,13 @@ export const REPEAT_QUERY_NOTICE =
   '4. 本会话已经成功拉群时，禁止继续查询、推荐或询问其他区域，只提示留意既有群消息。\n' +
   '另外：若你已向候选人承诺扩大范围或重新查询，本轮必须实质调整查询条件；严禁声称已扩大范围却原样重查。';
 
-function canonicalize(value: unknown): unknown {
+export function canonicalizeScheduleValue(value: unknown): unknown {
   if (Array.isArray(value)) return [...new Set(value)].sort();
   if (value !== null && typeof value === 'object')
     return Object.fromEntries(
       Object.entries(value)
         .sort(([a], [b]) => a.localeCompare(b))
-        .map(([key, item]) => [key, canonicalize(item)]),
+        .map(([key, item]) => [key, canonicalizeScheduleValue(item)]),
     );
   return value;
 }

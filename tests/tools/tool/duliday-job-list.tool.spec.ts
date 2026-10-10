@@ -2608,6 +2608,36 @@ describe('buildJobListTool', () => {
   });
 
   describe('班次条件引用与事实核对', () => {
+    it('已有标签重排和去重不要求本轮重新提供班次引用', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [scheduledJob(1, '固定排班', [['06:00', '10:00']])],
+        total: 1,
+      });
+      const result = await executeTool(
+        {
+          ...mockContext,
+          currentUserMessage: '帮我查北京的岗位',
+          sessionFacts: {
+            preferences: {
+              schedule_constraint: {
+                includeAnyTags: ['early', 'morning'],
+                excludeTags: ['night', 'evening'],
+              },
+            },
+          } as ToolBuildContext['archive']['sessionFacts'],
+        },
+        {
+          ...defaultInput,
+          candidateScheduleConstraint: {
+            includeAnyTags: ['morning', 'early', 'early'],
+            excludeTags: ['evening', 'night'],
+          },
+        } as typeof defaultInput,
+      );
+      expect(result.resultCount).toBe(1);
+      expect(mockSpongeService.fetchJobs).toHaveBeenCalled();
+    });
+
     describe.each([
       {
         name: '用工形式',
@@ -2986,6 +3016,106 @@ describe('buildJobListTool', () => {
       });
 
       expect(result.errorType).not.toBe(TOOL_ERROR_TYPES.JOB_LIST_REGION_NEEDS_GEOCODE);
+    });
+  });
+
+  describe('同轮查询延续已验证班次条件', () => {
+    const run = (context: ToolBuildContext, input: Record<string, unknown>) => {
+      const builder = buildJobListTool(
+        mockSpongeService as never,
+        { recordEvent: jest.fn() } as never,
+        { geocode: jest.fn() } as never,
+      );
+      // 每次重建工具但沿用本轮账本，覆盖工具重试和生成器重入。
+      return builder(context).execute!(
+        { ...defaultInput, ...input } as never,
+        {
+          toolCallId: 'test',
+          messages: [],
+        } as never,
+      ) as Promise<{
+        errorType?: string;
+        missingJobIds?: number[];
+        noMatchScript?: unknown;
+        _replyInstruction?: string;
+        resultCount?: number;
+        queryMeta: {
+          scheduleFilter: { applied: boolean; candidateConstraint?: CandidateScheduleConstraint };
+        };
+      }>;
+    };
+    it('已知岗位查空后撤销值仍保留，后续省略不会复活旧限制', async () => {
+      const context = createToolContext({
+        archive: {
+          sessionFacts: {
+            preferences: {
+              schedule_constraint: { availableWindow: { start: '07:00', end: '14:00' } },
+            },
+          } as ToolBuildContext['archive']['sessionFacts'],
+        },
+        turnInput: { currentUserMessage: '现在全天都能上班' },
+      });
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [], total: 0 });
+      const first = await run(context, {
+        jobIdList: [1],
+        candidateScheduleConstraint: { availableWindow: null },
+        candidateScheduleCitation: { quote: '现在全天都能上班' },
+      });
+      expect(first.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_FETCH_FAILED);
+      expect(first.missingJobIds).toEqual([1]);
+      expect(first.noMatchScript).toBeUndefined();
+      expect(first._replyInstruction).toContain('本轮不要自动改查');
+      expect(context.ledger.drain().jobs.scheduleConstraint).toEqual({ availableWindow: null });
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [scheduledJob(1, '固定排班', [['18:00', '22:00']])],
+        total: 1,
+      });
+      const second = await run(context, {});
+      expect(second.resultCount).toBe(1);
+      expect(second.queryMeta.scheduleFilter).toEqual({ applied: false });
+    });
+    it('后续省略条件仍排除夜班，新一轮账本不会继承上轮临时状态', async () => {
+      const context = createToolContext({ turnInput: { currentUserMessage: '不做夜班' } });
+      const response = {
+        jobs: [
+          scheduledJob(1, '固定排班', [['09:00', '14:00']]),
+          scheduledJob(2, '固定排班', [['22:00', '02:00']]),
+        ],
+        total: 2,
+      };
+      mockSpongeService.fetchJobs.mockResolvedValue(response);
+      const first = await run(context, {
+        candidateScheduleConstraint: { excludeTags: ['night'] },
+        candidateScheduleCitation: { quote: '不做夜班' },
+      });
+      const second = await run(context, {});
+      expect(first.resultCount).toBe(1);
+      expect(second.resultCount).toBe(1);
+      expect(second.queryMeta.scheduleFilter.candidateConstraint).toEqual({
+        excludeTags: ['night'],
+      });
+      expect(createToolContext().ledger.jobs.scheduleConstraint).toBeUndefined();
+    });
+    it('无本轮引用的撤销不能污染后续查询', async () => {
+      const context = createToolContext({
+        archive: {
+          sessionFacts: {
+            preferences: { schedule_constraint: { excludeTags: ['night'] } },
+          } as ToolBuildContext['archive']['sessionFacts'],
+        },
+        turnInput: { currentUserMessage: '帮我再查一下' },
+      });
+      const first = await run(context, { candidateScheduleConstraint: { excludeTags: [] } });
+      expect(first.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_SCHEDULE_NO_PROVENANCE);
+      expect(context.ledger.jobs.scheduleConstraint).toBeUndefined();
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [scheduledJob(1, '固定排班', [['09:00', '14:00']])],
+        total: 1,
+      });
+      const second = await run(context, {});
+      expect(second.queryMeta.scheduleFilter.candidateConstraint).toEqual({
+        excludeTags: ['night'],
+      });
     });
   });
 
