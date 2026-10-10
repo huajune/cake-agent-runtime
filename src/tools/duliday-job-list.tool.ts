@@ -1620,11 +1620,12 @@ export function buildJobListTool(
             location?.range != null && location.range > 0 ? location.range / 1000 : null;
           const rangeClampedByCap =
             requestedRangeKm != null && requestedRangeKm > EXPLICIT_RANGE_CAP_KM;
-          const maxKm = requireAccommodation
-            ? undefined
-            : requestedRangeKm != null
-              ? Math.min(requestedRangeKm, EXPLICIT_RANGE_CAP_KM)
-              : distanceThreshold?.max;
+          const maxKm =
+            requireAccommodation || !hasUserCoords
+              ? undefined
+              : requestedRangeKm != null
+                ? Math.min(requestedRangeKm, EXPLICIT_RANGE_CAP_KM)
+                : distanceThreshold?.max;
 
           scanMeta = {
             upstreamTotal: total,

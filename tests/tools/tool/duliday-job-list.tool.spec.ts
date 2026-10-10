@@ -1181,6 +1181,15 @@ describe('buildJobListTool', () => {
       ],
     });
 
+    it('只有城市查询时，默认距离阈值不能冒充实际查询半径', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [], total: 0 });
+      const result = await executeTool(thresholdCtx(), { ...defaultInput, cityNameList: ['上海'] });
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_NO_RESULTS);
+      expect(result.noMatchScript.querySummary).not.toContain('10km');
+      expect(result.noMatchScript.candidateMessage).not.toContain('10 公里');
+      expect(result.noMatchScript.candidateMessage).not.toContain('附近');
+    });
+
     it('传 range=20000 时 15km 门店不被业务阈值 10km 截掉', async () => {
       mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [storeAtKm15()], total: 1 });
 
