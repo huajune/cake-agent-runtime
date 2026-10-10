@@ -65,7 +65,7 @@ function validateInterviewTimeAgainstSchedule(
       errorType: TOOL_ERROR_TYPES.BOOKING_INVALID_INTERVIEW_TIME,
       outcome: '预约失败（已过当日报名截止）',
       replyInstruction:
-        '今天的报名时间已经截止。用招募者口吻告诉候选人"今天的报名时间已经截止，咱们看下明天/后天哪个时间方便，我帮你重新约"，并主动给出未来 1-2 天的可约日期；严禁再以今日为面试日期提交。先调 duliday_interview_precheck 拿到合法的次日 slot 再重试 booking。',
+        '今天的报名时间已经截止。以招募者口吻告知截止事实，并根据 precheck 结果提供未来 1-2 天的可约日期，请候选人重选；严禁再以今日为面试日期提交。先调 duliday_interview_precheck 拿到合法的次日 slot 再重试 booking。',
       details: {
         detailedReason: cutoffViolation.reason,
         registrationDeadline: cutoffViolation.latestDeadline,
