@@ -4,7 +4,12 @@ import { scanGeoSignalsFromText } from '@resolution/geo';
 import { decideLaborFormIntent } from '@resolution/labor-form';
 import { extractLocationShareLabels } from '@resolution/signal/markers';
 import type { TurnHintCity } from '../projection.types';
-import type { ScheduleWindow } from '@resolution/schedule/types';
+import {
+  hasScheduleConstraint,
+  type CandidateScheduleConstraint,
+  type ScheduleWindow,
+  type ShiftTag,
+} from '@resolution/schedule/types';
 
 const POSITION_KEYWORDS = [
   '服务员',
@@ -320,48 +325,33 @@ export function extractAvailableWindow(message: string): ScheduleWindow | null {
   };
 }
 
-export function extractScheduleConstraintStructured(message: string): {
-  onlyWeekends: boolean | null;
-  onlyEvenings: boolean | null;
-  onlyMornings: boolean | null;
-  maxDaysPerWeek: number | null;
-  availableWindow: ScheduleWindow | null;
-} | null {
-  const result = {
-    onlyWeekends: null as boolean | null,
-    onlyEvenings: null as boolean | null,
-    onlyMornings: null as boolean | null,
-    maxDaysPerWeek: null as number | null,
-    availableWindow: null as ScheduleWindow | null,
-  };
-  result.availableWindow = extractAvailableWindow(message);
+export function extractScheduleConstraintStructured(
+  message: string,
+): CandidateScheduleConstraint | null {
+  const result: CandidateScheduleConstraint = {};
+  const availableWindow = extractAvailableWindow(message);
+  if (availableWindow) result.availableWindow = availableWindow;
 
   const onlyShiftTargets = matchOnlyShiftTargets(message);
   if (onlyShiftTargets.includes('周末')) result.onlyWeekends = true;
-  if (onlyShiftTargets.some((shift) => shift === '晚班' || shift === '夜班')) {
-    result.onlyEvenings = true;
-  }
-  if (onlyShiftTargets.includes('早班')) result.onlyMornings = true;
-  if (result.onlyWeekends === null && WEEKEND_SEEK_PATTERN.test(message)) {
+  const tags: ShiftTag[] = [];
+  if (onlyShiftTargets.includes('晚班')) tags.push('evening');
+  if (onlyShiftTargets.includes('夜班')) tags.push('night');
+  if (onlyShiftTargets.includes('早班')) tags.push('early', 'morning');
+  if (tags.length) result.includeAnyTags = tags;
+  if (result.onlyWeekends === undefined && WEEKEND_SEEK_PATTERN.test(message)) {
     result.onlyWeekends = true;
   }
 
   const workRestDays = matchWorkRestDays(message);
   if (workRestDays !== null) result.maxDaysPerWeek = workRestDays;
-  if (result.maxDaysPerWeek === null) {
+  if (result.maxDaysPerWeek === undefined) {
     const weeklyDayConstraint = matchWeeklyDayConstraint(message);
     if (weeklyDayConstraint?.isUpperBound && weeklyDayConstraint.value !== null) {
       result.maxDaysPerWeek = weeklyDayConstraint.value;
     }
   }
-
-  const hasAny =
-    result.onlyWeekends !== null ||
-    result.onlyEvenings !== null ||
-    result.onlyMornings !== null ||
-    result.maxDaysPerWeek !== null ||
-    result.availableWindow !== null;
-  return hasAny ? result : null;
+  return hasScheduleConstraint(result) ? result : null;
 }
 
 export function extractAvailableAfterDate(

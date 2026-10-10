@@ -48,6 +48,8 @@ export function candidateCovers(range: TimeRange, available?: ScheduleWindow | n
   if (!available) return true;
   const window = windowToRange(available);
   const offsets = available.endDayOffset === 1 ? [0, 1] : [0];
+  // 只有结束边界时，夜班应按结束日对齐，不能把次日凌晨当作超过当日早晨。
+  if (available.start === undefined && range.endMinute >= MINUTES_PER_DAY) offsets.push(-1);
   return offsets.some((day) => {
     const aligned = shiftRange(range, day);
     return aligned.startMinute >= window.startMinute && aligned.endMinute <= window.endMinute;

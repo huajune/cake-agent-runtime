@@ -391,10 +391,10 @@ describe('turn-hints rule track', () => {
       expect(readProjectedValue(constraint)?.maxDaysPerWeek).toBeUndefined();
     });
 
-    it('extracts onlyEvenings from "只做晚班"', () => {
+    it('extracts evening tag from "只做晚班"', () => {
       const constraint = extractTurnHints(['我只做晚班'], brandData)?.preferences
         .schedule_constraint;
-      expect(readProjectedValue(constraint)?.onlyEvenings).toBe(true);
+      expect(readProjectedValue(constraint)?.includeAnyTags).toEqual(['evening']);
     });
 
     it('「做一休一」是隔天轮换（≈每周3-4天），保守取 3——绝不是每周 1 天', () => {
@@ -431,7 +431,7 @@ describe('turn-hints rule track', () => {
       const constraint = extractTurnHints(['我只能周末做晚班，每周最多两天'], brandData)
         ?.preferences.schedule_constraint;
       expect(readProjectedValue(constraint)?.onlyWeekends).toBe(true);
-      expect(readProjectedValue(constraint)?.onlyEvenings).toBe(true);
+      expect(readProjectedValue(constraint)?.includeAnyTags).toEqual(['evening']);
       expect(readProjectedValue(constraint)?.maxDaysPerWeek).toBe(2);
     });
 

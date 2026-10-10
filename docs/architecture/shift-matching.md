@@ -149,7 +149,7 @@ type JobSchedule =
 
 时间对象使用 `{ start?: string, end?: string, endDayOffset?: 0 | 1 }`，至少一个边界；均使用 `HH:mm`。完整跨日区间须明确下一日结束，不能给“17点后”补出24点上限。只有结束边界时，按对应业务日的结束上限匹配。本期单次条件分别支持一个可用区间和一个不可用区间；多段表达不能擅自拼接或遗漏，应先明确本次筛选范围。
 
-工具外层增加 `purpose: recommend | inspect`，默认recommend。inspect必须指定岗位ID，用于详情补查，返回事实及匹配结果而不按班次条件隐藏该岗位；结果不进入可推荐岗位池。`preferFlexibleSchedule` 作为查询排序参数，仅在候选人明确偏好时启用。
+工具外层增加 `purpose: recommend | inspect`，默认recommend。inspect必须指定岗位ID，用于详情补查，返回事实及匹配结果而不按班次条件隐藏该岗位；结果不进入可推荐岗位池。`preferFlexibleSchedule` 保存在现有 `candidateScheduleConstraint` 内，只影响排序；首次设置或撤销须核验本轮原话，后续省略时延续记忆，不要求重复引用，也不作为硬过滤条件。
 
 当前轮新增／更改的班次条件携带 `candidateScheduleCitation: TextCitation`，复用已有 [citation校验](../../src/resolution/notary/citation-verifier.ts)；引用只用于原话核验，不进入时间算法。历史条件使用已有事实证据，不用本轮引文替历史条件背书。
 

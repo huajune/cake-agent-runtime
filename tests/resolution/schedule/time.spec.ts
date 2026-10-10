@@ -6,6 +6,18 @@ import {
 import type { ScheduleWindow } from '@resolution/schedule/types';
 
 describe('跨日时间区间', () => {
+  it('单侧结束边界按夜班结束日判定，不误放行白天结束的班次', () => {
+    const window = { end: '07:00' };
+    expect(candidateCovers({ startMinute: 1320, endMinute: 1560 }, window)).toBe(true);
+    expect(candidateCovers({ startMinute: 1320, endMinute: 1440 }, window)).toBe(true);
+    expect(candidateCovers({ startMinute: 1320, endMinute: 1860 }, window)).toBe(true);
+    expect(candidateCovers({ startMinute: 1320, endMinute: 1861 }, window)).toBe(false);
+    expect(candidateCovers({ startMinute: 540, endMinute: 1020 }, window)).toBe(false);
+    expect(
+      candidateCovers({ startMinute: 1320, endMinute: 1560 }, { start: '00:00', end: '07:00' }),
+    ).toBe(false);
+  });
+
   it('凌晨班次可以对齐到候选人的次日窗口，但不能越过其结束边界', () => {
     const window = { start: '22:00', end: '06:00', endDayOffset: 1 as const };
     expect(candidateCovers({ startMinute: 0, endMinute: 360 }, window)).toBe(true);
