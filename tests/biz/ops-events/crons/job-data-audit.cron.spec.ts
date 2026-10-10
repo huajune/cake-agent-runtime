@@ -154,6 +154,17 @@ describe('JobDataAuditCronService.runOnce', () => {
     expect(alertNotifier.sendAlert).toHaveBeenCalledTimes(1);
   });
 
+  it('新鲜品牌目录读取失败时告警，不使用旧目录报告完整扫描', async () => {
+    const { service, spongeService, alertNotifier } = makeService(PROD_ENABLED);
+    spongeService.fetchBrandList.mockRejectedValue(new Error('品牌列表 API 返回 503'));
+    const result = await service.runOnce();
+    expect(spongeService.fetchBrandList).toHaveBeenCalledWith({ requireFresh: true });
+    expect(result).toMatchObject({ scanned: 0, truncated: true, alerted: true });
+    expect(result.fetchError).toContain('品牌范围读取失败');
+    expect(spongeService.fetchJobs).not.toHaveBeenCalled();
+    expect(alertNotifier.sendAlert).toHaveBeenCalledTimes(1);
+  });
+
   it('扫描截断即使暂无录入问题也告警，不能表示完整体检正常', async () => {
     const { service, spongeService, alertNotifier } = makeService({
       ...PROD_ENABLED,

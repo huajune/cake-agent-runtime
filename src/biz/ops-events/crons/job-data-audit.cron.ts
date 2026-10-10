@@ -204,7 +204,7 @@ export class JobDataAuditCronService {
     let brandIds: number[];
     try {
       // 岗位接口要求明确查询范围；品牌目录来自同一供应商账号，不允许无筛选全量查询。
-      const brands = await this.spongeService.fetchBrandList();
+      const brands = await this.spongeService.fetchBrandList({ requireFresh: true });
       const validBrandIds = brands
         .map((brand) => brand.id)
         .filter((id): id is number => typeof id === 'number' && Number.isInteger(id) && id > 0);
