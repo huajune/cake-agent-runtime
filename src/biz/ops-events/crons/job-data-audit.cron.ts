@@ -205,10 +205,14 @@ export class JobDataAuditCronService {
     try {
       // 岗位接口要求明确查询范围；品牌目录来自同一供应商账号，不允许无筛选全量查询。
       const brands = await this.spongeService.fetchBrandList();
-      brandIds = [...new Set(brands.map((brand) => brand.id))].filter(
-        (id): id is number => typeof id === 'number' && Number.isInteger(id) && id > 0,
-      );
-      if (brandIds.length === 0) throw new Error('未取得可查询的品牌目录');
+      const validBrandIds = brands
+        .map((brand) => brand.id)
+        .filter((id): id is number => typeof id === 'number' && Number.isInteger(id) && id > 0);
+      if (validBrandIds.length !== brands.length) {
+        throw new Error('品牌目录包含缺失或无效的品牌 ID，无法完成全量扫描');
+      }
+      if (validBrandIds.length === 0) throw new Error('未取得可查询的品牌目录');
+      brandIds = [...new Set(validBrandIds)];
     } catch (error) {
       return {
         jobs,
