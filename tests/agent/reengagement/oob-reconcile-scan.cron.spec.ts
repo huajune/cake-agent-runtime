@@ -394,9 +394,64 @@ describe('OobReconcileScanCronService', () => {
       expect(redis.set).toHaveBeenCalledWith(
         'oob:reconcile-scan:progress:v1',
         expect.objectContaining({
-          accounts: { 'bot-A': expect.objectContaining({ nextPage: 1 }) },
+          accounts: { 'bot-A': expect.objectContaining({ nextPage: 1, nextRowOffset: 1 }) },
         }),
       );
+    });
+
+    it('慢对账跨轮从未处理行续跑，跨页不重放已处理前缀且保持查询时间窗', async () => {
+      let clock = Date.parse('2026-09-22T02:00:00Z');
+      jest.spyOn(Date, 'now').mockImplementation(() => clock);
+      let saved: unknown = null;
+      redis.get.mockImplementation(async () => structuredClone(saved));
+      redis.set.mockImplementation(async (_key, value) => {
+        saved = structuredClone(value);
+      });
+      const phones = ['13800000001', '13800000002', '13800000003', '13800000004'];
+      const page1 = [
+        ...Array.from({ length: 98 }, (_, i) =>
+          supplierRow({ workOrderId: i, signupSource: 'AI' }),
+        ),
+        ...phones.slice(0, 2).map((phone, i) => supplierRow({ workOrderId: 98 + i, phone })),
+      ];
+      const page2 = phones.slice(2).map((phone, i) => supplierRow({ workOrderId: 100 + i, phone }));
+      sponge.fetchSelfSignupWorkOrdersV2.mockImplementation(async ({ pageNum }) => ({
+        total: 102,
+        workOrders: pageNum === 1 ? page1 : page2,
+      }));
+      phoneIndex.lookupByPhone.mockImplementation(async (phone: string) => ({
+        corpId: 'corp',
+        userId: phone,
+        chatId: phone,
+        botImId: 'bot-A',
+        phone,
+      }));
+      reconcile.reconcile.mockImplementation(async () => {
+        clock += 21 * 60 * 1000;
+        return { status: 'done', scheduled: 0, slotChecksScheduled: 0 };
+      });
+      for (let run = 0; run < 4; run += 1) {
+        await service().runOnce({ enabled: true }, clock);
+        clock += 6 * 3600_000;
+        if (run === 0)
+          expect(saved).toMatchObject({
+            accounts: { 'bot-A': { nextPage: 1, nextRowOffset: 99 } },
+          });
+        if (run === 1)
+          expect(saved).toMatchObject({
+            accounts: { 'bot-A': { nextPage: 2, nextRowOffset: 0 } },
+          });
+      }
+      expect(reconcile.reconcile.mock.calls.map(([input]) => input.phone)).toEqual(phones);
+      const requests = sponge.fetchSelfSignupWorkOrdersV2.mock.calls.map(([input]) => input);
+      expect(requests.map((request) => request.pageNum)).toEqual([1, 2, 1, 2, 2, 2]);
+      expect(
+        requests.every(
+          (request) =>
+            JSON.stringify(request.queryParam) === JSON.stringify(requests[0].queryParam),
+        ),
+      ).toBe(true);
+      expect(saved).toEqual({ nextBotImId: 'bot-A', accounts: {} });
     });
 
     it('未超时的一轮 truncated=false', async () => {
