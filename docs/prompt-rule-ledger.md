@@ -427,9 +427,11 @@
   - **配对**：教侧 `post_interview_no_rebook`（动态硬禁令）、request_handoff 场景 4/5；拦侧入站
     `interview_result_inquiry`（词表+封闭句式，pre-agent 静默转人工）。
   - **配套（2026-09-16 已落）**：`stage_goals.onboard_followup` released/testing 双行已改为"面试前简单咨询 +
-    面试后一律转人工"（changelog 留痕）；interview_result_inquiry / onboarding_paperwork /
-    self_recruited_or_completed 三类转人工改为暂停到人工恢复为止（`InterventionService.requiresManualResume`），
-    不再次日零点自动解禁；岗位卡片与 [当前预约信息] 均已去掉面试后文本与工单状态。
+    面试后一律转人工"（changelog 留痕）；岗位卡片与 [当前预约信息] 均已去掉面试后文本与工单状态。
+  - **暂停策略修订（2026-10-10，用户要求）**：面试结果追问、入职流程对接、门店自招/已面试通过及在职事务
+    转人工统一进入临时禁止托管，次日零点（Asia/Shanghai）自动恢复，不再写永久暂停；转人工与不自行安排
+    面试后业务的规则继续生效。旧记录通过 `20261010000000_post_interview_pause_temporary.sql` 定向迁移，
+    手动永久禁止与候选人黑名单记录不变。时效：长期。
 
 ### [当前预约信息] 快照渲染口径（2026-09-22 新增）
 

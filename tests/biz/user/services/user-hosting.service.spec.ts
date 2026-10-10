@@ -352,6 +352,61 @@ describe('UserHostingService', () => {
   // ==================== getPausedUsersWithProfiles ====================
 
   describe('getPausedUsersWithProfiles', () => {
+    it('rebuilds migrated temporary pauses from DB instead of the old permanent-pause snapshot', async () => {
+      const pausedAt = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const expiresAt = Date.now() + 60_000;
+      mockRedisService.get.mockImplementationOnce(async (key: string) =>
+        key === 'hosting:paused-users:v1'
+          ? {
+              users: [
+                {
+                  userId: 'post-interview',
+                  pausedAt: new Date(pausedAt).getTime(),
+                  permanent: true,
+                  source: 'intervention',
+                },
+              ],
+            }
+          : null,
+      );
+      mockUserHostingRepository.findPausedUserIds.mockResolvedValue([
+        {
+          user_id: 'post-interview',
+          paused_at: pausedAt,
+          pause_expires_at: new Date(expiresAt).toISOString(),
+          is_permanent: false,
+          pause_source: 'intervention',
+          pause_reason: '人工介入暂停',
+        },
+        {
+          user_id: 'manual-ban',
+          paused_at: pausedAt,
+          pause_expires_at: null,
+          is_permanent: true,
+          pause_source: 'manual',
+          pause_reason: '店长微信',
+        },
+      ]);
+      mockUserHostingRepository.findUserProfiles.mockResolvedValue([]);
+
+      const users = await service.getPausedUsersWithProfiles();
+
+      expect(users).toEqual([
+        expect.objectContaining({
+          userId: 'post-interview',
+          isPermanent: false,
+          pauseExpiresAt: expiresAt,
+          pauseReason: '人工介入暂停',
+        }),
+        expect.objectContaining({
+          userId: 'manual-ban',
+          isPermanent: true,
+          pauseExpiresAt: null,
+        }),
+      ]);
+      expect(mockUserHostingRepository.findPausedUserIds).toHaveBeenCalledTimes(1);
+    });
+
     it('should return empty array when no users are paused', async () => {
       mockUserHostingRepository.findPausedUserIds.mockResolvedValue([]);
 

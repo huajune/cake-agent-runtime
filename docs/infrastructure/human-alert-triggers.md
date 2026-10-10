@@ -30,7 +30,7 @@
 - **位置**：[risk-intercept.service.ts](../../src/agent/guardrail/input/risk-intercept.service.ts)
 - **来源**：`guardrail.source=input_guardrail`；既有风险意图仍为 `source=regex_intercept`
 - **条件**：用户消息命中高置信关键词正则（包括辱骂、投诉/举报、面试结果追问、明确转人工请求等）
-- **暂停时长**：默认次日零点自动解禁；面试结果追问，以及 request_handoff 的 interview_result_inquiry / onboarding_paperwork / self_recruited_or_completed 三类，暂停到人工在 Dashboard 恢复为止（2026-09-16 裁定：面试后环节一律真人对接，托管隔天自动恢复曾酿成候选人到店白干事故）
+- **暂停时长**：所有人工介入统一进入「临时禁止托管」，次日零点（Asia/Shanghai）自动恢复，包括面试结果追问、入职流程对接、门店自招/已面试通过和在职事务（2026-10-10 用户调整）。面试后业务仍交给真人；手动永久禁止和候选人黑名单命中仍为永久暂停。
 - **效果**：Runner 收敛为 `handoff`（`guardrail.phase=inbound`）；Replay 定局后通过既有 `conversation_risk` 意图暂停托管 + 发卡，不另加 `general_handoff`。现役事件为 `inbound_guardrail_handoff`，旧 `inbound_guardrail_block` 仅历史读取兼容
 
 ### 2. Agent 主动告警（`raise_risk_alert` 工具）
