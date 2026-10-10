@@ -959,7 +959,10 @@ export function buildJobListTool(
               '已有班次条件的早晚班含义或钟点边界不明确，请确认具体可上班时间后再查；不能丢弃已有条件直接推荐，也不能据此断言无岗。',
           });
         }
-        candidateScheduleConstraint = conditions.success ? conditions.data : undefined;
+        candidateScheduleConstraint =
+          conditions.success && hasScheduleConstraint(conditions.data)
+            ? conditions.data
+            : undefined;
         if (
           hasScheduleConstraint(candidateScheduleConstraint) ||
           purpose === 'inspect' ||

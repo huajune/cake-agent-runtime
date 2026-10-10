@@ -5,6 +5,7 @@ import { TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
 import type { TurnLedger } from '@shared-types/turn.types';
 import { createToolContext, mergeToolContext } from '../../helpers/tool-context.fixture';
 import { testTurnHint, testTurnHints } from '../../helpers/turn-hints.fixture';
+import type { CandidateScheduleConstraint } from '@resolution/schedule/types';
 
 type JobListTestContext = ToolBuildContext & {
   turnId?: string;
@@ -2479,6 +2480,66 @@ describe('buildJobListTool', () => {
 
       expect(result.aliasFuzzyMatch).toBeNull();
       expect(result._replyInstruction).toContain('禁止调用 invite_to_group');
+    });
+  });
+
+  describe.each<{
+    name: string;
+    stored?: CandidateScheduleConstraint;
+    patch?: CandidateScheduleConstraint;
+  }>([
+    { name: '未提供条件' },
+    { name: '空条件对象', stored: {}, patch: {} },
+    {
+      name: '已保存的撤销值',
+      stored: {
+        onlyWeekends: false,
+        maxDaysPerWeek: null,
+        includeAnyTags: [],
+        excludeTags: [],
+        availableWindow: null,
+        unavailableWindow: null,
+        minShiftHours: null,
+        maxShiftHours: null,
+      },
+    },
+    {
+      name: '本轮撤销最后一个条件',
+      stored: { availableWindow: { start: '18:00' } },
+      patch: { availableWindow: null },
+    },
+  ])('无有效班次条件：$name', ({ stored, patch }) => {
+    const context = {
+      ...mockContext,
+      currentUserMessage: '现在时间不限了',
+      sessionFacts: { preferences: { schedule_constraint: stored } },
+    } as JobListTestContext;
+    const input = {
+      ...defaultInput,
+      cityNameList: ['北京'],
+      candidateScheduleConstraint: patch,
+      candidateScheduleCitation: { quote: '现在时间不限了' },
+    } as typeof defaultInput;
+
+    it('有岗位时不标记班次筛选，也不强制获取工作时间', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJobData()], total: 1 });
+
+      const result = await executeTool(context, input);
+
+      expect(result.resultCount).toBe(1);
+      expect(result.queryMeta.scheduleFilter).toEqual({ applied: false });
+      expect(mockSpongeService.fetchJobs.mock.calls[0][0]).toMatchObject({
+        options: { includeWorkTime: false },
+      });
+    });
+
+    it('无岗位时查询摘要不附加未明确的班次限制', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [], total: 0 });
+
+      const result = await executeTool(context, input);
+
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_NO_RESULTS);
+      expect(result.noMatchScript.querySummary).toBe('岗位（北京）');
     });
   });
 
