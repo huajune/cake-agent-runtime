@@ -1,3 +1,9 @@
+import {
+  mergeScheduleConstraints,
+  StoredScheduleConstraintSchema,
+} from '@resolution/schedule/types';
+import { verifyCitation } from '@resolution/notary/citation-verifier';
+import type { TextCitation } from '@resolution/notary/citation.types';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import type { CityAttestation } from '@shared-types/turn.types';
@@ -280,7 +286,8 @@ export class SessionFactsService {
   }
 
   /**
-   * 收资表单逐格落定的身份事实入口；只接受 medium 信封。
+   * 收资表单逐格落定的身份事实入口；通常只接受 medium 信封。
+   * 已公证的学生身份 true 或明确撤销的 null 可用 high，以供后续查岗硬过滤。
    *
    * source 保留槽位的真实作证者，collection 域血缘写在 evidence；这里负责守住
    * 同值不刷新与低置信不得覆盖高置信，调用方不需要复制合并规则。
@@ -290,10 +297,17 @@ export class SessionFactsService {
     userId: string,
     sessionId: string,
     field: keyof SessionInterviewInfo,
-    fact: SessionFactValue<string | boolean>,
+    fact: SessionFactValue<string | boolean | null>,
   ): Promise<void> {
-    if (!isSessionFactValue(fact) || fact.confidence !== 'medium') {
+    const confirmedStudent =
+      field === 'is_student' &&
+      (fact.value === true || fact.value === null) &&
+      fact.confidence === 'high';
+    if (!isSessionFactValue(fact) || (fact.confidence !== 'medium' && !confirmedStudent)) {
       throw new Error(`collection progress fact must be medium: ${String(field)}`);
+    }
+    if (fact.value === null && !confirmedStudent) {
+      throw new Error('only a confirmed student identity correction may clear a progress fact');
     }
     if (!fact.evidence.startsWith('收资表单第 ')) {
       throw new Error(`collection progress fact evidence must identify the slot: ${String(field)}`);
@@ -304,14 +318,15 @@ export class SessionFactsService {
     const current = base.interview_info[field];
     if (
       isSessionFactValue(current) &&
-      (isSameFactValue(current.value, fact.value) ||
+      ((isSameFactValue(current.value, fact.value) &&
+        factConfidenceRank(current.confidence) >= factConfidenceRank(fact.confidence)) ||
         factConfidenceRank(current.confidence) > factConfidenceRank(fact.confidence))
     ) {
       return;
     }
 
     const merged = SessionFactsSchema.parse({
-      interview_info: { ...base.interview_info, [field]: fact },
+      interview_info: { ...base.interview_info, [field]: fact.value === null ? null : fact },
       preferences: base.preferences,
       brand: base.brand,
     }) as SessionFacts;
@@ -420,6 +435,22 @@ export class SessionFactsService {
         isSameFactValue(current.value, raw.value)
       ) {
         continue;
+      }
+      if (
+        field === 'schedule_constraint' &&
+        isSessionFactValue(current) &&
+        isSessionFactValue(raw) &&
+        raw.value !== null
+      ) {
+        const before = StoredScheduleConstraintSchema.safeParse(current.value);
+        const patch = StoredScheduleConstraintSchema.safeParse(raw.value);
+        if (patch.success) {
+          merged[field] = {
+            ...raw,
+            value: mergeScheduleConstraints(before.success ? before.data : null, patch.data),
+          };
+          continue;
+        }
       }
       merged[field] = raw;
     }
@@ -639,6 +670,11 @@ export class SessionFactsService {
     const userMessages = scopedMessages
       .filter((message) => message.role === 'user')
       .map((message) => message.content);
+    const currentTurnUserTexts: string[] = [];
+    for (let index = scopedMessages.length - 1; index >= 0; index--) {
+      if (scopedMessages[index].role !== 'user') break;
+      currentTurnUserTexts.unshift(scopedMessages[index].content);
+    }
     const lastUserText = stripTimeContext(userMessages.at(-1) ?? '').trim();
     const laborFormDecision = preparedLaborFormIntent ?? decideLaborFormIntent(lastUserText);
     const previousFacts = await this.getFacts(corpId, userId, sessionId);
@@ -665,17 +701,45 @@ export class SessionFactsService {
     // 提取降级或标签无效时才使用当前消息的确定性规则兜底。模型的 legacy
     // preferences.labor_form 和 turnHints 都不能绕过这个裁决入口。
     preferences.labor_form = null;
+    const scheduleCitation = llmOutcome.scheduleCitation;
+    const scheduleValid = Boolean(
+      llmOutcome.facts.preferences.schedule_constraint &&
+        scheduleCitation &&
+        verifyCitation(
+          scheduleCitation,
+          currentTurnUserTexts.map((text) => stripTimeContext(text).trim()),
+        ).verified,
+    );
+    const scheduleAuthoritative =
+      !llmOutcome.degraded &&
+      (llmOutcome.facts.preferences.schedule_constraint == null || scheduleValid);
+    if (!scheduleValid) preferences.schedule_constraint = null;
+    else if (isSessionFactValue(preferences.schedule_constraint)) {
+      preferences.schedule_constraint = {
+        ...preferences.schedule_constraint,
+        source: 'candidate_quote',
+        evidence: scheduleCitation!.quote,
+      };
+      // 结构化条件成为当前排班事实后，清掉重复的旧文本入口，防止撤销后被旧钟点唤回。
+      preferences.schedule = this.preferenceTombstone(scheduleCitation!.quote);
+      preferences.time_windows = this.preferenceTombstone(scheduleCitation!.quote);
+    }
 
     // 规则轨也只是软事实来源；身份 claim 在这里被刻意忽略。labor_form 由下方
     // 单独裁决，避免正常 LLM 结果又被规则轨覆盖。
     for (const fact of resolveTurnHints(turnHints)) {
       const [group, field] = fact.field.split('.');
       if (group !== 'preferences' || field === 'labor_form' || !(field in preferences)) continue;
+      if (field === 'schedule_constraint' && scheduleAuthoritative) continue;
+      if (scheduleValid && (field === 'schedule' || field === 'time_windows')) continue;
       const target = preferences as unknown as Record<string, unknown>;
-      const value =
+      let value =
         field === 'city' && typeof fact.value === 'string'
           ? normalizeCityName(fact.value)
           : fact.value;
+      if (field === 'schedule_constraint' && value && typeof value === 'object') {
+        value = Object.fromEntries(Object.entries(value).filter(([, item]) => item != null));
+      }
       if (!hasMeaningfulValue(value)) continue;
       target[field] = sessionFactValue(value, {
         confidence: 'medium',
@@ -702,7 +766,8 @@ export class SessionFactsService {
     for (const claim of turnHints?.claims ?? []) {
       if (claim.operation !== 'clear' || !claim.field.startsWith('preferences.')) continue;
       const field = claim.field.slice('preferences.'.length);
-      if (field === 'labor_form') continue;
+      if (field === 'labor_form' || (field === 'schedule_constraint' && scheduleAuthoritative))
+        continue;
       if (field in preferences) {
         preferenceTarget[field] = this.preferenceTombstone(
           truncateEvidence(claim.evidence.code ?? claim.evidence.label),
@@ -710,11 +775,6 @@ export class SessionFactsService {
       }
     }
 
-    const currentTurnUserTexts: string[] = [];
-    for (let index = scopedMessages.length - 1; index >= 0; index--) {
-      if (scopedMessages[index].role !== 'user') break;
-      currentTurnUserTexts.unshift(scopedMessages[index].content);
-    }
     const geoClear = currentTurnUserTexts
       .map((text) => decideGeoPreferenceClear(stripTimeContext(text).trim()))
       .reduce(
@@ -814,6 +874,7 @@ export class SessionFactsService {
     facts: EntityExtractionResult;
     brandIntents: BrandIntentEntry[];
     laborFormIntent: LaborFormIntentExtraction | null;
+    scheduleCitation: TextCitation | null;
     degraded: boolean;
   }> {
     try {
@@ -841,13 +902,20 @@ export class SessionFactsService {
         preferences: raw.preferences,
         reasoning: raw.reasoning,
       });
-      return { facts, brandIntents, laborFormIntent, degraded: false };
+      return {
+        facts,
+        brandIntents,
+        laborFormIntent,
+        scheduleCitation: raw.schedule_constraint_citation ?? null,
+        degraded: false,
+      };
     } catch (error) {
       this.logger.warn('[extractFacts] preference extraction failed, using empty delta', error);
       return {
         facts: FALLBACK_EXTRACTION,
         brandIntents: [],
         laborFormIntent: null,
+        scheduleCitation: null,
         degraded: true,
       };
     }

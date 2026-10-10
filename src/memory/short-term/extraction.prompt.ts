@@ -16,6 +16,7 @@ export const SESSION_EXTRACTION_SYSTEM_PROMPT = `你是求职偏好提取引擎�
   delayed_intent、short_term、open_position、time_windows、schedule_constraint、available_after
 - brand_intents：本轮品牌偏好的 positive / negative / browse_all 极性
 - labor_form_intent：set / clear / ignore 三态
+- schedule_constraint_citation：本轮排班条件有变更时，quote 必须引用候选人当前消息中的原文；无变更时省略
 - labor_form 仅允许以下合法值之一："全职"、"兼职"、"寒假工"、"暑假工"、"小时工"
 - reasoning：简短说明；无新信息固定写“本轮无新信息”
 
@@ -26,7 +27,7 @@ export const SESSION_EXTRACTION_SYSTEM_PROMPT = `你是求职偏好提取引擎�
 3. 只采信候选人自己的表达；招聘广告、助手话术、岗位要求不是候选人偏好。
 4. 省略表示本轮没有变化；明确撤销/清空时用 labor_form_intent.clear 或相应字段的空值。
 5. 城市只接受候选人明示或唯一归属地理线索；同名商圈、品牌名中的地名不得推断城市。
-6. position 只记录工种，不能把“咖啡/奶茶/火锅”等品类自动推成具体岗位。
+6. position 只记录工种，不能把经营品类自动推成具体岗位。
 7. brand_intents 只记录本轮新表达；无法链接的排斥可用 brand=null。
 8. 相对日期按消息发送时间换算；拿不准就省略，禁止猜测。`;
 

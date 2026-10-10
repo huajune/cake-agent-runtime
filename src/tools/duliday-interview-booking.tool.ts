@@ -163,7 +163,7 @@ function buildAlreadyBookedReceipt(params: {
       (existingInterviewTimeHuman
         ? `工单上的面试时间是 ${existingInterviewTimeHuman}，按此播报。`
         : '工单未记录面试时间时不要编造时间，按 [当前预约信息] 或本轮已确认的时间播报。') +
-      '禁止说"系统有问题/没提交成功/稍后再帮你提交"。改时间用 duliday_modify_interview_time，取消用 duliday_cancel_work_order。',
+      '禁止把已有预约描述为系统故障、提交失败或尚待再次提交。改时间用 duliday_modify_interview_time，取消用 duliday_cancel_work_order。',
     details: {
       existingWorkOrderId: workOrderId,
       alreadyBookedSource: source,
@@ -511,7 +511,7 @@ export function buildInterviewBookingTool(
                 (existingInterviewTimeHuman
                   ? `工单上的面试时间是 ${existingInterviewTimeHuman}，按此播报。`
                   : '工单未记录面试时间时不要编造时间，按 [当前预约信息] 或本轮已确认的时间播报。') +
-                '禁止说"系统有问题/没提交成功/稍后再帮你提交"。' +
+                '禁止把已有预约描述为系统故障、提交失败或尚待再次提交。' +
                 (duplicate.crossAccount
                   ? '本账号无法操作该工单，随后调用 request_handoff(reasonCode="duplicate_signup") 转人工核实。'
                   : '改时间用 duliday_modify_interview_time，取消用 duliday_cancel_work_order。'),
@@ -732,6 +732,7 @@ export function buildInterviewBookingTool(
                   userId: scope.userId,
                   chatId: scope.sessionId,
                   botImId: context.session.botImId ?? null,
+                  botUserId: scope.botUserId,
                 });
               });
             }

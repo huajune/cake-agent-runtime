@@ -186,8 +186,8 @@ export const JobListApiResponseSchema = z
     message: z.string().optional(),
     data: z
       .object({
-        result: z.array(JobDetailSchema).default([]),
-        total: z.number().default(0),
+        result: z.array(JobDetailSchema),
+        total: z.number().int().nonnegative(),
       })
       .nullish(),
   })
@@ -517,7 +517,7 @@ export interface SignupWorkOrdersParams {
     signUpEndTime?: string;
     interviewPassStartTime?: string;
     interviewPassEndTime?: string;
-    /** 当前状态中文列表过滤（9 态之一） */
+    /** 海绵查询枚举；不能直接使用响应 currentStatus 的中文展示文案。 */
     currentStatus?: string[];
   };
 }
@@ -593,6 +593,7 @@ export interface SignupWorkOrderItem {
 /**
  * 报名工单 `currentStatus` 中文全集（海绵领域语言，9 态）。
  *
+ * 只用于响应的本地判定，不是 queryParam.currentStatus 的请求枚举。
  * 状态词是海绵的领域语言，唯一权威在此。此前全集只存在于 SignupWorkOrderItem 的行注释里，
  * 而"活跃约面"语义子集在 precheck / oob-work-order / follow-up.processor 不再各自维护字面副本。
  *

@@ -12,6 +12,7 @@ import {
 } from '@agent/generator/preparation/conversation-normalizer';
 import {
   resolveCriticalTurnInstructions,
+  resolveHardConstraintsPromptView,
   resolveTurnContext,
 } from '@agent/generator/preparation/turn-context-resolver';
 
@@ -62,6 +63,66 @@ function buildResolverInput(paramsOverride: Record<string, unknown> = {}) {
 }
 
 describe('resolveTurnContext', () => {
+  it('retains medium-confidence saved schedule preferences for read-only matching', () => {
+    const sessionFacts = sessionFactsOf({
+      preferences: {
+        schedule_constraint: {
+          availableWindow: { start: '07:00', end: '14:00' },
+        },
+      },
+    });
+    sessionFacts.preferences.schedule_constraint = {
+      value: { availableWindow: { start: '07:00', end: '14:00' } },
+      confidence: 'medium',
+      source: 'candidate_quote',
+      evidence: '7点到14点有空',
+    };
+    const view = resolveHardConstraintsPromptView({
+      sessionFacts,
+      turnHints: null,
+      laborFormIntent: { kind: 'ignore' },
+      brandState: null,
+    });
+    expect(view.facts.preferences.schedule_constraint).toEqual({
+      availableWindow: { start: '07:00', end: '14:00' },
+    });
+  });
+
+  it('does not replace saved schedule conditions with current rule-track guesses', () => {
+    const sessionFacts = sessionFactsOf({
+      preferences: {
+        schedule_constraint: {
+          availableWindow: null,
+          includeAnyTags: [],
+        },
+      },
+    });
+    const view = resolveHardConstraintsPromptView({
+      sessionFacts,
+      laborFormIntent: { kind: 'ignore' },
+      brandState: null,
+      turnHints: {
+        reasoning: '',
+        claims: [
+          {
+            claimId: 'old-window-in-cancellation',
+            field: 'preferences.schedule_constraint',
+            value: { availableWindow: { start: '07:00', end: '14:00' } },
+            operation: 'set',
+            producer: 'rule',
+            interpretation: 'direct',
+            confidence: 'high',
+            evidence: { quote: '之前7点到14点的限制取消', label: '规则轨旧钟点线索' },
+            assertedAt: '2026-10-09T00:00:00.000Z',
+          },
+        ],
+      },
+    });
+    expect(view.facts.preferences.schedule_constraint).toEqual({
+      availableWindow: null,
+      includeAnyTags: [],
+    });
+  });
   it('seeds current literal brand mentions even when the session brand state is empty', () => {
     const input = buildResolverInput();
     Object.assign(input.sources, { brandCatalog: [{ id: 1, name: '肯德基', aliases: ['KFC'] }] });
@@ -233,7 +294,7 @@ describe('resolveTurnContext', () => {
         });
 
         expect(guards.join('\n')).not.toContain(POST_INTERVIEW_GUARD);
-        expect(guards.join('\n')).not.toContain('本轮涉及“健康证”和“专业筛选”');
+        expect(guards.join('\n')).not.toContain('本轮涉及健康证和专业筛选');
       });
 
       it('ignores quoted cards and location-share POI names', () => {
@@ -253,7 +314,7 @@ describe('resolveTurnContext', () => {
         normalizedMessages: [{ role: 'assistant', content: '这家对专业有要求，暂时不匹配哈' }],
       });
 
-      expect(guards.join('\n')).toContain('本轮涉及“健康证”和“专业筛选”');
+      expect(guards.join('\n')).toContain('本轮涉及健康证和专业筛选');
     });
 
     it('triggers it on a result inquiry even without prior post-interview words (chat 6a9f7db6)', () => {

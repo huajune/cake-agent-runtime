@@ -20,10 +20,7 @@ import { Logger } from '@nestjs/common';
 import { sanitizeJobDisplayText, sanitizeLaborFormForDisplay } from '@resolution/labor-form';
 import { asRecord, asRecordArray } from '@infra/utils/object.util';
 import type { JobDetail } from '@sponge/sponge.types';
-import {
-  classifyArrangementType,
-  composeShiftTimeText,
-} from '@tools/job-list/format-shift-time.util';
+import { formatJobShiftTime } from '@tools/job-list/format-shift-time.util';
 import { resolveWeeklyWorkDays } from '@tools/job-list/schedule-semantic.util';
 import {
   buildJobPolicyAnalysis,
@@ -311,12 +308,12 @@ function renderCooperationModeLines(rawMode: string | null): string[] {
   ];
   if (mode === 'BPO') {
     lines.push(
-      '  - **发薪主体**: 由独立客发薪（结论确定，候选人问"工资是你们发还是门店发"时可直接答，不必转人工）',
+      '  - **发薪主体**: 由独立客发薪（结论确定，候选人询问发薪主体时可直接回答，不必转人工）',
       '  - **签约主体**: 与独立客签约，形式是**灵活用工协议**（不签劳动合同）；候选人问"签的是谁的合同"时按此答，但不要把协议说成劳动合同',
     );
   } else {
     lines.push(
-      '  - **发薪主体**: 由客户（品牌方）发薪（结论确定，候选人问"工资是你们发还是门店发"时可直接答"由品牌方/门店那边发"，不必转人工）',
+      '  - **发薪主体**: 由客户（品牌方）发薪（结论确定，候选人询问发薪主体时可直接回答由品牌方发薪，不必转人工）',
       '  - **签约主体**: 与**客户（品牌方）**签合同（结论确定，可直接答"跟品牌方签"）；只说"签合同"，不要自行升格成"劳动合同"，候选人追问合同性质/条款时转人工',
     );
   }
@@ -782,8 +779,8 @@ function toCnNum(value: unknown): string {
     : String(value);
 }
 
-function renderWorkTimeSection(workTimeInput: unknown): string {
-  const wt = asRecord(workTimeInput);
+function renderWorkTimeSection(job: JobDetail): string {
+  const wt = asRecord(job.workTime);
   if (!wt) return '';
   const lines: string[] = [];
 
@@ -870,64 +867,8 @@ function renderWorkTimeSection(workTimeInput: unknown): string {
     );
   }
 
-  // 每日排班（海绵2.0 dayWorkTime）
-  const day = asRecord(wt.dayWorkTime) ?? {};
-  const arrangementType = hasValue(day.arrangementType) ? String(day.arrangementType) : '';
-  if (arrangementType) {
-    pushField(lines, '排班类型', arrangementType);
-    // 语义判据统一走 classifyArrangementType（短标签与整句形态都认）；本地正则曾只匹配
-    // 整句，现网短标签下两个分支双双恒不命中，见该函数注释里的 badcase 4dif1onb。
-    const arrangementKind = classifyArrangementType(arrangementType);
-    if (arrangementKind === 'all_required') {
-      // 组合排班制：下列时段全部都要出勤，不能只挑一段。
-      lines.push(
-        '- **班次硬约束提示**: 该岗位为组合排班制，下面列出的「可排时段」**全部都要出勤**，候选人不能只挑其中一段；不得说成"任选其一/几选一"',
-      );
-    } else if (arrangementKind === 'pick_one') {
-      // 固定排班制：候选人只能从已开时段里选，不能自定义时段。
-      // historical badcase jj2zct43：固定排班制被答成"面试时沟通你想排哪些时段"，让候选人误以为可自选。
-      lines.push(
-        '- **班次自选边界**: 该岗位为固定排班制，候选人**只能在下面列出的「可排时段」里选**，不能自由挑选未列出的时段；门店按候选人可上班时间在已开时段里排班',
-      );
-    }
-  }
-
-  // 每日最少工时 + 班次名 + 上下班区间（灵活排班 fixedTime）
-  const ft = asRecord(day.fixedTime) ?? {};
-  if (hasValue(ft.perDayMinWorkHours)) {
-    const n = cleanNumber(ft.perDayMinWorkHours);
-    if (n !== null) lines.push(`- **每日工时**: 最少 ${n} 小时`);
-  }
-  if (Array.isArray(ft.shiftCodes)) {
-    const codes = ft.shiftCodes.filter((c: unknown) => hasValue(c)).map((c: unknown) => String(c));
-    if (codes.length) lines.push(`- **班次**: ${codes.join('、')}`);
-  }
-  if (hasValue(ft.goToWorkStartTime) || hasValue(ft.goOffWorkEndTime)) {
-    const s = hasValue(ft.goToWorkStartTime) ? String(ft.goToWorkStartTime) : '?';
-    const e = hasValue(ft.goOffWorkEndTime) ? String(ft.goOffWorkEndTime) : '?';
-    const nextDay = /次日/.test(String(ft.goOffWorkTimeType ?? '')) ? '次日 ' : '';
-    lines.push(`- **上下班时间**: ${s} - ${nextDay}${e}`);
-  }
-
-  // 固定/组合排班的可排时段（dayWorkTime.combinedArrangement，新结构不带星期）
-  const combinedArrangement = asRecordArray(day.combinedArrangement);
-  if (combinedArrangement.length > 0) {
-    const caLines: string[] = [];
-    combinedArrangement.forEach((ca, idx: number) => {
-      if (!isNonEmpty(ca)) return;
-      const s = hasValue(ca.combinedArrangementStartTime)
-        ? String(ca.combinedArrangementStartTime)
-        : '?';
-      const e = hasValue(ca.combinedArrangementEndTime)
-        ? String(ca.combinedArrangementEndTime)
-        : '?';
-      caLines.push(`  - 时段 ${idx + 1}: ${s} - ${e}`);
-    });
-    if (caLines.length) {
-      lines.push(`- **可排时段**:`);
-      lines.push(...caLines);
-    }
-  }
+  const shiftText = formatJobShiftTime(job);
+  if (shiftText) lines.push(`- **每日排班**: ${shiftText}`);
 
   // 自由文本（休息说明/工时备注）——新结构未必下发，存在则保留（自由文本优先于结构化字段）。
   pushLongText(lines, '休息说明', wt.restTimeDesc);
@@ -939,7 +880,7 @@ function renderWorkTimeSection(workTimeInput: unknown): string {
   const structuralRigid = typeof weeklyWorkDays === 'number' && weeklyWorkDays >= 5;
   if (structuralRigid || hasFullWeekOrRigidSchedule(lines)) {
     lines.push(
-      '- **排班硬约束提示**: "每天/做六休一/周一至周日"表示工作日也要配合；候选人只做周末、每周最多几天、做一休一、下班后或只做晚班时，不能把该岗位说成"周末能排"或"晚班能排"。',
+      '- **排班硬约束提示**: "每天/做六休一/周一至周日"表示工作日也要配合；候选人只做周末或每周最多几天时，须核对周频限制；日内可出勤时间仍按结构化班次单独匹配。',
     );
   }
 
@@ -1214,7 +1155,7 @@ function formatJobToMarkdown(
   // 候选人需要 workTime 时（默认开）才注入归一化班次（含早/中/晚班/午高峰/星期约束等含义）；
   // 模型显式关 includeWorkTime 表示本轮在做不涉及班次的追问，无需归一化班次。
   // 数据缺失时为 null，约面重点 section 不显示该行。
-  const shiftTimeText = flags.includeWorkTime ? composeShiftTimeText(job.workTime) : null;
+  const shiftTimeText = flags.includeWorkTime ? formatJobShiftTime(job) : null;
 
   if (flags.includeHiringRequirement || flags.includeInterviewProcess) {
     md += formatInterviewDecisionSummary(policy, hardRequirements, shiftTimeText);
@@ -1232,7 +1173,7 @@ function formatJobToMarkdown(
     md += renderHiringRequirementSection(job.hiringRequirement, policy);
   }
   if (flags.includeWorkTime) {
-    md += renderWorkTimeSection(job.workTime);
+    md += renderWorkTimeSection(job);
   }
   if (flags.includeInterviewProcess) {
     md += renderInterviewProcessSection(job.interviewProcess, policy);
@@ -1265,7 +1206,7 @@ export function formatJobsToMarkdown(
   }
 
   md +=
-    '> ⚠️ **数据使用原则**：各 section 中的备注、remark 等自由文本字段可能包含结构化字段未覆盖或与之矛盾的补充信息，回复时须结合全部内容；除下方单独说明的用工形式外，**自由文本与结构化字段冲突时以自由文本为准**\n\n';
+    '> ⚠️ **数据使用原则**：各 section 中的备注、remark 等自由文本字段可能包含结构化字段未覆盖或与之矛盾的补充信息，回复时须结合全部内容；除下方单独说明的用工形式及每日班次外，**自由文本与结构化字段冲突时以自由文本为准**\n\n';
 
   md +=
     '> ⚠️ **预约动作边界**：本工具只查询岗位，**没有提交预约**。只调用本工具后不得说“已提交 / 正在提交 / 这就提交 / 稍后提交预约”；约面必须继续调用 `duliday_interview_precheck`，且只有 `duliday_interview_booking` 返回 success=true 才能说预约已提交。\n\n';

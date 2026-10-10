@@ -383,6 +383,77 @@ describe('OobReconcileService', () => {
   });
 
   describe('手动恢复托管（trigger=resume）', () => {
+    it.each([true, false])(
+      '仅长期档案保留姓名时仍核验本人预约（索引含账号键=%s）',
+      async (hasBotUserId) => {
+        session.getSessionState.mockResolvedValue({ facts: {} });
+        longTerm.getProfile.mockResolvedValue({
+          name: {
+            value: '张三',
+            confidence: 'high',
+            source: 'candidate_quote',
+            evidence: '已确认姓名',
+          },
+        });
+        bookingSnapshot.load.mockResolvedValue(okSnapshot([supplierEntry()]));
+        const phoneIndex = {
+          lookupByChat: jest.fn().mockResolvedValue({
+            corpId: 'corp-1',
+            userId: 'user-1',
+            chatId: 'chat-1',
+            botImId: 'bot-1',
+            phone: '18271421690',
+            ...(hasBotUserId ? { botUserId: 'wecom-1' } : {}),
+          }),
+        };
+        const tracking = {
+          resolveChannelIdentity: jest
+            .fn()
+            .mockResolvedValue({ botImId: 'bot-1', managerName: 'wecom-1' }),
+        };
+        const svc = new OobReconcileService(
+          bookingSnapshot as never,
+          session as never,
+          longTerm as never,
+          scheduler as never,
+          opsEvents as never,
+          redis as never,
+          systemConfig as never,
+          undefined,
+          phoneIndex as never,
+          tracking as never,
+        );
+        await svc.reconcileAfterResume('chat-1');
+        expect(longTerm.getProfile).toHaveBeenCalledWith('corp-1', 'user-1', 'wecom-1');
+        expect(bookingSnapshot.load).toHaveBeenCalledWith(
+          expect.objectContaining({ knownCandidateNames: ['张三'], bypassCache: true }),
+        );
+        expect(tracking.resolveChannelIdentity).toHaveBeenCalledTimes(hasBotUserId ? 0 : 1);
+      },
+    );
+
+    it('旧索引补身份遇到不同托管账号时不读取对方长期档案', async () => {
+      const tracking = {
+        resolveChannelIdentity: jest
+          .fn()
+          .mockResolvedValue({ botImId: 'other-bot', managerName: 'other-user' }),
+      };
+      const svc = new OobReconcileService(
+        bookingSnapshot as never,
+        session as never,
+        longTerm as never,
+        scheduler as never,
+        opsEvents as never,
+        redis as never,
+        systemConfig as never,
+        undefined,
+        undefined,
+        tracking as never,
+      );
+      await svc.reconcile({ ...input, botUserId: undefined, trigger: 'resume' });
+      expect(longTerm.getProfile).not.toHaveBeenCalled();
+    });
+
     it('基础锚点早已排过 → 用 :resumed 后缀重排；距面试不足提前量时不重排', async () => {
       // 基础锚点已存在（占位时间在 1 分钟之前），本轮 SET NX 只对 :resumed 键成功
       redis.get.mockResolvedValue(NOW - 10 * 60 * 1000);

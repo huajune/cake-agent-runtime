@@ -30,7 +30,12 @@ export async function fetchWithTimeout(
   timer.unref?.();
 
   try {
-    return await fetch(url, { ...requestInit, signal: controller.signal });
+    return await fetch(url, {
+      ...requestInit,
+      signal: requestInit.signal
+        ? AbortSignal.any([controller.signal, requestInit.signal])
+        : controller.signal,
+    });
   } catch (error) {
     if (controller.signal.aborted) {
       throw new FetchTimeoutError(url, timeoutMs);

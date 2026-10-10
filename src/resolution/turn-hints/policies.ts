@@ -42,13 +42,7 @@ export const TURN_HINT_FIELD_POLICIES = {
   'preferences.schedule_constraint': {
     selection: 'composite',
     allowedOperations: ['set', 'clear'],
-    defaults: {
-      onlyWeekends: null,
-      onlyEvenings: null,
-      onlyMornings: null,
-      maxDaysPerWeek: null,
-      availableWindow: null,
-    },
+    defaults: {},
   },
   'preferences.available_after': {
     selection: 'last-scalar',

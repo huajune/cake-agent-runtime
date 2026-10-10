@@ -8,6 +8,7 @@ import {
   extractSchedule,
   extractScheduleConstraintStructured,
 } from '@resolution/turn-hints/producers/rule-track-preferences';
+import { ScheduleWindowSchema } from '@resolution/schedule/types';
 
 describe('rule-track preferences · extractLaborForm', () => {
   it('reads an explicit labor-form intent', () => {
@@ -83,13 +84,18 @@ describe('extractAvailableWindow（候选人可上班时段，badcase j4kb5ijm�
     ['18:30-24:00', { start: '18:30', end: '24:00' }],
     ['我下午5点到10点有空', { start: '17:00', end: '22:00' }],
     ['晚上六点到十点', { start: '18:00', end: '22:00' }],
-    ['只能上22:00到次日6点', { start: '22:00', end: '06:00' }],
+    ['只能上22:00到次日6点', { start: '22:00', end: '06:00', endDayOffset: 1 }],
+    ['晚上10点到次日6点有空', { start: '22:00', end: '06:00', endDayOffset: 1 }],
+    ['22:00-06:00', { start: '22:00', end: '06:00', endDayOffset: 1 }],
+    ['晚上10点到凌晨6点有空', { start: '22:00', end: '06:00', endDayOffset: 1 }],
     ['早上8点到12点可以', { start: '08:00', end: '12:00' }],
   ])('parses %s', (text, expected) => {
     expect(extractAvailableWindow(text)).toEqual(expected);
+    expect(ScheduleWindowSchema.safeParse(extractAvailableWindow(text)).success).toBe(true);
   });
 
   it.each([
+    '24:00到4点',
     '班次：18:00-22:00',
     '我19岁',
     '周一到周五可以',
@@ -121,15 +127,17 @@ describe('extractScheduleConstraintStructured', () => {
     });
   });
 
-  it('turns 只上晚班 into onlyEvenings', () => {
-    expect(extractScheduleConstraintStructured('只上晚班')).toMatchObject({ onlyEvenings: true });
+  it('turns 只上晚班 into includeAnyTags', () => {
+    expect(extractScheduleConstraintStructured('只上晚班')).toMatchObject({
+      includeAnyTags: ['evening'],
+    });
   });
 
   it('does not read 只有X？ availability questions as only-shift constraints', () => {
     // 生产 badcase vvlfn9td：候选人问「只有晚班？」是在问岗位是否只有晚班，不是只做晚班
-    // 无任何硬约束时整体返回 null；有其他约束时 onlyEvenings 也不得为 true
-    expect(extractScheduleConstraintStructured('只有晚班？')?.onlyEvenings ?? null).toBeNull();
-    expect(extractScheduleConstraintStructured('只有晚班吗')?.onlyEvenings ?? null).toBeNull();
+    // 无任何硬约束时整体返回 null；有其他约束时也不得加入 evening 标签
+    expect(extractScheduleConstraintStructured('只有晚班？')?.includeAnyTags ?? null).toBeNull();
+    expect(extractScheduleConstraintStructured('只有晚班吗')?.includeAnyTags ?? null).toBeNull();
     expect(
       extractScheduleConstraintStructured('是不是只有周末班？')?.onlyWeekends ?? null,
     ).toBeNull();
@@ -141,14 +149,20 @@ describe('extractScheduleConstraintStructured', () => {
       onlyWeekends: true,
     });
     expect(extractScheduleConstraintStructured('只有晚班？我只能上早班')).toMatchObject({
-      onlyEvenings: null,
-      onlyMornings: true,
+      includeAnyTags: ['early', 'morning'],
     });
   });
 
-  it('turns 只上早班 into onlyMornings', () => {
+  it('turns 只上早班 into includeAnyTags', () => {
     expect(extractScheduleConstraintStructured('只能上早班')).toMatchObject({
-      onlyMornings: true,
+      includeAnyTags: ['early', 'morning'],
+    });
+  });
+
+  it('夜班使用独立night标签，未提及字段不产生撤销值', () => {
+    expect(extractScheduleConstraintStructured('只上夜班')).toEqual({ includeAnyTags: ['night'] });
+    expect(extractScheduleConstraintStructured('只上晚班')).toEqual({
+      includeAnyTags: ['evening'],
     });
   });
 

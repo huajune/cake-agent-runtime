@@ -44,6 +44,18 @@ describe('PhoneSessionIndexService', () => {
     expect(redis.setex.mock.calls.length).toBeGreaterThanOrEqual(4);
   });
 
+  it('补齐长期记忆账号键时不受旧索引的一小时去重阻挡', async () => {
+    const service = new PhoneSessionIndexService(redis as never);
+    await service.record('18271421690', ref);
+    await service.record('18271421690', { ...ref, botUserId: 'wecom-A' });
+    expect(redis.setex).toHaveBeenCalledTimes(4);
+    expect(redis.setex).toHaveBeenLastCalledWith(
+      'oob:chat:chat-1',
+      30 * 24 * 60 * 60,
+      expect.objectContaining({ botImId: 'bot-1', botUserId: 'wecom-A' }),
+    );
+  });
+
   it.each([
     ['corpId=test', { ...ref, corpId: 'test' }],
     ['corpId=debug', { ...ref, corpId: 'debug' }],
