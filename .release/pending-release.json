@@ -73,6 +73,40 @@
         "已补齐历史业务评审，并在 2026-10-10 使用整合代码复测：batch `ec2f1aef-e954-4bf7-9c55-ae81508d226c`，execution `c82a62c6-981f-495f-82b6-ad8de7a3e87b`。正式资产 `SCN-REL-20260924-BOOKING-WAIT-NOTICE-001` 已登记并回写通过；生产 Dashboard 同步 2 批次 / 2 执行，warnings=[]，生产 API 逐条核对完整回复、工具记录与 Codex 评审一致。"
       ],
       "level": "patch"
+    },
+    {
+      "number": "1375",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1375",
+      "title": "将 Codex 官方评审通过结果接入正式批准",
+      "author": "huajune",
+      "mergedAt": "2026-10-10",
+      "opsNotes": [
+        "- 无。此改动只调整 GitHub 自动评审审批流程，不改变线上业务或触发部署。"
+      ],
+      "businessUpdates": [
+        "将 Codex 官方通过结果转换为正式批准",
+        "将 Codex 官方评审通过结果接入正式批准"
+      ],
+      "summary": [
+        "将 Codex 官方通过结果转换为正式批准",
+        "将 Codex 官方评审通过结果接入正式批准"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "将 Codex 官方通过结果转换为正式批准"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "新增批准判定/分页/身份伪造/旧点赞/新提交竞态/写后 API 失败/幂等/历史失败清理等 37 项测试通过；相关脚本合计 41 项通过。",
+        "完整 ci:check 通过：502 suites，7,652 tests，3 snapshots（5 项既有跳过）。",
+        "YAML 解析及 git diff --check 通过。",
+        "真实 PR #1371 只读验证：识别当前 7832d125 的官方 Completed + 新 👍 为可批准；未实际写入批准。",
+        "GitHub 仓库已开启 can_approve_pull_request_reviews=true。"
+      ],
+      "level": "patch"
     }
   ],
   "lastRelease": {
@@ -140,5 +174,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "bad2f2d7d5267b6831b095fb8dee3ccd5cbfcaa7"
+  "lastAnalyzedSha": "fa6a3258e5796b8bb0d0d70ba7b1e0f678b94152"
 }
