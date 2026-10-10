@@ -70,7 +70,10 @@ export function longestAvailableSpan(
   const allowed = available
     ? windowToRange(available)
     : { startMinute: -Infinity, endMinute: Infinity };
-  const offsets = available?.endDayOffset === 1 ? [0, 1] : [0];
+  const offsets = [0];
+  // 将岗位的次日凌晨部分对齐到候选人的当日窗口，反向跨日也需要对齐。
+  if (range.endMinute > MINUTES_PER_DAY) offsets.push(-1);
+  if (available?.endDayOffset === 1) offsets.push(1);
   return Math.max(
     0,
     ...offsets.map((day) => {

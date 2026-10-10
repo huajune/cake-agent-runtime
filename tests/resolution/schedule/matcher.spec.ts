@@ -94,6 +94,21 @@ describe('结构化班次匹配', () => {
       }).status,
     ).toBe('unmatched');
   });
+  it('跨日灵活岗位的凌晨可用时间足够时待确认，不误判无匹配', () => {
+    const overnight = getJobSchedule(flexibleJob(6, '22:00', '07:00', '6', true));
+    expect(
+      matchDailySchedule(overnight, { availableWindow: { start: '00:00', end: '06:00' } }),
+    ).toMatchObject({ status: 'unknown', mode: 'time' });
+    expect(
+      matchDailySchedule(overnight, { availableWindow: { start: '00:00', end: '05:59' } }).status,
+    ).toBe('unmatched');
+    expect(
+      matchDailySchedule(overnight, {
+        availableWindow: { start: '00:00', end: '06:00' },
+        unavailableWindow: { start: '02:00', end: '03:00' },
+      }).status,
+    ).toBe('unmatched');
+  });
   it('缺班次、独立负标签与时间并存、零点夜班边界都不能假装匹配', () => {
     expect(matchDailySchedule(null, { includeAnyTags: ['night'] }).status).toBe('unknown');
     expect(
