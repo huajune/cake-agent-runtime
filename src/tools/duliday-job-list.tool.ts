@@ -1189,6 +1189,7 @@ export function buildJobListTool(
         // 当前轮高置信事实会覆盖旧会话事实。提前解析一次，除了成功结果过滤外，
         // 查询异常时也要禁止“暑假工意向 → 回退历史普通兼职岗”的绕过路径。
         const candidateLaborForm = resolveCandidateLaborForm(context);
+        const candidateIsStudent = resolveCandidateIsStudent(context);
 
         // 兜底：传了 lng/lat 但漏传 range 时，从业务阈值 max_recommend_distance_km 派生。
         // 上游 API 在 location.longitude/latitude 存在而 range 缺失时返回 code=10000，
@@ -1609,13 +1610,20 @@ export function buildJobListTool(
             scanComplete: jobs.length >= total,
             stopReason: jobs.length >= total ? 'complete' : 'not_scanned',
           };
-          if (
-            (hasScheduleConstraint(candidateScheduleConstraint) ||
-              preferFlexibleSchedule ||
-              (hasUserCoords && maxKm != null) ||
-              requireAccommodation) &&
-            total > jobs.length
-          ) {
+          const needsAdministrativeAreaFilter =
+            cityFilterRecovery?.attempted && fetchBaseParams.cityNameList?.length === 0;
+          // 任何本地硬筛选都可能清空第一页；统一补页后再筛选，避免漏掉后页匹配岗位。
+          const needsLocalFiltering =
+            hasScheduleConstraint(candidateScheduleConstraint) ||
+            (hasUserCoords && maxKm != null) ||
+            requireAccommodation ||
+            needsAdministrativeAreaFilter ||
+            storeMatchStrategy === 'local_fuzzy_match' ||
+            (brandPlan.filterMode === 'enforce' && brandPlan.applied.length > 0) ||
+            (brandPlan.filterMode === 'exclude' && brandPlan.excludeBrands.length > 0) ||
+            candidateLaborForm != null ||
+            candidateIsStudent === true;
+          if ((needsLocalFiltering || preferFlexibleSchedule) && total > jobs.length) {
             const scanned = await scanJobPages(
               { jobs, total },
               fetchBaseParams,
@@ -1634,7 +1642,7 @@ export function buildJobListTool(
             scanMeta.stopReason = Date.now() >= scanDeadline ? 'time_budget' : 'page_error';
           }
           // 恢复查询的本地地理/门店条件必须对所有补页统一执行。
-          if (cityFilterRecovery?.attempted && fetchBaseParams.cityNameList?.length === 0) {
+          if (needsAdministrativeAreaFilter && cityFilterRecovery) {
             jobs = filterJobsToRequestedAdministrativeArea(jobs, normalizedCityNameList);
             cityFilterRecovery.recoveredCount = jobs.length;
             cityFilterRecovery.applied = jobs.length > 0;
@@ -1729,7 +1737,7 @@ export function buildJobListTool(
               );
             }
           }
-          // exclude 档：上游接口无品牌排除参数，只能召回后本地剔除（§8.1，已知召回空洞局限）。
+          // exclude 档：上游接口无品牌排除参数，有界补页后统一本地剔除（§8.1）。
           if (brandPlan.filterMode === 'exclude' && brandPlan.excludeBrands.length > 0) {
             const beforeExcludeFilter = jobs.length;
             jobs = filterJobsExcludingBrands(jobs, brandEqualityTarget);
@@ -2032,7 +2040,6 @@ export function buildJobListTool(
           // 学生身份硬过滤（先筛后推，badcase fazpqciu）：候选人已明确学生身份时，
           // "不接受学生"的岗位在查询侧直接剔除，不进推荐池。从确定性会话事实读取，
           // 不依赖 LLM 入参；is_student=false 有抽取污染史，只有 true 触发过滤。
-          const candidateIsStudent = resolveCandidateIsStudent(context);
           const studentFilterResult = applyStudentIdentityConstraint(jobs, candidateIsStudent);
           let studentFilterNotice: string | null = null;
           if (studentFilterResult.applied) {

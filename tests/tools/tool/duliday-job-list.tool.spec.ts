@@ -2615,7 +2615,7 @@ describe('buildJobListTool', () => {
       expect(result.noMatchScript).toBeUndefined();
       expect(result._replyInstruction).toContain('不能断言');
     });
-    it('门店模糊回退仍扫描后页并保持本地门店条件', async () => {
+    it.each([false, true])('门店模糊回退仍扫描后页，班次约束=%s', async (withSchedule) => {
       const first = Array.from({ length: 20 }, (_, i) => {
         const job = scheduledJob(i + 1, '固定排班', [['19:00', '22:00']]);
         job.basicInfo.storeInfo = { storeName: '其他店' };
@@ -2631,7 +2631,9 @@ describe('buildJobListTool', () => {
         ...defaultInput,
         cityNameList: ['上海'],
         storeNameList: ['目标'],
-        candidateScheduleConstraint: { availableWindow: { start: '18:00' } },
+        candidateScheduleConstraint: withSchedule
+          ? { availableWindow: { start: '18:00' } }
+          : undefined,
         candidateScheduleCitation: { quote: '18点后有空' },
       } as typeof defaultInput);
       expect(result.resultCount).toBe(1);
@@ -2673,6 +2675,93 @@ describe('buildJobListTool', () => {
         pageNum: 2,
       });
     });
+  });
+
+  describe.each([
+    {
+      name: '品牌等值包含',
+      input: { brandAliasList: ['KFC'], brandFilterMode: 'enforce' },
+      facts: {},
+      rejected: { basicInfo: { brandName: '史伟莎' } },
+      accepted: { basicInfo: { brandName: 'KFC' } },
+    },
+    {
+      name: '品牌排除',
+      input: { brandAliasList: ['KFC'], brandFilterMode: 'exclude' },
+      facts: {},
+      rejected: { basicInfo: { brandName: 'KFC' } },
+      accepted: { basicInfo: { brandName: '史伟莎' } },
+    },
+    {
+      name: '用工形式',
+      input: {},
+      facts: { preferences: { labor_form: '全职' } },
+      rejected: { basicInfo: { laborForm: '兼职' } },
+      accepted: { basicInfo: { laborForm: '全职' } },
+    },
+    {
+      name: '学生身份',
+      input: {},
+      facts: { interview_info: { is_student: true } },
+      rejected: { basicInfo: {}, hiringRequirement: { remark: '不招学生' } },
+      accepted: { basicInfo: {} },
+    },
+  ])('无班次条件的本地筛选补页：$name', ({ input, facts, rejected, accepted }) => {
+    const context = { ...mockContext, sessionFacts: facts } as JobListTestContext;
+    const query = { ...defaultInput, cityNameList: ['北京'], ...input } as typeof defaultInput;
+    const first = Array.from({ length: 20 }, (_, i) =>
+      makeJobData({ ...rejected, basicInfo: { ...rejected.basicInfo, jobId: i + 1 } }),
+    );
+
+    it('第一页全被过滤仍能找到第二页岗位', async () => {
+      mockSpongeService.fetchJobs
+        .mockResolvedValueOnce({ jobs: first, total: 21 })
+        .mockResolvedValueOnce({
+          jobs: [makeJobData({ ...accepted, basicInfo: { ...accepted.basicInfo, jobId: 21 } })],
+          total: 21,
+        });
+
+      const result = await executeTool(context, query);
+
+      expect(result.resultCount).toBe(1);
+      expect(result.queryMeta).toMatchObject({
+        upstreamTotal: 21,
+        scannedCount: 21,
+        scanComplete: true,
+        scheduleFilter: { applied: false },
+      });
+      expect(mockSpongeService.fetchJobs).toHaveBeenCalledTimes(2);
+      expect(mockSpongeService.fetchJobs.mock.calls[1][0]).toMatchObject({
+        ...mockSpongeService.fetchJobs.mock.calls[0][0],
+        pageNum: 2,
+        pageSize: 20,
+      });
+    });
+
+    it('后页失败不能断言全范围没有岗位', async () => {
+      mockSpongeService.fetchJobs
+        .mockResolvedValueOnce({ jobs: first, total: 21 })
+        .mockRejectedValueOnce(new Error('page 2 unavailable'));
+
+      const result = await executeTool(context, query);
+
+      expect(mockSpongeService.fetchJobs).toHaveBeenCalledTimes(2);
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_QUERY_INCOMPLETE);
+      expect(result.queryMeta).toMatchObject({ scanComplete: false, stopReason: 'page_error' });
+      expect(result.noMatchScript).toBeUndefined();
+    });
+  });
+
+  it('没有本地硬筛选时不额外扫描后页', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValueOnce({
+      jobs: Array.from({ length: 20 }, (_, i) => makeJobData({ basicInfo: { jobId: i + 1 } })),
+      total: 21,
+    });
+
+    const result = await executeTool(mockContext, { ...defaultInput, cityNameList: ['北京'] });
+
+    expect(mockSpongeService.fetchJobs).toHaveBeenCalledTimes(1);
+    expect(result.queryMeta).toMatchObject({ scanComplete: false, stopReason: 'not_scanned' });
   });
 
   describe('乡镇/街道级地名误当 regionNameList (badcase batch_6a2fabf0536c9654020e6683)', () => {
