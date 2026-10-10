@@ -1,6 +1,7 @@
 import {
   buildReconcileAnchorKey,
   findSnapshotDuplicate,
+  findCrossAccountDuplicate,
   isSnapshotEligibleWorkOrder,
   isWorkOrderOwnedByCandidate,
   normalizeSignupSource,
@@ -11,6 +12,27 @@ import { parseLocalDateTime } from '@infra/utils/date.util';
 const NOW = parseLocalDateTime('2026-09-22 10:00:00')!.getTime();
 
 describe('booking-snapshot.util', () => {
+  it('跨账号查重不传展示状态作查询枚举，只命中本地在途工单', async () => {
+    const fetchSignupWorkOrders = jest.fn().mockResolvedValue({
+      workOrders: [
+        { workOrderId: 1, jobId: 12, currentStatus: '约面取消', signUpTime: '2026-09-21 10:00:00' },
+        { workOrderId: 2, jobId: 12, currentStatus: '约面成功', signUpTime: '2026-09-21 10:00:00' },
+      ],
+    });
+    const result = await findCrossAccountDuplicate({
+      spongeService: { fetchSignupWorkOrders },
+      phone: '13800000001',
+      tokenContext: { botImId: 'bot-1' },
+      target: { jobId: 12 },
+      now: NOW,
+    });
+    expect(fetchSignupWorkOrders).toHaveBeenCalledWith(
+      { phone: '13800000001', onlyCurrentAccount: false },
+      { botImId: 'bot-1' },
+      { timeoutMs: 3000, allowDefaultToken: false },
+    );
+    expect(result?.workOrderId).toBe(2);
+  });
   describe('isSnapshotEligibleWorkOrder（状态在途 且 报名近 15 天或面试在未来）', () => {
     it('在途 + 报名近 15 天 → 入选', () => {
       expect(

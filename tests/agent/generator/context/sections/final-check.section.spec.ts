@@ -83,13 +83,13 @@ describe('FinalCheckSection', () => {
     );
     const alwaysCount = FINAL_CHECK_RULES.filter((rule) => rule.trigger === 'always').length;
     expect(content.match(/^- /gmu)).toHaveLength(alwaysCount);
-    expect(Buffer.byteLength(content)).toBe(5930);
+    expect(Buffer.byteLength(content)).toBe(5308);
     expect(createHash('sha256').update(content).digest('hex')).toBe(
-      '891892434a8ea0be1cbbca057148530e36f5d14470dd5df5352e4c6ae273a811',
+      '1cef2d0376297a2a65a96da7f5fa65396c808eb797fd78d6ea80a41601660cfb',
     );
   });
 
-  it('keeps the legacy injected bytes unchanged for a matched current-turn rule', () => {
+  it('renders the reviewed instruction text for a matched current-turn rule', () => {
     const rule = FINAL_CHECK_RULES.find((item) => item.id === 'interview_date_precheck_first');
     const currentUserMessage = '我5月1号回来面试可以吗';
     const blocks = new CriticalTurnGuardSection().build(
@@ -107,7 +107,7 @@ describe('FinalCheckSection', () => {
     );
     expect(blocks[0].content).toBe(`# 本轮动态硬禁令\n- ${rule?.text}`);
     expect(createHash('sha256').update(blocks[0].content).digest('hex')).toBe(
-      'bd598c8e0d9b387a08e87c5674a8830cba616e189dc3ec9a756c4594abfcf5e6',
+      '3d842409efdd0baf267fa90b873a459ba174fe290d961f53bb18818f6a672f34',
     );
   });
 

@@ -44,8 +44,8 @@ export interface RejectionScript {
 const RESTRICTED_MESSAGE = RESTRICTED_REJECTION_MESSAGE;
 
 const COMMON_FORBIDDEN = [
-  '不得把不合格原因说成"系统判定/后台筛掉"等推卸表述——对候选人只讲岗位条件，不讲内部机制',
-  '不得承诺"下次一定能过/我帮你改一下就行"等无法兑现的话',
+  '不得将不合格归咎于系统或后台；对候选人只讲岗位条件，不讲内部机制',
+  '不得作出无法兑现的承诺，包括保证后续通过或修改资料即可通过',
 ];
 
 const RESTRICTED_FORBIDDEN = [...RESTRICTED_REJECTION_FORBIDDEN];

@@ -109,11 +109,11 @@ describe('BookingSnapshotService', () => {
     });
   });
 
-  it('用本会话账号 token 按手机号查一次，服务端只过滤在途状态，3 秒超时且禁止回退默认 token', async () => {
+  it('用本会话账号 token 按手机号查一次，不把状态文案传作查询枚举，3 秒超时且禁止回退默认 token', async () => {
     const result = await service().load(baseInput);
 
     expect(sponge.fetchSignupWorkOrders).toHaveBeenCalledWith(
-      { phone: '18271421690', queryParam: { currentStatus: ['约面待确认', '约面成功'] } },
+      { phone: '18271421690' },
       { botImId: 'bot-1' },
       { timeoutMs: 3000, allowDefaultToken: false },
     );
@@ -194,6 +194,46 @@ describe('BookingSnapshotService', () => {
     expect(fresh).toMatchObject({ status: 'ok', fromCache: false });
     expect(sponge.fetchSignupWorkOrders).toHaveBeenCalledTimes(1);
   });
+
+  it.each([
+    { cachedNames: ['张三'], currentNames: ['李四'], owned: false },
+    { cachedNames: [], currentNames: ['张三'], owned: true },
+    { cachedNames: ['张三'], currentNames: [], owned: false },
+  ])(
+    '缓存命中重新核验当前候选人姓名：$currentNames → $owned',
+    async ({ cachedNames, currentNames, owned }) => {
+      const svc = service();
+      const fresh = await svc.load({ ...baseInput, knownCandidateNames: cachedNames });
+      expect(fresh.status).toBe('ok');
+      if (fresh.status !== 'ok') return;
+      redis.get.mockResolvedValue(fresh);
+      redis.setex.mockClear();
+      sponge.fetchSignupWorkOrders.mockClear();
+
+      const result = await svc.load({
+        ...baseInput,
+        userId: 'user-2',
+        knownCandidateNames: currentNames,
+        now: NOW + 60_000,
+      });
+
+      expect(result).toMatchObject({
+        status: 'ok',
+        fromCache: true,
+        fetchedAt: NOW,
+        entries: [expect.objectContaining({ ownedByCandidate: owned })],
+      });
+      expect(sponge.fetchSignupWorkOrders).not.toHaveBeenCalled();
+      expect(redis.setex).toHaveBeenCalledTimes(1);
+      expect(redis.setex).toHaveBeenCalledWith(
+        'booking:snapshot:candidate:corp-1:user-2',
+        240,
+        expect.objectContaining({
+          entries: [expect.objectContaining({ ownedByCandidate: owned })],
+        }),
+      );
+    },
+  );
 
   it('账号没配 token → skipped_no_token 并落观测，不查海绵、不回退默认 token', async () => {
     hosting.resolveDulidayToken.mockResolvedValue(null);

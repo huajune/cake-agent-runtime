@@ -813,7 +813,7 @@ describe('geocode tool', () => {
 
     it('description 声明解析成功后禁止再反问城市', () => {
       expect(toolInstance.description).toContain('_cityConfirmed');
-      expect(toolInstance.description).toContain('禁止再向候选人反问');
+      expect(toolInstance.description).toContain('禁止再向候选人询问已确认的城市');
       expect(toolInstance.description).toContain('不得静默按新城市推进');
     });
   });

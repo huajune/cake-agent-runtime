@@ -187,7 +187,7 @@ describe('job-list render util', () => {
       const markdown = withMode('业务流程外包(BPO)');
       expect(markdown).toContain('**合作模式**: BPO');
       expect(markdown).toContain('**发薪主体**: 由独立客发薪');
-      expect(markdown).toContain('可直接答，不必转人工');
+      expect(markdown).toContain('可直接回答，不必转人工');
       expect(markdown).toContain('与独立客签约，形式是**灵活用工协议**');
       expect(markdown).not.toContain('由客户（品牌方）发薪');
     });
