@@ -411,10 +411,6 @@ const inputSchema = z.object({
     .describe(
       'recommend=按候选人条件筛选推荐；inspect=按已知jobIdList核对岗位事实，不筛掉不匹配岗位，不进入推荐候选池',
     ),
-  preferFlexibleSchedule: z
-    .boolean()
-    .optional()
-    .describe('候选人希望灵活排班时优先展示灵活排班；只是排序，不保证能任选时段'),
   candidateScheduleCitation: z
     .object({ quote: z.string() })
     .optional()
@@ -842,7 +838,6 @@ export function buildJobListTool(
         candidateScheduleConstraint,
         candidateScheduleCitation,
         purpose = 'recommend',
-        preferFlexibleSchedule = false,
       }) => {
         // 经纬度对调确定性纠偏（模型 reasoning 绑定正确、发射的
         // JSON 值却对调，圆心落到纬度 121° → 必然 0 条假"无岗"）。args 落库仍是模型
@@ -942,7 +937,7 @@ export function buildJobListTool(
               ),
           );
         if (
-          (changedSchedule || preferFlexibleSchedule) &&
+          changedSchedule &&
           (!candidateScheduleCitation ||
             !verifyCitation(candidateScheduleCitation, [context.turnInput.currentUserMessage ?? ''])
               .verified)
@@ -971,6 +966,8 @@ export function buildJobListTool(
         if (candidateScheduleConstraint && conditions.success && !scheduleState.legacyUnresolved) {
           context.ledger.recordScheduleConstraint(mergedConstraint);
         }
+        const preferFlexibleSchedule =
+          conditions.success && conditions.data.preferFlexibleSchedule === true;
         candidateScheduleConstraint =
           conditions.success && hasScheduleConstraint(conditions.data)
             ? conditions.data

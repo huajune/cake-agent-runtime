@@ -8,6 +8,7 @@ import {
 
 export function formatScheduleConstraintLabel(c: CandidateScheduleConstraint): string {
   const parts: string[] = [];
+  if (c.preferFlexibleSchedule) parts.push('优先灵活排班（仅排序，不限制可选排班）');
   if (c.onlyWeekends) parts.push('只周末');
   if (c.includeAnyTags?.length)
     parts.push(`要求 ${c.includeAnyTags.map((t) => SHIFT_TAG_LABELS[t]).join('或')}`);
@@ -33,9 +34,10 @@ export function formatStoredScheduleConstraint(value: unknown): string | null {
   const parsed = StoredScheduleConstraintSchema.safeParse(value);
   if (!parsed.success) return '已有排班条件需重新确认';
   const { conditions, legacyUnresolved } = readScheduleConditions(parsed.data);
-  const parts = hasScheduleConstraint(conditions)
-    ? [formatScheduleConstraintLabel(conditions)]
-    : [];
+  const parts =
+    hasScheduleConstraint(conditions) || conditions.preferFlexibleSchedule
+      ? [formatScheduleConstraintLabel(conditions)]
+      : [];
   if (legacyUnresolved) parts.push('历史早晚班偏好含义需确认');
   return parts.length ? parts.join(' / ') : null;
 }
