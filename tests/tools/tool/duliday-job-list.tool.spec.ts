@@ -2662,6 +2662,24 @@ describe('buildJobListTool', () => {
       );
       expect(result.resultCount).toBe(1);
     });
+    it.each([{ ids: [] }, { ids: [1] }])(
+      'inspect缺少部分或全部指定岗位时不返回成功事实：%j',
+      async ({ ids }) => {
+        mockSpongeService.fetchJobs.mockResolvedValue({
+          jobs: ids.map((id) => scheduledJob(id, '固定排班', [['08:00', '16:00']])),
+          total: ids.length,
+        });
+        const result = await executeTool(mockContext, {
+          ...defaultInput,
+          purpose: 'inspect',
+          jobIdList: [1, 2],
+        } as typeof defaultInput);
+        expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_FETCH_FAILED);
+        expect(result.missingJobIds).toEqual(ids.length ? [2] : [1, 2]);
+        expect(result.markdown).toBeUndefined();
+        expect(result._replyInstruction).toContain('不能用历史岗位摘要');
+      },
+    );
     it('inspect返回不匹配岗位事实，不写推荐池或推荐事件', async () => {
       const recordFetchedJobs = jest.fn();
       const recordEvent = jest.fn();

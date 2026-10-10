@@ -990,6 +990,17 @@ export function buildJobListTool(
               },
               ...(bookedJobLookup ? { onlySignableJobs: false } : {}),
             });
+            const returnedIds = new Set(inspected.jobs.map((job) => job.basicInfo?.jobId));
+            const missingJobIds = jobIdList.filter((id) => !returnedIds.has(id));
+            if (missingJobIds.length > 0) {
+              return buildToolError({
+                errorType: TOOL_ERROR_TYPES.JOB_LIST_FETCH_FAILED,
+                outcome: '指定岗位的实时事实未全部查到',
+                replyInstruction:
+                  '指定岗位的实时事实暂时无法完整核对，不能用历史岗位摘要回答班次或承诺上岗，也不能据此断言岗位已停招。说明暂时无法确认；本轮不要自动改查其他岗位。',
+                details: { missingJobIds },
+              });
+            }
             const assessment = applyScheduleConstraint(inspected.jobs, candidateScheduleConstraint);
             if (!conditions.success || scheduleState.legacyUnresolved) {
               assessment.matches = inspected.jobs.map((job) => ({

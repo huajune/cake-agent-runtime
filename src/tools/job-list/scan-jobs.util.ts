@@ -34,8 +34,7 @@ export async function scanJobPages(
   const append = (page: JobDetail[]) => {
     for (const job of page) {
       const id = job.basicInfo?.jobId;
-      if (typeof id !== 'number')
-        throw new WorkTimeContractError('岗位缺少有效jobId，无法确定分页唯一性');
+      if (typeof id !== 'number') throw new Error('岗位缺少有效jobId，无法确定分页唯一性');
       if (!ids.has(id)) {
         ids.add(id);
         jobs.push(job);

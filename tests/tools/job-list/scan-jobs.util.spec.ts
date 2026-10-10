@@ -5,6 +5,16 @@ const page = (start: number, count: number) =>
   Array.from({ length: count }, (_, i) => ({ basicInfo: { jobId: start + i } }));
 
 describe('岗位有界补页', () => {
+  it.each([false, true])('分页岗位缺少ID是响应错误，不是班次契约错误；后页=%s', async (later) => {
+    const run = scanJobPages(
+      { jobs: later ? page(1, 20) : [{ basicInfo: null }], total: 21 },
+      {},
+      jest.fn().mockResolvedValue({ jobs: [{ basicInfo: null }], total: 21 }),
+      Date.now() + 15000,
+    );
+    await expect(run).rejects.toThrow('无法确定分页唯一性');
+    await expect(run).rejects.not.toBeInstanceOf(WorkTimeContractError);
+  });
   it('取得第二页，保留上游总数及扫描计数', async () => {
     const fetch = jest.fn().mockResolvedValue({ jobs: page(21, 2), total: 22 });
     const out = await scanJobPages(
@@ -25,12 +35,10 @@ describe('岗位有界补页', () => {
     );
   });
   it('第十页停止，不把200条误报成总量250条已查完', async () => {
-    const fetch = jest
-      .fn()
-      .mockImplementation(async ({ pageNum }) => ({
-        jobs: page((pageNum - 1) * 20 + 1, 20),
-        total: 250,
-      }));
+    const fetch = jest.fn().mockImplementation(async ({ pageNum }) => ({
+      jobs: page((pageNum - 1) * 20 + 1, 20),
+      total: 250,
+    }));
     const out = await scanJobPages(
       { jobs: page(1, 20), total: 250 },
       {},
