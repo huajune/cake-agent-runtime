@@ -1,3 +1,4 @@
+import type { StoredScheduleConstraint } from '@resolution/schedule/types';
 import type { TurnHints } from '@resolution/turn-hints/turn-hint.types';
 import type { BrandResolution } from '@resolution/brand/brand-resolution.types';
 import type { CandidateCollectedField, CandidateFieldKey } from '@resolution/candidate/types';
@@ -86,6 +87,8 @@ export interface TurnJobsSnapshot {
   /** duliday_job_list 查询签名；去掉历史上的单字段对象包装。 */
   readonly querySignature: string | undefined;
   readonly invalidatedJobIds: readonly number[];
+  /** 已通过本轮原话校验的班次条件，保留撤销值供同轮后续查询沿用。 */
+  readonly scheduleConstraint?: StoredScheduleConstraint;
   /** undefined 表示本轮尚未尝试预约；false 仅表示预约工具明确失败。 */
   bookingSucceeded: boolean | undefined;
   /**
@@ -139,6 +142,7 @@ export interface TurnLedger extends TurnLedgerSnapshot {
   recordCityAttestation(attestation: CityAttestation): void;
   recordFetchedJobs(jobs: TurnFetchedJob[]): void;
   recordJobListQuery(query: { signature: string }): void;
+  recordScheduleConstraint(constraint: StoredScheduleConstraint): void;
   markJobInvalidated(jobId: number): void;
   /** precheck 校验通过（海绵查得到岗位）时登记工具确权焦点；只接收真实海绵岗位的投影。 */
   recordAttestedFocusJob(job: RecommendedJobSummary): void;
