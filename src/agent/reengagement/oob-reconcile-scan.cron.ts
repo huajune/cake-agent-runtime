@@ -38,7 +38,7 @@ export interface OobReconcileScanSummary {
   reconciled: number;
   scheduled: number;
   accountFailures: number;
-  /** 单轮硬时间窗到点，剩余行/账号未处理；保留当前页供后续重试。 */
+  /** 单轮硬时间窗到点，剩余行/账号未处理；从当前页的首个未处理行续跑。 */
   truncated: boolean;
   /** 本轮新排的等通知满 3 天复核数（单轮上限 MAX_SLOT_CHECKS_PER_RUN，超出留待下一轮）。 */
   slotChecks: number;
@@ -180,7 +180,9 @@ export class OobReconcileScanCronService {
       }
       summary.rows += rows.total;
       if (rows.totalUnknown) summary.totalUnknown = true;
-      for (const row of rows.supplier) {
+      for (const { row, pageNum, rowIndex } of rows.supplier) {
+        // 下一次从首个未处理行继续；已完成的慢对账不应在每轮重放而耗尽时间窗。
+        progress.accounts[botImId] = { ...cursor, nextPage: pageNum, nextRowOffset: rowIndex };
         // 硬时间窗按行检查：对账含海绵查询与排任务，账号级检查不够细，一个大账号能把整轮拖过锁 TTL。
         if (this.isPastDeadline(startedAt)) {
           summary.truncated = true;
@@ -235,10 +237,10 @@ export class OobReconcileScanCronService {
           );
         }
       }
-      // 只有本段所有工单处理完才推进页码；时间中断时重试本段，既有对账锚点防止重复副作用。
+      // 本段处理完推进到后页；时间中断则保存上面记录的首个未处理行。
       if (!summary.truncated) {
         if (rows.nextPage === null) delete progress.accounts[botImId];
-        else progress.accounts[botImId] = { ...cursor, nextPage: rows.nextPage };
+        else progress.accounts[botImId] = { ...cursor, nextPage: rows.nextPage, nextRowOffset: 0 };
       }
       progress.nextBotImId = botImIds[(botImIds.indexOf(botImId) + 1) % botImIds.length];
       await this.redisService.set(PROGRESS_KEY, progress);
@@ -266,7 +268,7 @@ export class OobReconcileScanCronService {
     maxPages: number,
     rowBudget: number,
   ): Promise<SupplierRowsPage> {
-    const supplier: SignupWorkOrderItem[] = [];
+    const supplier: SupplierRowsPage['supplier'] = [];
     let total = 0;
     let totalUnknown = false;
     let nextPage: number | null = cursor.nextPage;
@@ -288,8 +290,12 @@ export class OobReconcileScanCronService {
       );
       const rows = page.workOrders ?? [];
       total += rows.length;
-      for (const row of rows) {
-        if (normalizeSignupSource(row.signupSource) === 'SUPPLIER') supplier.push(row);
+      const firstRow = pageNum === cursor.nextPage ? (cursor.nextRowOffset ?? 0) : 0;
+      for (let rowIndex = firstRow; rowIndex < rows.length; rowIndex += 1) {
+        const row = rows[rowIndex];
+        if (normalizeSignupSource(row.signupSource) === 'SUPPLIER') {
+          supplier.push({ row, pageNum, rowIndex });
+        }
       }
       nextPage = pageNum + 1;
       if (rows.length < PAGE_SIZE || (page.total != null && pageNum * PAGE_SIZE >= page.total)) {
@@ -367,13 +373,15 @@ export class OobReconcileScanCronService {
 
 interface SupplierRowsPage {
   total: number;
-  supplier: SignupWorkOrderItem[];
+  supplier: Array<{ row: SignupWorkOrderItem; pageNum: number; rowIndex: number }>;
   totalUnknown: boolean;
   nextPage: number | null;
 }
 
 interface AccountScanCursor {
   nextPage: number;
+  /** 当前页首个未处理行，按原始响应下标计算，包含非供应商工单。 */
+  nextRowOffset?: number;
   signUpStartTime: string;
   signUpEndTime: string;
 }
