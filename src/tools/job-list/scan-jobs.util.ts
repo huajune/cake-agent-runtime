@@ -1,5 +1,6 @@
 import type { JobDetail, JobListResult, JobListQueryParams } from '@sponge/sponge.types';
 import { WorkTimeContractError } from '@sponge/work-time.types';
+import { SpongeResponseContractError } from '@sponge/response-contract.error';
 import { buildToolError, TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
 
 export interface JobScanMeta {
@@ -34,7 +35,8 @@ export async function scanJobPages(
   const append = (page: JobDetail[]) => {
     for (const job of page) {
       const id = job.basicInfo?.jobId;
-      if (typeof id !== 'number') throw new Error('岗位缺少有效jobId，无法确定分页唯一性');
+      if (typeof id !== 'number')
+        throw new SpongeResponseContractError('岗位缺少有效jobId，无法确定分页唯一性');
       if (!ids.has(id)) {
         ids.add(id);
         jobs.push(job);
@@ -67,7 +69,8 @@ export async function scanJobPages(
         AbortSignal.timeout(remaining),
       );
     } catch (error) {
-      if (error instanceof WorkTimeContractError) throw error;
+      if (error instanceof WorkTimeContractError || error instanceof SpongeResponseContractError)
+        throw error;
       meta.stopReason = Date.now() >= deadline ? 'time_budget' : 'page_error';
       break;
     }

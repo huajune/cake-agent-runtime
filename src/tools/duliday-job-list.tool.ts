@@ -76,6 +76,7 @@ import {
 } from '@resolution/schedule/types';
 import { verifyCitation } from '@resolution/notary/citation-verifier';
 import { WorkTimeContractError } from '@sponge/work-time.types';
+import { SpongeResponseContractError } from '@sponge/response-contract.error';
 import { getJobSchedule } from '@tools/job-list/schedule-normalizer.util';
 import {
   allRejectedAsUnmatched,
@@ -1401,7 +1402,11 @@ export function buildJobListTool(
                 );
               }
             } catch (error: unknown) {
-              if (error instanceof WorkTimeContractError) throw error;
+              if (
+                error instanceof WorkTimeContractError ||
+                error instanceof SpongeResponseContractError
+              )
+                throw error;
               recoveryInterrupted = true;
               const reason = toErrorMessage(error);
               logger.warn(`城市层级过滤兜底查询失败，保留原始 0 条结果: ${reason}`);
@@ -1430,7 +1435,11 @@ export function buildJobListTool(
                 );
               }
             } catch (error: unknown) {
-              if (error instanceof WorkTimeContractError) throw error;
+              if (
+                error instanceof WorkTimeContractError ||
+                error instanceof SpongeResponseContractError
+              )
+                throw error;
               recoveryInterrupted = true;
               logger.warn(`场所名模糊查兜底失败，保留原始 0 条结果: ${toErrorMessage(error)}`);
             }
@@ -1457,7 +1466,11 @@ export function buildJobListTool(
                   );
                 }
               } catch (error: unknown) {
-                if (error instanceof WorkTimeContractError) throw error;
+                if (
+                  error instanceof WorkTimeContractError ||
+                  error instanceof SpongeResponseContractError
+                )
+                  throw error;
                 recoveryInterrupted = true;
                 logger.warn(`岗位名简名重试失败，保留原始 0 条结果: ${toErrorMessage(error)}`);
               }
@@ -2156,6 +2169,11 @@ export function buildJobListTool(
                 Number(getJobSchedule(a)?.arrangementType === '灵活排班'),
             );
 
+          // 补页可扫描200条，但模型输出与会话候选池仍限制为一页；先完成筛选与排序。
+          const matchedCount = jobs.length;
+          jobs = jobs.slice(0, DEFAULT_PAGE_SIZE);
+          total = jobs.length;
+
           const flags: ProgressiveDisclosureFlags = {
             includeBasicInfo,
             includeJobSalary,
@@ -2203,6 +2221,9 @@ export function buildJobListTool(
               distanceAnchor,
             );
             const markdownSections = [
+              matchedCount > jobs.length
+                ? `已查范围内有 ${matchedCount} 个匹配岗位，本次展示排序后的前 ${jobs.length} 个。`
+                : null,
               scanMeta && !scanMeta.scanComplete
                 ? `本次已查 ${scanMeta.scannedCount}/${scanMeta.upstreamTotal} 个岗位，未完成全范围查询，只能说明已查范围内的结果。`
                 : null,
@@ -2240,6 +2261,9 @@ export function buildJobListTool(
           result.queryMeta = {
             purpose,
             ...scanMeta,
+            matchedCount,
+            returnedCount: jobs.length,
+            hasMoreMatches: matchedCount > jobs.length,
             unknownCount: unknownSchedules.length,
             storeMatchStrategy,
             // 意向工种本地软排序观测（取代 API 直传时代的 jobCategoryMatchStrategy）：
@@ -2249,7 +2273,7 @@ export function buildJobListTool(
               ? {
                   requested: sanitizedJobCategoryList,
                   matchedCount: jobCategoryRank.matchedCount,
-                  totalCount: jobs.length,
+                  totalCount: matchedCount,
                 }
               : null,
             // 泛化统称（店员/员工…）被确定性剥离出 jobCategoryList 的记录，供排障对账
@@ -2419,8 +2443,8 @@ export function buildJobListTool(
             errorType: TOOL_ERROR_TYPES.JOB_LIST_FETCH_FAILED,
             outcome: '岗位查询接口失败',
             replyInstruction:
-              err instanceof WorkTimeContractError
-                ? '海绵班次数据不符合契约，需数据源团队修复。不能当作无岗，也不能用旧班次推荐或承诺上岗；向候选人说明排班需要确认。'
+              err instanceof WorkTimeContractError || err instanceof SpongeResponseContractError
+                ? '海绵岗位数据不符合契约，需数据源团队修复。不能当作无岗，也不能用旧岗位数据推荐或承诺上岗；向候选人说明岗位信息需要确认。'
                 : candidateLaborForm === '暑假工'
                   ? '岗位查询接口暂时不可用，且候选人已明确只要暑假工。不要把异常信息原文转述给候选人；' +
                     '不得基于 [会话记忆] 的普通兼职/小时工/全职岗位维持上下文，不得推荐、收资或约面。' +

@@ -155,5 +155,6 @@ export const SCHEDULE_CONSTRAINT_GUIDANCE =
   '候选人班次条件的本轮变更，省略字段延续记忆，数组替换，[]清空标签，null撤销时段/时长。' +
   '标签：early早班、morning上午、midday中班、afternoon下午、evening晚班、night夜班；开档=early；早上/早班=early或morning；白天=前四种，全天=全部。' +
   'includeAnyTags命中任一即可，excludeTags排除；明确钟点用availableWindow/unavailableWindow，只有起点或终点也可，跨日显式endDayOffset=1。具体时段优先于正向标签。' +
+  '最早上班和最晚下班分别写availableWindow.start和end；只限制一侧时不得补另一侧，也不得把未声明的其余时段改成unavailableWindow。unavailableWindow仅用于候选人明确不能出勤的区间。' +
   'preferFlexibleSchedule表示优先灵活排班，仅用于排序，不是硬性排班限制；false撤销偏好，省略延续记忆。' +
   '候选人仅问几点上下班、休息多久等岗位事实时，用inspect查已知岗位，不据此设置个人限制。接受某班次不等于只能该班次，拒绝用excludeTags或unavailableWindow。时间和独立负向标签同时生效口径不明确时先澄清。minShiftHours/maxShiftHours是每档班次时长。';
