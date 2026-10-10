@@ -6,7 +6,7 @@ describe('OobReconcileScanCronService', () => {
   const sponge = { fetchSelfSignupWorkOrdersV2: jest.fn() };
   const phoneIndex = { lookupByPhone: jest.fn() };
   const reconcile = { reconcile: jest.fn() };
-  const redis = { setNx: jest.fn(), eval: jest.fn() };
+  const redis = { setNx: jest.fn(), eval: jest.fn(), get: jest.fn(), set: jest.fn() };
   const systemConfig = { getConfigValue: jest.fn() };
   const config = { get: jest.fn((_key: string, fallback?: unknown) => fallback) };
   const tracer = { emit: jest.fn() };
@@ -48,6 +48,8 @@ describe('OobReconcileScanCronService', () => {
     });
     redis.setNx.mockResolvedValue(true);
     redis.eval.mockResolvedValue(1);
+    redis.get.mockResolvedValue(null);
+    redis.set.mockResolvedValue(undefined);
     systemConfig.getConfigValue.mockResolvedValue({ enabled: true });
     config.get.mockImplementation((key: string, fallback?: unknown) =>
       key === 'NODE_ENV' ? 'production' : fallback,
@@ -130,6 +132,7 @@ describe('OobReconcileScanCronService', () => {
           pageSize: 100,
           queryParam: {
             signUpStartTime: '2026-09-07 10:00:00',
+            signUpEndTime: '2026-09-22 10:00:00',
           },
         },
         { botImId: 'bot-A' },
@@ -272,6 +275,63 @@ describe('OobReconcileScanCronService', () => {
       expect(sponge.fetchSelfSignupWorkOrdersV2).toHaveBeenCalledTimes(1);
     });
 
+    it('跨轮续页并轮转账号，已结束工单不会永久挤掉后页在途工单', async () => {
+      let saved: unknown = null;
+      redis.get.mockImplementation(async () => structuredClone(saved));
+      redis.set.mockImplementation(async (_key, value) => {
+        saved = structuredClone(value);
+      });
+      hosting.listTokenConfiguredBotImIds.mockResolvedValue(['bot-A', 'bot-B']);
+      sponge.fetchSelfSignupWorkOrdersV2.mockImplementation(async ({ pageNum }, { botImId }) => ({
+        total: botImId === 'bot-A' ? 101 : 0,
+        workOrders:
+          botImId === 'bot-B'
+            ? []
+            : pageNum === 1
+              ? Array.from({ length: 100 }, (_, i) =>
+                  supplierRow({ workOrderId: i + 1, signupSource: 'AI', currentStatus: '已离职' }),
+                )
+              : [supplierRow({ workOrderId: 101 })],
+      }));
+      phoneIndex.lookupByPhone.mockResolvedValue({
+        corpId: 'corp-1',
+        userId: 'user-1',
+        chatId: 'chat-1',
+        botImId: 'bot-A',
+        phone: '18271421690',
+      });
+      const now = Date.parse('2026-09-22T02:00:00Z');
+      await service().runOnce({ enabled: true, maxRowsPerRun: 100 }, now);
+      expect(reconcile.reconcile).not.toHaveBeenCalled();
+      await service().runOnce({ enabled: true, maxRowsPerRun: 100 }, now + 6 * 3600_000);
+      const calls = sponge.fetchSelfSignupWorkOrdersV2.mock.calls;
+      expect(calls.map(([p, c]) => [c.botImId, p.pageNum])).toEqual([
+        ['bot-A', 1],
+        ['bot-B', 1],
+        ['bot-A', 2],
+      ]);
+      expect(calls[2][0].queryParam).toEqual(calls[0][0].queryParam);
+      expect(reconcile.reconcile).toHaveBeenCalledTimes(1);
+      expect(saved).toEqual({ nextBotImId: 'bot-B', accounts: {} });
+    });
+
+    it('页数预算耗尽同样保存下一页；整页无total时继续续页', async () => {
+      let saved: unknown = null;
+      redis.get.mockImplementation(async () => structuredClone(saved));
+      redis.set.mockImplementation(async (_key, value) => {
+        saved = structuredClone(value);
+      });
+      sponge.fetchSelfSignupWorkOrdersV2.mockResolvedValue({
+        total: null,
+        workOrders: Array.from({ length: 100 }, (_, i) =>
+          supplierRow({ workOrderId: i, signupSource: 'AI' }),
+        ),
+      });
+      await service().runOnce({ enabled: true, maxPagesPerAccount: 1 });
+      await service().runOnce({ enabled: true, maxPagesPerAccount: 1 });
+      expect(sponge.fetchSelfSignupWorkOrdersV2.mock.calls.map(([p]) => p.pageNum)).toEqual([1, 2]);
+    });
+
     it('账号拉取失败指数退避重试 3 次后计入 accountFailures，不中断其它账号', async () => {
       jest.useFakeTimers();
       hosting.listTokenConfiguredBotImIds.mockResolvedValue(['bot-A', 'bot-B']);
@@ -330,6 +390,12 @@ describe('OobReconcileScanCronService', () => {
       });
       expect(tracer.emit).toHaveBeenCalledWith(
         expect.objectContaining({ type: 'oob_reconcile_scan', truncated: true }),
+      );
+      expect(redis.set).toHaveBeenCalledWith(
+        'oob:reconcile-scan:progress:v1',
+        expect.objectContaining({
+          accounts: { 'bot-A': expect.objectContaining({ nextPage: 1 }) },
+        }),
       );
     });
 
