@@ -19,6 +19,13 @@ describe('班次记忆统一投影', () => {
     expect(text).toContain('每班至多 8 小时');
   });
 
+  it('灵活排班偏好只提示排序，撤销后不再展示', () => {
+    expect(formatStoredScheduleConstraint({ preferFlexibleSchedule: true })).toBe(
+      '优先灵活排班（仅排序，不限制可选排班）',
+    );
+    expect(formatStoredScheduleConstraint({ preferFlexibleSchedule: false })).toBeNull();
+  });
+
   it('旧会话偏好仅提示确认，不捏造具体时段', () => {
     expect(formatStoredScheduleConstraint({ onlyEvenings: true })).toBe('历史早晚班偏好含义需确认');
     expect(formatStoredScheduleConstraint({ availableWindow: {} })).toBe('已有排班条件需重新确认');

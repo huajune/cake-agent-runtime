@@ -1186,6 +1186,15 @@ describe('buildJobListTool', () => {
       ],
     });
 
+    it('只有城市查询时，默认距离阈值不能冒充实际查询半径', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [], total: 0 });
+      const result = await executeTool(thresholdCtx(), { ...defaultInput, cityNameList: ['上海'] });
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_NO_RESULTS);
+      expect(result.noMatchScript.querySummary).not.toContain('10km');
+      expect(result.noMatchScript.candidateMessage).not.toContain('10 公里');
+      expect(result.noMatchScript.candidateMessage).not.toContain('附近');
+    });
+
     it('传 range=20000 时 15km 门店不被业务阈值 10km 截掉', async () => {
       mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [storeAtKm15()], total: 1 });
 
@@ -3116,6 +3125,55 @@ describe('buildJobListTool', () => {
       expect(second.queryMeta.scheduleFilter.candidateConstraint).toEqual({
         excludeTags: ['night'],
       });
+    });
+  });
+
+  describe('灵活排班排序偏好跨轮延续', () => {
+    const context = () =>
+      ({
+        ...mockContext,
+        currentUserMessage: '再给我看看其他岗位',
+        sessionFacts: { preferences: { schedule_constraint: { preferFlexibleSchedule: true } } },
+      }) as JobListTestContext;
+    beforeEach(() =>
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [scheduledJob(1, '固定排班', [['09:00', '14:00']]), flexibleJob(2)],
+        total: 2,
+      }),
+    );
+    it('历史优先排序无需本轮引用，也不筛掉固定班岗位', async () => {
+      const result = await executeTool(context(), {
+        ...defaultInput,
+        responseFormat: ['markdown', 'rawData'],
+      });
+      expect(result.resultCount).toBe(2);
+      expect(
+        result.rawData.result.map((job: { basicInfo: { jobId: number } }) => job.basicInfo.jobId),
+      ).toEqual([2, 1]);
+      expect(result.queryMeta.scheduleFilter).toEqual({ applied: false });
+      expect(mockSpongeService.fetchJobs.mock.calls[0][0].options.includeWorkTime).toBe(true);
+    });
+    it('未经候选人本轮原话不能清除已保存的排序偏好', async () => {
+      const result = await executeTool(context(), {
+        ...defaultInput,
+        candidateScheduleConstraint: { preferFlexibleSchedule: false },
+      } as typeof defaultInput);
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_SCHEDULE_NO_PROVENANCE);
+      expect(mockSpongeService.fetchJobs).not.toHaveBeenCalled();
+    });
+    it('候选人明确取消后恢复原始排序', async () => {
+      const result = await executeTool(
+        { ...context(), currentUserMessage: '不需要优先灵活排班了' },
+        {
+          ...defaultInput,
+          responseFormat: ['markdown', 'rawData'],
+          candidateScheduleConstraint: { preferFlexibleSchedule: false },
+          candidateScheduleCitation: { quote: '不需要优先灵活排班了' },
+        } as typeof defaultInput,
+      );
+      expect(
+        result.rawData.result.map((job: { basicInfo: { jobId: number } }) => job.basicInfo.jobId),
+      ).toEqual([1, 2]);
     });
   });
 
