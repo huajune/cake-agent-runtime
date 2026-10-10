@@ -1883,7 +1883,16 @@ export function buildJobListTool(
           // 即使候选人没传约束，也要给所有岗位标语义，便于上层信号使用。
           const scheduleFilterResult = applyScheduleConstraint(jobs, candidateScheduleConstraint);
           unknownSchedules = scheduleFilterResult.unknown;
-          jobs = scheduleFilterResult.jobs;
+          const unknownJobIds = new Set(unknownSchedules.map(({ jobId }) => jobId));
+          // 待确认岗位也要继续接受其他硬条件筛选；只在进入展示和推荐池前移除。
+          jobs = [
+            ...scheduleFilterResult.jobs,
+            ...jobs.filter((job) => unknownJobIds.has(job.basicInfo?.jobId ?? null)),
+          ];
+          const scopeUnknownSchedules = () => {
+            const remainingIds = new Set(jobs.map((job) => job.basicInfo?.jobId ?? null));
+            unknownSchedules = unknownSchedules.filter(({ jobId }) => remainingIds.has(jobId));
+          };
           total = jobs.length;
           if (
             candidateScheduleConstraint &&
@@ -1932,6 +1941,7 @@ export function buildJobListTool(
             : null;
           if (accommodationFilterResult) {
             jobs = accommodationFilterResult.jobs;
+            scopeUnknownSchedules();
             total = jobs.length;
             if (jobs.length === 0) {
               // 全城扫描有页数上限：截断时只能说"查到的这批里没有"，不能断言全城没有。
@@ -1990,6 +2000,7 @@ export function buildJobListTool(
               : null;
           if (laborFormFilterResult.applied) {
             jobs = laborFormFilterResult.jobs;
+            scopeUnknownSchedules();
             total = jobs.length;
             if (laborFormFilterResult.excluded.length > 0 && jobs.length === 0) {
               const noMatchFollowUp =
@@ -2044,6 +2055,7 @@ export function buildJobListTool(
           let studentFilterNotice: string | null = null;
           if (studentFilterResult.applied) {
             jobs = studentFilterResult.jobs;
+            scopeUnknownSchedules();
             total = jobs.length;
             if (studentFilterResult.excluded.length > 0 && jobs.length === 0) {
               return buildQueryError({
@@ -2081,6 +2093,16 @@ export function buildJobListTool(
                 `ℹ️ 候选人已明确学生身份：本轮已剔除 ${studentFilterResult.excluded.length} 个「不接受学生」的岗位，` +
                 '以下仅展示学生可做/未标注学生限制的岗位。不得再推荐被剔除岗位；候选人点名问到时，如实说明该岗只招社会人士。';
             }
+          }
+
+          jobs = jobs.filter((job) => !unknownJobIds.has(job.basicInfo?.jobId ?? null));
+          total = jobs.length;
+          if (jobs.length === 0 && unknownSchedules.length > 0) {
+            return buildQueryError({
+              errorType: TOOL_ERROR_TYPES.JOB_LIST_SCHEDULE_FILTER_EMPTY,
+              outcome: '其他硬条件通过的岗位仍需确认班次',
+              replyInstruction: '岗位班次仍需确认，不能当作已匹配岗位推荐或断言没有岗位。',
+            });
           }
 
           // 意向工种本地软排序（不下传 API、不过滤）：明确匹配的岗位稳定分区排前

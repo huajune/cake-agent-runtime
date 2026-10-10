@@ -64,6 +64,49 @@ describe('结构化班次匹配', () => {
     expect(matchDailySchedule(fixed, { minShiftHours: 6 }).status).toBe('unmatched');
     expect(matchDailySchedule(combo, { minShiftHours: 6 }).matchedSlotIndexes).toEqual([0]);
   });
+  it('组合排班的正向标签和时长必须由同一档满足', () => {
+    const shifts = getJobSchedule(
+      scheduledJob(7, '组合排班制', [
+        ['17:00', '01:00'],
+        ['08:00', '12:00'],
+      ]),
+    );
+    expect(
+      matchDailySchedule(shifts, { includeAnyTags: ['evening'], maxShiftHours: 4 }).status,
+    ).toBe('unmatched');
+    expect(
+      matchDailySchedule(shifts, { includeAnyTags: ['morning'], minShiftHours: 8 }).status,
+    ).toBe('unmatched');
+    expect(
+      matchDailySchedule(shifts, {
+        includeAnyTags: ['evening', 'morning'],
+        maxShiftHours: 4,
+      }),
+    ).toMatchObject({ status: 'matched', matchedSlotIndexes: [1] });
+    expect(
+      matchDailySchedule(shifts, {
+        includeAnyTags: ['evening'],
+        minShiftHours: 8,
+      }),
+    ).toMatchObject({ status: 'matched', matchedSlotIndexes: [0] });
+  });
+  it('明确时段和时长共同生效时仍忽略派生的正向标签', () => {
+    expect(
+      matchDailySchedule(combo, {
+        includeAnyTags: ['night'],
+        availableWindow: { start: '15:00', end: '21:00' },
+        maxShiftHours: 5,
+      }),
+    ).toMatchObject({ status: 'matched', matchedSlotIndexes: [1] });
+  });
+  it('固定排班仍按岗位标签粗筛，且全部必选档都满足时长', () => {
+    expect(
+      matchDailySchedule(fixed, { includeAnyTags: ['morning'], maxShiftHours: 6 }),
+    ).toMatchObject({ status: 'matched', matchedSlotIndexes: [0, 1] });
+    expect(
+      matchDailySchedule(fixed, { includeAnyTags: ['morning'], maxShiftHours: 5 }).status,
+    ).toBe('unmatched');
+  });
   it('跨日窗口可容纳次日凌晨档；跨日班次不可越过结束边界', () => {
     const night = getJobSchedule(scheduledJob(4, '固定排班', [['00:00', '06:00']]));
     expect(

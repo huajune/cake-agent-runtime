@@ -2544,6 +2544,93 @@ describe('buildJobListTool', () => {
   });
 
   describe('班次条件引用与事实核对', () => {
+    describe.each([
+      {
+        name: '用工形式',
+        hints: testTurnHints(testTurnHint('preferences.labor_form', '全职', '候选人要全职')),
+        input: {},
+        rejected: { basicInfo: { laborForm: '兼职' } },
+        errorType: TOOL_ERROR_TYPES.JOB_LIST_LABOR_FORM_FILTER_EMPTY,
+      },
+      {
+        name: '学生身份',
+        hints: testTurnHints(testTurnHint('interview_info.is_student', true, '候选人是学生')),
+        input: {},
+        rejected: { hiringRequirement: { remark: '不招学生' } },
+        errorType: TOOL_ERROR_TYPES.JOB_LIST_STUDENT_FILTER_EMPTY,
+      },
+      {
+        name: '包住要求',
+        hints: testTurnHints(),
+        input: { requireAccommodation: true },
+        rejected: { welfare: null },
+        errorType: TOOL_ERROR_TYPES.JOB_LIST_NO_RESULTS,
+      },
+    ])('待确认岗位仍须满足其他条件：$name', ({ hints, input, rejected, errorType }) => {
+      it.each([false, true])(
+        '其他条件明确排除全部岗位后不再报班次待确认，含已匹配班次=%s',
+        async (withMatched) => {
+          const pending = { ...makeJobData(rejected), workTime: flexibleJob().workTime };
+          const matched = {
+            ...makeJobData(rejected),
+            basicInfo: { ...makeJobData(rejected).basicInfo, jobId: 2 },
+            workTime: scheduledJob(2, '固定排班', [['18:00', '22:00']]).workTime,
+          };
+          const jobs = withMatched ? [pending, matched] : [pending];
+          mockSpongeService.fetchJobs.mockResolvedValue({ jobs, total: jobs.length });
+          const query = {
+            ...defaultInput,
+            cityNameList: ['北京'],
+            ...input,
+            candidateScheduleConstraint: { availableWindow: { start: '18:00' } },
+            candidateScheduleCitation: { quote: '18点后有空' },
+          };
+
+          const result = await executeTool(
+            mergeToolContext(mockContext, {
+              turnInput: { currentUserMessage: '18点后有空' },
+              ledger: { facts: { turnHints: hints } },
+            }),
+            query,
+          );
+
+          expect(result.errorType).toBe(errorType);
+          expect(result.queryMeta).toMatchObject({
+            scanComplete: true,
+            unknownCount: 0,
+            unknownSchedules: [],
+          });
+        },
+      );
+    });
+    it('其他条件通过的灵活岗位仍待确认，不进入推荐池', async () => {
+      const pending = { ...makeJobData(), workTime: flexibleJob().workTime };
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [pending], total: 1 });
+      const recordFetchedJobs = jest.fn();
+      const result = await executeTool(
+        mergeToolContext(mockContext, {
+          turnInput: { currentUserMessage: '18点后有空' },
+          ledger: {
+            recordFetchedJobs,
+            facts: {
+              turnHints: testTurnHints(
+                testTurnHint('preferences.labor_form', '全职', '候选人要全职'),
+              ),
+            },
+          },
+        }),
+        {
+          ...defaultInput,
+          cityNameList: ['北京'],
+          candidateScheduleConstraint: { availableWindow: { start: '18:00' } },
+          candidateScheduleCitation: { quote: '18点后有空' },
+        } as typeof defaultInput,
+      );
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_QUERY_INCOMPLETE);
+      expect(result.queryMeta.unknownCount).toBe(1);
+      expect(result.noMatchScript).toBeUndefined();
+      expect(recordFetchedJobs).not.toHaveBeenCalled();
+    });
     it.each([undefined, { quote: '助手说只能晚班' }, { quote: '旧轮只能晚班' }])(
       '缺少本轮引用不能设置任何时间条件: %j',
       async (citation) => {

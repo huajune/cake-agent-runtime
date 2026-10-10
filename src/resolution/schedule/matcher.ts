@@ -52,10 +52,19 @@ export function matchDailySchedule(
     )
       return result('unmatched', '岗位没有候选人要求的班次标签');
   }
+  // 标签仍作岗位粗筛；组合排班附加时长要求时，须由同一可选档同时满足。
+  const requiredSlotTags =
+    schedule.arrangementType === '组合排班制' &&
+    !timed &&
+    (conditions.minShiftHours != null || conditions.maxShiftHours != null)
+      ? (conditions.includeAnyTags ?? [])
+      : [];
   const matched = schedule.slots
     .filter((slot) => {
       const duration = (slot.endMinute - slot.startMinute) / 60;
       return (
+        (requiredSlotTags.length === 0 ||
+          requiredSlotTags.some((tag) => slot.tags.includes(tag))) &&
         candidateCovers(slot, conditions.availableWindow) &&
         avoidsUnavailable(slot, conditions.unavailableWindow) &&
         (conditions.minShiftHours == null || duration >= conditions.minShiftHours) &&
