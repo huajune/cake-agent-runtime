@@ -1,3 +1,8 @@
+import {
+  CandidateScheduleConstraintSchema,
+  StoredScheduleConstraintSchema,
+  SCHEDULE_CONSTRAINT_GUIDANCE,
+} from '@resolution/schedule/types';
 import { z } from 'zod';
 import type { StorageMessageSource, StorageMessageType } from '@enums/storage-message.enum';
 import { BRAND_INTENT_POLARITIES } from '@resolution/brand/brand-resolution.types';
@@ -202,26 +207,7 @@ const NullableDelayedIntentSchema = DelayedIntentSchema.nullable().default(null)
  * 设计：把 schedule（自由文本）持久化的同时，额外存一份结构化对象，让下游 tool
  * 调用可以直接读取并自动带上 candidateScheduleConstraint 入参，不靠 LLM 记忆。
  */
-export const ScheduleConstraintFactSchema = z.object({
-  onlyWeekends: z.boolean().nullable().default(null).describe('只周末上班'),
-  onlyEvenings: z.boolean().nullable().default(null).describe('只做晚班/夜班'),
-  onlyMornings: z.boolean().nullable().default(null).describe('只做早班'),
-  maxDaysPerWeek: z
-    .number()
-    .int()
-    .min(1)
-    .max(7)
-    .nullable()
-    .default(null)
-    .describe('每周最多上班天数；不得把轮休周期内的连续工作天数直接当作每周上限'),
-  availableWindow: z
-    .object({ start: z.string(), end: z.string() })
-    .nullable()
-    .default(null)
-    .describe(
-      '候选人可上班的具体时段，起止时间均用 HH:MM 格式；结束时间允许 24:00，end 不晚于 start 时表示跨午夜至次日；班次须整段落在其内',
-    ),
-});
+export const ScheduleConstraintFactSchema = StoredScheduleConstraintSchema;
 export type ScheduleConstraintFact = z.infer<typeof ScheduleConstraintFactSchema>;
 
 const NullableScheduleConstraintSchema = ScheduleConstraintFactSchema.nullable().default(null);
@@ -291,7 +277,7 @@ export const PreferencesSchema = z.object({
     .default(null)
     .describe('可用时间窗口（保留候选人原话）'),
   schedule_constraint: NullableScheduleConstraintSchema.describe(
-    '班次硬约束（结构化）：onlyWeekends/onlyEvenings/onlyMornings/maxDaysPerWeek，与 duliday_job_list 入参对齐',
+    '候选人班次条件，与 duliday_job_list 的 candidateScheduleConstraint 共用字段契约',
   ),
   available_after: NullableAvailableAfterSchema.describe(
     '未来日期硬约束：仅当候选人原话明确给出可解析的具体日期时填写；早于此日期的 slot 视为不可约',
@@ -335,8 +321,9 @@ export const LLMPreferencesSchema = z.object({
     .array(z.string())
     .nullable()
     .describe('可用时间窗口（保留候选人给出的时间点或时间段原话）'),
-  schedule_constraint: ScheduleConstraintFactSchema.nullable().describe(
-    '班次硬约束结构化：仅在候选人原话明确限制可工作日期、每周天数或时段时填写；含糊不填',
+  schedule_constraint: CandidateScheduleConstraintSchema.nullable().describe(
+    SCHEDULE_CONSTRAINT_GUIDANCE +
+      '只保存候选人明确声明的持续出勤要求，早班有吗等单次查询不写入持续限制。只输出本轮变更，并同时提供schedule_constraint_citation。',
   ),
   available_after: AvailableAfterFactSchema.nullable().describe(
     '未来日期硬约束：候选人原话给出可解析的明确日期时填写 YYYY-MM-DD；仅提月底、开学或某周之后而未明确具体日期时，一律不填，不得自行补成某一天。推迟意向仍可保留到 delayed_intent，不得因日期未入库而忽略延期要求',
@@ -395,6 +382,11 @@ export type LaborFormIntentExtraction = z.infer<typeof LaborFormIntentExtraction
 /** LLM 结构化输出只允许表单外软事实；身份字段由收资表单逐格/办结专用入口写入。 */
 export const LLMEntityExtractionResultSchema = z.object({
   preferences: LLMPreferencesSchema,
+  schedule_constraint_citation: z
+    .object({ quote: z.string() })
+    .nullable()
+    .optional()
+    .describe('本轮班次条件变更的候选人逐字原话；只从本轮候选人消息摘取'),
   brand_intents: z
     .array(BrandIntentEntrySchema)
     .nullable()

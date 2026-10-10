@@ -1,3 +1,4 @@
+import { formatStoredScheduleConstraint } from '@resolution/schedule/format';
 // 知识归类：working —— 本段呈现候选人本轮硬约束线索，属于 evidence 数据。
 // prompt-rule-ledger: docs/prompt-rule-ledger.md（本轮查询约束总账）
 import { isHardFilteredLaborForm, isValidLaborForm } from '@resolution/labor-form';
@@ -202,25 +203,10 @@ export class HardConstraintsSection implements PromptSection {
       );
     }
     if (pref.time_windows?.length) {
-      lines.push(
-        `- 可用时间窗口: ${pref.time_windows.join('、')}（推荐岗位的工时班次建议与该窗口有交集）`,
-      );
+      lines.push(`- 可用时间窗口: ${pref.time_windows.join('、')}`);
     }
-    if (pref.schedule_constraint) {
-      const parts: string[] = [];
-      if (pref.schedule_constraint.onlyWeekends) parts.push('只周末');
-      if (pref.schedule_constraint.onlyEvenings) parts.push('只晚班');
-      if (pref.schedule_constraint.onlyMornings) parts.push('只早班');
-      if (pref.schedule_constraint.maxDaysPerWeek)
-        parts.push(`每周最多${pref.schedule_constraint.maxDaysPerWeek}天`);
-      if (pref.schedule_constraint.availableWindow)
-        parts.push(
-          `可上班时段${pref.schedule_constraint.availableWindow.start}-${pref.schedule_constraint.availableWindow.end}（查岗必须传 candidateScheduleConstraint.availableWindow）`,
-        );
-      if (parts.length > 0) {
-        lines.push(`- 结构化排班约束: ${parts.join('、')}（建议结合 includeWorkTime 校验匹配度）`);
-      }
-    }
+    const scheduleLabel = formatStoredScheduleConstraint(pref.schedule_constraint);
+    if (scheduleLabel) lines.push(`- 结构化排班约束: ${scheduleLabel}`);
     if (pref.available_after) {
       lines.push(
         `- 最早可面试日期: ${pref.available_after.date}（候选人原话："${pref.available_after.raw}"；该日期前不要催面试）`,

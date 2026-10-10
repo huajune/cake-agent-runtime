@@ -18,10 +18,10 @@ describe('generic job-requirement boundaries', () => {
     const candidatePrompt = readPrompt('candidate-consultation.md');
     const comboScheduleCheck = finalCheckRuleText('combo_schedule_two_dimensions');
 
-    expect(candidatePrompt).toContain('“组合排班”只描述班次组合/轮换，不代表周频');
+    expect(candidatePrompt).toContain('组合排班制完整满足其中一档即可');
     expect(candidatePrompt).toContain('不能据此推断每周最低出勤天数');
     expect(candidatePrompt).toContain('候选人的每周出勤上限须独立处理');
-    expect(candidatePrompt).toContain('是否匹配只看具体岗位本轮 `duliday_job_list` 返回的每周要求');
+    expect(candidatePrompt).toContain('仍独立核对周频');
     expect(comboScheduleCheck).toContain('把两者作为独立维度');
     expect(comboScheduleCheck).toContain(
       '无具体岗位与本轮岗位工具证据时，不得推断组合排班存在周出勤底线或候选人难以匹配',

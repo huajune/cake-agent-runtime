@@ -34,6 +34,8 @@
 - **[二次主动回复流水线](architecture/reengagement-pipeline.md)** — 复聊：锚点触发、停止条件与水位、outbox 幂等、带外工单核验
 - **[群任务通知流水线](architecture/group-task-pipeline.md)** — 群任务定时通知的运行时流水线
 
+- **[班次理解与岗位匹配](architecture/shift-matching.md)** — 海绵固定契约、班次匹配、分页完整性与跨轮条件
+
 ### 候选人事实链路
 
 - **[候选人档案域架构](architecture/candidate-profile-domain.md)** ⭐ — **域宪法**：主权归 memory / 实现归 resolution、字段四阶段、治理四不变式、claim 通货、消费面纪律

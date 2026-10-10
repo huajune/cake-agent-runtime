@@ -1,3 +1,4 @@
+import { parseDayWorkTime, WorkTimeContractError } from './work-time.types';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { z } from 'zod';
@@ -201,6 +202,7 @@ export class SpongeService {
   async fetchJobs(
     params: JobListQueryParams,
     tokenContext?: SpongeTokenResolveContext,
+    signal?: AbortSignal,
   ): Promise<JobListResult> {
     const token = await this.resolveDulidayToken(tokenContext);
 
@@ -240,6 +242,7 @@ export class SpongeService {
 
     const response = await fetchWithTimeout(this.jobListApi, {
       method: 'POST',
+      signal,
       headers: {
         'Content-Type': 'application/json',
         'Duliday-Token': token,
@@ -259,7 +262,7 @@ export class SpongeService {
           .map((issue) => `${issue.path.join('.') || '<root>'}: ${issue.message}`)
           .join('; ')}`,
       );
-      return { jobs: [], total: 0 };
+      throw new WorkTimeContractError(`岗位查询返回结构异常: ${parsed.error.message}`);
     }
 
     if (parsed.data.code !== 0) {
@@ -268,6 +271,16 @@ export class SpongeService {
       const reason = data?.message ?? `code=${parsed.data.code}`;
       this.logger.warn(`岗位查询返回非零: ${reason}`);
       throw new Error(`岗位查询失败: ${reason}`);
+    }
+
+    if (!parsed.data.data) {
+      throw new WorkTimeContractError('岗位查询成功响应缺少 data');
+    }
+
+    if (params.options?.includeWorkTime) {
+      for (const job of parsed.data.data?.result ?? []) {
+        parseDayWorkTime(job.workTime, job.basicInfo?.jobId ?? null);
+      }
     }
 
     return {

@@ -165,7 +165,7 @@ describe('SpongeService', () => {
       await expect(service.fetchJobs({})).rejects.toThrow('API请求失败');
     });
 
-    it('should return empty result when API response shape is invalid', async () => {
+    it('should reject invalid API shapes instead of claiming no jobs', async () => {
       const mockResponse = {
         ok: true,
         json: jest.fn().mockResolvedValue({
@@ -175,10 +175,19 @@ describe('SpongeService', () => {
       };
       jest.spyOn(global, 'fetch').mockResolvedValue(mockResponse as unknown as Response);
 
-      const result = await service.fetchJobs({});
-
-      expect(result).toEqual({ jobs: [], total: 0 });
+      await expect(service.fetchJobs({})).rejects.toThrow('岗位查询返回结构异常');
     });
+
+    it.each([undefined, {}, { result: [] }, { total: 0 }])(
+      'rejects a success response with missing pagination fields: %j',
+      async (data) => {
+        jest.spyOn(global, 'fetch').mockResolvedValue({
+          ok: true,
+          json: async () => ({ code: 0, data }),
+        } as Response);
+        await expect(service.fetchJobs({})).rejects.toThrow('契约错误');
+      },
+    );
 
     it('resolves the Duliday token from hosting_member_config by botImId', async () => {
       hostingMemberConfigService.resolveDulidayToken.mockResolvedValueOnce('member-token');

@@ -121,7 +121,7 @@ export const FINAL_CHECK_RULES: FinalCheckRule[] = [
     id: 'combo_schedule_two_dimensions',
     group: 'promise_tool_consistency',
     trigger: 'always',
-    text: '候选人问组合排班并同时给出每周最多出勤天数时，回复是否把两者作为独立维度？无具体岗位与本轮岗位工具证据时，不得推断组合排班存在周出勤底线或候选人难以匹配；只说明班次会组合或轮换，周频另看具体岗位明确要求。',
+    text: '候选人问组合排班并同时给出每周最多出勤天数时，回复是否把两者作为独立维度？无具体岗位与本轮岗位工具证据时，不得推断组合排班存在周出勤底线或候选人难以匹配；只说明组合排班完整满足其中一档即可，周频另看具体岗位明确要求。',
   },
   {
     id: 'health_cert_general_answer',

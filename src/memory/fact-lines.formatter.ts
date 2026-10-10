@@ -1,3 +1,4 @@
+import { formatStoredScheduleConstraint } from '@resolution/schedule/format';
 import { isValidLaborForm } from '@resolution/labor-form';
 import { stripTimeContextSuffix } from '@resolution/candidate/name';
 import type { TurnHints, TurnHintFieldPath } from '@resolution/turn-hints/turn-hint.types';
@@ -134,20 +135,9 @@ export function formatExtractionFactLines(
   if (timeWindows?.length)
     lines.push(`- 可用时间窗口: ${timeWindows.join('、')}${meta(pref.time_windows)}`);
   const scheduleConstraint = readFactValue(pref.schedule_constraint);
-  if (scheduleConstraint) {
-    const parts: string[] = [];
-    if (scheduleConstraint.onlyWeekends) parts.push('只周末');
-    if (scheduleConstraint.onlyEvenings) parts.push('只晚班');
-    if (scheduleConstraint.onlyMornings) parts.push('只早班');
-    if (scheduleConstraint.maxDaysPerWeek)
-      parts.push(`每周最多${scheduleConstraint.maxDaysPerWeek}天`);
-    if (scheduleConstraint.availableWindow)
-      parts.push(
-        `可上班时段${scheduleConstraint.availableWindow.start}-${scheduleConstraint.availableWindow.end}`,
-      );
-    if (parts.length)
-      lines.push(`- 结构化排班约束: ${parts.join('、')}${meta(pref.schedule_constraint)}`);
-  }
+  const scheduleLabel = formatStoredScheduleConstraint(scheduleConstraint);
+  if (scheduleLabel)
+    lines.push(`- 结构化排班约束: ${scheduleLabel}${meta(pref.schedule_constraint)}`);
   const availableAfter = readFactValue(pref.available_after);
   if (availableAfter)
     lines.push(

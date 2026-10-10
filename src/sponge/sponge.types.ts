@@ -186,8 +186,8 @@ export const JobListApiResponseSchema = z
     message: z.string().optional(),
     data: z
       .object({
-        result: z.array(JobDetailSchema).default([]),
-        total: z.number().default(0),
+        result: z.array(JobDetailSchema),
+        total: z.number().int().nonnegative(),
       })
       .nullish(),
   })

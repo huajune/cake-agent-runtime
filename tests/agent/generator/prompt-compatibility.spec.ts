@@ -102,10 +102,9 @@ describe('Prompt compiler compatibility contract', () => {
     // 2026-09-10：示例/事实边界与地理示例收敛，更新已审阅的提示词字节基线。
     // 2026-09-22：运营口径第 0 期（O10 银行卡自检去封禁、O12 最短工期规则）+ 同分支手册在途改动，重锁基线。
     // 2026-09-24：个人账务（银行卡异常/拒绝本人卡/开证明）改走 personal_pay_attendance（final-check + 手册），重锁基线。
-    // 2026-09-24：删除教学对话与虚构事实示例，保留规则、真实数据和编译装配顺序。
-    // 2026-09-24：语义复核补回筛退范围、改期例外与当前岗位约束，重锁已审阅基线。
+    // 2026-10-09：班次按固定全部/组合任选解释，周频独立；统一新约束投影。
     expect(createHash('sha256').update(result.systemPrompt).digest('hex')).toBe(
-      '9cac32dbc16b49765fac572f4f30da8e8df2f26f810a32f497915f5ac36c1a17',
+      '218fd72508e58353809664ad43b7464a38c78ad2afb77c253a4b09e5bfb090bc',
     );
     expect(result.orderHash).toMatch(/^[a-f0-9]{64}$/);
     // dynamic 的口径是「随回合变化」：身份/红线/阈值/全阶段一览/通道规范只随配置变，
