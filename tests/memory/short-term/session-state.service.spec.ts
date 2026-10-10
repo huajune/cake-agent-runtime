@@ -412,6 +412,31 @@ describe('SessionStateService（S1-S6）', () => {
     ).rejects.toThrow('must be medium');
   });
 
+  it('已公证身份改口撤销原有 high 学生事实，不写成 false', async () => {
+    const meta = {
+      source: 'candidate_quote' as const,
+      confidence: 'high' as const,
+      evidence: '收资表单第 1 格落定（社会身份）',
+    };
+    await service.saveCollectionProgressFact(
+      'corp-1',
+      'user-1',
+      'session-1',
+      'is_student',
+      sessionFactValue(true, meta),
+    );
+    await service.saveCollectionProgressFact(
+      'corp-1',
+      'user-1',
+      'session-1',
+      'is_student',
+      sessionFactValue(null, meta),
+    );
+    expect(
+      (await service.getFacts('corp-1', 'user-1', 'session-1'))?.interview_info.is_student,
+    ).toBeNull();
+  });
+
   it('半途弃单未走办结入口，逐格 medium 仍可由 consolidation 提拔进长期 Profile', async () => {
     await service.saveCollectionProgressFact(
       'corp-1',
