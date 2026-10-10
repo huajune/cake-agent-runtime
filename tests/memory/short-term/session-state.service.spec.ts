@@ -3,6 +3,7 @@ import { SessionFactsService } from '@memory/short-term/facts.service';
 import { LongTermService } from '@memory/long-term/long-term.service';
 import { SessionWorkbenchService } from '@memory/short-term/workbench.service';
 import { SessionStateService } from '@memory/short-term/session-state.service';
+import { extractScheduleConstraintStructured } from '@resolution/turn-hints/producers/rule-track-preferences';
 import {
   FALLBACK_EXTRACTION,
   SessionFactsSchema,
@@ -189,6 +190,54 @@ describe('SessionStateService（S1-S6）', () => {
     expect(
       (await service.getFacts('corp-1', 'user-1', 'session-1'))?.preferences.schedule_constraint,
     ).toBeNull();
+  });
+  it('本轮连续消息中较早的班次引文也能保存', async () => {
+    llm.generateStructured.mockResolvedValue({
+      output: {
+        preferences: preferences({ schedule_constraint: { excludeTags: ['night'] } }),
+        schedule_constraint_citation: { quote: '夜班不做' },
+        reasoning: '本轮首条消息排除夜班',
+      },
+    });
+    await service.extractAndSave('corp-1', 'user-1', 'session-1', [
+      { role: 'user', content: '以前白天都可以' },
+      { role: 'assistant', content: '现在有什么时间要求？' },
+      { role: 'user', content: '夜班不做' },
+      { role: 'user', content: '帮我找上海的' },
+    ]);
+    expect(
+      (await service.getFacts('corp-1', 'user-1', 'session-1'))?.preferences.schedule_constraint,
+    ).toMatchObject({
+      value: { excludeTags: ['night'] },
+      source: 'candidate_quote',
+      evidence: '夜班不做',
+    });
+  });
+  it('模型降级时跨日规则提示仍能保存，且不丢失同轮其他偏好', async () => {
+    llm.generateStructured.mockRejectedValue(new Error('LLM unavailable'));
+    const message = '晚上10点到次日6点有空';
+    const outcome = await service.extractAndSave(
+      'corp-1',
+      'user-1',
+      'session-1',
+      [{ role: 'user', content: message }],
+      testTurnHints(
+        testTurnHint(
+          'preferences.schedule_constraint',
+          extractScheduleConstraintStructured(message),
+          message,
+        ),
+        testTurnHint('preferences.position', ['服务员'], '想做服务员'),
+      ),
+    );
+    expect(outcome.llmDegraded).toBe(true);
+    const saved = (await service.getFacts('corp-1', 'user-1', 'session-1'))?.preferences;
+    expect(saved.schedule_constraint?.value.availableWindow).toEqual({
+      start: '22:00',
+      end: '06:00',
+      endDayOffset: 1,
+    });
+    expect(saved.position?.value).toEqual(['服务员']);
   });
 
   it('读边界把历史 low/unknown 统一归一为 medium', () => {

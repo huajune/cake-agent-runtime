@@ -8,6 +8,7 @@ import {
   extractSchedule,
   extractScheduleConstraintStructured,
 } from '@resolution/turn-hints/producers/rule-track-preferences';
+import { ScheduleWindowSchema } from '@resolution/schedule/types';
 
 describe('rule-track preferences · extractLaborForm', () => {
   it('reads an explicit labor-form intent', () => {
@@ -83,13 +84,18 @@ describe('extractAvailableWindow（候选人可上班时段，badcase j4kb5ijm�
     ['18:30-24:00', { start: '18:30', end: '24:00' }],
     ['我下午5点到10点有空', { start: '17:00', end: '22:00' }],
     ['晚上六点到十点', { start: '18:00', end: '22:00' }],
-    ['只能上22:00到次日6点', { start: '22:00', end: '06:00' }],
+    ['只能上22:00到次日6点', { start: '22:00', end: '06:00', endDayOffset: 1 }],
+    ['晚上10点到次日6点有空', { start: '22:00', end: '06:00', endDayOffset: 1 }],
+    ['22:00-06:00', { start: '22:00', end: '06:00', endDayOffset: 1 }],
+    ['晚上10点到凌晨6点有空', { start: '22:00', end: '06:00', endDayOffset: 1 }],
     ['早上8点到12点可以', { start: '08:00', end: '12:00' }],
   ])('parses %s', (text, expected) => {
     expect(extractAvailableWindow(text)).toEqual(expected);
+    expect(ScheduleWindowSchema.safeParse(extractAvailableWindow(text)).success).toBe(true);
   });
 
   it.each([
+    '24:00到4点',
     '班次：18:00-22:00',
     '我19岁',
     '周一到周五可以',

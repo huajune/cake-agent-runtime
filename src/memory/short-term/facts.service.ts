@@ -661,6 +661,11 @@ export class SessionFactsService {
     const userMessages = scopedMessages
       .filter((message) => message.role === 'user')
       .map((message) => message.content);
+    const currentTurnUserTexts: string[] = [];
+    for (let index = scopedMessages.length - 1; index >= 0; index--) {
+      if (scopedMessages[index].role !== 'user') break;
+      currentTurnUserTexts.unshift(scopedMessages[index].content);
+    }
     const lastUserText = stripTimeContext(userMessages.at(-1) ?? '').trim();
     const laborFormDecision = preparedLaborFormIntent ?? decideLaborFormIntent(lastUserText);
     const previousFacts = await this.getFacts(corpId, userId, sessionId);
@@ -691,7 +696,10 @@ export class SessionFactsService {
     const scheduleValid = Boolean(
       llmOutcome.facts.preferences.schedule_constraint &&
         scheduleCitation &&
-        verifyCitation(scheduleCitation, [lastUserText]).verified,
+        verifyCitation(
+          scheduleCitation,
+          currentTurnUserTexts.map((text) => stripTimeContext(text).trim()),
+        ).verified,
     );
     const scheduleAuthoritative =
       !llmOutcome.degraded &&
@@ -758,11 +766,6 @@ export class SessionFactsService {
       }
     }
 
-    const currentTurnUserTexts: string[] = [];
-    for (let index = scopedMessages.length - 1; index >= 0; index--) {
-      if (scopedMessages[index].role !== 'user') break;
-      currentTurnUserTexts.unshift(scopedMessages[index].content);
-    }
     const geoClear = currentTurnUserTexts
       .map((text) => decideGeoPreferenceClear(stripTimeContext(text).trim()))
       .reduce(
