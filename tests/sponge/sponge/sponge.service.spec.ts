@@ -5,6 +5,7 @@ import { SpongeBiService } from '@sponge/sponge-bi.service';
 import { RedisService } from '@infra/redis/redis.service';
 import { HostingMemberConfigService } from '@biz/hosting-config/services/hosting-member-config.service';
 import { WorkTimeContractError } from '@sponge/work-time.types';
+import { SpongeResponseContractError } from '@sponge/response-contract.error';
 
 describe('SpongeService', () => {
   let service: SpongeService;
@@ -187,7 +188,7 @@ describe('SpongeService', () => {
           json: async () => ({ code: 0, data }),
         } as Response);
         const error = await service.fetchJobs({}).catch((failure: unknown) => failure);
-        expect(error).toBeInstanceOf(Error);
+        expect(error).toBeInstanceOf(SpongeResponseContractError);
         expect(error).not.toBeInstanceOf(WorkTimeContractError);
       },
     );
@@ -204,10 +205,19 @@ describe('SpongeService', () => {
       const error = await service
         .fetchJobs({ options: { includeWorkTime: true } })
         .catch((failure: unknown) => failure);
-      expect(error).toBeInstanceOf(Error);
+      expect(error).toBeInstanceOf(SpongeResponseContractError);
       expect(error).not.toBeInstanceOf(WorkTimeContractError);
     });
 
+    it('成功响应不是JSON时作为响应契约错误传播', async () => {
+      jest.spyOn(global, 'fetch').mockResolvedValue({
+        ok: true,
+        json: async () => {
+          throw new SyntaxError('invalid JSON');
+        },
+      } as unknown as Response);
+      await expect(service.fetchJobs({})).rejects.toThrow(SpongeResponseContractError);
+    });
     it('真实班次契约异常仍使用班次错误类型', async () => {
       jest.spyOn(global, 'fetch').mockResolvedValue({
         ok: true,

@@ -1,5 +1,6 @@
 import { scanJobPages, buildScannedQueryError } from '@tools/job-list/scan-jobs.util';
 import { WorkTimeContractError } from '@sponge/work-time.types';
+import { SpongeResponseContractError } from '@sponge/response-contract.error';
 import { TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
 const page = (start: number, count: number) =>
   Array.from({ length: count }, (_, i) => ({ basicInfo: { jobId: start + i } }));
@@ -92,6 +93,16 @@ describe('岗位有界补页', () => {
         Date.now() + 15000,
       ),
     ).rejects.toThrow(WorkTimeContractError);
+  });
+  it('后页响应契约异常必须中止整次查询，不能伪装成网络部分成功', async () => {
+    await expect(
+      scanJobPages(
+        { jobs: page(1, 20), total: 40 },
+        {},
+        jest.fn().mockRejectedValue(new SpongeResponseContractError('缺少data')),
+        Date.now() + 15000,
+      ),
+    ).rejects.toThrow(SpongeResponseContractError);
   });
   it('查询过程中total变化不能声称完整', async () => {
     const out = await scanJobPages(

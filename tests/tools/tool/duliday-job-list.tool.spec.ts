@@ -6,6 +6,7 @@ import type { TurnLedger } from '@shared-types/turn.types';
 import { createToolContext, mergeToolContext } from '../../helpers/tool-context.fixture';
 import { testTurnHint, testTurnHints } from '../../helpers/turn-hints.fixture';
 import type { CandidateScheduleConstraint } from '@resolution/schedule/types';
+import { SpongeResponseContractError } from '@sponge/response-contract.error';
 
 type JobListTestContext = ToolBuildContext & {
   turnId?: string;
@@ -2791,6 +2792,68 @@ describe('buildJobListTool', () => {
         storeNameList: [],
         pageNum: 2,
       });
+    });
+    it('补页后只返回排序后的20条，匹配总数单独记录', async () => {
+      const all = Array.from({ length: 45 }, (_, i) =>
+        scheduledJob(i + 1, '固定排班', [['19:00', '22:00']]),
+      );
+      all[44] = flexibleJob(45);
+      mockSpongeService.fetchJobs.mockImplementation(async ({ pageNum = 1 }) => ({
+        jobs: all.slice((pageNum - 1) * 20, pageNum * 20),
+        total: all.length,
+      }));
+      const recordFetchedJobs = jest.fn();
+      const context = {
+        ...mockContext,
+        currentUserMessage: '优先灵活排班',
+        recordFetchedJobs,
+      };
+      const result = await executeTool(context, {
+        ...defaultInput,
+        cityNameList: ['上海'],
+        responseFormat: ['markdown', 'rawData'],
+        candidateScheduleConstraint: { preferFlexibleSchedule: true },
+        candidateScheduleCitation: { quote: '优先灵活排班' },
+      } as typeof defaultInput);
+      expect(result.resultCount).toBe(20);
+      expect(result.rawData.result).toHaveLength(20);
+      expect(result.rawData.result[0].workTime.dayWorkTime.arrangementType).toBe('灵活排班');
+      expect(result.queryMeta).toMatchObject({
+        scannedCount: 45,
+        matchedCount: 45,
+        returnedCount: 20,
+        hasMoreMatches: true,
+      });
+      expect(recordFetchedJobs.mock.calls[0][0]).toHaveLength(20);
+      expect(result.markdown).toContain('本次展示排序后的前 20 个');
+    });
+    it('后页契约错误不能返回第一页推荐或写入候选池', async () => {
+      const recordFetchedJobs = jest.fn();
+      mockSpongeService.fetchJobs
+        .mockResolvedValueOnce({
+          jobs: Array.from({ length: 20 }, (_, i) =>
+            scheduledJob(i + 1, '固定排班', [['19:00', '22:00']]),
+          ),
+          total: 40,
+        })
+        .mockRejectedValueOnce(new SpongeResponseContractError('缺少data'));
+      const result = await executeTool(
+        {
+          ...mockContext,
+          currentUserMessage: '18点后有空',
+          recordFetchedJobs,
+        },
+        {
+          ...defaultInput,
+          cityNameList: ['上海'],
+          candidateScheduleConstraint: { availableWindow: { start: '18:00' } },
+          candidateScheduleCitation: { quote: '18点后有空' },
+        } as typeof defaultInput,
+      );
+      expect(result.success).toBe(false);
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_FETCH_FAILED);
+      expect(result._replyInstruction).toContain('需数据源团队修复');
+      expect(recordFetchedJobs).not.toHaveBeenCalled();
     });
     it('第一页不符仍查询第二页，不改变城市品牌和条件', async () => {
       const first = Array.from({ length: 20 }, (_, i) =>
