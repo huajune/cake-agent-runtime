@@ -135,18 +135,24 @@ describe('JobDataAuditCronService.runOnce', () => {
     expect(alertNotifier.sendAlert).not.toHaveBeenCalled();
   });
 
-  it.each([{ brands: [] }, { brands: [{ name: '无 ID 品牌' }] }])(
-    '品牌范围不可用时告警，不发无筛选岗位查询：%j',
-    async ({ brands }) => {
-      const { service, spongeService, alertNotifier } = makeService(PROD_ENABLED);
-      spongeService.fetchBrandList.mockResolvedValue(brands);
-      const result = await service.runOnce();
-      expect(result).toMatchObject({ scanned: 0, truncated: true, alerted: true });
-      expect(result.fetchError).toContain('品牌范围读取失败');
-      expect(spongeService.fetchJobs).not.toHaveBeenCalled();
-      expect(alertNotifier.sendAlert).toHaveBeenCalledTimes(1);
-    },
-  );
+  it.each([
+    { brands: [] },
+    { brands: [{ name: '无 ID 品牌' }] },
+    ...[undefined, null, 0, -1, 1.5, '2'].map((id) => ({
+      brands: [
+        { id: 1, name: '有效品牌' },
+        { id, name: '无效品牌' },
+      ],
+    })),
+  ])('品牌范围不可用时告警，不发无筛选岗位查询：%j', async ({ brands }) => {
+    const { service, spongeService, alertNotifier } = makeService(PROD_ENABLED);
+    spongeService.fetchBrandList.mockResolvedValue(brands);
+    const result = await service.runOnce();
+    expect(result).toMatchObject({ scanned: 0, truncated: true, alerted: true });
+    expect(result.fetchError).toContain('品牌范围读取失败');
+    expect(spongeService.fetchJobs).not.toHaveBeenCalled();
+    expect(alertNotifier.sendAlert).toHaveBeenCalledTimes(1);
+  });
 
   it('扫描截断即使暂无录入问题也告警，不能表示完整体检正常', async () => {
     const { service, spongeService, alertNotifier } = makeService({
