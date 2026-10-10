@@ -54,7 +54,7 @@ function renderLedger(pending, { owner }) {
 
   const checksRows = entries.map(
     (entry) =>
-      `| PR #${entry.number} required checks | 通过 | CI Checks + ai-code-review 全绿后合入 |`,
+      `| PR #${entry.number} required checks | 待复核 | 核对 CI Checks 与 PR 最新提交的正式审批记录 |`,
   );
   if (checksRows.length === 0) {
     checksRows.push('| CI | 通过 | required checks 全绿 |');
