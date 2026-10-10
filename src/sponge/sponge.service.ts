@@ -1,4 +1,4 @@
-import { parseDayWorkTime, WorkTimeContractError } from './work-time.types';
+import { parseDayWorkTime } from './work-time.types';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { z } from 'zod';
@@ -262,7 +262,7 @@ export class SpongeService {
           .map((issue) => `${issue.path.join('.') || '<root>'}: ${issue.message}`)
           .join('; ')}`,
       );
-      throw new WorkTimeContractError(`岗位查询返回结构异常: ${parsed.error.message}`);
+      throw new Error(`岗位查询返回结构异常: ${parsed.error.message}`);
     }
 
     if (parsed.data.code !== 0) {
@@ -274,7 +274,7 @@ export class SpongeService {
     }
 
     if (!parsed.data.data) {
-      throw new WorkTimeContractError('岗位查询成功响应缺少 data');
+      throw new Error('岗位查询成功响应缺少 data');
     }
 
     if (params.options?.includeWorkTime) {

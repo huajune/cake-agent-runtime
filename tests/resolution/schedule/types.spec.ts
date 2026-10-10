@@ -1,10 +1,32 @@
 import {
   CandidateScheduleConstraintSchema,
+  type StoredScheduleConstraint,
   mergeScheduleConstraints,
   readScheduleConditions,
 } from '@resolution/schedule/types';
 
 describe('候选人条件契约', () => {
+  it.each<StoredScheduleConstraint>([
+    { excludeTags: ['night'] },
+    { unavailableWindow: { start: '12:00', end: '14:00' } },
+    { unavailableWindow: null },
+    { availableWindow: null },
+    { includeAnyTags: [] },
+  ])('无关补丁或空撤销值不解除历史早晚班限制：%j', (patch) => {
+    for (const legacy of [{ onlyEvenings: true }, { onlyMornings: true }]) {
+      const merged = mergeScheduleConstraints(legacy, patch);
+      expect(merged).toMatchObject(legacy);
+      expect(readScheduleConditions(merged).legacyUnresolved).toBe(true);
+    }
+  });
+  it.each<StoredScheduleConstraint>([
+    { includeAnyTags: ['evening'] },
+    { availableWindow: { start: '18:00' } },
+  ])('明确的新可出勤条件替换历史早晚班含义：%j', (patch) => {
+    const merged = mergeScheduleConstraints({ onlyEvenings: true }, patch);
+    expect(merged).toEqual(patch);
+    expect(readScheduleConditions(merged).legacyUnresolved).toBe(false);
+  });
   it.each([
     { availableWindow: {} },
     { availableWindow: { start: '24:00' } },

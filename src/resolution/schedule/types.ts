@@ -122,10 +122,13 @@ export function mergeScheduleConstraints(
   };
   if (
     patch &&
-    ['includeAnyTags', 'excludeTags', 'availableWindow', 'unavailableWindow'].some((key) =>
-      Object.prototype.hasOwnProperty.call(patch, key),
-    )
+    (patch.includeAnyTags?.length ||
+      patch.availableWindow ||
+      (patch.includeAnyTags !== undefined && previous?.includeAnyTags?.length) ||
+      (patch.availableWindow !== undefined && previous?.availableWindow))
   ) {
+    // 只有新的可出勤含义或对已明确条件的撤销才能替换旧早晚班含义。
+    // 排除条件、无对应旧值的清空操作不应扩大候选人的可用范围。
     delete next.onlyEvenings;
     delete next.onlyMornings;
   }
