@@ -10,8 +10,6 @@ import type { InterventionTaskCategory } from './intervention-task-category';
 
 export const DESCRIPTION_MAX_LENGTH = 2800;
 export const MESSAGE_SNIPPET_MAX_LENGTH = 150;
-/** 飞书评论上限 3000，留余量。 */
-export const COMMENT_MAX_LENGTH = 2800;
 
 export interface DescriptionMessage {
   role: 'user' | 'assistant';

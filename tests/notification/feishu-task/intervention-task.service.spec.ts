@@ -8,6 +8,10 @@ import {
   FEISHU_TASK_CONFIG_KEY,
   InterventionTaskService,
 } from '@notification/feishu-task/intervention-task.service';
+import type {
+  CreateFeishuTaskInput,
+  FeishuTaskSummary,
+} from '@notification/feishu-task/feishu-task.types';
 import { SpongeService } from '@sponge/sponge.service';
 
 type FieldCall = {
@@ -29,7 +33,6 @@ describe('InterventionTaskService', () => {
     addComment: jest.fn(),
     addMembers: jest.fn(),
   };
-  const redis = { get: jest.fn(), setex: jest.fn() };
   const env: Record<string, string> = {
     FEISHU_TASK_TASKLIST_GUID: 'tl-1',
     FEISHU_TASK_OWNER_OPEN_IDS_JSON: JSON.stringify({
@@ -85,18 +88,23 @@ describe('InterventionTaskService', () => {
     );
     jest.useFakeTimers().setSystemTime(new Date('2026-09-22T02:00:00Z')); // 上海周二 10:00
     systemConfig.getConfigValue.mockResolvedValue({ enabled: true });
-    redis.get.mockResolvedValue(null);
-    redis.setex.mockResolvedValue(undefined);
     client.createTask.mockResolvedValue({ guid: 'task-new' });
     client.updateTask.mockResolvedValue(true);
     client.addComment.mockResolvedValue('c1');
     client.addMembers.mockResolvedValue(true);
+    hostingMember.getByBotImId.mockImplementation(async () => ({
+      wecomNickname: '东升',
+      feishuOpenId: 'ou_dongsheng',
+    }));
+    hostingMember.resolveFeishuReceiver.mockImplementation(async () => ({
+      openId: 'ou_dongsheng',
+      name: '祝东升',
+    }));
     longTerm.tryGetActiveBookings.mockResolvedValue(null);
     sponge.fetchSignupWorkOrders.mockResolvedValue({ workOrders: [] });
 
     service = new InterventionTaskService(
       client as never,
-      redis as never,
       configService as never,
       systemConfig as never,
       hostingMember as never,
@@ -148,7 +156,6 @@ describe('InterventionTaskService', () => {
     const emptyConfigService = { get: jest.fn((key: string) => emptyEnv[key]) };
     const noTasklistService = new InterventionTaskService(
       client as never,
-      redis as never,
       emptyConfigService as never,
       systemConfig as never,
       hostingMember as never,
@@ -178,7 +185,7 @@ describe('InterventionTaskService', () => {
     expect(client.createTask).not.toHaveBeenCalled();
   });
 
-  it('新建：标题前缀 + 自定义字段 + 内置开始时间 + 负责人 + 到期 + Redis 合并键', async () => {
+  it('新建：本次标题 + 自定义字段 + 内置开始时间 + 负责人 + 到期', async () => {
     longTerm.tryGetActiveBookings.mockResolvedValue([
       {
         work_order_id: 555,
@@ -204,7 +211,7 @@ describe('InterventionTaskService', () => {
     expect(input.dueAt.toISOString()).toBe('2026-09-22T03:00:00.000Z');
     expect(input.description).toContain('【工单】555');
     expect(input.description).toContain('【岗位】jobId 99');
-    expect(input.clientToken).toMatch(/^[0-9a-f]{40}$/);
+    expect(input.clientToken).toEqual(expect.any(String));
 
     const fields = input.customFields as FieldCall[];
     const byGuid = Object.fromEntries(fields.map((f) => [f.guid, f]));
@@ -230,11 +237,6 @@ describe('InterventionTaskService', () => {
     expect(client.resolveOptionGuid).toHaveBeenCalledWith('tl-1', '原因码', '改约/取消自助失败', 5);
     expect(client.resolveOptionGuid).toHaveBeenCalledWith('tl-1', '托管账号', '东升', 30);
 
-    expect(redis.setex).toHaveBeenCalledWith(
-      'feishu-task:intervention:v1:chat:wrkChat1:T2',
-      7 * 24 * 60 * 60,
-      expect.objectContaining({ taskGuid: 'task-new', count: 1, priority: 'urgent' }),
-    );
     expect(alertNotifier.sendAlert).not.toHaveBeenCalled();
   });
 
@@ -272,59 +274,77 @@ describe('InterventionTaskService', () => {
     expect(alertNotifier.sendAlert).not.toHaveBeenCalled();
   });
 
-  it('合并：命中 Redis 键时更新 due/优先级/标题并追加评论，不新建', async () => {
-    redis.get.mockResolvedValue({
-      taskGuid: 'task-old',
-      firstTriggeredAt: '2026-09-21T02:00:00.000Z',
-      count: 1,
-      priority: 'normal',
-    });
-    await service.submit({
-      ...basePayload,
-      reasonCode: 'booking_capacity_full',
-      reason: '名额满了',
-    });
+  it.each(['未完成', '已完成'])(
+    '同一分钟同一原因再次命中时独立新建，旧任务%s均不影响',
+    async (status) => {
+      // 模拟飞书按 client_token 去重：仅断言调用两次不足以证明真正创建两条记录。
+      const remoteTasks = new Map<string, FeishuTaskSummary>();
+      client.createTask.mockImplementation(async (input: CreateFeishuTaskInput) => {
+        if (!input.clientToken) throw new Error('missing client token');
+        const task = remoteTasks.get(input.clientToken) ?? {
+          guid: `task-${remoteTasks.size + 1}`,
+          summary: input.summary,
+          completed_at: '0',
+        };
+        remoteTasks.set(input.clientToken, task);
+        return task;
+      });
 
-    expect(client.createTask).not.toHaveBeenCalled();
-    expect(client.updateTask).toHaveBeenCalledWith(
-      'task-old',
-      expect.objectContaining({ summary: '小明 · 岗位报名名额已满（第 2 次）' }),
+      await service.submit(basePayload);
+      const first = [...remoteTasks.values()][0];
+      first.completed_at = status === '已完成' ? String(Date.now()) : '0';
+      await service.submit(basePayload);
+
+      expect(remoteTasks.size).toBe(2);
+      expect(client.createTask).toHaveBeenCalledTimes(2);
+      const [firstInput, secondInput] = client.createTask.mock.calls.map(
+        ([input]) => input as CreateFeishuTaskInput,
+      );
+      expect(secondInput.clientToken).not.toBe(firstInput.clientToken);
+      expect(secondInput.summary).toBe('小明 · 改约/取消自助失败');
+      expect(secondInput.description).toContain('【会话ID】wrkChat1');
+      expect([...remoteTasks.values()][1].completed_at).toBe('0');
+      expect(first.completed_at).toBe(status === '已完成' ? String(Date.now()) : '0');
+      expect(client.updateTask).not.toHaveBeenCalled();
+      expect(client.addComment).not.toHaveBeenCalled();
+    },
+  );
+
+  it('同一会话并发命中三次时各建一条任务，创建标识互不复用', async () => {
+    await Promise.all([
+      service.submit(basePayload),
+      service.submit(basePayload),
+      service.submit(basePayload),
+    ]);
+    expect(client.createTask).toHaveBeenCalledTimes(3);
+    const tokens = client.createTask.mock.calls.map(
+      ([input]) => (input as CreateFeishuTaskInput).clientToken,
     );
-    const update = client.updateTask.mock.calls[0][1];
-    expect(update.startAt).toBeUndefined(); // 开始时间保持首次触发时刻，合并不改
-    const fields = update.customFields as FieldCall[];
-    expect(fields.find((f) => f.guid === 'field:第几次介入')?.number_value).toBe('2');
-    expect(client.addComment).toHaveBeenCalledWith(
-      'task-old',
-      expect.stringContaining('第 2 次介入'),
-    );
-    expect(redis.setex).toHaveBeenCalledWith(
-      'feishu-task:intervention:v1:chat:wrkChat1:T2',
-      7 * 24 * 60 * 60,
-      expect.objectContaining({ taskGuid: 'task-old', count: 2, priority: 'today' }),
-    );
+    expect(new Set(tokens).size).toBe(3);
+    expect(client.updateTask).not.toHaveBeenCalled();
+    expect(client.addComment).not.toHaveBeenCalled();
   });
 
-  it('合并时优先级取更急者；标题次数后缀按当前次数替换', async () => {
-    redis.get.mockResolvedValue({ taskGuid: 'task-old', count: 3, priority: 'urgent' });
+  it('每次任务按本次原因独立计算优先级和截止时间', async () => {
+    await service.submit({ ...basePayload, reasonCode: 'modify_appointment', reason: '改约失败' });
+    jest.setSystemTime(new Date('2026-09-22T03:00:00Z'));
     await service.submit({
       ...basePayload,
       reasonCode: 'booking_capacity_full',
       reason: '名额满了',
     });
-    expect(client.updateTask).toHaveBeenCalledWith(
-      'task-old',
-      expect.objectContaining({ summary: '小明 · 岗位报名名额已满（第 4 次）' }),
-    );
-    const fields = client.updateTask.mock.calls[0][1].customFields as FieldCall[];
-    expect(fields.find((f) => f.guid === 'field:优先级')?.single_select_value).toBe(
-      'opt:优先级:急',
-    );
-    expect(redis.setex).toHaveBeenCalledWith(
-      'feishu-task:intervention:v1:chat:wrkChat1:T2',
-      7 * 24 * 60 * 60,
-      expect.objectContaining({ count: 4, priority: 'urgent' }),
-    );
+    expect(client.createTask).toHaveBeenCalledTimes(2);
+    const inputs = client.createTask.mock.calls.map(([input]) => input as CreateFeishuTaskInput);
+    expect(
+      inputs[0].customFields?.find((f) => f.guid === 'field:优先级')?.single_select_value,
+    ).toBe('opt:优先级:急');
+    expect(
+      inputs[1].customFields?.find((f) => f.guid === 'field:优先级')?.single_select_value,
+    ).toBe('opt:优先级:当日');
+    expect(inputs[0].startAt?.toISOString()).toBe('2026-09-22T02:00:00.000Z');
+    expect(inputs[1].startAt?.toISOString()).toBe('2026-09-22T03:00:00.000Z');
+    expect(inputs[1].dueAt?.getTime()).toBeGreaterThan(inputs[0].dueAt!.getTime());
+    expect(inputs[1].summary).toBe('小明 · 岗位报名名额已满');
   });
 
   it('面试临近（T2 且面试早于起算点）时标题加「面试将至」', async () => {
@@ -398,15 +418,7 @@ describe('InterventionTaskService', () => {
     expect(alertNotifier.sendAlert).not.toHaveBeenCalled();
   });
 
-  it('合并更新失败（任务已删）时回退新建', async () => {
-    redis.get.mockResolvedValue({ taskGuid: 'task-gone', count: 1, priority: 'normal' });
-    client.updateTask.mockResolvedValue(false);
-    await service.submit(basePayload);
-    expect(client.createTask).toHaveBeenCalledTimes(1);
-    expect(client.addComment).not.toHaveBeenCalled();
-  });
-
-  it('T5 按岗位合并，不挂会话', async () => {
+  it('T5 独立建任务，带岗位信息、缺失字段和本次负责人', async () => {
     const sessionState = {
       currentFocusJob: { jobId: 4242, brandName: '瑞幸', storeName: '徐家汇店' },
     } as unknown as GeneralHandoffInterventionPayload['sessionState'];
@@ -418,7 +430,6 @@ describe('InterventionTaskService', () => {
       workOrderId: null,
       sessionState,
     });
-    expect(redis.get).toHaveBeenCalledWith('feishu-task:intervention:v1:job:4242:T5');
     const input = client.createTask.mock.calls[0][0];
     expect(input.sectionGuid).toBe('section:📋 岗位数据/口径缺口');
     expect(input.summary).toBe('小明 · 岗位口径答不上（需补岗位数据）');
@@ -428,58 +439,53 @@ describe('InterventionTaskService', () => {
     expect(input.members).toEqual([{ id: 'ou_dongsheng', type: 'user', role: 'assignee' }]); // T5 未配置 → 回退托管账号
   });
 
-  it('T5 岗位级合并：标题主体沿用首次候选人不换人，只刷新次数后缀/due/优先级；新建时把标题写进合并键', async () => {
-    const sessionState = {
-      currentFocusJob: { jobId: 4242, brandName: '瑞幸', storeName: '徐家汇店' },
-    } as unknown as GeneralHandoffInterventionPayload['sessionState'];
+  it('同一岗位不同候选人同时命中时各建一条，保留各自上下文和负责人', async () => {
+    hostingMember.getByBotImId.mockImplementation(async (botImId?: string) =>
+      botImId === 'bot-second'
+        ? { wecomNickname: '第二账号', feishuOpenId: 'ou_second' }
+        : { wecomNickname: '东升', feishuOpenId: 'ou_dongsheng' },
+    );
+    hostingMember.resolveFeishuReceiver.mockImplementation(async (botImId?: string) =>
+      botImId === 'bot-second'
+        ? { openId: 'ou_second', name: '第二运营' }
+        : { openId: 'ou_dongsheng', name: '祝东升' },
+    );
     const t5 = {
       ...basePayload,
-      reasonCode: 'salary_admin_inquiry',
+      reasonCode: 'salary_admin_inquiry' as const,
       reason: '几号发工资答不上',
       workOrderId: null,
-      sessionState,
+      sessionState: {
+        currentFocusJob: { jobId: 4242, brandName: '瑞幸', storeName: '徐家汇店' },
+      } as unknown as GeneralHandoffInterventionPayload['sessionState'],
     };
-    await service.submit(t5);
-    expect(redis.setex).toHaveBeenCalledWith(
-      'feishu-task:intervention:v1:job:4242:T5',
-      7 * 24 * 60 * 60,
-      expect.objectContaining({ count: 1, title: '小明 · 岗位口径答不上（需补岗位数据）' }),
-    );
+    await Promise.all([
+      service.submit(t5),
+      service.submit({
+        ...t5,
+        contactName: '小红',
+        chatId: 'wrkChat2',
+        pauseTargetId: 'wrkChat2',
+        botImId: 'bot-second',
+        currentMessageContent: '小红的本次问题',
+      }),
+    ]);
 
-    jest.clearAllMocks();
-    client.resolveFieldGuid.mockImplementation(
-      async (_tasklist: string, name: string) => `field:${name}`,
-    );
-    redis.get.mockResolvedValue({
-      taskGuid: 'task-job',
-      firstTriggeredAt: '2026-09-21T02:00:00.000Z',
-      count: 1,
-      priority: 'today',
-      title: '小明 · 岗位口径答不上（需补岗位数据）',
-    });
-    client.updateTask.mockResolvedValue(true);
-    client.addComment.mockResolvedValue('c2');
-    await service.submit({
-      ...t5,
-      contactName: '小红',
-      chatId: 'wrkChat2',
-      pauseTargetId: 'wrkChat2',
-    });
-
-    expect(client.createTask).not.toHaveBeenCalled();
-    expect(client.updateTask).toHaveBeenCalledWith(
-      'task-job',
-      expect.objectContaining({ summary: '小明 · 岗位口径答不上（需补岗位数据）（第 2 次）' }),
-    );
-    expect(client.addComment).toHaveBeenCalledWith(
-      'task-job',
-      expect.stringContaining('第 2 次介入'),
-    );
-    expect(redis.setex).toHaveBeenCalledWith(
-      'feishu-task:intervention:v1:job:4242:T5',
-      7 * 24 * 60 * 60,
-      expect.objectContaining({ count: 2, title: '小明 · 岗位口径答不上（需补岗位数据）' }),
-    );
+    expect(client.createTask).toHaveBeenCalledTimes(2);
+    const inputs = client.createTask.mock.calls.map(([input]) => input as CreateFeishuTaskInput);
+    const first = inputs.find((input) => input.summary.startsWith('小明'))!;
+    const second = inputs.find((input) => input.summary.startsWith('小红'))!;
+    expect(first.description).toContain('【会话ID】wrkChat1');
+    expect(first.description).not.toContain('wrkChat2');
+    expect(first.members).toEqual([{ id: 'ou_dongsheng', type: 'user', role: 'assignee' }]);
+    expect(second.description).toContain('【会话ID】wrkChat2');
+    expect(second.description).toContain('小红的本次问题');
+    expect(second.description).toContain('【托管账号】第二账号');
+    expect(second.description).not.toContain('wrkChat1');
+    expect(second.members).toEqual([{ id: 'ou_second', type: 'user', role: 'assignee' }]);
+    expect(second.clientToken).not.toBe(first.clientToken);
+    expect(client.updateTask).not.toHaveBeenCalled();
+    expect(client.addComment).not.toHaveBeenCalled();
   });
 
   it('T7 风险类：负责人取主管，不贴对话原文', async () => {
@@ -506,11 +512,9 @@ describe('InterventionTaskService', () => {
     expect(alertNotifier.sendAlert).toHaveBeenCalledWith(
       expect.objectContaining({ code: 'feishu_task.create_failed' }),
     );
-    expect(redis.setex).not.toHaveBeenCalled();
   });
 
   it('依赖抛异常时吞掉并告警', async () => {
-    redis.get.mockRejectedValue(new Error('redis down'));
     client.createTask.mockRejectedValue(new Error('boom'));
     await expect(service.submit(basePayload)).resolves.toBeUndefined();
     expect(alertNotifier.sendAlert).toHaveBeenCalledTimes(1);

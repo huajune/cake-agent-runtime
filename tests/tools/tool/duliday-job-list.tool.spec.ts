@@ -4,6 +4,10 @@ import { TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
 import type { TurnLedger } from '@shared-types/turn.types';
 import { createToolContext, mergeToolContext } from '../../helpers/tool-context.fixture';
 import { testTurnHint, testTurnHints } from '../../helpers/turn-hints.fixture';
+import { CollectionFormService } from '@tools/collection/collection-form.service';
+import { createForm, type ContractFieldDef } from '@resolution/collection';
+import { sessionFactsOf } from '../../helpers/session-facts.fixture';
+import { resolveHardConstraintsPromptView } from '@agent/generator/preparation/turn-context-resolver';
 
 type JobListTestContext = ToolBuildContext & {
   turnId?: string;
@@ -192,15 +196,16 @@ describe('buildJobListTool', () => {
     );
     const builtTool = builder(mockContext);
 
-    expect(builtTool.description).toContain('只周末');
-    expect(builtTool.description).toContain('早开晚结全天时段/05:00-23:00');
-    expect(builtTool.description).toContain('不得回复"周末能排"');
+    expect(builtTool.description).toContain('必须把工作时间当硬约束');
+    expect(builtTool.description).toContain('覆盖全天开闭店时段');
+    expect(builtTool.description).toContain('不得擅自承诺可协调');
     // 2026-08-21 P3-2 首批：展示要求围绕四行卡片铁律收敛，"推荐 2 个及以上岗位时"
     // 旧措辞并入"卡片正文是展示的唯一底盘"条目，多岗分隔约束保留
     expect(builtTool.description).toContain('卡片正文是展示的唯一底盘');
     expect(builtTool.description).toContain('禁止把多个岗位压缩在同一句');
     expect(builtTool.description).toContain('年龄判断必须沿用 precheck 弹性口径');
-    expect(builtTool.description).toContain('候选人 52 岁遇到 20-50 岁 / 40-50 岁岗位');
+    expect(builtTool.description).toContain('处于年龄上下限弹性边界时');
+    expect(builtTool.description).toContain('用 duliday_interview_precheck 复核，不得直接判无岗');
     // 2026-08-21 P3-2 首批：福利追问条目并入"岗位详情缺字段必须按 jobId 补查（通用规则，含福利追问）"
     expect(builtTool.description).toContain(
       '岗位详情缺字段必须按 jobId 补查（通用规则，含福利追问）',
@@ -1655,6 +1660,65 @@ describe('buildJobListTool', () => {
       } as ToolBuildContext['archive']['sessionFacts'],
     };
 
+    it('收资确认的学生身份经过真实高置信投影后，下一轮查岗仍剔除社会人士岗位', async () => {
+      const field: ContractFieldDef = {
+        labelId: 1,
+        labelTitle: '社会身份',
+        fieldType: 'TEXT',
+        required: true,
+        acceptedOptions: [],
+        rejectedOptions: [],
+      };
+      const form = createForm({ jobId: 1, contract: [field] });
+      form.slots[field.labelId] = {
+        labelId: field.labelId,
+        state: 'filled',
+        askCount: 0,
+        value: {
+          value: '全日制在校学生',
+          sourceText: '全日制在校学生',
+          producer: 'candidate_quote',
+        },
+      };
+      const session = { saveCollectionProgressFact: jest.fn() };
+      const collection = new CollectionFormService({} as never, session as never);
+      await collection.saveFinalizedProgressFacts(
+        { corpId: 'corp', userId: 'user', botUserId: 'bot', sessionId: 'session', jobId: 1 },
+        form,
+        [field],
+        [field],
+      );
+      const savedFact = session.saveCollectionProgressFact.mock.calls[0][4];
+      const facts = sessionFactsOf();
+      facts.interview_info.is_student = savedFact;
+      const view = resolveHardConstraintsPromptView({
+        sessionFacts: facts,
+        turnHints: null,
+        laborFormIntent: { kind: 'ignore' },
+        brandState: null,
+      });
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [socialOnlyJob(1, '拉瓦萨'), openJob(2, '成都你六姐')],
+        total: 2,
+      });
+      const result = await executeTool(
+        {
+          ...mockContext,
+          sessionFacts: {
+            interview_info: view.facts!.interview,
+            preferences: view.facts!.preferences,
+            reasoning: 'resolved turn constraints',
+          },
+        },
+        { ...defaultInput },
+      );
+      expect(result.markdown).not.toContain('拉瓦萨');
+      expect(result.queryMeta.studentIdentityFilter).toMatchObject({
+        applied: true,
+        excludedCount: 1,
+      });
+    });
+
     it('excludes 不接受学生 jobs for a known student and discloses the filtering', async () => {
       mockSpongeService.fetchJobs.mockResolvedValue({
         jobs: [socialOnlyJob(1, '拉瓦萨'), openJob(2, '成都你六姐')],
@@ -2423,7 +2487,7 @@ describe('buildJobListTool', () => {
       expect(result.aliasFuzzyMatch).not.toBeNull();
       expect(result.aliasFuzzyMatch.confidence).toBe('low');
       expect(result.aliasFuzzyMatch.suggestions).toHaveLength(2);
-      expect(result._replyInstruction).toContain('反问澄清');
+      expect(result._replyInstruction).toContain('列出实际候选品牌，用一句话请候选人选择');
       expect(result._replyInstruction).not.toContain('直接按该品牌继续推进');
     });
 
@@ -2509,17 +2573,14 @@ describe('buildJobListTool', () => {
     it('availableWindow/maxDaysPerWeek 不在出处闸范围内', async () => {
       mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [], total: 0 });
 
-      await executeTool(
-        { ...mockContext, corpusBlocks: candidateSaid('随便聊两句') },
-        {
-          ...defaultInput,
-          cityNameList: ['上海'],
-          candidateScheduleConstraint: {
-            maxDaysPerWeek: 3,
-            availableWindow: { start: '18:00', end: '23:00' },
-          },
-        } as typeof defaultInput,
-      );
+      await executeTool({ ...mockContext, corpusBlocks: candidateSaid('随便聊两句') }, {
+        ...defaultInput,
+        cityNameList: ['上海'],
+        candidateScheduleConstraint: {
+          maxDaysPerWeek: 3,
+          availableWindow: { start: '18:00', end: '23:00' },
+        },
+      } as typeof defaultInput);
 
       expect(mockSpongeService.fetchJobs).toHaveBeenCalled();
     });
@@ -2864,7 +2925,9 @@ describe('buildJobListTool', () => {
 
       expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_LABOR_FORM_FILTER_EMPTY);
       expect(result._replyInstruction).toContain('附近暂时没有暑假工的岗位');
-      expect(result._replyInstruction).toContain('把常规岗说成暑假工');
+      expect(result._replyInstruction).toContain(
+        '不得将其他用工形式的岗位描述为符合候选人的用工形式要求',
+      );
       expect(result._replyInstruction).toContain(
         '不得主动推荐、展示或询问是否考虑普通兼职/小时工/全职',
       );

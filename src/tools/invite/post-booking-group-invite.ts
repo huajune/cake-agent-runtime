@@ -176,18 +176,18 @@ export function buildPostBookingGroupInviteGuide(outcome: PostBookingGroupInvite
     if (outcome.alreadyInGroup) {
       return (
         `候选人已经在兼职岗位信息群「${groupName}」里（系统实时核验），本轮不要承诺拉群、不要说"已拉你进群"；` +
-        `候选人主动问群时按"你已经在「${groupName}」里了"回应。${GROUP_BOUNDARY_REMINDER}${NO_TOOL_REMINDER}`
+        `候选人主动问群时，告知已在该群并带实际群名。${GROUP_BOUNDARY_REMINDER}${NO_TOOL_REMINDER}`
       );
     }
     if (outcome.delivery === 'direct_add') {
       return (
-        `系统已在报名成功后把候选人直接加入兼职岗位信息群「${groupName}」。告知报名成功后顺带一句，例如` +
-        `"另外已帮你加入了「${groupName}」，这个群平时用来看兼职岗位信息"。${GROUP_BOUNDARY_REMINDER}${NO_TOOL_REMINDER}`
+        `系统已在报名成功后把候选人直接加入兼职岗位信息群「${groupName}」。告知报名成功后，顺带说明已加入该群并带实际群名，` +
+        `说明群用于查看兼职岗位信息。${GROUP_BOUNDARY_REMINDER}${NO_TOOL_REMINDER}`
       );
     }
     return (
-      `系统已在报名成功后向候选人发送兼职岗位信息群「${groupName}」的入群邀请卡片。告知报名成功后顺带一句，例如` +
-      `"另外「${groupName}」的入群邀请已经发你了，点一下卡片就能进，这个群平时用来看兼职岗位信息"。${GROUP_BOUNDARY_REMINDER}${NO_TOOL_REMINDER}`
+      `系统已在报名成功后向候选人发送兼职岗位信息群「${groupName}」的入群邀请卡片。告知报名成功后，顺带说明邀请已发送、点击卡片即可入群并带实际群名，` +
+      `说明群用于查看兼职岗位信息。${GROUP_BOUNDARY_REMINDER}${NO_TOOL_REMINDER}`
     );
   }
   const reason = outcome.skippedReason ?? outcome.failureReason ?? 'unknown';

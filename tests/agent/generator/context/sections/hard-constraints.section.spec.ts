@@ -175,7 +175,9 @@ describe('HardConstraintsSection', () => {
     });
 
     expect(output).toContain('班次/工时偏好: 晚班');
-    expect(output).toContain('"每天/周一至周日"不等于"可只排周末"');
+    expect(output).toContain(
+      '岗位要求每日、高周频、固定多日或全天出勤时，不得当作可任选工作日或时段',
+    );
   });
 
   it('明确做一休一不满足每周最多一至两天，避免低周频语义串线', () => {
@@ -189,8 +191,8 @@ describe('HardConstraintsSection', () => {
       turnHints: high,
     });
 
-    expect(output).toContain('"做一休一"通常每周出勤 3–4 天');
-    expect(output).toContain('不满足"每周最多 1–2 天"');
+    expect(output).toContain('做一休一通常每周出勤 3–4 天');
+    expect(output).toContain('不满足每周最多 1–2 天');
     expect(output).toContain('不得把它列为低周频候选人的合适方案');
   });
 
@@ -346,7 +348,7 @@ describe('HardConstraintsSection', () => {
 
     expect(output).toContain('性别: 男');
     expect(output).toContain('班次/工时偏好: 晚班');
-    expect(output).toContain('早开晚结全天时段');
+    expect(output).toContain('全天出勤');
     expect(output).toContain('调用 duliday_job_list');
   });
 });

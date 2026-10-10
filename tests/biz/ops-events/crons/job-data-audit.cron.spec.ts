@@ -13,7 +13,13 @@ import {
 type ConfigMap = Record<string, string | undefined>;
 
 function makeService(configMap: ConfigMap) {
-  const spongeService = { fetchJobs: jest.fn() };
+  const spongeService = {
+    fetchJobs: jest.fn(),
+    fetchBrandList: jest.fn().mockResolvedValue([
+      { id: 1, name: '品牌一' },
+      { id: 2, name: '品牌二' },
+    ]),
+  };
   const alertNotifier = { sendAlert: jest.fn().mockResolvedValue(true) };
   const redisService = {
     setNx: jest.fn().mockResolvedValue(true),
@@ -70,6 +76,7 @@ describe('JobDataAuditCronService.runOnce', () => {
 
     expect(spongeService.fetchJobs).toHaveBeenCalledTimes(2);
     expect(spongeService.fetchJobs).toHaveBeenNthCalledWith(1, {
+      brandIdList: [1, 2],
       pageNum: 1,
       pageSize: 50,
       options: {
@@ -126,6 +133,47 @@ describe('JobDataAuditCronService.runOnce', () => {
     expect(result.issues).toEqual([]);
     expect(result.alerted).toBe(false);
     expect(alertNotifier.sendAlert).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { brands: [] },
+    { brands: [{ name: '无 ID 品牌' }] },
+    ...[undefined, null, 0, -1, 1.5, '2'].map((id) => ({
+      brands: [
+        { id: 1, name: '有效品牌' },
+        { id, name: '无效品牌' },
+      ],
+    })),
+  ])('品牌范围不可用时告警，不发无筛选岗位查询：%j', async ({ brands }) => {
+    const { service, spongeService, alertNotifier } = makeService(PROD_ENABLED);
+    spongeService.fetchBrandList.mockResolvedValue(brands);
+    const result = await service.runOnce();
+    expect(result).toMatchObject({ scanned: 0, truncated: true, alerted: true });
+    expect(result.fetchError).toContain('品牌范围读取失败');
+    expect(spongeService.fetchJobs).not.toHaveBeenCalled();
+    expect(alertNotifier.sendAlert).toHaveBeenCalledTimes(1);
+  });
+
+  it('新鲜品牌目录读取失败时告警，不使用旧目录报告完整扫描', async () => {
+    const { service, spongeService, alertNotifier } = makeService(PROD_ENABLED);
+    spongeService.fetchBrandList.mockRejectedValue(new Error('品牌列表 API 返回 503'));
+    const result = await service.runOnce();
+    expect(spongeService.fetchBrandList).toHaveBeenCalledWith({ requireFresh: true });
+    expect(result).toMatchObject({ scanned: 0, truncated: true, alerted: true });
+    expect(result.fetchError).toContain('品牌范围读取失败');
+    expect(spongeService.fetchJobs).not.toHaveBeenCalled();
+    expect(alertNotifier.sendAlert).toHaveBeenCalledTimes(1);
+  });
+
+  it('扫描截断即使暂无录入问题也告警，不能表示完整体检正常', async () => {
+    const { service, spongeService, alertNotifier } = makeService({
+      ...PROD_ENABLED,
+      JOB_DATA_AUDIT_TIME_BUDGET_MS: '0',
+    });
+    const result = await service.runOnce();
+    expect(result).toMatchObject({ scanned: 0, truncated: true, alerted: true });
+    expect(spongeService.fetchJobs).not.toHaveBeenCalled();
+    expect(alertNotifier.sendAlert.mock.calls[0][0].summary).toContain('扫描已截断');
   });
 
   it('分页触顶时标记 truncated 并写进告警摘要，不再继续翻页', async () => {

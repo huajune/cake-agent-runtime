@@ -280,7 +280,8 @@ export class SessionFactsService {
   }
 
   /**
-   * 收资表单逐格落定的身份事实入口；只接受 medium 信封。
+   * 收资表单逐格落定的身份事实入口；通常只接受 medium 信封。
+   * 已公证的学生身份 true 或明确撤销的 null 可用 high，以供后续查岗硬过滤。
    *
    * source 保留槽位的真实作证者，collection 域血缘写在 evidence；这里负责守住
    * 同值不刷新与低置信不得覆盖高置信，调用方不需要复制合并规则。
@@ -290,10 +291,17 @@ export class SessionFactsService {
     userId: string,
     sessionId: string,
     field: keyof SessionInterviewInfo,
-    fact: SessionFactValue<string | boolean>,
+    fact: SessionFactValue<string | boolean | null>,
   ): Promise<void> {
-    if (!isSessionFactValue(fact) || fact.confidence !== 'medium') {
+    const confirmedStudent =
+      field === 'is_student' &&
+      (fact.value === true || fact.value === null) &&
+      fact.confidence === 'high';
+    if (!isSessionFactValue(fact) || (fact.confidence !== 'medium' && !confirmedStudent)) {
       throw new Error(`collection progress fact must be medium: ${String(field)}`);
+    }
+    if (fact.value === null && !confirmedStudent) {
+      throw new Error('only a confirmed student identity correction may clear a progress fact');
     }
     if (!fact.evidence.startsWith('收资表单第 ')) {
       throw new Error(`collection progress fact evidence must identify the slot: ${String(field)}`);
@@ -304,14 +312,15 @@ export class SessionFactsService {
     const current = base.interview_info[field];
     if (
       isSessionFactValue(current) &&
-      (isSameFactValue(current.value, fact.value) ||
+      ((isSameFactValue(current.value, fact.value) &&
+        factConfidenceRank(current.confidence) >= factConfidenceRank(fact.confidence)) ||
         factConfidenceRank(current.confidence) > factConfidenceRank(fact.confidence))
     ) {
       return;
     }
 
     const merged = SessionFactsSchema.parse({
-      interview_info: { ...base.interview_info, [field]: fact },
+      interview_info: { ...base.interview_info, [field]: fact.value === null ? null : fact },
       preferences: base.preferences,
       brand: base.brand,
     }) as SessionFacts;

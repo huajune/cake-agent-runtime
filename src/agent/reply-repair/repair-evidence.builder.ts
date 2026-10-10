@@ -182,8 +182,6 @@ export class RepairEvidenceBuilder {
       errorType,
       outcome: readString(result._outcome),
       ...(alreadyBooked ? { alreadyBooked } : {}),
-      existingWorkOrderId:
-        readString(result.existingWorkOrderId) ?? readNumber(result.existingWorkOrderId),
       existingInterviewTimeHuman: readString(result._existingInterviewTimeHuman),
       confirmedInterviewTimeHuman: readString(result._confirmedInterviewTimeHuman),
       onSiteScript: readString(result._onSiteScript),

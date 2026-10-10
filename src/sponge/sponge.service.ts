@@ -915,79 +915,64 @@ export class SpongeService {
    * 返回 { name, aliases }[] 格式，供事实提取时品牌别名映射使用。
    * API 不可用时返回空数组（graceful 降级）。
    */
-  async fetchBrandList(): Promise<BrandItem[]> {
+  async fetchBrandList(options: { requireFresh?: boolean } = {}): Promise<BrandItem[]> {
+    // 全量体检必须以本次成功的目录响应为准，禁止读 TTL 缓存或失败回退缓存。
+    if (options.requireFresh) return this.fetchFreshBrandList(true);
     const now = Date.now();
     if (
       this.brandListCache &&
       now - this.brandListCache.fetchedAt < BRAND_LIST_CACHE_TTL_MS &&
       this.brandListCache.data.length > 0
-    ) {
+    )
       return this.brandListCache.data;
-    }
-
-    const token = await this.resolveDulidayToken(undefined, { allowMissing: true });
-    if (!token) {
-      this.logger.warn('缺少 DULIDAY_API_TOKEN，品牌列表不可用');
-      return this.brandListCache?.data ?? [];
-    }
-
-    if (this.brandListFetchPromise) {
-      return this.brandListFetchPromise;
-    }
-
-    this.brandListFetchPromise = (async () => {
-      try {
-        const response = await fetchWithTimeout(this.brandListApi, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Duliday-Token': token,
-          },
-          body: JSON.stringify({ pageNum: 1, pageSize: 1000 }),
-        });
-
-        if (!response.ok) {
-          this.logger.warn(`品牌列表 API 返回 ${response.status}`);
-          return this.brandListCache?.data ?? [];
-        }
-
-        const rawData = await response.json();
-        const parsed = BrandListApiResponseSchema.safeParse(rawData);
-        if (!parsed.success) {
-          this.logger.warn(
-            `品牌列表返回结构异常: ${parsed.error.issues
-              .map((issue) => `${issue.path.join('.') || '<root>'}: ${issue.message}`)
-              .join('; ')}`,
-          );
-          return this.brandListCache?.data ?? [];
-        }
-
-        if (parsed.data.code !== 0 || !parsed.data.data?.result) {
-          this.logger.warn('品牌列表返回非零: ' + (parsed.data.message || parsed.data.code));
-          return this.brandListCache?.data ?? [];
-        }
-
-        const brandList = (parsed.data.data.result as RawBrandItem[]).map((item) => ({
-          id: item.id,
-          name: item.name,
-          aliases: (item.aliases ?? []).filter((a: string) => a !== item.name),
-        }));
-
-        this.brandListCache = {
-          data: brandList,
-          fetchedAt: Date.now(),
-        };
-
-        return brandList;
-      } catch (err) {
-        this.logger.warn('品牌列表获取失败，降级为空列表', err);
+    if (this.brandListFetchPromise) return this.brandListFetchPromise;
+    this.brandListFetchPromise = this.fetchFreshBrandList()
+      .catch((error: unknown) => {
+        this.logger.warn('品牌列表获取失败，沿用已有目录', error);
         return this.brandListCache?.data ?? [];
-      } finally {
+      })
+      .finally(() => {
         this.brandListFetchPromise = null;
-      }
-    })();
-
+      });
     return this.brandListFetchPromise;
+  }
+
+  /** 不降级的目录读取；调用方负责决定失败时能否沿用缓存。 */
+  private async fetchFreshBrandList(requireComplete = false): Promise<BrandItem[]> {
+    const token = await this.resolveDulidayToken(undefined, { allowMissing: true });
+    if (!token) throw new Error('缺少 DULIDAY_API_TOKEN，品牌列表不可用');
+    const response = await fetchWithTimeout(this.brandListApi, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Duliday-Token': token },
+      body: JSON.stringify({ pageNum: 1, pageSize: 1000 }),
+    });
+    if (!response.ok) throw new Error('品牌列表 API 返回 ' + response.status);
+    const parsed = BrandListApiResponseSchema.safeParse(await response.json());
+    if (!parsed.success) {
+      throw new Error(
+        '品牌列表返回结构异常: ' +
+          parsed.error.issues
+            .map((issue) => (issue.path.join('.') || '<root>') + ': ' + issue.message)
+            .join('; '),
+      );
+    }
+    if (parsed.data.code !== 0 || !parsed.data.data?.result) {
+      throw new Error('品牌列表返回非零: ' + (parsed.data.message || parsed.data.code));
+    }
+    if (
+      requireComplete &&
+      ((parsed.data.data.total != null &&
+        parsed.data.data.result.length < parsed.data.data.total) ||
+        (parsed.data.data.total == null && parsed.data.data.result.length >= 1000))
+    )
+      throw new Error('品牌目录分页未完整，无法完成全量扫描');
+    const brandList = (parsed.data.data.result as RawBrandItem[]).map((item) => ({
+      id: item.id,
+      name: item.name,
+      aliases: (item.aliases ?? []).filter((alias: string) => alias !== item.name),
+    }));
+    this.brandListCache = { data: brandList, fetchedAt: Date.now() };
+    return brandList;
   }
 
   // ==================== 观远BI（委托 SpongeBiService）====================
