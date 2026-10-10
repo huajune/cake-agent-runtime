@@ -172,10 +172,19 @@ describe('CollectionFormService', () => {
     });
 
     // 不对称是刻意的：is_student=false 有抽取污染史，查岗侧也只认 true 触发过滤。
-    // 答「社会人士」时保持字段缺席，语义仍是"未确权"，而不是"已确认不是学生"。
-    it.each(['社会人士', '第二职业'])('「%s」不回流（不写 false）', async (answer) => {
+    // 明确改口要撤销旧 true；没有答复则不能凭空写 false 或清空。
+    it.each(['社会人士', '第二职业'])('「%s」撤销旧学生事实（不写 false）', async (answer) => {
       await finalizeIdentity(answer);
-
+      expect(sessionState.saveCollectionProgressFact).toHaveBeenCalledWith(
+        'corp1',
+        'user1',
+        'session-1',
+        'is_student',
+        expect.objectContaining({ value: null, confidence: 'high', source: 'candidate_quote' }),
+      );
+    });
+    it.each(['', '待确认', '学生/社会人士'])('未确定答案「%s」不修改旧事实', async (answer) => {
+      await finalizeIdentity(answer);
       expect(sessionState.saveCollectionProgressFact).not.toHaveBeenCalled();
     });
   });
