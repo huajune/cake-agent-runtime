@@ -771,6 +771,43 @@ describe('SpongeService', () => {
   });
 
   describe('fetchBrandList', () => {
+    it('fresh catalog rejects an incomplete first page', async () => {
+      jest
+        .spyOn(global, 'fetch')
+        .mockResolvedValue({
+          ok: true,
+          json: async () => ({ code: 0, data: { total: 2, result: [{ id: 1, name: '品牌' }] } }),
+        } as Response);
+      await expect(service.fetchBrandList({ requireFresh: true })).rejects.toThrow(
+        '品牌目录分页未完整',
+      );
+    });
+
+    it.each(['http', 'schema', 'business', 'network'])(
+      'fresh reads reject %s failures despite a valid cache',
+      async (failure) => {
+        const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ code: 0, data: { result: [{ id: 1, name: '品牌' }] } }),
+        } as Response);
+        await service.fetchBrandList();
+        if (failure === 'network') fetchSpy.mockRejectedValueOnce(new Error('network unavailable'));
+        else
+          fetchSpy.mockResolvedValueOnce({
+            ok: failure !== 'http',
+            status: 503,
+            json: async () =>
+              failure === 'schema'
+                ? { code: 0, data: { result: [{}] } }
+                : { code: 500, message: 'unavailable' },
+          } as Response);
+        await expect(service.fetchBrandList({ requireFresh: true })).rejects.toThrow();
+        expect(fetchSpy).toHaveBeenCalledTimes(2);
+        // 普通品牌识别入口继续沿用既有缓存策略，体检入口不能借此报告全量完成。
+        expect(await service.fetchBrandList()).toEqual([{ id: 1, name: '品牌', aliases: [] }]);
+      },
+    );
+
     it('should cache brand list results for repeated calls', async () => {
       const mockResponse = {
         ok: true,
