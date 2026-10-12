@@ -1,4 +1,29 @@
-import { formatStoredScheduleConstraint } from '@resolution/schedule/format';
+import {
+  formatScheduleConstraintLabel,
+  formatStoredScheduleConstraint,
+} from '@resolution/schedule/format';
+import { buildNoMatchScript } from '@tools/job-list/no-match-script.util';
+
+describe('候选人可见的班次条件标签', () => {
+  it('只列硬性条件，不把灵活排班排序偏好说成候选人要求', () => {
+    const conditions = { preferFlexibleSchedule: true, includeAnyTags: ['evening' as const] };
+    expect(formatScheduleConstraintLabel(conditions)).toBe('要求 晚班');
+    const script = buildNoMatchScript({
+      cityLabels: ['上海'],
+      scheduleConstraintLabel: formatScheduleConstraintLabel(conditions),
+      scheduleExcludedCount: 2,
+    });
+    expect(script.candidateMessage).toContain('「要求 晚班」');
+    expect(script.candidateMessage).not.toContain('灵活');
+    expect(script.candidateMessage).not.toContain('仅排序');
+  });
+
+  it('记忆与模型侧投影仍保留排序偏好', () => {
+    expect(
+      formatStoredScheduleConstraint({ preferFlexibleSchedule: true, includeAnyTags: ['evening'] }),
+    ).toBe('优先灵活排班（仅排序，不限制可选排班） / 要求 晚班');
+  });
+});
 
 describe('班次记忆统一投影', () => {
   it('明确撤销的条件不产生仍有限制的文本', () => {

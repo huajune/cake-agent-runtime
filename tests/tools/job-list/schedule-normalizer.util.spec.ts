@@ -13,12 +13,13 @@ describe('海绵班次归一化', () => {
     });
   });
 
-  it('灵活窗口保留跨日与最低工时，不生成虚构的完整班次', () => {
+  it('灵活排班区间保留跨日与每班时长，按区间计算标签，不拆成虚构班次', () => {
     const schedule = getJobSchedule(flexibleJob(8, '22:00', '07:00', '8', true));
     expect(schedule).toEqual({
       arrangementType: '灵活排班',
       window: { startMinute: 1320, endMinute: 1860 },
       minimumMinutes: 480,
+      tags: ['night'],
     });
     expect(getJobSchedule({ basicInfo: { jobId: 8 } })).toBeNull();
   });

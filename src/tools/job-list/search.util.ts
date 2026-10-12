@@ -12,9 +12,11 @@
 import { getJobSchedule } from './schedule-normalizer.util';
 import { matchDailySchedule } from '@resolution/schedule/matcher';
 import {
+  hasDailyScheduleConstraint,
   type CandidateScheduleConstraint,
   type ScheduleMatchResult,
 } from '@resolution/schedule/types';
+import { WorkTimeContractError } from '@sponge/work-time.types';
 import {
   classifyScheduleSemantic,
   matchScheduleConstraint,
@@ -156,6 +158,13 @@ export function applyScheduleConstraint(
   const kept: JobDetail[] = [];
   for (const job of jobs) {
     const schedule = getJobSchedule(job);
+    if (!schedule && hasDailyScheduleConstraint(constraint)) {
+      // 每个岗位都应有班次数据；缺失属于海绵契约错误，不能当作排班不符或待确认。
+      throw new WorkTimeContractError(
+        '已有班次条件但岗位缺少班次数据',
+        job.basicInfo?.jobId ?? null,
+      );
+    }
     const analysis = buildJobPolicyAnalysis(job);
     const semantics: ScheduleSemantic[] = classifyScheduleSemantic({
       workTimeText: job.workTime ? JSON.stringify(job.workTime) : '',

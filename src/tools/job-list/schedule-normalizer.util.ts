@@ -11,15 +11,17 @@ export function normalizeJobSchedule(workTime: unknown, jobId: number | null = n
   const day = parseDayWorkTime(workTime, jobId);
   if (day.arrangementType === '灵活排班') {
     const ft = day.fixedTime;
+    const window = {
+      startMinute: clockToMinutes(ft.goToWorkStartTime),
+      endMinute:
+        clockToMinutes(ft.goOffWorkEndTime) +
+        (ft.goOffWorkTimeType === '次日' ? MINUTES_PER_DAY : 0),
+    };
     return {
       arrangementType: day.arrangementType,
-      window: {
-        startMinute: clockToMinutes(ft.goToWorkStartTime),
-        endMinute:
-          clockToMinutes(ft.goOffWorkEndTime) +
-          (ft.goOffWorkTimeType === '次日' ? MINUTES_PER_DAY : 0),
-      },
+      window,
       minimumMinutes: Number(ft.perDayMinWorkHours) * 60,
+      tags: buildShiftTags(window),
     };
   }
   const slots = day.combinedArrangement.map((slot, index) => {
