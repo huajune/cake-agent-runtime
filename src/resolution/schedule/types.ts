@@ -106,8 +106,8 @@ export function hasScheduleConstraint(c: CandidateScheduleConstraint | null | un
 
 /**
  * 旧契约的时段是自由字符串，以“结束不晚于开始”表示跨午夜，也可能缺少小时补零。
- * 读取时按旧语义换成显式 endDayOffset，避免整份会话事实因旧时段校验失败被丢弃；
- * 含义无法确定的值保持原样，仍按“需重新确认”处理，不擅自放宽。
+ * 读取时按旧语义换成显式 endDayOffset；含义无法确定的时段（起止相同、非钟点）不擅自放宽，
+ * 移除后以 legacyWindowUnresolved 标记待确认，避免整份会话事实因一个旧时段校验失败被丢弃。
  */
 function normalizeStoredWindow(value: unknown): unknown {
   if (value === null || value === undefined || typeof value !== 'object') return value;
@@ -126,22 +126,37 @@ function normalizeStoredWindow(value: unknown): unknown {
     if (window.end === '00:00' && window.start !== '00:00') window.end = '24:00';
     else if (window.end < window.start) window.endDayOffset = 1;
   }
-  return ScheduleWindowSchema.safeParse(window).success ? window : value;
+  return window;
 }
 
-const StoredScheduleWindowSchema = z.preprocess(
-  normalizeStoredWindow,
-  ScheduleWindowSchema.nullable().optional(),
-);
+const STORED_WINDOW_FIELDS = ['availableWindow', 'unavailableWindow'] as const;
+
+function normalizeStoredConstraint(value: unknown): unknown {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return value;
+  const next: Record<string, unknown> = { ...(value as Record<string, unknown>) };
+  for (const field of STORED_WINDOW_FIELDS) {
+    if (next[field] === undefined || next[field] === null) continue;
+    const window = normalizeStoredWindow(next[field]);
+    if (ScheduleWindowSchema.safeParse(window).success) {
+      next[field] = window;
+    } else {
+      delete next[field];
+      next.legacyWindowUnresolved = true;
+    }
+  }
+  return next;
+}
 
 /** 仅用于读取尚未过期的会话记忆；新模型契约不再产出旧早晚班布尔值。 */
-export const StoredScheduleConstraintSchema = z.object({
-  ...CandidateScheduleConstraintFields,
-  availableWindow: StoredScheduleWindowSchema,
-  unavailableWindow: StoredScheduleWindowSchema,
-  onlyEvenings: z.boolean().nullable().optional(),
-  onlyMornings: z.boolean().nullable().optional(),
-});
+export const StoredScheduleConstraintSchema = z.preprocess(
+  normalizeStoredConstraint,
+  z.object({
+    ...CandidateScheduleConstraintFields,
+    onlyEvenings: z.boolean().nullable().optional(),
+    onlyMornings: z.boolean().nullable().optional(),
+    legacyWindowUnresolved: z.literal(true).optional(),
+  }),
+);
 export type StoredScheduleConstraint = z.infer<typeof StoredScheduleConstraintSchema>;
 
 /** 字段未出现时延续；明确的 null、[]、false 保留为撤销，不从旧值补回。 */
@@ -159,6 +174,10 @@ export function mergeScheduleConstraints(
     delete next.onlyEvenings;
     delete next.onlyMornings;
   }
+  if (patch && (patch.availableWindow !== undefined || patch.unavailableWindow !== undefined)) {
+    // 候选人重新给出或撤销时段后，旧时段的待确认状态即被替换。
+    delete next.legacyWindowUnresolved;
+  }
   return next;
 }
 
@@ -166,13 +185,14 @@ export function readScheduleConditions(stored: StoredScheduleConstraint): {
   conditions: CandidateScheduleConstraint;
   legacyUnresolved: boolean;
 } {
-  const { onlyEvenings, onlyMornings, ...conditions } = stored;
+  const { onlyEvenings, onlyMornings, legacyWindowUnresolved, ...conditions } = stored;
   return {
     conditions,
     legacyUnresolved: Boolean(
-      (onlyEvenings || onlyMornings) &&
-        !conditions.availableWindow &&
-        !conditions.includeAnyTags?.length,
+      legacyWindowUnresolved ||
+        ((onlyEvenings || onlyMornings) &&
+          !conditions.availableWindow &&
+          !conditions.includeAnyTags?.length),
     ),
   };
 }

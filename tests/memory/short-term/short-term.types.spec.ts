@@ -70,6 +70,30 @@ describe('SessionFactsSchema 读写边界', () => {
         endDayOffset: 1,
       });
     }
+
+    const unresolved = SessionFactsSchema.safeParse({
+      ...base,
+      interview_info: {
+        ...base.interview_info,
+        name: { value: '张三', confidence: 'high', source: 'candidate_quote', evidence: '张三' },
+      },
+      preferences: {
+        ...base.preferences,
+        schedule_constraint: {
+          value: { availableWindow: { start: '18:00', end: '18:00' } },
+          confidence: 'high',
+          source: 'candidate_quote',
+          evidence: '18点到18点',
+        },
+      },
+    });
+    expect(unresolved.success).toBe(true);
+    if (unresolved.success) {
+      expect(unresolved.data.interview_info.name?.value).toBe('张三');
+      expect(unresolved.data.preferences.schedule_constraint?.value).toEqual({
+        legacyWindowUnresolved: true,
+      });
+    }
   });
 
   it('city 只收事实信封：裸字符串 / CityFact 对象与非域内 source 均校验失败', () => {

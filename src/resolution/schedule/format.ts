@@ -38,6 +38,7 @@ export function formatStoredScheduleConstraint(value: unknown): string | null {
     hasScheduleConstraint(conditions) || conditions.preferFlexibleSchedule
       ? [formatScheduleConstraintLabel(conditions)]
       : [];
-  if (legacyUnresolved) parts.push('历史早晚班偏好含义需确认');
+  if (parsed.data.legacyWindowUnresolved) parts.push('已有排班条件需重新确认');
+  else if (legacyUnresolved) parts.push('历史早晚班偏好含义需确认');
   return parts.length ? parts.join(' / ') : null;
 }

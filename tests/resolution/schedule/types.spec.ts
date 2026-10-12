@@ -49,12 +49,37 @@ describe('旧契约落盘时段的读取兼容', () => {
   });
 
   it.each([{ start: '08:00', end: '08:00' }, { start: '晚上', end: '早上' }, {}])(
-    '含义无法确定的旧时段不擅自放宽，仍交由重新确认：%j',
-    (legacy) =>
-      expect(StoredScheduleConstraintSchema.safeParse({ availableWindow: legacy }).success).toBe(
-        false,
-      ),
+    '含义无法确定的旧时段不擅自放宽，标记待确认而不拖垮读取：%j',
+    (legacy) => {
+      const parsed = StoredScheduleConstraintSchema.parse({
+        maxDaysPerWeek: 3,
+        availableWindow: legacy,
+      });
+      expect(parsed).toEqual({ maxDaysPerWeek: 3, legacyWindowUnresolved: true });
+      const { conditions, legacyUnresolved } = readScheduleConditions(parsed);
+      expect(legacyUnresolved).toBe(true);
+      expect(CandidateScheduleConstraintSchema.safeParse(conditions).success).toBe(true);
+    },
   );
+
+  it.each<StoredScheduleConstraint>([
+    { availableWindow: { start: '18:00' } },
+    { availableWindow: null },
+    { unavailableWindow: { start: '12:00', end: '14:00' } },
+  ])('候选人重新给出或撤销时段后解除旧时段待确认：%j', (patch) => {
+    const stored = StoredScheduleConstraintSchema.parse({
+      availableWindow: { start: '18:00', end: '18:00' },
+    });
+    const merged = mergeScheduleConstraints(stored, patch);
+    expect(merged).toEqual(patch);
+    expect(readScheduleConditions(merged).legacyUnresolved).toBe(false);
+  });
+
+  it('无关补丁不解除旧时段待确认', () => {
+    const stored = StoredScheduleConstraintSchema.parse({ availableWindow: { start: '晚上' } });
+    const merged = mergeScheduleConstraints(stored, { excludeTags: ['night'] });
+    expect(readScheduleConditions(merged).legacyUnresolved).toBe(true);
+  });
 
   it('模型侧契约仍要求显式 endDayOffset', () => {
     expect(
