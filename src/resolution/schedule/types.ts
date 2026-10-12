@@ -153,15 +153,9 @@ export function mergeScheduleConstraints(
     ...previous,
     ...Object.fromEntries(Object.entries(patch ?? {}).filter(([, value]) => value !== undefined)),
   };
-  if (
-    patch &&
-    (patch.includeAnyTags?.length ||
-      patch.availableWindow ||
-      (patch.includeAnyTags !== undefined && previous?.includeAnyTags?.length) ||
-      (patch.availableWindow !== undefined && previous?.availableWindow))
-  ) {
-    // 只有新的可出勤含义或对已明确条件的撤销才能替换旧早晚班含义。
-    // 排除条件、无对应旧值的清空操作不应扩大候选人的可用范围。
+  if (patch && (patch.includeAnyTags !== undefined || patch.availableWindow !== undefined)) {
+    // 正向标签或可出勤时段的新值、显式撤销（[] / null）都替换旧早晚班含义；
+    // 排除标签、不可用时段等无关补丁不应扩大候选人的可用范围。
     delete next.onlyEvenings;
     delete next.onlyMornings;
   }

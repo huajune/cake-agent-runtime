@@ -8,10 +8,22 @@ import {
 
 describe('旧契约落盘时段的读取兼容', () => {
   it.each([
-    [{ start: '22:00', end: '06:00' }, { start: '22:00', end: '06:00', endDayOffset: 1 }],
-    [{ start: '9:00', end: '17:00' }, { start: '09:00', end: '17:00' }],
-    [{ start: '18:00', end: '00:00' }, { start: '18:00', end: '24:00' }],
-    [{ start: '15:00', end: '21:00' }, { start: '15:00', end: '21:00' }],
+    [
+      { start: '22:00', end: '06:00' },
+      { start: '22:00', end: '06:00', endDayOffset: 1 },
+    ],
+    [
+      { start: '9:00', end: '17:00' },
+      { start: '09:00', end: '17:00' },
+    ],
+    [
+      { start: '18:00', end: '00:00' },
+      { start: '18:00', end: '24:00' },
+    ],
+    [
+      { start: '15:00', end: '21:00' },
+      { start: '15:00', end: '21:00' },
+    ],
   ])('结束不晚于开始按旧语义视为跨午夜，钟点补零：%j', (legacy, expected) => {
     const parsed = StoredScheduleConstraintSchema.parse({ availableWindow: legacy });
     expect(parsed.availableWindow).toEqual(expected);
@@ -58,9 +70,8 @@ describe('候选人条件契约', () => {
     { excludeTags: ['night'] },
     { unavailableWindow: { start: '12:00', end: '14:00' } },
     { unavailableWindow: null },
-    { availableWindow: null },
-    { includeAnyTags: [] },
-  ])('无关补丁或空撤销值不解除历史早晚班限制：%j', (patch) => {
+    { excludeTags: [] },
+  ])('无关补丁不解除历史早晚班限制：%j', (patch) => {
     for (const legacy of [{ onlyEvenings: true }, { onlyMornings: true }]) {
       const merged = mergeScheduleConstraints(legacy, patch);
       expect(merged).toMatchObject(legacy);
@@ -74,6 +85,17 @@ describe('候选人条件契约', () => {
     const merged = mergeScheduleConstraints({ onlyEvenings: true }, patch);
     expect(merged).toEqual(patch);
     expect(readScheduleConditions(merged).legacyUnresolved).toBe(false);
+  });
+  it.each<StoredScheduleConstraint>([
+    { includeAnyTags: [] },
+    { availableWindow: null },
+    { includeAnyTags: [], availableWindow: null },
+  ])('候选人明确撤销日内正向条件时同时解除历史早晚班限制：%j', (patch) => {
+    for (const legacy of [{ onlyEvenings: true }, { onlyMornings: true }]) {
+      const merged = mergeScheduleConstraints({ ...legacy, maxDaysPerWeek: 3 }, patch);
+      expect(merged).toEqual({ maxDaysPerWeek: 3, ...patch });
+      expect(readScheduleConditions(merged).legacyUnresolved).toBe(false);
+    }
   });
   it.each([
     { availableWindow: {} },
