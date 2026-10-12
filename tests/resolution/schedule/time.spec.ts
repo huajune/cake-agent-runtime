@@ -29,6 +29,23 @@ describe('跨日时间区间', () => {
     expect(candidateCovers({ startMinute: 0, endMinute: 361 }, window)).toBe(false);
   });
 
+  it.each([
+    { name: '当晚跨零点班次 23:00–次日02:00', slot: [1380, 1560], avoids: false },
+    { name: '过零点才开始的夜班 00:30–04:00', slot: [30, 240], avoids: false },
+    { name: '凌晨3点开始的班次 03:00–08:00', slot: [180, 480], avoids: false },
+    { name: '业务日分界后开始的早班 04:00–09:00', slot: [240, 540], avoids: true },
+    { name: '当天晚间结束的班次 16:00–22:00', slot: [960, 1320], avoids: true },
+  ])('只给开始的不可用时段延续到次日04:00：$name', ({ slot, avoids }) => {
+    const [startMinute, endMinute] = slot;
+    expect(avoidsUnavailable({ startMinute, endMinute }, { start: '22:00' })).toBe(avoids);
+  });
+
+  it('只给结束的不可用时段从当日00:00起算', () => {
+    const unavailable = { end: '08:00' };
+    expect(avoidsUnavailable({ startMinute: 120, endMinute: 360 }, unavailable)).toBe(false);
+    expect(avoidsUnavailable({ startMinute: 480, endMinute: 840 }, unavailable)).toBe(true);
+  });
+
   it('跨日班次仍检查次日重复的不可用时间，端点相接可接受', () => {
     const slot = { startMinute: 1320, endMinute: 1800 };
     expect(avoidsUnavailable(slot, { start: '06:00', end: '08:00' })).toBe(true);
