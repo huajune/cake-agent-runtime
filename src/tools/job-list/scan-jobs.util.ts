@@ -22,6 +22,8 @@ export interface JobScanMeta {
 export const JOB_SCAN_BUDGET_MS = 15_000;
 export const JOB_SCAN_PAGE_SIZE = 20;
 export const JOB_SCAN_MAX_PAGES = 10;
+/** 回执中待确认班次岗位的样例上限；总数另由 unknownCount 给出。 */
+export const UNKNOWN_SCHEDULE_EXAMPLE_LIMIT = 5;
 
 /** 在同一查询条件下有界补页。异常数据不能跳过；网络或预算中断只说明未查完。 */
 export async function scanJobPages(
@@ -119,12 +121,17 @@ export function buildScannedQueryError(
           errorType: TOOL_ERROR_TYPES.JOB_LIST_QUERY_INCOMPLETE,
           outcome: '已查询范围内尚未确认可推荐岗位',
           replyInstruction:
-            '目前只在已查询范围内未确认可推荐岗位，查询未完整或仍有班次待确认。不能断言全城/全范围无岗，不能放宽候选人条件或推荐待确认岗位；说明仍需核对即可。',
+            '目前只在已查询范围内未确认可推荐岗位，查询未完整或仍有班次待确认。不能断言全城/全范围无岗，不能放宽候选人条件或推荐待确认岗位，也不按 0 条规则扩大查询范围；说明仍需核对即可。',
         }
       : {}),
     details: {
       ...details,
-      queryMeta: { ...priorMeta, ...scan, unknownCount: unknown.length, unknownSchedules: unknown },
+      queryMeta: {
+        ...priorMeta,
+        ...scan,
+        unknownCount: unknown.length,
+        unknownSchedules: unknown.slice(0, UNKNOWN_SCHEDULE_EXAMPLE_LIMIT),
+      },
     },
   });
 }

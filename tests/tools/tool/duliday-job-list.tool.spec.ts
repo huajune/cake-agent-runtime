@@ -2670,11 +2670,15 @@ describe('buildJobListTool', () => {
         rejected: { welfare: null },
         errorType: TOOL_ERROR_TYPES.JOB_LIST_NO_RESULTS,
       },
-    ])('待确认岗位仍须满足其他条件：$name', ({ hints, input, rejected, errorType }) => {
+    ])('班次匹配的岗位仍须满足其他条件：$name', ({ hints, input, rejected, errorType }) => {
       it.each([false, true])(
-        '其他条件明确排除全部岗位后不再报班次待确认，含已匹配班次=%s',
+        '其他条件排除全部岗位时返回对应空结果，含固定排班岗位=%s',
         async (withMatched) => {
-          const pending = { ...makeJobData(rejected), workTime: flexibleJob().workTime };
+          // 灵活排班区间 18:00–23:00 被“18点后有空”整段覆盖，班次本身匹配。
+          const pending = {
+            ...makeJobData(rejected),
+            workTime: flexibleJob(1, '18:00', '23:00').workTime,
+          };
           const matched = {
             ...makeJobData(rejected),
             basicInfo: { ...makeJobData(rejected).basicInfo, jobId: 2 },
@@ -2707,34 +2711,35 @@ describe('buildJobListTool', () => {
         },
       );
     });
-    it('其他条件通过的灵活岗位仍待确认，不进入推荐池', async () => {
-      const pending = { ...makeJobData(), workTime: flexibleJob().workTime };
-      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [pending], total: 1 });
-      const recordFetchedJobs = jest.fn();
-      const result = await executeTool(
-        mergeToolContext(mockContext, {
-          turnInput: { currentUserMessage: '18点后有空' },
-          ledger: {
-            recordFetchedJobs,
-            facts: {
-              turnHints: testTurnHints(
-                testTurnHint('preferences.labor_form', '全职', '候选人要全职'),
-              ),
-            },
-          },
-        }),
-        {
-          ...defaultInput,
-          cityNameList: ['北京'],
-          candidateScheduleConstraint: { availableWindow: { start: '18:00' } },
-          candidateScheduleCitation: { quote: '18点后有空' },
-        } as typeof defaultInput,
-      );
-      expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_QUERY_INCOMPLETE);
-      expect(result.queryMeta.unknownCount).toBe(1);
-      expect(result.noMatchScript).toBeUndefined();
-      expect(recordFetchedJobs).not.toHaveBeenCalled();
-    });
+    it.each([
+      { start: '18:00', end: '23:00', inPool: true },
+      { start: '05:00', end: '23:00', inPool: false },
+    ])(
+      '灵活排班区间被候选人时段整段覆盖才进入推荐池：$start-$end',
+      async ({ start, end, inPool }) => {
+        const job = { ...makeJobData(), workTime: flexibleJob(1, start, end).workTime };
+        mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [job], total: 1 });
+        const recordFetchedJobs = jest.fn();
+        const result = await executeTool(
+          { ...mockContext, currentUserMessage: '18点后有空', recordFetchedJobs },
+          {
+            ...defaultInput,
+            cityNameList: ['北京'],
+            candidateScheduleConstraint: { availableWindow: { start: '18:00' } },
+            candidateScheduleCitation: { quote: '18点后有空' },
+          } as typeof defaultInput,
+        );
+        if (inPool) {
+          expect(result.errorType).toBeUndefined();
+          expect(result.resultCount).toBe(1);
+          expect(recordFetchedJobs).toHaveBeenCalled();
+        } else {
+          expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_SCHEDULE_FILTER_EMPTY);
+          expect(recordFetchedJobs).not.toHaveBeenCalled();
+        }
+        expect(result.queryMeta.unknownCount ?? 0).toBe(0);
+      },
+    );
     it.each([undefined, { quote: '助手说只能晚班' }, { quote: '旧轮只能晚班' }])(
       '缺少本轮引用不能设置任何时间条件: %j',
       async (citation) => {
@@ -2851,16 +2856,20 @@ describe('buildJobListTool', () => {
       expect(recordFetchedJobs).not.toHaveBeenCalled();
       expect(recordEvent).not.toHaveBeenCalled();
     });
-    it('灵活窗口待确认不进入推荐结果，也不说无岗', async () => {
+    it('灵活排班区间未被整段覆盖时按排班不符给出确定结论，不说附近没岗', async () => {
       mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [flexibleJob()], total: 1 });
       const result = await executeTool({ ...mockContext, currentUserMessage: '18点后有空' }, {
         ...defaultInput,
         candidateScheduleConstraint: { availableWindow: { start: '18:00' } },
         candidateScheduleCitation: { quote: '18点后有空' },
       } as typeof defaultInput);
-      expect(result.queryMeta.unknownCount).toBe(1);
-      expect(result.noMatchScript).toBeUndefined();
-      expect(result._replyInstruction).toContain('不能断言');
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_SCHEDULE_FILTER_EMPTY);
+      expect(result.queryMeta.unknownCount ?? 0).toBe(0);
+      expect(result.queryMeta.scheduleFilter.excludedExamples).toEqual([
+        expect.objectContaining({ reason: expect.stringContaining('整个排班区间') }),
+      ]);
+      expect(result.noMatchScript.candidateMessage).toContain('有 1 家在招');
+      expect(result.noMatchScript.candidateMessage).not.toContain('没找到');
     });
     it.each([false, true])('门店模糊回退仍扫描后页，班次约束=%s', async (withSchedule) => {
       const first = Array.from({ length: 20 }, (_, i) => {
@@ -2983,6 +2992,125 @@ describe('buildJobListTool', () => {
         cityNameList: ['上海'],
         pageNum: 2,
       });
+    });
+    it('补页扫描200条时只回传展示岗位的班次评估，剔除岗位只给样例和计数', async () => {
+      const all = Array.from({ length: 200 }, (_, i) =>
+        scheduledJob(i + 1, '固定排班', i % 2 === 0 ? [['19:00', '22:00']] : [['08:00', '12:00']]),
+      );
+      mockSpongeService.fetchJobs.mockImplementation(async ({ pageNum = 1 }) => ({
+        jobs: all.slice((pageNum - 1) * 20, pageNum * 20),
+        total: all.length,
+      }));
+      const result = await executeTool({ ...mockContext, currentUserMessage: '18点后有空' }, {
+        ...defaultInput,
+        cityNameList: ['上海'],
+        responseFormat: ['markdown', 'rawData'],
+        candidateScheduleConstraint: { availableWindow: { start: '18:00' } },
+        candidateScheduleCitation: { quote: '18点后有空' },
+      } as typeof defaultInput);
+
+      const displayedIds = result.rawData.result.map(
+        (job: { basicInfo: { jobId: number } }) => job.basicInfo.jobId,
+      );
+      const filter = result.queryMeta.scheduleFilter;
+      expect(result.queryMeta).toMatchObject({ scannedCount: 200, matchedCount: 100 });
+      expect(displayedIds).toHaveLength(20);
+      expect(filter.assessments.map((item: { jobId: number }) => item.jobId)).toEqual(displayedIds);
+      expect(filter.statusCounts).toEqual({ matched: 100, unmatched: 100, unknown: 0 });
+      expect(filter).toMatchObject({ excludedCount: 100, unknownCount: 0 });
+      expect(filter.excludedExamples).toHaveLength(5);
+      expect(JSON.stringify(filter).length).toBeLessThan(4000);
+    });
+    it('模型关闭基本信息时补页仍取得岗位ID，不误报海绵契约错误', async () => {
+      const all = Array.from({ length: 21 }, (_, i) =>
+        scheduledJob(i + 1, '固定排班', [['19:00', '22:00']]),
+      );
+      mockSpongeService.fetchJobs.mockImplementation(
+        async ({
+          pageNum = 1,
+          options,
+        }: {
+          pageNum?: number;
+          options?: { includeBasicInfo?: boolean };
+        }) => ({
+          jobs: all
+            .slice((pageNum - 1) * 20, pageNum * 20)
+            .map((job) => (options?.includeBasicInfo ? job : { ...job, basicInfo: null })),
+          total: all.length,
+        }),
+      );
+      const result = await executeTool({ ...mockContext, currentUserMessage: '18点后有空' }, {
+        ...defaultInput,
+        cityNameList: ['上海'],
+        includeBasicInfo: false,
+        candidateScheduleConstraint: { availableWindow: { start: '18:00' } },
+        candidateScheduleCitation: { quote: '18点后有空' },
+      } as typeof defaultInput);
+
+      expect(result.errorType).toBeUndefined();
+      expect(result.queryMeta).toMatchObject({ scannedCount: 21, matchedCount: 21 });
+      expect(mockSpongeService.fetchJobs).toHaveBeenCalledTimes(2);
+      for (const [params] of mockSpongeService.fetchJobs.mock.calls) {
+        expect(params.options.includeBasicInfo).toBe(true);
+      }
+    });
+  });
+
+  describe('等价空值不视为班次条件变更', () => {
+    const run = (saved: Record<string, unknown>, patch: Record<string, unknown>) => {
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [scheduledJob(1, '固定排班', [['18:00', '21:00']])],
+        total: 1,
+      });
+      return executeTool(
+        {
+          ...mockContext,
+          currentUserMessage: '再推荐几个',
+          sessionFacts: {
+            preferences: { schedule_constraint: saved },
+          } as ToolBuildContext['archive']['sessionFacts'],
+        },
+        {
+          ...defaultInput,
+          cityNameList: ['上海'],
+          candidateScheduleConstraint: patch,
+        } as typeof defaultInput,
+      );
+    };
+    it.each([
+      { availableWindow: null },
+      { unavailableWindow: null },
+      { excludeTags: [] },
+      { onlyWeekends: false },
+      { preferFlexibleSchedule: false },
+      { minShiftHours: null, maxShiftHours: null },
+      { maxDaysPerWeek: null },
+      { includeAnyTags: ['evening', 'evening'], excludeTags: [], availableWindow: null },
+    ])('已保存晚班，再推荐时多传 %j 不要求本轮引用', async (patch) => {
+      const result = await run({ includeAnyTags: ['evening'] }, patch);
+      expect(result.errorType).toBeUndefined();
+      expect(result.resultCount).toBe(1);
+    });
+    it('时段 endDayOffset:0 与省略等价', async () => {
+      const result = await run(
+        { availableWindow: { start: '18:00' } },
+        { availableWindow: { start: '18:00', endDayOffset: 0 } },
+      );
+      expect(result.errorType).toBeUndefined();
+      expect(result.resultCount).toBe(1);
+    });
+    it.each([
+      { includeAnyTags: ['evening'], excludeTags: ['night'] },
+      { includeAnyTags: [] },
+      { availableWindow: { start: '18:00' } },
+    ])('有效条件真的变化仍要求本轮引用：%j', async (patch) => {
+      const result = await run({ includeAnyTags: ['evening'] }, patch);
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_SCHEDULE_NO_PROVENANCE);
+      expect(mockSpongeService.fetchJobs).not.toHaveBeenCalled();
+    });
+    it('撤销待确认的旧时段是实际变化，仍要求本轮引用', async () => {
+      const result = await run({ onlyEvenings: true }, { availableWindow: null });
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_SCHEDULE_NO_PROVENANCE);
     });
   });
 
@@ -3336,6 +3464,7 @@ describe('buildJobListTool', () => {
       } as JobListTestContext);
       expect(mockSpongeService.fetchJobs).not.toHaveBeenCalled();
       expect(result._outcome).toBe('已有班次条件需要重新确认');
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_SCHEDULE_NEEDS_CONFIRMATION);
     });
   });
 

@@ -116,6 +116,24 @@ describe('buildJobListQuerySignature', () => {
     );
   });
 
+  it('清空标签的空数组与当日结束标识等价于未传，不漏报重复查询', () => {
+    const withSchedule = (candidateScheduleConstraint: Record<string, unknown> | null) =>
+      buildJobListQuerySignature({ ...baseInput, candidateScheduleConstraint });
+    expect(
+      withSchedule({
+        includeAnyTags: ['evening'],
+        excludeTags: [],
+        availableWindow: { start: '18:00', endDayOffset: 0 },
+        unavailableWindow: null,
+        preferFlexibleSchedule: false,
+      }),
+    ).toBe(withSchedule({ availableWindow: { start: '18:00' }, includeAnyTags: ['evening'] }));
+    expect(withSchedule({ excludeTags: [], includeAnyTags: [] })).toBe(withSchedule(null));
+    expect(
+      withSchedule({ availableWindow: { start: '18:00', end: '02:00', endDayOffset: 1 } }),
+    ).not.toBe(withSchedule({ availableWindow: { start: '18:00', end: '02:00' } }));
+  });
+
   it('空 location 对象等价于未传', () => {
     expect(buildJobListQuerySignature({ ...baseInput, location: {} })).toBe(
       buildJobListQuerySignature({ ...baseInput }),

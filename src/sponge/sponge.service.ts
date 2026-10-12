@@ -1,4 +1,4 @@
-import { parseDayWorkTime } from './work-time.types';
+import { parseDayWorkTime, WorkTimeContractError } from './work-time.types';
 import { SpongeResponseContractError } from './response-contract.error';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
@@ -7,6 +7,8 @@ import { ConfigService } from '@nestjs/config';
 import {
   JobListQueryParams,
   JobListResult,
+  JobDetail,
+  InvalidWorkTimeJob,
   InterviewBookingParams,
   InterviewBookingResult,
   BrandItem,
@@ -65,6 +67,8 @@ const FAILURE_REASONS_CACHE_MAX_ENTRIES = 50;
 /** Agent 上下文按 workOrderId 查工单的 Redis 缓存 TTL（秒）。 */
 const WORKORDER_CACHE_TTL_SECONDS = 5 * 60;
 const MAX_ATTACHMENT_UPLOAD_BYTES = 20 * 1024 * 1024;
+/** 班次契约剔除日志最多展开的岗位条数，其余只计数。 */
+const SKIPPED_WORK_TIME_LOG_LIMIT = 20;
 
 /**
  * 海绵网关在每个响应头里下发的链路追踪 ID。
@@ -285,16 +289,48 @@ export class SpongeService {
       throw new SpongeResponseContractError('岗位查询成功响应缺少 data');
     }
 
-    if (params.options?.includeWorkTime) {
-      for (const job of parsed.data.data?.result ?? []) {
+    const { result: jobs, total } = parsed.data.data;
+    if (!params.options?.includeWorkTime) return { jobs, total };
+    if (params.invalidWorkTime !== 'skip') {
+      for (const job of jobs) {
         parseDayWorkTime(job.workTime, job.basicInfo?.jobId ?? null);
       }
+      return { jobs, total };
     }
+    return { ...this.skipInvalidWorkTime(jobs), total };
+  }
 
-    return {
-      jobs: parsed.data.data?.result ?? [],
-      total: parsed.data.data?.total ?? 0,
-    };
+  /**
+   * 批量任务按岗位隔离班次契约错误：不合法岗位整条剔除并记 warn，不补值、不改类型，
+   * 合法岗位照常返回。响应结构等其他契约错误不在此处豁免。
+   */
+  private skipInvalidWorkTime(jobs: JobDetail[]): {
+    jobs: JobDetail[];
+    skippedInvalidWorkTime: InvalidWorkTimeJob[];
+  } {
+    const kept: JobDetail[] = [];
+    const skipped: InvalidWorkTimeJob[] = [];
+    for (const job of jobs) {
+      try {
+        parseDayWorkTime(job.workTime);
+        kept.push(job);
+      } catch (error) {
+        if (!(error instanceof WorkTimeContractError)) throw error;
+        skipped.push({
+          jobId: job.basicInfo?.jobId ?? null,
+          brandName: job.basicInfo?.brandName ?? null,
+          reason: error.message,
+        });
+      }
+    }
+    if (skipped.length > 0) {
+      this.logger.warn(
+        `岗位班次数据不符合契约，已剔除 ${skipped.length} 条（需海绵修数据）: ` +
+          JSON.stringify(skipped.slice(0, SKIPPED_WORK_TIME_LOG_LIMIT)) +
+          (skipped.length > SKIPPED_WORK_TIME_LOG_LIMIT ? ` ...共 ${skipped.length} 条` : ''),
+      );
+    }
+    return { jobs: kept, skippedInvalidWorkTime: skipped };
   }
 
   /** 预约面试 */

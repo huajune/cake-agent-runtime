@@ -113,8 +113,10 @@ export const TOOL_ERROR_TYPES = {
   JOB_LIST_JOBID_NO_PROVENANCE: 'job_list.jobid_no_provenance',
   /** 明确归一化的模型品牌未出现在已完整构建的回合品牌提及集合中。 */
   JOB_LIST_BRAND_NO_PROVENANCE: 'job_list.brand_no_provenance',
-  /** 班次排他性约束（只做周末/晚班/早班）在候选人原话里找不到依据，未执行查询。 */
+  /** 本轮实际改变了班次条件，但缺少候选人本轮逐字原话出处，未执行查询。 */
   JOB_LIST_SCHEDULE_NO_PROVENANCE: 'job_list.schedule_no_provenance',
+  /** 已保存的班次条件含义或钟点边界不明确（旧早晚班标记、无法规整的旧时段），需先向候选人确认。 */
+  JOB_LIST_SCHEDULE_NEEDS_CONFIRMATION: 'job_list.schedule_needs_confirmation',
   /** 品牌列表为空却传了 enforce/exclude：矛盾组合，引导补品牌或改 mode（§8.1）。 */
   JOB_LIST_BRAND_MODE_CONFLICT: 'job_list.brand_mode_conflict',
   /**

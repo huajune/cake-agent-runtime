@@ -133,4 +133,22 @@ describe('岗位有界补页', () => {
       ]),
     ).not.toHaveProperty('noMatchScript');
   });
+  it('待确认岗位只回传少量样例并保留总数，不把整批岗位ID塞进回执', () => {
+    const unknown = Array.from({ length: 30 }, (_, i) => ({ jobId: i + 1, reason: '待确认' }));
+    const result = buildScannedQueryError(
+      { errorType: TOOL_ERROR_TYPES.JOB_LIST_SCHEDULE_FILTER_EMPTY, replyInstruction: '无岗' },
+      {
+        upstreamTotal: 30,
+        scannedCount: 30,
+        scannedPages: 2,
+        scanComplete: true,
+        stopReason: 'complete',
+      },
+      unknown,
+    );
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_QUERY_INCOMPLETE);
+    const queryMeta = result.queryMeta as { unknownCount: number; unknownSchedules: unknown[] };
+    expect(queryMeta.unknownCount).toBe(30);
+    expect(queryMeta.unknownSchedules).toEqual(unknown.slice(0, 5));
+  });
 });

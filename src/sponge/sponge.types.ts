@@ -23,6 +23,13 @@ export interface JobListQueryParams {
   sortField?: string;
   location?: JobListLocation;
   options?: JobListOptions;
+  /**
+   * 请求 workTime 时，班次契约不合法岗位的本地处理方式（不下发海绵）。
+   * - reject（默认）：任一岗位不合法即整次抛 WorkTimeContractError；
+   * - skip：剔除不合法岗位，其余照常返回，剔除明细见 JobListResult.skippedInvalidWorkTime。
+   * 候选人查岗必须用 reject；skip 仅供群推送、数据体检等批量任务，不补值、不猜测班次。
+   */
+  invalidWorkTime?: 'reject' | 'skip';
 }
 
 export interface JobListLocation {
@@ -174,10 +181,20 @@ export const JobDetailSchema = z
   })
   .catchall(z.unknown());
 
+/** invalidWorkTime=skip 时被剔除的岗位：班次数据违反契约，需海绵修数据。 */
+export interface InvalidWorkTimeJob {
+  jobId: number | null;
+  brandName: string | null;
+  reason: string;
+}
+
 /** 岗位查询响应 */
 export interface JobListResult {
   jobs: JobDetail[];
+  /** 海绵报告的总数，包含被 skip 剔除的岗位。 */
   total: number;
+  /** 仅 invalidWorkTime=skip 时返回（可能为空数组）。 */
+  skippedInvalidWorkTime?: InvalidWorkTimeJob[];
 }
 
 export const JobListApiResponseSchema = z

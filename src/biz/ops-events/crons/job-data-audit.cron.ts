@@ -15,13 +15,15 @@ import {
   type JobDataIssueKind,
 } from '@sponge/job-data-audit.util';
 import { SpongeService } from '@sponge/sponge.service';
-import type { JobDetail, JobListOptions } from '@sponge/sponge.types';
+import type { InvalidWorkTimeJob, JobDetail, JobListOptions } from '@sponge/sponge.types';
 
 /**
  * 岗位数据体检 cron（PRD R4「数据体检告警」/ R8 防复发）。
  *
  * 每天一次拉全部在招岗位（六分区全开，分页有上限），跑 `auditJobDataBatch` 四类录入体检，
  * 汇总成**一条**飞书告警（按日期去重），正文只列岗位 ID / 品牌 / 问题，不列门店联系人。
+ * 班次契约不合规的岗位由 SpongeService 按岗位剔除（invalidWorkTime=skip），计为「班次数据不合规」
+ * 问题进同一份告警，不中断分页——本任务的职责正是发现这类坏数据。
  *
  * 护栏：
  * - 只在生产运行（RUNTIME_ENV / NODE_ENV = production），READ_ONLY_PREVIEW 跳过；
@@ -43,10 +45,12 @@ export const JOB_DATA_AUDIT_LOCK_KEY = 'ops:job-data-audit:lock';
 const LOCK_TTL_SECONDS = 30 * 60;
 const PAGE_SIZE = 50;
 const REPORT_MAX_LINES = 60;
+/** 班次契约错误原文可能串联多处字段问题，告警单行只保留前段。 */
+const WORK_TIME_DETAIL_MAX = 120;
 
 export interface JobDataAuditRunResult {
   reportDate: string;
-  /** 实际拉到并体检的岗位数（按 jobId 去重）。 */
+  /** 实际拉到并体检的岗位数（按 jobId 去重，含班次数据不合规而被剔除的岗位）。 */
   scanned: number;
   /** 海绵报告的在招岗位总数。 */
   total: number;
@@ -126,12 +130,13 @@ export class JobDataAuditCronService {
   /** 执行一次体检（不含开关/锁护栏，便于测试与手动触发）。 */
   async runOnce(): Promise<JobDataAuditRunResult> {
     const reportDate = formatLocalDate(getLocalDayStart());
-    const { jobs, total, truncated, fetchError } = await this.fetchSignableJobs();
-    const issues = auditJobDataBatch(jobs);
+    const { jobs, invalidWorkTime, total, truncated, fetchError } = await this.fetchSignableJobs();
+    const issues = [...invalidWorkTime.map(toWorkTimeIssue), ...auditJobDataBatch(jobs)];
     const byKind = countJobDataIssuesByKind(issues);
+    const scanned = jobs.length + invalidWorkTime.length;
     const result: JobDataAuditRunResult = {
       reportDate,
-      scanned: jobs.length,
+      scanned,
       total,
       truncated,
       ...(fetchError ? { fetchError } : {}),
@@ -150,7 +155,7 @@ export class JobDataAuditCronService {
       .map((kind) => `${JOB_DATA_ISSUE_LABELS[kind]} ${byKind[kind]}`)
       .join('，');
     this.logger.log(
-      `岗位数据体检 ${reportDate}: 扫描 ${jobs.length}/${total} 岗${truncatedNote}，` +
+      `岗位数据体检 ${reportDate}: 扫描 ${scanned}/${total} 岗${truncatedNote}，` +
         `问题 ${issues.length} 处${byKindText ? `（${byKindText}）` : ''}`,
     );
     // 没问题且拉取完整才静默；某页拉取失败也要出告警，否则「今天没问题」可能只是没拉到。
@@ -160,7 +165,7 @@ export class JobDataAuditCronService {
       code: 'ops.job_data_audit',
       severity: AlertLevel.WARNING,
       summary:
-        `岗位数据体检：${jobs.length} 个在招岗位发现 ${issues.length} 处录入问题` +
+        `岗位数据体检：${scanned} 个在招岗位发现 ${issues.length} 处录入问题` +
         `${byKindText ? `（${byKindText}）` : ''}${truncatedNote}`,
       source: {
         subsystem: 'ops-events',
@@ -172,7 +177,7 @@ export class JobDataAuditCronService {
         category: 'job_data_audit',
         payload: {
           reportDate,
-          scanned: jobs.length,
+          scanned,
           total,
           truncated,
           ...(fetchError ? { fetchError } : {}),
@@ -187,19 +192,27 @@ export class JobDataAuditCronService {
 
   private async fetchSignableJobs(): Promise<{
     jobs: JobDetail[];
+    invalidWorkTime: InvalidWorkTimeJob[];
     total: number;
     truncated: boolean;
     fetchError?: string;
   }> {
     const startedAt = Date.now();
     const jobs: JobDetail[] = [];
+    const invalidWorkTime: InvalidWorkTimeJob[] = [];
     const seen = new Set<number>();
+    const isNew = (jobId: number | null | undefined) => {
+      if (typeof jobId !== 'number') return true;
+      if (seen.has(jobId)) return false;
+      seen.add(jobId);
+      return true;
+    };
     let total = Number.POSITIVE_INFINITY;
     let truncated = false;
     let fetchError: string | undefined;
 
     if (Date.now() - startedAt >= this.timeBudgetMs) {
-      return { jobs, total: 0, truncated: true };
+      return { jobs, invalidWorkTime, total: 0, truncated: true };
     }
     let brandIds: number[];
     try {
@@ -216,13 +229,15 @@ export class JobDataAuditCronService {
     } catch (error) {
       return {
         jobs,
+        invalidWorkTime,
         total: 0,
         truncated: true,
         fetchError: `品牌范围读取失败: ${toErrorMessage(error)}`,
       };
     }
 
-    for (let pageNum = 1; pageNum <= this.maxPages && jobs.length < total; pageNum++) {
+    const received = () => jobs.length + invalidWorkTime.length;
+    for (let pageNum = 1; pageNum <= this.maxPages && received() < total; pageNum++) {
       if (Date.now() - startedAt >= this.timeBudgetMs) {
         truncated = true;
         break;
@@ -233,6 +248,7 @@ export class JobDataAuditCronService {
           brandIdList: brandIds,
           pageNum,
           pageSize: PAGE_SIZE,
+          invalidWorkTime: 'skip',
           options: ALL_SECTIONS,
         });
       } catch (error) {
@@ -244,19 +260,20 @@ export class JobDataAuditCronService {
       }
       total = page.total;
       for (const job of page.jobs) {
-        const jobId = job.basicInfo?.jobId;
-        if (typeof jobId === 'number') {
-          if (seen.has(jobId)) continue;
-          seen.add(jobId);
-        }
-        jobs.push(job);
+        if (isNew(job.basicInfo?.jobId)) jobs.push(job);
       }
-      if (page.jobs.length < PAGE_SIZE) break;
-      if (pageNum === this.maxPages && jobs.length < total) truncated = true;
+      const skipped = page.skippedInvalidWorkTime ?? [];
+      for (const item of skipped) {
+        if (isNew(item.jobId)) invalidWorkTime.push(item);
+      }
+      // 被剔除的岗位也占上游分页名额，满页判断须按上游实际返回条数。
+      if (page.jobs.length + skipped.length < PAGE_SIZE) break;
+      if (pageNum === this.maxPages && received() < total) truncated = true;
     }
     return {
       jobs,
-      total: Number.isFinite(total) ? total : jobs.length,
+      invalidWorkTime,
+      total: Number.isFinite(total) ? total : received(),
       truncated,
       ...(fetchError ? { fetchError } : {}),
     };
@@ -273,4 +290,17 @@ export class JobDataAuditCronService {
       'development';
     return runtimeEnv === 'production';
   }
+}
+
+function toWorkTimeIssue(item: InvalidWorkTimeJob): JobDataIssue {
+  const detail =
+    item.reason.length > WORK_TIME_DETAIL_MAX
+      ? `${item.reason.slice(0, WORK_TIME_DETAIL_MAX)}…`
+      : item.reason;
+  return {
+    jobId: item.jobId,
+    brandName: item.brandName,
+    kind: 'work_time_contract_invalid',
+    detail,
+  };
 }

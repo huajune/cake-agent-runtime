@@ -79,6 +79,7 @@ describe('JobDataAuditCronService.runOnce', () => {
       brandIdList: [1, 2],
       pageNum: 1,
       pageSize: 50,
+      invalidWorkTime: 'skip',
       options: {
         includeBasicInfo: true,
         includeJobSalary: true,
@@ -113,6 +114,50 @@ describe('JobDataAuditCronService.runOnce', () => {
     // 不列门店联系人 / 地址
     expect(report).not.toContain('示例门店');
     expect(report).not.toMatch(/1[3-9]\d{9}/);
+  });
+
+  it('班次数据不合规的岗位计入体检问题并告警，不中断后续分页', async () => {
+    const { service, spongeService, alertNotifier } = makeService(PROD_ENABLED);
+    const clean = (jobId: number) =>
+      buildSpongeJobFixture(IDS.KFC_RPO_STAIR_PERIODIC_INTERVIEW, (draft) => {
+        draft.basicInfo!.jobId = jobId;
+      });
+    const reason =
+      '海绵班次数据契约错误：dayWorkTime.combinedArrangement.0.combinedArrangementEndTime: 班次起止钟点相同，海绵需明确含义或修复';
+    // 第一页 49 条合规 + 1 条被剔除，仍是满页，必须继续拉第二页。
+    spongeService.fetchJobs
+      .mockResolvedValueOnce({
+        ...page(
+          Array.from({ length: 49 }, (_, i) => clean(810000 + i)),
+          52,
+        ),
+        skippedInvalidWorkTime: [{ jobId: 529577, brandName: '品牌一', reason }],
+      })
+      .mockResolvedValueOnce({
+        ...page([clean(810049)], 52),
+        skippedInvalidWorkTime: [
+          { jobId: 527951, brandName: '品牌二', reason },
+          { jobId: 529577, brandName: '品牌一', reason },
+        ],
+      });
+
+    const result = await service.runOnce();
+
+    expect(spongeService.fetchJobs).toHaveBeenCalledTimes(2);
+    expect(spongeService.fetchJobs.mock.calls[1][0]).toMatchObject({
+      pageNum: 2,
+      invalidWorkTime: 'skip',
+    });
+    expect(result).toMatchObject({ scanned: 52, total: 52, truncated: false, alerted: true });
+    expect(result.fetchError).toBeUndefined();
+    expect(result.byKind.work_time_contract_invalid).toBe(2);
+    const context = alertNotifier.sendAlert.mock.calls[0][0];
+    expect(context.summary).toContain('52 个在招岗位发现 2 处录入问题');
+    expect(context.summary).toContain('班次数据不合规 2');
+    const report = context.diagnostics.payload.report as string;
+    expect(report).toContain('【班次数据不合规】2 条');
+    expect(report).toContain('- 529577 品牌一：');
+    expect(report).toContain('- 527951 品牌二：');
   });
 
   it('没有问题时只记日志不发告警', async () => {

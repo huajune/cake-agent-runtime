@@ -9,9 +9,13 @@ import { asRecord, asRecordArray, type UnknownRecord } from '@infra/utils/object
  * 3. 综合薪资上下限比例异常（上限/下限 > 3，或下限 > 上限，疑似多打一个零）；
  * 4. 在招岗位发薪日为空。
  *
+ * 班次契约不合规（work_time_contract_invalid）由 SpongeService 取数时按岗位剔除，
+ * 调用方转成本类问题计入报告；该岗位不再进入上述四类检测。
+ *
  * 只输出岗位 ID、品牌与数值/短片段，不输出门店联系人；告警文案由调用方拼装。
  */
 export type JobDataIssueKind =
+  | 'work_time_contract_invalid'
   | 'stair_text_without_structure'
   | 'holiday_salary_conflict'
   | 'comprehensive_salary_ratio'
@@ -26,6 +30,7 @@ export interface JobDataIssue {
 }
 
 export const JOB_DATA_ISSUE_LABELS: Record<JobDataIssueKind, string> = {
+  work_time_contract_invalid: '班次数据不合规',
   stair_text_without_structure: '备注有阶梯而结构化标无',
   holiday_salary_conflict: '节假日薪资两处矛盾',
   comprehensive_salary_ratio: '综合薪资上下限比例异常',
@@ -248,6 +253,7 @@ export function countJobDataIssuesByKind(
   issues: readonly JobDataIssue[],
 ): Record<JobDataIssueKind, number> {
   const counts: Record<JobDataIssueKind, number> = {
+    work_time_contract_invalid: 0,
     stair_text_without_structure: 0,
     holiday_salary_conflict: 0,
     comprehensive_salary_ratio: 0,
