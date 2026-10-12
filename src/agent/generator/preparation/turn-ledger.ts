@@ -1,6 +1,7 @@
 import { Logger } from '@nestjs/common';
 import type { CandidateCollectedField, CandidateFieldKey } from '@resolution/candidate/types';
 import type { TurnHints } from '@resolution/turn-hints/turn-hint.types';
+import { appendToolVerifiedScheduleClaim } from '@resolution/turn-hints/producers/rule-track';
 import type { LaborFormIntentDecision } from '@resolution/labor-form';
 import type { RecommendedJobSummary } from '@resolution/job/types';
 import { normalizeBrandNameForComparison } from '@resolution/brand/brand-normalize';
@@ -214,7 +215,9 @@ export function createTurnLedger(input: CreateTurnLedgerInput = {}): TurnLedger 
             : { resolvedWorkOrderId: ledger.jobs.resolvedWorkOrderId }),
         },
         facts: {
-          turnHints: ledger.facts.turnHints,
+          // 回合内 facts.turnHints 保持 prep 判定；交档快照另附工具已核验的班次条件，
+          // 轮末抽取没给出有效班次变更时由 memory 据此落盘。
+          turnHints: appendToolVerifiedScheduleClaim(ledger.facts.turnHints, scheduleConstraint),
           laborFormIntent: ledger.facts.laborFormIntent,
           collectedFields,
         },

@@ -1,5 +1,5 @@
 import type { BrandItem } from '@/sponge/sponge.types';
-import { SHIFT_TAG_LABELS } from '@resolution/schedule/types';
+import { SHIFT_TAG_LABELS, type StoredScheduleConstraint } from '@resolution/schedule/types';
 import { formatLocalDate } from '@infra/utils/date.util';
 import { stripQuotedBlocks as stripQuotedBlocksMarkup } from '@resolution/signal/markers';
 import {
@@ -535,6 +535,63 @@ export function mergeSupplementalGenderClaims(
   return {
     claims: sink.claims,
     reasoning: [existing?.reasoning?.trim(), suffix].filter(Boolean).join('；'),
+  };
+}
+
+/** 工具已按本轮原话核验的班次条件在 claim 流中的证据码。 */
+export const TOOL_VERIFIED_SCHEDULE_EVIDENCE_CODE = 'tool_verified_schedule_constraint';
+
+function isToolVerifiedScheduleClaim(claim: TurnHint): boolean {
+  return (
+    claim.field === 'preferences.schedule_constraint' &&
+    claim.evidence.code === TOOL_VERIFIED_SCHEDULE_EVIDENCE_CODE
+  );
+}
+
+/**
+ * 把工具查岗时实际使用的班次条件附进轮末 claim 流。
+ *
+ * 值是工具与会话记忆合并后的完整有效条件；工具只在本轮原话核验通过、或条件与记忆等价时
+ * 才登记它。它只服务轮末记忆兜底，不进入回合内提示，也不参与规则轨字段合并。
+ */
+export function appendToolVerifiedScheduleClaim(
+  existing: TurnHints | null,
+  constraint: StoredScheduleConstraint | undefined,
+): TurnHints | null {
+  if (constraint === undefined) return existing;
+  const label = '工具已核验的本轮班次条件';
+  const claim: TurnHint = {
+    claimId: `tool_preferences_schedule_constraint_${(existing?.claims.length ?? 0) + 1}`,
+    field: 'preferences.schedule_constraint',
+    value: structuredClone(constraint),
+    operation: 'set',
+    producer: 'candidate_quote',
+    interpretation: 'normalized',
+    evidence: { quote: '', label, code: TOOL_VERIFIED_SCHEDULE_EVIDENCE_CODE },
+    reasoning: label,
+    assertedAt: new Date().toISOString(),
+    confidence: 'high',
+  };
+  return {
+    claims: [
+      ...(existing?.claims ?? []).filter((item) => !isToolVerifiedScheduleClaim(item)),
+      claim,
+    ],
+    reasoning: existing?.reasoning || label,
+  };
+}
+
+/** 拆出工具已核验的班次条件；其余 claim 仍按规则轨口径消费。 */
+export function splitToolVerifiedScheduleClaim(hints: TurnHints | null): {
+  ruleHints: TurnHints | null;
+  toolVerifiedSchedule: unknown;
+} {
+  const toolClaim = hints?.claims.find(isToolVerifiedScheduleClaim);
+  if (!hints || !toolClaim) return { ruleHints: hints, toolVerifiedSchedule: null };
+  const claims = hints.claims.filter((claim) => !isToolVerifiedScheduleClaim(claim));
+  return {
+    ruleHints: claims.length > 0 ? { claims, reasoning: hints.reasoning } : null,
+    toolVerifiedSchedule: toolClaim.value,
   };
 }
 

@@ -457,10 +457,13 @@ describe('turn-hints rule track', () => {
       expect(readProjectedValue(constraint)?.onlyWeekends).toBe(true);
     });
 
-    it('extracts onlyWeekends from "周末有没有活"', () => {
-      const constraint = extractTurnHints(['周末有没有活'], brandData)?.preferences
-        .schedule_constraint;
-      expect(readProjectedValue(constraint)?.onlyWeekends).toBe(true);
+    // 「周末有没有活」是在问岗位，不是声明只能周末；询问不产出持久班次条件，
+    // 「想找周末的活」这类求职陈述仍记只周末。
+    it('does not read "周末有没有活" as an onlyWeekends constraint', () => {
+      const asked = extractTurnHints(['周末有没有活'], brandData)?.preferences.schedule_constraint;
+      expect(readProjectedValue(asked)?.onlyWeekends ?? null).toBeNull();
+      const stated = extractTurnHints(['想找周末的活'], brandData)?.preferences.schedule_constraint;
+      expect(readProjectedValue(stated)?.onlyWeekends).toBe(true);
     });
 
     it('does not treat 周六面试时间安排 as weekend constraint', () => {

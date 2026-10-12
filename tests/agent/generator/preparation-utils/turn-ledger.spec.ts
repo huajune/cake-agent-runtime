@@ -4,6 +4,8 @@ import type { RecommendedJobSummary } from '@resolution/job/types';
 import { finalizeVisualFactSheet } from '@resolution/signal/visual';
 import { createToolContext, mergeToolContext } from '../../../helpers/tool-context.fixture';
 import { createTurnLedger } from '@agent/generator/preparation/turn-ledger';
+import { splitToolVerifiedScheduleClaim } from '@resolution/turn-hints/producers/rule-track';
+import { testTurnHint, testTurnHints } from '../../../helpers/turn-hints.fixture';
 
 describe('createTurnLedger — geo 双记录（议题 4）', () => {
   const locationShare = {
@@ -232,5 +234,39 @@ describe('mentioned brands accumulated by the ledger', () => {
       mergeToolContext(original, { ledger: { jobs: { jobListExecuted: true } } }).ledger
         .mentionedBrands,
     ).toEqual(new Set(['肯德基']));
+  });
+});
+
+describe('createTurnLedger — 工具核验的班次条件随轮末快照交档', () => {
+  it('drain 把已核验班次条件附进轮末 claim 流，回合内 turnHints 保持 prep 判定', () => {
+    const turnHints = testTurnHints(testTurnHint('preferences.city', '上海', '城市识别：上海'));
+    const ledger = createTurnLedger({ turnHints });
+
+    ledger.recordScheduleConstraint({ availableWindow: null, maxDaysPerWeek: 2 });
+
+    expect(ledger.facts.turnHints).toBe(turnHints);
+    const { ruleHints, toolVerifiedSchedule } = splitToolVerifiedScheduleClaim(
+      ledger.drain().facts.turnHints,
+    );
+    expect(ruleHints?.claims).toEqual(turnHints.claims);
+    expect(toolVerifiedSchedule).toEqual({ availableWindow: null, maxDaysPerWeek: 2 });
+  });
+
+  it('没有 prep 线索时也能单独交档工具核验的班次条件', () => {
+    const ledger = createTurnLedger();
+    ledger.recordScheduleConstraint({ excludeTags: ['night'] });
+
+    const { ruleHints, toolVerifiedSchedule } = splitToolVerifiedScheduleClaim(
+      ledger.drain().facts.turnHints,
+    );
+    expect(ruleHints).toBeNull();
+    expect(toolVerifiedSchedule).toEqual({ excludeTags: ['night'] });
+  });
+
+  it('未登记班次条件时 claim 流原样交档', () => {
+    const turnHints = testTurnHints(testTurnHint('preferences.city', '上海', '城市识别：上海'));
+    const ledger = createTurnLedger({ turnHints });
+
+    expect(ledger.drain().facts.turnHints).toBe(turnHints);
   });
 });
