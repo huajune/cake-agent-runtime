@@ -15,7 +15,7 @@ import {
   formatDistanceKm,
   type DistanceAnchorPrecision,
 } from '@tools/job-list/distance-render.util';
-import { composeShiftTimeText } from '@tools/job-list/format-shift-time.util';
+import { formatJobShiftTime } from '@tools/job-list/format-shift-time.util';
 import { extractHardRequirements } from '@tools/job-list/hard-requirements.util';
 import { buildJobPolicyAnalysis } from '@tools/job-list/job-policy-parser';
 import { sanitizeLaborFormForDisplay } from '@resolution/labor-form';
@@ -143,7 +143,7 @@ type BrandSummaryJobInput = {
 };
 
 function formatShiftSummary(job: BrandSummaryJobInput): string | null {
-  const shift = composeShiftTimeText(job.workTime);
+  const shift = formatJobShiftTime(job);
   return shift || null;
 }
 

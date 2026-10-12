@@ -1,3 +1,4 @@
+import { formatStoredScheduleConstraint } from '@resolution/schedule/format';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
@@ -316,21 +317,7 @@ export class ReplyRepairContextProvider {
       return fact.until ? `${fact.until}（原话: ${fact.raw ?? ''}）` : null;
     }
     if (key === 'schedule_constraint' && typeof value === 'object' && value !== null) {
-      const c = value as {
-        onlyWeekends?: boolean | null;
-        onlyEvenings?: boolean | null;
-        onlyMornings?: boolean | null;
-        maxDaysPerWeek?: number | null;
-        availableWindow?: { start: string; end: string } | null;
-      };
-      const parts: string[] = [];
-      if (c.onlyWeekends) parts.push('只周末');
-      if (c.onlyEvenings) parts.push('只晚班');
-      if (c.onlyMornings) parts.push('只早班');
-      if (c.maxDaysPerWeek) parts.push(`每周最多${c.maxDaysPerWeek}天`);
-      if (c.availableWindow)
-        parts.push(`可上班时段${c.availableWindow.start}-${c.availableWindow.end}`);
-      return parts.length > 0 ? parts.join('、') : null;
+      return formatStoredScheduleConstraint(value);
     }
     return String(value);
   }

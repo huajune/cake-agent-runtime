@@ -106,6 +106,8 @@ export const TOOL_ERROR_TYPES = {
    * 解析成区级 district + 经纬度再重查，而不是直接照 noMatchScript 拉群收口。
    */
   JOB_LIST_REGION_NEEDS_GEOCODE: 'job_list.region_needs_geocode',
+  /** 分页未完成或存在待确认班次，不是确定性无岗。 */
+  JOB_LIST_QUERY_INCOMPLETE: 'job_list.query_incomplete',
   JOB_LIST_SCHEDULE_FILTER_EMPTY: 'job_list.schedule_filter_empty',
   JOB_LIST_STUDENT_FILTER_EMPTY: 'job_list.student_filter_empty',
   JOB_LIST_JOBID_NO_PROVENANCE: 'job_list.jobid_no_provenance',

@@ -4,6 +4,12 @@ import { scanGeoSignalsFromText } from '@resolution/geo';
 import { decideLaborFormIntent } from '@resolution/labor-form';
 import { extractLocationShareLabels } from '@resolution/signal/markers';
 import type { TurnHintCity } from '../projection.types';
+import {
+  hasScheduleConstraint,
+  type CandidateScheduleConstraint,
+  type ScheduleWindow,
+  type ShiftTag,
+} from '@resolution/schedule/types';
 
 const POSITION_KEYWORDS = [
   '服务员',
@@ -277,7 +283,7 @@ const WINDOW_EXCLUSION_PATTERN = /班次[:：]|薪资|元\/|面试|报名|截止
  * 候选人可上班的具体时段："晚上6点半到24点""18:30-24:00""下午5点到10点"。
  * 只认起止都能解析成钟点、且跨度 ≥1h ≤16h 的表达；钟点后带"分/半"的才算分钟。
  */
-export function extractAvailableWindow(message: string): { start: string; end: string } | null {
+export function extractAvailableWindow(message: string): ScheduleWindow | null {
   const text = stripQuotedBlocks(message);
   if (WINDOW_EXCLUSION_PATTERN.test(text)) return null;
   const match = text.match(AVAILABLE_WINDOW_PATTERN);
@@ -304,59 +310,48 @@ export function extractAvailableWindow(message: string): { start: string; end: s
     return null;
   }
   const start = clockToMinutes(q1 ?? '', h1, m1 ?? mm1, half1);
-  const qualifierEnd = q2 && q2 !== '次日' ? q2 : (q1 ?? '');
+  const qualifierEnd = q2 === '次日' ? '' : (q2 ?? q1 ?? '');
   let end = clockToMinutes(qualifierEnd, h2, m2 ?? mm2, half2);
-  if (start === null || end === null) return null;
+  if (start === null || start >= 24 * 60 || end === null) return null;
   // "6点到10点"这类只有前一个限定词的，结束钟点小于开始时按同一半天顺延
-  if (end <= start && end + 12 * 60 <= 24 * 60 && !q2) end += 12 * 60;
+  if (end <= start && end + 12 * 60 > start && end + 12 * 60 <= 24 * 60 && !q2) end += 12 * 60;
   if (end <= start) end += 24 * 60;
   const span = end - start;
   if (span < 60 || span > 16 * 60) return null;
-  return { start: minutesToHm(start), end: minutesToHm(end > 24 * 60 ? end - 24 * 60 : end) };
+  return {
+    start: minutesToHm(start),
+    end: minutesToHm(end > 24 * 60 ? end - 24 * 60 : end),
+    ...(end > 24 * 60 ? { endDayOffset: 1 } : {}),
+  };
 }
 
-export function extractScheduleConstraintStructured(message: string): {
-  onlyWeekends: boolean | null;
-  onlyEvenings: boolean | null;
-  onlyMornings: boolean | null;
-  maxDaysPerWeek: number | null;
-  availableWindow: { start: string; end: string } | null;
-} | null {
-  const result = {
-    onlyWeekends: null as boolean | null,
-    onlyEvenings: null as boolean | null,
-    onlyMornings: null as boolean | null,
-    maxDaysPerWeek: null as number | null,
-    availableWindow: null as { start: string; end: string } | null,
-  };
-  result.availableWindow = extractAvailableWindow(message);
+export function extractScheduleConstraintStructured(
+  message: string,
+): CandidateScheduleConstraint | null {
+  const result: CandidateScheduleConstraint = {};
+  const availableWindow = extractAvailableWindow(message);
+  if (availableWindow) result.availableWindow = availableWindow;
 
   const onlyShiftTargets = matchOnlyShiftTargets(message);
   if (onlyShiftTargets.includes('周末')) result.onlyWeekends = true;
-  if (onlyShiftTargets.some((shift) => shift === '晚班' || shift === '夜班')) {
-    result.onlyEvenings = true;
-  }
-  if (onlyShiftTargets.includes('早班')) result.onlyMornings = true;
-  if (result.onlyWeekends === null && WEEKEND_SEEK_PATTERN.test(message)) {
+  const tags: ShiftTag[] = [];
+  if (onlyShiftTargets.includes('晚班')) tags.push('evening');
+  if (onlyShiftTargets.includes('夜班')) tags.push('night');
+  if (onlyShiftTargets.includes('早班')) tags.push('early', 'morning');
+  if (tags.length) result.includeAnyTags = tags;
+  if (result.onlyWeekends === undefined && WEEKEND_SEEK_PATTERN.test(message)) {
     result.onlyWeekends = true;
   }
 
   const workRestDays = matchWorkRestDays(message);
   if (workRestDays !== null) result.maxDaysPerWeek = workRestDays;
-  if (result.maxDaysPerWeek === null) {
+  if (result.maxDaysPerWeek === undefined) {
     const weeklyDayConstraint = matchWeeklyDayConstraint(message);
     if (weeklyDayConstraint?.isUpperBound && weeklyDayConstraint.value !== null) {
       result.maxDaysPerWeek = weeklyDayConstraint.value;
     }
   }
-
-  const hasAny =
-    result.onlyWeekends !== null ||
-    result.onlyEvenings !== null ||
-    result.onlyMornings !== null ||
-    result.maxDaysPerWeek !== null ||
-    result.availableWindow !== null;
-  return hasAny ? result : null;
+  return hasScheduleConstraint(result) ? result : null;
 }
 
 export function extractAvailableAfterDate(

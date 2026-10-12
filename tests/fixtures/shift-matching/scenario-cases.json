@@ -1,0 +1,353 @@
+{
+  "cases": [
+    {
+      "caseId": "SCN-SHIFT-20261009-001",
+      "caseName": "固定排班必须接受全部班次",
+      "category": "班次匹配",
+      "userMessage": "帮我核对之前的必胜客慈寿寺卫星店，我只有每天8点到14点有空，能做吗？",
+      "checkpoint": "核对指定岗位事实；固定排班08–14及15–20必须全部接受，不得仅因一档满足而承诺能上岗。",
+      "expectedOutput": "期望行为：核对指定岗位事实；固定排班08–14及15–20必须全部接受，不得仅因一档满足而承诺能上岗。 动态岗位事实、在招状态、班次数量和时间以本轮 duliday_job_list 返回为准；原岗位停招或排班改变导致目标未触发时标记测试资产不可评估。",
+      "sourceType": "手工新增",
+      "remark": "手工设计的单轮/记忆前置状态用例，无生产chatId，不伪造历史事故。已知岗位来自2026-10-09海绵快照；运行时实时核对。仅开放只读查岗及地理工具，无报名或消息副作用。",
+      "enabled": true,
+      "memorySetup": {
+        "sessionFacts": {
+          "preferences": {
+            "city": "北京市",
+            "labor_form": "兼职"
+          }
+        },
+        "presentedJobs": [
+          {
+            "jobId": 527773,
+            "brandName": "必胜客",
+            "jobName": "必胜客-慈寿寺卫星PH-内场/外场-小时工",
+            "storeName": "慈寿寺卫星PH",
+            "cityName": "北京市",
+            "regionName": "海淀区",
+            "storeAddress": "北京市-海淀区-玲珑路琨御府东区9号楼下沉广场B120号归位瑜伽(琨御府店)",
+            "laborForm": "兼职"
+          }
+        ],
+        "currentFocusJob": {
+          "jobId": 527773,
+          "brandName": "必胜客",
+          "jobName": "必胜客-慈寿寺卫星PH-内场/外场-小时工",
+          "storeName": "慈寿寺卫星PH",
+          "cityName": "北京市",
+          "regionName": "海淀区",
+          "storeAddress": "北京市-海淀区-玲珑路琨御府东区9号楼下沉广场B120号归位瑜伽(琨御府店)",
+          "laborForm": "兼职"
+        }
+      },
+      "memoryAssertions": {
+        "sessionFacts": {
+          "preferences": {
+            "schedule_constraint": {
+              "availableWindow": {
+                "start": "08:00",
+                "end": "14:00"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "caseId": "SCN-SHIFT-20261009-002",
+      "caseName": "组合排班满足一档完整班次",
+      "category": "班次匹配",
+      "userMessage": "帮我核对之前的拉瓦萨海科路岗位，我每天只有7点到14点能上班，时间合适吗？",
+      "checkpoint": "核对组合排班07–14/07–15，前一档完整满足即可；不要求全部班次或把时长累加。",
+      "expectedOutput": "期望行为：核对组合排班07–14/07–15，前一档完整满足即可；不要求全部班次或把时长累加。 动态岗位事实、在招状态、班次数量和时间以本轮 duliday_job_list 返回为准；原岗位停招或排班改变导致目标未触发时标记测试资产不可评估。",
+      "sourceType": "手工新增",
+      "remark": "手工设计的单轮/记忆前置状态用例，无生产chatId，不伪造历史事故。已知岗位来自2026-10-09海绵快照；运行时实时核对。仅开放只读查岗及地理工具，无报名或消息副作用。",
+      "enabled": true,
+      "memorySetup": {
+        "sessionFacts": {
+          "preferences": {
+            "city": "上海市",
+            "labor_form": "兼职"
+          }
+        },
+        "presentedJobs": [
+          {
+            "jobId": 529561,
+            "brandName": "拉瓦萨",
+            "jobName": "拉瓦萨-海科路-海科路-小时工",
+            "storeName": "海科路",
+            "cityName": "上海市",
+            "regionName": "浦东新区",
+            "storeAddress": "浦东新区张江镇海科路999弄5号楼102室",
+            "laborForm": "兼职"
+          }
+        ],
+        "currentFocusJob": {
+          "jobId": 529561,
+          "brandName": "拉瓦萨",
+          "jobName": "拉瓦萨-海科路-海科路-小时工",
+          "storeName": "海科路",
+          "cityName": "上海市",
+          "regionName": "浦东新区",
+          "storeAddress": "浦东新区张江镇海科路999弄5号楼102室",
+          "laborForm": "兼职"
+        }
+      },
+      "memoryAssertions": {
+        "sessionFacts": {
+          "preferences": {
+            "schedule_constraint": {
+              "availableWindow": {
+                "start": "07:00",
+                "end": "14:00"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "caseId": "SCN-SHIFT-20261009-003",
+      "caseName": "灵活排班窗口不能当作承诺",
+      "category": "班次匹配",
+      "userMessage": "帮我核对之前苏州胥江里奥乐齐的排班，我每天15点到23点有空，是不是可以安排？",
+      "checkpoint": "核对灵活窗口和最低8小时，时长充足仍需确认实际可排班次，不能承诺15–23必能安排。",
+      "expectedOutput": "期望行为：核对灵活窗口和最低8小时，时长充足仍需确认实际可排班次，不能承诺15–23必能安排。 动态岗位事实、在招状态、班次数量和时间以本轮 duliday_job_list 返回为准；原岗位停招或排班改变导致目标未触发时标记测试资产不可评估。",
+      "sourceType": "手工新增",
+      "remark": "手工设计的单轮/记忆前置状态用例，无生产chatId，不伪造历史事故。已知岗位来自2026-10-09海绵快照；运行时实时核对。仅开放只读查岗及地理工具，无报名或消息副作用。",
+      "enabled": true,
+      "memorySetup": {
+        "sessionFacts": {
+          "preferences": {
+            "city": "苏州市",
+            "labor_form": "兼职"
+          }
+        },
+        "presentedJobs": [
+          {
+            "jobId": 529545,
+            "brandName": "奥乐齐",
+            "jobName": "奥乐齐-苏州胥江里-社会兼职-小时工",
+            "storeName": "苏州胥江里",
+            "cityName": "苏州市",
+            "regionName": "姑苏区",
+            "storeAddress": "胥台路与新康路交叉口西120米胥江里综合体商业酒店",
+            "laborForm": "兼职"
+          }
+        ],
+        "currentFocusJob": {
+          "jobId": 529545,
+          "brandName": "奥乐齐",
+          "jobName": "奥乐齐-苏州胥江里-社会兼职-小时工",
+          "storeName": "苏州胥江里",
+          "cityName": "苏州市",
+          "regionName": "姑苏区",
+          "storeAddress": "胥台路与新康路交叉口西120米胥江里综合体商业酒店",
+          "laborForm": "兼职"
+        }
+      },
+      "memoryAssertions": {
+        "sessionFacts": {
+          "preferences": {
+            "schedule_constraint": {
+              "availableWindow": {
+                "start": "15:00",
+                "end": "23:00"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "caseId": "SCN-SHIFT-20261009-004",
+      "caseName": "询问班次事实不产生候选人限制",
+      "category": "班次匹配",
+      "userMessage": "之前拉瓦萨海科路这个岗位每天几点上班、几点下班？",
+      "checkpoint": "仅按已知岗位ID核对真实班次，介绍组合任选完整一档；不得从提问生成个人早晚班或可用时间限制。",
+      "expectedOutput": "期望行为：仅按已知岗位ID核对真实班次，介绍组合任选完整一档；不得从提问生成个人早晚班或可用时间限制。 动态岗位事实、在招状态、班次数量和时间以本轮 duliday_job_list 返回为准；原岗位停招或排班改变导致目标未触发时标记测试资产不可评估。",
+      "sourceType": "手工新增",
+      "remark": "手工设计的单轮/记忆前置状态用例，无生产chatId，不伪造历史事故。已知岗位来自2026-10-09海绵快照；运行时实时核对。仅开放只读查岗及地理工具，无报名或消息副作用。",
+      "enabled": true,
+      "memorySetup": {
+        "sessionFacts": {
+          "preferences": {
+            "city": "上海市",
+            "labor_form": "兼职"
+          }
+        },
+        "presentedJobs": [
+          {
+            "jobId": 529561,
+            "brandName": "拉瓦萨",
+            "jobName": "拉瓦萨-海科路-海科路-小时工",
+            "storeName": "海科路",
+            "cityName": "上海市",
+            "regionName": "浦东新区",
+            "storeAddress": "浦东新区张江镇海科路999弄5号楼102室",
+            "laborForm": "兼职"
+          }
+        ],
+        "currentFocusJob": {
+          "jobId": 529561,
+          "brandName": "拉瓦萨",
+          "jobName": "拉瓦萨-海科路-海科路-小时工",
+          "storeName": "海科路",
+          "cityName": "上海市",
+          "regionName": "浦东新区",
+          "storeAddress": "浦东新区张江镇海科路999弄5号楼102室",
+          "laborForm": "兼职"
+        }
+      }
+    },
+    {
+      "caseId": "SCN-SHIFT-20261009-005",
+      "caseName": "跨轮未修改时段仍保留",
+      "category": "班次匹配",
+      "userMessage": "帮我再查一下上海拉瓦萨海科路岗位，之前说的上班时间不变。",
+      "checkpoint": "已有07–14时段保留，工具仍按原条件评估，不可因当前轮没重述钟点而清空。",
+      "expectedOutput": "期望行为：已有07–14时段保留，工具仍按原条件评估，不可因当前轮没重述钟点而清空。 动态岗位事实、在招状态、班次数量和时间以本轮 duliday_job_list 返回为准；原岗位停招或排班改变导致目标未触发时标记测试资产不可评估。",
+      "sourceType": "手工新增",
+      "remark": "手工设计的单轮/记忆前置状态用例，无生产chatId，不伪造历史事故。已知岗位来自2026-10-09海绵快照；运行时实时核对。仅开放只读查岗及地理工具，无报名或消息副作用。",
+      "enabled": true,
+      "memorySetup": {
+        "sessionFacts": {
+          "preferences": {
+            "city": "上海市",
+            "labor_form": "兼职",
+            "schedule_constraint": {
+              "availableWindow": {
+                "start": "07:00",
+                "end": "14:00"
+              }
+            }
+          }
+        },
+        "presentedJobs": [
+          {
+            "jobId": 529561,
+            "brandName": "拉瓦萨",
+            "jobName": "拉瓦萨-海科路-海科路-小时工",
+            "storeName": "海科路",
+            "cityName": "上海市",
+            "regionName": "浦东新区",
+            "storeAddress": "浦东新区张江镇海科路999弄5号楼102室",
+            "laborForm": "兼职"
+          }
+        ],
+        "currentFocusJob": {
+          "jobId": 529561,
+          "brandName": "拉瓦萨",
+          "jobName": "拉瓦萨-海科路-海科路-小时工",
+          "storeName": "海科路",
+          "cityName": "上海市",
+          "regionName": "浦东新区",
+          "storeAddress": "浦东新区张江镇海科路999弄5号楼102室",
+          "laborForm": "兼职"
+        }
+      },
+      "memoryAssertions": {
+        "sessionFacts": {
+          "preferences": {
+            "schedule_constraint": {
+              "availableWindow": {
+                "start": "07:00",
+                "end": "14:00"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "caseId": "SCN-SHIFT-20261009-006",
+      "caseName": "明确撤销时段不复活旧条件",
+      "category": "班次匹配",
+      "userMessage": "之前7点到14点的限制取消，现在每天任何时间都能上班，帮我重新查上海拉瓦萨海科路岗位。",
+      "checkpoint": "撤销availableWindow，查询和轮末记忆均不保留07–14限制；不能从历史补回。",
+      "expectedOutput": "期望行为：撤销availableWindow，查询和轮末记忆均不保留07–14限制；不能从历史补回。 动态岗位事实、在招状态、班次数量和时间以本轮 duliday_job_list 返回为准；原岗位停招或排班改变导致目标未触发时标记测试资产不可评估。",
+      "sourceType": "手工新增",
+      "remark": "手工设计的单轮/记忆前置状态用例，无生产chatId，不伪造历史事故。已知岗位来自2026-10-09海绵快照；运行时实时核对。仅开放只读查岗及地理工具，无报名或消息副作用。",
+      "enabled": true,
+      "memorySetup": {
+        "sessionFacts": {
+          "preferences": {
+            "city": "上海市",
+            "labor_form": "兼职",
+            "schedule_constraint": {
+              "availableWindow": {
+                "start": "07:00",
+                "end": "14:00"
+              }
+            }
+          }
+        },
+        "presentedJobs": [
+          {
+            "jobId": 529561,
+            "brandName": "拉瓦萨",
+            "jobName": "拉瓦萨-海科路-海科路-小时工",
+            "storeName": "海科路",
+            "cityName": "上海市",
+            "regionName": "浦东新区",
+            "storeAddress": "浦东新区张江镇海科路999弄5号楼102室",
+            "laborForm": "兼职"
+          }
+        ],
+        "currentFocusJob": {
+          "jobId": 529561,
+          "brandName": "拉瓦萨",
+          "jobName": "拉瓦萨-海科路-海科路-小时工",
+          "storeName": "海科路",
+          "cityName": "上海市",
+          "regionName": "浦东新区",
+          "storeAddress": "浦东新区张江镇海科路999弄5号楼102室",
+          "laborForm": "兼职"
+        }
+      },
+      "memoryAssertions": {
+        "sessionFacts": {
+          "preferences": {
+            "schedule_constraint": {
+              "availableWindow": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "caseId": "SCN-SHIFT-20261009-007",
+      "caseName": "夜班负向标签筛选",
+      "category": "班次匹配",
+      "userMessage": "我在上海找拉瓦萨的兼职，有没有不上夜班的？",
+      "checkpoint": "排除night标签，不把不上夜班解释为只做夜班；推荐以本轮真实岗位结果为准。",
+      "expectedOutput": "期望行为：排除night标签，不把不上夜班解释为只做夜班；推荐以本轮真实岗位结果为准。 动态岗位事实、在招状态、班次数量和时间以本轮 duliday_job_list 返回为准；原岗位停招或排班改变导致目标未触发时标记测试资产不可评估。",
+      "sourceType": "手工新增",
+      "remark": "手工设计的单轮/记忆前置状态用例，无生产chatId，不伪造历史事故。已知岗位来自2026-10-09海绵快照；运行时实时核对。仅开放只读查岗及地理工具，无报名或消息副作用。 本条只断言本次查询排除夜班；疑问句不要求保存为持续偏好。",
+      "enabled": true
+    },
+    {
+      "caseId": "SCN-SHIFT-20261009-008",
+      "caseName": "明确钟点按完整班次筛选",
+      "category": "班次匹配",
+      "userMessage": "我在上海找拉瓦萨的兼职，每天只有下午三点到晚上九点有空，帮我找找。",
+      "checkpoint": "按15–21完整包含检查，固定全部/组合任一；仅标签重叠不算时段符合；查询不完整时不得断言全范围无岗。",
+      "expectedOutput": "期望行为：按15–21完整包含检查，固定全部/组合任一；仅标签重叠不算时段符合；查询不完整时不得断言全范围无岗。 动态岗位事实、在招状态、班次数量和时间以本轮 duliday_job_list 返回为准；原岗位停招或排班改变导致目标未触发时标记测试资产不可评估。",
+      "sourceType": "手工新增",
+      "remark": "手工设计的单轮/记忆前置状态用例，无生产chatId，不伪造历史事故。已知岗位来自2026-10-09海绵快照；运行时实时核对。仅开放只读查岗及地理工具，无报名或消息副作用。",
+      "enabled": true,
+      "memoryAssertions": {
+        "sessionFacts": {
+          "preferences": {
+            "schedule_constraint": {
+              "availableWindow": {
+                "start": "15:00",
+                "end": "21:00"
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

@@ -621,7 +621,7 @@ function makeJob(jobId: number) {
         perWeekRestDays: 1,
       },
       dayWorkTime: {
-        arrangementType: '满足其中一个时段即可安排上岗',
+        arrangementType: '固定排班',
         combinedArrangement: [
           { combinedArrangementStartTime: '18:00', combinedArrangementEndTime: '22:00' },
         ],

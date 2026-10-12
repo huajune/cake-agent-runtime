@@ -20,7 +20,7 @@ function makeJob(overrides: Record<string, unknown> = {}): JobDetail {
     _distanceKm: 2.34,
     workTime: {
       dayWorkTime: {
-        arrangementType: '满足其中一个时段即可安排上岗',
+        arrangementType: '固定排班',
         combinedArrangement: [
           { combinedArrangementStartTime: '11:00', combinedArrangementEndTime: '15:00' },
         ],

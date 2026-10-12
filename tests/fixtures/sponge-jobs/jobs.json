@@ -1107,7 +1107,7 @@
         "workSingleDouble": null
       },
       "dayWorkTime": {
-        "arrangementType": "固定排班",
+        "arrangementType": "组合排班制",
         "combinedArrangement": [
           {
             "combinedArrangementStartTime": "07:00",
@@ -1894,7 +1894,9 @@
       "requirementsForHometown": {
         "countryRequirementType": "仅要中国人",
         "nationRequirementType": "仅要",
-        "nations": ["汉族"],
+        "nations": [
+          "汉族"
+        ],
         "nativePlaceRequirementType": "不限",
         "nativePlaces": null
       },
@@ -1935,7 +1937,7 @@
         "workSingleDouble": null
       },
       "dayWorkTime": {
-        "arrangementType": "固定排班",
+        "arrangementType": "组合排班制",
         "combinedArrangement": [
           {
             "combinedArrangementStartTime": "06:00",
@@ -1956,7 +1958,9 @@
         "interviewAddress": null,
         "firstInterviewDesc": "添加面试官【面试官姓名】，备注“独立日＋姓名＋门店",
         "firstInterviewAccess": null,
-        "firstInterviewAttachments": ["https://example.invalid/attachment"],
+        "firstInterviewAttachments": [
+          "https://example.invalid/attachment"
+        ],
         "interviewTimeMode": "周期",
         "fixedInterviewTimes": null,
         "periodicInterviewTimes": [
@@ -2475,7 +2479,7 @@
         "workSingleDouble": null
       },
       "dayWorkTime": {
-        "arrangementType": "固定排班",
+        "arrangementType": "组合排班制",
         "combinedArrangement": [
           {
             "combinedArrangementStartTime": "09:00",
@@ -2941,7 +2945,7 @@
         "workSingleDouble": null
       },
       "dayWorkTime": {
-        "arrangementType": "固定排班",
+        "arrangementType": "组合排班制",
         "combinedArrangement": [
           {
             "combinedArrangementStartTime": "08:00",
@@ -3165,27 +3169,19 @@
         "workSingleDouble": null
       },
       "dayWorkTime": {
-        "arrangementType": "固定排班",
+        "arrangementType": "组合排班制",
         "combinedArrangement": [
           {
-            "combinedArrangementStartTime": "05:00",
-            "combinedArrangementEndTime": "18:00"
-          },
-          {
-            "combinedArrangementStartTime": "07:00",
-            "combinedArrangementEndTime": "15:00"
+            "combinedArrangementStartTime": "09:00",
+            "combinedArrangementEndTime": "16:00"
           },
           {
             "combinedArrangementStartTime": "11:00",
-            "combinedArrangementEndTime": "20:00"
+            "combinedArrangementEndTime": "21:00"
           },
           {
-            "combinedArrangementStartTime": "15:00",
-            "combinedArrangementEndTime": "23:00"
-          },
-          {
-            "combinedArrangementStartTime": "19:00",
-            "combinedArrangementEndTime": "00:00"
+            "combinedArrangementStartTime": "16:00",
+            "combinedArrangementEndTime": "22:00"
           }
         ],
         "fixedTime": null
@@ -4492,7 +4488,13 @@
         "nationRequirementType": "不限",
         "nations": null,
         "nativePlaceRequirementType": "不要",
-        "nativePlaces": ["天津市", "辽宁省", "吉林省", "黑龙江省", "江西省"]
+        "nativePlaces": [
+          "天津市",
+          "辽宁省",
+          "吉林省",
+          "黑龙江省",
+          "江西省"
+        ]
       },
       "marriageBearingAndSocialSecurity": {
         "marriageBearingType": "不限",
@@ -4531,7 +4533,7 @@
         "workSingleDouble": null
       },
       "dayWorkTime": {
-        "arrangementType": "组合排班制",
+        "arrangementType": "固定排班",
         "combinedArrangement": [
           {
             "combinedArrangementStartTime": "05:00",
@@ -4783,7 +4785,7 @@
         "workSingleDouble": null
       },
       "dayWorkTime": {
-        "arrangementType": "固定排班",
+        "arrangementType": "组合排班制",
         "combinedArrangement": [
           {
             "combinedArrangementStartTime": "08:00",
@@ -5318,7 +5320,11 @@
         "combinedArrangement": null,
         "fixedTime": {
           "perDayMinWorkHours": "8",
-          "shiftCodes": ["早班", "中班", "晚班"],
+          "shiftCodes": [
+            "早班",
+            "中班",
+            "晚班"
+          ],
           "goToWorkStartTime": "05:00",
           "goOffWorkEndTime": "23:00",
           "goOffWorkTimeType": "当日"
@@ -5578,7 +5584,11 @@
         "combinedArrangement": null,
         "fixedTime": {
           "perDayMinWorkHours": "8",
-          "shiftCodes": ["早班", "中班", "晚班"],
+          "shiftCodes": [
+            "早班",
+            "中班",
+            "晚班"
+          ],
           "goToWorkStartTime": "05:00",
           "goOffWorkEndTime": "23:00",
           "goOffWorkTimeType": "当日"

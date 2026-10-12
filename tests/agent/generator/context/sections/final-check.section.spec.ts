@@ -83,9 +83,9 @@ describe('FinalCheckSection', () => {
     );
     const alwaysCount = FINAL_CHECK_RULES.filter((rule) => rule.trigger === 'always').length;
     expect(content.match(/^- /gmu)).toHaveLength(alwaysCount);
-    expect(Buffer.byteLength(content)).toBe(5308);
+    expect(Buffer.byteLength(content)).toBe(5326);
     expect(createHash('sha256').update(content).digest('hex')).toBe(
-      '1cef2d0376297a2a65a96da7f5fa65396c808eb797fd78d6ea80a41601660cfb',
+      '0457fa30420cdaeea8addbfb807a45ca7e58c51e1363d948e33bed6dd50f7aaf',
     );
   });
 

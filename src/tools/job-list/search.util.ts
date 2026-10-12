@@ -9,12 +9,15 @@
  * - applyScheduleConstraint：按候选人班次硬约束过滤岗位并标记 _scheduleSemantic
  */
 
-import { extractShiftSlots } from './format-shift-time.util';
+import { getJobSchedule } from './schedule-normalizer.util';
+import { matchDailySchedule } from '@resolution/schedule/matcher';
+import {
+  type CandidateScheduleConstraint,
+  type ScheduleMatchResult,
+} from '@resolution/schedule/types';
 import {
   classifyScheduleSemantic,
-  matchAvailableWindow,
   matchScheduleConstraint,
-  type CandidateScheduleConstraint,
   type ScheduleSemantic,
 } from '@tools/job-list/schedule-semantic.util';
 import { normalizeForBrandMatch } from '@resolution/brand/brand-normalize';
@@ -137,16 +140,7 @@ export function filterJobsExcludingBrands(
   return jobs.filter((job) => !matchesBrandTarget(job, target));
 }
 
-export function formatScheduleConstraintLabel(c: CandidateScheduleConstraint): string {
-  const parts: string[] = [];
-  if (c.onlyWeekends) parts.push('只周末');
-  if (c.onlyEvenings) parts.push('只晚班');
-  if (c.onlyMornings) parts.push('只早班');
-  if (typeof c.maxDaysPerWeek === 'number') parts.push(`每周最多 ${c.maxDaysPerWeek} 天`);
-  if (c.availableWindow)
-    parts.push(`可上班时段 ${c.availableWindow.start}-${c.availableWindow.end}`);
-  return parts.join(' / ') || '未明确';
-}
+export { formatScheduleConstraintLabel } from '@resolution/schedule/format';
 
 /**
  * 按候选人班次硬约束过滤岗位 + 给每个保留岗位标 scheduleSemantic。
@@ -155,49 +149,36 @@ export function formatScheduleConstraintLabel(c: CandidateScheduleConstraint): s
 export function applyScheduleConstraint(
   jobs: JobDetail[],
   constraint: CandidateScheduleConstraint | undefined,
-): {
-  jobs: JobDetail[];
-  excluded: Array<{ jobId: number | null; brandName: string | null; reason: string }>;
-} {
+) {
   const excluded: Array<{ jobId: number | null; brandName: string | null; reason: string }> = [];
+  const unknown: typeof excluded = [];
+  const matches: Array<ScheduleMatchResult & { jobId: number | null }> = [];
   const kept: JobDetail[] = [];
-
   for (const job of jobs) {
+    const schedule = getJobSchedule(job);
     const analysis = buildJobPolicyAnalysis(job);
-    const workTimeText = job.workTime ? JSON.stringify(job.workTime) : '';
     const semantics: ScheduleSemantic[] = classifyScheduleSemantic({
-      workTimeText,
+      workTimeText: job.workTime ? JSON.stringify(job.workTime) : '',
       interviewRemark: analysis.normalizedRequirements.interviewRemark,
       requirementRemark: analysis.normalizedRequirements.remark,
     });
     job._scheduleSemantic = semantics;
-    if (!constraint) {
-      kept.push(job);
-      continue;
-    }
-    const result = matchScheduleConstraint(semantics, constraint);
-    const windowResult =
-      result.matched && constraint.availableWindow
-        ? matchAvailableWindow(extractShiftSlots(job.workTime), constraint.availableWindow)
-        : { matched: true };
-    if (result.matched && windowResult.matched) {
-      kept.push(job);
-    } else if (result.matched) {
-      excluded.push({
-        jobId: typeof job.basicInfo?.jobId === 'number' ? job.basicInfo.jobId : null,
-        brandName: typeof job.basicInfo?.brandName === 'string' ? job.basicInfo.brandName : null,
-        reason: windowResult.reason || '班次不在候选人可上班时段内',
+    const weekly = matchScheduleConstraint(semantics, constraint);
+    const daily = matchDailySchedule(schedule, constraint);
+    const result: ScheduleMatchResult = weekly.matched
+      ? daily
+      : { ...daily, status: 'unmatched', reason: weekly.reason ?? '周频不符' };
+    const jobId = job.basicInfo?.jobId ?? null;
+    matches.push({ jobId, ...result });
+    if (result.status === 'matched') kept.push(job);
+    else
+      (result.status === 'unknown' ? unknown : excluded).push({
+        jobId,
+        brandName: job.basicInfo?.brandName ?? null,
+        reason: result.reason ?? '班次信息待确认',
       });
-    } else {
-      excluded.push({
-        jobId: typeof job.basicInfo?.jobId === 'number' ? job.basicInfo.jobId : null,
-        brandName: typeof job.basicInfo?.brandName === 'string' ? job.basicInfo.brandName : null,
-        reason: result.reason || '与候选人班次硬约束冲突',
-      });
-    }
   }
-
-  return { jobs: kept, excluded };
+  return { jobs: kept, excluded, unknown, matches };
 }
 
 export interface StudentIdentityFilterResult {

@@ -79,13 +79,13 @@ describe('InterventionService', () => {
     expect(riskNotifier.notifyConversationRisk).not.toHaveBeenCalled();
   });
 
-  describe('面试后转人工暂停到人工恢复为止（2026-09-16 裁定，chat 6a9f7db6 托管隔天自动恢复酿成事故）', () => {
+  describe('面试后转人工进入临时禁止托管，次日零点自动恢复', () => {
     it.each([
       'interview_result_inquiry',
       'onboarding_paperwork',
       'self_recruited_or_completed',
       'employment_affairs',
-    ])('pauses permanently for general_handoff reasonCode=%s', async (reasonCode) => {
+    ])('pauses temporarily for general_handoff reasonCode=%s', async (reasonCode) => {
       const payload: GeneralHandoffInterventionPayload = {
         ...baseContext,
         kind: 'general_handoff',
@@ -95,18 +95,23 @@ describe('InterventionService', () => {
         source: 'agent_tool',
       };
       await service.dispatch(payload);
-      expect(userHostingService.pauseUser).toHaveBeenCalledWith(
-        'chat-1',
-        expect.objectContaining({ permanent: true, reason: '面试后人工对接，需人工恢复托管' }),
+      expect(userHostingService.pauseUser).toHaveBeenCalledWith('chat-1', {
+        source: 'intervention',
+        permanent: false,
+        reason: '人工介入暂停',
+      });
+      expect(generalHandoffNotifier.notify).toHaveBeenCalledWith(
+        expect.objectContaining({ reasonCode }),
       );
     });
 
-    it('pauses permanently for the interview_result_inquiry input risk', async () => {
+    it('pauses temporarily for the interview_result_inquiry input risk', async () => {
       await service.dispatch({ ...riskPayload, riskType: 'interview_result_inquiry' });
-      expect(userHostingService.pauseUser).toHaveBeenCalledWith(
-        'chat-1',
-        expect.objectContaining({ permanent: true }),
-      );
+      expect(userHostingService.pauseUser).toHaveBeenCalledWith('chat-1', {
+        source: 'intervention',
+        permanent: false,
+        reason: '会话风险人工介入',
+      });
     });
 
     it('keeps the default midnight-expiring pause for other handoffs', async () => {

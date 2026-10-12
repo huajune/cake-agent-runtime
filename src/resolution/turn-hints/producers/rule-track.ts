@@ -1,4 +1,5 @@
 import type { BrandItem } from '@/sponge/sponge.types';
+import { SHIFT_TAG_LABELS } from '@resolution/schedule/types';
 import { formatLocalDate } from '@infra/utils/date.util';
 import { stripQuotedBlocks as stripQuotedBlocksMarkup } from '@resolution/signal/markers';
 import {
@@ -396,9 +397,13 @@ export function produceTurnHints(
     if (scheduleConstraint) {
       const labelParts: string[] = [];
       if (scheduleConstraint.onlyWeekends) labelParts.push('只周末');
-      if (scheduleConstraint.onlyEvenings) labelParts.push('只晚班');
-      if (scheduleConstraint.onlyMornings) labelParts.push('只早班');
-      if (scheduleConstraint.maxDaysPerWeek !== null) {
+      if (scheduleConstraint.includeAnyTags?.length) {
+        labelParts.push(
+          '只接受' +
+            scheduleConstraint.includeAnyTags.map((tag) => SHIFT_TAG_LABELS[tag]).join('/'),
+        );
+      }
+      if (scheduleConstraint.maxDaysPerWeek != null) {
         labelParts.push(`每周≤${scheduleConstraint.maxDaysPerWeek}天`);
       }
       if (scheduleConstraint.availableWindow) {

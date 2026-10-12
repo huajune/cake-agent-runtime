@@ -79,7 +79,8 @@ const EXPIRE_CRON_LOCK_TTL_SECONDS = 55;
 export class UserHostingService {
   private readonly logger = new Logger(UserHostingService.name);
 
-  private static readonly SHARED_CACHE_KEY = 'hosting:paused-users:v1';
+  // 与 20261010000000 迁移配套：从数据库重建，避免旧快照继续把面试后介入显示为永久暂停。
+  private static readonly SHARED_CACHE_KEY = 'hosting:paused-users:v2';
   private static readonly EXPIRE_CRON_LOCK_KEY = 'hosting:paused-users:expire-lock:v1';
 
   private readonly CACHE_TTL_MS = 1_000; // 1 秒本地热缓存

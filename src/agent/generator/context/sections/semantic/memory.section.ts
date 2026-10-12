@@ -1,3 +1,4 @@
+import { formatStoredScheduleConstraint } from '@resolution/schedule/format';
 // 知识归类：semantic —— 本段渲染候选人档案、会话事实、岗位与预约上下文。
 import { formatExtractionFactLines } from '@memory/fact-lines.formatter';
 import {
@@ -479,21 +480,7 @@ function renderPreferenceValue(key: string, value: unknown): string | null {
     return `${fact.until}（原话: ${fact.raw ?? ''}）`;
   }
   if (key === 'schedule_constraint' && typeof value === 'object' && value !== null) {
-    const c = value as {
-      onlyWeekends?: boolean | null;
-      onlyEvenings?: boolean | null;
-      onlyMornings?: boolean | null;
-      maxDaysPerWeek?: number | null;
-      availableWindow?: { start: string; end: string } | null;
-    };
-    const parts: string[] = [];
-    if (c.onlyWeekends) parts.push('只周末');
-    if (c.onlyEvenings) parts.push('只晚班');
-    if (c.onlyMornings) parts.push('只早班');
-    if (c.maxDaysPerWeek) parts.push(`每周最多${c.maxDaysPerWeek}天`);
-    if (c.availableWindow)
-      parts.push(`可上班时段${c.availableWindow.start}-${c.availableWindow.end}`);
-    return parts.length > 0 ? parts.join('、') : null;
+    return formatStoredScheduleConstraint(value);
   }
   if (typeof value === 'string') return value.trim() || null;
   if (typeof value === 'boolean' || typeof value === 'number') return String(value);

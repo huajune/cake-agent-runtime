@@ -12,13 +12,8 @@ export interface TurnHintCity extends GeoTextScanCity {
   confidence: 'high' | 'medium';
 }
 
-export interface TurnHintScheduleConstraint {
-  onlyWeekends: boolean | null;
-  onlyEvenings: boolean | null;
-  onlyMornings: boolean | null;
-  maxDaysPerWeek: number | null;
-  availableWindow: { start: string; end: string } | null;
-}
+export type TurnHintScheduleConstraint =
+  import('@resolution/schedule/types').StoredScheduleConstraint;
 
 export interface TurnHintProjection {
   interview_info: {
