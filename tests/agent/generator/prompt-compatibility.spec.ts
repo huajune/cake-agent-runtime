@@ -103,8 +103,9 @@ describe('Prompt compiler compatibility contract', () => {
     // 2026-09-22：运营口径第 0 期（O10 银行卡自检去封禁、O12 最短工期规则）+ 同分支手册在途改动，重锁基线。
     // 2026-09-24：个人账务（银行卡异常/拒绝本人卡/开证明）改走 personal_pay_attendance（final-check + 手册），重锁基线。
     // 2026-10-09：班次按固定全部/组合任选解释，周频独立；统一新约束投影。
+    // 2026-10-12：灵活排班按运营规则须接受整个排班区间，手册同步改写，重锁基线。
     expect(createHash('sha256').update(result.systemPrompt).digest('hex')).toBe(
-      '218fd72508e58353809664ad43b7464a38c78ad2afb77c253a4b09e5bfb090bc',
+      'a85339fff5e998a34547e3e483b9eb2d367bd95d48e247ddb335c215a3a61b34',
     );
     expect(result.orderHash).toMatch(/^[a-f0-9]{64}$/);
     // dynamic 的口径是「随回合变化」：身份/红线/阈值/全阶段一览/通道规范只随配置变，
