@@ -1020,19 +1020,15 @@ export function buildJobListTool(
               }));
             }
             return {
-              markdown: formatJobsToMarkdown(
-                inspected.jobs,
-                inspected.jobs.length,
-                1,
-                jobIdList.length,
-                {
+              markdown: sanitizeBrandName(
+                formatJobsToMarkdown(inspected.jobs, inspected.jobs.length, 1, jobIdList.length, {
                   includeBasicInfo: true,
                   includeJobSalary,
                   includeWelfare,
                   includeHiringRequirement,
                   includeWorkTime,
                   includeInterviewProcess,
-                },
+                }),
               ),
               ...(responseFormat.includes('rawData') ? { rawData: inspected } : {}),
               resultCount: inspected.jobs.length,

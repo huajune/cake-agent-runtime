@@ -2792,6 +2792,18 @@ describe('buildJobListTool', () => {
         expect(mockSpongeService.fetchJobs.mock.calls[0][0].options.includeWorkTime).toBe(expected);
       },
     );
+    it('inspect返回的岗位事实同样替换公司旧称', async () => {
+      const job = scheduledJob(1, '固定排班', [['18:00', '22:00']]);
+      job.basicInfo = { ...job.basicInfo, brandName: '独立日餐饮', storeName: '独立日餐饮一店' };
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [job], total: 1 });
+      const result = await executeTool(mockContext, {
+        ...defaultInput,
+        purpose: 'inspect',
+        jobIdList: [1],
+      } as typeof defaultInput);
+      expect(result.markdown).toContain('独立客餐饮');
+      expect(result.markdown).not.toContain('独立日');
+    });
     it.each([{ ids: [] }, { ids: [1] }])(
       'inspect缺少部分或全部指定岗位时不返回成功事实：%j',
       async ({ ids }) => {
