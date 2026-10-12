@@ -134,6 +134,21 @@ Redis hash 没有字段级 TTL，因此 `factsv2:` 内的 facts 与 workbench �
 白名单外反推不出城市的值不动。旧 `facts:` 单 blob key、顶层 `brand_state`、裸字符串 city 与
 消息缓存 v1 形态的读兼容已于 2026-09-11 下线（生产存量核对为零）。
 
+### 偏好写入与班次条件
+
+轮末偏好写入是三态：外层 `null` 表示本轮没提，信封 `value=null` 是显式墓碑，有值即替换。
+`schedule_constraint` 例外：有值时按字段合并，省略的字段延续，`null` / `[]` / `false` 撤销对应条件；
+合并后正向标签与排除标签同名时，以本轮改动的一侧为准，从另一侧移除同名标签。
+
+- 抽取模型看到的 `schedule_constraint` JSON Schema 与严格契约 `CandidateScheduleConstraintSchema`
+  一致，但结构化输出先原样接收，再由 facts 层单独校验；不合契约只丢弃该字段并记日志、发告警，
+  同轮城市、岗位等偏好照常保存。
+- 本轮班次变更按以下顺序取用：带本轮原话引文且核验通过的抽取结果；`TurnLedger` 交档快照里工具
+  已按原话核验、实际用于查岗的条件（与已保存条件有效等价时忽略）；抽取降级、引文无效或条件不合
+  契约时才用规则轨。规则轨只读陈述子句，“有没有晚上6点到10点的班？”这类询问不产出持久条件。
+- 结构化日内条件（标签、可/不可出勤时段）改变时，旧的意向班次 `schedule` 与时间窗 `time_windows`
+  文本作废，避免撤销的钟点经旧文本回到上下文；本轮新得到的文本保留，只改每周天数、周末等不动文本。
+
 ### facts 与 brand
 
 `SessionFacts` 的字段通常使用带 `value / confidence / source / evidence` 的信封。`facts.brand` 是例外：它原样保存 `PersistedBrandState`，不再套一层事实信封。

@@ -161,6 +161,7 @@ describe('auditJobData 输入容错与汇总', () => {
       ].sort(),
     );
     expect(countJobDataIssuesByKind(issues)).toEqual({
+      work_time_contract_invalid: 0,
       stair_text_without_structure: 5,
       holiday_salary_conflict: 1,
       comprehensive_salary_ratio: 0,

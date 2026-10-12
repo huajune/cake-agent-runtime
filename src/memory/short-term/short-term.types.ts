@@ -284,11 +284,44 @@ export const PreferencesSchema = z.object({
   ),
 });
 
+/** 抽取模型看到的 schedule_constraint 字段说明。 */
+export const SCHEDULE_CONSTRAINT_EXTRACTION_GUIDANCE =
+  SCHEDULE_CONSTRAINT_GUIDANCE +
+  '只保存候选人明确声明的持续出勤要求，早班有吗等单次查询不写入持续限制。只输出本轮变更，并同时提供schedule_constraint_citation。';
+
+/**
+ * 抽取输出里的 schedule_constraint：对模型呈现的 JSON Schema 与严格契约
+ * CandidateScheduleConstraintSchema 逐字一致，运行时先原样接收。
+ *
+ * 严格契约带跨字段校验（跨日须 endDayOffset、起止不能相同、未知字段拒收），直接放进
+ * 结构化输出会让一处时段写法使整次输出校验失败，同轮城市、岗位等偏好随之降级。
+ * facts 层拿到原值后再用严格契约单独校验，不合契约只丢弃本字段。
+ */
+const LLMScheduleConstraintSchema = z
+  .unknown()
+  .meta(
+    toEmbeddedJsonSchema(
+      CandidateScheduleConstraintSchema.nullable().describe(
+        SCHEDULE_CONSTRAINT_EXTRACTION_GUIDANCE,
+      ),
+    ),
+  );
+
+/** 以结构化输出相同的口径（draft-7、输入形态）生成可嵌入其他 schema 的 JSON Schema 片段。 */
+function toEmbeddedJsonSchema(schema: z.ZodType): Record<string, unknown> {
+  const json: Record<string, unknown> = {
+    ...z.toJSONSchema(schema, { target: 'draft-7', io: 'input' }),
+  };
+  delete json.$schema;
+  return json;
+}
+
 /**
  * LLM 结构化输出的 Preferences schema。
  *
- * 与 PreferencesSchema 的唯一区别：city 用简单 `string | null`，
- * 避免 Zod union/transform 在生成 JSON schema 时产生 oneOf 让 LLM 误解结构。
+ * 与 PreferencesSchema 的区别：city 用简单 `string | null`，
+ * 避免 Zod union/transform 在生成 JSON schema 时产生 oneOf 让 LLM 误解结构；
+ * schedule_constraint 运行时先原样接收（见 LLMScheduleConstraintSchema）。
  * LLM 返回后，service 层再通过 EntityExtractionResultSchema.parse 归一化为 CityFact。
  */
 export const LLMPreferencesSchema = z.object({
@@ -321,10 +354,7 @@ export const LLMPreferencesSchema = z.object({
     .array(z.string())
     .nullable()
     .describe('可用时间窗口（保留候选人给出的时间点或时间段原话）'),
-  schedule_constraint: CandidateScheduleConstraintSchema.nullable().describe(
-    SCHEDULE_CONSTRAINT_GUIDANCE +
-      '只保存候选人明确声明的持续出勤要求，早班有吗等单次查询不写入持续限制。只输出本轮变更，并同时提供schedule_constraint_citation。',
-  ),
+  schedule_constraint: LLMScheduleConstraintSchema,
   available_after: AvailableAfterFactSchema.nullable().describe(
     '未来日期硬约束：候选人原话给出可解析的明确日期时填写 YYYY-MM-DD；仅提月底、开学或某周之后而未明确具体日期时，一律不填，不得自行补成某一天。推迟意向仍可保留到 delayed_intent，不得因日期未入库而忽略延期要求',
   ),

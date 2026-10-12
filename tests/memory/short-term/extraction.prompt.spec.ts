@@ -2,9 +2,13 @@ import {
   SESSION_EXTRACTION_SYSTEM_PROMPT,
   buildSessionExtractionPrompt,
 } from '@memory/short-term/extraction.prompt';
+import { zodSchema } from 'ai';
+import { CandidateScheduleConstraintSchema } from '@resolution/schedule/types';
 import {
   FALLBACK_EXTRACTION,
   LLMEntityExtractionResultSchema,
+  LLMPreferencesSchema,
+  SCHEDULE_CONSTRAINT_EXTRACTION_GUIDANCE,
   toSessionFacts,
 } from '@memory/short-term/short-term.types';
 
@@ -52,6 +56,31 @@ describe('session extraction prompt（表单外软事实 only）', () => {
     expect(parsed).not.toHaveProperty('interview_info');
     expect(parsed).not.toHaveProperty('explicit_provenance');
     expect(parsed.preferences.schedule).toBe('晚班');
+  });
+
+  it('班次条件对模型呈现的 JSON Schema 与严格契约一致，运行时先整体接收', async () => {
+    const reference = LLMEntityExtractionResultSchema.extend({
+      preferences: LLMPreferencesSchema.extend({
+        schedule_constraint: CandidateScheduleConstraintSchema.nullable().describe(
+          SCHEDULE_CONSTRAINT_EXTRACTION_GUIDANCE,
+        ),
+      }),
+    });
+    expect(await zodSchema(LLMEntityExtractionResultSchema).jsonSchema).toEqual(
+      await zodSchema(reference).jsonSchema,
+    );
+
+    // 契约外的时段写法不再让整次结构化输出失败，由 facts 层单独校验并只丢弃该字段。
+    const parsed = LLMEntityExtractionResultSchema.safeParse({
+      preferences: {
+        ...emptyPreferences(),
+        city: '上海',
+        schedule_constraint: { availableWindow: { start: '22:00', end: '06:00' }, extra: true },
+      },
+      reasoning: '班次越界',
+    });
+    expect(parsed.success).toBe(true);
+    expect(parsed.data?.preferences.city).toBe('上海');
   });
 
   it('已知事实只注入 preferences，不回灌表单身份', () => {

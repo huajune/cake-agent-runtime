@@ -2,6 +2,7 @@ import {
   scanJobPages,
   buildScannedQueryError,
   JOB_SCAN_BUDGET_MS,
+  UNKNOWN_SCHEDULE_EXAMPLE_LIMIT,
   type JobScanMeta,
 } from '@tools/job-list/scan-jobs.util';
 /**
@@ -52,7 +53,7 @@ import { getTurnHintValue } from '@resolution/turn-hints/reducer';
 import {
   buildJobListQuerySignature,
   REPEAT_QUERY_NOTICE,
-  canonicalizeScheduleValue,
+  canonicalizeScheduleConstraint,
 } from '@tools/shared/job-list-query-signature';
 import { correctSwappedLatLng } from '@tools/shared/latlng-swap';
 import {
@@ -73,6 +74,8 @@ import {
   hasScheduleConstraint,
   mergeScheduleConstraints,
   readScheduleConditions,
+  type ScheduleMatchResult,
+  type StoredScheduleConstraint,
 } from '@resolution/schedule/types';
 import { verifyCitation } from '@resolution/notary/citation-verifier';
 import { WorkTimeContractError } from '@sponge/work-time.types';
@@ -428,6 +431,38 @@ function readFactValue(value: unknown): unknown {
   return value;
 }
 
+/** 班次条件的有效比较键：规范化后的条件与旧早晚班待确认状态共同决定实际筛选行为。 */
+function effectiveScheduleKey(stored: StoredScheduleConstraint | null | undefined): string {
+  const { conditions, legacyUnresolved } = readScheduleConditions(stored ?? {});
+  return JSON.stringify({
+    conditions: canonicalizeScheduleConstraint(conditions),
+    legacyUnresolved,
+  });
+}
+
+type JobScheduleAssessment = ScheduleMatchResult & { jobId: number | null };
+
+/** 按展示顺序取本次展示岗位的班次评估。 */
+function pickDisplayedAssessments(
+  jobs: JobDetail[],
+  assessments: JobScheduleAssessment[],
+): JobScheduleAssessment[] {
+  const byJobId = new Map(assessments.map((item) => [item.jobId, item]));
+  return jobs.flatMap((job) => {
+    const item = byJobId.get(job.basicInfo?.jobId ?? null);
+    return item ? [item] : [];
+  });
+}
+
+/** 进入班次筛选的岗位的评估状态计数；住宿、用工形式、学生身份等后续筛选不回减。 */
+function countScheduleStatuses(
+  assessments: JobScheduleAssessment[],
+): Record<ScheduleMatchResult['status'], number> {
+  const counts = { matched: 0, unmatched: 0, unknown: 0 };
+  for (const item of assessments) counts[item.status] += 1;
+  return counts;
+}
+
 function resolveCandidateAge(context: ToolBuildContext): number | null {
   const sources = [
     getTurnHintValue(context.ledger.facts.turnHints, 'interview_info.age', {
@@ -781,7 +816,7 @@ const DESCRIPTION = `查询在招岗位列表。支持渐进式数据返回，�
    3. 你根据完整对话确认候选人连续否定两轮具体推荐 → 停止第三轮，只征询进群意愿；下轮明确同意后才实调 invite_to_group（工具不做文本轮次计数）
    4. 已成功拉群 → 停止 Agent 主动查岗、推荐及"看其他区域"类追问，只提示留意既有群消息；**但候选人当前消息明确点名岗位/门店并询问详情时，必须按原文传入 searchJobName/storeNameList 重新调用本工具实时回答，不得用群承接状态回避问题**
    5. **历史轨迹打破**：即使自己上轮提议过"换品牌/换城市"，本轮工具证实无岗就直接收口，不顺承旧反问思路
-   6. **结果非空但全部与硬约束冲突** = 视同 0 条有效，先放宽一维重查；仍无匹配才按真实无岗收口。年龄判断必须沿用 precheck 弹性口径：处于年龄上下限弹性边界时，用 duliday_interview_precheck 复核，不得直接判无岗
+   6. **结果非空但全部与硬约束冲突** = 视同 0 条有效，先放宽一个查询范围维度（同城邻区 / 同品牌邻店 / 放宽距离）重查，不放宽候选人的班次、用工形式、身份等硬条件；仍无匹配才按真实无岗收口。年龄判断必须沿用 precheck 弹性口径：处于年龄上下限弹性边界时，用 duliday_interview_precheck 复核，不得直接判无岗
    7. 新搜索无匹配时回看 [会话记忆]「上轮候选岗位池」，有潜在匹配用 jobIdList 精查后再推荐
 - **包餐/餐补硬偏好**：候选人明确要求包餐或餐补时，将其视为硬约束；不得用门店周边餐饮便利替代，也不得继续收资。继续推荐须本轮核对福利字段，无匹配就如实说明并结束本轮，不因真实无岗直接拉群。
 - **面试相关字段**：推进面试时优先读工具结果中的「约面重点」；工具没明确时间不得编造；相对当前时间已过期的日期限制视为历史备注，不得当作当前规则输出
@@ -926,17 +961,15 @@ export function buildJobListTool(
         const persistedConstraint =
           context.ledger.jobs.scheduleConstraint ??
           context.archive.sessionFacts?.preferences?.schedule_constraint;
+        const mergedConstraint = mergeScheduleConstraints(
+          persistedConstraint,
+          candidateScheduleConstraint,
+        );
+        // 只有合并前后的有效条件真的变化才要求本轮出处：补传 null / [] / false /
+        // endDayOffset:0 与“已保存值不存在”等价，不算新增或撤销。
         const changedSchedule =
-          candidateScheduleConstraint &&
-          Object.entries(candidateScheduleConstraint).some(
-            ([key, value]) =>
-              JSON.stringify(canonicalizeScheduleValue(value)) !==
-              JSON.stringify(
-                canonicalizeScheduleValue(
-                  persistedConstraint?.[key as keyof typeof persistedConstraint],
-                ),
-              ),
-          );
+          candidateScheduleConstraint !== undefined &&
+          effectiveScheduleKey(persistedConstraint) !== effectiveScheduleKey(mergedConstraint);
         if (
           changedSchedule &&
           (!candidateScheduleCitation ||
@@ -950,15 +983,11 @@ export function buildJobListTool(
               '请用本轮候选人逐字原话提供candidateScheduleCitation后重试；仅核对岗位时间应使用purpose=inspect。不得把本次参数拦截描述成没有岗位。',
           });
         }
-        const mergedConstraint = mergeScheduleConstraints(
-          persistedConstraint,
-          candidateScheduleConstraint,
-        );
         const scheduleState = readScheduleConditions(mergedConstraint);
         const conditions = CandidateScheduleConstraintSchema.safeParse(scheduleState.conditions);
         if ((!conditions.success || scheduleState.legacyUnresolved) && purpose !== 'inspect') {
           return buildToolError({
-            errorType: TOOL_ERROR_TYPES.JOB_LIST_SCHEDULE_NO_PROVENANCE,
+            errorType: TOOL_ERROR_TYPES.JOB_LIST_SCHEDULE_NEEDS_CONFIRMATION,
             outcome: '已有班次条件需要重新确认',
             replyInstruction:
               '已有班次条件的早晚班含义或钟点边界不明确，请确认具体可上班时间后再查；不能丢弃已有条件直接推荐，也不能据此断言无岗。',
@@ -1192,7 +1221,9 @@ export function buildJobListTool(
         }
 
         const options = {
-          includeBasicInfo,
+          // basicInfo 承载 jobId、品牌与门店：补页去重、本地筛选、距离计算和候选池记录都依赖它，
+          // 而兜底查询是否触发本地筛选要到首个请求返回后才知道；includeBasicInfo 只控制展示（flags）。
+          includeBasicInfo: true,
           includeJobSalary,
           // 包住筛选读的是福利字段，没有福利块会把所有岗位判成"未写明"整批剔除。
           includeWelfare: includeWelfare || requireAccommodation,
@@ -2333,13 +2364,16 @@ export function buildJobListTool(
             distanceRangeClamped: rangeClampedByCap,
             distanceScanPages,
             distanceScanTruncated,
+            // 补页可能扫描上百条：逐岗评估只回传本次展示的岗位，其余只给计数与少量样例，
+            // 避免回执膨胀并暴露未展示岗位。
             scheduleFilter: candidateScheduleConstraint
               ? {
                   applied: true,
                   candidateConstraint: candidateScheduleConstraint,
-                  assessments: scheduleFilterResult.matches,
+                  assessments: pickDisplayedAssessments(jobs, scheduleFilterResult.matches),
+                  statusCounts: countScheduleStatuses(scheduleFilterResult.matches),
                   unknownCount: unknownSchedules.length,
-                  unknownSchedules,
+                  unknownSchedules: unknownSchedules.slice(0, UNKNOWN_SCHEDULE_EXAMPLE_LIMIT),
                   excludedCount: scheduleFilterResult.excluded.length,
                   excludedExamples: scheduleFilterResult.excluded.slice(0, 5),
                 }

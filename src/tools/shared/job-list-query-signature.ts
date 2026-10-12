@@ -62,15 +62,6 @@ function roundCoord(value: number | null | undefined): number | null {
 
 /** 计算查询签名；入参相同（实质过滤条件层面）必得相同签名。 */
 export function buildJobListQuerySignature(input: JobListQuerySignatureInput): string {
-  const constraint = input.candidateScheduleConstraint ?? null;
-  const normalizedConstraintEntries = constraint
-    ? Object.entries(constraint)
-        .filter(([, v]) => v !== undefined && v !== null && v !== false)
-        .map(([key, value]) => [key, canonicalizeScheduleValue(value)] as const)
-        .sort(([a], [b]) => a.localeCompare(b))
-    : [];
-  const normalizedConstraint =
-    normalizedConstraintEntries.length > 0 ? Object.fromEntries(normalizedConstraintEntries) : null;
   const normalizedLocation = input.location
     ? {
         lng: roundCoord(input.location.longitude),
@@ -100,7 +91,7 @@ export function buildJobListQuerySignature(input: JobListQuerySignatureInput): s
     ...(input.requireAccommodation === true ? { requireAccommodation: true } : {}),
     settlement: normalizeStrings(input.salaryPeriodNameList),
     location: hasLocationFilter ? normalizedLocation : null,
-    schedule: normalizedConstraint,
+    schedule: canonicalizeScheduleConstraint(input.candidateScheduleConstraint),
     laborForm: input.candidateLaborForm?.trim() || null,
   };
   return JSON.stringify(payload);
@@ -120,13 +111,31 @@ export const REPEAT_QUERY_NOTICE =
   '4. 本会话已经成功拉群时，禁止继续查询、推荐或询问其他区域，只提示留意既有群消息。\n' +
   '另外：若你已向候选人承诺扩大范围或重新查询，本轮必须实质调整查询条件；严禁声称已扩大范围却原样重查。';
 
-export function canonicalizeScheduleValue(value: unknown): unknown {
-  if (Array.isArray(value)) return [...new Set(value)].sort();
-  if (value !== null && typeof value === 'object')
-    return Object.fromEntries(
-      Object.entries(value)
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([key, item]) => [key, canonicalizeScheduleValue(item)]),
-    );
-  return value;
+/**
+ * 班次条件的有效视图：省略、null、false、空数组与 endDayOffset:0（当日结束）都表示
+ * “没有这项限制”，统一移除；数组排序去重，对象按键排序。没有任何有效限制时返回 null。
+ *
+ * 查询签名与“本轮是否真的改变条件”的出处判断共用此口径，避免语义等价的写法
+ * 一处被当成新条件、另一处又漏报重复查询。
+ */
+export function canonicalizeScheduleConstraint(
+  constraint: Record<string, unknown> | null | undefined,
+): Record<string, unknown> | null {
+  const canonical = canonicalizeScheduleValue(constraint ?? null);
+  return canonical !== null && typeof canonical === 'object' && !Array.isArray(canonical)
+    ? (canonical as Record<string, unknown>)
+    : null;
+}
+
+function canonicalizeScheduleValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    const items = [...new Set(value)].sort();
+    return items.length > 0 ? items : null;
+  }
+  if (value === null || typeof value !== 'object') return value === false ? null : value;
+  const entries = Object.entries(value)
+    .map(([key, item]) => [key, canonicalizeScheduleValue(item)] as const)
+    .filter(([key, item]) => item != null && !(key === 'endDayOffset' && item === 0))
+    .sort(([a], [b]) => a.localeCompare(b));
+  return entries.length > 0 ? Object.fromEntries(entries) : null;
 }

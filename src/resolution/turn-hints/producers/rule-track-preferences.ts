@@ -178,6 +178,27 @@ function splitClausesWithTrailing(message: string): Array<{ clause: string; trai
   return result;
 }
 
+// 询问子句：问号收尾、句末疑问语气词（与 @resolution/candidate/gender 同口径），
+// 或含正反问（有没有/能不能/行不行…）与“有什么/有啥”。
+const QUESTION_TAIL_PATTERN = /(?:吗|么|呢|吧)(?:[啊呀嘛])?\s*$/u;
+const INQUIRY_FORM_PATTERN = /([\u4e00-\u9fa5])[不没]\1|有什么|有啥/u;
+
+function isInquiryClause(clause: string, trailing: string): boolean {
+  return (
+    /[？?]/.test(trailing) ||
+    QUESTION_TAIL_PATTERN.test(clause) ||
+    INQUIRY_FORM_PATTERN.test(clause)
+  );
+}
+
+/** 只保留陈述子句；询问岗位有无某班次不是候选人对自身出勤的声明。 */
+function keepDeclarativeClauses(message: string): string {
+  return splitClausesWithTrailing(message)
+    .filter(({ clause, trailing }) => !isInquiryClause(clause, trailing))
+    .map(({ clause, trailing }) => clause + trailing)
+    .join('');
+}
+
 function matchOnlyShiftTargets(message: string): OnlyShiftTarget[] {
   const clauses = splitClausesWithTrailing(message).filter(
     ({ clause, trailing }) => !isOnlyShiftQuestion(clause, trailing),
@@ -325,9 +346,15 @@ export function extractAvailableWindow(message: string): ScheduleWindow | null {
   };
 }
 
+/**
+ * 候选人自陈的持续班次条件。规则轨会在抽取降级时落盘，且查岗按已保存条件过滤，
+ * 因此只读陈述子句：“有没有晚上6点到10点的班？”“我只能做早班吗？”不产出条件。
+ */
 export function extractScheduleConstraintStructured(
-  message: string,
+  rawMessage: string,
 ): CandidateScheduleConstraint | null {
+  const message = keepDeclarativeClauses(stripQuotedBlocks(rawMessage));
+  if (!message) return null;
   const result: CandidateScheduleConstraint = {};
   const availableWindow = extractAvailableWindow(message);
   if (availableWindow) result.availableWindow = availableWindow;

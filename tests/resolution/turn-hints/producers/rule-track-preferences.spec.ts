@@ -111,7 +111,7 @@ describe('extractAvailableWindow（候选人可上班时段，badcase j4kb5ijm�
   ])('ignores non-window text: %s', (text) => expect(extractAvailableWindow(text)).toBeNull());
 
   it('folds into the structured constraint and strips quoted job cards', () => {
-    expect(extractScheduleConstraintStructured('有没有晚上6点半到24点')).toEqual(
+    expect(extractScheduleConstraintStructured('我晚上6点半到24点有空')).toEqual(
       expect.objectContaining({ availableWindow: { start: '18:30', end: '24:00' } }),
     );
     expect(
@@ -150,6 +150,30 @@ describe('extractScheduleConstraintStructured', () => {
     });
     expect(extractScheduleConstraintStructured('只有晚班？我只能上早班')).toMatchObject({
       includeAnyTags: ['early', 'morning'],
+    });
+  });
+
+  it.each([
+    '有没有晚上6点到10点的班？',
+    '有没有晚上6点半到24点',
+    '晚上6点到10点可以吗',
+    '我只能做早班吗？',
+    '能不能只做晚班',
+    '周末有没有活',
+    '一周最多三天行不行',
+  ])('does not turn the inquiry %s into a persistent constraint', (text) => {
+    expect(extractScheduleConstraintStructured(text)).toBeNull();
+  });
+
+  it('keeps declarative clauses next to an inquiry clause', () => {
+    expect(extractScheduleConstraintStructured('我晚上6点到10点有空，有合适的吗？')).toEqual({
+      availableWindow: { start: '18:00', end: '22:00' },
+    });
+    expect(extractScheduleConstraintStructured('我只能做早班，有没有岗位')).toEqual({
+      includeAnyTags: ['early', 'morning'],
+    });
+    expect(extractScheduleConstraintStructured('帮我找黄浦区周六嘛兼职')).toEqual({
+      onlyWeekends: true,
     });
   });
 

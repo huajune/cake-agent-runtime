@@ -1,6 +1,9 @@
 import {
+  CandidateScheduleConstraintSchema,
   mergeScheduleConstraints,
+  readScheduleConditions,
   StoredScheduleConstraintSchema,
+  type StoredScheduleConstraint,
 } from '@resolution/schedule/types';
 import { verifyCitation } from '@resolution/notary/citation-verifier';
 import type { TextCitation } from '@resolution/notary/citation.types';
@@ -45,7 +48,10 @@ import {
   buildSessionExtractionPrompt,
   SESSION_EXTRACTION_SYSTEM_PROMPT,
 } from './extraction.prompt';
-import { detectBrandAliasHints } from '@resolution/turn-hints/producers/rule-track';
+import {
+  detectBrandAliasHints,
+  splitToolVerifiedScheduleClaim,
+} from '@resolution/turn-hints/producers/rule-track';
 import { isSameFactValue } from '@resolution/turn-hints/reducer';
 import type { TurnHints } from '@resolution/turn-hints/turn-hint.types';
 import type { BrandResolution } from '@resolution/brand/brand-resolution.types';
@@ -355,7 +361,10 @@ export class SessionFactsService {
     await this.patchSessionState(corpId, userId, sessionId, { facts: merged });
   }
 
-  /** 轮末软事实写入口。外层 null=缺席；信封 value=null=显式墓碑；有值=替换。 */
+  /**
+   * 轮末软事实写入口。外层 null=缺席；信封 value=null=显式墓碑；有值=替换。
+   * schedule_constraint 例外：有值时按字段合并（见 mergePreferences）。
+   */
   private async savePreferences(
     corpId: string,
     userId: string,
@@ -420,6 +429,11 @@ export class SessionFactsService {
     return next;
   }
 
+  /**
+   * 偏好三态合并：外层 null 延续旧值，同值不刷新信封，其余字段整体替换。
+   * schedule_constraint 有值时按字段合并：省略的字段延续，null / [] / false 撤销对应条件；
+   * 合并后正向标签与排除标签同名时以本轮改动的一侧为准。
+   */
   private mergePreferences(
     previous: SessionFacts['preferences'] | null,
     incoming: SessionFacts['preferences'],
@@ -445,9 +459,10 @@ export class SessionFactsService {
         const before = StoredScheduleConstraintSchema.safeParse(current.value);
         const patch = StoredScheduleConstraintSchema.safeParse(raw.value);
         if (patch.success) {
+          const base = before.success ? before.data : null;
           merged[field] = {
             ...raw,
-            value: mergeScheduleConstraints(before.success ? before.data : null, patch.data),
+            value: reconcileShiftTagPolarity(base, mergeScheduleConstraints(base, patch.data)),
           };
           continue;
         }
@@ -692,6 +707,12 @@ export class SessionFactsService {
       previousFacts,
     );
     const llmOutcome = await this.callLLM(prompt);
+    if (llmOutcome.rejectedScheduleIssues) {
+      this.reportRejectedScheduleConstraint(
+        { corpId, userId, sessionId },
+        llmOutcome.rejectedScheduleIssues,
+      );
+    }
 
     const preferences = toSessionFacts(llmOutcome.facts, {
       confidence: 'medium',
@@ -703,37 +724,53 @@ export class SessionFactsService {
     // 提取降级或标签无效时才使用当前消息的确定性规则兜底。模型的 legacy
     // preferences.labor_form 和 turnHints 都不能绕过这个裁决入口。
     preferences.labor_form = null;
+    const currentTurnQuotes = currentTurnUserTexts.map((text) => stripTimeContext(text).trim());
+    const previousSchedule = readStoredSchedule(previousFacts);
     const scheduleCitation = llmOutcome.scheduleCitation;
     const scheduleValid = Boolean(
       llmOutcome.facts.preferences.schedule_constraint &&
         scheduleCitation &&
-        verifyCitation(
-          scheduleCitation,
-          currentTurnUserTexts.map((text) => stripTimeContext(text).trim()),
-        ).verified,
+        verifyCitation(scheduleCitation, currentTurnQuotes).verified,
     );
+    const { ruleHints, toolVerifiedSchedule } = splitToolVerifiedScheduleClaim(turnHints);
+    // 抽取没给出有效班次变更时，以工具本轮查岗实际使用、且已按原话核验的条件落盘。
+    const toolSchedule = scheduleValid
+      ? null
+      : readToolScheduleChange(toolVerifiedSchedule, previousSchedule);
+    const structuredScheduleVerified = scheduleValid || toolSchedule !== null;
+    // 抽取正常且没有班次变更时，规则轨不得覆盖已保存条件；只有抽取降级、引文无效或
+    // 条件不合契约时才轮到规则兜底。
     const scheduleAuthoritative =
-      !llmOutcome.degraded &&
-      (llmOutcome.facts.preferences.schedule_constraint == null || scheduleValid);
-    if (!scheduleValid) preferences.schedule_constraint = null;
-    else if (isSessionFactValue(preferences.schedule_constraint)) {
+      structuredScheduleVerified ||
+      (!llmOutcome.degraded &&
+        llmOutcome.facts.preferences.schedule_constraint == null &&
+        llmOutcome.rejectedScheduleIssues === null);
+    if (scheduleValid && isSessionFactValue(preferences.schedule_constraint)) {
       preferences.schedule_constraint = {
         ...preferences.schedule_constraint,
         source: 'candidate_quote',
         evidence: scheduleCitation!.quote,
       };
-      // 结构化条件成为当前排班事实后，清掉重复的旧文本入口，防止撤销后被旧钟点唤回。
-      preferences.schedule = this.preferenceTombstone(scheduleCitation!.quote);
-      preferences.time_windows = this.preferenceTombstone(scheduleCitation!.quote);
+    } else if (toolSchedule) {
+      preferences.schedule_constraint = sessionFactValue(toolSchedule, {
+        confidence: 'medium',
+        source: 'candidate_quote',
+        evidence: truncateEvidence(`工具已核验的本轮班次条件：${currentTurnQuotes.join(' ')}`),
+        extractedAt: new Date().toISOString(),
+      });
+    } else {
+      preferences.schedule_constraint = null;
     }
 
     // 规则轨也只是软事实来源；身份 claim 在这里被刻意忽略。labor_form 由下方
     // 单独裁决，避免正常 LLM 结果又被规则轨覆盖。
-    for (const fact of resolveTurnHints(turnHints)) {
+    for (const fact of resolveTurnHints(ruleHints)) {
       const [group, field] = fact.field.split('.');
       if (group !== 'preferences' || field === 'labor_form' || !(field in preferences)) continue;
       if (field === 'schedule_constraint' && scheduleAuthoritative) continue;
-      if (scheduleValid && (field === 'schedule' || field === 'time_windows')) continue;
+      if (structuredScheduleVerified && (field === 'schedule' || field === 'time_windows')) {
+        continue;
+      }
       const target = preferences as unknown as Record<string, unknown>;
       let value =
         field === 'city' && typeof fact.value === 'string'
@@ -750,6 +787,11 @@ export class SessionFactsService {
         extractedAt: fact.assertedAt,
       });
     }
+    this.retireScheduleTextEntries(
+      preferences,
+      previousFacts?.preferences ?? null,
+      previousSchedule,
+    );
 
     // LLM 显式空数组/空串代表清空；null 仍表示本轮缺席，不改变旧值。
     const llmPrefs = llmOutcome.facts.preferences as unknown as Record<string, unknown>;
@@ -765,7 +807,7 @@ export class SessionFactsService {
     }
 
     // 规则轨 clear 是最可靠的显式清空信号。
-    for (const claim of turnHints?.claims ?? []) {
+    for (const claim of ruleHints?.claims ?? []) {
       if (claim.operation !== 'clear' || !claim.field.startsWith('preferences.')) continue;
       const field = claim.field.slice('preferences.'.length);
       if (field === 'labor_form' || (field === 'schedule_constraint' && scheduleAuthoritative))
@@ -830,6 +872,59 @@ export class SessionFactsService {
     });
   }
 
+  /**
+   * 本轮结构化日内条件（标签、可/不可出勤时段）改变时，旧的意向班次与时间窗文本作废，
+   * 避免撤销的钟点经旧文本回到上下文。本轮新得到的文本保留；只改天数、周末等不动文本。
+   */
+  private retireScheduleTextEntries(
+    preferences: SessionFacts['preferences'],
+    previousPreferences: SessionFacts['preferences'] | null,
+    previousSchedule: StoredScheduleConstraint | null,
+  ): void {
+    const applied = preferences.schedule_constraint;
+    if (!isSessionFactValue(applied) || !applied.value) return;
+    const patch = StoredScheduleConstraintSchema.safeParse(applied.value);
+    if (!patch.success) return;
+    const changesDaily = DAILY_SCHEDULE_FIELDS.some(
+      (field) =>
+        patch.data[field] !== undefined &&
+        !isSameFactValue(previousSchedule?.[field], patch.data[field]),
+    );
+    if (!changesDaily) return;
+    for (const field of ['schedule', 'time_windows'] as const) {
+      const fresh = preferences[field];
+      if (isSessionFactValue(fresh) && hasMeaningfulValue(fresh.value)) continue;
+      const stale: unknown = previousPreferences?.[field];
+      if (!isSessionFactValue(stale) || !hasMeaningfulValue(stale.value)) continue;
+      preferences[field] = this.preferenceTombstone(applied.evidence);
+    }
+  }
+
+  /**
+   * 模型给出的班次条件不合严格契约、已被丢弃：其余偏好照常保存，但丢弃必须能被发现。
+   * 明细只带字段路径与原因，不带候选人原值。告警 fire-and-forget，失败只留日志。
+   */
+  private reportRejectedScheduleConstraint(
+    scope: { corpId: string; userId: string; sessionId: string },
+    issues: string[],
+  ): void {
+    const detail = issues.join('; ');
+    this.logger.warn(`[extractFacts] 班次条件不合契约，已只丢弃该字段: ${detail}`);
+    void this.alertNotifier
+      ?.sendSimpleAlert(
+        '轮末抽取的班次条件不合契约（已只丢弃该字段）',
+        [
+          `会话：${scope.corpId}/${scope.userId}/${scope.sessionId}`,
+          `明细：${detail}`,
+          '同轮其他偏好已照常保存；本轮班次变更改由工具核验结果或规则轨兜底。',
+        ].join('\n'),
+        'warning',
+      )
+      .catch((error: unknown) => {
+        this.logger.warn(`[extractFacts] 班次条件丢弃告警发送失败: ${toErrorMessage(error)}`);
+      });
+  }
+
   private applyLaborFormIntent(
     preferences: SessionFacts['preferences'],
     llmOutcome: {
@@ -877,6 +972,8 @@ export class SessionFactsService {
     brandIntents: BrandIntentEntry[];
     laborFormIntent: LaborFormIntentExtraction | null;
     scheduleCitation: TextCitation | null;
+    /** 模型给出但不合严格契约、已丢弃的班次条件明细（字段路径 + 原因）；null 表示没有丢弃。 */
+    rejectedScheduleIssues: string[] | null;
     degraded: boolean;
   }> {
     try {
@@ -899,9 +996,16 @@ export class SessionFactsService {
         LaborFormIntentExtractionSchema.nullable()
           .optional()
           .parse(raw.labor_form_intent ?? null) ?? null;
+      // 结构化输出对班次条件只做原样接收，这里按严格契约单独校验；不合契约只丢弃本字段。
+      const schedule = CandidateScheduleConstraintSchema.nullable().safeParse(
+        raw.preferences.schedule_constraint ?? null,
+      );
       const facts = EntityExtractionResultSchema.parse({
         ...FALLBACK_EXTRACTION,
-        preferences: raw.preferences,
+        preferences: {
+          ...raw.preferences,
+          schedule_constraint: schedule.success ? schedule.data : null,
+        },
         reasoning: raw.reasoning,
       });
       return {
@@ -909,6 +1013,12 @@ export class SessionFactsService {
         brandIntents,
         laborFormIntent,
         scheduleCitation: raw.schedule_constraint_citation ?? null,
+        rejectedScheduleIssues: schedule.success
+          ? null
+          : schedule.error.issues.map(
+              (issue) =>
+                `${['schedule_constraint', ...issue.path.map(String)].join('.')}: ${issue.message}`,
+            ),
         degraded: false,
       };
     } catch (error) {
@@ -918,6 +1028,7 @@ export class SessionFactsService {
         brandIntents: [],
         laborFormIntent: null,
         scheduleCitation: null,
+        rejectedScheduleIssues: null,
         degraded: true,
       };
     }
@@ -952,4 +1063,76 @@ export class SessionFactsService {
   private serializeStateContent(content: Partial<WeworkSessionState>): Partial<WeworkSessionState> {
     return SessionFactsRedisContentSchema.parse(content) as Partial<WeworkSessionState>;
   }
+}
+
+/** 日内班次字段：它们与意向班次、时间窗文本描述的是同一件事。 */
+const DAILY_SCHEDULE_FIELDS = [
+  'includeAnyTags',
+  'excludeTags',
+  'availableWindow',
+  'unavailableWindow',
+] as const;
+
+function readStoredSchedule(facts: SessionFacts | null): StoredScheduleConstraint | null {
+  const value = unwrapSessionFactValue(facts?.preferences.schedule_constraint);
+  if (value == null) return null;
+  const parsed = StoredScheduleConstraintSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
+
+/**
+ * 工具登记的是与记忆合并后的完整有效条件。与已保存条件有效等价时，本轮没有经核验的
+ * 变更，不落盘；有变化时工具已要求并核验过本轮原话。
+ */
+function readToolScheduleChange(
+  raw: unknown,
+  previous: StoredScheduleConstraint | null,
+): StoredScheduleConstraint | null {
+  if (raw == null) return null;
+  const parsed = StoredScheduleConstraintSchema.safeParse(raw);
+  if (!parsed.success) return null;
+  return effectiveScheduleKey(parsed.data) === effectiveScheduleKey(previous) ? null : parsed.data;
+}
+
+/**
+ * 班次条件的有效比较键，与查岗工具判断“本轮是否改变条件”同口径：省略、null、false、
+ * 空数组与 endDayOffset:0 都表示没有该项限制；旧早晚班的待确认状态一并参与比较。
+ */
+function effectiveScheduleKey(stored: StoredScheduleConstraint | null): string {
+  const { conditions, legacyUnresolved } = readScheduleConditions(stored ?? {});
+  return JSON.stringify({ conditions: canonicalScheduleValue(conditions), legacyUnresolved });
+}
+
+function canonicalScheduleValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    const items = [...new Set(value.map(String))].sort();
+    return items.length > 0 ? items : null;
+  }
+  if (value === null || value === undefined || value === false) return null;
+  if (typeof value !== 'object') return value;
+  const entries = Object.entries(value)
+    .map(([key, item]) => [key, canonicalScheduleValue(item)] as const)
+    .filter(([key, item]) => item !== null && !(key === 'endDayOffset' && item === 0))
+    .sort(([a], [b]) => a.localeCompare(b));
+  return entries.length > 0 ? Object.fromEntries(entries) : null;
+}
+
+/**
+ * 正向标签与排除标签出现同名时，以本轮改动的一侧为准，从未改动的一侧移除同名标签：
+ * 先排除晚班、后说只上晚班，不能拼成“只要晚班又排除晚班”。两侧同时改动时保留原样。
+ */
+function reconcileShiftTagPolarity(
+  previous: StoredScheduleConstraint | null,
+  next: StoredScheduleConstraint,
+): StoredScheduleConstraint {
+  const include = next.includeAnyTags ?? [];
+  const exclude = next.excludeTags ?? [];
+  const overlap = new Set(include.filter((tag) => exclude.includes(tag)));
+  if (overlap.size === 0) return next;
+  const includeChanged = !isSameFactValue(previous?.includeAnyTags, next.includeAnyTags);
+  const excludeChanged = !isSameFactValue(previous?.excludeTags, next.excludeTags);
+  if (includeChanged === excludeChanged) return next;
+  return includeChanged
+    ? { ...next, excludeTags: exclude.filter((tag) => !overlap.has(tag)) }
+    : { ...next, includeAnyTags: include.filter((tag) => !overlap.has(tag)) };
 }

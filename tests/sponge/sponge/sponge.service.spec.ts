@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { SpongeService } from '@sponge/sponge.service';
@@ -229,6 +230,69 @@ describe('SpongeService', () => {
       await expect(
         service.fetchJobs({ options: { includeWorkTime: true } }),
       ).rejects.toBeInstanceOf(WorkTimeContractError);
+    });
+
+    describe('班次契约不合规岗位的处理方式', () => {
+      const fixedJob = (jobId: number, start: string, end: string) => ({
+        basicInfo: { jobId, brandName: '必胜客' },
+        workTime: {
+          dayWorkTime: {
+            arrangementType: '固定排班',
+            combinedArrangement: [
+              { combinedArrangementStartTime: start, combinedArrangementEndTime: end },
+            ],
+            fixedTime: null,
+          },
+        },
+      });
+      const respond = (result: unknown[]) =>
+        jest.spyOn(global, 'fetch').mockResolvedValue({
+          ok: true,
+          json: async () => ({ code: 0, data: { result, total: result.length } }),
+        } as Response);
+      const jobs = () => [
+        fixedJob(1, '09:00', '14:00'),
+        fixedJob(529577, '05:00', '05:00'),
+        fixedJob(2, '18:00', '22:00'),
+      ];
+
+      it('默认仍整次拒绝，不返回部分岗位', async () => {
+        respond(jobs());
+        await expect(
+          service.fetchJobs({ cityNameList: ['上海'], options: { includeWorkTime: true } }),
+        ).rejects.toThrow('岗位529577');
+      });
+
+      it('skip 只剔除不合规岗位，返回岗位ID与原因并记 warn', async () => {
+        respond(jobs());
+        const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+
+        const result = await service.fetchJobs({
+          cityNameList: ['上海'],
+          invalidWorkTime: 'skip',
+          options: { includeWorkTime: true },
+        });
+
+        expect(result.jobs.map((job) => job.basicInfo?.jobId)).toEqual([1, 2]);
+        expect(result.total).toBe(3);
+        expect(result.skippedInvalidWorkTime).toEqual([
+          {
+            jobId: 529577,
+            brandName: '必胜客',
+            reason: expect.stringContaining('班次起止钟点相同'),
+          },
+        ]);
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining('529577'));
+        const [, requestInit] = (global.fetch as jest.Mock).mock.calls[0] as [string, RequestInit];
+        expect(String(requestInit.body)).not.toContain('invalidWorkTime');
+      });
+
+      it('skip 不放过响应结构异常', async () => {
+        respond([{ basicInfo: { jobId: 'invalid' } }]);
+        await expect(
+          service.fetchJobs({ invalidWorkTime: 'skip', options: { includeWorkTime: true } }),
+        ).rejects.toBeInstanceOf(SpongeResponseContractError);
+      });
     });
 
     it('resolves the Duliday token from hosting_member_config by botImId', async () => {
@@ -782,12 +846,10 @@ describe('SpongeService', () => {
 
   describe('fetchBrandList', () => {
     it('fresh catalog rejects an incomplete first page', async () => {
-      jest
-        .spyOn(global, 'fetch')
-        .mockResolvedValue({
-          ok: true,
-          json: async () => ({ code: 0, data: { total: 2, result: [{ id: 1, name: '品牌' }] } }),
-        } as Response);
+      jest.spyOn(global, 'fetch').mockResolvedValue({
+        ok: true,
+        json: async () => ({ code: 0, data: { total: 2, result: [{ id: 1, name: '品牌' }] } }),
+      } as Response);
       await expect(service.fetchBrandList({ requireFresh: true })).rejects.toThrow(
         '品牌目录分页未完整',
       );
