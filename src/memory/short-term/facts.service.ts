@@ -665,8 +665,6 @@ export class SessionFactsService {
     const rendered = scopedMessages.map(
       (message) => `${message.role === 'user' ? '用户' : '助手'}: ${message.content}`,
     );
-    const currentMessage = rendered.at(-1) ?? '';
-    const history = rendered.slice(0, -1);
     const userMessages = scopedMessages
       .filter((message) => message.role === 'user')
       .map((message) => message.content);
@@ -675,6 +673,10 @@ export class SessionFactsService {
       if (scopedMessages[index].role !== 'user') break;
       currentTurnUserTexts.unshift(scopedMessages[index].content);
     }
+    // 合并轮的连续用户消息同属本轮，与班次引文核验的范围保持一致。
+    const currentCount = Math.max(1, currentTurnUserTexts.length);
+    const currentMessage = rendered.slice(-currentCount).join('\n');
+    const history = rendered.slice(0, -currentCount);
     const lastUserText = stripTimeContext(userMessages.at(-1) ?? '').trim();
     const laborFormDecision = preparedLaborFormIntent ?? decideLaborFormIntent(lastUserText);
     const previousFacts = await this.getFacts(corpId, userId, sessionId);

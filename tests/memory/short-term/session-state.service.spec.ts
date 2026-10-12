@@ -212,6 +212,11 @@ describe('SessionStateService（S1-S6）', () => {
       source: 'candidate_quote',
       evidence: '夜班不做',
     });
+    const prompt = JSON.stringify(llm.generateStructured.mock.calls.at(-1)?.[0]);
+    const current = prompt.slice(prompt.indexOf('[当前消息]'));
+    expect(current).toContain('夜班不做');
+    expect(current).toContain('帮我找上海的');
+    expect(current).not.toContain('以前白天都可以');
   });
   it('模型降级时跨日规则提示仍能保存，且不丢失同轮其他偏好', async () => {
     llm.generateStructured.mockRejectedValue(new Error('LLM unavailable'));

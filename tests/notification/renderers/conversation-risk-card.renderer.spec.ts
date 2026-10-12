@@ -111,7 +111,7 @@ describe('ConversationRiskCardRenderer', () => {
     expect(card.content as string).toContain('姓名：Alice');
     expect(card.content as string).toContain('托管账号：招募经理A');
     expect(card.content as string).toContain('品牌：蜀地源');
-    expect(card.content as string).toContain('处理完请到 Web 托管后台手动恢复托管。');
+    expect(card.content as string).toContain('未手动恢复时，次日零点（上海时间）自动恢复。');
     expect(card.content as string).not.toContain('暂停ID：');
   });
 
