@@ -45,7 +45,7 @@
 | 10  | `collection-form:{corpId}:{userId}:{botUserId}:{candidateRef}:{jobId}` | String (JSON) | 7 天                       | tools           | 收资表单完整实体                    |
 | 11  | `collection-form-current:{corpId}:{userId}:{botUserId}:{jobId}`        | String (JSON) | 7 天                       | tools           | 当前办理人定位指针                  |
 | 12  | `hosting:blacklist:groups:v1`                                          | String (JSON) | 无（观察者主动刷新）       | hosting-config  | 群黑名单共享缓存                    |
-| 13  | `hosting:paused-users:v1`                                              | String (JSON) | 无                         | user            | 暂停用户共享缓存                    |
+| 13  | `hosting:paused-users:v2`                                              | String (JSON) | 无                         | user            | 暂停用户共享缓存                    |
 | 14  | `hosting:config:ai-reply-enabled:v1`                                   | String (JSON) | 无                         | hosting-config  | AI 回复开关                         |
 | 15  | `hosting:config:message-merge-enabled:v1`                              | String (JSON) | 无                         | hosting-config  | 聚合开关                            |
 | 16  | `hosting:config:agent-reply-config:v1`                                 | String (JSON) | 无                         | hosting-config  | Agent 回复配置（模型/延迟/阈值）    |
@@ -270,7 +270,9 @@ session / long-term memory，不搬运表单实体或槽位状态。
 | 数据结构 | String（JSON `{ items: string[], updatedAt }`） |
 | TTL      | 无（持久）                                      |
 
-### 13. `hosting:paused-users:v1` — 暂停用户共享缓存
+### 13. `hosting:paused-users:v2` — 暂停用户共享缓存
+
+> v2 起面试后转人工改为临时暂停，旧 v1 快照不再兼容。快照无 TTL，只在键缺失或到期解除时从数据库重建；回滚到仍读 v1 的版本前，须先删除带环境前缀的 v1 键，否则旧版本会沿用冻结的快照。
 
 **代码位置**：[src/biz/user/services/user-hosting.service.ts](../../src/biz/user/services/user-hosting.service.ts)
 

@@ -18,6 +18,15 @@ describe('跨日时间区间', () => {
     ).toBe(false);
   });
 
+  it('单侧结束边界不放行开始当天已越过上限的零点或跨夜班次', () => {
+    // 16:00–24:00 / 18:00–次日02:00 / 17:00–次日00:30 / 07:00–24:00
+    expect(candidateCovers({ startMinute: 960, endMinute: 1440 }, { end: '21:00' })).toBe(false);
+    expect(candidateCovers({ startMinute: 1080, endMinute: 1560 }, { end: '22:00' })).toBe(false);
+    expect(candidateCovers({ startMinute: 1020, endMinute: 1470 }, { end: '23:00' })).toBe(false);
+    expect(candidateCovers({ startMinute: 420, endMinute: 1440 }, { end: '20:00' })).toBe(false);
+    expect(candidateCovers({ startMinute: 1080, endMinute: 1560 }, { end: '24:00' })).toBe(false);
+  });
+
   it('凌晨班次可以对齐到候选人的次日窗口，但不能越过其结束边界', () => {
     const window = { start: '22:00', end: '06:00', endDayOffset: 1 as const };
     expect(candidateCovers({ startMinute: 0, endMinute: 360 }, window)).toBe(true);

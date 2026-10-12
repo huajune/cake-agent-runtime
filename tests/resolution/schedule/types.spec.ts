@@ -1,9 +1,57 @@
 import {
   CandidateScheduleConstraintSchema,
   type StoredScheduleConstraint,
+  StoredScheduleConstraintSchema,
   mergeScheduleConstraints,
   readScheduleConditions,
 } from '@resolution/schedule/types';
+
+describe('旧契约落盘时段的读取兼容', () => {
+  it.each([
+    [{ start: '22:00', end: '06:00' }, { start: '22:00', end: '06:00', endDayOffset: 1 }],
+    [{ start: '9:00', end: '17:00' }, { start: '09:00', end: '17:00' }],
+    [{ start: '18:00', end: '00:00' }, { start: '18:00', end: '24:00' }],
+    [{ start: '15:00', end: '21:00' }, { start: '15:00', end: '21:00' }],
+  ])('结束不晚于开始按旧语义视为跨午夜，钟点补零：%j', (legacy, expected) => {
+    const parsed = StoredScheduleConstraintSchema.parse({ availableWindow: legacy });
+    expect(parsed.availableWindow).toEqual(expected);
+    expect(CandidateScheduleConstraintSchema.safeParse(parsed).success).toBe(true);
+  });
+
+  it('旧默认 null 形态整体可读', () => {
+    expect(
+      StoredScheduleConstraintSchema.parse({
+        onlyWeekends: null,
+        onlyEvenings: true,
+        onlyMornings: null,
+        maxDaysPerWeek: 3,
+        availableWindow: { start: '20:00', end: '02:00' },
+      }),
+    ).toEqual({
+      onlyWeekends: null,
+      onlyEvenings: true,
+      onlyMornings: null,
+      maxDaysPerWeek: 3,
+      availableWindow: { start: '20:00', end: '02:00', endDayOffset: 1 },
+    });
+  });
+
+  it.each([{ start: '08:00', end: '08:00' }, { start: '晚上', end: '早上' }, {}])(
+    '含义无法确定的旧时段不擅自放宽，仍交由重新确认：%j',
+    (legacy) =>
+      expect(StoredScheduleConstraintSchema.safeParse({ availableWindow: legacy }).success).toBe(
+        false,
+      ),
+  );
+
+  it('模型侧契约仍要求显式 endDayOffset', () => {
+    expect(
+      CandidateScheduleConstraintSchema.safeParse({
+        availableWindow: { start: '22:00', end: '06:00' },
+      }).success,
+    ).toBe(false);
+  });
+});
 
 describe('候选人条件契约', () => {
   it.each<StoredScheduleConstraint>([

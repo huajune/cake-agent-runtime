@@ -2766,6 +2766,32 @@ describe('buildJobListTool', () => {
       );
       expect(result.resultCount).toBe(1);
     });
+    it.each([
+      { includeWorkTime: true, sessionFacts: undefined, expected: true },
+      { includeWorkTime: false, sessionFacts: undefined, expected: false },
+      {
+        includeWorkTime: false,
+        sessionFacts: { preferences: { schedule_constraint: { includeAnyTags: ['evening'] } } },
+        expected: true,
+      },
+    ])(
+      'inspect默认取班次，仅问其他事实且无班次条件时尊重显式关闭：%j',
+      async ({ includeWorkTime, sessionFacts, expected }) => {
+        mockSpongeService.fetchJobs.mockResolvedValue({
+          jobs: [scheduledJob(1, '固定排班', [['18:00', '22:00']])],
+          total: 1,
+        });
+        const ctx = normalizeContext({ ...mockContext, sessionFacts: sessionFacts as never });
+        const result = await executeTool(ctx, {
+          ...defaultInput,
+          purpose: 'inspect',
+          jobIdList: [1],
+          includeWorkTime,
+        } as typeof defaultInput);
+        expect(result.errorType).toBeUndefined();
+        expect(mockSpongeService.fetchJobs.mock.calls[0][0].options.includeWorkTime).toBe(expected);
+      },
+    );
     it.each([{ ids: [] }, { ids: [1] }])(
       'inspect缺少部分或全部指定岗位时不返回成功事实：%j',
       async ({ ids }) => {

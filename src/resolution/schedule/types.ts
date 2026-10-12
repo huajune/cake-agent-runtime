@@ -104,9 +104,41 @@ export function hasScheduleConstraint(c: CandidateScheduleConstraint | null | un
   );
 }
 
+/**
+ * 旧契约的时段是自由字符串，以“结束不晚于开始”表示跨午夜，也可能缺少小时补零。
+ * 读取时按旧语义换成显式 endDayOffset，避免整份会话事实因旧时段校验失败被丢弃；
+ * 含义无法确定的值保持原样，仍按“需重新确认”处理，不擅自放宽。
+ */
+function normalizeStoredWindow(value: unknown): unknown {
+  if (value === null || value === undefined || typeof value !== 'object') return value;
+  const pad = (clock: unknown) =>
+    typeof clock === 'string' && /^\d:[0-5]\d$/.test(clock) ? `0${clock}` : clock;
+  const window = { ...(value as Record<string, unknown>) };
+  window.start = pad(window.start);
+  window.end = pad(window.end);
+  if (window.start === undefined) delete window.start;
+  if (window.end === undefined) delete window.end;
+  if (
+    typeof window.start === 'string' &&
+    typeof window.end === 'string' &&
+    window.endDayOffset === undefined
+  ) {
+    if (window.end === '00:00' && window.start !== '00:00') window.end = '24:00';
+    else if (window.end < window.start) window.endDayOffset = 1;
+  }
+  return ScheduleWindowSchema.safeParse(window).success ? window : value;
+}
+
+const StoredScheduleWindowSchema = z.preprocess(
+  normalizeStoredWindow,
+  ScheduleWindowSchema.nullable().optional(),
+);
+
 /** 仅用于读取尚未过期的会话记忆；新模型契约不再产出旧早晚班布尔值。 */
 export const StoredScheduleConstraintSchema = z.object({
   ...CandidateScheduleConstraintFields,
+  availableWindow: StoredScheduleWindowSchema,
+  unavailableWindow: StoredScheduleWindowSchema,
   onlyEvenings: z.boolean().nullable().optional(),
   onlyMornings: z.boolean().nullable().optional(),
 });

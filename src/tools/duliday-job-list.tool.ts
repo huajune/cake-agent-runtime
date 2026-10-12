@@ -973,11 +973,9 @@ export function buildJobListTool(
           conditions.success && hasScheduleConstraint(conditions.data)
             ? conditions.data
             : undefined;
-        if (
-          hasScheduleConstraint(candidateScheduleConstraint) ||
-          purpose === 'inspect' ||
-          preferFlexibleSchedule
-        )
+        // inspect 默认取排班；只问薪资/福利等且无生效班次条件时，尊重显式 false，
+        // 避免无关事实因班次数据契约问题而无法核对。
+        if (hasScheduleConstraint(candidateScheduleConstraint) || preferFlexibleSchedule)
           includeWorkTime = true;
         if (purpose === 'inspect') {
           if (!jobIdList.length)
@@ -995,7 +993,7 @@ export function buildJobListTool(
                 includeJobSalary,
                 includeWelfare,
                 includeHiringRequirement,
-                includeWorkTime: true,
+                includeWorkTime,
                 includeInterviewProcess,
               },
               ...(bookedJobLookup ? { onlySignableJobs: false } : {}),
@@ -1032,7 +1030,7 @@ export function buildJobListTool(
                   includeJobSalary,
                   includeWelfare,
                   includeHiringRequirement,
-                  includeWorkTime: true,
+                  includeWorkTime,
                   includeInterviewProcess,
                 },
               ),
