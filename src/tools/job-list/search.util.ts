@@ -153,7 +153,6 @@ export function applyScheduleConstraint(
   constraint: CandidateScheduleConstraint | undefined,
 ) {
   const excluded: Array<{ jobId: number | null; brandName: string | null; reason: string }> = [];
-  const unknown: typeof excluded = [];
   const matches: Array<ScheduleMatchResult & { jobId: number | null }> = [];
   const kept: JobDetail[] = [];
   for (const job of jobs) {
@@ -181,13 +180,13 @@ export function applyScheduleConstraint(
     matches.push({ jobId, ...result });
     if (result.status === 'matched') kept.push(job);
     else
-      (result.status === 'unknown' ? unknown : excluded).push({
+      excluded.push({
         jobId,
         brandName: job.basicInfo?.brandName ?? null,
-        reason: result.reason ?? '班次信息待确认',
+        reason: result.reason ?? '班次不符合候选人要求',
       });
   }
-  return { jobs: kept, excluded, unknown, matches };
+  return { jobs: kept, excluded, matches };
 }
 
 export interface StudentIdentityFilterResult {

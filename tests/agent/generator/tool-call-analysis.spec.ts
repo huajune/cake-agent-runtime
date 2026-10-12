@@ -147,7 +147,7 @@ describe('tool-call-analysis', () => {
           undefined,
         ),
       ).toBe('empty');
-      // 已查范围内未确认可推荐岗位（扫描未完整/班次待确认）也是业务空态
+      // 已查范围内未确认可推荐岗位（扫描未完整）也是业务空态
       expect(
         computeToolCallStatus(
           { success: false, errorType: 'job_list.query_incomplete' },

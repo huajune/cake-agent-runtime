@@ -10,6 +10,8 @@
  * 数组排序去重后参与，坐标四舍五入到 3 位小数（~110m），避免无意义抖动。
  */
 
+import { canonicalizeScheduleConstraint } from '@resolution/schedule/equivalence';
+
 interface SignatureLocation {
   longitude?: number | null;
   latitude?: number | null;
@@ -110,32 +112,3 @@ export const REPEAT_QUERY_NOTICE =
   '3. 候选人已连续两轮否定具体推荐时，停止第三轮查询，只征询是否愿意入群；本轮不实调，下一轮明确同意后才调用 invite_to_group；\n' +
   '4. 本会话已经成功拉群时，禁止继续查询、推荐或询问其他区域，只提示留意既有群消息。\n' +
   '另外：若你已向候选人承诺扩大范围或重新查询，本轮必须实质调整查询条件；严禁声称已扩大范围却原样重查。';
-
-/**
- * 班次条件的有效视图：省略、null、false、空数组与 endDayOffset:0（当日结束）都表示
- * “没有这项限制”，统一移除；数组排序去重，对象按键排序。没有任何有效限制时返回 null。
- *
- * 查询签名与“本轮是否真的改变条件”的出处判断共用此口径，避免语义等价的写法
- * 一处被当成新条件、另一处又漏报重复查询。
- */
-export function canonicalizeScheduleConstraint(
-  constraint: Record<string, unknown> | null | undefined,
-): Record<string, unknown> | null {
-  const canonical = canonicalizeScheduleValue(constraint ?? null);
-  return canonical !== null && typeof canonical === 'object' && !Array.isArray(canonical)
-    ? (canonical as Record<string, unknown>)
-    : null;
-}
-
-function canonicalizeScheduleValue(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    const items = [...new Set(value)].sort();
-    return items.length > 0 ? items : null;
-  }
-  if (value === null || typeof value !== 'object') return value === false ? null : value;
-  const entries = Object.entries(value)
-    .map(([key, item]) => [key, canonicalizeScheduleValue(item)] as const)
-    .filter(([key, item]) => item != null && !(key === 'endDayOffset' && item === 0))
-    .sort(([a], [b]) => a.localeCompare(b));
-  return entries.length > 0 ? Object.fromEntries(entries) : null;
-}
