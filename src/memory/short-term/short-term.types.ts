@@ -287,7 +287,7 @@ export const PreferencesSchema = z.object({
 /** 抽取模型看到的 schedule_constraint 字段说明。 */
 export const SCHEDULE_CONSTRAINT_EXTRACTION_GUIDANCE =
   SCHEDULE_CONSTRAINT_GUIDANCE +
-  '只保存候选人明确声明的持续出勤要求，早班有吗等单次查询不写入持续限制。只输出本轮变更，并同时提供schedule_constraint_citation。';
+  '只保存候选人明确声明的持续出勤要求。询问句一律不写，包括有早班吗、有没有大夜班、几点上班、班次是固定的还是自己选、能不能换班；上文“本次查岗传true”只适用于查岗工具，这里不写preferFlexibleSchedule，只有候选人明确说想要或更喜欢灵活排班时才写。只输出本轮变更，并同时提供schedule_constraint_citation。';
 
 /**
  * 抽取输出里的 schedule_constraint：对模型呈现的 JSON Schema 与严格契约
