@@ -23,7 +23,7 @@ import { Logger } from '@nestjs/common';
 import { tool } from 'ai';
 import { z } from 'zod';
 import { SpongeService } from '@sponge/sponge.service';
-import type { JobBasicInfo, JobDetail } from '@sponge/sponge.types';
+import type { InvalidWorkTimeJob, JobBasicInfo, JobDetail } from '@sponge/sponge.types';
 import { isValidLaborForm, stripLaborFormFromCategories } from '@resolution/labor-form';
 import { ToolBuilder, ToolBuildContext } from '@shared-types/tool.types';
 import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
@@ -828,12 +828,37 @@ export function buildJobListTool(
 ): ToolBuilder {
   return (context) => {
     const spongeTokenContext = buildSpongeTokenContext(context);
-    const fetchJobs = (params: Parameters<SpongeService['fetchJobs']>[0], signal?: AbortSignal) =>
-      signal
-        ? spongeService.fetchJobs(params, spongeTokenContext, signal)
+    // 单个岗位班次数据不合规只剔除该岗位并记录（需海绵修数据），不能拖垮整次查岗；
+    // 响应结构等其他契约错误仍整次失败。剔除明细按返回的岗位数组登记，供补页计数与回执使用。
+    const skippedInvalidWorkTime = new Map<string, InvalidWorkTimeJob>();
+    const skippedByPage = new WeakMap<JobDetail[], InvalidWorkTimeJob[]>();
+    const skippedOf = (page: JobDetail[]) => skippedByPage.get(page) ?? [];
+    const fetchJobs = async (
+      params: Parameters<SpongeService['fetchJobs']>[0],
+      signal?: AbortSignal,
+    ) => {
+      const request = params.options?.includeWorkTime
+        ? { ...params, invalidWorkTime: 'skip' as const }
+        : params;
+      const result = await (signal
+        ? spongeService.fetchJobs(request, spongeTokenContext, signal)
         : spongeTokenContext
-          ? spongeService.fetchJobs(params, spongeTokenContext)
-          : spongeService.fetchJobs(params);
+          ? spongeService.fetchJobs(request, spongeTokenContext)
+          : spongeService.fetchJobs(request));
+      const skipped = result.skippedInvalidWorkTime ?? [];
+      skippedByPage.set(result.jobs, skipped);
+      for (const job of skipped) skippedInvalidWorkTime.set(String(job.jobId), job);
+      return result;
+    };
+    const invalidWorkTimeMeta = () =>
+      skippedInvalidWorkTime.size > 0
+        ? {
+            invalidWorkTimeSkipped: {
+              count: skippedInvalidWorkTime.size,
+              jobIds: [...skippedInvalidWorkTime.values()].slice(0, 10).map((job) => job.jobId),
+            },
+          }
+        : {};
     // v7 的 tool() 多重载对本工具的大 schema + 长 execute 推断失败（塌成
     // Tool<never,never,CONTEXT> 报 FlexibleSchema<never>），必须显式钉死泛型。
     const jobListTool = tool<z.output<typeof inputSchema>, unknown, Record<string, unknown>>({
@@ -1019,6 +1044,18 @@ export function buildJobListTool(
             });
             const returnedIds = new Set(inspected.jobs.map((job) => job.basicInfo?.jobId));
             const missingJobIds = jobIdList.filter((id) => !returnedIds.has(id));
+            const invalidJobIds = missingJobIds.filter((id) =>
+              skippedInvalidWorkTime.has(String(id)),
+            );
+            if (invalidJobIds.length > 0) {
+              return buildToolError({
+                errorType: TOOL_ERROR_TYPES.JOB_LIST_FETCH_FAILED,
+                outcome: '指定岗位班次数据异常，暂时无法核对',
+                replyInstruction:
+                  '指定岗位的班次数据有误，需数据源团队修复，暂时无法确认班次。不能用历史摘要回答班次或承诺上岗，也不能据此断言岗位已停招；说明班次需要再确认即可，本轮不要自动改查其他岗位。',
+                details: { missingJobIds, invalidWorkTimeJobIds: invalidJobIds },
+              });
+            }
             if (missingJobIds.length > 0) {
               return buildToolError({
                 errorType: TOOL_ERROR_TYPES.JOB_LIST_FETCH_FAILED,
@@ -1300,7 +1337,19 @@ export function buildJobListTool(
         };
         let scanMeta: JobScanMeta | undefined;
         const buildQueryError = (args: Parameters<typeof buildToolError>[0]) =>
-          buildScannedQueryError(args, scanMeta);
+          buildScannedQueryError(
+            {
+              ...args,
+              details: {
+                ...args.details,
+                queryMeta: {
+                  ...(isRecord(args.details?.queryMeta) ? args.details.queryMeta : {}),
+                  ...invalidWorkTimeMeta(),
+                },
+              },
+            },
+            scanMeta,
+          );
         try {
           let storeMatchStrategy: 'api_exact' | 'local_fuzzy_match' = 'api_exact';
           let distanceScanPages = 1;
@@ -1651,12 +1700,15 @@ export function buildJobListTool(
                 ? Math.min(requestedRangeKm, EXPLICIT_RANGE_CAP_KM)
                 : distanceThreshold?.max;
 
+          const firstPageSkipped = skippedOf(jobs);
+          const firstPageSeen = jobs.length + firstPageSkipped.length;
           scanMeta = {
             upstreamTotal: total,
             scannedCount: jobs.length,
             scannedPages: 1,
-            scanComplete: jobs.length >= total,
-            stopReason: jobs.length >= total ? 'complete' : 'not_scanned',
+            scanComplete: firstPageSeen >= total,
+            stopReason: firstPageSeen >= total ? 'complete' : 'not_scanned',
+            ...(firstPageSkipped.length ? { skippedInvalidWorkTime: firstPageSkipped.length } : {}),
           };
           const needsAdministrativeAreaFilter =
             cityFilterRecovery?.attempted && fetchBaseParams.cityNameList?.length === 0;
@@ -1671,9 +1723,9 @@ export function buildJobListTool(
             (brandPlan.filterMode === 'exclude' && brandPlan.excludeBrands.length > 0) ||
             candidateLaborForm != null ||
             candidateIsStudent === true;
-          if ((needsLocalFiltering || preferFlexibleSchedule) && total > jobs.length) {
+          if ((needsLocalFiltering || preferFlexibleSchedule) && total > firstPageSeen) {
             const scanned = await scanJobPages(
-              { jobs, total },
+              { jobs, total, skippedInvalidWorkTime: firstPageSkipped },
               fetchBaseParams,
               fetchJobs,
               scanDeadline,
@@ -2251,6 +2303,7 @@ export function buildJobListTool(
           result.queryMeta = {
             purpose,
             ...scanMeta,
+            ...invalidWorkTimeMeta(),
             matchedCount,
             returnedCount: jobs.length,
             hasMoreMatches: matchedCount > jobs.length,

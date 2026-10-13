@@ -2936,6 +2936,65 @@ describe('buildJobListTool', () => {
       expect(recordFetchedJobs.mock.calls[0][0]).toHaveLength(20);
       expect(result.markdown).toContain('本次展示排序后的前 20 个');
     });
+    it('单个岗位班次数据异常只剔除该岗位，其余岗位照常推荐并回执剔除明细', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [scheduledJob(1, '固定排班', [['19:00', '22:00']])],
+        total: 2,
+        skippedInvalidWorkTime: [{ jobId: 2, brandName: 'KFC', reason: '班次起止钟点相同' }],
+      });
+      const result = await executeTool({ ...mockContext, currentUserMessage: '18点后有空' }, {
+        ...defaultInput,
+        cityNameList: ['上海'],
+        candidateScheduleConstraint: { availableWindow: { start: '18:00' } },
+        candidateScheduleCitation: { quote: '18点后有空' },
+      } as typeof defaultInput);
+      expect(mockSpongeService.fetchJobs).toHaveBeenCalledWith(
+        expect.objectContaining({
+          invalidWorkTime: 'skip',
+          options: expect.objectContaining({ includeWorkTime: true }),
+        }),
+        undefined,
+        expect.any(AbortSignal),
+      );
+      expect(result.resultCount).toBe(1);
+      expect(result.queryMeta).toMatchObject({
+        scanComplete: true,
+        skippedInvalidWorkTime: 1,
+        invalidWorkTimeSkipped: { count: 1, jobIds: [2] },
+      });
+    });
+    it('只剩班次数据异常的岗位时不断言无岗', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [],
+        total: 1,
+        skippedInvalidWorkTime: [{ jobId: 2, brandName: 'KFC', reason: '班次起止钟点相同' }],
+      });
+      const result = await executeTool({ ...mockContext, currentUserMessage: '18点后有空' }, {
+        ...defaultInput,
+        cityNameList: ['上海'],
+        candidateScheduleConstraint: { availableWindow: { start: '18:00' } },
+        candidateScheduleCitation: { quote: '18点后有空' },
+      } as typeof defaultInput);
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_QUERY_INCOMPLETE);
+      expect(result.noMatchScript).toBeUndefined();
+      expect(result.queryMeta).toMatchObject({ invalidWorkTimeSkipped: { count: 1 } });
+    });
+    it('核对的指定岗位班次数据异常时说明需修数据，不当作停招', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [],
+        total: 1,
+        skippedInvalidWorkTime: [{ jobId: 2, brandName: 'KFC', reason: '班次起止钟点相同' }],
+      });
+      const result = await executeTool(mockContext, {
+        ...defaultInput,
+        purpose: 'inspect',
+        jobIdList: [2],
+      } as typeof defaultInput);
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_FETCH_FAILED);
+      expect(result.invalidWorkTimeJobIds).toEqual([2]);
+      expect(result._replyInstruction).toContain('班次数据有误');
+      expect(result._replyInstruction).toContain('不能据此断言岗位已停招');
+    });
     it('后页契约错误不能返回第一页推荐或写入候选池', async () => {
       const recordFetchedJobs = jest.fn();
       mockSpongeService.fetchJobs
