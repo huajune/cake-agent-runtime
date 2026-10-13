@@ -17,13 +17,18 @@ export interface JobScanMeta {
     | 'page_error'
     | 'total_changed'
     | 'not_scanned';
+  /** 班次数据不合规被逐岗剔除的岗位数；计入已扫描，不进入推荐，需海绵修数据。 */
+  skippedInvalidWorkTime?: number;
 }
 
 export const JOB_SCAN_BUDGET_MS = 15_000;
 export const JOB_SCAN_PAGE_SIZE = 20;
 export const JOB_SCAN_MAX_PAGES = 10;
 
-/** 在同一查询条件下有界补页。异常数据不能跳过；网络或预算中断只说明未查完。 */
+/**
+ * 在同一查询条件下有界补页。单岗位班次不合规由海绵层逐岗剔除，剔除数计入已扫描；
+ * 响应结构等其他契约错误整次失败；网络或预算中断只说明未查完。
+ */
 export async function scanJobPages(
   first: JobListResult,
   params: JobListQueryParams,
@@ -43,16 +48,24 @@ export async function scanJobPages(
       }
     }
   };
+  const skippedIds = new Set<string>();
+  const recordSkipped = (page: JobListResult) => {
+    const before = skippedIds.size;
+    for (const job of page.skippedInvalidWorkTime ?? []) skippedIds.add(String(job.jobId));
+    return skippedIds.size > before;
+  };
+  const seen = () => jobs.length + skippedIds.size;
   append(first.jobs);
+  recordSkipped(first);
   const meta: JobScanMeta = {
     upstreamTotal: first.total,
     scannedCount: jobs.length,
     scannedPages: 1,
-    scanComplete: jobs.length >= first.total,
+    scanComplete: seen() >= first.total,
     stopReason: 'complete',
   };
   let totalChanged = false;
-  while (jobs.length < meta.upstreamTotal) {
+  while (seen() < meta.upstreamTotal) {
     if (meta.scannedPages >= JOB_SCAN_MAX_PAGES) {
       meta.stopReason = 'page_limit';
       break;
@@ -77,19 +90,21 @@ export async function scanJobPages(
     meta.scannedPages++;
     totalChanged ||= page.total !== first.total;
     meta.upstreamTotal = Math.max(meta.upstreamTotal, page.total);
-    if (!page.jobs.length) {
+    const newlySkipped = recordSkipped(page);
+    if (!page.jobs.length && !newlySkipped) {
       meta.stopReason = 'empty_page';
       break;
     }
     const before = jobs.length;
     append(page.jobs);
-    if (before === jobs.length) {
+    if (before === jobs.length && !newlySkipped) {
       meta.stopReason = 'duplicate_page';
       break;
     }
   }
   meta.scannedCount = jobs.length;
-  meta.scanComplete = jobs.length >= meta.upstreamTotal && !totalChanged;
+  if (skippedIds.size > 0) meta.skippedInvalidWorkTime = skippedIds.size;
+  meta.scanComplete = seen() >= meta.upstreamTotal && !totalChanged;
   if (totalChanged && meta.stopReason === 'complete') meta.stopReason = 'total_changed';
   return { jobs, meta };
 }
@@ -105,7 +120,11 @@ export function buildScannedQueryError(
     TOOL_ERROR_TYPES.JOB_LIST_LABOR_FORM_FILTER_EMPTY,
     TOOL_ERROR_TYPES.JOB_LIST_STUDENT_FILTER_EMPTY,
   ];
-  const incomplete = scan && !scan.scanComplete && emptyTypes.includes(args.errorType);
+  // 有岗位因班次数据异常被剔除时，同样不能断言范围内无岗。
+  const incomplete =
+    scan &&
+    (!scan.scanComplete || (scan.skippedInvalidWorkTime ?? 0) > 0) &&
+    emptyTypes.includes(args.errorType);
   const details = { ...args.details };
   if (incomplete) delete details.noMatchScript;
   const priorMeta =
