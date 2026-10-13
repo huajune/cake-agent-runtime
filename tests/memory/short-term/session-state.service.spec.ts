@@ -410,13 +410,38 @@ describe('SessionStateService（S1-S6）', () => {
       expect(saved?.time_windows).toMatchObject({ value: null });
     });
 
-    it('抽取正常但没给出班次变更时同样采用工具核验结果', async () => {
+    it('抽取正常且判定无持续班次变更时（询问），工具本轮查询条件不沉淀', async () => {
       await service.saveFacts(
         ...scope,
         softFacts({ schedule_constraint: { excludeTags: ['night'] } }),
       );
       const ledger = createTurnLedger();
-      ledger.recordScheduleConstraint({ excludeTags: ['night'], maxDaysPerWeek: 2 });
+      ledger.recordScheduleConstraint({
+        excludeTags: ['night'],
+        includeAnyTags: ['early', 'morning'],
+      });
+
+      await service.extractAndSave(
+        ...scope,
+        [{ role: 'user', content: '有早班吗' }],
+        ledger.drain().facts.turnHints,
+      );
+
+      expect((await savedPreferences())?.schedule_constraint?.value).toEqual({
+        excludeTags: ['night'],
+      });
+    });
+
+    it('抽取给出的班次变更未通过原话核验时，以工具已核验的本轮条件落盘', async () => {
+      const ledger = createTurnLedger();
+      ledger.recordScheduleConstraint({ maxDaysPerWeek: 2 });
+      llm.generateStructured.mockResolvedValue({
+        output: {
+          preferences: preferences({ schedule_constraint: { maxDaysPerWeek: 2 } }),
+          schedule_constraint_citation: { quote: '候选人没说过的话' },
+          reasoning: '周天数',
+        },
+      });
 
       await service.extractAndSave(
         ...scope,
@@ -424,10 +449,76 @@ describe('SessionStateService（S1-S6）', () => {
         ledger.drain().facts.turnHints,
       );
 
+      expect((await savedPreferences())?.schedule_constraint).toMatchObject({
+        value: { maxDaysPerWeek: 2 },
+        source: 'candidate_quote',
+      });
+    });
+
+    it('抽取只回显已保存条件且不带引文时，询问不经工具兜底沉淀', async () => {
+      await service.saveFacts(
+        ...scope,
+        softFacts({ schedule_constraint: { excludeTags: ['night'] } }),
+      );
+      const ledger = createTurnLedger();
+      ledger.recordScheduleConstraint({
+        excludeTags: ['night'],
+        includeAnyTags: ['early', 'morning'],
+      });
+      respondValidated({
+        preferences: preferences({ schedule_constraint: { excludeTags: ['night'] } }),
+        reasoning: '回显已有条件',
+      });
+
+      await service.extractAndSave(
+        ...scope,
+        [{ role: 'user', content: '有早班吗' }],
+        ledger.drain().facts.turnHints,
+      );
+
       expect((await savedPreferences())?.schedule_constraint?.value).toEqual({
         excludeTags: ['night'],
-        maxDaysPerWeek: 2,
       });
+    });
+
+    it('抽取降级且本轮全是询问时，不用工具本轮查询条件落盘', async () => {
+      const ledger = createTurnLedger();
+      ledger.recordScheduleConstraint({ availableWindow: { start: '18:00', end: '22:00' } });
+      llm.generateStructured.mockRejectedValue(new Error('LLM unavailable'));
+
+      await service.extractAndSave(
+        ...scope,
+        [{ role: 'user', content: '有没有晚上6点到10点的班？' }],
+        ledger.drain().facts.turnHints,
+      );
+
+      expect((await savedPreferences())?.schedule_constraint ?? null).toBeNull();
+    });
+
+    it('抽取的班次条件被契约拒绝时，陈述以工具已核验的本轮条件落盘', async () => {
+      const ledger = createTurnLedger();
+      ledger.recordScheduleConstraint({
+        availableWindow: { start: '22:00', end: '06:00', endDayOffset: 1 },
+      });
+      respondValidated({
+        preferences: preferences({
+          schedule_constraint: { availableWindow: { start: '22:00', end: '06:00' } },
+        }),
+        schedule_constraint_citation: { quote: '晚上10点到早上6点可以' },
+        reasoning: '跨日漏写',
+      });
+
+      await service.extractAndSave(
+        ...scope,
+        [{ role: 'user', content: '晚上10点到早上6点可以' }],
+        ledger.drain().facts.turnHints,
+      );
+
+      expect((await savedPreferences())?.schedule_constraint).toMatchObject({
+        value: { availableWindow: { start: '22:00', end: '06:00', endDayOffset: 1 } },
+        source: 'candidate_quote',
+      });
+      expect((await savedPreferences())?.schedule_constraint?.evidence).toContain('工具已核验');
     });
 
     it('抽取给出有效班次变更时以抽取为准，不再套用工具结果', async () => {

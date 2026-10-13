@@ -7,6 +7,7 @@ import {
   extractSalary,
   extractSchedule,
   extractScheduleConstraintStructured,
+  hasDeclarativeClause,
 } from '@resolution/turn-hints/producers/rule-track-preferences';
 import { ScheduleWindowSchema } from '@resolution/schedule/types';
 
@@ -274,4 +275,15 @@ describe('extractLocation · "XX附近"前缀噪音（09-02 生产核对：3.8% 
   it('动作前缀归一仍然有效（"帮我找一下"不吃进地点）', () => {
     expect(extractLocation('帮我找一下弘扬广场附近的').location).toContain('弘扬广场');
   });
+});
+
+describe('hasDeclarativeClause', () => {
+  it.each(['有早班吗', '有没有晚上6点到10点的班？', '班次是固定的还是可以自己选的？'])(
+    '全是询问时为 false：%s',
+    (message) => expect(hasDeclarativeClause(message)).toBe(false),
+  );
+  it.each(['时间不限了', '我只做晚班', '我在深圳，想找肯德基的兼职，有早班吗？'])(
+    '含陈述子句时为 true：%s',
+    (message) => expect(hasDeclarativeClause(message)).toBe(true),
+  );
 });
