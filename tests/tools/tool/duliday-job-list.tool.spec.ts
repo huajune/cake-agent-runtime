@@ -2752,6 +2752,25 @@ describe('buildJobListTool', () => {
         expect(result.noMatchScript).toBeUndefined();
       },
     );
+    it('原话说到早班而模型只写了早班标签时，按固定映射补上上午班再筛选', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [
+          scheduledJob(1, '固定排班', [['08:00', '12:00']]),
+          scheduledJob(2, '固定排班', [['18:00', '22:00']]),
+        ],
+        total: 2,
+      });
+      const result = await executeTool({ ...mockContext, currentUserMessage: '有早班吗' }, {
+        ...defaultInput,
+        cityNameList: ['上海'],
+        candidateScheduleConstraint: { includeAnyTags: ['early'] },
+        candidateScheduleCitation: { quote: '有早班吗' },
+      } as typeof defaultInput);
+      expect(result.queryMeta.scheduleFilter.candidateConstraint).toMatchObject({
+        includeAnyTags: ['early', 'morning'],
+      });
+      expect(result.resultCount).toBe(1);
+    });
     it('正确引用放行并强制取得workTime', async () => {
       mockSpongeService.fetchJobs.mockResolvedValue({
         jobs: [scheduledJob(1, '固定排班', [['18:00', '22:00']])],
