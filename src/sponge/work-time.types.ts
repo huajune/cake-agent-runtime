@@ -38,7 +38,10 @@ const FlexibleTimeSchema = z
     }
   });
 
-/** 海绵班次的固定字段契约。不接受历史整句类型、不补值、不按数组长度改类型。 */
+/**
+ * 海绵班次的固定字段契约。不接受历史整句类型、不补值、不按数组长度改类型。
+ * 组合排班业务上应有至少2档；现存单档数据由海绵修复，期间“满足其中一档”即满足该档，照常匹配并由数据体检提示。
+ */
 export const DayWorkTimeSchema = z.discriminatedUnion('arrangementType', [
   z
     .object({
@@ -50,7 +53,7 @@ export const DayWorkTimeSchema = z.discriminatedUnion('arrangementType', [
   z
     .object({
       arrangementType: z.literal('组合排班制'),
-      combinedArrangement: z.array(SlotSchema).min(2),
+      combinedArrangement: z.array(SlotSchema).min(1),
       fixedTime: z.null(),
     })
     .strict(),

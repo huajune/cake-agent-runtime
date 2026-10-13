@@ -42,7 +42,11 @@ export function formatSchedule(schedule: JobSchedule | null): string | null {
     return `${rangeText(slot)}（${notes.join('，')}）`;
   });
   const relation =
-    schedule.arrangementType === '固定排班' ? '需接受全部班次' : '任选其中一档完整班次';
+    schedule.arrangementType === '固定排班'
+      ? '需接受全部班次'
+      : schedule.slots.length === 1
+        ? '目前仅一档，需完整接受该班次'
+        : '任选其中一档完整班次';
   return `${schedule.arrangementType}（${relation}）：${slots.join(' / ')}`;
 }
 
