@@ -733,10 +733,16 @@ export class SessionFactsService {
         verifyCitation(scheduleCitation, currentTurnQuotes).verified,
     );
     const { ruleHints, toolVerifiedSchedule } = splitToolVerifiedScheduleClaim(turnHints);
-    // 抽取没给出有效班次变更时，以工具本轮查岗实际使用、且已按原话核验的条件落盘。
-    const toolSchedule = scheduleValid
-      ? null
-      : readToolScheduleChange(toolVerifiedSchedule, previousSchedule);
+    // 只有抽取失败、或抽取给出的班次变更未通过契约/原话核验时，才以工具本轮已核验的条件落盘。
+    // 抽取正常且判定无持续变更（如“有早班吗”这类询问）时，工具条件只服务本次查岗，不沉淀。
+    const scheduleExtractionFailed =
+      llmOutcome.degraded ||
+      llmOutcome.rejectedScheduleIssues !== null ||
+      llmOutcome.facts.preferences.schedule_constraint != null;
+    const toolSchedule =
+      scheduleValid || !scheduleExtractionFailed
+        ? null
+        : readToolScheduleChange(toolVerifiedSchedule, previousSchedule);
     const structuredScheduleVerified = scheduleValid || toolSchedule !== null;
     // 抽取正常且没有班次变更时，规则轨不得覆盖已保存条件；只有抽取降级、引文无效或
     // 条件不合契约时才轮到规则兜底。

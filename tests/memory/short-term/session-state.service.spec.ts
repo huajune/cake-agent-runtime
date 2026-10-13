@@ -410,13 +410,38 @@ describe('SessionStateService（S1-S6）', () => {
       expect(saved?.time_windows).toMatchObject({ value: null });
     });
 
-    it('抽取正常但没给出班次变更时同样采用工具核验结果', async () => {
+    it('抽取正常且判定无持续班次变更时（询问），工具本轮查询条件不沉淀', async () => {
       await service.saveFacts(
         ...scope,
         softFacts({ schedule_constraint: { excludeTags: ['night'] } }),
       );
       const ledger = createTurnLedger();
-      ledger.recordScheduleConstraint({ excludeTags: ['night'], maxDaysPerWeek: 2 });
+      ledger.recordScheduleConstraint({
+        excludeTags: ['night'],
+        includeAnyTags: ['early', 'morning'],
+      });
+
+      await service.extractAndSave(
+        ...scope,
+        [{ role: 'user', content: '有早班吗' }],
+        ledger.drain().facts.turnHints,
+      );
+
+      expect((await savedPreferences())?.schedule_constraint?.value).toEqual({
+        excludeTags: ['night'],
+      });
+    });
+
+    it('抽取给出的班次变更未通过原话核验时，以工具已核验的本轮条件落盘', async () => {
+      const ledger = createTurnLedger();
+      ledger.recordScheduleConstraint({ maxDaysPerWeek: 2 });
+      llm.generateStructured.mockResolvedValue({
+        output: {
+          preferences: preferences({ schedule_constraint: { maxDaysPerWeek: 2 } }),
+          schedule_constraint_citation: { quote: '候选人没说过的话' },
+          reasoning: '周天数',
+        },
+      });
 
       await service.extractAndSave(
         ...scope,
@@ -424,9 +449,9 @@ describe('SessionStateService（S1-S6）', () => {
         ledger.drain().facts.turnHints,
       );
 
-      expect((await savedPreferences())?.schedule_constraint?.value).toEqual({
-        excludeTags: ['night'],
-        maxDaysPerWeek: 2,
+      expect((await savedPreferences())?.schedule_constraint).toMatchObject({
+        value: { maxDaysPerWeek: 2 },
+        source: 'candidate_quote',
       });
     });
 
