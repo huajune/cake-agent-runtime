@@ -205,6 +205,7 @@ describe('buildJobListTool', () => {
     // 旧措辞并入"卡片正文是展示的唯一底盘"条目，多岗分隔约束保留
     expect(builtTool.description).toContain('卡片正文是展示的唯一底盘');
     expect(builtTool.description).toContain('禁止把多个岗位压缩在同一句');
+    expect(builtTool.description).toContain('灵活排班须讲清“需接受整个排班区间，由门店在区间内安排每班时长”');
     expect(builtTool.description).toContain('年龄判断必须沿用 precheck 弹性口径');
     expect(builtTool.description).toContain('处于年龄上下限弹性边界时');
     expect(builtTool.description).toContain('用 duliday_interview_precheck 复核，不得直接判无岗');
