@@ -2,7 +2,6 @@ import {
   scanJobPages,
   buildScannedQueryError,
   JOB_SCAN_BUDGET_MS,
-  UNKNOWN_SCHEDULE_EXAMPLE_LIMIT,
   type JobScanMeta,
 } from '@tools/job-list/scan-jobs.util';
 /**
@@ -53,8 +52,8 @@ import { getTurnHintValue } from '@resolution/turn-hints/reducer';
 import {
   buildJobListQuerySignature,
   REPEAT_QUERY_NOTICE,
-  canonicalizeScheduleConstraint,
 } from '@tools/shared/job-list-query-signature';
+import { effectiveScheduleKey } from '@resolution/schedule/equivalence';
 import { correctSwappedLatLng } from '@tools/shared/latlng-swap';
 import {
   applyLaborFormConstraint,
@@ -75,7 +74,6 @@ import {
   mergeScheduleConstraints,
   readScheduleConditions,
   type ScheduleMatchResult,
-  type StoredScheduleConstraint,
 } from '@resolution/schedule/types';
 import { verifyCitation } from '@resolution/notary/citation-verifier';
 import { WorkTimeContractError } from '@sponge/work-time.types';
@@ -431,15 +429,6 @@ function readFactValue(value: unknown): unknown {
   return value;
 }
 
-/** 班次条件的有效比较键：规范化后的条件与旧早晚班待确认状态共同决定实际筛选行为。 */
-function effectiveScheduleKey(stored: StoredScheduleConstraint | null | undefined): string {
-  const { conditions, legacyUnresolved } = readScheduleConditions(stored ?? {});
-  return JSON.stringify({
-    conditions: canonicalizeScheduleConstraint(conditions),
-    legacyUnresolved,
-  });
-}
-
 type JobScheduleAssessment = ScheduleMatchResult & { jobId: number | null };
 
 /** 按展示顺序取本次展示岗位的班次评估。 */
@@ -455,11 +444,12 @@ function pickDisplayedAssessments(
 }
 
 /** 进入班次筛选的岗位的评估状态计数；住宿、用工形式、学生身份等后续筛选不回减。 */
-function countScheduleStatuses(
-  assessments: JobScheduleAssessment[],
-): Record<ScheduleMatchResult['status'], number> {
-  const counts = { matched: 0, unmatched: 0, unknown: 0 };
-  for (const item of assessments) counts[item.status] += 1;
+function countScheduleStatuses(assessments: JobScheduleAssessment[]): {
+  matched: number;
+  unmatched: number;
+} {
+  const counts = { matched: 0, unmatched: 0 };
+  for (const item of assessments) counts[item.status === 'matched' ? 'matched' : 'unmatched'] += 1;
   return counts;
 }
 
@@ -1309,9 +1299,8 @@ export function buildJobListTool(
           ...(bookedJobLookup ? { onlySignableJobs: false } : {}),
         };
         let scanMeta: JobScanMeta | undefined;
-        let unknownSchedules: Array<{ jobId: number | null; reason: string }> = [];
         const buildQueryError = (args: Parameters<typeof buildToolError>[0]) =>
-          buildScannedQueryError(args, scanMeta, unknownSchedules);
+          buildScannedQueryError(args, scanMeta);
         try {
           let storeMatchStrategy: 'api_exact' | 'local_fuzzy_match' = 'api_exact';
           let distanceScanPages = 1;
@@ -1950,21 +1939,11 @@ export function buildJobListTool(
           // 候选人班次硬约束过滤（同时给保留岗位标 _scheduleSemantic）。
           // 即使候选人没传约束，也要给所有岗位标语义，便于上层信号使用。
           const scheduleFilterResult = applyScheduleConstraint(jobs, candidateScheduleConstraint);
-          unknownSchedules = scheduleFilterResult.unknown;
-          const unknownJobIds = new Set(unknownSchedules.map(({ jobId }) => jobId));
-          // 待确认岗位也要继续接受其他硬条件筛选；只在进入展示和推荐池前移除。
-          jobs = [
-            ...scheduleFilterResult.jobs,
-            ...jobs.filter((job) => unknownJobIds.has(job.basicInfo?.jobId ?? null)),
-          ];
-          const scopeUnknownSchedules = () => {
-            const remainingIds = new Set(jobs.map((job) => job.basicInfo?.jobId ?? null));
-            unknownSchedules = unknownSchedules.filter(({ jobId }) => remainingIds.has(jobId));
-          };
+          jobs = scheduleFilterResult.jobs;
           total = jobs.length;
           if (
             candidateScheduleConstraint &&
-            (scheduleFilterResult.excluded.length > 0 || scheduleFilterResult.unknown.length > 0) &&
+            scheduleFilterResult.excluded.length > 0 &&
             jobs.length === 0
           ) {
             return buildQueryError({
@@ -2009,7 +1988,6 @@ export function buildJobListTool(
             : null;
           if (accommodationFilterResult) {
             jobs = accommodationFilterResult.jobs;
-            scopeUnknownSchedules();
             total = jobs.length;
             if (jobs.length === 0) {
               // 全城扫描有页数上限：截断时只能说"查到的这批里没有"，不能断言全城没有。
@@ -2068,7 +2046,6 @@ export function buildJobListTool(
               : null;
           if (laborFormFilterResult.applied) {
             jobs = laborFormFilterResult.jobs;
-            scopeUnknownSchedules();
             total = jobs.length;
             if (laborFormFilterResult.excluded.length > 0 && jobs.length === 0) {
               const noMatchFollowUp =
@@ -2123,7 +2100,6 @@ export function buildJobListTool(
           let studentFilterNotice: string | null = null;
           if (studentFilterResult.applied) {
             jobs = studentFilterResult.jobs;
-            scopeUnknownSchedules();
             total = jobs.length;
             if (studentFilterResult.excluded.length > 0 && jobs.length === 0) {
               return buildQueryError({
@@ -2163,15 +2139,7 @@ export function buildJobListTool(
             }
           }
 
-          jobs = jobs.filter((job) => !unknownJobIds.has(job.basicInfo?.jobId ?? null));
           total = jobs.length;
-          if (jobs.length === 0 && unknownSchedules.length > 0) {
-            return buildQueryError({
-              errorType: TOOL_ERROR_TYPES.JOB_LIST_SCHEDULE_FILTER_EMPTY,
-              outcome: '其他硬条件通过的岗位仍需确认班次',
-              replyInstruction: '岗位班次仍需确认，不能当作已匹配岗位推荐或断言没有岗位。',
-            });
-          }
 
           // 意向工种本地软排序（不下传 API、不过滤）：明确匹配的岗位稳定分区排前
           //（组内保持距离序），匹配情况经头部 notice 向模型知情披露，由模型按
@@ -2252,9 +2220,6 @@ export function buildJobListTool(
               scanMeta && !scanMeta.scanComplete
                 ? `本次已查 ${scanMeta.scannedCount}/${scanMeta.upstreamTotal} 个岗位，未完成全范围查询，只能说明已查范围内的结果。`
                 : null,
-              unknownSchedules.length
-                ? `另有 ${unknownSchedules.length} 个岗位班次待确认，未进入推荐结果，不能说全部无匹配。`
-                : null,
               isRepeatQuery ? REPEAT_QUERY_NOTICE : null,
               brandFilterNotice ? `ℹ️ ${brandFilterNotice}` : null,
               rangeClampNotice,
@@ -2289,7 +2254,6 @@ export function buildJobListTool(
             matchedCount,
             returnedCount: jobs.length,
             hasMoreMatches: matchedCount > jobs.length,
-            unknownCount: unknownSchedules.length,
             storeMatchStrategy,
             // 意向工种本地软排序观测（取代 API 直传时代的 jobCategoryMatchStrategy）：
             // requested=剥离后实际参与排序的关键词，matchedCount=明确匹配数，用于评估
@@ -2372,8 +2336,6 @@ export function buildJobListTool(
                   candidateConstraint: candidateScheduleConstraint,
                   assessments: pickDisplayedAssessments(jobs, scheduleFilterResult.matches),
                   statusCounts: countScheduleStatuses(scheduleFilterResult.matches),
-                  unknownCount: unknownSchedules.length,
-                  unknownSchedules: unknownSchedules.slice(0, UNKNOWN_SCHEDULE_EXAMPLE_LIMIT),
                   excludedCount: scheduleFilterResult.excluded.length,
                   excludedExamples: scheduleFilterResult.excluded.slice(0, 5),
                 }

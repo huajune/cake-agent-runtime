@@ -113,7 +113,7 @@ describe('岗位有界补页', () => {
     );
     expect(out.meta).toMatchObject({ scanComplete: false, stopReason: 'total_changed' });
   });
-  it('未知班次或未查完移除确定性无岗话术', () => {
+  it('未查完时移除确定性无岗话术，扫描完整时保留', () => {
     const meta = {
       upstreamTotal: 40,
       scannedCount: 20,
@@ -126,29 +126,18 @@ describe('岗位有界补页', () => {
       replyInstruction: '无岗',
       details: { noMatchScript: { candidateMessage: '附近没岗位' } },
     };
-    expect(buildScannedQueryError(args, meta, [])).not.toHaveProperty('noMatchScript');
-    expect(
-      buildScannedQueryError(args, { ...meta, scanComplete: true }, [
-        { jobId: 1, reason: '待确认' },
-      ]),
-    ).not.toHaveProperty('noMatchScript');
-  });
-  it('待确认岗位只回传少量样例并保留总数，不把整批岗位ID塞进回执', () => {
-    const unknown = Array.from({ length: 30 }, (_, i) => ({ jobId: i + 1, reason: '待确认' }));
-    const result = buildScannedQueryError(
-      { errorType: TOOL_ERROR_TYPES.JOB_LIST_SCHEDULE_FILTER_EMPTY, replyInstruction: '无岗' },
-      {
-        upstreamTotal: 30,
-        scannedCount: 30,
-        scannedPages: 2,
-        scanComplete: true,
-        stopReason: 'complete',
-      },
-      unknown,
-    );
-    expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_QUERY_INCOMPLETE);
-    const queryMeta = result.queryMeta as { unknownCount: number; unknownSchedules: unknown[] };
-    expect(queryMeta.unknownCount).toBe(30);
-    expect(queryMeta.unknownSchedules).toEqual(unknown.slice(0, 5));
+    const incomplete = buildScannedQueryError(args, meta);
+    expect(incomplete.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_QUERY_INCOMPLETE);
+    expect(incomplete).not.toHaveProperty('noMatchScript');
+    const complete = buildScannedQueryError(args, {
+      ...meta,
+      scannedCount: 40,
+      scannedPages: 2,
+      scanComplete: true,
+      stopReason: 'complete',
+    });
+    expect(complete.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_NO_RESULTS);
+    expect(complete).toHaveProperty('noMatchScript');
+    expect(complete.queryMeta).not.toHaveProperty('unknownCount');
   });
 });

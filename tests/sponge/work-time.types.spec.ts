@@ -13,9 +13,7 @@ describe('海绵每日班次契约', () => {
     },
     {
       arrangementType: '组合排班制',
-      combinedArrangement: [
-        { combinedArrangementStartTime: '08:00', combinedArrangementEndTime: '12:00' },
-      ],
+      combinedArrangement: [],
       fixedTime: null,
     },
     {
@@ -42,6 +40,13 @@ describe('海绵每日班次契约', () => {
   ])('非法源数据不补值、不改类型、不跳过: %j', (day) =>
     expect(() => parseDayWorkTime({ dayWorkTime: day }, 99)).toThrow(/岗位99/),
   );
+  it('现存单档组合排班照常读取，满足这一档即可，不改成固定排班', () => {
+    const job = scheduledJob(3, '组合排班制', [['09:00', '13:00']]);
+    expect(parseDayWorkTime(job.workTime).arrangementType).toBe('组合排班制');
+    expect(formatJobShiftTime(job)).toBe(
+      '组合排班制（目前仅一档，需完整接受该班次）：09:00-13:00（上午班、中班，班次跨度 4 小时）',
+    );
+  });
   it('拒绝未知日内字段及不合理灵活窗口', () => {
     const day = parseDayWorkTime(scheduledJob(1, '固定排班', [['08:00', '12:00']]).workTime);
     expect(() => parseDayWorkTime({ dayWorkTime: { ...day, extra: '值' } })).toThrow(

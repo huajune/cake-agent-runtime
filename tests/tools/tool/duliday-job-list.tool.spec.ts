@@ -2705,8 +2705,6 @@ describe('buildJobListTool', () => {
           expect(result.errorType).toBe(errorType);
           expect(result.queryMeta).toMatchObject({
             scanComplete: true,
-            unknownCount: 0,
-            unknownSchedules: [],
           });
         },
       );
@@ -2737,7 +2735,7 @@ describe('buildJobListTool', () => {
           expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_SCHEDULE_FILTER_EMPTY);
           expect(recordFetchedJobs).not.toHaveBeenCalled();
         }
-        expect(result.queryMeta.unknownCount ?? 0).toBe(0);
+        expect(result.queryMeta).not.toHaveProperty('unknownCount');
       },
     );
     it.each([undefined, { quote: '助手说只能晚班' }, { quote: '旧轮只能晚班' }])(
@@ -2864,7 +2862,7 @@ describe('buildJobListTool', () => {
         candidateScheduleCitation: { quote: '18点后有空' },
       } as typeof defaultInput);
       expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_SCHEDULE_FILTER_EMPTY);
-      expect(result.queryMeta.unknownCount ?? 0).toBe(0);
+      expect(result.queryMeta).not.toHaveProperty('unknownCount');
       expect(result.queryMeta.scheduleFilter.excludedExamples).toEqual([
         expect.objectContaining({ reason: expect.stringContaining('整个排班区间') }),
       ]);
@@ -3016,8 +3014,9 @@ describe('buildJobListTool', () => {
       expect(result.queryMeta).toMatchObject({ scannedCount: 200, matchedCount: 100 });
       expect(displayedIds).toHaveLength(20);
       expect(filter.assessments.map((item: { jobId: number }) => item.jobId)).toEqual(displayedIds);
-      expect(filter.statusCounts).toEqual({ matched: 100, unmatched: 100, unknown: 0 });
-      expect(filter).toMatchObject({ excludedCount: 100, unknownCount: 0 });
+      expect(filter.statusCounts).toEqual({ matched: 100, unmatched: 100 });
+      expect(filter).toMatchObject({ excludedCount: 100 });
+      expect(filter).not.toHaveProperty('unknownSchedules');
       expect(filter.excludedExamples).toHaveLength(5);
       expect(JSON.stringify(filter).length).toBeLessThan(4000);
     });

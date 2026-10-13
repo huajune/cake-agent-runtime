@@ -377,4 +377,128 @@ describe('仅给不可用时段时正向标签照常生效', () => {
       }).status,
     ).toBe('unmatched');
   });
+  it('现存单档组合排班按该档完整匹配，与固定单档结论一致', () => {
+    const single = getJobSchedule(scheduledJob(9, '组合排班制', [['09:00', '13:00']]));
+    expect(
+      matchDailySchedule(single, { availableWindow: { start: '09:00', end: '14:00' } }),
+    ).toMatchObject({ status: 'matched', matchedSlotIndexes: [0] });
+    expect(
+      matchDailySchedule(single, { availableWindow: { start: '10:00', end: '14:00' } }).status,
+    ).toBe('unmatched');
+    expect(matchDailySchedule(single, { includeAnyTags: ['morning'] }).status).toBe('matched');
+  });
+});
+
+describe('原始需求《班次匹配机制说明》示例', () => {
+  const tagsOf = (start: string, end: string) =>
+    getJobSchedule(scheduledJob(1, '固定排班', [[start, end]]))!.tags;
+  it.each([
+    ['early', '05:00', '14:00'],
+    ['early', '06:00', '10:00'],
+    ['early', '07:00', '15:00'],
+    ['morning', '08:00', '12:00'],
+    ['morning', '09:00', '13:00'],
+    ['morning', '10:00', '14:00'],
+    ['midday', '11:00', '14:00'],
+    ['midday', '11:00', '20:00'],
+    ['midday', '12:00', '21:00'],
+    ['afternoon', '14:00', '23:00'],
+    ['afternoon', '15:00', '23:00'],
+    ['afternoon', '16:00', '22:00'],
+    ['evening', '17:00', '23:00'],
+    ['evening', '18:00', '22:00'],
+    ['evening', '16:00', '00:00'],
+    ['night', '22:00', '07:00'],
+    ['night', '21:30', '00:30'],
+    ['night', '18:00', '02:00'],
+    ['night', '23:00', '01:00'],
+  ] as const)('典型时段示例打标：%s %s-%s', (tag, start, end) => {
+    expect(tagsOf(start, end)).toContain(tag);
+  });
+
+  const jobs = {
+    fixedEvening: scheduledJob(1, '固定排班', [['17:00', '23:00']]),
+    fixedAfternoon: scheduledJob(2, '固定排班', [['16:00', '22:00']]),
+    comboDayEvening: scheduledJob(3, '组合排班制', [
+      ['09:00', '14:00'],
+      ['17:00', '21:00'],
+    ]),
+    fixedDayAndEvening: scheduledJob(4, '固定排班', [
+      ['08:00', '14:00'],
+      ['17:00', '22:00'],
+    ]),
+    overnight: scheduledJob(5, '固定排班', [['22:00', '07:00']]),
+    lateNight: scheduledJob(6, '固定排班', [['23:00', '01:00']]),
+    comboEveningNight: scheduledJob(7, '组合排班制', [
+      ['15:00', '21:00'],
+      ['18:00', '02:00'],
+    ]),
+    flexibleDay: flexibleJob(8, '05:00', '23:00', '8'),
+    flexibleEvening: flexibleJob(9, '17:00', '23:00', '4'),
+  };
+  it.each([
+    [
+      '早班有吗：含早班或上午班',
+      { includeAnyTags: ['early', 'morning'] },
+      ['comboDayEvening', 'fixedDayAndEvening', 'flexibleDay'],
+    ],
+    [
+      '只做晚班：含晚班',
+      { includeAnyTags: ['evening'] },
+      [
+        'fixedEvening',
+        'fixedAfternoon',
+        'comboDayEvening',
+        'fixedDayAndEvening',
+        'comboEveningNight',
+        'flexibleDay',
+        'flexibleEvening',
+      ],
+    ],
+    [
+      '有没有不上夜班的：不含夜班',
+      { excludeTags: ['night'] },
+      [
+        'fixedEvening',
+        'fixedAfternoon',
+        'comboDayEvening',
+        'fixedDayAndEvening',
+        'flexibleDay',
+        'flexibleEvening',
+      ],
+    ],
+    [
+      '17点后有空：班次开始不早于17点，组合任一档',
+      { availableWindow: { start: '17:00' } },
+      [
+        'fixedEvening',
+        'comboDayEvening',
+        'overnight',
+        'lateNight',
+        'comboEveningNight',
+        'flexibleEvening',
+      ],
+    ],
+    [
+      '下午三点到晚上九点：班次完整落在15-21点内',
+      { availableWindow: { start: '15:00', end: '21:00' } },
+      ['comboDayEvening', 'comboEveningNight'],
+    ],
+    [
+      '夜班，晚上十点到凌晨：忽略夜班标签，班次开始不早于22点',
+      { includeAnyTags: ['night'], availableWindow: { start: '22:00' } },
+      ['overnight', 'lateNight'],
+    ],
+  ] as const)('匹配示例 %s', (_name, conditions, expected) => {
+    const matched = Object.entries(jobs)
+      .filter(
+        ([, job]) =>
+          matchDailySchedule(
+            getJobSchedule(job),
+            conditions as Parameters<typeof matchDailySchedule>[1],
+          ).status === 'matched',
+      )
+      .map(([name]) => name);
+    expect(matched).toEqual(expected);
+  });
 });

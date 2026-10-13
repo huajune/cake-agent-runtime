@@ -1,7 +1,7 @@
+import { effectiveScheduleKey } from '@resolution/schedule/equivalence';
 import {
   CandidateScheduleConstraintSchema,
   mergeScheduleConstraints,
-  readScheduleConditions,
   StoredScheduleConstraintSchema,
   type StoredScheduleConstraint,
 } from '@resolution/schedule/types';
@@ -1092,29 +1092,6 @@ function readToolScheduleChange(
   const parsed = StoredScheduleConstraintSchema.safeParse(raw);
   if (!parsed.success) return null;
   return effectiveScheduleKey(parsed.data) === effectiveScheduleKey(previous) ? null : parsed.data;
-}
-
-/**
- * 班次条件的有效比较键，与查岗工具判断“本轮是否改变条件”同口径：省略、null、false、
- * 空数组与 endDayOffset:0 都表示没有该项限制；旧早晚班的待确认状态一并参与比较。
- */
-function effectiveScheduleKey(stored: StoredScheduleConstraint | null): string {
-  const { conditions, legacyUnresolved } = readScheduleConditions(stored ?? {});
-  return JSON.stringify({ conditions: canonicalScheduleValue(conditions), legacyUnresolved });
-}
-
-function canonicalScheduleValue(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    const items = [...new Set(value.map(String))].sort();
-    return items.length > 0 ? items : null;
-  }
-  if (value === null || value === undefined || value === false) return null;
-  if (typeof value !== 'object') return value;
-  const entries = Object.entries(value)
-    .map(([key, item]) => [key, canonicalScheduleValue(item)] as const)
-    .filter(([key, item]) => item !== null && !(key === 'endDayOffset' && item === 0))
-    .sort(([a], [b]) => a.localeCompare(b));
-  return entries.length > 0 ? Object.fromEntries(entries) : null;
 }
 
 /**
