@@ -216,7 +216,7 @@ export function createTurnLedger(input: CreateTurnLedgerInput = {}): TurnLedger 
         },
         facts: {
           // 回合内 facts.turnHints 保持 prep 判定；交档快照另附工具已核验的班次条件，
-          // 轮末抽取没给出有效班次变更时由 memory 据此落盘。
+          // 仅在抽取给出的变更未通过核验、或抽取失败且本轮不全是询问时由 memory 兜底落盘。
           turnHints: appendToolVerifiedScheduleClaim(ledger.facts.turnHints, scheduleConstraint),
           laborFormIntent: ledger.facts.laborFormIntent,
           collectedFields,

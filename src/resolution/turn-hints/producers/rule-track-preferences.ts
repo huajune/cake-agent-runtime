@@ -191,6 +191,11 @@ function isInquiryClause(clause: string, trailing: string): boolean {
   );
 }
 
+/** 消息里是否至少有一个陈述子句；全是询问时不能当作候选人对自身出勤的声明。 */
+export function hasDeclarativeClause(message: string): boolean {
+  return keepDeclarativeClauses(message).replace(/[，。！？；;\n?!\s]/g, '').length > 0;
+}
+
 /** 只保留陈述子句；询问岗位有无某班次不是候选人对自身出勤的声明。 */
 function keepDeclarativeClauses(message: string): string {
   return splitClausesWithTrailing(message)

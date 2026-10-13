@@ -64,6 +64,7 @@ import { parseTimeContextAt, stripTimeContext } from '@resolution/signal/markers
 import { formatCurrentTime } from '@infra/utils/date.util';
 import { buildSessionFactsHashKey } from './session-key';
 import { hasMeaningfulValue, resolveTurnHints } from '@resolution/turn-hints/reducer';
+import { hasDeclarativeClause } from '@resolution/turn-hints/producers/rule-track-preferences';
 import { factConfidenceRank } from '../confidence-rank';
 import {
   MEMORY_CHAT_SESSION_PORT,
@@ -733,16 +734,17 @@ export class SessionFactsService {
         verifyCitation(scheduleCitation, currentTurnQuotes).verified,
     );
     const { ruleHints, toolVerifiedSchedule } = splitToolVerifiedScheduleClaim(turnHints);
-    // 只有抽取失败、或抽取给出的班次变更未通过契约/原话核验时，才以工具本轮已核验的条件落盘。
-    // 抽取正常且判定无持续变更（如“有早班吗”这类询问）时，工具条件只服务本次查岗，不沉淀。
-    const scheduleExtractionFailed =
-      llmOutcome.degraded ||
-      llmOutcome.rejectedScheduleIssues !== null ||
-      llmOutcome.facts.preferences.schedule_constraint != null;
+    // 抽取正常时是持续条件的唯一裁决者：判定无持续变更（如“有早班吗”这类询问）或只回显旧值时，
+    // 工具条件只服务本次查岗，不沉淀。工具条件仅在两种情况下兜底落盘：
+    // 抽取给出了实际变更却未通过原话核验；抽取失败或班次字段被契约拒绝，且本轮不全是询问。
+    const extractedChangeUnverified =
+      !scheduleValid && hasScheduleChange(previousSchedule, extractedSchedule(llmOutcome));
+    const extractionUnavailable = llmOutcome.degraded || llmOutcome.rejectedScheduleIssues !== null;
     const toolSchedule =
-      scheduleValid || !scheduleExtractionFailed
-        ? null
-        : readToolScheduleChange(toolVerifiedSchedule, previousSchedule);
+      extractedChangeUnverified ||
+      (!scheduleValid && extractionUnavailable && currentTurnQuotes.some(hasDeclarativeClause))
+        ? readToolScheduleChange(toolVerifiedSchedule, previousSchedule)
+        : null;
     const structuredScheduleVerified = scheduleValid || toolSchedule !== null;
     // 抽取正常且没有班次变更时，规则轨不得覆盖已保存条件；只有抽取降级、引文无效或
     // 条件不合契约时才轮到规则兜底。
@@ -1090,6 +1092,27 @@ function readStoredSchedule(facts: SessionFacts | null): StoredScheduleConstrain
  * 工具登记的是与记忆合并后的完整有效条件。与已保存条件有效等价时，本轮没有经核验的
  * 变更，不落盘；有变化时工具已要求并核验过本轮原话。
  */
+function extractedSchedule(outcome: {
+  facts: { preferences: { schedule_constraint?: unknown } };
+}): StoredScheduleConstraint | null {
+  const parsed = StoredScheduleConstraintSchema.safeParse(
+    outcome.facts.preferences.schedule_constraint,
+  );
+  return parsed.success ? parsed.data : null;
+}
+
+/** 抽取输出与已保存条件合并后是否真的改变了有效条件；回显旧值或空对象不算变更。 */
+function hasScheduleChange(
+  previous: StoredScheduleConstraint | null,
+  patch: StoredScheduleConstraint | null,
+): boolean {
+  if (!patch) return false;
+  return (
+    effectiveScheduleKey(mergeScheduleConstraints(previous, patch)) !==
+    effectiveScheduleKey(previous)
+  );
+}
+
 function readToolScheduleChange(
   raw: unknown,
   previous: StoredScheduleConstraint | null,
