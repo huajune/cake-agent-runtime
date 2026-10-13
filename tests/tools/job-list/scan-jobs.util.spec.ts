@@ -54,6 +54,45 @@ describe('岗位有界补页', () => {
       stopReason: 'page_limit',
     });
   });
+  it('班次数据异常被剔除的岗位计入已扫描，不为凑数多查一页', async () => {
+    const skipped = [{ jobId: 20, brandName: '肯德基', reason: '班次起止钟点相同' }];
+    const fetch = jest.fn();
+    const out = await scanJobPages(
+      { jobs: page(1, 19), total: 20, skippedInvalidWorkTime: skipped },
+      {},
+      fetch,
+      Date.now() + 15000,
+    );
+    expect(out.meta).toMatchObject({
+      scannedCount: 19,
+      scanComplete: true,
+      stopReason: 'complete',
+      skippedInvalidWorkTime: 1,
+    });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+  it('后页只有被剔除的异常岗位时不当作空页，扫描照常完成', async () => {
+    const out = await scanJobPages(
+      { jobs: page(1, 20), total: 22 },
+      {},
+      jest.fn().mockResolvedValue({
+        jobs: [],
+        total: 22,
+        skippedInvalidWorkTime: [
+          { jobId: 21, brandName: '必胜客', reason: '班次起止钟点相同' },
+          { jobId: 22, brandName: '必胜客', reason: '班次起止钟点相同' },
+        ],
+      }),
+      Date.now() + 15000,
+    );
+    expect(out.meta).toMatchObject({
+      scannedCount: 20,
+      scannedPages: 2,
+      scanComplete: true,
+      stopReason: 'complete',
+      skippedInvalidWorkTime: 2,
+    });
+  });
   it('时间耗尽不再发下一页', async () => {
     const fetch = jest.fn();
     expect(
@@ -139,5 +178,16 @@ describe('岗位有界补页', () => {
     expect(complete.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_NO_RESULTS);
     expect(complete).toHaveProperty('noMatchScript');
     expect(complete.queryMeta).not.toHaveProperty('unknownCount');
+
+    const withSkipped = buildScannedQueryError(args, {
+      ...meta,
+      scannedCount: 39,
+      scannedPages: 2,
+      scanComplete: true,
+      stopReason: 'complete',
+      skippedInvalidWorkTime: 1,
+    });
+    expect(withSkipped.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_QUERY_INCOMPLETE);
+    expect(withSkipped).not.toHaveProperty('noMatchScript');
   });
 });

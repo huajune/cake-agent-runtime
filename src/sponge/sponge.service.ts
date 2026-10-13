@@ -301,7 +301,7 @@ export class SpongeService {
   }
 
   /**
-   * 批量任务按岗位隔离班次契约错误：不合法岗位整条剔除并记 warn，不补值、不改类型，
+   * 按岗位隔离班次契约错误（查岗工具与批量任务共用）：不合法岗位整条剔除并记 warn，不补值、不改类型，
    * 合法岗位照常返回。响应结构等其他契约错误不在此处豁免。
    */
   private skipInvalidWorkTime(jobs: JobDetail[]): {

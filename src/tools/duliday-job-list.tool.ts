@@ -23,7 +23,7 @@ import { Logger } from '@nestjs/common';
 import { tool } from 'ai';
 import { z } from 'zod';
 import { SpongeService } from '@sponge/sponge.service';
-import type { JobBasicInfo, JobDetail } from '@sponge/sponge.types';
+import type { InvalidWorkTimeJob, JobBasicInfo, JobDetail } from '@sponge/sponge.types';
 import { isValidLaborForm, stripLaborFormFromCategories } from '@resolution/labor-form';
 import { ToolBuilder, ToolBuildContext } from '@shared-types/tool.types';
 import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
@@ -828,12 +828,47 @@ export function buildJobListTool(
 ): ToolBuilder {
   return (context) => {
     const spongeTokenContext = buildSpongeTokenContext(context);
-    const fetchJobs = (params: Parameters<SpongeService['fetchJobs']>[0], signal?: AbortSignal) =>
-      signal
-        ? spongeService.fetchJobs(params, spongeTokenContext, signal)
-        : spongeTokenContext
-          ? spongeService.fetchJobs(params, spongeTokenContext)
-          : spongeService.fetchJobs(params);
+    // 单个岗位班次数据不合规只剔除该岗位并记录（需海绵修数据），不能拖垮整次查岗；
+    // 响应结构等其他契约错误仍整次失败。剔除明细按单次调用、按返回的岗位数组登记，
+    // 供补页计数、零结果兜底判定与回执使用，不跨调用累计。
+    const createInvalidWorkTimeTracker = () => {
+      const skippedJobs = new Map<string, InvalidWorkTimeJob>();
+      const skippedByPage = new WeakMap<JobDetail[], InvalidWorkTimeJob[]>();
+      const fetchJobs = async (
+        params: Parameters<SpongeService['fetchJobs']>[0],
+        signal?: AbortSignal,
+      ) => {
+        const request = params.options?.includeWorkTime
+          ? { ...params, invalidWorkTime: 'skip' as const }
+          : params;
+        const result = await (signal
+          ? spongeService.fetchJobs(request, spongeTokenContext, signal)
+          : spongeTokenContext
+            ? spongeService.fetchJobs(request, spongeTokenContext)
+            : spongeService.fetchJobs(request));
+        const skipped = result.skippedInvalidWorkTime ?? [];
+        skippedByPage.set(result.jobs, skipped);
+        for (const job of skipped) skippedJobs.set(String(job.jobId), job);
+        return result;
+      };
+      return {
+        fetchJobs,
+        skippedOf: (page: JobDetail[]) => skippedByPage.get(page) ?? [],
+        /** 上游确实 0 条：没有返回岗位，也没有因班次数据异常剔除的岗位。 */
+        upstreamEmpty: (page: JobDetail[]) =>
+          page.length === 0 && (skippedByPage.get(page) ?? []).length === 0,
+        isSkipped: (jobId: number) => skippedJobs.has(String(jobId)),
+        meta: () =>
+          skippedJobs.size > 0
+            ? {
+                invalidWorkTimeSkipped: {
+                  count: skippedJobs.size,
+                  jobIds: [...skippedJobs.values()].slice(0, 10).map((job) => job.jobId),
+                },
+              }
+            : {},
+      };
+    };
     // v7 的 tool() 多重载对本工具的大 schema + 长 execute 推断失败（塌成
     // Tool<never,never,CONTEXT> 报 FlexibleSchema<never>），必须显式钉死泛型。
     const jobListTool = tool<z.output<typeof inputSchema>, unknown, Record<string, unknown>>({
@@ -865,6 +900,13 @@ export function buildJobListTool(
         candidateScheduleCitation,
         purpose = 'recommend',
       }) => {
+        const {
+          fetchJobs,
+          skippedOf,
+          upstreamEmpty,
+          isSkipped,
+          meta: invalidWorkTimeMeta,
+        } = createInvalidWorkTimeTracker();
         // 经纬度对调确定性纠偏（模型 reasoning 绑定正确、发射的
         // JSON 值却对调，圆心落到纬度 121° → 必然 0 条假"无岗"）。args 落库仍是模型
         // 原始入参，簇收敛继续用 lat 越界探针观测；此处只修查询行为并记 queryMeta。
@@ -1019,6 +1061,16 @@ export function buildJobListTool(
             });
             const returnedIds = new Set(inspected.jobs.map((job) => job.basicInfo?.jobId));
             const missingJobIds = jobIdList.filter((id) => !returnedIds.has(id));
+            const invalidJobIds = missingJobIds.filter((id) => isSkipped(id));
+            if (invalidJobIds.length > 0) {
+              return buildToolError({
+                errorType: TOOL_ERROR_TYPES.JOB_LIST_FETCH_FAILED,
+                outcome: '指定岗位班次数据异常，暂时无法核对',
+                replyInstruction:
+                  '指定岗位的班次数据有误，需数据源团队修复，暂时无法确认班次。不能用历史摘要回答班次或承诺上岗，也不能据此断言岗位已停招；说明班次需要再确认即可，本轮不要自动改查其他岗位。',
+                details: { missingJobIds, invalidWorkTimeJobIds: invalidJobIds },
+              });
+            }
             if (missingJobIds.length > 0) {
               return buildToolError({
                 errorType: TOOL_ERROR_TYPES.JOB_LIST_FETCH_FAILED,
@@ -1300,7 +1352,19 @@ export function buildJobListTool(
         };
         let scanMeta: JobScanMeta | undefined;
         const buildQueryError = (args: Parameters<typeof buildToolError>[0]) =>
-          buildScannedQueryError(args, scanMeta);
+          buildScannedQueryError(
+            {
+              ...args,
+              details: {
+                ...args.details,
+                queryMeta: {
+                  ...(isRecord(args.details?.queryMeta) ? args.details.queryMeta : {}),
+                  ...invalidWorkTimeMeta(),
+                },
+              },
+            },
+            scanMeta,
+          );
         try {
           let storeMatchStrategy: 'api_exact' | 'local_fuzzy_match' = 'api_exact';
           let distanceScanPages = 1;
@@ -1388,7 +1452,7 @@ export function buildJobListTool(
           // 召回；为了避免
           // 边界坐标把邻市岗位带回来，只采纳 storeCityName/storeRegionName 仍能匹配原城市名
           // 的岗位。恢复查询失败不覆盖原始“0 条”语义。
-          if (jobs.length === 0 && hasCoordinates && normalizedCityNameList.length > 0) {
+          if (upstreamEmpty(jobs) && hasCoordinates && normalizedCityNameList.length > 0) {
             try {
               const locationOnly = await fetchWithinBudget({
                 ...fetchBaseParams,
@@ -1432,7 +1496,7 @@ export function buildJobListTool(
           // 岗位名对不上，而坐标才是硬约束。0 条后去掉 searchJobName 再做一次距离召回，
           // 避免把"这个楼里没有在招岗"误报成"你附近 10 公里没有岗位"并直接拉群收口。
           // 距离仍受原 location.range 约束，不会带回远处岗位。
-          if (jobs.length === 0 && hasCoordinates && searchJobName?.trim()) {
+          if (upstreamEmpty(jobs) && hasCoordinates && searchJobName?.trim()) {
             try {
               const locationOnly = await fetchWithinBudget({
                 ...fetchBaseParams,
@@ -1462,7 +1526,7 @@ export function buildJobListTool(
           // 全名查空的简名重试：候选人说的"乐高乐园/长泰广场/万辉国际大厦"往往比库内岗位名里的
           // 简名长（库内是"乐高-…"），子串匹配整条 jobName 必然 0 条。剥掉通用后缀（乐园/广场/
           // 中心/店…）或取词头再查一次，命中即披露 searchNameShortened 让模型核对是否同一主体。
-          if (jobs.length === 0 && !searchNameRelaxed && searchJobName?.trim()) {
+          if (upstreamEmpty(jobs) && !searchNameRelaxed && searchJobName?.trim()) {
             const shortened = shortenSearchJobName(searchJobName.trim());
             if (shortened) {
               try {
@@ -1495,7 +1559,7 @@ export function buildJobListTool(
           // 再按门店名本地模糊过滤。不能查全量（{ options }）——上游要求至少一个筛选
           // 条件，无筛选请求会被拒（"查询岗位时至少提供一个筛选条件"），把"该门店已
           // 无在招岗位"这一合法结果污染成接口故障。
-          if (jobs.length === 0 && storeNameList.length > 0) {
+          if (upstreamEmpty(jobs) && storeNameList.length > 0) {
             const fallback = await fetchWithinBudget({ ...fetchBaseParams, storeNameList: [] });
             if (fallback.jobs.length > 0) {
               storeMatchStrategy = 'local_fuzzy_match';
@@ -1651,12 +1715,15 @@ export function buildJobListTool(
                 ? Math.min(requestedRangeKm, EXPLICIT_RANGE_CAP_KM)
                 : distanceThreshold?.max;
 
+          const firstPageSkipped = skippedOf(jobs);
+          const firstPageSeen = jobs.length + firstPageSkipped.length;
           scanMeta = {
             upstreamTotal: total,
             scannedCount: jobs.length,
             scannedPages: 1,
-            scanComplete: jobs.length >= total,
-            stopReason: jobs.length >= total ? 'complete' : 'not_scanned',
+            scanComplete: firstPageSeen >= total,
+            stopReason: firstPageSeen >= total ? 'complete' : 'not_scanned',
+            ...(firstPageSkipped.length ? { skippedInvalidWorkTime: firstPageSkipped.length } : {}),
           };
           const needsAdministrativeAreaFilter =
             cityFilterRecovery?.attempted && fetchBaseParams.cityNameList?.length === 0;
@@ -1671,9 +1738,9 @@ export function buildJobListTool(
             (brandPlan.filterMode === 'exclude' && brandPlan.excludeBrands.length > 0) ||
             candidateLaborForm != null ||
             candidateIsStudent === true;
-          if ((needsLocalFiltering || preferFlexibleSchedule) && total > jobs.length) {
+          if ((needsLocalFiltering || preferFlexibleSchedule) && total > firstPageSeen) {
             const scanned = await scanJobPages(
-              { jobs, total },
+              { jobs, total, skippedInvalidWorkTime: firstPageSkipped },
               fetchBaseParams,
               fetchJobs,
               scanDeadline,
@@ -1798,6 +1865,21 @@ export function buildJobListTool(
           }
 
           if (jobs.length === 0) {
+            // 范围内有岗位只是班次数据异常被剔除：不能当作无岗，也不进入地名规范化或无岗话术。
+            if ((scanMeta?.skippedInvalidWorkTime ?? 0) > 0) {
+              const invalidJobIds = jobIdList.filter((id) => isSkipped(id));
+              return buildQueryError({
+                errorType: invalidJobIds.length
+                  ? TOOL_ERROR_TYPES.JOB_LIST_FETCH_FAILED
+                  : TOOL_ERROR_TYPES.JOB_LIST_NO_RESULTS,
+                outcome: '查询范围内的岗位班次数据异常，暂未确认可推荐岗位',
+                replyInstruction:
+                  '查询范围内有岗位的班次数据有误，需数据源团队修复，暂时无法确认这些岗位的班次。不能断言没有岗位，也不能用历史摘要回答班次或承诺上岗；说明班次需要再确认即可，本轮不要自动扩大范围改查。',
+                ...(invalidJobIds.length
+                  ? { details: { invalidWorkTimeJobIds: invalidJobIds } }
+                  : {}),
+              });
+            }
             if (jobIdList.length > 0) {
               return buildQueryError({
                 errorType: TOOL_ERROR_TYPES.JOB_LIST_FETCH_FAILED,
@@ -2251,6 +2333,7 @@ export function buildJobListTool(
           result.queryMeta = {
             purpose,
             ...scanMeta,
+            ...invalidWorkTimeMeta(),
             matchedCount,
             returnedCount: jobs.length,
             hasMoreMatches: matchedCount > jobs.length,

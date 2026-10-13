@@ -27,7 +27,8 @@ export interface JobListQueryParams {
    * 请求 workTime 时，班次契约不合法岗位的本地处理方式（不下发海绵）。
    * - reject（默认）：任一岗位不合法即整次抛 WorkTimeContractError；
    * - skip：剔除不合法岗位，其余照常返回，剔除明细见 JobListResult.skippedInvalidWorkTime。
-   * 候选人查岗必须用 reject；skip 仅供群推送、数据体检等批量任务，不补值、不猜测班次。
+   * 候选人查岗与核对（duliday_job_list）、群推送、数据体检都用 skip 逐岗隔离；两种方式都不补值、
+   * 不猜测班次，响应结构契约错误始终整次抛错。
    */
   invalidWorkTime?: 'reject' | 'skip';
 }
