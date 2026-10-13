@@ -1,4 +1,5 @@
 import { effectiveScheduleKey } from '@resolution/schedule/equivalence';
+import { completeEarlyShiftMapping } from '@resolution/schedule/mapping';
 import {
   CandidateScheduleConstraintSchema,
   mergeScheduleConstraints,
@@ -708,6 +709,11 @@ export class SessionFactsService {
       previousFacts,
     );
     const llmOutcome = await this.callLLM(prompt);
+    // 早班/早上/早晨固定映射为早班+上午班，抽取漏写上午班时按本轮原话补齐。
+    llmOutcome.facts.preferences.schedule_constraint = completeEarlyShiftMapping(
+      llmOutcome.facts.preferences.schedule_constraint,
+      currentTurnUserTexts.map((text) => stripTimeContext(text)).join('\n'),
+    );
     if (llmOutcome.rejectedScheduleIssues) {
       this.reportRejectedScheduleConstraint(
         { corpId, userId, sessionId },

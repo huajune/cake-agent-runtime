@@ -54,6 +54,7 @@ import {
   REPEAT_QUERY_NOTICE,
 } from '@tools/shared/job-list-query-signature';
 import { effectiveScheduleKey } from '@resolution/schedule/equivalence';
+import { completeEarlyShiftMapping } from '@resolution/schedule/mapping';
 import { correctSwappedLatLng } from '@tools/shared/latlng-swap';
 import {
   applyLaborFormConstraint,
@@ -990,6 +991,11 @@ export function buildJobListTool(
           }
         }
 
+        // 早班/早上/早晨固定映射为早班+上午班，模型漏写上午班时按本轮原话补齐。
+        candidateScheduleConstraint = completeEarlyShiftMapping(
+          candidateScheduleConstraint,
+          context.turnInput.currentUserMessage,
+        );
         const persistedConstraint =
           context.ledger.jobs.scheduleConstraint ??
           context.archive.sessionFacts?.preferences?.schedule_constraint;

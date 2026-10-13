@@ -521,6 +521,20 @@ describe('SessionStateService（S1-S6）', () => {
       expect((await savedPreferences())?.schedule_constraint?.evidence).toContain('工具已核验');
     });
 
+    it('抽取把“只做早班”只写成早班时，按固定映射补上上午班再保存', async () => {
+      respondValidated({
+        preferences: preferences({ schedule_constraint: { includeAnyTags: ['early'] } }),
+        schedule_constraint_citation: { quote: '我只做早班' },
+        reasoning: '只做早班',
+      });
+
+      await service.extractAndSave(...scope, [{ role: 'user', content: '我只做早班' }]);
+
+      expect((await savedPreferences())?.schedule_constraint?.value).toEqual({
+        includeAnyTags: ['early', 'morning'],
+      });
+    });
+
     it('抽取给出有效班次变更时以抽取为准，不再套用工具结果', async () => {
       const ledger = createTurnLedger();
       ledger.recordScheduleConstraint({ maxDaysPerWeek: 2 });
