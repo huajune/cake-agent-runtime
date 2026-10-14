@@ -1781,6 +1781,50 @@ describe('AgentRunnerService.runInboundTurn', () => {
     expect(outcome.toolCalls).toEqual([bookingCall]);
   });
 
+  it('does not list successful no-op side effects as committed in the repair prompt', async () => {
+    const bookingCall = {
+      toolName: 'duliday_interview_booking',
+      args: { jobId: 123 },
+      result: { success: true, workOrderId: 'wo-1' },
+    };
+    const onlineLocationCall = {
+      toolName: 'send_store_location',
+      args: { jobId: 123 },
+      result: { success: true, destination: 'interview', locationNotRequired: true },
+    };
+    const alreadyInGroupCall = {
+      toolName: 'invite_to_group',
+      args: { city: '上海' },
+      result: { success: true, alreadyInGroup: true, groupName: '上海餐饮兼职群' },
+    };
+    generator.invoke.mockResolvedValueOnce(
+      makeResult({
+        text: '面试定位我发你了，也拉你进群了',
+        toolCalls: [bookingCall, onlineLocationCall, alreadyInGroupCall],
+      }),
+    );
+    replyRepairAgent.repair.mockResolvedValueOnce('报名成功啦，这次是视频面试，不用到店');
+    outputGuard.check
+      .mockResolvedValueOnce({
+        decision: 'repair',
+        riskLevel: 'high',
+        violations: [
+          { type: 'online_interview_location_claim', evidence: '到店', suggestion: '改' },
+        ],
+        ruleIds: ['online_interview_location_claim'],
+        blockedRuleIds: ['online_interview_location_claim'],
+        repairMode: 'rewrite',
+      })
+      .mockResolvedValueOnce(passDecision);
+
+    await service.runInboundTurn({ sessionRef, input: { text: '发我个定位' } });
+
+    const committed = replyRepairAgent.repair.mock.calls[0][0].committedSideEffects as string;
+    expect(committed).toContain('duliday_interview_booking');
+    expect(committed).not.toContain('send_store_location');
+    expect(committed).not.toContain('invite_to_group');
+  });
+
   it('invokeReviewedTurn wraps runTurnEnd in an agent-layer finalizer', async () => {
     const runTurnEnd = jest.fn().mockResolvedValue(undefined);
     generator.invoke.mockResolvedValue(makeResult({ text: '可以的', runTurnEnd }));

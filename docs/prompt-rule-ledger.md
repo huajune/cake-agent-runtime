@@ -720,7 +720,9 @@ runner 直达静默 `skip_intent_envelope_silenced`——终态 `skipped`、不�
 > 未拉群时不得说本轮已拉群或已发邀请；【定位发送】`locationNotRequired` 渲染为未发送（`committedSideEffects`
 > 仍把它算作已执行），失败时不得说位置已发，`addressConflict` 时面试地点与工作门店地址不得混用；
 > 【本轮图片事实】按候选人本人 / 发布方 / 第三方或归属不明分组（`unknown` 与第三方同组），只有候选人本人
-> 字段可当作候选人自己的信息。修复证据同时读取首版 TurnLedger 的视觉 sheet。拦侧配对：定位块与
+> 字段可当作候选人自己的信息。修复证据同时读取首版 TurnLedger 的视觉 sheet。修复 prompt 的"本轮已发生
+> 且不可撤销的动作"不再列成功但无对外动作的结果（`locationNotRequired`、`alreadyInGroup`）：真实修复模型
+> A/B 中这句"不要声称未发生"会压过定位证据，修复版照写"定位发你了"；replan 闸门与守卫档案口径不变。拦侧配对：定位块与
 > `online_interview_location_claim` 互链；群邀请与图片事实目前没有对应的 Output 规则，本项不新增规则。
 
 精确重复由 sanitizer 处理，handoff 承诺由 turn outcome/副作用对账处理，日期与结构一致性由

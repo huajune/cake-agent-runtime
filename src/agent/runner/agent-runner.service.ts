@@ -379,7 +379,12 @@ export class AgentRunnerService {
               toolCalls: first.toolCalls ?? [],
               turnLedger: first.turnLedger,
               redLines: ctx.redLines,
-              committedSideEffects: committed || undefined,
+              // 成功但没有对外动作的结果（不发定位、本来在群）不进修复 prompt 的"已发生"清单：
+              // 那句"不要声称未发生"会压过修复证据，修复版照写"定位发你了"。
+              committedSideEffects:
+                this.summarizeCommittedSideEffects(
+                  (first.toolCalls ?? []).filter((c) => !isNoOutboundActionResult(c.result)),
+                ) || undefined,
               repairContext: await this.buildReplyRepairContext(ctx),
             }),
           );
@@ -1228,4 +1233,11 @@ export class AgentRunnerService {
 
     return textLines.join('\n');
   }
+}
+
+/** 工具成功返回但明确没有对外动作：无需到店的面试不发定位、候选人本来就在群里。 */
+function isNoOutboundActionResult(result: unknown): boolean {
+  if (!result || typeof result !== 'object' || Array.isArray(result)) return false;
+  const record = result as Record<string, unknown>;
+  return record.locationNotRequired === true || record.alreadyInGroup === true;
 }
