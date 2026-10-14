@@ -35,7 +35,11 @@ import {
   type HardRequirements,
 } from '@tools/job-list/hard-requirements.util';
 import { buildJobPolicyAnalysis, sanitizeConstraintText } from '@tools/job-list/job-policy-parser';
-import { sanitizeLaborFormForDisplay } from '@resolution/labor-form';
+import {
+  pickPrimarySalaryScenario,
+  resolveSalaryHeadline,
+  resolveSalaryLaborForm,
+} from '@tools/job-list/salary-display.util';
 import type { JobBasicInfo, JobDetail } from '@sponge/sponge.types';
 
 export interface CandidateCard {
@@ -132,28 +136,6 @@ interface StairEntry {
   description?: unknown;
 }
 
-type LaborForm = '兼职' | '全职' | null;
-
-const SUPPLEMENTAL_SALARY_TYPE_PATTERN = /培训|试用|试工/;
-
-function isSupplementalScenario(s: SalaryScenario): boolean {
-  return typeof s?.salaryType === 'string' && SUPPLEMENTAL_SALARY_TYPE_PATTERN.test(s.salaryType);
-}
-
-/** 正式方案优先；海绵把培训期/试用期列在前面时也只取正式方案进卡片，附属方案留给追问。 */
-function pickPrimaryScenario(job: JobDetail): SalaryScenario | null {
-  const scenarios: SalaryScenario[] = Array.isArray(job?.jobSalary?.salaryScenarioList)
-    ? (job.jobSalary.salaryScenarioList as SalaryScenario[])
-    : [];
-  const valid = scenarios.filter((s) => s && typeof s === 'object');
-  return valid.find((s) => !isSupplementalScenario(s)) ?? valid[0] ?? null;
-}
-
-function resolveLaborForm(job: JobDetail): LaborForm {
-  const form = sanitizeLaborFormForDisplay(job?.basicInfo?.laborForm);
-  return form === '兼职' || form === '全职' ? form : null;
-}
-
 function textOf(value: unknown): string {
   return hasValue(value) ? String(value).trim() : '';
 }
@@ -163,37 +145,20 @@ function amount(value: unknown, unit: unknown, fallbackUnit: string): string {
   return `${String(value)}${textOf(unit) || fallbackUnit}`;
 }
 
-function formatComprehensiveRange(s: SalaryScenario): string {
-  const comp = s?.comprehensiveSalary;
-  const min = comp?.minComprehensiveSalary;
-  const max = comp?.maxComprehensiveSalary;
-  const unit = textOf(comp?.comprehensiveSalaryUnit) || '元/时';
-  if (hasValue(min) && hasValue(max) && min !== max) return `${String(min)}-${String(max)}${unit}`;
-  if (hasValue(min)) return `${String(min)}${unit}`;
-  if (hasValue(max)) return `${String(max)}${unit}`;
-  return '';
-}
-
-function formatBasic(s: SalaryScenario): string {
-  return amount(s?.basicSalary?.basicSalary, s?.basicSalary?.basicSalaryUnit, '元/月');
-}
-
 /**
- * 薪资主数：兼职岗基础时薪优先（有阶梯时冠"基础"以区别各档），全职岗综合区间优先并冠"综合薪资"；
- * 用工形式缺失时沿用综合区间优先、不加前缀。
- *
- * 海绵上兼职岗普遍同时维护"基础 19 元/时"和"综合 2000-4000 元/月"两栏，候选人按小时计薪，
- * 先取综合区间就把时薪岗展示成了月薪区间；全职岗则相反，基础月薪只是综合构成的一部分。
+ * 薪资主数取值与摘要行/会话记忆共用 resolveSalaryHeadline（唯一来源）；卡片只负责加前缀：
+ * 兼职有阶梯时基础时薪冠"基础"以区别各档，全职综合区间冠"综合薪资"，其余不加前缀。
  */
-function formatBaseSalary(s: SalaryScenario, laborForm: LaborForm, hasStair: boolean): string {
-  if (laborForm === '兼职') {
-    const basic = formatBasic(s);
-    if (basic) return hasStair ? `基础${basic}` : basic;
-    return formatComprehensiveRange(s);
+function formatBaseSalary(job: JobDetail, hasStair: boolean): string {
+  const headline = resolveSalaryHeadline(job);
+  if (!headline) return '';
+  if (headline.laborForm === '兼职' && headline.source === 'basic' && hasStair) {
+    return `基础${headline.text}`;
   }
-  const comp = formatComprehensiveRange(s);
-  if (comp) return laborForm === '全职' ? `综合薪资${comp}` : comp;
-  return formatBasic(s);
+  if (headline.laborForm === '全职' && headline.source === 'comprehensive') {
+    return `综合薪资${headline.text}`;
+  }
+  return headline.text;
 }
 
 function readStairs(s: SalaryScenario): StairEntry[] {
@@ -304,11 +269,11 @@ function formatSettlementParts(s: SalaryScenario): string[] {
  *  - 全职（含用工形式缺失）：综合薪资 → [阶梯] → 法定节假日 → 加班 → 奖金标签 → 结算
  */
 function buildSalarySegment(job: JobDetail): string {
-  const scenario = pickPrimaryScenario(job);
+  const scenario = pickPrimarySalaryScenario<SalaryScenario>(job);
   if (!scenario) return '';
-  const laborForm = resolveLaborForm(job);
+  const laborForm = resolveSalaryLaborForm(job);
   const stair = hasStairSalary(scenario);
-  const base = formatBaseSalary(scenario, laborForm, stair);
+  const base = formatBaseSalary(job, stair);
 
   const parts: string[] = [];
   if (base) parts.push(base);

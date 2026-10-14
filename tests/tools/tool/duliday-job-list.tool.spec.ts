@@ -264,7 +264,7 @@ describe('buildJobListTool', () => {
 
     expect(recordFetchedJobs).toHaveBeenCalledWith([
       expect.objectContaining({
-        salaryDesc: '2000-4000 元/月',
+        salaryDesc: '2000-4000元/月',
         settlementSummary:
           '正式:日结算（当日结）；培训期:月结算（10号发薪）；基础工资按日结；阶梯差价按月结；培训费用按月结；每月10号发上月差价',
       }),
@@ -1518,7 +1518,7 @@ describe('buildJobListTool', () => {
       expect.objectContaining({
         jobId: 1,
         brandName: 'KFC',
-        salaryDesc: '4000-5000 元/月',
+        salaryDesc: '4000-5000元/月',
       }),
     ]);
   });
@@ -2439,8 +2439,8 @@ describe('buildJobListTool', () => {
 
       const md = result.markdown as string;
       expect(md).toContain('⚠️ 同品牌多门店');
-      expect(md).toContain('肯德基 餐饮（绿地缤纷城店，2.3km，17-22 元/时）');
-      expect(md).toContain('肯德基 餐饮（日月光店，5.1km，17-22 元/时）');
+      expect(md).toContain('肯德基 餐饮（绿地缤纷城店，2.3km，17-22元/时）');
+      expect(md).toContain('肯德基 餐饮（日月光店，5.1km，17-22元/时）');
       expect(md).toContain('jobId: 1');
       expect(md).toContain('jobId: 2');
     });
@@ -2462,8 +2462,8 @@ describe('buildJobListTool', () => {
           totalStoreCount: 2,
           requiresStoreDifferentiation: true,
           displayLines: [
-            '肯德基 餐饮（绿地缤纷城店，2.3km，17-22 元/时）',
-            '肯德基 餐饮（日月光店，5.1km，17-22 元/时）',
+            '肯德基 餐饮（绿地缤纷城店，2.3km，17-22元/时）',
+            '肯德基 餐饮（日月光店，5.1km，17-22元/时）',
           ],
         }),
       ]);
