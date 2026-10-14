@@ -18,6 +18,7 @@
  */
 
 import { asRecord } from '@infra/utils/object.util';
+import type { JobStudentTier } from '@resolution/job/types';
 import type { HealthCertGate } from '@tools/job-list/job-policy-parser';
 
 export type GenderRequirement = 'male' | 'female' | 'any' | 'unspecified';
@@ -40,16 +41,12 @@ export type HealthCertRequirement =
 /**
  * 岗位对候选人社会身份的要求。取值直接对应海绵 `hiringRequirement.figure` 的
  * 封闭选项集（学生 / 社会人士 / 第二职业 / 不限），与收资表「社会身份」三选项同源。
+ * 枚举本体住在 `@resolution/job/types`（岗位记忆 studentTier 同源持久化），这里保留别名。
  *
  * `second_job_only`：岗位要求候选人已有主职（需社保证明/劳动合同）。平台把
  * 「第二职业」与「全日制在校学生」列为互斥选项，故该档同样不接受在校学生。
  */
-export type StudentRequirement =
-  | 'student_only'
-  | 'social_only'
-  | 'second_job_only'
-  | 'any'
-  | 'unspecified';
+export type StudentRequirement = JobStudentTier;
 
 export interface HardRequirements {
   gender: GenderRequirement;

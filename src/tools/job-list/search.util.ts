@@ -25,6 +25,7 @@ import {
 import { normalizeForBrandMatch } from '@resolution/brand/brand-normalize';
 import { buildJobPolicyAnalysis } from '@tools/job-list/job-policy-parser';
 import { extractHardRequirements } from '@tools/job-list/hard-requirements.util';
+import { classifyStudentEligibility } from '@resolution/job';
 import {
   isHardFilteredLaborForm,
   isJobAxisLaborForm,
@@ -217,7 +218,7 @@ export function applyStudentIdentityConstraint(
   for (const job of jobs) {
     const policy = buildJobPolicyAnalysis(job);
     const hr = extractHardRequirements(job, policy);
-    if (hr.student === 'social_only' || hr.student === 'second_job_only') {
+    if (classifyStudentEligibility(hr.student) === 'rejects_student') {
       excluded.push({
         jobId: typeof job?.basicInfo?.jobId === 'number' ? job.basicInfo.jobId : null,
         brandName: typeof job?.basicInfo?.brandName === 'string' ? job.basicInfo.brandName : null,

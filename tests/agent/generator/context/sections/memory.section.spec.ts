@@ -7,6 +7,7 @@ import {
   visibleBookingJobIds,
   visibleBookingWorkOrders,
 } from '@agent/generator/context/sections/semantic/memory.section';
+import type { RecommendedJobSummary } from '@resolution/job/types';
 import { promptModelOf, renderSection } from '../../../../helpers/prompt-model.fixture';
 
 describe('MemorySection', () => {
@@ -217,6 +218,65 @@ describe('MemorySection', () => {
 
     expect(renderBookingPrompt(snapshot)).toContain('奥乐齐');
     expect(visibleBookingJobIds(snapshot)).toEqual([520361]);
+  });
+
+  describe('岗位记忆的学生身份字段', () => {
+    const jobOf = (overrides: Partial<RecommendedJobSummary>): RecommendedJobSummary => ({
+      jobId: 529083,
+      brandName: '肯德基',
+      jobName: '服务员',
+      storeName: '上海虹桥店',
+      cityName: '上海',
+      regionName: '闵行区',
+      laborForm: '兼职',
+      salaryDesc: null,
+      jobCategoryName: null,
+      ...overrides,
+    });
+    const memoryWithPresentedJobs = (jobs: RecommendedJobSummary[]) =>
+      ({
+        adjudication: {
+          profile: null,
+          jobIntent: null,
+          sessionState: {
+            facts: null,
+            lastCandidatePool: null,
+            presentedJobs: jobs,
+            currentFocusJob: null,
+            invitedGroups: null,
+          },
+          conflicts: [],
+          displayTurnHints: null,
+          pendingTurnHintFields: [],
+        },
+        booking: { state: 'none' },
+        realtimeGroups: [],
+        contactBrandAliases: [],
+        currentLaborFormIntent: { kind: 'ignore' },
+        activeLaborForm: null,
+      }) as unknown as MemoryPromptView;
+
+    // 2026-10-09 batch_6ac85778…：「学生不接受学生」被模型读反，零工具答出"这家接受学生"。
+    it('字段名与取值分开渲染，不再拼出「学生不接受学生」', () => {
+      const rendered = section.build({
+        memory: memoryWithPresentedJobs([
+          jobOf({ studentRequirement: '不接受学生（仅限社会人士）', studentTier: 'social_only' }),
+        ]),
+      });
+
+      expect(rendered).toContain('学生身份:不接受学生（仅限社会人士）');
+      expect(rendered).not.toContain('学生不接受学生');
+    });
+
+    it('缺 studentTier 的历史记录照常渲染旧文案', () => {
+      const rendered = section.build({
+        memory: memoryWithPresentedJobs([jobOf({ studentRequirement: '不接受学生' })]),
+      });
+
+      expect(rendered).toContain('[jobId:529083]');
+      expect(rendered).toContain('学生身份:不接受学生');
+      expect(rendered).not.toContain('学生不接受学生');
+    });
   });
 
   it('withholds provenance for a work order whose block renders empty', () => {

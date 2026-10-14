@@ -1,6 +1,6 @@
 # 候选人档案域架构
 
-**最后更新**：2026-08-28
+**最后更新**：2026-10-14
 **代码居所**：`src/resolution/{candidate,notary,turn-hints,brand,geo}/`、`src/memory/`、
 `src/agent/generator/preparation/`
 
@@ -97,7 +97,8 @@ candidate_quote / rule / model / system / manual / archive
 - 回合末偏好类 session facts 准入。
 
 它不能直接写 collection 槽位、产生 booking payload 或写入身份档案。身份类 turn hint
-只作为当前轮提示；报名身份字段经表单逐格落定后才以 medium 回写 session facts。
+只作为当前轮提示；报名身份字段经表单逐格落定后才回写 session facts：一般字段写 medium，
+社会身份（`is_student`）写 high，供后续回合查岗学生硬过滤与提示词硬约束段直接读取。
 
 ## 5. Session facts 与 long-term profile
 
@@ -106,7 +107,7 @@ candidate_quote / rule / model / system / manual / archive
 `factsv2:{corpId}:{userId}:{sessionId}` 保存当前会话认知与工作台，业务 TTL 为 3 天并带
 consolidation 安全余量。
 
-- 表单逐格落定的身份字段写 medium；
+- 表单逐格落定的身份字段写 medium，社会身份（`is_student`）例外写 high；
 - booking 成功的身份字段写 high；
 - 回合末模型只写偏好类软事实；
 - `BookingCollectionForm` 和槽位状态不进入该 key。
@@ -128,7 +129,7 @@ consolidation 安全余量。
 `tools/collection/collection-form.service.ts`：
 
 - memory → form：只预填 empty 槽，且排在本轮字段值提案之后；
-- form → session：逐格落定写 medium；
+- form → session：逐格落定写 medium（`is_student` 写 high）；
 - booking → session / long-term：成功后写 high；
 - booking payload：只从持久表单生成。
 

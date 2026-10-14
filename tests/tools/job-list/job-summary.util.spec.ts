@@ -126,6 +126,43 @@ describe('mapJobsToRecommendedSummaries', () => {
     });
   });
 
+  describe('学生身份档位（与查岗侧学生硬过滤、岗位卡同源）', () => {
+    const withIdentity = (hiring: Record<string, unknown>) =>
+      mapJobsToRecommendedSummaries([
+        makeJob({
+          hiringRequirement: {
+            basicPersonalRequirements: { minAge: 18, maxAge: 50 },
+            ...hiring,
+          },
+        }),
+      ])[0];
+
+    it('figure=社会人士 且无备注 → social_only，记忆文案与岗位卡一致（此前无备注时记忆里没有学生信息）', () => {
+      const summary = withIdentity({ figure: '社会人士' });
+      expect(summary.studentTier).toBe('social_only');
+      expect(summary.studentRequirement).toBe('不接受学生（仅限社会人士）');
+    });
+
+    it('figure=不限 + 备注含「社会人士」→ any，不再被备注里的四个字推断成不接受学生', () => {
+      const summary = withIdentity({ figure: '不限', remark: '社会人士、学生均可，需健康证' });
+      expect(summary.studentTier).toBe('any');
+      expect(summary.studentRequirement).toBe('不限身份，学生与社会人士均可');
+    });
+
+    it('社会身份字段为空 → unspecified，文案标明疑似数据缺失而非不限身份', () => {
+      const summary = withIdentity({});
+      expect(summary.studentTier).toBe('unspecified');
+      expect(summary.studentRequirement).toContain('岗位数据未下发社会身份要求');
+      expect(summary.studentRequirement).not.toContain('不限身份，');
+    });
+
+    it('figure=第二职业 → second_job_only（需已有主职，不接受在校学生）', () => {
+      const summary = withIdentity({ figure: '第二职业' });
+      expect(summary.studentTier).toBe('second_job_only');
+      expect(summary.studentRequirement).toContain('不接受学生');
+    });
+  });
+
   it('maps every job in the batch', () => {
     const summaries = mapJobsToRecommendedSummaries([
       makeJob(),

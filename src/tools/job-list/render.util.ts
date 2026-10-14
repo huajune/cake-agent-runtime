@@ -1270,8 +1270,9 @@ export function formatJobsToMarkdown(
  *   模型从来没被告知过"这个岗收学生"。
  *
  * 结构化 enum 落在 `unspecified`（figure 确实为空）时才回落自由文本推断。
+ * 会话岗位记忆（`mapJobsToRecommendedSummaries`）用同一函数生成 studentRequirement 文案。
  */
-function describeStudentRequirement(
+export function describeStudentRequirement(
   requirement: HardRequirements['student'],
   policy: JobPolicyAnalysis,
 ): string {

@@ -1,7 +1,35 @@
 import { splitJobCategorySegments } from '@sponge/job-category.util';
-import type { RecommendedJobSummary } from './types';
+import type { JobStudentTier, RecommendedJobSummary } from './types';
 
-export type { RecommendedJobSummary } from './types';
+export type { JobStudentTier, RecommendedJobSummary } from './types';
+
+/** 在校学生能否安排某岗位的结论；`unrecorded` 只出现在缺档位的历史岗位记忆上。 */
+export type StudentEligibility =
+  | 'accepts_student'
+  | 'rejects_student'
+  | 'field_empty'
+  | 'unrecorded';
+
+/**
+ * 社会身份档位 → 在校学生资格结论。查岗侧学生硬过滤、提示词逐岗结论与出站哨兵共用这一张映射，
+ * 不得各自再按文本推断。缺档（历史记录）返回 `unrecorded`，不回落到 studentRequirement 文本。
+ */
+export function classifyStudentEligibility(
+  tier: JobStudentTier | null | undefined,
+): StudentEligibility {
+  switch (tier) {
+    case 'any':
+    case 'student_only':
+      return 'accepts_student';
+    case 'social_only':
+    case 'second_job_only':
+      return 'rejects_student';
+    case 'unspecified':
+      return 'field_empty';
+    default:
+      return 'unrecorded';
+  }
+}
 
 /** 从助手回复里找出本轮真正展示过的岗位。 */
 export function extractPresentedJobs(

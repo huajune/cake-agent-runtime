@@ -14,11 +14,16 @@ import type {
 } from '@memory/short-term/short-term.types';
 import { unwrapSessionFacts, unwrapSessionFactValue } from '@memory/short-term/short-term.types';
 import type { RecommendedJobSummary } from '@resolution/job/types';
+import { classifyStudentEligibility } from '@resolution/job';
 import type {
   BrandResolutionSource,
   SessionBrandState,
 } from '@resolution/brand/brand-resolution.types';
-import { isValidLaborForm, type LaborFormIntentDecision } from '@resolution/labor-form';
+import {
+  isValidLaborForm,
+  sanitizeJobDisplayText,
+  type LaborFormIntentDecision,
+} from '@resolution/labor-form';
 import { projectTurnHints, resolveTurnHints } from '@resolution/turn-hints/reducer';
 import type { TurnHintFieldPath, TurnHints } from '@resolution/turn-hints/turn-hint.types';
 import type { CorpusBlock } from '@shared-types/corpus.types';
@@ -28,6 +33,7 @@ import type {
   HardConstraintsPromptView,
   PromptModel,
   PromptSecurityView,
+  StudentJobVerdictView,
   TurnHintsPromptView,
 } from '../context/context.types';
 import { FINAL_CHECK_RULES } from '../context/sections/procedural/final-check.section';
@@ -36,6 +42,7 @@ import type { PromptInjectionAssessment } from '../../guardrail/input/prompt-inj
 import { PromptInjectionDetector } from '../../guardrail/input/prompt-injection-detector';
 import {
   bookingFocusJobFallback,
+  selectVisibleSessionJobs,
   visibleBookingJobIds,
   visibleBookingWorkOrders,
   type MemoryPromptView,
@@ -116,11 +123,26 @@ export function resolveTurnContext(input: {
     (returningUserStage && stageGoals[returningUserStage] ? returningUserStage : undefined) ??
     Object.keys(stageGoals)[0] ??
     null;
+  const sessionState = sources.memory.shortTerm.sessionState;
   const hardConstraints = resolveHardConstraintsPromptView({
-    sessionFacts: sources.memory.shortTerm.sessionState?.facts ?? null,
+    sessionFacts: sessionState?.facts ?? null,
     turnHints: sources.memory.turnHints,
     laborFormIntent: normalizedInput.laborFormIntent,
     brandState: sources.turnBrandContext.state,
+    // 与 [会话记忆] 同一道可见性门：用工形式切换后被隐藏的岗位也不进逐岗结论。
+    sessionJobs: {
+      presentedJobs: selectVisibleSessionJobs(
+        sessionState?.presentedJobs,
+        activeLaborForm,
+        normalizedInput.laborFormIntent,
+      ),
+      currentFocusJob:
+        selectVisibleSessionJobs(
+          sessionState?.currentFocusJob ? [sessionState.currentFocusJob] : [],
+          activeLaborForm,
+          normalizedInput.laborFormIntent,
+        )[0] ?? null,
+    },
   });
   const turnHintsView = resolveTurnHintsPromptView({
     displayTurnHints: promptMemoryView.displayTurnHints,
@@ -393,6 +415,11 @@ export function resolveHardConstraintsPromptView(input: {
   turnHints: TurnHints | null;
   laborFormIntent: LaborFormIntentDecision;
   brandState: SessionBrandState | null;
+  /** 已过 Prompt 可见性门的会话岗位记忆；学生身份逐岗结论只读已展示岗位与当前焦点岗位。 */
+  sessionJobs?: {
+    presentedJobs: readonly RecommendedJobSummary[];
+    currentFocusJob: RecommendedJobSummary | null;
+  };
 }): HardConstraintsPromptView {
   const trusted = unwrapSessionFacts(input.sessionFacts, { minConfidence: 'high' });
   const current = projectTurnHints(input.turnHints, { minConfidence: 'high' });
@@ -439,7 +466,52 @@ export function resolveHardConstraintsPromptView(input: {
       current?.preferences.available_after ?? trusted?.preferences.available_after ?? null,
   };
 
-  return { facts: { interview, preferences }, brandState: input.brandState };
+  // 学生能否安排在零工具轮也必须有结构化依据：is_student 合并为 true 时逐岗给出结论，
+  // 不让模型从岗位摘要文案里自行推断（2026-10-09 批次 6ac85778：记忆写着不接受学生却答"这家接受学生"）。
+  const studentJobVerdicts =
+    interview.is_student === true ? buildStudentJobVerdicts(input.sessionJobs) : [];
+  return {
+    facts: { interview, preferences },
+    brandState: input.brandState,
+    ...(studentJobVerdicts.length > 0 ? { studentJobVerdicts } : {}),
+  };
+}
+
+/**
+ * 当前焦点岗位在前、已展示岗位在后，按 jobId 去重。同一岗位两处记录档位不一致时取已知档位
+ * （焦点可能是旧版本写入、缺档）；全部缺档才是"未记录"，不回落到 studentRequirement 文本。
+ */
+function buildStudentJobVerdicts(
+  jobs:
+    | {
+        presentedJobs: readonly RecommendedJobSummary[];
+        currentFocusJob: RecommendedJobSummary | null;
+      }
+    | undefined,
+): StudentJobVerdictView[] {
+  if (!jobs) return [];
+  const ordered = [
+    ...(jobs.currentFocusJob ? [{ job: jobs.currentFocusJob, isFocus: true }] : []),
+    ...jobs.presentedJobs.map((job) => ({ job, isFocus: false })),
+  ];
+  const byJobId = new Map<number, { job: RecommendedJobSummary; isFocus: boolean }>();
+  for (const entry of ordered) {
+    const existing = byJobId.get(entry.job.jobId);
+    if (!existing) {
+      byJobId.set(entry.job.jobId, entry);
+    } else if (!existing.job.studentTier && entry.job.studentTier) {
+      byJobId.set(entry.job.jobId, { job: entry.job, isFocus: existing.isFocus });
+    }
+  }
+  return Array.from(byJobId.values()).map(({ job, isFocus }) => ({
+    jobId: job.jobId,
+    label:
+      [job.brandName, job.storeName, sanitizeJobDisplayText(job.jobName)]
+        .filter((part): part is string => Boolean(part && part.trim()))
+        .join('-') || '未命名岗位',
+    isFocus,
+    eligibility: classifyStudentEligibility(job.studentTier),
+  }));
 }
 
 function selectClaims(
