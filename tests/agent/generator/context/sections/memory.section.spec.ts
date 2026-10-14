@@ -163,6 +163,24 @@ describe('MemorySection', () => {
     expect(rendered).toContain('不得主动插入该预约的状态');
   });
 
+  it('窗口内晚到/早到不算改约；只认明确起止时段，开始时刻不推断结束时刻（2026-10-14 裁定）', () => {
+    const rendered = renderBookingPrompt(
+      bookingSnapshotOf({
+        workOrderId: 467501,
+        jobId: 529389,
+        brandName: '奥乐齐',
+        interviewTime: '2026-09-24 13:30',
+      }),
+    );
+
+    expect(rendered).toContain('到达时刻仍落在已约面试的时间窗口内时，不算改约');
+    expect(rendered).toContain('不调用任何工具、不改约、不转人工');
+    expect(rendered).toContain('上方「面试时间」只是开始时刻，不得据此推断结束时刻');
+    expect(rendered).toContain('候选人要改到窗口外的时刻或换日期');
+    // 规则只渲染一次（多条预约共享）
+    expect(rendered.split('不算改约').length - 1).toBe(1);
+  });
+
   it('omits the interview time line when the work order has none（老版本海绵响应容缺）', () => {
     const rendered = renderBookingPrompt(
       bookingSnapshotOf({ workOrderId: 88003, brandName: '瑞幸', currentStatus: '约面待确认' }),

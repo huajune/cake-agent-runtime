@@ -399,9 +399,11 @@ const GROUP_PURPOSE_DISTINCTION_PATTERN =
  * _replyInstruction 已点名"改时间用 duliday_modify_interview_time（传该工单号）"；模型不
  * 照做时，工单时间与回复口径就会分叉。
  */
-function findActiveWorkOrderGuard(
-  toolCalls: AgentToolCall[],
-): { workOrderId?: number; interviewTime?: string } | null {
+function findActiveWorkOrderGuard(toolCalls: AgentToolCall[]): {
+  workOrderId?: number;
+  interviewTime?: string;
+  interviewWindow?: { start: number; end: number };
+} | null {
   for (const call of [...toolCalls].reverse()) {
     if (call.toolName !== 'duliday_interview_precheck' || call.status === 'error') continue;
     const guard = asRecord(asRecord(call.result)?.duplicateBookingGuard);
@@ -409,9 +411,23 @@ function findActiveWorkOrderGuard(
     return {
       workOrderId: typeof guard.workOrderId === 'number' ? guard.workOrderId : undefined,
       interviewTime: typeof guard.interviewTime === 'string' ? guard.interviewTime : undefined,
+      interviewWindow: parseInterviewWindow(guard.interviewWindow),
     };
   }
   return null;
+}
+
+/**
+ * precheck 回执里工单所在的面试窗口（`13:30-16:30`）→ 分钟区间。
+ * 窗口内到达不算改约（[当前预约信息] 预约处理规则同口径），确认窗口内的钟点不是改了工单时间。
+ */
+function parseInterviewWindow(value: unknown): { start: number; end: number } | undefined {
+  if (typeof value !== 'string') return undefined;
+  const match = /^(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})$/u.exec(value.trim());
+  if (!match) return undefined;
+  const start = Number(match[1]) * 60 + Number(match[2]);
+  const end = Number(match[3]) * 60 + Number(match[4]);
+  return start < end ? { start, end } : undefined;
 }
 
 /** 本轮是否成功改约。 */
@@ -465,10 +481,19 @@ export function detectBookingReceiptMismatch(
     const workOrderMinutes = extractWorkOrderMinutes(activeGuard.interviewTime);
     const confirmedMinutes = extractConfirmedMinutes(replyText);
     // 只在回复确认的钟点与工单**不同**时判——复述工单既有时间是如实陈述，必须放行。
+    // 工单所在面试窗口内的到达时刻不算改约，只有窗口外的钟点才是未落单的新时间。
+    // 不带上下午的"2点多"按 12 小时制歧义处理：任一读法落在窗口内即视为窗口内。
+    const window = activeGuard.interviewWindow;
+    const insideWindow = (minutes: number): boolean =>
+      window !== undefined &&
+      [minutes, ...(minutes < 12 * 60 ? [minutes + 12 * 60] : [])].some(
+        (value) => value >= window.start && value <= window.end,
+      );
+    const outsideWindow = confirmedMinutes.filter((minutes) => !insideWindow(minutes));
     const confirmsDifferentTime =
       workOrderMinutes === null
-        ? confirmedMinutes.length > 0
-        : confirmedMinutes.some((minutes) => minutes !== workOrderMinutes);
+        ? outsideWindow.length > 0
+        : outsideWindow.some((minutes) => minutes !== workOrderMinutes);
     if (confirmsDifferentTime) {
       return createOutputRuleFinding(
         'interview_time_change_unconfirmed',

@@ -1,5 +1,6 @@
 import {
   buildReconcileAnchorKey,
+  findSnapshotBookingForJob,
   findSnapshotDuplicate,
   findCrossAccountDuplicate,
   isSnapshotEligibleWorkOrder,
@@ -190,6 +191,20 @@ describe('booking-snapshot.util', () => {
     it('岗位与品牌都不同 → 不命中；目标无品牌时只按岗位', () => {
       expect(findSnapshotDuplicate(entries, { jobId: 300, brandName: '麦当劳' })).toBeUndefined();
       expect(findSnapshotDuplicate(entries, { jobId: 300 })).toBeUndefined();
+    });
+  });
+
+  describe('findSnapshotBookingForJob（岗位查不到时的本人在途预约）', () => {
+    const today = '2026-09-24';
+    it('同岗位、本人校验未否决、面试日未过才命中；不按品牌兜底', () => {
+      const entries = [
+        { workOrderId: 1, jobId: 100, ownedByCandidate: false, interviewTime: '2026-09-24 13:30' },
+        { workOrderId: 2, jobId: 100, ownedByCandidate: true, interviewTime: '2026-09-20 13:30' },
+        { workOrderId: 3, jobId: 200, ownedByCandidate: true, interviewTime: '2026-09-25 13:30' },
+        { workOrderId: 4, jobId: 100, interviewTime: '2026-09-24 13:30' },
+      ];
+      expect(findSnapshotBookingForJob(entries, 100, today)?.workOrderId).toBe(4);
+      expect(findSnapshotBookingForJob(entries.slice(0, 3), 100, today)).toBeUndefined();
     });
   });
 });

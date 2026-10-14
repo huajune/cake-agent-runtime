@@ -201,10 +201,16 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     entrypoint: 'detectUnsupportedStoreStatusSpeculation',
     action: GUARDRAIL_ACTION.REPAIR,
     priority: GUARDRAIL_PRIORITY.P1,
-    description: '明确无匹配工具事实被扩写为招满、关店、搬迁或装修。',
-    riskGoal: '防止把无匹配查询结果升级成门店运营结论。',
-    exogenousSignal: 'duliday_job_list 明确 noMatchScript 与运营状态断言。',
-    residualRisk: '没有明确 no-match 工具事实时不运行。',
+    description:
+      '明确无匹配或岗位详情查不到的工具事实，被扩写为招满、名额已满、满员、关店、搬迁或装修。',
+    riskGoal:
+      '防止把无匹配查询或岗位详情暂缺升级成门店运营结论；已有预约的岗位查不到详情时尤其不能据此劝退。',
+    exogenousSignal:
+      'duliday_job_list 明确 noMatchScript；duliday_interview_precheck 的 job_not_found / booked_job_unverifiable 回执；' +
+      '本轮 duliday_interview_booking 被拒且拒绝原因为名额已满/上限时豁免。',
+    residualRisk:
+      '没有上述工具事实时不运行；「排不上」是 job_not_found 回执允许的中性口径，不在词表，' +
+      'booked_job_unverifiable 下禁止说排不上由回执指令教侧承担。',
     verification: V,
   },
   {
@@ -241,10 +247,13 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     feedbackSource: 'per_hit',
     action: GUARDRAIL_ACTION.REPAIR,
     priority: GUARDRAIL_PRIORITY.P0,
-    description: '未成功改约却确认了与在途工单不同的钟点。',
+    description: '未成功改约却确认了与在途工单不同、且不在工单所在面试窗口内的钟点。',
     riskGoal: '避免候选人按未落单时间到店。',
-    exogenousSignal: 'duplicateBookingGuard 与 modify 工具回执。',
-    residualRisk: '模糊相对时间不做确定性推断。',
+    exogenousSignal:
+      'duplicateBookingGuard（含工单所在面试窗口 interviewWindow）与 modify 工具回执。',
+    residualRisk:
+      '模糊相对时间不做确定性推断；窗口内到达不算改约（与 [当前预约信息] 预约处理规则同口径），' +
+      '不带上下午的钟点任一读法落在窗口内即放行；回执没有窗口时按工单开始时刻对账。',
     verification: V,
   },
   {

@@ -137,6 +137,82 @@ describe('HardRulesService — 封闭确定性输出规则', () => {
     ).toContain('unsupported_store_status_speculation');
   });
 
+  /**
+   * 生产 trace batch_6ab08de9ce406a6aee94a9cc_1790221554581（2026-09-24）：precheck 查不到岗位详情后，
+   * 下一轮回复编出"招聘名额已经满了"——旧词表只认"招满"，名额/满员形态漏判，且只看 job_list。
+   */
+  describe('precheck 查不到岗位详情时的名额/招满猜测', () => {
+    const precheckCall = (errorType: string) => ({
+      toolName: 'duliday_interview_precheck',
+      status: 'error',
+      result: { success: false, errorType, _replyInstruction: '...' },
+    });
+
+    it.each([
+      ['招聘名额已经满了', 'precheck.job_not_found'],
+      ['这家名额满了，我给你看看别的', 'precheck.job_not_found'],
+      ['这家名额都满了', 'precheck.booked_job_unverifiable'],
+      ['门店那边已经满员了', 'precheck.booked_job_unverifiable'],
+      ['应该已经招满了', 'precheck.booked_job_unverifiable'],
+    ])('「%s」+ %s → repair', (reply, errorType) => {
+      const hit = check(reply, { toolCalls: [precheckCall(errorType)] }).contradictions.find(
+        (item) => item.ruleId === 'unsupported_store_status_speculation',
+      );
+      expect(hit?.action).toBe('repair');
+    });
+
+    it('名额词形也覆盖 job_list 无匹配回执', () => {
+      expect(
+        ids('名额已经满了', {
+          toolCalls: [
+            {
+              toolName: 'duliday_job_list',
+              status: 'empty',
+              result: {
+                errorType: 'job_list.no_results',
+                noMatchScript: { nextAction: 'wait_for_inventory' },
+              },
+            },
+          ],
+        }),
+      ).toContain('unsupported_store_status_speculation');
+    });
+
+    it('本轮报名接口真实回了名额上限 → 是工具事实，豁免', () => {
+      expect(
+        ids('这家名额已经满了，我帮你换一家', {
+          toolCalls: [
+            precheckCall('precheck.job_not_found'),
+            {
+              toolName: 'duliday_interview_booking',
+              status: 'error',
+              result: {
+                success: false,
+                errorType: 'booking.rejected',
+                apiMessage: '该岗位报名人数已达上限',
+              },
+            },
+          ],
+        }),
+      ).not.toContain('unsupported_store_status_speculation');
+    });
+
+    it('没有查不到/无匹配工具事实、或只说中性的"排不上"时不判', () => {
+      expect(ids('招聘名额已经满了')).not.toContain('unsupported_store_status_speculation');
+      expect(
+        ids('名额已经满了', {
+          toolCalls: [{ toolName: 'duliday_interview_precheck', status: 'ok', result: {} }],
+        }),
+      ).not.toContain('unsupported_store_status_speculation');
+      expect(
+        ids('这家目前排不上了', { toolCalls: [precheckCall('precheck.job_not_found')] }),
+      ).not.toContain('unsupported_store_status_speculation');
+      expect(
+        ids('名额不会满的，放心', { toolCalls: [precheckCall('precheck.job_not_found')] }),
+      ).not.toContain('unsupported_store_status_speculation');
+    });
+  });
+
   it('预约成功回执必须播报已确认日期', () => {
     expect(
       ids('资料齐了，这就帮你提交预约', {
