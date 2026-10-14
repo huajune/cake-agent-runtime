@@ -1,5 +1,5 @@
 import { normalizeCityName as normalizeCity } from '@resolution/geo';
-import { scanGeoSignalsFromText } from '@resolution/geo';
+import { mentionsPlaceNameStandalone, scanGeoSignalsFromText } from '@resolution/geo';
 import type { FinalizedVisualFactSheet } from '@resolution/signal/visual';
 import { mapLocationCityCandidates } from '@resolution/turn-hints/admission';
 
@@ -81,9 +81,10 @@ export function evaluateInviteCityGate(input: InviteCityGateInput): InviteCityGa
     return { decision: 'allow', matchedBy: 'session_fact' };
   }
 
-  // 城市名至少 2 字才做文本包含判定，避免单字误命中
+  // 城市名至少 2 字才做文本包含判定，避免单字误命中；「上海村」「上海路」里的城市字样
+  // 是村名/路名的一部分，不算候选人提到了该城市。
   if (requested.length >= 2) {
-    const mentioned = input.userTexts.some((text) => text.includes(requested));
+    const mentioned = input.userTexts.some((text) => mentionsPlaceNameStandalone(text, requested));
     if (mentioned) {
       return { decision: 'allow', matchedBy: 'user_text' };
     }

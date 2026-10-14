@@ -158,6 +158,27 @@ describe('scanGeoSignalsFromText（三轮扫描编排）', () => {
       expect(scanGeoSignalsFromText('上海路').city).toBeNull();
     });
 
+    it('周度 case 10/8：佛山「南海桂城上海村」里的「上海」是村名，不得推导出上海', () => {
+      const scan = scanGeoSignalsFromText('南海桂城上海村');
+      expect(scan.city).toBeNull();
+      expect(scan.districts).toEqual([]);
+    });
+
+    it('聚落通名（村/庄/屯/寨/社区）前的城市/区县字样一律不算行政区', () => {
+      for (const text of ['上海村', '朝阳村', '新建村', '北京庄', '海淀屯', '宝山寨', '浦东社区']) {
+        const scan = scanGeoSignalsFromText(text);
+        expect({ text, city: scan.city }).toEqual({ text, city: null });
+      }
+    });
+
+    it('聚落通名只拒绝被它跟随的那一个命中，真实城市/区县与地标照常推导', () => {
+      expect(scanGeoSignalsFromText('佛山南海桂城上海村').city?.value).toBe('佛山');
+      expect(scanGeoSignalsFromText('嘉定马陆村').city?.value).toBe('上海');
+      expect(scanGeoSignalsFromText('上海市松江区新浜村').city?.value).toBe('上海');
+      // 「里」不是通名：方位词「松江里面」仍是松江
+      expect(scanGeoSignalsFromText('松江里面有岗吗').city?.value).toBe('上海');
+    });
+
     it('行政后缀放行：区/街道 不是通名，裸词与"我在XX"召回不受影响', () => {
       // "街道"必须放行（街(?!道)），否则青浦街道会被误拒
       expect(scanGeoSignalsFromText('我在青浦街道').city).toEqual({
