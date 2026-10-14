@@ -597,6 +597,16 @@ describe('学生身份逐岗结论（resolveHardConstraintsPromptView）', () =>
     });
 
   // 生产复现（2026-10-09 batch_6ac85778…）：两家仅限社会人士的肯德基已展示，候选人本轮回「学生」。
+  it('jobName 已是「品牌-门店-工种」全称时标签不重复拼品牌与门店', () => {
+    const fullName = {
+      ...kfc(910001, 'social_only'),
+      storeName: '狮山大学城店',
+      jobName: '肯德基-狮山大学城店-服务员-兼职',
+    };
+    const view = resolve({ turnHints: studentHint, presentedJobs: [fullName] });
+    expect(view.studentJobVerdicts?.[0]?.label).toBe('肯德基-狮山大学城店-服务员-兼职');
+  });
+
   it('本轮高置信「是学生」线索 → 焦点在前、按 jobId 去重的逐岗结论', () => {
     const view = resolve({
       turnHints: studentHint,

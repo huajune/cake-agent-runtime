@@ -505,13 +505,25 @@ function buildStudentJobVerdicts(
   }
   return Array.from(byJobId.values()).map(({ job, isFocus }) => ({
     jobId: job.jobId,
-    label:
-      [job.brandName, job.storeName, sanitizeJobDisplayText(job.jobName)]
-        .filter((part): part is string => Boolean(part && part.trim()))
-        .join('-') || '未命名岗位',
+    label: buildStudentVerdictJobLabel(job),
     isFocus,
     eligibility: classifyStudentEligibility(job.studentTier),
   }));
+}
+
+/**
+ * 海绵 jobName 通常已是「品牌-门店-工种-用工形式」全称：已含品牌名时直接用，避免拼出
+ * 「肯德基-狮山大学城店-肯德基-狮山大学城店-服务员」；只有工种短名时才补品牌与门店。
+ */
+function buildStudentVerdictJobLabel(job: RecommendedJobSummary): string {
+  const jobName = sanitizeJobDisplayText(job.jobName);
+  const brandName = job.brandName?.trim();
+  if (jobName && (!brandName || jobName.includes(brandName))) return jobName;
+  return (
+    [brandName, job.storeName?.trim(), jobName]
+      .filter((part): part is string => Boolean(part))
+      .join('-') || '未命名岗位'
+  );
 }
 
 function selectClaims(
