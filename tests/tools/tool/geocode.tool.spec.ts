@@ -629,9 +629,7 @@ describe('geocode tool', () => {
       };
 
       it('地址写明另一城市的区/街镇时按地址采纳，不纠偏到锚点城市', async () => {
-        (mockGeocodingService.searchCandidates as jest.Mock).mockResolvedValueOnce([
-          foshanVillage,
-        ]);
+        (mockGeocodingService.searchCandidates as jest.Mock).mockResolvedValueOnce([foshanVillage]);
         const { ctx, execute: anchoredExecute } = buildAnchoredTool();
 
         const result = (await anchoredExecute({
@@ -685,10 +683,7 @@ describe('geocode tool', () => {
           ]);
         const { execute: anchoredExecute } = buildAnchoredTool();
 
-        const result = (await anchoredExecute({ address: '中山公园' })) as Record<
-          string,
-          unknown
-        >;
+        const result = (await anchoredExecute({ address: '中山公园' })) as Record<string, unknown>;
 
         expect(result.resolution).toBe('unique');
         expect(result.result).toMatchObject({ city: '上海市', district: '长宁区' });

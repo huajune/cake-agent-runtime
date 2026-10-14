@@ -52,9 +52,9 @@ describe('evaluateGeocodeAddressProvenance', () => {
   });
 
   it('模型把候选人说法规范成标准 POI 名时按开头 2 字承接', () => {
-    expect(
-      evaluate({ address: '方圆LIVE', candidateTexts: ['我原以为在方圆里面'] }),
-    ).toMatchObject({ verdict: 'attested', matchedBy: 'candidate_text' });
+    expect(evaluate({ address: '方圆LIVE', candidateTexts: ['我原以为在方圆里面'] })).toMatchObject(
+      { verdict: 'attested', matchedBy: 'candidate_text' },
+    );
   });
 
   it('真人招募经理消息、工具结果门店地址都算外生出处', () => {
