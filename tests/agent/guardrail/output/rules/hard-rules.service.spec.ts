@@ -44,6 +44,7 @@ describe('HardRulesService — 封闭确定性输出规则', () => {
       'requested_brand_mismatch',
       'settlement_cycle_mismatch',
       'proactive_insurance_policy_mention',
+      'part_time_salary_display_mismatch',
     ]);
   });
 

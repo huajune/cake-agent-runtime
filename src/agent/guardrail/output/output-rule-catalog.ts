@@ -347,13 +347,17 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     action: GUARDRAIL_ACTION.REPLAN,
     priority: GUARDRAIL_PRIORITY.P1,
     description:
-      '零查岗工具轮报出会话内（历史回复与会话记忆岗位摘要）从未出现过的岗位薪资/距离/班次数字。',
+      '本轮没有该岗位的查岗结果时，报出会话内（Agent 历史回复与会话记忆岗位摘要）从未出现过的岗位薪资/距离/班次数字。',
     riskGoal:
-      '岗位量化事实必须有来源（本轮工具、会话记忆里的岗位摘要或自己说过的话），杜绝凭空编门店薪资。',
+      '岗位量化事实必须有来源（本轮查岗结果、会话记忆里的岗位摘要或自己说过的话），杜绝凭空编门店薪资，' +
+      '也不得照抄真人招聘经理消息里的薪资。',
     exogenousSignal:
-      '本轮查岗工具存在性 + 会话历史助手/候选人消息与会话记忆岗位摘要（已展示岗位/上轮候选池/焦点岗位）是否出现过同一数字。',
+      '本轮成功的 duliday_job_list / duliday_interview_precheck（取消/改约/报名/定位不算证据；能认出回复岗位时按 jobId 绑定）+ ' +
+      'Agent 历史回复/候选人消息与会话记忆岗位摘要（已展示岗位/上轮候选池/焦点岗位）是否出现过同一数字；' +
+      '真人招聘经理消息只为距离/时段作证，不为薪资作证。数字按 job-fact-signals 规范形对账（月薪N ↔ N元/月）。',
     residualRisk:
-      '同一事实换表述（"下午5点到11点"↔"17:00-23:00"）仍会命中；无会话身份（advisory/debug）时读不到记忆摘要，退回只按历史回复对账；回指历史的句子豁免。',
+      '同一事实换表述（"下午5点到11点"↔"17:00-23:00"）仍会命中；无会话身份（advisory/debug）时读不到记忆摘要，退回只按历史回复对账；' +
+      '认不出回复岗位或本轮证据覆盖面不确定时，有成功查岗即放行；回指历史的句子豁免。',
     verification: 'tests/agent/guardrail/output/rules/job-fact-reconciliation.rule.spec.ts',
     feedbackToGenerator:
       '上一版回复里的岗位薪资/距离/班次数字既不是本轮工具返回的，会话记忆和历史回复里也从未出现过。' +
@@ -428,6 +432,23 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     exogenousSignal: '候选人本轮 userMessage 与近几轮消息（recentUserTexts）是否主动询问保险。',
     residualRisk: '任职要求豁免（第二职业社保证明等资格预筛）会放行岗位硬性要求转述。',
     verification: 'tests/agent/guardrail/output/rules/hard-rules.restored-sentinels.spec.ts',
+  },
+  {
+    id: 'part_time_salary_display_mismatch',
+    source: 'agent/guardrail/output/rules/part-time-salary-display.rule.ts',
+    entrypoint: 'detectPartTimeSalaryDisplayMismatch',
+    // 新规则按发牌纪律 observe 入场：先累计判例看多岗混排/口语月收入的误报占比，再议升档。
+    action: GUARDRAIL_ACTION.OBSERVE,
+    priority: GUARDRAIL_PRIORITY.P1,
+    description: '回复绑定的兼职岗标准展示是时薪，却按月薪金额（月薪N / N元/月）介绍。',
+    riskGoal:
+      '兼职按小时计薪，报综合月薪会让候选人按月薪预期入职、结算时对不上（生产 trace …_1790233240971）。',
+    exogenousSignal:
+      '本轮查岗/预检岗位与会话记忆岗位的 laborForm + salaryDesc（卡片/摘要同源主数）；回复点名岗位或入口焦点岗位。',
+    residualRisk:
+      '只认规整为 N元/月 的金额，"一个月大概三千"等无单位口语不判；多岗混排时同回复里非兼职岗自己的月薪豁免；' +
+      '认不出回复绑定的岗位时不判。',
+    verification: 'tests/agent/guardrail/output/rules/part-time-salary-display.rule.spec.ts',
   },
 ] as const satisfies readonly OutputRuleCatalogSeed[];
 

@@ -175,4 +175,149 @@ describe('job_fact_without_provenance（零工具轮的无来源岗位数字）'
   it('没有量化事实不判', () => {
     expect(detectJobFactWithoutProvenance('好的，你方便的时候告诉我', [], history)).toBeNull();
   });
+
+  /**
+   * 生产 trace batch_6ab4b2cdce406a6aee874892_1790233240971（2026-09-24）：本轮只调了两次
+   * duliday_cancel_work_order，随后推荐塔克贝尔值班经理「月薪3000-4000，时薪25.5起」；
+   * "3000-4000元/月"只出现在真人招聘经理（MOBILE_PUSH）此前的消息里。
+   */
+  describe('工具证据只认成功查岗；真人经理薪资不作证；单位前置薪资可识别', () => {
+    const cancelCall = {
+      toolName: 'duliday_cancel_work_order',
+      args: { workOrderId: 1 },
+      status: 'ok',
+      result: { success: true },
+    } as never;
+    const tacoJob: RecommendedJobSummary = {
+      jobId: 530001,
+      brandName: '塔克贝尔',
+      jobName: '值班经理',
+      storeName: null,
+      cityName: '上海市',
+      regionName: null,
+      laborForm: '兼职',
+      salaryDesc: '25.5元/时',
+      jobCategoryName: '餐饮/值班经理',
+    };
+    const reply =
+      '还有一个塔克贝尔值班经理，月薪3000-4000，时薪25.5起，做满一定小时数还能升档到27.5、30.5。';
+    const humanRecruiterTexts = ['这个岗位综合下来3000-4000元/月，离你3.2km'];
+
+    it('生产原样：只调取消 + 薪资只来自真人经理消息 → replan，单位前置月薪被识别', () => {
+      const hit = detectJobFactWithoutProvenance(
+        reply,
+        [cancelCall, cancelCall],
+        formatJobFactProvenanceTexts([tacoJob]),
+        { humanRecruiterTexts, sessionJobs: [tacoJob] },
+      );
+      expect(hit?.ruleId).toBe('job_fact_without_provenance');
+      expect(hit?.action).toBe('replan');
+      expect(hit?.label).toContain('月薪3000-4000');
+      // 时薪 25.5 在会话记忆 salaryDesc 里（重推已展示岗位可复用摘要薪资，裁定 #3）
+      expect(hit?.label).not.toContain('时薪25.5');
+    });
+
+    it('取消/改约/报名/定位不再让检查整体失效；job_query_claim 仍按原工具集放行', () => {
+      for (const toolName of [
+        'duliday_cancel_work_order',
+        'duliday_modify_interview_time',
+        'duliday_interview_booking',
+        'geocode',
+      ]) {
+        const call = { toolName, args: {}, status: 'ok', result: { success: true } } as never;
+        expect(
+          detectJobFactWithoutProvenance('长风大悦城 M Stand，22-28 元/时', [call], history)
+            ?.ruleId,
+        ).toBe('job_fact_without_provenance');
+        expect(detectJobQueryClaimWithoutQuery('我帮你查了下工单', [call])).toBeNull();
+      }
+    });
+
+    it('查岗/预检失败或无匹配的回执不是证据', () => {
+      const failed = [
+        {
+          toolName: 'duliday_job_list',
+          args: {},
+          status: 'error',
+          result: { success: false, errorType: 'job_list.fetch_failed' },
+        },
+        {
+          toolName: 'duliday_job_list',
+          args: {},
+          status: 'empty',
+          result: { errorType: 'job_list.no_results', noMatchScript: {} },
+        },
+        {
+          toolName: 'duliday_interview_precheck',
+          args: { jobId: 100 },
+          status: 'error',
+          result: { success: false, errorType: 'precheck.job_not_found' },
+        },
+      ] as never[];
+      for (const call of failed) {
+        expect(
+          detectJobFactWithoutProvenance('长风大悦城 M Stand，22-28 元/时', [call], history)
+            ?.ruleId,
+        ).toBe('job_fact_without_provenance');
+      }
+    });
+
+    it('真人经理消息只为距离/时段作证，不为薪资作证', () => {
+      expect(
+        detectJobFactWithoutProvenance('那家离你3.2km', [], [], { humanRecruiterTexts }),
+      ).toBeNull();
+      expect(
+        detectJobFactWithoutProvenance('综合3000-4000元/月', [], [], { humanRecruiterTexts })
+          ?.label,
+      ).toContain('3000-4000元/月');
+    });
+
+    it('会话记忆岗位摘要的月薪与单位前置写法视为同一事实（月薪N ↔ N元/月）', () => {
+      expect(
+        detectJobFactWithoutProvenance(
+          '这个全职岗月薪5000-7000',
+          [],
+          formatJobFactProvenanceTexts([
+            { ...tacoJob, laborForm: '全职', salaryDesc: '5000-7000 元/月' },
+          ]),
+        ),
+      ).toBeNull();
+    });
+
+    it('证据按岗位绑定：本轮只预检了别的岗位，回复介绍的岗位薪资仍需出处', () => {
+      const precheckOther = {
+        toolName: 'duliday_interview_precheck',
+        args: { jobId: 999 },
+        status: 'ok',
+        result: { success: true, nextAction: 'collect_fields' },
+      } as never;
+      const otherJob = { ...tacoJob, jobId: 999, brandName: '肯德基', jobName: '服务员' };
+      expect(
+        detectJobFactWithoutProvenance(reply, [precheckOther], [], {
+          humanRecruiterTexts,
+          sessionJobs: [tacoJob, otherJob],
+          turnJobs: [otherJob],
+        })?.ruleId,
+      ).toBe('job_fact_without_provenance');
+      // 证据覆盖回复介绍的岗位 → 放行
+      expect(
+        detectJobFactWithoutProvenance(
+          reply,
+          [{ ...(precheckOther as object), args: { jobId: 530001 } } as never],
+          [],
+          { sessionJobs: [tacoJob], turnJobs: [tacoJob] },
+        ),
+      ).toBeNull();
+      // 认不出回复在介绍哪个岗位，或证据覆盖面不确定（按位置查岗且无本轮账本）→ 有证据即放行
+      expect(
+        detectJobFactWithoutProvenance('薪资 22-28 元/时', [precheckOther], [], {
+          sessionJobs: [tacoJob, otherJob],
+          turnJobs: [otherJob],
+        }),
+      ).toBeNull();
+      expect(
+        detectJobFactWithoutProvenance(reply, [jobListCall], [], { sessionJobs: [tacoJob] }),
+      ).toBeNull();
+    });
+  });
 });

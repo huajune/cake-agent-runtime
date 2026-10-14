@@ -369,8 +369,17 @@ DB 内嵌话术通过精确匹配旧值的配置迁移清理，避免覆盖运�
   - **来源/加入**：2026-08-06 运营口径 + 海绵 `cooperationMode` 字段。
   - **2026-09-22 修订**（PRD `36185ecb1^:docs/todo/prd-ops-followup-2026-09.md` §R4 J1；提交 b2776649e）：合作模式按海绵固定枚举「业务流程外包(BPO)」「招聘流程外包(RPO)」判断，不做模糊匹配，未知值不出结论并告警。BPO：独立客发薪、签灵活用工协议；RPO：客户（品牌方）发薪、与客户签合同，**两种模式均可直接答**（旧「RPO 必须转人工」作废）；两种都不得升格成「劳动合同」。渲染只输出 BPO/RPO 归一化标记，禁对候选人提 BPO/RPO/合作模式/外包。居所：`src/tools/job-list/render.util.ts` `renderCooperationModeLines`（结论翻译）+ 手册本条（问答口径）。长期。
 
-- `T12` — 月薪岗位不折算时薪；每日工时按排班字段回答。
+- `T12` — 月薪岗位不折算时薪；兼职时薪岗不报月薪；每日工时按排班字段回答。
   - **来源/加入**：2026-08-06 运营口径。
+  - **2026-10-14 修订**（用户裁定 #4；生产 trace `batch_6ab4b2cdce406a6aee874892_1790233240971`，兼职值班经理被介绍成
+    「月薪3000-4000」）：兼职岗薪资主数是时薪（卡片薪资行以"元/时"开头）时，候选人问"一个月多少/月薪多少"也只按
+    时薪与阶梯档位说明，不报详情块里的综合薪资月区间、不自行折算月收入。与月薪岗不折算时薪对称，同住本条（手册
+    「按月计薪岗位不折算时薪…」一条）；推荐时的薪资行取值由 PR #1322 卡片定型承担，job_list description 不复写。
+    拦侧配对：`part_time_salary_display_mismatch`（observe）。长期。
+  - **配套（渲染层，非 prompt 规则，2026-10-14）**：卡片薪资行、更远门店摘要行与会话记忆 `salaryDesc` 的薪资主数统一由
+    `src/tools/job-list/salary-display.util.ts` `resolveSalaryHeadline` 产出（此前两处各写一份：摘要取第一条方案、
+    单位缺失时卡片补"元/月"/"元/时"而摘要补"元"）。口径不变：只取正式方案，兼职基础时薪优先，全职综合区间优先；
+    单位缺失只写"元"。
 
 - `T13` — 发薪方式的合规硬边界是仅使用本人银行卡；候选人不能接受时暂停推进。
   - **来源**：badcase `gg4x4eo7`、`1ujkxxm6`。
@@ -610,10 +619,10 @@ FC 编号保留为历史别名：
 - 日期契约：仅实际指定面试时间时产出 `_confirmedInterviewTimeHuman`；等通知岗位走 `_waitNoticeReplyGuide`。`booking_receipt_mismatch` 跳过明确 `requestInfo.interviewTime=null` 的历史回执，避免强制模型复读内部说明。
 - 本项限制报名工具回执及其修复证据。改约/取消工具当前仍要求真实工单引用，已有预约上下文的入参解析契约不在本次变更范围。
 
-## 七、守卫 hard-rules（拦侧，24 ruleId）
+## 七、守卫 hard-rules（拦侧，25 ruleId）
 
 本节是 Prompt 教侧与 Output 拦侧的**配对索引**，不是把 hard-rules 算进 Prompt 执行器。
-完整防线有 Input / Prompt / Tool / Output 四个作用位：本台账治理 Prompt，下面 24 个 ruleId
+完整防线有 Input / Prompt / Tool / Output 四个作用位：本台账治理 Prompt，下面 25 个 ruleId
 由 `OutputGuardrailService` 执行；教/拦可以配对，但权限与唯一权威各自独立。
 
 当前执行档为 repair / replan；旧记录里的 revise / block 保留历史取值，旧 block 的严格拒发约束
@@ -656,10 +665,26 @@ badcase 5j1mbgi8 / kwxk74gn / kb629uko / wvr7pejq；教侧配对手册"岗位事
 - `interview_time_change_unconfirmed`（repair 不变）按 precheck 回执 `duplicateBookingGuard.interviewWindow`
   豁免窗口内钟点（不带上下午的钟点任一读法落窗口内即放行），与 BK2 窗口内到达规则同口径；回执无窗口时按工单开始时刻对账不变。
 
-observe 哨兵（只落档不拦截，5 条）：`requested_brand_mismatch`、`settlement_cycle_mismatch`、
+observe 哨兵（只落档不拦截，6 条）：`requested_brand_mismatch`、`settlement_cycle_mismatch`、
 `proactive_insurance_policy_mention`、`booking_done_claim_without_submission`、
-`cancel_done_claim_without_submission`。其中预约完成态哨兵接替 `booking_promise_without_booking`
+`cancel_done_claim_without_submission`、`part_time_salary_display_mismatch`。其中预约完成态哨兵接替 `booking_promise_without_booking`
 的完成时态缺口；将来时口径经生产抽样证实几乎全命中合法收资话术，不恢复）。
+
+2026-10-14 兼职薪资口径批（生产 trace `batch_6ab4b2cdce406a6aee874892_1790233240971`：本轮只调两次
+`duliday_cancel_work_order`，随后推荐兼职岗塔克贝尔值班经理「月薪3000-4000，时薪25.5起」，月薪数字只出现在
+真人招聘经理 MOBILE_PUSH 消息里；旧口径下取消/改约/报名/定位任一调用都会让整条出处对账失效）：
+
+- `job_fact_without_provenance`（replan 不变）：证据工具与 `job_query_claim_without_query` 拆开——后者仍认
+  查岗/预检/定位/工单三件套（"帮你查了下工单"是真查询）；前者只认**成功**的 `duliday_job_list` /
+  `duliday_interview_precheck`（带 errorType 的失败/无匹配回执不算）。能从回复认出介绍的岗位、且本轮证据
+  （precheck `jobId`、job_list `jobIdList` 或回合账本 fetchedJobs/attestedFocusJob）覆盖面确定时按 jobId 绑定，
+  证据只覆盖同岗位；认不出或覆盖面不确定时有证据即放行（不扩大误拦面）。
+  真人招聘经理消息（`isHumanAgentTextMessage`）只为距离/时段作证，**不为 Agent 报出的薪资作证**（用户裁定 #2）；
+  会话记忆岗位摘要 `salaryDesc` 仍是合法出处（裁定 #3，重推已展示岗位可复用）。量化事实正则（与 repair 回归闸共用
+  `job-fact-signals.util`）补单位前置写法「月薪/时薪/日薪/底薪 + N(-M)」，与「N元/月|时|天」规整为同一规范形对账。
+- `part_time_salary_display_mismatch`（**新增 observe**，P1）：回复绑定的兼职岗（点名岗位，或没点名时取入口焦点岗位）
+  标准展示是时薪（`salaryDesc` 规整后含 元/时），回复却出现规整为 `N元/月` 的金额；同回复里非兼职岗自己的月薪豁免，
+  "一个月大概三千"等无单位口语不判。教侧配对：手册 T12（2026-10-14 修订）。按发牌纪律 observe 入场，累计判例再议升档。
 
 `dangling_reply_promise` 于 2026-09-07 按 catalog 自带退场条件（累计两周精确率 <70%）删除：
 12 天 42 次命中中 35 次在下一轮已兑现承诺，精确率 16.7%。单轮谓词无法区分"承诺后空等"与

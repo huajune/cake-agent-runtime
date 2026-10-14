@@ -104,8 +104,9 @@ describe('Prompt compiler compatibility contract', () => {
     // 2026-09-24：个人账务（银行卡异常/拒绝本人卡/开证明）改走 personal_pay_attendance（final-check + 手册），重锁基线。
     // 2026-10-09：班次按固定全部/组合任选解释，周频独立；统一新约束投影。
     // 2026-10-12：灵活排班按运营规则须接受整个排班区间，手册同步改写，重锁基线。
+    // 2026-10-14：手册 T12 补兼职时薪岗不报月薪（用户裁定 #4），重锁基线。
     expect(createHash('sha256').update(result.systemPrompt).digest('hex')).toBe(
-      'a85339fff5e998a34547e3e483b9eb2d367bd95d48e247ddb335c215a3a61b34',
+      '6d5ffd9c58948252dc7761124c3d08c0bdcde83e57fbb6541ff87fb7b0b34c10',
     );
     expect(result.orderHash).toMatch(/^[a-f0-9]{64}$/);
     // dynamic 的口径是「随回合变化」：身份/红线/阈值/全阶段一览/通道规范只随配置变，
