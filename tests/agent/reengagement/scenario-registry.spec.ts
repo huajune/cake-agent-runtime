@@ -276,6 +276,32 @@ describe('scenario-registry', () => {
         expect(r).toEqual({ stop: true, reason: 'candidate_replied_after_anchor' });
       });
 
+      it('stops when the latest reply was handed to a human (history-only, watermark behind)', () => {
+        // 托管暂停期间的回话只存历史、不推进水位，但有真人接手，按已回话停发
+        const state = baseState({
+          lastCandidateMessageAt: repliedAt,
+          lastProcessedCandidateMessageAt: anchorAt - 1,
+        });
+        const r = shouldStop(scenario, state, anchorAt, {
+          now: repliedAt + GRACE_MS,
+          humanHandledCandidateMessageAt: repliedAt,
+        });
+        expect(r).toEqual({ stop: true, reason: 'candidate_replied_after_anchor' });
+      });
+
+      it('does not stop when a newer reply arrived after the human-handled one', () => {
+        // 转真人的是更早一条；之后又有一条没进管道的回话，仍按无人搭理对待
+        const state = baseState({
+          lastCandidateMessageAt: repliedAt + 60_000,
+          lastProcessedCandidateMessageAt: anchorAt - 1,
+        });
+        const r = shouldStop(scenario, state, anchorAt, {
+          now: repliedAt + 60_000 + GRACE_MS,
+          humanHandledCandidateMessageAt: repliedAt,
+        });
+        expect(r.stop).toBe(false);
+      });
+
       it('keeps the legacy replied-means-stop behavior when the watermark is absent', () => {
         // 部署前旧会话没有水位字段，无法判定是否被处理 → 保持旧行为停发
         const state = baseState({ lastCandidateMessageAt: repliedAt });

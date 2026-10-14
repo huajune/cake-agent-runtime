@@ -22,3 +22,19 @@ export enum FilterReason {
   /** 消息内容为空 */
   EMPTY_CONTENT = 'empty-content',
 }
+
+/**
+ * 候选人消息「只存历史、交给真人处理」的过滤原因（落 chat_messages.history_only_reason）。
+ * 这些消息按设计不进 Agent、没有 message_processing_records，不能当作主链静默丢消息。
+ */
+export const HISTORY_ONLY_REASONS = [
+  FilterReason.USER_PAUSED,
+  FilterReason.CANDIDATE_BLACKLISTED,
+  FilterReason.GROUP_BLACKLISTED,
+] as const;
+
+export type HistoryOnlyReason = (typeof HISTORY_ONLY_REASONS)[number];
+
+export function isHistoryOnlyReason(value: unknown): value is HistoryOnlyReason {
+  return (HISTORY_ONLY_REASONS as readonly unknown[]).includes(value);
+}

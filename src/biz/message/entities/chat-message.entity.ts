@@ -26,4 +26,6 @@ export interface ChatMessageRecord {
   payload?: Record<string, unknown>;
   avatar?: string;
   external_user_id?: string;
+  /** 候选人消息只存历史、未交给 Agent 的原因（FilterReason）；NULL=已交给 Agent 或非候选人消息 */
+  history_only_reason?: string | null;
 }

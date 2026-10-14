@@ -506,6 +506,16 @@ describe('ReengagementAgent', () => {
       messages: [{ role: 'assistant', content: '提醒一下，明天下午两点记得按时参加面试。' }],
       blockReason: 'interview_reminder_already_sent' as const,
     },
+    {
+      // 真人接手期间候选人提问、经理没回，托管恢复后到点的提醒不能压着这个问题发
+      name: 'the candidate asked a question that nobody answered',
+      scenarioCode: 'interview_reminder' as const,
+      messages: [
+        { role: 'assistant', content: '进群备注一下你的门店和名字' },
+        { role: 'user', content: '怎么操作' },
+      ],
+      blockReason: 'candidate_message_unanswered' as const,
+    },
   ])(
     'blocks a post-booking message when $name',
     async ({ scenarioCode, messages, blockReason }) => {
@@ -630,6 +640,78 @@ describe('ReengagementAgent', () => {
         firstOutput: expect.objectContaining({ decision: 'skip', blockReason: 'none' }),
         retryOutput: expect.objectContaining({ decision: 'send', blockReason: 'none' }),
       },
+    });
+  });
+
+  it.each(['interview_reminder', 'post_interview_followup', 'post_interview_onboarding'] as const)(
+    'teaches the unanswered-candidate stop in %s',
+    async (scenarioCode) => {
+      await reengagementAgent.compose({
+        sessionRef,
+        scenario: getScenario(scenarioCode)!,
+        jobData: job(scenarioCode, { workOrderId: 555 }),
+        state: baseState({ terminal: 'booked' }),
+        bookingContext: liveBookingContext(),
+      });
+
+      const system = llm.generateStructured.mock.calls[0][0].system as string;
+      expect(system).toContain('blockReason=candidate_message_unanswered');
+      expect(system).toContain('只是礼貌确认、致谢、收尾或发表情');
+    },
+  );
+
+  it('does not teach the unanswered-candidate stop to pre-booking scenarios', async () => {
+    await reengagementAgent.compose({
+      sessionRef,
+      scenario: getScenario('booking_incomplete')!,
+      jobData: job('booking_incomplete'),
+      state: baseState(),
+    });
+
+    const system = llm.generateStructured.mock.calls[0][0].system as string;
+    expect(system).not.toContain('candidate_message_unanswered');
+  });
+
+  it('retries an unanswered-candidate skip when the conversation already ends with assistant', async () => {
+    memoryRecall.recentMessages = [
+      { role: 'user', content: '面试在几楼呀？' },
+      { role: 'assistant', content: '在3楼，到了跟前台说面试就行' },
+    ];
+    llm.generateStructured
+      .mockResolvedValueOnce({
+        output: {
+          decision: 'skip',
+          blockReason: 'candidate_message_unanswered',
+          message: '',
+          reason: '候选人问过面试楼层',
+        },
+        usage: { inputTokens: 12, outputTokens: 5, totalTokens: 17 },
+      })
+      .mockResolvedValueOnce({
+        output: {
+          decision: 'send',
+          blockReason: 'none',
+          message: '今天下午的面试别忘了哈，按时到就行。',
+          reason: '楼层问题经理已回答，按工单时间提醒',
+        },
+        usage: { inputTokens: 14, outputTokens: 8, totalTokens: 22 },
+      });
+
+    const result = await reengagementAgent.compose({
+      sessionRef,
+      scenario: getScenario('interview_reminder')!,
+      jobData: job('interview_reminder', { workOrderId: 555 }),
+      state: baseState({ terminal: 'booked' }),
+      bookingContext: liveBookingContext(),
+    });
+
+    expect(result.outcome.kind).toBe('reply');
+    expect(llm.generateStructured).toHaveBeenCalledTimes(2);
+    expect(llm.generateStructured.mock.calls[1][0].system).toContain(
+      'candidate_message_unanswered 只适用于近期对话以候选人（user）消息结尾的情况',
+    );
+    expect(result.agentRequest).toMatchObject({
+      outputCorrection: { issue: 'unanswered_without_trailing_candidate_message' },
     });
   });
 

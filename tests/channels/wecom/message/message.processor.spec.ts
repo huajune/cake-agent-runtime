@@ -9,6 +9,8 @@ import { SystemConfigService } from '@biz/hosting-config/services/system-config.
 import { MessageWorkerManagerService } from '@wecom/message/runtime/message-worker-manager.service';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
+import { ChatSessionService } from '@biz/message/services/chat-session.service';
+import { FilterReason } from '@enums/message-filter.enum';
 
 describe('MessageProcessor', () => {
   let processor: MessageProcessor;
@@ -66,6 +68,10 @@ describe('MessageProcessor', () => {
     dropMergedSourceRecords: jest.fn().mockResolvedValue(undefined),
   };
 
+  const mockChatSession = {
+    markHistoryOnly: jest.fn().mockResolvedValue(2),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -79,6 +85,7 @@ describe('MessageProcessor', () => {
         { provide: MessageDeduplicationService, useValue: mockDeduplicationService },
         { provide: MessageTrackingService, useValue: mockMessageTracking },
         { provide: ConfigService, useValue: mockConfigService },
+        { provide: ChatSessionService, useValue: mockChatSession },
       ],
     }).compile();
 
@@ -127,6 +134,22 @@ describe('MessageProcessor', () => {
       expect(mockDeduplicationService.markMessageAsProcessedAsync).toHaveBeenCalledTimes(2);
       expect(mockDeduplicationService.markMessageAsProcessedAsync).toHaveBeenCalledWith('msg-1');
       expect(mockDeduplicationService.markMessageAsProcessedAsync).toHaveBeenCalledWith('msg-2');
+      // 已入库的消息补记「转给真人处理」，复聊待答闸不把它当主链丢消息
+      expect(mockChatSession.markHistoryOnly).toHaveBeenCalledWith(
+        ['msg-1', 'msg-2'],
+        FilterReason.USER_PAUSED,
+      );
+    });
+
+    it('补记只存历史原因失败时仍完成丢弃', async () => {
+      mockUserHostingService.isAnyPaused.mockResolvedValueOnce({ paused: true, matchedId: 'c-1' });
+      mockChatSession.markHistoryOnly.mockRejectedValueOnce(new Error('db down'));
+      const messages = [{ chatId: 'chat-1', messageId: 'msg-1', imContactId: 'c-1' }];
+
+      const dropped = await (processor as any).dropIfHostingPaused('chat-1', messages, 'job-2');
+
+      expect(dropped).toBe(true);
+      expect(mockMessageTracking.dropMergedSourceRecords).toHaveBeenCalledWith(['msg-1'], 'job-2');
     });
 
     it('returns false and does not touch dedup when not paused', async () => {
@@ -138,6 +161,7 @@ describe('MessageProcessor', () => {
       expect(dropped).toBe(false);
       expect(mockDeduplicationService.markMessageAsProcessedAsync).not.toHaveBeenCalled();
       expect(mockMessageTracking.dropMergedSourceRecords).not.toHaveBeenCalled();
+      expect(mockChatSession.markHistoryOnly).not.toHaveBeenCalled();
     });
   });
 
