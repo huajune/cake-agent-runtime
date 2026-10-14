@@ -16,6 +16,7 @@ import { z } from 'zod';
 import { GeocodingService } from '@infra/geocoding/geocoding.service';
 import type { GeocodeCandidate } from '@infra/geocoding/geocoding.types';
 import {
+  candidateAdministrativeAreaEchoedInAddress,
   candidateDistrictMatchesAddress,
   extractDistrictStems,
   groupCandidatesByCity,
@@ -241,14 +242,21 @@ function buildUniqueResult(params: {
   candidate: GeocodeCandidate;
   queryAddress: string;
   extra?: Record<string, unknown>;
+  /**
+   * 跨城纠偏时必须逐字回显的原始地址：置信度再高也要回显，否则先让候选人确认
+   * （「南海桂城上海村」被纠偏成上海「海上海」）。
+   */
+  requireEchoOf?: string;
 }) {
-  const { context, candidate, queryAddress, extra } = params;
-  if (candidate.confidence !== 'high' && !candidateEchoesQuery(candidate, queryAddress)) {
+  const { context, candidate, queryAddress, extra, requireEchoOf } = params;
+  const echoTarget = requireEchoOf ?? queryAddress;
+  const mustEcho = requireEchoOf !== undefined || candidate.confidence !== 'high';
+  if (mustEcho && !candidateEchoesQuery(candidate, echoTarget)) {
     return {
       resolution: 'needs_confirmation' as const,
       candidateLabel: candidate.poiName?.trim() || candidate.formattedAddress,
       _replyInstruction:
-        `“${queryAddress}”与解析结果“${candidate.poiName?.trim() || candidate.formattedAddress}”不是逐字同一地点。` +
+        `“${echoTarget}”与解析结果“${candidate.poiName?.trim() || candidate.formattedAddress}”不是逐字同一地点。` +
         '先把解析到的标准地点回显给候选人确认；确认前禁止采用坐标查岗。候选人确认后再按该标准地点重调 geocode。',
       ...(extra ?? {}),
     };
@@ -356,6 +364,28 @@ function queryMatchesAnchorReference(address: string, anchor: GeocodeLocationAnc
   return commonPrefix >= 2;
 }
 
+/** 候选是否落在锚点城市；锚点没有城市时不构成跨城判断依据，视为同城。 */
+function candidateInAnchorCity(
+  candidate: GeocodeCandidate,
+  anchor: GeocodeLocationAnchor,
+): boolean {
+  const expectedCity = normalizeCityName(anchor.city);
+  if (!expectedCity) return true;
+  return normalizeCityName(candidate.city) === expectedCity;
+}
+
+function buildAmbiguousResult(address: string, byCity: Map<string, GeocodeCandidate>) {
+  const candidatesView = Array.from(byCity.values()).slice(0, 3).map(toAmbiguousView);
+  return {
+    resolution: 'ambiguous' as const,
+    candidates: candidatesView,
+    _replyInstruction:
+      `"${address}" 在多个城市都有同名 POI（${candidatesView.map((c) => c.city).join('、')}）。` +
+      '把候选城市清单列给候选人让其确认，禁止默认选第一个；' +
+      '确认后以 city 参数重新调用本工具。',
+  };
+}
+
 function buildContextualAddress(address: string, anchor: GeocodeLocationAnchor): string {
   const normalizedAddress = normalizeReferenceText(address);
   const parts: string[] = [];
@@ -461,6 +491,33 @@ export function buildGeocodeTool(geocodingService: GeocodingService): ToolBuilde
               });
             }
 
+            // 地址本身写明了另一城市的区县/街镇（「南海桂城上海村」→ 佛山南海区、桂城街道）：
+            // 地址证据比规则锚点更具体，按地址采纳，不纠偏到锚点城市。
+            const administrativelyEchoed = candidates.filter(
+              (candidate) =>
+                !candidateInAnchorCity(candidate, applicableAnchor) &&
+                candidateAdministrativeAreaEchoedInAddress(candidate, trimmedAddress),
+            );
+            if (administrativelyEchoed.length > 0) {
+              const echoedByCity = groupCandidatesByCity(administrativelyEchoed);
+              if (echoedByCity.size === 1) {
+                return buildUniqueResult({
+                  context,
+                  candidate: pickAnchorCandidate(administrativelyEchoed),
+                  queryAddress: trimmedAddress,
+                  extra: {
+                    contextCorrection: {
+                      applied: false,
+                      reason: 'address_administrative_echo',
+                      anchorCity: applicableAnchor.city,
+                      source: applicableAnchor.source,
+                    },
+                  },
+                });
+              }
+              return buildAmbiguousResult(trimmedAddress, echoedByCity);
+            }
+
             const contextualAddress = buildContextualAddress(trimmedAddress, applicableAnchor);
             const contextualCity = applicableAnchor.city?.trim() || normalizedCity;
             const shouldRetry =
@@ -473,10 +530,16 @@ export function buildGeocodeTool(geocodingService: GeocodingService): ToolBuilde
             );
             if (contextualMatches.length > 0) {
               const anchor = pickAnchorCandidate(contextualMatches);
+              // 首查完全不在锚点城市（含首查为空）时，这次纠偏是跨城改判：结果必须逐字回显
+              // 候选人原地址，置信度再高也不能直接宣告已确认城市。
+              const crossCityCorrection = !candidates.some((candidate) =>
+                candidateInAnchorCity(candidate, applicableAnchor),
+              );
               return buildUniqueResult({
                 context,
                 candidate: anchor,
                 queryAddress: contextualAddress,
+                ...(crossCityCorrection ? { requireEchoOf: trimmedAddress } : {}),
                 extra: {
                   contextCorrection: {
                     applied: true,
@@ -546,18 +609,7 @@ export function buildGeocodeTool(geocodingService: GeocodingService): ToolBuilde
           }
 
           // 多城歧义：列出候选，由 Agent 反问
-          const candidatesView = Array.from(uniqueByCity.values()).slice(0, 3).map(toAmbiguousView);
-
-          return {
-            resolution: 'ambiguous' as const,
-            candidates: candidatesView,
-            _replyInstruction:
-              `"${trimmedAddress}" 在多个城市都有同名 POI（${candidatesView
-                .map((c) => c.city)
-                .join('、')}）。` +
-              '把候选城市清单列给候选人让其确认，禁止默认选第一个；' +
-              '确认后以 city 参数重新调用本工具。',
-          };
+          return buildAmbiguousResult(trimmedAddress, uniqueByCity);
         } catch (err) {
           logger.error('地理编码失败', err);
           return buildToolError({

@@ -589,6 +589,113 @@ describe('geocode tool', () => {
       expect(mockGeocodingService.searchCandidates).toHaveBeenCalledWith('静安寺', null);
     });
 
+    describe('跨城纠偏闸（周度 case 10/8：佛山南海「上海村」被纠偏到上海「海上海」）', () => {
+      const shanghaiCurrentUserAnchor: NonNullable<
+        ToolBuildContext['turnInput']['geocodeLocationAnchor']
+      > = {
+        city: '上海',
+        districts: [],
+        source: 'current_user',
+        referenceText: '当前候选人消息：南海桂城上海村',
+        evidence: '当前候选人消息：南海桂城上海村',
+      };
+      const foshanVillage = makeCandidate({
+        city: '佛山市',
+        province: '广东省',
+        district: '南海区',
+        township: '桂城街道',
+        poiName: '上海村',
+        formattedAddress: '广东省佛山市南海区桂城街道上海村',
+        longitude: 113.15,
+        latitude: 23.03,
+      });
+      const haiShanghai = makeCandidate({
+        city: '上海市',
+        district: '杨浦区',
+        township: '',
+        poiName: '海上海',
+        formattedAddress: '上海市杨浦区飞虹路600弄海上海',
+        longitude: 121.508209,
+        latitude: 31.266653,
+        confidence: 'high',
+      });
+      const buildAnchoredTool = () => {
+        const ctx = createToolContext({
+          session: { userId: 'test-user', corpId: 'test-corp', sessionId: 'test-session' },
+          turnInput: { geocodeLocationAnchor: shanghaiCurrentUserAnchor },
+        });
+        const instance = buildGeocodeTool(mockGeocodingService)(ctx);
+        return { ctx, execute: (instance as unknown as { execute: ExecuteFn }).execute };
+      };
+
+      it('地址写明另一城市的区/街镇时按地址采纳，不纠偏到锚点城市', async () => {
+        (mockGeocodingService.searchCandidates as jest.Mock).mockResolvedValueOnce([
+          foshanVillage,
+        ]);
+        const { ctx, execute: anchoredExecute } = buildAnchoredTool();
+
+        const result = (await anchoredExecute({
+          address: '南海桂城上海村',
+          city: '佛山',
+        })) as Record<string, unknown>;
+
+        expect(mockGeocodingService.searchCandidates).toHaveBeenCalledTimes(1);
+        expect(result.resolution).toBe('unique');
+        expect(result.result).toMatchObject({ city: '佛山市', district: '南海区' });
+        expect(result.contextCorrection).toMatchObject({
+          applied: false,
+          reason: 'address_administrative_echo',
+          anchorCity: '上海',
+        });
+        expect(ctx.ledger.geo.anchors.map((anchor) => anchor.city)).toEqual(['佛山市']);
+      });
+
+      it('跨城纠偏结果不回显原地址时先请候选人确认，不宣告已确认城市、不写锚点', async () => {
+        (mockGeocodingService.searchCandidates as jest.Mock)
+          .mockResolvedValueOnce([])
+          .mockResolvedValueOnce([haiShanghai]);
+        const { ctx, execute: anchoredExecute } = buildAnchoredTool();
+
+        const result = (await anchoredExecute({ address: '上海村' })) as Record<string, unknown>;
+
+        expect(result.resolution).toBe('needs_confirmation');
+        expect(result._cityConfirmed).toBeUndefined();
+        expect(ctx.ledger.geo.anchors).toHaveLength(0);
+      });
+
+      it('首查只有异城候选且无行政回显时，纠偏结果回显原地址仍可采纳', async () => {
+        (mockGeocodingService.searchCandidates as jest.Mock)
+          .mockResolvedValueOnce([
+            makeCandidate({
+              city: '北京市',
+              district: '西城区',
+              township: '',
+              poiName: '中山公园',
+              formattedAddress: '北京市西城区中山公园',
+            }),
+          ])
+          .mockResolvedValueOnce([
+            makeCandidate({
+              city: '上海市',
+              district: '长宁区',
+              township: '',
+              poiName: '中山公园',
+              formattedAddress: '上海市长宁区中山公园',
+            }),
+          ]);
+        const { execute: anchoredExecute } = buildAnchoredTool();
+
+        const result = (await anchoredExecute({ address: '中山公园' })) as Record<
+          string,
+          unknown
+        >;
+
+        expect(result.resolution).toBe('unique');
+        expect(result.result).toMatchObject({ city: '上海市', district: '长宁区' });
+        expect(result.contextCorrection).toMatchObject({ applied: true });
+      });
+    });
+
     it('低置信纠错结果未回显原查询词时进入 needs_confirmation，不写坐标锚点', async () => {
       const ctx = createToolContext({
         turnInput: {
