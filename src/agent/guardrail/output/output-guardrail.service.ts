@@ -22,6 +22,11 @@ import {
 } from '@shared-types/guardrail.contract';
 import { HardRulesService, type HardRuleOverrideHit } from './rules/hard-rules.service';
 import { formatJobFactProvenanceTexts } from './rules/job-fact-reconciliation.rule';
+import {
+  buildStudentAcceptanceEvidence,
+  type StudentAcceptanceEvidence,
+} from './rules/student-acceptance.rule';
+import type { TurnHints } from '@resolution/turn-hints/turn-hint.types';
 import type { RuleContradiction } from './output-rule.types';
 import { OutboundReplySanitizer } from './sanitizer/outbound-reply-sanitizer';
 
@@ -130,29 +135,35 @@ export class OutputGuardrailService {
   }
 
   /**
-   * 会话记忆里的岗位摘要（已展示岗位 / 上轮候选池 / 焦点岗位）压成出处文本，供
-   * job_fact_without_provenance 对账：它们是上一轮真实工具结果沉淀后渲染进 [会话记忆] 的
-   * 班次/薪资/距离，模型据此回答追问不是编造。读不到（无会话身份 / 读失败）返回空数组，
-   * 规则退回只按历史回复对账。
+   * 会话岗位记忆的两路对账证据（一次读取）：
+   * - factTexts：已展示岗位 / 上轮候选池 / 焦点岗位压成出处文本，供 job_fact_without_provenance
+   *   对账——它们是上一轮真实工具结果沉淀后渲染进 [会话记忆] 的班次/薪资/距离，据此回答追问不是编造；
+   * - studentAcceptance：学生身份（会话事实 + 本轮线索）与已展示/焦点岗位的社会身份档位，
+   *   供 student_acceptance_contradiction 对账。
+   * 读不到（无会话身份 / 读失败）时出处文本为空、学生证据缺省，两条规则各自退回保守口径。
    */
-  private async readSessionJobFactTexts(
+  private async readSessionJobEvidence(
     corpId: string | undefined,
     userId: string | undefined,
     sessionId: string | undefined,
-  ): Promise<string[]> {
-    if (!this.sessionFacts || !corpId || !userId || !sessionId) return [];
+    turnHints: TurnHints | null | undefined,
+  ): Promise<{ factTexts: string[]; studentAcceptance?: StudentAcceptanceEvidence }> {
+    if (!this.sessionFacts || !corpId || !userId || !sessionId) return { factTexts: [] };
     try {
       const state = await this.sessionFacts.getSessionState(corpId, userId, sessionId);
-      return formatJobFactProvenanceTexts([
-        ...(state.presentedJobs ?? []),
-        ...(state.lastCandidatePool ?? []),
-        state.currentFocusJob,
-      ]);
+      return {
+        factTexts: formatJobFactProvenanceTexts([
+          ...(state.presentedJobs ?? []),
+          ...(state.lastCandidatePool ?? []),
+          state.currentFocusJob,
+        ]),
+        studentAcceptance: buildStudentAcceptanceEvidence(state, turnHints),
+      };
     } catch (error: unknown) {
       this.logger.warn(
         `[OutputGuardrail] 读取会话岗位记忆失败，按无记忆出处继续对账: ${toErrorMessage(error)}`,
       );
-      return [];
+      return { factTexts: [] };
     }
   }
 
@@ -160,11 +171,16 @@ export class OutputGuardrailService {
     const reply = input.reply?.trim() ?? '';
     if (!reply) return this.passDecision([], []);
 
-    const [recent, runtimeConfig, activeBookings, sessionJobFactTexts] = await Promise.all([
+    const [recent, runtimeConfig, activeBookings, sessionJobEvidence] = await Promise.all([
       this.readRecentTexts(input.chatId),
       this.systemConfig.getAgentReplyConfig(),
       this.readActiveBookings(input.corpId, input.userId),
-      this.readSessionJobFactTexts(input.corpId, input.userId, input.sessionId),
+      this.readSessionJobEvidence(
+        input.corpId,
+        input.userId,
+        input.sessionId,
+        input.turnLedger?.facts.turnHints,
+      ),
     ]);
     const pruned = OutboundReplySanitizer.pruneRepeatedSegments(
       reply,
@@ -186,7 +202,8 @@ export class OutputGuardrailService {
       recentMessages: recent.messages,
       memorySnapshot: input.memorySnapshot,
       priorAssistantTexts: recent.assistantTexts,
-      sessionJobFactTexts,
+      sessionJobFactTexts: sessionJobEvidence.factTexts,
+      studentAcceptance: sessionJobEvidence.studentAcceptance,
       activeBookings,
       silent: input.silent,
       hardRuleOverrides: runtimeConfig.hardRuleOverrides ?? {},

@@ -43,6 +43,8 @@ describe('HardRulesService — 封闭确定性输出规则', () => {
       'cancel_done_claim_failed_tool',
       'requested_brand_mismatch',
       'settlement_cycle_mismatch',
+      // 2026-10-14 新增 observe 哨兵（零工具轮"这家接受学生"对账）。
+      'student_acceptance_contradiction',
       'proactive_insurance_policy_mention',
     ]);
   });

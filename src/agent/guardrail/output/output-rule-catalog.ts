@@ -409,6 +409,25 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     verification: 'tests/agent/guardrail/output/rules/settlement-renderer-contract.spec.ts',
   },
   {
+    id: 'student_acceptance_contradiction',
+    source: 'agent/guardrail/output/rules/student-acceptance.rule.ts',
+    entrypoint: 'detectStudentAcceptanceContradiction',
+    // 新哨兵按发牌纪律 observe 入场；教侧唯一居所是 duliday_job_list 说明「学生安排只服从岗位数据」，
+    // 证据侧是硬约束段 [学生身份与已推荐岗位]。累计两周判例、精确率 ≥90% 再议升档。
+    action: GUARDRAIL_ACTION.OBSERVE,
+    priority: GUARDRAIL_PRIORITY.P1,
+    description:
+      '候选人已明确是学生、本轮未查岗，已推荐岗位全部不接受学生或社会身份字段为空，回复却断言"接受学生/学生也可以/不限身份"。',
+    riskGoal: '发现零工具轮把不收学生的岗位说成收学生，防学生候选人白跑面试或整轮收资作废。',
+    exogenousSignal:
+      '会话事实 + 本轮线索高置信合并的 is_student；会话已展示/焦点岗位记忆的结构化 studentTier；' +
+      '本轮 duliday_job_list / duliday_interview_precheck 调用存在性；封闭肯定断言词形（排除否定、疑问与指向其他岗位的定语）。',
+    residualRisk:
+      '任一岗位缺档位（2026-10-14 前的历史记忆）或已有一家接受学生时无法确定回复指哪家，不判；' +
+      '回复引用候选池里未展示过的接受学生岗位时会误命中；断言换说法（如"你可以来"）不在词形内。',
+    verification: 'tests/agent/guardrail/output/rules/student-acceptance.rule.spec.ts',
+  },
+  {
     id: 'proactive_insurance_policy_mention',
     source: 'agent/guardrail/output/rules/insurance-policy-claims.rule.ts',
     entrypoint: 'detectProactiveInsurancePolicyMention',
