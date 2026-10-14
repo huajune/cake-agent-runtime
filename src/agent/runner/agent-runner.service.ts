@@ -377,6 +377,7 @@ export class AgentRunnerService {
               feedbackToGenerator: decision.feedbackToGenerator,
               ruleIds: decision.ruleIds,
               toolCalls: first.toolCalls ?? [],
+              turnLedger: first.turnLedger,
               redLines: ctx.redLines,
               committedSideEffects: committed || undefined,
               repairContext: await this.buildReplyRepairContext(ctx),

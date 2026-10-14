@@ -1,6 +1,7 @@
 import { AgentRunnerService } from '@agent/runner/agent-runner.service';
 import { TurnOutcomeInterventionService } from '@agent/runner/turn-outcome-intervention.service';
 import type { GeneratorRunResult } from '@agent/generator/generator.types';
+import { createTurnLedger } from '@agent/generator/preparation/turn-ledger';
 import { CallerKind } from '@enums/agent.enum';
 
 describe('AgentRunnerService.runInboundTurn', () => {
@@ -571,7 +572,8 @@ describe('AgentRunnerService.runInboundTurn', () => {
   });
 
   it('strict output repair enters one rewrite and adopts the clean revised reply', async () => {
-    generator.invoke.mockResolvedValueOnce(makeResult({ text: '不要新疆户籍的' }));
+    const turnLedger = createTurnLedger();
+    generator.invoke.mockResolvedValueOnce(makeResult({ text: '不要新疆户籍的', turnLedger }));
     replyRepairAgent.repair.mockResolvedValueOnce('这个岗位暂时不合适，我们可以看其他岗位。');
     outputGuard.check
       .mockResolvedValueOnce({
@@ -604,6 +606,8 @@ describe('AgentRunnerService.runInboundTurn', () => {
       expect.objectContaining({
         originalReply: '不要新疆户籍的',
         ruleIds: ['discriminatory_screening_leak'],
+        // 视觉事实以首版账本为准，修复证据需要它
+        turnLedger,
       }),
     );
   });

@@ -714,6 +714,15 @@ runner 直达静默 `skip_intent_envelope_silenced`——终态 `skipped`、不�
 > `_existingInterviewTimeHuman`（active_booking 指针自本批起记录 `interview_time`）；修复证据包把查重
 > 显式渲染为"预约已存在"。真实失败（rejected 等）仍按 2026-08-27 口径放行"稍后再帮你提交"。
 
+> **2026-10-14 修复证据补齐渲染**（来源：代码核查，`ReplyRepairAgent.formatEvidence` 只渲染岗位/预检/报名/
+> 地址解析四类，群邀请、定位发送与视觉事实自 2026-08-26 语义审查器下线后无人消费；长期有效）。修复 prompt
+> 新增三块事实：【群邀请】区分直接入群 / 只发邀请卡片 / 本来就在群 / 本轮未拉群（含报名后运行时拉群），
+> 未拉群时不得说本轮已拉群或已发邀请；【定位发送】`locationNotRequired` 渲染为未发送（`committedSideEffects`
+> 仍把它算作已执行），失败时不得说位置已发，`addressConflict` 时面试地点与工作门店地址不得混用；
+> 【本轮图片事实】按候选人本人 / 发布方 / 第三方或归属不明分组（`unknown` 与第三方同组），只有候选人本人
+> 字段可当作候选人自己的信息。修复证据同时读取首版 TurnLedger 的视觉 sheet。拦侧配对：定位块与
+> `online_interview_location_claim` 互链；群邀请与图片事实目前没有对应的 Output 规则，本项不新增规则。
+
 精确重复由 sanitizer 处理，handoff 承诺由 turn outcome/副作用对账处理，日期与结构一致性由
 既有格式化与 repair regression gate 处理；它们不再登记为 Output ruleId。开放式事实、承诺、
 岗位质量和语气判断由现有主 Agent 理解承担，不启用第二个 reviewer。
