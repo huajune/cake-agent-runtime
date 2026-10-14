@@ -73,6 +73,8 @@ export interface MemoryPromptView {
   realtimeGroups: RealtimeGroupStatus[];
   contactName?: string;
   contactBrandAliases: string[];
+  /** 联系人名称里的城市线索；仅在会话尚无城市事实时由准备层给出。 */
+  contactCityHint?: string | null;
   currentLaborFormIntent: LaborFormIntentDecision;
   activeLaborForm: string | null;
 }
@@ -106,6 +108,7 @@ function buildMemoryCoreBlock(memory: MemoryPromptView): string {
   const { adjudication } = memory;
   return (
     formatContactNamePreferenceHint(memory.contactName, memory.contactBrandAliases) +
+    formatContactCityHint(memory.contactCityHint) +
     formatProfile(adjudication.profile) +
     formatLongTermJobIntent(adjudication.jobIntent) +
     formatConflictAnnotations(adjudication.conflicts) +
@@ -174,6 +177,15 @@ function formatContactNamePreferenceHint(
     `- 例外（以候选人为准）：候选人本轮主动指定了别的品牌、明确拒绝这个品牌、或要求扩大品牌范围时跟随候选人；带该品牌召回为空时再放宽到不限品牌。\n` +
     `- 品牌名本身含城市词不代表候选人所在城市，不要仅凭品牌名推断城市。\n` +
     `- 这是内部线索：回复里禁止提及“备注/企微名称/昵称显示”，也不要称呼候选人昵称。`
+  );
+}
+
+/** 联系人名称里的城市线索（用法唯一居所：手册「昵称识别规则」）；会话已有城市事实时不渲染。 */
+function formatContactCityHint(city: string | null | undefined): string {
+  if (!city) return '';
+  return (
+    `\n\n[企微名称里的城市线索]\n\n` +
+    `- 企微显示名称/备注含城市：${city}（来自昵称或运营备注，不是候选人陈述）`
   );
 }
 
