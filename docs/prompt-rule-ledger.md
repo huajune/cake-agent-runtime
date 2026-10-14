@@ -376,10 +376,6 @@ DB 内嵌话术通过精确匹配旧值的配置迁移清理，避免覆盖运�
     时薪与阶梯档位说明，不报详情块里的综合薪资月区间、不自行折算月收入。与月薪岗不折算时薪对称，同住本条（手册
     「按月计薪岗位不折算时薪…」一条）；推荐时的薪资行取值由 PR #1322 卡片定型承担，job_list description 不复写。
     拦侧配对：`part_time_salary_display_mismatch`（observe）。长期。
-  - **配套（渲染层，非 prompt 规则，2026-10-14）**：卡片薪资行、更远门店摘要行与会话记忆 `salaryDesc` 的薪资主数统一由
-    `src/tools/job-list/salary-display.util.ts` `resolveSalaryHeadline` 产出（此前两处各写一份：摘要取第一条方案、
-    单位缺失时卡片补"元/月"/"元/时"而摘要补"元"）。口径不变：只取正式方案，兼职基础时薪优先，全职综合区间优先；
-    单位缺失只写"元"。
 
 - `T13` — 发薪方式的合规硬边界是仅使用本人银行卡；候选人不能接受时暂停推进。
   - **来源**：badcase `gg4x4eo7`、`1ujkxxm6`。
@@ -676,7 +672,8 @@ observe 哨兵（只落档不拦截，6 条）：`requested_brand_mismatch`、`s
 
 - `job_fact_without_provenance`（replan 不变）：证据工具与 `job_query_claim_without_query` 拆开——后者仍认
   查岗/预检/定位/工单三件套（"帮你查了下工单"是真查询）；前者只认**成功**的 `duliday_job_list` /
-  `duliday_interview_precheck`（带 errorType 的失败/无匹配回执不算）。能从回复认出介绍的岗位、且本轮证据
+  `duliday_interview_precheck`（带 errorType 的失败/无匹配回执不算）；本轮只调了取消/改约/报名/定位或查岗失败时，
+  这些回执仍可能给出面试时段与距离，只对**薪资**对账。能从回复认出介绍的岗位、且本轮证据
   （precheck `jobId`、job_list `jobIdList` 或回合账本 fetchedJobs/attestedFocusJob）覆盖面确定时按 jobId 绑定，
   证据只覆盖同岗位；认不出或覆盖面不确定时有证据即放行（不扩大误拦面）。
   真人招聘经理消息（`isHumanAgentTextMessage`）只为距离/时段作证，**不为 Agent 报出的薪资作证**（用户裁定 #2）；

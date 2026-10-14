@@ -26,9 +26,10 @@ import {
  *   HH:MM-HH:MM），本轮没有可作证据的查岗结果，且该数字在会话内 Agent 自己的历史回复、候选人
  *   消息与会话记忆的岗位摘要（已展示岗位 / 上轮候选池 / 焦点岗位，即上一轮工具结果沉淀后渲染进
  *   [会话记忆] 的班次、薪资、距离）里都没出现过。回指历史（"刚才那家/上面那个"）的句子豁免。
- *   - 证据工具只认**成功**的 duliday_job_list / duliday_interview_precheck；取消、改约、报名、
- *     定位不提供岗位薪资事实，不再让整条检查失效（生产 trace …_1790233240971：只调了两次取消，
- *     回复照抄真人招聘经理消息里的"月薪3000-4000"介绍兼职岗）。
+ *   - 证据工具只认**成功**的 duliday_job_list / duliday_interview_precheck。取消、改约、报名、
+ *     定位（以及失败的查岗/预检）不提供岗位薪资事实：调过它们时仍对**薪资**对账，时段与距离
+ *     可能来自这些回执，照旧放行（生产 trace …_1790233240971：只调了两次取消，回复照抄真人
+ *     招聘经理消息里的"月薪3000-4000"介绍兼职岗）。
  *   - 证据按岗位绑定：能从回复认出介绍的岗位、且本轮证据能确定覆盖哪些岗位时，证据只覆盖同 jobId；
  *     认不出岗位或证据覆盖面不确定时，有证据即放行（与旧口径一致，不扩大误拦面）。
  *   - 真人招聘经理（MOBILE_PUSH 等手动消息）里出现过的数字不能为 Agent 报出的**薪资**作证
@@ -208,10 +209,14 @@ export function detectJobFactWithoutProvenance(
   if (evidenceCalls.length > 0 && !evidenceMissesPresentedJobs(text, evidenceCalls, context)) {
     return null;
   }
+  // 本轮调过取消/改约/报名/定位（或查岗/预检失败）时，其回执仍可能给出面试时段、距离，
+  // 只对薪资对账；完全零工具时三类事实都对账。
+  const salaryOnly = evidenceCalls.length === 0 && hasJobQueryTool(toolCalls);
   const history = normalizeQuantifiedJobFact(priorTexts.join('\n'));
   const humanHistory = normalizeQuantifiedJobFact((context.humanRecruiterTexts ?? []).join('\n'));
   const orphanFacts: string[] = [];
   for (const fact of extractQuantifiedJobFacts(text)) {
+    if (salaryOnly && !isSalaryFact(fact.normalized)) continue;
     const sentence = sentenceOf(text, fact.index);
     if (HISTORY_REFERENCE_PATTERN.test(sentence)) continue;
     if (history.includes(fact.normalized)) continue;

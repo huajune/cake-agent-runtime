@@ -352,7 +352,7 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
       '岗位量化事实必须有来源（本轮查岗结果、会话记忆里的岗位摘要或自己说过的话），杜绝凭空编门店薪资，' +
       '也不得照抄真人招聘经理消息里的薪资。',
     exogenousSignal:
-      '本轮成功的 duliday_job_list / duliday_interview_precheck（取消/改约/报名/定位不算证据；能认出回复岗位时按 jobId 绑定）+ ' +
+      '本轮成功的 duliday_job_list / duliday_interview_precheck（取消/改约/报名/定位不算薪资证据，调过时只对薪资对账；能认出回复岗位时按 jobId 绑定）+ ' +
       'Agent 历史回复/候选人消息与会话记忆岗位摘要（已展示岗位/上轮候选池/焦点岗位）是否出现过同一数字；' +
       '真人招聘经理消息只为距离/时段作证，不为薪资作证。数字按 job-fact-signals 规范形对账（月薪N ↔ N元/月）。',
     residualRisk:

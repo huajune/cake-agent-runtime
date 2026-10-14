@@ -217,7 +217,7 @@ describe('job_fact_without_provenance（零工具轮的无来源岗位数字）'
       expect(hit?.label).not.toContain('时薪25.5');
     });
 
-    it('取消/改约/报名/定位不再让检查整体失效；job_query_claim 仍按原工具集放行', () => {
+    it('取消/改约/报名/定位不再让薪资对账失效；时段与距离可来自其回执照旧放行；job_query_claim 仍按原工具集放行', () => {
       for (const toolName of [
         'duliday_cancel_work_order',
         'duliday_modify_interview_time',
@@ -229,6 +229,13 @@ describe('job_fact_without_provenance（零工具轮的无来源岗位数字）'
           detectJobFactWithoutProvenance('长风大悦城 M Stand，22-28 元/时', [call], history)
             ?.ruleId,
         ).toBe('job_fact_without_provenance');
+        expect(
+          detectJobFactWithoutProvenance(
+            '已帮你约好，面试时段 13:30-16:30，离你3.2km',
+            [call],
+            history,
+          ),
+        ).toBeNull();
         expect(detectJobQueryClaimWithoutQuery('我帮你查了下工单', [call])).toBeNull();
       }
     });
@@ -259,6 +266,7 @@ describe('job_fact_without_provenance（零工具轮的无来源岗位数字）'
           detectJobFactWithoutProvenance('长风大悦城 M Stand，22-28 元/时', [call], history)
             ?.ruleId,
         ).toBe('job_fact_without_provenance');
+        expect(detectJobFactWithoutProvenance('班次 08:00-15:00', [call], history)).toBeNull();
       }
     });
 
