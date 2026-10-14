@@ -696,6 +696,48 @@ describe('geocode tool', () => {
       });
     });
 
+    it('地址出处判定只进原始输出留档，不进模型可见结果（shadow 观测）', async () => {
+      (mockGeocodingService.searchCandidates as jest.Mock).mockResolvedValueOnce([
+        makeCandidate({
+          poiName: '漕宝路(地铁站)',
+          district: '徐汇区',
+          township: '',
+          formattedAddress: '上海市徐汇区漕宝路(地铁站)',
+        }),
+      ]);
+      const assistantReply = '你好呀～龙虾过敏我记下了哈。你还是在漕宝路这边找工作吗？';
+      const instance = buildGeocodeTool(mockGeocodingService)(
+        createToolContext({
+          turnInput: {
+            messages: [
+              { role: 'user', content: '我是龙虾过敏\n你好你好' },
+              { role: 'assistant', content: assistantReply },
+              { role: 'user', content: '好好好\n我想找服务员' },
+            ],
+          },
+        }),
+      );
+      const typed = instance as unknown as {
+        execute: ExecuteFn;
+        toModelOutput: (options: { output: unknown }) => { type: string; value: unknown };
+      };
+
+      const output = (await typed.execute({ address: '漕宝路', city: '上海' })) as Record<
+        string,
+        unknown
+      >;
+
+      expect(output.resolution).toBe('unique');
+      expect(output._addressProvenance).toMatchObject({
+        verdict: 'unattested',
+        assistantOnly: true,
+      });
+      const modelView = typed.toModelOutput({ output });
+      expect(modelView.type).toBe('json');
+      expect(modelView.value).not.toHaveProperty('_addressProvenance');
+      expect(modelView.value).toHaveProperty('resolution', 'unique');
+    });
+
     it('低置信纠错结果未回显原查询词时进入 needs_confirmation，不写坐标锚点', async () => {
       const ctx = createToolContext({
         turnInput: {
