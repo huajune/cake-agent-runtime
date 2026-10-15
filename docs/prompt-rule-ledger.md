@@ -48,7 +48,7 @@ DB 内嵌话术通过精确匹配旧值的配置迁移清理，避免覆盖运�
 | DB red-lines/thresholds  | `strategy_config.red_lines` / `thresholds`                                                                                                  | Dashboard 可改；变更须同批补台账/changelog   | 10 条现行红线 + 2 阈值                                                       |
 | DB stage-strategy        | `strategy_config.stage_goals`                                                                                                               | Dashboard 可改；released/testing 双行同步    | 5 阶段，当前阶段动态渲染                                                     |
 | 条件式规则块             | booking 共享规则 / input-guard / critical-turn-guard                                                                                        | 代码 PR                                      | 都留在 system；按上下文条件出现                                              |
-| 守卫 hard-rules（拦侧）  | `src/agent/guardrail/output/rules/`                                                                                                         | 代码 PR                                      | 25 个 `ruleId`（以 `output-rule-catalog.ts` grep 为准）                      |
+| 守卫 hard-rules（拦侧）  | `src/agent/guardrail/output/rules/`                                                                                                         | 代码 PR                                      | 26 个 `ruleId`（以 `output-rule-catalog.ts` grep 为准）                      |
 | 复聊语义停止条件         | `src/agent/reengagement/reengagement.agent.ts` 场景 prompt（唯一居所；`scenario-registry.ts` 的 `generationPolicy` 只写生成目标与形式要求） | 代码 PR；拦侧同文件 `getOutputContractIssue` | 2026-09-22 新列：RE1–RE5；2026-10-14 增 RE6–RE7（第八节）                    |
 
 每个 `PromptSection.domain` 声明 teaching/evidence/tool_result 语料域，用于指令—数据分离；
@@ -692,6 +692,17 @@ observe 哨兵（只落档不拦截，7 条）：`requested_brand_mismatch`、`s
 任一岗位缺档位（2026-10-14 前写入的历史记忆）或已有接受学生的岗位时无法公证回复指哪家，不判。教侧配对：
 `duliday_job_list` 说明「学生安排只服从岗位数据」（唯一居所，第六节）+ 硬约束段 `[学生身份与已推荐岗位]` 证据块。
 按发牌纪律 observe 入场，累计两周判例、精确率 ≥90% 再议升档；不强制工具调用。
+
+2026-10-15 发版前评审收口批（#1396 / #1397 评审核实项；两条均不改 ruleId 与处置档）：
+
+- `unsupported_store_status_speculation`（repair 不变）：逐个命中检查同句紧贴的否定/安抚前缀——
+  「没有/没/不是/并非/不会/未」与「别担心/不用担心/不必担心」，中间只容「还/也/都/并/完全/真的」副词、不跨标点——
+  命中即跳过（「没有招满」「不是名额满了」「还没招够」）；「满不满」「招没招满」「有没有招满」正反问跳过。
+  「是不是招满了」「不会是门店调整了吧」是猜测性设问，仍命中；同句另有未否认的断言（「不是名额满了，是门店装修」）仍命中。
+  已知漏判：前缀与命中隔了别的词（「没说招满」）、以「放心」开头的状态断言。catalog `residualRisk` 同批更新。
+- `student_acceptance_contradiction`（observe 不变）：会话已展示/焦点岗位先过与 Prompt 同一道用工形式可见性门
+  （`resolution/labor-form` 的 `selectVisibleSessionJobs`，自 generator 下沉，守卫不再反向依赖 generator），
+  本轮意向切到兼职后被隐藏的全职岗不进证据——模型本轮看不到它们，回复不可能指它们。catalog `exogenousSignal` 同批更新。
 
 `dangling_reply_promise` 于 2026-09-07 按 catalog 自带退场条件（累计两周精确率 <70%）删除：
 12 天 42 次命中中 35 次在下一轮已兑现承诺，精确率 16.7%。单轮谓词无法区分"承诺后空等"与

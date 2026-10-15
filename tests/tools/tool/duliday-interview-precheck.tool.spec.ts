@@ -14,6 +14,7 @@ import {
   PRECHECK_INPUT_SCHEMA,
 } from '@tools/duliday-interview-precheck.tool';
 import { TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
+import { buildRequestHandoffTool } from '@tools/request-handoff.tool';
 import { detectBookingReceiptMismatch } from '@agent/guardrail/output/rules/booking-receipt.rule';
 import { detectBookingDoneClaimWithoutSubmission } from '@agent/guardrail/output/rules/booking-claim-reconciliation.rule';
 import { createToolContext, mergeToolContext } from '../../helpers/tool-context.fixture';
@@ -560,6 +561,56 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
         'request_handoff(reasonCode="modify_appointment")',
       );
       expect(result._replyInstruction).not.toContain('排不上。');
+    });
+
+    it('快照两张不同岗位工单、命中第二张 → 同轮改约转人工卡片带第二张工单与岗位', async () => {
+      context.archive.bookingWorkOrders = [
+        {
+          workOrderId: 467500,
+          jobId: 200,
+          source: 'active_booking',
+          signupSource: 'AI',
+          ownedByCandidate: true,
+          interviewTime: `${futureDate()} 10:00`,
+        },
+        {
+          workOrderId: 467501,
+          jobId: 100,
+          source: 'active_booking',
+          signupSource: 'AI',
+          ownedByCandidate: true,
+          interviewTime: `${futureDate()} 13:30`,
+        },
+      ];
+
+      const precheck = await execute({ jobId: 100, requestedDate: `${futureDate()} 15:00` });
+      expect(precheck.errorType).toBe(TOOL_ERROR_TYPES.PRECHECK_BOOKED_JOB_UNVERIFIABLE);
+      expect(context.ledger.jobs.resolvedWorkOrderId).toBe(467501);
+      expect(context.ledger.jobs.resolvedJobId).toBe(100);
+
+      const handoff = buildRequestHandoffTool(
+        { dispatch: jest.fn() } as never,
+        { getChatHistory: jest.fn().mockResolvedValue([]) } as never,
+        { getSessionState: jest.fn().mockResolvedValue(null) } as never,
+        longTerm as never,
+        { record: jest.fn() } as never,
+      )({ ...context, session: { ...context.session, chatId: 'chat-1' } });
+      const result = (await handoff.execute!(
+        {
+          reasonCode: 'modify_appointment',
+          reason: '原面试 13:30，候选人想改到 15:00',
+        } as never,
+        {
+          toolCallId: 'handoff-test',
+          context: {},
+          messages: [],
+          abortSignal: undefined as never,
+        },
+      )) as Record<string, any>;
+
+      expect(result.sideEffect).toEqual(
+        expect.objectContaining({ workOrderId: 467501, jobId: 100 }),
+      );
     });
 
     it('只有 active_booking 指针（建单早于 30 分钟查重窗）也命中——不复用查重时间窗', async () => {

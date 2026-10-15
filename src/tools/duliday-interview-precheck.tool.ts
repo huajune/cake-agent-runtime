@@ -573,6 +573,10 @@ export function buildInterviewPrecheckTool(
               logger.warn(
                 `[precheck] 岗位详情查不到但候选人仍有在途预约，保留预约不标失效: jobId=${jobId} workOrderId=${bookedJob.workOrderId} source=${bookedJob.source}`,
               );
+              // 命中的在途工单交给同轮 request_handoff(modify_appointment)：快照里有多张工单时，
+              // 改约卡片要带这张，而不是快照首张。
+              context.ledger.jobs.resolvedWorkOrderId = bookedJob.workOrderId;
+              context.ledger.jobs.resolvedJobId = jobId;
               return buildToolError({
                 errorType: TOOL_ERROR_TYPES.PRECHECK_BOOKED_JOB_UNVERIFIABLE,
                 outcome: '岗位详情暂时查不到，候选人在该岗位的预约仍有效',

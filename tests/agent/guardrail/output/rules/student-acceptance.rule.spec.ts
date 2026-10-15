@@ -8,6 +8,7 @@ import {
   type StudentAcceptanceEvidence,
 } from '@agent/guardrail/output/rules/student-acceptance.rule';
 import type { RecommendedJobSummary } from '@resolution/job/types';
+import { createTurnLedger } from '@agent/generator/preparation/turn-ledger';
 import { sessionFactsOf } from '../../../../helpers/session-facts.fixture';
 import { testTurnHint, testTurnHints } from '../../../../helpers/turn-hints.fixture';
 
@@ -22,7 +23,11 @@ const KFC_SOCIAL_ONLY: StudentAcceptanceEvidence = {
 /** 生产原文（2026-10-09 batch_6ac85778ce406a6aeef8e575_1791515076511）。 */
 const INCIDENT_REPLY = '这家接受学生，但月工时要求至少180小时，你能保证每月做满吗？';
 
-function summary(jobId: number, studentTier?: RecommendedJobSummary['studentTier']) {
+function summary(
+  jobId: number,
+  studentTier?: RecommendedJobSummary['studentTier'],
+  laborForm = '兼职',
+) {
   return {
     jobId,
     brandName: '肯德基',
@@ -30,7 +35,7 @@ function summary(jobId: number, studentTier?: RecommendedJobSummary['studentTier
     storeName: `门店${jobId}`,
     cityName: '上海',
     regionName: null,
-    laborForm: '兼职',
+    laborForm,
     salaryDesc: null,
     jobCategoryName: null,
     ...(studentTier === undefined ? {} : { studentTier }),
@@ -211,17 +216,60 @@ describe('OutputGuardrailService 接入', () => {
       sessionId: 'session-1',
       userMessage: '学生',
       silent: true,
-      turnLedger: {
-        facts: {
-          turnHints: testTurnHints(testTurnHint('interview_info.is_student', true, '学生')),
-        },
-        jobs: { fetchedJobs: [], attestedFocusJob: null },
-      } as never,
+      turnLedger: createTurnLedger({
+        turnHints: testTurnHints(testTurnHint('interview_info.is_student', true, '学生')),
+      }),
     });
 
     // observe 哨兵只进 ruleIds 落档，出站裁决仍是放行。
     expect(decision.decision).toBe('pass');
     expect(decision.ruleIds).toContain('student_acceptance_contradiction');
     expect(decision.blockedRuleIds).not.toContain('student_acceptance_contradiction');
+  });
+
+  /**
+   * 2026-10-15 发版前评审（#1396）：意向切到兼职后，Prompt 的可见性门已把全职岗藏起来，
+   * 模型看到的是"没有已推荐岗位"；守卫若仍拿这些全职岗对账会把"学生也可以的"误判成指它们。
+   */
+  it('全职岗全部 social_only、本轮意向为兼职 → 隐藏岗位不进证据，零工具"学生也可以的"不命中', async () => {
+    const sessionFacts = {
+      getSessionState: jest.fn().mockResolvedValue({
+        facts: null,
+        presentedJobs: [
+          summary(529083, 'social_only', '全职'),
+          summary(528942, 'social_only', '全职'),
+        ],
+        lastCandidatePool: null,
+        currentFocusJob: summary(528942, 'social_only', '全职'),
+      }),
+    };
+    const service = new OutputGuardrailService(
+      { getAgentReplyConfig: jest.fn().mockResolvedValue({ hardRuleOverrides: {} }) } as never,
+      new HardRulesService({ sendAlert: jest.fn().mockResolvedValue(undefined) } as never),
+      { getMessages: jest.fn().mockResolvedValue([]) } as never,
+      undefined,
+      sessionFacts as never,
+    );
+    const check = (laborFormIntent: Parameters<typeof createTurnLedger>[0]['laborFormIntent']) =>
+      service.check({
+        reply: '学生也可以的',
+        toolCalls: [],
+        chatId: 'chat-1',
+        userId: 'user-1',
+        corpId: 'corp-1',
+        sessionId: 'session-1',
+        userMessage: '我是学生，想找兼职',
+        silent: true,
+        turnLedger: createTurnLedger({
+          turnHints: testTurnHints(testTurnHint('interview_info.is_student', true, '学生')),
+          laborFormIntent,
+        }),
+      });
+
+    expect((await check({ kind: 'set', value: '兼职' })).ruleIds).not.toContain(
+      'student_acceptance_contradiction',
+    );
+    // 对照：没有切换意向时全职岗仍可见，同一回复照常命中。
+    expect((await check({ kind: 'ignore' })).ruleIds).toContain('student_acceptance_contradiction');
   });
 });

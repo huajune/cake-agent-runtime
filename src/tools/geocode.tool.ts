@@ -629,8 +629,11 @@ export function buildGeocodeTool(geocodingService: GeocodingService): ToolBuilde
         const provenance = buildAddressProvenance(context, input.address);
         const result = await runGeocode(input);
         if (provenance.verdict === 'unattested' && provenance.assistantOnly) {
+          // 地址原文可能是候选人住址，日志只留元数据；原文在 tool_calls 入参留档可查。
           logger.warn(
-            `geocode 地址「${input.address}」只出现在 Agent 自己的消息里，找不到候选人/真人/工具出处（shadow 观测，未干预）`,
+            `geocode 地址只出现在 Agent 自己的消息里，找不到候选人/真人/工具出处（shadow 观测，未干预）: ` +
+              `sessionId=${context.session.sessionId} matchedBy=${provenance.matchedBy ?? 'none'} ` +
+              `addressChars=${Array.from(input.address).length}`,
           );
         }
         return { ...result, _addressProvenance: provenance };

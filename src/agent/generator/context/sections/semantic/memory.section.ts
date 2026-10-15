@@ -3,9 +3,9 @@ import { formatStoredScheduleConstraint } from '@resolution/schedule/format';
 import { formatExtractionFactLines } from '@memory/fact-lines.formatter';
 import {
   type LaborFormIntentDecision,
-  matchesLaborForm,
   sanitizeJobDisplayText,
   sanitizeLaborFormForDisplay,
+  selectVisibleSessionJobs,
 } from '@resolution/labor-form';
 import {
   type JobIntentFacts,
@@ -497,38 +497,6 @@ function renderPreferenceValue(key: string, value: unknown): string | null {
   if (typeof value === 'string') return value.trim() || null;
   if (typeof value === 'boolean' || typeof value === 'number') return String(value);
   return null;
-}
-
-/**
- * 会话岗位记忆的 Prompt 可见性门：用工形式意向切换后不再展示与之不符的岗位。
- * Prompt 里所有按会话岗位记忆渲染的清单（[会话记忆]、学生身份逐岗结论）共用这一道门。
- *
- * 岗位轴是层级结构（laborForm=全职/兼职 + partTimeJobType 细分），意向值比对
- * 必须走 matchesLaborForm：暑假工岗的 summary 是 laborForm=兼职 + partTimeJobType=暑假工，
- * 扁平全等会把候选池整个滤空/漏清。
- */
-export function selectVisibleSessionJobs(
-  jobs: readonly RecommendedJobSummary[] | null | undefined,
-  activeLaborForm: string | null,
-  currentIntent: LaborFormIntentDecision = { kind: 'ignore' },
-): RecommendedJobSummary[] {
-  if (currentIntent.kind === 'set') {
-    return (jobs ?? []).filter((job) =>
-      matchesLaborForm(job.laborForm, job.partTimeJobType, currentIntent.value),
-    );
-  }
-  if (currentIntent.kind === 'clear') {
-    return (jobs ?? []).filter(
-      (job) =>
-        !job.laborForm ||
-        !currentIntent.clearedValues.some((value) =>
-          matchesLaborForm(job.laborForm, job.partTimeJobType, value),
-        ),
-    );
-  }
-  return activeLaborForm === '暑假工'
-    ? (jobs ?? []).filter((job) => matchesLaborForm(job.laborForm, job.partTimeJobType, '暑假工'))
-    : [...(jobs ?? [])];
 }
 
 /** 把会话记忆渲染成 prompt 片段。 */
