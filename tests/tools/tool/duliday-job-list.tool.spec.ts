@@ -2210,12 +2210,13 @@ describe('buildJobListTool', () => {
       includeWorkTime: true,
     });
 
-    expect(result.markdown).toContain('固定排班（需接受全部班次）');
+    // 两档重叠：运营口径认定不在同一天上，须全部都能接受。
+    expect(result.markdown).toContain('固定排班（各班次不在同一天上，需全部都能接受）');
     expect(result.markdown).toContain('**每日排班**');
     expect(result.markdown).toContain('09:00-18:30');
     expect(result.markdown).toContain('13:00-22:30');
     // 固定排班全部出勤；周频单独提示。
-    expect(result.markdown).toContain('需接受全部班次');
+    expect(result.markdown).toContain('需全部都能接受');
     expect(result.markdown).toContain('**排班硬约束提示**');
     expect(result.markdown).toContain('须核对周频限制');
   });
@@ -2700,7 +2701,7 @@ describe('buildJobListTool', () => {
       it.each([false, true])(
         '其他条件排除全部岗位时返回对应空结果，含固定排班岗位=%s',
         async (withMatched) => {
-          // 灵活排班区间 18:00–23:00 被“18点后有空”整段覆盖，班次本身匹配。
+          // 灵活排班区间 18:00–23:00 能在“18点后有空”内排出完整班次，班次本身匹配。
           const pending = {
             ...makeJobData(rejected),
             workTime: flexibleJob(1, '18:00', '23:00').workTime,
@@ -2737,9 +2738,10 @@ describe('buildJobListTool', () => {
     });
     it.each([
       { start: '18:00', end: '23:00', inPool: true },
-      { start: '05:00', end: '23:00', inPool: false },
+      { start: '05:00', end: '23:00', inPool: true },
+      { start: '05:00', end: '21:00', inPool: false },
     ])(
-      '灵活排班区间被候选人时段整段覆盖才进入推荐池：$start-$end',
+      '灵活排班区间内排得出落在候选人时段内的完整班次才进入推荐池：$start-$end',
       async ({ start, end, inPool }) => {
         const job = { ...makeJobData(), workTime: flexibleJob(1, start, end).workTime };
         mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [job], total: 1 });
@@ -2899,17 +2901,18 @@ describe('buildJobListTool', () => {
       expect(recordFetchedJobs).not.toHaveBeenCalled();
       expect(recordEvent).not.toHaveBeenCalled();
     });
-    it('灵活排班区间未被整段覆盖时按排班不符给出确定结论，不说附近没岗', async () => {
+    it('灵活排班区间内排不出候选人时段内的完整班次时按排班不符给出确定结论，不说附近没岗', async () => {
+      // 区间 05:00-23:00、每班 4 小时：20 点后开始排不满一班。
       mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [flexibleJob()], total: 1 });
-      const result = await executeTool({ ...mockContext, currentUserMessage: '18点后有空' }, {
+      const result = await executeTool({ ...mockContext, currentUserMessage: '20点后有空' }, {
         ...defaultInput,
-        candidateScheduleConstraint: { availableWindow: { start: '18:00' } },
-        candidateScheduleCitation: { quote: '18点后有空' },
+        candidateScheduleConstraint: { availableWindow: { start: '20:00' } },
+        candidateScheduleCitation: { quote: '20点后有空' },
       } as typeof defaultInput);
       expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_SCHEDULE_FILTER_EMPTY);
       expect(result.queryMeta).not.toHaveProperty('unknownCount');
       expect(result.queryMeta.scheduleFilter.excludedExamples).toEqual([
-        expect.objectContaining({ reason: expect.stringContaining('整个排班区间') }),
+        expect.objectContaining({ reason: expect.stringContaining('排不出一个') }),
       ]);
       expect(result.noMatchScript.candidateMessage).toContain('有 1 家在招');
       expect(result.noMatchScript.candidateMessage).not.toContain('没找到');

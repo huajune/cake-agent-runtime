@@ -1,4 +1,4 @@
-import { formatJobShiftTime } from './format-shift-time.util';
+import { formatJobShiftTimeForCandidate } from './format-shift-time.util';
 import { asRecord } from '@infra/utils/object.util';
 /**
  * 给 LLM 直接转述给候选人的岗位推荐卡片模板渲染层。
@@ -63,21 +63,31 @@ function resolvePositionName(bi: JobBasicInfo): string {
 
 // ==================== 班次 ====================
 
+/** 循环班型写成“做一休一”，数字超出十时保留阿拉伯数字。 */
+function cnCount(value: unknown): string {
+  const n = Number(value);
+  return Number.isInteger(n) && n >= 0 && n <= 10 ? CN_COUNTS[n] : String(value);
+}
+const CN_COUNTS = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九', '十'];
+
+/**
+ * 卡片班次行只用候选人能直接看懂的简短说法（几点、几个小时、怎么选、每周几天）；
+ * 排班类型、班次标签与完整周频说明留在给 Agent 的岗位详情。
+ */
 function buildShiftPart(job: JobDetail): string {
-  const shift = formatJobShiftTime(job);
-  const parts: string[] = shift ? [shift] : [];
+  const shift = formatJobShiftTimeForCandidate(job);
   const wm = asRecord(asRecord(job.workTime)?.weekAndMonthWorkTime) ?? {};
   // 做一休一等循环班型的 perWeekWorkDays 不是周频，直出会变成"每周 1 天"
   const weekly = resolveWeeklyWorkDays(wm);
-  if (weekly.days !== null) {
-    parts.push(
-      weekly.cyclic
-        ? `做${wm.perWeekWorkDays}休${wm.perWeekRestDays}轮换（平均每周约 ${weekly.days} 天，工作日也要排班）`
-        : `每周 ${weekly.days} 天`,
-    );
-  }
-
-  return parts.join('，');
+  const weeklyText =
+    weekly.days === null
+      ? null
+      : weekly.cyclic
+        ? `做${cnCount(wm.perWeekWorkDays)}休${cnCount(wm.perWeekRestDays)}`
+        : `每周 ${weekly.days} 天`;
+  if (!shift) return weeklyText ?? '';
+  if (!weeklyText) return shift;
+  return `${shift}${shift.includes('面试时可和店长沟通') ? '；' : '，'}${weeklyText}`;
 }
 
 // ==================== 薪资 ====================

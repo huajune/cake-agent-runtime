@@ -3,6 +3,8 @@ import type { ScheduleWindow, TimeRange } from './types';
 export const MINUTES_PER_DAY = 1440;
 /** 业务日分界（凌晨04:00），与夜班窗口 21:00—次日04:00 的终点一致。 */
 export const BUSINESS_DAY_BOUNDARY_MINUTE = 240;
+/** 只给结束边界时，不晚于中午12:00的上限才视为夜班的次日早晨下班时间。 */
+const MORNING_END_LIMIT_MINUTE = 720;
 
 /** 调用方先验证钟点格式；不对非法钟点补值或截断。 */
 export function clockToMinutes(clock: string): number {
@@ -60,11 +62,23 @@ export function blockedRanges(window: ScheduleWindow): TimeRange[] {
 export function candidateCovers(range: TimeRange, available?: ScheduleWindow | null): boolean {
   if (!available) return true;
   const window = windowToRange(available);
+  // 只给04:00前的开始边界（如“凌晨1点后有空”“晚上12点以后有空”）按业务日理解：前一晚开始的
+  // 班次不算，班次须在该边界到04:00之间开始。
+  if (
+    available.start !== undefined &&
+    available.end === undefined &&
+    window.startMinute < BUSINESS_DAY_BOUNDARY_MINUTE
+  ) {
+    const day = ((range.startMinute % MINUTES_PER_DAY) + MINUTES_PER_DAY) % MINUTES_PER_DAY;
+    return day >= window.startMinute && day < BUSINESS_DAY_BOUNDARY_MINUTE;
+  }
   const offsets = available.endDayOffset === 1 ? [0, 1] : [0];
-  // 只有结束边界时，夜班应按结束日对齐，不能把次日凌晨当作超过当日早晨；
-  // 班次在开始当天已越过该上限的，不能借前一日对齐放行。
+  // 只有早上的结束边界（不晚于12:00，如“最晚早上7点下班”）时，夜班应按结束日对齐，不能把次日凌晨
+  // 当作超过当日早晨；晚间上限（如“最晚晚上9点下班”）不借前一日对齐。班次在开始当天已越过
+  // 该上限的，同样不能借前一日对齐放行。
   if (
     available.start === undefined &&
+    window.endMinute <= MORNING_END_LIMIT_MINUTE &&
     range.endMinute >= MINUTES_PER_DAY &&
     range.startMinute >= window.endMinute
   ) {
