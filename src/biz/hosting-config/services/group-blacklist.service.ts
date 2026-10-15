@@ -24,8 +24,6 @@ export class GroupBlacklistService {
   // L1: Memory cache
   private readonly memoryCache = new Map<string, GroupBlacklistItem>();
   private memoryCacheExpiry = 0;
-  /** 内存快照是否来自一次成功读取（共享缓存或数据库）；最近一次刷新失败时为 false。 */
-  private memoryCacheTrusted = false;
 
   constructor(
     private readonly groupBlacklistRepository: GroupBlacklistRepository,
@@ -43,28 +41,6 @@ export class GroupBlacklistService {
     await this.ensureFreshCache();
 
     return this.memoryCache.has(groupId);
-  }
-
-  /**
-   * 严格查询：确认在黑名单返回 true、确认不在返回 false；共享缓存与数据库都读不到
-   * （或最近一次刷新失败）时返回 null。
-   *
-   * 供没有入站消息兜底的主动触达（复聊）fail closed；入站过滤继续用 isGroupBlacklisted，
-   * 读不到时沿用旧快照。
-   */
-  async getGroupBlacklistStatus(groupId: string): Promise<boolean | null> {
-    if (!groupId) return false;
-
-    if (this.isCacheExpired() || !this.memoryCacheTrusted) {
-      const sharedItems = await this.readSharedCache();
-      if (sharedItems) {
-        this.populateMemoryCache(sharedItems);
-      } else {
-        await this.loadGroupBlacklist();
-      }
-    }
-
-    return this.memoryCacheTrusted ? this.memoryCache.has(groupId) : null;
   }
 
   /**
@@ -175,13 +151,11 @@ export class GroupBlacklistService {
       this.memoryCache.set(item.group_id, item);
     }
     this.memoryCacheExpiry = Date.now() + this.CACHE_TTL_MS;
-    this.memoryCacheTrusted = true;
   }
 
-  /** 刷新失败：保留旧快照供入站过滤沿用，标记为不可信，30 秒后再试。 */
+  /** 刷新失败：保留旧快照供入站过滤沿用（不把“读不到”当成“没有黑名单”），30 秒后再试。 */
   private markRefreshFailed(reason: unknown): void {
     this.logger.error('加载小组黑名单失败', reason);
-    this.memoryCacheTrusted = false;
     this.memoryCacheExpiry = Date.now() + 30_000;
   }
 
