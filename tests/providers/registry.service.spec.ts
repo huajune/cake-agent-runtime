@@ -39,6 +39,7 @@ const mockRegistry = {
 };
 jest.mock('ai', () => ({
   createProviderRegistry: jest.fn(() => mockRegistry),
+  wrapProvider: jest.fn(({ provider }) => ({ type: 'wrapped', provider })),
 }));
 
 describe('RegistryService', () => {
@@ -137,11 +138,7 @@ describe('RegistryService', () => {
 
       const { createOpenAICompatible } = require('@ai-sdk/openai-compatible');
       expect(createOpenAICompatible).toHaveBeenCalledWith(
-        expect.objectContaining({
-          name: 'qwen',
-          apiKey: 'qwen-test',
-          supportsStructuredOutputs: true,
-        }),
+        expect.objectContaining({ name: 'qwen', apiKey: 'qwen-test' }),
       );
       expect(createOpenAICompatible).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -150,6 +147,26 @@ describe('RegistryService', () => {
           supportsStructuredOutputs: undefined,
         }),
       );
+    });
+
+    it('wraps only providers that put the JSON schema into the prompt', async () => {
+      jest.clearAllMocks();
+      const module = await createService({
+        DASHSCOPE_API_KEY: 'qwen-test',
+        MOONSHOT_API_KEY: 'moonshot-test',
+      });
+      module.get<RegistryService>(RegistryService).onModuleInit();
+
+      const { wrapProvider, createProviderRegistry } = require('ai');
+      const { jsonSchemaInPromptMiddleware } = require('@providers/json-schema-prompt.middleware');
+      expect(wrapProvider).toHaveBeenCalledTimes(1);
+      expect(wrapProvider).toHaveBeenCalledWith({
+        provider: { type: 'qwen-compatible' },
+        languageModelMiddleware: jsonSchemaInPromptMiddleware,
+      });
+      const providers = createProviderRegistry.mock.calls[0][0];
+      expect(providers.qwen).toEqual({ type: 'wrapped', provider: { type: 'qwen-compatible' } });
+      expect(providers.moonshotai).toEqual({ type: 'moonshotai-compatible' });
     });
 
     it('should register ohmygpt when ANTHROPIC_API_KEY exists', async () => {

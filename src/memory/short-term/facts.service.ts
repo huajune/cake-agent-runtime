@@ -746,11 +746,19 @@ export class SessionFactsService {
     const extractedChangeUnverified =
       !scheduleValid && hasScheduleChange(previousSchedule, extractedSchedule(llmOutcome));
     const extractionUnavailable = llmOutcome.degraded || llmOutcome.rejectedScheduleIssues !== null;
+    const declarativeTurn = currentTurnQuotes.some(hasDeclarativeClause);
+    const toolScheduleChange = readToolScheduleChange(toolVerifiedSchedule, previousSchedule);
     const toolSchedule =
-      extractedChangeUnverified ||
-      (!scheduleValid && extractionUnavailable && currentTurnQuotes.some(hasDeclarativeClause))
-        ? readToolScheduleChange(toolVerifiedSchedule, previousSchedule)
+      extractedChangeUnverified || (!scheduleValid && extractionUnavailable && declarativeTurn)
+        ? toolScheduleChange
         : null;
+    if (toolScheduleChange && !toolSchedule && !scheduleValid && !extractionUnavailable) {
+      this.reportScheduleExtractionDisagreement({
+        toolChangedFields: changedScheduleFields(previousSchedule, toolScheduleChange),
+        extraction: llmOutcome.facts.preferences.schedule_constraint == null ? 'none' : 'echo',
+        declarative: declarativeTurn,
+      });
+    }
     const structuredScheduleVerified = scheduleValid || toolSchedule !== null;
     // 抽取正常且没有班次变更时，规则轨不得覆盖已保存条件；只有抽取降级、引文无效或
     // 条件不合契约时才轮到规则兜底。
@@ -937,6 +945,21 @@ export class SessionFactsService {
       .catch((error: unknown) => {
         this.logger.warn(`[extractFacts] 班次条件丢弃告警发送失败: ${toErrorMessage(error)}`);
       });
+  }
+
+  /**
+   * 抽取判定班次无持续变更、工具本轮却核验到变更：照常以抽取为准，只留观测。
+   * 询问轮属预期分歧，不发飞书，避免询问轮刷屏。
+   */
+  private reportScheduleExtractionDisagreement(detail: {
+    toolChangedFields: string[];
+    extraction: 'none' | 'echo';
+    declarative: boolean;
+  }): void {
+    this.logger.warn(
+      `[extractFacts] 抽取判定班次无变更，工具本轮已核验变更: fields=${detail.toolChangedFields.join(',')}, extraction=${detail.extraction}, declarative=${detail.declarative}`,
+    );
+    this.tracer?.emit({ type: 'schedule_extraction_disagreement', ...detail });
   }
 
   private applyLaborFormIntent(
@@ -1127,6 +1150,17 @@ function readToolScheduleChange(
   const parsed = StoredScheduleConstraintSchema.safeParse(raw);
   if (!parsed.success) return null;
   return effectiveScheduleKey(parsed.data) === effectiveScheduleKey(previous) ? null : parsed.data;
+}
+
+/** 新条件相对已保存条件改动的字段名（只用于观测，不带值）。 */
+function changedScheduleFields(
+  previous: StoredScheduleConstraint | null,
+  next: StoredScheduleConstraint,
+): string[] {
+  const fields = new Set([...Object.keys(previous ?? {}), ...Object.keys(next)]) as Set<
+    keyof StoredScheduleConstraint
+  >;
+  return [...fields].filter((field) => !isSameFactValue(previous?.[field], next[field]));
 }
 
 /**

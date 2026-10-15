@@ -24,6 +24,9 @@ const ALWAYS_PERSISTED_EVENT_TYPES = new Set<AgentEvent['type']>([
   // 丢一个字段就是丢一段事实（terminal 丢了复聊会去骚扰已约面的人）。量级应恒为零，
   // 非零即存储完整性事故——只打日志等于没发生（记忆审计风险点 8）。
   'session_state_field_dropped',
+  // 班次抽取与工具核验分歧：只在工具本轮核验到班次变更、抽取却判无变更时发射，
+  // 询问轮属预期，量级骤升即抽取漏抽（曾因抽取模型看不到字段说明静默漏抽）。
+  'schedule_extraction_disagreement',
   // 收资表单审计：公证拒收/判不合格/改口/配置债/熔断。拒收量是臆造防线的验收指标，
   // escalated 量是死锁根治的验收指标——生产 collectionStalled 此前只有 logger.warn，
   // 正是 0819 排障实测撞上的观测盲区（§10.1 观测配套）。
