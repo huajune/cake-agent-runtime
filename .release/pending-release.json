@@ -902,6 +902,82 @@
         "其他说明：过渡期内，上线前已存下的托管暂停期间消息没有原因标记，已排好的部分提醒仍可能被待答闸拦下，随新消息自然消化"
       ],
       "level": "patch"
+    },
+    {
+      "number": "1396",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1396",
+      "title": "学生能否安排按岗位社会身份档位逐岗作答，清理冲突教学并新增 observe 哨兵",
+      "author": "huajune",
+      "mergedAt": "2026-10-15",
+      "opsNotes": [
+        "**学生能不能做，按岗位数据回答（周度 case 9.24~10.9 第 2 条）** ✅ 本 PR",
+        "- 候选人刚说自己是学生时，AI 按已推荐岗位的「社会身份」要求逐家回答：只招社会人士的直接说不收学生，并改推收学生的岗位，不再出现「这家接受学生」",
+        "- 岗位的社会身份要求没填时，不说「学生也可以」：还有收学生的岗位就推这些；只剩这类岗位时才转人工确认",
+        "- 岗位卡片上的展示不变，这些判断只给 AI 看",
+        "- 新增记录：AI 在没查岗的回合把不收学生的岗位说成收学生时会被记下来，先观察，不拦截"
+      ],
+      "businessUpdates": [
+        "`[本轮查询硬约束]` 新增 `[学生身份与已推荐岗位]`：`is_student` 高置信合并为「是」时，按会话已展示岗位与当前焦点岗位（与 [会话记忆] 同一道用工形式可见性门）逐岗写「接受学生 / 不接受学生 / 社会身份要求字段为空，按查岗工具说明处理 / 未记录，需重新调 duliday_job_list 核对」",
+        "出站 observe 哨兵 `student_acceptance_contradiction`（P1）：候选人已明确是学生、本轮没调查岗或预检、已推荐岗位全部不收学生或字段为空，回复却断言「接受学生 / 学生也可以 / 不限身份」时落档。规则总数 24 → 25",
+        "岗位记忆写入结构化社会身份档位 `studentTier`（与查岗学生硬过滤同源），提示词硬约束段在「候选人是学生」时给出已推荐岗位逐岗结论",
+        "删除硬约束段与学生安排口径相反的旧教学，学生安排口径只留在 `duliday_job_list` 说明一处",
+        "新增 observe 哨兵 `student_acceptance_contradiction`",
+        "新增 observe 哨兵 student_acceptance_contradiction",
+        "`hard-constraints.section.ts` 删除「未写学生限制……按没有额外学生硬限制继续……不得凭空增加门店确认或人工介入」：它与 9/23 运营裁定（社会身份要求为空时不得按不限放行）相反，也和过时的 `candidateIsStudent` 入参说明一并清理",
+        "[会话记忆] 约面要求的学生项由「学生${文案}」改为「学生身份:${文案}」，修复拼出「学生不接受学生」被模型读反的问题",
+        "查岗回执「候选人社会身份筛选提示」中字段为空的转人工教学删除，只列岗位并指回工具说明（同一约束只住一处）",
+        "Merge remote-tracking branch 'origin/develop' into fix/weekly-case-st…"
+      ],
+      "summary": [
+        "学生能否安排改读岗位结构化档位，零工具轮按逐岗结论作答",
+        "新增 observe 哨兵 student_acceptance_contradiction",
+        "学生逐岗结论标签不重复拼品牌与门店",
+        "Merge remote-tracking branch 'origin/develop' into fix/weekly-case-st…",
+        "岗位记忆写入结构化社会身份档位 `studentTier`（与查岗学生硬过滤同源），提示词硬约束段在「候选人是学生」时给出已推荐岗位逐岗结论",
+        "删除硬约束段与学生安排口径相反的旧教学，学生安排口径只留在 `duliday_job_list` 说明一处",
+        "新增 observe 哨兵 `student_acceptance_contradiction`",
+        "学生能否安排按岗位社会身份档位逐岗作答，清理冲突教学并新增 observe 哨兵"
+      ],
+      "features": [
+        "`[本轮查询硬约束]` 新增 `[学生身份与已推荐岗位]`：`is_student` 高置信合并为「是」时，按会话已展示岗位与当前焦点岗位（与 [会话记忆] 同一道用工形式可见性门）逐岗写「接受学生 / 不接受学生 / 社会身份要求字段为空，按查岗工具说明处理 / 未记录，需重新调 duliday_job_list 核对」",
+        "出站 observe 哨兵 `student_acceptance_contradiction`（P1）：候选人已明确是学生、本轮没调查岗或预检、已推荐岗位全部不收学生或字段为空，回复却断言「接受学生 / 学生也可以 / 不限身份」时落档。规则总数 24 → 25",
+        "岗位记忆写入结构化社会身份档位 `studentTier`（与查岗学生硬过滤同源），提示词硬约束段在「候选人是学生」时给出已推荐岗位逐岗结论",
+        "删除硬约束段与学生安排口径相反的旧教学，学生安排口径只留在 `duliday_job_list` 说明一处",
+        "新增 observe 哨兵 `student_acceptance_contradiction`",
+        "新增 observe 哨兵 student_acceptance_contradiction"
+      ],
+      "fixes": [
+        "`hard-constraints.section.ts` 删除「未写学生限制……按没有额外学生硬限制继续……不得凭空增加门店确认或人工介入」：它与 9/23 运营裁定（社会身份要求为空时不得按不限放行）相反，也和过时的 `candidateIsStudent` 入参说明一并清理",
+        "[会话记忆] 约面要求的学生项由「学生${文案}」改为「学生身份:${文案}」，修复拼出「学生不接受学生」被模型读反的问题",
+        "查岗回执「候选人社会身份筛选提示」中字段为空的转人工教学删除，只列岗位并指回工具说明（同一约束只住一处）",
+        "Merge remote-tracking branch 'origin/develop' into fix/weekly-case-st…"
+      ],
+      "optimizations": [
+        "社会身份档位枚举下沉到 `@resolution/job/types`，`classifyStudentEligibility` 统一给查岗硬过滤、提示词结论与出站哨兵使用",
+        "`selectVisibleSessionJobs` 从 memory.section 抽出，[会话记忆] 与学生逐岗结论共用",
+        "test-suite 记忆夹具支持预置 `studentTier`",
+        "台账：duliday_job_list 行登记「学生口径职责回收」；第七节登记新哨兵；`candidate-profile-domain.md` 按实现补「表单落定 `is_student` 写 high」"
+      ],
+      "ops": [
+        "2026-10-14 之前写入的岗位记忆没有 `studentTier`，逐岗结论显示「未记录，需重新调查岗核对」，哨兵对这类岗位不判",
+        "与 `fix/weekly-case-booking-salary` 都新增一条出站规则，规则总数和 `output-guardrail.service.ts` 同一段会冲突：后合入的一方变基后把总数改成 26",
+        "学生能否安排改读岗位结构化档位，零工具轮按逐岗结论作答",
+        "学生逐岗结论标签不重复拼品牌与门店"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "全量 Jest（512 个测试文件，7968 个用例）、`typecheck`、`lint:check`、`format:check`、`quality-ledger:validate` 通过",
+        "本地真实链路回放（`/test-suite/chat`，qwen3.7-plus，本分支代码起服务；历史取自 10/9 原对话，岗位为记忆夹具）：",
+        "原 case（焦点肯德基只招社会人士，候选人回「学生」）：提示词出现「不接受学生」结论；回复说这家只招社会人士，并重新查岗推荐收学生的岗位",
+        "反例（同岗位改成不限身份）：零工具答「这家接受学生」",
+        "字段为空：没说收学生，改推明确收学生的岗位，未转人工（还有可推岗位，符合裁定）",
+        "混合（焦点不收、另一家收）：明确说焦点不收学生，再推荐收学生的岗位",
+        "回放发现逐岗结论标签重复拼了品牌与门店，已在 df2d0e8e 修正并补单测",
+        "未新增对开放自然语言直接 reject/覆盖/判缺的正则分支；新哨兵只落档",
+        "新增虚构 prompt 示例值：无"
+      ],
+      "level": "minor"
     }
   ],
   "lastRelease": {
@@ -969,5 +1045,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "b76a6782c9d5035a35cea80820d2451bb8a3fe53"
+  "lastAnalyzedSha": "04c0821200fc9cbe806315fb2ee4d5fa84663ade"
 }
