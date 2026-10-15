@@ -16,6 +16,7 @@ import { z } from 'zod';
 import { GeocodingService } from '@infra/geocoding/geocoding.service';
 import type { GeocodeCandidate } from '@infra/geocoding/geocoding.types';
 import {
+  candidateAdministrativeAreaEchoedInAddress,
   candidateDistrictMatchesAddress,
   extractDistrictStems,
   groupCandidatesByCity,
@@ -31,7 +32,11 @@ import type { ToolBuildContext, ToolBuilder } from '@shared-types/tool.types';
 import type { GeocodeLocationAnchor } from '@shared-types/turn.types';
 import { buildToolError, TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
 import { evaluateInviteCityGate } from '@tools/invite/invite-city-gate';
-import { extractUserTexts } from '@resolution/signal/dialogue';
+import { extractDialogueTurns, extractUserTexts } from '@resolution/signal/dialogue';
+import { selectEvidenceDialogueMessages } from '@resolution/signal/corpus';
+import { extractCandidateTextsFromCorpus } from '@resolution/signal/self-report';
+import { HUMAN_AGENT_MESSAGE_MARKER } from '@shared-types/corpus.types';
+import { evaluateGeocodeAddressProvenance } from '@tools/geocode/address-provenance.util';
 
 const logger = new Logger('geocode');
 
@@ -241,14 +246,21 @@ function buildUniqueResult(params: {
   candidate: GeocodeCandidate;
   queryAddress: string;
   extra?: Record<string, unknown>;
+  /**
+   * 跨城纠偏时必须逐字回显的原始地址：置信度再高也要回显，否则先让候选人确认
+   * （「南海桂城上海村」被纠偏成上海「海上海」）。
+   */
+  requireEchoOf?: string;
 }) {
-  const { context, candidate, queryAddress, extra } = params;
-  if (candidate.confidence !== 'high' && !candidateEchoesQuery(candidate, queryAddress)) {
+  const { context, candidate, queryAddress, extra, requireEchoOf } = params;
+  const echoTarget = requireEchoOf ?? queryAddress;
+  const mustEcho = requireEchoOf !== undefined || candidate.confidence !== 'high';
+  if (mustEcho && !candidateEchoesQuery(candidate, echoTarget)) {
     return {
       resolution: 'needs_confirmation' as const,
       candidateLabel: candidate.poiName?.trim() || candidate.formattedAddress,
       _replyInstruction:
-        `“${queryAddress}”与解析结果“${candidate.poiName?.trim() || candidate.formattedAddress}”不是逐字同一地点。` +
+        `“${echoTarget}”与解析结果“${candidate.poiName?.trim() || candidate.formattedAddress}”不是逐字同一地点。` +
         '先把解析到的标准地点回显给候选人确认；确认前禁止采用坐标查岗。候选人确认后再按该标准地点重调 geocode。',
       ...(extra ?? {}),
     };
@@ -356,6 +368,28 @@ function queryMatchesAnchorReference(address: string, anchor: GeocodeLocationAnc
   return commonPrefix >= 2;
 }
 
+/** 候选是否落在锚点城市；锚点没有城市时不构成跨城判断依据，视为同城。 */
+function candidateInAnchorCity(
+  candidate: GeocodeCandidate,
+  anchor: GeocodeLocationAnchor,
+): boolean {
+  const expectedCity = normalizeCityName(anchor.city);
+  if (!expectedCity) return true;
+  return normalizeCityName(candidate.city) === expectedCity;
+}
+
+function buildAmbiguousResult(address: string, byCity: Map<string, GeocodeCandidate>) {
+  const candidatesView = Array.from(byCity.values()).slice(0, 3).map(toAmbiguousView);
+  return {
+    resolution: 'ambiguous' as const,
+    candidates: candidatesView,
+    _replyInstruction:
+      `"${address}" 在多个城市都有同名 POI（${candidatesView.map((c) => c.city).join('、')}）。` +
+      '把候选城市清单列给候选人让其确认，禁止默认选第一个；' +
+      '确认后以 city 参数重新调用本工具。',
+  };
+}
+
 function buildContextualAddress(address: string, anchor: GeocodeLocationAnchor): string {
   const normalizedAddress = normalizeReferenceText(address);
   const parts: string[] = [];
@@ -396,148 +430,58 @@ function buildAnchorMismatchError(
 
 export function buildGeocodeTool(geocodingService: GeocodingService): ToolBuilder {
   return (context) => {
-    return tool({
-      description: DESCRIPTION,
-      inputSchema,
-      execute: async ({ address, city }) => {
-        const trimmedAddress = address?.trim() ?? '';
-        const requestedCity = city?.trim() || null;
-        const normalizedCity = resolveProvenancedCity(context, requestedCity);
+    const runGeocode = async ({ address, city }: z.infer<typeof inputSchema>) => {
+      const trimmedAddress = address?.trim() ?? '';
+      const requestedCity = city?.trim() || null;
+      const normalizedCity = resolveProvenancedCity(context, requestedCity);
 
-        if (!trimmedAddress) {
-          return buildToolError({
-            errorType: TOOL_ERROR_TYPES.GEOCODE_UNRESOLVED_ADDRESS,
-            replyInstruction: 'address 不能为空。向候选人确认更具体的地名/地址后再调用本工具。',
-            details: { address, city: normalizedCity },
-          });
-        }
+      if (!trimmedAddress) {
+        return buildToolError({
+          errorType: TOOL_ERROR_TYPES.GEOCODE_UNRESOLVED_ADDRESS,
+          replyInstruction: 'address 不能为空。向候选人确认更具体的地名/地址后再调用本工具。',
+          details: { address, city: normalizedCity },
+        });
+      }
 
-        // 非地名词兜底：模型把"有我附近/我这边/家里"里的代词碎片当地址传进来（badcase 6k394ya0：
-        // address="有我"，回复里还把它当地名复述"有我这个地方没定位到"）。
-        if (NON_PLACE_ADDRESS_PATTERN.test(trimmedAddress)) {
-          return buildToolError({
-            errorType: TOOL_ERROR_TYPES.GEOCODE_UNRESOLVED_ADDRESS,
-            replyInstruction:
-              `"${trimmedAddress}" 不是地名，是候选人句子里的代词/方位词碎片，禁止向候选人复述它、` +
-              '也禁止说"这个地方没定位到"。候选人尚未给出可定位的地点：直接请候选人发一个定位或说商圈/地铁站/详细地址。',
-            details: { address: trimmedAddress, city: normalizedCity, reason: 'not_a_place_name' },
-          });
-        }
+      // 非地名词兜底：模型把"有我附近/我这边/家里"里的代词碎片当地址传进来（badcase 6k394ya0：
+      // address="有我"，回复里还把它当地名复述"有我这个地方没定位到"）。
+      if (NON_PLACE_ADDRESS_PATTERN.test(trimmedAddress)) {
+        return buildToolError({
+          errorType: TOOL_ERROR_TYPES.GEOCODE_UNRESOLVED_ADDRESS,
+          replyInstruction:
+            `"${trimmedAddress}" 不是地名，是候选人句子里的代词/方位词碎片，禁止向候选人复述它、` +
+            '也禁止说"这个地方没定位到"。候选人尚未给出可定位的地点：直接请候选人发一个定位或说商圈/地铁站/详细地址。',
+          details: { address: trimmedAddress, city: normalizedCity, reason: 'not_a_place_name' },
+        });
+      }
 
-        // 真歧义兜底：未传 city + 命中通用后缀黑名单 → 不打高德，直接让 Agent 反问
-        if (!normalizedCity && hasGenericAmbiguousSuffix(trimmedAddress)) {
-          return buildToolError({
-            errorType: TOOL_ERROR_TYPES.GEOCODE_AMBIGUOUS_SUFFIX,
-            replyInstruction:
-              '该地名属于跨城同名的通用后缀（万达广场/天街/火车站/购物中心 等），' +
-              '禁止凭通识默认任一城市。先中性询问候选人所在城市，' +
-              '反问不得带具体城市名；候选人答完后带上 city 重新调用本工具。',
-            details: { address: trimmedAddress },
-          });
-        }
+      // 真歧义兜底：未传 city + 命中通用后缀黑名单 → 不打高德，直接让 Agent 反问
+      if (!normalizedCity && hasGenericAmbiguousSuffix(trimmedAddress)) {
+        return buildToolError({
+          errorType: TOOL_ERROR_TYPES.GEOCODE_AMBIGUOUS_SUFFIX,
+          replyInstruction:
+            '该地名属于跨城同名的通用后缀（万达广场/天街/火车站/购物中心 等），' +
+            '禁止凭通识默认任一城市。先中性询问候选人所在城市，' +
+            '反问不得带具体城市名；候选人答完后带上 city 重新调用本工具。',
+          details: { address: trimmedAddress },
+        });
+      }
 
-        try {
-          const candidates = await geocodingService.searchCandidates(
-            trimmedAddress,
-            normalizedCity,
+      try {
+        const candidates = await geocodingService.searchCandidates(trimmedAddress, normalizedCity);
+
+        const locationAnchor = context.turnInput.geocodeLocationAnchor;
+        const applicableAnchor =
+          locationAnchor && queryMatchesAnchorReference(trimmedAddress, locationAnchor)
+            ? locationAnchor
+            : undefined;
+
+        if (applicableAnchor) {
+          const matchingCandidates = candidates.filter((candidate) =>
+            candidateMatchesAnchor(candidate, applicableAnchor),
           );
-
-          const locationAnchor = context.turnInput.geocodeLocationAnchor;
-          const applicableAnchor =
-            locationAnchor && queryMatchesAnchorReference(trimmedAddress, locationAnchor)
-              ? locationAnchor
-              : undefined;
-
-          if (applicableAnchor) {
-            const matchingCandidates = candidates.filter((candidate) =>
-              candidateMatchesAnchor(candidate, applicableAnchor),
-            );
-            if (matchingCandidates.length > 0) {
-              const anchor = pickAnchorCandidate(matchingCandidates);
-              return buildUniqueResult({
-                context,
-                candidate: anchor,
-                queryAddress: trimmedAddress,
-              });
-            }
-
-            const contextualAddress = buildContextualAddress(trimmedAddress, applicableAnchor);
-            const contextualCity = applicableAnchor.city?.trim() || normalizedCity;
-            const shouldRetry =
-              contextualAddress !== trimmedAddress || contextualCity !== normalizedCity;
-            const contextualCandidates = shouldRetry
-              ? await geocodingService.searchCandidates(contextualAddress, contextualCity)
-              : candidates;
-            const contextualMatches = contextualCandidates.filter((candidate) =>
-              candidateMatchesAnchor(candidate, applicableAnchor),
-            );
-            if (contextualMatches.length > 0) {
-              const anchor = pickAnchorCandidate(contextualMatches);
-              return buildUniqueResult({
-                context,
-                candidate: anchor,
-                queryAddress: contextualAddress,
-                extra: {
-                  contextCorrection: {
-                    applied: true,
-                    originalAddress: trimmedAddress,
-                    resolvedAddress: contextualAddress,
-                    source: applicableAnchor.source,
-                  },
-                },
-              });
-            }
-
-            return buildAnchorMismatchError(
-              trimmedAddress,
-              normalizedCity,
-              applicableAnchor,
-              contextualCandidates.length > 0 ? contextualCandidates : candidates,
-            );
-          }
-
-          if (candidates.length === 0) {
-            return buildToolError({
-              errorType: TOOL_ERROR_TYPES.GEOCODE_UNRESOLVED_ADDRESS,
-              replyInstruction:
-                '地名无法解析。先核对 address 与 city 是否对应；' +
-                '若候选人原话本就模糊（如只给出小区/楼栋俗称），向候选人确认更具体的地址或地标，' +
-                '再重新调用本工具；不要凭已有信息硬猜地点。',
-              details: { address: trimmedAddress, city: normalizedCity },
-            });
-          }
-
-          // 单城唯一命中：按精度择优（道路名 POI 易锚偏，优先地铁站），而非无脑取第一条
-          const uniqueByCity = groupCandidatesByCity(candidates);
-          if (uniqueByCity.size <= 1) {
-            const anchor = pickAnchorCandidate(candidates);
-
-            // 跨城同名区兜底：未传 city + address 明确报了"X区/县"，但高德选中的 POI 落在
-            // 另一个区——说明无 city 时被模糊匹配到了异城同名地点（线上 case：候选人"雨花区板桥"
-            // → 高德"长沙县板桥小区"）。单城返回会被当 unique 全盘信任，故这里改报错让 Agent
-            // 先反问城市，而不是凭错城坐标判定"无岗"后静默收口。
-            if (!normalizedCity) {
-              const addrStems = extractDistrictStems(trimmedAddress);
-              if (
-                addrStems.length > 0 &&
-                !candidateDistrictMatchesAddress(addrStems, anchor.district)
-              ) {
-                return buildToolError({
-                  errorType: TOOL_ERROR_TYPES.GEOCODE_DISTRICT_CITY_MISMATCH,
-                  replyInstruction:
-                    '候选人报的区名在多个城市同名，未带城市时本次解析可能落到错误城市，' +
-                    '禁止采用本次坐标、也禁止据此判定"该城市无岗/无群"后收口。' +
-                    '先中性询问候选人所在城市，不得带具体城市名，' +
-                    '拿到城市后带 city 参数重新调用本工具。',
-                  details: {
-                    address: trimmedAddress,
-                    resolvedCity: anchor.city,
-                    resolvedDistrict: anchor.district,
-                  },
-                });
-              }
-            }
-
+          if (matchingCandidates.length > 0) {
+            const anchor = pickAnchorCandidate(matchingCandidates);
             return buildUniqueResult({
               context,
               candidate: anchor,
@@ -545,30 +489,198 @@ export function buildGeocodeTool(geocodingService: GeocodingService): ToolBuilde
             });
           }
 
-          // 多城歧义：列出候选，由 Agent 反问
-          const candidatesView = Array.from(uniqueByCity.values()).slice(0, 3).map(toAmbiguousView);
+          // 地址本身写明了另一城市的区县/街镇（「南海桂城上海村」→ 佛山南海区、桂城街道）：
+          // 地址证据比规则锚点更具体，按地址采纳，不纠偏到锚点城市。
+          const administrativelyEchoed = candidates.filter(
+            (candidate) =>
+              !candidateInAnchorCity(candidate, applicableAnchor) &&
+              candidateAdministrativeAreaEchoedInAddress(candidate, trimmedAddress),
+          );
+          if (administrativelyEchoed.length > 0) {
+            const echoedByCity = groupCandidatesByCity(administrativelyEchoed);
+            if (echoedByCity.size === 1) {
+              return buildUniqueResult({
+                context,
+                candidate: pickAnchorCandidate(administrativelyEchoed),
+                queryAddress: trimmedAddress,
+                extra: {
+                  contextCorrection: {
+                    applied: false,
+                    reason: 'address_administrative_echo',
+                    anchorCity: applicableAnchor.city,
+                    source: applicableAnchor.source,
+                  },
+                },
+              });
+            }
+            return buildAmbiguousResult(trimmedAddress, echoedByCity);
+          }
 
-          return {
-            resolution: 'ambiguous' as const,
-            candidates: candidatesView,
-            _replyInstruction:
-              `"${trimmedAddress}" 在多个城市都有同名 POI（${candidatesView
-                .map((c) => c.city)
-                .join('、')}）。` +
-              '把候选城市清单列给候选人让其确认，禁止默认选第一个；' +
-              '确认后以 city 参数重新调用本工具。',
-          };
-        } catch (err) {
-          logger.error('地理编码失败', err);
+          const contextualAddress = buildContextualAddress(trimmedAddress, applicableAnchor);
+          const contextualCity = applicableAnchor.city?.trim() || normalizedCity;
+          const shouldRetry =
+            contextualAddress !== trimmedAddress || contextualCity !== normalizedCity;
+          const contextualCandidates = shouldRetry
+            ? await geocodingService.searchCandidates(contextualAddress, contextualCity)
+            : candidates;
+          const contextualMatches = contextualCandidates.filter((candidate) =>
+            candidateMatchesAnchor(candidate, applicableAnchor),
+          );
+          if (contextualMatches.length > 0) {
+            const anchor = pickAnchorCandidate(contextualMatches);
+            // 首查完全不在锚点城市（含首查为空）时，这次纠偏是跨城改判：结果必须逐字回显
+            // 候选人原地址，置信度再高也不能直接宣告已确认城市。
+            const crossCityCorrection = !candidates.some((candidate) =>
+              candidateInAnchorCity(candidate, applicableAnchor),
+            );
+            return buildUniqueResult({
+              context,
+              candidate: anchor,
+              queryAddress: contextualAddress,
+              ...(crossCityCorrection ? { requireEchoOf: trimmedAddress } : {}),
+              extra: {
+                contextCorrection: {
+                  applied: true,
+                  originalAddress: trimmedAddress,
+                  resolvedAddress: contextualAddress,
+                  source: applicableAnchor.source,
+                },
+              },
+            });
+          }
+
+          return buildAnchorMismatchError(
+            trimmedAddress,
+            normalizedCity,
+            applicableAnchor,
+            contextualCandidates.length > 0 ? contextualCandidates : candidates,
+          );
+        }
+
+        if (candidates.length === 0) {
           return buildToolError({
-            errorType: TOOL_ERROR_TYPES.GEOCODE_FAILED,
+            errorType: TOOL_ERROR_TYPES.GEOCODE_UNRESOLVED_ADDRESS,
             replyInstruction:
-              '地理编码接口暂时不可用。不要把异常信息原文转述给候选人；用招募者口吻说"这边稍等下"，' +
-              '可先基于已知城市/区域用 duliday_job_list 兜底，或调用 request_handoff 转人工。',
-            details: { reason: toErrorMessage(err) || '未知错误' },
+              '地名无法解析。先核对 address 与 city 是否对应；' +
+              '若候选人原话本就模糊（如只给出小区/楼栋俗称），向候选人确认更具体的地址或地标，' +
+              '再重新调用本工具；不要凭已有信息硬猜地点。',
+            details: { address: trimmedAddress, city: normalizedCity },
           });
         }
+
+        // 单城唯一命中：按精度择优（道路名 POI 易锚偏，优先地铁站），而非无脑取第一条
+        const uniqueByCity = groupCandidatesByCity(candidates);
+        if (uniqueByCity.size <= 1) {
+          const anchor = pickAnchorCandidate(candidates);
+
+          // 跨城同名区兜底：未传 city + address 明确报了"X区/县"，但高德选中的 POI 落在
+          // 另一个区——说明无 city 时被模糊匹配到了异城同名地点（线上 case：候选人"雨花区板桥"
+          // → 高德"长沙县板桥小区"）。单城返回会被当 unique 全盘信任，故这里改报错让 Agent
+          // 先反问城市，而不是凭错城坐标判定"无岗"后静默收口。
+          if (!normalizedCity) {
+            const addrStems = extractDistrictStems(trimmedAddress);
+            if (
+              addrStems.length > 0 &&
+              !candidateDistrictMatchesAddress(addrStems, anchor.district)
+            ) {
+              return buildToolError({
+                errorType: TOOL_ERROR_TYPES.GEOCODE_DISTRICT_CITY_MISMATCH,
+                replyInstruction:
+                  '候选人报的区名在多个城市同名，未带城市时本次解析可能落到错误城市，' +
+                  '禁止采用本次坐标、也禁止据此判定"该城市无岗/无群"后收口。' +
+                  '先中性询问候选人所在城市，不得带具体城市名，' +
+                  '拿到城市后带 city 参数重新调用本工具。',
+                details: {
+                  address: trimmedAddress,
+                  resolvedCity: anchor.city,
+                  resolvedDistrict: anchor.district,
+                },
+              });
+            }
+          }
+
+          return buildUniqueResult({
+            context,
+            candidate: anchor,
+            queryAddress: trimmedAddress,
+          });
+        }
+
+        // 多城歧义：列出候选，由 Agent 反问
+        return buildAmbiguousResult(trimmedAddress, uniqueByCity);
+      } catch (err) {
+        logger.error('地理编码失败', err);
+        return buildToolError({
+          errorType: TOOL_ERROR_TYPES.GEOCODE_FAILED,
+          replyInstruction:
+            '地理编码接口暂时不可用。不要把异常信息原文转述给候选人；用招募者口吻说"这边稍等下"，' +
+            '可先基于已知城市/区域用 duliday_job_list 兜底，或调用 request_handoff 转人工。',
+          details: { reason: toErrorMessage(err) || '未知错误' },
+        });
+      }
+    };
+
+    return tool({
+      description: DESCRIPTION,
+      inputSchema,
+      // 出处判定只进原始输出（tool_calls 留档供校准），不进模型可见结果，观测期不影响决策。
+      toModelOutput: ({ output }) => ({ type: 'json', value: omitAddressProvenance(output) }),
+      execute: async (input) => {
+        const provenance = buildAddressProvenance(context, input.address);
+        const result = await runGeocode(input);
+        if (provenance.verdict === 'unattested' && provenance.assistantOnly) {
+          logger.warn(
+            `geocode 地址「${input.address}」只出现在 Agent 自己的消息里，找不到候选人/真人/工具出处（shadow 观测，未干预）`,
+          );
+        }
+        return { ...result, _addressProvenance: provenance };
       },
     });
   };
+}
+
+/** 汇总本轮可作为地址出处的外生语料，交给纯函数判定。 */
+function buildAddressProvenance(context: ToolBuildContext, address: string) {
+  const corpusBlocks = context.turnInput.corpusBlocks ?? [];
+  const dialogueMessages = corpusBlocks.length
+    ? selectEvidenceDialogueMessages(corpusBlocks)
+    : (context.turnInput.messages ?? []);
+  const candidateTexts = corpusBlocks.length
+    ? extractCandidateTextsFromCorpus(corpusBlocks)
+    : extractUserTexts(context.turnInput.messages ?? []);
+  const humanAgentTexts: string[] = [];
+  const assistantTexts: string[] = [];
+  for (const turn of extractDialogueTurns(dialogueMessages)) {
+    if (turn.role !== 'assistant') continue;
+    if (turn.text.includes(HUMAN_AGENT_MESSAGE_MARKER)) {
+      humanAgentTexts.push(turn.text.replace(HUMAN_AGENT_MESSAGE_MARKER, ''));
+    } else {
+      assistantTexts.push(turn.text);
+    }
+  }
+  const focusJob = context.archive.currentFocusJob;
+  const toolResultTexts = [
+    ...corpusBlocks
+      .filter((block) => block.domain === 'tool_result')
+      .map((block) =>
+        typeof block.content === 'string' ? block.content : JSON.stringify(block.content ?? ''),
+      ),
+    focusJob?.storeName ?? '',
+    focusJob?.storeAddress ?? '',
+    ...context.ledger.visual.factSheets.map((entry) => JSON.stringify(entry.sheet)),
+  ].filter(Boolean);
+  return evaluateGeocodeAddressProvenance({
+    address,
+    candidateTexts,
+    humanAgentTexts,
+    assistantTexts,
+    toolResultTexts,
+    dialogueMessages,
+  });
+}
+
+function omitAddressProvenance(output: unknown) {
+  if (!output || typeof output !== 'object' || Array.isArray(output)) return output as never;
+  const { _addressProvenance: _omitted, ...rest } = output as Record<string, unknown>;
+  return rest as never;
 }

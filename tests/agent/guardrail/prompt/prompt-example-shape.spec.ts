@@ -17,7 +17,7 @@ interface TextFragment {
 interface ExampleShapeViolation {
   source: string;
   line: number;
-  kind: 'person_name' | 'store_name' | 'phone';
+  kind: 'person_name' | 'store_name' | 'phone' | 'place_name';
   value: string;
 }
 
@@ -180,6 +180,16 @@ const PERSON_CONTEXT_MARKERS = ['姓名', '名字', '真名', '称呼', '昵称'
 const EXPLICIT_STORE_VALUE =
   /(?:(?:applied_store|应聘门店)[^\n]{0,24}(?:例如|如)\s*[：:]?|门店(?:名|名称)?\s*[：:])\s*[（(]?\s*["“「『]?([一-鿿]{2,16}(?:店|广场|中心))/gu;
 
+// 具体地名示例（2026-10-09 漕宝路 case：geocode 教学示例里的「"漕宝路地铁站"→上海」被模型当成
+// 候选人位置复述）。只抓两种封闭形态：引号里以路/街/大道/站结尾的具体地名，以及「"地名"→城市」映射示例。
+// 跨城通名黑名单（万达广场/人民广场 等）不以这两种形态出现，属设计需要，不受影响。
+const QUOTED_STREET_OR_STATION =
+  /["“「『]([一-鿿]{2,8}(?:路|街|大道|地铁站|火车站|高铁站|站))["”」』]/gu;
+const QUOTED_PLACE_TO_CITY_MAPPING =
+  /["“「『]([一-鿿]{2,8})["”」』]\s*(?:→|->|=>)\s*[一-鿿]{2,4}市?(?=$|[、，,。；;\s"”」)）])/gu;
+/** 只有站点类型、没有专名的通用词（火车站/长途汽车站）不是具体地名。 */
+const GENERIC_STATION_TYPE = /^(?:长途)?(?:火车|汽车|高铁|地铁|客运|公交)站$/u;
+
 function lineOffset(text: string, index: number): number {
   return text.slice(0, index).split('\n').length - 1;
 }
@@ -250,6 +260,13 @@ function findViolationsInFragment(fragment: TextFragment, source: string): Examp
     record('store_name', match[1], match.index);
   }
 
+  for (const match of fragment.text.matchAll(QUOTED_STREET_OR_STATION)) {
+    if (!GENERIC_STATION_TYPE.test(match[1])) record('place_name', match[1], match.index);
+  }
+  for (const match of fragment.text.matchAll(QUOTED_PLACE_TO_CITY_MAPPING)) {
+    record('place_name', match[1], match.index);
+  }
+
   const phonePattern = new RegExp(CANDIDATE_PHONE_RE.source, 'gu');
   for (const match of fragment.text.matchAll(phonePattern)) {
     record('phone', match[1], match.index);
@@ -282,7 +299,7 @@ describe('prompt example shape CI guard', () => {
     expect([...exempted].filter((file) => !toolFiles.includes(file))).toEqual([]);
   });
 
-  it('rejects unregistered person-name, store-name, and phone shapes from every enumerated model-visible surface', () => {
+  it('rejects unregistered person-name, store-name, place-name, and phone shapes from every enumerated model-visible surface', () => {
     const violations = ALL_SURFACES.flatMap(scanSurface);
     expect(violations).toEqual([]);
   });
@@ -304,6 +321,17 @@ describe('prompt example shape CI guard', () => {
         expect.objectContaining({ kind: 'person_name', value: '王小明' }),
         expect.objectContaining({ kind: 'store_name', value: '人民广场店' }),
         expect.objectContaining({ kind: 'phone', value: '13712345678' }),
+      ]),
+    );
+  });
+
+  it('catches concrete place-name examples such as the retired 漕宝路 geocode mapping', () => {
+    const prompt = '假设输入的映射示例："马陆"→上海、"光谷"→武汉、"漕宝路地铁站"→上海';
+    expect(findViolationsInFragment({ text: prompt, line: 1 }, 'retired-place')).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: 'place_name', value: '漕宝路地铁站' }),
+        expect.objectContaining({ kind: 'place_name', value: '马陆' }),
+        expect.objectContaining({ kind: 'place_name', value: '光谷' }),
       ]),
     );
   });

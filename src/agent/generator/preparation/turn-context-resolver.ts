@@ -55,6 +55,7 @@ import { extractTextFromContent, HUMAN_AGENT_MESSAGE_MARKER } from './conversati
 import { resolveToolContextModel, type ToolContextModel } from './tool-context.builder';
 import type { LoadedGeoAnchor } from './turn-data-loader.service';
 import { resolveBrandMentionKeys } from '@resolution/brand/brand-matcher';
+import { resolveContactCityHint } from './contact-city-hint';
 import { selectEvidenceDialogueMessages } from '@resolution/signal/corpus';
 import {
   stripFriendVerifyGreeting,
@@ -101,15 +102,6 @@ export function resolveTurnContext(input: {
   } = input;
   const promptMemoryView = adjudicatePromptMemory(sources.memory);
   const activeLaborForm = resolveActiveLaborForm(sources.memory, normalizedInput.laborFormIntent);
-  const memoryView: MemoryPromptView = {
-    adjudication: promptMemoryView,
-    booking: sources.booking,
-    realtimeGroups: sources.realtimeGroups,
-    contactName: params.contactName,
-    contactBrandAliases: sources.turnBrandContext.nicknameBrands,
-    currentLaborFormIntent: normalizedInput.laborFormIntent,
-    activeLaborForm,
-  };
 
   const stageGoals = Object.fromEntries(
     sources.strategyConfig.stage_goals.stages.map((stage) => [stage.stage, stage]),
@@ -144,6 +136,19 @@ export function resolveTurnContext(input: {
         )[0] ?? null,
     },
   });
+  const memoryView: MemoryPromptView = {
+    adjudication: promptMemoryView,
+    booking: sources.booking,
+    realtimeGroups: sources.realtimeGroups,
+    contactName: params.contactName,
+    contactBrandAliases: sources.turnBrandContext.nicknameBrands,
+    contactCityHint: resolveContactCityHint(
+      params.contactName,
+      hardConstraints.facts?.preferences.city?.value ?? null,
+    ),
+    currentLaborFormIntent: normalizedInput.laborFormIntent,
+    activeLaborForm,
+  };
   const turnHintsView = resolveTurnHintsPromptView({
     displayTurnHints: promptMemoryView.displayTurnHints,
     pendingFields: promptMemoryView.pendingTurnHintFields,

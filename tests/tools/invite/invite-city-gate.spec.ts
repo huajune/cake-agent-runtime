@@ -43,6 +43,23 @@ describe('evaluateInviteCityGate', () => {
     expect(verdict).toEqual({ decision: 'allow', matchedBy: 'user_text' });
   });
 
+  it('城市字样只出现在村名/路名里不算提到该城市（周度 case：佛山南海「上海村」）', () => {
+    expect(
+      evaluateGate({ requestedCity: '上海', sessionCity: null, userTexts: ['南海桂城上海村'] }),
+    ).toEqual({ decision: 'reject', reason: 'city_unverified' });
+    expect(
+      evaluateGate({ requestedCity: '上海', sessionCity: null, userTexts: ['我在上海路附近'] }),
+    ).toEqual({ decision: 'reject', reason: 'city_unverified' });
+    // 同一句里另有独立提及时照常放行
+    expect(
+      evaluateGate({
+        requestedCity: '上海',
+        sessionCity: null,
+        userTexts: ['不是上海村，我人在上海'],
+      }),
+    ).toEqual({ decision: 'allow', matchedBy: 'user_text' });
+  });
+
   it('user text mention wins over conflicting session fact (candidate moved city this turn)', () => {
     const verdict = evaluateGate({
       requestedCity: '杭州',

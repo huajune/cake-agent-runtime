@@ -130,6 +130,23 @@ export function candidateDistrictMatchesAddress(
   return addrStems.some((stem) => candidateStem.includes(stem) || stem.includes(candidateStem));
 }
 
+/**
+ * 候选的区县或街镇名（去掉 区/县/街道/镇/乡 后缀，至少 2 字）是否逐字出现在 address 里。
+ *
+ * 「南海桂城上海村」→ 佛山 南海区/桂城街道 两级都回显，说明地址本身写明了所在行政区，
+ * 不能被别的城市的规则锚点纠偏覆盖。
+ */
+export function candidateAdministrativeAreaEchoedInAddress(
+  candidate: GeocodeCandidate,
+  address: string,
+): boolean {
+  const normalizedAddress = address.replace(/\s+/g, '');
+  return [candidate.district, candidate.township]
+    .map((area) => normalizeDistrictForLookup(area?.trim() ?? ''))
+    .filter((stem) => stem.length >= 2)
+    .some((stem) => normalizedAddress.includes(stem));
+}
+
 export function groupCandidatesByCity(
   candidates: GeocodeCandidate[],
 ): Map<string, GeocodeCandidate> {

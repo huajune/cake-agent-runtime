@@ -29,7 +29,11 @@ export {
   resolveProvinceFromAdministrativeArea,
 } from './administrative-area.resolver';
 export { resolveCityFromLocation } from './place-alias.resolver';
-export { scanWhitelistKeysByLongest, matchInUncoveredSegments } from './whitelist-scanner';
+export {
+  scanWhitelistKeysByLongest,
+  matchInUncoveredSegments,
+  mentionsPlaceNameStandalone,
+} from './whitelist-scanner';
 export { scanGeoSignalsFromText } from './geo-text-scan';
 export { pruneGeoPreferencesForCity } from './preference-prune';
 export { hasGenericAmbiguousSuffix, GENERIC_AMBIGUOUS_SUFFIXES } from './ambiguous-place.policy';

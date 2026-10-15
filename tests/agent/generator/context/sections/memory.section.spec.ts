@@ -54,6 +54,34 @@ describe('MemorySection', () => {
     ]);
   });
 
+  it('联系人名称城市线索：有值时只渲染事实，不带行为教学；无值不渲染', () => {
+    const memory = {
+      adjudication: {
+        profile: null,
+        jobIntent: null,
+        sessionState: null,
+        conflicts: [],
+        displayTurnHints: null,
+        pendingTurnHintFields: [],
+      },
+      booking: { state: 'none' },
+      realtimeGroups: [],
+      contactBrandAliases: [],
+      contactCityHint: '佛山',
+      currentLaborFormIntent: { kind: 'ignore' },
+      activeLaborForm: null,
+    } as unknown as MemoryPromptView;
+
+    const rendered = section.build({ ...baseCtx, memory });
+    expect(rendered).toContain('[企微名称里的城市线索]');
+    expect(rendered).toContain(
+      '企微显示名称/备注含城市：佛山（来自昵称或运营备注，不是候选人陈述）',
+    );
+    expect(
+      section.build({ ...baseCtx, memory: { ...memory, contactCityHint: null } }),
+    ).not.toContain('城市线索');
+  });
+
   it('should return empty string when memory block is missing', () => {
     expect(section.build(baseCtx)).toBe('');
   });
