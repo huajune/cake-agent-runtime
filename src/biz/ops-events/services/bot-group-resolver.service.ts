@@ -24,6 +24,7 @@ const BOT_GROUP_TABLE: Record<string, BotGroupInfo> = {
   '1688855171908166': { managerName: 'LiYuHang', groupName: '宇航组' },
   '1688854747775509': { managerName: 'WuPanPan', groupName: '盼盼组' },
   '1688855468965879': { managerName: 'XinYuQi', groupName: '瑜琦组' },
+  '1688857954985709': { managerName: 'JiangYiFeng', groupName: '一锋组' },
 };
 
 /** name-based bot 兜底别名（同步前缀由 normalizeBotImId 归一化后再查）。 */

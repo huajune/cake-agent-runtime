@@ -35,6 +35,7 @@ const BOT_TO_RECEIVER = {
   1688854263771949: { openId: 'ou_12cf003c378f89299f8ccf32252c22c0', name: '盼盼' },
   1688855753660960: { openId: 'ou_6d3f217a88b5033ff256c64492e52ae7', name: '小阳' },
   1688855468965879: { openId: 'ou_c88101c10aa900578ec97b6c6d529fa1', name: '辛瑜琦' },
+  1688857954985709: { openId: 'ou_a519e2e0172ced44c9fca02daa2d7ffa', name: '蒋一锋' },
 };
 
 function parseArgs(argv) {
