@@ -1,6 +1,6 @@
 # Guardrail 质量体系
 
-**最后更新**：2026-09-10（按当前规则、修复所有权与目录复核）
+**最后更新**：2026-10-14（新增 observe 哨兵 `student_acceptance_contradiction`）
 
 > 本文描述当前 Output 守卫的实时裁决和修复边界。Input / Prompt / Tool / Output 全景见
 > [安全护栏说明](./security-guardrails.md)。
@@ -39,13 +39,13 @@ Output 只对可复算信号裁决。
 
 `output/output-rule-catalog.ts` 是 Output 规则与默认处置的唯一来源，当前 25 条（19 执行档 + 6 observe 哨兵）：
 
-| 类别                         | ruleId                                                                                                                                                                        |
-| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 格式/内部泄漏                | `invalid_model_output`、`internal_output_leak`、`meta_narration_reply`、`human_service_phrase_leak`                                                                           |
-| 封闭高风险                   | `identity_misregistration_coaching`、`experience_fraud_coaching`、`discriminatory_screening_leak`、`sensitive_origin_probe`、`quota_promise`                                  |
+| 类别                         | ruleId                                                                                                                                                                                                                                                                                     |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 格式/内部泄漏                | `invalid_model_output`、`internal_output_leak`、`meta_narration_reply`、`human_service_phrase_leak`                                                                                                                                                                                        |
+| 封闭高风险                   | `identity_misregistration_coaching`、`experience_fraud_coaching`、`discriminatory_screening_leak`、`sensitive_origin_probe`、`quota_promise`                                                                                                                                               |
 | 工具回执/状态对账            | `online_interview_location_claim`、`unsupported_store_status_speculation`、`booking_receipt_mismatch`、`interview_slot_availability_mismatch`、`interview_time_change_unconfirmed`、`brand_alias_fuzzy_match_ignored`、`booking_done_claim_no_work_order`、`cancel_done_claim_failed_tool` |
-| 查询/岗位事实来源（replan）  | `job_query_claim_without_query`、`job_fact_without_provenance` |
-| observe 哨兵（只落档不拦截） | `requested_brand_mismatch`、`settlement_cycle_mismatch`、`proactive_insurance_policy_mention`、`booking_done_claim_without_submission`、`cancel_done_claim_without_submission`、`part_time_salary_display_mismatch` |
+| 查询/岗位事实来源（replan）  | `job_query_claim_without_query`、`job_fact_without_provenance`                                                                                                                                                                                                                             |
+| observe 哨兵（只落档不拦截） | `requested_brand_mismatch`、`settlement_cycle_mismatch`、`proactive_insurance_policy_mention`、`booking_done_claim_without_submission`、`cancel_done_claim_without_submission`、`part_time_salary_display_mismatch`、`student_acceptance_contradiction`                                    |
 
 当前目录包含 2026-08-26 数据复核恢复的定点哨兵和后续完成态对账规则；
 `dangling_reply_promise` 已于 2026-09-07 退场，判别改由离线回扫承接。这些规则不代表开放语义
@@ -100,15 +100,15 @@ replan 的语义自 2026-07-03 契约首版起就是"重走工具再生成"。20
 
 ## 4. 组件所有权
 
-| 组件                             | 可以做什么                                            | 不能做什么                 |
-| -------------------------------- | ----------------------------------------------------- | -------------------------- |
-| `HardRulesService`               | 读取回复、memory 和工具回执，产出确定性 contradiction | 改文案、调工具、猜开放语义 |
-| `OutputGuardrailService`         | 精确去重、运行规则、聚合裁决并派生 repairMode         | 调第二个模型、执行修复、提交副作用 |
-| `AgentRunnerService`             | 按守卫派生的 repairMode 执行一次修复（rewrite / replan），二审并收敛 outcome | 在 rewrite 中重跑业务工具、带反馈重进 Generator |
-| `RepairEvidenceBuilder`          | 将工具事实与策略投影为 `RepairEvidencePacket`，供 ReplyRepairAgent 组装修复输入 | 裁决是否放行、取代规则证据对账 |
-| `ReplyRepairAgent`               | 消费修复证据与上下文，执行无工具局部重写             | 调业务工具、决定修复次数或最终投递 |
-| `TurnOutcomeInterventionService` | Replay 定局后提交暂停托管、handoff 和告警             | 重新解释回复语义           |
-| `TurnFinalizer`                  | 按投递结局执行或丢弃 `runTurnEnd`，等待记忆落盘       | 提交人工介入、重执行业务工具 |
+| 组件                             | 可以做什么                                                                      | 不能做什么                                      |
+| -------------------------------- | ------------------------------------------------------------------------------- | ----------------------------------------------- |
+| `HardRulesService`               | 读取回复、memory 和工具回执，产出确定性 contradiction                           | 改文案、调工具、猜开放语义                      |
+| `OutputGuardrailService`         | 精确去重、运行规则、聚合裁决并派生 repairMode                                   | 调第二个模型、执行修复、提交副作用              |
+| `AgentRunnerService`             | 按守卫派生的 repairMode 执行一次修复（rewrite / replan），二审并收敛 outcome    | 在 rewrite 中重跑业务工具、带反馈重进 Generator |
+| `RepairEvidenceBuilder`          | 将工具事实与策略投影为 `RepairEvidencePacket`，供 ReplyRepairAgent 组装修复输入 | 裁决是否放行、取代规则证据对账                  |
+| `ReplyRepairAgent`               | 消费修复证据与上下文，执行无工具局部重写                                        | 调业务工具、决定修复次数或最终投递              |
+| `TurnOutcomeInterventionService` | Replay 定局后提交暂停托管、handoff 和告警                                       | 重新解释回复语义                                |
+| `TurnFinalizer`                  | 按投递结局执行或丢弃 `runTurnEnd`，等待记忆落盘                                 | 提交人工介入、重执行业务工具                    |
 
 物理目录按所有权划分：
 

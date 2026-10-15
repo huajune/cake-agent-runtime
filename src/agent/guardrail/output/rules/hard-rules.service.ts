@@ -38,6 +38,10 @@ import {
 } from './internal-info-leaks.rule';
 import { detectBookingReceiptMismatch } from './booking-receipt.rule';
 import { detectSettlementCycleMismatch } from './settlement-cycle-mismatch.rule';
+import {
+  detectStudentAcceptanceContradiction,
+  type StudentAcceptanceEvidence,
+} from './student-acceptance.rule';
 import { detectUnsupportedStoreStatusSpeculation } from './store-status-speculation.rule';
 import { deriveRulePolicy, type FactRule, type RuleContradiction } from '../output-rule.types';
 import { createOutputRuleFinding, isOutputRuleId, type OutputRuleId } from '../output-rule-catalog';
@@ -130,6 +134,11 @@ export class HardRulesService {
      * 本轮焦点岗位时同样升 repair。
      */
     activeBookings?: readonly ActiveBookingEntry[];
+    /**
+     * 候选人学生身份（会话事实 + 本轮线索高置信合并）与已展示/焦点岗位的结构化社会身份档位，
+     * 供零工具轮“这家接受学生”断言对账。读不到会话记忆时缺省，哨兵不运行。
+     */
+    studentAcceptance?: StudentAcceptanceEvidence;
     /** 静默模式（advisory）：只返回裁决，由调用方避免写生产守卫日志。 */
     silent?: boolean;
     /** 兼容既有托管配置的运行时降档；只允许 off/observe。 */
@@ -299,6 +308,16 @@ export class HardRulesService {
     const cancelDoneClaim = detectCancelDoneClaimWithoutSubmission(text, toolCalls);
     if (cancelDoneClaim) {
       contradictions.push(cancelDoneClaim);
+    }
+
+    // 已确认学生 × 已推荐岗位全不收学生，零工具轮却断言"接受学生"（observe 哨兵）。
+    const studentAcceptanceContradiction = detectStudentAcceptanceContradiction(
+      text,
+      toolCalls,
+      params.studentAcceptance,
+    );
+    if (studentAcceptanceContradiction) {
+      contradictions.push(studentAcceptanceContradiction);
     }
 
     // 零工具轮的岗位事实对账：宣称查过 / 报出无来源数字，两条各取高置信形态。

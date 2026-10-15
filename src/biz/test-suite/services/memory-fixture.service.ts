@@ -10,7 +10,11 @@ import {
   type EntityExtractionResult,
   type InvitedGroupRecord,
 } from '@memory/short-term/short-term.types';
-import type { RecommendedJobSummary } from '@resolution/job/types';
+import {
+  JobStudentTierSchema,
+  type JobStudentTier,
+  type RecommendedJobSummary,
+} from '@resolution/job/types';
 import type { StageState } from '@memory/short-term/short-term.types';
 import type { UserProfile } from '@memory/long-term/long-term.types';
 import { buildJobListQuerySignature } from '@tools/shared/job-list-query-signature';
@@ -309,6 +313,8 @@ export class MemoryFixtureService {
         'studentRequirement',
         'student_requirement',
       ]),
+      // 结构化社会身份档位：回放「已推荐岗位 × 学生」场景必须能预置，缺省按历史记录（未记录）处理。
+      studentTier: this.readStudentTier(raw, ['studentTier', 'student_tier']),
       distanceKm: this.readNumberFromKeys(raw, ['distanceKm', 'distance_km']),
     };
   }
@@ -404,6 +410,14 @@ export class MemoryFixtureService {
         if (['true', 'yes', '是', '学生'].includes(normalized)) return true;
         if (['false', 'no', '否', '不是', '非学生'].includes(normalized)) return false;
       }
+    }
+    return null;
+  }
+
+  private readStudentTier(record: Record<string, unknown>, keys: string[]): JobStudentTier | null {
+    for (const key of keys) {
+      const parsed = JobStudentTierSchema.safeParse(record[key]);
+      if (parsed.success) return parsed.data;
     }
     return null;
   }

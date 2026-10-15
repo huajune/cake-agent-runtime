@@ -487,6 +487,38 @@ function renderPreferenceValue(key: string, value: unknown): string | null {
   return null;
 }
 
+/**
+ * 会话岗位记忆的 Prompt 可见性门：用工形式意向切换后不再展示与之不符的岗位。
+ * Prompt 里所有按会话岗位记忆渲染的清单（[会话记忆]、学生身份逐岗结论）共用这一道门。
+ *
+ * 岗位轴是层级结构（laborForm=全职/兼职 + partTimeJobType 细分），意向值比对
+ * 必须走 matchesLaborForm：暑假工岗的 summary 是 laborForm=兼职 + partTimeJobType=暑假工，
+ * 扁平全等会把候选池整个滤空/漏清。
+ */
+export function selectVisibleSessionJobs(
+  jobs: readonly RecommendedJobSummary[] | null | undefined,
+  activeLaborForm: string | null,
+  currentIntent: LaborFormIntentDecision = { kind: 'ignore' },
+): RecommendedJobSummary[] {
+  if (currentIntent.kind === 'set') {
+    return (jobs ?? []).filter((job) =>
+      matchesLaborForm(job.laborForm, job.partTimeJobType, currentIntent.value),
+    );
+  }
+  if (currentIntent.kind === 'clear') {
+    return (jobs ?? []).filter(
+      (job) =>
+        !job.laborForm ||
+        !currentIntent.clearedValues.some((value) =>
+          matchesLaborForm(job.laborForm, job.partTimeJobType, value),
+        ),
+    );
+  }
+  return activeLaborForm === '暑假工'
+    ? (jobs ?? []).filter((job) => matchesLaborForm(job.laborForm, job.partTimeJobType, '暑假工'))
+    : [...(jobs ?? [])];
+}
+
 /** 把会话记忆渲染成 prompt 片段。 */
 function formatSessionFacts(
   state: WeworkSessionState,
@@ -494,28 +526,8 @@ function formatSessionFacts(
   currentIntent: LaborFormIntentDecision = { kind: 'ignore' },
 ): string {
   const sections: string[] = [];
-  // 岗位轴是层级结构（laborForm=全职/兼职 + partTimeJobType 细分），意向值比对
-  // 必须走 matchesLaborForm：暑假工岗的 summary 是 laborForm=兼职 + partTimeJobType=暑假工，
-  // 扁平全等会把候选池整个滤空/漏清。
-  const visibleJobs = (jobs: RecommendedJobSummary[] | null | undefined) => {
-    if (currentIntent.kind === 'set') {
-      return (jobs ?? []).filter((job) =>
-        matchesLaborForm(job.laborForm, job.partTimeJobType, currentIntent.value),
-      );
-    }
-    if (currentIntent.kind === 'clear') {
-      return (jobs ?? []).filter(
-        (job) =>
-          !job.laborForm ||
-          !currentIntent.clearedValues.some((value) =>
-            matchesLaborForm(job.laborForm, job.partTimeJobType, value),
-          ),
-      );
-    }
-    return activeLaborForm === '暑假工'
-      ? (jobs ?? []).filter((job) => matchesLaborForm(job.laborForm, job.partTimeJobType, '暑假工'))
-      : (jobs ?? []);
-  };
+  const visibleJobs = (jobs: RecommendedJobSummary[] | null | undefined) =>
+    selectVisibleSessionJobs(jobs, activeLaborForm, currentIntent);
 
   if (state.facts) {
     // set 型 turnHint 只在增量块展示：与既有 facts 同值时去重，异值时标「待确认更新」，
@@ -719,8 +731,10 @@ function formatBookingConstraint(job: RecommendedJobSummary): string | null {
   ) {
     constraints.push(`健康证${job.healthCertificateRequirement}`);
   }
+  // 字段名与取值分开写：取值本身是完整结论（"不接受学生（仅限社会人士）"），
+  // 直接拼「学生」前缀会读成「学生不接受学生」，被模型误读成相反结论。
   if (job.studentRequirement) {
-    constraints.push(`学生${job.studentRequirement}`);
+    constraints.push(`学生身份:${job.studentRequirement}`);
   }
 
   if (constraints.length === 0) return null;

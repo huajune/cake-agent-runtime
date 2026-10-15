@@ -110,7 +110,10 @@ describe('OutputGuardrailService', () => {
       reply: '你好',
       toolCalls: [],
       chatId: 'chat-1',
-      turnLedger: { jobs: { fetchedJobs: [fetched], attestedFocusJob: attested } } as never,
+      turnLedger: {
+        jobs: { fetchedJobs: [fetched], attestedFocusJob: attested },
+        facts: { turnHints: null },
+      } as never,
     });
     expect(ruleGuard.check).toHaveBeenLastCalledWith(
       expect.objectContaining({ turnJobs: [fetched, attested] }),
