@@ -3,7 +3,7 @@
  *
  * 包含以下同品牌多门店原语：
  * - BrandStoreEntry / BrandNearestStoresGroup 类型
- * - formatSalarySummary：单条岗位的薪资摘要（"24-26 元/时"）
+ * - formatSalarySummary：单条岗位的薪资摘要（"24-26元/时"，主数与推荐卡片同源）
  * - formatBrandStoreDisplayLine：拼成"品牌（门店，距离，班次，薪资，要求）"展示行
  * - buildBrandNearestStoreSummary：jobs[] → BrandNearestStoresGroup[]
  * - getMultiStoreBrandGroups：筛同品牌 ≥2 家的分组
@@ -18,7 +18,7 @@ import {
 import { formatJobShiftTime } from '@tools/job-list/format-shift-time.util';
 import { extractHardRequirements } from '@tools/job-list/hard-requirements.util';
 import { buildJobPolicyAnalysis } from '@tools/job-list/job-policy-parser';
-import { sanitizeLaborFormForDisplay } from '@resolution/labor-form';
+import { resolveSalaryHeadline, type SalaryHeadlineJob } from '@tools/job-list/salary-display.util';
 import type { JobDetail } from '@sponge/sponge.types';
 
 export interface BrandStoreEntry {
@@ -44,46 +44,26 @@ export interface BrandNearestStoresGroup {
 }
 
 /**
- * `formatSalarySummary` 实际读取的最小 jobSalary 字段集（自描述契约，
- * 叶子值保持 unknown，由 `!= null` / 模板串兜底任意 raw 值）。
+ * `formatSalarySummary` 实际读取的最小字段集：主数部分同 SalaryHeadlineJob，
+ * 另读试工期薪资作为无任何方案时的兜底。
  */
-interface SalarySummaryJobInput {
-  basicInfo?: { laborForm?: unknown } | null;
+interface SalarySummaryJobInput extends SalaryHeadlineJob {
   jobSalary?: {
-    salaryScenarioList?: Array<{
-      comprehensiveSalary?: {
-        minComprehensiveSalary?: unknown;
-        maxComprehensiveSalary?: unknown;
-        comprehensiveSalaryUnit?: string;
-      } | null;
-      basicSalary?: { basicSalary?: unknown; basicSalaryUnit?: string } | null;
-    }> | null;
+    salaryScenarioList?: unknown;
     probationSalary?: { salary?: unknown; salaryUnit?: string } | null;
   } | null;
 }
 
-/** 单条岗位的薪资摘要（"24-26 元/时" / 试工期 / 综合月薪）。 */
+/**
+ * 单条岗位的薪资摘要（"24-26元/时" / 综合月薪 / 试工期）。主数与推荐卡片同源
+ * （resolveSalaryHeadline）；只有完全没有薪资方案金额时才退回试工期薪资。
+ */
 export function formatSalarySummary(job: SalarySummaryJobInput): string | null {
   const salary = job.jobSalary;
   if (!salary) return null;
 
-  const scenario = salary.salaryScenarioList?.[0];
-  if (scenario) {
-    const comp = scenario.comprehensiveSalary;
-    const compText =
-      comp && (comp.minComprehensiveSalary != null || comp.maxComprehensiveSalary != null)
-        ? `${comp.minComprehensiveSalary ?? '?'}-${comp.maxComprehensiveSalary ?? '?'} ${comp.comprehensiveSalaryUnit || '元/月'}`
-        : null;
-    const basic = scenario.basicSalary;
-    const basicText =
-      basic?.basicSalary != null ? `${basic.basicSalary}${basic.basicSalaryUnit || '元'}` : null;
-    // 与候选人卡片同口径：兼职岗按小时计薪，基础时薪优先于综合月薪区间。
-    const laborForm = job.basicInfo?.laborForm;
-    const partTimeFirst =
-      sanitizeLaborFormForDisplay(typeof laborForm === 'string' ? laborForm : null) === '兼职';
-    const picked = partTimeFirst ? (basicText ?? compText) : (compText ?? basicText);
-    if (picked) return picked;
-  }
+  const headline = resolveSalaryHeadline(job);
+  if (headline) return headline.text;
 
   const probation = salary.probationSalary;
   if (probation?.salary != null) {

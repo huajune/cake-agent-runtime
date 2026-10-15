@@ -329,3 +329,129 @@ describe('job_fact_without_provenance（零工具轮的无来源岗位数字）'
     });
   });
 });
+
+describe('job_fact_without_provenance 出处按事实种类比对（2026-09-10~10-14 生产命中复放）', () => {
+  const hit = (reply: string, sources: string[]) =>
+    detectJobFactWithoutProvenance(reply, [], sources);
+  const memoryJob = (distanceKm: number): RecommendedJobSummary => ({
+    jobId: 1,
+    brandName: '奥乐齐',
+    jobName: '晚班补货',
+    storeName: null,
+    cityName: null,
+    regionName: null,
+    laborForm: '兼职',
+    salaryDesc: '30元/时',
+    shiftSummary: '22:00-次日07:00',
+    jobCategoryName: null,
+    distanceKm,
+  });
+
+  it('距离按数值比：约 7km 与记忆里的 7.0km 是同一事实', () => {
+    expect(
+      hit('奥乐齐晚班补货，约7km，30元/时', formatJobFactProvenanceTexts([memoryJob(7)])),
+    ).toBeNull();
+  });
+
+  it('整数公里落在来源距离的取整区间内算有出处，区间外仍判', () => {
+    const sources = ['必胜客（滨江店），17.8km'];
+    expect(hit('那家离你17公里，有点远', sources)).toBeNull();
+    expect(hit('那家离你18公里，有点远', sources)).toBeNull();
+    expect(hit('那家离你20公里，有点远', sources)?.action).toBe('replan');
+  });
+
+  it('跨夜班次剥掉"次日/凌晨"后对账', () => {
+    expect(hit('夜班是22:00-07:00', ['班次：22:00-次日07:00'])).toBeNull();
+    expect(hit('晚班16:00 到凌晨 00:00', ['班次：16:00-00:00'])).toBeNull();
+  });
+
+  it('候选人用点号或中文口语写的时间，复述成 HH:MM 不算编造', () => {
+    expect(hit('早班9:30-16:30这个时段门店排不了', ['早班9.30-16.30可以不'])).toBeNull();
+    expect(hit('7:00-16:30 这个时段可以覆盖早班', ['我可以上班的时间是7.00--16:30'])).toBeNull();
+    expect(
+      hit('工作日8:30-17:30这个时段可以排', ['我要接送孩子，只有八点半到五点半这个时间段有空']),
+    ).toBeNull();
+    expect(
+      hit('17:00-21:30这个时段，我帮你重新筛一下', ['我的时间是下午17点21.30都可以']),
+    ).toBeNull();
+    expect(hit('17:00-23:00这个时段可以', ['我下午5点到11点都行'])).toBeNull();
+  });
+
+  it('班次起止两端在同一行来源里（合并相邻班次）算有出处；分属两个岗位仍判', () => {
+    expect(hit('上午可以排7:00-16:30', ['班次：07:00-11:00 / 11:00-16:30'])).toBeNull();
+    expect(
+      hit('上午可以排07:00-16:30', ['A 店班次：07:00-11:00', 'B 店班次：12:00-16:30'])?.action,
+    ).toBe('replan');
+  });
+
+  it('复述候选人自己的可上班时间不是岗位班次', () => {
+    expect(hit('你可用时间是8:30-19:00，这家门店的排班对不上', [])).toBeNull();
+    expect(hit('你说的 8:30-16:30 这个时段，早班窗口可以覆盖', [])).toBeNull();
+  });
+
+  it('"N 公里内"是在问距离偏好，不是岗位事实', () => {
+    expect(hit('你觉得多远比较合适？1公里内还是2公里内？', [])).toBeNull();
+  });
+
+  it('薪资数字出现在来源薪资语境里即算，不要求同一写法', () => {
+    expect(hit('平时是16.3元/时', ['灵活用工价格：月工时<80小时，平时16.3/时'])).toBeNull();
+    expect(
+      hit('基础19元/时，满100小时21元/时', ['薪资：基础19元/时，满100小时21元/时']),
+    ).toBeNull();
+    expect(hit('19-21元/时', ['薪资：基础19元/时，满100小时21元/时'])).toBeNull();
+  });
+
+  it('来源薪资区间的两端都算出处（含单位前置"月薪N-M"）', () => {
+    expect(hit('这家全职岗月薪3000起', ['这家全职岗月薪3000-4000'])).toBeNull();
+    expect(hit('起步22元/时', ['M Stand 全职店员，22-28 元/时'])).toBeNull();
+  });
+
+  it('薪资区间两端须同属一行，散落在不同岗位里的数字拼不出区间', () => {
+    expect(hit('这边普遍22-28元/时', ['A 店 22元/时', 'B 店 28元/时'])?.action).toBe('replan');
+  });
+
+  it('日薪等于来源时薪 × 整半小时数算有出处；凑不出整工时仍判', () => {
+    expect(hit('一天做9小时就是171元/天', ['薪资：基础19元/时'])).toBeNull();
+    expect(hit('一天大概200元/天', ['薪资：基础19元/时'])?.action).toBe('replan');
+  });
+
+  it('同一行"时薪 × N 倍"推出的节假日时薪算有出处', () => {
+    expect(hit('法定节假日3倍，75元/时', ['薪资：25元/时，法定节假日3倍，月结'])).toBeNull();
+    expect(hit('法定节假日75元/时', ['薪资：25元/时', '法定节假日按国家规定'])?.action).toBe(
+      'replan',
+    );
+  });
+
+  it('月收入估算不推导，仍要原文出处', () => {
+    expect(hit('天天做的话大概1870元/月', ['基础24元/时，超40小时26元/时'])?.action).toBe('replan');
+  });
+
+  it('段尾金额接下一段开头的"月"不是月薪', () => {
+    expect(hit('一天2小时就是48元\n\n月工时超40小时的部分才涨', ['24元/时'])).toBeNull();
+  });
+
+  it('真人经理消息按同样口径为距离/班次作证，薪资换写法也不作证', () => {
+    const humanRecruiterTexts = ['班次：22:00-次日07:00，离你约7.0km，平时16.3/时'];
+    const ask = (reply: string) =>
+      detectJobFactWithoutProvenance(reply, [], [], { humanRecruiterTexts });
+    expect(ask('夜班是22:00-07:00，离你7公里')).toBeNull();
+    expect(ask('平时是16.3元/时')?.label).toContain('16.3元/时');
+  });
+
+  it('零查询凭空报出的门店距离与薪资仍判（trace 19271 形态）', () => {
+    const reply =
+      '查到了，附近有3家在招：\nM Stand 高新万达店，距离1.2km，22-28元/时\n瑞幸 丈八北路店，距离0.8km，20-25元/时';
+    expect(hit(reply, ['丈八北路', '你好，想找个咖啡店兼职'])?.action).toBe('replan');
+  });
+
+  it('零查询编出某门店"在招"的班次仍判，即使来源里别的岗位有相同时薪（trace 19467 形态）', () => {
+    const sources = [
+      '试工薪资：20 元/时',
+      '成都你六姐（相城龙湖店） - 后厨，9.4km',
+      '班次：10:00-14:00 / 18:00-22:30',
+    ];
+    const reply =
+      '在招的，这家哈根达斯有兼职岗：\n20元/时，月结\n班次：早班06:00-14:00、中班11:00-19:00';
+    expect(hit(reply, sources)?.label).toContain('06:00-14:00');
+  });
+});

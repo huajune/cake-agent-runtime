@@ -73,10 +73,12 @@ export interface TimeRange {
 export interface ShiftSlot extends TimeRange {
   index: number;
   tags: ShiftTag[];
+  /** 超过 12 小时的班次按灵活排班兜底时，在该时段内安排的每班时长范围（见 slots.ts）。 */
+  arranged?: { minMinutes: number; maxMinutes: number };
 }
 /**
- * 灵活排班的 window 是候选人须整段接受的排班区间，minimumMinutes 是门店在区间内安排的每班时长；
- * tags 按排班区间计算，与固定／组合的班次标签同一定义。
+ * 灵活排班的 window 是排班区间，minimumMinutes 是每班时长：门店按候选人可上班时间在区间内安排一个
+ * 完整班次；tags 按排班区间计算，表示区间内可排的班次类型，与固定／组合的班次标签同一定义。
  */
 export type JobSchedule =
   | { arrangementType: '固定排班' | '组合排班制'; slots: ShiftSlot[]; tags: ShiftTag[] }

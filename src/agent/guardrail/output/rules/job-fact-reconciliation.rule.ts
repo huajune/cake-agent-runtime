@@ -4,11 +4,8 @@ import { asRecord } from '@infra/utils/object.util';
 import { extractPresentedJobs } from '@resolution/job';
 import type { RecommendedJobSummary } from '@resolution/job/types';
 import type { RuleContradiction } from '../output-rule.types';
-import {
-  extractQuantifiedJobFacts,
-  isSalaryFact,
-  normalizeQuantifiedJobFact,
-} from './job-fact-signals.util';
+import { extractQuantifiedJobFacts, isSalaryFact } from './job-fact-signals.util';
+import { buildJobFactProvenanceIndex, isJobFactSupported } from './job-fact-provenance.util';
 
 /**
  * 岗位事实 ↔ 查询动作对账（零工具轮的两种假事实）。
@@ -25,7 +22,9 @@ import {
  * - `job_fact_without_provenance`（REPLAN）：回复出现量化岗位事实（元/时·天·月、月薪/时薪 N、km、
  *   HH:MM-HH:MM），本轮没有可作证据的查岗结果，且该数字在会话内 Agent 自己的历史回复、候选人
  *   消息与会话记忆的岗位摘要（已展示岗位 / 上轮候选池 / 焦点岗位，即上一轮工具结果沉淀后渲染进
- *   [会话记忆] 的班次、薪资、距离）里都没出现过。回指历史（"刚才那家/上面那个"）的句子豁免。
+ *   [会话记忆] 的班次、薪资、距离）里都没出现过。"出现过"按事实种类比对而不是逐字比对
+ *   （见 job-fact-provenance.util）。回指历史（"刚才那家/上面那个"）的句子、"N 公里内"这类
+ *   距离偏好、复述候选人自己可上班时间的句子豁免。
  *   - 证据工具只认**成功**的 duliday_job_list / duliday_interview_precheck。取消、改约、报名、
  *     定位（以及失败的查岗/预检）不提供岗位薪资事实：调过它们时仍对**薪资**对账，时段与距离
  *     可能来自这些回执，照旧放行（生产 trace …_1790233240971：只调了两次取消，回复照抄真人
@@ -59,6 +58,12 @@ const JOB_FACT_EVIDENCE_TOOL_NAMES: ReadonlySet<string> = new Set([
   'duliday_job_list',
   'duliday_interview_precheck',
 ]);
+
+/** "1 公里内还是 2 公里内？"是在问候选人的距离偏好，不是岗位事实。 */
+const DISTANCE_PREFERENCE_SUFFIX = /^\s*以?内/u;
+/** 复述候选人自己的可上班时间（"你说的 8:30-16:30""你可用时间是…"），不是岗位班次。 */
+const CANDIDATE_TIME_REFERENCE_PATTERN =
+  /你(?:说的|提到的|的(?:可用|空闲|方便)?时间|可用时间|空闲时间|方便的时间|有空的时间|能上班的时间|可以上班的时间)/u;
 
 function hasJobQueryTool(toolCalls: readonly AgentToolCall[]): boolean {
   return toolCalls.some((call) => JOB_QUERY_TOOL_NAMES.has(call.toolName));
@@ -195,7 +200,7 @@ export interface JobFactProvenanceContext {
  *   （见 formatJobFactProvenanceTexts）。候选人自己刚说的数字（"那个 25 元/时的还在招吗"）
  *   被复述回去不是编造；上一轮工具结果沉淀进记忆的班次/薪资被挑出来回答追问同样不是。
  *   调用方拿不到会话历史时不要调本函数（无法判出处 ≠ 无出处）。
- *   已知残余：同一事实换表述（"下午5点到11点"↔"17:00-23:00"）仍会命中。
+ *   月收入估算等需要多步推导的数字不推导，仍按无出处处理。
  * @param context 真人招聘经理消息（仅为非薪资事实作证）与岗位绑定所需的本轮/记忆岗位。
  */
 export function detectJobFactWithoutProvenance(
@@ -212,16 +217,20 @@ export function detectJobFactWithoutProvenance(
   // 本轮调过取消/改约/报名/定位（或查岗/预检失败）时，其回执仍可能给出面试时段、距离，
   // 只对薪资对账；完全零工具时三类事实都对账。
   const salaryOnly = evidenceCalls.length === 0 && hasJobQueryTool(toolCalls);
-  const history = normalizeQuantifiedJobFact(priorTexts.join('\n'));
-  const humanHistory = normalizeQuantifiedJobFact((context.humanRecruiterTexts ?? []).join('\n'));
+  const history = buildJobFactProvenanceIndex(priorTexts);
+  const humanHistory = buildJobFactProvenanceIndex(context.humanRecruiterTexts ?? []);
   const orphanFacts: string[] = [];
   for (const fact of extractQuantifiedJobFacts(text)) {
-    if (salaryOnly && !isSalaryFact(fact.normalized)) continue;
+    const salary = isSalaryFact(fact.normalized);
+    if (salaryOnly && !salary) continue;
     const sentence = sentenceOf(text, fact.index);
     if (HISTORY_REFERENCE_PATTERN.test(sentence)) continue;
-    if (history.includes(fact.normalized)) continue;
+    const following = text.slice(fact.index + fact.raw.length);
+    if (/km|公里/i.test(fact.raw) && DISTANCE_PREFERENCE_SUFFIX.test(following)) continue;
+    if (/[:：]\d{2}$/.test(fact.raw) && CANDIDATE_TIME_REFERENCE_PATTERN.test(sentence)) continue;
+    if (isJobFactSupported(fact.raw, history)) continue;
     // 真人经理消息只为距离/时段作证；薪资必须来自工具、记忆岗位摘要或 Agent 自己说过的话。
-    if (!isSalaryFact(fact.normalized) && humanHistory.includes(fact.normalized)) continue;
+    if (!salary && isJobFactSupported(fact.raw, humanHistory)) continue;
     orphanFacts.push(fact.raw);
   }
   if (orphanFacts.length === 0) return null;

@@ -11,34 +11,15 @@ describe('ReengagementDeliveryService', () => {
     }),
   };
   const botService = {
-    getConfiguredBotList: jest.fn().mockResolvedValue([{ wxid: 'bot-1', groupId: 'group-1' }]),
-  };
-  const groupBlacklist = {
-    getGroupBlacklistStatus: jest.fn().mockResolvedValue(false),
+    getConfiguredBotList: jest.fn().mockResolvedValue([{ wxid: 'bot-1' }]),
   };
 
   beforeEach(() => {
     jest.clearAllMocks();
-    botService.getConfiguredBotList.mockResolvedValue([{ wxid: 'bot-1', groupId: 'group-1' }]);
-    groupBlacklist.getGroupBlacklistStatus.mockResolvedValue(false);
+    botService.getConfiguredBotList.mockResolvedValue([{ wxid: 'bot-1' }]);
   });
 
-  const service = () =>
-    new ReengagementDeliveryService(
-      delivery as never,
-      botService as never,
-      groupBlacklist as never,
-    );
-
-  const deliveryContext = {
-    token: 'token-1',
-    imBotId: 'bot-1',
-    imContactId: 'contact-1',
-    imRoomId: '',
-    contactName: '张三',
-    messageId: 'batch-1',
-    chatId: 'sess-1',
-  };
+  const service = () => new ReengagementDeliveryService(delivery as never, botService as never);
 
   it('uses the passive message delivery pipeline without duplicate monitoring', async () => {
     await service().deliver(
@@ -139,66 +120,5 @@ describe('ReengagementDeliveryService', () => {
       expect.objectContaining({ skipped: true, skipReason: 'receiving_bot_not_hosted' }),
     );
     expect(delivery.deliverReply).not.toHaveBeenCalled();
-  });
-
-  it('skips delivery when the receiving bot group has hosting turned off', async () => {
-    botService.getConfiguredBotList.mockResolvedValue([
-      { wxid: 'bot-0', groupId: 'group-0' },
-      { wxid: 'bot-1', groupId: 'group-2' },
-    ]);
-    groupBlacklist.getGroupBlacklistStatus.mockImplementation(async (groupId: string) =>
-      Promise.resolve(groupId === 'group-2'),
-    );
-
-    const result = await service().deliver(
-      { kind: 'reply', reply: { text: '还在找工作吗？' }, toolCalls: [] },
-      { context: deliveryContext },
-    );
-
-    expect(groupBlacklist.getGroupBlacklistStatus).toHaveBeenCalledWith('group-2');
-    expect(result).toEqual(
-      expect.objectContaining({ skipped: true, skipReason: 'receiving_group_not_hosted' }),
-    );
-    expect(delivery.deliverReply).not.toHaveBeenCalled();
-  });
-
-  it('fails closed when the group hosting status is unreadable', async () => {
-    groupBlacklist.getGroupBlacklistStatus.mockResolvedValue(null);
-
-    const result = await service().deliver(
-      { kind: 'reply', reply: { text: '还在找工作吗？' }, toolCalls: [] },
-      { context: deliveryContext },
-    );
-
-    expect(result).toEqual(
-      expect.objectContaining({ skipped: true, skipReason: 'receiving_group_not_hosted' }),
-    );
-    expect(delivery.deliverReply).not.toHaveBeenCalled();
-  });
-
-  it('fails closed when the group hosting lookup throws', async () => {
-    groupBlacklist.getGroupBlacklistStatus.mockRejectedValue(new Error('redis unavailable'));
-
-    const result = await service().deliver(
-      { kind: 'reply', reply: { text: '还在找工作吗？' }, toolCalls: [] },
-      { context: deliveryContext },
-    );
-
-    expect(result).toEqual(
-      expect.objectContaining({ skipped: true, skipReason: 'receiving_group_not_hosted' }),
-    );
-    expect(delivery.deliverReply).not.toHaveBeenCalled();
-  });
-
-  it('delivers for a hosted bot outside any group without consulting the group blacklist', async () => {
-    botService.getConfiguredBotList.mockResolvedValue([{ wxid: 'bot-1' }]);
-
-    await service().deliver(
-      { kind: 'reply', reply: { text: '还在找工作吗？' }, toolCalls: [] },
-      { context: deliveryContext },
-    );
-
-    expect(groupBlacklist.getGroupBlacklistStatus).not.toHaveBeenCalled();
-    expect(delivery.deliverReply).toHaveBeenCalledTimes(1);
   });
 });

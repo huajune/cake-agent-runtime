@@ -281,48 +281,4 @@ describe('GroupBlacklistService', () => {
       expect((service as any).memoryCacheExpiry).toBeGreaterThan(Date.now());
     });
   });
-
-  // ==================== getGroupBlacklistStatus ====================
-
-  describe('getGroupBlacklistStatus', () => {
-    it('returns false for empty groupId without any lookup', async () => {
-      expect(await service.getGroupBlacklistStatus('')).toBe(false);
-      expect(mockGroupBlacklistRepository.loadBlacklistFromDb).not.toHaveBeenCalled();
-    });
-
-    it('answers from the shared cache when it has a snapshot', async () => {
-      mockRedisService.get.mockResolvedValue({ items: sampleBlacklistItems });
-
-      expect(await service.getGroupBlacklistStatus('group1')).toBe(true);
-      expect(await service.getGroupBlacklistStatus('unknown-group')).toBe(false);
-      expect(mockGroupBlacklistRepository.loadBlacklistFromDb).not.toHaveBeenCalled();
-    });
-
-    it('falls back to DB when the shared cache misses', async () => {
-      mockGroupBlacklistRepository.loadBlacklistFromDb.mockResolvedValue(sampleBlacklistItems);
-
-      expect(await service.getGroupBlacklistStatus('group2')).toBe(true);
-      expect(await service.getGroupBlacklistStatus('unknown-group')).toBe(false);
-    });
-
-    it('returns null when Redis fails and DB is unreadable', async () => {
-      mockRedisService.get.mockRejectedValue(new Error('redis down'));
-      mockGroupBlacklistRepository.loadBlacklistFromDb.mockResolvedValue(null);
-
-      expect(await service.getGroupBlacklistStatus('group1')).toBeNull();
-      // 入站过滤口径不变：读不到仍按旧快照（此处为空）放行。
-      expect(await service.isGroupBlacklisted('group1')).toBe(false);
-    });
-
-    it('does not trust a backoff window left by a failed refresh', async () => {
-      mockGroupBlacklistRepository.loadBlacklistFromDb.mockResolvedValueOnce(null);
-      await service.loadGroupBlacklist();
-
-      mockGroupBlacklistRepository.loadBlacklistFromDb.mockResolvedValueOnce(null);
-      expect(await service.getGroupBlacklistStatus('group1')).toBeNull();
-
-      mockGroupBlacklistRepository.loadBlacklistFromDb.mockResolvedValueOnce(sampleBlacklistItems);
-      expect(await service.getGroupBlacklistStatus('group1')).toBe(true);
-    });
-  });
 });

@@ -46,11 +46,15 @@ describe('结构化班次匹配', () => {
       }).status,
     ).toBe('matched');
   });
-  it('正向标签取或，负向标签检查岗位所有标签', () => {
+  it('正向标签取或；排除标签在固定排班检查全部班次，在组合排班按档判定', () => {
     expect(matchDailySchedule(combo, { includeAnyTags: ['early', 'morning'] }).status).toBe(
       'matched',
     );
-    expect(matchDailySchedule(combo, { excludeTags: ['morning'] }).status).toBe('unmatched');
+    expect(matchDailySchedule(fixed, { excludeTags: ['morning'] }).status).toBe('unmatched');
+    expect(matchDailySchedule(combo, { excludeTags: ['morning'] })).toMatchObject({
+      status: 'matched',
+      matchedSlotIndexes: [1],
+    });
   });
   it('不可用时间与任何必选班次重叠时排除，端点相接可接受', () => {
     expect(
@@ -123,28 +127,29 @@ describe('结构化班次匹配', () => {
       matchDailySchedule(overnight, { unavailableWindow: { start: '06:00', end: '08:00' } }).status,
     ).toBe('unmatched');
   });
-  it('灵活排班须整段接受排班区间，不因只给窗口和工时而待确认', () => {
+  it('灵活排班按候选人可上班时间在区间内排一个完整班次', () => {
+    // 05:00-23:00 区间，每班 4 小时
     const flex = getJobSchedule(flexibleJob());
     expect(matchDailySchedule(flex, { availableWindow: { start: '20:00' } }).status).toBe(
       'unmatched',
     );
     expect(matchDailySchedule(flex, { availableWindow: { start: '18:00' } })).toMatchObject({
-      status: 'unmatched',
-      mode: 'time',
-    });
-    expect(matchDailySchedule(flex, { availableWindow: { start: '05:00' } })).toMatchObject({
       status: 'matched',
       mode: 'time',
       matchedSlotIndexes: [],
+      reason: '可安排 18:00-22:00 等时段',
     });
     expect(
       matchDailySchedule(flex, { availableWindow: { start: '05:00', end: '22:59' } }).status,
+    ).toBe('matched');
+    expect(
+      matchDailySchedule(flex, { availableWindow: { start: '15:00', end: '18:59' } }).status,
+    ).toBe('unmatched');
+    expect(
+      matchDailySchedule(flex, { unavailableWindow: { start: '07:00', end: '20:00' } }).status,
     ).toBe('unmatched');
     expect(
       matchDailySchedule(flex, { unavailableWindow: { start: '17:00', end: '19:00' } }).status,
-    ).toBe('unmatched');
-    expect(
-      matchDailySchedule(flex, { unavailableWindow: { start: '01:00', end: '03:00' } }).status,
     ).toBe('matched');
   });
   it('灵活排班按门店安排的每班时长比较候选人时长要求', () => {
@@ -156,35 +161,47 @@ describe('结构化班次匹配', () => {
     expect(matchDailySchedule(flex, { minShiftHours: 5 }).status).toBe('unmatched');
     expect(matchDailySchedule(flex, { maxShiftHours: 3 }).status).toBe('unmatched');
   });
-  it('灵活排班按排班区间标签参与粗筛与排除', () => {
+  it('灵活排班按可排出的整班判断班次标签，示例取最贴近要求的整班', () => {
     const flex = getJobSchedule(flexibleJob());
     expect(matchDailySchedule(flex, { includeAnyTags: ['evening'] })).toMatchObject({
       status: 'matched',
       mode: 'tag',
+      reason: '可安排 16:30-20:30 等时段',
     });
     expect(matchDailySchedule(flex, { includeAnyTags: ['night'] }).status).toBe('unmatched');
-    expect(matchDailySchedule(flex, { excludeTags: ['evening'] }).status).toBe('unmatched');
+    expect(matchDailySchedule(flex, { excludeTags: ['evening'] }).status).toBe('matched');
     expect(
-      matchDailySchedule(flex, {
-        availableWindow: { start: '05:00', end: '23:00' },
-        excludeTags: ['night'],
-      }).status,
-    ).toBe('matched');
-  });
-  it('跨日灵活排班区间按同一业务日整段对齐', () => {
-    const overnight = getJobSchedule(flexibleJob(6, '22:00', '07:00', '6', true));
-    const window = { start: '22:00', end: '07:00', endDayOffset: 1 as const };
-    expect(matchDailySchedule(overnight, { availableWindow: window }).status).toBe('matched');
-    expect(
-      matchDailySchedule(overnight, { availableWindow: { start: '00:00', end: '06:00' } }).status,
+      matchDailySchedule(flex, { availableWindow: { start: '17:00' }, excludeTags: ['evening'] })
+        .status,
     ).toBe('unmatched');
+  });
+  it('24小时排班区间可按候选人任意时段排班', () => {
+    const allDay = getJobSchedule(flexibleJob(10, '05:00', '05:00', '8', true));
+    expect(matchDailySchedule(allDay, { availableWindow: { start: '17:00' } })).toMatchObject({
+      status: 'matched',
+      reason: '可安排 17:00-次日01:00 等时段',
+    });
+    expect(matchDailySchedule(allDay, { excludeTags: ['night'] }).status).toBe('matched');
+    expect(
+      matchDailySchedule(allDay, { availableWindow: { start: '14:00', end: '18:00' } }).status,
+    ).toBe('unmatched');
+  });
+  it('跨日排班区间里过零点才开始的整班按当天钟点对齐', () => {
+    const overnight = getJobSchedule(flexibleJob(6, '22:00', '07:00', '6', true));
     expect(
       matchDailySchedule(overnight, {
-        availableWindow: window,
+        availableWindow: { start: '22:00', end: '07:00', endDayOffset: 1 },
+      }).status,
+    ).toBe('matched');
+    expect(
+      matchDailySchedule(overnight, { availableWindow: { start: '00:00', end: '06:00' } }),
+    ).toMatchObject({ status: 'matched', reason: '可安排 00:00-06:00 等时段' });
+    expect(
+      matchDailySchedule(overnight, {
+        availableWindow: { start: '22:00', end: '07:00', endDayOffset: 1 },
         unavailableWindow: { start: '02:00', end: '03:00' },
       }).status,
     ).toBe('unmatched');
-    expect(matchDailySchedule(overnight, { excludeTags: ['night'] }).status).toBe('unmatched');
   });
   it('有日内条件但岗位缺少班次数据时按契约错误抛出，不产出待确认', () => {
     expect(() => matchDailySchedule(null, { includeAnyTags: ['night'] })).toThrow(
@@ -275,7 +292,7 @@ describe('具体可上班时段与排除标签同时生效', () => {
     ).toMatchObject({ status: 'unmatched', reason: '岗位包含候选人排除的班次标签' });
   });
 
-  it('组合排班按岗位标签并集排除，不因另有一档符合时间而放行', () => {
+  it('组合排班的排除标签按档判定：另有一档不含排除标签且符合时间即可', () => {
     const mixed = getJobSchedule(
       scheduledJob(13, '组合排班制', [
         ['15:00', '20:00'],
@@ -283,9 +300,18 @@ describe('具体可上班时段与排除标签同时生效', () => {
       ]),
     );
     expect(
-      matchDailySchedule(mixed, { availableWindow: { start: '15:00' }, excludeTags: ['night'] })
-        .status,
-    ).toBe('unmatched');
+      matchDailySchedule(mixed, { availableWindow: { start: '15:00' }, excludeTags: ['night'] }),
+    ).toMatchObject({ status: 'matched', matchedSlotIndexes: [0] });
+    const allNight = getJobSchedule(
+      scheduledJob(15, '组合排班制', [
+        ['21:00', '02:00'],
+        ['22:00', '06:00'],
+      ]),
+    );
+    expect(matchDailySchedule(allNight, { excludeTags: ['night'] })).toMatchObject({
+      status: 'unmatched',
+      reason: '岗位包含候选人排除的班次标签',
+    });
     const day = getJobSchedule(
       scheduledJob(14, '组合排班制', [
         ['08:00', '12:00'],
@@ -456,13 +482,14 @@ describe('原始需求《班次匹配机制说明》示例', () => {
       ],
     ],
     [
-      '有没有不上夜班的：不含夜班',
+      '有没有不上夜班的：不含夜班（组合排班有一档不含夜班即可）',
       { excludeTags: ['night'] },
       [
         'fixedEvening',
         'fixedAfternoon',
         'comboDayEvening',
         'fixedDayAndEvening',
+        'comboEveningNight',
         'flexibleDay',
         'flexibleEvening',
       ],
@@ -482,7 +509,8 @@ describe('原始需求《班次匹配机制说明》示例', () => {
     [
       '下午三点到晚上九点：班次完整落在15-21点内',
       { availableWindow: { start: '15:00', end: '21:00' } },
-      ['comboDayEvening', 'comboEveningNight'],
+      // 灵活排班 17:00-23:00 每班 4 小时，可在 17:00-21:00 排一个完整班次。
+      ['comboDayEvening', 'comboEveningNight', 'flexibleEvening'],
     ],
     [
       '夜班，晚上十点到凌晨：忽略夜班标签，班次开始不早于22点',
@@ -500,5 +528,254 @@ describe('原始需求《班次匹配机制说明》示例', () => {
       )
       .map(([name]) => name);
     expect(matched).toEqual(expected);
+  });
+});
+
+describe('灵活排班设计核对示例（2026-10-13 与用户确认）', () => {
+  // 两类真实灵活岗位：奥乐齐 05:00-23:00、24 小时门店 05:00-次日05:00，均每班 8 小时。
+  const day = getJobSchedule(flexibleJob(1, '05:00', '23:00', '8'));
+  const allDay = getJobSchedule(flexibleJob(2, '05:00', '05:00', '8', true));
+  it.each([
+    ['早班有吗', { includeAnyTags: ['early', 'morning'] }, '可安排 05:00-13:00 等时段', 'matched'],
+    ['只做晚班', { includeAnyTags: ['evening'] }, 'matched', 'matched'],
+    ['只做夜班', { includeAnyTags: ['night'] }, null, '可安排 20:30-次日04:30 等时段'],
+    ['夜班不做', { excludeTags: ['night'] }, 'matched', '可安排 05:00-13:00 等时段'],
+    [
+      '白天9点到6点有空',
+      { availableWindow: { start: '09:00', end: '18:00' } },
+      '可安排 09:00-17:00 等时段',
+      'matched',
+    ],
+    ['17点后有空', { availableWindow: { start: '17:00' } }, null, '可安排 17:00-次日01:00 等时段'],
+    ['下午3点到晚上9点', { availableWindow: { start: '15:00', end: '21:00' } }, null, null],
+    ['晚上十点后有空', { availableWindow: { start: '22:00' } }, null, null],
+    [
+      '17点后有空，夜班不做',
+      { availableWindow: { start: '17:00' }, excludeTags: ['night'] },
+      null,
+      null,
+    ],
+    ['每班最多4小时', { maxShiftHours: 4 }, null, null],
+  ] as const)('%s', (_, constraint, dayExpected, allDayExpected) => {
+    for (const [schedule, expected] of [
+      [day, dayExpected],
+      [allDay, allDayExpected],
+    ] as const) {
+      const outcome = matchDailySchedule(schedule, constraint as never);
+      if (expected === null) expect(outcome.status).toBe('unmatched');
+      else if (expected === 'matched') expect(outcome.status).toBe('matched');
+      else expect(outcome).toMatchObject({ status: 'matched', reason: expected });
+    }
+  });
+});
+
+describe('灵活排班边界（2026-10-13 评审）', () => {
+  it('整班标签按区间坐标计算，过零点后的部分只计夜班，与卡片区间标签一致', () => {
+    const cases = [
+      [flexibleJob(20, '22:00', '07:00', '6', true), ['early', 'morning']],
+      [flexibleJob(21, '08:00', '08:00', '8', true), ['early']],
+      [flexibleJob(22, '23:00', '23:00', '8', true), ['midday']],
+    ] as const;
+    for (const [job, includeAnyTags] of cases) {
+      const schedule = getJobSchedule(job)!;
+      expect(includeAnyTags.some((tag) => schedule.tags.includes(tag))).toBe(false);
+      expect(matchDailySchedule(schedule, { includeAnyTags: [...includeAnyTags] }).status).toBe(
+        'unmatched',
+      );
+    }
+  });
+
+  it('未要夜班时示例优先非夜班整班；要了夜班才可用夜班整班举例', () => {
+    const allDay = getJobSchedule(flexibleJob(23, '00:00', '24:00', '8'));
+    expect(matchDailySchedule(allDay, { includeAnyTags: ['early', 'morning'] })).toMatchObject({
+      status: 'matched',
+      reason: '可安排 04:00-12:00 等时段',
+    });
+    expect(matchDailySchedule(allDay, { availableWindow: { end: '12:00' } })).toMatchObject({
+      status: 'matched',
+      reason: '可安排 04:00-12:00 等时段',
+    });
+    expect(matchDailySchedule(allDay, { includeAnyTags: ['night'] })).toMatchObject({
+      status: 'matched',
+      reason: '可安排 00:00-08:00 等时段',
+    });
+  });
+
+  it('示例先从区间内首个整点或半点试排，排不出再逐分钟兜底', () => {
+    const offset = getJobSchedule(flexibleJob(24, '05:10', '01:10', '8', true));
+    expect(matchDailySchedule(offset, { availableWindow: { start: '17:00' } })).toMatchObject({
+      status: 'matched',
+      reason: '可安排 17:00-次日01:00 等时段',
+    });
+    const exact = getJobSchedule(flexibleJob(25, '05:10', '13:10', '8'));
+    expect(matchDailySchedule(exact, { maxShiftHours: 8 })).toMatchObject({
+      status: 'matched',
+      reason: '可安排 05:10-13:10 等时段',
+    });
+  });
+
+  it('示例整班刚好24:00结束时展示为次日00:00', () => {
+    const late = getJobSchedule(flexibleJob(26, '16:00', '24:00', '8'));
+    expect(matchDailySchedule(late, { availableWindow: { start: '16:00' } })).toMatchObject({
+      status: 'matched',
+      reason: '可安排 16:00-次日00:00 等时段',
+    });
+  });
+
+  it('非整数小时的每班时长取整到分钟', () => {
+    const odd = getJobSchedule(flexibleJob(27, '05:00', '23:00', '6.33'));
+    expect(matchDailySchedule(odd, { availableWindow: { start: '05:00' } })).toMatchObject({
+      status: 'matched',
+      reason: '可安排 05:00-11:20 等时段',
+    });
+  });
+
+  it('只给04:00前的开始边界按业务日判定，前一晚开始的班次不算', () => {
+    expect(
+      matchDailySchedule(getJobSchedule(flexibleJob(28, '21:00', '07:00', '8', true)), {
+        availableWindow: { start: '00:00' },
+      }).status,
+    ).toBe('unmatched');
+    expect(
+      matchDailySchedule(getJobSchedule(flexibleJob(29, '20:00', '10:00', '8', true)), {
+        availableWindow: { start: '01:00' },
+      }),
+    ).toMatchObject({ status: 'matched', reason: '可安排 01:00-09:00 等时段' });
+    expect(
+      matchDailySchedule(getJobSchedule(scheduledJob(30, '固定排班', [['21:00', '05:00']])), {
+        availableWindow: { start: '00:00' },
+      }).status,
+    ).toBe('unmatched');
+    expect(
+      matchDailySchedule(getJobSchedule(scheduledJob(31, '固定排班', [['01:00', '05:00']])), {
+        availableWindow: { start: '01:00' },
+      }).status,
+    ).toBe('matched');
+  });
+
+  it('只给结束边界时，仅早上的下班上限按夜班结束日对齐', () => {
+    expect(
+      matchDailySchedule(getJobSchedule(scheduledJob(32, '固定排班', [['22:00', '06:00']])), {
+        availableWindow: { end: '07:00' },
+      }).status,
+    ).toBe('matched');
+    expect(
+      matchDailySchedule(getJobSchedule(scheduledJob(33, '固定排班', [['21:00', '05:00']])), {
+        availableWindow: { end: '21:00' },
+      }).status,
+    ).toBe('unmatched');
+    expect(
+      matchDailySchedule(getJobSchedule(flexibleJob(34, '18:00', '06:00', '8', true)), {
+        availableWindow: { end: '21:00' },
+      }).status,
+    ).toBe('unmatched');
+  });
+});
+
+describe('超过12小时的班次按灵活排班兜底，在时段内排6-8小时（运营 2026-10-14 口径）', () => {
+  const fixedLong = getJobSchedule(scheduledJob(1, '固定排班', [['09:30', '22:30']]));
+  const fixedAllDay = getJobSchedule(scheduledJob(2, '固定排班', [['05:00', '01:00']]));
+  const comboLong = getJobSchedule(
+    scheduledJob(3, '组合排班制', [
+      ['08:00', '24:00'],
+      ['16:00', '24:00'],
+    ]),
+  );
+  it('在该时段内排出6-8小时的班才算满足，优先排满8小时并给出可安排时段', () => {
+    expect(matchDailySchedule(fixedLong, { availableWindow: { start: '17:00' } }).status).toBe(
+      'unmatched',
+    );
+    expect(
+      matchDailySchedule(fixedLong, { availableWindow: { start: '09:00', end: '18:00' } }),
+    ).toMatchObject({
+      status: 'matched',
+      reason: '09:30-22:30 时段内可安排 09:30-17:30 等 6-8 小时班次',
+    });
+    expect(matchDailySchedule(fixedLong, { includeAnyTags: ['evening'] }).status).toBe('matched');
+    expect(matchDailySchedule(fixedLong, { maxShiftHours: 4 }).status).toBe('unmatched');
+  });
+  it('排除标签按排出的整班判定，不按整个时段的标签排除', () => {
+    expect(matchDailySchedule(fixedAllDay, { excludeTags: ['night'] }).status).toBe('matched');
+    // 18:00-24:00 可排 6 小时且不过零点；19 点以后不过零点只剩 5 小时，排不满 6 小时。
+    expect(
+      matchDailySchedule(fixedAllDay, {
+        availableWindow: { start: '18:00' },
+        excludeTags: ['night'],
+      }),
+    ).toMatchObject({
+      status: 'matched',
+      reason: '05:00-次日01:00 时段内可安排 18:00-次日00:00 等 6-8 小时班次',
+    });
+    expect(
+      matchDailySchedule(fixedAllDay, {
+        availableWindow: { start: '19:00' },
+        excludeTags: ['night'],
+      }).status,
+    ).toBe('unmatched');
+  });
+  it('组合排班中超长档按兜底判定，任选一档满足即可', () => {
+    expect(
+      matchDailySchedule(comboLong, { availableWindow: { start: '15:00', end: '23:00' } }),
+    ).toMatchObject({ status: 'matched', matchedSlotIndexes: [0] });
+    // 15-21 点正好 6 小时可排；15-20:30 只剩 5.5 小时，16:00-24:00 档也不在时间内。
+    expect(
+      matchDailySchedule(comboLong, { availableWindow: { start: '15:00', end: '21:00' } }),
+    ).toMatchObject({ status: 'matched', matchedSlotIndexes: [0] });
+    expect(
+      matchDailySchedule(comboLong, { availableWindow: { start: '15:00', end: '20:30' } }).status,
+    ).toBe('unmatched');
+  });
+  it('组合排班的普通档含排除标签时，可选的超长档在时段内排出不含该标签的班', () => {
+    const combo = getJobSchedule(
+      scheduledJob(4, '组合排班制', [
+        ['09:00', '23:00'],
+        ['16:00', '01:00'],
+      ]),
+    );
+    expect(matchDailySchedule(combo, { excludeTags: ['night'] })).toMatchObject({
+      status: 'matched',
+      matchedSlotIndexes: [0],
+    });
+  });
+  it('固定排班的每个超长档都要排得出', () => {
+    const fixedTwoLong = getJobSchedule(
+      scheduledJob(5, '固定排班', [
+        ['08:00', '22:00'],
+        ['09:00', '22:00'],
+      ]),
+    );
+    expect(
+      matchDailySchedule(fixedTwoLong, { availableWindow: { start: '09:00', end: '18:00' } })
+        .status,
+    ).toBe('matched');
+    // 第二档 09:00 才开始：08-14:30 只能排 5.5 小时，排不满 6 小时。
+    expect(
+      matchDailySchedule(fixedTwoLong, { availableWindow: { start: '08:00', end: '14:30' } })
+        .status,
+    ).toBe('unmatched');
+  });
+  it('固定排班超长档的示例时段优先命中候选人要的班次类型', () => {
+    expect(matchDailySchedule(fixedLong, { includeAnyTags: ['evening'] })).toMatchObject({
+      status: 'matched',
+      reason: '09:30-22:30 时段内可安排 13:30-21:30 等 6-8 小时班次',
+    });
+  });
+  it('组合排班各档都没有要求的标签时仍按岗位标签给出原因', () => {
+    const combo = getJobSchedule(
+      scheduledJob(7, '组合排班制', [
+        ['07:00', '11:00'],
+        ['13:00', '16:00'],
+      ]),
+    );
+    expect(matchDailySchedule(combo, { includeAnyTags: ['evening'] })).toMatchObject({
+      status: 'unmatched',
+      reason: '岗位没有候选人要求的班次标签',
+    });
+  });
+  it('正好12小时的班次不兜底，仍按完整班次判定', () => {
+    const twelve = getJobSchedule(scheduledJob(6, '固定排班', [['10:00', '22:00']]));
+    expect(
+      matchDailySchedule(twelve, { availableWindow: { start: '09:00', end: '18:00' } }).status,
+    ).toBe('unmatched');
   });
 });

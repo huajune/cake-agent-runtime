@@ -91,7 +91,8 @@ describe('renderCandidateCard', () => {
     });
     const card = renderCandidateCard(job, 0)!;
     expect(card.oneLine).not.toContain('每周 1 天');
-    expect(card.oneLine).toContain('做1休1轮换（平均每周约 3 天，工作日也要排班）');
+    // 卡片只写简短的“做一休一”；平均周频与“工作日也要排班”留在给 Agent 的岗位详情。
+    expect(card.oneLine).toContain('班次：11:00-15:00（4小时），做一休一');
   });
 
   it('includes salary range without 综合薪资 prefix when laborForm is absent', () => {
@@ -198,7 +199,7 @@ describe('renderCandidateCard', () => {
       const card = renderCandidateCard(job, 0)!;
       const lines = card.multiLine.split('\n').map((l) => l.trim());
       expect(lines[0]).toBe('1. **必胜客（马驹桥店） - 内场/外场，3.7km**');
-      expect(lines[1]).toContain('组合排班制（任选其中一档完整班次）');
+      expect(lines[1]).toBe('班次：08:00-14:00 / 15:00-23:00 二选一');
       expect(lines[1]).toContain('08:00-14:00');
       expect(lines[1]).toContain('15:00-23:00');
       expect(lines[2]).toBe(
@@ -478,7 +479,7 @@ describe('renderCandidateCard', () => {
     const lines = card.multiLine.split('\n');
     expect(lines).toHaveLength(4);
     expect(lines[0]).toContain('肯德基');
-    expect(lines[1]).toContain('班次：固定排班（需接受全部班次）：11:00-15:00');
+    expect(lines[1]).toBe('   班次：11:00-15:00（4小时），每周 4 天');
     expect(lines[2]).toContain('薪资：24-29元/时');
     expect(lines[3]).toContain('要求：');
   });
