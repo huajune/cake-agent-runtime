@@ -91,6 +91,43 @@
         "其他说明：新增 `tests/resolution/schedule/slots.spec.ts` 10 条边界专测（12 小时边界、轮班/未明确判定）；薪资与岗位事实出处两项由独立核查移植并各自跑过全量单测"
       ],
       "level": "patch"
+    },
+    {
+      "number": "1414",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1414",
+      "title": "小组关闭托管不再停发复聊提醒",
+      "author": "huajune",
+      "mergedAt": "2026-10-15",
+      "opsNotes": [
+        "**关闭托管的小组照常发复聊提醒** ✅ 随下一版上线",
+        "- 看板关掉某个小组的托管，只停 AI 回复候选人发来的消息；面试提醒、面试后回访等复聊照常由 AI 发出。",
+        "- 撤回 v11.13.1 里“关闭托管的小组不再发复聊”的改动，恢复到之前的做法。"
+      ],
+      "businessUpdates": [
+        "`follow-up.processor`：投递前检查回到只看接收账号是否托管，删除 #1404 加入的按小组托管开关（`system_config.group_blacklist`）停发分支及 `receiving_group_not_hosted` 跳过原因；在检查处注明小组关闭托管不停复聊（用户 2026-10-15 裁定）。",
+        "`GroupBlacklistService`：删除只供上述检查使用的严格读取方法 `getGroupBlacklistStatus` 与 `memoryCacheTrusted`。保留“黑名单读失败时不覆盖旧快照、不写回共享缓存”的改进，入站过滤同样受益。",
+        "测试：撤回对应的小组停发用例与严格读取用例。"
+      ],
+      "summary": [
+        "小组关闭托管不再停发复聊提醒"
+      ],
+      "features": [],
+      "fixes": [
+        "`follow-up.processor`：投递前检查回到只看接收账号是否托管，删除 #1404 加入的按小组托管开关（`system_config.group_blacklist`）停发分支及 `receiving_group_not_hosted` 跳过原因；在检查处注明小组关闭托管不停复聊（用户 2026-10-15 裁定）。",
+        "`GroupBlacklistService`：删除只供上述检查使用的严格读取方法 `getGroupBlacklistStatus` 与 `memoryCacheTrusted`。保留“黑名单读失败时不覆盖旧快照、不写回共享缓存”的改进，入站过滤同样受益。",
+        "测试：撤回对应的小组停发用例与严格读取用例。"
+      ],
+      "optimizations": [],
+      "ops": [
+        "小组关闭托管不再停发复聊提醒"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`pnpm run ci:check`（push 前 hook）通过",
+        "复聊、托管配置、企微消息过滤相关 973 个用例通过"
+      ],
+      "level": "patch"
     }
   ],
   "lastRelease": {
@@ -244,5 +281,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "87acc500d46577a159a0854fdd15aa9e5f7add59"
+  "lastAnalyzedSha": "e1f8c69c1f407c53fa4c720f47ad616066d4f046"
 }
