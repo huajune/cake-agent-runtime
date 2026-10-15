@@ -30,6 +30,11 @@ describe('BotGroupResolverService', () => {
       managerName: 'XinYuQi',
       groupName: '瑜琦组',
     });
+    expect(service.resolve('1688857954985709')).toEqual({
+      managerName: 'JiangYiFeng',
+      groupName: '一锋组',
+    });
+    expect(service.resolveAgentId('1688857954985709')).toBe('JiangYiFeng-cake-1');
     expect(service.resolve('1688856098846503')).toEqual({
       managerName: 'LiYuHang',
       groupName: '小祝组',
