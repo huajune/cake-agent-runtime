@@ -2842,6 +2842,26 @@ describe('buildJobListTool', () => {
         expect(mockSpongeService.fetchJobs.mock.calls[0][0].options.includeWorkTime).toBe(expected);
       },
     );
+    it('inspect附上与推荐卡片同源的班次行，组合排班保留全部档位与选择方式', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [
+          scheduledJob(1, '组合排班制', [
+            ['07:00', '15:00'],
+            ['15:00', '23:00'],
+          ]),
+        ],
+        total: 1,
+      });
+      const result = await executeTool(mockContext, {
+        ...defaultInput,
+        purpose: 'inspect',
+        jobIdList: [1],
+      } as typeof defaultInput);
+      expect(result.shiftLines).toEqual([
+        { jobId: 1, shiftLine: '07:00-15:00 / 15:00-23:00 二选一' },
+      ]);
+      expect(result._replyInstruction ?? result.replyInstruction).toContain('shiftLines');
+    });
     it('inspect返回的岗位事实同样替换公司旧称', async () => {
       const job = scheduledJob(1, '固定排班', [['18:00', '22:00']]);
       job.basicInfo = { ...job.basicInfo, brandName: '独立日餐饮', storeName: '独立日餐饮一店' };

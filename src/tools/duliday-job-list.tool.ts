@@ -55,6 +55,7 @@ import {
 } from '@tools/shared/job-list-query-signature';
 import { effectiveScheduleKey } from '@resolution/schedule/equivalence';
 import { completeEarlyShiftMapping } from '@resolution/schedule/mapping';
+import { formatJobShiftTimeForCandidate } from '@tools/job-list/format-shift-time.util';
 import { correctSwappedLatLng } from '@tools/shared/latlng-swap';
 import {
   applyLaborFormConstraint,
@@ -1110,8 +1111,18 @@ export function buildJobListTool(
                 scanComplete: inspected.jobs.length >= inspected.total,
                 scheduleFilter: { applied: false, assessments: assessment.matches },
               },
+              // 核对结果只有详情块，没有推荐卡片：附上与卡片同源的班次行，介绍班次时照它说。
+              shiftLines: inspected.jobs.map((job) => {
+                let shiftLine: string | null = null;
+                try {
+                  shiftLine = formatJobShiftTimeForCandidate(job);
+                } catch {
+                  // 班次数据不合契约的岗位已在上方逐岗剔除；兜底不让单行文案拖垮整次核对。
+                }
+                return { jobId: job.basicInfo?.jobId ?? null, shiftLine };
+              }),
               replyInstruction:
-                '本次仅核对已指定岗位事实，结果未进入推荐候选池。不匹配是对指定岗位的评估，并非推荐筛空，不触发推荐筛空后的重查流程。按真实排班回答；不匹配或待确认不能说能安排上岗。候选人未要求另找岗位时，本轮回答核对结果后结束，不自动改品牌、另选位置或扩展范围推荐。',
+                '本次仅核对已指定岗位事实，结果未进入推荐候选池。不匹配是对指定岗位的评估，并非推荐筛空，不触发推荐筛空后的重查流程。按真实排班回答；不匹配或待确认不能说能安排上岗。介绍班次时照 shiftLines 里该岗位的班次行说（与推荐卡片同一说法）。候选人未要求另找岗位时，本轮回答核对结果后结束，不自动改品牌、另选位置或扩展范围推荐。',
             };
           } catch (error) {
             return buildToolError({
