@@ -3,7 +3,23 @@ import { formatStoredScheduleConstraint } from '@resolution/schedule/format';
 // prompt-rule-ledger: docs/prompt-rule-ledger.md（本轮查询约束总账）
 import { isHardFilteredLaborForm, isValidLaborForm } from '@resolution/labor-form';
 import { buildTextPromptBlock, type PromptSection } from '../section';
-import type { HardConstraintsPromptView, PromptModel } from '../../context.types';
+import type { StudentEligibility } from '@resolution/job';
+import type {
+  HardConstraintsPromptView,
+  PromptModel,
+  StudentJobVerdictView,
+} from '../../context.types';
+
+/**
+ * 逐岗结论只陈述事实与出处；学生安排的行为口径（字段为空何时转人工等）唯一居所是
+ * duliday_job_list 工具说明，这里只指回去，不复述。
+ */
+const STUDENT_ELIGIBILITY_TEXT: Record<StudentEligibility, string> = {
+  accepts_student: '接受学生',
+  rejects_student: '不接受学生',
+  field_empty: '社会身份要求字段为空，按查岗工具说明处理',
+  unrecorded: '未记录，需重新调 duliday_job_list 核对',
+};
 
 /**
  * 本轮查询约束段落（硬约束 + 软提示）
@@ -32,7 +48,10 @@ export class HardConstraintsSection implements PromptSection {
     const view = model.hardConstraints;
     const hardLines = this.collectHardConstraintLines(view?.facts ?? null);
     const softLines = this.collectSoftHintLines(view?.facts ?? null, view?.brandState ?? null);
-    if (hardLines.length === 0 && softLines.length === 0) return [];
+    const studentJobLines = this.collectStudentJobVerdictLines(view?.studentJobVerdicts ?? []);
+    if (hardLines.length === 0 && softLines.length === 0 && studentJobLines.length === 0) {
+      return [];
+    }
 
     const sections: string[] = [];
 
@@ -61,7 +80,30 @@ export class HardConstraintsSection implements PromptSection {
       );
     }
 
+    if (studentJobLines.length > 0) {
+      sections.push('', ...studentJobLines);
+    }
+
     return buildTextPromptBlock(this, sections.join('\n'));
+  }
+
+  /**
+   * 候选人已明确是学生时，会话已推荐岗位的逐岗结论（结构化社会身份档位）。
+   * 零工具轮回答"这家收不收学生"时，查岗工具的学生筛选不在场，这是模型唯一的结构化依据。
+   */
+  private collectStudentJobVerdictLines(verdicts: readonly StudentJobVerdictView[]): string[] {
+    if (verdicts.length === 0) return [];
+    return [
+      '[学生身份与已推荐岗位]',
+      '',
+      '候选人已明确是学生。以下为会话记忆中已推荐岗位对在校学生的结论，取自岗位社会身份字段（与 duliday_job_list 学生筛选同源）：',
+      '',
+      ...verdicts.map(
+        (verdict) =>
+          `- [jobId:${verdict.jobId}] ${verdict.label}${verdict.isFocus ? '（当前焦点岗位）' : ''}：` +
+          STUDENT_ELIGIBILITY_TEXT[verdict.eligibility],
+      ),
+    ];
   }
 
   /**
@@ -173,7 +215,7 @@ export class HardConstraintsSection implements PromptSection {
     if (interview.is_student !== null && interview.is_student !== undefined) {
       lines.push(
         interview.is_student
-          ? '- 是否学生: 是（学生能否安排只看岗位数据；建议开 includeHiringRequirement 或 duliday_interview_precheck 核对。明确"不接受学生"则停止，明确接受/学生优先则继续；未写学生限制或未返回学生筛选项时按没有额外学生硬限制继续其余校验，不得凭空增加门店确认或人工介入。资格允许只代表可继续，约面阶段仍必须保持 candidateIsStudent=true 调 precheck，禁止只查 job_list 就承诺提交预约）'
+          ? '- 是否学生: 是（duliday_job_list 查询时按岗位社会身份字段自动剔除不接受学生的岗位）'
           : '- 是否学生: 否（建议开 includeHiringRequirement 核对，不要把社会人士误问成学生）',
       );
     }

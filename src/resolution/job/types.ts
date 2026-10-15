@@ -28,6 +28,27 @@ export const RecommendedJobWelfareFactsSchema = z.object({
   otherWelfareItems: z.array(z.string()),
 });
 
+/**
+ * 岗位对候选人社会身份的要求档位。取值由海绵 `hiringRequirement.figure` 封闭选项
+ * （学生 / 社会人士 / 第二职业 / 不限）派生，与收资表「社会身份」三选项同源；
+ * 查岗侧学生硬过滤、岗位卡「学生身份要求」行与会话岗位记忆读的是同一个值。
+ *
+ * - `social_only` / `second_job_only`：不接受在校学生（平台把「第二职业」与「全日制在校学生」列为互斥选项）；
+ * - `any` / `student_only`：接受在校学生；
+ * - `unspecified`：岗位社会身份字段为空。该字段在岗位后台必填，为空属数据缺失，不等于不限身份。
+ */
+export const JOB_STUDENT_TIERS = [
+  'student_only',
+  'social_only',
+  'second_job_only',
+  'any',
+  'unspecified',
+] as const;
+
+export const JobStudentTierSchema = z.enum(JOB_STUDENT_TIERS);
+
+export type JobStudentTier = z.infer<typeof JobStudentTierSchema>;
+
 /** 候选岗位池摘要 — 复用 jobId 和补充查询。 */
 export interface RecommendedJobSummary {
   jobId: number;
@@ -52,7 +73,13 @@ export interface RecommendedJobSummary {
   ageRequirement?: string | null;
   educationRequirement?: string | null;
   healthCertificateRequirement?: string | null;
+  /** 学生身份要求的展示文案（与岗位卡「学生身份要求」行同一函数生成）。历史存量记录可能是自由文本推断值。 */
   studentRequirement?: string | null;
+  /**
+   * 结构化社会身份档位，学生能否安排以它为准。可选：2026-10-14 之前写入的存量记录无此字段，
+   * 消费方须把缺失视为“未记录”，不得回落到 studentRequirement 文本推断。
+   */
+  studentTier?: JobStudentTier | null;
   /** 岗位筛选条件是否明确要求简历。可选：历史存量记录无此字段。 */
   resumeRequired?: boolean;
   distanceKm?: number | null;
@@ -78,6 +105,7 @@ export const RecommendedJobSummarySchema = z.object({
   educationRequirement: z.string().nullable().optional(),
   healthCertificateRequirement: z.string().nullable().optional(),
   studentRequirement: z.string().nullable().optional(),
+  studentTier: JobStudentTierSchema.nullable().optional(),
   resumeRequired: z.boolean().optional(),
   distanceKm: z.number().nullable().optional(),
   welfareFacts: RecommendedJobWelfareFactsSchema.nullable().optional(),

@@ -5,6 +5,7 @@ import {
   evaluateRequestedDate,
   formatWindowTimeText,
   isFixedTimePointWindow,
+  resolveBookedInterviewWindow,
 } from '@tools/booking/bookable-slot.util';
 import type { InterviewWindow } from '@tools/job-list/job-policy-parser';
 
@@ -339,6 +340,29 @@ describe('bookable-slot.util', () => {
         basePolicyNotes: ['note A', 'note B'],
       });
       expect(result.policyNotes).toEqual(['note A', 'note B']);
+    });
+  });
+
+  describe('resolveBookedInterviewWindow（已约面试所在窗口）', () => {
+    const windows: InterviewWindow[] = [
+      { weekday: '每周四', startTime: '09:00', endTime: '11:00' },
+      { weekday: '每周四', startTime: '13:30', endTime: '16:30' },
+      { weekday: '每周五', startTime: '14:00', endTime: '14:00' },
+      { date: '2026-09-26', startTime: '00:00', endTime: '00:00' },
+    ];
+
+    it('按工单日期的星期取包含开始时刻的区间窗口（工单时间带不带秒都认）', () => {
+      expect(resolveBookedInterviewWindow(windows, '2026-09-24 13:30:00')?.text).toBe(
+        '13:30-16:30',
+      );
+      expect(resolveBookedInterviewWindow(windows, '2026-09-24 13:30')?.text).toBe('13:30-16:30');
+    });
+
+    it('固定时间点、只标日期、无匹配或无时间时返回 null', () => {
+      expect(resolveBookedInterviewWindow(windows, '2026-09-25 14:00:00')).toBeNull();
+      expect(resolveBookedInterviewWindow(windows, '2026-09-26 10:00:00')).toBeNull();
+      expect(resolveBookedInterviewWindow(windows, '2026-09-24 12:00:00')).toBeNull();
+      expect(resolveBookedInterviewWindow(windows, null)).toBeNull();
     });
   });
 });

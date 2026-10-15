@@ -4,6 +4,7 @@ import type { CorpusBlock } from '@shared-types/corpus.types';
 import type { RecommendedJobSummary } from '@resolution/job/types';
 import { finalizeVisualFactSheet } from '@resolution/signal/visual';
 import { sessionFactsOf } from '../../../helpers/session-facts.fixture';
+import { testTurnHint, testTurnHints } from '../../../helpers/turn-hints.fixture';
 import { CallerKind } from '@/enums/agent.enum';
 import { StorageMessageSource, StorageMessageType } from '@enums/storage-message.enum';
 import {
@@ -553,4 +554,152 @@ describe('mentioned brands at turn start', () => {
       expect(collect(snapshot, [message('肯德基')])).toBeNull();
     },
   );
+});
+
+describe('学生身份逐岗结论（resolveHardConstraintsPromptView）', () => {
+  function kfc(
+    jobId: number,
+    studentTier?: RecommendedJobSummary['studentTier'],
+    overrides: Partial<RecommendedJobSummary> = {},
+  ): RecommendedJobSummary {
+    return {
+      jobId,
+      brandName: '肯德基',
+      jobName: '服务员',
+      storeName: `门店${jobId}`,
+      cityName: '上海',
+      regionName: null,
+      laborForm: '兼职',
+      salaryDesc: null,
+      jobCategoryName: null,
+      ...(studentTier === undefined ? {} : { studentTier }),
+      ...overrides,
+    };
+  }
+  const studentHint = testTurnHints(
+    testTurnHint('interview_info.is_student', true, '候选人自报学生'),
+  );
+  const resolve = (input: {
+    sessionFacts?: ReturnType<typeof sessionFactsOf> | null;
+    turnHints?: ReturnType<typeof testTurnHints> | null;
+    presentedJobs?: RecommendedJobSummary[];
+    currentFocusJob?: RecommendedJobSummary | null;
+  }) =>
+    resolveHardConstraintsPromptView({
+      sessionFacts: input.sessionFacts ?? null,
+      turnHints: input.turnHints ?? null,
+      laborFormIntent: { kind: 'ignore' },
+      brandState: null,
+      sessionJobs: {
+        presentedJobs: input.presentedJobs ?? [],
+        currentFocusJob: input.currentFocusJob ?? null,
+      },
+    });
+
+  // 生产复现（2026-10-09 batch_6ac85778…）：两家仅限社会人士的肯德基已展示，候选人本轮回「学生」。
+  it('jobName 已是「品牌-门店-工种」全称时标签不重复拼品牌与门店', () => {
+    const fullName = {
+      ...kfc(910001, 'social_only'),
+      storeName: '狮山大学城店',
+      jobName: '肯德基-狮山大学城店-服务员-兼职',
+    };
+    const view = resolve({ turnHints: studentHint, presentedJobs: [fullName] });
+    expect(view.studentJobVerdicts?.[0]?.label).toBe('肯德基-狮山大学城店-服务员-兼职');
+  });
+
+  it('本轮高置信「是学生」线索 → 焦点在前、按 jobId 去重的逐岗结论', () => {
+    const view = resolve({
+      turnHints: studentHint,
+      presentedJobs: [kfc(529083, 'social_only'), kfc(528942, 'social_only')],
+      currentFocusJob: kfc(528942, 'social_only'),
+    });
+
+    expect(view.studentJobVerdicts).toEqual([
+      {
+        jobId: 528942,
+        label: '肯德基-门店528942-服务员',
+        isFocus: true,
+        eligibility: 'rejects_student',
+      },
+      {
+        jobId: 529083,
+        label: '肯德基-门店529083-服务员',
+        isFocus: false,
+        eligibility: 'rejects_student',
+      },
+    ]);
+  });
+
+  it('焦点是缺档位的旧记录、已展示列表里同岗位有档位时取已知档位', () => {
+    const view = resolve({
+      turnHints: studentHint,
+      presentedJobs: [kfc(529083, 'second_job_only')],
+      currentFocusJob: kfc(529083),
+    });
+
+    expect(view.studentJobVerdicts).toEqual([
+      expect.objectContaining({ jobId: 529083, isFocus: true, eligibility: 'rejects_student' }),
+    ]);
+  });
+
+  it('缺档位（历史记忆）→ unrecorded，不回落 studentRequirement 文本', () => {
+    const view = resolve({
+      sessionFacts: sessionFactsOf({ interview_info: { is_student: true } }),
+      presentedJobs: [kfc(529083, undefined, { studentRequirement: '可接受学生' })],
+    });
+
+    expect(view.studentJobVerdicts).toEqual([
+      expect.objectContaining({ jobId: 529083, eligibility: 'unrecorded' }),
+    ]);
+  });
+
+  it('is_student 为空、为否或只有 medium 证据时不产出', () => {
+    const presentedJobs = [kfc(529083, 'social_only')];
+    expect(resolve({ presentedJobs }).studentJobVerdicts).toBeUndefined();
+    expect(
+      resolve({
+        sessionFacts: sessionFactsOf({ interview_info: { is_student: false } }),
+        presentedJobs,
+      }).studentJobVerdicts,
+    ).toBeUndefined();
+    expect(
+      resolve({
+        sessionFacts: sessionFactsOf(
+          { interview_info: { is_student: true } },
+          { confidence: 'medium' },
+        ),
+        presentedJobs,
+      }).studentJobVerdicts,
+    ).toBeUndefined();
+  });
+
+  it('resolveTurnContext 与 [会话记忆] 共用用工形式可见性门', () => {
+    const input = buildResolverInput();
+    const memory = (
+      input.sources as never as {
+        memory: {
+          shortTerm: { sessionState: unknown };
+          turnHints: unknown;
+        };
+      }
+    ).memory;
+    memory.turnHints = studentHint;
+    memory.shortTerm.sessionState = {
+      facts: null,
+      lastCandidatePool: null,
+      presentedJobs: [
+        kfc(529083, 'social_only'),
+        kfc(600001, 'any', { brandName: '成都你六姐', partTimeJobType: '暑假工' }),
+      ],
+      currentFocusJob: null,
+      invitedGroups: null,
+    };
+    input.normalizedInput.laborFormIntent = { kind: 'set', value: '暑假工' } as never;
+
+    const result = resolveTurnContext(input);
+
+    expect(result.promptModel.hardConstraints?.studentJobVerdicts).toEqual([
+      expect.objectContaining({ jobId: 600001, eligibility: 'accepts_student' }),
+    ]);
+  });
 });

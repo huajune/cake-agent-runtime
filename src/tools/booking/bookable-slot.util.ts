@@ -36,6 +36,40 @@ export function formatWindowTimeText(startTime: string, endTime: string): string
 }
 
 /**
+ * 已约面试所在的面试窗口（`13:30-16:30`）：工单只记开始时刻，窗口制岗位的结束时刻只在岗位排期里。
+ *
+ * 按工单面试日期匹配当天（固定日期或同星期）的窗口，取唯一一个包含该时刻的区间窗口；
+ * 固定时间点、只标日期或匹配不唯一时返回 null——这些情况下没有可确定的"窗口内"边界。
+ */
+export function resolveBookedInterviewWindow(
+  windows: readonly InterviewWindow[],
+  interviewTime: string | null | undefined,
+): { startTime: string; endTime: string; text: string } | null {
+  const match = interviewTime?.trim().match(/^(\d{4}-\d{2}-\d{2})[T ]+(\d{1,2}[:：]\d{2})/u);
+  if (!match) return null;
+  const [, date, rawTime] = match;
+  const time = normalizeHm(rawTime);
+  if (!time) return null;
+  const weekday = getShanghaiWeekday(date);
+  const containing: Array<{ startTime: string; endTime: string }> = [];
+  for (const window of windows) {
+    if (window.date ? window.date !== date : window.weekday !== weekday) continue;
+    if (isDateOnlyWindow(window) || isFixedTimePointWindow(window.startTime, window.endTime)) {
+      continue;
+    }
+    const start = normalizeHm(window.startTime);
+    const end = normalizeHm(window.endTime);
+    if (start === null || end === null || time < start || time > end) continue;
+    if (!containing.some((item) => item.startTime === start && item.endTime === end)) {
+      containing.push({ startTime: start, endTime: end });
+    }
+  }
+  if (containing.length !== 1) return null;
+  const [{ startTime, endTime }] = containing;
+  return { startTime, endTime, text: `${startTime}-${endTime}` };
+}
+
+/**
  * 生成未来 horizonDays 天内实际可约的面试时段（扁平 label 数组），不受 requestedDate 影响。
  * - 过滤已过报名截止的时段
  * - 今日时段会标注"今日"

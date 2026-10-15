@@ -216,6 +216,20 @@ describe('buildJobListTool', () => {
     expect(builtTool.description).toContain('综合薪资的"元/月"');
   });
 
+  it('学生安排口径只住在本工具说明，身份经收资表「社会身份」栏提交（无 candidateIsStudent 入参）', () => {
+    const builtTool = buildJobListTool(
+      mockSpongeService as never,
+      { recordEvent: jest.fn() } as never,
+      { geocode: jest.fn().mockResolvedValue(null) } as never,
+    )(mockContext);
+
+    expect(builtTool.description).toContain('学生安排只服从岗位数据');
+    expect(builtTool.description).toContain('不得按"不限身份"放行');
+    expect(builtTool.description).toContain('identity_age_exception');
+    expect(builtTool.description).toContain('收资表「社会身份」栏按候选人原话提交');
+    expect(builtTool.description).not.toContain('candidateIsStudent');
+  });
+
   it('writes formal and supplemental settlement facts into compact job memory', async () => {
     const recordFetchedJobs = jest.fn().mockResolvedValue(undefined);
     const context: JobListTestContext = { ...mockContext, recordFetchedJobs };
@@ -1559,7 +1573,9 @@ describe('buildJobListTool', () => {
         ageRequirement: '18-35岁',
         educationRequirement: '本科',
         healthCertificateRequirement: '需健康证',
-        studentRequirement: '不接受学生',
+        // 备注明写「不招学生」→ 结构化档位 social_only，文案与岗位卡同一函数生成。
+        studentRequirement: '不接受学生（仅限社会人士）',
+        studentTier: 'social_only',
         resumeRequired: true,
         distanceKm: expect.any(Number),
       }),
@@ -1814,10 +1830,20 @@ describe('buildJobListTool', () => {
         includeHiringRequirement: true,
       });
 
-      expect(result.markdown).toContain('## 候选人社会身份筛选提示');
-      expect(result.markdown).toContain('社会身份要求字段为空');
-      expect(result.markdown).toContain('不得按"不限身份"放行');
-      expect(result.markdown).toContain('identity_age_exception');
+      // 回执只列字段为空的岗位并指回工具说明；转人工口径唯一居所是说明里的「学生安排只服从岗位数据」一条。
+      const identitySummary = result.markdown.slice(
+        result.markdown.indexOf('## 候选人社会身份筛选提示'),
+      );
+      const summaryEnd = identitySummary.indexOf('\n## ', 1);
+      const identitySection =
+        summaryEnd > 0 ? identitySummary.slice(0, summaryEnd) : identitySummary;
+      expect(identitySection).toContain('## 候选人社会身份筛选提示');
+      expect(identitySection).toContain('1 个岗位的社会身份要求字段为空');
+      expect(identitySection).toContain('成都你六姐');
+      expect(identitySection).toContain('按本工具说明「学生安排只服从岗位数据」一条处理');
+      expect(identitySection).not.toContain('identity_age_exception');
+      expect(identitySection).not.toContain('request_handoff');
+      expect(identitySection).not.toContain('不得按"不限身份"放行');
       expect(result.queryMeta.identityScreening).toEqual(
         expect.objectContaining({
           candidateIsStudent: true,

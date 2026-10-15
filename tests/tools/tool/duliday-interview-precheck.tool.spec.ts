@@ -517,6 +517,134 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
     expect(context.ledger.jobs.invalidatedJobIds).toEqual([100]);
   });
 
+  /**
+   * 生产 trace batch_6ab08de9ce406a6aee94a9cc_1790221554581（2026-09-24）：候选人已约 13:30 面试，
+   * 问"我大概2点多到"，precheck 查不到岗位详情就标失效并引导换店，模型说"这家排不上了"，
+   * 下一轮又编"招聘名额已经满了"。岗位详情查不到不等于预约失效。
+   */
+  describe('岗位详情查不到但候选人在该岗位仍有在途预约', () => {
+    const futureDate = () => getTomorrowDate();
+
+    beforeEach(() => {
+      sponge.fetchJobs.mockResolvedValue({ jobs: [] });
+    });
+
+    it('本轮预约快照同岗位 → booked_job_unverifiable，不标失效、不登记焦点、不引导换店', async () => {
+      context.archive.bookingWorkOrders = [
+        {
+          workOrderId: 467501,
+          jobId: 100,
+          source: 'active_booking',
+          signupSource: 'AI',
+          ownedByCandidate: true,
+          interviewTime: `${futureDate()} 13:30`,
+        },
+      ];
+
+      const result = await execute({ jobId: 100, requestedDate: `${futureDate()} 14:30` });
+
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.PRECHECK_BOOKED_JOB_UNVERIFIABLE);
+      expect(result.success).toBe(false);
+      expect(result.workOrderId).toBe(467501);
+      expect(result.interviewTime).toBe(`${futureDate()} 13:30`);
+      expect(result.interviewTimeHuman).toContain('13:30');
+      expect(context.ledger.jobs.invalidatedJobIds).toEqual([]);
+      expect(context.ledger.jobs.attestedFocusJob).toBeNull();
+      expect(longTerm.getActiveBookings).not.toHaveBeenCalled();
+      expect(result._replyInstruction).toContain('预约仍然有效');
+      expect(result._replyInstruction).toContain('工单 467501');
+      expect(result._replyInstruction).toContain('禁止对候选人说排不上、招满、名额已满');
+      expect(result._replyInstruction).toContain('禁止调用 duliday_job_list');
+      expect(result._replyInstruction).toContain('禁止调用 duliday_interview_booking');
+      expect(result._replyInstruction).toContain(
+        'request_handoff(reasonCode="modify_appointment")',
+      );
+      expect(result._replyInstruction).not.toContain('排不上。');
+    });
+
+    it('只有 active_booking 指针（建单早于 30 分钟查重窗）也命中——不复用查重时间窗', async () => {
+      longTerm.getActiveBookings.mockResolvedValue([
+        {
+          work_order_id: 467501,
+          job_id: 100,
+          linked_at: new Date(Date.now() - 6 * 60 * 60_000).toISOString(),
+          interview_time: `${futureDate()} 13:30:00`,
+        },
+      ]);
+
+      const result = await execute({ jobId: 100 });
+
+      expect(longTerm.getActiveBookings).toHaveBeenCalledWith('corp-1', 'user-1');
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.PRECHECK_BOOKED_JOB_UNVERIFIABLE);
+      expect(result.workOrderId).toBe(467501);
+      expect(context.ledger.jobs.invalidatedJobIds).toEqual([]);
+    });
+
+    it('快照工单本人校验未通过（ownedByCandidate=false）→ 仍走原 job_not_found 路径', async () => {
+      context.archive.bookingWorkOrders = [
+        {
+          workOrderId: 467501,
+          jobId: 100,
+          source: 'out_of_band',
+          signupSource: 'SUPPLIER',
+          ownedByCandidate: false,
+          interviewTime: `${futureDate()} 13:30`,
+        },
+      ];
+
+      const result = await execute({ jobId: 100 });
+
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.PRECHECK_JOB_NOT_FOUND);
+      expect(context.ledger.jobs.invalidatedJobIds).toEqual([100]);
+    });
+
+    it('别的岗位的预约、面试日已过的预约、存量空 job_id 指针都不算 → 原 job_not_found 路径', async () => {
+      context.archive.bookingWorkOrders = [
+        { workOrderId: 1, jobId: 200, source: 'active_booking', interviewTime: null },
+        { workOrderId: 2, jobId: 100, source: 'active_booking', interviewTime: '2020-01-01 13:30' },
+      ];
+      longTerm.getActiveBookings.mockResolvedValue([
+        { work_order_id: 3, job_id: null, linked_at: new Date().toISOString() },
+      ]);
+
+      const result = await execute({ jobId: 100 });
+
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.PRECHECK_JOB_NOT_FOUND);
+      expect(context.ledger.jobs.invalidatedJobIds).toEqual([100]);
+    });
+
+    it('多人代报（candidatePhone）不拿当前联系人的预约保护他人的查询', async () => {
+      context.archive.bookingWorkOrders = [
+        { workOrderId: 467501, jobId: 100, source: 'active_booking', interviewTime: null },
+      ];
+
+      const result = await execute({ jobId: 100, candidatePhone: '13800138000' });
+
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.PRECHECK_JOB_NOT_FOUND);
+    });
+  });
+
+  it('同岗位在途工单回执带出工单所在面试窗口（窗口内到达不算改约的接地事实）', async () => {
+    sponge.fetchJobs.mockResolvedValue({ jobs: [JOB_WITH_WINDOWS] });
+    longTerm.getActiveBookings.mockResolvedValue([
+      {
+        work_order_id: 467501,
+        job_id: 100,
+        linked_at: new Date(Date.now() - 47_000).toISOString(),
+        interview_time: `${getTomorrowDate()} 13:30:00`,
+      },
+    ]);
+
+    const result = await execute({ jobId: 100 });
+
+    expect(result.nextAction).toBe('already_booked');
+    expect(result.duplicateBookingGuard).toMatchObject({
+      workOrderId: 467501,
+      interviewWindow: '10:00-18:00',
+    });
+    expect(result._replyInstruction).toContain('所在面试时段 10:00-18:00');
+  });
+
   it('逐行填满模板与自然表达走同一路径：资料授权，无时间则 select_interview_time', async () => {
     sponge.fetchJobs.mockResolvedValue({ jobs: [JOB_WITH_WINDOWS] });
     const filledTemplate = ['姓名：兮兮', '联系电话：18271421690', '年龄：25', '性别：女'].join(

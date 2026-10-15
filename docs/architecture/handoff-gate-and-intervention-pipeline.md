@@ -1,6 +1,6 @@
 # Gate 拒绝与人工介入流水线
 
-**最后更新**：2026-08-12（对代码核实：工具名 / 事件名 / 表名 / gate reasonCode）
+**最后更新**：2026-10-15（§7.3/§7.4 暂停时长按代码更正；其余沿用 2026-08-12 对工具名 / 事件名 / 表名 / gate reasonCode 的核实）
 
 > 本文说明高风险业务工具如何在确定性 gate 拒绝后停止 LLM loop，并由 Runner 将本轮收敛为人工介入；同时说明转人工底账、暂停托管、飞书告警和幂等控制的职责边界。
 
@@ -269,7 +269,7 @@ TurnOutcomeInterventionService.commit(outcome, context);
 `InterventionService.dispatch()` 先调用 `UserHostingService.isUserPaused()`：
 
 - 已暂停：返回 `already_paused`，不重复告警；
-- 未暂停：调用 `pauseUser()`，默认暂停三天并同步缓存与数据库。
+- 未暂停：调用 `pauseUser(permanent: false)` 临时暂停，到下一个上海时间零点自动解禁，并同步缓存与数据库。
 
 ### 7.4 飞书告警
 
@@ -278,7 +278,7 @@ TurnOutcomeInterventionService.commit(outcome, context);
 - 根据 `botImId` 查找对应飞书接收人；
 - 渲染命中原因、建议动作、当前消息、最近十条上下文和候选人信息；
 - 生产环境发送私聊卡片，无法解析负责人时使用兜底提醒策略；
-- 卡片提示人工处理后到 Web 托管后台手动恢复托管。
+- 卡片提示处理完可到 Web 托管后台手动恢复托管；未手动恢复时次日零点（上海时间）自动恢复。
 
 ---
 

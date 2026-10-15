@@ -49,7 +49,7 @@ describe('FollowUpProcessor', () => {
   let systemConfig: { getAgentReplyConfig: jest.Mock };
   let tracking: Record<string, jest.Mock>;
   let messageTracking: { recordProactiveTurn: jest.Mock };
-  let chatSession: { getChatHistory: jest.Mock };
+  let chatSession: { getChatHistory: jest.Mock; getLatestCandidateMessage: jest.Mock };
   let messageProcessing: { getLatestReceivedAtByChatId: jest.Mock };
   let sponge: {
     getWorkOrderById: jest.Mock;
@@ -152,6 +152,25 @@ describe('FollowUpProcessor', () => {
         .mockResolvedValue([
           { role: 'assistant', content: '好的', timestamp: Date.now() - 60_000 },
         ]),
+      // 最近候选人消息与用例的聊天记录同源：取 getChatHistory 夹具里最后一条 user 消息
+      getLatestCandidateMessage: jest.fn(async (sessionId: string) => {
+        const history = (await chatSession.getChatHistory(sessionId, 10)) as Array<{
+          messageId?: string;
+          role: string;
+          content: string;
+          timestamp: number;
+          historyOnlyReason?: string;
+        }>;
+        const latest = [...history].reverse().find((message) => message.role === 'user');
+        return latest
+          ? {
+              messageId: latest.messageId ?? `msg-${latest.timestamp}`,
+              content: latest.content,
+              timestamp: latest.timestamp,
+              ...(latest.historyOnlyReason ? { historyOnlyReason: latest.historyOnlyReason } : {}),
+            }
+          : null;
+      }),
     };
     messageProcessing = { getLatestReceivedAtByChatId: jest.fn().mockResolvedValue(null) };
     delivery = {
@@ -328,7 +347,7 @@ describe('FollowUpProcessor', () => {
         }),
       );
 
-      // 不再按锚点后窗口扫描真人手打消息，只剩待答闸的最近 10 条读取
+      // 不再按锚点后窗口扫描真人手打消息
       expect(chatSession.getChatHistory).not.toHaveBeenCalledWith('sess-1', 200, expect.anything());
       expect(tracking.trackStopped).not.toHaveBeenCalled();
       expect(reengagementAgent.compose).toHaveBeenCalled();
@@ -379,6 +398,166 @@ describe('FollowUpProcessor', () => {
 
     expect(tracking.trackStopped).not.toHaveBeenCalled();
     expect(reengagementAgent.compose).toHaveBeenCalled();
+  });
+
+  it('托管暂停期间候选人回「好的」（转真人处理、无处理记录）：面试提醒不按待答停发，照常生成', async () => {
+    const anchorAt = Date.UTC(2026, 9, 12, 5, 31, 0);
+    const candidateAt = Date.UTC(2026, 9, 12, 5, 35, 56);
+    // 面试 10/13 13:00 上海，提醒在面试前 1h 到点
+    jest.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 9, 13, 4, 0, 0));
+    sponge.getWorkOrderById.mockResolvedValue({
+      workOrderId: 471227,
+      currentStatus: '约面成功',
+      interviewTime: '2026-10-13 13:00',
+    });
+    session.getReengagementState.mockResolvedValue(
+      baseState({
+        terminal: 'booked',
+        lastCandidateMessageAt: candidateAt,
+        lastProcessedCandidateMessageAt: Date.UTC(2026, 9, 12, 5, 29, 44),
+      }),
+    );
+    chatSession.getChatHistory.mockResolvedValue([
+      {
+        role: 'assistant',
+        content: '今天明天下午13:00-16:30都可以面',
+        timestamp: candidateAt - 14_000,
+        source: 'MOBILE_PUSH',
+        messageType: 'TEXT',
+        isSelf: true,
+      },
+      {
+        role: 'user',
+        content: '好的',
+        timestamp: candidateAt,
+        historyOnlyReason: 'user-paused',
+      },
+    ]);
+    // 最近处理记录停在报名那一轮，暂停期间的消息按设计没有处理记录
+    messageProcessing.getLatestReceivedAtByChatId.mockResolvedValue(
+      Date.UTC(2026, 9, 12, 5, 29, 39),
+    );
+
+    await buildProcessor().process(
+      makeJob({
+        data: {
+          sessionRef,
+          scenarioCode: 'interview_reminder',
+          anchorEventId: 'wo471227:iv1791867600000',
+          anchorAt,
+          workOrderId: 471227,
+          expectedInterviewAt: Date.UTC(2026, 9, 13, 5, 0, 0),
+        },
+      }),
+    );
+
+    expect(tracking.trackStopped).not.toHaveBeenCalledWith(
+      expect.anything(),
+      'pending_candidate_message',
+      expect.anything(),
+    );
+    expect(reengagementAgent.compose).toHaveBeenCalled();
+  });
+
+  it('候选人消息既没进管道也没转真人：待答闸照常停发（真人更早说过话也不放行）', async () => {
+    const lastUserAt = Date.now() - 30 * 60 * 1000;
+    chatSession.getChatHistory.mockResolvedValue([
+      {
+        role: 'assistant',
+        content: '人多先等等吧',
+        timestamp: lastUserAt - 5 * 24 * 3600_000,
+        source: 'MOBILE_PUSH',
+        messageType: 'TEXT',
+        isSelf: true,
+      },
+      { role: 'user', content: '你好 国庆后还面试招人吗', timestamp: lastUserAt },
+    ]);
+    messageProcessing.getLatestReceivedAtByChatId.mockResolvedValue(lastUserAt - 5 * 24 * 3600_000);
+
+    await buildProcessor().process(makeJob());
+
+    expect(tracking.trackStopped).toHaveBeenCalledWith(
+      expect.anything(),
+      'pending_candidate_message',
+      expect.objectContaining({ candidateMessagePreview: '你好 国庆后还面试招人吗' }),
+    );
+    expect(reengagementAgent.compose).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [
+      '候选人最后一条转真人',
+      [{ role: 'user', content: '选项2吧', historyOnlyReason: 'user-paused' }],
+    ],
+    [
+      '转真人后真人已回复',
+      [
+        { role: 'user', content: '选项2吧', historyOnlyReason: 'user-paused' },
+        { role: 'assistant', content: '好的我帮你约', isSelf: true, source: 'MOBILE_PUSH' },
+      ],
+    ],
+  ])('报名前场景：锚点后的回话已转真人处理（%s）算已回话，停发', async (_label, messages) => {
+    const anchorAt = Date.now() - 40 * 60_000;
+    const candidateAt = anchorAt + 5 * 60_000;
+    session.getReengagementState.mockResolvedValue(
+      baseState({
+        lastCandidateMessageAt: candidateAt,
+        lastProcessedCandidateMessageAt: anchorAt - 60_000,
+      }),
+    );
+    chatSession.getChatHistory.mockResolvedValue(
+      messages.map((message, index) => ({ ...message, timestamp: candidateAt + index * 1_000 })),
+    );
+    messageProcessing.getLatestReceivedAtByChatId.mockResolvedValue(anchorAt - 60_000);
+
+    await buildProcessor().process(
+      makeJob({
+        data: {
+          sessionRef,
+          scenarioCode: 'booking_incomplete',
+          anchorEventId: 'evt-booking',
+          anchorAt,
+        },
+      }),
+    );
+
+    expect(tracking.trackStopped).toHaveBeenCalledWith(
+      expect.anything(),
+      'candidate_replied_after_anchor',
+    );
+    expect(reengagementAgent.compose).not.toHaveBeenCalled();
+  });
+
+  it('报名前场景：锚点后回话被静默丢弃（未转真人）仍不算已回话，交给待答闸', async () => {
+    const anchorAt = Date.now() - 40 * 60_000;
+    const candidateAt = anchorAt + 5 * 60_000;
+    session.getReengagementState.mockResolvedValue(
+      baseState({
+        lastCandidateMessageAt: candidateAt,
+        lastProcessedCandidateMessageAt: anchorAt - 60_000,
+      }),
+    );
+    chatSession.getChatHistory.mockResolvedValue([
+      { role: 'user', content: '选项2吧', timestamp: candidateAt },
+    ]);
+    messageProcessing.getLatestReceivedAtByChatId.mockResolvedValue(anchorAt - 60_000);
+
+    await buildProcessor().process(
+      makeJob({
+        data: {
+          sessionRef,
+          scenarioCode: 'booking_incomplete',
+          anchorEventId: 'evt-booking',
+          anchorAt,
+        },
+      }),
+    );
+
+    expect(tracking.trackStopped).toHaveBeenCalledWith(
+      expect.anything(),
+      'pending_candidate_message',
+      expect.objectContaining({ candidateMessagePreview: '选项2吧' }),
+    );
   });
 
   it('主动回合在请求上下文内执行：traceId = batchId，与主动回合流水行同源', async () => {

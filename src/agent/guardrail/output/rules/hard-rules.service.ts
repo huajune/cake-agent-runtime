@@ -3,6 +3,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { AlertLevel } from '@enums/alert.enum';
 import type { AgentMemorySnapshot, AgentToolCall } from '@agent/generator/generator.types';
 import type { ActiveBookingEntry } from '@memory/long-term/long-term.types';
+import type { RecommendedJobSummary } from '@resolution/job/types';
 import { AlertNotifierService } from '@notification/services/alert-notifier.service';
 import type {
   HardRuleOverrideMode,
@@ -27,6 +28,7 @@ import { detectExperienceFraudCoaching } from './experience-fraud-coaching.rule'
 import { detectIdentityMisregistrationCoaching } from './identity-fraud-coaching.rule';
 import { detectInvalidModelOutput } from './invalid-model-output.rule';
 import { detectOnlineInterviewLocationClaim } from './online-interview-location.rule';
+import { detectPartTimeSalaryDisplayMismatch } from './part-time-salary-display.rule';
 import { detectInterviewSlotAvailabilityMismatch } from './interview-slot-availability.rule';
 import { detectProactiveInsurancePolicyMention } from './insurance-policy-claims.rule';
 import {
@@ -36,6 +38,10 @@ import {
 } from './internal-info-leaks.rule';
 import { detectBookingReceiptMismatch } from './booking-receipt.rule';
 import { detectSettlementCycleMismatch } from './settlement-cycle-mismatch.rule';
+import {
+  detectStudentAcceptanceContradiction,
+  type StudentAcceptanceEvidence,
+} from './student-acceptance.rule';
 import { detectUnsupportedStoreStatusSpeculation } from './store-status-speculation.rule';
 import { deriveRulePolicy, type FactRule, type RuleContradiction } from '../output-rule.types';
 import { createOutputRuleFinding, isOutputRuleId, type OutputRuleId } from '../output-rule-catalog';
@@ -107,19 +113,32 @@ export class HardRulesService {
     recentMessages?: unknown[];
     /** 本轮入口记忆事实，用于跨轮身份红线对账。 */
     memorySnapshot?: AgentMemorySnapshot;
-    /** 会话内历史助手回复（不含本轮），供“无来源岗位事实”对账。 */
+    /** 会话内 Agent 自己的历史回复（不含本轮、不含真人招聘经理消息），供“无来源岗位事实”对账。 */
     priorAssistantTexts?: readonly string[];
+    /**
+     * 会话内真人招聘经理手动发出的消息。只为距离/时段作证，不为 Agent 报出的薪资作证。
+     */
+    humanRecruiterTexts?: readonly string[];
     /**
      * 会话记忆里的岗位摘要出处文本（已展示岗位 / 上轮候选池 / 焦点岗位的薪资、班次、距离），
      * 来自上一轮真实工具结果；模型在 [会话记忆] 看得到，按它们作答不算无来源。
      */
     sessionJobFactTexts?: readonly string[];
+    /** 会话记忆岗位本体（与 sessionJobFactTexts 同源），供按岗位绑定回复与证据。 */
+    sessionJobs?: readonly RecommendedJobSummary[];
+    /** 本轮查岗/预检确认过的岗位（TurnLedger fetchedJobs + attestedFocusJob）；undefined=未知。 */
+    turnJobs?: readonly RecommendedJobSummary[];
     /**
      * 候选人名下在途工单（长期记忆 active_booking）。undefined=未知（只落 observe），
      * []=确证没有任何工单——完成时态的“已帮你约好”此时是假回执，升 repair；有工单但都不是
      * 本轮焦点岗位时同样升 repair。
      */
     activeBookings?: readonly ActiveBookingEntry[];
+    /**
+     * 候选人学生身份（会话事实 + 本轮线索高置信合并）与已展示/焦点岗位的结构化社会身份档位，
+     * 供零工具轮“这家接受学生”断言对账。读不到会话记忆时缺省，哨兵不运行。
+     */
+    studentAcceptance?: StudentAcceptanceEvidence;
     /** 静默模式（advisory）：只返回裁决，由调用方避免写生产守卫日志。 */
     silent?: boolean;
     /** 兼容既有托管配置的运行时降档；只允许 off/observe。 */
@@ -251,6 +270,15 @@ export class HardRulesService {
       contradictions.push(settlementCycleMismatch);
     }
 
+    const partTimeSalaryDisplayMismatch = detectPartTimeSalaryDisplayMismatch(text, {
+      turnJobs: params.turnJobs,
+      sessionJobs: params.sessionJobs,
+      focusJobId: params.memorySnapshot?.currentFocusJob?.jobId,
+    });
+    if (partTimeSalaryDisplayMismatch) {
+      contradictions.push(partTimeSalaryDisplayMismatch);
+    }
+
     const requestedBrandMismatch = detectRequestedBrandMismatch(text, toolCalls);
     if (requestedBrandMismatch) {
       contradictions.push(requestedBrandMismatch);
@@ -282,6 +310,16 @@ export class HardRulesService {
       contradictions.push(cancelDoneClaim);
     }
 
+    // 已确认学生 × 已推荐岗位全不收学生，零工具轮却断言"接受学生"（observe 哨兵）。
+    const studentAcceptanceContradiction = detectStudentAcceptanceContradiction(
+      text,
+      toolCalls,
+      params.studentAcceptance,
+    );
+    if (studentAcceptanceContradiction) {
+      contradictions.push(studentAcceptanceContradiction);
+    }
+
     // 零工具轮的岗位事实对账：宣称查过 / 报出无来源数字，两条各取高置信形态。
     const jobQueryClaim = detectJobQueryClaimWithoutQuery(text, toolCalls);
     if (jobQueryClaim) {
@@ -290,12 +328,21 @@ export class HardRulesService {
     // 出处对账依赖会话历史：调用方没带 chatId（advisory 流、debug）时读不到历史，
     // "无法判出处"不等于"无出处"，跳过而不是误拦。
     const jobFactWithoutProvenance = params.chatId
-      ? detectJobFactWithoutProvenance(text, toolCalls, [
-          ...(params.priorAssistantTexts ?? []),
-          ...(params.sessionJobFactTexts ?? []),
-          ...(params.recentUserTexts ?? []),
-          ...(params.userMessage ? [params.userMessage] : []),
-        ])
+      ? detectJobFactWithoutProvenance(
+          text,
+          toolCalls,
+          [
+            ...(params.priorAssistantTexts ?? []),
+            ...(params.sessionJobFactTexts ?? []),
+            ...(params.recentUserTexts ?? []),
+            ...(params.userMessage ? [params.userMessage] : []),
+          ],
+          {
+            humanRecruiterTexts: params.humanRecruiterTexts,
+            turnJobs: params.turnJobs,
+            sessionJobs: params.sessionJobs,
+          },
+        )
       : null;
     if (jobFactWithoutProvenance) {
       contradictions.push(jobFactWithoutProvenance);
