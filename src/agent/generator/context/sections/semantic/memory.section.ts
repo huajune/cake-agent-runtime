@@ -648,7 +648,8 @@ export function formatBookingContext(
 export const BOOKING_CONTEXT_SHARED_RULES = [
   '以上预约统一按下列规则处理：',
   '候选人可同时报名多个不同岗位；已有预约不妨碍继续报名其他岗位。但同一工单/同一岗位不要重复提交报名。',
-  '候选人主动要求改约面时间时：先用上面的「岗位ID」调 duliday_interview_precheck(requestedDate=候选人想改到的新日期) 校验新日期是否可约——只有返回 interview.requestedDate.status=available（nextAction 不是 date_unavailable）时，才用「工单号」调 duliday_modify_interview_time 自助改约；若 precheck 判该日期不可约，则把 precheck 返回的可约时段（scheduleRule / upcomingTimeOptions）抛给候选人继续协商重选，不要转人工。候选人在**面试开始之前**明确放弃这次已约面试/岗位时，无论是否使用取消一词，都必须调 duliday_cancel_work_order 自助取消——工单不会因口头放弃自动失效，不取消门店会空等、候选人留爽约记录。**但「面试时间」已经到了/过了，候选人才表示未能赴约，这是爽约不是取消，禁止再调 duliday_cancel_work_order**：过时未到属门店与人工跟单处理的爽约事件，只承接候选人（问下原因/是否还想找），有继续找工意向就按新流程推进。改约/取消工具自身提交失败时，再按 request_handoff(modify_appointment) 转人工。',
+  '候选人只说会晚到或早到、到达时刻仍落在已约面试的时间窗口内时，不算改约：直接答复在窗口内到都可以，不调用任何工具、不改约、不转人工。时间窗口只认上下文明确给出的起止时段（precheck 回执里的面试时段、此前回复里写明的起止时间）；上方「面试时间」只是开始时刻，不得据此推断结束时刻——看不到明确窗口时先按下面的改约流程调 precheck 核对，回执显示的面试时段包含到达时刻就直接答复可以。' +
+    '候选人要改到窗口外的时刻或换日期（主动要求改约面时间）时：先用上面的「岗位ID」调 duliday_interview_precheck(requestedDate=候选人想改到的新日期) 校验新日期是否可约——只有返回 interview.requestedDate.status=available（nextAction 不是 date_unavailable）时，才用「工单号」调 duliday_modify_interview_time 自助改约；若 precheck 判该日期不可约，则把 precheck 返回的可约时段（scheduleRule / upcomingTimeOptions）抛给候选人继续协商重选，不要转人工。候选人在**面试开始之前**明确放弃这次已约面试/岗位时，无论是否使用取消一词，都必须调 duliday_cancel_work_order 自助取消——工单不会因口头放弃自动失效，不取消门店会空等、候选人留爽约记录。**但「面试时间」已经到了/过了，候选人才表示未能赴约，这是爽约不是取消，禁止再调 duliday_cancel_work_order**：过时未到属门店与人工跟单处理的爽约事件，只承接候选人（问下原因/是否还想找），有继续找工意向就按新流程推进。改约/取消工具自身提交失败时，再按 request_handoff(modify_appointment) 转人工。',
   '「面试时间」已在上方给出时：不得声称还在等门店确认时间、等排期或时间未定。若该时间已早于当前日期，说明面试已过、结果只能由真人告知——必须先向候选人核实当天是否到场面试，再按其回答推进或改约，禁止臆断已面试/未面试或编造后续流程。',
   '预约可能来自候选人此前与另一位招聘顾问的沟通，不一定是你经手的。仅当候选人主动问起它、或主动要求改约/取消时才可提及；候选人在咨询其他品牌/门店/岗位时，不得主动插入该预约的状态，也不得暗示该预约由本人经手。',
   '当 case 出现无法推进的阻塞（找不到门店/到店无人接待/预约信息冲突/入职办理异常等）时，必须调用 request_handoff 工具触发人工介入。',

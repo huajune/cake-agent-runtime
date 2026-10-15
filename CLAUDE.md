@@ -76,8 +76,8 @@ src/
 ├── resolution/geo/     # 地理解析域（唯一真相源）：行政区层级/县级市映射/白名单三轮扫描/地标别名/歧义策略/冲突检测
 │                       #   纯确定性零 LLM 零出向依赖；高德集成留 infra/geocoding，海绵行政区适配留 tools 层
 ├── tools/              # Agent 动作层：模型可见契约 + 确定性实现；collection/ 自持收资状态机与 Redis 单据
-├── memory/             # 两层记忆：short-term（7d 消息窗口 + 3d session 状态）/ long-term（候选人×bot 关系档）
-│                       #   lifecycle 编排 + 3d delayed consolidation + 自用 Redis/Supabase stores；episode 仅是计算边界
+├── memory/             # 两层记忆：short-term（滚动 7d 消息窗口 + 7d session 状态）/ long-term（候选人×bot 关系档）
+│                       #   lifecycle 编排 + 闲置 7d delayed consolidation + 自用 Redis/Supabase stores；episode 仅是计算边界
 ├── agent/              # Agent 编排
 │   ├── runner/         #   回合入口 agent-runner + outcome/人工介入提交 + turn-finalizer(记忆收尾)
 │   ├── generator/      #   preparation(召回/上下文准备) + generator(LLM 调用) + context/(Prompt Section 体系)
@@ -86,11 +86,12 @@ src/
 │   └── reengagement/   #   二次触发：anchor → follow-up-scheduler → processor → reengagement.agent
 ├── observability/      # AsyncLocalStorage 请求上下文 + AgentTracer → CompositeObserver
 │                       #   → PersistingObserver 落 agent_execution_events（与 message_processing_records 同 traceId 可 join）
-├── mcp/                # MCP 客户端（动态工具扩展）
+├── mcp/                # MCP 客户端（预留未接线：模块已挂载，但无调用方 connect、无 MCP 服务器配置，生产不加载 MCP 工具）
 ├── sponge/             # 海绵（外部岗位/工单数据服务）
 ├── analytics/          # 指标/趋势/规则计算
 ├── notification/       # 告警通知（渠道 + 渲染器）
-├── evaluation/         # LLM 评分的对话质量评估
+├── evaluation/         # 仅剩对话文本解析（ConversationParserService，供 test-suite 导入/对话测试）
+│                       #   LLM 判官在 test-suite Claude 评审与定时任务，见 docs/architecture/agent-quality-evaluation.md §2
 ├── biz/                # 业务域：monitoring(观测落库+查询) / hosting-config / strategy(persona+红线+阶段目标)
 │                       #   user / message / ops-events / conversion-analytics / candidate-blacklist
 │                       #   group-task / handoff-events / intervention / test-suite / feishu-sync / huajune

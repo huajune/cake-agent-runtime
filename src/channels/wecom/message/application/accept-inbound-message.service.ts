@@ -16,7 +16,11 @@ import {
   MessageType,
   getMessageSourceDescription,
 } from '@enums/message-callback.enum';
-import { FilterReason } from '@enums/message-filter.enum';
+import {
+  FilterReason,
+  isHistoryOnlyReason,
+  type HistoryOnlyReason,
+} from '@enums/message-filter.enum';
 import { SessionStateService } from '@memory/short-term/session-state.service';
 import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
@@ -167,7 +171,12 @@ export class AcceptInboundMessageService {
     filterResult: FilterResult,
   ): Promise<AcceptInboundMessageResult> {
     if (filterResult.historyOnly) {
-      await this.recordUserMessageToHistory(messageData, filterResult.content);
+      // 记下「转给真人处理」的原因：这类消息没有处理记录，复聊据此区分于主链丢消息。
+      await this.recordUserMessageToHistory(
+        messageData,
+        filterResult.content,
+        isHistoryOnlyReason(filterResult.reason) ? filterResult.reason : undefined,
+      );
       const parsed = MessageParser.parse(messageData);
       await this.deduplicationService.markMessageAsProcessedAsync(messageData.messageId);
       this.logger.log(
@@ -588,6 +597,7 @@ export class AcceptInboundMessageService {
   private async recordUserMessageToHistory(
     messageData: EnterpriseMessageCallbackDto,
     contentFromFilter?: string,
+    historyOnlyReason?: HistoryOnlyReason,
   ): Promise<boolean> {
     const parsed = MessageParser.parse(messageData);
     const { chatId, contactName } = parsed;
@@ -617,6 +627,7 @@ export class AcceptInboundMessageService {
       payload: messageData.payload as Record<string, unknown>,
       avatar: messageData.avatar,
       externalUserId: messageData.externalUserId,
+      ...(historyOnlyReason ? { historyOnlyReason } : {}),
     };
     return this.chatSession.saveMessage(userMsg);
   }

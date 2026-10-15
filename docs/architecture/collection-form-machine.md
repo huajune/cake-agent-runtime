@@ -1,6 +1,6 @@
 # 收资表单域架构（collection form machine）
 
-**最后更新**：2026-09-04
+**最后更新**：2026-10-15（§8 TTL 按代码更正）
 **代码居所**：`src/resolution/collection/`（纯逻辑，零 LLM 零 IO）+
 `src/tools/collection/`（编排、渲染与 Redis 存储）
 
@@ -173,8 +173,9 @@ outcome=`restated` 落审计；askCount 不清零防刷熔断配额）。系统/
   `collection-form-primary:*` 固定主候选人默认入口，`collection-form-current:*` 只表示刚通过
   precheck、供同轮 booking 消费的活动表单；additional 表单可切换活动指针，但不得覆盖主指针。
   列入「丢了算事故」key 清单。契约快照与 slots 同实体原子落盘；旧表单没有
-  `contractSnapshot` 时不得直接校验，先走纯 jobId 查询建立快照。旧 key 不迁移，随 3 天 TTL
-  自然过期；兼容窗内旧槽位 `confidence:'medium'` 保守触发 recap，窗口结束后临时兼容失效。
+  `contractSnapshot` 时不得直接校验，先走纯 jobId 查询建立快照。表单实体与 primary/current
+  指针每次写入都按 7 天 TTL 续期（`COLLECTION_FORM_TTL_SECONDS`），与会话状态同档，但不读
+  `MemoryConfig`。
 - 审计：labelTitle 定位失败、值适配/公证拒收 / proposal_ignored（筛退槽位改口被挡）/
   slot_restated / slot_disqualified / escalated / config_debt / recap_confirmation_rejected
   等落 `agent_execution_events`。

@@ -11,6 +11,7 @@ import type {
 } from '@shared-types/tracking.types';
 import type { GuardrailInputTrace, GuardrailTurnTrace } from '@shared-types/guardrail.contract';
 import type { MessageProcessingStatus } from '@enums/message.enum';
+import type { HistoryOnlyReason } from '@enums/message-filter.enum';
 
 /**
  * 聊天消息输入格式
@@ -33,6 +34,16 @@ export interface ChatMessageInput {
   payload?: Record<string, unknown>;
   avatar?: string;
   externalUserId?: string;
+  /** 候选人消息只存历史、交给真人处理的原因；已交给 Agent 的消息不填。 */
+  historyOnlyReason?: HistoryOnlyReason;
+}
+
+/** 会话最近一条候选人消息（复聊待答闸 / 已回话判定用）。 */
+export interface LatestCandidateMessage {
+  messageId: string;
+  content: string;
+  timestamp: number;
+  historyOnlyReason?: HistoryOnlyReason;
 }
 
 /**

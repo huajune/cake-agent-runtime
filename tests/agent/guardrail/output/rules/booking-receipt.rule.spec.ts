@@ -169,6 +169,50 @@ describe('detectBookingReceiptMismatch — 形态 F：在途工单未改约却�
       ),
     ).toBeNull();
   });
+
+  /**
+   * 2026-10-14 业务裁定（trace batch_6ab08de9ce406a6aee94a9cc_1790221554581）：候选人只说晚点到、
+   * 到达时刻仍在已约面试窗口内时不算改约，直接答复可以。precheck 回执带出工单所在面试窗口，
+   * 守卫按窗口对账，教侧（[当前预约信息] 预约处理规则）与拦侧同口径。
+   */
+  describe('工单所在面试窗口内的到达时刻不算改约', () => {
+    const precheckWithWindow = [
+      {
+        toolName: 'duliday_interview_precheck',
+        status: 'ok',
+        result: {
+          duplicateBookingGuard: {
+            workOrderId: 467501,
+            interviewTime: '2026-09-24 13:30:00',
+            interviewWindow: '13:30-16:30',
+          },
+        },
+      },
+    ] as never[];
+
+    it.each([
+      '2点多到也没问题，面试时段是13:30-16:30，这个时间段内到店都可以',
+      '下午2点半到可以的',
+      '14:30到没问题',
+    ])('窗口内到达 → 放行：%s', (reply) => {
+      expect(detectBookingReceiptMismatch(reply, precheckWithWindow)).toBeNull();
+    });
+
+    it.each(['5点到也可以', '17:00到没问题'])('窗口外钟点仍判未改约：%s', (reply) => {
+      expect(detectBookingReceiptMismatch(reply, precheckWithWindow)?.ruleId).toBe(
+        'interview_time_change_unconfirmed',
+      );
+    });
+
+    it('回执没有窗口时按工单开始时刻对账（原口径不变）', () => {
+      expect(
+        detectBookingReceiptMismatch(
+          '2点多到也没问题',
+          precheckWithActiveOrder('2026-09-24 13:30:00'),
+        )?.ruleId,
+      ).toBe('interview_time_change_unconfirmed');
+    });
+  });
 });
 
 /**

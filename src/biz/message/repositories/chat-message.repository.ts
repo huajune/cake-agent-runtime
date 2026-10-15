@@ -9,7 +9,13 @@ import {
   type StorageMessageType,
 } from '@enums/storage-message.enum';
 import { ChatMessageRecord } from '../entities/chat-message.entity';
-import { ChatMessageInput, ChatSessionPage, ChatSessionPageQuery } from '../types/message.types';
+import {
+  ChatMessageInput,
+  ChatSessionPage,
+  ChatSessionPageQuery,
+  LatestCandidateMessage,
+} from '../types/message.types';
+import { isHistoryOnlyReason, type HistoryOnlyReason } from '@enums/message-filter.enum';
 import { EMOTION_MESSAGE_PREFIX, IMAGE_MESSAGE_PREFIX } from '@resolution/signal/markers';
 
 /**
@@ -198,6 +204,63 @@ export class ChatMessageRepository extends BaseRepository {
     } catch (error) {
       this.logger.error(`获取会话历史失败 [${chatId}]:`, error);
       return [];
+    }
+  }
+
+  /**
+   * 会话最近一条候选人消息（含只存历史的原因），无记录或失败返回 null。
+   */
+  async getLatestCandidateMessage(chatId: string): Promise<LatestCandidateMessage | null> {
+    if (!this.isAvailable()) {
+      return null;
+    }
+
+    try {
+      const rows = await this.select<{
+        message_id: string;
+        content: string;
+        timestamp: string;
+        history_only_reason: string | null;
+      }>('message_id,content,timestamp,history_only_reason', (q) =>
+        q
+          .eq('chat_id', chatId)
+          .eq('role', 'user')
+          .order('timestamp', { ascending: false })
+          .limit(1),
+      );
+      const row = rows[0];
+      if (!row) return null;
+      return {
+        messageId: row.message_id,
+        content: row.content,
+        timestamp: new Date(row.timestamp).getTime(),
+        ...(isHistoryOnlyReason(row.history_only_reason)
+          ? { historyOnlyReason: row.history_only_reason }
+          : {}),
+      };
+    } catch (error) {
+      this.logger.error(`获取最近候选人消息失败 [${chatId}]:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * 给已入库的候选人消息补记「只存历史」原因（入站时尚未暂停、合并后才命中暂停的批次）。
+   * 返回被更新的行数；失败返回 0。
+   */
+  async markHistoryOnly(messageIds: string[], reason: HistoryOnlyReason): Promise<number> {
+    if (!this.isAvailable() || messageIds.length === 0) {
+      return 0;
+    }
+
+    try {
+      const rows = await this.update<ChatMessageRecord>({ history_only_reason: reason }, (q) =>
+        q.in('message_id', messageIds).eq('role', 'user'),
+      );
+      return rows.length;
+    } catch (error) {
+      this.logger.error(`补记只存历史原因失败 [${messageIds.join(',')}]:`, error);
+      return 0;
     }
   }
 
@@ -869,6 +932,8 @@ export class ChatMessageRepository extends BaseRepository {
       payload: message.payload,
       avatar: message.avatar,
       external_user_id: message.externalUserId,
+      // 只在有值时带列名：批量 upsert 会把所有键写进 columns 参数，普通消息不引用新列
+      ...(message.historyOnlyReason ? { history_only_reason: message.historyOnlyReason } : {}),
     };
   }
 }

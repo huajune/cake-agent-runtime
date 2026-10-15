@@ -215,6 +215,7 @@ describe('OutputGuardrailService 接入', () => {
         facts: {
           turnHints: testTurnHints(testTurnHint('interview_info.is_student', true, '学生')),
         },
+        jobs: { fetchedJobs: [], attestedFocusJob: null },
       } as never,
     });
 

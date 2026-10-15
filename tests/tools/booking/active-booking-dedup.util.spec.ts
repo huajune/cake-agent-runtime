@@ -1,6 +1,8 @@
 import {
   BOOKING_DEDUP_WINDOW_MS,
+  findActiveBookingForJob,
   findRecentSameJobBooking,
+  isInterviewDayPassed,
   isRecentSameJobBooking,
 } from '@tools/booking/active-booking-dedup.util';
 
@@ -61,5 +63,64 @@ describe('active-booking-dedup.util（booking 与 precheck 共用的同岗位查
     expect(findRecentSameJobBooking(entries, 528902, NOW)?.work_order_id).toBe(464336);
     expect(findRecentSameJobBooking(entries, 999, NOW)).toBeUndefined();
     expect(findRecentSameJobBooking([], 528902, NOW)).toBeUndefined();
+  });
+});
+
+describe('findActiveBookingForJob（岗位查不到时的预约保护，不带查重时间窗）', () => {
+  const today = '2026-09-24';
+
+  it('建单早于 30 分钟查重窗的同岗位指针仍命中', () => {
+    const entry = {
+      work_order_id: 467501,
+      job_id: 529389,
+      linked_at: at(6 * 60 * 60 * 1000),
+      interview_time: '2026-09-24 13:30:00',
+    };
+    expect(findRecentSameJobBooking([entry], 529389, NOW)).toBeUndefined();
+    expect(findActiveBookingForJob([entry], 529389, today)).toBe(entry);
+  });
+
+  it('只认精确 job_id；存量空 job_id 行与别岗工单不算', () => {
+    expect(
+      findActiveBookingForJob(
+        [
+          { work_order_id: 1, job_id: null, linked_at: at(1000) },
+          { work_order_id: 2, job_id: 111, linked_at: at(1000) },
+        ],
+        529389,
+        today,
+      ),
+    ).toBeUndefined();
+  });
+
+  it('面试日已过的不算；等通知单（无面试时间）算在途', () => {
+    expect(
+      findActiveBookingForJob(
+        [
+          {
+            work_order_id: 1,
+            job_id: 529389,
+            linked_at: at(1000),
+            interview_time: '2026-09-23 13:30:00',
+          },
+        ],
+        529389,
+        today,
+      ),
+    ).toBeUndefined();
+    expect(
+      findActiveBookingForJob(
+        [{ work_order_id: 2, job_id: 529389, linked_at: at(1000) }],
+        529389,
+        today,
+      )?.work_order_id,
+    ).toBe(2);
+  });
+
+  it('isInterviewDayPassed 只比较日期前缀，无法识别时按未过', () => {
+    expect(isInterviewDayPassed('2026-09-23 23:59', today)).toBe(true);
+    expect(isInterviewDayPassed('2026-09-24 08:00:00', today)).toBe(false);
+    expect(isInterviewDayPassed(null, today)).toBe(false);
+    expect(isInterviewDayPassed('待定', today)).toBe(false);
   });
 });
