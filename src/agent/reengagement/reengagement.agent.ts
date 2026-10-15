@@ -84,6 +84,7 @@ export const REENGAGEMENT_BLOCK_REASONS = [
   'chat_interview_time_mismatch',
   'candidate_abandoned_onboarding',
   'candidate_reported_onboarded',
+  'candidate_message_unanswered',
 ] as const;
 
 export type ReengagementBlockReason = (typeof REENGAGEMENT_BLOCK_REASONS)[number];
@@ -233,7 +234,7 @@ export class ReengagementAgent {
         });
 
       let result = await generate(systemPrompt);
-      let contractIssue = this.getOutputContractIssue(ctx, result.output);
+      let contractIssue = this.getOutputContractIssue(ctx, memory, result.output);
       if (contractIssue) {
         outputCorrection = { issue: contractIssue, firstOutput: result.output };
         this.logger.warn(
@@ -247,11 +248,12 @@ export class ReengagementAgent {
             `上次结构化输出违反协议（${contractIssue}），请重新决策。`,
             'decision=send 时 blockReason 必须为 none 且 message 非空；decision=skip 时必须命中明确的 blockReason 且 message 为空。',
             'interviewTimeMismatch=true 时 chatAgreedInterviewTime 必须是对话中明确约定的、与工单面试时间确实不同的时间（YYYY-MM-DD HH:mm）；对话没有明确约定不同时间的，interviewTimeMismatch 必须为 false 且 chatAgreedInterviewTime 留空。',
+            'candidate_message_unanswered 只适用于近期对话以候选人（user）消息结尾的情况；最后一条是 assistant 时，候选人的消息已有人回应。',
             '不得以对话正常或主观认为无需跟进等模糊判断，跳过已到点且通过预检的复聊任务。',
           ].join('\n'),
         );
         outputCorrection.retryOutput = result.output;
-        contractIssue = this.getOutputContractIssue(ctx, result.output);
+        contractIssue = this.getOutputContractIssue(ctx, memory, result.output);
         if (contractIssue) {
           throw new ReengagementOutputContractError(contractIssue);
         }
@@ -417,10 +419,20 @@ export class ReengagementAgent {
 
   private getOutputContractIssue(
     ctx: ReengagementComposeContext,
+    memory: ReengagementMemorySnapshot,
     output: ReengagementOutput,
   ): string | null {
     const blockReason = output.blockReason ?? 'none';
     const hasMessage = !!output.message?.trim();
+
+    // 「候选人还在等回复」的确定性前提：对话以候选人消息结尾。最后一条已是 assistant
+    // （Agent 或真人）时不成立，纠正重试，避免模型拿更早的问题跳过到点任务。
+    if (
+      blockReason === 'candidate_message_unanswered' &&
+      memory.recentMessages.at(-1)?.role !== 'user'
+    ) {
+      return 'unanswered_without_trailing_candidate_message';
+    }
 
     // 时间不一致必须给出可解析且确实不同于工单的聊天时间：运营提醒要带两个时间，
     // 拿不到就纠正重试；仍拿不到按协议违规 fail-closed（不发、不伪造）。
@@ -510,6 +522,7 @@ export class ReengagementAgent {
             '## 发送前语义停止条件',
             '- 判定步骤：先定位候选人（user）关于本次面试的最新有效表态，再检查招募经理（assistant）是否已取消面试、已询问结果或已另行提醒，最后才得出结论；关键证据写入 reason。',
             '- 下列角色约定必须严格遵守：user 是候选人，assistant 是招募经理。只判断与当前工单、本次面试相关的表达，不要用其他岗位或更早一次面试的历史误判。',
+            '- 候选人还在等回复（所有报名后场景都适用，含入职跟进）：近期对话以候选人（user）的消息结尾，且最后这段连发是在提问、做出选择或提出需要答复的要求（如问地址、流程、怎么操作，选定某个时间或选项，请求换人对接）：blockReason=candidate_message_unanswered。主动消息不能压着没回答的问题发。只是礼貌确认、致谢、收尾或发表情（如“好的”“谢谢”“OK”“收到”）不算，继续按下列其他条件判断。',
             ...(ctx.scenario.code === 'post_interview_onboarding'
               ? [
                   '- 本场景是面试通过后的入职跟进；下方取消面试、面试结果、结果询问、面试提醒与面试开始时间等停止条件只适用于面试提醒/面试后即时回访，不得用来跳过本档。',
@@ -546,7 +559,7 @@ export class ReengagementAgent {
                   ]),
             ...(ctx.scenario.code === 'post_interview_onboarding'
               ? [
-                  '- 命中放弃入职或已明确入职任一条件时 decision 必须为 skip 且 message 留空；即使实时工单仍显示“面试成功”也不能发送。未命中时 blockReason=none。',
+                  '- 命中候选人还在等回复、放弃入职或已明确入职任一条件时 decision 必须为 skip 且 message 留空；即使实时工单仍显示“面试成功”也不能发送。未命中时 blockReason=none。',
                   '- 未命中任何停止条件时必须 decision=send：不得因主观认为无需跟进或候选人仅礼貌确认收到而跳过。',
                   '- 候选人仅询问报到时间、入职材料、手续或表达担心，不构成已经放弃或已经入职。',
                 ]
@@ -554,7 +567,7 @@ export class ReengagementAgent {
                   '- 命中任一条件时 decision 必须为 skip 且 message 留空；即使实时工单仍显示预约有效也不能发送。未命中时 blockReason=none。',
                   '- 未命中任何停止条件时必须 decision=send：不得因对话流程正常、候选人曾确认安排或主观认为无需跟进而跳过；候选人仅礼貌确认收到，不构成停止条件。',
                   '- 同一意图有前后变化时以最新有效表达为准：取消后又明确重新约好可以恢复；改约后的新面试不被旧时间对应的提醒阻止。',
-                  '- 仅仅询问面试时间地点、表达紧张或尚未确认结果，不构成以上停止条件。',
+                  '- 仅仅询问面试时间地点、表达紧张或尚未确认结果，不构成取消或结果类停止条件；这类提问停在对话末尾无人回应时，按候选人还在等回复处理。',
                 ]),
             '',
           ]
