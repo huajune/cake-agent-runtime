@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { buildGeocodeTool } from '@tools/geocode.tool';
 import { GeocodingService } from '@infra/geocoding/geocoding.service';
 import type { GeocodeCandidate } from '@infra/geocoding/geocoding.types';
@@ -717,16 +718,25 @@ describe('geocode tool', () => {
         toModelOutput: (options: { output: unknown }) => { type: string; value: unknown };
       };
 
+      const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
       const output = (await typed.execute({ address: '漕宝路', city: '上海' })) as Record<
         string,
         unknown
       >;
+      const provenanceWarn = warnSpy.mock.calls
+        .map(([message]) => String(message))
+        .find((message) => message.includes('只出现在 Agent 自己的消息里'));
+      warnSpy.mockRestore();
 
       expect(output.resolution).toBe('unique');
       expect(output._addressProvenance).toMatchObject({
         verdict: 'unattested',
         assistantOnly: true,
       });
+      // 日志只留元数据，不打印候选人地址原文。
+      expect(provenanceWarn).toContain('matchedBy=none');
+      expect(provenanceWarn).toContain('sessionId=');
+      expect(provenanceWarn).not.toContain('漕宝路');
       const modelView = typed.toModelOutput({ output });
       expect(modelView.type).toBe('json');
       expect(modelView.value).not.toHaveProperty('_addressProvenance');
