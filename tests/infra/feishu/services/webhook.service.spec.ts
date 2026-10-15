@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { FeishuWebhookService } from '@infra/feishu/services/webhook.service';
+import { FEISHU_WEBHOOK_CHANNELS } from '@infra/feishu/constants/constants';
 
 describe('FeishuWebhookService', () => {
   let service: FeishuWebhookService;
@@ -109,7 +110,7 @@ describe('FeishuWebhookService', () => {
       expect(calledPayload).toHaveProperty('sign');
     });
 
-    it('should honor an explicitly empty secret instead of falling back to the default secret', async () => {
+    it('should treat an explicitly empty secret as unsigned', async () => {
       mockConfigService.get.mockImplementation((key: string, defaultValue?: string) => {
         if (key === 'MESSAGE_NOTIFICATION_WEBHOOK_URL') {
           return 'https://open.feishu.cn/hook/booking';
@@ -166,22 +167,78 @@ describe('FeishuWebhookService', () => {
         expect.any(Object),
       );
     });
+  });
 
-    it('should fall back to default hardcoded URL when env var is absent', async () => {
-      // Return defaultValue for all keys (simulates env vars not being set)
-      mockConfigService.get.mockImplementation(
-        (_key: string, defaultValue?: string) => defaultValue,
+  describe('env-only webhook config', () => {
+    it('does not embed webhook URL or secret values in code', () => {
+      for (const config of Object.values(FEISHU_WEBHOOK_CHANNELS)) {
+        expect(Object.keys(config).sort()).toEqual(['ENV_SECRET_KEY', 'ENV_URL_KEY']);
+      }
+    });
+
+    it('skips sending and warns when the URL env var is absent', async () => {
+      mockConfigService.get.mockReturnValue(undefined);
+      const httpClientSpy = jest.spyOn(service['httpClient'], 'post');
+      const warnSpy = jest.spyOn(service['logger'], 'warn').mockImplementation();
+      const errorSpy = jest.spyOn(service['logger'], 'error').mockImplementation();
+
+      const result = await service.sendMessage('PRIVATE_CHAT_MONITOR', { msg_type: 'interactive' });
+
+      expect(result).toBe(false);
+      expect(httpClientSpy).not.toHaveBeenCalled();
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('PRIVATE_CHAT_MONITOR_WEBHOOK_URL'),
       );
+      expect(errorSpy).not.toHaveBeenCalled();
+    });
 
+    it('does not post a failure alert when only the business channel URL is missing', async () => {
+      mockConfigService.get.mockImplementation((key: string) => {
+        if (key === 'FEISHU_ALERT_WEBHOOK_URL') return 'https://open.feishu.cn/hook/alert';
+        if (key === 'FEISHU_ALERT_SECRET') return '';
+        return undefined;
+      });
+      const httpClientSpy = jest.spyOn(service['httpClient'], 'post');
+      jest.spyOn(service['logger'], 'warn').mockImplementation();
+
+      const result = await service.sendMessage('MESSAGE_NOTIFICATION', { msg_type: 'interactive' });
+
+      expect(result).toBe(false);
+      expect(httpClientSpy).not.toHaveBeenCalled();
+    });
+
+    it('sendMessageOrThrow throws without posting when the URL env var is absent', async () => {
+      mockConfigService.get.mockReturnValue(undefined);
+      const httpClientSpy = jest.spyOn(service['httpClient'], 'post');
+      const warnSpy = jest.spyOn(service['logger'], 'warn').mockImplementation();
+
+      await expect(
+        service.sendMessageOrThrow('MESSAGE_NOTIFICATION', { msg_type: 'interactive' }),
+      ).rejects.toThrow('未配置 MESSAGE_NOTIFICATION Webhook URL');
+      expect(httpClientSpy).not.toHaveBeenCalled();
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('MESSAGE_NOTIFICATION_WEBHOOK_URL'),
+      );
+    });
+
+    it('sends unsigned and warns once when the secret env var is absent', async () => {
+      mockConfigService.get.mockImplementation((key: string) =>
+        key === 'FEISHU_ALERT_WEBHOOK_URL' ? 'https://open.feishu.cn/hook/test' : undefined,
+      );
       const httpClientSpy = jest
         .spyOn(service['httpClient'], 'post')
         .mockResolvedValue({ data: { code: 0 } } as any);
+      const warnSpy = jest.spyOn(service['logger'], 'warn').mockImplementation();
 
-      await service.sendMessage('ALERT', {});
+      await service.sendMessage('ALERT', { msg_type: 'text' });
+      await service.sendMessage('ALERT', { msg_type: 'text' });
 
-      // Should have called post with the default URL from FEISHU_WEBHOOKS.ALERT.URL
-      const calledUrl = httpClientSpy.mock.calls[0][0] as string;
-      expect(calledUrl).toContain('feishu.cn');
+      expect(httpClientSpy).toHaveBeenCalledTimes(2);
+      expect(httpClientSpy.mock.calls[0][1]).not.toHaveProperty('sign');
+      const secretWarns = warnSpy.mock.calls.filter(([msg]) =>
+        String(msg).includes('FEISHU_ALERT_SECRET'),
+      );
+      expect(secretWarns).toHaveLength(1);
     });
   });
 
@@ -286,6 +343,23 @@ describe('FeishuWebhookService', () => {
       expect(alertCall).toBeDefined();
       const alertCard = alertCall?.[1] as { card?: { header?: { title?: { content?: string } } } };
       expect(alertCard?.card?.header?.title?.content).toContain('飞书通知发送失败');
+    });
+
+    it('skips the failure alert when the ALERT channel is not configured', async () => {
+      mockConfigService.get.mockImplementation((key: string) => {
+        if (key === 'PRIVATE_CHAT_MONITOR_WEBHOOK_URL') return PRIVATE_URL;
+        if (key.endsWith('_SECRET')) return '';
+        return undefined;
+      });
+      const postSpy = jest
+        .spyOn(service['httpClient'], 'post')
+        .mockRejectedValue(axiosError(400) as never);
+
+      const result = await service.sendMessage('PRIVATE_CHAT_MONITOR', { msg_type: 'interactive' });
+
+      expect(result).toBe(false);
+      expect(postSpy).toHaveBeenCalledTimes(1);
+      expect(postSpy.mock.calls[0][0]).toBe(PRIVATE_URL);
     });
 
     it('does not recursively alert when the ALERT channel itself fails', async () => {
