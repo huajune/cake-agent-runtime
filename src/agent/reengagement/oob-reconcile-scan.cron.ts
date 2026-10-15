@@ -10,10 +10,7 @@ import { SystemConfigService } from '@biz/hosting-config/services/system-config.
 import { PhoneSessionIndexService } from '@memory/phone-session-index.service';
 import { AgentTracerService } from '@observability/agent-tracer.service';
 import { SpongeService } from '@sponge/sponge.service';
-import {
-  ACTIVE_INTERVIEW_WORK_ORDER_STATUSES,
-  type SignupWorkOrderItem,
-} from '@sponge/sponge.types';
+import type { SignupWorkOrderItem } from '@sponge/sponge.types';
 import { isStorableCandidatePhone } from '@resolution/candidate/phone';
 import { normalizeSignupSource } from '@tools/booking/booking-snapshot.util';
 import { OobReconcileService } from './oob-reconcile.service';
@@ -41,7 +38,7 @@ export interface OobReconcileScanSummary {
   reconciled: number;
   scheduled: number;
   accountFailures: number;
-  /** 单轮硬时间窗到点，剩余行/账号未处理（下一轮从头再扫，锚点标记保证不重排）。 */
+  /** 单轮硬时间窗到点，剩余行/账号未处理；从当前页的首个未处理行续跑。 */
   truncated: boolean;
   /** 本轮新排的等通知满 3 天复核数（单轮上限 MAX_SLOT_CHECKS_PER_RUN，超出留待下一轮）。 */
   slotChecks: number;
@@ -50,6 +47,7 @@ export interface OobReconcileScanSummary {
 }
 
 const LOCK_KEY = 'oob:reconcile-scan:lock:v1';
+const PROGRESS_KEY = 'oob:reconcile-scan:progress:v1';
 const RUN_DEADLINE_MS = 20 * 60 * 1000;
 /** 锁 TTL 必须 ≥ 2 × 单轮硬时间窗：一轮跑满 + 释放失败也不会让下一副本提前进场重排。 */
 const LOCK_TTL_SECONDS = (2 * RUN_DEADLINE_MS) / 1000;
@@ -148,23 +146,33 @@ export class OobReconcileScanCronService {
     }
 
     const signUpStartTime = formatLocalDateTime(new Date(now - SIGNUP_LOOKBACK_MS));
+    const signUpEndTime = formatLocalDateTime(new Date(now));
+    const progress = (await this.redisService.get<ScanProgress>(PROGRESS_KEY)) ?? {
+      accounts: {},
+    };
+    // 固定每个账号本次扫描的时间窗口；预算耗尽后续页，避免反复扫描已结束工单前缀。
+    const firstAccount = Math.max(0, botImIds.indexOf(progress.nextBotImId ?? ''));
+    const orderedBotImIds = [...botImIds.slice(firstAccount), ...botImIds.slice(0, firstAccount)];
+    for (const savedBot of Object.keys(progress.accounts)) {
+      if (!botImIds.includes(savedBot)) delete progress.accounts[savedBot];
+    }
     // 同一手机号在多个账号/多张工单里重复出现时只对账一次（对账内部按快照全量处理）。
     const seen = new Set<string>();
 
-    for (const botImId of botImIds) {
+    for (const botImId of orderedBotImIds) {
       if (summary.rows >= maxRows || summary.truncated) break;
       if (this.isPastDeadline(startedAt)) {
         summary.truncated = true;
         break;
       }
       let rows: SupplierRowsPage;
+      const cursor = (progress.accounts[botImId] ??= {
+        nextPage: 1,
+        signUpStartTime,
+        signUpEndTime,
+      });
       try {
-        rows = await this.fetchSupplierRows(
-          botImId,
-          signUpStartTime,
-          maxPages,
-          maxRows - summary.rows,
-        );
+        rows = await this.fetchSupplierRows(botImId, cursor, maxPages, maxRows - summary.rows);
       } catch (error) {
         summary.accountFailures += 1;
         this.logger.warn(`[oob-scan] 账号 ${botImId} 拉取失败: ${toErrorMessage(error)}`);
@@ -172,7 +180,9 @@ export class OobReconcileScanCronService {
       }
       summary.rows += rows.total;
       if (rows.totalUnknown) summary.totalUnknown = true;
-      for (const row of rows.supplier) {
+      for (const { row, pageNum, rowIndex } of rows.supplier) {
+        // 下一次从首个未处理行继续；已完成的慢对账不应在每轮重放而耗尽时间窗。
+        progress.accounts[botImId] = { ...cursor, nextPage: pageNum, nextRowOffset: rowIndex };
         // 硬时间窗按行检查：对账含海绵查询与排任务，账号级检查不够细，一个大账号能把整轮拖过锁 TTL。
         if (this.isPastDeadline(startedAt)) {
           summary.truncated = true;
@@ -211,6 +221,7 @@ export class OobReconcileScanCronService {
             userId: record.userId,
             chatId: record.chatId,
             botImId,
+            botUserId: record.botUserId,
             phone,
             trigger: 'scan',
             maxSlotChecks: Math.max(0, MAX_SLOT_CHECKS_PER_RUN - summary.slotChecks),
@@ -226,6 +237,13 @@ export class OobReconcileScanCronService {
           );
         }
       }
+      // 本段处理完推进到后页；时间中断则保存上面记录的首个未处理行。
+      if (!summary.truncated) {
+        if (rows.nextPage === null) delete progress.accounts[botImId];
+        else progress.accounts[botImId] = { ...cursor, nextPage: rows.nextPage, nextRowOffset: 0 };
+      }
+      progress.nextBotImId = botImIds[(botImIds.indexOf(botImId) + 1) % botImIds.length];
+      await this.redisService.set(PROGRESS_KEY, progress);
     }
 
     if (summary.truncated) {
@@ -246,22 +264,24 @@ export class OobReconcileScanCronService {
    */
   private async fetchSupplierRows(
     botImId: string,
-    signUpStartTime: string,
+    cursor: AccountScanCursor,
     maxPages: number,
     rowBudget: number,
   ): Promise<SupplierRowsPage> {
-    const supplier: SignupWorkOrderItem[] = [];
+    const supplier: SupplierRowsPage['supplier'] = [];
     let total = 0;
     let totalUnknown = false;
-    for (let pageNum = 1; pageNum <= maxPages && total < rowBudget; pageNum += 1) {
+    let nextPage: number | null = cursor.nextPage;
+    for (let count = 0; count < maxPages && total < rowBudget; count += 1) {
+      const pageNum = cursor.nextPage + count;
       const page = await this.withRetry(() =>
         this.spongeService.fetchSelfSignupWorkOrdersV2(
           {
             pageNum,
             pageSize: PAGE_SIZE,
             queryParam: {
-              signUpStartTime,
-              currentStatus: Array.from(ACTIVE_INTERVIEW_WORK_ORDER_STATUSES),
+              signUpStartTime: cursor.signUpStartTime,
+              signUpEndTime: cursor.signUpEndTime,
             },
           },
           { botImId },
@@ -270,17 +290,24 @@ export class OobReconcileScanCronService {
       );
       const rows = page.workOrders ?? [];
       total += rows.length;
-      for (const row of rows) {
-        if (normalizeSignupSource(row.signupSource) === 'SUPPLIER') supplier.push(row);
+      const firstRow = pageNum === cursor.nextPage ? (cursor.nextRowOffset ?? 0) : 0;
+      for (let rowIndex = firstRow; rowIndex < rows.length; rowIndex += 1) {
+        const row = rows[rowIndex];
+        if (normalizeSignupSource(row.signupSource) === 'SUPPLIER') {
+          supplier.push({ row, pageNum, rowIndex });
+        }
       }
-      if (rows.length < PAGE_SIZE) break;
+      nextPage = pageNum + 1;
+      if (rows.length < PAGE_SIZE || (page.total != null && pageNum * PAGE_SIZE >= page.total)) {
+        nextPage = null;
+        break;
+      }
       if (page.total == null) {
         totalUnknown = true;
         continue;
       }
-      if (total >= page.total) break;
     }
-    return { total, supplier, totalUnknown };
+    return { total, supplier, totalUnknown, nextPage };
   }
 
   private isPastDeadline(startedAt: number): boolean {
@@ -346,8 +373,22 @@ export class OobReconcileScanCronService {
 
 interface SupplierRowsPage {
   total: number;
-  supplier: SignupWorkOrderItem[];
+  supplier: Array<{ row: SignupWorkOrderItem; pageNum: number; rowIndex: number }>;
   totalUnknown: boolean;
+  nextPage: number | null;
+}
+
+interface AccountScanCursor {
+  nextPage: number;
+  /** 当前页首个未处理行，按原始响应下标计算，包含非供应商工单。 */
+  nextRowOffset?: number;
+  signUpStartTime: string;
+  signUpEndTime: string;
+}
+
+interface ScanProgress {
+  nextBotImId?: string;
+  accounts: Record<string, AccountScanCursor>;
 }
 
 function positiveInt(value: unknown): number | undefined {

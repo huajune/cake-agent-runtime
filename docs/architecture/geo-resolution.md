@@ -247,7 +247,11 @@ sequenceDiagram
 
 **坐标同样不可信任模型转抄**：曾实证模型在「5km 复查」轮未调 geocode、自编了一组与真实锚点偏差约 3.7km 的坐标。岗位工具因此校验模型传入坐标与会话内最近一次 geocode 结果的偏差，落 `anchor.coordsProvenance` / `anchor.coordsDeviationKm` 观测。
 
-**geocode 已解析城市必须被消费**：geocode 解析出的城市进入 `resolveCityFromGeoSignals` 的输入源（evidence `geocode_resolved`），与会话事实冲突时走 ambiguous 出口由模型澄清，**不静默覆盖**；工具结果文本把解析结论**前置明示**（「已确认城市：大连市；已定位到 XX 门店」），description 声明「解析成功后禁止再向候选人反问城市」。
+**地址同样不可信任模型转抄**：2026-10-09 模型凭工具教学示例虚构「你还是在漕宝路这边吗」，次轮以自己的回复为据 geocode「漕宝路」并被确权成上海。geocode 现对 `address` 做出处公证（候选人原话含位置分享、真人招募经理消息、本轮工具结果与焦点岗位门店、「助手问 + 候选人整句肯定」），判定结果 `_addressProvenance`（`verdict` / `matchedBy` / `assistantOnly`）只写入原始工具输出留档，经 `toModelOutput` 从模型可见结果剔除。当前为 shadow：离线估算合理调用的地址常经模型规范化或取自门店结果，先用生产数据校准误拒率，再决定是否拦截。
+
+**跨城锚点纠偏闸**：锚点纠偏（`contextCorrection`）只在同城消歧时直接采纳。地址本身写明另一城市的区县/街镇（「南海桂城上海村」→ 佛山南海区、桂城街道）时按地址采纳，不纠偏到锚点城市；首查完全不在锚点城市（含首查为空）时，纠偏结果必须逐字回显候选人原地址，否则返回 `needs_confirmation`，不宣告已确认城市、不写坐标锚点。
+
+**geocode 已解析城市必须被消费**：unique 解析经 `ledger.recordGeoResolution` 同时写本轮坐标锚点与城市确权（`cityAttestation`），回合收尾由 `saveToolAttestedCity` 落会话城市，会话已有不同城市时不覆盖；与会话城市冲突时工具结果附 `_cityConflictNotice`，由模型向候选人确认，**不静默覆盖**。工具结果文本把解析结论**前置明示**（「已确认城市：大连市；已定位到 XX 门店」），description 声明「解析成功后禁止再向候选人反问城市」。
 
 ---
 

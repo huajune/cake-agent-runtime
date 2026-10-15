@@ -27,6 +27,7 @@ import {
   SIDE_EFFECT_TOOLS,
   TOOL_GUARDRAIL_IDS,
 } from '@agent/generator/tool-call-analysis';
+import { buildToolError, TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
 
 describe('tool-call-analysis', () => {
   describe('computeResultCount', () => {
@@ -130,6 +131,17 @@ describe('tool-call-analysis', () => {
       );
     });
 
+    it('已有预约岗位查不到详情（booked_job_unverifiable）按 error 计，不是业务空态', () => {
+      const result = buildToolError({
+        errorType: TOOL_ERROR_TYPES.PRECHECK_BOOKED_JOB_UNVERIFIABLE,
+        replyInstruction: '预约仍有效',
+        details: { jobId: 100, workOrderId: 467501 },
+      });
+      expect(computeToolCallStatus(result, computeResultCount(result))).toBe('error');
+      expect(extractToolErrorType(result)).toBe('precheck.booked_job_unverifiable');
+      expect(isToolSuccess(result)).toBe(false);
+    });
+
     it('maps zero-result errorTypes to empty instead of error', () => {
       // 查询成功但零结果的业务空态：走 buildToolError 通道但语义是 empty
       expect(
@@ -145,6 +157,16 @@ describe('tool-call-analysis', () => {
         computeToolCallStatus(
           { success: false, errorType: 'job_list.schedule_filter_empty' },
           undefined,
+        ),
+      ).toBe('empty');
+      // 已查范围内未确认可推荐岗位（扫描未完整）也是业务空态
+      expect(
+        computeToolCallStatus(
+          { success: false, errorType: 'job_list.query_incomplete' },
+          undefined,
+          undefined,
+          undefined,
+          'duliday_job_list',
         ),
       ).toBe('empty');
       // 系统级失败仍是 error

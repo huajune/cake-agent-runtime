@@ -141,6 +141,41 @@ describe('auditJobData ④ 发薪日为空', () => {
   });
 });
 
+describe('auditJobData ⑤ 组合排班只有1档', () => {
+  const withSlots = (type: string, slots: Array<[string, string]>) =>
+    buildSpongeJobFixture(IDS.KFC_RPO_STAIR_PERIODIC_INTERVIEW, (draft) => {
+      draft.workTime = {
+        dayWorkTime: {
+          arrangementType: type,
+          fixedTime: null,
+          combinedArrangement: slots.map(([start, end]) => ({
+            combinedArrangementStartTime: start,
+            combinedArrangementEndTime: end,
+          })),
+        },
+      };
+    });
+
+  it('组合排班单档命中，提示海绵补齐', () => {
+    const hit = auditJobData(withSlots('组合排班制', [['09:00', '13:00']])).find(
+      (issue) => issue.kind === 'combined_arrangement_single_slot',
+    );
+    expect(hit?.detail).toBe('组合排班只有1档（09:00-13:00），应至少2档');
+  });
+
+  it('组合排班多档、固定排班单档不报', () => {
+    for (const job of [
+      withSlots('组合排班制', [
+        ['09:00', '13:00'],
+        ['17:00', '21:00'],
+      ]),
+      withSlots('固定排班', [['09:00', '13:00']]),
+    ]) {
+      expect(kindsOf(auditJobData(job))).not.toContain('combined_arrangement_single_slot');
+    }
+  });
+});
+
 describe('auditJobData 输入容错与汇总', () => {
   it('非对象 / 无薪资块输入不抛错', () => {
     expect(auditJobData(null)).toEqual([]);
@@ -161,10 +196,12 @@ describe('auditJobData 输入容错与汇总', () => {
       ].sort(),
     );
     expect(countJobDataIssuesByKind(issues)).toEqual({
+      work_time_contract_invalid: 0,
       stair_text_without_structure: 5,
       holiday_salary_conflict: 1,
       comprehensive_salary_ratio: 0,
       payday_missing: 0,
+      combined_arrangement_single_slot: 0,
     });
     const report = formatJobDataAuditReport(issues);
     expect(report).toContain('【备注有阶梯而结构化标无】5 条');

@@ -3,6 +3,7 @@ import { RedisService } from '@infra/redis/redis.service';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { OpsEventsRecorderService } from '@biz/ops-events/services/ops-events-recorder.service';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
+import { ReengagementTrackingService } from '@biz/monitoring/services/tracking/reengagement-tracking.service';
 import { LongTermService } from '@memory/long-term/long-term.service';
 import { isUserProfileFactValue } from '@memory/long-term/long-term.types';
 import type { ReengagementSessionState } from '@memory/recall.types';
@@ -85,6 +86,7 @@ export class OobReconcileService implements OnModuleInit {
     private readonly systemConfig: SystemConfigService,
     @Optional() private readonly userHosting?: UserHostingService,
     @Optional() private readonly phoneSessionIndex?: PhoneSessionIndexService,
+    @Optional() private readonly tracking?: ReengagementTrackingService,
   ) {}
 
   /** 手动恢复托管即时对账一次（到期恢复不经过恢复函数，由下一回合与补偿扫描兜底）。 */
@@ -106,6 +108,7 @@ export class OobReconcileService implements OnModuleInit {
         userId: record.userId,
         chatId: record.chatId,
         botImId: record.botImId ?? null,
+        botUserId: record.botUserId,
         phone: record.phone,
         trigger: 'resume',
       });
@@ -196,7 +199,12 @@ export class OobReconcileService implements OnModuleInit {
     } catch (error) {
       this.logger.warn(`[oob] 读取会话事实失败 chatId=${input.chatId}: ${toErrorMessage(error)}`);
     }
-    const botUserId = input.botUserId?.trim();
+    let botUserId = input.botUserId?.trim();
+    if (!botUserId && input.botImId) {
+      // 旧索引没有长期记忆账号键；只用同一托管账号的会话渠道快照补齐。
+      const channel = await this.tracking?.resolveChannelIdentity(input.chatId);
+      if (channel?.botImId === input.botImId) botUserId = channel.managerName?.trim();
+    }
     if (botUserId) {
       const profile = await this.longTerm.getProfile(input.corpId, input.userId, botUserId);
       const profileName = profile?.name;

@@ -69,4 +69,17 @@ describe('fetchWithTimeout', () => {
 
     expect(clearTimeoutSpy).toHaveBeenCalledTimes(1);
   });
+
+  it('preserves the scan deadline signal through response body consumption', async () => {
+    const controller = new AbortController();
+    let signal: AbortSignal;
+    global.fetch = jest.fn((_url, init) => {
+      signal = init.signal;
+      return Promise.resolve(new Response('ok'));
+    });
+    await fetchWithTimeout('https://example.test/page', { signal: controller.signal });
+    controller.abort(new Error('scan deadline'));
+    expect(signal.aborted).toBe(true);
+    expect(signal.reason.message).toBe('scan deadline');
+  });
 });

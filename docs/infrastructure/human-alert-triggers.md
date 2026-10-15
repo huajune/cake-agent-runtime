@@ -19,6 +19,8 @@
 | `raise_risk_alert` 工具 | ❌ Agent 可继续生成安抚回复        | ✅（投递成功后再提交副作用） | `reply` outcome 投递成功后统一暂停和告警         |
 | Input risk intercept    | ✅ 生成前拦截                      | ❌                           | Runner/Outcome 统一提交暂停和告警                |
 
+飞书任务开启后，每次有效提交人工介入都独立创建一条任务，记录本次候选人、会话、原因、负责人及跟进时间；同一会话、同一岗位、同一分钟再次命中也各建一条，不合并到旧任务或追加评论（2026-09-24 裁定）。每次提交使用独立创建标识，仅该次请求的网络重试复用标识，避免响应丢失后重复建单。原有介入提交条件及测试会话过滤仍适用。
+
 ---
 
 ## 一、对话风险类（人工接管会话）
@@ -30,7 +32,7 @@
 - **位置**：[risk-intercept.service.ts](../../src/agent/guardrail/input/risk-intercept.service.ts)
 - **来源**：`guardrail.source=input_guardrail`；既有风险意图仍为 `source=regex_intercept`
 - **条件**：用户消息命中高置信关键词正则（包括辱骂、投诉/举报、面试结果追问、明确转人工请求等）
-- **暂停时长**：默认次日零点自动解禁；面试结果追问，以及 request_handoff 的 interview_result_inquiry / onboarding_paperwork / self_recruited_or_completed 三类，暂停到人工在 Dashboard 恢复为止（2026-09-16 裁定：面试后环节一律真人对接，托管隔天自动恢复曾酿成候选人到店白干事故）
+- **暂停时长**：所有人工介入统一进入「临时禁止托管」，次日零点（Asia/Shanghai）自动恢复，包括面试结果追问、入职流程对接、门店自招/已面试通过和在职事务（2026-10-10 用户调整）。面试后业务仍交给真人；手动永久禁止和候选人黑名单命中仍为永久暂停。
 - **效果**：Runner 收敛为 `handoff`（`guardrail.phase=inbound`）；Replay 定局后通过既有 `conversation_risk` 意图暂停托管 + 发卡，不另加 `general_handoff`。现役事件为 `inbound_guardrail_handoff`，旧 `inbound_guardrail_block` 仅历史读取兼容
 
 ### 2. Agent 主动告警（`raise_risk_alert` 工具）

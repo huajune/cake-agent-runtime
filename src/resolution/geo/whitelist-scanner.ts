@@ -14,12 +14,15 @@ import type { WhitelistScanHit, WhitelistScanResult } from './geo.types';
  *
  * 例如「宝安公路」、「宝山中街」和「洪湖公园」中的区县名只是其它地物专名的一部分。
  * 合法区名不能逐个从白名单删除，因此必须在匹配层统一拒绝这类通名后缀。
+ * 聚落通名（村/庄/屯/寨/社区）同理：佛山南海「上海村」、各地「朝阳村」里的城市/区县字样
+ * 只是村名，不是行政区。
  *
  * 刻意**不含** 区/县/市/镇/街道/新区/开发区——那些后缀恰恰是"确实是行政区"的证据。
  * `街(?!道)` 保证 "青浦街道" 不被误拒；同理 "大道" 拒、"街道" 放行。
+ * 也不含「里」「坊」：「松江里面」是方位词，「北京坊」本身就在北京，拒掉反而丢失正确城市。
  */
 const PLACE_FEATURE_SUFFIX_PATTERN =
-  /^(?:公路|公园|广场|花园|小区|大厦|新村|大道|[东西南北中]?(?:路|街(?!道)|巷|弄|桥))/;
+  /^(?:公路|公园|广场|花园|小区|大厦|新村|社区|大道|[东西南北中]?(?:路|街(?!道)|巷|弄|桥)|村|庄|屯|寨)/;
 
 /** 通名探测最多向后看的字符数（"公路"/"中街" 均 ≤2，留 1 字余量）。 */
 const SUFFIX_LOOKAHEAD = 3;
@@ -84,6 +87,27 @@ export function scanWhitelistKeysByLongest(
 
   hits.sort((a, b) => a.start - b.start);
   return { hits, covered };
+}
+
+/**
+ * 文本里是否以「地名本身」提到了 name：至少有一处出现后面没有紧跟通名后缀。
+ *
+ * 只有「上海村」「上海路」这类出现时，提到的是村/路的专名，不是该城市/区县本身。
+ * 与 `scanWhitelistKeysByLongest` 的 rejectPlaceFeatureSuffix 共用同一份通名表。
+ */
+export function mentionsPlaceNameStandalone(message: string, name: string): boolean {
+  if (!name) return false;
+  let from = 0;
+  while (from <= message.length - name.length) {
+    const idx = message.indexOf(name, from);
+    if (idx < 0) return false;
+    const end = idx + name.length;
+    if (!PLACE_FEATURE_SUFFIX_PATTERN.test(message.slice(end, end + SUFFIX_LOOKAHEAD))) {
+      return true;
+    }
+    from = idx + 1;
+  }
+  return false;
 }
 
 /**

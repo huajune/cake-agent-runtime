@@ -4,6 +4,8 @@ import { InjectQueue } from '@nestjs/bull';
 import { Queue, Job } from 'bull';
 import { ConfigService } from '@nestjs/config';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
+import { ChatSessionService } from '@biz/message/services/chat-session.service';
+import { FilterReason } from '@enums/message-filter.enum';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { EnterpriseMessageCallbackDto } from '../ingress/message-callback.dto';
 
@@ -35,6 +37,7 @@ export class MessageProcessor implements OnModuleInit, OnModuleDestroy {
     private readonly deduplicationService: MessageDeduplicationService,
     private readonly messageTracking: MessageTrackingService,
     private readonly configService: ConfigService,
+    private readonly chatSession: ChatSessionService,
   ) {
     this.drainTimeoutMs = parseInt(
       this.configService.get('SHUTDOWN_DRAIN_TIMEOUT_MS', '60000'),
@@ -297,6 +300,9 @@ export class MessageProcessor implements OnModuleInit, OnModuleDestroy {
    * 03:00 UTC cron 标 timeout。这不影响候选人（本就该由真人接），但污染观测口径
    * ——processing 被当作"真在处理"计数。复用聚合路径既有的回收语义（删除源行 +
    * 扣减 activeRequests），不新增状态机。
+   *
+   * 这批消息入站时已按正常路径入库，这里补记 history_only_reason=user-paused，
+   * 与入站即命中暂停的消息同口径：复聊据此识别「转给真人处理」，不当作主链丢消息。
    */
   private async dropIfHostingPaused(
     chatId: string,
@@ -328,6 +334,16 @@ export class MessageProcessor implements OnModuleInit, OnModuleDestroy {
           }),
       ),
     );
+
+    await this.chatSession
+      .markHistoryOnly(
+        messages.map((message) => message.messageId),
+        FilterReason.USER_PAUSED,
+      )
+      .catch((error: unknown) => {
+        this.logger.warn(`[Bull][已暂停托管] 补记只存历史原因失败: ${toErrorMessage(error)}`);
+        return 0;
+      });
 
     await this.messageTracking
       .dropMergedSourceRecords(

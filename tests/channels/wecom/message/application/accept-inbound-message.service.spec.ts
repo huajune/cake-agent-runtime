@@ -450,9 +450,37 @@ describe('AcceptInboundMessageService', () => {
       expect.objectContaining({
         role: 'user',
         content: '候选人发来消息',
+        // 转给真人处理的原因随消息入库，复聊据此不把它当主链丢消息
+        historyOnlyReason: FilterReason.USER_PAUSED,
       }),
     );
     expect(deduplicationService.markMessageAsProcessedAsync).toHaveBeenCalledWith('msg-1');
+  });
+
+  it.each([FilterReason.CANDIDATE_BLACKLISTED, FilterReason.GROUP_BLACKLISTED])(
+    'should record %s history-only reason on the stored message',
+    async (reason) => {
+      filterService.validate.mockResolvedValueOnce({
+        pass: true,
+        content: '候选人发来消息',
+        historyOnly: true,
+        reason,
+      });
+
+      await service.execute(createMessage());
+
+      expect(chatSession.saveMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ historyOnlyReason: reason }),
+      );
+    },
+  );
+
+  it('should not mark dispatched messages as history-only', async () => {
+    await service.execute(createMessage());
+
+    expect(chatSession.saveMessage).toHaveBeenCalledWith(
+      expect.not.objectContaining({ historyOnlyReason: expect.anything() }),
+    );
   });
 
   it('should archive filtered personal inbound messages without dispatching', async () => {

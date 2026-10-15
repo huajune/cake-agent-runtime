@@ -98,14 +98,17 @@ const COLLECTION_PROGRESS_FACT_MAPPING = {
  * **只回流 true，不回流 false**：查岗侧的学生硬过滤同样只认 true
  *（`resolveCandidateIsStudent`），因为 is_student=false 有抽取污染史——
  * 凭空落 false 会把"没说过"伪装成"已确认不是学生"。收资表答「社会人士」时
- * 保持字段缺席而不是写 false，语义上仍是"未确权"，下游行为与今天一致。
+ * 清除旧学生事实而不是写 false；没回答或无法识别时不改旧事实。
  */
 function projectProgressFactValue(
   interviewField: ProgressInterviewField,
   slotValue: string,
-): string | boolean | null {
+): string | boolean | null | undefined {
   if (interviewField !== 'is_student') return slotValue;
-  return classifyIdentityAnswerText(slotValue) === '学生' ? true : null;
+  const identity = classifyIdentityAnswerText(slotValue);
+  if (identity === '学生') return true;
+  if (identity === '社会人士' || slotValue.trim() === '第二职业') return null;
+  return undefined;
 }
 
 @Injectable()
@@ -248,7 +251,7 @@ export class CollectionFormService {
       if (!mapping) continue;
 
       const factValue = projectProgressFactValue(mapping.interviewField, slot.value.value);
-      if (factValue === null) continue;
+      if (factValue === undefined) continue;
 
       await this.sessionState.saveCollectionProgressFact(
         scope.corpId,
@@ -256,7 +259,8 @@ export class CollectionFormService {
         scope.sessionId,
         mapping.interviewField,
         sessionFactValue(factValue, {
-          confidence: 'medium',
+          // 已公证的学生槽位需要进入后续查岗的高置信筛选；其他字段仍保持原有口径。
+          confidence: mapping.interviewField === 'is_student' ? 'high' : 'medium',
           source: slot.value.producer,
           evidence: `收资表单第 ${index + 1} 格落定（${field.labelTitle}，labelId=${field.labelId}）`,
           extractedAt,

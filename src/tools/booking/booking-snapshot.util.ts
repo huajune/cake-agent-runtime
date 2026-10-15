@@ -10,6 +10,7 @@ import { toErrorMessage } from '@infra/utils/error.util';
 import { isStorableCandidatePhone } from '@resolution/candidate/phone';
 import { normalizeJobId } from '@resolution/job';
 import type { BookingSnapshotEntry, BookingSnapshotSignupSource } from './booking-snapshot.types';
+import { isInterviewDayPassed } from './active-booking-dedup.util';
 
 /** 快照本地时间窗：报名近 15 天，或面试时间在未来（服务端按报名时间过滤会漏掉老报名新面试）。 */
 export const BOOKING_SNAPSHOT_SIGNUP_WINDOW_MS = 15 * 24 * 60 * 60 * 1000;
@@ -155,6 +156,28 @@ export function findSnapshotDuplicate<
 }
 
 /**
+ * 本轮预约快照里候选人本人在该岗位的在途预约（只认同岗位，不按品牌）。
+ *
+ * 岗位详情查不到时据此判断预约是否仍需保护。本人校验未通过（`ownedByCandidate=false`，
+ * 同号代报同行人）的工单不算；面试日已过的不算（见 isInterviewDayPassed）。
+ */
+export function findSnapshotBookingForJob<
+  T extends {
+    workOrderId: number;
+    jobId: number | null;
+    ownedByCandidate?: boolean;
+    interviewTime?: string | null;
+  },
+>(entries: readonly T[], jobId: number, today: string): T | undefined {
+  return entries.find(
+    (entry) =>
+      entry.jobId === jobId &&
+      entry.ownedByCandidate !== false &&
+      !isInterviewDayPassed(entry.interviewTime, today),
+  );
+}
+
+/**
  * 跨托管账号查重：报名前再查一次 `onlyCurrentAccount=false`（只读），同岗位或同品牌在途即命中。
  * 只用本会话账号 token（禁止回退默认 token）、3 秒超时；查询失败按无命中放行并交由 onFailure 记录，
  * 海绵提交侧的判重仍会兜底拒绝。
@@ -175,7 +198,6 @@ export async function findCrossAccountDuplicate(params: {
       {
         phone,
         onlyCurrentAccount: false,
-        queryParam: { currentStatus: Array.from(ACTIVE_INTERVIEW_WORK_ORDER_STATUSES) },
       },
       params.tokenContext,
       { timeoutMs: BOOKING_SNAPSHOT_FETCH_TIMEOUT_MS, allowDefaultToken: false },

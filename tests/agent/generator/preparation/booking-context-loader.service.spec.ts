@@ -1,4 +1,5 @@
 import { BookingContextLoaderService } from '@agent/generator/preparation/booking-context-loader.service';
+import type { GeneratorInvokeParams } from '@agent/generator/generator.types';
 import {
   renderBookingPrompt,
   visibleBookingWorkOrders,
@@ -27,7 +28,7 @@ describe('BookingContextLoaderService', () => {
     sessionId: 'session-1',
     botImId: 'bot-1',
     callerKind: CallerKind.WECOM,
-  } as never;
+  } as GeneratorInvokeParams;
 
   const memoryWithPhone = (over: { name?: string; phone?: string | null } = {}) =>
     ({
@@ -113,7 +114,11 @@ describe('BookingContextLoaderService', () => {
         fetchedAt: 0,
       });
 
-      const result = await service.load(memoryWithPhone({ name: '张三' }), params, '面试安排呢');
+      const result = await service.load(
+        memoryWithPhone({ name: '张三' }),
+        { ...params, botUserId: 'wecom-A' },
+        '面试安排呢',
+      );
 
       expect(snapshot.load).toHaveBeenCalledWith({
         phone: '13800000000',
@@ -128,6 +133,7 @@ describe('BookingContextLoaderService', () => {
         userId: 'user-1',
         chatId: 'session-1',
         botImId: 'bot-1',
+        botUserId: 'wecom-A',
       });
       expect(result).toEqual(
         expect.objectContaining({

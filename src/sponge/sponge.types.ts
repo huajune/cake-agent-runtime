@@ -23,6 +23,14 @@ export interface JobListQueryParams {
   sortField?: string;
   location?: JobListLocation;
   options?: JobListOptions;
+  /**
+   * 请求 workTime 时，班次契约不合法岗位的本地处理方式（不下发海绵）。
+   * - reject（默认）：任一岗位不合法即整次抛 WorkTimeContractError；
+   * - skip：剔除不合法岗位，其余照常返回，剔除明细见 JobListResult.skippedInvalidWorkTime。
+   * 候选人查岗与核对（duliday_job_list）、群推送、数据体检都用 skip 逐岗隔离；两种方式都不补值、
+   * 不猜测班次，响应结构契约错误始终整次抛错。
+   */
+  invalidWorkTime?: 'reject' | 'skip';
 }
 
 export interface JobListLocation {
@@ -174,10 +182,20 @@ export const JobDetailSchema = z
   })
   .catchall(z.unknown());
 
+/** invalidWorkTime=skip 时被剔除的岗位：班次数据违反契约，需海绵修数据。 */
+export interface InvalidWorkTimeJob {
+  jobId: number | null;
+  brandName: string | null;
+  reason: string;
+}
+
 /** 岗位查询响应 */
 export interface JobListResult {
   jobs: JobDetail[];
+  /** 海绵报告的总数，包含被 skip 剔除的岗位。 */
   total: number;
+  /** 仅 invalidWorkTime=skip 时返回（可能为空数组）。 */
+  skippedInvalidWorkTime?: InvalidWorkTimeJob[];
 }
 
 export const JobListApiResponseSchema = z
@@ -186,8 +204,8 @@ export const JobListApiResponseSchema = z
     message: z.string().optional(),
     data: z
       .object({
-        result: z.array(JobDetailSchema).default([]),
-        total: z.number().default(0),
+        result: z.array(JobDetailSchema),
+        total: z.number().int().nonnegative(),
       })
       .nullish(),
   })
@@ -517,7 +535,7 @@ export interface SignupWorkOrdersParams {
     signUpEndTime?: string;
     interviewPassStartTime?: string;
     interviewPassEndTime?: string;
-    /** 当前状态中文列表过滤（9 态之一） */
+    /** 海绵查询枚举；不能直接使用响应 currentStatus 的中文展示文案。 */
     currentStatus?: string[];
   };
 }
@@ -593,6 +611,7 @@ export interface SignupWorkOrderItem {
 /**
  * 报名工单 `currentStatus` 中文全集（海绵领域语言，9 态）。
  *
+ * 只用于响应的本地判定，不是 queryParam.currentStatus 的请求枚举。
  * 状态词是海绵的领域语言，唯一权威在此。此前全集只存在于 SignupWorkOrderItem 的行注释里，
  * 而"活跃约面"语义子集在 precheck / oob-work-order / follow-up.processor 不再各自维护字面副本。
  *

@@ -117,3 +117,54 @@ describe('SessionWorkbenchService attested focus job', () => {
     });
   });
 });
+
+describe('SessionWorkbenchService 岗位记忆持久化保留 studentTier', () => {
+  const mockFacts = {
+    getSessionState: jest.fn().mockResolvedValue({ presentedJobs: null }),
+    patchSessionState: jest.fn().mockResolvedValue(undefined),
+  };
+  const job = {
+    jobId: 529083,
+    brandName: '肯德基',
+    jobName: '服务员',
+    storeName: '上海虹桥店',
+    cityName: '上海',
+    regionName: '闵行区',
+    laborForm: '兼职',
+    salaryDesc: null,
+    jobCategoryName: null,
+    studentRequirement: '不接受学生（仅限社会人士）',
+    studentTier: 'social_only' as const,
+  };
+  let service: SessionWorkbenchService;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    service = new SessionWorkbenchService(
+      mockFacts as never,
+      { get: jest.fn(), set: jest.fn() } as never,
+      { sessionTtl: 86400 } as never,
+    );
+  });
+
+  // zod object 默认剥未知键：schema 漏登记时档位会在落 Redis 前被静默丢掉。
+  it('候选池 / 已展示岗位 / 焦点岗位三处写入都保留结构化档位', async () => {
+    await service.saveLastCandidatePool('corp1', 'user1', 'session1', [job]);
+    await service.savePresentedJobs('corp1', 'user1', 'session1', [job]);
+    await service.saveCurrentFocusJob('corp1', 'user1', 'session1', job);
+
+    const patches = mockFacts.patchSessionState.mock.calls.map((call) => call[3]);
+    expect(patches[0].lastCandidatePool[0].studentTier).toBe('social_only');
+    expect(patches[1].presentedJobs[0].studentTier).toBe('social_only');
+    expect(patches[2].currentFocusJob.studentTier).toBe('social_only');
+  });
+
+  it('缺档位的历史记录照常写入，不补默认值', async () => {
+    const { studentTier: _omitted, ...legacy } = job;
+    await service.saveCurrentFocusJob('corp1', 'user1', 'session1', legacy);
+
+    expect(mockFacts.patchSessionState.mock.calls[0][3].currentFocusJob).not.toHaveProperty(
+      'studentTier',
+    );
+  });
+});

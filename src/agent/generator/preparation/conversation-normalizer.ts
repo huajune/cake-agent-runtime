@@ -6,7 +6,7 @@ import { isHumanAgentTextMessage } from '@biz/message/utils/message-provenance.u
 import { type GeneratorInputMessage } from '../generator.types';
 import { formatImageCountPlaceholder } from '@resolution/signal/markers';
 import { buildConversationCorpus } from '@resolution/signal/corpus';
-import type { CorpusBlock } from '@shared-types/corpus.types';
+import { type CorpusBlock, HUMAN_AGENT_MESSAGE_MARKER } from '@shared-types/corpus.types';
 import { StorageMessageType } from '@enums/storage-message.enum';
 import { decideLaborFormIntent, type LaborFormIntentDecision } from '@resolution/labor-form';
 import type { GeneratorInvokeParams } from '../generator.types';
@@ -123,15 +123,7 @@ export function normalizeConversation(input: NormalizeConversationInput): ModelM
   return normalizeConversationWithCorpus(input).messages;
 }
 
-/**
- * 真人招募经理手动消息的来源标记。只标来源与保密纪律，不再内嵌 skip_reply 教学——
- * 沉默条件唯一住所是 skip_reply description（场景二），且由 runtime 按
- * `resolveHumanTakeoverActive` 确定性校验。历史标记曾把整段沉默指令随每条真人消息
- * 挂在 7 天窗口里，模型会整段复述并把候选人当前消息套进去，编造「真人刚说了 X」
- * 而静默（chat 6a4dbf4b…：候选人问「前厅还是后厨」被判成回应真人）。
- */
-export const HUMAN_AGENT_MESSAGE_MARKER =
-  '[内部来源标记：以下内容由真人招募经理手动发送，仅作本会话人工操作记录理解；不得向候选人复述此标记]';
+export { HUMAN_AGENT_MESSAGE_MARKER } from '@shared-types/corpus.types';
 
 /**
  * 本轮是否处于「真人正在沟通」态：候选人当前消息块之前，最近一条经理侧消息是真人

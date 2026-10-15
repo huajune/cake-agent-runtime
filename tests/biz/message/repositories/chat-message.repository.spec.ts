@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ChatMessageRepository } from '@biz/message/repositories/chat-message.repository';
 import { SupabaseService } from '@infra/supabase/supabase.service';
 import { StorageMessageSource, StorageMessageType } from '@enums/storage-message.enum';
+import { FilterReason } from '@enums/message-filter.enum';
 
 function makeQueryMock(result: { data?: unknown; error?: unknown; count?: number }) {
   const chainMethods = [
@@ -123,6 +124,28 @@ describe('ChatMessageRepository', () => {
 
       expect(result).toEqual({ inserted: true });
       expect(mockSupabaseClient.from).toHaveBeenCalledWith('chat_messages');
+    });
+
+    it('writes history_only_reason only for history-only messages', async () => {
+      const upsertResult = makeQueryMock({
+        data: [{ message_id: userMessage.messageId }],
+        error: null,
+      });
+      mockSupabaseClient.from.mockReturnValue(upsertResult);
+
+      await repository.saveChatMessage(userMessage);
+      await repository.saveChatMessage({
+        ...userMessage,
+        historyOnlyReason: FilterReason.USER_PAUSED,
+      });
+
+      // 普通消息不带新列名：批量 upsert 的 columns 参数也不会引用它
+      expect(Object.keys(upsertResult.upsert.mock.calls[0][0])).not.toContain(
+        'history_only_reason',
+      );
+      expect(upsertResult.upsert.mock.calls[1][0]).toMatchObject({
+        history_only_reason: 'user-paused',
+      });
     });
 
     it('should report inserted=false when message_id conflicts (ignoreDuplicates)', async () => {
@@ -373,6 +396,90 @@ describe('ChatMessageRepository', () => {
   });
 
   // ==================== getChatHistoryDetail ====================
+
+  describe('getLatestCandidateMessage', () => {
+    it('reads the latest user row with its history-only reason', async () => {
+      const queryMock = makeQueryMock({
+        data: [
+          {
+            message_id: 'msg-9',
+            content: '好的',
+            timestamp: '2026-10-12T05:35:56.520Z',
+            history_only_reason: 'user-paused',
+          },
+        ],
+        error: null,
+      });
+      mockSupabaseClient.from.mockReturnValue(queryMock);
+
+      const result = await repository.getLatestCandidateMessage('chat_001');
+
+      expect(queryMock.select).toHaveBeenCalledWith(
+        'message_id,content,timestamp,history_only_reason',
+      );
+      expect(queryMock.eq).toHaveBeenCalledWith('chat_id', 'chat_001');
+      expect(queryMock.eq).toHaveBeenCalledWith('role', 'user');
+      expect(queryMock.order).toHaveBeenCalledWith('timestamp', { ascending: false });
+      expect(queryMock.limit).toHaveBeenCalledWith(1);
+      expect(result).toEqual({
+        messageId: 'msg-9',
+        content: '好的',
+        timestamp: Date.parse('2026-10-12T05:35:56.520Z'),
+        historyOnlyReason: 'user-paused',
+      });
+    });
+
+    it('omits unknown or empty history-only reasons', async () => {
+      mockSupabaseClient.from.mockReturnValue(
+        makeQueryMock({
+          data: [
+            {
+              message_id: 'msg-1',
+              content: '在吗',
+              timestamp: '2026-10-12T05:00:00Z',
+              history_only_reason: 'invalid-source',
+            },
+          ],
+          error: null,
+        }),
+      );
+
+      const result = await repository.getLatestCandidateMessage('chat_001');
+
+      expect(result).not.toHaveProperty('historyOnlyReason');
+    });
+
+    it('returns null when the chat has no candidate message', async () => {
+      mockSupabaseClient.from.mockReturnValue(makeQueryMock({ data: [], error: null }));
+
+      await expect(repository.getLatestCandidateMessage('chat_001')).resolves.toBeNull();
+    });
+  });
+
+  describe('markHistoryOnly', () => {
+    it('updates only the given user messages', async () => {
+      const queryMock = makeQueryMock({
+        data: [{ message_id: 'msg-1' }, { message_id: 'msg-2' }],
+        error: null,
+      });
+      mockSupabaseClient.from.mockReturnValue(queryMock);
+
+      const updated = await repository.markHistoryOnly(
+        ['msg-1', 'msg-2'],
+        FilterReason.USER_PAUSED,
+      );
+
+      expect(updated).toBe(2);
+      expect(queryMock.update).toHaveBeenCalledWith({ history_only_reason: 'user-paused' });
+      expect(queryMock.in).toHaveBeenCalledWith('message_id', ['msg-1', 'msg-2']);
+      expect(queryMock.eq).toHaveBeenCalledWith('role', 'user');
+    });
+
+    it('skips the query for an empty batch', async () => {
+      await expect(repository.markHistoryOnly([], FilterReason.USER_PAUSED)).resolves.toBe(0);
+      expect(mockSupabaseClient.from).not.toHaveBeenCalled();
+    });
+  });
 
   describe('getChatHistoryDetail', () => {
     it('should return empty array when supabase is not available', async () => {

@@ -205,6 +205,7 @@ export class BookingContextLoaderService {
       userId: params.userId,
       chatId: params.sessionId,
       botImId: params.botImId ?? null,
+      botUserId: params.botUserId ?? null,
     });
   }
 

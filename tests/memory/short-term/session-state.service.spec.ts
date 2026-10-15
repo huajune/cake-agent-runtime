@@ -1,12 +1,18 @@
+import type { z } from 'zod';
+import { testTurnHint, testTurnHints } from '../../helpers/turn-hints.fixture';
+import { createTurnLedger } from '@agent/generator/preparation/turn-ledger';
+import { produceTurnHints } from '@resolution/turn-hints/producers/rule-track';
 import { SessionFactsService } from '@memory/short-term/facts.service';
 import { LongTermService } from '@memory/long-term/long-term.service';
 import { SessionWorkbenchService } from '@memory/short-term/workbench.service';
 import { SessionStateService } from '@memory/short-term/session-state.service';
+import { extractScheduleConstraintStructured } from '@resolution/turn-hints/producers/rule-track-preferences';
 import {
   FALLBACK_EXTRACTION,
   SessionFactsSchema,
   sessionFactValue,
   toSessionFacts,
+  type ScheduleConstraintFact,
 } from '@memory/short-term/short-term.types';
 
 const preferences = (overrides: Record<string, unknown> = {}) => ({
@@ -90,6 +96,536 @@ describe('SessionStateService（S1-S6）', () => {
       },
       { confidence: 'medium', source: 'model', evidence: 'spec soft fact' },
     );
+
+  it('班次增量保存：省略延续、数组替换、明确空值撤销', async () => {
+    await service.saveFacts(
+      'corp-1',
+      'user-1',
+      'session-1',
+      softFacts({
+        schedule: '18点后',
+        time_windows: ['18点后'],
+        schedule_constraint: {
+          onlyWeekends: true,
+          onlyEvenings: true,
+          includeAnyTags: ['evening'],
+          availableWindow: { start: '18:00' },
+        },
+      }),
+    );
+    llm.generateStructured.mockResolvedValue({
+      output: {
+        preferences: preferences({
+          schedule_constraint: { includeAnyTags: [], availableWindow: null },
+        }),
+        schedule_constraint_citation: { quote: '时间不限了' },
+        reasoning: '撤销日内限制',
+      },
+    });
+    await service.extractAndSave(
+      'corp-1',
+      'user-1',
+      'session-1',
+      [{ role: 'user', content: '时间不限了' }],
+      testTurnHints(testTurnHint('preferences.schedule', '18点后', '旧钟点')),
+    );
+    const value = (await service.getFacts('corp-1', 'user-1', 'session-1'))?.preferences
+      .schedule_constraint;
+    expect(value).toMatchObject({
+      value: { onlyWeekends: true, includeAnyTags: [], availableWindow: null },
+      evidence: '时间不限了',
+      source: 'candidate_quote',
+    });
+    expect(value?.value).not.toHaveProperty('onlyEvenings');
+    const saved = (await service.getFacts('corp-1', 'user-1', 'session-1'))?.preferences;
+    expect(saved.schedule).toMatchObject({ value: null });
+    expect(saved.time_windows).toMatchObject({ value: null });
+  });
+  it('正常班次抽取与无变化都不会被旧规则轨覆盖', async () => {
+    const hints = testTurnHints(
+      testTurnHint('preferences.schedule_constraint', { onlyEvenings: true }, '晚班'),
+    );
+    llm.generateStructured.mockResolvedValue({
+      output: {
+        preferences: preferences({ schedule_constraint: { excludeTags: ['evening'] } }),
+        schedule_constraint_citation: { quote: '晚班不行' },
+        reasoning: '排除晚班',
+      },
+    });
+    await service.extractAndSave(
+      'corp-1',
+      'user-1',
+      'session-1',
+      [{ role: 'user', content: '晚班不行' }],
+      hints,
+    );
+    expect(
+      (await service.getFacts('corp-1', 'user-1', 'session-1'))?.preferences.schedule_constraint
+        ?.value,
+    ).toEqual({ excludeTags: ['evening'] });
+    llm.generateStructured.mockResolvedValue({
+      output: { preferences: preferences(), reasoning: '只问事实' },
+    });
+    await service.extractAndSave(
+      'corp-1',
+      'user-1',
+      'session-1',
+      [{ role: 'user', content: '晚班几点下班？' }],
+      hints,
+    );
+    expect(
+      (await service.getFacts('corp-1', 'user-1', 'session-1'))?.preferences.schedule_constraint
+        ?.value,
+    ).toEqual({ excludeTags: ['evening'] });
+  });
+  it('班次引用只认本轮候选人，助手和旧轮引文不入记忆', async () => {
+    llm.generateStructured.mockResolvedValue({
+      output: {
+        preferences: preferences({ schedule_constraint: { includeAnyTags: ['evening'] } }),
+        schedule_constraint_citation: { quote: '我只做晚班' },
+        reasoning: '错误旧引文',
+      },
+    });
+    await service.extractAndSave('corp-1', 'user-1', 'session-1', [
+      { role: 'user', content: '我只做晚班' },
+      { role: 'assistant', content: '收到' },
+      { role: 'user', content: '薪资多少？' },
+    ]);
+    expect(
+      (await service.getFacts('corp-1', 'user-1', 'session-1'))?.preferences.schedule_constraint,
+    ).toBeNull();
+  });
+  it('本轮连续消息中较早的班次引文也能保存', async () => {
+    llm.generateStructured.mockResolvedValue({
+      output: {
+        preferences: preferences({ schedule_constraint: { excludeTags: ['night'] } }),
+        schedule_constraint_citation: { quote: '夜班不做' },
+        reasoning: '本轮首条消息排除夜班',
+      },
+    });
+    await service.extractAndSave('corp-1', 'user-1', 'session-1', [
+      { role: 'user', content: '以前白天都可以' },
+      { role: 'assistant', content: '现在有什么时间要求？' },
+      { role: 'user', content: '夜班不做' },
+      { role: 'user', content: '帮我找上海的' },
+    ]);
+    expect(
+      (await service.getFacts('corp-1', 'user-1', 'session-1'))?.preferences.schedule_constraint,
+    ).toMatchObject({
+      value: { excludeTags: ['night'] },
+      source: 'candidate_quote',
+      evidence: '夜班不做',
+    });
+    const prompt = JSON.stringify(llm.generateStructured.mock.calls.at(-1)?.[0]);
+    const current = prompt.slice(prompt.indexOf('[当前消息]'));
+    expect(current).toContain('夜班不做');
+    expect(current).toContain('帮我找上海的');
+    expect(current).not.toContain('以前白天都可以');
+  });
+  it('模型降级时跨日规则提示仍能保存，且不丢失同轮其他偏好', async () => {
+    llm.generateStructured.mockRejectedValue(new Error('LLM unavailable'));
+    const message = '晚上10点到次日6点有空';
+    const outcome = await service.extractAndSave(
+      'corp-1',
+      'user-1',
+      'session-1',
+      [{ role: 'user', content: message }],
+      testTurnHints(
+        testTurnHint(
+          'preferences.schedule_constraint',
+          extractScheduleConstraintStructured(message),
+          message,
+        ),
+        testTurnHint('preferences.position', ['服务员'], '想做服务员'),
+      ),
+    );
+    expect(outcome.llmDegraded).toBe(true);
+    const saved = (await service.getFacts('corp-1', 'user-1', 'session-1'))?.preferences;
+    expect(saved.schedule_constraint?.value.availableWindow).toEqual({
+      start: '22:00',
+      end: '06:00',
+      endDayOffset: 1,
+    });
+    expect(saved.position?.value).toEqual(['服务员']);
+  });
+
+  describe('班次条件：字段隔离、文本入口、询问与工具兜底', () => {
+    const scope = ['corp-1', 'user-1', 'session-1'] as const;
+    const savedPreferences = async () => (await service.getFacts(...scope))?.preferences;
+    /** 模拟 AI SDK Output.object：按抽取 schema 校验模型原始输出，校验失败即整次结构化输出失败。 */
+    const respondValidated = (output: Record<string, unknown>) =>
+      llm.generateStructured.mockImplementation(async ({ schema }: { schema: z.ZodTypeAny }) => ({
+        output: schema.parse(output),
+        modelId: 'test/extract',
+      }));
+
+    it.each<[string, Record<string, unknown>]>([
+      ['跨日漏写 endDayOffset', { availableWindow: { start: '22:00', end: '06:00' } }],
+      ['起止相同', { availableWindow: { start: '18:00', end: '18:00' } }],
+      ['多余字段', { includeAnyTags: ['evening'], onlyEvenings: true }],
+      ['钟点格式不合契约', { availableWindow: { start: '6:00' } }],
+    ])(
+      '抽取的班次条件不合契约（%s）时只丢弃班次，同轮其他偏好照常保存',
+      async (_label, scheduleConstraint) => {
+        respondValidated({
+          preferences: preferences({
+            city: '上海',
+            position: ['服务员'],
+            schedule_constraint: scheduleConstraint,
+          }),
+          schedule_constraint_citation: { quote: '晚上10点到早上6点' },
+          reasoning: '班次越界',
+        });
+
+        const outcome = await service.extractAndSave(...scope, [
+          { role: 'user', content: '上海服务员，晚上10点到早上6点' },
+        ]);
+
+        expect(outcome.llmDegraded).toBe(false);
+        const saved = await savedPreferences();
+        expect(saved?.city?.value).toBe('上海');
+        expect(saved?.position?.value).toEqual(['服务员']);
+        expect(saved?.schedule_constraint ?? null).toBeNull();
+      },
+    );
+
+    it('丢弃不合契约的班次条件会告警，明细只含字段路径不含原值', async () => {
+      const alertNotifier = { sendSimpleAlert: jest.fn().mockResolvedValue(true) };
+      const facts = new SessionFactsService(
+        redis as never,
+        config as never,
+        llm as never,
+        sponge as never,
+        systemConfig as never,
+        undefined,
+        undefined,
+        alertNotifier as never,
+      );
+      respondValidated({
+        preferences: preferences({
+          schedule_constraint: { availableWindow: { start: '22:00', end: '06:00' } },
+        }),
+        schedule_constraint_citation: { quote: '晚上10点到早上6点' },
+        reasoning: '班次越界',
+      });
+
+      await facts.extractAndSave(...scope, [{ role: 'user', content: '晚上10点到早上6点' }]);
+
+      expect(alertNotifier.sendSimpleAlert).toHaveBeenCalledTimes(1);
+      const [title, detail, level] = alertNotifier.sendSimpleAlert.mock.calls[0];
+      expect(title).toContain('班次条件');
+      expect(detail).toContain('availableWindow');
+      expect(detail).not.toContain('22:00');
+      expect(level).toBe('warning');
+    });
+
+    it('只改每周天数时保留已有意向班次文本', async () => {
+      await service.saveFacts(
+        ...scope,
+        softFacts({ schedule: '晚班', schedule_constraint: { includeAnyTags: ['evening'] } }),
+      );
+      llm.generateStructured.mockResolvedValue({
+        output: {
+          preferences: preferences({ schedule_constraint: { maxDaysPerWeek: 3 } }),
+          schedule_constraint_citation: { quote: '一周最多3天' },
+          reasoning: '补充周天数',
+        },
+      });
+
+      await service.extractAndSave(...scope, [{ role: 'user', content: '一周最多3天' }]);
+
+      const saved = await savedPreferences();
+      expect(saved?.schedule?.value).toBe('晚班');
+      expect(saved?.schedule_constraint?.value).toEqual({
+        includeAnyTags: ['evening'],
+        maxDaysPerWeek: 3,
+      });
+    });
+
+    it('同一句给出日内条件与文本时，本轮抽到的意向班次和时间窗都保留', async () => {
+      const message = '想做晚班17点后，一周最多3天';
+      llm.generateStructured.mockResolvedValue({
+        output: {
+          preferences: preferences({
+            schedule: '晚班',
+            time_windows: ['17点后'],
+            schedule_constraint: {
+              includeAnyTags: ['evening'],
+              availableWindow: { start: '17:00' },
+              maxDaysPerWeek: 3,
+            },
+          }),
+          schedule_constraint_citation: { quote: message },
+          reasoning: '晚班+时段+周天数',
+        },
+      });
+
+      await service.extractAndSave(...scope, [{ role: 'user', content: message }]);
+
+      const saved = await savedPreferences();
+      expect(saved?.schedule?.value).toBe('晚班');
+      expect(saved?.time_windows?.value).toEqual(['17点后']);
+      expect(saved?.schedule_constraint?.value).toMatchObject({ maxDaysPerWeek: 3 });
+    });
+
+    it.each(['有没有晚上6点到10点的班？', '我只能做早班吗？'])(
+      '模型降级时规则轨不把询问「%s」写成持久班次条件',
+      async (message) => {
+        llm.generateStructured.mockRejectedValue(new Error('LLM unavailable'));
+
+        await service.extractAndSave(
+          ...scope,
+          [{ role: 'user', content: message }],
+          produceTurnHints([message], []),
+        );
+
+        expect((await savedPreferences())?.schedule_constraint ?? null).toBeNull();
+      },
+    );
+
+    it('抽取降级时以工具已核验的本轮班次变更落盘，旧钟点文本随之作废', async () => {
+      await service.saveFacts(
+        ...scope,
+        softFacts({
+          time_windows: ['18点后'],
+          schedule_constraint: { onlyWeekends: true, availableWindow: { start: '18:00' } },
+        }),
+      );
+      const ledger = createTurnLedger();
+      ledger.recordScheduleConstraint({ onlyWeekends: true, availableWindow: null });
+      llm.generateStructured.mockRejectedValue(new Error('LLM unavailable'));
+
+      await service.extractAndSave(
+        ...scope,
+        [{ role: 'user', content: '时间不限了' }],
+        ledger.drain().facts.turnHints,
+      );
+
+      const saved = await savedPreferences();
+      expect(saved?.schedule_constraint).toMatchObject({
+        value: { onlyWeekends: true, availableWindow: null },
+        source: 'candidate_quote',
+      });
+      expect(saved?.schedule_constraint?.evidence).toContain('时间不限了');
+      expect(saved?.time_windows).toMatchObject({ value: null });
+    });
+
+    it('抽取正常且判定无持续班次变更时（询问），工具本轮查询条件不沉淀', async () => {
+      await service.saveFacts(
+        ...scope,
+        softFacts({ schedule_constraint: { excludeTags: ['night'] } }),
+      );
+      const ledger = createTurnLedger();
+      ledger.recordScheduleConstraint({
+        excludeTags: ['night'],
+        includeAnyTags: ['early', 'morning'],
+      });
+
+      await service.extractAndSave(
+        ...scope,
+        [{ role: 'user', content: '有早班吗' }],
+        ledger.drain().facts.turnHints,
+      );
+
+      expect((await savedPreferences())?.schedule_constraint?.value).toEqual({
+        excludeTags: ['night'],
+      });
+    });
+
+    it('抽取给出的班次变更未通过原话核验时，以工具已核验的本轮条件落盘', async () => {
+      const ledger = createTurnLedger();
+      ledger.recordScheduleConstraint({ maxDaysPerWeek: 2 });
+      llm.generateStructured.mockResolvedValue({
+        output: {
+          preferences: preferences({ schedule_constraint: { maxDaysPerWeek: 2 } }),
+          schedule_constraint_citation: { quote: '候选人没说过的话' },
+          reasoning: '周天数',
+        },
+      });
+
+      await service.extractAndSave(
+        ...scope,
+        [{ role: 'user', content: '一周最多两天' }],
+        ledger.drain().facts.turnHints,
+      );
+
+      expect((await savedPreferences())?.schedule_constraint).toMatchObject({
+        value: { maxDaysPerWeek: 2 },
+        source: 'candidate_quote',
+      });
+    });
+
+    it('抽取只回显已保存条件且不带引文时，询问不经工具兜底沉淀', async () => {
+      await service.saveFacts(
+        ...scope,
+        softFacts({ schedule_constraint: { excludeTags: ['night'] } }),
+      );
+      const ledger = createTurnLedger();
+      ledger.recordScheduleConstraint({
+        excludeTags: ['night'],
+        includeAnyTags: ['early', 'morning'],
+      });
+      respondValidated({
+        preferences: preferences({ schedule_constraint: { excludeTags: ['night'] } }),
+        reasoning: '回显已有条件',
+      });
+
+      await service.extractAndSave(
+        ...scope,
+        [{ role: 'user', content: '有早班吗' }],
+        ledger.drain().facts.turnHints,
+      );
+
+      expect((await savedPreferences())?.schedule_constraint?.value).toEqual({
+        excludeTags: ['night'],
+      });
+    });
+
+    it('抽取降级且本轮全是询问时，不用工具本轮查询条件落盘', async () => {
+      const ledger = createTurnLedger();
+      ledger.recordScheduleConstraint({ availableWindow: { start: '18:00', end: '22:00' } });
+      llm.generateStructured.mockRejectedValue(new Error('LLM unavailable'));
+
+      await service.extractAndSave(
+        ...scope,
+        [{ role: 'user', content: '有没有晚上6点到10点的班？' }],
+        ledger.drain().facts.turnHints,
+      );
+
+      expect((await savedPreferences())?.schedule_constraint ?? null).toBeNull();
+    });
+
+    it('抽取的班次条件被契约拒绝时，陈述以工具已核验的本轮条件落盘', async () => {
+      const ledger = createTurnLedger();
+      ledger.recordScheduleConstraint({
+        availableWindow: { start: '22:00', end: '06:00', endDayOffset: 1 },
+      });
+      respondValidated({
+        preferences: preferences({
+          schedule_constraint: { availableWindow: { start: '22:00', end: '06:00' } },
+        }),
+        schedule_constraint_citation: { quote: '晚上10点到早上6点可以' },
+        reasoning: '跨日漏写',
+      });
+
+      await service.extractAndSave(
+        ...scope,
+        [{ role: 'user', content: '晚上10点到早上6点可以' }],
+        ledger.drain().facts.turnHints,
+      );
+
+      expect((await savedPreferences())?.schedule_constraint).toMatchObject({
+        value: { availableWindow: { start: '22:00', end: '06:00', endDayOffset: 1 } },
+        source: 'candidate_quote',
+      });
+      expect((await savedPreferences())?.schedule_constraint?.evidence).toContain('工具已核验');
+    });
+
+    it('抽取把“只做早班”只写成早班时，按固定映射补上上午班再保存', async () => {
+      respondValidated({
+        preferences: preferences({ schedule_constraint: { includeAnyTags: ['early'] } }),
+        schedule_constraint_citation: { quote: '我只做早班' },
+        reasoning: '只做早班',
+      });
+
+      await service.extractAndSave(...scope, [{ role: 'user', content: '我只做早班' }]);
+
+      expect((await savedPreferences())?.schedule_constraint?.value).toEqual({
+        includeAnyTags: ['early', 'morning'],
+      });
+    });
+
+    it('抽取给出有效班次变更时以抽取为准，不再套用工具结果', async () => {
+      const ledger = createTurnLedger();
+      ledger.recordScheduleConstraint({ maxDaysPerWeek: 2 });
+      llm.generateStructured.mockResolvedValue({
+        output: {
+          preferences: preferences({ schedule_constraint: { maxDaysPerWeek: 3 } }),
+          schedule_constraint_citation: { quote: '一周最多3天' },
+          reasoning: '周天数',
+        },
+      });
+
+      await service.extractAndSave(
+        ...scope,
+        [{ role: 'user', content: '一周最多3天' }],
+        ledger.drain().facts.turnHints,
+      );
+
+      expect((await savedPreferences())?.schedule_constraint).toMatchObject({
+        value: { maxDaysPerWeek: 3 },
+        evidence: '一周最多3天',
+      });
+    });
+
+    it('工具沿用既有条件未作变更时不改写记忆，也不清文本入口', async () => {
+      const original = sessionFactValue<ScheduleConstraintFact>(
+        { includeAnyTags: ['evening'] },
+        {
+          confidence: 'medium',
+          source: 'candidate_quote',
+          evidence: '只做晚班',
+          extractedAt: '2026-08-01T00:00:00.000Z',
+        },
+      );
+      const initial = softFacts({ schedule: '晚班' });
+      initial.preferences.schedule_constraint = original;
+      await service.saveFacts(...scope, initial);
+      const ledger = createTurnLedger();
+      ledger.recordScheduleConstraint({ includeAnyTags: ['evening'] });
+      llm.generateStructured.mockRejectedValue(new Error('LLM unavailable'));
+
+      await service.extractAndSave(
+        ...scope,
+        [{ role: 'user', content: '帮我找上海的' }],
+        ledger.drain().facts.turnHints,
+      );
+
+      const saved = await savedPreferences();
+      expect(saved?.schedule_constraint).toEqual(original);
+      expect(saved?.schedule?.value).toBe('晚班');
+    });
+
+    it('降级时规则轨「只上晚班」撤掉旧的晚班排除，不拼出自相矛盾的条件', async () => {
+      await service.saveFacts(
+        ...scope,
+        softFacts({ schedule_constraint: { excludeTags: ['evening'] } }),
+      );
+      llm.generateStructured.mockRejectedValue(new Error('LLM unavailable'));
+
+      await service.extractAndSave(
+        ...scope,
+        [{ role: 'user', content: '我只上晚班' }],
+        produceTurnHints(['我只上晚班'], []),
+      );
+
+      expect((await savedPreferences())?.schedule_constraint?.value).toEqual({
+        includeAnyTags: ['evening'],
+        excludeTags: [],
+      });
+    });
+
+    it('本轮排除旧的正向标签时，从正向集合移除同名标签', async () => {
+      await service.saveFacts(
+        ...scope,
+        softFacts({ schedule_constraint: { includeAnyTags: ['evening', 'night'] } }),
+      );
+      llm.generateStructured.mockResolvedValue({
+        output: {
+          preferences: preferences({ schedule_constraint: { excludeTags: ['evening'] } }),
+          schedule_constraint_citation: { quote: '晚班不做了' },
+          reasoning: '排除晚班',
+        },
+      });
+
+      await service.extractAndSave(...scope, [{ role: 'user', content: '晚班不做了' }]);
+
+      expect((await savedPreferences())?.schedule_constraint?.value).toEqual({
+        includeAnyTags: ['night'],
+        excludeTags: ['evening'],
+      });
+    });
+  });
 
   it('读边界把历史 low/unknown 统一归一为 medium', () => {
     const parsed = SessionFactsSchema.parse({
@@ -219,6 +755,73 @@ describe('SessionStateService（S1-S6）', () => {
     expect((await service.getFacts('corp-1', 'user-1', 'session-1'))?.interview_info.name).toEqual(
       high,
     );
+  });
+
+  it('学生身份再次公证后把同值 medium 升级 high，后续重放保留原信封', async () => {
+    const meta = {
+      source: 'candidate_quote' as const,
+      evidence: '收资表单第 1 格落定（社会身份）',
+    };
+    await service.saveCollectionProgressFact(
+      'corp-1',
+      'user-1',
+      'session-1',
+      'is_student',
+      sessionFactValue(true, { ...meta, confidence: 'medium' }),
+    );
+    const confirmed = sessionFactValue(true, {
+      ...meta,
+      confidence: 'high' as const,
+      extractedAt: '2026-10-09T00:00:00Z',
+    });
+    await service.saveCollectionProgressFact(
+      'corp-1',
+      'user-1',
+      'session-1',
+      'is_student',
+      confirmed,
+    );
+    await service.saveCollectionProgressFact('corp-1', 'user-1', 'session-1', 'is_student', {
+      ...confirmed,
+      extractedAt: '2026-10-09T01:00:00Z',
+    });
+    expect(
+      (await service.getFacts('corp-1', 'user-1', 'session-1'))?.interview_info.is_student,
+    ).toEqual(confirmed);
+    await expect(
+      service.saveCollectionProgressFact(
+        'corp-1',
+        'user-1',
+        'session-1',
+        'is_student',
+        sessionFactValue(false, { ...meta, confidence: 'high' }),
+      ),
+    ).rejects.toThrow('must be medium');
+  });
+
+  it('已公证身份改口撤销原有 high 学生事实，不写成 false', async () => {
+    const meta = {
+      source: 'candidate_quote' as const,
+      confidence: 'high' as const,
+      evidence: '收资表单第 1 格落定（社会身份）',
+    };
+    await service.saveCollectionProgressFact(
+      'corp-1',
+      'user-1',
+      'session-1',
+      'is_student',
+      sessionFactValue(true, meta),
+    );
+    await service.saveCollectionProgressFact(
+      'corp-1',
+      'user-1',
+      'session-1',
+      'is_student',
+      sessionFactValue(null, meta),
+    );
+    expect(
+      (await service.getFacts('corp-1', 'user-1', 'session-1'))?.interview_info.is_student,
+    ).toBeNull();
   });
 
   it('半途弃单未走办结入口，逐格 medium 仍可由 consolidation 提拔进长期 Profile', async () => {

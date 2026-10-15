@@ -57,6 +57,11 @@ export const TOOL_ERROR_TYPES = {
   PRECHECK_INVALID_REQUESTED_DATE: 'precheck.invalid_requested_date',
   PRECHECK_JOB_NOT_FOUND: 'precheck.job_not_found',
   /**
+   * 岗位详情查不到，但候选人在该岗位仍有在途预约（本轮预约快照或 active_booking 指针命中）。
+   * 与 job_not_found 区别开：不标记岗位失效、不引导换店；预约本身仍有效，改约无法自助校验时转人工。
+   */
+  PRECHECK_BOOKED_JOB_UNVERIFIABLE: 'precheck.booked_job_unverifiable',
+  /**
    * jobId 无召回出处：本会话（含本轮 job_list）从未召回/展示过任何岗位，模型却传入了 jobId。
    * 典型幻觉簇——空会话里候选人只发"应聘/约面试"，模型凭空编出 jobId + 整张候选人报名表直接 precheck。
    * 与 job_not_found 区别开：后者"未找到岗位"措辞会被模型脑补成"岗位下架了"，本类型明确要求先走 job_list。
@@ -106,13 +111,17 @@ export const TOOL_ERROR_TYPES = {
    * 解析成区级 district + 经纬度再重查，而不是直接照 noMatchScript 拉群收口。
    */
   JOB_LIST_REGION_NEEDS_GEOCODE: 'job_list.region_needs_geocode',
+  /** 分页未完成或存在待确认班次，不是确定性无岗。 */
+  JOB_LIST_QUERY_INCOMPLETE: 'job_list.query_incomplete',
   JOB_LIST_SCHEDULE_FILTER_EMPTY: 'job_list.schedule_filter_empty',
   JOB_LIST_STUDENT_FILTER_EMPTY: 'job_list.student_filter_empty',
   JOB_LIST_JOBID_NO_PROVENANCE: 'job_list.jobid_no_provenance',
   /** 明确归一化的模型品牌未出现在已完整构建的回合品牌提及集合中。 */
   JOB_LIST_BRAND_NO_PROVENANCE: 'job_list.brand_no_provenance',
-  /** 班次排他性约束（只做周末/晚班/早班）在候选人原话里找不到依据，未执行查询。 */
+  /** 本轮实际改变了班次条件，但缺少候选人本轮逐字原话出处，未执行查询。 */
   JOB_LIST_SCHEDULE_NO_PROVENANCE: 'job_list.schedule_no_provenance',
+  /** 已保存的班次条件含义或钟点边界不明确（旧早晚班标记、无法规整的旧时段），需先向候选人确认。 */
+  JOB_LIST_SCHEDULE_NEEDS_CONFIRMATION: 'job_list.schedule_needs_confirmation',
   /** 品牌列表为空却传了 enforce/exclude：矛盾组合，引导补品牌或改 mode（§8.1）。 */
   JOB_LIST_BRAND_MODE_CONFLICT: 'job_list.brand_mode_conflict',
   /**

@@ -7,6 +7,7 @@ import {
   visibleBookingJobIds,
   visibleBookingWorkOrders,
 } from '@agent/generator/context/sections/semantic/memory.section';
+import type { RecommendedJobSummary } from '@resolution/job/types';
 import { promptModelOf, renderSection } from '../../../../helpers/prompt-model.fixture';
 
 describe('MemorySection', () => {
@@ -51,6 +52,34 @@ describe('MemorySection', () => {
       'realtime-group-status',
       'booking-context',
     ]);
+  });
+
+  it('联系人名称城市线索：有值时只渲染事实，不带行为教学；无值不渲染', () => {
+    const memory = {
+      adjudication: {
+        profile: null,
+        jobIntent: null,
+        sessionState: null,
+        conflicts: [],
+        displayTurnHints: null,
+        pendingTurnHintFields: [],
+      },
+      booking: { state: 'none' },
+      realtimeGroups: [],
+      contactBrandAliases: [],
+      contactCityHint: '佛山',
+      currentLaborFormIntent: { kind: 'ignore' },
+      activeLaborForm: null,
+    } as unknown as MemoryPromptView;
+
+    const rendered = section.build({ ...baseCtx, memory });
+    expect(rendered).toContain('[企微名称里的城市线索]');
+    expect(rendered).toContain(
+      '企微显示名称/备注含城市：佛山（来自昵称或运营备注，不是候选人陈述）',
+    );
+    expect(
+      section.build({ ...baseCtx, memory: { ...memory, contactCityHint: null } }),
+    ).not.toContain('城市线索');
   });
 
   it('should return empty string when memory block is missing', () => {
@@ -163,6 +192,24 @@ describe('MemorySection', () => {
     expect(rendered).toContain('不得主动插入该预约的状态');
   });
 
+  it('窗口内晚到/早到不算改约；只认明确起止时段，开始时刻不推断结束时刻（2026-10-14 裁定）', () => {
+    const rendered = renderBookingPrompt(
+      bookingSnapshotOf({
+        workOrderId: 467501,
+        jobId: 529389,
+        brandName: '奥乐齐',
+        interviewTime: '2026-09-24 13:30',
+      }),
+    );
+
+    expect(rendered).toContain('到达时刻仍落在已约面试的时间窗口内时，不算改约');
+    expect(rendered).toContain('不调用任何工具、不改约、不转人工');
+    expect(rendered).toContain('上方「面试时间」只是开始时刻，不得据此推断结束时刻');
+    expect(rendered).toContain('候选人要改到窗口外的时刻或换日期');
+    // 规则只渲染一次（多条预约共享）
+    expect(rendered.split('不算改约').length - 1).toBe(1);
+  });
+
   it('omits the interview time line when the work order has none（老版本海绵响应容缺）', () => {
     const rendered = renderBookingPrompt(
       bookingSnapshotOf({ workOrderId: 88003, brandName: '瑞幸', currentStatus: '约面待确认' }),
@@ -217,6 +264,65 @@ describe('MemorySection', () => {
 
     expect(renderBookingPrompt(snapshot)).toContain('奥乐齐');
     expect(visibleBookingJobIds(snapshot)).toEqual([520361]);
+  });
+
+  describe('岗位记忆的学生身份字段', () => {
+    const jobOf = (overrides: Partial<RecommendedJobSummary>): RecommendedJobSummary => ({
+      jobId: 529083,
+      brandName: '肯德基',
+      jobName: '服务员',
+      storeName: '上海虹桥店',
+      cityName: '上海',
+      regionName: '闵行区',
+      laborForm: '兼职',
+      salaryDesc: null,
+      jobCategoryName: null,
+      ...overrides,
+    });
+    const memoryWithPresentedJobs = (jobs: RecommendedJobSummary[]) =>
+      ({
+        adjudication: {
+          profile: null,
+          jobIntent: null,
+          sessionState: {
+            facts: null,
+            lastCandidatePool: null,
+            presentedJobs: jobs,
+            currentFocusJob: null,
+            invitedGroups: null,
+          },
+          conflicts: [],
+          displayTurnHints: null,
+          pendingTurnHintFields: [],
+        },
+        booking: { state: 'none' },
+        realtimeGroups: [],
+        contactBrandAliases: [],
+        currentLaborFormIntent: { kind: 'ignore' },
+        activeLaborForm: null,
+      }) as unknown as MemoryPromptView;
+
+    // 2026-10-09 batch_6ac85778…：「学生不接受学生」被模型读反，零工具答出"这家接受学生"。
+    it('字段名与取值分开渲染，不再拼出「学生不接受学生」', () => {
+      const rendered = section.build({
+        memory: memoryWithPresentedJobs([
+          jobOf({ studentRequirement: '不接受学生（仅限社会人士）', studentTier: 'social_only' }),
+        ]),
+      });
+
+      expect(rendered).toContain('学生身份:不接受学生（仅限社会人士）');
+      expect(rendered).not.toContain('学生不接受学生');
+    });
+
+    it('缺 studentTier 的历史记录照常渲染旧文案', () => {
+      const rendered = section.build({
+        memory: memoryWithPresentedJobs([jobOf({ studentRequirement: '不接受学生' })]),
+      });
+
+      expect(rendered).toContain('[jobId:529083]');
+      expect(rendered).toContain('学生身份:不接受学生');
+      expect(rendered).not.toContain('学生不接受学生');
+    });
   });
 
   it('withholds provenance for a work order whose block renders empty', () => {

@@ -419,7 +419,7 @@ export function detectMetaNarrationReply(content: string): RuleContradiction | n
   if (!META_NARRATION_TERM_PATTERN.test(text)) return null;
   return createOutputRuleFinding(
     'meta_narration_reply',
-    '整条回复是描述 Agent 自身行为的括号旁白（如"AI 保持静默，不插入回复"），属内心独白外发，必须拦截并整轮静默（badcase chat 6a5740ff）',
+    '整条回复是描述 Agent 自身行为的括号旁白，属内心独白外发，必须拦截并整轮静默',
   );
 }
 
@@ -444,7 +444,7 @@ export function detectHumanServicePhraseLeak(content: string): RuleContradiction
   if (!HUMAN_SERVICE_PHRASE_PATTERN.test(content)) return null;
   return createOutputRuleFinding(
     'human_service_phrase_leak',
-    '回复出现"转人工/人工客服/真人经理/专人联系"等表述，把自己与"人工/真人"割裂、与账号本人人设冲突（badcase recvjXBkmV6idz / recvnV3iYGZnBJ / chat 6a5dedb2ce406a6aeee1ea62），应改为"帮你问下同事"类口径',
+    '回复出现"转人工/人工客服/真人经理/专人联系"等表述，把自己与"人工/真人"割裂、与账号本人人设冲突，应改为本人或同事协作的表述',
   );
 }
 

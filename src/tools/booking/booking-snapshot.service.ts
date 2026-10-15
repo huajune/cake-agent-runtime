@@ -4,11 +4,7 @@ import { toErrorMessage } from '@infra/utils/error.util';
 import { HostingMemberConfigService } from '@biz/hosting-config/services/hosting-member-config.service';
 import { AgentTracerService } from '@observability/agent-tracer.service';
 import { SpongeService } from '@sponge/sponge.service';
-import {
-  ACTIVE_INTERVIEW_WORK_ORDER_STATUSES,
-  OPEN_RESULT_WORK_ORDER_STATUSES,
-  type SignupWorkOrdersResult,
-} from '@sponge/sponge.types';
+import { OPEN_RESULT_WORK_ORDER_STATUSES, type SignupWorkOrdersResult } from '@sponge/sponge.types';
 import { isStorableCandidatePhone } from '@resolution/candidate/phone';
 import type {
   BookingSnapshotCacheRecord,
@@ -94,15 +90,35 @@ export class BookingSnapshotService {
     const cacheKey = snapshotCacheKey(botImId, phone);
     if (!input.bypassCache) {
       const cached = await this.readCache(cacheKey);
-      if (cached) {
+      if (cached && now - cached.fetchedAt < BOOKING_SNAPSHOT_CACHE_TTL_SECONDS * 1000) {
+        // 手机号可被不同会话共用；缓存只复用海绵数据，本人归属必须按本次身份重算。
+        const record: BookingSnapshotCacheRecord = {
+          ...cached,
+          entries: cached.entries
+            .filter((entry) => isSnapshotEligibleWorkOrder(entry.workOrder, now))
+            .map((entry) =>
+              toBookingSnapshotEntry(entry.workOrder, {
+                topCandidateName: cached.candidateName,
+                knownNames: input.knownCandidateNames,
+              }),
+            ),
+        };
+        await this.writeCache(
+          [candidateCacheKey(input.corpId, input.userId)],
+          record,
+          Math.max(
+            1,
+            Math.floor(BOOKING_SNAPSHOT_CACHE_TTL_SECONDS - (now - cached.fetchedAt) / 1000),
+          ),
+        );
         this.emit({
           type: 'booking_snapshot',
           status: 'cache_hit',
           botImId,
-          entryCount: cached.entries.length,
-          supplierCount: countSupplier(cached.entries),
+          entryCount: record.entries.length,
+          supplierCount: countSupplier(record.entries),
         });
-        return { status: 'ok', ...cached, fromCache: true };
+        return { status: 'ok', ...record, fromCache: true };
       }
     }
 
@@ -115,10 +131,8 @@ export class BookingSnapshotService {
     let result: SignupWorkOrdersResult;
     try {
       result = await this.spongeService.fetchSignupWorkOrders(
-        {
-          phone,
-          queryParam: { currentStatus: Array.from(ACTIVE_INTERVIEW_WORK_ORDER_STATUSES) },
-        },
+        // 响应状态的展示文案不是查询枚举；按手机号查询后在本地筛选在途状态。
+        { phone },
         { botImId },
         { timeoutMs: BOOKING_SNAPSHOT_FETCH_TIMEOUT_MS, allowDefaultToken: false },
       );
@@ -157,7 +171,7 @@ export class BookingSnapshotService {
       candidateName: topCandidateName,
       fetchedAt: now,
     };
-    await this.writeCache(cacheKey, candidateCacheKey(input.corpId, input.userId), record);
+    await this.writeCache([cacheKey, candidateCacheKey(input.corpId, input.userId)], record);
     this.emit({
       type: 'booking_snapshot',
       status: 'ok',
@@ -266,15 +280,12 @@ export class BookingSnapshotService {
   }
 
   private async writeCache(
-    phoneKey: string,
-    identityKey: string,
+    keys: readonly string[],
     record: BookingSnapshotCacheRecord,
+    ttlSeconds = BOOKING_SNAPSHOT_CACHE_TTL_SECONDS,
   ): Promise<void> {
     try {
-      await Promise.all([
-        this.redisService.setex(phoneKey, BOOKING_SNAPSHOT_CACHE_TTL_SECONDS, record),
-        this.redisService.setex(identityKey, BOOKING_SNAPSHOT_CACHE_TTL_SECONDS, record),
-      ]);
+      await Promise.all(keys.map((key) => this.redisService.setex(key, ttlSeconds, record)));
     } catch (error) {
       this.logger.warn(`预约快照缓存写入失败: ${toErrorMessage(error)}`);
     }

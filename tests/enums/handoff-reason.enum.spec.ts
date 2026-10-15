@@ -2,19 +2,17 @@ import {
   HANDOFF_REASON_CATALOG,
   HANDOFF_REASON_CODES,
   HANDOFF_REASON_LABELS,
-  MANUAL_RESUME_HANDOFF_REASON_CODES,
   STORE_NO_SHOW_REASON_CODES,
   URGENT_HANDOFF_REASON_CODES,
   getHandoffReasonLabel,
   isUrgentHandoff,
   isUrgentHandoffReason,
-  requiresManualResumeForReason,
   resolveHandoffTaskCategory,
 } from '@enums/handoff-reason.enum';
 import { INPUT_RISK_TYPES } from '@shared-types/guardrail.contract';
 
 /**
- * 原因码权威目录（PRD R5.2）：所有消费方（工具枚举 / 卡片标急 / 永久暂停 / 标签表）
+ * 原因码权威目录（PRD R5.2）：所有消费方（工具枚举 / 卡片标急 / 标签表）
  * 都从这一份派生，这里锁定目录本身的不变式与新码的三项属性。
  */
 describe('handoff-reason catalog', () => {
@@ -115,19 +113,6 @@ describe('handoff-reason catalog', () => {
     expect(HANDOFF_REASON_LABELS.interview_result_inquiry).toBe('面试结果追问');
     expect(HANDOFF_REASON_LABELS.human_handoff_request).toBe('候选人主动要求人工');
     expect(HANDOFF_REASON_LABELS.disability_disclosure).toBe('候选人披露残障身份');
-  });
-
-  it('manual-resume set: three post-interview codes + employment_affairs; onboarding_follow_up does not pause', () => {
-    expect([...MANUAL_RESUME_HANDOFF_REASON_CODES].sort()).toEqual(
-      [
-        'employment_affairs',
-        'interview_result_inquiry',
-        'onboarding_paperwork',
-        'self_recruited_or_completed',
-      ].sort(),
-    );
-    expect(requiresManualResumeForReason('onboarding_follow_up_required')).toBe(false);
-    expect(requiresManualResumeForReason(null)).toBe(false);
   });
 
   it('maps new codes to their PRD task categories', () => {

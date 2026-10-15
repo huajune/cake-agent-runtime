@@ -17,7 +17,7 @@ interface TextFragment {
 interface ExampleShapeViolation {
   source: string;
   line: number;
-  kind: 'person_name' | 'store_name' | 'phone';
+  kind: 'person_name' | 'store_name' | 'phone' | 'place_name';
   value: string;
 }
 
@@ -125,11 +125,45 @@ const EXTRACTION_PROMPTS: readonly PromptSurface[] = [
   },
 ];
 
+/** 主回复之外同样会送给模型的规则与字段说明；group task 提示词不在本次清理范围。 */
+const AUXILIARY_PROMPTS: readonly PromptSurface[] = [
+  { id: 'reengagement', source: 'src/agent/reengagement/reengagement.agent.ts' },
+  { id: 'reengagement-scenarios', source: 'src/agent/reengagement/scenario-registry.ts' },
+  {
+    id: 'image-description',
+    source: 'src/channels/wecom/message/application/image-description.service.ts',
+  },
+  { id: 'memory-extraction-schema', source: 'src/memory/short-term/short-term.types.ts' },
+  { id: 'memory-consolidation', source: 'src/memory/long-term/consolidation.service.ts' },
+  { id: 'reply-repair', source: 'src/agent/reply-repair/reply-repair.agent.ts' },
+  { id: 'booking-guards', source: 'src/tools/booking/booking-guards.util.ts' },
+  { id: 'collection-rejection', source: 'src/tools/collection/rejection-renderer.ts' },
+  { id: 'post-booking-invite', source: 'src/tools/invite/post-booking-group-invite.ts' },
+  { id: 'job-list-render', source: 'src/tools/job-list/render.util.ts' },
+  { id: 'brand-store-guidance', source: 'src/tools/job-list/brand-stores.util.ts' },
+  { id: 'welfare-guidance', source: 'src/tools/job-list/welfare-facts.util.ts' },
+  { id: 'repeat-query-guidance', source: 'src/tools/shared/job-list-query-signature.ts' },
+  { id: 'guardrail-catalog', source: 'src/agent/guardrail/output/output-rule-catalog.ts' },
+  {
+    id: 'booking-receipt-feedback',
+    source: 'src/agent/guardrail/output/rules/booking-receipt.rule.ts',
+  },
+  {
+    id: 'internal-info-feedback',
+    source: 'src/agent/guardrail/output/rules/internal-info-leaks.rule.ts',
+  },
+  {
+    id: 'invalid-output-feedback',
+    source: 'src/agent/guardrail/output/rules/invalid-model-output.rule.ts',
+  },
+];
+
 const ALL_SURFACES = [
   ...PROMPT_ASSETS,
   ...PROMPT_SECTION_BUILDERS,
   ...TOOL_DESCRIPTION_BUILDERS,
   ...EXTRACTION_PROMPTS,
+  ...AUXILIARY_PROMPTS,
 ] as const;
 
 // CI 静态形状扫描，不参与任何运行时自然语言裁决。姓名只认「姓名/名字：值」或紧邻
@@ -141,10 +175,20 @@ const COMMON_SURNAME_PREFIXES = new Set([
 ]);
 const PERSON_CONTEXT_MARKERS = ['姓名', '名字', '真名', '称呼', '昵称'];
 // BL1：静态 prompt/schema 的门店字段示例值。只在 applied_store/应聘门店示例或显式
-// 「门店名(称)：」结构中取值，避免把真实地标教学（长泰广场等）误判为虚构门店。
+// 「门店名(称)：」结构中取值，避免把普通业务规则误判为虚构门店。
 // 这是 CI 源码扫描，不参与运行时开放自然语言裁决。
 const EXPLICIT_STORE_VALUE =
   /(?:(?:applied_store|应聘门店)[^\n]{0,24}(?:例如|如)\s*[：:]?|门店(?:名|名称)?\s*[：:])\s*[（(]?\s*["“「『]?([一-鿿]{2,16}(?:店|广场|中心))/gu;
+
+// 具体地名示例（2026-10-09 漕宝路 case：geocode 教学示例里的「"漕宝路地铁站"→上海」被模型当成
+// 候选人位置复述）。只抓两种封闭形态：引号里以路/街/大道/站结尾的具体地名，以及「"地名"→城市」映射示例。
+// 跨城通名黑名单（万达广场/人民广场 等）不以这两种形态出现，属设计需要，不受影响。
+const QUOTED_STREET_OR_STATION =
+  /["“「『]([一-鿿]{2,8}(?:路|街|大道|地铁站|火车站|高铁站|站))["”」』]/gu;
+const QUOTED_PLACE_TO_CITY_MAPPING =
+  /["“「『]([一-鿿]{2,8})["”」』]\s*(?:→|->|=>)\s*[一-鿿]{2,4}市?(?=$|[、，,。；;\s"”」)）])/gu;
+/** 只有站点类型、没有专名的通用词（火车站/长途汽车站）不是具体地名。 */
+const GENERIC_STATION_TYPE = /^(?:长途)?(?:火车|汽车|高铁|地铁|客运|公交)站$/u;
 
 function lineOffset(text: string, index: number): number {
   return text.slice(0, index).split('\n').length - 1;
@@ -216,6 +260,13 @@ function findViolationsInFragment(fragment: TextFragment, source: string): Examp
     record('store_name', match[1], match.index);
   }
 
+  for (const match of fragment.text.matchAll(QUOTED_STREET_OR_STATION)) {
+    if (!GENERIC_STATION_TYPE.test(match[1])) record('place_name', match[1], match.index);
+  }
+  for (const match of fragment.text.matchAll(QUOTED_PLACE_TO_CITY_MAPPING)) {
+    record('place_name', match[1], match.index);
+  }
+
   const phonePattern = new RegExp(CANDIDATE_PHONE_RE.source, 'gu');
   for (const match of fragment.text.matchAll(phonePattern)) {
     record('phone', match[1], match.index);
@@ -235,6 +286,7 @@ describe('prompt example shape CI guard', () => {
     expect(PROMPT_SECTION_BUILDERS).toHaveLength(13);
     expect(TOOL_DESCRIPTION_BUILDERS.length).toBeGreaterThanOrEqual(13);
     expect(EXTRACTION_PROMPTS).toHaveLength(1);
+    expect(AUXILIARY_PROMPTS).toHaveLength(17);
     expect(new Set(ALL_SURFACES.map((surface) => surface.id)).size).toBe(ALL_SURFACES.length);
   });
 
@@ -247,7 +299,7 @@ describe('prompt example shape CI guard', () => {
     expect([...exempted].filter((file) => !toolFiles.includes(file))).toEqual([]);
   });
 
-  it('rejects unregistered person-name, store-name, and phone shapes from every enumerated model-visible surface', () => {
+  it('rejects unregistered person-name, store-name, place-name, and phone shapes from every enumerated model-visible surface', () => {
     const violations = ALL_SURFACES.flatMap(scanSurface);
     expect(violations).toEqual([]);
   });
@@ -273,7 +325,18 @@ describe('prompt example shape CI guard', () => {
     );
   });
 
-  it('allows the registered store canary through the same production-shaped detector', () => {
+  it('catches concrete place-name examples such as the retired 漕宝路 geocode mapping', () => {
+    const prompt = '假设输入的映射示例："马陆"→上海、"光谷"→武汉、"漕宝路地铁站"→上海';
+    expect(findViolationsInFragment({ text: prompt, line: 1 }, 'retired-place')).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: 'place_name', value: '漕宝路地铁站' }),
+        expect.objectContaining({ kind: 'place_name', value: '马陆' }),
+        expect.objectContaining({ kind: 'place_name', value: '光谷' }),
+      ]),
+    );
+  });
+
+  it('rejects the retired store canary through the same production-shaped detector', () => {
     const prompt = [
       '[引用 招聘经理：请核对门店]',
       '[图片消息]',
@@ -281,6 +344,30 @@ describe('prompt example shape CI guard', () => {
       '[消息发送时间：2026-08-13 10:24:31]',
     ].join('\n');
 
-    expect(findViolationsInFragment({ text: prompt, line: 1 }, 'registered-store')).toEqual([]);
+    expect(findViolationsInFragment({ text: prompt, line: 1 }, 'retired-store')).toEqual([
+      expect.objectContaining({ kind: 'store_name', value: '测试门店' }),
+    ]);
+  });
+
+  it('keeps instructional dialogue and historical incident narratives out of static prompts', () => {
+    const violations = ALL_SURFACES.flatMap((surface) =>
+      readModelVisibleFragments(surface).flatMap(({ text, line }) =>
+        /(?:^|\n)\s*(?:#{1,6}\s+(?:正确示例|错误示例|示例对话|推荐句式|Bad Case)|(?:正确示例|错误示例|示例对话|推荐句式|Bad Case)[:：\n]|(?:[-*]\s*)?[❌✅]\s*(?:示范|示例|候选人))|badcase\s+[a-z0-9]/iu.test(
+          text,
+        )
+          ? [{ source: surface.source, line }]
+          : [],
+      ),
+    );
+    expect(violations).toEqual([]);
+  });
+
+  it('does not reintroduce retired fictional names through another prompt surface', () => {
+    const violations = ALL_SURFACES.flatMap((surface) =>
+      readModelVisibleFragments(surface).flatMap(({ text, line }) =>
+        /测试娟|粪叉|测试门店/u.test(text) ? [{ source: surface.source, line }] : [],
+      ),
+    );
+    expect(violations).toEqual([]);
   });
 });

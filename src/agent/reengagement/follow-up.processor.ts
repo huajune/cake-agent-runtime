@@ -11,7 +11,10 @@ import {
 import type { ReengagementStopContext } from '@biz/monitoring/entities/reengagement-touch.entity';
 import { redactCandidatePhones } from '@resolution/candidate/phone';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
-import type { MessageProcessingRecordInput } from '@biz/message/types/message.types';
+import type {
+  LatestCandidateMessage,
+  MessageProcessingRecordInput,
+} from '@biz/message/types/message.types';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { MessageProcessingService } from '@biz/message/services/message-processing.service';
 import {
@@ -382,10 +385,17 @@ export class FollowUpProcessor implements OnModuleInit {
       ? ({ ...loadedState, interviewAt: bookingContext.interviewAt } as ReengagementSessionState)
       : loadedState;
 
+    // 最近一条候选人消息：转给真人处理（只存历史）的回话，报名前场景算已回话（1），
+    // 待答闸也不把它当主链丢消息（1.4）。
+    const latestCandidateMessage = await this.loadLatestCandidateMessage(sessionRef.sessionId);
+
     // 1) 停止条件（代码，调 LLM 之前）
     const stop = shouldStop(scenario, state, anchorAt, {
       externallyVerifiable: job.data.workOrderId != null,
       now,
+      humanHandledCandidateMessageAt: latestCandidateMessage?.historyOnlyReason
+        ? latestCandidateMessage.timestamp
+        : undefined,
     });
     if (stop.stop) {
       this.logger.log(
@@ -404,11 +414,14 @@ export class FollowUpProcessor implements OnModuleInit {
     // 还在等回复——任何主动触达都不该压在未答消息上面（
     // 候选人 7/24 自曝暑假工身份的三条消息被丢，7/27 面试提醒照发触怒候选人）。
     // 与"Agent 主动沉默"区分：主动沉默的轮次有处理记录，本闸不拦。
+    // 与"转给真人处理"区分：托管暂停等期间的消息只存历史、按设计没有处理记录，
+    // 由真人负责，本闸不拦；是否压着候选人的提问由复聊 Agent 的语义停止条件判断。
     // 命中即停止并落触达底账（reason=pending_candidate_message），该信号同时是
     // 主链丢消息的显性化探针，值得告警排查。
     const pendingCandidateMessage = await this.detectPendingCandidateMessage(
       sessionRef.sessionId,
       now,
+      latestCandidateMessage,
     );
     if (pendingCandidateMessage) {
       this.logger.warn(
@@ -706,6 +719,20 @@ export class FollowUpProcessor implements OnModuleInit {
     return fromJob;
   }
 
+  /** 最近一条候选人消息；查询失败按无消息处理（停止判定与待答闸均 fail open）。 */
+  private async loadLatestCandidateMessage(
+    sessionId: string,
+  ): Promise<LatestCandidateMessage | null> {
+    try {
+      return await this.chatSession.getLatestCandidateMessage(sessionId);
+    } catch (error) {
+      this.logger.warn(
+        `[reengagement] 最近候选人消息查询失败，按无消息处理 sessionId=${sessionId}: ${this.errorMessage(error)}`,
+      );
+      return null;
+    }
+  }
+
   /**
    * 候选人待答检测（触达前置闸 1.4 的实现）。
    *
@@ -715,7 +742,8 @@ export class FollowUpProcessor implements OnModuleInit {
    * 2. 该消息已超过宽限期（避免把在途 debounce/处理中的轮次误判为丢失）；
    * 3. 该消息从未进入处理管道——chat 最近一条 message_processing_record 的
    *    received_at 早于该消息（留合并批次锚点容差）。**有处理记录即不拦**：
-   *    Agent 主动沉默是合法出站结果，其轮次有记录。
+   *    Agent 主动沉默是合法出站结果，其轮次有记录；
+   * 4. 该消息不是转给真人处理的只存历史消息（chat_messages.history_only_reason 为空）。
    *
    * 历史/流水查询失败一律 fail open（返回 null 放行触达）——本闸是体验加固，
    * 不能因观测数据不可用把复聊整体憋死。
@@ -725,19 +753,27 @@ export class FollowUpProcessor implements OnModuleInit {
   private async detectPendingCandidateMessage(
     sessionId: string,
     now: number,
+    latestCandidateMessage: LatestCandidateMessage | null,
   ): Promise<{ candidateMessageAt: number; candidateMessagePreview: string } | null> {
     const GRACE_MS = 10 * 60 * 1000;
     // received_at 是 debounce 合并批次的锚点，可能略早于批内最后一条消息的存储时间戳
     const MERGE_TOLERANCE_MS = 2 * 60 * 1000;
     const PREVIEW_MAX_CHARS = 120;
+    if (!latestCandidateMessage) return null;
+    if (latestCandidateMessage.historyOnlyReason) {
+      this.logger.log(
+        `[reengagement] 最近候选人消息已转真人处理（${latestCandidateMessage.historyOnlyReason}），` +
+          `不按待答停发 sessionId=${sessionId}`,
+      );
+      return null;
+    }
+    const lastUserAt = latestCandidateMessage.timestamp;
+    if (!Number.isFinite(lastUserAt)) return null;
+    if (now - lastUserAt < GRACE_MS) return null;
     try {
-      const history = await this.chatSession.getChatHistory(sessionId, 10);
-      if (history.length === 0) return null;
-      const last = history[history.length - 1];
-      if (last.role !== 'user') return null;
-      const lastUserAt = last.timestamp;
-      if (!Number.isFinite(lastUserAt)) return null;
-      if (now - lastUserAt < GRACE_MS) return null;
+      // 候选人消息之后已有人回应（Agent 或真人），不算待答
+      const lastMessage = (await this.chatSession.getChatHistory(sessionId, 1)).at(-1);
+      if (!lastMessage || lastMessage.role !== 'user') return null;
       const latestProcessedAt = await this.messageProcessing.getLatestReceivedAtByChatId(sessionId);
       if (latestProcessedAt != null && latestProcessedAt >= lastUserAt - MERGE_TOLERANCE_MS) {
         return null;
@@ -745,7 +781,7 @@ export class FollowUpProcessor implements OnModuleInit {
       return {
         candidateMessageAt: lastUserAt,
         candidateMessagePreview: redactCandidatePhones(
-          Array.from(last.content ?? '')
+          Array.from(latestCandidateMessage.content ?? '')
             .slice(0, PREVIEW_MAX_CHARS)
             .join(''),
           '（手机号已省略）',

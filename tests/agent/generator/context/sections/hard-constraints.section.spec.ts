@@ -4,6 +4,7 @@ import type { SessionFacts } from '@memory/short-term/short-term.types';
 import type { TurnHints } from '@resolution/turn-hints/turn-hint.types';
 import type { LaborFormIntentDecision } from '@resolution/labor-form';
 import type { SessionBrandState } from '@resolution/brand/brand-resolution.types';
+import type { RecommendedJobSummary } from '@resolution/job/types';
 import { cityFixture, sessionFactsOf } from '../../../../helpers/session-facts.fixture';
 import { testTurnHint, testTurnHints } from '../../../../helpers/turn-hints.fixture';
 import { promptModelOf, renderSection } from '../../../../helpers/prompt-model.fixture';
@@ -13,6 +14,28 @@ interface ConstraintInput {
   turnHints?: TurnHints | null;
   currentLaborFormIntent?: LaborFormIntentDecision;
   sessionBrandState?: SessionBrandState | null;
+  presentedJobs?: RecommendedJobSummary[];
+  currentFocusJob?: RecommendedJobSummary | null;
+}
+
+function jobOf(
+  jobId: number,
+  studentTier: RecommendedJobSummary['studentTier'],
+  overrides: Partial<RecommendedJobSummary> = {},
+): RecommendedJobSummary {
+  return {
+    jobId,
+    brandName: '肯德基',
+    jobName: '服务员',
+    storeName: `门店${jobId}`,
+    cityName: '上海',
+    regionName: null,
+    laborForm: '兼职',
+    salaryDesc: null,
+    jobCategoryName: null,
+    ...(studentTier === undefined ? {} : { studentTier }),
+    ...overrides,
+  };
 }
 
 describe('HardConstraintsSection', () => {
@@ -28,6 +51,10 @@ describe('HardConstraintsSection', () => {
             turnHints: input.turnHints ?? null,
             laborFormIntent: input.currentLaborFormIntent ?? { kind: 'ignore' },
             brandState: input.sessionBrandState ?? null,
+            sessionJobs: {
+              presentedJobs: input.presentedJobs ?? [],
+              currentFocusJob: input.currentFocusJob ?? null,
+            },
           }),
         }),
       ),
@@ -145,10 +172,67 @@ describe('HardConstraintsSection', () => {
     });
 
     expect(output).toContain('是否学生: 是');
-    expect(output).toContain('学生能否安排只看岗位数据');
-    expect(output).toContain('未写学生限制或未返回学生筛选项时按没有额外学生硬限制');
-    expect(output).toContain('不得凭空增加门店确认或人工介入');
-    expect(output).toContain('约面阶段仍必须保持 candidateIsStudent=true 调 precheck');
+    // 行为口径唯一居所是 duliday_job_list 说明（台账 duliday_job_list 行 2026-09-24/10-14）：
+    // 这里只留事实，旧"无学生限制按不限放行"与不存在的 candidateIsStudent 入参教学已回收。
+    expect(output).not.toContain('没有额外学生硬限制');
+    expect(output).not.toContain('candidateIsStudent');
+    expect(output).not.toContain('不得凭空增加门店确认或人工介入');
+    // 没有已推荐岗位时不渲染逐岗结论块。
+    expect(output).not.toContain('[学生身份与已推荐岗位]');
+  });
+
+  describe('[学生身份与已推荐岗位] 逐岗结论', () => {
+    const studentFacts = sessionFactsOf({ interview_info: { is_student: true } });
+
+    it('已确认学生时按结构化档位给出三种结论', () => {
+      const output = section.build({
+        ...baseCtx,
+        sessionFacts: studentFacts,
+        presentedJobs: [
+          jobOf(529083, 'social_only'),
+          jobOf(528942, 'second_job_only'),
+          jobOf(600001, 'any', { brandName: '成都你六姐' }),
+          jobOf(600002, 'student_only', { brandName: '瑞幸' }),
+          jobOf(600003, 'unspecified', { brandName: '奥乐齐' }),
+        ],
+      });
+
+      expect(output).toContain('[学生身份与已推荐岗位]');
+      expect(output).toContain('- [jobId:529083] 肯德基-门店529083-服务员：不接受学生');
+      expect(output).toContain('- [jobId:528942] 肯德基-门店528942-服务员：不接受学生');
+      expect(output).toContain('- [jobId:600001] 成都你六姐-门店600001-服务员：接受学生');
+      expect(output).toContain('- [jobId:600002] 瑞幸-门店600002-服务员：接受学生');
+      expect(output).toContain(
+        '- [jobId:600003] 奥乐齐-门店600003-服务员：社会身份要求字段为空，按查岗工具说明处理',
+      );
+    });
+
+    it('缺档位的历史记忆提示重新查岗，不回落旧文案推断', () => {
+      const output = section.build({
+        ...baseCtx,
+        sessionFacts: studentFacts,
+        presentedJobs: [jobOf(529083, undefined, { studentRequirement: '可接受学生' })],
+      });
+
+      expect(output).toContain(
+        '[jobId:529083] 肯德基-门店529083-服务员：未记录，需重新调 duliday_job_list 核对',
+      );
+      expect(output).not.toContain('：接受学生');
+    });
+
+    it('学生身份未确认或为否时不渲染', () => {
+      const jobs = [jobOf(529083, 'social_only')];
+      expect(section.build({ ...baseCtx, presentedJobs: jobs })).not.toContain(
+        '学生身份与已推荐岗位',
+      );
+      expect(
+        section.build({
+          ...baseCtx,
+          sessionFacts: sessionFactsOf({ interview_info: { is_student: false } }),
+          presentedJobs: jobs,
+        }),
+      ).not.toContain('学生身份与已推荐岗位');
+    });
   });
 
   it('routes district-without-city through geocode tri-state instead of reverse-asking the candidate', () => {
@@ -175,7 +259,9 @@ describe('HardConstraintsSection', () => {
     });
 
     expect(output).toContain('班次/工时偏好: 晚班');
-    expect(output).toContain('"每天/周一至周日"不等于"可只排周末"');
+    expect(output).toContain(
+      '岗位要求每日、高周频、固定多日或全天出勤时，不得当作可任选工作日或时段',
+    );
   });
 
   it('明确做一休一不满足每周最多一至两天，避免低周频语义串线', () => {
@@ -189,8 +275,8 @@ describe('HardConstraintsSection', () => {
       turnHints: high,
     });
 
-    expect(output).toContain('"做一休一"通常每周出勤 3–4 天');
-    expect(output).toContain('不满足"每周最多 1–2 天"');
+    expect(output).toContain('做一休一通常每周出勤 3–4 天');
+    expect(output).toContain('不满足每周最多 1–2 天');
     expect(output).toContain('不得把它列为低周频候选人的合适方案');
   });
 
@@ -346,7 +432,7 @@ describe('HardConstraintsSection', () => {
 
     expect(output).toContain('性别: 男');
     expect(output).toContain('班次/工时偏好: 晚班');
-    expect(output).toContain('早开晚结全天时段');
+    expect(output).toContain('全天出勤');
     expect(output).toContain('调用 duliday_job_list');
   });
 });

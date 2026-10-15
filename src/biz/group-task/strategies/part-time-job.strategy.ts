@@ -36,12 +36,14 @@ export class PartTimeJobStrategy implements NotificationStrategy {
   ) {}
 
   async fetchData(context: GroupContext): Promise<NotificationData> {
-    // 1. 拉取该城市所有岗位（含薪资、福利、工作时段）
-    const { jobs } = await this.spongeService.fetchJobs({
+    // 1. 拉取该城市所有岗位（含薪资、福利、工作时段）。
+    // 班次数据不合规的岗位只剔除不推送，不能让单个坏岗位拖垮整城推送；明细由 SpongeService 记 warn。
+    const { jobs, skippedInvalidWorkTime = [] } = await this.spongeService.fetchJobs({
       cityNameList: [context.city],
       pageSize: 500,
       sort: 'desc',
       sortField: 'create_time',
+      invalidWorkTime: 'skip',
       options: {
         includeBasicInfo: true,
         includeJobSalary: true,
@@ -50,6 +52,10 @@ export class PartTimeJobStrategy implements NotificationStrategy {
         includeHiringRequirement: true,
       },
     });
+    const skippedNote =
+      skippedInvalidWorkTime.length > 0
+        ? `（另有 ${skippedInvalidWorkTime.length} 个岗位班次数据不合规未推送）`
+        : '';
 
     // 2. 按行业过滤。当前契约要求 jobCategoryName 返回层级类目，
     // 例如“餐饮/中餐/普通服务员”或“零售/食品/导购”，这里按一级类目解析。
@@ -62,7 +68,7 @@ export class PartTimeJobStrategy implements NotificationStrategy {
       return {
         hasData: false,
         payload: {},
-        summary: `${context.city}/${context.industry}: 无岗位`,
+        summary: `${context.city}/${context.industry}: 无岗位${skippedNote}`,
       };
     }
 
@@ -83,7 +89,7 @@ export class PartTimeJobStrategy implements NotificationStrategy {
       return {
         hasData: false,
         payload: {},
-        summary: `${context.city}/${context.industry}: 无品牌`,
+        summary: `${context.city}/${context.industry}: 无品牌${skippedNote}`,
       };
     }
 
@@ -99,7 +105,7 @@ export class PartTimeJobStrategy implements NotificationStrategy {
         jobs: selectedJobs,
         hasMore: selectedJobs.length > MAX_DISPLAY_STORES,
       },
-      summary: `${context.city}/${context.industry} - ${selectedBrand}: ${selectedJobs.length}个岗位`,
+      summary: `${context.city}/${context.industry} - ${selectedBrand}: ${selectedJobs.length}个岗位${skippedNote}`,
     };
   }
 

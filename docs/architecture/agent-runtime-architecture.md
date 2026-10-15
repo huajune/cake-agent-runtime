@@ -1,6 +1,6 @@
 # Agent 运行时架构
 
-**最后更新**：2026-09-11（按当前工作区生产调用链与修复所有权复核）
+**最后更新**：2026-10-15（新增 §2.2 横切能力地图；其余沿用 2026-09-11 对生产调用链与修复所有权的复核）
 
 **面向**：研发、测试与运行时排障
 
@@ -68,6 +68,8 @@ Runner 的接口已经渠道中立；Nest 模块依赖尚未完全端口化：`A
 
 ## 2. 分层与所有权
 
+### 2.1 模块分层
+
 | 层                 | 当前职责                                              | 主要入口                                          |
 | ------------------ | ----------------------------------------------------- | ------------------------------------------------- |
 | Channels           | 回调适配、过滤、去重、聚合、per-chat 锁、Replay、投递 | `src/channels/wecom/message/`                     |
@@ -93,6 +95,48 @@ Runner 的接口已经渠道中立；Nest 模块依赖尚未完全端口化：`A
 - `sections/` 负责模型可见呈现与排布，不直接写存储。
 - Agent、Memory、Evaluation、Reply Repair 需要模型能力时统一调用 `LlmExecutorService`，不直接操作 provider SDK。
 - `biz/**` 的 Controller / Service / Repository 纪律见 [Biz 分层边界规范](./biz-layer-boundaries.md)。
+
+### 2.2 横切能力地图
+
+2.1 按模块划分，本节按能力横看：每项能力由谁负责、状态落在哪里、是否已有统一入口。
+“已收口”指存在单一入口或共享原语；“分散”指由多个模块各自实现，改动时需要逐处检查。
+
+| 能力               | 负责模块                                                                                                        | 状态与记录落点                                                                                    | 收口程度 |
+| ------------------ | --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | -------- |
+| 触发与入口         | 被动入站 `channels/wecom/message`；主动复聊 `agent/reengagement`；测试/调试 `biz/test-suite`、`AgentController` | Bull `message-merge`、复聊队列、Cron；被动入站只走 `runInboundTurn()`，复聊为独立协议（ADR-0001） | 已收口   |
+| 身份与会话         | 渠道解析稳定 `botUserId`；维度口径见 [记忆与状态全局视图](./memory-and-state.md#2-维度口径)                     | `corpId / userId / sessionId(=chatId) / botUserId`                                                | 已收口   |
+| 回合执行循环       | `agent/runner` → `agent/generator` → `llm/`                                                                     | 进程内 `TurnLedger`；无持久检查点，异常时由 pending 重放整轮                                      | 已收口   |
+| 上下文与记忆       | `agent/generator/preparation`、`memory/`                                                                        | 第 5、7 节                                                                                        | 已收口   |
+| 动作权限           | 工具门禁在 `tools/`，审计目录在 `guardrail/tool`；`toolMode`；复聊不注册工具                                    | `SIDE_EFFECT_TOOLS` 单轮屏蔽；副作用意图由 `TurnOutcomeInterventionService.commit()` 提交         | 已收口   |
+| 人工介入与托管     | `TurnOutcomeInterventionService` → `biz/intervention` → `UserHostingService`                                    | `user_hosting_status`（临时暂停到次日上海零点，或永久）、`handoff_events`                         | 已收口   |
+| 外部动作防重与记录 | 各动作自持                                                                                                      | 见下文                                                                                            | **分散** |
+| 候选人业务进度     | 无单一所有者                                                                                                    | 见下文                                                                                            | **分散** |
+| 后台作业           | 各队列、各 Cron 自持                                                                                            | 仅共享 `infra/queue/bull.module.ts` 的连接与 stalled 参数                                         | **分散** |
+| 观测与评估         | `observability/`、`biz/monitoring`、`biz/test-suite`、`evaluation/`                                             | 同 `trace_id` 可 join 的流水、事件、守卫与复聊底账（第 12 节）                                    | 已收口   |
+
+**外部动作防重与记录**：没有共享的执行底账，各动作分别依赖：
+
+- 报名：收资单 `submitted`、`active_booking` 指针与海绵实时查重；海绵报名请求不带幂等键。
+- 拉群：session facts 的 `invitedGroups` 加实时群成员预检。
+- 转人工与告警：`handoff_events` 的 `(corp_id, idempotency_key)` 唯一约束，派发前检查是否已暂停。
+- 复聊触达：Redis 槽 `reserved → delivery_attempted → sent | failed | unknown`，并落
+  `reengagement_touch_records`；`unknown` 当前没有补偿消费者。
+- 群任务：主消息与附加消息都发出后才写当日已发 key。
+- 回调消息：Redis `SET NX` 去重，默认 300 秒。
+
+整轮重放时批次号重新生成，按回合派生的键挡不住重放；Replay 只对报名、拉群成功的回合禁止丢弃（6.3）。
+
+**候选人业务进度**：海绵工单是业务真值，本地只存指针（`recruitment_cases` 状态机已于 2026-06-10
+删除）。本地相关状态分布在 `stage:`、`factsv2:`（workbench、`terminal`、`invitedGroups`）、收资单、
+`active_booking`、`user_hosting_status` 与复聊底账，主键维度不一：`active_booking` 按候选人跨托管账号
+共享，阶段、终态与暂停按 `chatId`。没有统一判定入口，各读方自行拼装：`TurnDataLoaderService` /
+`BookingContextLoaderService`、`FollowUpProcessor` 与复聊 `scenario-registry`、
+`OutputGuardrailService.readActiveBookings()`、precheck 查重。`terminal` 声明
+`booked / handed_off / rejected / onboarded`，当前只写入 `booked`。
+
+**后台作业**：除 Bull 连接与 stalled 参数外，分布式锁、重试循环和重试耗尽告警由各队列、各 Cron
+自行实现；Cron 错过的触发不补跑；进程内不等待结果的任务（如复聊锚点排程、飞书介入任务提交）在
+进程退出时丢失。
 
 ---
 

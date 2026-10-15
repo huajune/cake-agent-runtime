@@ -1,6 +1,7 @@
 import { AgentRunnerService } from '@agent/runner/agent-runner.service';
 import { TurnOutcomeInterventionService } from '@agent/runner/turn-outcome-intervention.service';
 import type { GeneratorRunResult } from '@agent/generator/generator.types';
+import { createTurnLedger } from '@agent/generator/preparation/turn-ledger';
 import { CallerKind } from '@enums/agent.enum';
 
 describe('AgentRunnerService.runInboundTurn', () => {
@@ -571,7 +572,8 @@ describe('AgentRunnerService.runInboundTurn', () => {
   });
 
   it('strict output repair enters one rewrite and adopts the clean revised reply', async () => {
-    generator.invoke.mockResolvedValueOnce(makeResult({ text: '不要新疆户籍的' }));
+    const turnLedger = createTurnLedger();
+    generator.invoke.mockResolvedValueOnce(makeResult({ text: '不要新疆户籍的', turnLedger }));
     replyRepairAgent.repair.mockResolvedValueOnce('这个岗位暂时不合适，我们可以看其他岗位。');
     outputGuard.check
       .mockResolvedValueOnce({
@@ -604,6 +606,8 @@ describe('AgentRunnerService.runInboundTurn', () => {
       expect.objectContaining({
         originalReply: '不要新疆户籍的',
         ruleIds: ['discriminatory_screening_leak'],
+        // 视觉事实以首版账本为准，修复证据需要它
+        turnLedger,
       }),
     );
   });
@@ -1775,6 +1779,50 @@ describe('AgentRunnerService.runInboundTurn', () => {
     );
     expect(outputGuard.check.mock.calls[1][0].toolCalls).toEqual([bookingCall]);
     expect(outcome.toolCalls).toEqual([bookingCall]);
+  });
+
+  it('does not list successful no-op side effects as committed in the repair prompt', async () => {
+    const bookingCall = {
+      toolName: 'duliday_interview_booking',
+      args: { jobId: 123 },
+      result: { success: true, workOrderId: 'wo-1' },
+    };
+    const onlineLocationCall = {
+      toolName: 'send_store_location',
+      args: { jobId: 123 },
+      result: { success: true, destination: 'interview', locationNotRequired: true },
+    };
+    const alreadyInGroupCall = {
+      toolName: 'invite_to_group',
+      args: { city: '上海' },
+      result: { success: true, alreadyInGroup: true, groupName: '上海餐饮兼职群' },
+    };
+    generator.invoke.mockResolvedValueOnce(
+      makeResult({
+        text: '面试定位我发你了，也拉你进群了',
+        toolCalls: [bookingCall, onlineLocationCall, alreadyInGroupCall],
+      }),
+    );
+    replyRepairAgent.repair.mockResolvedValueOnce('报名成功啦，这次是视频面试，不用到店');
+    outputGuard.check
+      .mockResolvedValueOnce({
+        decision: 'repair',
+        riskLevel: 'high',
+        violations: [
+          { type: 'online_interview_location_claim', evidence: '到店', suggestion: '改' },
+        ],
+        ruleIds: ['online_interview_location_claim'],
+        blockedRuleIds: ['online_interview_location_claim'],
+        repairMode: 'rewrite',
+      })
+      .mockResolvedValueOnce(passDecision);
+
+    await service.runInboundTurn({ sessionRef, input: { text: '发我个定位' } });
+
+    const committed = replyRepairAgent.repair.mock.calls[0][0].committedSideEffects as string;
+    expect(committed).toContain('duliday_interview_booking');
+    expect(committed).not.toContain('send_store_location');
+    expect(committed).not.toContain('invite_to_group');
   });
 
   it('invokeReviewedTurn wraps runTurnEnd in an agent-layer finalizer', async () => {

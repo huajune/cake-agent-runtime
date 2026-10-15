@@ -254,11 +254,6 @@ const SYSTEM_FAULT_CLAIM_PATTERN = /系统[^。！？!?\n]{0,6}(?:问题|故障|
 const RESUBMIT_PROMISE_PATTERN =
   /(?:稍后|等下|等会|一会儿?|回头|晚点|待会儿?|明天|之后)[^。！？!?\n]{0,10}(?:再|重新)[^。！？!?\n]{0,6}(?:帮你|给你)?[^。！？!?\n]{0,4}(?:提交|报名|预约|约)/u;
 
-function readExistingWorkOrderId(booking: AgentToolCall): number | string | null {
-  const value = asRecord(booking.result)?.existingWorkOrderId;
-  return typeof value === 'number' || (typeof value === 'string' && value.trim()) ? value : null;
-}
-
 function readExistingInterviewTimeHuman(booking: AgentToolCall): string | null {
   const value = asRecord(booking.result)?._existingInterviewTimeHuman;
   return typeof value === 'string' && value.trim() ? value.trim() : null;
@@ -279,18 +274,15 @@ function describeAlreadyBookedDenial(
   const asksDateAgain = DATE_ASK_PATTERN.test(replyText) && !CONFIRMATION_PATTERN.test(replyText);
   if (!deniesBooking && !asksDateAgain) return null;
 
-  const workOrderId = readExistingWorkOrderId(alreadyBooked);
-  const workOrderLabel = workOrderId != null ? `（工单 ${workOrderId}）` : '';
   const existingTime = readExistingInterviewTimeHuman(alreadyBooked);
   return {
     label:
-      `本轮 duliday_interview_booking 命中在途工单查重${workOrderLabel}：预约已经存在、本轮只是没有重复提交，` +
+      '本轮 duliday_interview_booking 命中在途工单查重：预约已经存在、本轮只是没有重复提交，' +
       (deniesBooking
         ? '回复却告诉候选人没提交成功/系统有问题/稍后再提交——候选人会以为没约上，而重提永远不会成功'
-        : '回复却仍在向候选人征询面试日期——与已存在的预约直接矛盾') +
-      '（生产 batch …_1789111221226：同一候选人两个托管账号并聊，另一账号刚建单）',
+        : '回复却仍在向候选人征询面试日期——与已存在的预约直接矛盾'),
     suggestion:
-      `本轮 booking 返回 already_booked：候选人在该岗位已有在途工单${workOrderLabel}，预约已经存在，本轮只是没有重复提交，这不是失败。` +
+      '本轮 booking 返回 already_booked：候选人在该岗位已有在途工单，预约已经存在，本轮只是没有重复提交，这不是失败。' +
       '上一版回复把它说成没提交成功/系统故障、承诺稍后再提交，或重新征询日期，当前文本不可发送。' +
       '请改为如实告知候选人这个岗位已经约上、不用再提交；' +
       (existingTime
@@ -324,6 +316,8 @@ function readConfirmedInterviewTimeHuman(booking: AgentToolCall): string | null 
     booking.result && typeof booking.result === 'object' && !Array.isArray(booking.result)
       ? (booking.result as Record<string, unknown>)
       : null;
+  // 历史 wait_notice 回执曾把“等电话通知”说明误填到日期字段；无指定时间时不做日期必报校验。
+  if (asRecord(result?.requestInfo)?.interviewTime === null) return null;
   const value = result?._confirmedInterviewTimeHuman;
   return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
@@ -405,9 +399,11 @@ const GROUP_PURPOSE_DISTINCTION_PATTERN =
  * _replyInstruction 已点名"改时间用 duliday_modify_interview_time（传该工单号）"；模型不
  * 照做时，工单时间与回复口径就会分叉。
  */
-function findActiveWorkOrderGuard(
-  toolCalls: AgentToolCall[],
-): { workOrderId?: number; interviewTime?: string } | null {
+function findActiveWorkOrderGuard(toolCalls: AgentToolCall[]): {
+  workOrderId?: number;
+  interviewTime?: string;
+  interviewWindow?: { start: number; end: number };
+} | null {
   for (const call of [...toolCalls].reverse()) {
     if (call.toolName !== 'duliday_interview_precheck' || call.status === 'error') continue;
     const guard = asRecord(asRecord(call.result)?.duplicateBookingGuard);
@@ -415,9 +411,23 @@ function findActiveWorkOrderGuard(
     return {
       workOrderId: typeof guard.workOrderId === 'number' ? guard.workOrderId : undefined,
       interviewTime: typeof guard.interviewTime === 'string' ? guard.interviewTime : undefined,
+      interviewWindow: parseInterviewWindow(guard.interviewWindow),
     };
   }
   return null;
+}
+
+/**
+ * precheck 回执里工单所在的面试窗口（`13:30-16:30`）→ 分钟区间。
+ * 窗口内到达不算改约（[当前预约信息] 预约处理规则同口径），确认窗口内的钟点不是改了工单时间。
+ */
+function parseInterviewWindow(value: unknown): { start: number; end: number } | undefined {
+  if (typeof value !== 'string') return undefined;
+  const match = /^(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})$/u.exec(value.trim());
+  if (!match) return undefined;
+  const start = Number(match[1]) * 60 + Number(match[2]);
+  const end = Number(match[3]) * 60 + Number(match[4]);
+  return start < end ? { start, end } : undefined;
 }
 
 /** 本轮是否成功改约。 */
@@ -471,10 +481,19 @@ export function detectBookingReceiptMismatch(
     const workOrderMinutes = extractWorkOrderMinutes(activeGuard.interviewTime);
     const confirmedMinutes = extractConfirmedMinutes(replyText);
     // 只在回复确认的钟点与工单**不同**时判——复述工单既有时间是如实陈述，必须放行。
+    // 工单所在面试窗口内的到达时刻不算改约，只有窗口外的钟点才是未落单的新时间。
+    // 不带上下午的"2点多"按 12 小时制歧义处理：任一读法落在窗口内即视为窗口内。
+    const window = activeGuard.interviewWindow;
+    const insideWindow = (minutes: number): boolean =>
+      window !== undefined &&
+      [minutes, ...(minutes < 12 * 60 ? [minutes + 12 * 60] : [])].some(
+        (value) => value >= window.start && value <= window.end,
+      );
+    const outsideWindow = confirmedMinutes.filter((minutes) => !insideWindow(minutes));
     const confirmsDifferentTime =
       workOrderMinutes === null
-        ? confirmedMinutes.length > 0
-        : confirmedMinutes.some((minutes) => minutes !== workOrderMinutes);
+        ? outsideWindow.length > 0
+        : outsideWindow.some((minutes) => minutes !== workOrderMinutes);
     if (confirmsDifferentTime) {
       return createOutputRuleFinding(
         'interview_time_change_unconfirmed',
@@ -484,7 +503,7 @@ export function detectBookingReceiptMismatch(
         '本轮预检返回候选人在该岗位已有在途工单，约面时间是 ' +
           `${activeGuard.interviewTime ?? '工单上的既有时间'}，而本轮并没有成功调用 duliday_modify_interview_time 改约。` +
           '上一版回复却确认了另一个面试时间，当前文本不可发送——工单没改，候选人会按你确认的时间白跑一趟。' +
-          '请删除对新时间的任何确认、应允或"没问题/可以"类表述，改为如实告知工单上现在的时间，' +
+          '请删除对新时间的任何确认或应允，改为如实告知工单上现在的时间，' +
           '并说明改时间需要重新处理。严禁新增本轮工具结果之外的任何时间事实，也不得承诺由自己或同事稍后确认；' +
           '其余未被点名的内容逐字保留。',
       );
@@ -500,9 +519,9 @@ export function detectBookingReceiptMismatch(
   ) {
     return createOutputRuleFinding(
       'booking_receipt_mismatch',
-      '候选人明确暂不报名且想自行到店，回复在提示流程后仍附和其“先自己看看”，变相鼓励未预约到店',
-      '候选人本轮明确暂不报名，上一版虽然说明未报名到店可能无法接待，却又用“那你先自己看看/先过去了解下”等话术附和其自行到店，当前文本不可发送。' +
-        '请删除该附和，只保留“到店前需要先报名约面，否则门店无法接待”的流程说明，并以“既然暂不报名，这轮先不推进”收口；不得提供定位或到店指引。',
+      '候选人明确暂不报名且想自行到店，回复在提示流程后仍附和其自行到店，变相鼓励未预约到店',
+      '候选人本轮明确暂不报名，上一版虽然说明未报名到店可能无法接待，却又附和其自行到店，当前文本不可发送。' +
+        '请删除该附和，只保留到店前必须先报名约面、否则门店无法接待的流程说明，并尊重候选人暂不报名的决定，结束本轮推进；不得提供定位或到店指引。',
     );
   }
 
@@ -511,7 +530,7 @@ export function detectBookingReceiptMismatch(
       'booking_receipt_mismatch',
       '候选人本轮明确要求先别报名/预约，回复却仍催其登记或承诺安排面试时间，违背当前明确指令',
       '候选人本轮已经明确说先别报名/预约。上一版在解释到店流程后仍催候选人登记或承诺安排面试时间，当前文本不可发送。' +
-        '请只说明“未报名约面时不建议直接到店，否则门店无法接待”，并尊重候选人暂不报名的决定；等候选人主动同意后再推进。' +
+        '请只说明未报名约面时不建议直接到店、否则门店无法接待，并尊重候选人暂不报名的决定；等候选人主动同意后再推进。' +
         '不得催其登记，也不得声称或承诺已经/将要安排面试时间；其余未被点名的内容逐字保留。',
     );
   }
@@ -538,9 +557,9 @@ export function detectBookingReceiptMismatch(
       return createOutputRuleFinding(
         'booking_receipt_mismatch',
         '本轮 duliday_interview_booking 调用失败，回复却宣称正在提交或已提交面试预约' +
-          '——回执永远不会来，候选人会一直空等（badcase …_1785332310556）',
+          '——回执不会到达，候选人会一直空等',
         '本轮 duliday_interview_booking 调用失败，预约并未提交成功。上一版回复把提交说成正在进行或已经完成，当前文本不可发送。' +
-          '请如实告知候选人这次没有提交成功；可以自然承接后续（比如稍后再帮你提交一次），' +
+          '请如实告知候选人这次没有提交成功；可以自然承接后续，' +
           '但不得把提交说成已完成或正在进行；回复中与预约状态无关的内容（岗位信息、候选人问题的回答等）逐字保留。',
       );
     }
@@ -592,7 +611,7 @@ export function detectBookingReceiptMismatch(
     return createOutputRuleFinding(
       'booking_receipt_mismatch',
       `本轮 duliday_interview_booking 已按「${confirmedTime}」建单，回复却没有把这个日期告诉候选人` +
-        '——候选人无从发现日期被约错（badcase 0091mnfr：候选人选周三、工单落周四，次日到店下车才发现）',
+        '——候选人无法核对预约日期是否正确',
       `本轮预约已真实提交成功，工单登记的面试时间是「${confirmedTime}」。上一版回复没有把这个日期原样告诉候选人，当前文本不可发送。` +
         `请在回复中**逐字**给出「${confirmedTime}」（含月日与括号里的星期），让候选人能立刻核对是不是他要的那天；` +
         '其余未被点名的内容逐字保留，不要改变已确认的事实，也不要再向候选人征询日期。',

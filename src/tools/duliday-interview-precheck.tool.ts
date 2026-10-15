@@ -49,9 +49,13 @@ import {
 } from '@tools/collection/field-value-proposal-input';
 import { renderRecap, renderRecapRedeliveryText } from '@tools/collection/recap-renderer';
 import { renderRejection } from '@tools/collection/rejection-renderer';
-import { findRecentSameJobBooking } from '@tools/booking/active-booking-dedup.util';
+import {
+  findActiveBookingForJob,
+  findRecentSameJobBooking,
+} from '@tools/booking/active-booking-dedup.util';
 import {
   findCrossAccountDuplicate,
+  findSnapshotBookingForJob,
   findSnapshotDuplicate,
   type SnapshotDuplicateMatch,
 } from '@tools/booking/booking-snapshot.util';
@@ -62,6 +66,7 @@ import {
   buildScheduleRule,
   buildUpcomingTimeOptions,
   evaluateRequestedDate,
+  resolveBookedInterviewWindow,
   type BookableSlot,
 } from '@tools/booking/bookable-slot.util';
 import {
@@ -118,7 +123,7 @@ export const PRECHECK_DESCRIPTION = `面试前置校验。实时读取岗位收�
 - fieldValueProposals 是唯一收资字段入口。只在候选人原话明确支持最终契约值时提交；没提到、无法唯一映射、带保留或有歧义时不提交，让该槽位保持 empty。不得为了填满表单猜值，不得提交置信分、待复核标记或“先填后确认”值。
 - 每项 labelTitle 必须逐字取自 bookingChecklist.requiredFields，value 传规范值，quote 必须逐字取自候选人完整原话。一条消息明确支持多个字段时全部提交。纠正用 correct、清除用 clear；confirm 只用于候选人对真实相邻字段问句的短答确认，不得把 recap 拆成全部 filled 字段重投。
 - fieldValueProposals 只能填写实时契约已有槽位，不能增删字段，也不能控制 requiredFields 及其顺序。不得传岗位要求冒充候选人答案，不得补造字段或沿用旧 candidateXxx 裸参数。
-- recapConfirmation=true 是报名信息确认的**唯一入账入口**：候选人明确表示报名信息无误时（包括「好的」「确认」等纯短答，也包括「没」这类语境化短答——回应「有不对的地方直接说改哪项」即表示没有要修改的信息），必须提交 true，不提交则确认永不入账、booking 会被拒。候选人原话和已发送的报名信息由系统自动绑定，不要复制 quote。**这只适用于确实需要确认报名信息的表单**：若回执给出 recap_not_required，说明本岗无需确认，不要卡在讨确认上。存在 correct/clear 时不要同时提交，纠正优先。
+- recapConfirmation=true 是报名信息确认的**唯一入账入口**：候选人明确表示报名信息无误时（须结合相邻问句理解短答；明确同意报名信息或明确表示没有需要修改的内容，均算确认），必须提交 true，不提交则确认永不入账、booking 会被拒。候选人原话和已发送的报名信息由系统自动绑定，不要复制 quote。**这只适用于确实需要确认报名信息的表单**：若回执给出 recap_not_required，说明本岗无需确认，不要卡在讨确认上。存在 correct/clear 时不要同时提交，纠正优先。
 - 返回里出现 rejectedAnswers 表示这些答案**已被退回、没有入账**。逐项服从 action：retry_submission 才按 hint 修正重投；ask_candidate 必须按 hint 向候选人补问并等待新回复，禁止原值重投；drop 表示本岗不再接受该字段，不重投也不追问。
 - 返回里出现 rejectedRecapConfirmation 表示本轮 recap 确认被公证退回、没有入账：按其 hint 修复后重投，不要把候选人已经确认过的内容再问一遍。
 
@@ -126,7 +131,7 @@ export const PRECHECK_DESCRIPTION = `面试前置校验。实时读取岗位收�
 - collect_fields：只收 bookingChecklist.requiredFieldsToCollectNow。${COLLECTION_TEMPLATE_SEND_INSTRUCTION}
 - confirm_collection：返回 recap.candidateMessage 时必须照发；未返回表示当前 KV 已真实送达，只需简短请候选人确认。如尚未选时间，可同时并列展示 interview.bookableSlots。
 - select_interview_time：资料已授权但尚未选择具体时段；interview.bookableSlots 是按 availabilityAuthority.evaluatedAt 和完整日期时间过滤后的唯一可约事实。只展示 bookingAllowed=true 的时段，不得根据 scheduleRule/processRemark 中“当天、前一天”等相对词二次计算或删减，不再复述资料。
-- screening_rejected：只使用 rejection.candidateMessage，不自行披露内部筛选原因。被筛掉的字段在本岗是终态：候选人改口也不入账，不要承诺"说下真实值我帮你更新"，换岗表单才会重新收这项。
+- screening_rejected：只使用 rejection.candidateMessage，不自行披露内部筛选原因。被筛掉的字段在本岗是终态：候选人改口也不入账，不要承诺在本岗更新该字段即可继续办理，换岗表单才会重新收这项。
 - handoff：停止收资并转人工。
 - age_boundary_handoff：候选人年龄在岗位要求的弹性带内，报名接口必拒；资料不重问、禁止 booking，调用 request_handoff（identity_age_exception）交人工裁量。
 - ready_to_book：才允许调用 duliday_interview_booking；booking 成功前禁止声称已报名。
@@ -206,6 +211,11 @@ interface DuplicateBookingGuard {
   workOrderId: number;
   interviewTime?: string;
   interviewTimeHuman?: string;
+  /**
+   * 同岗位工单面试时刻所在的面试窗口（`HH:mm-HH:mm`）。工单只记开始时刻，窗口结束时刻
+   * 取自本岗实时排期；出站守卫据此把窗口内到达时刻视为不改约。
+   */
+  interviewWindow?: string;
   note: string;
   /** 命中判据：同岗位 / 同品牌；来源：本轮快照 / 指针窗口 / 其它托管账号。 */
   matchedBy?: 'job' | 'brand';
@@ -290,7 +300,7 @@ const REJECTION_HINTS: Readonly<Record<string, RejectionGuidance>> = {
     action: 'drop',
   },
   source_text_not_found: {
-    hint: 'quote 必须是候选人原话里逐字存在的片段；请改用候选人真实说过的原文重投。纯数字 quote 必须在原话里独立成数，不能是手机号等更长数字串里的一段——带上前后文（如「年龄：22」「我22岁」）。',
+    hint: 'quote 必须是候选人原话里逐字存在的片段；请改用候选人真实说过的原文重投。纯数字 quote 必须在原话里独立成数，不能是手机号等更长数字串里的一段；请带上原话中说明该数字含义的前后文。',
     action: 'retry_submission',
   },
   bare_affirmation_without_question: {
@@ -302,7 +312,7 @@ const REJECTION_HINTS: Readonly<Record<string, RejectionGuidance>> = {
     action: 'retry_submission',
   },
   invalid_value_shape: {
-    hint: '值形状不合法（如手机号非 11 位、年龄超出 14-70）；核对后重投或向候选人澄清。',
+    hint: '值形状不符合字段约束：手机号须为 11 位大陆手机号，首位为 1、第二位为 3–9，且非占位号；年龄须为 14–70 的整数。这些是录入形态限制，不代表符合岗位招聘要求。按被拒字段核对后重投，无法确认时向候选人澄清。',
     action: 'retry_submission',
   },
   value_not_in_contract_vocabulary: {
@@ -374,7 +384,7 @@ function rejectionGuidance(
       .filter(Boolean);
     if (options.length > 0) {
       return {
-        hint: `值不在本岗契约的选项集内。该槽位合法选项原文：${options.join(' / ')}。候选人原话能唯一对应其中一项时逐字用该项重投（quote 仍取候选人原话）；对应不唯一（如社保只说了「有」没说由谁缴、在哪缴）就向候选人补问，禁止猜选项。`,
+        hint: `值不在本岗契约的选项集内。该槽位合法选项原文：${options.join(' / ')}。候选人原话能唯一对应其中一项时逐字用该项重投（quote 仍取候选人原话）；对应不唯一就向候选人补问，禁止猜选项。`,
         action: 'retry_submission',
       };
     }
@@ -554,6 +564,27 @@ export function buildInterviewPrecheckTool(
           );
           const job = jobs[0];
           if (!job?.basicInfo) {
+            // 岗位详情查不到不等于已约面试失效：候选人在该岗位仍有在途预约时，不标失效、
+            // 不登记焦点、不引导换店，只如实保留预约并把无法自助校验的改约交给人工。
+            const bookedJob = candidatePhone
+              ? undefined
+              : await findCandidateBookingForJob({ deps, context, jobId });
+            if (bookedJob) {
+              logger.warn(
+                `[precheck] 岗位详情查不到但候选人仍有在途预约，保留预约不标失效: jobId=${jobId} workOrderId=${bookedJob.workOrderId} source=${bookedJob.source}`,
+              );
+              return buildToolError({
+                errorType: TOOL_ERROR_TYPES.PRECHECK_BOOKED_JOB_UNVERIFIABLE,
+                outcome: '岗位详情暂时查不到，候选人在该岗位的预约仍有效',
+                replyInstruction: bookedJobUnverifiableInstruction(bookedJob),
+                details: {
+                  jobId,
+                  workOrderId: bookedJob.workOrderId,
+                  interviewTime: bookedJob.interviewTime ?? undefined,
+                  interviewTimeHuman: bookedJob.interviewTimeHuman,
+                },
+              });
+            }
             context.ledger.markJobInvalidated?.(jobId);
             return buildToolError({
               errorType: TOOL_ERROR_TYPES.PRECHECK_JOB_NOT_FOUND,
@@ -642,15 +673,19 @@ export function buildInterviewPrecheckTool(
                 (slot) => slot.bookingAllowed && slot.interviewTime === selectedDraftTime,
               ),
           );
-          const duplicateBookingGuard = await resolveDuplicateBookingGuard({
-            deps,
-            context,
+          const duplicateBookingGuard = withBookedInterviewWindow(
+            await resolveDuplicateBookingGuard({
+              deps,
+              context,
+              jobId,
+              form: formRun.form,
+              contract: formRun.contract,
+              brandName: normalizePolicyText(job.basicInfo?.brandName) ?? null,
+              spongeService,
+            }),
             jobId,
-            form: formRun.form,
-            contract: formRun.contract,
-            brandName: normalizePolicyText(job.basicInfo?.brandName) ?? null,
-            spongeService,
-          });
+            windows,
+          );
           const nextAction = actionForForm(
             formRun,
             interviewTimeWaitNotice,
@@ -744,7 +779,7 @@ export function buildInterviewPrecheckTool(
                     label: nearestBookableSlot.label,
                     registrationDeadline: nearestBookableSlot.registrationDeadline,
                     instruction:
-                      '告知候选人"最近可约"时必须以此为准，不得跳过；registrationDeadline 是该场面试自己的报名截止时刻（如"当天 10:00 前报名"指面试当天 10:00），截止未过即可约，不存在"需要提前一天报名"的默认规则。',
+                      '告知候选人最近可约时段时必须以此为准，不得跳过；registrationDeadline 是该场面试自己的报名截止时刻，若规则写当天则指面试当天，截止未过即可约，不存在需要提前一天报名的默认规则。',
                   }
                 : undefined,
               flowDescription: analysis.interviewMeta.demand,
@@ -1165,16 +1200,19 @@ function replyInstruction(
           '禁止调用 duliday_interview_booking，也不要再收资或征询日期。如实告诉候选人「你之前已经报过这个岗位/品牌」、不用再提交；' +
           (timeHuman ? '面试时间按上述工单登记时间播报；' : '工单未记录面试时间，不要编造时间；') +
           '本账号无法操作该工单，随后调用 request_handoff(reasonCode="duplicate_signup") 转人工核实。' +
-          '禁止说"系统有问题/没提交成功/稍后再帮你提交"。'
+          '禁止把已有预约描述为系统故障、提交失败或尚待再次提交。'
         );
       }
+      const windowText = duplicateBookingGuard?.interviewWindow
+        ? `（所在面试时段 ${duplicateBookingGuard.interviewWindow}）`
+        : '';
       return (
-        `候选人在${scope}已有在途预约工单（工单 ${workOrderId}${timeHuman ? `，面试时间 ${timeHuman}` : ''}），可能刚由同事/另一账号提交：预约已经存在，` +
+        `候选人在${scope}已有在途预约工单（工单 ${workOrderId}${timeHuman ? `，面试时间 ${timeHuman}${windowText}` : ''}），可能刚由同事/另一账号提交：预约已经存在，` +
         '禁止调用 duliday_interview_booking，也不要再收资或征询日期。如实告诉候选人已经约上、不用再提交；' +
         (timeHuman
           ? '面试时间按上述工单登记时间播报。'
           : '工单未记录面试时间，不要编造时间，只复述本轮已确认过的时间。') +
-        '禁止说"系统有问题/没提交成功/稍后再帮你提交"。' +
+        '禁止把已有预约描述为系统故障、提交失败或尚待再次提交。' +
         `改时间用 duliday_modify_interview_time（workOrderId=${workOrderId}），取消用 duliday_cancel_work_order。`
       );
     }
@@ -1257,6 +1295,85 @@ async function resolveDuplicateBookingGuard(params: {
     return buildDuplicateGuard({ ...crossAccount, crossAccount: true }, params.jobId);
   }
   return undefined;
+}
+
+/** 同岗位在途工单补上面试窗口；同品牌他岗工单的排期不是本岗排期，不补。 */
+function withBookedInterviewWindow(
+  guard: DuplicateBookingGuard | undefined,
+  jobId: number,
+  windows: Parameters<typeof resolveBookedInterviewWindow>[0],
+): DuplicateBookingGuard | undefined {
+  if (!guard || guard.matchedBy !== 'job') return guard;
+  const window = resolveBookedInterviewWindow(windows, guard.interviewTime);
+  if (!window) return guard;
+  logger.log(
+    `[precheck] 在途工单面试窗口: jobId=${jobId} workOrderId=${guard.workOrderId} window=${window.text}`,
+  );
+  return { ...guard, interviewWindow: window.text };
+}
+
+interface CandidateJobBooking {
+  workOrderId: number;
+  interviewTime: string | null;
+  interviewTimeHuman?: string;
+  source: 'snapshot' | 'pointer';
+}
+
+/**
+ * 岗位详情查不到时，候选人在该岗位是否仍有在途预约（无查重时间窗）。
+ *
+ * 先看本轮预约快照（与 [当前预约信息] 同源，本人校验未通过的不算），再看 active_booking 指针；
+ * 只认同 jobId、面试日未过的预约。指针读失败由 LongTermService 吞成空列表，按无预约处理。
+ */
+async function findCandidateBookingForJob(params: {
+  deps: PrecheckAdjudicationDeps;
+  context: Parameters<ToolBuilder>[0];
+  jobId: number;
+}): Promise<CandidateJobBooking | undefined> {
+  const today = formatShanghaiDate(new Date());
+  const snapshotHit = findSnapshotBookingForJob(
+    params.context.archive.bookingWorkOrders ?? [],
+    params.jobId,
+    today,
+  );
+  if (snapshotHit) {
+    return toCandidateJobBooking(snapshotHit.workOrderId, snapshotHit.interviewTime, 'snapshot');
+  }
+  if (!params.deps.longTermService) return undefined;
+  const activeBookings = await params.deps.longTermService.getActiveBookings(
+    params.context.session.corpId,
+    params.context.session.userId,
+  );
+  const pointerHit = findActiveBookingForJob(activeBookings, params.jobId, today);
+  return pointerHit
+    ? toCandidateJobBooking(pointerHit.work_order_id, pointerHit.interview_time, 'pointer')
+    : undefined;
+}
+
+function toCandidateJobBooking(
+  workOrderId: number,
+  interviewTime: string | null | undefined,
+  source: CandidateJobBooking['source'],
+): CandidateJobBooking {
+  const time = interviewTime?.trim() || null;
+  // 快照面试时间是海绵 `yyyy-MM-dd HH:mm`，指针是 `YYYY-MM-DD HH:mm:ss`；人读格式统一按秒级解析。
+  const withSeconds = time && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/u.test(time) ? `${time}:00` : time;
+  return {
+    workOrderId,
+    interviewTime: time,
+    interviewTimeHuman: withSeconds ? formatInterviewTimeForReply(withSeconds) : undefined,
+    source,
+  };
+}
+
+function bookedJobUnverifiableInstruction(booking: CandidateJobBooking): string {
+  const timeText = booking.interviewTimeHuman ? `，面试时间 ${booking.interviewTimeHuman}` : '';
+  return (
+    `候选人在该岗位的预约仍然有效（工单 ${booking.workOrderId}${timeText}）；本次只是岗位详情暂时查不到，不代表预约失效。` +
+    '禁止对候选人说排不上、招满、名额已满、岗位失效或下架；禁止调用 duliday_job_list 换店推荐，禁止调用 duliday_interview_booking 重新报名，也不要重试本工具。' +
+    '候选人询问这次预约时按上述工单信息如实答复；是否属于改约按 [当前预约信息] 的预约处理规则判断。' +
+    '需要改约时本轮无法校验新时段、不能自助改约：调用 request_handoff(reasonCode="modify_appointment")，reason 写明原面试时间与候选人想改到的时间。'
+  );
 }
 
 function buildDuplicateGuard(

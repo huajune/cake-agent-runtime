@@ -7,15 +7,21 @@ import { asRecord, asRecordArray, type UnknownRecord } from '@infra/utils/object
  * 1. 福利备注 / 薪资备注写了阶梯薪资（满 N 小时、月工时区间、阶梯/分层字样），结构化阶梯字段却为空；
  * 2. 结构化节假日薪资与备注里能解析出数字的节假日薪资矛盾；
  * 3. 综合薪资上下限比例异常（上限/下限 > 3，或下限 > 上限，疑似多打一个零）；
- * 4. 在招岗位发薪日为空。
+ * 4. 在招岗位发薪日为空；
+ * 5. 组合排班只有1档（业务上应至少2档，查岗照常按该档匹配，提示海绵修数据）。
+ *
+ * 班次契约不合规（work_time_contract_invalid）由 SpongeService 取数时按岗位剔除，
+ * 调用方转成本类问题计入报告；该岗位不再进入上述检测。
  *
  * 只输出岗位 ID、品牌与数值/短片段，不输出门店联系人；告警文案由调用方拼装。
  */
 export type JobDataIssueKind =
+  | 'work_time_contract_invalid'
   | 'stair_text_without_structure'
   | 'holiday_salary_conflict'
   | 'comprehensive_salary_ratio'
-  | 'payday_missing';
+  | 'payday_missing'
+  | 'combined_arrangement_single_slot';
 
 export interface JobDataIssue {
   jobId: number | null;
@@ -26,10 +32,12 @@ export interface JobDataIssue {
 }
 
 export const JOB_DATA_ISSUE_LABELS: Record<JobDataIssueKind, string> = {
+  work_time_contract_invalid: '班次数据不合规',
   stair_text_without_structure: '备注有阶梯而结构化标无',
   holiday_salary_conflict: '节假日薪资两处矛盾',
   comprehensive_salary_ratio: '综合薪资上下限比例异常',
   payday_missing: '发薪日为空',
+  combined_arrangement_single_slot: '组合排班只有1档',
 };
 
 /** 综合薪资上限/下限超过该倍数视为异常（疑似多打一个零）。 */
@@ -215,6 +223,17 @@ function detectPaydayMissing(job: UnknownRecord): string | null {
   return null;
 }
 
+/** ⑤ 组合排班只有1档：业务要求至少2档，海绵修复前查岗按该档照常匹配。 */
+function detectCombinedArrangementSingleSlot(job: UnknownRecord): string | null {
+  const day = asRecord(asRecord(job.workTime)?.dayWorkTime);
+  if (day?.arrangementType !== '组合排班制') return null;
+  const slots = asRecordArray(day.combinedArrangement);
+  if (slots.length !== 1) return null;
+  const start = readText(slots[0].combinedArrangementStartTime) ?? '?';
+  const end = readText(slots[0].combinedArrangementEndTime) ?? '?';
+  return `组合排班只有1档（${start}-${end}），应至少2档`;
+}
+
 const DETECTORS: ReadonlyArray<{
   kind: JobDataIssueKind;
   detect: (job: UnknownRecord) => string | null;
@@ -223,6 +242,7 @@ const DETECTORS: ReadonlyArray<{
   { kind: 'holiday_salary_conflict', detect: detectHolidaySalaryConflict },
   { kind: 'comprehensive_salary_ratio', detect: detectComprehensiveSalaryRatio },
   { kind: 'payday_missing', detect: detectPaydayMissing },
+  { kind: 'combined_arrangement_single_slot', detect: detectCombinedArrangementSingleSlot },
 ];
 
 /** 体检单个岗位；非对象输入返回空数组。每类问题最多报一条。 */
@@ -248,10 +268,12 @@ export function countJobDataIssuesByKind(
   issues: readonly JobDataIssue[],
 ): Record<JobDataIssueKind, number> {
   const counts: Record<JobDataIssueKind, number> = {
+    work_time_contract_invalid: 0,
     stair_text_without_structure: 0,
     holiday_salary_conflict: 0,
     comprehensive_salary_ratio: 0,
     payday_missing: 0,
+    combined_arrangement_single_slot: 0,
   };
   for (const issue of issues) counts[issue.kind] += 1;
   return counts;

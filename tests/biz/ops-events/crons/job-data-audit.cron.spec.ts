@@ -13,7 +13,13 @@ import {
 type ConfigMap = Record<string, string | undefined>;
 
 function makeService(configMap: ConfigMap) {
-  const spongeService = { fetchJobs: jest.fn() };
+  const spongeService = {
+    fetchJobs: jest.fn(),
+    fetchBrandList: jest.fn().mockResolvedValue([
+      { id: 1, name: '品牌一' },
+      { id: 2, name: '品牌二' },
+    ]),
+  };
   const alertNotifier = { sendAlert: jest.fn().mockResolvedValue(true) };
   const redisService = {
     setNx: jest.fn().mockResolvedValue(true),
@@ -70,8 +76,10 @@ describe('JobDataAuditCronService.runOnce', () => {
 
     expect(spongeService.fetchJobs).toHaveBeenCalledTimes(2);
     expect(spongeService.fetchJobs).toHaveBeenNthCalledWith(1, {
+      brandIdList: [1, 2],
       pageNum: 1,
       pageSize: 50,
+      invalidWorkTime: 'skip',
       options: {
         includeBasicInfo: true,
         includeJobSalary: true,
@@ -108,6 +116,50 @@ describe('JobDataAuditCronService.runOnce', () => {
     expect(report).not.toMatch(/1[3-9]\d{9}/);
   });
 
+  it('班次数据不合规的岗位计入体检问题并告警，不中断后续分页', async () => {
+    const { service, spongeService, alertNotifier } = makeService(PROD_ENABLED);
+    const clean = (jobId: number) =>
+      buildSpongeJobFixture(IDS.KFC_RPO_STAIR_PERIODIC_INTERVIEW, (draft) => {
+        draft.basicInfo!.jobId = jobId;
+      });
+    const reason =
+      '海绵班次数据契约错误：dayWorkTime.combinedArrangement.0.combinedArrangementEndTime: 班次起止钟点相同，海绵需明确含义或修复';
+    // 第一页 49 条合规 + 1 条被剔除，仍是满页，必须继续拉第二页。
+    spongeService.fetchJobs
+      .mockResolvedValueOnce({
+        ...page(
+          Array.from({ length: 49 }, (_, i) => clean(810000 + i)),
+          52,
+        ),
+        skippedInvalidWorkTime: [{ jobId: 529577, brandName: '品牌一', reason }],
+      })
+      .mockResolvedValueOnce({
+        ...page([clean(810049)], 52),
+        skippedInvalidWorkTime: [
+          { jobId: 527951, brandName: '品牌二', reason },
+          { jobId: 529577, brandName: '品牌一', reason },
+        ],
+      });
+
+    const result = await service.runOnce();
+
+    expect(spongeService.fetchJobs).toHaveBeenCalledTimes(2);
+    expect(spongeService.fetchJobs.mock.calls[1][0]).toMatchObject({
+      pageNum: 2,
+      invalidWorkTime: 'skip',
+    });
+    expect(result).toMatchObject({ scanned: 52, total: 52, truncated: false, alerted: true });
+    expect(result.fetchError).toBeUndefined();
+    expect(result.byKind.work_time_contract_invalid).toBe(2);
+    const context = alertNotifier.sendAlert.mock.calls[0][0];
+    expect(context.summary).toContain('52 个在招岗位发现 2 处录入问题');
+    expect(context.summary).toContain('班次数据不合规 2');
+    const report = context.diagnostics.payload.report as string;
+    expect(report).toContain('【班次数据不合规】2 条');
+    expect(report).toContain('- 529577 品牌一：');
+    expect(report).toContain('- 527951 品牌二：');
+  });
+
   it('没有问题时只记日志不发告警', async () => {
     const { service, spongeService, alertNotifier } = makeService(PROD_ENABLED);
     spongeService.fetchJobs.mockResolvedValueOnce(
@@ -126,6 +178,47 @@ describe('JobDataAuditCronService.runOnce', () => {
     expect(result.issues).toEqual([]);
     expect(result.alerted).toBe(false);
     expect(alertNotifier.sendAlert).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { brands: [] },
+    { brands: [{ name: '无 ID 品牌' }] },
+    ...[undefined, null, 0, -1, 1.5, '2'].map((id) => ({
+      brands: [
+        { id: 1, name: '有效品牌' },
+        { id, name: '无效品牌' },
+      ],
+    })),
+  ])('品牌范围不可用时告警，不发无筛选岗位查询：%j', async ({ brands }) => {
+    const { service, spongeService, alertNotifier } = makeService(PROD_ENABLED);
+    spongeService.fetchBrandList.mockResolvedValue(brands);
+    const result = await service.runOnce();
+    expect(result).toMatchObject({ scanned: 0, truncated: true, alerted: true });
+    expect(result.fetchError).toContain('品牌范围读取失败');
+    expect(spongeService.fetchJobs).not.toHaveBeenCalled();
+    expect(alertNotifier.sendAlert).toHaveBeenCalledTimes(1);
+  });
+
+  it('新鲜品牌目录读取失败时告警，不使用旧目录报告完整扫描', async () => {
+    const { service, spongeService, alertNotifier } = makeService(PROD_ENABLED);
+    spongeService.fetchBrandList.mockRejectedValue(new Error('品牌列表 API 返回 503'));
+    const result = await service.runOnce();
+    expect(spongeService.fetchBrandList).toHaveBeenCalledWith({ requireFresh: true });
+    expect(result).toMatchObject({ scanned: 0, truncated: true, alerted: true });
+    expect(result.fetchError).toContain('品牌范围读取失败');
+    expect(spongeService.fetchJobs).not.toHaveBeenCalled();
+    expect(alertNotifier.sendAlert).toHaveBeenCalledTimes(1);
+  });
+
+  it('扫描截断即使暂无录入问题也告警，不能表示完整体检正常', async () => {
+    const { service, spongeService, alertNotifier } = makeService({
+      ...PROD_ENABLED,
+      JOB_DATA_AUDIT_TIME_BUDGET_MS: '0',
+    });
+    const result = await service.runOnce();
+    expect(result).toMatchObject({ scanned: 0, truncated: true, alerted: true });
+    expect(spongeService.fetchJobs).not.toHaveBeenCalled();
+    expect(alertNotifier.sendAlert.mock.calls[0][0].summary).toContain('扫描已截断');
   });
 
   it('分页触顶时标记 truncated 并写进告警摘要，不再继续翻页', async () => {

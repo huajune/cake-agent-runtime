@@ -1,0 +1,549 @@
+{
+  "cases": [
+    {
+      "caseId": "SCN-SHIFT-20261009-001",
+      "caseName": "固定排班必须接受全部班次",
+      "category": "班次匹配",
+      "userMessage": "帮我核对之前的必胜客慈寿寺卫星店，我只有每天8点到14点有空，能做吗？",
+      "checkpoint": "核对指定岗位事实；固定排班08–14及15–20必须全部接受，不得仅因一档满足而承诺能上岗。",
+      "expectedOutput": "期望行为：核对指定岗位事实；固定排班08–14及15–20必须全部接受，不得仅因一档满足而承诺能上岗。 动态岗位事实、在招状态、班次数量和时间以本轮 duliday_job_list 返回为准；原岗位停招或排班改变导致目标未触发时标记测试资产不可评估。",
+      "sourceType": "手工新增",
+      "remark": "手工设计的单轮/记忆前置状态用例，无生产chatId，不伪造历史事故。已知岗位来自2026-10-09海绵快照；运行时实时核对。仅开放只读查岗及地理工具，无报名或消息副作用。",
+      "enabled": true,
+      "memorySetup": {
+        "sessionFacts": {
+          "preferences": {
+            "city": "北京市",
+            "labor_form": "兼职"
+          }
+        },
+        "presentedJobs": [
+          {
+            "jobId": 527773,
+            "brandName": "必胜客",
+            "jobName": "必胜客-慈寿寺卫星PH-内场/外场-小时工",
+            "storeName": "慈寿寺卫星PH",
+            "cityName": "北京市",
+            "regionName": "海淀区",
+            "storeAddress": "北京市-海淀区-玲珑路琨御府东区9号楼下沉广场B120号归位瑜伽(琨御府店)",
+            "laborForm": "兼职"
+          }
+        ],
+        "currentFocusJob": {
+          "jobId": 527773,
+          "brandName": "必胜客",
+          "jobName": "必胜客-慈寿寺卫星PH-内场/外场-小时工",
+          "storeName": "慈寿寺卫星PH",
+          "cityName": "北京市",
+          "regionName": "海淀区",
+          "storeAddress": "北京市-海淀区-玲珑路琨御府东区9号楼下沉广场B120号归位瑜伽(琨御府店)",
+          "laborForm": "兼职"
+        }
+      },
+      "memoryAssertions": {
+        "sessionFacts": {
+          "preferences": {
+            "schedule_constraint": {
+              "availableWindow": {
+                "start": "08:00",
+                "end": "14:00"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "caseId": "SCN-SHIFT-20261009-002",
+      "caseName": "组合排班满足一档完整班次",
+      "category": "班次匹配",
+      "userMessage": "帮我核对之前的必胜客朝内店，我每天只有7点到15点能上班，时间合适吗？",
+      "checkpoint": "按已知岗位ID核对组合排班07:00–15:00／15:00–23:00；候选人7–15点完整覆盖第一档即匹配，不要求接受全部班次，也不把两档时长相加。",
+      "expectedOutput": "期望行为：按已知岗位ID核对组合排班07:00–15:00／15:00–23:00；候选人7–15点完整覆盖第一档即匹配，不要求接受全部班次，也不把两档时长相加。 动态岗位事实、在招状态、班次与命中数量以本轮 duliday_job_list 返回为准；岗位停招或排班改变导致检查点未触发时标记测试资产不可评估。",
+      "sourceType": "手工新增",
+      "memorySetup": {
+        "sessionFacts": {
+          "preferences": {
+            "city": "北京市",
+            "labor_form": "兼职"
+          }
+        },
+        "presentedJobs": [
+          {
+            "jobId": 527778,
+            "brandName": "必胜客",
+            "jobName": "必胜客-朝内-内场/外场-小时工",
+            "storeName": "朝内",
+            "cityName": "北京市",
+            "regionName": "东城区",
+            "storeAddress": "北京市-东城区-朝阳门街道朝阳门内大街130号1层必胜客(朝内店)",
+            "laborForm": "兼职"
+          }
+        ],
+        "currentFocusJob": {
+          "jobId": 527778,
+          "brandName": "必胜客",
+          "jobName": "必胜客-朝内-内场/外场-小时工",
+          "storeName": "朝内",
+          "cityName": "北京市",
+          "regionName": "东城区",
+          "storeAddress": "北京市-东城区-朝阳门街道朝阳门内大街130号1层必胜客(朝内店)",
+          "laborForm": "兼职"
+        }
+      },
+      "memoryAssertions": {
+        "sessionFacts": {
+          "preferences": {
+            "schedule_constraint": {
+              "availableWindow": {
+                "start": "07:00",
+                "end": "15:00"
+              }
+            }
+          }
+        }
+      },
+      "remark": "手工设计的单轮/记忆前置状态用例，无生产chatId，不伪造历史事故。岗位锚点来自2026-10-13海绵在招快照，运行时实时核对。仅开放只读查岗及地理工具，无报名或消息副作用。 原锚点拉瓦萨海科路529561已停招，2026-10-13换为同语义的必胜客朝内527778。",
+      "enabled": true
+    },
+    {
+      "caseId": "SCN-SHIFT-20261009-003",
+      "caseName": "灵活排班须接受整个排班区间",
+      "category": "班次匹配",
+      "userMessage": "帮我核对之前苏州胥江里奥乐齐的排班，我每天15点到23点有空，是不是可以安排？",
+      "checkpoint": "灵活排班须接受整个排班区间：候选人15–23有空，排班区间未被整段覆盖即不匹配，不能承诺可安排；区间被整段覆盖才可推荐，并说明门店在区间内安排每班时长。",
+      "expectedOutput": "期望行为：灵活排班须接受整个排班区间：候选人15–23有空，排班区间未被整段覆盖即不匹配，不能承诺可安排；区间被整段覆盖才可推荐，并说明门店在区间内安排每班时长。 动态岗位事实、在招状态、班次数量和时间以本轮 duliday_job_list 返回为准；原岗位停招或排班改变导致目标未触发时标记测试资产不可评估。",
+      "sourceType": "手工新增",
+      "remark": "手工设计的单轮/记忆前置状态用例，无生产chatId，不伪造历史事故。已知岗位来自2026-10-09海绵快照；运行时实时核对。仅开放只读查岗及地理工具，无报名或消息副作用。",
+      "enabled": true,
+      "memorySetup": {
+        "sessionFacts": {
+          "preferences": {
+            "city": "苏州市",
+            "labor_form": "兼职"
+          }
+        },
+        "presentedJobs": [
+          {
+            "jobId": 529545,
+            "brandName": "奥乐齐",
+            "jobName": "奥乐齐-苏州胥江里-社会兼职-小时工",
+            "storeName": "苏州胥江里",
+            "cityName": "苏州市",
+            "regionName": "姑苏区",
+            "storeAddress": "胥台路与新康路交叉口西120米胥江里综合体商业酒店",
+            "laborForm": "兼职"
+          }
+        ],
+        "currentFocusJob": {
+          "jobId": 529545,
+          "brandName": "奥乐齐",
+          "jobName": "奥乐齐-苏州胥江里-社会兼职-小时工",
+          "storeName": "苏州胥江里",
+          "cityName": "苏州市",
+          "regionName": "姑苏区",
+          "storeAddress": "胥台路与新康路交叉口西120米胥江里综合体商业酒店",
+          "laborForm": "兼职"
+        }
+      },
+      "memoryAssertions": {
+        "sessionFacts": {
+          "preferences": {
+            "schedule_constraint": {
+              "availableWindow": {
+                "start": "15:00",
+                "end": "23:00"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "caseId": "SCN-SHIFT-20261009-004",
+      "caseName": "询问班次事实不产生候选人限制",
+      "category": "班次匹配",
+      "userMessage": "之前必胜客朝内这个岗位每天几点上班、几点下班？",
+      "checkpoint": "用inspect按已知岗位ID核对真实班次，说明组合排班任选其中一档完整班次；不得从提问生成个人早晚班或可用时间限制。",
+      "expectedOutput": "期望行为：用inspect按已知岗位ID核对真实班次，说明组合排班任选其中一档完整班次；不得从提问生成个人早晚班或可用时间限制。 动态岗位事实、在招状态、班次与命中数量以本轮 duliday_job_list 返回为准；岗位停招或排班改变导致检查点未触发时标记测试资产不可评估。",
+      "sourceType": "手工新增",
+      "memorySetup": {
+        "sessionFacts": {
+          "preferences": {
+            "city": "北京市",
+            "labor_form": "兼职"
+          }
+        },
+        "presentedJobs": [
+          {
+            "jobId": 527778,
+            "brandName": "必胜客",
+            "jobName": "必胜客-朝内-内场/外场-小时工",
+            "storeName": "朝内",
+            "cityName": "北京市",
+            "regionName": "东城区",
+            "storeAddress": "北京市-东城区-朝阳门街道朝阳门内大街130号1层必胜客(朝内店)",
+            "laborForm": "兼职"
+          }
+        ],
+        "currentFocusJob": {
+          "jobId": 527778,
+          "brandName": "必胜客",
+          "jobName": "必胜客-朝内-内场/外场-小时工",
+          "storeName": "朝内",
+          "cityName": "北京市",
+          "regionName": "东城区",
+          "storeAddress": "北京市-东城区-朝阳门街道朝阳门内大街130号1层必胜客(朝内店)",
+          "laborForm": "兼职"
+        }
+      },
+      "memoryAssertions": {
+        "sessionFacts": {
+          "preferences": {
+            "schedule_constraint": null
+          }
+        }
+      },
+      "remark": "手工设计的单轮/记忆前置状态用例，无生产chatId，不伪造历史事故。岗位锚点来自2026-10-13海绵在招快照，运行时实时核对。仅开放只读查岗及地理工具，无报名或消息副作用。 原锚点拉瓦萨海科路529561已停招，2026-10-13换为同语义的必胜客朝内527778。",
+      "enabled": true
+    },
+    {
+      "caseId": "SCN-SHIFT-20261009-005",
+      "caseName": "跨轮未修改时段仍保留",
+      "category": "班次匹配",
+      "userMessage": "帮我再查一下北京必胜客朝内的岗位，之前说的上班时间不变。",
+      "checkpoint": "记忆中的07:00–15:00可上班时段保留，工具仍按原条件评估（朝内第一档完整满足），不可因当前轮没重述钟点而清空。",
+      "expectedOutput": "期望行为：记忆中的07:00–15:00可上班时段保留，工具仍按原条件评估（朝内第一档完整满足），不可因当前轮没重述钟点而清空。 动态岗位事实、在招状态、班次与命中数量以本轮 duliday_job_list 返回为准；岗位停招或排班改变导致检查点未触发时标记测试资产不可评估。",
+      "sourceType": "手工新增",
+      "memorySetup": {
+        "sessionFacts": {
+          "preferences": {
+            "city": "北京市",
+            "labor_form": "兼职",
+            "schedule_constraint": {
+              "availableWindow": {
+                "start": "07:00",
+                "end": "15:00"
+              }
+            }
+          }
+        },
+        "presentedJobs": [
+          {
+            "jobId": 527778,
+            "brandName": "必胜客",
+            "jobName": "必胜客-朝内-内场/外场-小时工",
+            "storeName": "朝内",
+            "cityName": "北京市",
+            "regionName": "东城区",
+            "storeAddress": "北京市-东城区-朝阳门街道朝阳门内大街130号1层必胜客(朝内店)",
+            "laborForm": "兼职"
+          }
+        ],
+        "currentFocusJob": {
+          "jobId": 527778,
+          "brandName": "必胜客",
+          "jobName": "必胜客-朝内-内场/外场-小时工",
+          "storeName": "朝内",
+          "cityName": "北京市",
+          "regionName": "东城区",
+          "storeAddress": "北京市-东城区-朝阳门街道朝阳门内大街130号1层必胜客(朝内店)",
+          "laborForm": "兼职"
+        }
+      },
+      "memoryAssertions": {
+        "sessionFacts": {
+          "preferences": {
+            "schedule_constraint": {
+              "availableWindow": {
+                "start": "07:00",
+                "end": "15:00"
+              }
+            }
+          }
+        }
+      },
+      "remark": "手工设计的单轮/记忆前置状态用例，无生产chatId，不伪造历史事故。岗位锚点来自2026-10-13海绵在招快照，运行时实时核对。仅开放只读查岗及地理工具，无报名或消息副作用。 原锚点拉瓦萨海科路529561已停招，2026-10-13换为同语义的必胜客朝内527778。",
+      "enabled": true
+    },
+    {
+      "caseId": "SCN-SHIFT-20261009-006",
+      "caseName": "明确撤销时段不复活旧条件",
+      "category": "班次匹配",
+      "userMessage": "之前7点到15点的限制取消，现在每天任何时间都能上班，帮我重新查北京必胜客朝内的岗位。",
+      "checkpoint": "撤销availableWindow，查询和轮末记忆均不保留07:00–15:00限制；不能从历史补回。",
+      "expectedOutput": "期望行为：撤销availableWindow，查询和轮末记忆均不保留07:00–15:00限制；不能从历史补回。 动态岗位事实、在招状态、班次与命中数量以本轮 duliday_job_list 返回为准；岗位停招或排班改变导致检查点未触发时标记测试资产不可评估。",
+      "sourceType": "手工新增",
+      "memorySetup": {
+        "sessionFacts": {
+          "preferences": {
+            "city": "北京市",
+            "labor_form": "兼职",
+            "schedule_constraint": {
+              "availableWindow": {
+                "start": "07:00",
+                "end": "15:00"
+              }
+            }
+          }
+        },
+        "presentedJobs": [
+          {
+            "jobId": 527778,
+            "brandName": "必胜客",
+            "jobName": "必胜客-朝内-内场/外场-小时工",
+            "storeName": "朝内",
+            "cityName": "北京市",
+            "regionName": "东城区",
+            "storeAddress": "北京市-东城区-朝阳门街道朝阳门内大街130号1层必胜客(朝内店)",
+            "laborForm": "兼职"
+          }
+        ],
+        "currentFocusJob": {
+          "jobId": 527778,
+          "brandName": "必胜客",
+          "jobName": "必胜客-朝内-内场/外场-小时工",
+          "storeName": "朝内",
+          "cityName": "北京市",
+          "regionName": "东城区",
+          "storeAddress": "北京市-东城区-朝阳门街道朝阳门内大街130号1层必胜客(朝内店)",
+          "laborForm": "兼职"
+        }
+      },
+      "memoryAssertions": {
+        "sessionFacts": {
+          "preferences": {
+            "schedule_constraint": {
+              "availableWindow": null
+            }
+          }
+        }
+      },
+      "remark": "手工设计的单轮/记忆前置状态用例，无生产chatId，不伪造历史事故。岗位锚点来自2026-10-13海绵在招快照，运行时实时核对。仅开放只读查岗及地理工具，无报名或消息副作用。 原锚点拉瓦萨海科路529561已停招，2026-10-13换为同语义的必胜客朝内527778。",
+      "enabled": true
+    },
+    {
+      "caseId": "SCN-SHIFT-20261009-007",
+      "caseName": "夜班负向标签筛选",
+      "category": "班次匹配",
+      "userMessage": "我在上海找奥乐齐的兼职，有没有不上夜班的？",
+      "checkpoint": "本次查询excludeTags=[night]，排除带夜班标签的岗位（如22:00–次日07:00），不把“不上夜班”解释为只做夜班；推荐中不得出现夜班岗位。",
+      "expectedOutput": "期望行为：本次查询excludeTags=[night]，排除带夜班标签的岗位（如22:00–次日07:00），不把“不上夜班”解释为只做夜班；推荐中不得出现夜班岗位。 动态岗位事实、在招状态、班次与命中数量以本轮 duliday_job_list 返回为准；岗位停招或排班改变导致检查点未触发时标记测试资产不可评估。",
+      "sourceType": "手工新增",
+      "remark": "手工设计的单轮/记忆前置状态用例，无生产chatId，不伪造历史事故。岗位锚点来自2026-10-13海绵在招快照，运行时实时核对。仅开放只读查岗及地理工具，无报名或消息副作用。 需求示例“有没有不上夜班的→不含夜班标签的岗位”。本条只断言本次查询排除夜班；疑问句不要求保存为持续偏好。原上海拉瓦萨已无在招岗位，2026-10-13换为上海奥乐齐（22岗，9岗夜班）。",
+      "enabled": true
+    },
+    {
+      "caseId": "SCN-SHIFT-20261009-008",
+      "caseName": "明确钟点按完整班次筛选",
+      "category": "班次匹配",
+      "userMessage": "我在上海找成都你六姐的兼职，每天只有下午三点到晚上九点有空，帮我找找。",
+      "checkpoint": "按15:00–21:00完整包含检查，固定排班全部班次、组合排班任一档须完整落在区间内；仅标签或时段重叠不算符合；查询不完整时不得断言全范围无岗。",
+      "expectedOutput": "期望行为：按15:00–21:00完整包含检查，固定排班全部班次、组合排班任一档须完整落在区间内；仅标签或时段重叠不算符合；查询不完整时不得断言全范围无岗。 动态岗位事实、在招状态、班次与命中数量以本轮 duliday_job_list 返回为准；岗位停招或排班改变导致检查点未触发时标记测试资产不可评估。",
+      "sourceType": "手工新增",
+      "memoryAssertions": {
+        "sessionFacts": {
+          "preferences": {
+            "schedule_constraint": {
+              "availableWindow": {
+                "start": "15:00",
+                "end": "21:00"
+              }
+            }
+          }
+        }
+      },
+      "remark": "手工设计的单轮/记忆前置状态用例，无生产chatId，不伪造历史事故。岗位锚点来自2026-10-13海绵在招快照，运行时实时核对。仅开放只读查岗及地理工具，无报名或消息副作用。 需求示例“下午三点到晚上九点”。原上海拉瓦萨已无在招岗位，2026-10-13换为上海成都你六姐（89岗，按现行规则约7岗完整落在区间）。",
+      "enabled": true
+    },
+    {
+      "caseId": "SCN-SHIFT-20261013-009",
+      "caseName": "询问早班按早班或上午班标签粗筛",
+      "category": "班次匹配",
+      "userMessage": "我在深圳，想找肯德基的兼职，有早班吗？",
+      "checkpoint": "“早班”映射为早班＋上午班，本次查询includeAnyTags=[early,morning]，只推荐含早班或上午班标签的岗位；询问不沉淀为持续限制。",
+      "expectedOutput": "期望行为：“早班”映射为早班＋上午班，本次查询includeAnyTags=[early,morning]，只推荐含早班或上午班标签的岗位；询问不沉淀为持续限制。 动态岗位事实、在招状态、班次与命中数量以本轮 duliday_job_list 返回为准；岗位停招或排班改变导致检查点未触发时标记测试资产不可评估。",
+      "sourceType": "手工新增",
+      "memoryAssertions": {
+        "sessionFacts": {
+          "preferences": {
+            "schedule_constraint": null
+          }
+        }
+      },
+      "remark": "手工设计的单轮/记忆前置状态用例，无生产chatId，不伪造历史事故。岗位锚点来自2026-10-13海绵在招快照，运行时实时核对。仅开放只读查岗及地理工具，无报名或消息副作用。 需求示例“早班有吗→含早班或上午班标签的岗位”。深圳肯德基24岗，约9岗命中。",
+      "enabled": true
+    },
+    {
+      "caseId": "SCN-SHIFT-20261013-010",
+      "caseName": "只做晚班按晚班标签粗筛",
+      "category": "班次匹配",
+      "userMessage": "我在上海找成都你六姐的兼职，我只做晚班。",
+      "checkpoint": "“只做晚班”映射为includeAnyTags=[evening]，推荐含晚班标签的岗位（标签粗筛，不要求每档都是晚班）；作为持续要求保存。",
+      "expectedOutput": "期望行为：“只做晚班”映射为includeAnyTags=[evening]，推荐含晚班标签的岗位（标签粗筛，不要求每档都是晚班）；作为持续要求保存。 动态岗位事实、在招状态、班次与命中数量以本轮 duliday_job_list 返回为准；岗位停招或排班改变导致检查点未触发时标记测试资产不可评估。",
+      "sourceType": "手工新增",
+      "memoryAssertions": {
+        "sessionFacts": {
+          "preferences": {
+            "schedule_constraint": {
+              "includeAnyTags": [
+                "evening"
+              ]
+            }
+          }
+        }
+      },
+      "remark": "手工设计的单轮/记忆前置状态用例，无生产chatId，不伪造历史事故。岗位锚点来自2026-10-13海绵在招快照，运行时实时核对。仅开放只读查岗及地理工具，无报名或消息副作用。 需求示例“只做晚班→含晚班标签的岗位”。上海成都你六姐89岗，约21岗命中。",
+      "enabled": true
+    },
+    {
+      "caseId": "SCN-SHIFT-20261013-011",
+      "caseName": "只给开始时间按班次开始时间筛选",
+      "category": "班次匹配",
+      "userMessage": "我在上海找成都你六姐的兼职，每天17点以后有空。",
+      "checkpoint": "按availableWindow.start=17:00筛选，不补结束上限；固定排班全部班次、组合排班任一档开始不早于17:00才匹配。",
+      "expectedOutput": "期望行为：按availableWindow.start=17:00筛选，不补结束上限；固定排班全部班次、组合排班任一档开始不早于17:00才匹配。 动态岗位事实、在招状态、班次与命中数量以本轮 duliday_job_list 返回为准；岗位停招或排班改变导致检查点未触发时标记测试资产不可评估。",
+      "sourceType": "手工新增",
+      "memoryAssertions": {
+        "sessionFacts": {
+          "preferences": {
+            "schedule_constraint": {
+              "availableWindow": {
+                "start": "17:00"
+              }
+            }
+          }
+        }
+      },
+      "remark": "手工设计的单轮/记忆前置状态用例，无生产chatId，不伪造历史事故。岗位锚点来自2026-10-13海绵在招快照，运行时实时核对。仅开放只读查岗及地理工具，无报名或消息副作用。 需求示例“17点后有空→班次开始时间≥17点”。上海成都你六姐89岗，约24岗命中。",
+      "enabled": true
+    },
+    {
+      "caseId": "SCN-SHIFT-20261013-012",
+      "caseName": "夜班加晚上十点到凌晨按时段匹配",
+      "category": "班次匹配",
+      "userMessage": "我在上海找奥乐齐的夜班，晚上十点到凌晨都可以。",
+      "checkpoint": "有明确时段时忽略“夜班”标签，只按availableWindow.start=22:00匹配，不补结束边界；只推荐开始不早于22:00的班次或灵活排班区间。",
+      "expectedOutput": "期望行为：有明确时段时忽略“夜班”标签，只按availableWindow.start=22:00匹配，不补结束边界；只推荐开始不早于22:00的班次或灵活排班区间。 动态岗位事实、在招状态、班次与命中数量以本轮 duliday_job_list 返回为准；岗位停招或排班改变导致检查点未触发时标记测试资产不可评估。",
+      "sourceType": "手工新增",
+      "memoryAssertions": {
+        "sessionFacts": {
+          "preferences": {
+            "schedule_constraint": {
+              "availableWindow": {
+                "start": "22:00"
+              }
+            }
+          }
+        }
+      },
+      "remark": "手工设计的单轮/记忆前置状态用例，无生产chatId，不伪造历史事故。岗位锚点来自2026-10-13海绵在招快照，运行时实时核对。仅开放只读查岗及地理工具，无报名或消息副作用。 需求示例“夜班，晚上十点到凌晨→忽略夜班标签，班次开始≥22点”。上海奥乐齐22岗，约9岗命中。",
+      "enabled": true
+    },
+    {
+      "caseId": "SCN-SHIFT-20261013-013",
+      "caseName": "询问排班方式时灵活排班岗位排前",
+      "category": "班次匹配",
+      "userMessage": "北京果蔬好的兼职，班次是固定的还是可以自己选的？",
+      "checkpoint": "解释固定排班须接受全部班次、组合排班任选一档、灵活排班须接受整个排班区间由门店安排每班时长；本次查岗preferFlexibleSchedule=true，灵活排班岗位排在前面；仅询问不作为持续偏好保存。",
+      "expectedOutput": "期望行为：解释固定排班须接受全部班次、组合排班任选一档、灵活排班须接受整个排班区间由门店安排每班时长；本次查岗preferFlexibleSchedule=true，灵活排班岗位排在前面；仅询问不作为持续偏好保存。 动态岗位事实、在招状态、班次与命中数量以本轮 duliday_job_list 返回为准；岗位停招或排班改变导致检查点未触发时标记测试资产不可评估。",
+      "sourceType": "手工新增",
+      "memoryAssertions": {
+        "sessionFacts": {
+          "preferences": {
+            "schedule_constraint": null
+          }
+        }
+      },
+      "remark": "手工设计的单轮/记忆前置状态用例，无生产chatId，不伪造历史事故。岗位锚点来自2026-10-13海绵在招快照，运行时实时核对。仅开放只读查岗及地理工具，无报名或消息副作用。 需求S4“灵活排班岗位优先；固定班次岗位标注固定排班”。北京果蔬好11岗，含1个灵活排班（东湖店528821）。",
+      "enabled": true
+    },
+    {
+      "caseId": "SCN-SHIFT-20261013-014",
+      "caseName": "午高峰映射中班",
+      "category": "班次匹配",
+      "userMessage": "我在深圳找肯德基的兼职，只能做午高峰。",
+      "checkpoint": "“午高峰”映射为中班，includeAnyTags=[midday]，推荐含中班标签的岗位；作为持续要求保存。",
+      "expectedOutput": "期望行为：“午高峰”映射为中班，includeAnyTags=[midday]，推荐含中班标签的岗位；作为持续要求保存。 动态岗位事实、在招状态、班次与命中数量以本轮 duliday_job_list 返回为准；岗位停招或排班改变导致检查点未触发时标记测试资产不可评估。",
+      "sourceType": "手工新增",
+      "memoryAssertions": {
+        "sessionFacts": {
+          "preferences": {
+            "schedule_constraint": {
+              "includeAnyTags": [
+                "midday"
+              ]
+            }
+          }
+        }
+      },
+      "remark": "手工设计的单轮/记忆前置状态用例，无生产chatId，不伪造历史事故。岗位锚点来自2026-10-13海绵在招快照，运行时实时核对。仅开放只读查岗及地理工具，无报名或消息副作用。 需求表述映射“午高峰→中班”。深圳肯德基24岗，约9岗命中。",
+      "enabled": true
+    },
+    {
+      "caseId": "SCN-SHIFT-20261013-015",
+      "caseName": "大夜映射夜班",
+      "category": "班次匹配",
+      "userMessage": "我在上海，奥乐齐有没有大夜班？",
+      "checkpoint": "“大夜”映射为夜班，本次查询includeAnyTags=[night]，只介绍含夜班标签的岗位；询问不沉淀为持续限制。",
+      "expectedOutput": "期望行为：“大夜”映射为夜班，本次查询includeAnyTags=[night]，只介绍含夜班标签的岗位；询问不沉淀为持续限制。 动态岗位事实、在招状态、班次与命中数量以本轮 duliday_job_list 返回为准；岗位停招或排班改变导致检查点未触发时标记测试资产不可评估。",
+      "sourceType": "手工新增",
+      "memoryAssertions": {
+        "sessionFacts": {
+          "preferences": {
+            "schedule_constraint": null
+          }
+        }
+      },
+      "remark": "手工设计的单轮/记忆前置状态用例，无生产chatId，不伪造历史事故。岗位锚点来自2026-10-13海绵在招快照，运行时实时核对。仅开放只读查岗及地理工具，无报名或消息副作用。 需求表述映射“大夜→夜班”。上海奥乐齐22岗，约9岗夜班。",
+      "enabled": true
+    },
+    {
+      "caseId": "SCN-SHIFT-20261013-016",
+      "caseName": "可上班时段与不上夜班同时生效",
+      "category": "班次匹配",
+      "userMessage": "我在上海找成都你六姐的兼职，下午5点以后有空，但是不上夜班。",
+      "checkpoint": "availableWindow.start=17:00与excludeTags=[night]同时生效：班次开始不早于17:00且岗位不含夜班标签才匹配；不能因时段存在而忽略夜班排除，也不能整体待确认。",
+      "expectedOutput": "期望行为：availableWindow.start=17:00与excludeTags=[night]同时生效：班次开始不早于17:00且岗位不含夜班标签才匹配；不能因时段存在而忽略夜班排除，也不能整体待确认。 动态岗位事实、在招状态、班次与命中数量以本轮 duliday_job_list 返回为准；岗位停招或排班改变导致检查点未触发时标记测试资产不可评估。",
+      "sourceType": "手工新增",
+      "memoryAssertions": {
+        "sessionFacts": {
+          "preferences": {
+            "schedule_constraint": {
+              "availableWindow": {
+                "start": "17:00"
+              },
+              "excludeTags": [
+                "night"
+              ]
+            }
+          }
+        }
+      },
+      "remark": "手工设计的单轮/记忆前置状态用例，无生产chatId，不伪造历史事故。岗位锚点来自2026-10-13海绵在招快照，运行时实时核对。仅开放只读查岗及地理工具，无报名或消息副作用。 2026-10-12裁定：排除标签与时段同时生效。上海成都你六姐89岗，约18岗命中。",
+      "enabled": true
+    },
+    {
+      "caseId": "SCN-SHIFT-20261013-017",
+      "caseName": "几点以后不行延续到次日凌晨4点",
+      "category": "班次匹配",
+      "userMessage": "我在上海找成都你六姐的兼职，晚上10点以后不行。",
+      "checkpoint": "写unavailableWindow.start=22:00，不补结束；与22:00–次日04:00有重叠的班次都不推荐（如21:30–次日00:30、18:30–22:30），其余照常。",
+      "expectedOutput": "期望行为：写unavailableWindow.start=22:00，不补结束；与22:00–次日04:00有重叠的班次都不推荐（如21:30–次日00:30、18:30–22:30），其余照常。 动态岗位事实、在招状态、班次与命中数量以本轮 duliday_job_list 返回为准；岗位停招或排班改变导致检查点未触发时标记测试资产不可评估。",
+      "sourceType": "手工新增",
+      "memoryAssertions": {
+        "sessionFacts": {
+          "preferences": {
+            "schedule_constraint": {
+              "unavailableWindow": {
+                "start": "22:00"
+              }
+            }
+          }
+        }
+      },
+      "remark": "手工设计的单轮/记忆前置状态用例，无生产chatId，不伪造历史事故。岗位锚点来自2026-10-13海绵在招快照，运行时实时核对。仅开放只读查岗及地理工具，无报名或消息副作用。 2026-10-12裁定：只给开始的不可上班时段延续到次日04:00。上海成都你六姐89岗，约80岗命中、9岗排除。",
+      "enabled": true
+    }
+  ]
+}

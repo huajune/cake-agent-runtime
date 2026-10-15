@@ -6,7 +6,7 @@
  */
 
 import type { AgentToolCallStatus } from '@shared-types/agent-telemetry.types';
-import type { ToolErrorType } from '@tools/shared/tool-error-types';
+import { TOOL_ERROR_TYPES, type ToolErrorType } from '@tools/shared/tool-error-types';
 import { asRecord } from '@infra/utils/object.util';
 import type { AgentToolCall } from './generator.types';
 
@@ -41,8 +41,13 @@ const SUCCESS_FLAG_KEYS = ['success', 'accepted', 'dispatched', 'found'] as cons
  * 但应映射为 empty 而非 error——v5.13.2 上线后两小时 job_list.no_results
  * 占 job_list "错误"的 24/27，把业务空态和系统故障混在一起会让错误率失真，
  * 也让 tool_empty_result 异常旗标失去本职信号。
+ * query_incomplete 表示已查范围内暂无可推荐岗位（扫描未完整或班次待确认），同属业务空态。
  */
-const EMPTY_RESULT_ERROR_TYPES = new Set(['job_list.no_results', 'job_list.schedule_filter_empty']);
+const EMPTY_RESULT_ERROR_TYPES = new Set<string>([
+  TOOL_ERROR_TYPES.JOB_LIST_NO_RESULTS,
+  TOOL_ERROR_TYPES.JOB_LIST_SCHEDULE_FILTER_EMPTY,
+  TOOL_ERROR_TYPES.JOB_LIST_QUERY_INCOMPLETE,
+]);
 
 /**
  * 从工具返回值推断"结果条数"，判不出返回 undefined。

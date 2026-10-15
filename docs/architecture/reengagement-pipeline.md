@@ -116,7 +116,10 @@ await reengagementQueue.add(
 ```
 
 - **只有回合成功收尾**（正常回复或有意沉默）才推进 `lastProcessedCandidateMessageAt` 水位；
-- **在途宽限**覆盖 debounce 合并窗口——候选人刚回话时消息可能还在合并中，超过宽限仍未推进水位，才认定回话被静默丢弃。
+- **在途宽限**覆盖 debounce 合并窗口——候选人刚回话时消息可能还在合并中，超过宽限仍未推进水位，才认定回话被静默丢弃；
+- **转给真人处理的回话算已回话**：托管暂停、候选人黑名单、小组未托管时，候选人消息只存历史、不进 Agent，入库时记
+  `chat_messages.history_only_reason`（入站即命中，或合并窗口内被暂停后由 Bull 丢弃时补记）。最近一条候选人消息带该原因
+  且覆盖 `lastCandidateMessageAt` 时，不算无人搭理（processor 取最近候选人消息传入 `shouldStop`）。
 
 ### 4.3 带外工单核验（`oob-work-order.ts`）
 
@@ -130,20 +133,21 @@ await reengagementQueue.add(
 
 报名后场景**只看工单和聊天记录**：不看托管暂停状态、不看当轮回合结局、不设「真人手打过就停」的闸（2026-09 裁定整道删除，真人几分钟前刚手打过话也不顺延）。执行顺序与 reason 码：
 
-| 顺序 | 判据                                                                                                                                | reason                                                                                                                | 居所                                       |
-| ---- | ----------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| 1    | 会话终态 / 存量任务无工单号                                                                                                         | `terminal:*` / `missing_authoritative_work_order_id`                                                                  | `shouldStop` / processor                   |
-| 2    | 候选人有一条消息没人回（最后一条是候选人的、超过 10 分钟宽限、无对应 processing record）                                            | `pending_candidate_message`，`stop_context` 记那条消息                                                                | processor 1.4                              |
-| 3    | 实时工单不在途 / 状态缺失                                                                                                           | `work_order_not_active:*` / `work_order_status_unavailable`                                                           | processor 1.5，`checkBookingInvalidAtFire` |
-| 4    | 确认档：报名到面试不足 3 个上海日 / 距面试不足 24h                                                                                  | `signup_interview_gap_lt_3d` / `interview_too_close`                                                                  | processor 1.5                              |
-| 5    | 工单面试时间变了（含回访：到点基准取实时工单，不取任务快照；AI 面试取窗口起点当天 17:00）                                           | `interview_time_changed`，按新时间排替代任务                                                                          | processor 1.5                              |
-| 6    | 面试提醒到点时面试已过                                                                                                              | `interview_time_passed`                                                                                               | processor 1.5                              |
-| 7    | 冷却 / 频控                                                                                                                         | `session_touch_cooldown` / `over_frequency_limit_24h`                                                                 | processor 1.6 / 2                          |
-| 8    | 聊天里真人或候选人明确约定了与工单不同的时间（模型给出 `chatAgreedInterviewTime` + `interviewTimeMismatch`，代码复核可解析且≠工单） | `chat_interview_time_mismatch`（status=skipped），`stop_context` 记两个时间与证据；真发链路另发运营提醒               | `ReengagementAgent` + processor            |
-| 9    | 候选人取消 / 经理取消或婉拒 / 已有结果 / 候选人已报告面试完成且经理已回应                                                           | `candidate_declined_interview` / `manager_cancelled_interview` / `interview_result_known` / `interview_done_reported` | `ReengagementAgent` 语义停止条件           |
-| 10   | 当日提醒：真人**面试当天**已另行发过提醒（改时间、通知面试时间、问 AI 面试做完没、发二维码、发地址都不算）                          | `interview_reminder_already_sent`                                                                                     | `ReengagementAgent`                        |
-| 11   | 回访：真人在**面试时间之后**已问过结果；或聊天说还没开始但没给新时间                                                                | `result_inquiry_already_sent` / `interview_not_started_per_chat`                                                      | `ReengagementAgent`                        |
-| 12   | 确认档：报名当轮之后已另行确认过意向                                                                                                | `confirmation_already_sent`                                                                                           | `ReengagementAgent`                        |
+| 顺序 | 判据                                                                                                                                | reason                                                                                                                | 居所                                        |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| 1    | 会话终态 / 存量任务无工单号                                                                                                         | `terminal:*` / `missing_authoritative_work_order_id`                                                                  | `shouldStop` / processor                    |
+| 2    | 候选人消息疑似被主链漏处理（最后一条是候选人的、超过 10 分钟宽限、无对应 processing record，且不是转给真人处理的只存历史消息）      | `pending_candidate_message`，`stop_context` 记那条消息                                                                | processor 1.4                               |
+| 3    | 实时工单不在途 / 状态缺失                                                                                                           | `work_order_not_active:*` / `work_order_status_unavailable`                                                           | processor 1.5，`checkBookingInvalidAtFire`  |
+| 4    | 确认档：报名到面试不足 3 个上海日 / 距面试不足 24h                                                                                  | `signup_interview_gap_lt_3d` / `interview_too_close`                                                                  | processor 1.5                               |
+| 5    | 工单面试时间变了（含回访：到点基准取实时工单，不取任务快照；AI 面试取窗口起点当天 17:00）                                           | `interview_time_changed`，按新时间排替代任务                                                                          | processor 1.5                               |
+| 6    | 面试提醒到点时面试已过                                                                                                              | `interview_time_passed`                                                                                               | processor 1.5                               |
+| 7    | 冷却 / 频控                                                                                                                         | `session_touch_cooldown` / `over_frequency_limit_24h`                                                                 | processor 1.6 / 2                           |
+| 8    | 聊天里真人或候选人明确约定了与工单不同的时间（模型给出 `chatAgreedInterviewTime` + `interviewTimeMismatch`，代码复核可解析且≠工单） | `chat_interview_time_mismatch`（status=skipped），`stop_context` 记两个时间与证据；真发链路另发运营提醒               | `ReengagementAgent` + processor             |
+| 9    | 候选人取消 / 经理取消或婉拒 / 已有结果 / 候选人已报告面试完成且经理已回应                                                           | `candidate_declined_interview` / `manager_cancelled_interview` / `interview_result_known` / `interview_done_reported` | `ReengagementAgent` 语义停止条件            |
+| 9.5  | 对话以候选人消息结尾，且是在提问、做出选择或提出需要答复的要求（礼貌确认/致谢不算；入职跟进同样适用）                               | `candidate_message_unanswered`                                                                                        | `ReengagementAgent` 语义停止条件 + 输出契约 |
+| 10   | 当日提醒：真人**面试当天**已另行发过提醒（改时间、通知面试时间、问 AI 面试做完没、发二维码、发地址都不算）                          | `interview_reminder_already_sent`                                                                                     | `ReengagementAgent`                         |
+| 11   | 回访：真人在**面试时间之后**已问过结果；或聊天说还没开始但没给新时间                                                                | `result_inquiry_already_sent` / `interview_not_started_per_chat`                                                      | `ReengagementAgent`                         |
+| 12   | 确认档：报名当轮之后已另行确认过意向                                                                                                | `confirmation_already_sent`                                                                                           | `ReengagementAgent`                         |
 
 第 8 条的钟点纪律：`correctInterviewTemporalFacts` 会把生成文案里的钟点改回工单钟点，所以**不能按聊天时间发**；不一致的处置是不发 + 让运营改工单，工单改正后第 5 条按新时间重排。运营提醒走 `HandoffRecorderService + GeneralHandoffNotifierService`（`reasonCode=chat_interview_time_mismatch`，`hostingPaused=false`），Redis `reengagement:once:*` 按工单 + 两个时间幂等，`handoff_events` 再按 idempotencyKey 兜底；shadow / 灰度关只落 `stop_context` 不打扰运营。
 

@@ -3,9 +3,10 @@ import type { RecommendedJobSummary } from '@resolution/job/types';
 import { buildJobPolicyAnalysis } from '@tools/job-list/job-policy-parser';
 import { formatSalarySummary } from '@tools/job-list/brand-stores.util';
 import { formatSettlementSummary } from '@tools/job-list/salary-settlement.util';
-import { composeShiftTimeText } from '@tools/job-list/format-shift-time.util';
+import { formatJobShiftTime } from '@tools/job-list/format-shift-time.util';
 import { extractWelfareFacts } from '@tools/job-list/welfare-facts.util';
-import { inferStudentRequirement } from '@tools/job-list/render.util';
+import { describeStudentRequirement } from '@tools/job-list/render.util';
+import { extractHardRequirements } from '@tools/job-list/hard-requirements.util';
 
 /**
  * `basicInfo.storeInfo` 在领域契约里是 raw `Record<string, unknown>`（海绵按门店透传），
@@ -36,6 +37,8 @@ export type JobWithDistance = JobDetail & { _distanceKm?: number };
 export function mapJobsToRecommendedSummaries(jobs: JobDetail[]): RecommendedJobSummary[] {
   return jobs.map((job) => {
     const policy = buildJobPolicyAnalysis(job);
+    // 学生档位与查岗侧学生硬过滤、岗位卡同源；记忆只存结论，不再从备注自由文本另判一遍。
+    const studentTier = extractHardRequirements(job, policy).student;
     const ageRequirement = policy.normalizedRequirements.ageRequirement;
     const educationRequirement = policy.normalizedRequirements.educationRequirement;
     const healthCertificateRequirement = policy.normalizedRequirements.healthCertificateRequirement;
@@ -59,7 +62,7 @@ export function mapJobsToRecommendedSummaries(jobs: JobDetail[]): RecommendedJob
       partTimeJobType: job.basicInfo.partTimeJobType ?? null,
       salaryDesc: formatSalarySummary(job),
       settlementSummary: formatSettlementSummary(job),
-      shiftSummary: composeShiftTimeText(job.workTime),
+      shiftSummary: formatJobShiftTime(job),
       jobCategoryName: job.basicInfo.jobCategoryName ?? null,
       ageRequirement: ageRequirement && ageRequirement !== '不限' ? ageRequirement : null,
       educationRequirement:
@@ -68,7 +71,8 @@ export function mapJobsToRecommendedSummaries(jobs: JobDetail[]): RecommendedJob
         healthCertificateRequirement && healthCertificateRequirement !== '未明确要求'
           ? healthCertificateRequirement
           : null,
-      studentRequirement: inferStudentRequirement(policy),
+      studentRequirement: describeStudentRequirement(studentTier, policy),
+      studentTier,
       resumeRequired: policy.fieldGuidance.fieldSignals.some(
         (signal) => signal.field === '简历附件',
       ),

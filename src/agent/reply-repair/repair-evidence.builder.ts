@@ -182,8 +182,6 @@ export class RepairEvidenceBuilder {
       errorType,
       outcome: readString(result._outcome),
       ...(alreadyBooked ? { alreadyBooked } : {}),
-      existingWorkOrderId:
-        readString(result.existingWorkOrderId) ?? readNumber(result.existingWorkOrderId),
       existingInterviewTimeHuman: readString(result._existingInterviewTimeHuman),
       confirmedInterviewTimeHuman: readString(result._confirmedInterviewTimeHuman),
       onSiteScript: readString(result._onSiteScript),
@@ -260,6 +258,7 @@ export class RepairEvidenceBuilder {
         success: result.success === true,
         groupName: readString(result.groupName),
         alreadyInGroup: readBoolean(result.alreadyInGroup),
+        delivery: readInviteDelivery(result.inviteDelivery),
         errorType: readString(result.errorType),
       };
     }
@@ -273,6 +272,7 @@ export class RepairEvidenceBuilder {
       success: runtimeInvite.success === true,
       groupName: readString(runtimeInvite.groupName),
       alreadyInGroup: readBoolean(runtimeInvite.alreadyInGroup),
+      delivery: readInviteDelivery(runtimeInvite.delivery),
       errorType: readString(runtimeInvite.failureReason) ?? readString(runtimeInvite.skippedReason),
     };
   }
@@ -479,6 +479,10 @@ function readNumber(value: unknown): number | undefined {
 
 function readBoolean(value: unknown): boolean | undefined {
   return typeof value === 'boolean' ? value : undefined;
+}
+
+function readInviteDelivery(value: unknown): GroupInviteEvidence['delivery'] {
+  return value === 'direct_add' || value === 'invite_card' ? value : undefined;
 }
 
 function readStringArray(value: unknown): string[] {

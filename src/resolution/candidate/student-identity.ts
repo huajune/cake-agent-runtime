@@ -30,7 +30,7 @@ export interface IdentityEvidence {
 }
 
 // —— 单值答案分类（宽松子串级）——————————————————————————————————————
-// 只用于"这段文本就是身份答案"的上下文：表单行的值、candidateIsStudent 工具入参。
+// 只用于"这段文本就是身份答案"的上下文：收资表「社会身份」槽位值与字段值提案、短选项答复。
 // 自由聊天消息严禁走本函数（"社会人士岗位有吗"会误判），走 matchIdentityStatement。
 export function classifyIdentityAnswerText(value: string): CandidateIdentity | null {
   const text = value.trim();

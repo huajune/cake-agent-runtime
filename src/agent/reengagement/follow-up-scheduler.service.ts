@@ -512,7 +512,7 @@ export class FollowUpSchedulerService {
     scenarioCode: FollowUpScenarioCode;
     reason: string;
   }): Promise<number> {
-    let pendingJobs: Array<Job<FollowUpJob>> = [];
+    let pendingJobs: Array<Job<FollowUpJob> | null> = [];
     try {
       pendingJobs = await this.queue.getJobs(PENDING_JOB_STATUSES, 0, -1, true);
     } catch (error) {
@@ -527,7 +527,8 @@ export class FollowUpSchedulerService {
     let removed = 0;
     for (const job of pendingJobs) {
       if (
-        job.data?.sessionRef.sessionId !== input.sessionRef.sessionId ||
+        !job?.data?.sessionRef ||
+        job.data.sessionRef.sessionId !== input.sessionRef.sessionId ||
         job.data.scenarioCode !== input.scenarioCode
       ) {
         continue;
@@ -555,7 +556,7 @@ export class FollowUpSchedulerService {
     scenario: FollowUpScenario,
     currentJobId: string,
   ): Promise<{ removed: number; blockedByBookingIncomplete: boolean }> {
-    let pendingJobs: Array<Job<FollowUpJob>> = [];
+    let pendingJobs: Array<Job<FollowUpJob> | null> = [];
     try {
       pendingJobs = await this.queue.getJobs(PENDING_JOB_STATUSES, 0, -1, true);
     } catch (error) {
@@ -571,7 +572,7 @@ export class FollowUpSchedulerService {
       (job) =>
         input.scenarioCode !== 'booking_incomplete' &&
         scenario.phase === 'pre_booking' &&
-        job.data?.sessionRef.sessionId === input.sessionRef.sessionId &&
+        job?.data?.sessionRef?.sessionId === input.sessionRef.sessionId &&
         job.data.scenarioCode === 'booking_incomplete',
     );
     if (blockedByBookingIncomplete) {
@@ -581,6 +582,8 @@ export class FollowUpSchedulerService {
 
     let removed = 0;
     for (const job of pendingJobs) {
+      // Bull 按 ID 列表读取任务期间，任务可能被另一个 worker 移除。
+      if (!job?.data?.sessionRef) continue;
       const jobId = String(job.id);
       if (jobId === currentJobId) continue;
       if (!this.shouldRemovePendingJob(input, scenario, job.data)) continue;

@@ -1,6 +1,8 @@
 import {
   buildReconcileAnchorKey,
+  findSnapshotBookingForJob,
   findSnapshotDuplicate,
+  findCrossAccountDuplicate,
   isSnapshotEligibleWorkOrder,
   isWorkOrderOwnedByCandidate,
   normalizeSignupSource,
@@ -11,6 +13,27 @@ import { parseLocalDateTime } from '@infra/utils/date.util';
 const NOW = parseLocalDateTime('2026-09-22 10:00:00')!.getTime();
 
 describe('booking-snapshot.util', () => {
+  it('跨账号查重不传展示状态作查询枚举，只命中本地在途工单', async () => {
+    const fetchSignupWorkOrders = jest.fn().mockResolvedValue({
+      workOrders: [
+        { workOrderId: 1, jobId: 12, currentStatus: '约面取消', signUpTime: '2026-09-21 10:00:00' },
+        { workOrderId: 2, jobId: 12, currentStatus: '约面成功', signUpTime: '2026-09-21 10:00:00' },
+      ],
+    });
+    const result = await findCrossAccountDuplicate({
+      spongeService: { fetchSignupWorkOrders },
+      phone: '13800000001',
+      tokenContext: { botImId: 'bot-1' },
+      target: { jobId: 12 },
+      now: NOW,
+    });
+    expect(fetchSignupWorkOrders).toHaveBeenCalledWith(
+      { phone: '13800000001', onlyCurrentAccount: false },
+      { botImId: 'bot-1' },
+      { timeoutMs: 3000, allowDefaultToken: false },
+    );
+    expect(result?.workOrderId).toBe(2);
+  });
   describe('isSnapshotEligibleWorkOrder（状态在途 且 报名近 15 天或面试在未来）', () => {
     it('在途 + 报名近 15 天 → 入选', () => {
       expect(
@@ -168,6 +191,20 @@ describe('booking-snapshot.util', () => {
     it('岗位与品牌都不同 → 不命中；目标无品牌时只按岗位', () => {
       expect(findSnapshotDuplicate(entries, { jobId: 300, brandName: '麦当劳' })).toBeUndefined();
       expect(findSnapshotDuplicate(entries, { jobId: 300 })).toBeUndefined();
+    });
+  });
+
+  describe('findSnapshotBookingForJob（岗位查不到时的本人在途预约）', () => {
+    const today = '2026-09-24';
+    it('同岗位、本人校验未否决、面试日未过才命中；不按品牌兜底', () => {
+      const entries = [
+        { workOrderId: 1, jobId: 100, ownedByCandidate: false, interviewTime: '2026-09-24 13:30' },
+        { workOrderId: 2, jobId: 100, ownedByCandidate: true, interviewTime: '2026-09-20 13:30' },
+        { workOrderId: 3, jobId: 200, ownedByCandidate: true, interviewTime: '2026-09-25 13:30' },
+        { workOrderId: 4, jobId: 100, interviewTime: '2026-09-24 13:30' },
+      ];
+      expect(findSnapshotBookingForJob(entries, 100, today)?.workOrderId).toBe(4);
+      expect(findSnapshotBookingForJob(entries.slice(0, 3), 100, today)).toBeUndefined();
     });
   });
 });

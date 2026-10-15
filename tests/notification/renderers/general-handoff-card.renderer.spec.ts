@@ -130,7 +130,7 @@ describe('GeneralHandoffCardRenderer', () => {
       expect(content).toContain('**当前消息**：我想找人帮忙');
       expect(content).toContain('会话ID：chat-123');
       expect(content).toContain('暂停ID：chat-123');
-      expect(content).toContain('处理完请到 Web 托管后台手动恢复托管。');
+      expect(content).toContain('未手动恢复时，次日零点（上海时间）自动恢复。');
     });
 
     it('omits the action-advice line when actionAdvice is empty', () => {

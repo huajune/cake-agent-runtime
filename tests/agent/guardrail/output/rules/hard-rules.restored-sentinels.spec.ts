@@ -567,8 +567,8 @@ describe('HardRulesService restored sentinels', () => {
       });
 
       const hit = result.contradictions.find((c) => c.ruleId === 'human_service_phrase_leak');
-      expect(hit?.feedbackToGenerator).toContain('只把露馅措辞改成人设内口径');
-      expect(hit?.feedbackToGenerator).toContain('我帮你问下同事');
+      expect(hit?.feedbackToGenerator).toContain('只把露馅措辞改为本人或同事协作的表述');
+      expect(hit?.feedbackToGenerator).toContain('不要改变承诺的事实和后续动作');
     });
 
     it('does not flag incidental 人工 substring across word boundaries', () => {

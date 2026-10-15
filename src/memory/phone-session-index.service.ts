@@ -26,7 +26,7 @@ export class PhoneSessionIndexService {
     if (!isStorableCandidatePhone(normalized)) return;
     // 兜底：测试/调试链路的会话一律不进索引（上游已按 callerKind / strategySource 拦，这里按身份再挡一道）。
     if (isNonProductionSessionRef(ref)) return;
-    const dedupeKey = `${normalized}:${ref.chatId}:${ref.botImId ?? ''}`;
+    const dedupeKey = `${normalized}:${ref.chatId}:${ref.botImId ?? ''}:${ref.botUserId ?? ''}`;
     const last = this.recentWrites.get(dedupeKey);
     const now = Date.now();
     if (last != null && now - last < WRITE_DEDUPE_MS) return;
@@ -74,6 +74,8 @@ export interface PhoneSessionRef {
   userId: string;
   chatId: string;
   botImId?: string | null;
+  /** 长期记忆的账号键；与海绵 token 使用的 botImId 不同。 */
+  botUserId?: string | null;
 }
 
 export interface PhoneSessionIndexRecord extends PhoneSessionRef {

@@ -76,7 +76,6 @@ export interface BookingEvidence {
   outcome?: string;
   /** 命中在途工单查重：预约已存在、本轮未重复提交（不是失败）。 */
   alreadyBooked?: boolean;
-  existingWorkOrderId?: number | string;
   existingInterviewTimeHuman?: string;
   confirmedInterviewTimeHuman?: string;
   onSiteScript?: string;
@@ -105,6 +104,8 @@ export interface GroupInviteEvidence {
   success: boolean;
   groupName?: string;
   alreadyInGroup?: boolean;
+  /** direct_add=已直接入群；invite_card=只发了邀请卡片，候选人点卡片才入群。 */
+  delivery?: 'direct_add' | 'invite_card';
   errorType?: string;
 }
 

@@ -176,6 +176,28 @@ describe('MemoryFixtureService', () => {
     expect(mockSessionService.saveFacts.mock.calls[0][3].preferences).not.toHaveProperty('brands');
   });
 
+  // 回放「已推荐岗位 × 学生」场景必须能预置结构化社会身份档位；非法值不落档，按历史记录（未记录）处理。
+  it('passes job studentTier through presented/focus fixtures and drops unknown tiers', async () => {
+    await service.seed(scope, {
+      presentedJobs: [
+        { jobId: 529083, brandName: '肯德基', studentTier: 'social_only' },
+        { jobId: 600001, brandName: '成都你六姐', student_tier: 'any' },
+        { jobId: 600002, brandName: '奥乐齐', studentTier: '不限' },
+      ],
+      currentFocusJob: { jobId: 529083, brandName: '肯德基', studentTier: 'social_only' },
+    });
+
+    const presented = mockSessionService.savePresentedJobs.mock.calls[0][3];
+    expect(presented.map((job: { studentTier: unknown }) => job.studentTier)).toEqual([
+      'social_only',
+      'any',
+      null,
+    ]);
+    expect(mockSessionService.saveCurrentFocusJob.mock.calls[0][3]).toEqual(
+      expect.objectContaining({ jobId: 529083, studentTier: 'social_only' }),
+    );
+  });
+
   it('should derive the previous job-list query fingerprint from query params', async () => {
     await service.seed(scope, {
       lastJobListQuery: {
@@ -202,7 +224,7 @@ describe('MemoryFixtureService', () => {
       'session-1',
       {
         signature:
-          '{"city":["上海"],"region":["黄浦区"],"brandAlias":[],"brandId":[],"brandMode":null,"excludeBrand":[],"project":[],"projectId":[],"store":[],"searchJobName":null,"category":[],"jobId":[],"settlement":[],"location":null,"schedule":null,"laborForm":null}',
+          '{"purpose":"recommend","preferFlexibleSchedule":false,"city":["上海"],"region":["黄浦区"],"brandAlias":[],"brandId":[],"brandMode":null,"excludeBrand":[],"project":[],"projectId":[],"store":[],"searchJobName":null,"category":[],"jobId":[],"settlement":[],"location":null,"schedule":null,"laborForm":null}',
         turnId: 'previous-turn',
         updatedAtMs: 123,
       },

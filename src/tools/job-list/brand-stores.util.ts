@@ -15,7 +15,7 @@ import {
   formatDistanceKm,
   type DistanceAnchorPrecision,
 } from '@tools/job-list/distance-render.util';
-import { composeShiftTimeText } from '@tools/job-list/format-shift-time.util';
+import { formatJobShiftTime } from '@tools/job-list/format-shift-time.util';
 import { extractHardRequirements } from '@tools/job-list/hard-requirements.util';
 import { buildJobPolicyAnalysis } from '@tools/job-list/job-policy-parser';
 import { sanitizeLaborFormForDisplay } from '@resolution/labor-form';
@@ -143,7 +143,7 @@ type BrandSummaryJobInput = {
 };
 
 function formatShiftSummary(job: BrandSummaryJobInput): string | null {
-  const shift = composeShiftTimeText(job.workTime);
+  const shift = formatJobShiftTime(job);
   return shift || null;
 }
 
@@ -291,7 +291,7 @@ export function renderMultiStoreBrandWarning(
     '> 以下品牌返回多家门店。**推荐这些岗位时必须按门店名+距离+班次+薪资+要求逐家区分，禁止只说"有 X 品牌"或把两家合并成一句**。',
   );
   lines.push(
-    '> 直接照上方「推荐对话用模板」卡片原文逐条转述（可改成口语化的连接词，但门店名/距离/班次/薪资/要求不得省略）。',
+    '> 直接照上方实际岗位卡片原文逐条转述（可改成口语化的连接词，但门店名/距离/班次/薪资/要求不得省略）。',
   );
   for (const group of multi) {
     lines.push('');

@@ -2,7 +2,12 @@ import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { RedisService } from '@infra/redis/redis.service';
 import { ChatMessageRepository } from '../repositories/chat-message.repository';
-import { ChatMessageInput, ChatSessionCursor } from '../types/message.types';
+import {
+  ChatMessageInput,
+  ChatSessionCursor,
+  LatestCandidateMessage,
+} from '../types/message.types';
+import type { HistoryOnlyReason } from '@enums/message-filter.enum';
 
 /** 会话列表默认页大小，与仓储层保持一致。 */
 const DEFAULT_SESSION_PAGE_SIZE = 600;
@@ -227,6 +232,19 @@ export class ChatSessionService {
     }>
   > {
     return this.chatMessageRepository.getChatHistory(chatId, limit, options);
+  }
+
+  /** 会话最近一条候选人消息（含只存历史的原因）。 */
+  async getLatestCandidateMessage(chatId: string): Promise<LatestCandidateMessage | null> {
+    return this.chatMessageRepository.getLatestCandidateMessage(chatId);
+  }
+
+  /**
+   * 给已入库的候选人消息补记「只存历史」原因。
+   * 只改 DB 列：短期记忆缓存不携带该字段，读方（复聊待答闸）直接查 DB。
+   */
+  async markHistoryOnly(messageIds: string[], reason: HistoryOnlyReason): Promise<number> {
+    return this.chatMessageRepository.markHistoryOnly(messageIds, reason);
   }
 
   /**

@@ -120,7 +120,9 @@ const DETAIL_REASON_LABELS: Record<string, string> = {
   candidate_name_in_reply: '生成文案里出现了候选人姓名，已拦截',
   interview_not_started_per_chat: '按聊天记录面试尚未开始（未给出新的具体时间）',
   chat_interview_time_mismatch: '聊天约定的面试时间与海绵工单不一致，已提醒运营改工单，本次不发',
-  pending_candidate_message: '候选人有一条消息还没被回复，不能压着未答消息主动触达',
+  pending_candidate_message:
+    '候选人最后一条消息没有进入 AI 处理，也不是托管暂停期间转给真人的，疑似漏处理，不能压着它主动触达',
+  candidate_message_unanswered: '候选人最后在提问或等答复，还没有人回应，不能压着未答消息主动触达',
   missing_interview_time: '工单没有面试时间（等通知岗），暂不安排提醒',
   missing_authoritative_work_order_id: '任务没有权威的海绵工单号，无法核验工单现状，已停止',
   interview_time_resolved: '等通知岗复核时工单已有面试时间，静默结束',

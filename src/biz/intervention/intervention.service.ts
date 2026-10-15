@@ -6,7 +6,6 @@ import { ConversationRiskNotifierService } from '@notification/services/conversa
 import { GeneralHandoffNotifierService } from '@notification/services/general-handoff-notifier.service';
 import type { WeworkSessionState } from '@memory/short-term/short-term.types';
 import type { ConversationRiskType } from '@shared-types/guardrail.contract';
-import { requiresManualResumeForReason } from '@enums/handoff-reason.enum';
 
 export interface InterventionMessageSnapshot {
   role: 'user' | 'assistant';
@@ -56,19 +55,6 @@ export interface GeneralHandoffInterventionPayload extends InterventionBase {
 
 export type InterventionPayload = RiskInterventionPayload | GeneralHandoffInterventionPayload;
 
-/**
- * 面试之后的环节一律真人对接（2026-09-16 运营裁定，生产 chat 6a9f7db6ce406a6aee13b137）。
- * 面试后类转人工不能在次日零点自动解禁——事故里托管隔天自动恢复，Agent 接回后指引候选人到店白干；
- * 改为暂停到人工在 Dashboard 恢复为止。其余转人工仍按默认次日零点解禁。
- * 哪些码永久暂停由权威目录（@enums/handoff-reason.enum 的 manualResumeOnly）决定，不在此重复维护。
- */
-export function requiresManualResume(payload: InterventionPayload): boolean {
-  if (payload.kind === 'conversation_risk') {
-    return requiresManualResumeForReason(payload.riskType);
-  }
-  return requiresManualResumeForReason(payload.reasonCode);
-}
-
 export interface InterventionResult {
   dispatched: boolean;
   paused: boolean;
@@ -111,15 +97,11 @@ export class InterventionService {
       };
     }
 
-    const manualResume = requiresManualResume(payload);
+    // 转人工统一进入临时禁止托管，次日零点恢复；面试后业务仍由真人处理。
     await this.userHostingService.pauseUser(payload.pauseTargetId, {
       source: 'intervention',
-      permanent: manualResume,
-      reason: manualResume
-        ? '面试后人工对接，需人工恢复托管'
-        : payload.kind === 'conversation_risk'
-          ? '会话风险人工介入'
-          : '人工介入暂停',
+      permanent: false,
+      reason: payload.kind === 'conversation_risk' ? '会话风险人工介入' : '人工介入暂停',
     });
 
     // handoff 运行时状态只用 pause 一层（recruitment_cases 状态机已废弃，不再 markHandoff）。

@@ -1,6 +1,7 @@
 import { Logger } from '@nestjs/common';
 import type { CandidateCollectedField, CandidateFieldKey } from '@resolution/candidate/types';
 import type { TurnHints } from '@resolution/turn-hints/turn-hint.types';
+import { appendToolVerifiedScheduleClaim } from '@resolution/turn-hints/producers/rule-track';
 import type { LaborFormIntentDecision } from '@resolution/labor-form';
 import type { RecommendedJobSummary } from '@resolution/job/types';
 import { normalizeBrandNameForComparison } from '@resolution/brand/brand-normalize';
@@ -58,6 +59,7 @@ export function createTurnLedger(input: CreateTurnLedgerInput = {}): TurnLedger 
   const geoSignalCities = new Set(input.geoSignalCities ?? []);
   let cityAttestation: CityAttestation | undefined;
   let jobListQuerySignature: string | undefined;
+  let scheduleConstraint: TurnLedgerSnapshot['jobs']['scheduleConstraint'];
 
   const ledger: TurnLedger = {
     get mentionedBrands() {
@@ -96,6 +98,9 @@ export function createTurnLedger(input: CreateTurnLedgerInput = {}): TurnLedger 
       },
       get invalidatedJobIds() {
         return invalidatedJobIds;
+      },
+      get scheduleConstraint() {
+        return scheduleConstraint;
       },
       bookingSucceeded: undefined,
       postBookingGroupInvite: undefined,
@@ -164,6 +169,9 @@ export function createTurnLedger(input: CreateTurnLedgerInput = {}): TurnLedger 
     recordJobListQuery(query) {
       jobListQuerySignature = query.signature;
     },
+    recordScheduleConstraint(constraint) {
+      scheduleConstraint = structuredClone(constraint);
+    },
     markJobInvalidated(jobId) {
       if (!invalidatedJobIds.includes(jobId)) invalidatedJobIds.push(jobId);
     },
@@ -199,12 +207,17 @@ export function createTurnLedger(input: CreateTurnLedgerInput = {}): TurnLedger 
             ? {}
             : { collectionReadyJobId: ledger.jobs.collectionReadyJobId }),
           jobListExecuted: ledger.jobs.jobListExecuted,
+          ...(scheduleConstraint === undefined
+            ? {}
+            : { scheduleConstraint: structuredClone(scheduleConstraint) }),
           ...(ledger.jobs.resolvedWorkOrderId === undefined
             ? {}
             : { resolvedWorkOrderId: ledger.jobs.resolvedWorkOrderId }),
         },
         facts: {
-          turnHints: ledger.facts.turnHints,
+          // 回合内 facts.turnHints 保持 prep 判定；交档快照另附工具已核验的班次条件，
+          // 仅在抽取给出的变更未通过核验、或抽取失败且本轮不全是询问时由 memory 兜底落盘。
+          turnHints: appendToolVerifiedScheduleClaim(ledger.facts.turnHints, scheduleConstraint),
           laborFormIntent: ledger.facts.laborFormIntent,
           collectedFields,
         },

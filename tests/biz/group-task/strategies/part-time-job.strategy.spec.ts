@@ -118,6 +118,31 @@ describe('PartTimeJobStrategy', () => {
       expect(result.summary).toContain('无岗位');
     });
 
+    it('班次数据不合规的岗位被跳过，其余岗位照常推送并在摘要中说明', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [makeJob('必胜客', '餐饮/中餐/普通服务员')],
+        total: 3,
+        skippedInvalidWorkTime: [
+          { jobId: 529577, brandName: '大米先生', reason: '班次起止钟点相同' },
+          { jobId: 527951, brandName: '大米先生', reason: '班次起止钟点相同' },
+        ],
+      });
+      mockBrandRotation.getNextBrand.mockResolvedValue('必胜客');
+
+      const result = await strategy.fetchData(makeGroup());
+
+      expect(mockSpongeService.fetchJobs).toHaveBeenCalledWith(
+        expect.objectContaining({
+          cityNameList: ['上海'],
+          invalidWorkTime: 'skip',
+          options: expect.objectContaining({ includeWorkTime: true }),
+        }),
+      );
+      expect(mockBrandRotation.getNextBrand).toHaveBeenCalledWith('room-1', ['必胜客']);
+      expect(result.hasData).toBe(true);
+      expect(result.summary).toContain('2 个岗位班次数据不合规');
+    });
+
     it('无岗位时应返回 hasData=false', async () => {
       mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [], total: 0 });
 

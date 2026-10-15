@@ -410,35 +410,35 @@ describe('ReengagementAgent', () => {
       // 抽样审计三类高频错误的 prompt 防线：证据先行的判定步骤、禁止模糊理由跳过、
       // 预约当轮/另行提醒的客观时间锚点（报名完成时间）。
       expect(system).toContain('判定步骤：先定位候选人');
-      expect(system).toContain('不得以“对话流程正常”');
+      expect(system).toContain('不得因对话流程正常');
       expect(system).toContain('报名完成时间');
       if (scenarioCode === 'interview_reminder') {
         // 抽样审计：模型高频把预约当轮的收尾叮嘱/二维码交付误判为“已提醒”（误杀），
-        // 也漏判预约回合后另行发出的口头提醒（漏拦）。口径必须给出正反例。
+        // 也漏判预约回合后另行发出的口头提醒（漏拦）。口径必须保留两类消息的判定边界。
         expect(system).toContain('预约成功当轮的告知与收尾叮嘱');
         // 2026-09 裁定（PRD R1 改动 4）：只认面试当天真人另行发出的提醒；改时间/通知面试时间、
         // 问 AI 面试做完没、发二维码、发地址都不算已提醒。
         expect(system).toContain('在**面试当天**');
         expect(system).toContain('前一天或更早发出的提醒不算');
-        expect(system).toContain('通知明天下午 14 点面试');
-        expect(system).toContain('询问 AI 面试做完没、发送面试码/二维码、发送地址');
+        expect(system).toContain('改时间或通知面试时间');
+        expect(system).toContain('询问 AI 面试是否完成、发送面试码/二维码、发送地址');
       }
       // 生产 badcase（touch 19712）：候选人说“干不了”且顾问已转拉群，提醒仍被发出。
       // 判据必须覆盖婉拒表达 + 转群语境，并区分“为本次面试拉群”不算放弃。
-      expect(system).toContain('干不了');
+      expect(system).toContain('得知岗位要求或条件后表示无法接受');
       expect(system).toContain('邀请进群、改推其他岗位');
       expect(system).toContain('招募经理为本次面试拉群');
       // badcase chat 6a6093e3（2026-07-24）：经理"那不太合适"婉拒被以"未明确取消+
       // 工单仍有效"为由放行。婉拒口径必须成文，且禁止用这两条理由放行。
       expect(system).toContain('婉拒也算取消');
-      expect(system).toContain('不得以"没有明确说取消"或"工单仍显示约面成功"为由放行发送');
+      expect(system).toContain('不要求出现明确取消措辞，也不得因工单仍显示约面成功而放行发送');
       if (scenarioCode === 'post_interview_followup') {
         // badcase chat 6a607596（2026-07-24）：候选人已报告"已面试，等您通知"且经理已
         // 回应，回访仍问"面试结束了吧"。
         expect(system).toContain('interview_done_reported');
         // PRD R1 改动 4：「已询问结果」只看面试时间之后的询问
         expect(system).toContain('在本次面试时间**之后**已经发出询问');
-        expect(system).toContain('面试时间之前发出的“面试做完了吗”“到店了吗”是进程确认');
+        expect(system).toContain('面试时间之前发出的完成情况或到店情况询问是进程确认');
       }
       // PRD R1 改动 3：聊天约定时间≠工单时间 → 不发（不能按聊天时间发）
       expect(system).toContain('时间口径（工单为准，聊天不一致则不发）');
@@ -505,6 +505,16 @@ describe('ReengagementAgent', () => {
       scenarioCode: 'interview_reminder' as const,
       messages: [{ role: 'assistant', content: '提醒一下，明天下午两点记得按时参加面试。' }],
       blockReason: 'interview_reminder_already_sent' as const,
+    },
+    {
+      // 真人接手期间候选人提问、经理没回，托管恢复后到点的提醒不能压着这个问题发
+      name: 'the candidate asked a question that nobody answered',
+      scenarioCode: 'interview_reminder' as const,
+      messages: [
+        { role: 'assistant', content: '进群备注一下你的门店和名字' },
+        { role: 'user', content: '怎么操作' },
+      ],
+      blockReason: 'candidate_message_unanswered' as const,
     },
   ])(
     'blocks a post-booking message when $name',
@@ -633,6 +643,78 @@ describe('ReengagementAgent', () => {
     });
   });
 
+  it.each(['interview_reminder', 'post_interview_followup', 'post_interview_onboarding'] as const)(
+    'teaches the unanswered-candidate stop in %s',
+    async (scenarioCode) => {
+      await reengagementAgent.compose({
+        sessionRef,
+        scenario: getScenario(scenarioCode)!,
+        jobData: job(scenarioCode, { workOrderId: 555 }),
+        state: baseState({ terminal: 'booked' }),
+        bookingContext: liveBookingContext(),
+      });
+
+      const system = llm.generateStructured.mock.calls[0][0].system as string;
+      expect(system).toContain('blockReason=candidate_message_unanswered');
+      expect(system).toContain('只是礼貌确认、致谢、收尾或发表情');
+    },
+  );
+
+  it('does not teach the unanswered-candidate stop to pre-booking scenarios', async () => {
+    await reengagementAgent.compose({
+      sessionRef,
+      scenario: getScenario('booking_incomplete')!,
+      jobData: job('booking_incomplete'),
+      state: baseState(),
+    });
+
+    const system = llm.generateStructured.mock.calls[0][0].system as string;
+    expect(system).not.toContain('candidate_message_unanswered');
+  });
+
+  it('retries an unanswered-candidate skip when the conversation already ends with assistant', async () => {
+    memoryRecall.recentMessages = [
+      { role: 'user', content: '面试在几楼呀？' },
+      { role: 'assistant', content: '在3楼，到了跟前台说面试就行' },
+    ];
+    llm.generateStructured
+      .mockResolvedValueOnce({
+        output: {
+          decision: 'skip',
+          blockReason: 'candidate_message_unanswered',
+          message: '',
+          reason: '候选人问过面试楼层',
+        },
+        usage: { inputTokens: 12, outputTokens: 5, totalTokens: 17 },
+      })
+      .mockResolvedValueOnce({
+        output: {
+          decision: 'send',
+          blockReason: 'none',
+          message: '今天下午的面试别忘了哈，按时到就行。',
+          reason: '楼层问题经理已回答，按工单时间提醒',
+        },
+        usage: { inputTokens: 14, outputTokens: 8, totalTokens: 22 },
+      });
+
+    const result = await reengagementAgent.compose({
+      sessionRef,
+      scenario: getScenario('interview_reminder')!,
+      jobData: job('interview_reminder', { workOrderId: 555 }),
+      state: baseState({ terminal: 'booked' }),
+      bookingContext: liveBookingContext(),
+    });
+
+    expect(result.outcome.kind).toBe('reply');
+    expect(llm.generateStructured).toHaveBeenCalledTimes(2);
+    expect(llm.generateStructured.mock.calls[1][0].system).toContain(
+      'candidate_message_unanswered 只适用于近期对话以候选人（user）消息结尾的情况',
+    );
+    expect(result.agentRequest).toMatchObject({
+      outputCorrection: { issue: 'unanswered_without_trailing_candidate_message' },
+    });
+  });
+
   it('safely skips and records a decision anomaly when correction is still inconsistent', async () => {
     memoryRecall.recentMessages = [{ role: 'user', content: '好的，知道了。' }];
     llm.generateStructured.mockResolvedValue({
@@ -718,7 +800,7 @@ describe('ReengagementAgent', () => {
 
     const prompt = llm.generateStructured.mock.calls[0][0].system;
     expect(prompt).toContain('资料已全部收齐');
-    expect(prompt).toContain('严禁说"还差/还缺/需要补充资料"');
+    expect(prompt).toContain('不得把待确认状态说成资料缺失');
     expect(prompt).not.toContain('收资状态：已开始但未完成');
     // 场景默认的目标/生成策略也要跟着子态走，否则 prompt 内部自相矛盾
     expect(prompt).not.toContain('提醒候选人补齐剩余资料');
@@ -792,7 +874,7 @@ describe('ReengagementAgent', () => {
     expect(request.system).not.toContain('## 记忆系统快照');
     expect(request.system).not.toContain('"messageWindow"');
     expect(request.system).not.toContain('## 近期对话');
-    expect(request.system).toContain('历史表达，必须以该条消息标注的发送时间为基准理解');
+    expect(request.system).toContain('相对日期必须以该条消息标注的发送时间为基准理解');
     expect(request.system).toContain('## 已知事实');
     expect(request.system).toContain('意向城市: 上海');
     // 保留与 Generator 完全相同的角色与时间后缀，不再二次拆解和改写。

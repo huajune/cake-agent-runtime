@@ -118,7 +118,7 @@ export const FOLLOW_UP_SCENARIOS: readonly FollowUpScenario[] = [
     requiredEvidence: ['lastCandidateMessageAt'],
     stopUnless: () => true, // 通用停止条件（已回/terminal）已在 shouldStop 覆盖
     generationPolicy:
-      '优先使用“还在看机会吗”，再自然询问候选人目前在哪个区域、商圈或地铁站附近，说明可以帮忙看看附近岗位；不要使用“求职意向”这个词，不要问“在忙吗”“怎么没回”，不夸大、不承诺、不催促',
+      '先轻量确认候选人是否还在看工作机会，再自然询问目前所在区域、商圈或地铁站附近位置，说明便于推荐附近岗位；用日常语言表达，不使用招聘术语，不追问未回复的原因，不夸大、不承诺、不催促',
     relevantFactLabels: ['意向城市', '意向区域', '意向地点'],
     defaultRolloutEnabled: true,
     canonicalAnchorEventId: 'opening',
@@ -193,7 +193,7 @@ export const FOLLOW_UP_SCENARIOS: readonly FollowUpScenario[] = [
     // 是否已完成由候选人回话、报名成功终态和外部业务流程推进来收敛。
     stopUnless: () => true,
     generationPolicy:
-      '只提醒继续补充资料、说明补齐后便于推进约面；不要猜具体缺少哪些字段，不使用“现在补”“尽快发”等催促表达',
+      '只提醒继续补充资料、说明补齐后便于推进约面；不要猜具体缺少哪些字段，不催促立即或限时补交',
     relevantFactLabels: [],
     defaultRolloutEnabled: true,
   },
@@ -456,11 +456,25 @@ const REPLY_PROCESSING_GRACE_MS = 10 * MINUTE;
  * 候选人连发两条均 timeout 丢弃时，会被当「已回话」停掉
  * address_missing 触达，候选人彻底没人理。水位缺失（部署前旧会话）时无法判定，
  * 按已回话停发保持旧行为。
+ *
+ * 托管暂停等场景下候选人消息只存历史、交给真人处理，同样不推进水位；
+ * 最近一条候选人消息已转真人（humanHandledCandidateMessageAt 覆盖到入站时间）时，
+ * 回话有人接手，不算无人搭理。
  */
-function isCandidateReplyUnattended(state: ReengagementSessionState, now: number): boolean {
+function isCandidateReplyUnattended(
+  state: ReengagementSessionState,
+  now: number,
+  humanHandledCandidateMessageAt?: number,
+): boolean {
   const { lastCandidateMessageAt, lastProcessedCandidateMessageAt } = state;
   if (lastCandidateMessageAt == null || lastProcessedCandidateMessageAt == null) return false;
   if (lastProcessedCandidateMessageAt >= lastCandidateMessageAt) return false;
+  if (
+    humanHandledCandidateMessageAt != null &&
+    humanHandledCandidateMessageAt >= lastCandidateMessageAt
+  ) {
+    return false;
+  }
   return now - lastCandidateMessageAt >= REPLY_PROCESSING_GRACE_MS;
 }
 
@@ -470,8 +484,9 @@ function isCandidateReplyUnattended(state: ReengagementSessionState, now: number
  * - terminal ∈ {booked, handed_off, rejected, onboarded} → 停
  *   booking.succeeded 锚点允许 booked/handed_off 继续，由场景 stopUnless 自己判断。
  * - lastCandidateMessageAt > anchorAt（候选人在锚点后已回话）→ 停
- *   收紧：回话必须已被系统成功处理（lastProcessedCandidateMessageAt 水位覆盖）才算数；
- *   被 timeout 静默丢弃、超过在途宽限仍无人搭理的回话不停发（见 isCandidateReplyUnattended）。
+ *   收紧：回话必须已被系统成功处理（lastProcessedCandidateMessageAt 水位覆盖）或已转真人处理
+ *   （opts.humanHandledCandidateMessageAt）才算数；被 timeout 静默丢弃、超过在途宽限仍无人搭理
+ *   的回话不停发（见 isCandidateReplyUnattended）。
  *   例外：booking.succeeded 锚点且任务带 workOrderId（opts.externallyVerifiable）时豁免——
  *   候选人报名后回一句"好的"不该杀掉面试提醒；报名是否仍有效改由 processor 到点向
  *   海绵实时工单核验（work_order_not_active / interview_time_changed，见 booking-context，
@@ -483,7 +498,12 @@ export function shouldStop(
   scenario: FollowUpScenario,
   state: ReengagementSessionState,
   anchorAt: number,
-  opts?: { externallyVerifiable?: boolean; now?: number },
+  opts?: {
+    externallyVerifiable?: boolean;
+    now?: number;
+    /** 最近一条候选人消息已转真人处理（只存历史）时的入站时间。 */
+    humanHandledCandidateMessageAt?: number;
+  },
 ): ShouldStopResult {
   const postBookingFollowUp =
     scenario.phase === 'post_booking' &&
@@ -504,7 +524,11 @@ export function shouldStop(
     !repliedRuleExempt &&
     state.lastCandidateMessageAt != null &&
     state.lastCandidateMessageAt > anchorAt &&
-    !isCandidateReplyUnattended(state, opts?.now ?? Date.now())
+    !isCandidateReplyUnattended(
+      state,
+      opts?.now ?? Date.now(),
+      opts?.humanHandledCandidateMessageAt,
+    )
   ) {
     return { stop: true, reason: 'candidate_replied_after_anchor' };
   }

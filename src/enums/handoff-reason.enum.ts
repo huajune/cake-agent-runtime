@@ -3,11 +3,10 @@
  *
  * 此前四份标签表（request_handoff 工具枚举、转化分析标签、Dashboard 饼图标签、飞书同步脚本）
  * 各自维护字面副本，飞书脚本只剩 10 项、卡片「时效敏感」集合与 intervention 的永久暂停集合
- * 又各自散落。本文件把原因码及其三项属性收拢为一份目录，其余消费方一律从这里派生：
+ * 又各自散落。本文件把原因码及其属性收拢为一份目录，其余消费方一律从这里派生：
  *
  * - `label`            中文标签（卡片标题 / 饼图 / 飞书表「原因分类」）
  * - `urgent`           卡片标急、飞书任务优先级急
- * - `manualResumeOnly` 暂停到人工在 Dashboard 恢复为止（其余次日零点自动恢复）
  * - `category`         任务大类 T1–T8（谁处理、多久内处理，见 PRD
  *                      `36185ecb1^:docs/todo/prd-ops-followup-2026-09.md` §R5.2——文件已删除，
  *                      用 `git show 36185ecb1^:docs/todo/prd-ops-followup-2026-09.md` 取）
@@ -51,7 +50,6 @@ export interface HandoffReasonDefinition {
   readonly code: string;
   readonly label: string;
   readonly urgent: boolean;
-  readonly manualResumeOnly: boolean;
   /** `null` 仅 `other`：真正归不了类。 */
   readonly category: HandoffTaskCategory | null;
   readonly toolSelectable: boolean;
@@ -67,7 +65,6 @@ export const HANDOFF_REASON_CATALOG: readonly HandoffReasonDefinition[] = [
     code: 'cannot_find_store',
     label: '找不到门店',
     urgent: true,
-    manualResumeOnly: false,
     category: 'T1',
     toolSelectable: true,
   },
@@ -75,7 +72,6 @@ export const HANDOFF_REASON_CATALOG: readonly HandoffReasonDefinition[] = [
     code: 'no_reception',
     label: '到店无人接待',
     urgent: true,
-    manualResumeOnly: false,
     category: 'T1',
     toolSelectable: true,
   },
@@ -83,7 +79,6 @@ export const HANDOFF_REASON_CATALOG: readonly HandoffReasonDefinition[] = [
     code: 'booking_conflict',
     label: '门店查不到预约',
     urgent: true,
-    manualResumeOnly: false,
     category: 'T1',
     toolSelectable: true,
   },
@@ -91,7 +86,6 @@ export const HANDOFF_REASON_CATALOG: readonly HandoffReasonDefinition[] = [
     code: 'onboarding_paperwork',
     label: '入职流程对接',
     urgent: false,
-    manualResumeOnly: true,
     category: 'T3',
     toolSelectable: true,
   },
@@ -100,7 +94,6 @@ export const HANDOFF_REASON_CATALOG: readonly HandoffReasonDefinition[] = [
     // 同码也是入站风险类型，label 与交流异常卡片既有口径一致（见文末风险类型段注释）。
     label: '面试结果追问',
     urgent: false,
-    manualResumeOnly: true,
     category: 'T3',
     toolSelectable: true,
   },
@@ -108,7 +101,6 @@ export const HANDOFF_REASON_CATALOG: readonly HandoffReasonDefinition[] = [
     code: 'modify_appointment',
     label: '改约/取消自助失败',
     urgent: true,
-    manualResumeOnly: false,
     category: 'T2',
     toolSelectable: true,
   },
@@ -116,7 +108,6 @@ export const HANDOFF_REASON_CATALOG: readonly HandoffReasonDefinition[] = [
     code: 'self_recruited_or_completed',
     label: '门店自招/已面试通过',
     urgent: false,
-    manualResumeOnly: true,
     category: 'T3',
     toolSelectable: true,
   },
@@ -124,7 +115,6 @@ export const HANDOFF_REASON_CATALOG: readonly HandoffReasonDefinition[] = [
     code: 'no_match_or_group_full',
     label: '无匹配岗位且群满',
     urgent: false,
-    manualResumeOnly: false,
     category: 'T2',
     toolSelectable: true,
   },
@@ -132,7 +122,6 @@ export const HANDOFF_REASON_CATALOG: readonly HandoffReasonDefinition[] = [
     code: 'system_blocked',
     label: '系统卡住需人工补录',
     urgent: false,
-    manualResumeOnly: false,
     category: 'T6',
     toolSelectable: true,
   },
@@ -140,7 +129,6 @@ export const HANDOFF_REASON_CATALOG: readonly HandoffReasonDefinition[] = [
     code: 'booking_capacity_full',
     label: '岗位报名名额已满',
     urgent: false,
-    manualResumeOnly: false,
     category: 'T2',
     toolSelectable: true,
   },
@@ -148,7 +136,6 @@ export const HANDOFF_REASON_CATALOG: readonly HandoffReasonDefinition[] = [
     code: 'group_invite_failed',
     label: '拉群失败需人工维护',
     urgent: false,
-    manualResumeOnly: false,
     category: 'T2',
     toolSelectable: true,
   },
@@ -156,7 +143,6 @@ export const HANDOFF_REASON_CATALOG: readonly HandoffReasonDefinition[] = [
     code: 'salary_admin_inquiry',
     label: '岗位口径答不上（需补岗位数据）',
     urgent: false,
-    manualResumeOnly: false,
     category: 'T5',
     toolSelectable: true,
   },
@@ -164,7 +150,6 @@ export const HANDOFF_REASON_CATALOG: readonly HandoffReasonDefinition[] = [
     code: 'interview_slot_coordination',
     label: '面试时段需人工协调',
     urgent: false,
-    manualResumeOnly: false,
     category: 'T2',
     toolSelectable: true,
   },
@@ -172,7 +157,6 @@ export const HANDOFF_REASON_CATALOG: readonly HandoffReasonDefinition[] = [
     code: 'identity_age_exception',
     label: '年龄/身份边界需人工裁量',
     urgent: false,
-    manualResumeOnly: false,
     category: 'T7',
     toolSelectable: true,
   },
@@ -180,7 +164,6 @@ export const HANDOFF_REASON_CATALOG: readonly HandoffReasonDefinition[] = [
     code: 'store_no_show',
     label: '门店/面试官未履约',
     urgent: true,
-    manualResumeOnly: false,
     category: 'T1',
     toolSelectable: true,
   },
@@ -188,7 +171,6 @@ export const HANDOFF_REASON_CATALOG: readonly HandoffReasonDefinition[] = [
     code: 'out_of_band_booking_inquiry',
     label: '带外预约核实',
     urgent: true,
-    manualResumeOnly: false,
     category: 'T2',
     toolSelectable: true,
   },
@@ -196,7 +178,6 @@ export const HANDOFF_REASON_CATALOG: readonly HandoffReasonDefinition[] = [
     code: 'store_hiring_status_check',
     label: '门店招聘状态核实',
     urgent: false,
-    manualResumeOnly: false,
     category: 'T2',
     toolSelectable: true,
   },
@@ -204,7 +185,6 @@ export const HANDOFF_REASON_CATALOG: readonly HandoffReasonDefinition[] = [
     code: 'duplicate_signup',
     label: '重复报名核实',
     urgent: false,
-    manualResumeOnly: false,
     category: 'T2',
     toolSelectable: true,
   },
@@ -212,7 +192,6 @@ export const HANDOFF_REASON_CATALOG: readonly HandoffReasonDefinition[] = [
     code: 'employment_affairs',
     label: '在职事务',
     urgent: false,
-    manualResumeOnly: true,
     category: 'T3',
     toolSelectable: true,
   },
@@ -220,7 +199,6 @@ export const HANDOFF_REASON_CATALOG: readonly HandoffReasonDefinition[] = [
     code: 'personal_pay_attendance',
     label: '个人薪资考勤个案',
     urgent: false,
-    manualResumeOnly: false,
     category: 'T4',
     toolSelectable: true,
   },
@@ -228,7 +206,6 @@ export const HANDOFF_REASON_CATALOG: readonly HandoffReasonDefinition[] = [
     code: 'platform_operation',
     label: '平台操作问题',
     urgent: false,
-    manualResumeOnly: false,
     category: 'T8',
     toolSelectable: true,
   },
@@ -236,7 +213,6 @@ export const HANDOFF_REASON_CATALOG: readonly HandoffReasonDefinition[] = [
     code: 'other',
     label: '其他需人工处理',
     urgent: false,
-    manualResumeOnly: false,
     category: null,
     toolSelectable: true,
   },
@@ -245,7 +221,6 @@ export const HANDOFF_REASON_CATALOG: readonly HandoffReasonDefinition[] = [
     code: 'interview_group_invite_required',
     label: '预约成功待补发面试群',
     urgent: true,
-    manualResumeOnly: false,
     category: 'T2',
     toolSelectable: false,
   },
@@ -253,7 +228,6 @@ export const HANDOFF_REASON_CATALOG: readonly HandoffReasonDefinition[] = [
     code: 'onboarding_failed',
     label: '面试通过后上岗失败',
     urgent: false,
-    manualResumeOnly: false,
     category: 'T3',
     toolSelectable: false,
   },
@@ -261,7 +235,6 @@ export const HANDOFF_REASON_CATALOG: readonly HandoffReasonDefinition[] = [
     code: 'onboarding_follow_up_required',
     label: '入职进展待人工确认',
     urgent: false,
-    manualResumeOnly: false,
     category: 'T3',
     toolSelectable: false,
   },
@@ -273,7 +246,6 @@ export const HANDOFF_REASON_CATALOG: readonly HandoffReasonDefinition[] = [
     code: 'abuse',
     label: '辱骂/攻击',
     urgent: true,
-    manualResumeOnly: false,
     category: 'T7',
     toolSelectable: false,
   },
@@ -281,7 +253,6 @@ export const HANDOFF_REASON_CATALOG: readonly HandoffReasonDefinition[] = [
     code: 'complaint_risk',
     label: '投诉/举报风险',
     urgent: true,
-    manualResumeOnly: false,
     category: 'T7',
     toolSelectable: false,
   },
@@ -289,7 +260,6 @@ export const HANDOFF_REASON_CATALOG: readonly HandoffReasonDefinition[] = [
     code: 'escalation',
     label: '情绪升级',
     urgent: true,
-    manualResumeOnly: false,
     category: 'T7',
     toolSelectable: false,
   },
@@ -297,7 +267,6 @@ export const HANDOFF_REASON_CATALOG: readonly HandoffReasonDefinition[] = [
     code: 'human_handoff_request',
     label: '候选人主动要求人工',
     urgent: true,
-    manualResumeOnly: false,
     category: 'T7',
     toolSelectable: false,
   },
@@ -305,7 +274,6 @@ export const HANDOFF_REASON_CATALOG: readonly HandoffReasonDefinition[] = [
     code: 'disability_disclosure',
     label: '候选人披露残障身份',
     urgent: false,
-    manualResumeOnly: false,
     category: 'T7',
     toolSelectable: false,
   },
@@ -330,11 +298,6 @@ export const HANDOFF_REASON_LABELS: Readonly<Record<string, string>> = Object.fr
 /** 卡片标急 / 任务优先级急。 */
 export const URGENT_HANDOFF_REASON_CODES: ReadonlySet<string> = new Set(
   HANDOFF_REASON_CATALOG.filter((item) => item.urgent).map((item) => item.code),
-);
-
-/** 暂停到人工恢复为止（面试后一律真人，2026-09-16 运营裁定）。 */
-export const MANUAL_RESUME_HANDOFF_REASON_CODES: ReadonlySet<string> = new Set(
-  HANDOFF_REASON_CATALOG.filter((item) => item.manualResumeOnly).map((item) => item.code),
 );
 
 /** 门店侧履约问题（周榜按门店/品牌聚合）。 */
@@ -370,10 +333,6 @@ export function isUrgentHandoff(
 ): boolean {
   if (isUrgentHandoffReason(code)) return true;
   return code === 'employment_affairs' && WORK_INJURY_PATTERN.test(reasonText ?? '');
-}
-
-export function requiresManualResumeForReason(code: string | null | undefined): boolean {
-  return code != null && MANUAL_RESUME_HANDOFF_REASON_CODES.has(code);
 }
 
 export function resolveHandoffTaskCategory(code: string): HandoffTaskCategory | null {

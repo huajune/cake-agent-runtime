@@ -1,3 +1,5 @@
+import { parseDayWorkTime, WorkTimeContractError } from './work-time.types';
+import { SpongeResponseContractError } from './response-contract.error';
 import { toErrorMessage } from '@infra/utils/error.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { z } from 'zod';
@@ -5,6 +7,8 @@ import { ConfigService } from '@nestjs/config';
 import {
   JobListQueryParams,
   JobListResult,
+  JobDetail,
+  InvalidWorkTimeJob,
   InterviewBookingParams,
   InterviewBookingResult,
   BrandItem,
@@ -63,6 +67,8 @@ const FAILURE_REASONS_CACHE_MAX_ENTRIES = 50;
 /** Agent 上下文按 workOrderId 查工单的 Redis 缓存 TTL（秒）。 */
 const WORKORDER_CACHE_TTL_SECONDS = 5 * 60;
 const MAX_ATTACHMENT_UPLOAD_BYTES = 20 * 1024 * 1024;
+/** 班次契约剔除日志最多展开的岗位条数，其余只计数。 */
+const SKIPPED_WORK_TIME_LOG_LIMIT = 20;
 
 /**
  * 海绵网关在每个响应头里下发的链路追踪 ID。
@@ -201,6 +207,7 @@ export class SpongeService {
   async fetchJobs(
     params: JobListQueryParams,
     tokenContext?: SpongeTokenResolveContext,
+    signal?: AbortSignal,
   ): Promise<JobListResult> {
     const token = await this.resolveDulidayToken(tokenContext);
 
@@ -240,6 +247,7 @@ export class SpongeService {
 
     const response = await fetchWithTimeout(this.jobListApi, {
       method: 'POST',
+      signal,
       headers: {
         'Content-Type': 'application/json',
         'Duliday-Token': token,
@@ -251,7 +259,14 @@ export class SpongeService {
       throw new Error(`API请求失败: ${response.status} ${response.statusText}`);
     }
 
-    const data = await response.json();
+    let data: unknown;
+    try {
+      data = await response.json();
+    } catch (error) {
+      if (error instanceof SyntaxError)
+        throw new SpongeResponseContractError('岗位查询成功响应不是有效JSON');
+      throw error;
+    }
     const parsed = JobListApiResponseSchema.safeParse(data);
     if (!parsed.success) {
       this.logger.warn(
@@ -259,21 +274,63 @@ export class SpongeService {
           .map((issue) => `${issue.path.join('.') || '<root>'}: ${issue.message}`)
           .join('; ')}`,
       );
-      return { jobs: [], total: 0 };
+      throw new SpongeResponseContractError(`岗位查询返回结构异常: ${parsed.error.message}`);
     }
 
     if (parsed.data.code !== 0) {
       // 这里不能静默吞错返回 empty，否则 "lng/lat 缺 range" 之类的参数错会被
       // 误判为"没岗位"。必须抛错以便上层暴露真实原因。
-      const reason = data?.message ?? `code=${parsed.data.code}`;
+      const reason = parsed.data.message ?? `code=${parsed.data.code}`;
       this.logger.warn(`岗位查询返回非零: ${reason}`);
       throw new Error(`岗位查询失败: ${reason}`);
     }
 
-    return {
-      jobs: parsed.data.data?.result ?? [],
-      total: parsed.data.data?.total ?? 0,
-    };
+    if (!parsed.data.data) {
+      throw new SpongeResponseContractError('岗位查询成功响应缺少 data');
+    }
+
+    const { result: jobs, total } = parsed.data.data;
+    if (!params.options?.includeWorkTime) return { jobs, total };
+    if (params.invalidWorkTime !== 'skip') {
+      for (const job of jobs) {
+        parseDayWorkTime(job.workTime, job.basicInfo?.jobId ?? null);
+      }
+      return { jobs, total };
+    }
+    return { ...this.skipInvalidWorkTime(jobs), total };
+  }
+
+  /**
+   * 按岗位隔离班次契约错误（查岗工具与批量任务共用）：不合法岗位整条剔除并记 warn，不补值、不改类型，
+   * 合法岗位照常返回。响应结构等其他契约错误不在此处豁免。
+   */
+  private skipInvalidWorkTime(jobs: JobDetail[]): {
+    jobs: JobDetail[];
+    skippedInvalidWorkTime: InvalidWorkTimeJob[];
+  } {
+    const kept: JobDetail[] = [];
+    const skipped: InvalidWorkTimeJob[] = [];
+    for (const job of jobs) {
+      try {
+        parseDayWorkTime(job.workTime);
+        kept.push(job);
+      } catch (error) {
+        if (!(error instanceof WorkTimeContractError)) throw error;
+        skipped.push({
+          jobId: job.basicInfo?.jobId ?? null,
+          brandName: job.basicInfo?.brandName ?? null,
+          reason: error.message,
+        });
+      }
+    }
+    if (skipped.length > 0) {
+      this.logger.warn(
+        `岗位班次数据不符合契约，已剔除 ${skipped.length} 条（需海绵修数据）: ` +
+          JSON.stringify(skipped.slice(0, SKIPPED_WORK_TIME_LOG_LIMIT)) +
+          (skipped.length > SKIPPED_WORK_TIME_LOG_LIMIT ? ` ...共 ${skipped.length} 条` : ''),
+      );
+    }
+    return { jobs: kept, skippedInvalidWorkTime: skipped };
   }
 
   /** 预约面试 */
@@ -915,79 +972,64 @@ export class SpongeService {
    * 返回 { name, aliases }[] 格式，供事实提取时品牌别名映射使用。
    * API 不可用时返回空数组（graceful 降级）。
    */
-  async fetchBrandList(): Promise<BrandItem[]> {
+  async fetchBrandList(options: { requireFresh?: boolean } = {}): Promise<BrandItem[]> {
+    // 全量体检必须以本次成功的目录响应为准，禁止读 TTL 缓存或失败回退缓存。
+    if (options.requireFresh) return this.fetchFreshBrandList(true);
     const now = Date.now();
     if (
       this.brandListCache &&
       now - this.brandListCache.fetchedAt < BRAND_LIST_CACHE_TTL_MS &&
       this.brandListCache.data.length > 0
-    ) {
+    )
       return this.brandListCache.data;
-    }
-
-    const token = await this.resolveDulidayToken(undefined, { allowMissing: true });
-    if (!token) {
-      this.logger.warn('缺少 DULIDAY_API_TOKEN，品牌列表不可用');
-      return this.brandListCache?.data ?? [];
-    }
-
-    if (this.brandListFetchPromise) {
-      return this.brandListFetchPromise;
-    }
-
-    this.brandListFetchPromise = (async () => {
-      try {
-        const response = await fetchWithTimeout(this.brandListApi, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Duliday-Token': token,
-          },
-          body: JSON.stringify({ pageNum: 1, pageSize: 1000 }),
-        });
-
-        if (!response.ok) {
-          this.logger.warn(`品牌列表 API 返回 ${response.status}`);
-          return this.brandListCache?.data ?? [];
-        }
-
-        const rawData = await response.json();
-        const parsed = BrandListApiResponseSchema.safeParse(rawData);
-        if (!parsed.success) {
-          this.logger.warn(
-            `品牌列表返回结构异常: ${parsed.error.issues
-              .map((issue) => `${issue.path.join('.') || '<root>'}: ${issue.message}`)
-              .join('; ')}`,
-          );
-          return this.brandListCache?.data ?? [];
-        }
-
-        if (parsed.data.code !== 0 || !parsed.data.data?.result) {
-          this.logger.warn('品牌列表返回非零: ' + (parsed.data.message || parsed.data.code));
-          return this.brandListCache?.data ?? [];
-        }
-
-        const brandList = (parsed.data.data.result as RawBrandItem[]).map((item) => ({
-          id: item.id,
-          name: item.name,
-          aliases: (item.aliases ?? []).filter((a: string) => a !== item.name),
-        }));
-
-        this.brandListCache = {
-          data: brandList,
-          fetchedAt: Date.now(),
-        };
-
-        return brandList;
-      } catch (err) {
-        this.logger.warn('品牌列表获取失败，降级为空列表', err);
+    if (this.brandListFetchPromise) return this.brandListFetchPromise;
+    this.brandListFetchPromise = this.fetchFreshBrandList()
+      .catch((error: unknown) => {
+        this.logger.warn('品牌列表获取失败，沿用已有目录', error);
         return this.brandListCache?.data ?? [];
-      } finally {
+      })
+      .finally(() => {
         this.brandListFetchPromise = null;
-      }
-    })();
-
+      });
     return this.brandListFetchPromise;
+  }
+
+  /** 不降级的目录读取；调用方负责决定失败时能否沿用缓存。 */
+  private async fetchFreshBrandList(requireComplete = false): Promise<BrandItem[]> {
+    const token = await this.resolveDulidayToken(undefined, { allowMissing: true });
+    if (!token) throw new Error('缺少 DULIDAY_API_TOKEN，品牌列表不可用');
+    const response = await fetchWithTimeout(this.brandListApi, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Duliday-Token': token },
+      body: JSON.stringify({ pageNum: 1, pageSize: 1000 }),
+    });
+    if (!response.ok) throw new Error('品牌列表 API 返回 ' + response.status);
+    const parsed = BrandListApiResponseSchema.safeParse(await response.json());
+    if (!parsed.success) {
+      throw new Error(
+        '品牌列表返回结构异常: ' +
+          parsed.error.issues
+            .map((issue) => (issue.path.join('.') || '<root>') + ': ' + issue.message)
+            .join('; '),
+      );
+    }
+    if (parsed.data.code !== 0 || !parsed.data.data?.result) {
+      throw new Error('品牌列表返回非零: ' + (parsed.data.message || parsed.data.code));
+    }
+    if (
+      requireComplete &&
+      ((parsed.data.data.total != null &&
+        parsed.data.data.result.length < parsed.data.data.total) ||
+        (parsed.data.data.total == null && parsed.data.data.result.length >= 1000))
+    )
+      throw new Error('品牌目录分页未完整，无法完成全量扫描');
+    const brandList = (parsed.data.data.result as RawBrandItem[]).map((item) => ({
+      id: item.id,
+      name: item.name,
+      aliases: (item.aliases ?? []).filter((alias: string) => alias !== item.name),
+    }));
+    this.brandListCache = { data: brandList, fetchedAt: Date.now() };
+    return brandList;
   }
 
   // ==================== 观远BI（委托 SpongeBiService）====================

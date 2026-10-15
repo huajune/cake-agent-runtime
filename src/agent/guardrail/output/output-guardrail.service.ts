@@ -5,6 +5,10 @@ import { SessionFactsService } from '@memory/short-term/facts.service';
 import { MessageWindowService } from '@memory/short-term/message-window.service';
 import { LongTermService } from '@memory/long-term/long-term.service';
 import type { ActiveBookingEntry } from '@memory/long-term/long-term.types';
+import type { ShortTermMessage } from '@memory/short-term/short-term.types';
+import { isHumanAgentTextMessage } from '@biz/message/utils/message-provenance.util';
+import type { RecommendedJobSummary } from '@resolution/job/types';
+import type { TurnLedger } from '@shared-types/turn.types';
 import { BookingSnapshotService } from '@tools/booking/booking-snapshot.service';
 import type { AgentMemorySnapshot, AgentToolCall } from '@agent/generator/generator.types';
 import type {
@@ -22,6 +26,11 @@ import {
 } from '@shared-types/guardrail.contract';
 import { HardRulesService, type HardRuleOverrideHit } from './rules/hard-rules.service';
 import { formatJobFactProvenanceTexts } from './rules/job-fact-reconciliation.rule';
+import {
+  buildStudentAcceptanceEvidence,
+  type StudentAcceptanceEvidence,
+} from './rules/student-acceptance.rule';
+import type { TurnHints } from '@resolution/turn-hints/turn-hint.types';
 import type { RuleContradiction } from './output-rule.types';
 import { OutboundReplySanitizer } from './sanitizer/outbound-reply-sanitizer';
 
@@ -44,16 +53,31 @@ export class OutputGuardrailService {
     @Optional() private readonly bookingSnapshot?: BookingSnapshotService,
   ) {}
 
-  private async readRecentTexts(
-    chatId: string | undefined,
-  ): Promise<{ assistantTexts: string[]; userTexts: string[]; messages: unknown[] }> {
-    if (!chatId) return { assistantTexts: [], userTexts: [], messages: [] };
+  /**
+   * 会话历史文本。assistantTexts 是全部经理侧文本（供精确重复去重）；岗位事实出处再按来源拆成
+   * Agent 自己的回复与真人招聘经理手动消息——后者里的薪资数字不能为 Agent 报的薪资作证。
+   */
+  private async readRecentTexts(chatId: string | undefined): Promise<RecentTexts> {
+    const empty: RecentTexts = {
+      assistantTexts: [],
+      agentAssistantTexts: [],
+      humanRecruiterTexts: [],
+      userTexts: [],
+      messages: [],
+    };
+    if (!chatId) return empty;
     try {
       const messages = await this.shortTerm.getMessages(chatId);
+      const assistantMessages = messages.filter(
+        (message) => message.role === 'assistant' && message.content.trim().length > 0,
+      );
+      const isHuman = (message: ShortTermMessage) => isHumanAgentTextMessage(message);
       return {
-        assistantTexts: messages
-          .filter((message) => message.role === 'assistant' && message.content.trim().length > 0)
+        assistantTexts: assistantMessages.map((message) => message.content),
+        agentAssistantTexts: assistantMessages
+          .filter((message) => !isHuman(message))
           .map((message) => message.content),
+        humanRecruiterTexts: assistantMessages.filter(isHuman).map((message) => message.content),
         userTexts: messages
           .filter((message) => message.role === 'user' && message.content.trim().length > 0)
           .map((message) => message.content)
@@ -64,7 +88,7 @@ export class OutputGuardrailService {
       this.logger.warn(
         `[OutputGuardrail] 读取会话历史失败，按无历史继续确定性审查: ${toErrorMessage(error)}`,
       );
-      return { assistantTexts: [], userTexts: [], messages: [] };
+      return empty;
     }
   }
 
@@ -130,42 +154,63 @@ export class OutputGuardrailService {
   }
 
   /**
-   * 会话记忆里的岗位摘要（已展示岗位 / 上轮候选池 / 焦点岗位）压成出处文本，供
-   * job_fact_without_provenance 对账：它们是上一轮真实工具结果沉淀后渲染进 [会话记忆] 的
-   * 班次/薪资/距离，模型据此回答追问不是编造。读不到（无会话身份 / 读失败）返回空数组，
-   * 规则退回只按历史回复对账。
+   * 会话岗位记忆的两路对账证据（一次读取）：
+   * - jobs：已展示岗位 / 上轮候选池 / 焦点岗位。压成出处文本供 job_fact_without_provenance 对账——
+   *   它们是上一轮真实工具结果沉淀后渲染进 [会话记忆] 的班次/薪资/距离，模型据此回答追问不是编造；
+   *   岗位本体另供按岗位绑定回复；
+   * - studentAcceptance：学生身份（会话事实 + 本轮线索）与已展示/焦点岗位的社会身份档位，
+   *   供 student_acceptance_contradiction 对账。
+   * 读不到（无会话身份 / 读失败）时岗位为空、学生证据缺省，相关规则各自退回保守口径。
    */
-  private async readSessionJobFactTexts(
+  private async readSessionJobEvidence(
     corpId: string | undefined,
     userId: string | undefined,
     sessionId: string | undefined,
-  ): Promise<string[]> {
-    if (!this.sessionFacts || !corpId || !userId || !sessionId) return [];
+    turnHints: TurnHints | null | undefined,
+  ): Promise<{ jobs: RecommendedJobSummary[]; studentAcceptance?: StudentAcceptanceEvidence }> {
+    if (!this.sessionFacts || !corpId || !userId || !sessionId) return { jobs: [] };
     try {
       const state = await this.sessionFacts.getSessionState(corpId, userId, sessionId);
-      return formatJobFactProvenanceTexts([
-        ...(state.presentedJobs ?? []),
-        ...(state.lastCandidatePool ?? []),
-        state.currentFocusJob,
-      ]);
+      return {
+        jobs: [
+          ...(state.presentedJobs ?? []),
+          ...(state.lastCandidatePool ?? []),
+          ...(state.currentFocusJob ? [state.currentFocusJob] : []),
+        ],
+        studentAcceptance: buildStudentAcceptanceEvidence(state, turnHints),
+      };
     } catch (error: unknown) {
       this.logger.warn(
         `[OutputGuardrail] 读取会话岗位记忆失败，按无记忆出处继续对账: ${toErrorMessage(error)}`,
       );
-      return [];
+      return { jobs: [] };
     }
+  }
+
+  /** 本轮查岗召回与 precheck 确权的岗位；没有回合账本（advisory/debug）时返回 undefined=未知。 */
+  private readTurnJobs(ledger: TurnLedger | undefined): RecommendedJobSummary[] | undefined {
+    if (!ledger) return undefined;
+    const { fetchedJobs, attestedFocusJob } = ledger.jobs;
+    return [...fetchedJobs, ...(attestedFocusJob ? [attestedFocusJob] : [])];
   }
 
   async check(input: OutputGuardInput): Promise<OutputGuardDecision> {
     const reply = input.reply?.trim() ?? '';
     if (!reply) return this.passDecision([], []);
 
-    const [recent, runtimeConfig, activeBookings, sessionJobFactTexts] = await Promise.all([
+    const [recent, runtimeConfig, activeBookings, sessionJobEvidence] = await Promise.all([
       this.readRecentTexts(input.chatId),
       this.systemConfig.getAgentReplyConfig(),
       this.readActiveBookings(input.corpId, input.userId),
-      this.readSessionJobFactTexts(input.corpId, input.userId, input.sessionId),
+      this.readSessionJobEvidence(
+        input.corpId,
+        input.userId,
+        input.sessionId,
+        input.turnLedger?.facts.turnHints,
+      ),
     ]);
+    const sessionJobs = sessionJobEvidence.jobs;
+    const sessionJobFactTexts = formatJobFactProvenanceTexts(sessionJobs);
     const pruned = OutboundReplySanitizer.pruneRepeatedSegments(
       reply,
       recent.assistantTexts,
@@ -185,8 +230,12 @@ export class OutputGuardrailService {
       recentUserTexts: recent.userTexts,
       recentMessages: recent.messages,
       memorySnapshot: input.memorySnapshot,
-      priorAssistantTexts: recent.assistantTexts,
+      priorAssistantTexts: recent.agentAssistantTexts,
+      humanRecruiterTexts: recent.humanRecruiterTexts,
       sessionJobFactTexts,
+      sessionJobs,
+      turnJobs: this.readTurnJobs(input.turnLedger),
+      studentAcceptance: sessionJobEvidence.studentAcceptance,
       activeBookings,
       silent: input.silent,
       hardRuleOverrides: runtimeConfig.hardRuleOverrides ?? {},
@@ -286,10 +335,21 @@ export class OutputGuardrailService {
   }
 }
 
+interface RecentTexts {
+  /** 全部经理侧文本（Agent + 真人），供精确重复去重。 */
+  assistantTexts: string[];
+  /** Agent 自己发出的回复，供岗位事实出处对账。 */
+  agentAssistantTexts: string[];
+  /** 真人招聘经理手动消息（isHumanAgentTextMessage）。 */
+  humanRecruiterTexts: string[];
+  userTexts: string[];
+  messages: unknown[];
+}
+
 export interface OutputGuardInput {
   reply: string;
   toolCalls: AgentToolCall[];
-  turnLedger?: import('@shared-types/turn.types').TurnLedger;
+  turnLedger?: TurnLedger;
   memorySnapshot?: AgentMemorySnapshot;
   redLines?: string[];
   userMessage?: string;

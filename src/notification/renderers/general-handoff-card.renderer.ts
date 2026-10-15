@@ -31,7 +31,7 @@ export class GeneralHandoffCardRenderer {
       `**候选人信息**\n${this.formatCandidateInfo(payload)}`,
       payload.hostingPaused === false
         ? '本次仅告警，未暂停 AI 托管；真人明确接管时再按现行流程暂停。'
-        : '处理完请到 Web 托管后台手动恢复托管。',
+        : '处理完可到 Web 托管后台手动恢复托管；未手动恢复时，次日零点（上海时间）自动恢复。',
       this.formatDiagnostics(payload.diagnostics),
     ].filter((line): line is string => Boolean(line));
 
