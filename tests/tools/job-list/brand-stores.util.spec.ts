@@ -21,7 +21,7 @@ describe('job-list brand-stores util', () => {
           ],
         },
       }),
-    ).toBe('24-26 元/时');
+    ).toBe('24-26元/时');
 
     expect(
       formatSalarySummary({
@@ -60,7 +60,7 @@ describe('job-list brand-stores util', () => {
             storeName: '绿地缤纷城店',
             jobId: 2,
             distanceKm: 2.3,
-            displayLine: '肯德基（绿地缤纷城店，2.3km，24-29 元/时）',
+            displayLine: '肯德基（绿地缤纷城店，2.3km，24-29元/时）',
           }),
           expect.objectContaining({ storeName: '日月光店', jobId: 1, distanceKm: 5.1 }),
           expect.objectContaining({ storeName: '虹桥店', jobId: 3, distanceKm: 8.5 }),
@@ -83,7 +83,7 @@ describe('job-list brand-stores util', () => {
     expect(getMultiStoreBrandGroups(groups)).toHaveLength(1);
     expect(renderMultiStoreBrandWarning(groups)).toContain('## ⚠️ 同品牌多门店');
     expect(renderMultiStoreBrandWarning(groups)).toContain(
-      '肯德基（绿地缤纷城店，2.3km，24-29 元/时）',
+      '肯德基（绿地缤纷城店，2.3km，24-29元/时）',
     );
     const singleStoreGroup = groups!.find((group) => group.brandName === '麦当劳');
     expect(renderMultiStoreBrandWarning(singleStoreGroup ? [singleStoreGroup] : [])).toBeNull();

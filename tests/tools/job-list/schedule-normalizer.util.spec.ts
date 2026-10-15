@@ -23,4 +23,10 @@ describe('海绵班次归一化', () => {
     });
     expect(getJobSchedule({ basicInfo: { jobId: 8 } })).toBeNull();
   });
+
+  it('灵活排班非整数小时的每班时长取整到分钟', () => {
+    expect(getJobSchedule(flexibleJob(9, '05:00', '23:00', '6.33'))).toMatchObject({
+      minimumMinutes: 380,
+    });
+  });
 });

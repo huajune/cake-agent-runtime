@@ -31,6 +31,7 @@ describe('job-fact-signals.util', () => {
       ['只有月份', '下个月可以入职'],
       ['发薪日不属于结构行判据', '每月 15 号发薪'],
       ['问月薪不带数字', '月薪多少呀'],
+      ['段尾金额接下一段开头的"月"', '一天2小时就是48元\n\n月工时超40小时才涨'],
     ])('不把%s识别为结构化岗位硬事实', (_label, text) => {
       expect(QUANTIFIED_JOB_FACT_PATTERN.test(text)).toBe(false);
     });

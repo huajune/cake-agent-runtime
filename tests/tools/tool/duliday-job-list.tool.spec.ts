@@ -264,7 +264,7 @@ describe('buildJobListTool', () => {
 
     expect(recordFetchedJobs).toHaveBeenCalledWith([
       expect.objectContaining({
-        salaryDesc: '2000-4000 元/月',
+        salaryDesc: '2000-4000元/月',
         settlementSummary:
           '正式:日结算（当日结）；培训期:月结算（10号发薪）；基础工资按日结；阶梯差价按月结；培训费用按月结；每月10号发上月差价',
       }),
@@ -1518,7 +1518,7 @@ describe('buildJobListTool', () => {
       expect.objectContaining({
         jobId: 1,
         brandName: 'KFC',
-        salaryDesc: '4000-5000 元/月',
+        salaryDesc: '4000-5000元/月',
       }),
     ]);
   });
@@ -2210,12 +2210,13 @@ describe('buildJobListTool', () => {
       includeWorkTime: true,
     });
 
-    expect(result.markdown).toContain('固定排班（需接受全部班次）');
+    // 两档重叠：运营口径认定不在同一天上，须全部都能接受。
+    expect(result.markdown).toContain('固定排班（各班次不在同一天上，需全部都能接受）');
     expect(result.markdown).toContain('**每日排班**');
     expect(result.markdown).toContain('09:00-18:30');
     expect(result.markdown).toContain('13:00-22:30');
     // 固定排班全部出勤；周频单独提示。
-    expect(result.markdown).toContain('需接受全部班次');
+    expect(result.markdown).toContain('需全部都能接受');
     expect(result.markdown).toContain('**排班硬约束提示**');
     expect(result.markdown).toContain('须核对周频限制');
   });
@@ -2438,8 +2439,8 @@ describe('buildJobListTool', () => {
 
       const md = result.markdown as string;
       expect(md).toContain('⚠️ 同品牌多门店');
-      expect(md).toContain('肯德基 餐饮（绿地缤纷城店，2.3km，17-22 元/时）');
-      expect(md).toContain('肯德基 餐饮（日月光店，5.1km，17-22 元/时）');
+      expect(md).toContain('肯德基 餐饮（绿地缤纷城店，2.3km，17-22元/时）');
+      expect(md).toContain('肯德基 餐饮（日月光店，5.1km，17-22元/时）');
       expect(md).toContain('jobId: 1');
       expect(md).toContain('jobId: 2');
     });
@@ -2461,8 +2462,8 @@ describe('buildJobListTool', () => {
           totalStoreCount: 2,
           requiresStoreDifferentiation: true,
           displayLines: [
-            '肯德基 餐饮（绿地缤纷城店，2.3km，17-22 元/时）',
-            '肯德基 餐饮（日月光店，5.1km，17-22 元/时）',
+            '肯德基 餐饮（绿地缤纷城店，2.3km，17-22元/时）',
+            '肯德基 餐饮（日月光店，5.1km，17-22元/时）',
           ],
         }),
       ]);
@@ -2700,7 +2701,7 @@ describe('buildJobListTool', () => {
       it.each([false, true])(
         '其他条件排除全部岗位时返回对应空结果，含固定排班岗位=%s',
         async (withMatched) => {
-          // 灵活排班区间 18:00–23:00 被“18点后有空”整段覆盖，班次本身匹配。
+          // 灵活排班区间 18:00–23:00 能在“18点后有空”内排出完整班次，班次本身匹配。
           const pending = {
             ...makeJobData(rejected),
             workTime: flexibleJob(1, '18:00', '23:00').workTime,
@@ -2737,9 +2738,10 @@ describe('buildJobListTool', () => {
     });
     it.each([
       { start: '18:00', end: '23:00', inPool: true },
-      { start: '05:00', end: '23:00', inPool: false },
+      { start: '05:00', end: '23:00', inPool: true },
+      { start: '05:00', end: '21:00', inPool: false },
     ])(
-      '灵活排班区间被候选人时段整段覆盖才进入推荐池：$start-$end',
+      '灵活排班区间内排得出落在候选人时段内的完整班次才进入推荐池：$start-$end',
       async ({ start, end, inPool }) => {
         const job = { ...makeJobData(), workTime: flexibleJob(1, start, end).workTime };
         mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [job], total: 1 });
@@ -2840,6 +2842,26 @@ describe('buildJobListTool', () => {
         expect(mockSpongeService.fetchJobs.mock.calls[0][0].options.includeWorkTime).toBe(expected);
       },
     );
+    it('inspect附上与推荐卡片同源的班次行，组合排班保留全部档位与选择方式', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [
+          scheduledJob(1, '组合排班制', [
+            ['07:00', '15:00'],
+            ['15:00', '23:00'],
+          ]),
+        ],
+        total: 1,
+      });
+      const result = await executeTool(mockContext, {
+        ...defaultInput,
+        purpose: 'inspect',
+        jobIdList: [1],
+      } as typeof defaultInput);
+      expect(result.shiftLines).toEqual([
+        { jobId: 1, shiftLine: '07:00-15:00 / 15:00-23:00 二选一' },
+      ]);
+      expect(result._replyInstruction ?? result.replyInstruction).toContain('shiftLines');
+    });
     it('inspect返回的岗位事实同样替换公司旧称', async () => {
       const job = scheduledJob(1, '固定排班', [['18:00', '22:00']]);
       job.basicInfo = { ...job.basicInfo, brandName: '独立日餐饮', storeName: '独立日餐饮一店' };
@@ -2899,17 +2921,18 @@ describe('buildJobListTool', () => {
       expect(recordFetchedJobs).not.toHaveBeenCalled();
       expect(recordEvent).not.toHaveBeenCalled();
     });
-    it('灵活排班区间未被整段覆盖时按排班不符给出确定结论，不说附近没岗', async () => {
+    it('灵活排班区间内排不出候选人时段内的完整班次时按排班不符给出确定结论，不说附近没岗', async () => {
+      // 区间 05:00-23:00、每班 4 小时：20 点后开始排不满一班。
       mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [flexibleJob()], total: 1 });
-      const result = await executeTool({ ...mockContext, currentUserMessage: '18点后有空' }, {
+      const result = await executeTool({ ...mockContext, currentUserMessage: '20点后有空' }, {
         ...defaultInput,
-        candidateScheduleConstraint: { availableWindow: { start: '18:00' } },
-        candidateScheduleCitation: { quote: '18点后有空' },
+        candidateScheduleConstraint: { availableWindow: { start: '20:00' } },
+        candidateScheduleCitation: { quote: '20点后有空' },
       } as typeof defaultInput);
       expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_SCHEDULE_FILTER_EMPTY);
       expect(result.queryMeta).not.toHaveProperty('unknownCount');
       expect(result.queryMeta.scheduleFilter.excludedExamples).toEqual([
-        expect.objectContaining({ reason: expect.stringContaining('整个排班区间') }),
+        expect.objectContaining({ reason: expect.stringContaining('排不出一个') }),
       ]);
       expect(result.noMatchScript.candidateMessage).toContain('有 1 家在招');
       expect(result.noMatchScript.candidateMessage).not.toContain('没找到');

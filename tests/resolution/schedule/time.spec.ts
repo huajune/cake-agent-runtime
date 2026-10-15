@@ -23,6 +23,40 @@ describe('跨日时间区间', () => {
     expect(candidateCovers({ startMinute: 1080, endMinute: 1560 }, { end: '24:00' })).toBe(false);
   });
 
+  it('只给晚间结束边界时不借前一日对齐放行跨夜班次', () => {
+    // 21:00–次日05:00 / 22:00–次日06:00
+    expect(candidateCovers({ startMinute: 1260, endMinute: 1740 }, { end: '21:00' })).toBe(false);
+    expect(candidateCovers({ startMinute: 1320, endMinute: 1800 }, { end: '12:00' })).toBe(true);
+    expect(candidateCovers({ startMinute: 1320, endMinute: 1800 }, { end: '12:01' })).toBe(false);
+  });
+
+  it.each<{ name: string; start: string; slot: [number, number]; covered: boolean }>([
+    {
+      name: '前一晚开始的跨夜班次 21:00–次日05:00',
+      start: '00:00',
+      slot: [1260, 1740],
+      covered: false,
+    },
+    {
+      name: '前一晚开始的班次 23:00–次日02:00',
+      start: '00:00',
+      slot: [1380, 1560],
+      covered: false,
+    },
+    { name: '零点开始的班次 00:00–06:00', start: '00:00', slot: [0, 360], covered: true },
+    { name: '凌晨2点开始的班次 02:00–08:00', start: '01:00', slot: [120, 480], covered: true },
+    { name: '早于开始边界的班次 00:30–05:00', start: '01:00', slot: [30, 300], covered: false },
+    {
+      name: '业务日分界后开始的班次 04:00–09:00',
+      start: '01:00',
+      slot: [240, 540],
+      covered: false,
+    },
+  ])('只给04:00前的开始边界按业务日判定：$name', ({ start, slot, covered }) => {
+    const [startMinute, endMinute] = slot;
+    expect(candidateCovers({ startMinute, endMinute }, { start })).toBe(covered);
+  });
+
   it('凌晨班次可以对齐到候选人的次日窗口，但不能越过其结束边界', () => {
     const window = { start: '22:00', end: '06:00', endDayOffset: 1 as const };
     expect(candidateCovers({ startMinute: 0, endMinute: 360 }, window)).toBe(true);
