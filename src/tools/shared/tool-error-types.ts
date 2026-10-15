@@ -57,6 +57,11 @@ export const TOOL_ERROR_TYPES = {
   PRECHECK_INVALID_REQUESTED_DATE: 'precheck.invalid_requested_date',
   PRECHECK_JOB_NOT_FOUND: 'precheck.job_not_found',
   /**
+   * 岗位详情查不到，但候选人在该岗位仍有在途预约（本轮预约快照或 active_booking 指针命中）。
+   * 与 job_not_found 区别开：不标记岗位失效、不引导换店；预约本身仍有效，改约无法自助校验时转人工。
+   */
+  PRECHECK_BOOKED_JOB_UNVERIFIABLE: 'precheck.booked_job_unverifiable',
+  /**
    * jobId 无召回出处：本会话（含本轮 job_list）从未召回/展示过任何岗位，模型却传入了 jobId。
    * 典型幻觉簇——空会话里候选人只发"应聘/约面试"，模型凭空编出 jobId + 整张候选人报名表直接 precheck。
    * 与 job_not_found 区别开：后者"未找到岗位"措辞会被模型脑补成"岗位下架了"，本类型明确要求先走 job_list。

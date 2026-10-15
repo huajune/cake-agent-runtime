@@ -2,6 +2,7 @@ import { OutputGuardrailService } from '@agent/guardrail/output/output-guardrail
 import { HardRulesService } from '@agent/guardrail/output/rules/hard-rules.service';
 import { AlertNotifierService } from '@notification/services/alert-notifier.service';
 import { Test, type TestingModule } from '@nestjs/testing';
+import { StorageMessageSource, StorageMessageType } from '@enums/storage-message.enum';
 
 describe('OutputGuardrailService', () => {
   const systemConfig = {
@@ -73,6 +74,112 @@ describe('OutputGuardrailService', () => {
         priorAssistantTexts: ['肯德基 2.7km'],
       }),
     );
+  });
+
+  it('真人招聘经理手动消息不进 Agent 历史出处，单独作为 humanRecruiterTexts 传给规则层', async () => {
+    shortTerm.getMessages.mockResolvedValue([
+      {
+        role: 'assistant',
+        content: '塔克贝尔值班经理，25.5元/时',
+        source: StorageMessageSource.AI_REPLY,
+      },
+      {
+        role: 'assistant',
+        content: '这个综合下来3000-4000元/月',
+        source: StorageMessageSource.MOBILE_PUSH,
+        messageType: StorageMessageType.TEXT,
+        isSelf: true,
+      },
+      { role: 'user', content: '一个月多少' },
+    ]);
+
+    await service.check({ reply: '月薪3000-4000', toolCalls: [], chatId: 'chat-1' });
+
+    expect(ruleGuard.check).toHaveBeenCalledWith(
+      expect.objectContaining({
+        priorAssistantTexts: ['塔克贝尔值班经理，25.5元/时'],
+        humanRecruiterTexts: ['这个综合下来3000-4000元/月'],
+      }),
+    );
+  });
+
+  it('本轮回合账本的召回/确权岗位作为 turnJobs 传给规则层；无账本时为 undefined', async () => {
+    const fetched = { jobId: 1, brandName: '塔克贝尔', laborForm: '兼职', salaryDesc: '25.5元/时' };
+    const attested = { jobId: 2, brandName: '肯德基', laborForm: '全职', salaryDesc: null };
+    await service.check({
+      reply: '你好',
+      toolCalls: [],
+      chatId: 'chat-1',
+      turnLedger: { jobs: { fetchedJobs: [fetched], attestedFocusJob: attested } } as never,
+    });
+    expect(ruleGuard.check).toHaveBeenLastCalledWith(
+      expect.objectContaining({ turnJobs: [fetched, attested] }),
+    );
+
+    await service.check({ reply: '你好', toolCalls: [], chatId: 'chat-1' });
+    expect(ruleGuard.check).toHaveBeenLastCalledWith(
+      expect.objectContaining({ turnJobs: undefined }),
+    );
+  });
+
+  it('生产原样（trace …_1790233240971）：只调取消 + 月薪只来自真人经理消息 → replan 与兼职月薪哨兵', async () => {
+    useActualRules();
+    const tacoJob = {
+      jobId: 530001,
+      brandName: '塔克贝尔',
+      jobName: '值班经理',
+      storeName: null,
+      cityName: '上海市',
+      regionName: null,
+      laborForm: '兼职',
+      salaryDesc: '25.5元/时',
+      jobCategoryName: '餐饮/值班经理',
+    };
+    const sessionFacts = {
+      getSessionState: jest.fn().mockResolvedValue({
+        presentedJobs: [tacoJob],
+        lastCandidatePool: null,
+        currentFocusJob: null,
+      }),
+    };
+    const withSession = new OutputGuardrailService(
+      systemConfig as never,
+      ruleGuard as never,
+      shortTerm as never,
+      undefined,
+      sessionFacts as never,
+    );
+    shortTerm.getMessages.mockResolvedValue([
+      {
+        role: 'assistant',
+        content: '值班经理这个综合下来3000-4000元/月',
+        source: StorageMessageSource.MOBILE_PUSH,
+        messageType: StorageMessageType.TEXT,
+        isSelf: true,
+      },
+      { role: 'user', content: '帮我把明天那个取消了吧，再看看别的' },
+    ]);
+    const cancelCall = {
+      toolName: 'duliday_cancel_work_order',
+      args: { workOrderId: 1 },
+      status: 'ok',
+      result: { success: true },
+    };
+
+    const decision = await withSession.check({
+      reply:
+        '已经帮你取消了。还有一个塔克贝尔值班经理，月薪3000-4000，时薪25.5起，做满一定小时数还能升档。',
+      toolCalls: [cancelCall, cancelCall] as never,
+      chatId: 'chat-1',
+      userId: 'user-1',
+      corpId: 'corp-1',
+      sessionId: 'session-1',
+    });
+
+    expect(decision.ruleIds).toEqual(
+      expect.arrayContaining(['job_fact_without_provenance', 'part_time_salary_display_mismatch']),
+    );
+    expect(decision.decision).toBe('replan');
   });
 
   it('本轮预约快照镜像并入 activeBookings（与指针按工单号去重），快照读不到时只用指针', async () => {

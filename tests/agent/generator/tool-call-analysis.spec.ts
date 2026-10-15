@@ -27,6 +27,7 @@ import {
   SIDE_EFFECT_TOOLS,
   TOOL_GUARDRAIL_IDS,
 } from '@agent/generator/tool-call-analysis';
+import { buildToolError, TOOL_ERROR_TYPES } from '@tools/shared/tool-error-types';
 
 describe('tool-call-analysis', () => {
   describe('computeResultCount', () => {
@@ -128,6 +129,17 @@ describe('tool-call-analysis', () => {
       expect(computeToolCallStatus({ errorType: 'geocode.unresolved_address' }, undefined)).toBe(
         'error',
       );
+    });
+
+    it('已有预约岗位查不到详情（booked_job_unverifiable）按 error 计，不是业务空态', () => {
+      const result = buildToolError({
+        errorType: TOOL_ERROR_TYPES.PRECHECK_BOOKED_JOB_UNVERIFIABLE,
+        replyInstruction: '预约仍有效',
+        details: { jobId: 100, workOrderId: 467501 },
+      });
+      expect(computeToolCallStatus(result, computeResultCount(result))).toBe('error');
+      expect(extractToolErrorType(result)).toBe('precheck.booked_job_unverifiable');
+      expect(isToolSuccess(result)).toBe(false);
     });
 
     it('maps zero-result errorTypes to empty instead of error', () => {
