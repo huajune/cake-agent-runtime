@@ -24,6 +24,11 @@ export interface ProviderDefaultConfig {
   displayName: string;
   /** OpenAI-compatible chat 端点是否支持 JSON Schema structured outputs。 */
   supportsStructuredOutputs?: boolean;
+  /**
+   * 结构化输出改走 JSON 模式，schema（含字段说明）写进提示词，不交给厂商的 json_schema 约束解码。
+   * 用于厂商约束解码会让模型看不到字段说明或按字段顺序截掉内容的情况。
+   */
+  jsonSchemaInPrompt?: boolean;
 }
 
 /** 错误分类（对标 ZeroClaw reliable.rs） */
@@ -86,7 +91,9 @@ export const PROVIDER_DEFAULTS: Record<string, ProviderDefaultConfig> = {
     baseUrlEnvKey: 'QWEN_BASE_URL',
     defaultBaseURL: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
     displayName: '通义千问 (DashScope)',
-    supportsStructuredOutputs: true,
+    // DashScope 的 json_schema 约束解码：严格模式不把 schema 放进模型上下文，字段说明对模型不可见；
+    // 非严格模式按字段顺序约束输出，模型先写排在后面的字段时，前面的字段就写不进去，还会补出表示撤销的 null。
+    jsonSchemaInPrompt: true,
   },
   moonshotai: {
     envKey: 'MOONSHOT_API_KEY',

@@ -1,12 +1,13 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createProviderRegistry, LanguageModel } from 'ai';
+import { createProviderRegistry, LanguageModel, wrapProvider } from 'ai';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { createDeepSeek } from '@ai-sdk/deepseek';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { createCustomOpenAI } from './custom-openai.provider';
 import { createCustomOpenRouter } from './custom-openrouter.provider';
+import { jsonSchemaInPromptMiddleware } from './json-schema-prompt.middleware';
 import { PROVIDER_DEFAULTS } from './types';
 import { MODEL_DICTIONARY, ModelEntry, getModelsByProvider } from './models';
 
@@ -83,13 +84,16 @@ export class RegistryService implements OnModuleInit {
       if (!apiKey) continue;
 
       const baseURL = this.config.get<string>(cfg.baseUrlEnvKey ?? '') ?? cfg.defaultBaseURL;
-      providers[name] = createOpenAICompatible({
+      const provider = createOpenAICompatible({
         name,
         apiKey,
         baseURL,
         includeUsage: true,
         supportsStructuredOutputs: cfg.supportsStructuredOutputs,
       });
+      providers[name] = cfg.jsonSchemaInPrompt
+        ? wrapProvider({ provider, languageModelMiddleware: jsonSchemaInPromptMiddleware })
+        : provider;
       this.registeredProviders.push(name);
       this.logger.log(`Provider 已注册: ${name} (${cfg.displayName})`);
     }
