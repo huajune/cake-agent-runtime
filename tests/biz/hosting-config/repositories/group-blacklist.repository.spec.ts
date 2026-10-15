@@ -129,6 +129,31 @@ describe('GroupBlacklistRepository', () => {
       expect(result).toBeNull();
     });
 
+    it('retries a transient gateway error before giving the blacklist back', async () => {
+      const blacklistItems = [{ group_id: 'group_001', added_at: 1700000000000 }];
+      mockSupabaseClient.from
+        .mockReturnValueOnce(
+          makeQueryMock({ data: null, error: { message: '503 Service Unavailable' } }),
+        )
+        .mockReturnValueOnce(makeQueryMock({ data: [{ value: blacklistItems }], error: null }));
+
+      const result = await repository.loadBlacklistFromDb();
+
+      expect(mockSupabaseClient.from).toHaveBeenCalledTimes(2);
+      expect(result).toEqual(blacklistItems);
+    });
+
+    it('returns null after the transient retry is exhausted', async () => {
+      mockSupabaseClient.from.mockReturnValue(
+        makeQueryMock({ data: null, error: { message: '503 Service Unavailable' } }),
+      );
+
+      const result = await repository.loadBlacklistFromDb();
+
+      expect(mockSupabaseClient.from).toHaveBeenCalledTimes(2);
+      expect(result).toBeNull();
+    });
+
     it('should return null (unreadable) when the query throws', async () => {
       mockSupabaseService.isClientInitialized.mockReturnValue(true);
       mockSupabaseClient.from.mockImplementation(() => {

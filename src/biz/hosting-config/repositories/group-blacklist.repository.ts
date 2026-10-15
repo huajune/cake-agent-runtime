@@ -21,37 +21,19 @@ export class GroupBlacklistRepository extends BaseRepository {
   /**
    * 从数据库读取黑名单数组
    *
-   * 读不到（客户端未初始化 / 熔断 OPEN / 查询报错）返回 null，与「确认没有黑名单」的空数组区分：
+   * 读不到（客户端未初始化 / 熔断 OPEN / 瞬时错误重试后仍失败）返回 null，与「确认没有黑名单」的空数组区分：
    * 调用方据此保留旧快照或 fail closed，不能把查询失败当成"没有小组被拉黑"。
    *
    * @returns 黑名单项数组；键不存在或值不是数组时返回空数组；读不到返回 null
    */
   async loadBlacklistFromDb(): Promise<GroupBlacklistItem[] | null> {
-    const operation = 'SELECT';
-    if (!this.isAvailable() || this.circuitBlocked(operation)) {
-      return null;
-    }
+    const rows = await this.selectFromOrNull<{ value?: unknown }>(this.tableName, 'value', (q) =>
+      q.eq('key', SystemConfigKey.GROUP_BLACKLIST).limit(1),
+    );
+    if (!rows) return null;
 
-    try {
-      const { data, error } = await this.getClient()
-        .from(this.tableName)
-        .select('value')
-        .eq('key', SystemConfigKey.GROUP_BLACKLIST)
-        .limit(1);
-      if (error) {
-        this.noteOutcome(operation, error);
-        this.handleError(operation, error);
-        return null;
-      }
-
-      this.recordCircuitSuccess(operation);
-      const value = (data as Array<{ value?: unknown }> | null)?.[0]?.value;
-      return Array.isArray(value) ? (value as GroupBlacklistItem[]) : [];
-    } catch (error) {
-      this.noteOutcome(operation, error);
-      this.handleError(operation, error);
-      return null;
-    }
+    const value = rows[0]?.value;
+    return Array.isArray(value) ? (value as GroupBlacklistItem[]) : [];
   }
 
   /**

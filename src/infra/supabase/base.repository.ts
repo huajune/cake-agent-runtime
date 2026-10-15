@@ -147,13 +147,25 @@ export abstract class BaseRepository {
     columns: string = '*',
     modifier?: QueryModifier,
   ): Promise<T[]> {
+    return (await this.selectFromOrNull<T>(table, columns, modifier)) ?? [];
+  }
+
+  /**
+   * 与 {@link selectFrom} 同一套「熔断 + 退避重试」，但读不到（客户端未初始化 / 熔断 OPEN /
+   * 重试后仍报错）返回 null，供必须区分「查询失败」与「确认为空」的调用方 fail closed。
+   */
+  protected async selectFromOrNull<T>(
+    table: string,
+    columns: string = '*',
+    modifier?: QueryModifier,
+  ): Promise<T[] | null> {
     const operation = `SELECT:${table}`;
     if (!this.isAvailable()) {
       this.logger.warn(`Supabase 未初始化，跳过 ${table} 查询`);
-      return [];
+      return null;
     }
     if (this.circuitBlocked(operation)) {
-      return [];
+      return null;
     }
 
     for (let attempt = 1; attempt <= this.maxReadAttempts; attempt += 1) {
@@ -169,7 +181,7 @@ export abstract class BaseRepository {
           }
           this.noteOutcome(operation, error);
           this.handleError(operation, error);
-          return [];
+          return null;
         }
 
         this.recordCircuitSuccess(operation);
@@ -181,11 +193,11 @@ export abstract class BaseRepository {
         }
         this.noteOutcome(operation, error);
         this.handleError(operation, error);
-        return [];
+        return null;
       }
     }
 
-    return [];
+    return null;
   }
 
   /**
