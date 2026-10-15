@@ -70,12 +70,12 @@ describe('GroupBlacklistRepository', () => {
   // ==================== loadBlacklistFromDb ====================
 
   describe('loadBlacklistFromDb', () => {
-    it('should return empty array when supabase is not available', async () => {
+    it('should return null (unreadable) when supabase is not available', async () => {
       mockSupabaseService.isClientInitialized.mockReturnValue(false);
 
       const result = await repository.loadBlacklistFromDb();
 
-      expect(result).toEqual([]);
+      expect(result).toBeNull();
     });
 
     it('should return blacklist items when record exists', async () => {
@@ -115,7 +115,7 @@ describe('GroupBlacklistRepository', () => {
       expect(result).toEqual([]);
     });
 
-    it('should return empty array on database error', async () => {
+    it('should return null (unreadable) on database error instead of an empty blacklist', async () => {
       mockSupabaseService.isClientInitialized.mockReturnValue(true);
 
       const queryMock = makeQueryMock({
@@ -126,7 +126,18 @@ describe('GroupBlacklistRepository', () => {
 
       const result = await repository.loadBlacklistFromDb();
 
-      expect(result).toEqual([]);
+      expect(result).toBeNull();
+    });
+
+    it('should return null (unreadable) when the query throws', async () => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(true);
+      mockSupabaseClient.from.mockImplementation(() => {
+        throw new Error('network down');
+      });
+
+      const result = await repository.loadBlacklistFromDb();
+
+      expect(result).toBeNull();
     });
   });
 

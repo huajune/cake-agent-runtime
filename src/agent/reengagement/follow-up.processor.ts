@@ -141,9 +141,11 @@ export class ReengagementDeliveryService
     const groupId = bot.groupId?.trim();
     if (!groupId) return null;
     try {
-      return (await this.groupBlacklist.isGroupBlacklisted(groupId))
-        ? 'receiving_group_not_hosted'
-        : null;
+      const blacklisted = await this.groupBlacklist.getGroupBlacklistStatus(groupId);
+      if (blacklisted === null) {
+        this.logger.warn(`[reengagement] 小组托管开关读不到，按未托管停发 groupId=${groupId}`);
+      }
+      return blacklisted === false ? null : 'receiving_group_not_hosted';
     } catch (error: unknown) {
       this.logger.warn(
         `[reengagement] 小组托管开关查询失败，按未托管停发 groupId=${groupId}: ${toErrorMessage(error)}`,

@@ -14,13 +14,13 @@ describe('ReengagementDeliveryService', () => {
     getConfiguredBotList: jest.fn().mockResolvedValue([{ wxid: 'bot-1', groupId: 'group-1' }]),
   };
   const groupBlacklist = {
-    isGroupBlacklisted: jest.fn().mockResolvedValue(false),
+    getGroupBlacklistStatus: jest.fn().mockResolvedValue(false),
   };
 
   beforeEach(() => {
     jest.clearAllMocks();
     botService.getConfiguredBotList.mockResolvedValue([{ wxid: 'bot-1', groupId: 'group-1' }]);
-    groupBlacklist.isGroupBlacklisted.mockResolvedValue(false);
+    groupBlacklist.getGroupBlacklistStatus.mockResolvedValue(false);
   });
 
   const service = () =>
@@ -146,7 +146,7 @@ describe('ReengagementDeliveryService', () => {
       { wxid: 'bot-0', groupId: 'group-0' },
       { wxid: 'bot-1', groupId: 'group-2' },
     ]);
-    groupBlacklist.isGroupBlacklisted.mockImplementation(async (groupId: string) =>
+    groupBlacklist.getGroupBlacklistStatus.mockImplementation(async (groupId: string) =>
       Promise.resolve(groupId === 'group-2'),
     );
 
@@ -155,15 +155,29 @@ describe('ReengagementDeliveryService', () => {
       { context: deliveryContext },
     );
 
-    expect(groupBlacklist.isGroupBlacklisted).toHaveBeenCalledWith('group-2');
+    expect(groupBlacklist.getGroupBlacklistStatus).toHaveBeenCalledWith('group-2');
     expect(result).toEqual(
       expect.objectContaining({ skipped: true, skipReason: 'receiving_group_not_hosted' }),
     );
     expect(delivery.deliverReply).not.toHaveBeenCalled();
   });
 
-  it('fails closed when the group hosting lookup fails', async () => {
-    groupBlacklist.isGroupBlacklisted.mockRejectedValue(new Error('redis unavailable'));
+  it('fails closed when the group hosting status is unreadable', async () => {
+    groupBlacklist.getGroupBlacklistStatus.mockResolvedValue(null);
+
+    const result = await service().deliver(
+      { kind: 'reply', reply: { text: '还在找工作吗？' }, toolCalls: [] },
+      { context: deliveryContext },
+    );
+
+    expect(result).toEqual(
+      expect.objectContaining({ skipped: true, skipReason: 'receiving_group_not_hosted' }),
+    );
+    expect(delivery.deliverReply).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when the group hosting lookup throws', async () => {
+    groupBlacklist.getGroupBlacklistStatus.mockRejectedValue(new Error('redis unavailable'));
 
     const result = await service().deliver(
       { kind: 'reply', reply: { text: '还在找工作吗？' }, toolCalls: [] },
@@ -184,7 +198,7 @@ describe('ReengagementDeliveryService', () => {
       { context: deliveryContext },
     );
 
-    expect(groupBlacklist.isGroupBlacklisted).not.toHaveBeenCalled();
+    expect(groupBlacklist.getGroupBlacklistStatus).not.toHaveBeenCalled();
     expect(delivery.deliverReply).toHaveBeenCalledTimes(1);
   });
 });
