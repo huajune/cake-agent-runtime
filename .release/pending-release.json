@@ -978,6 +978,90 @@
         "新增虚构 prompt 示例值：无"
       ],
       "level": "minor"
+    },
+    {
+      "number": "1395",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1395",
+      "title": "村名里的城市字样不再误识别，跨城纠偏尊重地址行政区，企微名称城市只作求证线索",
+      "author": "huajune",
+      "mergedAt": "2026-10-15",
+      "opsNotes": [
+        "**地点识别修正（周度 case 9.24~10.9 第 5、1 条）** ✅ 本 PR",
+        "- 候选人说「南海桂城上海村」这类名字里带城市字样的村名、小区名时，不再被当成上海，按实际所在的佛山查岗",
+        "- 地址里写明了区、街道时以地址为准，不会被之前记住的城市带偏；地图只在别的城市找到同名地点时，先跟候选人确认，不再直接换城市",
+        "- 企微昵称或运营备注里带城市（如「佛山」）时，AI 只拿来向候选人确认，不当成候选人已经说过的城市",
+        "- AI 拿自己说过、候选人从没说过的地点去定位时，会记录下来供复盘，本 PR 只记录不拦截"
+      ],
+      "businessUpdates": [
+        "`geocode` 结果新增 `_addressProvenance`（`attested / unattested`、来源、`assistantOnly`），只落工具流水，经 `toModelOutput` 对模型隐藏；`assistantOnly` 时打 warn 日志",
+        "[会话记忆] 新增 `[企微名称里的城市线索]`：仅在会话还没有已确认城市、且企微显示名称/备注能扫出城市时渲染；手册候选人咨询段新增一条「只能用来求证」（台账 N5a）",
+        "新增地址出处观测（只记录）与企微名称城市线索（只用于求证）",
+        "手册新增企微名称城市线索后重锁提示词字节基线",
+        "`whitelist-scanner`：`PLACE_FEATURE_SUFFIX_PATTERN` 补 `村|庄|屯|寨|社区|新村`，新增 `mentionsPlaceNameStandalone`；邀请城市闸的候选人原话层改用它判断，「上海村」不再算候选人说过「上海」",
+        "`geocode.tool`：锚点城市以外的候选，若其区县/街镇名在地址里逐字出现，按地址唯一解析（`contextCorrection.reason=address_administrative_echo`）；纠偏结果全部不在锚点城市时 `requireEchoOf` 原地址，否则 `needs_confirmation`",
+        "提示词示例扫描（`prompt-example-shape.spec`）新增 `place_name` 形态，防止模型可见文本再出现具体地名教学示例（10/9 case 的诱因是旧示例「漕宝路地铁站」，develop 已在 3dc34ca1 删除，本 PR 加 CI 防回归）",
+        "行政区扫描补「村/庄/屯/寨/社区」等聚落通名，修复「上海村」被识别成城市上海",
+        "定位工具跨城纠偏：地址自带的区县/街镇回显时尊重地址；纠到锚点城市以外时要求逐字回显原地址，否则回到确认",
+        "Merge remote-tracking branch 'origin/develop' into fix/weekly-case-ge…"
+      ],
+      "summary": [
+        "村/庄/屯/寨/社区前的城市区县字样不再识别为行政区",
+        "跨城锚点纠偏须尊重地址里的行政区并逐字回显原地址",
+        "地址出处 shadow 观测，记录只出现在 Agent 自己消息里的定位地址",
+        "企微名称里的城市作为求证线索交给模型",
+        "CI 扫描模型可见文本里的具体地名示例",
+        "补地址出处 shadow、跨城纠偏闸，并按实现更正城市确权链路",
+        "手册新增企微名称城市线索后重锁提示词字节基线",
+        "格式化定位工具测试",
+        "Merge remote-tracking branch 'origin/develop' into fix/weekly-case-ge…",
+        "行政区扫描补「村/庄/屯/寨/社区」等聚落通名，修复「上海村」被识别成城市上海",
+        "定位工具跨城纠偏：地址自带的区县/街镇回显时尊重地址；纠到锚点城市以外时要求逐字回显原地址，否则回到确认",
+        "新增地址出处观测（只记录）与企微名称城市线索（只用于求证）",
+        "村名里的城市字样不再误识别，跨城纠偏尊重地址行政区，企微名称城市只作求证线索"
+      ],
+      "features": [
+        "`geocode` 结果新增 `_addressProvenance`（`attested / unattested`、来源、`assistantOnly`），只落工具流水，经 `toModelOutput` 对模型隐藏；`assistantOnly` 时打 warn 日志",
+        "[会话记忆] 新增 `[企微名称里的城市线索]`：仅在会话还没有已确认城市、且企微显示名称/备注能扫出城市时渲染；手册候选人咨询段新增一条「只能用来求证」（台账 N5a）",
+        "新增地址出处观测（只记录）与企微名称城市线索（只用于求证）",
+        "手册新增企微名称城市线索后重锁提示词字节基线"
+      ],
+      "fixes": [
+        "`whitelist-scanner`：`PLACE_FEATURE_SUFFIX_PATTERN` 补 `村|庄|屯|寨|社区|新村`，新增 `mentionsPlaceNameStandalone`；邀请城市闸的候选人原话层改用它判断，「上海村」不再算候选人说过「上海」",
+        "`geocode.tool`：锚点城市以外的候选，若其区县/街镇名在地址里逐字出现，按地址唯一解析（`contextCorrection.reason=address_administrative_echo`）；纠偏结果全部不在锚点城市时 `requireEchoOf` 原地址，否则 `needs_confirmation`",
+        "提示词示例扫描（`prompt-example-shape.spec`）新增 `place_name` 形态，防止模型可见文本再出现具体地名教学示例（10/9 case 的诱因是旧示例「漕宝路地铁站」，develop 已在 3dc34ca1 删除，本 PR 加 CI 防回归）",
+        "行政区扫描补「村/庄/屯/寨/社区」等聚落通名，修复「上海村」被识别成城市上海",
+        "定位工具跨城纠偏：地址自带的区县/街镇回显时尊重地址；纠到锚点城市以外时要求逐字回显原地址，否则回到确认",
+        "Merge remote-tracking branch 'origin/develop' into fix/weekly-case-ge…"
+      ],
+      "optimizations": [
+        "`HUMAN_AGENT_MESSAGE_MARKER` 下沉到 `types/corpus.types.ts`，`conversation-normalizer` 原导出保留",
+        "`docs/architecture/geo-resolution.md` §7 补地址出处 shadow 与跨城纠偏闸，并按实现更正城市确权链路（`recordGeoResolution → saveToolAttestedCity`，冲突不覆盖）"
+      ],
+      "ops": [
+        "地址出处只记录不拦截：离线按生产数据粗估，合理调用里约 6.5% 会被判成「无出处」（模型常把候选人说法规范成标准 POI 名，或地址来自门店结果）。按约定先观测两周，误判率 < 1% 再讨论是否拦截",
+        "与 `fix/weekly-case-booking-salary` 都改了手册，`prompt-compatibility.spec` 的字节基线会冲突：后合入的一方变基后重算基线",
+        "村/庄/屯/寨/社区前的城市区县字样不再识别为行政区",
+        "跨城锚点纠偏须尊重地址里的行政区并逐字回显原地址",
+        "地址出处 shadow 观测，记录只出现在 Agent 自己消息里的定位地址",
+        "企微名称里的城市作为求证线索交给模型",
+        "CI 扫描模型可见文本里的具体地名示例",
+        "补地址出处 shadow、跨城纠偏闸，并按实现更正城市确权链路",
+        "格式化定位工具测试"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "全量 Jest（513 个测试文件，7949 个用例）、`typecheck`、`lint:check`、`format:check`、`geo:validate`、`vocab:validate`、`quality-ledger:validate` 通过",
+        "本地真实链路回放（`/test-suite/chat`，qwen3.7-plus，本分支代码起服务）：",
+        "「南海桂城上海村」：提示词不再出现「意向城市：上海」；`geocode(city=佛山)` 唯一定位到佛山上海村，按佛山查岗",
+        "反例「我在上海浦东，想找个兼职」「嘉定马陆村附近有兼职吗」：仍按上海查岗，不受影响",
+        "10/9 case 首轮「我是龙虾过敏 / 你好你好」：4 次回放中 3 次正常先问位置；1 次模型凭空说候选人已约 M Stand 面试，提示词和记忆里都没有这项内容，属模型首轮编造，与本 PR 无关，另行跟踪",
+        "10/9 case 次轮（历史里预置 Agent 编造的「漕宝路」）：模型仍定位漕宝路（本 PR 不拦截），`_addressProvenance` 记为 `unattested + assistantOnly`，并打出 warn 日志",
+        "企微名称城市线索：测试接口不能传企微昵称，只有单测覆盖，未做真实链路回放",
+        "未新增对开放自然语言直接 reject/覆盖/判缺的正则分支；地址出处走 shadow",
+        "新增虚构 prompt 示例值：无（手册新增条目的示例用「XX」占位，没有具体地名）"
+      ],
+      "level": "minor"
     }
   ],
   "lastRelease": {
@@ -1045,5 +1129,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "04c0821200fc9cbe806315fb2ee4d5fa84663ade"
+  "lastAnalyzedSha": "893a962c0a1ea5d3c91c4c71bc38f98f11e3b8ad"
 }

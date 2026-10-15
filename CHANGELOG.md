@@ -14,7 +14,7 @@
 **预计版本**: `v11.13.0`
 **最近更新**: `2026-10-15`
 **来源分支**: `develop`
-**累计 PR**: 14
+**累计 PR**: 15
 
 ### 运营说明
 **报名成功回执更清楚** ⏳ 待发布
@@ -114,6 +114,12 @@
 - 岗位的社会身份要求没填时，不说「学生也可以」：还有收学生的岗位就推这些；只剩这类岗位时才转人工确认
 - 岗位卡片上的展示不变，这些判断只给 AI 看
 - 新增记录：AI 在没查岗的回合把不收学生的岗位说成收学生时会被记下来，先观察，不拦截
+
+**地点识别修正（周度 case 9.24~10.9 第 5、1 条）** ✅ 本 PR
+- 候选人说「南海桂城上海村」这类名字里带城市字样的村名、小区名时，不再被当成上海，按实际所在的佛山查岗
+- 地址里写明了区、街道时以地址为准，不会被之前记住的城市带偏；地图只在别的城市找到同名地点时，先跟候选人确认，不再直接换城市
+- 企微昵称或运营备注里带城市（如「佛山」）时，AI 只拿来向候选人确认，不当成候选人已经说过的城市
+- AI 拿自己说过、候选人从没说过的地点去定位时，会记录下来供复盘，本 PR 只记录不拦截
 
 ### 更新摘要
 - PR #1367 收紧报名回执模型输出并独立创建每次介入任务
@@ -242,6 +248,19 @@
 - PR #1396 删除硬约束段与学生安排口径相反的旧教学，学生安排口径只留在 `duliday_job_list` 说明一处
 - PR #1396 新增 observe 哨兵 `student_acceptance_contradiction`
 - PR #1396 学生能否安排按岗位社会身份档位逐岗作答，清理冲突教学并新增 observe 哨兵
+- PR #1395 村/庄/屯/寨/社区前的城市区县字样不再识别为行政区
+- PR #1395 跨城锚点纠偏须尊重地址里的行政区并逐字回显原地址
+- PR #1395 地址出处 shadow 观测，记录只出现在 Agent 自己消息里的定位地址
+- PR #1395 企微名称里的城市作为求证线索交给模型
+- PR #1395 CI 扫描模型可见文本里的具体地名示例
+- PR #1395 补地址出处 shadow、跨城纠偏闸，并按实现更正城市确权链路
+- PR #1395 手册新增企微名称城市线索后重锁提示词字节基线
+- PR #1395 格式化定位工具测试
+- PR #1395 Merge remote-tracking branch 'origin/develop' into fix/weekly-case-ge…
+- PR #1395 行政区扫描补「村/庄/屯/寨/社区」等聚落通名，修复「上海村」被识别成城市上海
+- PR #1395 定位工具跨城纠偏：地址自带的区县/街镇回显时尊重地址；纠到锚点城市以外时要求逐字回显原地址，否则回到确认
+- PR #1395 新增地址出处观测（只记录）与企微名称城市线索（只用于求证）
+- PR #1395 村名里的城市字样不再误识别，跨城纠偏尊重地址行政区，企微名称城市只作求证线索
 
 ### 新功能
 - PR #1367 无。
@@ -262,6 +281,10 @@
 - PR #1396 删除硬约束段与学生安排口径相反的旧教学，学生安排口径只留在 `duliday_job_list` 说明一处
 - PR #1396 新增 observe 哨兵 `student_acceptance_contradiction`
 - PR #1396 新增 observe 哨兵 student_acceptance_contradiction
+- PR #1395 `geocode` 结果新增 `_addressProvenance`（`attested / unattested`、来源、`assistantOnly`），只落工具流水，经 `toModelOutput` 对模型隐藏；`assistantOnly` 时打 warn 日志
+- PR #1395 [会话记忆] 新增 `[企微名称里的城市线索]`：仅在会话还没有已确认城市、且企微显示名称/备注能扫出城市时渲染；手册候选人咨询段新增一条「只能用来求证」（台账 N5a）
+- PR #1395 新增地址出处观测（只记录）与企微名称城市线索（只用于求证）
+- PR #1395 手册新增企微名称城市线索后重锁提示词字节基线
 
 ### 问题修复
 - PR #1367 后台报名结果曾完整透传模型，导致回执暴露工单号；现在只有回复所需字段进入模型消息，运行时、守卫、记忆及副作用仍保留完整结果。
@@ -335,6 +358,12 @@
 - PR #1396 [会话记忆] 约面要求的学生项由「学生${文案}」改为「学生身份:${文案}」，修复拼出「学生不接受学生」被模型读反的问题
 - PR #1396 查岗回执「候选人社会身份筛选提示」中字段为空的转人工教学删除，只列岗位并指回工具说明（同一约束只住一处）
 - PR #1396 Merge remote-tracking branch 'origin/develop' into fix/weekly-case-st…
+- PR #1395 `whitelist-scanner`：`PLACE_FEATURE_SUFFIX_PATTERN` 补 `村|庄|屯|寨|社区|新村`，新增 `mentionsPlaceNameStandalone`；邀请城市闸的候选人原话层改用它判断，「上海村」不再算候选人说过「上海」
+- PR #1395 `geocode.tool`：锚点城市以外的候选，若其区县/街镇名在地址里逐字出现，按地址唯一解析（`contextCorrection.reason=address_administrative_echo`）；纠偏结果全部不在锚点城市时 `requireEchoOf` 原地址，否则 `needs_confirmation`
+- PR #1395 提示词示例扫描（`prompt-example-shape.spec`）新增 `place_name` 形态，防止模型可见文本再出现具体地名教学示例（10/9 case 的诱因是旧示例「漕宝路地铁站」，develop 已在 3dc34ca1 删除，本 PR 加 CI 防回归）
+- PR #1395 行政区扫描补「村/庄/屯/寨/社区」等聚落通名，修复「上海村」被识别成城市上海
+- PR #1395 定位工具跨城纠偏：地址自带的区县/街镇回显时尊重地址；纠到锚点城市以外时要求逐字回显原地址，否则回到确认
+- PR #1395 Merge remote-tracking branch 'origin/develop' into fix/weekly-case-ge…
 
 ### 优化调整
 - PR #1367 更新报名规则台账与人工告警文档，保留现有任务清单“第几次介入”字段并固定写入 1。
@@ -368,6 +397,8 @@
 - PR #1396 `selectVisibleSessionJobs` 从 memory.section 抽出，[会话记忆] 与学生逐岗结论共用
 - PR #1396 test-suite 记忆夹具支持预置 `studentTier`
 - PR #1396 台账：duliday_job_list 行登记「学生口径职责回收」；第七节登记新哨兵；`candidate-profile-domain.md` 按实现补「表单落定 `is_student` 写 high」
+- PR #1395 `HUMAN_AGENT_MESSAGE_MARKER` 下沉到 `types/corpus.types.ts`，`conversation-normalizer` 原导出保留
+- PR #1395 `docs/architecture/geo-resolution.md` §7 补地址出处 shadow 与跨城纠偏闸，并按实现更正城市确权链路（`recordGeoResolution → saveToolAttestedCity`，冲突不覆盖）
 
 ### 运维与流程
 - PR #1367 使用最新 develop 的隔离工作区发布，范围固定为发版开始时的 21 个文件。
@@ -445,6 +476,15 @@
 - PR #1396 与 `fix/weekly-case-booking-salary` 都新增一条出站规则，规则总数和 `output-guardrail.service.ts` 同一段会冲突：后合入的一方变基后把总数改成 26
 - PR #1396 学生能否安排改读岗位结构化档位，零工具轮按逐岗结论作答
 - PR #1396 学生逐岗结论标签不重复拼品牌与门店
+- PR #1395 地址出处只记录不拦截：离线按生产数据粗估，合理调用里约 6.5% 会被判成「无出处」（模型常把候选人说法规范成标准 POI 名，或地址来自门店结果）。按约定先观测两周，误判率 < 1% 再讨论是否拦截
+- PR #1395 与 `fix/weekly-case-booking-salary` 都改了手册，`prompt-compatibility.spec` 的字节基线会冲突：后合入的一方变基后重算基线
+- PR #1395 村/庄/屯/寨/社区前的城市区县字样不再识别为行政区
+- PR #1395 跨城锚点纠偏须尊重地址里的行政区并逐字回显原地址
+- PR #1395 地址出处 shadow 观测，记录只出现在 Agent 自己消息里的定位地址
+- PR #1395 企微名称里的城市作为求证线索交给模型
+- PR #1395 CI 扫描模型可见文本里的具体地名示例
+- PR #1395 补地址出处 shadow、跨城纠偏闸，并按实现更正城市确权链路
+- PR #1395 格式化定位工具测试
 
 ### 配置变更
 - PR #1367 数据库 migration/schema/RPC/权限/回填：N/A，本次没有变化。
@@ -568,6 +608,15 @@
 - PR #1396 回放发现逐岗结论标签重复拼了品牌与门店，已在 df2d0e8e 修正并补单测
 - PR #1396 未新增对开放自然语言直接 reject/覆盖/判缺的正则分支；新哨兵只落档
 - PR #1396 新增虚构 prompt 示例值：无
+- PR #1395 全量 Jest（513 个测试文件，7949 个用例）、`typecheck`、`lint:check`、`format:check`、`geo:validate`、`vocab:validate`、`quality-ledger:validate` 通过
+- PR #1395 本地真实链路回放（`/test-suite/chat`，qwen3.7-plus，本分支代码起服务）：
+- PR #1395 「南海桂城上海村」：提示词不再出现「意向城市：上海」；`geocode(city=佛山)` 唯一定位到佛山上海村，按佛山查岗
+- PR #1395 反例「我在上海浦东，想找个兼职」「嘉定马陆村附近有兼职吗」：仍按上海查岗，不受影响
+- PR #1395 10/9 case 首轮「我是龙虾过敏 / 你好你好」：4 次回放中 3 次正常先问位置；1 次模型凭空说候选人已约 M Stand 面试，提示词和记忆里都没有这项内容，属模型首轮编造，与本 PR 无关，另行跟踪
+- PR #1395 10/9 case 次轮（历史里预置 Agent 编造的「漕宝路」）：模型仍定位漕宝路（本 PR 不拦截），`_addressProvenance` 记为 `unattested + assistantOnly`，并打出 warn 日志
+- PR #1395 企微名称城市线索：测试接口不能传企微昵称，只有单测覆盖，未做真实链路回放
+- PR #1395 未新增对开放自然语言直接 reject/覆盖/判缺的正则分支；地址出处走 shadow
+- PR #1395 新增虚构 prompt 示例值：无（手册新增条目的示例用「XX」占位，没有具体地名）
 <!-- release:pending:end -->
 
 ## [11.12.2] - 2026-09-24
