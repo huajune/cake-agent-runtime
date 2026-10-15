@@ -1,9 +1,86 @@
 {
   "baseVersion": "11.13.0",
-  "nextVersion": "11.13.0",
+  "nextVersion": "11.13.1",
   "updatedAt": "2026-10-15",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "1404",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/1404",
+      "title": "复聊按小组托管开关停发、改约卡片带本轮命中工单，收窄门店状态与学生身份守卫误判",
+      "author": "huajune",
+      "mergedAt": "2026-10-15",
+      "opsNotes": [
+        "**关闭托管的小组不再收到复聊** ✅ 合入后随版上线",
+        "- 运营在看板把某个小组关掉托管后，这个小组里账号的复聊（面试提醒、回访等）也会停发，不再自己往外发消息",
+        "- 查不清小组是否托管时一律先不发，宁可漏发不乱发",
+        "**人工改约卡片带对工单** ✅ 合入后随版上线",
+        "- 候选人名下有多张预约、AI 查到其中一张要改约时，转给人工的改约卡片会带上这一张的工单号和岗位，不会再带成另一张",
+        "**守卫少误拦两类正常回复** ✅ 合入后随版上线",
+        "- 「没有招满」「不是名额满了」「还没招够」「名额满不满我帮你问问」这类否认或询问的说法，不再被当成乱说门店招满",
+        "- 候选人改口只找兼职后，之前推荐过的全职岗不再拿来判「学生也可以」说错了"
+      ],
+      "businessUpdates": [
+        "**复聊在关闭托管的小组里仍会发消息**（来源 #1391）：`ReengagementDeliveryService` 注入 `GroupBlacklistService`，先在托管账号列表里找到接客 bot，再用 `bot.groupId` 查 `system_config.group_blacklist`；命中返回 `skipped`、`skipReason=receiving_group_not_hosted`，查询出错 fail closed。账号不在任何小组下时与入站过滤同口径，按账号托管放行。",
+        "Codex 评审补充：底层读失败原本会被吞成空列表（还会写回 Redis 共享缓存）。现 `loadBlacklistFromDb` 读不到返回 null，`loadGroupBlacklist` 读不到时保留旧快照、不写回共享缓存；新增 `getGroupBlacklistStatus` 严格查询（读不到返回 null），复聊遇 null 停发。入站过滤仍沿用旧快照，口径不变。严格读取复用基础仓储同一套熔断 + 退避重试（新增 `selectFromOrNull`，`selectFrom` 委托它、行为不变），瞬时 502/503 先重试再判读不到。",
+        "**人工改约卡片可能带错工单号**（来源 #1397）：precheck `booked_job_unverifiable` 分支把命中的工单写入 `ledger.jobs.resolvedWorkOrderId`，并成对新增 `resolvedJobId`；`request_handoff` 在 `modify_appointment` 时优先使用这两项，其余原因码保持快照优先。改约工具切换工单号时清空成对的 `resolvedJobId`，避免岗位与工单错配。",
+        "**门店状态推测规则误伤否定句**（来源 #1397）：`unsupported_store_status_speculation` 逐个命中检查同句紧贴的否定/安抚前缀（没有/没/不是/并非/不会/未、别担心/不用担心/不必担心，中间只容「还/也/都/并/完全/真的」副词），并排除「满不满/招没招满」正反问。「是不是招满了」「不会是门店调整了吧」等猜测性设问、同句另有未否认的断言仍命中。",
+        "**学生身份哨兵拿隐藏岗位对账**（来源 #1396）：`OutputGuardrailService.readSessionJobEvidence` 先按本轮用工形式意向用 `selectVisibleSessionJobs` 过滤 presentedJobs / currentFocusJob，再调 `buildStudentAcceptanceEvidence`；生效用工形式与 Prompt 组装同一口径（本轮高置信线索优先，其次会话高置信事实）。",
+        "**geocode 观测日志打印地址原文**（来源 #1395）：`unattested + assistantOnly` 的 warn 改打 `sessionId`、`matchedBy`、地址字数，不再输出 `input.address`。",
+        "修复 2026-10-15 发版前对 huajune/cake-agent-runtime#1391、#1395、#1396、#1397 评审核实的 5 个问题（均成立、不阻塞发版）",
+        "复聊投递层补小组托管开关核验；改约转人工优先本轮工具核验的工单；两条出站守卫收窄误判；geocode 观测日志去掉地址原文",
+        "复聊按小组托管开关停发、改约卡片带本轮命中工单，收窄门店状态与学生身份守卫误判"
+      ],
+      "summary": [
+        "复聊按小组托管开关停发、改约卡片带本轮命中工单，收窄门店状态与学生身份守卫误判",
+        "地址无出处的观测日志不再打印地址原文，改打 sessionId 与 matchedBy",
+        "小组黑名单读不到时复聊 fail closed，读取失败不再覆盖缓存",
+        "黑名单严格读取保留瞬时错误重试",
+        "修复 2026-10-15 发版前对 huajune/cake-agent-runtime#1391、#1395、#1396、#1397 评审核实的 5 个问题（均成立、不阻塞发版）",
+        "复聊投递层补小组托管开关核验；改约转人工优先本轮工具核验的工单；两条出站守卫收窄误判；geocode 观测日志去掉地址原文"
+      ],
+      "features": [],
+      "fixes": [
+        "**复聊在关闭托管的小组里仍会发消息**（来源 #1391）：`ReengagementDeliveryService` 注入 `GroupBlacklistService`，先在托管账号列表里找到接客 bot，再用 `bot.groupId` 查 `system_config.group_blacklist`；命中返回 `skipped`、`skipReason=receiving_group_not_hosted`，查询出错 fail closed。账号不在任何小组下时与入站过滤同口径，按账号托管放行。",
+        "Codex 评审补充：底层读失败原本会被吞成空列表（还会写回 Redis 共享缓存）。现 `loadBlacklistFromDb` 读不到返回 null，`loadGroupBlacklist` 读不到时保留旧快照、不写回共享缓存；新增 `getGroupBlacklistStatus` 严格查询（读不到返回 null），复聊遇 null 停发。入站过滤仍沿用旧快照，口径不变。严格读取复用基础仓储同一套熔断 + 退避重试（新增 `selectFromOrNull`，`selectFrom` 委托它、行为不变），瞬时 502/503 先重试再判读不到。",
+        "**人工改约卡片可能带错工单号**（来源 #1397）：precheck `booked_job_unverifiable` 分支把命中的工单写入 `ledger.jobs.resolvedWorkOrderId`，并成对新增 `resolvedJobId`；`request_handoff` 在 `modify_appointment` 时优先使用这两项，其余原因码保持快照优先。改约工具切换工单号时清空成对的 `resolvedJobId`，避免岗位与工单错配。",
+        "**门店状态推测规则误伤否定句**（来源 #1397）：`unsupported_store_status_speculation` 逐个命中检查同句紧贴的否定/安抚前缀（没有/没/不是/并非/不会/未、别担心/不用担心/不必担心，中间只容「还/也/都/并/完全/真的」副词），并排除「满不满/招没招满」正反问。「是不是招满了」「不会是门店调整了吧」等猜测性设问、同句另有未否认的断言仍命中。",
+        "**学生身份哨兵拿隐藏岗位对账**（来源 #1396）：`OutputGuardrailService.readSessionJobEvidence` 先按本轮用工形式意向用 `selectVisibleSessionJobs` 过滤 presentedJobs / currentFocusJob，再调 `buildStudentAcceptanceEvidence`；生效用工形式与 Prompt 组装同一口径（本轮高置信线索优先，其次会话高置信事实）。",
+        "**geocode 观测日志打印地址原文**（来源 #1395）：`unattested + assistantOnly` 的 warn 改打 `sessionId`、`matchedBy`、地址字数，不再输出 `input.address`。",
+        "修复 2026-10-15 发版前对 huajune/cake-agent-runtime#1391、#1395、#1396、#1397 评审核实的 5 个问题（均成立、不阻塞发版）",
+        "复聊投递层补小组托管开关核验；改约转人工优先本轮工具核验的工单；两条出站守卫收窄误判；geocode 观测日志去掉地址原文",
+        "复聊按小组托管开关停发、改约卡片带本轮命中工单，收窄门店状态与学生身份守卫误判"
+      ],
+      "optimizations": [
+        "`selectVisibleSessionJobs` 与生效用工形式的纯判定 `resolveActiveLaborFormValue` 下沉到 `resolution/labor-form`，Prompt 组装与出站守卫共用，守卫不再反向依赖 generator。"
+      ],
+      "ops": [
+        "规则台账新增「2026-10-15 发版前评审收口批」，catalog 同步更新 `unsupported_store_status_speculation.residualRisk` 与 `student_acceptance_contradiction.exogenousSignal`。",
+        "顺带更正两处过期计数：#1396、#1397 各新增一条 observe 规则后，catalog 实为 26 条（19 执行档 + 7 observe），台账与 `guardrail-quality-system.md` 仍写 25 条。",
+        "地址无出处的观测日志不再打印地址原文，改打 sessionId 与 matchedBy",
+        "小组黑名单读不到时复聊 fail closed，读取失败不再覆盖缓存",
+        "黑名单严格读取保留瞬时错误重试"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`pnpm run ci:check`（pre-push 全量：lint / format / typecheck / geo / vocab / quality-ledger / build:ci / test:ci，515 个测试文件、8115 个用例通过）",
+        "`pnpm run test:di-smoke`：复聊投递层新注入的 `GroupBlacklistService` 可正常装配",
+        "关键链路已人工验证：本地后端（测试库）用本分支跑 3 轮真实 `debug-chat`（学生找兼职 → 给位置查岗展示 → 改问全职学生能否做），回复正常、守卫放行，无会话岗位记忆读取告警",
+        "未新增对开放自然语言直接 reject/覆盖/判缺的正则分支：门店状态规则只新增「跳过」分支，收窄既有封闭词表的命中面",
+        "未新增虚构 prompt 示例值",
+        "新增单测：",
+        "小组在黑名单 / 小组状态读不到 / 查询抛错时 `deliverReply` 不被调用；不在小组下的托管账号照常投递",
+        "Redis 失败且数据库读不到时严格查询返回 null；数据库读不到时保留旧快照且不写回共享缓存",
+        "快照两张不同岗位工单、precheck 命中第二张 → 同轮 `request_handoff(modify_appointment)` 的 `sideEffect.workOrderId` / `jobId` 为第二张；非改约原因码仍以快照为准",
+        "8 条否认/安抚/正反问不命中，5 条猜测/混合断言仍命中",
+        "全职岗全部 social_only、本轮意向为兼职时，零工具「学生也可以的」不命中（对照：未切换意向时照常命中）",
+        "geocode warn 不含地址原文；`resolveActiveLaborFormValue` / `selectVisibleSessionJobs` 单测",
+        "其他说明：评审项本身来自 Codex 评审，修复与验证由 Claude Code 完成"
+      ],
+      "level": "patch"
+    }
+  ],
   "lastRelease": {
     "version": "11.13.0",
     "date": "2026-10-15",
@@ -1070,5 +1147,5 @@
       }
     ]
   },
-  "lastAnalyzedSha": "7aed2bb7ecc74098a4c375aa18b415395b2ad5eb"
+  "lastAnalyzedSha": "84d0da2ca855b35badc9bafec2e817fbf66d955d"
 }
