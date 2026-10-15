@@ -150,6 +150,9 @@ export function buildModifyInterviewTimeTool(
         // 将本轮核验到的工单号挂入回合上下文；改约失败转 request_handoff 时该工具用它
         // 兜底关联工单（active_booking 查不到时）。归属 gate 拒绝路径的告警工单号
         // 则直接来自本工具结果的 workOrderId 字段（outcome 层读工具结果，不读此上下文）。
+        if (context.ledger.jobs.resolvedWorkOrderId !== workOrderId) {
+          context.ledger.jobs.resolvedJobId = undefined;
+        }
         context.ledger.jobs.resolvedWorkOrderId = workOrderId;
 
         const tokenContext = buildSpongeTokenContext(context);

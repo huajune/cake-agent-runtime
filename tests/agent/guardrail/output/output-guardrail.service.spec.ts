@@ -112,7 +112,7 @@ describe('OutputGuardrailService', () => {
       chatId: 'chat-1',
       turnLedger: {
         jobs: { fetchedJobs: [fetched], attestedFocusJob: attested },
-        facts: { turnHints: null },
+        facts: { turnHints: null, laborFormIntent: { kind: 'ignore' } },
       } as never,
     });
     expect(ruleGuard.check).toHaveBeenLastCalledWith(

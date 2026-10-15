@@ -42,7 +42,6 @@ import type { PromptInjectionAssessment } from '../../guardrail/input/prompt-inj
 import { PromptInjectionDetector } from '../../guardrail/input/prompt-injection-detector';
 import {
   bookingFocusJobFallback,
-  selectVisibleSessionJobs,
   visibleBookingJobIds,
   visibleBookingWorkOrders,
   type MemoryPromptView,
@@ -51,6 +50,7 @@ import type { CreateTurnLedgerInput } from './turn-ledger';
 import type { NormalizedTurnInput } from './conversation-normalizer';
 import type { TurnSourceSnapshot } from './turn-data-loader.service';
 import { adjudicatePromptMemory, resolveActiveLaborForm } from './prompt-memory-adjudicator';
+import { selectVisibleSessionJobs } from '@resolution/labor-form';
 import { extractTextFromContent, HUMAN_AGENT_MESSAGE_MARKER } from './conversation-normalizer';
 import { resolveToolContextModel, type ToolContextModel } from './tool-context.builder';
 import type { LoadedGeoAnchor } from './turn-data-loader.service';

@@ -216,6 +216,45 @@ describe('HardRulesService — 封闭确定性输出规则', () => {
     });
   });
 
+  /**
+   * 2026-10-15 发版前评审（#1397）：词表会把否认/安抚句与正反问判成断言。同句紧贴的否定或安抚前缀、
+   * 「满不满」类正反问跳过；猜测性设问与同句另有未否认的断言仍命中。
+   */
+  describe('门店状态推测的否定句与正反问', () => {
+    const precheckNotFound = {
+      toolName: 'duliday_interview_precheck',
+      status: 'error',
+      result: { success: false, errorType: 'precheck.job_not_found', _replyInstruction: '...' },
+    };
+
+    it.each([
+      '这家没有招满，只是岗位详情暂时没查到',
+      '不是名额满了，是系统这会儿查不到这个岗位',
+      '还没招够人呢，我再帮你确认下',
+      '别担心，门店并没有关店',
+      '不用担心招满，我先帮你问问',
+      '名额满不满我帮你问下门店',
+      '招满没招满我得跟门店确认下',
+      '有没有招满我帮你问问',
+    ])('「%s」不命中', (reply) => {
+      expect(ids(reply, { toolCalls: [precheckNotFound] })).not.toContain(
+        'unsupported_store_status_speculation',
+      );
+    });
+
+    it.each([
+      '不知道是不是已经招满了',
+      '不过这家已经招满了',
+      '没想到这家已经招满了',
+      '不会是门店调整了吧',
+      '不是名额满了，是门店装修',
+    ])('「%s」仍命中', (reply) => {
+      expect(ids(reply, { toolCalls: [precheckNotFound] })).toContain(
+        'unsupported_store_status_speculation',
+      );
+    });
+  });
+
   it('预约成功回执必须播报已确认日期', () => {
     expect(
       ids('资料齐了，这就帮你提交预约', {

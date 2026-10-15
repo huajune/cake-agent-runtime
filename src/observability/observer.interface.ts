@@ -294,6 +294,23 @@ export type AgentEvent = AgentEventContext &
         issues: string[];
       }
     /**
+     * 轮末抽取判定班次条件无持续变更，查岗工具本轮却核验到条件变更；只观测，不改写入结果。
+     *
+     * 询问轮（有早班吗）属预期分歧；declarative=true 只表示本轮含陈述子句，常与询问同句
+     * （“我在深圳找兼职，有早班吗”），需抽查原话判断是否漏抽。量级骤升说明抽取模型没看到或
+     * 没读懂班次条件说明。只带字段名，不带条件值与原话。
+     */
+    | {
+        type: 'schedule_extraction_disagreement';
+        userId?: string;
+        /** 工具本轮核验条件相对已保存条件改动的字段。 */
+        toolChangedFields: string[];
+        /** 抽取输出：none=未给班次条件；echo=只回显已保存条件或空对象。 */
+        extraction: 'none' | 'echo';
+        /** 本轮候选人消息含陈述子句（不全是询问）。 */
+        declarative: boolean;
+      }
+    /**
      * 收资表单一轮的审计条目（蓝图 §4）：公证拒收 / 判不合格 / 显式改口 / 配置债 /
      * 熔断各一条。拒收事件是**臆造防线的观测面**——只打日志等于这道防线没有验收数据。
      */

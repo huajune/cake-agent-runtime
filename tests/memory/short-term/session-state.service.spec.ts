@@ -481,6 +481,122 @@ describe('SessionStateService（S1-S6）', () => {
       });
     });
 
+    describe('抽取判无变更、工具本轮核验到变更时只留观测', () => {
+      const tracer = { emit: jest.fn() };
+      let observed: SessionFactsService;
+
+      beforeEach(() => {
+        observed = new SessionFactsService(
+          redis as never,
+          config as never,
+          llm as never,
+          sponge as never,
+          systemConfig as never,
+          tracer as never,
+        );
+      });
+
+      it('询问轮发观测事件，记忆仍以抽取为准', async () => {
+        await service.saveFacts(
+          ...scope,
+          softFacts({ schedule_constraint: { excludeTags: ['night'] } }),
+        );
+        const ledger = createTurnLedger();
+        ledger.recordScheduleConstraint({
+          excludeTags: ['night'],
+          includeAnyTags: ['early', 'morning'],
+        });
+
+        await observed.extractAndSave(
+          ...scope,
+          [{ role: 'user', content: '有早班吗' }],
+          ledger.drain().facts.turnHints,
+        );
+
+        expect(tracer.emit).toHaveBeenCalledWith({
+          type: 'schedule_extraction_disagreement',
+          toolChangedFields: ['includeAnyTags'],
+          extraction: 'none',
+          declarative: false,
+        });
+        expect((await savedPreferences())?.schedule_constraint?.value).toEqual({
+          excludeTags: ['night'],
+        });
+      });
+
+      it('陈述轮抽取只回显旧值时标记为陈述分歧', async () => {
+        await service.saveFacts(
+          ...scope,
+          softFacts({ schedule_constraint: { excludeTags: ['night'] } }),
+        );
+        const ledger = createTurnLedger();
+        ledger.recordScheduleConstraint({ excludeTags: ['night'], includeAnyTags: ['evening'] });
+        respondValidated({
+          preferences: preferences({ schedule_constraint: { excludeTags: ['night'] } }),
+          reasoning: '回显已有条件',
+        });
+
+        await observed.extractAndSave(
+          ...scope,
+          [{ role: 'user', content: '我只做晚班' }],
+          ledger.drain().facts.turnHints,
+        );
+
+        expect(tracer.emit).toHaveBeenCalledWith(
+          expect.objectContaining({
+            type: 'schedule_extraction_disagreement',
+            extraction: 'echo',
+            declarative: true,
+          }),
+        );
+      });
+
+      it('抽取给出有效变更、抽取降级或工具未变更时不发观测事件', async () => {
+        // 三轮依次为：抽取给出有效变更、抽取降级、抽取无新信息。
+        llm.generateStructured
+          .mockReset()
+          .mockResolvedValueOnce({
+            output: {
+              preferences: preferences({ schedule_constraint: { maxDaysPerWeek: 3 } }),
+              schedule_constraint_citation: { quote: '一周最多3天' },
+              reasoning: '周天数',
+            },
+          })
+          .mockRejectedValueOnce(new Error('LLM unavailable'))
+          .mockResolvedValueOnce({
+            output: { preferences: preferences(), reasoning: '本轮无新信息' },
+          });
+        const changed = createTurnLedger();
+        changed.recordScheduleConstraint({ maxDaysPerWeek: 2 });
+        await observed.extractAndSave(
+          ...scope,
+          [{ role: 'user', content: '一周最多3天' }],
+          changed.drain().facts.turnHints,
+        );
+
+        const degraded = createTurnLedger();
+        degraded.recordScheduleConstraint({ includeAnyTags: ['evening'] });
+        await observed.extractAndSave(
+          ...scope,
+          [{ role: 'user', content: '我只做晚班' }],
+          degraded.drain().facts.turnHints,
+        );
+
+        const unchanged = createTurnLedger();
+        // 工具登记的是与记忆合并后的完整条件，与已保存条件一致即本轮无变更。
+        unchanged.recordScheduleConstraint({ maxDaysPerWeek: 3, includeAnyTags: ['evening'] });
+        await observed.extractAndSave(
+          ...scope,
+          [{ role: 'user', content: '帮我找上海的' }],
+          unchanged.drain().facts.turnHints,
+        );
+
+        expect(tracer.emit).not.toHaveBeenCalledWith(
+          expect.objectContaining({ type: 'schedule_extraction_disagreement' }),
+        );
+      });
+    });
+
     it('抽取降级且本轮全是询问时，不用工具本轮查询条件落盘', async () => {
       const ledger = createTurnLedger();
       ledger.recordScheduleConstraint({ availableWindow: { start: '18:00', end: '22:00' } });

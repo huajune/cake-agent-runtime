@@ -132,19 +132,24 @@ export function buildRequestHandoffTool(
         // 而是带着这张工单号转人工核实归属后处理。
         // 本轮预约快照（按手机号查得，含自建与带外）是卡片工单号的首选来源：通过本人校验的
         // 优先，其次任一可见工单；快照为空再退回指针 / 本轮改约核验到的工单号。
+        // 改约例外：本轮工具已核验到具体工单（改约工具 / precheck 命中在途预约）时以它为准——
+        // 快照有多张工单时首张未必是候选人要改的那张。
         const snapshotRefs = context.archive.bookingWorkOrders ?? [];
         const snapshotWorkOrder =
           snapshotRefs.find((ref) => ref.ownedByCandidate !== false) ?? snapshotRefs[0] ?? null;
         const outOfBandWorkOrder = snapshotRefs.find((ref) => ref.source === 'out_of_band') ?? null;
+        const isModifyAppointment = reasonCode === 'modify_appointment';
+        const turnResolvedWorkOrderId = context.ledger.jobs.resolvedWorkOrderId;
         const workOrderId =
+          (isModifyAppointment ? turnResolvedWorkOrderId : undefined) ??
           snapshotWorkOrder?.workOrderId ??
           activeBooking?.work_order_id ??
-          context.ledger.jobs.resolvedWorkOrderId ??
+          turnResolvedWorkOrderId ??
           null;
         if (
-          reasonCode === 'modify_appointment' &&
+          isModifyAppointment &&
           activeBooking?.work_order_id == null &&
-          context.ledger.jobs.resolvedWorkOrderId == null &&
+          turnResolvedWorkOrderId == null &&
           outOfBandWorkOrder
         ) {
           logger.log(
@@ -153,16 +158,18 @@ export function buildRequestHandoffTool(
         }
 
         // 转人工当轮的焦点岗位：让运营的「岗位数据缺口榜 / 满岗信号榜」能直接定位到岗位。
-        // 优先本轮焦点岗位；没有焦点岗位（如只有进行中工单）时退回在约岗位。
+        // 改约优先本轮 precheck 命中在途预约的岗位（与上方工单号成对）；其余优先本轮焦点岗位，
+        // 没有焦点岗位（如只有进行中工单）时退回在约岗位。
         // 纯闲聊/开场即转人工时为 null，属正常缺失，不做兜底猜测。
         const jobId =
+          (isModifyAppointment ? context.ledger.jobs.resolvedJobId : undefined) ??
           context.archive.currentFocusJob?.jobId ??
           context.archive.activeBookingJobIds?.[0] ??
           null;
 
         // 守卫：候选人要求"改期/取消"但根本没有已确认预约 → 这其实是首次约面意向。
         // 返回 shortCircuited:false（不短路），让 runtime 继续、Agent 按首次约面流程推进。
-        if (reasonCode === 'modify_appointment' && workOrderId == null) {
+        if (isModifyAppointment && workOrderId == null) {
           logger.log(
             `request_handoff(modify_appointment) 但无 active_booking，按首次约面继续: chatId=${chatId}`,
           );

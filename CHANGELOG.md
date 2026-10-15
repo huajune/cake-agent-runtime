@@ -8,6 +8,110 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v11.13.1`
+**最近更新**: `2026-10-15`
+**来源分支**: `develop`
+**累计 PR**: 2
+
+### 运营说明
+**关闭托管的小组不再收到复聊** ✅ 合入后随版上线
+- 运营在看板把某个小组关掉托管后，这个小组里账号的复聊（面试提醒、回访等）也会停发，不再自己往外发消息
+- 查不清小组是否托管时一律先不发，宁可漏发不乱发
+**人工改约卡片带对工单** ✅ 合入后随版上线
+- 候选人名下有多张预约、AI 查到其中一张要改约时，转给人工的改约卡片会带上这一张的工单号和岗位，不会再带成另一张
+**守卫少误拦两类正常回复** ✅ 合入后随版上线
+- 「没有招满」「不是名额满了」「还没招够」「名额满不满我帮你问问」这类否认或询问的说法，不再被当成乱说门店招满
+- 候选人改口只找兼职后，之前推荐过的全职岗不再拿来判「学生也可以」说错了
+
+**候选人说过的班次条件，后面还记得** ⏳ 待发布（需随 v11.13.0 的班次改造一起上线）
+- 候选人说“我只做晚班”“不上夜班”“每天17点以后有空”，系统会记住，之后再找岗位时自动按这个条件筛。
+- 同一句里说了几个条件（如“下午5点以后有空，但是不上夜班”），几个条件都会记住。
+- 候选人改口（取消之前的时间限制、从只做晚班放宽到白天也行），旧条件会被替换，不再按旧条件筛岗位。
+- “有早班吗”“有没有大夜班”“班次是固定的还是自己选”这类询问，仍然不会被当成候选人的限制。
+
+### 更新摘要
+- PR #1404 复聊按小组托管开关停发、改约卡片带本轮命中工单，收窄门店状态与学生身份守卫误判
+- PR #1404 地址无出处的观测日志不再打印地址原文，改打 sessionId 与 matchedBy
+- PR #1404 小组黑名单读不到时复聊 fail closed，读取失败不再覆盖缓存
+- PR #1404 黑名单严格读取保留瞬时错误重试
+- PR #1404 修复 2026-10-15 发版前对 huajune/cake-agent-runtime#1391、#1395、#1396、#1397 评审核实的 5 个问题（均成立、不阻塞发版）
+- PR #1404 复聊投递层补小组托管开关核验；改约转人工优先本轮工具核验的工单；两条出站守卫收窄误判；geocode 观测日志去掉地址原文
+- PR #1407 千问结构化输出改走 JSON 模式并把 schema 写进提示词，修复班次条件跨轮丢失
+- PR #1407 根因：千问（DashScope）的 json_schema 结构化输出两头出问题。严格模式只拿 schema 约束输出格式，**不把 schema 交给模型**：轮末抽取写在字段说明里的规则（班次标签映射、附候选人原话等）千问看不到，班次条件和原话引文一律返回空，轮末记忆随之丢掉查岗工具本轮已核验的条件，撤销与放宽也不生效。非严格模式能看到说明，但**按字段顺序约束输出**：“17点以后有空，但是不上夜班”稳定丢掉“不上夜班”，还会补出在记忆契约里表示撤销的 null。
+- PR #1407 修复：千问的结构化请求改走普通 JSON 模式，由注册层把 schema 连同字段说明写进系统提示（与 `@ai-sdk/deepseek` 一直使用的兼容做法相同），输出仍由 AI SDK 按原 schema 校验、失败走既有重试与降级。按请求实际落到的厂商生效，与角色、具体型号无关，切换抽取模型不受影响；抽取规则文本与轮末兜底规则都不改。
+- PR #1407 新增只观测信号：轮末抽取判定班次无变更、查岗工具本轮却核验到变更时打 warn 日志并落执行事件 `schedule_extraction_disagreement`，不改写入结果、不发飞书。
+
+### 新功能
+- PR #1407 新增只观测信号：轮末抽取判定班次无变更、查岗工具本轮却核验到变更时打 warn 日志并落执行事件 `schedule_extraction_disagreement`，不改写入结果、不发飞书。
+
+### 问题修复
+- PR #1404 **复聊在关闭托管的小组里仍会发消息**（来源 #1391）：`ReengagementDeliveryService` 注入 `GroupBlacklistService`，先在托管账号列表里找到接客 bot，再用 `bot.groupId` 查 `system_config.group_blacklist`；命中返回 `skipped`、`skipReason=receiving_group_not_hosted`，查询出错 fail closed。账号不在任何小组下时与入站过滤同口径，按账号托管放行。
+- PR #1404 Codex 评审补充：底层读失败原本会被吞成空列表（还会写回 Redis 共享缓存）。现 `loadBlacklistFromDb` 读不到返回 null，`loadGroupBlacklist` 读不到时保留旧快照、不写回共享缓存；新增 `getGroupBlacklistStatus` 严格查询（读不到返回 null），复聊遇 null 停发。入站过滤仍沿用旧快照，口径不变。严格读取复用基础仓储同一套熔断 + 退避重试（新增 `selectFromOrNull`，`selectFrom` 委托它、行为不变），瞬时 502/503 先重试再判读不到。
+- PR #1404 **人工改约卡片可能带错工单号**（来源 #1397）：precheck `booked_job_unverifiable` 分支把命中的工单写入 `ledger.jobs.resolvedWorkOrderId`，并成对新增 `resolvedJobId`；`request_handoff` 在 `modify_appointment` 时优先使用这两项，其余原因码保持快照优先。改约工具切换工单号时清空成对的 `resolvedJobId`，避免岗位与工单错配。
+- PR #1404 **门店状态推测规则误伤否定句**（来源 #1397）：`unsupported_store_status_speculation` 逐个命中检查同句紧贴的否定/安抚前缀（没有/没/不是/并非/不会/未、别担心/不用担心/不必担心，中间只容「还/也/都/并/完全/真的」副词），并排除「满不满/招没招满」正反问。「是不是招满了」「不会是门店调整了吧」等猜测性设问、同句另有未否认的断言仍命中。
+- PR #1404 **学生身份哨兵拿隐藏岗位对账**（来源 #1396）：`OutputGuardrailService.readSessionJobEvidence` 先按本轮用工形式意向用 `selectVisibleSessionJobs` 过滤 presentedJobs / currentFocusJob，再调 `buildStudentAcceptanceEvidence`；生效用工形式与 Prompt 组装同一口径（本轮高置信线索优先，其次会话高置信事实）。
+- PR #1404 **geocode 观测日志打印地址原文**（来源 #1395）：`unattested + assistantOnly` 的 warn 改打 `sessionId`、`matchedBy`、地址字数，不再输出 `input.address`。
+- PR #1404 修复 2026-10-15 发版前对 huajune/cake-agent-runtime#1391、#1395、#1396、#1397 评审核实的 5 个问题（均成立、不阻塞发版）
+- PR #1404 复聊投递层补小组托管开关核验；改约转人工优先本轮工具核验的工单；两条出站守卫收窄误判；geocode 观测日志去掉地址原文
+- PR #1404 复聊按小组托管开关停发、改约卡片带本轮命中工单，收窄门店状态与学生身份守卫误判
+- PR #1407 `src/providers/types.ts`：厂商配置新增 `jsonSchemaInPrompt`，千问开启（替换原 `supportsStructuredOutputs`）。
+- PR #1407 `src/providers/json-schema-prompt.middleware.ts`（新）：带 schema 的 JSON 请求在前导系统消息后插入 schema 说明，并去掉 responseFormat 里的 schema；普通文本生成、工具调用原样放行。
+- PR #1407 `src/providers/registry.service.ts`：配置了 `jsonSchemaInPrompt` 的厂商用 `wrapProvider` 套上述中间件。
+- PR #1407 `src/memory/short-term/facts.service.ts`、`src/observability/*`：分歧观测事件（字段名、抽取输出形态、本轮是否含陈述子句），不带条件值与原话；列入必落库事件。
+- PR #1407 文档：`src/memory/README.md` 写明抽取规则依赖模型能看到完整 schema；`docs/prompt-rule-ledger.md` 班次行补“生效前提修正”。
+- PR #1407 修复：千问的结构化请求改走普通 JSON 模式，由注册层把 schema 连同字段说明写进系统提示（与 `@ai-sdk/deepseek` 一直使用的兼容做法相同），输出仍由 AI SDK 按原 schema 校验、失败走既有重试与降级。按请求实际落到的厂商生效，与角色、具体型号无关，切换抽取模型不受影响；抽取规则文本与轮末兜底规则都不改。
+- PR #1407 千问结构化输出改走 JSON 模式并把 schema 写进提示词，修复班次条件跨轮丢失
+
+### 优化调整
+- PR #1404 `selectVisibleSessionJobs` 与生效用工形式的纯判定 `resolveActiveLaborFormValue` 下沉到 `resolution/labor-form`，Prompt 组装与出站守卫共用，守卫不再反向依赖 generator。
+- PR #1407 根因：千问（DashScope）的 json_schema 结构化输出两头出问题。严格模式只拿 schema 约束输出格式，**不把 schema 交给模型**：轮末抽取写在字段说明里的规则（班次标签映射、附候选人原话等）千问看不到，班次条件和原话引文一律返回空，轮末记忆随之丢掉查岗工具本轮已核验的条件，撤销与放宽也不生效。非严格模式能看到说明，但**按字段顺序约束输出**：“17点以后有空，但是不上夜班”稳定丢掉“不上夜班”，还会补出在记忆契约里表示撤销的 null。
+
+### 运维与流程
+- PR #1404 规则台账新增「2026-10-15 发版前评审收口批」，catalog 同步更新 `unsupported_store_status_speculation.residualRisk` 与 `student_acceptance_contradiction.exogenousSignal`。
+- PR #1404 顺带更正两处过期计数：#1396、#1397 各新增一条 observe 规则后，catalog 实为 26 条（19 执行档 + 7 observe），台账与 `guardrail-quality-system.md` 仍写 25 条。
+- PR #1404 地址无出处的观测日志不再打印地址原文，改打 sessionId 与 matchedBy
+- PR #1404 小组黑名单读不到时复聊 fail closed，读取失败不再覆盖缓存
+- PR #1404 黑名单严格读取保留瞬时错误重试
+- PR #1407 v11.13.0 的生产部署（Actions run 38683849216）正在等待审批，**不含本修复**；该版本包含的班次改造在千问路由下会丢失跨轮班次条件，本 PR 合入后需随下一次发版一起上线。
+
+### 配置变更
+- PR #1407 无环境变量、迁移或依赖变更。
+- PR #1407 千问每次结构化调用输入多约 2.7K token（schema 写进提示词）。
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #1404 `pnpm run ci:check`（pre-push 全量：lint / format / typecheck / geo / vocab / quality-ledger / build:ci / test:ci，515 个测试文件、8115 个用例通过）
+- PR #1404 `pnpm run test:di-smoke`：复聊投递层新注入的 `GroupBlacklistService` 可正常装配
+- PR #1404 关键链路已人工验证：本地后端（测试库）用本分支跑 3 轮真实 `debug-chat`（学生找兼职 → 给位置查岗展示 → 改问全职学生能否做），回复正常、守卫放行，无会话岗位记忆读取告警
+- PR #1404 未新增对开放自然语言直接 reject/覆盖/判缺的正则分支：门店状态规则只新增「跳过」分支，收窄既有封闭词表的命中面
+- PR #1404 未新增虚构 prompt 示例值
+- PR #1404 新增单测：
+- PR #1404 小组在黑名单 / 小组状态读不到 / 查询抛错时 `deliverReply` 不被调用；不在小组下的托管账号照常投递
+- PR #1404 Redis 失败且数据库读不到时严格查询返回 null；数据库读不到时保留旧快照且不写回共享缓存
+- PR #1404 快照两张不同岗位工单、precheck 命中第二张 → 同轮 `request_handoff(modify_appointment)` 的 `sideEffect.workOrderId` / `jobId` 为第二张；非改约原因码仍以快照为准
+- PR #1404 8 条否认/安抚/正反问不命中，5 条猜测/混合断言仍命中
+- PR #1404 全职岗全部 social_only、本轮意向为兼职时，零工具「学生也可以的」不命中（对照：未切换意向时照常命中）
+- PR #1404 geocode warn 不含地址原文；`resolveActiveLaborFormValue` / `selectVisibleSessionJobs` 单测
+- PR #1404 其他说明：评审项本身来自 Codex 评审，修复与验证由 Claude Code 完成
+- PR #1407 诊断（同提示词、同模型 qwen3.7-plus，5 条班次陈述 × 2）：线上严格模式 0/10 写出班次条件；schema 写进提示词 + JSON 模式 10/10，均带原话引文；询问“你们有早班吗？”各模式都不写。严格模式请求 460 token，与不带 schema 的 458 相同；字段说明里放的标记文字在严格模式输出中 0 次出现，说明 schema 未进入模型上下文。
+- PR #1407 非严格 json_schema 方案已试并弃用：“17点以后有空，但是不上夜班”6/6 丢掉不上夜班并补 null；调换字段顺序后“想做晚班，但是晚上9点以后不行”又丢掉不可上班时段。
+- PR #1407 真实 Agent 回归：本地后端 `AGENT_CHAT_MODEL` / `AGENT_EXTRACT_MODEL` = `qwen/qwen3.7-plus`（与生产 `/agent/health` 一致），复用 32 条班次用例（SCN-SHIFT-20261009-001 至 SCN-SHIFT-20261013-032，009 跑 3 次、021 跑 2 次，共 35 次），轮末记忆以测试会话 Redis facts 为准：
+- PR #1407 006 撤销 07–15 后记忆清空；028“白天也可以了”撤销只做晚班；带已存条件的 005 / 026 / 027 原值保留，未被误撤销。
+- PR #1407 询问 009（×3）、013、015、019、022 均未沉淀为限制；分歧观测事件触发 5 次，全部是询问轮（009×3、015、022）。
+- PR #1407 用工形式：17 条改由模型裁决（修复前 11 条靠规则兜底），取值均正确。
+- PR #1407 图片识别冒烟（qwen3-vl-plus，2 张合成招聘图 × 2）：JSON 模式下图片类型、字段 key 均在白名单内，候选人地址与发布方信息归属正确；该模型在严格模式本就能看到字段说明，行为无变化。
+- PR #1407 `pnpm run ci:check` 通过：516 个套件 / 8090 条测试（5 条原有跳过）。
+- PR #1407 其他说明（遗留，不在本 PR）：
+- PR #1407 抽取与查岗工具都给出变更但不一致时以抽取为准；中间方案那轮里 024“我每天5点到23点都可以”曾被抽取读成 17:00–23:00（单独复测：短句 3/6 误读，完整原话 6/6 正确）。
+- PR #1407 抽取偶尔把没提到的字段写成 null（记忆契约里 null 表示撤销）：真实链路复验 1/10，直接调用复测 0/28；DeepSeek 抽取时期同样存在。
+- PR #1407 现有抽取 schema 在 OpenAI（严格模式要求字段全必填）与 Gemini（`endDayOffset` 数字枚举）上会被拒收，与本 PR 无关。
+<!-- release:pending:end -->
+
 ## [11.13.0] - 2026-10-15
 
 **来源分支**: `develop`

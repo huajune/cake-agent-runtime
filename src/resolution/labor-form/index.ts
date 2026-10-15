@@ -278,6 +278,67 @@ function normalizeLaborFormMention(raw: string): ValidLaborForm {
   return raw as ValidLaborForm;
 }
 
+// ==================== 当前生效意向与会话岗位可见性 ====================
+
+/**
+ * 本轮生效的用工形式：本轮意向 set 直接生效；clear 撤销与之相同的旧值；ignore 沿用旧值。
+ * previous 由调用方按「本轮高置信线索 ?? 会话高置信事实」取出——Prompt 组装与出站守卫
+ * 必须喂同一口径，见 selectVisibleSessionJobs。
+ */
+export function resolveActiveLaborFormValue(
+  previous: string | null | undefined,
+  currentIntent: LaborFormIntentDecision,
+): string | null {
+  const resolved =
+    currentIntent.kind === 'set'
+      ? currentIntent.value
+      : currentIntent.kind === 'clear' &&
+          previous &&
+          currentIntent.clearedValues.some((value) => value === previous)
+        ? null
+        : (previous ?? null);
+  return isValidLaborForm(resolved) ? resolved : null;
+}
+
+/** 可见性门只读岗位的两级用工形式字段。 */
+export interface LaborFormJobFields {
+  laborForm?: string | null;
+  partTimeJobType?: string | null;
+}
+
+/**
+ * 会话岗位记忆的可见性门：用工形式意向切换后不再展示与之不符的岗位。
+ * Prompt 里所有按会话岗位记忆渲染的清单（[会话记忆]、学生身份逐岗结论）与出站守卫按
+ * 会话岗位对账的规则共用这一道门，守卫只对模型本轮看得到的岗位下结论。
+ *
+ * 岗位轴是层级结构（laborForm=全职/兼职 + partTimeJobType 细分），意向值比对
+ * 必须走 matchesLaborForm：暑假工岗的 summary 是 laborForm=兼职 + partTimeJobType=暑假工，
+ * 扁平全等会把候选池整个滤空/漏清。
+ */
+export function selectVisibleSessionJobs<T extends LaborFormJobFields>(
+  jobs: readonly T[] | null | undefined,
+  activeLaborForm: string | null,
+  currentIntent: LaborFormIntentDecision = { kind: 'ignore' },
+): T[] {
+  if (currentIntent.kind === 'set') {
+    return (jobs ?? []).filter((job) =>
+      matchesLaborForm(job.laborForm, job.partTimeJobType, currentIntent.value),
+    );
+  }
+  if (currentIntent.kind === 'clear') {
+    return (jobs ?? []).filter(
+      (job) =>
+        !job.laborForm ||
+        !currentIntent.clearedValues.some((value) =>
+          matchesLaborForm(job.laborForm, job.partTimeJobType, value),
+        ),
+    );
+  }
+  return activeLaborForm === '暑假工'
+    ? (jobs ?? []).filter((job) => matchesLaborForm(job.laborForm, job.partTimeJobType, '暑假工'))
+    : [...(jobs ?? [])];
+}
+
 // ==================== 展示规整与查询入参兜底 ====================
 
 /**

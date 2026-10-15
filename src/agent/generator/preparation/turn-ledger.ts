@@ -213,6 +213,9 @@ export function createTurnLedger(input: CreateTurnLedgerInput = {}): TurnLedger 
           ...(ledger.jobs.resolvedWorkOrderId === undefined
             ? {}
             : { resolvedWorkOrderId: ledger.jobs.resolvedWorkOrderId }),
+          ...(ledger.jobs.resolvedJobId === undefined
+            ? {}
+            : { resolvedJobId: ledger.jobs.resolvedJobId }),
         },
         facts: {
           // 回合内 facts.turnHints 保持 prep 判定；交档快照另附工具已核验的班次条件，

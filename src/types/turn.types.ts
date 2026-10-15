@@ -99,7 +99,13 @@ export interface TurnJobsSnapshot {
   /** 本轮 precheck 已收到提交前复述确认的岗位；booking 只消费这一回合凭据。 */
   collectionReadyJobId?: number;
   jobListExecuted: boolean;
+  /**
+   * 本轮工具核验到的候选人在约工单号：改约工具核验的工单，或 precheck 岗位详情查不到时
+   * 命中的在途预约（booked_job_unverifiable）。request_handoff(modify_appointment) 优先用它。
+   */
   resolvedWorkOrderId?: number;
+  /** 与 resolvedWorkOrderId 成对：该工单所属岗位（precheck 命中时写入；改约工具换工单时清空）。 */
+  resolvedJobId?: number;
 }
 
 export interface TurnFactsSnapshot {

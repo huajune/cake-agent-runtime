@@ -3,6 +3,7 @@ import { Inject, Injectable, Logger, OnModuleInit, Optional } from '@nestjs/comm
 import { InjectQueue } from '@nestjs/bull';
 import { Job, Queue } from 'bull';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
+import { GroupBlacklistService } from '@biz/hosting-config/services/group-blacklist.service';
 import { ConfigService } from '@nestjs/config';
 import {
   ReengagementTrackingService,
@@ -56,7 +57,7 @@ import {
   resolveReengagementBookingContext,
   type ReengagementBookingContext,
 } from './booking-context';
-import { BotService } from '@wecom/bot/bot.service';
+import { BotService, type BotAccount } from '@wecom/bot/bot.service';
 import { CallerKind } from '@enums/agent.enum';
 import { RequestContextService } from '@observability/context/request-context.service';
 import { formatShanghaiTime, shanghaiDayNumber } from './reengagement-datetime.util';
@@ -74,9 +75,12 @@ export interface ReengagementDeliveryPort<TOutcome = unknown, TResult = unknown>
 export class ReengagementDeliveryService
   implements ReengagementDeliveryPort<TurnOutcome, DeliveryResult>
 {
+  private readonly logger = new Logger(ReengagementDeliveryService.name);
+
   constructor(
     private readonly delivery: MessageDeliveryService,
     private readonly botService: BotService,
+    private readonly groupBlacklist: GroupBlacklistService,
   ) {}
 
   async deliver(
@@ -93,9 +97,11 @@ export class ReengagementDeliveryService
     }
 
     // 复聊没有候选人入站消息可触发常规入口过滤，因此在真正投递前按接客 bot
-    // 重新核验托管账号列表。查不到或上游查询失败均 fail closed，避免已取消托管的
-    // 账号仍被历史 delayed job 主动发消息。
-    if (!(await this.isReceivingBotHosted(context.imBotId))) {
+    // 重新核验托管账号列表与其所在小组的托管开关（system_config.group_blacklist）。
+    // 查不到或任一查询失败均 fail closed，避免已取消托管的账号或已关托管的小组
+    // 仍被历史 delayed job 主动发消息。
+    const skipReason = await this.resolveHostingSkipReason(context.imBotId);
+    if (skipReason) {
       return {
         success: true,
         segmentCount: 0,
@@ -103,7 +109,7 @@ export class ReengagementDeliveryService
         deliveredSegments: 0,
         totalTime: 0,
         skipped: true,
-        skipReason: 'receiving_bot_not_hosted',
+        skipReason,
       };
     }
 
@@ -114,16 +120,37 @@ export class ReengagementDeliveryService
     );
   }
 
-  private async isReceivingBotHosted(imBotId: string): Promise<boolean> {
+  private async resolveHostingSkipReason(
+    imBotId: string,
+  ): Promise<'receiving_bot_not_hosted' | 'receiving_group_not_hosted' | null> {
+    const receivingBotId = imBotId.trim();
+    let bot: BotAccount | undefined;
     try {
       const bots = await this.botService.getConfiguredBotList();
-      return bots.some((bot) =>
-        [bot.wxid, bot.id, bot.weixin, bot.wecomUserId]
+      bot = bots.find((candidate) =>
+        [candidate.wxid, candidate.id, candidate.weixin, candidate.wecomUserId]
           .filter((id): id is string => typeof id === 'string')
-          .some((id) => id.trim() === imBotId.trim()),
+          .some((id) => id.trim() === receivingBotId),
       );
     } catch {
-      return false;
+      return 'receiving_bot_not_hosted';
+    }
+    if (!bot) return 'receiving_bot_not_hosted';
+
+    // 与入站过滤同口径：账号不在任何小组下时没有小组托管开关可查，按账号托管放行。
+    const groupId = bot.groupId?.trim();
+    if (!groupId) return null;
+    try {
+      const blacklisted = await this.groupBlacklist.getGroupBlacklistStatus(groupId);
+      if (blacklisted === null) {
+        this.logger.warn(`[reengagement] 小组托管开关读不到，按未托管停发 groupId=${groupId}`);
+      }
+      return blacklisted === false ? null : 'receiving_group_not_hosted';
+    } catch (error: unknown) {
+      this.logger.warn(
+        `[reengagement] 小组托管开关查询失败，按未托管停发 groupId=${groupId}: ${toErrorMessage(error)}`,
+      );
+      return 'receiving_group_not_hosted';
     }
   }
 }
