@@ -434,7 +434,28 @@ describe('RepairEvidenceBuilder', () => {
       success: true,
       groupName: '上海餐饮群',
       alreadyInGroup: undefined,
+      delivery: 'direct_add',
       errorType: undefined,
+    });
+  });
+
+  it('keeps invite_to_group delivery so a card invite is not rewritten as already joined', () => {
+    const packet = builder.build({
+      reply: '邀请发你了，点卡片就能进群',
+      toolCalls: [
+        {
+          toolName: 'invite_to_group',
+          args: { city: '上海' },
+          result: { success: true, groupName: '上海餐饮群', inviteDelivery: 'invite_card' },
+          status: 'ok',
+        },
+      ],
+    });
+
+    expect(packet.evidence.groupInvite).toMatchObject({
+      success: true,
+      groupName: '上海餐饮群',
+      delivery: 'invite_card',
     });
   });
 
