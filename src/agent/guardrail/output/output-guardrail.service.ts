@@ -5,10 +5,12 @@ import { SessionFactsService } from '@memory/short-term/facts.service';
 import { MessageWindowService } from '@memory/short-term/message-window.service';
 import { LongTermService } from '@memory/long-term/long-term.service';
 import type { ActiveBookingEntry } from '@memory/long-term/long-term.types';
-import type { ShortTermMessage } from '@memory/short-term/short-term.types';
+import { type ShortTermMessage, unwrapSessionFacts } from '@memory/short-term/short-term.types';
 import { isHumanAgentTextMessage } from '@biz/message/utils/message-provenance.util';
 import type { RecommendedJobSummary } from '@resolution/job/types';
-import type { TurnLedger } from '@shared-types/turn.types';
+import type { TurnFactsSnapshot, TurnLedger } from '@shared-types/turn.types';
+import { resolveActiveLaborFormValue, selectVisibleSessionJobs } from '@resolution/labor-form';
+import { projectTurnHints } from '@resolution/turn-hints/reducer';
 import { BookingSnapshotService } from '@tools/booking/booking-snapshot.service';
 import type { AgentMemorySnapshot, AgentToolCall } from '@agent/generator/generator.types';
 import type {
@@ -30,7 +32,6 @@ import {
   buildStudentAcceptanceEvidence,
   type StudentAcceptanceEvidence,
 } from './rules/student-acceptance.rule';
-import type { TurnHints } from '@resolution/turn-hints/turn-hint.types';
 import type { RuleContradiction } from './output-rule.types';
 import { OutboundReplySanitizer } from './sanitizer/outbound-reply-sanitizer';
 
@@ -159,25 +160,47 @@ export class OutputGuardrailService {
    *   它们是上一轮真实工具结果沉淀后渲染进 [会话记忆] 的班次/薪资/距离，模型据此回答追问不是编造；
    *   岗位本体另供按岗位绑定回复；
    * - studentAcceptance：学生身份（会话事实 + 本轮线索）与已展示/焦点岗位的社会身份档位，
-   *   供 student_acceptance_contradiction 对账。
+   *   供 student_acceptance_contradiction 对账。岗位先过与 Prompt 同一道用工形式可见性门
+   *   （selectVisibleSessionJobs）：意向切到兼职后被隐藏的全职岗，不能拿来判"学生也可以"指的是它。
    * 读不到（无会话身份 / 读失败）时岗位为空、学生证据缺省，相关规则各自退回保守口径。
    */
   private async readSessionJobEvidence(
     corpId: string | undefined,
     userId: string | undefined,
     sessionId: string | undefined,
-    turnHints: TurnHints | null | undefined,
+    turnFacts: Pick<TurnFactsSnapshot, 'turnHints' | 'laborFormIntent'> | undefined,
   ): Promise<{ jobs: RecommendedJobSummary[]; studentAcceptance?: StudentAcceptanceEvidence }> {
     if (!this.sessionFacts || !corpId || !userId || !sessionId) return { jobs: [] };
     try {
       const state = await this.sessionFacts.getSessionState(corpId, userId, sessionId);
+      const turnHints = turnFacts?.turnHints ?? null;
+      const laborFormIntent = turnFacts?.laborFormIntent ?? { kind: 'ignore' };
+      // 与 Prompt 组装同一口径：本轮高置信线索优先，其次会话高置信事实。
+      const activeLaborForm = resolveActiveLaborFormValue(
+        projectTurnHints(turnHints, { minConfidence: 'high' })?.preferences.labor_form ??
+          unwrapSessionFacts(state.facts ?? null, { minConfidence: 'high' })?.preferences
+            .labor_form ??
+          null,
+        laborFormIntent,
+      );
+      const visibleJobs = (jobs: readonly RecommendedJobSummary[]) =>
+        selectVisibleSessionJobs(jobs, activeLaborForm, laborFormIntent);
       return {
         jobs: [
           ...(state.presentedJobs ?? []),
           ...(state.lastCandidatePool ?? []),
           ...(state.currentFocusJob ? [state.currentFocusJob] : []),
         ],
-        studentAcceptance: buildStudentAcceptanceEvidence(state, turnHints),
+        studentAcceptance: buildStudentAcceptanceEvidence(
+          {
+            facts: state.facts,
+            presentedJobs: visibleJobs(state.presentedJobs ?? []),
+            currentFocusJob: state.currentFocusJob
+              ? (visibleJobs([state.currentFocusJob])[0] ?? null)
+              : null,
+          },
+          turnHints,
+        ),
       };
     } catch (error: unknown) {
       this.logger.warn(
@@ -206,7 +229,7 @@ export class OutputGuardrailService {
         input.corpId,
         input.userId,
         input.sessionId,
-        input.turnLedger?.facts.turnHints,
+        input.turnLedger?.facts,
       ),
     ]);
     const sessionJobs = sessionJobEvidence.jobs;

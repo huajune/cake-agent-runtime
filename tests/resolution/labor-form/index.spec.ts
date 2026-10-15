@@ -8,7 +8,9 @@ import {
   isSeasonalLaborForm,
   isValidLaborForm,
   matchesLaborForm,
+  resolveActiveLaborFormValue,
   sanitizeJobDisplayText,
+  selectVisibleSessionJobs,
   sanitizeLaborFormForDisplay,
   stripLaborFormFromCategories,
 } from '@resolution/labor-form';
@@ -230,6 +232,47 @@ describe('labor-form', () => {
 
     it('returns false when wanted is empty', () => {
       expect(matchesLaborForm('兼职', '暑假工', null)).toBe(false);
+    });
+  });
+
+  describe('resolveActiveLaborFormValue', () => {
+    it('set 覆盖旧值，clear 只撤销相同旧值，ignore 沿用旧值', () => {
+      expect(resolveActiveLaborFormValue('暑假工', { kind: 'set', value: '全职' })).toBe('全职');
+      expect(
+        resolveActiveLaborFormValue('暑假工', { kind: 'clear', clearedValues: ['暑假工'] }),
+      ).toBeNull();
+      expect(
+        resolveActiveLaborFormValue('暑假工', { kind: 'clear', clearedValues: ['小时工'] }),
+      ).toBe('暑假工');
+      expect(resolveActiveLaborFormValue('暑假工', { kind: 'ignore' })).toBe('暑假工');
+      expect(resolveActiveLaborFormValue('临时工', { kind: 'ignore' })).toBeNull();
+      expect(resolveActiveLaborFormValue(null, { kind: 'ignore' })).toBeNull();
+    });
+  });
+
+  describe('selectVisibleSessionJobs', () => {
+    const fullTime = { jobId: 1, laborForm: '全职', partTimeJobType: null };
+    const summer = { jobId: 2, laborForm: '兼职', partTimeJobType: '暑假工' };
+    const hourly = { jobId: 3, laborForm: '兼职', partTimeJobType: '小时工' };
+    const jobs = [fullTime, summer, hourly];
+
+    it('本轮 set 按层级匹配过滤，保留原对象', () => {
+      expect(selectVisibleSessionJobs(jobs, null, { kind: 'set', value: '兼职' })).toEqual([
+        summer,
+        hourly,
+      ]);
+      expect(selectVisibleSessionJobs(jobs, null, { kind: 'set', value: '暑假工' })[0]).toBe(
+        summer,
+      );
+    });
+
+    it('clear 去掉被撤销的形式；ignore 只在生效暑假工时收窄', () => {
+      expect(
+        selectVisibleSessionJobs(jobs, null, { kind: 'clear', clearedValues: ['全职'] }),
+      ).toEqual([summer, hourly]);
+      expect(selectVisibleSessionJobs(jobs, '暑假工')).toEqual([summer]);
+      expect(selectVisibleSessionJobs(jobs, '全职')).toEqual(jobs);
+      expect(selectVisibleSessionJobs(null, null)).toEqual([]);
     });
   });
 });

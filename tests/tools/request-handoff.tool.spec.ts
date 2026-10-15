@@ -136,6 +136,49 @@ describe('buildRequestHandoffTool', () => {
     });
   });
 
+  it('改约优先用本轮工具核验到的工单与岗位，而不是快照首张', async () => {
+    const tool = buildTool(
+      mergeToolContext(mockContext, {
+        archive: {
+          bookingWorkOrders: [
+            { workOrderId: 467500, jobId: 200, source: 'active_booking', ownedByCandidate: true },
+            { workOrderId: 467501, jobId: 100, source: 'active_booking', ownedByCandidate: true },
+          ],
+          currentFocusJob: { jobId: 300 } as never,
+        },
+        ledger: { jobs: { resolvedWorkOrderId: 467501, resolvedJobId: 100 } },
+      }),
+    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = await (tool as any).execute({
+      reasonCode: 'modify_appointment',
+      reason: '候选人想改到下午',
+    });
+
+    expect(result.sideEffect).toEqual(expect.objectContaining({ workOrderId: 467501, jobId: 100 }));
+  });
+
+  it('非改约原因码仍以快照工单与焦点岗位为准', async () => {
+    const tool = buildTool(
+      mergeToolContext(mockContext, {
+        archive: {
+          bookingWorkOrders: [
+            { workOrderId: 467500, jobId: 200, source: 'active_booking', ownedByCandidate: true },
+          ],
+          currentFocusJob: { jobId: 300 } as never,
+        },
+        ledger: { jobs: { resolvedWorkOrderId: 467501, resolvedJobId: 100 } },
+      }),
+    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = await (tool as any).execute({
+      reasonCode: 'booking_conflict',
+      reason: '门店查不到预约',
+    });
+
+    expect(result.sideEffect).toEqual(expect.objectContaining({ workOrderId: 467500, jobId: 300 }));
+  });
+
   // jobId 让运营的「岗位数据缺口榜 / 满岗信号榜」能直接定位到该改哪个岗位。
   // 背景：2026-07-30 周报里纯咨询会话 18/27 无法定位岗位，因为底账只有 work_order_id。
   describe('jobId 落底账', () => {

@@ -122,6 +122,9 @@ function applyLedgerOverrides(ledger: TurnLedger, overrides?: TurnLedgerOverride
   if (overrides.jobs?.resolvedWorkOrderId !== undefined) {
     ledger.jobs.resolvedWorkOrderId = overrides.jobs.resolvedWorkOrderId;
   }
+  if (overrides.jobs?.resolvedJobId !== undefined) {
+    ledger.jobs.resolvedJobId = overrides.jobs.resolvedJobId;
+  }
   if (overrides.recordVisualFacts) ledger.recordVisualFacts = overrides.recordVisualFacts;
   if (overrides.recordMentionedBrands)
     ledger.recordMentionedBrands = overrides.recordMentionedBrands;

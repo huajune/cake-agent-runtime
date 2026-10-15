@@ -18,7 +18,7 @@ import {
   projectTurnHints,
   resolveTurnHints,
 } from '@resolution/turn-hints/reducer';
-import { isValidLaborForm, type LaborFormIntentDecision } from '@resolution/labor-form';
+import { resolveActiveLaborFormValue, type LaborFormIntentDecision } from '@resolution/labor-form';
 
 /** 本轮 turn-start 记忆召回结果（preparation 与 prompt 渲染函数的公共输入形状）。 */
 export type TurnStartMemory = Awaited<ReturnType<MemoryService['onTurnStart']>>;
@@ -69,16 +69,7 @@ export function resolveActiveLaborForm(
   const persisted = unwrapSessionFacts(memory.shortTerm.sessionState?.facts ?? null, {
     minConfidence: 'high',
   })?.preferences.labor_form;
-  const previous = current ?? persisted ?? null;
-  const resolved =
-    currentIntent.kind === 'set'
-      ? currentIntent.value
-      : currentIntent.kind === 'clear' &&
-          previous &&
-          currentIntent.clearedValues.some((value) => value === previous)
-        ? null
-        : previous;
-  return isValidLaborForm(resolved) ? resolved : null;
+  return resolveActiveLaborFormValue(current ?? persisted ?? null, currentIntent);
 }
 
 interface CrossLayerField {

@@ -210,7 +210,10 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
       '本轮 duliday_interview_booking 被拒且拒绝原因为名额已满/上限时豁免。',
     residualRisk:
       '没有上述工具事实时不运行；「排不上」是 job_not_found 回执允许的中性口径，不在词表，' +
-      'booked_job_unverifiable 下禁止说排不上由回执指令教侧承担。',
+      'booked_job_unverifiable 下禁止说排不上由回执指令教侧承担。' +
+      '同句紧贴的否定/安抚前缀（没有、不是、还没、别担心等，只容副词间隔）与「满不满」类正反问不判；' +
+      '前缀与命中之间隔了别的词（「没说招满」）或以「放心」开头的状态断言会漏判，' +
+      '「是不是招满了」「不会是门店调整了吧」按猜测命中。',
     verification: V,
   },
   {
@@ -433,7 +436,8 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
       '候选人已明确是学生、本轮未查岗，已推荐岗位全部不接受学生或社会身份字段为空，回复却断言"接受学生/学生也可以/不限身份"。',
     riskGoal: '发现零工具轮把不收学生的岗位说成收学生，防学生候选人白跑面试或整轮收资作废。',
     exogenousSignal:
-      '会话事实 + 本轮线索高置信合并的 is_student；会话已展示/焦点岗位记忆的结构化 studentTier；' +
+      '会话事实 + 本轮线索高置信合并的 is_student；会话已展示/焦点岗位记忆的结构化 studentTier' +
+      '（先过与 Prompt 同一道用工形式可见性门，本轮意向隐藏的岗位不进证据）；' +
       '本轮 duliday_job_list / duliday_interview_precheck 调用存在性；封闭肯定断言词形（排除否定、疑问与指向其他岗位的定语）。',
     residualRisk:
       '任一岗位缺档位（2026-10-14 前的历史记忆）或已有一家接受学生时无法确定回复指哪家，不判；' +

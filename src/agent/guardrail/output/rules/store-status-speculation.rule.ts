@@ -10,7 +10,18 @@ import type { RuleContradiction } from '../output-rule.types';
  * 「名额」只认后接"满/没了"的完成形态，"名额不会满/名额还有"等承诺或否定不在本词表（归 quota_promise）。
  */
 const UNSUPPORTED_STORE_STATUS_PATTERN =
-  /(?:可能|应该|估计|大概|也许|或许|看起来)?(?:已经|都|暂时)?(?:(?:招满|招完|招够|满员|不招了|停止招聘|关店|关了|搬了|装修|撤店|下架)|名额(?:已经|都|早就|基本)?(?:满|没了)|(?:门店|岗位)(?:那边|这边)?(?:有|做了|出现)?(?:调整|变动|变化))/u;
+  /(?:可能|应该|估计|大概|也许|或许|看起来)?(?:已经|都|暂时)?(?:(?:招满|招完|招够|满员|不招了|停止招聘|关店|关了|搬了|装修|撤店|下架)|名额(?:已经|都|早就|基本)?(?:满|没了)|(?:门店|岗位)(?:那边|这边)?(?:有|做了|出现)?(?:调整|变动|变化))/gu;
+
+/**
+ * 同句内紧贴命中的否定/安抚前缀（「没有招满」「不是名额满了」「还没招够」「别担心关店」）：
+ * 否认或安抚不是状态断言。前缀与命中之间只容「还/也/都/完全」等副词，不跨标点；
+ * 「是不是招满了」「不会是门店调整了吧」是猜测性设问，不算否定。
+ */
+const NEGATED_OR_REASSURING_PREFIX_PATTERN =
+  /(?:没有|没|并非|(?<!是)不是|不会|未|别担心|不用担心|不必担心)(?:还|也|都|并|完全|真的)?$/u;
+
+/** 正反问（「名额满不满」「招满没招满」）是在问状态，不是断言。 */
+const A_NOT_A_SUFFIX_PATTERN = /^了?(?:不|没)(?:招)?满/u;
 
 /**
  * 无岗事实的两个居所：真实无岗走 noMatchScript（nextAction=wait_for_inventory），
@@ -27,6 +38,17 @@ const PRECHECK_JOB_UNAVAILABLE_ERROR_TYPES: ReadonlySet<string> = new Set([
   TOOL_ERROR_TYPES.PRECHECK_JOB_NOT_FOUND,
   TOOL_ERROR_TYPES.PRECHECK_BOOKED_JOB_UNVERIFIABLE,
 ]);
+
+function hasStoreStatusAssertion(replyText: string): boolean {
+  for (const match of replyText.matchAll(UNSUPPORTED_STORE_STATUS_PATTERN)) {
+    const start = match.index ?? 0;
+    const prefix = replyText.slice(Math.max(0, start - 8), start);
+    if (NEGATED_OR_REASSURING_PREFIX_PATTERN.test(prefix)) continue;
+    if (A_NOT_A_SUFFIX_PATTERN.test(replyText.slice(start + match[0].length))) continue;
+    return true;
+  }
+  return false;
+}
 
 function hasNoMatchScript(call: AgentToolCall): boolean {
   if (call.toolName !== 'duliday_job_list' || call.status === 'error') return false;
@@ -65,7 +87,7 @@ export function detectUnsupportedStoreStatusSpeculation(
   replyText: string,
   toolCalls: AgentToolCall[],
 ): RuleContradiction | null {
-  if (!UNSUPPORTED_STORE_STATUS_PATTERN.test(replyText)) return null;
+  if (!hasStoreStatusAssertion(replyText)) return null;
   if (!toolCalls.some((call) => hasNoMatchScript(call) || hasPrecheckJobUnavailable(call))) {
     return null;
   }
