@@ -11,6 +11,8 @@ import {
   findSucceededSideEffectTools,
   findToolsExceedingLimit,
   hasCommittedSideEffect,
+  buildSkipReplyRejectedNotice,
+  findRejectedSkipReplyErrorType,
   hasRejectedSkipReply,
   isAcceptedSkipReplyResult,
   isShortCircuitedToolCall,
@@ -273,6 +275,56 @@ describe('tool-call-analysis', () => {
       expect(
         hasRejectedSkipReply([{ toolResults: [{ toolName: 'geocode', output: rejected }] }]),
       ).toBe(false);
+    });
+
+    it('findRejectedSkipReplyErrorType 返回第一个被拒绝 skip_reply 的错误码', () => {
+      expect(findRejectedSkipReplyErrorType([])).toBeNull();
+      expect(
+        findRejectedSkipReplyErrorType([
+          { toolResults: [{ toolName: 'skip_reply', output: accepted }] },
+        ]),
+      ).toBeNull();
+      expect(
+        findRejectedSkipReplyErrorType([
+          { toolResults: [{ toolName: 'skip_reply', output: rejected }] },
+        ]),
+      ).toBe(TOOL_ERROR_TYPES.SKIP_REPLY_HUMAN_TAKEOVER_NOT_ACTIVE);
+      expect(
+        findRejectedSkipReplyErrorType([
+          {
+            toolResults: [
+              {
+                toolName: 'skip_reply',
+                output: buildToolError({
+                  errorType: TOOL_ERROR_TYPES.SKIP_REPLY_CONFIRMATION_NO_PRIOR_TURN,
+                  replyInstruction: '首句须正常回复',
+                  details: { skipped: false },
+                }),
+              },
+            ],
+          },
+        ]),
+      ).toBe(TOOL_ERROR_TYPES.SKIP_REPLY_CONFIRMATION_NO_PRIOR_TURN);
+      expect(
+        findRejectedSkipReplyErrorType([
+          { toolResults: [{ toolName: 'skip_reply', output: { skipped: false } }] },
+        ]),
+      ).toBe('unknown');
+    });
+
+    it('buildSkipReplyRejectedNotice 按错误码分支，未登记码用通用说明', () => {
+      expect(
+        buildSkipReplyRejectedNotice(TOOL_ERROR_TYPES.SKIP_REPLY_HUMAN_TAKEOVER_NOT_ACTIVE),
+      ).toMatch(/已被拒绝.*真人正在沟通/);
+      expect(
+        buildSkipReplyRejectedNotice(TOOL_ERROR_TYPES.SKIP_REPLY_CONFIRMATION_NO_PRIOR_TURN),
+      ).toMatch(/已被拒绝.*首句/);
+      expect(
+        buildSkipReplyRejectedNotice(TOOL_ERROR_TYPES.SKIP_REPLY_CONFIRMATION_NOT_SHORT_ACK),
+      ).toMatch(/已被拒绝.*纯确认词/);
+      const generic = buildSkipReplyRejectedNotice('unknown');
+      expect(generic).toMatch(/已被拒绝/);
+      expect(generic).not.toMatch(/真人|首句|确认词/);
     });
   });
 

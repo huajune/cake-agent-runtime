@@ -24,7 +24,8 @@ import {
   computeToolCallStatus,
   findSucceededSideEffectTools,
   findToolsExceedingLimit,
-  hasRejectedSkipReply,
+  buildSkipReplyRejectedNotice,
+  findRejectedSkipReplyErrorType,
   isShortCircuitedToolCall,
   isShortCircuitedToolResult,
   MAX_PRECHECK_CALLS_PER_TURN,
@@ -298,8 +299,10 @@ export class GeneratorAgent {
       // 本轮已调用过业务工具（非 skip_reply 自身）→ 屏蔽 skip_reply
       const called = collectCalledToolNames(steps);
       const hasBusinessAction = [...called].some((name) => name !== SKIP_REPLY_TOOL_NAME);
-      // skip_reply 已被 runtime 拒绝（真人并未在沟通）→ 同样屏蔽，防止换 scene 再申请沉默
-      const skipReplyRejected = hasRejectedSkipReply(steps);
+      // skip_reply 已被 runtime 拒绝（真人并未在沟通 / 首句 / 非短确认词）→ 同样屏蔽，
+      // 防止换 scene 再申请沉默；拦截说明按工具错误码分支
+      const skipReplyRejectedErrorType = findRejectedSkipReplyErrorType(steps);
+      const skipReplyRejected = skipReplyRejectedErrorType !== null;
       const skipReplyBlocked =
         (hasBusinessAction || skipReplyRejected) && baseTools.includes(SKIP_REPLY_TOOL_NAME)
           ? [SKIP_REPLY_TOOL_NAME]
@@ -326,8 +329,8 @@ export class GeneratorAgent {
       if (generalOveruseNotice) noticeParts.push(generalOveruseNotice);
       if (skipReplyBlocked.length > 0) {
         noticeParts.push(
-          skipReplyRejected
-            ? `⚠️ 系统拦截：本轮 \`${SKIP_REPLY_TOOL_NAME}\` 已被拒绝（候选人当前消息之前最近一条经理侧消息是你自己发的，不存在真人正在沟通），不可再调用。候选人这条消息是发给你的，请正常回复。`
+          skipReplyRejectedErrorType !== null
+            ? buildSkipReplyRejectedNotice(skipReplyRejectedErrorType)
             : `⚠️ 系统拦截：本轮已发生业务工具调用，不可再调用 \`${SKIP_REPLY_TOOL_NAME}\`。沉默仅适用于本轮完全无业务动作且候选人仅发确认词的场景。`,
         );
       }

@@ -2,9 +2,83 @@ import { Logger } from '@nestjs/common';
 import { tool } from 'ai';
 import { z } from 'zod';
 import { ToolBuilder } from '@shared-types/tool.types';
+import { stripTimeContext } from '@resolution/signal/markers';
 import { buildToolError, TOOL_ERROR_TYPES } from './shared/tool-error-types';
 
 const logger = new Logger('skip_reply');
+
+/**
+ * 场景一确定性准入（2026-10-19 BadCase 复核 [05]，trace batch_6ad093aace406a6aeec4fee0_1792054200262）：
+ * 候选人首句「我是星空」，模型 reason 自述「不符合 skip_reply 条件，应正常回复」却仍以
+ * confirmation_closure 调用，工具一接受即整轮静默，候选人等了 51 分钟。两条运行时判据：
+ * - 消息窗口里必须已有经理侧（assistant）消息——首句没有可收尾的推进动作；
+ * - 当前消息剥掉表情/占位/语音转写标记、空白与标点后不足 10 字，且不含问句标记。
+ * 近 14 天 1,681 次场景一静默：10 次无任何经理侧回复、89 次原文 ≥10 字（多为「好的，谢谢您，非常感谢」
+ * 一类礼貌长尾，按剥标点后计数绝大多数仍放行）、24 次带问句词。
+ */
+const CONFIRMATION_MAX_CHARS = 10;
+/** 封闭问句标记；「呢」刻意不收（「好呢」「好的呢」是高频确认口癖）。 */
+const QUESTION_MARKER_PATTERN =
+  /[?？]|吗|怎么|什么|哪|多少|为什么|几点|几号|能不能|可不可以|行不行|是不是/u;
+/** `[抱拳]` / `[表情消息]` / `[语音转文字，时长2秒]` 等方括号标记整体剥除。 */
+const BRACKET_TOKEN_PATTERN = /[\[【][^\]】\n]{1,30}[\]】]/gu;
+
+function normalizeAckText(text: string): string {
+  return stripTimeContext(text)
+    .replace(BRACKET_TOKEN_PATTERN, '')
+    .replace(/[\s\p{P}\p{S}]/gu, '');
+}
+
+export function isShortConfirmationMessage(text: string): boolean {
+  const stripped = stripTimeContext(text).replace(BRACKET_TOKEN_PATTERN, '');
+  if (QUESTION_MARKER_PATTERN.test(stripped)) return false;
+  const normalized = normalizeAckText(text);
+  return normalized.length > 0 && [...normalized].length < CONFIRMATION_MAX_CHARS;
+}
+
+function hasAssistantMessage(messages: readonly unknown[]): boolean {
+  return messages.some(
+    (message) =>
+      typeof message === 'object' &&
+      message !== null &&
+      (message as { role?: unknown }).role === 'assistant',
+  );
+}
+
+function extractMessageText(message: unknown): string {
+  if (typeof message !== 'object' || message === null) return '';
+  const content = (message as { content?: unknown }).content;
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content
+      .filter(
+        (part): part is { type: 'text'; text: string } =>
+          typeof part === 'object' &&
+          part !== null &&
+          (part as { type?: unknown }).type === 'text' &&
+          typeof (part as { text?: unknown }).text === 'string',
+      )
+      .map((part) => part.text)
+      .join('\n');
+  }
+  return '';
+}
+
+/** 当前候选人消息：优先 turnInput.currentUserMessage，缺省取消息窗口末尾连续 user 块。 */
+function resolveCurrentUserText(turnInput: {
+  messages: readonly unknown[];
+  currentUserMessage?: string;
+}): string {
+  const current = turnInput.currentUserMessage?.trim();
+  if (current) return current;
+  const trailing: string[] = [];
+  for (let i = turnInput.messages.length - 1; i >= 0; i -= 1) {
+    const message = turnInput.messages[i];
+    if ((message as { role?: unknown })?.role !== 'user') break;
+    trailing.unshift(extractMessageText(message));
+  }
+  return trailing.join('\n').trim();
+}
 
 const DESCRIPTION = `主动跳过本轮回复（什么都不发）。调用后 runtime 会短路消息发送，但仍记录本轮流水。
 
@@ -18,6 +92,7 @@ const DESCRIPTION = `主动跳过本轮回复（什么都不发）。调用后 r
 ### 场景二：真人招募经理正在沟通（scene=human_takeover）
 候选人当前消息之前**最近一条经理侧消息**带【内部来源标记：真人招募经理手动发送】，且候选人本轮是在**回应这条真人消息**，且未带出新的业务诉求（新问题/新地点/新岗位类型）→ 必须调用 skip_reply 把对话让给真人，不要插话。
 边界：只看最近一条经理侧消息。你自己（Agent）回复过之后，候选人的下一条就是发给你的，更早历史里的真人标记不构成让位理由；runtime 会按消息来源校验该条件，不成立时本工具返回 \`skipped=false\` 并拒绝沉默，此时必须正常回复候选人，不得改用其他场景再次沉默。
+场景一同样由 runtime 校验：对话里还没有任何经理侧消息（候选人首句），或候选人当前消息不是「10 字以内、不含问句」的纯确认词时，本工具返回 \`skipped=false\` 并拒绝沉默，必须正常回复。
 注意：若候选人在回应真人的同时提出了需要你处理的新诉求（问岗位/要地址/要改约等），则正常接管回复，不适用本场景。
 
 ## 想沉默只有这一条通道
@@ -66,6 +141,8 @@ const inputSchema = z.object({
  * 场景二由 runtime 确定性校验：`turnInput.humanTakeoverActive`（候选人当前消息之前最近一条
  * 经理侧消息是否真人手动发送）不成立时拒绝沉默，返回 buildToolError（skipped=false、不短路），
  * 模型必须继续正常回复；generator 的 prepareStep 会在拒绝后屏蔽本工具，防止换场景再试。
+ * 场景一由 runtime 校验两条准入（见 isShortConfirmationMessage）：消息窗口里已有经理侧消息，
+ * 且当前消息是 10 字以内、不含问句的短确认；任一不成立同样 buildToolError 拒绝。
  * 接受时返回 `skipped=true` + `shortCircuited=true`，生成链路据此短路，不再依赖工具名特判。
  */
 export function buildSkipReplyTool(): ToolBuilder {
@@ -87,6 +164,32 @@ export function buildSkipReplyTool(): ToolBuilder {
               '候选人当前消息之前最近一条经理侧消息是你自己（Agent）发出的，不存在真人正在沟通；候选人这条消息是发给你的，本轮必须正常回复，不得再次调用 skip_reply。',
             details: { skipped: false, scene, reason: trimmedReason },
           });
+        }
+
+        if (scene === 'confirmation_closure') {
+          if (!hasAssistantMessage(context.turnInput.messages)) {
+            logger.warn(
+              `skip_reply 拒绝: scene=confirmation_closure 但消息窗口无任何经理侧消息（候选人首句）, chatId=${chatId}, userId=${context.session.userId}, reason=${trimmedReason}`,
+            );
+            return buildToolError({
+              errorType: TOOL_ERROR_TYPES.SKIP_REPLY_CONFIRMATION_NO_PRIOR_TURN,
+              replyInstruction:
+                '候选人这是首句，你还没有回复过对方，不存在可收尾的推进动作；本轮必须正常开场回复，不得再次调用 skip_reply。',
+              details: { skipped: false, scene, reason: trimmedReason },
+            });
+          }
+          const currentUserText = resolveCurrentUserText(context.turnInput);
+          if (!isShortConfirmationMessage(currentUserText)) {
+            logger.warn(
+              `skip_reply 拒绝: scene=confirmation_closure 但当前消息不是短确认词, chatId=${chatId}, userId=${context.session.userId}, message="${currentUserText.slice(0, 40)}", reason=${trimmedReason}`,
+            );
+            return buildToolError({
+              errorType: TOOL_ERROR_TYPES.SKIP_REPLY_CONFIRMATION_NOT_SHORT_ACK,
+              replyInstruction:
+                '候选人当前消息不是 10 字以内、不含问句的纯确认词，里面有需要你回应的内容；本轮必须正常回复，不得再次调用 skip_reply。',
+              details: { skipped: false, scene, reason: trimmedReason },
+            });
+          }
         }
 
         logger.log(

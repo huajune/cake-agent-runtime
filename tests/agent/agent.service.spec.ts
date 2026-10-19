@@ -224,6 +224,41 @@ describe('GeneratorAgent', () => {
         instructions: expect.stringContaining('已被拒绝'),
       }),
     );
+    expect((preparedStep as { instructions: string }).instructions).toContain('真人正在沟通');
+  });
+
+  // 2026-10-19 BadCase 复核 [05]：confirmation_closure 被 runtime 拒绝后，拦截文案不能再写死成
+  // 真人接管口径，须按工具错误码说明「首句 / 非短确认词」。
+  it.each([
+    ['skip_reply.confirmation_no_prior_turn', '首句'],
+    ['skip_reply.confirmation_not_short_ack', '纯确认词'],
+  ])('should explain a rejected %s with its own wording', async (errorType, wording) => {
+    mockPreparation.prepare.mockResolvedValue({
+      ...preparedContext,
+      tools: { skip_reply: {}, duliday_job_list: {} },
+    });
+
+    await service.invoke(invokeParams);
+
+    const call = mockLlm.generate.mock.calls[0][0] as Record<string, unknown>;
+    const prepareStep = call.prepareStep as (input: unknown) => unknown;
+    const preparedStep = (await Promise.resolve(
+      prepareStep({
+        steps: [
+          {
+            toolCalls: [{ toolName: 'skip_reply' }],
+            toolResults: [
+              { toolName: 'skip_reply', output: { success: false, skipped: false, errorType } },
+            ],
+          },
+        ],
+      }),
+    )) as { activeTools: string[]; instructions: string };
+
+    expect(preparedStep.activeTools).toEqual(['duliday_job_list']);
+    expect(preparedStep.instructions).toContain('已被拒绝');
+    expect(preparedStep.instructions).toContain(wording);
+    expect(preparedStep.instructions).not.toContain('真人正在沟通');
   });
 
   it('should not block skip_reply when it was accepted (round already short-circuits)', async () => {
