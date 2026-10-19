@@ -1682,6 +1682,98 @@ describe('buildJobListTool', () => {
     });
   });
 
+  describe('目录外品牌名出处门（badcase 2026-10-13 trace batch_6acda349ce406a6aee8d6641_1791862156121：模型凭空传「星巴克」）', () => {
+    const evidence = (content: string, role: 'user' | 'assistant' = 'user') => ({
+      id: `${role}-${content}`,
+      domain: 'evidence' as const,
+      role,
+      content,
+    });
+
+    it('候选人从没提过的目录外品牌：拒绝查询、要求清空品牌重查，不生成「没合作」话术', async () => {
+      const result = await executeTool(
+        {
+          ...mockContext,
+          corpusBlocks: [evidence('我想找工作'), evidence('福贤路岭南天地店有岗吗')],
+          currentUserMessage: '福贤路岭南天地店有岗吗',
+        },
+        { ...defaultInput, cityNameList: ['佛山'], brandAliasList: ['星巴克'] },
+      );
+
+      expect(mockSpongeService.fetchJobs).not.toHaveBeenCalled();
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_BRAND_NO_PROVENANCE);
+      expect(result.unprovenancedBrands).toEqual(['星巴克']);
+      expect(result.brandNotPartneredScript).toBeUndefined();
+      expect(result.noMatchScript).toBeUndefined();
+      expect(result._replyInstruction).toContain("brandFilterMode='clear'");
+      expect(result._replyInstruction).toContain('不得对候选人说该品牌没合作');
+    });
+
+    it('助手自己说过的品牌不算出处', async () => {
+      const result = await executeTool(
+        {
+          ...mockContext,
+          corpusBlocks: [evidence('附近有星巴克在招吗？', 'assistant'), evidence('有岗吗')],
+          currentUserMessage: '有岗吗',
+        },
+        { ...defaultInput, cityNameList: ['佛山'], brandAliasList: ['星巴克'] },
+      );
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_BRAND_NO_PROVENANCE);
+    });
+
+    it('候选人历史原话提过：照常走「没合作」话术（运营 2026-09-24 裁定不变）', async () => {
+      const result = await executeTool(
+        {
+          ...mockContext,
+          corpusBlocks: [evidence('星巴克还招人吗'), evidence('佛山的')],
+          currentUserMessage: '佛山的',
+        },
+        { ...defaultInput, cityNameList: ['佛山'], brandAliasList: ['星巴克'] },
+      );
+      expect(mockSpongeService.fetchJobs).not.toHaveBeenCalled();
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_NO_RESULTS);
+      expect(result.brandNotPartneredScript.candidateMessage).toContain(
+        '星巴克我们这边目前没有合作',
+      );
+      expect(result._replyInstruction).not.toContain('若这个品牌名不是候选人说的');
+    });
+
+    it('截图视觉事实里出现过的品牌名算出处', async () => {
+      const context = createToolContext({
+        turnInput: {
+          corpusBlocks: [evidence('[图片]')],
+          currentUserMessage: '[图片]',
+          visualSheetsByContent: new Map([
+            [
+              '[图片]',
+              {
+                kind: 'other',
+                fields: [],
+                rawDescription: '招聘截图：星巴克 门店伙伴 兼职',
+              } as never,
+            ],
+          ]),
+        },
+      });
+      const result = await executeTool(context as JobListTestContext, {
+        ...defaultInput,
+        cityNameList: ['佛山'],
+        brandAliasList: ['星巴克'],
+      });
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_NO_RESULTS);
+      expect(result.brandNotPartneredScript).toBeDefined();
+    });
+
+    it('语料块不可用时不新增拦截（旧行为）', async () => {
+      const result = await executeTool(
+        { ...mockContext, currentUserMessage: '佛山的' },
+        { ...defaultInput, cityNameList: ['佛山'], brandAliasList: ['星巴克'] },
+      );
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_NO_RESULTS);
+      expect(result.brandNotPartneredScript).toBeDefined();
+    });
+  });
+
   describe('jobIdList provenance gate (badcase 6a6c4c13 幻觉参数查询)', () => {
     it('blocks jobIdList entries never recalled in this session', async () => {
       const gatedContext: JobListTestContext = {

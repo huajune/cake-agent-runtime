@@ -8,6 +8,7 @@ import {
   buildBrandQueryPlan,
   findRejectedIdNeighbors,
   findUnmentionedQueryBrands,
+  findUnprovenancedRejectedBrands,
   rejectedBrandIds,
   toBrandQueryMeta,
 } from '@tools/job-list/brand-query.util';
@@ -424,5 +425,45 @@ describe('目录外品牌 ID（badcase 2026-10-16 trace batch_6ad1eb74ce406a6aee
       catalog: catalogWithPizzaHut,
     });
     expect(findRejectedIdNeighbors(plan, catalogWithPizzaHut)).toEqual([]);
+  });
+});
+
+describe('findUnprovenancedRejectedBrands（badcase 2026-10-13 trace batch_6acda349ce406a6aee8d6641_1791862156121：模型凭空传「星巴克」）', () => {
+  const planFor = (brandAliasList: string[], brandIdList: number[] = []) =>
+    buildBrandQueryPlan({ brandAliasList, brandIdList, catalog });
+
+  it('候选人原话没出现过的目录外品牌名被判为无出处', () => {
+    expect(
+      findUnprovenancedRejectedBrands(planFor(['星巴克']), ['福贤路岭南天地店有岗吗']),
+    ).toEqual([{ input: '星巴克', reason: 'unmatched' }]);
+  });
+
+  it('候选人原话或截图描述里出现过（含全半角/大小写差异）就有出处', () => {
+    expect(findUnprovenancedRejectedBrands(planFor(['星巴克']), ['星巴克还招人吗'])).toEqual([]);
+    expect(
+      findUnprovenancedRejectedBrands(planFor(['Blue Bottle']), [
+        '截图：ＢＬＵＥ ｂｏｔｔｌｅ 招聘',
+      ]),
+    ).toEqual([]);
+  });
+
+  it('出处材料不可用（null）时不新增拦截', () => {
+    expect(findUnprovenancedRejectedBrands(planFor(['星巴克']), null)).toEqual([]);
+  });
+
+  it('目录外 ID 不走原话核对（ID 来自截图读数，另有数字近邻处置）', () => {
+    const plan = buildBrandQueryPlan({
+      brandAliasList: [],
+      brandIdList: [100006],
+      catalog: [...catalog, { id: 10006, name: '必胜客', aliases: [] }],
+    });
+    expect(findUnprovenancedRejectedBrands(plan, ['随便说点什么'])).toEqual([]);
+  });
+
+  it('歧义别名同样要有出处：候选人没说过的「小龙」不得进澄清话术', () => {
+    expect(findUnprovenancedRejectedBrands(planFor(['小龙']), ['我在上海'])).toEqual([
+      expect.objectContaining({ input: '小龙', reason: 'ambiguous' }),
+    ]);
+    expect(findUnprovenancedRejectedBrands(planFor(['小龙']), ['小龙有岗吗'])).toEqual([]);
   });
 });

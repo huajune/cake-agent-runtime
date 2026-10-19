@@ -80,12 +80,15 @@ import {
 import { verifyCitation } from '@resolution/notary/citation-verifier';
 import { WorkTimeContractError } from '@sponge/work-time.types';
 import { SpongeResponseContractError } from '@sponge/response-contract.error';
+import { selectCorpusMessages } from '@resolution/signal/corpus';
+import { extractMessageText } from '@resolution/signal/markers';
 import { getJobSchedule } from '@tools/job-list/schedule-normalizer.util';
 import {
   allRejectedAsUnmatched,
   buildBrandQueryPlan,
   findRejectedIdNeighbors,
   findUnmentionedQueryBrands,
+  findUnprovenancedRejectedBrands,
   rejectedBrandIds,
   toBrandQueryMeta,
   type BrandQueryPlan,
@@ -170,6 +173,28 @@ function hasCandidateGroundedPostInviteLookup(params: {
 }
 
 /**
+ * 目录外品牌名的出处材料：候选人在证据域里的全部消息原文（含图片描述）、本轮原文、
+ * 企微备注品牌与本轮视觉事实 sheet。只回答"这个名字候选人/截图有没有出现过"，
+ * 不做归属或极性判断。语料块不可用时返回 null（不新增拦截）。
+ */
+function collectCandidateBrandProvenanceTexts(context: ToolBuildContext): string[] | null {
+  const blocks = context.turnInput.corpusBlocks;
+  if (!blocks) return null;
+  const texts = selectCorpusMessages(blocks, { domains: ['evidence'], roles: ['user'] })
+    .map((message) => extractMessageText(message.content))
+    .filter(Boolean);
+  if (context.turnInput.currentUserMessage) texts.push(context.turnInput.currentUserMessage);
+  texts.push(...(context.turnInput.contactBrandAliases ?? []));
+  for (const entry of context.ledger.visual.factSheets) {
+    texts.push(entry.sheet.rawDescription, ...entry.sheet.fields.map((field) => field.value));
+  }
+  for (const sheet of context.turnInput.visualSheetsByContent?.values() ?? []) {
+    texts.push(sheet.rawDescription, ...sheet.fields.map((field) => field.value));
+  }
+  return texts.filter((text) => typeof text === 'string' && text.trim().length > 0);
+}
+
+/**
  * 模型品牌入参全部被拒（未命中品牌库/冲突别名）时的结构化结果（§8.2.5）。
  *
  * 四种走向：回指置信度 high=直接按回指品牌推进；low=反问澄清（判定阈值与守卫共享
@@ -243,11 +268,10 @@ function buildBrandRejectedResult(params: {
     replyInstruction =
       `品牌入参 ${JSON.stringify(rejectedInputs)} 经品牌库校验全部为 unmatched（见 queryMeta.brand.rejected），` +
       '含义是**我们没有和这个品牌合作**，不是"该品牌暂时没有岗位"。未按该品牌执行查询。' +
-      '**严格按 brandNotPartneredScript.candidateMessage 原文照念**：如实说没有合作，' +
+      '该品牌名已核对过出自候选人原话或截图。**严格按 brandNotPartneredScript.candidateMessage 原文照念**：如实说没有合作，' +
       '并在同一句里问候选人接不接受其他品牌；' +
       '禁止说"暂时没找到合适的岗位""后续有新岗位第一时间联系你"，禁止照念 noMatchScript，禁止调用 invite_to_group。' +
-      "候选人明确答复接受其他品牌后，才用 brandFilterMode='clear' 按候选人已确认的城市/位置重查一次再推荐。" +
-      '若这个品牌名不是候选人说的（你自己拼错或凭空补的），以候选人当场的答复为准重查，不要把它当作候选人意向沉淀。';
+      "候选人明确答复接受其他品牌后，才用 brandFilterMode='clear' 按候选人已确认的城市/位置重查一次再推荐。";
   } else {
     outcome = '品牌入参未命中品牌库，未形成品牌过滤';
     replyInstruction =
@@ -1201,8 +1225,31 @@ export function buildJobListTool(
         }
 
         // 模型传了品牌但全部被拒（未命中/歧义）：不得静默降级成无品牌查询乱推。
-        // 先与会话最近推荐品牌池做同音回指（"刘姐妹"→"成都你六姐"口误场景，§8.3）。
+        // 先核对被拒品牌名是否出自候选人原话/截图：目录外品牌名绕过下方的提及集合出处门
+        // （集合只登记目录内品牌），模型凭空补的「星巴克」会直接落成「没合作」话术
+        // （生产 trace batch_6acda349ce406a6aee8d6641_1791862156121）。没出处就拒绝查询、
+        // 要求清空品牌按位置重查，而不是替候选人认领一个他从没提过的品牌。
         if (brandPlan.allRejected) {
+          const unprovenancedBrands = findUnprovenancedRejectedBrands(
+            brandPlan,
+            collectCandidateBrandProvenanceTexts(context),
+          );
+          if (unprovenancedBrands.length > 0) {
+            return buildToolError({
+              errorType: TOOL_ERROR_TYPES.JOB_LIST_BRAND_NO_PROVENANCE,
+              outcome: '品牌参数不在候选人原话/截图中，也不在品牌目录中，未执行岗位查询',
+              replyInstruction:
+                `品牌入参 ${JSON.stringify(unprovenancedBrands.map((item) => item.input))} 既未在品牌目录命中，` +
+                '也找不到候选人原话或截图出处，视为误传。本次未执行岗位查询。' +
+                "清空 brandAliasList 和 brandIdList，并传 brandFilterMode='clear'，按候选人已确认的城市/位置重查；" +
+                '不得对候选人说该品牌没合作或没岗位，不要把它当作候选人意向，也不要向候选人提起这个品牌名。',
+              details: {
+                unprovenancedBrands: unprovenancedBrands.map((item) => item.input),
+                queryMeta: { brand: toBrandQueryMeta(brandPlan) },
+              },
+            });
+          }
+          // 再与会话最近推荐品牌池做同音回指（"刘姐妹"→"成都你六姐"口误场景，§8.3）。
           const rejectedInputs = brandPlan.rejected.map((item) => item.input);
           const fuzzySuggestions =
             (context.archive.recentBrandPool?.length ?? 0) > 0

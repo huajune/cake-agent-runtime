@@ -148,6 +148,32 @@ function isSingleDeletion(longer: string, shorter: string): boolean {
   return true;
 }
 
+/**
+ * 被拒品牌名中缺少候选人原话出处的条目。
+ *
+ * `findUnmentionedQueryBrands` 只核验**目录内**品牌（提及集合只登记目录可归一化的键），
+ * 目录外品牌名（正是模型凭空编品牌的典型形态，生产 trace
+ * batch_6acda349ce406a6aee8d6641_1791862156121 的「星巴克」）需要直接回到候选人原话
+ * 做字面核对：候选人自己说过/截图里出现过的名字才允许进入「没合作」话术；
+ * 没出处的名字视为模型臆造，由工具拒绝并要求清空品牌重查。
+ *
+ * - candidateTexts 为 null 表示出处材料不可用（无语料块），不新增拦截；
+ * - 目录外 ID（unmatched_id）不走本核对：ID 来自截图读数，另有数字近邻处置。
+ */
+export function findUnprovenancedRejectedBrands(
+  plan: BrandQueryPlan,
+  candidateTexts: readonly string[] | null | undefined,
+): BrandQueryPlan['rejected'] {
+  if (candidateTexts == null || plan.brandSource !== 'model_input') return [];
+  const haystack = candidateTexts.map((text) => normalizeBrandNameForComparison(text));
+  return plan.rejected.filter((item) => {
+    if (item.reason === 'unmatched_id') return false;
+    const needle = normalizeBrandNameForComparison(item.input);
+    if (!needle) return false;
+    return !haystack.some((text) => text.includes(needle));
+  });
+}
+
 /** 组装 queryMeta.brand 小节（§9 类型化接口）。 */
 export function toBrandQueryMeta(
   plan: BrandQueryPlan,
