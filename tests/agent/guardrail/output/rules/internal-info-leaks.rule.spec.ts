@@ -591,8 +591,8 @@ describe('envelope reply slots and internal-note keys — 2026-10-13 thought lea
     expect(tryUnwrapEnvelopeReply(draft)).toBeNull();
   });
 
-  it.each(['reasonCode', 'riskType', 'actionAdvice', 'missingJobInfo'])(
-    'does not silence an envelope with a handoff/risk argument: %s',
+  it.each(['scene', 'action', 'reasonCode', 'riskType', 'actionAdvice', 'missingJobInfo'])(
+    'does not silence an envelope with a control/handoff/risk argument: %s',
     (key) => {
       const draft = JSON.stringify({
         reply: '',

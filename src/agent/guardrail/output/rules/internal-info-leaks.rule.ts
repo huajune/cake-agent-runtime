@@ -250,6 +250,8 @@ const ENVELOPE_TOOL_STRUCTURE_KEYS = new Set([
   'arguments',
   'parameters',
   // 已注册工具的参数键（skip_reply / request_handoff / raise_risk_alert）
+  'scene',
+  'action',
   'reason',
   'reasoncode',
   'risktype',
@@ -369,7 +371,8 @@ export function tryUnwrapEnvelopeReply(content: string): string | null {
  * 空回复槽位信封：模型自造结构化输出，回复槽位（agent_reply / reply / response / answer / text）
  * 全部为空、其余键只是意图/思考笔记。这里只判断结构，不授予沉默权限；Runner 必须核对
  * 确认收尾的历史/消息准入和本轮零工具调用，符合才 skipped，否则进入受控修复。
- * 带调用结构或转人工/告警参数键的信封不算，避免把风险处置误收敛为沉默；reason 单独可作内部笔记。
+ * 带 scene/action、调用结构或转人工/告警参数键的信封不算，避免绕过场景准入或吞掉风险处置；
+ * reason 单独可作内部笔记。
  */
 export function isEmptyReplySlotEnvelope(content: string): boolean {
   const record = parseJsonObjectEnvelope(content);

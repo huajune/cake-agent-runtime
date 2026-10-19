@@ -780,7 +780,7 @@ runner 直达静默 `skip_intent_envelope_silenced`——终态 `skipped`、不�
 放行（本周 `envelope_unwrapped` 2 行，另一行拆出的也是内部产物「已确认城市：肇庆」）。本批三处：`tryUnwrapEnvelopeReply`
 认回复槽位键（agent_reply / agent_response / reply / response / answer / text 等）——槽位存在时正文只能来自槽位，槽位全空返回 null；
 键名分段含 thought / reasoning / analysis / intention / intent / plan / stage 的值无论中文量多少都不得入选正文；
-runner 新增直达静默 `empty_reply_envelope_silenced`（`isEmptyReplySlotEnvelope`：槽位全空且无调用结构或转人工/告警参数键；`reason` 可作内部笔记）。
+runner 新增直达静默 `empty_reply_envelope_silenced`（`isEmptyReplySlotEnvelope`：槽位全空且无 scene/action、调用结构或转人工/告警参数键；`reason` 可作内部笔记）。
 只有准备阶段使用真实工具上下文通过与 `skip_reply` 共用的确认收尾准入（已有 assistant 历史、当前消息非空且不足 10 字、无已登记问句标记），
 且本轮零工具调用时，才收敛 `skipped`、不进 repair、不派介入。首句、问句、准入证据缺失、已有业务工具或被拒绝的 skip 调用均回到有界修复与二审；
 保留既成工具结果，不重做副作用，也不将 thought 拆成正文。新增 observe 哨兵 `meta_narration_unwrapped`：封闭第三人称
