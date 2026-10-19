@@ -53,20 +53,29 @@ function isSameBrand(a: { canonicalName: string; brandId: number | null }, b: Se
 
 /**
  * 只校验模型显式品牌是否曾被提及，不裁决意向、极性或历史状态。
- * null 表示提及集合不可用；目录无法确认的 ID/品牌不新增出处拦截。
+ * 提及集合不可用时保留目录内品牌的既有处理；目录外名称另核对原话出处。
  */
 export function findUnmentionedQueryBrands(
   plan: BrandQueryPlan,
   mentionedBrands: ReadonlySet<string> | null | undefined,
   catalog: readonly BrandItem[],
+  candidateTexts?: readonly string[] | null,
 ): BrandCandidate[] {
-  if (mentionedBrands == null || plan.brandSource !== 'model_input') return [];
+  if (plan.brandSource !== 'model_input') return [];
   const knownNames = new Set(catalog.map((brand) => normalizeBrandNameForComparison(brand.name)));
-  return plan.applied.filter((brand) => {
+  const unmentioned = plan.applied.filter((brand) => {
+    if (mentionedBrands == null) return false;
     if (brand.brandId != null && !catalog.some((item) => item.id === brand.brandId)) return false;
     const name = normalizeBrandNameForComparison(brand.canonicalName);
     return name.length > 0 && knownNames.has(name) && !mentionedBrands.has(name);
   });
+  return [
+    ...unmentioned,
+    ...findUnprovenancedRejectedBrands(plan, candidateTexts, mentionedBrands).map((item) => ({
+      canonicalName: item.input,
+      brandId: null,
+    })),
+  ];
 }
 
 /**
@@ -157,19 +166,21 @@ function isSingleDeletion(longer: string, shorter: string): boolean {
  * 做字面核对：候选人自己说过/截图里出现过的名字才允许进入「没合作」话术；
  * 没出处的名字视为模型臆造，由工具拒绝并要求清空品牌重查。
  *
- * - candidateTexts 为 null 表示出处材料不可用（无语料块），不新增拦截；
+ * - 无出处材料时也不能生成「没合作」结论；已登记的提及集合可作为补充出处；
  * - 目录外 ID（unmatched_id）不走本核对：ID 来自截图读数，另有数字近邻处置。
  */
 export function findUnprovenancedRejectedBrands(
   plan: BrandQueryPlan,
   candidateTexts: readonly string[] | null | undefined,
+  mentionedBrands?: ReadonlySet<string> | null,
 ): BrandQueryPlan['rejected'] {
-  if (candidateTexts == null || plan.brandSource !== 'model_input') return [];
-  const haystack = candidateTexts.map((text) => normalizeBrandNameForComparison(text));
+  if (plan.brandSource !== 'model_input') return [];
+  const haystack = (candidateTexts ?? []).map((text) => normalizeBrandNameForComparison(text));
   return plan.rejected.filter((item) => {
     if (item.reason === 'unmatched_id') return false;
     const needle = normalizeBrandNameForComparison(item.input);
     if (!needle) return false;
+    if (mentionedBrands?.has(needle)) return false;
     return !haystack.some((text) => text.includes(needle));
   });
 }
@@ -232,16 +243,15 @@ export function buildBrandQueryPlan(input: {
   // 模型显式传的 brandIdList：目录带 ID 时按目录校验，目录外的 ID 进 rejected(unmatched_id)
   // 而不是用 String(id) 冒充品牌名去查、再把数字念给候选人（生产 trace
   // batch_6ad1eb74ce406a6aeec80597_1792142350490：视觉把 10006 读成 100006，候选人收到
-  // 「100006在武进区这片暂时没找到」）。旧响应目录整体缺 id 时无从校验，保持原样采信。
+  // 「100006在武进区这片暂时没找到」）。目录缺 ID 时同样不能把数字当作品牌名。
   const rawModelIds = Array.from(new Set(input.brandIdList.filter((id) => Number.isFinite(id))));
-  const catalogHasIds = catalog.some((brand) => brand.id != null);
   const modelIds = rawModelIds.filter((id) => {
-    if (!catalogHasIds || catalog.some((brand) => brand.id === id)) return true;
+    if (catalog.some((brand) => brand.id === id)) return true;
     basePlan.rejected.push({ input: String(id), reason: 'unmatched_id' });
     return false;
   });
   const idBrands: BrandCandidate[] = modelIds.map((id) => ({
-    canonicalName: catalog.find((brand) => brand.id === id)?.name ?? String(id),
+    canonicalName: catalog.find((brand) => brand.id === id)!.name,
     brandId: id,
   }));
 

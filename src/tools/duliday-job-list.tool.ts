@@ -175,11 +175,10 @@ function hasCandidateGroundedPostInviteLookup(params: {
 /**
  * 目录外品牌名的出处材料：候选人在证据域里的全部消息原文（含图片描述）、本轮原文、
  * 企微备注品牌与本轮视觉事实 sheet。只回答"这个名字候选人/截图有没有出现过"，
- * 不做归属或极性判断。语料块不可用时返回 null（不新增拦截）。
+ * 不做归属或极性判断。没有语料块时仍核对本轮消息与视觉事实。
  */
-function collectCandidateBrandProvenanceTexts(context: ToolBuildContext): string[] | null {
-  const blocks = context.turnInput.corpusBlocks;
-  if (!blocks) return null;
+function collectCandidateBrandProvenanceTexts(context: ToolBuildContext): string[] {
+  const blocks = context.turnInput.corpusBlocks ?? [];
   const texts = selectCorpusMessages(blocks, { domains: ['evidence'], roles: ['user'] })
     .map((message) => extractMessageText(message.content))
     .filter(Boolean);
@@ -225,7 +224,7 @@ function buildBrandRejectedResult(params: {
         ? `目录里有数字近邻：${idNeighbors
             .map(
               (item) =>
-                `${item.inputId}→${item.brandId}（${item.brandName}，${item.relation === 'delete_one_digit' ? '少读一位' : '多读一位'}）`,
+                `${item.inputId}→${item.brandId}（${item.brandName}，${item.relation === 'delete_one_digit' ? '多读一位' : '少读一位'}）`,
             )
             .join('；')}。只有截图里的品牌名与近邻品牌一致时才按该品牌重查。`
         : '目录里没有数字近邻。';
@@ -241,6 +240,7 @@ function buildBrandRejectedResult(params: {
       details: {
         rejectedBrandIds: rejectedIds,
         idSuggestions: idNeighbors,
+        fuzzySuggestions: idNeighbors,
         queryMeta: { brand: toBrandQueryMeta(brandPlan) },
       },
     });
@@ -1233,6 +1233,7 @@ export function buildJobListTool(
           const unprovenancedBrands = findUnprovenancedRejectedBrands(
             brandPlan,
             collectCandidateBrandProvenanceTexts(context),
+            context.ledger.mentionedBrands,
           );
           if (unprovenancedBrands.length > 0) {
             return buildToolError({
@@ -1281,6 +1282,7 @@ export function buildJobListTool(
           brandPlan,
           context.ledger.mentionedBrands,
           brandCatalog,
+          collectCandidateBrandProvenanceTexts(context),
         );
         if (unmentionedBrands.length > 0) {
           return buildToolError({

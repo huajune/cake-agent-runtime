@@ -658,10 +658,10 @@ describe('buildJobListTool', () => {
 
     // 全部入参未过目录验证：不发起查询（防跨品牌乱推），结构化披露 rejected
     expect(mockSpongeService.fetchJobs).not.toHaveBeenCalled();
-    expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_NO_RESULTS);
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_BRAND_NO_PROVENANCE);
     expect(result.queryMeta.brand.rejected).toEqual([{ input: 'Gattouzo', reason: 'unmatched' }]);
-    // 目录里没有这个品牌 = 我们没有合作（运营 2026-09-24 裁定），不再走"等库存"话术
-    expect(result.brandNotPartneredScript).toBeDefined();
+    // 联系人昵称不是候选人点名的品牌，不能替模型臆造的品牌生成没合作话术。
+    expect(result.brandNotPartneredScript).toBeUndefined();
     expect(result.noMatchScript).toBeUndefined();
   });
 
@@ -1655,6 +1655,7 @@ describe('buildJobListTool', () => {
       expect(mockSpongeService.fetchJobs).not.toHaveBeenCalled();
       expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_NO_RESULTS);
       expect(result.rejectedBrandIds).toEqual(['100006']);
+      expect(result.fuzzySuggestions).toEqual(result.idSuggestions);
       expect(result.idSuggestions).toEqual([
         expect.objectContaining({ inputId: '100006', brandId: 10006, brandName: '必胜客' }),
       ]);
@@ -1764,13 +1765,47 @@ describe('buildJobListTool', () => {
       expect(result.brandNotPartneredScript).toBeDefined();
     });
 
-    it('语料块不可用时不新增拦截（旧行为）', async () => {
+    it('语料块不可用时仍阻断当前消息未提及的品牌', async () => {
       const result = await executeTool(
         { ...mockContext, currentUserMessage: '佛山的' },
         { ...defaultInput, cityNameList: ['佛山'], brandAliasList: ['星巴克'] },
       );
-      expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_NO_RESULTS);
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_BRAND_NO_PROVENANCE);
+      expect(result.brandNotPartneredScript).toBeUndefined();
+      expect(mockSpongeService.fetchJobs).not.toHaveBeenCalled();
+    });
+
+    it('没有语料块时仍采信当前原话', async () => {
+      const result = await executeTool(
+        { ...mockContext, currentUserMessage: '佛山星巴克有岗吗' },
+        { ...defaultInput, cityNameList: ['佛山'], brandAliasList: ['星巴克'] },
+      );
       expect(result.brandNotPartneredScript).toBeDefined();
+    });
+
+    it('已登记的提及集合可以提供目录外品牌出处', async () => {
+      const context = createToolContext({ ledger: { mentionedBrands: new Set(['星巴克']) } });
+      const result = await executeTool(context, {
+        ...defaultInput,
+        cityNameList: ['佛山'],
+        brandAliasList: ['星巴克'],
+      });
+      expect(result.brandNotPartneredScript).toBeDefined();
+    });
+
+    it('合法和无出处品牌混传时也阻断查询', async () => {
+      const context = createToolContext({
+        ledger: { mentionedBrands: new Set(['肯德基']) },
+        turnInput: { currentUserMessage: '佛山肯德基有岗吗' },
+      });
+      const result = await executeTool(context, {
+        ...defaultInput,
+        cityNameList: ['佛山'],
+        brandAliasList: ['肯德基', '星巴克'],
+      });
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_BRAND_NO_PROVENANCE);
+      expect(result.unmentionedBrands).toEqual(['星巴克']);
+      expect(mockSpongeService.fetchJobs).not.toHaveBeenCalled();
     });
   });
 
@@ -2665,6 +2700,7 @@ describe('buildJobListTool', () => {
       const ctxWithRecentBrands: JobListTestContext = {
         ...mockContext,
         recentBrandPool: ['成都你六姐', '奥乐齐'],
+        currentUserMessage: '刘姐妹有岗吗',
       };
 
       const result = await executeTool(ctxWithRecentBrands, {
@@ -2693,6 +2729,7 @@ describe('buildJobListTool', () => {
       const ctxWithAmbiguousBrands: JobListTestContext = {
         ...mockContext,
         recentBrandPool: ['肯德基', '肯德乐'],
+        currentUserMessage: '肯德有岗吗',
       };
 
       const result = await executeTool(ctxWithAmbiguousBrands, {
@@ -2715,6 +2752,7 @@ describe('buildJobListTool', () => {
       const ctxWithUnrelatedBrand: JobListTestContext = {
         ...mockContext,
         recentBrandPool: ['奥乐齐'],
+        currentUserMessage: '真功夫有岗吗',
       };
 
       const result = await executeTool(ctxWithUnrelatedBrand, {
@@ -2732,11 +2770,14 @@ describe('buildJobListTool', () => {
     it('no recentBrandPool：未传品牌池时不触发模糊匹配，走不合作话术', async () => {
       mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [], total: 0 });
 
-      const result = await executeTool(mockContext, {
-        ...defaultInput,
-        cityNameList: ['上海'],
-        brandAliasList: ['刘姐妹'],
-      });
+      const result = await executeTool(
+        { ...mockContext, currentUserMessage: '刘姐妹有岗吗' },
+        {
+          ...defaultInput,
+          cityNameList: ['上海'],
+          brandAliasList: ['刘姐妹'],
+        },
+      );
 
       expect(result.aliasFuzzyMatch).toBeNull();
       expect(result._replyInstruction).toContain('禁止调用 invite_to_group');

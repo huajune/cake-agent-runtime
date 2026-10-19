@@ -88,9 +88,24 @@ describe('品牌提及集合校验', () => {
     expect(findUnmentionedQueryBrands(fallback, mentioned(), catalog)).toEqual([]);
   });
 
-  it('不把未知或歧义品牌的原有解析结果改成无出处错误', () => {
-    expect(findUnmentionedQueryBrands(planFor(['小龙']), mentioned(), catalog)).toEqual([]);
-    expect(findUnmentionedQueryBrands(planFor(['未知品牌']), mentioned(), catalog)).toEqual([]);
+  it('未知或歧义品牌同样核对出处，已登记提及和候选人原话均有效', () => {
+    expect(findUnmentionedQueryBrands(planFor(['小龙']), mentioned(), catalog)).toEqual([
+      { canonicalName: '小龙', brandId: null },
+    ]);
+    expect(
+      findUnmentionedQueryBrands(planFor(['未知品牌']), mentioned('未知品牌'), catalog),
+    ).toEqual([]);
+    expect(
+      findUnmentionedQueryBrands(planFor(['小龙']), mentioned(), catalog, ['小龙招人吗']),
+    ).toEqual([]);
+  });
+
+  it('合法品牌与目录外品牌混传时仍拒绝无出处的品牌', () => {
+    expect(
+      findUnmentionedQueryBrands(planFor(['KFC', '星巴克']), mentioned('肯德基'), catalog, [
+        '肯德基有岗吗',
+      ]),
+    ).toEqual([{ canonicalName: '星巴克', brandId: null }]);
   });
 });
 
@@ -371,15 +386,16 @@ describe('目录外品牌 ID（badcase 2026-10-16 trace batch_6ad1eb74ce406a6aee
     expect(plan.rejected).toEqual([{ input: '100006', reason: 'unmatched_id' }]);
   });
 
-  it('旧响应目录整体缺 id 时无从校验，模型 ID 保持原样采信', () => {
+  it('目录整体缺 id 时拒绝无法核验的模型 ID', () => {
     const plan = buildBrandQueryPlan({
       brandAliasList: [],
       brandIdList: [100006],
       sessionBrandState: null,
       catalog: [{ name: '必胜客', aliases: [] }],
     });
-    expect(plan.rejected).toEqual([]);
-    expect(plan.queryBrandIdList).toEqual([100006]);
+    expect(plan.rejected).toEqual([{ input: '100006', reason: 'unmatched_id' }]);
+    expect(plan.queryBrandIdList).toEqual([]);
+    expect(plan.applied).toEqual([]);
   });
 
   it('unmatched_id 不算"没合作"：allRejectedAsUnmatched 为 false', () => {
@@ -447,8 +463,13 @@ describe('findUnprovenancedRejectedBrands（badcase 2026-10-13 trace batch_6acda
     ).toEqual([]);
   });
 
-  it('出处材料不可用（null）时不新增拦截', () => {
-    expect(findUnprovenancedRejectedBrands(planFor(['星巴克']), null)).toEqual([]);
+  it('出处材料不可用时不得断言没合作，已登记提及仍可提供依据', () => {
+    expect(findUnprovenancedRejectedBrands(planFor(['星巴克']), null)).toEqual([
+      { input: '星巴克', reason: 'unmatched' },
+    ]);
+    expect(findUnprovenancedRejectedBrands(planFor(['星巴克']), null, new Set(['星巴克']))).toEqual(
+      [],
+    );
   });
 
   it('目录外 ID 不走原话核对（ID 来自截图读数，另有数字近邻处置）', () => {
