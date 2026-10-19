@@ -65,6 +65,25 @@ describe('bookable-slot.util', () => {
       ];
       expect(buildUpcomingTimeOptions(windows)).toEqual([]);
     });
+
+    // 2026-10-19 BadCase [13]（trace batch_6aca144ace406a6aeee2726c_1791629394395）：肯德基幸福里DT 的面试窗口是
+    // 「周一至周五 00:00」，slot 全部 bookingAllowed=false，但扁平选项仍把这些日期列给候选人挑，模型据此承诺提交。
+    it('只标日期 / 起点解析不出的窗口不进可挑选项（与 bookingAllowed=false 同口径）', () => {
+      const dateOnly: InterviewWindow[] = ['每周一', '每周二', '每周三', '每周四', '每周五'].map(
+        (weekday) => ({ weekday, startTime: '00:00', endTime: '00:00' }),
+      );
+      expect(buildUpcomingTimeOptions(dateOnly, 7, 10)).toEqual([]);
+      expect(buildBookableSlots({ windows: dateOnly }).every((s) => !s.bookingAllowed)).toBe(true);
+
+      const mixed: InterviewWindow[] = [
+        ...dateOnly,
+        { weekday: '每周三', startTime: 'unknown', endTime: '16:30' },
+        { weekday: '每周三', startTime: '13:30', endTime: '16:30' },
+      ];
+      const out = buildUpcomingTimeOptions(mixed, 7, 10);
+      expect(out).toHaveLength(1);
+      expect(out[0]).toContain('2026-05-20 周三 13:30-16:30');
+    });
   });
 
   // 海绵把「固定时间点」面试录成 startTime === endTime；文案只写一个时刻，不拼成「14:00-14:00」。
