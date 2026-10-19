@@ -338,6 +338,9 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
       nextAction: 'ready_to_book',
     });
     expect(result._replyInstruction).toContain('只有 booking success=true 后才能处理下一人');
+    // badcase x1soque5：第一人报名成功后模型手写第二人核对段、零工具宣称"也预约成功啦"。
+    expect(result._replyInstruction).toContain('precheck(candidatePhone=下一人手机号)');
+    expect(result._replyInstruction).toContain('禁止自行手写第二人的核对段');
     expect(collectionForms.saveFinalizedProgressFacts).not.toHaveBeenCalled();
   });
 
@@ -495,6 +498,8 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
     });
     expect(result.collectionVerdict).toBe('ready');
     expect(result.nextAction).toBe('ready_to_book');
+    // 主联系人 ready_to_book 同样带"下一人先 precheck"纪律（badcase x1soque5 的第二人就是从主联系人之后手写的）
+    expect(result._replyInstruction).toContain('precheck(candidatePhone=下一人手机号)');
     expect(result.recap).toBeUndefined();
     expect(currentForm?.lastRecap).toBeUndefined();
     expect(currentForm?.scheduleDraft).toEqual(

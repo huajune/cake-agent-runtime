@@ -112,19 +112,33 @@ describe('detectCancelDoneClaimWithoutSubmission', () => {
   });
 });
 
-describe('booking_done_claim_no_work_order（长期记忆确证无在途工单时要求 repair）', () => {
+describe('booking_done_claim_no_work_order（长期记忆确证无在途工单时要求 replan）', () => {
   const booking = (job_id: number | null | undefined) => ({
     work_order_id: 1,
     linked_at: '2026-09-02',
     job_id,
   });
 
-  it('零 booking + 无在途工单 → repair（badcase wvr7pejq）', () => {
+  it('零 booking + 无在途工单 → replan（badcase wvr7pejq；2026-10-19 起由 repair 升档）', () => {
     const hit = detectBookingDoneClaimWithoutSubmission('预约成功\n\n面试地址：勤奋路103号', [], {
       activeBookings: [],
     });
     expect(hit?.ruleId).toBe('booking_done_claim_no_work_order');
-    expect(hit?.action).toBe('repair');
+    expect(hit?.action).toBe('replan');
+    expect(hit?.repairMode).toBe('replan');
+    expect(hit?.currentReplySendable).toBe(false);
+  });
+
+  it('代报第二人零工具宣称"也预约成功啦" → replan，不走无工具改写（badcase x1soque5，trace batch_6accbaa4ce406a6aee50a95b_1792057074005）', () => {
+    // 第一人罗彝的工单 472752 在前几轮已真实建单；本轮零工具、焦点仍是同一岗位时，
+    // 名下工单能解释"跨轮复述"，只落 observe——这是 2026-09-09 判据的既定边界。
+    // 但候选人名下确证没有任何在途工单、或在途工单都不是本岗时，"何佳淼也预约成功啦"就是假回执，
+    // rewrite 只能改成"我这就去提交"（永不兑现），必须同参重进让 precheck/booking 真正发生。
+    const hit = detectBookingDoneClaimWithoutSubmission('好的，何佳淼也预约成功啦，面试时间同样是明天下午两点', [], {
+      activeBookings: [],
+    });
+    expect(hit?.ruleId).toBe('booking_done_claim_no_work_order');
+    expect(hit?.action).toBe('replan');
   });
 
   it('在途工单存在或未知时保持 observe', () => {
@@ -138,14 +152,14 @@ describe('booking_done_claim_no_work_order（长期记忆确证无在途工单�
     );
   });
 
-  it('在途工单都不是本轮焦点岗位 → repair（chat 6a97b336 换店重约后零工具宣称"报名已提交成功"）', () => {
+  it('在途工单都不是本轮焦点岗位 → replan（chat 6a97b336 换店重约后零工具宣称"报名已提交成功"）', () => {
     const hit = detectBookingDoneClaimWithoutSubmission(
       '李霄的报名已提交成功\n\n面试时间：明天（9月8日）下午 2 点\n门店：必胜客武进万达店',
       [],
       { activeBookings: [booking(529171)], focusJobId: 528334 },
     );
     expect(hit?.ruleId).toBe('booking_done_claim_no_work_order');
-    expect(hit?.action).toBe('repair');
+    expect(hit?.action).toBe('replan');
   });
 
   it('在途工单就是焦点岗位 → 跨轮复述，保持 observe', () => {
@@ -169,7 +183,7 @@ describe('booking_done_claim_no_work_order（长期记忆确证无在途工单�
       { activeBookings: [booking(520437)] },
     );
     expect(hit?.ruleId).toBe('booking_done_claim_no_work_order');
-    expect(hit?.action).toBe('repair');
+    expect(hit?.action).toBe('replan');
 
     // 同轮多次 precheck 取最后一次；快照焦点存在时仍以快照为准。
     const older = { ...precheck, args: { jobId: 520437 } } as unknown as AgentToolCall;

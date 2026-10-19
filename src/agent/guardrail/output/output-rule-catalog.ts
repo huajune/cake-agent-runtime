@@ -311,22 +311,31 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     id: 'booking_done_claim_no_work_order',
     source: 'agent/guardrail/output/rules/booking-claim-reconciliation.rule.ts',
     entrypoint: 'detectBookingDoneClaimWithoutSubmission',
-    action: GUARDRAIL_ACTION.REPAIR,
+    // 2026-10-19 升 REPLAN（badcase x1soque5 / trace batch_6accbaa4ce406a6aee50a95b_1792057074005）：
+    // 本规则按定义只在零 booking 调用的回合命中，问题不在文案而在"该发生的 booking 没发生"。
+    // rewrite 走无工具 ReplyRepairAgent，只能把"已预约成功"改成"我这就去提交"——同样永不兑现，
+    // 下一轮模型还把这句当"已完成"沉默。同参重进 generator 让它真正 precheck/booking 或转人工；
+    // 首版若已有已提交副作用（同轮先给第一人 booking 成功）Runner 自动降级 rewrite。
+    // 本轮存在 booking 调用但工单不匹配的情形不归本规则，仍由 booking_receipt_mismatch rewrite。
+    action: GUARDRAIL_ACTION.REPLAN,
     priority: GUARDRAIL_PRIORITY.P0,
     description:
       '零 booking 调用、无在途工单（或在途工单都不是本轮焦点岗位）却宣称"已帮你报好/报名成功"。',
-    riskGoal: '堵住 observe 哨兵管不了的假回执：候选人据此等面试，这家店的工单根本不存在。',
+    riskGoal:
+      '堵住 observe 哨兵管不了的假回执：候选人据此等面试，这家店的工单根本不存在。' +
+      '零 booking 轮不能靠改写补救（改成将来时承诺同样空头），必须同参重进让提交真正发生或转人工。',
     exogenousSignal:
       '本轮 booking 调用存在性 + precheck 在途工单 + 在途工单集合（为空，或每张 job_id 都≠焦点岗位 jobId）；' +
       '在途工单集合 = 本轮预约快照（按候选人手机号从海绵查得，含真人后台登记与另一账号代报）∪ 长期记忆 active_booking 指针，按工单号去重（2026-09-22 起）；' +
       '焦点岗位取入口快照 currentFocusJob，缺失时回落本轮 precheck 参数 jobId（precheck 校验过的岗位轮末也会写入 currentFocusJob）。',
     residualRisk:
-      '快照与指针都读失败时降级为 observe 档（activeBookings=undefined），不误拦；焦点岗位未知（本会话从未 precheck、候选池已过期）或老行 job_id 为空时同样只落 observe；快照按手机号查得，候选人未留手机号时只剩指针一路。',
+      '快照与指针都读失败时降级为 observe 档（activeBookings=undefined），不误拦；焦点岗位未知（本会话从未 precheck、候选池已过期）或老行 job_id 为空时同样只落 observe；快照按手机号查得，候选人未留手机号时只剩指针一路。' +
+      'replan 不注入守卫反馈：重生成仍零工具宣称时二审再命中 → replan_exhausted 转人工，不放行。',
     verification: 'tests/agent/guardrail/output/rules/booking-claim-reconciliation.rule.spec.ts',
     feedbackToGenerator:
       '上一版回复宣称已帮候选人报好名/预约成功，但预约从未提交（本轮无 booking，候选人名下也没有工单）。' +
-      '改成如实说明当前收资和提交进度，需要提交就本轮调用 duliday_interview_booking，' +
-      '不得用完成时态宣称未发生的预约。',
+      '需要提交就本轮先 duliday_interview_precheck 再 duliday_interview_booking，无法提交就 request_handoff；' +
+      '不得用完成时态或"这就去提交"宣称未发生的预约。',
   },
   {
     id: 'job_query_claim_without_query',

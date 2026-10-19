@@ -108,6 +108,14 @@ const logger = new Logger('duliday_interview_precheck');
 export const COLLECTION_TEMPLATE_SEND_INSTRUCTION =
   '照发 bookingChecklist.templateText：标签逐字用原文，不得增删、重排字段行，不要另起一套收资清单；会话中候选人已明确说过的值可预填。首次收资时把 interview.bookableSlots 作为独立的「可约面试时间」区块一并展示，允许候选人一轮同时回复资料和时间。候选人发来值的**当轮**立即经 fieldValueProposals 提交本工具——提交字段值提案不等于提交预约；**禁止**在提交前自行复述资料向候选人讨确认。';
 
+/**
+ * 代报多人时下一人的入口纪律（2026-10-19，badcase x1soque5）：第一人 booking 成功后，模型曾凭聊天记录
+ * 自行手写第二人的"核对信息"段，候选人一句"好的"就被当成第二人也已报名——第二人从未 precheck、更没 booking。
+ * 每张表单的官方核对文本只能来自本工具（bookingChecklist / recap），下一人没有自己的 precheck 回执就不存在。
+ */
+export const NEXT_CANDIDATE_PRECHECK_FIRST_NOTE =
+  ' 若候选人还要代报下一个人：下一人必须先调用本工具 precheck(candidatePhone=下一人手机号) 拿到官方核对信息（bookingChecklist / recap），禁止自行手写第二人的核对段，也禁止在其 booking success=true 前说他已报名/预约成功。';
+
 // 程序记忆层（procedural memory）工具绑定规则；总目录：docs/prompt-rule-ledger.md
 export const PRECHECK_DESCRIPTION = `面试前置校验。实时读取岗位收资契约，推进候选人 × 岗位的持久表单，并返回可约时段。
 
@@ -1187,8 +1195,8 @@ function replyInstruction(
     }
     case 'ready_to_book':
       return run.form.candidateScope === 'additional'
-        ? '当前这位追加候选人的独立表单已授权。立即调用 duliday_interview_booking 完成这一人；只有 booking success=true 后才能处理下一人，不得并行 precheck/booking。'
-        : '候选人资料已授权，且非 wait_notice 岗位的预约草稿已通过本轮实时复验。可以调用 duliday_interview_booking；只有 booking success=true 后才能说已报名。';
+        ? `当前这位追加候选人的独立表单已授权。立即调用 duliday_interview_booking 完成这一人；只有 booking success=true 后才能处理下一人，不得并行 precheck/booking。${NEXT_CANDIDATE_PRECHECK_FIRST_NOTE}`
+        : `候选人资料已授权，且非 wait_notice 岗位的预约草稿已通过本轮实时复验。可以调用 duliday_interview_booking；只有 booking success=true 后才能说已报名。${NEXT_CANDIDATE_PRECHECK_FIRST_NOTE}`;
     case 'already_submitted':
       return `当前表单已提交（工单 ${run.form.workOrderId ?? 'unknown'}），禁止重复 booking。`;
     case 'already_booked': {

@@ -648,6 +648,70 @@ describe('AgentRunnerService.runInboundTurn', () => {
       },
     ];
 
+    it('booking_done_claim_no_work_order on a zero-tool turn re-enters the generator instead of rewriting (badcase x1soque5)', async () => {
+      // trace batch_6accbaa4ce406a6aee50a95b_1792057074005：第一人已建单，模型手写第二人核对段后
+      // 零工具宣称"何佳淼也预约成功啦"。旧 rewrite 档只能改成"我这就去提交"，永不兑现。
+      const fakeReceipt = '好的，何佳淼也预约成功啦，面试时间同样是明天下午两点';
+      const bookingClaimDecision = {
+        decision: 'replan' as const,
+        riskLevel: 'high' as const,
+        violations: [
+          {
+            type: 'booking_done_claim_no_work_order',
+            evidence: '本轮零 booking 调用，候选人名下无该岗位工单',
+            suggestion: '先 precheck 再 booking，或转人工',
+            allowFailOpen: true as const,
+            repairMode: 'replan' as const,
+          },
+        ],
+        ruleIds: ['booking_done_claim_no_work_order'],
+        blockedRuleIds: ['booking_done_claim_no_work_order'],
+        repairMode: 'replan' as const,
+      };
+      const seen: unknown[] = [];
+      generator.invoke.mockImplementation(async (p: unknown) => {
+        seen.push(p);
+        return seen.length === 1
+          ? makeResult({ text: fakeReceipt, toolCalls: [] })
+          : makeResult({
+              text: '何佳淼这边我还需要先核对一下报名信息，稍等我发你核对内容。',
+              toolCalls: [
+                {
+                  toolName: 'duliday_interview_precheck',
+                  args: { mode: 'query', jobId: 1, candidatePhone: '13800000000' },
+                  result: { success: true, nextAction: 'collect_fields' },
+                  resultCount: 1,
+                  status: 'ok',
+                },
+              ] as never,
+            });
+      });
+      outputGuard.check
+        .mockResolvedValueOnce(bookingClaimDecision)
+        .mockResolvedValueOnce(passDecision);
+
+      const outcome = await service.runInboundTurn({
+        sessionRef,
+        input: { text: '好的，没问题' },
+        context: { messageId: 'msg-second-candidate' },
+      });
+
+      expect(outcome.kind).toBe('reply');
+      expect(outcome.reply?.text).not.toContain('预约成功');
+      expect(generator.invoke).toHaveBeenCalledTimes(2);
+      expect(seen[1]).toEqual(seen[0]);
+      expect(replyRepairAgent.repair).not.toHaveBeenCalled();
+      expect(guardrailReviews.recordReview).toHaveBeenCalledWith(
+        expect.objectContaining({
+          traceId: 'msg-second-candidate',
+          repaired: true,
+          repairMode: 'replan',
+          firstReply: fakeReceipt,
+          finalOutcome: 'reply',
+        }),
+      );
+    });
+
     it('re-enters the generator with identical params instead of rewriting, and adopts the grounded reply', async () => {
       const seen: unknown[] = [];
       generator.invoke.mockImplementation(async (p: unknown) => {
