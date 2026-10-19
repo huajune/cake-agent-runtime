@@ -37,7 +37,7 @@ Output 只对可复算信号裁决。
 
 ## 2. 当前规则面
 
-`output/output-rule-catalog.ts` 是 Output 规则与默认处置的唯一来源，当前 26 条（19 执行档 + 7 observe 哨兵）：
+`output/output-rule-catalog.ts` 是 Output 规则与默认处置的唯一来源，当前 27 条（19 执行档 + 8 observe 哨兵）：
 
 | 类别                         | ruleId                                                                                                                                                                                                                                                                                     |
 | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -45,7 +45,7 @@ Output 只对可复算信号裁决。
 | 封闭高风险                   | `identity_misregistration_coaching`、`experience_fraud_coaching`、`discriminatory_screening_leak`、`sensitive_origin_probe`、`quota_promise`                                                                                                                                               |
 | 工具回执/状态对账            | `online_interview_location_claim`、`unsupported_store_status_speculation`、`booking_receipt_mismatch`、`interview_slot_availability_mismatch`、`interview_time_change_unconfirmed`、`brand_alias_fuzzy_match_ignored`、`booking_done_claim_no_work_order`、`cancel_done_claim_failed_tool` |
 | 查询/岗位事实来源（replan）  | `job_query_claim_without_query`、`job_fact_without_provenance`                                                                                                                                                                                                                             |
-| observe 哨兵（只落档不拦截） | `requested_brand_mismatch`、`settlement_cycle_mismatch`、`proactive_insurance_policy_mention`、`booking_done_claim_without_submission`、`cancel_done_claim_without_submission`、`part_time_salary_display_mismatch`、`student_acceptance_contradiction`                                    |
+| observe 哨兵（只落档不拦截） | `requested_brand_mismatch`、`settlement_cycle_mismatch`、`proactive_insurance_policy_mention`、`booking_done_claim_without_submission`、`cancel_done_claim_without_submission`、`part_time_salary_display_mismatch`、`student_acceptance_contradiction`、`meta_narration_unwrapped`        |
 
 当前目录包含 2026-08-26 数据复核恢复的定点哨兵和后续完成态对账规则；
 `dangling_reply_promise` 已于 2026-09-07 退场，判别改由离线回扫承接。这些规则不代表开放语义

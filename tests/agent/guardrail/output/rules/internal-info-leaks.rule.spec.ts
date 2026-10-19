@@ -6,6 +6,8 @@ import {
   stripInternalReasoningArtifacts,
   stripMarkdownCodeFences,
   isSkipIntentEnvelope,
+  isEmptyReplySlotEnvelope,
+  detectUnwrappedMetaNarration,
   tryUnwrapEnvelopeReply,
 } from '@agent/guardrail/output/rules/internal-info-leaks.rule';
 
@@ -507,5 +509,144 @@ describe('provider/auth error wording and heading-start replies — 2026-10-16 A
     expect(detectOutputLeak('门店钥匙由店长保管，你不用担心')).toBeNull();
     expect(detectOutputLeak('登录密码记得保存好哈')).toBeNull();
     expect(detectOutputLeak('这个岗位需要会用打印机和复印机')).toBeNull();
+  });
+});
+
+// 2026-10-13 生产 trace batch_6acc9726ce406a6aee0927a5_1791860105040（guardrail_review_records#19522，复核 [12]）：
+// 首版是 `{"agent_reply":"","candidate_intention":"确认收尾","thought":"候选人回复"好"是纯确认词…应沉默收尾"}`，
+// 旧拆封取「唯一 ≥6 汉字值」= thought 当正文投递，二审只认括号旁白于是放行。
+describe('envelope reply slots and internal-note keys — 2026-10-13 thought leak', () => {
+  const PRODUCTION_ENVELOPE = JSON.stringify({
+    agent_reply: '',
+    candidate_intention: '确认收尾',
+    thought: '候选人回复"好"是纯确认词，上轮已完成预约成功回执，本轮无新诉求，应沉默收尾',
+    intention_stage: 'interview_scheduling',
+  });
+
+  it('does not unwrap an envelope whose reply slot is empty; it is an empty-reply-slot (silence) envelope', () => {
+    expect(tryUnwrapEnvelopeReply(PRODUCTION_ENVELOPE)).toBeNull();
+    expect(isEmptyReplySlotEnvelope(PRODUCTION_ENVELOPE)).toBe(true);
+    expect(isSkipIntentEnvelope(PRODUCTION_ENVELOPE)).toBe(false);
+    expect(detectOutputLeak(PRODUCTION_ENVELOPE)).not.toBeNull();
+  });
+
+  it.each([
+    '{"reply":"","notes":"候选人回复好的，上轮已拉群，本轮无新诉求"}',
+    '{"response": null, "plan": "候选人回复好的，上轮已拉群，本轮无新诉求"}',
+    '{"text":"  ","answer":"","reasoning":"候选人回复好的，上轮已拉群，本轮无新诉求"}',
+    '{"reply":"","reason":"候选人已确认，本轮无需回复"}',
+  ])('treats blank reply slots as silence intent: %s', (draft) => {
+    expect(isEmptyReplySlotEnvelope(draft)).toBe(true);
+    expect(tryUnwrapEnvelopeReply(draft)).toBeNull();
+  });
+
+  it('a filled reply slot wins over internal notes, verbatim', () => {
+    const draft = JSON.stringify({
+      agent_reply: '好的，面试当天记得带身份证，到了门店找店长就行～',
+      thought: '候选人确认了面试时间，本轮只需提醒材料，不需要再追问其它信息了',
+      candidate_intention: '确认面试',
+    });
+    expect(isEmptyReplySlotEnvelope(draft)).toBe(false);
+    expect(tryUnwrapEnvelopeReply(draft)).toBe('好的，面试当天记得带身份证，到了门店找店长就行～');
+  });
+
+  it('internal-note keys never become the reply even without a reply slot', () => {
+    expect(
+      tryUnwrapEnvelopeReply(
+        '{"status":"ok","thought":"候选人回复好的，上轮已拉群，本轮无新诉求，应沉默收尾"}',
+      ),
+    ).toBeNull();
+    expect(
+      tryUnwrapEnvelopeReply(
+        '{"candidateIntention":"候选人想确认面试地点和时间，态度积极","intention_stage":"x"}',
+      ),
+    ).toBeNull();
+    expect(
+      tryUnwrapEnvelopeReply('{"analysis":"候选人回复好的，上轮已拉群","plan":"本轮沉默收尾"}'),
+    ).toBeNull();
+  });
+
+  it.each(['thought', 'reasoning', 'analysis', 'intention', 'plan', 'candidateIntention'])(
+    '%s is never selected as the reply',
+    (key) => {
+      expect(
+        tryUnwrapEnvelopeReply(JSON.stringify({ [key]: '候选人本轮已经确认，应保持沉默收尾' })),
+      ).toBeNull();
+    },
+  );
+
+  it('keeps a nonempty reply when another reply slot is empty', () => {
+    const draft = JSON.stringify({
+      reply: '',
+      answer: '好的，有问题随时联系我就行',
+      thought: '本轮应自然收尾',
+    });
+    expect(isEmptyReplySlotEnvelope(draft)).toBe(false);
+    expect(tryUnwrapEnvelopeReply(draft)).toBe('好的，有问题随时联系我就行');
+  });
+
+  it.each([false, 0, [], {}])('does not treat a malformed reply slot as silence: %j', (reply) => {
+    const draft = JSON.stringify({ reply, thought: '候选人本轮已经确认，应保持沉默收尾' });
+    expect(isEmptyReplySlotEnvelope(draft)).toBe(false);
+    expect(tryUnwrapEnvelopeReply(draft)).toBeNull();
+  });
+
+  it.each(['reasonCode', 'riskType', 'actionAdvice', 'missingJobInfo'])(
+    'does not silence an envelope with a handoff/risk argument: %s',
+    (key) => {
+      const draft = JSON.stringify({
+        reply: '',
+        [key]: '需要同事处理',
+        reason: '候选人需要人工协助',
+      });
+      expect(isEmptyReplySlotEnvelope(draft)).toBe(false);
+      expect(tryUnwrapEnvelopeReply(draft)).toBeNull();
+    },
+  );
+
+  it('empty-slot envelopes with call structure keys or a registered tool name are not silence envelopes', () => {
+    expect(isEmptyReplySlotEnvelope('{"name":"request_handoff","reply":""}')).toBe(false);
+    expect(isEmptyReplySlotEnvelope('{"action":"skip_reply","reply":""}')).toBe(false);
+    expect(isEmptyReplySlotEnvelope('{"type":"tool_use","input":{"reply":""}}')).toBe(false);
+    expect(isEmptyReplySlotEnvelope('{"censorStatus":"ok"}')).toBe(false);
+    expect(isEmptyReplySlotEnvelope('好的，我帮你看下')).toBe(false);
+  });
+
+  it('existing unwrap paths are unchanged', () => {
+    expect(
+      tryUnwrapEnvelopeReply(
+        '{"censorStatus":"ok","_replyInstruction":"不客气～面试当天记得带好身份证，有问题随时找我哈"}',
+      ),
+    ).toBe('不客气～面试当天记得带好身份证，有问题随时找我哈');
+    expect(
+      tryUnwrapEnvelopeReply(
+        '{\n"agent_response": "好的，我帮你看下罗湖附近在招的岗位哈～先问下，你倾向哪类工作呀？"\n}',
+      ),
+    ).toBe('好的，我帮你看下罗湖附近在招的岗位哈～先问下，你倾向哪类工作呀？');
+  });
+});
+
+describe('detectUnwrappedMetaNarration — observe sentinel for third-person self-narration', () => {
+  it.each([
+    '候选人回复"好"是纯确认词，上轮已完成预约成功回执，本轮无新诉求，应沉默收尾',
+    '候选人表示已了解，本轮无新诉求',
+    '符合 confirmation_closure 场景，应保持静默',
+    '已确认城市：肇庆，候选人本轮没有提出新问题，无需回复',
+    'human_takeover 场景，真人经理正在沟通',
+  ])('flags: %s', (text) => {
+    const hit = detectUnwrappedMetaNarration(text);
+    expect(hit?.ruleId).toBe('meta_narration_unwrapped');
+    expect(hit?.action).toBe('observe');
+  });
+
+  it.each([
+    '好的，面试当天记得带身份证，到了门店找你的店长就行～',
+    '你看这个时间可以吗？确认后我帮你约',
+    '您这边的情况我了解了，稍后同事会联系您',
+    '（本轮为真人沟通，AI 保持静默，不插入回复）',
+    '我们店里很多候选人都是学生，排班灵活',
+    '',
+  ])('does not flag candidate-facing wording or the wrapped form: %s', (text) => {
+    expect(detectUnwrappedMetaNarration(text)).toBeNull();
   });
 });

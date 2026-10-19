@@ -140,7 +140,8 @@ Tool / Output 的确定性边界裁决。
   高置信品牌回指、无在途工单却宣称报名完成、工具失败却宣称取消/改期完成；
 - 查询/岗位事实来源：零查询轮宣称查过，或报出会话内没有来源的岗位数字，触发 replan；
 - observe 哨兵（只落档不拦截）：跨品牌串台、结算周期错配、主动保险提及、
-  零调用完成时态报名宣称、零调用完成时态取消/改期宣称。
+  零调用完成时态报名宣称、零调用完成时态取消/改期宣称、兼职月薪口径、接受学生对账、
+  无括号第三人称自指旁白（`meta_narration_unwrapped`）。
 
 `HardRulesService` 只检查封闭文本形态、工具结果和必要的 memory 事实；`OutputGuardrailService`
 按 `replan > repair > observe > pass` 聚合。仅有 observe 命中时，Output 保留规则命中并
@@ -174,8 +175,9 @@ Output guard 可做精确去重并产出 `deterministicReply`，其余只产出�
 两者都归 `src/agent/reply-repair/`，由 `AgentModule` 注册；`GuardrailModule` 不导出修复证据构建器。
 证据构建不参与 Output 规则裁决，修复代理也不拥有最终放行权。任何修复都不能重做已提交的副作用。
 Runner 用 `resolution: { outcome: reply | handoff | skipped, reasonCode? }` 收敛，真实首审/二审保持原样。
-仅元叙述旁白的 `meta_narration_silenced` 与 skip_reply 参数信封的 `skip_intent_envelope_silenced`
-（首版整条是 `{"reason":"…"}` 形态的沉默意图，模型想沉默但没走工具调用）为 `skipped`，保留已有
+仅元叙述旁白的 `meta_narration_silenced`、skip_reply 参数信封的 `skip_intent_envelope_silenced`
+与空回复槽位信封的 `empty_reply_envelope_silenced`
+（前两类表达沉默意图；空回复信封要求回复槽位全空且无调用结构或转人工/告警参数）为 `skipped`，保留已有
 工具意图且不新增介入；纯推理/工具残文直接 `handoff`。JSON 信封拆封只放出候选人正文，含已注册
 工具参数键（reason / reasonCode / riskType 等）或点名工具名的信封一律不拆。空修复、悬空承接句等提前分支不伪造二审，并保留既有回退资格。
 

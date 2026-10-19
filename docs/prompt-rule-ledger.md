@@ -631,10 +631,10 @@ FC 编号保留为历史别名：
 - 日期契约：仅实际指定面试时间时产出 `_confirmedInterviewTimeHuman`；等通知岗位走 `_waitNoticeReplyGuide`。`booking_receipt_mismatch` 跳过明确 `requestInfo.interviewTime=null` 的历史回执，避免强制模型复读内部说明。
 - 本项限制报名工具回执及其修复证据。改约/取消工具当前仍要求真实工单引用，已有预约上下文的入参解析契约不在本次变更范围。
 
-## 七、守卫 hard-rules（拦侧，25 ruleId）
+## 七、守卫 hard-rules（拦侧，27 ruleId）
 
 本节是 Prompt 教侧与 Output 拦侧的**配对索引**，不是把 hard-rules 算进 Prompt 执行器。
-完整防线有 Input / Prompt / Tool / Output 四个作用位：本台账治理 Prompt，下面 25 个 ruleId
+完整防线有 Input / Prompt / Tool / Output 四个作用位：本台账治理 Prompt，下面 27 个 ruleId
 由 `OutputGuardrailService` 执行；教/拦可以配对，但权限与唯一权威各自独立。
 
 当前执行档为 repair / replan；旧记录里的 revise / block 保留历史取值，旧 block 的严格拒发约束
@@ -677,9 +677,10 @@ badcase 5j1mbgi8 / kwxk74gn / kb629uko / wvr7pejq；教侧配对手册"岗位事
 - `interview_time_change_unconfirmed`（repair 不变）按 precheck 回执 `duplicateBookingGuard.interviewWindow`
   豁免窗口内钟点（不带上下午的钟点任一读法落窗口内即放行），与 BK2 窗口内到达规则同口径；回执无窗口时按工单开始时刻对账不变。
 
-observe 哨兵（只落档不拦截，7 条）：`requested_brand_mismatch`、`settlement_cycle_mismatch`、
+observe 哨兵（只落档不拦截，8 条）：`requested_brand_mismatch`、`settlement_cycle_mismatch`、
 `proactive_insurance_policy_mention`、`booking_done_claim_without_submission`、
-`cancel_done_claim_without_submission`、`part_time_salary_display_mismatch`、`student_acceptance_contradiction`。其中预约完成态哨兵接替 `booking_promise_without_booking`
+`cancel_done_claim_without_submission`、`part_time_salary_display_mismatch`、`student_acceptance_contradiction`、
+`meta_narration_unwrapped`（2026-10-19，见下）。其中预约完成态哨兵接替 `booking_promise_without_booking`
 的完成时态缺口；将来时口径经生产抽样证实几乎全命中合法收资话术，不恢复）。
 
 2026-10-14 兼职薪资口径批（生产 trace `batch_6ab4b2cdce406a6aee874892_1790233240971`：本轮只调两次
@@ -767,6 +768,18 @@ JSON 文本时，该工具本轮并未执行，据此宣称的报名/预约/取�
 runner 直达静默 `skip_intent_envelope_silenced`——终态 `skipped`、不进 repair、不派守卫介入副作用，与
 `meta_narration_silenced` 同轨（`INTENTIONAL_SILENCE_REASON_CODES`）。其它工具的参数信封回落残文判定，
 维持 `tool_call_artifact_silenced` 转人工。规则词库与教侧文本不变；教侧配对：G14（想沉默只能走 skip_reply）。
+
+信封拆封把 thought 当正文（`internal_output_leak` 命中后的 runner 收敛 + 新 observe 哨兵 `meta_narration_unwrapped`，
+2026-10-19 BadCase 复核 [12]，batch …\_1791860105040 / `guardrail_review_records#19522`，2026-10-13）：模型自造结构化信封
+`{"agent_reply":"","candidate_intention":"确认收尾","thought":"候选人回复"好"是纯确认词…应沉默收尾"}`，守卫首审命中
+`internal_output_leak`，runner 信封拆封快通道取「唯一 ≥6 汉字值」= thought 当正文投递，二审 `meta_narration_reply` 只认括号形态
+放行（本周 `envelope_unwrapped` 2 行，另一行拆出的也是内部产物「已确认城市：肇庆」）。本批三处：`tryUnwrapEnvelopeReply`
+认回复槽位键（agent_reply / agent_response / reply / response / answer / text 等）——槽位存在时正文只能来自槽位，槽位全空返回 null；
+键名分段含 thought / reasoning / analysis / intention / intent / plan / stage 的值无论中文量多少都不得入选正文；
+runner 新增直达静默 `empty_reply_envelope_silenced`（`isEmptyReplySlotEnvelope`：槽位全空且无调用结构或转人工/告警参数键；`reason` 可作内部笔记），终态 `skipped`、
+不进 repair、不派介入，与 `skip_intent_envelope_silenced` 同轨；新增 observe 哨兵 `meta_narration_unwrapped`：封闭第三人称
+自指词形（候选人回复/本轮无新诉求/应沉默/符合…场景/confirmation_closure）+ 整条无「你/您」，只落档量化，累计判例再议升档。
+教侧配对：G14（想沉默只能走 skip_reply）。
 
 Provider 鉴权错误文案外泄（`internal_output_leak` + `invalid_model_output` 扩形态，2026-10-19 BadCase 复核 [02]，
 batch …\_1792130951637，2026-10-16）：零工具回合里 qwen 在 reasoning 中演了 `<result><error>InvalidApiKeyError</error></result>`，

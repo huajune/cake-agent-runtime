@@ -3,6 +3,14 @@ import { TurnOutcomeInterventionService } from '@agent/runner/turn-outcome-inter
 import type { GeneratorRunResult } from '@agent/generator/generator.types';
 import { createTurnLedger } from '@agent/generator/preparation/turn-ledger';
 import { CallerKind } from '@enums/agent.enum';
+import { Test, type TestingModule } from '@nestjs/testing';
+import { OutputGuardrailService } from '@agent/guardrail/output/output-guardrail.service';
+import { HardRulesService } from '@agent/guardrail/output/rules/hard-rules.service';
+import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
+import { MessageWindowService } from '@memory/short-term/message-window.service';
+import { LongTermService } from '@memory/long-term/long-term.service';
+import { SessionFactsService } from '@memory/short-term/facts.service';
+import { AlertNotifierService } from '@notification/services/alert-notifier.service';
 
 describe('AgentRunnerService.runInboundTurn', () => {
   let generator: { invoke: jest.Mock };
@@ -13,6 +21,28 @@ describe('AgentRunnerService.runInboundTurn', () => {
   let replyRepairContextProvider: { build: jest.Mock };
   let tracer: { emit: jest.Mock };
   let service: AgentRunnerService;
+  let rulesModule: TestingModule;
+  let actualOutputGuard: OutputGuardrailService;
+
+  beforeAll(async () => {
+    rulesModule = await Test.createTestingModule({
+      providers: [
+        OutputGuardrailService,
+        HardRulesService,
+        {
+          provide: SystemConfigService,
+          useValue: { getAgentReplyConfig: async () => ({ hardRuleOverrides: {} }) },
+        },
+        { provide: MessageWindowService, useValue: { getMessages: async () => [] } },
+        { provide: LongTermService, useValue: { tryGetActiveBookings: async () => [] } },
+        { provide: SessionFactsService, useValue: { getSessionState: async () => null } },
+        { provide: AlertNotifierService, useValue: { sendAlert: async () => undefined } },
+      ],
+    }).compile();
+    actualOutputGuard = rulesModule.get(OutputGuardrailService);
+  });
+
+  afterAll(() => rulesModule.close());
 
   const passDecision = {
     decision: 'pass' as const,
@@ -1201,6 +1231,144 @@ describe('AgentRunnerService.runInboundTurn', () => {
         repaired: false,
       }),
     );
+  });
+
+  // 2026-10-13 生产（trace …_1791860105040，guardrail_review_records#19522，复核 [12]）：模型自造结构化信封
+  // `{"agent_reply":"","candidate_intention":"确认收尾","thought":"候选人回复"好"…应沉默收尾"}`，旧链路
+  // envelope_unwrapped 把 thought 当正文投递。正解：回复槽位全空 = 沉默意图，整轮静默、不进 repair。
+  it('empty reply-slot envelope is silenced as intentional skip (thought never unwrapped)', async () => {
+    const draft = JSON.stringify({
+      agent_reply: '',
+      candidate_intention: '确认收尾',
+      thought: '候选人回复"好"是纯确认词，上轮已完成预约成功回执，本轮无新诉求，应沉默收尾',
+      intention_stage: 'interview_scheduling',
+    });
+    generator.invoke.mockResolvedValueOnce(makeResult({ text: draft }));
+    outputGuard.check.mockResolvedValueOnce({
+      decision: 'repair',
+      riskLevel: 'high',
+      violations: [
+        {
+          type: 'internal_output_leak',
+          evidence: '回复疑似泄漏 Agent 内部状态/工具实现（pattern=json）',
+          suggestion: '删除泄漏内容',
+          allowFailOpen: false,
+          repairMode: 'rewrite',
+        },
+      ],
+      ruleIds: ['internal_output_leak'],
+      blockedRuleIds: ['internal_output_leak'],
+      repairMode: 'rewrite',
+    });
+
+    const outcome = await service.runInboundTurn({
+      sessionRef,
+      input: { text: '好' },
+      context: { messageId: 'trace-empty-slot-envelope-1' },
+    });
+
+    expect(replyRepairAgent.repair).not.toHaveBeenCalled();
+    expect(outputGuard.check).toHaveBeenCalledTimes(1);
+    expect(outcome.kind).toBe('skipped');
+    expect(outcome.reply).toBeUndefined();
+    expect(outcome.handoff).toBeUndefined();
+    expect(outcome.sideEffects ?? []).toEqual([]);
+    expect(outcome.outputGuardrail).toMatchObject({
+      decision: 'repair',
+      finalOutcome: 'skipped',
+      reasonCode: 'empty_reply_envelope_silenced',
+    });
+    expect(guardrailReviews.recordReview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        finalOutcome: 'skipped',
+        reasonCode: 'empty_reply_envelope_silenced',
+        repaired: false,
+      }),
+    );
+  });
+
+  it.each([
+    [
+      { agent_reply: '', thought: '候选人回复好，本轮无新诉求，应沉默收尾' },
+      'skipped',
+      'empty_reply_envelope_silenced',
+    ],
+    [
+      { reply: null, reasoning: '本轮无新诉求，应沉默收尾' },
+      'skipped',
+      'empty_reply_envelope_silenced',
+    ],
+    [
+      { reply: '', riskType: 'insult', reason: '候选人需要人工协助' },
+      'handoff',
+      'tool_call_artifact_silenced',
+    ],
+    [
+      { reply: '', reasonCode: 'other', reason: '候选人需要人工协助' },
+      'handoff',
+      'tool_call_artifact_silenced',
+    ],
+    [
+      { thought: '候选人回复好，本轮无新诉求，应沉默收尾' },
+      'handoff',
+      'tool_call_artifact_silenced',
+    ],
+  ])(
+    'real output guard and runner preserve envelope intent: %j → %s',
+    async (envelope, kind, reasonCode) => {
+      generator.invoke.mockResolvedValueOnce(makeResult({ text: JSON.stringify(envelope) }));
+      outputGuard.check.mockImplementation((input) => actualOutputGuard.check(input));
+
+      const outcome = await service.runInboundTurn({ sessionRef, input: { text: '好' } });
+
+      expect(outcome.kind).toBe(kind);
+      expect(outcome.reply).toBeUndefined();
+      expect(replyRepairAgent.repair).not.toHaveBeenCalled();
+      expect(outputGuard.check).toHaveBeenCalledTimes(1);
+      expect(outcome.outputGuardrail).toMatchObject({ finalOutcome: kind, reasonCode });
+      if (kind === 'skipped') {
+        expect(outcome.sideEffects ?? []).toEqual([]);
+        expect(outcome.handoff).toBeUndefined();
+      }
+    },
+  );
+
+  it('real output guard reviews a filled reply slot again after removing internal notes', async () => {
+    const reply = '好的，有问题随时联系我就行';
+    generator.invoke.mockResolvedValueOnce(
+      makeResult({
+        text: JSON.stringify({ reply, thought: '候选人回复好，本轮无新诉求，应沉默收尾' }),
+      }),
+    );
+    outputGuard.check.mockImplementation((input) => actualOutputGuard.check(input));
+
+    const outcome = await service.runInboundTurn({ sessionRef, input: { text: '好' } });
+
+    expect(outcome.kind).toBe('reply');
+    expect(outcome.reply?.text).toBe(reply);
+    expect(outputGuard.check).toHaveBeenCalledTimes(2);
+    expect(replyRepairAgent.repair).not.toHaveBeenCalled();
+    expect(outcome.outputGuardrail).toMatchObject({
+      finalOutcome: 'reply',
+      reasonCode: 'envelope_unwrapped',
+    });
+  });
+
+  it('real output guard keeps unwrapped narration as observation only', async () => {
+    const text = '候选人回复好，本轮无新诉求，应沉默收尾';
+    generator.invoke.mockResolvedValueOnce(makeResult({ text }));
+    outputGuard.check.mockImplementation((input) => actualOutputGuard.check(input));
+
+    const outcome = await service.runInboundTurn({ sessionRef, input: { text: '好' } });
+
+    expect(outcome.kind).toBe('reply');
+    expect(outcome.reply?.text).toBe(text);
+    expect(outcome.outputGuardrail).toMatchObject({
+      decision: 'pass',
+      ruleIds: expect.arrayContaining(['meta_narration_unwrapped']),
+      blockedRuleIds: [],
+    });
+    expect(replyRepairAgent.repair).not.toHaveBeenCalled();
   });
 
   // tool_use 信封（trace …_1785746625937）里的 reason 是内部升级理由不是话术，

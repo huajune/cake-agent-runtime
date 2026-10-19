@@ -34,6 +34,7 @@ import {
   detectOutputLeak,
   hasTechnicalDocumentationShape,
   isInternalReasoningArtifactOnly,
+  isEmptyReplySlotEnvelope,
   isSkipIntentEnvelope,
   isToolCallArtifactOnly,
   stripInternalReasoningArtifacts,
@@ -835,13 +836,16 @@ export class AgentRunnerService {
   }
 
   /**
-   * 直达静默判据——四类首版进 repair 只会产出另一条不该发的文本：
+   * 首版不进入 repair 的判据：沉默意图收敛为 skipped，纯内部残文收敛为 handoff。
    *
    * - `meta_narration_silenced`：元叙述旁白表达的真实意图就是不回复。
    * - `skip_intent_envelope_silenced`：整条首版是 skip_reply 的参数 JSON
    *   （`{"reason":"候选人回复纯确认词'好'…无新诉求"}`），模型想沉默但没走工具调用；
    *   与元叙述同型，等效 skip_reply 静默。必须先于残文/拆封判定，否则 reason 里的内部
    *   理由会被拆封当正文投递（2026-09-16 生产 trace …_1789531804368）。
+   * - `empty_reply_envelope_silenced`：模型自造结构化信封、回复槽位（agent_reply 等）全空、
+   *   其余键只是意图/thought 笔记（2026-10-13 trace …_1791860105040，旧链路把 thought 拆封投递）；
+   *   同样等效 skip_reply 静默。
    * - `internal_reasoning_artifact_silenced` / `tool_call_artifact_silenced`：整条首版只是
    *   推理独白或工具调用残文；剥离后无正文可供 rewrite 保留，没有事实可依时只能转人工。
    * 混合命中其它规则时都不走捷径，仍按常规 repair 流程保守处理。
@@ -854,6 +858,9 @@ export class AgentRunnerService {
       if (this.isOnlyMetaNarration(decision)) return 'meta_narration_silenced';
       if (this.isOnlyInternalOutputLeak(decision) && isSkipIntentEnvelope(firstText)) {
         return 'skip_intent_envelope_silenced';
+      }
+      if (this.isOnlyInternalOutputLeak(decision) && isEmptyReplySlotEnvelope(firstText)) {
+        return 'empty_reply_envelope_silenced';
       }
       if (this.isOnlyInternalOutputLeak(decision) && isInternalReasoningArtifactOnly(firstText)) {
         return 'internal_reasoning_artifact_silenced';

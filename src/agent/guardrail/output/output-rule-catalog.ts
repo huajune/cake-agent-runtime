@@ -119,6 +119,21 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     verification: V,
   },
   {
+    id: 'meta_narration_unwrapped',
+    source: 'agent/guardrail/output/rules/internal-info-leaks.rule.ts',
+    entrypoint: 'detectUnwrappedMetaNarration',
+    // 2026-10-19 复核 [12]（trace …_1791860105040）：信封拆封把 thought「候选人回复"好"是纯确认词…应沉默收尾」
+    // 当正文投递，二审只认括号形态放行。按发牌纪律 observe 入场先量化精确率，累计判例再议升档。
+    action: GUARDRAIL_ACTION.OBSERVE,
+    priority: GUARDRAIL_PRIORITY.P1,
+    description: '整条回复以第三人称谈论候选人/复述沉默场景且没有任何第二人称，疑似内心独白外发。',
+    riskGoal: '量化拆封/修复产物中无括号旁白的真阳性率，为升档 repair 提供判例。',
+    exogenousSignal:
+      '封闭自指词形（候选人回复/本轮无新诉求/应沉默/符合…场景/confirmation_closure）+ 整条无「你/您」。',
+    residualRisk: '只落档不拦截；带第二人称的混排旁白与不在词形内的说法不判。',
+    verification: V,
+  },
+  {
     id: 'identity_misregistration_coaching',
     source: 'agent/guardrail/output/rules/identity-fraud-coaching.rule.ts',
     entrypoint: 'detectIdentityMisregistrationCoaching',
