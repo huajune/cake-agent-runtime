@@ -397,7 +397,8 @@ describe('ReengagementAgent', () => {
           expectedInterviewAt: Date.UTC(2026, 5, 24, 6, 0, 0),
         }),
         state: baseState({ terminal: 'booked' }),
-        bookingContext: liveBookingContext(),
+        // 线下面试：时间口径（聊天不一致则不发）只对到店面试教学，见下方 AI 面试豁免用例。
+        bookingContext: liveBookingContext({ interviewType: '线下面试' }),
       });
 
       const call = llm.generateStructured.mock.calls[0][0];
@@ -428,6 +429,16 @@ describe('ReengagementAgent', () => {
       expect(system).toContain('得知岗位要求或条件后表示无法接受');
       expect(system).toContain('邀请进群、改推其他岗位');
       expect(system).toContain('招募经理为本次面试拉群');
+      // 积压 9glgjegv（2026-10-12）：Agent 因群收口说「群里看新岗位」被当成候选人放弃、提醒被跳过。
+      // 放弃只认候选人本人明确说不去 / 真人经理明确改推；收口话术不是放弃信号。
+      expect(system).toContain('只认候选人本人的明确表态');
+      expect(system).toContain(
+        '「群里看新岗位」「稍后邀你进群」属于群收口话术，不是候选人放弃信号',
+      );
+      expect(system).toContain('候选人没有明确表态不去的，不得判 candidate_declined_interview');
+      expect(system).not.toContain(
+        '候选人未再重新确认参加本次面试的，同样判 candidate_declined_interview',
+      );
       // badcase chat 6a6093e3（2026-07-24）：经理"那不太合适"婉拒被以"未明确取消+
       // 工单仍有效"为由放行。婉拒口径必须成文，且禁止用这两条理由放行。
       expect(system).toContain('婉拒也算取消');
@@ -1390,7 +1401,7 @@ describe('ReengagementAgent', () => {
           scenario: getScenario(scenarioCode)!,
           jobData: job(scenarioCode, { workOrderId: 555 }),
           state: baseState({ terminal: 'booked' }),
-          bookingContext: liveBookingContext(),
+          bookingContext: liveBookingContext({ interviewType: '线下面试' }),
         });
 
         expect(llm.generateStructured).toHaveBeenCalledTimes(1);
@@ -1425,7 +1436,7 @@ describe('ReengagementAgent', () => {
         scenario: getScenario('interview_reminder')!,
         jobData: job('interview_reminder', { workOrderId: 555 }),
         state: baseState({ terminal: 'booked' }),
-        bookingContext: liveBookingContext(),
+        bookingContext: liveBookingContext({ interviewType: '线下面试' }),
       });
 
       expect(result.outcome.kind).toBe('skipped');
@@ -1447,7 +1458,7 @@ describe('ReengagementAgent', () => {
         scenario: getScenario('interview_reminder')!,
         jobData: job('interview_reminder', { workOrderId: 555, touchVariant: 'd2_confirm' }),
         state: baseState({ terminal: 'booked' }),
-        bookingContext: liveBookingContext(),
+        bookingContext: liveBookingContext({ interviewType: '线下面试' }),
       });
 
       expect(result.outcome.kind).toBe('skipped');
@@ -1478,7 +1489,7 @@ describe('ReengagementAgent', () => {
         scenario: getScenario('interview_reminder')!,
         jobData: job('interview_reminder', { workOrderId: 555 }),
         state: baseState({ terminal: 'booked' }),
-        bookingContext: liveBookingContext(),
+        bookingContext: liveBookingContext({ interviewType: '线下面试' }),
       });
 
       expect(llm.generateStructured).toHaveBeenCalledTimes(2);
@@ -1503,7 +1514,7 @@ describe('ReengagementAgent', () => {
         scenario: getScenario('interview_reminder')!,
         jobData: job('interview_reminder', { workOrderId: 555 }),
         state: baseState({ terminal: 'booked' }),
-        bookingContext: liveBookingContext(),
+        bookingContext: liveBookingContext({ interviewType: '线下面试' }),
       });
 
       expect(llm.generateStructured).toHaveBeenCalledTimes(2);
@@ -1568,6 +1579,141 @@ describe('ReengagementAgent', () => {
       expect(result.outcome.kind).toBe('reply');
       expect(result.outcome.reply?.text).toBe('提醒一下，今天14:00记得按面试通知参加。');
       expect(result.chatInterviewTimeMismatch).toBeUndefined();
+    });
+
+    describe('AI/线上面试豁免（BadCase 复核 [16]：reengagement_touch_records#103127）', () => {
+      // 真人 10-10 说「需要在明天下午三点前完成 AI 面试」，模型把完成截止时间当成聊天约定的面试时间
+      // 2026-10-11 15:00，与工单 10-12 10:00 不一致 → chat_interview_time_mismatch 跳过当天提醒并给运营
+      // 发「请改工单」。AI 面试没有「约定面试时间」这回事，口径与拦侧都要豁免。
+      const aiDeadlineMessages = () => {
+        memoryRecall.recentMessages = [
+          {
+            role: 'assistant',
+            content:
+              '需要在明天下午三点前完成 AI 面试哈，链接我发你。\n[消息发送时间：2026-06-24 09:00 星期三]',
+          },
+          { role: 'user', content: '好的' },
+        ];
+      };
+      const aiMismatchOutput = () =>
+        mismatchOutput({
+          chatAgreedInterviewTime: '2026-06-25 15:00',
+          reason: '招募经理 06-24 说「明天下午三点前完成 AI 面试」，与工单 14:00 不同',
+        });
+      const sendOutput = (message: string) => ({
+        decision: 'send',
+        chatAgreedInterviewTime: '',
+        interviewTimeMismatch: false,
+        blockReason: 'none',
+        message,
+        reason: 'AI 面试「三点前完成」是完成时限，不是面试时间；无停止条件',
+      });
+
+      it.each(['AI面试', '电话面试', '视频面试'] as const)(
+        '%s：prompt 不再教「聊天不一致则不发」，改教「X 点前完成是完成时限不是面试时间」',
+        async (interviewType) => {
+          aiDeadlineMessages();
+          llm.generateStructured.mockResolvedValueOnce({
+            output: sendOutput('提醒一下，今天记得完成面试哈。'),
+            usage: { inputTokens: 10, outputTokens: 8, totalTokens: 18 },
+          });
+
+          const result = await reengagementAgent.compose({
+            sessionRef,
+            scenario: getScenario('interview_reminder')!,
+            jobData: job('interview_reminder', { workOrderId: 555 }),
+            state: baseState({ terminal: 'booked' }),
+            bookingContext: liveBookingContext({ interviewType }),
+          });
+
+          const system = llm.generateStructured.mock.calls[0][0].system as string;
+          expect(system).toContain(`时间口径（本次为${interviewType}，不到店；工单为准）`);
+          expect(system).toContain('是完成时限，不是面试时间');
+          expect(system).toContain('interviewTimeMismatch 必须为 false');
+          expect(system).not.toContain('时间口径（工单为准，聊天不一致则不发）');
+          expect(system).not.toContain('聊天约定了不同时间的按上面的时间口径不发');
+          expect(system).toContain(
+            'AI/线上面试的完成时限或截止时间不是面试时间，不得据此改写钟点或跳过',
+          );
+          expect(result.outcome.kind).toBe('reply');
+        },
+      );
+
+      it('AI 面试 + 模型仍标记时间不一致 → 协议违规纠正重试（告知不适用），重试 send 则照常提醒、不产生「请改工单」证据', async () => {
+        aiDeadlineMessages();
+        llm.generateStructured
+          .mockResolvedValueOnce({
+            output: aiMismatchOutput(),
+            usage: { inputTokens: 10, outputTokens: 8, totalTokens: 18 },
+          })
+          .mockResolvedValueOnce({
+            output: sendOutput('提醒一下，今天记得把 AI 面试完成哈，有问题随时说。'),
+            usage: { inputTokens: 10, outputTokens: 8, totalTokens: 18 },
+          });
+
+        const result = await reengagementAgent.compose({
+          sessionRef,
+          scenario: getScenario('interview_reminder')!,
+          jobData: job('interview_reminder', { workOrderId: 555 }),
+          state: baseState({ terminal: 'booked' }),
+          bookingContext: liveBookingContext({ interviewType: 'AI面试' }),
+        });
+
+        expect(llm.generateStructured).toHaveBeenCalledTimes(2);
+        const retrySystem = llm.generateStructured.mock.calls[1][0].system as string;
+        expect(retrySystem).toContain('interview_time_mismatch_not_applicable');
+        expect(retrySystem).toContain('「X 点前完成」是完成时限不是面试时间');
+        expect(result.outcome.kind).toBe('reply');
+        expect(result.validationReason).toBeUndefined();
+        expect(result.chatInterviewTimeMismatch).toBeUndefined();
+        expect(result.agentRequest).toMatchObject({
+          outputCorrection: { issue: 'interview_time_mismatch_not_applicable' },
+        });
+      });
+
+      it('AI 面试 + 两次都标记不一致 → fail-closed 不发，但确定性兜底不产出 chatInterviewTimeMismatch（不给运营发「请改工单」）', async () => {
+        aiDeadlineMessages();
+        llm.generateStructured
+          .mockResolvedValueOnce({
+            output: aiMismatchOutput(),
+            usage: { inputTokens: 10, outputTokens: 8, totalTokens: 18 },
+          })
+          .mockResolvedValueOnce({
+            output: aiMismatchOutput(),
+            usage: { inputTokens: 10, outputTokens: 8, totalTokens: 18 },
+          });
+
+        const result = await reengagementAgent.compose({
+          sessionRef,
+          scenario: getScenario('post_interview_followup')!,
+          jobData: job('post_interview_followup', { workOrderId: 555 }),
+          state: baseState({ terminal: 'booked' }),
+          bookingContext: liveBookingContext({ interviewType: 'AI面试' }),
+        });
+
+        expect(result.outcome.kind).toBe('skipped');
+        expect(result.validationReason).toBe('reengagement_decision_invalid');
+        expect(result.chatInterviewTimeMismatch).toBeUndefined();
+      });
+
+      it('面试形式未知时维持原判定（不放宽）：标记不一致仍按 chat_interview_time_mismatch 跳过', async () => {
+        llm.generateStructured.mockResolvedValueOnce({
+          output: mismatchOutput(),
+          usage: { inputTokens: 10, outputTokens: 8, totalTokens: 18 },
+        });
+
+        const result = await reengagementAgent.compose({
+          sessionRef,
+          scenario: getScenario('interview_reminder')!,
+          jobData: job('interview_reminder', { workOrderId: 555 }),
+          state: baseState({ terminal: 'booked' }),
+          bookingContext: liveBookingContext({ interviewType: undefined }),
+        });
+
+        expect(result.outcome.kind).toBe('skipped');
+        expect(result.validationReason).toBe('chat_interview_time_mismatch');
+        expect(result.chatInterviewTimeMismatch).toBeDefined();
+      });
     });
   });
 });
