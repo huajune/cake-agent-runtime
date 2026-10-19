@@ -152,6 +152,7 @@ export class GeneratorAgent {
       result = await this.retryTextualToolCall(result, ctx, params);
       result = await this.recoverEmptyTextResult(result, ctx, params);
 
+      result.confirmationClosureEligible = ctx.confirmationClosureEligible === true;
       this.attachTurnEnd(result, ctx, params.messageId, result.text);
 
       return result;
@@ -213,6 +214,7 @@ export class GeneratorAgent {
             stepEndWallclocks,
             toolExecutionTimings: ctx.toolExecutionTimings,
           });
+          result.confirmationClosureEligible = ctx.confirmationClosureEligible === true;
           this.attachTurnEnd(result, ctx, params.messageId, result.text);
           // stream 没有渠道层 TurnFinalizer；挂上闭包后立即触发，保持 SSE 交互链的收尾
           // 行为（runTurnEnd 幂等，调用方再触发一次是空操作）。

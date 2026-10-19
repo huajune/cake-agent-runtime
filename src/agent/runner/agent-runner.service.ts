@@ -261,7 +261,7 @@ export class AgentRunnerService {
     const firstStep = this.toGuardrailStep('first', decision);
 
     // 首版无可采用正文：元叙述保留有意静默；纯内部产物直接转人工，不进入修复。
-    const silenceReason = this.resolveDirectSilenceReason(decision, firstText);
+    const silenceReason = this.resolveDirectSilenceReason(decision, firstText, first);
     if (silenceReason) {
       const resolution: OutputResolution = {
         outcome: INTENTIONAL_SILENCE_REASON_CODES.has(silenceReason) ? 'skipped' : 'handoff',
@@ -845,7 +845,7 @@ export class AgentRunnerService {
    *   理由会被拆封当正文投递（2026-09-16 生产 trace …_1789531804368）。
    * - `empty_reply_envelope_silenced`：模型自造结构化信封、回复槽位（agent_reply 等）全空、
    *   其余键只是意图/thought 笔记（2026-10-13 trace …_1791860105040，旧链路把 thought 拆封投递）；
-   *   同样等效 skip_reply 静默。
+   *   只有准备阶段已通过确认收尾准入且本轮零工具调用时才静默，否则进入受控修复。
    * - `internal_reasoning_artifact_silenced` / `tool_call_artifact_silenced`：整条首版只是
    *   推理独白或工具调用残文；剥离后无正文可供 rewrite 保留，没有事实可依时只能转人工。
    * 混合命中其它规则时都不走捷径，仍按常规 repair 流程保守处理。
@@ -853,6 +853,7 @@ export class AgentRunnerService {
   private resolveDirectSilenceReason(
     decision: OutputGuardDecision,
     firstText: string,
+    first: GeneratorRunResult,
   ): string | null {
     if (decision.decision === 'repair') {
       if (this.isOnlyMetaNarration(decision)) return 'meta_narration_silenced';
@@ -860,7 +861,10 @@ export class AgentRunnerService {
         return 'skip_intent_envelope_silenced';
       }
       if (this.isOnlyInternalOutputLeak(decision) && isEmptyReplySlotEnvelope(firstText)) {
-        return 'empty_reply_envelope_silenced';
+        // 不能让模型自造空槽位绕过首句/问句准入或工具互斥；缺少证据也走修复。
+        return first.confirmationClosureEligible === true && first.toolCalls.length === 0
+          ? 'empty_reply_envelope_silenced'
+          : null;
       }
       if (this.isOnlyInternalOutputLeak(decision) && isInternalReasoningArtifactOnly(firstText)) {
         return 'internal_reasoning_artifact_silenced';

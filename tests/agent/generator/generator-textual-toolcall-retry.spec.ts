@@ -46,9 +46,11 @@ describe('GeneratorAgent 工具调用文本化重生成', () => {
 
   const usage = { inputTokens: 10, outputTokens: 5, totalTokens: 15 };
 
-  const buildService = (generate: jest.Mock) => {
+  const buildService = (generate: jest.Mock, confirmationClosureEligible = false) => {
     const llm = { supportsVisionInput: jest.fn().mockResolvedValue(false), generate };
-    const preparation = { prepare: jest.fn().mockResolvedValue(makeCtx()) };
+    const preparation = {
+      prepare: jest.fn().mockResolvedValue({ ...makeCtx(), confirmationClosureEligible }),
+    };
     const configService = { get: (_key: string, defaultValue?: string) => defaultValue };
     return new GeneratorAgent(
       configService as never,
@@ -92,8 +94,10 @@ describe('GeneratorAgent 工具调用文本化重生成', () => {
         response: { messages: [] },
       });
 
-    const result = await invoke(buildService(generate));
+    const result = await invoke(buildService(generate, true));
 
+    // 重生成合并后仍携带准备阶段的准入证据；工具互斥由 Runner 依据实际调用另行核验。
+    expect(result.confirmationClosureEligible).toBe(true);
     expect(generate).toHaveBeenCalledTimes(2);
     // 重试的 system prompt 末尾追加纠正指令，首版不带
     expect(generate.mock.calls[0][0].instructions).toBe('system prompt');

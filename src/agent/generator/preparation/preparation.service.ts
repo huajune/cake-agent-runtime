@@ -15,6 +15,7 @@ import { TurnDataLoaderService } from './turn-data-loader.service';
 import { resolveTurnContext } from './turn-context-resolver';
 import { ToolRuntimeBuilderService } from './tool-context.builder';
 import { AgentTracerService } from '@observability/agent-tracer.service';
+import { getConfirmationClosureRejection } from '@tools/skip-reply.tool';
 
 /**
  * Working Memory（CoALA 语义）：prepare() 返回的单轮工作台，不是持久化记忆层。
@@ -36,6 +37,8 @@ export interface WorkingMemory {
   ledger: TurnLedger;
   contactName?: string;
   memorySnapshot?: AgentMemorySnapshot;
+  /** 与 skip_reply 使用同一份真实工具上下文；缺失时不得推断可静默。 */
+  confirmationClosureEligible?: boolean;
   /** toolCallId → 工具 execute 的真实执行耗时（毫秒）。 */
   toolExecutionTimings: Map<string, number>;
 }
@@ -162,6 +165,8 @@ export class PreparationService {
         ledger: runtime.ledger,
         contactName: params.contactName,
         memorySnapshot: resolved.memorySnapshot,
+        confirmationClosureEligible:
+          getConfirmationClosureRejection(resolved.toolModel.turnInput) === null,
         toolExecutionTimings: runtime.toolExecutionTimings,
       };
     } catch (error) {

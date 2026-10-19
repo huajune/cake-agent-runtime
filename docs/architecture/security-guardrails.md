@@ -177,8 +177,9 @@ Output guard 可做精确去重并产出 `deterministicReply`，其余只产出�
 Runner 用 `resolution: { outcome: reply | handoff | skipped, reasonCode? }` 收敛，真实首审/二审保持原样。
 仅元叙述旁白的 `meta_narration_silenced`、skip_reply 参数信封的 `skip_intent_envelope_silenced`
 与空回复槽位信封的 `empty_reply_envelope_silenced`
-（前两类表达沉默意图；空回复信封要求回复槽位全空且无调用结构或转人工/告警参数）为 `skipped`，保留已有
-工具意图且不新增介入；纯推理/工具残文直接 `handoff`。JSON 信封拆封只放出候选人正文，含已注册
+（前两类表达沉默意图；空回复信封要求回复槽位全空且无调用结构或转人工/告警参数，并有准备阶段确认收尾准入证据、
+本轮零工具调用）为 `skipped`，不新增介入。空槽位缺少准入证据或本轮已有工具调用时进入有界修复与二审，保留工具结果且不重复提交副作用；
+纯推理/工具残文直接 `handoff`。JSON 信封拆封只放出候选人正文，含已注册
 工具参数键（reason / reasonCode / riskType 等）或点名工具名的信封一律不拆。空修复、悬空承接句等提前分支不伪造二审，并保留既有回退资格。
 
 ### 6.3 最终清洗

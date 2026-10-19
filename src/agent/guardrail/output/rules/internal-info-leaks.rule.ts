@@ -261,7 +261,7 @@ const ENVELOPE_MIN_HAN_CHARS = 6;
 
 /**
  * 信封回复槽位键：模型自造结构化输出时放候选人正文的键名。槽位键存在时正文只能从槽位取；
- * 槽位全空即模型本意是本轮不回复（2026-10-13 trace …_1791860105040 / 复核 [12]：
+ * 槽位全空仍须经回合准入判定才可静默（2026-10-13 trace …_1791860105040 / 复核 [12]：
  * `{"agent_reply":"","candidate_intention":"确认收尾","thought":"候选人回复"好"是纯确认词…应沉默收尾"}`
  * 旧逻辑取「唯一 ≥6 汉字值」= thought 当正文投递）。
  */
@@ -343,8 +343,8 @@ export function tryUnwrapEnvelopeReply(content: string): string | null {
   if (Object.values(record).some(namesRegisteredTool)) return null;
   const entries = Object.entries(record);
   const slotEntries = entries.filter(([key]) => isEnvelopeReplySlotKey(key));
-  // 回复槽位键存在时正文只能来自槽位：槽位全空 = 模型本意是沉默（由 isEmptyReplySlotEnvelope
-  // 收敛），其它键里的长中文是 thought/意图之类内部笔记，绝不能顶上来当正文。
+  // 回复槽位键存在时正文只能来自槽位：槽位全空也不能把 thought/意图之类内部笔记
+  // 顶上来当正文。是否允许静默由 Runner 结合真实回合准入判定。
   if (slotEntries.length > 0 && slotEntries.every(([, value]) => isBlankEnvelopeValue(value))) {
     return null;
   }
@@ -367,8 +367,8 @@ export function tryUnwrapEnvelopeReply(content: string): string | null {
 
 /**
  * 空回复槽位信封：模型自造结构化输出，回复槽位（agent_reply / reply / response / answer / text）
- * 全部为空、其余键只是意图/思考笔记。模型表达的真实意图就是本轮不回复，与 skip_reply 参数信封
- * 同轨：整轮静默（skipped），不进 rewrite（重写只会把 thought 编成一句不该发的话），不新增介入。
+ * 全部为空、其余键只是意图/思考笔记。这里只判断结构，不授予沉默权限；Runner 必须核对
+ * 确认收尾的历史/消息准入和本轮零工具调用，符合才 skipped，否则进入受控修复。
  * 带调用结构或转人工/告警参数键的信封不算，避免把风险处置误收敛为沉默；reason 单独可作内部笔记。
  */
 export function isEmptyReplySlotEnvelope(content: string): boolean {

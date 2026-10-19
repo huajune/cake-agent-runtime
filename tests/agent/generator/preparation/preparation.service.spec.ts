@@ -149,6 +149,55 @@ describe('PreparationService orchestration', () => {
     );
   });
 
+  it.each([
+    { label: 'first acknowledgement', history: [], text: '好', eligible: false },
+    { label: 'first introduction', history: [], text: '我是星空', eligible: false },
+    {
+      label: 'acknowledgement with a prior reply',
+      history: [{ role: 'assistant', content: '有其他问题随时联系我。' }],
+      text: '好',
+      eligible: true,
+    },
+    {
+      label: 'question with a prior reply',
+      history: [{ role: 'assistant', content: '有其他问题随时联系我。' }],
+      text: '在哪里？',
+      eligible: false,
+    },
+  ])(
+    'derives silence eligibility from actual tool input: $label',
+    async ({ history, text, eligible }) => {
+      const harness = createHarness();
+      const result = await harness.service.prepare(
+        { ...params, messages: [...history, { role: 'user', content: text }] },
+        'invoke',
+      );
+      expect(result.confirmationClosureEligible).toBe(eligible);
+    },
+  );
+
+  it('uses loaded WECOM history while retaining the current inbound message for eligibility', async () => {
+    const harness = createHarness();
+    harness.dataLoader.load.mockResolvedValueOnce({
+      ...sourceSnapshot,
+      memory: {
+        ...sourceSnapshot.memory,
+        shortTerm: {
+          ...sourceSnapshot.memory.shortTerm,
+          messageWindow: [
+            { role: 'assistant', content: '有其他问题随时联系我。' },
+            { role: 'user', content: '好' },
+          ],
+        },
+      },
+    });
+    const result = await harness.service.prepare(
+      { ...params, callerKind: CallerKind.WECOM, messages: [{ role: 'user', content: '好' }] },
+      'invoke',
+    );
+    expect(result.confirmationClosureEligible).toBe(true);
+  });
+
   it('lets the resolver own injection-to-security projection and sends only redacted evidence', async () => {
     const harness = createHarness();
     const assessment = {

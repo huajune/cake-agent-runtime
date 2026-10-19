@@ -1235,7 +1235,7 @@ describe('AgentRunnerService.runInboundTurn', () => {
 
   // 2026-10-13 生产（trace …_1791860105040，guardrail_review_records#19522，复核 [12]）：模型自造结构化信封
   // `{"agent_reply":"","candidate_intention":"确认收尾","thought":"候选人回复"好"…应沉默收尾"}`，旧链路
-  // envelope_unwrapped 把 thought 当正文投递。正解：回复槽位全空 = 沉默意图，整轮静默、不进 repair。
+  // envelope_unwrapped 把 thought 当正文投递。确认收尾准入通过且零工具调用才可整轮静默。
   it('empty reply-slot envelope is silenced as intentional skip (thought never unwrapped)', async () => {
     const draft = JSON.stringify({
       agent_reply: '',
@@ -1243,7 +1243,9 @@ describe('AgentRunnerService.runInboundTurn', () => {
       thought: '候选人回复"好"是纯确认词，上轮已完成预约成功回执，本轮无新诉求，应沉默收尾',
       intention_stage: 'interview_scheduling',
     });
-    generator.invoke.mockResolvedValueOnce(makeResult({ text: draft }));
+    generator.invoke.mockResolvedValueOnce(
+      makeResult({ text: draft, confirmationClosureEligible: true }),
+    );
     outputGuard.check.mockResolvedValueOnce({
       decision: 'repair',
       riskLevel: 'high',
@@ -1316,7 +1318,9 @@ describe('AgentRunnerService.runInboundTurn', () => {
   ])(
     'real output guard and runner preserve envelope intent: %j → %s',
     async (envelope, kind, reasonCode) => {
-      generator.invoke.mockResolvedValueOnce(makeResult({ text: JSON.stringify(envelope) }));
+      generator.invoke.mockResolvedValueOnce(
+        makeResult({ text: JSON.stringify(envelope), confirmationClosureEligible: true }),
+      );
       outputGuard.check.mockImplementation((input) => actualOutputGuard.check(input));
 
       const outcome = await service.runInboundTurn({ sessionRef, input: { text: '好' } });
@@ -1332,6 +1336,72 @@ describe('AgentRunnerService.runInboundTurn', () => {
       }
     },
   );
+
+  it.each([
+    ['first turn', false, '我是星空'],
+    ['question after a prior reply', false, '在哪里？'],
+    ['missing eligibility evidence', undefined, '好'],
+  ])('repairs empty reply envelopes for %s without exposing thought', async (_, eligible, text) => {
+    generator.invoke.mockResolvedValueOnce(
+      makeResult({
+        text: JSON.stringify({ reply: '', thought: '本轮无新诉求，应沉默收尾' }),
+        confirmationClosureEligible: eligible,
+      }),
+    );
+    const reply = '您好，你想在哪个城市找工作？';
+    replyRepairAgent.repair.mockResolvedValueOnce(reply);
+    outputGuard.check.mockImplementation((input) => actualOutputGuard.check(input));
+
+    const outcome = await service.runInboundTurn({ sessionRef, input: { text } });
+
+    expect(outcome.kind).toBe('reply');
+    expect(outcome.reply?.text).toBe(reply);
+    expect(replyRepairAgent.repair).toHaveBeenCalledTimes(1);
+    expect(outputGuard.check).toHaveBeenCalledTimes(2);
+    expect(generator.invoke).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    {
+      toolName: 'duliday_interview_booking',
+      args: { jobId: 123 },
+      result: { success: true, workOrderId: 'wo-1' },
+    },
+    { toolName: 'duliday_job_list', args: {}, result: { success: true } },
+    {
+      toolName: 'skip_reply',
+      args: { scene: 'confirmation_closure' },
+      result: { skipped: false, errorType: 'skip_reply.confirmation_no_prior_turn' },
+    },
+  ])('does not let an empty reply envelope bypass tool exclusivity: $toolName', async (call) => {
+    generator.invoke.mockResolvedValueOnce(
+      makeResult({
+        text: JSON.stringify({ reply: '', thought: '本轮无新诉求，应沉默收尾' }),
+        confirmationClosureEligible: true,
+        toolCalls: [call],
+      }),
+    );
+    const reply =
+      call.toolName === 'duliday_interview_booking'
+        ? '已帮你约好面试，有其他问题可以直接告诉我。'
+        : '您好，你想在哪个城市找工作？';
+    replyRepairAgent.repair.mockResolvedValueOnce(reply);
+    outputGuard.check.mockImplementation((input) => actualOutputGuard.check(input));
+
+    const outcome = await service.runInboundTurn({ sessionRef, input: { text: '好' } });
+
+    expect(outcome.kind).toBe('reply');
+    expect(outcome.reply?.text).toBe(reply);
+    expect(outcome.toolCalls).toEqual([call]);
+    expect(replyRepairAgent.repair).toHaveBeenCalledTimes(1);
+    expect(outputGuard.check).toHaveBeenCalledTimes(2);
+    expect(generator.invoke).toHaveBeenCalledTimes(1);
+    if (call.toolName === 'duliday_interview_booking') {
+      expect(replyRepairAgent.repair.mock.calls[0][0].committedSideEffects).toContain(
+        'duliday_interview_booking',
+      );
+    }
+  });
 
   it('real output guard reviews a filled reply slot again after removing internal notes', async () => {
     const reply = '好的，有问题随时联系我就行';

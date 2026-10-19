@@ -139,6 +139,8 @@ export interface GeneratorInvokeParams {
 
 export interface GeneratorRunResult {
   text: string;
+  /** 准备阶段已核验确认收尾的历史/消息形状；Runner 还须排除本轮工具调用。 */
+  confirmationClosureEligible?: boolean;
   /** 模型思考过程（需启用 AGENT_THINKING_BUDGET_TOKENS） */
   reasoning?: string;
   /** AI SDK generateText 返回的完整响应消息（assistant/tool） */

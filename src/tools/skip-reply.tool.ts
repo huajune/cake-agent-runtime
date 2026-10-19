@@ -81,6 +81,20 @@ function resolveCurrentUserText(turnInput: {
   return trailing.join('\n').trim();
 }
 
+/** 工具和空回复信封共用确认收尾准入；这里只裁决历史与消息形状。 */
+export function getConfirmationClosureRejection(turnInput: {
+  messages: readonly unknown[];
+  currentUserMessage?: string;
+}): string | null {
+  if (!hasAssistantMessage(turnInput.messages)) {
+    return TOOL_ERROR_TYPES.SKIP_REPLY_CONFIRMATION_NO_PRIOR_TURN;
+  }
+  if (!isShortConfirmationMessage(resolveCurrentUserText(turnInput))) {
+    return TOOL_ERROR_TYPES.SKIP_REPLY_CONFIRMATION_NOT_SHORT_ACK;
+  }
+  return null;
+}
+
 const DESCRIPTION = `主动跳过本轮回复（什么都不发）。调用后 runtime 会短路消息发送，但仍记录本轮流水。
 
 ## 合法调用场景（满足任一场景即应调用）
@@ -169,7 +183,8 @@ export function buildSkipReplyTool(): ToolBuilder {
         }
 
         if (scene === 'confirmation_closure') {
-          if (!hasAssistantMessage(context.turnInput.messages)) {
+          const rejection = getConfirmationClosureRejection(context.turnInput);
+          if (rejection === TOOL_ERROR_TYPES.SKIP_REPLY_CONFIRMATION_NO_PRIOR_TURN) {
             logger.warn(
               `skip_reply 拒绝: scene=confirmation_closure 但消息窗口无任何经理侧消息（候选人首句）, chatId=${chatId}, userId=${context.session.userId}, reason=${trimmedReason}`,
             );
@@ -180,8 +195,8 @@ export function buildSkipReplyTool(): ToolBuilder {
               details: { skipped: false, scene, reason: trimmedReason },
             });
           }
-          const currentUserText = resolveCurrentUserText(context.turnInput);
-          if (!isShortConfirmationMessage(currentUserText)) {
+          if (rejection === TOOL_ERROR_TYPES.SKIP_REPLY_CONFIRMATION_NOT_SHORT_ACK) {
+            const currentUserText = resolveCurrentUserText(context.turnInput);
             logger.warn(
               `skip_reply 拒绝: scene=confirmation_closure 但当前消息不是短确认词, chatId=${chatId}, userId=${context.session.userId}, message="${currentUserText.slice(0, 40)}", reason=${trimmedReason}`,
             );
