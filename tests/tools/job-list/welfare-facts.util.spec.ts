@@ -1,4 +1,7 @@
-import { extractWelfareFacts, renderWelfareFactsBanner } from '@tools/job-list/welfare-facts.util';
+import {
+  extractWelfareFacts,
+  renderWelfareFactsBanner,
+} from '@tools/job-list/welfare-facts.util';
 
 describe('extractWelfareFacts', () => {
   it('returns unspecified for null/undefined/empty welfare', () => {
@@ -72,17 +75,6 @@ describe('extractWelfareFacts', () => {
       expect(extractWelfareFacts({ haveInsurance: '独立日不购买' }).insurance).toBe('self_or_none');
     });
   });
-
-  it.each(['公司购买', '独立日不购买', undefined])(
-    'does not infer social insurance from commercial insurance %s',
-    (haveInsurance) => {
-      const facts = extractWelfareFacts({ haveInsurance });
-      expect(facts.socialInsuranceAndHousingFund).toBe('unspecified');
-      const banner = renderWelfareFactsBanner(facts);
-      expect(banner).toContain('商业保险（敏感');
-      expect(banner).toContain('社保公积金（敏感，仅候选人主动问时可答）：未明确');
-    },
-  );
 
   describe('traffic / promotion / other welfare', () => {
     it('flags hasTrafficAllowance only when trafficAllowanceSalary numeric', () => {

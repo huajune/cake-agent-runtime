@@ -29,10 +29,8 @@ export interface WelfareFacts {
   meals: WelfareKind;
   /** 住宿：公司提供宿舍 / 仅给房补 / 员工自理或明确无 / 未明确 */
   accommodation: WelfareKind;
-  /** 商业保险：不得用于推断社保公积金（敏感，仅候选人主动问时可答） */
+  /** 保险：公司购买 / 员工自理 / 明确不购买 / 未明确（敏感，仅候选人主动问时可答） */
   insurance: WelfareKind;
-  /** 内部事实槽位；上游尚未提供可核验的社保公积金福利字段。 */
-  socialInsuranceAndHousingFund: 'unspecified';
   /** 交通补贴：是否存在 trafficAllowanceSalary */
   hasTrafficAllowance: boolean;
   /** 是否有晋升福利说明 */
@@ -45,7 +43,6 @@ const EMPTY_WELFARE_FACTS: WelfareFacts = {
   meals: 'unspecified',
   accommodation: 'unspecified',
   insurance: 'unspecified',
-  socialInsuranceAndHousingFund: 'unspecified',
   hasTrafficAllowance: false,
   hasPromotionWelfare: false,
   otherWelfareItems: [],
@@ -169,9 +166,6 @@ export function extractWelfareFacts(welfare: unknown): WelfareFacts {
     accommodation: classifyWelfareValue(w.accommodation, accommodationAllowance, missingKind),
     // 保险是敏感字段：未配置时不得替公司断言"无保险"，保持未明确。
     insurance: classifyWelfareValue(w.haveInsurance, false),
-    // 当前 ai/api/job/list 未提供独立社保公积金字段；不得猜测键名，也不得用
-    // haveInsurance 或招聘准入 socialSecurityList 推断公司缴纳情况。
-    socialInsuranceAndHousingFund: 'unspecified',
     hasTrafficAllowance: trafficAllowance,
     hasPromotionWelfare:
       typeof w.promotionWelfare === 'string' && w.promotionWelfare.trim().length > 0,
@@ -223,10 +217,7 @@ export function renderWelfareFactsBanner(facts: WelfareFacts): string {
   );
   lines.push(`> - 员工餐：${KIND_LABEL[facts.meals]}`);
   lines.push(`> - 住宿：${KIND_LABEL[facts.accommodation]}`);
-  lines.push(`> - 商业保险（敏感，仅候选人主动问时可答）：${INSURANCE_LABEL[facts.insurance]}`);
-  lines.push(
-    `> - 社保公积金（敏感，仅候选人主动问时可答）：${INSURANCE_LABEL[facts.socialInsuranceAndHousingFund]}`,
-  );
+  lines.push(`> - 保险（敏感，仅候选人主动问时可答）：${INSURANCE_LABEL[facts.insurance]}`);
   lines.push(`> - 交通补贴：${facts.hasTrafficAllowance ? '💵 有' : '❓ 未明确'}`);
   if (facts.hasPromotionWelfare) {
     lines.push('> - 晋升福利：✅ 有说明');

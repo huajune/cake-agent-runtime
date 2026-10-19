@@ -582,17 +582,18 @@ function renderSalarySection(salaryInput: unknown): string {
 // ==================== 模块 3：福利信息 ====================
 
 function renderWelfareSection(welfareInput: unknown): string {
-  const welfare = asRecord(welfareInput) ?? {};
+  const welfare = asRecord(welfareInput);
+  if (!welfare) return '';
   const lines: string[] = [];
 
-  const insuranceText =
-    typeof welfare.haveInsurance === 'string'
-      ? cleanSingleLineText(welfare.haveInsurance) || '未明确'
-      : '未明确';
-  lines.push(
-    `- **商业保险（敏感，仅候选人主动问时可答；主动推荐/福利介绍严禁提）**: ${insuranceText}`,
-    '- **社保公积金（敏感，仅候选人主动问时可答）**: 未明确',
-  );
+  if (hasValue(welfare.haveInsurance)) {
+    const insuranceText = cleanSingleLineText(String(welfare.haveInsurance));
+    if (insuranceText) {
+      lines.push(
+        `- **保险（敏感，仅候选人主动问时可答；主动推荐/福利介绍严禁提）**: ${insuranceText}`,
+      );
+    }
+  }
 
   if (hasValue(welfare.accommodation)) {
     let text = String(welfare.accommodation).trim();

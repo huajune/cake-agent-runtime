@@ -5,7 +5,6 @@ import {
 } from '@tools/job-list/render.util';
 import { JobPolicyAnalysis } from '@tools/job-list/job-policy-parser';
 import { Logger } from '@nestjs/common';
-import type { JobDetail } from '@sponge/sponge.types';
 
 describe('job-list render util', () => {
   const minimalFlags: ProgressiveDisclosureFlags = {
@@ -16,29 +15,6 @@ describe('job-list render util', () => {
     includeWorkTime: false,
     includeInterviewProcess: false,
   };
-
-  it.each([null, {}, { haveInsurance: '独立日不购买' }])(
-    'keeps social-insurance welfare separate from commercial insurance and eligibility: %j',
-    (welfare) => {
-      const job: JobDetail = makeJob(527946);
-      job.welfare = welfare;
-      job.hiringRequirement = {
-        marriageBearingAndSocialSecurity: { socialSecurityList: '本人缴纳本地社保' },
-      };
-      const markdown = formatJobsToMarkdown([job], 1, 1, 10, {
-        includeBasicInfo: true,
-        includeWelfare: true,
-        includeHiringRequirement: true,
-        includeJobSalary: false,
-        includeWorkTime: false,
-        includeInterviewProcess: false,
-      });
-      expect(markdown).toContain('商业保险（敏感');
-      expect(markdown).toContain('社保公积金（敏感，仅候选人主动问时可答）**: 未明确');
-      expect(markdown).toContain('**社保**: 本人缴纳本地社保');
-      expect(markdown).not.toContain('社保公积金（敏感，仅候选人主动问时可答）**: 独立日不购买');
-    },
-  );
 
   it('renders minimal markdown with one-line jobs and pagination hint', () => {
     const markdown = formatJobsToMarkdown([makeJob(1)], 3, 1, 1, minimalFlags);
@@ -152,7 +128,7 @@ describe('job-list render util', () => {
 
     expect(markdown).toContain('保险/社保严禁主动提及');
     expect(markdown).toContain(
-      '- **商业保险（敏感，仅候选人主动问时可答；主动推荐/福利介绍严禁提）**: 公司购买',
+      '- **保险（敏感，仅候选人主动问时可答；主动推荐/福利介绍严禁提）**: 公司购买',
     );
     expect(markdown).toContain('- **餐饮**: 包吃');
     expect(markdown).not.toContain('- **保险**: 公司购买');

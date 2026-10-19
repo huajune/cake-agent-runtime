@@ -358,7 +358,7 @@ DB 内嵌话术通过精确匹配旧值的配置迁移清理，避免覆盖运�
   - **教侧配对**：`tattoo_self_report_soft_decline`（final-check turn 规则，候选人自陈有纹身时注入婉拒话术）。
   - **居所状态**：DB 红线 R11 已删，本条是唯一 prompt 居所。
 
-- `T9` — 不主动提商业保险或社保公积金；商业保险（`haveInsurance`）、公司社保公积金福利、候选人社保准入三者分开。社保只按独立福利事实回答，缺失或未明确时当轮 `request_handoff(salary_admin_inquiry)`。来源：2026-10-19 BadCase [10]；长期有效。2026-10-19 实查岗位 527946 的 `ai/api/job/list` 未返回独立社保公积金键，工具速览与明细保守标未明确，待上游字段契约确认后接入，不猜测键名。
+- `T9` — 不主动提保险或社保；`haveInsurance` 与社保准入是两套概念。
   - **来源/加入**：2026-08-06 运营口径。
   - **拦侧配对**：`proactive_insurance_policy_mention`（observe 哨兵，2026-08-26 恢复）。
 
