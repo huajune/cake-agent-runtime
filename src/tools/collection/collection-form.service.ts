@@ -197,6 +197,28 @@ export class CollectionFormService {
   }
 
   /**
+   * 只读窥视主候选人表单（不建表、不同步契约、不改任何状态）。
+   *
+   * 给生成器的空响应恢复闸用：候选人刚对待提交资料说"好的"、模型两次零产出时，要知道上一轮
+   * precheck 是否已把表单推到"待确认复述 / 可提交"节点。读取顺序与 `loadOrCreate` 的普通 precheck
+   * 一致：primary locator → current locator → session 默认表；旧快照的 current 被追加候选人占用且
+   * 没有 primary locator 时不沿它读。读不到或读失败一律 `null`，调用方按"无此状态"处理。
+   */
+  async peekPrimary(scope: CollectionFormScope): Promise<BookingCollectionForm | null> {
+    const [currentRef, primaryRef] = await Promise.all([
+      this.store.readCurrentCandidateRef(scope),
+      this.store.readPrimaryCandidateRef(scope),
+    ]);
+    const defaultRef = primaryRef ?? currentRef;
+    let existing = defaultRef
+      ? await this.store.read({ ...scope, candidateRef: defaultRef })
+      : null;
+    if (!primaryRef && existing?.candidateScope === 'additional') existing = null;
+    existing ??= await this.store.read({ ...scope, candidateRef: SESSION_CANDIDATE_REF });
+    return existing;
+  }
+
+  /**
    * query 路径更新契约快照；首次 validate 也用它原子建立快照后校验。
    *
    * 同 labelId 的定义发生变化时也要重开该槽，避免把旧选项下的答案带进新契约；

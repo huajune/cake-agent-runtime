@@ -237,6 +237,21 @@ export class AgentRunnerService {
     // 反引号，破坏 internal_output_leak 的围栏检测。投递文本另由 turn-outcome 统一清洗。
     let firstText = OutboundReplySanitizer.stripTimeMarkers((first.text ?? '').trim());
     const firstSkipped = (first.toolCalls ?? []).some(isShortCircuitedToolCall);
+    // 生成器空响应恢复在"候选人已确认待提交资料"节点主动放弃补文本：空正文不是静默，而是转人工
+    // （trace batch_6accb41bce406a6aee72e009_1791805375446，恢复补出"这就帮你提交，约的是周三下午两点"）。
+    const recoveryHandoff = first.recoveryDisposition;
+    if (!firstText && !firstSkipped && recoveryHandoff?.outcome === 'handoff') {
+      this.logger.warn(
+        `[invokeReviewed] 空响应恢复闸要求转人工: reason=${recoveryHandoff.reasonCode}, ` +
+          `precheckNextAction=${recoveryHandoff.precheckNextAction}, traceId=${ctx.traceId ?? '-'}`,
+      );
+      return this.finalizeReviewed(
+        first,
+        PASS_DECISION,
+        { outcome: 'handoff', source: 'output_guardrail', reasonCode: recoveryHandoff.reasonCode },
+        false,
+      );
+    }
     if (!firstText || firstSkipped) {
       return this.finalizeReviewed(first, PASS_DECISION, { outcome: 'skipped' }, false);
     }

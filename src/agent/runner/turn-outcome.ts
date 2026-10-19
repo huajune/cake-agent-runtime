@@ -209,15 +209,25 @@ export function classifyReviewedOutcome(
     // 多为真人经理已在沟通（用户裁定：真人插话不自动暂停托管），且候选人下一轮
     // 的新诉求仍应由 Agent 正常接管。守卫档案照常落库，不丢观测。
     const intentionalSilence = result.resolution.outcome === 'skipped';
+    const recoveryDisposition =
+      !ruleBlocked && result.recoveryDisposition?.outcome === 'handoff'
+        ? result.recoveryDisposition
+        : undefined;
     const guardHandoff = intentionalSilence
       ? undefined
-      : buildOutputGuardHandoffSideEffect({
-          sessionRef,
-          turnId,
-          ruleBlocked,
-          reasonCode: result.resolution.reasonCode ?? ruleIds.join(','),
-          replyPreview: text,
-        });
+      : recoveryDisposition
+        ? buildEmptyRecoveryHandoffSideEffect({
+            sessionRef,
+            turnId,
+            disposition: recoveryDisposition,
+          })
+        : buildOutputGuardHandoffSideEffect({
+            sessionRef,
+            turnId,
+            ruleBlocked,
+            reasonCode: result.resolution.reasonCode ?? ruleIds.join(','),
+            replyPreview: text,
+          });
     return {
       kind: intentionalSilence ? 'skipped' : 'handoff',
       toolCalls,
@@ -465,6 +475,34 @@ function buildOutputGuardHandoffSideEffect(params: {
     reason: `${reason}；replyPreview="${params.replyPreview.slice(0, 400)}"`,
     actionAdvice:
       '本轮回复被出站守卫拦截、未发送给候选人。人工核对候选人最近消息与被拦截回复，必要时人工接管回复。',
+    idempotencyKey: buildHandoffIdempotencyKey({
+      chatId: params.sessionRef.sessionId,
+      turnId: params.turnId,
+      scope: 'output_guard',
+    }),
+    recordHandoff: true,
+  };
+}
+
+/**
+ * 生成器空响应恢复闸的转人工副作用：候选人已确认待提交资料、模型两次零产出。
+ * 不是守卫规则命中，卡片标题与建议动作按"报名卡在提交前"写；码用 system_blocked（系统卡点，T6）。
+ */
+function buildEmptyRecoveryHandoffSideEffect(params: {
+  sessionRef: SessionRef;
+  turnId: string;
+  disposition: NonNullable<GeneratorRunResult['recoveryDisposition']>;
+}): GeneralHandoffSideEffectIntent & { idempotencyKey: string } {
+  return {
+    kind: 'general_handoff',
+    source: 'output_guardrail',
+    alertLabel: '候选人已确认待提交，Agent 未生成回复',
+    reasonCode: 'system_blocked',
+    reason: params.disposition.reason,
+    actionAdvice:
+      '候选人已对报名资料/面试时间表示确认，但报名尚未提交、本轮也没有回复发出。' +
+      '请人工核对收资表单后手动完成报名并答复候选人；在报名真正提交前不要让候选人按任何面试时间到店。',
+    jobId: params.disposition.jobId ?? undefined,
     idempotencyKey: buildHandoffIdempotencyKey({
       chatId: params.sessionRef.sessionId,
       turnId: params.turnId,

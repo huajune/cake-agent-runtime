@@ -6,13 +6,16 @@
  */
 
 import { toErrorMessage } from '@infra/utils/error.util';
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { stepCountIs, type generateText } from 'ai';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
 import { ModelRole } from '@/llm/llm.types';
 import { MemoryService } from '@memory/memory.service';
 import { containsSimulatedToolExchange } from '@agent/guardrail/output/rules/invalid-model-output.rule';
+import { isCollectionAuthorized, verdictOf } from '@resolution/collection';
+import { isAffirmativeAnswer, normalizeShortAnswer } from '@resolution/signal/dialogue';
+import { CollectionFormService } from '@tools/collection/collection-form.service';
 import { PreparationService, type WorkingMemory } from './preparation/preparation.service';
 import type { AgentError } from '@shared-types/agent-error.types';
 import type { TurnLedger } from '@shared-types/turn.types';
@@ -61,6 +64,29 @@ const EMPTY_RESPONSE_RETRY_NOTICE =
   '严禁在工具未执行的情况下报出岗位薪资/距离/班次或宣称动作已完成。';
 
 /**
+ * 空响应恢复闸的"确认词"口径：候选人整句就是一个肯定表态。
+ *
+ * 复用 `@resolution/signal/dialogue` 的肯定短答词表（全库唯一居所，不另立副本），只在它之外
+ * 剥掉口语尾缀（"没问题的 / 好的呀 / 行啦"）并补几个在 recap 确认语境下无歧义的短答。
+ * 本函数只服务恢复闸：命中后的结果是转人工而不是入账任何事实，误判代价是一次人工接手，
+ * 因此允许比字段作证的词表略宽；不得被拿去给收资字段作证。
+ */
+const RECOVERY_CONFIRMATION_PARTICLES_RE = /(?:的|啦|呀|哈|了|呢|吧|哦|噢|嘞|呗|咯|哒)+$/u;
+const RECOVERY_CONFIRMATION_EXTRA_RE = /^(?:可以|行|好|好嘞|好哒|ok|okay|嗯好|好好|没问题)$/iu;
+
+export function isRecoveryConfirmationReply(text: string): boolean {
+  const normalized = normalizeShortAnswer(text).replace(RECOVERY_CONFIRMATION_PARTICLES_RE, '');
+  if (!normalized) return false;
+  return isAffirmativeAnswer(normalized) || RECOVERY_CONFIRMATION_EXTRA_RE.test(normalized);
+}
+
+/** precheck 停在这两个节点时，候选人的下一句确认就该触发 booking 或转人工，不存在"补一句话"的出口。 */
+const PENDING_SUBMISSION_PRECHECK_ACTIONS: ReadonlySet<string> = new Set([
+  'confirm_collection',
+  'ready_to_book',
+]);
+
+/**
  * stopWhen 条件：当任意工具的 toolResult 标记 `shortCircuited: true` 时结束本轮 loop。
  *
  * ⚠️ AI SDK 的 toolResult 取值用 `.output` 而非 `.result`（与 buildRunResult 中的取法一致）。
@@ -77,6 +103,7 @@ const shortCircuitByAnyToolResult = ({
 /** prepareStep 函数类型（沿用 ai SDK，本地不必锁死 TOOLS 泛型）。 */
 type PrepareStepFn = NonNullable<Parameters<typeof generateText>[0]['prepareStep']>;
 import type {
+  EmptyTextRecoveryDisposition,
   GeneratorThinkingConfig,
   GeneratorInvokeParams,
   GeneratorRunResult,
@@ -120,6 +147,8 @@ export class GeneratorAgent {
     private readonly preparation: PreparationService,
     private readonly memoryService: MemoryService,
     private readonly llm: LlmExecutorService,
+    /** 空响应恢复闸只读窥视收资表单；缺省（debug/测试装配）时闸只看本轮 precheck 回执。 */
+    @Optional() private readonly collectionForms?: CollectionFormService,
   ) {
     this.thinkingBudgetTokens = parseInt(
       this.configService.get('AGENT_THINKING_BUDGET_TOKENS', '0'),
@@ -760,6 +789,18 @@ export class GeneratorAgent {
     if (result.text.trim().length > 0) return result;
     if (this.didShortCircuit(result)) return result;
 
+    // 待提交节点的确定性闸：候选人刚确认报名资料/时间、模型两次零产出，无工具恢复补出来的只能是
+    // "这就帮你提交 / 约的是周三下午两点"这类空头承诺——候选人据此真去了门店
+    // （trace batch_6accb41bce406a6aee72e009_1791805375446）。这里不补文本，交 Runner 转人工。
+    const pendingSubmission = await this.detectPendingSubmissionConfirmation(result, ctx);
+    if (pendingSubmission) {
+      this.logger.warn(
+        `空文本恢复遇待提交确认节点，不补文本改转人工: sessionId=${ctx.sessionId}, ` +
+          `precheckNextAction=${pendingSubmission.precheckNextAction}, jobId=${pendingSubmission.jobId ?? '-'}`,
+      );
+      return { ...result, recoveryDisposition: pendingSubmission };
+    }
+
     this.logger.warn(
       `Agent 返回空文本，尝试无工具恢复: sessionId=${ctx.sessionId}, steps=${result.steps}`,
     );
@@ -845,6 +886,100 @@ export class GeneratorAgent {
     return result.toolCalls.some((call) => isShortCircuitedToolCall(call));
   }
 
+  /**
+   * 候选人本轮是否在对"待提交"的收资表单说确认词。
+   *
+   * 两路判据取其一：本轮 precheck 回执停在 confirm_collection / ready_to_book；或本轮没调 precheck 时，
+   * 焦点岗位的持久化表单已 ready 且仍待确认复述（confirm_collection）或已授权并选定时段（ready_to_book）。
+   * 表单只读窥视，读失败按"无此状态"处理——闸关掉只是退回原有无工具恢复，不改变其它行为。
+   */
+  private async detectPendingSubmissionConfirmation(
+    result: GeneratorRunResult,
+    ctx: WorkingMemory,
+  ): Promise<EmptyTextRecoveryDisposition | null> {
+    const lastUserText = this.lastUserMessageText(ctx.normalizedMessages);
+    if (!lastUserText || !isRecoveryConfirmationReply(lastUserText)) return null;
+
+    const turnPrecheck = this.readLatestPrecheckState(result.toolCalls);
+    const pending = turnPrecheck ?? (await this.readPersistedCollectionState(ctx));
+    if (!pending) return null;
+
+    const nodeText =
+      pending.nextAction === 'confirm_collection'
+        ? '待候选人确认报名信息复述'
+        : '资料已授权、可提交报名';
+    return {
+      outcome: 'handoff',
+      reasonCode: 'empty_recovery_pending_submission',
+      precheckNextAction: pending.nextAction,
+      jobId: pending.jobId,
+      reason:
+        `候选人对报名资料/面试时间回复了确认（"${lastUserText.slice(0, 40)}"），` +
+        `收资表单停在「${nodeText}」节点（precheck nextAction=${pending.nextAction}` +
+        `${pending.jobId ? `，岗位 ${pending.jobId}` : ''}），但 Agent 连续两次没有生成回复，也没有提交报名。` +
+        '系统已停止自动补话，避免给出"这就帮你提交 / 约的是 X"类未兑现承诺。',
+    };
+  }
+
+  /** 本轮最后一次成功 precheck 回执；停在待提交节点才返回，其它节点明确返回 null 让闸不触发。 */
+  private readLatestPrecheckState(
+    toolCalls: readonly AgentToolCall[],
+  ): { nextAction: EmptyTextRecoveryDisposition['precheckNextAction']; jobId?: number } | null {
+    for (let index = toolCalls.length - 1; index >= 0; index -= 1) {
+      const call = toolCalls[index];
+      if (call.toolName !== 'duliday_interview_precheck') continue;
+      const record =
+        call.result && typeof call.result === 'object' && !Array.isArray(call.result)
+          ? (call.result as Record<string, unknown>)
+          : null;
+      if (!record || record.success !== true) return null;
+      const nextAction = typeof record.nextAction === 'string' ? record.nextAction : '';
+      if (!PENDING_SUBMISSION_PRECHECK_ACTIONS.has(nextAction)) return null;
+      const args = call.args as { jobId?: unknown } | undefined;
+      return {
+        nextAction: nextAction as EmptyTextRecoveryDisposition['precheckNextAction'],
+        jobId: typeof args?.jobId === 'number' ? args.jobId : undefined,
+      };
+    }
+    return null;
+  }
+
+  /** 焦点岗位的持久化收资表单是否停在待提交节点（上一轮 precheck 的结果）。 */
+  private async readPersistedCollectionState(ctx: WorkingMemory): Promise<{
+    nextAction: EmptyTextRecoveryDisposition['precheckNextAction'];
+    jobId: number;
+  } | null> {
+    const jobId = ctx.memorySnapshot?.currentFocusJob?.jobId;
+    const botUserId = ctx.botUserId?.trim();
+    if (!this.collectionForms || !jobId || !botUserId) return null;
+    try {
+      const form = await this.collectionForms.peekPrimary({
+        corpId: ctx.corpId,
+        userId: ctx.userId,
+        botUserId,
+        jobId,
+      });
+      if (!form || form.candidateScope === 'additional' || verdictOf(form) !== 'ready') return null;
+      if (!isCollectionAuthorized(form)) return { nextAction: 'confirm_collection', jobId };
+      if (form.scheduleDraft?.selectedInterviewTime) return { nextAction: 'ready_to_book', jobId };
+      return null;
+    } catch (error) {
+      this.logger.warn(
+        `空响应恢复闸读取收资表单失败，按无待提交状态处理: sessionId=${ctx.sessionId}; ${toErrorMessage(error)}`,
+      );
+      return null;
+    }
+  }
+
+  private lastUserMessageText(messages: WorkingMemory['normalizedMessages']): string {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index];
+      if (message.role !== 'user') continue;
+      return this.stringifyMessageContent(message.content).trim();
+    }
+    return '';
+  }
+
   private buildEmptyTextRecoveryPrompt(result: GeneratorRunResult, ctx: WorkingMemory): string {
     const ranTools = result.toolCalls.length > 0;
     const transcript = result.agentSteps.map((step) => ({
@@ -871,6 +1006,9 @@ export class GeneratorAgent {
       '- 只输出回复正文，不要解释内部过程。',
       '- 如果工具结果显示 requestedDate.status=unavailable，必须明确说明不可约原因，并给最近可选替代时间。',
       '- 不要编造工具结果，不要承诺已经预约成功。',
+      '- 除非工具调用摘要里有 duliday_interview_booking success=true 的结果，否则禁止写"这就帮你提交/马上帮你报名/' +
+        '已经约好/已约/约的是 X/面试时间是 X/到时候去门店"等暗示报名已办好或即将办好的话，也不得告诉候选人任何面试时间、' +
+        '地点或提交进度；候选人刚确认资料的，只能如实说明还需要再核对一次、稍后答复。',
       ...(ranTools
         ? []
         : [

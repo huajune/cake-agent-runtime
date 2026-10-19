@@ -1,6 +1,7 @@
-import { GeneratorAgent } from '@agent/generator/generator.agent';
+import { GeneratorAgent, isRecoveryConfirmationReply } from '@agent/generator/generator.agent';
 import { createTurnLedger } from '@agent/generator/preparation/turn-ledger';
 import { CallerKind } from '@/enums/agent.enum';
+import { createForm, type BookingCollectionForm } from '@resolution/collection';
 
 /**
  * 空响应处理链：零工具空响应先带工具重试一次，仍空才落到无工具恢复。
@@ -10,7 +11,7 @@ import { CallerKind } from '@/enums/agent.enum';
  * 同样首步为空，恢复只能留一句"我帮你查下"的空头承诺。生产 7 天 198 次恢复里 195 次是这种形态。
  */
 describe('GeneratorAgent 空响应恢复', () => {
-  const makeCtx = () => ({
+  const makeCtx = (over: Record<string, unknown> = {}) => ({
     corpId: 'c1',
     userId: 'u1',
     sessionId: 's1',
@@ -26,6 +27,7 @@ describe('GeneratorAgent 空响应恢复', () => {
     entryStage: undefined,
     ledger: createTurnLedger(),
     toolExecutionTimings: new Map<string, number>(),
+    ...over,
   });
 
   const emptyUsage = { inputTokens: 100, outputTokens: 0, totalTokens: 100 };
@@ -40,22 +42,26 @@ describe('GeneratorAgent 空响应恢复', () => {
     response: { messages: [] },
   });
 
-  const buildService = (generate: jest.Mock) => {
+  const buildService = (
+    generate: jest.Mock,
+    options: { ctx?: Record<string, unknown>; collectionForms?: { peekPrimary: jest.Mock } } = {},
+  ) => {
     const llm = { supportsVisionInput: jest.fn().mockResolvedValue(false), generate };
-    const preparation = { prepare: jest.fn().mockResolvedValue(makeCtx()) };
+    const preparation = { prepare: jest.fn().mockResolvedValue(makeCtx(options.ctx)) };
     const configService = { get: (_key: string, defaultValue?: string) => defaultValue };
     return new GeneratorAgent(
       configService as never,
       preparation as never,
       {} as never,
       llm as never,
+      options.collectionForms as never,
     );
   };
 
-  const invoke = (service: GeneratorAgent) =>
+  const invoke = (service: GeneratorAgent, text = '我想找咖啡店兼职呢') =>
     service.invoke({
       callerKind: CallerKind.WECOM,
-      messages: [{ role: 'user', content: '我想找咖啡店兼职呢' }],
+      messages: [{ role: 'user', content: text }],
       userId: 'u1',
       corpId: 'c1',
       sessionId: 's1',
@@ -120,6 +126,11 @@ describe('GeneratorAgent 空响应恢复', () => {
     expect(recovery.prompt).toContain('没有调用任何工具');
     expect(recovery.prompt).toContain('不得报出任何岗位名称');
     expect(recovery.prompt).not.toContain('工具链已经执行完');
+    // trace batch_6accb41bce406a6aee72e009_1791805375446：恢复补出"我这就帮你提交报名，约的是周三 14 号下午 2 点"
+    expect(recovery.prompt).toContain(
+      '禁止写"这就帮你提交/马上帮你报名/已经约好/已约/约的是 X/面试时间是 X',
+    );
+    expect(recovery.prompt).toContain('不得告诉候选人任何面试时间');
 
     expect(result.text).toBe('想找咖啡店兼职是吧，你平时哪些时间段方便上班呀？');
     expect(result.agentSteps).toHaveLength(3);
@@ -180,5 +191,272 @@ describe('GeneratorAgent 空响应恢复', () => {
     expect(generate).toHaveBeenCalledTimes(3);
     expect(result.text).toBe('你平时主要在哪个区域呀？');
     expect(result.agentSteps).toHaveLength(2);
+  });
+});
+
+/**
+ * 待提交节点的确定性闸（BadCase 复核 [07]，trace batch_6accb41bce406a6aee72e009_1791805375446）：
+ * 上一轮 precheck 返回 confirm_collection，候选人"没问题的"，qwen 生成 / 带工具重试均 0 输出 token，
+ * 无工具恢复补出"我这就帮你提交报名，约的是周三 14 号下午 2 点"——候选人 10-14 真去了门店。
+ * 这个节点上任何补出来的文本都是空头承诺：不补，交 Runner 转人工。
+ */
+describe('GeneratorAgent 空响应恢复 · 待提交确认节点转人工', () => {
+  const CONTRACT = [
+    {
+      labelId: 101,
+      labelTitle: '姓名',
+      fieldType: 'TEXT' as const,
+      required: true,
+      acceptedOptions: [],
+      rejectedOptions: [],
+      systemField: 'name' as const,
+    },
+  ];
+  const emptyUsage = { inputTokens: 100, outputTokens: 0, totalTokens: 100 };
+  const usage = { inputTokens: 10, outputTokens: 5, totalTokens: 15 };
+  const emptyStep = () => ({
+    text: '',
+    reasoningText: undefined,
+    steps: [{ text: '', finishReason: 'stop', usage: emptyUsage }],
+    usage: emptyUsage,
+    response: { messages: [] },
+  });
+  const recoveredText = () => ({
+    text: '好的，我这就帮你提交报名，约的是周三下午 2 点',
+    reasoningText: undefined,
+    usage,
+    response: { messages: [] },
+  });
+
+  /** 外部预填（需 recap）且复述已发出、尚未确认 → precheck 停在 confirm_collection。 */
+  const awaitingRecapForm = (): BookingCollectionForm => {
+    const form = createForm({ jobId: 100, contract: CONTRACT });
+    form.slots[101] = {
+      labelId: 101,
+      state: 'filled',
+      value: { value: '兮兮', producer: 'archive' },
+    } as never;
+    form.lastRecap = { labelIds: [101] };
+    return form;
+  };
+  /** 资料已授权且已选时段 → precheck 停在 ready_to_book。 */
+  const readyToBookForm = (): BookingCollectionForm => {
+    const form = createForm({ jobId: 100, contract: CONTRACT });
+    form.slots[101] = {
+      labelId: 101,
+      state: 'filled',
+      value: { value: '兮兮', producer: 'candidate_quote' },
+    } as never;
+    form.scheduleDraft = {
+      requestedDate: '2026-10-14',
+      selectedInterviewTime: '2026-10-14 14:00:00',
+      sourceText: '周三下午两点',
+    };
+    return form;
+  };
+
+  const ctxFor = (userText: string) => ({
+    botUserId: 'wecom-user-A',
+    normalizedMessages: [
+      {
+        role: 'assistant',
+        content: '帮你核对一下报名信息（服务员）：\n姓名：兮兮\n没问题的话我这就帮你提交',
+      },
+      { role: 'user', content: `${userText}\n[消息发送时间：2026-10-12 19:42:10]` },
+    ],
+    memorySnapshot: { currentFocusJob: { jobId: 100, availableDetailFields: [] } },
+  });
+
+  const makeService = (
+    generate: jest.Mock,
+    userText: string,
+    form: BookingCollectionForm | null,
+  ) => {
+    const collectionForms = { peekPrimary: jest.fn().mockResolvedValue(form) };
+    const llm = { supportsVisionInput: jest.fn().mockResolvedValue(false), generate };
+    const preparation = {
+      prepare: jest.fn().mockResolvedValue({
+        corpId: 'c1',
+        userId: 'u1',
+        sessionId: 's1',
+        botImId: undefined,
+        contactName: undefined,
+        finalPrompt: 'system prompt',
+        tools: { duliday_interview_precheck: {} },
+        maxSteps: 3,
+        memoryLoadWarning: undefined,
+        entryStage: undefined,
+        ledger: createTurnLedger(),
+        toolExecutionTimings: new Map<string, number>(),
+        ...ctxFor(userText),
+      }),
+    };
+    const configService = { get: (_key: string, defaultValue?: string) => defaultValue };
+    const service = new GeneratorAgent(
+      configService as never,
+      preparation as never,
+      {} as never,
+      llm as never,
+      collectionForms as never,
+    );
+    return { service, collectionForms };
+  };
+
+  const invoke = (service: GeneratorAgent, text: string) =>
+    service.invoke({
+      callerKind: CallerKind.WECOM,
+      messages: [{ role: 'user', content: text }],
+      userId: 'u1',
+      corpId: 'c1',
+      sessionId: 's1',
+    });
+
+  it('上一轮 confirm_collection + 本轮"没问题的" + 两次零产出 → 不进无工具恢复，留空正文并标记转人工', async () => {
+    const generate = jest
+      .fn()
+      .mockResolvedValueOnce(emptyStep())
+      .mockResolvedValueOnce(emptyStep())
+      .mockResolvedValueOnce(recoveredText());
+    const { service, collectionForms } = makeService(generate, '没问题的', awaitingRecapForm());
+
+    const result = await invoke(service, '没问题的');
+
+    // 生成 + 带工具重试两次，第三次（无工具恢复）不再发生
+    expect(generate).toHaveBeenCalledTimes(2);
+    expect(generate.mock.calls[1][0].purpose).toBe('empty_text_retry');
+    expect(result.text).toBe('');
+    expect(result.recoveryDisposition).toEqual(
+      expect.objectContaining({
+        outcome: 'handoff',
+        reasonCode: 'empty_recovery_pending_submission',
+        precheckNextAction: 'confirm_collection',
+        jobId: 100,
+      }),
+    );
+    expect(result.recoveryDisposition?.reason).toContain('没问题的');
+    expect(collectionForms.peekPrimary).toHaveBeenCalledWith({
+      corpId: 'c1',
+      userId: 'u1',
+      botUserId: 'wecom-user-A',
+      jobId: 100,
+    });
+  });
+
+  it('上一轮 ready_to_book（已授权且已选时段）+ 本轮"好的" → 同样转人工', async () => {
+    const generate = jest
+      .fn()
+      .mockResolvedValueOnce(emptyStep())
+      .mockResolvedValueOnce(emptyStep())
+      .mockResolvedValueOnce(recoveredText());
+    const { service } = makeService(generate, '好的', readyToBookForm());
+
+    const result = await invoke(service, '好的');
+
+    expect(generate).toHaveBeenCalledTimes(2);
+    expect(result.text).toBe('');
+    expect(result.recoveryDisposition?.precheckNextAction).toBe('ready_to_book');
+  });
+
+  it('本轮 precheck 回执已停在 confirm_collection 时不读表单，直接按本轮回执判定', async () => {
+    const generate = jest
+      .fn()
+      .mockResolvedValueOnce({
+        text: '',
+        reasoningText: undefined,
+        steps: [
+          {
+            text: '',
+            finishReason: 'tool-calls',
+            toolCalls: [
+              {
+                toolCallId: 't1',
+                toolName: 'duliday_interview_precheck',
+                input: { mode: 'validate', jobId: 100, recapConfirmation: true },
+              },
+            ],
+            toolResults: [
+              {
+                toolCallId: 't1',
+                toolName: 'duliday_interview_precheck',
+                output: { success: true, nextAction: 'confirm_collection' },
+              },
+            ],
+          },
+        ],
+        usage,
+        response: { messages: [] },
+      })
+      .mockResolvedValueOnce(recoveredText());
+    const { service, collectionForms } = makeService(generate, '好的呀', null);
+
+    const result = await invoke(service, '好的呀');
+
+    // 工具已执行 → 不带工具重试；闸命中 → 也不进无工具恢复
+    expect(generate).toHaveBeenCalledTimes(1);
+    expect(result.text).toBe('');
+    expect(result.recoveryDisposition).toEqual(
+      expect.objectContaining({ precheckNextAction: 'confirm_collection', jobId: 100 }),
+    );
+    expect(collectionForms.peekPrimary).not.toHaveBeenCalled();
+  });
+
+  it('候选人不是确认词（在问别的时间）→ 闸不触发，照旧无工具恢复', async () => {
+    const generate = jest
+      .fn()
+      .mockResolvedValueOnce(emptyStep())
+      .mockResolvedValueOnce(emptyStep())
+      .mockResolvedValueOnce({
+        text: '周四也可以的，你看周四下午几点方便？',
+        reasoningText: undefined,
+        usage,
+        response: { messages: [] },
+      });
+    const { service, collectionForms } = makeService(generate, '周四可以吗', awaitingRecapForm());
+
+    const result = await invoke(service, '周四可以吗');
+
+    expect(generate).toHaveBeenCalledTimes(3);
+    expect(generate.mock.calls[2][0].purpose).toBe('empty_text_recovery');
+    expect(result.text).toBe('周四也可以的，你看周四下午几点方便？');
+    expect(result.recoveryDisposition).toBeUndefined();
+    expect(collectionForms.peekPrimary).not.toHaveBeenCalled();
+  });
+
+  it('表单仍在收资（collecting）或读取失败 → 闸不触发', async () => {
+    const collecting = createForm({ jobId: 100, contract: CONTRACT });
+    for (const form of [collecting, null]) {
+      const generate = jest
+        .fn()
+        .mockResolvedValueOnce(emptyStep())
+        .mockResolvedValueOnce(emptyStep())
+        .mockResolvedValueOnce({
+          text: '好的，那你把姓名发我一下',
+          reasoningText: undefined,
+          usage,
+          response: { messages: [] },
+        });
+      const { service, collectionForms } = makeService(generate, '好的', form);
+      if (form === null) collectionForms.peekPrimary.mockRejectedValue(new Error('redis down'));
+
+      const result = await invoke(service, '好的');
+
+      expect(generate).toHaveBeenCalledTimes(3);
+      expect(result.text).toBe('好的，那你把姓名发我一下');
+      expect(result.recoveryDisposition).toBeUndefined();
+    }
+  });
+
+  it.each([
+    ['没问题的', true],
+    ['好的呀', true],
+    ['可以', true],
+    ['行啦', true],
+    ['嗯嗯\n[消息发送时间：2026-10-12 19:42:10]', true],
+    ['周四可以吗', false],
+    ['好的，周三下午两点我去不了', false],
+    ['不行', false],
+    ['', false],
+  ])('isRecoveryConfirmationReply(%p) = %p', (text, expected) => {
+    expect(isRecoveryConfirmationReply(text)).toBe(expected);
   });
 });

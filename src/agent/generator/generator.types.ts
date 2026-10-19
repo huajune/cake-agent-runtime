@@ -137,6 +137,24 @@ export interface GeneratorInvokeParams {
   onPreparedRequest?: (request: Record<string, unknown>) => Promise<void> | void;
 }
 
+/**
+ * 空响应恢复被确定性闸拦下的处置。
+ *
+ * 候选人刚对待提交的报名资料/面试时间给出确认（上一轮 precheck 停在 confirm_collection /
+ * ready_to_book），模型带工具重试后仍零产出时，无工具文本恢复只能补出"这就帮你提交 / 约的是周三下午
+ * 两点"这类空头承诺——候选人据此真去了门店（trace batch_6accb41bce406a6aee72e009_1791805375446）。
+ * 此节点不补文本：生成器留空正文并带上本处置，Runner 收成 handoff 让人工接手提交。
+ */
+export interface EmptyTextRecoveryDisposition {
+  outcome: 'handoff';
+  reasonCode: 'empty_recovery_pending_submission';
+  /** 上一轮/本轮 precheck 停在的节点。 */
+  precheckNextAction: 'confirm_collection' | 'ready_to_book';
+  /** 人工可读的阻塞说明（飞书卡片 reason）。 */
+  reason: string;
+  jobId?: number;
+}
+
 export interface GeneratorRunResult {
   text: string;
   /** 模型思考过程（需启用 AGENT_THINKING_BUDGET_TOKENS） */
@@ -161,6 +179,8 @@ export interface GeneratorRunResult {
   memorySnapshot?: AgentMemorySnapshot;
   /** agent 运行时拥有的本轮账本；runner/guardrail 仅借阅只读证据。 */
   turnLedger?: TurnLedger;
+  /** 空响应恢复被确定性闸拦下时的处置；只在 text 为空时出现，Runner 据此转人工而不是静默。 */
+  recoveryDisposition?: EmptyTextRecoveryDisposition;
   /**
    * turn-end 生命周期触发器。`invoke()` / `stream()` 返回的结果上**必然存在**；
    * `attachTurnEnd` 会无条件挂载它。

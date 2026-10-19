@@ -94,6 +94,69 @@ describe('AgentRunnerService.runInboundTurn', () => {
     expect(outcome.reply?.text).not.toContain('[表情消息]');
   });
 
+  // BadCase 复核 [07]（trace batch_6accb41bce406a6aee72e009_1791805375446）：候选人对 recap 说"没问题的"，
+  // 模型两次零产出；生成器空响应恢复闸不补文本而是标记转人工，Runner 不能把空正文当普通静默。
+  it('turns an empty-text recovery disposition into a handoff with a dedicated side effect instead of silent skip', async () => {
+    generator.invoke.mockResolvedValue(
+      makeResult({
+        text: '',
+        recoveryDisposition: {
+          outcome: 'handoff',
+          reasonCode: 'empty_recovery_pending_submission',
+          precheckNextAction: 'confirm_collection',
+          jobId: 528963,
+          reason:
+            '候选人对报名资料回复了确认（"没问题的"），收资表单停在待确认复述节点，Agent 连续两次没有生成回复',
+        },
+      }),
+    );
+
+    const outcome = await service.runInboundTurn({
+      sessionRef,
+      input: { text: '没问题的' },
+      context: { messageId: 'msg-empty-recovery' },
+    });
+
+    expect(outcome.kind).toBe('handoff');
+    expect(outputGuard.check).not.toHaveBeenCalled();
+    expect(outcome.guardrail).toEqual(
+      expect.objectContaining({
+        phase: 'outbound',
+        source: 'output_guardrail',
+        reasonCode: 'empty_recovery_pending_submission',
+        ruleBlocked: false,
+      }),
+    );
+    expect(outcome.handoff).toEqual(
+      expect.objectContaining({ source: 'output_guardrail', reasonCode: 'system_blocked' }),
+    );
+    expect(outcome.sideEffects).toEqual([
+      expect.objectContaining({
+        kind: 'general_handoff',
+        source: 'output_guardrail',
+        reasonCode: 'system_blocked',
+        alertLabel: '候选人已确认待提交，Agent 未生成回复',
+        jobId: 528963,
+        recordHandoff: true,
+      }),
+    ]);
+    expect(outcome.sideEffects?.[0]).toEqual(
+      expect.objectContaining({ reason: expect.stringContaining('没问题的') }),
+    );
+    expect(outcome.sideEffects?.[0]).toEqual(
+      expect.objectContaining({ actionAdvice: expect.stringContaining('手动完成报名') }),
+    );
+  });
+
+  it('keeps plain empty text (no recovery disposition) as a silent skip', async () => {
+    generator.invoke.mockResolvedValue(makeResult({ text: '' }));
+
+    const outcome = await service.runInboundTurn({ sessionRef, input: { text: '好的' } });
+
+    expect(outcome.kind).toBe('skipped');
+    expect(outcome.sideEffects ?? []).toHaveLength(0);
+  });
+
   it('adopts deterministic segment-pruned reply without entering model repair', async () => {
     const runTurnEnd = jest.fn().mockResolvedValue(undefined);
     generator.invoke.mockResolvedValue(
