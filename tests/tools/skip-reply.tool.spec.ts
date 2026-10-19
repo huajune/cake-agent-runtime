@@ -132,6 +132,22 @@ describe('buildSkipReplyTool', () => {
       expect(result._replyInstruction).toMatch(/正常回复/);
     });
 
+    it.each(['多久通知呀', '几天上班'])(
+      'rejects short duration questions even without a question mark: %s',
+      async (currentUserMessage) => {
+        const ctx = mergeToolContext(mockContext, { turnInput: { currentUserMessage } });
+        const result = await execute(buildTool(ctx), {
+          scene: 'confirmation_closure',
+          reason: '候选人确认',
+        });
+        expect(result).toMatchObject({
+          skipped: false,
+          errorType: TOOL_ERROR_TYPES.SKIP_REPLY_CONFIRMATION_NOT_SHORT_ACK,
+        });
+        expect(result).not.toHaveProperty('shortCircuited');
+      },
+    );
+
     it('falls back to the trailing user block when currentUserMessage is absent', async () => {
       const ctx = mergeToolContext(mockContext, {
         turnInput: {
