@@ -74,10 +74,78 @@ export function findUnmentionedQueryBrands(
  *
  * unmatched 与 ambiguous/low_confidence 是两种事实：前者说明我们没有与该品牌合作
  * （话术要如实说没合作），后者说明品牌可能存在、只是指代不清（话术仍是澄清/无岗口径）。
- * 只要掺进一个非 unmatched 就不能按"没合作"对候选人下结论。
+ * 只要掺进一个非 unmatched 就不能按"没合作"对候选人下结论。unmatched_id 同样不算：
+ * 目录外的数字 ID 多半是截图读数误差，而不是候选人点名了一个未合作品牌。
  */
 export function allRejectedAsUnmatched(plan: BrandQueryPlan): boolean {
   return plan.rejected.length > 0 && plan.rejected.every((item) => item.reason === 'unmatched');
+}
+
+/** 被拒条目中目录外的品牌 ID（reason=unmatched_id）。 */
+export function rejectedBrandIds(plan: BrandQueryPlan): string[] {
+  return plan.rejected.filter((item) => item.reason === 'unmatched_id').map((item) => item.input);
+}
+
+export interface RejectedIdNeighbor {
+  /** 被拒的目录外 ID 原文 */
+  inputId: string;
+  brandId: number;
+  brandName: string;
+  /** 与被拒 ID 的数字编辑关系：少读一位 / 多读一位 */
+  relation: 'insert_one_digit' | 'delete_one_digit';
+}
+
+/**
+ * 目录外品牌 ID 的数字近邻：只接受与被拒 ID 相差**单个字符插入或删除**的目录 ID
+ * （截图视觉读数把 10006 读成 100006 这类多一位/少一位的误差）。
+ * 替换类差异不纳入——10006 与 10008 是两个真实品牌，猜不得。
+ */
+export function findRejectedIdNeighbors(
+  plan: BrandQueryPlan,
+  catalog: readonly BrandItem[],
+): RejectedIdNeighbor[] {
+  const neighbors: RejectedIdNeighbor[] = [];
+  for (const inputId of rejectedBrandIds(plan)) {
+    for (const brand of catalog) {
+      if (brand.id == null) continue;
+      const candidate = String(brand.id);
+      const relation = singleEditRelation(inputId, candidate);
+      if (relation) neighbors.push({ inputId, brandId: brand.id, brandName: brand.name, relation });
+    }
+  }
+  return neighbors;
+}
+
+function singleEditRelation(
+  input: string,
+  candidate: string,
+): RejectedIdNeighbor['relation'] | null {
+  if (input === candidate) return null;
+  if (candidate.length === input.length - 1 && isSingleDeletion(input, candidate)) {
+    return 'delete_one_digit';
+  }
+  if (candidate.length === input.length + 1 && isSingleDeletion(candidate, input)) {
+    return 'insert_one_digit';
+  }
+  return null;
+}
+
+/** shorter 能否由 longer 删除恰好一个字符得到。 */
+function isSingleDeletion(longer: string, shorter: string): boolean {
+  let i = 0;
+  let j = 0;
+  let skipped = false;
+  while (i < longer.length && j < shorter.length) {
+    if (longer[i] === shorter[j]) {
+      i += 1;
+      j += 1;
+      continue;
+    }
+    if (skipped) return false;
+    skipped = true;
+    i += 1;
+  }
+  return true;
 }
 
 /** 组装 queryMeta.brand 小节（§9 类型化接口）。 */
@@ -135,15 +203,23 @@ export function buildBrandQueryPlan(input: {
     return !excluded;
   });
 
-  // 模型显式传的 brandIdList 原样采信（API 主键，目录可能缺 id，不做反向校验）；
-  // 目录可回查到名称时补齐 canonicalName 供审计与本地等值过滤。
-  const modelIds = Array.from(new Set(input.brandIdList.filter((id) => Number.isFinite(id))));
+  // 模型显式传的 brandIdList：目录带 ID 时按目录校验，目录外的 ID 进 rejected(unmatched_id)
+  // 而不是用 String(id) 冒充品牌名去查、再把数字念给候选人（生产 trace
+  // batch_6ad1eb74ce406a6aeec80597_1792142350490：视觉把 10006 读成 100006，候选人收到
+  // 「100006在武进区这片暂时没找到」）。旧响应目录整体缺 id 时无从校验，保持原样采信。
+  const rawModelIds = Array.from(new Set(input.brandIdList.filter((id) => Number.isFinite(id))));
+  const catalogHasIds = catalog.some((brand) => brand.id != null);
+  const modelIds = rawModelIds.filter((id) => {
+    if (!catalogHasIds || catalog.some((brand) => brand.id === id)) return true;
+    basePlan.rejected.push({ input: String(id), reason: 'unmatched_id' });
+    return false;
+  });
   const idBrands: BrandCandidate[] = modelIds.map((id) => ({
     canonicalName: catalog.find((brand) => brand.id === id)?.name ?? String(id),
     brandId: id,
   }));
 
-  const inputProvided = input.brandAliasList.length > 0 || modelIds.length > 0;
+  const inputProvided = input.brandAliasList.length > 0 || rawModelIds.length > 0;
 
   // 列表空 + clear / browse_all：无品牌查询（二者语义与审计归因不同）。
   if ((mode === 'clear' || mode === 'browse_all') && !inputProvided) {

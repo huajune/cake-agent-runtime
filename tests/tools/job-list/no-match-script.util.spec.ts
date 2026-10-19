@@ -162,7 +162,10 @@ describe('buildBrandNotPartneredScript（运营 2026-09-24 裁定：不合作直
   });
 
   it('禁令里保留等库存/门店状态两条，但**不含**真实无岗那条"不得反问换品牌"', () => {
-    const script = buildBrandNotPartneredScript({ brandLabels: ['麦德龙'], regionLabels: ['徐汇'] });
+    const script = buildBrandNotPartneredScript({
+      brandLabels: ['麦德龙'],
+      regionLabels: ['徐汇'],
+    });
     const forbidden = script.forbiddenActions.join('\n');
     expect(forbidden).toContain('后续有新岗位上来第一时间联系你');
     expect(forbidden).toContain('招满');
@@ -182,5 +185,27 @@ describe('buildBrandNotPartneredScript（运营 2026-09-24 裁定：不合作直
       regionLabels: ['浦东新区'],
     });
     expect(script.candidateMessage).toContain('浦东新区这边');
+  });
+});
+
+describe('纯数字品牌标签不得进候选人话术（badcase 2026-10-16：「100006在武进区这片暂时没找到」）', () => {
+  it('buildNoMatchScript：数字 ID 从 candidateMessage 剔除，退回「咱们这边」承接；querySummary 仍保留原始入参', () => {
+    const script = buildNoMatchScript({ brandLabels: ['100006'], regionLabels: ['武进区'] });
+    expect(script.candidateMessage).not.toContain('100006');
+    expect(script.candidateMessage).toContain('咱们这边在武进区这片暂时没找到合适的岗位');
+    expect(script.querySummary).toContain('100006');
+  });
+
+  it('buildNoMatchScript：品牌名与数字混传时只念品牌名', () => {
+    const script = buildNoMatchScript({ brandLabels: ['必胜客', '100006'], cityLabels: ['常州'] });
+    expect(script.candidateMessage).toContain('必胜客在常州这边暂时没找到合适的岗位');
+    expect(script.candidateMessage).not.toContain('100006');
+  });
+
+  it('buildBrandNotPartneredScript：数字 ID 退回「这个品牌」，不对候选人念数字', () => {
+    const script = buildBrandNotPartneredScript({ brandLabels: ['100006'] });
+    expect(script.candidateMessage).toContain('这个品牌我们这边目前没有合作');
+    expect(script.candidateMessage).not.toContain('100006');
+    expect(script.querySummary).toContain('100006未在合作品牌目录中');
   });
 });

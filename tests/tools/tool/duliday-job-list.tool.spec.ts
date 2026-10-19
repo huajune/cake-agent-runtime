@@ -1634,6 +1634,54 @@ describe('buildJobListTool', () => {
     });
   });
 
+  describe('目录外品牌 ID（badcase 2026-10-16 trace batch_6ad1eb74ce406a6aeec80597_1792142350490：视觉把 10006 读成 100006）', () => {
+    const catalogWithIds = [
+      ...brandCatalog.map((brand, index) => ({ ...brand, id: 20001 + index })),
+      { id: 10006, name: '必胜客', aliases: [] },
+    ];
+
+    it('不查询、不生成任何候选人话术，给出数字近邻并要求回看截图品牌名', async () => {
+      mockSpongeService.fetchBrandList.mockResolvedValue(catalogWithIds);
+      const result = await executeTool(
+        { ...mockContext, currentUserMessage: '[图片] 日结服务员兼职[100006]' },
+        {
+          ...defaultInput,
+          cityNameList: ['常州'],
+          regionNameList: ['武进区'],
+          brandIdList: [100006],
+        },
+      );
+
+      expect(mockSpongeService.fetchJobs).not.toHaveBeenCalled();
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_NO_RESULTS);
+      expect(result.rejectedBrandIds).toEqual(['100006']);
+      expect(result.idSuggestions).toEqual([
+        expect.objectContaining({ inputId: '100006', brandId: 10006, brandName: '必胜客' }),
+      ]);
+      expect(result.queryMeta.brand.rejected).toEqual([
+        { input: '100006', reason: 'unmatched_id' },
+      ]);
+      expect(result.queryMeta.brand.appliedCanonicalNames).toEqual([]);
+      expect(result.noMatchScript).toBeUndefined();
+      expect(result.brandNotPartneredScript).toBeUndefined();
+      expect(result._replyInstruction).toContain('回看截图');
+      expect(result._replyInstruction).toContain('必胜客');
+      expect(result._replyInstruction).toContain('禁止');
+    });
+
+    it('目录内 ID 与目录外 ID 混传：只按目录内 ID 查询', async () => {
+      mockSpongeService.fetchBrandList.mockResolvedValue(catalogWithIds);
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [], total: 0 });
+      await executeTool(
+        { ...mockContext, currentUserMessage: '必胜客有岗吗' },
+        { ...defaultInput, cityNameList: ['常州'], brandIdList: [10006, 100006] },
+      );
+      expect(mockSpongeService.fetchJobs.mock.calls[0][0]).toEqual(
+        expect.objectContaining({ brandIdList: [10006] }),
+      );
+    });
+  });
+
   describe('jobIdList provenance gate (badcase 6a6c4c13 幻觉参数查询)', () => {
     it('blocks jobIdList entries never recalled in this session', async () => {
       const gatedContext: JobListTestContext = {

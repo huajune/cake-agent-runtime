@@ -142,7 +142,12 @@ export interface NormalizedBrandQueryMeta {
   appliedCanonicalNames: string[];
   rejected: Array<{
     input: string;
-    reason: 'unmatched' | 'ambiguous' | 'low_confidence';
+    /**
+     * unmatched=库中无此品牌名；ambiguous=别名对应多个品牌；low_confidence=置信不足；
+     * unmatched_id=模型传的品牌 ID 不在目录中（典型为截图视觉读数多/少一位），
+     * 它不是"没合作"的证据，工具侧单独处置，不得把数字当品牌名念给候选人。
+     */
+    reason: 'unmatched' | 'ambiguous' | 'low_confidence' | 'unmatched_id';
     candidates?: BrandCandidate[];
   }>;
   /** 0 结果同音回指建议（既有 aliasFuzzyMatch 链路产出），见 §6.3 */

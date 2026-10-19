@@ -84,9 +84,12 @@ import { getJobSchedule } from '@tools/job-list/schedule-normalizer.util';
 import {
   allRejectedAsUnmatched,
   buildBrandQueryPlan,
+  findRejectedIdNeighbors,
   findUnmentionedQueryBrands,
+  rejectedBrandIds,
   toBrandQueryMeta,
   type BrandQueryPlan,
+  type RejectedIdNeighbor,
 } from '@tools/job-list/brand-query.util';
 import {
   findBrandFuzzyMatches,
@@ -178,13 +181,45 @@ function hasCandidateGroundedPostInviteLookup(params: {
 function buildBrandRejectedResult(params: {
   brandPlan: BrandQueryPlan;
   fuzzySuggestions: BrandFuzzyMatch[];
+  idNeighbors: RejectedIdNeighbor[];
   noMatchScript: ReturnType<typeof buildNoMatchScript>;
   brandNotPartneredScript: ReturnType<typeof buildBrandNotPartneredScript>;
 }): Record<string, unknown> {
-  const { brandPlan, fuzzySuggestions, noMatchScript, brandNotPartneredScript } = params;
+  const { brandPlan, fuzzySuggestions, idNeighbors, noMatchScript, brandNotPartneredScript } =
+    params;
   const fuzzyConfidence = resolveFuzzyConfidence(fuzzySuggestions);
   const topMatch = fuzzySuggestions[0] ?? null;
   const rejectedInputs = brandPlan.rejected.map((item) => item.input);
+  const rejectedIds = rejectedBrandIds(brandPlan);
+
+  // 目录外品牌 ID（截图视觉读数多/少一位）：既不是候选人点名的品牌名，也不是"没合作"，
+  // 不生成任何候选人可见话术；给出数字近邻让模型回看截图品牌名后按品牌名重查。
+  if (rejectedIds.length > 0) {
+    const neighborText =
+      idNeighbors.length > 0
+        ? `目录里有数字近邻：${idNeighbors
+            .map(
+              (item) =>
+                `${item.inputId}→${item.brandId}（${item.brandName}，${item.relation === 'delete_one_digit' ? '少读一位' : '多读一位'}）`,
+            )
+            .join('；')}。只有截图里的品牌名与近邻品牌一致时才按该品牌重查。`
+        : '目录里没有数字近邻。';
+    return buildToolError({
+      errorType: TOOL_ERROR_TYPES.JOB_LIST_NO_RESULTS,
+      outcome: '品牌 ID 不在合作品牌目录中（疑似截图读数误差），未执行查询',
+      replyInstruction:
+        `brandIdList ${JSON.stringify(rejectedIds)} 未在品牌目录命中。品牌 ID 来自截图标题方括号，` +
+        `视觉读数常多读或少读一位，这个数字不是品牌名。${neighborText}` +
+        '处理方式：回看截图/图片描述里的**品牌名**，用 brandAliasList 传品牌名（不传这个 ID）重查一次；' +
+        '截图里没有品牌名就按候选人位置不带品牌查。**禁止**把这个数字当品牌名念给候选人，' +
+        '禁止说"该品牌没合作/暂时没岗位"，禁止照念 noMatchScript，禁止调用 invite_to_group。',
+      details: {
+        rejectedBrandIds: rejectedIds,
+        idSuggestions: idNeighbors,
+        queryMeta: { brand: toBrandQueryMeta(brandPlan) },
+      },
+    });
+  }
 
   let outcome: string;
   let replyInstruction: string;
@@ -1176,6 +1211,7 @@ export function buildJobListTool(
           return buildBrandRejectedResult({
             brandPlan,
             fuzzySuggestions,
+            idNeighbors: findRejectedIdNeighbors(brandPlan, brandCatalog),
             noMatchScript: buildNoMatchScript({
               brandLabels: rejectedInputs,
               storeLabels: storeNameList,
