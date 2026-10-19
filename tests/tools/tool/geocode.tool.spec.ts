@@ -776,6 +776,207 @@ describe('geocode tool', () => {
     });
   });
 
+  describe('城市出处回执与全国搜交叉核对（BadCase 复核 [17]：佛山候选人说王府井被推北京）', () => {
+    const wangfujingBeijing = () =>
+      makeCandidate({
+        formattedAddress: '北京市东城区王府井',
+        province: '北京市',
+        city: '北京市',
+        district: '东城区',
+        township: '东华门街道',
+        poiName: '王府井',
+        longitude: 116.41,
+        latitude: 39.91,
+      });
+    const wangfujingFoshan = () =>
+      makeCandidate({
+        formattedAddress: '广东省佛山市南海区王府井',
+        province: '广东省',
+        city: '佛山市',
+        district: '南海区',
+        township: '桂城街道',
+        poiName: '王府井',
+        longitude: 113.14,
+        latitude: 23.03,
+      });
+    const foshanGroupContext = (over: Parameters<typeof createToolContext>[0] = {}) =>
+      createToolContext({
+        session: { userId: 'u', corpId: 'c', sessionId: 's' },
+        archive: { realtimeGroupCities: ['佛山'], ...(over.archive ?? {}) },
+        turnInput: {
+          messages: [
+            { role: 'user', content: '王府井附近有兼职吗\n[消息发送时间：2026-10-12 14:19:00]' },
+          ],
+          ...(over.turnInput ?? {}),
+        },
+      });
+    const run = (ctx: ToolBuildContext, args: { address: string; city?: string | null }) =>
+      (buildGeocodeTool(mockGeocodingService)(ctx) as unknown as { execute: ExecuteFn }).execute(
+        args,
+      ) as Promise<Record<string, unknown>>;
+
+    it('city 无出处被忽略 + 全国搜落在别城 → needs_confirmation、回执 _cityIgnored、不宣称已确认、不写锚点', async () => {
+      // 生产复现：模型传 city=佛山（候选人没打过「佛山」、无 pref.city），出处门丢弃后全国搜「王府井」
+      // 唯一命中北京，旧实现回 `_cityConfirmed 北京` 并在轮末写 pref.city=北京 system/high。
+      const ctx = createToolContext({
+        session: { userId: 'u', corpId: 'c', sessionId: 's' },
+        turnInput: { messages: [{ role: 'user', content: '王府井附近有兼职吗' }] },
+      });
+      (mockGeocodingService.searchCandidates as jest.Mock).mockResolvedValue([wangfujingBeijing()]);
+
+      const result = await run(ctx, { address: '王府井', city: '佛山' });
+
+      expect(mockGeocodingService.searchCandidates).toHaveBeenCalledWith('王府井', null);
+      expect(result.resolution).toBe('needs_confirmation');
+      expect(result._cityConfirmed).toBeUndefined();
+      expect(String(result._cityIgnored)).toContain('city=「佛山」没有出处');
+      expect(String(result._cityIgnored)).toContain('按全国搜索');
+      expect(result).toMatchObject({ ignoredCity: '佛山', resolvedCity: '北京市' });
+      const instruction = String(result._replyInstruction);
+      expect(instruction).toContain('禁止向候选人宣称已确认城市');
+      expect(instruction).toContain('禁止按「北京市」查岗');
+      expect(instruction).toContain('你是在佛山这边对吧');
+      expect(ctx.ledger.geo.anchors).toHaveLength(0);
+      expect(ctx.ledger.geo.cityAttestation).toBeUndefined();
+    });
+
+    it('city 无出处被忽略但全国搜落在同一城市 → 照常 unique，仍回执 _cityIgnored 且 _cityConfirmed 保持首字段', async () => {
+      const ctx = createToolContext({
+        session: { userId: 'u', corpId: 'c', sessionId: 's' },
+        turnInput: { messages: [{ role: 'user', content: '王府井附近有兼职吗' }] },
+      });
+      (mockGeocodingService.searchCandidates as jest.Mock).mockResolvedValue([wangfujingFoshan()]);
+
+      const result = await run(ctx, { address: '王府井', city: '佛山' });
+
+      expect(result.resolution).toBe('unique');
+      expect(Object.keys(result)[0]).toBe('_cityConfirmed');
+      expect(Object.keys(result)[1]).toBe('_cityIgnored');
+      expect(result.result).toMatchObject({ city: '佛山市' });
+    });
+
+    it('已在佛山群 → city=佛山 有出处（realtime_group），按佛山限定搜索、不回执 _cityIgnored', async () => {
+      (mockGeocodingService.searchCandidates as jest.Mock).mockResolvedValue([wangfujingFoshan()]);
+
+      const result = await run(foshanGroupContext(), { address: '王府井', city: '佛山' });
+
+      expect(mockGeocodingService.searchCandidates).toHaveBeenCalledWith('王府井', '佛山');
+      expect(result.resolution).toBe('unique');
+      expect(result._cityIgnored).toBeUndefined();
+      expect(ctx_city(result)).toBe('佛山市');
+    });
+
+    it('会话记忆被污染为北京、候选人在佛山群 → city=佛山 仍放行（群城市档优先于 city_conflict）', async () => {
+      // [17] 第二轮：pref.city=北京(system/high) 已写入，模型再传佛山也会被 city_conflict 丢弃。
+      (mockGeocodingService.searchCandidates as jest.Mock).mockResolvedValue([wangfujingFoshan()]);
+      const ctx = foshanGroupContext({
+        archive: {
+          realtimeGroupCities: ['佛山'],
+          sessionFacts: {
+            preferences: { city: { value: '北京', confidence: 'high', source: 'system' } },
+          } as unknown as ToolBuildContext['archive']['sessionFacts'],
+        },
+      });
+
+      const result = await run(ctx, { address: '王府井', city: '佛山' });
+
+      expect(mockGeocodingService.searchCandidates).toHaveBeenCalledWith('王府井', '佛山');
+      expect(result.resolution).toBe('unique');
+      // 会话记忆冲突披露照常附带，由模型向候选人确认，不静默沿用也不静默覆盖。
+      expect(String(result._cityConflictNotice)).toContain('北京');
+    });
+
+    it('city 留空全国搜 unique 与候选人所在群城市不一致、且该城市无出处 → needs_confirmation', async () => {
+      (mockGeocodingService.searchCandidates as jest.Mock).mockResolvedValue([wangfujingBeijing()]);
+      const ctx = foshanGroupContext();
+
+      const result = await run(ctx, { address: '王府井' });
+
+      expect(result.resolution).toBe('needs_confirmation');
+      expect(result).toMatchObject({ resolvedCity: '北京市', contextCities: ['佛山'] });
+      const instruction = String(result._replyInstruction);
+      expect(instruction).toContain('候选人当前所在兼职群/在途预约门店显示在「佛山」');
+      expect(instruction).toContain('确认是在「佛山」还是「北京市」');
+      expect(ctx.ledger.geo.cityAttestation).toBeUndefined();
+    });
+
+    it('在途预约门店城市同样参与交叉核对', async () => {
+      (mockGeocodingService.searchCandidates as jest.Mock).mockResolvedValue([wangfujingBeijing()]);
+      const ctx = createToolContext({
+        session: { userId: 'u', corpId: 'c', sessionId: 's' },
+        archive: {
+          bookingWorkOrders: [
+            { workOrderId: 1, jobId: 2, source: 'active_booking', storeCity: '佛山市' },
+          ],
+        },
+        turnInput: { messages: [{ role: 'user', content: '王府井附近有兼职吗' }] },
+      });
+
+      const result = await run(ctx, { address: '王府井' });
+
+      expect(result.resolution).toBe('needs_confirmation');
+      expect(result).toMatchObject({ contextCities: ['佛山'] });
+    });
+
+    it('全国搜城市与群城市不一致，但候选人本会话亲口提过该城市 → 照常 unique（换城市不被旧群线索拦）', async () => {
+      (mockGeocodingService.searchCandidates as jest.Mock).mockResolvedValue([wangfujingBeijing()]);
+      const ctx = foshanGroupContext({
+        turnInput: {
+          messages: [{ role: 'user', content: '我搬到北京了，王府井附近有兼职吗' }],
+        },
+      });
+
+      const result = await run(ctx, { address: '王府井' });
+
+      expect(result.resolution).toBe('unique');
+      expect(ctx_city(result)).toBe('北京市');
+    });
+
+    it('群城市与全国搜城市一致 → 照常 unique', async () => {
+      (mockGeocodingService.searchCandidates as jest.Mock).mockResolvedValue([wangfujingFoshan()]);
+
+      const result = await run(foshanGroupContext(), { address: '王府井' });
+
+      expect(result.resolution).toBe('unique');
+    });
+
+    it('city=null 全国搜得到的 unique 城市确权标记 nationwideSearch=true；带出处 city 限定搜索则为 false', async () => {
+      (mockGeocodingService.searchCandidates as jest.Mock).mockResolvedValue([wangfujingBeijing()]);
+      const nationwide = createToolContext({
+        session: { userId: 'u', corpId: 'c', sessionId: 's' },
+        turnInput: { messages: [{ role: 'user', content: '王府井附近有兼职吗' }] },
+      });
+      await run(nationwide, { address: '王府井' });
+      expect(nationwide.ledger.geo.cityAttestation).toMatchObject({
+        city: '北京市',
+        source: 'geocode_unique',
+        nationwideSearch: true,
+      });
+
+      const limited = createToolContext({
+        session: { userId: 'u', corpId: 'c', sessionId: 's' },
+        turnInput: { messages: [{ role: 'user', content: '我在北京，王府井附近有兼职吗' }] },
+      });
+      await run(limited, { address: '王府井', city: '北京' });
+      expect(limited.ledger.geo.cityAttestation).toMatchObject({
+        city: '北京市',
+        nationwideSearch: false,
+      });
+    });
+
+    it('description 声明 city 只认有出处的城市、needs_confirmation 与 _cityIgnored 口径', () => {
+      const description = String((toolInstance as unknown as { description: string }).description);
+      expect(description).toContain('_cityIgnored');
+      expect(description).toContain('resolution=needs_confirmation');
+      expect(description).toContain('候选人已在的兼职群城市');
+      expect(description).toContain('在途预约门店城市');
+    });
+
+    function ctx_city(result: Record<string, unknown>): unknown {
+      return (result.result as Record<string, unknown> | undefined)?.city;
+    }
+  });
+
   describe('GEOCODE_UNRESOLVED_ADDRESS', () => {
     it('candidates 为空数组 → 返回未解析错误', async () => {
       (mockGeocodingService.searchCandidates as jest.Mock).mockResolvedValue([]);

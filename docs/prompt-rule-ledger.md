@@ -568,18 +568,25 @@ FC 编号保留为历史别名：
 
 ## 六、工具 description（章节级登记）
 
-### 2026-10-19 BadCase 复核小修：取消工单号不向候选人索要
+### 2026-10-19 BadCase 复核小修：取消工单号不向候选人索要 / geocode 城市出处回执
 
 来源：2026-10-19 BadCase 复核 [03]（`batch_6ad19d27ce406a6aee98bb9f_1792125255605`，10-16）：首版成功取消
 工单 472980 后候选人补发消息触发 replay，`REPLAY_BLOCKING_TOOLS` 不含 cancel，首版整轮丢弃重跑；重跑 prompt
-预约快照已空，模型调 `cancel(workOrderId=0)` 被 zod 拒后向候选人索要工单号。长期有效，无 TTL。
+预约快照已空，模型调 `cancel(workOrderId=0)` 被 zod 拒后向候选人索要工单号。
+[17]（`batch_6acc7b80ce406a6aeea53027_1791785986689` / `_1791786074634`，10-12）：候选人在佛山兼职群，模型传
+`geocode(city=佛山, address=王府井)`，城市出处门静默丢弃 city，全国搜唯一命中北京，回执 `_cityConfirmed 北京`，
+轮末写 `pref.city=北京 (system/high)` 压过候选人后续陈述；第二轮再传佛山被 `city_conflict` 再丢。长期有效，无 TTL。
 
-| 居所                                                  | 本批增改删                                                                                | 边界与配对                                                                                                                                                                   |
-| ----------------------------------------------------- | ----------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `duliday_cancel_work_order` DESCRIPTION「参数」       | 补一句：工单号是系统内部编号，严禁向候选人索要；拿不到时按「没有 [当前预约信息]」一节处理 | 教侧；拦侧为同工具 `CANCEL_MISSING_WORK_ORDER_ID` 回执                                                                                                                       |
-| `duliday_cancel_work_order` inputSchema `workOrderId` | 去掉 `positive()`，改 `nullable().optional()`；0/空值进 execute                           | zod 拒绝只给模型裸报错、无处置指引；运行时回执明示「禁止向候选人索要工单号，改走 request_handoff(modify_appointment)，不得谎称已取消/否认预约」                              |
-| [预约状态] 空态接地块 `NO_BOOKING_STATUS_BLOCK`       | 补一句取消/改约口径（第二节 BS3）                                                         | 与 description 同一约束、两处分别覆盖「有工具可调」与「空态不该调」两种时点，不构成双居所                                                                                    |
-| 运行时（非 prompt）`REPLAY_BLOCKING_TOOLS`            | 加入 `duliday_cancel_work_order` / `duliday_modify_interview_time`                        | 根因修复：取消/改约既成后保留首版回复，候选人补发消息按新回合处理，与 booking/invite 同口径；未采用「replay 时注入首版副作用摘要」方案（仍依赖模型读懂，且需新增上下文管线） |
+| 居所                                                  | 本批增改删                                                                                                                                                                                                                                                        | 边界与配对                                                                                                                                                                   |
+| ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `duliday_cancel_work_order` DESCRIPTION「参数」       | 补一句：工单号是系统内部编号，严禁向候选人索要；拿不到时按「没有 [当前预约信息]」一节处理                                                                                                                                                                         | 教侧；拦侧为同工具 `CANCEL_MISSING_WORK_ORDER_ID` 回执                                                                                                                       |
+| `duliday_cancel_work_order` inputSchema `workOrderId` | 去掉 `positive()`，改 `nullable().optional()`；0/空值进 execute                                                                                                                                                                                                   | zod 拒绝只给模型裸报错、无处置指引；运行时回执明示「禁止向候选人索要工单号，改走 request_handoff(modify_appointment)，不得谎称已取消/否认预约」                              |
+| [预约状态] 空态接地块 `NO_BOOKING_STATUS_BLOCK`       | 补一句取消/改约口径（第二节 BS3）                                                                                                                                                                                                                                 | 与 description 同一约束、两处分别覆盖「有工具可调」与「空态不该调」两种时点，不构成双居所                                                                                    |
+| 运行时（非 prompt）`REPLAY_BLOCKING_TOOLS`            | 加入 `duliday_cancel_work_order` / `duliday_modify_interview_time`                                                                                                                                                                                                | 根因修复：取消/改约既成后保留首版回复，候选人补发消息按新回合处理，与 booking/invite 同口径；未采用「replay 时注入首版副作用摘要」方案（仍依赖模型读懂，且需新增上下文管线） |
+| `geocode` DESCRIPTION「参数 city」                    | 补一条：city 只认有出处的城市（亲口 / 会话记忆 / 已在群城市 / 在途预约门店城市 / 对「你在 X 对吧」的肯定应答 / 本轮确权）；无出处会被忽略并回执 `_cityIgnored`，此时是全国搜索、不得说"已确认城市"                                                                | 教侧；拦侧为 `resolveProvenancedCity` → `_cityIgnored` 回执（此前静默丢弃）。原第 2 条「凭通识填 city」保留措辞，但其实际效果（被出处门丢弃）首次成文                        |
+| `geocode` DESCRIPTION「返回三态」                     | 新增 `resolution=needs_confirmation` 条目：原地址未逐字回显 / 传入 city 被忽略且全国搜落在别城 / 全国搜城市与候选人所在群或在途预约门店城市不一致 → 一句话确认，确认前禁止采用坐标、禁止宣称已确认城市                                                            | 拦侧 `resolveNationwideCityConfirmation`：全国搜 unique 先与 `realtimeGroupCities` / `bookingWorkOrders[].storeCity` 交叉核对，解析城市自身有出处（候选人换城市）时放行      |
+| 运行时（非 prompt）`invite-city-gate` 出处档          | 新增 ⑥ `realtime_group`（已在群城市，memory.section [候选人当前所在兼职群] 同源）、⑦ `booking_store`（在途预约门店城市，仅加载了地址详情的回合有值）、⑧ `confirmed_question`（复用 notary `isAssistantQuestionConfirmedInDialogue`），均排在 `city_conflict` 之前 | geocode 与 invite 共用 `collectCityGateContextInputs`；tool guardrail catalog residualRisk 同步：门店城市不是每轮都有                                                        |
+| 运行时（非 prompt）`saveToolAttestedCity`             | `CityAttestation.nationwideSearch=true`（city=null 全国搜 unique）只记 medium，不再写 high                                                                                                                                                                        | 全国唯一 ≠ 候选人在该城市；medium 可被候选人亲口陈述（candidate_quote/high）覆盖，system/high 冲突拒改口的死锁不再发生                                                       |
 
 ### 2026-09-18 skip_reply 场景二确定性化（真人接管态由 runtime 校验）
 

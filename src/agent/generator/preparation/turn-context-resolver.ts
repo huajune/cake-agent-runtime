@@ -248,6 +248,7 @@ export function resolveTurnContext(input: {
     bookingWorkOrders,
     visualSheetsByContent: sources.visualSheetsByContent,
     humanTakeoverActive: input.humanTakeoverActive,
+    realtimeGroupCities: sources.realtimeGroups.map((group) => group.city),
   });
 
   return {

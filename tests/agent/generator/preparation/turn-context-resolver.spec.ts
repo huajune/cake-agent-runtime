@@ -168,7 +168,7 @@ describe('resolveTurnContext', () => {
           turnHints: null,
         },
         booking: { state: 'none' },
-        realtimeGroups: [],
+        realtimeGroups: [{ groupName: '佛山兼职群', city: '佛山' }],
         groupInventory: undefined,
         accountIdentity: { nickname: null, gender: null },
         strategyConfig: {
@@ -200,6 +200,8 @@ describe('resolveTurnContext', () => {
       mode: 'scenario',
       allowedToolNames: undefined,
     });
+    // 实时群城市穿线进工具上下文：geocode/invite 城市出处门的「已在群」档据此取数。
+    expect(result.toolModel.archive.realtimeGroupCities).toEqual(['佛山']);
     expect(result.ledgerSeed).toEqual(
       expect.objectContaining({
         laborFormIntent: { kind: 'ignore' },

@@ -35,6 +35,8 @@ export interface RealtimeGroupStatus {
 
 export interface BookingLocationDetails {
   storeAddress?: string;
+  /** 门店所在城市（岗位详情 storeInfo.storeCityName），供城市出处门消费；prompt 不单独渲染。 */
+  storeCity?: string;
   interviewMethod?: string;
   interviewAddress?: string;
 }
@@ -297,6 +299,8 @@ export interface VisibleBookingWorkOrderRef {
   jobName?: string | null;
   interviewTime?: string | null;
   signUpTime?: string | null;
+  /** 门店所在城市；只在本轮加载了预约地址详情时存在。 */
+  storeCity?: string | null;
 }
 
 /**
@@ -330,6 +334,7 @@ export function visibleBookingWorkOrders(
         jobName: typeof workOrder.jobName === 'string' ? workOrder.jobName : null,
         interviewTime: typeof workOrder.interviewTime === 'string' ? workOrder.interviewTime : null,
         signUpTime: typeof workOrder.signUpTime === 'string' ? workOrder.signUpTime : null,
+        ...(entry.location?.storeCity ? { storeCity: entry.location.storeCity } : {}),
       };
     })
     .filter((ref) => typeof ref.workOrderId === 'number');
