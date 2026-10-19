@@ -222,8 +222,14 @@ export class FeishuWebhookService {
    * 读取通道 Webhook 配置（只来自环境变量）
    * URL 未配置时记 warn 并返回 null，由调用方跳过发送；
    * SECRET 显式为空表示机器人未开启签名，未设置时首次记 warn 后同样按无签名发送。
+   * channel 可能来自未做运行时校验的 HTTP 入参，未登记的通道同样记 warn 并跳过。
    */
   private resolveWebhookConfig(channel: FeishuWebhookChannel): FeishuWebhookConfig | null {
+    if (!Object.prototype.hasOwnProperty.call(FEISHU_WEBHOOK_CHANNELS, channel)) {
+      this.logger.warn(`未知飞书通道 ${JSON.stringify(channel)}，跳过飞书发送`);
+      return null;
+    }
+
     const { ENV_URL_KEY, ENV_SECRET_KEY } = FEISHU_WEBHOOK_CHANNELS[channel];
     const url = this.configService.get<string>(ENV_URL_KEY);
     if (!url) {

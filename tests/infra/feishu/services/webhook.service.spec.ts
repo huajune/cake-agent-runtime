@@ -1,7 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { FeishuWebhookService } from '@infra/feishu/services/webhook.service';
-import { FEISHU_WEBHOOK_CHANNELS } from '@infra/feishu/constants/constants';
+import {
+  FEISHU_WEBHOOK_CHANNELS,
+  type FeishuWebhookChannel,
+} from '@infra/feishu/constants/constants';
 
 describe('FeishuWebhookService', () => {
   let service: FeishuWebhookService;
@@ -206,6 +209,23 @@ describe('FeishuWebhookService', () => {
       expect(result).toBe(false);
       expect(httpClientSpy).not.toHaveBeenCalled();
     });
+
+    it.each(['UNKNOWN', 'constructor'])(
+      'skips an unregistered channel %s instead of throwing',
+      async (rawChannel) => {
+        const channel = rawChannel as FeishuWebhookChannel;
+        mockConfigService.get.mockReturnValue('https://open.feishu.cn/hook/test');
+        const httpClientSpy = jest.spyOn(service['httpClient'], 'post');
+        const warnSpy = jest.spyOn(service['logger'], 'warn').mockImplementation();
+
+        await expect(service.sendMessage(channel, {})).resolves.toBe(false);
+        await expect(service.sendMessageOrThrow(channel, {})).rejects.toThrow(
+          `未配置 ${rawChannel} Webhook URL`,
+        );
+        expect(httpClientSpy).not.toHaveBeenCalled();
+        expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('未知飞书通道'));
+      },
+    );
 
     it('sendMessageOrThrow throws without posting when the URL env var is absent', async () => {
       mockConfigService.get.mockReturnValue(undefined);
