@@ -455,3 +455,57 @@ describe('reasoning / self-check sections — 2026-09-02 production pair', () =>
     ).toBeNull();
   });
 });
+
+// 2026-10-16 生产 trace batch_6ad1b1a2ce406a6aeedb235e_1792130951637（BadCase 复核 [02]）：零工具回合
+// 模型正文写成「## API密钥错误 … ANTHROPIC_API_KEY … console.anthropic.com」五段原样投递，守卫 pass。
+describe('provider/auth error wording and heading-start replies — 2026-10-16 API key leak', () => {
+  const PRODUCTION_LEAK = [
+    '## API密钥错误',
+    '',
+    '您的API密钥无效或已过期。请检查：',
+    '',
+    '1. 密钥是否正确 - 确保复制了完整的API密钥',
+    '2. 密钥是否有效 - 检查账户余额和密钥状态',
+    '3. 环境变量配置 - 确认ANTHROPIC_API_KEY设置正确',
+    '',
+    '如需获取API密钥，请访问 [Anthropic Console](https://console.anthropic.com/)',
+  ].join('\n');
+
+  it('the production reply is a leak and is NOT an artifact-only reply (goes to rewrite, not silence)', () => {
+    expect(detectOutputLeak(PRODUCTION_LEAK)).not.toBeNull();
+    expect(isToolCallArtifactOnly(PRODUCTION_LEAK)).toBe(false);
+    expect(isInternalReasoningArtifactOnly(PRODUCTION_LEAK)).toBe(false);
+  });
+
+  it.each([
+    '您的API密钥无效或已过期',
+    '您的 API 密钥无效',
+    'api key 配置有误',
+    'API_KEY 没有设置',
+    '请确认 ANTHROPIC_API_KEY 设置正确',
+    '请访问 console.anthropic.com 获取',
+    '环境变量配置不正确',
+    'InvalidApiKeyError',
+    'error_type: invalid_api_key',
+  ])('provider/auth error wording is a leak signal: %s', (text) => {
+    expect(detectOutputLeak(`好的，${text}`)).not.toBeNull();
+  });
+
+  it('a reply that starts with a markdown heading is a leak signal', () => {
+    expect(detectOutputLeak('## 岗位推荐\n肯德基万达店在招服务员')).not.toBeNull();
+    expect(detectOutputLeak('  # 说明\n面试带身份证')).not.toBeNull();
+    expect(detectOutputLeak('###### 六级标题\n正文')).not.toBeNull();
+  });
+
+  it('headings in the middle of a reply and bare # characters are not signals', () => {
+    expect(detectOutputLeak('好的，我帮你看下。\n\n## 岗位一\n肯德基万达店')).toBeNull();
+    expect(detectOutputLeak('#1 这家店离你最近')).toBeNull();
+    expect(detectOutputLeak('#岗位 不带空格不算标题')).toBeNull();
+  });
+
+  it('ordinary wording about 钥匙/接口/密码 is not a leak', () => {
+    expect(detectOutputLeak('门店钥匙由店长保管，你不用担心')).toBeNull();
+    expect(detectOutputLeak('登录密码记得保存好哈')).toBeNull();
+    expect(detectOutputLeak('这个岗位需要会用打印机和复印机')).toBeNull();
+  });
+});

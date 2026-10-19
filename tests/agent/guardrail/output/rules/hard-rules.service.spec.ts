@@ -59,6 +59,11 @@ describe('HardRulesService — 封闭确定性输出规则', () => {
       'internal_output_leak',
     ],
     ['（本轮为真人沟通，AI 保持静默，不插入回复）', 'meta_narration_reply'],
+    // 2026-10-16 trace …_1792130951637：API 密钥错误说明整段投递，旧词库 pass
+    [
+      '## API密钥错误\n\n您的API密钥无效或已过期，请确认ANTHROPIC_API_KEY设置正确',
+      'internal_output_leak',
+    ],
     ['名额放心，我已经帮你留好了', 'quota_promise'],
     ['这家不招外地户籍', 'discriminatory_screening_leak'],
     ['方便问下你老家是哪里？', 'sensitive_origin_probe'],

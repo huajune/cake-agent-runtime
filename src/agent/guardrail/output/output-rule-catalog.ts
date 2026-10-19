@@ -86,7 +86,8 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     residualRisk:
       '不对一般语言质量做语义判断。模型把工具往返演进 reasoning（正文干净）时守卫看不到——' +
       '那一路由 GeneratorAgent 在定稿前带工具重生成一次，判据 containsSimulatedToolExchange ⊇ 本规则的' +
-      'containsLeakedToolCallBlob，另认 XML/方括号调用标记、回执标记与同构记录表 JSON 假回执。',
+      'containsLeakedToolCallBlob，另认 XML/方括号调用标记、回执标记（含 <result><error> / <error_type> 假错误回执）' +
+      '与同构记录表 JSON 假回执。',
     verification: V,
   },
   {
@@ -96,9 +97,11 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     action: GUARDRAIL_ACTION.REPAIR,
     allowFailOpen: false,
     priority: GUARDRAIL_PRIORITY.P0,
-    description: '内部阶段、工具、JSON、代码围栏或推理/自检段落泄漏。',
+    description: '内部阶段、工具、JSON、代码围栏、推理/自检段落或 Provider 鉴权错误文案泄漏。',
     riskGoal: '避免内部实现暴露给候选人。',
-    exogenousSignal: '封闭内部标记和格式，含推理标签族与独占一行的自检/思考标题。',
+    exogenousSignal:
+      '封闭内部标记和格式，含推理标签族、独占一行的自检/思考标题、API 密钥/ANTHROPIC_API_KEY 等' +
+      'Provider 鉴权错误词形，以及整条以 markdown 标题开场的形态。',
     residualRisk: '未登记的自然语言隐喻不在规则能力内。',
     verification: V,
   },

@@ -81,6 +81,23 @@ const INTERNAL_REASONING_PATTERNS: readonly RegExp[] = [
 const SELF_CHECK_HEADING_PATTERN =
   /^[ \t]*(?:#{1,6}[ \t]*)?(?:\*{1,2})?[【\[（(]?[ \t]*(?:自检(?:说明|清单|结果|记录|过程|项|通过|完成)?|自我(?:检查|核对|审查)|发送前(?:自检|检查|核对)|思考过程|内部(?:说明|思考|检查)|回复思路|self[- ]?check(?:list)?|reasoning|thinking|analysis)[ \t]*[】\]）)]?(?:\*{1,2})?[ \t]*[:：]?[ \t]*$/imu;
 
+/**
+ * Provider / 鉴权错误文案（2026-10-16 生产 trace batch_6ad1b1a2ce406a6aeedb235e_1792130951637）：
+ * 零工具回合里模型在 reasoning 中演了一段 `<result><error>InvalidApiKeyError</error></result>`，
+ * 正文写成「## API密钥错误 … ANTHROPIC_API_KEY … console.anthropic.com」五段原样投递；同时间窗
+ * 781 次 llm_execution 无一例 401，是模型臆造而非真实鉴权失败。这些词形在候选人话术里零出现，
+ * 只要进入正文即泄漏。
+ */
+const PROVIDER_AUTH_ERROR_PATTERN =
+  /API\s*密钥|api[\s_-]*key|ANTHROPIC_API_KEY|console\.anthropic\.com|环境变量配置|InvalidApiKeyError|invalid_api_key/i;
+
+/**
+ * 整条回复以 markdown 标题起头（`## API密钥错误`）：候选人话术从不以标题开场，这是模型把
+ * 技术文档/系统说明当回复的形态信号（近 30 天生产 24,075 条投递回复中仅上述一例命中）。
+ * 只锚定回复首行；正文中段的 `#` 行由 sanitizer 剥标记，不在此判泄漏。
+ */
+const MARKDOWN_HEADING_START_PATTERN = /^\s*#{1,6}[ \t]+\S/;
+
 const PATTERNS: RegExp[] = [
   // 模型把阶段术语 / 内部状态字段直接说出来
   new RegExp(STAGE_TERMS.map(escapeRegex).join('|')),
@@ -106,6 +123,9 @@ const PATTERNS: RegExp[] = [
   // 推理/自我指令自然语言泄漏（只收已实证形态）
   ...INTERNAL_REASONING_PATTERNS,
   SELF_CHECK_HEADING_PATTERN,
+  // Provider/鉴权错误文案与标题开场（2026-10-16 API 密钥文案外泄）
+  PROVIDER_AUTH_ERROR_PATTERN,
+  MARKDOWN_HEADING_START_PATTERN,
   /["']name["']\s*:\s*["'][\w-]+["']\s*,\s*["']arguments["']\s*:/,
   /["']arguments["']\s*:\s*\{/,
   // 整条回复以 JSON 开头（`{"`、`[{`、`["`）——自然语言回复不存在这种开头

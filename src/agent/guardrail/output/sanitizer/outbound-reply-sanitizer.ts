@@ -37,6 +37,14 @@ export class OutboundReplySanitizer {
   private static readonly VISUAL_PLACEHOLDER_PATTERN = /\[(?:图片|表情)消息\]\s?/g;
 
   /**
+   * markdown 标题标记（行首 `#`~`######` + 空白）。企微不渲染 markdown，候选人会看到裸
+   * `## `；只剥标记、标题文字原样保留。整条以标题开场的回复由 internal_output_leak 先拦，
+   * 这里兜 observe/pass 路径与正文中段的标题行。
+   */
+  private static readonly MARKDOWN_HEADING_MARKER_PATTERN = /^[ \t]*#{1,6}[ \t]+(?=\S)/gm;
+  private static readonly MARKDOWN_HEADING_MARKER_TEST_PATTERN = /^[ \t]*#{1,6}[ \t]+\S/m;
+
+  /**
    * 兼容历史工具结果及模型自造的岗位模板元标题。若标题前后带空行，MessageSplitter
    * 会把它单独发成一条消息。匹配刻意限制为独立整行，并覆盖“推荐岗位话术模板”一类
    * 受限变体；普通候选人话术里的“推荐这个岗位”不会命中。
@@ -143,7 +151,11 @@ export class OutboundReplySanitizer {
   }
 
   private static removeMarkdownDecoration(text: string): string {
-    return text.replace(/\*\*/g, '').replace(/__/g, '').replace(/`/g, '');
+    return text
+      .replace(this.MARKDOWN_HEADING_MARKER_PATTERN, '')
+      .replace(/\*\*/g, '')
+      .replace(/__/g, '')
+      .replace(/`/g, '');
   }
 
   private static cleanWhitespace(text: string): string {
@@ -174,6 +186,7 @@ export class OutboundReplySanitizer {
     if (this.TIME_MARKER_TEST_PATTERN.test(text)) return true;
     if (text.split(/\r?\n/).some((line) => this.isInternalJobCardBannerLine(line))) return true;
     if (/\*\*|__|`/.test(text)) return true;
+    if (this.MARKDOWN_HEADING_MARKER_TEST_PATTERN.test(text)) return true;
     if (/\n{3,}/.test(text)) return true;
     return false;
   }

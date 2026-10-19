@@ -753,6 +753,17 @@ runner 直达静默 `skip_intent_envelope_silenced`——终态 `skipped`、不�
 `meta_narration_silenced` 同轨（`INTENTIONAL_SILENCE_REASON_CODES`）。其它工具的参数信封回落残文判定，
 维持 `tool_call_artifact_silenced` 转人工。规则词库与教侧文本不变；教侧配对：G14（想沉默只能走 skip_reply）。
 
+Provider 鉴权错误文案外泄（`internal_output_leak` + `invalid_model_output` 扩形态，2026-10-19 BadCase 复核 [02]，
+batch …\_1792130951637，2026-10-16）：零工具回合里 qwen 在 reasoning 中演了 `<result><error>InvalidApiKeyError</error></result>`，
+正文写成「`## API密钥错误` … `环境变量配置` … `ANTHROPIC_API_KEY` … `console.anthropic.com`」五段原样投递，守卫 pass；
+同时间窗 781 次 llm_execution 无一例 401，是模型臆造不是真实鉴权失败。本批三处：
+`internal_output_leak` 词库新增封闭 Provider/鉴权错误词形（`API 密钥`、`api key`（含下划线/连字符变体）、`ANTHROPIC_API_KEY`、
+`console.anthropic.com`、`环境变量配置`、`InvalidApiKeyError`、`invalid_api_key`）与「整条回复以 markdown 标题开场」形态
+（近 30 天 24,075 条投递回复仅该例命中，正文中段 `#` 行不算），档位不变（repair / rewrite，禁 fail-open）；
+`containsSimulatedToolExchange` 回执标记补 `<result><error>` / `<error_type>`，让 generator 零工具重生成判据能认这种假错误回执；
+`OutboundReplySanitizer` 顺带剥行首 `#`~`######` 标记（只剥标记留文字）。不动教侧文本；`llm-executor.assertUsableChatResult`
+把 Provider 错误文案判为可重试不在本批（留待观察重生成是否足够）。
+
 取消/改期链路（2026-08-31 新增，badcase nrz6axmr / 4peya6s9）：
 
 - `cancel_done_claim_without_submission`（observe 哨兵）——零 cancel/modify 调用却用完成时态
