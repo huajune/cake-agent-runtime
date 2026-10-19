@@ -46,7 +46,7 @@ describe('buildPreHandoffReceipt', () => {
       },
     ]);
     expect(receipt?.text).toBe(
-      '报名资料已经提交成功了，这个岗位是等通知的，面试官会电话联系你，请保持电话畅通。',
+      '报名资料已经提交成功了，这个岗位是等通知的，请等待面试安排通知，保持手机畅通。',
     );
   });
 
@@ -68,6 +68,24 @@ describe('buildPreHandoffReceipt', () => {
       '肯德基 的报名资料已经提交成功了，这个岗位是等通知的，第一轮是 AI 面试，面试链接会短信发到你手机，留意短信并按时完成；通过后店长再联系你。',
     );
     expect(receipt?.text).not.toContain('电话联系');
+  });
+
+  it('AI 面试转人工前的固定回执保留流程首句中的完成时限', () => {
+    const receipt = buildPreHandoffReceipt([
+      {
+        toolName: 'duliday_interview_booking',
+        args: { jobId: 1 },
+        result: {
+          success: true,
+          workOrderId: 1,
+          interviewMethod: 'AI面试',
+          interviewProcessRemark: '报名后 24 小时内短信发链接，请在 48 小时内完成。第二句不附加。',
+          requestInfo: { jobId: 1, interviewTime: null },
+        },
+      },
+    ]);
+    expect(receipt?.text).toContain('报名后 24 小时内短信发链接，请在 48 小时内完成');
+    expect(receipt?.text).not.toContain('第二句');
   });
 
   it('modify + cancel successes are described from their structured fields', () => {

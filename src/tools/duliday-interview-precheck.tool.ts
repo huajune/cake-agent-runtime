@@ -763,7 +763,7 @@ export function buildInterviewPrecheckTool(
               address: analysis.interviewMeta.address,
               interviewTimeMode: interviewTimeWaitNotice ? 'wait_notice' : undefined,
               interviewTimeModeNote: interviewTimeWaitNotice
-                ? `该岗位提交时不选面试时间；资料确认后 booking 不传 interviewTime。候选人口径：${describeWaitNoticeForCandidate(analysis.interviewMeta.method)}`
+                ? `该岗位提交时不选面试时间；资料确认后 booking 不传 interviewTime。候选人口径：${describeWaitNoticeForCandidate(analysis.interviewMeta.method, analysis.normalizedRequirements.interviewRemarkDisplay)}`
                 : undefined,
               scheduleRule: scheduleRule || undefined,
               availabilityAuthority: interviewTimeWaitNotice

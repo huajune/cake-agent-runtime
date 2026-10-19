@@ -112,9 +112,11 @@ describe('等通知回执按面试方式分支（badcase 2026-10-14 trace batch_
     expect(text).not.toContain('电话联系');
   });
 
-  it('电话面试 / 线下面试 / 面试方式缺失：保留面试官电话联系口径', () => {
-    for (const method of ['电话面试', '线下面试', null, undefined] as const) {
-      expect(describeWaitNoticeForCandidate(method)).toBe('面试官会电话联系你，请保持电话畅通。');
+  it('电话面试保留电话联系口径，线下或缺失方式不推断通知渠道', () => {
+    expect(describeWaitNoticeForCandidate('电话面试')).toBe('面试官会电话联系你，请保持电话畅通。');
+    for (const method of ['线下面试', null, undefined] as const) {
+      expect(describeWaitNoticeForCandidate(method)).toContain('面试安排');
+      expect(describeWaitNoticeForCandidate(method)).not.toContain('电话联系');
     }
   });
 

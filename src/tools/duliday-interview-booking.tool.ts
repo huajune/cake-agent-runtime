@@ -590,7 +590,7 @@ export function buildInterviewBookingTool(
             tokenContext,
           );
           context.ledger.jobs.bookingSucceeded = result.success;
-          if (result.success) {
+          if (result.success && !isAdditionalCandidate) {
             context.ledger.jobs.confirmedBookingJobIds = [
               ...new Set([...(context.ledger.jobs.confirmedBookingJobIds ?? []), jobId]),
             ];
@@ -612,6 +612,7 @@ export function buildInterviewBookingTool(
             committedBookingFallback = {
               ...baseToolOutput,
               interviewMethod: analysis.interviewMeta.method,
+              interviewProcessRemark: analysis.normalizedRequirements.interviewRemarkDisplay,
               _outcome: '预约成功，可以告知候选人资料已提交',
               _replyInstruction:
                 '预约已真实成功。即使本地后处理异常，也必须告知候选人报名成功；禁止改口为预约失败。',
@@ -817,6 +818,7 @@ export function buildInterviewBookingTool(
             ...baseToolOutput,
             // 转人工前的确定性回执（handoff-receipt）按它区分等通知岗的 AI/电话/视频口径。
             interviewMethod: analysis.interviewMeta.method,
+            interviewProcessRemark: analysis.normalizedRequirements.interviewRemarkDisplay,
             _outcome: '预约成功，可以告知候选人面试安排',
             groupInvite,
             _groupInviteGuide: groupInviteGuide,

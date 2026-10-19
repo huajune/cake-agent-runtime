@@ -472,6 +472,7 @@ describe('duliday_interview_booking（form → labelList）', () => {
     const result = await execute({ jobId: 100 });
 
     expect(result).toMatchObject({ success: true, candidateScope: 'additional' });
+    expect(context.ledger.jobs.confirmedBookingJobIds ?? []).not.toContain(100);
     expect(result._replyInstruction).toContain('只有告知成功后才能处理下一位候选人');
     expect(sponge.bookInterview).toHaveBeenCalledWith(
       expect.objectContaining({

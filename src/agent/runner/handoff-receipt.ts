@@ -53,7 +53,10 @@ function describeBookingSuccess(result: Record<string, unknown>): string {
   const jobLabel = describeJob(result);
   if (!human) {
     // 等通知岗按 booking 回执里的面试方式分支：AI 面试是短信发链接，不是面试官来电。
-    const waitNotice = describeWaitNoticeForCandidate(parseInterviewMethod(result.interviewMethod));
+    const waitNotice = describeWaitNoticeForCandidate(
+      parseInterviewMethod(result.interviewMethod),
+      typeof result.interviewProcessRemark === 'string' ? result.interviewProcessRemark : null,
+    );
     return `${jobLabel}报名资料已经提交成功了，这个岗位是等通知的，${waitNotice}`;
   }
   const address =
