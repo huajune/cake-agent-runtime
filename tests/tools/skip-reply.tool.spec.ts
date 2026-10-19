@@ -90,27 +90,30 @@ describe('buildSkipReplyTool', () => {
   // 「我是星空」，模型 reason 自述「不符合 skip_reply 条件，应正常回复」仍以 confirmation_closure 调用，
   // 工具一接受即整轮静默，候选人等了 51 分钟。
   describe('confirmation_closure runtime admission', () => {
-    it('rejects the candidate opening line when there is no assistant message in the window', async () => {
-      const ctx = mergeToolContext(mockContext, {
-        turnInput: {
-          messages: [{ role: 'user', content: '我是星空' }],
-          currentUserMessage: '我是星空',
-        },
-      });
-      const result = await execute(buildTool(ctx), {
-        scene: 'confirmation_closure',
-        reason: '候选人首句，不符合 skip_reply 条件，应正常回复',
-      });
+    it.each(['我是星空', '好的'])(
+      'rejects an opening line without assistant history: %s',
+      async (message) => {
+        const ctx = mergeToolContext(mockContext, {
+          turnInput: {
+            messages: [{ role: 'user', content: message }],
+            currentUserMessage: message,
+          },
+        });
+        const result = await execute(buildTool(ctx), {
+          scene: 'confirmation_closure',
+          reason: '候选人首句，不符合 skip_reply 条件，应正常回复',
+        });
 
-      expect(result).toMatchObject({
-        success: false,
-        skipped: false,
-        scene: 'confirmation_closure',
-        errorType: TOOL_ERROR_TYPES.SKIP_REPLY_CONFIRMATION_NO_PRIOR_TURN,
-      });
-      expect(result).not.toHaveProperty('shortCircuited');
-      expect(result._replyInstruction).toMatch(/首句|正常开场回复/);
-    });
+        expect(result).toMatchObject({
+          success: false,
+          skipped: false,
+          scene: 'confirmation_closure',
+          errorType: TOOL_ERROR_TYPES.SKIP_REPLY_CONFIRMATION_NO_PRIOR_TURN,
+        });
+        expect(result).not.toHaveProperty('shortCircuited');
+        expect(result._replyInstruction).toMatch(/首句|正常开场回复/);
+      },
+    );
 
     it('rejects a current message that carries a new question or request', async () => {
       const ctx = mergeToolContext(mockContext, {
@@ -149,6 +152,28 @@ describe('buildSkipReplyTool', () => {
       });
     });
 
+    it('checks the complete trailing user block instead of only its final acknowledgement', async () => {
+      const ctx = mergeToolContext(mockContext, {
+        turnInput: {
+          messages: [
+            { role: 'assistant', content: '有问题随时联系' },
+            { role: 'user', content: '明天几点到？' },
+            { role: 'user', content: '好的' },
+          ],
+          currentUserMessage: undefined,
+        },
+      });
+      const result = await execute(buildTool(ctx), {
+        scene: 'confirmation_closure',
+        reason: '候选人回复好的',
+      });
+      expect(result).toMatchObject({
+        skipped: false,
+        errorType: TOOL_ERROR_TYPES.SKIP_REPLY_CONFIRMATION_NOT_SHORT_ACK,
+      });
+      expect(result).not.toHaveProperty('shortCircuited');
+    });
+
     it('accepts a short polite acknowledgement with stickers and punctuation', async () => {
       const ctx = mergeToolContext(mockContext, {
         turnInput: { currentUserMessage: '好的，谢谢您，非常感谢[抱拳][抱拳]' },
@@ -174,6 +199,16 @@ describe('buildSkipReplyTool', () => {
   });
 
   describe('isShortConfirmationMessage', () => {
+    it('enforces fewer than 10 characters after removing punctuation and markers', () => {
+      expect(isShortConfirmationMessage('好的，谢谢您非常感谢[抱拳]')).toBe(true);
+      expect(isShortConfirmationMessage('好的，谢谢您真的很感谢[抱拳]')).toBe(false);
+    });
+
+    it('does not equate a short non-question with semantic acknowledgement', () => {
+      expect(isShortConfirmationMessage('我是星空')).toBe(true);
+      // 首句是否允许沉默由 messages 中的 assistant 历史单独校验。
+    });
+
     it.each([
       '好的',
       '好呢，谢谢',

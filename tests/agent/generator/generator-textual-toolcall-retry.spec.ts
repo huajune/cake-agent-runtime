@@ -117,6 +117,12 @@ describe('GeneratorAgent 工具调用文本化重生成', () => {
       '帮你查了下，北滘公园附近有几家在招\n\n瑞幸咖啡（佛山北滘公园店），离你0.8公里，20元/时',
     ],
     ['XML 形态假调用', XML_CALL_REASONING, '周建青的报名也提交成功了'],
+    [
+      'Provider 假错误回执',
+      '<result>\n<error>InvalidApiKeyError</error></result>',
+      '## API密钥错误\n请检查环境变量配置',
+    ],
+    ['Provider 错误类型标记', '<error_type>invalid_api_key</error_type>', '请检查 API 密钥'],
   ])('零工具调用 + reasoning 含%s → 同样带工具重生成', async (_label, reasoning, firstText) => {
     const generate = jest
       .fn()

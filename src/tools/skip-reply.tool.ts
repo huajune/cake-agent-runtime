@@ -29,6 +29,7 @@ function normalizeAckText(text: string): string {
     .replace(/[\s\p{P}\p{S}]/gu, '');
 }
 
+/** 只校验短句形状，不裁决确认语义；是否存在新诉求仍由模型按工具契约判断。 */
 export function isShortConfirmationMessage(text: string): boolean {
   const stripped = stripTimeContext(text).replace(BRACKET_TOKEN_PATTERN, '');
   if (QUESTION_MARKER_PATTERN.test(stripped)) return false;
@@ -92,7 +93,7 @@ const DESCRIPTION = `主动跳过本轮回复（什么都不发）。调用后 r
 ### 场景二：真人招募经理正在沟通（scene=human_takeover）
 候选人当前消息之前**最近一条经理侧消息**带【内部来源标记：真人招募经理手动发送】，且候选人本轮是在**回应这条真人消息**，且未带出新的业务诉求（新问题/新地点/新岗位类型）→ 必须调用 skip_reply 把对话让给真人，不要插话。
 边界：只看最近一条经理侧消息。你自己（Agent）回复过之后，候选人的下一条就是发给你的，更早历史里的真人标记不构成让位理由；runtime 会按消息来源校验该条件，不成立时本工具返回 \`skipped=false\` 并拒绝沉默，此时必须正常回复候选人，不得改用其他场景再次沉默。
-场景一同样由 runtime 校验：对话里还没有任何经理侧消息（候选人首句），或候选人当前消息不是「10 字以内、不含问句」的纯确认词时，本工具返回 \`skipped=false\` 并拒绝沉默，必须正常回复。
+场景一同样有 runtime 准入：对话里还没有任何经理侧消息（候选人首句），或当前消息剥标记、空白与标点后为空、达到 10 字、含问句标记时，本工具返回 \`skipped=false\`，必须正常回复。通过准入仍须满足场景一全部条件，短句本身不代表确认收尾。
 注意：若候选人在回应真人的同时提出了需要你处理的新诉求（问岗位/要地址/要改约等），则正常接管回复，不适用本场景。
 
 ## 想沉默只有这一条通道
@@ -142,7 +143,8 @@ const inputSchema = z.object({
  * 经理侧消息是否真人手动发送）不成立时拒绝沉默，返回 buildToolError（skipped=false、不短路），
  * 模型必须继续正常回复；generator 的 prepareStep 会在拒绝后屏蔽本工具，防止换场景再试。
  * 场景一由 runtime 校验两条准入（见 isShortConfirmationMessage）：消息窗口里已有经理侧消息，
- * 且当前消息是 10 字以内、不含问句的短确认；任一不成立同样 buildToolError 拒绝。
+ * 且当前消息非空、不足 10 字、不含问句标记；任一不成立同样 buildToolError 拒绝。
+ * 这只是沉默的必要条件，短句是否为纯确认、上轮是否已推进仍由主 Agent 判断。
  * 接受时返回 `skipped=true` + `shortCircuited=true`，生成链路据此短路，不再依赖工具名特判。
  */
 export function buildSkipReplyTool(): ToolBuilder {
@@ -186,7 +188,7 @@ export function buildSkipReplyTool(): ToolBuilder {
             return buildToolError({
               errorType: TOOL_ERROR_TYPES.SKIP_REPLY_CONFIRMATION_NOT_SHORT_ACK,
               replyInstruction:
-                '候选人当前消息不是 10 字以内、不含问句的纯确认词，里面有需要你回应的内容；本轮必须正常回复，不得再次调用 skip_reply。',
+                '候选人当前消息为空、达到 10 字或含问句标记，不满足确认收尾的运行时准入；本轮必须正常回复，不得再次调用 skip_reply。',
               details: { skipped: false, scene, reason: trimmedReason },
             });
           }

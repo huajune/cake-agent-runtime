@@ -318,7 +318,7 @@ const SKIP_REPLY_REJECTION_REASONS: Partial<Record<ToolErrorType, string>> = {
   [TOOL_ERROR_TYPES.SKIP_REPLY_CONFIRMATION_NO_PRIOR_TURN]:
     '候选人这是首句，你还没有回复过对方，没有可收尾的推进动作',
   [TOOL_ERROR_TYPES.SKIP_REPLY_CONFIRMATION_NOT_SHORT_ACK]:
-    '候选人当前消息不是 10 字以内、不含问句的纯确认词，里面有需要你回应的内容',
+    '候选人当前消息为空、达到 10 字或含问句标记，不满足确认收尾的运行时准入',
 };
 
 export function buildSkipReplyRejectedNotice(errorType: ToolErrorType | 'unknown'): string {

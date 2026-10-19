@@ -321,7 +321,7 @@ describe('tool-call-analysis', () => {
       ).toMatch(/已被拒绝.*首句/);
       expect(
         buildSkipReplyRejectedNotice(TOOL_ERROR_TYPES.SKIP_REPLY_CONFIRMATION_NOT_SHORT_ACK),
-      ).toMatch(/已被拒绝.*纯确认词/);
+      ).toMatch(/已被拒绝.*运行时准入/);
       const generic = buildSkipReplyRejectedNotice('unknown');
       expect(generic).toMatch(/已被拒绝/);
       expect(generic).not.toMatch(/真人|首句|确认词/);

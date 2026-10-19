@@ -239,8 +239,8 @@ export const TOOL_ERROR_TYPES = {
    */
   SKIP_REPLY_CONFIRMATION_NO_PRIOR_TURN: 'skip_reply.confirmation_no_prior_turn',
   /**
-   * scene=confirmation_closure 但候选人当前消息不是「10 字以内、不含问句」的纯确认词：
-   * 里面有需要回应的内容（新问题/新诉求/说明），沉默被拒，本轮必须正常回复。
+   * scene=confirmation_closure 但消息剥标记、空白与标点后为空、达到 10 字或含问句标记。
+   * 不满足短句形状准入，沉默被拒，本轮必须正常回复；此码不表示已裁决确认语义。
    */
   SKIP_REPLY_CONFIRMATION_NOT_SHORT_ACK: 'skip_reply.confirmation_not_short_ack',
 

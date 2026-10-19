@@ -231,7 +231,7 @@ describe('GeneratorAgent', () => {
   // 真人接管口径，须按工具错误码说明「首句 / 非短确认词」。
   it.each([
     ['skip_reply.confirmation_no_prior_turn', '首句'],
-    ['skip_reply.confirmation_not_short_ack', '纯确认词'],
+    ['skip_reply.confirmation_not_short_ack', '运行时准入'],
   ])('should explain a rejected %s with its own wording', async (errorType, wording) => {
     mockPreparation.prepare.mockResolvedValue({
       ...preparedContext,
