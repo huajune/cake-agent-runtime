@@ -277,6 +277,32 @@ describe('duliday_interview_booking（form → labelList）', () => {
     expect(payload).not.toEqual(expect.objectContaining({ customerLabelList: expect.anything() }));
   });
 
+  it('AI 面试等通知岗：回执按短信发链接口径，不说面试官电话联系（badcase 2026-10-14 trace batch_6acf1cc3ce406a6aeee8d66c_1791960188741）', async () => {
+    sponge.fetchJobs.mockResolvedValue({
+      jobs: [
+        {
+          ...JOB,
+          interviewProcess: {
+            firstInterview: {
+              firstInterviewWay: 'AI面试',
+              periodicInterviewTimes: [],
+              fixedInterviewTimes: [],
+            },
+          },
+        },
+      ],
+    });
+    const result = await execute({ jobId: 100 });
+    expect(result.success).toBe(true);
+    expect(result.interviewMethod).toBe('AI面试');
+    expect(result._confirmedInterviewTimeHuman).toBeUndefined();
+    expect(result._waitNoticeReplyGuide).toContain('AI 面试');
+    expect(result._waitNoticeReplyGuide).toContain('短信');
+    expect(result._waitNoticeReplyGuide).toContain('禁止说"面试官会电话联系"');
+    expect(result._waitNoticeReplyGuide).not.toMatch(/^.*告知候选人资料已提交，面试官会电话联系/);
+    expect(result._onlineInterviewGuide).toContain('不需要到店');
+  });
+
   it('真实 SDK 后续模型消息隐藏后台工单号，运行时结果与报名指针仍保留', async () => {
     sponge.bookInterview.mockResolvedValue({
       success: true,

@@ -101,6 +101,18 @@ describe('job-list render util', () => {
     expect(markdown).toContain('岗位数据未下发社会身份要求（疑似数据缺失，不等于"不限身份"）');
   });
 
+  it('约面重点固定带「面试形式」一行，缺失时写明未明确而不是省略（badcase 2026-10-14 AI 面试说成电话面试）', () => {
+    const flags: ProgressiveDisclosureFlags = { ...minimalFlags, includeHiringRequirement: true };
+    const bare = formatJobsToMarkdown([makeJob(1)], 1, 1, 10, flags);
+    expect(bare).toContain('**面试形式**: 未明确（以报名回执为准，不得默认电话或到店）');
+
+    const job = makeJob(2) as ReturnType<typeof makeJob> & { interviewProcess?: unknown };
+    job.interviewProcess = { firstInterview: { firstInterviewWay: 'AI面试' } };
+    const withMethod = formatJobsToMarkdown([job], 1, 1, 10, flags);
+    expect(withMethod).toContain('**面试形式**: AI面试');
+    expect(withMethod).not.toContain('未明确（以报名回执为准');
+  });
+
   it('marks insurance as sensitive in welfare markdown instead of ordinary active welfare', () => {
     const flags: ProgressiveDisclosureFlags = {
       ...minimalFlags,

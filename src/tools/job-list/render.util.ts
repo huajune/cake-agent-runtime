@@ -117,9 +117,13 @@ function formatInterviewDecisionSummary(
     addSummaryLine(lines, '关键要求', policy.highlights.requirementHighlights.join('；'));
   }
 
-  if (policy.interviewMeta.method) {
-    addSummaryLine(lines, '面试形式', policy.interviewMeta.method);
-  }
+  // 面试形式固定成行：AI/电话/视频/线下决定后续"等通知"口径与是否到店，
+  // 缺失也要显式写明，不让模型默认成电话或到店（badcase 2026-10-14 AI 面试说成电话面试）。
+  addSummaryLine(
+    lines,
+    '面试形式',
+    policy.interviewMeta.method ?? '未明确（以报名回执为准，不得默认电话或到店）',
+  );
 
   if (policy.interviewMeta.demand) {
     addSummaryLine(lines, '报名要求', policy.interviewMeta.demand);

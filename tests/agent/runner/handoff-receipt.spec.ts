@@ -50,6 +50,26 @@ describe('buildPreHandoffReceipt', () => {
     );
   });
 
+  it('wait-notice booking on an AI-interview job → 短信发链接口径，不说面试官电话联系（badcase 2026-10-14）', () => {
+    const receipt = buildPreHandoffReceipt([
+      {
+        toolName: 'duliday_interview_booking',
+        args: { jobId: 1 },
+        result: {
+          success: true,
+          workOrderId: 1,
+          interviewMethod: 'AI面试',
+          requestInfo: { jobId: 1, interviewTime: null },
+          brandName: '肯德基',
+        },
+      },
+    ]);
+    expect(receipt?.text).toBe(
+      '肯德基 的报名资料已经提交成功了，这个岗位是等通知的，第一轮是 AI 面试，面试链接会短信发到你手机，留意短信并按时完成；通过后店长再联系你。',
+    );
+    expect(receipt?.text).not.toContain('电话联系');
+  });
+
   it('modify + cancel successes are described from their structured fields', () => {
     const receipt = buildPreHandoffReceipt([
       {

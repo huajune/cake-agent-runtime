@@ -358,6 +358,32 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
     );
   });
 
+  it('等通知岗位的时间模式说明按面试方式分支：AI 面试不再写"面试官会电话联系"（badcase 2026-10-14）', async () => {
+    sponge.fetchJobs.mockResolvedValue({
+      jobs: [
+        {
+          ...JOB,
+          interviewProcess: {
+            firstInterview: {
+              firstInterviewWay: 'AI面试',
+              periodicInterviewTimes: [],
+              fixedInterviewTimes: [],
+            },
+          },
+        },
+      ],
+    });
+    const result = await execute({ mode: 'query', jobId: 100 });
+    expect(result.interview.method).toBe('AI面试');
+    expect(result.interview.interviewTimeMode).toBe('wait_notice');
+    expect(result.interview.interviewTimeModeNote).toContain('短信');
+    expect(result.interview.interviewTimeModeNote).not.toContain('电话联系');
+
+    sponge.fetchJobs.mockResolvedValue({ jobs: [JOB] });
+    const phone = await execute({ mode: 'query', jobId: 100 });
+    expect(phone.interview.interviewTimeModeNote).toContain('面试官会电话联系');
+  });
+
   it('mode=query 只读取表单与预约信息，不消费当前消息里的报名答案', async () => {
     context.turnInput.messages = [{ role: 'user', content: '我叫兮兮' }];
 

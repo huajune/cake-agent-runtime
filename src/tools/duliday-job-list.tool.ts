@@ -1115,7 +1115,7 @@ export function buildJobListTool(
                 includeWelfare,
                 includeHiringRequirement,
                 includeWorkTime,
-                includeInterviewProcess,
+                includeInterviewProcess: true,
               },
               ...(bookedJobLookup ? { onlySignableJobs: false } : {}),
             });
@@ -1158,7 +1158,7 @@ export function buildJobListTool(
                   includeWelfare,
                   includeHiringRequirement,
                   includeWorkTime,
-                  includeInterviewProcess,
+                  includeInterviewProcess: true,
                 }),
               ),
               ...(responseFormat.includes('rawData') ? { rawData: inspected } : {}),
@@ -1365,7 +1365,9 @@ export function buildJobListTool(
           includeWelfare: includeWelfare || requireAccommodation,
           includeHiringRequirement,
           includeWorkTime,
-          includeInterviewProcess,
+          // 面试方式（AI/电话/视频/线下）来自 interviewProcess；推荐卡片「约面重点」固定带
+          // 「面试形式」一行，所以始终拉取；includeInterviewProcess 只控制面试流程段是否展示。
+          includeInterviewProcess: true,
         };
 
         // 当前轮高置信事实会覆盖旧会话事实。提前解析一次，除了成功结果过滤外，

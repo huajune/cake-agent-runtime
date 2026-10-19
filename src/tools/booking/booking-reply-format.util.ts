@@ -47,6 +47,59 @@ export function resolveInterviewReceiptMode(
   return requiresStoreVisit(interviewMethod) ? 'on_site' : 'remote';
 }
 
+/**
+ * 等通知岗位（提交时不选面试时间）的候选人可见口径，按海绵四值面试方式分支。
+ *
+ * 此前一律「面试官会电话联系你」：AI 面试岗位实际是短信发面试链接，候选人等电话
+ * 等不到就流失（生产 trace batch_6acf1cc3ce406a6aeee8d66c_1791960188741，precheck 已返回
+ * interview.method=AI面试）。措辞草案待运营最终裁定（PR 正文已标注）。
+ *
+ * booking 回执、转人工前回执与 precheck 时间模式说明共用本函数，不得各自再写话术。
+ */
+export function describeWaitNoticeForCandidate(
+  interviewMethod: InterviewMethod | null | undefined,
+): string {
+  switch (interviewMethod) {
+    case 'AI面试':
+      return '第一轮是 AI 面试，面试链接会短信发到你手机，留意短信并按时完成；通过后店长再联系你。';
+    case '视频面试':
+      return '面试形式是视频面试，留意视频面试通知，请保持手机畅通。';
+    default:
+      // 电话面试 / 线下面试（等通知形态下由面试官来电约到店时间）/ 面试方式缺失
+      return '面试官会电话联系你，请保持电话畅通。';
+  }
+}
+
+/**
+ * 给模型的等通知回执指引（`_waitNoticeReplyGuide`）：候选人口径 + 面试方式对应的禁令，
+ * AI 面试再并入岗位流程说明第一句（海绵「面试备注」常写明链接发送时间/完成截止）。
+ */
+export function buildWaitNoticeReplyGuide(params: {
+  interviewMethod: InterviewMethod | null | undefined;
+  processRemark?: string | null;
+}): string {
+  const candidateLine = describeWaitNoticeForCandidate(params.interviewMethod);
+  const base = `告知候选人资料已提交，并照实说明：${candidateLine}禁止编造时间。`;
+  if (params.interviewMethod === 'AI面试') {
+    const remarkLead = firstSentence(params.processRemark);
+    return (
+      `${base}这个岗位第一轮是 AI 面试，禁止说"面试官会电话联系"。` +
+      (remarkLead ? `流程说明第一句一并告知：「${remarkLead}」。` : '')
+    );
+  }
+  if (params.interviewMethod === '视频面试') {
+    return `${base}禁止说"面试官会电话联系"或"到店面试"。`;
+  }
+  return base;
+}
+
+function firstSentence(text: string | null | undefined): string | null {
+  const trimmed = text?.trim();
+  if (!trimmed) return null;
+  const lead = trimmed.split(/[。；;！!\n]/u)[0]?.trim();
+  return lead ? lead : null;
+}
+
 export interface ManualInterviewGroupHandling {
   required: true;
   delivery: 'manual';

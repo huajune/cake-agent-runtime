@@ -1,5 +1,9 @@
 import type { AgentToolCall } from '../generator/generator.types';
-import { formatInterviewTimeForReply } from '@tools/booking/booking-reply-format.util';
+import {
+  describeWaitNoticeForCandidate,
+  formatInterviewTimeForReply,
+} from '@tools/booking/booking-reply-format.util';
+import { parseInterviewMethod } from '@sponge/interview-method';
 
 /**
  * 转人工前的「已提交动作回执」（PRD R5.1 第 3 条）。
@@ -48,7 +52,9 @@ function describeBookingSuccess(result: Record<string, unknown>): string {
         : null;
   const jobLabel = describeJob(result);
   if (!human) {
-    return `${jobLabel}报名资料已经提交成功了，这个岗位是等通知的，面试官会电话联系你，请保持电话畅通。`;
+    // 等通知岗按 booking 回执里的面试方式分支：AI 面试是短信发链接，不是面试官来电。
+    const waitNotice = describeWaitNoticeForCandidate(parseInterviewMethod(result.interviewMethod));
+    return `${jobLabel}报名资料已经提交成功了，这个岗位是等通知的，${waitNotice}`;
   }
   const address =
     typeof result.interviewAddress === 'string' && result.interviewAddress.trim()

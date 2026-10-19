@@ -60,7 +60,10 @@ import {
   type SnapshotDuplicateMatch,
 } from '@tools/booking/booking-snapshot.util';
 import { mapJobsToRecommendedSummaries } from '@tools/job-list/job-summary.util';
-import { formatInterviewTimeForReply } from '@tools/booking/booking-reply-format.util';
+import {
+  describeWaitNoticeForCandidate,
+  formatInterviewTimeForReply,
+} from '@tools/booking/booking-reply-format.util';
 import {
   buildBookableSlots,
   buildScheduleRule,
@@ -760,7 +763,7 @@ export function buildInterviewPrecheckTool(
               address: analysis.interviewMeta.address,
               interviewTimeMode: interviewTimeWaitNotice ? 'wait_notice' : undefined,
               interviewTimeModeNote: interviewTimeWaitNotice
-                ? '该岗位提交时不选面试时间；资料确认后 booking 不传 interviewTime，面试官会电话联系。'
+                ? `该岗位提交时不选面试时间；资料确认后 booking 不传 interviewTime。候选人口径：${describeWaitNoticeForCandidate(analysis.interviewMeta.method)}`
                 : undefined,
               scheduleRule: scheduleRule || undefined,
               availabilityAuthority: interviewTimeWaitNotice

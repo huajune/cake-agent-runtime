@@ -35,6 +35,7 @@ import type { ToolBuildContext, ToolBuilder } from '@shared-types/tool.types';
 import {
   buildOnSiteScript,
   formatInterviewTimeForReply,
+  buildWaitNoticeReplyGuide,
   resolveInterviewReceiptMode,
   resolveManualInterviewGroupHandling,
 } from '@tools/booking/booking-reply-format.util';
@@ -600,14 +601,17 @@ export function buildInterviewBookingTool(
             // 绝不能落入下方通用失败 catch 后谎报“预约失败”。
             committedBookingFallback = {
               ...baseToolOutput,
+              interviewMethod: analysis.interviewMeta.method,
               _outcome: '预约成功，可以告知候选人资料已提交',
               _replyInstruction:
                 '预约已真实成功。即使本地后处理异常，也必须告知候选人报名成功；禁止改口为预约失败。',
               ...(interviewTime
                 ? { _confirmedInterviewTimeHuman: formatInterviewTimeForReply(interviewTime) }
                 : {
-                    _waitNoticeReplyGuide:
-                      '告知候选人资料已提交，面试官会电话联系；请保持电话畅通，禁止编造时间。',
+                    _waitNoticeReplyGuide: buildWaitNoticeReplyGuide({
+                      interviewMethod: analysis.interviewMeta.method,
+                      processRemark: analysis.normalizedRequirements.interviewRemarkDisplay,
+                    }),
                   }),
             };
           }
@@ -801,6 +805,8 @@ export function buildInterviewBookingTool(
           const groupInviteGuide = buildPostBookingGroupInviteGuide(groupInvite);
           const toolResult = {
             ...baseToolOutput,
+            // 转人工前的确定性回执（handoff-receipt）按它区分等通知岗的 AI/电话/视频口径。
+            interviewMethod: analysis.interviewMeta.method,
             _outcome: '预约成功，可以告知候选人面试安排',
             groupInvite,
             _groupInviteGuide: groupInviteGuide,
@@ -834,8 +840,10 @@ export function buildInterviewBookingTool(
               : {}),
             ...(!interviewTime
               ? {
-                  _waitNoticeReplyGuide:
-                    '告知候选人资料已提交，面试官会电话联系；请保持电话畅通，禁止编造时间。',
+                  _waitNoticeReplyGuide: buildWaitNoticeReplyGuide({
+                    interviewMethod: analysis.interviewMeta.method,
+                    processRemark: analysis.normalizedRequirements.interviewRemarkDisplay,
+                  }),
                 }
               : {}),
             ...(manualGroup

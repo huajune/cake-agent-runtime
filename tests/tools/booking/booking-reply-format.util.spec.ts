@@ -1,5 +1,7 @@
 import {
   buildOnSiteScript,
+  buildWaitNoticeReplyGuide,
+  describeWaitNoticeForCandidate,
   formatInterviewTimeForReply,
   resolveInterviewReceiptMode,
   resolveManualInterviewGroupHandling,
@@ -98,5 +100,44 @@ describe('resolveManualInterviewGroupHandling', () => {
         flowDescription: '面试官先电话沟通，合适后通知下一步',
       }),
     ).toBeNull();
+  });
+});
+
+describe('等通知回执按面试方式分支（badcase 2026-10-14 trace batch_6acf1cc3ce406a6aeee8d66c_1791960188741：AI 面试说成电话面试）', () => {
+  it('AI 面试：短信发面试链接，通过后店长联系；不说面试官电话联系', () => {
+    const text = describeWaitNoticeForCandidate('AI面试');
+    expect(text).toContain('AI 面试');
+    expect(text).toContain('短信');
+    expect(text).toContain('店长再联系');
+    expect(text).not.toContain('电话联系');
+  });
+
+  it('电话面试 / 线下面试 / 面试方式缺失：保留面试官电话联系口径', () => {
+    for (const method of ['电话面试', '线下面试', null, undefined] as const) {
+      expect(describeWaitNoticeForCandidate(method)).toBe('面试官会电话联系你，请保持电话畅通。');
+    }
+  });
+
+  it('视频面试：留意视频面试通知', () => {
+    expect(describeWaitNoticeForCandidate('视频面试')).toContain('视频面试通知');
+  });
+
+  it('模型指引：AI 面试并入流程说明第一句并禁止"面试官会电话联系"', () => {
+    const guide = buildWaitNoticeReplyGuide({
+      interviewMethod: 'AI面试',
+      processRemark:
+        '报名后 24 小时内短信发送 AI 面试链接，请在 48 小时内完成。通过后由店长电话约到店。',
+    });
+    expect(guide).toContain('短信');
+    expect(guide).toContain('禁止说"面试官会电话联系"');
+    expect(guide).toContain('「报名后 24 小时内短信发送 AI 面试链接，请在 48 小时内完成」');
+    expect(guide).not.toContain('通过后由店长电话约到店');
+    expect(guide).toContain('禁止编造时间');
+  });
+
+  it('模型指引：电话面试沿用原口径；流程说明不并入', () => {
+    const guide = buildWaitNoticeReplyGuide({ interviewMethod: '电话面试', processRemark: '随便' });
+    expect(guide).toContain('面试官会电话联系你');
+    expect(guide).not.toContain('随便');
   });
 });
