@@ -88,6 +88,14 @@
 
 ---
 
+## 🔬 技术调研 (technical/)
+
+> 外部技术/供应商的可行性调研：结论先行、证据分级、带来源；只写约束与判定，不写愿景。
+
+- **[Jev（TypeSafe System One）可行性调研 2026-10-08](technical/jev-feasibility-research-2026-10-08.md)** — 10 条候选三路对抗审查全部驳回；热路径被 T-1/T-2/T-4/T-6/M-rt-1 封死，冷路径每处有零新供应商替代；重议四前提与各候选的非 Jev 正解
+
+---
+
 ## 📋 产品 (product/)
 
 - **[产品定义](product/product-definition.md)** — 定位、用户角色、核心功能
