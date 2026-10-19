@@ -635,7 +635,6 @@ describe('geocode tool', () => {
 
         const result = (await anchoredExecute({
           address: '南海桂城上海村',
-          city: '佛山',
         })) as Record<string, unknown>;
 
         expect(mockGeocodingService.searchCandidates).toHaveBeenCalledTimes(1);
@@ -706,7 +705,7 @@ describe('geocode tool', () => {
         createToolContext({
           turnInput: {
             messages: [
-              { role: 'user', content: '我是龙虾过敏\n你好你好' },
+              { role: 'user', content: '我是龙虾过敏\n你好你好，我在上海' },
               { role: 'assistant', content: assistantReply },
               { role: 'user', content: '好好好\n我想找服务员' },
             ],
@@ -831,6 +830,7 @@ describe('geocode tool', () => {
       expect(result._cityConfirmed).toBeUndefined();
       expect(String(result._cityIgnored)).toContain('city=「佛山」没有出处');
       expect(String(result._cityIgnored)).toContain('按全国搜索');
+      expect(result._cityIgnoredReason).toBe('city_unverified');
       expect(result).toMatchObject({ ignoredCity: '佛山', resolvedCity: '北京市' });
       const instruction = String(result._replyInstruction);
       expect(instruction).toContain('禁止向候选人宣称已确认城市');
@@ -840,7 +840,7 @@ describe('geocode tool', () => {
       expect(ctx.ledger.geo.cityAttestation).toBeUndefined();
     });
 
-    it('city 无出处被忽略但全国搜落在同一城市 → 照常 unique，仍回执 _cityIgnored 且 _cityConfirmed 保持首字段', async () => {
+    it('city 无出处被忽略但全国搜落在同一城市 → 仍需确认，不让搜索结果为模型猜测作证', async () => {
       const ctx = createToolContext({
         session: { userId: 'u', corpId: 'c', sessionId: 's' },
         turnInput: { messages: [{ role: 'user', content: '王府井附近有兼职吗' }] },
@@ -849,10 +849,12 @@ describe('geocode tool', () => {
 
       const result = await run(ctx, { address: '王府井', city: '佛山' });
 
-      expect(result.resolution).toBe('unique');
-      expect(Object.keys(result)[0]).toBe('_cityConfirmed');
-      expect(Object.keys(result)[1]).toBe('_cityIgnored');
-      expect(result.result).toMatchObject({ city: '佛山市' });
+      expect(result.resolution).toBe('needs_confirmation');
+      expect(result._cityConfirmed).toBeUndefined();
+      expect(result._cityIgnoredReason).toBe('city_unverified');
+      expect(result.resolvedCity).toBe('佛山市');
+      expect(ctx.ledger.geo.anchors).toHaveLength(0);
+      expect(ctx.ledger.geo.cityAttestation).toBeUndefined();
     });
 
     it('已在佛山群 → city=佛山 有出处（realtime_group），按佛山限定搜索、不回执 _cityIgnored', async () => {
@@ -916,6 +918,24 @@ describe('geocode tool', () => {
 
       expect(result.resolution).toBe('needs_confirmation');
       expect(result).toMatchObject({ contextCities: ['佛山'] });
+    });
+
+    it('旧会话记忆不能绕过全国搜索与实时群城市的冲突确认', async () => {
+      (mockGeocodingService.searchCandidates as jest.Mock).mockResolvedValue([wangfujingBeijing()]);
+      const ctx = foshanGroupContext({
+        archive: {
+          realtimeGroupCities: ['佛山'],
+          sessionFacts: {
+            preferences: { city: { value: '北京', confidence: 'high', source: 'system' } },
+          } as unknown as ToolBuildContext['archive']['sessionFacts'],
+        },
+      });
+
+      const result = await run(ctx, { address: '王府井' });
+
+      expect(result.resolution).toBe('needs_confirmation');
+      expect(result._cityConfirmed).toBeUndefined();
+      expect(ctx.ledger.geo.cityAttestation).toBeUndefined();
     });
 
     it('全国搜城市与群城市不一致，但候选人本会话亲口提过该城市 → 照常 unique（换城市不被旧群线索拦）', async () => {
@@ -1029,7 +1049,13 @@ describe('geocode tool', () => {
         makeCandidate({ city: '常州市', district: '新北区', township: '' }),
       ]);
 
-      const result = (await execute({ address: '常州', city: '常州' })) as Record<string, unknown>;
+      const instance = toolBuilder(
+        createToolContext({ turnInput: { messages: [{ role: 'user', content: '我在常州' }] } }),
+      );
+      const result = (await (instance as unknown as { execute: ExecuteFn }).execute({
+        address: '常州',
+        city: '常州',
+      })) as Record<string, unknown>;
 
       expect((result.result as Record<string, unknown>).areaLevelQuery).toBe(true);
     });
@@ -1049,6 +1075,7 @@ describe('geocode tool', () => {
     function makeContext(sessionCity?: string): ToolBuildContext {
       return createToolContext({
         session: { userId: 'u', corpId: 'c', sessionId: 's' },
+        turnInput: { messages: [{ role: 'user', content: '我现在在上海' }] },
         archive: sessionCity
           ? {
               sessionFacts: {
@@ -1174,8 +1201,11 @@ describe('geocode tool', () => {
   });
 
   describe('回合上下文锚点记录（方案 11.3 B-1：areaLevelQuery 确定性传递）', () => {
-    function makeContext(): ToolBuildContext {
-      return createToolContext({ session: { userId: 'u', corpId: 'c', sessionId: 's' } });
+    function makeContext(city = '上海'): ToolBuildContext {
+      return createToolContext({
+        session: { userId: 'u', corpId: 'c', sessionId: 's' },
+        turnInput: { messages: [{ role: 'user', content: `我在${city}` }] },
+      });
     }
 
     it('区级 unique 解析 → 记录 areaLevelQuery=true + 行政区名到 context.geocodeAnchors', async () => {
@@ -1202,7 +1232,7 @@ describe('geocode tool', () => {
 
     it('unique 解析 → 触发 recordCityAttestation 城市确权回调（证据化 A1）', async () => {
       const recordCityAttestation = jest.fn();
-      const ctx = mergeToolContext(makeContext(), { ledger: { recordCityAttestation } });
+      const ctx = mergeToolContext(makeContext('沈阳'), { ledger: { recordCityAttestation } });
       const instance = buildGeocodeTool(mockGeocodingService)(ctx);
       (mockGeocodingService.searchCandidates as jest.Mock).mockResolvedValue([
         makeCandidate({

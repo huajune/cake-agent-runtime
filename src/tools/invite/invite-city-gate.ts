@@ -201,14 +201,22 @@ function normalizeCitySet(cities: readonly string[] | undefined): Set<string> {
 
 /** 句级切分：只拿含城市名、且带求证语气的那一句当问句，避免整条消息里别处的「吗/？」误配。 */
 const SENTENCE_SPLIT_RE = /[。！？!?\n；;]+/u;
-const CITY_CONFIRMATION_QUESTION_RE =
-  /(?:对吧|对吗|对么|对不对|是吗|是么|是吧|是不是|在.{0,16}(?:吗|么|吧)$|吧$)/u;
+// 只公证“你（现在）在 X（这边）吗/对吧”这一封闭问句形态；
+// 岗位意向、工作经历等含城市的其他问题不能据肯定短答推成当前位置。
+const CITY_LOCATION_PREFIX_RE = /(?:你|您)(?:现在|目前)?(?:是)?在\s*$/u;
+const CITY_LOCATION_SUFFIX_RE =
+  /^(?:市)?(?:这边|这里|这儿|附近)?\s*(?:对吧|对吗|对么|对不对|是吗|是么|是吧|吗|么|吧)$/u;
 
 function extractCityConfirmationQuestion(assistantText: string, city: string): string | null {
   for (const raw of assistantText.split(SENTENCE_SPLIT_RE)) {
     const sentence = raw.trim();
     if (!sentence || !mentionsPlaceNameStandalone(sentence, city)) continue;
-    if (CITY_CONFIRMATION_QUESTION_RE.test(sentence)) return sentence;
+    const cityIndex = sentence.indexOf(city);
+    if (
+      CITY_LOCATION_PREFIX_RE.test(sentence.slice(0, cityIndex)) &&
+      CITY_LOCATION_SUFFIX_RE.test(sentence.slice(cityIndex + city.length))
+    )
+      return sentence;
   }
   return null;
 }

@@ -406,6 +406,23 @@ describe('evaluateInviteCityGate', () => {
         }),
       ).toEqual({ decision: 'reject', reason: 'city_conflict', expectedCity: '北京' });
     });
+
+    it.each(['你想找佛山的岗位对吧？', '你在佛山工作过对吧？', '佛山的店招满了对吧？'])(
+      '对其他含城市问题的肯定应答不构成当前位置确认：%s',
+      (question) => {
+        expect(
+          evaluateGate({
+            requestedCity: '佛山',
+            sessionCity: null,
+            userTexts: ['对的'],
+            dialogueMessages: [
+              { role: 'assistant', content: question },
+              { role: 'user', content: '对的' },
+            ],
+          }),
+        ).toEqual({ decision: 'reject', reason: 'city_unverified' });
+      },
+    );
   });
 
   describe('collectCityGateContextInputs', () => {

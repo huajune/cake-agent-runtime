@@ -73,8 +73,8 @@ const DESCRIPTION = `将地名或地址解析为标准化的省/市/区/镇层�
 - address 必传；当你判断该地点是地铁站时，保留站名后的车站或地铁站后缀，不要只传裸路名，以免坐标被定位到整条道路的远端
 - city 可选；按以下优先级判断要不要填：
   1. 候选人当前明示城市 / [本轮查询硬约束] 的城市 / [本轮解析线索] 的城市 / [会话记忆] 任一存在 → 直接填入（哪怕本工具的 address 是商圈/地标，也要带上这个已知城市）
-  2. 上面都没有，但你判断地名与城市存在公认的唯一对应关系，且地名**不**命中下面的"通用后缀黑名单" → 允许凭通识填城市
-  3. 既无明示也无高置信通识，或地名命中黑名单 → city 留空（不传或传 null），由工具判定
+  2. 上面都没有，但候选人已在的兼职群、在途预约门店或候选人对城市问句的肯定应答有城市出处 → 填入对应城市
+  3. 没有上述出处 → city 留空（不传或传 null），由工具判定；不要凭通识或推测填城市
 - 不要为了 city 反复反问候选人——拿不准就留空让工具自己处理
 - city 只认有出处的城市：候选人亲口说过 / 会话记忆 / 候选人已在的兼职群城市 / 在途预约门店城市 / 候选人对「你是在 X 对吧」的肯定应答 / 本轮解析确权。凭通识或推测填入、找不到出处的 city 会被工具忽略并在结果里标注 \`_cityIgnored\`——此时本次是全国搜索，**不得向候选人说"已确认城市"**
 
@@ -85,17 +85,17 @@ const DESCRIPTION = `将地名或地址解析为标准化的省/市/区/镇层�
 裸通名的交通枢纽（"火车站""汽车站""长途汽车站"这类没有专名前缀的）
 
 **带专名前缀的车站不算黑名单**：有具体站名的车站，
-按上面第 2 条正常处理——有高置信通识就填 city，没把握就留空，
+有上述城市出处就填 city，没有出处就留空，
 工具会全国搜索；真撞名时返回 ambiguous 候选清单再反问。
 
-命中黑名单时 **city 必须留空**——工具会报 \`${TOOL_ERROR_TYPES.GEOCODE_AMBIGUOUS_SUFFIX}\`，按 \`_replyInstruction\` 中性反问候选人所在城市，反问禁止带具体城市名。
+命中黑名单且没有城市出处时 **city 必须留空**——工具会报 \`${TOOL_ERROR_TYPES.GEOCODE_AMBIGUOUS_SUFFIX}\`，按 \`_replyInstruction\` 中性反问候选人所在城市，反问禁止带具体城市名。
 
 ## 返回三态
 - \`resolution=unique\` + 扁平 \`result\`：单城唯一命中，直接把 result 当结果用，组装 location 走 duliday_job_list
   - **解析成功即城市已确认**：结果第一个字段 \`_cityConfirmed\` 已写明"已确认城市：XX"。**此后禁止再向候选人询问已确认的城市**，也禁止宣称该位置未找到——应直接按已确认城市与坐标查岗。仅当结果带 \`_cityConflictNotice\`（本次解析城市与会话记忆城市冲突）时，按其指引向候选人做一句确认，**不得静默按新城市推进、也不得静默沿用旧城市**
   - \`result.areaLevelQuery=true\` 表示查询词只是区/市级行政区名，坐标是**行政区代表点**而非候选人真实位置：仍可据此查岗，但据此算出的门店距离只能按"约 X 公里（按 XX 估算）"的估算口径表述（岗位工具结果会自动带估算标记），或先追问候选人具体位置/商圈/定位
 - \`resolution=ambiguous\` + \`candidates\`：多城市同名，**禁止默认选第一个**；列出 candidates 中实际返回的城市，请候选人选择，选定后带上 city 重调本工具
-- \`resolution=needs_confirmation\`：解析结果须候选人确认后才能用——原地址未被逐字回显；或你传的 city 没有出处被忽略、全国搜索却落在另一个城市；或全国搜索的城市与候选人所在兼职群/在途预约门店城市不一致。严格按 \`_replyInstruction\` 用一句话向候选人确认，确认前**禁止**采用坐标查岗、禁止宣称已确认城市
+- \`resolution=needs_confirmation\`：解析结果须候选人确认后才能用——原地址未被逐字回显；或你传的 city 没有出处被忽略（即使命中同城）；或全国搜索的城市与候选人所在兼职群/在途预约门店城市不一致。严格按 \`_replyInstruction\` 用一句话向候选人确认，确认前**禁止**采用坐标查岗、禁止宣称已确认城市
 - \`errorType\`：按各错误类型的 \`_replyInstruction\` 行事
 
 ## 边界
@@ -231,6 +231,7 @@ interface CityProvenance {
 function evaluateCityProvenance(
   context: ToolBuildContext,
   requestedCity: string,
+  ignoreSessionCity = false,
 ): InviteCityGateVerdict {
   const cityFact = context.archive.sessionFacts?.preferences?.city;
   const sessionCity =
@@ -241,7 +242,7 @@ function evaluateCityProvenance(
         : null;
   return evaluateInviteCityGate({
     requestedCity,
-    sessionCity,
+    sessionCity: ignoreSessionCity ? null : sessionCity,
     userTexts: extractUserTexts(context.turnInput.messages),
     geoSignalCities: context.ledger.geo.signalCities,
     turnResolvedCities: [
@@ -287,14 +288,13 @@ function buildCityIgnoredNotice(ignored: IgnoredCityInput): string {
   );
 }
 
-/** 把 `_cityIgnored` 挂到结果上；unique 结果保持 `_cityConfirmed` 仍是首字段。 */
+/** 明示 city 被忽略的原因；搜索结果不能反过来给被拒绝的城市参数作证。 */
 function withCityIgnoredNotice(result: Record<string, unknown>, ignored: IgnoredCityInput) {
-  const notice = buildCityIgnoredNotice(ignored);
-  if ('_cityConfirmed' in result) {
-    const { _cityConfirmed, ...rest } = result;
-    return { _cityConfirmed, _cityIgnored: notice, ...rest };
-  }
-  return { _cityIgnored: notice, ...result };
+  return {
+    _cityIgnored: buildCityIgnoredNotice(ignored),
+    _cityIgnoredReason: ignored.reason,
+    ...result,
+  };
 }
 
 /** 候选人所在兼职群城市 + 在途预约门店城市（归一后去重）；全国搜 unique 的交叉核对基准。 */
@@ -313,7 +313,7 @@ function collectContextCities(context: ToolBuildContext): string[] {
 
 /**
  * city=null 全国搜索得到 unique 时的城市交叉核对（BadCase 复核 [17]）：
- * - 模型传的 city 被忽略且全国搜落在另一个城市 → 需候选人确认，不能把别城结果当已确认城市；
+ * - 模型传的 city 被忽略 → 需候选人确认，搜索偶然命中同城也不能替候选人确认；
  * - 全国搜城市与候选人所在兼职群/在途预约门店城市不一致、且该城市自身没有任何出处 → 同样需确认。
  * 返回 null 表示可以照常走 unique。
  */
@@ -329,27 +329,25 @@ function resolveNationwideCityConfirmation(params: {
   const candidateLabel = candidate.poiName?.trim() || candidate.formattedAddress;
 
   if (ignored) {
-    const requested = normalizeCityName(ignored.requestedCity);
-    if (requested && requested !== resolvedCity) {
-      return {
-        resolution: 'needs_confirmation' as const,
-        candidateLabel,
-        resolvedCity: candidate.city,
-        ignoredCity: ignored.requestedCity,
-        _replyInstruction:
-          `你传入的 city=「${ignored.requestedCity}」没有出处，本次已按全国搜索，` +
-          `“${queryAddress}”唯一落在「${candidate.city}」（${candidateLabel}），与你传入的城市不一致。` +
-          `禁止向候选人宣称已确认城市、禁止按「${candidate.city}」查岗或推荐、禁止把「${candidate.city}」当作候选人所在城市。` +
-          `先用一句话向候选人确认所在城市（如“你是在${ignored.requestedCity}这边对吧？”），候选人确认后带 city 重调本工具。`,
-      };
-    }
+    return {
+      resolution: 'needs_confirmation' as const,
+      candidateLabel,
+      resolvedCity: candidate.city,
+      ignoredCity: ignored.requestedCity,
+      _replyInstruction:
+        `你传入的 city=「${ignored.requestedCity}」没有出处，本次已按全国搜索，` +
+        `“${queryAddress}”解析到「${candidate.city}」（${candidateLabel}），搜索命中不等于候选人确认所在城市。` +
+        `禁止向候选人宣称已确认城市、禁止按「${candidate.city}」查岗或推荐、禁止把「${candidate.city}」当作候选人所在城市。` +
+        `先用一句话向候选人确认所在城市（如“你是在${ignored.requestedCity}这边对吧？”），候选人确认后带 city 重调本工具。`,
+    };
   }
 
   const contextCities = collectContextCities(context);
   if (contextCities.length === 0 || contextCities.includes(resolvedCity)) return null;
   // 解析城市自身有出处（候选人亲口说过 / 区名推断 / 本轮确权 / 地图截图 / 问答确认）时放行：
   // 候选人可能刚换城市，群与预约城市只是旧线索。
-  if (evaluateCityProvenance(context, candidate.city).decision === 'allow') return null;
+  const evidence = evaluateCityProvenance(context, candidate.city, true);
+  if (evidence.decision === 'allow' && evidence.matchedBy !== 'turn_geocode') return null;
   const contextLabel = contextCities.join('、');
   return {
     resolution: 'needs_confirmation' as const,
@@ -380,8 +378,19 @@ function buildUniqueResult(params: {
   requireEchoOf?: string;
   /** 本次是 city=null 的全国搜索（无锚点/无地址行政回显印证）；城市确权只记 medium。 */
   nationwideSearch?: boolean;
+  ignoredCity?: IgnoredCityInput | null;
 }) {
-  const { context, candidate, queryAddress, extra, requireEchoOf, nationwideSearch } = params;
+  const { context, candidate, queryAddress, extra, requireEchoOf, nationwideSearch, ignoredCity } =
+    params;
+  if (ignoredCity) {
+    const confirmation = resolveNationwideCityConfirmation({
+      context,
+      candidate,
+      queryAddress,
+      ignored: ignoredCity,
+    });
+    if (confirmation) return confirmation;
+  }
   const echoTarget = requireEchoOf ?? queryAddress;
   const mustEcho = requireEchoOf !== undefined || candidate.confidence !== 'high';
   if (mustEcho && !candidateEchoesQuery(candidate, echoTarget)) {
@@ -626,6 +635,8 @@ export function buildGeocodeTool(geocodingService: GeocodingService): ToolBuilde
               context,
               candidate: anchor,
               queryAddress: trimmedAddress,
+              ignoredCity: cityProvenance.ignored,
+              nationwideSearch: !normalizedCity,
             });
           }
 
@@ -643,6 +654,8 @@ export function buildGeocodeTool(geocodingService: GeocodingService): ToolBuilde
                 context,
                 candidate: pickAnchorCandidate(administrativelyEchoed),
                 queryAddress: trimmedAddress,
+                ignoredCity: cityProvenance.ignored,
+                nationwideSearch: !normalizedCity,
                 extra: {
                   contextCorrection: {
                     applied: false,
@@ -677,6 +690,8 @@ export function buildGeocodeTool(geocodingService: GeocodingService): ToolBuilde
               context,
               candidate: anchor,
               queryAddress: contextualAddress,
+              ignoredCity: cityProvenance.ignored,
+              nationwideSearch: !contextualCity,
               ...(crossCityCorrection ? { requireEchoOf: trimmedAddress } : {}),
               extra: {
                 contextCorrection: {
@@ -753,6 +768,7 @@ export function buildGeocodeTool(geocodingService: GeocodingService): ToolBuilde
             context,
             candidate: anchor,
             queryAddress: trimmedAddress,
+            ignoredCity: cityProvenance.ignored,
             nationwideSearch: !normalizedCity,
           });
         }

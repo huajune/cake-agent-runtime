@@ -2,6 +2,8 @@ import { ReengagementAgent } from '@agent/reengagement/reengagement.agent';
 import { getScenario } from '@agent/reengagement/scenario-registry';
 import type { FollowUpJob } from '@agent/reengagement/follow-up-scheduler.service';
 import type { ReengagementSessionState } from '@memory/recall.types';
+import { HUMAN_AGENT_MESSAGE_MARKER } from '@shared-types/corpus.types';
+import { StorageMessageSource, StorageMessageType } from '@enums/storage-message.enum';
 
 const sessionRef = { corpId: 'corp-1', userId: 'user-1', sessionId: 'sess-1' };
 
@@ -36,7 +38,13 @@ describe('ReengagementAgent', () => {
   let memory: { recallForProactiveFollowUp: jest.Mock };
   let reengagementAgent: ReengagementAgent;
   let memoryRecall: {
-    recentMessages: Array<{ role: string; content: string }>;
+    recentMessages: Array<{
+      role: string;
+      content: string;
+      source?: StorageMessageSource;
+      messageType?: StorageMessageType;
+      isSelf?: boolean;
+    }>;
     factLines: string[];
   };
 
@@ -82,6 +90,39 @@ describe('ReengagementAgent', () => {
 
   afterEach(() => {
     jest.restoreAllMocks();
+  });
+
+  it('marks verified human messages while preserving automated group closing as unmarked history', async () => {
+    memoryRecall.recentMessages = [
+      {
+        role: 'assistant',
+        content: '这次面试改推其他岗位',
+        source: StorageMessageSource.MOBILE_PUSH,
+        messageType: StorageMessageType.TEXT,
+        isSelf: true,
+      },
+      {
+        role: 'assistant',
+        content: '群里看新岗位，稍后邀你进群',
+        source: StorageMessageSource.AI_REPLY,
+        messageType: StorageMessageType.TEXT,
+        isSelf: true,
+      },
+      { role: 'user', content: '好的' },
+    ];
+    await reengagementAgent.compose({
+      sessionRef,
+      scenario: getScenario('interview_reminder')!,
+      jobData: job('interview_reminder'),
+      state: baseState({ terminal: 'booked' }),
+      bookingContext: liveBookingContext(),
+    });
+
+    expect(llm.generateStructured.mock.calls[0][0].messages).toEqual([
+      { role: 'assistant', content: `${HUMAN_AGENT_MESSAGE_MARKER}\n这次面试改推其他岗位` },
+      { role: 'assistant', content: '群里看新岗位，稍后邀你进群' },
+      { role: 'user', content: '好的' },
+    ]);
   });
 
   it('routes to the dedicated reengagement model when AGENT_REENGAGEMENT_MODEL is set', async () => {
@@ -427,7 +468,7 @@ describe('ReengagementAgent', () => {
       // 生产 badcase（touch 19712）：候选人说“干不了”且顾问已转拉群，提醒仍被发出。
       // 判据必须覆盖婉拒表达 + 转群语境，并区分“为本次面试拉群”不算放弃。
       expect(system).toContain('得知岗位要求或条件后表示无法接受');
-      expect(system).toContain('邀请进群、改推其他岗位');
+      expect(system).toContain('明确将本次面试改推为其他岗位');
       expect(system).toContain('招募经理为本次面试拉群');
       // 积压 9glgjegv（2026-10-12）：Agent 因群收口说「群里看新岗位」被当成候选人放弃、提醒被跳过。
       // 放弃只认候选人本人明确说不去 / 真人经理明确改推；收口话术不是放弃信号。
@@ -435,7 +476,8 @@ describe('ReengagementAgent', () => {
       expect(system).toContain(
         '「群里看新岗位」「稍后邀你进群」属于群收口话术，不是候选人放弃信号',
       );
-      expect(system).toContain('候选人没有明确表态不去的，不得判 candidate_declined_interview');
+      expect(system).toContain('既无候选人明确放弃、也无上述真人改推证据时');
+      expect(system).toContain('没有该标记的 assistant 消息不得当作真人改推证据');
       expect(system).not.toContain(
         '候选人未再重新确认参加本次面试的，同样判 candidate_declined_interview',
       );
@@ -1632,6 +1674,9 @@ describe('ReengagementAgent', () => {
           expect(system).toContain('interviewTimeMismatch 必须为 false');
           expect(system).not.toContain('时间口径（工单为准，聊天不一致则不发）');
           expect(system).not.toContain('聊天约定了不同时间的按上面的时间口径不发');
+          expect(system).not.toContain(
+            '近期对话中对本次面试实际时间有与之不同的明确约定时，本次不发',
+          );
           expect(system).toContain(
             'AI/线上面试的完成时限或截止时间不是面试时间，不得据此改写钟点或跳过',
           );
