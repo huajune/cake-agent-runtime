@@ -612,6 +612,14 @@ describe('envelope reply slots and internal-note keys — 2026-10-13 thought lea
     expect(isEmptyReplySlotEnvelope('好的，我帮你看下')).toBe(false);
   });
 
+  it.each([
+    { reply: '', message: '好的，面试当天记得带身份证' },
+    { reply: '', unknownControl: { action: 'human_takeover' } },
+    { reply: '', thought: { message: '这不是已知的笔记字符串' } },
+  ])('does not silently discard unknown or structured non-slot content: %j', (envelope) => {
+    expect(isEmptyReplySlotEnvelope(JSON.stringify(envelope))).toBe(false);
+  });
+
   it('existing unwrap paths are unchanged', () => {
     expect(
       tryUnwrapEnvelopeReply(

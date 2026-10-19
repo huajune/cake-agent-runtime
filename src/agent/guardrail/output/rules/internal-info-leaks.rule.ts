@@ -279,6 +279,8 @@ const ENVELOPE_REPLY_SLOT_KEYS = new Set([
 ]);
 /** 键名任一分段命中即为内部笔记键，其值永远不得入选正文（无论中文量多少）。 */
 const ENVELOPE_INTERNAL_NOTE_KEY_SEGMENTS = new Set([
+  'note',
+  'notes',
   'thought',
   'thoughts',
   'thinking',
@@ -372,7 +374,7 @@ export function tryUnwrapEnvelopeReply(content: string): string | null {
  * 全部为空、其余键只是意图/思考笔记。这里只判断结构，不授予沉默权限；Runner 必须核对
  * 确认收尾的历史/消息准入和本轮零工具调用，符合才 skipped，否则进入受控修复。
  * 带 scene/action、调用结构或转人工/告警参数键的信封不算，避免绕过场景准入或吞掉风险处置；
- * reason 单独可作内部笔记。
+ * reason 单独可作内部笔记；其余非空字段必须是已知内部笔记字符串，未知字段不能被静默吞掉。
  */
 export function isEmptyReplySlotEnvelope(content: string): boolean {
   const record = parseJsonObjectEnvelope(content);
@@ -387,7 +389,18 @@ export function isEmptyReplySlotEnvelope(content: string): boolean {
     return false;
   }
   if (Object.values(record).some(namesRegisteredTool)) return false;
-  const slotEntries = Object.entries(record).filter(([key]) => isEnvelopeReplySlotKey(key));
+  const entries = Object.entries(record);
+  const hasUnknownContent = entries.some(
+    ([key, value]) =>
+      !isEnvelopeReplySlotKey(key) &&
+      !isBlankEnvelopeValue(value) &&
+      !(
+        typeof value === 'string' &&
+        (key.toLowerCase() === 'reason' || isEnvelopeInternalNoteKey(key))
+      ),
+  );
+  if (hasUnknownContent) return false;
+  const slotEntries = entries.filter(([key]) => isEnvelopeReplySlotKey(key));
   return slotEntries.length > 0 && slotEntries.every(([, value]) => isBlankEnvelopeValue(value));
 }
 

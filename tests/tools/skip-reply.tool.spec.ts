@@ -132,8 +132,14 @@ describe('buildSkipReplyTool', () => {
       expect(result._replyInstruction).toMatch(/正常回复/);
     });
 
-    it.each(['多久通知呀', '几天上班'])(
-      'rejects short duration questions even without a question mark: %s',
+    it.each([
+      '多久通知呀',
+      '几天上班',
+      '【几点上班】好的',
+      '[多久通知]好的',
+      '【明天开始上班只做周末兼职】好的',
+    ])(
+      'rejects duration questions and substantive bracketed user text: %s',
       async (currentUserMessage) => {
         const ctx = mergeToolContext(mockContext, { turnInput: { currentUserMessage } });
         const result = await execute(buildTool(ctx), {

@@ -1321,6 +1321,16 @@ describe('AgentRunnerService.runInboundTurn', () => {
       'tool_call_artifact_silenced',
     ],
     [
+      { reply: '', message: '好的，面试当天记得带身份证' },
+      'handoff',
+      'tool_call_artifact_silenced',
+    ],
+    [
+      { reply: '', unknownControl: { action: 'human_takeover' } },
+      'handoff',
+      'tool_call_artifact_silenced',
+    ],
+    [
       { thought: '候选人回复好，本轮无新诉求，应沉默收尾' },
       'handoff',
       'tool_call_artifact_silenced',

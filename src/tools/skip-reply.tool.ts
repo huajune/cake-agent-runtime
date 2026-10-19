@@ -12,7 +12,7 @@ const logger = new Logger('skip_reply');
  * 候选人首句「我是星空」，模型 reason 自述「不符合 skip_reply 条件，应正常回复」却仍以
  * confirmation_closure 调用，工具一接受即整轮静默，候选人等了 51 分钟。两条运行时判据：
  * - 消息窗口里必须已有经理侧（assistant）消息——首句没有可收尾的推进动作；
- * - 当前消息剥掉表情/占位/语音转写标记、空白与标点后不足 10 字，且不含问句标记。
+ * - 当前消息剥掉已知表情/占位/语音转写标记、空白与标点后不足 10 字，且不含问句标记。
  * 近 14 天 1,681 次场景一静默：10 次无任何经理侧回复、89 次原文 ≥10 字（多为「好的，谢谢您，非常感谢」
  * 一类礼貌长尾，按剥标点后计数绝大多数仍放行）、24 次带问句词。
  */
@@ -23,8 +23,9 @@ const CONFIRMATION_MAX_CHARS = 10;
  */
 const QUESTION_MARKER_PATTERN =
   /[?？]|吗|怎么|什么|哪|多少|多久|为什么|几点|几号|几天|能不能|可不可以|行不行|是不是/u;
-/** `[抱拳]` / `[表情消息]` / `[语音转文字，时长2秒]` 等方括号标记整体剥除。 */
-const BRACKET_TOKEN_PATTERN = /[\[【][^\]】\n]{1,30}[\]】]/gu;
+/** 只剥已知表情与平台占位格式，普通括号中的用户内容必须参与问句和长度检查。 */
+const BRACKET_TOKEN_PATTERN =
+  /[\[【](?:抱拳|表情消息|图片消息(?:\s+\d+\s+张)?|语音转文字(?:[，,]\s*时长\d+秒)?)[\]】]/gu;
 
 function normalizeAckText(text: string): string {
   return stripTimeContext(text)
