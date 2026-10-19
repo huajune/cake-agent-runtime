@@ -482,6 +482,12 @@ DB 内嵌话术通过精确匹配旧值的配置迁移清理，避免覆盖运�
   - **关联**：确定性主修复是带外工单核验 `maybeLoadOutOfBandBookingContext`（面试相关回合按记忆手机号
     直查海绵 signup/list，命中即渲染 [当前预约信息] + "非本会话提交"来源行，BK1–BK6 随之生效）；
     本条只兜"核验也查不到/查询失败"的残余面。
+- `BS3` — 取消/改约零工单接地（2026-10-19 新增，badcase [03] `batch_6ad19d27ce406a6aee98bb9f_1792125255605`）：
+  工单号是系统内部编号，严禁向候选人索要；空态下候选人要取消/改约时直接 `request_handoff(modify_appointment)`，
+  不自行调取消/改约工具。长期有效。
+  - **拦侧配对**：`duliday_cancel_work_order` 的 `CANCEL_MISSING_WORK_ORDER_ID` 回执（同日 schema 去掉
+    `positive()`，0/空值进 execute 给处置指引）；运行时 `REPLAY_BLOCKING_TOOLS` 同批加入 cancel/modify，
+    首版取消成功后不再被 replay 整轮丢弃（根因修复，本条只兜残余面）。
 
 ## 三、final-check always 规则（发送前自检，固定次末位 ≈ recitation）
 
@@ -561,6 +567,19 @@ FC 编号保留为历史别名：
 > 策略文本编辑主体只有我们（用户+AI 会话），不加 Dashboard 侧额外约束；AI 侧台账登记纪律（F1）覆盖。
 
 ## 六、工具 description（章节级登记）
+
+### 2026-10-19 BadCase 复核小修：取消工单号不向候选人索要
+
+来源：2026-10-19 BadCase 复核 [03]（`batch_6ad19d27ce406a6aee98bb9f_1792125255605`，10-16）：首版成功取消
+工单 472980 后候选人补发消息触发 replay，`REPLAY_BLOCKING_TOOLS` 不含 cancel，首版整轮丢弃重跑；重跑 prompt
+预约快照已空，模型调 `cancel(workOrderId=0)` 被 zod 拒后向候选人索要工单号。长期有效，无 TTL。
+
+| 居所                                                  | 本批增改删                                                                                | 边界与配对                                                                                                                                                                   |
+| ----------------------------------------------------- | ----------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `duliday_cancel_work_order` DESCRIPTION「参数」       | 补一句：工单号是系统内部编号，严禁向候选人索要；拿不到时按「没有 [当前预约信息]」一节处理 | 教侧；拦侧为同工具 `CANCEL_MISSING_WORK_ORDER_ID` 回执                                                                                                                       |
+| `duliday_cancel_work_order` inputSchema `workOrderId` | 去掉 `positive()`，改 `nullable().optional()`；0/空值进 execute                           | zod 拒绝只给模型裸报错、无处置指引；运行时回执明示「禁止向候选人索要工单号，改走 request_handoff(modify_appointment)，不得谎称已取消/否认预约」                              |
+| [预约状态] 空态接地块 `NO_BOOKING_STATUS_BLOCK`       | 补一句取消/改约口径（第二节 BS3）                                                         | 与 description 同一约束、两处分别覆盖「有工具可调」与「空态不该调」两种时点，不构成双居所                                                                                    |
+| 运行时（非 prompt）`REPLAY_BLOCKING_TOOLS`            | 加入 `duliday_cancel_work_order` / `duliday_modify_interview_time`                        | 根因修复：取消/改约既成后保留首版回复，候选人补发消息按新回合处理，与 booking/invite 同口径；未采用「replay 时注入首版副作用摘要」方案（仍依赖模型读懂，且需新增上下文管线） |
 
 ### 2026-09-18 skip_reply 场景二确定性化（真人接管态由 runtime 校验）
 

@@ -211,7 +211,9 @@ export const NO_BOOKING_STATUS_BLOCK =
   '若候选人声称已约好面试、或追问某场面试是否有变动/怎么走/找谁（该安排可能由人工顾问' +
   '带外沟通产生，系统查不到），你无法核实其真实性：严禁确认安排有效、没有变动或到店有人接待，' +
   '也严禁编造面试时间、门店或接待流程；应自然说明需要核实，' +
-  '并调用 request_handoff(reasonCode="other", reason=说明候选人声称的面试安排详情) 转人工核实。';
+  '并调用 request_handoff(reasonCode="other", reason=说明候选人声称的面试安排详情) 转人工核实。\n' +
+  '候选人要取消或改约时同理：工单号是系统内部编号，严禁向候选人索要工单号；' +
+  '这里查不到工单就调用 request_handoff(reasonCode="modify_appointment") 交人工处理，不要自行调取消/改约工具。';
 
 const BOOKING_SYNCING_BLOCK = [
   '预约信息同步中：候选人存在进行中的预约工单，但暂时查询不到最新详情。',
