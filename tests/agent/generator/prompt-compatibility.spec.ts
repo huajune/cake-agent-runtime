@@ -111,8 +111,9 @@ describe('Prompt compiler compatibility contract', () => {
     // 2026-10-14：运营口径补充固定排班多档是否同一天上、超过12小时班次按约8小时介绍，重锁基线。
     // 2026-10-14：超过12小时的班次改为按 6-8 小时兜底，手册说法同步，重锁基线。
     // 2026-10-15：班次规则（10-13/10-14）与 v11.13.1 手册改动合并后重锁基线。
+    // 2026-10-19：T9 拆分商业保险、社保公积金福利和候选人社保准入，已审阅后重锁基线。
     expect(createHash('sha256').update(result.systemPrompt).digest('hex')).toBe(
-      '7bde1082567e82887fb9974d094286073e552268483064b3b7a28e8a16d3c485',
+      'dda439ea0c47cc4d2fe42744df494386121b343c5b23b53a4915fb7616d947c0',
     );
     expect(result.orderHash).toMatch(/^[a-f0-9]{64}$/);
     // dynamic 的口径是「随回合变化」：身份/红线/阈值/全阶段一览/通道规范只随配置变，
