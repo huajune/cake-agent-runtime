@@ -498,6 +498,11 @@ export function buildInterviewBookingTool(
             // 另一账号刚建单时，这里也会命中。此时预约**已经存在**，不是"没提交成功"——
             // 回复必须如实说已约上，不得编造系统故障或承诺稍后重提（生产 batch …_1789111221226）。
             context.ledger.jobs.bookingSucceeded = true;
+            if (duplicate.matchedBy === 'job') {
+              context.ledger.jobs.confirmedBookingJobIds = [
+                ...new Set([...(context.ledger.jobs.confirmedBookingJobIds ?? []), jobId]),
+              ];
+            }
             const existingInterviewTimeHuman = duplicate.interview_time
               ? formatInterviewTimeForReply(duplicate.interview_time)
               : undefined;
@@ -585,6 +590,11 @@ export function buildInterviewBookingTool(
             tokenContext,
           );
           context.ledger.jobs.bookingSucceeded = result.success;
+          if (result.success) {
+            context.ledger.jobs.confirmedBookingJobIds = [
+              ...new Set([...(context.ledger.jobs.confirmedBookingJobIds ?? []), jobId]),
+            ];
+          }
 
           const baseToolOutput = {
             ...result,

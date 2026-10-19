@@ -14,6 +14,7 @@ interface LocationContextOverrides {
   activeBookingJobIds?: number[];
   candidatePool?: RecommendedJobSummary[];
   fetchedJobs?: RecommendedJobSummary[];
+  confirmedBookingJobIds?: number[];
   currentFocusJob?: ToolBuildContext['archive']['currentFocusJob'];
   currentUserMessage?: string;
   messages?: unknown[];
@@ -70,7 +71,12 @@ describe('buildSendStoreLocationTool', () => {
         ...(has('imRoomId') ? { imRoomId: overrides.imRoomId } : {}),
         ...(has('chatId') ? { chatId: overrides.chatId } : {}),
       },
-      ledger: { jobs: { fetchedJobs: overrides.fetchedJobs ?? [] } },
+      ledger: {
+        jobs: {
+          fetchedJobs: overrides.fetchedJobs ?? [],
+          confirmedBookingJobIds: overrides.confirmedBookingJobIds,
+        },
+      },
       archive: {
         candidatePool: overrides.candidatePool ?? [],
         ...(overrides.activeBookingJobIds === undefined
@@ -234,6 +240,68 @@ describe('buildSendStoreLocationTool', () => {
     expect(mockMessageSenderService.sendMessage).not.toHaveBeenCalled();
   });
 
+  it.each([
+    [false, '线下面试'],
+    [true, '线下面试'],
+    [false, 'AI面试'],
+    [true, 'AI面试'],
+    [false, '电话面试'],
+    [true, '电话面试'],
+    [false, '视频面试'],
+    [true, '视频面试'],
+    [false, null],
+    [true, null],
+  ] as const)(
+    'uses booking=%s and interview=%s for workplace location wording',
+    async (booked, method) => {
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [
+          {
+            ...makeJob(),
+            interviewProcess: { firstInterview: { firstInterviewWay: method } },
+          },
+        ],
+      });
+      const result = await executeTool(
+        { jobId: 100, destination: 'store' },
+        {
+          activeBookingJobIds: booked ? [100] : [],
+          currentUserMessage: '想看看上班地址',
+        },
+      );
+      expect(result.success).toBe(true);
+      expect(result._fixedReply.includes('别走错')).toBe(booked && method === '线下面试');
+      expect(result._fixedReply.includes('先报名约面')).toBe(!booked);
+      if (method && method !== '线下面试') {
+        expect(result._fixedReply).toContain('这岗是' + method + '，不用到店面试');
+      }
+      expect(mockMessageSenderService.sendMessage).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it.each([[100], [200]])(
+    'uses a same-turn successful booking only for its actual job %j',
+    async (jobId) => {
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [
+          {
+            ...makeJob(),
+            interviewProcess: { firstInterview: { firstInterviewWay: '线下面试' } },
+          },
+        ],
+      });
+      const result = await executeTool(
+        { jobId: 100, destination: 'store' },
+        {
+          confirmedBookingJobIds: [jobId],
+          currentUserMessage: '想看看上班地址',
+        },
+      );
+      expect(result._fixedReply.includes('先报名约面')).toBe(jobId !== 100);
+      expect(result._fixedReply.includes('别走错')).toBe(jobId === 100);
+    },
+  );
+
   it('should send location message for explicit jobId', async () => {
     mockSpongeService.fetchJobs.mockResolvedValue({
       jobs: [makeJob()],
@@ -243,7 +311,9 @@ describe('buildSendStoreLocationTool', () => {
     const result = await executeTool({ jobId: 100 });
 
     expect(result.success).toBe(true);
-    expect(result._fixedReply).toBe('必胜客·青塔店：门店位置我发你了，你点开就能看导航。');
+    expect(result._fixedReply).toBe(
+      '必胜客·青塔店：门店位置发你了，方便看距离；要去门店前得先报名约面，我帮你登记。',
+    );
     expect(mockSpongeService.fetchJobs).toHaveBeenCalledWith(
       {
         jobIdList: [100],
@@ -365,8 +435,8 @@ describe('buildSendStoreLocationTool', () => {
     expect(result.success).toBe(true);
     expect(result.floorHint).not.toBeNull();
     expect(result.floorHint).toMatch(/B1\s*层|48-50\s*号/);
-    expect(result._fixedReply).toContain('门店位置我发你了');
-    expect(result._fixedReply).toContain('别走错');
+    expect(result._fixedReply).toContain('门店位置发你了');
+    expect(result._fixedReply).not.toContain('别走错');
   });
 
   it('should fallback to plain reply when address has no floor hint', async () => {
@@ -379,7 +449,9 @@ describe('buildSendStoreLocationTool', () => {
 
     expect(result.success).toBe(true);
     expect(result.floorHint).toBeNull();
-    expect(result._fixedReply).toBe('必胜客·青塔店：门店位置我发你了，你点开就能看导航。');
+    expect(result._fixedReply).toBe(
+      '必胜客·青塔店：门店位置发你了，方便看距离；要去门店前得先报名约面，我帮你登记。',
+    );
   });
 
   it('should return fallback info when store coordinates are unavailable', async () => {

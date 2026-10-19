@@ -91,6 +91,8 @@ export interface TurnJobsSnapshot {
   readonly scheduleConstraint?: StoredScheduleConstraint;
   /** undefined 表示本轮尚未尝试预约；false 仅表示预约工具明确失败。 */
   bookingSucceeded: boolean | undefined;
+  /** 本轮已确认报名成功的具体岗位，供后续定位等工具使用；不因另一次报名失败而清空。 */
+  confirmedBookingJobIds?: number[];
   /**
    * 报名成功后由运行时执行的拉群结果（PRD R3）。booking 工具写入；`invite_to_group`
    * 同轮据此短路，不重复邀请。undefined 表示本轮没有走过报名后拉群。

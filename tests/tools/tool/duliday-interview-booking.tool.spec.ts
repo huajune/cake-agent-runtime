@@ -528,6 +528,7 @@ describe('duliday_interview_booking（form → labelList）', () => {
     expect(result.success).toBe(true);
     expect(result.errorType).toBeUndefined();
     expect(result._replyInstruction).toContain('预约已真实成功');
+    expect(context.ledger.jobs.confirmedBookingJobIds).toContain(100);
     expect(context.ledger.jobs.bookingSucceeded).toBe(true);
     expect(hosting.pauseUser).not.toHaveBeenCalled();
   });

@@ -341,7 +341,8 @@ export function buildSendStoreLocationTool(
           const interviewMethod = policy.interviewMeta.method;
           const offlineInterview = requiresStoreVisit(interviewMethod);
           const isActiveBooking =
-            context.archive.activeBookingJobIds?.includes(resolvedJobId) ?? false;
+            (context.archive.activeBookingJobIds?.includes(resolvedJobId) ?? false) ||
+            (context.ledger.jobs.confirmedBookingJobIds?.includes(resolvedJobId) ?? false);
           const explicitlyAsksForWorkplace = /上班|工作(?:地点|地址)|入职后|工作门店/u.test(
             context.turnInput.currentUserMessage ?? '',
           );
@@ -517,15 +518,27 @@ export function buildSendStoreLocationTool(
           );
 
           const floorHint = extractFloorHint(targetAddress);
+          const bookingGuide = isActiveBooking ? '' : '要去门店前得先报名约面，我帮你登记。';
+          const interviewModeGuide =
+            interviewMethod && !offlineInterview
+              ? `这岗是${interviewMethod}，不用到店面试。`
+              : isActiveBooking && offlineInterview
+                ? '别走错。'
+                : '';
           const fixedReply =
             `${storeLabel}：` +
             (resolvedDestination === 'interview'
               ? addressConflict
                 ? `面试地点和工作门店不是同一个地方：工作门店是 ${store.storeName}，这次面试请去 ${interviewAddress}。面试定位我发你了，请按这个导航，不要按工作门店地址前往面试。`
                 : `面试定位我发你了，你点开就能看导航。${floorHint ? `面试地点在 ${floorHint}。` : ''}`
-              : floorHint
-                ? `门店位置我发你了，你点开就能看导航。门店在 ${floorHint}，别走错。`
-                : '门店位置我发你了，你点开就能看导航。');
+              : isActiveBooking
+                ? `门店位置我发你了，你点开就能看导航。${floorHint ? `门店在 ${floorHint}。` : ''}`
+                : `门店位置发你了，方便看距离；`) +
+            bookingGuide +
+            (!isActiveBooking && resolvedDestination === 'store' && floorHint
+              ? `门店在 ${floorHint}。`
+              : '') +
+            interviewModeGuide;
 
           return {
             success: true,
