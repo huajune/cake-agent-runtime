@@ -198,6 +198,7 @@ export const TOOL_ERROR_TYPES = {
   STORE_LOCATION_MISSING_JOB_ID: 'store_location.missing_job_id',
   STORE_LOCATION_MISSING_DELIVERY_CONTEXT: 'store_location.missing_delivery_context',
   STORE_LOCATION_JOB_NOT_FOUND: 'store_location.job_not_found',
+  STORE_LOCATION_JOB_REFERENCE_MISMATCH: 'store_location.job_reference_mismatch',
   STORE_LOCATION_UNAVAILABLE: 'store_location.unavailable',
   STORE_LOCATION_INTERVIEW_GEOCODE_FAILED: 'store_location.interview_geocode_failed',
   STORE_LOCATION_SEND_FAILED: 'store_location.send_failed',

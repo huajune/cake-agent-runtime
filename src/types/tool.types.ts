@@ -71,6 +71,8 @@ export interface ToolArchiveContext {
   /** 与 [当前预约信息] 同门可见的工单引用（含来源）；带外工单只在这里可见，不进 active_booking。 */
   bookingWorkOrders?: ToolBookingWorkOrderRef[];
   currentFocusJob?: RecommendedJobSummary | null;
+  /** 最近候选池与已展示岗位；定位发送前核对候选人本轮点名的品牌/门店。 */
+  candidatePool?: readonly RecommendedJobSummary[];
   recentBrandPool?: string[];
   bookingCandidateFacts?: EntityExtractionResult['interview_info'] | null;
   /** 已成功拉群事实；用于阻止重复拉群及 Agent 主动续推，候选人明确点名详情时不作永久封口。 */

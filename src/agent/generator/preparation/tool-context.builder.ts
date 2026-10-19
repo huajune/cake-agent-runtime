@@ -256,6 +256,10 @@ export function resolveToolContextModel(input: {
       currentFocusJob:
         memory.shortTerm.sessionState?.currentFocusJob ??
         bookingFocusJobFallback(bookingWorkOrders ?? []),
+      candidatePool: [
+        ...(memory.shortTerm.sessionState?.presentedJobs ?? []),
+        ...(memory.shortTerm.sessionState?.lastCandidatePool ?? []),
+      ],
       recentBrandPool,
       bookingCandidateFacts: sessionFacts?.interview_info ?? null,
       invitedGroups: memory.shortTerm.sessionState?.invitedGroups ?? [],

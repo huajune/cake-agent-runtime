@@ -115,14 +115,13 @@ export function resolveAssistantAnchoredFocusJob(
 function scoreJobReference(job: RecommendedJobSummary, normalizedText: string): number {
   let score = 0;
 
-  const storeName = normalizeForMatch(job.storeName);
   const jobName = normalizeForMatch(job.jobName);
   const brandName = normalizeForMatch(job.brandName);
   const laborForm = normalizeForMatch(job.laborForm);
   const partTimeJobType = normalizeForMatch(job.partTimeJobType);
   const salaryDesc = normalizeForMatch(job.salaryDesc);
 
-  if (storeName && normalizedText.includes(storeName)) score += 5;
+  if (matchesStoreReference(job, normalizedText)) score += 5;
   if (jobName && normalizedText.includes(jobName)) score += 4;
   score += scoreJobCategoryReference(job.jobCategoryName, normalizedText);
   if (brandName && normalizedText.includes(brandName)) score += 1;
@@ -152,10 +151,55 @@ function scoreJobCategoryReference(
   return Math.min(matchedSegments * 2, 4);
 }
 
-function pickBestReferencedJob(
-  jobs: RecommendedJobSummary[],
-  normalizedUserText: string,
+/** 只规整海绵门店元数据；不把城市、负责人或门店编码当成门店指称。 */
+function storeReferenceNames(job: RecommendedJobSummary): string[] {
+  const raw = job.storeName?.normalize('NFKC').trim() ?? '';
+  const withoutCode = raw.replace(/(?:DT)?-[A-Z]{2,6}\d{3,}$/iu, '');
+  const parts = withoutCode.split('-');
+  const city = normalizeForMatch(job.cityName).replace(/市$/u, '');
+  if (city && normalizeForMatch(parts[0]).replace(/市$/u, '') === city) {
+    parts.shift();
+    if (parts.length >= 2 && /^[\u4e00-\u9fa5]{2,4}$/u.test(parts[0])) parts.shift();
+  }
+  const name = parts.join('-');
+  return [raw, name, name.replace(/店$/u, '')]
+    .map(normalizeForMatch)
+    .filter((value, index, values) => value.length >= 2 && values.indexOf(value) === index);
+}
+
+function matchesStoreReference(job: RecommendedJobSummary, normalizedText: string): boolean {
+  return storeReferenceNames(job).some((name) => normalizedText.includes(name));
+}
+
+/** 返回同分的门店指称，交由发送工具澄清；不靠岗位工种、薪资或旧焦点猜定位。 */
+export function findStoreReferencedJobs(
+  jobs: readonly RecommendedJobSummary[],
+  userText: string,
+): RecommendedJobSummary[] {
+  const text = normalizeForMatch(userText);
+  const scored = dedupeJobsById([...jobs]).map((job) => {
+    const brand = normalizeForMatch(job.brandName);
+    return {
+      job,
+      score: (matchesStoreReference(job, text) ? 5 : 0) + (brand && text.includes(brand) ? 1 : 0),
+    };
+  });
+  const bestScore = Math.max(0, ...scored.map((item) => item.score));
+  return bestScore > 0
+    ? scored.filter((item) => item.score === bestScore).map((item) => item.job)
+    : [];
+}
+
+export function pickBestReferencedJob(
+  jobs: readonly RecommendedJobSummary[],
+  userText: string,
+  scope: 'job' | 'store' = 'job',
 ): RecommendedJobSummary | null {
+  if (scope === 'store') {
+    const matches = findStoreReferencedJobs(jobs, userText);
+    return matches.length === 1 ? matches[0] : null;
+  }
+  const normalizedUserText = normalizeForMatch(userText);
   const scored = jobs
     .map((job) => ({ job, score: scoreJobReference(job, normalizedUserText) }))
     .filter(({ score }) => score >= 4)

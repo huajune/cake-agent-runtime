@@ -1,5 +1,7 @@
 import {
   extractPresentedJobs,
+  findStoreReferencedJobs,
+  pickBestReferencedJob,
   resolveAssistantAnchoredFocusJob,
   resolveCurrentFocusJob,
 } from '@resolution/job';
@@ -41,6 +43,22 @@ describe('resolution/job', () => {
     salaryDesc: '18元/小时',
     jobCategoryName: '零售/便利店/店员',
   };
+
+  it('matches the actual store name after city, owner and store-code normalization', () => {
+    const coded = { ...chaoneiJob, cityName: '佛山市', storeName: '佛山-李苑雯-幸福里DT-GZ7001' };
+    expect(resolveCurrentFocusJob('幸福里那家', [], [], [coded, dongdanJob])).toEqual(coded);
+    expect(pickBestReferencedJob([coded, dongdanJob], '幸福里发个定位', 'store')).toEqual(coded);
+    expect(findStoreReferencedJobs([coded], '佛山李苑雯GZ7001')).toEqual([]);
+    expect(findStoreReferencedJobs([coded, dongdanJob], '服务员20元每小时')).toEqual([]);
+  });
+
+  it('keeps same-name stores ambiguous and uses an explicit brand to distinguish them', () => {
+    const otherBrand = { ...chaoneiJob, jobId: 200, brandName: '肯德基' };
+    expect(pickBestReferencedJob([chaoneiJob, otherBrand], '朝内店地址', 'store')).toBeNull();
+    expect(pickBestReferencedJob([chaoneiJob, otherBrand], '肯德基朝内店地址', 'store')).toEqual(
+      otherBrand,
+    );
+  });
 
   it('should extract presented jobs from assistant reply', () => {
     expect(

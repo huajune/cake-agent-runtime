@@ -64,6 +64,29 @@ function buildResolverInput(paramsOverride: Record<string, unknown> = {}) {
 }
 
 describe('resolveTurnContext', () => {
+  it('passes remembered candidate and presented jobs into the location tool context', () => {
+    const input = buildResolverInput();
+    const sources = input.sources as TurnSourceSnapshot;
+    const job: RecommendedJobSummary = {
+      jobId: 200,
+      brandName: '肯德基',
+      jobName: null,
+      storeName: '幸福里',
+      cityName: '佛山',
+      regionName: null,
+      laborForm: null,
+      salaryDesc: null,
+      jobCategoryName: null,
+    };
+    sources.memory.shortTerm.sessionState = {
+      presentedJobs: [job],
+      lastCandidatePool: [{ ...job, jobId: 201 }],
+    } as typeof sources.memory.shortTerm.sessionState;
+    expect(resolveTurnContext(input).toolModel.archive.candidatePool?.map((j) => j.jobId)).toEqual([
+      200, 201,
+    ]);
+  });
+
   it('retains medium-confidence saved schedule preferences for read-only matching', () => {
     const sessionFacts = sessionFactsOf({
       preferences: {

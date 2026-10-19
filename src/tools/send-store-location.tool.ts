@@ -14,6 +14,8 @@ import { buildSpongeTokenContext } from '@tools/shared/sponge-token-context.util
 import { requiresStoreVisit } from '@sponge/interview-method';
 import { buildJobPolicyAnalysis } from '@tools/job-list/job-policy-parser';
 import { canUseFactForAction } from '@tools/shared/action-confidence';
+import { findStoreReferencedJobs, pickBestReferencedJob } from '@resolution/job';
+import { mapJobsToRecommendedSummaries } from '@tools/job-list/job-summary.util';
 
 const logger = new Logger('send_store_location');
 
@@ -35,6 +37,7 @@ const DESCRIPTION = `向候选人发送面试地点或工作门店的企微位�
 
 ## 硬规则
 - 不要凭记忆手写坐标或自己拼定位 payload；只通过此工具发送
+- 候选人点名的品牌/门店与 jobId 不一致或指称不唯一时，工具拒绝发送；先核对具体门店后改传 jobId
 - 如果工具返回 _fixedReply，必须原样输出，不要额外再重写一遍地址说明
 - 若面试地址与工作门店不同，_fixedReply 会明确说明两个地址，必须原样输出
 - 若工具返回失败且同时带回 interviewAddress/storeAddress，按 _fixedReply 或 _replyInstruction 告知正确目的地
@@ -271,7 +274,7 @@ export function buildSendStoreLocationTool(
             buildSpongeTokenContext(context),
           );
 
-          const matchedJob = jobs.find((job) => job.basicInfo?.jobId === resolvedJobId) ?? jobs[0];
+          const matchedJob = jobs.find((job) => job.basicInfo?.jobId === resolvedJobId);
           if (!matchedJob) {
             return buildToolError({
               errorType: TOOL_ERROR_TYPES.STORE_LOCATION_JOB_NOT_FOUND,
@@ -284,6 +287,55 @@ export function buildSendStoreLocationTool(
           }
 
           const store = extractStoreLocation(matchedJob);
+          const candidatePool = [
+            ...new Map(
+              [
+                ...(context.archive.candidatePool ?? []),
+                ...(context.archive.currentFocusJob ? [context.archive.currentFocusJob] : []),
+                ...context.ledger.jobs.fetchedJobs,
+                ...mapJobsToRecommendedSummaries([matchedJob]),
+              ].map((job) => [job.jobId, job]),
+            ).values(),
+          ];
+          const candidateText = context.turnInput.currentUserMessage ?? '';
+          const referencedJob = pickBestReferencedJob(candidatePool, candidateText, 'store');
+          const referencedJobs = referencedJob
+            ? [referencedJob]
+            : findStoreReferencedJobs(candidatePool, candidateText);
+          const targetReference = candidatePool.find((job) => job.jobId === resolvedJobId);
+          // 同一门店的不同工种/用工形式共享地点，不把岗位数量当作门店歧义。
+          const sameDestination =
+            referencedJobs.some((job) => job.jobId === resolvedJobId) &&
+            referencedJobs.every(
+              (job) =>
+                !!job.storeAddress &&
+                job.storeAddress === targetReference?.storeAddress &&
+                job.storeName === targetReference?.storeName &&
+                job.brandName === targetReference?.brandName &&
+                job.cityName === targetReference?.cityName,
+            );
+          if (
+            (referencedJobs.length > 1 && !sameDestination) ||
+            (referencedJob && referencedJob.jobId !== resolvedJobId)
+          ) {
+            return buildToolError({
+              errorType: TOOL_ERROR_TYPES.STORE_LOCATION_JOB_REFERENCE_MISMATCH,
+              outcome: '岗位与候选人本轮门店指称不一致或不唯一，未发送定位',
+              replyInstruction:
+                '尚未发送任何定位。按候选人本轮点名的品牌/门店核对下列岗位；唯一确认后改传正确 jobId，' +
+                '多个门店同名或只说品牌时先问清具体门店，禁止继续沿用旧焦点或声称位置已发。',
+              details: {
+                jobId: resolvedJobId,
+                referencedJobs: referencedJobs.map(({ jobId, brandName, storeName }) => ({
+                  jobId,
+                  brandName,
+                  storeName,
+                })),
+              },
+            });
+          }
+          const brandName = pickString(matchedJob.basicInfo?.brandName);
+          const storeLabel = [brandName, store.storeName].filter(Boolean).join('·');
           const policy = buildJobPolicyAnalysis(matchedJob);
           const interviewAddress = policy.interviewMeta.address;
           const interviewMethod = policy.interviewMeta.method;
@@ -304,7 +356,7 @@ export function buildSendStoreLocationTool(
 
           if (wantsInterviewDestination && !offlineInterview) {
             if (interviewMethod) {
-              const fixedReply = `这个岗位的面试形式是${interviewMethod}，不需要到门店参加面试，请按面试通知里的方式参加。`;
+              const fixedReply = `${storeLabel}的面试形式是${interviewMethod}，不需要到门店参加面试，请按面试通知里的方式参加。`;
               return {
                 success: true,
                 jobId: resolvedJobId,
@@ -409,7 +461,7 @@ export function buildSendStoreLocationTool(
                 }
               }
               if (!geocoded) {
-                const fixedReply = `面试地点和工作门店不是同一个地方：工作门店是 ${store.storeName}，这次面试请去 ${interviewAddress}。暂时无法发出可靠的面试定位，我再请同事帮你确认。`;
+                const fixedReply = `面试地点和工作门店不是同一个地方：工作门店是 ${storeLabel}，这次面试请去 ${interviewAddress}。暂时无法发出可靠的面试定位，我再请同事帮你确认。`;
                 await messageSenderService.sendMessage({
                   token: context.session.token,
                   imBotId: context.session.botImId,
@@ -466,13 +518,14 @@ export function buildSendStoreLocationTool(
 
           const floorHint = extractFloorHint(targetAddress);
           const fixedReply =
-            resolvedDestination === 'interview'
+            `${storeLabel}：` +
+            (resolvedDestination === 'interview'
               ? addressConflict
                 ? `面试地点和工作门店不是同一个地方：工作门店是 ${store.storeName}，这次面试请去 ${interviewAddress}。面试定位我发你了，请按这个导航，不要按工作门店地址前往面试。`
                 : `面试定位我发你了，你点开就能看导航。${floorHint ? `面试地点在 ${floorHint}。` : ''}`
               : floorHint
                 ? `门店位置我发你了，你点开就能看导航。门店在 ${floorHint}，别走错。`
-                : '门店位置我发你了，你点开就能看导航。';
+                : '门店位置我发你了，你点开就能看导航。');
 
           return {
             success: true,
