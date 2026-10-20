@@ -1640,35 +1640,39 @@ describe('buildJobListTool', () => {
       { id: 10006, name: '必胜客', aliases: [] },
     ];
 
-    it('不查询、不生成任何候选人话术，给出数字近邻并要求回看截图品牌名', async () => {
-      mockSpongeService.fetchBrandList.mockResolvedValue(catalogWithIds);
-      const result = await executeTool(
-        { ...mockContext, currentUserMessage: '[图片] 日结服务员兼职[100006]' },
-        {
-          ...defaultInput,
-          cityNameList: ['常州'],
-          regionNameList: ['武进区'],
-          brandIdList: [100006],
-        },
-      );
+    it.each(['id', 'alias'])(
+      '数字输入走 %s 参数均不生成未合作话术，要求回看截图',
+      async (inputKind) => {
+        mockSpongeService.fetchBrandList.mockResolvedValue(catalogWithIds);
+        const result = await executeTool(
+          { ...mockContext, currentUserMessage: '[图片] 日结服务员兼职[100006]' },
+          {
+            ...defaultInput,
+            cityNameList: ['常州'],
+            regionNameList: ['武进区'],
+            brandIdList: inputKind === 'id' ? [100006] : [],
+            brandAliasList: inputKind === 'alias' ? ['100006'] : [],
+          },
+        );
 
-      expect(mockSpongeService.fetchJobs).not.toHaveBeenCalled();
-      expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_NO_RESULTS);
-      expect(result.rejectedBrandIds).toEqual(['100006']);
-      expect(result.fuzzySuggestions).toEqual(result.idSuggestions);
-      expect(result.idSuggestions).toEqual([
-        expect.objectContaining({ inputId: '100006', brandId: 10006, brandName: '必胜客' }),
-      ]);
-      expect(result.queryMeta.brand.rejected).toEqual([
-        { input: '100006', reason: 'unmatched_id' },
-      ]);
-      expect(result.queryMeta.brand.appliedCanonicalNames).toEqual([]);
-      expect(result.noMatchScript).toBeUndefined();
-      expect(result.brandNotPartneredScript).toBeUndefined();
-      expect(result._replyInstruction).toContain('回看截图');
-      expect(result._replyInstruction).toContain('必胜客');
-      expect(result._replyInstruction).toContain('禁止');
-    });
+        expect(mockSpongeService.fetchJobs).not.toHaveBeenCalled();
+        expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_NO_RESULTS);
+        expect(result.rejectedBrandIds).toEqual(['100006']);
+        expect(result.fuzzySuggestions).toEqual(result.idSuggestions);
+        expect(result.idSuggestions).toEqual([
+          expect.objectContaining({ inputId: '100006', brandId: 10006, brandName: '必胜客' }),
+        ]);
+        expect(result.queryMeta.brand.rejected).toEqual([
+          { input: '100006', reason: 'unmatched_id' },
+        ]);
+        expect(result.queryMeta.brand.appliedCanonicalNames).toEqual([]);
+        expect(result.noMatchScript).toBeUndefined();
+        expect(result.brandNotPartneredScript).toBeUndefined();
+        expect(result._replyInstruction).toContain('回看截图');
+        expect(result._replyInstruction).toContain('必胜客');
+        expect(result._replyInstruction).toContain('禁止');
+      },
+    );
 
     it('目录内 ID 与目录外 ID 混传：只按目录内 ID 查询', async () => {
       mockSpongeService.fetchBrandList.mockResolvedValue(catalogWithIds);

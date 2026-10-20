@@ -72,9 +72,15 @@ export function resolveCurrentFocusJob(
   const knownJobs = dedupeJobsById([...presented, ...candidatePool]);
 
   const matchedPresented = pickBestReferencedJob(presented, normalizedUserText);
-  if (matchedPresented) return matchedPresented;
-
   const matchedPool = pickBestReferencedJob(knownJobs, normalizedUserText);
+  if (
+    matchedPresented &&
+    (!matchedPool ||
+      storeReferenceSpecificity(matchedPresented, normalizedUserText) >=
+        storeReferenceSpecificity(matchedPool, normalizedUserText))
+  )
+    return matchedPresented;
+
   if (matchedPool) return matchedPool;
 
   if (focusIntent && presented.length === 1) return presented[0];
@@ -168,7 +174,16 @@ function storeReferenceNames(job: RecommendedJobSummary): string[] {
 }
 
 function matchesStoreReference(job: RecommendedJobSummary, normalizedText: string): boolean {
-  return storeReferenceNames(job).some((name) => normalizedText.includes(name));
+  return storeReferenceSpecificity(job, normalizedText) > 0;
+}
+
+function storeReferenceSpecificity(job: RecommendedJobSummary, text: string): number {
+  return Math.max(
+    0,
+    ...storeReferenceNames(job)
+      .filter((name) => text.includes(name))
+      .map((name) => name.length),
+  );
 }
 
 /** 模型提取的点名原文须整体对上品牌或门店别名，不能只因品牌相同就吞掉未知店名。 */
@@ -195,12 +210,7 @@ export function findStoreReferencedJobs(
   const scored = unique.map((job) => ({
     job,
     // 完整/更长门店名优先，避免「万达」短别名与「万达广场店」同分。
-    score: Math.max(
-      0,
-      ...storeReferenceNames(job)
-        .filter((name) => text.includes(name))
-        .map((name) => name.length),
-    ),
+    score: storeReferenceSpecificity(job, text),
   }));
   const bestScore = Math.max(0, ...scored.map(({ score }) => score));
   const storeMatches = scored
@@ -225,15 +235,19 @@ export function pickBestReferencedJob(
   }
   const normalizedUserText = normalizeForMatch(userText);
   const scored = jobs
-    .map((job) => ({ job, score: scoreJobReference(job, normalizedUserText) }))
+    .map((job) => ({
+      job,
+      score: scoreJobReference(job, normalizedUserText),
+      specificity: storeReferenceSpecificity(job, normalizedUserText),
+    }))
     .filter(({ score }) => score >= 4)
-    .sort((a, b) => b.score - a.score);
+    .sort((a, b) => b.score - a.score || b.specificity - a.specificity);
 
   const best = scored[0];
   if (!best) return null;
 
   const runnerUp = scored[1];
-  if (runnerUp && runnerUp.score === best.score) {
+  if (runnerUp && runnerUp.score === best.score && runnerUp.specificity === best.specificity) {
     return null;
   }
 

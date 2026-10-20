@@ -80,6 +80,21 @@ describe('resolution/job', () => {
     );
   });
 
+  it.each([true, false])('焦点选择使用完整门店名，短别名已展示=%s', (presentedShort) => {
+    const shortName = { ...chaoneiJob, storeName: '万达店' };
+    const fullName = { ...dongdanJob, storeName: '万达广场店' };
+    expect(pickBestReferencedJob([shortName, fullName], '万达广场店')).toEqual(fullName);
+    expect(
+      resolveCurrentFocusJob(
+        '我选万达广场店',
+        presentedShort ? [shortName] : [fullName, shortName],
+        [],
+        [shortName, fullName],
+      ),
+    ).toEqual(fullName);
+    expect(pickBestReferencedJob([shortName, { ...shortName, jobId: 999 }], '万达店')).toBeNull();
+  });
+
   it('should resolve focus job when user explicitly picks a store', () => {
     expect(resolveCurrentFocusJob('我选朝内店', [chaoneiJob, dongdanJob], [], [])).toEqual(
       chaoneiJob,

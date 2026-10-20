@@ -227,7 +227,14 @@ export function buildBrandQueryPlan(input: {
   };
 
   // 入口标准化（§6.2）：别名 → 唯一标准品牌；冲突/未命中进 rejected。
-  const aliasOutcome = resolveBrandAliasInputs(input.brandAliasList, catalog);
+  // 数字别名同样按目录 ID 校验，不能变成“未合作品牌”的名称证据。
+  const numericAliases = input.brandAliasList
+    .map((alias) => alias.normalize('NFKC').trim())
+    .filter((alias) => /^\d+$/u.test(alias));
+  const aliasOutcome = resolveBrandAliasInputs(
+    input.brandAliasList.filter((alias) => !/^\d+$/u.test(alias.normalize('NFKC').trim())),
+    catalog,
+  );
   basePlan.rejected = aliasOutcome.rejected;
 
   // 品类展开出的查询品牌列表须先减去会话 excludedBrands（§3.2）；显式点名的品牌不减
@@ -244,7 +251,11 @@ export function buildBrandQueryPlan(input: {
   // 而不是用 String(id) 冒充品牌名去查、再把数字念给候选人（生产 trace
   // batch_6ad1eb74ce406a6aeec80597_1792142350490：视觉把 10006 读成 100006，候选人收到
   // 「100006在武进区这片暂时没找到」）。目录缺 ID 时同样不能把数字当作品牌名。
-  const rawModelIds = Array.from(new Set(input.brandIdList.filter((id) => Number.isFinite(id))));
+  const rawModelIds = Array.from(
+    new Set(
+      [...input.brandIdList, ...numericAliases.map(Number)].filter((id) => Number.isFinite(id)),
+    ),
+  );
   const modelIds = rawModelIds.filter((id) => {
     if (catalog.some((brand) => brand.id === id)) return true;
     basePlan.rejected.push({ input: String(id), reason: 'unmatched_id' });

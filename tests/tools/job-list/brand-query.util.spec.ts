@@ -32,6 +32,16 @@ const stateWith = (
 ): SessionBrandState => ({ currentBrand: current, excludedBrands: excluded });
 
 describe('品牌提及集合校验', () => {
+  it.each(['100006', '１００００６'])('数字别名 %s 不产生未合作结论', (alias) => {
+    const plan = buildBrandQueryPlan({ brandAliasList: [alias], brandIdList: [], catalog });
+    expect(plan.rejected).toEqual([{ input: '100006', reason: 'unmatched_id' }]);
+    expect(allRejectedAsUnmatched(plan)).toBe(false);
+    expect(rejectedBrandIds(plan)).toEqual(['100006']);
+  });
+  it('数字别名只有目录核验通过才转成品牌', () => {
+    const plan = buildBrandQueryPlan({ brandAliasList: ['10001'], brandIdList: [], catalog });
+    expect(plan.applied).toEqual([{ canonicalName: '肯德基', brandId: 10001 }]);
+  });
   const mentioned = (...names: string[]) => new Set(names.map(normalizeBrandNameForComparison));
   const planFor = (brandAliasList: string[], brandIdList: number[] = []) =>
     buildBrandQueryPlan({ brandAliasList, brandIdList, catalog });
