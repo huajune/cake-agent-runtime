@@ -335,7 +335,7 @@
 - 每个 choice 必含 `none_of_the_above / 无法判断`（去 abstain 后不可答项准确率 0.950→0.000）。
 - 每题单独阈值、不跨题复用（中文 ECE 0.035–0.164 按任务漂移）；阈值附近 ±0.02 复测抖动（std 0.001–0.015）。
 - 否定/时态/"最后意图"类问题拆成正向字面子问由代码 AND/OR 合成；"此后未再确认"类顺序判断全部切到代码，由代码定位最近一条消息切片后只问单跳正向 noul。
-- state 只喂候选人侧文本，剔除 Agent 自产岗位卡/系统语/我方模板结束语（我方文本会被当成候选人表态，例如 `src/tools/collection/recap-renderer.ts` 结束语含"没问题/不对"）。
+- state 保留候选人文本，以及所选决策点必须的、带角色标记的 assistant 上下文：例如裸数字前的年龄提问、短答对应的复述与待确认问题。仅剔除与决策无关的自产岗位卡或系统语；保留的我方文本只能作为提问/复述上下文，不能充当候选人表态（例如 `src/tools/collection/recap-renderer.ts` 结束语含"没问题/不对"）。
 - 先用 `usage.input_tokens` 实测本项目汉字/token 比，再写容量与成本结论（目前零证据）。
 
 ### 5.3 成本估算（本项目量级，取数 2026-09-24，7 天窗口）
@@ -428,7 +428,7 @@
 
 以下十项是 2026-10-08 调研快照中的候选建议，尚未分配负责人、排期或验收标准，**不是已确认待办或当前实现状态的权威来源**。采纳前须重新核对代码、问题证据与已有任务；确认采纳后再进入正式任务系统，记录负责人、状态、完成标准和验证结果。
 
-- #1 删复聊 `ReengagementOutput.decision` 字段、代码由 `blockReason` 派生，用 `agent_invocation.outputCorrection` 量 4 周基线。
+- #1 删复聊 `ReengagementOutput.decision` 字段、代码由 `blockReason` 派生。四周观测的前置条件是先将 `outputCorrection` 记录为保留期覆盖观测窗口的持久标量/事件，或在清理前按日聚合并持久保存校正数、总调用数与采集完整性。`DataCleanupService` 的 `DATA_CLEANUP_AGENT_INVOCATION_DAYS` 默认仅保留 7 天，不能在四周后直接回查 `agent_invocation.outputCorrection`；持久化或聚合未落实前，不启动四周基线测量。
 - #2 `location_reference_needs_grounding` / `salary_account_no_fabricated_policy` 改 `candidate_side` 或删除，mpr 复测 PR#1339 之后的块覆盖率；按 [C9] 给整个动态禁令层写退场指标。
 - #3 74 次 `recap_not_required` 走 precheck description / 回执 hint 收口。
 - #4 空产物兜底 `random=false` 删第 6 条模板；复聊待答闸修 timeout 丢消息。
