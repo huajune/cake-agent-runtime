@@ -16,7 +16,7 @@
 1. **起点 = 当天第一次上线前，生产实际在跑的版本**，不是上一个 tag。部署被驳回或取消的版本从没上过线，它的内容要并入本次。找法：
    - 列出最近的部署：`gh run list --workflow "Build and Deploy" --limit 20 --json databaseId,createdAt,conclusion`。
    - 逐个用 `gh run view <id> --json jobs` 看 `deploy` job 的 conclusion，取当天第一次上线之前、最近一个 deploy job 为 success 的 run。不能按 run 的整体状态筛：notify 被拒的 run 整体显示 failure，但已经上线了。
-   - 取这次部署的 tag：`gh run view <id> --log | grep -m1 -oE 'RELEASE_TAG: v[0-9.]+'`。
+   - 取这次部署的 tag：`gh run view <id> --log | grep -m1 -oE 'RELEASE_TAG: v[0-9.]+'`。这里匹配 GitHub Actions 自动打印的 step `env`，不是 shell 脚本的 echo（已核验成功部署 run `38693523473`，输出 `RELEASE_TAG: v11.13.1`）。若日志已过保留期或没有匹配，必须核对该 run 的实际 `release_tag` 输入或部署镜像证据；证据缺失时停止，不猜测版本边界。
    - 再用 `git rev-parse <tag>^{commit}` 得到起点提交。不要直接用 run 的 `headSha`：它是派发时 master 的最新提交，回滚重部署时和实际部署的代码不一样。
 2. **终点 = 当天最后一个 deploy job 成功的 run 所部署的 tag**，取法同上。终点之后还没部署的改动不写进本通知。需要预告时单独写一句，只写当前状态（如"发布 PR 已开，还没部署，上线时间另行通知"），不写预期效果。
 3. **只写起点到终点之间，运营或候选人能感知到的变化：**
