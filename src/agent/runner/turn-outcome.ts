@@ -233,6 +233,7 @@ export function classifyReviewedOutcome(
       toolCalls,
       runTurnEnd,
       ...metadata,
+      ...(recoveryDisposition ? { preHandoffReceipt: buildPreHandoffReceipt(toolCalls) } : {}),
       sideEffects: guardHandoff ? [...toolSideEffects, guardHandoff] : toolSideEffects,
       handoff: guardHandoff
         ? {

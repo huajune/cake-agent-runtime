@@ -257,4 +257,13 @@ describe('追加候选人的完成回执独立对账', () => {
     );
     expect(hit?.action).toBe('replan');
   });
+  it('本轮第一人报名成功也不能替尚未提交的第二人作证', () => {
+    const hit = detectBookingDoneClaimWithoutSubmission(
+      '第二人也报名成功了',
+      [call('duliday_interview_booking', { success: true, workOrderId: 1 })],
+      { pendingAdditionalCandidateJobId: 100 },
+    );
+    expect(hit?.ruleId).toBe('booking_done_claim_no_work_order');
+    expect(hit?.action).toBe('replan');
+  });
 });

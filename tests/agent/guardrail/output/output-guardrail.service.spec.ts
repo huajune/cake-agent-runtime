@@ -106,6 +106,51 @@ describe('OutputGuardrailService', () => {
     },
   );
 
+  it.each([
+    { receiptOrder: 9002, formOrder: 9002, scope: 'additional', before: false, blocked: false },
+    { receiptOrder: 9001, formOrder: undefined, scope: 'primary', before: true, blocked: true },
+    { receiptOrder: 9001, formOrder: 9002, scope: 'additional', before: false, blocked: true },
+    { receiptOrder: 9002, formOrder: 9002, scope: 'additional', before: true, blocked: true },
+  ])('仅本次预检之后属于当前追加表单的成功预约可作证：%j', async (row) => {
+    useActualRules();
+    const guard = new OutputGuardrailService(
+      systemConfig as never,
+      ruleGuard as never,
+      shortTerm as never,
+      { tryGetActiveBookings: jest.fn().mockResolvedValue([]) } as never,
+      undefined,
+      undefined,
+      {
+        peekActive: jest.fn().mockResolvedValue({
+          candidateScope: 'additional',
+          candidateRef: '13800000002',
+          workOrderId: row.formOrder,
+        }),
+      } as never,
+    );
+    const precheck = {
+      toolName: 'duliday_interview_precheck',
+      args: { jobId: 100, candidatePhone: '13800000002' },
+      result: { success: true, nextAction: 'ready_to_book', candidateScope: 'additional' },
+    };
+    const booking = {
+      toolName: 'duliday_interview_booking',
+      args: { jobId: 100 },
+      result: { success: true, workOrderId: row.receiptOrder, candidateScope: row.scope },
+    };
+    const decision = await guard.check({
+      reply: '第二人也报名成功了',
+      toolCalls: (row.before ? [booking, precheck] : [precheck, booking]) as never,
+      corpId: 'c1',
+      userId: 'u1',
+      botUserName: 'bot1',
+      memorySnapshot: { currentFocusJob: { jobId: 100 } } as never,
+    });
+    expect(decision.blockedRuleIds).toEqual(
+      row.blocked ? ['booking_done_claim_no_work_order'] : [],
+    );
+  });
+
   it('带会话身份时读取在途工单并把 activeBookings / 历史助手文本传给规则层', async () => {
     const longTerm = { tryGetActiveBookings: jest.fn().mockResolvedValue([]) };
     const withLongTerm = new OutputGuardrailService(

@@ -14,6 +14,7 @@ import { ModelRole } from '@/llm/llm.types';
 import { MemoryService } from '@memory/memory.service';
 import { containsSimulatedToolExchange } from '@agent/guardrail/output/rules/invalid-model-output.rule';
 import { isCollectionAuthorized, verdictOf } from '@resolution/collection';
+import { hasDeliveredCurrentRecapSnapshot } from '@resolution/notary/recap-confirmation';
 import { isAffirmativeAnswer, normalizeShortAnswer } from '@resolution/signal/dialogue';
 import { CollectionFormService } from '@tools/collection/collection-form.service';
 import { PreparationService, type WorkingMemory } from './preparation/preparation.service';
@@ -975,6 +976,24 @@ export class GeneratorAgent {
         jobId,
       });
       if (!form || verdictOf(form) !== 'ready') return null;
+      // 旧表单状态不能把对其它话题的「好的」解释为报名确认。恢复闸只接受紧邻
+      // 当前候选人消息的真实复述快照；不改变收资授权本身允许跨轮追认的规则。
+      const messages = ctx.normalizedMessages;
+      let end = messages.length;
+      while (end > 0 && messages[end - 1].role === 'user') end -= 1;
+      let start = end;
+      while (start > 0 && messages[start - 1].role === 'assistant') start -= 1;
+      if (
+        !form.lastRecap?.labelIds.length ||
+        !form.contractSnapshot?.fields.length ||
+        !hasDeliveredCurrentRecapSnapshot({
+          form,
+          contract: form.contractSnapshot.fields,
+          messages: messages.slice(start),
+        })
+      ) {
+        return null;
+      }
       if (!isCollectionAuthorized(form)) return { nextAction: 'confirm_collection', jobId };
       if (form.scheduleDraft?.selectedInterviewTime) return { nextAction: 'ready_to_book', jobId };
       return null;

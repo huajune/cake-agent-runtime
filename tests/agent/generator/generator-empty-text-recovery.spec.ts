@@ -279,6 +279,7 @@ describe('GeneratorAgent 空响应恢复 · 待提交确认节点转人工', () 
       value: { value: '兮兮', producer: 'archive' },
     } as never;
     form.lastRecap = { labelIds: [101] };
+    form.contractSnapshot = { fields: CONTRACT };
     return form;
   };
   /** 资料已授权且已选时段 → precheck 停在 ready_to_book。 */
@@ -294,6 +295,8 @@ describe('GeneratorAgent 空响应恢复 · 待提交确认节点转人工', () 
       selectedInterviewTime: '2026-10-14 14:00:00',
       sourceText: '周三下午两点',
     };
+    form.lastRecap = { labelIds: [101], affirmed: true };
+    form.contractSnapshot = { fields: CONTRACT };
     return form;
   };
 
@@ -341,7 +344,7 @@ describe('GeneratorAgent 空响应恢复 · 待提交确认节点转人工', () 
       llm as never,
       collectionForms as never,
     );
-    return { service, collectionForms };
+    return { service, collectionForms, preparation };
   };
 
   const invoke = (service: GeneratorAgent, text: string) =>
@@ -398,6 +401,31 @@ describe('GeneratorAgent 空响应恢复 · 待提交确认节点转人工', () 
     expect(result.text).toBe('');
     expect(result.recoveryDisposition?.precheckNextAction).toBe('ready_to_book');
   });
+
+  it.each(['confirm_collection', 'ready_to_book'])(
+    '旧 %s 表单之后已转到其它话题，不能把新的短答借作报名确认',
+    async (state) => {
+      const generate = jest
+        .fn()
+        .mockResolvedValueOnce(emptyStep())
+        .mockResolvedValueOnce(emptyStep())
+        .mockResolvedValueOnce({ ...recoveredText(), text: '好的，有问题再联系我。' });
+      const form = state === 'confirm_collection' ? awaitingRecapForm() : readyToBookForm();
+      const { service, preparation } = makeService(generate, '好的', form);
+      const prepared = await preparation.prepare();
+      preparation.prepare.mockResolvedValue({
+        ...prepared,
+        normalizedMessages: [
+          ...ctxFor('稍后确认').normalizedMessages,
+          { role: 'assistant', content: '今天先聊到这里，之后有其它问题可以再问我，可以吗？' },
+          { role: 'user', content: '好的' },
+        ],
+      });
+      const result = await invoke(service, '好的');
+      expect(result.recoveryDisposition).toBeUndefined();
+      expect(generate).toHaveBeenCalledTimes(3);
+    },
+  );
 
   it.each(['confirm_collection', 'ready_to_book'])(
     '活动追加候选人 %s 双空响应也必须转人工',

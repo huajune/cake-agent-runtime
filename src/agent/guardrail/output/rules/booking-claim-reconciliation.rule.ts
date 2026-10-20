@@ -101,14 +101,14 @@ export function detectBookingDoneClaimWithoutSubmission(
 ): RuleContradiction | null {
   if (!text.trim()) return null;
   if (!BOOKING_DONE_CLAIM_PATTERN.test(text)) return null;
-  if (toolCalls.some((call) => BOOKING_FAMILY_TOOL_NAMES.has(call.toolName))) return null;
   if (context.pendingAdditionalCandidateJobId !== undefined) {
     return createOutputRuleFinding(
       'booking_done_claim_no_work_order',
       `当前正在办理的追加候选人（岗位 ${context.pendingAdditionalCandidateJobId}）本轮尚未核实独立工单，` +
-        '本轮也没有 booking 调用，却宣称报名/预约成功；主候选人的同岗位工单不能替此人作证',
+        '却宣称报名/预约成功；本轮其他候选人的 booking 调用或同岗位工单不能替此人作证',
     );
   }
+  if (toolCalls.some((call) => BOOKING_FAMILY_TOOL_NAMES.has(call.toolName))) return null;
   const submitted = context.submittedAdditionalCandidateBooking;
   const currentJobId = readPrecheckJobId(toolCalls) ?? context.focusJobId;
   if (

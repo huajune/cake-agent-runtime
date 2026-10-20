@@ -240,13 +240,27 @@ export class OutputGuardrailService {
       if (form?.candidateScope !== 'additional') return undefined;
       const result = asRecord(latestPrecheck?.result);
       // 活动表单可能还停在上一位已提交的人，不能替没有经过预检的下一位作证。
-      const verifiedThisTurn =
+      const verifiedPrecheck =
         result?.success === true &&
         result.nextAction === 'already_submitted' &&
         result.candidateScope === 'additional' &&
-        args?.candidatePhone === form.candidateRef &&
+        args?.candidatePhone === form.candidateRef;
+      const precheckIndex = latestPrecheck ? input.toolCalls.indexOf(latestPrecheck) : -1;
+      const verifiedBooking = input.toolCalls.slice(precheckIndex + 1).some((call) => {
+        const booking = asRecord(call.result);
+        const bookingArgs = asRecord(call.args);
+        return (
+          call.toolName === 'duliday_interview_booking' &&
+          booking?.success === true &&
+          booking.candidateScope === 'additional' &&
+          booking.workOrderId === form.workOrderId &&
+          bookingArgs?.jobId === jobId
+        );
+      });
+      const verifiedThisTurn =
         typeof form.workOrderId === 'number' &&
-        form.workOrderId > 0;
+        form.workOrderId > 0 &&
+        (verifiedPrecheck || verifiedBooking);
       return { jobId, workOrderId: form.workOrderId, verifiedThisTurn };
     } catch (error) {
       this.logger.warn(`读取追加候选人表单失败，按未知处理: ${toErrorMessage(error)}`);

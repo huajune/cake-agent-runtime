@@ -165,6 +165,45 @@ describe('classifyReviewedOutcome — request_handoff 之前的已提交动作�
     expect(outcome.preHandoffReceipt).toBeUndefined();
   });
 
+  it('第二人待提交导致空响应转人工时仍先保留第一人的真实回执', () => {
+    const outcome = classifyReviewedOutcome(
+      {
+        text: '',
+        steps: 2,
+        agentSteps: [],
+        toolCalls: [
+          bookingSuccess,
+          {
+            toolName: 'duliday_interview_precheck',
+            args: { jobId: 528546, candidatePhone: '13800000002' },
+            result: {
+              success: true,
+              nextAction: 'confirm_collection',
+              candidateScope: 'additional',
+            },
+          },
+        ],
+        usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+        outputDecision: decision,
+        resolution: { outcome: 'handoff', source: 'output_guardrail' },
+        revised: false,
+        recoveryDisposition: {
+          outcome: 'handoff',
+          reasonCode: 'empty_recovery_pending_submission',
+          precheckNextAction: 'confirm_collection',
+          jobId: 528546,
+          reason: '第二人已确认但未提交，生成无回复',
+        },
+      },
+      sessionRef,
+      'msg-multi-candidate',
+    );
+    expect(outcome.kind).toBe('handoff');
+    expect(outcome.preHandoffReceipt).toEqual(buildPreHandoffReceipt([bookingSuccess]));
+    expect(outcome.preHandoffReceipt?.text).not.toContain('第二人');
+    expect(outcome.sideEffects).toEqual([expect.objectContaining({ kind: 'general_handoff' })]);
+  });
+
   it('gate rejections (booking provenance / modify ownership) never get a receipt', () => {
     const outcome = classify([
       bookingSuccess,
