@@ -9,7 +9,11 @@ import type { SessionStateService } from '@memory/short-term/session-state.servi
 import { extractUserTexts } from '@resolution/signal/dialogue';
 import type { ToolBuildContext } from '@shared-types/tool.types';
 import { canUseFactForAction } from '@tools/shared/action-confidence';
-import { evaluateInviteCityGate, type InviteCityGateVerdict } from './invite-city-gate';
+import {
+  collectCityGateContextInputs,
+  evaluateInviteCityGate,
+  type InviteCityGateVerdict,
+} from './invite-city-gate';
 import { evaluateInviteTimingGate, type InviteTimingGateVerdict } from './invite-timing-gate';
 
 /**
@@ -132,6 +136,8 @@ export async function runGroupInvitePipeline(
       context.ledger.geo.cityAttestation?.city ?? null,
     ],
     turnVisualSheets: context.ledger.visual.factSheets,
+    // 已在群城市 / 在途预约门店城市 / 候选人对「你在 X 对吧」的肯定应答（2026-10-19 新增三档）。
+    ...collectCityGateContextInputs(context),
   });
   if (cityGateVerdict.decision === 'reject') {
     return { kind: 'city_rejected', verdict: cityGateVerdict };

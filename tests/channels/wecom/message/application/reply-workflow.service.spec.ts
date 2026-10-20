@@ -1598,7 +1598,12 @@ describe('ReplyWorkflowService', () => {
       );
     });
 
-    it.each([['invite_to_group'], ['duliday_interview_booking']])(
+    it.each([
+      ['invite_to_group'],
+      ['duliday_interview_booking'],
+      ['duliday_cancel_work_order'],
+      ['duliday_modify_interview_time'],
+    ])(
       'Case E: 首次成功提交不可逆工具 [%s] 时跳过 replay，不 drain pending，直接投递首次回复',
       async (blockingToolName) => {
         const primary = createMessage();

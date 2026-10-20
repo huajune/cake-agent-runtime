@@ -82,6 +82,9 @@ export function resolveCurrentFocusJob(
 
   const matchedPresented = pickBestReferencedJob(presented, normalizedUserText);
   const matchedPool = pickBestReferencedJob(knownJobs, normalizedUserText);
+  // 明确点名却无法唯一判定时清空旧焦点，不能回退到已展示的单个门店。
+  if (!matchedPool && knownJobs.some((job) => matchesStoreReference(job, normalizedUserText)))
+    return null;
   if (
     matchedPresented &&
     (!matchedPool ||
@@ -284,16 +287,15 @@ export function pickBestReferencedJob(
     .map((job) => ({
       job,
       score: scoreJobReference(job, normalizedUserText),
-      specificity: storeReferenceSpecificity(job, normalizedUserText),
     }))
     .filter(({ score }) => score >= 4)
-    .sort((a, b) => b.score - a.score || b.specificity - a.specificity);
+    .sort((a, b) => b.score - a.score);
 
   const best = scored[0];
   if (!best) return null;
 
   const runnerUp = scored[1];
-  if (runnerUp && runnerUp.score === best.score && runnerUp.specificity === best.specificity) {
+  if (runnerUp && runnerUp.score === best.score) {
     return null;
   }
 

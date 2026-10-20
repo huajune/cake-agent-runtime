@@ -30,6 +30,12 @@ export interface CityAttestation {
   district?: string | null;
   evidence: string;
   source: 'geocode_unique' | 'location_share';
+  /**
+   * geocode 以 city=null 全国搜索得到的 unique（模型没传 city 或传入 city 无出处被忽略）。
+   * 这种确权只是「该地名全国唯一」，不是候选人在该城市的证据：轮末入档只记 medium，
+   * 不得压过候选人亲口陈述（BadCase 复核 [17]：全国搜「王府井」写入 pref.city=北京 high）。
+   */
+  nationwideSearch?: boolean;
 }
 
 /**
@@ -41,6 +47,8 @@ export interface GeoResolutionRecord extends GeocodeResolvedAnchor {
   /** attestation 的证据文本；city 非空时必填。 */
   evidence?: string;
   source: CityAttestation['source'];
+  /** 见 CityAttestation.nationwideSearch。 */
+  nationwideSearch?: boolean;
 }
 
 /** geocode 使用的本轮可信位置锚点。 */

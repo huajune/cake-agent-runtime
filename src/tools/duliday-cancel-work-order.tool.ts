@@ -67,7 +67,7 @@ const DESCRIPTION = `取消工单。候选人**主动**要求取消一个**已�
 - 候选人说已被门店面试通过/餐厅自招/办入职/已上岗等 → 走 request_handoff
 
 ## 参数
-- workOrderId：必填，取自 [当前预约信息] 的「工单号」
+- workOrderId：必填，取自 [当前预约信息] 的「工单号」。工单号是系统内部编号，候选人不知道也不该知道——**严禁向候选人索要工单号**；[当前预约信息] 里拿不到时按上面「没有 [当前预约信息] 或拿不到工单号」一节处理（有预约痕迹走 request_handoff，否则按首次约面流程）
 - cancelReasonId：第二步必填，取自第一步返回的 availableReasons
 - cancelReasonDesc：可选，结合候选人原话简述取消原因
 - candidateName / phone / brandName / storeName / jobName / interviewTime：可选；若 [当前预约信息] 中有这些字段，尽量原样带上，用于取消通知提醒人工判断是否需要通知门店
@@ -79,7 +79,16 @@ const DESCRIPTION = `取消工单。候选人**主动**要求取消一个**已�
 - 工单在海绵里的状态字段不参与取消判断（该字段滞后不可信）；候选人面试前明确放弃就取消，面试已开始/已过才说放弃属于爽约，按 [当前预约信息] 的共享规则处理`;
 
 const inputSchema = z.object({
-  workOrderId: z.number().int().positive().describe('工单 ID，取自 [当前预约信息] 的「工单号」'),
+  // 不在 schema 层做 positive 校验：zod 拒绝只会给模型一条裸报错，模型随即向候选人索要工单号
+  // （badcase [03]）。0 / 空值放进 execute，由 CANCEL_MISSING_WORK_ORDER_ID 回执给出处置指引。
+  workOrderId: z
+    .number()
+    .int()
+    .nullable()
+    .optional()
+    .describe(
+      '工单 ID，取自 [当前预约信息] 的「工单号」；拿不到真实工单号时不要调用本工具，更不得向候选人索要工单号',
+    ),
   cancelReasonId: z
     .number()
     .int()
@@ -149,6 +158,19 @@ export function buildCancelWorkOrderTool(
       }) => {
         const chatId = context.session.chatId ?? context.session.sessionId;
 
+        if (typeof workOrderId !== 'number' || !Number.isInteger(workOrderId) || workOrderId <= 0) {
+          return buildToolError({
+            errorType: TOOL_ERROR_TYPES.CANCEL_MISSING_WORK_ORDER_ID,
+            outcome: '缺少有效工单号，无法取消',
+            replyInstruction:
+              '当前拿不到有效的工单号，无法自助取消。工单号是系统内部编号，候选人不知道也不该知道：' +
+              '**禁止向候选人索要工单号、订单号或任何编号**。候选人指认的是真实已约面试（含真人经理带外约的、系统查不到的）时，' +
+              '直接调 request_handoff(reasonCode="modify_appointment") 交人工取消，并告诉候选人这边帮 TA 处理取消；' +
+              '不得谎称已取消，也不得否认预约存在或声称报名记录仍在。',
+            details: { workOrderId: workOrderId ?? null },
+          });
+        }
+
         // 测试链路 PII 白名单闸门：cancel 真调海绵生产网关，测试重放只允许
         // 假身份工单，与 booking 共用同一条生产写入防线。
         if (context.runtime.strategySource === 'testing' && !isTestPiiPhoneAllowed(phone)) {
@@ -159,15 +181,6 @@ export function buildCancelWorkOrderTool(
               '当前为测试链路且候选人手机号不是测试假身份，本工具已拒绝执行、未触达真实工单。' +
               '不得谎称已取消；请如实说明未执行。测试用例应使用统一假身份（兮兮/18271421690）。',
             details: { phone: maskPhoneForDetails(phone), workOrderId },
-          });
-        }
-
-        if (!Number.isInteger(workOrderId) || workOrderId <= 0) {
-          return buildToolError({
-            errorType: TOOL_ERROR_TYPES.CANCEL_MISSING_WORK_ORDER_ID,
-            outcome: '缺少有效工单号，无法取消',
-            replyInstruction:
-              '当前拿不到有效的工单号，无法自助取消。请按 request_handoff（reasonCode=modify_appointment）转人工处理，不要谎称已取消。',
           });
         }
 

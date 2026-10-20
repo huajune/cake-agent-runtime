@@ -46,9 +46,11 @@ describe('GeneratorAgent 工具调用文本化重生成', () => {
 
   const usage = { inputTokens: 10, outputTokens: 5, totalTokens: 15 };
 
-  const buildService = (generate: jest.Mock) => {
+  const buildService = (generate: jest.Mock, confirmationClosureEligible = false) => {
     const llm = { supportsVisionInput: jest.fn().mockResolvedValue(false), generate };
-    const preparation = { prepare: jest.fn().mockResolvedValue(makeCtx()) };
+    const preparation = {
+      prepare: jest.fn().mockResolvedValue({ ...makeCtx(), confirmationClosureEligible }),
+    };
     const configService = { get: (_key: string, defaultValue?: string) => defaultValue };
     return new GeneratorAgent(
       configService as never,
@@ -92,8 +94,10 @@ describe('GeneratorAgent 工具调用文本化重生成', () => {
         response: { messages: [] },
       });
 
-    const result = await invoke(buildService(generate));
+    const result = await invoke(buildService(generate, true));
 
+    // 重生成合并后仍携带准备阶段的准入证据；工具互斥由 Runner 依据实际调用另行核验。
+    expect(result.confirmationClosureEligible).toBe(true);
     expect(generate).toHaveBeenCalledTimes(2);
     // 重试的 system prompt 末尾追加纠正指令，首版不带
     expect(generate.mock.calls[0][0].instructions).toBe('system prompt');
@@ -117,6 +121,12 @@ describe('GeneratorAgent 工具调用文本化重生成', () => {
       '帮你查了下，北滘公园附近有几家在招\n\n瑞幸咖啡（佛山北滘公园店），离你0.8公里，20元/时',
     ],
     ['XML 形态假调用', XML_CALL_REASONING, '周建青的报名也提交成功了'],
+    [
+      'Provider 假错误回执',
+      '<result>\n<error>InvalidApiKeyError</error></result>',
+      '## API密钥错误\n请检查环境变量配置',
+    ],
+    ['Provider 错误类型标记', '<error_type>invalid_api_key</error_type>', '请检查 API 密钥'],
   ])('零工具调用 + reasoning 含%s → 同样带工具重生成', async (_label, reasoning, firstText) => {
     const generate = jest
       .fn()

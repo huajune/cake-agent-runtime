@@ -106,6 +106,22 @@ const JOB_WITH_WINDOWS = {
   },
 };
 
+// 面试窗口只标日期（海绵录成 00:00-00:00，「周一至周五 00:00，前一天 17:30 前报名」）：slot 全部
+// bookingAllowed=false / requiresManualConfirmation=true，系统没有任何可自助提交的时段。
+const JOB_WITH_DATE_ONLY_WINDOWS = {
+  ...JOB,
+  interviewProcess: {
+    firstInterview: {
+      firstInterviewWay: '线下面试',
+      periodicInterviewTimes: ['一', '二', '三', '四', '五', '六', '日'].map((day) => ({
+        interviewWeekday: `每周${day}`,
+        interviewTimes: [{ interviewStartTime: '00:00', interviewEndTime: '00:00' }],
+      })),
+      fixedInterviewTimes: [],
+    },
+  },
+};
+
 // 同日双窗口（上午 10:00-11:00 + 下午 13:00-16:00）：唯一 slot 兜底失效的形态。
 const JOB_WITH_TWO_WINDOWS = {
   ...JOB,
@@ -338,6 +354,9 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
       nextAction: 'ready_to_book',
     });
     expect(result._replyInstruction).toContain('只有 booking success=true 后才能处理下一人');
+    // badcase x1soque5：第一人报名成功后模型手写第二人核对段、零工具宣称"也预约成功啦"。
+    expect(result._replyInstruction).toContain('precheck(candidatePhone=下一人手机号)');
+    expect(result._replyInstruction).toContain('禁止自行手写第二人的核对段');
     expect(collectionForms.saveFinalizedProgressFacts).not.toHaveBeenCalled();
   });
 
@@ -521,6 +540,8 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
     });
     expect(result.collectionVerdict).toBe('ready');
     expect(result.nextAction).toBe('ready_to_book');
+    // 主联系人 ready_to_book 同样带"下一人先 precheck"纪律（badcase x1soque5 的第二人就是从主联系人之后手写的）
+    expect(result._replyInstruction).toContain('precheck(candidatePhone=下一人手机号)');
     expect(result.recap).toBeUndefined();
     expect(currentForm?.lastRecap).toBeUndefined();
     expect(currentForm?.scheduleDraft).toEqual(
@@ -950,6 +971,83 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
     expect(result._replyInstruction).toContain('identity_age_exception');
     expect(result._replyInstruction).toContain('禁止调用 duliday_interview_booking');
     expect(context.ledger.jobs.collectionReadyJobId).toBeUndefined();
+  });
+
+  // 2026-10-19 BadCase [13]（飞书 wfw08nu5，trace batch_6aca144ace406a6aeee2726c_1791629394395）：面试窗口为纯日期，
+  // 全部 slot requiresManualConfirmation，旧 nextAction 仍是 select_interview_time——回执既禁 booking 又不指示转人工，
+  // 模型自行承诺"我会在截止前帮你提交初筛，留意来电"，候选人没报上名也没人跟进，两天后真人手动回"门店招满"。
+  describe('面试窗口全部只标日期（无可自助提交时段）', () => {
+    const filledProposals = [
+      { labelTitle: '姓名', value: '兮兮', quote: '我叫兮兮' },
+      { labelTitle: '联系电话', value: '18271421690', quote: '电话18271421690' },
+      { labelTitle: '年龄', value: '25', quote: '我今年25岁' },
+      { labelTitle: '性别', value: '女', quote: '我是女的' },
+    ];
+
+    it('外部预填资料先确认复述，确认后才允许人工协调日期型面试', async () => {
+      sponge.fetchJobs.mockResolvedValue({ jobs: [JOB_WITH_DATE_ONLY_WINDOWS] });
+      currentForm = filledForm();
+      const pending = await execute({ jobId: 100, mode: 'query' });
+      expect(pending.nextAction).toBe('confirm_collection');
+      expect(pending.recap.candidateMessage).toContain('姓名：兮兮');
+      expect(context.ledger.jobs.collectionReadyJobId).toBeUndefined();
+
+      context.turnInput.messages = recapDialogue('没问题');
+      const confirmed = await execute(recapConfirmationInput());
+      expect(currentForm?.lastRecap?.affirmed).toBe(true);
+      expect(confirmed.nextAction).toBe('interview_time_manual_handoff');
+      expect(context.ledger.jobs.collectionReadyJobId).toBeUndefined();
+    });
+
+    it('资料收齐后不给 select_interview_time，改 interview_time_manual_handoff 并要求 request_handoff(interview_slot_coordination)', async () => {
+      sponge.fetchJobs.mockResolvedValue({ jobs: [JOB_WITH_DATE_ONLY_WINDOWS] });
+      context.turnInput.messages = [
+        { role: 'user', content: '我叫兮兮，电话18271421690，我今年25岁，我是女的' },
+      ];
+      const result = await execute({ jobId: 100, fieldValueProposals: filledProposals });
+
+      expect(result.collectionVerdict).toBe('ready');
+      expect(result.nextAction).toBe('interview_time_manual_handoff');
+      expect(result._replyInstruction).toContain('禁止调用 duliday_interview_booking');
+      expect(result._replyInstruction).toContain('reasonCode=interview_slot_coordination');
+      expect(result._replyInstruction).toContain('不要承诺"我会在截止前帮你提交');
+      // 没有 booking 凭据：同轮 booking 会被 collectionReadyJobId 闸拒绝
+      expect(context.ledger.jobs.collectionReadyJobId).toBeUndefined();
+      expect(ops.recordEvent).not.toHaveBeenCalled();
+      // 工具结果里没有任何可挑的时间：扁平选项为空，slot 全部不可约
+      expect(result.interview.upcomingTimeOptions).toBeUndefined();
+      expect(result.interview.nearestBookableSlot).toBeUndefined();
+      expect(result.interview.bookableSlots.length).toBeGreaterThan(0);
+      expect(
+        result.interview.bookableSlots.every(
+          (slot: { bookingAllowed: boolean; requiresManualConfirmation?: boolean }) =>
+            !slot.bookingAllowed && slot.requiresManualConfirmation === true,
+        ),
+      ).toBe(true);
+    });
+
+    it('资料未齐时照常 collect_fields，但不再给候选人列"可约时间"选项', async () => {
+      sponge.fetchJobs.mockResolvedValue({ jobs: [JOB_WITH_DATE_ONLY_WINDOWS] });
+      const result = await execute({ jobId: 100, mode: 'query' });
+
+      expect(result.nextAction).toBe('collect_fields');
+      expect(result.interview.upcomingTimeOptions).toBeUndefined();
+      expect(
+        result.interview.bookableSlots.every(
+          (slot: { bookingAllowed: boolean }) => !slot.bookingAllowed,
+        ),
+      ).toBe(true);
+    });
+
+    it('有真实可约窗口的岗位不受影响：仍走 select_interview_time / ready_to_book', async () => {
+      sponge.fetchJobs.mockResolvedValue({ jobs: [JOB_WITH_WINDOWS] });
+      context.turnInput.messages = [
+        { role: 'user', content: '我叫兮兮，电话18271421690，我今年25岁，我是女的' },
+      ];
+      const result = await execute({ jobId: 100, fieldValueProposals: filledProposals });
+      expect(result.nextAction).toBe('select_interview_time');
+      expect(result.interview.upcomingTimeOptions?.length).toBeGreaterThan(0);
+    });
   });
 
   // 生产 batch …_1789456796864：体重 76 被筛退，候选人改口「实际65」后模型提交 correct，

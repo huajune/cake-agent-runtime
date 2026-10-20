@@ -185,8 +185,20 @@ export const SIDE_EFFECT_TOOLS = new Set([
   'request_handoff',
 ]);
 
-/** 成功提交后会产生不可逆外部动作，本轮 replay 必须跳过的工具。 */
-export const REPLAY_BLOCKING_TOOLS = new Set(['invite_to_group', 'duliday_interview_booking']);
+/**
+ * 成功提交后会产生不可逆外部动作，本轮 replay 必须跳过的工具。
+ *
+ * 取消/改约与报名/拉群同级：首版已成功取消工单后若整轮被丢弃重跑，预约快照已空、
+ * 工单号不在重跑 prompt 里，模型会凭空调 cancel(workOrderId=0) 甚至向候选人索要工单号
+ * （badcase [03] batch_6ad19d27ce406a6aee98bb9f_1792125255605）。副作用既成就保留首版回复，
+ * 候选人补发的消息按新回合处理，与 booking 口径一致。
+ */
+export const REPLAY_BLOCKING_TOOLS = new Set([
+  'invite_to_group',
+  'duliday_interview_booking',
+  'duliday_cancel_work_order',
+  'duliday_modify_interview_time',
+]);
 
 /** repair 是纯文本修复阶段：这些工具绝不允许在 repair 中暴露。 */
 export const REVISION_FORBIDDEN_TOOLS = new Set([...SIDE_EFFECT_TOOLS]);
@@ -284,19 +296,51 @@ export function isShortCircuitedToolCall(
 }
 
 /**
- * 已执行 steps 中是否有被拒绝的 skip_reply。拒绝后本轮必须正常回复，prepareStep 据此
- * 屏蔽 skip_reply，防止模型换 scene 再次申请沉默。
+ * 已执行 steps 中第一个被拒绝的 skip_reply 的错误码；没有被拒绝的返回 null。
+ * 拒绝后本轮必须正常回复，prepareStep 据此屏蔽 skip_reply 并按错误码给出拦截说明，
+ * 防止模型换 scene 再次申请沉默。拒绝结果缺 errorType（异常形态）时返回 `'unknown'`。
  */
-export function hasRejectedSkipReply(steps: StepLike[]): boolean {
+export function findRejectedSkipReplyErrorType(
+  steps: StepLike[],
+): ToolErrorType | 'unknown' | null {
   for (const step of steps) {
     const results = step.toolResults;
     if (!Array.isArray(results)) continue;
     for (const tr of results) {
       if (tr.toolName !== SKIP_REPLY_TOOL_NAME) continue;
-      if (!isAcceptedSkipReplyResult(tr.output)) return true;
+      if (isAcceptedSkipReplyResult(tr.output)) continue;
+      return extractToolErrorType(tr.output) ?? 'unknown';
     }
   }
-  return false;
+  return null;
+}
+
+/** 已执行 steps 中是否有被拒绝的 skip_reply（见 findRejectedSkipReplyErrorType）。 */
+export function hasRejectedSkipReply(steps: StepLike[]): boolean {
+  return findRejectedSkipReplyErrorType(steps) !== null;
+}
+
+/**
+ * skip_reply 被拒绝后拼进 instructions 的拦截说明，按工具错误码分支；未登记的错误码
+ * 用通用说明（不编造拒绝原因）。
+ */
+const SKIP_REPLY_REJECTION_REASONS: Partial<Record<ToolErrorType, string>> = {
+  [TOOL_ERROR_TYPES.SKIP_REPLY_HUMAN_TAKEOVER_NOT_ACTIVE]:
+    '候选人当前消息之前最近一条经理侧消息是你自己发的，不存在真人正在沟通',
+  [TOOL_ERROR_TYPES.SKIP_REPLY_CONFIRMATION_NO_PRIOR_TURN]:
+    '候选人这是首句，你还没有回复过对方，没有可收尾的推进动作',
+  [TOOL_ERROR_TYPES.SKIP_REPLY_CONFIRMATION_NOT_SHORT_ACK]:
+    '候选人当前消息为空、达到 10 字或含问句标记，不满足确认收尾的运行时准入',
+};
+
+export function buildSkipReplyRejectedNotice(errorType: ToolErrorType | 'unknown'): string {
+  const reason =
+    (errorType !== 'unknown' ? SKIP_REPLY_REJECTION_REASONS[errorType] : undefined) ??
+    '本轮不满足任何合法沉默场景';
+  return (
+    `⚠️ 系统拦截：本轮 \`${SKIP_REPLY_TOOL_NAME}\` 已被拒绝（${reason}），不可再调用。` +
+    '候选人这条消息是发给你的，请正常回复。'
+  );
 }
 
 /** booking provenance gate hard-reject 会在 outcome 层转人工。 */

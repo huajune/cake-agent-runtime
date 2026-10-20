@@ -81,6 +81,23 @@ const INTERNAL_REASONING_PATTERNS: readonly RegExp[] = [
 const SELF_CHECK_HEADING_PATTERN =
   /^[ \t]*(?:#{1,6}[ \t]*)?(?:\*{1,2})?[【\[（(]?[ \t]*(?:自检(?:说明|清单|结果|记录|过程|项|通过|完成)?|自我(?:检查|核对|审查)|发送前(?:自检|检查|核对)|思考过程|内部(?:说明|思考|检查)|回复思路|self[- ]?check(?:list)?|reasoning|thinking|analysis)[ \t]*[】\]）)]?(?:\*{1,2})?[ \t]*[:：]?[ \t]*$/imu;
 
+/**
+ * Provider / 鉴权错误文案（2026-10-16 生产 trace batch_6ad1b1a2ce406a6aeedb235e_1792130951637）：
+ * 零工具回合里模型在 reasoning 中演了一段 `<result><error>InvalidApiKeyError</error></result>`，
+ * 正文写成「## API密钥错误 … ANTHROPIC_API_KEY … console.anthropic.com」五段原样投递；同时间窗
+ * 781 次 llm_execution 无一例 401，是模型臆造而非真实鉴权失败。这些词形在候选人话术里零出现，
+ * 只要进入正文即泄漏。
+ */
+const PROVIDER_AUTH_ERROR_PATTERN =
+  /API\s*密钥|api[\s_-]*key|ANTHROPIC_API_KEY|console\.anthropic\.com|环境变量配置|InvalidApiKeyError|invalid_api_key/i;
+
+/**
+ * 整条回复以 markdown 标题起头（`## API密钥错误`）：候选人话术从不以标题开场，这是模型把
+ * 技术文档/系统说明当回复的形态信号（近 30 天生产 24,075 条投递回复中仅上述一例命中）。
+ * 只锚定回复首行；正文中段的 `#` 行由 sanitizer 剥标记，不在此判泄漏。
+ */
+const MARKDOWN_HEADING_START_PATTERN = /^\s*#{1,6}[ \t]+\S/;
+
 const PATTERNS: RegExp[] = [
   // 模型把阶段术语 / 内部状态字段直接说出来
   new RegExp(STAGE_TERMS.map(escapeRegex).join('|')),
@@ -106,6 +123,9 @@ const PATTERNS: RegExp[] = [
   // 推理/自我指令自然语言泄漏（只收已实证形态）
   ...INTERNAL_REASONING_PATTERNS,
   SELF_CHECK_HEADING_PATTERN,
+  // Provider/鉴权错误文案与标题开场（2026-10-16 API 密钥文案外泄）
+  PROVIDER_AUTH_ERROR_PATTERN,
+  MARKDOWN_HEADING_START_PATTERN,
   /["']name["']\s*:\s*["'][\w-]+["']\s*,\s*["']arguments["']\s*:/,
   /["']arguments["']\s*:\s*\{/,
   // 整条回复以 JSON 开头（`{"`、`[{`、`["`）——自然语言回复不存在这种开头
@@ -230,6 +250,8 @@ const ENVELOPE_TOOL_STRUCTURE_KEYS = new Set([
   'arguments',
   'parameters',
   // 已注册工具的参数键（skip_reply / request_handoff / raise_risk_alert）
+  'scene',
+  'action',
   'reason',
   'reasoncode',
   'risktype',
@@ -238,6 +260,62 @@ const ENVELOPE_TOOL_STRUCTURE_KEYS = new Set([
 ]);
 const TOOL_NAME_SET: ReadonlySet<string> = new Set(TOOL_NAMES);
 const ENVELOPE_MIN_HAN_CHARS = 6;
+
+/**
+ * 信封回复槽位键：模型自造结构化输出时放候选人正文的键名。槽位键存在时正文只能从槽位取；
+ * 槽位全空仍须经回合准入判定才可静默（2026-10-13 trace …_1791860105040 / 复核 [12]：
+ * `{"agent_reply":"","candidate_intention":"确认收尾","thought":"候选人回复"好"是纯确认词…应沉默收尾"}`
+ * 旧逻辑取「唯一 ≥6 汉字值」= thought 当正文投递）。
+ */
+const ENVELOPE_REPLY_SLOT_KEYS = new Set([
+  'agent_reply',
+  'agent_response',
+  'reply',
+  'reply_text',
+  'final_reply',
+  'response',
+  'answer',
+  'text',
+]);
+/** 键名任一分段命中即为内部笔记键，其值永远不得入选正文（无论中文量多少）。 */
+const ENVELOPE_INTERNAL_NOTE_KEY_SEGMENTS = new Set([
+  'note',
+  'notes',
+  'thought',
+  'thoughts',
+  'thinking',
+  'reasoning',
+  'rationale',
+  'analysis',
+  'intention',
+  'intent',
+  'plan',
+  'planning',
+  'stage',
+]);
+function envelopeKeySegments(key: string): string[] {
+  return key
+    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean);
+}
+
+function isEnvelopeReplySlotKey(key: string): boolean {
+  return ENVELOPE_REPLY_SLOT_KEYS.has(key.toLowerCase());
+}
+
+function isEnvelopeInternalNoteKey(key: string): boolean {
+  return envelopeKeySegments(key).some((segment) =>
+    ENVELOPE_INTERNAL_NOTE_KEY_SEGMENTS.has(segment),
+  );
+}
+
+function isBlankEnvelopeValue(value: unknown): boolean {
+  return (
+    value === null || value === undefined || (typeof value === 'string' && value.trim() === '')
+  );
+}
 
 function countHanChars(text: string): number {
   return text.match(/\p{Script=Han}/gu)?.length ?? 0;
@@ -267,17 +345,63 @@ export function tryUnwrapEnvelopeReply(content: string): string | null {
     return null;
   }
   if (Object.values(record).some(namesRegisteredTool)) return null;
+  const entries = Object.entries(record);
+  const slotEntries = entries.filter(([key]) => isEnvelopeReplySlotKey(key));
+  // 回复槽位键存在时正文只能来自槽位：槽位全空也不能把 thought/意图之类内部笔记
+  // 顶上来当正文。是否允许静默由 Runner 结合真实回合准入判定。
+  if (slotEntries.length > 0 && slotEntries.every(([, value]) => isBlankEnvelopeValue(value))) {
+    return null;
+  }
   // 仅取顶层字符串值里"像候选人话术"的候选：中文量足够、自身无任何泄漏形态、
-  // 非技术文档。恰好一条才拆——多条无法确定哪条是正文，宁可维持原收敛。
-  const candidates = Object.values(record).filter(
-    (value): value is string =>
-      typeof value === 'string' &&
-      countHanChars(value) >= ENVELOPE_MIN_HAN_CHARS &&
-      !detectOutputLeak(value) &&
-      !hasTechnicalDocumentationShape(value),
-  );
+  // 非技术文档，且键名不是内部笔记键。恰好一条才拆——多条无法确定哪条是正文，宁可维持原收敛。
+  const pool = slotEntries.length > 0 ? slotEntries : entries;
+  const candidates = pool
+    .filter(([key]) => !isEnvelopeInternalNoteKey(key))
+    .map(([, value]) => value)
+    .filter(
+      (value): value is string =>
+        typeof value === 'string' &&
+        countHanChars(value) >= ENVELOPE_MIN_HAN_CHARS &&
+        !detectOutputLeak(value) &&
+        !hasTechnicalDocumentationShape(value),
+    );
   if (candidates.length !== 1) return null;
   return candidates[0].trim();
+}
+
+/**
+ * 空回复槽位信封：模型自造结构化输出，回复槽位（agent_reply / reply / response / answer / text）
+ * 全部为空、其余键只是意图/思考笔记。这里只判断结构，不授予沉默权限；Runner 必须核对
+ * 确认收尾的历史/消息准入和本轮零工具调用，符合才 skipped，否则进入受控修复。
+ * 带 scene/action、调用结构或转人工/告警参数键的信封不算，避免绕过场景准入或吞掉风险处置；
+ * reason 单独可作内部笔记；其余非空字段必须是已知内部笔记字符串，未知字段不能被静默吞掉。
+ */
+export function isEmptyReplySlotEnvelope(content: string): boolean {
+  const record = parseJsonObjectEnvelope(content);
+  if (!record) return false;
+  const keys = Object.keys(record);
+  if (
+    keys.some(
+      (key) =>
+        key.toLowerCase() !== 'reason' && ENVELOPE_TOOL_STRUCTURE_KEYS.has(key.toLowerCase()),
+    )
+  ) {
+    return false;
+  }
+  if (Object.values(record).some(namesRegisteredTool)) return false;
+  const entries = Object.entries(record);
+  const hasUnknownContent = entries.some(
+    ([key, value]) =>
+      !isEnvelopeReplySlotKey(key) &&
+      !isBlankEnvelopeValue(value) &&
+      !(
+        typeof value === 'string' &&
+        (key.toLowerCase() === 'reason' || isEnvelopeInternalNoteKey(key))
+      ),
+  );
+  if (hasUnknownContent) return false;
+  const slotEntries = entries.filter(([key]) => isEnvelopeReplySlotKey(key));
+  return slotEntries.length > 0 && slotEntries.every(([, value]) => isBlankEnvelopeValue(value));
 }
 
 /**
@@ -420,6 +544,30 @@ export function detectMetaNarrationReply(content: string): RuleContradiction | n
   return createOutputRuleFinding(
     'meta_narration_reply',
     '整条回复是描述 Agent 自身行为的括号旁白，属内心独白外发，必须拦截并整轮静默',
+  );
+}
+
+/**
+ * 无括号第三人称自指旁白（observe 哨兵，2026-10-19 BadCase 复核 [12]）：拆封/修复产物形如
+ * 「候选人回复"好"是纯确认词，上轮已完成预约成功回执，本轮无新诉求，应沉默收尾」——以第三人称
+ * 谈论候选人、复述场景枚举或宣布应沉默，整条没有一个第二人称。二审只认括号包裹形态，这类
+ * 产物此前直接放行。
+ *
+ * 口径：封闭自指词形 + 整条无「你/您」；不做括号要求。先落档量化精确率，累计判例再议升档。
+ */
+const UNWRAPPED_META_NARRATION_PATTERN =
+  /候选人(?:回复|回应|回答|表示|提出|本轮|的消息|已经?确认|是纯确认)|本轮(?:无|没有)新(?:诉求|问题|线索|信息)|应(?:保持|该)?(?:沉默|静默)|(?:沉默|静默)收尾|符合[^。！？\n]{0,12}场景|confirmation_closure|human_takeover|无需(?:再)?回复|不需要(?:再)?回复/u;
+const SECOND_PERSON_PATTERN = /你|您/u;
+
+export function detectUnwrappedMetaNarration(content: string): RuleContradiction | null {
+  const text = content?.trim() ?? '';
+  if (!text) return null;
+  if (META_NARRATION_WRAPPED_PATTERN.test(text)) return null; // 括号形态归 meta_narration_reply
+  if (SECOND_PERSON_PATTERN.test(text)) return null;
+  if (!UNWRAPPED_META_NARRATION_PATTERN.test(text)) return null;
+  return createOutputRuleFinding(
+    'meta_narration_unwrapped',
+    '整条回复以第三人称谈论候选人/复述沉默场景且没有任何第二人称，疑似内心独白或拆封产物外发（observe 哨兵）',
   );
 }
 

@@ -150,8 +150,27 @@ describe('containsSimulatedToolExchange - generator 零工具重生成判据', (
     ).toBe(false);
   });
 
+  // 2026-10-16 trace …_1792130951637：reasoning 里演了 `<result><error>InvalidApiKeyError</error></result>`，
+  // 零工具调用，正文把 API 密钥错误说明整段投递。回执标记须命中，让 generator 带工具重生成。
+  it('假错误回执标记 <result><error> / <error_type> 命中（trace …_1792130951637）', () => {
+    expect(
+      containsSimulatedToolExchange(
+        '调用 duliday_job_list 查询岗位\n<result><error>InvalidApiKeyError</error></result>\n看来接口出错了',
+      ),
+    ).toBe(true);
+    expect(containsSimulatedToolExchange('<result>\n  <error>鉴权失败</error>\n</result>')).toBe(
+      true,
+    );
+    expect(
+      containsSimulatedToolExchange(
+        '<error_type>invalid_api_key</error_type> 需要告知用户密钥错误',
+      ),
+    ).toBe(true);
+  });
+
   it('自然语言思考与普通回复不命中', () => {
     expect(containsSimulatedToolExchange('候选人还没给地址，先问区域。')).toBe(false);
+    expect(containsSimulatedToolExchange('面试结果出来我第一时间告诉你，不用担心')).toBe(false);
     expect(containsSimulatedToolExchange('这家店在[静安大悦城]，你方便过去吗')).toBe(false);
     expect(containsSimulatedToolExchange('{"replyInstruction":"继续推进岗位咨询"}')).toBe(false);
     expect(containsSimulatedToolExchange('')).toBe(false);

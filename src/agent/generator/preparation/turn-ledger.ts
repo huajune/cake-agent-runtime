@@ -140,6 +140,9 @@ export function createTurnLedger(input: CreateTurnLedgerInput = {}): TurnLedger 
         district: input.district?.trim() || null,
         evidence: input.evidence ?? city,
         source: input.source,
+        ...(input.nationwideSearch !== undefined
+          ? { nationwideSearch: input.nationwideSearch }
+          : {}),
       });
     },
     recordGeocodeAnchor(anchor) {

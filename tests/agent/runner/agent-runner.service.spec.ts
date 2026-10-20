@@ -3,6 +3,14 @@ import { TurnOutcomeInterventionService } from '@agent/runner/turn-outcome-inter
 import type { GeneratorRunResult } from '@agent/generator/generator.types';
 import { createTurnLedger } from '@agent/generator/preparation/turn-ledger';
 import { CallerKind } from '@enums/agent.enum';
+import { Test, type TestingModule } from '@nestjs/testing';
+import { OutputGuardrailService } from '@agent/guardrail/output/output-guardrail.service';
+import { HardRulesService } from '@agent/guardrail/output/rules/hard-rules.service';
+import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
+import { MessageWindowService } from '@memory/short-term/message-window.service';
+import { LongTermService } from '@memory/long-term/long-term.service';
+import { SessionFactsService } from '@memory/short-term/facts.service';
+import { AlertNotifierService } from '@notification/services/alert-notifier.service';
 
 describe('AgentRunnerService.runInboundTurn', () => {
   let generator: { invoke: jest.Mock };
@@ -13,6 +21,28 @@ describe('AgentRunnerService.runInboundTurn', () => {
   let replyRepairContextProvider: { build: jest.Mock };
   let tracer: { emit: jest.Mock };
   let service: AgentRunnerService;
+  let rulesModule: TestingModule;
+  let actualOutputGuard: OutputGuardrailService;
+
+  beforeAll(async () => {
+    rulesModule = await Test.createTestingModule({
+      providers: [
+        OutputGuardrailService,
+        HardRulesService,
+        {
+          provide: SystemConfigService,
+          useValue: { getAgentReplyConfig: async () => ({ hardRuleOverrides: {} }) },
+        },
+        { provide: MessageWindowService, useValue: { getMessages: async () => [] } },
+        { provide: LongTermService, useValue: { tryGetActiveBookings: async () => [] } },
+        { provide: SessionFactsService, useValue: { getSessionState: async () => null } },
+        { provide: AlertNotifierService, useValue: { sendAlert: async () => undefined } },
+      ],
+    }).compile();
+    actualOutputGuard = rulesModule.get(OutputGuardrailService);
+  });
+
+  afterAll(() => rulesModule.close());
 
   const passDecision = {
     decision: 'pass' as const,
@@ -92,6 +122,69 @@ describe('AgentRunnerService.runInboundTurn', () => {
     expect(outcome.reply?.text).not.toContain('可以选');
     expect(outcome.reply?.text).not.toContain('<think>');
     expect(outcome.reply?.text).not.toContain('[表情消息]');
+  });
+
+  // BadCase 复核 [07]（trace batch_6accb41bce406a6aee72e009_1791805375446）：候选人对 recap 说"没问题的"，
+  // 模型两次零产出；生成器空响应恢复闸不补文本而是标记转人工，Runner 不能把空正文当普通静默。
+  it('turns an empty-text recovery disposition into a handoff with a dedicated side effect instead of silent skip', async () => {
+    generator.invoke.mockResolvedValue(
+      makeResult({
+        text: '',
+        recoveryDisposition: {
+          outcome: 'handoff',
+          reasonCode: 'empty_recovery_pending_submission',
+          precheckNextAction: 'confirm_collection',
+          jobId: 528963,
+          reason:
+            '候选人对报名资料回复了确认（"没问题的"），收资表单停在待确认复述节点，Agent 连续两次没有生成回复',
+        },
+      }),
+    );
+
+    const outcome = await service.runInboundTurn({
+      sessionRef,
+      input: { text: '没问题的' },
+      context: { messageId: 'msg-empty-recovery' },
+    });
+
+    expect(outcome.kind).toBe('handoff');
+    expect(outputGuard.check).not.toHaveBeenCalled();
+    expect(outcome.guardrail).toEqual(
+      expect.objectContaining({
+        phase: 'outbound',
+        source: 'output_guardrail',
+        reasonCode: 'empty_recovery_pending_submission',
+        ruleBlocked: false,
+      }),
+    );
+    expect(outcome.handoff).toEqual(
+      expect.objectContaining({ source: 'output_guardrail', reasonCode: 'system_blocked' }),
+    );
+    expect(outcome.sideEffects).toEqual([
+      expect.objectContaining({
+        kind: 'general_handoff',
+        source: 'output_guardrail',
+        reasonCode: 'system_blocked',
+        alertLabel: '候选人已确认待提交，Agent 未生成回复',
+        jobId: 528963,
+        recordHandoff: true,
+      }),
+    ]);
+    expect(outcome.sideEffects?.[0]).toEqual(
+      expect.objectContaining({ reason: expect.stringContaining('没问题的') }),
+    );
+    expect(outcome.sideEffects?.[0]).toEqual(
+      expect.objectContaining({ actionAdvice: expect.stringContaining('手动完成报名') }),
+    );
+  });
+
+  it('keeps plain empty text (no recovery disposition) as a silent skip', async () => {
+    generator.invoke.mockResolvedValue(makeResult({ text: '' }));
+
+    const outcome = await service.runInboundTurn({ sessionRef, input: { text: '好的' } });
+
+    expect(outcome.kind).toBe('skipped');
+    expect(outcome.sideEffects ?? []).toHaveLength(0);
   });
 
   it('adopts deterministic segment-pruned reply without entering model repair', async () => {
@@ -648,6 +741,70 @@ describe('AgentRunnerService.runInboundTurn', () => {
       },
     ];
 
+    it('booking_done_claim_no_work_order on a zero-tool turn re-enters the generator instead of rewriting (badcase x1soque5)', async () => {
+      // trace batch_6accbaa4ce406a6aee50a95b_1792057074005：第一人已建单，模型手写第二人核对段后
+      // 零工具宣称"何佳淼也预约成功啦"。旧 rewrite 档只能改成"我这就去提交"，永不兑现。
+      const fakeReceipt = '好的，何佳淼也预约成功啦，面试时间同样是明天下午两点';
+      const bookingClaimDecision = {
+        decision: 'replan' as const,
+        riskLevel: 'high' as const,
+        violations: [
+          {
+            type: 'booking_done_claim_no_work_order',
+            evidence: '本轮零 booking 调用，候选人名下无该岗位工单',
+            suggestion: '先 precheck 再 booking，或转人工',
+            allowFailOpen: true as const,
+            repairMode: 'replan' as const,
+          },
+        ],
+        ruleIds: ['booking_done_claim_no_work_order'],
+        blockedRuleIds: ['booking_done_claim_no_work_order'],
+        repairMode: 'replan' as const,
+      };
+      const seen: unknown[] = [];
+      generator.invoke.mockImplementation(async (p: unknown) => {
+        seen.push(p);
+        return seen.length === 1
+          ? makeResult({ text: fakeReceipt, toolCalls: [] })
+          : makeResult({
+              text: '何佳淼这边我还需要先核对一下报名信息，稍等我发你核对内容。',
+              toolCalls: [
+                {
+                  toolName: 'duliday_interview_precheck',
+                  args: { mode: 'query', jobId: 1, candidatePhone: '13800000000' },
+                  result: { success: true, nextAction: 'collect_fields' },
+                  resultCount: 1,
+                  status: 'ok',
+                },
+              ] as never,
+            });
+      });
+      outputGuard.check
+        .mockResolvedValueOnce(bookingClaimDecision)
+        .mockResolvedValueOnce(passDecision);
+
+      const outcome = await service.runInboundTurn({
+        sessionRef,
+        input: { text: '好的，没问题' },
+        context: { messageId: 'msg-second-candidate' },
+      });
+
+      expect(outcome.kind).toBe('reply');
+      expect(outcome.reply?.text).not.toContain('预约成功');
+      expect(generator.invoke).toHaveBeenCalledTimes(2);
+      expect(seen[1]).toEqual(seen[0]);
+      expect(replyRepairAgent.repair).not.toHaveBeenCalled();
+      expect(guardrailReviews.recordReview).toHaveBeenCalledWith(
+        expect.objectContaining({
+          traceId: 'msg-second-candidate',
+          repaired: true,
+          repairMode: 'replan',
+          firstReply: fakeReceipt,
+          finalOutcome: 'reply',
+        }),
+      );
+    });
+
     it('re-enters the generator with identical params instead of rewriting, and adopts the grounded reply', async () => {
       const seen: unknown[] = [];
       generator.invoke.mockImplementation(async (p: unknown) => {
@@ -1201,6 +1358,234 @@ describe('AgentRunnerService.runInboundTurn', () => {
         repaired: false,
       }),
     );
+  });
+
+  // 2026-10-13 生产（trace …_1791860105040，guardrail_review_records#19522，复核 [12]）：模型自造结构化信封
+  // `{"agent_reply":"","candidate_intention":"确认收尾","thought":"候选人回复"好"…应沉默收尾"}`，旧链路
+  // envelope_unwrapped 把 thought 当正文投递。确认收尾准入通过且零工具调用才可整轮静默。
+  it('empty reply-slot envelope is silenced as intentional skip (thought never unwrapped)', async () => {
+    const draft = JSON.stringify({
+      agent_reply: '',
+      candidate_intention: '确认收尾',
+      thought: '候选人回复"好"是纯确认词，上轮已完成预约成功回执，本轮无新诉求，应沉默收尾',
+      intention_stage: 'interview_scheduling',
+    });
+    generator.invoke.mockResolvedValueOnce(
+      makeResult({ text: draft, confirmationClosureEligible: true }),
+    );
+    outputGuard.check.mockResolvedValueOnce({
+      decision: 'repair',
+      riskLevel: 'high',
+      violations: [
+        {
+          type: 'internal_output_leak',
+          evidence: '回复疑似泄漏 Agent 内部状态/工具实现（pattern=json）',
+          suggestion: '删除泄漏内容',
+          allowFailOpen: false,
+          repairMode: 'rewrite',
+        },
+      ],
+      ruleIds: ['internal_output_leak'],
+      blockedRuleIds: ['internal_output_leak'],
+      repairMode: 'rewrite',
+    });
+
+    const outcome = await service.runInboundTurn({
+      sessionRef,
+      input: { text: '好' },
+      context: { messageId: 'trace-empty-slot-envelope-1' },
+    });
+
+    expect(replyRepairAgent.repair).not.toHaveBeenCalled();
+    expect(outputGuard.check).toHaveBeenCalledTimes(1);
+    expect(outcome.kind).toBe('skipped');
+    expect(outcome.reply).toBeUndefined();
+    expect(outcome.handoff).toBeUndefined();
+    expect(outcome.sideEffects ?? []).toEqual([]);
+    expect(outcome.outputGuardrail).toMatchObject({
+      decision: 'repair',
+      finalOutcome: 'skipped',
+      reasonCode: 'empty_reply_envelope_silenced',
+    });
+    expect(guardrailReviews.recordReview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        finalOutcome: 'skipped',
+        reasonCode: 'empty_reply_envelope_silenced',
+        repaired: false,
+      }),
+    );
+  });
+
+  it.each([
+    [
+      { agent_reply: '', thought: '候选人回复好，本轮无新诉求，应沉默收尾' },
+      'skipped',
+      'empty_reply_envelope_silenced',
+    ],
+    [
+      { reply: null, reasoning: '本轮无新诉求，应沉默收尾' },
+      'skipped',
+      'empty_reply_envelope_silenced',
+    ],
+    [
+      { reply: '', riskType: 'insult', reason: '候选人需要人工协助' },
+      'handoff',
+      'tool_call_artifact_silenced',
+    ],
+    [
+      { reply: '', reasonCode: 'other', reason: '候选人需要人工协助' },
+      'handoff',
+      'tool_call_artifact_silenced',
+    ],
+    [
+      { reply: '', scene: 'human_takeover', reason: '真人正在沟通' },
+      'handoff',
+      'tool_call_artifact_silenced',
+    ],
+    [
+      { reply: '', action: 'human_takeover', reason: '真人正在沟通' },
+      'handoff',
+      'tool_call_artifact_silenced',
+    ],
+    [
+      { reply: '', message: '好的，面试当天记得带身份证' },
+      'handoff',
+      'tool_call_artifact_silenced',
+    ],
+    [
+      { reply: '', unknownControl: { action: 'human_takeover' } },
+      'handoff',
+      'tool_call_artifact_silenced',
+    ],
+    [
+      { thought: '候选人回复好，本轮无新诉求，应沉默收尾' },
+      'handoff',
+      'tool_call_artifact_silenced',
+    ],
+  ])(
+    'real output guard and runner preserve envelope intent: %j → %s',
+    async (envelope, kind, reasonCode) => {
+      generator.invoke.mockResolvedValueOnce(
+        makeResult({ text: JSON.stringify(envelope), confirmationClosureEligible: true }),
+      );
+      outputGuard.check.mockImplementation((input) => actualOutputGuard.check(input));
+
+      const outcome = await service.runInboundTurn({ sessionRef, input: { text: '好' } });
+
+      expect(outcome.kind).toBe(kind);
+      expect(outcome.reply).toBeUndefined();
+      expect(replyRepairAgent.repair).not.toHaveBeenCalled();
+      expect(outputGuard.check).toHaveBeenCalledTimes(1);
+      expect(outcome.outputGuardrail).toMatchObject({ finalOutcome: kind, reasonCode });
+      if (kind === 'skipped') {
+        expect(outcome.sideEffects ?? []).toEqual([]);
+        expect(outcome.handoff).toBeUndefined();
+      }
+    },
+  );
+
+  it.each([
+    ['first turn', false, '我是星空'],
+    ['question after a prior reply', false, '在哪里？'],
+    ['missing eligibility evidence', undefined, '好'],
+  ])('repairs empty reply envelopes for %s without exposing thought', async (_, eligible, text) => {
+    generator.invoke.mockResolvedValueOnce(
+      makeResult({
+        text: JSON.stringify({ reply: '', thought: '本轮无新诉求，应沉默收尾' }),
+        confirmationClosureEligible: eligible,
+      }),
+    );
+    const reply = '您好，你想在哪个城市找工作？';
+    replyRepairAgent.repair.mockResolvedValueOnce(reply);
+    outputGuard.check.mockImplementation((input) => actualOutputGuard.check(input));
+
+    const outcome = await service.runInboundTurn({ sessionRef, input: { text } });
+
+    expect(outcome.kind).toBe('reply');
+    expect(outcome.reply?.text).toBe(reply);
+    expect(replyRepairAgent.repair).toHaveBeenCalledTimes(1);
+    expect(outputGuard.check).toHaveBeenCalledTimes(2);
+    expect(generator.invoke).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    {
+      toolName: 'duliday_interview_booking',
+      args: { jobId: 123 },
+      result: { success: true, workOrderId: 'wo-1' },
+    },
+    { toolName: 'duliday_job_list', args: {}, result: { success: true } },
+    {
+      toolName: 'skip_reply',
+      args: { scene: 'confirmation_closure' },
+      result: { skipped: false, errorType: 'skip_reply.confirmation_no_prior_turn' },
+    },
+  ])('does not let an empty reply envelope bypass tool exclusivity: $toolName', async (call) => {
+    generator.invoke.mockResolvedValueOnce(
+      makeResult({
+        text: JSON.stringify({ reply: '', thought: '本轮无新诉求，应沉默收尾' }),
+        confirmationClosureEligible: true,
+        toolCalls: [call],
+      }),
+    );
+    const reply =
+      call.toolName === 'duliday_interview_booking'
+        ? '已帮你约好面试，有其他问题可以直接告诉我。'
+        : '您好，你想在哪个城市找工作？';
+    replyRepairAgent.repair.mockResolvedValueOnce(reply);
+    outputGuard.check.mockImplementation((input) => actualOutputGuard.check(input));
+
+    const outcome = await service.runInboundTurn({ sessionRef, input: { text: '好' } });
+
+    expect(outcome.kind).toBe('reply');
+    expect(outcome.reply?.text).toBe(reply);
+    expect(outcome.toolCalls).toEqual([call]);
+    expect(replyRepairAgent.repair).toHaveBeenCalledTimes(1);
+    expect(outputGuard.check).toHaveBeenCalledTimes(2);
+    expect(generator.invoke).toHaveBeenCalledTimes(1);
+    if (call.toolName === 'duliday_interview_booking') {
+      expect(replyRepairAgent.repair.mock.calls[0][0].committedSideEffects).toContain(
+        'duliday_interview_booking',
+      );
+    }
+  });
+
+  it('real output guard reviews a filled reply slot again after removing internal notes', async () => {
+    const reply = '好的，有问题随时联系我就行';
+    generator.invoke.mockResolvedValueOnce(
+      makeResult({
+        text: JSON.stringify({ reply, thought: '候选人回复好，本轮无新诉求，应沉默收尾' }),
+      }),
+    );
+    outputGuard.check.mockImplementation((input) => actualOutputGuard.check(input));
+
+    const outcome = await service.runInboundTurn({ sessionRef, input: { text: '好' } });
+
+    expect(outcome.kind).toBe('reply');
+    expect(outcome.reply?.text).toBe(reply);
+    expect(outputGuard.check).toHaveBeenCalledTimes(2);
+    expect(replyRepairAgent.repair).not.toHaveBeenCalled();
+    expect(outcome.outputGuardrail).toMatchObject({
+      finalOutcome: 'reply',
+      reasonCode: 'envelope_unwrapped',
+    });
+  });
+
+  it('real output guard keeps unwrapped narration as observation only', async () => {
+    const text = '候选人回复好，本轮无新诉求，应沉默收尾';
+    generator.invoke.mockResolvedValueOnce(makeResult({ text }));
+    outputGuard.check.mockImplementation((input) => actualOutputGuard.check(input));
+
+    const outcome = await service.runInboundTurn({ sessionRef, input: { text: '好' } });
+
+    expect(outcome.kind).toBe('reply');
+    expect(outcome.reply?.text).toBe(text);
+    expect(outcome.outputGuardrail).toMatchObject({
+      decision: 'pass',
+      ruleIds: expect.arrayContaining(['meta_narration_unwrapped']),
+      blockedRuleIds: [],
+    });
+    expect(replyRepairAgent.repair).not.toHaveBeenCalled();
   });
 
   // tool_use 信封（trace …_1785746625937）里的 reason 是内部升级理由不是话术，

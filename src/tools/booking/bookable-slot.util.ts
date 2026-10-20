@@ -2,7 +2,7 @@
  * 面试时段构建：未来 N 天可约 slot + 周期性班次规则压缩 + 候选人请求日期评估。
  *
  * 提供以下面试时段原语：
- * - buildUpcomingTimeOptions：未来 horizonDays 天扁平 label 数组（给候选人挑时间）
+ * - buildUpcomingTimeOptions：未来 horizonDays 天扁平 label 数组（给候选人挑时间；只含可自助提交的窗口）
  * - buildBookableSlots：未来 N 天结构化 slot（含 bookingAllowed / requiresManualConfirmation）
  * - buildScheduleRule + formatWeekdayList + formatDeadlineClause：把周期窗口压缩成"周一至周五 10:00-12:00"
  * - evaluateRequestedDate：候选人指定日期 → available / unavailable / needs_confirmation
@@ -105,6 +105,10 @@ export function buildUpcomingTimeOptions(
       if (window.date && window.date !== date) continue;
       if (!window.date && window.weekday && window.weekday !== weekday) continue;
       if (!window.date && !window.weekday) continue;
+      // 与 buildBookableSlots 的 bookingAllowed=false 同口径：只标日期 / 起点解析不出的窗口不是
+      // 候选人能挑的时间——它们混进扁平选项里，模型会照着让候选人"选个时间"，而 booking 永远提交不了
+      // （2026-10-19 BadCase [13]：肯德基幸福里DT 周一至周五 00:00，模型承诺"我会在截止前帮你提交"）。
+      if (isDateOnlyWindow(window) || normalizeHm(window.startTime) === null) continue;
 
       const deadline = resolveBookingDeadlineDateTime(date, window);
       if (deadline && nowDateTime.localeCompare(deadline) > 0) continue;

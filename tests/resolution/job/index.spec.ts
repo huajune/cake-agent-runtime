@@ -89,6 +89,15 @@ describe('resolution/job', () => {
     expect(pickBestReferencedJob([longer, chaoneiJob], message, 'store')).toBeNull();
   });
 
+  it.each([true, false])('独立门店同分不按名字长短选择，也不回退到旧展示岗：%s', (longFirst) => {
+    const longer = { ...dongdanJob, storeName: '东方广场店' };
+    const jobs = longFirst ? [longer, chaoneiJob] : [chaoneiJob, longer];
+    const message = '不要东方广场店，想去朝内店';
+    expect(pickBestReferencedJob(jobs, message)).toBeNull();
+    expect(resolveCurrentFocusJob(message, [longer], [], jobs)).toBeNull();
+    expect(resolveCurrentFocusJob(message, [chaoneiJob], [], jobs)).toBeNull();
+  });
+
   it('prefers a complete store name over another store’s shorter alias', () => {
     const shortName = { ...chaoneiJob, storeName: '万达店' };
     const fullName = { ...dongdanJob, storeName: '万达广场店' };

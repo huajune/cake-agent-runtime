@@ -20,6 +20,12 @@ export function normalizeDistrictForLookup(district: string): string {
  * 单字「津」（县级市「津市」不可识别）、「芒市」剥成「芒」。省级折叠
  * （吉林省→吉林）维持现口径，与 D3 裁决对齐后再动。
  */
+/** 群配置的「全国」代表覆盖范围，不能作为候选人所在城市的证据。 */
+export function isConcreteCityScope(value: string): boolean {
+  const normalized = normalizeCityName(value);
+  return normalized !== null && normalized !== '全国';
+}
+
 export function normalizeCityName(value: string | null | undefined): string | null {
   if (!value) return null;
   let normalized = value.trim();

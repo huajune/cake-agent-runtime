@@ -489,3 +489,94 @@ describe('CollectionFormService', () => {
     });
   });
 });
+
+describe('CollectionFormService.peekPrimary（空响应恢复闸只读窥视）', () => {
+  const store = {
+    read: jest.fn(),
+    readCurrentCandidateRef: jest.fn(),
+    readPrimaryCandidateRef: jest.fn(),
+    write: jest.fn().mockResolvedValue(undefined),
+    remove: jest.fn().mockResolvedValue(undefined),
+  };
+  const sessionState = { saveCollectionProgressFact: jest.fn().mockResolvedValue(undefined) };
+  let service: CollectionFormService;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    store.read.mockResolvedValue(null);
+    store.readCurrentCandidateRef.mockResolvedValue(null);
+    store.readPrimaryCandidateRef.mockResolvedValue(null);
+    service = new CollectionFormService(store as never, sessionState as never);
+  });
+
+  it('优先按 primary locator 读主候选人表单，不建表不写回', async () => {
+    const form = createForm({
+      candidateRef: TEST_PHONE,
+      jobId: SCOPE.jobId,
+      contract: [NAME_FIELD],
+    });
+    store.readPrimaryCandidateRef.mockResolvedValue(TEST_PHONE);
+    store.read.mockImplementation(async (params: { candidateRef: string }) =>
+      params.candidateRef === TEST_PHONE ? form : null,
+    );
+
+    await expect(service.peekPrimary(SCOPE)).resolves.toBe(form);
+    expect(store.write).not.toHaveBeenCalled();
+  });
+
+  it('没有任何 locator 时回落 session 默认表；什么都没有返回 null', async () => {
+    const sessionForm = createForm({ jobId: SCOPE.jobId, contract: [NAME_FIELD] });
+    store.read.mockImplementation(async (params: { candidateRef: string }) =>
+      params.candidateRef === 'session' ? sessionForm : null,
+    );
+    await expect(service.peekPrimary(SCOPE)).resolves.toBe(sessionForm);
+
+    store.read.mockResolvedValue(null);
+    await expect(service.peekPrimary(SCOPE)).resolves.toBeNull();
+  });
+
+  it('旧快照 current 被追加候选人占用且无 primary locator 时不沿它读', async () => {
+    const additional = {
+      ...createForm({ candidateRef: '18271421691', jobId: SCOPE.jobId, contract: [NAME_FIELD] }),
+      candidateScope: 'additional' as const,
+    };
+    const sessionForm = createForm({ jobId: SCOPE.jobId, contract: [NAME_FIELD] });
+    store.readCurrentCandidateRef.mockResolvedValue('18271421691');
+    store.read.mockImplementation(async (params: { candidateRef: string }) =>
+      params.candidateRef === '18271421691'
+        ? additional
+        : params.candidateRef === 'session'
+          ? sessionForm
+          : null,
+    );
+
+    await expect(service.peekPrimary(SCOPE)).resolves.toBe(sessionForm);
+  });
+});
+
+describe('CollectionFormService.peekActive', () => {
+  it('主候选人与追加候选人同时存在时只读当前追加候选人，不写回', async () => {
+    const primary = createForm({ jobId: SCOPE.jobId, contract: [NAME_FIELD] });
+    const additional = {
+      ...primary,
+      candidateRef: '18271421691',
+      candidateScope: 'additional' as const,
+    };
+    const store = {
+      readCurrentCandidateRef: jest.fn().mockResolvedValue('18271421691'),
+      readPrimaryCandidateRef: jest.fn().mockResolvedValue(TEST_PHONE),
+      read: jest
+        .fn()
+        .mockImplementation(async ({ candidateRef }) =>
+          candidateRef === '18271421691' ? additional : primary,
+        ),
+      write: jest.fn(),
+    };
+    const service = new CollectionFormService(store as never, {} as never);
+    await expect(service.peekActive(SCOPE)).resolves.toBe(additional);
+    expect(store.readPrimaryCandidateRef).not.toHaveBeenCalled();
+    expect(store.write).not.toHaveBeenCalled();
+    store.read.mockResolvedValue(null);
+    await expect(service.peekActive(SCOPE)).resolves.toBeNull();
+  });
+});

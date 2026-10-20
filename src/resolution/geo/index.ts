@@ -16,7 +16,11 @@ export type {
   WhitelistScanResult,
 } from './geo.types';
 
-export { normalizeCityName, normalizeDistrictForLookup } from './geo-name.normalizer';
+export {
+  normalizeCityName,
+  normalizeDistrictForLookup,
+  isConcreteCityScope,
+} from './geo-name.normalizer';
 export {
   detectGeoSignalConflict,
   hasKnownCityPrefix,
