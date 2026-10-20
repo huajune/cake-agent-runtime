@@ -140,7 +140,7 @@ export const PRECHECK_DESCRIPTION = `面试前置校验。实时读取岗位收�
 
 行动纪律：
 - collect_fields：只收 bookingChecklist.requiredFieldsToCollectNow。${COLLECTION_TEMPLATE_SEND_INSTRUCTION}
-- confirm_collection：返回 recap.candidateMessage 时必须照发；未返回表示当前 KV 已真实送达，只需简短请候选人确认。如尚未选时间，可同时并列展示 interview.bookableSlots。
+- confirm_collection：返回 recap.candidateMessage 时必须照发；未返回表示当前 KV 已真实送达，只需简短请候选人确认。如尚未选时间，仅可展示 bookingAllowed=true 的时段；全部时段需人工确认时，只确认资料，不能让候选人选时间。
 - select_interview_time：资料已授权但尚未选择具体时段；interview.bookableSlots 是按 availabilityAuthority.evaluatedAt 和完整日期时间过滤后的唯一可约事实。只展示 bookingAllowed=true 的时段，不得根据 scheduleRule/processRemark 中“当天、前一天”等相对词二次计算或删减，不再复述资料。
 - screening_rejected：只使用 rejection.candidateMessage，不自行披露内部筛选原因。被筛掉的字段在本岗是终态：候选人改口也不入账，不要承诺在本岗更新该字段即可继续办理，换岗表单才会重新收这项。
 - handoff：停止收资并转人工。
@@ -765,7 +765,12 @@ export function buildInterviewPrecheckTool(
             nextAction,
             collectionVerdict: formRun.verdict,
             candidateScope: formRun.form.candidateScope ?? 'primary',
-            _replyInstruction: replyInstruction(nextAction, formRun, duplicateBookingGuard),
+            _replyInstruction: replyInstruction(
+              nextAction,
+              formRun,
+              duplicateBookingGuard,
+              allSlotsRequireManualConfirmation,
+            ),
             duplicateBookingGuard,
             job: {
               jobId,
@@ -1163,6 +1168,7 @@ function replyInstruction(
   action: PrecheckAction,
   run: FormRun,
   duplicateBookingGuard?: DuplicateBookingGuard,
+  allSlotsRequireManualConfirmation = false,
 ): string {
   switch (action) {
     case 'collect_fields': {
@@ -1184,16 +1190,19 @@ function replyInstruction(
       return `${COLLECTION_TEMPLATE_SEND_INSTRUCTION} 只缺：${run.result.askableFields.join('、') || run.result.template.missingFields.join('、')}；已 filled 字段禁止重复问。${rejectedNote}${modeNote}`;
     }
     case 'confirm_collection': {
+      const timingInstruction = allSlotsRequireManualConfirmation
+        ? '当前时段全部需人工确认，禁止展示为可选时间或让候选人挑选；先确认资料，确认后重调 precheck 转人工协调。'
+        : '若尚未选时间，可并列展示 interview.bookableSlots 中 bookingAllowed=true 的时段，允许一轮确认资料并选时间。';
       if (run.recapConfirmationRejection === 'recap_snapshot_mismatch' && run.recapText) {
         return '候选人的确认没能入账：此前复述未按官方文本送达（见 rejectedRecapConfirmation）。照发 recap.candidateMessage 重新复述并请候选人确认，确认后带 recapConfirmation 重调本工具。';
       }
       if (run.recapText) {
-        return '资料含外部预填。发送 recap.candidateMessage；若尚未选时间，同时并列展示 interview.bookableSlots，允许候选人一轮确认资料并选时间。确认前禁止 booking。';
+        return `资料含外部预填。发送 recap.candidateMessage；${timingInstruction}确认前禁止 booking。`;
       }
       const rejectionNote = run.recapConfirmationRejection
         ? ' 注意：本轮提交的 recapConfirmation 被公证退回，原因与改法见 rejectedRecapConfirmation。'
         : '';
-      return `已发过提交前复述但尚未得到明确确认。候选人本轮已明确表态确认的，立即带 recapConfirmation 重调本工具登记确认——不登记则确认永不入账；候选人尚未表态的才简短请他确认或指出哪项要改；若尚未选时间可同时给出真实 bookableSlots，禁止重发整张收资表。${rejectionNote}`;
+      return `已发过提交前复述但尚未得到明确确认。候选人本轮已明确表态确认的，立即带 recapConfirmation 重调本工具登记确认——不登记则确认永不入账；候选人尚未表态的才简短请他确认或指出哪项要改；${timingInstruction}禁止重发整张收资表。${rejectionNote}`;
     }
     case 'select_interview_time':
       return '候选人资料已经授权，但尚未选择具体预约时段。interview.bookableSlots 已按 availabilityAuthority.evaluatedAt 和完整报名截止时间过滤；只展示 bookingAllowed=true 的时段，严禁根据“当天”或当前钟点二次计算、删除时段。保留已收资料，不得重新收资或签发 booking。';

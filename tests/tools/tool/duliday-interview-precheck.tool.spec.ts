@@ -990,6 +990,13 @@ describe('duliday_interview_precheck（collection form 唯一路径）', () => {
       const pending = await execute({ jobId: 100, mode: 'query' });
       expect(pending.nextAction).toBe('confirm_collection');
       expect(pending.recap.candidateMessage).toContain('姓名：兮兮');
+      expect(pending._replyInstruction).toContain('禁止展示为可选时间');
+      expect(pending._replyInstruction).not.toContain('允许一轮确认资料并选时间');
+      expect(
+        pending.interview.bookableSlots.every(
+          (slot: { bookingAllowed: boolean }) => !slot.bookingAllowed,
+        ),
+      ).toBe(true);
       expect(context.ledger.jobs.collectionReadyJobId).toBeUndefined();
 
       context.turnInput.messages = recapDialogue('没问题');
