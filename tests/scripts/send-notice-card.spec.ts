@@ -125,10 +125,10 @@ describe('ops release notice card', () => {
     });
   });
 
-  it('dry-run never loads credentials or posts', async () => {
+  it.each(['--dry-run', '--json'])('%s never loads credentials or posts', async (flag) => {
     const deps = mockDeps();
 
-    await main([EXAMPLE_PATH, '--dry-run'], deps);
+    await main([EXAMPLE_PATH, flag], deps);
 
     expect(deps.loadWebhookConfig).not.toHaveBeenCalled();
     expect(deps.postJson).not.toHaveBeenCalled();
@@ -166,6 +166,21 @@ describe('ops release notice card', () => {
       fs.rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it.each(['', '<html>proxy response</html>', '{}', 'null', '[]', '{"code":"0"}'])(
+    'does not persist a sent marker for an unverified 2xx body: %s',
+    async (body) => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ops-notice-'));
+      const noticePath = path.join(dir, 'notice.json');
+      fs.writeFileSync(noticePath, JSON.stringify(notice()));
+      try {
+        await expect(main([noticePath], mockDeps(body))).rejects.toThrow('飞书 webhook');
+        expect(fs.existsSync(`${noticePath}.sent`)).toBe(false);
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
 
   it('treats non-zero Feishu codes as failures', () => {
     expect(() => assertFeishuResponse({ statusCode: 200, body: '{"code":11232}' })).toThrow(

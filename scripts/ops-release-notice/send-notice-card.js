@@ -90,7 +90,7 @@ function parseArgs(argv) {
 
   return {
     noticePath: positional[0],
-    dryRun: argv.includes('--dry-run'),
+    dryRun: argv.includes('--dry-run') || argv.includes('--json'),
     printJson: argv.includes('--json'),
   };
 }
@@ -288,17 +288,20 @@ function assertFeishuResponse(response) {
   if (!response.statusCode || response.statusCode < 200 || response.statusCode >= 300) {
     throw new Error(`飞书 webhook HTTP ${response.statusCode}: ${response.body}`);
   }
-  if (!response.body) return;
 
   let parsed;
   try {
     parsed = JSON.parse(response.body);
   } catch {
-    return;
+    throw new Error('飞书 webhook 未返回有效 JSON 成功回执');
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('飞书 webhook 缺少成功状态码');
   }
 
   const code = typeof parsed.code === 'number' ? parsed.code : parsed.StatusCode;
-  if (typeof code === 'number' && code !== 0) {
+  if (typeof code !== 'number') throw new Error('飞书 webhook 缺少成功状态码');
+  if (code !== 0) {
     throw new Error(
       `飞书 webhook code=${code}: ${parsed.msg || parsed.StatusMessage || response.body}`,
     );
