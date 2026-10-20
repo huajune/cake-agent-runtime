@@ -58,6 +58,8 @@ export interface BookingClaimContext {
   activeBookings?: readonly ActiveBookingEntry[];
   /** 本轮焦点岗位 jobId（会话工作台 currentFocusJob）。 */
   focusJobId?: number;
+  /** 当前活动追加候选人的持久化表单尚无工单；主候选人的同岗位工单不能为其作证。 */
+  pendingAdditionalCandidateJobId?: number;
 }
 
 /**
@@ -98,6 +100,13 @@ export function detectBookingDoneClaimWithoutSubmission(
   if (!text.trim()) return null;
   if (!BOOKING_DONE_CLAIM_PATTERN.test(text)) return null;
   if (toolCalls.some((call) => BOOKING_FAMILY_TOOL_NAMES.has(call.toolName))) return null;
+  if (context.pendingAdditionalCandidateJobId !== undefined) {
+    return createOutputRuleFinding(
+      'booking_done_claim_no_work_order',
+      `当前正在办理的追加候选人（岗位 ${context.pendingAdditionalCandidateJobId}）表单尚无工单，` +
+        '本轮也没有 booking 调用，却宣称报名/预约成功；主候选人的同岗位工单不能替此人作证',
+    );
+  }
   if (hasActiveWorkOrderEvidence(toolCalls)) return null;
 
   // 观察期数据（09-02 起 8 例）证实 observe 档的假阳几乎全是跨轮复述真实工单。长期记忆里

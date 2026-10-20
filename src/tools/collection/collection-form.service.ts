@@ -218,6 +218,14 @@ export class CollectionFormService {
     return existing;
   }
 
+  /** 只读当前正在办理的人；追加候选人必须与 booking 的活动定位一致，不能退回主候选人。 */
+  async peekActive(scope: CollectionFormScope): Promise<BookingCollectionForm | null> {
+    const currentRef = await this.store.readCurrentCandidateRef(scope);
+    const candidateRef =
+      currentRef ?? (await this.store.readPrimaryCandidateRef(scope)) ?? SESSION_CANDIDATE_REF;
+    return this.store.read({ ...scope, candidateRef });
+  }
+
   /**
    * query 路径更新契约快照；首次 validate 也用它原子建立快照后校验。
    *

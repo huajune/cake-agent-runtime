@@ -134,9 +134,13 @@ describe('booking_done_claim_no_work_order（长期记忆确证无在途工单�
     // 名下工单能解释"跨轮复述"，只落 observe——这是 2026-09-09 判据的既定边界。
     // 但候选人名下确证没有任何在途工单、或在途工单都不是本岗时，"何佳淼也预约成功啦"就是假回执，
     // rewrite 只能改成"我这就去提交"（永不兑现），必须同参重进让 precheck/booking 真正发生。
-    const hit = detectBookingDoneClaimWithoutSubmission('好的，何佳淼也预约成功啦，面试时间同样是明天下午两点', [], {
-      activeBookings: [],
-    });
+    const hit = detectBookingDoneClaimWithoutSubmission(
+      '好的，何佳淼也预约成功啦，面试时间同样是明天下午两点',
+      [],
+      {
+        activeBookings: [],
+      },
+    );
     expect(hit?.ruleId).toBe('booking_done_claim_no_work_order');
     expect(hit?.action).toBe('replan');
   });
@@ -212,5 +216,27 @@ describe('booking_done_claim_no_work_order（长期记忆确证无在途工单�
         focusJobId: 528334,
       })?.ruleId,
     ).toBe('booking_done_claim_without_submission');
+  });
+});
+
+describe('追加候选人的完成回执独立对账', () => {
+  it('第一人同岗有工单，第二人活动表单未提交，仍要求 replan', () => {
+    const hit = detectBookingDoneClaimWithoutSubmission('第二人也预约成功了', [], {
+      activeBookings: [{ work_order_id: 1, linked_at: '2026-10-20', job_id: 100 }],
+      focusJobId: 100,
+      pendingAdditionalCandidateJobId: 100,
+    });
+    expect(hit?.ruleId).toBe('booking_done_claim_no_work_order');
+    expect(hit?.action).toBe('replan');
+  });
+  it('旧主候选人预检的在途工单不能覆盖当前第二人未提交状态', () => {
+    const hit = detectBookingDoneClaimWithoutSubmission(
+      '第二人报名成功',
+      [call('duliday_interview_precheck', { duplicateBookingGuard: { workOrderId: 1 } })],
+      {
+        pendingAdditionalCandidateJobId: 100,
+      },
+    );
+    expect(hit?.action).toBe('replan');
   });
 });

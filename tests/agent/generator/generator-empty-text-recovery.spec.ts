@@ -44,7 +44,7 @@ describe('GeneratorAgent 空响应恢复', () => {
 
   const buildService = (
     generate: jest.Mock,
-    options: { ctx?: Record<string, unknown>; collectionForms?: { peekPrimary: jest.Mock } } = {},
+    options: { ctx?: Record<string, unknown>; collectionForms?: { peekActive: jest.Mock } } = {},
   ) => {
     const llm = { supportsVisionInput: jest.fn().mockResolvedValue(false), generate };
     const preparation = { prepare: jest.fn().mockResolvedValue(makeCtx(options.ctx)) };
@@ -314,7 +314,7 @@ describe('GeneratorAgent 空响应恢复 · 待提交确认节点转人工', () 
     userText: string,
     form: BookingCollectionForm | null,
   ) => {
-    const collectionForms = { peekPrimary: jest.fn().mockResolvedValue(form) };
+    const collectionForms = { peekActive: jest.fn().mockResolvedValue(form) };
     const llm = { supportsVisionInput: jest.fn().mockResolvedValue(false), generate };
     const preparation = {
       prepare: jest.fn().mockResolvedValue({
@@ -376,7 +376,7 @@ describe('GeneratorAgent 空响应恢复 · 待提交确认节点转人工', () 
       }),
     );
     expect(result.recoveryDisposition?.reason).toContain('没问题的');
-    expect(collectionForms.peekPrimary).toHaveBeenCalledWith({
+    expect(collectionForms.peekActive).toHaveBeenCalledWith({
       corpId: 'c1',
       userId: 'u1',
       botUserId: 'wecom-user-A',
@@ -398,6 +398,21 @@ describe('GeneratorAgent 空响应恢复 · 待提交确认节点转人工', () 
     expect(result.text).toBe('');
     expect(result.recoveryDisposition?.precheckNextAction).toBe('ready_to_book');
   });
+
+  it.each(['confirm_collection', 'ready_to_book'])(
+    '活动追加候选人 %s 双空响应也必须转人工',
+    async (state) => {
+      const generate = jest
+        .fn()
+        .mockResolvedValueOnce(emptyStep())
+        .mockResolvedValueOnce(emptyStep());
+      const form = state === 'confirm_collection' ? awaitingRecapForm() : readyToBookForm();
+      const { service } = makeService(generate, '好的', { ...form, candidateScope: 'additional' });
+      const result = await invoke(service, '好的');
+      expect(generate).toHaveBeenCalledTimes(2);
+      expect(result.recoveryDisposition?.precheckNextAction).toBe(state);
+    },
+  );
 
   it('本轮 precheck 回执已停在 confirm_collection 时不读表单，直接按本轮回执判定', async () => {
     const generate = jest
@@ -439,7 +454,7 @@ describe('GeneratorAgent 空响应恢复 · 待提交确认节点转人工', () 
     expect(result.recoveryDisposition).toEqual(
       expect.objectContaining({ precheckNextAction: 'confirm_collection', jobId: 100 }),
     );
-    expect(collectionForms.peekPrimary).not.toHaveBeenCalled();
+    expect(collectionForms.peekActive).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -496,7 +511,7 @@ describe('GeneratorAgent 空响应恢复 · 待提交确认节点转人工', () 
       .mockResolvedValueOnce({ ...recoveredText(), text: '面试预约已成功。' });
     const { service, collectionForms } = makeService(generate, '好的', awaitingRecapForm());
     const result = await invoke(service, '好的');
-    expect(collectionForms.peekPrimary).not.toHaveBeenCalled();
+    expect(collectionForms.peekActive).not.toHaveBeenCalled();
     if (recover) {
       expect(result.recoveryDisposition).toBeUndefined();
       expect(result.text).toBe('面试预约已成功。');
@@ -534,7 +549,7 @@ describe('GeneratorAgent 空响应恢复 · 待提交确认节点转人工', () 
     expect(generate.mock.calls[2][0].purpose).toBe('empty_text_recovery');
     expect(result.text).toBe('周四也可以的，你看周四下午几点方便？');
     expect(result.recoveryDisposition).toBeUndefined();
-    expect(collectionForms.peekPrimary).not.toHaveBeenCalled();
+    expect(collectionForms.peekActive).not.toHaveBeenCalled();
   });
 
   it('表单仍在收资（collecting）或读取失败 → 闸不触发', async () => {
@@ -551,7 +566,7 @@ describe('GeneratorAgent 空响应恢复 · 待提交确认节点转人工', () 
           response: { messages: [] },
         });
       const { service, collectionForms } = makeService(generate, '好的', form);
-      if (form === null) collectionForms.peekPrimary.mockRejectedValue(new Error('redis down'));
+      if (form === null) collectionForms.peekActive.mockRejectedValue(new Error('redis down'));
 
       const result = await invoke(service, '好的');
 

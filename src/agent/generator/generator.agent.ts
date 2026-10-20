@@ -968,13 +968,13 @@ export class GeneratorAgent {
     const botUserId = ctx.botUserId?.trim();
     if (!this.collectionForms || !jobId || !botUserId) return null;
     try {
-      const form = await this.collectionForms.peekPrimary({
+      const form = await this.collectionForms.peekActive({
         corpId: ctx.corpId,
         userId: ctx.userId,
         botUserId,
         jobId,
       });
-      if (!form || form.candidateScope === 'additional' || verdictOf(form) !== 'ready') return null;
+      if (!form || verdictOf(form) !== 'ready') return null;
       if (!isCollectionAuthorized(form)) return { nextAction: 'confirm_collection', jobId };
       if (form.scheduleDraft?.selectedInterviewTime) return { nextAction: 'ready_to_book', jobId };
       return null;

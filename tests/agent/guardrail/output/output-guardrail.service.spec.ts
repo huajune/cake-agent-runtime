@@ -49,6 +49,43 @@ describe('OutputGuardrailService', () => {
     );
   });
 
+  it.each([undefined, 9001])(
+    '读取当前追加候选人表单，工单 %s 决定是否可借用主候选人证据',
+    async (workOrderId) => {
+      const forms = {
+        peekActive: jest.fn().mockResolvedValue({ candidateScope: 'additional', workOrderId }),
+      };
+      const guard = new OutputGuardrailService(
+        systemConfig as never,
+        ruleGuard as never,
+        shortTerm as never,
+        undefined,
+        undefined,
+        undefined,
+        forms as never,
+      );
+      await guard.check({
+        reply: '第二人也报名成功了',
+        toolCalls: [],
+        corpId: 'c1',
+        userId: 'u1',
+        botUserName: 'bot1',
+        memorySnapshot: { currentFocusJob: { jobId: 100 } } as never,
+      });
+      expect(forms.peekActive).toHaveBeenCalledWith({
+        corpId: 'c1',
+        userId: 'u1',
+        botUserId: 'bot1',
+        jobId: 100,
+      });
+      expect(ruleGuard.check).toHaveBeenCalledWith(
+        expect.objectContaining({
+          pendingAdditionalCandidateJobId: workOrderId === undefined ? 100 : undefined,
+        }),
+      );
+    },
+  );
+
   it('带会话身份时读取在途工单并把 activeBookings / 历史助手文本传给规则层', async () => {
     const longTerm = { tryGetActiveBookings: jest.fn().mockResolvedValue([]) };
     const withLongTerm = new OutputGuardrailService(

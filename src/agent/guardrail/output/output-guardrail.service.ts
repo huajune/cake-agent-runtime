@@ -12,6 +12,7 @@ import type { TurnFactsSnapshot, TurnLedger } from '@shared-types/turn.types';
 import { resolveActiveLaborFormValue, selectVisibleSessionJobs } from '@resolution/labor-form';
 import { projectTurnHints } from '@resolution/turn-hints/reducer';
 import { BookingSnapshotService } from '@tools/booking/booking-snapshot.service';
+import { CollectionFormService } from '@tools/collection/collection-form.service';
 import type { AgentMemorySnapshot, AgentToolCall } from '@agent/generator/generator.types';
 import type {
   GuardViolation,
@@ -52,6 +53,7 @@ export class OutputGuardrailService {
     private readonly longTerm?: LongTermService,
     private readonly sessionFacts?: SessionFactsService,
     @Optional() private readonly bookingSnapshot?: BookingSnapshotService,
+    @Optional() private readonly collectionForms?: CollectionFormService,
   ) {}
 
   /**
@@ -217,11 +219,44 @@ export class OutputGuardrailService {
     return [...fetchedJobs, ...(attestedFocusJob ? [attestedFocusJob] : [])];
   }
 
+  private async readPendingAdditionalCandidate(
+    input: OutputGuardInput,
+  ): Promise<number | undefined> {
+    const latestPrecheck = [...input.toolCalls]
+      .reverse()
+      .find((call) => call.toolName === 'duliday_interview_precheck');
+    const args = latestPrecheck?.args as { jobId?: number } | undefined;
+    const jobId = args?.jobId ?? input.memorySnapshot?.currentFocusJob?.jobId;
+    if (!this.collectionForms || !input.corpId || !input.userId || !input.botUserName || !jobId) {
+      return undefined;
+    }
+    try {
+      const form = await this.collectionForms.peekActive({
+        corpId: input.corpId,
+        userId: input.userId,
+        botUserId: input.botUserName,
+        jobId,
+      });
+      return form?.candidateScope === 'additional' && form.workOrderId === undefined
+        ? jobId
+        : undefined;
+    } catch (error) {
+      this.logger.warn(`读取追加候选人表单失败，按未知处理: ${toErrorMessage(error)}`);
+      return undefined;
+    }
+  }
+
   async check(input: OutputGuardInput): Promise<OutputGuardDecision> {
     const reply = input.reply?.trim() ?? '';
     if (!reply) return this.passDecision([], []);
 
-    const [recent, runtimeConfig, activeBookings, sessionJobEvidence] = await Promise.all([
+    const [
+      recent,
+      runtimeConfig,
+      activeBookings,
+      sessionJobEvidence,
+      pendingAdditionalCandidateJobId,
+    ] = await Promise.all([
       this.readRecentTexts(input.chatId),
       this.systemConfig.getAgentReplyConfig(),
       this.readActiveBookings(input.corpId, input.userId),
@@ -231,6 +266,7 @@ export class OutputGuardrailService {
         input.sessionId,
         input.turnLedger?.facts,
       ),
+      this.readPendingAdditionalCandidate(input),
     ]);
     const sessionJobs = sessionJobEvidence.jobs;
     const sessionJobFactTexts = formatJobFactProvenanceTexts(sessionJobs);
@@ -260,6 +296,7 @@ export class OutputGuardrailService {
       turnJobs: this.readTurnJobs(input.turnLedger),
       studentAcceptance: sessionJobEvidence.studentAcceptance,
       activeBookings,
+      pendingAdditionalCandidateJobId,
       silent: input.silent,
       hardRuleOverrides: runtimeConfig.hardRuleOverrides ?? {},
     });

@@ -320,12 +320,12 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     action: GUARDRAIL_ACTION.REPLAN,
     priority: GUARDRAIL_PRIORITY.P0,
     description:
-      '零 booking 调用、无在途工单（或在途工单都不是本轮焦点岗位）却宣称"已帮你报好/报名成功"。',
+      '零 booking 调用、活动追加候选人未提交或无对应在途工单，却宣称"已帮你报好/报名成功"。',
     riskGoal:
       '堵住 observe 哨兵管不了的假回执：候选人据此等面试，这家店的工单根本不存在。' +
       '零 booking 轮不能靠改写补救（改成将来时承诺同样空头），必须同参重进让提交真正发生或转人工。',
     exogenousSignal:
-      '本轮 booking 调用存在性 + precheck 在途工单 + 在途工单集合（为空，或每张 job_id 都≠焦点岗位 jobId）；' +
+      '当前活动追加候选人表单未提交（主候选人同岗位工单不能替其作证）；本轮 booking 调用存在性 + precheck 在途工单 + 在途工单集合（为空，或每张 job_id 都≠焦点岗位 jobId）；' +
       '在途工单集合 = 本轮预约快照（按候选人手机号从海绵查得，含真人后台登记与另一账号代报）∪ 长期记忆 active_booking 指针，按工单号去重（2026-09-22 起）；' +
       '焦点岗位取入口快照 currentFocusJob，缺失时回落本轮 precheck 参数 jobId（precheck 校验过的岗位轮末也会写入 currentFocusJob）。',
     residualRisk:
