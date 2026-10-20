@@ -16,13 +16,13 @@
 | 用在哪 | **哪也不用。** 投递热路径被 [M-rt-1]/[T-4]/[T-6] 字面封死；异步与离线环虽不被封，但每一处都有"复用现有 LLM 调用"的零新供应商替代，Jev 的增量为零。 |
 | 先做什么 | 做候选评审时顺带发现的 **非 Jev 修法**，研究建议清单在 §7.5（§4.2 的"正解"列是它的摘要）。例如：删复聊 `decision` 冗余字段、动态禁令 location/salary 改靶、沉淀摘要改 `generateStructured` + `z.enum`、群通知渲染结构化字段并落库、`request_handoff` 描述相邻码边界。这些是研究时的粗估，未立项或承诺排期。 |
 | 别做什么 | 别建 Jev 客户端、别升 `ai` 包只为 `experimental_decide`、别签境外处理者、别为 Jev 建标注流程、别建"Jev 与 LLM 并跑对账"（撞 [T-2]⑤/[T-6] 明文禁 shadow diff）。 |
-| 什么时候重议 | 同时满足：① 某决策点有 **现查可得的 badcase 量级**（不是防御式痛点）；② 该点确认 **无法搭现有 extract_facts / 主 Agent 顺风车**；③ 法务对候选人文本出境出具书面口径；④ 用自有中文样本证明 Jev 比已接入的 qwen-flash/deepseek-v4-flash 结构化输出 **显著更准**（≥5pp，配对检验）。四条缺一不重议；是否满足由用户按 [M-tax] 快环豁免评审裁定，结论入 `docs/principles/bitter-lessons.md`（见 §5.1）。 |
+| 什么时候重议 | 同时满足：① 某决策点有 **现查可得的 badcase 量级**（不是防御式痛点）；② 该点确认 **无法搭现有 extract_facts / 主 Agent 顺风车**；③ 法务对候选人文本出境出具书面口径；④ 用自有中文样本证明 Jev 比已接入的 qwen/qwen3.7-flash/deepseek-v4-flash 结构化输出 **显著更准**（≥5pp，配对检验）。四条缺一不重议；是否满足由用户按 [M-tax] 快环豁免评审裁定，结论入 `docs/principles/bitter-lessons.md`（见 §5.1）。 |
 
 **三句话讲清为什么**
 
 1. **架构层面**：本仓库的"语义判定三分法"（[T-1]）只有三格——格式就解析、标签就复用现有 LLM、距离才检索。Jev 产出的是标签，而标签格的正解被明文钉死为"搭现有抽取调用"（[T-2]），且"不再建设 shadow diff、第二模型仲裁或并行语义评分链"。Jev 要进来必须先改这张表，这是架构级裁定，不是实现选择。
 2. **能力层面**：Jev 官方自认的弱点（字面解读、不算数、日期当文本、多跳弱、对注入不鲁棒、CJK 不如英文）恰好覆盖本项目候选决策点的核心难点——中文否定/婉拒、"此后未再确认"的缺席推定、面试时间先后、候选人原话即对抗面。独立实测给出的中文数字都是几十到几百条的小样本（推理型任务 0.60–0.68 来自 n=55 / n=34 的单人标注子集、XNLI −11.2pp、礼貌权威式注入带偏 65%、86% 置信度饱和为 1.00），只能支持"方向不利"，不能支持精确差值；但方向与本项目难点一致。
-3. **价值层面**：在本项目量级（约 1,318 回合/天）下 Jev 与 qwen-flash 单次成本都是厘级（¥0.0007 vs ¥0.0005），**成本从不是变量**；真正的账是 2–5 人日工程 + 数百条双人标注 + PIPL 出境法务 + 一个"限额两周内 tokens/s 收紧 2.5× 且可不经通知再变、无 SLA、责任上限 $50"的新境外处理者，去换一个每条候选都能用一行代码或一次现有调用替代的信号。
+3. **价值层面**：在本项目量级（约 1,318 回合/天）下 Jev 与 qwen/qwen3.7-flash 单次成本都是厘级（¥0.0007 vs ¥0.0005），**成本从不是变量**；真正的账是 2–5 人日工程 + 数百条双人标注 + PIPL 出境法务 + 一个"限额两周内 tokens/s 收紧 2.5× 且可不经通知再变、无 SLA、责任上限 $50"的新境外处理者，去换一个每条候选都能用一行代码或一次现有调用替代的信号。
 
 **合规一句话**：候选人对话送 TypeSafe = 个人信息出境到美国托管处理者，其 DPA 只有 EU SCC/UK Addendum、无 PIPL 机制、默认保留期无天数、ZDR 仅企业经销售（官方）。未取得法务书面口径前，**连离线重放生产原文都不允许**。
 
@@ -251,7 +251,7 @@
   - 正常路径被 [T-2]/[T-2.1]/[T-2.2]/[D-5]/[M-tax] 封死（"封闭标签搭现有 extract_facts、不新增调用"）；extract_facts（deepseek-v4-flash）已顺带输出 `brand_intents.polarity` 三值与 `labor_form_intent` set/clear/ignore 并强制逐字 quote，Jev 不能产 quote，[P9] 不采信。
   - **唯一合规落点流量为零**（生产库实测）：近 30 天 25,647 回合、extract_facts 跑 23,401 次，`degraded=0`、`failure=0`（7 天 0/149）——`router.resolveRoute` 对 Dashboard override 仍保留 `AGENT_DEFAULT/EXTRACT_FALLBACKS` 链，降级已被 `providers/reliable` 吃掉。[P8] 的 ≥2 周判例永远攒不出。
   - 即便触发，Jev 比被替换的规则轨更差：`decideLaborFormIntent` 按小句归并出 clear + clearedValues[]，7 选 1 choice 丢掉被排除值，无法表达"不要暑假工，普通兼职就行"；无 abstain 让 ignore 兼任"无法判断"（去 abstain 后 ECE 0.793）；"假期工"需按日期判暑/寒；`coref_target` 位置指代实测 0.42。
-- **处置**：方案作废；零代码替代是配 `AGENT_EXTRACT_FALLBACKS`（如 deepseek-v4-flash → qwen-flash → qwen3.7-plus），并补 labor_form 规则兜底写入的观测事件落库。
+- **处置**：方案作废；零代码替代是配 `AGENT_EXTRACT_FALLBACKS`（如 deepseek-v4-flash → qwen/qwen3.7-flash → qwen3.7-plus），并补 labor_form 规则兜底写入的观测事件落库。
 - **若仍要重议的硬门**：先用 `message_processing_records` 查近 30 天 `extract_facts_llm_degraded` 回合数——<1% 或日均 <15 回合直接作废；配好三模型降级链跑两周后降级率仍持续 >3% 才重开；重开时 choice 必须保留 `clearedValues` 语义（拆成 set 问 + 每形式一道 clear noul 由代码合成）、显式加"无法判断"选项与 ignore 分离、`coref_target` 与 `brand not_mentioned` 不得作为写入依据；按 [M-ledger] 书面论证非 L11 换名重建并过 [M-tax] 评审；法务放行出境。
 
 #### #6 【诱饵】出站 observe 档句级极性/时态/意图分类 — 驳回
@@ -262,7 +262,7 @@
   - [T-4] 原文"Output 不调用第二个模型、不运行 semantic reviewer/shadow、不通过 observe 规则猜开放语义"把首审同步 / observe 影子 / 二审三位置字面封死；[G-1]"只对可复算信号裁决"——同 state 50 次得 15 种答案集不可复算；语义审查器 PR#1045 已删，再建即 [L2] 换名。
   - 仓库核实：catalog 24 ruleId、observe 档恰 5 条；observe 命中落 `guardrail_review_records`，7 天 179−90 ≈ 89 行 observe-only ≈13/天；runner `:290 shouldRepair` 排除 observe，**命中不改任何投递**——Jev 测准到 100% 也不会让任何现有指标动一格，升档路径被 [T-4]/[G-2] 封死。
   - 能力：7 问里 4 问正中弱项——否定语序+范围限定（仓库 `NEGATION_PREFIX/SUFFIX` 两套词表正是为"日结的暂时没排到哈"而存在）、中文无形态时态、"先拒 A 再要 B 取最后意图"是多跳+顺序；5 个哨兵 90 天 300–800 行分 7 问每问 <120，达不到 ≥300/问。
-  - 价值：2000 条双标 ≈2 人日 > 90 天全部 observe 命中总量，撞 [T-6]⑤；真要测精度，已接入的 qwen-flash json_schema 即可。
+  - 价值：2000 条双标 ≈2 人日 > 90 天全部 observe 命中总量，撞 [T-6]⑤；真要测精度，已接入的 qwen/qwen3.7-flash 的现有 JSON 模式 + 本地 schema 校验 即可。
 - **处置**：按 [P6] 执行 `SELECT unnest(first_rule_ids), count(*) FROM guardrail_review_records WHERE created_at > now()-interval '14 days' GROUP BY 1`，对 5 条哨兵按命中数/人工假阳率决定降档或删除；隐性人机暗示缺口按 catalog `:115` 归主 Agent prompt。
 
 #### #7 咨询段沉淀：求职 vs 非求职（+episode 边界） — 驳回
@@ -279,14 +279,14 @@
 #### #8 群通知出站审查缺口：事实出处 noul + 敏感条款 noul — 驳回
 
 - **设计要点**：cron 慢环 `handlePrepare` 内两处：A）生成后逐行 `line_unsupported_claim` / `line_is_benefit_section` noul（observe，不拦）；B）`sanitizePublicText` 内按段送 Jev（`social_insurance_stance` / `student_stance` / `unpaid_or_forfeit_clause` choice，每段一请求 ≈600 token），替代 12 条敏感正则，正则永久 fallback + P≥0.15 保险带。合计 3–4 人日。
-- **一句话致命伤**：敏感条款来源字段本就是封闭枚举（能不渲染 `remark` 就没有分类问题），且通道每周百余条、运营人眼 100% 预览、零事故记录——没有可测的痛点。
+- **一句话致命伤**：先评估只渲染已有结构化字段、减少 `remark` 自由文本暴露；当前缺少可核查的群通知事故基线，不能把未找到记录解释为零事故，也不能把飞书监控卡当作人工审核。
 - **关键反驳**：
   - P2 构造侧未问第一问：`src/tools/job-list/hard-requirements.util.ts` 显示海绵 `hiringRequirement.figure` 是**封闭枚举**，`student_stance` 是对已结构化字段再分类（[L12] 字面命中）；`extractHiringRequirement` 只剩 `remark` 自由文本，"能否不渲染 remark"设计未问。
   - "不提敏感政策"已住 3 处（`src/biz/group-task/prompts/part-time-job.prompt.ts` 规则 13 + BadCase 末条 + `SENSITIVE_PUBLIC_COPY_PATTERNS` 正则），Jev criteria 成第 4 处（[C4]/[CL-prompt]）；B 写明 shadow 双跑 + 正则永久 fallback，撞 [T-6]/[T-2.2]/[P6] 规则面净增。
-  - 量级与痛点（仓库核实）：兼职群 cron 仅工作日 13:30 一次、小贴士周六一次（`src/biz/group-task/services/group-task-scheduler.service.ts`），≈50–150 条/周；每条正式发送同时推飞书预览给运营（`src/biz/group-task/services/notification-sender.service.ts`），**人眼已 100% 过目**；12 条敏感正则自 PR#76 一次写就从未改过，docs/memory/台账零群通知 badcase——pain_evidence 是防御式写法，不是事故。群任务无任何落库表，设计自认"现在量不出来"。
+  - 量级与痛点（仓库核实）：兼职群 cron 仅工作日 13:30 一次、小贴士周六一次（`src/biz/group-task/services/group-task-scheduler.service.ts`），≈50–150 条/周；`src/biz/group-task/services/notification-sender.service.ts` 的 `sendToGroup` 先发送飞书监控卡，随后直接发送企微消息，**没有等待人工批准的步骤**；生产路径监控卡返回失败时记错后继续，不是发送闸门。不能据此断言运营已看过或在投递前拦截。调研未找到可追溯的群通知 badcase 统计，实际事故率未知；应先补齐记录和抽样评审。
   - 能力：A 的"source 里找不到依据"是缺席/不可答判定，Jev 最差处；一次 state 含 source + 15–25 行，对每行 noul 其余全是无关上下文。B 本质是中文极性翻转（Jev 弱项）；中文置信饱和使 0.05 步长扫 P-R 取 τ 退化为 argmax；criteria 字面只列"社保/五险一金"，商家写"不买保险""社会保险"会被字面判 unrelated；按标点切段后"期间不计薪"丢指代。
   - 岗位商业文本 shadow 期即出境到无 SLA/无 PIPL 的美国处理者。
-- **处置**：先做 Jev 无关部分——群通知只渲染结构化字段、评估不渲染 remark；生成消息落库（复用 ops_events 或既有表）+ 确定性数字/门店名/薪资单位对账；跑 ≥4 周拿到真实编造/敏感泄漏基线，基线为零则候选关闭。只有现有正则召回实测 <0.85 且飞书预览历史能找到 ≥3 条实际上群的敏感短句才重开 B，且基线对照必须是已接入的 qwen-flash/`generateStructured`。
+- **处置**：先做 Jev 无关部分——群通知只渲染结构化字段、评估不渲染 remark；生成消息落库（复用 ops_events 或既有表）+ 确定性数字/门店名/薪资单位对账；跑 ≥4 周拿到真实编造/敏感泄漏基线，基线为零则候选关闭。只有现有正则召回实测 <0.85 且飞书预览历史能找到 ≥3 条实际上群的敏感短句才重开 B，且基线对照必须是已接入的 qwen/qwen3.7-flash/`generateStructured`。
 
 #### #9 转人工 reason_code 与对话事实一致性全量核对 — 驳回
 
@@ -298,7 +298,7 @@
   - 判码核心是时态：`onboarding_paperwork` / `interview_result_inquiry` / `employment_affairs` 的 `not_for` 全是"还没面试/入职"，正中"日期当文本+多跳"；20 条 `not_for` 全是否定式；`suspect` 判据 p(recorded) ≤0.20 是缺席推定。
   - 标定不可行：200 条/17 码 ≈12 条每码，"按码分组画 10 桶可靠性曲线"无统计意义；`human_handoff_request` 是系统码（enum `:297`，非 toolSelectable）却入 choice，argmax 永不等于工具记录码 → 结构性假 suspect。设计引用的"10-08 5/19=0.263"同样不在 quality-metrics-ledger；`handoff_events` 周量按生产 8 周实测为 62–275 条（70/153/170/240/275/260/121/62，中位约 160），设计估 50–100 偏低，替代方案的覆盖率算术随之失真。
   - 裁定：[M1]/[L2]/[M5] 再叫一次模型审另一次模型输出；[T-6]⑤ 200 条标注 + 新列 + 新 cron 服务一个 20 条周样本；[C4] criteria 成 30 码目录第二居所。
-- **处置**：先修 `request_handoff` description 相邻码边界与 promise-reconciliation 残余 other，观测 ≥2 周；零代码替代——周任务抽样 20→60（随机 20 + other/salary_admin_inquiry 定向 40）跑 4 周；若仍要自动核对，判官用已接入的国内模型（qwen-flash/deepseek-v4-flash json_schema + 引文）在同一 cron 位实现。
+- **处置**：先修 `request_handoff` description 相邻码边界与 promise-reconciliation 残余 other，观测 ≥2 周；零代码替代——周任务抽样 20→60（随机 20 + other/salary_admin_inquiry 定向 40）跑 4 周；若仍要自动核对，判官用已接入的国内模型（qwen/qwen3.7-flash/deepseek-v4-flash json_schema + 引文）在同一 cron 位实现。
 
 #### #10 守卫命中档案离线判真/假阳 + 修复回归形态 — 驳回
 
@@ -322,7 +322,7 @@
 | 步 | 做什么 | 输入 | 通过线 | 不过线 | 成本 |
 | --- | --- | --- | --- | --- | --- |
 | 0 前置 | 法务书面口径（PIPL 出境机制 / 单独同意 / ZDR 条款 / 保留期）；大陆生产机到 `api.typesafe.ai` 的 TCP/TLS 可达性与 1000 次 p95 | — | p95 ≤1.2s、错误率 ≤2%、法务放行 | 任何一项不过 → 全部终止 | 0.5 人日 + 法务 |
-| 1 离线重放 | 对**一个**决策点、**全量去标识**后的历史样本（姓名/手机号/住址/年龄一律占位），固定 `model=jev-1.13.0`，并发 ≤3、限速 ≤5 rps；每个 choice 双向换序跑；同时跑已接入的 deepseek-v4-flash / qwen-flash `json_schema` 作基线 | 300–600 条双人标注（κ≥0.75），阳性每类 ≥30 | 自动采信桶（max(prob) ≥ 自标定阈值）精确率 ≥0.90、覆盖 ≥60%；换序翻转 ≤3%；中文礼貌式注入对照组带偏 ≤10%；**显著优于基线 ≥5pp（McNemar p<0.05）** | Jev 出局；结论入 bitter-lessons（"不是换名重建"的论证一并写） | 1–2 人日 + <$1 token + 标注 |
+| 1 离线重放 | 对**一个**决策点、**全量去标识**后的历史样本（姓名/手机号/住址/年龄一律占位），固定 `model=jev-1.13.0`，并发 ≤3、限速 ≤5 rps；每个 choice 双向换序跑；同时跑已接入的 deepseek-v4-flash / qwen/qwen3.7-flash 的现有结构化输出（JSON 模式 + 本地 schema 校验） 作基线 | 300–600 条双人标注（κ≥0.75），阳性每类 ≥30 | 自动采信桶（max(prob) ≥ 自标定阈值）精确率 ≥0.90、覆盖 ≥60%；换序翻转 ≤3%；中文礼貌式注入对照组带偏 ≤10%；**显著优于基线 ≥5pp（McNemar p<0.05）** | Jev 出局；结论入 bitter-lessons（"不是换名重建"的论证一并写） | 1–2 人日 + <$1 token + 标注 |
 | 2 豁免评审 | 过线后按 [M-tax] 单独过快环豁免评审；按 [M-ledger] 逐条写明为何不是 L2/L5/L10/L11 换名重建；question/criteria 登记 prompt-rule-ledger；确定退场判据与 kill switch | 步 1 报告 | 用户裁定 | 不裁定不进任何在线阶段 | 评审会 |
 
 **谁裁定、入哪本账**：步 0/1 的通过线由数据说话，步 2 由用户按 [M-tax] 快环豁免评审裁定；任一步不过线，即按 [M-ledger] 在 `docs/principles/bitter-lessons.md` 入账"Jev 不立项"及论证（含该决策点的样本量、精确率与对照基线数字），本报告作为附件引用。过线进入步 2 后的结论无论通过与否，同样入该台账。
@@ -363,7 +363,7 @@
 | --- | --- | --- | --- |
 | **不做** | **本次 10 条候选的实际结论**：每条都有一个零新依赖修法 | — | — |
 | **deepseek-v4-flash（extract 角色已在用）** | **封闭标签的正解落点**（[T-2] 顺风车） | prompt 模拟封闭判断；可附 quote；`generateStructured` 已存在（`src/llm/llm-executor.service.ts`） | 原生中文 |
-| **qwen3.7-flash / qwen-flash 非思考 + `json_schema` strict** | **若真需要独立判定时的默认基线**；但多数候选连它都不需要（搭现有调用即可） | 同上；无原生校准（需 logprobs 或输出分数再校准） | 原生中文最强；与主模型同家族 |
+| **qwen/qwen3.7-flash 非思考 + JSON 模式（schema 入提示词，SDK 本地校验）** | **若真需要独立判定时的默认基线**；但多数候选连它都不需要（搭现有调用即可） | 同上；无原生校准（需 logprobs 或输出分数再校准） | 原生中文最强；与主模型同家族 |
 | **Jev（API 直连 / OpenRouter）** | **不采用**（§4） | 三原语原生、分布输出；不算数/不多跳/不产 quote | 路由 0.88–0.98、推理型 0.60–0.68（独立小样本，业务子集 n=15–55） |
 | **Laya-multilingual 自建（GPU）** | **不建议现在建**；仅作"合规要求数据不出境 + 已攒 ≥1 万条标注"时的私有化预案 | 三原语、`/v1/systemone` 兼容；**必须微调**（基座零样本 typed-decisions 0.362，低于多数类基线 0.461） | 零样本中文业务路由 0.62 vs Jev 0.88（三份小样本的推断综合）；简繁翻转 12.8%（独立）；**准确率 0.766 vs 0.727、ECE 0.081/0.213 等对比全部来自 Laya 自己的 README/模型卡，厂商自报、利益相关，且自认未实测 Jev** |
 | Laya CPU（ONNX / `@receptron/laya`） | 同上 | 同上 | 同上 |
@@ -376,7 +376,7 @@
 | --- | --- | --- | --- | --- | --- |
 | 不做 | 0 | 0 | 0 | — | 0 |
 | deepseek-v4-flash | ≈0.5–0.7s（匿名实测推算） | ≈¥0.0025–0.005（峰谷） | 最低：已接入 | 国内 | 低；峰谷价进成本告警 |
-| qwen-flash + `json_schema` | ≈1.5–2.5s（TTFT 未核） | ≈¥0.0005 | 最低：已有 `DASHSCOPE_API_KEY` + `@ai-sdk/openai-compatible`，走 providers 三层 | 国内 | 低；prompt 漂移需守卫 |
+| qwen/qwen3.7-flash + JSON 模式 / 本地 schema 校验 | ≈1.5–2.5s（TTFT 未核） | ≈¥0.0005 | 最低：已有 `DASHSCOPE_API_KEY` + `@ai-sdk/openai-compatible`，走 providers 三层 | 国内 | 低；prompt 漂移需守卫 |
 | Jev | 有源实测 284–890ms（中文）；"官方 70–500ms"未复现（传闻）；大陆直连未测 | ≈¥0.0007 | 低（20 行 fetch）；OpenRouter 端点仍 alpha | 出境、无 PIPL、保留期未定 | 限额随时变、月度升级回归 |
 | Laya GPU | 33–72ms（T4，厂商自报） | GPU ¥877–2,500/月 ÷ 请求数 ≈ ¥0.02–0.06/次，比 API 贵 30–80 倍 | 中：Python + GPU + 微调流水线 | 全私有、唯一不出境 | 高：PyPI 周更、自拟温度 |
 | Laya CPU | 5 问 0.25–1s（官方 vs 社区差 4 倍） | ≈0 边际 | 中：Node 多语支持待验、1.7GB 权重 | 全私有 | 高 + 与主服务争 CPU |
@@ -402,6 +402,8 @@
 - 自助账号支付方式（信用卡 / 中国发卡行 / 对公发票）——官方零公开，本次禁止注册未验证。
 - 限流从 250K tok/s / 1,200 rpm 收紧到 100K / 80 rps 的原因与后续走向；是否承诺 argmax 确定性；官方 70–500ms 延迟的来源页。
 
+仓库基线说明（2026-10-20 代码复核）：`src/providers/models.ts` 注册的模型 ID 为 `qwen/qwen3.7-flash`。`src/providers/types.ts` 对 Qwen 启用 `jsonSchemaInPrompt: true`；`src/providers/json-schema-prompt.middleware.ts` 将 schema 注入提示词并从 `responseFormat` 删除 schema，使用普通 JSON 模式，再由 AI SDK 按原 schema 校验及重试。现有链路不提供服务端严格约束解码；改用 `json_schema` strict 需要单独接入、兼容性和业务回归，不能作为现成的零改动基线。以下成本、延迟为研究快照估计，当前模型表现仍须实测。
+
 ### 7.2 需要法务裁定
 - ★ 候选人对话（含姓名/手机号/住址/年龄）出境到美国托管处理者的 PIPL 路径：机制、单独同意、PIA。
 - ★ env 中已配的 Anthropic / OpenRouter / Gemini 境外 key 是否当前承载生产候选人数据——决定 Jev 是"首次出境"还是"新增处理者"。
@@ -413,7 +415,7 @@
 - ★ 大陆生产机到 `api.typesafe.ai` 的直连可达性与 P50/P99。
 - 本项目中文守卫/路由任务上 Jev 的真实准确率与 confidence 分布；状态含 Agent 自产岗位卡 + 候选人回声时，中文礼貌式注入带偏率。
 - 中文置信度饱和是否普遍、是否让阈值无法拟合；中文有序 score 0.6–0.68 能否靠 2–3 档粗粒度 + 自校准提升到可用。
-- qwen3.7-flash / qwen-flash 非思考 + `json_schema` strict 在 2.3k 输入 / 100 token 输出下的真实 TTFT 与端到端延迟；百炼/DeepSeek 对 `logprobs` 的支持范围。
+- qwen/qwen3.7-flash 非思考 + JSON 模式（schema 入提示词，SDK 本地校验） 在 2.3k 输入 / 100 token 输出下的真实 TTFT 与端到端延迟；百炼/DeepSeek 对 `logprobs` 的支持范围。
 - `ai` 7.0.37→7.0.133 对 `llm-executor` stopWhen/prepareStep 续接的实际影响（CHANGELOG 无 stopWhen 条目，但有 tool-choice 强制与 streamRetries 变更）。
 
 ### 7.4 外部证据口径冲突（待原作者澄清）
