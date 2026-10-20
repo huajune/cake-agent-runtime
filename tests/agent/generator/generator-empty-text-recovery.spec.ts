@@ -127,10 +127,10 @@ describe('GeneratorAgent 空响应恢复', () => {
     expect(recovery.prompt).toContain('不得报出任何岗位名称');
     expect(recovery.prompt).not.toContain('工具链已经执行完');
     // trace batch_6accb41bce406a6aee72e009_1791805375446：恢复补出"我这就帮你提交报名，约的是周三 14 号下午 2 点"
+    expect(recovery.prompt).toContain('禁止写“这就帮你提交/马上帮你报名/已经约好');
     expect(recovery.prompt).toContain(
-      '禁止写"这就帮你提交/马上帮你报名/已经约好/已约/约的是 X/面试时间是 X',
+      '只有 duliday_interview_booking success=true 才能声称新预约已成功',
     );
-    expect(recovery.prompt).toContain('不得告诉候选人任何面试时间');
 
     expect(result.text).toBe('想找咖啡店兼职是吧，你平时哪些时间段方便上班呀？');
     expect(result.agentSteps).toHaveLength(3);
@@ -171,6 +171,48 @@ describe('GeneratorAgent 空响应恢复', () => {
     expect(recovery.prompt).toContain('工具链已经执行完');
     expect(recovery.prompt).not.toContain('没有调用任何工具');
     expect(result.text).toBe('已经帮你约好了，面试时间到时候留意群消息');
+    expect(result.toolCalls).toHaveLength(1);
+  });
+
+  it.each([
+    [
+      'duliday_interview_precheck',
+      { requestedDate: { status: 'unavailable' }, nearestBookableSlot: '2026-10-22 14:00:00' },
+    ],
+    ['duliday_modify_interview_time', { success: true, interviewTime: '2026-10-22 14:00:00' }],
+    [
+      'duliday_interview_precheck',
+      {
+        success: true,
+        nextAction: 'already_booked',
+        duplicateBookingGuard: { interviewTime: '2026-10-22 14:00:00' },
+      },
+    ],
+  ])('空文本恢复保留 %s 的时间事实且不要求新 booking', async (toolName, output) => {
+    const generate = jest
+      .fn()
+      .mockResolvedValueOnce({
+        text: '',
+        steps: [
+          {
+            text: '',
+            finishReason: 'tool-calls',
+            toolCalls: [{ toolCallId: 'grounded', toolName, input: {} }],
+            toolResults: [{ toolCallId: 'grounded', output }],
+          },
+        ],
+        usage,
+        response: { messages: [] },
+      })
+      .mockResolvedValueOnce({ text: '已根据工具核实时间', usage, response: { messages: [] } });
+    const result = await invoke(buildService(generate));
+    const recovery = generate.mock.calls[1][0];
+    expect(recovery.tools).toBeUndefined();
+    expect(recovery.prompt).toContain('2026-10-22 14:00:00');
+    expect(recovery.prompt).toContain('必须区分“可选择”和“已预约”');
+    expect(recovery.prompt).toContain('可以确认改期结果');
+    expect(recovery.prompt).toContain('可以复述已有预约');
+    expect(recovery.prompt).not.toContain('不得告诉候选人任何面试时间');
     expect(result.toolCalls).toHaveLength(1);
   });
 

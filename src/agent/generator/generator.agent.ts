@@ -1005,10 +1005,12 @@ export class GeneratorAgent {
       '要求：',
       '- 只输出回复正文，不要解释内部过程。',
       '- 如果工具结果显示 requestedDate.status=unavailable，必须明确说明不可约原因，并给最近可选替代时间。',
-      '- 不要编造工具结果，不要承诺已经预约成功。',
-      '- 除非工具调用摘要里有 duliday_interview_booking success=true 的结果，否则禁止写"这就帮你提交/马上帮你报名/' +
-        '已经约好/已约/约的是 X/面试时间是 X/到时候去门店"等暗示报名已办好或即将办好的话，也不得告诉候选人任何面试时间、' +
-        '地点或提交进度；候选人刚确认资料的，只能如实说明还需要再核对一次、稍后答复。',
+      '- 不要编造工具结果或提交进度。只有 duliday_interview_booking success=true 才能声称新预约已成功；' +
+        'duliday_modify_interview_time success=true 可以确认改期结果，precheck 的 already_booked 可以复述已有预约。',
+      '- 工具返回的可选面试时间、地点可以如实转述，但必须区分“可选择”和“已预约”；' +
+        'requestedDate.status=unavailable 的替代时段不代表已预约。只复述工具已证实的事实，不补造缺失的时间或地点。',
+      '- 没有对应成功结果时，禁止写“这就帮你提交/马上帮你报名/已经约好”等暗示报名已办好或即将办好的话；' +
+        '候选人刚确认资料但尚未提交的，只能如实说明还需要再核对一次、稍后答复。',
       ...(ranTools
         ? []
         : [
