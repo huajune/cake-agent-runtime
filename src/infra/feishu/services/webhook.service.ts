@@ -34,6 +34,11 @@ class FeishuSendError extends Error {
  */
 const RETRYABLE_FEISHU_CODES = new Set<number>([11232]);
 
+interface FeishuWebhookConfig {
+  url: string;
+  secret: string;
+}
+
 /**
  * 飞书 Webhook 基础服务
  * 提供统一的签名生成和消息发送能力
@@ -42,7 +47,7 @@ const RETRYABLE_FEISHU_CODES = new Set<number>([11232]);
 export class FeishuWebhookService {
   private readonly logger = new Logger(FeishuWebhookService.name);
   private readonly httpClient: AxiosInstance;
-  private readonly fallbackWarnedChannels = new Set<FeishuWebhookChannel>();
+  private readonly unsignedWarnedChannels = new Set<FeishuWebhookChannel>();
 
   // 发送重试配置：对运营关键通知（报名成功/失败、转人工等）瞬时失败做退避重试，
   // 避免一次网络抖动/限流就静默丢单。总尝试 3 次，退避 500ms → 1000ms。
@@ -58,6 +63,7 @@ export class FeishuWebhookService {
 
   /**
    * 发送消息到飞书 Webhook（带退避重试 + 最终失败告警）
+   * 通道 Webhook URL 未配置时记 warn 并跳过发送，不重试、不补发失败告警。
    * @param channel 飞书通知群通道
    * @param content 消息内容（飞书卡片 JSON）
    * @returns 是否发送成功
@@ -66,11 +72,14 @@ export class FeishuWebhookService {
     channel: FeishuWebhookChannel,
     content: Record<string, unknown>,
   ): Promise<boolean> {
+    const config = this.resolveWebhookConfig(channel);
+    if (!config) return false;
+
     let lastError: unknown;
 
     for (let attempt = 1; attempt <= this.MAX_SEND_ATTEMPTS; attempt++) {
       try {
-        await this.sendMessageOrThrow(channel, content);
+        await this.postToWebhook(channel, config, content);
         return true;
       } catch (error) {
         lastError = error;
@@ -109,13 +118,20 @@ export class FeishuWebhookService {
     channel: FeishuWebhookChannel,
     content: Record<string, unknown>,
   ): Promise<void> {
-    const config = this.getWebhookConfig(channel);
-
-    if (!config.url) {
+    const config = this.resolveWebhookConfig(channel);
+    if (!config) {
       // 配置缺失属永久错误，重试无意义
       throw new FeishuSendError(`未配置 ${channel} Webhook URL`, false);
     }
 
+    await this.postToWebhook(channel, config, content);
+  }
+
+  private async postToWebhook(
+    channel: FeishuWebhookChannel,
+    config: FeishuWebhookConfig,
+    content: Record<string, unknown>,
+  ): Promise<void> {
     let payload = content;
     if (config.secret) {
       const timestamp = Math.floor(Date.now() / 1000).toString();
@@ -160,9 +176,12 @@ export class FeishuWebhookService {
   ): Promise<void> {
     if (failedChannel === 'ALERT') return; // 避免告警群自身失败时递归/雪崩
 
+    const alertConfig = this.resolveWebhookConfig('ALERT');
+    if (!alertConfig) return;
+
     try {
       const card = this.buildFailureAlertCard(failedChannel, reason);
-      await this.sendMessageOrThrow('ALERT', card);
+      await this.postToWebhook('ALERT', alertConfig, card);
     } catch (error) {
       this.logger.error(`飞书发送失败告警补发也失败: ${toErrorMessage(error)}`);
     }
@@ -200,36 +219,31 @@ export class FeishuWebhookService {
   }
 
   /**
-   * 获取 Webhook 配置
-   * 优先使用环境变量，否则使用硬编码默认值
+   * 读取通道 Webhook 配置（只来自环境变量）
+   * URL 未配置时记 warn 并返回 null，由调用方跳过发送；
+   * SECRET 显式为空表示机器人未开启签名，未设置时首次记 warn 后同样按无签名发送。
+   * channel 可能来自未做运行时校验的 HTTP 入参，未登记的通道同样记 warn 并跳过。
    */
-  private getWebhookConfig(channel: FeishuWebhookChannel): {
-    url: string;
-    secret: string;
-  } {
-    const defaultConfig = FEISHU_WEBHOOK_CHANNELS[channel];
-    const envUrl = this.configService.get<string>(defaultConfig.ENV_URL_KEY);
-    const envSecret = this.configService.get<string>(defaultConfig.ENV_SECRET_KEY);
-    const missingKeys: string[] = [];
-
-    if (envUrl === undefined && defaultConfig.URL) {
-      missingKeys.push(defaultConfig.ENV_URL_KEY);
-    }
-    if (envSecret === undefined && defaultConfig.SECRET) {
-      missingKeys.push(defaultConfig.ENV_SECRET_KEY);
+  private resolveWebhookConfig(channel: FeishuWebhookChannel): FeishuWebhookConfig | null {
+    if (!Object.prototype.hasOwnProperty.call(FEISHU_WEBHOOK_CHANNELS, channel)) {
+      this.logger.warn(`未知飞书通道 ${JSON.stringify(channel)}，跳过飞书发送`);
+      return null;
     }
 
-    if (missingKeys.length > 0 && !this.fallbackWarnedChannels.has(channel)) {
-      this.logger.warn(
-        `[${channel}] 未配置 ${missingKeys.join(' / ')}，回退到代码默认 Webhook 配置`,
-      );
-      this.fallbackWarnedChannels.add(channel);
+    const { ENV_URL_KEY, ENV_SECRET_KEY } = FEISHU_WEBHOOK_CHANNELS[channel];
+    const url = this.configService.get<string>(ENV_URL_KEY);
+    if (!url) {
+      this.logger.warn(`[${channel}] 未配置 ${ENV_URL_KEY}，跳过飞书发送`);
+      return null;
     }
 
-    return {
-      url: envUrl ?? defaultConfig.URL,
-      secret: envSecret ?? defaultConfig.SECRET,
-    };
+    const secret = this.configService.get<string>(ENV_SECRET_KEY);
+    if (secret === undefined && !this.unsignedWarnedChannels.has(channel)) {
+      this.logger.warn(`[${channel}] 未配置 ${ENV_SECRET_KEY}，将不带签名发送`);
+      this.unsignedWarnedChannels.add(channel);
+    }
+
+    return { url, secret: secret ?? '' };
   }
 
   /**

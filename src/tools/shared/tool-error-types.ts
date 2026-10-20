@@ -233,6 +233,16 @@ export const TOOL_ERROR_TYPES = {
    * 不存在真人正在沟通，候选人这条是发给 Agent 的，沉默被拒，本轮必须正常回复。
    */
   SKIP_REPLY_HUMAN_TAKEOVER_NOT_ACTIVE: 'skip_reply.human_takeover_not_active',
+  /**
+   * scene=confirmation_closure 但本轮消息窗口里没有任何经理侧消息：候选人这是首句（加好友开场），
+   * 不存在可收尾的推进动作，沉默被拒，本轮必须正常开场回复。
+   */
+  SKIP_REPLY_CONFIRMATION_NO_PRIOR_TURN: 'skip_reply.confirmation_no_prior_turn',
+  /**
+   * scene=confirmation_closure 但消息剥标记、空白与标点后为空、达到 10 字或含问句标记。
+   * 不满足短句形状准入，沉默被拒，本轮必须正常回复；此码不表示已裁决确认语义。
+   */
+  SKIP_REPLY_CONFIRMATION_NOT_SHORT_ACK: 'skip_reply.confirmation_not_short_ack',
 
   // ============================================================
   // 跨工具共享（涉及通用前置/上下文）

@@ -13,7 +13,8 @@
 | 蛋糕群运营通知群 | `MESSAGE_NOTIFICATION` | 群满员、群任务预览/汇总                      | `MESSAGE_NOTIFICATION_WEBHOOK_URL` / `MESSAGE_NOTIFICATION_WEBHOOK_SECRET` |
 | 蛋糕私聊监控群   | `PRIVATE_CHAT_MONITOR` | 面试预约成功/失败/取消                       | `PRIVATE_CHAT_MONITOR_WEBHOOK_URL` / `PRIVATE_CHAT_MONITOR_WEBHOOK_SECRET` |
 
-配置文件：`src/infra/feishu/constants/constants.ts`
+通道键名登记在 `src/infra/feishu/constants/constants.ts`；Webhook 地址与签名密钥只从上表环境变量读取，代码不内置默认值。
+`*_URL` 未配置时该通道跳过发送并记 warn（不阻塞启动）；`*_SECRET` 为空表示机器人未开启签名校验。
 
 ## 通知分布
 
@@ -146,7 +147,7 @@ curl -X POST 'https://open.feishu.cn/open-apis/contact/v3/users/batch_get_id?use
 
 | 文件                                                               | 职责                             |
 | ------------------------------------------------------------------ | -------------------------------- |
-| `src/infra/feishu/constants/constants.ts`                          | Webhook 群通道配置、节流配置     |
+| `src/infra/feishu/constants/constants.ts`                          | Webhook 通道环境变量键、节流配置 |
 | `src/infra/feishu/constants/receivers.ts`                          | 接收人配置、BOT_TO_RECEIVER 映射 |
 | `src/infra/feishu/services/alert.service.ts`                       | 告警发送、节流控制               |
 | `src/infra/feishu/services/webhook.service.ts`                     | Webhook 签名、HTTP 发送          |

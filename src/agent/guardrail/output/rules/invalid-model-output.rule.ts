@@ -53,14 +53,16 @@ export function containsLeakedToolCallBlob(content: string): boolean {
  * JSON 调用 1 例、XML/方括号调用 4 例、回执形 JSON 3 例，后两类全部投递了假预约/假岗位）：
  * - 调用标记：`<function_calls>` / `<tool_calls>` / `<invoke name=` / `<function=…>` /
  *   `<tool_call>` / `[API 调用: geocode]`；
- * - 回执标记：`<function result>` / `</tool_response>` / `<tool_result` / `[API 返回:`；
+ * - 回执标记：`<function result>` / `</tool_response>` / `<tool_result` / `[API 返回:` /
+ *   `<result><error>` / `<error_type>`（2026-10-16 trace …_1792130951637：reasoning 里演了
+ *   `<result><error>InvalidApiKeyError</error></result>`，正文把 API 密钥错误说明整段投递）；
  * - 回执形 JSON：数组内 ≥2 个对象共享 ≥3 个相同顶层键（chat 6aa0cf1e 的 `{"jobList":[…]}`）。
  *   思考不会长成同构记录表，只有工具回执会；不猜 `jobList`/`results` 之类键名。
  */
 const SIMULATED_TOOL_CALL_MARKUP_PATTERN =
   /<function_calls>|<tool_calls>|<invoke\s+name=|<function[=\s][A-Za-z_]|<tool_call>|\[API 调用/u;
 const SIMULATED_TOOL_RESULT_MARKUP_PATTERN =
-  /<function result>|<\/tool_response>|<tool_result|\[API 返回/u;
+  /<function result>|<\/tool_response>|<tool_result|\[API 返回|<result>\s*<error>|<error_type>/u;
 
 /** 同构记录表：数组元素数与共享键数的下限。候选人贴的 proposal 数组只有单键 `properties`，不命中。 */
 const RECORD_ARRAY_MIN_ITEMS = 2;

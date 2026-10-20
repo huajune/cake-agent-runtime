@@ -35,6 +35,7 @@ import {
   detectHumanServicePhraseLeak,
   detectMetaNarrationReply,
   detectInternalOutputLeak,
+  detectUnwrappedMetaNarration,
 } from './internal-info-leaks.rule';
 import { detectBookingReceiptMismatch } from './booking-receipt.rule';
 import { detectSettlementCycleMismatch } from './settlement-cycle-mismatch.rule';
@@ -187,6 +188,12 @@ export class HardRulesService {
     const metaNarrationReply = detectMetaNarrationReply(text);
     if (metaNarrationReply) {
       contradictions.push(metaNarrationReply);
+    }
+
+    // 无括号第三人称自指旁白：observe 哨兵，只落档量化，不拦截。
+    const unwrappedMetaNarration = detectUnwrappedMetaNarration(text);
+    if (unwrappedMetaNarration) {
+      contradictions.push(unwrappedMetaNarration);
     }
 
     const identityMisregistrationCoaching = detectIdentityMisregistrationCoaching(

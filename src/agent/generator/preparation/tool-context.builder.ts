@@ -184,6 +184,8 @@ export function resolveToolContextModel(input: {
   visualSheetsByContent?: ReadonlyMap<string, FinalizedVisualFactSheet>;
   /** 与 normalizedMessages 同批计算的「真人正在沟通」态；缺省 false（见 ToolTurnInputContext）。 */
   humanTakeoverActive?: boolean;
+  /** 候选人当前已在的兼职群城市（实时核验结果；见 ToolArchiveContext.realtimeGroupCities）。 */
+  realtimeGroupCities?: string[];
 }): ToolContextModel {
   const {
     params,
@@ -259,6 +261,7 @@ export function resolveToolContextModel(input: {
       recentBrandPool,
       bookingCandidateFacts: sessionFacts?.interview_info ?? null,
       invitedGroups: memory.shortTerm.sessionState?.invitedGroups ?? [],
+      realtimeGroupCities: input.realtimeGroupCities ?? [],
     },
     turnInput: {
       messages: normalizedMessages,

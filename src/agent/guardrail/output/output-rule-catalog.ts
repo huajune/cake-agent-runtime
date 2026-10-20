@@ -86,7 +86,8 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     residualRisk:
       '不对一般语言质量做语义判断。模型把工具往返演进 reasoning（正文干净）时守卫看不到——' +
       '那一路由 GeneratorAgent 在定稿前带工具重生成一次，判据 containsSimulatedToolExchange ⊇ 本规则的' +
-      'containsLeakedToolCallBlob，另认 XML/方括号调用标记、回执标记与同构记录表 JSON 假回执。',
+      'containsLeakedToolCallBlob，另认 XML/方括号调用标记、回执标记（含 <result><error> / <error_type> 假错误回执）' +
+      '与同构记录表 JSON 假回执。',
     verification: V,
   },
   {
@@ -96,9 +97,11 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     action: GUARDRAIL_ACTION.REPAIR,
     allowFailOpen: false,
     priority: GUARDRAIL_PRIORITY.P0,
-    description: '内部阶段、工具、JSON、代码围栏或推理/自检段落泄漏。',
+    description: '内部阶段、工具、JSON、代码围栏、推理/自检段落或 Provider 鉴权错误文案泄漏。',
     riskGoal: '避免内部实现暴露给候选人。',
-    exogenousSignal: '封闭内部标记和格式，含推理标签族与独占一行的自检/思考标题。',
+    exogenousSignal:
+      '封闭内部标记和格式，含推理标签族、独占一行的自检/思考标题、API 密钥/ANTHROPIC_API_KEY 等' +
+      'Provider 鉴权错误词形，以及整条以 markdown 标题开场的形态。',
     residualRisk: '未登记的自然语言隐喻不在规则能力内。',
     verification: V,
   },
@@ -113,6 +116,21 @@ const OUTPUT_RULE_CATALOG_SEEDS = [
     riskGoal: '防止静默意图或内心独白外发。',
     exogenousSignal: '整条括号形态与封闭元叙述词。',
     residualRisk: '正文混排的开放式旁白交给主 Agent。',
+    verification: V,
+  },
+  {
+    id: 'meta_narration_unwrapped',
+    source: 'agent/guardrail/output/rules/internal-info-leaks.rule.ts',
+    entrypoint: 'detectUnwrappedMetaNarration',
+    // 2026-10-19 复核 [12]（trace …_1791860105040）：信封拆封把 thought「候选人回复"好"是纯确认词…应沉默收尾」
+    // 当正文投递，二审只认括号形态放行。按发牌纪律 observe 入场先量化精确率，累计判例再议升档。
+    action: GUARDRAIL_ACTION.OBSERVE,
+    priority: GUARDRAIL_PRIORITY.P1,
+    description: '整条回复以第三人称谈论候选人/复述沉默场景且没有任何第二人称，疑似内心独白外发。',
+    riskGoal: '量化拆封/修复产物中无括号旁白的真阳性率，为升档 repair 提供判例。',
+    exogenousSignal:
+      '封闭自指词形（候选人回复/本轮无新诉求/应沉默/符合…场景/confirmation_closure）+ 整条无「你/您」。',
+    residualRisk: '只落档不拦截；带第二人称的混排旁白与不在词形内的说法不判。',
     verification: V,
   },
   {

@@ -41,15 +41,15 @@ DB 内嵌话术通过精确匹配旧值的配置迁移清理，避免覆盖运�
 静态扫描扩展到上述辅助输入面；虚构人名/门店白名单退役，测试链路必要号码仍引用既有号码表。
 复核补回字段格式和值域、跨日时段、模糊日期不落库、短期意向的非排他边界，以及改期继续处理、当前岗位负向约束和筛退终局的适用范围；这些属于业务契约，不随示例删除。
 
-| 居所                     | 载体                                                                                                                                        | 变更纪律                                     | 终态快照（2026-08-26）                                                       |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- | ---------------------------------------------------------------------------- |
-| 仓内 procedural sections | `src/agent/generator/context/sections/procedural/`                                                                                          | PR + review；每个 `.ts/.md` 必须带本台账锚点 | 手册 74,654B；final-check 统一规则表 27 条（18 always + 9 turn）；其余见下表 |
-| 工具 description         | 各 tool 文件内 DESCRIPTION                                                                                                                  | 代码 PR；规则贴唯一工具消费者                | 13 个常挂工具；一期压缩基线 31,729→26,738 字符，后续随功能演进               |
-| DB red-lines/thresholds  | `strategy_config.red_lines` / `thresholds`                                                                                                  | Dashboard 可改；变更须同批补台账/changelog   | 10 条现行红线 + 2 阈值                                                       |
-| DB stage-strategy        | `strategy_config.stage_goals`                                                                                                               | Dashboard 可改；released/testing 双行同步    | 5 阶段，当前阶段动态渲染                                                     |
-| 条件式规则块             | booking 共享规则 / input-guard / critical-turn-guard                                                                                        | 代码 PR                                      | 都留在 system；按上下文条件出现                                              |
-| 守卫 hard-rules（拦侧）  | `src/agent/guardrail/output/rules/`                                                                                                         | 代码 PR                                      | 26 个 `ruleId`（以 `output-rule-catalog.ts` grep 为准）                      |
-| 复聊语义停止条件         | `src/agent/reengagement/reengagement.agent.ts` 场景 prompt（唯一居所；`scenario-registry.ts` 的 `generationPolicy` 只写生成目标与形式要求） | 代码 PR；拦侧同文件 `getOutputContractIssue` | 2026-09-22 新列：RE1–RE5；2026-10-14 增 RE6–RE7（第八节）                    |
+| 居所                     | 载体                                                                                                                                        | 变更纪律                                     | 终态快照（2026-08-26）                                                           |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- | -------------------------------------------------------------------------------- |
+| 仓内 procedural sections | `src/agent/generator/context/sections/procedural/`                                                                                          | PR + review；每个 `.ts/.md` 必须带本台账锚点 | 手册 74,654B；final-check 统一规则表 27 条（18 always + 9 turn）；其余见下表     |
+| 工具 description         | 各 tool 文件内 DESCRIPTION                                                                                                                  | 代码 PR；规则贴唯一工具消费者                | 13 个常挂工具；一期压缩基线 31,729→26,738 字符，后续随功能演进                   |
+| DB red-lines/thresholds  | `strategy_config.red_lines` / `thresholds`                                                                                                  | Dashboard 可改；变更须同批补台账/changelog   | 10 条现行红线 + 2 阈值                                                           |
+| DB stage-strategy        | `strategy_config.stage_goals`                                                                                                               | Dashboard 可改；released/testing 双行同步    | 5 阶段，当前阶段动态渲染                                                         |
+| 条件式规则块             | booking 共享规则 / input-guard / critical-turn-guard                                                                                        | 代码 PR                                      | 都留在 system；按上下文条件出现                                                  |
+| 守卫 hard-rules（拦侧）  | `src/agent/guardrail/output/rules/`                                                                                                         | 代码 PR                                      | 26 个 `ruleId`（以 `output-rule-catalog.ts` grep 为准）                          |
+| 复聊语义停止条件         | `src/agent/reengagement/reengagement.agent.ts` 场景 prompt（唯一居所；`scenario-registry.ts` 的 `generationPolicy` 只写生成目标与形式要求） | 代码 PR；拦侧同文件 `getOutputContractIssue` | 2026-09-22 新列：RE1–RE5；2026-10-14 增 RE6–RE7；2026-10-19 增 RE8–RE9（第八节） |
 
 每个 `PromptSection.domain` 声明 teaching/evidence/tool_result 语料域，用于指令—数据分离；
 `PromptSection.slot` 另行声明编译位置。它们与本台账的 procedural/semantic/working 知识类型轴正交，
@@ -482,6 +482,12 @@ DB 内嵌话术通过精确匹配旧值的配置迁移清理，避免覆盖运�
   - **关联**：确定性主修复是带外工单核验 `maybeLoadOutOfBandBookingContext`（面试相关回合按记忆手机号
     直查海绵 signup/list，命中即渲染 [当前预约信息] + "非本会话提交"来源行，BK1–BK6 随之生效）；
     本条只兜"核验也查不到/查询失败"的残余面。
+- `BS3` — 取消/改约零工单接地（2026-10-19 新增，badcase [03] `batch_6ad19d27ce406a6aee98bb9f_1792125255605`）：
+  工单号是系统内部编号，严禁向候选人索要；空态下候选人要取消/改约时直接 `request_handoff(modify_appointment)`，
+  不自行调取消/改约工具。长期有效。
+  - **拦侧配对**：`duliday_cancel_work_order` 的 `CANCEL_MISSING_WORK_ORDER_ID` 回执（同日 schema 去掉
+    `positive()`，0/空值进 execute 给处置指引）；运行时 `REPLAY_BLOCKING_TOOLS` 同批加入 cancel/modify，
+    首版取消成功后不再被 replay 整轮丢弃（根因修复，本条只兜残余面）。
 
 ## 三、final-check always 规则（发送前自检，固定次末位 ≈ recitation）
 
@@ -578,6 +584,45 @@ FC 编号保留为历史别名：
 | `tools/booking/bookable-slot.util.ts` `buildUpcomingTimeOptions` | 扁平"可挑时间"选项与 `buildBookableSlots` 的 `bookingAllowed=false` 同口径：只标日期（00:00-00:00）或起点解析不出的窗口不再进 `interview.upcomingTimeOptions`——此前这些日期照样列给候选人挑，模型据此让候选人"选个时间" | 可约窗口、固定时间点窗口、截止过滤与 maxOptions 行为不变 |
 | `request_handoff` DESCRIPTION 场景 13 | `interview_slot_coordination` 增一条子项「面试窗口无具体时间 / 需线下提交初筛」：precheck 返回 `interview_time_manual_handoff` 时按本码调用，reason 写明资料已收齐、面试窗口无具体时间需人工线下提交；严禁自行承诺"截止前帮你提交 / 留意来电"后不转人工 | 不新增原因码（T2 预约协调、1 小时 SLA 合适）；与场景 13 原义「候选人硬性时间窗与可约场次对不上」并列，不是改期 |
 
+### 2026-10-19 skip_reply 场景一确定性化（首句 / 非短确认词由 runtime 拒绝）
+
+来源：2026-10-19 BadCase 复核 [05]，生产 trace `batch_6ad093aace406a6aeec4fee0_1792054200262`（10-15）：
+候选人首句「我是星空」，模型 skip_reply reason 原文写「不符合 skip_reply 条件，应正常回复」却仍以
+`confirmation_closure` 调用；场景一无运行时准入（只有场景二有），工具一接受即整轮静默、守卫不介入，
+候选人等了 51 分钟真人催后才开场。14 天回扫 1,681 次场景一静默：10 次该 chat 此前无任何经理侧回复、
+89 次原文 ≥10 字、24 次带问句词（"你们公司有承包海底捞的招聘么 / 好的"、"这个大概多久会通知呀"）。
+推翻 09-18「场景一不做确定性拒绝」的裁定；常设，无 TTL。
+
+运行时只检查必要的短句形状与历史条件，不识别确认语义。少于 10 字且无已登记问句标记的自我介绍或新诉求仍可能通过形状检查，
+模型仍须遵守「纯确认收尾、上轮已推进、无新诉求」的工具契约；首句由无 assistant 历史独立拒绝。
+2026-10-19 接续复核补齐 9/10 字边界、首句确认词、连续候选人消息合并和 Generator 拒绝后的分支提示测试。
+
+| 居所                                | 本批增改删                                                                                                                                                                                                                                 | 边界与配对                                                                                                                                                                                             |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `skip_reply` execute 场景一准入     | 消息窗口无任何 assistant 消息（候选人首句）→ `skip_reply.confirmation_no_prior_turn`；当前消息剥方括号表情/占位/语音转写标记与空白标点后 ≥10 字、或含封闭问句标记 → `skip_reply.confirmation_not_short_ack`；均返回 `skipped=false` 不短路 | 判据只看长度与问句，不做肯定词正向匹配（"好的，谢谢您，非常感谢"剥标点后 9 字放行；"呢"刻意不入问句表）；当前消息优先 `turnInput.currentUserMessage`，缺省取窗口末尾连续 user 块；场景二不受本准入约束 |
+| `skip_reply` DESCRIPTION 场景二末尾 | 补一句"场景一同样由 runtime 校验（首句 / 非短确认词返回 `skipped=false`）"                                                                                                                                                                 | 三条合法条件文本不变；禁止调用场景"候选人首句"保留为教侧配对                                                                                                                                           |
+| generator prepareStep 拦截文案      | `buildSkipReplyRejectedNotice` 按工具错误码分支（真人未沟通 / 首句 / 非短确认词），未登记码用通用说明                                                                                                                                      | 旧文案写死真人接管口径，场景一被拒时会误导模型；屏蔽本轮 skip_reply 的行为不变                                                                                                                         |
+
+### 2026-10-19 BadCase 复核小修：取消工单号不向候选人索要 / geocode 城市出处回执
+
+来源：2026-10-19 BadCase 复核 [03]（`batch_6ad19d27ce406a6aee98bb9f_1792125255605`，10-16）：首版成功取消
+工单 472980 后候选人补发消息触发 replay，`REPLAY_BLOCKING_TOOLS` 不含 cancel，首版整轮丢弃重跑；重跑 prompt
+预约快照已空，模型调 `cancel(workOrderId=0)` 被 zod 拒后向候选人索要工单号。
+[17]（`batch_6acc7b80ce406a6aeea53027_1791785986689` / `_1791786074634`，10-12）：候选人在佛山兼职群，模型传
+`geocode(city=佛山, address=王府井)`，城市出处门静默丢弃 city，全国搜唯一命中北京，回执 `_cityConfirmed 北京`，
+轮末写 `pref.city=北京 (system/high)` 压过候选人后续陈述；第二轮再传佛山被 `city_conflict` 再丢。长期有效，无 TTL。
+
+| 居所                                                  | 本批增改删                                                                                                                                                                                                                                                        | 边界与配对                                                                                                                                                                   |
+| ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `duliday_cancel_work_order` DESCRIPTION「参数」       | 补一句：工单号是系统内部编号，严禁向候选人索要；拿不到时按「没有 [当前预约信息]」一节处理                                                                                                                                                                         | 教侧；拦侧为同工具 `CANCEL_MISSING_WORK_ORDER_ID` 回执                                                                                                                       |
+| `duliday_cancel_work_order` inputSchema `workOrderId` | 去掉 `positive()`，改 `nullable().optional()`；0/空值进 execute                                                                                                                                                                                                   | zod 拒绝只给模型裸报错、无处置指引；运行时回执明示「禁止向候选人索要工单号，改走 request_handoff(modify_appointment)，不得谎称已取消/否认预约」                              |
+| [预约状态] 空态接地块 `NO_BOOKING_STATUS_BLOCK`       | 补一句取消/改约口径（第二节 BS3）                                                                                                                                                                                                                                 | 与 description 同一约束、两处分别覆盖「有工具可调」与「空态不该调」两种时点，不构成双居所                                                                                    |
+| 运行时（非 prompt）`REPLAY_BLOCKING_TOOLS`            | 加入 `duliday_cancel_work_order` / `duliday_modify_interview_time`                                                                                                                                                                                                | 根因修复：取消/改约既成后保留首版回复，候选人补发消息按新回合处理，与 booking/invite 同口径；未采用「replay 时注入首版副作用摘要」方案（仍依赖模型读懂，且需新增上下文管线） |
+| `geocode` DESCRIPTION「参数 city」                    | 补一条：city 只认有出处的城市（亲口 / 会话记忆 / 已在群城市 / 在途预约门店城市 / 对「你在 X 对吧」的肯定应答 / 本轮确权）；无出处会被忽略并回执 `_cityIgnored`，此时是全国搜索、不得说"已确认城市"                                                                | 教侧；拦侧为 `resolveProvenancedCity` → `_cityIgnored` 回执（此前静默丢弃）。回收原第 2 条「凭通识填 city」，统一按城市出处或留空搜索                        |
+| `geocode` DESCRIPTION「返回三态」                     | 新增 `resolution=needs_confirmation` 条目：原地址未逐字回显 / 传入 city 被忽略（即使命中同城） / 全国搜城市与候选人所在群或在途预约门店城市不一致 → 一句话确认，确认前禁止采用坐标、禁止宣称已确认城市                                                            | 拦侧 `resolveNationwideCityConfirmation`：全国搜 unique 先与 `realtimeGroupCities` / `bookingWorkOrders[].storeCity` 交叉核对，候选人原话/地图/问答确认等新出处可支持换城，旧会话城市和 geocode 回声不能免除冲突确认      |
+| 运行时（非 prompt）`invite-city-gate` 出处档          | 新增 ⑥ `realtime_group`（已在群城市，memory.section [候选人当前所在兼职群] 同源）、⑦ `booking_store`（在途预约门店城市，仅加载了地址详情的回合有值）、⑧ `confirmed_question`（复用 notary `isAssistantQuestionConfirmedInDialogue`），均排在 `city_conflict` 之前 | geocode 与 invite 共用 `collectCityGateContextInputs`；tool guardrail catalog residualRisk 同步：门店城市不是每轮都有                                                        |
+| 运行时（非 prompt）`saveToolAttestedCity`             | `CityAttestation.nationwideSearch=true`（city=null 全国搜 unique）只记 medium，不再写 high                                                                                                                                                                        | 全国唯一 ≠ 候选人在该城市；medium 可被候选人亲口陈述（candidate_quote/high）覆盖，system/high 冲突拒改口的死锁不再发生                                                       |
+
 ### 2026-09-18 skip_reply 场景二确定性化（真人接管态由 runtime 校验）
 
 来源：生产 chat `6a4dbf4bce406a6aee3137e4`（2026-09-17）：真人只在 36 分钟前发过开场"你好"，
@@ -632,10 +677,10 @@ FC 编号保留为历史别名：
 - 日期契约：仅实际指定面试时间时产出 `_confirmedInterviewTimeHuman`；等通知岗位走 `_waitNoticeReplyGuide`。`booking_receipt_mismatch` 跳过明确 `requestInfo.interviewTime=null` 的历史回执，避免强制模型复读内部说明。
 - 本项限制报名工具回执及其修复证据。改约/取消工具当前仍要求真实工单引用，已有预约上下文的入参解析契约不在本次变更范围。
 
-## 七、守卫 hard-rules（拦侧，25 ruleId）
+## 七、守卫 hard-rules（拦侧，27 ruleId）
 
 本节是 Prompt 教侧与 Output 拦侧的**配对索引**，不是把 hard-rules 算进 Prompt 执行器。
-完整防线有 Input / Prompt / Tool / Output 四个作用位：本台账治理 Prompt，下面 25 个 ruleId
+完整防线有 Input / Prompt / Tool / Output 四个作用位：本台账治理 Prompt，下面 27 个 ruleId
 由 `OutputGuardrailService` 执行；教/拦可以配对，但权限与唯一权威各自独立。
 
 当前执行档为 repair / replan；旧记录里的 revise / block 保留历史取值，旧 block 的严格拒发约束
@@ -687,9 +732,10 @@ badcase 5j1mbgi8 / kwxk74gn / kb629uko / wvr7pejq；教侧配对手册"岗位事
 - `interview_time_change_unconfirmed`（repair 不变）按 precheck 回执 `duplicateBookingGuard.interviewWindow`
   豁免窗口内钟点（不带上下午的钟点任一读法落窗口内即放行），与 BK2 窗口内到达规则同口径；回执无窗口时按工单开始时刻对账不变。
 
-observe 哨兵（只落档不拦截，7 条）：`requested_brand_mismatch`、`settlement_cycle_mismatch`、
+observe 哨兵（只落档不拦截，8 条）：`requested_brand_mismatch`、`settlement_cycle_mismatch`、
 `proactive_insurance_policy_mention`、`booking_done_claim_without_submission`、
-`cancel_done_claim_without_submission`、`part_time_salary_display_mismatch`、`student_acceptance_contradiction`。其中预约完成态哨兵接替 `booking_promise_without_booking`
+`cancel_done_claim_without_submission`、`part_time_salary_display_mismatch`、`student_acceptance_contradiction`、
+`meta_narration_unwrapped`（2026-10-19，见下）。其中预约完成态哨兵接替 `booking_promise_without_booking`
 的完成时态缺口；将来时口径经生产抽样证实几乎全命中合法收资话术，不恢复）。
 
 2026-10-14 兼职薪资口径批（生产 trace `batch_6ab4b2cdce406a6aee874892_1790233240971`：本轮只调两次
@@ -778,6 +824,32 @@ runner 直达静默 `skip_intent_envelope_silenced`——终态 `skipped`、不�
 `meta_narration_silenced` 同轨（`INTENTIONAL_SILENCE_REASON_CODES`）。其它工具的参数信封回落残文判定，
 维持 `tool_call_artifact_silenced` 转人工。规则词库与教侧文本不变；教侧配对：G14（想沉默只能走 skip_reply）。
 
+信封拆封把 thought 当正文（`internal_output_leak` 命中后的 runner 收敛 + 新 observe 哨兵 `meta_narration_unwrapped`，
+2026-10-19 BadCase 复核 [12]，batch …\_1791860105040 / `guardrail_review_records#19522`，2026-10-13）：模型自造结构化信封
+`{"agent_reply":"","candidate_intention":"确认收尾","thought":"候选人回复"好"是纯确认词…应沉默收尾"}`，守卫首审命中
+`internal_output_leak`，runner 信封拆封快通道取「唯一 ≥6 汉字值」= thought 当正文投递，二审 `meta_narration_reply` 只认括号形态
+放行（本周 `envelope_unwrapped` 2 行，另一行拆出的也是内部产物「已确认城市：肇庆」）。本批三处：`tryUnwrapEnvelopeReply`
+认回复槽位键（agent_reply / agent_response / reply / response / answer / text 等）——槽位存在时正文只能来自槽位，槽位全空返回 null；
+键名分段含 thought / reasoning / analysis / intention / intent / plan / stage 的值无论中文量多少都不得入选正文；
+runner 新增直达静默 `empty_reply_envelope_silenced`（`isEmptyReplySlotEnvelope`：槽位全空且无 scene/action、调用结构或转人工/告警参数键；`reason` 可作内部笔记）。
+其余非空字段只能是已知内部笔记字符串；未知正文/控制字段或结构化值保留既有修复/转人工处理，不得作为普通静默吞掉。
+只有准备阶段使用真实工具上下文通过与 `skip_reply` 共用的确认收尾准入（已有 assistant 历史、当前消息非空且不足 10 字、无已登记问句标记），
+且本轮零工具调用时，才收敛 `skipped`、不进 repair、不派介入。首句、问句、准入证据缺失、已有业务工具或被拒绝的 skip 调用均回到有界修复与二审；
+保留既成工具结果，不重做副作用，也不将 thought 拆成正文。新增 observe 哨兵 `meta_narration_unwrapped`：封闭第三人称
+自指词形（候选人回复/本轮无新诉求/应沉默/符合…场景/confirmation_closure）+ 整条无「你/您」，只落档量化，累计判例再议升档。
+教侧配对：G14（想沉默只能走 skip_reply）。
+
+Provider 鉴权错误文案外泄（`internal_output_leak` + `invalid_model_output` 扩形态，2026-10-19 BadCase 复核 [02]，
+batch …\_1792130951637，2026-10-16）：零工具回合里 qwen 在 reasoning 中演了 `<result><error>InvalidApiKeyError</error></result>`，
+正文写成「`## API密钥错误` … `环境变量配置` … `ANTHROPIC_API_KEY` … `console.anthropic.com`」五段原样投递，守卫 pass；
+同时间窗 781 次 llm_execution 无一例 401，是模型臆造不是真实鉴权失败。本批三处：
+`internal_output_leak` 词库新增封闭 Provider/鉴权错误词形（`API 密钥`、`api key`（含下划线/连字符变体）、`ANTHROPIC_API_KEY`、
+`console.anthropic.com`、`环境变量配置`、`InvalidApiKeyError`、`invalid_api_key`）与「整条回复以 markdown 标题开场」形态
+（近 30 天 24,075 条投递回复仅该例命中，正文中段 `#` 行不算），档位不变（repair / rewrite，禁 fail-open）；
+`containsSimulatedToolExchange` 回执标记补 `<result><error>` / `<error_type>`，让 generator 零工具重生成判据能认这种假错误回执；
+`OutboundReplySanitizer` 顺带剥行首 `#`~`######` 标记（只剥标记留文字）。不动教侧文本；`llm-executor.assertUsableChatResult`
+把 Provider 错误文案判为可重试不在本批（留待观察重生成是否足够）。
+
 取消/改期链路（2026-08-31 新增，badcase nrz6axmr / 4peya6s9）：
 
 - `cancel_done_claim_without_submission`（observe 哨兵）——零 cancel/modify 调用却用完成时态
@@ -845,17 +917,19 @@ runner 直达静默 `skip_intent_envelope_silenced`——终态 `skipped`、不�
 本批建立于 2026-09-22（PRD `36185ecb1^:docs/todo/prd-ops-followup-2026-09.md` §R1；提交 2f99120b0 / b7360444c /
 b1ccff8f3 / 2d29d2a76 / cdd065947）；同批删除「真人手打过就停」整道闸（2f99120b0），不再登记为规则。
 
-| #           | 规则摘要                                                                                                                                                                                                                                                                                                                                                         | 来源                                                                                                                                        | 加入       | 时效 |
-| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | ---- |
-| RE1         | 时间口径「工单为准，聊天不一致则不发」：对话中真人/候选人明确约定与工单不同的本次面试时间 → 填 `chatAgreedInterviewTime` + `interviewTimeMismatch=true` + `blockReason=chat_interview_time_mismatch` + skip，交运营修正工单；提醒钟点不得改写成聊天时间。取代原「聊天优先」口径。没有明确约定、与工单一致、拿不准是否指本工单时一律按工单时间处理、不得据此 skip | PRD R1 改动 3；b7360444c                                                                                                                    | 2026-09-22 | 长期 |
-| RE2         | 「已发送本次面试提醒」（`interview_reminder_already_sent`）只认**面试当天**由真人另行发出的提醒；改时间/通知面试时间/问 AI 面试做完没/发二维码/发地址/预约当轮告知与叮嘱/面试前 1–3 天意向确认均不算                                                                                                                                                             | 裁定 #30；b7360444c                                                                                                                         | 2026-09-22 | 长期 |
-| RE3         | 「招募经理已询问面试结果」只看**晚于工单面试时间**的询问；此前只发过提醒不影响回访，面试前的「做完了吗/到店了吗」不算已问结果                                                                                                                                                                                                                                    | 裁定 #7；b7360444c                                                                                                                          | 2026-09-22 | 长期 |
-| RE4         | `interview_not_started_per_chat` 收窄为「说还没开始/推迟但没给具体新时间」；给了具体不同时间的走 RE1；不得仅因工单时间已过就断定面试已进行                                                                                                                                                                                                                       | b7360444c                                                                                                                                   | 2026-09-22 | 长期 |
-| RE5（拦侧） | RE1 的输出契约校验：聊天时间不可解析 / 与工单相同 / 非提醒回访场景 → 纠正重试，仍不合规 fail-closed；模型标 mismatch 却 `decision=send` → 强制 skip                                                                                                                                                                                                              | `reengagement.agent.ts` `getOutputContractIssue`；b7360444c                                                                                 | 2026-09-22 | 长期 |
-| RE6         | 「候选人还在等回复」（`candidate_message_unanswered`，所有报名后场景含入职跟进）：对话以候选人消息结尾，且最后这段连发是在提问、做出选择或提出需要答复的要求 → skip，主动消息不压着没回答的问题发；礼貌确认/致谢/收尾/表情不算。「仅询问面试时间地点」不构成取消/结果类停止条件，但停在末尾无人回应时按本条处理                                                  | 面试提醒被待答闸大量误拦（2026-10-13 生产样本：真人接手期间候选人回「好的」）；待答闸收窄为只拦主链丢消息后，转真人处理的消息由本条兜住语义 | 2026-10-14 | 长期 |
-| RE7（拦侧） | RE6 的输出契约校验：`candidate_message_unanswered` 但近期对话最后一条不是 user → 纠正重试，仍不合规 fail-closed                                                                                                                                                                                                                                                  | `reengagement.agent.ts` `getOutputContractIssue`                                                                                            | 2026-10-14 | 长期 |
+| #           | 规则摘要                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | 来源                                                                                                                                                | 加入       | 时效 |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | ---- |
+| RE1         | 时间口径「工单为准，聊天不一致则不发」：对话中真人/候选人明确约定与工单不同的本次面试时间 → 填 `chatAgreedInterviewTime` + `interviewTimeMismatch=true` + `blockReason=chat_interview_time_mismatch` + skip，交运营修正工单；提醒钟点不得改写成聊天时间。取代原「聊天优先」口径。没有明确约定、与工单一致、拿不准是否指本工单时一律按工单时间处理、不得据此 skip。2026-10-19 起只对到店（线下）面试教学，不到店面试见 RE8                                                                                                                      | PRD R1 改动 3；b7360444c                                                                                                                            | 2026-09-22 | 长期 |
+| RE2         | 「已发送本次面试提醒」（`interview_reminder_already_sent`）只认**面试当天**由真人另行发出的提醒；改时间/通知面试时间/问 AI 面试做完没/发二维码/发地址/预约当轮告知与叮嘱/面试前 1–3 天意向确认均不算                                                                                                                                                                                                                                                                                                                                           | 裁定 #30；b7360444c                                                                                                                                 | 2026-09-22 | 长期 |
+| RE3         | 「招募经理已询问面试结果」只看**晚于工单面试时间**的询问；此前只发过提醒不影响回访，面试前的「做完了吗/到店了吗」不算已问结果                                                                                                                                                                                                                                                                                                                                                                                                                  | 裁定 #7；b7360444c                                                                                                                                  | 2026-09-22 | 长期 |
+| RE4         | `interview_not_started_per_chat` 收窄为「说还没开始/推迟但没给具体新时间」；给了具体不同时间的走 RE1；不得仅因工单时间已过就断定面试已进行                                                                                                                                                                                                                                                                                                                                                                                                     | b7360444c                                                                                                                                           | 2026-09-22 | 长期 |
+| RE5（拦侧） | RE1 的输出契约校验：聊天时间不可解析 / 与工单相同 / 非提醒回访场景 → 纠正重试，仍不合规 fail-closed；模型标 mismatch 却 `decision=send` → 强制 skip                                                                                                                                                                                                                                                                                                                                                                                            | `reengagement.agent.ts` `getOutputContractIssue`；b7360444c                                                                                         | 2026-09-22 | 长期 |
+| RE6         | 「候选人还在等回复」（`candidate_message_unanswered`，所有报名后场景含入职跟进）：对话以候选人消息结尾，且最后这段连发是在提问、做出选择或提出需要答复的要求 → skip，主动消息不压着没回答的问题发；礼貌确认/致谢/收尾/表情不算。「仅询问面试时间地点」不构成取消/结果类停止条件，但停在末尾无人回应时按本条处理                                                                                                                                                                                                                                | 面试提醒被待答闸大量误拦（2026-10-13 生产样本：真人接手期间候选人回「好的」）；待答闸收窄为只拦主链丢消息后，转真人处理的消息由本条兜住语义         | 2026-10-14 | 长期 |
+| RE7（拦侧） | RE6 的输出契约校验：`candidate_message_unanswered` 但近期对话最后一条不是 user → 纠正重试，仍不合规 fail-closed                                                                                                                                                                                                                                                                                                                                                                                                                                | `reengagement.agent.ts` `getOutputContractIssue`                                                                                                    | 2026-10-14 | 长期 |
+| RE8         | AI/电话/视频等不到店面试不适用 RE1：时间口径改教「提醒钟点一律按工单时间；『X 点前完成 / 截止 X 点』是完成时限不是面试时间，不得填 chatAgreedInterviewTime、interviewTimeMismatch 必须为 false」；拦侧 `isInterviewTimeMismatchScenario` 对不到店面试返回不适用（`parseInterviewMethod` + `requiresStoreVisit`，面试形式未知维持原判定），`getOutputContractIssue` 回 `interview_time_mismatch_not_applicable` 纠正重试、`resolveChatInterviewTimeMismatch` 不产出「请改工单」证据。状态摘要仅展示事实，回收重复的无条件时间停止提示；提醒文案钟点（取备注截止还是工单时间）待运营裁定，本批不改 | BadCase 复核 [16]（`reengagement_touch_records#103127`，真人说「明天下午三点前完成 AI 面试」被当成约定 10-11 15:00）；积压 p9ledrh8 / ozng5f77 同根 | 2026-10-19 | 长期 |
+| RE9         | `candidate_declined_interview` 只认候选人本人明确说不去/不接受，或带已核验真人来源标记的经理明确把本次面试改推为其他岗位，且此后未重新确认参加；单纯邀群/群里看新岗位不是放弃。主动复聊召回保留消息来源元数据，ReengagementAgent 复用来源判定与共享真人标记，禁止仅凭 assistant 角色认定真人。既无本人放弃也无真人改推证据时不得判放弃。 | 积压 9glgjegv（2026-10-12，Agent 群收口话术被当候选人放弃、提醒被跳过）                                                                             | 2026-10-19 | 长期 |
 
-教↔拦：RE1 ↔ RE5、RE6 ↔ RE7 成对；RE2–RE4 为纯教侧，由 `blockReason` 枚举 fail-closed 兜底（未命中必须为 `none`）。
+教↔拦：RE1 ↔ RE5、RE6 ↔ RE7 成对，RE8 教/拦同条登记；RE2–RE4、RE9 为纯教侧，由 `blockReason` 枚举 fail-closed 兜底（未命中必须为 `none`）。
 配套（非 prompt 规则，2026-10-14）：`chat_messages.history_only_reason` 记录候选人消息只存历史、交给真人处理的原因；
 复聊待答闸（`pending_candidate_message`）只拦既没进 Agent、也没转真人的消息，报名前场景把转真人的回话算作已回话。
 配套（非 prompt 规则）：等通知岗解析落 `missing_interview_time` 正常结束、满 3 天无面试时间发运营协调任务（b1ccff8f3）；
@@ -886,3 +960,32 @@ b1ccff8f3 / 2d29d2a76 / cdd065947）；同批删除「真人手打过就停」�
 2026-10-20 多人代报审查收口：空响应恢复读取当前活动候选人表单（与 booking 同定位），追加候选人的待确认/待提交状态同样转人工。零 booking 完成态对账增加活动追加表单尚无工单这一结构化证据；主候选人的同岗位工单不得为第二人作证，第二人表单已办结且本轮 precheck 成功返回 already_submitted、candidateScope=additional，并由 candidatePhone 与表单 candidateRef 核实为同一人，才允许复述成功。仅有上一位候选人的活动表单工单不能为本轮第三人作证；未核实身份先 replan，不新增姓名语义推断。读失败保持未知，未新增自然语言姓名猜测。
 
 2026-10-20 后续审查：追加候选人的未提交证据优先于本轮其它 booking 调用，只有当前预检之后同岗位、同独立工单的追加报名成功可解除；空响应转人工保留同轮已提交动作的确定性回执。仅持久化表单的回退路径必须绑定紧邻候选人回复的真实复述快照，不借用其它话题的短答；不改变收资授权的跨轮追认规则。来源：PR #1421 审查 RB7I/ROn0/ROn4；长期。
+
+2026-10-20 审查收口：未转写的 [语音消息]（包括时长后缀、与短确认合并）不能进入 confirmation_closure 或空信封静默；已有语音转文字仍按实际文本判断。
+
+同日审查补充：已登记封闭问句标记增加“是否 / 有没有 / 啥”，覆盖是否包吃住、有没有五险、啥时候上班；仍只做静默准入拒绝，不把该集合当作完整自然语言意图分类器。
+
+同日补充封闭问句形态：A不A（如要不要、包不包、交不交）不得进入确认收尾静默，按字符重复结构拒绝，不推断业务意图。
+
+2026-10-20 后续审查：结构化 turnInput.imageUrls 非空时拒绝 confirmation_closure；工具与空回复信封共用同一准入，不能仅检查文本中的图片占位符。来源：PR #1424 审查 RB_6；长期。
+
+### 2026-10-19 PR C 续审：地理确认与复聊来源
+
+来源：BadCase 复核 [03][16][17] 与积压 9glgjegv 的本地续审；长期。
+
+- geocode：城市参数被忽略时回执 `_cityIgnoredReason`（`city_unverified` / `city_conflict`）；唯一命中同城也走 `needs_confirmation`，不写坐标锚点或城市确权。已有规则锚点路径同样不能绕过被忽略参数的确认；全国搜索按 medium 入档。
+- 全国搜索与实时群/预约城市冲突时，旧会话城市和本轮 geocode 回声不能免除确认；候选人原话、地图或问答确认等外生出处仍可支持换城。
+- geocode description 回收“凭通识填 city”的教学，统一按出处或留空搜索；执行位置仍是工具城市出处门。
+- 复聊状态摘要只展示工单事实，时间豁免统一在语义停止条件教学；RE9 的真人改推通过存储来源标记支持，与候选人本人放弃并列，不再被末句否定。
+- 城市问答出处仅公证“你（现在）在 X（这边）吗/对吧”封闭形态，肯定答案仍交给共享 notary 绑定；岗位意向、过往工作经历不作为当前位置证明。
+
+
+### 2026-10-20 PR 审查补充边界
+
+城市问答出处按最近相关证据判定，后来的城市陈述/否定/重新确认可覆盖旧确认，重复问句只绑定本次答案；geocode 的 city schema 与 description 同步禁止凭通识填城市。取消工具先校验有效工单号再执行 testing PII 写入闸，缺编号仍给禁止索号及转人工指引。
+
+真实模型回归执行 `e4e64dbc-0380-493d-80aa-b8cd8e2212af` 发现取消缺工单的转人工指引被 `request_handoff` 反向拒绝：没有工单不等于没有真人安排的预约。`modify_appointment` 无编号时改为返回人工核实意图，原因中明确“系统未查到工单，需人工先核实预约再处理”；不执行取消或改期，不确权预约存在。首次选时段仍按工具说明走预检，禁止把首次约面当改期。
+
+2026-10-20 审查收口：实时群的「全国」是覆盖范围，不是所在地证据；上下文投影与 geocode/invite 共用出处取数均过滤该哨兵，保留真实城市与本人预约证据。
+
+2026-10-20 组合实链回归 `9ceb5491-d27d-4e82-91f3-5f675f163d71`：取消缺工单正确转人工，但模型在 actionAdvice 中补出上下文没有的姓名和手机号。收口 request_handoff 参数契约：reason 只能复述有据事实；actionAdvice 只建议动作，不填写身份/工单编号，缺资料交人工核实。身份与单据继续由 runtime 携带，不加姓名语义分类器或候选人侧兜底文案。

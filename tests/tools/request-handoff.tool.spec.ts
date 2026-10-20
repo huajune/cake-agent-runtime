@@ -63,21 +63,26 @@ describe('buildRequestHandoffTool', () => {
     expect(interventionService.dispatch).not.toHaveBeenCalled();
   });
 
-  it('does NOT short-circuit on modify_appointment when no active_booking exists', async () => {
+  it('未查到工单的取消/改期请求转人工核实，不推断首次约面或执行取消', async () => {
     longTermService.getActiveBookings.mockResolvedValue([]);
 
     const tool = buildTool();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = await (tool as any).execute({
       reasonCode: 'modify_appointment',
-      reason: '想改到明天',
+      reason: '候选人要求取消真人刚才安排的面试，系统查不到工单',
     });
 
     expect(result).toMatchObject({
-      errorType: TOOL_ERROR_TYPES.HANDOFF_NO_BOOKING,
-      shortCircuited: false,
+      dispatched: true,
+      shortCircuited: true,
+      sideEffect: expect.objectContaining({
+        workOrderId: null,
+        reasonCode: 'modify_appointment',
+        reason: expect.stringContaining('需人工先核实预约再处理'),
+      }),
     });
-    // 守卫命中：不派发、不记录 handoff
+    // 工具只返回意图，是否派发仍由统一出口决定。
     expect(handoffRecorder.record).not.toHaveBeenCalled();
     expect(interventionService.dispatch).not.toHaveBeenCalled();
   });
@@ -106,15 +111,20 @@ describe('buildRequestHandoffTool', () => {
     expect(result).not.toMatchObject({ errorType: TOOL_ERROR_TYPES.HANDOFF_NO_BOOKING });
   });
 
-  it('still treats modify_appointment as first booking when visible work orders are only empty', async () => {
-    longTermService.getActiveBookings.mockResolvedValue([]);
+  it('工单查询失败也只能表示待核实，不能否认预约', async () => {
+    longTermService.getActiveBookings.mockRejectedValue(new Error('temporary outage'));
     const tool = buildTool(mergeToolContext(mockContext, { archive: { bookingWorkOrders: [] } }));
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = await (tool as any).execute({
       reasonCode: 'modify_appointment',
       reason: '想改到明天',
     });
-    expect(result).toMatchObject({ errorType: TOOL_ERROR_TYPES.HANDOFF_NO_BOOKING });
+    expect(result).toMatchObject({
+      dispatched: true,
+      shortCircuited: true,
+      sideEffect: expect.objectContaining({ workOrderId: null }),
+    });
+    expect(result.sideEffect.reason).toContain('需人工先核实预约再处理');
     expect(interventionService.dispatch).not.toHaveBeenCalled();
   });
 

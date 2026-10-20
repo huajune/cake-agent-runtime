@@ -162,7 +162,7 @@ export class NotificationSenderService {
     });
     if (!sent) {
       const error = new Error(
-        `飞书通知群预览发送失败: ${typeName} -> ${group.groupName}，请检查 MESSAGE_NOTIFICATION_WEBHOOK_URL / MESSAGE_NOTIFICATION_WEBHOOK_SECRET 或默认 webhook 配置`,
+        `飞书通知群预览发送失败: ${typeName} -> ${group.groupName}，请检查 MESSAGE_NOTIFICATION_WEBHOOK_URL / MESSAGE_NOTIFICATION_WEBHOOK_SECRET 配置`,
       );
       this.logger.error(`[群任务] ${error.message}`);
       this.notifyFeishuSendFailure(typeName, group, error, false);

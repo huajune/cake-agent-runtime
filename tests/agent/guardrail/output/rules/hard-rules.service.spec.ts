@@ -22,6 +22,8 @@ describe('HardRulesService — 封闭确定性输出规则', () => {
       'invalid_model_output',
       'internal_output_leak',
       'meta_narration_reply',
+      // 2026-10-19 新增 observe 哨兵（无括号第三人称自指旁白，复核 [12]）。
+      'meta_narration_unwrapped',
       'identity_misregistration_coaching',
       'experience_fraud_coaching',
       'discriminatory_screening_leak',
@@ -59,6 +61,16 @@ describe('HardRulesService — 封闭确定性输出规则', () => {
       'internal_output_leak',
     ],
     ['（本轮为真人沟通，AI 保持静默，不插入回复）', 'meta_narration_reply'],
+    // 2026-10-13 trace …_1791860105040：拆封产物 thought 投递，旧二审只认括号形态
+    [
+      '候选人回复"好"是纯确认词，上轮已完成预约成功回执，本轮无新诉求，应沉默收尾',
+      'meta_narration_unwrapped',
+    ],
+    // 2026-10-16 trace …_1792130951637：API 密钥错误说明整段投递，旧词库 pass
+    [
+      '## API密钥错误\n\n您的API密钥无效或已过期，请确认ANTHROPIC_API_KEY设置正确',
+      'internal_output_leak',
+    ],
     ['名额放心，我已经帮你留好了', 'quota_promise'],
     ['这家不招外地户籍', 'discriminatory_screening_leak'],
     ['方便问下你老家是哪里？', 'sensitive_origin_probe'],

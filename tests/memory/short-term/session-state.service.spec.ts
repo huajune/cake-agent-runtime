@@ -1220,6 +1220,52 @@ describe('SessionStateService（S1-S6）', () => {
     ).resolves.toBe('skipped_city_conflict');
   });
 
+  it('city=null 全国搜得到的工具确权只记 medium，候选人亲口陈述可覆盖它（BadCase 复核 [17]）', async () => {
+    hash = {};
+    await expect(
+      service.saveToolAttestedCity('corp-1', 'user-1', 'session-4', {
+        city: '北京',
+        source: 'geocode_unique',
+        evidence: 'geocode 唯一解析：北京市东城区王府井',
+        nationwideSearch: true,
+      }),
+    ).resolves.toBe('written');
+    const written = await service.getFacts('corp-1', 'user-1', 'session-4');
+    expect(written?.preferences.city).toEqual(
+      expect.objectContaining({ value: '北京', confidence: 'medium', source: 'system' }),
+    );
+
+    // 候选人随后亲口说在佛山（candidate_quote/high）要能压过全国搜写入的 medium。
+    await service.saveFacts(
+      'corp-1',
+      'user-1',
+      'session-4',
+      softFacts({
+        city: {
+          value: '佛山',
+          confidence: 'high',
+          source: 'candidate_quote',
+          evidence: '我在佛山',
+        },
+      }),
+    );
+    expect((await service.getFacts('corp-1', 'user-1', 'session-4'))?.preferences.city?.value).toBe(
+      '佛山',
+    );
+
+    // 带出处 city 限定搜索（nationwideSearch=false / 缺省）仍按 high 入档。
+    hash = {};
+    await service.saveToolAttestedCity('corp-1', 'user-1', 'session-5', {
+      city: '上海',
+      source: 'geocode_unique',
+      evidence: '地图解析',
+      nationwideSearch: false,
+    });
+    expect((await service.getFacts('corp-1', 'user-1', 'session-5'))?.preferences.city).toEqual(
+      expect.objectContaining({ value: '上海', confidence: 'high' }),
+    );
+  });
+
   it('城市确权后剔除白名单能反推为其他城市的区域/地点，白名单外的值保留', async () => {
     hash = {
       facts: softFacts({ district: ['栖霞', '我浦江'], location: ['陆家嘴', '某某小区'] }),

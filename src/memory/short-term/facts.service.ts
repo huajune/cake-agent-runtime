@@ -476,6 +476,11 @@ export class SessionFactsService {
 
   /**
    * 城市写入统一走 adjudicateCityClaims；外部工具确权按 high 入档。
+   *
+   * 例外：geocode 以 city=null 全国搜索得到的 unique（attestation.nationwideSearch）只是
+   * 「该地名全国唯一」，不是候选人在该城市的证据，只记 medium——不得压过候选人亲口陈述
+   * （explicit_city 记 medium/candidate_quote，system high 一旦写入会以 high 冲突拒绝改口；
+   * BadCase 复核 [17]：全国搜「王府井」把佛山候选人写成 pref.city=北京 high）。
    */
   async saveToolAttestedCity(
     corpId: string,
@@ -488,9 +493,13 @@ export class SessionFactsService {
 
     const state = await this.getSessionState(corpId, userId, sessionId);
     const previous = state.facts?.preferences.city ?? null;
+    const confidence =
+      attestation.source === 'geocode_unique' && attestation.nationwideSearch === true
+        ? 'medium'
+        : 'high';
     const incoming = cityClaimFromFact({
       value: normalized,
-      confidence: 'high',
+      confidence,
       source: 'system',
       evidence: attestation.evidence,
       extractedAt: new Date().toISOString(),
@@ -506,7 +515,7 @@ export class SessionFactsService {
         preferences: {
           ...FALLBACK_EXTRACTION.preferences,
           city: sessionFactValue(normalized, {
-            confidence: 'high',
+            confidence,
             source: 'system',
             evidence: truncateEvidence(attestation.evidence),
             extractedAt: new Date().toISOString(),
