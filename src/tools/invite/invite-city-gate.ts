@@ -87,7 +87,7 @@ export interface InviteCityGateInput {
   realtimeGroupCities?: readonly string[];
   /**
    * 候选人在途预约工单的门店城市（与 [当前预约信息] 同门可见的工单；只在本轮加载了
-   * 预约地址详情时有值）。
+   * 预约地址详情时有值），排除已明确不属于候选人本人的工单。
    */
   bookingStoreCities?: readonly string[];
   /**
@@ -104,6 +104,8 @@ export function collectCityGateContextInputs(
   return {
     realtimeGroupCities: context.archive.realtimeGroupCities ?? [],
     bookingStoreCities: (context.archive.bookingWorkOrders ?? [])
+      // 非本人快照仅供展示；指针路径未显式标记归属，由 active_booking 保证。
+      .filter((workOrder) => workOrder.ownedByCandidate !== false)
       .map((workOrder) => workOrder.storeCity ?? null)
       .filter((city): city is string => Boolean(city && city.trim())),
     dialogueMessages: context.turnInput.messages,

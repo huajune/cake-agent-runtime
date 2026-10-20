@@ -426,6 +426,38 @@ describe('evaluateInviteCityGate', () => {
   });
 
   describe('collectCityGateContextInputs', () => {
+    it.each([true, false, undefined])(
+      '预约归属为 %s 时，只有本人或隐式归属的工单能证明城市',
+      (ownedByCandidate) => {
+        const ctx = createToolContext({
+          archive: {
+            bookingWorkOrders: [
+              {
+                workOrderId: 1,
+                jobId: 2,
+                source: 'active_booking',
+                storeCity: '佛山市',
+                ownedByCandidate,
+              },
+            ],
+          },
+        });
+
+        expect(
+          evaluateGate({
+            requestedCity: '佛山',
+            sessionCity: null,
+            userTexts: [],
+            ...collectCityGateContextInputs(ctx),
+          }),
+        ).toEqual(
+          ownedByCandidate === false
+            ? { decision: 'reject', reason: 'city_unverified' }
+            : { decision: 'allow', matchedBy: 'booking_store' },
+        );
+      },
+    );
+
     it('从工具上下文汇集群城市、在途预约门店城市与对话消息；缺省为空', () => {
       const messages = [{ role: 'user', content: '你好' }];
       const ctx = createToolContext({

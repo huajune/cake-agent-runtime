@@ -902,22 +902,68 @@ describe('geocode tool', () => {
       expect(ctx.ledger.geo.cityAttestation).toBeUndefined();
     });
 
-    it('在途预约门店城市同样参与交叉核对', async () => {
-      (mockGeocodingService.searchCandidates as jest.Mock).mockResolvedValue([wangfujingBeijing()]);
+    it.each([
+      { ownedByCandidate: true, resolution: 'needs_confirmation' },
+      { ownedByCandidate: undefined, resolution: 'needs_confirmation' },
+      { ownedByCandidate: false, resolution: 'unique' },
+    ])(
+      '全国搜仅与本人预约城市交叉核对：$ownedByCandidate',
+      async ({ ownedByCandidate, resolution }) => {
+        (mockGeocodingService.searchCandidates as jest.Mock).mockResolvedValue([
+          wangfujingBeijing(),
+        ]);
+        const ctx = createToolContext({
+          session: { userId: 'u', corpId: 'c', sessionId: 's' },
+          archive: {
+            bookingWorkOrders: [
+              {
+                workOrderId: 1,
+                jobId: 2,
+                source: 'active_booking',
+                storeCity: '佛山市',
+                ownedByCandidate,
+              },
+            ],
+          },
+          turnInput: { messages: [{ role: 'user', content: '王府井附近有兼职吗' }] },
+        });
+
+        const result = await run(ctx, { address: '王府井' });
+
+        expect(result.resolution).toBe(resolution);
+        if (ownedByCandidate === false) {
+          expect(result.contextCities).toBeUndefined();
+        } else {
+          expect(result.contextCities).toEqual(['佛山']);
+        }
+      },
+    );
+
+    it('非本人预约不能授权 city 限定搜索或写入城市锚点', async () => {
+      (mockGeocodingService.searchCandidates as jest.Mock).mockResolvedValue([wangfujingFoshan()]);
       const ctx = createToolContext({
         session: { userId: 'u', corpId: 'c', sessionId: 's' },
         archive: {
           bookingWorkOrders: [
-            { workOrderId: 1, jobId: 2, source: 'active_booking', storeCity: '佛山市' },
+            {
+              workOrderId: 1,
+              jobId: 2,
+              source: 'out_of_band',
+              storeCity: '佛山市',
+              ownedByCandidate: false,
+            },
           ],
         },
         turnInput: { messages: [{ role: 'user', content: '王府井附近有兼职吗' }] },
       });
 
-      const result = await run(ctx, { address: '王府井' });
+      const result = await run(ctx, { address: '王府井', city: '佛山' });
 
+      expect(mockGeocodingService.searchCandidates).toHaveBeenCalledWith('王府井', null);
       expect(result.resolution).toBe('needs_confirmation');
-      expect(result).toMatchObject({ contextCities: ['佛山'] });
+      expect(result._cityIgnoredReason).toBe('city_unverified');
+      expect(ctx.ledger.geo.anchors).toHaveLength(0);
+      expect(ctx.ledger.geo.cityAttestation).toBeUndefined();
     });
 
     it('旧会话记忆不能绕过全国搜索与实时群城市的冲突确认', async () => {
